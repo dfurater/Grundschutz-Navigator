@@ -139,7 +139,7 @@ describe('AboutPage', () => {
     render(<AboutPage />);
 
     expect(
-      screen.getAllByText(/Die Anwendung ist ein inoffizielles Werkzeug und kein Angebot des BSI\./),
+      screen.getAllByText(/Die Anwendung ist kein Angebot des BSI\./),
     ).toHaveLength(1);
   });
 
