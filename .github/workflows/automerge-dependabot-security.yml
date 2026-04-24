@@ -1,0 +1,182 @@
+name: Auto-merge Qualifying Dependabot Security PRs
+
+on:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  security-events: read
+
+jobs:
+  merge-qualified-pr:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Evaluate Dependabot security gate
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          EVENT_PATH: ${{ github.event_path }}
+        run: |
+          set -euo pipefail
+
+          fail_gate() {
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "reason=$1" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+
+          pr_number=$(jq -r '.workflow_run.pull_requests[0].number // empty' "$EVENT_PATH")
+          if [ -z "$pr_number" ]; then
+            fail_gate "no_pull_request"
+          fi
+
+          workflow_event=$(jq -r '.workflow_run.event' "$EVENT_PATH")
+          if [ "$workflow_event" != "pull_request" ]; then
+            fail_gate "not_pull_request_workflow"
+          fi
+
+          workflow_head_sha=$(jq -r '.workflow_run.head_sha' "$EVENT_PATH")
+
+          gh api "repos/$REPO/pulls/$pr_number" > /tmp/pr.json
+
+          actor=$(jq -r '.user.login' /tmp/pr.json)
+          state=$(jq -r '.state' /tmp/pr.json)
+          draft=$(jq -r '.draft' /tmp/pr.json)
+          base_ref=$(jq -r '.base.ref' /tmp/pr.json)
+          base_sha=$(jq -r '.base.sha' /tmp/pr.json)
+          head_sha=$(jq -r '.head.sha' /tmp/pr.json)
+
+          if [ "$actor" != "dependabot[bot]" ]; then
+            fail_gate "actor_not_dependabot"
+          fi
+
+          if ! jq -e 'any(.labels[]?.name; . == "security")' /tmp/pr.json >/dev/null; then
+            fail_gate "not_security_update"
+          fi
+
+          if [ "$state" != "open" ]; then
+            fail_gate "pull_request_not_open"
+          fi
+
+          if [ "$draft" != "false" ]; then
+            fail_gate "pull_request_draft"
+          fi
+
+          if [ "$base_ref" != "main" ]; then
+            fail_gate "base_not_main"
+          fi
+
+          if [ "$head_sha" != "$workflow_head_sha" ]; then
+            fail_gate "head_sha_mismatch"
+          fi
+
+          gh api "repos/$REPO/pulls/$pr_number/files?per_page=100" --paginate > /tmp/pr-files.json
+          if ! jq -e 'length > 0 and all(.[]; .filename == "package.json" or .filename == "package-lock.json")' /tmp/pr-files.json >/dev/null; then
+            fail_gate "unexpected_files"
+          fi
+
+          gh api "repos/$REPO/contents/package.json?ref=$base_sha" \
+            -H "Accept: application/vnd.github.raw" > /tmp/base-package.json
+          gh api "repos/$REPO/contents/package.json?ref=$head_sha" \
+            -H "Accept: application/vnd.github.raw" > /tmp/head-package.json
+
+          node <<'EOF'
+          const fs = require('fs');
+
+          const base = JSON.parse(fs.readFileSync('/tmp/base-package.json', 'utf8'));
+          const head = JSON.parse(fs.readFileSync('/tmp/head-package.json', 'utf8'));
+          const result = { eligible: false, reason: '', packageName: '' };
+          const sections = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
+          const changes = [];
+
+          for (const section of sections) {
+            const before = base[section] || {};
+            const after = head[section] || {};
+            const names = new Set([...Object.keys(before), ...Object.keys(after)]);
+
+            for (const name of names) {
+              if ((before[name] ?? null) !== (after[name] ?? null)) {
+                changes.push({
+                  section,
+                  name,
+                  before: before[name] ?? '',
+                  after: after[name] ?? '',
+                });
+              }
+            }
+          }
+
+          if (changes.length !== 1) {
+            result.reason = 'multiple_manifest_changes';
+          } else if (changes[0].section !== 'devDependencies') {
+            result.reason = 'not_direct_dev_dependency';
+          } else {
+            const change = changes[0];
+            const parseVersion = (value) => {
+              const match = String(value).match(/(\d+)\.(\d+)\.(\d+)/);
+              return match ? match.slice(1).map(Number) : null;
+            };
+
+            const beforeVersion = parseVersion(change.before);
+            const afterVersion = parseVersion(change.after);
+
+            if (!beforeVersion || !afterVersion) {
+              result.reason = 'non_semver_range';
+            } else {
+              const isPatch =
+                beforeVersion[0] === afterVersion[0] &&
+                beforeVersion[1] === afterVersion[1] &&
+                afterVersion[2] > beforeVersion[2];
+
+              if (!isPatch) {
+                result.reason = 'not_patch_update';
+              } else {
+                result.eligible = true;
+                result.packageName = change.name;
+              }
+            }
+          }
+
+          fs.writeFileSync('/tmp/dependency-gate.json', JSON.stringify(result));
+          EOF
+
+          eligible=$(jq -r '.eligible' /tmp/dependency-gate.json)
+          if [ "$eligible" != "true" ]; then
+            fail_gate "$(jq -r '.reason' /tmp/dependency-gate.json)"
+          fi
+
+          package_name=$(jq -r '.packageName' /tmp/dependency-gate.json)
+
+          gh api "repos/$REPO/dependabot/alerts?state=open&per_page=100" --paginate --slurp > /tmp/alerts.json
+          if ! jq -e --arg package_name "$package_name" \
+            'flatten | map(select(.state == "open" and .dependency.package.name == $package_name)) | length > 0' \
+            /tmp/alerts.json >/dev/null; then
+            fail_gate "no_open_security_alert"
+          fi
+
+          echo "eligible=true" >> "$GITHUB_OUTPUT"
+          echo "pr_number=$pr_number" >> "$GITHUB_OUTPUT"
+
+      - name: Merge pull request
+        if: steps.gate.outputs.eligible == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          pr_number='${{ steps.gate.outputs.pr_number }}'
+          merge_state=$(gh pr view "$pr_number" --repo "$REPO" --json mergeStateStatus --jq .mergeStateStatus)
+
+          if [ "$merge_state" != "CLEAN" ]; then
+            echo "Skipping merge because merge state is $merge_state"
+            exit 0
+          fi
+
+          gh pr merge "$pr_number" --repo "$REPO" --squash --delete-branch

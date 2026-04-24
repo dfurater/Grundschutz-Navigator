@@ -1,0 +1,122 @@
+name: Check Catalog Updates
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # Taeglich um 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: catalog-sync
+  cancel-in-progress: false
+
+jobs:
+  check-and-sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fetch BSI catalog and official vocabularies
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run fetch-catalog
+
+      - name: Compare with tracked upstream manifest
+        id: compare
+        run: |
+          RESULT="$(node scripts/sync-upstream-manifest.mjs)"
+          printf '%s\n' "$RESULT"
+
+          SYNC_JSON="$(printf '%s\n' "$RESULT" | sed -n 's/^SYNC_RESULT_JSON=//p' | tail -n 1)"
+          if [ -z "$SYNC_JSON" ]; then
+            echo "SYNC_RESULT_JSON missing from sync-upstream-manifest output" >&2
+            exit 1
+          fi
+
+          DELIMITER="gha_delimiter_$(date +%s)_$$"
+          {
+            printf 'changed=%s\n' "$(printf '%s' "$SYNC_JSON" | jq -r '.changed')"
+            printf 'local_signature=%s\n' "$(printf '%s' "$SYNC_JSON" | jq -r '.local_signature')"
+            printf 'remote_signature=%s\n' "$(printf '%s' "$SYNC_JSON" | jq -r '.remote_signature')"
+            printf 'snapshot_commit_sha=%s\n' "$(printf '%s' "$SYNC_JSON" | jq -r '.snapshot_commit_sha')"
+            printf 'change_summary<<%s\n' "$DELIMITER"
+            printf '%s\n' "$(printf '%s' "$SYNC_JSON" | jq -r '.change_summary')"
+            printf '%s\n' "$DELIMITER"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check for existing sync PR
+        id: idempotency
+        if: steps.compare.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SNAPSHOT_SHA: ${{ steps.compare.outputs.snapshot_commit_sha }}
+        run: |
+          SHA12="${SNAPSHOT_SHA:0:12}"
+          BRANCH="chore/catalog-sync-${SHA12}"
+          EXISTING=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            echo "PR #$EXISTING fuer Branch $BRANCH bereits vorhanden, ueberspringe."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create sync branch and PR
+        if: steps.compare.outputs.changed == 'true' && steps.idempotency.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ steps.idempotency.outputs.branch }}
+          SNAPSHOT_SHA: ${{ steps.compare.outputs.snapshot_commit_sha }}
+          CHANGE_SUMMARY: ${{ steps.compare.outputs.change_summary }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add upstream-manifest.json
+          git commit -m "chore(ci): update BSI upstream manifest (${SNAPSHOT_SHA:0:12})"
+          git push origin "$BRANCH"
+
+          {
+            echo "## BSI-Katalog-Aenderungen"
+            echo ""
+            printf '%s\n' "$CHANGE_SUMMARY"
+            echo ""
+            printf '**BSI-Snapshot:** [`%s`](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/commit/%s)\n' \
+              "${SNAPSHOT_SHA}" "${SNAPSHOT_SHA}"
+            echo ""
+            echo '*Erstellt automatisch durch den taeglichen Katalog-Sync.*'
+          } > /tmp/pr-body.md
+
+          PR_URL=$(gh pr create \
+            --title "chore(ci): BSI-Katalog-Sync ${SNAPSHOT_SHA:0:12}" \
+            --body-file /tmp/pr-body.md \
+            --base main \
+            --head "$BRANCH")
+
+          echo "PR erstellt: $PR_URL"
+          MERGE_OUTPUT_FILE=/tmp/gh-pr-merge-output.txt
+          if gh pr merge --auto --squash --delete-branch "$PR_URL" >"$MERGE_OUTPUT_FILE" 2>&1; then
+            cat "$MERGE_OUTPUT_FILE"
+          elif grep -q "Pull request is in clean status" "$MERGE_OUTPUT_FILE"; then
+            cat "$MERGE_OUTPUT_FILE"
+            echo "PR ist bereits direkt mergebar; fuehre direkten Squash-Merge aus."
+            gh pr merge --squash --delete-branch "$PR_URL"
+          else
+            cat "$MERGE_OUTPUT_FILE" >&2
+            exit 1
+          fi

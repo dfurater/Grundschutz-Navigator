@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Read pinned snapshot SHA from manifest
+        id: manifest
+        run: |
+          sha=$(jq -r '.snapshotCommitSha' upstream-manifest.json)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch BSI catalog from pinned snapshot
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BSI_SNAPSHOT_SHA: ${{ steps.manifest.outputs.sha }}
+        run: npm run fetch-catalog
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Run tests
+        run: npm run test
+
+      - name: Build application
+        run: npm run build

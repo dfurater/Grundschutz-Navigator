@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Vite
+*.local
+
+# IDE
+.vscode/
+.idea/
+.claude/
+*.swp
+*.swo
+*~
+
+# Local tool artifacts
+/.playwright-mcp/
+/tmp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+
+# Catalog data (fetched at build time, never committed)
+public/data/catalog.json
+public/data/catalog-metadata.json
+public/data/vocabularies.json
+public/data/vocabularies-metadata.json
+public/data/upstream-sources-metadata.json
+
+# Environment files with secrets
+.env
+.env.local
+.env.*.local
+
+# Claude local settings (machine-specific paths)
+AGENTS.md
+CLAUDE.md
+
+# TypeScript build info
+*.tsbuildinfo

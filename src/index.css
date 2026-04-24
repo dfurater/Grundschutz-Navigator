@@ -1,0 +1,362 @@
+@import 'tailwindcss';
+
+/* ============================================================
+   Grundschutz++ Navigator — Design Tokens
+   Basierend auf gemini-bsi-grundschutz++.html Design-Referenz
+   ============================================================ */
+
+@theme {
+  /* Primary (BSI Dark Blue) */
+  --color-primary-main: #004b76;
+  --color-primary-hover: #003655;
+  --color-primary-light: #e6f0f5;
+
+  /* Surface hierarchy */
+  --color-surface-base: #ffffff;
+  --color-surface-subtle: var(--color-slate-50);
+  --color-surface-raised: #ffffff;
+  --color-surface-overlay: #ffffff;
+
+  /* Text hierarchy */
+  --color-text-primary: var(--color-slate-900);
+  --color-text-secondary: var(--color-slate-600);
+  --color-text-muted: var(--color-slate-400);
+  --color-text-inverse: #ffffff;
+
+  /* Border hierarchy */
+  --color-border-subtle: var(--color-slate-100);
+  --color-border-default: var(--color-slate-200);
+  --color-border-strong: var(--color-slate-300);
+
+  /* Accent and focus */
+  --color-accent-default: var(--color-primary-main);
+  --color-accent-soft: var(--color-primary-light);
+  --color-focus-ring: var(--color-sky-500);
+
+  /* Destructive actions */
+  --color-danger-surface: #fff1f2;
+  --color-danger-surface-hover: #ffe4e6;
+  --color-danger-text: #9f1239;
+  --color-danger-border: #fda4af;
+
+  /* Status Badges */
+  --color-status-muss-bg: #fee2e2;
+  --color-status-muss-text: #7f1d1d;
+  --color-status-muss-border: #f87171;
+
+  --color-status-soll-bg: #fef3c7;
+  --color-status-soll-text: #92400e;
+  --color-status-soll-border: #fbbf24;
+
+  --color-status-kann-bg: #dcfce7;
+  --color-status-kann-text: #166534;
+  --color-status-kann-border: #4ade80;
+
+  --color-status-sec-bg: #e0f2fe;
+  --color-status-sec-text: #075985;
+  --color-status-sec-border: #7dd3fc;
+
+  --color-status-aufwand-bg: var(--color-primary-light);
+  --color-status-aufwand-text: var(--color-primary-main);
+  --color-status-aufwand-border: var(--color-primary-light);
+
+  /* Effort Dots */
+  --color-effort-dot-1: color-mix(in srgb, var(--color-primary-main) 20%, white);
+  --color-effort-dot-2: color-mix(in srgb, var(--color-primary-main) 40%, white);
+  --color-effort-dot-3: color-mix(in srgb, var(--color-primary-main) 60%, white);
+  --color-effort-dot-4: color-mix(in srgb, var(--color-primary-main) 80%, white);
+  --color-effort-dot-5: var(--color-primary-main);
+  --color-effort-track: var(--color-slate-100);
+  --color-effort-level-1-text: #818cf8;
+  --color-effort-level-2-text: #6366f1;
+  --color-effort-level-3-text: #4f46e5;
+  --color-effort-level-4-text: #4338ca;
+  --color-effort-level-5-text: #3730a3;
+
+  /* Semantic status */
+  --color-success: #16a34a;
+  --color-success-surface: #f0fdf4;
+  --color-success-text: #166534;
+  --color-warning: #d97706;
+
+  /* Scrollbar */
+  --color-surface-scrollbar: var(--color-slate-300);
+  --color-surface-scrollbar-hover: var(--color-slate-400);
+
+  /* Radius */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+
+  /* Shadow */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-overlay: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+  /* Motion */
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+  --easing-default: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Density */
+  --space-control-x: 0.5rem;
+  --space-control-y: 0.375rem;
+  --space-list-row: 0.5rem;
+  --space-panel: 1rem;
+
+  /* Font families */
+  --font-sans: 'Inter', 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'SF Mono', 'Fira Code', ui-monospace, monospace;
+}
+
+@layer base {
+  html {
+    overflow-x: hidden;
+  }
+
+  button:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface-scrollbar);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-surface-scrollbar-hover);
+}
+
+/* Skip Link (A11y) */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 1rem;
+  z-index: 100;
+  padding: 0.5rem 1rem;
+  background: var(--color-primary-main);
+  color: white;
+  border-radius: 0 0 0.375rem 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: top var(--duration-fast) var(--easing-default);
+}
+
+.skip-link:focus {
+  top: 0;
+}
+
+/* Detail Panel — slide-in animation */
+@keyframes panel-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-panel-in {
+  animation: panel-slide-in var(--duration-normal) var(--easing-default) both;
+}
+
+/* Resize handle hover indicator */
+.resize-handle {
+  transition:
+    background-color var(--duration-fast) var(--easing-default),
+    box-shadow var(--duration-fast) var(--easing-default);
+}
+
+.resize-handle:hover,
+.resize-handle:active {
+  background-color: color-mix(in srgb, var(--color-primary-main) 15%, transparent);
+}
+
+.resize-handle:active {
+  background-color: color-mix(in srgb, var(--color-primary-main) 25%, transparent);
+  box-shadow: -2px 0 8px -2px color-mix(in srgb, var(--color-primary-main) 20%, transparent);
+}
+
+.resize-handle--right:active {
+  box-shadow: 2px 0 8px -2px color-mix(in srgb, var(--color-primary-main) 20%, transparent);
+}
+
+/* Prevent text selection during resize */
+.is-resizing {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+body.dev-selector-active {
+  cursor: crosshair;
+}
+
+body.dev-selector-dragging,
+body.dev-selector-dragging * {
+  cursor: grabbing !important;
+}
+
+[data-dev-selector-hover='true'] {
+  outline: 2px solid #0ea5e9 !important;
+  outline-offset: 2px !important;
+}
+
+@keyframes slide-up {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+@keyframes vocab-card-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@layer utilities {
+  /* Semantic typography scale */
+  .type-page-title {
+    @apply text-lg font-bold lg:text-xl;
+    color: var(--color-text-primary);
+    line-height: 1.4;
+  }
+
+  .type-object-title,
+  .catalog-title-text {
+    @apply text-sm font-semibold;
+    color: var(--color-text-primary);
+    line-height: 1.35;
+  }
+
+  .type-meta,
+  .catalog-meta-text,
+  .catalog-reference-text {
+    @apply text-xs font-medium;
+    color: var(--color-text-secondary);
+    line-height: 1.3;
+  }
+
+  .type-secondary {
+    @apply text-xs font-normal;
+    color: var(--color-text-muted);
+    line-height: 1.3;
+  }
+
+  .catalog-link-color {
+    @apply text-blue-700 visited:text-violet-700 hover:text-blue-800 hover:underline;
+  }
+
+  .catalog-hierarchy-marker {
+    @apply shrink-0 text-xs font-medium;
+    color: var(--color-text-muted);
+    line-height: 1.3;
+    position: relative;
+    top: 1px;
+  }
+
+  .catalog-meta-type {
+    @apply text-xs font-medium;
+    line-height: 1.3;
+  }
+
+  .catalog-badge-text {
+    @apply font-medium leading-tight;
+    font-size: 0.625rem;
+  }
+
+  .header-reference-theme {
+    --header-bg: var(--color-slate-900);
+    --header-surface: var(--color-slate-800);
+    --header-surface-hover: var(--color-slate-700);
+    --header-text: var(--color-text-inverse);
+    --header-text-muted: var(--color-slate-300);
+    --header-text-subtle: var(--color-slate-400);
+    --header-text-hover: var(--color-slate-200);
+    --header-brand-accent: var(--color-sky-400);
+    --header-brand-accent-hover: var(--color-sky-300);
+    --header-focus-ring: var(--color-focus-ring);
+
+    background-color: var(--header-bg);
+    color: var(--header-text);
+  }
+
+  .catalog-reference-text {
+    @apply font-mono;
+  }
+
+  .control-table-min-width {
+    min-width: 40rem;
+  }
+
+  .filter-count-badge {
+    @apply inline-flex items-center justify-center px-1 font-semibold text-white rounded-full;
+    min-width: 18px;
+    height: 18px;
+    font-size: 0.625rem;
+    line-height: 1;
+  }
+
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .shortcut-hint-text {
+    font-size: 0.625rem;
+    line-height: 1;
+  }
+
+  .sort-order-text {
+    font-size: 0.5rem;
+    line-height: 1;
+  }
+
+  .touch-target-size {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .tree-prefix-badge {
+    min-width: 3.5ch;
+  }
+
+  .animate-slide-up {
+    animation: slide-up var(--duration-normal) var(--easing-default) backwards;
+  }
+
+  .animate-vocab-card {
+    animation: vocab-card-in var(--duration-fast) var(--easing-default) both;
+  }
+}
+
+html:focus-within {
+  scroll-behavior: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-panel-in,
+  .animate-slide-up,
+  .animate-vocab-card {
+    animation: none !important;
+  }
+}
