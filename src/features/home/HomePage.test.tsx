@@ -208,4 +208,23 @@ describe('HomePage', () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
+
+  it('uses tighter hero spacing and a clearer gap before the practice register', () => {
+    renderHome();
+
+    const pageHeader = screen.getByRole('heading', {
+      name: 'Grundschutz++ Navigator',
+    }).closest('header');
+    const summarySection = screen.getByRole('heading', {
+      name: 'Was ist Grundschutz++?',
+    }).closest('section');
+    const practiceRegister = screen.getByRole('region', {
+      name: 'Praktiken-Register',
+    });
+
+    expect(pageHeader).toHaveClass('pb-6');
+    expect(summarySection).toHaveClass('pt-6');
+    expect(summarySection).not.toHaveClass('mt-6');
+    expect(practiceRegister).toHaveClass('mt-8');
+  });
 });

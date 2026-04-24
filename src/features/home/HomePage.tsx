@@ -35,9 +35,9 @@ export function HomePage() {
     : null;
 
   return (
-    <div className="max-w-3xl mx-auto px-6 pt-8 pb-12">
+    <div className="mx-auto max-w-3xl px-6 pt-8 pb-12">
       {/* Header */}
-      <header className="flex items-start gap-3.5 pb-8">
+      <header className="flex items-start gap-3.5 pb-6">
         <IconShield className="w-9 h-9 shrink-0 text-[var(--color-accent-default)]" />
         <div className="min-w-0">
           <h1 className="type-page-title text-[var(--color-text-primary)]">
@@ -83,7 +83,7 @@ export function HomePage() {
       {catalog && (
         <section
           aria-labelledby="grundschutz-summary-heading"
-          className="mt-6 border-t border-[var(--color-border-subtle)] pt-4"
+          className="border-t border-[var(--color-border-subtle)] pt-6"
         >
           <h2
             id="grundschutz-summary-heading"
@@ -91,7 +91,7 @@ export function HomePage() {
           >
             Was ist Grundschutz++?
           </h2>
-          <p className="mt-2 text-sm leading-relaxed text-[var(--color-text-primary)]">
+          <p className="mt-3 text-sm leading-relaxed text-[var(--color-text-primary)]">
             Grundschutz++ ist ein fortentwickelter Anwenderkatalog des BSI im
             Kontext des IT-Grundschutzes. Er liegt maschinenlesbar im
             OSCAL-Format vor und verbindet methodische mit konkreten
@@ -116,7 +116,7 @@ export function HomePage() {
       )}
 
       {catalog && (
-        <section aria-label="Praktiken-Register">
+        <section aria-label="Praktiken-Register" className="mt-8">
           {/* Column header — same grid as data rows */}
           <div className="grid grid-cols-[3.5rem_1fr] sm:grid-cols-[3.5rem_1fr_4.5rem_4rem] items-baseline gap-x-3 px-4 pb-2">
             <span className="type-secondary text-[var(--color-text-muted)]">
