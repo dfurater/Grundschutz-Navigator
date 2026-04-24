@@ -44,9 +44,8 @@ export function HomePage() {
             Grundschutz++ Navigator
           </h1>
           <p className="type-secondary mt-0.5 text-[var(--color-text-secondary)]">
-            Inoffizielles Werkzeug zum Durchsuchen, Filtern und Exportieren des
-            offiziellen Grundschutz++-Anwenderkatalogs des BSI. Kein Angebot
-            des BSI.
+            Werkzeug zum Durchsuchen, Filtern und Exportieren des offiziellen
+            Grundschutz++-Anwenderkatalogs des BSI. Kein Angebot des BSI.
           </p>
           {catalogStats && (
             <p className="type-meta mt-3 text-[var(--color-text-secondary)] tabular-nums">
@@ -80,6 +79,30 @@ export function HomePage() {
           </p>
         </div>
       </header>
+
+      {catalog && (
+        <section
+          aria-labelledby="grundschutz-summary-heading"
+          className="mt-6 border-t border-[var(--color-border-subtle)] pt-4"
+        >
+          <h2
+            id="grundschutz-summary-heading"
+            className="type-meta text-[var(--color-text-secondary)]"
+          >
+            Was ist Grundschutz++?
+          </h2>
+          <p className="mt-2 text-sm leading-relaxed text-[var(--color-text-primary)]">
+            Grundschutz++ ist ein fortentwickelter Anwenderkatalog des BSI im
+            Kontext des IT-Grundschutzes. Er liegt maschinenlesbar im
+            OSCAL-Format vor und verbindet methodische mit konkreten
+            technisch-organisatorischen Anforderungen. Mehr dazu unter{' '}
+            <Link to="/about" className="catalog-link-color">
+              Über das Projekt
+            </Link>
+            .
+          </p>
+        </section>
+      )}
 
       {/* Practice register */}
       {loading && (
@@ -132,30 +155,6 @@ export function HomePage() {
               </Link>
             ))}
           </div>
-        </section>
-      )}
-
-      {catalog && (
-        <section
-          aria-labelledby="grundschutz-summary-heading"
-          className="mt-6 border-t border-[var(--color-border-subtle)] pt-4"
-        >
-          <h2
-            id="grundschutz-summary-heading"
-            className="type-meta text-[var(--color-text-secondary)]"
-          >
-            Was ist Grundschutz++?
-          </h2>
-          <p className="mt-2 text-sm leading-relaxed text-[var(--color-text-primary)]">
-            Grundschutz++ ist ein fortentwickelter Anwenderkatalog des BSI im
-            Kontext des IT-Grundschutzes. Er liegt maschinenlesbar im
-            OSCAL-Format vor und verbindet methodische mit konkreten
-            technisch-organisatorischen Anforderungen. Mehr dazu unter{' '}
-            <Link to="/about" className="catalog-link-color">
-              Über das Projekt
-            </Link>
-            .
-          </p>
         </section>
       )}
 
