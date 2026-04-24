@@ -128,9 +128,10 @@ describe('HomePage', () => {
 
     expect(
       screen.getByText(
-        /Inoffizielles Werkzeug zum Durchsuchen, Filtern und Exportieren des\s+offiziellen Grundschutz\+\+-Anwenderkatalogs des BSI\. Kein Angebot\s+des BSI\./,
+        /Werkzeug zum Durchsuchen, Filtern und Exportieren des\s+offiziellen Grundschutz\+\+-Anwenderkatalogs des BSI\. Kein Angebot\s+des BSI\./,
       ),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/Inoffizielles/)).not.toBeInTheDocument();
     expect(screen.getAllByText(/Kein Angebot des BSI/)).toHaveLength(1);
     expect(
       screen.getByText(/2 Praktiken\s+·\s+3 Themen\s+·\s+7 Kontrollen/),
@@ -190,5 +191,21 @@ describe('HomePage', () => {
     });
 
     expect(aboutLink).toHaveAttribute('href', '/about');
+  });
+
+  it('places the Grundschutz++ explanation before the practice register', () => {
+    renderHome();
+
+    const summaryHeading = screen.getByRole('heading', {
+      name: 'Was ist Grundschutz++?',
+    });
+    const practiceRegister = screen.getByRole('region', {
+      name: 'Praktiken-Register',
+    });
+
+    expect(
+      summaryHeading.compareDocumentPosition(practiceRegister) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });
