@@ -225,7 +225,7 @@ export function AboutPage() {
           <h1 className="type-page-title">Über das Projekt</h1>
           <p className="type-secondary mt-0.5">
             Der Grundschutz++ Navigator erschließt den offiziellen BSI-Katalog im Browser.
-            Die Anwendung ist ein inoffizielles Werkzeug und kein Angebot des BSI.
+            Die Anwendung ist kein Angebot des BSI.
           </p>
           <p className="type-meta mt-3">
             Clientseitige Verarbeitung &middot; Laufzeit-Verifikation per SHA-256 &middot; Build-Provenance via GitHub Actions
