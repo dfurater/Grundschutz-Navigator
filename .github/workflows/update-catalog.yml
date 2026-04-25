@@ -72,6 +72,12 @@ jobs:
             echo "PR #$EXISTING fuer Branch $BRANCH bereits vorhanden, ueberspringe."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
+            if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+              echo "Remote branch $BRANCH bereits vorhanden, verwende ihn erneut."
+              echo "branch_exists=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "branch_exists=false" >> "$GITHUB_OUTPUT"
+            fi
             echo "skip=false" >> "$GITHUB_OUTPUT"
             echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
           fi
@@ -81,15 +87,20 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: ${{ steps.idempotency.outputs.branch }}
+          BRANCH_EXISTS: ${{ steps.idempotency.outputs.branch_exists }}
           SNAPSHOT_SHA: ${{ steps.compare.outputs.snapshot_commit_sha }}
           CHANGE_SUMMARY: ${{ steps.compare.outputs.change_summary }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH"
-          git add upstream-manifest.json
-          git commit -m "chore(ci): update BSI upstream manifest (${SNAPSHOT_SHA:0:12})"
-          git push origin "$BRANCH"
+          if [ "$BRANCH_EXISTS" != "true" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git checkout -b "$BRANCH"
+            git add upstream-manifest.json
+            git commit -m "chore(ci): update BSI upstream manifest (${SNAPSHOT_SHA:0:12})"
+            git push origin "$BRANCH"
+          else
+            echo "Remote branch $BRANCH already exists; skipping branch recreation and push."
+          fi
 
           {
             echo "## BSI-Katalog-Aenderungen"
