@@ -101,6 +101,7 @@ jobs:
           else
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
+            git fetch origin "$BRANCH"
             git checkout -b "$BRANCH"
             git add upstream-manifest.json
             git commit -m "chore(ci): update BSI upstream manifest (${SNAPSHOT_SHA:0:12})"
