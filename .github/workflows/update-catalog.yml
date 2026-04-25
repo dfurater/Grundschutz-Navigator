@@ -127,12 +127,8 @@ jobs:
 
           echo "PR erstellt: $PR_URL"
           MERGE_OUTPUT_FILE=/tmp/gh-pr-merge-output.txt
-          if gh pr merge --auto --squash --delete-branch "$PR_URL" >"$MERGE_OUTPUT_FILE" 2>&1; then
+          if gh pr merge --squash --delete-branch "$PR_URL" >"$MERGE_OUTPUT_FILE" 2>&1; then
             cat "$MERGE_OUTPUT_FILE"
-          elif grep -q "Pull request is in clean status" "$MERGE_OUTPUT_FILE"; then
-            cat "$MERGE_OUTPUT_FILE"
-            echo "PR ist bereits direkt mergebar; fuehre direkten Squash-Merge aus."
-            gh pr merge --squash --delete-branch "$PR_URL"
           else
             cat "$MERGE_OUTPUT_FILE" >&2
             exit 1
