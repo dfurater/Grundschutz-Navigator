@@ -91,16 +91,16 @@ jobs:
           SNAPSHOT_SHA: ${{ steps.compare.outputs.snapshot_commit_sha }}
           CHANGE_SUMMARY: ${{ steps.compare.outputs.change_summary }}
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
           if [ "$BRANCH_EXISTS" != "true" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
             git checkout -b "$BRANCH"
             git add upstream-manifest.json
             git commit -m "chore(ci): update BSI upstream manifest (${SNAPSHOT_SHA:0:12})"
             git push origin "$BRANCH"
           else
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
+            # Ensure refs/remotes/origin/$BRANCH exists so --force-with-lease has a lease value.
             git fetch origin "$BRANCH"
             git checkout -b "$BRANCH"
             git add upstream-manifest.json
@@ -127,12 +127,8 @@ jobs:
 
           echo "PR erstellt: $PR_URL"
           MERGE_OUTPUT_FILE=/tmp/gh-pr-merge-output.txt
-          if gh pr merge --auto --squash --delete-branch "$PR_URL" >"$MERGE_OUTPUT_FILE" 2>&1; then
+          if gh pr merge --squash --delete-branch "$PR_URL" >"$MERGE_OUTPUT_FILE" 2>&1; then
             cat "$MERGE_OUTPUT_FILE"
-          elif grep -q "Pull request is in clean status" "$MERGE_OUTPUT_FILE"; then
-            cat "$MERGE_OUTPUT_FILE"
-            echo "PR ist bereits direkt mergebar; fuehre direkten Squash-Merge aus."
-            gh pr merge --squash --delete-branch "$PR_URL"
           else
             cat "$MERGE_OUTPUT_FILE" >&2
             exit 1
