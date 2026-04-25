@@ -99,7 +99,12 @@ jobs:
             git commit -m "chore(ci): update BSI upstream manifest (${SNAPSHOT_SHA:0:12})"
             git push origin "$BRANCH"
           else
-            echo "Remote branch $BRANCH already exists; skipping branch recreation and push."
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git checkout -b "$BRANCH"
+            git add upstream-manifest.json
+            git commit -m "chore(ci): update BSI upstream manifest (${SNAPSHOT_SHA:0:12})"
+            git push --force-with-lease origin "$BRANCH"
           fi
 
           {
