@@ -67,10 +67,11 @@ jobs:
         run: |
           SHA12="${SNAPSHOT_SHA:0:12}"
           BRANCH="chore/catalog-sync-${SHA12}"
-          EXISTING=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number // empty')
+          EXISTING=$(gh pr list --state open --head "$BRANCH" --json number --jq '.[0].number // empty')
           if [ -n "$EXISTING" ]; then
-            echo "PR #$EXISTING fuer Branch $BRANCH bereits vorhanden, ueberspringe."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "PR #$EXISTING fuer Branch $BRANCH bereits vorhanden, verwende die bestehende PR."
+            echo "create_pr=false" >> "$GITHUB_OUTPUT"
+            echo "pr_number=$EXISTING" >> "$GITHUB_OUTPUT"
           else
             if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
               echo "Remote branch $BRANCH bereits vorhanden, verwende ihn erneut."
@@ -78,12 +79,13 @@ jobs:
             else
               echo "branch_exists=false" >> "$GITHUB_OUTPUT"
             fi
-            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "create_pr=true" >> "$GITHUB_OUTPUT"
             echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Create sync branch and PR
-        if: steps.compare.outputs.changed == 'true' && steps.idempotency.outputs.skip == 'false'
+        id: create
+        if: steps.compare.outputs.changed == 'true' && steps.idempotency.outputs.create_pr == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: ${{ steps.idempotency.outputs.branch }}
@@ -126,8 +128,26 @@ jobs:
             --head "$BRANCH")
 
           echo "PR erstellt: $PR_URL"
+          PR_NUMBER=$(gh pr view "$PR_URL" --json number --jq .number)
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Merge sync PR
+        if: steps.compare.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER_CREATE: ${{ steps.create.outputs.pr_number }}
+          PR_NUMBER_EXISTING: ${{ steps.idempotency.outputs.pr_number }}
+        run: |
+          set -euo pipefail
+
+          PR_NUMBER="${PR_NUMBER_CREATE:-$PR_NUMBER_EXISTING}"
+          if [ -z "$PR_NUMBER" ]; then
+            echo "Kein Sync-PR gefunden, kann nicht mergen." >&2
+            exit 1
+          fi
+
           MERGE_OUTPUT_FILE=/tmp/gh-pr-merge-output.txt
-          if gh pr merge --squash --delete-branch "$PR_URL" >"$MERGE_OUTPUT_FILE" 2>&1; then
+          if gh pr merge --squash --delete-branch "$PR_NUMBER" >"$MERGE_OUTPUT_FILE" 2>&1; then
             cat "$MERGE_OUTPUT_FILE"
           else
             cat "$MERGE_OUTPUT_FILE" >&2
