@@ -83,6 +83,28 @@ jobs:
             echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Prepare sync PR body
+        if: steps.compare.outputs.changed == 'true'
+        env:
+          SNAPSHOT_SHA: ${{ steps.compare.outputs.snapshot_commit_sha }}
+          CHANGE_SUMMARY: ${{ steps.compare.outputs.change_summary }}
+        run: |
+          {
+            echo "## BSI-Katalog-Aenderungen"
+            echo ""
+            printf '%s\n' "$CHANGE_SUMMARY"
+            echo ""
+            printf '**BSI-Snapshot:** [`%s`](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/commit/%s)\n' \
+              "${SNAPSHOT_SHA}" "${SNAPSHOT_SHA}"
+            echo ""
+            echo "## Review"
+            echo ""
+            echo "Dieser Sync-PR wird bewusst nicht automatisch gemerged."
+            echo "GitHub-Review ist bei \`dfurater\` angefragt; die fachliche Review-Erwartung liegt bei Codex/Claude Code vor dem manuellen Merge."
+            echo ""
+            echo "*Erstellt automatisch durch den taeglichen Katalog-Sync.*"
+          } > /tmp/pr-body.md
+
       - name: Create sync branch and PR
         id: create
         if: steps.compare.outputs.changed == 'true' && steps.idempotency.outputs.create_pr == 'true'
@@ -91,7 +113,6 @@ jobs:
           BRANCH: ${{ steps.idempotency.outputs.branch }}
           BRANCH_EXISTS: ${{ steps.idempotency.outputs.branch_exists }}
           SNAPSHOT_SHA: ${{ steps.compare.outputs.snapshot_commit_sha }}
-          CHANGE_SUMMARY: ${{ steps.compare.outputs.change_summary }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -110,17 +131,6 @@ jobs:
             git push --force-with-lease origin "$BRANCH"
           fi
 
-          {
-            echo "## BSI-Katalog-Aenderungen"
-            echo ""
-            printf '%s\n' "$CHANGE_SUMMARY"
-            echo ""
-            printf '**BSI-Snapshot:** [`%s`](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/commit/%s)\n' \
-              "${SNAPSHOT_SHA}" "${SNAPSHOT_SHA}"
-            echo ""
-            echo '*Erstellt automatisch durch den taeglichen Katalog-Sync.*'
-          } > /tmp/pr-body.md
-
           PR_URL=$(gh pr create \
             --title "chore(ci): BSI-Katalog-Sync ${SNAPSHOT_SHA:0:12}" \
             --body-file /tmp/pr-body.md \
@@ -131,7 +141,7 @@ jobs:
           PR_NUMBER=$(gh pr view "$PR_URL" --json number --jq .number)
           echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
-      - name: Merge sync PR
+      - name: Request manual sync PR review
         if: steps.compare.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -142,14 +152,12 @@ jobs:
 
           PR_NUMBER="${PR_NUMBER_CREATE:-$PR_NUMBER_EXISTING}"
           if [ -z "$PR_NUMBER" ]; then
-            echo "Kein Sync-PR gefunden, kann nicht mergen." >&2
+            echo "Kein Sync-PR gefunden, kann keine Review anfragen." >&2
             exit 1
           fi
 
-          MERGE_OUTPUT_FILE=/tmp/gh-pr-merge-output.txt
-          if gh pr merge --squash --delete-branch "$PR_NUMBER" >"$MERGE_OUTPUT_FILE" 2>&1; then
-            cat "$MERGE_OUTPUT_FILE"
-          else
-            cat "$MERGE_OUTPUT_FILE" >&2
-            exit 1
-          fi
+          gh pr edit "$PR_NUMBER" \
+            --body-file /tmp/pr-body.md \
+            --add-reviewer dfurater
+
+          echo "Sync-PR #$PR_NUMBER bleibt fuer manuelle Review und Merge offen."

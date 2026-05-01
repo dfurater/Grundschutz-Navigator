@@ -34,7 +34,7 @@ IT-Sicherheitsbeauftragte, Berater:innen, Auditor:innen, Studierende und alle, d
 - **Lizenz der Katalogdaten:** [Creative Commons BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.de)
 - **Datenhaltung:** Die Katalogdaten werden **beim Build** aus dem BSI-Repository geladen. Im App-Repository wird keine Kopie gehalten.
 - **Integrität:** Ein fixierter Upstream-Commit (`upstream-manifest.json`) plus SHA-256-Verify zur Laufzeit macht nachvollziehbar, welche Katalogversion angezeigt wird. Details: [`docs/INTEGRITY.md`](docs/INTEGRITY.md).
-- **Aktualität:** Ein täglicher Workflow um 06:00 UTC prüft auf Upstream-Änderungen und öffnet bei Bedarf einen Pull Request.
+- **Aktualität:** Ein täglicher Workflow um 06:00 UTC prüft auf Upstream-Änderungen und öffnet bei Bedarf einen Pull Request. Catalog-Sync-PRs werden bewusst nicht automatisch gemerged; sie müssen manuell geprüft und gemerged werden.
 
 ## Datenschutz
 
@@ -90,7 +90,7 @@ Tiefe:
 
 ## Deployment
 
-Pushes nach `main` triggern den Deploy-Workflow: Katalog ziehen → Tests → Build → [SLSA-Provenance-Attestation](https://slsa.dev/) → GitHub Pages. Zusätzlich läuft täglich um 06:00 UTC ein Upstream-Sync, der bei Änderungen am BSI-Katalog automatisch einen Pull Request öffnet.
+Pushes nach `main` triggern den Deploy-Workflow: Katalog ziehen → Tests → Build → [SLSA-Provenance-Attestation](https://slsa.dev/) → GitHub Pages. Zusätzlich läuft täglich um 06:00 UTC ein Upstream-Sync, der bei Änderungen am BSI-Katalog automatisch einen Pull Request öffnet. Dieser Sync-PR bleibt für manuelle Review offen und wird nicht automatisch gemerged.
 
 ## Beitragen
 
