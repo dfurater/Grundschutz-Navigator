@@ -69,19 +69,9 @@ export function DatenschutzPage() {
           5. Externe Ressourcen
         </h2>
         <p className="text-sm text-slate-700 leading-relaxed">
-          Die Anwendung lädt Schriftarten von{' '}
-          <a
-            href="https://fonts.bunny.net"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="rounded text-sky-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
-          >
-            Bunny Fonts
-            <span className="sr-only"> (öffnet in neuem Tab)</span>
-          </a>
-          . Beim Abruf können technische Verbindungsdaten an den Anbieter
-          übermittelt werden. Maßgeblich sind die Hinweise des jeweiligen
-          Anbieters.
+          Die Anwendung bindet keine externen Schriftarten, Analyse- oder
+          Werbedienste ein. Benötigte Schriftdateien werden zusammen mit der
+          Anwendung ausgeliefert.
         </p>
       </section>
 
@@ -92,10 +82,10 @@ export function DatenschutzPage() {
         <p className="text-sm text-slate-700 leading-relaxed">
           Diese Seite beschreibt den aktuellen technischen Zuschnitt der
           Anwendung und ersetzt keine rechtliche Einzelfallprüfung. Soweit beim
-          Hosting oder beim Abruf externer Ressourcen personenbezogene Daten
-          verarbeitet werden, richten sich Informations- und Betroffenenrechte
-          nach den jeweils einschlägigen Verantwortlichkeiten. Für Hinweise zur
-          Anwendung selbst nutzen Sie bitte die Angaben im Impressum.
+          Hosting personenbezogene Daten verarbeitet werden, richten sich
+          Informations- und Betroffenenrechte nach den jeweils einschlägigen
+          Verantwortlichkeiten. Für Hinweise zur Anwendung selbst nutzen Sie
+          bitte die Angaben im Impressum.
         </p>
       </section>
     </div>
