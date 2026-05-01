@@ -3,7 +3,7 @@ import type {
   VocabularyNamespaceData,
   VocabularyRegistryData,
 } from '@/domain/models';
-import { buildVocabularyRegistry } from '@/domain/vocabularies';
+import { buildVocabularyRegistry } from '@/domain/vocabulary';
 
 function createNamespace({
   namespace,

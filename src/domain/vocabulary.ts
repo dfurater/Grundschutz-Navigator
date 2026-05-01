@@ -3,6 +3,7 @@ import type {
   PropValue,
   VocabularyEntry,
   VocabularyNamespace,
+  VocabularyNamespaceData,
   VocabularyNamespaceSource,
   VocabularyRegistry,
   VocabularyRegistryData,
@@ -12,6 +13,8 @@ export interface VocabularyResolution {
   namespace: VocabularyNamespace;
   entry: VocabularyEntry;
 }
+
+export type ResolvedVocabularyEntry = VocabularyResolution;
 
 export interface ResolvedControlVocabularies {
   modalverb: VocabularyResolution | null;
@@ -27,25 +30,56 @@ export interface ResolvedControlVocabularies {
   };
 }
 
+function createEntriesByValue(entries: VocabularyEntry[]) {
+  const entriesByValue = new Map<string, VocabularyEntry>();
+
+  for (const entry of entries) {
+    if (entriesByValue.has(entry.value)) {
+      throw new Error(`Duplicate vocabulary value "${entry.value}" in runtime registry.`);
+    }
+    entriesByValue.set(entry.value, entry);
+  }
+
+  return entriesByValue;
+}
+
+function createRuntimeNamespace(
+  namespaceData: VocabularyNamespaceData,
+): VocabularyNamespace {
+  return {
+    ...namespaceData,
+    entriesByValue: createEntriesByValue(namespaceData.entries),
+  };
+}
+
 export function buildVocabularyRegistry(
   data: VocabularyRegistryData,
 ): VocabularyRegistry {
-  const namespaces = data.namespaces.map<VocabularyNamespace>((namespace) => ({
-    ...namespace,
-    entriesByValue: new Map(
-      namespace.entries.map((entry) => [entry.value, entry]),
-    ),
-  }));
+  const namespaces = data.namespaces.map(createRuntimeNamespace);
+  const namespacesByUrl = new Map<string, VocabularyNamespace>();
+  const namespacesByRouteId = new Map<string, VocabularyNamespace>();
+
+  for (const namespace of namespaces) {
+    if (namespacesByUrl.has(namespace.source.namespace)) {
+      throw new Error(
+        `Duplicate vocabulary namespace URL "${namespace.source.namespace}" in runtime registry.`,
+      );
+    }
+    if (namespacesByRouteId.has(namespace.source.routeId)) {
+      throw new Error(
+        `Duplicate vocabulary route id "${namespace.source.routeId}" in runtime registry.`,
+      );
+    }
+
+    namespacesByUrl.set(namespace.source.namespace, namespace);
+    namespacesByRouteId.set(namespace.source.routeId, namespace);
+  }
 
   return {
     sourceCommitSha: data.sourceCommitSha,
     namespaces,
-    namespacesByUrl: new Map(
-      namespaces.map((namespace) => [namespace.source.namespace, namespace]),
-    ),
-    namespacesByRouteId: new Map(
-      namespaces.map((namespace) => [namespace.source.routeId, namespace]),
-    ),
+    namespacesByUrl,
+    namespacesByRouteId,
   };
 }
 
@@ -108,6 +142,13 @@ export function resolveVocabularyProp(
   return resolveVocabularyEntry(registry, prop?.ns, prop?.value);
 }
 
+export function resolvePropVocabularyEntry(
+  registry: VocabularyRegistry | null | undefined,
+  prop: PropValue | undefined,
+): ResolvedVocabularyEntry | null {
+  return resolveVocabularyProp(registry, prop);
+}
+
 export function resolveVocabularyValues(
   registry: VocabularyRegistry | null | undefined,
   namespaceUrl: string | undefined,
@@ -116,6 +157,25 @@ export function resolveVocabularyValues(
   return values
     .map((value) => resolveVocabularyEntry(registry, namespaceUrl, value))
     .filter((resolution): resolution is VocabularyResolution => resolution !== null);
+}
+
+export function resolveVocabularyEntries(
+  registry: VocabularyRegistry | null | undefined,
+  namespaceUrl: string | undefined,
+  values: string[],
+): ResolvedVocabularyEntry[] {
+  return resolveVocabularyValues(registry, namespaceUrl, values);
+}
+
+export function getVocabularyNamespaceByRouteId(
+  registry: VocabularyRegistry | null | undefined,
+  routeId: string | undefined,
+): VocabularyNamespace | null {
+  if (!registry || !routeId) {
+    return null;
+  }
+
+  return registry.namespacesByRouteId.get(routeId) ?? null;
 }
 
 export function resolveControlVocabularies(
