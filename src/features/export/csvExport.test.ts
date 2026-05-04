@@ -125,6 +125,7 @@ describe('escapeCSVField', () => {
     ['at sign', '@DDE()', "'@DDE()"],
     ['tab', '\tIDS', "'\tIDS"],
     ['carriage return', '\r\nFOO', '"\'\r\nFOO"'],
+    ['line feed', '\n=HYPERLINK("https://example.invalid")', '"\'\n=HYPERLINK(""https://example.invalid"")"'],
   ])('prefixes formula-looking values starting with %s', (_label, input, expected) => {
     expect(escapeCSVField(input)).toBe(expected);
   });

@@ -7,7 +7,7 @@ import { getControlLinkTargetsByRelation } from '@/domain/controlRelationships';
  * - Wraps in double quotes if value contains semicolons, quotes, or newlines
  * - Escapes internal double quotes by doubling them
  */
-const FORMULA_PREFIX = /^[=+\-@\t\r]/u;
+const FORMULA_PREFIX = /^[=+\-@\t\r\n]/u;
 
 export function escapeCSVField(value: string): string {
   const safeValue = FORMULA_PREFIX.test(value) ? `'${value}` : value;
