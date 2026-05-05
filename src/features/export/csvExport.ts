@@ -3,19 +3,24 @@ import { getControlLinkTargetsByRelation } from '@/domain/controlRelationships';
 
 /**
  * Escape a field value for CSV output.
+ * - Prefixes Excel/LibreOffice formula-looking values with an apostrophe
  * - Wraps in double quotes if value contains semicolons, quotes, or newlines
  * - Escapes internal double quotes by doubling them
  */
+const FORMULA_PREFIX = /^[=+\-@\t\r\n]/u;
+
 export function escapeCSVField(value: string): string {
+  const safeValue = FORMULA_PREFIX.test(value) ? `'${value}` : value;
+
   if (
-    value.includes(';') ||
-    value.includes('"') ||
-    value.includes('\n') ||
-    value.includes('\r')
+    safeValue.includes(';') ||
+    safeValue.includes('"') ||
+    safeValue.includes('\n') ||
+    safeValue.includes('\r')
   ) {
-    return `"${value.replace(/"/g, '""')}"`;
+    return `"${safeValue.replace(/"/g, '""')}"`;
   }
-  return value;
+  return safeValue;
 }
 
 /**

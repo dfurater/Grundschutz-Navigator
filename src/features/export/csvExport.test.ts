@@ -117,6 +117,26 @@ describe('escapeCSVField', () => {
   it('handles carriage returns', () => {
     expect(escapeCSVField('line1\rline2')).toBe('"line1\rline2"');
   });
+
+  it.each([
+    ['equals sign', '=cmd|calc!A0', "'=cmd|calc!A0"],
+    ['plus sign', '+1+1', "'+1+1"],
+    ['minus sign', '-2', "'-2"],
+    ['at sign', '@DDE()', "'@DDE()"],
+    ['tab', '\tIDS', "'\tIDS"],
+    ['carriage return', '\r\nFOO', '"\'\r\nFOO"'],
+    ['line feed', '\n=HYPERLINK("https://example.invalid")', '"\'\n=HYPERLINK(""https://example.invalid"")"'],
+  ])('prefixes formula-looking values starting with %s', (_label, input, expected) => {
+    expect(escapeCSVField(input)).toBe(expected);
+  });
+
+  it.each(['MUSS', 'ARCH.1.1'])('keeps harmless value %s unchanged', (value) => {
+    expect(escapeCSVField(value)).toBe(value);
+  });
+
+  it('protects and quotes formula-looking values containing semicolons', () => {
+    expect(escapeCSVField('=SUM(1;2)')).toBe('"\'=SUM(1;2)"');
+  });
 });
 
 /* ------------------------------------------------------------------ */
