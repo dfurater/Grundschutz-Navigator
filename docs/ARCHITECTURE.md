@@ -161,6 +161,20 @@ Jeder Katalog wird zum Build-Zeitpunkt mit einem SHA-256 Hash versehen. Zur Lauf
 
 Siehe [INTEGRITY.md](./INTEGRITY.md) für Details.
 
+## Content Security Policy
+
+GitHub Pages erlaubt in diesem Setup keine projektspezifischen HTTP-Security-Header. Die Produktionsanwendung setzt deshalb eine Meta-CSP in `index.html`:
+
+```text
+default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self';
+```
+
+Die Policy begrenzt Skripte, Datenabrufe, Bilder und Schriften auf die ausgelieferte Anwendung, blockiert Plugin-Objekte und beschränkt `<base>` sowie Form-Ziele auf dieselbe Origin. `font-src 'self'` ist möglich, weil die UI-Schriften lokal unter `public/fonts/` ausgeliefert werden.
+
+`style-src 'unsafe-inline'` bleibt bewusst gesetzt, weil Teile der React-/Tailwind-Oberfläche dynamische Inline-Styles für Interaktionen verwenden. Das ist ein eingegrenzter Tradeoff: Skripte bleiben weiterhin auf `'self'` beschränkt, und die Anwendung lädt keine externen Stylesheet-Origins.
+
+`frame-ancestors` kann nach CSP-Spezifikation nicht wirksam per Meta-Tag gesetzt werden und würde in Chromium als ignorierte Direktive protokolliert. Ein echtes Framing-Verbot muss als HTTP-CSP-Header auf der Hosting-Schicht gesetzt werden; GitHub Pages stellt dafür in diesem Projekt derzeit keinen Mechanismus bereit.
+
 ## Import-Alias
 
 Das Projekt verwendet den `@/` Alias für projektinterne Importe:
