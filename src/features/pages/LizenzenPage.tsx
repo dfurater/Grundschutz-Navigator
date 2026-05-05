@@ -85,6 +85,18 @@ export function LizenzenPage() {
               url: 'https://github.com/remix-run/react-router',
             },
             {
+              name: 'Inter',
+              version: 'self-hosted WOFF2 subsets',
+              license: 'SIL OFL-1.1',
+              url: 'https://github.com/rsms/inter',
+            },
+            {
+              name: 'IBM Plex Sans',
+              version: 'self-hosted WOFF2 subsets',
+              license: 'SIL OFL-1.1',
+              url: 'https://github.com/IBM/plex',
+            },
+            {
               name: 'TypeScript',
               version: '6.x',
               license: 'Apache-2.0',
