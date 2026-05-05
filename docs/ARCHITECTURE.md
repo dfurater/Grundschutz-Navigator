@@ -26,8 +26,7 @@ src/
 │   ├── models.ts                 # Zwei-Schichten-Datentypen
 │   ├── integrity.ts              # SHA-256 Integritätsprüfung
 │   ├── vocabulary.ts             # BSI-Vokabular-Auflösung
-│   ├── controlRelationships.ts   # Steuerungsbeziehungen
-│   └── vocabularies.ts            # Vokabular-Dateihandling
+│   └── controlRelationships.ts   # Steuerungsbeziehungen
 ├── adapters/         # Datentransformationen
 │   └── oscalAdapter.ts            # OSCAL → Domain Model Parser
 ├── state/            # Globaler Anwendungszustand

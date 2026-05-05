@@ -8,7 +8,7 @@ import type {
 import {
   resolvePropVocabularyEntry,
   resolveVocabularyEntry,
-} from '@/domain/vocabularies';
+} from '@/domain/vocabulary';
 
 export const OFFICIAL_SECURITY_LEVELS: SecurityLevel[] = [
   'normal-SdT',

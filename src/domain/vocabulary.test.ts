@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   buildVocabularySourceUrl,
   buildVocabularyRegistry,
+  getVocabularyNamespaceByRouteId,
+  resolvePropVocabularyEntry,
+  resolveVocabularyEntries,
   resolveVocabularyEntry,
   resolveVocabularyProp,
   resolveVocabularyValues,
@@ -62,6 +65,60 @@ describe('vocabulary runtime', () => {
       registry.namespacesByRouteId.get('dokumentation-namespaces-security-level')
         ?.source.fileName,
     ).toBe('security_level.csv');
+    expect(
+      getVocabularyNamespaceByRouteId(
+        registry,
+        'dokumentation-namespaces-security-level',
+      )?.source.fileName,
+    ).toBe('security_level.csv');
+  });
+
+  it('rejects duplicate values in a namespace', () => {
+    const data = makeRegistryData();
+    data.namespaces[0].entries.push({
+      value: 'erhöht',
+      definition: 'Duplicate',
+      columns: {
+        Begriff: 'erhöht',
+        Definition: 'Duplicate',
+      },
+    });
+
+    expect(() => buildVocabularyRegistry(data)).toThrow(
+      'Duplicate vocabulary value "erhöht" in runtime registry.',
+    );
+  });
+
+  it('rejects duplicate namespace URLs', () => {
+    const data = makeRegistryData();
+    data.namespaces.push({
+      ...data.namespaces[0],
+      source: {
+        ...data.namespaces[0].source,
+        routeId: 'duplicate-url-different-route',
+      },
+      entries: [],
+    });
+
+    expect(() => buildVocabularyRegistry(data)).toThrow(
+      `Duplicate vocabulary namespace URL "${namespaceUrl}" in runtime registry.`,
+    );
+  });
+
+  it('rejects duplicate route ids', () => {
+    const data = makeRegistryData();
+    data.namespaces.push({
+      ...data.namespaces[0],
+      source: {
+        ...data.namespaces[0].source,
+        namespace: `${namespaceUrl}?duplicate-route`,
+      },
+      entries: [],
+    });
+
+    expect(() => buildVocabularyRegistry(data)).toThrow(
+      'Duplicate vocabulary route id "dokumentation-namespaces-security-level" in runtime registry.',
+    );
   });
 
   it('resolves exact namespace + value matches', () => {
@@ -96,6 +153,26 @@ describe('vocabulary runtime', () => {
     expect(
       resolveVocabularyValues(registry, namespaceUrl, ['erhöht', 'unbekannt']),
     ).toHaveLength(1);
+  });
+
+  it('keeps compatibility helpers for prop and multi-value resolution', () => {
+    const registry = buildVocabularyRegistry(makeRegistryData());
+
+    expect(
+      resolvePropVocabularyEntry(registry, {
+        name: 'sec_level',
+        value: 'normal-SdT',
+        ns: namespaceUrl,
+      })?.entry.definition,
+    ).toBe('Normale Sicherheitsstufe');
+
+    expect(
+      resolveVocabularyEntries(registry, namespaceUrl, [
+        'erhöht',
+        'unbekannt',
+        'normal-SdT',
+      ]).map((match) => match.entry.value),
+    ).toEqual(['erhöht', 'normal-SdT']);
   });
 
   it('builds exact upstream file links from repository metadata', () => {
