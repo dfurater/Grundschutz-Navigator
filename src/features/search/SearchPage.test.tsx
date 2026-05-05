@@ -138,23 +138,22 @@ describe('SearchPage', () => {
       expect(screen.getByText('Katalogdetail')).toBeInTheDocument();
     });
 
-    it('rendert zunächst 50 von mehr als 50 Treffern und lädt weitere nach', async () => {
-      const user = userEvent.setup();
-      renderSearch(makeControls(75));
+    it('rendert zunächst 50 von mehr als 50 Treffern und lädt weitere nach', () => {
+      renderSearch(makeControls(51));
 
-      expect(screen.getByText(/50 von 75 Ergebnissen/)).toBeInTheDocument();
+      expect(screen.getByText(/50 von 51 Ergebnissen/)).toBeInTheDocument();
 
       const desktop = screen.getByTestId('search-results-desktop');
       expect(within(desktop).getAllByRole('row').slice(1)).toHaveLength(50);
-      expect(within(desktop).queryByText('ASST.1.75')).not.toBeInTheDocument();
+      expect(within(desktop).queryByText('ASST.1.51')).not.toBeInTheDocument();
 
-      await user.click(
+      fireEvent.click(
         screen.getByRole('button', { name: /Weitere Suchergebnisse anzeigen/ }),
       );
 
-      expect(screen.getByText(/75 Ergebnisse für/)).toBeInTheDocument();
-      expect(within(desktop).getAllByRole('row').slice(1)).toHaveLength(75);
-      expect(within(desktop).getByText('ASST.1.75')).toBeInTheDocument();
+      expect(screen.getByText(/51 Ergebnisse für/)).toBeInTheDocument();
+      expect(within(desktop).getAllByRole('row').slice(1)).toHaveLength(51);
+      expect(within(desktop).getByText('ASST.1.51')).toBeInTheDocument();
       expect(
         screen.queryByRole('button', {
           name: /Weitere Suchergebnisse anzeigen/,
