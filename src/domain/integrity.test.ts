@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   computeSHA256,
-  verifyCatalogIntegrity,
+  verifyArtifactIntegrity,
   fetchJsonDocument,
   fetchProvenance,
   fetchCatalogWithBuffer,
@@ -75,10 +75,10 @@ describe('computeSHA256', () => {
 });
 
 /* ------------------------------------------------------------------ */
-/*  verifyCatalogIntegrity                                             */
+/*  verifyArtifactIntegrity                                            */
 /* ------------------------------------------------------------------ */
 
-describe('verifyCatalogIntegrity', () => {
+describe('verifyArtifactIntegrity', () => {
   it('returns valid=true when hash matches', async () => {
     const content = '{"catalog": "test"}';
     const buffer = textToBuffer(content);
@@ -92,7 +92,7 @@ describe('verifyCatalogIntegrity', () => {
       },
     });
 
-    const result = await verifyCatalogIntegrity(buffer, metadata);
+    const result = await verifyArtifactIntegrity(buffer, metadata);
     expect(result.valid).toBe(true);
     expect(result.computedHash).toBe(expectedHash);
     expect(result.expectedHash).toBe(expectedHash);
@@ -110,7 +110,7 @@ describe('verifyCatalogIntegrity', () => {
       },
     });
 
-    const result = await verifyCatalogIntegrity(buffer, metadata);
+    const result = await verifyArtifactIntegrity(buffer, metadata);
     expect(result.valid).toBe(false);
     expect(result.computedHash).not.toBe(result.expectedHash);
   });
@@ -128,7 +128,7 @@ describe('verifyCatalogIntegrity', () => {
       },
     });
 
-    const result = await verifyCatalogIntegrity(
+    const result = await verifyArtifactIntegrity(
       textToBuffer(tamperedContent),
       metadata,
     );
@@ -151,7 +151,7 @@ describe('verifyCatalogIntegrity', () => {
       },
     });
 
-    const result = await verifyCatalogIntegrity(buffer, metadata);
+    const result = await verifyArtifactIntegrity(buffer, metadata);
     expect(result.sourceCommit).toBe('commit-xyz');
     expect(result.fetchedAt).toBe('2026-01-01T00:00:00Z');
   });

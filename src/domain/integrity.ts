@@ -26,20 +26,6 @@ export async function computeSHA256(buffer: ArrayBuffer): Promise<string> {
     .join('');
 }
 
-/**
- * Verify the integrity of a loaded catalog against its provenance metadata.
- *
- * @param catalogBuffer - The raw bytes of the catalog JSON file
- * @param metadata - The provenance metadata (from catalog-metadata.json)
- * @returns Verification result with match status and details
- */
-export async function verifyCatalogIntegrity(
-  catalogBuffer: ArrayBuffer,
-  metadata: CatalogProvenance,
-): Promise<VerificationResult> {
-  return verifyArtifactIntegrity(catalogBuffer, metadata);
-}
-
 export async function verifyArtifactIntegrity(
   artifactBuffer: ArrayBuffer,
   metadata: IntegrityMetadata,
