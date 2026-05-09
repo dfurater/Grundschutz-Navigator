@@ -76,6 +76,10 @@ npm run dev                        # http://localhost:5173
 | `npm run lint` | ESLint |
 | `npm run fetch-catalog` | BSI-Katalog nach `public/data/` ziehen |
 
+Die Coverage-Thresholds in `vite.config.ts` sind anhand der gemessenen
+Repository-Coverage kalibriert: Lines 57 %, Branches 55 %, Functions 56 %,
+Statements 54 %. Sie sollen nicht ohne neue Baseline-Messung gesenkt werden.
+
 ## Architektur (Kurzfassung)
 
 Single-Page-App mit **Zwei-Schichten-Datenmodell**: Raw-OSCAL-Typen werden im Adapter-Layer in enrichte Domain-Typen überführt (`Control`, `Topic`, `Practice`, `Catalog`). Globaler Zustand via React Context; Filter werden bidirektional mit URL-Parametern synchronisiert und überleben Navigation. Die Katalog-Integrität wird per SHA-256 zur Laufzeit überprüft.
