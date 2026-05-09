@@ -172,4 +172,22 @@ describe('Footer', () => {
     expect(brand).toBeInTheDocument();
     expect(brand.textContent).not.toMatch(/Pre-Release|v\d/);
   });
+
+  it('keeps legal and secondary links directly visible on mobile breakpoints', () => {
+    render(
+      <MemoryRouter>
+        <Footer />
+      </MemoryRouter>,
+    );
+
+    for (const name of [
+      'Über das Projekt',
+      'Datenschutz',
+      'Impressum',
+      'Lizenzen',
+      'Vokabulare',
+    ]) {
+      expect(screen.getByRole('link', { name }).className).not.toContain('hidden');
+    }
+  });
 });

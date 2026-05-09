@@ -380,7 +380,7 @@ export function AppShell() {
                 }
               />
             </Routes>
-          <Footer className="hidden lg:block" />
+          <Footer />
         </main>
       </div>
     </div>
