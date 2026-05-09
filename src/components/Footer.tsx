@@ -27,15 +27,15 @@ export function Footer({ className = '' }: FooterProps) {
   const verified = verification?.valid;
 
   const secondaryLinkClass =
-    'hidden lg:inline whitespace-nowrap rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]';
+    'whitespace-nowrap rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]';
 
   return (
     <footer
-      className={`shrink-0 border-t border-[var(--color-border-default)] bg-[var(--color-surface-base)] px-6 py-3 text-xs text-[var(--color-text-secondary)] ${className}`}
+      className={`shrink-0 border-t border-[var(--color-border-default)] bg-[var(--color-surface-base)] px-4 py-3 text-xs text-[var(--color-text-secondary)] sm:px-6 ${className}`}
       role="contentinfo"
     >
-      <div className="flex flex-row items-center justify-between gap-3 lg:gap-6">
-        <div className="flex min-w-0 items-center gap-3 overflow-hidden">
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 overflow-hidden">
           <span className="hidden shrink-0 whitespace-nowrap font-medium tracking-[0.02em] text-[var(--color-text-primary)] xl:inline">
             Grundschutz++ Navigator
           </span>
@@ -53,7 +53,7 @@ export function Footer({ className = '' }: FooterProps) {
           </a>
         </div>
 
-        <div className="flex min-w-0 shrink-0 items-center gap-x-3 text-[var(--color-text-secondary)]">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[var(--color-text-secondary)]">
           {catalogVersion && (
             <span className="whitespace-nowrap">{formatDate(catalogVersion)}</span>
           )}

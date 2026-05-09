@@ -26,7 +26,9 @@ vi.mock('@/components/TreeNav', () => ({
 }));
 
 vi.mock('@/components/Footer', () => ({
-  Footer: () => <footer>Footer</footer>,
+  Footer: ({ className = '' }: { className?: string }) => (
+    <footer className={className}>Footer</footer>
+  ),
 }));
 
 vi.mock('@/features/home/HomePage', () => ({
@@ -171,5 +173,15 @@ describe('AppShell', () => {
 
     expect(screen.getByText('Vokabular-Detail')).toBeInTheDocument();
     expect(document.title).toBe('security-level — Vokabulare — Grundschutz++ Navigator');
+  });
+
+  it('renders the footer without hiding it below desktop breakpoints', () => {
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Footer')).not.toHaveClass('hidden');
   });
 });
