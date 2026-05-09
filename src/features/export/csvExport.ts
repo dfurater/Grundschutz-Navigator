@@ -86,7 +86,7 @@ export function controlToCSVRow(control: Control): string {
 export function controlsToCSV(controls: Control[]): string {
   const headerRow = CSV_HEADERS.map(escapeCSVField).join(';');
   const dataRows = controls.map(controlToCSVRow);
-  return [headerRow, ...dataRows].join('\n');
+  return `${[headerRow, ...dataRows].join('\r\n')}\r\n`;
 }
 
 /** UTF-8 BOM for Excel auto-detection */
