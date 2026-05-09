@@ -123,7 +123,7 @@ describe('HomePage', () => {
     mockedUseCatalog.mockReturnValue(catalogState());
   });
 
-  it('renders the production hero copy, computed statistics and metadata', () => {
+  it('renders the production hero copy and computed statistics without duplicate provenance metadata', () => {
     renderHome();
 
     expect(
@@ -136,8 +136,10 @@ describe('HomePage', () => {
     expect(
       screen.getByText(/2 Praktiken\s+·\s+3 Themen\s+·\s+7 Kontrollen/),
     ).toHaveClass('tabular-nums');
-    expect(screen.getByText(/Katalog-Stand: 26\. März 2026/))
-      .toHaveTextContent(/verifiziert\s+·\s+Quelle: BSI Stand-der-Technik-Bibliothek/);
+    expect(screen.queryByText(/Katalog-Stand:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/verifiziert/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Quelle: BSI Stand-der-Technik-Bibliothek/))
+      .not.toBeInTheDocument();
 
     expect(screen.queryByRole('navigation', { name: 'Primäre Aktionen' }))
       .not.toBeInTheDocument();
@@ -157,7 +159,7 @@ describe('HomePage', () => {
       .not.toBeInTheDocument();
   });
 
-  it('renders the unverified hero state with the warning color token', () => {
+  it('does not render verification metadata in the hero when catalog verification fails', () => {
     mockedUseCatalog.mockReturnValue(catalogState({
       verification: {
         valid: false,
@@ -170,8 +172,7 @@ describe('HomePage', () => {
 
     renderHome();
 
-    expect(screen.getByText('nicht verifiziert'))
-      .toHaveClass('text-[var(--color-warning)]');
+    expect(screen.queryByText('nicht verifiziert')).not.toBeInTheDocument();
   });
 
   it('renders the compact Grundschutz++ explanation with a project link', () => {

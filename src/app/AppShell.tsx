@@ -9,10 +9,6 @@ import {
   IconShield,
   IconLayoutList,
   IconSearch,
-  IconDocument,
-  IconInfo,
-  IconShieldCheck,
-  IconScale,
   IconX,
 } from '@/components/icons';
 import type { TreeItem } from '@/components/TreeNav';
@@ -248,34 +244,6 @@ export function AppShell() {
                     }
                   >
                     <Icon className="w-4 h-4" aria-hidden="true" />
-                    {label}
-                  </NavLink>
-                ))}
-              </nav>
-
-              {/* Mobile info links */}
-              <nav className="md:hidden border-b border-slate-200" aria-label="Weitere Seiten">
-                {[
-                  { to: '/vokabular', label: 'Vokabulare', Icon: IconDocument },
-                  { to: '/about', label: 'Über das Projekt', Icon: IconInfo },
-                  { to: '/datenschutz', label: 'Datenschutz', Icon: IconShieldCheck },
-                  { to: '/impressum', label: 'Impressum', Icon: IconDocument },
-                  { to: '/lizenzen', label: 'Lizenzen', Icon: IconScale },
-                ].map(({ to, label, Icon }) => (
-                  <NavLink
-                    key={to}
-                    to={to}
-                    onClick={() => setSideNavOpen(false)}
-                    className={({ isActive }) =>
-                      [
-                        'flex items-center gap-3 px-4 py-2.5 text-[13px] transition-colors',
-                        isActive
-                          ? 'text-primary-main font-medium'
-                          : 'text-slate-600 hover:bg-slate-50',
-                      ].join(' ')
-                    }
-                  >
-                    <Icon className="w-3.5 h-3.5" aria-hidden="true" />
                     {label}
                   </NavLink>
                 ))}
