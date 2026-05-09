@@ -184,4 +184,31 @@ describe('AppShell', () => {
 
     expect(screen.getByText('Footer')).not.toHaveClass('hidden');
   });
+
+  it('keeps only primary mobile destinations in the drawer', () => {
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+
+    expect(screen.getByRole('navigation', { name: 'Sektionen' }))
+      .toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Katalog' })).toHaveAttribute(
+      'href',
+      '/katalog',
+    );
+    expect(screen.getByRole('link', { name: 'Suche' })).toHaveAttribute(
+      'href',
+      '/suche',
+    );
+    expect(screen.queryByRole('navigation', { name: 'Weitere Seiten' }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Datenschutz' }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Impressum' }))
+      .not.toBeInTheDocument();
+  });
 });

@@ -2,24 +2,8 @@ import { Link } from 'react-router-dom';
 import { IconShield } from '@/components/icons';
 import { useCatalog } from '@/hooks/useCatalog';
 
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString('de-DE', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    });
-  } catch {
-    return iso;
-  }
-}
-
 export function HomePage() {
-  const { catalog, loading, provenance, verification } = useCatalog();
-  const commitDate = provenance?.source.commit_date;
-  const catalogVersion =
-    commitDate && commitDate !== 'unknown' ? commitDate : undefined;
-  const verified = verification?.valid;
+  const { catalog, loading } = useCatalog();
   const catalogStats = catalog
     ? {
         practices: catalog.practices.length,
@@ -54,29 +38,6 @@ export function HomePage() {
               Kontrollen
             </p>
           )}
-          <p className="type-meta mt-2 text-[var(--color-text-secondary)]">
-            {catalogVersion && (
-              <>
-                Katalog-Stand: {formatDate(catalogVersion)}
-                <span aria-hidden="true"> &middot; </span>
-              </>
-            )}
-            {verified !== undefined && (
-              <>
-                <span
-                  className={
-                    verified
-                      ? 'text-[var(--color-success)]'
-                      : 'text-[var(--color-warning)]'
-                  }
-                >
-                  {verified ? 'verifiziert' : 'nicht verifiziert'}
-                </span>
-                <span aria-hidden="true"> &middot; </span>
-              </>
-            )}
-            Quelle: BSI Stand-der-Technik-Bibliothek
-          </p>
         </div>
       </header>
 
