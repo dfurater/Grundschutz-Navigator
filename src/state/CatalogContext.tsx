@@ -26,7 +26,6 @@ import {
   fetchProvenance,
   fetchVocabularyProvenance,
   verifyArtifactIntegrity,
-  verifyCatalogIntegrity,
 } from '@/domain/integrity';
 
 /* ------------------------------------------------------------------ */
@@ -173,7 +172,7 @@ export function CatalogProvider({
         try {
           provenance = await fetchProvenance(metadataUrl);
           if (!cancelled) {
-            verification = await verifyCatalogIntegrity(buffer, provenance);
+            verification = await verifyArtifactIntegrity(buffer, provenance);
           }
         } catch {
           // Metadata not available (e.g., local dev without running fetch-catalog.sh)
