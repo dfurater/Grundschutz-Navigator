@@ -76,7 +76,7 @@ export function LizenzenPage() {
               name: 'FlexSearch',
               version: '0.8.x',
               license: 'Apache-2.0',
-              url: 'https://github.com/nicxtreme/flexsearch',
+              url: 'https://github.com/nextapps-de/flexsearch',
             },
             {
               name: 'React Router',
