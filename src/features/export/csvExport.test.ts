@@ -85,6 +85,52 @@ function makeControl(overrides: Partial<Control> = {}): Control {
   };
 }
 
+function parseSemicolonCSV(csv: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = '';
+  let quoted = false;
+
+  for (let i = 0; i < csv.length; i += 1) {
+    const char = csv[i];
+    const next = csv[i + 1];
+
+    if (quoted) {
+      if (char === '"' && next === '"') {
+        field += '"';
+        i += 1;
+      } else if (char === '"') {
+        quoted = false;
+      } else {
+        field += char;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      quoted = true;
+    } else if (char === ';') {
+      row.push(field);
+      field = '';
+    } else if (char === '\r' && next === '\n') {
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = '';
+      i += 1;
+    } else {
+      field += char;
+    }
+  }
+
+  if (field !== '' || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
+
+  return rows;
+}
+
 /* ------------------------------------------------------------------ */
 /*  escapeCSVField                                                     */
 /* ------------------------------------------------------------------ */
@@ -237,13 +283,13 @@ describe('controlToCSVRow', () => {
 describe('controlsToCSV', () => {
   it('produces header + data rows', () => {
     const csv = controlsToCSV([makeControl()]);
-    const lines = csv.split('\n');
+    const lines = csv.trimEnd().split('\r\n');
     expect(lines).toHaveLength(2); // header + 1 data row
   });
 
   it('header contains expected column names', () => {
     const csv = controlsToCSV([]);
-    const header = csv.split('\n')[0];
+    const header = csv.split('\r\n')[0];
     expect(header).toContain('ID');
     expect(header).toContain('parent_id');
     expect(header).toContain('Praktik');
@@ -266,7 +312,7 @@ describe('controlsToCSV', () => {
 
   it('uses the expected logical header order', () => {
     const csv = controlsToCSV([]);
-    const header = csv.split('\n')[0];
+    const header = csv.split('\r\n')[0];
     expect(header.split(';')).toEqual([
       'ID',
       'parent_id',
@@ -292,7 +338,7 @@ describe('controlsToCSV', () => {
 
   it('header omits namespace columns', () => {
     const csv = controlsToCSV([]);
-    const header = csv.split('\n')[0];
+    const header = csv.split('\r\n')[0];
     expect(header).not.toContain('modal_verb_ns');
     expect(header).not.toContain('sec_level_ns');
     expect(header).not.toContain('effort_level_ns');
@@ -306,8 +352,20 @@ describe('controlsToCSV', () => {
 
   it('uses semicolon as delimiter', () => {
     const csv = controlsToCSV([]);
-    const header = csv.split('\n')[0];
+    const header = csv.split('\r\n')[0];
     expect(header.split(';').length).toBe(19);
+  });
+
+  it('uses CRLF row separators and terminates with a final CRLF', () => {
+    const csv = controlsToCSV([
+      makeControl({ id: 'GC.1.1' }),
+      makeControl({ id: 'GC.1.2' }),
+    ]);
+
+    expect(csv).toContain('\r\n');
+    expect(csv).not.toMatch(/(?<!\r)\n/u);
+    expect(csv.endsWith('\r\n')).toBe(true);
+    expect(csv.split('\r\n')).toHaveLength(4); // header + 2 rows + final empty segment
   });
 
   it('handles multiple controls', () => {
@@ -316,7 +374,7 @@ describe('controlsToCSV', () => {
       makeControl({ id: 'GC.1.2', title: 'Zweite Kontrolle' }),
     ];
     const csv = controlsToCSV(controls);
-    const lines = csv.split('\n');
+    const lines = csv.trimEnd().split('\r\n');
     expect(lines).toHaveLength(3); // header + 2 data
     expect(lines[1]).toContain('GC.1.1');
     expect(lines[2]).toContain('GC.1.2');
@@ -324,7 +382,7 @@ describe('controlsToCSV', () => {
 
   it('handles empty controls array', () => {
     const csv = controlsToCSV([]);
-    const lines = csv.split('\n');
+    const lines = csv.trimEnd().split('\r\n');
     expect(lines).toHaveLength(1); // header only
   });
 
@@ -337,5 +395,39 @@ describe('controlsToCSV', () => {
     // Should contain escaped content
     expect(csv).toContain('"Prüfung; Bewertung und ""Analyse"""');
     expect(csv).toContain('"Zeile 1\nZeile 2"');
+  });
+
+  it('round-trips escaped cells without changing their values', () => {
+    const control = makeControl({
+      parentId: 'GC.1',
+      title: 'Prüfung; Bewertung und "Analyse"',
+      guidance: 'Zeile 1\nZeile 2',
+      statement: '=MUSS erhalten bleiben',
+    });
+
+    const rows = parseSemicolonCSV(controlsToCSV([control]));
+
+    expect(rows).toHaveLength(2);
+    expect(rows[1]).toEqual([
+      'GC.1.1',
+      'GC.1',
+      'GC',
+      'GC.1',
+      'Prüfung; Bewertung und "Analyse"',
+      "'=MUSS erhalten bleiben",
+      'Zeile 1\nZeile 2',
+      'MUSS',
+      'normal-SdT',
+      '3',
+      'BCM, Compliance Management',
+      'Server, Client',
+      'Verfahren und Regelungen',
+      'nach einem Standard',
+      'verankern',
+      'Sicherheitsleitlinie',
+      'GC.2.2 (related), GC.3.1 (required)',
+      'GC.3.1',
+      'GC.2.2',
+    ]);
   });
 });
