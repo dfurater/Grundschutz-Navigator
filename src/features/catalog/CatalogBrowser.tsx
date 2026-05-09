@@ -14,6 +14,7 @@ import { IconDownload, IconFilter, IconX, IconChevronDown, IconChevronLeft, Icon
 import { ControlMobileReferenceRow } from './ControlMobileReferenceRow';
 import { downloadCSV } from '@/features/export/csvExport';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { Control } from '@/domain/models';
 import { buildChildControlMap, buildIncomingLinkMap } from '@/domain/controlRelationships';
 
@@ -31,6 +32,7 @@ export function CatalogBrowser() {
   const { catalog, loading, error } = useCatalog();
 
   const { filters, setFilters, sort, setSort, searchString } = useFilterParams();
+  const isDesktop = useMediaQuery('(min-width: 1024px)');
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [filterCollapsed, setFilterCollapsed] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
@@ -141,6 +143,7 @@ export function CatalogBrowser() {
     if (!catalog || !groupId) return null;
     return catalog.controlsById.get(groupId) ?? null;
   }, [catalog, groupId]);
+  const showMobileDetail = !!selectedControl && !isDesktop;
 
   // Resolve the table scope: if URL points to a control, scope to its topic
   const scopeId = useMemo(() => {
@@ -197,16 +200,16 @@ export function CatalogBrowser() {
   // Focus traps for mobile overlays
   useFocusTrap(mobileFilterRef, showMobileFilters);
   useFocusTrap(mobileExportRef as React.RefObject<HTMLElement | null>, mobileExportOpen);
-  useFocusTrap(mobileDetailRef as React.RefObject<HTMLElement | null>, !!selectedControl);
+  useFocusTrap(mobileDetailRef as React.RefObject<HTMLElement | null>, showMobileDetail);
 
   // Scroll lock: prevent background scroll when mobile overlays are open
   useEffect(() => {
-    const anyOverlayOpen = showMobileFilters || mobileExportOpen || !!selectedControl;
+    const anyOverlayOpen = showMobileFilters || mobileExportOpen || showMobileDetail;
     if (anyOverlayOpen) {
       document.body.style.overflow = 'hidden';
     }
     return () => { document.body.style.overflow = ''; };
-  }, [showMobileFilters, mobileExportOpen, selectedControl]);
+  }, [showMobileFilters, mobileExportOpen, showMobileDetail]);
 
   // Drag-to-resize handler
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -596,7 +599,7 @@ export function CatalogBrowser() {
           }}
         >
           {/* Resize handle — only when detail panel is open */}
-          {selectedControl && (
+          {selectedControl && isDesktop && (
             <div
               className="resize-handle absolute left-0 top-0 bottom-0 w-1.5 cursor-col-resize z-20"
               onMouseDown={handleResizeStart}
@@ -611,7 +614,7 @@ export function CatalogBrowser() {
             />
           )}
 
-          {selectedControl ? (
+          {selectedControl && isDesktop ? (
             <div
               key={selectedControl.id}
               className="animate-panel-in flex-1 min-w-0"
@@ -754,7 +757,7 @@ export function CatalogBrowser() {
       </div>
 
       {/* Mobile detail panel */}
-      {selectedControl && (
+      {showMobileDetail && (
         <div
           ref={mobileDetailRef}
           className="fixed inset-0 z-50 lg:hidden flex flex-col bg-[var(--color-surface-raised)]"
