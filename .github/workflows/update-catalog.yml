@@ -191,14 +191,23 @@ jobs:
             exit 1
           fi
 
-          git fetch origin main --depth=10
+          # Ancestor-Check via GitHub Compare API, robust gegen shallow Checkouts.
+          # status="identical": Merge-Commit ist HEAD von main.
+          # status="behind"   : Merge-Commit ist Ancestor von main (weitere Pushes danach).
+          COMPARE_STATUS="$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$MERGE_COMMIT_SHA" --jq '.status')"
+          case "$COMPARE_STATUS" in
+            identical|behind)
+              echo "Merge-Commit $MERGE_COMMIT_SHA ist auf main sichtbar (compare status=$COMPARE_STATUS)."
+              ;;
+            *)
+              echo "Merge-Commit $MERGE_COMMIT_SHA ist nicht auf main sichtbar (compare status=$COMPARE_STATUS)." >&2
+              exit 1
+              ;;
+          esac
 
-          if ! git merge-base --is-ancestor "$MERGE_COMMIT_SHA" origin/main; then
-            echo "Merge-Commit $MERGE_COMMIT_SHA ist nicht auf origin/main sichtbar." >&2
-            exit 1
-          fi
-
-          MANIFEST_SHA_ON_MAIN="$(git show "origin/main:upstream-manifest.json" | jq -r '.snapshotCommitSha')"
+          MANIFEST_SHA_ON_MAIN="$(gh api "repos/$GITHUB_REPOSITORY/contents/upstream-manifest.json?ref=main" \
+            -H 'Accept: application/vnd.github.raw' \
+            | jq -r '.snapshotCommitSha')"
           if [ "$MANIFEST_SHA_ON_MAIN" != "$SNAPSHOT_SHA" ]; then
             echo "snapshotCommitSha auf main ($MANIFEST_SHA_ON_MAIN) entspricht nicht dem erwarteten Snapshot ($SNAPSHOT_SHA)." >&2
             exit 1
