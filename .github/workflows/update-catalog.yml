@@ -8,6 +8,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write
 
 concurrency:
   group: catalog-sync
@@ -132,6 +133,7 @@ jobs:
           echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
       - name: Merge sync PR
+        id: merge
         if: steps.compare.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -152,4 +154,76 @@ jobs:
           else
             cat "$MERGE_OUTPUT_FILE" >&2
             exit 1
+          fi
+
+          PR_VIEW_JSON="$(gh pr view "$PR_NUMBER" --json state,mergeCommit)"
+          PR_STATE="$(printf '%s' "$PR_VIEW_JSON" | jq -r '.state')"
+          MERGE_COMMIT_SHA="$(printf '%s' "$PR_VIEW_JSON" | jq -r '.mergeCommit.oid // empty')"
+
+          if [ "$PR_STATE" != "MERGED" ]; then
+            echo "PR-State nach Merge ist '$PR_STATE', erwartet 'MERGED'." >&2
+            exit 1
+          fi
+          if [ -z "$MERGE_COMMIT_SHA" ]; then
+            echo "Konnte Merge-Commit-SHA fuer PR #$PR_NUMBER nicht ermitteln." >&2
+            exit 1
+          fi
+
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "pr_state=$PR_STATE" >> "$GITHUB_OUTPUT"
+          echo "merge_commit_sha=$MERGE_COMMIT_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Verify manifest on main and trigger deploy
+        if: steps.compare.outputs.changed == 'true' && steps.merge.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MERGE_COMMIT_SHA: ${{ steps.merge.outputs.merge_commit_sha }}
+          SNAPSHOT_SHA: ${{ steps.compare.outputs.snapshot_commit_sha }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$MERGE_COMMIT_SHA" ]; then
+            echo "Kein Merge-Commit-SHA vorhanden, breche Deploy-Dispatch ab." >&2
+            exit 1
+          fi
+          if [ -z "$SNAPSHOT_SHA" ]; then
+            echo "Kein Snapshot-Commit-SHA vorhanden, breche Deploy-Dispatch ab." >&2
+            exit 1
+          fi
+
+          # Ancestor-Check via GitHub Compare API, robust gegen shallow Checkouts.
+          # status="identical": Merge-Commit ist HEAD von main.
+          # status="behind"   : Merge-Commit ist Ancestor von main (weitere Pushes danach).
+          COMPARE_STATUS="$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$MERGE_COMMIT_SHA" --jq '.status')"
+          case "$COMPARE_STATUS" in
+            identical|behind)
+              echo "Merge-Commit $MERGE_COMMIT_SHA ist auf main sichtbar (compare status=$COMPARE_STATUS)."
+              ;;
+            *)
+              echo "Merge-Commit $MERGE_COMMIT_SHA ist nicht auf main sichtbar (compare status=$COMPARE_STATUS)." >&2
+              exit 1
+              ;;
+          esac
+
+          MANIFEST_SHA_ON_MAIN="$(gh api "repos/$GITHUB_REPOSITORY/contents/upstream-manifest.json?ref=main" \
+            -H 'Accept: application/vnd.github.raw' \
+            | jq -r '.snapshotCommitSha')"
+          if [ "$MANIFEST_SHA_ON_MAIN" != "$SNAPSHOT_SHA" ]; then
+            echo "snapshotCommitSha auf main ($MANIFEST_SHA_ON_MAIN) entspricht nicht dem erwarteten Snapshot ($SNAPSHOT_SHA)." >&2
+            exit 1
+          fi
+
+          echo "Manifest-Snapshot $SNAPSHOT_SHA ist auf main verifiziert, loese Deploy aus."
+          gh workflow run deploy.yml --ref main
+          echo "Deploy via workflow_dispatch fuer ref=main ausgeloest."
+
+          # Best-effort: den getriggerten Deploy-Run zur Nachvollziehbarkeit verlinken.
+          sleep 5
+          if RUN_INFO="$(gh run list --workflow=deploy.yml --branch=main --event=workflow_dispatch \
+                --limit=1 --json databaseId,url,createdAt 2>/dev/null)"; then
+            printf '%s\n' "$RUN_INFO" \
+              | jq -r '.[0] | "Deploy-Run: \(.url) (created \(.createdAt))"' \
+              || echo "Deploy-Run konnte nicht formatiert werden (nicht kritisch)."
+          else
+            echo "Konnte den ausgeloesten Deploy-Run nicht abfragen (nicht kritisch)."
           fi
