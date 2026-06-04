@@ -5,6 +5,7 @@ Inoffizielles Werkzeug zum Durchsuchen, Filtern und Exportieren des offiziellen 
 [![CI](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/ci.yml/badge.svg)](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/ci.yml)
 [![Deploy](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/deploy.yml/badge.svg)](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/deploy.yml)
 [![Katalogdaten: CC BY-SA 4.0](https://img.shields.io/badge/Katalogdaten-CC%20BY--SA%204.0-blue)](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek)
+[![App-Code: Apache 2.0](https://img.shields.io/badge/App--Code-Apache%202.0-green)](LICENSE)
 
 > ⚠️ **Inoffizielles Community-Projekt, kein Angebot des BSI.** Keine Rechtsberatung, keine Gewähr. Für offizielle Informationen → [BSI Grundschutz++](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek).
 
@@ -113,7 +114,5 @@ Dieses Projekt ist ein inoffizielles Community-Werkzeug. Es ersetzt weder eine o
 
 ## Lizenz
 
-<!-- TODO: Lizenz für den App-Code final festlegen (MIT, Apache 2.0, AGPL, …) -->
-
-- **App-Code:** Lizenz wird vor dem 1.0-Release final festgelegt. Bis dahin gilt: Keine automatisch gewährte Nachnutzungs­lizenz. Bei konkretem Bedarf bitte via Issue anfragen.
-- **Katalogdaten:** [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.de) — Urheber: [`BSI-Bund/Stand-der-Technik-Bibliothek`](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek). Bei Weitergabe der Daten sind Namensnennung und Weitergabe unter gleichen Bedingungen zu beachten.
+- **App-Code:** [Apache License 2.0](LICENSE) — © 2026 Deniz Furater. Nachnutzung erlaubt unter Beibehaltung von Copyright- und `NOTICE`-Hinweisen; die Lizenz enthält einen expliziten Patent-Grant und gewährt keine Markenrechte.
+- **Katalogdaten:** [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.de) — Urheber: [`BSI-Bund/Stand-der-Technik-Bibliothek`](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek). Bei Weitergabe der Daten sind Namensnennung und Weitergabe unter gleichen Bedingungen zu beachten. Die Katalogdaten sind nicht Teil dieses Repositorys und fallen nicht unter die Apache-Lizenz des App-Codes.

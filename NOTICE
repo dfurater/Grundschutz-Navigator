@@ -1,0 +1,19 @@
+Grundschutz++ Navigator
+Copyright 2026 Deniz Furater
+
+This product includes software developed by Deniz Furater.
+
+Licensed under the Apache License, Version 2.0 (see the LICENSE file).
+
+---
+
+This application displays data from the BSI "Stand der Technik" library
+(Grundschutz++ Anwenderkatalog), which is NOT part of this repository and is
+NOT covered by the Apache License above. The catalog data is published by the
+Bundesamt für Sicherheit in der Informationstechnik (BSI) under the
+Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0) license:
+
+  Source:  https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek
+  License: https://creativecommons.org/licenses/by-sa/4.0/
+
+This is an unofficial community project and not an offering of the BSI.
