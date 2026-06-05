@@ -14,9 +14,21 @@ LICENSE file) for more details.
 ---
 
 Third-party components are distributed under their own licenses (MIT,
-Apache-2.0); their copyright and license notices are preserved and are listed
-in the application's "Lizenzen" page. Bundling them into this AGPL-licensed
-work does not change their individual licenses.
+Apache-2.0, SIL OFL-1.1); their copyright and license notices are preserved
+and are listed in the application's "Lizenzen" page. Bundling them into this
+AGPL-licensed work does not change their individual licenses.
+
+The self-hosted web fonts bundled in this repository are licensed as follows:
+
+  Inter (public/fonts/inter-*.woff2)
+    Copyright (c) 2016 The Inter Project Authors
+    Source:  https://github.com/rsms/inter
+    License: SIL Open Font License, Version 1.1 (see public/fonts/OFL-Inter.txt)
+
+  IBM Plex Sans (public/fonts/ibm-plex-sans-*.woff2)
+    Copyright © 2017 IBM Corp.
+    Source:  https://github.com/IBM/plex
+    License: SIL Open Font License, Version 1.1 (see public/fonts/OFL-IBM-Plex-Sans.txt)
 
 ---
 
