@@ -136,10 +136,26 @@ export function LizenzenPage() {
           Hinweis zum Projektcode
         </h2>
         <p className="text-sm text-slate-700 leading-relaxed">
+          Der Quellcode dieser Anwendung steht unter der{' '}
+          <strong>GNU Affero General Public License v3.0 (oder später)</strong>.
+          Der vollständige Quelltext ist öffentlich verfügbar:{' '}
+          <a
+            href="https://github.com/dfurater/Grundschutz-Navigator"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-0.5 rounded text-sky-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+          >
+            dfurater/Grundschutz-Navigator
+            <span className="sr-only"> (öffnet in neuem Tab)</span>
+            <IconExternalLink className="w-3 h-3" aria-hidden="true" />
+          </a>
+          .
+        </p>
+        <p className="text-sm text-slate-700 leading-relaxed">
           Diese Seite fasst vor allem die Herkunft des BSI-Katalogs und
-          ausgewählte Drittbibliotheken zusammen. Maßgeblich bleiben die
-          Lizenzdateien und Lizenzhinweise der jeweiligen Projekte und
-          Repositories.
+          ausgewählte Drittbibliotheken zusammen. Drittkomponenten behalten ihre
+          eigenen Lizenzen; maßgeblich bleiben die Lizenzdateien und
+          Lizenzhinweise der jeweiligen Projekte und Repositories.
         </p>
       </section>
     </div>
