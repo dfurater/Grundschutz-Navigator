@@ -1,6 +1,6 @@
 {
   "repository": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek",
-  "snapshotCommitSha": "b4e1ee402a94113a00978ecae3f397bc5bbce1b4",
+  "snapshotCommitSha": "41badd41d03864c4ac5f425fefaf12414afdfd1a",
   "catalogPath": "Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json",
   "files": [
     {
@@ -57,5 +57,5 @@
       "gitBlobSha": "a415a54de9704b05f3484e72b677126e8fa34f11"
     }
   ],
-  "signatureSha256": "8e73750b7296e2ff2543e65dafb0ec8a17cc4c95fac5f0a23f47e5843d455f0c"
+  "signatureSha256": "ca29d6959f8256ee989607a47f96291ab99a7b383118a0ebbfbc1ddcda03f329"
 }
