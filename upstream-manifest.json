@@ -1,24 +1,24 @@
 {
   "repository": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek",
-  "snapshotCommitSha": "dd193b248737f0db070516c43e32c1774fbd0814",
+  "snapshotCommitSha": "313aa87fd74ad527cbc2f4e5cd42d61ab4d5e3f0",
   "catalogPath": "Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json",
   "files": [
     {
       "kind": "catalog",
       "path": "Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json",
-      "gitBlobSha": "f96c4d50379c42da5d79207ccc95a17d1f710eb0"
+      "gitBlobSha": "73f7585bf32e3eccb75d7b9d72d25cf9fa93bb08"
     },
     {
       "kind": "namespace",
       "path": "Dokumentation/namespaces/action_words.csv",
       "namespace": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/action_words.csv",
-      "gitBlobSha": "29d4e3fa066dcf2d40f3c8f317a37a3e8723fa09"
+      "gitBlobSha": "7fde34ab802961299e058f7ecd8ab5f52a245b04"
     },
     {
       "kind": "namespace",
       "path": "Dokumentation/namespaces/documentation_guidelines.csv",
       "namespace": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/documentation_guidelines.csv",
-      "gitBlobSha": "a3cc310a32fad32fb0e96b3bd38ec8fcfb0a623d"
+      "gitBlobSha": "97f05331405785f6b7375938d421695a419ee6ee"
     },
     {
       "kind": "namespace",
@@ -54,8 +54,8 @@
       "kind": "namespace",
       "path": "Dokumentation/namespaces/target_object_categories.csv",
       "namespace": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/target_object_categories.csv",
-      "gitBlobSha": "a415a54de9704b05f3484e72b677126e8fa34f11"
+      "gitBlobSha": "e6f437c6b34dcc6705508ac7d6863f2e67f88ee7"
     }
   ],
-  "signatureSha256": "6276aa3e17ad4f44e22292eb17c376e7bfef76bd85c6b8b8d0ceb53ad64dc99f"
+  "signatureSha256": "389fffb6b976a102f9cacc0b63ae785fd6a3a30cf281a2b4819057b8d57982bd"
 }
