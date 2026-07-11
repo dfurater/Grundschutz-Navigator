@@ -1,6 +1,17 @@
 import { useMemo } from 'react';
-import type { Control, SecurityLevel, EffortLevel, Modalverb, LinkRelation } from '@/domain/models';
+import type {
+  Control,
+  SecurityLevel,
+  EffortLevel,
+  Modalverb,
+  LinkRelation,
+  VocabularyRegistry,
+} from '@/domain/models';
 import { getControlLinkSearchText } from '@/domain/controlRelationships';
+import {
+  collectControlVocabularySearchTexts,
+  resolveControlVocabularies,
+} from '@/domain/vocabulary';
 
 /* ------------------------------------------------------------------ */
 /*  Filter State                                                       */
@@ -60,7 +71,33 @@ export type SortConfig = SortEntry[];
 /*  Filter Logic                                                       */
 /* ------------------------------------------------------------------ */
 
-function matchesFilter(control: Control, filters: ControlFilters): boolean {
+function buildSearchableControlText(
+  control: Control,
+  vocabularyRegistry?: VocabularyRegistry | null,
+): string {
+  const vocabularyTexts = collectControlVocabularySearchTexts(
+    resolveControlVocabularies(vocabularyRegistry, control),
+  );
+
+  return [
+    control.id,
+    control.title,
+    control.statement,
+    control.statementProps.ergebnis ?? '',
+    control.statementProps.praezisierung ?? '',
+    control.statementProps.handlungsworte ?? '',
+    control.statementProps.dokumentation ?? '',
+    control.threats.join(' '),
+    ...vocabularyTexts,
+    getControlLinkSearchText(control.links),
+  ].join(' ').toLowerCase();
+}
+
+function matchesFilter(
+  control: Control,
+  filters: ControlFilters,
+  searchableControlText?: string,
+): boolean {
   // Practice filter
   if (
     filters.practiceIds.length > 0 &&
@@ -143,17 +180,7 @@ function matchesFilter(control: Control, filters: ControlFilters): boolean {
   // Text search
   if (filters.searchTerm) {
     const term = filters.searchTerm.toLowerCase();
-    const searchable = [
-      control.id,
-      control.title,
-      control.statement,
-      control.statementProps.ergebnis ?? '',
-      control.statementProps.praezisierung ?? '',
-      control.statementProps.handlungsworte ?? '',
-      control.statementProps.dokumentation ?? '',
-      getControlLinkSearchText(control.links),
-    ].join(' ').toLowerCase();
-    if (!searchable.includes(term)) return false;
+    if (!searchableControlText?.includes(term)) return false;
   }
 
   return true;
@@ -275,8 +302,22 @@ export function useFilteredControls(
   controls: Control[],
   filters: ControlFilters,
   sort: SortConfig = [{ field: 'id', direction: 'asc' }],
+  vocabularyRegistry?: VocabularyRegistry | null,
 ): UseFilteredControlsResult {
   const facetCounts = useMemo(() => computeFacetCounts(controls), [controls]);
+  const hasSearchTerm = filters.searchTerm.length > 0;
+  const searchableTextByControl = useMemo(() => {
+    if (!hasSearchTerm) {
+      return null;
+    }
+
+    return new Map(
+      controls.map((control) => [
+        control,
+        buildSearchableControlText(control, vocabularyRegistry),
+      ]),
+    );
+  }, [controls, hasSearchTerm, vocabularyRegistry]);
 
   const hasActiveFilters = useMemo(
     () =>
@@ -296,12 +337,16 @@ export function useFilteredControls(
 
   const filtered = useMemo(() => {
     const matched = hasActiveFilters
-      ? controls.filter((c) => matchesFilter(c, filters))
+      ? controls.filter((control) => matchesFilter(
+        control,
+        filters,
+        searchableTextByControl?.get(control),
+      ))
       : [...controls];
 
     matched.sort((a, b) => compareControls(a, b, sort));
     return matched;
-  }, [controls, filters, sort, hasActiveFilters]);
+  }, [controls, filters, sort, hasActiveFilters, searchableTextByControl]);
 
   const filteredFacetCounts = useMemo(
     () => computeFacetCounts(filtered),

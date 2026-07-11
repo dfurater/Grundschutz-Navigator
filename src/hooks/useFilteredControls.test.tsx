@@ -1,6 +1,7 @@
 import { renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { Control } from '@/domain/models';
+import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
 import { emptyFilters, useFilteredControls } from './useFilteredControls';
 
 function makeControl(overrides: Partial<Control> = {}): Control {
@@ -25,6 +26,43 @@ function makeControl(overrides: Partial<Control> = {}): Control {
 }
 
 describe('useFilteredControls', () => {
+  it('searches threats and resolved security-target or threat vocabulary text', () => {
+    const controls = [
+      makeControl({
+        id: 'ASST.1.1',
+        confidentiality: '2',
+        confidentialityProp: {
+          name: 'confidentiality',
+          value: '2',
+          ns: 'https://example.com/namespaces/security_targets.csv',
+        },
+        threats: ['G 0.18'],
+        threatsProp: {
+          name: 'threats',
+          value: 'G 0.18',
+          ns: 'https://example.com/namespaces/basethreats.csv',
+        },
+      }),
+      makeControl({ id: 'ASST.1.2' }),
+    ];
+    const registry = createTestVocabularyRegistry();
+
+    for (const searchTerm of ['G 0.18', 'Vertraulichkeit', 'Fehlplanung']) {
+      const { result } = renderHook(() =>
+        useFilteredControls(
+          controls,
+          { ...emptyFilters, searchTerm },
+          undefined,
+          registry,
+        ),
+      );
+
+      expect(result.current.filtered.map((control) => control.id)).toEqual([
+        'ASST.1.1',
+      ]);
+    }
+  });
+
   it('filters by handlungsworte', () => {
     const controls = [
       makeControl({

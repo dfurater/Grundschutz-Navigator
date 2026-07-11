@@ -259,3 +259,24 @@ export function collectVocabularySearchTexts(
 
   return [...values];
 }
+
+export function collectControlVocabularySearchTexts(
+  resolved: ResolvedControlVocabularies,
+): string[] {
+  return collectVocabularySearchTexts([
+    resolved.modalverb,
+    resolved.securityLevel,
+    resolved.effortLevel,
+    ...resolved.tags,
+    resolved.securityTargets.confidentiality,
+    resolved.securityTargets.integrity,
+    resolved.securityTargets.availability,
+    resolved.securityTargets.authenticity,
+    ...resolved.threats,
+    resolved.statement.ergebnis,
+    resolved.statement.praezisierung,
+    resolved.statement.handlungsworte,
+    resolved.statement.dokumentation,
+    ...resolved.statement.zielobjektKategorien,
+  ]);
+}

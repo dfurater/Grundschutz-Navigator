@@ -253,32 +253,28 @@ export function ControlDetail({
     {
       key: 'confidentiality',
       label: 'Vertraulichkeit',
-      relevance: control.confidentiality ?? control.confidentialityProp?.value,
-      prop: control.confidentialityProp,
+      relevance: control.confidentiality,
       resolution: resolvedVocabularies.securityTargets.confidentiality,
     },
     {
       key: 'integrity',
       label: 'Integrität',
-      relevance: control.integrity ?? control.integrityProp?.value,
-      prop: control.integrityProp,
+      relevance: control.integrity,
       resolution: resolvedVocabularies.securityTargets.integrity,
     },
     {
       key: 'availability',
       label: 'Verfügbarkeit',
-      relevance: control.availability ?? control.availabilityProp?.value,
-      prop: control.availabilityProp,
+      relevance: control.availability,
       resolution: resolvedVocabularies.securityTargets.availability,
     },
     {
       key: 'authenticity',
       label: 'Authentizität',
-      relevance: control.authenticity ?? control.authenticityProp?.value,
-      prop: control.authenticityProp,
+      relevance: control.authenticity,
       resolution: resolvedVocabularies.securityTargets.authenticity,
     },
-  ].filter((securityTarget) => securityTarget.prop && securityTarget.relevance !== undefined);
+  ].filter((securityTarget) => securityTarget.relevance !== undefined);
   const hasSecurityTargets = securityTargets.length > 0;
   const hasThreats = control.threats.length > 0;
   const hasSecurityTargetsAndThreats = hasSecurityTargets || hasThreats;
@@ -667,7 +663,7 @@ export function ControlDetail({
                   <div className="space-y-2">
                     {control.threats.map((threat, index) => {
                       const resolution = findResolutionByValue(resolvedVocabularies.threats, threat);
-                      const vocabKey = `threat:${index}`;
+                      const vocabKey = `threat:${control.id}:${threat}:${index}`;
                       const active = isVocabularyActive(vocabKey);
 
                       return resolution ? (

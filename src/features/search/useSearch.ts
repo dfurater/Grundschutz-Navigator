@@ -3,7 +3,7 @@ import { Index } from 'flexsearch';
 import type { Control, VocabularyRegistry } from '@/domain/models';
 import { getControlLinkSearchText } from '@/domain/controlRelationships';
 import {
-  collectVocabularySearchTexts,
+  collectControlVocabularySearchTexts,
   resolveControlVocabularies,
 } from '@/domain/vocabulary';
 
@@ -100,17 +100,7 @@ export function useSearch(
   const searchDocuments = useMemo(() => {
     return controls.map<SearchDocument>((control, numericId) => {
       const resolved = resolveControlVocabularies(vocabularyRegistry, control);
-      const vocabularyTexts = collectVocabularySearchTexts([
-        resolved.modalverb,
-        resolved.securityLevel,
-        resolved.effortLevel,
-        ...resolved.tags,
-        resolved.statement.ergebnis,
-        resolved.statement.praezisierung,
-        resolved.statement.handlungsworte,
-        resolved.statement.dokumentation,
-        ...resolved.statement.zielobjektKategorien,
-      ]);
+      const vocabularyTexts = collectControlVocabularySearchTexts(resolved);
 
       return {
         control,
@@ -126,6 +116,7 @@ export function useSearch(
           control.statementProps.handlungsworte ?? '',
           control.statementProps.dokumentation ?? '',
           control.statementProps.zielobjektKategorien.join(' '),
+          control.threats.join(' '),
           ...vocabularyTexts,
         ].join(' '),
         contentText: [control.statement, control.guidance].join(' '),

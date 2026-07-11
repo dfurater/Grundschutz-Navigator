@@ -29,7 +29,7 @@ const EMPTY_CHECKED_IDS = new Set<string>();
 export function CatalogBrowser() {
   const { groupId } = useParams<{ groupId?: string }>();
   const navigate = useNavigate();
-  const { catalog, loading, error } = useCatalog();
+  const { catalog, loading, error, vocabularyRegistry } = useCatalog();
 
   const { filters, setFilters, sort, setSort, searchString } = useFilterParams();
   const isDesktop = useMediaQuery('(min-width: 1024px)');
@@ -269,7 +269,7 @@ export function CatalogBrowser() {
   );
 
   const { filtered, totalCount, facetCounts, filteredFacetCounts, hasActiveFilters } =
-    useFilteredControls(scopedControls, filters, sort);
+    useFilteredControls(scopedControls, filters, sort, vocabularyRegistry);
 
   const clearFilters = useCallback(() => setFilters(emptyFilters), [setFilters]);
 

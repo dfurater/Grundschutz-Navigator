@@ -210,6 +210,75 @@ describe('ControlDetail', () => {
     expect(screen.queryByText('Vertraulichkeit')).not.toBeInTheDocument();
   });
 
+  it('does not display a raw out-of-range security target relevance', () => {
+    const control = makeControl({
+      confidentialityProp: {
+        name: 'confidentiality',
+        value: '3',
+        ns: 'https://example.com/namespaces/security_targets.csv',
+      },
+      threats: ['G 0.18'],
+      threatsProp: {
+        name: 'threats',
+        value: 'G 0.18',
+        ns: 'https://example.com/namespaces/basethreats.csv',
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <ControlDetail control={control} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('G 0.18')).toBeInTheDocument();
+    expect(screen.queryByText('Vertraulichkeit')).not.toBeInTheDocument();
+    expect(screen.queryByText('Relevanz: 3')).not.toBeInTheDocument();
+  });
+
+  it('does not carry an expanded threat card to another control', async () => {
+    const user = userEvent.setup();
+    const firstControl = makeControl({
+      id: 'GC.2.2',
+      threats: ['G 0.18'],
+      threatsProp: {
+        name: 'threats',
+        value: 'G 0.18',
+        ns: 'https://example.com/namespaces/basethreats.csv',
+      },
+    });
+    const nextControl = makeControl({
+      id: 'GC.2.3',
+      threats: ['G 0.18'],
+      threatsProp: {
+        name: 'threats',
+        value: 'G 0.18',
+        ns: 'https://example.com/namespaces/basethreats.csv',
+      },
+    });
+    const { rerender } = render(
+      <MemoryRouter>
+        <ControlDetail control={firstControl} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole('button', {
+      name: 'Elementare Gefährdung: G 0.18',
+    }));
+    expect(screen.getByText('Fehlplanung oder fehlende Anpassung von Prozessen.')).toBeInTheDocument();
+
+    rerender(
+      <MemoryRouter>
+        <ControlDetail control={nextControl} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('button', {
+      name: 'Elementare Gefährdung: G 0.18',
+    })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Fehlplanung oder fehlende Anpassung von Prozessen.')).not.toBeInTheDocument();
+  });
+
   it('hides the security targets and threats section when the control has no such data', () => {
     render(
       <MemoryRouter>
