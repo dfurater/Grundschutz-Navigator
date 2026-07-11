@@ -34,6 +34,8 @@ const CATALOG_METADATA_FILE = join(OUTPUT_DIR, CATALOG_METADATA_FILE_NAME);
 const VOCABULARIES_FILE = join(OUTPUT_DIR, VOCABULARIES_FILE_NAME);
 const UPSTREAM_SOURCES_METADATA_FILE = join(OUTPUT_DIR, UPSTREAM_SOURCES_METADATA_FILE_NAME);
 const MAX_CATALOG_ARTIFACT_BYTES = 10 * 1024 * 1024;
+const DEFAULT_RETRY_DELAYS_MS = [1000, 3000];
+const MAX_ERROR_BODY_CHARS = 280;
 
 function githubHeaders() {
   return {
@@ -47,23 +49,56 @@ function encodeRepoPath(path) {
   return path.split('/').map(encodeURIComponent).join('/');
 }
 
-async function fetchGitHubJson(pathname) {
-  const response = await fetch(`https://api.github.com${pathname}`, {
-    headers: githubHeaders(),
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
   });
+}
+
+function truncateResponseBody(text) {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= MAX_ERROR_BODY_CHARS) {
+    return normalized;
+  }
+  return `${normalized.slice(0, MAX_ERROR_BODY_CHARS)} [gekürzt, ${text.length} Zeichen insgesamt]`;
+}
+
+async function fetchWithTransientRetry(url, init, retryDelaysMs) {
+  for (let attempt = 0; ; attempt += 1) {
+    const isLastAttempt = attempt >= retryDelaysMs.length;
+    try {
+      const response = await fetch(url, init);
+      if (response.status < 500 || isLastAttempt) {
+        return response;
+      }
+    } catch (error) {
+      if (isLastAttempt) {
+        throw error;
+      }
+    }
+    await sleep(retryDelaysMs[attempt]);
+  }
+}
+
+async function fetchGitHubJson(pathname, retryDelaysMs = DEFAULT_RETRY_DELAYS_MS) {
+  const response = await fetchWithTransientRetry(
+    `https://api.github.com${pathname}`,
+    { headers: githubHeaders() },
+    retryDelaysMs,
+  );
 
   if (!response.ok) {
-    const details = await response.text();
+    const details = truncateResponseBody(await response.text());
     throw new Error(`GitHub API ${pathname} fehlgeschlagen: ${response.status} ${response.statusText} ${details}`.trim());
   }
 
   return response.json();
 }
 
-async function resolveSnapshot(logger = console) {
+async function resolveSnapshot(logger = console, retryDelaysMs = DEFAULT_RETRY_DELAYS_MS) {
   if (PINNED_SHA) {
     try {
-      const commitInfo = await fetchGitHubJson(`/repos/${REPO}/commits/${PINNED_SHA}`);
+      const commitInfo = await fetchGitHubJson(`/repos/${REPO}/commits/${PINNED_SHA}`, retryDelaysMs);
       return {
         defaultBranch: 'pinned',
         snapshotCommitSha: PINNED_SHA,
@@ -82,9 +117,9 @@ async function resolveSnapshot(logger = console) {
   }
 
   try {
-    const repoInfo = await fetchGitHubJson(`/repos/${REPO}`);
+    const repoInfo = await fetchGitHubJson(`/repos/${REPO}`, retryDelaysMs);
     const defaultBranch = assertAllowedGitHubRef(repoInfo.default_branch ?? 'main', 'GitHub default branch');
-    const branchInfo = await fetchGitHubJson(`/repos/${REPO}/branches/${encodeURIComponent(defaultBranch)}`);
+    const branchInfo = await fetchGitHubJson(`/repos/${REPO}/branches/${encodeURIComponent(defaultBranch)}`, retryDelaysMs);
     if (typeof branchInfo.commit?.sha !== 'string' || !/^[0-9a-f]{40}$/i.test(branchInfo.commit.sha)) {
       throw new Error(`GitHub branch ${defaultBranch} enthält keine gültige Commit-SHA.`);
     }
@@ -92,7 +127,7 @@ async function resolveSnapshot(logger = console) {
     const snapshotCommitSha = branchInfo.commit.sha.toLowerCase();
     let snapshotCommitDate = 'unknown';
     try {
-      const commitInfo = await fetchGitHubJson(`/repos/${REPO}/commits/${snapshotCommitSha}`);
+      const commitInfo = await fetchGitHubJson(`/repos/${REPO}/commits/${snapshotCommitSha}`, retryDelaysMs);
       snapshotCommitDate = commitInfo?.commit?.committer?.date ?? 'unknown';
     } catch (error) {
       logger.warn(
@@ -112,13 +147,14 @@ async function resolveSnapshot(logger = console) {
   }
 }
 
-async function fetchFileInfo(path, ref, logger = console) {
+async function fetchFileInfo(path, ref, logger = console, retryDelaysMs = DEFAULT_RETRY_DELAYS_MS) {
   const allowedPath = assertAllowedUpstreamRepoPath(path);
   const allowedRef = assertAllowedGitHubRef(ref, 'GitHub fetch ref');
 
   try {
     const fileInfo = await fetchGitHubJson(
       `/repos/${REPO}/contents/${encodeRepoPath(allowedPath)}?ref=${encodeURIComponent(allowedRef)}`,
+      retryDelaysMs,
     );
 
     if (typeof fileInfo?.sha !== 'string' || !/^[0-9a-f]{40}$/i.test(fileInfo.sha)) {
@@ -140,17 +176,17 @@ async function fetchFileInfo(path, ref, logger = console) {
   }
 }
 
-async function fetchRawFile(path, ref) {
+async function fetchRawFile(path, ref, retryDelaysMs = DEFAULT_RETRY_DELAYS_MS) {
   const allowedPath = assertAllowedUpstreamRepoPath(path);
   const allowedRef = assertAllowedGitHubRef(ref, 'GitHub fetch ref');
   const url = `https://raw.githubusercontent.com/${REPO}/${encodeURIComponent(allowedRef)}/${encodeRepoPath(allowedPath)}`;
-  const response = await fetch(url, TOKEN
+  const response = await fetchWithTransientRetry(url, TOKEN
     ? {
         headers: {
           Authorization: `Bearer ${TOKEN}`,
         },
       }
-    : undefined);
+    : undefined, retryDelaysMs);
 
   if (!response.ok) {
     throw new Error(`Download fehlgeschlagen für ${path}: ${response.status} ${response.statusText}`);
@@ -222,19 +258,19 @@ function buildJsonArtifactBuffer(value, label) {
   return Buffer.from(serializeJsonArtifact(value, label), 'utf8');
 }
 
-async function buildFetchArtifacts(logger = console) {
+async function buildFetchArtifacts(logger = console, { retryDelaysMs = DEFAULT_RETRY_DELAYS_MS } = {}) {
   logger.log('================================================');
   logger.log('  Grundschutz++ Katalog + Vokabulare Fetch');
   logger.log('================================================');
   logger.log(`Repository: ${REPO}`);
   logger.log(`Katalog:    ${CATALOG_PATH}`);
 
-  const snapshot = await resolveSnapshot(logger);
+  const snapshot = await resolveSnapshot(logger, retryDelaysMs);
   const fetchRef = assertAllowedGitHubRef(snapshot.snapshotCommitSha, 'Snapshot commit SHA');
 
   logger.log(`[1/5] Lade Katalog aus Snapshot ${fetchRef} ...`);
-  const catalogInfo = await fetchFileInfo(CATALOG_PATH, fetchRef, logger);
-  const catalogRaw = await fetchRawFile(CATALOG_PATH, fetchRef);
+  const catalogInfo = await fetchFileInfo(CATALOG_PATH, fetchRef, logger, retryDelaysMs);
+  const catalogRaw = await fetchRawFile(CATALOG_PATH, fetchRef, retryDelaysMs);
   const catalogArtifact = validateFetchedCatalogArtifact(catalogRaw.buffer);
   const catalogJson = catalogArtifact.json;
 
@@ -254,8 +290,8 @@ async function buildFetchArtifacts(logger = console) {
   const namespaceArtifacts = await Promise.all(namespaceRefs.map(async (namespaceRef) => {
     logger.log(`  - ${namespaceRef.path}`);
     const [fileInfo, rawFile] = await Promise.all([
-      fetchFileInfo(namespaceRef.path, fetchRef, logger),
-      fetchRawFile(namespaceRef.path, fetchRef),
+      fetchFileInfo(namespaceRef.path, fetchRef, logger, retryDelaysMs),
+      fetchRawFile(namespaceRef.path, fetchRef, retryDelaysMs),
     ]);
 
     const vocabularyNamespace = buildVocabularyNamespaceData({
