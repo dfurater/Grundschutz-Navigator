@@ -46,6 +46,11 @@ const CSV_HEADERS = [
   'links',
   'required_links',
   'related_links',
+  'confidentiality',
+  'integrity',
+  'availability',
+  'authenticity',
+  'threats',
 ];
 
 /**
@@ -73,6 +78,11 @@ export function controlToCSVRow(control: Control): string {
     control.links.map((l) => `${l.targetId} (${l.relation})`).join(', '),
     relationTargets.required.join(', '),
     relationTargets.related.join(', '),
+    control.confidentiality ?? '',
+    control.integrity ?? '',
+    control.availability ?? '',
+    control.authenticity ?? '',
+    control.threats.join(', '),
   ];
 
   return fields.map(escapeCSVField).join(';');

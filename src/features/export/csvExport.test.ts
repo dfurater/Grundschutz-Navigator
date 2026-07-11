@@ -36,11 +36,40 @@ function makeControl(overrides: Partial<Control> = {}): Control {
       ns: 'https://example.com/namespaces/modal_verbs.csv',
     },
     tags: ['BCM', 'Compliance Management'],
-    threats: [],
     tagsProp: {
       name: 'tags',
       value: 'BCM, Compliance Management',
       ns: 'https://example.com/namespaces/tags.csv',
+    },
+    confidentiality: '2',
+    confidentialityProp: {
+      name: 'confidentiality',
+      value: '2',
+      ns: 'https://example.com/namespaces/security_targets.csv',
+    },
+    integrity: '1',
+    integrityProp: {
+      name: 'integrity',
+      value: '1',
+      ns: 'https://example.com/namespaces/security_targets.csv',
+    },
+    availability: '1',
+    availabilityProp: {
+      name: 'availability',
+      value: '1',
+      ns: 'https://example.com/namespaces/security_targets.csv',
+    },
+    authenticity: '0',
+    authenticityProp: {
+      name: 'authenticity',
+      value: '0',
+      ns: 'https://example.com/namespaces/security_targets.csv',
+    },
+    threats: ['G 0.18', 'G 0.19'],
+    threatsProp: {
+      name: 'threats',
+      value: 'G 0.18, G 0.19',
+      ns: 'https://example.com/namespaces/basethreats.csv',
     },
     statement: 'MUSS Verfahren verankern.',
     statementRaw: 'MUSS Verfahren nach {{ insert: param, gc.1.1-prm1 }} verankern.',
@@ -191,10 +220,10 @@ describe('escapeCSVField', () => {
 /* ------------------------------------------------------------------ */
 
 describe('controlToCSVRow', () => {
-  it('produces semicolon-delimited row with 19 fields', () => {
+  it('produces semicolon-delimited row with 24 fields', () => {
     const row = controlToCSVRow(makeControl());
     const fields = row.split(';');
-    expect(fields.length).toBe(19);
+    expect(fields.length).toBe(24);
   });
 
   it('aligns row fields with the logical export order', () => {
@@ -219,6 +248,11 @@ describe('controlToCSVRow', () => {
       'GC.2.2 (related), GC.3.1 (required)',
       'GC.3.1',
       'GC.2.2',
+      '2',
+      '1',
+      '1',
+      '0',
+      'G 0.18, G 0.19',
     ]);
   });
 
@@ -243,12 +277,29 @@ describe('controlToCSVRow', () => {
       effortLevel: undefined,
       modalverb: undefined,
       tags: [],
+      confidentiality: undefined,
+      integrity: undefined,
+      availability: undefined,
+      authenticity: undefined,
+      threats: [],
       links: [],
       statementProps: { zielobjektKategorien: [] },
     });
-    const row = controlToCSVRow(control);
-    // Should not throw, empty fields represented as empty strings
-    expect(row).toContain('GC.1.1');
+    const fields = parseSemicolonCSV(`${controlToCSVRow(control)}\r\n`)[0];
+
+    expect(fields).toHaveLength(24);
+    expect(fields.slice(-5)).toEqual(['', '', '', '', '']);
+  });
+
+  it('escapes the joined threat list as a single CSV field', () => {
+    const row = controlToCSVRow(
+      makeControl({ threats: ['G 0.18', 'G 0.19; "Kommentar"'] }),
+    );
+    const fields = parseSemicolonCSV(`${row}\r\n`)[0];
+
+    expect(row).toContain('"G 0.18, G 0.19; ""Kommentar"""');
+    expect(fields).toHaveLength(24);
+    expect(fields.at(-1)).toBe('G 0.18, G 0.19; "Kommentar"');
   });
 
   it('includes linked controls', () => {
@@ -274,6 +325,8 @@ describe('controlToCSVRow', () => {
     expect(row).not.toContain('https://example.com/namespaces/security_level.csv');
     expect(row).not.toContain('https://example.com/namespaces/documentation_guidelines.csv');
     expect(row).not.toContain('https://example.com/namespaces/action_words.csv');
+    expect(row).not.toContain('https://example.com/namespaces/security_targets.csv');
+    expect(row).not.toContain('https://example.com/namespaces/basethreats.csv');
   });
 });
 
@@ -309,6 +362,11 @@ describe('controlsToCSV', () => {
     expect(header).toContain('documentation');
     expect(header).toContain('required_links');
     expect(header).toContain('related_links');
+    expect(header).toContain('confidentiality');
+    expect(header).toContain('integrity');
+    expect(header).toContain('availability');
+    expect(header).toContain('authenticity');
+    expect(header).toContain('threats');
   });
 
   it('uses the expected logical header order', () => {
@@ -334,6 +392,11 @@ describe('controlsToCSV', () => {
       'links',
       'required_links',
       'related_links',
+      'confidentiality',
+      'integrity',
+      'availability',
+      'authenticity',
+      'threats',
     ]);
   });
 
@@ -349,12 +412,17 @@ describe('controlsToCSV', () => {
     expect(header).not.toContain('result_ns');
     expect(header).not.toContain('result_specification_ns');
     expect(header).not.toContain('action_word_ns');
+    expect(header).not.toContain('confidentiality_ns');
+    expect(header).not.toContain('integrity_ns');
+    expect(header).not.toContain('availability_ns');
+    expect(header).not.toContain('authenticity_ns');
+    expect(header).not.toContain('threats_ns');
   });
 
   it('uses semicolon as delimiter', () => {
     const csv = controlsToCSV([]);
     const header = csv.split('\r\n')[0];
-    expect(header.split(';').length).toBe(19);
+    expect(header.split(';').length).toBe(24);
   });
 
   it('uses CRLF row separators and terminates with a final CRLF', () => {
@@ -429,6 +497,11 @@ describe('controlsToCSV', () => {
       'GC.2.2 (related), GC.3.1 (required)',
       'GC.3.1',
       'GC.2.2',
+      '2',
+      '1',
+      '1',
+      '0',
+      'G 0.18, G 0.19',
     ]);
   });
 });
