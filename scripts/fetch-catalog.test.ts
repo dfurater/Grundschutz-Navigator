@@ -111,10 +111,10 @@ describe('fetch-catalog', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(buildFetchArtifacts({
-      log: () => {},
-      warn: () => {},
-    })).rejects.toThrow('Build abgebrochen, damit nicht ungepinnt von main geladen wird');
+    await expect(buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      { retryDelaysMs: [0, 0] },
+    )).rejects.toThrow('Build abgebrochen, damit nicht ungepinnt von main geladen wird');
 
     expect(fetchMock.mock.calls.map(([input]) => String(input))).not.toContain(
       'https://raw.githubusercontent.com/BSI-Bund/Stand-der-Technik-Bibliothek/main/Anwenderkataloge/Grundschutz%2B%2B/Grundschutz%2B%2B-catalog.json',
@@ -256,10 +256,140 @@ describe('fetch-catalog', () => {
       throw new Error(`Unexpected fetch: ${url}`);
     }));
 
-    await expect(buildFetchArtifacts({
-      log: () => {},
-      warn: () => {},
-    })).rejects.toThrow('Konnte Provenance für Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json nicht exakt auflösen');
+    await expect(buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      { retryDelaysMs: [0, 0] },
+    )).rejects.toThrow('Konnte Provenance für Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json nicht exakt auflösen');
+  });
+
+  it('retries transient GitHub API errors and succeeds on a later attempt', async () => {
+    const snapshotSha = 'a'.repeat(40);
+    const catalogBlobSha = 'b'.repeat(40);
+    const catalogText =
+      '{\n "catalog" : { "uuid":"demo","metadata":{"title":"Grundschutz++"}, "groups":[ ] }\n}\n';
+    let repoRequests = 0;
+
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
+
+      if (url === 'https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek') {
+        repoRequests += 1;
+        if (repoRequests === 1) {
+          return new Response('<html>Unicorn!</html>', {
+            status: 503,
+            statusText: 'Service Unavailable',
+          });
+        }
+        return new Response(JSON.stringify({ default_branch: 'main' }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (url === 'https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/branches/main') {
+        return new Response(JSON.stringify({ commit: { sha: snapshotSha } }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (url === `https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/commits/${snapshotSha}`) {
+        return new Response(JSON.stringify({ commit: { committer: { date: '2026-07-11T00:00:00Z' } } }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (
+        url ===
+        `https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/contents/Anwenderkataloge/Grundschutz%2B%2B/Grundschutz%2B%2B-catalog.json?ref=${snapshotSha}`
+      ) {
+        return new Response(JSON.stringify({
+          sha: catalogBlobSha,
+          size: Buffer.byteLength(catalogText),
+        }), {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (
+        url ===
+        `https://raw.githubusercontent.com/BSI-Bund/Stand-der-Technik-Bibliothek/${snapshotSha}/Anwenderkataloge/Grundschutz%2B%2B/Grundschutz%2B%2B-catalog.json`
+      ) {
+        return new Response(catalogText);
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`);
+    }));
+
+    const payload = await buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      { retryDelaysMs: [0, 0] },
+    );
+
+    expect(repoRequests).toBe(2);
+    const metadata = parseArtifactJson(payload, 'catalog-metadata.json');
+    expect(metadata.source.commit_sha).toBe(snapshotSha);
+  });
+
+  it('aborts fail-closed after exhausting retries on persistent transient errors', async () => {
+    let repoRequests = 0;
+
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      repoRequests += 1;
+      return new Response('<html>Unicorn!</html>', {
+        status: 503,
+        statusText: 'Service Unavailable',
+      });
+    }));
+
+    await expect(buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      { retryDelaysMs: [0, 0] },
+    )).rejects.toThrow('Build abgebrochen, damit nicht ungepinnt von main geladen wird');
+
+    expect(repoRequests).toBe(3);
+  });
+
+  it('does not retry non-transient GitHub API errors', async () => {
+    let repoRequests = 0;
+
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      repoRequests += 1;
+      return new Response('Not Found', { status: 404, statusText: 'Not Found' });
+    }));
+
+    await expect(buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      { retryDelaysMs: [0, 0] },
+    )).rejects.toThrow('Build abgebrochen, damit nicht ungepinnt von main geladen wird');
+
+    expect(repoRequests).toBe(1);
+  });
+
+  it('truncates oversized response bodies in error messages', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      return new Response(`<html>${'x'.repeat(60000)}</html>`, {
+        status: 503,
+        statusText: 'Service Unavailable',
+      });
+    }));
+
+    const error = await buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      { retryDelaysMs: [] },
+    ).then(
+      () => {
+        throw new Error('buildFetchArtifacts hätte fehlschlagen müssen');
+      },
+      (caught: unknown) => caught,
+    );
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain('gekürzt');
+    expect((error as Error).message.length).toBeLessThan(1000);
   });
 
   it('aborts when the provenance lookup succeeds without a blob SHA', async () => {
