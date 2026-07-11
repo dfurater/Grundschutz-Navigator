@@ -206,7 +206,10 @@ export function ControlDetail({
   const practiceName = practice?.title ?? control.practiceId;
   const topicName = topic?.title ?? control.groupId;
   const [linkCopied, setLinkCopied] = useState(false);
-  const [activeVocabularyKey, setActiveVocabularyKey] = useState<string | null>(null);
+  const [activeVocabularyState, setActiveVocabularyState] = useState({
+    controlId: control.id,
+    key: null as string | null,
+  });
   const [guidanceExpandedState, setGuidanceExpandedState] = useState({
     controlId: control.id,
     expanded: false,
@@ -284,8 +287,19 @@ export function ControlDetail({
   const hasDependencies = control.links.length > 0 || incomingOnlyLinks.length > 0;
   const hasHierarchy = Boolean(parentControl || childControls.length > 0);
 
+  const activeVocabularyKey =
+    activeVocabularyState.controlId === control.id
+      ? activeVocabularyState.key
+      : null;
+
   const toggleVocabulary = (key: string) => {
-    setActiveVocabularyKey((currentKey) => currentKey === key ? null : key);
+    setActiveVocabularyState((currentState) => ({
+      controlId: control.id,
+      key:
+        currentState.controlId === control.id && currentState.key === key
+          ? null
+          : key,
+    }));
   };
 
   useLayoutEffect(() => {
@@ -617,8 +631,8 @@ export function ControlDetail({
 
                       return (
                         <Fragment key={vocabKey}>
-                          <dt key={`${vocabKey}-label`} className="catalog-meta-text pt-1">{label}</dt>
-                          <dd key={`${vocabKey}-value`}>
+                          <dt className="catalog-meta-text pt-1">{label}</dt>
+                          <dd>
                             {resolution ? (
                               <button
                                 type="button"
@@ -642,7 +656,6 @@ export function ControlDetail({
                           </dd>
                           {resolution && (
                             <dd
-                              key={`${vocabKey}-card`}
                               id={toVocabCardId(vocabKey)}
                               className="col-span-full"
                               hidden={!active || undefined}
@@ -663,7 +676,7 @@ export function ControlDetail({
                   <div className="space-y-2">
                     {control.threats.map((threat, index) => {
                       const resolution = findResolutionByValue(resolvedVocabularies.threats, threat);
-                      const vocabKey = `threat:${control.id}:${threat}:${index}`;
+                      const vocabKey = `threat:${threat}:${index}`;
                       const active = isVocabularyActive(vocabKey);
 
                       return resolution ? (

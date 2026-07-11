@@ -279,6 +279,49 @@ describe('ControlDetail', () => {
     expect(screen.queryByText('Fehlplanung oder fehlende Anpassung von Prozessen.')).not.toBeInTheDocument();
   });
 
+  it('does not carry an expanded security target card to another control', async () => {
+    const user = userEvent.setup();
+    const firstControl = makeControl({
+      id: 'ASST.1.1',
+      confidentiality: '2',
+      confidentialityProp: {
+        name: 'confidentiality',
+        value: '2',
+        ns: 'https://example.com/namespaces/security_targets.csv',
+      },
+    });
+    const nextControl = makeControl({
+      id: 'ASST.1.1.1',
+      confidentiality: '1',
+      confidentialityProp: {
+        name: 'confidentiality',
+        value: '1',
+        ns: 'https://example.com/namespaces/security_targets.csv',
+      },
+    });
+    const { rerender } = render(
+      <MemoryRouter>
+        <ControlDetail control={firstControl} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole('button', {
+      name: 'Schutzziel: Vertraulichkeit',
+    }));
+    expect(screen.getByText('Schutz vor unbefugter Offenlegung.')).toBeInTheDocument();
+
+    rerender(
+      <MemoryRouter>
+        <ControlDetail control={nextControl} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('button', {
+      name: 'Schutzziel: Vertraulichkeit',
+    })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Schutz vor unbefugter Offenlegung.')).not.toBeInTheDocument();
+  });
+
   it('hides the security targets and threats section when the control has no such data', () => {
     render(
       <MemoryRouter>
