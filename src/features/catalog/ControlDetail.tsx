@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useLayoutEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/Badge';
 import { EffortBadge, ModalverbBadge, SecurityLevelBadge } from '@/components/StatusMeta';
 import {
@@ -249,6 +249,39 @@ export function ControlDetail({
     control.effortLevel,
   );
   const hasTaxonomy = control.tags.length > 0 || hasZielobjektKategorien;
+  const securityTargets = [
+    {
+      key: 'confidentiality',
+      label: 'Vertraulichkeit',
+      relevance: control.confidentiality ?? control.confidentialityProp?.value,
+      prop: control.confidentialityProp,
+      resolution: resolvedVocabularies.securityTargets.confidentiality,
+    },
+    {
+      key: 'integrity',
+      label: 'Integrität',
+      relevance: control.integrity ?? control.integrityProp?.value,
+      prop: control.integrityProp,
+      resolution: resolvedVocabularies.securityTargets.integrity,
+    },
+    {
+      key: 'availability',
+      label: 'Verfügbarkeit',
+      relevance: control.availability ?? control.availabilityProp?.value,
+      prop: control.availabilityProp,
+      resolution: resolvedVocabularies.securityTargets.availability,
+    },
+    {
+      key: 'authenticity',
+      label: 'Authentizität',
+      relevance: control.authenticity ?? control.authenticityProp?.value,
+      prop: control.authenticityProp,
+      resolution: resolvedVocabularies.securityTargets.authenticity,
+    },
+  ].filter((securityTarget) => securityTarget.prop && securityTarget.relevance !== undefined);
+  const hasSecurityTargets = securityTargets.length > 0;
+  const hasThreats = control.threats.length > 0;
+  const hasSecurityTargetsAndThreats = hasSecurityTargets || hasThreats;
   const incomingByControlId = buildIncomingLinksByControlId(incomingLinks);
   const outgoingIds = new Set(control.links.map((l) => l.targetId));
   const incomingOnlyLinks = incomingLinks.filter((inc) => !outgoingIds.has(inc.control.id));
@@ -569,6 +602,101 @@ export function ControlDetail({
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </div>
+          </ControlDetailSection>
+        )}
+
+        {hasSecurityTargetsAndThreats && (
+          <ControlDetailSection heading="Schutzziele und Gefährdungen">
+            <div className="space-y-4">
+              {hasSecurityTargets && (
+                <div>
+                  <SubSectionHeading>Schutzziele</SubSectionHeading>
+                  <dl className="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-x-4 gap-y-3 sm:gap-y-4">
+                    {securityTargets.map(({ key, label, relevance, resolution }) => {
+                      const vocabKey = `security-target:${key}`;
+                      const active = isVocabularyActive(vocabKey);
+
+                      return (
+                        <Fragment key={vocabKey}>
+                          <dt key={`${vocabKey}-label`} className="catalog-meta-text pt-1">{label}</dt>
+                          <dd key={`${vocabKey}-value`}>
+                            {resolution ? (
+                              <button
+                                type="button"
+                                onClick={() => toggleVocabulary(vocabKey)}
+                                aria-label={`Schutzziel: ${label}`}
+                                aria-pressed={active}
+                                aria-expanded={active}
+                                aria-controls={toVocabCardId(vocabKey)}
+                                className={`flex w-full items-start gap-1 rounded text-left text-sm leading-relaxed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] ${
+                                  active
+                                    ? 'font-medium text-primary-main underline decoration-primary-main/40 underline-offset-4'
+                                    : 'text-slate-700'
+                                }`}
+                              >
+                                <span>Relevanz: {relevance}</span>
+                                <VocabularyAffordanceIcon active={active} />
+                              </button>
+                            ) : (
+                              <p className="text-sm leading-relaxed text-slate-700">Relevanz: {relevance}</p>
+                            )}
+                          </dd>
+                          {resolution && (
+                            <dd
+                              key={`${vocabKey}-card`}
+                              id={toVocabCardId(vocabKey)}
+                              className="col-span-full"
+                              hidden={!active || undefined}
+                            >
+                              {active && <VocabularyEntryCard resolution={resolution} />}
+                            </dd>
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </dl>
+                </div>
+              )}
+
+              {hasThreats && (
+                <div>
+                  <SubSectionHeading>Elementare Gefährdungen</SubSectionHeading>
+                  <div className="space-y-2">
+                    {control.threats.map((threat, index) => {
+                      const resolution = findResolutionByValue(resolvedVocabularies.threats, threat);
+                      const vocabKey = `threat:${index}`;
+                      const active = isVocabularyActive(vocabKey);
+
+                      return resolution ? (
+                        <div key={vocabKey}>
+                          <button
+                            type="button"
+                            onClick={() => toggleVocabulary(vocabKey)}
+                            aria-label={`Elementare Gefährdung: ${threat}`}
+                            aria-pressed={active}
+                            aria-expanded={active}
+                            aria-controls={toVocabCardId(vocabKey)}
+                            className={`flex w-full items-start gap-1 rounded text-left text-sm leading-relaxed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] ${
+                              active
+                                ? 'font-medium text-primary-main underline decoration-primary-main/40 underline-offset-4'
+                                : 'text-slate-700'
+                            }`}
+                          >
+                            <span>{threat}</span>
+                            <VocabularyAffordanceIcon active={active} />
+                          </button>
+                          <div id={toVocabCardId(vocabKey)} hidden={!active || undefined}>
+                            {active && <VocabularyEntryCard resolution={resolution} />}
+                          </div>
+                        </div>
+                      ) : (
+                        <p key={vocabKey} className="text-sm leading-relaxed text-slate-700">{threat}</p>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>

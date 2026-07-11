@@ -113,6 +113,9 @@ export type SecurityLevel = 'normal-SdT' | 'erhöht';
 /** Aufwandsstufe (0–5) */
 export type EffortLevel = '0' | '1' | '2' | '3' | '4' | '5';
 
+/** Schutzziel-Relevanz (0–2) */
+export type SecurityTargetRelevance = '0' | '1' | '2';
+
 /** Modalverb / Verpflichtungsgrad */
 export type Modalverb = 'MUSS' | 'SOLLTE' | 'KANN';
 
@@ -164,6 +167,28 @@ export interface Control {
   tags: string[];
   /** Structured tags prop with namespace provenance */
   tagsProp?: PropValue;
+
+  /** Relevanz für das Schutzziel Vertraulichkeit (0–2) */
+  confidentiality?: SecurityTargetRelevance;
+  /** Structured confidentiality prop with namespace provenance */
+  confidentialityProp?: PropValue;
+  /** Relevanz für das Schutzziel Integrität (0–2) */
+  integrity?: SecurityTargetRelevance;
+  /** Structured integrity prop with namespace provenance */
+  integrityProp?: PropValue;
+  /** Relevanz für das Schutzziel Verfügbarkeit (0–2) */
+  availability?: SecurityTargetRelevance;
+  /** Structured availability prop with namespace provenance */
+  availabilityProp?: PropValue;
+  /** Relevanz für das Schutzziel Authentizität (0–2) */
+  authenticity?: SecurityTargetRelevance;
+  /** Structured authenticity prop with namespace provenance */
+  authenticityProp?: PropValue;
+
+  /** Elementare Gefährdungen, aus der kommaseparierten OSCAL-Prop geparst */
+  threats: string[];
+  /** Structured threats prop with namespace provenance */
+  threatsProp?: PropValue;
 
   /** Statement prose (with params resolved) */
   statement: string;

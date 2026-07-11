@@ -14,6 +14,7 @@ import {
   parseLinkHref,
   toSecurityLevel,
   toEffortLevel,
+  toSecurityTargetRelevance,
   toModalverb,
 } from './oscalAdapter';
 import type {
@@ -56,6 +57,31 @@ function makeControl(overrides: Partial<RawOscalControl> = {}): RawOscalControl 
         name: 'tags',
         ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/tags.csv',
         value: 'BCM, Compliance Management',
+      },
+      {
+        name: 'confidentiality',
+        ns: 'https://example.com/namespaces/security_targets.csv',
+        value: '2',
+      },
+      {
+        name: 'integrity',
+        ns: 'https://example.com/namespaces/security_targets.csv',
+        value: '1',
+      },
+      {
+        name: 'availability',
+        ns: 'https://example.com/namespaces/security_targets.csv',
+        value: '1',
+      },
+      {
+        name: 'authenticity',
+        ns: 'https://example.com/namespaces/security_targets.csv',
+        value: '0',
+      },
+      {
+        name: 'threats',
+        ns: 'https://example.com/namespaces/basethreats.csv',
+        value: ' G 0.18, , G 0.19 , G 0.99 ',
       },
     ],
     parts: [
@@ -359,6 +385,20 @@ describe('toEffortLevel', () => {
   });
 });
 
+describe('toSecurityTargetRelevance', () => {
+  it('accepts 0–2', () => {
+    for (const value of ['0', '1', '2']) {
+      expect(toSecurityTargetRelevance(value)).toBe(value);
+    }
+  });
+
+  it('rejects invalid values', () => {
+    expect(toSecurityTargetRelevance('3')).toBeUndefined();
+    expect(toSecurityTargetRelevance('invalid')).toBeUndefined();
+    expect(toSecurityTargetRelevance(undefined)).toBeUndefined();
+  });
+});
+
 describe('toModalverb', () => {
   it('accepts MUSS, SOLLTE, KANN', () => {
     expect(toModalverb('MUSS')).toBe('MUSS');
@@ -440,6 +480,26 @@ describe('parseControl', () => {
     expect(control.tags).toEqual(['BCM', 'Compliance Management']);
   });
 
+  it('parses security targets and threats while preserving prop provenance', () => {
+    const control = parseControl(makeControl(), 'GC.1', 'GC');
+
+    expect(control.confidentiality).toBe('2');
+    expect(control.integrity).toBe('1');
+    expect(control.availability).toBe('1');
+    expect(control.authenticity).toBe('0');
+    expect(control.threats).toEqual(['G 0.18', 'G 0.19', 'G 0.99']);
+    expect(control.confidentialityProp).toEqual({
+      name: 'confidentiality',
+      value: '2',
+      ns: 'https://example.com/namespaces/security_targets.csv',
+    });
+    expect(control.threatsProp).toEqual({
+      name: 'threats',
+      value: ' G 0.18, , G 0.19 , G 0.99 ',
+      ns: 'https://example.com/namespaces/basethreats.csv',
+    });
+  });
+
   it('resolves params in statement prose', () => {
     const control = parseControl(makeControl(), 'GC.1', 'GC');
     expect(control.statement).toBe(
@@ -488,6 +548,7 @@ describe('parseControl', () => {
     expect(control.effortLevel).toBeUndefined();
     expect(control.modalverb).toBeUndefined();
     expect(control.tags).toEqual([]);
+    expect(control.threats).toEqual([]);
     expect(control.statement).toBe('');
     expect(control.guidance).toBe('');
     expect(control.links).toEqual([]);
@@ -498,6 +559,31 @@ describe('parseControl', () => {
     expect(control.securityLevelProp).toBeUndefined();
     expect(control.effortLevelProp).toBeUndefined();
     expect(control.tagsProp).toBeUndefined();
+    expect(control.confidentiality).toBeUndefined();
+    expect(control.confidentialityProp).toBeUndefined();
+    expect(control.integrity).toBeUndefined();
+    expect(control.integrityProp).toBeUndefined();
+    expect(control.availability).toBeUndefined();
+    expect(control.availabilityProp).toBeUndefined();
+    expect(control.authenticity).toBeUndefined();
+    expect(control.authenticityProp).toBeUndefined();
+    expect(control.threatsProp).toBeUndefined();
+  });
+
+  it('keeps invalid security target values as raw props without typing them', () => {
+    const control = parseControl(makeControl({
+      props: [
+        { name: 'confidentiality', value: '3', ns: 'https://example.com/namespaces/security_targets.csv' },
+      ],
+    }), 'GC.1', 'GC');
+
+    expect(control.confidentiality).toBeUndefined();
+    expect(control.confidentialityProp).toEqual({
+      name: 'confidentiality',
+      value: '3',
+      ns: 'https://example.com/namespaces/security_targets.csv',
+    });
+    expect(control.threats).toEqual([]);
   });
 
   it('extracts altIdentifier', () => {

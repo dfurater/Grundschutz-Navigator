@@ -36,6 +36,34 @@ function makeCatalogState(): CatalogState {
           },
         ],
       },
+      {
+        source: {
+          namespace: 'https://example.com/namespaces/basethreats.csv',
+          repository: 'https://example.com/repo',
+          path: 'Dokumentation/namespaces/basethreats.csv',
+          fileName: 'basethreats.csv',
+          routeId: 'dokumentation-namespaces-basethreats',
+          gitBlobSha: 'blob-threats',
+        },
+        columnOrder: ['Begriff', 'Definition'],
+        valueColumn: 'Begriff',
+        definitionColumn: 'Definition',
+        entries: [],
+      },
+      {
+        source: {
+          namespace: 'https://example.com/namespaces/security_targets.csv',
+          repository: 'https://example.com/repo',
+          path: 'Dokumentation/namespaces/security_targets.csv',
+          fileName: 'security_targets.csv',
+          routeId: 'dokumentation-namespaces-security-targets',
+          gitBlobSha: 'blob-targets',
+        },
+        columnOrder: ['Begriff', 'Definition'],
+        valueColumn: 'Begriff',
+        definitionColumn: 'Definition',
+        entries: [],
+      },
     ],
   };
 
@@ -73,5 +101,24 @@ describe('VocabularyOverviewPage', () => {
     expect(fileLink).toHaveAttribute('target', '_blank');
     expect(fileLink).toHaveClass('catalog-meta-type', 'catalog-link-color', 'block');
     expect(screen.queryByText('Dokumentation/namespaces/documentation_guidelines.csv')).not.toBeInTheDocument();
+  });
+
+  it('uses curated German titles and routes for security targets and base threats', () => {
+    mockedUseCatalog.mockReturnValue(makeCatalogState());
+
+    render(
+      <MemoryRouter>
+        <VocabularyOverviewPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('link', { name: 'Elementare Gefährdungen' })).toHaveAttribute(
+      'href',
+      '/vokabular/dokumentation-namespaces-basethreats',
+    );
+    expect(screen.getByRole('link', { name: 'Schutzziele' })).toHaveAttribute(
+      'href',
+      '/vokabular/dokumentation-namespaces-security-targets',
+    );
   });
 });
