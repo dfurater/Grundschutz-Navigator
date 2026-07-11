@@ -6,6 +6,7 @@ import type {
   VocabularyRegistryData,
 } from '@/domain/models';
 import { buildVocabularyRegistry } from '@/domain/vocabulary';
+import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
 import { useSearch } from './useSearch';
 
 function makeControl(overrides: Partial<Control> = {}): Control {
@@ -15,6 +16,7 @@ function makeControl(overrides: Partial<Control> = {}): Control {
     groupId: 'GC.1',
     practiceId: 'GC',
     tags: [],
+    threats: [],
     statement: 'Governance MUSS verankert werden.',
     statementRaw: 'Governance MUSS verankert werden.',
     guidance: '',
@@ -137,6 +139,42 @@ describe('useSearch', () => {
 
     await waitFor(() => {
       expect(result.current.results[0]?.control.id).toBe('GC.3.1');
+    });
+  });
+
+  it('finds controls by threats and resolved security-target or threat vocabulary text', async () => {
+    const controls = [
+      makeControl({
+        id: 'ASST.1.1',
+        confidentiality: '2',
+        confidentialityProp: {
+          name: 'confidentiality',
+          value: '2',
+          ns: 'https://example.com/namespaces/security_targets.csv',
+        },
+        threats: ['G 0.18'],
+        threatsProp: {
+          name: 'threats',
+          value: 'G 0.18',
+          ns: 'https://example.com/namespaces/basethreats.csv',
+        },
+      }),
+    ];
+    const registry = createTestVocabularyRegistry();
+    const threatIdSearch = renderHook(() =>
+      useSearch(controls, 'G 0.18', registry),
+    );
+    const targetSearch = renderHook(() =>
+      useSearch(controls, 'Vertraulichkeit', registry),
+    );
+    const threatDefinitionSearch = renderHook(() =>
+      useSearch(controls, 'Fehlplanung', registry),
+    );
+
+    await waitFor(() => {
+      expect(threatIdSearch.result.current.results[0]?.control.id).toBe('ASST.1.1');
+      expect(targetSearch.result.current.results[0]?.control.id).toBe('ASST.1.1');
+      expect(threatDefinitionSearch.result.current.results[0]?.control.id).toBe('ASST.1.1');
     });
   });
 

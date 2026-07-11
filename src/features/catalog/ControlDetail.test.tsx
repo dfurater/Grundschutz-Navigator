@@ -22,6 +22,7 @@ function makeControl(overrides: Partial<Control> = {}): Control {
     groupId: 'GC.2',
     practiceId: 'GC',
     tags: [],
+    threats: [],
     statement: 'Diese Kontrolle steht mit anderen in Beziehung.',
     statementRaw: 'Diese Kontrolle steht mit anderen in Beziehung.',
     guidance: '',
@@ -117,6 +118,220 @@ describe('ControlDetail', () => {
     expect(screen.getByText('Server sind Zielobjekte mit zentralen IT-Diensten.')).toBeInTheDocument();
   });
 
+  it('renders resolved security targets and threats with independent accessible toggles', async () => {
+    const user = userEvent.setup();
+    const control = makeControl({
+      confidentiality: '2',
+      confidentialityProp: {
+        name: 'confidentiality',
+        value: '2',
+        ns: 'https://example.com/namespaces/security_targets.csv',
+      },
+      integrity: '1',
+      integrityProp: {
+        name: 'integrity',
+        value: '1',
+        ns: 'https://example.com/namespaces/security_targets.csv',
+      },
+      availability: '1',
+      availabilityProp: {
+        name: 'availability',
+        value: '1',
+        ns: 'https://example.com/namespaces/security_targets.csv',
+      },
+      authenticity: '0',
+      authenticityProp: {
+        name: 'authenticity',
+        value: '0',
+        ns: 'https://example.com/namespaces/security_targets.csv',
+      },
+      threats: ['G 0.18', 'G 0.19'],
+      threatsProp: {
+        name: 'threats',
+        value: 'G 0.18, G 0.19',
+        ns: 'https://example.com/namespaces/basethreats.csv',
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <ControlDetail control={control} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Schutzziele und Gefährdungen', level: 3 })).toBeInTheDocument();
+    expect(screen.getByText('Vertraulichkeit')).toBeInTheDocument();
+    expect(screen.getByText('Integrität')).toBeInTheDocument();
+    expect(screen.getByText('Verfügbarkeit')).toBeInTheDocument();
+    expect(screen.getByText('Authentizität')).toBeInTheDocument();
+    expect(screen.getAllByText(/^Relevanz: [0-2]$/)).toHaveLength(4);
+
+    const confidentiality = screen.getByRole('button', { name: 'Schutzziel: Vertraulichkeit' });
+    const threat = screen.getByRole('button', { name: 'Elementare Gefährdung: G 0.18' });
+    expect(confidentiality).toHaveAttribute('aria-expanded', 'false');
+    expect(threat).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(confidentiality);
+    expect(screen.getByText('Schutz vor unbefugter Offenlegung.')).toBeInTheDocument();
+    expect(confidentiality).toHaveAttribute('aria-expanded', 'true');
+
+    await user.click(threat);
+    expect(screen.getByText('Fehlplanung oder fehlende Anpassung von Prozessen.')).toBeInTheDocument();
+    expect(confidentiality).toHaveAttribute('aria-expanded', 'false');
+    expect(threat).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('shows partial data and leaves unresolved threat references visible', () => {
+    const control = makeControl({
+      integrity: '1',
+      integrityProp: {
+        name: 'integrity',
+        value: '1',
+        ns: 'https://example.com/namespaces/security_targets.csv',
+      },
+      threats: ['G 0.99'],
+      threatsProp: {
+        name: 'threats',
+        value: 'G 0.99',
+        ns: 'https://example.com/namespaces/basethreats.csv',
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <ControlDetail control={control} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Integrität')).toBeInTheDocument();
+    expect(screen.getByText('Relevanz: 1')).toBeInTheDocument();
+    expect(screen.getByText('G 0.99')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Elementare Gefährdung: G 0.99' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Vertraulichkeit')).not.toBeInTheDocument();
+  });
+
+  it('does not display a raw out-of-range security target relevance', () => {
+    const control = makeControl({
+      confidentialityProp: {
+        name: 'confidentiality',
+        value: '3',
+        ns: 'https://example.com/namespaces/security_targets.csv',
+      },
+      threats: ['G 0.18'],
+      threatsProp: {
+        name: 'threats',
+        value: 'G 0.18',
+        ns: 'https://example.com/namespaces/basethreats.csv',
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <ControlDetail control={control} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('G 0.18')).toBeInTheDocument();
+    expect(screen.queryByText('Vertraulichkeit')).not.toBeInTheDocument();
+    expect(screen.queryByText('Relevanz: 3')).not.toBeInTheDocument();
+  });
+
+  it('does not carry an expanded threat card to another control', async () => {
+    const user = userEvent.setup();
+    const firstControl = makeControl({
+      id: 'GC.2.2',
+      threats: ['G 0.18'],
+      threatsProp: {
+        name: 'threats',
+        value: 'G 0.18',
+        ns: 'https://example.com/namespaces/basethreats.csv',
+      },
+    });
+    const nextControl = makeControl({
+      id: 'GC.2.3',
+      threats: ['G 0.18'],
+      threatsProp: {
+        name: 'threats',
+        value: 'G 0.18',
+        ns: 'https://example.com/namespaces/basethreats.csv',
+      },
+    });
+    const { rerender } = render(
+      <MemoryRouter>
+        <ControlDetail control={firstControl} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole('button', {
+      name: 'Elementare Gefährdung: G 0.18',
+    }));
+    expect(screen.getByText('Fehlplanung oder fehlende Anpassung von Prozessen.')).toBeInTheDocument();
+
+    rerender(
+      <MemoryRouter>
+        <ControlDetail control={nextControl} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('button', {
+      name: 'Elementare Gefährdung: G 0.18',
+    })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Fehlplanung oder fehlende Anpassung von Prozessen.')).not.toBeInTheDocument();
+  });
+
+  it('does not carry an expanded security target card to another control', async () => {
+    const user = userEvent.setup();
+    const firstControl = makeControl({
+      id: 'ASST.1.1',
+      confidentiality: '2',
+      confidentialityProp: {
+        name: 'confidentiality',
+        value: '2',
+        ns: 'https://example.com/namespaces/security_targets.csv',
+      },
+    });
+    const nextControl = makeControl({
+      id: 'ASST.1.1.1',
+      confidentiality: '1',
+      confidentialityProp: {
+        name: 'confidentiality',
+        value: '1',
+        ns: 'https://example.com/namespaces/security_targets.csv',
+      },
+    });
+    const { rerender } = render(
+      <MemoryRouter>
+        <ControlDetail control={firstControl} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole('button', {
+      name: 'Schutzziel: Vertraulichkeit',
+    }));
+    expect(screen.getByText('Schutz vor unbefugter Offenlegung.')).toBeInTheDocument();
+
+    rerender(
+      <MemoryRouter>
+        <ControlDetail control={nextControl} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('button', {
+      name: 'Schutzziel: Vertraulichkeit',
+    })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Schutz vor unbefugter Offenlegung.')).not.toBeInTheDocument();
+  });
+
+  it('hides the security targets and threats section when the control has no such data', () => {
+    render(
+      <MemoryRouter>
+        <ControlDetail control={makeControl()} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByRole('heading', { name: 'Schutzziele und Gefährdungen', level: 3 })).not.toBeInTheDocument();
+  });
+
   it('shows a visible info affordance only on vocabulary-enabled triggers', async () => {
     const user = userEvent.setup();
     const control = makeControl({
@@ -209,6 +424,12 @@ describe('ControlDetail', () => {
       securityLevel: 'normal-SdT',
       effortLevel: '3',
       tags: ['Governance'],
+      confidentiality: '2',
+      confidentialityProp: {
+        name: 'confidentiality',
+        value: '2',
+        ns: 'https://example.com/namespaces/security_targets.csv',
+      },
       guidance: 'Mit dokumentierten Freigaben arbeiten.',
       statementProps: {
         ergebnis: 'Ergebnis',
@@ -250,6 +471,7 @@ describe('ControlDetail', () => {
     );
 
     const classification = screen.getByRole('heading', { name: 'Klassifikation', level: 3 });
+    const securityTargets = screen.getByRole('heading', { name: 'Schutzziele und Gefährdungen', level: 3 });
     const statement = screen.getByRole('heading', { name: 'Anforderung', level: 3 });
     const details = screen.getByRole('heading', { name: 'Anforderungsdetails', level: 3 });
     const guidance = screen.getByRole('heading', { name: 'Umsetzungshinweise', level: 3 });
@@ -258,6 +480,7 @@ describe('ControlDetail', () => {
     const metadata = screen.getByRole('heading', { name: 'Technische Metadaten', level: 3 });
     const orderedHeadings = [
       classification,
+      securityTargets,
       statement,
       details,
       guidance,

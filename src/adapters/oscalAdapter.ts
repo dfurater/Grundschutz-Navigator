@@ -24,6 +24,7 @@ import type {
   EffortLevel,
   Modalverb,
   LinkRelation,
+  SecurityTargetRelevance,
 } from '@/domain/models';
 
 /* ------------------------------------------------------------------ */
@@ -165,6 +166,16 @@ export function toEffortLevel(value: string | undefined): EffortLevel | undefine
 }
 
 /**
+ * Validate and narrow a string to SecurityTargetRelevance.
+ */
+export function toSecurityTargetRelevance(
+  value: string | undefined,
+): SecurityTargetRelevance | undefined {
+  if (value === '0' || value === '1' || value === '2') return value;
+  return undefined;
+}
+
+/**
  * Validate and narrow a string to Modalverb.
  */
 export function toModalverb(value: string | undefined): Modalverb | undefined {
@@ -192,9 +203,19 @@ export function parseControl(
   const securityLevelProp = getPropWithMetadata(raw.props, 'sec_level');
   const effortLevelProp = getPropWithMetadata(raw.props, 'effort_level');
   const tagsProp = getPropWithMetadata(raw.props, 'tags');
+  const confidentialityProp = getPropWithMetadata(raw.props, 'confidentiality');
+  const integrityProp = getPropWithMetadata(raw.props, 'integrity');
+  const availabilityProp = getPropWithMetadata(raw.props, 'availability');
+  const authenticityProp = getPropWithMetadata(raw.props, 'authenticity');
+  const threatsProp = getPropWithMetadata(raw.props, 'threats');
   const securityLevel = toSecurityLevel(securityLevelProp?.value);
   const effortLevel = toEffortLevel(effortLevelProp?.value);
   const tags = parseTags(tagsProp?.value);
+  const confidentiality = toSecurityTargetRelevance(confidentialityProp?.value);
+  const integrity = toSecurityTargetRelevance(integrityProp?.value);
+  const availability = toSecurityTargetRelevance(availabilityProp?.value);
+  const authenticity = toSecurityTargetRelevance(authenticityProp?.value);
+  const threats = parseTags(threatsProp?.value);
 
   // Parts
   const statementPart = findPart(raw.parts, 'statement');
@@ -250,6 +271,16 @@ export function parseControl(
     modalverbProp,
     tags,
     tagsProp,
+    confidentiality,
+    confidentialityProp,
+    integrity,
+    integrityProp,
+    availability,
+    availabilityProp,
+    authenticity,
+    authenticityProp,
+    threats,
+    threatsProp,
     statement,
     statementRaw,
     guidance,

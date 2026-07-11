@@ -50,6 +50,7 @@ const control: Control = {
     ns: 'https://example.com/namespaces/modal_verbs.csv',
   },
   tags: ['Governance'],
+  threats: [],
   tagsProp: {
     name: 'tags',
     value: 'Governance',

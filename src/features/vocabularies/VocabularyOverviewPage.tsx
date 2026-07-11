@@ -4,11 +4,13 @@ import { buildVocabularySourceUrl } from '@/domain/vocabulary';
 
 const vocabularyTitles: Record<string, string> = {
   'action_words.csv': 'Handlungsworte',
+  'basethreats.csv': 'Elementare Gefährdungen',
   'documentation_guidelines.csv': 'Dokumentationsvorgaben',
   'effort_level.csv': 'Aufwandsstufen',
   'modal_verbs.csv': 'Modalverben',
   'result.csv': 'Ergebnisse',
   'security_level.csv': 'Sicherheitsniveaus',
+  'security_targets.csv': 'Schutzziele',
   'tags.csv': 'Tags',
   'target_object_categories.csv': 'Zielobjekt-Kategorien',
 };

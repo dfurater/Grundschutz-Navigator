@@ -36,6 +36,7 @@ function makeControl(overrides: Partial<Control> = {}): Control {
       ns: 'https://example.com/namespaces/modal_verbs.csv',
     },
     tags: ['BCM', 'Compliance Management'],
+    threats: [],
     tagsProp: {
       name: 'tags',
       value: 'BCM, Compliance Management',

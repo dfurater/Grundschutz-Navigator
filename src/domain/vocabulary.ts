@@ -21,6 +21,13 @@ export interface ResolvedControlVocabularies {
   securityLevel: VocabularyResolution | null;
   effortLevel: VocabularyResolution | null;
   tags: VocabularyResolution[];
+  securityTargets: {
+    confidentiality: VocabularyResolution | null;
+    integrity: VocabularyResolution | null;
+    availability: VocabularyResolution | null;
+    authenticity: VocabularyResolution | null;
+  };
+  threats: VocabularyResolution[];
   statement: {
     ergebnis: VocabularyResolution | null;
     praezisierung: VocabularyResolution | null;
@@ -187,6 +194,29 @@ export function resolveControlVocabularies(
     securityLevel: resolveVocabularyProp(registry, control.securityLevelProp),
     effortLevel: resolveVocabularyProp(registry, control.effortLevelProp),
     tags: resolveVocabularyValues(registry, control.tagsProp?.ns, control.tags),
+    securityTargets: {
+      confidentiality: resolveVocabularyEntry(
+        registry,
+        control.confidentialityProp?.ns,
+        'Vertraulichkeit (Confidentiality)',
+      ),
+      integrity: resolveVocabularyEntry(
+        registry,
+        control.integrityProp?.ns,
+        'Integrität (Integrity)',
+      ),
+      availability: resolveVocabularyEntry(
+        registry,
+        control.availabilityProp?.ns,
+        'Verfügbarkeit (Availability)',
+      ),
+      authenticity: resolveVocabularyEntry(
+        registry,
+        control.authenticityProp?.ns,
+        'Authentizität (Authenticity)',
+      ),
+    },
+    threats: resolveVocabularyValues(registry, control.threatsProp?.ns, control.threats),
     statement: {
       ergebnis: resolveVocabularyProp(registry, control.statementProps.ergebnisProp),
       praezisierung: resolveVocabularyProp(
@@ -228,4 +258,25 @@ export function collectVocabularySearchTexts(
   }
 
   return [...values];
+}
+
+export function collectControlVocabularySearchTexts(
+  resolved: ResolvedControlVocabularies,
+): string[] {
+  return collectVocabularySearchTexts([
+    resolved.modalverb,
+    resolved.securityLevel,
+    resolved.effortLevel,
+    ...resolved.tags,
+    resolved.securityTargets.confidentiality,
+    resolved.securityTargets.integrity,
+    resolved.securityTargets.availability,
+    resolved.securityTargets.authenticity,
+    ...resolved.threats,
+    resolved.statement.ergebnis,
+    resolved.statement.praezisierung,
+    resolved.statement.handlungsworte,
+    resolved.statement.dokumentation,
+    ...resolved.statement.zielobjektKategorien,
+  ]);
 }

@@ -236,6 +236,52 @@ export function createTestVocabularyRegistry() {
           },
         ],
       }),
+      createNamespace({
+        namespace: 'https://example.com/namespaces/security_targets.csv',
+        path: 'namespaces/security_targets.csv',
+        fileName: 'security_targets.csv',
+        routeId: 'security-targets',
+        entries: [
+          {
+            value: 'Vertraulichkeit (Confidentiality)',
+            definition: 'Schutz vor unbefugter Offenlegung.',
+            columns: { Begriff: 'Vertraulichkeit (Confidentiality)', Definition: 'Schutz vor unbefugter Offenlegung.' },
+          },
+          {
+            value: 'Integrität (Integrity)',
+            definition: 'Schutz vor unbefugter oder unbemerkter Veränderung.',
+            columns: { Begriff: 'Integrität (Integrity)', Definition: 'Schutz vor unbefugter oder unbemerkter Veränderung.' },
+          },
+          {
+            value: 'Verfügbarkeit (Availability)',
+            definition: 'Schutz der rechtzeitigen Nutzbarkeit.',
+            columns: { Begriff: 'Verfügbarkeit (Availability)', Definition: 'Schutz der rechtzeitigen Nutzbarkeit.' },
+          },
+          {
+            value: 'Authentizität (Authenticity)',
+            definition: 'Sicherstellung der Echtheit und Herkunft.',
+            columns: { Begriff: 'Authentizität (Authenticity)', Definition: 'Sicherstellung der Echtheit und Herkunft.' },
+          },
+        ],
+      }),
+      createNamespace({
+        namespace: 'https://example.com/namespaces/basethreats.csv',
+        path: 'namespaces/basethreats.csv',
+        fileName: 'basethreats.csv',
+        routeId: 'basethreats',
+        entries: [
+          {
+            value: 'G 0.18',
+            definition: 'Fehlplanung oder fehlende Anpassung von Prozessen.',
+            columns: { Begriff: 'G 0.18', Definition: 'Fehlplanung oder fehlende Anpassung von Prozessen.' },
+          },
+          {
+            value: 'G 0.19',
+            definition: 'Offenlegung schützenswerter Informationen.',
+            columns: { Begriff: 'G 0.19', Definition: 'Offenlegung schützenswerter Informationen.' },
+          },
+        ],
+      }),
     ],
   };
 

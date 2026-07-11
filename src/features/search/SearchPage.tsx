@@ -98,6 +98,7 @@ export function SearchPage() {
     resultControls,
     emptyFilters,
     sort,
+    vocabularyRegistry,
   );
   const displayedResultCount = Math.min(visibleResultCount, totalResults);
   const visibleTableControls = useMemo(
