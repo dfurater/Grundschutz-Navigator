@@ -4,7 +4,7 @@
 
 ## Überblick
 
-Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application (SPA)** für das Durchsuchen und Filtern des BSI IT-Grundschutzutz-Kontrollkatalogs (Grundschutz++). Die Anwendung wird vollständig im Browser ausgeführt und deployed auf GitHub Pages.
+Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application (SPA)** für das Durchsuchen und Filtern des BSI IT-Grundschutz-Kontrollkatalogs (Grundschutz++). Die Anwendung wird vollständig im Browser ausgeführt und deployed auf GitHub Pages.
 
 ## Technologie-Stack
 
@@ -28,77 +28,84 @@ src/
 │   ├── vocabulary.ts             # BSI-Vokabular-Auflösung
 │   └── controlRelationships.ts   # Steuerungsbeziehungen
 ├── adapters/         # Datentransformationen
-│   └── oscalAdapter.ts            # OSCAL → Domain Model Parser
+│   └── oscalAdapter.ts           # OSCAL → Domain Model Parser
 ├── state/            # Globaler Anwendungszustand
-│   └── CatalogContext.tsx          # Katalog-Kontextprovider
+│   └── CatalogContext.tsx        # Katalog-Kontextprovider
 ├── hooks/            # Wiederverwendbare React Hooks
-│   ├── useCatalog.ts               # Katalog-Daten
-│   ├── useFilteredControls.ts     # Filterlogik
-│   ├── useFilterParams.ts         # URL-Parameter-Sync
+│   ├── useCatalog.ts             # Katalog-Daten
+│   ├── useFilteredControls.ts    # Filterlogik
+│   ├── useFilterParams.ts        # URL-Parameter-Sync
 │   ├── useFocusTrap.ts           # Barrierefreiheit
-│   └── useMediaQuery.ts           # Responsive Design
-├── features/        # Feature-Module (Seite + Komponenten)
+│   └── useMediaQuery.ts          # Responsive Design
+├── features/         # Feature-Module (Seite + Komponenten)
 │   ├── home/
 │   ├── catalog/
-│   ├── vocabularies/
+│   ├── vocabularies/             # Vokabular-Seiten
+│   ├── vocabulary/               # Vokabular-Anzeige-Helpers (display.ts, routes.ts)
 │   ├── search/
-│   ├── export/
-│   └── pages/
-├── components/      # Wiederverwendbare UI-Komponenten
+│   ├── export/                   # CSV-Export
+│   └── pages/                    # About, Impressum, Datenschutz, Lizenzen
+├── components/       # Wiederverwendbare UI-Komponenten
 │   ├── HeaderBar.tsx
 │   ├── Footer.tsx
 │   ├── TreeNav.tsx
 │   ├── FilterSection.tsx
+│   ├── StatusMeta.tsx
 │   └── ...
-├── app/            # Anwendungshell
-│   └── AppShell.tsx                # Routing-Konfiguration
-└── main.tsx       # Einstiegspunkt
+├── app/              # Anwendungshell
+│   └── AppShell.tsx              # Routing-Konfiguration
+└── main.tsx          # Einstiegspunkt
 
-public/data/        # Generierte Katalog-Daten (nicht im Repo)
-scripts/           # Build-Skripte
-  ├── fetch-catalog.sh             # BSI-Katalog-Abruf
-  ├── fetch-catalog.mjs            # Node.js Katalog-Parser
-  └── sync-upstream-manifest.mjs   # Provenance-Metadaten
+public/data/          # Generierte Katalog-Daten (nicht im Repo)
+scripts/              # Build-Skripte
+  ├── fetch-catalog.sh            # Einstiegspunkt: delegiert an fetch-catalog.mjs
+  ├── fetch-catalog.mjs           # Katalog-/Vokabular-Abruf via GitHub-API
+  ├── security-guards.mjs         # Upstream-Allowlist (Repo, Pfade, Refs)
+  ├── vocabulary-utils.mjs        # CSV-Parsing, Manifest-Aufbau
+  └── sync-upstream-manifest.mjs  # Manifest-Sync für update-catalog.yml
+
+upstream-manifest.json            # Gepinnter Upstream-Snapshot (Commit-SHA + Datei-Blobs)
 
 .github/workflows/
   ├── deploy.yml                  # GitHub Pages Deployment
   ├── ci.yml                      # CI Pipeline
-  └── update-catalog.yml          # Katalog-Update-Workflow
+  └── update-catalog.yml          # Automatischer Katalog-Sync
 ```
 
 ## Datenfluss
 
 ```
 BSI GitHub Repository
-(bsi-fuer_it_sicherheit/Grundschutz)
+(BSI-Bund/Stand-der-Technik-Bibliothek)
+  Katalog: Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json
+  Vokabulare: Dokumentation/namespaces/*.csv
         │
         ▼
-scripts/fetch-catalog.sh
-• Clone BSI repo
-• Copy catalog.json → public/data/
-• Generate provenance metadata
-• Compute SHA-256 hash
+scripts/fetch-catalog.sh → scripts/fetch-catalog.mjs
+• Abruf über die GitHub-API (Retry mit Backoff bei transienten Fehlern)
+• Snapshot-Pinning: BSI_SNAPSHOT_SHA aus upstream-manifest.json
+• Security-Guards: nur erlaubtes Repo, erlaubte Pfade, erlaubte Refs
+• Vokabular-CSVs → JSON, Provenance-Metadaten, SHA-256-Hashes
         │
         ▼
 public/data/
-• catalog.json           (OSCAL 1.1.3 JSON)
-• catalog-metadata.json (Provenance + Integrity)
-• vocabularies.json     (Official BSI vocabularies)
-• vocabularies-metadata.json
-• upstream-sources-metadata.json
+• catalog.json                    (OSCAL 1.1.3 JSON)
+• catalog-metadata.json           (Provenance + Integrity)
+• vocabularies.json               (Offizielle BSI-Vokabulare)
+• upstream-sources-metadata.json  (Vokabular-Provenance + Manifest)
         │
         ▼
 CatalogContext (useEffect on mount)
-• fetchCatalogWithBuffer()  → ArrayBuffer
-• parseCatalog()          → enriched Catalog
-• verifyCatalogIntegrity() → VerificationResult
+• fetchCatalogWithBuffer()   → ArrayBuffer (Katalog + Vokabulare parallel)
+• parseCatalog()             → angereicherter Catalog
+• verifyArtifactIntegrity()  → VerificationResult (Katalog + Vokabulare)
 • buildVocabularyRegistry()
         │
         ▼
 Feature-Komponenten und Hooks
-• useFilteredControls()   → gefilterte Steuerungen
-• useSearch()             → FlexSearch-Volltextsuche
-• VocabularyNamespace    → Vokabular-Auflösung
+• useFilteredControls()      → gefilterte Steuerungen
+• useSearch()                → FlexSearch-Volltextsuche
+• resolveControlVocabularies() → Vokabular-Auflösung
 ```
 
 ## Zustandsverwaltung
@@ -120,37 +127,39 @@ Zentraler Provider, der folgende Daten bereitstellt:
 
 ## Routing
 
-Die Anwendung verwendet React Router mit hashbasierten URLs für GitHub Pages Kompatibilität:
+Die Anwendung verwendet React Router mit `BrowserRouter` und pfadbasierten URLs. Das `basename` wird aus `import.meta.env.BASE_URL` abgeleitet (`src/main.tsx`), sodass die App auch unter dem GitHub-Pages-Unterpfad `/Grundschutz-Navigator/` funktioniert. Für Deep Links kopiert das Vite-Plugin `github-pages-spa-fallback` (`vite.config.ts`) beim Build `index.html` nach `404.html`, sodass GitHub Pages unbekannte Pfade an die SPA durchreicht.
 
 | Route | Komponente | Beschreibung |
 |-------|------------|--------------|
 | `/` | HomePage | Startseite |
-| `/catalog` | CatalogBrowser | Katalog-Browser |
-| `/catalog/:practiceId` | CatalogBrowser | Practice-Filter |
-| `/catalog/:practiceId/:controlId` | ControlDetail | Steuerungsdetail |
-| `/search` | SearchPage | Volltextsuche |
-| `/glossar` | VocabularyOverviewPage | Vokabular-Übersicht |
-| `/glossar/:namespace` | VocabularyNamespacePage | Vokabular-Namensraum |
-| `/impressum` | ImpressumPage | Impressum |
+| `/katalog` | CatalogBrowser | Katalog-Browser (Liste + Detail) |
+| `/katalog/:groupId` | CatalogBrowser | Practice-, Topic- oder Control-Auswahl |
+| `/suche` | SearchPage | Volltextsuche |
+| `/vokabular` | VocabularyOverviewPage | Vokabular-Übersicht |
+| `/vokabular/:namespaceId` | VocabularyNamespacePage | Vokabular-Namensraum |
+| `/about` | AboutPage | Über das Projekt (inkl. Provenance/Integrität) |
 | `/datenschutz` | DatenschutzPage | Datenschutzerklärung |
+| `/impressum` | ImpressumPage | Impressum |
 | `/lizenzen` | LizenzenPage | Lizenzen |
+| `/mehr` | — | Redirect auf `/about` |
+| `*` | — | 404-Seite |
 
 ## Filter-System
 
-Filter werden bidirektional mit URL-Suchparametern synchronisiert:
+Filter werden bidirektional mit URL-Suchparametern synchronisiert (`src/hooks/useFilterParams.ts`). Die Parameter-Keys sind bewusst kurz gehalten:
 
-- `practice` — Practice-ID(s)
-- `topic` — Topic-ID(s)
-- `sec_level` — Sicherheitsniveau (normal-SdT, erhöht)
-- `effort` — Aufwandsstufe (0-5)
-- `modalverb` — Verpflichtungsgrad (MUSS, SOLLTE, KANN)
+- `sl` — Sicherheitsniveau (`normal-SdT`, `erhöht`)
+- `el` — Aufwandsstufe (0–5)
+- `mv` — Modalverb (MUSS, SOLLTE, KANN)
 - `tags` — Tags
-- `zielobjekt` — Zielobjekt-Kategorien
-- `handlungswort` — Handlungswort
-- `dokumentation` — Dokumentationstyp
-- `link` — Link-Beziehungen (related, required)
+- `zk` — Zielobjekt-Kategorien
+- `hw` — Handlungswort
+- `dt` — Dokumentationstyp
+- `lr` — Link-Beziehungen (`related`, `required`)
 - `q` — Freitextsuche
 - `sort` — Sortierfeld + Richtung
+
+Practice- und Topic-Auswahl laufen über die Route (`/katalog/:groupId`), nicht über Query-Parameter.
 
 Siehe [FILTERING.md](./FILTERING.md) für Details.
 
@@ -183,40 +192,36 @@ import { Control } from '@/domain/models';
 import { parseCatalog } from '@/adapters/oscalAdapter';
 ```
 
-Konfiguration in `tsconfig.json`:
-
-```json
-{
-  "compilerOptions": {
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  }
-}
-```
+Konfiguriert in `tsconfig.app.json` (`compilerOptions.paths`) und `vite.config.ts` (`resolve.alias`).
 
 ## Umgebungsvariablen
 
-| Variable | Beschreibung |
-|----------|---------------|
-| `VITE_APP_TITLE` | Anwendungstitel |
-| `VITE_BSI_REPO` | BSI GitHub Repository |
-| `VITE_BSI_CATALOG_PATH` | Pfad zur OSCAL-Datei |
-| `VITE_IMPRESSUM_NAME` | Impressum Name |
-| `VITE_IMPRESSUM_EMAIL` | Impressum E-Mail |
-| `BASE_URL` | Basis-URL für GitHub Pages Deployment |
+| Variable | Kontext | Beschreibung |
+|----------|---------|---------------|
+| `VITE_IMPRESSUM_NAME` | App (Build) | Impressum: Name |
+| `VITE_IMPRESSUM_STRASSE` | App (Build) | Impressum: Straße |
+| `VITE_IMPRESSUM_PLZ_ORT` | App (Build) | Impressum: PLZ und Ort |
+| `VITE_IMPRESSUM_EMAIL` | App (Build) | Impressum: E-Mail |
+| `VITE_IMPRESSUM_TELEFON` | App (Build) | Impressum: Telefon |
+| `BASE_URL` | App (Vite) | Basis-URL, von Vite aus `base` abgeleitet |
+| `BUILD_BASE` | Build | Überschreibt die GitHub-Pages-Base (`vite.config.ts`) |
+| `BSI_SNAPSHOT_SHA` | fetch-catalog | Pinnt den Upstream-Abruf auf einen Commit |
+| `GH_TOKEN` / `GITHUB_TOKEN` | fetch-catalog | Token für die GitHub-API (optional lokal, gesetzt in CI) |
+
+Die Impressum-Werte kommen lokal aus `.env.local` (nicht committet, siehe `.env.local.example`) und in CI aus GitHub Actions Secrets.
 
 ## Deployment
 
-Das Deployment erfolgt automatisch via GitHub Actions bei Push auf `main`:
+Das Deployment erfolgt automatisch via GitHub Actions bei Push auf `main` (`.github/workflows/deploy.yml`):
 
-1. Katalog wird von BSI GitHub abgerufen
-2. Tests werden ausgeführt
-3. App wird gebaut mit Impressum-Secrets
-4. SLSA Provenance wird generiert
-5. Deployment auf GitHub Pages
+1. Gepinnter Snapshot-Commit wird aus `upstream-manifest.json` gelesen
+2. Katalog und Vokabulare werden von BSI GitHub abgerufen (`npm run fetch-catalog`)
+3. Tests laufen mit Coverage
+4. App wird gebaut mit Impressum-Secrets
+5. SLSA-Provenance wird generiert (`actions/attest` über `dist/**`)
+6. Deployment auf GitHub Pages
 
-Der Katalog wird **nie** im Repository committet — er wird immer frisch zum Build-Zeitpunkt von BSI abgerufen.
+Der Katalog wird **nie** im Repository committet — er wird immer frisch zum Build-Zeitpunkt von BSI abgerufen. Der Workflow `.github/workflows/update-catalog.yml` überwacht das Upstream-Repository und aktualisiert `upstream-manifest.json` automatisch, wenn sich Katalog oder Namespace-Dateien ändern.
 
 ## Siehe auch
 

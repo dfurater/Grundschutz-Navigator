@@ -1,72 +1,55 @@
 # Integritätsprüfung — Grundschutz++ Navigator
 
-Beschreibung des SHA-256 Hash-Verifikation und Provenance-Metadaten-Systems.
+Beschreibung der SHA-256 Hash-Verifikation und des Provenance-Metadaten-Systems.
 
 ## Überblick
 
 Die Anwendung verwendet ein **Integrity-Verification-System**, das:
 
-1. **Zum Build-Zeitpunkt**: SHA-256 Hash des Katalogs berechnen und in Metadaten speichern
-2. **Zur Laufzeit**: Hash erneut berechnen und mit gespeicherten Wert vergleichen
-3. **In der UI**: Prüfungsergebnis anzeigen
+1. **Zum Build-Zeitpunkt**: SHA-256 Hash der Artefakte berechnet und in Metadaten speichert
+2. **Zur Laufzeit**: Hash erneut berechnet und mit dem gespeicherten Wert vergleicht
+3. **In der UI**: Prüfungsergebnis anzeigt
 
-Das System stellt sicher, dass der geladene Katalog dem ursprünglich abgerufenen Katalog entspricht und nicht manipuliert wurde.
+Das System stellt sicher, dass die geladenen Artefakte den ursprünglich abgerufenen entsprechen und nicht manipuliert wurden.
 
-## Build-Zeitpunkt (scripts/fetch-catalog.sh)
+## Build-Zeitpunkt (scripts/fetch-catalog.sh → fetch-catalog.mjs)
 
-Beim Abrufen des Katalogs werden folgende Schritte ausgeführt:
+`scripts/fetch-catalog.sh` ist nur der Einstiegspunkt: Es ruft `scripts/fetch-catalog.mjs` auf und schreibt die von dort gelieferten Artefakte nach `public/data/` — ausschließlich Dateien aus einer festen Allowlist:
 
-### 1. Katalog-Abruf
+- `catalog.json` — der OSCAL-Katalog
+- `catalog-metadata.json` — Katalog-Provenance + Integrity
+- `vocabularies.json` — offizielle BSI-Vokabulare (aus CSV konvertiert)
+- `upstream-sources-metadata.json` — Vokabular-Provenance + Upstream-Manifest
 
-```bash
-#!/bin/bash
-# fetch-catalog.sh
+`fetch-catalog.mjs` führt den eigentlichen Abruf durch:
 
-BSI_REPO="${BSI_REPO:-bsi-fuer_it_sicherheit/Grundschutz}"
-CATALOG_PATH="${CATALOG_PATH:-oscal/convert json/documentation-NIST}"
+1. **Quelle fest verdrahtet**: Repository und Katalogpfad kommen aus `scripts/security-guards.mjs` (`BSI-Bund/Stand-der-Technik-Bibliothek`, `Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json`). Abweichende Repos, Pfade oder Refs werden abgelehnt.
+2. **Snapshot-Pinning**: Ist `BSI_SNAPSHOT_SHA` gesetzt (in CI aus `upstream-manifest.json` gelesen), wird exakt dieser Commit abgerufen statt `main`.
+3. **Abruf über die GitHub-API** mit Retry und Backoff bei transienten Fehlern; optional authentifiziert über `GH_TOKEN`/`GITHUB_TOKEN`.
+4. **Integritätsdaten**: SHA-256, Dateigröße, Git-Blob-SHA und Commit-Informationen werden je Artefakt erfasst.
 
-# Clone BSI repository
-gh repo clone "$BSI_REPO" /tmp/bsi-repo -- --depth=1
-
-# Copy catalog to public/data/
-cp "/tmp/bsi-repo/$CATALOG_PATH" public/data/catalog.json
-```
-
-### 2. SHA-256 Berechnung
-
-```bash
-# Compute SHA-256 hash
-CHECKSUM=$(sha256sum public/data/catalog.json | cut -d' ' -f1)
-
-# Get file size
-SIZE=$(stat -f%z public/data/catalog.json)
-
-# Get git blob SHA
-BLOB_SHA=$(git hash-object public/data/catalog.json)
-```
-
-### 3. Provenance-Metadaten generieren
-
-Die Metadaten werden in `catalog-metadata.json` geschrieben:
+### Provenance-Metadaten (catalog-metadata.json)
 
 ```json
 {
   "source": {
-    "repository": "bsi-fuer_it_sicherheit/Grundschutz",
-    "file": "oscal/convert json/documentation-NIST",
-    "commit_sha": "abc123...",
-    "commit_date": "2024-01-15T10:30:00Z",
-    "git_blob_sha": "def456..."
+    "repository": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek",
+    "file": "Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json",
+    "commit_sha": "d6153cbb…",
+    "commit_date": "2026-07-03T09:37:29Z",
+    "git_blob_sha": "b980d97d…",
+    "upstream_sha256": "dab255ae…",
+    "upstream_size_bytes": 5377756
   },
   "integrity": {
-    "sha256": "abc123def456...",
-    "size_bytes": 1234567,
-    "fetched_at": "2024-01-15T10:35:00Z"
+    "sha256": "dab255ae…",
+    "size_bytes": 5377756,
+    "fetched_at": "2026-07-11T15:42:56.334Z"
   },
   "build": {
-    "workflow_run_id": "1234567890",
-    "workflow_run_url": "https://github.com/...",
-    "runner_environment": "Linux"
+    "workflow_run_id": "…",
+    "workflow_run_url": "…",
+    "runner_environment": "…"
   }
 }
 ```
@@ -84,19 +67,16 @@ export async function computeSHA256(buffer: ArrayBuffer): Promise<string> {
 }
 ```
 
-### Catalog Integrity Verifikation
+### Artefakt-Verifikation
+
+Eine gemeinsame Funktion prüft Katalog und Vokabulare; der Metadaten-Typ ist eine Union:
 
 ```typescript
-export async function verifyCatalogIntegrity(
-  catalogBuffer: ArrayBuffer,
-  metadata: CatalogProvenance,
-): Promise<VerificationResult> {
-  return verifyArtifactIntegrity(catalogBuffer, metadata);
-}
+type IntegrityMetadata = CatalogProvenance | VocabularyProvenance;
 
 export async function verifyArtifactIntegrity(
   artifactBuffer: ArrayBuffer,
-  metadata: CatalogProvenance,
+  metadata: IntegrityMetadata,
 ): Promise<VerificationResult> {
   const computedHash = await computeSHA256(artifactBuffer);
   const sourceCommit =
@@ -114,19 +94,32 @@ export async function verifyArtifactIntegrity(
 }
 ```
 
-### Provenance Abruf
+### Provenance-Abruf
 
 ```typescript
 export async function fetchProvenance(
   metadataUrl: string,
 ): Promise<CatalogProvenance> {
-  const response = await fetch(metadataUrl);
+  return fetchJsonDocument<CatalogProvenance>(metadataUrl, 'catalog metadata');
+}
+
+export async function fetchVocabularyProvenance(
+  metadataUrl: string,
+): Promise<VocabularyProvenance> {
+  return fetchJsonDocument<VocabularyProvenance>(metadataUrl, 'vocabulary metadata');
+}
+
+export async function fetchJsonDocument<T>(
+  url: string,
+  label = 'JSON document',
+): Promise<T> {
+  const response = await fetch(url);
   if (!response.ok) {
     throw new Error(
-      `Failed to load catalog metadata: ${response.status} ${response.statusText}`,
+      `Failed to load ${label}: ${response.status} ${response.statusText}`,
     );
   }
-  return response.json();
+  return response.json() as Promise<T>;
 }
 ```
 
@@ -151,56 +144,13 @@ export async function fetchCatalogWithBuffer(
 
 ## CatalogContext Integration
 
-In `src/state/CatalogContext.tsx` wird beides kombiniert:
+`src/state/CatalogContext.tsx` orchestriert den Ladevorgang:
 
-```typescript
-useEffect(() => {
-  async function loadCatalog() {
-    dispatch({ type: 'LOAD_START' });
-
-    try {
-      // 1. Fetch catalog (as ArrayBuffer for integrity check + text for parsing)
-      const { buffer, text } = await fetchCatalogWithBuffer(catalogUrl);
-
-      // 2. Parse OSCAL JSON into domain model
-      const rawJson = JSON.parse(text);
-      const catalog = parseCatalog(rawJson);
-
-      // 3. Try to fetch provenance metadata and verify integrity
-      let provenance: CatalogProvenance | null = null;
-      let verification: VerificationResult | null = null;
-
-      try {
-        provenance = await fetchProvenance(metadataUrl);
-        if (!cancelled) {
-          verification = await verifyCatalogIntegrity(buffer, provenance);
-        }
-      } catch {
-        console.warn(
-          'Catalog provenance metadata not available. Integrity verification skipped.',
-        );
-      }
-
-      dispatch({
-        type: 'LOAD_SUCCESS',
-        catalog,
-        provenance,
-        verification,
-        // vocabulary data...
-      });
-    } catch (err) {
-      dispatch({
-        type: 'LOAD_ERROR',
-        error: err instanceof Error
-          ? err.message
-          : 'Unbekannter Fehler beim Laden des Katalogs',
-      });
-    }
-  }
-
-  loadCatalog();
-}, [catalogUrl, metadataUrl/* ... */]);
-```
+1. `catalog.json` und `vocabularies.json` werden **parallel** als ArrayBuffer geladen (Startlatenz).
+2. Der Katalog wird geparst (`parseCatalog`), das Vokabular-Registry gebaut (`buildVocabularyRegistry`).
+3. Für den Katalog wird `catalog-metadata.json` geladen und `verifyArtifactIntegrity` ausgeführt; für die Vokabulare `upstream-sources-metadata.json`.
+4. Fehlende Metadaten sind kein harter Fehler: Die App läuft weiter, die Verifikation wird übersprungen und eine Warnung geloggt (z.B. lokale Entwicklung ohne `npm run fetch-catalog`).
+5. Ein `cancelled`-Flag verhindert State-Updates nach Unmount.
 
 ## VerificationResult Typ
 
@@ -216,35 +166,17 @@ interface VerificationResult {
 
 ## UI-Anzeige
 
-Das Prüfungsergebnis wird in der UI angezeigt (z.B. in der Footer oder Status-Komponente):
+Provenance und Verifikationsergebnis werden auf der Seite **„Über das Projekt"** (`/about`, `src/features/pages/AboutPage.tsx`) angezeigt:
 
-- **Gültig**: Grün/Symbol "Verifiziert"
-- **Ungültig**: Rot/Warnung mit Details
-- **Ausstehend**: Blau "Prüfe..."
-- **Fehler**: Grau "Nicht verifizierbar"
+- **Gültig**: Erfolgs-Banner mit Hash-Bestätigung
+- **Ungültig**: Warn-Banner mit Details
+- **Nicht verifizierbar**: neutraler Hinweis (Metadaten fehlen)
 
-Beispiel:
-
-```
-Integrität: ✓ Verifiziert (SHA-256)
-Quelle: bsi-fuer_it_sicherheit/Grundschutz @ abc123def
-Abgerufen: 15.01.2024, 10:35 UTC
-```
+Dazu kommen Quell-Repository, Commit-SHA und Abrufzeitpunkt mit Link auf den exakten Upstream-Stand.
 
 ## Vocabulary Integrity
 
-Das gleiche System gilt für Vocabulary-Dateien:
-
-```typescript
-export async function verifyArtifactIntegrity(
-  artifactBuffer: ArrayBuffer,
-  metadata: VocabularyProvenance,
-): Promise<VerificationResult> {
-  // Same logic as CatalogProvenance
-}
-```
-
-Metadaten werden in `vocabularies-metadata.json` und `upstream-sources-metadata.json` gespeichert.
+Das gleiche System gilt für das Vokabular-Artefakt `vocabularies.json`. Dessen Provenance steht in `upstream-sources-metadata.json`, das zusätzlich das Upstream-Manifest (Katalog + alle Namespace-Dateien mit Git-Blob-SHAs und einer Manifest-Signatur) enthält. `verifyArtifactIntegrity` verarbeitet beide Provenance-Typen über die `IntegrityMetadata`-Union.
 
 ## Typen (src/domain/models.ts)
 
@@ -290,23 +222,16 @@ interface VocabularyProvenance {
 
 Die Integritätsprüfung kann in folgenden Fällen nicht durchgeführt werden:
 
-1. **Lokale Entwicklung**: Ohne `catalog-metadata.json` (wenn `fetch-catalog.sh` nicht ausgeführt wurde)
-2. **API-Fehler**: Wenn die Metadaten nicht geladen werden können
-3. **Alte Versionen**: Wenn die Katalogversion aktualisiert wurde
+1. **Lokale Entwicklung**: Ohne Metadaten-Dateien (wenn `npm run fetch-catalog` nicht ausgeführt wurde)
+2. **Abruf-Fehler**: Wenn die Metadaten nicht geladen werden können
 
 In diesen Fällen wird:
-- Der Katalog trotzdem verwendet (mit Warnung)
+- Der Katalog trotzdem verwendet (mit Warnung in der Konsole)
 - "Nicht verifizierbar" in der UI angezeigt
 
 ## SLSA Provenance
 
-Zusätzlich zur internen Integritätsprüfung wird SLSA (Supply chain Levels for Software Artifacts) Provenance generiert (in `.github/workflows/deploy.yml`):
-
-- **Build Level**: 3 (nicht replaybar)
-- **Provenancen**: Signiert mit OIDC
-- **Attestation**: In `attestation.json` gespeichert
-
-Siehe `.github/workflows/deploy.yml` für die SLSA-Konfiguration.
+Zusätzlich zur internen Integritätsprüfung generiert `.github/workflows/deploy.yml` Build-Provenance über GitHub Artifact Attestations (`actions/attest` mit `subject-path: dist/**`). Die Attestierung wird OIDC-signiert und bei GitHub gespeichert; sie belegt, welcher Workflow-Lauf die deployten Artefakte gebaut hat.
 
 ## Sicherheitshinweise
 
@@ -314,6 +239,7 @@ Siehe `.github/workflows/deploy.yml` für die SLSA-Konfiguration.
 - **Git Blob SHA** wird zusätzlich verwendet für Git-Integration
 - **Workflow Run ID** ermöglicht Rückverfolgung zum Build-Prozess
 - **Runner Environment** identifiziert die Build-Plattform
+- **Upstream-Allowlist** (`scripts/security-guards.mjs`) verhindert, dass der Fetch auf fremde Repos oder Pfade umgelenkt wird
 
 ## Siehe auch
 
@@ -323,5 +249,5 @@ Siehe `.github/workflows/deploy.yml` für die SLSA-Konfiguration.
 - [VOCABULARY.md](./VOCABULARY.md) — Vokabular-System
 - `src/domain/integrity.ts` — Integrity-Implementierung
 - `src/state/CatalogContext.tsx` — Context-Integration
-- `scripts/fetch-catalog.sh` — Build-Skript
+- `scripts/fetch-catalog.sh` / `scripts/fetch-catalog.mjs` — Build-Skripte
 - `.github/workflows/deploy.yml` — Deployment mit SLSA
