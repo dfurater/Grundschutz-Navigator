@@ -113,6 +113,72 @@ function makeVerification(valid: boolean): NonNullable<CatalogState['verificatio
   };
 }
 
+function makeVocabularyProvenance(): NonNullable<CatalogState['vocabularyProvenance']> {
+  const modalNamespace =
+    'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/modal_verbs.csv';
+
+  return {
+    source: {
+      repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
+      catalogPath: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
+      snapshotCommitSha: 'fedcba0987654321fedcba0987654321fedcba09',
+      snapshotCommitDate: '2026-03-05T08:08:21Z',
+    },
+    manifest: {
+      repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
+      snapshotCommitSha: 'fedcba0987654321fedcba0987654321fedcba09',
+      catalogPath: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
+      files: [
+        {
+          kind: 'catalog',
+          path: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
+          gitBlobSha: 'blob-catalog',
+        },
+        {
+          kind: 'namespace',
+          path: 'Dokumentation/namespaces/modal_verbs.csv',
+          namespace: modalNamespace,
+          gitBlobSha: 'blob-modal',
+        },
+      ],
+      signatureSha256: 'signature-abc',
+    },
+    files: [
+      {
+        namespace: modalNamespace,
+        path: 'Dokumentation/namespaces/modal_verbs.csv',
+        fileName: 'modal_verbs.csv',
+        routeId: 'dokumentation-namespaces-modal-verbs',
+        gitBlobSha: 'blob-modal',
+        sha256: 'csv-hash-123',
+        sizeBytes: 123,
+      },
+    ],
+    integrity: {
+      sha256: 'vocab-hash-789',
+      size_bytes: 77,
+      fetched_at: '2026-03-06T09:10:11Z',
+    },
+    build: {
+      workflow_run_id: '100',
+      workflow_run_url: null,
+      runner_environment: 'github-hosted',
+    },
+  };
+}
+
+function makeVocabularyVerification(
+  valid: boolean,
+): NonNullable<CatalogState['vocabularyVerification']> {
+  return {
+    valid,
+    computedHash: valid ? 'vocab-hash-789' : 'vocab-hash-other',
+    expectedHash: 'vocab-hash-789',
+    sourceCommit: 'fedcba0987654321fedcba0987654321fedcba09',
+    fetchedAt: '2026-03-06T09:10:11Z',
+  };
+}
+
 describe('AboutPage', () => {
   beforeEach(() => {
     mockedUseCatalog.mockReset();
@@ -225,5 +291,62 @@ describe('AboutPage', () => {
     expect(failureDetail.className).toContain('text-[var(--color-danger-text)]');
     expect(failureBanner?.className).toContain('bg-[var(--color-danger-surface)]');
     expect(failureBanner?.className).not.toMatch(/\b(?:bg|text)-(?:green|red)-/);
+  });
+
+  it('shows the vocabulary verification result with provenance details', () => {
+    const state = makeCatalogState();
+    state.vocabularyProvenance = makeVocabularyProvenance();
+    state.vocabularyVerification = makeVocabularyVerification(true);
+    mockedUseCatalog.mockReturnValue(state);
+
+    render(<AboutPage />);
+
+    expect(screen.getByText('Vokabulare verifiziert')).toBeInTheDocument();
+    expect(
+      screen.getByText('Vokabular-Hash stimmt mit den Build-Metadaten überein'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Abgerufen am')).toBeInTheDocument();
+    expect(screen.getByText('Namespace-Dateien')).toBeInTheDocument();
+    expect(screen.getByText('fedcba098765')).toBeInTheDocument();
+  });
+
+  it('uses semantic token classes for the vocabulary verification states', () => {
+    const validState = makeCatalogState();
+    validState.vocabularyProvenance = makeVocabularyProvenance();
+    validState.vocabularyVerification = makeVocabularyVerification(true);
+
+    const invalidState = makeCatalogState();
+    invalidState.vocabularyProvenance = makeVocabularyProvenance();
+    invalidState.vocabularyVerification = makeVocabularyVerification(false);
+
+    mockedUseCatalog
+      .mockReturnValueOnce(validState)
+      .mockReturnValueOnce(invalidState);
+
+    const { rerender } = render(<AboutPage />);
+
+    const successTitle = screen.getByText('Vokabulare verifiziert');
+    expect(successTitle.className).toContain('text-[var(--color-success-text)]');
+
+    rerender(<AboutPage />);
+
+    const failureTitle = screen.getByText('Vokabular-Verifikation fehlgeschlagen');
+    const failureDetail = screen.getByText(
+      'Vokabular-Hash weicht von den Build-Metadaten ab',
+    );
+
+    expect(failureTitle.className).toContain('text-[var(--color-danger-text)]');
+    expect(failureDetail.className).toContain('text-[var(--color-danger-text)]');
+    expect(failureTitle.className).not.toMatch(/\b(?:bg|text)-(?:green|red)-/);
+  });
+
+  it('shows a pending state while the vocabulary verification has not completed', () => {
+    const state = makeCatalogState();
+    state.vocabularyProvenance = makeVocabularyProvenance();
+    mockedUseCatalog.mockReturnValue(state);
+
+    render(<AboutPage />);
+
+    expect(screen.getByText('Verifikation ausstehend…')).toBeInTheDocument();
   });
 });

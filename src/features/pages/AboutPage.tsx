@@ -205,7 +205,13 @@ function LinkRow({ label, href }: { label: string; href: string }) {
 }
 
 export function AboutPage() {
-  const { provenance, verification, catalog } = useCatalog();
+  const {
+    provenance,
+    verification,
+    catalog,
+    vocabularyProvenance,
+    vocabularyVerification,
+  } = useCatalog();
   const metadata = catalog?.metadata;
   const backMatter = catalog?.backMatter ?? [];
   const appCatalogUrl = buildAppCatalogUrl();
@@ -214,6 +220,11 @@ export function AboutPage() {
   const verificationTone = verification?.valid
     ? verificationSuccessTone
     : verification
+      ? verificationFailureTone
+      : null;
+  const vocabularyVerificationTone = vocabularyVerification?.valid
+    ? verificationSuccessTone
+    : vocabularyVerification
       ? verificationFailureTone
       : null;
 
@@ -379,6 +390,71 @@ export function AboutPage() {
               </div>
             )}
           </div>
+
+          {vocabularyProvenance && (
+            <div className={`${surfacePanelClass} mt-5 overflow-hidden`}>
+              <div className="px-4 py-3">
+                <p className="type-meta">Vokabulare</p>
+                <p className="mt-1 text-sm font-medium text-[var(--color-text-primary)]">
+                  Offizielle BSI-Vokabulare aus demselben Upstream-Snapshot
+                </p>
+              </div>
+
+              <div className="border-t border-[var(--color-border-default)]">
+                <div
+                  className={`px-4 py-3 ${
+                    vocabularyVerificationTone?.banner ?? 'bg-[var(--color-surface-subtle)]'
+                  }`}
+                >
+                  {vocabularyVerification ? (
+                    <div className="flex items-center gap-2.5">
+                      <IconShieldCheck
+                        className={`h-4.5 w-4.5 ${vocabularyVerificationTone!.icon}`}
+                      />
+                      <div>
+                        <span
+                          className={`text-sm font-semibold ${vocabularyVerificationTone!.text}`}
+                        >
+                          {vocabularyVerification.valid
+                            ? 'Vokabulare verifiziert'
+                            : 'Vokabular-Verifikation fehlgeschlagen'}
+                        </span>
+                        <p className={`mt-0.5 text-xs ${vocabularyVerificationTone!.text}`}>
+                          {vocabularyVerification.valid
+                            ? 'Vokabular-Hash stimmt mit den Build-Metadaten überein'
+                            : 'Vokabular-Hash weicht von den Build-Metadaten ab'}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="type-meta">Verifikation ausstehend…</span>
+                  )}
+                </div>
+
+                <div className="divide-y divide-[var(--color-border-subtle)] bg-[var(--color-surface-base)]">
+                  <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+                    <span className={metaLabelClass}>Abgerufen am</span>
+                    <span className={metaValueClass}>
+                      {formatDate(vocabularyProvenance.integrity.fetched_at)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+                    <span className={metaLabelClass}>Namespace-Dateien</span>
+                    <span className={metaValueClass}>
+                      {vocabularyProvenance.files.length}
+                    </span>
+                  </div>
+                  {vocabularyProvenance.source.snapshotCommitSha &&
+                    vocabularyProvenance.source.snapshotCommitSha !== 'unknown' && (
+                      <CopyableValue
+                        label="Snapshot-Commit"
+                        value={vocabularyProvenance.source.snapshotCommitSha.slice(0, 12)}
+                      />
+                    )}
+                </div>
+              </div>
+            </div>
+          )}
         </section>
 
         {catalog && metadata && (

@@ -416,8 +416,26 @@ export interface UpstreamManifest {
 /*  Provenance / Integrity Types                                       */
 /* ------------------------------------------------------------------ */
 
+/** Per-file provenance for a fetched vocabulary namespace file */
+export interface VocabularyFileProvenance {
+  namespace: string;
+  path: string;
+  fileName: string;
+  routeId: string;
+  gitBlobSha: string;
+  sha256: string;
+  sizeBytes: number;
+}
+
 export interface VocabularyProvenance {
-  source: UpstreamManifest;
+  source: {
+    repository: string;
+    catalogPath: string;
+    snapshotCommitSha: string;
+    snapshotCommitDate?: string;
+  };
+  manifest: UpstreamManifest;
+  files: VocabularyFileProvenance[];
   integrity: {
     sha256: string;
     size_bytes: number;

@@ -740,6 +740,20 @@ describe('fetch-catalog', () => {
       'Dokumentation/namespaces/action_words.csv',
       'Dokumentation/namespaces/result.csv',
     ]);
+
+    const vocabulariesArtifact = payload.artifacts.find(
+      (artifact) => artifact.fileName === 'vocabularies.json',
+    );
+    expect(vocabulariesArtifact).toBeDefined();
+    const vocabulariesBuffer = Buffer.from(vocabulariesArtifact!.contentsBase64, 'base64');
+
+    expect(upstreamMetadata.integrity.sha256).toBe(sha256Hex(vocabulariesBuffer));
+    expect(upstreamMetadata.integrity.size_bytes).toBe(vocabulariesBuffer.length);
+    expect(typeof upstreamMetadata.integrity.fetched_at).toBe('string');
+    expect(typeof upstreamMetadata.build.workflow_run_id).toBe('string');
+    expect(upstreamMetadata.build.runner_environment).toBeDefined();
+    expect(upstreamMetadata.source.snapshotCommitSha).toBe(snapshotSha);
+    expect(upstreamMetadata.manifest.signatureSha256).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it('serializes generated metadata with a trailing newline', () => {

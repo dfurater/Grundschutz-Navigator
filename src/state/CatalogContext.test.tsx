@@ -5,6 +5,7 @@ import type {
   VocabularyRegistryData,
 } from '@/domain/models';
 import { CatalogProvider } from './CatalogContext';
+import { computeSHA256 } from '@/domain/integrity';
 import { useCatalog } from '@/hooks/useCatalog';
 
 const securityNamespace =
@@ -114,37 +115,56 @@ const vocabularyRegistryData: VocabularyRegistryData = {
   ],
 };
 
-const vocabularyProvenance: VocabularyProvenance = {
-  source: {
-    repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
-    snapshotCommitSha: 'snapshot-123',
-    catalogPath: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
+function makeVocabularyProvenance(sha256: string, sizeBytes: number): VocabularyProvenance {
+  return {
+    source: {
+      repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
+      catalogPath: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
+      snapshotCommitSha: 'snapshot-123',
+      snapshotCommitDate: '2026-03-26T00:00:00Z',
+    },
+    manifest: {
+      repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
+      snapshotCommitSha: 'snapshot-123',
+      catalogPath: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
+      files: [
+        {
+          kind: 'catalog',
+          path: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
+          gitBlobSha: 'blob-catalog',
+        },
+        {
+          kind: 'namespace',
+          path: 'Dokumentation/namespaces/security_level.csv',
+          namespace: securityNamespace,
+          gitBlobSha: 'blob-security',
+        },
+      ],
+      signatureSha256: 'signature-123',
+    },
     files: [
       {
-        kind: 'catalog',
-        path: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
-        gitBlobSha: 'blob-catalog',
-      },
-      {
-        kind: 'namespace',
-        path: 'Dokumentation/namespaces/security_level.csv',
         namespace: securityNamespace,
+        path: 'Dokumentation/namespaces/security_level.csv',
+        fileName: 'security_level.csv',
+        routeId: 'dokumentation-namespaces-security-level',
         gitBlobSha: 'blob-security',
+        sha256: 'csv-hash-security',
+        sizeBytes: 64,
       },
     ],
-    signatureSha256: 'signature-123',
-  },
-  integrity: {
-    sha256: 'sha-vocab',
-    size_bytes: 42,
-    fetched_at: '2026-03-27T12:00:00Z',
-  },
-  build: {
-    workflow_run_id: 'local',
-    workflow_run_url: null,
-    runner_environment: 'local',
-  },
-};
+    integrity: {
+      sha256,
+      size_bytes: sizeBytes,
+      fetched_at: '2026-03-27T12:00:00Z',
+    },
+    build: {
+      workflow_run_id: 'local',
+      workflow_run_url: null,
+      runner_environment: 'local',
+    },
+  };
+}
 
 describe('CatalogProvider', () => {
   beforeEach(() => {
@@ -152,6 +172,13 @@ describe('CatalogProvider', () => {
   });
 
   it('loads catalog and vocabulary artifacts together without external runtime fetches', async () => {
+    const vocabularyResponseText = JSON.stringify(vocabularyRegistryData);
+    const vocabularyResponseBytes = new TextEncoder().encode(vocabularyResponseText);
+    const vocabularyProvenance = makeVocabularyProvenance(
+      await computeSHA256(vocabularyResponseBytes.buffer as ArrayBuffer),
+      vocabularyResponseBytes.byteLength,
+    );
+
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(
       async (input) => {
         const url = String(input);
@@ -191,7 +218,7 @@ describe('CatalogProvider', () => {
         }
 
         if (url === '/vocabularies.json') {
-          return new Response(JSON.stringify(vocabularyRegistryData), {
+          return new Response(vocabularyResponseText, {
             status: 200,
             headers: { 'Content-Type': 'application/json' },
           });
@@ -233,7 +260,10 @@ describe('CatalogProvider', () => {
         ?.entriesByValue.get('erhöht')
         ?.definition,
     ).toBe('Erhöhte Sicherheitsstufe');
-    expect(result.current.vocabularyProvenance?.source.signatureSha256).toBe('signature-123');
+    expect(result.current.vocabularyProvenance?.manifest.signatureSha256).toBe('signature-123');
+    expect(result.current.vocabularyVerification?.valid).toBe(true);
+    expect(result.current.vocabularyVerification?.sourceCommit).toBe('snapshot-123');
+    expect(result.current.vocabularyVerification?.fetchedAt).toBe('2026-03-27T12:00:00Z');
     expect(fetchSpy.mock.calls.map(([url]) => String(url))).toEqual([
       '/catalog.json',
       '/vocabularies.json',
