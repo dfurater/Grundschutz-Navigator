@@ -148,7 +148,7 @@ export async function fetchCatalogWithBuffer(
 
 1. `catalog.json` und `vocabularies.json` werden **parallel** als ArrayBuffer geladen (Startlatenz).
 2. Der Katalog wird geparst (`parseCatalog`), das Vokabular-Registry gebaut (`buildVocabularyRegistry`).
-3. Für den Katalog wird `catalog-metadata.json` geladen und `verifyArtifactIntegrity` ausgeführt; für die Vokabulare `upstream-sources-metadata.json` (zur derzeitigen Einschränkung der Vokabular-Prüfung siehe [Vocabulary Integrity](#vocabulary-integrity)).
+3. Für den Katalog wird `catalog-metadata.json` geladen und `verifyArtifactIntegrity` ausgeführt; für die Vokabulare analog `upstream-sources-metadata.json` (siehe [Vocabulary Integrity](#vocabulary-integrity)).
 4. Fehlende Metadaten sind kein harter Fehler: Die App läuft weiter, die Verifikation wird übersprungen und eine Warnung geloggt (z.B. lokale Entwicklung ohne `npm run fetch-catalog`).
 5. Ein `cancelled`-Flag verhindert State-Updates nach Unmount.
 
@@ -166,19 +166,60 @@ interface VerificationResult {
 
 ## UI-Anzeige
 
-Provenance und Verifikationsergebnis werden auf der Seite **„Über das Projekt"** (`/about`, `src/features/pages/AboutPage.tsx`) angezeigt:
+Provenance und Verifikationsergebnis werden auf der Seite **„Über das Projekt"** (`/about`, `src/features/pages/AboutPage.tsx`) angezeigt — jeweils für den Katalog und für die Vokabulare:
 
 - **Gültig**: Erfolgs-Banner mit Hash-Bestätigung
 - **Ungültig**: Warn-Banner mit Details
 - **Nicht verifizierbar**: neutraler Hinweis (Metadaten fehlen)
 
-Dazu kommen Quell-Repository, Commit-SHA und Abrufzeitpunkt mit Link auf den exakten Upstream-Stand.
+Dazu kommen Quell-Repository, Commit-SHA und Abrufzeitpunkt mit Link auf den exakten Upstream-Stand; für die Vokabulare Abrufzeitpunkt, Anzahl der Namespace-Dateien und Snapshot-Commit.
 
 ## Vocabulary Integrity
 
-Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funktion `verifyArtifactIntegrity` auf (die `IntegrityMetadata`-Union deckt beide Provenance-Typen ab). Die zugehörigen Metadaten stehen in `upstream-sources-metadata.json`, das zusätzlich das Upstream-Manifest (Katalog + alle Namespace-Dateien mit Git-Blob-SHAs und einer Manifest-Signatur) enthält.
+Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funktion `verifyArtifactIntegrity` auf (die `IntegrityMetadata`-Union deckt beide Provenance-Typen ab). Die zugehörigen Metadaten stehen in `upstream-sources-metadata.json`, das zusätzlich das Upstream-Manifest (Katalog + alle Namespace-Dateien mit Git-Blob-SHAs und einer Manifest-Signatur) sowie Datei-Provenance je Namespace-CSV (SHA-256, Größe, Git-Blob-SHA) enthält.
 
-**Derzeitige Einschränkung**: Der generierte Integrity-Block dieser Datei enthält nur `fetchedAt` — keinen `sha256` und keine Größe. Der Hash-Vergleich kann damit nicht bestehen (`valid` ist immer `false`), und das Ergebnis (`vocabularyVerification`) wird in der UI nicht angezeigt. Die generierte Struktur weicht außerdem vom Typ `VocabularyProvenance` ab (camelCase-`build`-Felder, Manifest-Daten außerhalb von `source`). Wirksam verankert ist die Vokabular-Integrität derzeit zur Fetch-Zeit: gepinnter Snapshot-Commit, Git-Blob-SHAs und Manifest-Signatur in `upstream-manifest.json`.
+### Provenance-Metadaten (upstream-sources-metadata.json)
+
+```json
+{
+  "source": {
+    "repository": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek",
+    "catalogPath": "Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json",
+    "snapshotCommitSha": "d6153cbb…",
+    "snapshotCommitDate": "2026-07-03T09:37:29Z"
+  },
+  "manifest": {
+    "repository": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek",
+    "snapshotCommitSha": "d6153cbb…",
+    "catalogPath": "Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json",
+    "files": [ { "kind": "catalog", "path": "…", "gitBlobSha": "…" } ],
+    "signatureSha256": "…"
+  },
+  "files": [
+    {
+      "namespace": "https://github.com/…/tree/main/Dokumentation/namespaces/modal_verbs.csv",
+      "path": "Dokumentation/namespaces/modal_verbs.csv",
+      "fileName": "modal_verbs.csv",
+      "routeId": "dokumentation-namespaces-modal-verbs",
+      "gitBlobSha": "…",
+      "sha256": "…",
+      "sizeBytes": 1234
+    }
+  ],
+  "integrity": {
+    "sha256": "…",
+    "size_bytes": 56789,
+    "fetched_at": "2026-07-11T15:42:56.334Z"
+  },
+  "build": {
+    "workflow_run_id": "…",
+    "workflow_run_url": "…",
+    "runner_environment": "…"
+  }
+}
+```
+
+`integrity.sha256` ist der SHA-256 über das generierte `vocabularies.json`-Artefakt; der Laufzeit-Abgleich (`vocabularyVerification`) funktioniert damit identisch zur Katalog-Prüfung und wird auf `/about` angezeigt. Das `manifest` ist zugleich die Signatur-Basis für den `update-catalog`-Workflow (`scripts/sync-upstream-manifest.mjs` liest `metadata.manifest`). Zusätzlich bleibt die Upstream-Integrität zur Fetch-Zeit verankert: gepinnter Snapshot-Commit, Git-Blob-SHAs und Manifest-Signatur in `upstream-manifest.json`.
 
 ## Typen (src/domain/models.ts)
 
@@ -205,8 +246,25 @@ interface CatalogProvenance {
   };
 }
 
+interface VocabularyFileProvenance {
+  namespace: string;
+  path: string;
+  fileName: string;
+  routeId: string;
+  gitBlobSha: string;
+  sha256: string;
+  sizeBytes: number;
+}
+
 interface VocabularyProvenance {
-  source: UpstreamManifest;
+  source: {
+    repository: string;
+    catalogPath: string;
+    snapshotCommitSha: string;
+    snapshotCommitDate?: string;
+  };
+  manifest: UpstreamManifest;
+  files: VocabularyFileProvenance[];
   integrity: {
     sha256: string;
     size_bytes: number;
