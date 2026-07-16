@@ -116,7 +116,15 @@ function formatPartyLabel(party: CatalogParty): string {
   return party.email ? `${party.name} (${party.email})` : party.name;
 }
 
-function CopyableValue({ label, value }: { label: string; value: string }) {
+function CopyableValue({
+  label,
+  value,
+  displayValue,
+}: {
+  label: string;
+  value: string;
+  displayValue?: string;
+}) {
   const [copied, setCopied] = useState(false);
 
   function handleCopy() {
@@ -144,7 +152,7 @@ function CopyableValue({ label, value }: { label: string; value: string }) {
         ) : (
           <>
             <span className="break-all text-right font-mono text-xs text-[var(--color-text-secondary)]">
-              {value}
+              {displayValue ?? value}
             </span>
             <IconClipboard className="h-3 w-3 shrink-0 text-[var(--color-text-muted)] transition-colors group-hover:text-[var(--color-text-secondary)]" />
           </>
@@ -383,7 +391,8 @@ export function AboutPage() {
                   {provenance.source.commit_sha && provenance.source.commit_sha !== 'unknown' && (
                     <CopyableValue
                       label="Commit"
-                      value={provenance.source.commit_sha.slice(0, 12)}
+                      value={provenance.source.commit_sha}
+                      displayValue={provenance.source.commit_sha.slice(0, 12)}
                     />
                   )}
                 </div>
@@ -432,23 +441,29 @@ export function AboutPage() {
                 </div>
 
                 <div className="divide-y divide-[var(--color-border-subtle)] bg-[var(--color-surface-base)]">
-                  <div className="flex items-center justify-between gap-4 px-4 py-2.5">
-                    <span className={metaLabelClass}>Abgerufen am</span>
-                    <span className={metaValueClass}>
-                      {formatDate(vocabularyProvenance.integrity.fetched_at)}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-4 px-4 py-2.5">
-                    <span className={metaLabelClass}>Namespace-Dateien</span>
-                    <span className={metaValueClass}>
-                      {vocabularyProvenance.files.length}
-                    </span>
-                  </div>
-                  {vocabularyProvenance.source.snapshotCommitSha &&
+                  {/* Laufzeit-JSON kann von älteren Deployments stammen — Felder nie unbedingt dereferenzieren */}
+                  {typeof vocabularyProvenance.integrity?.fetched_at === 'string' && (
+                    <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+                      <span className={metaLabelClass}>Abgerufen am</span>
+                      <span className={metaValueClass}>
+                        {formatDate(vocabularyProvenance.integrity.fetched_at)}
+                      </span>
+                    </div>
+                  )}
+                  {Array.isArray(vocabularyProvenance.files) && (
+                    <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+                      <span className={metaLabelClass}>Namespace-Dateien</span>
+                      <span className={metaValueClass}>
+                        {vocabularyProvenance.files.length}
+                      </span>
+                    </div>
+                  )}
+                  {vocabularyProvenance.source?.snapshotCommitSha &&
                     vocabularyProvenance.source.snapshotCommitSha !== 'unknown' && (
                       <CopyableValue
                         label="Snapshot-Commit"
-                        value={vocabularyProvenance.source.snapshotCommitSha.slice(0, 12)}
+                        value={vocabularyProvenance.source.snapshotCommitSha}
+                        displayValue={vocabularyProvenance.source.snapshotCommitSha.slice(0, 12)}
                       />
                     )}
                 </div>
