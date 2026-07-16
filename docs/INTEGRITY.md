@@ -10,7 +10,7 @@ Die Anwendung verwendet ein **Integrity-Verification-System**, das:
 2. **Zur Laufzeit**: Hash erneut berechnet und mit dem gespeicherten Wert vergleicht
 3. **In der UI**: Prüfungsergebnis anzeigt
 
-Das System stellt sicher, dass die geladenen Artefakte den ursprünglich abgerufenen entsprechen und nicht manipuliert wurden.
+Das System prüft, ob die geladenen Artefakte zu den gemeinsam ausgelieferten Integritätsmetadaten passen. Da Artefakt und Metadaten aus demselben Deployment stammen, erkennt die Prüfung Inkonsistenzen zwischen beiden (z.B. beschädigte oder unvollständige Deployments) — sie ist aber kein unabhängiger Herkunftsnachweis. Den liefert die extern bei GitHub gespeicherte Artifact Attestation (siehe [SLSA Provenance](#slsa-provenance)); die Upstream-Authentizität wird zur Fetch-Zeit über Snapshot-Pinning und die Upstream-Allowlist verankert.
 
 ## Build-Zeitpunkt (scripts/fetch-catalog.sh → fetch-catalog.mjs)
 
@@ -148,7 +148,7 @@ export async function fetchCatalogWithBuffer(
 
 1. `catalog.json` und `vocabularies.json` werden **parallel** als ArrayBuffer geladen (Startlatenz).
 2. Der Katalog wird geparst (`parseCatalog`), das Vokabular-Registry gebaut (`buildVocabularyRegistry`).
-3. Für den Katalog wird `catalog-metadata.json` geladen und `verifyArtifactIntegrity` ausgeführt; für die Vokabulare `upstream-sources-metadata.json`.
+3. Für den Katalog wird `catalog-metadata.json` geladen und `verifyArtifactIntegrity` ausgeführt; für die Vokabulare `upstream-sources-metadata.json` (zur derzeitigen Einschränkung der Vokabular-Prüfung siehe [Vocabulary Integrity](#vocabulary-integrity)).
 4. Fehlende Metadaten sind kein harter Fehler: Die App läuft weiter, die Verifikation wird übersprungen und eine Warnung geloggt (z.B. lokale Entwicklung ohne `npm run fetch-catalog`).
 5. Ein `cancelled`-Flag verhindert State-Updates nach Unmount.
 
@@ -176,7 +176,9 @@ Dazu kommen Quell-Repository, Commit-SHA und Abrufzeitpunkt mit Link auf den exa
 
 ## Vocabulary Integrity
 
-Das gleiche System gilt für das Vokabular-Artefakt `vocabularies.json`. Dessen Provenance steht in `upstream-sources-metadata.json`, das zusätzlich das Upstream-Manifest (Katalog + alle Namespace-Dateien mit Git-Blob-SHAs und einer Manifest-Signatur) enthält. `verifyArtifactIntegrity` verarbeitet beide Provenance-Typen über die `IntegrityMetadata`-Union.
+Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funktion `verifyArtifactIntegrity` auf (die `IntegrityMetadata`-Union deckt beide Provenance-Typen ab). Die zugehörigen Metadaten stehen in `upstream-sources-metadata.json`, das zusätzlich das Upstream-Manifest (Katalog + alle Namespace-Dateien mit Git-Blob-SHAs und einer Manifest-Signatur) enthält.
+
+**Derzeitige Einschränkung**: Der generierte Integrity-Block dieser Datei enthält nur `fetchedAt` — keinen `sha256` und keine Größe. Der Hash-Vergleich kann damit nicht bestehen (`valid` ist immer `false`), und das Ergebnis (`vocabularyVerification`) wird in der UI nicht angezeigt. Die generierte Struktur weicht außerdem vom Typ `VocabularyProvenance` ab (camelCase-`build`-Felder, Manifest-Daten außerhalb von `source`). Wirksam verankert ist die Vokabular-Integrität derzeit zur Fetch-Zeit: gepinnter Snapshot-Commit, Git-Blob-SHAs und Manifest-Signatur in `upstream-manifest.json`.
 
 ## Typen (src/domain/models.ts)
 

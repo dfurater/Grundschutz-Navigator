@@ -304,7 +304,7 @@ export function buildVocabularySourceUrl(
 
 ## CatalogContext-Integration
 
-`vocabularies.json` wird parallel zum Katalog als ArrayBuffer geladen (Integritätsprüfung + Parsing), das Registry per `buildVocabularyRegistry` gebaut und gegen die Provenance aus `upstream-sources-metadata.json` verifiziert. Fehlen die Vokabular-Artefakte, läuft die App ohne Registry weiter (siehe [INTEGRITY.md](./INTEGRITY.md)).
+`vocabularies.json` wird parallel zum Katalog als ArrayBuffer geladen und das Registry per `buildVocabularyRegistry` gebaut. Ein Hash-Abgleich gegen `upstream-sources-metadata.json` ist im Ladepfad vorhanden, kann mit den derzeit generierten Metadaten aber nicht bestehen (kein `sha256` im Integrity-Block; Details in [INTEGRITY.md](./INTEGRITY.md)). Fehlen die Vokabular-Artefakte, läuft die App ohne Registry weiter.
 
 ## Vocabulary-Seiten
 

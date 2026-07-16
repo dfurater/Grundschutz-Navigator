@@ -158,7 +158,7 @@ function deserializeFilters(params: URLSearchParams): ControlFilters {
 
 ### Schreiben in URL (Serialisierung)
 
-Aktive Filter werden kommasepariert gesetzt, leere Dimensionen entfernt. Der Sync läuft über `setSearchParams(params, { replace: true })`, sodass Filter-Änderungen keine History-Einträge fluten. Änderungen, die nur den Suchbegriff betreffen, werden mit 300 ms Debounce geschrieben; alle anderen sofort.
+Aktive Filter werden kommasepariert gesetzt, leere Dimensionen entfernt. Der Sync läuft über `setSearchParams(params, { replace: true })`, sodass Filter-Änderungen keine History-Einträge fluten. Änderungen, die nur den Suchbegriff betreffen, werden mit 300 ms Debounce geschrieben; alle anderen sofort. Die Erkennung „nur Suchbegriff geändert" beruht auf Referenzgleichheit der übrigen Filter-Arrays — Caller müssen dafür den vorherigen Filter-Zustand spreaden (z.B. `{ ...filters, searchTerm }`), statt neue Arrays zu erzeugen.
 
 ```typescript
 function setOrDelete(params: URLSearchParams, key: string, values: string[]) {
