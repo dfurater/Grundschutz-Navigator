@@ -4,34 +4,39 @@ Beschreibung der offiziellen BSI-Vokabular-Auflösung.
 
 ## Überblick
 
-Das Vokabular-System ermöglicht die Anzeige der **offiziellen BSI-Definitionen** für Werte im Katalog. Der BSI Grundschutz++ enthält zahlreichestandardisierte Begriffe, die in separaten CSV-Dateien definiert sind:
+Das Vokabular-System ermöglicht die Anzeige der **offiziellen BSI-Definitionen** für Werte im Katalog. Der BSI Grundschutz++ referenziert standardisierte Begriffe, die in separaten CSV-Dateien (`Dokumentation/namespaces/` im BSI-Repository) definiert sind. Aktuell werden zehn Namespaces mitgeliefert:
 
-- Sicherheitsniveau (`normal-SdT`, `erhöht`)
-- Aufwandsstufe (`0`–`5`)
-- Modalverb (`MUSS`, `SOLLTE`, `KANN`)
-- Tags
-- Zielobjekt-Kategorien
-- Handlungswörter
-- Dokumentationstypen
+| Vokabular | Datei |
+|-----------|-------|
+| Handlungswörter | `action_words.csv` |
+| Elementare Gefährdungen | `basethreats.csv` |
+| Dokumentationstypen | `documentation_guidelines.csv` |
+| Aufwandsstufe (`0`–`5`) | `effort_level.csv` |
+| Modalverb (`MUSS`, `SOLLTE`, `KANN`) | `modal_verbs.csv` |
+| Ergebnis | `result.csv` |
+| Sicherheitsniveau (`normal-SdT`, `erhöht`) | `security_level.csv` |
+| Schutzziele (CIA + Authentizität) | `security_targets.csv` |
+| Tags | `tags.csv` |
+| Zielobjekt-Kategorien | `target_object_categories.csv` |
 
-Die Anwendung lädt diese Vokabulare zur Build-Zeit von BSI und löst zur Laufzeit die Werte auf.
+Die Anwendung lädt diese Vokabulare zur Build-Zeit von BSI und löst zur Laufzeit die Werte auf. Welche Namespaces geladen werden, ergibt sich aus den `ns`-URLs, die der Katalog selbst referenziert.
 
 ## Architektur
 
 ```
-BSI Repository (Vocabulary files)
+BSI Repository (Dokumentation/namespaces/*.csv)
         │
         ▼
-scripts/fetch-catalog.sh
-• Abruf aller Vocabulary-CSV-Dateien
+scripts/fetch-catalog.mjs (+ vocabulary-utils.mjs)
+• Extraktion der referenzierten Namespace-URLs aus dem Katalog
+• Abruf aller Vocabulary-CSV-Dateien (gepinnter Snapshot)
 • Konvertierung zu JSON
-• Generierung Metadata
+• Provenance + Upstream-Manifest
         │
         ▼
 public/data/
-• vocabularies.json           (Alle Vokabulare)
-• vocabularies-metadata.json (Provenance)
-• upstream-sources-metadata.json
+• vocabularies.json               (Alle Vokabulare)
+• upstream-sources-metadata.json  (Provenance + Manifest)
         │
         ▼
 VocabularyRegistry (Runtime)
@@ -39,7 +44,7 @@ VocabularyRegistry (Runtime)
 • namespacesByRouteId (Map)
         │
         ▼
-resolveVocabularyProp()
+resolveVocabularyProp() / resolveControlVocabularies()
 • PropValue → VocabularyEntry
 ```
 
@@ -50,7 +55,7 @@ resolveVocabularyProp()
 ```typescript
 interface VocabularyEntry {
   value: string;                    // Exact raw value
-  definition?: string;               // Official definition
+  definition?: string;              // Official definition
   columns: Record<string, string>;  // All columns
 }
 ```
@@ -59,10 +64,10 @@ interface VocabularyEntry {
 
 ```typescript
 interface VocabularyNamespaceSource {
-  namespace: string;                 // URL from OSCAL props
-  repository: string;                // Upstream repository
+  namespace: string;                // URL from OSCAL props
+  repository: string;               // Upstream repository
   path: string;                     // Repository-relative path
-  fileName: string;                  // e.g. "security_level.csv"
+  fileName: string;                 // e.g. "security_level.csv"
   routeId: string;                  // Stable route slug
   gitBlobSha: string;               // Git blob SHA
 }
@@ -73,9 +78,9 @@ interface VocabularyNamespaceSource {
 ```typescript
 interface VocabularyNamespaceData {
   source: VocabularyNamespaceSource;
-  columnOrder: string[];              // Preserved column order
+  columnOrder: string[];            // Preserved column order
   valueColumn: string;              // Header for exact lookup
-  definitionColumn?: string;          // Header with definition
+  definitionColumn?: string;        // Header with definition
   entries: VocabularyEntry[];
 }
 ```
@@ -119,29 +124,29 @@ interface VocabularyResolution {
 
 ## Vocabulary Registry Aufbau
 
-In `src/domain/vocabulary.ts`:
+In `src/domain/vocabulary.ts`. Der Aufbau wirft bei doppelten Werten, Namespace-URLs oder Route-IDs, statt Einträge still zu überschreiben:
 
 ```typescript
 export function buildVocabularyRegistry(
   data: VocabularyRegistryData,
 ): VocabularyRegistry {
-  const namespaces = data.namespaces.map<VocabularyNamespace>((namespace) => ({
-    ...namespace,
-    entriesByValue: new Map(
-      namespace.entries.map((entry) => [entry.value, entry]),
-    ),
-  }));
+  const namespaces = data.namespaces.map(createRuntimeNamespace);
+  const namespacesByUrl = new Map<string, VocabularyNamespace>();
+  const namespacesByRouteId = new Map<string, VocabularyNamespace>();
 
-  return {
-    sourceCommitSha: data.sourceCommitSha,
-    namespaces,
-    namespacesByUrl: new Map(
-      namespaces.map((namespace) => [namespace.source.namespace, namespace]),
-    ),
-    namespacesByRouteId: new Map(
-      namespaces.map((namespace) => [namespace.source.routeId, namespace]),
-    ),
-  };
+  for (const namespace of namespaces) {
+    if (namespacesByUrl.has(namespace.source.namespace)) {
+      throw new Error(/* duplicate namespace URL */);
+    }
+    if (namespacesByRouteId.has(namespace.source.routeId)) {
+      throw new Error(/* duplicate route id */);
+    }
+
+    namespacesByUrl.set(namespace.source.namespace, namespace);
+    namespacesByRouteId.set(namespace.source.routeId, namespace);
+  }
+
+  return { sourceCommitSha: data.sourceCommitSha, namespaces, namespacesByUrl, namespacesByRouteId };
 }
 ```
 
@@ -149,75 +154,87 @@ export function buildVocabularyRegistry(
 
 ### resolveVocabularyEntry
 
+Exakter Lookup über Namespace-URL und Wert:
+
 ```typescript
 export function resolveVocabularyEntry(
   registry: VocabularyRegistry | null | undefined,
   namespaceUrl: string | undefined,
   value: string | undefined,
-): VocabularyResolution | null {
-  if (!registry || !namespaceUrl || !value) {
-    return null;
-  }
-
-  const namespace = registry.namespacesByUrl.get(namespaceUrl);
-  if (!namespace) {
-    return null;
-  }
-
-  const entry = namespace.entriesByValue.get(value);
-  if (!entry) {
-    return null;
-  }
-
-  return { namespace, entry };
-}
+): VocabularyResolution | null;
 ```
 
-### resolveVocabularyProp
+### resolveVocabularyProp / resolveVocabularyValues
 
 ```typescript
+// Einzelne Prop (nutzt prop.ns + prop.value)
 export function resolveVocabularyProp(
   registry: VocabularyRegistry | null | undefined,
   prop: PropValue | undefined,
-): VocabularyResolution | null {
-  return resolveVocabularyEntry(registry, prop?.ns, prop?.value);
-}
+): VocabularyResolution | null;
+
+// Mehrere Werte gegen denselben Namespace (z.B. Tags, Gefährdungen)
+export function resolveVocabularyValues(
+  registry: VocabularyRegistry | null | undefined,
+  namespaceUrl: string | undefined,
+  values: string[],
+): VocabularyResolution[];
+```
+
+`resolvePropVocabularyEntry` und `resolveVocabularyEntries` sind gleichbedeutende Aliase (Rückgabetyp `ResolvedVocabularyEntry`).
+
+### getVocabularyNamespaceByRouteId
+
+Lookup für die Routing-Ebene (`/vokabular/:namespaceId`):
+
+```typescript
+export function getVocabularyNamespaceByRouteId(
+  registry: VocabularyRegistry | null | undefined,
+  routeId: string | undefined,
+): VocabularyNamespace | null;
 ```
 
 ### resolveControlVocabularies
 
+Löst alle Vokabular-Props einer Control auf einmal auf — inklusive Schutzziele und elementare Gefährdungen:
+
 ```typescript
-export function resolveControlVocabularies(
-  registry: VocabularyRegistry | null | undefined,
-  control: Control,
-): ResolvedControlVocabularies {
-  return {
-    modalverb: resolveVocabularyProp(registry, control.modalverbProp),
-    securityLevel: resolveVocabularyProp(registry, control.securityLevelProp),
-    effortLevel: resolveVocabularyProp(registry, control.effortLevelProp),
-    tags: resolveVocabularyValues(registry, control.tagsProp?.ns, control.tags),
-    statement: {
-      ergebnis: resolveVocabularyProp(registry, control.statementProps.ergebnisProp),
-      praezisierung: resolveVocabularyProp(
-        registry,
-        control.statementProps.praezisierungProp,
-      ),
-      handlungsworte: resolveVocabularyProp(
-        registry,
-        control.statementProps.handlungsworteProp,
-      ),
-      dokumentation: resolveVocabularyProp(
-        registry,
-        control.statementProps.dokumentationProp,
-      ),
-      zielobjektKategorien: resolveVocabularyValues(
-        registry,
-        control.statementProps.zielobjektKategorienProp?.ns,
-        control.statementProps.zielobjektKategorien,
-      ),
-    },
+export interface ResolvedControlVocabularies {
+  modalverb: VocabularyResolution | null;
+  securityLevel: VocabularyResolution | null;
+  effortLevel: VocabularyResolution | null;
+  tags: VocabularyResolution[];
+  securityTargets: {
+    confidentiality: VocabularyResolution | null;
+    integrity: VocabularyResolution | null;
+    availability: VocabularyResolution | null;
+    authenticity: VocabularyResolution | null;
+  };
+  threats: VocabularyResolution[];
+  statement: {
+    ergebnis: VocabularyResolution | null;
+    praezisierung: VocabularyResolution | null;
+    handlungsworte: VocabularyResolution | null;
+    dokumentation: VocabularyResolution | null;
+    zielobjektKategorien: VocabularyResolution[];
   };
 }
+```
+
+Besonderheit Schutzziele: Die Control-Props tragen als Wert die Relevanz (`0`–`2`), das Vokabular `security_targets.csv` ist aber nach Schutzziel-Namen indiziert. Die Auflösung erfolgt deshalb über feste Lookup-Werte (`'Vertraulichkeit (Confidentiality)'`, `'Integrität (Integrity)'`, `'Verfügbarkeit (Availability)'`, `'Authentizität (Authenticity)'`) gegen den Namespace der jeweiligen Prop.
+
+### Such-Text-Sammlung
+
+Für die Freitextsuche (siehe [FILTERING.md](./FILTERING.md)) werden alle Spaltenwerte der aufgelösten Vokabular-Einträge eingesammelt:
+
+```typescript
+export function collectVocabularySearchTexts(
+  resolutions: Array<VocabularyResolution | null>,
+): string[];
+
+export function collectControlVocabularySearchTexts(
+  resolved: ResolvedControlVocabularies,
+): string[];
 ```
 
 ## PropValue Struktur
@@ -241,6 +258,11 @@ interface Control {
   securityLevelProp?: PropValue;
   effortLevelProp?: PropValue;
   tagsProp?: PropValue;
+  confidentialityProp?: PropValue;
+  integrityProp?: PropValue;
+  availabilityProp?: PropValue;
+  authenticityProp?: PropValue;
+  threatsProp?: PropValue;
   // ...
   statementProps: {
     ergebnisProp?: PropValue;
@@ -254,15 +276,23 @@ interface Control {
 
 ## URL-Aufbau
 
-Vokabular-Namensräume haben stabilen Routing-Slugs:
+Für die Quell-Links auf den exakten Upstream-Stand:
 
 ```typescript
 export function buildVocabularySourceUrl(
   source: Pick<VocabularyNamespaceSource, 'namespace' | 'repository' | 'path'>,
   snapshotCommitSha: string | null | undefined,
 ): string {
+  if (!source.repository || !source.path) {
+    return source.namespace;
+  }
+
   const repositoryUrl = source.repository.replace(/\/+$/, '');
   const encodedPath = encodeRepositoryPath(source.path);
+
+  if (!encodedPath) {
+    return source.namespace;
+  }
 
   if (snapshotCommitSha) {
     return `${repositoryUrl}/blob/${encodeURIComponent(snapshotCommitSha)}/${encodedPath}`;
@@ -272,30 +302,13 @@ export function buildVocabularySourceUrl(
 }
 ```
 
-## VocabularyContext
+## CatalogContext-Integration
 
-In `CatalogContext` integriert:
+`vocabularies.json` wird parallel zum Katalog als ArrayBuffer geladen und das Registry per `buildVocabularyRegistry` gebaut. Ein Hash-Abgleich gegen `upstream-sources-metadata.json` ist im Ladepfad vorhanden, kann mit den derzeit generierten Metadaten aber nicht bestehen (kein `sha256` im Integrity-Block; Details in [INTEGRITY.md](./INTEGRITY.md)). Fehlen die Vokabular-Artefakte, läuft die App ohne Registry weiter.
 
-```typescript
-// Fetch vocabulary as ArrayBuffer for integrity check + text for parsing
-const { buffer: vocabularyBuffer, text: vocabularyText } =
-  await fetchCatalogWithBuffer(vocabulariesUrl);
+## Vocabulary-Seiten
 
-// Build runtime registry
-vocabularyRegistry = buildVocabularyRegistry(
-  JSON.parse(vocabularyText) as VocabularyRegistryData,
-);
-
-// Verify integrity
-vocabularyVerification = await verifyArtifactIntegrity(
-  vocabularyBuffer,
-  vocabularyProvenance,
-);
-```
-
-## VocabularyPages
-
-### VocabularyOverviewPage
+### VocabularyOverviewPage (`/vokabular`)
 
 Übersicht aller Vokabulare mit:
 
@@ -303,13 +316,12 @@ vocabularyVerification = await verifyArtifactIntegrity(
 - Routen-Link zu jedem Namespace
 - Anzahl der Einträge
 
-### VocabularyNamespacePage
+### VocabularyNamespacePage (`/vokabular/:namespaceId`)
 
 Detailseite für einen Namespace:
 
-- Alle Einträge als Tabelle
-- Durchsuchbar
-- Nach Wert sortierbar
+- Alle Einträge als Karten (`VocabularyEntryCard`)
+- Einzelner Eintrag per Query-Parameter `?wert=` adressierbar (Deep-Link aus Control-Details)
 - Spalten-Konfiguration aus `columnOrder`
 
 ## Siehe auch
@@ -321,5 +333,5 @@ Detailseite für einen Namespace:
 - `src/domain/vocabulary.ts` — Vocabulary-Implementierung
 - `src/domain/models.ts` — Vocabulary Types
 - `src/state/CatalogContext.tsx` — Context-Integration
-- `scripts/fetch-catalog.sh` — Vocabulary-Abruf
+- `scripts/fetch-catalog.mjs` — Vocabulary-Abruf
 - `scripts/vocabulary-utils.mjs` — Build-Hilfsfunktionen

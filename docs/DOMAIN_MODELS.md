@@ -110,6 +110,11 @@ interface RawOscalCatalog {
     resources?: RawOscalResource[];
   };
 }
+
+/** Root wrapper — OSCAL-Dateien wrappen den Katalog in { catalog: ... } */
+interface RawOscalDocument {
+  catalog: RawOscalCatalog;
+}
 ```
 
 ## Enriched Domain Types
@@ -128,6 +133,14 @@ type SecurityLevel = 'normal-SdT' | 'erhöht';
 type EffortLevel = '0' | '1' | '2' | '3' | '4' | '5';
 ```
 
+### Schutzziel-Relevanz
+
+Relevanz einer Steuerung für ein Schutzziel (Vertraulichkeit, Integrität, Verfügbarkeit, Authentizität), Skala 0–2:
+
+```typescript
+type SecurityTargetRelevance = '0' | '1' | '2';
+```
+
 ### Modalverb
 
 ```typescript
@@ -137,9 +150,11 @@ type Modalverb = 'MUSS' | 'SOLLTE' | 'KANN';
 ### ControlLink
 
 ```typescript
+type LinkRelation = 'related' | 'required';
+
 interface ControlLink {
   targetId: string;
-  relation: 'related' | 'required';
+  relation: LinkRelation;
 }
 ```
 
@@ -160,10 +175,10 @@ interface Control {
   id: string;                    // e.g. "GC.1.1"
   parentId?: string;             // e.g. "GC.5.1" for "GC.5.1.1"
   title: string;
-  altIdentifier?: string;         // UUID
+  altIdentifier?: string;        // UUID
 
-  groupId: string;              // e.g. "GC.1" (Topic)
-  practiceId: string;          // e.g. "GC" (Practice)
+  groupId: string;               // e.g. "GC.1" (Topic)
+  practiceId: string;            // e.g. "GC" (Practice)
 
   securityLevel?: SecurityLevel;
   securityLevelProp?: PropValue;
@@ -175,8 +190,22 @@ interface Control {
   tags: string[];
   tagsProp?: PropValue;
 
-  statement: string;            // Resolved prose
-  statementRaw: string;         // With {{ insert: param }} placeholders
+  // Schutzziele (CIA + Authentizität), Relevanz 0–2
+  confidentiality?: SecurityTargetRelevance;
+  confidentialityProp?: PropValue;
+  integrity?: SecurityTargetRelevance;
+  integrityProp?: PropValue;
+  availability?: SecurityTargetRelevance;
+  availabilityProp?: PropValue;
+  authenticity?: SecurityTargetRelevance;
+  authenticityProp?: PropValue;
+
+  // Elementare Gefährdungen (z.B. "G 0.14"), aus kommaseparierter Prop geparst
+  threats: string[];
+  threatsProp?: PropValue;
+
+  statement: string;             // Resolved prose
+  statementRaw: string;          // With {{ insert: param }} placeholders
   guidance: string;
 
   statementProps: {
@@ -196,6 +225,8 @@ interface Control {
   params: Record<string, string>;  // Inline parameter values
 }
 ```
+
+Die `*Prop`-Felder behalten den OSCAL-Namespace (`ns`) der Quell-Prop und ermöglichen so die Auflösung gegen die offiziellen BSI-Vokabulare (siehe [VOCABULARY.md](./VOCABULARY.md)).
 
 ### Topic (Thema)
 
@@ -248,36 +279,21 @@ Die Transformation von Raw → Enriched erfolgt in `src/adapters/oscalAdapter.ts
 export function parseCatalog(raw: unknown): Catalog {
   // Accept both { catalog: ... } wrapper and direct catalog object
   const doc = raw as Record<string, unknown>;
-  const catalog = doc.catalog ? doc.catalog : doc;
+  const catalog: RawOscalCatalog = (
+    doc.catalog ? doc.catalog : doc
+  ) as RawOscalCatalog;
 
-  const metadata = parseMetadata(catalog);
-  const practices: Practice[] = [];
-  const allControls: Control[] = [];
-
-  for (const g of catalog.groups) {
-    const { practice, controls } = parsePractice(g);
-    practices.push(practice);
-    allControls.push(...controls);
+  if (!catalog.uuid || !catalog.metadata || !catalog.groups) {
+    throw new Error(
+      'Invalid OSCAL catalog: missing uuid, metadata, or groups',
+    );
   }
 
-  const controlsById = new Map<string, Control>();
-  for (const c of allControls) {
-    controlsById.set(c.id, c);
-  }
-
-  return {
-    uuid: catalog.uuid,
-    metadata,
-    practices,
-    controlsById,
-    controls: allControls,
-    backMatter: parseBackMatter(catalog['back-matter']),
-    totalControls: allControls.length,
-  };
+  // ... parsePractice() je Gruppe, controlsById-Index, parseBackMatter()
 }
 ```
 
-### Rekursive Steuerungs-Parsing
+### Rekursives Steuerungs-Parsing
 
 Nested Controls (Enhancements) werden rekursiv entpackt:
 
@@ -305,20 +321,18 @@ export function resolveParams(
   prose: string,
   paramMap: Record<string, string>,
 ): string {
-  return prose.replace(
+  const resolved = prose.replace(
     /\{\{\s*insert:\s*param,\s*([^}\s]+)\s*\}\}/g,
     (_match, paramId: string) => {
       return paramMap[paramId] ?? `[${paramId}]`;
     },
   );
+  // Strip remaining {{ content }} choice brackets (BSI notation, not OSCAL params)
+  return resolved.replace(/\{\{([^}]*)\}\}/g, '$1');
 }
 ```
 
-Auch BSI-eigene {{choice text}} Klammern werden entfernt:
-
-```typescript
-return resolved.replace(/\{\{([^}]*)\}\}/g, '$1');
-```
+Neben `{{ insert: param, ... }}` entfernt die Funktion auch BSI-eigene `{{choice text}}`-Klammern, die in Prop-Werten (z.B. `result`) vorkommen.
 
 ## Typ-Validierung
 
@@ -337,9 +351,37 @@ export function toEffortLevel(value: string | undefined): EffortLevel | undefine
   return undefined;
 }
 
+export function toSecurityTargetRelevance(
+  value: string | undefined,
+): SecurityTargetRelevance | undefined {
+  if (value === '0' || value === '1' || value === '2') return value;
+  return undefined;
+}
+
 export function toModalverb(value: string | undefined): Modalverb | undefined {
   if (value === 'MUSS' || value === 'SOLLTE' || value === 'KANN') return value;
   return undefined;
+}
+```
+
+## Upstream-Manifest Types
+
+Das Update-Contract mit dem BSI-Repository (Basis für `update-catalog.yml` und das Snapshot-Pinning):
+
+```typescript
+interface UpstreamManifestFile {
+  kind: 'catalog' | 'namespace';
+  path: string;
+  namespace?: string;
+  gitBlobSha: string;
+}
+
+interface UpstreamManifest {
+  repository: string;
+  snapshotCommitSha: string;
+  catalogPath: string;
+  files: UpstreamManifestFile[];
+  signatureSha256: string;
 }
 ```
 
