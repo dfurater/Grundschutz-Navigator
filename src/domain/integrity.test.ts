@@ -6,7 +6,7 @@ import {
   fetchProvenance,
   fetchCatalogWithBuffer,
 } from './integrity';
-import type { CatalogProvenance } from './models';
+import type { CatalogProvenance, VocabularyProvenance } from './models';
 
 /* ------------------------------------------------------------------ */
 /*  Test Fixtures                                                      */
@@ -31,6 +31,60 @@ function makeProvenance(overrides: Partial<CatalogProvenance> = {}): CatalogProv
       runner_environment: 'github-hosted',
     },
     ...overrides,
+  };
+}
+
+function makeVocabularyProvenance(sha256: string): VocabularyProvenance {
+  const namespaceUrl =
+    'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_level.csv';
+
+  return {
+    source: {
+      repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
+      catalogPath: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
+      snapshotCommitSha: 'snapshot-abc',
+      snapshotCommitDate: '2026-03-15T00:00:00Z',
+    },
+    manifest: {
+      repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
+      snapshotCommitSha: 'snapshot-abc',
+      catalogPath: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
+      files: [
+        {
+          kind: 'catalog',
+          path: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
+          gitBlobSha: 'blob-catalog',
+        },
+        {
+          kind: 'namespace',
+          path: 'Dokumentation/namespaces/security_level.csv',
+          namespace: namespaceUrl,
+          gitBlobSha: 'blob-security',
+        },
+      ],
+      signatureSha256: 'signature-123',
+    },
+    files: [
+      {
+        namespace: namespaceUrl,
+        path: 'Dokumentation/namespaces/security_level.csv',
+        fileName: 'security_level.csv',
+        routeId: 'dokumentation-namespaces-security-level',
+        gitBlobSha: 'blob-security',
+        sha256: 'csv-hash',
+        sizeBytes: 64,
+      },
+    ],
+    integrity: {
+      sha256,
+      size_bytes: 128,
+      fetched_at: '2026-03-16T06:00:00Z',
+    },
+    build: {
+      workflow_run_id: '12345',
+      workflow_run_url: null,
+      runner_environment: 'github-hosted',
+    },
   };
 }
 
@@ -132,6 +186,33 @@ describe('verifyArtifactIntegrity', () => {
       textToBuffer(tamperedContent),
       metadata,
     );
+    expect(result.valid).toBe(false);
+  });
+
+  it('verifies vocabulary artifacts and reports the snapshot commit', async () => {
+    const content = '{"sourceCommitSha":"snapshot-abc","namespaces":[]}';
+    const buffer = textToBuffer(content);
+    const expectedHash = await computeSHA256(buffer);
+
+    const result = await verifyArtifactIntegrity(
+      buffer,
+      makeVocabularyProvenance(expectedHash),
+    );
+
+    expect(result.valid).toBe(true);
+    expect(result.sourceCommit).toBe('snapshot-abc');
+    expect(result.fetchedAt).toBe('2026-03-16T06:00:00Z');
+  });
+
+  it('rejects tampered vocabulary artifacts', async () => {
+    const original = textToBuffer('{"namespaces":[]}');
+    const expectedHash = await computeSHA256(original);
+
+    const result = await verifyArtifactIntegrity(
+      textToBuffer('{"namespaces":[{}]}'),
+      makeVocabularyProvenance(expectedHash),
+    );
+
     expect(result.valid).toBe(false);
   });
 

@@ -207,9 +207,9 @@ function buildBuildMetadata() {
       : null;
 
   return {
-    workflowRunId,
-    workflowRunUrl,
-    runnerEnvironment: process.env.RUNNER_ENVIRONMENT ?? 'local',
+    workflow_run_id: workflowRunId,
+    workflow_run_url: workflowRunUrl,
+    runner_environment: process.env.RUNNER_ENVIRONMENT ?? 'local',
   };
 }
 
@@ -349,7 +349,9 @@ async function buildFetchArtifacts(logger = console, { retryDelaysMs = DEFAULT_R
     manifest,
     files: vocabularyFiles,
     integrity: {
-      fetchedAt,
+      sha256: sha256Hex(vocabulariesArtifact),
+      size_bytes: vocabulariesArtifact.length,
+      fetched_at: fetchedAt,
     },
     build: buildMetadata,
   }, 'Upstream-Metadaten');
@@ -369,11 +371,7 @@ async function buildFetchArtifacts(logger = console, { retryDelaysMs = DEFAULT_R
       size_bytes: catalogArtifact.buffer.length,
       fetched_at: fetchedAt,
     },
-    build: {
-      workflow_run_id: buildMetadata.workflowRunId,
-      workflow_run_url: buildMetadata.workflowRunUrl,
-      runner_environment: buildMetadata.runnerEnvironment,
-    },
+    build: buildMetadata,
   }, 'Katalog-Metadaten');
 
   return {
