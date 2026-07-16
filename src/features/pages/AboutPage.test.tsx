@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Catalog, CatalogState } from '@/domain/models';
 import { useCatalog } from '@/hooks/useCatalog';
@@ -348,5 +348,48 @@ describe('AboutPage', () => {
     render(<AboutPage />);
 
     expect(screen.getByText('Verifikation ausstehend…')).toBeInTheDocument();
+  });
+
+  it('renders legacy vocabulary metadata without files and fetched_at without crashing', () => {
+    const legacyProvenance = makeVocabularyProvenance() as unknown as Record<string, unknown>;
+    delete legacyProvenance.files;
+    legacyProvenance.integrity = { fetchedAt: '2026-03-06T09:10:11Z' };
+
+    const state = makeCatalogState();
+    state.vocabularyProvenance =
+      legacyProvenance as unknown as NonNullable<CatalogState['vocabularyProvenance']>;
+    state.vocabularyVerification = makeVocabularyVerification(false);
+    mockedUseCatalog.mockReturnValue(state);
+
+    render(<AboutPage />);
+
+    expect(screen.getByText('Vokabular-Verifikation fehlgeschlagen')).toBeInTheDocument();
+    expect(screen.queryByText('Namespace-Dateien')).not.toBeInTheDocument();
+    expect(screen.queryByText('Abgerufen am')).not.toBeInTheDocument();
+  });
+
+  it('copies the full snapshot commit SHA while displaying the truncated value', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+
+    const state = makeCatalogState();
+    state.vocabularyProvenance = makeVocabularyProvenance();
+    state.vocabularyVerification = makeVocabularyVerification(true);
+    mockedUseCatalog.mockReturnValue(state);
+
+    render(<AboutPage />);
+
+    expect(screen.getByText('fedcba098765')).toBeInTheDocument();
+
+    const copyButton = screen.getByRole('button', { name: 'Snapshot-Commit kopieren' });
+    fireEvent.click(copyButton);
+
+    expect(writeText).toHaveBeenCalledWith('fedcba0987654321fedcba0987654321fedcba09');
+    await waitFor(() => {
+      expect(screen.getByText('Kopiert')).toBeInTheDocument();
+    });
   });
 });
