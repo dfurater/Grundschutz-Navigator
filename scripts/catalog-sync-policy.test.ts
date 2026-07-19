@@ -105,6 +105,18 @@ describe('validateCatalogSyncPolicy', () => {
     })).toThrow('audited version');
   });
 
+  it('accepts equivalent timezone representations of the audited ruleset version', () => {
+    const redactedRuleset = {
+      ...makeRuleset(),
+      updated_at: '2026-07-19T16:00:00+02:00',
+      bypass_actors: undefined,
+    };
+    expect(validateCatalogSyncPolicy(makeRepository(), redactedRuleset, {
+      allowRedactedBypassActors: true,
+      expectedRulesetUpdatedAt: '2026-07-19T14:00:00.000Z',
+    })).toBe(true);
+  });
+
   it('fails closed when bypass actors are redacted without a version pin', () => {
     const redactedRuleset = { ...makeRuleset(), bypass_actors: undefined };
     expect(() => validateCatalogSyncPolicy(makeRepository(), redactedRuleset, {

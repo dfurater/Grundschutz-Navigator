@@ -233,7 +233,7 @@ Der Sync verwendet ausschließlich eine auf dieses Repository beschränkte GitHu
 
 Ein erkannter Upstream-Delta durchläuft folgende Lane:
 
-1. Der Workflow prüft Auto-Merge, automatische Branch-Löschung, Ruleset 15503378, required Checks und CodeQL. Da GitHub `bypass_actors` für minimal berechtigte Tokens redigiert, muss `updated_at` exakt dem nach vollständigem Admin-Audit gesetzten `CATALOG_SYNC_RULESET_UPDATED_AT` entsprechen; jede Ruleset-Änderung blockiert damit bis zur erneuten Prüfung.
+1. Der Workflow prüft Auto-Merge, automatische Branch-Löschung, Ruleset 15503378, required Checks und CodeQL. Da GitHub `bypass_actors` für minimal berechtigte Tokens redigiert, muss `updated_at` denselben Zeitpunkt wie das nach vollständigem Admin-Audit gesetzte `CATALOG_SYNC_RULESET_UPDATED_AT` bezeichnen; unterschiedliche ISO-Zeitzonenrepräsentationen desselben Zeitpunkts sind zulässig, jede tatsächliche Ruleset-Änderung blockiert dagegen bis zur erneuten Prüfung.
 2. Der deterministische Branch `chore/catalog-sync-<sha12>` wird neu aus `origin/main` aufgebaut und enthält genau einen Manifest-Commit.
 3. Die GitHub App pusht den Branch und erstellt oder aktualisiert den PR.
 4. `catalog-sync-guard`, `validate` und CodeQL laufen als von GitHub erzwungene Gates.

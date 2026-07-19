@@ -13,6 +13,18 @@ function findRule(ruleset, type) {
     : undefined;
 }
 
+function representsSameInstant(actualTimestamp, expectedTimestamp) {
+  if (typeof actualTimestamp !== 'string' || typeof expectedTimestamp !== 'string') {
+    return false;
+  }
+
+  const actualInstant = Date.parse(actualTimestamp);
+  const expectedInstant = Date.parse(expectedTimestamp);
+  return Number.isFinite(actualInstant) &&
+    Number.isFinite(expectedInstant) &&
+    actualInstant === expectedInstant;
+}
+
 export function validateCatalogSyncPolicy(repository, ruleset, {
   expectedRepository = CATALOG_SYNC_REPOSITORY,
   expectedRulesetId = CATALOG_SYNC_RULESET_ID,
@@ -40,7 +52,10 @@ export function validateCatalogSyncPolicy(repository, ruleset, {
   if (ruleset?.source !== expectedRepository || ruleset?.source_type !== 'Repository') {
     errors.push('ruleset must belong to the expected repository');
   }
-  if (expectedRulesetUpdatedAt && ruleset?.updated_at !== expectedRulesetUpdatedAt) {
+  if (
+    expectedRulesetUpdatedAt &&
+    !representsSameInstant(ruleset?.updated_at, expectedRulesetUpdatedAt)
+  ) {
     errors.push(`ruleset updated_at must match the audited version ${expectedRulesetUpdatedAt}`);
   }
   if (Array.isArray(ruleset?.bypass_actors)) {
