@@ -4,11 +4,11 @@ on:
   schedule:
     - cron: '0 6 * * *'  # Taeglich um 06:00 UTC
   workflow_dispatch:
+  push:
+    branches: [main]
 
 permissions:
-  contents: write
-  pull-requests: write
-  actions: write
+  contents: read
 
 concurrency:
   group: catalog-sync
@@ -17,10 +17,14 @@ concurrency:
 jobs:
   check-and-sync:
     runs-on: ubuntu-latest
+    env:
+      CATALOG_SYNC_RULESET_UPDATED_AT: ${{ vars.CATALOG_SYNC_RULESET_UPDATED_AT }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -31,14 +35,43 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Verify repository merge policy
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/catalog-sync-policy.mjs
+
+      - name: Create repository-scoped GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.CATALOG_SYNC_APP_CLIENT_ID }}
+          private-key: ${{ secrets.CATALOG_SYNC_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Verify GitHub App repository access
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          repository="$(gh api "repos/$GITHUB_REPOSITORY" --jq '.full_name')"
+          if [ "$repository" != "$GITHUB_REPOSITORY" ]; then
+            echo "GitHub App token does not resolve to the expected repository." >&2
+            exit 1
+          fi
+          echo "GitHub App token has repository access."
+
       - name: Fetch BSI catalog and official vocabularies
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: npm run fetch-catalog
 
       - name: Compare with tracked upstream manifest
         id: compare
         run: |
+          set -euo pipefail
           RESULT="$(node scripts/sync-upstream-manifest.mjs)"
           printf '%s\n' "$RESULT"
 
@@ -59,171 +92,146 @@ jobs:
             printf '%s\n' "$DELIMITER"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Check for existing sync PR
-        id: idempotency
+      - name: Preserve expected manifest
+        if: steps.compare.outputs.changed == 'true'
+        run: cp upstream-manifest.json "$RUNNER_TEMP/upstream-manifest.expected.json"
+
+      - name: Resolve deterministic sync branch
+        id: sync
         if: steps.compare.outputs.changed == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           SNAPSHOT_SHA: ${{ steps.compare.outputs.snapshot_commit_sha }}
         run: |
-          SHA12="${SNAPSHOT_SHA:0:12}"
-          BRANCH="chore/catalog-sync-${SHA12}"
-          EXISTING=$(gh pr list --state open --head "$BRANCH" --json number --jq '.[0].number // empty')
-          if [ -n "$EXISTING" ]; then
-            echo "PR #$EXISTING fuer Branch $BRANCH bereits vorhanden, verwende die bestehende PR."
-            echo "create_pr=false" >> "$GITHUB_OUTPUT"
-            echo "pr_number=$EXISTING" >> "$GITHUB_OUTPUT"
-          else
-            if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
-              echo "Remote branch $BRANCH bereits vorhanden, verwende ihn erneut."
-              echo "branch_exists=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "branch_exists=false" >> "$GITHUB_OUTPUT"
-            fi
-            echo "create_pr=true" >> "$GITHUB_OUTPUT"
-            echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
-          fi
+          set -euo pipefail
+          BRANCH="chore/catalog-sync-${SNAPSHOT_SHA:0:12}"
+          PR_NUMBER="$(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --state open \
+            --base main \
+            --head "$BRANCH" \
+            --json number \
+            --jq '.[0].number // empty')"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
-      - name: Create sync branch and PR
-        id: create
-        if: steps.compare.outputs.changed == 'true' && steps.idempotency.outputs.create_pr == 'true'
+      - name: Rebuild and push sync branch from main
+        if: steps.compare.outputs.changed == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BRANCH: ${{ steps.idempotency.outputs.branch }}
-          BRANCH_EXISTS: ${{ steps.idempotency.outputs.branch_exists }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          BRANCH: ${{ steps.sync.outputs.branch }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_TOKEN: ${{ github.token }}
           SNAPSHOT_SHA: ${{ steps.compare.outputs.snapshot_commit_sha }}
-          CHANGE_SUMMARY: ${{ steps.compare.outputs.change_summary }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          set -euo pipefail
+          node scripts/catalog-sync-policy.mjs
 
-          if [ "$BRANCH_EXISTS" != "true" ]; then
-            git checkout -b "$BRANCH"
-            git add upstream-manifest.json
-            git commit -m "chore(ci): update BSI upstream manifest (${SNAPSHOT_SHA:0:12})"
-            git push origin "$BRANCH"
-          else
-            # Ensure refs/remotes/origin/$BRANCH exists so --force-with-lease has a lease value.
-            git fetch origin "$BRANCH"
-            git checkout -b "$BRANCH"
-            git add upstream-manifest.json
-            git commit -m "chore(ci): update BSI upstream manifest (${SNAPSHOT_SHA:0:12})"
-            git push --force-with-lease origin "$BRANCH"
+          gh auth setup-git
+          BOT_ID="$(gh api "users/${APP_SLUG}[bot]" --jq '.id')"
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${BOT_ID}+${APP_SLUG}[bot]@users.noreply.github.com"
+
+          git fetch --no-tags origin main
+          REMOTE_SHA="$(git ls-remote --heads origin "refs/heads/$BRANCH" | awk 'NR == 1 { print $1 }')"
+          git switch --force-create "$BRANCH" origin/main
+          cp "$RUNNER_TEMP/upstream-manifest.expected.json" upstream-manifest.json
+          git add -- upstream-manifest.json
+
+          STAGED_PATHS="$(git diff --cached --name-only)"
+          if [ "$STAGED_PATHS" != "upstream-manifest.json" ]; then
+            echo "Expected exactly upstream-manifest.json in the sync commit." >&2
+            exit 1
           fi
 
+          git commit -m "chore(ci): update BSI upstream manifest (${SNAPSHOT_SHA:0:12})"
+          if [ -n "$REMOTE_SHA" ]; then
+            git push \
+              --force-with-lease="refs/heads/$BRANCH:$REMOTE_SHA" \
+              origin "HEAD:refs/heads/$BRANCH"
+          else
+            git push origin "HEAD:refs/heads/$BRANCH"
+          fi
+
+      - name: Create or update sync PR
+        id: pr
+        if: steps.compare.outputs.changed == 'true'
+        env:
+          BRANCH: ${{ steps.sync.outputs.branch }}
+          CHANGE_SUMMARY: ${{ steps.compare.outputs.change_summary }}
+          EXISTING_PR_NUMBER: ${{ steps.sync.outputs.pr_number }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          REMOTE_SIGNATURE: ${{ steps.compare.outputs.remote_signature }}
+          SNAPSHOT_SHA: ${{ steps.compare.outputs.snapshot_commit_sha }}
+        run: |
+          set -euo pipefail
+          node scripts/catalog-sync-policy.mjs
+
+          TITLE="chore(ci): BSI-Katalog-Sync ${SNAPSHOT_SHA:0:12}"
           {
             echo "## BSI-Katalog-Aenderungen"
             echo ""
             printf '%s\n' "$CHANGE_SUMMARY"
             echo ""
             printf '**BSI-Snapshot:** [`%s`](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/commit/%s)\n' \
-              "${SNAPSHOT_SHA}" "${SNAPSHOT_SHA}"
+              "$SNAPSHOT_SHA" "$SNAPSHOT_SHA"
+            printf '**Manifest-Signatur:** `%s`\n' "$REMOTE_SIGNATURE"
             echo ""
-            echo '*Erstellt automatisch durch den taeglichen Katalog-Sync.*'
-          } > /tmp/pr-body.md
+            echo "Auto-Merge wird erst nach Validate, Catalog-Sync-Guard und CodeQL aktiviert."
+          } > "$RUNNER_TEMP/catalog-sync-pr-body.md"
 
-          PR_URL=$(gh pr create \
-            --title "chore(ci): BSI-Katalog-Sync ${SNAPSHOT_SHA:0:12}" \
-            --body-file /tmp/pr-body.md \
-            --base main \
-            --head "$BRANCH")
+          if [ -n "$EXISTING_PR_NUMBER" ]; then
+            gh api \
+              --method PATCH \
+              "repos/$GITHUB_REPOSITORY/pulls/$EXISTING_PR_NUMBER" \
+              --raw-field "title=$TITLE" \
+              --raw-field "body=$(< "$RUNNER_TEMP/catalog-sync-pr-body.md")" \
+              >/dev/null
+            PR_NUMBER="$EXISTING_PR_NUMBER"
+            echo "Updated catalog sync PR #$PR_NUMBER."
+          else
+            PR_URL="$(gh pr create \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$TITLE" \
+              --body-file "$RUNNER_TEMP/catalog-sync-pr-body.md" \
+              --base main \
+              --head "$BRANCH")"
+            PR_NUMBER="$(gh pr view "$PR_URL" --json number --jq '.number')"
+            echo "Created catalog sync PR: $PR_URL"
+          fi
 
-          echo "PR erstellt: $PR_URL"
-          PR_NUMBER=$(gh pr view "$PR_URL" --json number --jq .number)
           echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
-      - name: Merge sync PR
-        id: merge
+      - name: Enable policy-gated auto-merge
         if: steps.compare.outputs.changed == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER_CREATE: ${{ steps.create.outputs.pr_number }}
-          PR_NUMBER_EXISTING: ${{ steps.idempotency.outputs.pr_number }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
         run: |
           set -euo pipefail
+          node scripts/catalog-sync-policy.mjs
 
-          PR_NUMBER="${PR_NUMBER_CREATE:-$PR_NUMBER_EXISTING}"
           if [ -z "$PR_NUMBER" ]; then
-            echo "Kein Sync-PR gefunden, kann nicht mergen." >&2
+            echo "No catalog sync PR number available." >&2
             exit 1
           fi
 
-          MERGE_OUTPUT_FILE=/tmp/gh-pr-merge-output.txt
-          if gh pr merge --squash --delete-branch "$PR_NUMBER" >"$MERGE_OUTPUT_FILE" 2>&1; then
-            cat "$MERGE_OUTPUT_FILE"
-          else
-            cat "$MERGE_OUTPUT_FILE" >&2
+          gh pr merge \
+            --repo "$GITHUB_REPOSITORY" \
+            --auto \
+            --squash \
+            --delete-branch \
+            "$PR_NUMBER"
+
+          PR_STATE="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json state --jq '.state')"
+          AUTO_MERGE_METHOD="$(gh pr view "$PR_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json autoMergeRequest \
+            --jq '.autoMergeRequest.mergeMethod // empty')"
+          if [ "$PR_STATE" != "OPEN" ] || [ "$AUTO_MERGE_METHOD" != "SQUASH" ]; then
+            echo "Catalog sync PR does not have the expected active squash autoMergeRequest." >&2
             exit 1
           fi
-
-          PR_VIEW_JSON="$(gh pr view "$PR_NUMBER" --json state,mergeCommit)"
-          PR_STATE="$(printf '%s' "$PR_VIEW_JSON" | jq -r '.state')"
-          MERGE_COMMIT_SHA="$(printf '%s' "$PR_VIEW_JSON" | jq -r '.mergeCommit.oid // empty')"
-
-          if [ "$PR_STATE" != "MERGED" ]; then
-            echo "PR-State nach Merge ist '$PR_STATE', erwartet 'MERGED'." >&2
-            exit 1
-          fi
-          if [ -z "$MERGE_COMMIT_SHA" ]; then
-            echo "Konnte Merge-Commit-SHA fuer PR #$PR_NUMBER nicht ermitteln." >&2
-            exit 1
-          fi
-
-          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
-          echo "pr_state=$PR_STATE" >> "$GITHUB_OUTPUT"
-          echo "merge_commit_sha=$MERGE_COMMIT_SHA" >> "$GITHUB_OUTPUT"
-
-      - name: Verify manifest on main and trigger deploy
-        if: steps.compare.outputs.changed == 'true' && steps.merge.outcome == 'success'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          MERGE_COMMIT_SHA: ${{ steps.merge.outputs.merge_commit_sha }}
-          SNAPSHOT_SHA: ${{ steps.compare.outputs.snapshot_commit_sha }}
-        run: |
-          set -euo pipefail
-
-          if [ -z "$MERGE_COMMIT_SHA" ]; then
-            echo "Kein Merge-Commit-SHA vorhanden, breche Deploy-Dispatch ab." >&2
-            exit 1
-          fi
-          if [ -z "$SNAPSHOT_SHA" ]; then
-            echo "Kein Snapshot-Commit-SHA vorhanden, breche Deploy-Dispatch ab." >&2
-            exit 1
-          fi
-
-          # Ancestor-Check via GitHub Compare API, robust gegen shallow Checkouts.
-          # status="identical": Merge-Commit ist HEAD von main.
-          # status="behind"   : Merge-Commit ist Ancestor von main (weitere Pushes danach).
-          COMPARE_STATUS="$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$MERGE_COMMIT_SHA" --jq '.status')"
-          case "$COMPARE_STATUS" in
-            identical|behind)
-              echo "Merge-Commit $MERGE_COMMIT_SHA ist auf main sichtbar (compare status=$COMPARE_STATUS)."
-              ;;
-            *)
-              echo "Merge-Commit $MERGE_COMMIT_SHA ist nicht auf main sichtbar (compare status=$COMPARE_STATUS)." >&2
-              exit 1
-              ;;
-          esac
-
-          MANIFEST_SHA_ON_MAIN="$(gh api "repos/$GITHUB_REPOSITORY/contents/upstream-manifest.json?ref=main" \
-            -H 'Accept: application/vnd.github.raw' \
-            | jq -r '.snapshotCommitSha')"
-          if [ "$MANIFEST_SHA_ON_MAIN" != "$SNAPSHOT_SHA" ]; then
-            echo "snapshotCommitSha auf main ($MANIFEST_SHA_ON_MAIN) entspricht nicht dem erwarteten Snapshot ($SNAPSHOT_SHA)." >&2
-            exit 1
-          fi
-
-          echo "Manifest-Snapshot $SNAPSHOT_SHA ist auf main verifiziert, loese Deploy aus."
-          gh workflow run deploy.yml --ref main
-          echo "Deploy via workflow_dispatch fuer ref=main ausgeloest."
-
-          # Best-effort: den getriggerten Deploy-Run zur Nachvollziehbarkeit verlinken.
-          sleep 5
-          if RUN_INFO="$(gh run list --workflow=deploy.yml --branch=main --event=workflow_dispatch \
-                --limit=1 --json databaseId,url,createdAt 2>/dev/null)"; then
-            printf '%s\n' "$RUN_INFO" \
-              | jq -r '.[0] | "Deploy-Run: \(.url) (created \(.createdAt))"' \
-              || echo "Deploy-Run konnte nicht formatiert werden (nicht kritisch)."
-          else
-            echo "Konnte den ausgeloesten Deploy-Run nicht abfragen (nicht kritisch)."
-          fi
+          echo "Policy-gated squash auto-merge is active for PR #$PR_NUMBER."

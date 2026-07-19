@@ -206,6 +206,9 @@ Konfiguriert in `tsconfig.app.json` (`compilerOptions.paths`) und `vite.config.t
 | `BUILD_BASE` | Build | Überschreibt die GitHub-Pages-Base (`vite.config.ts`) |
 | `BSI_SNAPSHOT_SHA` | fetch-catalog | Pinnt den Upstream-Abruf auf einen Commit |
 | `GH_TOKEN` / `GITHUB_TOKEN` | fetch-catalog | Token für die GitHub-API (optional lokal, gesetzt in CI) |
+| `CATALOG_SYNC_APP_CLIENT_ID` | Catalog-Sync | Repository-Variable mit der Client-ID der dedizierten GitHub App |
+| `CATALOG_SYNC_APP_PRIVATE_KEY` | Catalog-Sync | Actions-Secret mit dem Private Key der dedizierten GitHub App |
+| `CATALOG_SYNC_RULESET_UPDATED_AT` | Catalog-Sync | Audit-Pin der zuletzt vollständig geprüften Ruleset-Version |
 
 Die Impressum-Werte kommen lokal aus `.env.local` (nicht committet, siehe `.env.local.example`) und in CI aus GitHub Actions Secrets.
 
@@ -223,6 +226,21 @@ Das Deployment erfolgt automatisch via GitHub Actions bei Push auf `main` (`.git
 6. Deployment auf GitHub Pages
 
 Der Katalog wird **nie** im Repository committet — er wird immer frisch zum Build-Zeitpunkt von BSI abgerufen. Der Workflow `.github/workflows/update-catalog.yml` überwacht das Upstream-Repository und aktualisiert `upstream-manifest.json` automatisch, wenn sich Katalog oder Namespace-Dateien ändern.
+
+### Policy-gesteuerter Catalog-Sync
+
+Der Sync verwendet ausschließlich eine auf dieses Repository beschränkte GitHub App. Ihr kurzlebiges Installation-Token wird zur Laufzeit erzeugt und unverändert an `gh` und Git übergeben; es gibt weder einen PAT-Fallback noch Annahmen über das Tokenformat. Der temporäre `X-GitHub-Stateless-S2S-Token`-Override wird nicht gesetzt.
+
+Ein erkannter Upstream-Delta durchläuft folgende Lane:
+
+1. Der Workflow prüft Auto-Merge, automatische Branch-Löschung, Ruleset 15503378, required Checks und CodeQL. Da GitHub `bypass_actors` für minimal berechtigte Tokens redigiert, muss `updated_at` exakt dem nach vollständigem Admin-Audit gesetzten `CATALOG_SYNC_RULESET_UPDATED_AT` entsprechen; jede Ruleset-Änderung blockiert damit bis zur erneuten Prüfung.
+2. Der deterministische Branch `chore/catalog-sync-<sha12>` wird neu aus `origin/main` aufgebaut und enthält genau einen Manifest-Commit.
+3. Die GitHub App pusht den Branch und erstellt oder aktualisiert den PR.
+4. `catalog-sync-guard`, `validate` und CodeQL laufen als von GitHub erzwungene Gates.
+5. Der Workflow aktiviert ausschließlich GitHub Auto-Merge mit Squash; GitHub führt den Merge erst nach grünen Gates aus und löscht danach den Branch.
+6. `.github/workflows/verify-catalog-merge.yml` verifiziert ereignisbasiert Merge-Commit und Manifest auf `main`. Es erwartet den normalen Push-Deploy und dispatcht nur nach erneuter Zustandsprüfung einen begrenzten Fallback.
+
+Bei fehlender oder abweichender Policy, einem API-Fehler, unerwartetem Diff oder fehlendem `autoMergeRequest` wird nicht gemergt. Der BSI-Upstream bleibt dabei als Datenquelle grundsätzlich vertraut; eine fachliche Two-Source-Verifikation ist nicht Teil dieser Merge-Lane.
 
 ## Siehe auch
 

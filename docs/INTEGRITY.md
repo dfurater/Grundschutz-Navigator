@@ -300,6 +300,9 @@ Zusätzlich zur internen Integritätsprüfung generiert `.github/workflows/deplo
 - **Workflow Run ID** ermöglicht Rückverfolgung zum Build-Prozess
 - **Runner Environment** identifiziert die Build-Plattform
 - **Upstream-Allowlist** (`scripts/security-guards.mjs`) verhindert, dass der Fetch auf fremde Repos oder Pfade umgelenkt wird
+- **Catalog-Sync-Guard** (`scripts/catalog-sync-guard.mjs`) prüft bei Sync-PRs Branch und Titel, einen exakt auf `upstream-manifest.json` begrenzten Diff, das strikte Manifest-Schema, erlaubte Pfade, eindeutige Dateien, Blob-/Snapshot-SHAs und die kanonisch neu berechnete Signatur. Der neue BSI-Snapshot muss per GitHub Compare API ausschließlich `ahead` sein; API-Fehler sowie `identical`, `behind` und `diverged` blockieren.
+- **Ruleset-Preflight** (`scripts/catalog-sync-policy.mjs`) verhindert schreibende Sync-Aktionen, wenn Auto-Merge, Branch-Löschung, required Checks oder CodeQL von der erwarteten Policy abweichen. GitHub gibt `bypass_actors` nur mit Ruleset-Schreibzugriff zurück; deshalb attestiert der Agent nach vollständigem Audit die bypass-freie Ruleset-Version über `CATALOG_SYNC_RULESET_UPDATED_AT`. Jede Änderung an der Ruleset-Version blockiert fail-closed bis zu einem erneuten Audit, ohne der Sync-App Administration-Rechte zu geben.
+- **CodeQL-Abgrenzung**: CodeQL schützt Anwendungscode und Workflows, bewertet aber nicht die fachliche Richtigkeit des BSI-Kataloginhalts. Der BSI-Upstream wird als Datenquelle akzeptiert; Two-Source-Verifikation ist bewusst nicht Bestandteil dieser Automatisierung.
 
 ## Siehe auch
 

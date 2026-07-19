@@ -1,0 +1,214 @@
+#!/usr/bin/env node
+
+import { pathToFileURL } from 'node:url';
+
+export const CATALOG_SYNC_REPOSITORY = 'dfurater/Grundschutz-Navigator';
+export const CATALOG_SYNC_RULESET_ID = 15503378;
+export const GITHUB_ACTIONS_INTEGRATION_ID = 15368;
+export const REQUIRED_CHECKS = ['validate', 'catalog-sync-guard'];
+
+function findRule(ruleset, type) {
+  return Array.isArray(ruleset.rules)
+    ? ruleset.rules.find((rule) => rule?.type === type)
+    : undefined;
+}
+
+export function validateCatalogSyncPolicy(repository, ruleset, {
+  expectedRepository = CATALOG_SYNC_REPOSITORY,
+  expectedRulesetId = CATALOG_SYNC_RULESET_ID,
+  expectedRulesetUpdatedAt,
+  githubActionsIntegrationId = GITHUB_ACTIONS_INTEGRATION_ID,
+  allowRedactedBypassActors = false,
+} = {}) {
+  const errors = [];
+
+  if (repository?.full_name !== expectedRepository) {
+    errors.push(`repository must be ${expectedRepository}`);
+  }
+  if (repository?.allow_auto_merge !== true) {
+    errors.push('repository auto-merge must be enabled');
+  }
+  if (repository?.delete_branch_on_merge !== true) {
+    errors.push('automatic branch deletion must be enabled');
+  }
+  if (ruleset?.id !== expectedRulesetId) {
+    errors.push(`ruleset id must be ${expectedRulesetId}`);
+  }
+  if (ruleset?.target !== 'branch' || ruleset?.enforcement !== 'active') {
+    errors.push('ruleset must be an active branch ruleset');
+  }
+  if (ruleset?.source !== expectedRepository || ruleset?.source_type !== 'Repository') {
+    errors.push('ruleset must belong to the expected repository');
+  }
+  if (expectedRulesetUpdatedAt && ruleset?.updated_at !== expectedRulesetUpdatedAt) {
+    errors.push(`ruleset updated_at must match the audited version ${expectedRulesetUpdatedAt}`);
+  }
+  if (Array.isArray(ruleset?.bypass_actors)) {
+    if (ruleset.bypass_actors.length !== 0) {
+      errors.push('ruleset must not contain bypass actors');
+    }
+  } else if (!allowRedactedBypassActors || !expectedRulesetUpdatedAt) {
+    errors.push('ruleset bypass actors are redacted without an audited version pin');
+  }
+
+  const pullRequestRule = findRule(ruleset, 'pull_request');
+  if (pullRequestRule?.parameters?.required_approving_review_count !== 0) {
+    errors.push('pull request rule must require zero approvals for the automated lane');
+  }
+  for (const preservedRule of ['deletion', 'non_fast_forward']) {
+    if (!findRule(ruleset, preservedRule)) {
+      errors.push(`ruleset must preserve the ${preservedRule} rule`);
+    }
+  }
+
+  const requiredStatusRule = findRule(ruleset, 'required_status_checks');
+  if (requiredStatusRule?.parameters?.strict_required_status_checks_policy !== true) {
+    errors.push('required status checks must use strict up-to-date enforcement');
+  }
+  const configuredChecks = requiredStatusRule?.parameters?.required_status_checks;
+  if (!Array.isArray(configuredChecks)) {
+    errors.push('required status checks rule is missing');
+  } else {
+    for (const context of REQUIRED_CHECKS) {
+      const configured = configuredChecks.find((check) => check?.context === context);
+      if (configured?.integration_id !== githubActionsIntegrationId) {
+        errors.push(`${context} must be required from GitHub Actions integration ${githubActionsIntegrationId}`);
+      }
+    }
+  }
+
+  const codeScanningRule = findRule(ruleset, 'code_scanning');
+  const codeQl = codeScanningRule?.parameters?.code_scanning_tools?.find(
+    (tool) => tool?.tool === 'CodeQL',
+  );
+  if (
+    codeQl?.security_alerts_threshold !== 'high_or_higher' ||
+    codeQl?.alerts_threshold !== 'errors'
+  ) {
+    errors.push('CodeQL rule must block high-or-higher security alerts and errors');
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Catalog sync policy check failed:\n- ${errors.join('\n- ')}`);
+  }
+
+  return true;
+}
+
+async function fetchGitHubJson(path, token, fetchImpl = fetch) {
+  const headers = {
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  let response;
+  try {
+    response = await fetchImpl(`https://api.github.com/${path}`, { headers });
+  } catch (error) {
+    throw new Error(`GitHub policy API request failed: ${error instanceof Error ? error.message : 'network error'}`);
+  }
+
+  if (!response.ok) {
+    throw new Error(`GitHub policy API request failed with HTTP ${response.status}`);
+  }
+
+  try {
+    return await response.json();
+  } catch {
+    throw new Error('GitHub policy API returned invalid JSON');
+  }
+}
+
+async function fetchRepositoryMergeSettings(repository, token, fetchImpl = fetch) {
+  if (!token) {
+    throw new Error('GITHUB_TOKEN is required for repository merge policy checks');
+  }
+
+  const [owner, name] = repository.split('/');
+  const query = `
+    query CatalogSyncRepositoryPolicy($owner: String!, $name: String!) {
+      repository(owner: $owner, name: $name) {
+        autoMergeAllowed
+        deleteBranchOnMerge
+        nameWithOwner
+      }
+    }
+  `;
+
+  let response;
+  try {
+    response = await fetchImpl('https://api.github.com/graphql', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/vnd.github+json',
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'X-GitHub-Api-Version': '2022-11-28',
+      },
+      body: JSON.stringify({ query, variables: { owner, name } }),
+    });
+  } catch (error) {
+    throw new Error(`GitHub policy GraphQL request failed: ${error instanceof Error ? error.message : 'network error'}`);
+  }
+
+  if (!response.ok) {
+    throw new Error(`GitHub policy GraphQL request failed with HTTP ${response.status}`);
+  }
+
+  let payload;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new Error('GitHub policy GraphQL request returned invalid JSON');
+  }
+  if (payload?.errors?.length || !payload?.data?.repository) {
+    throw new Error('GitHub policy GraphQL request returned errors or no repository');
+  }
+
+  return {
+    full_name: payload.data.repository.nameWithOwner,
+    allow_auto_merge: payload.data.repository.autoMergeAllowed,
+    delete_branch_on_merge: payload.data.repository.deleteBranchOnMerge,
+  };
+}
+
+export async function fetchAndValidateCatalogSyncPolicy({
+  repository = process.env.GITHUB_REPOSITORY,
+  rulesetId = CATALOG_SYNC_RULESET_ID,
+  token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN,
+  expectedRulesetUpdatedAt = process.env.CATALOG_SYNC_RULESET_UPDATED_AT,
+  fetchImpl = fetch,
+} = {}) {
+  if (repository !== CATALOG_SYNC_REPOSITORY) {
+    throw new Error(`GITHUB_REPOSITORY must be ${CATALOG_SYNC_REPOSITORY}`);
+  }
+
+  if (!expectedRulesetUpdatedAt) {
+    throw new Error('CATALOG_SYNC_RULESET_UPDATED_AT must pin the audited ruleset version');
+  }
+
+  const [repositoryState, ruleset] = await Promise.all([
+    fetchRepositoryMergeSettings(repository, token, fetchImpl),
+    fetchGitHubJson(`repos/${repository}/rulesets/${rulesetId}`, token, fetchImpl),
+  ]);
+  validateCatalogSyncPolicy(repositoryState, ruleset, {
+    allowRedactedBypassActors: true,
+    expectedRulesetId: rulesetId,
+    expectedRulesetUpdatedAt,
+  });
+  return { repository: repositoryState, ruleset };
+}
+
+const isDirectExecution = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isDirectExecution) {
+  fetchAndValidateCatalogSyncPolicy()
+    .then(() => console.log('Catalog sync repository policy is active and valid.'))
+    .catch((error) => {
+      console.error(error instanceof Error ? error.message : error);
+      process.exitCode = 1;
+    });
+}
