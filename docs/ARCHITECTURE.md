@@ -236,7 +236,7 @@ Ein erkannter Upstream-Delta durchläuft folgende Lane:
 1. Der Workflow prüft Auto-Merge, automatische Branch-Löschung, Ruleset 15503378, required Checks und CodeQL. Da GitHub `bypass_actors` für minimal berechtigte Tokens redigiert, muss `updated_at` denselben Zeitpunkt wie das nach vollständigem Admin-Audit gesetzte `CATALOG_SYNC_RULESET_UPDATED_AT` bezeichnen; unterschiedliche ISO-Zeitzonenrepräsentationen desselben Zeitpunkts sind zulässig, jede tatsächliche Ruleset-Änderung blockiert dagegen bis zur erneuten Prüfung.
 2. Der deterministische Branch `chore/catalog-sync-<sha12>` wird neu aus `origin/main` aufgebaut und enthält genau einen Manifest-Commit.
 3. Die GitHub App pusht den Branch und erstellt oder aktualisiert den PR.
-4. `catalog-sync-guard`, `validate` und CodeQL laufen als von GitHub erzwungene Gates.
+4. `catalog-sync-guard`, `validate` und CodeQL laufen als von GitHub erzwungene Gates. Der Guard bindet dabei Datei-Inventur und Blob-SHAs an den ausgewählten BSI-Snapshot.
 5. Der Workflow aktiviert ausschließlich GitHub Auto-Merge mit Squash; GitHub führt den Merge erst nach grünen Gates aus und löscht danach den Branch.
 6. `.github/workflows/verify-catalog-merge.yml` verifiziert ereignisbasiert Merge-Commit und Manifest auf `main`. Es erwartet den normalen Push-Deploy und dispatcht nur nach erneuter Zustandsprüfung einen begrenzten Fallback.
 

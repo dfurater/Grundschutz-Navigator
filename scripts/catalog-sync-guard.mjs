@@ -11,6 +11,10 @@ import {
   OFFICIAL_NAMESPACE_DIRECTORY,
   assertAllowedUpstreamRepoPath,
 } from './security-guards.mjs';
+import {
+  extractReferencedNamespaceUrls,
+  namespaceUrlToRepoPath,
+} from './vocabulary-utils.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -239,6 +243,76 @@ export async function verifySnapshotProgress(previousSha, nextSha, {
   return comparison;
 }
 
+function computeGitBlobSha(contents) {
+  return createHash('sha1')
+    .update(`blob ${contents.length}\0`)
+    .update(contents)
+    .digest('hex');
+}
+
+export async function verifySnapshotFiles(manifest, {
+  fetchImpl = fetch,
+  token,
+} = {}) {
+  const apiBase = `https://api.github.com/repos/${OFFICIAL_BSI_REPO}`;
+  const tree = await fetchGitHubJson(
+    `${apiBase}/git/trees/${manifest.snapshotCommitSha}?recursive=1`,
+    { fetchImpl, token, label: 'BSI snapshot tree lookup' },
+  );
+  if (tree?.truncated !== false || !Array.isArray(tree.tree)) {
+    throw new Error('BSI snapshot tree lookup returned an incomplete tree');
+  }
+
+  const blobShaByPath = new Map(
+    tree.tree
+      .filter((entry) => entry?.type === 'blob' && typeof entry.path === 'string')
+      .map((entry) => [entry.path, entry.sha]),
+  );
+  for (const file of manifest.files) {
+    if (blobShaByPath.get(file.path) !== file.gitBlobSha) {
+      throw new Error(`Manifest blob SHA does not match the BSI snapshot: ${file.path}`);
+    }
+  }
+
+  const catalogFile = manifest.files[0];
+  const catalogBlob = await fetchGitHubJson(
+    `${apiBase}/git/blobs/${catalogFile.gitBlobSha}`,
+    { fetchImpl, token, label: 'BSI catalog blob lookup' },
+  );
+  if (
+    catalogBlob?.sha !== catalogFile.gitBlobSha ||
+    catalogBlob?.encoding !== 'base64' ||
+    typeof catalogBlob.content !== 'string'
+  ) {
+    throw new Error('BSI catalog blob lookup returned invalid content');
+  }
+
+  const catalogContents = Buffer.from(catalogBlob.content, 'base64');
+  if (computeGitBlobSha(catalogContents) !== catalogFile.gitBlobSha) {
+    throw new Error('BSI catalog blob content does not match its Git blob SHA');
+  }
+
+  let catalogDocument;
+  try {
+    catalogDocument = JSON.parse(catalogContents.toString('utf8'));
+  } catch {
+    throw new Error('BSI catalog blob is not valid JSON');
+  }
+
+  const expectedNamespacePaths = extractReferencedNamespaceUrls(
+    catalogDocument,
+    OFFICIAL_BSI_REPO,
+  ).map((namespaceUrl) => namespaceUrlToRepoPath(namespaceUrl, OFFICIAL_BSI_REPO));
+  if (expectedNamespacePaths.some((path) => path === null)) {
+    throw new Error('BSI catalog contains an invalid official namespace URL');
+  }
+
+  const manifestNamespacePaths = manifest.files.slice(1).map((file) => file.path);
+  if (JSON.stringify(manifestNamespacePaths) !== JSON.stringify(expectedNamespacePaths)) {
+    throw new Error('Manifest namespace inventory does not match the selected BSI catalog');
+  }
+}
+
 export async function guardCatalogSyncPullRequest({
   branch,
   title,
@@ -264,6 +338,7 @@ export async function guardCatalogSyncPullRequest({
     nextManifest.snapshotCommitSha,
     { fetchImpl, token },
   );
+  await verifySnapshotFiles(nextManifest, { fetchImpl, token });
 
   return {
     catalogSync: true,

@@ -13,7 +13,19 @@ import { OFFICIAL_CATALOG_PATH } from './security-guards.mjs';
 
 const OLD_SHA = '1'.repeat(40);
 const NEW_SHA = '2'.repeat(40);
-const BLOB_SHA = '3'.repeat(40);
+const NAMESPACE_BLOB_SHA = '4'.repeat(40);
+const CATALOG_DOCUMENT = {
+  catalog: {
+    metadata: {
+      ns: `${OFFICIAL_BSI_REPOSITORY_URL}/tree/main/Dokumentation/namespaces/result.csv`,
+    },
+  },
+};
+const CATALOG_CONTENTS = Buffer.from(JSON.stringify(CATALOG_DOCUMENT));
+const CATALOG_BLOB_SHA = createHash('sha1')
+  .update(`blob ${CATALOG_CONTENTS.length}\0`)
+  .update(CATALOG_CONTENTS)
+  .digest('hex');
 
 function signManifest(manifest: Record<string, unknown>) {
   const payload = {
@@ -34,13 +46,13 @@ function makeManifest(snapshotCommitSha = NEW_SHA) {
       {
         kind: 'catalog',
         path: OFFICIAL_CATALOG_PATH,
-        gitBlobSha: BLOB_SHA,
+        gitBlobSha: CATALOG_BLOB_SHA,
       },
       {
         kind: 'namespace',
         path: 'Dokumentation/namespaces/result.csv',
         namespace: `${OFFICIAL_BSI_REPOSITORY_URL}/tree/main/Dokumentation/namespaces/result.csv`,
-        gitBlobSha: '4'.repeat(40),
+        gitBlobSha: NAMESPACE_BLOB_SHA,
       },
     ],
     signatureSha256: '',
@@ -60,7 +72,23 @@ function makeResponse(body: unknown, { ok = true, status = 200 } = {}) {
 function makeAheadFetch() {
   return vi.fn()
     .mockResolvedValueOnce(makeResponse({ sha: NEW_SHA }))
-    .mockResolvedValueOnce(makeResponse({ status: 'ahead' }));
+    .mockResolvedValueOnce(makeResponse({ status: 'ahead' }))
+    .mockResolvedValueOnce(makeResponse({
+      truncated: false,
+      tree: [
+        { type: 'blob', path: OFFICIAL_CATALOG_PATH, sha: CATALOG_BLOB_SHA },
+        {
+          type: 'blob',
+          path: 'Dokumentation/namespaces/result.csv',
+          sha: NAMESPACE_BLOB_SHA,
+        },
+      ],
+    }))
+    .mockResolvedValueOnce(makeResponse({
+      sha: CATALOG_BLOB_SHA,
+      encoding: 'base64',
+      content: CATALOG_CONTENTS.toString('base64'),
+    }));
 }
 
 describe('validateCatalogSyncManifest', () => {
@@ -158,7 +186,44 @@ describe('catalog sync PR shape', () => {
       nextManifest: makeManifest(NEW_SHA),
       fetchImpl,
     })).resolves.toEqual({ catalogSync: true, snapshotCommitSha: NEW_SHA });
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+  });
+
+  it('rejects a manifest that omits catalog-referenced namespaces', async () => {
+    const nextManifest = makeManifest(NEW_SHA);
+    nextManifest.files = nextManifest.files.slice(0, 1);
+    nextManifest.signatureSha256 = signManifest(nextManifest);
+    await expect(guardCatalogSyncPullRequest({
+      ...validShape,
+      previousManifest: makeManifest(OLD_SHA),
+      nextManifest,
+      fetchImpl: makeAheadFetch(),
+    })).rejects.toThrow('namespace inventory');
+  });
+
+  it('rejects manifest blob SHAs that do not match the selected snapshot', async () => {
+    const nextManifest = makeManifest(NEW_SHA);
+    nextManifest.files[1].gitBlobSha = '5'.repeat(40);
+    nextManifest.signatureSha256 = signManifest(nextManifest);
+    await expect(guardCatalogSyncPullRequest({
+      ...validShape,
+      previousManifest: makeManifest(OLD_SHA),
+      nextManifest,
+      fetchImpl: makeAheadFetch(),
+    })).rejects.toThrow('blob SHA does not match');
+  });
+
+  it('fails closed when GitHub returns a truncated snapshot tree', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(makeResponse({ sha: NEW_SHA }))
+      .mockResolvedValueOnce(makeResponse({ status: 'ahead' }))
+      .mockResolvedValueOnce(makeResponse({ truncated: true, tree: [] }));
+    await expect(guardCatalogSyncPullRequest({
+      ...validShape,
+      previousManifest: makeManifest(OLD_SHA),
+      nextManifest: makeManifest(NEW_SHA),
+      fetchImpl,
+    })).rejects.toThrow('incomplete tree');
   });
 
   it('binds the branch suffix to the new manifest snapshot', async () => {
