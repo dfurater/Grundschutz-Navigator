@@ -9,6 +9,27 @@ permissions:
   contents: read
 
 jobs:
+  catalog-sync-guard:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout full PR history
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate catalog sync PR contract
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: node scripts/catalog-sync-guard.mjs
+
   validate:
     runs-on: ubuntu-latest
 

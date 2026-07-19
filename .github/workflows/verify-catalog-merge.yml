@@ -1,0 +1,124 @@
+name: Verify Catalog Merge
+
+on:
+  pull_request:
+    branches: [main]
+    types: [closed]
+
+permissions:
+  contents: read
+  actions: write
+  pull-requests: read
+
+jobs:
+  verify-catalog-merge:
+    if: >-
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'chore/catalog-sync-') &&
+      startsWith(github.event.pull_request.title, 'chore(ci): BSI-Katalog-Sync ')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout verified merge commit
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          persist-credentials: false
+
+      - name: Verify merged sync PR and manifest
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_COMMIT_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$PR_BRANCH" =~ ^chore/catalog-sync-([0-9a-f]{12})$ ]]; then
+            echo "Merged PR branch does not match the catalog sync contract." >&2
+            exit 1
+          fi
+          if [ "$PR_TITLE" != "chore(ci): BSI-Katalog-Sync ${BASH_REMATCH[1]}" ]; then
+            echo "Merged PR title does not match its catalog sync branch." >&2
+            exit 1
+          fi
+
+          CHANGED_FILES="$(gh api --paginate \
+            "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" \
+            --jq '.[] | "\(.status)\t\(.filename)"')"
+          if [ "$CHANGED_FILES" != $'modified\tupstream-manifest.json' ]; then
+            echo "Merged catalog sync PR did not modify exactly upstream-manifest.json." >&2
+            exit 1
+          fi
+
+          COMPARE_STATUS="$(gh api \
+            "repos/$GITHUB_REPOSITORY/compare/main...$MERGE_COMMIT_SHA" \
+            --jq '.status')"
+          case "$COMPARE_STATUS" in
+            identical|behind)
+              ;;
+            *)
+              echo "Merge commit is not on main (status=$COMPARE_STATUS)." >&2
+              exit 1
+              ;;
+          esac
+
+          node scripts/catalog-sync-guard.mjs --validate-manifest upstream-manifest.json
+          SNAPSHOT_SHA="$(jq -r '.snapshotCommitSha' upstream-manifest.json)"
+          SIGNATURE="$(jq -r '.signatureSha256' upstream-manifest.json)"
+          echo "merge_commit_sha=$MERGE_COMMIT_SHA" >> "$GITHUB_OUTPUT"
+          echo "snapshot_sha=$SNAPSHOT_SHA" >> "$GITHUB_OUTPUT"
+          echo "signature=$SIGNATURE" >> "$GITHUB_OUTPUT"
+
+      - name: Confirm push deploy or dispatch safe fallback
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_COMMIT_SHA: ${{ steps.verify.outputs.merge_commit_sha }}
+          SNAPSHOT_SHA: ${{ steps.verify.outputs.snapshot_sha }}
+          SIGNATURE: ${{ steps.verify.outputs.signature }}
+        run: |
+          set -euo pipefail
+
+          for attempt in 1 2 3 4 5 6; do
+            RUN_JSON="$(gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow deploy.yml \
+              --commit "$MERGE_COMMIT_SHA" \
+              --event push \
+              --limit 1 \
+              --json databaseId,status,conclusion,url,headSha)"
+            if [ "$(printf '%s' "$RUN_JSON" | jq 'length')" -gt 0 ]; then
+              printf '%s\n' "$RUN_JSON" | jq -r '.[0] | "Push deploy found: \(.url) (\(.status)/\(.conclusion // \"pending\"))"'
+              exit 0
+            fi
+            if [ "$attempt" -lt 6 ]; then
+              sleep 10
+            fi
+          done
+
+          COMPARE_STATUS="$(gh api \
+            "repos/$GITHUB_REPOSITORY/compare/main...$MERGE_COMMIT_SHA" \
+            --jq '.status')"
+          case "$COMPARE_STATUS" in
+            identical|behind)
+              ;;
+            *)
+              echo "Merge commit is no longer verifiably on main; refusing fallback dispatch." >&2
+              exit 1
+              ;;
+          esac
+
+          MAIN_MANIFEST="$(gh api \
+            "repos/$GITHUB_REPOSITORY/contents/upstream-manifest.json?ref=main" \
+            -H 'Accept: application/vnd.github.raw')"
+          MAIN_SNAPSHOT="$(printf '%s' "$MAIN_MANIFEST" | jq -r '.snapshotCommitSha')"
+          MAIN_SIGNATURE="$(printf '%s' "$MAIN_MANIFEST" | jq -r '.signatureSha256')"
+          if [ "$MAIN_SNAPSHOT" != "$SNAPSHOT_SHA" ] || [ "$MAIN_SIGNATURE" != "$SIGNATURE" ]; then
+            echo "main no longer contains the verified manifest; refusing fallback dispatch." >&2
+            exit 1
+          fi
+
+          gh workflow run deploy.yml --repo "$GITHUB_REPOSITORY" --ref main
+          echo "No push deploy appeared after bounded retries; dispatched verified fallback deploy."
