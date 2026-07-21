@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CatalogState, Control } from '@/domain/models';
+import type { Catalog, CatalogState, Control } from '@/domain/models';
 import type { IncomingControlLink } from '@/domain/controlRelationships';
 import { useCatalog } from '@/hooks/useCatalog';
 import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
@@ -34,6 +34,7 @@ afterEach(() => {
 function makeControl(overrides: Partial<Control> = {}): Control {
   return {
     id: 'GC.2.2',
+    altIdentifier: 'alt-gc-2-2',
     title: 'Kontrolle mit Verweisen',
     groupId: 'GC.2',
     practiceId: 'GC',
@@ -54,7 +55,27 @@ function makeControl(overrides: Partial<Control> = {}): Control {
 
 function makeCatalogState(overrides: Partial<CatalogState> = {}): CatalogState {
   return {
-    catalog: null,
+    catalog: {
+      catalogKey: 'gspp',
+      uuid: 'test-catalog',
+      metadata: {
+        title: 'Testkatalog',
+        lastModified: '2026-07-21T00:00:00Z',
+        version: 'test',
+        oscalVersion: '1.1.3',
+        props: [],
+        links: [],
+        roles: [],
+        parties: [],
+        responsibleParties: [],
+      },
+      practices: [],
+      controlsById: new Map(),
+      controlsByAltIdentifier: new Map(),
+      controls: [],
+      backMatter: [],
+      totalControls: 0,
+    } satisfies Catalog,
     provenance: null,
     verification: null,
     vocabularyRegistry,
@@ -132,6 +153,45 @@ describe('ControlDetail', () => {
 
     await user.click(screen.getByRole('button', { name: 'Zielobjekt: Server' }));
     expect(screen.getByText('Server sind Zielobjekte mit zentralen IT-Diensten.')).toBeInTheDocument();
+  });
+
+  it('does not retain control-local UI state across catalog changes', async () => {
+    const user = userEvent.setup();
+    const control = makeControl({
+      modalverb: 'MUSS',
+      modalverbProp: {
+        name: 'modal_verb',
+        value: 'MUSS',
+        ns: 'https://example.com/namespaces/modal_verbs.csv',
+      },
+    });
+    const view = render(
+      <MemoryRouter>
+        <ControlDetail control={control} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'MUSS' }));
+    expect(screen.getByRole('button', { name: 'MUSS' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    const wlanCatalog = {
+      ...makeCatalogState().catalog!,
+      catalogKey: 'wlan' as const,
+    };
+    mockedUseCatalog.mockReturnValue(makeCatalogState({ catalog: wlanCatalog }));
+    view.rerender(
+      <MemoryRouter>
+        <ControlDetail control={control} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('button', { name: 'MUSS' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
   });
 
   it('renders resolved security targets and threats with independent accessible toggles', async () => {
@@ -739,7 +799,9 @@ describe('ControlDetail', () => {
     expect(screen.queryByRole('link', { name: /Namespace für/i })).not.toBeInTheDocument();
   });
 
-  it('shows outgoing link title when controlsById is provided', () => {
+  it('resolves outgoing links through controlsById before navigation', async () => {
+    const user = userEvent.setup();
+    const onNavigateToControl = vi.fn();
     const linkedControl = makeControl({ id: 'GC.2.3', title: 'Verknüpfte Basiskontrolle' });
     const controlsById = new Map([[linkedControl.id, linkedControl]]);
     const control = makeControl({
@@ -751,13 +813,39 @@ describe('ControlDetail', () => {
         control={control}
         controlsById={controlsById}
         onClose={vi.fn()}
-        onNavigateToControl={vi.fn()}
+        onNavigateToControl={onNavigateToControl}
       />,
     );
 
     expect(screen.getByText('Verknüpfte Basiskontrolle')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /GC\.2\.3 Verknüpfte Basiskontrolle/ })).toBeInTheDocument();
+    const linkedControlButton = screen.getByRole('button', {
+      name: /GC\.2\.3 Verknüpfte Basiskontrolle/,
+    });
+    expect(linkedControlButton).toBeInTheDocument();
     expect(screen.getByText('GC.2.3')).toBeInTheDocument();
+
+    await user.click(linkedControlButton);
+
+    expect(onNavigateToControl).toHaveBeenCalledWith(linkedControl);
+  });
+
+  it('keeps unresolved outgoing OSCAL links non-navigable', () => {
+    const onNavigateToControl = vi.fn();
+    const control = makeControl({
+      links: [{ targetId: 'MISSING.1', relation: 'related' }],
+    });
+
+    render(
+      <ControlDetail
+        control={control}
+        controlsById={new Map()}
+        onClose={vi.fn()}
+        onNavigateToControl={onNavigateToControl}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: /MISSING\.1/ })).toBeDisabled();
+    expect(onNavigateToControl).not.toHaveBeenCalled();
   });
 
   it('renders and navigates incoming control references', async () => {
@@ -791,7 +879,7 @@ describe('ControlDetail', () => {
 
     await user.click(reverseLinkButton);
 
-    expect(onNavigateToControl).toHaveBeenCalledWith('GC.2.1');
+    expect(onNavigateToControl).toHaveBeenCalledWith(incomingLinks[0].control);
   });
 
   it('hides reciprocal incoming rows when the same control is already listed as outgoing', () => {
@@ -961,8 +1049,8 @@ describe('ControlDetail', () => {
     await user.click(screen.getByRole('button', { name: /GC\.5 Übergeordnete Kontrolle/ }));
     await user.click(screen.getByRole('button', { name: /GC\.5\.1\.1 Erweiterung/ }));
 
-    expect(onNavigateToControl).toHaveBeenNthCalledWith(1, 'GC.5');
-    expect(onNavigateToControl).toHaveBeenNthCalledWith(2, 'GC.5.1.1');
+    expect(onNavigateToControl).toHaveBeenNthCalledWith(1, parentControl);
+    expect(onNavigateToControl).toHaveBeenNthCalledWith(2, childControl);
   });
 
   it('hides Übergeordnet in Technische Metadaten when parentControl is provided', () => {
@@ -999,18 +1087,20 @@ describe('ControlDetail', () => {
 
   it('builds absolute control detail links with the configured app base path', () => {
     expect(
-      getControlDetailUrl('DET.5.4', {
+      getControlDetailUrl('gspp', { id: 'DET.5.4', altIdentifier: 'stable-det-5-4' }, {
         origin: 'https://dfurater.github.io',
         baseUrl: '/Grundschutz-Navigator/',
       }),
-    ).toBe('https://dfurater.github.io/Grundschutz-Navigator/katalog/DET.5.4');
+    ).toBe(
+      'https://dfurater.github.io/Grundschutz-Navigator/katalog/gspp/kontrolle/stable-det-5-4',
+    );
 
     expect(
-      getControlDetailUrl('DET.5.4', {
+      getControlDetailUrl('gspp', { id: 'DET.5.4', altIdentifier: 'stable-det-5-4' }, {
         origin: 'http://localhost:5173',
         baseUrl: '/',
       }),
-    ).toBe('http://localhost:5173/katalog/DET.5.4');
+    ).toBe('http://localhost:5173/katalog/gspp/kontrolle/stable-det-5-4');
   });
 
   it('copies the direct link for the current control', async () => {
@@ -1020,13 +1110,18 @@ describe('ControlDetail', () => {
 
     render(
       <MemoryRouter>
-        <ControlDetail control={makeControl({ id: 'DET.5.4' })} onClose={vi.fn()} />
+        <ControlDetail
+          control={makeControl({ id: 'DET.5.4', altIdentifier: 'stable-det-5-4' })}
+          onClose={vi.fn()}
+        />
       </MemoryRouter>,
     );
 
     await user.click(screen.getByRole('button', { name: 'Link kopieren' }));
 
-    expect(writeText).toHaveBeenCalledWith('http://localhost:3000/katalog/DET.5.4');
+    expect(writeText).toHaveBeenCalledWith(
+      'http://localhost:3000/katalog/gspp/kontrolle/stable-det-5-4',
+    );
   });
 
   it('shows a generic error and the full selectable direct link when copying fails', async () => {
@@ -1035,7 +1130,10 @@ describe('ControlDetail', () => {
 
     render(
       <MemoryRouter>
-        <ControlDetail control={makeControl({ id: 'DET.5.4' })} onClose={vi.fn()} />
+        <ControlDetail
+          control={makeControl({ id: 'DET.5.4', altIdentifier: 'stable-det-5-4' })}
+          onClose={vi.fn()}
+        />
       </MemoryRouter>,
     );
 
@@ -1046,7 +1144,7 @@ describe('ControlDetail', () => {
     );
     expect(screen.queryByText('Browser detail')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Direktlink zum manuellen Kopieren')).toHaveTextContent(
-      'http://localhost:3000/katalog/DET.5.4',
+      'http://localhost:3000/katalog/gspp/kontrolle/stable-det-5-4',
     );
     expect(screen.getByLabelText('Direktlink zum manuellen Kopieren')).toHaveClass('select-all');
   });

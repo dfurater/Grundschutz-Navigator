@@ -11,6 +11,7 @@ import {
   type SortConfig,
 } from '@/hooks/useFilteredControls';
 import { IconSearch } from '@/components/icons';
+import { buildControlUrlForControl } from '@/app/routes';
 
 const SEARCH_RESULTS_PAGE_SIZE = 50;
 
@@ -186,7 +187,9 @@ export function SearchPage() {
               selectedControlId={undefined}
               sort={sort}
               onSortChange={setSort}
-              onSelectControl={(control) => navigate(`/katalog/${control.id}`)}
+              onSelectControl={(control) =>
+                catalog && navigate(buildControlUrlForControl(catalog.catalogKey, control))
+              }
               showSelection={false}
             />
           </div>
@@ -197,7 +200,9 @@ export function SearchPage() {
                 key={control.id}
                 control={control}
                 controlsById={controlsById}
-                onSelect={(ctrl) => navigate(`/katalog/${ctrl.id}`)}
+                onSelect={(control) =>
+                  catalog && navigate(buildControlUrlForControl(catalog.catalogKey, control))
+                }
               />
             ))}
           </div>

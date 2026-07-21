@@ -6,6 +6,7 @@ import type { Catalog, CatalogState, Control } from '@/domain/models';
 import { useCatalog } from '@/hooks/useCatalog';
 import { SearchPage } from './SearchPage';
 import { useSearch } from './useSearch';
+import { CONTROL_ROUTE_PATTERN } from '@/app/routes';
 
 vi.mock('@/hooks/useCatalog', () => ({
   useCatalog: vi.fn(),
@@ -19,8 +20,10 @@ const mockedUseCatalog = vi.mocked(useCatalog);
 const mockedUseSearch = vi.mocked(useSearch);
 
 function makeControl(overrides: Partial<Control> = {}): Control {
+  const id = overrides.id ?? 'ASST.1.1';
   return {
-    id: 'ASST.1.1',
+    id,
+    altIdentifier: `alt-${id}`,
     title: 'Verfahren und Regelungen',
     groupId: 'ASST.1',
     practiceId: 'ASST',
@@ -44,8 +47,12 @@ function makeControl(overrides: Partial<Control> = {}): Control {
 function makeCatalogState(controls: Control[]): CatalogState {
   return {
     catalog: {
+      catalogKey: 'gspp',
       controls,
       controlsById: new Map(controls.map((control) => [control.id, control])),
+      controlsByAltIdentifier: new Map(
+        controls.map((control) => [control.altIdentifier!, control]),
+      ),
       totalControls: controls.length,
     } as Catalog,
     provenance: null,
@@ -78,7 +85,7 @@ function renderSearch(controls: Control[]) {
     <MemoryRouter initialEntries={['/suche?q=verfahren']}>
       <Routes>
         <Route path="/suche" element={<SearchPage />} />
-        <Route path="/katalog/:groupId" element={<div>Katalogdetail</div>} />
+        <Route path={CONTROL_ROUTE_PATTERN} element={<div>Katalogdetail</div>} />
       </Routes>
     </MemoryRouter>,
   );

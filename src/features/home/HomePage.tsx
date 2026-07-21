@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { IconShield } from '@/components/icons';
 import { useCatalog } from '@/hooks/useCatalog';
+import { buildGroupUrl } from '@/app/routes';
 
 export function HomePage() {
   const { catalog, loading } = useCatalog();
@@ -98,7 +99,7 @@ export function HomePage() {
             {catalog.practices.map((practice) => (
               <Link
                 key={practice.id}
-                to={`/katalog/${practice.id}`}
+                to={buildGroupUrl(catalog.catalogKey, practice.id)}
                 className="grid grid-cols-[3.5rem_1fr] sm:grid-cols-[3.5rem_1fr_4.5rem_4rem] items-baseline gap-x-3 px-4 py-2.5 hover:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus-ring)] transition-colors"
               >
                 <span className="catalog-reference-text text-xs text-[var(--color-accent-default)]">

@@ -1,5 +1,5 @@
 import { useMemo, useCallback, useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useCatalog } from '@/hooks/useCatalog';
 import {
   useFilteredControls,
@@ -15,8 +15,14 @@ import { ControlMobileReferenceRow } from './ControlMobileReferenceRow';
 import { downloadCSV } from '@/features/export/csvExport';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import type { Control } from '@/domain/models';
+import type { Catalog, Control } from '@/domain/models';
 import { buildChildControlMap, buildIncomingLinkMap } from '@/domain/controlRelationships';
+import {
+  buildCatalogUrl,
+  buildControlUrlForControl,
+  buildGroupUrl,
+  resolveControlRoute,
+} from '@/app/routes';
 
 const FILTER_PANEL_WIDTH = 288;        // w-72
 const FILTER_COLLAPSED_WIDTH = 44;
@@ -25,9 +31,45 @@ const DETAIL_MIN_WIDTH = 320;
 const DETAIL_MAX_WIDTH = 720;
 const EMPTY_CHECKED_IDS = new Set<string>();
 
+function hasGroup(catalog: Catalog, groupId: string): boolean {
+  return catalog.practices.some(
+    (practice) =>
+      practice.id === groupId ||
+      practice.topics.some((topic) => topic.id === groupId),
+  );
+}
+
+function CatalogTargetNotFound({ catalog }: { catalog: Catalog | null }) {
+  return (
+    <div className="flex-1 p-6">
+      <h1 className="text-xl font-bold text-slate-900">
+        404 — Katalogziel nicht gefunden
+      </h1>
+      <p className="mt-3 text-sm text-slate-600">
+        Der angeforderte Katalogeintrag existiert nicht.
+        {catalog && (
+          <>
+            {' '}
+            <Link
+              to={buildCatalogUrl(catalog.catalogKey)}
+              className="rounded text-sky-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+            >
+              Zum Katalog
+            </Link>
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
+
 
 export function CatalogBrowser() {
-  const { groupId } = useParams<{ groupId?: string }>();
+  const { catalogKey, groupId, altIdentifier } = useParams<{
+    catalogKey?: string;
+    groupId?: string;
+    altIdentifier?: string;
+  }>();
   const navigate = useNavigate();
   const { catalog, loading, error, vocabularyRegistry } = useCatalog();
 
@@ -137,21 +179,19 @@ export function CatalogBrowser() {
   const [isResizing, setIsResizing] = useState(false);
   const asideRef = useRef<HTMLElement>(null);
 
-  // URL-driven control selection:
-  // groupId can be a practice ("BES"), topic ("BES.1"), or control ("BES.1.1.1")
+  // URL-driven control selection uses only catalogKey + altIdentifier.
+  // Mutable OSCAL IDs remain catalog-internal relationship identifiers.
   const selectedControl = useMemo<Control | null>(() => {
-    if (!catalog || !groupId) return null;
-    return catalog.controlsById.get(groupId) ?? null;
-  }, [catalog, groupId]);
+    return resolveControlRoute(catalog, catalogKey, altIdentifier);
+  }, [altIdentifier, catalog, catalogKey]);
   const showMobileDetail = !!selectedControl && !isDesktop;
 
   // Resolve the table scope: if URL points to a control, scope to its topic
   const scopeId = useMemo(() => {
-    if (!groupId) return undefined;
     if (selectedControl) return selectedControl.groupId;
     return groupId;
   }, [groupId, selectedControl]);
-  const selectionScopeKey = scopeId ?? '__all__';
+  const selectionScopeKey = `${catalog?.catalogKey ?? catalogKey ?? '__unknown_catalog__'}:${scopeId ?? '__all__'}`;
   const [selectionState, setSelectionState] = useState(() => ({
     scopeKey: selectionScopeKey,
     checkedIds: EMPTY_CHECKED_IDS,
@@ -174,12 +214,35 @@ export function CatalogBrowser() {
 
   // Remember the browse scope (practice/topic chosen via tree nav)
   // so "close" returns to the right level, not the control's topic
-  const browseScopeRef = useRef<string | undefined>(undefined);
+  // undefined means a direct control URL without a prior browse route;
+  // null represents the catalog root, and a string a practice/topic route.
+  // The catalog key prevents state from leaking across a live catalog switch.
+  const browseScopeRef = useRef<{
+    catalogKey: string | undefined;
+    scope: string | null | undefined;
+  }>({
+    catalogKey: catalog?.catalogKey,
+    scope: undefined,
+  });
   useEffect(() => {
-    if (catalog && groupId && !catalog.controlsById.has(groupId)) {
-      browseScopeRef.current = groupId;
+    const loadedCatalogKey = catalog?.catalogKey;
+    if (browseScopeRef.current.catalogKey !== loadedCatalogKey) {
+      browseScopeRef.current = {
+        catalogKey: loadedCatalogKey,
+        scope: undefined,
+      };
     }
-  }, [catalog, groupId]);
+
+    if (altIdentifier !== undefined) return;
+
+    if (!catalog || catalogKey !== catalog.catalogKey) {
+      browseScopeRef.current.scope = undefined;
+    } else if (groupId === undefined) {
+      browseScopeRef.current.scope = null;
+    } else {
+      browseScopeRef.current.scope = hasGroup(catalog, groupId) ? groupId : undefined;
+    }
+  }, [altIdentifier, catalog, catalogKey, groupId]);
 
   // Close export dropdown on outside click
   useEffect(() => {
@@ -275,24 +338,54 @@ export function CatalogBrowser() {
 
   // Select control → push so browser back returns to list
   const handleSelectControl = useCallback((control: Control) => {
+    if (!catalog) return;
+
     if (selectedControl?.id === control.id) {
-      const target = browseScopeRef.current ?? scopeId;
-      navigate({ pathname: `/katalog/${target}`, search: searchString });
+      const rememberedScope =
+        browseScopeRef.current.catalogKey === catalog.catalogKey
+          ? browseScopeRef.current.scope
+          : undefined;
+      const target = rememberedScope === undefined ? scopeId : rememberedScope;
+      navigate({
+        pathname: target
+          ? buildGroupUrl(catalog.catalogKey, target)
+          : buildCatalogUrl(catalog.catalogKey),
+        search: searchString,
+      });
     } else {
-      navigate({ pathname: `/katalog/${control.id}`, search: searchString });
+      navigate({
+        pathname: buildControlUrlForControl(catalog.catalogKey, control),
+        search: searchString,
+      });
     }
-  }, [selectedControl, scopeId, navigate, searchString]);
+  }, [catalog, selectedControl, scopeId, navigate, searchString]);
 
   // Close detail → replace (undo the open, so back goes to original list)
   const handleCloseDetail = useCallback(() => {
-    const target = browseScopeRef.current ?? scopeId;
-    navigate({ pathname: `/katalog/${target}`, search: searchString }, { replace: true });
-  }, [scopeId, navigate, searchString]);
+    if (!catalog) return;
+
+    const rememberedScope =
+      browseScopeRef.current.catalogKey === catalog.catalogKey
+        ? browseScopeRef.current.scope
+        : undefined;
+    const target = rememberedScope === undefined ? scopeId : rememberedScope;
+    navigate({
+      pathname: target
+        ? buildGroupUrl(catalog.catalogKey, target)
+        : buildCatalogUrl(catalog.catalogKey),
+      search: searchString,
+    }, { replace: true });
+  }, [catalog, scopeId, navigate, searchString]);
 
   // Navigate to related control → replace (swap control, same history depth)
-  const handleNavigateToControl = useCallback((controlId: string) => {
-    navigate({ pathname: `/katalog/${controlId}`, search: searchString }, { replace: true });
-  }, [navigate, searchString]);
+  const handleNavigateToControl = useCallback((control: Control) => {
+    if (!catalog) return;
+
+    navigate({
+      pathname: buildControlUrlForControl(catalog.catalogKey, control),
+      search: searchString,
+    }, { replace: true });
+  }, [catalog, navigate, searchString]);
 
   // Export selected rows (only checked)
   const handleExportSelected = useCallback(() => {
@@ -347,6 +440,16 @@ export function CatalogBrowser() {
         </div>
       </div>
     );
+  }
+
+  const routeNotFound =
+    !catalog ||
+    catalogKey !== catalog.catalogKey ||
+    (altIdentifier !== undefined && selectedControl === null) ||
+    (groupId !== undefined && !hasGroup(catalog, groupId));
+
+  if (routeNotFound) {
+    return <CatalogTargetNotFound catalog={catalog} />;
   }
 
   return (
@@ -616,7 +719,7 @@ export function CatalogBrowser() {
 
           {selectedControl && isDesktop ? (
             <div
-              key={selectedControl.id}
+              key={`${catalog.catalogKey}:${selectedControl.id}`}
               className="animate-panel-in flex-1 min-w-0"
             >
                 <ControlDetail
@@ -759,6 +862,7 @@ export function CatalogBrowser() {
       {/* Mobile detail panel */}
       {showMobileDetail && (
         <div
+          key={`${catalog.catalogKey}:${selectedControl.id}`}
           ref={mobileDetailRef}
           className="fixed inset-0 z-50 lg:hidden flex flex-col bg-[var(--color-surface-raised)]"
           onKeyDown={(e) => { if (e.key === 'Escape') handleCloseDetail(); }}

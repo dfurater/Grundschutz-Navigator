@@ -10,12 +10,14 @@ import {
   IconTarget,
 } from '@/components/icons';
 import type { Control, LinkRelation } from '@/domain/models';
+import type { CatalogKey } from '@/domain/sourceRegistry';
 import { getLinkRelationLabel, type IncomingControlLink } from '@/domain/controlRelationships';
 import type { VocabularyResolution } from '@/domain/vocabulary';
 import { resolveControlVocabularies } from '@/domain/vocabulary';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useClipboard } from '@/hooks/useClipboard';
 import { VocabularyEntryCard } from '@/features/vocabularies/VocabularyEntryCard';
+import { buildControlUrlForControl } from '@/app/routes';
 import { ControlDetailSection } from './ControlDetailSection';
 
 export interface ControlDetailProps {
@@ -25,7 +27,7 @@ export interface ControlDetailProps {
   parentControl?: Control;
   childControls?: Control[];
   onClose: () => void;
-  onNavigateToControl?: (controlId: string) => void;
+  onNavigateToControl?: (control: Control) => void;
 }
 
 function buildIncomingLinksByControlId(incomingLinks: IncomingControlLink[]) {
@@ -179,7 +181,8 @@ const detailLinkRowClass =
 const guidanceOverflowTolerance = 1;
 
 export function getControlDetailUrl(
-  controlId: string,
+  catalogKey: CatalogKey,
+  control: Pick<Control, 'id' | 'altIdentifier'>,
   options: {
     origin?: string;
     baseUrl?: string;
@@ -188,8 +191,9 @@ export function getControlDetailUrl(
   const origin = options.origin ?? window.location.origin;
   const baseUrl = options.baseUrl ?? import.meta.env.BASE_URL;
   const normalizedBaseUrl = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+  const relativeControlUrl = buildControlUrlForControl(catalogKey, control).slice(1);
 
-  return new URL(`katalog/${controlId}`, new URL(normalizedBaseUrl, origin)).toString();
+  return new URL(relativeControlUrl, new URL(normalizedBaseUrl, origin)).toString();
 }
 
 export function ControlDetail({
@@ -202,6 +206,11 @@ export function ControlDetail({
   onNavigateToControl,
 }: ControlDetailProps) {
   const { vocabularyRegistry, catalog } = useCatalog();
+  if (!catalog) {
+    throw new Error('ControlDetail requires a loaded catalog context');
+  }
+  const catalogKey = catalog.catalogKey;
+  const controlStateKey = `${catalogKey}:${control.id}`;
   const {
     copy: copyLink,
     copied: linkCopied,
@@ -212,24 +221,24 @@ export function ControlDetail({
   const practiceName = practice?.title ?? control.practiceId;
   const topicName = topic?.title ?? control.groupId;
   const [activeVocabularyState, setActiveVocabularyState] = useState({
-    controlId: control.id,
+    controlKey: controlStateKey,
     key: null as string | null,
   });
   const [guidanceExpandedState, setGuidanceExpandedState] = useState({
-    controlId: control.id,
+    controlKey: controlStateKey,
     expanded: false,
   });
   const [guidanceOverflowState, setGuidanceOverflowState] = useState({
-    controlId: control.id,
+    controlKey: controlStateKey,
     hasOverflow: false,
   });
   const guidanceRef = useRef<HTMLParagraphElement | null>(null);
   const guidanceExpanded =
-    guidanceExpandedState.controlId === control.id
+    guidanceExpandedState.controlKey === controlStateKey
       ? guidanceExpandedState.expanded
       : false;
   const guidanceHasOverflow =
-    guidanceOverflowState.controlId === control.id
+    guidanceOverflowState.controlKey === controlStateKey
       ? guidanceOverflowState.hasOverflow
       : false;
   const resolvedVocabularies = resolveControlVocabularies(vocabularyRegistry, control);
@@ -293,15 +302,15 @@ export function ControlDetail({
   const hasHierarchy = Boolean(parentControl || childControls.length > 0);
 
   const activeVocabularyKey =
-    activeVocabularyState.controlId === control.id
+    activeVocabularyState.controlKey === controlStateKey
       ? activeVocabularyState.key
       : null;
 
   const toggleVocabulary = (key: string) => {
     setActiveVocabularyState((currentState) => ({
-      controlId: control.id,
+      controlKey: controlStateKey,
       key:
-        currentState.controlId === control.id && currentState.key === key
+        currentState.controlKey === controlStateKey && currentState.key === key
           ? null
           : key,
     }));
@@ -319,7 +328,7 @@ export function ControlDetail({
 
     const measureGuidanceOverflow = () => {
       setGuidanceOverflowState({
-        controlId: control.id,
+        controlKey: controlStateKey,
         hasOverflow:
           guidanceElement.scrollHeight - guidanceElement.clientHeight >
           guidanceOverflowTolerance,
@@ -342,7 +351,7 @@ export function ControlDetail({
     }
 
     return () => resizeObserver.disconnect();
-  }, [control.guidance, control.id, guidanceExpanded]);
+  }, [control.guidance, controlStateKey, guidanceExpanded]);
 
   const isVocabularyActive = (key: string) => activeVocabularyKey === key;
   const findResolutionByValue = (
@@ -351,7 +360,7 @@ export function ControlDetail({
   ) => resolutions.find((resolution) => resolution.entry.value === value) ?? null;
 
   const handleCopyLink = () => {
-    const url = getControlDetailUrl(control.id);
+    const url = getControlDetailUrl(catalogKey, control);
     void copyLink(url);
   };
 
@@ -401,7 +410,7 @@ export function ControlDetail({
               aria-label="Direktlink zum manuellen Kopieren"
               className="block select-all break-all font-mono text-xs text-[var(--color-text-primary)]"
             >
-              {getControlDetailUrl(control.id)}
+              {getControlDetailUrl(catalogKey, control)}
             </code>
           </div>
         )}
@@ -821,9 +830,11 @@ export function ControlDetail({
                 aria-controls="guidance-text"
                 onClick={() =>
                   setGuidanceExpandedState((current) => ({
-                    controlId: control.id,
+                    controlKey: controlStateKey,
                     expanded:
-                      current.controlId === control.id ? !current.expanded : true,
+                      current.controlKey === controlStateKey
+                        ? !current.expanded
+                        : true,
                   }))
                 }
                 className="mt-2 rounded text-xs font-medium text-primary-main hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
@@ -843,23 +854,27 @@ export function ControlDetail({
                 <SubSectionHeading>Verknüpfte Kontrollen</SubSectionHeading>
                 <div className="space-y-1">
                   {control.links.map((link) => {
+                    const targetControl = controlsById?.get(link.targetId);
                     const label = getOutgoingLinkLabel(
                       link.relation,
                       incomingByControlId.get(link.targetId),
                     );
-                    const ariaLabel = `${link.targetId}${controlsById?.get(link.targetId)?.title ? ` ${controlsById.get(link.targetId)!.title}` : ''} (${label})`;
+                    const ariaLabel = `${link.targetId}${targetControl?.title ? ` ${targetControl.title}` : ''} (${label})`;
                     return (
                       <button
                         key={`${link.targetId}-${link.relation}`}
                         type="button"
                         aria-label={ariaLabel}
-                        className={detailLinkRowClass}
-                        onClick={() => onNavigateToControl?.(link.targetId)}
+                        disabled={!targetControl}
+                        className={`${detailLinkRowClass} disabled:cursor-not-allowed disabled:opacity-60`}
+                        onClick={() => {
+                          if (targetControl) onNavigateToControl?.(targetControl);
+                        }}
                       >
                         <div className="flex items-baseline gap-2">
                           <span className="font-mono text-xs text-slate-500 shrink-0 group-hover:text-primary-main">{link.targetId}</span>
-                          {controlsById?.get(link.targetId)?.title && (
-                            <span className="text-sm text-slate-700 leading-snug">{controlsById.get(link.targetId)!.title}</span>
+                          {targetControl?.title && (
+                            <span className="text-sm text-slate-700 leading-snug">{targetControl.title}</span>
                           )}
                         </div>
                         <span className="mt-0.5 text-xs text-slate-400">{label}</span>
@@ -880,7 +895,7 @@ export function ControlDetail({
                       type="button"
                       aria-label={`${incoming.control.id} ${incoming.control.title} (${getLinkRelationLabel(incoming.relation)})`}
                       className={detailLinkRowClass}
-                      onClick={() => onNavigateToControl?.(incoming.control.id)}
+                      onClick={() => onNavigateToControl?.(incoming.control)}
                     >
                       <div className="flex items-baseline gap-2">
                         <span className="font-mono text-xs text-slate-500 shrink-0 group-hover:text-primary-main">{incoming.control.id}</span>
@@ -909,7 +924,7 @@ export function ControlDetail({
                   type="button"
                   aria-label={`${parentControl.id} ${parentControl.title}`}
                   className={detailLinkRowClass}
-                  onClick={() => onNavigateToControl?.(parentControl.id)}
+                  onClick={() => onNavigateToControl?.(parentControl)}
                 >
                   <div className="flex items-baseline gap-2">
                     <span className="font-mono text-xs text-slate-500 shrink-0 group-hover:text-primary-main">{parentControl.id}</span>
@@ -928,7 +943,7 @@ export function ControlDetail({
                       type="button"
                       aria-label={`${childControl.id} ${childControl.title}`}
                       className={detailLinkRowClass}
-                      onClick={() => onNavigateToControl?.(childControl.id)}
+                      onClick={() => onNavigateToControl?.(childControl)}
                     >
                       <div className="flex items-baseline gap-2">
                         <span className="font-mono text-xs text-slate-500 shrink-0 group-hover:text-primary-main">{childControl.id}</span>

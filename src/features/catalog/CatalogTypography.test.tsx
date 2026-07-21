@@ -28,6 +28,7 @@ const mockedUseSearch = vi.mocked(useSearch);
 
 const control: Control = {
   id: 'ASST.1.1',
+  altIdentifier: 'alt-asst-1-1',
   title: 'Verfahren und Regelungen',
   groupId: 'ASST.1',
   practiceId: 'ASST',
@@ -275,10 +276,26 @@ function makeVocabularyRegistry() {
 function makeCatalogState(): CatalogState {
   return {
     catalog: {
+      catalogKey: 'gspp',
+      uuid: 'catalog-typography',
+      metadata: {
+        title: 'Typografie-Testkatalog',
+        lastModified: '2026-07-21T00:00:00Z',
+        version: 'test',
+        oscalVersion: '1.1.3',
+        props: [],
+        links: [],
+        roles: [],
+        parties: [],
+        responsibleParties: [],
+      },
       controls: [control],
       controlsById: controlMap,
+      controlsByAltIdentifier: new Map([[control.altIdentifier!, control]]),
+      practices: [],
+      backMatter: [],
       totalControls: 1,
-    } as Catalog,
+    } satisfies Catalog,
     provenance: null,
     vocabularyRegistry: makeVocabularyRegistry(),
     vocabularyProvenance: null,
