@@ -1,73 +1,224 @@
 {
+  "schemaVersion": 2,
   "repository": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek",
   "snapshotCommitSha": "12abb438fcdb4f4b63fb3e751e89d7c526e647b5",
-  "catalogPath": "Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json",
   "files": [
     {
-      "kind": "catalog",
+      "artifactKey": "catalog-gspp",
+      "rootType": "catalog",
+      "lifecycle": "supported",
       "path": "Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json",
-      "gitBlobSha": "193e5e0841beab14c207a91e6aa788d70e84632c"
+      "gitBlobSha": "193e5e0841beab14c207a91e6aa788d70e84632c",
+      "contentSha256": "e4c66cbc76fb8b362040fa5579999789279a1587672459d0c609c0920176002d"
     },
     {
-      "kind": "namespace",
+      "artifactKey": "catalog-lieferkette",
+      "rootType": "catalog",
+      "lifecycle": "preview",
+      "path": "Anwenderkataloge/Lieferkettensicherheit/Lieferkettensicherheit-catalog.json",
+      "gitBlobSha": "0c2e7a7e88e321647edd8346dc08ce16cd058c08",
+      "contentSha256": "a0b1b6dcc4fcc0e5518a05777c3a54f03aff018b28ad4eb9553269cd8d298702"
+    },
+    {
+      "artifactKey": "catalog-mindeststandard-tls",
+      "rootType": "catalog",
+      "lifecycle": "draft",
+      "path": "Anwenderkataloge/Mindeststandard-TLS/Entwurf-Mindeststandard-TLS-catalog.json",
+      "gitBlobSha": "607b4651df5cc6ab8ab76d93d7cf16bce86ce2ad",
+      "contentSha256": "9859fb94ee752d677898f813bd2bc869f1a32e5062732da1e7de01babf7ff5da"
+    },
+    {
+      "artifactKey": "catalog-wlan",
+      "rootType": "catalog",
+      "lifecycle": "preview",
+      "path": "Anwenderkataloge/WLAN/WLAN-catalog.json",
+      "gitBlobSha": "8cdf24951c2388c176ed7983be61bef9d7a9d187",
+      "contentSha256": "0f684be1c8b4fcf3176bf62a472a65f1594071abef7d0fbfa55daa1cbaf782e3"
+    },
+    {
+      "artifactKey": "namespaces-bsi",
+      "rootType": "vocabulary",
+      "lifecycle": "supported",
       "path": "Dokumentation/namespaces/action_words.csv",
-      "namespace": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/action_words.csv",
-      "gitBlobSha": "7fde34ab802961299e058f7ecd8ab5f52a245b04"
+      "gitBlobSha": "7fde34ab802961299e058f7ecd8ab5f52a245b04",
+      "contentSha256": "19b3e4732c49786df21e759b10b45babe391e55cc307e0cde1e0847bbf8e8798"
     },
     {
-      "kind": "namespace",
+      "artifactKey": "namespaces-bsi",
+      "rootType": "vocabulary",
+      "lifecycle": "supported",
       "path": "Dokumentation/namespaces/basethreats.csv",
-      "namespace": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/basethreats.csv",
-      "gitBlobSha": "bfad6b3fe3e1a56f8a158b73a7dea85a47886823"
+      "gitBlobSha": "bfad6b3fe3e1a56f8a158b73a7dea85a47886823",
+      "contentSha256": "a12be0eafc9326fcf79af4d4316cfb1c2fc61fb7dd228aba22af326c0439ee7d"
     },
     {
-      "kind": "namespace",
+      "artifactKey": "namespaces-bsi",
+      "rootType": "vocabulary",
+      "lifecycle": "supported",
       "path": "Dokumentation/namespaces/documentation_guidelines.csv",
-      "namespace": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/documentation_guidelines.csv",
-      "gitBlobSha": "97f05331405785f6b7375938d421695a419ee6ee"
+      "gitBlobSha": "97f05331405785f6b7375938d421695a419ee6ee",
+      "contentSha256": "23d34c07b4b3fca360307c8b4bdc0545fa563cff00fbd2ab71ee4c5c61fd1b19"
     },
     {
-      "kind": "namespace",
+      "artifactKey": "namespaces-bsi",
+      "rootType": "vocabulary",
+      "lifecycle": "supported",
       "path": "Dokumentation/namespaces/effort_level.csv",
-      "namespace": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/effort_level.csv",
-      "gitBlobSha": "9a81649eccfbd76c53edc1eb205d3a903d783a4c"
+      "gitBlobSha": "9a81649eccfbd76c53edc1eb205d3a903d783a4c",
+      "contentSha256": "2483676dcd47b0b754ad3e7e78fac1d58d9370ffec9435d2af50566122535700"
     },
     {
-      "kind": "namespace",
+      "artifactKey": "namespaces-bsi",
+      "rootType": "vocabulary",
+      "lifecycle": "supported",
       "path": "Dokumentation/namespaces/modal_verbs.csv",
-      "namespace": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/modal_verbs.csv",
-      "gitBlobSha": "f0b460ef82a82ea5583ef7739b22573af6dfd7e7"
+      "gitBlobSha": "f0b460ef82a82ea5583ef7739b22573af6dfd7e7",
+      "contentSha256": "f9cd0359183b1fabf0715b36d830b09989355351c7edf27030536ec16e00572e"
     },
     {
-      "kind": "namespace",
+      "artifactKey": "namespaces-bsi",
+      "rootType": "vocabulary",
+      "lifecycle": "supported",
       "path": "Dokumentation/namespaces/result.csv",
-      "namespace": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/result.csv",
-      "gitBlobSha": "d8e4e9e736135cf131defbd69dea056b39a3c043"
+      "gitBlobSha": "d8e4e9e736135cf131defbd69dea056b39a3c043",
+      "contentSha256": "c37049bac11eab195725924e38f4da4bad809e58a2a4ab588fbebdc8f2e91186"
     },
     {
-      "kind": "namespace",
+      "artifactKey": "namespaces-bsi",
+      "rootType": "vocabulary",
+      "lifecycle": "supported",
       "path": "Dokumentation/namespaces/security_level.csv",
-      "namespace": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_level.csv",
-      "gitBlobSha": "5436e0863d60914dfa8334965e48162fa9b23f49"
+      "gitBlobSha": "5436e0863d60914dfa8334965e48162fa9b23f49",
+      "contentSha256": "d7799afe668a1bfdd8d95b300217ea53d342a2252399c811d3e3fabe0fa84abb"
     },
     {
-      "kind": "namespace",
+      "artifactKey": "namespaces-bsi",
+      "rootType": "vocabulary",
+      "lifecycle": "supported",
       "path": "Dokumentation/namespaces/security_targets.csv",
-      "namespace": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets.csv",
-      "gitBlobSha": "9ee2fd569d59eb59a4b8e9a63bcf3e3d7038fb93"
+      "gitBlobSha": "9ee2fd569d59eb59a4b8e9a63bcf3e3d7038fb93",
+      "contentSha256": "581c50bdf065a656b46dee2cde5c2e3f169e1c427983f667c479e04b6888ac82"
     },
     {
-      "kind": "namespace",
+      "artifactKey": "namespaces-bsi",
+      "rootType": "vocabulary",
+      "lifecycle": "supported",
       "path": "Dokumentation/namespaces/tags.csv",
-      "namespace": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/tags.csv",
-      "gitBlobSha": "a80d720d6b017305cf74887ef3d8976ca83c08c8"
+      "gitBlobSha": "a80d720d6b017305cf74887ef3d8976ca83c08c8",
+      "contentSha256": "b3ddfb36ce0a8bbb29dc42070307accfb0dac74c2b7c4f4a034d58dff3c8beeb"
     },
     {
-      "kind": "namespace",
+      "artifactKey": "namespaces-bsi",
+      "rootType": "vocabulary",
+      "lifecycle": "supported",
       "path": "Dokumentation/namespaces/target_object_categories.csv",
-      "namespace": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/target_object_categories.csv",
-      "gitBlobSha": "e6f437c6b34dcc6705508ac7d6863f2e67f88ee7"
+      "gitBlobSha": "e6f437c6b34dcc6705508ac7d6863f2e67f88ee7",
+      "contentSha256": "b13aceb7817a534b2cac2320d9cd4bf02dc5767956528c0f59d61ccabd681a49"
+    },
+    {
+      "artifactKey": "component-aws-iam",
+      "rootType": "component-definition",
+      "lifecycle": "preview",
+      "path": "Implementierungsbeschreibungen/Komponenten/AWS Beispiel-Components/aws_iam-component_definition.json",
+      "gitBlobSha": "37997d8f3fef0172def046f02e38f915f0e4939c",
+      "contentSha256": "a019f95b58368778dd16d1fe16e79e5958a6fb30efde0b53a060850f0b38490c"
+    },
+    {
+      "artifactKey": "component-aws-security-hub",
+      "rootType": "component-definition",
+      "lifecycle": "preview",
+      "path": "Implementierungsbeschreibungen/Komponenten/AWS Beispiel-Components/aws_security_hub-component_definition.json",
+      "gitBlobSha": "b7859c32ceaed2e23c151e7f2929471da72c40ae",
+      "contentSha256": "533fd07157e75baecb2fe244f563680e1500efade05d796734abac8424a88db7"
+    },
+    {
+      "artifactKey": "component-ga-lotse-grundmodul",
+      "rootType": "component-definition",
+      "lifecycle": "preview",
+      "path": "Implementierungsbeschreibungen/Komponenten/GA-Lotse_Grundmodul/GA-Lotse_Grundmodul-component_definition.json",
+      "gitBlobSha": "ebce4b9886ecda020911279e48f6e94f796b9f51",
+      "contentSha256": "b2e7c0e26ecb70566e1c1f51ebabc7036b63d71af01a6250f3efae88de8450a7"
+    },
+    {
+      "artifactKey": "component-lieferkette",
+      "rootType": "component-definition",
+      "lifecycle": "preview",
+      "path": "Implementierungsbeschreibungen/Komponenten/Lieferkettensicherheit/Lieferkettensicherheit-component_definition.json",
+      "gitBlobSha": "1018a02d9850eccad3146c478eaad62c1bf79e9d",
+      "contentSha256": "e58a828491c246c91f3831aa53170c040370b4b51644afee3d1cc0c2fa87f5e0"
+    },
+    {
+      "artifactKey": "component-netzarchitektur",
+      "rootType": "component-definition",
+      "lifecycle": "preview",
+      "path": "Implementierungsbeschreibungen/Komponenten/Netzarchitektur/Netzarchitektur-component_definition.json",
+      "gitBlobSha": "00b9fd4c91d3e648e506c740a2f5aa834a437503",
+      "contentSha256": "ec3d4fe4b6c187fef23c1025fad84995d668044c5b5a4138037679a3719c0b1b"
+    },
+    {
+      "artifactKey": "component-passwortrichtlinie",
+      "rootType": "component-definition",
+      "lifecycle": "preview",
+      "path": "Implementierungsbeschreibungen/Komponenten/Passwortrichtlinie/Passwortrichtlinie-component_definition.json",
+      "gitBlobSha": "feb359c10587ebabbb4878038a143407c64db866",
+      "contentSha256": "d5f7715b57c838a174f3fa96d2205df89b87f400743763daf2213f4be7ce9894"
+    },
+    {
+      "artifactKey": "component-wlan",
+      "rootType": "component-definition",
+      "lifecycle": "preview",
+      "path": "Implementierungsbeschreibungen/Komponenten/WLAN/WLAN-component_definition.json",
+      "gitBlobSha": "a3625d0ee0696436c18858ac79498b55b7b6481d",
+      "contentSha256": "21ccc91905ca3166db10e3016873daa9dc0eb245fae4e3a43fd6cd323d91ef0b"
+    },
+    {
+      "artifactKey": "catalog-iso27001-annex-a",
+      "rootType": "catalog",
+      "lifecycle": "preview",
+      "path": "Mappings/ISO-27001-zu-GSpp/ISO27001-AnnexA-catalog.json",
+      "gitBlobSha": "b42bf1338bee3673db32b85306125330001d5ad9",
+      "contentSha256": "94b7534ef1043e99cdcf0f4fdf7686b42ebbf7dcb5037f29f9f7f3c87e7d391a"
+    },
+    {
+      "artifactKey": "mapping-iso27001-annex-a-zu-gspp",
+      "rootType": "mapping-collection",
+      "lifecycle": "preview",
+      "path": "Mappings/ISO-27001-zu-GSpp/ISO27001-AnnexA-to-GS++-mapping.json",
+      "gitBlobSha": "7404229d890158f1cf9ce46e029cffb961673106",
+      "contentSha256": "c7d3df85d415d3f7646663485b18ec8edf68582433b932973cb4aeefa9ca3919"
+    },
+    {
+      "artifactKey": "mapping-itgs2023-zu-gspp",
+      "rootType": "mapping-collection",
+      "lifecycle": "preview",
+      "path": "Mappings/IT-GS2023-zu-GSpp/ITGS-to-GS++-mapping.json",
+      "gitBlobSha": "c4c869f40d2afee1f2efb337c7f3232fed1a1292",
+      "contentSha256": "bf6a9d97da2fdc2c1fa639210579666f3964741af168152e54de93727d296cfa"
+    },
+    {
+      "artifactKey": "profile-lieferkette",
+      "rootType": "profile",
+      "lifecycle": "preview",
+      "path": "Quellkataloge/Lieferkettensicherheit/Lieferkettensicherheit-profile.json",
+      "gitBlobSha": "e00688774ae550f8a3cd0d9d57b25973fa8b334f",
+      "contentSha256": "4483e07b473a1f4e9dbaf7ec7cdaee5d52e0cf39c4a03d9a3fee9f376af9e7d8"
+    },
+    {
+      "artifactKey": "profile-gspp",
+      "rootType": "profile",
+      "lifecycle": "preview",
+      "path": "Quellkataloge/Methodik-Grundschutz++/Grundschutz++-profile.json",
+      "gitBlobSha": "73cabd151d3f7a65de1959aeb3429412c615a900",
+      "contentSha256": "9137a2ce8c6122a1e367e47e832f397e451eb4a0f32f6e0904cc4585f42563c5"
+    },
+    {
+      "artifactKey": "profile-wlan",
+      "rootType": "profile",
+      "lifecycle": "preview",
+      "path": "Quellkataloge/WLAN/WLAN-profile.json",
+      "gitBlobSha": "f32494e45b7cf6d60f2d17dd38c750102286cad8",
+      "contentSha256": "1f6e7615a79c780200083af2e85df0098dc0399eb3f6f1603e3bb5a9e59031e5"
     }
   ],
-  "signatureSha256": "79bda3896eb6b0a07df3ba27ee8ef283b715962c1af9920f1a641829c693c7e2"
+  "signatureSha256": "6de483f6e8d437b14cdbf834e127bf617cfe773ff0b290adef8cc26e094420da"
 }
