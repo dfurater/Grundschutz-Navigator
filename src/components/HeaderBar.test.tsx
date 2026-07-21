@@ -57,9 +57,24 @@ describe('HeaderBar', () => {
   });
 
   it.each([
-    ['input', <input aria-label="Editierbares Ziel" key="input" />],
+    ['Meta+K', { metaKey: true }],
+    ['Ctrl+K', { ctrlKey: true }],
+  ])('prevents the browser default for %s in the header search field', (_, modifier) => {
+    renderHeaderWithEditableTarget(null);
+    const searchInput = screen.getByRole('searchbox', { name: 'Katalog durchsuchen' });
+    searchInput.focus();
+
+    const wasNotPrevented = fireEvent.keyDown(searchInput, { key: 'k', ...modifier });
+
+    expect(wasNotPrevented).toBe(false);
+    expect(searchInput).toHaveFocus();
+  });
+
+  it.each([
+    ['text input', <input aria-label="Editierbares Ziel" key="input" />],
+    ['search input', <input aria-label="Editierbares Ziel" key="search" type="search" />],
     ['textarea', <textarea aria-label="Editierbares Ziel" key="textarea" />],
-    ['select', <select aria-label="Editierbares Ziel" key="select"><option>Option</option></select>],
+    ['select with type-ahead', <select aria-label="Editierbares Ziel" key="select"><option>Option</option></select>],
     ['contenteditable', <div aria-label="Editierbares Ziel" contentEditable key="contenteditable" tabIndex={0} />],
   ])('preserves focus when the shortcut starts in an editable %s', (_, target) => {
     renderHeaderWithEditableTarget(target);
@@ -71,4 +86,28 @@ describe('HeaderBar', () => {
     expect(wasNotPrevented).toBe(true);
     expect(editableTarget).toHaveFocus();
   });
+
+  it.each([
+    ['checkbox', 'Meta+K', { metaKey: true }],
+    ['checkbox', 'Ctrl+K', { ctrlKey: true }],
+    ['radio', 'Meta+K', { metaKey: true }],
+    ['radio', 'Ctrl+K', { ctrlKey: true }],
+    ['range', 'Meta+K', { metaKey: true }],
+    ['range', 'Ctrl+K', { ctrlKey: true }],
+  ] as const)(
+    'focuses the search field for %s input with %s',
+    (type, _, modifier) => {
+      renderHeaderWithEditableTarget(
+        <input aria-label="Nicht-textuelles Ziel" type={type} />,
+      );
+      const input = screen.getByLabelText('Nicht-textuelles Ziel');
+      const searchInput = screen.getByRole('searchbox', { name: 'Katalog durchsuchen' });
+      input.focus();
+
+      const wasNotPrevented = fireEvent.keyDown(input, { key: 'k', ...modifier });
+
+      expect(wasNotPrevented).toBe(false);
+      expect(searchInput).toHaveFocus();
+    },
+  );
 });

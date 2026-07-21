@@ -10,10 +10,29 @@ export interface HeaderBarProps {
   className?: string;
 }
 
+const TEXT_INPUT_TYPES = new Set([
+  'date',
+  'datetime-local',
+  'email',
+  'month',
+  'number',
+  'password',
+  'search',
+  'tel',
+  'text',
+  'time',
+  'url',
+  'week',
+]);
+
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof Element)) return false;
 
-  if (target.closest('input, textarea, select')) return true;
+  const input = target.closest('input');
+  if (input instanceof HTMLInputElement && TEXT_INPUT_TYPES.has(input.type)) return true;
+
+  // Selects support keyboard type-ahead and should retain their native interaction.
+  if (target.closest('textarea, select')) return true;
 
   const contentEditable = target.closest('[contenteditable]');
   return contentEditable !== null
@@ -33,7 +52,7 @@ export function HeaderBar({
   useEffect(() => {
     function handleKeyDown(e: globalThis.KeyboardEvent) {
       if (!(e.metaKey || e.ctrlKey) || e.key !== 'k') return;
-      if (isEditableTarget(e.target)) return;
+      if (e.target !== inputRef.current && isEditableTarget(e.target)) return;
 
       e.preventDefault();
       inputRef.current?.focus();
