@@ -316,7 +316,12 @@ describe('syncUpstreamManifest', () => {
     const previousManifest = makeManifest({
       snapshotCommitSha: BASE_SNAPSHOT_SHA,
       files: [
-        manifestFile({ gitBlobSha: oldCatalogBlob }),
+        manifestFile({
+          artifactKey: 'catalog-gspp-legacy',
+          rootType: 'profile',
+          lifecycle: 'preview',
+          gitBlobSha: oldCatalogBlob,
+        }),
         manifestFile({
           artifactKey: 'profile-wlan',
           rootType: 'profile',

@@ -196,12 +196,14 @@ async function fetchSnapshotTree(snapshotSha, { fetchImpl = fetch, token } = {})
 }
 
 function buildRegisteredPathMap(previousManifest, nextManifest) {
-  const files = [
-    ...(previousManifest?.schemaVersion === 2 ? previousManifest.files : []),
-    ...nextManifest.files,
-  ];
-  const byPath = new Map();
-  for (const file of files) byPath.set(file.path, file);
+  const previousFiles = previousManifest?.schemaVersion === 2
+    ? previousManifest.files
+    : [];
+  const byPath = new Map(previousFiles.map((file) => [file.path, file]));
+
+  // The signed next manifest is authoritative for paths that remain registered.
+  for (const file of nextManifest.files) byPath.set(file.path, file);
+
   return materializeRegisteredPathMap([...byPath.values()]);
 }
 
