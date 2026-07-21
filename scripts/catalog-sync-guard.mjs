@@ -7,134 +7,91 @@ import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import {
   OFFICIAL_BSI_REPO,
-  OFFICIAL_CATALOG_PATH,
-  OFFICIAL_NAMESPACE_DIRECTORY,
-  assertAllowedUpstreamRepoPath,
+  OFFICIAL_BSI_REPOSITORY_URL,
+  assertRegisteredUpstreamRepoPath,
 } from './security-guards.mjs';
 import {
   extractReferencedNamespaceUrls,
   namespaceUrlToRepoPath,
+  parseVocabularyCsv,
 } from './vocabulary-utils.mjs';
+import {
+  MONITORED_UPSTREAM_ROOTS,
+  SOURCE_REGISTRY,
+  SUPPORTED_CATALOG,
+  getArtifactByUpstreamPath,
+} from '../src/domain/sourceRegistry.mjs';
+import {
+  computeManifestSignature as computeV2ManifestSignature,
+  normalizeGitTree,
+  validateManifestV2Shape,
+} from './upstream-artifacts.mjs';
+import {
+  isApprovedLegacyV1Manifest,
+} from './sync-upstream-manifest.mjs';
+import {
+  validateCatalogControlIdentities,
+  validateFetchedOscalArtifact,
+} from './fetch-catalog.mjs';
 
 const execFileAsync = promisify(execFile);
 
-export const OFFICIAL_BSI_REPOSITORY_URL = `https://github.com/${OFFICIAL_BSI_REPO}`;
 export const TRACKED_MANIFEST_PATH = 'upstream-manifest.json';
 export const SYNC_BRANCH_PATTERN = /^chore\/catalog-sync-([0-9a-f]{12})$/;
 export const SYNC_TITLE_PREFIX = 'chore(ci): BSI-Katalog-Sync ';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
-const SHA256_PATTERN = /^[0-9a-f]{64}$/;
-const TOP_LEVEL_KEYS = [
-  'catalogPath',
-  'files',
-  'repository',
-  'signatureSha256',
-  'snapshotCommitSha',
-];
-const CATALOG_FILE_KEYS = ['gitBlobSha', 'kind', 'path'];
-const NAMESPACE_FILE_KEYS = ['gitBlobSha', 'kind', 'namespace', 'path'];
-
-function assertExactKeys(value, expectedKeys, label) {
-  const actualKeys = Object.keys(value).sort();
-  const sortedExpectedKeys = [...expectedKeys].sort();
-  if (JSON.stringify(actualKeys) !== JSON.stringify(sortedExpectedKeys)) {
-    throw new Error(`${label} contains unexpected or missing fields`);
-  }
-}
-
-function assertObject(value, label) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error(`${label} must be an object`);
-  }
-}
 
 export function computeManifestSignature(manifest) {
-  const signaturePayload = {
-    repository: manifest.repository,
-    snapshotCommitSha: manifest.snapshotCommitSha,
-    catalogPath: manifest.catalogPath,
-    files: manifest.files,
-  };
-
-  return createHash('sha256')
-    .update(JSON.stringify(signaturePayload))
-    .digest('hex');
+  return computeV2ManifestSignature(manifest);
 }
 
 export function validateCatalogSyncManifest(manifest) {
-  assertObject(manifest, 'Upstream manifest');
-  assertExactKeys(manifest, TOP_LEVEL_KEYS, 'Upstream manifest');
+  validateManifestV2Shape(manifest);
 
   if (manifest.repository !== OFFICIAL_BSI_REPOSITORY_URL) {
     throw new Error(`Manifest repository must be ${OFFICIAL_BSI_REPOSITORY_URL}`);
   }
-  if (manifest.catalogPath !== OFFICIAL_CATALOG_PATH) {
-    throw new Error(`Manifest catalogPath must be ${OFFICIAL_CATALOG_PATH}`);
-  }
-  if (!SHA_PATTERN.test(manifest.snapshotCommitSha)) {
-    throw new Error('Manifest snapshotCommitSha must be a lowercase 40-character hexadecimal SHA');
-  }
-  if (!SHA256_PATTERN.test(manifest.signatureSha256)) {
-    throw new Error('Manifest signatureSha256 must be a lowercase SHA-256 value');
-  }
-  if (!Array.isArray(manifest.files) || manifest.files.length === 0) {
-    throw new Error('Manifest files must be a non-empty array');
-  }
 
-  const seenPaths = new Set();
-  const namespacePaths = [];
-  let catalogCount = 0;
+  const exactRegistryFiles = new Map(
+    SOURCE_REGISTRY
+      .filter((entry) => entry.kind === 'oscal')
+      .map((entry) => [entry.upstreamPath, entry]),
+  );
+  const manifestPaths = new Set(manifest.files.map((file) => file.path));
+  const materializedNamespacePaths = manifest.files
+    .filter((file) => file.rootType === 'vocabulary')
+    .map((file) => file.path);
 
-  for (const [index, file] of manifest.files.entries()) {
-    assertObject(file, `Manifest file ${index}`);
-
-    if (file.kind === 'catalog') {
-      assertExactKeys(file, CATALOG_FILE_KEYS, `Manifest catalog file ${index}`);
-      catalogCount += 1;
-      if (index !== 0 || file.path !== OFFICIAL_CATALOG_PATH) {
-        throw new Error('Manifest must contain the official catalog as its first file');
-      }
-    } else if (file.kind === 'namespace') {
-      assertExactKeys(file, NAMESPACE_FILE_KEYS, `Manifest namespace file ${index}`);
-      const namespacePrefix = `${OFFICIAL_NAMESPACE_DIRECTORY}/`;
-      const namespaceFileName = file.path.startsWith(namespacePrefix)
-        ? file.path.slice(namespacePrefix.length)
-        : '';
-      if (!namespaceFileName || namespaceFileName.includes('/') || !namespaceFileName.endsWith('.csv')) {
-        throw new Error('Manifest namespace paths must be direct CSV files in Dokumentation/namespaces');
-      }
-      const expectedNamespace = `${OFFICIAL_BSI_REPOSITORY_URL}/tree/main/${file.path}`;
-      if (file.namespace !== expectedNamespace) {
-        throw new Error(`Manifest namespace URL must be ${expectedNamespace}`);
-      }
-      namespacePaths.push(file.path);
-    } else {
-      throw new Error(`Manifest file ${index} has unsupported kind`);
+  for (const [repoPath, entry] of exactRegistryFiles) {
+    if (!manifestPaths.has(repoPath)) {
+      throw new Error(`Manifest is missing registered artifact: ${repoPath}`);
     }
-
-    assertAllowedUpstreamRepoPath(file.path);
-    if (!SHA_PATTERN.test(file.gitBlobSha)) {
-      throw new Error(`Manifest file ${file.path} must include a lowercase 40-character blob SHA`);
+    const file = manifest.files.find((candidate) => candidate.path === repoPath);
+    if (
+      file.artifactKey !== entry.artifactKey ||
+      file.rootType !== entry.expectedRootType ||
+      file.lifecycle !== entry.lifecycle
+    ) {
+      throw new Error(`Manifest registry metadata does not match sourceRegistry: ${repoPath}`);
     }
-    if (seenPaths.has(file.path)) {
-      throw new Error(`Manifest contains duplicate path: ${file.path}`);
+  }
+
+  for (const file of manifest.files) {
+    const registryEntry = getArtifactByUpstreamPath(file.path);
+    if (!registryEntry) {
+      throw new Error(`Manifest contains an unregistered path: ${file.path}`);
     }
-    seenPaths.add(file.path);
-  }
-
-  if (catalogCount !== 1) {
-    throw new Error('Manifest must contain exactly one catalog file');
-  }
-
-  const sortedNamespacePaths = [...namespacePaths].sort((left, right) => left.localeCompare(right));
-  if (JSON.stringify(namespacePaths) !== JSON.stringify(sortedNamespacePaths)) {
-    throw new Error('Manifest namespace files must be sorted by path');
-  }
-
-  const expectedSignature = computeManifestSignature(manifest);
-  if (manifest.signatureSha256 !== expectedSignature) {
-    throw new Error('Manifest signatureSha256 does not match the canonical payload');
+    if (registryEntry.kind === 'vocabulary-collection') {
+      if (
+        file.artifactKey !== registryEntry.artifactKey ||
+        file.rootType !== 'vocabulary' ||
+        file.lifecycle !== registryEntry.lifecycle
+      ) {
+        throw new Error(`Manifest vocabulary metadata does not match sourceRegistry: ${file.path}`);
+      }
+    }
+    assertRegisteredUpstreamRepoPath(file.path, { materializedNamespacePaths });
   }
 
   return manifest;
@@ -259,45 +216,58 @@ export async function verifySnapshotFiles(manifest, {
     `${apiBase}/git/trees/${manifest.snapshotCommitSha}?recursive=1`,
     { fetchImpl, token, label: 'BSI snapshot tree lookup' },
   );
-  if (tree?.truncated !== false || !Array.isArray(tree.tree)) {
-    throw new Error('BSI snapshot tree lookup returned an incomplete tree');
-  }
-
-  const blobShaByPath = new Map(
-    tree.tree
-      .filter((entry) => entry?.type === 'blob' && typeof entry.path === 'string')
-      .map((entry) => [entry.path, entry.sha]),
-  );
+  const normalizedTree = normalizeGitTree(tree, { monitoredRoots: MONITORED_UPSTREAM_ROOTS });
+  const blobShaByPath = new Map(normalizedTree.map((entry) => [entry.path, entry.gitBlobSha]));
   for (const file of manifest.files) {
     if (blobShaByPath.get(file.path) !== file.gitBlobSha) {
       throw new Error(`Manifest blob SHA does not match the BSI snapshot: ${file.path}`);
     }
   }
 
-  const catalogFile = manifest.files[0];
-  const catalogBlob = await fetchGitHubJson(
-    `${apiBase}/git/blobs/${catalogFile.gitBlobSha}`,
-    { fetchImpl, token, label: 'BSI catalog blob lookup' },
+  const fetchAndValidateArtifact = async (file) => {
+    const blob = await fetchGitHubJson(
+      `${apiBase}/git/blobs/${file.gitBlobSha}`,
+      { fetchImpl, token, label: `BSI artifact blob lookup (${file.path})` },
+    );
+    if (
+      blob?.sha !== file.gitBlobSha ||
+      blob?.encoding !== 'base64' ||
+      typeof blob.content !== 'string'
+    ) {
+      throw new Error(`BSI artifact blob lookup returned invalid content: ${file.path}`);
+    }
+
+    const contents = Buffer.from(blob.content, 'base64');
+    if (computeGitBlobSha(contents) !== file.gitBlobSha) {
+      throw new Error(`BSI artifact content does not match its Git blob SHA: ${file.path}`);
+    }
+    const contentSha256 = createHash('sha256').update(contents).digest('hex');
+    if (contentSha256 !== file.contentSha256) {
+      throw new Error(`Manifest contentSha256 does not match the BSI artifact: ${file.path}`);
+    }
+
+    if (file.rootType === 'vocabulary') {
+      parseVocabularyCsv(contents.toString('utf8'));
+      return null;
+    }
+
+    const artifact = validateFetchedOscalArtifact(contents, file.rootType);
+    if (file.path === SUPPORTED_CATALOG.upstreamPath) {
+      validateCatalogControlIdentities(artifact.json, file.artifactKey);
+    }
+    return artifact.json;
+  };
+
+  const catalogFile = manifest.files.find(
+    (file) => file.path === SUPPORTED_CATALOG.upstreamPath,
   );
-  if (
-    catalogBlob?.sha !== catalogFile.gitBlobSha ||
-    catalogBlob?.encoding !== 'base64' ||
-    typeof catalogBlob.content !== 'string'
-  ) {
-    throw new Error('BSI catalog blob lookup returned invalid content');
+  if (!catalogFile) {
+    throw new Error('Manifest does not contain the supported catalog document');
   }
-
-  const catalogContents = Buffer.from(catalogBlob.content, 'base64');
-  if (computeGitBlobSha(catalogContents) !== catalogFile.gitBlobSha) {
-    throw new Error('BSI catalog blob content does not match its Git blob SHA');
-  }
-
-  let catalogDocument;
-  try {
-    catalogDocument = JSON.parse(catalogContents.toString('utf8'));
-  } catch {
-    throw new Error('BSI catalog blob is not valid JSON');
-  }
+  // Resolve the dynamic collection membership from the supported catalog
+  // before any vocabulary blob is requested. This preserves the invariant
+  // that unclassified CSVs are reported from tree metadata only.
+  const catalogDocument = await fetchAndValidateArtifact(catalogFile);
 
   const expectedNamespacePaths = extractReferencedNamespaceUrls(
     catalogDocument,
@@ -307,10 +277,18 @@ export async function verifySnapshotFiles(manifest, {
     throw new Error('BSI catalog contains an invalid official namespace URL');
   }
 
-  const manifestNamespacePaths = manifest.files.slice(1).map((file) => file.path);
+  const manifestNamespacePaths = manifest.files
+    .filter((file) => file.rootType === 'vocabulary')
+    .map((file) => file.path);
   if (JSON.stringify(manifestNamespacePaths) !== JSON.stringify(expectedNamespacePaths)) {
     throw new Error('Manifest namespace inventory does not match the selected BSI catalog');
   }
+
+  await Promise.all(
+    manifest.files
+      .filter((file) => file.path !== SUPPORTED_CATALOG.upstreamPath)
+      .map((file) => fetchAndValidateArtifact(file)),
+  );
 }
 
 export async function guardCatalogSyncPullRequest({
@@ -327,17 +305,34 @@ export async function guardCatalogSyncPullRequest({
   }
 
   validateCatalogSyncPullRequest({ branch, title, diffEntries });
-  validateCatalogSyncManifest(previousManifest);
+  const isLegacyMigration = isApprovedLegacyV1Manifest(previousManifest);
+  if (!isLegacyMigration) {
+    validateManifestV2Shape(previousManifest);
+    if (previousManifest.repository !== OFFICIAL_BSI_REPOSITORY_URL) {
+      throw new Error(`Previous manifest repository must be ${OFFICIAL_BSI_REPOSITORY_URL}`);
+    }
+  }
   validateCatalogSyncManifest(nextManifest);
   const expectedBranch = `chore/catalog-sync-${nextManifest.snapshotCommitSha.slice(0, 12)}`;
   if (branch !== expectedBranch) {
     throw new Error(`Catalog sync branch must match the new snapshot: ${expectedBranch}`);
   }
-  await verifySnapshotProgress(
-    previousManifest.snapshotCommitSha,
-    nextManifest.snapshotCommitSha,
-    { fetchImpl, token },
-  );
+  const isSameSnapshotLegacyMigration =
+    isLegacyMigration &&
+    previousManifest.snapshotCommitSha === nextManifest.snapshotCommitSha;
+  if (isSameSnapshotLegacyMigration) {
+    if (
+      previousManifest.signatureSha256 === nextManifest.signatureSha256
+    ) {
+      throw new Error('Approved manifest v1 migration must deterministically replace the same pinned snapshot');
+    }
+  } else {
+    await verifySnapshotProgress(
+      previousManifest.snapshotCommitSha,
+      nextManifest.snapshotCommitSha,
+      { fetchImpl, token },
+    );
+  }
   await verifySnapshotFiles(nextManifest, { fetchImpl, token });
 
   return {

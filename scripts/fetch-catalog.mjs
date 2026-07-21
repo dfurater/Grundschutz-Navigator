@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
+import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
-  buildUpstreamManifest,
   buildVocabularyNamespaceData,
   extractReferencedNamespaceUrls,
   namespaceUrlToRepoPath,
@@ -12,12 +12,21 @@ import {
 import {
   DEFAULT_ARTIFACTS_DIR,
   OFFICIAL_BSI_REPO,
+  OFFICIAL_BSI_REPOSITORY_URL,
   OFFICIAL_CATALOG_PATH,
   assertAllowedGitHubRef,
-  assertAllowedUpstreamRepoPath,
+  assertRegisteredUpstreamRepoPath,
   resolveOptionalSnapshotSha,
 } from './security-guards.mjs';
-import { getExpectedRootType } from '../src/domain/sourceRegistry.mjs';
+import {
+  MONITORED_UPSTREAM_ROOTS,
+  SOURCE_REGISTRY,
+  SUPPORTED_CATALOG,
+} from '../src/domain/sourceRegistry.mjs';
+import {
+  buildUpstreamManifest,
+  normalizeGitTree,
+} from './upstream-artifacts.mjs';
 
 const REPO = OFFICIAL_BSI_REPO;
 const CATALOG_PATH = OFFICIAL_CATALOG_PATH;
@@ -148,37 +157,13 @@ async function resolveSnapshot(logger = console, retryDelaysMs = DEFAULT_RETRY_D
   }
 }
 
-async function fetchFileInfo(path, ref, logger = console, retryDelaysMs = DEFAULT_RETRY_DELAYS_MS) {
-  const allowedPath = assertAllowedUpstreamRepoPath(path);
-  const allowedRef = assertAllowedGitHubRef(ref, 'GitHub fetch ref');
-
-  try {
-    const fileInfo = await fetchGitHubJson(
-      `/repos/${REPO}/contents/${encodeRepoPath(allowedPath)}?ref=${encodeURIComponent(allowedRef)}`,
-      retryDelaysMs,
-    );
-
-    if (typeof fileInfo?.sha !== 'string' || !/^[0-9a-f]{40}$/i.test(fileInfo.sha)) {
-      throw new Error(`GitHub contents response für ${path} enthält keine gültige Blob-SHA.`);
-    }
-
-    return {
-      gitBlobSha: fileInfo.sha.toLowerCase(),
-      sizeBytes: fileInfo.size ?? null,
-    };
-  } catch (error) {
-    logger.warn(
-      `Warnung: Konnte Provenance für ${path} nicht exakt auflösen. ${error instanceof Error ? error.message : String(error)}`,
-    );
-
-    throw new Error(
-      `Konnte Provenance für ${path} nicht exakt auflösen. Build abgebrochen, damit keine unvollständige Blob-SHA in die Artefakte geschrieben wird. ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-}
-
-async function fetchRawFile(path, ref, retryDelaysMs = DEFAULT_RETRY_DELAYS_MS) {
-  const allowedPath = assertAllowedUpstreamRepoPath(path);
+async function fetchRawRegisteredFile(
+  path,
+  ref,
+  materializedNamespacePaths,
+  retryDelaysMs = DEFAULT_RETRY_DELAYS_MS,
+) {
+  const allowedPath = assertRegisteredUpstreamRepoPath(path, { materializedNamespacePaths });
   const allowedRef = assertAllowedGitHubRef(ref, 'GitHub fetch ref');
   const url = `https://raw.githubusercontent.com/${REPO}/${encodeURIComponent(allowedRef)}/${encodeRepoPath(allowedPath)}`;
   const response = await fetchWithTransientRetry(url, TOKEN
@@ -198,6 +183,25 @@ async function fetchRawFile(path, ref, retryDelaysMs = DEFAULT_RETRY_DELAYS_MS) 
     buffer,
     text: buffer.toString('utf8'),
   };
+}
+
+async function fetchSnapshotTree(ref, retryDelaysMs = DEFAULT_RETRY_DELAYS_MS) {
+  const allowedRef = assertAllowedGitHubRef(ref, 'GitHub tree ref');
+  const response = await fetchGitHubJson(
+    `/repos/${REPO}/git/trees/${encodeURIComponent(allowedRef)}?recursive=1`,
+    retryDelaysMs,
+  );
+  return {
+    response,
+    files: normalizeGitTree(response, { monitoredRoots: MONITORED_UPSTREAM_ROOTS }),
+  };
+}
+
+function computeGitBlobSha(contents) {
+  return createHash('sha1')
+    .update(`blob ${contents.length}\0`)
+    .update(contents)
+    .digest('hex');
 }
 
 function buildBuildMetadata() {
@@ -239,6 +243,8 @@ const OSCAL_ROOT_TYPE_LABELS = {
   'component-definition': { artifact: 'Component-Definition', root: 'Component-Definition-Wurzel' },
 };
 
+const KNOWN_OSCAL_ROOT_TYPES = Object.freeze(Object.keys(OSCAL_ROOT_TYPE_LABELS));
+
 function validateFetchedOscalArtifact(artifactBuffer, expectedRootType) {
   const labels = OSCAL_ROOT_TYPE_LABELS[expectedRootType];
   if (!labels) {
@@ -261,10 +267,64 @@ function validateFetchedOscalArtifact(artifactBuffer, expectedRootType) {
   const artifactDocument = assertJsonObject(parsedArtifact, labels.artifact);
   assertJsonObject(artifactDocument[expectedRootType], labels.root);
 
+  const presentOscalRoots = KNOWN_OSCAL_ROOT_TYPES.filter(
+    (rootType) => artifactDocument[rootType] !== undefined,
+  );
+  if (
+    presentOscalRoots.length !== 1 ||
+    presentOscalRoots[0] !== expectedRootType
+  ) {
+    throw new Error(
+      `${labels.artifact} enthält widersprüchliche OSCAL-Wurzeln: ${presentOscalRoots.join(', ') || 'keine'}.`,
+    );
+  }
+
   return {
     json: artifactDocument,
     buffer: artifactBuffer,
   };
+}
+
+function collectRawControls(container, controls = []) {
+  for (const control of container?.controls ?? []) {
+    controls.push(control);
+    collectRawControls(control, controls);
+  }
+  for (const group of container?.groups ?? []) {
+    collectRawControls(group, controls);
+  }
+  return controls;
+}
+
+export function validateCatalogControlIdentities(catalogDocument, artifactKey = 'catalog') {
+  const catalog = assertJsonObject(catalogDocument?.catalog, 'Katalogwurzel');
+  const controls = collectRawControls(catalog);
+  const seenAltIdentifiers = new Map();
+
+  for (const control of controls) {
+    const controlId = typeof control?.id === 'string' && control.id.trim()
+      ? control.id.trim()
+      : '<ohne ID>';
+    const altIdentifier = control?.props?.find(
+      (prop) => prop?.name === 'alt-identifier' && typeof prop.value === 'string',
+    )?.value?.trim();
+
+    if (!altIdentifier) {
+      throw new Error(
+        `Datenqualitätsfehler in ${artifactKey}: Control ${controlId} hat keinen alt-identifier.`,
+      );
+    }
+
+    if (seenAltIdentifiers.has(altIdentifier)) {
+      const previousControlId = seenAltIdentifiers.get(altIdentifier);
+      throw new Error(
+        `Datenqualitätsfehler in ${artifactKey}: alt-identifier ${altIdentifier} ist für ${previousControlId} und ${controlId} doppelt.`,
+      );
+    }
+    seenAltIdentifiers.set(altIdentifier, controlId);
+  }
+
+  return { controlCount: controls.length, findings: [] };
 }
 
 function validateFetchedCatalogArtifact(catalogBuffer) {
@@ -275,7 +335,75 @@ function buildJsonArtifactBuffer(value, label) {
   return Buffer.from(serializeJsonArtifact(value, label), 'utf8');
 }
 
-async function buildFetchArtifacts(logger = console, { retryDelaysMs = DEFAULT_RETRY_DELAYS_MS } = {}) {
+function matchesVocabularyCollection(entry, repoPath) {
+  const prefix = `${entry.upstreamDirectory}/`;
+  return (
+    repoPath.startsWith(prefix) &&
+    repoPath.endsWith(entry.fileSuffix) &&
+    !repoPath.slice(prefix.length).includes('/')
+  );
+}
+
+function materializeRegistryFiles({ registryEntries, treeFiles, namespaceRefs }) {
+  const treeFileByPath = new Map(treeFiles.map((file) => [file.path, file]));
+  const descriptors = [];
+
+  for (const entry of registryEntries) {
+    if (entry.kind !== 'oscal') continue;
+    const treeFile = treeFileByPath.get(entry.upstreamPath);
+    if (!treeFile) {
+      throw new Error(`Registriertes Artefakt fehlt im vollständigen BSI-Tree: ${entry.upstreamPath}`);
+    }
+    descriptors.push({
+      artifactKey: entry.artifactKey,
+      rootType: entry.expectedRootType,
+      lifecycle: entry.lifecycle,
+      path: entry.upstreamPath,
+      gitBlobSha: treeFile.gitBlobSha,
+      sizeBytes: treeFile.sizeBytes,
+      registryEntry: entry,
+    });
+  }
+
+  for (const namespaceRef of namespaceRefs) {
+    const collection = registryEntries.find(
+      (entry) => entry.kind === 'vocabulary-collection' && matchesVocabularyCollection(entry, namespaceRef.path),
+    );
+    if (!collection) {
+      throw new Error(`Namespace-Pfad ist nicht durch das Quellregister materialisiert: ${namespaceRef.path}`);
+    }
+    const treeFile = treeFileByPath.get(namespaceRef.path);
+    if (!treeFile) {
+      throw new Error(`Referenziertes Namespace-Artefakt fehlt im vollständigen BSI-Tree: ${namespaceRef.path}`);
+    }
+    descriptors.push({
+      artifactKey: collection.artifactKey,
+      rootType: 'vocabulary',
+      lifecycle: collection.lifecycle,
+      path: namespaceRef.path,
+      gitBlobSha: treeFile.gitBlobSha,
+      sizeBytes: treeFile.sizeBytes,
+      namespaceUrl: namespaceRef.namespaceUrl,
+      registryEntry: collection,
+    });
+  }
+
+  const seenPaths = new Set();
+  for (const descriptor of descriptors) {
+    if (seenPaths.has(descriptor.path)) {
+      throw new Error(`Quellregister materialisiert einen Pfad mehrfach: ${descriptor.path}`);
+    }
+    seenPaths.add(descriptor.path);
+  }
+
+  return descriptors.sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
+}
+
+async function buildFetchArtifacts(logger = console, {
+  retryDelaysMs = DEFAULT_RETRY_DELAYS_MS,
+  registryEntries = SOURCE_REGISTRY,
+  treeResponse: providedTreeResponse,
+} = {}) {
   logger.log('================================================');
   logger.log('  Grundschutz++ Katalog + Vokabulare Fetch');
   logger.log('================================================');
@@ -285,16 +413,31 @@ async function buildFetchArtifacts(logger = console, { retryDelaysMs = DEFAULT_R
   const snapshot = await resolveSnapshot(logger, retryDelaysMs);
   const fetchRef = assertAllowedGitHubRef(snapshot.snapshotCommitSha, 'Snapshot commit SHA');
 
-  logger.log(`[1/5] Lade Katalog aus Snapshot ${fetchRef} ...`);
-  const catalogInfo = await fetchFileInfo(CATALOG_PATH, fetchRef, logger, retryDelaysMs);
-  const catalogRaw = await fetchRawFile(CATALOG_PATH, fetchRef, retryDelaysMs);
+  logger.log(`[1/5] Lade vollständigen BSI-Tree für Snapshot ${fetchRef} ...`);
+  const tree = providedTreeResponse
+    ? {
+        response: providedTreeResponse,
+        files: normalizeGitTree(providedTreeResponse, { monitoredRoots: MONITORED_UPSTREAM_ROOTS }),
+      }
+    : await fetchSnapshotTree(fetchRef, retryDelaysMs);
+
+  const catalogTreeFile = tree.files.find((file) => file.path === CATALOG_PATH);
+  if (!catalogTreeFile) {
+    throw new Error(`Unterstützter Katalog fehlt im vollständigen BSI-Tree: ${CATALOG_PATH}`);
+  }
+
+  logger.log('[2/5] Lade unterstützten Katalog und ermittle Namespace-Mitglieder ...');
+  const catalogRaw = await fetchRawRegisteredFile(CATALOG_PATH, fetchRef, [], retryDelaysMs);
+  if (computeGitBlobSha(catalogRaw.buffer) !== catalogTreeFile.gitBlobSha) {
+    throw new Error(`Git-Blob-SHA stimmt nicht mit dem BSI-Tree überein: ${CATALOG_PATH}`);
+  }
   const catalogArtifact = validateFetchedOscalArtifact(
     catalogRaw.buffer,
-    getExpectedRootType(CATALOG_PATH),
+    SUPPORTED_CATALOG.expectedRootType,
   );
   const catalogJson = catalogArtifact.json;
+  const catalogQuality = validateCatalogControlIdentities(catalogJson, SUPPORTED_CATALOG.artifactKey);
 
-  logger.log('[2/5] Ermittle referenzierte offizielle Namespace-Dateien ...');
   const namespaceUrls = extractReferencedNamespaceUrls(catalogJson, REPO);
   const namespaceRefs = namespaceUrls.map((namespaceUrl) => {
     const path = namespaceUrlToRepoPath(namespaceUrl, REPO);
@@ -306,20 +449,68 @@ async function buildFetchArtifacts(logger = console, { retryDelaysMs = DEFAULT_R
 
   logger.log(`  ${namespaceRefs.length} referenzierte Namespace-Dateien gefunden.`);
 
-  logger.log('[3/5] Lade und parse Namespace-Dateien ...');
-  const namespaceArtifacts = await Promise.all(namespaceRefs.map(async (namespaceRef) => {
-    logger.log(`  - ${namespaceRef.path}`);
-    const [fileInfo, rawFile] = await Promise.all([
-      fetchFileInfo(namespaceRef.path, fetchRef, logger, retryDelaysMs),
-      fetchRawFile(namespaceRef.path, fetchRef, retryDelaysMs),
-    ]);
+  const materializedNamespacePaths = namespaceRefs.map((namespaceRef) => namespaceRef.path);
+  const registryFiles = materializeRegistryFiles({
+    registryEntries,
+    treeFiles: tree.files,
+    namespaceRefs,
+  });
+
+  logger.log(`[3/5] Validiere ${registryFiles.length} registrierte Artefakte ...`);
+  const rawFileByPath = new Map([[CATALOG_PATH, catalogRaw]]);
+  const inspectedArtifacts = await Promise.all(registryFiles.map(async (descriptor) => {
+    let rawFile = rawFileByPath.get(descriptor.path);
+    if (!rawFile) {
+      logger.log(`  - ${descriptor.path} (${descriptor.lifecycle})`);
+      rawFile = await fetchRawRegisteredFile(
+        descriptor.path,
+        fetchRef,
+        materializedNamespacePaths,
+        retryDelaysMs,
+      );
+      rawFileByPath.set(descriptor.path, rawFile);
+    }
+
+    if (descriptor.sizeBytes !== null && rawFile.buffer.length !== descriptor.sizeBytes) {
+      throw new Error(`Dateigröße stimmt nicht mit dem BSI-Tree überein: ${descriptor.path}`);
+    }
+    if (computeGitBlobSha(rawFile.buffer) !== descriptor.gitBlobSha) {
+      throw new Error(`Git-Blob-SHA stimmt nicht mit dem BSI-Tree überein: ${descriptor.path}`);
+    }
+
+    if (descriptor.rootType !== 'vocabulary') {
+      validateFetchedOscalArtifact(rawFile.buffer, descriptor.rootType);
+    }
+
+    return {
+      descriptor,
+      rawFile,
+      manifestFile: {
+        artifactKey: descriptor.artifactKey,
+        rootType: descriptor.rootType,
+        lifecycle: descriptor.lifecycle,
+        path: descriptor.path,
+        gitBlobSha: descriptor.gitBlobSha,
+        contentSha256: sha256Hex(rawFile.buffer),
+      },
+    };
+  }));
+
+  const inspectedByPath = new Map(
+    inspectedArtifacts.map((artifact) => [artifact.descriptor.path, artifact]),
+  );
+  const namespaceArtifacts = namespaceRefs.map((namespaceRef) => {
+    const inspected = inspectedByPath.get(namespaceRef.path);
+    if (!inspected) {
+      throw new Error(`Namespace-Artefakt wurde nicht validiert: ${namespaceRef.path}`);
+    }
 
     const vocabularyNamespace = buildVocabularyNamespaceData({
       namespaceUrl: namespaceRef.namespaceUrl,
       repository: REPO,
       path: namespaceRef.path,
-      gitBlobSha: fileInfo.gitBlobSha,
-      csvText: rawFile.text,
+      gitBlobSha: inspected.descriptor.gitBlobSha,
+      csvText: inspected.rawFile.text,
     });
 
     return {
@@ -330,11 +521,11 @@ async function buildFetchArtifacts(logger = console, { retryDelaysMs = DEFAULT_R
         fileName: vocabularyNamespace.source.fileName,
         routeId: vocabularyNamespace.source.routeId,
         gitBlobSha: vocabularyNamespace.source.gitBlobSha,
-        sha256: sha256Hex(rawFile.buffer),
-        sizeBytes: rawFile.buffer.length,
+        sha256: inspected.manifestFile.contentSha256,
+        sizeBytes: inspected.rawFile.buffer.length,
       },
     };
-  }));
+  });
   const vocabularyNamespaces = namespaceArtifacts.map((artifact) => artifact.vocabularyNamespace);
   const vocabularyFiles = namespaceArtifacts.map((artifact) => artifact.vocabularyFile);
 
@@ -344,11 +535,9 @@ async function buildFetchArtifacts(logger = console, { retryDelaysMs = DEFAULT_R
   };
 
   const manifest = buildUpstreamManifest({
-    repository: REPO,
+    repository: OFFICIAL_BSI_REPOSITORY_URL,
     snapshotCommitSha: snapshot.snapshotCommitSha,
-    catalogPath: CATALOG_PATH,
-    catalogGitBlobSha: catalogInfo.gitBlobSha,
-    namespaces: vocabularyNamespaces,
+    files: inspectedArtifacts.map((artifact) => artifact.manifestFile),
   });
 
   const fetchedAt = new Date().toISOString();
@@ -360,14 +549,16 @@ async function buildFetchArtifacts(logger = console, { retryDelaysMs = DEFAULT_R
     'Vokabular-Registry',
   );
   const upstreamSourcesMetadataArtifact = buildJsonArtifactBuffer({
+    artifactKey: 'namespaces-bsi',
     source: {
-      repository: `https://github.com/${REPO}`,
+      repository: OFFICIAL_BSI_REPOSITORY_URL,
       catalogPath: CATALOG_PATH,
       snapshotCommitSha: snapshot.snapshotCommitSha,
       snapshotCommitDate: snapshot.snapshotCommitDate,
     },
     manifest,
     files: vocabularyFiles,
+    dataQualityFindings: catalogQuality.findings,
     integrity: {
       sha256: sha256Hex(vocabulariesArtifact),
       size_bytes: vocabulariesArtifact.length,
@@ -377,12 +568,13 @@ async function buildFetchArtifacts(logger = console, { retryDelaysMs = DEFAULT_R
   }, 'Upstream-Metadaten');
 
   const catalogMetadataArtifact = buildJsonArtifactBuffer({
+    artifactKey: SUPPORTED_CATALOG.artifactKey,
     source: {
-      repository: `https://github.com/${REPO}`,
+      repository: OFFICIAL_BSI_REPOSITORY_URL,
       file: CATALOG_PATH,
       commit_sha: snapshot.snapshotCommitSha,
       commit_date: snapshot.snapshotCommitDate,
-      git_blob_sha: catalogInfo.gitBlobSha,
+      git_blob_sha: catalogTreeFile.gitBlobSha,
       upstream_sha256: sha256Hex(catalogRaw.buffer),
       upstream_size_bytes: catalogRaw.buffer.length,
     },

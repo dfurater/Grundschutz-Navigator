@@ -7,9 +7,10 @@
  * Build-Skripten (`scripts/security-guards.mjs`) als auch von der App
  * importiert; deshalb reines ESM ohne Node-Abhängigkeiten.
  *
- * Nur Einträge mit `lifecycle: 'supported'` weiten die Fetch-Allowlist.
- * `preview`/`draft` dokumentieren bekannte Artefakte für kommende Issues,
- * ohne sie fetchbar zu machen.
+ * Nur Einträge mit `lifecycle: 'supported'` weiten die produktive Fetch- und
+ * Auslieferungs-Allowlist. `preview`/`draft` dürfen ausschließlich transient
+ * für Manifest-Provenienz und Root-Typ-Validierung gelesen werden; ihre Bytes
+ * werden nie als App-Artefakte ausgegeben.
  */
 
 const KEY_GRAMMAR = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
@@ -24,6 +25,19 @@ const OSCAL_ROOT_TYPES = Object.freeze([
 const LIFECYCLES = Object.freeze(['supported', 'preview', 'draft', 'blocked-by-upstream']);
 
 const COMPONENT_DIRECTORY = 'Implementierungsbeschreibungen/Komponenten';
+
+/**
+ * Read-only discovery roots for upstream tree comparisons. These roots do not
+ * widen the fetch allowlist: only materialized SOURCE_REGISTRY entries may be
+ * read, validated or shipped.
+ */
+export const MONITORED_UPSTREAM_ROOTS = Object.freeze([
+  'Anwenderkataloge',
+  'Dokumentation/namespaces',
+  'Implementierungsbeschreibungen/Komponenten',
+  'Mappings',
+  'Quellkataloge',
+]);
 
 export const SOURCE_REGISTRY = Object.freeze(
   [
@@ -187,10 +201,17 @@ function isNonEmptyString(value) {
  * Segmentsichere Repository-Pfade ohne Node-Abhängigkeit; bewusst gleich
  * streng wie `assertAllowedUpstreamRepoPath` in scripts/security-guards.mjs.
  */
-function isSafeRepoPath(path) {
+export function isSafeRepoPath(path) {
   if (!isNonEmptyString(path)) return false;
   if (path.startsWith('/') || path.includes('\\') || path.includes('..')) return false;
   return path.split('/').every((segment) => segment.length > 0 && segment !== '.');
+}
+
+export function isPathWithinMonitoredRoot(path) {
+  if (!isSafeRepoPath(path)) return false;
+  return MONITORED_UPSTREAM_ROOTS.some(
+    (root) => path === root || path.startsWith(`${root}/`),
+  );
 }
 
 export function validateSourceRegistry(entries = SOURCE_REGISTRY) {
@@ -253,6 +274,19 @@ export function validateSourceRegistry(entries = SOURCE_REGISTRY) {
     } else {
       throw new Error(`Unknown kind in source registry entry ${entry.artifactKey}: ${entry.kind}`);
     }
+  }
+}
+
+for (const root of MONITORED_UPSTREAM_ROOTS) {
+  if (!isSafeRepoPath(root)) {
+    throw new Error(`Unsafe monitored upstream root: ${root}`);
+  }
+}
+
+for (const entry of SOURCE_REGISTRY) {
+  const path = entry.kind === 'oscal' ? entry.upstreamPath : entry.upstreamDirectory;
+  if (!isPathWithinMonitoredRoot(path)) {
+    throw new Error(`Source registry path is outside monitored upstream roots: ${path}`);
   }
 }
 

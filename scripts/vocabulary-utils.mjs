@@ -52,6 +52,12 @@ export function namespaceUrlToRepoPath(namespaceUrl, repository) {
   const segments = parsedUrl.pathname.split('/').filter(Boolean);
   if (
     parsedUrl.hostname !== 'github.com' ||
+    parsedUrl.protocol !== 'https:' ||
+    parsedUrl.port !== '' ||
+    parsedUrl.username !== '' ||
+    parsedUrl.password !== '' ||
+    parsedUrl.search !== '' ||
+    parsedUrl.hash !== '' ||
     segments[0] !== repo.owner ||
     segments[1] !== repo.repo ||
     segments[2] !== 'tree' ||
@@ -60,7 +66,12 @@ export function namespaceUrlToRepoPath(namespaceUrl, repository) {
     return null;
   }
 
-  const path = decodeURIComponent(segments.slice(4).join('/'));
+  let path;
+  try {
+    path = decodeURIComponent(segments.slice(4).join('/'));
+  } catch {
+    return null;
+  }
   return path.endsWith('.csv') ? path : null;
 }
 
@@ -88,10 +99,28 @@ export function extractReferencedNamespaceUrls(catalogDocument, repository) {
 
     if (namespaceUrlToRepoPath(entry.ns, repository)) {
       urls.add(entry.ns);
+      return;
+    }
+
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(entry.ns);
+    } catch {
+      return;
+    }
+
+    // Non-file namespaces such as the OSCAL schema URI are metadata, not
+    // ingestion sources. Any HTTP(S) CSV reference, however, is an attempted
+    // vocabulary source and must point at the official pinned BSI contract.
+    if (
+      (parsedUrl.protocol === 'https:' || parsedUrl.protocol === 'http:') &&
+      parsedUrl.pathname.toLowerCase().endsWith('.csv')
+    ) {
+      throw new Error(`Externe oder nicht erlaubte Namespace-Quelle: ${entry.ns}`);
     }
   });
 
-  return [...urls].sort((left, right) => left.localeCompare(right));
+  return [...urls].sort();
 }
 
 export function parseCsv(text) {
@@ -230,42 +259,5 @@ export function buildVocabularyNamespaceData({
     valueColumn: parsed.valueColumn,
     definitionColumn: parsed.definitionColumn,
     entries: parsed.entries,
-  };
-}
-
-export function buildUpstreamManifest({
-  repository,
-  snapshotCommitSha,
-  catalogPath,
-  catalogGitBlobSha,
-  namespaces,
-}) {
-  const repo = toRepositoryParts(repository);
-  const files = [
-    {
-      kind: 'catalog',
-      path: catalogPath,
-      gitBlobSha: catalogGitBlobSha,
-    },
-    ...namespaces
-      .map((namespace) => ({
-        kind: 'namespace',
-        path: namespace.source.path,
-        namespace: namespace.source.namespace,
-        gitBlobSha: namespace.source.gitBlobSha,
-      }))
-      .sort((left, right) => left.path.localeCompare(right.path)),
-  ];
-
-  const signaturePayload = {
-    repository: repo.url,
-    snapshotCommitSha,
-    catalogPath,
-    files,
-  };
-
-  return {
-    ...signaturePayload,
-    signatureSha256: sha256Hex(JSON.stringify(signaturePayload)),
   };
 }
