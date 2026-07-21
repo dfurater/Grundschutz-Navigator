@@ -1,11 +1,23 @@
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { posix as posixPath } from 'node:path';
+import {
+  SUPPORTED_CATALOG,
+  getArtifactByUpstreamPath,
+  listArtifacts,
+} from '../src/domain/sourceRegistry.mjs';
+
+const supportedVocabularyCollection = listArtifacts({ lifecycle: 'supported' }).find(
+  (entry) => entry.kind === 'vocabulary-collection',
+);
+if (!supportedVocabularyCollection) {
+  throw new Error('Source registry must declare a supported vocabulary collection');
+}
 
 export const REPO_ROOT = process.cwd();
 export const OFFICIAL_BSI_REPO = 'BSI-Bund/Stand-der-Technik-Bibliothek';
-export const OFFICIAL_CATALOG_PATH = 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json';
-export const OFFICIAL_NAMESPACE_DIRECTORY = 'Dokumentation/namespaces';
+export const OFFICIAL_CATALOG_PATH = SUPPORTED_CATALOG.upstreamPath;
+export const OFFICIAL_NAMESPACE_DIRECTORY = supportedVocabularyCollection.upstreamDirectory;
 export const DEFAULT_ARTIFACTS_DIR = path.join(REPO_ROOT, 'public', 'data');
 export const DEFAULT_UPSTREAM_METADATA_PATH = path.join(DEFAULT_ARTIFACTS_DIR, 'upstream-sources-metadata.json');
 export const DEFAULT_TRACKED_MANIFEST_PATH = path.join(REPO_ROOT, 'upstream-manifest.json');
@@ -104,15 +116,10 @@ export function assertAllowedUpstreamRepoPath(repoPath) {
     throw new Error(`Unsafe upstream repository path: ${normalized}`);
   }
 
-  if (normalizedPosixPath === OFFICIAL_CATALOG_PATH) {
-    return normalizedPosixPath;
-  }
-
-  const namespacePrefix = `${OFFICIAL_NAMESPACE_DIRECTORY}/`;
-  if (
-    normalizedPosixPath.startsWith(namespacePrefix) &&
-    normalizedPosixPath.endsWith('.csv')
-  ) {
+  // Registry-getriebene Allowlist (ADR-0001): Nur supported-Artefakte sind
+  // fetchbar; preview/draft-Einträge bleiben bewusst ausgeschlossen.
+  const registryEntry = getArtifactByUpstreamPath(normalizedPosixPath);
+  if (registryEntry && registryEntry.lifecycle === 'supported') {
     return normalizedPosixPath;
   }
 

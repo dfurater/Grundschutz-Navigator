@@ -3,6 +3,7 @@ import {
   buildFetchArtifacts,
   serializeJsonArtifact,
   validateFetchedCatalogArtifact,
+  validateFetchedOscalArtifact,
 } from './fetch-catalog.mjs';
 import {
   OFFICIAL_CATALOG_PATH,
@@ -88,6 +89,33 @@ describe('fetch-catalog', () => {
   it('rejects fetched catalogs without the top-level catalog object', () => {
     expect(() => validateFetchedCatalogArtifact(Buffer.from('{"controls":[]}', 'utf8'))).toThrow(
       'Katalogwurzel muss ein JSON-Objekt sein.',
+    );
+  });
+
+  it('validates OSCAL artifacts against their expected root type', () => {
+    const profileBuffer = Buffer.from('{"profile":{"uuid":"demo"}}', 'utf8');
+    const artifact = validateFetchedOscalArtifact(profileBuffer, 'profile');
+
+    expect(artifact.json).toEqual({ profile: { uuid: 'demo' } });
+    expect(artifact.buffer).toEqual(profileBuffer);
+  });
+
+  it('rejects OSCAL root-type mismatches in both directions', () => {
+    const catalogBuffer = Buffer.from('{"catalog":{"uuid":"demo"}}', 'utf8');
+    const profileBuffer = Buffer.from('{"profile":{"uuid":"demo"}}', 'utf8');
+
+    expect(() => validateFetchedOscalArtifact(catalogBuffer, 'profile')).toThrow(
+      'Profilwurzel muss ein JSON-Objekt sein.',
+    );
+    expect(() => validateFetchedOscalArtifact(profileBuffer, 'catalog')).toThrow(
+      'Katalogwurzel muss ein JSON-Objekt sein.',
+    );
+  });
+
+  it('rejects unknown expected root types', () => {
+    const catalogBuffer = Buffer.from('{"catalog":{"uuid":"demo"}}', 'utf8');
+    expect(() => validateFetchedOscalArtifact(catalogBuffer, 'plan')).toThrow(
+      'Unbekannter OSCAL-Root-Typ',
     );
   });
 

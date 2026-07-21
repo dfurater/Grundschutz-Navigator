@@ -6,6 +6,8 @@
 //   2. Enriched domain types — flattened, typed, ready for UI consumption
 // =============================================================================
 
+import type { CatalogKey } from '@/domain/sourceRegistry';
+
 /* ------------------------------------------------------------------ */
 /*  Raw OSCAL 1.1.3 Types                                             */
 /* ------------------------------------------------------------------ */
@@ -317,20 +319,38 @@ export interface CatalogMetadataInfo {
 
 /** The fully parsed catalog */
 export interface Catalog {
+  /** Stable catalog key from the source registry (ADR-0001), e.g. "gspp" */
+  catalogKey: CatalogKey;
   /** OSCAL document UUID */
   uuid: string;
   /** Catalog metadata */
   metadata: CatalogMetadataInfo;
   /** All 19 practices */
   practices: Practice[];
-  /** All controls, indexed by ID for O(1) lookup */
+  /** All controls, indexed by ID for O(1) lookup (catalog-internal identity) */
   controlsById: Map<string, Control>;
+  /**
+   * All controls indexed by their alt-identifier (canonical URL identity,
+   * ADR-0001). Controls without alt-identifier are omitted; duplicates within
+   * one catalog are rejected at parse time.
+   */
+  controlsByAltIdentifier: Map<string, Control>;
   /** All controls as flat array */
   controls: Control[];
   /** Referenced catalog resources from OSCAL back-matter */
   backMatter: CatalogResource[];
   /** Total control count */
   totalControls: number;
+}
+
+/**
+ * Catalog-scoped internal control reference (ADR-0001).
+ * URLs use catalogKey + altIdentifier instead; this pair is the
+ * OSCAL/reference identity for lookups and relations.
+ */
+export interface ControlRef {
+  catalogKey: CatalogKey;
+  controlId: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -427,7 +447,23 @@ export interface VocabularyFileProvenance {
   sizeBytes: number;
 }
 
+/** Integrity record shared by every shipped artifact (ADR-0001) */
+export interface ArtifactIntegrity {
+  sha256: string;
+  size_bytes: number;
+  fetched_at: string;
+}
+
+/** Build context shared by every shipped artifact (ADR-0001) */
+export interface ArtifactBuildInfo {
+  workflow_run_id: string;
+  workflow_run_url: string | null;
+  runner_environment: string;
+}
+
 export interface VocabularyProvenance {
+  /** Source-registry artifact key; written by the multi-artifact fetch (GRU-249) */
+  artifactKey?: string;
   source: {
     repository: string;
     catalogPath: string;
@@ -436,19 +472,13 @@ export interface VocabularyProvenance {
   };
   manifest: UpstreamManifest;
   files: VocabularyFileProvenance[];
-  integrity: {
-    sha256: string;
-    size_bytes: number;
-    fetched_at: string;
-  };
-  build: {
-    workflow_run_id: string;
-    workflow_run_url: string | null;
-    runner_environment: string;
-  };
+  integrity: ArtifactIntegrity;
+  build: ArtifactBuildInfo;
 }
 
 export interface CatalogProvenance {
+  /** Source-registry artifact key; written by the multi-artifact fetch (GRU-249) */
+  artifactKey?: string;
   source: {
     repository: string;
     file: string;
@@ -458,16 +488,8 @@ export interface CatalogProvenance {
     upstream_sha256?: string;
     upstream_size_bytes?: number;
   };
-  integrity: {
-    sha256: string;
-    size_bytes: number;
-    fetched_at: string;
-  };
-  build: {
-    workflow_run_id: string;
-    workflow_run_url: string | null;
-    runner_environment: string;
-  };
+  integrity: ArtifactIntegrity;
+  build: ArtifactBuildInfo;
 }
 
 export interface VerificationResult {
