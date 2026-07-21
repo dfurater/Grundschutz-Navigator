@@ -1,5 +1,14 @@
 import { useMemo, useState, useCallback, useEffect } from 'react';
-import { Routes, Route, Link, NavLink, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import {
+  Routes,
+  Route,
+  Link,
+  NavLink,
+  Navigate,
+  matchPath,
+  useNavigate,
+  useLocation,
+} from 'react-router-dom';
 import { HeaderBar } from '@/components/HeaderBar';
 import { TreeNav } from '@/components/TreeNav';
 import { Footer } from '@/components/Footer';
@@ -23,6 +32,15 @@ import { ImpressumPage } from '@/features/pages/ImpressumPage';
 import { LizenzenPage } from '@/features/pages/LizenzenPage';
 import { VocabularyOverviewPage } from '@/features/vocabularies/VocabularyOverviewPage';
 import { VocabularyNamespacePage } from '@/features/vocabularies/VocabularyNamespacePage';
+import { SUPPORTED_CATALOG_KEY } from '@/domain/sourceRegistry';
+import {
+  CATALOG_ROUTE_PATTERN,
+  CONTROL_ROUTE_PATTERN,
+  GROUP_ROUTE_PATTERN,
+  buildCatalogUrl,
+  buildGroupUrl,
+  resolveControlRoute,
+} from '@/app/routes';
 
 /* ------------------------------------------------------------------ */
 /*  PageScroll — scroll wrapper for page content                      */
@@ -76,6 +94,9 @@ export function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
   const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
+  const { catalog, loading, error } = useCatalog();
+  const activeCatalogKey = catalog?.catalogKey ?? SUPPORTED_CATALOG_KEY;
+  const activeCatalogUrl = buildCatalogUrl(activeCatalogKey);
 
   // Update document title on route change (a11y: screen readers announce page)
   useEffect(() => {
@@ -83,7 +104,6 @@ export function AppShell() {
     const base = 'Grundschutz++ Navigator';
     const titles: Record<string, string> = {
       '/': base,
-      '/katalog': `Katalog — ${base}`,
       '/suche': `Suche — ${base}`,
       '/vokabular': `Vokabulare — ${base}`,
       '/about': `Über das Projekt — ${base}`,
@@ -92,22 +112,43 @@ export function AppShell() {
       '/lizenzen': `Lizenzen — ${base}`,
       '/mehr': `Über das Projekt — ${base}`,
     };
-    if (titles[path]) {
+    const controlMatch = matchPath(CONTROL_ROUTE_PATTERN, path);
+    const routedControl = resolveControlRoute(
+      catalog,
+      controlMatch?.params.catalogKey,
+      controlMatch?.params.altIdentifier,
+    );
+
+    if (routedControl) {
+      document.title = `${routedControl.id} — ${base}`;
+    } else if (titles[path]) {
       document.title = titles[path];
-    } else if (path.startsWith('/katalog/')) {
-      document.title = `${decodeURIComponent(path.replace('/katalog/', ''))} — ${base}`;
+    } else if (path.startsWith('/katalog')) {
+      document.title = `Katalog — ${base}`;
     } else if (path.startsWith('/vokabular/')) {
       document.title = `${decodeURIComponent(path.replace('/vokabular/', ''))} — Vokabulare — ${base}`;
     } else {
       document.title = base;
     }
-  }, [location.pathname]);
+  }, [catalog, location.pathname]);
 
   // Derive selectedId from URL so tree highlights work for all navigation sources
   const selectedId = useMemo(() => {
-    const match = location.pathname.match(/^\/katalog\/(.+)$/);
-    return match?.[1];
-  }, [location.pathname]);
+    const controlMatch = matchPath(CONTROL_ROUTE_PATTERN, location.pathname);
+    const routedControl = resolveControlRoute(
+      catalog,
+      controlMatch?.params.catalogKey,
+      controlMatch?.params.altIdentifier,
+    );
+    if (routedControl) return routedControl.groupId;
+
+    const groupParams = matchPath(GROUP_ROUTE_PATTERN, location.pathname)?.params;
+    if (groupParams && catalog && groupParams.catalogKey === catalog.catalogKey) {
+      return groupParams.groupId;
+    }
+
+    return undefined;
+  }, [catalog, location.pathname]);
 
   const handleSidebarResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -134,7 +175,6 @@ export function AppShell() {
     document.addEventListener('mouseup', handleMouseUp);
   }, [sidebarWidth]);
 
-  const { catalog, loading, error } = useCatalog();
   const treeItems = useMemo(() => buildTreeItems(catalog), [catalog]);
 
   const handleSearch = (term: string) => {
@@ -144,7 +184,7 @@ export function AppShell() {
   };
 
   const handleTreeSelect = (id: string) => {
-    navigate(`/katalog/${id}`);
+    navigate(buildGroupUrl(activeCatalogKey, id));
     setSideNavOpen(false);
   };
 
@@ -226,7 +266,7 @@ export function AppShell() {
               {/* Mobile section navigation links */}
               <nav className="md:hidden border-b border-slate-200" aria-label="Sektionen">
                 {[
-                  { to: '/katalog', label: 'Katalog', Icon: IconLayoutList },
+                  { to: activeCatalogUrl, label: 'Katalog', Icon: IconLayoutList },
                   { to: '/suche', label: 'Suche', Icon: IconSearch },
                 ].map(({ to, label, Icon }) => (
                   <NavLink
@@ -253,7 +293,7 @@ export function AppShell() {
               <div className="px-2.5 border-b border-slate-200 hidden md:flex items-center justify-between" style={{ height: 51 }}>
                 <button
                   type="button"
-                  onClick={() => navigate('/katalog')}
+                  onClick={() => navigate(activeCatalogUrl)}
                   className="cursor-pointer whitespace-nowrap rounded text-xs font-bold uppercase tracking-wider text-slate-400 transition-colors hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
                   title="Alle Kontrollen anzeigen"
                 >
@@ -319,8 +359,9 @@ export function AppShell() {
         >
           <Routes>
               <Route path="/" element={<PageScroll><HomePage /></PageScroll>} />
-              <Route path="/katalog" element={<CatalogBrowser />} />
-              <Route path="/katalog/:groupId" element={<CatalogBrowser />} />
+              <Route path={CONTROL_ROUTE_PATTERN} element={<CatalogBrowser />} />
+              <Route path={GROUP_ROUTE_PATTERN} element={<CatalogBrowser />} />
+              <Route path={CATALOG_ROUTE_PATTERN} element={<CatalogBrowser />} />
               <Route path="/suche" element={<SearchPage />} />
               <Route path="/vokabular" element={<PageScroll><VocabularyOverviewPage /></PageScroll>} />
               <Route path="/vokabular/:namespaceId" element={<PageScroll><VocabularyNamespacePage /></PageScroll>} />

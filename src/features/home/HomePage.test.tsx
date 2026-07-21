@@ -15,6 +15,7 @@ function catalogState(
 ): ReturnType<typeof useCatalog> {
   return {
     catalog: {
+      catalogKey: 'gspp',
       uuid: 'catalog-1',
       metadata: {
         title: 'Grundschutz++',
@@ -70,6 +71,7 @@ function catalogState(
         },
       ],
       controlsById: new Map(),
+      controlsByAltIdentifier: new Map(),
       controls: [],
       backMatter: [],
       totalControls: 7,
@@ -208,6 +210,15 @@ describe('HomePage', () => {
       summaryHeading.compareDocumentPosition(practiceRegister) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  it('scopes practice links to the active catalog', () => {
+    renderHome();
+
+    expect(screen.getByRole('link', { name: /ISMS/ })).toHaveAttribute(
+      'href',
+      '/katalog/gspp/ISMS',
+    );
   });
 
   it('uses tighter hero spacing and a clearer gap before the practice register', () => {

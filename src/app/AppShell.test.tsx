@@ -36,7 +36,7 @@ vi.mock('@/features/home/HomePage', () => ({
 }));
 
 vi.mock('@/features/catalog/CatalogBrowser', () => ({
-  CatalogBrowser: () => <div>Katalog</div>,
+  CatalogBrowser: () => <div data-testid="catalog-browser">Katalog</div>,
 }));
 
 vi.mock('@/features/search/SearchPage', () => ({
@@ -200,7 +200,7 @@ describe('AppShell', () => {
       .toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Katalog' })).toHaveAttribute(
       'href',
-      '/katalog',
+      '/katalog/gspp',
     );
     expect(screen.getByRole('link', { name: 'Suche' })).toHaveAttribute(
       'href',
@@ -212,5 +212,28 @@ describe('AppShell', () => {
       .not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Impressum' }))
       .not.toBeInTheDocument();
+  });
+
+  it('registers the canonical catalog-scoped control route', () => {
+    render(
+      <MemoryRouter initialEntries={['/katalog/gspp/kontrolle/stable-alt-id']}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTestId('catalog-browser')).toBeInTheDocument();
+  });
+
+  it('does not register or redirect the unscoped catalog route', () => {
+    render(
+      <MemoryRouter initialEntries={['/katalog']}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.getByRole('heading', { name: '404 — Seite nicht gefunden' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId('catalog-browser')).not.toBeInTheDocument();
   });
 });
