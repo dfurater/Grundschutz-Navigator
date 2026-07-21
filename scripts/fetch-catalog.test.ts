@@ -1,18 +1,21 @@
+import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildFetchArtifacts,
   serializeJsonArtifact,
+  validateCatalogControlIdentities,
   validateFetchedCatalogArtifact,
   validateFetchedOscalArtifact,
 } from './fetch-catalog.mjs';
 import {
+  OFFICIAL_BSI_REPOSITORY_URL,
   OFFICIAL_CATALOG_PATH,
   assertAllowedGitHubRef,
   assertAllowedUpstreamRepoPath,
   resolveOptionalSnapshotSha,
 } from './security-guards.mjs';
+import { buildUpstreamManifest } from './upstream-artifacts.mjs';
 import {
-  buildUpstreamManifest,
   buildVocabularyNamespaceData,
   extractReferencedNamespaceUrls,
   namespaceUrlToRepoPath,
@@ -20,11 +23,232 @@ import {
   parseVocabularyCsv,
   sha256Hex,
 } from './vocabulary-utils.mjs';
+import { SOURCE_REGISTRY } from '../src/domain/sourceRegistry.mjs';
 
-function parseArtifactJson(payload, fileName: string) {
+const SNAPSHOT_SHA = 'a'.repeat(40);
+const REPOSITORY_API = 'https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek';
+const RAW_BASE = 'https://raw.githubusercontent.com/BSI-Bund/Stand-der-Technik-Bibliothek';
+const RESULT_NAMESPACE_URL =
+  'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/result.csv';
+const ACTION_WORDS_NAMESPACE_URL =
+  'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/action_words.csv';
+
+const MINIMAL_REGISTRY = [
+  {
+    artifactKey: 'catalog-gspp',
+    kind: 'oscal',
+    expectedRootType: 'catalog',
+    catalogKey: 'gspp',
+    upstreamPath: OFFICIAL_CATALOG_PATH,
+    lifecycle: 'supported',
+    title: 'Grundschutz++ Anwenderkatalog',
+  },
+  {
+    artifactKey: 'namespaces-bsi',
+    kind: 'vocabulary-collection',
+    upstreamDirectory: 'Dokumentation/namespaces',
+    fileSuffix: '.csv',
+    lifecycle: 'supported',
+    title: 'Offizielle BSI-Namespace-Vokabulare',
+  },
+] as const;
+
+type RawContents = string | Buffer;
+type RawFileMap = Map<string, RawContents>;
+type ResponseFactory = (attempt: number) => Response | Promise<Response>;
+type RawResponseFactory = (
+  path: string,
+  contents: RawContents,
+) => Response | Promise<Response>;
+
+function inputUrl(input: string | URL | Request) {
+  if (typeof input === 'string') return input;
+  return input instanceof URL ? input.toString() : input.url;
+}
+
+function bufferFrom(contents: RawContents) {
+  return Buffer.isBuffer(contents) ? contents : Buffer.from(contents, 'utf8');
+}
+
+function gitBlobSha(contents: RawContents) {
+  const buffer = bufferFrom(contents);
+  return createHash('sha1')
+    .update(`blob ${buffer.length}\0`)
+    .update(buffer)
+    .digest('hex');
+}
+
+function encodeRepoPath(repoPath: string) {
+  return repoPath.split('/').map(encodeURIComponent).join('/');
+}
+
+function rawUrl(repoPath: string, snapshotSha = SNAPSHOT_SHA) {
+  return `${RAW_BASE}/${snapshotSha}/${encodeRepoPath(repoPath)}`;
+}
+
+function makeTreeEntry(path: string, contents: RawContents) {
+  const buffer = bufferFrom(contents);
+  return {
+    path,
+    mode: '100644',
+    type: 'blob',
+    sha: gitBlobSha(buffer),
+    size: buffer.length,
+  };
+}
+
+function makeTreeResponse(rawByPath: RawFileMap, extraEntries: ReturnType<typeof makeTreeEntry>[] = []) {
+  return {
+    truncated: false,
+    tree: [
+      ...[...rawByPath].map(([path, contents]) => makeTreeEntry(path, contents)),
+      ...extraEntries,
+    ],
+  };
+}
+
+function jsonResponse(value: unknown) {
+  return new Response(JSON.stringify(value), {
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+function responseWithContents(contents: RawContents) {
+  const body = Buffer.isBuffer(contents) ? new Uint8Array(contents) : contents;
+  return new Response(body);
+}
+
+function installSnapshotFetch({
+  rawByPath,
+  snapshotSha = SNAPSHOT_SHA,
+  branchSha = snapshotSha,
+  repositoryResponse,
+  branchResponse,
+  commitResponse,
+  rawResponse,
+}: {
+  rawByPath: RawFileMap;
+  snapshotSha?: string;
+  branchSha?: string;
+  repositoryResponse?: ResponseFactory;
+  branchResponse?: ResponseFactory;
+  commitResponse?: ResponseFactory;
+  rawResponse?: RawResponseFactory;
+}) {
+  let repositoryAttempts = 0;
+  let branchAttempts = 0;
+  let commitAttempts = 0;
+
+  const fetchMock = vi.fn(async (input: string | URL | Request) => {
+    const url = inputUrl(input);
+
+    if (url === REPOSITORY_API) {
+      repositoryAttempts += 1;
+      return repositoryResponse?.(repositoryAttempts) ?? jsonResponse({ default_branch: 'main' });
+    }
+
+    if (url === `${REPOSITORY_API}/branches/main`) {
+      branchAttempts += 1;
+      return branchResponse?.(branchAttempts) ?? jsonResponse({ commit: { sha: branchSha } });
+    }
+
+    if (url === `${REPOSITORY_API}/commits/${snapshotSha}`) {
+      commitAttempts += 1;
+      return commitResponse?.(commitAttempts) ?? jsonResponse({
+        commit: { committer: { date: '2026-04-03T00:00:00.000Z' } },
+      });
+    }
+
+    for (const [path, contents] of rawByPath) {
+      if (url === rawUrl(path, snapshotSha)) {
+        return rawResponse?.(path, contents) ?? responseWithContents(contents);
+      }
+    }
+
+    throw new Error(`Unexpected fetch: ${url}`);
+  });
+
+  vi.stubGlobal('fetch', fetchMock);
+  return {
+    fetchMock,
+    getRepositoryAttempts: () => repositoryAttempts,
+  };
+}
+
+function makeCatalogText(namespaceUrls: string[] = []) {
+  const groups = namespaceUrls.length === 0
+    ? []
+    : [
+        {
+          controls: [
+            {
+              id: 'CTRL.1',
+              props: [
+                { name: 'alt-identifier', value: '11111111-1111-4111-8111-111111111111' },
+                ...namespaceUrls.map((namespaceUrl, index) => ({
+                  name: `namespace-${index}`,
+                  value: `value-${index}`,
+                  ns: namespaceUrl,
+                })),
+              ],
+            },
+          ],
+        },
+      ];
+
+  return `${JSON.stringify({
+    catalog: {
+      uuid: 'demo',
+      metadata: { title: 'Grundschutz++' },
+      groups,
+    },
+  }, null, 2)}\n`;
+}
+
+function makeMinimalFetchInput(namespaceFiles: RawFileMap = new Map()) {
+  const namespaceUrls = [...namespaceFiles.keys()].map(
+    (path) => `https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/${path}`,
+  );
+  const catalogText = makeCatalogText(namespaceUrls);
+  const rawByPath = new Map<string, RawContents>([
+    [OFFICIAL_CATALOG_PATH, catalogText],
+    ...namespaceFiles,
+  ]);
+  return { catalogText, rawByPath, treeResponse: makeTreeResponse(rawByPath) };
+}
+
+function parseArtifactJson(
+  payload: Awaited<ReturnType<typeof buildFetchArtifacts>>,
+  fileName: string,
+) {
   const artifact = payload.artifacts.find((currentArtifact) => currentArtifact.fileName === fileName);
   expect(artifact).toBeDefined();
   return JSON.parse(Buffer.from(artifact!.contentsBase64, 'base64').toString('utf8'));
+}
+
+async function buildMinimalArtifacts({
+  namespaceFiles = new Map<string, RawContents>(),
+  treeResponse,
+  fetchOptions = {},
+}: {
+  namespaceFiles?: RawFileMap;
+  treeResponse?: ReturnType<typeof makeTreeResponse>;
+  fetchOptions?: Partial<Parameters<typeof installSnapshotFetch>[0]>;
+} = {}) {
+  const input = makeMinimalFetchInput(namespaceFiles);
+  const installed = installSnapshotFetch({
+    rawByPath: input.rawByPath,
+    ...fetchOptions,
+  });
+  const payload = await buildFetchArtifacts(
+    { log: () => {}, warn: () => {} },
+    {
+      retryDelaysMs: [0, 0],
+      registryEntries: MINIMAL_REGISTRY,
+      treeResponse: treeResponse ?? input.treeResponse,
+    },
+  );
+  return { ...input, ...installed, payload };
 }
 
 describe('fetch-catalog', () => {
@@ -71,9 +295,7 @@ describe('fetch-catalog', () => {
     expect(artifact.json).toEqual({
       catalog: {
         uuid: 'demo',
-        metadata: {
-          title: 'Grundschutz++',
-        },
+        metadata: { title: 'Grundschutz++' },
         groups: [],
       },
     });
@@ -112,306 +334,182 @@ describe('fetch-catalog', () => {
     );
   });
 
-  it('rejects unknown expected root types', () => {
-    const catalogBuffer = Buffer.from('{"catalog":{"uuid":"demo"}}', 'utf8');
-    expect(() => validateFetchedOscalArtifact(catalogBuffer, 'plan')).toThrow(
-      'Unbekannter OSCAL-Root-Typ',
+  it('rejects conflicting OSCAL roots even when the expected root exists', () => {
+    const conflicting = Buffer.from(
+      '{"catalog":{"uuid":"catalog"},"profile":{"uuid":"profile"}}',
+      'utf8',
+    );
+
+    expect(() => validateFetchedOscalArtifact(conflicting, 'catalog')).toThrow(
+      'Katalog enthält widersprüchliche OSCAL-Wurzeln: catalog, profile.',
     );
   });
 
-  it('aborts when the upstream snapshot cannot be resolved', async () => {
-    const fetchMock = vi.fn(async (input: string | URL | Request) => {
-      const url =
-        typeof input === 'string'
-          ? input
-          : input instanceof URL
-            ? input.toString()
-            : input.url;
+  it('rejects unknown expected root types', () => {
+    expect(() => validateFetchedOscalArtifact(
+      Buffer.from('{"catalog":{"uuid":"demo"}}', 'utf8'),
+      'plan',
+    )).toThrow('Unbekannter OSCAL-Root-Typ');
+  });
 
-      if (url === 'https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek') {
-        return new Response('Service Unavailable', {
-          status: 503,
-          statusText: 'Service Unavailable',
-        });
-      }
+  it('rejects controls with a missing alt-identifier', () => {
+    expect(() => validateCatalogControlIdentities({
+      catalog: {
+        groups: [{ controls: [{ id: 'CTRL.1', props: [] }] }],
+      },
+    }, 'catalog-gspp')).toThrow(
+      'Datenqualitätsfehler in catalog-gspp: Control CTRL.1 hat keinen alt-identifier.',
+    );
+  });
 
-      throw new Error(`Unexpected fetch: ${url}`);
-    });
-    vi.stubGlobal('fetch', fetchMock);
+  it('rejects duplicate alt-identifiers across nested catalog groups', () => {
+    const duplicate = '11111111-1111-4111-8111-111111111111';
+    expect(() => validateCatalogControlIdentities({
+      catalog: {
+        groups: [
+          {
+            controls: [{
+              id: 'CTRL.1',
+              props: [{ name: 'alt-identifier', value: duplicate }],
+            }],
+            groups: [{
+              controls: [{
+                id: 'CTRL.2',
+                props: [{ name: 'alt-identifier', value: duplicate }],
+              }],
+            }],
+          },
+        ],
+      },
+    }, 'catalog-gspp')).toThrow(
+      `alt-identifier ${duplicate} ist für CTRL.1 und CTRL.2 doppelt`,
+    );
+  });
+
+  it('rejects duplicate alt-identifiers when the first control has an empty ID', () => {
+    const duplicate = '11111111-1111-4111-8111-111111111111';
+    expect(() => validateCatalogControlIdentities({
+      catalog: {
+        controls: [
+          {
+            id: '',
+            props: [{ name: 'alt-identifier', value: duplicate }],
+          },
+          {
+            id: 'CTRL.2',
+            props: [{ name: 'alt-identifier', value: duplicate }],
+          },
+        ],
+      },
+    }, 'catalog-gspp')).toThrow(
+      `alt-identifier ${duplicate} ist für <ohne ID> und CTRL.2 doppelt`,
+    );
+  });
+
+  it('aborts when the upstream snapshot cannot be resolved after retries', async () => {
+    let requests = 0;
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      requests += 1;
+      return new Response('Service Unavailable', {
+        status: 503,
+        statusText: 'Service Unavailable',
+      });
+    }));
 
     await expect(buildFetchArtifacts(
       { log: () => {}, warn: () => {} },
-      { retryDelaysMs: [0, 0] },
+      { retryDelaysMs: [0, 0], registryEntries: MINIMAL_REGISTRY },
     )).rejects.toThrow('Build abgebrochen, damit nicht ungepinnt von main geladen wird');
-
-    expect(fetchMock.mock.calls.map(([input]) => String(input))).not.toContain(
-      'https://raw.githubusercontent.com/BSI-Bund/Stand-der-Technik-Bibliothek/main/Anwenderkataloge/Grundschutz%2B%2B/Grundschutz%2B%2B-catalog.json',
-    );
+    expect(requests).toBe(3);
   });
 
   it('aborts when the default branch does not expose an exact commit SHA', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
-      const url =
-        typeof input === 'string'
-          ? input
-          : input instanceof URL
-            ? input.toString()
-            : input.url;
-
-      if (url === 'https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek') {
-        return new Response(JSON.stringify({ default_branch: 'main' }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      if (url === 'https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/branches/main') {
-        return new Response(JSON.stringify({ commit: { sha: 'not-a-commit' } }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      throw new Error(`Unexpected fetch: ${url}`);
-    }));
-
-    await expect(buildFetchArtifacts({
-      log: () => {},
-      warn: () => {},
-    })).rejects.toThrow('GitHub branch main enthält keine gültige Commit-SHA.');
-  });
-
-  it('continues with an unknown commit date when resolved snapshot metadata is unavailable', async () => {
-    const snapshotSha = 'a'.repeat(40);
-    const catalogBlobSha = 'b'.repeat(40);
-    const catalogText =
-      '{\n "catalog" : { "uuid":"demo","metadata":{"title":"Grundschutz++"}, "groups":[ ] }\n}\n';
-    const warn = vi.fn();
-
-    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
-      const url =
-        typeof input === 'string'
-          ? input
-          : input instanceof URL
-            ? input.toString()
-            : input.url;
-
-      if (url === 'https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek') {
-        return new Response(JSON.stringify({ default_branch: 'main' }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      if (url === 'https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/branches/main') {
-        return new Response(JSON.stringify({ commit: { sha: snapshotSha } }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      if (url === `https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/commits/${snapshotSha}`) {
-        return new Response('rate limited', {
-          status: 429,
-          statusText: 'Too Many Requests',
-        });
-      }
-
-      if (
-        url ===
-        `https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/contents/Anwenderkataloge/Grundschutz%2B%2B/Grundschutz%2B%2B-catalog.json?ref=${snapshotSha}`
-      ) {
-        return new Response(JSON.stringify({
-          sha: catalogBlobSha,
-          size: Buffer.byteLength(catalogText),
-        }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      if (
-        url ===
-        `https://raw.githubusercontent.com/BSI-Bund/Stand-der-Technik-Bibliothek/${snapshotSha}/Anwenderkataloge/Grundschutz%2B%2B/Grundschutz%2B%2B-catalog.json`
-      ) {
-        return new Response(catalogText);
-      }
-
-      return new Response('Not Found', { status: 404, statusText: 'Not Found' });
-    }));
-
-    const payload = await buildFetchArtifacts({
-      log: () => {},
-      warn,
+    installSnapshotFetch({
+      rawByPath: new Map(),
+      branchSha: 'not-a-commit',
     });
-    const metadata = parseArtifactJson(payload, 'catalog-metadata.json');
-
-    expect(metadata.source.commit_sha).toBe(snapshotSha);
-    expect(metadata.source.commit_date).toBe('unknown');
-    expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining(`Commit-Metadaten für aufgelösten Snapshot ${snapshotSha} nicht laden`),
-    );
-  });
-
-  it('aborts when the provenance lookup fails for the catalog file', async () => {
-    const snapshotSha = 'a'.repeat(40);
-
-    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
-      const url =
-        typeof input === 'string'
-          ? input
-          : input instanceof URL
-            ? input.toString()
-            : input.url;
-
-      if (url === 'https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek') {
-        return new Response(JSON.stringify({ default_branch: 'main' }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      if (url === 'https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/branches/main') {
-        return new Response(JSON.stringify({ commit: { sha: snapshotSha } }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      if (
-        url ===
-        `https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/contents/Anwenderkataloge/Grundschutz%2B%2B/Grundschutz%2B%2B-catalog.json?ref=${snapshotSha}`
-      ) {
-        return new Response('internal error', {
-          status: 500,
-          statusText: 'Internal Server Error',
-        });
-      }
-
-      throw new Error(`Unexpected fetch: ${url}`);
-    }));
 
     await expect(buildFetchArtifacts(
       { log: () => {}, warn: () => {} },
-      { retryDelaysMs: [0, 0] },
-    )).rejects.toThrow('Konnte Provenance für Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json nicht exakt auflösen');
+      { registryEntries: MINIMAL_REGISTRY },
+    )).rejects.toThrow('GitHub branch main enthält keine gültige Commit-SHA.');
+  });
+
+  it('continues with an unknown commit date when snapshot metadata is unavailable', async () => {
+    const input = makeMinimalFetchInput();
+    const warn = vi.fn();
+    installSnapshotFetch({
+      rawByPath: input.rawByPath,
+      commitResponse: () => new Response('rate limited', {
+        status: 429,
+        statusText: 'Too Many Requests',
+      }),
+    });
+
+    const payload = await buildFetchArtifacts(
+      { log: () => {}, warn },
+      {
+        retryDelaysMs: [0, 0],
+        registryEntries: MINIMAL_REGISTRY,
+        treeResponse: input.treeResponse,
+      },
+    );
+    const metadata = parseArtifactJson(payload, 'catalog-metadata.json');
+
+    expect(metadata.source.commit_sha).toBe(SNAPSHOT_SHA);
+    expect(metadata.source.commit_date).toBe('unknown');
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(`Commit-Metadaten für aufgelösten Snapshot ${SNAPSHOT_SHA} nicht laden`),
+    );
   });
 
   it('retries transient GitHub API errors and succeeds on a later attempt', async () => {
-    const snapshotSha = 'a'.repeat(40);
-    const catalogBlobSha = 'b'.repeat(40);
-    const catalogText =
-      '{\n "catalog" : { "uuid":"demo","metadata":{"title":"Grundschutz++"}, "groups":[ ] }\n}\n';
-    let repoRequests = 0;
-
-    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
-      const url =
-        typeof input === 'string'
-          ? input
-          : input instanceof URL
-            ? input.toString()
-            : input.url;
-
-      if (url === 'https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek') {
-        repoRequests += 1;
-        if (repoRequests === 1) {
-          return new Response('<html>Unicorn!</html>', {
-            status: 503,
-            statusText: 'Service Unavailable',
-          });
-        }
-        return new Response(JSON.stringify({ default_branch: 'main' }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      if (url === 'https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/branches/main') {
-        return new Response(JSON.stringify({ commit: { sha: snapshotSha } }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      if (url === `https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/commits/${snapshotSha}`) {
-        return new Response(JSON.stringify({ commit: { committer: { date: '2026-07-11T00:00:00Z' } } }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      if (
-        url ===
-        `https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/contents/Anwenderkataloge/Grundschutz%2B%2B/Grundschutz%2B%2B-catalog.json?ref=${snapshotSha}`
-      ) {
-        return new Response(JSON.stringify({
-          sha: catalogBlobSha,
-          size: Buffer.byteLength(catalogText),
-        }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      if (
-        url ===
-        `https://raw.githubusercontent.com/BSI-Bund/Stand-der-Technik-Bibliothek/${snapshotSha}/Anwenderkataloge/Grundschutz%2B%2B/Grundschutz%2B%2B-catalog.json`
-      ) {
-        return new Response(catalogText);
-      }
-
-      throw new Error(`Unexpected fetch: ${url}`);
-    }));
+    const input = makeMinimalFetchInput();
+    const installed = installSnapshotFetch({
+      rawByPath: input.rawByPath,
+      repositoryResponse: (attempt) => attempt === 1
+        ? new Response('temporary', { status: 503, statusText: 'Service Unavailable' })
+        : jsonResponse({ default_branch: 'main' }),
+    });
 
     const payload = await buildFetchArtifacts(
       { log: () => {}, warn: () => {} },
-      { retryDelaysMs: [0, 0] },
+      {
+        retryDelaysMs: [0, 0],
+        registryEntries: MINIMAL_REGISTRY,
+        treeResponse: input.treeResponse,
+      },
     );
 
-    expect(repoRequests).toBe(2);
-    const metadata = parseArtifactJson(payload, 'catalog-metadata.json');
-    expect(metadata.source.commit_sha).toBe(snapshotSha);
-  });
-
-  it('aborts fail-closed after exhausting retries on persistent transient errors', async () => {
-    let repoRequests = 0;
-
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      repoRequests += 1;
-      return new Response('<html>Unicorn!</html>', {
-        status: 503,
-        statusText: 'Service Unavailable',
-      });
-    }));
-
-    await expect(buildFetchArtifacts(
-      { log: () => {}, warn: () => {} },
-      { retryDelaysMs: [0, 0] },
-    )).rejects.toThrow('Build abgebrochen, damit nicht ungepinnt von main geladen wird');
-
-    expect(repoRequests).toBe(3);
+    expect(installed.getRepositoryAttempts()).toBe(2);
+    expect(parseArtifactJson(payload, 'catalog-metadata.json').source.commit_sha).toBe(SNAPSHOT_SHA);
   });
 
   it('does not retry non-transient GitHub API errors', async () => {
-    let repoRequests = 0;
-
+    let requests = 0;
     vi.stubGlobal('fetch', vi.fn(async () => {
-      repoRequests += 1;
+      requests += 1;
       return new Response('Not Found', { status: 404, statusText: 'Not Found' });
     }));
 
     await expect(buildFetchArtifacts(
       { log: () => {}, warn: () => {} },
-      { retryDelaysMs: [0, 0] },
+      { retryDelaysMs: [0, 0], registryEntries: MINIMAL_REGISTRY },
     )).rejects.toThrow('Build abgebrochen, damit nicht ungepinnt von main geladen wird');
-
-    expect(repoRequests).toBe(1);
+    expect(requests).toBe(1);
   });
 
   it('truncates oversized response bodies in error messages', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      return new Response(`<html>${'x'.repeat(60000)}</html>`, {
-        status: 503,
-        statusText: 'Service Unavailable',
-      });
-    }));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(`<html>${'x'.repeat(60000)}</html>`, {
+      status: 503,
+      statusText: 'Service Unavailable',
+    })));
 
     const error = await buildFetchArtifacts(
       { log: () => {}, warn: () => {} },
-      { retryDelaysMs: [] },
+      { retryDelaysMs: [], registryEntries: MINIMAL_REGISTRY },
     ).then(
-      () => {
-        throw new Error('buildFetchArtifacts hätte fehlschlagen müssen');
-      },
+      () => new Error('buildFetchArtifacts hätte fehlschlagen müssen'),
       (caught: unknown) => caught,
     );
 
@@ -420,205 +518,89 @@ describe('fetch-catalog', () => {
     expect((error as Error).message.length).toBeLessThan(1000);
   });
 
-  it('aborts when the provenance lookup succeeds without a blob SHA', async () => {
-    const snapshotSha = 'a'.repeat(40);
+  it('rejects a catalog whose raw bytes do not match the tree blob SHA', async () => {
+    const input = makeMinimalFetchInput();
+    const treeResponse = makeTreeResponse(input.rawByPath);
+    const catalogEntry = treeResponse.tree.find((entry) => entry.path === OFFICIAL_CATALOG_PATH)!;
+    catalogEntry.sha = 'f'.repeat(40);
+    installSnapshotFetch({ rawByPath: input.rawByPath });
 
-    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
-      const url =
-        typeof input === 'string'
-          ? input
-          : input instanceof URL
-            ? input.toString()
-            : input.url;
-
-      if (url === 'https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek') {
-        return new Response(JSON.stringify({ default_branch: 'main' }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      if (url === 'https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/branches/main') {
-        return new Response(JSON.stringify({ commit: { sha: snapshotSha } }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      if (
-        url ===
-        `https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/contents/Anwenderkataloge/Grundschutz%2B%2B/Grundschutz%2B%2B-catalog.json?ref=${snapshotSha}`
-      ) {
-        return new Response(JSON.stringify({
-          size: 1234,
-        }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      throw new Error(`Unexpected fetch: ${url}`);
-    }));
-
-    await expect(buildFetchArtifacts({
-      log: () => {},
-      warn: () => {},
-    })).rejects.toThrow('GitHub contents response für Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json enthält keine gültige Blob-SHA.');
+    await expect(buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      {
+        registryEntries: MINIMAL_REGISTRY,
+        treeResponse,
+      },
+    )).rejects.toThrow(`Git-Blob-SHA stimmt nicht mit dem BSI-Tree überein: ${OFFICIAL_CATALOG_PATH}`);
   });
 
-  it('emits catalog.json with the exact upstream bytes', async () => {
-    const snapshotSha = 'a'.repeat(40);
-    const catalogBlobSha = 'b'.repeat(40);
-    const catalogText =
-      '{\n "catalog" : { "uuid":"demo","metadata":{"title":"Grundschutz++"}, "groups":[ ] }\n}\n';
+  it('rejects a catalog whose raw size does not match the tree size', async () => {
+    const input = makeMinimalFetchInput();
+    const treeResponse = makeTreeResponse(input.rawByPath);
+    const catalogEntry = treeResponse.tree.find((entry) => entry.path === OFFICIAL_CATALOG_PATH)!;
+    catalogEntry.size += 1;
+    installSnapshotFetch({ rawByPath: input.rawByPath });
 
+    await expect(buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      {
+        registryEntries: MINIMAL_REGISTRY,
+        treeResponse,
+      },
+    )).rejects.toThrow(`Dateigröße stimmt nicht mit dem BSI-Tree überein: ${OFFICIAL_CATALOG_PATH}`);
+  });
+
+  it('rejects a preview artifact root mismatch through buildFetchArtifacts', async () => {
+    const previewPath = 'Quellkataloge/WLAN/WLAN-profile.json';
+    const input = makeMinimalFetchInput();
+    input.rawByPath.set(previewPath, '{"catalog":{"uuid":"wrong-root"}}');
+    const previewRegistry = [
+      ...MINIMAL_REGISTRY,
+      {
+        artifactKey: 'profile-wlan',
+        kind: 'oscal',
+        expectedRootType: 'profile',
+        upstreamPath: previewPath,
+        lifecycle: 'preview',
+        title: 'WLAN Profil',
+      },
+    ] as const;
+    installSnapshotFetch({ rawByPath: input.rawByPath });
+
+    await expect(buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      {
+        registryEntries: previewRegistry,
+        treeResponse: makeTreeResponse(input.rawByPath),
+      },
+    )).rejects.toThrow('Profilwurzel muss ein JSON-Objekt sein.');
+  });
+
+  it('emits catalog.json with exact upstream bytes and local build metadata', async () => {
     vi.stubEnv('GITHUB_RUN_ID', undefined);
     vi.stubEnv('GITHUB_REPOSITORY', undefined);
     vi.stubEnv('GITHUB_SERVER_URL', undefined);
-
-    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
-      const url =
-        typeof input === 'string'
-          ? input
-          : input instanceof URL
-            ? input.toString()
-            : input.url;
-
-      if (url === 'https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek') {
-        return new Response(JSON.stringify({ default_branch: 'main' }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      if (url === 'https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/branches/main') {
-        return new Response(JSON.stringify({ commit: { sha: snapshotSha } }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      if (url === `https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/commits/${snapshotSha}`) {
-        return new Response(JSON.stringify({
-          commit: {
-            committer: {
-              date: '2026-04-03T00:00:00.000Z',
-            },
-          },
-        }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      if (
-        url ===
-        `https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/contents/Anwenderkataloge/Grundschutz%2B%2B/Grundschutz%2B%2B-catalog.json?ref=${snapshotSha}`
-      ) {
-        return new Response(JSON.stringify({
-          sha: catalogBlobSha,
-          size: Buffer.byteLength(catalogText),
-        }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      if (
-        url ===
-        `https://raw.githubusercontent.com/BSI-Bund/Stand-der-Technik-Bibliothek/${snapshotSha}/Anwenderkataloge/Grundschutz%2B%2B/Grundschutz%2B%2B-catalog.json`
-      ) {
-        return new Response(catalogText);
-      }
-
-      return new Response('Not Found', { status: 404, statusText: 'Not Found' });
-    }));
-
-    const payload = await buildFetchArtifacts({
-      log: () => {},
-      warn: () => {},
-    });
-
+    const { catalogText, payload } = await buildMinimalArtifacts();
     const rawCatalogBuffer = Buffer.from(catalogText, 'utf8');
     const catalogArtifact = payload.artifacts.find((artifact) => artifact.fileName === 'catalog.json');
-    const metadataArtifact = payload.artifacts.find((artifact) => artifact.fileName === 'catalog-metadata.json');
+    const metadata = parseArtifactJson(payload, 'catalog-metadata.json');
 
     expect(catalogArtifact).toBeDefined();
-    expect(metadataArtifact).toBeDefined();
     expect(Buffer.from(catalogArtifact!.contentsBase64, 'base64')).toEqual(rawCatalogBuffer);
-
-    const metadata = JSON.parse(
-      Buffer.from(metadataArtifact!.contentsBase64, 'base64').toString('utf8'),
-    );
-
+    expect(metadata.artifactKey).toBe('catalog-gspp');
     expect(metadata.integrity.sha256).toBe(sha256Hex(rawCatalogBuffer));
     expect(metadata.integrity.size_bytes).toBe(rawCatalogBuffer.length);
+    expect(metadata.source.git_blob_sha).toBe(gitBlobSha(rawCatalogBuffer));
     expect(metadata.source.upstream_sha256).toBe(metadata.integrity.sha256);
     expect(metadata.build.workflow_run_id).toBe('local');
     expect(metadata.build.workflow_run_url).toBeNull();
   });
 
-  it('emits a workflow run URL only when GitHub Actions run metadata is present', async () => {
-    const snapshotSha = 'a'.repeat(40);
-    const catalogBlobSha = 'b'.repeat(40);
-    const catalogText =
-      '{\n "catalog" : { "uuid":"demo","metadata":{"title":"Grundschutz++"}, "groups":[ ] }\n}\n';
-
+  it('emits a workflow run URL only when GitHub Actions metadata is present', async () => {
     vi.stubEnv('GITHUB_RUN_ID', '12345');
     vi.stubEnv('GITHUB_REPOSITORY', 'dfurater/Grundschutz-Navigator');
     vi.stubEnv('GITHUB_SERVER_URL', 'https://github.example.test');
-
-    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
-      const url =
-        typeof input === 'string'
-          ? input
-          : input instanceof URL
-            ? input.toString()
-            : input.url;
-
-      if (url === 'https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek') {
-        return new Response(JSON.stringify({ default_branch: 'main' }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      if (url === 'https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/branches/main') {
-        return new Response(JSON.stringify({ commit: { sha: snapshotSha } }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      if (url === `https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/commits/${snapshotSha}`) {
-        return new Response(JSON.stringify({
-          commit: {
-            committer: {
-              date: '2026-04-03T00:00:00.000Z',
-            },
-          },
-        }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      if (
-        url ===
-        `https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/contents/Anwenderkataloge/Grundschutz%2B%2B/Grundschutz%2B%2B-catalog.json?ref=${snapshotSha}`
-      ) {
-        return new Response(JSON.stringify({
-          sha: catalogBlobSha,
-          size: Buffer.byteLength(catalogText),
-        }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      if (
-        url ===
-        `https://raw.githubusercontent.com/BSI-Bund/Stand-der-Technik-Bibliothek/${snapshotSha}/Anwenderkataloge/Grundschutz%2B%2B/Grundschutz%2B%2B-catalog.json`
-      ) {
-        return new Response(catalogText);
-      }
-
-      return new Response('Not Found', { status: 404, statusText: 'Not Found' });
-    }));
-
-    const payload = await buildFetchArtifacts({
-      log: () => {},
-      warn: () => {},
-    });
+    const { payload } = await buildMinimalArtifacts();
     const metadata = parseArtifactJson(payload, 'catalog-metadata.json');
 
     expect(metadata.build.workflow_run_id).toBe('12345');
@@ -628,131 +610,40 @@ describe('fetch-catalog', () => {
   });
 
   it('fetches namespace files in parallel while preserving deterministic artifact order', async () => {
-    const snapshotSha = 'a'.repeat(40);
-    const catalogBlobSha = 'b'.repeat(40);
-    const resultNamespace =
-      'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/result.csv';
-    const actionWordsNamespace =
-      'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/action_words.csv';
-    const catalogText = JSON.stringify({
-      catalog: {
-        groups: [
-          {
-            controls: [
-              {
-                props: [
-                  { ns: resultNamespace },
-                  { ns: actionWordsNamespace },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-    });
-    const namespaceCsvByPath = new Map([
-      ['Dokumentation/namespaces/action_words.csv', 'Infinitiv,Definition\numsetzen,Etwas umsetzen\n'],
+    const namespaceFiles = new Map<string, RawContents>([
       ['Dokumentation/namespaces/result.csv', 'Ergebnis,Definition\nVerfahren,Ein Verfahren\n'],
+      ['Dokumentation/namespaces/action_words.csv', 'Infinitiv,Definition\numsetzen,Etwas umsetzen\n'],
     ]);
-    const pendingNamespaceResponses = [];
-    let markBothNamespaceDownloadsStarted: () => void;
+    const input = makeMinimalFetchInput(namespaceFiles);
+    const pendingNamespaceResponses: Array<() => void> = [];
+    let markBothNamespaceDownloadsStarted: () => void = () => {};
     const bothNamespaceDownloadsStarted = new Promise<void>((resolve) => {
       markBothNamespaceDownloadsStarted = resolve;
     });
-
-    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
-      const url =
-        typeof input === 'string'
-          ? input
-          : input instanceof URL
-            ? input.toString()
-            : input.url;
-
-      if (url === 'https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek') {
-        return new Response(JSON.stringify({ default_branch: 'main' }), {
-          headers: { 'Content-Type': 'application/json' },
+    installSnapshotFetch({
+      rawByPath: input.rawByPath,
+      rawResponse: (path, contents) => {
+        if (path === OFFICIAL_CATALOG_PATH) return responseWithContents(contents);
+        return new Promise<Response>((resolve) => {
+          pendingNamespaceResponses.push(() => resolve(responseWithContents(contents)));
+          if (pendingNamespaceResponses.length === namespaceFiles.size) {
+            markBothNamespaceDownloadsStarted();
+            pendingNamespaceResponses.forEach((release) => release());
+          }
         });
-      }
-
-      if (url === 'https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/branches/main') {
-        return new Response(JSON.stringify({ commit: { sha: snapshotSha } }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      if (url === `https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/commits/${snapshotSha}`) {
-        return new Response(JSON.stringify({
-          commit: {
-            committer: {
-              date: '2026-04-03T00:00:00.000Z',
-            },
-          },
-        }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      if (
-        url ===
-        `https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/contents/Anwenderkataloge/Grundschutz%2B%2B/Grundschutz%2B%2B-catalog.json?ref=${snapshotSha}`
-      ) {
-        return new Response(JSON.stringify({
-          sha: catalogBlobSha,
-          size: Buffer.byteLength(catalogText),
-        }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-
-      for (const [path, csvText] of namespaceCsvByPath) {
-        if (
-          url ===
-          `https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/contents/${path}?ref=${snapshotSha}`
-        ) {
-          const namespaceBlobSha = path === 'Dokumentation/namespaces/action_words.csv'
-            ? 'c'.repeat(40)
-            : 'd'.repeat(40);
-          return new Response(JSON.stringify({
-            sha: namespaceBlobSha,
-            size: Buffer.byteLength(csvText),
-          }), {
-            headers: { 'Content-Type': 'application/json' },
-          });
-        }
-      }
-
-      if (
-        url ===
-        `https://raw.githubusercontent.com/BSI-Bund/Stand-der-Technik-Bibliothek/${snapshotSha}/Anwenderkataloge/Grundschutz%2B%2B/Grundschutz%2B%2B-catalog.json`
-      ) {
-        return new Response(catalogText);
-      }
-
-      for (const [path, csvText] of namespaceCsvByPath) {
-        if (
-          url ===
-          `https://raw.githubusercontent.com/BSI-Bund/Stand-der-Technik-Bibliothek/${snapshotSha}/${path}`
-        ) {
-          return new Promise((resolve) => {
-            pendingNamespaceResponses.push(() => resolve(new Response(csvText)));
-            if (pendingNamespaceResponses.length === namespaceCsvByPath.size) {
-              markBothNamespaceDownloadsStarted();
-              pendingNamespaceResponses.forEach((release) => release());
-            }
-          });
-        }
-      }
-
-      return new Response('Not Found', { status: 404, statusText: 'Not Found' });
-    }));
-
-    const payloadPromise = buildFetchArtifacts({
-      log: () => {},
-      warn: () => {},
+      },
     });
+
+    const payloadPromise = buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      {
+        registryEntries: MINIMAL_REGISTRY,
+        treeResponse: input.treeResponse,
+      },
+    );
     const namespaceStartResult = await Promise.race([
       bothNamespaceDownloadsStarted.then(() => 'both-started'),
-      new Promise((resolve) => setTimeout(() => resolve('timeout'), 50)),
+      new Promise((resolve) => setTimeout(() => resolve('timeout'), 100)),
     ]);
     expect(namespaceStartResult).toBe('both-started');
 
@@ -768,20 +659,55 @@ describe('fetch-catalog', () => {
       'Dokumentation/namespaces/action_words.csv',
       'Dokumentation/namespaces/result.csv',
     ]);
-
     const vocabulariesArtifact = payload.artifacts.find(
       (artifact) => artifact.fileName === 'vocabularies.json',
-    );
-    expect(vocabulariesArtifact).toBeDefined();
-    const vocabulariesBuffer = Buffer.from(vocabulariesArtifact!.contentsBase64, 'base64');
-
+    )!;
+    const vocabulariesBuffer = Buffer.from(vocabulariesArtifact.contentsBase64, 'base64');
     expect(upstreamMetadata.integrity.sha256).toBe(sha256Hex(vocabulariesBuffer));
     expect(upstreamMetadata.integrity.size_bytes).toBe(vocabulariesBuffer.length);
-    expect(typeof upstreamMetadata.integrity.fetched_at).toBe('string');
-    expect(typeof upstreamMetadata.build.workflow_run_id).toBe('string');
-    expect(upstreamMetadata.build.runner_environment).toBeDefined();
-    expect(upstreamMetadata.source.snapshotCommitSha).toBe(snapshotSha);
+    expect(upstreamMetadata.manifest.schemaVersion).toBe(2);
     expect(upstreamMetadata.manifest.signatureSha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('validates the full registry without shipping extra artifacts or fetching unclassified paths', async () => {
+    const unclassifiedPath = 'Quellkataloge/Kernel/unclassified-catalog.json';
+    const namespacePath = 'Dokumentation/namespaces/result.csv';
+    const rawByPath = new Map<string, RawContents>();
+
+    for (const entry of SOURCE_REGISTRY) {
+      if (entry.kind !== 'oscal') continue;
+      rawByPath.set(
+        entry.upstreamPath,
+        entry.upstreamPath === OFFICIAL_CATALOG_PATH
+          ? makeCatalogText([RESULT_NAMESPACE_URL])
+          : `${JSON.stringify({ [entry.expectedRootType]: { uuid: entry.artifactKey } })}\n`,
+      );
+    }
+    rawByPath.set(namespacePath, 'Ergebnis,Definition\nVerfahren,Ein Verfahren\n');
+    const unclassifiedContents = '{"catalog":{"uuid":"unclassified"}}\n';
+    const treeResponse = makeTreeResponse(rawByPath, [
+      makeTreeEntry(unclassifiedPath, unclassifiedContents),
+    ]);
+    const { fetchMock } = installSnapshotFetch({ rawByPath });
+
+    const payload = await buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      { registryEntries: SOURCE_REGISTRY, treeResponse },
+    );
+    const requestedUrls = fetchMock.mock.calls.map(([input]) => inputUrl(input));
+
+    expect(payload.artifacts.map((artifact) => artifact.fileName)).toEqual([
+      'catalog.json',
+      'catalog-metadata.json',
+      'vocabularies.json',
+      'upstream-sources-metadata.json',
+    ]);
+    expect(requestedUrls).not.toContain(rawUrl(unclassifiedPath));
+    const manifest = parseArtifactJson(payload, 'upstream-sources-metadata.json').manifest;
+    expect(manifest.files).toHaveLength(
+      SOURCE_REGISTRY.filter((entry) => entry.kind === 'oscal').length + 1,
+    );
+    expect(manifest.files.some((file) => file.path === unclassifiedPath)).toBe(false);
   });
 
   it('serializes generated metadata with a trailing newline', () => {
@@ -795,237 +721,129 @@ describe('vocabulary-utils', () => {
   it('extracts only referenced official BSI namespace URLs from the final catalog', () => {
     const catalog = {
       catalog: {
-        metadata: {
-          props: [
-            { name: 'ignore-me', ns: 'http://csrc.nist.gov/ns/oscal/1.0' },
-          ],
-        },
-        groups: [
-          {
-            controls: [
-              {
-                props: [
-                  {
-                    name: 'sec_level',
-                    value: 'normal-SdT',
-                    ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_level.csv',
-                  },
-                  {
-                    name: 'sec_level',
-                    value: 'normal-SdT',
-                    ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_level.csv',
-                  },
-                ],
-                parts: [
-                  {
-                    props: [
-                      {
-                        name: 'result',
-                        value: 'Verfahren',
-                        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/result.csv',
-                      },
-                    ],
-                  },
-                ],
-              },
+        metadata: { props: [{ name: 'ignore-me', ns: 'http://csrc.nist.gov/ns/oscal/1.0' }] },
+        groups: [{
+          controls: [{
+            props: [
+              { name: 'result', value: 'Verfahren', ns: RESULT_NAMESPACE_URL },
+              { name: 'result', value: 'Verfahren', ns: RESULT_NAMESPACE_URL },
+              { name: 'action', value: 'umsetzen', ns: ACTION_WORDS_NAMESPACE_URL },
             ],
-          },
-        ],
+          }],
+        }],
       },
     };
 
-    expect(
-      extractReferencedNamespaceUrls(catalog, 'BSI-Bund/Stand-der-Technik-Bibliothek'),
-    ).toEqual([
-      'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/result.csv',
-      'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_level.csv',
-    ]);
+    expect(extractReferencedNamespaceUrls(
+      catalog,
+      'BSI-Bund/Stand-der-Technik-Bibliothek',
+    )).toEqual([ACTION_WORDS_NAMESPACE_URL, RESULT_NAMESPACE_URL]);
+  });
+
+  it('rejects external HTTP(S) CSV namespace hosts', () => {
+    expect(() => extractReferencedNamespaceUrls({
+      catalog: {
+        groups: [{ controls: [{ props: [{ ns: 'https://evil.example/namespaces/result.csv' }] }] }],
+      },
+    }, 'BSI-Bund/Stand-der-Technik-Bibliothek')).toThrow(
+      'Externe oder nicht erlaubte Namespace-Quelle: https://evil.example/namespaces/result.csv',
+    );
   });
 
   it('maps GitHub namespace URLs back to repository-relative paths', () => {
-    expect(
-      namespaceUrlToRepoPath(
-        'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_level.csv',
-        'BSI-Bund/Stand-der-Technik-Bibliothek',
-      ),
-    ).toBe('Dokumentation/namespaces/security_level.csv');
-
-    expect(
-      namespaceUrlToRepoPath(
-        'http://csrc.nist.gov/ns/oscal/1.0',
-        'BSI-Bund/Stand-der-Technik-Bibliothek',
-      ),
-    ).toBeNull();
+    expect(namespaceUrlToRepoPath(
+      RESULT_NAMESPACE_URL,
+      'BSI-Bund/Stand-der-Technik-Bibliothek',
+    )).toBe('Dokumentation/namespaces/result.csv');
+    expect(namespaceUrlToRepoPath(
+      'http://csrc.nist.gov/ns/oscal/1.0',
+      'BSI-Bund/Stand-der-Technik-Bibliothek',
+    )).toBeNull();
   });
 
   it('parses quoted CSV fields with embedded newlines and escaped quotes', () => {
-    const rows = parseCsv(
+    expect(parseCsv(
       'Begriff,Definition\r\nnormal-SdT,"Zeile 1\nZeile ""2"""',
-    );
-
-    expect(rows).toEqual([
+    )).toEqual([
       ['Begriff', 'Definition'],
       ['normal-SdT', 'Zeile 1\nZeile "2"'],
     ]);
   });
 
   it('keeps official headers and exposes exact lookup metadata for a namespace CSV', () => {
-    const parsed = parseVocabularyCsv(
-      'Aufwand,Definition\r\n3,"Mehrere Wochen bis Monate"',
-    );
-
+    const parsed = parseVocabularyCsv('Aufwand,Definition\r\n3,"Mehrere Wochen bis Monate"');
     expect(parsed.columnOrder).toEqual(['Aufwand', 'Definition']);
     expect(parsed.valueColumn).toBe('Aufwand');
     expect(parsed.definitionColumn).toBe('Definition');
-    expect(parsed.entries).toEqual([
-      {
-        value: '3',
-        definition: 'Mehrere Wochen bis Monate',
-        columns: {
-          Aufwand: '3',
-          Definition: 'Mehrere Wochen bis Monate',
-        },
-      },
-    ]);
+    expect(parsed.entries).toEqual([{
+      value: '3',
+      definition: 'Mehrere Wochen bis Monate',
+      columns: { Aufwand: '3', Definition: 'Mehrere Wochen bis Monate' },
+    }]);
   });
 
   it('uses the first official CSV column as the exact lookup key', () => {
     const namespace = buildVocabularyNamespaceData({
-      namespaceUrl:
-        'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/action_words.csv',
+      namespaceUrl: ACTION_WORDS_NAMESPACE_URL,
       repository: 'BSI-Bund/Stand-der-Technik-Bibliothek',
       path: 'Dokumentation/namespaces/action_words.csv',
-      gitBlobSha: 'blob-action',
+      gitBlobSha: 'b'.repeat(40),
       csvText: 'Infinitiv,Definition\r\numsetzen,"Etwas umsetzen"',
-    });
-
-    expect(namespace.valueColumn).toBe('Infinitiv');
-    expect(namespace.entries).toEqual([
-      {
-        value: 'umsetzen',
-        definition: 'Etwas umsetzen',
-        columns: {
-          Infinitiv: 'umsetzen',
-          Definition: 'Etwas umsetzen',
-        },
-      },
-    ]);
-  });
-
-  it('builds namespace data and a deterministic upstream manifest', () => {
-    const namespace = buildVocabularyNamespaceData({
-      namespaceUrl:
-        'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/action_words.csv',
-      repository: 'BSI-Bund/Stand-der-Technik-Bibliothek',
-      path: 'Dokumentation/namespaces/action_words.csv',
-      gitBlobSha: 'blob-action',
-      csvText: 'Infinitiv,Definition\r\numsetzen,"Etwas umsetzen"',
-    });
-
-    const manifest = buildUpstreamManifest({
-      repository: 'BSI-Bund/Stand-der-Technik-Bibliothek',
-      snapshotCommitSha: 'snapshot-123',
-      catalogPath: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
-      catalogGitBlobSha: 'blob-catalog',
-      namespaces: [namespace],
     });
 
     expect(namespace.source.routeId).toBe('dokumentation-namespaces-action-words');
-    expect(manifest.files).toEqual([
-      {
-        kind: 'catalog',
-        path: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
-        gitBlobSha: 'blob-catalog',
-      },
-      {
-        kind: 'namespace',
-        path: 'Dokumentation/namespaces/action_words.csv',
-        namespace:
-          'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/action_words.csv',
-        gitBlobSha: 'blob-action',
-      },
-    ]);
-    expect(manifest.signatureSha256).toHaveLength(64);
+    expect(namespace.valueColumn).toBe('Infinitiv');
+    expect(namespace.entries).toEqual([{
+      value: 'umsetzen',
+      definition: 'Etwas umsetzen',
+      columns: { Infinitiv: 'umsetzen', Definition: 'Etwas umsetzen' },
+    }]);
+  });
+});
+
+describe('upstream manifest v2', () => {
+  const catalogFile = {
+    artifactKey: 'catalog-gspp',
+    rootType: 'catalog',
+    lifecycle: 'supported',
+    path: OFFICIAL_CATALOG_PATH,
+    gitBlobSha: 'b'.repeat(40),
+    contentSha256: 'c'.repeat(64),
+  };
+  const namespaceFile = {
+    artifactKey: 'namespaces-bsi',
+    rootType: 'vocabulary',
+    lifecycle: 'supported',
+    path: 'Dokumentation/namespaces/result.csv',
+    gitBlobSha: 'd'.repeat(40),
+    contentSha256: 'e'.repeat(64),
+  };
+
+  it('builds a canonical v2 manifest from complete artifact provenance', () => {
+    const manifest = buildUpstreamManifest({
+      repository: OFFICIAL_BSI_REPOSITORY_URL,
+      snapshotCommitSha: SNAPSHOT_SHA,
+      files: [namespaceFile, catalogFile],
+    });
+
+    expect(manifest.schemaVersion).toBe(2);
+    expect(manifest.repository).toBe(OFFICIAL_BSI_REPOSITORY_URL);
+    expect(manifest.files).toEqual([catalogFile, namespaceFile]);
+    expect(manifest.signatureSha256).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  it('changes the manifest signature when only a namespace blob changes', () => {
-    const namespace = buildVocabularyNamespaceData({
-      namespaceUrl:
-        'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/result.csv',
-      repository: 'BSI-Bund/Stand-der-Technik-Bibliothek',
-      path: 'Dokumentation/namespaces/result.csv',
-      gitBlobSha: 'blob-result-a',
-      csvText: 'Ergebnis,Definition\r\nVerfahren,"Offizielle Definition"',
-    });
-
+  it('changes the signature when only artifact content provenance changes', () => {
     const unchanged = buildUpstreamManifest({
-      repository: 'BSI-Bund/Stand-der-Technik-Bibliothek',
-      snapshotCommitSha: 'snapshot-123',
-      catalogPath: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
-      catalogGitBlobSha: 'blob-catalog',
-      namespaces: [namespace],
+      repository: OFFICIAL_BSI_REPOSITORY_URL,
+      snapshotCommitSha: SNAPSHOT_SHA,
+      files: [catalogFile, namespaceFile],
     });
-
     const changed = buildUpstreamManifest({
-      repository: 'BSI-Bund/Stand-der-Technik-Bibliothek',
-      snapshotCommitSha: 'snapshot-123',
-      catalogPath: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
-      catalogGitBlobSha: 'blob-catalog',
-      namespaces: [
-        {
-          ...namespace,
-          source: {
-            ...namespace.source,
-            gitBlobSha: 'blob-result-b',
-          },
-        },
-      ],
+      repository: OFFICIAL_BSI_REPOSITORY_URL,
+      snapshotCommitSha: SNAPSHOT_SHA,
+      files: [catalogFile, { ...namespaceFile, contentSha256: 'f'.repeat(64) }],
     });
 
     expect(changed.signatureSha256).not.toBe(unchanged.signatureSha256);
-  });
-
-  it('changes the combined signature when only a referenced namespace blob changes', () => {
-    const baseConfig = {
-      repositoryUrl: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
-      snapshotCommitSha: 'commit-123',
-      catalogPath: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
-      catalogBlobSha: 'blob-catalog',
-    };
-
-    const unchangedCatalog = buildUpstreamManifest({
-      ...baseConfig,
-      repository: baseConfig.repositoryUrl,
-      catalogGitBlobSha: baseConfig.catalogBlobSha,
-      namespaces: [
-        buildVocabularyNamespaceData({
-          namespaceUrl:
-            'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/result.csv',
-          repository: baseConfig.repositoryUrl,
-          path: 'Dokumentation/namespaces/result.csv',
-          gitBlobSha: 'blob-result-a',
-          csvText: 'Begriff,Definition\nAnforderung,Definition\n',
-        }),
-      ],
-    });
-
-    const changedNamespaceOnly = buildUpstreamManifest({
-      ...baseConfig,
-      repository: baseConfig.repositoryUrl,
-      catalogGitBlobSha: baseConfig.catalogBlobSha,
-      namespaces: [
-        buildVocabularyNamespaceData({
-          namespaceUrl:
-            'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/result.csv',
-          repository: baseConfig.repositoryUrl,
-          path: 'Dokumentation/namespaces/result.csv',
-          gitBlobSha: 'blob-result-b',
-          csvText: 'Begriff,Definition\nAnforderung,Definition aktualisiert\n',
-        }),
-      ],
-    });
-
-    expect(unchangedCatalog.files[0].gitBlobSha).toBe(changedNamespaceOnly.files[0].gitBlobSha);
-    expect(unchangedCatalog.signatureSha256).not.toBe(changedNamespaceOnly.signatureSha256);
   });
 });

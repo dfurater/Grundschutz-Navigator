@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   OFFICIAL_BSI_REPO,
+  OFFICIAL_BSI_REPOSITORY_URL,
   OFFICIAL_CATALOG_PATH,
   OFFICIAL_NAMESPACE_DIRECTORY,
   assertAllowedUpstreamRepoPath,
+  assertOfficialBsiRepository,
+  assertRegisteredUpstreamRepoPath,
 } from './security-guards.mjs';
 
 /**
@@ -14,8 +17,29 @@ import {
 describe('security-guards', () => {
   it('keeps the official constants stable', () => {
     expect(OFFICIAL_BSI_REPO).toBe('BSI-Bund/Stand-der-Technik-Bibliothek');
+    expect(OFFICIAL_BSI_REPOSITORY_URL).toBe(
+      'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
+    );
     expect(OFFICIAL_CATALOG_PATH).toBe('Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json');
     expect(OFFICIAL_NAMESPACE_DIRECTORY).toBe('Dokumentation/namespaces');
+  });
+
+  it('normalizes only the official BSI repository slug or exact URL', () => {
+    expect(assertOfficialBsiRepository(OFFICIAL_BSI_REPO)).toBe(OFFICIAL_BSI_REPO);
+    expect(assertOfficialBsiRepository(OFFICIAL_BSI_REPOSITORY_URL)).toBe(OFFICIAL_BSI_REPO);
+  });
+
+  it.each([
+    'https://example.com/BSI-Bund/Stand-der-Technik-Bibliothek',
+    'https://github.com/attacker/Stand-der-Technik-Bibliothek',
+    'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek.evil',
+    'http://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
+    'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main',
+    'BSI-Bund/anderes-repository',
+  ])('rejects non-official or external repository %s', (repository) => {
+    expect(() => assertOfficialBsiRepository(repository)).toThrow(
+      `must be ${OFFICIAL_BSI_REPOSITORY_URL}`,
+    );
   });
 
   it('allows the official catalog path', () => {
@@ -43,6 +67,56 @@ describe('security-guards', () => {
     expect(() =>
       assertAllowedUpstreamRepoPath('Quellkataloge/WLAN/WLAN-profile.json'),
     ).toThrow('outside the allowed BSI contract');
+  });
+
+  it('allows exact preview OSCAL paths for read-only registry inspection', () => {
+    const previewCatalog =
+      'Anwenderkataloge/Lieferkettensicherheit/Lieferkettensicherheit-catalog.json';
+    const previewProfile = 'Quellkataloge/WLAN/WLAN-profile.json';
+
+    expect(assertRegisteredUpstreamRepoPath(previewCatalog)).toBe(previewCatalog);
+    expect(assertRegisteredUpstreamRepoPath(previewProfile)).toBe(previewProfile);
+  });
+
+  it('requires explicit materialization before inspecting a vocabulary member', () => {
+    const materializedNamespacePath = 'Dokumentation/namespaces/tags.csv';
+    const unmaterializedNamespacePath =
+      'Dokumentation/namespaces/security_targets_levels.csv';
+
+    expect(() => assertRegisteredUpstreamRepoPath(materializedNamespacePath)).toThrow(
+      'not a materialized registry artifact',
+    );
+    expect(
+      assertRegisteredUpstreamRepoPath(materializedNamespacePath, {
+        materializedNamespacePaths: [materializedNamespacePath],
+      }),
+    ).toBe(materializedNamespacePath);
+    expect(() =>
+      assertRegisteredUpstreamRepoPath(unmaterializedNamespacePath, {
+        materializedNamespacePaths: [materializedNamespacePath],
+      }),
+    ).toThrow('not a materialized registry artifact');
+  });
+
+  it('rejects unknown, nested, inexact, and traversing inspection paths', () => {
+    expect(() =>
+      assertRegisteredUpstreamRepoPath('Dokumentation/namespaces/nested/tags.csv', {
+        materializedNamespacePaths: ['Dokumentation/namespaces/nested/tags.csv'],
+      }),
+    ).toThrow('not a materialized registry artifact');
+    expect(() =>
+      assertRegisteredUpstreamRepoPath(
+        'Anwenderkataloge/Lieferkettensicherheit/Lieferkettensicherheit-catalog.json.bak',
+      ),
+    ).toThrow('not a materialized registry artifact');
+    expect(() =>
+      assertRegisteredUpstreamRepoPath(
+        'Quellkataloge/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
+      ),
+    ).toThrow('not a materialized registry artifact');
+    expect(() =>
+      assertRegisteredUpstreamRepoPath('Anwenderkataloge/../secret.json'),
+    ).toThrow('Unsafe upstream repository path');
   });
 
   it('rejects unknown and unsafe paths', () => {

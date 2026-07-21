@@ -8,6 +8,8 @@ export type ArtifactLifecycle = 'supported' | 'preview' | 'draft' | 'blocked-by-
 
 export type OscalRootType = 'catalog' | 'profile' | 'mapping-collection' | 'component-definition';
 
+export type ManifestRootType = OscalRootType | 'vocabulary';
+
 export type CatalogKey =
   | 'gspp'
   | 'lieferkette'
@@ -38,10 +40,13 @@ export interface VocabularyCollectionEntry {
 export type SourceRegistryEntry = OscalArtifactEntry | VocabularyCollectionEntry;
 
 export declare const SOURCE_REGISTRY: readonly SourceRegistryEntry[];
+export declare const MONITORED_UPSTREAM_ROOTS: readonly string[];
 export declare const SUPPORTED_CATALOG: OscalArtifactEntry & { readonly catalogKey: CatalogKey };
 export declare const SUPPORTED_CATALOG_KEY: CatalogKey;
 
 export declare function validateSourceRegistry(entries?: readonly SourceRegistryEntry[]): void;
+export declare function isSafeRepoPath(path: string): boolean;
+export declare function isPathWithinMonitoredRoot(path: string): boolean;
 export declare function listArtifacts(filter?: {
   lifecycle?: ArtifactLifecycle;
 }): readonly SourceRegistryEntry[];

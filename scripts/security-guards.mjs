@@ -21,6 +21,7 @@ export const OFFICIAL_NAMESPACE_DIRECTORY = supportedVocabularyCollection.upstre
 export const DEFAULT_ARTIFACTS_DIR = path.join(REPO_ROOT, 'public', 'data');
 export const DEFAULT_UPSTREAM_METADATA_PATH = path.join(DEFAULT_ARTIFACTS_DIR, 'upstream-sources-metadata.json');
 export const DEFAULT_TRACKED_MANIFEST_PATH = path.join(REPO_ROOT, 'upstream-manifest.json');
+export const OFFICIAL_BSI_REPOSITORY_URL = `https://github.com/${OFFICIAL_BSI_REPO}`;
 
 function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0;
@@ -96,7 +97,15 @@ export function assertAllowedGitHubRef(ref, label = 'GitHub ref') {
   return normalized;
 }
 
-export function assertAllowedUpstreamRepoPath(repoPath) {
+export function assertOfficialBsiRepository(repository, label = 'Upstream repository') {
+  if (repository === OFFICIAL_BSI_REPO || repository === OFFICIAL_BSI_REPOSITORY_URL) {
+    return OFFICIAL_BSI_REPO;
+  }
+
+  throw new Error(`${label} must be ${OFFICIAL_BSI_REPOSITORY_URL}`);
+}
+
+function normalizeUpstreamRepoPath(repoPath) {
   if (!isNonEmptyString(repoPath)) {
     throw new Error('Upstream repository path must not be empty');
   }
@@ -112,9 +121,18 @@ export function assertAllowedUpstreamRepoPath(repoPath) {
 
   const normalizedPosixPath = posixPath.normalize(normalized);
   const segments = normalizedPosixPath.split('/');
-  if (normalizedPosixPath !== normalized || segments.some((segment) => segment.length === 0 || segment === '.' || segment === '..')) {
+  if (
+    normalizedPosixPath !== normalized ||
+    segments.some((segment) => segment.length === 0 || segment === '.' || segment === '..')
+  ) {
     throw new Error(`Unsafe upstream repository path: ${normalized}`);
   }
+
+  return normalizedPosixPath;
+}
+
+export function assertAllowedUpstreamRepoPath(repoPath) {
+  const normalizedPosixPath = normalizeUpstreamRepoPath(repoPath);
 
   // Registry-getriebene Allowlist (ADR-0001): Nur supported-Artefakte sind
   // fetchbar; preview/draft-Einträge bleiben bewusst ausgeschlossen.
@@ -123,7 +141,33 @@ export function assertAllowedUpstreamRepoPath(repoPath) {
     return normalizedPosixPath;
   }
 
-  throw new Error(`Upstream repository path is outside the allowed BSI contract: ${normalized}`);
+  throw new Error(`Upstream repository path is outside the allowed BSI contract: ${normalizedPosixPath}`);
+}
+
+/**
+ * Inspection-only path guard for deterministic manifest validation. Unlike the
+ * delivery allowlist this may admit preview/draft OSCAL artifacts, but dynamic
+ * vocabulary members must first be materialized from the supported catalog's
+ * official namespace references.
+ */
+export function assertRegisteredUpstreamRepoPath(repoPath, {
+  materializedNamespacePaths = [],
+} = {}) {
+  const normalizedPath = normalizeUpstreamRepoPath(repoPath);
+  const registryEntry = getArtifactByUpstreamPath(normalizedPath);
+
+  if (registryEntry?.kind === 'oscal') {
+    return normalizedPath;
+  }
+
+  if (
+    registryEntry?.kind === 'vocabulary-collection' &&
+    materializedNamespacePaths.includes(normalizedPath)
+  ) {
+    return normalizedPath;
+  }
+
+  throw new Error(`Upstream repository path is not a materialized registry artifact: ${normalizedPath}`);
 }
 
 export function resolveTrackedManifestPath(filePath = DEFAULT_TRACKED_MANIFEST_PATH, {

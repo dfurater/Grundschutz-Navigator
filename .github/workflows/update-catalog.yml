@@ -70,6 +70,8 @@ jobs:
 
       - name: Compare with tracked upstream manifest
         id: compare
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           RESULT="$(node scripts/sync-upstream-manifest.mjs)"
@@ -87,6 +89,12 @@ jobs:
             printf 'local_signature=%s\n' "$(printf '%s' "$SYNC_JSON" | jq -r '.local_signature')"
             printf 'remote_signature=%s\n' "$(printf '%s' "$SYNC_JSON" | jq -r '.remote_signature')"
             printf 'snapshot_commit_sha=%s\n' "$(printf '%s' "$SYNC_JSON" | jq -r '.snapshot_commit_sha')"
+            printf 'file_delta_summary<<%s\n' "$DELIMITER"
+            printf '%s\n' "$(printf '%s' "$SYNC_JSON" | jq -r '.file_delta_summary')"
+            printf '%s\n' "$DELIMITER"
+            printf 'data_quality_summary<<%s\n' "$DELIMITER"
+            printf '%s\n' "$(printf '%s' "$SYNC_JSON" | jq -r '.data_quality_summary')"
+            printf '%s\n' "$DELIMITER"
             printf 'change_summary<<%s\n' "$DELIMITER"
             printf '%s\n' "$(printf '%s' "$SYNC_JSON" | jq -r '.change_summary')"
             printf '%s\n' "$DELIMITER"
@@ -158,8 +166,9 @@ jobs:
         if: steps.compare.outputs.changed == 'true'
         env:
           BRANCH: ${{ steps.sync.outputs.branch }}
-          CHANGE_SUMMARY: ${{ steps.compare.outputs.change_summary }}
+          DATA_QUALITY_SUMMARY: ${{ steps.compare.outputs.data_quality_summary }}
           EXISTING_PR_NUMBER: ${{ steps.sync.outputs.pr_number }}
+          FILE_DELTA_SUMMARY: ${{ steps.compare.outputs.file_delta_summary }}
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_TOKEN: ${{ github.token }}
           REMOTE_SIGNATURE: ${{ steps.compare.outputs.remote_signature }}
@@ -170,9 +179,13 @@ jobs:
 
           TITLE="chore(ci): BSI-Katalog-Sync ${SNAPSHOT_SHA:0:12}"
           {
-            echo "## BSI-Katalog-Aenderungen"
+            echo "## BSI-Dateidelta"
             echo ""
-            printf '%s\n' "$CHANGE_SUMMARY"
+            printf '%s\n' "$FILE_DELTA_SUMMARY"
+            echo ""
+            echo "## Bekannte Datenqualitaetsbefunde"
+            echo ""
+            printf '%s\n' "$DATA_QUALITY_SUMMARY"
             echo ""
             printf '**BSI-Snapshot:** [`%s`](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/commit/%s)\n' \
               "$SNAPSHOT_SHA" "$SNAPSHOT_SHA"

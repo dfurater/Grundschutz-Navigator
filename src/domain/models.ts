@@ -6,7 +6,11 @@
 //   2. Enriched domain types — flattened, typed, ready for UI consumption
 // =============================================================================
 
-import type { CatalogKey } from '@/domain/sourceRegistry';
+import type {
+  ArtifactLifecycle,
+  CatalogKey,
+  ManifestRootType,
+} from '@/domain/sourceRegistry';
 
 /* ------------------------------------------------------------------ */
 /*  Raw OSCAL 1.1.3 Types                                             */
@@ -417,17 +421,19 @@ export interface VocabularyRegistry {
 
 /** One file monitored as part of the upstream contract */
 export interface UpstreamManifestFile {
-  kind: 'catalog' | 'namespace';
+  artifactKey: string;
+  rootType: ManifestRootType;
+  lifecycle: ArtifactLifecycle;
   path: string;
-  namespace?: string;
   gitBlobSha: string;
+  contentSha256: string;
 }
 
 /** Persisted manifest/signature basis for update-catalog workflow */
 export interface UpstreamManifest {
+  schemaVersion: 2;
   repository: string;
   snapshotCommitSha: string;
-  catalogPath: string;
   files: UpstreamManifestFile[];
   signatureSha256: string;
 }
@@ -472,6 +478,7 @@ export interface VocabularyProvenance {
   };
   manifest: UpstreamManifest;
   files: VocabularyFileProvenance[];
+  dataQualityFindings?: string[];
   integrity: ArtifactIntegrity;
   build: ArtifactBuildInfo;
 }

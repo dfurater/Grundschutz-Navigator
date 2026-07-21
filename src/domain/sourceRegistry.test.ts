@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MONITORED_UPSTREAM_ROOTS,
   SOURCE_REGISTRY,
   SUPPORTED_CATALOG,
   SUPPORTED_CATALOG_KEY,
@@ -7,6 +8,8 @@ import {
   getCatalogByKey,
   getExpectedRootType,
   isCatalogKey,
+  isPathWithinMonitoredRoot,
+  isSafeRepoPath,
   listArtifacts,
   listCatalogKeys,
   validateSourceRegistry,
@@ -56,6 +59,51 @@ describe('sourceRegistry', () => {
       'catalog-gspp',
       'namespaces-bsi',
     ]);
+  });
+
+  it('monitors exactly the registry-backed BSI discovery roots', () => {
+    expect(MONITORED_UPSTREAM_ROOTS).toEqual([
+      'Anwenderkataloge',
+      'Dokumentation/namespaces',
+      'Implementierungsbeschreibungen/Komponenten',
+      'Mappings',
+      'Quellkataloge',
+    ]);
+    expect(Object.isFrozen(MONITORED_UPSTREAM_ROOTS)).toBe(true);
+  });
+
+  it.each([
+    'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
+    'Dokumentation/namespaces/tags.csv',
+    'Implementierungsbeschreibungen/Komponenten/AWS Beispiel-Components/aws_iam-component_definition.json',
+    'Mappings/ISO-27001-zu-GSpp/ISO27001-AnnexA-catalog.json',
+    'Quellkataloge/Methodik-Grundschutz++/Grundschutz++-profile.json',
+  ])('accepts safe repository path %s', (repoPath) => {
+    expect(isSafeRepoPath(repoPath)).toBe(true);
+  });
+
+  it.each([
+    '',
+    ' ',
+    '/Anwenderkataloge/catalog.json',
+    '../Anwenderkataloge/catalog.json',
+    'Anwenderkataloge/../secret.json',
+    'Anwenderkataloge//catalog.json',
+    'Anwenderkataloge/./catalog.json',
+    'Anwenderkataloge\\catalog.json',
+  ])('rejects unsafe repository path %s', (repoPath) => {
+    expect(isSafeRepoPath(repoPath)).toBe(false);
+  });
+
+  it('matches monitored roots on complete path segments only', () => {
+    for (const root of MONITORED_UPSTREAM_ROOTS) {
+      expect(isPathWithinMonitoredRoot(root)).toBe(true);
+      expect(isPathWithinMonitoredRoot(`${root}/artifact.json`)).toBe(true);
+      expect(isPathWithinMonitoredRoot(`${root}-external/artifact.json`)).toBe(false);
+    }
+
+    expect(isPathWithinMonitoredRoot('README.md')).toBe(false);
+    expect(isPathWithinMonitoredRoot('Mappings/../secret.json')).toBe(false);
   });
 
   it('resolves the official catalog path to the supported entry', () => {
