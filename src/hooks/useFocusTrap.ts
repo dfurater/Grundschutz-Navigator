@@ -7,6 +7,9 @@ export function useFocusTrap(ref: React.RefObject<HTMLElement | null>, active: b
   useEffect(() => {
     if (!active || !ref.current) return;
     const el = ref.current;
+    const previouslyFocused = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
     const getFocusable = () => Array.from(el.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTORS));
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -27,6 +30,11 @@ export function useFocusTrap(ref: React.RefObject<HTMLElement | null>, active: b
     if (firstFocusable && !el.contains(document.activeElement)) {
       firstFocusable.focus();
     }
-    return () => el.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      el.removeEventListener('keydown', handleKeyDown);
+      if (previouslyFocused?.isConnected) {
+        previouslyFocused.focus();
+      }
+    };
   }, [active, ref]);
 }
