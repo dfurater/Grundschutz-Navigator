@@ -136,6 +136,20 @@ describe('useFilteredControls', () => {
     expect(result.current.facetCounts.dokumentationstypen.Checkliste).toBe(1);
   });
 
+  it('reuses the unfiltered facet counts when no filters are active', () => {
+    const controls = [
+      makeControl({ id: 'GC.1.1', modalverb: 'MUSS' }),
+      makeControl({ id: 'GC.1.2', modalverb: 'SOLLTE' }),
+    ];
+
+    const { result } = renderHook(() =>
+      useFilteredControls(controls, emptyFilters),
+    );
+
+    expect(result.current.hasActiveFilters).toBe(false);
+    expect(result.current.filteredFacetCounts).toBe(result.current.facetCounts);
+  });
+
   it('returns filteredFacetCounts reflecting only the filtered result set', () => {
     const controls = [
       makeControl({
@@ -164,6 +178,7 @@ describe('useFilteredControls', () => {
     expect(result.current.facetCounts.handlungsworte.prüfen).toBe(1);
 
     // Filtered counts only include the MUSS control
+    expect(result.current.filteredFacetCounts).not.toBe(result.current.facetCounts);
     expect(result.current.filteredFacetCounts.modalverben.MUSS).toBe(1);
     expect(result.current.filteredFacetCounts.modalverben.SOLLTE).toBeUndefined();
     expect(result.current.filteredFacetCounts.handlungsworte.verankern).toBe(1);
