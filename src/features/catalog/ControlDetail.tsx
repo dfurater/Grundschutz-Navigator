@@ -14,6 +14,7 @@ import { getLinkRelationLabel, type IncomingControlLink } from '@/domain/control
 import type { VocabularyResolution } from '@/domain/vocabulary';
 import { resolveControlVocabularies } from '@/domain/vocabulary';
 import { useCatalog } from '@/hooks/useCatalog';
+import { useClipboard } from '@/hooks/useClipboard';
 import { VocabularyEntryCard } from '@/features/vocabularies/VocabularyEntryCard';
 import { ControlDetailSection } from './ControlDetailSection';
 
@@ -201,11 +202,15 @@ export function ControlDetail({
   onNavigateToControl,
 }: ControlDetailProps) {
   const { vocabularyRegistry, catalog } = useCatalog();
+  const {
+    copy: copyLink,
+    copied: linkCopied,
+    error: linkCopyError,
+  } = useClipboard();
   const practice = catalog?.practices?.find(p => p.id === control.practiceId);
   const topic = practice?.topics?.find(t => t.id === control.groupId);
   const practiceName = practice?.title ?? control.practiceId;
   const topicName = topic?.title ?? control.groupId;
-  const [linkCopied, setLinkCopied] = useState(false);
   const [activeVocabularyState, setActiveVocabularyState] = useState({
     controlId: control.id,
     key: null as string | null,
@@ -347,10 +352,7 @@ export function ControlDetail({
 
   const handleCopyLink = () => {
     const url = getControlDetailUrl(control.id);
-    navigator.clipboard.writeText(url).then(() => {
-      setLinkCopied(true);
-      setTimeout(() => setLinkCopied(false), 2000);
-    });
+    void copyLink(url);
   };
 
   return (
@@ -389,6 +391,20 @@ export function ControlDetail({
             )}
           </button>
         </div>
+        {linkCopyError && (
+          <div className="mb-2 space-y-1.5 rounded-md bg-[var(--color-danger-surface)] px-3 py-2">
+            <p role="alert" className="text-xs text-[var(--color-danger-text)]">
+              Kopieren nicht möglich. Bitte den vollständigen Wert manuell markieren und kopieren.
+            </p>
+            <code
+              tabIndex={0}
+              aria-label="Direktlink zum manuellen Kopieren"
+              className="block select-all break-all font-mono text-xs text-[var(--color-text-primary)]"
+            >
+              {getControlDetailUrl(control.id)}
+            </code>
+          </div>
+        )}
         <p className="text-xs text-[var(--color-text-muted)] mb-1">
           {practiceName} · {topicName}
         </p>

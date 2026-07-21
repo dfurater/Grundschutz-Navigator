@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import {
   IconShieldCheck,
   IconExternalLink,
@@ -17,6 +16,7 @@ import type {
   CatalogResponsibleParty,
 } from '@/domain/models';
 import { useCatalog } from '@/hooks/useCatalog';
+import { useClipboard } from '@/hooks/useClipboard';
 
 const DEFAULT_UPSTREAM_REPOSITORY_PATH = 'BSI-Bund/Stand-der-Technik-Bibliothek';
 const DEFAULT_CATALOG_PATH = 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json';
@@ -40,6 +40,8 @@ const verificationFailureTone = {
   icon: 'text-[var(--color-danger-text)]',
   text: 'text-[var(--color-danger-text)]',
 } as const;
+const copyErrorMessage =
+  'Kopieren nicht möglich. Bitte den vollständigen Wert manuell markieren und kopieren.';
 
 function resolveUpstreamRef(provenance: CatalogProvenance | null): string {
   const ref = provenance?.source.commit_sha && provenance.source.commit_sha !== 'unknown'
@@ -125,72 +127,84 @@ function CopyableValue({
   value: string;
   displayValue?: string;
 }) {
-  const [copied, setCopied] = useState(false);
-
-  function handleCopy() {
-    navigator.clipboard.writeText(value).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }
+  const { copy, copied, error } = useClipboard();
 
   return (
-    <div className="flex items-start justify-between gap-3 px-4 py-2.5">
-      <span className="type-meta shrink-0 pt-0.5">{label}</span>
-      <button
-        type="button"
-        onClick={handleCopy}
-        className="group flex min-w-0 items-center gap-1.5 text-right focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
-        title={`${label} kopieren`}
-        aria-label={`${label} kopieren`}
-      >
-        {copied ? (
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--color-success)]">
-            <IconCheck className="h-3 w-3" />
-            Kopiert
-          </span>
-        ) : (
-          <>
-            <span className="break-all text-right font-mono text-xs text-[var(--color-text-secondary)]">
-              {displayValue ?? value}
+    <div className="px-4 py-2.5">
+      <div className="flex items-start justify-between gap-3">
+        <span className="type-meta shrink-0 pt-0.5">{label}</span>
+        <button
+          type="button"
+          onClick={() => void copy(value)}
+          className="group flex min-w-0 items-center gap-1.5 text-right focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+          title={`${label} kopieren`}
+          aria-label={`${label} kopieren`}
+        >
+          {copied ? (
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--color-success)]">
+              <IconCheck className="h-3 w-3" />
+              Kopiert
             </span>
-            <IconClipboard className="h-3 w-3 shrink-0 text-[var(--color-text-muted)] transition-colors group-hover:text-[var(--color-text-secondary)]" />
-          </>
-        )}
-      </button>
+          ) : (
+            <>
+              <span className="break-all text-right font-mono text-xs text-[var(--color-text-secondary)]">
+                {displayValue ?? value}
+              </span>
+              <IconClipboard className="h-3 w-3 shrink-0 text-[var(--color-text-muted)] transition-colors group-hover:text-[var(--color-text-secondary)]" />
+            </>
+          )}
+        </button>
+      </div>
+      {error && (
+        <div className="mt-2 space-y-1.5 text-right">
+          <p role="alert" className="text-xs text-[var(--color-danger-text)]">
+            {copyErrorMessage}
+          </p>
+          <code
+            tabIndex={0}
+            aria-label={`${label}: vollständiger Wert zum manuellen Kopieren`}
+            className="block select-all break-all font-mono text-xs text-[var(--color-text-primary)]"
+          >
+            {value}
+          </code>
+        </div>
+      )}
     </div>
   );
 }
 
 function CopyButton({ command }: { command: string }) {
-  const [copied, setCopied] = useState(false);
-
-  function handleCopy() {
-    navigator.clipboard.writeText(command).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }
+  const { copy, copied, error } = useClipboard();
 
   return (
-    <button
-      type="button"
-      onClick={handleCopy}
-      className="touch-target-size flex items-center justify-center gap-1 rounded p-2 text-xs text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
-      aria-label="Code kopieren"
-    >
-      {copied ? (
-        <>
-          <IconCheck className="h-3.5 w-3.5 text-[var(--color-success-text)]" />
-          <span className="text-[var(--color-success-text)]">Kopiert</span>
-        </>
-      ) : (
-        <>
-          <IconClipboard className="h-3.5 w-3.5" />
-          <span>Kopieren</span>
-        </>
+    <div className="flex shrink-0 flex-col items-end gap-1">
+      <button
+        type="button"
+        onClick={() => void copy(command)}
+        className="touch-target-size flex items-center justify-center gap-1 rounded p-2 text-xs text-[var(--color-text-muted)] transition-colors hover:bg-[var(--color-surface-subtle)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+        aria-label="Code kopieren"
+      >
+        {copied ? (
+          <>
+            <IconCheck className="h-3.5 w-3.5 text-[var(--color-success-text)]" />
+            <span className="text-[var(--color-success-text)]">Kopiert</span>
+          </>
+        ) : (
+          <>
+            <IconClipboard className="h-3.5 w-3.5" />
+            <span>Kopieren</span>
+          </>
+        )}
+      </button>
+      {error && (
+        <p
+          role="alert"
+          className="max-w-64 text-right text-xs leading-relaxed text-[var(--color-danger-text)]"
+        >
+          {copyErrorMessage}
+        </p>
       )}
-    </button>
+    </div>
   );
 }
 
@@ -332,7 +346,11 @@ export function AboutPage() {
               </div>
 
               <div className="mt-3 rounded-[calc(var(--radius-md)-2px)] bg-[var(--color-surface-subtle)] px-4 py-3">
-                <code className="break-all font-mono text-xs leading-relaxed text-[var(--color-text-primary)]">
+                <code
+                  tabIndex={0}
+                  aria-label="Prüfbefehl zum manuellen Kopieren"
+                  className="select-all break-all font-mono text-xs leading-relaxed text-[var(--color-text-primary)]"
+                >
                   {verifyCommand}
                 </code>
               </div>

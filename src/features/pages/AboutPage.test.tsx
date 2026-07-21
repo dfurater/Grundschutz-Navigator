@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Catalog, CatalogState } from '@/domain/models';
 import { useCatalog } from '@/hooks/useCatalog';
 import { AboutPage } from './AboutPage';
@@ -9,6 +9,22 @@ vi.mock('@/hooks/useCatalog', () => ({
 }));
 
 const mockedUseCatalog = vi.mocked(useCatalog);
+const originalClipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+
+function setClipboard(writeText?: (text: string) => Promise<void>) {
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: writeText ? { writeText } : undefined,
+  });
+}
+
+afterEach(() => {
+  if (originalClipboardDescriptor) {
+    Object.defineProperty(navigator, 'clipboard', originalClipboardDescriptor);
+  } else {
+    Reflect.deleteProperty(navigator, 'clipboard');
+  }
+});
 
 function makeCatalogState(): CatalogState {
   return {
@@ -370,10 +386,7 @@ describe('AboutPage', () => {
 
   it('copies the full snapshot commit SHA while displaying the truncated value', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, 'clipboard', {
-      value: { writeText },
-      configurable: true,
-    });
+    setClipboard(writeText);
 
     const state = makeCatalogState();
     state.vocabularyProvenance = makeVocabularyProvenance();
@@ -391,5 +404,44 @@ describe('AboutPage', () => {
     await waitFor(() => {
       expect(screen.getByText('Kopiert')).toBeInTheDocument();
     });
+  });
+
+  it('shows a generic error and keeps the full verification command selectable', async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error('Browser detail'));
+    setClipboard(writeText);
+
+    render(<AboutPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Code kopieren' }));
+
+    const alert = await screen.findByRole('alert');
+    const command = screen.getByLabelText('Prüfbefehl zum manuellen Kopieren');
+
+    expect(alert).toHaveTextContent(
+      'Kopieren nicht möglich. Bitte den vollständigen Wert manuell markieren und kopieren.',
+    );
+    expect(screen.queryByText('Browser detail')).not.toBeInTheDocument();
+    expect(command).toHaveClass('select-all');
+    expect(command).toHaveTextContent(/^bash -lc/);
+  });
+
+  it('shows the full selectable snapshot commit when the Clipboard API is unavailable', async () => {
+    setClipboard();
+    const state = makeCatalogState();
+    state.vocabularyProvenance = makeVocabularyProvenance();
+    state.vocabularyVerification = makeVocabularyVerification(true);
+    mockedUseCatalog.mockReturnValue(state);
+
+    render(<AboutPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Snapshot-Commit kopieren' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Kopieren nicht möglich');
+    expect(
+      screen.getByLabelText('Snapshot-Commit: vollständiger Wert zum manuellen Kopieren'),
+    ).toHaveTextContent('fedcba0987654321fedcba0987654321fedcba09');
+    expect(
+      screen.getByLabelText('Snapshot-Commit: vollständiger Wert zum manuellen Kopieren'),
+    ).toHaveClass('select-all');
   });
 });
