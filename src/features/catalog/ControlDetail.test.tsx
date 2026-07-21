@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CatalogState, Control } from '@/domain/models';
 import type { IncomingControlLink } from '@/domain/controlRelationships';
 import { useCatalog } from '@/hooks/useCatalog';
@@ -14,6 +14,22 @@ vi.mock('@/hooks/useCatalog', () => ({
 
 const mockedUseCatalog = vi.mocked(useCatalog);
 const vocabularyRegistry = createTestVocabularyRegistry();
+const originalClipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+
+function setClipboard(writeText?: (text: string) => Promise<void>) {
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: writeText ? { writeText } : undefined,
+  });
+}
+
+afterEach(() => {
+  if (originalClipboardDescriptor) {
+    Object.defineProperty(navigator, 'clipboard', originalClipboardDescriptor);
+  } else {
+    Reflect.deleteProperty(navigator, 'clipboard');
+  }
+});
 
 function makeControl(overrides: Partial<Control> = {}): Control {
   return {
@@ -1000,12 +1016,7 @@ describe('ControlDetail', () => {
   it('copies the direct link for the current control', async () => {
     const user = userEvent.setup();
     const writeText = vi.fn().mockResolvedValue(undefined);
-    const originalClipboard = navigator.clipboard;
-
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText },
-    });
+    setClipboard(writeText);
 
     render(
       <MemoryRouter>
@@ -1016,11 +1027,28 @@ describe('ControlDetail', () => {
     await user.click(screen.getByRole('button', { name: 'Link kopieren' }));
 
     expect(writeText).toHaveBeenCalledWith('http://localhost:3000/katalog/DET.5.4');
+  });
 
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: originalClipboard,
-    });
+  it('shows a generic error and the full selectable direct link when copying fails', async () => {
+    const user = userEvent.setup();
+    setClipboard(vi.fn().mockRejectedValue(new Error('Browser detail')));
+
+    render(
+      <MemoryRouter>
+        <ControlDetail control={makeControl({ id: 'DET.5.4' })} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Link kopieren' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Kopieren nicht möglich. Bitte den vollständigen Wert manuell markieren und kopieren.',
+    );
+    expect(screen.queryByText('Browser detail')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Direktlink zum manuellen Kopieren')).toHaveTextContent(
+      'http://localhost:3000/katalog/DET.5.4',
+    );
+    expect(screen.getByLabelText('Direktlink zum manuellen Kopieren')).toHaveClass('select-all');
   });
 
   it('keeps long tags wrap-capable inside outline badges', () => {
