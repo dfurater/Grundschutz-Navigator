@@ -51,6 +51,7 @@ const CSV_HEADERS = [
   'availability',
   'authenticity',
   'threats',
+  'control_alt_identifier',
 ];
 
 /**
@@ -83,6 +84,7 @@ export function controlToCSVRow(control: Control): string {
     control.availability ?? '',
     control.authenticity ?? '',
     control.threats.join(', '),
+    control.altIdentifier ?? '',
   ];
 
   return fields.map(escapeCSVField).join(';');

@@ -220,10 +220,10 @@ describe('escapeCSVField', () => {
 /* ------------------------------------------------------------------ */
 
 describe('controlToCSVRow', () => {
-  it('produces semicolon-delimited row with 24 fields', () => {
+  it('produces semicolon-delimited row with 25 fields', () => {
     const row = controlToCSVRow(makeControl());
     const fields = row.split(';');
-    expect(fields.length).toBe(24);
+    expect(fields.length).toBe(25);
   });
 
   it('aligns row fields with the logical export order', () => {
@@ -253,6 +253,7 @@ describe('controlToCSVRow', () => {
       '1',
       '0',
       'G 0.18, G 0.19',
+      'uuid-1',
     ]);
   });
 
@@ -287,8 +288,8 @@ describe('controlToCSVRow', () => {
     });
     const fields = parseSemicolonCSV(`${controlToCSVRow(control)}\r\n`)[0];
 
-    expect(fields).toHaveLength(24);
-    expect(fields.slice(-5)).toEqual(['', '', '', '', '']);
+    expect(fields).toHaveLength(25);
+    expect(fields.slice(-6)).toEqual(['', '', '', '', '', 'uuid-1']);
   });
 
   it('escapes the joined threat list as a single CSV field', () => {
@@ -298,8 +299,34 @@ describe('controlToCSVRow', () => {
     const fields = parseSemicolonCSV(`${row}\r\n`)[0];
 
     expect(row).toContain('"G 0.18, G 0.19; ""Kommentar"""');
-    expect(fields).toHaveLength(24);
-    expect(fields.at(-1)).toBe('G 0.18, G 0.19; "Kommentar"');
+    expect(fields).toHaveLength(25);
+    expect(fields.at(-2)).toBe('G 0.18, G 0.19; "Kommentar"');
+  });
+
+  it('appends an existing alt-identifier unchanged', () => {
+    const fields = parseSemicolonCSV(`${controlToCSVRow(makeControl())}\r\n`)[0];
+
+    expect(fields.at(-1)).toBe('uuid-1');
+  });
+
+  it('exports a missing alt-identifier as an empty field without fallback', () => {
+    const fields = parseSemicolonCSV(`${controlToCSVRow(
+      makeControl({ altIdentifier: undefined }),
+    )}\r\n`)[0];
+
+    expect(fields).toHaveLength(25);
+    expect(fields.at(-1)).toBe('');
+    expect(fields.at(-1)).not.toBe('GC.1.1');
+  });
+
+  it('escapes an alt-identifier as a single CSV field', () => {
+    const altIdentifier = 'uuid; "mit Anführungszeichen"\nzweite Zeile';
+    const row = controlToCSVRow(makeControl({ altIdentifier }));
+    const fields = parseSemicolonCSV(`${row}\r\n`)[0];
+
+    expect(row).toContain('"uuid; ""mit Anführungszeichen""\nzweite Zeile"');
+    expect(fields).toHaveLength(25);
+    expect(fields.at(-1)).toBe(altIdentifier);
   });
 
   it('includes linked controls', () => {
@@ -367,6 +394,7 @@ describe('controlsToCSV', () => {
     expect(header).toContain('availability');
     expect(header).toContain('authenticity');
     expect(header).toContain('threats');
+    expect(header).toContain('control_alt_identifier');
   });
 
   it('uses the expected logical header order', () => {
@@ -397,7 +425,17 @@ describe('controlsToCSV', () => {
       'availability',
       'authenticity',
       'threats',
+      'control_alt_identifier',
     ]);
+  });
+
+  it('does not add provenance or matching columns', () => {
+    const header = controlsToCSV([]).split('\r\n')[0];
+
+    expect(header).not.toContain('snapshot_commit_sha');
+    expect(header).not.toContain('catalog_uuid');
+    expect(header).not.toContain('catalog_version');
+    expect(header).not.toContain('catalog_key');
   });
 
   it('header omits namespace columns', () => {
@@ -422,7 +460,7 @@ describe('controlsToCSV', () => {
   it('uses semicolon as delimiter', () => {
     const csv = controlsToCSV([]);
     const header = csv.split('\r\n')[0];
-    expect(header.split(';').length).toBe(24);
+    expect(header.split(';').length).toBe(25);
   });
 
   it('uses CRLF row separators and terminates with a final CRLF', () => {
@@ -502,6 +540,7 @@ describe('controlsToCSV', () => {
       '1',
       '0',
       'G 0.18, G 0.19',
+      'uuid-1',
     ]);
   });
 });

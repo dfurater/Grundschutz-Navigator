@@ -21,7 +21,7 @@ Die App läuft vollständig im Browser. Keine Anmeldung, keine Installation.
 - **Volltextsuche** — Schnelle, relevanzbasierte Suche über alle Kontrollen (FlexSearch) mit Lazy-Loading. Route `/suche`.
 - **Vokabulare nachschlagen** — Alle offiziellen BSI-Namespaces (Modalverben, Handlungswörter, Sicherheitsniveaus, Aufwandsstufen, Tags, Zielobjekte u. a.) als eigenständige Übersichten. Route `/vokabular`.
 - **Multi-Filter** — Kombinierbar: Sicherheitsniveau, Aufwandsstufe, Modalverb, Tags, Zielobjekt, Handlungswort, Dokumentationstyp, Link-Relation. Der gesamte Filterzustand wird in der URL gespiegelt und ist damit **teil- und bookmarkbar**.
-- **CSV-Export** — Gefilterte Tabelle oder manuelle Auswahl als CSV exportieren (semikolon-getrennt, Excel-freundlich).
+- **CSV-Export** — Gefilterte Tabelle oder manuelle Auswahl als CSV exportieren (semikolon-getrennt, Excel-freundlich). Der enthaltene Alt-Identifier ist im aktuellen Katalog eindeutig, aber nicht garantiert versionsstabil.
 - **Integritätsprüfung** — Zur Laufzeit wird die SHA-256 des geladenen Katalogs gegen einen beim Build gepinnten Wert verglichen. Ergebnis sichtbar auf der Startseite.
 - **Responsive** — Desktop mit verschiebbaren Panels, Mobile mit Drawer und Touch-Gesten.
 
