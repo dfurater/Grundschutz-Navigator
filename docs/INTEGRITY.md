@@ -14,7 +14,7 @@ Das System prüft, ob die geladenen Artefakte zu den gemeinsam ausgelieferten In
 
 ## Build-Zeitpunkt (scripts/fetch-catalog.sh → fetch-catalog.mjs)
 
-`scripts/fetch-catalog.sh` ist nur der Einstiegspunkt: Es ruft `scripts/fetch-catalog.mjs` auf und schreibt die von dort gelieferten Artefakte nach `public/data/` — ausschließlich Dateien aus einer festen Allowlist:
+`scripts/fetch-catalog.sh` ist nur der Einstiegspunkt: Es ruft `scripts/fetch-catalog.mjs` auf und schreibt die von dort gelieferten Artefakte nach `public/data/` — ausschließlich diese vier generierten Dateien:
 
 - `catalog.json` — der OSCAL-Katalog
 - `catalog-metadata.json` — Katalog-Provenance + Integrity
@@ -23,28 +23,31 @@ Das System prüft, ob die geladenen Artefakte zu den gemeinsam ausgelieferten In
 
 `fetch-catalog.mjs` führt den eigentlichen Abruf durch:
 
-1. **Quelle fest verdrahtet**: Repository und Katalogpfad kommen aus `scripts/security-guards.mjs` (`BSI-Bund/Stand-der-Technik-Bibliothek`, `Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json`). Abweichende Repos, Pfade oder Refs werden abgelehnt.
+1. **Quellregister als Vertrag**: `src/domain/sourceRegistry.mjs` ist die einzige Ingestion-Quelle für Artefaktschlüssel, Pfade, erwartete OSCAL-Root-Typen, Katalogschlüssel und Lifecycle. `scripts/security-guards.mjs` leitet daraus die Allowlist ab und begrenzt zusätzlich Repository, Hosts, Pfade und Refs.
 2. **Snapshot-Pinning**: Ist `BSI_SNAPSHOT_SHA` gesetzt (in CI aus `upstream-manifest.json` gelesen), wird exakt dieser Commit abgerufen statt `main`.
-3. **Abruf über die GitHub-API** mit Retry und Backoff bei transienten Fehlern; optional authentifiziert über `GH_TOKEN`/`GITHUB_TOKEN`.
-4. **Integritätsdaten**: SHA-256, Dateigröße, Git-Blob-SHA und Commit-Informationen werden je Artefakt erfasst.
+3. **Vollständiger Tree vor Blob-Abruf**: Der rekursive GitHub-Tree der überwachten Wurzeln muss vollständig und darf weder Symlinks noch andere nicht reguläre Dateien enthalten. Erst danach werden registrierte Pfade materialisiert.
+4. **Lifecycle-getrennte Verarbeitung**: `preview`- und `draft`-Artefakte werden transient auf Pfad, Blob, Inhalt und Root-Typ geprüft. Nur `supported`-Artefakte werden als App-Daten ausgeliefert; die Namespace-Collection materialisiert nur die vom unterstützten Katalog referenzierten CSV-Dateien.
+5. **Abruf über erlaubte GitHub-Endpunkte** mit Retry und Backoff bei transienten Fehlern; optional authentifiziert über `GH_TOKEN`/`GITHUB_TOKEN`.
+6. **Integritätsdaten**: SHA-256, Dateigröße, Git-Blob-SHA und Commit-Informationen werden je ausgeliefertem Artefakt erfasst. Das vollständige Manifest v2 enthält zusätzlich für jede materialisierte Registry-Datei Root-Typ und Lifecycle.
 
 ### Provenance-Metadaten (catalog-metadata.json)
 
 ```json
 {
+  "artifactKey": "catalog-gspp",
   "source": {
     "repository": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek",
     "file": "Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json",
-    "commit_sha": "d6153cbb…",
-    "commit_date": "2026-07-03T09:37:29Z",
-    "git_blob_sha": "b980d97d…",
-    "upstream_sha256": "dab255ae…",
-    "upstream_size_bytes": 5377756
+    "commit_sha": "<snapshot-commit-sha>",
+    "commit_date": "<snapshot-commit-date>",
+    "git_blob_sha": "<git-blob-sha>",
+    "upstream_sha256": "<sha256>",
+    "upstream_size_bytes": 5389844
   },
   "integrity": {
-    "sha256": "dab255ae…",
-    "size_bytes": 5377756,
-    "fetched_at": "2026-07-11T15:42:56.334Z"
+    "sha256": "<sha256>",
+    "size_bytes": 5389844,
+    "fetched_at": "<fetch-timestamp>"
   },
   "build": {
     "workflow_run_id": "…",
@@ -146,10 +149,10 @@ export async function fetchCatalogWithBuffer(
 
 `src/state/CatalogContext.tsx` orchestriert den Ladevorgang:
 
-1. `catalog.json` und `vocabularies.json` werden **parallel** als ArrayBuffer geladen (Startlatenz).
-2. Der Katalog wird geparst (`parseCatalog`), das Vokabular-Registry gebaut (`buildVocabularyRegistry`).
+1. `catalog.json` und `vocabularies.json` werden **parallel** als ArrayBuffer geladen (Startlatenz). Fehlt `catalog.json`, ist das ein harter Ladefehler; fehlt nur `vocabularies.json`, läuft die App ohne Vokabular-Registry weiter.
+2. Der Katalog wird geparst (`parseCatalog`), die Vokabular-Registry gebaut (`buildVocabularyRegistry`).
 3. Für den Katalog wird `catalog-metadata.json` geladen und `verifyArtifactIntegrity` ausgeführt; für die Vokabulare analog `upstream-sources-metadata.json` (siehe [Vocabulary Integrity](#vocabulary-integrity)).
-4. Fehlende Metadaten sind kein harter Fehler: Die App läuft weiter, die Verifikation wird übersprungen und eine Warnung geloggt (z.B. lokale Entwicklung ohne `npm run fetch-catalog`).
+4. Fehlen zu einem vorhandenen Datenartefakt nur die Metadaten, bleibt das Artefakt nutzbar. Provenance und Verifikation bleiben `null`, die App protokolliert eine Warnung in der Konsole und überspringt die Prüfung.
 5. Ein `cancelled`-Flag verhindert State-Updates nach Unmount.
 
 ## VerificationResult Typ
@@ -170,30 +173,47 @@ Provenance und Verifikationsergebnis werden auf der Seite **„Über das Projekt
 
 - **Gültig**: Erfolgs-Banner mit Hash-Bestätigung
 - **Ungültig**: Warn-Banner mit Details
-- **Nicht verifizierbar**: neutraler Hinweis (Metadaten fehlen)
 
-Dazu kommen Quell-Repository, Commit-SHA und Abrufzeitpunkt mit Link auf den exakten Upstream-Stand; für die Vokabulare Abrufzeitpunkt, Anzahl der Namespace-Dateien und Snapshot-Commit.
+Dazu kommen Quell-Repository, Commit-SHA und Abrufzeitpunkt mit Link auf den exakten Upstream-Stand; für die Vokabulare Abrufzeitpunkt, Anzahl der Namespace-Dateien und Snapshot-Commit. Fehlen die jeweiligen Metadaten, wird für dieses Artefakt kein Provenance-/Verifikationsblock angezeigt. Der Text „Verifikation ausstehend“ erscheint nur, wenn Provenance vorhanden ist, aber das Prüfergebnis noch nicht vorliegt.
 
 ## Vocabulary Integrity
 
-Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funktion `verifyArtifactIntegrity` auf (die `IntegrityMetadata`-Union deckt beide Provenance-Typen ab). Die zugehörigen Metadaten stehen in `upstream-sources-metadata.json`, das zusätzlich das Upstream-Manifest (Katalog + alle Namespace-Dateien mit Git-Blob-SHAs und einer Manifest-Signatur) sowie Datei-Provenance je Namespace-CSV (SHA-256, Größe, Git-Blob-SHA) enthält.
+Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funktion `verifyArtifactIntegrity` auf (die `IntegrityMetadata`-Union deckt beide Provenance-Typen ab). Die zugehörigen Metadaten stehen in `upstream-sources-metadata.json`. Darin umfasst `manifest` alle materialisierten Registry-Artefakte; das separate Top-Level-Feld `files` enthält ausschließlich die Datei-Provenance der ausgelieferten Namespace-CSVs. `dataQualityFindings` hält nicht blockierende fachliche Befunde zum unterstützten Katalog fest.
 
 ### Provenance-Metadaten (upstream-sources-metadata.json)
 
 ```json
 {
+  "artifactKey": "namespaces-bsi",
   "source": {
     "repository": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek",
     "catalogPath": "Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json",
-    "snapshotCommitSha": "d6153cbb…",
-    "snapshotCommitDate": "2026-07-03T09:37:29Z"
+    "snapshotCommitSha": "<snapshot-commit-sha>",
+    "snapshotCommitDate": "<snapshot-commit-date>"
   },
   "manifest": {
+    "schemaVersion": 2,
     "repository": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek",
-    "snapshotCommitSha": "d6153cbb…",
-    "catalogPath": "Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json",
-    "files": [ { "kind": "catalog", "path": "…", "gitBlobSha": "…" } ],
-    "signatureSha256": "…"
+    "snapshotCommitSha": "<snapshot-commit-sha>",
+    "files": [
+      {
+        "artifactKey": "catalog-gspp",
+        "rootType": "catalog",
+        "lifecycle": "supported",
+        "path": "Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json",
+        "gitBlobSha": "<git-blob-sha>",
+        "contentSha256": "<sha256>"
+      },
+      {
+        "artifactKey": "catalog-lieferkette",
+        "rootType": "catalog",
+        "lifecycle": "preview",
+        "path": "Anwenderkataloge/Lieferkettensicherheit/Lieferkettensicherheit-catalog.json",
+        "gitBlobSha": "<git-blob-sha>",
+        "contentSha256": "<sha256>"
+      }
+    ],
+    "signatureSha256": "<sha256>"
   },
   "files": [
     {
@@ -201,15 +221,16 @@ Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funkt
       "path": "Dokumentation/namespaces/modal_verbs.csv",
       "fileName": "modal_verbs.csv",
       "routeId": "dokumentation-namespaces-modal-verbs",
-      "gitBlobSha": "…",
-      "sha256": "…",
-      "sizeBytes": 1234
+      "gitBlobSha": "<git-blob-sha>",
+      "sha256": "<sha256>",
+      "sizeBytes": 959
     }
   ],
+  "dataQualityFindings": [],
   "integrity": {
-    "sha256": "…",
-    "size_bytes": 56789,
-    "fetched_at": "2026-07-11T15:42:56.334Z"
+    "sha256": "<sha256>",
+    "size_bytes": 438298,
+    "fetched_at": "<fetch-timestamp>"
   },
   "build": {
     "workflow_run_id": "…",
@@ -219,12 +240,42 @@ Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funkt
 }
 ```
 
-`integrity.sha256` ist der SHA-256 über das generierte `vocabularies.json`-Artefakt; der Laufzeit-Abgleich (`vocabularyVerification`) funktioniert damit identisch zur Katalog-Prüfung und wird auf `/about` angezeigt. Das `manifest` ist zugleich die Signatur-Basis für den `update-catalog`-Workflow (`scripts/sync-upstream-manifest.mjs` liest `metadata.manifest`). Zusätzlich bleibt die Upstream-Integrität zur Fetch-Zeit verankert: gepinnter Snapshot-Commit, Git-Blob-SHAs und Manifest-Signatur in `upstream-manifest.json`.
+`integrity.sha256` ist der SHA-256 über das generierte `vocabularies.json`-Artefakt; der Laufzeit-Abgleich (`vocabularyVerification`) funktioniert damit identisch zur Katalog-Prüfung und wird auf `/about` angezeigt. Das Manifest v2 ist zugleich die Signatur-Basis für den `update-catalog`-Workflow (`scripts/sync-upstream-manifest.mjs` liest `metadata.manifest`). Zusätzlich bleibt die Upstream-Integrität zur Fetch-Zeit verankert: gepinnter Snapshot-Commit, Registry-Vertrag, Git-Blob-SHAs, Content-Hashes und Manifest-Signatur in `upstream-manifest.json`.
 
 ## Typen (src/domain/models.ts)
 
 ```typescript
+interface ArtifactIntegrity {
+  sha256: string;
+  size_bytes: number;
+  fetched_at: string;
+}
+
+interface ArtifactBuildInfo {
+  workflow_run_id: string;
+  workflow_run_url: string | null;
+  runner_environment: string;
+}
+
+interface UpstreamManifestFile {
+  artifactKey: string;
+  rootType: ManifestRootType;
+  lifecycle: ArtifactLifecycle;
+  path: string;
+  gitBlobSha: string;
+  contentSha256: string;
+}
+
+interface UpstreamManifest {
+  schemaVersion: 2;
+  repository: string;
+  snapshotCommitSha: string;
+  files: UpstreamManifestFile[];
+  signatureSha256: string;
+}
+
 interface CatalogProvenance {
+  artifactKey?: string;
   source: {
     repository: string;
     file: string;
@@ -234,16 +285,8 @@ interface CatalogProvenance {
     upstream_sha256?: string;
     upstream_size_bytes?: number;
   };
-  integrity: {
-    sha256: string;
-    size_bytes: number;
-    fetched_at: string;
-  };
-  build: {
-    workflow_run_id: string;
-    workflow_run_url: string | null;
-    runner_environment: string;
-  };
+  integrity: ArtifactIntegrity;
+  build: ArtifactBuildInfo;
 }
 
 interface VocabularyFileProvenance {
@@ -257,6 +300,7 @@ interface VocabularyFileProvenance {
 }
 
 interface VocabularyProvenance {
+  artifactKey?: string;
   source: {
     repository: string;
     catalogPath: string;
@@ -265,29 +309,26 @@ interface VocabularyProvenance {
   };
   manifest: UpstreamManifest;
   files: VocabularyFileProvenance[];
-  integrity: {
-    sha256: string;
-    size_bytes: number;
-    fetched_at: string;
-  };
-  build: {
-    workflow_run_id: string;
-    workflow_run_url: string | null;
-    runner_environment: string;
-  };
+  dataQualityFindings?: string[];
+  integrity: ArtifactIntegrity;
+  build: ArtifactBuildInfo;
 }
 ```
 
 ## Ausnahmen
 
-Die Integritätsprüfung kann in folgenden Fällen nicht durchgeführt werden:
+Die Integritätsprüfung kann in folgenden Fällen nicht durchgeführt werden, obwohl das zugehörige Datenartefakt vorhanden ist:
 
-1. **Lokale Entwicklung**: Ohne Metadaten-Dateien (wenn `npm run fetch-catalog` nicht ausgeführt wurde)
+1. **Lokale Entwicklung**: Datenartefakt vorhanden, Metadaten-Datei fehlt
 2. **Abruf-Fehler**: Wenn die Metadaten nicht geladen werden können
 
 In diesen Fällen wird:
-- Der Katalog trotzdem verwendet (mit Warnung in der Konsole)
-- "Nicht verifizierbar" in der UI angezeigt
+
+- das vorhandene Artefakt trotzdem verwendet,
+- eine Warnung in der Konsole protokolliert,
+- kein Provenance-/Verifikationsblock für dieses Artefakt angezeigt.
+
+Ein fehlendes oder nicht parsebares `catalog.json` bleibt dagegen ein harter Ladefehler. Ein fehlendes `vocabularies.json` ist optional und führt zu einer App ohne Vokabular-Registry.
 
 ## SLSA Provenance
 
@@ -299,9 +340,10 @@ Zusätzlich zur internen Integritätsprüfung generiert `.github/workflows/deplo
 - **Git Blob SHA** wird zusätzlich verwendet für Git-Integration
 - **Workflow Run ID** ermöglicht Rückverfolgung zum Build-Prozess
 - **Runner Environment** identifiziert die Build-Plattform
-- **Upstream-Allowlist** (`scripts/security-guards.mjs`) verhindert, dass der Fetch auf fremde Repos oder Pfade umgelenkt wird
-- **Catalog-Sync-Guard** (`scripts/catalog-sync-guard.mjs`) prüft bei Sync-PRs Branch und Titel, einen exakt auf `upstream-manifest.json` begrenzten Diff, das strikte Manifest-Schema, erlaubte Pfade, eindeutige Dateien und die kanonisch neu berechnete Signatur. Der neue BSI-Snapshot muss per GitHub Compare API ausschließlich `ahead` sein. Zusätzlich werden alle deklarierten Git-Blob-SHAs gegen den vollständigen Snapshot-Tree geprüft und die Namespace-Inventur muss exakt den im verifizierten Katalog-Blob referenzierten offiziellen CSV-Dateien entsprechen. API-Fehler, unvollständige Trees sowie `identical`, `behind` und `diverged` blockieren.
-- **Ruleset-Preflight** (`scripts/catalog-sync-policy.mjs`) verhindert schreibende Sync-Aktionen, wenn Auto-Merge, Branch-Löschung, required Checks oder CodeQL von der erwarteten Policy abweichen. GitHub gibt `bypass_actors` nur mit Ruleset-Schreibzugriff zurück; deshalb attestiert der Agent nach vollständigem Audit die bypass-freie Ruleset-Version über `CATALOG_SYNC_RULESET_UPDATED_AT`. Jede Änderung an der Ruleset-Version blockiert fail-closed bis zu einem erneuten Audit, ohne der Sync-App Administration-Rechte zu geben.
+- **Quellregister und Upstream-Grenzen** (`src/domain/sourceRegistry.mjs`, `scripts/security-guards.mjs`) verhindern, dass der Fetch auf fremde Repositories, externe Hosts, nicht registrierte Pfade oder unzulässige Refs umgelenkt wird. Pfad-Traversal, Symlinks bzw. andere nicht reguläre Tree-Einträge und ein OSCAL-Root-Type-Mismatch führen geschlossen zum Abbruch.
+- **Vollständiger Read-only-Tree-Diff** (`scripts/upstream-artifacts.mjs`) klassifiziert Änderungen unter allen überwachten Wurzeln als `added`, `modified` oder `removed`. Neue nicht registrierte Pfade werden als `unclassified` gemeldet, ohne ihren Blob zu laden oder sie auszuliefern. Unvollständige Trees und doppelte bzw. unsichere Pfade werden abgelehnt.
+- **Catalog-Sync-Guard** (`scripts/catalog-sync-guard.mjs`) prüft bei Sync-PRs Branch und Titel, einen exakt auf `upstream-manifest.json` begrenzten Diff, das strikte Manifest-v2-Schema, Registry-Metadaten, kanonische Dateireihenfolge und Signatur. Der neue BSI-Snapshot muss per GitHub Compare API ausschließlich `ahead` sein. Git-Blob-SHAs und Content-Hashes werden gegen den vollständigen Snapshot gebunden; die Namespace-Inventur muss exakt den im verifizierten unterstützten Katalog referenzierten offiziellen CSV-Dateien entsprechen. API-Fehler sowie `identical`, `behind` und `diverged` blockieren.
+- **Ruleset-Preflight** (`scripts/catalog-sync-policy.mjs`) prüft vor schreibenden Sync-Aktionen Auto-Merge, Branch-Löschung, erwartete Required Checks, CodeQL und den Audit-Pin der Ruleset-Version. GitHub gibt `bypass_actors` nur mit Ruleset-Schreibzugriff zurück; deshalb attestiert der Agent nach vollständigem Audit die bypass-freie Ruleset-Version über `CATALOG_SYNC_RULESET_UPDATED_AT`. Der Ref-Scope der Ruleset-Conditions wird derzeit noch nicht vollständig validiert; diese fail-closed Lücke ist in GRU-255 erfasst.
 - **CodeQL-Abgrenzung**: CodeQL schützt Anwendungscode und Workflows, bewertet aber nicht die fachliche Richtigkeit des BSI-Kataloginhalts. Der BSI-Upstream wird als Datenquelle akzeptiert; Two-Source-Verifikation ist bewusst nicht Bestandteil dieser Automatisierung.
 
 ## Siehe auch

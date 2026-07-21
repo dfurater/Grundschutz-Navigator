@@ -11,7 +11,7 @@ Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application 
 | Schicht | Technologie |
 |---------|-------------|
 | Framework | React 19 + TypeScript |
-| Build-Tool | Vite 6 |
+| Build-Tool | Vite 8 |
 | Styling | Tailwind CSS v4 (via `@tailwindcss/vite` Plugin) |
 | Routing | React Router v7 |
 | Volltextsuche | FlexSearch |
@@ -26,6 +26,9 @@ src/
 │   ├── models.ts                 # Zwei-Schichten-Datentypen
 │   ├── integrity.ts              # SHA-256 Integritätsprüfung
 │   ├── vocabulary.ts             # BSI-Vokabular-Auflösung
+│   ├── sourceRegistry.{mjs,ts}   # Verbindlicher Upstream-/Katalogvertrag
+│   ├── sourceRegistry.d.mts      # Typen des Quellregisters
+│   ├── controlRef.ts             # Kataloggescopte interne Control-Referenzen
 │   └── controlRelationships.ts   # Steuerungsbeziehungen
 ├── adapters/         # Datentransformationen
 │   └── oscalAdapter.ts           # OSCAL → Domain Model Parser
@@ -53,23 +56,28 @@ src/
 │   ├── StatusMeta.tsx
 │   └── ...
 ├── app/              # Anwendungshell
-│   └── AppShell.tsx              # Routing-Konfiguration
+│   ├── AppShell.tsx              # Routing-Konfiguration
+│   └── routes.ts                 # Kanonische URL-Builder und Resolver
 └── main.tsx          # Einstiegspunkt
 
 public/data/          # Generierte Katalog-Daten (nicht im Repo)
 scripts/              # Build-Skripte
   ├── fetch-catalog.sh            # Einstiegspunkt: delegiert an fetch-catalog.mjs
-  ├── fetch-catalog.mjs           # Katalog-/Vokabular-Abruf via GitHub-API
+  ├── fetch-catalog.mjs           # Registry-gesteuerter Abruf und Ausgabe
   ├── security-guards.mjs         # Upstream-Allowlist (Repo, Pfade, Refs)
-  ├── vocabulary-utils.mjs        # CSV-Parsing, Manifest-Aufbau
+  ├── upstream-artifacts.mjs      # Tree-Diff, Manifest v2 und Root-Prüfung
+  ├── vocabulary-utils.mjs        # CSV-/Namespace-Hilfsfunktionen
+  ├── catalog-sync-guard.mjs      # Fail-closed Prüfung von Sync-PRs
+  ├── catalog-sync-policy.mjs     # Prüfung der Repository-Policy
   └── sync-upstream-manifest.mjs  # Manifest-Sync für update-catalog.yml
 
-upstream-manifest.json            # Gepinnter Upstream-Snapshot (Commit-SHA + Datei-Blobs)
+upstream-manifest.json            # Gepinnter Upstream-Snapshot (Manifest v2)
 
 .github/workflows/
   ├── deploy.yml                  # GitHub Pages Deployment
   ├── ci.yml                      # CI Pipeline
-  └── update-catalog.yml          # Automatischer Katalog-Sync
+  ├── update-catalog.yml          # Automatischer Katalog-Sync
+  └── verify-catalog-merge.yml    # Post-Merge-Prüfung und Deploy-Fallback
 ```
 
 ## Datenfluss
@@ -77,27 +85,31 @@ upstream-manifest.json            # Gepinnter Upstream-Snapshot (Commit-SHA + Da
 ```
 BSI GitHub Repository
 (BSI-Bund/Stand-der-Technik-Bibliothek)
-  Katalog: Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json
-  Vokabulare: Dokumentation/namespaces/*.csv
+  • OSCAL-Artefakte verschiedener Root-Typen
+  • vom unterstützten Katalog referenzierte Namespace-CSVs
+  • vollständige Read-only-Trees der überwachten Upstream-Wurzeln
         │
         ▼
 scripts/fetch-catalog.sh → scripts/fetch-catalog.mjs
 • Abruf über die GitHub-API (Retry mit Backoff bei transienten Fehlern)
 • Snapshot-Pinning: BSI_SNAPSHOT_SHA aus upstream-manifest.json
-• Security-Guards: nur erlaubtes Repo, erlaubte Pfade, erlaubte Refs
-• Vokabular-CSVs → JSON, Provenance-Metadaten, SHA-256-Hashes
+• sourceRegistry: einzige Ingestion-Quelle für Pfad, Root-Typ und Lifecycle
+• Security-Guards: nur erlaubtes Repo, erlaubte Hosts, Pfade und Refs
+• registrierte preview-/draft-Artefakte werden transient geprüft, nicht ausgeliefert
+• nur supported Katalog und referenzierte Vokabulare → JSON + Provenance
+• Manifest v2 bindet Registry-Metadaten, Git-Blob-SHA und Content-SHA-256
         │
         ▼
 public/data/
 • catalog.json                    (OSCAL 1.1.3 JSON)
 • catalog-metadata.json           (Provenance + Integrity)
 • vocabularies.json               (Offizielle BSI-Vokabulare)
-• upstream-sources-metadata.json  (Vokabular-Provenance + Manifest)
+• upstream-sources-metadata.json  (Vokabular-Provenance + Manifest v2)
         │
         ▼
 CatalogContext (useEffect on mount)
 • fetchCatalogWithBuffer()   → ArrayBuffer (Katalog + Vokabulare parallel)
-• parseCatalog()             → angereicherter Catalog
+• parseCatalog()             → kataloggescopter, angereicherter Catalog
 • verifyArtifactIntegrity()  → VerificationResult (Katalog + Vokabulare)
 • buildVocabularyRegistry()
         │
@@ -107,6 +119,8 @@ Feature-Komponenten und Hooks
 • useSearch()                → FlexSearch-Volltextsuche
 • resolveControlVocabularies() → Vokabular-Auflösung
 ```
+
+Der separate Sync-Pfad (`scripts/sync-upstream-manifest.mjs` mit `scripts/upstream-artifacts.mjs`) vergleicht die vollständigen normalisierten Trees des bisherigen und des neuen Snapshots. Erst dort entstehen die Status `added`, `modified` und `removed`; neue nicht registrierte Pfade werden als `unclassified` gemeldet, ohne ihren Blob zu fetchen oder sie auszuliefern.
 
 ## Zustandsverwaltung
 
@@ -132,8 +146,9 @@ Die Anwendung verwendet React Router mit `BrowserRouter` und pfadbasierten URLs.
 | Route | Komponente | Beschreibung |
 |-------|------------|--------------|
 | `/` | HomePage | Startseite |
-| `/katalog` | CatalogBrowser | Katalog-Browser (Liste + Detail) |
-| `/katalog/:groupId` | CatalogBrowser | Practice-, Topic- oder Control-Auswahl |
+| `/katalog/:catalogKey` | CatalogBrowser | Katalog-Browser (Liste + Detail) |
+| `/katalog/:catalogKey/:groupId` | CatalogBrowser | Practice- oder Topic-Auswahl im Katalog |
+| `/katalog/:catalogKey/kontrolle/:altIdentifier` | CatalogBrowser | Kanonische Control-Detailroute |
 | `/suche` | SearchPage | Volltextsuche |
 | `/vokabular` | VocabularyOverviewPage | Vokabular-Übersicht |
 | `/vokabular/:namespaceId` | VocabularyNamespacePage | Vokabular-Namensraum |
@@ -159,13 +174,13 @@ Filter werden bidirektional mit URL-Suchparametern synchronisiert (`src/hooks/us
 - `q` — Freitextsuche
 - `sort` — Sortierfeld + Richtung
 
-Practice- und Topic-Auswahl laufen über die Route (`/katalog/:groupId`), nicht über Query-Parameter.
+Practice- und Topic-Auswahl laufen über die kataloggescopte Route (`/katalog/:catalogKey/:groupId`), nicht über Query-Parameter. Die kanonische Control-URL verwendet ausschließlich `catalogKey + altIdentifier`; die OSCAL-Control-ID bleibt eine interne Referenzidentität. Unbekannte oder nicht geladene Katalogschlüssel und unbekannte Alt-Identifier führen ohne globalen Fallback, Control-ID-Auflösung, Redirect oder Legacy-Route zur Not-found-Ansicht.
 
 Siehe [FILTERING.md](./FILTERING.md) für Details.
 
 ## Integritätsprüfung
 
-Jeder Katalog wird zum Build-Zeitpunkt mit einem SHA-256 Hash versehen. Zur Laufzeit wird der Hash erneut berechnet und mit den gespeicherten Metadaten verglichen. Abweichungen werden der Benutzerin / dem Benutzer in der UI angezeigt.
+Die ausgelieferten Artefakte `catalog.json` und `vocabularies.json` werden zum Build-Zeitpunkt jeweils mit einem SHA-256-Hash versehen. Zur Laufzeit wird der Hash erneut berechnet und mit den gespeicherten Metadaten verglichen. Abweichungen werden der Benutzerin / dem Benutzer in der UI angezeigt.
 
 Siehe [INTEGRITY.md](./INTEGRITY.md) für Details.
 
@@ -188,7 +203,7 @@ Die Policy begrenzt Skripte, Datenabrufe, Bilder und Schriften auf die ausgelief
 Das Projekt verwendet den `@/` Alias für projektinterne Importe:
 
 ```typescript
-import { Control } from '@/domain/models';
+import type { Control } from '@/domain/models';
 import { parseCatalog } from '@/adapters/oscalAdapter';
 ```
 
@@ -219,13 +234,15 @@ Die Impressum-Werte kommen lokal aus `.env.local` (nicht committet, siehe `.env.
 Das Deployment erfolgt automatisch via GitHub Actions bei Push auf `main` (`.github/workflows/deploy.yml`):
 
 1. Gepinnter Snapshot-Commit wird aus `upstream-manifest.json` gelesen
-2. Katalog und Vokabulare werden von BSI GitHub abgerufen (`npm run fetch-catalog`)
+2. Alle materialisierten Registry-Artefakte werden gegen den BSI-Snapshot validiert; nur `supported`-Daten werden ausgeliefert (`npm run fetch-catalog`)
 3. Tests laufen mit Coverage
 4. App wird gebaut mit Impressum-Secrets
 5. SLSA-Provenance wird generiert (`actions/attest` über `dist/**`)
 6. Deployment auf GitHub Pages
 
-Der Katalog wird **nie** im Repository committet — er wird immer frisch zum Build-Zeitpunkt von BSI abgerufen. Der Workflow `.github/workflows/update-catalog.yml` überwacht das Upstream-Repository und aktualisiert `upstream-manifest.json` automatisch, wenn sich Katalog oder Namespace-Dateien ändern.
+Die generierten Katalog- und Vokabulardaten werden **nie** im Repository committet — sie werden immer frisch zum Build-Zeitpunkt von BSI abgerufen. Der Workflow `.github/workflows/update-catalog.yml` vergleicht die vollständigen Trees der in `sourceRegistry` definierten Monitoring-Wurzeln. Änderungen an registrierten Artefakten aktualisieren `upstream-manifest.json`; neue, nicht registrierte Dateien werden ausschließlich als `unclassified` gemeldet und weder gefetcht noch ausgeliefert. Tree-Dateidelta und Datenqualitätsbefunde erscheinen getrennt in Workflow-Ausgabe und PR-Beschreibung.
+
+Manifest v2 enthält für jede materialisierte Datei `artifactKey`, erwarteten `rootType`, `lifecycle`, Pfad, Git-Blob-SHA und Content-SHA-256. Dadurch umfasst das Delta auch registrierte Kataloge, Profile, Mappings und Component Definitions; produktiv ausgeliefert werden weiterhin ausschließlich `supported`-Artefakte.
 
 ### Policy-gesteuerter Catalog-Sync
 
@@ -236,11 +253,11 @@ Ein erkannter Upstream-Delta durchläuft folgende Lane:
 1. Der Workflow prüft Auto-Merge, automatische Branch-Löschung, Ruleset 15503378, required Checks und CodeQL. Da GitHub `bypass_actors` für minimal berechtigte Tokens redigiert, muss `updated_at` denselben Zeitpunkt wie das nach vollständigem Admin-Audit gesetzte `CATALOG_SYNC_RULESET_UPDATED_AT` bezeichnen; unterschiedliche ISO-Zeitzonenrepräsentationen desselben Zeitpunkts sind zulässig, jede tatsächliche Ruleset-Änderung blockiert dagegen bis zur erneuten Prüfung.
 2. Der deterministische Branch `chore/catalog-sync-<sha12>` wird neu aus `origin/main` aufgebaut und enthält genau einen Manifest-Commit.
 3. Die GitHub App pusht den Branch und erstellt oder aktualisiert den PR.
-4. `catalog-sync-guard`, `validate` und CodeQL laufen als von GitHub erzwungene Gates. Der Guard bindet dabei Datei-Inventur und Blob-SHAs an den ausgewählten BSI-Snapshot.
-5. Der Workflow aktiviert ausschließlich GitHub Auto-Merge mit Squash; GitHub führt den Merge erst nach grünen Gates aus und löscht danach den Branch.
-6. `.github/workflows/verify-catalog-merge.yml` verifiziert ereignisbasiert Merge-Commit und Manifest auf `main`. Es erwartet den normalen Push-Deploy und dispatcht nur nach erneuter Zustandsprüfung einen begrenzten Fallback.
+4. `catalog-sync-guard`, `validate` und CodeQL sind die erwarteten Required Checks. Der Guard bindet Registry-Metadaten, Datei-Inventur, Blob-SHAs und Content-Hashes an den ausgewählten BSI-Snapshot.
+5. Der Workflow fordert ausschließlich GitHub Auto-Merge mit Squash und Branch-Löschung an. Bei korrekt auf `main` gebundenem Ruleset führt GitHub den Merge erst nach grünen Gates aus.
+6. `.github/workflows/verify-catalog-merge.yml` soll ereignisbasiert Merge-Commit und Manifest auf `main` verifizieren. Es sucht zunächst den normalen Push-Deploy und darf nur nach erneuter Zustandsprüfung einen begrenzten Fallback dispatchen.
 
-Bei fehlender oder abweichender Policy, einem API-Fehler, unerwartetem Diff oder fehlendem `autoMergeRequest` wird nicht gemergt. Der BSI-Upstream bleibt dabei als Datenquelle grundsätzlich vertraut; eine fachliche Two-Source-Verifikation ist nicht Teil dieser Merge-Lane.
+Bei fehlender oder abweichender vom Preflight geprüfter Policy, einem API-Fehler, unerwartetem Diff oder fehlendem `autoMergeRequest` bricht der Workflow ab. Die derzeit noch nicht vollständig geprüfte Bindung der Ruleset-Conditions an `main` ist in GRU-255 erfasst; der Fehler im Post-Merge-Workflow in GRU-254. Der BSI-Upstream bleibt als Datenquelle grundsätzlich vertraut; eine fachliche Two-Source-Verifikation ist nicht Teil dieser Merge-Lane.
 
 ## Siehe auch
 

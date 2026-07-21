@@ -19,7 +19,7 @@ Das Vokabular-System ermöglicht die Anzeige der **offiziellen BSI-Definitionen*
 | Tags | `tags.csv` |
 | Zielobjekt-Kategorien | `target_object_categories.csv` |
 
-Die Anwendung lädt diese Vokabulare zur Build-Zeit von BSI und löst zur Laufzeit die Werte auf. Welche Namespaces geladen werden, ergibt sich aus den `ns`-URLs, die der Katalog selbst referenziert.
+Die Anwendung lädt diese Vokabulare zur Build-Zeit von BSI und löst zur Laufzeit die Werte auf. Die Collection ist im `sourceRegistry` registriert; welche ihrer CSV-Dateien tatsächlich materialisiert und ausgeliefert werden, ergibt sich ausschließlich aus den `ns`-URLs des unterstützten Katalogs.
 
 ## Architektur
 
@@ -29,9 +29,10 @@ BSI Repository (Dokumentation/namespaces/*.csv)
         ▼
 scripts/fetch-catalog.mjs (+ vocabulary-utils.mjs)
 • Extraktion der referenzierten Namespace-URLs aus dem Katalog
-• Abruf aller Vocabulary-CSV-Dateien (gepinnter Snapshot)
+• Materialisierung nur der referenzierten CSV-Dateien aus der Registry-Collection
+• Abruf und Prüfung am gepinnten Snapshot
 • Konvertierung zu JSON
-• Provenance + Upstream-Manifest
+• Datei-Provenance + vollständiges Upstream-Manifest v2
         │
         ▼
 public/data/
@@ -304,7 +305,7 @@ export function buildVocabularySourceUrl(
 
 ## CatalogContext-Integration
 
-`vocabularies.json` wird parallel zum Katalog als ArrayBuffer geladen und das Registry per `buildVocabularyRegistry` gebaut. Der Ladepfad gleicht das Artefakt per SHA-256 gegen den Integrity-Block in `upstream-sources-metadata.json` ab; das Ergebnis (`vocabularyVerification`) wird auf der Seite `/about` angezeigt (Details in [INTEGRITY.md](./INTEGRITY.md)). Fehlen die Vokabular-Artefakte, läuft die App ohne Registry weiter.
+`vocabularies.json` wird parallel zum Katalog als ArrayBuffer geladen und die Registry per `buildVocabularyRegistry` gebaut. Der Ladepfad gleicht das Artefakt per SHA-256 gegen den Integrity-Block in `upstream-sources-metadata.json` ab; das Ergebnis (`vocabularyVerification`) wird auf der Seite `/about` angezeigt (Details in [INTEGRITY.md](./INTEGRITY.md)). Fehlt `vocabularies.json`, läuft die App ohne Registry weiter. Fehlen nur die Metadaten, bleibt die aus dem vorhandenen Artefakt gebaute Registry nutzbar; Provenance und Verifikation bleiben dann leer und es wird eine Warnung in der Konsole protokolliert.
 
 ## Vocabulary-Seiten
 
@@ -320,9 +321,10 @@ export function buildVocabularySourceUrl(
 
 Detailseite für einen Namespace:
 
-- Alle Einträge als Karten (`VocabularyEntryCard`)
+- Alle Einträge als auswählbare Link-Liste
 - Einzelner Eintrag per Query-Parameter `?wert=` adressierbar (Deep-Link aus Control-Details)
-- Spalten-Konfiguration aus `columnOrder`
+- Definition und weitere nichtleere Spalten werden für den aktiven Eintrag mit `InlineVocabularyEntryDetails` direkt unter der Listenzeile eingeblendet
+- Reihenfolge der Zusatzspalten folgt `columnOrder`
 
 ## Siehe auch
 

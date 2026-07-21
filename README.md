@@ -17,12 +17,12 @@ Die App läuft vollständig im Browser. Keine Anmeldung, keine Installation.
 
 ## Was kann die App?
 
-- **Katalog browsen** — Hierarchische Navigation durch Praktiken, Themen und Kontrollen in einem ergonomischen 3-Panel-Layout (Tree, Tabelle, Detail). Route `/katalog`.
-- **Volltextsuche** — Schnelle, relevanzbasierte Suche über alle Kontrollen (FlexSearch) mit Lazy-Loading. Route `/suche`.
-- **Vokabulare nachschlagen** — Alle offiziellen BSI-Namespaces (Modalverben, Handlungswörter, Sicherheitsniveaus, Aufwandsstufen, Tags, Zielobjekte u. a.) als eigenständige Übersichten. Route `/vokabular`.
+- **Katalog browsen** — Hierarchische Navigation durch Praktiken, Themen und Kontrollen in einem ergonomischen 3-Panel-Layout (Tree, Tabelle, Detail). Route `/katalog/gspp`.
+- **Volltextsuche** — Schnelle, relevanzbasierte Suche über alle Kontrollen: FlexSearch baut die Indizes vollständig im Browser auf, die UI zeigt Treffer schrittweise in 50er-Portionen. Route `/suche`.
+- **Vokabulare nachschlagen** — Alle vom unterstützten Katalog referenzierten offiziellen BSI-Namespaces (Modalverben, Handlungswörter, Sicherheitsniveaus, Aufwandsstufen, Tags, Zielobjekte u. a.) als eigenständige Übersichten. Route `/vokabular`.
 - **Multi-Filter** — Kombinierbar: Sicherheitsniveau, Aufwandsstufe, Modalverb, Tags, Zielobjekt, Handlungswort, Dokumentationstyp, Link-Relation. Der gesamte Filterzustand wird in der URL gespiegelt und ist damit **teil- und bookmarkbar**.
 - **CSV-Export** — Gefilterte Tabelle oder manuelle Auswahl als CSV exportieren (semikolon-getrennt, Excel-freundlich). Der enthaltene Alt-Identifier ist im aktuellen Katalog eindeutig, aber nicht garantiert versionsstabil.
-- **Integritätsprüfung** — Zur Laufzeit wird die SHA-256 des geladenen Katalogs gegen einen beim Build gepinnten Wert verglichen. Ergebnis sichtbar auf der Startseite.
+- **Integritätsprüfung** — Zur Laufzeit wird die SHA-256 der ausgelieferten Katalog- und Vokabular-Artefakte gegen beim Build gepinnte Werte verglichen. Details für beide Artefakte stehen unter `/about`; der Footer zeigt zusätzlich den Kurzstatus des Katalogs.
 - **Responsive** — Desktop mit verschiebbaren Panels, Mobile mit Drawer und Touch-Gesten.
 
 ## Zielgruppe
@@ -35,7 +35,7 @@ IT-Sicherheitsbeauftragte, Berater:innen, Auditor:innen, Studierende und alle, d
 - **Lizenz der Katalogdaten:** [Creative Commons BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.de)
 - **Datenhaltung:** Die Katalogdaten werden **beim Build** aus dem BSI-Repository geladen. Im App-Repository wird keine Kopie gehalten.
 - **Integrität:** Ein fixierter Upstream-Commit (`upstream-manifest.json`) plus SHA-256-Verify zur Laufzeit macht nachvollziehbar, welche Katalogversion angezeigt wird. Details: [`docs/INTEGRITY.md`](docs/INTEGRITY.md).
-- **Aktualität:** Ein täglicher Workflow um 06:00 UTC prüft auf Upstream-Änderungen und öffnet bei Bedarf einen Pull Request.
+- **Aktualität:** Ein täglicher Workflow um 06:00 UTC (zusätzlich bei Push auf `main` und manuell) vergleicht die registrierten BSI-Artefakte samt überwachten Verzeichnisbäumen. Bei Änderungen aktualisiert er das Manifest per Pull Request und fordert einen automatischen Squash-Merge mit Branch-Löschung an. Das Workflow-Design sieht danach eine Prüfung von Manifest und Merge auf `main`, die Suche nach dem regulären Push-Deploy und nur bei dessen Ausbleiben einen erneut abgesicherten Fallback-Deploy vor. Aktuell offene operative Lücken dieser Lane sind in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) benannt.
 
 ## Datenschutz
 
@@ -75,7 +75,7 @@ npm run dev                        # http://localhost:5173
 | `npm run test:watch` | Vitest (Watch-Mode) |
 | `npm run test:coverage` | Vitest mit V8-Coverage |
 | `npm run lint` | ESLint |
-| `npm run fetch-catalog` | BSI-Katalog nach `public/data/` ziehen |
+| `npm run fetch-catalog` | registrierte BSI-Artefakte validieren und unterstützte Daten nach `public/data/` ausliefern |
 
 Die Coverage-Thresholds in `vite.config.ts` sind anhand der gemessenen
 Repository-Coverage kalibriert: Lines 57 %, Branches 55 %, Functions 56 %,
@@ -83,7 +83,7 @@ Statements 54 %. Sie sollen nicht ohne neue Baseline-Messung gesenkt werden.
 
 ## Architektur (Kurzfassung)
 
-Single-Page-App mit **Zwei-Schichten-Datenmodell**: Raw-OSCAL-Typen werden im Adapter-Layer in enrichte Domain-Typen überführt (`Control`, `Topic`, `Practice`, `Catalog`). Globaler Zustand via React Context; Filter werden bidirektional mit URL-Parametern synchronisiert und überleben Navigation. Die Katalog-Integrität wird per SHA-256 zur Laufzeit überprüft.
+Single-Page-App mit **Zwei-Schichten-Datenmodell**: Raw-OSCAL-Typen werden im Adapter-Layer in angereicherte Domain-Typen überführt (`Control`, `Topic`, `Practice`, `Catalog`). Globaler Zustand via React Context; Filter werden bidirektional mit URL-Parametern synchronisiert und überleben Navigation. Die Katalog-Integrität wird per SHA-256 zur Laufzeit überprüft.
 
 Tiefe:
 
@@ -95,7 +95,7 @@ Tiefe:
 
 ## Deployment
 
-Pushes nach `main` triggern den Deploy-Workflow: Katalog ziehen → Tests → Build → [SLSA-Provenance-Attestation](https://slsa.dev/) → GitHub Pages. Zusätzlich läuft täglich um 06:00 UTC ein Upstream-Sync, der bei Änderungen am BSI-Katalog automatisch einen Pull Request öffnet.
+Pushes nach `main` triggern den Deploy-Workflow: registrierte BSI-Artefakte validieren und unterstützte Daten ziehen → Tests → Build → [SLSA-Provenance-Attestation](https://slsa.dev/) → GitHub Pages. Der Upstream-Sync vergleicht täglich um 06:00 UTC sowie bei Main-Push und manuell den vollständigen überwachten BSI-Baum, erstellt bei einem Delta einen Manifest-PR und fordert Auto-Squash mit Branch-Löschung an. Das Post-Merge-Design soll anschließend den Stand auf `main` und den normalen Push-Deploy prüfen und einen Fallback nur nach erneuter Zustandsprüfung dispatchen; aktuell offene operative Lücken sind in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) dokumentiert.
 
 ## Beitragen
 
