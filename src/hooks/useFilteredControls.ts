@@ -349,8 +349,8 @@ export function useFilteredControls(
   }, [controls, filters, sort, hasActiveFilters, searchableTextByControl]);
 
   const filteredFacetCounts = useMemo(
-    () => computeFacetCounts(filtered),
-    [filtered],
+    () => hasActiveFilters ? computeFacetCounts(filtered) : facetCounts,
+    [facetCounts, filtered, hasActiveFilters],
   );
 
   return {
