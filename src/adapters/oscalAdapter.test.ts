@@ -815,16 +815,16 @@ describe('parseCatalog', () => {
     expect(catalog.controlsByAltIdentifier.size).toBe(1);
   });
 
-  it('omits controls without alt-identifier from the alt-identifier map', () => {
+  it('rejects controls without alt-identifier', () => {
     const doc = makeCatalog();
     doc.catalog.groups = [
       makePracticeGroup({
         groups: [makeGroup({ controls: [makeControl({ props: [] })] })],
       }),
     ];
-    const catalog = parseCatalog(doc);
-    expect(catalog.totalControls).toBe(1);
-    expect(catalog.controlsByAltIdentifier.size).toBe(0);
+    expect(() => parseCatalog(doc)).toThrow(
+      'Missing alt-identifier for control "GC.1.1" in catalog "gspp"',
+    );
   });
 
   it('rejects duplicate alt-identifiers within one catalog', () => {

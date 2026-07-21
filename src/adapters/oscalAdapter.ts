@@ -491,10 +491,16 @@ export function parseCatalog(raw: unknown, options: ParseCatalogOptions = {}): C
     controlsById.set(c.id, c);
   }
 
-  // Kanonische URL-Identität (ADR-0001): pro Katalog eindeutig, fail-closed.
+  // Kanonische URL-Identität (ADR-0001): pro Katalog vollständig und
+  // eindeutig, fail-closed — ein Control ohne alt-identifier wäre nach dem
+  // Routen-Cutover (GRU-235) nicht mehr adressierbar.
   const controlsByAltIdentifier = new Map<string, Control>();
   for (const c of allControls) {
-    if (!c.altIdentifier) continue;
+    if (!c.altIdentifier) {
+      throw new Error(
+        `Missing alt-identifier for control "${c.id}" in catalog "${catalogKey}"`,
+      );
+    }
     if (controlsByAltIdentifier.has(c.altIdentifier)) {
       throw new Error(
         `Duplicate alt-identifier "${c.altIdentifier}" in catalog "${catalogKey}"`,

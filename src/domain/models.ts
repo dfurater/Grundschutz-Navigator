@@ -331,8 +331,8 @@ export interface Catalog {
   controlsById: Map<string, Control>;
   /**
    * All controls indexed by their alt-identifier (canonical URL identity,
-   * ADR-0001). Controls without alt-identifier are omitted; duplicates within
-   * one catalog are rejected at parse time.
+   * ADR-0001). Missing or duplicate alt-identifiers within one catalog are
+   * rejected at parse time, so this map always covers every control.
    */
   controlsByAltIdentifier: Map<string, Control>;
   /** All controls as flat array */

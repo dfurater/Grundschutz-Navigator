@@ -35,6 +35,7 @@ const rawCatalogDocument = {
                 id: 'GC.1.1',
                 title: 'Kontrolle',
                 props: [
+                  { name: 'alt-identifier', value: 'uuid-gc-1-1' },
                   {
                     name: 'sec_level',
                     value: 'erhöht',
