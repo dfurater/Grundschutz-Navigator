@@ -1,7 +1,16 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { HeaderBar } from './HeaderBar';
+
+function renderHeaderWithEditableTarget(target: React.ReactNode) {
+  render(
+    <MemoryRouter>
+      <HeaderBar />
+      {target}
+    </MemoryRouter>,
+  );
+}
 
 describe('HeaderBar', () => {
   it('uses the header reference theme with focus-visible rings for interactive elements', () => {
@@ -30,5 +39,36 @@ describe('HeaderBar', () => {
 
     expect(classNames).toContain('header-reference-theme');
     expect(classNames).not.toContain('focus:ring-');
+  });
+
+  it.each([
+    ['Meta+K', { metaKey: true }],
+    ['Ctrl+K', { ctrlKey: true }],
+  ])('focuses the search field for %s outside editable targets', (_, modifier) => {
+    renderHeaderWithEditableTarget(<button type="button">Außerhalb</button>);
+    const outsideButton = screen.getByRole('button', { name: 'Außerhalb' });
+    const searchInput = screen.getByRole('searchbox', { name: 'Katalog durchsuchen' });
+    outsideButton.focus();
+
+    const wasNotPrevented = fireEvent.keyDown(outsideButton, { key: 'k', ...modifier });
+
+    expect(wasNotPrevented).toBe(false);
+    expect(searchInput).toHaveFocus();
+  });
+
+  it.each([
+    ['input', <input aria-label="Editierbares Ziel" key="input" />],
+    ['textarea', <textarea aria-label="Editierbares Ziel" key="textarea" />],
+    ['select', <select aria-label="Editierbares Ziel" key="select"><option>Option</option></select>],
+    ['contenteditable', <div aria-label="Editierbares Ziel" contentEditable key="contenteditable" tabIndex={0} />],
+  ])('preserves focus when the shortcut starts in an editable %s', (_, target) => {
+    renderHeaderWithEditableTarget(target);
+    const editableTarget = screen.getByLabelText('Editierbares Ziel');
+    editableTarget.focus();
+
+    const wasNotPrevented = fireEvent.keyDown(editableTarget, { key: 'k', metaKey: true });
+
+    expect(wasNotPrevented).toBe(true);
+    expect(editableTarget).toHaveFocus();
   });
 });

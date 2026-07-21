@@ -10,6 +10,16 @@ export interface HeaderBarProps {
   className?: string;
 }
 
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof Element)) return false;
+
+  if (target.closest('input, textarea, select')) return true;
+
+  const contentEditable = target.closest('[contenteditable]');
+  return contentEditable !== null
+    && contentEditable.getAttribute('contenteditable')?.toLowerCase() !== 'false';
+}
+
 export function HeaderBar({
   onSearch,
   onMenuToggle,
@@ -22,10 +32,11 @@ export function HeaderBar({
   // Cmd+K / Ctrl+K shortcut
   useEffect(() => {
     function handleKeyDown(e: globalThis.KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        inputRef.current?.focus();
-      }
+      if (!(e.metaKey || e.ctrlKey) || e.key !== 'k') return;
+      if (isEditableTarget(e.target)) return;
+
+      e.preventDefault();
+      inputRef.current?.focus();
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
