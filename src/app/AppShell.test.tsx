@@ -78,6 +78,7 @@ describe('AppShell', () => {
 
     mockedUseCatalog.mockReturnValue({
       catalog: {
+        catalogKey: 'gspp',
         uuid: 'catalog-1',
         metadata: {
           title: 'Grundschutz++',
@@ -92,6 +93,7 @@ describe('AppShell', () => {
         },
         practices: [],
         controlsById: new Map(),
+        controlsByAltIdentifier: new Map(),
         controls: [],
         backMatter: [],
         totalControls: 0,

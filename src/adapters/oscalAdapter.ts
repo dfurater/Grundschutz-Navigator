@@ -26,6 +26,8 @@ import type {
   LinkRelation,
   SecurityTargetRelevance,
 } from '@/domain/models';
+import { SUPPORTED_CATALOG_KEY } from '@/domain/sourceRegistry';
+import type { CatalogKey } from '@/domain/sourceRegistry';
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -445,14 +447,23 @@ function parseBackMatter(
 /*  Main Entry Point                                                   */
 /* ------------------------------------------------------------------ */
 
+/** Options for parseCatalog */
+export interface ParseCatalogOptions {
+  /** Source-registry catalog key; defaults to the supported catalog */
+  catalogKey?: CatalogKey;
+}
+
 /**
  * Parse a raw OSCAL document into an enriched Catalog.
  *
  * @param raw - The parsed JSON (either { catalog: ... } or the catalog itself)
+ * @param options - Catalog scope; identity per ADR-0001
  * @returns A fully enriched Catalog with practices, topics, and controls
- * @throws Error if the input structure is invalid
+ * @throws Error if the input structure is invalid or alt-identifiers collide
  */
-export function parseCatalog(raw: unknown): Catalog {
+export function parseCatalog(raw: unknown, options: ParseCatalogOptions = {}): Catalog {
+  const catalogKey = options.catalogKey ?? SUPPORTED_CATALOG_KEY;
+
   // Accept both { catalog: ... } wrapper and direct catalog object
   const doc = raw as Record<string, unknown>;
   const catalog: RawOscalCatalog = (
@@ -480,11 +491,31 @@ export function parseCatalog(raw: unknown): Catalog {
     controlsById.set(c.id, c);
   }
 
+  // Kanonische URL-Identität (ADR-0001): pro Katalog vollständig und
+  // eindeutig, fail-closed — ein Control ohne alt-identifier wäre nach dem
+  // Routen-Cutover (GRU-235) nicht mehr adressierbar.
+  const controlsByAltIdentifier = new Map<string, Control>();
+  for (const c of allControls) {
+    if (!c.altIdentifier) {
+      throw new Error(
+        `Missing alt-identifier for control "${c.id}" in catalog "${catalogKey}"`,
+      );
+    }
+    if (controlsByAltIdentifier.has(c.altIdentifier)) {
+      throw new Error(
+        `Duplicate alt-identifier "${c.altIdentifier}" in catalog "${catalogKey}"`,
+      );
+    }
+    controlsByAltIdentifier.set(c.altIdentifier, c);
+  }
+
   return {
+    catalogKey,
     uuid: catalog.uuid,
     metadata,
     practices,
     controlsById,
+    controlsByAltIdentifier,
     controls: allControls,
     backMatter: parseBackMatter(catalog['back-matter']),
     totalControls: allControls.length,

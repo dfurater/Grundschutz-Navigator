@@ -799,6 +799,50 @@ describe('parseCatalog', () => {
     expect(() => parseCatalog(null)).toThrow();
   });
 
+  it('defaults the catalogKey to the supported catalog', () => {
+    const catalog = parseCatalog(makeCatalog());
+    expect(catalog.catalogKey).toBe('gspp');
+  });
+
+  it('accepts an explicit catalogKey', () => {
+    const catalog = parseCatalog(makeCatalog(), { catalogKey: 'wlan' });
+    expect(catalog.catalogKey).toBe('wlan');
+  });
+
+  it('builds a catalog-scoped controlsByAltIdentifier map', () => {
+    const catalog = parseCatalog(makeCatalog());
+    expect(catalog.controlsByAltIdentifier.get('uuid-control-1')?.id).toBe('GC.1.1');
+    expect(catalog.controlsByAltIdentifier.size).toBe(1);
+  });
+
+  it('rejects controls without alt-identifier', () => {
+    const doc = makeCatalog();
+    doc.catalog.groups = [
+      makePracticeGroup({
+        groups: [makeGroup({ controls: [makeControl({ props: [] })] })],
+      }),
+    ];
+    expect(() => parseCatalog(doc)).toThrow(
+      'Missing alt-identifier for control "GC.1.1" in catalog "gspp"',
+    );
+  });
+
+  it('rejects duplicate alt-identifiers within one catalog', () => {
+    const doc = makeCatalog();
+    doc.catalog.groups = [
+      makePracticeGroup({
+        groups: [
+          makeGroup({
+            controls: [makeControl({ id: 'GC.1.1' }), makeControl({ id: 'GC.1.2' })],
+          }),
+        ],
+      }),
+    ];
+    expect(() => parseCatalog(doc)).toThrow(
+      'Duplicate alt-identifier "uuid-control-1" in catalog "gspp"',
+    );
+  });
+
   it('handles catalog with multiple practices', () => {
     const doc = makeCatalog();
     doc.catalog.groups = [
@@ -812,8 +856,16 @@ describe('parseCatalog', () => {
             id: 'STM.1',
             title: 'Definition',
             controls: [
-              makeControl({ id: 'STM.1.1', title: 'Informationsverbund' }),
-              makeControl({ id: 'STM.1.2', title: 'Anforderungspaket' }),
+              makeControl({
+                id: 'STM.1.1',
+                title: 'Informationsverbund',
+                props: [{ name: 'alt-identifier', value: 'uuid-control-stm-1' }],
+              }),
+              makeControl({
+                id: 'STM.1.2',
+                title: 'Anforderungspaket',
+                props: [{ name: 'alt-identifier', value: 'uuid-control-stm-2' }],
+              }),
             ],
           }),
         ],

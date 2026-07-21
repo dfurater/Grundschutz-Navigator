@@ -17,6 +17,7 @@ import {
   assertAllowedUpstreamRepoPath,
   resolveOptionalSnapshotSha,
 } from './security-guards.mjs';
+import { getExpectedRootType } from '../src/domain/sourceRegistry.mjs';
 
 const REPO = OFFICIAL_BSI_REPO;
 const CATALOG_PATH = OFFICIAL_CATALOG_PATH;
@@ -231,27 +232,43 @@ function serializeJsonArtifact(value, label) {
   return serialized;
 }
 
-function validateFetchedCatalogArtifact(catalogBuffer) {
-  if (catalogBuffer.length > MAX_CATALOG_ARTIFACT_BYTES) {
+const OSCAL_ROOT_TYPE_LABELS = {
+  catalog: { artifact: 'Katalog', root: 'Katalogwurzel' },
+  profile: { artifact: 'Profil', root: 'Profilwurzel' },
+  'mapping-collection': { artifact: 'Mapping-Collection', root: 'Mapping-Collection-Wurzel' },
+  'component-definition': { artifact: 'Component-Definition', root: 'Component-Definition-Wurzel' },
+};
+
+function validateFetchedOscalArtifact(artifactBuffer, expectedRootType) {
+  const labels = OSCAL_ROOT_TYPE_LABELS[expectedRootType];
+  if (!labels) {
+    throw new Error(`Unbekannter OSCAL-Root-Typ: ${expectedRootType}`);
+  }
+
+  if (artifactBuffer.length > MAX_CATALOG_ARTIFACT_BYTES) {
     throw new Error(
-      `Katalog überschreitet das erlaubte Artefaktlimit von ${MAX_CATALOG_ARTIFACT_BYTES} Bytes.`,
+      `${labels.artifact} überschreitet das erlaubte Artefaktlimit von ${MAX_CATALOG_ARTIFACT_BYTES} Bytes.`,
     );
   }
 
-  let parsedCatalog;
+  let parsedArtifact;
   try {
-    parsedCatalog = JSON.parse(catalogBuffer.toString('utf8'));
+    parsedArtifact = JSON.parse(artifactBuffer.toString('utf8'));
   } catch {
-    throw new Error('Katalog enthält kein gültiges JSON.');
+    throw new Error(`${labels.artifact} enthält kein gültiges JSON.`);
   }
 
-  const catalogDocument = assertJsonObject(parsedCatalog, 'Katalog');
-  assertJsonObject(catalogDocument.catalog, 'Katalogwurzel');
+  const artifactDocument = assertJsonObject(parsedArtifact, labels.artifact);
+  assertJsonObject(artifactDocument[expectedRootType], labels.root);
 
   return {
-    json: catalogDocument,
-    buffer: catalogBuffer,
+    json: artifactDocument,
+    buffer: artifactBuffer,
   };
+}
+
+function validateFetchedCatalogArtifact(catalogBuffer) {
+  return validateFetchedOscalArtifact(catalogBuffer, 'catalog');
 }
 
 function buildJsonArtifactBuffer(value, label) {
@@ -271,7 +288,10 @@ async function buildFetchArtifacts(logger = console, { retryDelaysMs = DEFAULT_R
   logger.log(`[1/5] Lade Katalog aus Snapshot ${fetchRef} ...`);
   const catalogInfo = await fetchFileInfo(CATALOG_PATH, fetchRef, logger, retryDelaysMs);
   const catalogRaw = await fetchRawFile(CATALOG_PATH, fetchRef, retryDelaysMs);
-  const catalogArtifact = validateFetchedCatalogArtifact(catalogRaw.buffer);
+  const catalogArtifact = validateFetchedOscalArtifact(
+    catalogRaw.buffer,
+    getExpectedRootType(CATALOG_PATH),
+  );
   const catalogJson = catalogArtifact.json;
 
   logger.log('[2/5] Ermittle referenzierte offizielle Namespace-Dateien ...');
@@ -407,6 +427,7 @@ async function buildFetchArtifacts(logger = console, { retryDelaysMs = DEFAULT_R
 export {
   buildFetchArtifacts,
   validateFetchedCatalogArtifact,
+  validateFetchedOscalArtifact,
   resolveOptionalSnapshotSha,
   serializeJsonArtifact,
 };

@@ -20,6 +20,7 @@ import type {
   VocabularyRegistryData,
 } from '@/domain/models';
 import { parseCatalog } from '@/adapters/oscalAdapter';
+import { SUPPORTED_CATALOG_KEY } from '@/domain/sourceRegistry';
 import { buildVocabularyRegistry } from '@/domain/vocabulary';
 import {
   fetchCatalogWithBuffer,
@@ -128,7 +129,7 @@ export function CatalogProvider({
 
         // 2. Parse OSCAL JSON into domain model
         const rawJson = JSON.parse(text);
-        const catalog = parseCatalog(rawJson);
+        const catalog = parseCatalog(rawJson, { catalogKey: SUPPORTED_CATALOG_KEY });
 
         // 3. Try to fetch provenance metadata and verify integrity
         let provenance: CatalogProvenance | null = null;
