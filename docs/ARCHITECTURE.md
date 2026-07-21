@@ -120,7 +120,7 @@ Feature-Komponenten und Hooks
 • resolveControlVocabularies() → Vokabular-Auflösung
 ```
 
-Der separate Sync-Pfad (`scripts/sync-upstream-manifest.mjs` mit `scripts/upstream-artifacts.mjs`) vergleicht die vollständigen normalisierten Trees des bisherigen und des neuen Snapshots. Erst dort entstehen die Status `added`, `modified` und `removed`; neue nicht registrierte Pfade werden als `unclassified` gemeldet, ohne ihren Blob zu fetchen oder sie auszuliefern.
+Der separate Sync-Pfad (`scripts/sync-upstream-manifest.mjs` mit `scripts/upstream-artifacts.mjs`) vergleicht die vollständigen normalisierten Trees des bisherigen und des neuen Snapshots. Erst dort entstehen die Status `added`, `modified` und `removed`; neue nicht registrierte Pfade werden als `unclassified` gemeldet, ohne ihren Blob zu fetchen oder sie auszuliefern. Weil `snapshotCommitSha` Bestandteil der Manifest-Signatur ist, löst auch ein neuer Snapshot, dessen einziges Delta eine unregistrierte Datei ist, diesen Vergleich aus.
 
 ## Zustandsverwaltung
 
