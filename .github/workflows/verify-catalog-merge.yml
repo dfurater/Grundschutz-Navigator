@@ -72,53 +72,17 @@ jobs:
           echo "snapshot_sha=$SNAPSHOT_SHA" >> "$GITHUB_OUTPUT"
           echo "signature=$SIGNATURE" >> "$GITHUB_OUTPUT"
 
-      - name: Confirm push deploy or dispatch safe fallback
+      - name: Confirm push deploy or require safe fallback
+        id: deploy
         env:
-          GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
           MERGE_COMMIT_SHA: ${{ steps.verify.outputs.merge_commit_sha }}
           SNAPSHOT_SHA: ${{ steps.verify.outputs.snapshot_sha }}
           SIGNATURE: ${{ steps.verify.outputs.signature }}
-        run: |
-          set -euo pipefail
+        run: node scripts/verify-catalog-deploy.mjs
 
-          for attempt in 1 2 3 4 5 6; do
-            RUN_JSON="$(gh run list \
-              --repo "$GITHUB_REPOSITORY" \
-              --workflow deploy.yml \
-              --commit "$MERGE_COMMIT_SHA" \
-              --event push \
-              --limit 1 \
-              --json databaseId,status,conclusion,url,headSha)"
-            if [ "$(printf '%s' "$RUN_JSON" | jq 'length')" -gt 0 ]; then
-              printf '%s\n' "$RUN_JSON" | jq -r '.[0] | "Push deploy found: \(.url) (\(.status)/\(.conclusion // \"pending\"))"'
-              exit 0
-            fi
-            if [ "$attempt" -lt 6 ]; then
-              sleep 10
-            fi
-          done
-
-          COMPARE_STATUS="$(gh api \
-            "repos/$GITHUB_REPOSITORY/compare/main...$MERGE_COMMIT_SHA" \
-            --jq '.status')"
-          case "$COMPARE_STATUS" in
-            identical|behind)
-              ;;
-            *)
-              echo "Merge commit is no longer verifiably on main; refusing fallback dispatch." >&2
-              exit 1
-              ;;
-          esac
-
-          MAIN_MANIFEST="$(gh api \
-            "repos/$GITHUB_REPOSITORY/contents/upstream-manifest.json?ref=main" \
-            -H 'Accept: application/vnd.github.raw')"
-          MAIN_SNAPSHOT="$(printf '%s' "$MAIN_MANIFEST" | jq -r '.snapshotCommitSha')"
-          MAIN_SIGNATURE="$(printf '%s' "$MAIN_MANIFEST" | jq -r '.signatureSha256')"
-          if [ "$MAIN_SNAPSHOT" != "$SNAPSHOT_SHA" ] || [ "$MAIN_SIGNATURE" != "$SIGNATURE" ]; then
-            echo "main no longer contains the verified manifest; refusing fallback dispatch." >&2
-            exit 1
-          fi
-
-          gh workflow run deploy.yml --repo "$GITHUB_REPOSITORY" --ref main
-          echo "No push deploy appeared after bounded retries; dispatched verified fallback deploy."
+      - name: Dispatch verified fallback deploy
+        if: steps.deploy.outputs.fallback_dispatch_required == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy.yml --repo "$GITHUB_REPOSITORY" --ref main
