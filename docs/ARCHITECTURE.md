@@ -69,7 +69,9 @@ scripts/              # Build-Skripte
   ├── vocabulary-utils.mjs        # CSV-/Namespace-Hilfsfunktionen
   ├── catalog-sync-guard.mjs      # Fail-closed Prüfung von Sync-PRs
   ├── catalog-sync-policy.mjs     # Prüfung der Repository-Policy
-  └── sync-upstream-manifest.mjs  # Manifest-Sync für update-catalog.yml
+  ├── sync-upstream-manifest.mjs  # Manifest-Sync für update-catalog.yml
+  ├── verify-catalog-deploy.mjs   # Post-Merge-Deploy bestätigen oder Fallback freigeben
+  └── check-deploy-idempotency.mjs # Redundanten Fallback-Deploy desselben Commits verhindern
 
 upstream-manifest.json            # Gepinnter Upstream-Snapshot (Manifest v2)
 
@@ -256,6 +258,7 @@ Ein erkannter Upstream-Delta durchläuft folgende Lane:
 4. `catalog-sync-guard`, `validate` und CodeQL sind die erwarteten Required Checks. Der Guard bindet Registry-Metadaten, Datei-Inventur, Blob-SHAs und Content-Hashes an den ausgewählten BSI-Snapshot.
 5. Der Workflow fordert ausschließlich GitHub Auto-Merge mit Squash und Branch-Löschung an. Das Ruleset ist über `conditions.ref_name.include = ["~DEFAULT_BRANCH"]` auf `main` gebunden, sodass GitHub den Merge erst nach grünen Gates ausführt.
 6. `.github/workflows/verify-catalog-merge.yml` verifiziert ereignisbasiert Merge-Commit und Manifest auf `main`. Die anschließende Deploy-Prüfung liegt in `scripts/verify-catalog-deploy.mjs`: Sie sucht den normalen Push-Deploy zum Merge-Commit und bestätigt ihn erst, wenn er einen terminalen Zustand mit `conclusion = success` erreicht hat. Ein fehlgeschlagener oder innerhalb des Budgets unbestätigter Deploy lässt den Verify-Job fehlschlagen. Erscheint gar kein Push-Deploy, werden Merge-Commit und Manifest erneut gegen `main` geprüft, bevor der Workflow den begrenzten Fallback dispatcht.
+7. Zwischen der letzten Prüfung und dem Dispatch kann GitHub den Push-Deploy noch registrieren; dieses Fenster ist durch weitere Prüfungen nicht schließbar. Der Fallback-Dispatch übergibt deshalb `dispatch_source=catalog-sync-fallback` an `deploy.yml`, wo der Job `idempotency_guard` (`scripts/check-deploy-idempotency.mjs`) prüft, ob für denselben Commit-SHA bereits ein Deploy-Lauf erfolgreich abgeschlossen wurde. Da die Concurrency-Gruppe `pages` den Fallback-Lauf hinter dem Push-Deploy einreiht, ist dessen Zustand zu diesem Zeitpunkt terminal. Der Guard kann einen Deploy ausschließlich verhindern, nie erzwingen: bei fehlgeschlagenem Lookup, fehlenden Eingaben oder einem Job-Fehler wird deployt. Ein manueller `workflow_dispatch` lässt `dispatch_source` leer und deployt immer.
 
 Bei fehlender oder abweichender vom Preflight geprüfter Policy, einem API-Fehler, unerwartetem Diff oder fehlendem `autoMergeRequest` bricht der Workflow ab. Der Preflight prüft die Bindung der Ruleset-Conditions an `main` fail-closed mit. Der BSI-Upstream bleibt als Datenquelle grundsätzlich vertraut; eine fachliche Two-Source-Verifikation ist nicht Teil dieser Merge-Lane.
 
