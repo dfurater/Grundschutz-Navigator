@@ -5,13 +5,7 @@ import type {
   EffortLevel,
   Modalverb,
   LinkRelation,
-  VocabularyRegistry,
 } from '@/domain/models';
-import { getControlLinkSearchText } from '@/domain/controlRelationships';
-import {
-  collectControlVocabularySearchTexts,
-  resolveControlVocabularies,
-} from '@/domain/vocabulary';
 
 /* ------------------------------------------------------------------ */
 /*  Filter State                                                       */
@@ -38,8 +32,6 @@ export interface ControlFilters {
   dokumentationstypen: string[];
   /** Filter by link relation values */
   linkRelationen: LinkRelation[];
-  /** Free-text search within statement/title */
-  searchTerm: string;
 }
 
 export const emptyFilters: ControlFilters = {
@@ -53,7 +45,6 @@ export const emptyFilters: ControlFilters = {
   handlungsworte: [],
   dokumentationstypen: [],
   linkRelationen: [],
-  searchTerm: '',
 };
 
 export type SortField = 'id' | 'title' | 'modalverb' | 'securityLevel' | 'effortLevel';
@@ -71,32 +62,9 @@ export type SortConfig = SortEntry[];
 /*  Filter Logic                                                       */
 /* ------------------------------------------------------------------ */
 
-function buildSearchableControlText(
-  control: Control,
-  vocabularyRegistry?: VocabularyRegistry | null,
-): string {
-  const vocabularyTexts = collectControlVocabularySearchTexts(
-    resolveControlVocabularies(vocabularyRegistry, control),
-  );
-
-  return [
-    control.id,
-    control.title,
-    control.statement,
-    control.statementProps.ergebnis ?? '',
-    control.statementProps.praezisierung ?? '',
-    control.statementProps.handlungsworte ?? '',
-    control.statementProps.dokumentation ?? '',
-    control.threats.join(' '),
-    ...vocabularyTexts,
-    getControlLinkSearchText(control.links),
-  ].join(' ').toLowerCase();
-}
-
 function matchesFilter(
   control: Control,
   filters: ControlFilters,
-  searchableControlText?: string,
 ): boolean {
   // Practice filter
   if (
@@ -175,12 +143,6 @@ function matchesFilter(
     const relationen = new Set(control.links.map((link) => link.relation));
     const hasMatch = filters.linkRelationen.some((relation) => relationen.has(relation));
     if (!hasMatch) return false;
-  }
-
-  // Text search
-  if (filters.searchTerm) {
-    const term = filters.searchTerm.toLowerCase();
-    if (!searchableControlText?.includes(term)) return false;
   }
 
   return true;
@@ -301,23 +263,15 @@ export interface UseFilteredControlsResult {
 export function useFilteredControls(
   controls: Control[],
   filters: ControlFilters,
+  sort?: SortConfig,
+  vocabularyRegistry?: unknown,
+): UseFilteredControlsResult;
+export function useFilteredControls(
+  controls: Control[],
+  filters: ControlFilters,
   sort: SortConfig = [{ field: 'id', direction: 'asc' }],
-  vocabularyRegistry?: VocabularyRegistry | null,
 ): UseFilteredControlsResult {
   const facetCounts = useMemo(() => computeFacetCounts(controls), [controls]);
-  const hasSearchTerm = filters.searchTerm.length > 0;
-  const searchableTextByControl = useMemo(() => {
-    if (!hasSearchTerm) {
-      return null;
-    }
-
-    return new Map(
-      controls.map((control) => [
-        control,
-        buildSearchableControlText(control, vocabularyRegistry),
-      ]),
-    );
-  }, [controls, hasSearchTerm, vocabularyRegistry]);
 
   const hasActiveFilters = useMemo(
     () =>
@@ -330,23 +284,18 @@ export function useFilteredControls(
       filters.zielobjektKategorien.length > 0 ||
       filters.handlungsworte.length > 0 ||
       filters.dokumentationstypen.length > 0 ||
-      filters.linkRelationen.length > 0 ||
-      filters.searchTerm.length > 0,
+      filters.linkRelationen.length > 0,
     [filters],
   );
 
   const filtered = useMemo(() => {
     const matched = hasActiveFilters
-      ? controls.filter((control) => matchesFilter(
-        control,
-        filters,
-        searchableTextByControl?.get(control),
-      ))
+      ? controls.filter((control) => matchesFilter(control, filters))
       : [...controls];
 
     matched.sort((a, b) => compareControls(a, b, sort));
     return matched;
-  }, [controls, filters, sort, hasActiveFilters, searchableTextByControl]);
+  }, [controls, filters, sort, hasActiveFilters]);
 
   const filteredFacetCounts = useMemo(
     () => hasActiveFilters ? computeFacetCounts(filtered) : facetCounts,

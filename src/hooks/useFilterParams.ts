@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { SecurityLevel, EffortLevel, Modalverb, LinkRelation } from '@/domain/models';
 import {
@@ -22,7 +22,6 @@ const P = {
   hw: 'hw',
   dt: 'dt',
   lr: 'lr',
-  q: 'q',
   sort: 'sort',
 } as const;
 
@@ -62,7 +61,6 @@ function deserializeFilters(params: URLSearchParams): ControlFilters {
     handlungsworte: splitParam(params, P.hw),
     dokumentationstypen: splitParam(params, P.dt),
     linkRelationen: splitParam(params, P.lr).filter((v) => VALID_LINK_RELATION.has(v)) as LinkRelation[],
-    searchTerm: params.get(P.q) ?? '',
   };
 }
 
@@ -115,10 +113,6 @@ function serializeAll(filters: ControlFilters, sort: SortConfig): URLSearchParam
   setOrDelete(params, P.dt, filters.dokumentationstypen);
   setOrDelete(params, P.lr, filters.linkRelationen);
 
-  if (filters.searchTerm) {
-    params.set(P.q, filters.searchTerm);
-  }
-
   if (!isDefaultSort(sort)) {
     params.set(P.sort, sort.map((e) => `${e.field}:${e.direction}`).join(','));
   }
@@ -141,7 +135,6 @@ export interface UseFilterParamsResult {
 
 export function useFilterParams(): UseFilterParamsResult {
   const [searchParams, setSearchParams] = useSearchParams();
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // Derive state from URL (single source of truth)
   const filters = useMemo(() => deserializeFilters(searchParams), [searchParams]);
@@ -172,28 +165,7 @@ export function useFilterParams(): UseFilterParamsResult {
     (nextOrUpdater: ControlFilters | ((prev: ControlFilters) => ControlFilters)) => {
       const current = filtersRef.current;
       const next = typeof nextOrUpdater === 'function' ? nextOrUpdater(current) : nextOrUpdater;
-
-      // Check if only searchTerm changed → debounce
-      const onlySearchChanged =
-        next.searchTerm !== current.searchTerm &&
-        next.modalverben === current.modalverben &&
-        next.securityLevels === current.securityLevels &&
-        next.effortLevels === current.effortLevels &&
-        next.tags === current.tags &&
-        next.zielobjektKategorien === current.zielobjektKategorien &&
-        next.handlungsworte === current.handlungsworte &&
-        next.dokumentationstypen === current.dokumentationstypen &&
-        next.linkRelationen === current.linkRelationen;
-
-      if (onlySearchChanged) {
-        clearTimeout(debounceRef.current);
-        debounceRef.current = setTimeout(() => {
-          flush(next, sortRef.current);
-        }, 300);
-      } else {
-        clearTimeout(debounceRef.current);
-        flush(next, sortRef.current);
-      }
+      flush(next, sortRef.current);
     },
     [flush],
   );
@@ -204,11 +176,6 @@ export function useFilterParams(): UseFilterParamsResult {
     },
     [flush],
   );
-
-  // Cleanup debounce on unmount
-  useEffect(() => {
-    return () => clearTimeout(debounceRef.current);
-  }, []);
 
   return { filters, setFilters, sort, setSort, searchString };
 }
