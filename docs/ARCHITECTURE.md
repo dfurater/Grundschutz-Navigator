@@ -250,14 +250,14 @@ Der Sync verwendet ausschließlich eine auf dieses Repository beschränkte GitHu
 
 Ein erkannter Upstream-Delta durchläuft folgende Lane:
 
-1. Der Workflow prüft Auto-Merge, automatische Branch-Löschung, Ruleset 15503378, required Checks und CodeQL. Da GitHub `bypass_actors` für minimal berechtigte Tokens redigiert, muss `updated_at` denselben Zeitpunkt wie das nach vollständigem Admin-Audit gesetzte `CATALOG_SYNC_RULESET_UPDATED_AT` bezeichnen; unterschiedliche ISO-Zeitzonenrepräsentationen desselben Zeitpunkts sind zulässig, jede tatsächliche Ruleset-Änderung blockiert dagegen bis zur erneuten Prüfung.
+1. Der Workflow prüft Auto-Merge, automatische Branch-Löschung, Ruleset 15503378 samt wirksamem Ref-Scope auf `main`, required Checks und CodeQL. Da GitHub `bypass_actors` für minimal berechtigte Tokens redigiert, muss `updated_at` denselben Zeitpunkt wie das nach vollständigem Admin-Audit gesetzte `CATALOG_SYNC_RULESET_UPDATED_AT` bezeichnen; unterschiedliche ISO-Zeitzonenrepräsentationen desselben Zeitpunkts sind zulässig, jede tatsächliche Ruleset-Änderung blockiert dagegen bis zur erneuten Prüfung.
 2. Der deterministische Branch `chore/catalog-sync-<sha12>` wird neu aus `origin/main` aufgebaut und enthält genau einen Manifest-Commit.
 3. Die GitHub App pusht den Branch und erstellt oder aktualisiert den PR.
 4. `catalog-sync-guard`, `validate` und CodeQL sind die erwarteten Required Checks. Der Guard bindet Registry-Metadaten, Datei-Inventur, Blob-SHAs und Content-Hashes an den ausgewählten BSI-Snapshot.
-5. Der Workflow fordert ausschließlich GitHub Auto-Merge mit Squash und Branch-Löschung an. Bei korrekt auf `main` gebundenem Ruleset führt GitHub den Merge erst nach grünen Gates aus.
+5. Der Workflow fordert ausschließlich GitHub Auto-Merge mit Squash und Branch-Löschung an. Das Ruleset ist über `conditions.ref_name.include = ["~DEFAULT_BRANCH"]` auf `main` gebunden, sodass GitHub den Merge erst nach grünen Gates ausführt.
 6. `.github/workflows/verify-catalog-merge.yml` soll ereignisbasiert Merge-Commit und Manifest auf `main` verifizieren. Es sucht zunächst den normalen Push-Deploy und darf nur nach erneuter Zustandsprüfung einen begrenzten Fallback dispatchen.
 
-Bei fehlender oder abweichender vom Preflight geprüfter Policy, einem API-Fehler, unerwartetem Diff oder fehlendem `autoMergeRequest` bricht der Workflow ab. Die derzeit noch nicht vollständig geprüfte Bindung der Ruleset-Conditions an `main` ist in GRU-255 erfasst; der Fehler im Post-Merge-Workflow in GRU-254. Der BSI-Upstream bleibt als Datenquelle grundsätzlich vertraut; eine fachliche Two-Source-Verifikation ist nicht Teil dieser Merge-Lane.
+Bei fehlender oder abweichender vom Preflight geprüfter Policy, einem API-Fehler, unerwartetem Diff oder fehlendem `autoMergeRequest` bricht der Workflow ab. Der Preflight prüft die Bindung der Ruleset-Conditions an `main` fail-closed mit; der Fehler im Post-Merge-Workflow ist in GRU-254 erfasst. Der BSI-Upstream bleibt als Datenquelle grundsätzlich vertraut; eine fachliche Two-Source-Verifikation ist nicht Teil dieser Merge-Lane.
 
 ## Siehe auch
 

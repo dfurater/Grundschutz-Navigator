@@ -6,6 +6,17 @@ export const CATALOG_SYNC_REPOSITORY = 'dfurater/Grundschutz-Navigator';
 export const CATALOG_SYNC_RULESET_ID = 15503378;
 export const GITHUB_ACTIONS_INTEGRATION_ID = 15368;
 export const REQUIRED_CHECKS = ['validate', 'catalog-sync-guard'];
+export const CATALOG_SYNC_PROTECTED_BRANCH = 'main';
+
+// A branch ruleset without a ref scope is `active` but applies to no branch at all.
+// Only these three include patterns are recognised as covering the protected branch;
+// fnmatch globs are rejected on purpose so that any scope drift fails the preflight
+// instead of silently widening or narrowing enforcement.
+export const ACCEPTED_REF_INCLUDES = Object.freeze([
+  '~DEFAULT_BRANCH',
+  '~ALL',
+  `refs/heads/${CATALOG_SYNC_PROTECTED_BRANCH}`,
+]);
 
 function findRule(ruleset, type) {
   return Array.isArray(ruleset.rules)
@@ -43,6 +54,12 @@ export function validateCatalogSyncPolicy(repository, ruleset, {
   if (repository?.delete_branch_on_merge !== true) {
     errors.push('automatic branch deletion must be enabled');
   }
+  // The whole sync lane is hard-wired to `main` (workflow triggers, compare bases,
+  // fallback dispatch). `~DEFAULT_BRANCH` in the ruleset only protects `main` while
+  // `main` actually is the default branch, so pin it here rather than assume it.
+  if (repository?.default_branch !== CATALOG_SYNC_PROTECTED_BRANCH) {
+    errors.push(`repository default branch must be ${CATALOG_SYNC_PROTECTED_BRANCH}`);
+  }
   if (ruleset?.id !== expectedRulesetId) {
     errors.push(`ruleset id must be ${expectedRulesetId}`);
   }
@@ -51,6 +68,29 @@ export function validateCatalogSyncPolicy(repository, ruleset, {
   }
   if (ruleset?.source !== expectedRepository || ruleset?.source_type !== 'Repository') {
     errors.push('ruleset must belong to the expected repository');
+  }
+
+  const refName = ruleset?.conditions?.ref_name;
+  if (!refName || typeof refName !== 'object' || Array.isArray(refName)) {
+    errors.push(
+      `ruleset conditions.ref_name must scope the ruleset to ${CATALOG_SYNC_PROTECTED_BRANCH}`,
+    );
+  } else {
+    const include = Array.isArray(refName.include) ? refName.include : undefined;
+    if (!include?.some((pattern) => ACCEPTED_REF_INCLUDES.includes(pattern))) {
+      errors.push(
+        `ruleset conditions.ref_name.include must cover ${CATALOG_SYNC_PROTECTED_BRANCH} via one of ${ACCEPTED_REF_INCLUDES.join(', ')}`,
+      );
+    }
+    // Any exclude entry is rejected: matching fnmatch patterns against `main` here
+    // would reimplement GitHub's ref matching, and getting that wrong fails open.
+    if (!Array.isArray(refName.exclude)) {
+      errors.push('ruleset conditions.ref_name.exclude must be an explicit array');
+    } else if (refName.exclude.length > 0) {
+      errors.push(
+        `ruleset conditions.ref_name.exclude must be empty so that ${CATALOG_SYNC_PROTECTED_BRANCH} cannot be carved out`,
+      );
+    }
   }
   if (
     expectedRulesetUpdatedAt &&
@@ -149,6 +189,9 @@ async function fetchRepositoryMergeSettings(repository, token, fetchImpl = fetch
         autoMergeAllowed
         deleteBranchOnMerge
         nameWithOwner
+        defaultBranchRef {
+          name
+        }
       }
     }
   `;
@@ -187,6 +230,7 @@ async function fetchRepositoryMergeSettings(repository, token, fetchImpl = fetch
     full_name: payload.data.repository.nameWithOwner,
     allow_auto_merge: payload.data.repository.autoMergeAllowed,
     delete_branch_on_merge: payload.data.repository.deleteBranchOnMerge,
+    default_branch: payload.data.repository.defaultBranchRef?.name,
   };
 }
 
