@@ -87,6 +87,29 @@ describe('checkDeployIdempotency', () => {
     await expect(checkDeployIdempotency(options(fetchImpl))).resolves.toBe(SKIP_DEPLOY);
   });
 
+  it('reports that a full result page may hide the successful run', async () => {
+    const messages: string[] = [];
+    const fullPage = Array.from({ length: 100 }, (_, index) => makeRun({
+      id: 1000 + index,
+      status: 'in_progress',
+      conclusion: null,
+    }));
+    const fetchImpl = makeFetch(fullPage);
+
+    await expect(
+      checkDeployIdempotency(options(fetchImpl, { log: (m: string) => messages.push(m) })),
+    ).resolves.toBe(RUN_DEPLOY);
+    expect(messages.join('\n')).toMatch(/may be incomplete/);
+  });
+
+  it('stays silent about pagination when the result page is not full', async () => {
+    const messages: string[] = [];
+    const fetchImpl = makeFetch([makeRun({ status: 'in_progress', conclusion: null })]);
+
+    await checkDeployIdempotency(options(fetchImpl, { log: (m: string) => messages.push(m) }));
+    expect(messages.join('\n')).not.toMatch(/may be incomplete/);
+  });
+
   it('does not even query for an abbreviated SHA, which the API never matches', async () => {
     const fetchImpl = makeFetch([makeRun()]);
     await expect(

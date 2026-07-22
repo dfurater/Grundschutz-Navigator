@@ -7,6 +7,7 @@ export const SKIP_DEPLOY = 'skip-deploy';
 export const RUN_DEPLOY = 'run-deploy';
 
 export const DEPLOY_WORKFLOW_FILE = 'deploy.yml';
+export const RESULT_PAGE_SIZE = 100;
 
 export async function checkDeployIdempotency({
   repository,
@@ -32,7 +33,7 @@ export async function checkDeployIdempotency({
   }
 
   const url = `https://api.github.com/repos/${repository}/actions/workflows/${DEPLOY_WORKFLOW_FILE}/runs`
-    + `?head_sha=${commitSha}&per_page=100`;
+    + `?head_sha=${commitSha}&per_page=${RESULT_PAGE_SIZE}`;
 
   let payload;
   try {
@@ -62,6 +63,14 @@ export async function checkDeployIdempotency({
   if (completed) {
     log(`Commit ${commitSha} already deployed successfully: ${completed.html_url}`);
     return SKIP_DEPLOY;
+  }
+
+  // A single page is enough for any realistic number of deploy runs per commit.
+  // If it ever fills up, the guard simply deploys — the safe direction — but it
+  // says so, so a silently ineffective guard stays diagnosable.
+  if (runs.length >= RESULT_PAGE_SIZE) {
+    log(`Found ${runs.length} runs for ${commitSha}; the result may be incomplete and a `
+      + 'successful deploy could have been missed. Deploying.');
   }
 
   return RUN_DEPLOY;
