@@ -92,6 +92,7 @@ Tiefe:
 - [`docs/INTEGRITY.md`](docs/INTEGRITY.md) — SHA-256-Pinning und Verify
 - [`docs/FILTERING.md`](docs/FILTERING.md) — Filter-Parameter, URL-Sync, Reihenfolge
 - [`docs/VOCABULARY.md`](docs/VOCABULARY.md) — Namespace-Modell für BSI-Vokabulare
+- [`docs/performance/GRU-217.md`](docs/performance/GRU-217.md) — Profiler-Vergleich der Kataloglisten
 
 ## Deployment
 

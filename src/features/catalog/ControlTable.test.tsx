@@ -151,4 +151,112 @@ describe('ControlTable', () => {
     expect(onSelectControl).toHaveBeenCalledWith(control);
     expect(onCheckedChange).toHaveBeenCalledWith(new Set(['GC.1.1']));
   });
+
+  it('does not render unchanged rows or recalculate depths on selection updates', () => {
+    const firstTitle = vi.fn(() => 'Erste Kontrolle');
+    const secondTitle = vi.fn(() => 'Zweite Kontrolle');
+    const first = makeControl({ id: 'GC.1.1' });
+    const second = makeControl({ id: 'GC.1.1.1', parentId: first.id });
+    Object.defineProperty(first, 'title', { configurable: true, get: firstTitle });
+    Object.defineProperty(second, 'title', { configurable: true, get: secondTitle });
+    const controls = [first, second];
+    const controlsById = new Map(controls.map((control) => [control.id, control]));
+    const mapGet = vi.spyOn(controlsById, 'get');
+    const onSortChange = vi.fn();
+    const onSelectControl = vi.fn();
+    const onCheckedChange = vi.fn();
+    const sort: SortConfig = [{ field: 'id', direction: 'asc' }];
+    const view = render(
+      <ControlTable
+        controls={controls}
+        controlsById={controlsById}
+        checkedIds={new Set()}
+        sort={sort}
+        onSortChange={onSortChange}
+        onSelectControl={onSelectControl}
+        onCheckedChange={onCheckedChange}
+      />,
+    );
+    const secondRow = screen.getAllByRole('row')[2];
+    const secondCheckbox = within(secondRow).getByRole('checkbox', {
+      name: `${second.id} auswählen`,
+    });
+
+    firstTitle.mockClear();
+    secondTitle.mockClear();
+    mapGet.mockClear();
+    const nextOnSelectControl = vi.fn();
+    const nextOnCheckedChange = vi.fn();
+    view.rerender(
+      <ControlTable
+        controls={controls}
+        controlsById={controlsById}
+        checkedIds={new Set([first.id])}
+        sort={sort}
+        onSortChange={onSortChange}
+        onSelectControl={onSelectControl}
+        onCheckedChange={onCheckedChange}
+      />,
+    );
+
+    expect(firstTitle).toHaveBeenCalled();
+    expect(secondTitle).not.toHaveBeenCalled();
+    expect(mapGet).not.toHaveBeenCalled();
+
+    firstTitle.mockClear();
+    secondTitle.mockClear();
+    mapGet.mockClear();
+    view.rerender(
+      <ControlTable
+        controls={controls}
+        controlsById={controlsById}
+        selectedControlId={first.id}
+        checkedIds={new Set([first.id])}
+        sort={sort}
+        onSortChange={onSortChange}
+        onSelectControl={nextOnSelectControl}
+        onCheckedChange={nextOnCheckedChange}
+      />,
+    );
+
+    expect(firstTitle).toHaveBeenCalled();
+    expect(secondTitle).not.toHaveBeenCalled();
+    expect(mapGet).not.toHaveBeenCalled();
+
+    fireEvent.click(secondCheckbox);
+    fireEvent.click(secondRow);
+
+    expect(nextOnCheckedChange).toHaveBeenCalledWith(new Set([first.id, second.id]));
+    expect(onCheckedChange).not.toHaveBeenCalled();
+    expect(nextOnSelectControl).toHaveBeenCalledWith(second);
+    expect(onSelectControl).not.toHaveBeenCalled();
+  });
+
+  it('keeps exactly one row tabbable when filtering shortens the result', () => {
+    const controls = [
+      makeControl({ id: 'GC.1.1' }),
+      makeControl({ id: 'GC.1.2' }),
+      makeControl({ id: 'GC.1.3' }),
+    ];
+    const controlsById = new Map(controls.map((control) => [control.id, control]));
+    const props = {
+      controlsById,
+      checkedIds: new Set<string>(),
+      sort: [{ field: 'id', direction: 'asc' }] as SortConfig,
+      onSortChange: vi.fn(),
+      onSelectControl: vi.fn(),
+      onCheckedChange: vi.fn(),
+    };
+    const view = render(<ControlTable {...props} controls={controls} />);
+    const initialRows = screen.getAllByRole('row').slice(1);
+
+    fireEvent.keyDown(initialRows[0], { key: 'End' });
+    expect(initialRows[2]).toHaveAttribute('tabindex', '0');
+
+    view.rerender(<ControlTable {...props} controls={[controls[0]]} />);
+
+    const remainingRows = screen.getAllByRole('row').slice(1);
+    expect(remainingRows).toHaveLength(1);
+    expect(remainingRows[0]).toHaveAttribute('tabindex', '0');
+  });
 });

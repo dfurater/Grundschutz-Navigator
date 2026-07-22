@@ -460,6 +460,11 @@ body.dev-selector-dragging * {
     min-width: 40rem;
   }
 
+  .catalog-mobile-reference-row {
+    content-visibility: auto;
+    contain-intrinsic-block-size: auto 5.5rem;
+  }
+
   .filter-count-badge {
     @apply inline-flex items-center justify-center px-1 font-semibold text-white rounded-full;
     min-width: 18px;
