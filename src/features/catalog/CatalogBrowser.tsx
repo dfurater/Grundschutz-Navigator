@@ -14,6 +14,7 @@ import { IconDownload, IconFilter, IconX, IconChevronDown, IconChevronLeft, Icon
 import { ControlMobileReferenceRow } from './ControlMobileReferenceRow';
 import { downloadCSV } from '@/features/export/csvExport';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useDragToResize } from '@/hooks/useDragToResize';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { Catalog, Control } from '@/domain/models';
 import { buildChildControlMap, buildIncomingLinkMap } from '@/domain/controlRelationships';
@@ -175,8 +176,18 @@ export function CatalogBrowser() {
   }, [showMobileFilters]);
 
   // Resizable detail panel
-  const [detailWidth, setDetailWidth] = useState(DETAIL_DEFAULT_WIDTH);
-  const [isResizing, setIsResizing] = useState(false);
+  const {
+    width: detailWidth,
+    isResizing,
+    setWidth: setDetailWidth,
+    startResize: handleResizeStart,
+  } = useDragToResize({
+    axis: 'x',
+    edge: 'start',
+    min: DETAIL_MIN_WIDTH,
+    max: DETAIL_MAX_WIDTH,
+    initial: DETAIL_DEFAULT_WIDTH,
+  });
   const asideRef = useRef<HTMLElement>(null);
 
   // URL-driven control selection uses only catalogKey + altIdentifier.
@@ -273,32 +284,6 @@ export function CatalogBrowser() {
     }
     return () => { document.body.style.overflow = ''; };
   }, [showMobileFilters, mobileExportOpen, showMobileDetail]);
-
-  // Drag-to-resize handler
-  const handleResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsResizing(true);
-    document.body.classList.add('is-resizing');
-
-    const startX = e.clientX;
-    const startWidth = detailWidth;
-
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      const delta = startX - moveEvent.clientX;
-      const newWidth = Math.min(DETAIL_MAX_WIDTH, Math.max(DETAIL_MIN_WIDTH, startWidth + delta));
-      setDetailWidth(newWidth);
-    };
-
-    const handleMouseUp = () => {
-      setIsResizing(false);
-      document.body.classList.remove('is-resizing');
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  }, [detailWidth]);
 
   // Reset filters/sort when the table scope changes and the URL is clean.
   // Filter-driven navigation with explicit query params still keeps its state.
