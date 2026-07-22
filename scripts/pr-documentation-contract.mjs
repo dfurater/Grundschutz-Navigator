@@ -61,10 +61,14 @@ function validateUpdatedDocumentation(section, changedFiles) {
 }
 
 function validateNoDocumentationImpact(section) {
-  const reason = extractBlock(section, REASON_START, REASON_END)
-    ?.replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  const rawReason = extractBlock(section, REASON_START, REASON_END);
+  if (rawReason?.includes('<!--') || rawReason?.includes('-->')) {
+    throw new DocumentationContractError(
+      'Die Begründung darf keine HTML-Kommentar-Marker enthalten.',
+    );
+  }
+
+  const reason = rawReason?.replace(/\s+/g, ' ').trim();
   const genericReasons = new Set(['n/a', 'keine auswirkung', 'nicht relevant']);
 
   if (

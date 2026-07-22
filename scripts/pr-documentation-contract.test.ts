@@ -130,7 +130,17 @@ describe('validateDocumentationContract', () => {
       pullRequestBody: bodyWithoutDocumentation(
         '<!-- Dieser Text ist im gerenderten Pull Request vollständig unsichtbar. -->',
       ),
-    })).toThrow(/konkrete Begründung/);
+    })).toThrow(/HTML-Kommentar-Marker/);
+  });
+
+  it.each([
+    '<!-- interner Kommentar --> Diese sichtbare Begründung wäre ansonsten lang und konkret genug.',
+    '--> Diese sichtbare Begründung enthält einen verwaisten schließenden Kommentar-Marker.',
+  ])('rejects HTML comment markers instead of trying to sanitize them: %s', (reason) => {
+    expect(() => validateDocumentationContract({
+      changedFiles: ['src/domain/models.ts'],
+      pullRequestBody: bodyWithoutDocumentation(reason),
+    })).toThrow(/HTML-Kommentar-Marker/);
   });
 
   it('treats only the repository root README as governed documentation', () => {
