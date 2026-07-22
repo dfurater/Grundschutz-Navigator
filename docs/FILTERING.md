@@ -9,7 +9,7 @@ Das Filter-System ermöglicht das Filtern des Grundschutz-Katalogs nach mehreren
 - Filter per URL geteilt werden können
 - Browser-Navigation (vor/zurück) funktioniert
 
-Practice- und Topic-Auswahl laufen nicht über Query-Parameter, sondern über die Route (`/katalog/:groupId`). Der `CatalogBrowser` schränkt darüber die Eingabemenge des Hooks ein (`scopedControls`), bevor die Query-Parameter-Filter greifen. Die Felder `practiceIds`/`groupIds` in `ControlFilters` sind davon unabhängige Filterdimensionen des Hooks.
+Practice- und Topic-Auswahl laufen nicht über Query-Parameter, sondern über die kataloggescopte Route (`/katalog/:catalogKey/:groupId`). Control-Details verwenden die kanonische Route `/katalog/:catalogKey/kontrolle/:altIdentifier`. Der `CatalogBrowser` schränkt über die Gruppenauswahl die Eingabemenge des Hooks ein (`scopedControls`), bevor die Query-Parameter-Filter greifen. Die Felder `practiceIds`/`groupIds` in `ControlFilters` sind davon unabhängige Filterdimensionen des Hooks.
 
 ## Filter-Dimensionen
 

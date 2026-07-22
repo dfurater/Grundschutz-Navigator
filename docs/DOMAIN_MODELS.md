@@ -175,7 +175,7 @@ interface Control {
   id: string;                    // e.g. "GC.1.1"
   parentId?: string;             // e.g. "GC.5.1" for "GC.5.1.1"
   title: string;
-  altIdentifier?: string;        // UUID
+  altIdentifier?: string;        // kanonischer Control-Identifier für URLs
 
   groupId: string;               // e.g. "GC.1" (Topic)
   practiceId: string;            // e.g. "GC" (Practice)
@@ -259,15 +259,30 @@ interface Practice {
 
 ```typescript
 interface Catalog {
+  catalogKey: CatalogKey;                   // e.g. "gspp"
   uuid: string;
   metadata: CatalogMetadataInfo;
   practices: Practice[];
-  controlsById: Map<string, Control>;  // O(1) lookup
+  controlsById: Map<string, Control>;       // interne OSCAL-Referenzen
+  controlsByAltIdentifier: Map<string, Control>; // kanonische URL-Auflösung
   controls: Control[];
   backMatter: CatalogResource[];
   totalControls: number;
 }
 ```
+
+`controlsByAltIdentifier` ist katalogintern vollständig und eindeutig. Der Parser lehnt Kontrollen mit fehlendem oder im selben Katalog doppeltem Alt-Identifier als Integritätsfehler ab. Derselbe Alt-Identifier darf in verschiedenen Katalogen vorkommen, weil die kanonische URL-Identität immer aus `catalogKey + altIdentifier` besteht.
+
+### ControlRef (interne Referenzidentität)
+
+```typescript
+interface ControlRef {
+  catalogKey: CatalogKey;
+  controlId: string;
+}
+```
+
+`ControlRef` modelliert die kataloggescopte interne OSCAL-Referenzidentität und steht für katalogübergreifende Auflösung bereit. Der aktuelle aktive Katalog hält Parent-/Child- und Link-Ziele weiterhin als kataloginterne String-IDs. URLs verwenden bewusst nicht `controlId`, sondern `catalogKey + altIdentifier`.
 
 ## Transformation (oscalAdapter)
 
@@ -276,7 +291,16 @@ Die Transformation von Raw → Enriched erfolgt in `src/adapters/oscalAdapter.ts
 ### Hauptfunktion
 
 ```typescript
-export function parseCatalog(raw: unknown): Catalog {
+interface ParseCatalogOptions {
+  catalogKey?: CatalogKey;
+}
+
+export function parseCatalog(
+  raw: unknown,
+  options: ParseCatalogOptions = {},
+): Catalog {
+  const catalogKey = options.catalogKey ?? SUPPORTED_CATALOG_KEY;
+
   // Accept both { catalog: ... } wrapper and direct catalog object
   const doc = raw as Record<string, unknown>;
   const catalog: RawOscalCatalog = (
@@ -289,9 +313,11 @@ export function parseCatalog(raw: unknown): Catalog {
     );
   }
 
-  // ... parsePractice() je Gruppe, controlsById-Index, parseBackMatter()
+  // ... parsePractice() je Gruppe, beide Control-Indizes, parseBackMatter()
 }
 ```
+
+Der optionale `catalogKey` stammt aus dem Quellregister. Beim Aufbau von `controlsByAltIdentifier` failt `parseCatalog` geschlossen, wenn ein Control keinen Alt-Identifier besitzt oder derselbe Wert innerhalb des Katalogs mehrfach vorkommt.
 
 ### Rekursives Steuerungs-Parsing
 
@@ -370,20 +396,24 @@ Das Update-Contract mit dem BSI-Repository (Basis für `update-catalog.yml` und 
 
 ```typescript
 interface UpstreamManifestFile {
-  kind: 'catalog' | 'namespace';
+  artifactKey: string;
+  rootType: ManifestRootType;
+  lifecycle: ArtifactLifecycle;
   path: string;
-  namespace?: string;
   gitBlobSha: string;
+  contentSha256: string;
 }
 
 interface UpstreamManifest {
+  schemaVersion: 2;
   repository: string;
   snapshotCommitSha: string;
-  catalogPath: string;
   files: UpstreamManifestFile[];
   signatureSha256: string;
 }
 ```
+
+`ManifestRootType` umfasst die unterstützten OSCAL-Root-Typen sowie `vocabulary`; `ArtifactLifecycle` unterscheidet `supported`, `preview`, `draft` und `blocked-by-upstream`. Preview- und Draft-Dateien werden zur Provenance transient validiert, aber nicht als App-Daten ausgeliefert.
 
 ## Provenance/Integrity Types
 
