@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  CATALOG_SYNC_PROTECTED_BRANCH,
   CATALOG_SYNC_REPOSITORY,
   CATALOG_SYNC_RULESET_ID,
   GITHUB_ACTIONS_INTEGRATION_ID,
@@ -12,6 +13,7 @@ function makeRepository() {
     full_name: CATALOG_SYNC_REPOSITORY,
     allow_auto_merge: true,
     delete_branch_on_merge: true,
+    default_branch: CATALOG_SYNC_PROTECTED_BRANCH,
   };
 }
 
@@ -24,6 +26,7 @@ function makeRuleset() {
     enforcement: 'active',
     updated_at: '2026-07-19T14:00:00Z',
     bypass_actors: [],
+    conditions: { ref_name: { include: ['~DEFAULT_BRANCH'], exclude: [] } },
     rules: [
       { type: 'deletion' },
       { type: 'non_fast_forward' },
@@ -60,6 +63,65 @@ function makeRuleset() {
 describe('validateCatalogSyncPolicy', () => {
   it('accepts the exact auto-merge, required-check, and CodeQL policy', () => {
     expect(validateCatalogSyncPolicy(makeRepository(), makeRuleset())).toBe(true);
+  });
+
+  it.each([
+    ['~DEFAULT_BRANCH'],
+    ['~ALL'],
+    [`refs/heads/${CATALOG_SYNC_PROTECTED_BRANCH}`],
+  ])('accepts %s as an effective ref scope', (pattern) => {
+    const ruleset = makeRuleset();
+    ruleset.conditions.ref_name.include = [pattern];
+    expect(validateCatalogSyncPolicy(makeRepository(), ruleset)).toBe(true);
+  });
+
+  it('rejects a ruleset without any conditions object', () => {
+    const ruleset: Record<string, unknown> = makeRuleset();
+    delete ruleset.conditions;
+    expect(() => validateCatalogSyncPolicy(makeRepository(), ruleset)).toThrow(
+      'conditions.ref_name must scope the ruleset to main',
+    );
+  });
+
+  it('rejects an empty include list, which leaves the ruleset scoped to no branch', () => {
+    const ruleset = makeRuleset();
+    ruleset.conditions.ref_name.include = [];
+    expect(() => validateCatalogSyncPolicy(makeRepository(), ruleset)).toThrow(
+      'conditions.ref_name.include must cover main',
+    );
+  });
+
+  it('rejects an include list that does not cover main, including fnmatch globs', () => {
+    for (const include of [['refs/heads/release/*'], ['refs/heads/*'], ['~ALL_BRANCHES']]) {
+      const ruleset = makeRuleset();
+      ruleset.conditions.ref_name.include = include;
+      expect(() => validateCatalogSyncPolicy(makeRepository(), ruleset)).toThrow(
+        'conditions.ref_name.include must cover main',
+      );
+    }
+  });
+
+  it('rejects an exclude list that could carve main back out', () => {
+    const ruleset = makeRuleset();
+    ruleset.conditions.ref_name.exclude = [`refs/heads/${CATALOG_SYNC_PROTECTED_BRANCH}`];
+    expect(() => validateCatalogSyncPolicy(makeRepository(), ruleset)).toThrow(
+      'conditions.ref_name.exclude must be empty',
+    );
+  });
+
+  it('rejects a missing exclude array instead of treating it as empty', () => {
+    const ruleset: { conditions: { ref_name: Record<string, unknown> } } = makeRuleset();
+    delete ruleset.conditions.ref_name.exclude;
+    expect(() => validateCatalogSyncPolicy(makeRepository(), ruleset)).toThrow(
+      'conditions.ref_name.exclude must be an explicit array',
+    );
+  });
+
+  it('rejects a repository whose default branch is not main', () => {
+    const repository = { ...makeRepository(), default_branch: 'develop' };
+    expect(() => validateCatalogSyncPolicy(repository, makeRuleset())).toThrow(
+      'repository default branch must be main',
+    );
   });
 
   it('rejects a missing required GitHub Actions check', () => {
@@ -134,6 +196,7 @@ describe('validateCatalogSyncPolicy', () => {
                 autoMergeAllowed: true,
                 deleteBranchOnMerge: true,
                 nameWithOwner: CATALOG_SYNC_REPOSITORY,
+                defaultBranchRef: { name: CATALOG_SYNC_PROTECTED_BRANCH },
               },
             },
           }
