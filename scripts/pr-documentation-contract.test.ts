@@ -59,6 +59,13 @@ describe('validateDocumentationContract', () => {
     })).toThrow(/Abschnitt „Dokumentationsauswirkung“ fehlt/);
   });
 
+  it('requires the contract when a source file is renamed outside src', () => {
+    expect(() => validateDocumentationContract({
+      changedFiles: ['src/domain/models.ts', 'packages/domain/models.ts'],
+      pullRequestBody: '',
+    })).toThrow(/Abschnitt „Dokumentationsauswirkung“ fehlt/);
+  });
+
   it('rejects a contract with no selected option', () => {
     expect(() => validateDocumentationContract({
       changedFiles: ['src/domain/models.ts'],
@@ -124,6 +131,13 @@ describe('validateDocumentationContract', () => {
       changedFiles: ['src/domain/models.ts', 'docs/DOMAIN_MODELS.md'],
       pullRequestBody: bodyWithDocumentation('`docs/ARCHITECTURE.md`'),
     })).toThrow(/geänderte Dokumentationsdatei genannt/);
+  });
+
+  it('explains that changed documentation files must be declared in backticks', () => {
+    expect(() => validateDocumentationContract({
+      changedFiles: ['src/domain/models.ts', 'docs/DOMAIN_MODELS.md'],
+      pullRequestBody: bodyWithDocumentation('docs/DOMAIN_MODELS.md'),
+    })).toThrow(/in Backticks/);
   });
 
   it('does not accept a changed documentation path as a substring of another path', () => {
@@ -202,7 +216,15 @@ describe('getChangedFiles', () => {
     ]);
     expect(execFile).toHaveBeenCalledWith(
       'git',
-      ['diff', '--name-only', '--diff-filter=ACMRD', '-z', `${baseSha}...${headSha}`, '--'],
+      [
+        'diff',
+        '--name-only',
+        '--no-renames',
+        '--diff-filter=ACMRD',
+        '-z',
+        `${baseSha}...${headSha}`,
+        '--',
+      ],
       { encoding: 'utf8' },
     );
   });

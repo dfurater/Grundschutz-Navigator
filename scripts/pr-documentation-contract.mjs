@@ -66,13 +66,13 @@ function validateUpdatedDocumentation(section, changedFiles) {
   const declaredFiles = extractBlock(section, FILES_START, FILES_END);
   if (!declaredFiles || declaredFiles === DEFAULT_FILES_PLACEHOLDER) {
     throw new DocumentationContractError(
-      'Unter „Betroffene Dateien“ muss mindestens eine geänderte Dokumentationsdatei genannt werden.',
+      'Unter „Betroffene Dateien“ muss mindestens eine geänderte Dokumentationsdatei genannt werden (Pfad in Backticks).',
     );
   }
 
   if (!documentationFiles.some((file) => declaredFiles.includes(`\`${file}\``))) {
     throw new DocumentationContractError(
-      'Unter „Betroffene Dateien“ muss mindestens eine geänderte Dokumentationsdatei genannt werden.',
+      'Unter „Betroffene Dateien“ muss mindestens eine geänderte Dokumentationsdatei genannt werden (Pfad in Backticks).',
     );
   }
 }
@@ -86,13 +86,11 @@ function validateNoDocumentationImpact(section) {
   }
 
   const reason = rawReason?.replace(/\s+/g, ' ').trim();
-  const genericReasons = new Set(['n/a', 'keine auswirkung', 'nicht relevant']);
 
   if (
     !reason
     || reason === DEFAULT_REASON_PLACEHOLDER
     || reason.length < 30
-    || genericReasons.has(reason.toLocaleLowerCase('de-DE'))
   ) {
     throw new DocumentationContractError(
       'Für „Keine Dokumentationsauswirkung“ ist eine konkrete Begründung erforderlich.',
@@ -141,7 +139,15 @@ export function getChangedFiles({ baseSha, headSha, execFile = execFileSync }) {
   const validatedHeadSha = validateGitSha(headSha, 'PR_HEAD_SHA');
   const output = execFile(
     'git',
-    ['diff', '--name-only', '--diff-filter=ACMRD', '-z', `${validatedBaseSha}...${validatedHeadSha}`, '--'],
+    [
+      'diff',
+      '--name-only',
+      '--no-renames',
+      '--diff-filter=ACMRD',
+      '-z',
+      `${validatedBaseSha}...${validatedHeadSha}`,
+      '--',
+    ],
     { encoding: 'utf8' },
   );
 
