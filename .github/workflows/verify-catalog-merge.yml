@@ -81,8 +81,14 @@ jobs:
           SIGNATURE: ${{ steps.verify.outputs.signature }}
         run: node scripts/verify-catalog-deploy.mjs
 
+      # `dispatch_source` lets deploy.yml recognise this run as the fallback and
+      # skip itself if the push deploy registered after the last check above.
       - name: Dispatch verified fallback deploy
         if: steps.deploy.outputs.fallback_dispatch_required == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run deploy.yml --repo "$GITHUB_REPOSITORY" --ref main
+        run: |
+          gh workflow run deploy.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            --raw-field dispatch_source=catalog-sync-fallback

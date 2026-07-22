@@ -4,6 +4,13 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      dispatch_source:
+        description: >-
+          Leave empty for a manual deploy. `catalog-sync-fallback` marks the
+          automated fallback dispatch and enables the idempotency guard below.
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -17,7 +24,41 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The catalog-sync fallback (verify-catalog-merge.yml) dispatches this workflow
+  # when it saw no push deploy for the merge commit. Between its last check and
+  # the dispatch, GitHub can still register the push deploy, which would deploy
+  # the same commit twice. The `pages` concurrency group queues this run behind
+  # that push deploy, so by the time this guard runs the push deploy has reached
+  # a terminal state and the check is meaningful. The guard is deliberately
+  # limited to the fallback: a manual dispatch leaves `dispatch_source` empty and
+  # always deploys, so a re-deploy on an unchanged main stays possible.
+  idempotency_guard:
+    if: github.event.inputs.dispatch_source == 'catalog-sync-fallback'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      skip_deploy: ${{ steps.check.outputs.skip_deploy }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Check whether this commit already deployed
+        id: check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/check-deploy-idempotency.mjs
+
   build-and-deploy:
+    needs: [idempotency_guard]
+    # `!cancelled()` keeps this job reachable when the guard is skipped (push and
+    # manual dispatch) or fails. The guard may only prevent a redundant deploy,
+    # never a required one.
+    if: ${{ !cancelled() && needs.idempotency_guard.outputs.skip_deploy != 'true' }}
     runs-on: ubuntu-latest
     environment:
       name: github-pages
