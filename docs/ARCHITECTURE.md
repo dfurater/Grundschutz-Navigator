@@ -257,7 +257,7 @@ Ein erkannter Upstream-Delta durchläuft folgende Lane:
 5. Der Workflow fordert ausschließlich GitHub Auto-Merge mit Squash und Branch-Löschung an. Das Ruleset ist über `conditions.ref_name.include = ["~DEFAULT_BRANCH"]` auf `main` gebunden, sodass GitHub den Merge erst nach grünen Gates ausführt.
 6. `.github/workflows/verify-catalog-merge.yml` soll ereignisbasiert Merge-Commit und Manifest auf `main` verifizieren. Es sucht zunächst den normalen Push-Deploy und darf nur nach erneuter Zustandsprüfung einen begrenzten Fallback dispatchen.
 
-Bei fehlender oder abweichender vom Preflight geprüfter Policy, einem API-Fehler, unerwartetem Diff oder fehlendem `autoMergeRequest` bricht der Workflow ab. Die derzeit noch nicht vollständig geprüfte Bindung der Ruleset-Conditions an `main` ist in GRU-255 erfasst; der Fehler im Post-Merge-Workflow in GRU-254. Der BSI-Upstream bleibt als Datenquelle grundsätzlich vertraut; eine fachliche Two-Source-Verifikation ist nicht Teil dieser Merge-Lane.
+Bei fehlender oder abweichender vom Preflight geprüfter Policy, einem API-Fehler, unerwartetem Diff oder fehlendem `autoMergeRequest` bricht der Workflow ab. Der Preflight prüft die Bindung der Ruleset-Conditions an `main` fail-closed mit; der Fehler im Post-Merge-Workflow ist in GRU-254 erfasst. Der BSI-Upstream bleibt als Datenquelle grundsätzlich vertraut; eine fachliche Two-Source-Verifikation ist nicht Teil dieser Merge-Lane.
 
 ## Siehe auch
 
