@@ -35,7 +35,7 @@ IT-Sicherheitsbeauftragte, Berater:innen, Auditor:innen, Studierende und alle, d
 - **Lizenz der Katalogdaten:** [Creative Commons BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.de)
 - **Datenhaltung:** Die Katalogdaten werden **beim Build** aus dem BSI-Repository geladen. Im App-Repository wird keine Kopie gehalten.
 - **Integrität:** Ein fixierter Upstream-Commit (`upstream-manifest.json`) plus SHA-256-Verify zur Laufzeit macht nachvollziehbar, welche Katalogversion angezeigt wird. Details: [`docs/INTEGRITY.md`](docs/INTEGRITY.md).
-- **Aktualität:** Ein täglicher Workflow um 06:00 UTC (zusätzlich bei Push auf `main` und manuell) vergleicht die registrierten BSI-Artefakte samt überwachten Verzeichnisbäumen. Bei Änderungen aktualisiert er das Manifest per Pull Request und fordert einen automatischen Squash-Merge mit Branch-Löschung an. Das Workflow-Design sieht danach eine Prüfung von Manifest und Merge auf `main`, die Suche nach dem regulären Push-Deploy und nur bei dessen Ausbleiben einen erneut abgesicherten Fallback-Deploy vor. Aktuell offene operative Lücken dieser Lane sind in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) benannt.
+- **Aktualität:** Ein täglicher Workflow um 06:00 UTC (zusätzlich bei Push auf `main` und manuell) vergleicht die registrierten BSI-Artefakte samt überwachten Verzeichnisbäumen. Bei Änderungen aktualisiert er das Manifest per Pull Request und fordert einen automatischen Squash-Merge mit Branch-Löschung an. Danach prüft der Workflow Manifest und Merge auf `main`, bestätigt den regulären Push-Deploy erst nach dessen erfolgreichem Abschluss und dispatcht nur bei seinem Ausbleiben einen erneut abgesicherten Fallback-Deploy.
 
 ## Datenschutz
 
@@ -95,7 +95,7 @@ Tiefe:
 
 ## Deployment
 
-Pushes nach `main` triggern den Deploy-Workflow: registrierte BSI-Artefakte validieren und unterstützte Daten ziehen → Tests → Build → [SLSA-Provenance-Attestation](https://slsa.dev/) → GitHub Pages. Der Upstream-Sync vergleicht täglich um 06:00 UTC sowie bei Main-Push und manuell den vollständigen überwachten BSI-Baum, erstellt bei einem Delta einen Manifest-PR und fordert Auto-Squash mit Branch-Löschung an. Das Post-Merge-Design soll anschließend den Stand auf `main` und den normalen Push-Deploy prüfen und einen Fallback nur nach erneuter Zustandsprüfung dispatchen; aktuell offene operative Lücken sind in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) dokumentiert.
+Pushes nach `main` triggern den Deploy-Workflow: registrierte BSI-Artefakte validieren und unterstützte Daten ziehen → Tests → Build → [SLSA-Provenance-Attestation](https://slsa.dev/) → GitHub Pages. Der Upstream-Sync vergleicht täglich um 06:00 UTC sowie bei Main-Push und manuell den vollständigen überwachten BSI-Baum, erstellt bei einem Delta einen Manifest-PR und fordert Auto-Squash mit Branch-Löschung an. Die Post-Merge-Lane prüft anschließend den Stand auf `main`, bestätigt den normalen Push-Deploy erst bei erfolgreichem Abschluss und dispatcht einen Fallback nur nach erneuter Zustandsprüfung.
 
 ## Beitragen
 
