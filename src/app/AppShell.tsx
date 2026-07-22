@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
   Routes,
   Route,
@@ -22,6 +22,7 @@ import {
 } from '@/components/icons';
 import type { TreeItem } from '@/components/TreeNav';
 import { useCatalog } from '@/hooks/useCatalog';
+import { useDragToResize } from '@/hooks/useDragToResize';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { HomePage } from '@/features/home/HomePage';
 import { CatalogBrowser } from '@/features/catalog/CatalogBrowser';
@@ -89,8 +90,18 @@ const SIDEBAR_MAX_WIDTH = 480;
 export function AppShell() {
   const [sideNavOpen, setSideNavOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT_WIDTH);
-  const [isSidebarResizing, setIsSidebarResizing] = useState(false);
+  const {
+    width: sidebarWidth,
+    isResizing: isSidebarResizing,
+    setWidth: setSidebarWidth,
+    startResize: handleSidebarResizeStart,
+  } = useDragToResize({
+    axis: 'x',
+    edge: 'end',
+    min: SIDEBAR_MIN_WIDTH,
+    max: SIDEBAR_MAX_WIDTH,
+    initial: SIDEBAR_DEFAULT_WIDTH,
+  });
   const navigate = useNavigate();
   const location = useLocation();
   const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
@@ -149,31 +160,6 @@ export function AppShell() {
 
     return undefined;
   }, [catalog, location.pathname]);
-
-  const handleSidebarResizeStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsSidebarResizing(true);
-    document.body.classList.add('is-resizing');
-
-    const startX = e.clientX;
-    const startWidth = sidebarWidth;
-
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      const delta = moveEvent.clientX - startX;
-      const newWidth = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, startWidth + delta));
-      setSidebarWidth(newWidth);
-    };
-
-    const handleMouseUp = () => {
-      setIsSidebarResizing(false);
-      document.body.classList.remove('is-resizing');
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  }, [sidebarWidth]);
 
   const treeItems = useMemo(() => buildTreeItems(catalog), [catalog]);
 
