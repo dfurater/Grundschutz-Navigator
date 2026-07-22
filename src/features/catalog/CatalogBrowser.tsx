@@ -14,6 +14,7 @@ import { IconDownload, IconFilter, IconX, IconChevronDown, IconChevronLeft, Icon
 import { ControlMobileReferenceRow } from './ControlMobileReferenceRow';
 import { downloadCSV } from '@/features/export/csvExport';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useBottomSheetDrag } from '@/hooks/useBottomSheetDrag';
 import { useDragToResize } from '@/hooks/useDragToResize';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { Catalog, Control } from '@/domain/models';
@@ -94,86 +95,18 @@ export function CatalogBrowser() {
   // Drag-to-dismiss refs for mobile filter sheet
   const filterBackdropRef = useRef<HTMLDivElement>(null);
   const filterHandleRef = useRef<HTMLDivElement>(null);
+  const dismissMobileFilters = useCallback(
+    () => setShowMobileFilters(false),
+    [],
+  );
 
-  // Native touch listeners directly on the drag handle.
-  // Attaching to the handle (which has touch-action: none) avoids conflicts with
-  // the filter scroll area's touch-action: pan-y. Using { passive: false } on
-  // touchmove allows e.preventDefault(), which is critical on iOS Safari where
-  // React synthetic events are passive and can't prevent the browser from
-  // hijacking the gesture.
-  useEffect(() => {
-    const handle = filterHandleRef.current;
-    const sheet = mobileFilterRef.current;
-    if (!handle || !sheet || !showMobileFilters) return;
-
-    let startY = 0;
-    let lastY = 0;
-    let lastTime = 0;
-    let velocity = 0;
-    let delta = 0;
-
-    const onTouchStart = (e: TouchEvent) => {
-      startY = e.touches[0].clientY;
-      lastY = startY;
-      lastTime = Date.now();
-      velocity = 0;
-      delta = 0;
-      sheet.style.transition = 'none';
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      e.preventDefault(); // stop iOS from capturing the gesture
-
-      const currentY = e.touches[0].clientY;
-      const now = Date.now();
-      delta = currentY - startY;
-
-      const dt = now - lastTime;
-      if (dt > 0) velocity = (currentY - lastY) / dt * 1000;
-      lastY = currentY;
-      lastTime = now;
-
-      // Rubber-band resistance when dragging upward, free when dragging down
-      const visual = delta > 0 ? delta : delta * 0.12;
-      sheet.style.transform = `translateY(${visual}px)`;
-
-      // Fade backdrop proportionally
-      const bd = filterBackdropRef.current;
-      if (bd) {
-        const h = sheet.offsetHeight;
-        const fade = delta > 0 ? Math.min(delta / h, 1) : 0;
-        bd.style.opacity = String(Math.max(0, 0.3 * (1 - fade)));
-      }
-    };
-
-    const onTouchEnd = () => {
-      const h = sheet.offsetHeight;
-      const dismiss = (velocity > 400 && delta > 20) || delta > h * 0.3;
-
-      if (dismiss) {
-        sheet.style.transition = 'transform var(--duration-normal) var(--easing-default)';
-        sheet.style.transform = `translateY(${h}px)`;
-        const bd = filterBackdropRef.current;
-        if (bd) { bd.style.transition = 'opacity var(--duration-normal) var(--easing-default)'; bd.style.opacity = '0'; }
-        setTimeout(() => setShowMobileFilters(false), 200);
-      } else {
-        sheet.style.transition = 'transform var(--duration-normal) var(--easing-default)';
-        sheet.style.transform = '';
-        const bd = filterBackdropRef.current;
-        if (bd) { bd.style.transition = 'opacity var(--duration-normal) var(--easing-default)'; bd.style.opacity = '0.3'; }
-      }
-    };
-
-    handle.addEventListener('touchstart', onTouchStart, { passive: true });
-    handle.addEventListener('touchmove', onTouchMove, { passive: false });
-    handle.addEventListener('touchend', onTouchEnd, { passive: true });
-
-    return () => {
-      handle.removeEventListener('touchstart', onTouchStart);
-      handle.removeEventListener('touchmove', onTouchMove);
-      handle.removeEventListener('touchend', onTouchEnd);
-    };
-  }, [showMobileFilters]);
+  useBottomSheetDrag({
+    active: showMobileFilters,
+    sheetRef: mobileFilterRef,
+    backdropRef: filterBackdropRef,
+    handleRef: filterHandleRef,
+    onDismiss: dismissMobileFilters,
+  });
 
   // Resizable detail panel
   const {
@@ -768,7 +701,7 @@ export function CatalogBrowser() {
               className="fixed inset-x-0 bottom-0 z-50 bg-[var(--color-surface-raised)] rounded-t-2xl shadow-xl max-h-[80dvh] flex flex-col overflow-hidden lg:hidden animate-slide-up"
               onKeyDown={(e) => { if (e.key === 'Escape') setShowMobileFilters(false); }}
             >
-              {/* Drag handle — 44px touch target, native listeners via useEffect */}
+              {/* Drag handle — 44px touch target */}
               <div
                 ref={filterHandleRef}
                 className="flex justify-center items-center min-h-[44px] shrink-0 cursor-grab active:cursor-grabbing touch-none select-none"
