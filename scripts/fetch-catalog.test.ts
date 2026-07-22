@@ -1,4 +1,7 @@
 import { createHash } from 'node:crypto';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildFetchArtifacts,
@@ -6,6 +9,7 @@ import {
   validateCatalogControlIdentities,
   validateFetchedCatalogArtifact,
   validateFetchedOscalArtifact,
+  writeArtifacts,
 } from './fetch-catalog.mjs';
 import {
   OFFICIAL_BSI_REPOSITORY_URL,
@@ -32,6 +36,13 @@ const RESULT_NAMESPACE_URL =
   'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/result.csv';
 const ACTION_WORDS_NAMESPACE_URL =
   'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/action_words.csv';
+const OUTPUT_ARTIFACT_FILE_NAMES = [
+  'catalog.json',
+  'catalog-metadata.json',
+  'vocabularies.json',
+  'upstream-sources-metadata.json',
+] as const;
+const temporaryOutputDirectories = new Set<string>();
 
 const MINIMAL_REGISTRY = [
   {
@@ -226,6 +237,22 @@ function parseArtifactJson(
   return JSON.parse(Buffer.from(artifact!.contentsBase64, 'base64').toString('utf8'));
 }
 
+function makeWritePayload() {
+  return {
+    artifacts: OUTPUT_ARTIFACT_FILE_NAMES.map((fileName) => ({
+      fileName,
+      contentsBase64: Buffer.from(`bytes:${fileName}\0`, 'utf8').toString('base64'),
+    })),
+    summary: {},
+  };
+}
+
+async function makeTemporaryOutputDirectoryPath() {
+  const parentDirectory = await mkdtemp(join(tmpdir(), 'fetch-catalog-writer-'));
+  temporaryOutputDirectories.add(parentDirectory);
+  return join(parentDirectory, 'output');
+}
+
 async function buildMinimalArtifacts({
   namespaceFiles = new Map<string, RawContents>(),
   treeResponse,
@@ -252,10 +279,79 @@ async function buildMinimalArtifacts({
 }
 
 describe('fetch-catalog', () => {
-  afterEach(() => {
+  afterEach(async () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
+    await Promise.all(
+      [...temporaryOutputDirectories].map((directory) => rm(directory, { recursive: true, force: true })),
+    );
+    temporaryOutputDirectories.clear();
+  });
+
+  it('writes exactly the allowlisted artifacts with unchanged bytes', async () => {
+    const payload = makeWritePayload();
+    const outputDirectory = await makeTemporaryOutputDirectoryPath();
+
+    await writeArtifacts(payload, outputDirectory);
+
+    await expect(
+      readdir(outputDirectory).then((fileNames) => fileNames.sort()),
+    ).resolves.toEqual([...OUTPUT_ARTIFACT_FILE_NAMES].sort());
+    for (const artifact of payload.artifacts) {
+      const writtenBytes = await readFile(join(outputDirectory, artifact.fileName));
+      const expectedBytes = Buffer.from(artifact.contentsBase64, 'base64');
+      expect(writtenBytes).toEqual(expectedBytes);
+      expect(sha256Hex(writtenBytes)).toBe(sha256Hex(expectedBytes));
+    }
+  });
+
+  it.each([
+    {
+      name: 'a missing artifacts section',
+      payload: { summary: {} },
+      message: 'fetch-catalog payload is missing required sections',
+    },
+    {
+      name: 'an invalid artifact record',
+      payload: { artifacts: [null], summary: {} },
+      message: 'fetch-catalog payload contains an invalid artifact record',
+    },
+    {
+      name: 'an unexpected artifact file name',
+      payload: {
+        ...makeWritePayload(),
+        artifacts: [
+          ...makeWritePayload().artifacts.slice(0, -1),
+          { fileName: '../unexpected.json', contentsBase64: 'e30K' },
+        ],
+      },
+      message: 'fetch-catalog payload contains an unexpected file: ../unexpected.json',
+    },
+    {
+      name: 'a duplicate artifact file name',
+      payload: {
+        ...makeWritePayload(),
+        artifacts: [
+          ...makeWritePayload().artifacts,
+          makeWritePayload().artifacts[0],
+        ],
+      },
+      message: 'fetch-catalog payload contains a duplicate file: catalog.json',
+    },
+    {
+      name: 'a missing allowlisted artifact',
+      payload: {
+        ...makeWritePayload(),
+        artifacts: makeWritePayload().artifacts.slice(0, -1),
+      },
+      message: 'fetch-catalog payload omitted expected file: upstream-sources-metadata.json',
+    },
+  ])('rejects $name before creating the output directory', async ({ payload, message }) => {
+    const outputDirectory = await makeTemporaryOutputDirectoryPath();
+
+    await expect(writeArtifacts(payload, outputDirectory)).rejects.toThrow(message);
+    await expect(readdir(outputDirectory)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('accepts only full hexadecimal snapshot SHAs', () => {

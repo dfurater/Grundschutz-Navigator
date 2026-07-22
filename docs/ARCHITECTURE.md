@@ -62,8 +62,7 @@ src/
 
 public/data/          # Generierte Katalog-Daten (nicht im Repo)
 scripts/              # Build-Skripte
-  ├── fetch-catalog.sh            # Einstiegspunkt: delegiert an fetch-catalog.mjs
-  ├── fetch-catalog.mjs           # Registry-gesteuerter Abruf und Ausgabe
+  ├── fetch-catalog.mjs           # Registry-gesteuerter Abruf, Validierung und Ausgabe
   ├── security-guards.mjs         # Upstream-Allowlist (Repo, Pfade, Refs)
   ├── upstream-artifacts.mjs      # Tree-Diff, Manifest v2 und Root-Prüfung
   ├── vocabulary-utils.mjs        # CSV-/Namespace-Hilfsfunktionen
@@ -92,7 +91,7 @@ BSI GitHub Repository
   • vollständige Read-only-Trees der überwachten Upstream-Wurzeln
         │
         ▼
-scripts/fetch-catalog.sh → scripts/fetch-catalog.mjs
+npm run fetch-catalog → scripts/fetch-catalog.mjs
 • Abruf über die GitHub-API (Retry mit Backoff bei transienten Fehlern)
 • Snapshot-Pinning: BSI_SNAPSHOT_SHA aus upstream-manifest.json
 • sourceRegistry: einzige Ingestion-Quelle für Pfad, Root-Typ und Lifecycle
