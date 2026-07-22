@@ -53,7 +53,17 @@ vi.mock('./FilterPanel', () => ({
 }));
 
 vi.mock('./ControlTable', () => ({
-  ControlTable: () => <div>Kontrolltabelle</div>,
+  ControlTable: ({
+    checkedIds,
+    selectedControlId,
+  }: {
+    checkedIds: Set<string>;
+    selectedControlId?: string;
+  }) => (
+    <div data-testid="desktop-control-list">
+      {`${checkedIds.size} Desktop-Auswahl; Detail ${selectedControlId ?? 'geschlossen'}`}
+    </div>
+  ),
 }));
 
 vi.mock('./ControlMobileReferenceRow', () => ({
@@ -72,6 +82,7 @@ vi.mock('./ControlMobileReferenceRow', () => ({
   }) => (
     <button
       type="button"
+      data-testid="mobile-control-row"
       onClick={() => {
         if (selectMode) {
           onCheckedChange?.(control, !checked);
@@ -202,11 +213,14 @@ function LocationProbe({ onCatalogSwitch }: { onCatalogSwitch?: () => void }) {
   );
 }
 
-function renderCatalogBrowser(
+function CatalogBrowserTestApp({
   initialEntry = '/katalog/gspp',
-  onCatalogSwitch?: () => void,
-) {
-  return render(
+  onCatalogSwitch,
+}: {
+  initialEntry?: string;
+  onCatalogSwitch?: () => void;
+}) {
+  return (
     <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
         <Route path={CONTROL_ROUTE_PATTERN} element={<CatalogBrowser />} />
@@ -215,7 +229,19 @@ function renderCatalogBrowser(
         <Route path="*" element={<div>404 — Seite nicht gefunden</div>} />
       </Routes>
       <LocationProbe onCatalogSwitch={onCatalogSwitch} />
-    </MemoryRouter>,
+    </MemoryRouter>
+  );
+}
+
+function renderCatalogBrowser(
+  initialEntry = '/katalog/gspp',
+  onCatalogSwitch?: () => void,
+) {
+  return render(
+    <CatalogBrowserTestApp
+      initialEntry={initialEntry}
+      onCatalogSwitch={onCatalogSwitch}
+    />,
   );
 }
 
@@ -231,6 +257,75 @@ describe('CatalogBrowser mobile focus restoration', () => {
       filteredFacetCounts: {} as ReturnType<typeof useFilteredControls>['filteredFacetCounts'],
       hasActiveFilters: false,
     }));
+  });
+
+  it('mounts only the mobile control list while the media query is false', () => {
+    renderCatalogBrowser();
+
+    expect(screen.getAllByTestId('mobile-control-row')).toHaveLength(1);
+    expect(screen.queryByTestId('desktop-control-list')).not.toBeInTheDocument();
+  });
+
+  it('mounts only the desktop control list on the initial desktop render', () => {
+    mockedUseMediaQuery.mockReturnValue(true);
+
+    renderCatalogBrowser();
+
+    expect(screen.getByTestId('desktop-control-list')).toBeInTheDocument();
+    expect(screen.queryByTestId('mobile-control-row')).not.toBeInTheDocument();
+  });
+
+  it('preserves scope and checked controls across mobile-desktop switches', () => {
+    let isDesktop = false;
+    mockedUseMediaQuery.mockImplementation(() => isDesktop);
+    const view = renderCatalogBrowser('/katalog/gspp/TOP.1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Kontrollen auswählen' }));
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    expect(screen.getByTestId('location')).toHaveTextContent('/katalog/gspp/TOP.1');
+    expect(screen.getAllByText('1 ausgewählt').length).toBeGreaterThan(0);
+
+    isDesktop = true;
+    view.rerender(<CatalogBrowserTestApp initialEntry="/katalog/gspp/TOP.1" />);
+
+    expect(screen.getByTestId('desktop-control-list')).toHaveTextContent('1 Desktop-Auswahl');
+    expect(screen.queryByTestId('mobile-control-row')).not.toBeInTheDocument();
+    expect(screen.getByTestId('location')).toHaveTextContent('/katalog/gspp/TOP.1');
+
+    isDesktop = false;
+    view.rerender(<CatalogBrowserTestApp initialEntry="/katalog/gspp/TOP.1" />);
+
+    expect(screen.getAllByTestId('mobile-control-row')).toHaveLength(1);
+    expect(screen.queryByTestId('desktop-control-list')).not.toBeInTheDocument();
+    expect(screen.getAllByText('1 ausgewählt').length).toBeGreaterThan(0);
+  });
+
+  it('preserves the selected-control route across mobile-desktop switches', () => {
+    let isDesktop = false;
+    mockedUseMediaQuery.mockImplementation(() => isDesktop);
+    const view = renderCatalogBrowser('/katalog/gspp/TOP.1');
+
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/katalog/gspp/kontrolle/shared-alt-identifier',
+    );
+    expect(screen.getByText(`Detail ${control.id}`)).toBeInTheDocument();
+
+    isDesktop = true;
+    view.rerender(<CatalogBrowserTestApp initialEntry="/katalog/gspp/TOP.1" />);
+
+    expect(screen.getByTestId('desktop-control-list')).toHaveTextContent(`Detail ${control.id}`);
+    expect(screen.queryByTestId('mobile-control-row')).not.toBeInTheDocument();
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/katalog/gspp/kontrolle/shared-alt-identifier',
+    );
+
+    isDesktop = false;
+    view.rerender(<CatalogBrowserTestApp initialEntry="/katalog/gspp/TOP.1" />);
+
+    expect(screen.getAllByTestId('mobile-control-row')).toHaveLength(1);
+    expect(screen.queryByTestId('desktop-control-list')).not.toBeInTheDocument();
+    expect(screen.getByText(`Detail ${control.id}`)).toBeInTheDocument();
   });
 
   it('returns focus to the filter trigger after Escape closes the sheet', () => {

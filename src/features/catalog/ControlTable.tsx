@@ -1,4 +1,11 @@
-import { useRef, useState, useCallback } from 'react';
+import {
+  memo,
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { IconChevronDown, IconChevronRight } from '@/components/icons';
 import type { Control } from '@/domain/models';
 import { getControlHierarchyDepth } from '@/domain/controlRelationships';
@@ -92,6 +99,103 @@ const COLUMNS: { field: SortField; label: string; className: string }[] = [
   { field: 'effortLevel',   label: 'Aufwand',         className: 'w-24' },
 ];
 
+interface ControlTableRowProps {
+  control: Control;
+  depth: number;
+  index: number;
+  isChecked: boolean;
+  isOpen: boolean;
+  isTabStop: boolean;
+  showSelection: boolean;
+  onFocus: (index: number) => void;
+  onKeyDown: (event: React.KeyboardEvent, index: number, control: Control) => void;
+  onSelectControl: (control: Control) => void;
+  onToggleSelection: (id: string) => void;
+}
+
+const ControlTableRow = memo(function ControlTableRow({
+  control,
+  depth,
+  index,
+  isChecked,
+  isOpen,
+  isTabStop,
+  showSelection,
+  onFocus,
+  onKeyDown,
+  onSelectControl,
+  onToggleSelection,
+}: ControlTableRowProps) {
+  return (
+    <tr
+      className={`
+        border-b border-[var(--color-border-subtle)] cursor-pointer transition-colors
+        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus-ring)]
+        ${isOpen ? 'bg-[var(--color-accent-soft)]' : isChecked ? 'bg-[var(--color-surface-subtle)]' : 'hover:bg-[var(--color-surface-subtle)]'}
+      `}
+      onClick={() => onSelectControl(control)}
+      role="row"
+      aria-selected={isOpen}
+      tabIndex={isTabStop ? 0 : -1}
+      onKeyDown={(event) => onKeyDown(event, index, control)}
+      onFocus={() => onFocus(index)}
+    >
+      {showSelection && (
+        <td className="px-3 py-2.5" onClick={(event) => event.stopPropagation()}>
+          <input
+            type="checkbox"
+            checked={isChecked}
+            onChange={(event) => {
+              event.stopPropagation();
+              onToggleSelection(control.id);
+            }}
+            onClick={(event) => event.stopPropagation()}
+            className="w-4 h-4 rounded border-[var(--color-border-strong)] cursor-pointer accent-slate-800"
+            aria-label={`${control.id} auswählen`}
+          />
+        </td>
+      )}
+
+      <td className="catalog-reference-text whitespace-nowrap px-3 py-2.5">
+        {control.id}
+      </td>
+      <td className="type-object-title px-3 py-2.5">
+        <div
+          className="min-w-0"
+          style={depth > 0 ? { paddingInlineStart: `${Math.min(depth, 3) * 16}px` } : undefined}
+        >
+          <div className="flex min-w-0 items-baseline gap-2">
+            {depth > 0 && (
+              <span className="catalog-hierarchy-marker" aria-hidden="true">
+                ↳
+              </span>
+            )}
+            <span className="line-clamp-1 leading-5">{control.title}</span>
+          </div>
+        </div>
+      </td>
+      <td className="px-3 py-2.5">
+        <ModalVerbCell value={control.modalverb} />
+      </td>
+      <td className="px-3 py-2.5">
+        <SecLevelCell value={control.securityLevel} />
+      </td>
+      <td className="hidden px-3 py-2.5 text-center sm:table-cell">
+        {control.effortLevel != null && (
+          <span className="catalog-meta-text tabular-nums text-[var(--color-text-secondary)]">
+            {control.effortLevel}
+          </span>
+        )}
+      </td>
+      <td className="px-2 py-2.5 text-[var(--color-text-muted)]">
+        {isOpen
+          ? <IconChevronDown className="w-4 h-4" />
+          : <IconChevronRight className="w-4 h-4" />}
+      </td>
+    </tr>
+  );
+});
+
 export function ControlTable(props: ControlTableProps) {
   const {
     controls,
@@ -107,18 +211,40 @@ export function ControlTable(props: ControlTableProps) {
   // Roving tabindex: only one row is tabbable at a time
   const [focusedIndex, setFocusedIndex] = useState(0);
   const tbodyRef = useRef<HTMLTableSectionElement>(null);
+  const checkedIdsRef = useRef(checkedIds);
+  const onCheckedChangeRef = useRef(onCheckedChange);
+  const onSelectControlRef = useRef(onSelectControl);
+
+  useLayoutEffect(() => {
+    checkedIdsRef.current = checkedIds;
+    onCheckedChangeRef.current = onCheckedChange;
+    onSelectControlRef.current = onSelectControl;
+  }, [checkedIds, onCheckedChange, onSelectControl]);
+
+  const depthById = useMemo(() => new Map(
+    controls.map((control) => [
+      control.id,
+      getControlHierarchyDepth(control, controlsById),
+    ]),
+  ), [controls, controlsById]);
+
+  const selectControl = useCallback((control: Control) => {
+    onSelectControlRef.current(control);
+  }, []);
 
   const toggleRowSelection = useCallback((id: string) => {
-    if (!onCheckedChange) return;
-    const next = new Set(checkedIds);
+    const changeSelection = onCheckedChangeRef.current;
+    if (!changeSelection) return;
+    const next = new Set(checkedIdsRef.current);
     if (next.has(id)) next.delete(id); else next.add(id);
-    onCheckedChange(next);
-  }, [checkedIds, onCheckedChange]);
+    checkedIdsRef.current = next;
+    changeSelection(next);
+  }, []);
 
   const handleRowKeyDown = useCallback((e: React.KeyboardEvent, index: number, control: Control) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      onSelectControl(control);
+      selectControl(control);
       return;
     }
     if (e.key === ' ' && showSelection) {
@@ -141,7 +267,13 @@ export function ControlTable(props: ControlTableProps) {
     setFocusedIndex(nextIndex);
     const rows = tbodyRef.current?.querySelectorAll<HTMLElement>('tr[role="row"]');
     rows?.[nextIndex]?.focus();
-  }, [controls, onSelectControl, showSelection, toggleRowSelection]);
+  }, [controls.length, selectControl, showSelection, toggleRowSelection]);
+
+  const handleRowFocus = useCallback((index: number) => {
+    setFocusedIndex(index);
+  }, []);
+
+  const tabStopIndex = Math.min(focusedIndex, Math.max(controls.length - 1, 0));
 
   const allChecked = showSelection && controls.length > 0 && controls.every((c) => checkedIds.has(c.id));
   const someChecked = showSelection && !allChecked && controls.some((c) => checkedIds.has(c.id));
@@ -238,80 +370,22 @@ export function ControlTable(props: ControlTableProps) {
           </tr>
         </thead>
         <tbody ref={tbodyRef}>
-          {controls.map((control, index) => {
-            const isOpen    = selectedControlId === control.id;
-            const isChecked = showSelection && checkedIds.has(control.id);
-            const depth = getControlHierarchyDepth(control, controlsById);
-            return (
-              <tr
-                key={control.id}
-                className={`
-                  border-b border-[var(--color-border-subtle)] cursor-pointer transition-colors
-                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus-ring)]
-                  ${isOpen ? 'bg-[var(--color-accent-soft)]' : isChecked ? 'bg-[var(--color-surface-subtle)]' : 'hover:bg-[var(--color-surface-subtle)]'}
-                `}
-                onClick={() => onSelectControl(control)}
-                role="row"
-                aria-selected={isOpen}
-                tabIndex={index === focusedIndex ? 0 : -1}
-                onKeyDown={(e) => handleRowKeyDown(e, index, control)}
-                onFocus={() => setFocusedIndex(index)}
-              >
-                {showSelection && (
-                  <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={isChecked}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        toggleRowSelection(control.id);
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                      className="w-4 h-4 rounded border-[var(--color-border-strong)] cursor-pointer accent-slate-800"
-                      aria-label={`${control.id} auswählen`}
-                    />
-                  </td>
-                )}
-
-                <td className="catalog-reference-text whitespace-nowrap px-3 py-2.5">
-                  {control.id}
-                </td>
-                <td className="type-object-title px-3 py-2.5">
-                  <div
-                    className="min-w-0"
-                    style={depth > 0 ? { paddingInlineStart: `${Math.min(depth, 3) * 16}px` } : undefined}
-                  >
-                    <div className="flex min-w-0 items-baseline gap-2">
-                      {depth > 0 && (
-                        <span className="catalog-hierarchy-marker" aria-hidden="true">
-                          ↳
-                        </span>
-                      )}
-                      <span className="line-clamp-1 leading-5">{control.title}</span>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-3 py-2.5">
-                  <ModalVerbCell value={control.modalverb} />
-                </td>
-                <td className="px-3 py-2.5">
-                  <SecLevelCell value={control.securityLevel} />
-                </td>
-                <td className="hidden px-3 py-2.5 text-center sm:table-cell">
-                  {control.effortLevel != null && (
-                    <span className="catalog-meta-text tabular-nums text-[var(--color-text-secondary)]">
-                      {control.effortLevel}
-                    </span>
-                  )}
-                </td>
-                <td className="px-2 py-2.5 text-[var(--color-text-muted)]">
-                  {isOpen
-                    ? <IconChevronDown className="w-4 h-4" />
-                    : <IconChevronRight className="w-4 h-4" />}
-                </td>
-              </tr>
-            );
-          })}
+          {controls.map((control, index) => (
+            <ControlTableRow
+              key={control.id}
+              control={control}
+              depth={depthById.get(control.id) ?? 0}
+              index={index}
+              isChecked={showSelection && checkedIds.has(control.id)}
+              isOpen={selectedControlId === control.id}
+              isTabStop={index === tabStopIndex}
+              showSelection={showSelection}
+              onFocus={handleRowFocus}
+              onKeyDown={handleRowKeyDown}
+              onSelectControl={selectControl}
+              onToggleSelection={toggleRowSelection}
+            />
+          ))}
         </tbody>
       </table>
     </div>

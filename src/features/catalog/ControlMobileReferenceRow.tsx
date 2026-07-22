@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { Control } from '@/domain/models';
 import { getControlHierarchyDepth } from '@/domain/controlRelationships';
 import { ModalverbBadge, SecurityLevelBadge } from '@/components/StatusMeta';
@@ -20,7 +21,7 @@ interface ControlMobileReferenceRowProps {
   onCheckedChange?: (control: Control, checked: boolean) => void;
 }
 
-export function ControlMobileReferenceRow({
+export const ControlMobileReferenceRow = memo(function ControlMobileReferenceRow({
   control,
   controlsById,
   selectMode = false,
@@ -43,7 +44,7 @@ export function ControlMobileReferenceRow({
       type="button"
       onClick={handleClick}
       aria-pressed={selectMode ? checked : undefined}
-      className={`w-full flex items-center gap-2 px-3 py-2 transition-colors cursor-pointer active:bg-[var(--color-surface-subtle)] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus-ring)] ${
+      className={`catalog-mobile-reference-row w-full flex items-center gap-2 px-3 py-2 transition-colors cursor-pointer active:bg-[var(--color-surface-subtle)] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus-ring)] ${
         selectMode && checked
           ? 'bg-[var(--color-accent-soft)]'
           : 'bg-[var(--color-surface-base)] hover:bg-[var(--color-surface-subtle)]'
@@ -105,4 +106,4 @@ export function ControlMobileReferenceRow({
       {!selectMode && <IconChevronRight className="w-4 h-4 text-[var(--color-text-muted)] shrink-0" />}
     </button>
   );
-}
+});

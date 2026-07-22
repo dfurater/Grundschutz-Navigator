@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useEffect, useRef, useState } from 'react';
+import { useMemo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useCatalog } from '@/hooks/useCatalog';
 import {
@@ -32,6 +32,7 @@ const DETAIL_DEFAULT_WIDTH = 420;
 const DETAIL_MIN_WIDTH = 320;
 const DETAIL_MAX_WIDTH = 720;
 const EMPTY_CHECKED_IDS = new Set<string>();
+const EMPTY_CONTROLS_BY_ID = new Map<string, Control>();
 
 function hasGroup(catalog: Catalog, groupId: string): boolean {
   return catalog.practices.some(
@@ -145,11 +146,16 @@ export function CatalogBrowser() {
       ? selectionState.checkedIds
       : EMPTY_CHECKED_IDS;
   const setCheckedIds = useCallback(
-    (next: Set<string>) => {
-      setSelectionState(() => {
+    (next: Set<string> | ((current: Set<string>) => Set<string>)) => {
+      setSelectionState((current) => {
+        const currentCheckedIds = current.scopeKey === selectionScopeKey
+          ? current.checkedIds
+          : EMPTY_CHECKED_IDS;
+        const resolved = typeof next === 'function' ? next(currentCheckedIds) : next;
+
         return {
           scopeKey: selectionScopeKey,
-          checkedIds: next.size > 0 ? next : EMPTY_CHECKED_IDS,
+          checkedIds: resolved.size > 0 ? resolved : EMPTY_CHECKED_IDS,
         };
       });
     },
@@ -248,6 +254,7 @@ export function CatalogBrowser() {
     () => buildChildControlMap(catalog?.controls ?? []),
     [catalog],
   );
+  const controlsById = catalog?.controlsById ?? EMPTY_CONTROLS_BY_ID;
 
   const { filtered, totalCount, facetCounts, filteredFacetCounts, hasActiveFilters } =
     useFilteredControls(scopedControls, filters, sort);
@@ -277,6 +284,23 @@ export function CatalogBrowser() {
       });
     }
   }, [catalog, selectedControl, scopeId, navigate, searchString]);
+
+  const mobileSelectControlRef = useRef(handleSelectControl);
+  useLayoutEffect(() => {
+    mobileSelectControlRef.current = handleSelectControl;
+  }, [handleSelectControl]);
+
+  const handleMobileSelectControl = useCallback((control: Control) => {
+    mobileSelectControlRef.current(control);
+  }, []);
+
+  const handleMobileCheckedChange = useCallback((control: Control, isChecked: boolean) => {
+    setCheckedIds((current) => {
+      const next = new Set(current);
+      if (isChecked) next.add(control.id); else next.delete(control.id);
+      return next;
+    });
+  }, [setCheckedIds]);
 
   // Close detail → replace (undo the open, so back goes to original list)
   const handleCloseDetail = useCallback(() => {
@@ -537,70 +561,67 @@ export function CatalogBrowser() {
 
       {/* Content: Table + Right Panel */}
       <div className="flex-1 min-w-0 flex md:overflow-hidden">
-        {/* Desktop table */}
-        <div className="hidden lg:flex flex-1 flex-col overflow-hidden">
-          <ControlTable
-            controls={filtered}
-            controlsById={catalog?.controlsById ?? new Map()}
-            selectedControlId={selectedControl?.id}
-            checkedIds={checkedIds}
-            sort={sort}
-            onSortChange={setSort}
-            onSelectControl={handleSelectControl}
-            onCheckedChange={setCheckedIds}
-          />
-        </div>
+        {isDesktop ? (
+          /* The media-query snapshot is synchronous in this client-only SPA. */
+          <div className="hidden lg:flex flex-1 flex-col overflow-hidden">
+            <ControlTable
+              controls={filtered}
+              controlsById={controlsById}
+              selectedControlId={selectedControl?.id}
+              checkedIds={checkedIds}
+              sort={sort}
+              onSortChange={setSort}
+              onSelectControl={handleSelectControl}
+              onCheckedChange={setCheckedIds}
+            />
+          </div>
+        ) : (
+          <div className="lg:hidden flex-1 min-w-0 flex flex-col md:overflow-hidden">
+            <div className={`flex-1 md:overflow-y-auto divide-y divide-[var(--color-border-subtle)] ${mobileSelectMode ? 'pb-[calc(7rem+env(safe-area-inset-bottom,0px))]' : 'pb-safe'}`}>
+              {filtered.map((control) => (
+                <ControlMobileReferenceRow
+                  key={control.id}
+                  control={control}
+                  controlsById={controlsById}
+                  selectMode={mobileSelectMode}
+                  checked={checkedIds.has(control.id)}
+                  onSelect={handleMobileSelectControl}
+                  onCheckedChange={handleMobileCheckedChange}
+                />
+              ))}
+              {filtered.length === 0 && (
+                <p className="text-sm text-[var(--color-text-secondary)] text-center py-8">Keine Kontrollen gefunden</p>
+              )}
+            </div>
 
-        {/* Mobile card list */}
-        <div className="lg:hidden flex-1 min-w-0 flex flex-col md:overflow-hidden">
-          <div className={`flex-1 md:overflow-y-auto divide-y divide-[var(--color-border-subtle)] ${mobileSelectMode ? 'pb-[calc(7rem+env(safe-area-inset-bottom,0px))]' : 'pb-safe'}`}>
-            {filtered.map((control) => (
-              <ControlMobileReferenceRow
-                key={control.id}
-                control={control}
-                controlsById={catalog?.controlsById ?? new Map()}
-                selectMode={mobileSelectMode}
-                checked={checkedIds.has(control.id)}
-                onSelect={handleSelectControl}
-                onCheckedChange={(ctrl, isChecked) => {
-                  const next = new Set(checkedIds);
-                  if (isChecked) next.add(ctrl.id); else next.delete(ctrl.id);
-                  setCheckedIds(next);
-                }}
-              />
-            ))}
-            {filtered.length === 0 && (
-              <p className="text-sm text-[var(--color-text-secondary)] text-center py-8">Keine Kontrollen gefunden</p>
+            {/* Mobile select-mode action bar — fixed above bottom nav */}
+            {mobileSelectMode && (
+              <div className="fixed bottom-0 pb-safe inset-x-0 z-30 border-t border-[var(--color-border-default)] bg-[var(--color-surface-base)] px-3 py-2.5 flex items-center gap-2 lg:hidden shadow-[0_-2px_8px_rgba(0,0,0,0.06)]">
+                <span className="text-sm text-[var(--color-text-secondary)] flex-1 tabular-nums">
+                  {checkedIds.size > 0 ? `${checkedIds.size} ausgewählt` : 'Tippen zum Auswählen'}
+                </span>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="min-h-[44px]"
+                  disabled={checkedIds.size === 0}
+                  onClick={() => { handleExportSelected(); setMobileSelectMode(false); setCheckedIds(new Set()); }}
+                >
+                  <IconDownload className="w-4 h-4 mr-1.5" />
+                  Export ({checkedIds.size})
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="min-h-[44px]"
+                  onClick={() => { setMobileSelectMode(false); setCheckedIds(new Set()); }}
+                >
+                  Fertig
+                </Button>
+              </div>
             )}
           </div>
-
-          {/* Mobile select-mode action bar — fixed above bottom nav */}
-          {mobileSelectMode && (
-            <div className="fixed bottom-0 pb-safe inset-x-0 z-30 border-t border-[var(--color-border-default)] bg-[var(--color-surface-base)] px-3 py-2.5 flex items-center gap-2 lg:hidden shadow-[0_-2px_8px_rgba(0,0,0,0.06)]">
-              <span className="text-sm text-[var(--color-text-secondary)] flex-1 tabular-nums">
-                {checkedIds.size > 0 ? `${checkedIds.size} ausgewählt` : 'Tippen zum Auswählen'}
-              </span>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="min-h-[44px]"
-                disabled={checkedIds.size === 0}
-                onClick={() => { handleExportSelected(); setMobileSelectMode(false); setCheckedIds(new Set()); }}
-              >
-                <IconDownload className="w-4 h-4 mr-1.5" />
-                Export ({checkedIds.size})
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="min-h-[44px]"
-                onClick={() => { setMobileSelectMode(false); setCheckedIds(new Set()); }}
-              >
-                Fertig
-              </Button>
-            </div>
-          )}
-        </div>
+        )}
 
         {/* Right Panel: Filter OR Detail (desktop) */}
         <aside
