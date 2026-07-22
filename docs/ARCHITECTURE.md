@@ -172,10 +172,16 @@ Filter werden bidirektional mit URL-Suchparametern synchronisiert (`src/hooks/us
 - `hw` — Handlungswort
 - `dt` — Dokumentationstyp
 - `lr` — Link-Beziehungen (`related`, `required`)
-- `q` — Freitextsuche
 - `sort` — Sortierfeld + Richtung
 
-Practice- und Topic-Auswahl laufen über die kataloggescopte Route (`/katalog/:catalogKey/:groupId`), nicht über Query-Parameter. Die kanonische Control-URL verwendet ausschließlich `catalogKey + altIdentifier`; die OSCAL-Control-ID bleibt eine interne Referenzidentität. Unbekannte oder nicht geladene Katalogschlüssel und unbekannte Alt-Identifier führen ohne globalen Fallback, Control-ID-Auflösung, Redirect oder Legacy-Route zur Not-found-Ansicht.
+Die Volltextsuche ist eine eigene Route (`/suche?q=…`) und kein Filter des
+Katalog-Browsers. Practice- und Topic-Auswahl laufen über die kataloggescopte
+Route (`/katalog/:catalogKey/:groupId`), nicht über Query-Parameter. Die
+kanonische Control-URL verwendet ausschließlich `catalogKey + altIdentifier`;
+die OSCAL-Control-ID bleibt eine interne Referenzidentität. Unbekannte oder
+nicht geladene Katalogschlüssel und unbekannte Alt-Identifier führen ohne
+globalen Fallback, Control-ID-Auflösung, Redirect oder Legacy-Route zur
+Not-found-Ansicht.
 
 Siehe [FILTERING.md](./FILTERING.md) für Details.
 

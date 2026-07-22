@@ -226,7 +226,8 @@ Besonderheit Schutzziele: Die Control-Props tragen als Wert die Relevanz (`0`–
 
 ### Such-Text-Sammlung
 
-Für die Freitextsuche (siehe [FILTERING.md](./FILTERING.md)) werden alle Spaltenwerte der aufgelösten Vokabular-Einträge eingesammelt:
+Für die globale Volltextsuche unter `/suche` werden alle Spaltenwerte der
+aufgelösten Vokabular-Einträge eingesammelt:
 
 ```typescript
 export function collectVocabularySearchTexts(

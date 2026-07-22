@@ -23,10 +23,11 @@ Practice- und Topic-Auswahl laufen nicht über Query-Parameter, sondern über di
 | Handlungswort | `hw` | Handlungswörter | Mehrfachauswahl |
 | Dokumentationstyp | `dt` | Dokumentationstypen | Mehrfachauswahl |
 | Link-Beziehung | `lr` | `related`, `required` | Mehrfachauswahl |
-| Freitextsuche | `q` | Beliebiger Text | Einzelwert |
 | Sortierung | `sort` | `<feld>:<richtung>[,…]` | Einzelwert |
 
 Mehrfachwerte werden kommasepariert in einem Parameter kodiert (z.B. `mv=MUSS,SOLLTE`).
+Die Volltextsuche ist davon getrennt und läuft ausschließlich über `/suche?q=…`.
+Ein `q`-Parameter auf einer Katalogroute ist kein Katalogfilter und wird ignoriert.
 
 ## Filter-Zustand
 
@@ -44,7 +45,6 @@ export interface ControlFilters {
   handlungsworte: string[];
   dokumentationstypen: string[];
   linkRelationen: LinkRelation[];
-  searchTerm: string;
 }
 
 export const emptyFilters: ControlFilters = {
@@ -58,7 +58,6 @@ export const emptyFilters: ControlFilters = {
   handlungsworte: [],
   dokumentationstypen: [],
   linkRelationen: [],
-  searchTerm: '',
 };
 ```
 
@@ -70,7 +69,6 @@ Die Filter-Funktion in `src/hooks/useFilteredControls.ts` prüft jede Dimension:
 function matchesFilter(
   control: Control,
   filters: ControlFilters,
-  searchableControlText?: string,
 ): boolean {
   // Practice filter
   if (filters.practiceIds.length > 0 &&
@@ -84,13 +82,7 @@ function matchesFilter(
     return false;
   }
 
-  // ... weitere Dimensionen, zuletzt:
-
-  // Text search
-  if (filters.searchTerm) {
-    const term = filters.searchTerm.toLowerCase();
-    if (!searchableControlText?.includes(term)) return false;
-  }
+  // ... weitere Dimensionen
 
   return true;
 }
@@ -104,36 +96,6 @@ function matchesFilter(
 Beispiel:
 - `sl=normal-SdT,erhöht` → Normal ODER Erhöht
 - `sl=normal-SdT&mv=MUSS` → Normal UND MUSS
-
-## Freitextsuche
-
-Der durchsuchbare Text je Control wird in `buildSearchableControlText` aufgebaut und umfasst neben den Statement-Feldern auch die elementaren Gefährdungen und die aufgelösten offiziellen Vokabular-Texte:
-
-```typescript
-function buildSearchableControlText(
-  control: Control,
-  vocabularyRegistry?: VocabularyRegistry | null,
-): string {
-  const vocabularyTexts = collectControlVocabularySearchTexts(
-    resolveControlVocabularies(vocabularyRegistry, control),
-  );
-
-  return [
-    control.id,
-    control.title,
-    control.statement,
-    control.statementProps.ergebnis ?? '',
-    control.statementProps.praezisierung ?? '',
-    control.statementProps.handlungsworte ?? '',
-    control.statementProps.dokumentation ?? '',
-    control.threats.join(' '),
-    ...vocabularyTexts,
-    getControlLinkSearchText(control.links),
-  ].join(' ').toLowerCase();
-}
-```
-
-Die Suchtexte werden nur bei aktivem Suchbegriff berechnet und je Control in einer `Map` vorgehalten, damit `matchesFilter` sie nicht pro Aufruf neu zusammensetzt.
 
 ## URL-Parameter-Sync
 
@@ -151,14 +113,13 @@ function deserializeFilters(params: URLSearchParams): ControlFilters {
     ...emptyFilters,
     modalverben: splitParam(params, 'mv').filter((v) => VALID_MODAL.has(v)) as Modalverb[],
     // ... analog für sl, el, tags, zk, hw, dt, lr
-    searchTerm: params.get('q') ?? '',
   };
 }
 ```
 
 ### Schreiben in URL (Serialisierung)
 
-Aktive Filter werden kommasepariert gesetzt, leere Dimensionen entfernt. Der Sync läuft über `setSearchParams(params, { replace: true })`, sodass Filter-Änderungen keine History-Einträge fluten. Änderungen, die nur den Suchbegriff betreffen, werden mit 300 ms Debounce geschrieben; alle anderen sofort. Die Erkennung „nur Suchbegriff geändert" beruht auf Referenzgleichheit der übrigen Filter-Arrays — Caller müssen dafür den vorherigen Filter-Zustand spreaden (z.B. `{ ...filters, searchTerm }`), statt neue Arrays zu erzeugen.
+Aktive Filter werden kommasepariert gesetzt, leere Dimensionen entfernt und sofort synchronisiert. Der Sync läuft über `setSearchParams(params, { replace: true })`, sodass Filter-Änderungen keine History-Einträge fluten.
 
 ```typescript
 function setOrDelete(params: URLSearchParams, key: string, values: string[]) {
@@ -244,17 +205,16 @@ function compareByField(a: Control, b: Control, field: SortField): number {
 
 ## useFilteredControls Hook
 
-Der Haupt-Hook kombiniert alle Funktionen. Die `VocabularyRegistry` wird optional übergeben, damit die Freitextsuche auch offizielle Vokabular-Texte trifft:
+Der Haupt-Hook kombiniert Facettenzählung, Filterung und Sortierung. Die globale
+Volltextsuche verwendet stattdessen den separaten Hook `useSearch`:
 
 ```typescript
 export function useFilteredControls(
   controls: Control[],
   filters: ControlFilters,
   sort: SortConfig = [{ field: 'id', direction: 'asc' }],
-  vocabularyRegistry?: VocabularyRegistry | null,
 ): UseFilteredControlsResult {
   const facetCounts = useMemo(() => computeFacetCounts(controls), [controls]);
-  // Suchtexte nur bei aktivem Suchbegriff vorberechnen (Map<Control, string>)
   // hasActiveFilters aus allen Dimensionen ableiten
   // filtered = matchesFilter + compareControls
   // filteredFacetCounts = computeFacetCounts(filtered)

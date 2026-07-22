@@ -71,7 +71,7 @@ export function CatalogBrowser() {
     altIdentifier?: string;
   }>();
   const navigate = useNavigate();
-  const { catalog, loading, error, vocabularyRegistry } = useCatalog();
+  const { catalog, loading, error } = useCatalog();
 
   const { filters, setFilters, sort, setSort, searchString } = useFilterParams();
   const isDesktop = useMediaQuery('(min-width: 1024px)');
@@ -332,7 +332,7 @@ export function CatalogBrowser() {
   );
 
   const { filtered, totalCount, facetCounts, filteredFacetCounts, hasActiveFilters } =
-    useFilteredControls(scopedControls, filters, sort, vocabularyRegistry);
+    useFilteredControls(scopedControls, filters, sort);
 
   const clearFilters = useCallback(() => setFilters(emptyFilters), [setFilters]);
 
