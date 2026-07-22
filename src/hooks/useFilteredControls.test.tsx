@@ -1,7 +1,12 @@
 import { renderHook } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { Control } from '@/domain/models';
-import { emptyFilters, useFilteredControls } from './useFilteredControls';
+import {
+  emptyFilters,
+  useFilteredControls,
+  type ControlFilters,
+  type SortConfig,
+} from './useFilteredControls';
 
 function makeControl(overrides: Partial<Control> = {}): Control {
   return {
@@ -25,6 +30,14 @@ function makeControl(overrides: Partial<Control> = {}): Control {
 }
 
 describe('useFilteredControls', () => {
+  it('exposes only controls, filters, and optional sort parameters', () => {
+    expectTypeOf(useFilteredControls).parameters.toEqualTypeOf<[
+      controls: Control[],
+      filters: ControlFilters,
+      sort?: SortConfig,
+    ]>();
+  });
+
   it('filters by handlungsworte', () => {
     const controls = [
       makeControl({

@@ -263,12 +263,6 @@ export interface UseFilteredControlsResult {
 export function useFilteredControls(
   controls: Control[],
   filters: ControlFilters,
-  sort?: SortConfig,
-  vocabularyRegistry?: unknown,
-): UseFilteredControlsResult;
-export function useFilteredControls(
-  controls: Control[],
-  filters: ControlFilters,
   sort: SortConfig = [{ field: 'id', direction: 'asc' }],
 ): UseFilteredControlsResult {
   const facetCounts = useMemo(() => computeFacetCounts(controls), [controls]);
