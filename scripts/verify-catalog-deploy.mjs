@@ -191,6 +191,24 @@ export async function verifyCatalogDeploy({
 
   await verifyMergeCommitOnMain(repository, mergeCommitSha, { fetchImpl, token });
   await verifyManifestOnMain(repository, { snapshotSha, signature }, { fetchImpl, token });
+
+  // The push run can still register while the re-verification above is in
+  // flight. Dispatching then would deploy the same commit a second time, so
+  // look once more immediately before authorizing the fallback.
+  const lateRun = await findPushDeployRun(repository, mergeCommitSha, { fetchImpl, token });
+  if (lateRun) {
+    log(`Push deploy registered late: ${lateRun.html_url}`);
+    await awaitDeploySuccess(repository, lateRun, {
+      fetchImpl,
+      token,
+      sleep,
+      terminalAttempts,
+      terminalDelayMs,
+      log,
+    });
+    return DEPLOY_CONFIRMED;
+  }
+
   log('No push deploy appeared after bounded retries; fallback deploy is required.');
   return FALLBACK_REQUIRED;
 }

@@ -195,6 +195,23 @@ describe('verifyCatalogDeploy — no push deploy', () => {
     const lookups = fetchImpl.mock.calls
       .map(([url]) => String(url))
       .filter((url) => url.includes('/actions/workflows/'));
-    expect(lookups).toHaveLength(4);
+    // Four discovery attempts plus the late-registration re-check.
+    expect(lookups).toHaveLength(5);
+  });
+
+  it('confirms instead of dispatching when the deploy registers during re-verification', async () => {
+    const fetchImpl = makeFetch({ discovered: [undefined, makeRun()] });
+    await expect(
+      verifyCatalogDeploy(options(fetchImpl, { discoveryAttempts: 1 })),
+    ).resolves.toBe(DEPLOY_CONFIRMED);
+  });
+
+  it('fails on a late-registered deploy that did not succeed', async () => {
+    const fetchImpl = makeFetch({
+      discovered: [undefined, makeRun({ conclusion: 'failure' })],
+    });
+    await expect(
+      verifyCatalogDeploy(options(fetchImpl, { discoveryAttempts: 1 })),
+    ).rejects.toThrow('completed with conclusion failure');
   });
 });
