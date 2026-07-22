@@ -33,9 +33,26 @@ function isDocumentationPath(file) {
   return file === 'README.md' || file.startsWith('docs/');
 }
 
-function isChecked(section, label) {
+function isInsideHtmlComment(value, index) {
+  return value.lastIndexOf('<!--', index) > value.lastIndexOf('-->', index);
+}
+
+function getCheckboxState(section, label) {
   const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`- \\[x\\] \\*\\*${escaped}\\*\\*`, 'i').test(section);
+  const optionPattern = new RegExp(
+    `^- \\[([ xX])\\] \\*\\*${escaped}\\*\\*[ \\t]*\\r?$`,
+    'gm',
+  );
+  const visibleMatches = [...section.matchAll(optionPattern)]
+    .filter((match) => !isInsideHtmlComment(section, match.index ?? 0));
+
+  if (visibleMatches.length !== 1) {
+    throw new DocumentationContractError(
+      `Die Option „${label}“ muss im Dokumentationsabschnitt genau einmal vorkommen.`,
+    );
+  }
+
+  return visibleMatches[0][1].toLowerCase() === 'x';
 }
 
 function validateUpdatedDocumentation(section, changedFiles) {
@@ -95,8 +112,8 @@ export function validateDocumentationContract({ changedFiles, pullRequestBody })
     );
   }
 
-  const documentationUpdated = isChecked(section, 'Dokumentation aktualisiert');
-  const noDocumentationImpact = isChecked(section, 'Keine Dokumentationsauswirkung');
+  const documentationUpdated = getCheckboxState(section, 'Dokumentation aktualisiert');
+  const noDocumentationImpact = getCheckboxState(section, 'Keine Dokumentationsauswirkung');
   if (Number(documentationUpdated) + Number(noDocumentationImpact) !== 1) {
     throw new DocumentationContractError(
       'Im Abschnitt „Dokumentationsauswirkung“ muss genau eine Option ausgewählt sein.',
@@ -124,7 +141,7 @@ export function getChangedFiles({ baseSha, headSha, execFile = execFileSync }) {
   const validatedHeadSha = validateGitSha(headSha, 'PR_HEAD_SHA');
   const output = execFile(
     'git',
-    ['diff', '--name-only', '--diff-filter=ACMR', '-z', `${validatedBaseSha}...${validatedHeadSha}`, '--'],
+    ['diff', '--name-only', '--diff-filter=ACMRD', '-z', `${validatedBaseSha}...${validatedHeadSha}`, '--'],
     { encoding: 'utf8' },
   );
 

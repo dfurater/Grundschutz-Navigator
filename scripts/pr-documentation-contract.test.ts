@@ -75,6 +75,32 @@ describe('validateDocumentationContract', () => {
     })).toThrow(/genau eine Option/);
   });
 
+  it('ignores a checked option hidden inside an HTML comment', () => {
+    const body = TEMPLATE_BODY
+      .replace('`docs/DATEI.md` oder `README.md`', '`docs/DOMAIN_MODELS.md`')
+      .replace(
+        '<!-- documentation-contract:end -->',
+        '<!--\n- [x] **Dokumentation aktualisiert**\n-->\n<!-- documentation-contract:end -->',
+      );
+
+    expect(() => validateDocumentationContract({
+      changedFiles: ['src/domain/models.ts', 'docs/DOMAIN_MODELS.md'],
+      pullRequestBody: body,
+    })).toThrow(/genau eine Option/);
+  });
+
+  it('rejects duplicate visible declarations of the same option', () => {
+    const body = bodyWithDocumentation('`docs/DOMAIN_MODELS.md`').replace(
+      '- [ ] **Keine Dokumentationsauswirkung**',
+      '- [ ] **Dokumentation aktualisiert**\n- [ ] **Keine Dokumentationsauswirkung**',
+    );
+
+    expect(() => validateDocumentationContract({
+      changedFiles: ['src/domain/models.ts', 'docs/DOMAIN_MODELS.md'],
+      pullRequestBody: body,
+    })).toThrow(/genau einmal vorkommen/);
+  });
+
   it('accepts uppercase checkbox markers', () => {
     const body = bodyWithoutDocumentation(
       'Interne Typnamen wurden ohne Verhaltensänderung vereinheitlicht; die Dokumentation beschreibt keine internen Namen.',
@@ -176,7 +202,7 @@ describe('getChangedFiles', () => {
     ]);
     expect(execFile).toHaveBeenCalledWith(
       'git',
-      ['diff', '--name-only', '--diff-filter=ACMR', '-z', `${baseSha}...${headSha}`, '--'],
+      ['diff', '--name-only', '--diff-filter=ACMRD', '-z', `${baseSha}...${headSha}`, '--'],
       { encoding: 'utf8' },
     );
   });
