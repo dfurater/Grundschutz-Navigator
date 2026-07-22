@@ -255,9 +255,9 @@ Ein erkannter Upstream-Delta durchläuft folgende Lane:
 3. Die GitHub App pusht den Branch und erstellt oder aktualisiert den PR.
 4. `catalog-sync-guard`, `validate` und CodeQL sind die erwarteten Required Checks. Der Guard bindet Registry-Metadaten, Datei-Inventur, Blob-SHAs und Content-Hashes an den ausgewählten BSI-Snapshot.
 5. Der Workflow fordert ausschließlich GitHub Auto-Merge mit Squash und Branch-Löschung an. Das Ruleset ist über `conditions.ref_name.include = ["~DEFAULT_BRANCH"]` auf `main` gebunden, sodass GitHub den Merge erst nach grünen Gates ausführt.
-6. `.github/workflows/verify-catalog-merge.yml` soll ereignisbasiert Merge-Commit und Manifest auf `main` verifizieren. Es sucht zunächst den normalen Push-Deploy und darf nur nach erneuter Zustandsprüfung einen begrenzten Fallback dispatchen.
+6. `.github/workflows/verify-catalog-merge.yml` verifiziert ereignisbasiert Merge-Commit und Manifest auf `main`. Die anschließende Deploy-Prüfung liegt in `scripts/verify-catalog-deploy.mjs`: Sie sucht den normalen Push-Deploy zum Merge-Commit und bestätigt ihn erst, wenn er einen terminalen Zustand mit `conclusion = success` erreicht hat. Ein fehlgeschlagener oder innerhalb des Budgets unbestätigter Deploy lässt den Verify-Job fehlschlagen. Erscheint gar kein Push-Deploy, werden Merge-Commit und Manifest erneut gegen `main` geprüft, bevor der Workflow den begrenzten Fallback dispatcht.
 
-Bei fehlender oder abweichender vom Preflight geprüfter Policy, einem API-Fehler, unerwartetem Diff oder fehlendem `autoMergeRequest` bricht der Workflow ab. Der Preflight prüft die Bindung der Ruleset-Conditions an `main` fail-closed mit; der Fehler im Post-Merge-Workflow ist in GRU-254 erfasst. Der BSI-Upstream bleibt als Datenquelle grundsätzlich vertraut; eine fachliche Two-Source-Verifikation ist nicht Teil dieser Merge-Lane.
+Bei fehlender oder abweichender vom Preflight geprüfter Policy, einem API-Fehler, unerwartetem Diff oder fehlendem `autoMergeRequest` bricht der Workflow ab. Der Preflight prüft die Bindung der Ruleset-Conditions an `main` fail-closed mit. Der BSI-Upstream bleibt als Datenquelle grundsätzlich vertraut; eine fachliche Two-Source-Verifikation ist nicht Teil dieser Merge-Lane.
 
 ## Siehe auch
 
