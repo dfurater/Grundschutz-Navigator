@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
@@ -39,6 +40,13 @@ const CATALOG_FILE_NAME = 'catalog.json';
 const CATALOG_METADATA_FILE_NAME = 'catalog-metadata.json';
 const VOCABULARIES_FILE_NAME = 'vocabularies.json';
 const UPSTREAM_SOURCES_METADATA_FILE_NAME = 'upstream-sources-metadata.json';
+const OUTPUT_ARTIFACT_FILE_NAMES = Object.freeze([
+  CATALOG_FILE_NAME,
+  CATALOG_METADATA_FILE_NAME,
+  VOCABULARIES_FILE_NAME,
+  UPSTREAM_SOURCES_METADATA_FILE_NAME,
+]);
+const ALLOWED_OUTPUT_ARTIFACT_FILE_NAMES = new Set(OUTPUT_ARTIFACT_FILE_NAMES);
 const CATALOG_FILE = join(OUTPUT_DIR, CATALOG_FILE_NAME);
 const CATALOG_METADATA_FILE = join(OUTPUT_DIR, CATALOG_METADATA_FILE_NAME);
 const VOCABULARIES_FILE = join(OUTPUT_DIR, VOCABULARIES_FILE_NAME);
@@ -71,6 +79,56 @@ function truncateResponseBody(text) {
     return normalized;
   }
   return `${normalized.slice(0, MAX_ERROR_BODY_CHARS)} [gekürzt, ${text.length} Zeichen insgesamt]`;
+}
+
+async function writeArtifacts(payload, outputDir = OUTPUT_DIR) {
+  if (
+    !payload ||
+    typeof payload !== 'object' ||
+    !Array.isArray(payload.artifacts) ||
+    !payload.summary ||
+    typeof payload.summary !== 'object' ||
+    Array.isArray(payload.summary)
+  ) {
+    throw new Error('fetch-catalog payload is missing required sections');
+  }
+
+  const seenFiles = new Set();
+  const artifactsToWrite = payload.artifacts.map((artifact) => {
+    if (
+      !artifact ||
+      typeof artifact !== 'object' ||
+      typeof artifact.fileName !== 'string' ||
+      typeof artifact.contentsBase64 !== 'string'
+    ) {
+      throw new Error('fetch-catalog payload contains an invalid artifact record');
+    }
+
+    if (!ALLOWED_OUTPUT_ARTIFACT_FILE_NAMES.has(artifact.fileName)) {
+      throw new Error(`fetch-catalog payload contains an unexpected file: ${artifact.fileName}`);
+    }
+
+    if (seenFiles.has(artifact.fileName)) {
+      throw new Error(`fetch-catalog payload contains a duplicate file: ${artifact.fileName}`);
+    }
+    seenFiles.add(artifact.fileName);
+
+    return {
+      fileName: artifact.fileName,
+      contents: Buffer.from(artifact.contentsBase64, 'base64'),
+    };
+  });
+
+  for (const fileName of OUTPUT_ARTIFACT_FILE_NAMES) {
+    if (!seenFiles.has(fileName)) {
+      throw new Error(`fetch-catalog payload omitted expected file: ${fileName}`);
+    }
+  }
+
+  await mkdir(outputDir, { recursive: true });
+  for (const artifact of artifactsToWrite) {
+    await writeFile(join(outputDir, artifact.fileName), artifact.contents);
+  }
 }
 
 async function fetchWithTransientRetry(url, init, retryDelaysMs) {
@@ -622,6 +680,7 @@ export {
   validateFetchedOscalArtifact,
   resolveOptionalSnapshotSha,
   serializeJsonArtifact,
+  writeArtifacts,
 };
 
 const isDirectExecution =
@@ -635,8 +694,16 @@ if (isDirectExecution) {
   };
 
   buildFetchArtifacts(stderrLogger)
-    .then((payload) => {
-      process.stdout.write(`${JSON.stringify(payload)}\n`);
+    .then(async (payload) => {
+      await writeArtifacts(payload);
+      console.error('[5/5] Fertig.');
+      console.error(`  Katalog:             ${payload.summary.catalogFilePath}`);
+      console.error(`  Katalog-Metadaten:   ${payload.summary.catalogMetadataFilePath}`);
+      console.error(`  Vokabulare:          ${payload.summary.vocabulariesFilePath}`);
+      console.error(`  Upstream-Metadaten:  ${payload.summary.upstreamSourcesMetadataFilePath}`);
+      console.error(`  Snapshot:            ${payload.summary.snapshotCommitSha}`);
+      console.error(`  Manifest-Signatur:   ${payload.summary.manifestSignature}`);
+      console.error('================================================');
     })
     .catch((error) => {
       console.error(error instanceof Error ? error.message : String(error));

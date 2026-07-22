@@ -176,7 +176,7 @@ export function CatalogProvider({
             verification = await verifyArtifactIntegrity(buffer, provenance);
           }
         } catch {
-          // Metadata not available (e.g., local dev without running fetch-catalog.sh)
+          // Metadata not available (e.g., local dev without running npm run fetch-catalog)
           // The catalog is still usable, just not verified
           console.warn(
             'Catalog provenance metadata not available. Integrity verification skipped.',

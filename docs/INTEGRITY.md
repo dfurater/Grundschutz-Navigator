@@ -12,9 +12,9 @@ Die Anwendung verwendet ein **Integrity-Verification-System**, das:
 
 Das System prüft, ob die geladenen Artefakte zu den gemeinsam ausgelieferten Integritätsmetadaten passen. Da Artefakt und Metadaten aus demselben Deployment stammen, erkennt die Prüfung Inkonsistenzen zwischen beiden (z.B. beschädigte oder unvollständige Deployments) — sie ist aber kein unabhängiger Herkunftsnachweis. Den liefert die extern bei GitHub gespeicherte Artifact Attestation (siehe [SLSA Provenance](#slsa-provenance)); die Upstream-Authentizität wird zur Fetch-Zeit über Snapshot-Pinning und die Upstream-Allowlist verankert.
 
-## Build-Zeitpunkt (scripts/fetch-catalog.sh → fetch-catalog.mjs)
+## Build-Zeitpunkt (scripts/fetch-catalog.mjs)
 
-`scripts/fetch-catalog.sh` ist nur der Einstiegspunkt: Es ruft `scripts/fetch-catalog.mjs` auf und schreibt die von dort gelieferten Artefakte nach `public/data/` — ausschließlich diese vier generierten Dateien:
+`npm run fetch-catalog` startet `scripts/fetch-catalog.mjs`. Das Skript ruft die Upstream-Daten ab, validiert den vollständigen Output-Vertrag und schreibt ausschließlich diese vier generierten Dateien nach `public/data/`:
 
 - `catalog.json` — der OSCAL-Katalog
 - `catalog-metadata.json` — Katalog-Provenance + Integrity
@@ -354,5 +354,5 @@ Zusätzlich zur internen Integritätsprüfung generiert `.github/workflows/deplo
 - [VOCABULARY.md](./VOCABULARY.md) — Vokabular-System
 - `src/domain/integrity.ts` — Integrity-Implementierung
 - `src/state/CatalogContext.tsx` — Context-Integration
-- `scripts/fetch-catalog.sh` / `scripts/fetch-catalog.mjs` — Build-Skripte
+- `scripts/fetch-catalog.mjs` — Build-Skript
 - `.github/workflows/deploy.yml` — Deployment mit SLSA

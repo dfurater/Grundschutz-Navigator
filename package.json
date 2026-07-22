@@ -14,7 +14,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint .",
-    "fetch-catalog": "bash scripts/fetch-catalog.sh"
+    "fetch-catalog": "node scripts/fetch-catalog.mjs"
   },
   "dependencies": {
     "flexsearch": "^0.8.212",
