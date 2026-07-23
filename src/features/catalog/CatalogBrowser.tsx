@@ -215,6 +215,7 @@ export function CatalogBrowser() {
         allControls={catalog.controls}
         sectionFilename={`grundschutz-${scopeId ?? 'katalog'}.csv`}
         filterPanelProps={filterPanelProps}
+        isDesktop={isDesktop}
         onSelectionExported={finishMobileSelection}
       />
 

@@ -20,6 +20,7 @@ interface CatalogToolbarProps {
   allControls: Control[];
   sectionFilename: string;
   filterPanelProps: FilterPanelProps;
+  isDesktop: boolean;
   onSelectionExported?: () => void;
 }
 
@@ -37,6 +38,7 @@ export function CatalogToolbar({
   allControls,
   sectionFilename,
   filterPanelProps,
+  isDesktop,
   onSelectionExported,
 }: CatalogToolbarProps) {
   return (
@@ -84,20 +86,24 @@ export function CatalogToolbar({
             <IconCheck className="w-4 h-4" />
           </Button>
 
-          <CatalogMobileFilterSheet filterPanelProps={filterPanelProps} />
+          {!isDesktop && (
+            <CatalogMobileFilterSheet filterPanelProps={filterPanelProps} />
+          )}
           <CatalogExportMenu
             checkedIds={checkedIds}
             filteredControls={filteredControls}
             allControls={allControls}
             sectionFilename={sectionFilename}
           />
-          <CatalogMobileExportSheet
-            checkedIds={checkedIds}
-            filteredControls={filteredControls}
-            allControls={allControls}
-            sectionFilename={sectionFilename}
-            onSelectionExported={onSelectionExported}
-          />
+          {!isDesktop && (
+            <CatalogMobileExportSheet
+              checkedIds={checkedIds}
+              filteredControls={filteredControls}
+              allControls={allControls}
+              sectionFilename={sectionFilename}
+              onSelectionExported={onSelectionExported}
+            />
+          )}
         </div>
       </div>
 
