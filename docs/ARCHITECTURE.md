@@ -30,15 +30,19 @@ src/
 │   ├── sourceRegistry.d.mts      # Typen des Quellregisters
 │   ├── controlRef.ts             # Kataloggescopte interne Control-Referenzen
 │   └── controlRelationships.ts   # Steuerungsbeziehungen
-├── adapters/         # Datentransformationen
-│   └── oscalAdapter.ts           # OSCAL → Domain Model Parser
+├── adapters/         # Infrastruktur- und Datengrenzen
+│   ├── oscalAdapter.ts           # OSCAL → Domain Model Parser
+│   └── browserDownload.ts        # Temporärer Browser-Download mit Cleanup
 ├── state/            # Globaler Anwendungszustand
 │   └── CatalogContext.tsx        # Katalog-Kontextprovider
 ├── hooks/            # Wiederverwendbare React Hooks
 │   ├── useCatalog.ts             # Katalog-Daten
 │   ├── useFilteredControls.ts    # Filterlogik
 │   ├── useFilterParams.ts        # URL-Parameter-Sync
+│   ├── useControlNavigation.ts   # Kataloggescopte Detailnavigation
+│   ├── useControlSelection.ts    # Katalog-/Gruppen-gescopte Auswahl
 │   ├── useFocusTrap.ts           # Barrierefreiheit
+│   ├── useScrollLock.ts          # Reversibler Body-Scroll-Lock
 │   └── useMediaQuery.ts          # Responsive Design
 ├── features/         # Feature-Module (Seite + Komponenten)
 │   ├── home/
@@ -159,6 +163,47 @@ Die Anwendung verwendet React Router mit `BrowserRouter` und pfadbasierten URLs.
 | `/lizenzen` | LizenzenPage | Lizenzen |
 | `/mehr` | — | Redirect auf `/about` |
 | `*` | — | 404-Seite |
+
+## Katalog-Browser-Grenzen
+
+`src/features/catalog/CatalogBrowser.tsx` ist der Composer des Katalog-Browsers.
+Er bindet Router, Katalog- und Filterzustand aneinander, bestimmt den
+Practice-/Topic-Scope, hält Breakpoint- und Panelbreitenzustand und komponiert
+Liste, Toolbar und Seitenleisten. Direkte CSV-Downloads, Beziehungsgraphen und
+imperative Zugriffe auf `document.body` gehören ausdrücklich nicht zu dieser
+Grenze.
+
+Die Zuständigkeiten sind wie folgt getrennt:
+
+| Baustein | Verantwortung |
+|----------|----------------|
+| `useControlNavigation` | Löst Control-Route, Scope und Not-found-Zustand auf und erhält Push-/Replace-Semantik sowie Query-Parameter. Routerwerte und `NavigateFunction` werden injiziert; der Hook verwendet keine Router-Hooks. |
+| `useControlSelection` | Verwaltet die markierten Control-IDs. Der Scope kombiniert Katalog- und Gruppenidentität, sodass ein Wechsel synchron eine leere Auswahl liefert. |
+| `CatalogToolbar` | Stellt Titel, Counts, Auswahlmodus sowie Filter- und Exportzugänge ausschließlich aus Props zusammen. |
+| `CatalogExportMenu` | Besitzt den Desktop-Menüzustand, Outside-Click, Escape, Autofokus und die Desktop-Exportaktionen. |
+| `CatalogMobileFilterSheet` | Besitzt Trigger, Sichtbarkeit, Focus-Trap, Escape, Backdrop, Drag-Dismiss und Scroll-Lock des mobilen Filters. |
+| `CatalogMobileExportSheet` | Besitzt Trigger, Sichtbarkeit, Focus-Trap, Escape, Backdrop, Scroll-Lock und mobile Exportaktionen. |
+| `CatalogMobileSelectionBar` | Exportiert die mobile Auswahl und beendet anschließend den Auswahlmodus. |
+| `CatalogDesktopSidebar` | Kapselt Filter-/Detaildarstellung und die veränderbare Desktop-Panelbreite; der Breitenzustand bleibt beim Composer. |
+| `CatalogDetailPanel` | Baut eingehende Links und Parent-/Child-Beziehungen auf und versorgt `ControlDetail`. |
+| `CatalogMobileDetailOverlay` | Besitzt Focus-Trap, Escape und Scroll-Lock des mobilen Details. |
+
+Mobile Overlays sind weiterhin modal und über die vorhandenen Interaktionspfade
+gegenseitig ausschließend. `useScrollLock` speichert deshalb bewusst keinen
+globalen Refcount, sondern stellt beim Cleanup exakt den vorherigen Inline-Wert
+von `body.style.overflow` wieder her.
+
+CSV-Serialisierung und Browserauslösung sind getrennte Grenzen:
+`features/export/csvExport.ts` erzeugt unverändert Inhalt und `Blob`;
+`adapters/browserDownload.ts` erstellt den temporären Link und widerruft Link
+und Object-URL auch bei Fehlern garantiert in `finally`.
+
+ESLint sichert diese Architektur statisch ab: `CatalogBrowser` darf weder den
+CSV-Exporter noch den Beziehungsgraphen importieren, direkter
+`document.body`-Zugriff ist in App-, Komponenten- und Feature-Code ein Fehler,
+imperative Event-Listener und Dateien über 300 physische Zeilen werden als
+Warnungen ausgewiesen. Hooks und Browseradapter bilden die erlaubten
+Infrastrukturgrenzen.
 
 ## Filter-System
 

@@ -1,10 +1,18 @@
-import { describe, it, expect } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import {
   escapeCSVField,
   controlToCSVRow,
   controlsToCSV,
+  downloadCSV,
 } from './csvExport';
 import type { Control } from '@/domain/models';
+import { downloadBlob } from '@/adapters/browserDownload';
+
+vi.mock('@/adapters/browserDownload', () => ({
+  downloadBlob: vi.fn(),
+}));
+
+const mockedDownloadBlob = vi.mocked(downloadBlob);
 
 /* ------------------------------------------------------------------ */
 /*  Fixtures                                                           */
@@ -542,5 +550,26 @@ describe('controlsToCSV', () => {
       'G 0.18, G 0.19',
       'uuid-1',
     ]);
+  });
+});
+
+describe('downloadCSV', () => {
+  beforeEach(() => {
+    mockedDownloadBlob.mockReset();
+  });
+
+  it('delegates the generated UTF-8 CSV blob to the browser adapter', async () => {
+    const control = makeControl();
+
+    downloadCSV([control], 'grundschutz-auswahl.csv');
+
+    expect(mockedDownloadBlob).toHaveBeenCalledOnce();
+    const [blob, filename] = mockedDownloadBlob.mock.calls[0];
+    expect(filename).toBe('grundschutz-auswahl.csv');
+    expect(blob).toBeInstanceOf(Blob);
+    expect(blob.type).toBe('text/csv;charset=utf-8');
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    expect([...bytes.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+    expect(new TextDecoder().decode(bytes.slice(3))).toBe(controlsToCSV([control]));
   });
 });
