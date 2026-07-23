@@ -3,9 +3,9 @@ import { IconTag, IconTarget } from '@/components/icons';
 import type { Control } from '@/domain/models';
 import type {
   ResolvedControlVocabularies,
-  VocabularyResolution,
 } from '@/domain/vocabulary';
 import {
+  findResolutionByValue,
   outlineBadgeClass,
   toVocabCardId,
   type RenderVocabularyCard,
@@ -28,13 +28,6 @@ export interface ControlTaxonomyProps {
   isVocabularyActive: (key: string) => boolean;
   onToggleVocabulary: (key: string) => void;
   renderVocabularyCard: RenderVocabularyCard;
-}
-
-function findResolutionByValue(
-  resolutions: VocabularyResolution[],
-  value: string,
-) {
-  return resolutions.find((resolution) => resolution.entry.value === value) ?? null;
 }
 
 export function ControlTaxonomy({

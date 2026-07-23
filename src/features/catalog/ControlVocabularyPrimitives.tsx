@@ -7,6 +7,14 @@ export type RenderVocabularyCard = (resolution: VocabularyResolution) => ReactNo
 export const outlineBadgeClass =
   'max-w-full whitespace-normal break-words py-1 text-left leading-snug [overflow-wrap:anywhere]';
 
+export function SubSectionHeading({ children }: { children: ReactNode }) {
+  return (
+    <h4 className="text-xs font-medium uppercase tracking-wide text-slate-500 mb-1">
+      {children}
+    </h4>
+  );
+}
+
 export function VocabularyAffordanceIcon({
   active = false,
   placement = 'inline',
@@ -36,4 +44,11 @@ export function vocabButtonClass(active: boolean) {
       ? 'ring-2 ring-offset-1 ring-primary-main/40'
       : ''
   }`;
+}
+
+export function findResolutionByValue(
+  resolutions: readonly VocabularyResolution[],
+  value: string,
+) {
+  return resolutions.find((resolution) => resolution.entry.value === value) ?? null;
 }
