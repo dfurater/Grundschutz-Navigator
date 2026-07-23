@@ -1,5 +1,6 @@
 import type { Control } from '@/domain/models';
 import { getControlLinkTargetsByRelation } from '@/domain/controlRelationships';
+import { downloadBlob } from '@/adapters/browserDownload';
 
 /**
  * Escape a field value for CSV output.
@@ -116,16 +117,5 @@ export function downloadCSV(
 ): void {
   const csv = UTF8_BOM + controlsToCSV(controls);
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  link.style.display = 'none';
-  document.body.appendChild(link);
-  link.click();
-
-  // Cleanup
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, filename);
 }

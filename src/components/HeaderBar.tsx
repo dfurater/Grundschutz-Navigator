@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { Link } from 'react-router-dom';
+import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import { IconSearch, IconShield, IconMenu } from './icons';
 
 
@@ -48,18 +49,13 @@ export function HeaderBar({
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/i.test(navigator.platform);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Cmd+K / Ctrl+K shortcut
-  useEffect(() => {
-    function handleKeyDown(e: globalThis.KeyboardEvent) {
-      if (!(e.metaKey || e.ctrlKey) || e.key !== 'k') return;
-      if (e.target !== inputRef.current && isEditableTarget(e.target)) return;
+  useGlobalEventListener('document', 'keydown', (event) => {
+    if (!(event.metaKey || event.ctrlKey) || event.key !== 'k') return;
+    if (event.target !== inputRef.current && isEditableTarget(event.target)) return;
 
-      e.preventDefault();
-      inputRef.current?.focus();
-    }
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []);
+    event.preventDefault();
+    inputRef.current?.focus();
+  });
 
   const handleSearchKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && onSearch) {
