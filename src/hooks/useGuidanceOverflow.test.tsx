@@ -5,9 +5,14 @@ import { useGuidanceOverflow } from './useGuidanceOverflow';
 interface GuidanceHarnessProps {
   scopeId: string;
   enabled: boolean;
+  guidance?: string;
 }
 
-function GuidanceHarness({ scopeId, enabled }: GuidanceHarnessProps) {
+function GuidanceHarness({
+  scopeId,
+  enabled,
+  guidance = 'Hinweis',
+}: GuidanceHarnessProps) {
   const {
     ref,
     expanded,
@@ -17,7 +22,7 @@ function GuidanceHarness({ scopeId, enabled }: GuidanceHarnessProps) {
 
   return (
     <div>
-      <p ref={ref}>Hinweis</p>
+      <p ref={ref}>{guidance}</p>
       <output data-testid="expanded">{String(expanded)}</output>
       <output data-testid="has-overflow">{String(hasOverflow)}</output>
       <button type="button" onClick={toggleExpanded}>Umschalten</button>
@@ -99,6 +104,35 @@ describe('useGuidanceOverflow', () => {
 
     scrollHeight = 122;
     act(() => observer.trigger());
+
+    expect(screen.getByTestId('has-overflow')).toHaveTextContent('true');
+  });
+
+  it('remeasures when guidance content changes within the same scope', () => {
+    vi.stubGlobal('ResizeObserver', ResizeObserverMock);
+    let scrollHeight = 120;
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get')
+      .mockImplementation(() => scrollHeight);
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get')
+      .mockReturnValue(120);
+
+    const view = render(
+      <GuidanceHarness
+        scopeId="gspp:TOP.1.1"
+        enabled
+        guidance="Kurzer Hinweis"
+      />,
+    );
+    expect(screen.getByTestId('has-overflow')).toHaveTextContent('false');
+
+    scrollHeight = 240;
+    view.rerender(
+      <GuidanceHarness
+        scopeId="gspp:TOP.1.1"
+        enabled
+        guidance="Ein deutlich längerer Hinweis"
+      />,
+    );
 
     expect(screen.getByTestId('has-overflow')).toHaveTextContent('true');
   });

@@ -72,12 +72,15 @@ export function useGuidanceOverflow({
   }, [scopeId]);
 
   useLayoutEffect(() => {
-    if (!measurementEnabled) return;
+    if (measurementEnabled) {
+      measureOverflow();
+    }
+  });
 
+  useLayoutEffect(() => {
+    if (!measurementEnabled) return;
     const element = ref.current;
     if (!element) return;
-
-    measureOverflow();
 
     if (typeof ResizeObserver === 'undefined') return;
 
