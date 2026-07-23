@@ -42,6 +42,7 @@ src/
 │   ├── useControlNavigation.ts   # Kataloggescopte Detailnavigation
 │   ├── useControlSelection.ts    # Katalog-/Gruppen-gescopte Auswahl
 │   ├── useFocusTrap.ts           # Barrierefreiheit
+│   ├── useGlobalEventListener.ts # Globale Listener mit stabilem Cleanup
 │   ├── useScrollLock.ts          # Reversibler Body-Scroll-Lock
 │   └── useMediaQuery.ts          # Responsive Design
 ├── features/         # Feature-Module (Seite + Komponenten)
@@ -203,7 +204,9 @@ CSV-Exporter noch den Beziehungsgraphen importieren, direkter
 `document.body`-Zugriff ist in App-, Komponenten- und Feature-Code ein Fehler,
 imperative Event-Listener und Dateien über 300 physische Zeilen werden als
 Warnungen ausgewiesen. Hooks und Browseradapter bilden die erlaubten
-Infrastrukturgrenzen.
+Infrastrukturgrenzen. `useGlobalEventListener` bündelt globale Window- und
+Document-Listener, hält den Handler über Re-Renders aktuell und garantiert
+symmetrischen Abbau beim Deaktivieren oder Unmount.
 
 ## Filter-System
 

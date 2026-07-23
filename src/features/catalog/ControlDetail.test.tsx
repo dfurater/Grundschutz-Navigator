@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -24,6 +24,8 @@ function setClipboard(writeText?: (text: string) => Promise<void>) {
 }
 
 afterEach(() => {
+  vi.unstubAllGlobals();
+
   if (originalClipboardDescriptor) {
     Object.defineProperty(navigator, 'clipboard', originalClipboardDescriptor);
   } else {
@@ -1304,5 +1306,32 @@ describe('ControlDetail', () => {
 
     scrollHeightSpy.mockRestore();
     clientHeightSpy.mockRestore();
+  });
+
+  it('remeasures guidance on window resize when ResizeObserver is unavailable', () => {
+    vi.stubGlobal('ResizeObserver', undefined);
+    let scrollHeight = 120;
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get')
+      .mockImplementation(() => scrollHeight);
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get')
+      .mockReturnValue(120);
+
+    render(
+      <ControlDetail
+        control={makeControl({
+          guidance: 'Dynamischer Grenzfall '.repeat(80),
+        })}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Mehr anzeigen' }))
+      .not.toBeInTheDocument();
+
+    scrollHeight = 240;
+    fireEvent.resize(window);
+
+    expect(screen.getByRole('button', { name: 'Mehr anzeigen' }))
+      .toBeInTheDocument();
   });
 });

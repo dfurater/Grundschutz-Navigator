@@ -1,4 +1,10 @@
-import { Fragment, useLayoutEffect, useRef, useState } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { Badge } from '@/components/Badge';
 import { EffortBadge, ModalverbBadge, SecurityLevelBadge } from '@/components/StatusMeta';
 import {
@@ -16,6 +22,7 @@ import type { VocabularyResolution } from '@/domain/vocabulary';
 import { resolveControlVocabularies } from '@/domain/vocabulary';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useClipboard } from '@/hooks/useClipboard';
+import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import { VocabularyEntryCard } from '@/features/vocabularies/VocabularyEntryCard';
 import { buildControlUrlForControl } from '@/app/routes';
 import { ControlDetailSection } from './ControlDetailSection';
@@ -316,6 +323,18 @@ export function ControlDetail({
     }));
   };
 
+  const measureGuidanceOverflow = useCallback(() => {
+    const guidanceElement = guidanceRef.current;
+    if (!guidanceElement) return;
+
+    setGuidanceOverflowState({
+      controlKey: controlStateKey,
+      hasOverflow:
+        guidanceElement.scrollHeight - guidanceElement.clientHeight >
+        guidanceOverflowTolerance,
+    });
+  }, [controlStateKey]);
+
   useLayoutEffect(() => {
     if (!control.guidance || guidanceExpanded) {
       return;
@@ -326,20 +345,10 @@ export function ControlDetail({
       return;
     }
 
-    const measureGuidanceOverflow = () => {
-      setGuidanceOverflowState({
-        controlKey: controlStateKey,
-        hasOverflow:
-          guidanceElement.scrollHeight - guidanceElement.clientHeight >
-          guidanceOverflowTolerance,
-      });
-    };
-
     measureGuidanceOverflow();
 
     if (typeof ResizeObserver === 'undefined') {
-      window.addEventListener('resize', measureGuidanceOverflow);
-      return () => window.removeEventListener('resize', measureGuidanceOverflow);
+      return;
     }
 
     const resizeObserver = new ResizeObserver(measureGuidanceOverflow);
@@ -351,7 +360,16 @@ export function ControlDetail({
     }
 
     return () => resizeObserver.disconnect();
-  }, [control.guidance, controlStateKey, guidanceExpanded]);
+  }, [control.guidance, guidanceExpanded, measureGuidanceOverflow]);
+
+  useGlobalEventListener(
+    'window',
+    'resize',
+    measureGuidanceOverflow,
+    Boolean(control.guidance)
+      && !guidanceExpanded
+      && typeof ResizeObserver === 'undefined',
+  );
 
   const isVocabularyActive = (key: string) => activeVocabularyKey === key;
   const findResolutionByValue = (

@@ -3,6 +3,7 @@ import type { Control } from '@/domain/models';
 import { Button } from '@/components/Button';
 import { IconChevronDown, IconDownload } from '@/components/icons';
 import { downloadCSV } from '@/features/export/csvExport';
+import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 
 interface CatalogExportMenuProps {
   checkedIds: ReadonlySet<string>;
@@ -37,17 +38,11 @@ export function CatalogExportMenu({
     setOpen(false);
   };
 
-  useEffect(() => {
-    if (!open) return;
-
-    const handleClick = (event: MouseEvent) => {
-      if (!menuContainerRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [open]);
+  useGlobalEventListener('document', 'mousedown', (event) => {
+    if (!menuContainerRef.current?.contains(event.target as Node)) {
+      setOpen(false);
+    }
+  }, open);
 
   useEffect(() => {
     if (open) firstMenuItemRef.current?.focus();
