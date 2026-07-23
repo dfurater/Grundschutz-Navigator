@@ -196,6 +196,47 @@ describe('ControlDetail', () => {
     );
   });
 
+  it('does not revive vocabulary state after a catalog scope roundtrip', async () => {
+    const user = userEvent.setup();
+    const control = makeControl({
+      modalverb: 'MUSS',
+      modalverbProp: {
+        name: 'modal_verb',
+        value: 'MUSS',
+        ns: 'https://example.com/namespaces/modal_verbs.csv',
+      },
+    });
+    const initialCatalogState = makeCatalogState();
+    const view = render(
+      <MemoryRouter>
+        <ControlDetail control={control} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'MUSS' }));
+    const wlanCatalog = {
+      ...initialCatalogState.catalog!,
+      catalogKey: 'wlan' as const,
+    };
+    mockedUseCatalog.mockReturnValue(makeCatalogState({ catalog: wlanCatalog }));
+    view.rerender(
+      <MemoryRouter>
+        <ControlDetail control={control} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+    mockedUseCatalog.mockReturnValue(initialCatalogState);
+    view.rerender(
+      <MemoryRouter>
+        <ControlDetail control={control} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('button', { name: 'MUSS' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
   it('renders resolved security targets and threats with independent accessible toggles', async () => {
     const user = userEvent.setup();
     const control = makeControl({

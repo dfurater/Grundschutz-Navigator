@@ -41,6 +41,8 @@ src/
 │   ├── useFilterParams.ts        # URL-Parameter-Sync
 │   ├── useControlNavigation.ts   # Kataloggescopte Detailnavigation
 │   ├── useControlSelection.ts    # Katalog-/Gruppen-gescopte Auswahl
+│   ├── useActiveVocabulary.ts    # Katalog-/Control-gescopte Vokabularkarte
+│   ├── useGuidanceOverflow.ts    # Scopegebundener Guidance-/Messzustand
 │   ├── useFocusTrap.ts           # Barrierefreiheit
 │   ├── useGlobalEventListener.ts # Globale Listener mit stabilem Cleanup
 │   ├── useScrollLock.ts          # Reversibler Body-Scroll-Lock
@@ -207,6 +209,36 @@ Warnungen ausgewiesen. Hooks und Browseradapter bilden die erlaubten
 Infrastrukturgrenzen. `useGlobalEventListener` bündelt globale Window- und
 Document-Listener, hält den Handler über Re-Renders aktuell und garantiert
 symmetrischen Abbau beim Deaktivieren oder Unmount.
+
+## Control-Detail-Grenzen
+
+`src/features/catalog/ControlDetail.tsx` ist der schlanke Composer der
+Kontrollansicht und der einzige `useCatalog`-Aufrufer dieses Teilbaums. Er
+bestimmt den Scope `${catalogKey}:${control.id}`, löst Vokabulare memoisiert
+auf, bindet Clipboard- und UI-State-Hooks an und komponiert die Sektionen in
+fachlicher Reihenfolge. Router-gebundene `VocabularyEntryCard`-Ausgabe bleibt
+an dieser Grenze: Die reinen Sektionen erhalten einen stabilen Render-Callback
+und sind dadurch ohne Router oder Katalogprovider isoliert testbar.
+
+| Baustein | Verantwortung |
+|----------|----------------|
+| `useActiveVocabulary` | Hält höchstens eine Vokabularkarte offen und setzt den Zustand bei Katalog- oder Control-Wechsel synchron und dauerhaft zurück. |
+| `useGuidanceOverflow` | Besitzt Expansion, Overflow-Messung, `ResizeObserver`, Window-Fallback und symmetrisches Listener-/Observer-Cleanup. |
+| `ControlClassification` | Rendert Kriterien und bindet `ControlTaxonomy` an der fachlich festgelegten GRU-140-Position ein. |
+| `ControlTaxonomy` | Rendert Tags und Zielobjektkategorien einschließlich optionaler Vokabularinteraktion. |
+| `ControlSecurityContext` | Rendert Schutzzielrelevanzen und elementare Gefährdungen. |
+| `ControlStatement` | Rendert den Anforderungstext. |
+| `ControlStatementDetails` | Rendert Ergebnis, Präzisierung, Handlungswort und Dokumentation mit korrekter `dl`-Semantik. |
+| `ControlGuidance` | Rendert die kontrollierte, bei Bedarf aufklappbare Guidance; Messung und State liegen im Hook. |
+| `ControlDependencies` | Baut die lokale Incoming-Map, kombiniert reziproke Relationstexte und rendert aus- und eingehende Beziehungen. |
+| `ControlHierarchy` | Rendert aufgelösten Parent und Erweiterungen. |
+| `ControlMetadata` | Rendert UUID und nur bei nicht auflösbarem Parent den Parent-ID-Fallback. |
+
+Die Sektionsmodule erhalten ausschließlich benötigte Controls, aufgelöste
+Vokabularwerte und Callbacks. Sie verwenden weder Katalog-, Router- noch
+Filterkontext. Reihenfolge, Überschriften, ARIA-Ziele und
+`dl`/`dt`/`dd`-Semantik sind Verträge der Kontrollansicht und werden durch
+Integrationstests abgesichert.
 
 ## Filter-System
 
