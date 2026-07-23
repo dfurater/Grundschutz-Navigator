@@ -7,6 +7,9 @@ export type RenderVocabularyCard = (resolution: VocabularyResolution) => ReactNo
 export const outlineBadgeClass =
   'max-w-full whitespace-normal break-words py-1 text-left leading-snug [overflow-wrap:anywhere]';
 
+export const detailLinkRowClass =
+  'group block w-full rounded px-2 py-2 -mx-2 text-left transition-colors hover:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]';
+
 export function SubSectionHeading({ children }: { children: ReactNode }) {
   return (
     <h4 className="text-xs font-medium uppercase tracking-wide text-slate-500 mb-1">
