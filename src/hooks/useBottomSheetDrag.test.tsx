@@ -69,6 +69,9 @@ describe('useBottomSheetDrag', () => {
     expect(addEventListener).toHaveBeenCalledWith(
       'touchend', expect.any(Function), { passive: true },
     );
+    expect(addEventListener).toHaveBeenCalledWith(
+      'touchcancel', expect.any(Function), { passive: true },
+    );
 
     const listeners = Object.fromEntries(addEventListener.mock.calls.map(
       ([type, listener]) => [type, listener],
@@ -78,6 +81,7 @@ describe('useBottomSheetDrag', () => {
     expect(removeEventListener).toHaveBeenCalledWith('touchstart', listeners.touchstart);
     expect(removeEventListener).toHaveBeenCalledWith('touchmove', listeners.touchmove);
     expect(removeEventListener).toHaveBeenCalledWith('touchend', listeners.touchend);
+    expect(removeEventListener).toHaveBeenCalledWith('touchcancel', listeners.touchcancel);
   });
 
   it('applies downward movement and fades the backdrop proportionally', () => {
@@ -163,6 +167,45 @@ describe('useBottomSheetDrag', () => {
     refs.handle.dispatchEvent(touchEvent('touchend', 160));
     act(() => vi.advanceTimersByTime(200));
 
+    expect(onDismiss).toHaveBeenCalledOnce();
+  });
+
+  it('resets sheet and backdrop to rest state when the gesture is cancelled', () => {
+    vi.useFakeTimers();
+    const refs = setupSheet();
+    const onDismiss = vi.fn();
+    vi.spyOn(Date, 'now').mockReturnValue(1_000);
+    renderHook(() => useBottomSheetDrag({ ...refs, onDismiss }));
+
+    refs.handle.dispatchEvent(touchEvent('touchstart', 100));
+    refs.handle.dispatchEvent(touchEvent('touchmove', 260));
+    refs.handle.dispatchEvent(new Event('touchcancel', { bubbles: true }));
+
+    expect(refs.sheet.style.transform).toBe('');
+    expect(refs.sheet.style.transition).toContain('transform');
+    expect(refs.backdrop.style.opacity).toBe('0.3');
+    act(() => vi.runAllTimers());
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+
+  it('allows a fresh gesture to start immediately after a cancel', () => {
+    vi.useFakeTimers();
+    const refs = setupSheet();
+    const onDismiss = vi.fn();
+    vi.spyOn(Date, 'now').mockReturnValue(1_000);
+    renderHook(() => useBottomSheetDrag({ ...refs, onDismiss }));
+
+    refs.handle.dispatchEvent(touchEvent('touchstart', 100));
+    refs.handle.dispatchEvent(touchEvent('touchmove', 260));
+    refs.handle.dispatchEvent(new Event('touchcancel', { bubbles: true }));
+
+    // A new drag past the threshold dismisses normally, proving state was reset.
+    refs.handle.dispatchEvent(touchEvent('touchstart', 100));
+    refs.handle.dispatchEvent(touchEvent('touchmove', 221));
+    refs.handle.dispatchEvent(touchEvent('touchend', 221));
+
+    expect(refs.sheet.style.transform).toBe('translateY(400px)');
+    act(() => vi.advanceTimersByTime(200));
     expect(onDismiss).toHaveBeenCalledOnce();
   });
 

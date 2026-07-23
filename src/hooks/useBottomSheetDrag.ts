@@ -43,34 +43,49 @@ export function useBottomSheetDrag({
         backdrop.style.opacity = String(Math.max(0, 0.3 * (1 - fade)));
       }
     };
+    const snapBack = () => {
+      sheet.style.transition = `transform ${TRANSITION}`;
+      sheet.style.transform = '';
+      const backdrop = backdropRef.current;
+      if (backdrop) {
+        backdrop.style.transition = `opacity ${TRANSITION}`;
+        backdrop.style.opacity = '0.3';
+      }
+    };
     const onTouchEnd = () => {
       const height = sheet.offsetHeight;
       const threshold = dismissThresholdPx ?? height * 0.3;
       const dismiss = (velocity > dismissVelocity && delta > 20) || delta > threshold;
-      sheet.style.transition = `transform ${TRANSITION}`;
-      const backdrop = backdropRef.current;
       if (dismiss) {
+        sheet.style.transition = `transform ${TRANSITION}`;
         sheet.style.transform = `translateY(${height}px)`;
+        const backdrop = backdropRef.current;
         if (backdrop) {
           backdrop.style.transition = `opacity ${TRANSITION}`;
           backdrop.style.opacity = '0';
         }
         dismissTimer = window.setTimeout(onDismiss, 200);
       } else {
-        sheet.style.transform = '';
-        if (backdrop) {
-          backdrop.style.transition = `opacity ${TRANSITION}`;
-          backdrop.style.opacity = '0.3';
-        }
+        snapBack();
       }
+    };
+    // Bricht Browser/OS die Geste ab (Systemgeste, App-Wechsel, Scroll-/Zoom-Übernahme),
+    // wird die Geste ohne touchend beendet – Sheet und Backdrop müssen dennoch in den
+    // Ausgangszustand zurückfedern und der Gesten-Zustand sauber zurückgesetzt werden.
+    const onTouchCancel = () => {
+      velocity = 0;
+      delta = 0;
+      snapBack();
     };
     handle.addEventListener('touchstart', onTouchStart, { passive: true });
     handle.addEventListener('touchmove', onTouchMove, { passive: false });
     handle.addEventListener('touchend', onTouchEnd, { passive: true });
+    handle.addEventListener('touchcancel', onTouchCancel, { passive: true });
     return () => {
       handle.removeEventListener('touchstart', onTouchStart);
       handle.removeEventListener('touchmove', onTouchMove);
       handle.removeEventListener('touchend', onTouchEnd);
+      handle.removeEventListener('touchcancel', onTouchCancel);
       if (dismissTimer !== undefined) window.clearTimeout(dismissTimer);
     };
   }, [active, backdropRef, dismissThresholdPx, dismissVelocity, handleRef, onDismiss, sheetRef]);
