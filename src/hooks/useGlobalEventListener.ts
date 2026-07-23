@@ -13,6 +13,7 @@ export function useGlobalEventListener<
   eventName: EventName,
   listener: (event: GlobalEventMap<Target>[EventName]) => void,
   enabled = true,
+  subscriptionKey?: unknown,
 ) {
   const onEvent = useEffectEvent(listener);
 
@@ -26,5 +27,5 @@ export function useGlobalEventListener<
 
     eventTarget.addEventListener(eventName, handleEvent);
     return () => eventTarget.removeEventListener(eventName, handleEvent);
-  }, [enabled, eventName, target]);
+  }, [enabled, eventName, subscriptionKey, target]);
 }

@@ -37,6 +37,14 @@ export function useGuidanceOverflow({
     expanded: false,
     hasOverflow: false,
   }));
+  if (guidanceState.scopeId !== scopeId) {
+    setGuidanceState({
+      scopeId,
+      expanded: false,
+      hasOverflow: false,
+    });
+  }
+
   const hasCurrentScope = guidanceState.scopeId === scopeId;
   const expanded = hasCurrentScope ? guidanceState.expanded : false;
   const hasOverflow = enabled && hasCurrentScope
@@ -64,12 +72,6 @@ export function useGuidanceOverflow({
   }, [scopeId]);
 
   useLayoutEffect(() => {
-    if (enabled && !hasCurrentScope) {
-      measureOverflow();
-    }
-  }, [enabled, hasCurrentScope, measureOverflow]);
-
-  useLayoutEffect(() => {
     if (!measurementEnabled) return;
 
     const element = ref.current;
@@ -93,6 +95,7 @@ export function useGuidanceOverflow({
     'resize',
     measureOverflow,
     measurementEnabled && typeof ResizeObserver === 'undefined',
+    scopeId,
   );
 
   const toggleExpanded = useCallback(() => {

@@ -17,6 +17,10 @@ export function useActiveVocabulary({
     scopeId,
     activeKey: null as string | null,
   }));
+  if (vocabularyState.scopeId !== scopeId) {
+    setVocabularyState({ scopeId, activeKey: null });
+  }
+
   const activeKey =
     vocabularyState.scopeId === scopeId
       ? vocabularyState.activeKey

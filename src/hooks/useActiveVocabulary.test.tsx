@@ -38,4 +38,18 @@ describe('useActiveVocabulary', () => {
     rerender({ scopeId: 'gspp:TOP.1.1' });
     expect(result.current.activeKey).toBeNull();
   });
+
+  it('does not revive a previous scope key after a roundtrip without interaction', () => {
+    const { result, rerender } = renderHook(
+      ({ scopeId }) => useActiveVocabulary({ scopeId }),
+      { initialProps: { scopeId: 'gspp:TOP.1.1' } },
+    );
+
+    act(() => result.current.toggle('modalverb:MUSS'));
+    rerender({ scopeId: 'wlan:WLAN.9.1' });
+    rerender({ scopeId: 'gspp:TOP.1.1' });
+
+    expect(result.current.activeKey).toBeNull();
+    expect(result.current.isActive('modalverb:MUSS')).toBe(false);
+  });
 });

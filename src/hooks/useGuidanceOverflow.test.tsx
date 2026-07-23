@@ -117,6 +117,21 @@ describe('useGuidanceOverflow', () => {
     expect(screen.getByTestId('has-overflow')).toHaveTextContent('false');
   });
 
+  it('does not revive expansion after a disabled scope roundtrip without interaction', () => {
+    vi.stubGlobal('ResizeObserver', ResizeObserverMock);
+    mockElementHeights(122, 120);
+
+    const view = render(<GuidanceHarness scopeId="gspp:TOP.1.1" enabled />);
+    fireEvent.click(screen.getByRole('button', { name: 'Umschalten' }));
+    expect(screen.getByTestId('expanded')).toHaveTextContent('true');
+
+    view.rerender(<GuidanceHarness scopeId="wlan:WLAN.9.1" enabled={false} />);
+    view.rerender(<GuidanceHarness scopeId="gspp:TOP.1.1" enabled={false} />);
+
+    expect(screen.getByTestId('expanded')).toHaveTextContent('false');
+    expect(screen.getByTestId('has-overflow')).toHaveTextContent('false');
+  });
+
   it('disconnects the old observer and measures the new scope when enabled', () => {
     vi.stubGlobal('ResizeObserver', ResizeObserverMock);
     let scrollHeight = 122;
