@@ -119,6 +119,30 @@ describe('CatalogMobileExportSheet', () => {
     );
   });
 
+  it('keeps the trigger enabled when the current view is empty but a selection is retained', () => {
+    render(
+      <CatalogMobileExportSheet
+        checkedIds={new Set([firstControl.id])}
+        filteredControls={[]}
+        allControls={[firstControl, secondControl]}
+        sectionFilename="grundschutz-TOP.2.csv"
+      />,
+    );
+
+    const trigger = screen.getByRole('button', { name: 'CSV' });
+    expect(trigger).not.toBeDisabled();
+
+    fireEvent.click(trigger);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Auswahl exportieren (1)' }),
+    );
+
+    expect(mockedDownloadCSV).toHaveBeenCalledWith(
+      [firstControl],
+      'grundschutz-auswahl.csv',
+    );
+  });
+
   it('exports all checked controls even when some fall outside the filtered view', () => {
     render(
       <CatalogMobileExportSheet

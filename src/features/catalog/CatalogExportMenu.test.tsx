@@ -60,6 +60,27 @@ describe('CatalogExportMenu', () => {
     );
   });
 
+  it('keeps the primary export button enabled when the current view is empty but a selection is retained', () => {
+    render(
+      <CatalogExportMenu
+        checkedIds={new Set([firstControl.id])}
+        filteredControls={[]}
+        allControls={[firstControl, secondControl]}
+        sectionFilename="grundschutz-TOP.2.csv"
+      />,
+    );
+
+    const trigger = screen.getByRole('button', { name: 'Export (1)' });
+    expect(trigger).not.toBeDisabled();
+
+    fireEvent.click(trigger);
+
+    expect(mockedDownloadCSV).toHaveBeenCalledWith(
+      [firstControl],
+      'grundschutz-auswahl.csv',
+    );
+  });
+
   it('autofocuses the first menu item and closes on Escape or outside click', () => {
     const view = render(
       <CatalogExportMenu
