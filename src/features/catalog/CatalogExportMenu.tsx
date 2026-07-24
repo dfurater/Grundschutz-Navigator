@@ -21,7 +21,7 @@ export function CatalogExportMenu({
   const [open, setOpen] = useState(false);
   const menuContainerRef = useRef<HTMLDivElement>(null);
   const firstMenuItemRef = useRef<HTMLButtonElement>(null);
-  const selectedControls = filteredControls.filter((control) =>
+  const selectedControls = allControls.filter((control) =>
     checkedIds.has(control.id),
   );
 
@@ -54,7 +54,7 @@ export function CatalogExportMenu({
         variant="secondary"
         size="sm"
         onClick={checkedIds.size > 0 ? exportSelected : exportSection}
-        disabled={filteredControls.length === 0}
+        disabled={checkedIds.size === 0 && filteredControls.length === 0}
         className="rounded-r-none border-r border-[var(--color-border-strong)] disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <IconDownload className="w-4 h-4 mr-1.5" />

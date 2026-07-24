@@ -5,18 +5,18 @@ import { downloadCSV } from '@/features/export/csvExport';
 
 interface CatalogMobileSelectionBarProps {
   checkedIds: ReadonlySet<string>;
-  filteredControls: Control[];
+  allControls: Control[];
   onDone: () => void;
 }
 
 export function CatalogMobileSelectionBar({
   checkedIds,
-  filteredControls,
+  allControls,
   onDone,
 }: CatalogMobileSelectionBarProps) {
   const exportSelected = () => {
     downloadCSV(
-      filteredControls.filter((control) => checkedIds.has(control.id)),
+      allControls.filter((control) => checkedIds.has(control.id)),
       'grundschutz-auswahl.csv',
     );
     onDone();

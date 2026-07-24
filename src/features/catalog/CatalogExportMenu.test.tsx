@@ -42,7 +42,7 @@ describe('CatalogExportMenu', () => {
     );
   });
 
-  it('exports only checked controls that remain in the filtered result', () => {
+  it('exports all checked controls even when some fall outside the filtered view', () => {
     render(
       <CatalogExportMenu
         checkedIds={new Set([firstControl.id, secondControl.id])}
@@ -53,6 +53,27 @@ describe('CatalogExportMenu', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Export (2)' }));
+
+    expect(mockedDownloadCSV).toHaveBeenCalledWith(
+      [firstControl, secondControl],
+      'grundschutz-auswahl.csv',
+    );
+  });
+
+  it('keeps the primary export button enabled when the current view is empty but a selection is retained', () => {
+    render(
+      <CatalogExportMenu
+        checkedIds={new Set([firstControl.id])}
+        filteredControls={[]}
+        allControls={[firstControl, secondControl]}
+        sectionFilename="grundschutz-TOP.2.csv"
+      />,
+    );
+
+    const trigger = screen.getByRole('button', { name: 'Export (1)' });
+    expect(trigger).not.toBeDisabled();
+
+    fireEvent.click(trigger);
 
     expect(mockedDownloadCSV).toHaveBeenCalledWith(
       [firstControl],

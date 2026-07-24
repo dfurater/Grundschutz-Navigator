@@ -24,12 +24,12 @@ describe('CatalogMobileSelectionBar', () => {
     mockedDownloadCSV.mockReset();
   });
 
-  it('exports the checked filtered controls and finishes selection mode', () => {
+  it('exports all checked controls even when some fall outside the filtered view', () => {
     const onDone = vi.fn();
     render(
       <CatalogMobileSelectionBar
         checkedIds={new Set([firstControl.id, secondControl.id])}
-        filteredControls={[firstControl]}
+        allControls={[firstControl, secondControl]}
         onDone={onDone}
       />,
     );
@@ -37,7 +37,7 @@ describe('CatalogMobileSelectionBar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Export (2)' }));
 
     expect(mockedDownloadCSV).toHaveBeenCalledWith(
-      [firstControl],
+      [firstControl, secondControl],
       'grundschutz-auswahl.csv',
     );
     expect(onDone).toHaveBeenCalledOnce();
@@ -48,7 +48,7 @@ describe('CatalogMobileSelectionBar', () => {
     render(
       <CatalogMobileSelectionBar
         checkedIds={new Set()}
-        filteredControls={[firstControl]}
+        allControls={[firstControl, secondControl]}
         onDone={onDone}
       />,
     );

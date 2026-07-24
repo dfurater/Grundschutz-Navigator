@@ -135,6 +135,7 @@ const relatedControl = {
   id: 'TOP.1.2',
   altIdentifier: 'related-alt-identifier',
   title: 'Verwandte Kontrolle',
+  groupId: 'TOP.2',
 } as Control;
 
 const defaultSort: SortConfig = [{ field: 'id', direction: 'asc' }];
@@ -192,7 +193,13 @@ function mockFilterParams(searchString = '') {
   });
 }
 
-function LocationProbe({ onCatalogSwitch }: { onCatalogSwitch?: () => void }) {
+function LocationProbe({
+  onCatalogSwitch,
+  secondaryLink,
+}: {
+  onCatalogSwitch?: () => void;
+  secondaryLink?: { label: string; to: string };
+}) {
   const location = useLocation();
   const navigate = useNavigate();
   return (
@@ -209,6 +216,14 @@ function LocationProbe({ onCatalogSwitch }: { onCatalogSwitch?: () => void }) {
           Katalog wechseln
         </button>
       )}
+      {secondaryLink && (
+        <button
+          type="button"
+          onClick={() => navigate(secondaryLink.to)}
+        >
+          {secondaryLink.label}
+        </button>
+      )}
     </>
   );
 }
@@ -216,9 +231,11 @@ function LocationProbe({ onCatalogSwitch }: { onCatalogSwitch?: () => void }) {
 function CatalogBrowserTestApp({
   initialEntry = '/katalog/gspp',
   onCatalogSwitch,
+  secondaryLink,
 }: {
   initialEntry?: string;
   onCatalogSwitch?: () => void;
+  secondaryLink?: { label: string; to: string };
 }) {
   return (
     <MemoryRouter initialEntries={[initialEntry]}>
@@ -228,7 +245,7 @@ function CatalogBrowserTestApp({
         <Route path={CATALOG_ROUTE_PATTERN} element={<CatalogBrowser />} />
         <Route path="*" element={<div>404 — Seite nicht gefunden</div>} />
       </Routes>
-      <LocationProbe onCatalogSwitch={onCatalogSwitch} />
+      <LocationProbe onCatalogSwitch={onCatalogSwitch} secondaryLink={secondaryLink} />
     </MemoryRouter>
   );
 }
@@ -450,6 +467,51 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(screen.getByText('Detail WLAN.9.1')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));
     expect(screen.getByTestId('location')).toHaveTextContent('/katalog/wlan/WLAN.9');
+  });
+
+  it('preserves the selection when navigating from one topic to another in the same catalog', () => {
+    const catalog = makeCatalog('gspp');
+    catalog.practices[0].topics.push({
+      id: 'TOP.2',
+      title: 'Zweites Thema',
+      label: '2',
+      practiceId: 'TOP',
+      controlCount: 0,
+      controlIds: [],
+    });
+    mockCatalog(catalog);
+
+    render(
+      <CatalogBrowserTestApp
+        initialEntry="/katalog/gspp/TOP.1"
+        secondaryLink={{ label: 'Thema wechseln', to: '/katalog/gspp/TOP.2' }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Kontrollen auswählen' }));
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    expect(screen.getAllByText('1 ausgewählt').length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Thema wechseln' }));
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/katalog/gspp/TOP.2');
+    expect(screen.getAllByText('1 ausgewählt').length).toBeGreaterThan(0);
+  });
+
+  it('preserves the selection when a cross-reference opens a control from another group', () => {
+    renderCatalogBrowser('/katalog/gspp');
+
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    expect(screen.getByText(`Detail ${control.id}`)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Kontrollen auswählen' }));
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    expect(screen.getAllByText('1 ausgewählt').length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Verwandte Kontrolle öffnen' }));
+
+    expect(screen.getByText(`Detail ${relatedControl.id}`)).toBeInTheDocument();
+    expect(screen.getAllByText('1 ausgewählt').length).toBeGreaterThan(0);
   });
 
   it('discards selected control IDs when the loaded catalog changes', () => {

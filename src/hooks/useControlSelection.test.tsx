@@ -34,19 +34,35 @@ describe('useControlSelection', () => {
   });
 
   it('returns an empty selection synchronously when the scope changes', () => {
+    // CatalogBrowser passes the catalogKey alone as scopeId (GRU-267): the
+    // selection must reset on an actual catalog switch, but callers are
+    // responsible for keeping scopeId stable across in-catalog navigation
+    // (topic/practice changes, cross-reference jumps) so it is preserved.
     const { result, rerender } = renderHook(
       ({ scopeId }) => useControlSelection({ scopeId }),
-      { initialProps: { scopeId: 'gspp:TOP.1' } },
+      { initialProps: { scopeId: 'gspp' } },
     );
     act(() => result.current.setChecked('TOP.1.1', true));
 
-    rerender({ scopeId: 'wlan:WLAN.9' });
+    rerender({ scopeId: 'wlan' });
 
     expect(result.current.checkedIds).toHaveLength(0);
     act(() => result.current.setChecked('WLAN.9.1', true));
     expect(result.current.checkedIds).toEqual(new Set(['WLAN.9.1']));
 
-    rerender({ scopeId: 'gspp:TOP.1' });
+    rerender({ scopeId: 'gspp' });
     expect(result.current.checkedIds).toHaveLength(0);
+  });
+
+  it('keeps the selection across rerenders when scopeId stays the same', () => {
+    const { result, rerender } = renderHook(
+      ({ scopeId }) => useControlSelection({ scopeId }),
+      { initialProps: { scopeId: 'gspp' } },
+    );
+    act(() => result.current.setChecked('TOP.1.1', true));
+
+    rerender({ scopeId: 'gspp' });
+
+    expect(result.current.checkedIds).toEqual(new Set(['TOP.1.1']));
   });
 });
