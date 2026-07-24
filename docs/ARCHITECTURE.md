@@ -181,7 +181,7 @@ Die Zuständigkeiten sind wie folgt getrennt:
 | Baustein | Verantwortung |
 |----------|----------------|
 | `useControlNavigation` | Löst Control-Route, Scope und Not-found-Zustand auf und erhält Push-/Replace-Semantik sowie Query-Parameter. Routerwerte und `NavigateFunction` werden injiziert; der Hook verwendet keine Router-Hooks. |
-| `useControlSelection` | Verwaltet die markierten Control-IDs. Der Scope kombiniert Katalog- und Gruppenidentität, sodass ein Wechsel synchron eine leere Auswahl liefert. |
+| `useControlSelection` | Verwaltet die markierten Control-IDs. Der Hook selbst ist scope-agnostisch: Er liefert synchron eine leere Auswahl, sobald sich der von außen übergebene `scopeId`-Wert ändert. `CatalogBrowser` übergibt dafür ausschließlich den `catalogKey` (GRU-267), sodass die Auswahl bei Themen-/Practice-Navigation und Cross-Referenz-Sprüngen innerhalb desselben Katalogs erhalten bleibt und nur bei einem echten Katalogwechsel geleert wird. |
 | `CatalogToolbar` | Stellt Titel, Counts, Auswahlmodus sowie Filter- und Exportzugänge ausschließlich aus Props zusammen. |
 | `CatalogExportMenu` | Besitzt den Desktop-Menüzustand, Outside-Click, Escape, Autofokus und die Desktop-Exportaktionen. |
 | `CatalogMobileFilterSheet` | Besitzt Trigger, Sichtbarkeit, Focus-Trap, Escape, Backdrop, Drag-Dismiss und Scroll-Lock des mobilen Filters. |
