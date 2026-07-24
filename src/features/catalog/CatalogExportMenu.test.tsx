@@ -42,7 +42,7 @@ describe('CatalogExportMenu', () => {
     );
   });
 
-  it('exports only checked controls that remain in the filtered result', () => {
+  it('exports all checked controls even when some fall outside the filtered view', () => {
     render(
       <CatalogExportMenu
         checkedIds={new Set([firstControl.id, secondControl.id])}
@@ -55,7 +55,7 @@ describe('CatalogExportMenu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Export (2)' }));
 
     expect(mockedDownloadCSV).toHaveBeenCalledWith(
-      [firstControl],
+      [firstControl, secondControl],
       'grundschutz-auswahl.csv',
     );
   });

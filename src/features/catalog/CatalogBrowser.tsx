@@ -255,7 +255,7 @@ export function CatalogBrowser() {
             {mobileSelectMode && (
               <CatalogMobileSelectionBar
                 checkedIds={checkedIds}
-                filteredControls={filtered}
+                allControls={catalog.controls}
                 onDone={finishMobileSelection}
               />
             )}

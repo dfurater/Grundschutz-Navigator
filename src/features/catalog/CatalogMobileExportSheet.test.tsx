@@ -118,4 +118,25 @@ describe('CatalogMobileExportSheet', () => {
       buttonName.startsWith('Auswahl') ? 1 : 0,
     );
   });
+
+  it('exports all checked controls even when some fall outside the filtered view', () => {
+    render(
+      <CatalogMobileExportSheet
+        checkedIds={new Set([firstControl.id, secondControl.id])}
+        filteredControls={[firstControl]}
+        allControls={[firstControl, secondControl]}
+        sectionFilename="grundschutz-TOP.1.csv"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'CSV' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Auswahl exportieren (2)' }),
+    );
+
+    expect(mockedDownloadCSV).toHaveBeenCalledWith(
+      [firstControl, secondControl],
+      'grundschutz-auswahl.csv',
+    );
+  });
 });

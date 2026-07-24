@@ -30,7 +30,7 @@ export function CatalogMobileExportSheet({
 
   const exportSelected = () => {
     downloadCSV(
-      filteredControls.filter((control) => checkedIds.has(control.id)),
+      allControls.filter((control) => checkedIds.has(control.id)),
       'grundschutz-auswahl.csv',
     );
     close();
@@ -44,7 +44,7 @@ export function CatalogMobileExportSheet({
         size="sm"
         className="lg:hidden min-h-[44px]"
         onClick={() => setOpen(true)}
-        disabled={filteredControls.length === 0}
+        disabled={checkedIds.size === 0 && filteredControls.length === 0}
       >
         <IconDownload className="w-4 h-4 mr-1.5" />
         CSV
