@@ -91,8 +91,7 @@ export function CatalogBrowser() {
     navigate,
   });
   const selectionScopeId =
-    `${catalog?.catalogKey ?? catalogKey ?? '__unknown_catalog__'}:` +
-    `${scopeId ?? '__all__'}`;
+    catalog?.catalogKey ?? catalogKey ?? '__unknown_catalog__';
   const {
     checkedIds,
     setCheckedIds,
