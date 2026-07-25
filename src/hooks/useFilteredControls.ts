@@ -195,6 +195,12 @@ export interface FacetCounts {
   linkRelationen: Record<string, number>;
 }
 
+function incrementCount(map: Record<string, number>, key: string | undefined): void {
+  if (key) {
+    map[key] = (map[key] ?? 0) + 1;
+  }
+}
+
 function computeFacetCounts(controls: Control[]): FacetCounts {
   const counts: FacetCounts = {
     securityLevels: {},
@@ -208,35 +214,20 @@ function computeFacetCounts(controls: Control[]): FacetCounts {
   };
 
   for (const c of controls) {
-    if (c.securityLevel) {
-      counts.securityLevels[c.securityLevel] =
-        (counts.securityLevels[c.securityLevel] ?? 0) + 1;
-    }
-    if (c.effortLevel) {
-      counts.effortLevels[c.effortLevel] =
-        (counts.effortLevels[c.effortLevel] ?? 0) + 1;
-    }
-    if (c.modalverb) {
-      counts.modalverben[c.modalverb] =
-        (counts.modalverben[c.modalverb] ?? 0) + 1;
-    }
+    incrementCount(counts.securityLevels, c.securityLevel);
+    incrementCount(counts.effortLevels, c.effortLevel);
+    incrementCount(counts.modalverben, c.modalverb);
     for (const tag of c.tags) {
-      counts.tags[tag] = (counts.tags[tag] ?? 0) + 1;
+      incrementCount(counts.tags, tag);
     }
     for (const kat of c.statementProps.zielobjektKategorien) {
-      counts.zielobjektKategorien[kat] = (counts.zielobjektKategorien[kat] ?? 0) + 1;
+      incrementCount(counts.zielobjektKategorien, kat);
     }
-    if (c.statementProps.handlungsworte) {
-      counts.handlungsworte[c.statementProps.handlungsworte] =
-        (counts.handlungsworte[c.statementProps.handlungsworte] ?? 0) + 1;
-    }
-    if (c.statementProps.dokumentation) {
-      counts.dokumentationstypen[c.statementProps.dokumentation] =
-        (counts.dokumentationstypen[c.statementProps.dokumentation] ?? 0) + 1;
-    }
+    incrementCount(counts.handlungsworte, c.statementProps.handlungsworte);
+    incrementCount(counts.dokumentationstypen, c.statementProps.dokumentation);
     const relations = new Set(c.links.map((link) => link.relation));
     for (const relation of relations) {
-      counts.linkRelationen[relation] = (counts.linkRelationen[relation] ?? 0) + 1;
+      incrementCount(counts.linkRelationen, relation);
     }
   }
 
