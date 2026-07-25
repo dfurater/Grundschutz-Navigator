@@ -8,6 +8,7 @@ const vocabularyTitles: Record<string, string> = {
   'documentation_guidelines.csv': 'Dokumentationsvorgaben',
   'effort_level.csv': 'Aufwandsstufen',
   'modal_verbs.csv': 'Modalverben',
+  'practices.csv': 'Praktiken',
   'result.csv': 'Ergebnisse',
   'security_level.csv': 'Sicherheitsniveaus',
   'security_targets.csv': 'Schutzziele',

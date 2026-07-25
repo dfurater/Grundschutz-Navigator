@@ -235,6 +235,22 @@ Besonderheit Schutzziele: Die Control-Props tragen als Wert die Relevanz (`0`–
 
 Die Typdefinitionen bleiben davon getrennt: `securityTargets` verwendet feste Lookup-Werte (`'Vertraulichkeit (Confidentiality)'`, `'Integrität (Integrity)'`, `'Verfügbarkeit (Availability)'`, `'Authentizität (Authenticity)'`) gegen den kanonischen Namespace von `security_targets.csv`. Die Detailansicht bietet für Typ und Relevanz zwei unabhängige Definitionen an. Ein unbekannter Wert oder eine fehlende Registry wird nicht ausgeblendet, sondern mit dem Rohwert und einer sichtbaren Diagnose dargestellt.
 
+### Praktik-Auflösung per UUID
+
+`resolvePracticeVocabulary()` in `src/domain/taxonomyVocabulary.ts` verbindet eine
+Katalog-Praktik ausschließlich über `Practice.altIdentifier` mit der Spalte
+`UUID` aus `practices.csv`. Titel, Kürzel und Nummerierung sind ausdrücklich
+keine Fallback-Schlüssel. Fehlt die UUID oder existiert kein exakter Treffer,
+liefert der Resolver `null`; doppelte UUIDs werden als uneindeutige
+Vokabulardaten abgelehnt.
+
+Im ControlDetail-Breadcrumb werden Definition, `Schwerpunkt` und
+`auch bekannt als` aus dem aufgelösten Eintrag angeboten. Die technischen
+Spalten `UUID` und `Nummerierung` bleiben dort verborgen, sind aber zusammen mit
+allen anderen Originalspalten weiterhin auf `/vokabular` einsehbar. Nur der
+Aliastext wird zusätzlich in den FlexSearch-Metadatenindex der zugehörigen
+Kontrollen übernommen.
+
 ### Such-Text-Sammlung
 
 Für die globale Volltextsuche unter `/suche` werden alle Spaltenwerte der
@@ -346,6 +362,7 @@ Detailseite für einen Namespace:
 - [FILTERING.md](./FILTERING.md) — Filter-System
 - [INTEGRITY.md](./INTEGRITY.md) — Integritätsprüfung
 - `src/domain/vocabulary.ts` — Vocabulary-Implementierung
+- `src/domain/taxonomyVocabulary.ts` — UUID-basierte Praktik-Auflösung
 - `src/domain/vocabularyNamespaces.ts` — kanonische BSI-Namespace-URLs für synthetische Lookups
 - `src/domain/models.ts` — Vocabulary Types
 - `src/state/CatalogContext.tsx` — Context-Integration

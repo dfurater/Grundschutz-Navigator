@@ -3,12 +3,21 @@ import type { VocabularyResolution } from '@/domain/vocabulary';
 
 export interface VocabularyEntryCardProps {
   resolution: VocabularyResolution;
+  hiddenColumns?: string[];
 }
 
-export function VocabularyEntryCard({ resolution }: VocabularyEntryCardProps) {
+export function VocabularyEntryCard({
+  resolution,
+  hiddenColumns = [],
+}: VocabularyEntryCardProps) {
   const { namespace, entry } = resolution;
+  const hiddenColumnSet = new Set(hiddenColumns);
   const extraColumns = namespace.columnOrder.filter((column) => {
-    if (column === namespace.valueColumn || column === namespace.definitionColumn) {
+    if (
+      column === namespace.valueColumn ||
+      column === namespace.definitionColumn ||
+      hiddenColumnSet.has(column)
+    ) {
       return false;
     }
 

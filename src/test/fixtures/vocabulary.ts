@@ -4,6 +4,7 @@ import type {
   VocabularyRegistryData,
 } from '@/domain/models';
 import { buildVocabularyRegistry } from '@/domain/vocabulary';
+import { createTaxonomyVocabularyNamespaces } from './taxonomyVocabulary';
 
 function createNamespace({
   namespace,
@@ -270,6 +271,7 @@ export function createTestVocabularyRegistry() {
           createDefinitionEntry('2', 'Die Anforderung wirkt in besonderem Maße auf dieses Schutzziel hin. Dieser Wert zeigt an, dass das Schutzziel im Zentrum dieser Anforderung steht.', 'Wert'),
         ],
       }),
+      ...createTaxonomyVocabularyNamespaces(),
       createNamespace({
         namespace: 'https://example.com/namespaces/basethreats.csv',
         path: 'namespaces/basethreats.csv',

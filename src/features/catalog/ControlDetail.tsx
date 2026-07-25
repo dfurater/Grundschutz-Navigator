@@ -8,6 +8,7 @@ import type { IncomingControlLink } from '@/domain/controlRelationships';
 import type { Control } from '@/domain/models';
 import type { CatalogKey } from '@/domain/sourceRegistry';
 import { resolveControlVocabularies } from '@/domain/vocabulary';
+import { resolvePracticeVocabulary } from '@/domain/taxonomyVocabulary';
 import { useActiveVocabulary } from '@/hooks/useActiveVocabulary';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useClipboard } from '@/hooks/useClipboard';
@@ -22,7 +23,11 @@ import { ControlMetadata } from './ControlMetadata';
 import { ControlSecurityContext } from './ControlSecurityContext';
 import { ControlStatement } from './ControlStatement';
 import { ControlStatementDetails } from './ControlStatementDetails';
-import type { RenderVocabularyCard } from './ControlVocabularyPrimitives';
+import {
+  toVocabCardId,
+  type RenderVocabularyCard,
+  VocabularyAffordanceIcon,
+} from './ControlVocabularyPrimitives';
 
 export interface ControlDetailProps {
   control: Control;
@@ -100,6 +105,12 @@ export function ControlDetail({
   );
   const practiceName = practice?.title ?? control.practiceId;
   const topicName = topic?.title ?? control.groupId;
+  const practiceVocabulary = useMemo(
+    () => resolvePracticeVocabulary(vocabularyRegistry, practice),
+    [practice, vocabularyRegistry],
+  );
+  const practiceVocabularyKey = 'practice';
+  const practiceVocabularyActive = isVocabularyActive(practiceVocabularyKey);
 
   const handleCopyLink = () => {
     const url = getControlDetailUrl(catalogKey, control);
@@ -156,9 +167,41 @@ export function ControlDetail({
             </code>
           </div>
         )}
-        <p className="text-xs text-[var(--color-text-muted)] mb-1">
-          {practiceName} · {topicName}
-        </p>
+        <div className="mb-1">
+          <p className="flex flex-wrap items-center gap-1 text-xs text-[var(--color-text-muted)]">
+            {practiceVocabulary ? (
+              <button
+                type="button"
+                onClick={() => toggleVocabulary(practiceVocabularyKey)}
+                aria-label={`Praktik: ${practiceName}`}
+                aria-pressed={practiceVocabularyActive}
+                aria-expanded={practiceVocabularyActive}
+                aria-controls={toVocabCardId(practiceVocabularyKey)}
+                className="inline-flex items-center gap-1 rounded text-left hover:text-primary-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+              >
+                <span>{practiceName}</span>
+                <VocabularyAffordanceIcon active={practiceVocabularyActive} />
+              </button>
+            ) : (
+              <span>{practiceName}</span>
+            )}
+            <span aria-hidden="true">·</span>
+            <span>{topicName}</span>
+          </p>
+          {practiceVocabulary && (
+            <div
+              id={toVocabCardId(practiceVocabularyKey)}
+              hidden={!practiceVocabularyActive || undefined}
+            >
+              {practiceVocabularyActive && (
+                <VocabularyEntryCard
+                  resolution={practiceVocabulary}
+                  hiddenColumns={['UUID', 'Nummerierung']}
+                />
+              )}
+            </div>
+          )}
+        </div>
         <h2 className="type-page-title">
           {control.title}
         </h2>

@@ -10,7 +10,8 @@ import {
   resolveVocabularyValues,
   resolveControlVocabularies,
 } from './vocabulary';
-import type { Control, VocabularyRegistryData } from './models';
+import type { Control, Practice, VocabularyRegistryData } from './models';
+import { resolvePracticeVocabulary } from './taxonomyVocabulary';
 import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
 
 const namespaceUrl =
@@ -223,6 +224,44 @@ describe('vocabulary runtime', () => {
       'Die Anforderung wirkt auf dieses Schutzziel hin.',
     );
     expect(resolutions.threats.map((resolution) => resolution.entry.value)).toEqual(['G 0.18']);
+  });
+
+  it('joins practice vocabulary entries only by altIdentifier UUID', () => {
+    const practice: Practice = {
+      id: 'GC',
+      title: 'Governance und Compliance',
+      label: 'GC',
+      altIdentifier: 'uuid-practice-1',
+      topics: [],
+      controlCount: 0,
+    };
+    const registry = createTestVocabularyRegistry();
+
+    expect(resolvePracticeVocabulary(registry, practice)?.entry.columns).toMatchObject({
+      Definition: 'Offizielle Praktik-Definition.',
+      Schwerpunkt: 'Methodik',
+      'auch bekannt als': 'Corporate Governance',
+    });
+    expect(resolvePracticeVocabulary(registry, {
+      ...practice,
+      altIdentifier: undefined,
+    })).toBeNull();
+    expect(resolvePracticeVocabulary(registry, {
+      ...practice,
+      altIdentifier: 'unbekannte-uuid',
+    })).toBeNull();
+
+    const practicesNamespace = registry.namespacesByUrl.get(
+      'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/practices.csv',
+    );
+    practicesNamespace!.entries.push({
+      value: 'DUP',
+      definition: 'Uneindeutiger Eintrag.',
+      columns: { UUID: 'uuid-practice-1' },
+    });
+    expect(() => resolvePracticeVocabulary(registry, practice)).toThrow(
+      'Duplicate vocabulary value "uuid-practice-1"',
+    );
   });
 
   it('builds exact upstream file links from repository metadata', () => {

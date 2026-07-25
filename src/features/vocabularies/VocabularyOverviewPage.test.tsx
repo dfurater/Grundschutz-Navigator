@@ -79,6 +79,20 @@ function makeCatalogState(): CatalogState {
         definitionColumn: 'Definition',
         entries: [],
       },
+      {
+        source: {
+          namespace: 'https://example.com/namespaces/practices.csv',
+          repository: 'https://example.com/repo',
+          path: 'Dokumentation/namespaces/practices.csv',
+          fileName: 'practices.csv',
+          routeId: 'dokumentation-namespaces-practices',
+          gitBlobSha: 'blob-practices',
+        },
+        columnOrder: ['Kürzel', 'Begriff', 'Definition', 'UUID'],
+        valueColumn: 'Kürzel',
+        definitionColumn: 'Definition',
+        entries: [],
+      },
     ],
   };
 
@@ -138,6 +152,10 @@ describe('VocabularyOverviewPage', () => {
     expect(screen.getByRole('link', { name: 'Schutzziel-Relevanz' })).toHaveAttribute(
       'href',
       '/vokabular/dokumentation-namespaces-security-target-levels',
+    );
+    expect(screen.getByRole('link', { name: 'Praktiken' })).toHaveAttribute(
+      'href',
+      '/vokabular/dokumentation-namespaces-practices',
     );
   });
 });

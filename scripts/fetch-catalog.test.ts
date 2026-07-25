@@ -940,6 +940,29 @@ describe('vocabulary-utils', () => {
     }]);
   });
 
+  it('preserves UUID and user-facing practice columns while parsing practices.csv', () => {
+    const namespace = buildVocabularyNamespaceData({
+      namespaceUrl:
+        'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/practices.csv',
+      repository: 'BSI-Bund/Stand-der-Technik-Bibliothek',
+      path: 'Dokumentation/namespaces/practices.csv',
+      gitBlobSha: 'b'.repeat(40),
+      csvText:
+        'Kürzel,Begriff,Definition,UUID,Schwerpunkt,Nummerierung,auch bekannt als\nGC,Governance und Compliance,Definition,uuid-practice-1,Methodik,1,Corporate Governance\n',
+    });
+
+    expect(namespace.entries[0]).toMatchObject({
+      value: 'GC',
+      definition: 'Definition',
+      columns: {
+        UUID: 'uuid-practice-1',
+        Schwerpunkt: 'Methodik',
+        Nummerierung: '1',
+        'auch bekannt als': 'Corporate Governance',
+      },
+    });
+  });
+
   it('uses the first official CSV column as the exact lookup key', () => {
     const namespace = buildVocabularyNamespaceData({
       namespaceUrl: ACTION_WORDS_NAMESPACE_URL,

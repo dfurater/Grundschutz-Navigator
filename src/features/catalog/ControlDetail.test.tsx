@@ -159,6 +159,46 @@ describe('ControlDetail', () => {
     expect(screen.getByText('Server sind Zielobjekte mit zentralen IT-Diensten.')).toBeInTheDocument();
   });
 
+  it('shows UUID-joined practice metadata in the breadcrumb without technical fields', async () => {
+    const user = userEvent.setup();
+    const state = makeCatalogState();
+    state.catalog!.practices = [{
+      id: 'GC',
+      title: 'Governance und Compliance',
+      label: 'GC',
+      altIdentifier: 'uuid-practice-1',
+      topics: [{
+        id: 'GC.2',
+        title: 'Organisation',
+        label: '2',
+        practiceId: 'GC',
+        controlCount: 1,
+        controlIds: ['GC.2.2'],
+      }],
+      controlCount: 1,
+    }];
+    mockedUseCatalog.mockReturnValue(state);
+
+    render(
+      <MemoryRouter>
+        <ControlDetail control={makeControl()} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    const practice = screen.getByRole('button', {
+      name: 'Praktik: Governance und Compliance',
+    });
+    expect(practice).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(practice);
+
+    expect(screen.getByText('Offizielle Praktik-Definition.')).toBeInTheDocument();
+    expect(screen.getByText('Methodik')).toBeInTheDocument();
+    expect(screen.getByText('Corporate Governance')).toBeInTheDocument();
+    expect(screen.queryByText('uuid-practice-1')).not.toBeInTheDocument();
+    expect(screen.queryByText('Nummerierung')).not.toBeInTheDocument();
+  });
+
   it('does not retain control-local UI state across catalog changes', async () => {
     const user = userEvent.setup();
     const control = makeControl({
