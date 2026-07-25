@@ -323,8 +323,9 @@ export function buildVocabularySourceUrl(
 Detailseite für einen Namespace:
 
 - Alle Einträge als auswählbare Link-Liste
+- Listeneintrag zeigt `entry.value`; ist `valueColumn` nicht selbst `Begriff` (z. B. `basethreats.csv` mit `valueColumn: "ID"`), wird zusätzlich der Wert der Spalte `Begriff` angehängt (z. B. „G 0.1 — Feuer"), sofern vorhanden und von `entry.value` verschieden
 - Einzelner Eintrag per Query-Parameter `?wert=` adressierbar (Deep-Link aus Control-Details)
-- Definition und weitere nichtleere Spalten werden für den aktiven Eintrag mit `InlineVocabularyEntryDetails` direkt unter der Listenzeile eingeblendet
+- Definition und weitere nichtleere Spalten werden für den aktiven Eintrag mit `InlineVocabularyEntryDetails` direkt unter der Listenzeile eingeblendet, ohne Breitenbeschränkung (nutzt die volle Kartenbreite)
 - Reihenfolge der Zusatzspalten folgt `columnOrder`
 
 ## Siehe auch

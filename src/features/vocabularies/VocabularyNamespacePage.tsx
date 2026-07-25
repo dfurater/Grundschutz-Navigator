@@ -2,6 +2,18 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import type { VocabularyEntry, VocabularyNamespace } from '@/domain/models';
 import { useCatalog } from '@/hooks/useCatalog';
 
+function getEntryTermLabel(
+  namespace: VocabularyNamespace,
+  entry: VocabularyEntry,
+): string | undefined {
+  if (namespace.valueColumn === 'Begriff') {
+    return undefined;
+  }
+
+  const term = entry.columns.Begriff;
+  return term && term !== entry.value ? term : undefined;
+}
+
 function InlineVocabularyEntryDetails({
   namespace,
   entry,
@@ -19,7 +31,7 @@ function InlineVocabularyEntryDetails({
 
   return (
     <div className="border-t border-[var(--color-border-default)] bg-[var(--color-surface-subtle)] px-4 py-4 sm:px-5">
-      <div className="max-w-3xl space-y-3">
+      <div className="space-y-3">
         {entry.definition && (
           <div className="space-y-1">
             <div className="catalog-meta-text">
@@ -135,6 +147,7 @@ export function VocabularyNamespacePage() {
         <div className="divide-y divide-[var(--color-border-subtle)]">
           {namespace.entries.map((entry) => {
             const isActive = entry.value === selectedValue;
+            const termLabel = getEntryTermLabel(namespace, entry);
 
             return (
               <div key={entry.value}>
@@ -147,6 +160,12 @@ export function VocabularyNamespacePage() {
                   }`}
                 >
                   {entry.value}
+                  {termLabel && (
+                    <>
+                      {' — '}
+                      <span className="font-normal text-[var(--color-text-secondary)]">{termLabel}</span>
+                    </>
+                  )}
                 </Link>
                 {isActive && (
                   <InlineVocabularyEntryDetails namespace={namespace} entry={entry} />

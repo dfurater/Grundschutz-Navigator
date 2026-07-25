@@ -54,6 +54,31 @@ function makeCatalogState(): CatalogState {
           },
         ],
       },
+      {
+        source: {
+          namespace: 'https://example.com/namespaces/basethreats.csv',
+          repository: 'https://example.com/repo',
+          path: 'Dokumentation/namespaces/basethreats.csv',
+          fileName: 'basethreats.csv',
+          routeId: 'dokumentation-namespaces-basethreats',
+          gitBlobSha: 'blob-basethreats',
+        },
+        columnOrder: ['ID', 'Begriff', 'Definition', 'uuid'],
+        valueColumn: 'ID',
+        definitionColumn: 'Definition',
+        entries: [
+          {
+            value: 'G 0.1',
+            definition: 'Feuer kann schwere Schäden verursachen.',
+            columns: {
+              ID: 'G 0.1',
+              Begriff: 'Feuer',
+              Definition: 'Feuer kann schwere Schäden verursachen.',
+              uuid: '550e8400-e29b-41d4-a716-446655440001',
+            },
+          },
+        ],
+      },
     ],
   };
 
@@ -116,5 +141,52 @@ describe('VocabularyNamespacePage', () => {
       screen.getByText(/definition direkt unter dem eintrag anzuzeigen/i),
     ).toBeInTheDocument();
     expect(screen.queryByText('In der Regel ist die Umsetzung innerhalb einer Woche moeglich.')).not.toBeInTheDocument();
+  });
+
+  it('shows the Begriff next to the ID in the collapsed list when the value column is not the term itself', () => {
+    mockedUseCatalog.mockReturnValue(makeCatalogState());
+
+    render(
+      <MemoryRouter initialEntries={['/vokabular/dokumentation-namespaces-basethreats']}>
+        <Routes>
+          <Route path="/vokabular/:namespaceId" element={<VocabularyNamespacePage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('link', { name: 'G 0.1 — Feuer' })).toBeInTheDocument();
+  });
+
+  it('does not duplicate the term when the value column already is the Begriff', () => {
+    mockedUseCatalog.mockReturnValue(makeCatalogState());
+
+    render(
+      <MemoryRouter initialEntries={['/vokabular/dokumentation-namespaces-effort-level']}>
+        <Routes>
+          <Route path="/vokabular/:namespaceId" element={<VocabularyNamespacePage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('link', { name: '2' })).toBeInTheDocument();
+    expect(screen.queryByText(/—/)).not.toBeInTheDocument();
+  });
+
+  it('lets the inline definition use the full card width instead of a prose cap', () => {
+    mockedUseCatalog.mockReturnValue(makeCatalogState());
+
+    render(
+      <MemoryRouter initialEntries={['/vokabular/dokumentation-namespaces-effort-level?wert=2']}>
+        <Routes>
+          <Route path="/vokabular/:namespaceId" element={<VocabularyNamespacePage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const definitionText = screen.getByText('In der Regel ist die Umsetzung innerhalb einer Woche moeglich.');
+    const wrapper = definitionText.closest('div.space-y-3');
+    expect(wrapper).not.toBeNull();
+    expect(wrapper).not.toHaveClass('max-w-3xl');
+    expect(wrapper).not.toHaveClass('max-w-prose');
   });
 });

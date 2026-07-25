@@ -138,7 +138,9 @@ describe('ControlDetail', () => {
     );
 
     await user.click(screen.getByRole('button', { name: 'MUSS' }));
-    expect(screen.getByText('Modalverb definiert verbindliche Anforderungen.')).toBeInTheDocument();
+    const vocabularyDefinition = screen.getByText('Modalverb definiert verbindliche Anforderungen.');
+    expect(vocabularyDefinition).toBeInTheDocument();
+    expect(vocabularyDefinition).not.toHaveClass('max-w-prose');
     expect(screen.getByRole('link', { name: 'Zu den Vokabularen →' })).toHaveAttribute(
       'href',
       '/vokabular/modal-verbs?wert=MUSS',
