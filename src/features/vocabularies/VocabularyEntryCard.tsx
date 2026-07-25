@@ -18,7 +18,7 @@ export function VocabularyEntryCard({ resolution }: VocabularyEntryCardProps) {
   return (
     <div className="animate-vocab-card border-t border-slate-100 pt-2.5 space-y-2 text-sm leading-relaxed text-slate-700">
       {entry.definition && (
-        <p className="whitespace-pre-line max-w-prose">
+        <p className="whitespace-pre-line">
           {entry.definition}
         </p>
       )}
