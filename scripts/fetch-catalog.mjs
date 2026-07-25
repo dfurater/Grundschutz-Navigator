@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 import {
   buildVocabularyNamespaceData,
   extractReferencedNamespaceUrls,
-  namespaceUrlToRepoPath,
+  materializeVocabularyCollectionMembers,
   sha256Hex,
 } from './vocabulary-utils.mjs';
 import {
@@ -496,16 +496,21 @@ async function buildFetchArtifacts(logger = console, {
   const catalogJson = catalogArtifact.json;
   const catalogQuality = validateCatalogControlIdentities(catalogJson, SUPPORTED_CATALOG.artifactKey);
 
-  const namespaceUrls = extractReferencedNamespaceUrls(catalogJson, REPO);
-  const namespaceRefs = namespaceUrls.map((namespaceUrl) => {
-    const path = namespaceUrlToRepoPath(namespaceUrl, REPO);
-    if (!path) {
-      throw new Error(`Namespace-URL konnte nicht auf einen Repository-Pfad abgebildet werden: ${namespaceUrl}`);
-    }
-    return { namespaceUrl, path };
+  const referencedNamespaceUrls = extractReferencedNamespaceUrls(catalogJson, REPO);
+  const vocabularyCollection = registryEntries.find(
+    (entry) => entry.kind === 'vocabulary-collection' && entry.lifecycle === 'supported',
+  );
+  if (!vocabularyCollection) {
+    throw new Error('Quellregister enthält keine unterstützte Vokabularsammlung.');
+  }
+  const namespaceRefs = materializeVocabularyCollectionMembers({
+    collection: vocabularyCollection,
+    treeFiles: tree.files,
+    referencedNamespaceUrls,
+    repository: REPO,
   });
 
-  logger.log(`  ${namespaceRefs.length} referenzierte Namespace-Dateien gefunden.`);
+  logger.log(`  ${namespaceRefs.length} freigegebene Namespace-Dateien gefunden.`);
 
   const materializedNamespacePaths = namespaceRefs.map((namespaceRef) => namespaceRef.path);
   const registryFiles = materializeRegistryFiles({

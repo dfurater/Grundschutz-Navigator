@@ -12,7 +12,7 @@ import {
 } from './security-guards.mjs';
 import {
   extractReferencedNamespaceUrls,
-  namespaceUrlToRepoPath,
+  materializeVocabularyCollectionMembers,
   parseVocabularyCsv,
 } from './vocabulary-utils.mjs';
 import {
@@ -264,24 +264,32 @@ export async function verifySnapshotFiles(manifest, {
   if (!catalogFile) {
     throw new Error('Manifest does not contain the supported catalog document');
   }
-  // Resolve the dynamic collection membership from the supported catalog
-  // before any vocabulary blob is requested. This preserves the invariant
-  // that unclassified CSVs are reported from tree metadata only.
+  // Validate all catalog references before any vocabulary blob is requested,
+  // then derive delivery membership from the registered direct directory.
   const catalogDocument = await fetchAndValidateArtifact(catalogFile);
 
-  const expectedNamespacePaths = extractReferencedNamespaceUrls(
+  const referencedNamespaceUrls = extractReferencedNamespaceUrls(
     catalogDocument,
     OFFICIAL_BSI_REPO,
-  ).map((namespaceUrl) => namespaceUrlToRepoPath(namespaceUrl, OFFICIAL_BSI_REPO));
-  if (expectedNamespacePaths.some((path) => path === null)) {
-    throw new Error('BSI catalog contains an invalid official namespace URL');
+  );
+  const vocabularyCollection = SOURCE_REGISTRY.find(
+    (entry) => entry.kind === 'vocabulary-collection' && entry.lifecycle === 'supported',
+  );
+  if (!vocabularyCollection) {
+    throw new Error('Source registry does not contain a supported vocabulary collection');
   }
+  const expectedNamespacePaths = materializeVocabularyCollectionMembers({
+    collection: vocabularyCollection,
+    treeFiles: normalizedTree,
+    referencedNamespaceUrls,
+    repository: OFFICIAL_BSI_REPO,
+  }).map((member) => member.path);
 
   const manifestNamespacePaths = manifest.files
     .filter((file) => file.rootType === 'vocabulary')
     .map((file) => file.path);
   if (JSON.stringify(manifestNamespacePaths) !== JSON.stringify(expectedNamespacePaths)) {
-    throw new Error('Manifest namespace inventory does not match the selected BSI catalog');
+    throw new Error('Manifest namespace inventory does not match the registered direct CSV directory');
   }
 
   await Promise.all(

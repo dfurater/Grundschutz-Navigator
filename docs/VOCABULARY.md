@@ -4,7 +4,7 @@ Beschreibung der offiziellen BSI-Vokabular-Auflösung.
 
 ## Überblick
 
-Das Vokabular-System ermöglicht die Anzeige der **offiziellen BSI-Definitionen** für Werte im Katalog. Der BSI Grundschutz++ referenziert standardisierte Begriffe, die in separaten CSV-Dateien (`Dokumentation/namespaces/` im BSI-Repository) definiert sind. Aktuell werden zehn Namespaces mitgeliefert:
+Das Vokabular-System ermöglicht die Anzeige der **offiziellen BSI-Definitionen** für Werte im Katalog. Die Anwendung liefert alle 13 CSV-Dateien direkt aus `Dokumentation/namespaces/` im gepinnten BSI-Snapshot aus. Katalogseitige `ns`-Referenzen bestimmen weiterhin, welche Vokabulare einzelne OSCAL-Props kontextuell auflösen; sie begrenzen nicht mehr die Auslieferungs-Membership.
 
 | Vokabular | Datei |
 |-----------|-------|
@@ -13,13 +13,16 @@ Das Vokabular-System ermöglicht die Anzeige der **offiziellen BSI-Definitionen*
 | Dokumentationstypen | `documentation_guidelines.csv` |
 | Aufwandsstufe (`0`–`5`) | `effort_level.csv` |
 | Modalverb (`MUSS`, `SOLLTE`, `KANN`) | `modal_verbs.csv` |
+| Praktiken | `practices.csv` |
 | Ergebnis | `result.csv` |
 | Sicherheitsniveau (`normal-SdT`, `erhöht`) | `security_level.csv` |
 | Schutzziele (CIA + Authentizität) | `security_targets.csv` |
+| Schutzziel-Relevanz (`0`–`2`) | `security_targets_levels.csv` |
 | Tags | `tags.csv` |
+| Themen | `topics.csv` |
 | Zielobjekt-Kategorien | `target_object_categories.csv` |
 
-Die Anwendung lädt diese Vokabulare zur Build-Zeit von BSI und löst zur Laufzeit die Werte auf. Die Collection ist im `sourceRegistry` registriert; welche ihrer CSV-Dateien tatsächlich materialisiert und ausgeliefert werden, ergibt sich ausschließlich aus den `ns`-URLs des unterstützten Katalogs.
+Die Anwendung lädt diese Vokabulare zur Build-Zeit von BSI. Die Collection ist im `sourceRegistry` als freigegebenes Verzeichnis mit dem Suffix `.csv` registriert. Materialisiert werden ausschließlich reguläre CSV-Dateien direkt in diesem Verzeichnis; Unterverzeichnisse, `.txt`, `readme.md` und andere Pfade bleiben ausgeschlossen. Jede ausgelieferte Datei wird einzeln per Git-Blob-SHA und Content-Hash an den gepinnten Snapshot gebunden.
 
 ## Architektur
 
@@ -28,8 +31,8 @@ BSI Repository (Dokumentation/namespaces/*.csv)
         │
         ▼
 scripts/fetch-catalog.mjs (+ vocabulary-utils.mjs)
-• Extraktion der referenzierten Namespace-URLs aus dem Katalog
-• Materialisierung nur der referenzierten CSV-Dateien aus der Registry-Collection
+• Validierung der referenzierten Namespace-URLs aus dem Katalog
+• Materialisierung aller direkten .csv-Mitglieder der Registry-Collection
 • Abruf und Prüfung am gepinnten Snapshot
 • Konvertierung zu JSON
 • Datei-Provenance + vollständiges Upstream-Manifest v2

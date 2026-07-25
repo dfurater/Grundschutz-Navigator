@@ -123,6 +123,63 @@ export function extractReferencedNamespaceUrls(catalogDocument, repository) {
   return [...urls].sort();
 }
 
+function encodeRepositoryPath(path) {
+  return path.split('/').map(encodeURIComponent).join('/');
+}
+
+function matchesVocabularyCollection(collection, repoPath) {
+  const prefix = `${collection.upstreamDirectory}/`;
+  return (
+    repoPath.startsWith(prefix) &&
+    repoPath.endsWith(collection.fileSuffix) &&
+    !repoPath.slice(prefix.length).includes('/')
+  );
+}
+
+export function materializeVocabularyCollectionMembers({
+  collection,
+  treeFiles,
+  referencedNamespaceUrls,
+  repository,
+}) {
+  if (collection?.kind !== 'vocabulary-collection') {
+    throw new Error('Vokabular-Membership benötigt eine registrierte Vokabularsammlung.');
+  }
+  if (!Array.isArray(treeFiles) || !Array.isArray(referencedNamespaceUrls)) {
+    throw new Error('Vokabular-Membership benötigt vollständige Tree- und Referenzlisten.');
+  }
+
+  const repo = toRepositoryParts(repository);
+  const members = treeFiles
+    .filter((file) => matchesVocabularyCollection(collection, file.path))
+    .sort((left, right) => (
+      left.path < right.path ? -1 : left.path > right.path ? 1 : 0
+    ));
+  const memberPaths = new Set(members.map((file) => file.path));
+  const referencedUrlByPath = new Map();
+
+  for (const namespaceUrl of referencedNamespaceUrls) {
+    const path = namespaceUrlToRepoPath(namespaceUrl, repository);
+    if (!path || !memberPaths.has(path)) {
+      throw new Error(
+        `Referenzierter Namespace-Pfad ist kein direktes Mitglied der registrierten Vokabularsammlung: ${namespaceUrl}`,
+      );
+    }
+    const existingUrl = referencedUrlByPath.get(path);
+    if (existingUrl && existingUrl !== namespaceUrl) {
+      throw new Error(`Namespace-Pfad wird über mehrere URLs referenziert: ${path}`);
+    }
+    referencedUrlByPath.set(path, namespaceUrl);
+  }
+
+  return members.map((file) => ({
+    ...file,
+    namespaceUrl:
+      referencedUrlByPath.get(file.path) ??
+      `${repo.url}/tree/main/${encodeRepositoryPath(file.path)}`,
+  }));
+}
+
 export function parseCsv(text) {
   const rows = [];
   const source = text.replace(/^\uFEFF/, '');

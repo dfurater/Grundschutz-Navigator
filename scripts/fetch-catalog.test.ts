@@ -216,11 +216,13 @@ function makeCatalogText(namespaceUrls: string[] = []) {
   }, null, 2)}\n`;
 }
 
-function makeMinimalFetchInput(namespaceFiles: RawFileMap = new Map()) {
-  const namespaceUrls = [...namespaceFiles.keys()].map(
+function makeMinimalFetchInput(
+  namespaceFiles: RawFileMap = new Map(),
+  catalogNamespaceUrls = [...namespaceFiles.keys()].map(
     (path) => `https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/${path}`,
-  );
-  const catalogText = makeCatalogText(namespaceUrls);
+  ),
+) {
+  const catalogText = makeCatalogText(catalogNamespaceUrls);
   const rawByPath = new Map<string, RawContents>([
     [OFFICIAL_CATALOG_PATH, catalogText],
     ...namespaceFiles,
@@ -255,14 +257,16 @@ async function makeTemporaryOutputDirectoryPath() {
 
 async function buildMinimalArtifacts({
   namespaceFiles = new Map<string, RawContents>(),
+  catalogNamespaceUrls,
   treeResponse,
   fetchOptions = {},
 }: {
   namespaceFiles?: RawFileMap;
+  catalogNamespaceUrls?: string[];
   treeResponse?: ReturnType<typeof makeTreeResponse>;
   fetchOptions?: Partial<Parameters<typeof installSnapshotFetch>[0]>;
 } = {}) {
-  const input = makeMinimalFetchInput(namespaceFiles);
+  const input = makeMinimalFetchInput(namespaceFiles, catalogNamespaceUrls);
   const installed = installSnapshotFetch({
     rawByPath: input.rawByPath,
     ...fetchOptions,
@@ -703,6 +707,48 @@ describe('fetch-catalog', () => {
     expect(metadata.build.workflow_run_url).toBe(
       'https://github.example.test/dfurater/Grundschutz-Navigator/actions/runs/12345',
     );
+  });
+
+  it('materializes every direct namespace CSV even when the catalog does not reference it', async () => {
+    const unreferencedPath = 'Dokumentation/namespaces/security_targets_levels.csv';
+    const nestedPath = 'Dokumentation/namespaces/nested/ignored.csv';
+    const readmePath = 'Dokumentation/namespaces/readme.md';
+    const namespaceFiles = new Map<string, RawContents>([
+      ['Dokumentation/namespaces/result.csv', 'Ergebnis,Definition\nVerfahren,Ein Verfahren\n'],
+      [unreferencedPath, 'Wert,Definition\n0,Keine Relevanz\n'],
+    ]);
+    const input = makeMinimalFetchInput(namespaceFiles, [RESULT_NAMESPACE_URL]);
+    const treeResponse = makeTreeResponse(input.rawByPath, [
+      makeTreeEntry(nestedPath, 'Wert,Definition\nnested,Nicht erlaubt\n'),
+      makeTreeEntry(readmePath, '# Kein Vokabular\n'),
+    ]);
+
+    const { payload, fetchMock } = await buildMinimalArtifacts({
+      namespaceFiles,
+      catalogNamespaceUrls: [RESULT_NAMESPACE_URL],
+      treeResponse,
+    });
+    const vocabularies = parseArtifactJson(payload, 'vocabularies.json');
+    const upstreamMetadata = parseArtifactJson(payload, 'upstream-sources-metadata.json');
+    const materializedPaths = [
+      'Dokumentation/namespaces/result.csv',
+      unreferencedPath,
+    ];
+
+    expect(vocabularies.namespaces.map((namespace) => namespace.source.path)).toEqual(
+      materializedPaths,
+    );
+    expect(upstreamMetadata.files.map((file) => file.path)).toEqual(materializedPaths);
+    expect(
+      upstreamMetadata.manifest.files
+        .filter((file) => file.rootType === 'vocabulary')
+        .map((file) => file.path),
+    ).toEqual(materializedPaths);
+
+    const requestedUrls = fetchMock.mock.calls.map(([request]) => inputUrl(request));
+    expect(requestedUrls).toContain(rawUrl(unreferencedPath));
+    expect(requestedUrls).not.toContain(rawUrl(nestedPath));
+    expect(requestedUrls).not.toContain(rawUrl(readmePath));
   });
 
   it('fetches namespace files in parallel while preserving deterministic artifact order', async () => {

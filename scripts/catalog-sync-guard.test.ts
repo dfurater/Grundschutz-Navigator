@@ -23,8 +23,9 @@ const OLD_SHA = '1'.repeat(40);
 const NEW_SHA = '2'.repeat(40);
 const RESULT_NAMESPACE_PATH = 'Dokumentation/namespaces/result.csv';
 const RESULT_NAMESPACE_URL = `${OFFICIAL_BSI_REPOSITORY_URL}/tree/main/${RESULT_NAMESPACE_PATH}`;
-const TAGS_NAMESPACE_PATH = 'Dokumentation/namespaces/tags.csv';
-const UNCLASSIFIED_PATH = 'Dokumentation/namespaces/security_targets_levels.csv';
+const UNREFERENCED_NAMESPACE_PATH =
+  'Dokumentation/namespaces/security_targets_levels.csv';
+const UNCLASSIFIED_PATH = 'Quellkataloge/Kernel/unclassified.csv';
 
 interface ManifestFile {
   artifactKey: string;
@@ -102,7 +103,7 @@ function makeOscalContents(
 function makeFixture({
   snapshotCommitSha = NEW_SHA,
   catalogNamespaceUrls = [RESULT_NAMESPACE_URL],
-  manifestNamespacePaths = [RESULT_NAMESPACE_PATH],
+  manifestNamespacePaths = [RESULT_NAMESPACE_PATH, UNREFERENCED_NAMESPACE_PATH],
   contentOverrides = new Map<string, Buffer>(),
   includeUnclassified = true,
 } = {}): GuardFixture {
@@ -447,6 +448,24 @@ describe('catalog sync PR shape', () => {
 });
 
 describe('catalog sync artifact verification', () => {
+  it('accepts unreferenced direct CSV members from the registered namespace directory', async () => {
+    const previous = makeFixture({
+      snapshotCommitSha: OLD_SHA,
+      manifestNamespacePaths: [RESULT_NAMESPACE_PATH, UNREFERENCED_NAMESPACE_PATH],
+    });
+    const next = makeFixture({
+      snapshotCommitSha: NEW_SHA,
+      manifestNamespacePaths: [RESULT_NAMESPACE_PATH, UNREFERENCED_NAMESPACE_PATH],
+    });
+
+    await expect(guardCatalogSyncPullRequest({
+      ...validShape(),
+      previousManifest: previous.manifest,
+      nextManifest: next.manifest,
+      fetchImpl: makeGitHubFetch(next),
+    })).resolves.toEqual({ catalogSync: true, snapshotCommitSha: NEW_SHA });
+  });
+
   it('verifies every registered blob and ignores unclassified tree files', async () => {
     const previous = makeFixture({ snapshotCommitSha: OLD_SHA });
     const next = makeFixture({ snapshotCommitSha: NEW_SHA });
@@ -468,18 +487,30 @@ describe('catalog sync artifact verification', () => {
     expect(requestedUrls.some((url) => url.includes(next.unclassifiedBlobSha))).toBe(false);
   });
 
-  it('enforces namespace membership derived from the supported catalog', async () => {
+  it('rejects a manifest that omits a direct CSV from the registered namespace directory', async () => {
     const previous = makeFixture({ snapshotCommitSha: OLD_SHA });
     const next = makeFixture({
       snapshotCommitSha: NEW_SHA,
-      manifestNamespacePaths: [RESULT_NAMESPACE_PATH, TAGS_NAMESPACE_PATH],
+      manifestNamespacePaths: [RESULT_NAMESPACE_PATH],
+      includeUnclassified: false,
     });
+    const omittedContents = Buffer.from('Wert,Definition\n0,Keine Relevanz\n');
+    const treeEntries = [
+      ...next.treeEntries,
+      {
+        path: UNREFERENCED_NAMESPACE_PATH,
+        mode: '100644',
+        type: 'blob',
+        sha: gitBlobSha(omittedContents),
+        size: omittedContents.length,
+      },
+    ];
 
     await expect(guardCatalogSyncPullRequest({
       ...validShape(),
       previousManifest: previous.manifest,
       nextManifest: next.manifest,
-      fetchImpl: makeGitHubFetch(next),
+      fetchImpl: makeGitHubFetch(next, { treeEntries }),
     })).rejects.toThrow('namespace inventory does not match');
   });
 
