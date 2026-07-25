@@ -40,6 +40,14 @@ function createNamespace({
   };
 }
 
+function createDefinitionEntry(
+  value: string,
+  definition: string,
+  valueColumn = 'Begriff',
+): VocabularyEntry {
+  return { value, definition, columns: { [valueColumn]: value, Definition: definition } };
+}
+
 export function createTestVocabularyRegistry() {
   const data: VocabularyRegistryData = {
     sourceCommitSha: 'test-upstream-commit',
@@ -237,31 +245,29 @@ export function createTestVocabularyRegistry() {
         ],
       }),
       createNamespace({
-        namespace: 'https://example.com/namespaces/security_targets.csv',
-        path: 'namespaces/security_targets.csv',
+        namespace:
+          'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets.csv',
+        path: 'Dokumentation/namespaces/security_targets.csv',
         fileName: 'security_targets.csv',
-        routeId: 'security-targets',
+        routeId: 'dokumentation-namespaces-security-targets',
         entries: [
-          {
-            value: 'Vertraulichkeit (Confidentiality)',
-            definition: 'Schutz vor unbefugter Offenlegung.',
-            columns: { Begriff: 'Vertraulichkeit (Confidentiality)', Definition: 'Schutz vor unbefugter Offenlegung.' },
-          },
-          {
-            value: 'Integrität (Integrity)',
-            definition: 'Schutz vor unbefugter oder unbemerkter Veränderung.',
-            columns: { Begriff: 'Integrität (Integrity)', Definition: 'Schutz vor unbefugter oder unbemerkter Veränderung.' },
-          },
-          {
-            value: 'Verfügbarkeit (Availability)',
-            definition: 'Schutz der rechtzeitigen Nutzbarkeit.',
-            columns: { Begriff: 'Verfügbarkeit (Availability)', Definition: 'Schutz der rechtzeitigen Nutzbarkeit.' },
-          },
-          {
-            value: 'Authentizität (Authenticity)',
-            definition: 'Sicherstellung der Echtheit und Herkunft.',
-            columns: { Begriff: 'Authentizität (Authenticity)', Definition: 'Sicherstellung der Echtheit und Herkunft.' },
-          },
+          createDefinitionEntry('Vertraulichkeit (Confidentiality)', 'Schutz vor unbefugter Offenlegung.'),
+          createDefinitionEntry('Integrität (Integrity)', 'Schutz vor unbefugter oder unbemerkter Veränderung.'),
+          createDefinitionEntry('Verfügbarkeit (Availability)', 'Schutz der rechtzeitigen Nutzbarkeit.'),
+          createDefinitionEntry('Authentizität (Authenticity)', 'Sicherstellung der Echtheit und Herkunft.'),
+        ],
+      }),
+      createNamespace({
+        namespace:
+          'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets_levels.csv',
+        path: 'Dokumentation/namespaces/security_targets_levels.csv',
+        fileName: 'security_targets_levels.csv',
+        routeId: 'dokumentation-namespaces-security-targets-levels',
+        valueColumn: 'Wert',
+        entries: [
+          createDefinitionEntry('0', 'Die Anforderung wirkt nicht oder vernachlässigbar gering auf dieses Schutzziel hin.', 'Wert'),
+          createDefinitionEntry('1', 'Die Anforderung wirkt auf dieses Schutzziel hin.', 'Wert'),
+          createDefinitionEntry('2', 'Die Anforderung wirkt in besonderem Maße auf dieses Schutzziel hin. Dieser Wert zeigt an, dass das Schutzziel im Zentrum dieser Anforderung steht.', 'Wert'),
         ],
       }),
       createNamespace({

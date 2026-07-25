@@ -36,7 +36,7 @@ const resolvedControl = makeControl({
   confidentialityProp: {
     name: 'confidentiality',
     value: '2',
-    ns: 'https://example.com/namespaces/security_targets.csv',
+    ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets_levels.csv',
   },
   threats: ['G 0.18', 'Unbekannte Gefährdung'],
   threatsProp: {
@@ -115,6 +115,12 @@ describe('ControlSecurityContext', () => {
     );
     expect(screen.getByText('Karte: Vertraulichkeit (Confidentiality)'))
       .toBeInTheDocument();
+    expect(screen.getByRole('button', {
+      name: 'Relevanz Vertraulichkeit: 2',
+    })).toHaveAttribute(
+      'aria-controls',
+      'vocab-card-security-target-level-confidentiality',
+    );
 
     const threat = screen.getByRole('button', {
       name: 'Elementare Gefährdung: G 0.18',

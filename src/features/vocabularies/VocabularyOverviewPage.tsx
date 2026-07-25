@@ -11,6 +11,7 @@ const vocabularyTitles: Record<string, string> = {
   'result.csv': 'Ergebnisse',
   'security_level.csv': 'Sicherheitsniveaus',
   'security_targets.csv': 'Schutzziele',
+  'security_targets_levels.csv': 'Schutzziel-Relevanz',
   'tags.csv': 'Tags',
   'target_object_categories.csv': 'Zielobjekt-Kategorien',
 };

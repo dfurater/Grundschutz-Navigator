@@ -52,6 +52,21 @@ function makeCatalogState(): CatalogState {
       },
       {
         source: {
+          namespace:
+            'https://example.com/namespaces/security_targets_levels.csv',
+          repository: 'https://example.com/repo',
+          path: 'Dokumentation/namespaces/security_targets_levels.csv',
+          fileName: 'security_targets_levels.csv',
+          routeId: 'dokumentation-namespaces-security-target-levels',
+          gitBlobSha: 'blob-target-levels',
+        },
+        columnOrder: ['Wert', 'Definition'],
+        valueColumn: 'Wert',
+        definitionColumn: 'Definition',
+        entries: [],
+      },
+      {
+        source: {
           namespace: 'https://example.com/namespaces/security_targets.csv',
           repository: 'https://example.com/repo',
           path: 'Dokumentation/namespaces/security_targets.csv',
@@ -119,6 +134,10 @@ describe('VocabularyOverviewPage', () => {
     expect(screen.getByRole('link', { name: 'Schutzziele' })).toHaveAttribute(
       'href',
       '/vokabular/dokumentation-namespaces-security-targets',
+    );
+    expect(screen.getByRole('link', { name: 'Schutzziel-Relevanz' })).toHaveAttribute(
+      'href',
+      '/vokabular/dokumentation-namespaces-security-target-levels',
     );
   });
 });

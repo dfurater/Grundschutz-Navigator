@@ -188,13 +188,13 @@ describe('vocabulary runtime', () => {
       confidentialityProp: {
         name: 'confidentiality',
         value: '2',
-        ns: 'https://example.com/namespaces/security_targets.csv',
+        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets_levels.csv',
       },
       integrity: '1',
       integrityProp: {
         name: 'integrity',
         value: '1',
-        ns: 'https://example.com/namespaces/security_targets.csv',
+        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets_levels.csv',
       },
       threats: ['G 0.18', 'G 0.99'],
       threatsProp: {
@@ -216,6 +216,12 @@ describe('vocabulary runtime', () => {
       'Vertraulichkeit (Confidentiality)',
     );
     expect(resolutions.securityTargets.integrity?.entry.value).toBe('Integrität (Integrity)');
+    expect(resolutions.securityTargetLevels.confidentiality?.entry.definition).toBe(
+      'Die Anforderung wirkt in besonderem Maße auf dieses Schutzziel hin. Dieser Wert zeigt an, dass das Schutzziel im Zentrum dieser Anforderung steht.',
+    );
+    expect(resolutions.securityTargetLevels.integrity?.entry.definition).toBe(
+      'Die Anforderung wirkt auf dieses Schutzziel hin.',
+    );
     expect(resolutions.threats.map((resolution) => resolution.entry.value)).toEqual(['G 0.18']);
   });
 

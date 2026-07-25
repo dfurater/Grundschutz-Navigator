@@ -214,6 +214,12 @@ export interface ResolvedControlVocabularies {
     availability: VocabularyResolution | null;
     authenticity: VocabularyResolution | null;
   };
+  securityTargetLevels: {
+    confidentiality: VocabularyResolution | null;
+    integrity: VocabularyResolution | null;
+    availability: VocabularyResolution | null;
+    authenticity: VocabularyResolution | null;
+  };
   threats: VocabularyResolution[];
   statement: {
     ergebnis: VocabularyResolution | null;
@@ -225,7 +231,9 @@ export interface ResolvedControlVocabularies {
 }
 ```
 
-Besonderheit Schutzziele: Die Control-Props tragen als Wert die Relevanz (`0`–`2`), das Vokabular `security_targets.csv` ist aber nach Schutzziel-Namen indiziert. Die Auflösung erfolgt deshalb über feste Lookup-Werte (`'Vertraulichkeit (Confidentiality)'`, `'Integrität (Integrity)'`, `'Verfügbarkeit (Availability)'`, `'Authentizität (Authenticity)'`) gegen den Namespace der jeweiligen Prop.
+Besonderheit Schutzziele: Die Control-Props tragen als Wert die Relevanz (`0`–`2`), das Vokabular `security_targets.csv` ist aber nach Schutzziel-Namen indiziert. Der Adapter setzt deshalb für die vier Relevanz-Props den kanonischen synthetischen Namespace von `security_targets_levels.csv`. `securityTargetLevels` löst die Prop anschließend generisch über diesen Namespace auf.
+
+Die Typdefinitionen bleiben davon getrennt: `securityTargets` verwendet feste Lookup-Werte (`'Vertraulichkeit (Confidentiality)'`, `'Integrität (Integrity)'`, `'Verfügbarkeit (Availability)'`, `'Authentizität (Authenticity)'`) gegen den kanonischen Namespace von `security_targets.csv`. Die Detailansicht bietet für Typ und Relevanz zwei unabhängige Definitionen an. Ein unbekannter Wert oder eine fehlende Registry wird nicht ausgeblendet, sondern mit dem Rohwert und einer sichtbaren Diagnose dargestellt.
 
 ### Such-Text-Sammlung
 
@@ -338,6 +346,7 @@ Detailseite für einen Namespace:
 - [FILTERING.md](./FILTERING.md) — Filter-System
 - [INTEGRITY.md](./INTEGRITY.md) — Integritätsprüfung
 - `src/domain/vocabulary.ts` — Vocabulary-Implementierung
+- `src/domain/vocabularyNamespaces.ts` — kanonische BSI-Namespace-URLs für synthetische Lookups
 - `src/domain/models.ts` — Vocabulary Types
 - `src/state/CatalogContext.tsx` — Context-Integration
 - `scripts/fetch-catalog.mjs` — Vocabulary-Abruf

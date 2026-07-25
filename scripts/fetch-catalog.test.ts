@@ -715,7 +715,10 @@ describe('fetch-catalog', () => {
     const readmePath = 'Dokumentation/namespaces/readme.md';
     const namespaceFiles = new Map<string, RawContents>([
       ['Dokumentation/namespaces/result.csv', 'Ergebnis,Definition\nVerfahren,Ein Verfahren\n'],
-      [unreferencedPath, 'Wert,Definition\n0,Keine Relevanz\n'],
+      [
+        unreferencedPath,
+        'Wert,Definition\n0,Keine Relevanz\n1,Mittlere Relevanz\n2,Höchste Relevanz\n',
+      ],
     ]);
     const input = makeMinimalFetchInput(namespaceFiles, [RESULT_NAMESPACE_URL]);
     const treeResponse = makeTreeResponse(input.rawByPath, [
@@ -738,6 +741,19 @@ describe('fetch-catalog', () => {
     expect(vocabularies.namespaces.map((namespace) => namespace.source.path)).toEqual(
       materializedPaths,
     );
+    expect(
+      vocabularies.namespaces.find(
+        (namespace) => namespace.source.path === unreferencedPath,
+      ),
+    ).toMatchObject({
+      valueColumn: 'Wert',
+      definitionColumn: 'Definition',
+      entries: [
+        { value: '0', definition: 'Keine Relevanz' },
+        { value: '1', definition: 'Mittlere Relevanz' },
+        { value: '2', definition: 'Höchste Relevanz' },
+      ],
+    });
     expect(upstreamMetadata.files.map((file) => file.path)).toEqual(materializedPaths);
     expect(
       upstreamMetadata.manifest.files

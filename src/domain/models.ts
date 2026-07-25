@@ -176,19 +176,19 @@ export interface Control {
 
   /** Relevanz für das Schutzziel Vertraulichkeit (0–2) */
   confidentiality?: SecurityTargetRelevance;
-  /** Structured confidentiality prop with namespace provenance */
+  /** Structured confidentiality prop with the canonical relevance vocabulary namespace */
   confidentialityProp?: PropValue;
   /** Relevanz für das Schutzziel Integrität (0–2) */
   integrity?: SecurityTargetRelevance;
-  /** Structured integrity prop with namespace provenance */
+  /** Structured integrity prop with the canonical relevance vocabulary namespace */
   integrityProp?: PropValue;
   /** Relevanz für das Schutzziel Verfügbarkeit (0–2) */
   availability?: SecurityTargetRelevance;
-  /** Structured availability prop with namespace provenance */
+  /** Structured availability prop with the canonical relevance vocabulary namespace */
   availabilityProp?: PropValue;
   /** Relevanz für das Schutzziel Authentizität (0–2) */
   authenticity?: SecurityTargetRelevance;
-  /** Structured authenticity prop with namespace provenance */
+  /** Structured authenticity prop with the canonical relevance vocabulary namespace */
   authenticityProp?: PropValue;
 
   /** Elementare Gefährdungen, aus der kommaseparierten OSCAL-Prop geparst */

@@ -28,6 +28,7 @@ import type {
 } from '@/domain/models';
 import { SUPPORTED_CATALOG_KEY } from '@/domain/sourceRegistry';
 import type { CatalogKey } from '@/domain/sourceRegistry';
+import { SECURITY_TARGET_LEVELS_NAMESPACE_URL } from '@/domain/vocabularyNamespaces';
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -61,6 +62,16 @@ function getPropWithMetadata(
     value: paramMap ? resolveParams(prop.value, paramMap) : prop.value,
     ns: prop.ns,
   };
+}
+
+function getSecurityTargetRelevanceProp(
+  props: RawOscalProp[] | undefined,
+  name: string,
+): PropValue | undefined {
+  const prop = getPropWithMetadata(props, name);
+  return prop
+    ? { ...prop, ns: SECURITY_TARGET_LEVELS_NAMESPACE_URL }
+    : undefined;
 }
 
 /**
@@ -205,10 +216,19 @@ export function parseControl(
   const securityLevelProp = getPropWithMetadata(raw.props, 'sec_level');
   const effortLevelProp = getPropWithMetadata(raw.props, 'effort_level');
   const tagsProp = getPropWithMetadata(raw.props, 'tags');
-  const confidentialityProp = getPropWithMetadata(raw.props, 'confidentiality');
-  const integrityProp = getPropWithMetadata(raw.props, 'integrity');
-  const availabilityProp = getPropWithMetadata(raw.props, 'availability');
-  const authenticityProp = getPropWithMetadata(raw.props, 'authenticity');
+  const confidentialityProp = getSecurityTargetRelevanceProp(
+    raw.props,
+    'confidentiality',
+  );
+  const integrityProp = getSecurityTargetRelevanceProp(raw.props, 'integrity');
+  const availabilityProp = getSecurityTargetRelevanceProp(
+    raw.props,
+    'availability',
+  );
+  const authenticityProp = getSecurityTargetRelevanceProp(
+    raw.props,
+    'authenticity',
+  );
   const threatsProp = getPropWithMetadata(raw.props, 'threats');
   const securityLevel = toSecurityLevel(securityLevelProp?.value);
   const effortLevel = toEffortLevel(effortLevelProp?.value);

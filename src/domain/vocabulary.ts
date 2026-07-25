@@ -8,6 +8,7 @@ import type {
   VocabularyRegistry,
   VocabularyRegistryData,
 } from './models';
+import { SECURITY_TARGETS_NAMESPACE_URL } from './vocabularyNamespaces';
 
 export interface VocabularyResolution {
   namespace: VocabularyNamespace;
@@ -22,6 +23,12 @@ export interface ResolvedControlVocabularies {
   effortLevel: VocabularyResolution | null;
   tags: VocabularyResolution[];
   securityTargets: {
+    confidentiality: VocabularyResolution | null;
+    integrity: VocabularyResolution | null;
+    availability: VocabularyResolution | null;
+    authenticity: VocabularyResolution | null;
+  };
+  securityTargetLevels: {
     confidentiality: VocabularyResolution | null;
     integrity: VocabularyResolution | null;
     availability: VocabularyResolution | null;
@@ -197,24 +204,30 @@ export function resolveControlVocabularies(
     securityTargets: {
       confidentiality: resolveVocabularyEntry(
         registry,
-        control.confidentialityProp?.ns,
+        SECURITY_TARGETS_NAMESPACE_URL,
         'Vertraulichkeit (Confidentiality)',
       ),
       integrity: resolveVocabularyEntry(
         registry,
-        control.integrityProp?.ns,
+        SECURITY_TARGETS_NAMESPACE_URL,
         'Integrität (Integrity)',
       ),
       availability: resolveVocabularyEntry(
         registry,
-        control.availabilityProp?.ns,
+        SECURITY_TARGETS_NAMESPACE_URL,
         'Verfügbarkeit (Availability)',
       ),
       authenticity: resolveVocabularyEntry(
         registry,
-        control.authenticityProp?.ns,
+        SECURITY_TARGETS_NAMESPACE_URL,
         'Authentizität (Authenticity)',
       ),
+    },
+    securityTargetLevels: {
+      confidentiality: resolveVocabularyProp(registry, control.confidentialityProp),
+      integrity: resolveVocabularyProp(registry, control.integrityProp),
+      availability: resolveVocabularyProp(registry, control.availabilityProp),
+      authenticity: resolveVocabularyProp(registry, control.authenticityProp),
     },
     threats: resolveVocabularyValues(registry, control.threatsProp?.ns, control.threats),
     statement: {
@@ -272,6 +285,10 @@ export function collectControlVocabularySearchTexts(
     resolved.securityTargets.integrity,
     resolved.securityTargets.availability,
     resolved.securityTargets.authenticity,
+    resolved.securityTargetLevels.confidentiality,
+    resolved.securityTargetLevels.integrity,
+    resolved.securityTargetLevels.availability,
+    resolved.securityTargetLevels.authenticity,
     ...resolved.threats,
     resolved.statement.ergebnis,
     resolved.statement.praezisierung,
