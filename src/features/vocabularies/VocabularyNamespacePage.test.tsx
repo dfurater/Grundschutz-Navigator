@@ -154,7 +154,7 @@ describe('VocabularyNamespacePage', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('link', { name: 'G 0.1 — Feuer' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'G 0.1 Feuer' })).toBeInTheDocument();
   });
 
   it('does not duplicate the term when the value column already is the Begriff', () => {

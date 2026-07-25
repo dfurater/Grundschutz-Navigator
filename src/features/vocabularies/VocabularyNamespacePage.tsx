@@ -162,8 +162,8 @@ export function VocabularyNamespacePage() {
                   {entry.value}
                   {termLabel && (
                     <>
-                      {' — '}
-                      <span className="font-normal text-[var(--color-text-secondary)]">{termLabel}</span>
+                      {' '}
+                      <span className="ml-4 font-normal text-[var(--color-text-secondary)]">{termLabel}</span>
                     </>
                   )}
                 </Link>
