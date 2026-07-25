@@ -1,9 +1,13 @@
 import type {
   Practice,
+  Topic,
   VocabularyRegistry,
 } from './models';
 import type { VocabularyResolution } from './vocabulary';
-import { PRACTICES_NAMESPACE_URL } from './vocabularyNamespaces';
+import {
+  PRACTICES_NAMESPACE_URL,
+  TOPICS_NAMESPACE_URL,
+} from './vocabularyNamespaces';
 
 function resolveVocabularyEntryByUniqueColumn(
   registry: VocabularyRegistry | null | undefined,
@@ -41,5 +45,17 @@ export function resolvePracticeVocabulary(
     PRACTICES_NAMESPACE_URL,
     'UUID',
     practice?.altIdentifier,
+  );
+}
+
+export function resolveTopicVocabulary(
+  registry: VocabularyRegistry | null | undefined,
+  topic: Topic | null | undefined,
+): VocabularyResolution | null {
+  return resolveVocabularyEntryByUniqueColumn(
+    registry,
+    TOPICS_NAMESPACE_URL,
+    'UUID',
+    topic?.altIdentifier,
   );
 }

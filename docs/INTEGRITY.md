@@ -178,7 +178,7 @@ Dazu kommen Quell-Repository, Commit-SHA und Abrufzeitpunkt mit Link auf den exa
 
 ## Vocabulary Integrity
 
-Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funktion `verifyArtifactIntegrity` auf (die `IntegrityMetadata`-Union deckt beide Provenance-Typen ab). Die zugehörigen Metadaten stehen in `upstream-sources-metadata.json`. Darin umfasst `manifest` alle materialisierten Registry-Artefakte; das separate Top-Level-Feld `files` enthält ausschließlich die Datei-Provenance der ausgelieferten Namespace-CSVs. `dataQualityFindings` hält nicht blockierende fachliche Befunde zum unterstützten Katalog fest.
+Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funktion `verifyArtifactIntegrity` auf (die `IntegrityMetadata`-Union deckt beide Provenance-Typen ab). Die zugehörigen Metadaten stehen in `upstream-sources-metadata.json`. Darin umfasst `manifest` alle materialisierten Registry-Artefakte; das separate Top-Level-Feld `files` enthält ausschließlich die Datei-Provenance der ausgelieferten Namespace-CSVs. `dataQualityFindings` hält nicht blockierende fachliche Befunde zum unterstützten Katalog fest. `taxonomyCoverage.topics` protokolliert die gemessene UUID-Deckung zwischen Katalogthemen und `topics.csv`; für den bekannten gepinnten Snapshot bricht der Fetch bei einer Abweichung von der erwarteten Baseline ab.
 
 ### Provenance-Metadaten (upstream-sources-metadata.json)
 
@@ -227,6 +227,21 @@ Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funkt
     }
   ],
   "dataQualityFindings": [],
+  "taxonomyCoverage": {
+    "topics": {
+      "catalogTopicCount": 139,
+      "distinctCatalogUuidCount": 119,
+      "csvEntryCount": 119,
+      "matchedCatalogTopicCount": 139,
+      "unmatchedCatalogTopicCount": 0,
+      "orphanCsvEntryCount": 0,
+      "missingCatalogUuidCount": 0,
+      "duplicateCsvUuidCount": 0,
+      "unmatchedCatalogTopics": [],
+      "orphanCsvEntries": [],
+      "duplicateCsvUuids": []
+    }
+  },
   "integrity": {
     "sha256": "<sha256>",
     "size_bytes": 438298,
@@ -299,6 +314,24 @@ interface VocabularyFileProvenance {
   sizeBytes: number;
 }
 
+interface TopicVocabularyCoverage {
+  catalogTopicCount: number;
+  distinctCatalogUuidCount: number;
+  csvEntryCount: number;
+  matchedCatalogTopicCount: number;
+  unmatchedCatalogTopicCount: number;
+  orphanCsvEntryCount: number;
+  missingCatalogUuidCount: number;
+  duplicateCsvUuidCount: number;
+  unmatchedCatalogTopics: Array<{
+    id?: string;
+    practiceId?: string;
+    uuid?: string;
+  }>;
+  orphanCsvEntries: Array<{ value?: string; uuid?: string }>;
+  duplicateCsvUuids: Array<{ value: string; count: number }>;
+}
+
 interface VocabularyProvenance {
   artifactKey?: string;
   source: {
@@ -310,6 +343,9 @@ interface VocabularyProvenance {
   manifest: UpstreamManifest;
   files: VocabularyFileProvenance[];
   dataQualityFindings?: string[];
+  taxonomyCoverage?: {
+    topics: TopicVocabularyCoverage | null;
+  };
   integrity: ArtifactIntegrity;
   build: ArtifactBuildInfo;
 }

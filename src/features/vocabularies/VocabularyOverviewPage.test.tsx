@@ -93,6 +93,20 @@ function makeCatalogState(): CatalogState {
         definitionColumn: 'Definition',
         entries: [],
       },
+      {
+        source: {
+          namespace: 'https://example.com/namespaces/topics.csv',
+          repository: 'https://example.com/repo',
+          path: 'Dokumentation/namespaces/topics.csv',
+          fileName: 'topics.csv',
+          routeId: 'dokumentation-namespaces-topics',
+          gitBlobSha: 'blob-topics',
+        },
+        columnOrder: ['Begriff', 'Definition', 'UUID'],
+        valueColumn: 'Begriff',
+        definitionColumn: 'Definition',
+        entries: [],
+      },
     ],
   };
 
@@ -156,6 +170,10 @@ describe('VocabularyOverviewPage', () => {
     expect(screen.getByRole('link', { name: 'Praktiken' })).toHaveAttribute(
       'href',
       '/vokabular/dokumentation-namespaces-practices',
+    );
+    expect(screen.getByRole('link', { name: 'Themen' })).toHaveAttribute(
+      'href',
+      '/vokabular/dokumentation-namespaces-topics',
     );
   });
 });

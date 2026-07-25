@@ -825,6 +825,7 @@ describe('fetch-catalog', () => {
     expect(upstreamMetadata.integrity.size_bytes).toBe(vocabulariesBuffer.length);
     expect(upstreamMetadata.manifest.schemaVersion).toBe(2);
     expect(upstreamMetadata.manifest.signatureSha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(upstreamMetadata.taxonomyCoverage).toEqual({ topics: null });
   });
 
   it('validates the full registry without shipping extra artifacts or fetching unclassified paths', async () => {
@@ -960,6 +961,28 @@ describe('vocabulary-utils', () => {
         Nummerierung: '1',
         'auch bekannt als': 'Corporate Governance',
       },
+    });
+  });
+
+  it('preserves topic UUIDs while parsing topics.csv', () => {
+    const namespace = buildVocabularyNamespaceData({
+      namespaceUrl:
+        'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/topics.csv',
+      repository: 'BSI-Bund/Stand-der-Technik-Bibliothek',
+      path: 'Dokumentation/namespaces/topics.csv',
+      gitBlobSha: 'c'.repeat(40),
+      csvText:
+        'Begriff,Definition,UUID\nOrganisation,Offizielle Definition,uuid-topic-1\n',
+    });
+
+    expect(namespace).toMatchObject({
+      valueColumn: 'Begriff',
+      definitionColumn: 'Definition',
+      entries: [{
+        value: 'Organisation',
+        definition: 'Offizielle Definition',
+        columns: { UUID: 'uuid-topic-1' },
+      }],
     });
   });
 

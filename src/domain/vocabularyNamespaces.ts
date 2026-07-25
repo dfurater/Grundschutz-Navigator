@@ -9,3 +9,6 @@ export const SECURITY_TARGET_LEVELS_NAMESPACE_URL =
 
 export const PRACTICES_NAMESPACE_URL =
   `${BSI_NAMESPACE_ROOT}/practices.csv`;
+
+export const TOPICS_NAMESPACE_URL =
+  `${BSI_NAMESPACE_ROOT}/topics.csv`;

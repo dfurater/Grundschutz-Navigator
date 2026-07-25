@@ -235,7 +235,7 @@ Besonderheit Schutzziele: Die Control-Props tragen als Wert die Relevanz (`0`–
 
 Die Typdefinitionen bleiben davon getrennt: `securityTargets` verwendet feste Lookup-Werte (`'Vertraulichkeit (Confidentiality)'`, `'Integrität (Integrity)'`, `'Verfügbarkeit (Availability)'`, `'Authentizität (Authenticity)'`) gegen den kanonischen Namespace von `security_targets.csv`. Die Detailansicht bietet für Typ und Relevanz zwei unabhängige Definitionen an. Ein unbekannter Wert oder eine fehlende Registry wird nicht ausgeblendet, sondern mit dem Rohwert und einer sichtbaren Diagnose dargestellt.
 
-### Praktik-Auflösung per UUID
+### Taxonomie-Auflösung per UUID
 
 `resolvePracticeVocabulary()` in `src/domain/taxonomyVocabulary.ts` verbindet eine
 Katalog-Praktik ausschließlich über `Practice.altIdentifier` mit der Spalte
@@ -250,6 +250,22 @@ Spalten `UUID` und `Nummerierung` bleiben dort verborgen, sind aber zusammen mit
 allen anderen Originalspalten weiterhin auf `/vokabular` einsehbar. Nur der
 Aliastext wird zusätzlich in den FlexSearch-Metadatenindex der zugehörigen
 Kontrollen übernommen.
+
+`resolveTopicVocabulary()` verwendet denselben strikten UUID-Join für
+`Topic.altIdentifier` und `topics.csv`. Mehrere Katalog-Untergruppen dürfen
+dieselbe fachliche Themen-UUID teilen und lösen dann auf denselben Eintrag auf.
+Fehlt die UUID oder der CSV-Treffer, bleibt das Thema im
+ControlDetail-Breadcrumb sichtbar und erhält den dezenten Hinweis
+„keine offizielle Definition“. Umgekehrt bleiben CSV-Einträge ohne
+Katalogtreffer vollständig auf `/vokabular` auffindbar; Definitionen werden
+nicht auf Übersichtsseiten dupliziert.
+
+Für den gepinnten BSI-Snapshot `12abb438fcdb4f4b63fb3e751e89d7c526e647b5`
+wurde die Deckung explizit gemessen: 139 Katalog-Untergruppen verwenden 119
+verschiedene UUIDs und lösen vollständig auf die 119 CSV-Einträge auf. Aktuell
+gibt es weder ein Katalogthema ohne Treffer noch einen verwaisten CSV-Eintrag.
+Die UI-Tests halten dennoch beide Abweichungsrichtungen für künftige Snapshots
+sichtbar.
 
 ### Such-Text-Sammlung
 
@@ -362,9 +378,10 @@ Detailseite für einen Namespace:
 - [FILTERING.md](./FILTERING.md) — Filter-System
 - [INTEGRITY.md](./INTEGRITY.md) — Integritätsprüfung
 - `src/domain/vocabulary.ts` — Vocabulary-Implementierung
-- `src/domain/taxonomyVocabulary.ts` — UUID-basierte Praktik-Auflösung
+- `src/domain/taxonomyVocabulary.ts` — UUID-basierte Praktik- und Themen-Auflösung
 - `src/domain/vocabularyNamespaces.ts` — kanonische BSI-Namespace-URLs für synthetische Lookups
 - `src/domain/models.ts` — Vocabulary Types
 - `src/state/CatalogContext.tsx` — Context-Integration
+- `src/features/catalog/ControlTaxonomyBreadcrumb.tsx` — kontextuelle Taxonomie-Definitionen
 - `scripts/fetch-catalog.mjs` — Vocabulary-Abruf
 - `scripts/vocabulary-utils.mjs` — Build-Hilfsfunktionen

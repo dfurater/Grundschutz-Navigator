@@ -1,0 +1,92 @@
+const TOPIC_COVERAGE_BASELINES = Object.freeze({
+  '12abb438fcdb4f4b63fb3e751e89d7c526e647b5': Object.freeze({
+    catalogTopicCount: 139,
+    distinctCatalogUuidCount: 119,
+    csvEntryCount: 119,
+    matchedCatalogTopicCount: 139,
+    unmatchedCatalogTopicCount: 0,
+    orphanCsvEntryCount: 0,
+    missingCatalogUuidCount: 0,
+    duplicateCsvUuidCount: 0,
+  }),
+});
+
+function findAltIdentifier(node) {
+  return node?.props?.find((prop) => prop?.name === 'alt-identifier')?.value;
+}
+
+function findDuplicates(values) {
+  const counts = new Map();
+  for (const value of values) {
+    if (value) {
+      counts.set(value, (counts.get(value) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([value, count]) => ({ value, count }));
+}
+
+export function analyzeTopicVocabularyCoverage(
+  catalogDocument,
+  topicsNamespace,
+) {
+  const catalogTopics = (catalogDocument?.catalog?.groups ?? []).flatMap(
+    (practice) => (practice.groups ?? []).map((topic) => ({
+      id: topic.id,
+      practiceId: practice.id,
+      uuid: findAltIdentifier(topic),
+    })),
+  );
+  const csvEntries = topicsNamespace?.entries ?? [];
+  const csvUuids = csvEntries.map((entry) => entry.columns?.UUID).filter(Boolean);
+  const csvUuidSet = new Set(csvUuids);
+  const catalogUuidSet = new Set(
+    catalogTopics.map((topic) => topic.uuid).filter(Boolean),
+  );
+  const unmatchedCatalogTopics = catalogTopics.filter(
+    (topic) => !topic.uuid || !csvUuidSet.has(topic.uuid),
+  );
+  const orphanCsvEntries = csvEntries.filter(
+    (entry) => !entry.columns?.UUID || !catalogUuidSet.has(entry.columns.UUID),
+  );
+  const duplicateCsvUuids = findDuplicates(csvUuids);
+
+  return {
+    catalogTopicCount: catalogTopics.length,
+    distinctCatalogUuidCount: catalogUuidSet.size,
+    csvEntryCount: csvEntries.length,
+    matchedCatalogTopicCount:
+      catalogTopics.length - unmatchedCatalogTopics.length,
+    unmatchedCatalogTopicCount: unmatchedCatalogTopics.length,
+    orphanCsvEntryCount: orphanCsvEntries.length,
+    missingCatalogUuidCount: catalogTopics.filter((topic) => !topic.uuid).length,
+    duplicateCsvUuidCount: duplicateCsvUuids.length,
+    unmatchedCatalogTopics,
+    orphanCsvEntries: orphanCsvEntries.map((entry) => ({
+      value: entry.value,
+      uuid: entry.columns?.UUID,
+    })),
+    duplicateCsvUuids,
+  };
+}
+
+export function assertPinnedTopicCoverage(snapshotCommitSha, coverage) {
+  const expected = TOPIC_COVERAGE_BASELINES[snapshotCommitSha];
+  if (!expected) {
+    return;
+  }
+  if (!coverage) {
+    throw new Error(
+      `topics.csv fehlt für die Coverage-Baseline des Snapshots ${snapshotCommitSha}.`,
+    );
+  }
+
+  for (const [key, expectedValue] of Object.entries(expected)) {
+    if (coverage[key] !== expectedValue) {
+      throw new Error(
+        `Topic-Coverage für Snapshot ${snapshotCommitSha} weicht bei ${key} ab: erwartet ${expectedValue}, erhalten ${coverage[key]}.`,
+      );
+    }
+  }
+}

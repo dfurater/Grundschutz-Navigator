@@ -28,6 +28,10 @@ import {
   buildUpstreamManifest,
   normalizeGitTree,
 } from './upstream-artifacts.mjs';
+import {
+  analyzeTopicVocabularyCoverage,
+  assertPinnedTopicCoverage,
+} from './taxonomy-coverage.mjs';
 
 const REPO = OFFICIAL_BSI_REPO;
 const CATALOG_PATH = OFFICIAL_CATALOG_PATH;
@@ -591,6 +595,18 @@ async function buildFetchArtifacts(logger = console, {
   });
   const vocabularyNamespaces = namespaceArtifacts.map((artifact) => artifact.vocabularyNamespace);
   const vocabularyFiles = namespaceArtifacts.map((artifact) => artifact.vocabularyFile);
+  const topicsNamespace = vocabularyNamespaces.find(
+    (namespace) => namespace.source.fileName === 'topics.csv',
+  );
+  const topicCoverage = topicsNamespace
+    ? analyzeTopicVocabularyCoverage(catalogJson, topicsNamespace)
+    : null;
+  assertPinnedTopicCoverage(snapshot.snapshotCommitSha, topicCoverage);
+  if (topicCoverage) {
+    logger.log(
+      `   Topic-Coverage: ${topicCoverage.matchedCatalogTopicCount}/${topicCoverage.catalogTopicCount} Katalogthemen, ${topicCoverage.csvEntryCount} CSV-Einträge, ${topicCoverage.orphanCsvEntryCount} verwaist`,
+    );
+  }
 
   const registryData = {
     sourceCommitSha: snapshot.snapshotCommitSha,
@@ -622,6 +638,9 @@ async function buildFetchArtifacts(logger = console, {
     manifest,
     files: vocabularyFiles,
     dataQualityFindings: catalogQuality.findings,
+    taxonomyCoverage: {
+      topics: topicCoverage,
+    },
     integrity: {
       sha256: sha256Hex(vocabulariesArtifact),
       size_bytes: vocabulariesArtifact.length,

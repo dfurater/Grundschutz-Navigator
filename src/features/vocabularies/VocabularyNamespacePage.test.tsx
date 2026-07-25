@@ -56,6 +56,28 @@ function makeCatalogState(): CatalogState {
       },
       {
         source: {
+          namespace: 'https://example.com/namespaces/topics.csv',
+          repository: 'https://example.com/repo',
+          path: 'Dokumentation/namespaces/topics.csv',
+          fileName: 'topics.csv',
+          routeId: 'dokumentation-namespaces-topics',
+          gitBlobSha: 'blob-topics',
+        },
+        columnOrder: ['Begriff', 'Definition', 'UUID'],
+        valueColumn: 'Begriff',
+        definitionColumn: 'Definition',
+        entries: [{
+          value: 'Verwaistes Thema',
+          definition: 'Bleibt unabhängig vom Katalog auffindbar.',
+          columns: {
+            Begriff: 'Verwaistes Thema',
+            Definition: 'Bleibt unabhängig vom Katalog auffindbar.',
+            UUID: 'uuid-topic-orphan',
+          },
+        }],
+      },
+      {
+        source: {
           namespace: 'https://example.com/namespaces/basethreats.csv',
           repository: 'https://example.com/repo',
           path: 'Dokumentation/namespaces/basethreats.csv',
@@ -170,6 +192,23 @@ describe('VocabularyNamespacePage', () => {
 
     expect(screen.getByRole('link', { name: '2' })).toBeInTheDocument();
     expect(screen.queryByText(/—/)).not.toBeInTheDocument();
+  });
+
+  it('keeps orphan topic CSV entries discoverable on the vocabulary page', () => {
+    mockedUseCatalog.mockReturnValue(makeCatalogState());
+
+    render(
+      <MemoryRouter initialEntries={['/vokabular/dokumentation-namespaces-topics']}>
+        <Routes>
+          <Route path="/vokabular/:namespaceId" element={<VocabularyNamespacePage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('link', { name: 'Verwaistes Thema' })).toHaveAttribute(
+      'href',
+      '/vokabular/dokumentation-namespaces-topics?wert=Verwaistes%20Thema',
+    );
   });
 
   it('lets the inline definition use the full card width instead of a prose cap', () => {

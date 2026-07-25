@@ -453,6 +453,30 @@ export interface VocabularyFileProvenance {
   sizeBytes: number;
 }
 
+export interface TopicVocabularyCoverage {
+  catalogTopicCount: number;
+  distinctCatalogUuidCount: number;
+  csvEntryCount: number;
+  matchedCatalogTopicCount: number;
+  unmatchedCatalogTopicCount: number;
+  orphanCsvEntryCount: number;
+  missingCatalogUuidCount: number;
+  duplicateCsvUuidCount: number;
+  unmatchedCatalogTopics: Array<{
+    id?: string;
+    practiceId?: string;
+    uuid?: string;
+  }>;
+  orphanCsvEntries: Array<{
+    value?: string;
+    uuid?: string;
+  }>;
+  duplicateCsvUuids: Array<{
+    value: string;
+    count: number;
+  }>;
+}
+
 /** Integrity record shared by every shipped artifact (ADR-0001) */
 export interface ArtifactIntegrity {
   sha256: string;
@@ -479,6 +503,9 @@ export interface VocabularyProvenance {
   manifest: UpstreamManifest;
   files: VocabularyFileProvenance[];
   dataQualityFindings?: string[];
+  taxonomyCoverage?: {
+    topics: TopicVocabularyCoverage | null;
+  };
   integrity: ArtifactIntegrity;
   build: ArtifactBuildInfo;
 }

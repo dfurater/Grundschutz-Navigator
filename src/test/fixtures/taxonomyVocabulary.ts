@@ -35,5 +35,35 @@ export function createTaxonomyVocabularyNamespaces(): VocabularyNamespaceData[] 
         'auch bekannt als': 'Corporate Governance',
       },
     }],
+  }, {
+    source: {
+      namespace:
+        'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/topics.csv',
+      repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
+      path: 'Dokumentation/namespaces/topics.csv',
+      fileName: 'topics.csv',
+      routeId: 'dokumentation-namespaces-topics',
+      gitBlobSha: 'topic-blob-sha',
+    },
+    columnOrder: ['Begriff', 'Definition', 'UUID'],
+    valueColumn: 'Begriff',
+    definitionColumn: 'Definition',
+    entries: [{
+      value: 'Organisation',
+      definition: 'Offizielle Themen-Definition.',
+      columns: {
+        Begriff: 'Organisation',
+        Definition: 'Offizielle Themen-Definition.',
+        UUID: 'uuid-topic-1',
+      },
+    }, {
+      value: 'Verwaistes Thema',
+      definition: 'Bleibt im Vokabular auffindbar.',
+      columns: {
+        Begriff: 'Verwaistes Thema',
+        Definition: 'Bleibt im Vokabular auffindbar.',
+        UUID: 'uuid-topic-orphan',
+      },
+    }],
   }];
 }

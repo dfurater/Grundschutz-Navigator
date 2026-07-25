@@ -171,6 +171,7 @@ describe('ControlDetail', () => {
         id: 'GC.2',
         title: 'Organisation',
         label: '2',
+        altIdentifier: 'uuid-topic-1',
         practiceId: 'GC',
         controlCount: 1,
         controlIds: ['GC.2.2'],
@@ -197,6 +198,46 @@ describe('ControlDetail', () => {
     expect(screen.getByText('Corporate Governance')).toBeInTheDocument();
     expect(screen.queryByText('uuid-practice-1')).not.toBeInTheDocument();
     expect(screen.queryByText('Nummerierung')).not.toBeInTheDocument();
+
+    const topic = screen.getByRole('button', { name: 'Thema: Organisation' });
+    await user.click(topic);
+
+    expect(screen.getByText('Offizielle Themen-Definition.')).toBeInTheDocument();
+    expect(practice).toHaveAttribute('aria-expanded', 'false');
+    expect(topic).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.queryByText('uuid-topic-1')).not.toBeInTheDocument();
+  });
+
+  it('shows a diagnostic for a catalog topic without an official CSV definition', () => {
+    const state = makeCatalogState();
+    state.catalog!.practices = [{
+      id: 'GC',
+      title: 'Governance und Compliance',
+      label: 'GC',
+      altIdentifier: 'uuid-practice-1',
+      topics: [{
+        id: 'GC.2',
+        title: 'Organisation',
+        label: '2',
+        altIdentifier: 'unbekannte-topic-uuid',
+        practiceId: 'GC',
+        controlCount: 1,
+        controlIds: ['GC.2.2'],
+      }],
+      controlCount: 1,
+    }];
+    mockedUseCatalog.mockReturnValue(state);
+
+    render(
+      <MemoryRouter>
+        <ControlDetail control={makeControl()} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Organisation')).toBeInTheDocument();
+    expect(screen.getByText('keine offizielle Definition')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Thema: Organisation' }))
+      .not.toBeInTheDocument();
   });
 
   it('does not retain control-local UI state across catalog changes', async () => {

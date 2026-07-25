@@ -15,6 +15,7 @@ const vocabularyTitles: Record<string, string> = {
   'security_targets_levels.csv': 'Schutzziel-Relevanz',
   'tags.csv': 'Tags',
   'target_object_categories.csv': 'Zielobjekt-Kategorien',
+  'topics.csv': 'Themen',
 };
 
 function humanizeVocabularyFileName(fileName: string) {
