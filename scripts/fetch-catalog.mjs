@@ -600,12 +600,13 @@ async function buildFetchArtifacts(logger = console, {
   const practicesNamespace = vocabularyNamespaces.find(
     (namespace) => namespace.source.fileName === 'practices.csv',
   );
-  if (practicesNamespace) {
-    assertPracticeVocabularyIntegrity(
-      snapshot.snapshotCommitSha,
-      analyzePracticeVocabularyIntegrity(practicesNamespace),
-    );
-  }
+  const practiceIntegrity = practicesNamespace
+    ? analyzePracticeVocabularyIntegrity(catalogJson, practicesNamespace)
+    : null;
+  assertPracticeVocabularyIntegrity(
+    snapshot.snapshotCommitSha,
+    practiceIntegrity,
+  );
   const topicsNamespace = vocabularyNamespaces.find(
     (namespace) => namespace.source.fileName === 'topics.csv',
   );

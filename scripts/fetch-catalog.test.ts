@@ -37,6 +37,9 @@ const RESULT_NAMESPACE_URL =
 const ACTION_WORDS_NAMESPACE_URL =
   'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/action_words.csv';
 const PRACTICES_NAMESPACE_PATH = 'Dokumentation/namespaces/practices.csv';
+const PRACTICE_ALT_IDENTIFIER = '33333333-3333-4333-8333-333333333333';
+const PRACTICES_CSV =
+  `Kürzel,Begriff,Definition,UUID\nGC,Governance,Fixture definition,${PRACTICE_ALT_IDENTIFIER}\n`;
 const TOPICS_NAMESPACE_PATH = 'Dokumentation/namespaces/topics.csv';
 const TOPIC_ALT_IDENTIFIER = '22222222-2222-4222-8222-222222222222';
 const TOPICS_CSV =
@@ -210,6 +213,7 @@ function makeCatalogText(namespaceUrls: string[] = []) {
   const groups = [
     {
       id: 'GC',
+      props: [{ name: 'alt-identifier', value: PRACTICE_ALT_IDENTIFIER }],
       groups: [
         {
           id: 'GC.1',
@@ -234,8 +238,12 @@ function makeMinimalFetchInput(
   catalogNamespaceUrls = [...namespaceFiles.keys()].map(
     (path) => `https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/${path}`,
   ),
+  includePractices = true,
 ) {
   const materializedNamespaceFiles = new Map(namespaceFiles);
+  if (includePractices && !materializedNamespaceFiles.has(PRACTICES_NAMESPACE_PATH)) {
+    materializedNamespaceFiles.set(PRACTICES_NAMESPACE_PATH, PRACTICES_CSV);
+  }
   if (!materializedNamespaceFiles.has(TOPICS_NAMESPACE_PATH)) {
     materializedNamespaceFiles.set(TOPICS_NAMESPACE_PATH, TOPICS_CSV);
   }
@@ -280,15 +288,21 @@ async function makeTemporaryOutputDirectoryPath() {
 async function buildMinimalArtifacts({
   namespaceFiles = new Map<string, RawContents>(),
   catalogNamespaceUrls,
+  includePractices = true,
   treeResponse,
   fetchOptions = {},
 }: {
   namespaceFiles?: RawFileMap;
   catalogNamespaceUrls?: string[];
+  includePractices?: boolean;
   treeResponse?: ReturnType<typeof makeTreeResponse>;
   fetchOptions?: Partial<Parameters<typeof installSnapshotFetch>[0]>;
 } = {}) {
-  const input = makeMinimalFetchInput(namespaceFiles, catalogNamespaceUrls);
+  const input = makeMinimalFetchInput(
+    namespaceFiles,
+    catalogNamespaceUrls,
+    includePractices,
+  );
   const installed = installSnapshotFetch({
     rawByPath: input.rawByPath,
     ...fetchOptions,
@@ -729,6 +743,21 @@ describe('fetch-catalog', () => {
     })).rejects.toThrow('Practice-UUID-Integrität');
   });
 
+  it('rejects missing or unmatched practices.csv coverage before emitting artifacts', async () => {
+    await expect(buildMinimalArtifacts({
+      includePractices: false,
+    })).rejects.toThrow('practices.csv fehlt');
+
+    await expect(buildMinimalArtifacts({
+      namespaceFiles: new Map([
+        [
+          PRACTICES_NAMESPACE_PATH,
+          'Kürzel,Begriff,Definition,UUID\nGC,Governance,Definition,unmatched-practice-uuid\n',
+        ],
+      ]),
+    })).rejects.toThrow('Practice-UUID-Integrität');
+  });
+
   it('emits a workflow run URL only when GitHub Actions metadata is present', async () => {
     vi.stubEnv('GITHUB_RUN_ID', '12345');
     vi.stubEnv('GITHUB_REPOSITORY', 'dfurater/Grundschutz-Navigator');
@@ -767,6 +796,7 @@ describe('fetch-catalog', () => {
     const vocabularies = parseArtifactJson(payload, 'vocabularies.json');
     const upstreamMetadata = parseArtifactJson(payload, 'upstream-sources-metadata.json');
     const materializedPaths = [
+      PRACTICES_NAMESPACE_PATH,
       'Dokumentation/namespaces/result.csv',
       unreferencedPath,
       TOPICS_NAMESPACE_PATH,
@@ -845,11 +875,13 @@ describe('fetch-catalog', () => {
 
     expect(vocabularies.namespaces.map((namespace) => namespace.source.path)).toEqual([
       'Dokumentation/namespaces/action_words.csv',
+      PRACTICES_NAMESPACE_PATH,
       'Dokumentation/namespaces/result.csv',
       TOPICS_NAMESPACE_PATH,
     ]);
     expect(upstreamMetadata.files.map((file) => file.path)).toEqual([
       'Dokumentation/namespaces/action_words.csv',
+      PRACTICES_NAMESPACE_PATH,
       'Dokumentation/namespaces/result.csv',
       TOPICS_NAMESPACE_PATH,
     ]);
@@ -888,6 +920,7 @@ describe('fetch-catalog', () => {
       );
     }
     rawByPath.set(namespacePath, 'Ergebnis,Definition\nVerfahren,Ein Verfahren\n');
+    rawByPath.set(PRACTICES_NAMESPACE_PATH, PRACTICES_CSV);
     rawByPath.set(TOPICS_NAMESPACE_PATH, TOPICS_CSV);
     const unclassifiedContents = '{"catalog":{"uuid":"unclassified"}}\n';
     const treeResponse = makeTreeResponse(rawByPath, [
@@ -910,7 +943,7 @@ describe('fetch-catalog', () => {
     expect(requestedUrls).not.toContain(rawUrl(unclassifiedPath));
     const manifest = parseArtifactJson(payload, 'upstream-sources-metadata.json').manifest;
     expect(manifest.files).toHaveLength(
-      SOURCE_REGISTRY.filter((entry) => entry.kind === 'oscal').length + 2,
+      SOURCE_REGISTRY.filter((entry) => entry.kind === 'oscal').length + 3,
     );
     expect(manifest.files.some((file) => file.path === unclassifiedPath)).toBe(false);
   });

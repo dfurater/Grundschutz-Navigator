@@ -27,6 +27,7 @@ const RESULT_NAMESPACE_URL = `${OFFICIAL_BSI_REPOSITORY_URL}/tree/main/${RESULT_
 const UNREFERENCED_NAMESPACE_PATH =
   'Dokumentation/namespaces/security_targets_levels.csv';
 const PRACTICES_NAMESPACE_PATH = 'Dokumentation/namespaces/practices.csv';
+const PRACTICE_ALT_IDENTIFIER = '33333333-3333-4333-8333-333333333333';
 const TOPICS_NAMESPACE_PATH = 'Dokumentation/namespaces/topics.csv';
 const TOPIC_ALT_IDENTIFIER = '22222222-2222-4222-8222-222222222222';
 const UNCLASSIFIED_PATH = 'Quellkataloge/Kernel/unclassified.csv';
@@ -96,6 +97,10 @@ function makeOscalContents(
         ],
         groups: [{
           id: 'GC',
+          props: [{
+            name: 'alt-identifier',
+            value: PRACTICE_ALT_IDENTIFIER,
+          }],
           groups: topicAltIdentifiers.map((altIdentifier, index) => ({
             id: `GC.${index + 1}`,
             props: [{
@@ -121,6 +126,7 @@ function makeFixture({
   manifestNamespacePaths = [
     RESULT_NAMESPACE_PATH,
     UNREFERENCED_NAMESPACE_PATH,
+    PRACTICES_NAMESPACE_PATH,
     TOPICS_NAMESPACE_PATH,
   ],
   contentOverrides = new Map<string, Buffer>(),
@@ -178,7 +184,11 @@ function makeFixture({
       (
         path === TOPICS_NAMESPACE_PATH
           ? Buffer.from(topicsCsv)
-          : Buffer.from('value,Definition\nfixture,Fixture definition\n')
+          : path === PRACTICES_NAMESPACE_PATH
+            ? Buffer.from(
+                `Kürzel,Begriff,Definition,UUID\nGC,Governance,Fixture definition,${PRACTICE_ALT_IDENTIFIER}\n`,
+              )
+            : Buffer.from('value,Definition\nfixture,Fixture definition\n')
       );
     const blobSha = gitBlobSha(contents);
     files.push({
@@ -514,6 +524,7 @@ describe('catalog sync artifact verification', () => {
       manifestNamespacePaths: [
         RESULT_NAMESPACE_PATH,
         UNREFERENCED_NAMESPACE_PATH,
+        PRACTICES_NAMESPACE_PATH,
         TOPICS_NAMESPACE_PATH,
       ],
     });
@@ -522,6 +533,7 @@ describe('catalog sync artifact verification', () => {
       manifestNamespacePaths: [
         RESULT_NAMESPACE_PATH,
         UNREFERENCED_NAMESPACE_PATH,
+        PRACTICES_NAMESPACE_PATH,
         TOPICS_NAMESPACE_PATH,
       ],
     });
@@ -559,7 +571,11 @@ describe('catalog sync artifact verification', () => {
     const previous = makeFixture({ snapshotCommitSha: OLD_SHA });
     const next = makeFixture({
       snapshotCommitSha: NEW_SHA,
-      manifestNamespacePaths: [RESULT_NAMESPACE_PATH, TOPICS_NAMESPACE_PATH],
+      manifestNamespacePaths: [
+        RESULT_NAMESPACE_PATH,
+        PRACTICES_NAMESPACE_PATH,
+        TOPICS_NAMESPACE_PATH,
+      ],
       includeUnclassified: false,
     });
     const omittedContents = Buffer.from('Wert,Definition\n0,Keine Relevanz\n');
@@ -605,19 +621,11 @@ describe('catalog sync artifact verification', () => {
   });
 
   it('rejects duplicate Practice UUIDs for a future snapshot', async () => {
-    const manifestNamespacePaths = [
-      RESULT_NAMESPACE_PATH,
-      UNREFERENCED_NAMESPACE_PATH,
-      PRACTICES_NAMESPACE_PATH,
-      TOPICS_NAMESPACE_PATH,
-    ];
     const previous = makeFixture({
       snapshotCommitSha: OLD_SHA,
-      manifestNamespacePaths,
     });
     const next = makeFixture({
       snapshotCommitSha: NEW_SHA,
-      manifestNamespacePaths,
       contentOverrides: new Map([
         [
           PRACTICES_NAMESPACE_PATH,
@@ -633,6 +641,48 @@ describe('catalog sync artifact verification', () => {
       previousManifest: previous.manifest,
       nextManifest: next.manifest,
       fetchImpl: makeGitHubFetch(next),
+    })).rejects.toThrow('Practice-UUID-Integrität');
+  });
+
+  it('rejects missing or unmatched practices.csv coverage for a future snapshot', async () => {
+    const manifestNamespacePaths = [
+      RESULT_NAMESPACE_PATH,
+      UNREFERENCED_NAMESPACE_PATH,
+      TOPICS_NAMESPACE_PATH,
+    ];
+    const previous = makeFixture({
+      snapshotCommitSha: OLD_SHA,
+      manifestNamespacePaths,
+    });
+    const missing = makeFixture({
+      snapshotCommitSha: NEW_SHA,
+      manifestNamespacePaths,
+    });
+
+    await expect(guardCatalogSyncPullRequest({
+      ...validShape(),
+      previousManifest: previous.manifest,
+      nextManifest: missing.manifest,
+      fetchImpl: makeGitHubFetch(missing),
+    })).rejects.toThrow('practices.csv fehlt');
+
+    const unmatched = makeFixture({
+      snapshotCommitSha: NEW_SHA,
+      contentOverrides: new Map([
+        [
+          PRACTICES_NAMESPACE_PATH,
+          Buffer.from(
+            'Kürzel,Begriff,Definition,UUID\nGC,Governance,Definition,unmatched-practice-uuid\n',
+          ),
+        ],
+      ]),
+    });
+
+    await expect(guardCatalogSyncPullRequest({
+      ...validShape(),
+      previousManifest: makeFixture({ snapshotCommitSha: OLD_SHA }).manifest,
+      nextManifest: unmatched.manifest,
+      fetchImpl: makeGitHubFetch(unmatched),
     })).rejects.toThrow('Practice-UUID-Integrität');
   });
 

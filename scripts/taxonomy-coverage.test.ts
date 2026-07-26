@@ -9,17 +9,59 @@ import {
 const PINNED_SHA = '12abb438fcdb4f4b63fb3e751e89d7c526e647b5';
 const FUTURE_SHA = 'f'.repeat(40);
 
-describe('practice taxonomy integrity', () => {
-  it('accepts unique Practice UUIDs and rejects duplicates for every snapshot', () => {
-    const validNamespace = {
+function makePracticeCoverageFixture() {
+  return {
+    catalog: {
+      catalog: {
+        groups: [
+          {
+            id: 'GC',
+            props: [{ name: 'alt-identifier', value: 'practice-uuid-1' }],
+          },
+          {
+            id: 'ISMS',
+            props: [{ name: 'alt-identifier', value: 'practice-uuid-2' }],
+          },
+        ],
+      },
+    },
+    namespace: {
       entries: [
         { value: 'GC', columns: { UUID: 'practice-uuid-1' } },
         { value: 'ISMS', columns: { UUID: 'practice-uuid-2' } },
       ],
-    };
+    },
+  };
+}
+
+describe('practice taxonomy integrity', () => {
+  it('accepts complete bidirectional Practice UUID coverage', () => {
+    const fixture = makePracticeCoverageFixture();
+
+    const integrity = analyzePracticeVocabularyIntegrity(
+      fixture.catalog,
+      fixture.namespace,
+    );
+
+    expect(integrity).toMatchObject({
+      catalogPracticeCount: 2,
+      distinctCatalogUuidCount: 2,
+      csvEntryCount: 2,
+      matchedCatalogPracticeCount: 2,
+      unmatchedCatalogPracticeCount: 0,
+      orphanCsvEntryCount: 0,
+      missingCatalogUuidCount: 0,
+      duplicateCatalogUuidCount: 0,
+      duplicateUuidCount: 0,
+    });
+    expect(() => assertPracticeVocabularyIntegrity(FUTURE_SHA, integrity)).not.toThrow();
+  });
+
+  it('rejects missing, duplicate, and bidirectionally unmatched Practice UUIDs', () => {
+    const fixture = makePracticeCoverageFixture();
     const duplicateNamespace = {
       entries: [
-        ...validNamespace.entries,
+        ...fixture.namespace.entries,
         { value: 'ORP', columns: { UUID: 'practice-uuid-1' } },
       ],
     };
@@ -27,12 +69,10 @@ describe('practice taxonomy integrity', () => {
       entries: [{ value: 'DER', columns: {} }],
     };
 
-    expect(() => assertPracticeVocabularyIntegrity(
-      FUTURE_SHA,
-      analyzePracticeVocabularyIntegrity(validNamespace),
-    )).not.toThrow();
-
-    const duplicateIntegrity = analyzePracticeVocabularyIntegrity(duplicateNamespace);
+    const duplicateIntegrity = analyzePracticeVocabularyIntegrity(
+      fixture.catalog,
+      duplicateNamespace,
+    );
     expect(duplicateIntegrity.duplicateUuidCount).toBe(1);
     expect(() => assertPracticeVocabularyIntegrity(
       FUTURE_SHA,
@@ -40,8 +80,29 @@ describe('practice taxonomy integrity', () => {
     )).toThrow('Practice-UUID-Integrität');
     expect(() => assertPracticeVocabularyIntegrity(
       FUTURE_SHA,
-      analyzePracticeVocabularyIntegrity(missingUuidNamespace),
+      analyzePracticeVocabularyIntegrity(fixture.catalog, missingUuidNamespace),
     )).toThrow('Einträge ohne UUID');
+
+    fixture.namespace.entries[1].columns.UUID = 'orphan-practice-uuid';
+    const mismatchedIntegrity = analyzePracticeVocabularyIntegrity(
+      fixture.catalog,
+      fixture.namespace,
+    );
+    expect(mismatchedIntegrity.unmatchedCatalogPractices).toContainEqual({
+      id: 'ISMS',
+      uuid: 'practice-uuid-2',
+    });
+    expect(mismatchedIntegrity.orphanCsvEntries).toContainEqual({
+      value: 'ISMS',
+      uuid: 'orphan-practice-uuid',
+    });
+    expect(() => assertPracticeVocabularyIntegrity(
+      FUTURE_SHA,
+      mismatchedIntegrity,
+    )).toThrow('Practice-UUID-Integrität');
+    expect(() => assertPracticeVocabularyIntegrity(FUTURE_SHA, null)).toThrow(
+      'practices.csv fehlt',
+    );
   });
 });
 

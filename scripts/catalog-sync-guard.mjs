@@ -338,12 +338,13 @@ export async function verifySnapshotFiles(manifest, {
   const practicesNamespace = validatedArtifacts.find(
     ({ file }) => file.path === practicesPath,
   )?.artifact;
-  if (practicesNamespace) {
-    assertPracticeVocabularyIntegrity(
-      manifest.snapshotCommitSha,
-      analyzePracticeVocabularyIntegrity(practicesNamespace),
-    );
-  }
+  const practiceIntegrity = practicesNamespace
+    ? analyzePracticeVocabularyIntegrity(catalogDocument, practicesNamespace)
+    : null;
+  assertPracticeVocabularyIntegrity(
+    manifest.snapshotCommitSha,
+    practiceIntegrity,
+  );
   const topicsPath = `${vocabularyCollection.upstreamDirectory}/topics.csv`;
   const topicsNamespace = validatedArtifacts.find(
     ({ file }) => file.path === topicsPath,
