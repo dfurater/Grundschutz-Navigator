@@ -1,11 +1,49 @@
 import { describe, expect, it } from 'vitest';
 import {
+  analyzePracticeVocabularyIntegrity,
   analyzeTopicVocabularyCoverage,
+  assertPracticeVocabularyIntegrity,
   assertTopicVocabularyCoverage,
 } from './taxonomy-coverage.mjs';
 
 const PINNED_SHA = '12abb438fcdb4f4b63fb3e751e89d7c526e647b5';
 const FUTURE_SHA = 'f'.repeat(40);
+
+describe('practice taxonomy integrity', () => {
+  it('accepts unique Practice UUIDs and rejects duplicates for every snapshot', () => {
+    const validNamespace = {
+      entries: [
+        { value: 'GC', columns: { UUID: 'practice-uuid-1' } },
+        { value: 'ISMS', columns: { UUID: 'practice-uuid-2' } },
+      ],
+    };
+    const duplicateNamespace = {
+      entries: [
+        ...validNamespace.entries,
+        { value: 'ORP', columns: { UUID: 'practice-uuid-1' } },
+      ],
+    };
+    const missingUuidNamespace = {
+      entries: [{ value: 'DER', columns: {} }],
+    };
+
+    expect(() => assertPracticeVocabularyIntegrity(
+      FUTURE_SHA,
+      analyzePracticeVocabularyIntegrity(validNamespace),
+    )).not.toThrow();
+
+    const duplicateIntegrity = analyzePracticeVocabularyIntegrity(duplicateNamespace);
+    expect(duplicateIntegrity.duplicateUuidCount).toBe(1);
+    expect(() => assertPracticeVocabularyIntegrity(
+      FUTURE_SHA,
+      duplicateIntegrity,
+    )).toThrow('Practice-UUID-Integrität');
+    expect(() => assertPracticeVocabularyIntegrity(
+      FUTURE_SHA,
+      analyzePracticeVocabularyIntegrity(missingUuidNamespace),
+    )).toThrow('Einträge ohne UUID');
+  });
+});
 
 function makeCoverageFixture() {
   const entries = Array.from({ length: 119 }, (_, index) => ({

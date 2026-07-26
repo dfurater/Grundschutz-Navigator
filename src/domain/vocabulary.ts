@@ -192,34 +192,35 @@ export function getVocabularyNamespaceByRouteId(
   return registry.namespacesByRouteId.get(routeId) ?? null;
 }
 
-export function resolveControlVocabularies(
-  registry: VocabularyRegistry | null | undefined,
-  control: Control,
-): ResolvedControlVocabularies {
+function resolveSecurityTarget(registry: VocabularyRegistry | null | undefined, prop: PropValue | undefined, value: string): VocabularyResolution | null {
+  return prop ? resolveVocabularyEntry(registry, SECURITY_TARGETS_NAMESPACE_URL, value) : null;
+}
+
+export function resolveControlVocabularies(registry: VocabularyRegistry | null | undefined, control: Control): ResolvedControlVocabularies {
   return {
     modalverb: resolveVocabularyProp(registry, control.modalverbProp),
     securityLevel: resolveVocabularyProp(registry, control.securityLevelProp),
     effortLevel: resolveVocabularyProp(registry, control.effortLevelProp),
     tags: resolveVocabularyValues(registry, control.tagsProp?.ns, control.tags),
     securityTargets: {
-      confidentiality: resolveVocabularyEntry(
+      confidentiality: resolveSecurityTarget(
         registry,
-        SECURITY_TARGETS_NAMESPACE_URL,
+        control.confidentialityProp,
         'Vertraulichkeit (Confidentiality)',
       ),
-      integrity: resolveVocabularyEntry(
+      integrity: resolveSecurityTarget(
         registry,
-        SECURITY_TARGETS_NAMESPACE_URL,
+        control.integrityProp,
         'Integrität (Integrity)',
       ),
-      availability: resolveVocabularyEntry(
+      availability: resolveSecurityTarget(
         registry,
-        SECURITY_TARGETS_NAMESPACE_URL,
+        control.availabilityProp,
         'Verfügbarkeit (Availability)',
       ),
-      authenticity: resolveVocabularyEntry(
+      authenticity: resolveSecurityTarget(
         registry,
-        SECURITY_TARGETS_NAMESPACE_URL,
+        control.authenticityProp,
         'Authentizität (Authenticity)',
       ),
     },

@@ -241,8 +241,9 @@ Die Typdefinitionen bleiben davon getrennt: `securityTargets` verwendet feste Lo
 Katalog-Praktik ausschließlich über `Practice.altIdentifier` mit der Spalte
 `UUID` aus `practices.csv`. Titel, Kürzel und Nummerierung sind ausdrücklich
 keine Fallback-Schlüssel. Fehlt die UUID oder existiert kein exakter Treffer,
-liefert der Resolver `null`; doppelte UUIDs werden als uneindeutige
-Vokabulardaten abgelehnt.
+liefert der Resolver `null`. Fetch und Catalog-Sync-Guard lehnen fehlende oder
+doppelte UUIDs vor der Artefaktausgabe ab; die Laufzeitauflösung behält die
+Duplikatprüfung als zusätzliche Integritätssicherung bei.
 
 Im ControlDetail-Breadcrumb werden Definition, `Schwerpunkt` und
 `auch bekannt als` aus dem aufgelösten Eintrag angeboten. Die technischen

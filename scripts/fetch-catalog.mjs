@@ -29,7 +29,9 @@ import {
   normalizeGitTree,
 } from './upstream-artifacts.mjs';
 import {
+  analyzePracticeVocabularyIntegrity,
   analyzeTopicVocabularyCoverage,
+  assertPracticeVocabularyIntegrity,
   assertTopicVocabularyCoverage,
 } from './taxonomy-coverage.mjs';
 
@@ -595,6 +597,15 @@ async function buildFetchArtifacts(logger = console, {
   });
   const vocabularyNamespaces = namespaceArtifacts.map((artifact) => artifact.vocabularyNamespace);
   const vocabularyFiles = namespaceArtifacts.map((artifact) => artifact.vocabularyFile);
+  const practicesNamespace = vocabularyNamespaces.find(
+    (namespace) => namespace.source.fileName === 'practices.csv',
+  );
+  if (practicesNamespace) {
+    assertPracticeVocabularyIntegrity(
+      snapshot.snapshotCommitSha,
+      analyzePracticeVocabularyIntegrity(practicesNamespace),
+    );
+  }
   const topicsNamespace = vocabularyNamespaces.find(
     (namespace) => namespace.source.fileName === 'topics.csv',
   );

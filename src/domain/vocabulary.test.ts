@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildVocabularySourceUrl,
   buildVocabularyRegistry,
+  collectControlVocabularySearchTexts,
   getVocabularyNamespaceByRouteId,
   resolvePropVocabularyEntry,
   resolveVocabularyEntries,
@@ -217,6 +218,8 @@ describe('vocabulary runtime', () => {
       'Vertraulichkeit (Confidentiality)',
     );
     expect(resolutions.securityTargets.integrity?.entry.value).toBe('Integrität (Integrity)');
+    expect(resolutions.securityTargets.availability).toBeNull();
+    expect(resolutions.securityTargets.authenticity).toBeNull();
     expect(resolutions.securityTargetLevels.confidentiality?.entry.definition).toBe(
       'Die Anforderung wirkt in besonderem Maße auf dieses Schutzziel hin. Dieser Wert zeigt an, dass das Schutzziel im Zentrum dieser Anforderung steht.',
     );
@@ -224,6 +227,9 @@ describe('vocabulary runtime', () => {
       'Die Anforderung wirkt auf dieses Schutzziel hin.',
     );
     expect(resolutions.threats.map((resolution) => resolution.entry.value)).toEqual(['G 0.18']);
+    expect(collectControlVocabularySearchTexts(resolutions)).not.toContain(
+      'Authentizität (Authenticity)',
+    );
   });
 
   it('joins practice vocabulary entries only by altIdentifier UUID', () => {

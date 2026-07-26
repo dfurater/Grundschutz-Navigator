@@ -36,6 +36,7 @@ const RESULT_NAMESPACE_URL =
   'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/result.csv';
 const ACTION_WORDS_NAMESPACE_URL =
   'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/action_words.csv';
+const PRACTICES_NAMESPACE_PATH = 'Dokumentation/namespaces/practices.csv';
 const TOPICS_NAMESPACE_PATH = 'Dokumentation/namespaces/topics.csv';
 const TOPIC_ALT_IDENTIFIER = '22222222-2222-4222-8222-222222222222';
 const TOPICS_CSV =
@@ -715,6 +716,17 @@ describe('fetch-catalog', () => {
     expect(metadata.source.upstream_sha256).toBe(metadata.integrity.sha256);
     expect(metadata.build.workflow_run_id).toBe('local');
     expect(metadata.build.workflow_run_url).toBeNull();
+  });
+
+  it('rejects duplicate Practice UUIDs before emitting artifacts', async () => {
+    await expect(buildMinimalArtifacts({
+      namespaceFiles: new Map([
+        [
+          PRACTICES_NAMESPACE_PATH,
+          'Kürzel,Begriff,Definition,UUID\nGC,Governance,Definition,practice-uuid-1\nISMS,Management,Definition,practice-uuid-1\n',
+        ],
+      ]),
+    })).rejects.toThrow('Practice-UUID-Integrität');
   });
 
   it('emits a workflow run URL only when GitHub Actions metadata is present', async () => {

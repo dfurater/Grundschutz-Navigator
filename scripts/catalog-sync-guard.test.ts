@@ -26,6 +26,7 @@ const RESULT_NAMESPACE_PATH = 'Dokumentation/namespaces/result.csv';
 const RESULT_NAMESPACE_URL = `${OFFICIAL_BSI_REPOSITORY_URL}/tree/main/${RESULT_NAMESPACE_PATH}`;
 const UNREFERENCED_NAMESPACE_PATH =
   'Dokumentation/namespaces/security_targets_levels.csv';
+const PRACTICES_NAMESPACE_PATH = 'Dokumentation/namespaces/practices.csv';
 const TOPICS_NAMESPACE_PATH = 'Dokumentation/namespaces/topics.csv';
 const TOPIC_ALT_IDENTIFIER = '22222222-2222-4222-8222-222222222222';
 const UNCLASSIFIED_PATH = 'Quellkataloge/Kernel/unclassified.csv';
@@ -601,6 +602,38 @@ describe('catalog sync artifact verification', () => {
       nextManifest: next.manifest,
       fetchImpl: makeGitHubFetch(next),
     })).rejects.toThrow('Topic-Coverage');
+  });
+
+  it('rejects duplicate Practice UUIDs for a future snapshot', async () => {
+    const manifestNamespacePaths = [
+      RESULT_NAMESPACE_PATH,
+      UNREFERENCED_NAMESPACE_PATH,
+      PRACTICES_NAMESPACE_PATH,
+      TOPICS_NAMESPACE_PATH,
+    ];
+    const previous = makeFixture({
+      snapshotCommitSha: OLD_SHA,
+      manifestNamespacePaths,
+    });
+    const next = makeFixture({
+      snapshotCommitSha: NEW_SHA,
+      manifestNamespacePaths,
+      contentOverrides: new Map([
+        [
+          PRACTICES_NAMESPACE_PATH,
+          Buffer.from(
+            'Kürzel,Begriff,Definition,UUID\nGC,Governance,Definition,practice-uuid-1\nISMS,Management,Definition,practice-uuid-1\n',
+          ),
+        ],
+      ]),
+    });
+
+    await expect(guardCatalogSyncPullRequest({
+      ...validShape(),
+      previousManifest: previous.manifest,
+      nextManifest: next.manifest,
+      fetchImpl: makeGitHubFetch(next),
+    })).rejects.toThrow('Practice-UUID-Integrität');
   });
 
   it('rejects external namespace CSV references without requesting their host', async () => {

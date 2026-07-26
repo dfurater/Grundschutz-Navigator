@@ -27,6 +27,44 @@ function findDuplicates(values) {
     .map(([value, count]) => ({ value, count }));
 }
 
+export function analyzePracticeVocabularyIntegrity(practicesNamespace) {
+  const csvEntries = practicesNamespace?.entries ?? [];
+  const entriesWithoutUuid = csvEntries.filter((entry) => !entry.columns?.UUID);
+  const csvUuids = csvEntries.map((entry) => entry.columns?.UUID).filter(Boolean);
+  const duplicateUuids = findDuplicates(csvUuids);
+
+  return {
+    csvEntryCount: csvEntries.length,
+    missingUuidCount: entriesWithoutUuid.length,
+    duplicateUuidCount: duplicateUuids.length,
+    entriesWithoutUuid: entriesWithoutUuid.map((entry) => entry.value),
+    duplicateUuids,
+  };
+}
+
+export function assertPracticeVocabularyIntegrity(
+  snapshotCommitSha,
+  integrity,
+) {
+  if (!integrity || !Number.isInteger(integrity.csvEntryCount) || integrity.csvEntryCount <= 0) {
+    throw new Error(
+      `Practice-UUID-Integrität für Snapshot ${snapshotCommitSha} ist leer oder ungültig.`,
+    );
+  }
+
+  if (integrity.missingUuidCount !== 0) {
+    throw new Error(
+      `Practice-UUID-Integrität für Snapshot ${snapshotCommitSha} enthält ${integrity.missingUuidCount} Einträge ohne UUID.`,
+    );
+  }
+
+  if (integrity.duplicateUuidCount !== 0) {
+    throw new Error(
+      `Practice-UUID-Integrität für Snapshot ${snapshotCommitSha} enthält ${integrity.duplicateUuidCount} doppelte UUIDs.`,
+    );
+  }
+}
+
 export function analyzeTopicVocabularyCoverage(
   catalogDocument,
   topicsNamespace,

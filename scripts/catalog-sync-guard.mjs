@@ -16,7 +16,9 @@ import {
   materializeVocabularyCollectionMembers,
 } from './vocabulary-utils.mjs';
 import {
+  analyzePracticeVocabularyIntegrity,
   analyzeTopicVocabularyCoverage,
+  assertPracticeVocabularyIntegrity,
   assertTopicVocabularyCoverage,
 } from './taxonomy-coverage.mjs';
 import {
@@ -332,6 +334,16 @@ export async function verifySnapshotFiles(manifest, {
         artifact: await fetchAndValidateArtifact(file),
       })),
   );
+  const practicesPath = `${vocabularyCollection.upstreamDirectory}/practices.csv`;
+  const practicesNamespace = validatedArtifacts.find(
+    ({ file }) => file.path === practicesPath,
+  )?.artifact;
+  if (practicesNamespace) {
+    assertPracticeVocabularyIntegrity(
+      manifest.snapshotCommitSha,
+      analyzePracticeVocabularyIntegrity(practicesNamespace),
+    );
+  }
   const topicsPath = `${vocabularyCollection.upstreamDirectory}/topics.csv`;
   const topicsNamespace = validatedArtifacts.find(
     ({ file }) => file.path === topicsPath,
