@@ -37,9 +37,9 @@ const RESULT_NAMESPACE_URL =
 const ACTION_WORDS_NAMESPACE_URL =
   'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/action_words.csv';
 const TOPICS_NAMESPACE_PATH = 'Dokumentation/namespaces/topics.csv';
-const TOPIC_UUID = '22222222-2222-4222-8222-222222222222';
+const TOPIC_ALT_IDENTIFIER = '22222222-2222-4222-8222-222222222222';
 const TOPICS_CSV =
-  `Begriff,Definition,UUID\nFixture,Fixture definition,${TOPIC_UUID}\n`;
+  `Begriff,Definition,UUID\nFixture,Fixture definition,${TOPIC_ALT_IDENTIFIER}\n`;
 const OUTPUT_ARTIFACT_FILE_NAMES = [
   'catalog.json',
   'catalog-metadata.json',
@@ -212,7 +212,7 @@ function makeCatalogText(namespaceUrls: string[] = []) {
       groups: [
         {
           id: 'GC.1',
-          props: [{ name: 'alt-identifier', value: TOPIC_UUID }],
+          props: [{ name: 'alt-identifier', value: TOPIC_ALT_IDENTIFIER }],
           controls,
         },
       ],

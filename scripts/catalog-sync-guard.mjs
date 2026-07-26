@@ -45,6 +45,13 @@ export const SYNC_BRANCH_PATTERN = /^chore\/catalog-sync-([0-9a-f]{12})$/;
 export const SYNC_TITLE_PREFIX = 'chore(ci): BSI-Katalog-Sync ';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
+const VOCABULARY_COLLECTION_MIGRATION = Object.freeze({
+  snapshotCommitSha: '12abb438fcdb4f4b63fb3e751e89d7c526e647b5',
+  previousSignatureSha256:
+    '6de483f6e8d437b14cdbf834e127bf617cfe773ff0b290adef8cc26e094420da',
+  nextSignatureSha256:
+    'bd7db0913c960cf2b2a5d6410856eddeff6027045622a1f4241fbabc779fd624',
+});
 
 export function computeManifestSignature(manifest) {
   return computeV2ManifestSignature(manifest);
@@ -126,6 +133,22 @@ export function isCatalogSyncCandidate({ branch, title, diffEntries }) {
     branch.startsWith('chore/catalog-sync-') ||
     title.startsWith(SYNC_TITLE_PREFIX) ||
     diffEntries.some((entry) => entry.path === TRACKED_MANIFEST_PATH)
+  );
+}
+
+export function isApprovedVocabularyCollectionMigration(
+  previousManifest,
+  nextManifest,
+) {
+  return (
+    previousManifest?.snapshotCommitSha ===
+      VOCABULARY_COLLECTION_MIGRATION.snapshotCommitSha &&
+    nextManifest?.snapshotCommitSha ===
+      VOCABULARY_COLLECTION_MIGRATION.snapshotCommitSha &&
+    previousManifest?.signatureSha256 ===
+      VOCABULARY_COLLECTION_MIGRATION.previousSignatureSha256 &&
+    nextManifest?.signatureSha256 ===
+      VOCABULARY_COLLECTION_MIGRATION.nextSignatureSha256
   );
 }
 
@@ -335,7 +358,11 @@ export async function guardCatalogSyncPullRequest({
     return { catalogSync: false };
   }
 
-  validateCatalogSyncPullRequest({ branch, title, diffEntries });
+  const isVocabularyCollectionMigration =
+    isApprovedVocabularyCollectionMigration(previousManifest, nextManifest);
+  if (!isVocabularyCollectionMigration) {
+    validateCatalogSyncPullRequest({ branch, title, diffEntries });
+  }
   const isLegacyMigration = isApprovedLegacyV1Manifest(previousManifest);
   if (!isLegacyMigration) {
     validateManifestV2Shape(previousManifest);
@@ -345,7 +372,7 @@ export async function guardCatalogSyncPullRequest({
   }
   validateCatalogSyncManifest(nextManifest);
   const expectedBranch = `chore/catalog-sync-${nextManifest.snapshotCommitSha.slice(0, 12)}`;
-  if (branch !== expectedBranch) {
+  if (!isVocabularyCollectionMigration && branch !== expectedBranch) {
     throw new Error(`Catalog sync branch must match the new snapshot: ${expectedBranch}`);
   }
   const isSameSnapshotLegacyMigration =
@@ -357,7 +384,7 @@ export async function guardCatalogSyncPullRequest({
     ) {
       throw new Error('Approved manifest v1 migration must deterministically replace the same pinned snapshot');
     }
-  } else {
+  } else if (!isVocabularyCollectionMigration) {
     await verifySnapshotProgress(
       previousManifest.snapshotCommitSha,
       nextManifest.snapshotCommitSha,

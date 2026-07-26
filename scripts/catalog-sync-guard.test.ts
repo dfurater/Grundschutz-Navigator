@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   computeManifestSignature,
   guardCatalogSyncPullRequest,
+  isApprovedVocabularyCollectionMigration,
   parseNameStatusDiff,
   validateCatalogSyncManifest,
   validateCatalogSyncPullRequest,
@@ -26,7 +27,7 @@ const RESULT_NAMESPACE_URL = `${OFFICIAL_BSI_REPOSITORY_URL}/tree/main/${RESULT_
 const UNREFERENCED_NAMESPACE_PATH =
   'Dokumentation/namespaces/security_targets_levels.csv';
 const TOPICS_NAMESPACE_PATH = 'Dokumentation/namespaces/topics.csv';
-const TOPIC_UUID = '22222222-2222-4222-8222-222222222222';
+const TOPIC_ALT_IDENTIFIER = '22222222-2222-4222-8222-222222222222';
 const UNCLASSIFIED_PATH = 'Quellkataloge/Kernel/unclassified.csv';
 
 interface ManifestFile {
@@ -67,7 +68,7 @@ function contentSha256(contents: Buffer) {
 function makeOscalContents(
   entry: (typeof SOURCE_REGISTRY)[number],
   catalogNamespaceUrls: string[],
-  topicUuids: string[],
+  topicAltIdentifiers: string[],
 ) {
   if (entry.kind !== 'oscal') {
     throw new Error('Fixture requested OSCAL content for a vocabulary collection');
@@ -94,11 +95,11 @@ function makeOscalContents(
         ],
         groups: [{
           id: 'GC',
-          groups: topicUuids.map((topicUuid, index) => ({
+          groups: topicAltIdentifiers.map((altIdentifier, index) => ({
             id: `GC.${index + 1}`,
             props: [{
               name: 'alt-identifier',
-              value: topicUuid,
+              value: altIdentifier,
             }],
           })),
         }],
@@ -127,16 +128,16 @@ function makeFixture({
   const files: ManifestFile[] = [];
   const contentsByBlobSha = new Map<string, Buffer>();
   const treeEntries: TreeEntry[] = [];
-  const topicUuids = snapshotCommitSha === LEGACY_V1_MIGRATION_SNAPSHOT
+  const topicAltIdentifiers = snapshotCommitSha === LEGACY_V1_MIGRATION_SNAPSHOT
     ? Array.from(
         { length: 139 },
         (_, index) => `topic-uuid-${index < 119 ? index : 0}`,
       )
-    : [TOPIC_UUID];
+    : [TOPIC_ALT_IDENTIFIER];
   const topicsCsv = [
     'Begriff,Definition,UUID',
-    ...[...new Set(topicUuids)].map(
-      (uuid, index) => `Fixture ${index},Fixture definition,${uuid}`,
+    ...[...new Set(topicAltIdentifiers)].map(
+      (altIdentifier, index) => `Fixture ${index},Fixture definition,${altIdentifier}`,
     ),
     '',
   ].join('\n');
@@ -144,7 +145,7 @@ function makeFixture({
   for (const entry of SOURCE_REGISTRY) {
     if (entry.kind !== 'oscal') continue;
     const contents = contentOverrides.get(entry.upstreamPath) ??
-      makeOscalContents(entry, catalogNamespaceUrls, topicUuids);
+      makeOscalContents(entry, catalogNamespaceUrls, topicAltIdentifiers);
     const blobSha = gitBlobSha(contents);
     files.push({
       artifactKey: entry.artifactKey,
@@ -444,6 +445,30 @@ describe('catalog sync PR shape', () => {
   it('accepts exactly one modified manifest', () => {
     expect(() => validateCatalogSyncPullRequest(shape)).not.toThrow();
     expect(parseNameStatusDiff('M\tupstream-manifest.json\n')).toEqual(shape.diffEntries);
+  });
+
+  it('recognizes only the exact approved same-snapshot vocabulary migration', () => {
+    const previousManifest = {
+      snapshotCommitSha: '12abb438fcdb4f4b63fb3e751e89d7c526e647b5',
+      signatureSha256: '6de483f6e8d437b14cdbf834e127bf617cfe773ff0b290adef8cc26e094420da',
+    };
+    const nextManifest = {
+      snapshotCommitSha: previousManifest.snapshotCommitSha,
+      signatureSha256: 'bd7db0913c960cf2b2a5d6410856eddeff6027045622a1f4241fbabc779fd624',
+    };
+
+    expect(isApprovedVocabularyCollectionMigration(
+      previousManifest,
+      nextManifest,
+    )).toBe(true);
+    expect(isApprovedVocabularyCollectionMigration(
+      previousManifest,
+      { ...nextManifest, signatureSha256: 'f'.repeat(64) },
+    )).toBe(false);
+    expect(isApprovedVocabularyCollectionMigration(
+      previousManifest,
+      { ...nextManifest, snapshotCommitSha: NEW_SHA },
+    )).toBe(false);
   });
 
   it('rejects an invalid branch', () => {
