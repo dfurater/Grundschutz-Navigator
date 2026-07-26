@@ -31,6 +31,7 @@ export function SearchPage() {
     catalog?.controls ?? [],
     query,
     vocabularyRegistry,
+    catalog?.practices ?? [],
   );
   const [resultsUiState, setResultsUiState] = useState(() => ({
     query,

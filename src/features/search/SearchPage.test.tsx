@@ -97,6 +97,34 @@ describe('SearchPage', () => {
     mockedUseSearch.mockReset();
   });
 
+  it('passes practices to the search hook for UUID-based alias indexing', () => {
+    const controls = [makeControl()];
+    const state = makeCatalogState(controls);
+    state.catalog!.practices = [{
+      id: 'ASST',
+      title: 'Assets',
+      label: 'ASST',
+      altIdentifier: 'uuid-practice-assets',
+      topics: [],
+      controlCount: 1,
+    }];
+    mockedUseCatalog.mockReturnValue(state);
+    mockedUseSearch.mockReturnValue({ results: [], totalResults: 0 });
+
+    render(
+      <MemoryRouter initialEntries={['/suche?q=alias']}>
+        <SearchPage />
+      </MemoryRouter>,
+    );
+
+    expect(mockedUseSearch).toHaveBeenCalledWith(
+      controls,
+      'alias',
+      null,
+      state.catalog!.practices,
+    );
+  });
+
   describe('Desktop-Ergebnisse', () => {
     it('keeps the result pane outside the shrink-0 header wrapper', () => {
       renderSearch([makeControl()]);

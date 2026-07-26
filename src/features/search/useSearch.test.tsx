@@ -2,6 +2,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type {
   Control,
+  Practice,
   VocabularyRegistry,
   VocabularyRegistryData,
 } from '@/domain/models';
@@ -175,6 +176,37 @@ describe('useSearch', () => {
       expect(threatIdSearch.result.current.results[0]?.control.id).toBe('ASST.1.1');
       expect(targetSearch.result.current.results[0]?.control.id).toBe('ASST.1.1');
       expect(threatDefinitionSearch.result.current.results[0]?.control.id).toBe('ASST.1.1');
+    });
+  });
+
+  it('finds controls by a UUID-joined practice alias without title fallback', async () => {
+    const controls = [makeControl({ id: 'GC.1.1', practiceId: 'GC' })];
+    const practice: Practice = {
+      id: 'GC',
+      title: 'Governance und Compliance',
+      label: 'GC',
+      altIdentifier: 'uuid-practice-1',
+      topics: [],
+      controlCount: 1,
+    };
+    const registry = createTestVocabularyRegistry();
+    const aliasSearch = renderHook(() =>
+      useSearch(controls, 'Corporate', registry, [practice]),
+    );
+
+    await waitFor(() => {
+      expect(aliasSearch.result.current.results[0]?.control.id).toBe('GC.1.1');
+    });
+
+    const missingUuidSearch = renderHook(() =>
+      useSearch(controls, 'Corporate', registry, [{
+        ...practice,
+        altIdentifier: undefined,
+      }]),
+    );
+
+    await waitFor(() => {
+      expect(missingUuidSearch.result.current.results).toHaveLength(0);
     });
   });
 

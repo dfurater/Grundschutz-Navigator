@@ -192,13 +192,13 @@ interface Control {
 
   // Schutzziele (CIA + Authentizität), Relevanz 0–2
   confidentiality?: SecurityTargetRelevance;
-  confidentialityProp?: PropValue;
+  confidentialityProp?: PropValue;  // ns → security_targets_levels.csv
   integrity?: SecurityTargetRelevance;
-  integrityProp?: PropValue;
+  integrityProp?: PropValue;        // ns → security_targets_levels.csv
   availability?: SecurityTargetRelevance;
-  availabilityProp?: PropValue;
+  availabilityProp?: PropValue;     // ns → security_targets_levels.csv
   authenticity?: SecurityTargetRelevance;
-  authenticityProp?: PropValue;
+  authenticityProp?: PropValue;     // ns → security_targets_levels.csv
 
   // Elementare Gefährdungen (z.B. "G 0.14"), aus kommaseparierter Prop geparst
   threats: string[];

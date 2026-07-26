@@ -13,15 +13,19 @@ import {
 type SecurityContextControl = Pick<
   Control,
   | 'confidentiality'
+  | 'confidentialityProp'
   | 'integrity'
+  | 'integrityProp'
   | 'availability'
+  | 'availabilityProp'
   | 'authenticity'
+  | 'authenticityProp'
   | 'threats'
 >;
 
 type SecurityContextVocabularies = Pick<
   ResolvedControlVocabularies,
-  'securityTargets' | 'threats'
+  'securityTargets' | 'securityTargetLevels' | 'threats'
 >;
 
 export interface ControlSecurityContextProps {
@@ -50,26 +54,30 @@ export function ControlSecurityContext({
     {
       key: 'confidentiality',
       label: 'Vertraulichkeit',
-      relevance: control.confidentiality,
-      resolution: resolvedVocabularies.securityTargets.confidentiality,
+      relevance: control.confidentialityProp?.value ?? control.confidentiality,
+      targetResolution: resolvedVocabularies.securityTargets.confidentiality,
+      levelResolution: resolvedVocabularies.securityTargetLevels.confidentiality,
     },
     {
       key: 'integrity',
       label: 'Integrität',
-      relevance: control.integrity,
-      resolution: resolvedVocabularies.securityTargets.integrity,
+      relevance: control.integrityProp?.value ?? control.integrity,
+      targetResolution: resolvedVocabularies.securityTargets.integrity,
+      levelResolution: resolvedVocabularies.securityTargetLevels.integrity,
     },
     {
       key: 'availability',
       label: 'Verfügbarkeit',
-      relevance: control.availability,
-      resolution: resolvedVocabularies.securityTargets.availability,
+      relevance: control.availabilityProp?.value ?? control.availability,
+      targetResolution: resolvedVocabularies.securityTargets.availability,
+      levelResolution: resolvedVocabularies.securityTargetLevels.availability,
     },
     {
       key: 'authenticity',
       label: 'Authentizität',
-      relevance: control.authenticity,
-      resolution: resolvedVocabularies.securityTargets.authenticity,
+      relevance: control.authenticityProp?.value ?? control.authenticity,
+      targetResolution: resolvedVocabularies.securityTargets.authenticity,
+      levelResolution: resolvedVocabularies.securityTargetLevels.authenticity,
     },
   ].filter((securityTarget) => securityTarget.relevance !== undefined);
   const hasSecurityTargets = securityTargets.length > 0;
@@ -86,40 +94,77 @@ export function ControlSecurityContext({
           <div>
             <SubSectionHeading>Schutzziele</SubSectionHeading>
             <dl className="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-x-4 gap-y-3 sm:gap-y-4">
-              {securityTargets.map(({ key, label, relevance, resolution }) => {
-                const vocabKey = `security-target:${key}`;
-                const active = isVocabularyActive(vocabKey);
+              {securityTargets.map(({
+                key,
+                label,
+                relevance,
+                targetResolution,
+                levelResolution,
+              }) => {
+                const targetVocabKey = `security-target:${key}`;
+                const levelVocabKey = `security-target-level:${key}`;
+                const targetActive = isVocabularyActive(targetVocabKey);
+                const levelActive = isVocabularyActive(levelVocabKey);
 
                 return (
-                  <Fragment key={vocabKey}>
-                    <dt className="catalog-meta-text pt-1">{label}</dt>
-                    <dd>
-                      {resolution ? (
+                  <Fragment key={targetVocabKey}>
+                    <dt className="catalog-meta-text pt-1">
+                      {targetResolution ? (
                         <button
                           type="button"
-                          onClick={() => onToggleVocabulary(vocabKey)}
+                          onClick={() => onToggleVocabulary(targetVocabKey)}
                           aria-label={`Schutzziel: ${label}`}
-                          aria-pressed={active}
-                          aria-expanded={active}
-                          aria-controls={toVocabCardId(vocabKey)}
-                          className={interactiveValueClass(active)}
+                          aria-pressed={targetActive}
+                          aria-expanded={targetActive}
+                          aria-controls={toVocabCardId(targetVocabKey)}
+                          className={interactiveValueClass(targetActive)}
+                        >
+                          <span>{label}</span>
+                          <VocabularyAffordanceIcon active={targetActive} />
+                        </button>
+                      ) : label}
+                    </dt>
+                    <dd>
+                      {levelResolution ? (
+                        <button
+                          type="button"
+                          onClick={() => onToggleVocabulary(levelVocabKey)}
+                          aria-label={`Relevanz ${label}: ${relevance}`}
+                          aria-pressed={levelActive}
+                          aria-expanded={levelActive}
+                          aria-controls={toVocabCardId(levelVocabKey)}
+                          className={interactiveValueClass(levelActive)}
                         >
                           <span>Relevanz: {relevance}</span>
-                          <VocabularyAffordanceIcon active={active} />
+                          <VocabularyAffordanceIcon active={levelActive} />
                         </button>
                       ) : (
-                        <p className="text-sm leading-relaxed text-slate-700">
-                          Relevanz: {relevance}
-                        </p>
+                        <div>
+                          <p className="text-sm leading-relaxed text-slate-700">
+                            Relevanz: {relevance}
+                          </p>
+                          <p className="mt-1 text-xs leading-relaxed text-amber-700">
+                            Keine offizielle Definition für diese Relevanzstufe verfügbar.
+                          </p>
+                        </div>
                       )}
                     </dd>
-                    {resolution && (
+                    {targetResolution && (
                       <dd
-                        id={toVocabCardId(vocabKey)}
+                        id={toVocabCardId(targetVocabKey)}
                         className="col-span-full"
-                        hidden={!active || undefined}
+                        hidden={!targetActive || undefined}
                       >
-                        {active && renderVocabularyCard(resolution)}
+                        {targetActive && renderVocabularyCard(targetResolution)}
+                      </dd>
+                    )}
+                    {levelResolution && (
+                      <dd
+                        id={toVocabCardId(levelVocabKey)}
+                        className="col-span-full"
+                        hidden={!levelActive || undefined}
+                      >
+                        {levelActive && renderVocabularyCard(levelResolution)}
                       </dd>
                     )}
                   </Fragment>

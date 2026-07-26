@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildVocabularySourceUrl,
   buildVocabularyRegistry,
+  collectControlVocabularySearchTexts,
   getVocabularyNamespaceByRouteId,
   resolvePropVocabularyEntry,
   resolveVocabularyEntries,
@@ -10,7 +11,8 @@ import {
   resolveVocabularyValues,
   resolveControlVocabularies,
 } from './vocabulary';
-import type { Control, VocabularyRegistryData } from './models';
+import type { Control, Practice, VocabularyRegistryData } from './models';
+import { resolvePracticeVocabulary } from './taxonomyVocabulary';
 import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
 
 const namespaceUrl =
@@ -188,13 +190,13 @@ describe('vocabulary runtime', () => {
       confidentialityProp: {
         name: 'confidentiality',
         value: '2',
-        ns: 'https://example.com/namespaces/security_targets.csv',
+        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets_levels.csv',
       },
       integrity: '1',
       integrityProp: {
         name: 'integrity',
         value: '1',
-        ns: 'https://example.com/namespaces/security_targets.csv',
+        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets_levels.csv',
       },
       threats: ['G 0.18', 'G 0.99'],
       threatsProp: {
@@ -216,7 +218,56 @@ describe('vocabulary runtime', () => {
       'Vertraulichkeit (Confidentiality)',
     );
     expect(resolutions.securityTargets.integrity?.entry.value).toBe('Integrität (Integrity)');
+    expect(resolutions.securityTargets.availability).toBeNull();
+    expect(resolutions.securityTargets.authenticity).toBeNull();
+    expect(resolutions.securityTargetLevels.confidentiality?.entry.definition).toBe(
+      'Die Anforderung wirkt in besonderem Maße auf dieses Schutzziel hin. Dieser Wert zeigt an, dass das Schutzziel im Zentrum dieser Anforderung steht.',
+    );
+    expect(resolutions.securityTargetLevels.integrity?.entry.definition).toBe(
+      'Die Anforderung wirkt auf dieses Schutzziel hin.',
+    );
     expect(resolutions.threats.map((resolution) => resolution.entry.value)).toEqual(['G 0.18']);
+    expect(collectControlVocabularySearchTexts(resolutions)).not.toContain(
+      'Authentizität (Authenticity)',
+    );
+  });
+
+  it('joins practice vocabulary entries only by altIdentifier UUID', () => {
+    const practice: Practice = {
+      id: 'GC',
+      title: 'Governance und Compliance',
+      label: 'GC',
+      altIdentifier: 'uuid-practice-1',
+      topics: [],
+      controlCount: 0,
+    };
+    const registry = createTestVocabularyRegistry();
+
+    expect(resolvePracticeVocabulary(registry, practice)?.entry.columns).toMatchObject({
+      Definition: 'Offizielle Praktik-Definition.',
+      Schwerpunkt: 'Methodik',
+      'auch bekannt als': 'Corporate Governance',
+    });
+    expect(resolvePracticeVocabulary(registry, {
+      ...practice,
+      altIdentifier: undefined,
+    })).toBeNull();
+    expect(resolvePracticeVocabulary(registry, {
+      ...practice,
+      altIdentifier: 'unbekannte-uuid',
+    })).toBeNull();
+
+    const practicesNamespace = registry.namespacesByUrl.get(
+      'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/practices.csv',
+    );
+    practicesNamespace!.entries.push({
+      value: 'DUP',
+      definition: 'Uneindeutiger Eintrag.',
+      columns: { UUID: 'uuid-practice-1' },
+    });
+    expect(() => resolvePracticeVocabulary(registry, practice)).toThrow(
+      'Duplicate vocabulary value "uuid-practice-1"',
+    );
   });
 
   it('builds exact upstream file links from repository metadata', () => {

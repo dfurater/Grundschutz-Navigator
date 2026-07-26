@@ -8,6 +8,7 @@ import type {
   VocabularyRegistry,
   VocabularyRegistryData,
 } from './models';
+import { SECURITY_TARGETS_NAMESPACE_URL } from './vocabularyNamespaces';
 
 export interface VocabularyResolution {
   namespace: VocabularyNamespace;
@@ -22,6 +23,12 @@ export interface ResolvedControlVocabularies {
   effortLevel: VocabularyResolution | null;
   tags: VocabularyResolution[];
   securityTargets: {
+    confidentiality: VocabularyResolution | null;
+    integrity: VocabularyResolution | null;
+    availability: VocabularyResolution | null;
+    authenticity: VocabularyResolution | null;
+  };
+  securityTargetLevels: {
     confidentiality: VocabularyResolution | null;
     integrity: VocabularyResolution | null;
     availability: VocabularyResolution | null;
@@ -185,36 +192,43 @@ export function getVocabularyNamespaceByRouteId(
   return registry.namespacesByRouteId.get(routeId) ?? null;
 }
 
-export function resolveControlVocabularies(
-  registry: VocabularyRegistry | null | undefined,
-  control: Control,
-): ResolvedControlVocabularies {
+function resolveSecurityTarget(registry: VocabularyRegistry | null | undefined, prop: PropValue | undefined, value: string): VocabularyResolution | null {
+  return prop ? resolveVocabularyEntry(registry, SECURITY_TARGETS_NAMESPACE_URL, value) : null;
+}
+
+export function resolveControlVocabularies(registry: VocabularyRegistry | null | undefined, control: Control): ResolvedControlVocabularies {
   return {
     modalverb: resolveVocabularyProp(registry, control.modalverbProp),
     securityLevel: resolveVocabularyProp(registry, control.securityLevelProp),
     effortLevel: resolveVocabularyProp(registry, control.effortLevelProp),
     tags: resolveVocabularyValues(registry, control.tagsProp?.ns, control.tags),
     securityTargets: {
-      confidentiality: resolveVocabularyEntry(
+      confidentiality: resolveSecurityTarget(
         registry,
-        control.confidentialityProp?.ns,
+        control.confidentialityProp,
         'Vertraulichkeit (Confidentiality)',
       ),
-      integrity: resolveVocabularyEntry(
+      integrity: resolveSecurityTarget(
         registry,
-        control.integrityProp?.ns,
+        control.integrityProp,
         'Integrität (Integrity)',
       ),
-      availability: resolveVocabularyEntry(
+      availability: resolveSecurityTarget(
         registry,
-        control.availabilityProp?.ns,
+        control.availabilityProp,
         'Verfügbarkeit (Availability)',
       ),
-      authenticity: resolveVocabularyEntry(
+      authenticity: resolveSecurityTarget(
         registry,
-        control.authenticityProp?.ns,
+        control.authenticityProp,
         'Authentizität (Authenticity)',
       ),
+    },
+    securityTargetLevels: {
+      confidentiality: resolveVocabularyProp(registry, control.confidentialityProp),
+      integrity: resolveVocabularyProp(registry, control.integrityProp),
+      availability: resolveVocabularyProp(registry, control.availabilityProp),
+      authenticity: resolveVocabularyProp(registry, control.authenticityProp),
     },
     threats: resolveVocabularyValues(registry, control.threatsProp?.ns, control.threats),
     statement: {
@@ -272,6 +286,10 @@ export function collectControlVocabularySearchTexts(
     resolved.securityTargets.integrity,
     resolved.securityTargets.availability,
     resolved.securityTargets.authenticity,
+    resolved.securityTargetLevels.confidentiality,
+    resolved.securityTargetLevels.integrity,
+    resolved.securityTargetLevels.availability,
+    resolved.securityTargetLevels.authenticity,
     ...resolved.threats,
     resolved.statement.ergebnis,
     resolved.statement.praezisierung,

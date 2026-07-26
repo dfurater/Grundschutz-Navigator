@@ -491,7 +491,7 @@ describe('parseControl', () => {
     expect(control.confidentialityProp).toEqual({
       name: 'confidentiality',
       value: '2',
-      ns: 'https://example.com/namespaces/security_targets.csv',
+      ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets_levels.csv',
     });
     expect(control.threatsProp).toEqual({
       name: 'threats',
@@ -581,7 +581,7 @@ describe('parseControl', () => {
     expect(control.confidentialityProp).toEqual({
       name: 'confidentiality',
       value: '3',
-      ns: 'https://example.com/namespaces/security_targets.csv',
+      ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets_levels.csv',
     });
     expect(control.threats).toEqual([]);
   });

@@ -8,6 +8,10 @@ import type { IncomingControlLink } from '@/domain/controlRelationships';
 import type { Control } from '@/domain/models';
 import type { CatalogKey } from '@/domain/sourceRegistry';
 import { resolveControlVocabularies } from '@/domain/vocabulary';
+import {
+  resolvePracticeVocabulary,
+  resolveTopicVocabulary,
+} from '@/domain/taxonomyVocabulary';
 import { useActiveVocabulary } from '@/hooks/useActiveVocabulary';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useClipboard } from '@/hooks/useClipboard';
@@ -22,6 +26,7 @@ import { ControlMetadata } from './ControlMetadata';
 import { ControlSecurityContext } from './ControlSecurityContext';
 import { ControlStatement } from './ControlStatement';
 import { ControlStatementDetails } from './ControlStatementDetails';
+import { ControlTaxonomyBreadcrumb } from './ControlTaxonomyBreadcrumb';
 import type { RenderVocabularyCard } from './ControlVocabularyPrimitives';
 
 export interface ControlDetailProps {
@@ -100,6 +105,14 @@ export function ControlDetail({
   );
   const practiceName = practice?.title ?? control.practiceId;
   const topicName = topic?.title ?? control.groupId;
+  const practiceVocabulary = useMemo(
+    () => resolvePracticeVocabulary(vocabularyRegistry, practice),
+    [practice, vocabularyRegistry],
+  );
+  const topicVocabulary = useMemo(
+    () => resolveTopicVocabulary(vocabularyRegistry, topic),
+    [topic, vocabularyRegistry],
+  );
 
   const handleCopyLink = () => {
     const url = getControlDetailUrl(catalogKey, control);
@@ -156,9 +169,15 @@ export function ControlDetail({
             </code>
           </div>
         )}
-        <p className="text-xs text-[var(--color-text-muted)] mb-1">
-          {practiceName} · {topicName}
-        </p>
+        <ControlTaxonomyBreadcrumb
+          practiceName={practiceName}
+          topicName={topicName}
+          hasTopic={Boolean(topic)}
+          practiceVocabulary={practiceVocabulary}
+          topicVocabulary={topicVocabulary}
+          isVocabularyActive={isVocabularyActive}
+          onToggleVocabulary={toggleVocabulary}
+        />
         <h2 className="type-page-title">
           {control.title}
         </h2>

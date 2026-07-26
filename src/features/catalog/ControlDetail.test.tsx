@@ -159,6 +159,87 @@ describe('ControlDetail', () => {
     expect(screen.getByText('Server sind Zielobjekte mit zentralen IT-Diensten.')).toBeInTheDocument();
   });
 
+  it('shows UUID-joined practice metadata in the breadcrumb without technical fields', async () => {
+    const user = userEvent.setup();
+    const state = makeCatalogState();
+    state.catalog!.practices = [{
+      id: 'GC',
+      title: 'Governance und Compliance',
+      label: 'GC',
+      altIdentifier: 'uuid-practice-1',
+      topics: [{
+        id: 'GC.2',
+        title: 'Organisation',
+        label: '2',
+        altIdentifier: 'uuid-topic-1',
+        practiceId: 'GC',
+        controlCount: 1,
+        controlIds: ['GC.2.2'],
+      }],
+      controlCount: 1,
+    }];
+    mockedUseCatalog.mockReturnValue(state);
+
+    render(
+      <MemoryRouter>
+        <ControlDetail control={makeControl()} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    const practice = screen.getByRole('button', {
+      name: 'Praktik: Governance und Compliance',
+    });
+    expect(practice).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(practice);
+
+    expect(screen.getByText('Offizielle Praktik-Definition.')).toBeInTheDocument();
+    expect(screen.getByText('Methodik')).toBeInTheDocument();
+    expect(screen.getByText('Corporate Governance')).toBeInTheDocument();
+    expect(screen.queryByText('uuid-practice-1')).not.toBeInTheDocument();
+    expect(screen.queryByText('Nummerierung')).not.toBeInTheDocument();
+
+    const topic = screen.getByRole('button', { name: 'Thema: Organisation' });
+    await user.click(topic);
+
+    expect(screen.getByText('Offizielle Themen-Definition.')).toBeInTheDocument();
+    expect(practice).toHaveAttribute('aria-expanded', 'false');
+    expect(topic).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.queryByText('uuid-topic-1')).not.toBeInTheDocument();
+  });
+
+  it('shows a diagnostic for a catalog topic without an official CSV definition', () => {
+    const state = makeCatalogState();
+    state.catalog!.practices = [{
+      id: 'GC',
+      title: 'Governance und Compliance',
+      label: 'GC',
+      altIdentifier: 'uuid-practice-1',
+      topics: [{
+        id: 'GC.2',
+        title: 'Organisation',
+        label: '2',
+        altIdentifier: 'unbekannte-topic-uuid',
+        practiceId: 'GC',
+        controlCount: 1,
+        controlIds: ['GC.2.2'],
+      }],
+      controlCount: 1,
+    }];
+    mockedUseCatalog.mockReturnValue(state);
+
+    render(
+      <MemoryRouter>
+        <ControlDetail control={makeControl()} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Organisation')).toBeInTheDocument();
+    expect(screen.getByText('keine offizielle Definition')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Thema: Organisation' }))
+      .not.toBeInTheDocument();
+  });
+
   it('does not retain control-local UI state across catalog changes', async () => {
     const user = userEvent.setup();
     const control = makeControl({
@@ -246,25 +327,25 @@ describe('ControlDetail', () => {
       confidentialityProp: {
         name: 'confidentiality',
         value: '2',
-        ns: 'https://example.com/namespaces/security_targets.csv',
+        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets_levels.csv',
       },
       integrity: '1',
       integrityProp: {
         name: 'integrity',
         value: '1',
-        ns: 'https://example.com/namespaces/security_targets.csv',
+        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets_levels.csv',
       },
       availability: '1',
       availabilityProp: {
         name: 'availability',
         value: '1',
-        ns: 'https://example.com/namespaces/security_targets.csv',
+        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets_levels.csv',
       },
       authenticity: '0',
       authenticityProp: {
         name: 'authenticity',
         value: '0',
-        ns: 'https://example.com/namespaces/security_targets.csv',
+        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets_levels.csv',
       },
       threats: ['G 0.18', 'G 0.19'],
       threatsProp: {
@@ -288,13 +369,24 @@ describe('ControlDetail', () => {
     expect(screen.getAllByText(/^Relevanz: [0-2]$/)).toHaveLength(4);
 
     const confidentiality = screen.getByRole('button', { name: 'Schutzziel: Vertraulichkeit' });
+    const confidentialityLevel = screen.getByRole('button', {
+      name: 'Relevanz Vertraulichkeit: 2',
+    });
     const threat = screen.getByRole('button', { name: 'Elementare Gefährdung: G 0.18' });
     expect(confidentiality).toHaveAttribute('aria-expanded', 'false');
+    expect(confidentialityLevel).toHaveAttribute('aria-expanded', 'false');
     expect(threat).toHaveAttribute('aria-expanded', 'false');
 
     await user.click(confidentiality);
     expect(screen.getByText('Schutz vor unbefugter Offenlegung.')).toBeInTheDocument();
     expect(confidentiality).toHaveAttribute('aria-expanded', 'true');
+
+    await user.click(confidentialityLevel);
+    expect(screen.getByText(
+      'Die Anforderung wirkt in besonderem Maße auf dieses Schutzziel hin. Dieser Wert zeigt an, dass das Schutzziel im Zentrum dieser Anforderung steht.',
+    )).toBeInTheDocument();
+    expect(confidentiality).toHaveAttribute('aria-expanded', 'false');
+    expect(confidentialityLevel).toHaveAttribute('aria-expanded', 'true');
 
     await user.click(threat);
     expect(screen.getByText('Fehlplanung oder fehlende Anpassung von Prozessen.')).toBeInTheDocument();
@@ -331,7 +423,7 @@ describe('ControlDetail', () => {
     expect(screen.queryByText('Vertraulichkeit')).not.toBeInTheDocument();
   });
 
-  it('does not display a raw out-of-range security target relevance', () => {
+  it('keeps an out-of-range security target relevance visible with a diagnostic', () => {
     const control = makeControl({
       confidentialityProp: {
         name: 'confidentiality',
@@ -353,8 +445,13 @@ describe('ControlDetail', () => {
     );
 
     expect(screen.getByText('G 0.18')).toBeInTheDocument();
-    expect(screen.queryByText('Vertraulichkeit')).not.toBeInTheDocument();
-    expect(screen.queryByText('Relevanz: 3')).not.toBeInTheDocument();
+    expect(screen.getByText('Vertraulichkeit')).toBeInTheDocument();
+    expect(screen.getByText('Relevanz: 3')).toBeInTheDocument();
+    expect(screen.getByText('Keine offizielle Definition für diese Relevanzstufe verfügbar.'))
+      .toBeInTheDocument();
+    expect(screen.queryByRole('button', {
+      name: 'Relevanz Vertraulichkeit: 3',
+    })).not.toBeInTheDocument();
   });
 
   it('does not carry an expanded threat card to another control', async () => {

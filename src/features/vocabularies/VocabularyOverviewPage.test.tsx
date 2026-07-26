@@ -52,6 +52,21 @@ function makeCatalogState(): CatalogState {
       },
       {
         source: {
+          namespace:
+            'https://example.com/namespaces/security_targets_levels.csv',
+          repository: 'https://example.com/repo',
+          path: 'Dokumentation/namespaces/security_targets_levels.csv',
+          fileName: 'security_targets_levels.csv',
+          routeId: 'dokumentation-namespaces-security-target-levels',
+          gitBlobSha: 'blob-target-levels',
+        },
+        columnOrder: ['Wert', 'Definition'],
+        valueColumn: 'Wert',
+        definitionColumn: 'Definition',
+        entries: [],
+      },
+      {
+        source: {
           namespace: 'https://example.com/namespaces/security_targets.csv',
           repository: 'https://example.com/repo',
           path: 'Dokumentation/namespaces/security_targets.csv',
@@ -60,6 +75,34 @@ function makeCatalogState(): CatalogState {
           gitBlobSha: 'blob-targets',
         },
         columnOrder: ['Begriff', 'Definition'],
+        valueColumn: 'Begriff',
+        definitionColumn: 'Definition',
+        entries: [],
+      },
+      {
+        source: {
+          namespace: 'https://example.com/namespaces/practices.csv',
+          repository: 'https://example.com/repo',
+          path: 'Dokumentation/namespaces/practices.csv',
+          fileName: 'practices.csv',
+          routeId: 'dokumentation-namespaces-practices',
+          gitBlobSha: 'blob-practices',
+        },
+        columnOrder: ['Kürzel', 'Begriff', 'Definition', 'UUID'],
+        valueColumn: 'Kürzel',
+        definitionColumn: 'Definition',
+        entries: [],
+      },
+      {
+        source: {
+          namespace: 'https://example.com/namespaces/topics.csv',
+          repository: 'https://example.com/repo',
+          path: 'Dokumentation/namespaces/topics.csv',
+          fileName: 'topics.csv',
+          routeId: 'dokumentation-namespaces-topics',
+          gitBlobSha: 'blob-topics',
+        },
+        columnOrder: ['Begriff', 'Definition', 'UUID'],
         valueColumn: 'Begriff',
         definitionColumn: 'Definition',
         entries: [],
@@ -119,6 +162,18 @@ describe('VocabularyOverviewPage', () => {
     expect(screen.getByRole('link', { name: 'Schutzziele' })).toHaveAttribute(
       'href',
       '/vokabular/dokumentation-namespaces-security-targets',
+    );
+    expect(screen.getByRole('link', { name: 'Schutzziel-Relevanz' })).toHaveAttribute(
+      'href',
+      '/vokabular/dokumentation-namespaces-security-target-levels',
+    );
+    expect(screen.getByRole('link', { name: 'Praktiken' })).toHaveAttribute(
+      'href',
+      '/vokabular/dokumentation-namespaces-practices',
+    );
+    expect(screen.getByRole('link', { name: 'Themen' })).toHaveAttribute(
+      'href',
+      '/vokabular/dokumentation-namespaces-topics',
     );
   });
 });

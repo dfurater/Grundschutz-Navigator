@@ -147,8 +147,8 @@ export function assertAllowedUpstreamRepoPath(repoPath) {
 /**
  * Inspection-only path guard for deterministic manifest validation. Unlike the
  * delivery allowlist this may admit preview/draft OSCAL artifacts, but dynamic
- * vocabulary members must first be materialized from the supported catalog's
- * official namespace references.
+ * vocabulary members must first be materialized from the registered direct
+ * namespace directory membership.
  */
 export function assertRegisteredUpstreamRepoPath(repoPath, {
   materializedNamespacePaths = [],

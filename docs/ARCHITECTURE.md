@@ -94,7 +94,7 @@ upstream-manifest.json            # Gepinnter Upstream-Snapshot (Manifest v2)
 BSI GitHub Repository
 (BSI-Bund/Stand-der-Technik-Bibliothek)
   • OSCAL-Artefakte verschiedener Root-Typen
-  • vom unterstützten Katalog referenzierte Namespace-CSVs
+  • alle direkten CSVs der registrierten Namespace-Collection
   • vollständige Read-only-Trees der überwachten Upstream-Wurzeln
         │
         ▼
@@ -104,7 +104,7 @@ npm run fetch-catalog → scripts/fetch-catalog.mjs
 • sourceRegistry: einzige Ingestion-Quelle für Pfad, Root-Typ und Lifecycle
 • Security-Guards: nur erlaubtes Repo, erlaubte Hosts, Pfade und Refs
 • registrierte preview-/draft-Artefakte werden transient geprüft, nicht ausgeliefert
-• nur supported Katalog und referenzierte Vokabulare → JSON + Provenance
+• nur supported Katalog und direkte Namespace-CSVs → JSON + Provenance
 • Manifest v2 bindet Registry-Metadaten, Git-Blob-SHA und Content-SHA-256
         │
         ▼

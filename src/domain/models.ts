@@ -176,19 +176,19 @@ export interface Control {
 
   /** Relevanz für das Schutzziel Vertraulichkeit (0–2) */
   confidentiality?: SecurityTargetRelevance;
-  /** Structured confidentiality prop with namespace provenance */
+  /** Structured confidentiality prop with the canonical relevance vocabulary namespace */
   confidentialityProp?: PropValue;
   /** Relevanz für das Schutzziel Integrität (0–2) */
   integrity?: SecurityTargetRelevance;
-  /** Structured integrity prop with namespace provenance */
+  /** Structured integrity prop with the canonical relevance vocabulary namespace */
   integrityProp?: PropValue;
   /** Relevanz für das Schutzziel Verfügbarkeit (0–2) */
   availability?: SecurityTargetRelevance;
-  /** Structured availability prop with namespace provenance */
+  /** Structured availability prop with the canonical relevance vocabulary namespace */
   availabilityProp?: PropValue;
   /** Relevanz für das Schutzziel Authentizität (0–2) */
   authenticity?: SecurityTargetRelevance;
-  /** Structured authenticity prop with namespace provenance */
+  /** Structured authenticity prop with the canonical relevance vocabulary namespace */
   authenticityProp?: PropValue;
 
   /** Elementare Gefährdungen, aus der kommaseparierten OSCAL-Prop geparst */
@@ -453,6 +453,30 @@ export interface VocabularyFileProvenance {
   sizeBytes: number;
 }
 
+export interface TopicVocabularyCoverage {
+  catalogTopicCount: number;
+  distinctCatalogUuidCount: number;
+  csvEntryCount: number;
+  matchedCatalogTopicCount: number;
+  unmatchedCatalogTopicCount: number;
+  orphanCsvEntryCount: number;
+  missingCatalogUuidCount: number;
+  duplicateCsvUuidCount: number;
+  unmatchedCatalogTopics: Array<{
+    id?: string;
+    practiceId?: string;
+    uuid?: string;
+  }>;
+  orphanCsvEntries: Array<{
+    value?: string;
+    uuid?: string;
+  }>;
+  duplicateCsvUuids: Array<{
+    value: string;
+    count: number;
+  }>;
+}
+
 /** Integrity record shared by every shipped artifact (ADR-0001) */
 export interface ArtifactIntegrity {
   sha256: string;
@@ -479,6 +503,9 @@ export interface VocabularyProvenance {
   manifest: UpstreamManifest;
   files: VocabularyFileProvenance[];
   dataQualityFindings?: string[];
+  taxonomyCoverage?: {
+    topics: TopicVocabularyCoverage | null;
+  };
   integrity: ArtifactIntegrity;
   build: ArtifactBuildInfo;
 }

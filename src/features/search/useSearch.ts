@@ -1,11 +1,12 @@
 import { useMemo } from 'react';
 import { Index } from 'flexsearch';
-import type { Control, VocabularyRegistry } from '@/domain/models';
+import type { Control, Practice, VocabularyRegistry } from '@/domain/models';
 import { getControlLinkSearchText } from '@/domain/controlRelationships';
 import {
   collectControlVocabularySearchTexts,
   resolveControlVocabularies,
 } from '@/domain/vocabulary';
+import { resolvePracticeVocabulary } from '@/domain/taxonomyVocabulary';
 
 export interface SearchResult {
   control: Control;
@@ -15,6 +16,7 @@ const NATURAL_LANGUAGE_PREFIX_MIN_LENGTH = 6;
 const NATURAL_LANGUAGE_METADATA_PREFIX_WEIGHT = 0.75;
 const NATURAL_LANGUAGE_CONTENT_PREFIX_WEIGHT = 0.5;
 const TOKEN_PATTERN = /[\p{L}\p{N}]+/gu;
+const EMPTY_PRACTICES: Practice[] = [];
 
 interface SearchIndexes {
   controlIds: Index;
@@ -96,11 +98,20 @@ export function useSearch(
   controls: Control[],
   query: string,
   vocabularyRegistry?: VocabularyRegistry | null,
+  practices: Practice[] = EMPTY_PRACTICES,
 ) {
+  const practicesById = useMemo(
+    () => new Map(practices.map((practice) => [practice.id, practice])),
+    [practices],
+  );
   const searchDocuments = useMemo(() => {
     return controls.map<SearchDocument>((control, numericId) => {
       const resolved = resolveControlVocabularies(vocabularyRegistry, control);
       const vocabularyTexts = collectControlVocabularySearchTexts(resolved);
+      const practiceVocabulary = resolvePracticeVocabulary(
+        vocabularyRegistry,
+        practicesById.get(control.practiceId),
+      );
 
       return {
         control,
@@ -117,6 +128,7 @@ export function useSearch(
           control.statementProps.dokumentation ?? '',
           control.statementProps.zielobjektKategorien.join(' '),
           control.threats.join(' '),
+          practiceVocabulary?.entry.columns['auch bekannt als'] ?? '',
           ...vocabularyTexts,
         ].join(' '),
         contentText: [control.statement, control.guidance].join(' '),
@@ -127,7 +139,7 @@ export function useSearch(
         ),
       };
     });
-  }, [controls, vocabularyRegistry]);
+  }, [controls, practicesById, vocabularyRegistry]);
 
   const controlMap = useMemo(() => {
     return new Map(

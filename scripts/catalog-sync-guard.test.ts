@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   computeManifestSignature,
   guardCatalogSyncPullRequest,
+  isApprovedVocabularyCollectionMigration,
   parseNameStatusDiff,
   validateCatalogSyncManifest,
   validateCatalogSyncPullRequest,
@@ -23,8 +24,13 @@ const OLD_SHA = '1'.repeat(40);
 const NEW_SHA = '2'.repeat(40);
 const RESULT_NAMESPACE_PATH = 'Dokumentation/namespaces/result.csv';
 const RESULT_NAMESPACE_URL = `${OFFICIAL_BSI_REPOSITORY_URL}/tree/main/${RESULT_NAMESPACE_PATH}`;
-const TAGS_NAMESPACE_PATH = 'Dokumentation/namespaces/tags.csv';
-const UNCLASSIFIED_PATH = 'Dokumentation/namespaces/security_targets_levels.csv';
+const UNREFERENCED_NAMESPACE_PATH =
+  'Dokumentation/namespaces/security_targets_levels.csv';
+const PRACTICES_NAMESPACE_PATH = 'Dokumentation/namespaces/practices.csv';
+const PRACTICE_ALT_IDENTIFIER = '33333333-3333-4333-8333-333333333333';
+const TOPICS_NAMESPACE_PATH = 'Dokumentation/namespaces/topics.csv';
+const TOPIC_ALT_IDENTIFIER = '22222222-2222-4222-8222-222222222222';
+const UNCLASSIFIED_PATH = 'Quellkataloge/Kernel/unclassified.csv';
 
 interface ManifestFile {
   artifactKey: string;
@@ -64,6 +70,7 @@ function contentSha256(contents: Buffer) {
 function makeOscalContents(
   entry: (typeof SOURCE_REGISTRY)[number],
   catalogNamespaceUrls: string[],
+  topicAltIdentifiers: string[],
 ) {
   if (entry.kind !== 'oscal') {
     throw new Error('Fixture requested OSCAL content for a vocabulary collection');
@@ -88,6 +95,20 @@ function makeOscalContents(
             ],
           },
         ],
+        groups: [{
+          id: 'GC',
+          props: [{
+            name: 'alt-identifier',
+            value: PRACTICE_ALT_IDENTIFIER,
+          }],
+          groups: topicAltIdentifiers.map((altIdentifier, index) => ({
+            id: `GC.${index + 1}`,
+            props: [{
+              name: 'alt-identifier',
+              value: altIdentifier,
+            }],
+          })),
+        }],
       },
     }));
   }
@@ -102,18 +123,36 @@ function makeOscalContents(
 function makeFixture({
   snapshotCommitSha = NEW_SHA,
   catalogNamespaceUrls = [RESULT_NAMESPACE_URL],
-  manifestNamespacePaths = [RESULT_NAMESPACE_PATH],
+  manifestNamespacePaths = [
+    RESULT_NAMESPACE_PATH,
+    UNREFERENCED_NAMESPACE_PATH,
+    PRACTICES_NAMESPACE_PATH,
+    TOPICS_NAMESPACE_PATH,
+  ],
   contentOverrides = new Map<string, Buffer>(),
   includeUnclassified = true,
 } = {}): GuardFixture {
   const files: ManifestFile[] = [];
   const contentsByBlobSha = new Map<string, Buffer>();
   const treeEntries: TreeEntry[] = [];
+  const topicAltIdentifiers = snapshotCommitSha === LEGACY_V1_MIGRATION_SNAPSHOT
+    ? Array.from(
+        { length: 139 },
+        (_, index) => `topic-uuid-${index < 119 ? index : 0}`,
+      )
+    : [TOPIC_ALT_IDENTIFIER];
+  const topicsCsv = [
+    'Begriff,Definition,UUID',
+    ...[...new Set(topicAltIdentifiers)].map(
+      (altIdentifier, index) => `Fixture ${index},Fixture definition,${altIdentifier}`,
+    ),
+    '',
+  ].join('\n');
 
   for (const entry of SOURCE_REGISTRY) {
     if (entry.kind !== 'oscal') continue;
     const contents = contentOverrides.get(entry.upstreamPath) ??
-      makeOscalContents(entry, catalogNamespaceUrls);
+      makeOscalContents(entry, catalogNamespaceUrls, topicAltIdentifiers);
     const blobSha = gitBlobSha(contents);
     files.push({
       artifactKey: entry.artifactKey,
@@ -142,7 +181,15 @@ function makeFixture({
 
   for (const path of manifestNamespacePaths) {
     const contents = contentOverrides.get(path) ??
-      Buffer.from('value,Definition\nfixture,Fixture definition\n');
+      (
+        path === TOPICS_NAMESPACE_PATH
+          ? Buffer.from(topicsCsv)
+          : path === PRACTICES_NAMESPACE_PATH
+            ? Buffer.from(
+                `Kürzel,Begriff,Definition,UUID\nGC,Governance,Fixture definition,${PRACTICE_ALT_IDENTIFIER}\n`,
+              )
+            : Buffer.from('value,Definition\nfixture,Fixture definition\n')
+      );
     const blobSha = gitBlobSha(contents);
     files.push({
       artifactKey: vocabularyCollection.artifactKey,
@@ -411,6 +458,30 @@ describe('catalog sync PR shape', () => {
     expect(parseNameStatusDiff('M\tupstream-manifest.json\n')).toEqual(shape.diffEntries);
   });
 
+  it('recognizes only the exact approved same-snapshot vocabulary migration', () => {
+    const previousManifest = {
+      snapshotCommitSha: '12abb438fcdb4f4b63fb3e751e89d7c526e647b5',
+      signatureSha256: '6de483f6e8d437b14cdbf834e127bf617cfe773ff0b290adef8cc26e094420da',
+    };
+    const nextManifest = {
+      snapshotCommitSha: previousManifest.snapshotCommitSha,
+      signatureSha256: 'bd7db0913c960cf2b2a5d6410856eddeff6027045622a1f4241fbabc779fd624',
+    };
+
+    expect(isApprovedVocabularyCollectionMigration(
+      previousManifest,
+      nextManifest,
+    )).toBe(true);
+    expect(isApprovedVocabularyCollectionMigration(
+      previousManifest,
+      { ...nextManifest, signatureSha256: 'f'.repeat(64) },
+    )).toBe(false);
+    expect(isApprovedVocabularyCollectionMigration(
+      previousManifest,
+      { ...nextManifest, snapshotCommitSha: NEW_SHA },
+    )).toBe(false);
+  });
+
   it('rejects an invalid branch', () => {
     expect(() => validateCatalogSyncPullRequest({
       ...shape,
@@ -447,6 +518,34 @@ describe('catalog sync PR shape', () => {
 });
 
 describe('catalog sync artifact verification', () => {
+  it('accepts unreferenced direct CSV members from the registered namespace directory', async () => {
+    const previous = makeFixture({
+      snapshotCommitSha: OLD_SHA,
+      manifestNamespacePaths: [
+        RESULT_NAMESPACE_PATH,
+        UNREFERENCED_NAMESPACE_PATH,
+        PRACTICES_NAMESPACE_PATH,
+        TOPICS_NAMESPACE_PATH,
+      ],
+    });
+    const next = makeFixture({
+      snapshotCommitSha: NEW_SHA,
+      manifestNamespacePaths: [
+        RESULT_NAMESPACE_PATH,
+        UNREFERENCED_NAMESPACE_PATH,
+        PRACTICES_NAMESPACE_PATH,
+        TOPICS_NAMESPACE_PATH,
+      ],
+    });
+
+    await expect(guardCatalogSyncPullRequest({
+      ...validShape(),
+      previousManifest: previous.manifest,
+      nextManifest: next.manifest,
+      fetchImpl: makeGitHubFetch(next),
+    })).resolves.toEqual({ catalogSync: true, snapshotCommitSha: NEW_SHA });
+  });
+
   it('verifies every registered blob and ignores unclassified tree files', async () => {
     const previous = makeFixture({ snapshotCommitSha: OLD_SHA });
     const next = makeFixture({ snapshotCommitSha: NEW_SHA });
@@ -468,11 +567,49 @@ describe('catalog sync artifact verification', () => {
     expect(requestedUrls.some((url) => url.includes(next.unclassifiedBlobSha))).toBe(false);
   });
 
-  it('enforces namespace membership derived from the supported catalog', async () => {
+  it('rejects a manifest that omits a direct CSV from the registered namespace directory', async () => {
     const previous = makeFixture({ snapshotCommitSha: OLD_SHA });
     const next = makeFixture({
       snapshotCommitSha: NEW_SHA,
-      manifestNamespacePaths: [RESULT_NAMESPACE_PATH, TAGS_NAMESPACE_PATH],
+      manifestNamespacePaths: [
+        RESULT_NAMESPACE_PATH,
+        PRACTICES_NAMESPACE_PATH,
+        TOPICS_NAMESPACE_PATH,
+      ],
+      includeUnclassified: false,
+    });
+    const omittedContents = Buffer.from('Wert,Definition\n0,Keine Relevanz\n');
+    const treeEntries = [
+      ...next.treeEntries,
+      {
+        path: UNREFERENCED_NAMESPACE_PATH,
+        mode: '100644',
+        type: 'blob',
+        sha: gitBlobSha(omittedContents),
+        size: omittedContents.length,
+      },
+    ];
+
+    await expect(guardCatalogSyncPullRequest({
+      ...validShape(),
+      previousManifest: previous.manifest,
+      nextManifest: next.manifest,
+      fetchImpl: makeGitHubFetch(next, { treeEntries }),
+    })).rejects.toThrow('namespace inventory does not match');
+  });
+
+  it('rejects topic UUID drift for a future snapshot', async () => {
+    const previous = makeFixture({ snapshotCommitSha: OLD_SHA });
+    const next = makeFixture({
+      snapshotCommitSha: NEW_SHA,
+      contentOverrides: new Map([
+        [
+          TOPICS_NAMESPACE_PATH,
+          Buffer.from(
+            'Begriff,Definition,UUID\nVerwaist,Ohne Katalogtreffer,unmatched-topic-uuid\n',
+          ),
+        ],
+      ]),
     });
 
     await expect(guardCatalogSyncPullRequest({
@@ -480,7 +617,73 @@ describe('catalog sync artifact verification', () => {
       previousManifest: previous.manifest,
       nextManifest: next.manifest,
       fetchImpl: makeGitHubFetch(next),
-    })).rejects.toThrow('namespace inventory does not match');
+    })).rejects.toThrow('Topic-Coverage');
+  });
+
+  it('rejects duplicate Practice UUIDs for a future snapshot', async () => {
+    const previous = makeFixture({
+      snapshotCommitSha: OLD_SHA,
+    });
+    const next = makeFixture({
+      snapshotCommitSha: NEW_SHA,
+      contentOverrides: new Map([
+        [
+          PRACTICES_NAMESPACE_PATH,
+          Buffer.from(
+            'Kürzel,Begriff,Definition,UUID\nGC,Governance,Definition,practice-uuid-1\nISMS,Management,Definition,practice-uuid-1\n',
+          ),
+        ],
+      ]),
+    });
+
+    await expect(guardCatalogSyncPullRequest({
+      ...validShape(),
+      previousManifest: previous.manifest,
+      nextManifest: next.manifest,
+      fetchImpl: makeGitHubFetch(next),
+    })).rejects.toThrow('Practice-UUID-Integrität');
+  });
+
+  it('rejects missing or unmatched practices.csv coverage for a future snapshot', async () => {
+    const manifestNamespacePaths = [
+      RESULT_NAMESPACE_PATH,
+      UNREFERENCED_NAMESPACE_PATH,
+      TOPICS_NAMESPACE_PATH,
+    ];
+    const previous = makeFixture({
+      snapshotCommitSha: OLD_SHA,
+      manifestNamespacePaths,
+    });
+    const missing = makeFixture({
+      snapshotCommitSha: NEW_SHA,
+      manifestNamespacePaths,
+    });
+
+    await expect(guardCatalogSyncPullRequest({
+      ...validShape(),
+      previousManifest: previous.manifest,
+      nextManifest: missing.manifest,
+      fetchImpl: makeGitHubFetch(missing),
+    })).rejects.toThrow('practices.csv fehlt');
+
+    const unmatched = makeFixture({
+      snapshotCommitSha: NEW_SHA,
+      contentOverrides: new Map([
+        [
+          PRACTICES_NAMESPACE_PATH,
+          Buffer.from(
+            'Kürzel,Begriff,Definition,UUID\nGC,Governance,Definition,unmatched-practice-uuid\n',
+          ),
+        ],
+      ]),
+    });
+
+    await expect(guardCatalogSyncPullRequest({
+      ...validShape(),
+      previousManifest: makeFixture({ snapshotCommitSha: OLD_SHA }).manifest,
+      nextManifest: unmatched.manifest,
+      fetchImpl: makeGitHubFetch(unmatched),
+    })).rejects.toThrow('Practice-UUID-Integrität');
   });
 
   it('rejects external namespace CSV references without requesting their host', async () => {

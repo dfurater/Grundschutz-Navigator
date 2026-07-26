@@ -26,7 +26,7 @@ Das System prüft, ob die geladenen Artefakte zu den gemeinsam ausgelieferten In
 1. **Quellregister als Vertrag**: `src/domain/sourceRegistry.mjs` ist die einzige Ingestion-Quelle für Artefaktschlüssel, Pfade, erwartete OSCAL-Root-Typen, Katalogschlüssel und Lifecycle. `scripts/security-guards.mjs` leitet daraus die Allowlist ab und begrenzt zusätzlich Repository, Hosts, Pfade und Refs.
 2. **Snapshot-Pinning**: Ist `BSI_SNAPSHOT_SHA` gesetzt (in CI aus `upstream-manifest.json` gelesen), wird exakt dieser Commit abgerufen statt `main`.
 3. **Vollständiger Tree vor Blob-Abruf**: Der rekursive GitHub-Tree der überwachten Wurzeln muss vollständig und darf weder Symlinks noch andere nicht reguläre Dateien enthalten. Erst danach werden registrierte Pfade materialisiert.
-4. **Lifecycle-getrennte Verarbeitung**: `preview`- und `draft`-Artefakte werden transient auf Pfad, Blob, Inhalt und Root-Typ geprüft. Nur `supported`-Artefakte werden als App-Daten ausgeliefert; die Namespace-Collection materialisiert nur die vom unterstützten Katalog referenzierten CSV-Dateien.
+4. **Lifecycle-getrennte Verarbeitung**: `preview`- und `draft`-Artefakte werden transient auf Pfad, Blob, Inhalt und Root-Typ geprüft. Nur `supported`-Artefakte werden als App-Daten ausgeliefert; die Namespace-Collection materialisiert alle regulären `.csv`-Dateien direkt aus ihrem registrierten Verzeichnis. `ns`-Referenzen des unterstützten Katalogs werden separat als zulässige fachliche Auflösungsquellen validiert.
 5. **Abruf über erlaubte GitHub-Endpunkte** mit Retry und Backoff bei transienten Fehlern; optional authentifiziert über `GH_TOKEN`/`GITHUB_TOKEN`.
 6. **Integritätsdaten**: SHA-256, Dateigröße, Git-Blob-SHA und Commit-Informationen werden je ausgeliefertem Artefakt erfasst. Das vollständige Manifest v2 enthält zusätzlich für jede materialisierte Registry-Datei Root-Typ und Lifecycle.
 
@@ -178,7 +178,7 @@ Dazu kommen Quell-Repository, Commit-SHA und Abrufzeitpunkt mit Link auf den exa
 
 ## Vocabulary Integrity
 
-Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funktion `verifyArtifactIntegrity` auf (die `IntegrityMetadata`-Union deckt beide Provenance-Typen ab). Die zugehörigen Metadaten stehen in `upstream-sources-metadata.json`. Darin umfasst `manifest` alle materialisierten Registry-Artefakte; das separate Top-Level-Feld `files` enthält ausschließlich die Datei-Provenance der ausgelieferten Namespace-CSVs. `dataQualityFindings` hält nicht blockierende fachliche Befunde zum unterstützten Katalog fest.
+Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funktion `verifyArtifactIntegrity` auf (die `IntegrityMetadata`-Union deckt beide Provenance-Typen ab). Die zugehörigen Metadaten stehen in `upstream-sources-metadata.json`. Darin umfasst `manifest` alle materialisierten Registry-Artefakte; das separate Top-Level-Feld `files` enthält ausschließlich die Datei-Provenance der ausgelieferten Namespace-CSVs. `dataQualityFindings` hält nicht blockierende fachliche Befunde zum unterstützten Katalog fest. `taxonomyCoverage.topics` protokolliert die gemessene UUID-Deckung zwischen Katalogthemen und `topics.csv`. Fetch und Catalog-Sync-Guard verlangen `practices.csv` und blockieren für jeden Snapshot fehlende oder doppelte Practice-UUIDs sowie Practice-Katalog- oder CSV-Orphans. Entsprechend blockieren sie leere Topic-Taxonomiedaten, fehlende oder doppelte Topic-UUIDs und Topic-Katalog- oder CSV-Orphans; für den bekannten gepinnten Snapshot gilt zusätzlich die exakte Topic-Zählwert-Baseline.
 
 ### Provenance-Metadaten (upstream-sources-metadata.json)
 
@@ -227,6 +227,21 @@ Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funkt
     }
   ],
   "dataQualityFindings": [],
+  "taxonomyCoverage": {
+    "topics": {
+      "catalogTopicCount": 139,
+      "distinctCatalogUuidCount": 119,
+      "csvEntryCount": 119,
+      "matchedCatalogTopicCount": 139,
+      "unmatchedCatalogTopicCount": 0,
+      "orphanCsvEntryCount": 0,
+      "missingCatalogUuidCount": 0,
+      "duplicateCsvUuidCount": 0,
+      "unmatchedCatalogTopics": [],
+      "orphanCsvEntries": [],
+      "duplicateCsvUuids": []
+    }
+  },
   "integrity": {
     "sha256": "<sha256>",
     "size_bytes": 438298,
@@ -299,6 +314,24 @@ interface VocabularyFileProvenance {
   sizeBytes: number;
 }
 
+interface TopicVocabularyCoverage {
+  catalogTopicCount: number;
+  distinctCatalogUuidCount: number;
+  csvEntryCount: number;
+  matchedCatalogTopicCount: number;
+  unmatchedCatalogTopicCount: number;
+  orphanCsvEntryCount: number;
+  missingCatalogUuidCount: number;
+  duplicateCsvUuidCount: number;
+  unmatchedCatalogTopics: Array<{
+    id?: string;
+    practiceId?: string;
+    uuid?: string;
+  }>;
+  orphanCsvEntries: Array<{ value?: string; uuid?: string }>;
+  duplicateCsvUuids: Array<{ value: string; count: number }>;
+}
+
 interface VocabularyProvenance {
   artifactKey?: string;
   source: {
@@ -310,6 +343,9 @@ interface VocabularyProvenance {
   manifest: UpstreamManifest;
   files: VocabularyFileProvenance[];
   dataQualityFindings?: string[];
+  taxonomyCoverage?: {
+    topics: TopicVocabularyCoverage | null;
+  };
   integrity: ArtifactIntegrity;
   build: ArtifactBuildInfo;
 }
@@ -342,7 +378,7 @@ Zusätzlich zur internen Integritätsprüfung generiert `.github/workflows/deplo
 - **Runner Environment** identifiziert die Build-Plattform
 - **Quellregister und Upstream-Grenzen** (`src/domain/sourceRegistry.mjs`, `scripts/security-guards.mjs`) verhindern, dass der Fetch auf fremde Repositories, externe Hosts, nicht registrierte Pfade oder unzulässige Refs umgelenkt wird. Pfad-Traversal, Symlinks bzw. andere nicht reguläre Tree-Einträge und ein OSCAL-Root-Type-Mismatch führen geschlossen zum Abbruch.
 - **Vollständiger Read-only-Tree-Diff** (`scripts/upstream-artifacts.mjs`) klassifiziert Änderungen unter allen überwachten Wurzeln als `added`, `modified` oder `removed`. Neue nicht registrierte Pfade werden als `unclassified` gemeldet, ohne ihren Blob zu laden oder sie auszuliefern. Unvollständige Trees und doppelte bzw. unsichere Pfade werden abgelehnt.
-- **Catalog-Sync-Guard** (`scripts/catalog-sync-guard.mjs`) prüft bei Sync-PRs Branch und Titel, einen exakt auf `upstream-manifest.json` begrenzten Diff, das strikte Manifest-v2-Schema, Registry-Metadaten, kanonische Dateireihenfolge und Signatur. Der neue BSI-Snapshot muss per GitHub Compare API ausschließlich `ahead` sein. Git-Blob-SHAs und Content-Hashes werden gegen den vollständigen Snapshot gebunden; die Namespace-Inventur muss exakt den im verifizierten unterstützten Katalog referenzierten offiziellen CSV-Dateien entsprechen. API-Fehler sowie `identical`, `behind` und `diverged` blockieren.
+- **Catalog-Sync-Guard** (`scripts/catalog-sync-guard.mjs`) prüft bei Sync-PRs Branch und Titel, einen exakt auf `upstream-manifest.json` begrenzten Diff, das strikte Manifest-v2-Schema, Registry-Metadaten, kanonische Dateireihenfolge und Signatur. Der neue BSI-Snapshot muss per GitHub Compare API ausschließlich `ahead` sein. Git-Blob-SHAs und Content-Hashes werden gegen den vollständigen Snapshot gebunden; die Namespace-Inventur muss exakt allen direkten `.csv`-Mitgliedern des registrierten Verzeichnisses entsprechen, während externe oder anderweitig unzulässige `ns`-Referenzen weiterhin blockieren. API-Fehler sowie `identical`, `behind` und `diverged` blockieren. Die einmalige Erweiterung des unveränderten Snapshots von zehn auf 13 Namespace-CSVs ist ausschließlich über das exakt gepinnte Paar aus alter und neuer Manifest-Signatur freigegeben; jede andere gleich-Snapshot-v2-Änderung bleibt ausgeschlossen.
 - **Ruleset-Preflight** (`scripts/catalog-sync-policy.mjs`) prüft vor schreibenden Sync-Aktionen Auto-Merge, Branch-Löschung, erwartete Required Checks, CodeQL und den Audit-Pin der Ruleset-Version. GitHub gibt `bypass_actors` nur mit Ruleset-Schreibzugriff zurück; deshalb attestiert der Agent nach vollständigem Audit die bypass-freie Ruleset-Version über `CATALOG_SYNC_RULESET_UPDATED_AT`. Zusätzlich wird der Ref-Scope geschlossen geprüft: `conditions.ref_name.include` muss `main` über `~DEFAULT_BRANCH`, `~ALL` oder `refs/heads/main` abdecken, `exclude` muss leer sein, und der Default-Branch des Repositories muss `main` sein. fnmatch-Globs gelten bewusst nicht als Nachweis, damit jede Scope-Drift den Preflight blockiert statt still fail-open zu laufen.
 - **CodeQL-Abgrenzung**: CodeQL schützt Anwendungscode und Workflows, bewertet aber nicht die fachliche Richtigkeit des BSI-Kataloginhalts. Der BSI-Upstream wird als Datenquelle akzeptiert; Two-Source-Verifikation ist bewusst nicht Bestandteil dieser Automatisierung.
 
