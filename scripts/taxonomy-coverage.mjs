@@ -71,17 +71,50 @@ export function analyzeTopicVocabularyCoverage(
   };
 }
 
-export function assertPinnedTopicCoverage(snapshotCommitSha, coverage) {
-  const expected = TOPIC_COVERAGE_BASELINES[snapshotCommitSha];
-  if (!expected) {
-    return;
-  }
+export function assertTopicVocabularyCoverage(snapshotCommitSha, coverage) {
   if (!coverage) {
     throw new Error(
       `topics.csv fehlt für die Coverage-Baseline des Snapshots ${snapshotCommitSha}.`,
     );
   }
 
+  const positiveCounts = [
+    'catalogTopicCount',
+    'distinctCatalogUuidCount',
+    'csvEntryCount',
+    'matchedCatalogTopicCount',
+  ];
+  for (const key of positiveCounts) {
+    if (!Number.isInteger(coverage[key]) || coverage[key] <= 0) {
+      throw new Error(
+        `Topic-Coverage für Snapshot ${snapshotCommitSha} ist bei ${key} leer oder ungültig: ${coverage[key]}.`,
+      );
+    }
+  }
+
+  const zeroDriftCounts = [
+    'unmatchedCatalogTopicCount',
+    'orphanCsvEntryCount',
+    'missingCatalogUuidCount',
+    'duplicateCsvUuidCount',
+  ];
+  for (const key of zeroDriftCounts) {
+    if (coverage[key] !== 0) {
+      throw new Error(
+        `Topic-Coverage für Snapshot ${snapshotCommitSha} verletzt ${key}: ${coverage[key]}.`,
+      );
+    }
+  }
+  if (coverage.matchedCatalogTopicCount !== coverage.catalogTopicCount) {
+    throw new Error(
+      `Topic-Coverage für Snapshot ${snapshotCommitSha} ist unvollständig: ${coverage.matchedCatalogTopicCount}/${coverage.catalogTopicCount}.`,
+    );
+  }
+
+  const expected = TOPIC_COVERAGE_BASELINES[snapshotCommitSha];
+  if (!expected) {
+    return;
+  }
   for (const [key, expectedValue] of Object.entries(expected)) {
     if (coverage[key] !== expectedValue) {
       throw new Error(

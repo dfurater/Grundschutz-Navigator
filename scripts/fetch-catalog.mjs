@@ -30,7 +30,7 @@ import {
 } from './upstream-artifacts.mjs';
 import {
   analyzeTopicVocabularyCoverage,
-  assertPinnedTopicCoverage,
+  assertTopicVocabularyCoverage,
 } from './taxonomy-coverage.mjs';
 
 const REPO = OFFICIAL_BSI_REPO;
@@ -601,7 +601,7 @@ async function buildFetchArtifacts(logger = console, {
   const topicCoverage = topicsNamespace
     ? analyzeTopicVocabularyCoverage(catalogJson, topicsNamespace)
     : null;
-  assertPinnedTopicCoverage(snapshot.snapshotCommitSha, topicCoverage);
+  assertTopicVocabularyCoverage(snapshot.snapshotCommitSha, topicCoverage);
   if (topicCoverage) {
     logger.log(
       `   Topic-Coverage: ${topicCoverage.matchedCatalogTopicCount}/${topicCoverage.catalogTopicCount} Katalogthemen, ${topicCoverage.csvEntryCount} CSV-Einträge, ${topicCoverage.orphanCsvEntryCount} verwaist`,

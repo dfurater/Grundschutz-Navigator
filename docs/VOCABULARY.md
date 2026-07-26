@@ -265,7 +265,9 @@ wurde die Deckung explizit gemessen: 139 Katalog-Untergruppen verwenden 119
 verschiedene UUIDs und lösen vollständig auf die 119 CSV-Einträge auf. Aktuell
 gibt es weder ein Katalogthema ohne Treffer noch einen verwaisten CSV-Eintrag.
 Die UI-Tests halten dennoch beide Abweichungsrichtungen für künftige Snapshots
-sichtbar.
+sichtbar. Fetch und Catalog-Sync-Guard behandeln solche Abweichungen zugleich
+für jeden Snapshot als Integritätsfehler; die exakten Zählwerte bleiben nur für
+den bekannten Snapshot zusätzlich gepinnt.
 
 ### Such-Text-Sammlung
 

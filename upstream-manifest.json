@@ -79,6 +79,14 @@
       "artifactKey": "namespaces-bsi",
       "rootType": "vocabulary",
       "lifecycle": "supported",
+      "path": "Dokumentation/namespaces/practices.csv",
+      "gitBlobSha": "4c4f3fdd834a89c1d97353a476b3b40ab06a9062",
+      "contentSha256": "e72a0938fe7d314d27a253dbd362d5f48a3035ec7c5fb037c1d756e95fe758a4"
+    },
+    {
+      "artifactKey": "namespaces-bsi",
+      "rootType": "vocabulary",
+      "lifecycle": "supported",
       "path": "Dokumentation/namespaces/result.csv",
       "gitBlobSha": "d8e4e9e736135cf131defbd69dea056b39a3c043",
       "contentSha256": "c37049bac11eab195725924e38f4da4bad809e58a2a4ab588fbebdc8f2e91186"
@@ -103,6 +111,14 @@
       "artifactKey": "namespaces-bsi",
       "rootType": "vocabulary",
       "lifecycle": "supported",
+      "path": "Dokumentation/namespaces/security_targets_levels.csv",
+      "gitBlobSha": "ec48913866f0fd0991aceeb891be710d879a353c",
+      "contentSha256": "7d649d507583c7f829e9e0260c17702ae02de90898b3594e4c4f672dabc6ce41"
+    },
+    {
+      "artifactKey": "namespaces-bsi",
+      "rootType": "vocabulary",
+      "lifecycle": "supported",
       "path": "Dokumentation/namespaces/tags.csv",
       "gitBlobSha": "a80d720d6b017305cf74887ef3d8976ca83c08c8",
       "contentSha256": "b3ddfb36ce0a8bbb29dc42070307accfb0dac74c2b7c4f4a034d58dff3c8beeb"
@@ -114,6 +130,14 @@
       "path": "Dokumentation/namespaces/target_object_categories.csv",
       "gitBlobSha": "e6f437c6b34dcc6705508ac7d6863f2e67f88ee7",
       "contentSha256": "b13aceb7817a534b2cac2320d9cd4bf02dc5767956528c0f59d61ccabd681a49"
+    },
+    {
+      "artifactKey": "namespaces-bsi",
+      "rootType": "vocabulary",
+      "lifecycle": "supported",
+      "path": "Dokumentation/namespaces/topics.csv",
+      "gitBlobSha": "702f23cbda22f460478652f00f9d5b6f46b675d7",
+      "contentSha256": "c4c0984d1e536d50829cf9c361dc9f90d7b0aec1b86eb52ab81eac1b276ec420"
     },
     {
       "artifactKey": "component-aws-iam",
@@ -220,5 +244,5 @@
       "contentSha256": "1f6e7615a79c780200083af2e85df0098dc0399eb3f6f1603e3bb5a9e59031e5"
     }
   ],
-  "signatureSha256": "6de483f6e8d437b14cdbf834e127bf617cfe773ff0b290adef8cc26e094420da"
+  "signatureSha256": "bd7db0913c960cf2b2a5d6410856eddeff6027045622a1f4241fbabc779fd624"
 }

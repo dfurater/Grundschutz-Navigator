@@ -36,6 +36,10 @@ const RESULT_NAMESPACE_URL =
   'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/result.csv';
 const ACTION_WORDS_NAMESPACE_URL =
   'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/action_words.csv';
+const TOPICS_NAMESPACE_PATH = 'Dokumentation/namespaces/topics.csv';
+const TOPIC_UUID = '22222222-2222-4222-8222-222222222222';
+const TOPICS_CSV =
+  `Begriff,Definition,UUID\nFixture,Fixture definition,${TOPIC_UUID}\n`;
 const OUTPUT_ARTIFACT_FILE_NAMES = [
   'catalog.json',
   'catalog-metadata.json',
@@ -187,25 +191,33 @@ function installSnapshotFetch({
 }
 
 function makeCatalogText(namespaceUrls: string[] = []) {
-  const groups = namespaceUrls.length === 0
+  const controls = namespaceUrls.length === 0
     ? []
     : [
         {
-          controls: [
-            {
-              id: 'CTRL.1',
-              props: [
-                { name: 'alt-identifier', value: '11111111-1111-4111-8111-111111111111' },
-                ...namespaceUrls.map((namespaceUrl, index) => ({
-                  name: `namespace-${index}`,
-                  value: `value-${index}`,
-                  ns: namespaceUrl,
-                })),
-              ],
-            },
+          id: 'CTRL.1',
+          props: [
+            { name: 'alt-identifier', value: '11111111-1111-4111-8111-111111111111' },
+            ...namespaceUrls.map((namespaceUrl, index) => ({
+              name: `namespace-${index}`,
+              value: `value-${index}`,
+              ns: namespaceUrl,
+            })),
           ],
         },
       ];
+  const groups = [
+    {
+      id: 'GC',
+      groups: [
+        {
+          id: 'GC.1',
+          props: [{ name: 'alt-identifier', value: TOPIC_UUID }],
+          controls,
+        },
+      ],
+    },
+  ];
 
   return `${JSON.stringify({
     catalog: {
@@ -222,12 +234,21 @@ function makeMinimalFetchInput(
     (path) => `https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/${path}`,
   ),
 ) {
+  const materializedNamespaceFiles = new Map(namespaceFiles);
+  if (!materializedNamespaceFiles.has(TOPICS_NAMESPACE_PATH)) {
+    materializedNamespaceFiles.set(TOPICS_NAMESPACE_PATH, TOPICS_CSV);
+  }
   const catalogText = makeCatalogText(catalogNamespaceUrls);
   const rawByPath = new Map<string, RawContents>([
     [OFFICIAL_CATALOG_PATH, catalogText],
-    ...namespaceFiles,
+    ...materializedNamespaceFiles,
   ]);
-  return { catalogText, rawByPath, treeResponse: makeTreeResponse(rawByPath) };
+  return {
+    catalogText,
+    namespaceFiles: materializedNamespaceFiles,
+    rawByPath,
+    treeResponse: makeTreeResponse(rawByPath),
+  };
 }
 
 function parseArtifactJson(
@@ -736,6 +757,7 @@ describe('fetch-catalog', () => {
     const materializedPaths = [
       'Dokumentation/namespaces/result.csv',
       unreferencedPath,
+      TOPICS_NAMESPACE_PATH,
     ];
 
     expect(vocabularies.namespaces.map((namespace) => namespace.source.path)).toEqual(
@@ -784,7 +806,7 @@ describe('fetch-catalog', () => {
         if (path === OFFICIAL_CATALOG_PATH) return responseWithContents(contents);
         return new Promise<Response>((resolve) => {
           pendingNamespaceResponses.push(() => resolve(responseWithContents(contents)));
-          if (pendingNamespaceResponses.length === namespaceFiles.size) {
+          if (pendingNamespaceResponses.length === input.namespaceFiles.size) {
             markBothNamespaceDownloadsStarted();
             pendingNamespaceResponses.forEach((release) => release());
           }
@@ -812,10 +834,12 @@ describe('fetch-catalog', () => {
     expect(vocabularies.namespaces.map((namespace) => namespace.source.path)).toEqual([
       'Dokumentation/namespaces/action_words.csv',
       'Dokumentation/namespaces/result.csv',
+      TOPICS_NAMESPACE_PATH,
     ]);
     expect(upstreamMetadata.files.map((file) => file.path)).toEqual([
       'Dokumentation/namespaces/action_words.csv',
       'Dokumentation/namespaces/result.csv',
+      TOPICS_NAMESPACE_PATH,
     ]);
     const vocabulariesArtifact = payload.artifacts.find(
       (artifact) => artifact.fileName === 'vocabularies.json',
@@ -825,7 +849,16 @@ describe('fetch-catalog', () => {
     expect(upstreamMetadata.integrity.size_bytes).toBe(vocabulariesBuffer.length);
     expect(upstreamMetadata.manifest.schemaVersion).toBe(2);
     expect(upstreamMetadata.manifest.signatureSha256).toMatch(/^[0-9a-f]{64}$/);
-    expect(upstreamMetadata.taxonomyCoverage).toEqual({ topics: null });
+    expect(upstreamMetadata.taxonomyCoverage.topics).toMatchObject({
+      catalogTopicCount: 1,
+      distinctCatalogUuidCount: 1,
+      csvEntryCount: 1,
+      matchedCatalogTopicCount: 1,
+      unmatchedCatalogTopicCount: 0,
+      orphanCsvEntryCount: 0,
+      missingCatalogUuidCount: 0,
+      duplicateCsvUuidCount: 0,
+    });
   });
 
   it('validates the full registry without shipping extra artifacts or fetching unclassified paths', async () => {
@@ -843,6 +876,7 @@ describe('fetch-catalog', () => {
       );
     }
     rawByPath.set(namespacePath, 'Ergebnis,Definition\nVerfahren,Ein Verfahren\n');
+    rawByPath.set(TOPICS_NAMESPACE_PATH, TOPICS_CSV);
     const unclassifiedContents = '{"catalog":{"uuid":"unclassified"}}\n';
     const treeResponse = makeTreeResponse(rawByPath, [
       makeTreeEntry(unclassifiedPath, unclassifiedContents),
@@ -864,7 +898,7 @@ describe('fetch-catalog', () => {
     expect(requestedUrls).not.toContain(rawUrl(unclassifiedPath));
     const manifest = parseArtifactJson(payload, 'upstream-sources-metadata.json').manifest;
     expect(manifest.files).toHaveLength(
-      SOURCE_REGISTRY.filter((entry) => entry.kind === 'oscal').length + 1,
+      SOURCE_REGISTRY.filter((entry) => entry.kind === 'oscal').length + 2,
     );
     expect(manifest.files.some((file) => file.path === unclassifiedPath)).toBe(false);
   });

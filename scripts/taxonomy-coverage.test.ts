@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   analyzeTopicVocabularyCoverage,
-  assertPinnedTopicCoverage,
+  assertTopicVocabularyCoverage,
 } from './taxonomy-coverage.mjs';
 
 const PINNED_SHA = '12abb438fcdb4f4b63fb3e751e89d7c526e647b5';
+const FUTURE_SHA = 'f'.repeat(40);
 
 function makeCoverageFixture() {
   const entries = Array.from({ length: 119 }, (_, index) => ({
@@ -43,7 +44,7 @@ describe('topic taxonomy coverage', () => {
       missingCatalogUuidCount: 0,
       duplicateCsvUuidCount: 0,
     });
-    expect(() => assertPinnedTopicCoverage(PINNED_SHA, coverage)).not.toThrow();
+    expect(() => assertTopicVocabularyCoverage(PINNED_SHA, coverage)).not.toThrow();
   });
 
   it('reports both mismatch directions and rejects drift on the pinned snapshot', () => {
@@ -63,8 +64,24 @@ describe('topic taxonomy coverage', () => {
       value: 'Thema 118',
       uuid: 'uuid-orphan',
     });
-    expect(() => assertPinnedTopicCoverage(PINNED_SHA, coverage)).toThrow(
+    expect(() => assertTopicVocabularyCoverage(PINNED_SHA, coverage)).toThrow(
       'Topic-Coverage',
+    );
+  });
+
+  it('rejects bidirectional UUID drift on every future snapshot', () => {
+    const fixture = makeCoverageFixture();
+    fixture.namespace.entries[118].columns.UUID = 'uuid-orphan';
+    const coverage = analyzeTopicVocabularyCoverage(
+      fixture.catalog,
+      fixture.namespace,
+    );
+
+    expect(() => assertTopicVocabularyCoverage(FUTURE_SHA, coverage)).toThrow(
+      'Topic-Coverage',
+    );
+    expect(() => assertTopicVocabularyCoverage(FUTURE_SHA, null)).toThrow(
+      'topics.csv fehlt',
     );
   });
 });

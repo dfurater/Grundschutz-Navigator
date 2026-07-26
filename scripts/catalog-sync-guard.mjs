@@ -11,10 +11,14 @@ import {
   assertRegisteredUpstreamRepoPath,
 } from './security-guards.mjs';
 import {
+  buildVocabularyNamespaceData,
   extractReferencedNamespaceUrls,
   materializeVocabularyCollectionMembers,
-  parseVocabularyCsv,
 } from './vocabulary-utils.mjs';
+import {
+  analyzeTopicVocabularyCoverage,
+  assertTopicVocabularyCoverage,
+} from './taxonomy-coverage.mjs';
 import {
   MONITORED_UPSTREAM_ROOTS,
   SOURCE_REGISTRY,
@@ -247,8 +251,13 @@ export async function verifySnapshotFiles(manifest, {
     }
 
     if (file.rootType === 'vocabulary') {
-      parseVocabularyCsv(contents.toString('utf8'));
-      return null;
+      return buildVocabularyNamespaceData({
+        namespaceUrl: `${OFFICIAL_BSI_REPOSITORY_URL}/tree/main/${file.path}`,
+        repository: OFFICIAL_BSI_REPO,
+        path: file.path,
+        gitBlobSha: file.gitBlobSha,
+        csvText: contents.toString('utf8'),
+      });
     }
 
     const artifact = validateFetchedOscalArtifact(contents, file.rootType);
@@ -292,10 +301,24 @@ export async function verifySnapshotFiles(manifest, {
     throw new Error('Manifest namespace inventory does not match the registered direct CSV directory');
   }
 
-  await Promise.all(
+  const validatedArtifacts = await Promise.all(
     manifest.files
       .filter((file) => file.path !== SUPPORTED_CATALOG.upstreamPath)
-      .map((file) => fetchAndValidateArtifact(file)),
+      .map(async (file) => ({
+        file,
+        artifact: await fetchAndValidateArtifact(file),
+      })),
+  );
+  const topicsPath = `${vocabularyCollection.upstreamDirectory}/topics.csv`;
+  const topicsNamespace = validatedArtifacts.find(
+    ({ file }) => file.path === topicsPath,
+  )?.artifact;
+  const topicCoverage = topicsNamespace
+    ? analyzeTopicVocabularyCoverage(catalogDocument, topicsNamespace)
+    : null;
+  assertTopicVocabularyCoverage(
+    manifest.snapshotCommitSha,
+    topicCoverage,
   );
 }
 
