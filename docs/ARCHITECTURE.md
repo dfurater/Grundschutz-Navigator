@@ -226,7 +226,8 @@ und sind dadurch ohne Router oder Katalogprovider isoliert testbar.
 | `useGuidanceOverflow` | Besitzt Expansion, Overflow-Messung, `ResizeObserver`, Window-Fallback und symmetrisches Listener-/Observer-Cleanup. |
 | `ControlClassification` | Rendert Kriterien und bindet `ControlTaxonomy` an der fachlich festgelegten GRU-140-Position ein. |
 | `ControlTaxonomy` | Rendert Tags und Zielobjektkategorien einschließlich optionaler Vokabularinteraktion. |
-| `ControlSecurityContext` | Rendert Schutzzielrelevanzen und elementare Gefährdungen. |
+| `ControlSecurityContext` | Rendert die Sektion „Schutzziele und Gefährdungen": delegiert die Schutzziele an `ControlSecurityTargets` und rendert die elementaren Gefährdungen als `Begriff (ID)`, alphabetisch nach Anzeigename sortiert. |
+| `ControlSecurityTargets` | Rendert die vier Schutzziele als Tabelle mit `sr-only`-Spaltenkopf „Schutzziel", sichtbarem Spaltenkopf „Relevanz" und der Relevanz als zweistufige Punkte-Skala; Schutzziel- und Relevanz-Trigger bleiben unabhängig aufklappbar. |
 | `ControlStatement` | Rendert den Anforderungstext. |
 | `ControlStatementDetails` | Rendert Ergebnis, Präzisierung, Handlungswort und Dokumentation mit korrekter `dl`-Semantik. |
 | `ControlGuidance` | Rendert die kontrollierte, bei Bedarf aufklappbare Guidance; Messung und State liegen im Hook. |
@@ -236,9 +237,11 @@ und sind dadurch ohne Router oder Katalogprovider isoliert testbar.
 
 Die Sektionsmodule erhalten ausschließlich benötigte Controls, aufgelöste
 Vokabularwerte und Callbacks. Sie verwenden weder Katalog-, Router- noch
-Filterkontext. Reihenfolge, Überschriften, ARIA-Ziele und
-`dl`/`dt`/`dd`-Semantik sind Verträge der Kontrollansicht und werden durch
-Integrationstests abgesichert.
+Filterkontext. Reihenfolge, Überschriften, ARIA-Ziele sowie die
+`dl`/`dt`/`dd`- bzw. Tabellensemantik sind Verträge der Kontrollansicht und
+werden durch Integrationstests abgesichert. Der Render-Callback für
+Vokabelkarten nimmt optional `hiddenColumns` entgegen, damit eine Sektion
+Spalten ausblenden kann, deren Wert sie bereits selbst sichtbar macht.
 
 ## Filter-System
 

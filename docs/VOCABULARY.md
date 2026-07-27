@@ -376,6 +376,17 @@ Detailseite für einen Namespace:
 - Definition und weitere nichtleere Spalten werden für den aktiven Eintrag mit `InlineVocabularyEntryDetails` direkt unter der Listenzeile eingeblendet, ohne Breitenbeschränkung (nutzt die volle Kartenbreite)
 - Reihenfolge der Zusatzspalten folgt `columnOrder`
 
+## Darstellungskonventionen im Vergleich
+
+Für Namespaces mit eigener `Begriff`-Spalte neben der ID (`basethreats.csv`) gelten bewusst zwei unterschiedliche Konventionen:
+
+| Ort | Darstellung | Begründung |
+|---|---|---|
+| Vokabular-Listenansicht (`/vokabular/:namespaceId`) | `G 0.1 Feuer` — ID zuerst | Die ID ist dort Sortier- und Nachschlageschlüssel |
+| Control-Detailansicht (`ControlSecurityContext`) | `Feuer (G 0.1)` — Begriff zuerst | Dort zählt die inhaltliche Aussage; aus der ID allein ist die Gefährdung nicht erkennbar |
+
+Die Divergenz ist gewollt und wird nicht angeglichen. In der Control-Detailansicht blendet die aufgeklappte Vokabelkarte die dort redundante Spalte `Begriff` sowie die technische Spalte `uuid` über `hiddenColumns` aus; die Vokabularseiten zeigen weiterhin alle Originalspalten. Dasselbe kontextbezogene Muster gilt für das Praktik-Vokabular im Breadcrumb: `Begriff` wird nur ausgeblendet, wenn der Wert exakt dem angezeigten Praktik-Namen entspricht.
+
 ## Siehe auch
 
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — Gesamtarchitektur

@@ -277,16 +277,38 @@ export function createTestVocabularyRegistry() {
         path: 'namespaces/basethreats.csv',
         fileName: 'basethreats.csv',
         routeId: 'basethreats',
+        // Wie im echten Artefakt: die ID ist der Lookup-Wert, `Begriff` trägt den Namen.
+        valueColumn: 'ID',
+        extraColumns: ['Begriff', 'uuid'],
         entries: [
           {
             value: 'G 0.18',
             definition: 'Fehlplanung oder fehlende Anpassung von Prozessen.',
-            columns: { Begriff: 'G 0.18', Definition: 'Fehlplanung oder fehlende Anpassung von Prozessen.' },
+            columns: {
+              ID: 'G 0.18',
+              Begriff: 'Fehlplanung oder fehlende Anpassung',
+              Definition: 'Fehlplanung oder fehlende Anpassung von Prozessen.',
+              uuid: 'uuid-threat-g-0-18',
+            },
           },
           {
             value: 'G 0.19',
             definition: 'Offenlegung schützenswerter Informationen.',
-            columns: { Begriff: 'G 0.19', Definition: 'Offenlegung schützenswerter Informationen.' },
+            columns: {
+              ID: 'G 0.19',
+              Begriff: 'Offenlegung schützenswerter Informationen',
+              Definition: 'Offenlegung schützenswerter Informationen.',
+              uuid: 'uuid-threat-g-0-19',
+            },
+          },
+          {
+            value: 'G 0.20',
+            definition: 'Gefährdung ohne hinterlegten Begriff.',
+            columns: {
+              ID: 'G 0.20',
+              Definition: 'Gefährdung ohne hinterlegten Begriff.',
+              uuid: 'uuid-threat-g-0-20',
+            },
           },
         ],
       }),

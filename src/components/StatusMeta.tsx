@@ -69,6 +69,37 @@ const EFFORT_DOT_VARS = [
   'var(--color-effort-dot-5)',
 ];
 
+/** Höchste Relevanzstufe eines Schutzziels laut `security_targets_levels.csv`. */
+export const RELEVANCE_SCALE_MAX = 2;
+
+export interface RelevanceScaleProps {
+  value: number;
+}
+
+/**
+ * Punkte-Skala für die Schutzziel-Relevanz. Die Punkte sind rein visuell; die
+ * fachliche Bedeutung trägt der umgebende Trigger über `aria-label` und `title`.
+ */
+export function RelevanceScale({ value }: RelevanceScaleProps) {
+  return (
+    <span className="flex h-[1.625em] items-center gap-0.5">
+      {Array.from({ length: RELEVANCE_SCALE_MAX }, (_, index) => (
+        <span
+          key={index}
+          aria-hidden="true"
+          className="inline-block h-2 w-2 rounded-full border border-slate-200"
+          style={{
+            backgroundColor:
+              index < value
+                ? 'var(--color-relevance-dot)'
+                : 'var(--color-relevance-track)',
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+
 export function EffortBadge({ value, className = '', trailingIcon }: StatusBadgeProps) {
   if (value == null || value === '') return null;
 

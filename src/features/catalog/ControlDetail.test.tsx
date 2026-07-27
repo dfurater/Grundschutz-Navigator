@@ -193,11 +193,17 @@ describe('ControlDetail', () => {
 
     await user.click(practice);
 
+    const practiceCard = document.getElementById('vocab-card-practice')!;
     expect(screen.getByText('Offizielle Praktik-Definition.')).toBeInTheDocument();
     expect(screen.getByText('Methodik')).toBeInTheDocument();
     expect(screen.getByText('Corporate Governance')).toBeInTheDocument();
     expect(screen.queryByText('uuid-practice-1')).not.toBeInTheDocument();
     expect(screen.queryByText('Nummerierung')).not.toBeInTheDocument();
+    // GRU-301: Der offizielle Begriff steht bereits im Breadcrumb.
+    expect(within(practiceCard).queryByText('Begriff')).not.toBeInTheDocument();
+    expect(within(practiceCard).getByText('Schwerpunkt').tagName).toBe('DT');
+    expect(within(practiceCard).getByRole('link', { name: 'Zu den Vokabularen →' }))
+      .toHaveAttribute('href', '/vokabular/dokumentation-namespaces-practices?wert=GC');
 
     const topic = screen.getByRole('button', { name: 'Thema: Organisation' });
     await user.click(topic);
@@ -206,6 +212,102 @@ describe('ControlDetail', () => {
     expect(practice).toHaveAttribute('aria-expanded', 'false');
     expect(topic).toHaveAttribute('aria-expanded', 'true');
     expect(screen.queryByText('uuid-topic-1')).not.toBeInTheDocument();
+  });
+
+  it('keeps the practice term visible when it differs from the breadcrumb name', async () => {
+    const user = userEvent.setup();
+    const state = makeCatalogState();
+    state.catalog!.practices = [{
+      id: 'GC',
+      title: 'Governance & Compliance (Katalogtitel)',
+      label: 'GC',
+      altIdentifier: 'uuid-practice-1',
+      topics: [{
+        id: 'GC.2',
+        title: 'Organisation',
+        label: '2',
+        altIdentifier: 'uuid-topic-1',
+        practiceId: 'GC',
+        controlCount: 1,
+        controlIds: ['GC.2.2'],
+      }],
+      controlCount: 1,
+    }];
+    mockedUseCatalog.mockReturnValue(state);
+
+    render(
+      <MemoryRouter>
+        <ControlDetail control={makeControl()} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole('button', {
+      name: 'Praktik: Governance & Compliance (Katalogtitel)',
+    }));
+
+    const practiceCard = document.getElementById('vocab-card-practice')!;
+    expect(within(practiceCard).getByText('Begriff').tagName).toBe('DT');
+    expect(within(practiceCard).getByText('Governance und Compliance')).toBeInTheDocument();
+    expect(within(practiceCard).queryByText('uuid-practice-1')).not.toBeInTheDocument();
+    expect(within(practiceCard).queryByText('Nummerierung')).not.toBeInTheDocument();
+  });
+
+  it('hides the redundant term and technical uuid inside an expanded threat card', async () => {
+    const user = userEvent.setup();
+    const control = makeControl({
+      threats: ['G 0.18'],
+      threatsProp: {
+        name: 'threats',
+        value: 'G 0.18',
+        ns: 'https://example.com/namespaces/basethreats.csv',
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <ControlDetail control={control} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole('button', {
+      name: 'Elementare Gefährdung: Fehlplanung oder fehlende Anpassung (G 0.18)',
+    }));
+
+    const threatCard = document.getElementById('vocab-card-threat-G-0-18-0')!;
+    expect(within(threatCard).getByText('Fehlplanung oder fehlende Anpassung von Prozessen.'))
+      .toBeInTheDocument();
+    expect(within(threatCard).queryByText('Begriff')).not.toBeInTheDocument();
+    expect(within(threatCard).queryByText('uuid')).not.toBeInTheDocument();
+    expect(within(threatCard).queryByText('uuid-threat-g-0-18')).not.toBeInTheDocument();
+    expect(within(threatCard).getByRole('link', { name: 'Zu den Vokabularen →' }))
+      .toHaveAttribute('href', '/vokabular/basethreats?wert=G%200.18');
+  });
+
+  it('falls back to the plain ID when a resolved threat has no term', async () => {
+    const user = userEvent.setup();
+    const control = makeControl({
+      threats: ['G 0.20'],
+      threatsProp: {
+        name: 'threats',
+        value: 'G 0.20',
+        ns: 'https://example.com/namespaces/basethreats.csv',
+      },
+    });
+
+    render(
+      <MemoryRouter>
+        <ControlDetail control={control} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+
+    const trigger = screen.getByRole('button', { name: 'Elementare Gefährdung: G 0.20' });
+    expect(trigger).toHaveTextContent('G 0.20');
+    await user.click(trigger);
+
+    const threatCard = document.getElementById('vocab-card-threat-G-0-20-0')!;
+    expect(within(threatCard).getByText('Gefährdung ohne hinterlegten Begriff.'))
+      .toBeInTheDocument();
+    expect(within(threatCard).queryByText('uuid')).not.toBeInTheDocument();
   });
 
   it('shows a diagnostic for a catalog topic without an official CSV definition', () => {
@@ -366,13 +468,17 @@ describe('ControlDetail', () => {
     expect(screen.getByText('Integrität')).toBeInTheDocument();
     expect(screen.getByText('Verfügbarkeit')).toBeInTheDocument();
     expect(screen.getByText('Authentizität')).toBeInTheDocument();
-    expect(screen.getAllByText(/^Relevanz: [0-2]$/)).toHaveLength(4);
+    expect(screen.getAllByRole('rowheader')).toHaveLength(4);
+    expect(screen.getAllByText('Relevanz')).toHaveLength(1);
+    expect(screen.queryByText(/^Relevanz: [0-2]$/)).not.toBeInTheDocument();
 
     const confidentiality = screen.getByRole('button', { name: 'Schutzziel: Vertraulichkeit' });
     const confidentialityLevel = screen.getByRole('button', {
       name: 'Relevanz Vertraulichkeit: 2',
     });
-    const threat = screen.getByRole('button', { name: 'Elementare Gefährdung: G 0.18' });
+    const threat = screen.getByRole('button', {
+      name: 'Elementare Gefährdung: Fehlplanung oder fehlende Anpassung (G 0.18)',
+    });
     expect(confidentiality).toHaveAttribute('aria-expanded', 'false');
     expect(confidentialityLevel).toHaveAttribute('aria-expanded', 'false');
     expect(threat).toHaveAttribute('aria-expanded', 'false');
@@ -417,7 +523,8 @@ describe('ControlDetail', () => {
     );
 
     expect(screen.getByText('Integrität')).toBeInTheDocument();
-    expect(screen.getByText('Relevanz: 1')).toBeInTheDocument();
+    expect(screen.getByRole('rowheader', { name: 'Integrität' }).closest('tr'))
+      .toHaveTextContent('1');
     expect(screen.getByText('G 0.99')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Elementare Gefährdung: G 0.99' })).not.toBeInTheDocument();
     expect(screen.queryByText('Vertraulichkeit')).not.toBeInTheDocument();
@@ -444,9 +551,15 @@ describe('ControlDetail', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText('G 0.18')).toBeInTheDocument();
+    expect(screen.getByText('Fehlplanung oder fehlende Anpassung (G 0.18)'))
+      .toBeInTheDocument();
     expect(screen.getByText('Vertraulichkeit')).toBeInTheDocument();
-    expect(screen.getByText('Relevanz: 3')).toBeInTheDocument();
+    const confidentialityRow = screen
+      .getByRole('rowheader', { name: 'Vertraulichkeit' })
+      .closest('tr');
+    expect(confidentialityRow).toHaveTextContent('3');
+    expect(confidentialityRow?.querySelectorAll('span[aria-hidden="true"]'))
+      .toHaveLength(0);
     expect(screen.getByText('Keine offizielle Definition für diese Relevanzstufe verfügbar.'))
       .toBeInTheDocument();
     expect(screen.queryByRole('button', {
@@ -481,7 +594,7 @@ describe('ControlDetail', () => {
     );
 
     await user.click(screen.getByRole('button', {
-      name: 'Elementare Gefährdung: G 0.18',
+      name: 'Elementare Gefährdung: Fehlplanung oder fehlende Anpassung (G 0.18)',
     }));
     expect(screen.getByText('Fehlplanung oder fehlende Anpassung von Prozessen.')).toBeInTheDocument();
 
@@ -492,7 +605,7 @@ describe('ControlDetail', () => {
     );
 
     expect(screen.getByRole('button', {
-      name: 'Elementare Gefährdung: G 0.18',
+      name: 'Elementare Gefährdung: Fehlplanung oder fehlende Anpassung (G 0.18)',
     })).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText('Fehlplanung oder fehlende Anpassung von Prozessen.')).not.toBeInTheDocument();
   });
