@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   computeManifestSignature,
   guardCatalogSyncPullRequest,
+  isApprovedLayerStructureMigration,
   isApprovedVocabularyCollectionMigration,
   parseNameStatusDiff,
   validateCatalogSyncManifest,
@@ -481,6 +482,42 @@ describe('catalog sync PR shape', () => {
       previousManifest,
       { ...nextManifest, snapshotCommitSha: NEW_SHA },
     )).toBe(false);
+  });
+
+  it('recognizes only the exact approved layer-structure migration', () => {
+    const previousManifest = {
+      snapshotCommitSha: '12abb438fcdb4f4b63fb3e751e89d7c526e647b5',
+      signatureSha256: 'bd7db0913c960cf2b2a5d6410856eddeff6027045622a1f4241fbabc779fd624',
+    };
+    const nextManifest = {
+      snapshotCommitSha: 'cea4589c2b8337207772a88dd82d808cba5e1d89',
+      signatureSha256: '6f5d20990b3859f1b0a611aa1816bc638d1ed293823b84c4fa1cddb9b1c523d2',
+    };
+
+    expect(isApprovedLayerStructureMigration(previousManifest, nextManifest)).toBe(true);
+    // Jede Abweichung an Snapshot oder Signatur beendet die Ausnahme.
+    expect(isApprovedLayerStructureMigration(
+      previousManifest,
+      { ...nextManifest, signatureSha256: 'f'.repeat(64) },
+    )).toBe(false);
+    expect(isApprovedLayerStructureMigration(
+      previousManifest,
+      { ...nextManifest, snapshotCommitSha: NEW_SHA },
+    )).toBe(false);
+    expect(isApprovedLayerStructureMigration(
+      { ...previousManifest, signatureSha256: 'a'.repeat(64) },
+      nextManifest,
+    )).toBe(false);
+    expect(isApprovedLayerStructureMigration(
+      { ...previousManifest, snapshotCommitSha: OLD_SHA },
+      nextManifest,
+    )).toBe(false);
+    // Ein späterer Snapshot fällt wieder unter den vollen Lane-Vertrag.
+    expect(isApprovedLayerStructureMigration(nextManifest, {
+      snapshotCommitSha: NEW_SHA,
+      signatureSha256: 'b'.repeat(64),
+    })).toBe(false);
+    expect(isApprovedLayerStructureMigration(undefined, undefined)).toBe(false);
   });
 
   it('rejects an invalid branch', () => {

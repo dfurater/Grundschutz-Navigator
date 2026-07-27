@@ -55,6 +55,29 @@ const VOCABULARY_COLLECTION_MIGRATION = Object.freeze({
     'bd7db0913c960cf2b2a5d6410856eddeff6027045622a1f4241fbabc779fd624',
 });
 
+/**
+ * Einmaliger Strukturübergang zur BSI-Layer-Architektur (BSI-PR #63, GRU-304).
+ *
+ * Anders als ein gewöhnlicher Snapshot-Wechsel ändert dieser Übergang zugleich
+ * jeden registrierten Upstream-Pfad. Registry und gepinnter Snapshot müssen
+ * deshalb im selben Commit umgestellt werden: Ein Sync-PR mit ausschließlich
+ * upstream-manifest.json würde gegen die alte Registry geprüft, ein Code-PR
+ * ohne Manifest-Update ließe den `validate`-Job mit dem alten Snapshot gegen
+ * die neuen Pfade fetchen.
+ *
+ * Die Ausnahme ist an beide Signaturen gebunden und gilt damit für genau
+ * diesen einen Übergang. Jeder andere PR, der das Manifest anfasst, muss den
+ * vollständigen Sync-Lane-Vertrag erfüllen.
+ */
+const LAYER_STRUCTURE_MIGRATION = Object.freeze({
+  previousSnapshotCommitSha: '12abb438fcdb4f4b63fb3e751e89d7c526e647b5',
+  nextSnapshotCommitSha: 'cea4589c2b8337207772a88dd82d808cba5e1d89',
+  previousSignatureSha256:
+    'bd7db0913c960cf2b2a5d6410856eddeff6027045622a1f4241fbabc779fd624',
+  nextSignatureSha256:
+    '6f5d20990b3859f1b0a611aa1816bc638d1ed293823b84c4fa1cddb9b1c523d2',
+});
+
 export function computeManifestSignature(manifest) {
   return computeV2ManifestSignature(manifest);
 }
@@ -135,6 +158,22 @@ export function isCatalogSyncCandidate({ branch, title, diffEntries }) {
     branch.startsWith('chore/catalog-sync-') ||
     title.startsWith(SYNC_TITLE_PREFIX) ||
     diffEntries.some((entry) => entry.path === TRACKED_MANIFEST_PATH)
+  );
+}
+
+export function isApprovedLayerStructureMigration(
+  previousManifest,
+  nextManifest,
+) {
+  return (
+    previousManifest?.snapshotCommitSha ===
+      LAYER_STRUCTURE_MIGRATION.previousSnapshotCommitSha &&
+    nextManifest?.snapshotCommitSha ===
+      LAYER_STRUCTURE_MIGRATION.nextSnapshotCommitSha &&
+    previousManifest?.signatureSha256 ===
+      LAYER_STRUCTURE_MIGRATION.previousSignatureSha256 &&
+    nextManifest?.signatureSha256 ===
+      LAYER_STRUCTURE_MIGRATION.nextSignatureSha256
   );
 }
 
@@ -373,7 +412,11 @@ export async function guardCatalogSyncPullRequest({
 
   const isVocabularyCollectionMigration =
     isApprovedVocabularyCollectionMigration(previousManifest, nextManifest);
-  if (!isVocabularyCollectionMigration) {
+  const isLayerStructureMigration =
+    isApprovedLayerStructureMigration(previousManifest, nextManifest);
+  const isPinnedStructuralMigration =
+    isVocabularyCollectionMigration || isLayerStructureMigration;
+  if (!isPinnedStructuralMigration) {
     validateCatalogSyncPullRequest({ branch, title, diffEntries });
   }
   const isLegacyMigration = isApprovedLegacyV1Manifest(previousManifest);
@@ -385,7 +428,7 @@ export async function guardCatalogSyncPullRequest({
   }
   validateCatalogSyncManifest(nextManifest);
   const expectedBranch = `chore/catalog-sync-${nextManifest.snapshotCommitSha.slice(0, 12)}`;
-  if (!isVocabularyCollectionMigration && branch !== expectedBranch) {
+  if (!isPinnedStructuralMigration && branch !== expectedBranch) {
     throw new Error(`Catalog sync branch must match the new snapshot: ${expectedBranch}`);
   }
   const isSameSnapshotLegacyMigration =
