@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   computeManifestSignature,
   guardCatalogSyncPullRequest,
+  isApprovedLayerStructureMigration,
   isApprovedVocabularyCollectionMigration,
   parseNameStatusDiff,
   validateCatalogSyncManifest,
@@ -16,21 +17,22 @@ import {
 } from '../src/domain/sourceRegistry.mjs';
 import { buildUpstreamManifest } from './upstream-artifacts.mjs';
 import {
+  LEGACY_V1_MIGRATION_CATALOG_PATH,
   LEGACY_V1_MIGRATION_SIGNATURE,
   LEGACY_V1_MIGRATION_SNAPSHOT,
 } from './sync-upstream-manifest.mjs';
 
 const OLD_SHA = '1'.repeat(40);
 const NEW_SHA = '2'.repeat(40);
-const RESULT_NAMESPACE_PATH = 'Dokumentation/namespaces/result.csv';
+const RESULT_NAMESPACE_PATH = 'documentation/namespaces/result.csv';
 const RESULT_NAMESPACE_URL = `${OFFICIAL_BSI_REPOSITORY_URL}/tree/main/${RESULT_NAMESPACE_PATH}`;
 const UNREFERENCED_NAMESPACE_PATH =
-  'Dokumentation/namespaces/security_targets_levels.csv';
-const PRACTICES_NAMESPACE_PATH = 'Dokumentation/namespaces/practices.csv';
+  'documentation/namespaces/security_targets_levels.csv';
+const PRACTICES_NAMESPACE_PATH = 'documentation/namespaces/practices.csv';
 const PRACTICE_ALT_IDENTIFIER = '33333333-3333-4333-8333-333333333333';
-const TOPICS_NAMESPACE_PATH = 'Dokumentation/namespaces/topics.csv';
+const TOPICS_NAMESPACE_PATH = 'documentation/namespaces/topics.csv';
 const TOPIC_ALT_IDENTIFIER = '22222222-2222-4222-8222-222222222222';
-const UNCLASSIFIED_PATH = 'Quellkataloge/Kernel/unclassified.csv';
+const UNCLASSIFIED_PATH = 'control_layer/Kernel/unclassified.csv';
 
 interface ManifestFile {
   artifactKey: string;
@@ -304,7 +306,7 @@ function approvedLegacyManifest() {
   return {
     repository: OFFICIAL_BSI_REPOSITORY_URL,
     snapshotCommitSha: LEGACY_V1_MIGRATION_SNAPSHOT,
-    catalogPath: SUPPORTED_CATALOG.upstreamPath,
+    catalogPath: LEGACY_V1_MIGRATION_CATALOG_PATH,
     files: [
       {
         kind: 'catalog',
@@ -438,7 +440,7 @@ describe('validateCatalogSyncManifest v2', () => {
         artifactKey: 'unclassified-fixture',
         rootType: 'catalog',
         lifecycle: 'preview',
-        path: 'Quellkataloge/Kernel/unclassified.json',
+        path: 'control_layer/Kernel/unclassified.json',
         gitBlobSha: 'a'.repeat(40),
         contentSha256: 'b'.repeat(64),
       },
@@ -480,6 +482,42 @@ describe('catalog sync PR shape', () => {
       previousManifest,
       { ...nextManifest, snapshotCommitSha: NEW_SHA },
     )).toBe(false);
+  });
+
+  it('recognizes only the exact approved layer-structure migration', () => {
+    const previousManifest = {
+      snapshotCommitSha: '12abb438fcdb4f4b63fb3e751e89d7c526e647b5',
+      signatureSha256: 'bd7db0913c960cf2b2a5d6410856eddeff6027045622a1f4241fbabc779fd624',
+    };
+    const nextManifest = {
+      snapshotCommitSha: 'cea4589c2b8337207772a88dd82d808cba5e1d89',
+      signatureSha256: '6f5d20990b3859f1b0a611aa1816bc638d1ed293823b84c4fa1cddb9b1c523d2',
+    };
+
+    expect(isApprovedLayerStructureMigration(previousManifest, nextManifest)).toBe(true);
+    // Jede Abweichung an Snapshot oder Signatur beendet die Ausnahme.
+    expect(isApprovedLayerStructureMigration(
+      previousManifest,
+      { ...nextManifest, signatureSha256: 'f'.repeat(64) },
+    )).toBe(false);
+    expect(isApprovedLayerStructureMigration(
+      previousManifest,
+      { ...nextManifest, snapshotCommitSha: NEW_SHA },
+    )).toBe(false);
+    expect(isApprovedLayerStructureMigration(
+      { ...previousManifest, signatureSha256: 'a'.repeat(64) },
+      nextManifest,
+    )).toBe(false);
+    expect(isApprovedLayerStructureMigration(
+      { ...previousManifest, snapshotCommitSha: OLD_SHA },
+      nextManifest,
+    )).toBe(false);
+    // Ein späterer Snapshot fällt wieder unter den vollen Lane-Vertrag.
+    expect(isApprovedLayerStructureMigration(nextManifest, {
+      snapshotCommitSha: NEW_SHA,
+      signatureSha256: 'b'.repeat(64),
+    })).toBe(false);
+    expect(isApprovedLayerStructureMigration(undefined, undefined)).toBe(false);
   });
 
   it('rejects an invalid branch', () => {

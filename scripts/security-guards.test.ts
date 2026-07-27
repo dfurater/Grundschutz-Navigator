@@ -20,8 +20,8 @@ describe('security-guards', () => {
     expect(OFFICIAL_BSI_REPOSITORY_URL).toBe(
       'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
     );
-    expect(OFFICIAL_CATALOG_PATH).toBe('Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json');
-    expect(OFFICIAL_NAMESPACE_DIRECTORY).toBe('Dokumentation/namespaces');
+    expect(OFFICIAL_CATALOG_PATH).toBe('control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json');
+    expect(OFFICIAL_NAMESPACE_DIRECTORY).toBe('documentation/namespaces');
   });
 
   it('normalizes only the official BSI repository slug or exact URL', () => {
@@ -47,13 +47,13 @@ describe('security-guards', () => {
   });
 
   it('allows direct namespace CSV files only', () => {
-    expect(assertAllowedUpstreamRepoPath('Dokumentation/namespaces/tags.csv')).toBe(
-      'Dokumentation/namespaces/tags.csv',
+    expect(assertAllowedUpstreamRepoPath('documentation/namespaces/tags.csv')).toBe(
+      'documentation/namespaces/tags.csv',
     );
-    expect(() => assertAllowedUpstreamRepoPath('Dokumentation/namespaces/nested/tags.csv')).toThrow(
+    expect(() => assertAllowedUpstreamRepoPath('documentation/namespaces/nested/tags.csv')).toThrow(
       'outside the allowed BSI contract',
     );
-    expect(() => assertAllowedUpstreamRepoPath('Dokumentation/namespaces/readme.md')).toThrow(
+    expect(() => assertAllowedUpstreamRepoPath('documentation/namespaces/readme.md')).toThrow(
       'outside the allowed BSI contract',
     );
   });
@@ -61,27 +61,27 @@ describe('security-guards', () => {
   it('rejects registered preview artifacts for fetching', () => {
     expect(() =>
       assertAllowedUpstreamRepoPath(
-        'Anwenderkataloge/Lieferkettensicherheit/Lieferkettensicherheit-catalog.json',
+        'control_layer/Lieferkettensicherheit/Lieferkettensicherheit-resolved_catalog.json',
       ),
     ).toThrow('outside the allowed BSI contract');
     expect(() =>
-      assertAllowedUpstreamRepoPath('Quellkataloge/WLAN/WLAN-profile.json'),
+      assertAllowedUpstreamRepoPath('control_layer/WLAN/sources/profiles/WLAN-profile.json'),
     ).toThrow('outside the allowed BSI contract');
   });
 
   it('allows exact preview OSCAL paths for read-only registry inspection', () => {
     const previewCatalog =
-      'Anwenderkataloge/Lieferkettensicherheit/Lieferkettensicherheit-catalog.json';
-    const previewProfile = 'Quellkataloge/WLAN/WLAN-profile.json';
+      'control_layer/Lieferkettensicherheit/Lieferkettensicherheit-resolved_catalog.json';
+    const previewProfile = 'control_layer/WLAN/sources/profiles/WLAN-profile.json';
 
     expect(assertRegisteredUpstreamRepoPath(previewCatalog)).toBe(previewCatalog);
     expect(assertRegisteredUpstreamRepoPath(previewProfile)).toBe(previewProfile);
   });
 
   it('requires explicit materialization before inspecting a vocabulary member', () => {
-    const materializedNamespacePath = 'Dokumentation/namespaces/tags.csv';
+    const materializedNamespacePath = 'documentation/namespaces/tags.csv';
     const unmaterializedNamespacePath =
-      'Dokumentation/namespaces/security_targets_levels.csv';
+      'documentation/namespaces/security_targets_levels.csv';
 
     expect(() => assertRegisteredUpstreamRepoPath(materializedNamespacePath)).toThrow(
       'not a materialized registry artifact',
@@ -100,22 +100,22 @@ describe('security-guards', () => {
 
   it('rejects unknown, nested, inexact, and traversing inspection paths', () => {
     expect(() =>
-      assertRegisteredUpstreamRepoPath('Dokumentation/namespaces/nested/tags.csv', {
-        materializedNamespacePaths: ['Dokumentation/namespaces/nested/tags.csv'],
+      assertRegisteredUpstreamRepoPath('documentation/namespaces/nested/tags.csv', {
+        materializedNamespacePaths: ['documentation/namespaces/nested/tags.csv'],
       }),
     ).toThrow('not a materialized registry artifact');
     expect(() =>
       assertRegisteredUpstreamRepoPath(
-        'Anwenderkataloge/Lieferkettensicherheit/Lieferkettensicherheit-catalog.json.bak',
+        'control_layer/Lieferkettensicherheit/Lieferkettensicherheit-resolved_catalog.json.bak',
       ),
     ).toThrow('not a materialized registry artifact');
     expect(() =>
       assertRegisteredUpstreamRepoPath(
-        'Quellkataloge/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
+        'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
       ),
     ).toThrow('not a materialized registry artifact');
     expect(() =>
-      assertRegisteredUpstreamRepoPath('Anwenderkataloge/../secret.json'),
+      assertRegisteredUpstreamRepoPath('control_layer/../secret.json'),
     ).toThrow('Unsafe upstream repository path');
   });
 

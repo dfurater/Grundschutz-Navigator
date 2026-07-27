@@ -247,10 +247,10 @@ export function createTestVocabularyRegistry() {
       }),
       createNamespace({
         namespace:
-          'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets.csv',
-        path: 'Dokumentation/namespaces/security_targets.csv',
+          'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets.csv',
+        path: 'documentation/namespaces/security_targets.csv',
         fileName: 'security_targets.csv',
-        routeId: 'dokumentation-namespaces-security-targets',
+        routeId: 'documentation-namespaces-security-targets',
         entries: [
           createDefinitionEntry('Vertraulichkeit (Confidentiality)', 'Schutz vor unbefugter Offenlegung.'),
           createDefinitionEntry('Integrität (Integrity)', 'Schutz vor unbefugter oder unbemerkter Veränderung.'),
@@ -260,10 +260,10 @@ export function createTestVocabularyRegistry() {
       }),
       createNamespace({
         namespace:
-          'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets_levels.csv',
-        path: 'Dokumentation/namespaces/security_targets_levels.csv',
+          'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets_levels.csv',
+        path: 'documentation/namespaces/security_targets_levels.csv',
         fileName: 'security_targets_levels.csv',
-        routeId: 'dokumentation-namespaces-security-targets-levels',
+        routeId: 'documentation-namespaces-security-targets-levels',
         valueColumn: 'Wert',
         entries: [
           createDefinitionEntry('0', 'Die Anforderung wirkt nicht oder vernachlässigbar gering auf dieses Schutzziel hin.', 'Wert'),

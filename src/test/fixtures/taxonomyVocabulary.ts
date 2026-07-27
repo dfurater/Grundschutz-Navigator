@@ -4,11 +4,11 @@ export function createTaxonomyVocabularyNamespaces(): VocabularyNamespaceData[] 
   return [{
     source: {
       namespace:
-        'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/practices.csv',
+        'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/practices.csv',
       repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
-      path: 'Dokumentation/namespaces/practices.csv',
+      path: 'documentation/namespaces/practices.csv',
       fileName: 'practices.csv',
-      routeId: 'dokumentation-namespaces-practices',
+      routeId: 'documentation-namespaces-practices',
       gitBlobSha: 'practice-blob-sha',
     },
     columnOrder: [
@@ -38,11 +38,11 @@ export function createTaxonomyVocabularyNamespaces(): VocabularyNamespaceData[] 
   }, {
     source: {
       namespace:
-        'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/topics.csv',
+        'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/topics.csv',
       repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
-      path: 'Dokumentation/namespaces/topics.csv',
+      path: 'documentation/namespaces/topics.csv',
       fileName: 'topics.csv',
-      routeId: 'dokumentation-namespaces-topics',
+      routeId: 'documentation-namespaces-topics',
       gitBlobSha: 'topic-blob-sha',
     },
     columnOrder: ['Begriff', 'Definition', 'UUID'],

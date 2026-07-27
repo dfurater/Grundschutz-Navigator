@@ -24,19 +24,21 @@ const OSCAL_ROOT_TYPES = Object.freeze([
 
 const LIFECYCLES = Object.freeze(['supported', 'preview', 'draft', 'blocked-by-upstream']);
 
-const COMPONENT_DIRECTORY = 'Implementierungsbeschreibungen/Komponenten';
+const COMPONENT_DIRECTORY = 'implementation_layer';
 
 /**
  * Read-only discovery roots for upstream tree comparisons. These roots do not
  * widen the fetch allowlist: only materialized SOURCE_REGISTRY entries may be
  * read, validated or shipped.
+ *
+ * `documentation/namespaces` bleibt bewusst eng gefasst: der Vokabular-Ordner
+ * ist der einzige fachlich relevante Teil von `documentation/`, der Rest
+ * (OSCAL.md, datamodel/, Grafiken) gehört nicht in die Delta-Beobachtung.
  */
 export const MONITORED_UPSTREAM_ROOTS = Object.freeze([
-  'Anwenderkataloge',
-  'Dokumentation/namespaces',
-  'Implementierungsbeschreibungen/Komponenten',
-  'Mappings',
-  'Quellkataloge',
+  'control_layer',
+  'documentation/namespaces',
+  'implementation_layer',
 ]);
 
 export const SOURCE_REGISTRY = Object.freeze(
@@ -46,14 +48,14 @@ export const SOURCE_REGISTRY = Object.freeze(
       kind: 'oscal',
       expectedRootType: 'catalog',
       catalogKey: 'gspp',
-      upstreamPath: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
+      upstreamPath: 'control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json',
       lifecycle: 'supported',
       title: 'Grundschutz++ Anwenderkatalog',
     },
     {
       artifactKey: 'namespaces-bsi',
       kind: 'vocabulary-collection',
-      upstreamDirectory: 'Dokumentation/namespaces',
+      upstreamDirectory: 'documentation/namespaces',
       fileSuffix: '.csv',
       lifecycle: 'supported',
       title: 'Offizielle BSI-Namespace-Vokabulare',
@@ -63,7 +65,7 @@ export const SOURCE_REGISTRY = Object.freeze(
       kind: 'oscal',
       expectedRootType: 'catalog',
       catalogKey: 'lieferkette',
-      upstreamPath: 'Anwenderkataloge/Lieferkettensicherheit/Lieferkettensicherheit-catalog.json',
+      upstreamPath: 'control_layer/Lieferkettensicherheit/Lieferkettensicherheit-resolved_catalog.json',
       lifecycle: 'preview',
       title: 'Anwenderkatalog Lieferkettensicherheit',
     },
@@ -72,7 +74,7 @@ export const SOURCE_REGISTRY = Object.freeze(
       kind: 'oscal',
       expectedRootType: 'catalog',
       catalogKey: 'wlan',
-      upstreamPath: 'Anwenderkataloge/WLAN/WLAN-catalog.json',
+      upstreamPath: 'control_layer/WLAN/WLAN-resolved_catalog.json',
       lifecycle: 'preview',
       title: 'Anwenderkatalog WLAN',
     },
@@ -81,7 +83,7 @@ export const SOURCE_REGISTRY = Object.freeze(
       kind: 'oscal',
       expectedRootType: 'catalog',
       catalogKey: 'iso27001-annex-a',
-      upstreamPath: 'Mappings/ISO-27001-zu-GSpp/ISO27001-AnnexA-catalog.json',
+      upstreamPath: 'control_layer/ISO27001/ISO27001-AnnexA-catalog.json',
       lifecycle: 'preview',
       title: 'ISO/IEC 27001 Annex A Referenzkatalog',
     },
@@ -90,7 +92,7 @@ export const SOURCE_REGISTRY = Object.freeze(
       kind: 'oscal',
       expectedRootType: 'catalog',
       catalogKey: 'mindeststandard-tls',
-      upstreamPath: 'Anwenderkataloge/Mindeststandard-TLS/Entwurf-Mindeststandard-TLS-catalog.json',
+      upstreamPath: 'control_layer/Mindeststandard-TLS/Entwurf-Mindeststandard-TLS-catalog.json',
       lifecycle: 'draft',
       title: 'Mindeststandard TLS (Entwurf)',
     },
@@ -98,7 +100,7 @@ export const SOURCE_REGISTRY = Object.freeze(
       artifactKey: 'profile-gspp',
       kind: 'oscal',
       expectedRootType: 'profile',
-      upstreamPath: 'Quellkataloge/Methodik-Grundschutz++/Grundschutz++-profile.json',
+      upstreamPath: 'control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json',
       lifecycle: 'preview',
       title: 'Grundschutz++ Profil',
     },
@@ -106,7 +108,7 @@ export const SOURCE_REGISTRY = Object.freeze(
       artifactKey: 'profile-lieferkette',
       kind: 'oscal',
       expectedRootType: 'profile',
-      upstreamPath: 'Quellkataloge/Lieferkettensicherheit/Lieferkettensicherheit-profile.json',
+      upstreamPath: 'control_layer/Lieferkettensicherheit/sources/profiles/Lieferkettensicherheit-profile.json',
       lifecycle: 'preview',
       title: 'Lieferkettensicherheit Profil',
     },
@@ -114,7 +116,7 @@ export const SOURCE_REGISTRY = Object.freeze(
       artifactKey: 'profile-wlan',
       kind: 'oscal',
       expectedRootType: 'profile',
-      upstreamPath: 'Quellkataloge/WLAN/WLAN-profile.json',
+      upstreamPath: 'control_layer/WLAN/sources/profiles/WLAN-profile.json',
       lifecycle: 'preview',
       title: 'WLAN Profil',
     },
@@ -122,7 +124,7 @@ export const SOURCE_REGISTRY = Object.freeze(
       artifactKey: 'mapping-iso27001-annex-a-zu-gspp',
       kind: 'oscal',
       expectedRootType: 'mapping-collection',
-      upstreamPath: 'Mappings/ISO-27001-zu-GSpp/ISO27001-AnnexA-to-GS++-mapping.json',
+      upstreamPath: 'control_layer/Mappings/ISO-27001-zu-GSpp/ISO27001-AnnexA-to-GS++-mapping_collection.json',
       lifecycle: 'preview',
       title: 'Mapping ISO/IEC 27001 Annex A zu Grundschutz++',
     },
@@ -130,7 +132,7 @@ export const SOURCE_REGISTRY = Object.freeze(
       artifactKey: 'mapping-itgs2023-zu-gspp',
       kind: 'oscal',
       expectedRootType: 'mapping-collection',
-      upstreamPath: 'Mappings/IT-GS2023-zu-GSpp/ITGS-to-GS++-mapping.json',
+      upstreamPath: 'control_layer/Mappings/IT-GS2023-zu-GSpp/ITGS-to-GS++-mapping_collection.json',
       lifecycle: 'preview',
       title: 'Mapping IT-Grundschutz 2023 zu Grundschutz++',
     },

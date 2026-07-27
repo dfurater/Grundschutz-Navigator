@@ -16,7 +16,7 @@ import { resolvePracticeVocabulary } from './taxonomyVocabulary';
 import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
 
 const namespaceUrl =
-  'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_level.csv';
+  'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_level.csv';
 
 function makeRegistryData(): VocabularyRegistryData {
   return {
@@ -26,9 +26,9 @@ function makeRegistryData(): VocabularyRegistryData {
         source: {
           namespace: namespaceUrl,
           repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
-          path: 'Dokumentation/namespaces/security_level.csv',
+          path: 'documentation/namespaces/security_level.csv',
           fileName: 'security_level.csv',
-          routeId: 'dokumentation-namespaces-security-level',
+          routeId: 'documentation-namespaces-security-level',
           gitBlobSha: 'blob-security',
         },
         columnOrder: ['Begriff', 'Definition'],
@@ -66,13 +66,13 @@ describe('vocabulary runtime', () => {
         ?.definition,
     ).toBe('Erhöhte Sicherheitsstufe');
     expect(
-      registry.namespacesByRouteId.get('dokumentation-namespaces-security-level')
+      registry.namespacesByRouteId.get('documentation-namespaces-security-level')
         ?.source.fileName,
     ).toBe('security_level.csv');
     expect(
       getVocabularyNamespaceByRouteId(
         registry,
-        'dokumentation-namespaces-security-level',
+        'documentation-namespaces-security-level',
       )?.source.fileName,
     ).toBe('security_level.csv');
   });
@@ -121,7 +121,7 @@ describe('vocabulary runtime', () => {
     });
 
     expect(() => buildVocabularyRegistry(data)).toThrow(
-      'Duplicate vocabulary route id "dokumentation-namespaces-security-level" in runtime registry.',
+      'Duplicate vocabulary route id "documentation-namespaces-security-level" in runtime registry.',
     );
   });
 
@@ -190,13 +190,13 @@ describe('vocabulary runtime', () => {
       confidentialityProp: {
         name: 'confidentiality',
         value: '2',
-        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets_levels.csv',
+        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets_levels.csv',
       },
       integrity: '1',
       integrityProp: {
         name: 'integrity',
         value: '1',
-        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets_levels.csv',
+        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets_levels.csv',
       },
       threats: ['G 0.18', 'G 0.99'],
       threatsProp: {
@@ -258,7 +258,7 @@ describe('vocabulary runtime', () => {
     })).toBeNull();
 
     const practicesNamespace = registry.namespacesByUrl.get(
-      'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/practices.csv',
+      'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/practices.csv',
     );
     practicesNamespace!.entries.push({
       value: 'DUP',
@@ -276,7 +276,7 @@ describe('vocabulary runtime', () => {
     expect(
       buildVocabularySourceUrl(data.namespaces[0].source, data.sourceCommitSha),
     ).toBe(
-      'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/blob/snapshot-123/Dokumentation/namespaces/security_level.csv',
+      'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/blob/snapshot-123/documentation/namespaces/security_level.csv',
     );
   });
 });

@@ -20,9 +20,9 @@ function makeCatalogState(): CatalogState {
         source: {
           namespace: 'https://example.com/namespaces/effort_level.csv',
           repository: 'https://example.com/repo',
-          path: 'Dokumentation/namespaces/effort_level.csv',
+          path: 'documentation/namespaces/effort_level.csv',
           fileName: 'effort_level.csv',
-          routeId: 'dokumentation-namespaces-effort-level',
+          routeId: 'documentation-namespaces-effort-level',
           gitBlobSha: 'blob-effort',
         },
         columnOrder: ['Aufwand', 'Definition'],
@@ -58,9 +58,9 @@ function makeCatalogState(): CatalogState {
         source: {
           namespace: 'https://example.com/namespaces/topics.csv',
           repository: 'https://example.com/repo',
-          path: 'Dokumentation/namespaces/topics.csv',
+          path: 'documentation/namespaces/topics.csv',
           fileName: 'topics.csv',
-          routeId: 'dokumentation-namespaces-topics',
+          routeId: 'documentation-namespaces-topics',
           gitBlobSha: 'blob-topics',
         },
         columnOrder: ['Begriff', 'Definition', 'UUID'],
@@ -80,9 +80,9 @@ function makeCatalogState(): CatalogState {
         source: {
           namespace: 'https://example.com/namespaces/basethreats.csv',
           repository: 'https://example.com/repo',
-          path: 'Dokumentation/namespaces/basethreats.csv',
+          path: 'documentation/namespaces/basethreats.csv',
           fileName: 'basethreats.csv',
-          routeId: 'dokumentation-namespaces-basethreats',
+          routeId: 'documentation-namespaces-basethreats',
           gitBlobSha: 'blob-basethreats',
         },
         columnOrder: ['ID', 'Begriff', 'Definition', 'uuid'],
@@ -121,7 +121,7 @@ describe('VocabularyNamespacePage', () => {
     mockedUseCatalog.mockReturnValue(makeCatalogState());
 
     render(
-      <MemoryRouter initialEntries={['/vokabular/dokumentation-namespaces-effort-level?wert=2']}>
+      <MemoryRouter initialEntries={['/vokabular/documentation-namespaces-effort-level?wert=2']}>
         <Routes>
           <Route path="/vokabular/:namespaceId" element={<VocabularyNamespacePage />} />
         </Routes>
@@ -152,7 +152,7 @@ describe('VocabularyNamespacePage', () => {
     mockedUseCatalog.mockReturnValue(makeCatalogState());
 
     render(
-      <MemoryRouter initialEntries={['/vokabular/dokumentation-namespaces-effort-level']}>
+      <MemoryRouter initialEntries={['/vokabular/documentation-namespaces-effort-level']}>
         <Routes>
           <Route path="/vokabular/:namespaceId" element={<VocabularyNamespacePage />} />
         </Routes>
@@ -169,7 +169,7 @@ describe('VocabularyNamespacePage', () => {
     mockedUseCatalog.mockReturnValue(makeCatalogState());
 
     render(
-      <MemoryRouter initialEntries={['/vokabular/dokumentation-namespaces-basethreats']}>
+      <MemoryRouter initialEntries={['/vokabular/documentation-namespaces-basethreats']}>
         <Routes>
           <Route path="/vokabular/:namespaceId" element={<VocabularyNamespacePage />} />
         </Routes>
@@ -183,7 +183,7 @@ describe('VocabularyNamespacePage', () => {
     mockedUseCatalog.mockReturnValue(makeCatalogState());
 
     render(
-      <MemoryRouter initialEntries={['/vokabular/dokumentation-namespaces-effort-level']}>
+      <MemoryRouter initialEntries={['/vokabular/documentation-namespaces-effort-level']}>
         <Routes>
           <Route path="/vokabular/:namespaceId" element={<VocabularyNamespacePage />} />
         </Routes>
@@ -198,7 +198,7 @@ describe('VocabularyNamespacePage', () => {
     mockedUseCatalog.mockReturnValue(makeCatalogState());
 
     render(
-      <MemoryRouter initialEntries={['/vokabular/dokumentation-namespaces-topics']}>
+      <MemoryRouter initialEntries={['/vokabular/documentation-namespaces-topics']}>
         <Routes>
           <Route path="/vokabular/:namespaceId" element={<VocabularyNamespacePage />} />
         </Routes>
@@ -207,7 +207,7 @@ describe('VocabularyNamespacePage', () => {
 
     expect(screen.getByRole('link', { name: 'Verwaistes Thema' })).toHaveAttribute(
       'href',
-      '/vokabular/dokumentation-namespaces-topics?wert=Verwaistes%20Thema',
+      '/vokabular/documentation-namespaces-topics?wert=Verwaistes%20Thema',
     );
   });
 
@@ -215,7 +215,7 @@ describe('VocabularyNamespacePage', () => {
     mockedUseCatalog.mockReturnValue(makeCatalogState());
 
     render(
-      <MemoryRouter initialEntries={['/vokabular/dokumentation-namespaces-effort-level?wert=2']}>
+      <MemoryRouter initialEntries={['/vokabular/documentation-namespaces-effort-level?wert=2']}>
         <Routes>
           <Route path="/vokabular/:namespaceId" element={<VocabularyNamespacePage />} />
         </Routes>

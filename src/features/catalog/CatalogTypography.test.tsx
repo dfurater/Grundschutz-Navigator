@@ -106,9 +106,9 @@ function makeVocabularyRegistry() {
         source: {
           namespace: 'https://example.com/namespaces/security_level.csv',
           repository: 'https://example.com/repo',
-          path: 'Dokumentation/namespaces/security_level.csv',
+          path: 'documentation/namespaces/security_level.csv',
           fileName: 'security_level.csv',
-          routeId: 'dokumentation-namespaces-security-level',
+          routeId: 'documentation-namespaces-security-level',
           gitBlobSha: 'blob-security',
         },
         columnOrder: ['Begriff', 'Definition'],
@@ -126,9 +126,9 @@ function makeVocabularyRegistry() {
         source: {
           namespace: 'https://example.com/namespaces/modal_verbs.csv',
           repository: 'https://example.com/repo',
-          path: 'Dokumentation/namespaces/modal_verbs.csv',
+          path: 'documentation/namespaces/modal_verbs.csv',
           fileName: 'modal_verbs.csv',
-          routeId: 'dokumentation-namespaces-modal-verbs',
+          routeId: 'documentation-namespaces-modal-verbs',
           gitBlobSha: 'blob-modal',
         },
         columnOrder: ['Modalverb', 'Definition'],
@@ -146,9 +146,9 @@ function makeVocabularyRegistry() {
         source: {
           namespace: 'https://example.com/namespaces/effort_level.csv',
           repository: 'https://example.com/repo',
-          path: 'Dokumentation/namespaces/effort_level.csv',
+          path: 'documentation/namespaces/effort_level.csv',
           fileName: 'effort_level.csv',
-          routeId: 'dokumentation-namespaces-effort-level',
+          routeId: 'documentation-namespaces-effort-level',
           gitBlobSha: 'blob-effort',
         },
         columnOrder: ['Aufwand', 'Definition'],
@@ -166,9 +166,9 @@ function makeVocabularyRegistry() {
         source: {
           namespace: 'https://example.com/namespaces/result.csv',
           repository: 'https://example.com/repo',
-          path: 'Dokumentation/namespaces/result.csv',
+          path: 'documentation/namespaces/result.csv',
           fileName: 'result.csv',
-          routeId: 'dokumentation-namespaces-result',
+          routeId: 'documentation-namespaces-result',
           gitBlobSha: 'blob-result',
         },
         columnOrder: ['Begriff', 'Definition'],
@@ -191,9 +191,9 @@ function makeVocabularyRegistry() {
         source: {
           namespace: 'https://example.com/namespaces/action_words.csv',
           repository: 'https://example.com/repo',
-          path: 'Dokumentation/namespaces/action_words.csv',
+          path: 'documentation/namespaces/action_words.csv',
           fileName: 'action_words.csv',
-          routeId: 'dokumentation-namespaces-action-words',
+          routeId: 'documentation-namespaces-action-words',
           gitBlobSha: 'blob-action',
         },
         columnOrder: ['Infinitiv', 'Definition'],
@@ -211,9 +211,9 @@ function makeVocabularyRegistry() {
         source: {
           namespace: 'https://example.com/namespaces/documentation_guidelines.csv',
           repository: 'https://example.com/repo',
-          path: 'Dokumentation/namespaces/documentation_guidelines.csv',
+          path: 'documentation/namespaces/documentation_guidelines.csv',
           fileName: 'documentation_guidelines.csv',
-          routeId: 'dokumentation-namespaces-documentation-guidelines',
+          routeId: 'documentation-namespaces-documentation-guidelines',
           gitBlobSha: 'blob-docs',
         },
         columnOrder: ['Begriff', 'Definition'],
@@ -231,9 +231,9 @@ function makeVocabularyRegistry() {
         source: {
           namespace: 'https://example.com/namespaces/target_object_categories.csv',
           repository: 'https://example.com/repo',
-          path: 'Dokumentation/namespaces/target_object_categories.csv',
+          path: 'documentation/namespaces/target_object_categories.csv',
           fileName: 'target_object_categories.csv',
-          routeId: 'dokumentation-namespaces-target-object-categories',
+          routeId: 'documentation-namespaces-target-object-categories',
           gitBlobSha: 'blob-target',
         },
         columnOrder: ['Kategorie', 'Definition'],
@@ -251,9 +251,9 @@ function makeVocabularyRegistry() {
         source: {
           namespace: 'https://example.com/namespaces/tags.csv',
           repository: 'https://example.com/repo',
-          path: 'Dokumentation/namespaces/tags.csv',
+          path: 'documentation/namespaces/tags.csv',
           fileName: 'tags.csv',
-          routeId: 'dokumentation-namespaces-tags',
+          routeId: 'documentation-namespaces-tags',
           gitBlobSha: 'blob-tags',
         },
         columnOrder: ['Tag', 'Definition'],
@@ -414,7 +414,7 @@ describe('catalog typography', () => {
     expect(screen.getByText('Verbindliche Anforderung')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Zu den Vokabularen →' })).toHaveAttribute(
       'href',
-      '/vokabular/dokumentation-namespaces-modal-verbs?wert=MUSS',
+      '/vokabular/documentation-namespaces-modal-verbs?wert=MUSS',
     );
   });
 

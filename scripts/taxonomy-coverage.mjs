@@ -9,7 +9,30 @@ const TOPIC_COVERAGE_BASELINES = Object.freeze({
     missingCatalogUuidCount: 0,
     duplicateCsvUuidCount: 0,
   }),
+  'cea4589c2b8337207772a88dd82d808cba5e1d89': Object.freeze({
+    catalogTopicCount: 140,
+    distinctCatalogUuidCount: 120,
+    csvEntryCount: 120,
+    matchedCatalogTopicCount: 140,
+    unmatchedCatalogTopicCount: 0,
+    orphanCsvEntryCount: 0,
+    missingCatalogUuidCount: 0,
+    duplicateCsvUuidCount: 0,
+  }),
 });
+
+/**
+ * Einträge aus practices.csv, die upstream bewusst ohne Katalogbezug
+ * ausgeliefert werden und deshalb keine echte Coverage-Lücke darstellen.
+ *
+ * Aktuell genau ein Eintrag: das BSI liefert seit Snapshot cea4589c die
+ * Beispielpraktik „EXMP — Beispiel für Tests." mit, zu der es keine
+ * Katalog-Gruppe gibt. Die Duldung ist bewusst auf diese eine UUID begrenzt;
+ * jede andere verwaiste CSV-Zeile lässt den Guard weiterhin hart fehlschlagen.
+ */
+const TOLERATED_ORPHAN_PRACTICE_UUIDS = Object.freeze([
+  '9d330062-5c39-4bb0-bef2-62ab66414aa5',
+]);
 
 function findAltIdentifier(node) {
   return node?.props?.find((prop) => prop?.name === 'alt-identifier')?.value;
@@ -48,8 +71,14 @@ export function analyzePracticeVocabularyIntegrity(
   const unmatchedCatalogPractices = catalogPractices.filter(
     (practice) => !practice.uuid || !csvUuidSet.has(practice.uuid),
   );
-  const orphanCsvEntries = csvEntries.filter(
+  const allOrphanCsvEntries = csvEntries.filter(
     (entry) => !entry.columns?.UUID || !catalogUuidSet.has(entry.columns.UUID),
+  );
+  const toleratedOrphanCsvEntries = allOrphanCsvEntries.filter(
+    (entry) => TOLERATED_ORPHAN_PRACTICE_UUIDS.includes(entry.columns?.UUID),
+  );
+  const orphanCsvEntries = allOrphanCsvEntries.filter(
+    (entry) => !TOLERATED_ORPHAN_PRACTICE_UUIDS.includes(entry.columns?.UUID),
   );
   const duplicateCatalogUuids = findDuplicates(catalogUuids);
   const duplicateUuids = findDuplicates(csvUuids);
@@ -62,12 +91,17 @@ export function analyzePracticeVocabularyIntegrity(
       catalogPractices.length - unmatchedCatalogPractices.length,
     unmatchedCatalogPracticeCount: unmatchedCatalogPractices.length,
     orphanCsvEntryCount: orphanCsvEntries.length,
+    toleratedOrphanCsvEntryCount: toleratedOrphanCsvEntries.length,
     missingCatalogUuidCount: catalogPractices.filter((practice) => !practice.uuid).length,
     missingUuidCount: entriesWithoutUuid.length,
     duplicateCatalogUuidCount: duplicateCatalogUuids.length,
     duplicateUuidCount: duplicateUuids.length,
     unmatchedCatalogPractices,
     orphanCsvEntries: orphanCsvEntries.map((entry) => ({
+      value: entry.value,
+      uuid: entry.columns?.UUID,
+    })),
+    toleratedOrphanCsvEntries: toleratedOrphanCsvEntries.map((entry) => ({
       value: entry.value,
       uuid: entry.columns?.UUID,
     })),

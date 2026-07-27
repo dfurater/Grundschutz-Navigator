@@ -99,7 +99,7 @@ function makeProvenance(): NonNullable<CatalogState['provenance']> {
   return {
     source: {
       repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
-      file: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
+      file: 'control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json',
       commit_sha: 'abcdef1234567890abcdef1234567890abcdef12',
       commit_date: '2026-03-05T08:08:21Z',
       git_blob_sha: 'blob-123',
@@ -131,12 +131,12 @@ function makeVerification(valid: boolean): NonNullable<CatalogState['verificatio
 
 function makeVocabularyProvenance(): NonNullable<CatalogState['vocabularyProvenance']> {
   const modalNamespace =
-    'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/modal_verbs.csv';
+    'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/modal_verbs.csv';
 
   return {
     source: {
       repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
-      catalogPath: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
+      catalogPath: 'control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json',
       snapshotCommitSha: 'fedcba0987654321fedcba0987654321fedcba09',
       snapshotCommitDate: '2026-03-05T08:08:21Z',
     },
@@ -149,7 +149,7 @@ function makeVocabularyProvenance(): NonNullable<CatalogState['vocabularyProvena
           artifactKey: 'catalog-gspp',
           rootType: 'catalog',
           lifecycle: 'supported',
-          path: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
+          path: 'control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json',
           gitBlobSha: 'blob-catalog',
           contentSha256: 'hash-catalog',
         },
@@ -157,7 +157,7 @@ function makeVocabularyProvenance(): NonNullable<CatalogState['vocabularyProvena
           artifactKey: 'namespaces-bsi',
           rootType: 'vocabulary',
           lifecycle: 'supported',
-          path: 'Dokumentation/namespaces/modal_verbs.csv',
+          path: 'documentation/namespaces/modal_verbs.csv',
           gitBlobSha: 'blob-modal',
           contentSha256: 'csv-hash-123',
         },
@@ -167,9 +167,9 @@ function makeVocabularyProvenance(): NonNullable<CatalogState['vocabularyProvena
     files: [
       {
         namespace: modalNamespace,
-        path: 'Dokumentation/namespaces/modal_verbs.csv',
+        path: 'documentation/namespaces/modal_verbs.csv',
         fileName: 'modal_verbs.csv',
-        routeId: 'dokumentation-namespaces-modal-verbs',
+        routeId: 'documentation-namespaces-modal-verbs',
         gitBlobSha: 'blob-modal',
         sha256: 'csv-hash-123',
         sizeBytes: 123,
@@ -256,7 +256,7 @@ describe('AboutPage', () => {
 
     const expectedAppCatalogUrl = `${window.location.origin}/data/catalog.json`;
     const expectedUpstreamCatalogUrl =
-      'https://raw.githubusercontent.com/BSI-Bund/Stand-der-Technik-Bibliothek/abcdef1234567890abcdef1234567890abcdef12/Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json';
+      'https://raw.githubusercontent.com/BSI-Bund/Stand-der-Technik-Bibliothek/abcdef1234567890abcdef1234567890abcdef12/control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json';
 
     expect(screen.getByText('App-Katalog')).toBeInTheDocument();
     expect(screen.getByText(expectedAppCatalogUrl)).toBeInTheDocument();

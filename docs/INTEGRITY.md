@@ -37,7 +37,7 @@ Das System prüft, ob die geladenen Artefakte zu den gemeinsam ausgelieferten In
   "artifactKey": "catalog-gspp",
   "source": {
     "repository": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek",
-    "file": "Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json",
+    "file": "control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json",
     "commit_sha": "<snapshot-commit-sha>",
     "commit_date": "<snapshot-commit-date>",
     "git_blob_sha": "<git-blob-sha>",
@@ -187,7 +187,7 @@ Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funkt
   "artifactKey": "namespaces-bsi",
   "source": {
     "repository": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek",
-    "catalogPath": "Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json",
+    "catalogPath": "control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json",
     "snapshotCommitSha": "<snapshot-commit-sha>",
     "snapshotCommitDate": "<snapshot-commit-date>"
   },
@@ -200,7 +200,7 @@ Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funkt
         "artifactKey": "catalog-gspp",
         "rootType": "catalog",
         "lifecycle": "supported",
-        "path": "Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json",
+        "path": "control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json",
         "gitBlobSha": "<git-blob-sha>",
         "contentSha256": "<sha256>"
       },
@@ -208,7 +208,7 @@ Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funkt
         "artifactKey": "catalog-lieferkette",
         "rootType": "catalog",
         "lifecycle": "preview",
-        "path": "Anwenderkataloge/Lieferkettensicherheit/Lieferkettensicherheit-catalog.json",
+        "path": "control_layer/Lieferkettensicherheit/Lieferkettensicherheit-resolved_catalog.json",
         "gitBlobSha": "<git-blob-sha>",
         "contentSha256": "<sha256>"
       }
@@ -217,10 +217,10 @@ Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funkt
   },
   "files": [
     {
-      "namespace": "https://github.com/…/tree/main/Dokumentation/namespaces/modal_verbs.csv",
-      "path": "Dokumentation/namespaces/modal_verbs.csv",
+      "namespace": "https://github.com/…/tree/main/documentation/namespaces/modal_verbs.csv",
+      "path": "documentation/namespaces/modal_verbs.csv",
       "fileName": "modal_verbs.csv",
-      "routeId": "dokumentation-namespaces-modal-verbs",
+      "routeId": "documentation-namespaces-modal-verbs",
       "gitBlobSha": "<git-blob-sha>",
       "sha256": "<sha256>",
       "sizeBytes": 959

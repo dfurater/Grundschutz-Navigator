@@ -16,7 +16,7 @@ function makeProvenance(overrides: Partial<CatalogProvenance> = {}): CatalogProv
   return {
     source: {
       repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
-      file: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
+      file: 'control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json',
       commit_sha: 'abc123',
       git_blob_sha: 'def456',
     },
@@ -36,12 +36,12 @@ function makeProvenance(overrides: Partial<CatalogProvenance> = {}): CatalogProv
 
 function makeVocabularyProvenance(sha256: string): VocabularyProvenance {
   const namespaceUrl =
-    'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_level.csv';
+    'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_level.csv';
 
   return {
     source: {
       repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
-      catalogPath: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
+      catalogPath: 'control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json',
       snapshotCommitSha: 'snapshot-abc',
       snapshotCommitDate: '2026-03-15T00:00:00Z',
     },
@@ -54,7 +54,7 @@ function makeVocabularyProvenance(sha256: string): VocabularyProvenance {
           artifactKey: 'catalog-gspp',
           rootType: 'catalog',
           lifecycle: 'supported',
-          path: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
+          path: 'control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json',
           gitBlobSha: 'blob-catalog',
           contentSha256: 'hash-catalog',
         },
@@ -62,7 +62,7 @@ function makeVocabularyProvenance(sha256: string): VocabularyProvenance {
           artifactKey: 'namespaces-bsi',
           rootType: 'vocabulary',
           lifecycle: 'supported',
-          path: 'Dokumentation/namespaces/security_level.csv',
+          path: 'documentation/namespaces/security_level.csv',
           gitBlobSha: 'blob-security',
           contentSha256: 'csv-hash',
         },
@@ -72,9 +72,9 @@ function makeVocabularyProvenance(sha256: string): VocabularyProvenance {
     files: [
       {
         namespace: namespaceUrl,
-        path: 'Dokumentation/namespaces/security_level.csv',
+        path: 'documentation/namespaces/security_level.csv',
         fileName: 'security_level.csv',
-        routeId: 'dokumentation-namespaces-security-level',
+        routeId: 'documentation-namespaces-security-level',
         gitBlobSha: 'blob-security',
         sha256: 'csv-hash',
         sizeBytes: 64,
