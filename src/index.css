@@ -234,6 +234,10 @@
   --color-effort-level-4-text: #4338ca;
   --color-effort-level-5-text: #3730a3;
 
+  /* Relevance Dots (Schutzziel-Relevanz, eigene Semantik und Skalenlänge) */
+  --color-relevance-dot: var(--color-primary-main);
+  --color-relevance-track: var(--color-slate-100);
+
   /* Semantic status */
   --color-success: #16a34a;
   --color-success-surface: #f0fdf4;

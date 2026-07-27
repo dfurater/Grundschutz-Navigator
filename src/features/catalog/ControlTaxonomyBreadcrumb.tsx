@@ -59,6 +59,12 @@ export function ControlTaxonomyBreadcrumb({
   const topicKey = 'topic';
   const practiceActive = isVocabularyActive(practiceKey);
   const topicActive = isVocabularyActive(topicKey);
+  // Der offizielle Begriff steht als Praktik-Name bereits im Breadcrumb; nur bei
+  // exakter Übereinstimmung ist die Metadatenzeile redundant (GRU-301).
+  const practiceHiddenColumns =
+    practiceVocabulary?.entry.columns['Begriff'] === practiceName
+      ? ['UUID', 'Nummerierung', 'Begriff']
+      : ['UUID', 'Nummerierung'];
 
   return (
     <div className="mb-1">
@@ -102,7 +108,7 @@ export function ControlTaxonomyBreadcrumb({
           {practiceActive && (
             <VocabularyEntryCard
               resolution={practiceVocabulary}
-              hiddenColumns={['UUID', 'Nummerierung']}
+              hiddenColumns={practiceHiddenColumns}
             />
           )}
         </div>

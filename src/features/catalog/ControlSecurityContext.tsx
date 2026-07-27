@@ -1,9 +1,14 @@
-import { Fragment } from 'react';
 import type { Control } from '@/domain/models';
 import type { ResolvedControlVocabularies } from '@/domain/vocabulary';
 import { ControlDetailSection } from './ControlDetailSection';
 import {
+  ControlSecurityTargets,
+  type SecurityTargetRow,
+} from './ControlSecurityTargets';
+import {
   findResolutionByValue,
+  leadingAffordanceIndentClass,
+  leadingTriggerClass,
   type RenderVocabularyCard,
   SubSectionHeading,
   toVocabCardId,
@@ -36,21 +41,19 @@ export interface ControlSecurityContextProps {
   renderVocabularyCard: RenderVocabularyCard;
 }
 
-const interactiveValueClass = (active: boolean) =>
-  `flex w-full items-start gap-1 rounded text-left text-sm leading-relaxed transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] ${
-    active
-      ? 'font-medium text-primary-main underline decoration-primary-main/40 underline-offset-4'
-      : 'text-slate-700'
-  }`;
+interface ThreatItem {
+  threat: string;
+  displayName: string;
+  vocabKey: string;
+  resolution: ReturnType<typeof findResolutionByValue>;
+  showsTerm: boolean;
+}
 
-export function ControlSecurityContext({
-  control,
-  resolvedVocabularies,
-  isVocabularyActive,
-  onToggleVocabulary,
-  renderVocabularyCard,
-}: ControlSecurityContextProps) {
-  const securityTargets = [
+function buildSecurityTargetRows(
+  control: SecurityContextControl,
+  resolvedVocabularies: SecurityContextVocabularies,
+): SecurityTargetRow[] {
+  return [
     {
       key: 'confidentiality',
       label: 'Vertraulichkeit',
@@ -79,111 +82,81 @@ export function ControlSecurityContext({
       targetResolution: resolvedVocabularies.securityTargets.authenticity,
       levelResolution: resolvedVocabularies.securityTargetLevels.authenticity,
     },
-  ].filter((securityTarget) => securityTarget.relevance !== undefined);
-  const hasSecurityTargets = securityTargets.length > 0;
-  const hasThreats = control.threats.length > 0;
+  ].filter(
+    (securityTarget): securityTarget is SecurityTargetRow =>
+      securityTarget.relevance !== undefined,
+  );
+}
 
-  if (!hasSecurityTargets && !hasThreats) {
+/**
+ * Anzeigename `Begriff (ID)` laut GRU-302; ohne auflösbaren Begriff bleibt es bei
+ * der reinen ID. Der Vokabular-Key behält den Index aus der Prop-Reihenfolge,
+ * damit die alphabetische Sortierung den aufgeklappten Zustand nicht verschiebt
+ * und doppelte Werte unterscheidbar bleiben.
+ */
+function buildThreatItems(
+  threats: readonly string[],
+  resolutions: SecurityContextVocabularies['threats'],
+): ThreatItem[] {
+  return threats
+    .map((threat, index) => {
+      const resolution = findResolutionByValue(resolutions, threat);
+      const term = resolution?.entry.columns['Begriff']?.trim();
+      const showsTerm = Boolean(term && term !== threat);
+
+      return {
+        threat,
+        displayName: showsTerm ? `${term} (${threat})` : threat,
+        vocabKey: `threat:${threat}:${index}`,
+        resolution,
+        showsTerm,
+      };
+    })
+    .sort(
+      (first, second) =>
+        first.displayName.localeCompare(second.displayName, 'de') ||
+        first.threat.localeCompare(second.threat, 'de') ||
+        first.vocabKey.localeCompare(second.vocabKey, 'de'),
+    );
+}
+
+export function ControlSecurityContext({
+  control,
+  resolvedVocabularies,
+  isVocabularyActive,
+  onToggleVocabulary,
+  renderVocabularyCard,
+}: ControlSecurityContextProps) {
+  const securityTargets = buildSecurityTargetRows(control, resolvedVocabularies);
+  const threatItems = buildThreatItems(control.threats, resolvedVocabularies.threats);
+
+  if (securityTargets.length === 0 && threatItems.length === 0) {
     return null;
   }
 
   return (
     <ControlDetailSection heading="Schutzziele und Gefährdungen">
       <div className="space-y-4">
-        {hasSecurityTargets && (
-          <div>
-            <SubSectionHeading>Schutzziele</SubSectionHeading>
-            <dl className="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-x-4 gap-y-3 sm:gap-y-4">
-              {securityTargets.map(({
-                key,
-                label,
-                relevance,
-                targetResolution,
-                levelResolution,
-              }) => {
-                const targetVocabKey = `security-target:${key}`;
-                const levelVocabKey = `security-target-level:${key}`;
-                const targetActive = isVocabularyActive(targetVocabKey);
-                const levelActive = isVocabularyActive(levelVocabKey);
-
-                return (
-                  <Fragment key={targetVocabKey}>
-                    <dt className="catalog-meta-text pt-1">
-                      {targetResolution ? (
-                        <button
-                          type="button"
-                          onClick={() => onToggleVocabulary(targetVocabKey)}
-                          aria-label={`Schutzziel: ${label}`}
-                          aria-pressed={targetActive}
-                          aria-expanded={targetActive}
-                          aria-controls={toVocabCardId(targetVocabKey)}
-                          className={interactiveValueClass(targetActive)}
-                        >
-                          <span>{label}</span>
-                          <VocabularyAffordanceIcon active={targetActive} />
-                        </button>
-                      ) : label}
-                    </dt>
-                    <dd>
-                      {levelResolution ? (
-                        <button
-                          type="button"
-                          onClick={() => onToggleVocabulary(levelVocabKey)}
-                          aria-label={`Relevanz ${label}: ${relevance}`}
-                          aria-pressed={levelActive}
-                          aria-expanded={levelActive}
-                          aria-controls={toVocabCardId(levelVocabKey)}
-                          className={interactiveValueClass(levelActive)}
-                        >
-                          <span>Relevanz: {relevance}</span>
-                          <VocabularyAffordanceIcon active={levelActive} />
-                        </button>
-                      ) : (
-                        <div>
-                          <p className="text-sm leading-relaxed text-slate-700">
-                            Relevanz: {relevance}
-                          </p>
-                          <p className="mt-1 text-xs leading-relaxed text-amber-700">
-                            Keine offizielle Definition für diese Relevanzstufe verfügbar.
-                          </p>
-                        </div>
-                      )}
-                    </dd>
-                    {targetResolution && (
-                      <dd
-                        id={toVocabCardId(targetVocabKey)}
-                        className="col-span-full"
-                        hidden={!targetActive || undefined}
-                      >
-                        {targetActive && renderVocabularyCard(targetResolution)}
-                      </dd>
-                    )}
-                    {levelResolution && (
-                      <dd
-                        id={toVocabCardId(levelVocabKey)}
-                        className="col-span-full"
-                        hidden={!levelActive || undefined}
-                      >
-                        {levelActive && renderVocabularyCard(levelResolution)}
-                      </dd>
-                    )}
-                  </Fragment>
-                );
-              })}
-            </dl>
-          </div>
+        {securityTargets.length > 0 && (
+          <ControlSecurityTargets
+            securityTargets={securityTargets}
+            isVocabularyActive={isVocabularyActive}
+            onToggleVocabulary={onToggleVocabulary}
+            renderVocabularyCard={renderVocabularyCard}
+          />
         )}
 
-        {hasThreats && (
+        {threatItems.length > 0 && (
           <div>
             <SubSectionHeading>Elementare Gefährdungen</SubSectionHeading>
             <div className="space-y-2">
-              {control.threats.map((threat, index) => {
-                const resolution = findResolutionByValue(
-                  resolvedVocabularies.threats,
-                  threat,
-                );
-                const vocabKey = `threat:${threat}:${index}`;
+              {threatItems.map(({
+                threat,
+                displayName,
+                vocabKey,
+                resolution,
+                showsTerm,
+              }) => {
                 const active = isVocabularyActive(vocabKey);
 
                 return resolution ? (
@@ -191,26 +164,28 @@ export function ControlSecurityContext({
                     <button
                       type="button"
                       onClick={() => onToggleVocabulary(vocabKey)}
-                      aria-label={`Elementare Gefährdung: ${threat}`}
+                      aria-label={`Elementare Gefährdung: ${displayName}`}
                       aria-pressed={active}
                       aria-expanded={active}
                       aria-controls={toVocabCardId(vocabKey)}
-                      className={interactiveValueClass(active)}
+                      className={leadingTriggerClass(active)}
                     >
-                      <span>{threat}</span>
-                      <VocabularyAffordanceIcon active={active} />
+                      <VocabularyAffordanceIcon active={active} placement="leading" />
+                      <span className="min-w-0 flex-1">{displayName}</span>
                     </button>
                     <div
                       id={toVocabCardId(vocabKey)}
                       hidden={!active || undefined}
                     >
-                      {active && renderVocabularyCard(resolution)}
+                      {active && renderVocabularyCard(resolution, {
+                        hiddenColumns: showsTerm ? ['Begriff', 'uuid'] : ['uuid'],
+                      })}
                     </div>
                   </div>
                 ) : (
                   <p
                     key={vocabKey}
-                    className="text-sm leading-relaxed text-slate-700"
+                    className={`text-sm leading-relaxed text-slate-700 ${leadingAffordanceIndentClass}`}
                   >
                     {threat}
                   </p>

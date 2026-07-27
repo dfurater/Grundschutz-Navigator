@@ -94,7 +94,12 @@ export function ControlDetail({
     [control, vocabularyRegistry],
   );
   const renderVocabularyCard = useCallback<RenderVocabularyCard>(
-    (resolution) => <VocabularyEntryCard resolution={resolution} />,
+    (resolution, options) => (
+      <VocabularyEntryCard
+        resolution={resolution}
+        hiddenColumns={options?.hiddenColumns}
+      />
+    ),
     [],
   );
   const practice = catalog.practices.find(
