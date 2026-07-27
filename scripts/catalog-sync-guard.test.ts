@@ -16,21 +16,22 @@ import {
 } from '../src/domain/sourceRegistry.mjs';
 import { buildUpstreamManifest } from './upstream-artifacts.mjs';
 import {
+  LEGACY_V1_MIGRATION_CATALOG_PATH,
   LEGACY_V1_MIGRATION_SIGNATURE,
   LEGACY_V1_MIGRATION_SNAPSHOT,
 } from './sync-upstream-manifest.mjs';
 
 const OLD_SHA = '1'.repeat(40);
 const NEW_SHA = '2'.repeat(40);
-const RESULT_NAMESPACE_PATH = 'Dokumentation/namespaces/result.csv';
+const RESULT_NAMESPACE_PATH = 'documentation/namespaces/result.csv';
 const RESULT_NAMESPACE_URL = `${OFFICIAL_BSI_REPOSITORY_URL}/tree/main/${RESULT_NAMESPACE_PATH}`;
 const UNREFERENCED_NAMESPACE_PATH =
-  'Dokumentation/namespaces/security_targets_levels.csv';
-const PRACTICES_NAMESPACE_PATH = 'Dokumentation/namespaces/practices.csv';
+  'documentation/namespaces/security_targets_levels.csv';
+const PRACTICES_NAMESPACE_PATH = 'documentation/namespaces/practices.csv';
 const PRACTICE_ALT_IDENTIFIER = '33333333-3333-4333-8333-333333333333';
-const TOPICS_NAMESPACE_PATH = 'Dokumentation/namespaces/topics.csv';
+const TOPICS_NAMESPACE_PATH = 'documentation/namespaces/topics.csv';
 const TOPIC_ALT_IDENTIFIER = '22222222-2222-4222-8222-222222222222';
-const UNCLASSIFIED_PATH = 'Quellkataloge/Kernel/unclassified.csv';
+const UNCLASSIFIED_PATH = 'control_layer/Kernel/unclassified.csv';
 
 interface ManifestFile {
   artifactKey: string;
@@ -304,7 +305,7 @@ function approvedLegacyManifest() {
   return {
     repository: OFFICIAL_BSI_REPOSITORY_URL,
     snapshotCommitSha: LEGACY_V1_MIGRATION_SNAPSHOT,
-    catalogPath: SUPPORTED_CATALOG.upstreamPath,
+    catalogPath: LEGACY_V1_MIGRATION_CATALOG_PATH,
     files: [
       {
         kind: 'catalog',
@@ -438,7 +439,7 @@ describe('validateCatalogSyncManifest v2', () => {
         artifactKey: 'unclassified-fixture',
         rootType: 'catalog',
         lifecycle: 'preview',
-        path: 'Quellkataloge/Kernel/unclassified.json',
+        path: 'control_layer/Kernel/unclassified.json',
         gitBlobSha: 'a'.repeat(40),
         contentSha256: 'b'.repeat(64),
       },

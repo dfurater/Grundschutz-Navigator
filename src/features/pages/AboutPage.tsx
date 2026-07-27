@@ -15,11 +15,13 @@ import type {
   CatalogRole,
   CatalogResponsibleParty,
 } from '@/domain/models';
+import { SUPPORTED_CATALOG } from '@/domain/sourceRegistry';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useClipboard } from '@/hooks/useClipboard';
 
 const DEFAULT_UPSTREAM_REPOSITORY_PATH = 'BSI-Bund/Stand-der-Technik-Bibliothek';
-const DEFAULT_CATALOG_PATH = 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json';
+/** Aus dem Quellregister abgeleitet, damit Upstream-Umbenennungen nicht doppelt gepflegt werden. */
+const DEFAULT_CATALOG_PATH = SUPPORTED_CATALOG.upstreamPath;
 
 const surfacePanelClass =
   'rounded-[var(--radius-md)] border border-[var(--color-border-default)] bg-[var(--color-surface-base)]';

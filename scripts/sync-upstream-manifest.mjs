@@ -9,7 +9,6 @@ import {
   DEFAULT_UPSTREAM_METADATA_PATH,
   OFFICIAL_BSI_REPO,
   OFFICIAL_BSI_REPOSITORY_URL,
-  OFFICIAL_CATALOG_PATH,
   resolveTrackedManifestPath,
   resolveUpstreamMetadataPath,
 } from './security-guards.mjs';
@@ -28,6 +27,15 @@ const SHA_PATTERN = /^[0-9a-f]{40}$/;
 
 export const LEGACY_V1_MIGRATION_SNAPSHOT = '12abb438fcdb4f4b63fb3e751e89d7c526e647b5';
 export const LEGACY_V1_MIGRATION_SIGNATURE = '79bda3896eb6b0a07df3ba27ee8ef283b715962c1af9920f1a641829c693c7e2';
+/**
+ * Katalogpfad zum Zeitpunkt der v1-Migration. Bewusst eingefroren und NICHT aus
+ * dem Quellregister abgeleitet: Die oben festgeschriebene Signatur wurde über
+ * genau diesen Pfad gebildet. Würde hier der jeweils aktuelle Pfad stehen,
+ * könnte die Signaturprüfung nach einer Upstream-Umbenennung — wie der
+ * Layer-Migration in BSI-PR #63 — nie mehr aufgehen.
+ */
+export const LEGACY_V1_MIGRATION_CATALOG_PATH =
+  'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json';
 
 function toJsonWithTrailingNewline(value) {
   return `${JSON.stringify(value, null, 2)}\n`;
@@ -58,7 +66,7 @@ export function isApprovedLegacyV1Manifest(manifest) {
     manifest.snapshotCommitSha === LEGACY_V1_MIGRATION_SNAPSHOT &&
     manifest.signatureSha256 === LEGACY_V1_MIGRATION_SIGNATURE &&
     manifest.repository === OFFICIAL_BSI_REPOSITORY_URL &&
-    manifest.catalogPath === OFFICIAL_CATALOG_PATH &&
+    manifest.catalogPath === LEGACY_V1_MIGRATION_CATALOG_PATH &&
     Array.isArray(manifest.files) &&
     manifest.files.length > 0
   ) {

@@ -46,7 +46,7 @@ function manifestFile(overrides: Partial<ManifestFile> = {}): ManifestFile {
     artifactKey: 'catalog-gspp',
     rootType: 'catalog',
     lifecycle: 'supported',
-    path: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
+    path: 'control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json',
     gitBlobSha: 'a'.repeat(40),
     contentSha256: 'a'.repeat(64),
     ...overrides,
@@ -299,13 +299,13 @@ describe('syncUpstreamManifest', () => {
     const tempDir = await mkdtemp(path.join(getAllowedTempRoot(), 'sync-upstream-manifest-'));
     const metadataPath = path.join(tempDir, 'upstream-sources-metadata.json');
     const manifestPath = path.join(tempDir, 'upstream-manifest.json');
-    const catalogPath = 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json';
+    const catalogPath = 'control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json';
     const addedCatalogPath =
-      'Anwenderkataloge/Lieferkettensicherheit/Lieferkettensicherheit-catalog.json';
-    const removedProfilePath = 'Quellkataloge/WLAN/WLAN-profile.json';
+      'control_layer/Lieferkettensicherheit/Lieferkettensicherheit-resolved_catalog.json';
+    const removedProfilePath = 'control_layer/WLAN/sources/profiles/WLAN-profile.json';
     const unclassifiedModifiedPath =
-      'Quellkataloge/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json';
-    const unclassifiedAddedPath = 'Dokumentation/namespaces/security_targets_levels.csv';
+      'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json';
+    const unclassifiedAddedPath = 'documentation/namespaces/security_targets_levels.csv';
     const oldCatalogBlob = 'a'.repeat(40);
     const newCatalogBlob = 'b'.repeat(40);
     const removedProfileBlob = 'c'.repeat(40);
@@ -349,14 +349,14 @@ describe('syncUpstreamManifest', () => {
       ],
     });
     const baseTree = completeTree([
-      directory('Anwenderkataloge', '1'.repeat(40)),
+      directory('control_layer', '1'.repeat(40)),
       blob(catalogPath, oldCatalogBlob),
       blob(removedProfilePath, removedProfileBlob),
       blob(unclassifiedModifiedPath, oldUnclassifiedBlob),
       blob('README.md', '9'.repeat(40)),
     ]);
     const headTree = completeTree([
-      directory('Anwenderkataloge', '2'.repeat(40)),
+      directory('control_layer', '2'.repeat(40)),
       blob(catalogPath, newCatalogBlob),
       blob(addedCatalogPath, addedCatalogBlob),
       blob(unclassifiedModifiedPath, newUnclassifiedBlob),
@@ -399,6 +399,11 @@ describe('syncUpstreamManifest', () => {
         lifecycle: 'supported',
       },
       {
+        status: 'modified',
+        path: unclassifiedModifiedPath,
+        classification: 'unclassified',
+      },
+      {
         status: 'added',
         path: addedCatalogPath,
         classification: 'registered',
@@ -407,22 +412,17 @@ describe('syncUpstreamManifest', () => {
         lifecycle: 'preview',
       },
       {
-        status: 'added',
-        path: unclassifiedAddedPath,
-        classification: 'unclassified',
-      },
-      {
-        status: 'modified',
-        path: unclassifiedModifiedPath,
-        classification: 'unclassified',
-      },
-      {
         status: 'removed',
         path: removedProfilePath,
         classification: 'registered',
         artifactKey: 'profile-wlan',
         rootType: 'profile',
         lifecycle: 'preview',
+      },
+      {
+        status: 'added',
+        path: unclassifiedAddedPath,
+        classification: 'unclassified',
       },
     ]);
     expect(result.outputs.file_delta_summary).toContain(

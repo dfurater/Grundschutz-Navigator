@@ -33,14 +33,14 @@ const SNAPSHOT_SHA = 'a'.repeat(40);
 const REPOSITORY_API = 'https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek';
 const RAW_BASE = 'https://raw.githubusercontent.com/BSI-Bund/Stand-der-Technik-Bibliothek';
 const RESULT_NAMESPACE_URL =
-  'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/result.csv';
+  'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/result.csv';
 const ACTION_WORDS_NAMESPACE_URL =
-  'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/action_words.csv';
-const PRACTICES_NAMESPACE_PATH = 'Dokumentation/namespaces/practices.csv';
+  'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/action_words.csv';
+const PRACTICES_NAMESPACE_PATH = 'documentation/namespaces/practices.csv';
 const PRACTICE_ALT_IDENTIFIER = '33333333-3333-4333-8333-333333333333';
 const PRACTICES_CSV =
   `Kürzel,Begriff,Definition,UUID\nGC,Governance,Fixture definition,${PRACTICE_ALT_IDENTIFIER}\n`;
-const TOPICS_NAMESPACE_PATH = 'Dokumentation/namespaces/topics.csv';
+const TOPICS_NAMESPACE_PATH = 'documentation/namespaces/topics.csv';
 const TOPIC_ALT_IDENTIFIER = '22222222-2222-4222-8222-222222222222';
 const TOPICS_CSV =
   `Begriff,Definition,UUID\nFixture,Fixture definition,${TOPIC_ALT_IDENTIFIER}\n`;
@@ -65,7 +65,7 @@ const MINIMAL_REGISTRY = [
   {
     artifactKey: 'namespaces-bsi',
     kind: 'vocabulary-collection',
-    upstreamDirectory: 'Dokumentation/namespaces',
+    upstreamDirectory: 'documentation/namespaces',
     fileSuffix: '.csv',
     lifecycle: 'supported',
     title: 'Offizielle BSI-Namespace-Vokabulare',
@@ -404,8 +404,8 @@ describe('fetch-catalog', () => {
 
   it('accepts only allowed upstream repository paths', () => {
     expect(assertAllowedUpstreamRepoPath(OFFICIAL_CATALOG_PATH)).toBe(OFFICIAL_CATALOG_PATH);
-    expect(assertAllowedUpstreamRepoPath('Dokumentation/namespaces/result.csv')).toBe(
-      'Dokumentation/namespaces/result.csv',
+    expect(assertAllowedUpstreamRepoPath('documentation/namespaces/result.csv')).toBe(
+      'documentation/namespaces/result.csv',
     );
     expect(() => assertAllowedUpstreamRepoPath('../secret.txt')).toThrow(
       'Unsafe upstream repository path: ../secret.txt',
@@ -687,7 +687,7 @@ describe('fetch-catalog', () => {
   });
 
   it('rejects a preview artifact root mismatch through buildFetchArtifacts', async () => {
-    const previewPath = 'Quellkataloge/WLAN/WLAN-profile.json';
+    const previewPath = 'control_layer/WLAN/sources/profiles/WLAN-profile.json';
     const input = makeMinimalFetchInput();
     input.rawByPath.set(previewPath, '{"catalog":{"uuid":"wrong-root"}}');
     const previewRegistry = [
@@ -772,11 +772,11 @@ describe('fetch-catalog', () => {
   });
 
   it('materializes every direct namespace CSV even when the catalog does not reference it', async () => {
-    const unreferencedPath = 'Dokumentation/namespaces/security_targets_levels.csv';
-    const nestedPath = 'Dokumentation/namespaces/nested/ignored.csv';
-    const readmePath = 'Dokumentation/namespaces/readme.md';
+    const unreferencedPath = 'documentation/namespaces/security_targets_levels.csv';
+    const nestedPath = 'documentation/namespaces/nested/ignored.csv';
+    const readmePath = 'documentation/namespaces/readme.md';
     const namespaceFiles = new Map<string, RawContents>([
-      ['Dokumentation/namespaces/result.csv', 'Ergebnis,Definition\nVerfahren,Ein Verfahren\n'],
+      ['documentation/namespaces/result.csv', 'Ergebnis,Definition\nVerfahren,Ein Verfahren\n'],
       [
         unreferencedPath,
         'Wert,Definition\n0,Keine Relevanz\n1,Mittlere Relevanz\n2,Höchste Relevanz\n',
@@ -797,7 +797,7 @@ describe('fetch-catalog', () => {
     const upstreamMetadata = parseArtifactJson(payload, 'upstream-sources-metadata.json');
     const materializedPaths = [
       PRACTICES_NAMESPACE_PATH,
-      'Dokumentation/namespaces/result.csv',
+      'documentation/namespaces/result.csv',
       unreferencedPath,
       TOPICS_NAMESPACE_PATH,
     ];
@@ -833,8 +833,8 @@ describe('fetch-catalog', () => {
 
   it('fetches namespace files in parallel while preserving deterministic artifact order', async () => {
     const namespaceFiles = new Map<string, RawContents>([
-      ['Dokumentation/namespaces/result.csv', 'Ergebnis,Definition\nVerfahren,Ein Verfahren\n'],
-      ['Dokumentation/namespaces/action_words.csv', 'Infinitiv,Definition\numsetzen,Etwas umsetzen\n'],
+      ['documentation/namespaces/result.csv', 'Ergebnis,Definition\nVerfahren,Ein Verfahren\n'],
+      ['documentation/namespaces/action_words.csv', 'Infinitiv,Definition\numsetzen,Etwas umsetzen\n'],
     ]);
     const input = makeMinimalFetchInput(namespaceFiles);
     const pendingNamespaceResponses: Array<() => void> = [];
@@ -874,15 +874,15 @@ describe('fetch-catalog', () => {
     const upstreamMetadata = parseArtifactJson(payload, 'upstream-sources-metadata.json');
 
     expect(vocabularies.namespaces.map((namespace) => namespace.source.path)).toEqual([
-      'Dokumentation/namespaces/action_words.csv',
+      'documentation/namespaces/action_words.csv',
       PRACTICES_NAMESPACE_PATH,
-      'Dokumentation/namespaces/result.csv',
+      'documentation/namespaces/result.csv',
       TOPICS_NAMESPACE_PATH,
     ]);
     expect(upstreamMetadata.files.map((file) => file.path)).toEqual([
-      'Dokumentation/namespaces/action_words.csv',
+      'documentation/namespaces/action_words.csv',
       PRACTICES_NAMESPACE_PATH,
-      'Dokumentation/namespaces/result.csv',
+      'documentation/namespaces/result.csv',
       TOPICS_NAMESPACE_PATH,
     ]);
     const vocabulariesArtifact = payload.artifacts.find(
@@ -906,8 +906,8 @@ describe('fetch-catalog', () => {
   });
 
   it('validates the full registry without shipping extra artifacts or fetching unclassified paths', async () => {
-    const unclassifiedPath = 'Quellkataloge/Kernel/unclassified-catalog.json';
-    const namespacePath = 'Dokumentation/namespaces/result.csv';
+    const unclassifiedPath = 'control_layer/Kernel/unclassified-catalog.json';
+    const namespacePath = 'documentation/namespaces/result.csv';
     const rawByPath = new Map<string, RawContents>();
 
     for (const entry of SOURCE_REGISTRY) {
@@ -992,7 +992,7 @@ describe('vocabulary-utils', () => {
     expect(namespaceUrlToRepoPath(
       RESULT_NAMESPACE_URL,
       'BSI-Bund/Stand-der-Technik-Bibliothek',
-    )).toBe('Dokumentation/namespaces/result.csv');
+    )).toBe('documentation/namespaces/result.csv');
     expect(namespaceUrlToRepoPath(
       'http://csrc.nist.gov/ns/oscal/1.0',
       'BSI-Bund/Stand-der-Technik-Bibliothek',
@@ -1023,9 +1023,9 @@ describe('vocabulary-utils', () => {
   it('preserves UUID and user-facing practice columns while parsing practices.csv', () => {
     const namespace = buildVocabularyNamespaceData({
       namespaceUrl:
-        'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/practices.csv',
+        'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/practices.csv',
       repository: 'BSI-Bund/Stand-der-Technik-Bibliothek',
-      path: 'Dokumentation/namespaces/practices.csv',
+      path: 'documentation/namespaces/practices.csv',
       gitBlobSha: 'b'.repeat(40),
       csvText:
         'Kürzel,Begriff,Definition,UUID,Schwerpunkt,Nummerierung,auch bekannt als\nGC,Governance und Compliance,Definition,uuid-practice-1,Methodik,1,Corporate Governance\n',
@@ -1046,9 +1046,9 @@ describe('vocabulary-utils', () => {
   it('preserves topic UUIDs while parsing topics.csv', () => {
     const namespace = buildVocabularyNamespaceData({
       namespaceUrl:
-        'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/topics.csv',
+        'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/topics.csv',
       repository: 'BSI-Bund/Stand-der-Technik-Bibliothek',
-      path: 'Dokumentation/namespaces/topics.csv',
+      path: 'documentation/namespaces/topics.csv',
       gitBlobSha: 'c'.repeat(40),
       csvText:
         'Begriff,Definition,UUID\nOrganisation,Offizielle Definition,uuid-topic-1\n',
@@ -1069,12 +1069,12 @@ describe('vocabulary-utils', () => {
     const namespace = buildVocabularyNamespaceData({
       namespaceUrl: ACTION_WORDS_NAMESPACE_URL,
       repository: 'BSI-Bund/Stand-der-Technik-Bibliothek',
-      path: 'Dokumentation/namespaces/action_words.csv',
+      path: 'documentation/namespaces/action_words.csv',
       gitBlobSha: 'b'.repeat(40),
       csvText: 'Infinitiv,Definition\r\numsetzen,"Etwas umsetzen"',
     });
 
-    expect(namespace.source.routeId).toBe('dokumentation-namespaces-action-words');
+    expect(namespace.source.routeId).toBe('documentation-namespaces-action-words');
     expect(namespace.valueColumn).toBe('Infinitiv');
     expect(namespace.entries).toEqual([{
       value: 'umsetzen',
@@ -1097,7 +1097,7 @@ describe('upstream manifest v2', () => {
     artifactKey: 'namespaces-bsi',
     rootType: 'vocabulary',
     lifecycle: 'supported',
-    path: 'Dokumentation/namespaces/result.csv',
+    path: 'documentation/namespaces/result.csv',
     gitBlobSha: 'd'.repeat(40),
     contentSha256: 'e'.repeat(64),
   };

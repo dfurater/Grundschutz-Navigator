@@ -38,11 +38,11 @@ function createSecurityLevelRegistry(): VocabularyRegistry {
       {
         source: {
           namespace:
-            'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_level.csv',
+            'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_level.csv',
           repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
-          path: 'Dokumentation/namespaces/security_level.csv',
+          path: 'documentation/namespaces/security_level.csv',
           fileName: 'security_level.csv',
-          routeId: 'dokumentation-namespaces-security-level',
+          routeId: 'documentation-namespaces-security-level',
           gitBlobSha: 'blob-security',
         },
         columnOrder: ['Begriff', 'Definition'],
@@ -128,7 +128,7 @@ describe('useSearch', () => {
         securityLevelProp: {
           name: 'sec_level',
           value: 'erhöht',
-          ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_level.csv',
+          ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_level.csv',
         },
       }),
     ];
@@ -341,7 +341,7 @@ describe('useSearch', () => {
         securityLevelProp: {
           name: 'sec_level',
           value: 'erhöht',
-          ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_level.csv',
+          ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_level.csv',
         },
       }),
     ];

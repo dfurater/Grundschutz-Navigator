@@ -9,9 +9,9 @@ import { computeSHA256 } from '@/domain/integrity';
 import { useCatalog } from '@/hooks/useCatalog';
 
 const securityNamespace =
-  'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_level.csv';
+  'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_level.csv';
 const modalNamespace =
-  'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/modal_verbs.csv';
+  'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/modal_verbs.csv';
 
 const rawCatalogDocument = {
   catalog: {
@@ -71,9 +71,9 @@ const vocabularyRegistryData: VocabularyRegistryData = {
       source: {
         namespace: securityNamespace,
         repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
-        path: 'Dokumentation/namespaces/security_level.csv',
+        path: 'documentation/namespaces/security_level.csv',
         fileName: 'security_level.csv',
-        routeId: 'dokumentation-namespaces-security-level',
+        routeId: 'documentation-namespaces-security-level',
         gitBlobSha: 'blob-security',
       },
       columnOrder: ['Begriff', 'Definition'],
@@ -94,9 +94,9 @@ const vocabularyRegistryData: VocabularyRegistryData = {
       source: {
         namespace: modalNamespace,
         repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
-        path: 'Dokumentation/namespaces/modal_verbs.csv',
+        path: 'documentation/namespaces/modal_verbs.csv',
         fileName: 'modal_verbs.csv',
-        routeId: 'dokumentation-namespaces-modal-verbs',
+        routeId: 'documentation-namespaces-modal-verbs',
         gitBlobSha: 'blob-modal',
       },
       columnOrder: ['Modalverb', 'Definition'],
@@ -120,7 +120,7 @@ function makeVocabularyProvenance(sha256: string, sizeBytes: number): Vocabulary
   return {
     source: {
       repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
-      catalogPath: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
+      catalogPath: 'control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json',
       snapshotCommitSha: 'snapshot-123',
       snapshotCommitDate: '2026-03-26T00:00:00Z',
     },
@@ -133,7 +133,7 @@ function makeVocabularyProvenance(sha256: string, sizeBytes: number): Vocabulary
           artifactKey: 'catalog-gspp',
           rootType: 'catalog',
           lifecycle: 'supported',
-          path: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
+          path: 'control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json',
           gitBlobSha: 'blob-catalog',
           contentSha256: 'hash-catalog',
         },
@@ -141,7 +141,7 @@ function makeVocabularyProvenance(sha256: string, sizeBytes: number): Vocabulary
           artifactKey: 'namespaces-bsi',
           rootType: 'vocabulary',
           lifecycle: 'supported',
-          path: 'Dokumentation/namespaces/security_level.csv',
+          path: 'documentation/namespaces/security_level.csv',
           gitBlobSha: 'blob-security',
           contentSha256: 'csv-hash-security',
         },
@@ -151,9 +151,9 @@ function makeVocabularyProvenance(sha256: string, sizeBytes: number): Vocabulary
     files: [
       {
         namespace: securityNamespace,
-        path: 'Dokumentation/namespaces/security_level.csv',
+        path: 'documentation/namespaces/security_level.csv',
         fileName: 'security_level.csv',
-        routeId: 'dokumentation-namespaces-security-level',
+        routeId: 'documentation-namespaces-security-level',
         gitBlobSha: 'blob-security',
         sha256: 'csv-hash-security',
         sizeBytes: 64,
@@ -201,7 +201,7 @@ describe('CatalogProvider', () => {
             JSON.stringify({
               source: {
                 repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
-                file: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
+                file: 'control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json',
                 commit_sha: 'snapshot-123',
                 git_blob_sha: 'blob-catalog',
               },

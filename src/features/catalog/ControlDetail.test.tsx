@@ -203,7 +203,7 @@ describe('ControlDetail', () => {
     expect(within(practiceCard).queryByText('Begriff')).not.toBeInTheDocument();
     expect(within(practiceCard).getByText('Schwerpunkt').tagName).toBe('DT');
     expect(within(practiceCard).getByRole('link', { name: 'Zu den Vokabularen →' }))
-      .toHaveAttribute('href', '/vokabular/dokumentation-namespaces-practices?wert=GC');
+      .toHaveAttribute('href', '/vokabular/documentation-namespaces-practices?wert=GC');
 
     const topic = screen.getByRole('button', { name: 'Thema: Organisation' });
     await user.click(topic);
@@ -429,25 +429,25 @@ describe('ControlDetail', () => {
       confidentialityProp: {
         name: 'confidentiality',
         value: '2',
-        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets_levels.csv',
+        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets_levels.csv',
       },
       integrity: '1',
       integrityProp: {
         name: 'integrity',
         value: '1',
-        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets_levels.csv',
+        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets_levels.csv',
       },
       availability: '1',
       availabilityProp: {
         name: 'availability',
         value: '1',
-        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets_levels.csv',
+        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets_levels.csv',
       },
       authenticity: '0',
       authenticityProp: {
         name: 'authenticity',
         value: '0',
-        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets_levels.csv',
+        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets_levels.csv',
       },
       threats: ['G 0.18', 'G 0.19'],
       threatsProp: {

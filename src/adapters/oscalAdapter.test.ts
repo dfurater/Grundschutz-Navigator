@@ -45,17 +45,17 @@ function makeControl(overrides: Partial<RawOscalControl> = {}): RawOscalControl 
       { name: 'alt-identifier', value: 'uuid-control-1' },
       {
         name: 'sec_level',
-        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/sicherheitsniveau.csv',
+        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/sicherheitsniveau.csv',
         value: 'normal-SdT',
       },
       {
         name: 'effort_level',
-        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/aufwand.csv',
+        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/aufwand.csv',
         value: '3',
       },
       {
         name: 'tags',
-        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/tags.csv',
+        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/tags.csv',
         value: 'BCM, Compliance Management',
       },
       {
@@ -436,12 +436,12 @@ describe('parseControl', () => {
     expect(control.securityLevelProp).toEqual({
       name: 'sec_level',
       value: 'normal-SdT',
-      ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/sicherheitsniveau.csv',
+      ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/sicherheitsniveau.csv',
     });
     expect(control.effortLevelProp).toEqual({
       name: 'effort_level',
       value: '3',
-      ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/aufwand.csv',
+      ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/aufwand.csv',
     });
     expect(control.modalverbProp).toEqual({
       name: 'modal_verb',
@@ -451,7 +451,7 @@ describe('parseControl', () => {
     expect(control.tagsProp).toEqual({
       name: 'tags',
       value: 'BCM, Compliance Management',
-      ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/tags.csv',
+      ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/tags.csv',
     });
     expect(control.statementProps.handlungsworteProp).toEqual({
       name: 'action_word',
@@ -491,7 +491,7 @@ describe('parseControl', () => {
     expect(control.confidentialityProp).toEqual({
       name: 'confidentiality',
       value: '2',
-      ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets_levels.csv',
+      ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets_levels.csv',
     });
     expect(control.threatsProp).toEqual({
       name: 'threats',
@@ -581,7 +581,7 @@ describe('parseControl', () => {
     expect(control.confidentialityProp).toEqual({
       name: 'confidentiality',
       value: '3',
-      ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets_levels.csv',
+      ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets_levels.csv',
     });
     expect(control.threats).toEqual([]);
   });

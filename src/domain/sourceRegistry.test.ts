@@ -17,7 +17,7 @@ import {
   type OscalArtifactEntry,
 } from '@/domain/sourceRegistry';
 
-const OFFICIAL_CATALOG_PATH = 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json';
+const OFFICIAL_CATALOG_PATH = 'control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json';
 
 /** Muss mit der CatalogKey-Union in sourceRegistry.d.mts übereinstimmen. */
 const EXPECTED_CATALOG_KEYS = [
@@ -34,7 +34,7 @@ function makeOscalEntry(overrides: Partial<OscalArtifactEntry> = {}): OscalArtif
     kind: 'oscal',
     expectedRootType: 'catalog',
     catalogKey: 'gspp',
-    upstreamPath: 'Anwenderkataloge/Test/Test-catalog.json',
+    upstreamPath: 'control_layer/Test/Test-catalog.json',
     lifecycle: 'preview',
     title: 'Test',
     ...overrides,
@@ -63,21 +63,19 @@ describe('sourceRegistry', () => {
 
   it('monitors exactly the registry-backed BSI discovery roots', () => {
     expect(MONITORED_UPSTREAM_ROOTS).toEqual([
-      'Anwenderkataloge',
-      'Dokumentation/namespaces',
-      'Implementierungsbeschreibungen/Komponenten',
-      'Mappings',
-      'Quellkataloge',
+      'control_layer',
+      'documentation/namespaces',
+      'implementation_layer',
     ]);
     expect(Object.isFrozen(MONITORED_UPSTREAM_ROOTS)).toBe(true);
   });
 
   it.each([
-    'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
-    'Dokumentation/namespaces/tags.csv',
-    'Implementierungsbeschreibungen/Komponenten/AWS Beispiel-Components/aws_iam-component_definition.json',
-    'Mappings/ISO-27001-zu-GSpp/ISO27001-AnnexA-catalog.json',
-    'Quellkataloge/Methodik-Grundschutz++/Grundschutz++-profile.json',
+    'control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json',
+    'documentation/namespaces/tags.csv',
+    'implementation_layer/AWS Beispiel-Components/aws_iam-component_definition.json',
+    'control_layer/ISO27001/ISO27001-AnnexA-catalog.json',
+    'control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json',
   ])('accepts safe repository path %s', (repoPath) => {
     expect(isSafeRepoPath(repoPath)).toBe(true);
   });
@@ -85,12 +83,12 @@ describe('sourceRegistry', () => {
   it.each([
     '',
     ' ',
-    '/Anwenderkataloge/catalog.json',
-    '../Anwenderkataloge/catalog.json',
-    'Anwenderkataloge/../secret.json',
-    'Anwenderkataloge//catalog.json',
-    'Anwenderkataloge/./catalog.json',
-    'Anwenderkataloge\\catalog.json',
+    '/control_layer/catalog.json',
+    '../control_layer/catalog.json',
+    'control_layer/../secret.json',
+    'control_layer//catalog.json',
+    'control_layer/./catalog.json',
+    'control_layer\\catalog.json',
   ])('rejects unsafe repository path %s', (repoPath) => {
     expect(isSafeRepoPath(repoPath)).toBe(false);
   });
@@ -103,7 +101,10 @@ describe('sourceRegistry', () => {
     }
 
     expect(isPathWithinMonitoredRoot('README.md')).toBe(false);
-    expect(isPathWithinMonitoredRoot('Mappings/../secret.json')).toBe(false);
+    expect(isPathWithinMonitoredRoot('control_layer/../secret.json')).toBe(false);
+    // documentation/ ist bewusst nur bis namespaces/ beobachtet.
+    expect(isPathWithinMonitoredRoot('documentation/OSCAL.md')).toBe(false);
+    expect(isPathWithinMonitoredRoot('assessment_layer/README.md')).toBe(false);
   });
 
   it('resolves the official catalog path to the supported entry', () => {
@@ -112,35 +113,43 @@ describe('sourceRegistry', () => {
   });
 
   it('resolves direct namespace CSV children to the vocabulary collection', () => {
-    expect(getArtifactByUpstreamPath('Dokumentation/namespaces/tags.csv')?.artifactKey).toBe(
+    expect(getArtifactByUpstreamPath('documentation/namespaces/tags.csv')?.artifactKey).toBe(
       'namespaces-bsi',
     );
-    expect(getArtifactByUpstreamPath('Dokumentation/namespaces/nested/tags.csv')).toBeNull();
-    expect(getArtifactByUpstreamPath('Dokumentation/namespaces/readme.md')).toBeNull();
-    expect(getArtifactByUpstreamPath('Dokumentation/namespaces')).toBeNull();
+    expect(getArtifactByUpstreamPath('documentation/namespaces/nested/tags.csv')).toBeNull();
+    expect(getArtifactByUpstreamPath('documentation/namespaces/readme.md')).toBeNull();
+    expect(getArtifactByUpstreamPath('documentation/namespaces')).toBeNull();
   });
 
   it('rejects unknown upstream paths', () => {
-    expect(getArtifactByUpstreamPath('Dokumentation/readme.md')).toBeNull();
-    expect(getArtifactByUpstreamPath('Quellkataloge/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json')).toBeNull();
+    expect(getArtifactByUpstreamPath('documentation/OSCAL.md')).toBeNull();
+    expect(
+      getArtifactByUpstreamPath(
+        'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
+      ),
+    ).toBeNull();
     expect(getArtifactByUpstreamPath('')).toBeNull();
   });
 
   it('reports the expected OSCAL root type per registered path', () => {
     expect(getExpectedRootType(OFFICIAL_CATALOG_PATH)).toBe('catalog');
     expect(
-      getExpectedRootType('Anwenderkataloge/Lieferkettensicherheit/Lieferkettensicherheit-catalog.json'),
+      getExpectedRootType(
+        'control_layer/Lieferkettensicherheit/Lieferkettensicherheit-resolved_catalog.json',
+      ),
     ).toBe('catalog');
-    expect(getExpectedRootType('Mappings/IT-GS2023-zu-GSpp/ITGS-to-GS++-mapping.json')).toBe(
-      'mapping-collection',
-    );
-    expect(getExpectedRootType('Quellkataloge/WLAN/WLAN-profile.json')).toBe('profile');
     expect(
       getExpectedRootType(
-        'Implementierungsbeschreibungen/Komponenten/WLAN/WLAN-component_definition.json',
+        'control_layer/Mappings/IT-GS2023-zu-GSpp/ITGS-to-GS++-mapping_collection.json',
       ),
+    ).toBe('mapping-collection');
+    expect(getExpectedRootType('control_layer/WLAN/sources/profiles/WLAN-profile.json')).toBe(
+      'profile',
+    );
+    expect(
+      getExpectedRootType('implementation_layer/WLAN/WLAN-component_definition.json'),
     ).toBe('component-definition');
-    expect(getExpectedRootType('Dokumentation/namespaces/tags.csv')).toBeNull();
+    expect(getExpectedRootType('documentation/namespaces/tags.csv')).toBeNull();
     expect(getExpectedRootType('unknown.json')).toBeNull();
   });
 

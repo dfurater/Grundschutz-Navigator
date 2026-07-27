@@ -36,7 +36,7 @@ const resolvedControl = makeControl({
   confidentialityProp: {
     name: 'confidentiality',
     value: '2',
-    ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets_levels.csv',
+    ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets_levels.csv',
   },
   threats: ['G 0.18', 'Unbekannte Gefährdung'],
   threatsProp: {
@@ -74,7 +74,7 @@ const resolutions = resolveControlVocabularies(
 );
 
 const SECURITY_TARGET_LEVELS_NS =
-  'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets_levels.csv';
+  'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets_levels.csv';
 
 const allTargetsControl = makeControl({
   confidentiality: '2',

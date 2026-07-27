@@ -20,9 +20,9 @@ function makeCatalogState(): CatalogState {
         source: {
           namespace: 'https://example.com/namespaces/documentation_guidelines.csv',
           repository: 'https://example.com/repo',
-          path: 'Dokumentation/namespaces/documentation_guidelines.csv',
+          path: 'documentation/namespaces/documentation_guidelines.csv',
           fileName: 'documentation_guidelines.csv',
-          routeId: 'dokumentation-namespaces-documentation-guidelines',
+          routeId: 'documentation-namespaces-documentation-guidelines',
           gitBlobSha: 'blob-docs',
         },
         columnOrder: ['Begriff', 'Definition'],
@@ -40,9 +40,9 @@ function makeCatalogState(): CatalogState {
         source: {
           namespace: 'https://example.com/namespaces/basethreats.csv',
           repository: 'https://example.com/repo',
-          path: 'Dokumentation/namespaces/basethreats.csv',
+          path: 'documentation/namespaces/basethreats.csv',
           fileName: 'basethreats.csv',
-          routeId: 'dokumentation-namespaces-basethreats',
+          routeId: 'documentation-namespaces-basethreats',
           gitBlobSha: 'blob-threats',
         },
         columnOrder: ['Begriff', 'Definition'],
@@ -55,9 +55,9 @@ function makeCatalogState(): CatalogState {
           namespace:
             'https://example.com/namespaces/security_targets_levels.csv',
           repository: 'https://example.com/repo',
-          path: 'Dokumentation/namespaces/security_targets_levels.csv',
+          path: 'documentation/namespaces/security_targets_levels.csv',
           fileName: 'security_targets_levels.csv',
-          routeId: 'dokumentation-namespaces-security-target-levels',
+          routeId: 'documentation-namespaces-security-target-levels',
           gitBlobSha: 'blob-target-levels',
         },
         columnOrder: ['Wert', 'Definition'],
@@ -69,9 +69,9 @@ function makeCatalogState(): CatalogState {
         source: {
           namespace: 'https://example.com/namespaces/security_targets.csv',
           repository: 'https://example.com/repo',
-          path: 'Dokumentation/namespaces/security_targets.csv',
+          path: 'documentation/namespaces/security_targets.csv',
           fileName: 'security_targets.csv',
-          routeId: 'dokumentation-namespaces-security-targets',
+          routeId: 'documentation-namespaces-security-targets',
           gitBlobSha: 'blob-targets',
         },
         columnOrder: ['Begriff', 'Definition'],
@@ -83,9 +83,9 @@ function makeCatalogState(): CatalogState {
         source: {
           namespace: 'https://example.com/namespaces/practices.csv',
           repository: 'https://example.com/repo',
-          path: 'Dokumentation/namespaces/practices.csv',
+          path: 'documentation/namespaces/practices.csv',
           fileName: 'practices.csv',
-          routeId: 'dokumentation-namespaces-practices',
+          routeId: 'documentation-namespaces-practices',
           gitBlobSha: 'blob-practices',
         },
         columnOrder: ['Kürzel', 'Begriff', 'Definition', 'UUID'],
@@ -97,9 +97,9 @@ function makeCatalogState(): CatalogState {
         source: {
           namespace: 'https://example.com/namespaces/topics.csv',
           repository: 'https://example.com/repo',
-          path: 'Dokumentation/namespaces/topics.csv',
+          path: 'documentation/namespaces/topics.csv',
           fileName: 'topics.csv',
-          routeId: 'dokumentation-namespaces-topics',
+          routeId: 'documentation-namespaces-topics',
           gitBlobSha: 'blob-topics',
         },
         columnOrder: ['Begriff', 'Definition', 'UUID'],
@@ -135,15 +135,15 @@ describe('VocabularyOverviewPage', () => {
     const rowLink = screen.getByRole('link', { name: 'Dokumentationsvorgaben' });
     const fileLink = screen.getByRole('link', { name: 'documentation_guidelines.csv' });
 
-    expect(rowLink).toHaveAttribute('href', '/vokabular/dokumentation-namespaces-documentation-guidelines');
+    expect(rowLink).toHaveAttribute('href', '/vokabular/documentation-namespaces-documentation-guidelines');
     expect(screen.getByText('Dokumentationsvorgaben')).toHaveClass('type-object-title');
     expect(fileLink).toHaveAttribute(
       'href',
-      'https://example.com/repo/blob/snapshot-123/Dokumentation/namespaces/documentation_guidelines.csv',
+      'https://example.com/repo/blob/snapshot-123/documentation/namespaces/documentation_guidelines.csv',
     );
     expect(fileLink).toHaveAttribute('target', '_blank');
     expect(fileLink).toHaveClass('catalog-meta-type', 'catalog-link-color', 'block');
-    expect(screen.queryByText('Dokumentation/namespaces/documentation_guidelines.csv')).not.toBeInTheDocument();
+    expect(screen.queryByText('documentation/namespaces/documentation_guidelines.csv')).not.toBeInTheDocument();
   });
 
   it('uses curated German titles and routes for security targets and base threats', () => {
@@ -157,23 +157,23 @@ describe('VocabularyOverviewPage', () => {
 
     expect(screen.getByRole('link', { name: 'Elementare Gefährdungen' })).toHaveAttribute(
       'href',
-      '/vokabular/dokumentation-namespaces-basethreats',
+      '/vokabular/documentation-namespaces-basethreats',
     );
     expect(screen.getByRole('link', { name: 'Schutzziele' })).toHaveAttribute(
       'href',
-      '/vokabular/dokumentation-namespaces-security-targets',
+      '/vokabular/documentation-namespaces-security-targets',
     );
     expect(screen.getByRole('link', { name: 'Schutzziel-Relevanz' })).toHaveAttribute(
       'href',
-      '/vokabular/dokumentation-namespaces-security-target-levels',
+      '/vokabular/documentation-namespaces-security-target-levels',
     );
     expect(screen.getByRole('link', { name: 'Praktiken' })).toHaveAttribute(
       'href',
-      '/vokabular/dokumentation-namespaces-practices',
+      '/vokabular/documentation-namespaces-practices',
     );
     expect(screen.getByRole('link', { name: 'Themen' })).toHaveAttribute(
       'href',
-      '/vokabular/dokumentation-namespaces-topics',
+      '/vokabular/documentation-namespaces-topics',
     );
   });
 });

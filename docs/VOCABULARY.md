@@ -4,7 +4,7 @@ Beschreibung der offiziellen BSI-Vokabular-Auflösung.
 
 ## Überblick
 
-Das Vokabular-System ermöglicht die Anzeige der **offiziellen BSI-Definitionen** für Werte im Katalog. Die Anwendung liefert alle 13 CSV-Dateien direkt aus `Dokumentation/namespaces/` im gepinnten BSI-Snapshot aus. Katalogseitige `ns`-Referenzen bestimmen weiterhin, welche Vokabulare einzelne OSCAL-Props kontextuell auflösen; sie begrenzen nicht mehr die Auslieferungs-Membership.
+Das Vokabular-System ermöglicht die Anzeige der **offiziellen BSI-Definitionen** für Werte im Katalog. Die Anwendung liefert alle 13 CSV-Dateien direkt aus `documentation/namespaces/` im gepinnten BSI-Snapshot aus. Katalogseitige `ns`-Referenzen bestimmen weiterhin, welche Vokabulare einzelne OSCAL-Props kontextuell auflösen; sie begrenzen nicht mehr die Auslieferungs-Membership.
 
 | Vokabular | Datei |
 |-----------|-------|
@@ -27,7 +27,7 @@ Die Anwendung lädt diese Vokabulare zur Build-Zeit von BSI. Die Collection ist 
 ## Architektur
 
 ```
-BSI Repository (Dokumentation/namespaces/*.csv)
+BSI Repository (documentation/namespaces/*.csv)
         │
         ▼
 scripts/fetch-catalog.mjs (+ vocabulary-utils.mjs)
@@ -263,14 +263,20 @@ ControlDetail-Breadcrumb sichtbar und erhält den dezenten Hinweis
 Katalogtreffer vollständig auf `/vokabular` auffindbar; Definitionen werden
 nicht auf Übersichtsseiten dupliziert.
 
-Für den gepinnten BSI-Snapshot `12abb438fcdb4f4b63fb3e751e89d7c526e647b5`
-wurde die Deckung explizit gemessen: 139 Katalog-Untergruppen verwenden 119
-verschiedene UUIDs und lösen vollständig auf die 119 CSV-Einträge auf. Aktuell
-gibt es weder ein Katalogthema ohne Treffer noch einen verwaisten CSV-Eintrag.
+Für den gepinnten BSI-Snapshot `cea4589c2b8337207772a88dd82d808cba5e1d89`
+wurde die Deckung explizit gemessen: 140 Katalog-Untergruppen verwenden 120
+verschiedene UUIDs und lösen vollständig auf die 120 CSV-Einträge auf. Es gibt
+kein Katalogthema ohne Treffer und keinen verwaisten CSV-Eintrag.
 Die UI-Tests halten dennoch beide Abweichungsrichtungen für künftige Snapshots
 sichtbar. Fetch und Catalog-Sync-Guard behandeln solche Abweichungen zugleich
 für jeden Snapshot als Integritätsfehler; die exakten Zählwerte bleiben nur für
-den bekannten Snapshot zusätzlich gepinnt.
+bekannte Snapshots zusätzlich gepinnt (`scripts/taxonomy-coverage.mjs`).
+
+Für `practices.csv` gilt eine namentlich begrenzte Ausnahme: Das BSI liefert
+seit diesem Snapshot die Beispielpraktik „EXMP“ ohne zugehörige Katalog-Gruppe
+mit aus. Genau diese UUID ist in `TOLERATED_ORPHAN_PRACTICE_UUIDS` geduldet und
+wird separat als `toleratedOrphanCsvEntryCount` ausgewiesen; jede andere
+verwaiste CSV-Zeile lässt den Guard weiterhin hart fehlschlagen.
 
 ### Such-Text-Sammlung
 
