@@ -131,6 +131,51 @@ describe('Footer', () => {
     expect(screen.queryByText('15. Apr. 2026')).not.toBeInTheDocument();
   });
 
+  it('keeps footer links visible in narrow desktop panes while preserving the two-line layout', () => {
+    render(
+      <MemoryRouter>
+        <Footer />
+      </MemoryRouter>,
+    );
+
+    const sourceLink = screen.getByRole('link', {
+      name: /quelle: bsi stand-der-technik-bibliothek/i,
+    });
+    const secondaryLinks = secondaryFooterLinks.map(({ label }) =>
+      screen.getByRole('link', { name: label }),
+    );
+
+    expect(sourceLink).toHaveClass('flex-1', 'min-w-0', 'lg:mr-auto');
+    expect(sourceLink).not.toHaveClass('lg:flex-none');
+    expect(sourceLink.querySelector('.sm\\:hidden')).toHaveClass('min-w-0', 'truncate');
+    expect(screen.getByText('26. März 2026')).toHaveClass('shrink-0', 'whitespace-nowrap');
+    expect(screen.getByRole('link', { name: 'Verifiziert' })).toHaveClass(
+      'shrink-0',
+      'whitespace-nowrap',
+    );
+    expect(secondaryLinks[0].parentElement).toHaveClass(
+      'basis-full',
+      'min-w-0',
+      'flex',
+      'flex-wrap',
+      'lg:basis-auto',
+      'lg:flex-nowrap',
+    );
+    expect(secondaryLinks[0].parentElement?.parentElement).not.toHaveClass('lg:flex-nowrap');
+  });
+
+  it('uses compact mobile spacing for the complete secondary footer row', () => {
+    render(
+      <MemoryRouter>
+        <Footer />
+      </MemoryRouter>,
+    );
+
+    const secondaryGroup = screen.getByRole('link', { name: 'About' }).parentElement;
+
+    expect(secondaryGroup).toHaveClass('gap-x-2', 'sm:gap-x-3');
+  });
+
   it('hides the Katalog-Stand when commit_date is unknown instead of falling back to fetched_at', () => {
     mockedUseCatalog.mockReturnValue({
       catalog: null,
