@@ -137,20 +137,12 @@ export const SOURCE_REGISTRY = Object.freeze(
       title: 'Mapping IT-Grundschutz 2023 zu Grundschutz++',
     },
     {
-      artifactKey: 'component-aws-iam',
-      kind: 'oscal',
-      expectedRootType: 'component-definition',
-      upstreamPath: `${COMPONENT_DIRECTORY}/AWS Beispiel-Components/aws_iam-component_definition.json`,
-      lifecycle: 'preview',
-      title: 'Component Definition AWS IAM',
-    },
-    {
       artifactKey: 'component-aws-security-hub',
       kind: 'oscal',
       expectedRootType: 'component-definition',
-      upstreamPath: `${COMPONENT_DIRECTORY}/AWS Beispiel-Components/aws_security_hub-component_definition.json`,
+      upstreamPath: `${COMPONENT_DIRECTORY}/AWS Beispiel-Components/AWS Security Hub-component_definition.json`,
       lifecycle: 'preview',
-      title: 'Component Definition AWS Security Hub',
+      title: 'Component Definition AWS Security Hub V2/Essentials',
     },
     {
       artifactKey: 'component-ga-lotse-grundmodul',

@@ -73,11 +73,29 @@ describe('sourceRegistry', () => {
   it.each([
     'control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json',
     'documentation/namespaces/tags.csv',
-    'implementation_layer/AWS Beispiel-Components/aws_iam-component_definition.json',
+    'implementation_layer/AWS Beispiel-Components/AWS Security Hub-component_definition.json',
     'control_layer/ISO27001/ISO27001-AnnexA-catalog.json',
     'control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json',
   ])('accepts safe repository path %s', (repoPath) => {
     expect(isSafeRepoPath(repoPath)).toBe(true);
+  });
+
+  it('tracks only the approved AWS Security Hub replacement as preview', () => {
+    const awsEntries = SOURCE_REGISTRY.filter((entry) =>
+      entry.artifactKey.startsWith('component-aws-'),
+    );
+
+    expect(awsEntries).toEqual([
+      {
+        artifactKey: 'component-aws-security-hub',
+        kind: 'oscal',
+        expectedRootType: 'component-definition',
+        upstreamPath:
+          'implementation_layer/AWS Beispiel-Components/AWS Security Hub-component_definition.json',
+        lifecycle: 'preview',
+        title: 'Component Definition AWS Security Hub V2/Essentials',
+      },
+    ]);
   });
 
   it.each([

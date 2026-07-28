@@ -416,7 +416,11 @@ function materializeRegistryFiles({ registryEntries, treeFiles, namespaceRefs })
     if (entry.kind !== 'oscal') continue;
     const treeFile = treeFileByPath.get(entry.upstreamPath);
     if (!treeFile) {
-      throw new Error(`Registriertes Artefakt fehlt im vollständigen BSI-Tree: ${entry.upstreamPath}`);
+      throw new Error(
+        `Registriertes Artefakt fehlt im vollständigen BSI-Tree: ${entry.upstreamPath}. ` +
+        'Quellregister manuell gegen den gepinnten BSI-Snapshot prüfen; ' +
+        'keine automatische Pfadfreigabe.',
+      );
     }
     descriptors.push({
       artifactKey: entry.artifactKey,

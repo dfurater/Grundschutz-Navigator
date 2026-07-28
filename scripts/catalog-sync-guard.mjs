@@ -78,6 +78,39 @@ const LAYER_STRUCTURE_MIGRATION = Object.freeze({
     '6f5d20990b3859f1b0a611aa1816bc638d1ed293823b84c4fa1cddb9b1c523d2',
 });
 
+/**
+ * Einmaliger Registry- und Manifestübergang für die durch BSI ersetzten
+ * AWS-Preview-Komponenten (GRU-308).
+ *
+ * Der Engineering-PR muss Registry und Manifest atomar ändern, kann deshalb
+ * nicht die Manifest-only-Form der automatischen Sync-Lane verwenden. Die
+ * Ausnahme ist an beide Snapshots und Signaturen sowie an Branch, Titel und
+ * den exakten Datei-Scope gebunden; Tree-, Blob-, Hash-, Root-Type- und
+ * Registry-Prüfungen bleiben vollständig aktiv.
+ */
+const AWS_COMPONENT_REPLACEMENT_MIGRATION = Object.freeze({
+  branch: 'codex/gru-308-gru-305-sync-recovery',
+  title: 'fix(sync): AWS-Registry und Werktagslauf aktualisieren (GRU-308, GRU-305)',
+  diffEntries: Object.freeze([
+    Object.freeze({ status: 'M', path: '.github/workflows/update-catalog.yml' }),
+    Object.freeze({ status: 'M', path: 'scripts/catalog-sync-guard.mjs' }),
+    Object.freeze({ status: 'M', path: 'scripts/catalog-sync-guard.test.ts' }),
+    Object.freeze({ status: 'M', path: 'scripts/fetch-catalog.mjs' }),
+    Object.freeze({ status: 'M', path: 'scripts/fetch-catalog.test.ts' }),
+    Object.freeze({ status: 'M', path: 'scripts/sync-upstream-manifest.test.ts' }),
+    Object.freeze({ status: 'A', path: 'scripts/update-catalog-workflow.test.ts' }),
+    Object.freeze({ status: 'M', path: 'src/domain/sourceRegistry.mjs' }),
+    Object.freeze({ status: 'M', path: 'src/domain/sourceRegistry.test.ts' }),
+    Object.freeze({ status: 'M', path: TRACKED_MANIFEST_PATH }),
+  ]),
+  previousSnapshotCommitSha: 'cea4589c2b8337207772a88dd82d808cba5e1d89',
+  nextSnapshotCommitSha: 'c1e53dcfbb5adc503964042a859f01ea721a4419',
+  previousSignatureSha256:
+    '6f5d20990b3859f1b0a611aa1816bc638d1ed293823b84c4fa1cddb9b1c523d2',
+  nextSignatureSha256:
+    '838464de3ae659d0278c4563aa926935790bfa23cb5fa2ccefc55fa9cb063195',
+});
+
 export function computeManifestSignature(manifest) {
   return computeV2ManifestSignature(manifest);
 }
@@ -177,6 +210,22 @@ export function isApprovedLayerStructureMigration(
   );
 }
 
+export function isApprovedAwsComponentReplacementMigration(
+  previousManifest,
+  nextManifest,
+) {
+  return (
+    previousManifest?.snapshotCommitSha ===
+      AWS_COMPONENT_REPLACEMENT_MIGRATION.previousSnapshotCommitSha &&
+    nextManifest?.snapshotCommitSha ===
+      AWS_COMPONENT_REPLACEMENT_MIGRATION.nextSnapshotCommitSha &&
+    previousManifest?.signatureSha256 ===
+      AWS_COMPONENT_REPLACEMENT_MIGRATION.previousSignatureSha256 &&
+    nextManifest?.signatureSha256 ===
+      AWS_COMPONENT_REPLACEMENT_MIGRATION.nextSignatureSha256
+  );
+}
+
 export function isApprovedVocabularyCollectionMigration(
   previousManifest,
   nextManifest,
@@ -210,6 +259,45 @@ export function validateCatalogSyncPullRequest({ branch, title, diffEntries }) {
     diffEntries[0].path !== TRACKED_MANIFEST_PATH
   ) {
     throw new Error('Catalog sync PR must modify exactly upstream-manifest.json without add/delete/rename');
+  }
+}
+
+export function validateAwsComponentReplacementPullRequest({
+  branch,
+  title,
+  diffEntries,
+}) {
+  if (branch !== AWS_COMPONENT_REPLACEMENT_MIGRATION.branch) {
+    throw new Error(
+      `AWS component replacement branch must be exactly: ${AWS_COMPONENT_REPLACEMENT_MIGRATION.branch}`,
+    );
+  }
+  if (title !== AWS_COMPONENT_REPLACEMENT_MIGRATION.title) {
+    throw new Error(
+      `AWS component replacement title must be exactly: ${AWS_COMPONENT_REPLACEMENT_MIGRATION.title}`,
+    );
+  }
+
+  const expectedDiff = new Map(
+    AWS_COMPONENT_REPLACEMENT_MIGRATION.diffEntries.map(({ path, status }) => [
+      path,
+      status,
+    ]),
+  );
+  const actualDiff = new Map();
+  for (const entry of diffEntries) {
+    if (actualDiff.has(entry.path)) {
+      throw new Error('AWS component replacement file scope must match exactly');
+    }
+    actualDiff.set(entry.path, entry.status);
+  }
+  const hasExactFileScope =
+    actualDiff.size === expectedDiff.size &&
+    [...expectedDiff].every(
+      ([path, status]) => actualDiff.get(path) === status,
+    );
+  if (!hasExactFileScope) {
+    throw new Error('AWS component replacement file scope must match exactly');
   }
 }
 
@@ -414,9 +502,15 @@ export async function guardCatalogSyncPullRequest({
     isApprovedVocabularyCollectionMigration(previousManifest, nextManifest);
   const isLayerStructureMigration =
     isApprovedLayerStructureMigration(previousManifest, nextManifest);
+  const isAwsComponentReplacementMigration =
+    isApprovedAwsComponentReplacementMigration(previousManifest, nextManifest);
   const isPinnedStructuralMigration =
-    isVocabularyCollectionMigration || isLayerStructureMigration;
-  if (!isPinnedStructuralMigration) {
+    isVocabularyCollectionMigration ||
+    isLayerStructureMigration ||
+    isAwsComponentReplacementMigration;
+  if (isAwsComponentReplacementMigration) {
+    validateAwsComponentReplacementPullRequest({ branch, title, diffEntries });
+  } else if (!isPinnedStructuralMigration) {
     validateCatalogSyncPullRequest({ branch, title, diffEntries });
   }
   const isLegacyMigration = isApprovedLegacyV1Manifest(previousManifest);

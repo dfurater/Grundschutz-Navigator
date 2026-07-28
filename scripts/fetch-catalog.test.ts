@@ -712,6 +712,34 @@ describe('fetch-catalog', () => {
     )).rejects.toThrow('Profilwurzel muss ein JSON-Objekt sein.');
   });
 
+  it('fails closed with a manual registry recovery hint when a registered preview artifact is missing', async () => {
+    const missingPreviewPath =
+      'implementation_layer/AWS Beispiel-Components/retired-component_definition.json';
+    const input = makeMinimalFetchInput();
+    const previewRegistry = [
+      ...MINIMAL_REGISTRY,
+      {
+        artifactKey: 'component-retired',
+        kind: 'oscal',
+        expectedRootType: 'component-definition',
+        upstreamPath: missingPreviewPath,
+        lifecycle: 'preview',
+        title: 'Retired Component',
+      },
+    ] as const;
+    installSnapshotFetch({ rawByPath: input.rawByPath });
+
+    await expect(buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      {
+        registryEntries: previewRegistry,
+        treeResponse: input.treeResponse,
+      },
+    )).rejects.toThrow(
+      `Registriertes Artefakt fehlt im vollständigen BSI-Tree: ${missingPreviewPath}. Quellregister manuell gegen den gepinnten BSI-Snapshot prüfen; keine automatische Pfadfreigabe.`,
+    );
+  });
+
   it('emits catalog.json with exact upstream bytes and local build metadata', async () => {
     vi.stubEnv('GITHUB_RUN_ID', undefined);
     vi.stubEnv('GITHUB_REPOSITORY', undefined);
