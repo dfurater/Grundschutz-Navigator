@@ -42,39 +42,40 @@ export function Footer({ className = '' }: FooterProps) {
       className={`shrink-0 border-t border-[var(--color-border-default)] bg-[var(--color-surface-base)] px-4 py-3 text-xs text-[var(--color-text-secondary)] sm:px-6 ${className}`}
       role="contentinfo"
     >
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 overflow-hidden">
-          <span className="hidden shrink-0 whitespace-nowrap font-medium tracking-[0.02em] text-[var(--color-text-primary)] xl:inline">
-            Grundschutz++ Navigator
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[var(--color-text-secondary)] lg:flex-nowrap">
+        <span className="hidden shrink-0 whitespace-nowrap font-medium tracking-[0.02em] text-[var(--color-text-primary)] xl:inline">
+          Grundschutz++ Navigator
+        </span>
+        <span aria-hidden="true" className="hidden text-[var(--color-text-muted)] xl:inline">/</span>
+        <a
+          href="https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="catalog-link-color inline-flex min-w-0 flex-1 items-center gap-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] lg:mr-auto lg:flex-none"
+        >
+          <span className="hidden min-w-0 truncate sm:inline">
+            Quelle: BSI Stand-der-Technik-Bibliothek
           </span>
-          <span aria-hidden="true" className="hidden text-[var(--color-text-muted)] xl:inline">/</span>
-          <a
-            href="https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="catalog-link-color inline-flex min-w-0 items-center gap-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+          <span className="min-w-0 truncate sm:hidden">Quelle: BSI-Bibliothek</span>
+          <IconExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
+          <span className="sr-only"> (öffnet in neuem Tab)</span>
+        </a>
+        {catalogVersion && (
+          <span className="shrink-0 whitespace-nowrap">
+            {formatDate(catalogVersion)}
+          </span>
+        )}
+        {verified !== undefined && (
+          <Link
+            to="/about"
+            className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] ${verified ? 'text-[var(--color-success)]' : 'text-[var(--color-warning)]'}`}
+            title="Integritätsdetails auf der Seite Über das Projekt"
           >
-            <span className="hidden sm:inline truncate">Quelle: BSI Stand-der-Technik-Bibliothek</span>
-            <span className="sm:hidden">Quelle: BSI-Bibliothek</span>
-            <IconExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
-            <span className="sr-only"> (öffnet in neuem Tab)</span>
-          </a>
-        </div>
-
-        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[var(--color-text-secondary)]">
-          {catalogVersion && (
-            <span className="whitespace-nowrap">{formatDate(catalogVersion)}</span>
-          )}
-          {verified !== undefined && (
-            <Link
-              to="/about"
-              className={`inline-flex items-center gap-1 whitespace-nowrap rounded font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] ${verified ? 'text-[var(--color-success)]' : 'text-[var(--color-warning)]'}`}
-              title="Integritätsdetails auf der Seite Über das Projekt"
-            >
-              <IconShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
-              {verified ? 'Verifiziert' : 'Nicht verifiziert'}
-            </Link>
-          )}
+            <IconShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+            {verified ? 'Verifiziert' : 'Nicht verifiziert'}
+          </Link>
+        )}
+        <div className="basis-full min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1 sm:gap-x-3 lg:basis-auto lg:flex-nowrap">
           <span aria-hidden="true" className="hidden text-[var(--color-text-muted)] lg:inline">·</span>
           {secondaryFooterLinks.map(({ to, label }) => (
             <Link key={to} to={to} className={secondaryLinkClass}>
