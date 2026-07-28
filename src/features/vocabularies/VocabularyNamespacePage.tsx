@@ -1,4 +1,4 @@
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router';
 import type { VocabularyEntry, VocabularyNamespace } from '@/domain/models';
 import { useCatalog } from '@/hooks/useCatalog';
 

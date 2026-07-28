@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router';
 import { buildCatalogUrl } from '@/app/routes';
 import type { Catalog, Control } from '@/domain/models';
 import { useCatalog } from '@/hooks/useCatalog';

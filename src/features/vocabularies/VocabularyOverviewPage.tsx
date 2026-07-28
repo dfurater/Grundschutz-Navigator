@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { useCatalog } from '@/hooks/useCatalog';
 import { buildVocabularySourceUrl } from '@/domain/vocabulary';
 

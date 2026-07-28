@@ -46,7 +46,7 @@ IT-Sicherheitsbeauftragte, Berater:innen, Auditor:innen, Studierende und alle, d
 
 ### Voraussetzungen
 
-- **Node.js 22**
+- **Node.js 22.22.0 oder neuer** (Untergrenze von React Router 8, in `package.json` als `engines.node` deklariert)
 - Optional ein **GitHub Token** in `GH_TOKEN`, um beim Katalog-Fetch höhere API-Rate-Limits zu nutzen
 
 ### Quickstart

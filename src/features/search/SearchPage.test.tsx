@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import type { Catalog, CatalogState, Control } from '@/domain/models';
 import { useCatalog } from '@/hooks/useCatalog';
 import { SearchPage } from './SearchPage';

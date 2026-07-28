@@ -13,7 +13,7 @@ Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application 
 | Framework | React 19 + TypeScript |
 | Build-Tool | Vite 8 |
 | Styling | Tailwind CSS v4 (via `@tailwindcss/vite` Plugin) |
-| Routing | React Router v7 |
+| Routing | React Router v8 |
 | Volltextsuche | FlexSearch |
 | Testing | Vitest + @testing-library/react + jsdom |
 | Deployment | GitHub Pages (via GitHub Actions) |

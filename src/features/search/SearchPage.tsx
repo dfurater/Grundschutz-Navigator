@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useSearch } from './useSearch';
 import { Button } from '@/components/Button';

@@ -5,7 +5,7 @@ import {
   useMemo,
   useRef,
 } from 'react';
-import type { NavigateFunction } from 'react-router-dom';
+import type { NavigateFunction } from 'react-router';
 import type { Catalog, Control } from '@/domain/models';
 import {
   buildCatalogUrl,

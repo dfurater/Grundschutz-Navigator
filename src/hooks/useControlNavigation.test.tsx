@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { NavigateFunction } from 'react-router-dom';
+import type { NavigateFunction } from 'react-router';
 import type { Catalog, Control } from '@/domain/models';
 import type { CatalogKey } from '@/domain/sourceRegistry';
 import { useControlNavigation } from './useControlNavigation';
