@@ -19,6 +19,14 @@ const secondaryFooterLinks = [
   { label: 'Impressum', href: '/impressum' },
 ] as const;
 
+function renderFooter() {
+  return render(
+    <MemoryRouter>
+      <Footer />
+    </MemoryRouter>,
+  );
+}
+
 describe('Footer', () => {
   beforeEach(() => {
     mockedUseCatalog.mockReset();
@@ -120,23 +128,15 @@ describe('Footer', () => {
     expect(sourceLink).toHaveTextContent('öffnet in neuem Tab');
   });
 
-  it('renders the BSI commit date as Katalog-Stand, not the build fetch time', () => {
-    render(
-      <MemoryRouter>
-        <Footer />
-      </MemoryRouter>,
-    );
+  it('does not render provenance dates even when commit and fetch timestamps are available', () => {
+    renderFooter();
 
-    expect(screen.getByText('26. März 2026')).toBeInTheDocument();
+    expect(screen.queryByText('26. März 2026')).not.toBeInTheDocument();
     expect(screen.queryByText('15. Apr. 2026')).not.toBeInTheDocument();
   });
 
-  it('keeps footer links visible in narrow desktop panes while preserving the two-line layout', () => {
-    render(
-      <MemoryRouter>
-        <Footer />
-      </MemoryRouter>,
-    );
+  it('groups source and verification before the separately aligned responsive navigation', () => {
+    renderFooter();
 
     const sourceLink = screen.getByRole('link', {
       name: /quelle: bsi stand-der-technik-bibliothek/i,
@@ -144,24 +144,36 @@ describe('Footer', () => {
     const secondaryLinks = secondaryFooterLinks.map(({ label }) =>
       screen.getByRole('link', { name: label }),
     );
+    const verificationLink = screen.getByRole('link', { name: 'Verifiziert' });
+    const informationGroup = sourceLink.parentElement;
+    const secondaryGroup = secondaryLinks[0].parentElement;
 
-    expect(sourceLink).toHaveClass('flex-1', 'min-w-0', 'lg:mr-auto');
-    expect(sourceLink).not.toHaveClass('lg:flex-none');
+    expect(sourceLink.nextElementSibling).toBe(verificationLink);
+    expect(verificationLink.parentElement).toBe(informationGroup);
+    expect(sourceLink).toHaveClass('min-w-0');
+    expect(sourceLink).not.toHaveClass('flex-1', 'lg:mr-auto');
     expect(sourceLink.querySelector('.sm\\:hidden')).toHaveClass('min-w-0', 'truncate');
-    expect(screen.getByText('26. März 2026')).toHaveClass('shrink-0', 'whitespace-nowrap');
-    expect(screen.getByRole('link', { name: 'Verifiziert' })).toHaveClass(
-      'shrink-0',
-      'whitespace-nowrap',
+    expect(verificationLink).toHaveClass('shrink-0', 'whitespace-nowrap');
+    expect(informationGroup).toHaveClass(
+      'basis-full',
+      'min-w-0',
+      'flex',
+      'flex-wrap',
+      'lg:basis-auto',
+      'lg:flex-1',
+      'lg:flex-nowrap',
     );
-    expect(secondaryLinks[0].parentElement).toHaveClass(
+    expect(secondaryGroup).toHaveClass(
       'basis-full',
       'min-w-0',
       'flex',
       'flex-wrap',
       'lg:basis-auto',
       'lg:flex-nowrap',
+      'lg:justify-end',
+      'lg:ml-auto',
     );
-    expect(secondaryLinks[0].parentElement?.parentElement).not.toHaveClass('lg:flex-nowrap');
+    expect(informationGroup?.parentElement).toBe(secondaryGroup?.parentElement);
   });
 
   it('uses compact mobile spacing for the complete secondary footer row', () => {
@@ -176,20 +188,20 @@ describe('Footer', () => {
     expect(secondaryGroup).toHaveClass('gap-x-2', 'sm:gap-x-3');
   });
 
-  it('hides the Katalog-Stand when commit_date is unknown instead of falling back to fetched_at', () => {
+  it('places the non-verified status directly after the source link', () => {
     mockedUseCatalog.mockReturnValue({
       catalog: null,
       provenance: {
         source: {
-          commit_date: 'unknown',
+          commit_date: '2026-03-26T12:00:00.000Z',
         },
         integrity: {
           fetched_at: '2026-04-15T12:00:00.000Z',
         },
       },
       verification: {
-        valid: true,
-        computedHash: 'hash',
+        valid: false,
+        computedHash: 'different-hash',
         expectedHash: 'hash',
         sourceCommit: 'abc123',
         fetchedAt: '2026-04-15T12:00:00.000Z',
@@ -201,14 +213,45 @@ describe('Footer', () => {
       error: null,
     } as ReturnType<typeof useCatalog>);
 
-    render(
-      <MemoryRouter>
-        <Footer />
-      </MemoryRouter>,
-    );
+    renderFooter();
 
-    expect(screen.queryByText('15. Apr. 2026')).not.toBeInTheDocument();
-    expect(screen.queryByText('unknown')).not.toBeInTheDocument();
+    const sourceLink = screen.getByRole('link', {
+      name: /quelle: bsi stand-der-technik-bibliothek/i,
+    });
+    const verificationLink = screen.getByRole('link', { name: 'Nicht verifiziert' });
+
+    expect(sourceLink.nextElementSibling).toBe(verificationLink);
+    expect(verificationLink.parentElement).toBe(sourceLink.parentElement);
+  });
+
+  it('renders no status link or placeholder when verification is unavailable', () => {
+    mockedUseCatalog.mockReturnValue({
+      catalog: null,
+      provenance: {
+        source: {
+          commit_date: '2026-03-26T12:00:00.000Z',
+        },
+        integrity: {
+          fetched_at: '2026-04-15T12:00:00.000Z',
+        },
+      },
+      verification: null,
+      vocabularyRegistry: null,
+      vocabularyProvenance: null,
+      vocabularyVerification: null,
+      loading: false,
+      error: null,
+    } as ReturnType<typeof useCatalog>);
+
+    renderFooter();
+
+    const sourceLink = screen.getByRole('link', {
+      name: /quelle: bsi stand-der-technik-bibliothek/i,
+    });
+
+    expect(screen.queryByRole('link', { name: 'Verifiziert' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Nicht verifiziert' })).not.toBeInTheDocument();
+    expect(sourceLink.nextElementSibling).toBeNull();
   });
 
   it('renders the product name without a version label', () => {
