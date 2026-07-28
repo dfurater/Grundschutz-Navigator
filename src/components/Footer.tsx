@@ -42,7 +42,7 @@ export function Footer({ className = '' }: FooterProps) {
       className={`shrink-0 border-t border-[var(--color-border-default)] bg-[var(--color-surface-base)] px-4 py-3 text-xs text-[var(--color-text-secondary)] sm:px-6 ${className}`}
       role="contentinfo"
     >
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[var(--color-text-secondary)] lg:flex-nowrap">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[var(--color-text-secondary)]">
         <span className="hidden shrink-0 whitespace-nowrap font-medium tracking-[0.02em] text-[var(--color-text-primary)] xl:inline">
           Grundschutz++ Navigator
         </span>
@@ -51,7 +51,7 @@ export function Footer({ className = '' }: FooterProps) {
           href="https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek"
           target="_blank"
           rel="noopener noreferrer"
-          className="catalog-link-color inline-flex min-w-0 flex-1 items-center gap-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] lg:mr-auto lg:flex-none"
+          className="catalog-link-color inline-flex min-w-0 flex-1 items-center gap-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] lg:mr-auto"
         >
           <span className="hidden min-w-0 truncate sm:inline">
             Quelle: BSI Stand-der-Technik-Bibliothek
