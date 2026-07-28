@@ -5,7 +5,7 @@ import {
   Routes,
   useLocation,
   useNavigate,
-} from 'react-router-dom';
+} from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Catalog, Control } from '@/domain/models';
 import type { CatalogKey } from '@/domain/sourceRegistry';

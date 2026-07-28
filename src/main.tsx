@@ -1,6 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
+import { BrowserRouter } from 'react-router';
 import { CatalogProvider } from '@/state/CatalogContext';
 import { AppShell } from '@/app/AppShell';
 import '@/index.css';

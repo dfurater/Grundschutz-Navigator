@@ -80,7 +80,7 @@ export function LizenzenPage() {
             },
             {
               name: 'React Router',
-              version: '7.x',
+              version: '8.x',
               license: 'MIT',
               url: 'https://github.com/remix-run/react-router',
             },

@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { IconExternalLink, IconShieldCheck } from '@/components/icons';
 import { useCatalog } from '@/hooks/useCatalog';
 import { buildVocabularyIndexPath } from '@/features/vocabulary/routes';

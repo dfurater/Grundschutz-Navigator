@@ -8,7 +8,7 @@ import {
   matchPath,
   useNavigate,
   useLocation,
-} from 'react-router-dom';
+} from 'react-router';
 import { HeaderBar } from '@/components/HeaderBar';
 import { TreeNav } from '@/components/TreeNav';
 import { Footer } from '@/components/Footer';

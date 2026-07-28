@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { IconShield } from '@/components/icons';
 import { useCatalog } from '@/hooks/useCatalog';
 import { buildGroupUrl } from '@/app/routes';
