@@ -1,6 +1,7 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { buildVocabularyIndexPath } from '@/features/vocabulary/routes';
 import { useCatalog } from '@/hooks/useCatalog';
 import { Footer } from './Footer';
 
@@ -9,6 +10,14 @@ vi.mock('@/hooks/useCatalog', () => ({
 }));
 
 const mockedUseCatalog = vi.mocked(useCatalog);
+
+const secondaryFooterLinks = [
+  { label: 'About', href: '/about' },
+  { label: 'Vokabulare', href: buildVocabularyIndexPath() },
+  { label: 'Datenschutz', href: '/datenschutz' },
+  { label: 'Lizenzen', href: '/lizenzen' },
+  { label: 'Impressum', href: '/impressum' },
+] as const;
 
 describe('Footer', () => {
   beforeEach(() => {
@@ -48,11 +57,7 @@ describe('Footer', () => {
     const links = [
       screen.getByRole('link', { name: /quelle: bsi stand-der-technik-bibliothek/i }),
       screen.getByRole('link', { name: 'Verifiziert' }),
-      screen.getByRole('link', { name: 'Über das Projekt' }),
-      screen.getByRole('link', { name: 'Datenschutz' }),
-      screen.getByRole('link', { name: 'Impressum' }),
-      screen.getByRole('link', { name: 'Lizenzen' }),
-      screen.getByRole('link', { name: 'Vokabulare' }),
+      ...secondaryFooterLinks.map(({ label }) => screen.getByRole('link', { name: label })),
     ];
 
     expect(links[0]).toHaveClass('catalog-link-color');
@@ -173,6 +178,24 @@ describe('Footer', () => {
     expect(brand.textContent).not.toMatch(/Pre-Release|v\d/);
   });
 
+  it('renders secondary footer links in the required order with their existing targets', () => {
+    render(
+      <MemoryRouter>
+        <Footer />
+      </MemoryRouter>,
+    );
+
+    const footer = screen.getByRole('contentinfo');
+    const secondaryLinks = within(footer)
+      .getAllByRole('link')
+      .filter((link) => secondaryFooterLinks.some(({ label }) => link.textContent === label));
+
+    expect(secondaryLinks.map((link) => ({
+      label: link.textContent,
+      href: link.getAttribute('href'),
+    }))).toEqual(secondaryFooterLinks);
+  });
+
   it('keeps legal and secondary links directly visible on mobile breakpoints', () => {
     render(
       <MemoryRouter>
@@ -180,14 +203,8 @@ describe('Footer', () => {
       </MemoryRouter>,
     );
 
-    for (const name of [
-      'Über das Projekt',
-      'Datenschutz',
-      'Impressum',
-      'Lizenzen',
-      'Vokabulare',
-    ]) {
-      expect(screen.getByRole('link', { name }).className).not.toContain('hidden');
+    for (const { label } of secondaryFooterLinks) {
+      expect(screen.getByRole('link', { name: label }).className).not.toContain('hidden');
     }
   });
 });
