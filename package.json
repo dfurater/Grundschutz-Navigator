@@ -16,6 +16,9 @@
     "lint": "eslint .",
     "fetch-catalog": "node scripts/fetch-catalog.mjs"
   },
+  "engines": {
+    "node": ">=22.22.0"
+  },
   "dependencies": {
     "flexsearch": "^0.8.212",
     "react": "^19.2.7",
