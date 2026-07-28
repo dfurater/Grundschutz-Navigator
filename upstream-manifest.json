@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "repository": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek",
-  "snapshotCommitSha": "cea4589c2b8337207772a88dd82d808cba5e1d89",
+  "snapshotCommitSha": "c1e53dcfbb5adc503964042a859f01ea721a4419",
   "files": [
     {
       "artifactKey": "catalog-gspp",
@@ -72,16 +72,16 @@
       "rootType": "catalog",
       "lifecycle": "preview",
       "path": "control_layer/WLAN/WLAN-resolved_catalog.json",
-      "gitBlobSha": "7a2b5d4cb8dae5fa064255b52d0f535ba0fef5a4",
-      "contentSha256": "6e19299012366bb8c961b95a8a01deb2cc3f55c5a1ee549c8a1f0792832836f4"
+      "gitBlobSha": "6f5058f6dba88febe912364ce1d918ae94c14948",
+      "contentSha256": "e0c4e7951d291ac3bbde2b8aa3b290cf9d52a7c5e71f51f293186e53fd2e9a87"
     },
     {
       "artifactKey": "profile-wlan",
       "rootType": "profile",
       "lifecycle": "preview",
       "path": "control_layer/WLAN/sources/profiles/WLAN-profile.json",
-      "gitBlobSha": "f92c68a19f4d42b09c3fda0194752721d2bbc77a",
-      "contentSha256": "136f16aa031fdf9a42010af241ea08c6d8014ecab27ae6d31c856f9848a87665"
+      "gitBlobSha": "cc9416a332431b8d7cebac6d404492a265e2719c",
+      "contentSha256": "d07ce097fe287516825bb9d999c9ab6094e27c7f3b0ade9166ba6b1118734c07"
     },
     {
       "artifactKey": "namespaces-bsi",
@@ -188,20 +188,12 @@
       "contentSha256": "3e153bec10d927fea666456452e484e92a87fbccf209758e984bea69e0ed592f"
     },
     {
-      "artifactKey": "component-aws-iam",
-      "rootType": "component-definition",
-      "lifecycle": "preview",
-      "path": "implementation_layer/AWS Beispiel-Components/aws_iam-component_definition.json",
-      "gitBlobSha": "b8402d33872ddb9990669dddedc174ff01ea0352",
-      "contentSha256": "8e6ef8b9d61c0b41d6dc2cc226c46d7df1a787a0c7c2cff4ee00bd661023d603"
-    },
-    {
       "artifactKey": "component-aws-security-hub",
       "rootType": "component-definition",
       "lifecycle": "preview",
-      "path": "implementation_layer/AWS Beispiel-Components/aws_security_hub-component_definition.json",
-      "gitBlobSha": "2d0890c167c009612948d70a16f67a01b025a966",
-      "contentSha256": "8a3db400d84ea51512815d2f98159e34f8ada5c93c77426ff7072fd1e96feba6"
+      "path": "implementation_layer/AWS Beispiel-Components/AWS Security Hub-component_definition.json",
+      "gitBlobSha": "3083f81dadf875136b303c0406deaa1503e076f8",
+      "contentSha256": "745f1557607d94e501f764d5e00a4845806e583a52f91e2a256a1e3b696ab1ec"
     },
     {
       "artifactKey": "component-ga-lotse-grundmodul",
@@ -244,5 +236,5 @@
       "contentSha256": "019f9c451604e0a44c1a30ccfa42a8cc07cb0ada5ff5aee0bb61650e69879218"
     }
   ],
-  "signatureSha256": "6f5d20990b3859f1b0a611aa1816bc638d1ed293823b84c4fa1cddb9b1c523d2"
+  "signatureSha256": "838464de3ae659d0278c4563aa926935790bfa23cb5fa2ccefc55fa9cb063195"
 }

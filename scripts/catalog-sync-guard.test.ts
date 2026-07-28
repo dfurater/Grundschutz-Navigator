@@ -3,9 +3,11 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   computeManifestSignature,
   guardCatalogSyncPullRequest,
+  isApprovedAwsComponentReplacementMigration,
   isApprovedLayerStructureMigration,
   isApprovedVocabularyCollectionMigration,
   parseNameStatusDiff,
+  validateAwsComponentReplacementPullRequest,
   validateCatalogSyncManifest,
   validateCatalogSyncPullRequest,
   verifySnapshotProgress,
@@ -291,6 +293,25 @@ function validShape(snapshotCommitSha = NEW_SHA) {
   };
 }
 
+function validAwsComponentReplacementShape() {
+  return {
+    branch: 'codex/gru-308-gru-305-sync-recovery',
+    title: 'fix(sync): AWS-Registry und Werktagslauf aktualisieren (GRU-308, GRU-305)',
+    diffEntries: [
+      { status: 'M', path: '.github/workflows/update-catalog.yml' },
+      { status: 'M', path: 'scripts/catalog-sync-guard.mjs' },
+      { status: 'M', path: 'scripts/catalog-sync-guard.test.ts' },
+      { status: 'M', path: 'scripts/fetch-catalog.mjs' },
+      { status: 'M', path: 'scripts/fetch-catalog.test.ts' },
+      { status: 'M', path: 'scripts/sync-upstream-manifest.test.ts' },
+      { status: 'A', path: 'scripts/update-catalog-workflow.test.ts' },
+      { status: 'M', path: 'src/domain/sourceRegistry.mjs' },
+      { status: 'M', path: 'src/domain/sourceRegistry.test.ts' },
+      { status: 'M', path: 'upstream-manifest.json' },
+    ],
+  };
+}
+
 function rebuildManifest(
   manifest: ReturnType<typeof buildUpstreamManifest>,
   files: ManifestFile[],
@@ -394,7 +415,7 @@ describe('validateCatalogSyncManifest v2', () => {
 
     expect(validateCatalogSyncManifest(manifest)).toBe(manifest);
     expect(computeManifestSignature(manifest)).toBe(manifest.signatureSha256);
-    expect(manifest.files.filter((file) => file.rootType !== 'vocabulary')).toHaveLength(17);
+    expect(manifest.files.filter((file) => file.rootType !== 'vocabulary')).toHaveLength(16);
   });
 
   it('rejects schema additions and a manipulated signature', () => {
@@ -518,6 +539,80 @@ describe('catalog sync PR shape', () => {
       signatureSha256: 'b'.repeat(64),
     })).toBe(false);
     expect(isApprovedLayerStructureMigration(undefined, undefined)).toBe(false);
+  });
+
+  it('recognizes only the exact approved AWS component replacement migration', () => {
+    const previousManifest = {
+      snapshotCommitSha: 'cea4589c2b8337207772a88dd82d808cba5e1d89',
+      signatureSha256: '6f5d20990b3859f1b0a611aa1816bc638d1ed293823b84c4fa1cddb9b1c523d2',
+    };
+    const nextManifest = {
+      snapshotCommitSha: 'c1e53dcfbb5adc503964042a859f01ea721a4419',
+      signatureSha256: '838464de3ae659d0278c4563aa926935790bfa23cb5fa2ccefc55fa9cb063195',
+    };
+
+    expect(isApprovedAwsComponentReplacementMigration(
+      previousManifest,
+      nextManifest,
+    )).toBe(true);
+    expect(isApprovedAwsComponentReplacementMigration(
+      previousManifest,
+      { ...nextManifest, signatureSha256: 'f'.repeat(64) },
+    )).toBe(false);
+    expect(isApprovedAwsComponentReplacementMigration(
+      previousManifest,
+      { ...nextManifest, snapshotCommitSha: NEW_SHA },
+    )).toBe(false);
+    expect(isApprovedAwsComponentReplacementMigration(
+      { ...previousManifest, signatureSha256: 'a'.repeat(64) },
+      nextManifest,
+    )).toBe(false);
+    expect(isApprovedAwsComponentReplacementMigration(undefined, undefined)).toBe(false);
+  });
+
+  it('requires the exact branch, title, and file scope for the AWS component replacement', () => {
+    const shape = validAwsComponentReplacementShape();
+
+    expect(() => validateAwsComponentReplacementPullRequest(shape)).not.toThrow();
+    expect(() => validateAwsComponentReplacementPullRequest({
+      ...shape,
+      branch: 'codex/gru-308-unexpected',
+    })).toThrow('branch must be exactly');
+    expect(() => validateAwsComponentReplacementPullRequest({
+      ...shape,
+      title: 'fix(sync): unexpected title',
+    })).toThrow('title must be exactly');
+    expect(() => validateAwsComponentReplacementPullRequest({
+      ...shape,
+      diffEntries: shape.diffEntries.slice(0, -1),
+    })).toThrow('file scope must match exactly');
+    expect(() => validateAwsComponentReplacementPullRequest({
+      ...shape,
+      diffEntries: [
+        ...shape.diffEntries,
+        { status: 'M', path: 'src/features/pages/AboutPage.tsx' },
+      ],
+    })).toThrow('file scope must match exactly');
+  });
+
+  it('applies the AWS migration scope check before manifest verification', async () => {
+    const shape = validAwsComponentReplacementShape();
+    const previousManifest = {
+      snapshotCommitSha: 'cea4589c2b8337207772a88dd82d808cba5e1d89',
+      signatureSha256: '6f5d20990b3859f1b0a611aa1816bc638d1ed293823b84c4fa1cddb9b1c523d2',
+    };
+    const nextManifest = {
+      snapshotCommitSha: 'c1e53dcfbb5adc503964042a859f01ea721a4419',
+      signatureSha256: '838464de3ae659d0278c4563aa926935790bfa23cb5fa2ccefc55fa9cb063195',
+    };
+
+    await expect(guardCatalogSyncPullRequest({
+      ...shape,
+      branch: 'codex/gru-308-unexpected',
+      previousManifest,
+      nextManifest,
+      fetchImpl: vi.fn(),
+    })).rejects.toThrow('branch must be exactly');
   });
 
   it('rejects an invalid branch', () => {

@@ -2,7 +2,10 @@ name: Check Catalog Updates
 
 on:
   schedule:
-    - cron: '0 6 * * *'  # Taeglich um 06:00 UTC
+    - cron: '30 7 * * 1-5'
+      timezone: 'Europe/Berlin'
+    - cron: '30 17 * * 1-5'
+      timezone: 'Europe/Berlin'
   workflow_dispatch:
   push:
     branches: [main]

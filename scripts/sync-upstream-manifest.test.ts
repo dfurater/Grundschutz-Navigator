@@ -10,6 +10,7 @@ import {
   LEGACY_V1_MIGRATION_SIGNATURE,
   LEGACY_V1_MIGRATION_SNAPSHOT,
   buildChangeSummary,
+  buildFileDelta,
   extractManifestFromVocabularyMetadata,
   hasManifestChanged,
   isApprovedLegacyV1Manifest,
@@ -18,6 +19,7 @@ import {
   validateUpstreamManifest,
 } from './sync-upstream-manifest.mjs';
 import { buildUpstreamManifest } from './upstream-artifacts.mjs';
+import { SOURCE_REGISTRY } from '../src/domain/sourceRegistry.mjs';
 
 const OFFICIAL_REPOSITORY =
   'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek';
@@ -267,6 +269,89 @@ describe('hasManifestChanged', () => {
 });
 
 describe('syncUpstreamManifest', () => {
+  it('classifies the approved AWS replacement and both superseded paths as registered', async () => {
+    const oldIamPath =
+      'implementation_layer/AWS Beispiel-Components/aws_iam-component_definition.json';
+    const oldSecurityHubPath =
+      'implementation_layer/AWS Beispiel-Components/aws_security_hub-component_definition.json';
+    const newSecurityHubPath =
+      'implementation_layer/AWS Beispiel-Components/AWS Security Hub-component_definition.json';
+    const previousManifest = makeManifest({
+      snapshotCommitSha: BASE_SNAPSHOT_SHA,
+      files: [
+        manifestFile({
+          artifactKey: 'component-aws-iam',
+          rootType: 'component-definition',
+          lifecycle: 'preview',
+          path: oldIamPath,
+          gitBlobSha: 'a'.repeat(40),
+        }),
+        manifestFile({
+          artifactKey: 'component-aws-security-hub',
+          rootType: 'component-definition',
+          lifecycle: 'preview',
+          path: oldSecurityHubPath,
+          gitBlobSha: 'b'.repeat(40),
+        }),
+      ],
+    });
+    const awsRegistryEntries = SOURCE_REGISTRY.filter(
+      (entry) => entry.kind === 'oscal' && entry.artifactKey.startsWith('component-aws-'),
+    );
+    const nextManifest = makeManifest({
+      snapshotCommitSha: HEAD_SNAPSHOT_SHA,
+      files: awsRegistryEntries.map((entry) =>
+        manifestFile({
+          artifactKey: entry.artifactKey,
+          rootType: entry.expectedRootType,
+          lifecycle: entry.lifecycle,
+          path: entry.upstreamPath,
+          gitBlobSha: 'c'.repeat(40),
+        }),
+      ),
+    });
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      const responseTree = String(input).includes(BASE_SNAPSHOT_SHA)
+        ? completeTree([
+          blob(oldIamPath, 'a'.repeat(40)),
+          blob(oldSecurityHubPath, 'b'.repeat(40)),
+        ])
+        : completeTree([blob(newSecurityHubPath, 'c'.repeat(40))]);
+      return new Response(JSON.stringify(responseTree), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    });
+
+    await expect(
+      buildFileDelta(previousManifest, nextManifest, { fetchImpl, token: '' }),
+    ).resolves.toEqual([
+      {
+        status: 'added',
+        path: newSecurityHubPath,
+        classification: 'registered',
+        artifactKey: 'component-aws-security-hub',
+        rootType: 'component-definition',
+        lifecycle: 'preview',
+      },
+      {
+        status: 'removed',
+        path: oldIamPath,
+        classification: 'registered',
+        artifactKey: 'component-aws-iam',
+        rootType: 'component-definition',
+        lifecycle: 'preview',
+      },
+      {
+        status: 'removed',
+        path: oldSecurityHubPath,
+        classification: 'registered',
+        artifactKey: 'component-aws-security-hub',
+        rootType: 'component-definition',
+        lifecycle: 'preview',
+      },
+    ]);
+  });
+
   it('does not write or fetch trees when the canonical signature is unchanged', async () => {
     const tempDir = await mkdtemp(path.join(getAllowedTempRoot(), 'sync-upstream-manifest-'));
     const metadataPath = path.join(tempDir, 'upstream-sources-metadata.json');
