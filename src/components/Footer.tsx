@@ -7,6 +7,14 @@ export interface FooterProps {
   className?: string;
 }
 
+const secondaryFooterLinks = [
+  { to: '/about', label: 'About' },
+  { to: buildVocabularyIndexPath(), label: 'Vokabulare' },
+  { to: '/datenschutz', label: 'Datenschutz' },
+  { to: '/lizenzen', label: 'Lizenzen' },
+  { to: '/impressum', label: 'Impressum' },
+] as const;
+
 function formatDate(iso: string): string {
   try {
     return new Date(iso).toLocaleDateString('de-DE', {
@@ -68,21 +76,11 @@ export function Footer({ className = '' }: FooterProps) {
             </Link>
           )}
           <span aria-hidden="true" className="hidden text-[var(--color-text-muted)] lg:inline">·</span>
-          <Link to="/about" className={secondaryLinkClass}>
-            Über das Projekt
-          </Link>
-          <Link to="/datenschutz" className={secondaryLinkClass}>
-            Datenschutz
-          </Link>
-          <Link to="/impressum" className={secondaryLinkClass}>
-            Impressum
-          </Link>
-          <Link to="/lizenzen" className={secondaryLinkClass}>
-            Lizenzen
-          </Link>
-          <Link to={buildVocabularyIndexPath()} className={secondaryLinkClass}>
-            Vokabulare
-          </Link>
+          {secondaryFooterLinks.map(({ to, label }) => (
+            <Link key={to} to={to} className={secondaryLinkClass}>
+              {label}
+            </Link>
+          ))}
         </div>
       </div>
     </footer>
