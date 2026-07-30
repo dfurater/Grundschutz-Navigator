@@ -177,12 +177,12 @@ export const SOURCE_REGISTRY = Object.freeze(
       title: 'Component Definition Passwortrichtlinie',
     },
     {
-      artifactKey: 'component-wlan',
+      artifactKey: 'component-keycloak',
       kind: 'oscal',
       expectedRootType: 'component-definition',
-      upstreamPath: `${COMPONENT_DIRECTORY}/WLAN/WLAN-component_definition.json`,
+      upstreamPath: `${COMPONENT_DIRECTORY}/Keycloak/Keycloak-component_definition.json`,
       lifecycle: 'preview',
-      title: 'Component Definition WLAN',
+      title: 'Component Definition Keycloak',
     },
   ].map((entry) => Object.freeze(entry)),
 );

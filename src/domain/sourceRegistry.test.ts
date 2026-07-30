@@ -165,8 +165,13 @@ describe('sourceRegistry', () => {
       'profile',
     );
     expect(
-      getExpectedRootType('implementation_layer/WLAN/WLAN-component_definition.json'),
+      getExpectedRootType(
+        'implementation_layer/Keycloak/Keycloak-component_definition.json',
+      ),
     ).toBe('component-definition');
+    expect(
+      getExpectedRootType('implementation_layer/WLAN/WLAN-component_definition.json'),
+    ).toBeNull();
     expect(getExpectedRootType('documentation/namespaces/tags.csv')).toBeNull();
     expect(getExpectedRootType('unknown.json')).toBeNull();
   });
