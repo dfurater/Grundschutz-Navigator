@@ -7,19 +7,15 @@ import {
   resolveUpstreamMetadataPath,
 } from './security-guards.mjs';
 import {
-  LEGACY_V1_MIGRATION_SIGNATURE,
-  LEGACY_V1_MIGRATION_SNAPSHOT,
   buildChangeSummary,
   buildFileDelta,
   extractManifestFromVocabularyMetadata,
   hasManifestChanged,
-  isApprovedLegacyV1Manifest,
   readTrackedManifest,
   syncUpstreamManifest,
   validateUpstreamManifest,
 } from './sync-upstream-manifest.mjs';
 import { buildUpstreamManifest } from './upstream-artifacts.mjs';
-import { SOURCE_REGISTRY } from '../src/domain/sourceRegistry.mjs';
 
 const OFFICIAL_REPOSITORY =
   'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek';
@@ -90,41 +86,19 @@ function makeVocabularyMetadata(
   };
 }
 
-function makeApprovedLegacyV1Manifest() {
-  const namespaceFiles = [
-    ['action_words.csv', '7fde34ab802961299e058f7ecd8ab5f52a245b04'],
-    ['basethreats.csv', 'bfad6b3fe3e1a56f8a158b73a7dea85a47886823'],
-    ['documentation_guidelines.csv', '97f05331405785f6b7375938d421695a419ee6ee'],
-    ['effort_level.csv', '9a81649eccfbd76c53edc1eb205d3a903d783a4c'],
-    ['modal_verbs.csv', 'f0b460ef82a82ea5583ef7739b22573af6dfd7e7'],
-    ['result.csv', 'd8e4e9e736135cf131defbd69dea056b39a3c043'],
-    ['security_level.csv', '5436e0863d60914dfa8334965e48162fa9b23f49'],
-    ['security_targets.csv', '9ee2fd569d59eb59a4b8e9a63bcf3e3d7038fb93'],
-    ['tags.csv', 'a80d720d6b017305cf74887ef3d8976ca83c08c8'],
-    ['target_object_categories.csv', 'e6f437c6b34dcc6705508ac7d6863f2e67f88ee7'],
-  ].map(([fileName, gitBlobSha]) => {
-    const namespacePath = `Dokumentation/namespaces/${fileName}`;
-    return {
-      kind: 'namespace',
-      path: namespacePath,
-      namespace: `${OFFICIAL_REPOSITORY}/tree/main/${namespacePath}`,
-      gitBlobSha,
-    };
-  });
-
+function makeLegacyV1Manifest() {
   return {
     repository: OFFICIAL_REPOSITORY,
-    snapshotCommitSha: LEGACY_V1_MIGRATION_SNAPSHOT,
-    catalogPath: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
+    snapshotCommitSha: BASE_SNAPSHOT_SHA,
+    catalogPath: 'legacy/catalog.json',
     files: [
       {
         kind: 'catalog',
-        path: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
-        gitBlobSha: '193e5e0841beab14c207a91e6aa788d70e84632c',
+        path: 'legacy/catalog.json',
+        gitBlobSha: 'a'.repeat(40),
       },
-      ...namespaceFiles,
     ],
-    signatureSha256: LEGACY_V1_MIGRATION_SIGNATURE,
+    signatureSha256: 'b'.repeat(64),
   };
 }
 
@@ -168,7 +142,7 @@ describe('upstream manifest validation and extraction', () => {
       }),
     ).toThrow('does not match the canonical payload');
     expect(() =>
-      extractManifestFromVocabularyMetadata({ manifest: makeApprovedLegacyV1Manifest() }),
+      extractManifestFromVocabularyMetadata({ manifest: makeLegacyV1Manifest() }),
     ).toThrow('unexpected or missing fields');
   });
 
@@ -183,33 +157,16 @@ describe('upstream manifest validation and extraction', () => {
   });
 });
 
-describe('approved legacy-v1 read migration', () => {
-  it('accepts the exact tracked v1 manifest and rejects modified lookalikes', async () => {
-    const legacyManifest = makeApprovedLegacyV1Manifest();
+describe('tracked manifest v2 contract', () => {
+  it('rejects a tracked v1 manifest', async () => {
+    const legacyManifest = makeLegacyV1Manifest();
     const tempDir = await mkdtemp(path.join(getAllowedTempRoot(), 'sync-upstream-manifest-'));
     const manifestPath = path.join(tempDir, 'upstream-manifest.json');
     await writeJson(manifestPath, legacyManifest);
 
-    expect(isApprovedLegacyV1Manifest(legacyManifest)).toBe(true);
-    await expect(readTrackedManifest(manifestPath)).resolves.toEqual(legacyManifest);
-    expect(
-      isApprovedLegacyV1Manifest({
-        ...legacyManifest,
-        repository: 'https://github.com/attacker/untrusted-catalog',
-      }),
-    ).toBe(false);
-    expect(
-      isApprovedLegacyV1Manifest({
-        ...legacyManifest,
-        files: legacyManifest.files.slice(0, -1),
-      }),
-    ).toBe(false);
-    expect(
-      isApprovedLegacyV1Manifest({
-        ...legacyManifest,
-        unexpected: true,
-      }),
-    ).toBe(false);
+    await expect(readTrackedManifest(manifestPath)).rejects.toThrow(
+      'unexpected or missing fields',
+    );
   });
 });
 
@@ -269,54 +226,51 @@ describe('hasManifestChanged', () => {
 });
 
 describe('syncUpstreamManifest', () => {
-  it('classifies the approved AWS replacement and both superseded paths as registered', async () => {
-    const oldIamPath =
-      'implementation_layer/AWS Beispiel-Components/aws_iam-component_definition.json';
-    const oldSecurityHubPath =
-      'implementation_layer/AWS Beispiel-Components/aws_security_hub-component_definition.json';
-    const newSecurityHubPath =
-      'implementation_layer/AWS Beispiel-Components/AWS Security Hub-component_definition.json';
+  it('classifies previous and current registered paths across removals and renames', async () => {
+    const removedPath =
+      'implementation_layer/Legacy/removed-component_definition.json';
+    const renamedPreviousPath =
+      'implementation_layer/Legacy/renamed-component_definition.json';
+    const renamedCurrentPath =
+      'implementation_layer/Current/renamed-component_definition.json';
     const previousManifest = makeManifest({
       snapshotCommitSha: BASE_SNAPSHOT_SHA,
       files: [
         manifestFile({
-          artifactKey: 'component-aws-iam',
+          artifactKey: 'component-removed',
           rootType: 'component-definition',
           lifecycle: 'preview',
-          path: oldIamPath,
+          path: removedPath,
           gitBlobSha: 'a'.repeat(40),
         }),
         manifestFile({
-          artifactKey: 'component-aws-security-hub',
+          artifactKey: 'component-renamed',
           rootType: 'component-definition',
           lifecycle: 'preview',
-          path: oldSecurityHubPath,
+          path: renamedPreviousPath,
           gitBlobSha: 'b'.repeat(40),
         }),
       ],
     });
-    const awsRegistryEntries = SOURCE_REGISTRY.filter(
-      (entry) => entry.kind === 'oscal' && entry.artifactKey.startsWith('component-aws-'),
-    );
     const nextManifest = makeManifest({
       snapshotCommitSha: HEAD_SNAPSHOT_SHA,
-      files: awsRegistryEntries.map((entry) =>
+      files: [
         manifestFile({
-          artifactKey: entry.artifactKey,
-          rootType: entry.expectedRootType,
-          lifecycle: entry.lifecycle,
-          path: entry.upstreamPath,
+          artifactKey: 'component-renamed',
+          rootType: 'component-definition',
+          lifecycle: 'preview',
+          path: renamedCurrentPath,
           gitBlobSha: 'c'.repeat(40),
         }),
-      ),
+      ],
     });
     const fetchImpl = vi.fn(async (input: string | URL | Request) => {
       const responseTree = String(input).includes(BASE_SNAPSHOT_SHA)
         ? completeTree([
-          blob(oldIamPath, 'a'.repeat(40)),
-          blob(oldSecurityHubPath, 'b'.repeat(40)),
+          blob(removedPath, 'a'.repeat(40)),
+          blob(renamedPreviousPath, 'b'.repeat(40)),
         ])
-        : completeTree([blob(newSecurityHubPath, 'c'.repeat(40))]);
+        : completeTree([blob(renamedCurrentPath, 'c'.repeat(40))]);
       return new Response(JSON.stringify(responseTree), {
         headers: { 'Content-Type': 'application/json' },
       });
@@ -327,25 +281,25 @@ describe('syncUpstreamManifest', () => {
     ).resolves.toEqual([
       {
         status: 'added',
-        path: newSecurityHubPath,
+        path: renamedCurrentPath,
         classification: 'registered',
-        artifactKey: 'component-aws-security-hub',
+        artifactKey: 'component-renamed',
         rootType: 'component-definition',
         lifecycle: 'preview',
       },
       {
         status: 'removed',
-        path: oldIamPath,
+        path: removedPath,
         classification: 'registered',
-        artifactKey: 'component-aws-iam',
+        artifactKey: 'component-removed',
         rootType: 'component-definition',
         lifecycle: 'preview',
       },
       {
         status: 'removed',
-        path: oldSecurityHubPath,
+        path: renamedPreviousPath,
         classification: 'registered',
-        artifactKey: 'component-aws-security-hub',
+        artifactKey: 'component-renamed',
         rootType: 'component-definition',
         lifecycle: 'preview',
       },
@@ -528,44 +482,6 @@ describe('syncUpstreamManifest', () => {
       `https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/git/trees/${HEAD_SNAPSHOT_SHA}?recursive=1`,
     ]);
     expect(persistedManifest).toEqual(nextManifest);
-  });
-
-  it('migrates the approved v1 manifest on the same snapshot without fetching trees', async () => {
-    const tempDir = await mkdtemp(path.join(getAllowedTempRoot(), 'sync-upstream-manifest-'));
-    const metadataPath = path.join(tempDir, 'upstream-sources-metadata.json');
-    const manifestPath = path.join(tempDir, 'upstream-manifest.json');
-    const legacyManifest = makeApprovedLegacyV1Manifest();
-    const nextManifest = makeManifest({
-      snapshotCommitSha: LEGACY_V1_MIGRATION_SNAPSHOT,
-      files: [
-        manifestFile({
-          gitBlobSha: '193e5e0841beab14c207a91e6aa788d70e84632c',
-          contentSha256: 'b'.repeat(64),
-        }),
-      ],
-    });
-    const fetchImpl = vi.fn();
-
-    await writeJson(manifestPath, legacyManifest);
-    await writeJson(metadataPath, makeVocabularyMetadata(nextManifest));
-
-    const result = await syncUpstreamManifest({
-      metadataPath,
-      manifestPath,
-      fetchImpl,
-      token: '',
-    });
-
-    expect(result.changed).toBe(true);
-    expect(result.fileDelta).toEqual([]);
-    expect(result.outputs.file_delta_summary).toContain(
-      'Manifest-Contract wurde für denselben Snapshot deterministisch aktualisiert.',
-    );
-    expect(result.outputs.change_summary).toContain(
-      'Manifest-Contract wurde für denselben Snapshot deterministisch aktualisiert.',
-    );
-    expect(fetchImpl).not.toHaveBeenCalled();
-    expect(JSON.parse(await readFile(manifestPath, 'utf8'))).toEqual(nextManifest);
   });
 
   it('rejects v2 signature changes for an unchanged snapshot before writing', async () => {
