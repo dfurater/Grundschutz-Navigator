@@ -33,9 +33,6 @@ import {
   validateManifestV2Shape,
 } from './upstream-artifacts.mjs';
 import {
-  isApprovedLegacyV1Manifest,
-} from './sync-upstream-manifest.mjs';
-import {
   validateCatalogControlIdentities,
   validateFetchedOscalArtifact,
 } from './fetch-catalog.mjs';
@@ -47,97 +44,6 @@ export const SYNC_BRANCH_PATTERN = /^chore\/catalog-sync-([0-9a-f]{12})$/;
 export const SYNC_TITLE_PREFIX = 'chore(ci): BSI-Katalog-Sync ';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
-const VOCABULARY_COLLECTION_MIGRATION = Object.freeze({
-  snapshotCommitSha: '12abb438fcdb4f4b63fb3e751e89d7c526e647b5',
-  previousSignatureSha256:
-    '6de483f6e8d437b14cdbf834e127bf617cfe773ff0b290adef8cc26e094420da',
-  nextSignatureSha256:
-    'bd7db0913c960cf2b2a5d6410856eddeff6027045622a1f4241fbabc779fd624',
-});
-
-/**
- * Einmaliger Strukturübergang zur BSI-Layer-Architektur (BSI-PR #63, GRU-304).
- *
- * Anders als ein gewöhnlicher Snapshot-Wechsel ändert dieser Übergang zugleich
- * jeden registrierten Upstream-Pfad. Registry und gepinnter Snapshot müssen
- * deshalb im selben Commit umgestellt werden: Ein Sync-PR mit ausschließlich
- * upstream-manifest.json würde gegen die alte Registry geprüft, ein Code-PR
- * ohne Manifest-Update ließe den `validate`-Job mit dem alten Snapshot gegen
- * die neuen Pfade fetchen.
- *
- * Die Ausnahme ist an beide Signaturen gebunden und gilt damit für genau
- * diesen einen Übergang. Jeder andere PR, der das Manifest anfasst, muss den
- * vollständigen Sync-Lane-Vertrag erfüllen.
- */
-const LAYER_STRUCTURE_MIGRATION = Object.freeze({
-  previousSnapshotCommitSha: '12abb438fcdb4f4b63fb3e751e89d7c526e647b5',
-  nextSnapshotCommitSha: 'cea4589c2b8337207772a88dd82d808cba5e1d89',
-  previousSignatureSha256:
-    'bd7db0913c960cf2b2a5d6410856eddeff6027045622a1f4241fbabc779fd624',
-  nextSignatureSha256:
-    '6f5d20990b3859f1b0a611aa1816bc638d1ed293823b84c4fa1cddb9b1c523d2',
-});
-
-/**
- * Einmaliger Registry- und Manifestübergang für die durch BSI ersetzten
- * AWS-Preview-Komponenten (GRU-308).
- *
- * Der Engineering-PR muss Registry und Manifest atomar ändern, kann deshalb
- * nicht die Manifest-only-Form der automatischen Sync-Lane verwenden. Die
- * Ausnahme ist an beide Snapshots und Signaturen sowie an Branch, Titel und
- * den exakten Datei-Scope gebunden; Tree-, Blob-, Hash-, Root-Type- und
- * Registry-Prüfungen bleiben vollständig aktiv.
- */
-const AWS_COMPONENT_REPLACEMENT_MIGRATION = Object.freeze({
-  branch: 'codex/gru-308-gru-305-sync-recovery',
-  title: 'fix(sync): AWS-Registry und Werktagslauf aktualisieren (GRU-308, GRU-305)',
-  diffEntries: Object.freeze([
-    Object.freeze({ status: 'M', path: '.github/workflows/update-catalog.yml' }),
-    Object.freeze({ status: 'M', path: 'scripts/catalog-sync-guard.mjs' }),
-    Object.freeze({ status: 'M', path: 'scripts/catalog-sync-guard.test.ts' }),
-    Object.freeze({ status: 'M', path: 'scripts/fetch-catalog.mjs' }),
-    Object.freeze({ status: 'M', path: 'scripts/fetch-catalog.test.ts' }),
-    Object.freeze({ status: 'M', path: 'scripts/sync-upstream-manifest.test.ts' }),
-    Object.freeze({ status: 'A', path: 'scripts/update-catalog-workflow.test.ts' }),
-    Object.freeze({ status: 'M', path: 'src/domain/sourceRegistry.mjs' }),
-    Object.freeze({ status: 'M', path: 'src/domain/sourceRegistry.test.ts' }),
-    Object.freeze({ status: 'M', path: TRACKED_MANIFEST_PATH }),
-  ]),
-  previousSnapshotCommitSha: 'cea4589c2b8337207772a88dd82d808cba5e1d89',
-  nextSnapshotCommitSha: 'c1e53dcfbb5adc503964042a859f01ea721a4419',
-  previousSignatureSha256:
-    '6f5d20990b3859f1b0a611aa1816bc638d1ed293823b84c4fa1cddb9b1c523d2',
-  nextSignatureSha256:
-    '838464de3ae659d0278c4563aa926935790bfa23cb5fa2ccefc55fa9cb063195',
-});
-
-/**
- * Einmaliger Registry- und Manifestübergang für die durch BSI entfernte
- * WLAN- und neu veröffentlichte Keycloak-Preview-Komponente (GRU-319).
- *
- * Wie bei der AWS-Migration müssen Registry und Manifest atomar wechseln.
- * Die Ausnahme bleibt deshalb auf den exakten Engineering-PR sowie beide
- * Snapshots und Signaturen beschränkt.
- */
-const WLAN_KEYCLOAK_COMPONENT_MIGRATION = Object.freeze({
-  branch:
-    'codex/gru-319-fixsync-upstream-delta-47de2824-mit-wlan-keycloak-registry',
-  title:
-    'fix(sync): Upstream-Delta 47de2824 mit WLAN-/Keycloak-Registry-Migration einspielen',
-  diffEntries: Object.freeze([
-    Object.freeze({ status: 'M', path: 'scripts/catalog-sync-guard.mjs' }),
-    Object.freeze({ status: 'M', path: 'scripts/catalog-sync-guard.test.ts' }),
-    Object.freeze({ status: 'M', path: 'src/domain/sourceRegistry.mjs' }),
-    Object.freeze({ status: 'M', path: 'src/domain/sourceRegistry.test.ts' }),
-    Object.freeze({ status: 'M', path: TRACKED_MANIFEST_PATH }),
-  ]),
-  previousSnapshotCommitSha: 'c1e53dcfbb5adc503964042a859f01ea721a4419',
-  nextSnapshotCommitSha: '47de2824a341812438ef3f044b3f65ce2cad6e32',
-  previousSignatureSha256:
-    '838464de3ae659d0278c4563aa926935790bfa23cb5fa2ccefc55fa9cb063195',
-  nextSignatureSha256:
-    'fd9e5d887481466616451d315fbbf34bbf82aa5d95f2e12e5aa5dadd2a7bd80a',
-});
 
 export function computeManifestSignature(manifest) {
   return computeV2ManifestSignature(manifest);
@@ -222,77 +128,6 @@ export function isCatalogSyncCandidate({ branch, title, diffEntries }) {
   );
 }
 
-export function isApprovedLayerStructureMigration(
-  previousManifest,
-  nextManifest,
-) {
-  return (
-    previousManifest?.snapshotCommitSha ===
-      LAYER_STRUCTURE_MIGRATION.previousSnapshotCommitSha &&
-    nextManifest?.snapshotCommitSha ===
-      LAYER_STRUCTURE_MIGRATION.nextSnapshotCommitSha &&
-    previousManifest?.signatureSha256 ===
-      LAYER_STRUCTURE_MIGRATION.previousSignatureSha256 &&
-    nextManifest?.signatureSha256 ===
-      LAYER_STRUCTURE_MIGRATION.nextSignatureSha256
-  );
-}
-
-export function isApprovedAwsComponentReplacementMigration(
-  previousManifest,
-  nextManifest,
-) {
-  return isApprovedPinnedManifestMigration(
-    previousManifest,
-    nextManifest,
-    AWS_COMPONENT_REPLACEMENT_MIGRATION,
-  );
-}
-
-function isApprovedPinnedManifestMigration(
-  previousManifest,
-  nextManifest,
-  migration,
-) {
-  return (
-    previousManifest?.snapshotCommitSha ===
-      migration.previousSnapshotCommitSha &&
-    nextManifest?.snapshotCommitSha ===
-      migration.nextSnapshotCommitSha &&
-    previousManifest?.signatureSha256 ===
-      migration.previousSignatureSha256 &&
-    nextManifest?.signatureSha256 ===
-      migration.nextSignatureSha256
-  );
-}
-
-export function isApprovedWlanKeycloakComponentMigration(
-  previousManifest,
-  nextManifest,
-) {
-  return isApprovedPinnedManifestMigration(
-    previousManifest,
-    nextManifest,
-    WLAN_KEYCLOAK_COMPONENT_MIGRATION,
-  );
-}
-
-export function isApprovedVocabularyCollectionMigration(
-  previousManifest,
-  nextManifest,
-) {
-  return (
-    previousManifest?.snapshotCommitSha ===
-      VOCABULARY_COLLECTION_MIGRATION.snapshotCommitSha &&
-    nextManifest?.snapshotCommitSha ===
-      VOCABULARY_COLLECTION_MIGRATION.snapshotCommitSha &&
-    previousManifest?.signatureSha256 ===
-      VOCABULARY_COLLECTION_MIGRATION.previousSignatureSha256 &&
-    nextManifest?.signatureSha256 ===
-      VOCABULARY_COLLECTION_MIGRATION.nextSignatureSha256
-  );
-}
-
 export function validateCatalogSyncPullRequest({ branch, title, diffEntries }) {
   const match = SYNC_BRANCH_PATTERN.exec(branch);
   if (!match) {
@@ -311,69 +146,6 @@ export function validateCatalogSyncPullRequest({ branch, title, diffEntries }) {
   ) {
     throw new Error('Catalog sync PR must modify exactly upstream-manifest.json without add/delete/rename');
   }
-}
-
-export function validateAwsComponentReplacementPullRequest({
-  branch,
-  title,
-  diffEntries,
-}) {
-  validatePinnedEngineeringMigrationPullRequest(
-    { branch, title, diffEntries },
-    AWS_COMPONENT_REPLACEMENT_MIGRATION,
-    'AWS component replacement',
-  );
-}
-
-function validatePinnedEngineeringMigrationPullRequest(
-  { branch, title, diffEntries },
-  migration,
-  label,
-) {
-  if (branch !== migration.branch) {
-    throw new Error(
-      `${label} branch must be exactly: ${migration.branch}`,
-    );
-  }
-  if (title !== migration.title) {
-    throw new Error(
-      `${label} title must be exactly: ${migration.title}`,
-    );
-  }
-
-  const expectedDiff = new Map(
-    migration.diffEntries.map(({ path, status }) => [
-      path,
-      status,
-    ]),
-  );
-  const actualDiff = new Map();
-  for (const entry of diffEntries) {
-    if (actualDiff.has(entry.path)) {
-      throw new Error(`${label} file scope must match exactly`);
-    }
-    actualDiff.set(entry.path, entry.status);
-  }
-  const hasExactFileScope =
-    actualDiff.size === expectedDiff.size &&
-    [...expectedDiff].every(
-      ([path, status]) => actualDiff.get(path) === status,
-    );
-  if (!hasExactFileScope) {
-    throw new Error(`${label} file scope must match exactly`);
-  }
-}
-
-export function validateWlanKeycloakComponentMigrationPullRequest({
-  branch,
-  title,
-  diffEntries,
-}) {
-  validatePinnedEngineeringMigrationPullRequest(
-    { branch, title, diffEntries },
-    WLAN_KEYCLOAK_COMPONENT_MIGRATION,
-    'WLAN/Keycloak component migration',
-  );
 }
 
 async function fetchGitHubJson(url, { fetchImpl, token, label }) {
@@ -573,58 +345,21 @@ export async function guardCatalogSyncPullRequest({
     return { catalogSync: false };
   }
 
-  const isVocabularyCollectionMigration =
-    isApprovedVocabularyCollectionMigration(previousManifest, nextManifest);
-  const isLayerStructureMigration =
-    isApprovedLayerStructureMigration(previousManifest, nextManifest);
-  const isAwsComponentReplacementMigration =
-    isApprovedAwsComponentReplacementMigration(previousManifest, nextManifest);
-  const isWlanKeycloakComponentMigration =
-    isApprovedWlanKeycloakComponentMigration(previousManifest, nextManifest);
-  const isPinnedStructuralMigration =
-    isVocabularyCollectionMigration ||
-    isLayerStructureMigration ||
-    isAwsComponentReplacementMigration ||
-    isWlanKeycloakComponentMigration;
-  if (isAwsComponentReplacementMigration) {
-    validateAwsComponentReplacementPullRequest({ branch, title, diffEntries });
-  } else if (isWlanKeycloakComponentMigration) {
-    validateWlanKeycloakComponentMigrationPullRequest({
-      branch,
-      title,
-      diffEntries,
-    });
-  } else if (!isPinnedStructuralMigration) {
-    validateCatalogSyncPullRequest({ branch, title, diffEntries });
-  }
-  const isLegacyMigration = isApprovedLegacyV1Manifest(previousManifest);
-  if (!isLegacyMigration) {
-    validateManifestV2Shape(previousManifest);
-    if (previousManifest.repository !== OFFICIAL_BSI_REPOSITORY_URL) {
-      throw new Error(`Previous manifest repository must be ${OFFICIAL_BSI_REPOSITORY_URL}`);
-    }
+  validateCatalogSyncPullRequest({ branch, title, diffEntries });
+  validateManifestV2Shape(previousManifest);
+  if (previousManifest.repository !== OFFICIAL_BSI_REPOSITORY_URL) {
+    throw new Error(`Previous manifest repository must be ${OFFICIAL_BSI_REPOSITORY_URL}`);
   }
   validateCatalogSyncManifest(nextManifest);
   const expectedBranch = `chore/catalog-sync-${nextManifest.snapshotCommitSha.slice(0, 12)}`;
-  if (!isPinnedStructuralMigration && branch !== expectedBranch) {
+  if (branch !== expectedBranch) {
     throw new Error(`Catalog sync branch must match the new snapshot: ${expectedBranch}`);
   }
-  const isSameSnapshotLegacyMigration =
-    isLegacyMigration &&
-    previousManifest.snapshotCommitSha === nextManifest.snapshotCommitSha;
-  if (isSameSnapshotLegacyMigration) {
-    if (
-      previousManifest.signatureSha256 === nextManifest.signatureSha256
-    ) {
-      throw new Error('Approved manifest v1 migration must deterministically replace the same pinned snapshot');
-    }
-  } else if (!isVocabularyCollectionMigration) {
-    await verifySnapshotProgress(
-      previousManifest.snapshotCommitSha,
-      nextManifest.snapshotCommitSha,
-      { fetchImpl, token },
-    );
-  }
+  await verifySnapshotProgress(
+    previousManifest.snapshotCommitSha,
+    nextManifest.snapshotCommitSha,
+    { fetchImpl, token },
+  );
   await verifySnapshotFiles(nextManifest, { fetchImpl, token });
 
   return {

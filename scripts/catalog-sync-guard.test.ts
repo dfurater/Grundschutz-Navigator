@@ -3,15 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   computeManifestSignature,
   guardCatalogSyncPullRequest,
-  isApprovedAwsComponentReplacementMigration,
-  isApprovedLayerStructureMigration,
-  isApprovedVocabularyCollectionMigration,
-  isApprovedWlanKeycloakComponentMigration,
   parseNameStatusDiff,
-  validateAwsComponentReplacementPullRequest,
   validateCatalogSyncManifest,
   validateCatalogSyncPullRequest,
-  validateWlanKeycloakComponentMigrationPullRequest,
   verifySnapshotProgress,
 } from './catalog-sync-guard.mjs';
 import { OFFICIAL_BSI_REPOSITORY_URL } from './security-guards.mjs';
@@ -20,11 +14,6 @@ import {
   SUPPORTED_CATALOG,
 } from '../src/domain/sourceRegistry.mjs';
 import { buildUpstreamManifest } from './upstream-artifacts.mjs';
-import {
-  LEGACY_V1_MIGRATION_CATALOG_PATH,
-  LEGACY_V1_MIGRATION_SIGNATURE,
-  LEGACY_V1_MIGRATION_SNAPSHOT,
-} from './sync-upstream-manifest.mjs';
 
 const OLD_SHA = '1'.repeat(40);
 const NEW_SHA = '2'.repeat(40);
@@ -141,12 +130,7 @@ function makeFixture({
   const files: ManifestFile[] = [];
   const contentsByBlobSha = new Map<string, Buffer>();
   const treeEntries: TreeEntry[] = [];
-  const topicAltIdentifiers = snapshotCommitSha === LEGACY_V1_MIGRATION_SNAPSHOT
-    ? Array.from(
-        { length: 139 },
-        (_, index) => `topic-uuid-${index < 119 ? index : 0}`,
-      )
-    : [TOPIC_ALT_IDENTIFIER];
+  const topicAltIdentifiers = [TOPIC_ALT_IDENTIFIER];
   const topicsCsv = [
     'Begriff,Definition,UUID',
     ...[...new Set(topicAltIdentifiers)].map(
@@ -295,41 +279,6 @@ function validShape(snapshotCommitSha = NEW_SHA) {
   };
 }
 
-function validAwsComponentReplacementShape() {
-  return {
-    branch: 'codex/gru-308-gru-305-sync-recovery',
-    title: 'fix(sync): AWS-Registry und Werktagslauf aktualisieren (GRU-308, GRU-305)',
-    diffEntries: [
-      { status: 'M', path: '.github/workflows/update-catalog.yml' },
-      { status: 'M', path: 'scripts/catalog-sync-guard.mjs' },
-      { status: 'M', path: 'scripts/catalog-sync-guard.test.ts' },
-      { status: 'M', path: 'scripts/fetch-catalog.mjs' },
-      { status: 'M', path: 'scripts/fetch-catalog.test.ts' },
-      { status: 'M', path: 'scripts/sync-upstream-manifest.test.ts' },
-      { status: 'A', path: 'scripts/update-catalog-workflow.test.ts' },
-      { status: 'M', path: 'src/domain/sourceRegistry.mjs' },
-      { status: 'M', path: 'src/domain/sourceRegistry.test.ts' },
-      { status: 'M', path: 'upstream-manifest.json' },
-    ],
-  };
-}
-
-function validWlanKeycloakComponentMigrationShape() {
-  return {
-    branch:
-      'codex/gru-319-fixsync-upstream-delta-47de2824-mit-wlan-keycloak-registry',
-    title:
-      'fix(sync): Upstream-Delta 47de2824 mit WLAN-/Keycloak-Registry-Migration einspielen',
-    diffEntries: [
-      { status: 'M', path: 'scripts/catalog-sync-guard.mjs' },
-      { status: 'M', path: 'scripts/catalog-sync-guard.test.ts' },
-      { status: 'M', path: 'src/domain/sourceRegistry.mjs' },
-      { status: 'M', path: 'src/domain/sourceRegistry.test.ts' },
-      { status: 'M', path: 'upstream-manifest.json' },
-    ],
-  };
-}
-
 function rebuildManifest(
   manifest: ReturnType<typeof buildUpstreamManifest>,
   files: ManifestFile[],
@@ -341,89 +290,19 @@ function rebuildManifest(
   });
 }
 
-function approvedLegacyManifest() {
+function makeLegacyV1Manifest() {
   return {
     repository: OFFICIAL_BSI_REPOSITORY_URL,
-    snapshotCommitSha: LEGACY_V1_MIGRATION_SNAPSHOT,
-    catalogPath: LEGACY_V1_MIGRATION_CATALOG_PATH,
+    snapshotCommitSha: OLD_SHA,
+    catalogPath: 'legacy/catalog.json',
     files: [
       {
         kind: 'catalog',
-        path: 'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json',
-        gitBlobSha: '193e5e0841beab14c207a91e6aa788d70e84632c',
-      },
-      {
-        kind: 'namespace',
-        path: 'Dokumentation/namespaces/action_words.csv',
-        namespace:
-          'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/action_words.csv',
-        gitBlobSha: '7fde34ab802961299e058f7ecd8ab5f52a245b04',
-      },
-      {
-        kind: 'namespace',
-        path: 'Dokumentation/namespaces/basethreats.csv',
-        namespace:
-          'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/basethreats.csv',
-        gitBlobSha: 'bfad6b3fe3e1a56f8a158b73a7dea85a47886823',
-      },
-      {
-        kind: 'namespace',
-        path: 'Dokumentation/namespaces/documentation_guidelines.csv',
-        namespace:
-          'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/documentation_guidelines.csv',
-        gitBlobSha: '97f05331405785f6b7375938d421695a419ee6ee',
-      },
-      {
-        kind: 'namespace',
-        path: 'Dokumentation/namespaces/effort_level.csv',
-        namespace:
-          'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/effort_level.csv',
-        gitBlobSha: '9a81649eccfbd76c53edc1eb205d3a903d783a4c',
-      },
-      {
-        kind: 'namespace',
-        path: 'Dokumentation/namespaces/modal_verbs.csv',
-        namespace:
-          'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/modal_verbs.csv',
-        gitBlobSha: 'f0b460ef82a82ea5583ef7739b22573af6dfd7e7',
-      },
-      {
-        kind: 'namespace',
-        path: 'Dokumentation/namespaces/result.csv',
-        namespace:
-          'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/result.csv',
-        gitBlobSha: 'd8e4e9e736135cf131defbd69dea056b39a3c043',
-      },
-      {
-        kind: 'namespace',
-        path: 'Dokumentation/namespaces/security_level.csv',
-        namespace:
-          'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_level.csv',
-        gitBlobSha: '5436e0863d60914dfa8334965e48162fa9b23f49',
-      },
-      {
-        kind: 'namespace',
-        path: 'Dokumentation/namespaces/security_targets.csv',
-        namespace:
-          'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/security_targets.csv',
-        gitBlobSha: '9ee2fd569d59eb59a4b8e9a63bcf3e3d7038fb93',
-      },
-      {
-        kind: 'namespace',
-        path: 'Dokumentation/namespaces/tags.csv',
-        namespace:
-          'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/tags.csv',
-        gitBlobSha: 'a80d720d6b017305cf74887ef3d8976ca83c08c8',
-      },
-      {
-        kind: 'namespace',
-        path: 'Dokumentation/namespaces/target_object_categories.csv',
-        namespace:
-          'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/Dokumentation/namespaces/target_object_categories.csv',
-        gitBlobSha: 'e6f437c6b34dcc6705508ac7d6863f2e67f88ee7',
+        path: 'legacy/catalog.json',
+        gitBlobSha: 'a'.repeat(40),
       },
     ],
-    signatureSha256: LEGACY_V1_MIGRATION_SIGNATURE,
+    signatureSha256: 'b'.repeat(64),
   };
 }
 
@@ -499,193 +378,18 @@ describe('catalog sync PR shape', () => {
     expect(parseNameStatusDiff('M\tupstream-manifest.json\n')).toEqual(shape.diffEntries);
   });
 
-  it('recognizes only the exact approved same-snapshot vocabulary migration', () => {
-    const previousManifest = {
-      snapshotCommitSha: '12abb438fcdb4f4b63fb3e751e89d7c526e647b5',
-      signatureSha256: '6de483f6e8d437b14cdbf834e127bf617cfe773ff0b290adef8cc26e094420da',
-    };
-    const nextManifest = {
-      snapshotCommitSha: previousManifest.snapshotCommitSha,
-      signatureSha256: 'bd7db0913c960cf2b2a5d6410856eddeff6027045622a1f4241fbabc779fd624',
-    };
-
-    expect(isApprovedVocabularyCollectionMigration(
-      previousManifest,
-      nextManifest,
-    )).toBe(true);
-    expect(isApprovedVocabularyCollectionMigration(
-      previousManifest,
-      { ...nextManifest, signatureSha256: 'f'.repeat(64) },
-    )).toBe(false);
-    expect(isApprovedVocabularyCollectionMigration(
-      previousManifest,
-      { ...nextManifest, snapshotCommitSha: NEW_SHA },
-    )).toBe(false);
-  });
-
-  it('recognizes only the exact approved layer-structure migration', () => {
-    const previousManifest = {
-      snapshotCommitSha: '12abb438fcdb4f4b63fb3e751e89d7c526e647b5',
-      signatureSha256: 'bd7db0913c960cf2b2a5d6410856eddeff6027045622a1f4241fbabc779fd624',
-    };
-    const nextManifest = {
-      snapshotCommitSha: 'cea4589c2b8337207772a88dd82d808cba5e1d89',
-      signatureSha256: '6f5d20990b3859f1b0a611aa1816bc638d1ed293823b84c4fa1cddb9b1c523d2',
-    };
-
-    expect(isApprovedLayerStructureMigration(previousManifest, nextManifest)).toBe(true);
-    // Jede Abweichung an Snapshot oder Signatur beendet die Ausnahme.
-    expect(isApprovedLayerStructureMigration(
-      previousManifest,
-      { ...nextManifest, signatureSha256: 'f'.repeat(64) },
-    )).toBe(false);
-    expect(isApprovedLayerStructureMigration(
-      previousManifest,
-      { ...nextManifest, snapshotCommitSha: NEW_SHA },
-    )).toBe(false);
-    expect(isApprovedLayerStructureMigration(
-      { ...previousManifest, signatureSha256: 'a'.repeat(64) },
-      nextManifest,
-    )).toBe(false);
-    expect(isApprovedLayerStructureMigration(
-      { ...previousManifest, snapshotCommitSha: OLD_SHA },
-      nextManifest,
-    )).toBe(false);
-    // Ein späterer Snapshot fällt wieder unter den vollen Lane-Vertrag.
-    expect(isApprovedLayerStructureMigration(nextManifest, {
-      snapshotCommitSha: NEW_SHA,
-      signatureSha256: 'b'.repeat(64),
-    })).toBe(false);
-    expect(isApprovedLayerStructureMigration(undefined, undefined)).toBe(false);
-  });
-
-  it('recognizes only the exact approved AWS component replacement migration', () => {
-    const previousManifest = {
-      snapshotCommitSha: 'cea4589c2b8337207772a88dd82d808cba5e1d89',
-      signatureSha256: '6f5d20990b3859f1b0a611aa1816bc638d1ed293823b84c4fa1cddb9b1c523d2',
-    };
-    const nextManifest = {
-      snapshotCommitSha: 'c1e53dcfbb5adc503964042a859f01ea721a4419',
-      signatureSha256: '838464de3ae659d0278c4563aa926935790bfa23cb5fa2ccefc55fa9cb063195',
-    };
-
-    expect(isApprovedAwsComponentReplacementMigration(
-      previousManifest,
-      nextManifest,
-    )).toBe(true);
-    expect(isApprovedAwsComponentReplacementMigration(
-      previousManifest,
-      { ...nextManifest, signatureSha256: 'f'.repeat(64) },
-    )).toBe(false);
-    expect(isApprovedAwsComponentReplacementMigration(
-      previousManifest,
-      { ...nextManifest, snapshotCommitSha: NEW_SHA },
-    )).toBe(false);
-    expect(isApprovedAwsComponentReplacementMigration(
-      { ...previousManifest, signatureSha256: 'a'.repeat(64) },
-      nextManifest,
-    )).toBe(false);
-    expect(isApprovedAwsComponentReplacementMigration(undefined, undefined)).toBe(false);
-  });
-
-  it('requires the exact branch, title, and file scope for the AWS component replacement', () => {
-    const shape = validAwsComponentReplacementShape();
-
-    expect(() => validateAwsComponentReplacementPullRequest(shape)).not.toThrow();
-    expect(() => validateAwsComponentReplacementPullRequest({
-      ...shape,
-      branch: 'codex/gru-308-unexpected',
-    })).toThrow('branch must be exactly');
-    expect(() => validateAwsComponentReplacementPullRequest({
-      ...shape,
-      title: 'fix(sync): unexpected title',
-    })).toThrow('title must be exactly');
-    expect(() => validateAwsComponentReplacementPullRequest({
-      ...shape,
-      diffEntries: shape.diffEntries.slice(0, -1),
-    })).toThrow('file scope must match exactly');
-    expect(() => validateAwsComponentReplacementPullRequest({
-      ...shape,
-      diffEntries: [
-        ...shape.diffEntries,
-        { status: 'M', path: 'src/features/pages/AboutPage.tsx' },
-      ],
-    })).toThrow('file scope must match exactly');
-  });
-
-  it('applies the AWS migration scope check before manifest verification', async () => {
-    const shape = validAwsComponentReplacementShape();
-    const previousManifest = {
-      snapshotCommitSha: 'cea4589c2b8337207772a88dd82d808cba5e1d89',
-      signatureSha256: '6f5d20990b3859f1b0a611aa1816bc638d1ed293823b84c4fa1cddb9b1c523d2',
-    };
-    const nextManifest = {
-      snapshotCommitSha: 'c1e53dcfbb5adc503964042a859f01ea721a4419',
-      signatureSha256: '838464de3ae659d0278c4563aa926935790bfa23cb5fa2ccefc55fa9cb063195',
-    };
-
-    await expect(guardCatalogSyncPullRequest({
-      ...shape,
-      branch: 'codex/gru-308-unexpected',
-      previousManifest,
-      nextManifest,
-      fetchImpl: vi.fn(),
-    })).rejects.toThrow('branch must be exactly');
-  });
-
-  it('recognizes only the exact WLAN-to-Keycloak component migration', () => {
-    const previousManifest = {
-      snapshotCommitSha: 'c1e53dcfbb5adc503964042a859f01ea721a4419',
-      signatureSha256: '838464de3ae659d0278c4563aa926935790bfa23cb5fa2ccefc55fa9cb063195',
-    };
-    const nextManifest = {
-      snapshotCommitSha: '47de2824a341812438ef3f044b3f65ce2cad6e32',
-      signatureSha256: 'fd9e5d887481466616451d315fbbf34bbf82aa5d95f2e12e5aa5dadd2a7bd80a',
-    };
-
-    expect(isApprovedWlanKeycloakComponentMigration(
-      previousManifest,
-      nextManifest,
-    )).toBe(true);
-    expect(isApprovedWlanKeycloakComponentMigration(
-      previousManifest,
-      { ...nextManifest, signatureSha256: 'f'.repeat(64) },
-    )).toBe(false);
-    expect(isApprovedWlanKeycloakComponentMigration(
-      { ...previousManifest, snapshotCommitSha: OLD_SHA },
-      nextManifest,
-    )).toBe(false);
-  });
-
-  it('requires the exact branch, title, and file scope for the WLAN-to-Keycloak migration', () => {
-    const shape = validWlanKeycloakComponentMigrationShape();
-    expect(() => validateWlanKeycloakComponentMigrationPullRequest(shape)).not.toThrow();
-    expect(() => validateWlanKeycloakComponentMigrationPullRequest({
-      ...shape,
-      branch: 'codex/gru-319-unexpected',
-    })).toThrow('branch must be exactly');
-    expect(() => validateWlanKeycloakComponentMigrationPullRequest({
-      ...shape,
-      title: 'fix(sync): unexpected title',
-    })).toThrow('title must be exactly');
-    expect(() => validateWlanKeycloakComponentMigrationPullRequest({
-      ...shape,
-      diffEntries: shape.diffEntries.slice(0, -1),
-    })).toThrow('file scope must match exactly');
-    expect(() => validateWlanKeycloakComponentMigrationPullRequest({
-      ...shape,
-      diffEntries: [
-        ...shape.diffEntries,
-        { status: 'M', path: 'src/features/pages/AboutPage.tsx' },
-      ],
-    })).toThrow('file scope must match exactly');
-  });
-
   it('rejects an invalid branch', () => {
     expect(() => validateCatalogSyncPullRequest({
       ...shape,
       branch: 'feature/catalog-sync-222222222222',
     })).toThrow('branch must match');
+  });
+
+  it('requires the title suffix to match the branch suffix', () => {
+    expect(() => validateCatalogSyncPullRequest({
+      ...shape,
+      title: 'chore(ci): BSI-Katalog-Sync aaaaaaaaaaaa',
+    })).toThrow('PR title must be exactly');
   });
 
   it.each([
@@ -1028,7 +732,7 @@ describe('catalog sync artifact verification', () => {
   });
 });
 
-describe('snapshot progression and v1 migration', () => {
+describe('snapshot progression', () => {
   it('accepts normal updates only when the next snapshot is ahead', async () => {
     const previous = makeFixture({ snapshotCommitSha: OLD_SHA });
     const next = makeFixture({ snapshotCommitSha: NEW_SHA });
@@ -1055,65 +759,27 @@ describe('snapshot progression and v1 migration', () => {
     },
   );
 
-  it('accepts only the pinned same-snapshot legacy v1 to v2 migration', async () => {
-    const next = makeFixture({ snapshotCommitSha: LEGACY_V1_MIGRATION_SNAPSHOT });
-    const fetchImpl = makeGitHubFetch(next);
-
-    await expect(guardCatalogSyncPullRequest({
-      ...validShape(LEGACY_V1_MIGRATION_SNAPSHOT),
-      previousManifest: approvedLegacyManifest(),
-      nextManifest: next.manifest,
-      fetchImpl,
-    })).resolves.toEqual({
-      catalogSync: true,
-      snapshotCommitSha: LEGACY_V1_MIGRATION_SNAPSHOT,
-    });
-    expect(fetchImpl.mock.calls.some(([input]) => String(input).includes('/compare/'))).toBe(false);
-  });
-
-  it('rejects legacy-like manifests when either migration pin differs', async () => {
-    const next = makeFixture({ snapshotCommitSha: LEGACY_V1_MIGRATION_SNAPSHOT });
-    const wrongSignature = {
-      ...approvedLegacyManifest(),
-      signatureSha256: 'f'.repeat(64),
-    };
-    await expect(guardCatalogSyncPullRequest({
-      ...validShape(LEGACY_V1_MIGRATION_SNAPSHOT),
-      previousManifest: wrongSignature,
-      nextManifest: next.manifest,
-      fetchImpl: vi.fn(),
-    })).rejects.toThrow('unexpected or missing fields');
-
-    const wrongSnapshot = {
-      ...approvedLegacyManifest(),
-      snapshotCommitSha: OLD_SHA,
-    };
-    await expect(guardCatalogSyncPullRequest({
-      ...validShape(LEGACY_V1_MIGRATION_SNAPSHOT),
-      previousManifest: wrongSnapshot,
-      nextManifest: next.manifest,
-      fetchImpl: vi.fn(),
-    })).rejects.toThrow('unexpected or missing fields');
-  });
-
-  it('accepts an approved legacy base advancing to a verified ahead snapshot', async () => {
+  it('rejects a legacy v1 base before network access', async () => {
     const next = makeFixture({ snapshotCommitSha: NEW_SHA });
-    const fetchImpl = makeGitHubFetch(next, { compareStatus: 'ahead' });
+    const fetchImpl = vi.fn();
     await expect(guardCatalogSyncPullRequest({
       ...validShape(),
-      previousManifest: approvedLegacyManifest(),
+      previousManifest: makeLegacyV1Manifest(),
       nextManifest: next.manifest,
       fetchImpl,
-    })).resolves.toEqual({
-      catalogSync: true,
-      snapshotCommitSha: NEW_SHA,
-    });
-    expect(fetchImpl.mock.calls.some(([input]) => String(input).includes('/compare/'))).toBe(true);
+    })).rejects.toThrow('unexpected or missing fields');
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it('rejects identical snapshots outside the pinned legacy migration', async () => {
+  it('rejects a v2 signature change for an identical snapshot', async () => {
     const previous = makeFixture({ snapshotCommitSha: NEW_SHA });
     const next = makeFixture({ snapshotCommitSha: NEW_SHA });
+    next.manifest = rebuildManifest(
+      next.manifest,
+      next.manifest.files.map((file, index) =>
+        index === 0 ? { ...file, contentSha256: 'f'.repeat(64) } : file,
+      ),
+    );
     await expect(guardCatalogSyncPullRequest({
       ...validShape(),
       previousManifest: previous.manifest,

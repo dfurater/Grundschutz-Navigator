@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -25,18 +24,6 @@ const DEFAULT_METADATA_PATH = DEFAULT_UPSTREAM_METADATA_PATH;
 const DEFAULT_MANIFEST_PATH = DEFAULT_TRACKED_MANIFEST_PATH;
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 
-export const LEGACY_V1_MIGRATION_SNAPSHOT = '12abb438fcdb4f4b63fb3e751e89d7c526e647b5';
-export const LEGACY_V1_MIGRATION_SIGNATURE = '79bda3896eb6b0a07df3ba27ee8ef283b715962c1af9920f1a641829c693c7e2';
-/**
- * Katalogpfad zum Zeitpunkt der v1-Migration. Bewusst eingefroren und NICHT aus
- * dem Quellregister abgeleitet: Die oben festgeschriebene Signatur wurde über
- * genau diesen Pfad gebildet. Würde hier der jeweils aktuelle Pfad stehen,
- * könnte die Signaturprüfung nach einer Upstream-Umbenennung — wie der
- * Layer-Migration in BSI-PR #63 — nie mehr aufgehen.
- */
-export const LEGACY_V1_MIGRATION_CATALOG_PATH =
-  'Anwenderkataloge/Grundschutz++/Grundschutz++-catalog.json';
-
 function toJsonWithTrailingNewline(value) {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
@@ -49,39 +36,6 @@ function assertObject(value, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`${label} must be an object`);
   }
-}
-
-export function isApprovedLegacyV1Manifest(manifest) {
-  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) return false;
-  const topLevelKeys = Object.keys(manifest).sort();
-  if (JSON.stringify(topLevelKeys) !== JSON.stringify([
-    'catalogPath',
-    'files',
-    'repository',
-    'signatureSha256',
-    'snapshotCommitSha',
-  ])) return false;
-  if (
-    manifest.schemaVersion === undefined &&
-    manifest.snapshotCommitSha === LEGACY_V1_MIGRATION_SNAPSHOT &&
-    manifest.signatureSha256 === LEGACY_V1_MIGRATION_SIGNATURE &&
-    manifest.repository === OFFICIAL_BSI_REPOSITORY_URL &&
-    manifest.catalogPath === LEGACY_V1_MIGRATION_CATALOG_PATH &&
-    Array.isArray(manifest.files) &&
-    manifest.files.length > 0
-  ) {
-    const signaturePayload = {
-      repository: manifest.repository,
-      snapshotCommitSha: manifest.snapshotCommitSha,
-      catalogPath: manifest.catalogPath,
-      files: manifest.files,
-    };
-    const recomputedSignature = createHash('sha256')
-      .update(JSON.stringify(signaturePayload))
-      .digest('hex');
-    return recomputedSignature === LEGACY_V1_MIGRATION_SIGNATURE;
-  }
-  return false;
 }
 
 export function validateUpstreamManifest(manifest) {
@@ -110,7 +64,6 @@ export async function readJsonFile(filePath) {
 export async function readTrackedManifest(filePath = DEFAULT_MANIFEST_PATH) {
   try {
     const manifest = await readJsonFile(filePath);
-    if (isApprovedLegacyV1Manifest(manifest)) return manifest;
     return validateUpstreamManifest(manifest);
   } catch (error) {
     if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
@@ -161,16 +114,10 @@ export function buildChangeSummary(
   { fileDelta = [], dataQualityFindings = [] } = {},
 ) {
   const normalizedFindings = normalizeDataQualityFindings(dataQualityFindings);
-  const migrationNote =
-    previousManifest &&
-    previousManifest.snapshotCommitSha === nextManifest.snapshotCommitSha &&
-    previousManifest.signatureSha256 !== nextManifest.signatureSha256
-      ? '\n- Manifest-Contract wurde für denselben Snapshot deterministisch aktualisiert.'
-      : '';
 
   return [
     '### Datei-Delta',
-    `${formatFileDelta(fileDelta)}${migrationNote}`,
+    formatFileDelta(fileDelta),
     '',
     '### Bekannte Datenqualitätsbefunde',
     formatDataQualityFindings(normalizedFindings),
@@ -204,9 +151,7 @@ async function fetchSnapshotTree(snapshotSha, { fetchImpl = fetch, token } = {})
 }
 
 function buildRegisteredPathMap(previousManifest, nextManifest) {
-  const previousFiles = previousManifest?.schemaVersion === 2
-    ? previousManifest.files
-    : [];
+  const previousFiles = previousManifest?.files ?? [];
   const byPath = new Map(previousFiles.map((file) => [file.path, file]));
 
   // The signed next manifest is authoritative for paths that remain registered.
@@ -246,8 +191,7 @@ export async function syncUpstreamManifest({
   if (
     changed &&
     previousManifest &&
-    previousManifest.snapshotCommitSha === nextManifest.snapshotCommitSha &&
-    !isApprovedLegacyV1Manifest(previousManifest)
+    previousManifest.snapshotCommitSha === nextManifest.snapshotCommitSha
   ) {
     throw new Error(
       'A manifest v2 signature change for an unchanged snapshot is outside the automatic sync contract',
@@ -268,16 +212,7 @@ export async function syncUpstreamManifest({
     console.log('Upstream manifest unchanged.');
   }
 
-  const isSameSnapshotManifestMigration = Boolean(
-    isApprovedLegacyV1Manifest(previousManifest) &&
-    previousManifest.snapshotCommitSha === nextManifest.snapshotCommitSha &&
-    previousManifest.signatureSha256 !== nextManifest.signatureSha256,
-  );
-  const fileDeltaSummary = `${formatFileDelta(fileDelta)}${
-    isSameSnapshotManifestMigration
-      ? '\n- Manifest-Contract wurde für denselben Snapshot deterministisch aktualisiert.'
-      : ''
-  }`;
+  const fileDeltaSummary = formatFileDelta(fileDelta);
   const dataQualitySummary = formatDataQualityFindings(dataQualityFindings);
   const changeSummary = buildChangeSummary(previousManifest, nextManifest, {
     fileDelta,
