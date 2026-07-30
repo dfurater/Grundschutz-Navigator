@@ -111,6 +111,34 @@ const AWS_COMPONENT_REPLACEMENT_MIGRATION = Object.freeze({
     '838464de3ae659d0278c4563aa926935790bfa23cb5fa2ccefc55fa9cb063195',
 });
 
+/**
+ * Einmaliger Registry- und Manifestübergang für die durch BSI entfernte
+ * WLAN- und neu veröffentlichte Keycloak-Preview-Komponente (GRU-319).
+ *
+ * Wie bei der AWS-Migration müssen Registry und Manifest atomar wechseln.
+ * Die Ausnahme bleibt deshalb auf den exakten Engineering-PR sowie beide
+ * Snapshots und Signaturen beschränkt.
+ */
+const WLAN_KEYCLOAK_COMPONENT_MIGRATION = Object.freeze({
+  branch:
+    'codex/gru-319-fixsync-upstream-delta-47de2824-mit-wlan-keycloak-registry',
+  title:
+    'fix(sync): Upstream-Delta 47de2824 mit WLAN-/Keycloak-Registry-Migration einspielen',
+  diffEntries: Object.freeze([
+    Object.freeze({ status: 'M', path: 'scripts/catalog-sync-guard.mjs' }),
+    Object.freeze({ status: 'M', path: 'scripts/catalog-sync-guard.test.ts' }),
+    Object.freeze({ status: 'M', path: 'src/domain/sourceRegistry.mjs' }),
+    Object.freeze({ status: 'M', path: 'src/domain/sourceRegistry.test.ts' }),
+    Object.freeze({ status: 'M', path: TRACKED_MANIFEST_PATH }),
+  ]),
+  previousSnapshotCommitSha: 'c1e53dcfbb5adc503964042a859f01ea721a4419',
+  nextSnapshotCommitSha: '47de2824a341812438ef3f044b3f65ce2cad6e32',
+  previousSignatureSha256:
+    '838464de3ae659d0278c4563aa926935790bfa23cb5fa2ccefc55fa9cb063195',
+  nextSignatureSha256:
+    'fd9e5d887481466616451d315fbbf34bbf82aa5d95f2e12e5aa5dadd2a7bd80a',
+});
+
 export function computeManifestSignature(manifest) {
   return computeV2ManifestSignature(manifest);
 }
@@ -214,15 +242,38 @@ export function isApprovedAwsComponentReplacementMigration(
   previousManifest,
   nextManifest,
 ) {
+  return isApprovedPinnedManifestMigration(
+    previousManifest,
+    nextManifest,
+    AWS_COMPONENT_REPLACEMENT_MIGRATION,
+  );
+}
+
+function isApprovedPinnedManifestMigration(
+  previousManifest,
+  nextManifest,
+  migration,
+) {
   return (
     previousManifest?.snapshotCommitSha ===
-      AWS_COMPONENT_REPLACEMENT_MIGRATION.previousSnapshotCommitSha &&
+      migration.previousSnapshotCommitSha &&
     nextManifest?.snapshotCommitSha ===
-      AWS_COMPONENT_REPLACEMENT_MIGRATION.nextSnapshotCommitSha &&
+      migration.nextSnapshotCommitSha &&
     previousManifest?.signatureSha256 ===
-      AWS_COMPONENT_REPLACEMENT_MIGRATION.previousSignatureSha256 &&
+      migration.previousSignatureSha256 &&
     nextManifest?.signatureSha256 ===
-      AWS_COMPONENT_REPLACEMENT_MIGRATION.nextSignatureSha256
+      migration.nextSignatureSha256
+  );
+}
+
+export function isApprovedWlanKeycloakComponentMigration(
+  previousManifest,
+  nextManifest,
+) {
+  return isApprovedPinnedManifestMigration(
+    previousManifest,
+    nextManifest,
+    WLAN_KEYCLOAK_COMPONENT_MIGRATION,
   );
 }
 
@@ -267,19 +318,31 @@ export function validateAwsComponentReplacementPullRequest({
   title,
   diffEntries,
 }) {
-  if (branch !== AWS_COMPONENT_REPLACEMENT_MIGRATION.branch) {
+  validatePinnedEngineeringMigrationPullRequest(
+    { branch, title, diffEntries },
+    AWS_COMPONENT_REPLACEMENT_MIGRATION,
+    'AWS component replacement',
+  );
+}
+
+function validatePinnedEngineeringMigrationPullRequest(
+  { branch, title, diffEntries },
+  migration,
+  label,
+) {
+  if (branch !== migration.branch) {
     throw new Error(
-      `AWS component replacement branch must be exactly: ${AWS_COMPONENT_REPLACEMENT_MIGRATION.branch}`,
+      `${label} branch must be exactly: ${migration.branch}`,
     );
   }
-  if (title !== AWS_COMPONENT_REPLACEMENT_MIGRATION.title) {
+  if (title !== migration.title) {
     throw new Error(
-      `AWS component replacement title must be exactly: ${AWS_COMPONENT_REPLACEMENT_MIGRATION.title}`,
+      `${label} title must be exactly: ${migration.title}`,
     );
   }
 
   const expectedDiff = new Map(
-    AWS_COMPONENT_REPLACEMENT_MIGRATION.diffEntries.map(({ path, status }) => [
+    migration.diffEntries.map(({ path, status }) => [
       path,
       status,
     ]),
@@ -287,7 +350,7 @@ export function validateAwsComponentReplacementPullRequest({
   const actualDiff = new Map();
   for (const entry of diffEntries) {
     if (actualDiff.has(entry.path)) {
-      throw new Error('AWS component replacement file scope must match exactly');
+      throw new Error(`${label} file scope must match exactly`);
     }
     actualDiff.set(entry.path, entry.status);
   }
@@ -297,8 +360,20 @@ export function validateAwsComponentReplacementPullRequest({
       ([path, status]) => actualDiff.get(path) === status,
     );
   if (!hasExactFileScope) {
-    throw new Error('AWS component replacement file scope must match exactly');
+    throw new Error(`${label} file scope must match exactly`);
   }
+}
+
+export function validateWlanKeycloakComponentMigrationPullRequest({
+  branch,
+  title,
+  diffEntries,
+}) {
+  validatePinnedEngineeringMigrationPullRequest(
+    { branch, title, diffEntries },
+    WLAN_KEYCLOAK_COMPONENT_MIGRATION,
+    'WLAN/Keycloak component migration',
+  );
 }
 
 async function fetchGitHubJson(url, { fetchImpl, token, label }) {
@@ -504,12 +579,21 @@ export async function guardCatalogSyncPullRequest({
     isApprovedLayerStructureMigration(previousManifest, nextManifest);
   const isAwsComponentReplacementMigration =
     isApprovedAwsComponentReplacementMigration(previousManifest, nextManifest);
+  const isWlanKeycloakComponentMigration =
+    isApprovedWlanKeycloakComponentMigration(previousManifest, nextManifest);
   const isPinnedStructuralMigration =
     isVocabularyCollectionMigration ||
     isLayerStructureMigration ||
-    isAwsComponentReplacementMigration;
+    isAwsComponentReplacementMigration ||
+    isWlanKeycloakComponentMigration;
   if (isAwsComponentReplacementMigration) {
     validateAwsComponentReplacementPullRequest({ branch, title, diffEntries });
+  } else if (isWlanKeycloakComponentMigration) {
+    validateWlanKeycloakComponentMigrationPullRequest({
+      branch,
+      title,
+      diffEntries,
+    });
   } else if (!isPinnedStructuralMigration) {
     validateCatalogSyncPullRequest({ branch, title, diffEntries });
   }

@@ -6,10 +6,12 @@ import {
   isApprovedAwsComponentReplacementMigration,
   isApprovedLayerStructureMigration,
   isApprovedVocabularyCollectionMigration,
+  isApprovedWlanKeycloakComponentMigration,
   parseNameStatusDiff,
   validateAwsComponentReplacementPullRequest,
   validateCatalogSyncManifest,
   validateCatalogSyncPullRequest,
+  validateWlanKeycloakComponentMigrationPullRequest,
   verifySnapshotProgress,
 } from './catalog-sync-guard.mjs';
 import { OFFICIAL_BSI_REPOSITORY_URL } from './security-guards.mjs';
@@ -305,6 +307,22 @@ function validAwsComponentReplacementShape() {
       { status: 'M', path: 'scripts/fetch-catalog.test.ts' },
       { status: 'M', path: 'scripts/sync-upstream-manifest.test.ts' },
       { status: 'A', path: 'scripts/update-catalog-workflow.test.ts' },
+      { status: 'M', path: 'src/domain/sourceRegistry.mjs' },
+      { status: 'M', path: 'src/domain/sourceRegistry.test.ts' },
+      { status: 'M', path: 'upstream-manifest.json' },
+    ],
+  };
+}
+
+function validWlanKeycloakComponentMigrationShape() {
+  return {
+    branch:
+      'codex/gru-319-fixsync-upstream-delta-47de2824-mit-wlan-keycloak-registry',
+    title:
+      'fix(sync): Upstream-Delta 47de2824 mit WLAN-/Keycloak-Registry-Migration einspielen',
+    diffEntries: [
+      { status: 'M', path: 'scripts/catalog-sync-guard.mjs' },
+      { status: 'M', path: 'scripts/catalog-sync-guard.test.ts' },
       { status: 'M', path: 'src/domain/sourceRegistry.mjs' },
       { status: 'M', path: 'src/domain/sourceRegistry.test.ts' },
       { status: 'M', path: 'upstream-manifest.json' },
@@ -613,6 +631,54 @@ describe('catalog sync PR shape', () => {
       nextManifest,
       fetchImpl: vi.fn(),
     })).rejects.toThrow('branch must be exactly');
+  });
+
+  it('recognizes only the exact WLAN-to-Keycloak component migration', () => {
+    const previousManifest = {
+      snapshotCommitSha: 'c1e53dcfbb5adc503964042a859f01ea721a4419',
+      signatureSha256: '838464de3ae659d0278c4563aa926935790bfa23cb5fa2ccefc55fa9cb063195',
+    };
+    const nextManifest = {
+      snapshotCommitSha: '47de2824a341812438ef3f044b3f65ce2cad6e32',
+      signatureSha256: 'fd9e5d887481466616451d315fbbf34bbf82aa5d95f2e12e5aa5dadd2a7bd80a',
+    };
+
+    expect(isApprovedWlanKeycloakComponentMigration(
+      previousManifest,
+      nextManifest,
+    )).toBe(true);
+    expect(isApprovedWlanKeycloakComponentMigration(
+      previousManifest,
+      { ...nextManifest, signatureSha256: 'f'.repeat(64) },
+    )).toBe(false);
+    expect(isApprovedWlanKeycloakComponentMigration(
+      { ...previousManifest, snapshotCommitSha: OLD_SHA },
+      nextManifest,
+    )).toBe(false);
+  });
+
+  it('requires the exact branch, title, and file scope for the WLAN-to-Keycloak migration', () => {
+    const shape = validWlanKeycloakComponentMigrationShape();
+    expect(() => validateWlanKeycloakComponentMigrationPullRequest(shape)).not.toThrow();
+    expect(() => validateWlanKeycloakComponentMigrationPullRequest({
+      ...shape,
+      branch: 'codex/gru-319-unexpected',
+    })).toThrow('branch must be exactly');
+    expect(() => validateWlanKeycloakComponentMigrationPullRequest({
+      ...shape,
+      title: 'fix(sync): unexpected title',
+    })).toThrow('title must be exactly');
+    expect(() => validateWlanKeycloakComponentMigrationPullRequest({
+      ...shape,
+      diffEntries: shape.diffEntries.slice(0, -1),
+    })).toThrow('file scope must match exactly');
+    expect(() => validateWlanKeycloakComponentMigrationPullRequest({
+      ...shape,
+      diffEntries: [
+        ...shape.diffEntries,
+        { status: 'M', path: 'src/features/pages/AboutPage.tsx' },
+      ],
+    })).toThrow('file scope must match exactly');
   });
 
   it('rejects an invalid branch', () => {
