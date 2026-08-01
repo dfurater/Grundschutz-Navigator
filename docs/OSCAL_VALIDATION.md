@@ -52,7 +52,7 @@ GitHub-Actions-Runner; Browserprüfungen laufen ausschließlich im Modul-Worker.
 | Stufe | Vorgeschriebener Zielzustand | Pinning und Fehlersemantik |
 | --- | --- | --- |
 | 1. Größenlimit und JSON-Syntax | Plattformfunktionen (`Uint8Array`, fataler UTF-8-Decoder), projekteigener Streaming-Token-Scanner und danach `JSON.parse` im isolierten Worker; dieselbe Reihenfolge in CI | Das Byte-Limit muss vor Decoder, Scanner und Parser gesetzt sein. Fehlt ein Limit oder wird es überschritten, wird nicht dekodiert. Nach erfolgreicher fataler Dekodierung lehnt der Scanner doppelte Member-Namen auf jeder Objekttiefe ab; nur dann wird `JSON.parse` aufgerufen. CI verwendet Node 22 gemäß Workflow und der Mindestversion in `package.json`; die Prüflogik einschließlich Scanner ist über den App-Commit gepinnt. |
-| 2. Root-Erkennung | Projekteigener exakter Dispatcher im Worker und in CI | Das Top-Level-Objekt muss genau einen der acht bekannten Root-Keys besitzen. Null, Arrays, mehrere Keys, unbekannte Keys und zusätzliche Keys wie `$schema` werden abgelehnt. Eine Katalog-Interpretation als Fallback ist verboten. |
+| 2. Root-Erkennung | Projekteigener exakter Dispatcher im Worker und in CI | Das Top-Level-Objekt muss genau einen der acht bekannten Root-Keys besitzen. Null, Arrays, mehrere Root-Keys und unbekannte Keys werden abgelehnt. Die optionale Schema-Direktive `$schema` ist die einzige zusätzlich zulässige Top-Level-Property; sie ist kein zweiter Root und **niemals** Versionsautorität. Eine Katalog-Interpretation als Fallback ist verboten. |
 | 3. JSON-Schema | Browser nach Aktivierung: `ajv` 8.20.0 im Modul-Worker. CI dann zusätzlich: `go-oscal` 0.7.1 als unabhängiges Schema- und Upgrade-Orakel | Auswahl ausschließlich über den exakten Root×`oscal-version`-Schlüssel. Fehlende Kombinationen werden abgelehnt. Nur exakt registrierte, additive `additionalProperties`-Abweichungen dürfen die Fortsetzung zu Stufe 4 und 5 erlauben; die Schema-Stufe bleibt `failed`. Ajv wird erst nach der OSS-Zulassung aus [ADR-5](https://linear.app/grundschutz-plus-plus/issue/ADR-5) produktiv aufgenommen. Bis direkte Abhängigkeit, Paket-Lock, Schema-Manifest und Hashprüfung vorhanden sind, bleibt der betreffende Importpfad deaktiviert. |
 | 4. zusätzliche OSCAL-Constraints | Derzeit **kein zugelassener Validator** für OSCAL 1.2.2; im Browser und in CI als `not-checked` ausgewiesen | Diese Stufe darf weder übersprungen noch als bestanden dargestellt werden. Die zulässige Konformitätsaussage wird deshalb begrenzt. Das konkrete Mapping-Orakel ist als bekannte Lücke registriert. |
 | 5. Referenzen und Projektregeln | Projekteigener, kataloggescopter Referenzgraph und explizit versionierte Regeln im Worker und in CI; Vertrag in [GSPP-251](https://linear.app/grundschutz-plus-plus/issue/GSPP-251) | Prüft UUID-/ID-Eindeutigkeit, interne und dokumentübergreifende Referenzen, URI- und Medientypregeln sowie ausdrücklich benannte GRC-Regeln. Externe `href`-Ziele werden klassifiziert, niemals während der Validierung abgerufen. Unbekannte Regeln gelten nicht als bestanden. |
@@ -78,10 +78,36 @@ vollständige Auswahlnachweis ist in
 [GSPP-282](https://linear.app/grundschutz-plus-plus/issue/GSPP-282)
 nachvollziehbar; der temporäre Harnisch gehört nicht in das Repository.
 
+### Die Schema-Direktive `$schema`
+
+Alle acht NIST-Schemas führen `$schema` ausdrücklich in ihren
+Root-`properties` (`$ref: "#/definitions/json-schema-directive"`, Typ
+`URIReferenceDatatype`). Die Property fällt damit **nicht** unter
+`additionalProperties: false`: ein Dokument mit `$schema` ist nach
+NIST-Schema gültig, und der Dispatcher darf es nicht deshalb ablehnen.
+
+Sie ist aber nicht Pflichtfeld, nicht wertbeschränkt und in keiner Weise an
+`metadata.oscal-version` gekoppelt. Ein unbeschränkter, vom Autor frei
+gesetzter URI darf die Schemaauswahl nicht steuern — das wäre eine
+Schema-Selection-Confusion. Verbindlich gilt deshalb:
+
+- `metadata.oscal-version` ist die **alleinige** Versionsautorität.
+- `$schema` ist zulässig, wird aber nur als Kreuzprobe ausgewertet.
+- Widerspricht ein vorhandenes `$schema` der gewählten Zelle, wird das
+  Dokument mit `OSCAL_SCHEMA_DIRECTIVE_CONFLICT` fail-closed abgelehnt.
+
+Belegt am realen Bestand: `mapping-itgs2023-zu-gspp` trägt
+`$schema: "http://csrc.nist.gov/ns/oscal/1.2.1/oscal-mapping-schema.json"`
+neben `oscal-version: 1.2.1`. Die offiziellen NIST-Beispieldokumente setzen
+`$schema` dagegen nicht.
+
 ## Root- und Versionsauswahl
 
 Der Root-Key und `metadata.oscal-version` bilden gemeinsam den Schema-Schlüssel.
-Die Projektmatrix umfasst ausschließlich die vier im BSI-Bestand belegten
+Die verbindliche Matrix samt Schema-Provenienz, Hash-Pins und
+Migrationspolitik steht in [OSCAL_VERSION_MATRIX.md](OSCAL_VERSION_MATRIX.md)
+und ist als Daten in `src/domain/oscalVersionMatrix.mjs` verankert. Die
+Projektmatrix umfasst ausschließlich die vier im BSI-Bestand belegten
 Versionen:
 
 | Root-Key | 1.1.2 | 1.1.3 | 1.2.1 | 1.2.2 |
@@ -101,10 +127,14 @@ Hashfehler ist daher immer `OSCAL_ROOT_VERSION_UNSUPPORTED`; es wird niemals
 eine Nachbarversion verwendet.
 
 Welche Root×Version-Paare produktiv freigegeben sind, bleibt zusätzlich durch
-die Versionsmatrix aus
-[GSPP-283](https://linear.app/grundschutz-plus-plus/issue/GSPP-283)
-begrenzt. Die obige Tabelle beschreibt nur die technisch vorhandenen
-NIST-Schemas und erweitert keine Produktfreigabe.
+den Lifecycle des jeweiligen Artefakts im Quellregister begrenzt
+([GSPP-283](https://linear.app/grundschutz-plus-plus/issue/GSPP-283)). Die
+obige Tabelle beschreibt nur die technisch vorhandenen NIST-Schemas und
+erweitert keine Produktfreigabe.
+
+| Artefakt | Root / Version | Schema-Datei und SHA-256 |
+| --- | --- | --- |
+| Alle 30 existierenden Zellen | acht Roots × vier Versionen minus zwei Mapping-Zellen | in `src/domain/oscalVersionMatrix.mjs` gepinnt, siehe [OSCAL_VERSION_MATRIX.md](OSCAL_VERSION_MATRIX.md) |
 
 ## Lieferkettenregeln
 

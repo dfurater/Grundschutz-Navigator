@@ -52,10 +52,32 @@ const OUTPUT_ARTIFACT_FILE_NAMES = [
 ] as const;
 const temporaryOutputDirectories = new Set<string>();
 
+/** Die vom echten Grundschutz++-Katalog deklarierte Modellversion (GSPP-283). */
+const CATALOG_OSCAL_VERSION = '1.1.3';
+
+/**
+ * Minimaler OSCAL-Rumpf für ein Testartefakt. `metadata.oscal-version` ist
+ * Pflichtfeld: der Fetch-Guard prüft sie fail-closed gegen die Versionsmatrix
+ * und gegen die Registry-Erwartung.
+ */
+function makeOscalDocumentText(
+  rootType: string,
+  oscalVersion: string,
+  root: Record<string, unknown> = {},
+) {
+  return `${JSON.stringify({
+    [rootType]: {
+      metadata: { title: rootType, 'oscal-version': oscalVersion },
+      ...root,
+    },
+  })}\n`;
+}
+
 const MINIMAL_REGISTRY = [
   {
     artifactKey: 'catalog-gspp',
     kind: 'oscal',
+    oscalVersion: CATALOG_OSCAL_VERSION,
     expectedRootType: 'catalog',
     catalogKey: 'gspp',
     upstreamPath: OFFICIAL_CATALOG_PATH,
@@ -227,7 +249,7 @@ function makeCatalogText(namespaceUrls: string[] = []) {
   return `${JSON.stringify({
     catalog: {
       uuid: 'demo',
-      metadata: { title: 'Grundschutz++' },
+      metadata: { title: 'Grundschutz++', 'oscal-version': CATALOG_OSCAL_VERSION },
       groups,
     },
   }, null, 2)}\n`;
@@ -423,7 +445,7 @@ describe('fetch-catalog', () => {
 
   it('preserves the original fetched catalog bytes after validation', () => {
     const rawCatalog = Buffer.from(
-      '{\n "catalog" : { "uuid":"demo","metadata":{"title":"Grundschutz++"}, "groups":[ ] }\n}\n',
+      '{\n "catalog" : { "uuid":"demo","metadata":{"title":"Grundschutz++","oscal-version":"1.1.3"}, "groups":[ ] }\n}\n',
       'utf8',
     );
     const artifact = validateFetchedCatalogArtifact(rawCatalog);
@@ -431,7 +453,7 @@ describe('fetch-catalog', () => {
     expect(artifact.json).toEqual({
       catalog: {
         uuid: 'demo',
-        metadata: { title: 'Grundschutz++' },
+        metadata: { title: 'Grundschutz++', 'oscal-version': '1.1.3' },
         groups: [],
       },
     });
@@ -451,11 +473,18 @@ describe('fetch-catalog', () => {
   });
 
   it('validates OSCAL artifacts against their expected root type', () => {
-    const profileBuffer = Buffer.from('{"profile":{"uuid":"demo"}}', 'utf8');
+    const profileBuffer = Buffer.from(
+      '{"profile":{"uuid":"demo","metadata":{"oscal-version":"1.1.3"}}}',
+      'utf8',
+    );
     const artifact = validateFetchedOscalArtifact(profileBuffer, 'profile');
 
-    expect(artifact.json).toEqual({ profile: { uuid: 'demo' } });
+    expect(artifact.json).toEqual({
+      profile: { uuid: 'demo', metadata: { 'oscal-version': '1.1.3' } },
+    });
     expect(artifact.buffer).toEqual(profileBuffer);
+    expect(artifact.schemaPin.oscalVersion).toBe('1.1.3');
+    expect(artifact.schemaPin.schemaFileName).toBe('oscal_profile_schema.json');
   });
 
   it('rejects OSCAL root-type mismatches in both directions', () => {
@@ -479,6 +508,69 @@ describe('fetch-catalog', () => {
     expect(() => validateFetchedOscalArtifact(conflicting, 'catalog')).toThrow(
       'Katalog enthält widersprüchliche OSCAL-Wurzeln: catalog, profile.',
     );
+  });
+
+  describe('OSCAL-Versionsprüfung (GSPP-283)', () => {
+    function oscalBuffer(rootType: string, metadata: unknown, extra: Record<string, unknown> = {}) {
+      return Buffer.from(JSON.stringify({ [rootType]: { uuid: 'demo', metadata }, ...extra }), 'utf8');
+    }
+
+    it('rejects an artifact without metadata.oscal-version fail-closed', () => {
+      expect(() => validateFetchedOscalArtifact(oscalBuffer('catalog', { title: 'x' }), 'catalog'))
+        .toThrow('OSCAL_VERSION_MISSING');
+    });
+
+    it('rejects an unpinned version instead of falling back to a neighbouring one', () => {
+      expect(() => validateFetchedOscalArtifact(
+        oscalBuffer('catalog', { 'oscal-version': '1.0.4' }),
+        'catalog',
+      )).toThrow('OSCAL_ROOT_VERSION_UNSUPPORTED');
+    });
+
+    it('rejects a mapping-collection below OSCAL 1.2.0 as an impossible combination', () => {
+      expect(() => validateFetchedOscalArtifact(
+        oscalBuffer('mapping-collection', { 'oscal-version': '1.1.3' }),
+        'mapping-collection',
+      )).toThrow('OSCAL_ROOT_VERSION_IMPOSSIBLE');
+    });
+
+    it('rejects a present null $schema directive instead of treating it as absent', () => {
+      expect(() => validateFetchedOscalArtifact(
+        oscalBuffer('catalog', { 'oscal-version': '1.1.3' }, { $schema: null }),
+        'catalog',
+      )).toThrow('OSCAL_SCHEMA_DIRECTIVE_CONFLICT');
+    });
+
+    it('rejects a $schema directive that contradicts the declared version', () => {
+      expect(() => validateFetchedOscalArtifact(
+        oscalBuffer('mapping-collection', { 'oscal-version': '1.2.2' }, {
+          $schema: 'http://csrc.nist.gov/ns/oscal/1.2.1/oscal-mapping-schema.json',
+        }),
+        'mapping-collection',
+      )).toThrow('OSCAL_SCHEMA_DIRECTIVE_CONFLICT');
+    });
+
+    it('accepts the real BSI $schema directive that agrees with the declared version', () => {
+      const artifact = validateFetchedOscalArtifact(
+        oscalBuffer('mapping-collection', {
+          // Reale BSI-Dokumentversion: kein Versionsindikator, darf nicht als solcher gelesen werden.
+          version: 'gsmap-oscal-export-v1',
+          'oscal-version': '1.2.1',
+        }, { $schema: 'http://csrc.nist.gov/ns/oscal/1.2.1/oscal-mapping-schema.json' }),
+        'mapping-collection',
+      );
+
+      expect(artifact.schemaPin.oscalVersion).toBe('1.2.1');
+      expect(artifact.schemaPin.releaseTag).toBe('v1.2.1');
+    });
+
+    it('rejects a declared version that deviates from the source registry expectation', () => {
+      expect(() => validateFetchedOscalArtifact(
+        oscalBuffer('catalog', { 'oscal-version': '1.2.2' }),
+        'catalog',
+        { artifactKey: 'catalog-gspp', expectedOscalVersion: '1.1.3' },
+      )).toThrow('Deklarierte OSCAL-Version weicht vom Quellregister ab');
+    });
   });
 
   it('rejects unknown expected root types', () => {
@@ -686,6 +778,43 @@ describe('fetch-catalog', () => {
     )).rejects.toThrow(`Dateigröße stimmt nicht mit dem BSI-Tree überein: ${OFFICIAL_CATALOG_PATH}`);
   });
 
+  it('aborts an oversized artifact download before the whole body is transferred', async () => {
+    // GSPP-324: Die Baumgröße ist die engere Schranke. Ein Artefakt, das mehr
+    // Bytes liefert als der Tree ausweist, muss abbrechen, bevor alles im
+    // Speicher liegt — nicht erst beim nachgelagerten Größenabgleich.
+    const input = makeMinimalFetchInput();
+    const treeResponse = makeTreeResponse(input.rawByPath);
+    const oversized = 4 * 1024 * 1024;
+    let emittedBytes = 0;
+
+    installSnapshotFetch({
+      rawByPath: input.rawByPath,
+      rawResponse: (path, contents) => {
+        if (path !== OFFICIAL_CATALOG_PATH) return responseWithContents(contents);
+        const stream = new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (emittedBytes >= oversized) {
+              controller.close();
+              return;
+            }
+            const size = Math.min(64 * 1024, oversized - emittedBytes);
+            emittedBytes += size;
+            controller.enqueue(new Uint8Array(size));
+          },
+        });
+        return new Response(stream);
+      },
+    });
+
+    await expect(buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      { registryEntries: MINIMAL_REGISTRY, treeResponse },
+    )).rejects.toThrow(`Dateigröße stimmt nicht mit dem BSI-Tree überein: ${OFFICIAL_CATALOG_PATH}`);
+
+    // Entscheidend: die 4 MiB sind nicht vollständig geflossen.
+    expect(emittedBytes).toBeLessThan(oversized);
+  });
+
   it('rejects a preview artifact root mismatch through buildFetchArtifacts', async () => {
     const previewPath = 'control_layer/WLAN/sources/profiles/WLAN-profile.json';
     const input = makeMinimalFetchInput();
@@ -695,6 +824,7 @@ describe('fetch-catalog', () => {
       {
         artifactKey: 'profile-wlan',
         kind: 'oscal',
+        oscalVersion: '1.1.3',
         expectedRootType: 'profile',
         upstreamPath: previewPath,
         lifecycle: 'preview',
@@ -721,6 +851,7 @@ describe('fetch-catalog', () => {
       {
         artifactKey: 'component-retired',
         kind: 'oscal',
+        oscalVersion: '1.1.2',
         expectedRootType: 'component-definition',
         upstreamPath: missingPreviewPath,
         lifecycle: 'preview',
@@ -944,7 +1075,9 @@ describe('fetch-catalog', () => {
         entry.upstreamPath,
         entry.upstreamPath === OFFICIAL_CATALOG_PATH
           ? makeCatalogText([RESULT_NAMESPACE_URL])
-          : `${JSON.stringify({ [entry.expectedRootType]: { uuid: entry.artifactKey } })}\n`,
+          : makeOscalDocumentText(entry.expectedRootType, entry.oscalVersion, {
+              uuid: entry.artifactKey,
+            }),
       );
     }
     rawByPath.set(namespacePath, 'Ergebnis,Definition\nVerfahren,Ein Verfahren\n');

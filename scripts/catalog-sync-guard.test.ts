@@ -77,6 +77,7 @@ function makeOscalContents(
         uuid: 'supported-catalog-fixture',
         metadata: {
           title: 'Grundschutz++ Fixture',
+          'oscal-version': entry.oscalVersion,
           namespaceReferences: catalogNamespaceUrls.map((ns) => ({ ns })),
         },
         controls: [
@@ -111,6 +112,7 @@ function makeOscalContents(
   return Buffer.from(JSON.stringify({
     [entry.expectedRootType]: {
       uuid: `${entry.artifactKey}-fixture`,
+      metadata: { 'oscal-version': entry.oscalVersion },
     },
   }));
 }
@@ -651,6 +653,68 @@ describe('catalog sync artifact verification', () => {
       nextManifest: next.manifest,
       fetchImpl: makeGitHubFetch(next),
     })).rejects.toThrow('Profilwurzel');
+  });
+
+  it('rejects a declared version that deviates from the source registry', async () => {
+    const previewComponent = SOURCE_REGISTRY.find(
+      (entry) =>
+        entry.kind === 'oscal' &&
+        entry.lifecycle === 'preview' &&
+        entry.expectedRootType === 'component-definition',
+    );
+    expect(previewComponent?.kind).toBe('oscal');
+    const previous = makeFixture({ snapshotCommitSha: OLD_SHA });
+    const next = makeFixture({
+      snapshotCommitSha: NEW_SHA,
+      contentOverrides: new Map([
+        [
+          previewComponent!.upstreamPath,
+          // Gepinnte, aber für dieses Artefakt falsche Version.
+          Buffer.from(JSON.stringify({
+            'component-definition': { uuid: 'x', metadata: { 'oscal-version': '1.2.1' } },
+          })),
+        ],
+      ]),
+    });
+
+    await expect(guardCatalogSyncPullRequest({
+      ...validShape(),
+      previousManifest: previous.manifest,
+      nextManifest: next.manifest,
+      fetchImpl: makeGitHubFetch(next),
+    })).rejects.toThrow('Deklarierte OSCAL-Version weicht vom Quellregister ab');
+  });
+
+  it('rejects a present null $schema directive in a preview artifact', async () => {
+    const previewComponent = SOURCE_REGISTRY.find(
+      (entry) =>
+        entry.kind === 'oscal' &&
+        entry.lifecycle === 'preview' &&
+        entry.expectedRootType === 'component-definition',
+    );
+    const previous = makeFixture({ snapshotCommitSha: OLD_SHA });
+    const next = makeFixture({
+      snapshotCommitSha: NEW_SHA,
+      contentOverrides: new Map([
+        [
+          previewComponent!.upstreamPath,
+          Buffer.from(JSON.stringify({
+            $schema: null,
+            'component-definition': {
+              uuid: 'x',
+              metadata: { 'oscal-version': (previewComponent as { oscalVersion: string }).oscalVersion },
+            },
+          })),
+        ],
+      ]),
+    });
+
+    await expect(guardCatalogSyncPullRequest({
+      ...validShape(),
+      previousManifest: previous.manifest,
+      nextManifest: next.manifest,
+      fetchImpl: makeGitHubFetch(next),
+    })).rejects.toThrow('OSCAL_SCHEMA_DIRECTIVE_CONFLICT');
   });
 
   it('rejects content that does not match its Git blob SHA', async () => {

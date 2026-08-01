@@ -17,6 +17,7 @@ import {
   OFFICIAL_CATALOG_PATH,
   assertAllowedGitHubRef,
   assertRegisteredUpstreamRepoPath,
+  readBodyWithLimit,
   resolveOptionalSnapshotSha,
 } from './security-guards.mjs';
 import {
@@ -24,6 +25,7 @@ import {
   SOURCE_REGISTRY,
   SUPPORTED_CATALOG,
 } from '../src/domain/sourceRegistry.mjs';
+import { resolveSchemaBinding } from '../src/domain/oscalVersionMatrix.mjs';
 import {
   buildUpstreamManifest,
   normalizeGitTree,
@@ -221,11 +223,34 @@ async function resolveSnapshot(logger = console, retryDelaysMs = DEFAULT_RETRY_D
   }
 }
 
+/**
+ * Begrenzung des Downloads (GSPP-324).
+ *
+ * Steht die Dateigröße aus dem BSI-Tree fest, ist sie die engere Schranke: ein
+ * Artefakt darf nie mehr Bytes liefern, als der Tree für seinen Blob ausweist.
+ * Die Diagnose bleibt dabei bewusst dieselbe wie beim nachgelagerten exakten
+ * Größenabgleich — die Prüfung wandert nur nach vorn, die Aussage ändert sich
+ * nicht. Ohne bekannte Größe greift das allgemeine Artefaktlimit.
+ */
+function resolveDownloadLimit(path, expectedSizeBytes) {
+  if (Number.isSafeInteger(expectedSizeBytes) && expectedSizeBytes >= 0) {
+    return {
+      maxBytes: Math.max(expectedSizeBytes, 1),
+      limitMessage: `Dateigröße stimmt nicht mit dem BSI-Tree überein: ${path}`,
+    };
+  }
+  return {
+    maxBytes: MAX_CATALOG_ARTIFACT_BYTES,
+    limitMessage: `Artefakt überschreitet das erlaubte Artefaktlimit von ${MAX_CATALOG_ARTIFACT_BYTES} Bytes: ${path}`,
+  };
+}
+
 async function fetchRawRegisteredFile(
   path,
   ref,
   materializedNamespacePaths,
   retryDelaysMs = DEFAULT_RETRY_DELAYS_MS,
+  expectedSizeBytes = null,
 ) {
   const allowedPath = assertRegisteredUpstreamRepoPath(path, { materializedNamespacePaths });
   const allowedRef = assertAllowedGitHubRef(ref, 'GitHub fetch ref');
@@ -242,7 +267,10 @@ async function fetchRawRegisteredFile(
     throw new Error(`Download fehlgeschlagen für ${path}: ${response.status} ${response.statusText}`);
   }
 
-  const buffer = Buffer.from(await response.arrayBuffer());
+  const buffer = await readBodyWithLimit(
+    response,
+    resolveDownloadLimit(allowedPath, expectedSizeBytes),
+  );
   return {
     buffer,
     text: buffer.toString('utf8'),
@@ -309,7 +337,49 @@ const OSCAL_ROOT_TYPE_LABELS = {
 
 const KNOWN_OSCAL_ROOT_TYPES = Object.freeze(Object.keys(OSCAL_ROOT_TYPE_LABELS));
 
-function validateFetchedOscalArtifact(artifactBuffer, expectedRootType) {
+/**
+ * Fail-closed Versionsprüfung gegen die Matrix (GSPP-283).
+ *
+ * `metadata.oscal-version` ist alleinige Versionsautorität. Der optionale
+ * Top-Level-`$schema`-Direktivwert ist laut NIST-Schema ausdrücklich erlaubt,
+ * aber weder Pflichtfeld noch wertbeschränkt — er wird deshalb nur als
+ * Kreuzprobe herangezogen, nie zur Auswahl. Bei Widerspruch wird abgelehnt.
+ *
+ * Die Diagnose nennt Artefaktkontext, erwartete und gefundene Version, aber
+ * keine Dokumentinhalte.
+ */
+function assertDeclaredOscalVersion(artifactDocument, descriptor, labels) {
+  const { rootType, artifactKey, expectedOscalVersion } = descriptor;
+  const declaredVersion = artifactDocument[rootType]?.metadata?.['oscal-version'];
+  const context = `${labels.artifact} (${artifactKey})`;
+
+  const binding = resolveSchemaBinding({
+    rootType,
+    oscalVersion: declaredVersion,
+    schemaDirective: artifactDocument.$schema,
+  });
+
+  if (!binding.ok) {
+    throw new Error(
+      `${context}: OSCAL-Versionsprüfung fehlgeschlagen [${binding.code}] — ` +
+      `Root ${rootType}, gefunden ${JSON.stringify(binding.oscalVersion)}` +
+      (binding.expected ? `, erwartet ${binding.expected}` : '') + '.',
+    );
+  }
+
+  if (expectedOscalVersion !== undefined && declaredVersion !== expectedOscalVersion) {
+    throw new Error(
+      `${context}: Deklarierte OSCAL-Version weicht vom Quellregister ab — ` +
+      `erwartet ${expectedOscalVersion}, gefunden ${declaredVersion}. ` +
+      'Quellregister und Versionsmatrix manuell gegen den BSI-Snapshot prüfen; ' +
+      'keine automatische Übernahme.',
+    );
+  }
+
+  return binding.pin;
+}
+
+function validateFetchedOscalArtifact(artifactBuffer, expectedRootType, versionContext) {
   const labels = OSCAL_ROOT_TYPE_LABELS[expectedRootType];
   if (!labels) {
     throw new Error(`Unbekannter OSCAL-Root-Typ: ${expectedRootType}`);
@@ -343,9 +413,20 @@ function validateFetchedOscalArtifact(artifactBuffer, expectedRootType) {
     );
   }
 
+  const schemaPin = assertDeclaredOscalVersion(
+    artifactDocument,
+    {
+      rootType: expectedRootType,
+      artifactKey: versionContext?.artifactKey ?? expectedRootType,
+      expectedOscalVersion: versionContext?.expectedOscalVersion,
+    },
+    labels,
+  );
+
   return {
     json: artifactDocument,
     buffer: artifactBuffer,
+    schemaPin,
   };
 }
 
@@ -495,13 +576,23 @@ async function buildFetchArtifacts(logger = console, {
   }
 
   logger.log('[2/5] Lade unterstützten Katalog und ermittle Namespace-Mitglieder ...');
-  const catalogRaw = await fetchRawRegisteredFile(CATALOG_PATH, fetchRef, [], retryDelaysMs);
+  const catalogRaw = await fetchRawRegisteredFile(
+    CATALOG_PATH,
+    fetchRef,
+    [],
+    retryDelaysMs,
+    catalogTreeFile.sizeBytes,
+  );
   if (computeGitBlobSha(catalogRaw.buffer) !== catalogTreeFile.gitBlobSha) {
     throw new Error(`Git-Blob-SHA stimmt nicht mit dem BSI-Tree überein: ${CATALOG_PATH}`);
   }
   const catalogArtifact = validateFetchedOscalArtifact(
     catalogRaw.buffer,
     SUPPORTED_CATALOG.expectedRootType,
+    {
+      artifactKey: SUPPORTED_CATALOG.artifactKey,
+      expectedOscalVersion: SUPPORTED_CATALOG.oscalVersion,
+    },
   );
   const catalogJson = catalogArtifact.json;
   const catalogQuality = validateCatalogControlIdentities(catalogJson, SUPPORTED_CATALOG.artifactKey);
@@ -540,6 +631,7 @@ async function buildFetchArtifacts(logger = console, {
         fetchRef,
         materializedNamespacePaths,
         retryDelaysMs,
+        descriptor.sizeBytes,
       );
       rawFileByPath.set(descriptor.path, rawFile);
     }
@@ -552,7 +644,10 @@ async function buildFetchArtifacts(logger = console, {
     }
 
     if (descriptor.rootType !== 'vocabulary') {
-      validateFetchedOscalArtifact(rawFile.buffer, descriptor.rootType);
+      validateFetchedOscalArtifact(rawFile.buffer, descriptor.rootType, {
+        artifactKey: descriptor.artifactKey,
+        expectedOscalVersion: descriptor.registryEntry?.oscalVersion,
+      });
     }
 
     return {
