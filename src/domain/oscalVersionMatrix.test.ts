@@ -256,7 +256,7 @@ describe('oscalVersionMatrix', () => {
       });
 
       it('rejects a non-string or empty directive', () => {
-        for (const schemaDirective of ['', '   ', 42 as never, {} as never]) {
+        for (const schemaDirective of ['', '   ', 42 as never, 0 as never, {} as never]) {
           expect(resolveSchemaBinding({
             rootType: 'catalog',
             oscalVersion: '1.1.3',
@@ -265,6 +265,29 @@ describe('oscalVersionMatrix', () => {
             code: VERSION_MATRIX_DIAGNOSTIC_CODES.SCHEMA_DIRECTIVE_CONFLICT,
           });
         }
+      });
+
+      it('treats a present null directive as invalid, not as absent', () => {
+        // {"$schema": null} ist im Dokument vorhanden, aber nach
+        // URIReferenceDatatype ungültig. Nur `undefined` ist Abwesenheit.
+        const parsed = JSON.parse('{"$schema": null, "catalog": {}}');
+        expect(Object.hasOwn(parsed, '$schema')).toBe(true);
+
+        expect(resolveSchemaBinding({
+          rootType: 'catalog',
+          oscalVersion: '1.1.3',
+          schemaDirective: parsed.$schema,
+        })).toMatchObject({
+          code: VERSION_MATRIX_DIAGNOSTIC_CODES.SCHEMA_DIRECTIVE_CONFLICT,
+        });
+
+        // Gegenprobe: der fehlende Key liefert undefined und wird akzeptiert.
+        const absent = JSON.parse('{"catalog": {}}');
+        expect(resolveSchemaBinding({
+          rootType: 'catalog',
+          oscalVersion: '1.1.3',
+          schemaDirective: absent.$schema,
+        }).ok).toBe(true);
       });
     });
 

@@ -534,6 +534,13 @@ describe('fetch-catalog', () => {
       )).toThrow('OSCAL_ROOT_VERSION_IMPOSSIBLE');
     });
 
+    it('rejects a present null $schema directive instead of treating it as absent', () => {
+      expect(() => validateFetchedOscalArtifact(
+        oscalBuffer('catalog', { 'oscal-version': '1.1.3' }, { $schema: null }),
+        'catalog',
+      )).toThrow('OSCAL_SCHEMA_DIRECTIVE_CONFLICT');
+    });
+
     it('rejects a $schema directive that contradicts the declared version', () => {
       expect(() => validateFetchedOscalArtifact(
         oscalBuffer('mapping-collection', { 'oscal-version': '1.2.2' }, {

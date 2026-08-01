@@ -329,6 +329,8 @@ export function listSchemaPins() {
  * Pflichtfeld noch wertbeschränkt und daher **niemals** Versionsautorität.
  * Allein `metadata.oscal-version` wählt das Schema aus. Widerspricht ein
  * vorhandener Direktivwert der gewählten Zelle, wird fail-closed abgelehnt.
+ * Abwesenheit signalisiert ausschließlich `undefined`; ein vorhandenes
+ * `$schema` mit `null` oder einem Nicht-String ist ungültig, nicht abwesend.
  *
  * @returns {{ok: true, pin: object} | {ok: false, code: string, rootType: string|null, oscalVersion: string|null, expected?: string}}
  */
@@ -367,7 +369,10 @@ export function resolveSchemaBinding({ rootType, oscalVersion, schemaDirective }
     };
   }
 
-  if (schemaDirective !== undefined && schemaDirective !== null) {
+  // Nur `undefined` bedeutet „keine Direktive". Ein im Dokument vorhandenes
+  // `$schema` muss ein nicht-leerer URI-String sein; `null` ist nach
+  // URIReferenceDatatype ungültig und darf nicht als Abwesenheit gelten.
+  if (schemaDirective !== undefined) {
     if (!isNonEmptyString(schemaDirective) || schemaDirective !== pin.schemaId) {
       return {
         ok: false,

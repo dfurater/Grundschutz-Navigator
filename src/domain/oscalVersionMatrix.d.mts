@@ -86,7 +86,12 @@ export declare function listSchemaPins(): readonly OscalSchemaPin[];
 export declare function resolveSchemaBinding(input?: {
   rootType?: string;
   oscalVersion?: string;
-  schemaDirective?: string | null;
+  /**
+   * Der Top-Level-`$schema`-Wert des Dokuments. Nur `undefined` bedeutet
+   * „nicht vorhanden"; jeder andere Wert wird als vorhandene Direktive
+   * geprüft und muss exakt der `$id` der gewählten Zelle entsprechen.
+   */
+  schemaDirective?: string;
 }): SchemaBindingResult;
 export declare function verifySchemaArtifact(input: {
   rootKey: string;

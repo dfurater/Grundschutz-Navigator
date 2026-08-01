@@ -271,9 +271,17 @@ export async function verifySnapshotFiles(manifest, {
 
     // Registry-Erwartung mitgeben, damit auch die Sync-Lane einen stillen
     // Versionswechsel eines BSI-Artefakts fail-closed erkennt (GSPP-283).
+    // Ein fehlender Registry-Eintrag darf die Kreuzprüfung nicht still
+    // überspringen: verifySnapshotFiles ist einzeln aufrufbar und darf sich
+    // nicht darauf verlassen, dass validateCatalogSyncManifest vorher lief.
+    const registryEntry = REGISTRY_BY_ARTIFACT_KEY.get(file.artifactKey);
+    if (!registryEntry) {
+      throw new Error(`Manifest artifact is not a registered OSCAL entry: ${file.artifactKey}`);
+    }
+
     const artifact = validateFetchedOscalArtifact(contents, file.rootType, {
       artifactKey: file.artifactKey,
-      expectedOscalVersion: REGISTRY_BY_ARTIFACT_KEY.get(file.artifactKey)?.oscalVersion,
+      expectedOscalVersion: registryEntry.oscalVersion,
     });
     if (file.path === SUPPORTED_CATALOG.upstreamPath) {
       validateCatalogControlIdentities(artifact.json, file.artifactKey);
