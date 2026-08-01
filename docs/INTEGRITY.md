@@ -12,6 +12,8 @@ Die Anwendung verwendet ein **Integrity-Verification-System**, das:
 
 Das System prüft, ob die geladenen Artefakte zu den gemeinsam ausgelieferten Integritätsmetadaten passen. Da Artefakt und Metadaten aus demselben Deployment stammen, erkennt die Prüfung Inkonsistenzen zwischen beiden (z.B. beschädigte oder unvollständige Deployments) — sie ist aber kein unabhängiger Herkunftsnachweis. Den liefert die extern bei GitHub gespeicherte Artifact Attestation (siehe [SLSA Provenance](#slsa-provenance)); die Upstream-Authentizität wird zur Fetch-Zeit über Snapshot-Pinning und die Upstream-Allowlist verankert.
 
+**Gegenstand der Hashprüfung ist die ausgelieferte Datei, nicht das Parse-Ergebnis.** Der Hash wird über den rohen `ArrayBuffer` von `catalog.json` beziehungsweise `vocabularies.json` berechnet — vor jeder Interpretation und unabhängig davon, wie die Anwendung den Inhalt anschließend repräsentiert. Das verlustfreie Dokumentmodell (ADR-0002) hält den Quellgraphen zwar zusätzlich im Speicher, ist aber kein Bezugspunkt der Prüfung: Ein wiederhergestelltes `JSON.stringify(source)` wäre schon wegen Formatierung und Einrückung nicht byteidentisch zur Quelldatei und taugt deshalb grundsätzlich nicht als Hashbasis.
+
 ## Build-Zeitpunkt (scripts/fetch-catalog.mjs)
 
 `npm run fetch-catalog` startet `scripts/fetch-catalog.mjs`. Das Skript ruft die Upstream-Daten ab, validiert den vollständigen Output-Vertrag und schreibt ausschließlich diese vier generierten Dateien nach `public/data/`:
@@ -150,7 +152,7 @@ export async function fetchCatalogWithBuffer(
 `src/state/CatalogContext.tsx` orchestriert den Ladevorgang:
 
 1. `catalog.json` und `vocabularies.json` werden **parallel** als ArrayBuffer geladen (Startlatenz). Fehlt `catalog.json`, ist das ein harter Ladefehler; fehlt nur `vocabularies.json`, läuft die App ohne Vokabular-Registry weiter.
-2. Der Katalog wird geparst (`parseCatalog`), die Vokabular-Registry gebaut (`buildVocabularyRegistry`).
+2. Der Katalog wird als verlustfreies Dokument geparst (`parseCatalogDocument`, siehe [DOMAIN_MODELS.md](./DOMAIN_MODELS.md#verlustfreies-dokumentmodell)), die Vokabular-Registry gebaut (`buildVocabularyRegistry`).
 3. Für den Katalog wird `catalog-metadata.json` geladen und `verifyArtifactIntegrity` ausgeführt; für die Vokabulare analog `upstream-sources-metadata.json` (siehe [Vocabulary Integrity](#vocabulary-integrity)).
 4. Fehlen zu einem vorhandenen Datenartefakt nur die Metadaten, bleibt das Artefakt nutzbar. Provenance und Verifikation bleiben `null`, die App protokolliert eine Warnung in der Konsole und überspringt die Prüfung.
 5. Ein `cancelled`-Flag verhindert State-Updates nach Unmount.

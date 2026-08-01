@@ -27,5 +27,11 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  /*
+   * Node-Tests (`*.node.test.ts`) laufen bewusst außerhalb des Browser-
+   * Typraums: Sie brauchen `node:fs`/`node:v8`, die App-Quellen ausdrücklich
+   * nicht. Sie werden von tsconfig.node.json geprüft.
+   */
+  "exclude": ["src/**/*.node.test.ts"]
 }

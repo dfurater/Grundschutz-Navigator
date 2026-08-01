@@ -7,6 +7,8 @@ import type {
 import { CatalogProvider } from './CatalogContext';
 import { computeSHA256 } from '@/domain/integrity';
 import { useCatalog } from '@/hooks/useCatalog';
+import { SUPPORTED_CATALOG_KEY } from '@/domain/sourceRegistry';
+import { countPropRemarks } from '@/test/oscalStructure';
 
 const securityNamespace =
   'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_level.csv';
@@ -40,6 +42,14 @@ const rawCatalogDocument = {
                     name: 'sec_level',
                     value: 'erhöht',
                     ns: securityNamespace,
+                    remarks: 'Nur im Quellgraphen erhalten.',
+                  },
+                ],
+                links: [
+                  {
+                    href: '#gc-1-2',
+                    rel: 'reference',
+                    'resource-fragment': 'abschnitt-1',
                   },
                 ],
                 parts: [
@@ -61,6 +71,10 @@ const rawCatalogDocument = {
         ],
       },
     ],
+    'back-matter': {
+      resources: [{ uuid: 'resource-ohne-inhalt' }],
+    },
+    'x-unbekanntes-feld': ['bleibt', 'erhalten'],
   },
 };
 
@@ -312,5 +326,53 @@ describe('CatalogProvider', () => {
 
     expect(result.current.vocabularyRegistry).toBeNull();
     expect(result.current.vocabularyProvenance).toBeNull();
+  });
+
+  it('hält den Quellgraphen des Katalogs neben dem Domänenmodell (ADR-0002 §1)', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+
+      if (url === '/catalog.json') {
+        return new Response(JSON.stringify(rawCatalogDocument), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      return new Response(null, { status: 404, statusText: 'Not Found' });
+    });
+
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <CatalogProvider
+        catalogUrl="/catalog.json"
+        metadataUrl="/catalog-metadata.json"
+        vocabulariesUrl="/vocabularies.json"
+        upstreamSourcesMetadataUrl="/upstream-sources-metadata.json"
+      >
+        {children}
+      </CatalogProvider>
+    );
+
+    const { result } = renderHook(() => useCatalog(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+      expect(result.current.catalogDocument?.view).toBeDefined();
+    });
+
+    const document = result.current.catalogDocument;
+
+    // Das Domänenmodell ist die Projektion desselben Dokuments, keine Kopie.
+    expect(result.current.catalog).toBe(document?.view);
+
+    // §2: Der Kontext wird explizit geführt, nicht aus dem Dokument geraten.
+    expect(document?.context).toEqual({
+      catalogKey: SUPPORTED_CATALOG_KEY,
+      trustClass: 'class-1-verified-public',
+    });
+
+    // §0/§1: Der Quellgraph überlebt den gesamten Ladepfad unverändert.
+    expect(JSON.stringify(document?.source)).toBe(JSON.stringify(rawCatalogDocument));
+    expect(countPropRemarks(document?.source)).toBe(1);
   });
 });

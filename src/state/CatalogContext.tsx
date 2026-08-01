@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import type {
-  Catalog,
+  CatalogDocument,
   CatalogProvenance,
   CatalogState,
   VerificationResult,
@@ -19,7 +19,7 @@ import type {
   VocabularyRegistry,
   VocabularyRegistryData,
 } from '@/domain/models';
-import { parseCatalog } from '@/adapters/oscalAdapter';
+import { parseCatalogDocument } from '@/adapters/oscalDocument';
 import { SUPPORTED_CATALOG_KEY } from '@/domain/sourceRegistry';
 import { buildVocabularyRegistry } from '@/domain/vocabulary';
 import {
@@ -34,6 +34,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 const initialState: CatalogState = {
+  catalogDocument: null,
   catalog: null,
   provenance: null,
   verification: null,
@@ -48,7 +49,7 @@ type CatalogAction =
   | { type: 'LOAD_START' }
   | {
       type: 'LOAD_SUCCESS';
-      catalog: Catalog;
+      catalogDocument: CatalogDocument;
       provenance: CatalogProvenance | null;
       verification: VerificationResult | null;
       vocabularyRegistry: VocabularyRegistry | null;
@@ -63,7 +64,10 @@ function catalogReducer(state: CatalogState, action: CatalogAction): CatalogStat
       return { ...state, loading: true, error: null };
     case 'LOAD_SUCCESS':
       return {
-        catalog: action.catalog,
+        catalogDocument: action.catalogDocument,
+        // Immer aus dem Dokument abgeleitet — die beiden Felder können
+        // deshalb nicht auseinanderlaufen.
+        catalog: action.catalogDocument.view,
         provenance: action.provenance,
         verification: action.verification,
         vocabularyRegistry: action.vocabularyRegistry,
@@ -127,9 +131,14 @@ export function CatalogProvider({
 
         if (cancelled) return;
 
-        // 2. Parse OSCAL JSON into domain model
-        const rawJson = JSON.parse(text);
-        const catalog = parseCatalog(rawJson, { catalogKey: SUPPORTED_CATALOG_KEY });
+        // 2. Parse OSCAL JSON into the lossless document model (ADR-0002).
+        //    Der Quellgraph bleibt am Dokument erhalten, statt nach dem
+        //    Ableiten des Domänenmodells aus dem Scope zu fallen.
+        const catalogDocument = parseCatalogDocument(JSON.parse(text), {
+          catalogKey: SUPPORTED_CATALOG_KEY,
+          // Registrierte, manifest- und hashgeprüfte BSI-Artefakte (§10).
+          trustClass: 'class-1-verified-public',
+        });
 
         // 3. Try to fetch provenance metadata and verify integrity
         let provenance: CatalogProvenance | null = null;
@@ -186,7 +195,7 @@ export function CatalogProvider({
         if (!cancelled) {
           dispatch({
             type: 'LOAD_SUCCESS',
-            catalog,
+            catalogDocument,
             provenance,
             verification,
             vocabularyRegistry,

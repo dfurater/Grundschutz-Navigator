@@ -105,6 +105,7 @@ function makeCatalogState(): CatalogState {
   };
 
   return {
+    catalogDocument: null,
     catalog: null,
     provenance: null,
     vocabularyRegistry: buildVocabularyRegistry(registryData),

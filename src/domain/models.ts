@@ -358,6 +358,57 @@ export interface ControlRef {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Verlustfreies Dokumentmodell (ADR-0002)                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Vertrauensklasse eines Dokuments (ADR-0002 §10).
+ *
+ * Die Klassen werden nie vermischt: Klasse 2 läuft nicht über den
+ * Manifest-/Hash-Mechanismus, und die Provenienzanzeige suggeriert für sie
+ * keine Verifikation.
+ */
+export type TrustClass = 'class-1-verified-public' | 'class-2-local-user';
+
+/**
+ * Expliziter, typisierter Ableitungskontext (ADR-0002 §2).
+ *
+ * Der Kontext ist nicht implizit und nicht global; er wird als Parameter
+ * gereicht und ist prüfbar. Er trägt genau die Information, die das
+ * Domänenmodell braucht, aber nicht aus dem Dokument stammt.
+ */
+export interface CatalogDocumentContext {
+  /** Identität aus dem Quellregister (ADR-0001) — steht nicht im Dokument */
+  catalogKey: CatalogKey;
+  /** Vertrauensklasse nach ADR-0002 §10 */
+  trustClass: TrustClass;
+}
+
+/**
+ * Ein geparstes OSCAL-Katalogdokument nach dem verlustfreien Vertrag.
+ *
+ * `source` ist die Wahrheit, `view` eine Projektion darauf:
+ * `view = derive(source, context)`. Ein Export wird nie aus `view` neu
+ * aufgebaut (§7).
+ */
+export interface CatalogDocument {
+  /**
+   * Originalknoten (§1): das unveränderte Ergebnis von `JSON.parse`,
+   * einschließlich unbekannter Felder, Extensions, nicht ausgewerteter
+   * `props`/`links` und des vollständigen `back-matter`. Wird nie mutiert.
+   *
+   * Bewusst `unknown`: `JSON.parse` liefert keine geprüfte Struktur, und der
+   * Vertrag filtert den Quellgraphen ausdrücklich nicht nach bekannten
+   * Feldern. Wer ihn liest, grenzt selbst ein.
+   */
+  readonly source: unknown;
+  /** Ableitungskontext, aus dem `view` zusammen mit `source` reproduzierbar ist */
+  readonly context: CatalogDocumentContext;
+  /** Projektion für die UI; trägt keine Information außerhalb von `source` und `context` */
+  readonly view: Catalog;
+}
+
+/* ------------------------------------------------------------------ */
 /*  Official Vocabulary Types                                          */
 /* ------------------------------------------------------------------ */
 
@@ -544,6 +595,15 @@ export interface VerificationResult {
 /* ------------------------------------------------------------------ */
 
 export interface CatalogState {
+  /**
+   * Das geladene Katalogdokument mit erhaltenem Quellgraphen (ADR-0002).
+   * Definierte Zugriffsstelle für alles, was das Domänenmodell nicht abbildet.
+   */
+  catalogDocument: CatalogDocument | null;
+  /**
+   * Projektion des Dokuments für die UI — identisch mit
+   * `catalogDocument.view`. Bequemer Zugriff, kein zweiter Zustand.
+   */
   catalog: Catalog | null;
   provenance: CatalogProvenance | null;
   verification: VerificationResult | null;

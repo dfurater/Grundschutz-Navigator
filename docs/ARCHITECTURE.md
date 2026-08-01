@@ -122,7 +122,9 @@ public/data/
         ▼
 CatalogContext (useEffect on mount)
 • fetchCatalogWithBuffer()   → ArrayBuffer (Katalog + Vokabulare parallel)
-• parseCatalog()             → kataloggescopter, angereicherter Catalog
+• parseCatalogDocument()     → CatalogDocument { source, context, view }
+                               source = unveränderter Quellgraph (ADR-0002)
+                               view   = kataloggescopter, angereicherter Catalog
 • verifyArtifactIntegrity()  → VerificationResult (Katalog + Vokabulare)
 • buildVocabularyRegistry()
         │
@@ -143,7 +145,11 @@ Die Anwendung verwendet React Context für den globalen Zustand:
 
 Zentraler Provider, der folgende Daten bereitstellt:
 
-- `catalog` — Angereicherter Katalog (Practices, Topics, Controls)
+- `catalogDocument` — Katalogdokument nach ADR-0002: unveränderter Quellgraph
+  (`source`), expliziter Ableitungskontext (`context`) und die Projektion
+  (`view`). Siehe [DOMAIN_MODELS.md](./DOMAIN_MODELS.md#verlustfreies-dokumentmodell).
+- `catalog` — Angereicherter Katalog (Practices, Topics, Controls); identisch
+  mit `catalogDocument.view`
 - `provenance` — Provenance-Metadaten vom Build-Zeitpunkt
 - `verification` — Integritätsprüfungsergebnis
 - `vocabularyRegistry` — Registry der offiziellen BSI-Vokabulare

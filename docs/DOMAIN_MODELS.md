@@ -14,6 +14,97 @@ Diese Trennung ermöglicht:
 - Typsichere interne Verarbeitung
 - Einfache Aktualisierung bei OSCAL-Updates
 
+Beide Schichten sind **Compile-Zeit-Konstrukte**. Zur Laufzeit filtern sie
+nichts: Der Quellgraph bleibt vollständig erhalten und wird vom
+Dokumentmodell neben dem angereicherten Katalog geführt — siehe
+[Verlustfreies Dokumentmodell](#verlustfreies-dokumentmodell).
+
+## Verlustfreies Dokumentmodell
+
+Der Katalogpfad folgt dem verbindlichen Vertrag aus ADR-0002: **Das
+Originaldokument ist die Wahrheit, das Domänenmodell eine Projektion darauf.**
+
+```typescript
+type TrustClass = 'class-1-verified-public' | 'class-2-local-user';
+
+interface CatalogDocumentContext {
+  catalogKey: CatalogKey;   // Identität aus dem Quellregister (ADR-0001)
+  trustClass: TrustClass;   // Vertrauensklasse (ADR-0002 §10)
+}
+
+interface CatalogDocument {
+  readonly source: unknown;                  // §1 Originalknoten
+  readonly context: CatalogDocumentContext;  // §2 expliziter Kontext
+  readonly view: Catalog;                    // §2 view = derive(source, context)
+}
+```
+
+Einstiegspunkt ist `parseCatalogDocument()` in
+`src/adapters/oscalDocument.ts`. `parseCatalog()` bleibt die reine
+Ableitungsfunktion und wird von dort aufgerufen.
+
+### Warum
+
+Ohne erhaltenen Quellgraphen ist jeder spätere Export zwangsläufig
+verlustbehaftet — und zwar nicht nur für unbekannte Felder, sondern belegbar
+auch für reguläre OSCAL-Strukturen, die das Domänenmodell nicht abbildet:
+
+| Struktur | Warum verlustkritisch |
+| --- | --- |
+| `prop.remarks`, `prop.class`, `prop.group`, `prop.uuid` | reguläre Felder ohne Entsprechung im Domänenmodell; `remarks` kommt im BSI-Katalog real vor |
+| `link.resource-fragment`, `link.media-type` | `ControlLink` führt nur `targetId` und `relation` |
+| `back-matter`-Ressourcen ohne Inhalt | `resource` verlangt nur `uuid`; Fragment-Referenzen lösen ausschließlich hierhin auf |
+| `metadata.revisions`, `metadata.document-ids`, `metadata.locations` | Revisionshistorie und Dokument-IDs sind Teil des Dokuments; `document-ids` existiert im Katalog real |
+| herstellerspezifische `props` mit eigenem `ns` | OSCAL erlaubt Extensions ausdrücklich |
+| Array-Reihenfolgen | die Profile-Resolution-Spezifikation verlangt Erhalt der Quellreihenfolge |
+
+### Reichweite des Begriffs
+
+„Verlustfrei" heißt **strukturell und semantisch verlustfrei innerhalb des
+JSON-Informationsmodells**, nicht byteidentisch zur Quelldatei. Bewahrt wird
+das Ergebnis von `JSON.parse`: alle Schlüssel, Werte, Verschachtelungen,
+Array-Reihenfolgen und die Einfügereihenfolge nicht-numerischer Schlüssel.
+Nicht bewahrt werden Formatierung, Einrückung und Zeilenenden.
+
+`source` ist bewusst als `unknown` typisiert: `JSON.parse` liefert keine
+geprüfte Struktur, und der Vertrag filtert den Quellgraphen ausdrücklich nicht
+nach bekannten Feldern. Unbekannte Felder bleiben ausschließlich in `source`
+— sie werden nie ins `view` gehoben, nie gerendert und nie interpretiert, aber
+auch nie entfernt.
+
+### Speicherstrategie: String-Sharing
+
+Der Quellgraph kostet zusätzlichen Heap, aber weit weniger als die Dateigröße
+vermuten lässt. Grund ist das **String-Sharing**: Das Domänenmodell übernimmt
+Titel, Prosa und Prop-Werte per Referenz auf dieselben Quellstrings, statt sie
+zu kopieren — in `src/adapters/oscalAdapter.ts` unter anderem
+`title: raw.title`, `statementRaw` und `value: prop.value`.
+
+Damit trägt der Quellgraph im Wesentlichen nur seine Container-Hüllen bei.
+Gemessen am Grundschutz++-Katalog (~21.300 Container): rund **1,9 MB
+zusätzlich, etwa 91 Byte je Container** unter Node 22.
+
+> Diese Stellen dürfen **nicht** auf Kopien umgestellt werden. Geschieht es
+> doch, wandert die gesamte Textmasse in den Zusatzspeicher.
+> `src/adapters/oscalDocument.heap.node.test.ts` misst den Wert je Container
+> und schlägt bei einem Bruch an.
+
+### Nachweise
+
+| Nachweis | Ort |
+| --- | --- |
+| Strukturerhalt, Extensions, No-op-Serialisierung, Nicht-Mutation | `src/adapters/oscalDocument.test.ts` gegen das eingefrorene Fixture `src/test/fixtures/losslessCatalog.ts` |
+| Vollständige Erhaltung am realen Katalog | `src/adapters/oscalDocument.catalog.node.test.ts` |
+| Zusatzspeicher je Container | `src/adapters/oscalDocument.heap.node.test.ts` |
+| Zählregeln A und B als Strukturorakel | `src/test/oscalStructure.ts` |
+
+Der reale Katalog wird nie committet, sondern bei jedem Build frisch von BSI
+geholt. Deshalb prüfen die Tests gegen ihn ausschließlich **Erhaltung**
+(Vergleich Original ↔ `source`), nie feste Inhaltszahlen. Die inhaltlich
+festgenagelten Strukturprüfungen laufen gegen das eingefrorene Fixture, das
+alle verlustkritischen Strukturen trägt — auch die, die der reale Katalog
+derzeit nicht enthält.
+
 ## Raw OSCAL Types
 
 Die Raw Types befinden sich in `src/domain/models.ts` und entsprechen 1:1 der OSCAL 1.1.3 JSON-Struktur:
@@ -466,7 +557,8 @@ Siehe [VOCABULARY.md](./VOCABULARY.md) für die Vocabulary-Typen.
 
 ```typescript
 interface CatalogState {
-  catalog: Catalog | null;
+  catalogDocument: CatalogDocument | null;  // source + context + view
+  catalog: Catalog | null;                  // === catalogDocument.view
   provenance: CatalogProvenance | null;
   verification: VerificationResult | null;
   vocabularyRegistry: VocabularyRegistry | null;
@@ -476,6 +568,11 @@ interface CatalogState {
   error: string | null;
 }
 ```
+
+`catalog` wird im Reducer immer aus `catalogDocument.view` gesetzt; beide
+Felder können deshalb nicht auseinanderlaufen. Komponenten lesen weiterhin
+`catalog`. Wer Zugriff auf Felder braucht, die das Domänenmodell nicht
+abbildet, geht über `catalogDocument.source`.
 
 ## Siehe auch
 
@@ -487,3 +584,4 @@ interface CatalogState {
 - [OSCAL_VALIDATION.md](./OSCAL_VALIDATION.md) — Validierungsvertrag
 - `src/domain/models.ts` — TypeScript Definitionen
 - `src/adapters/oscalAdapter.ts` — Parser-Implementierung
+- `src/adapters/oscalDocument.ts` — verlustfreier Dokumenteinstieg
