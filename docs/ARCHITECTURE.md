@@ -28,6 +28,8 @@ src/
 │   ├── vocabulary.ts             # BSI-Vokabular-Auflösung
 │   ├── sourceRegistry.{mjs,ts}   # Verbindlicher Upstream-/Katalogvertrag
 │   ├── sourceRegistry.d.mts      # Typen des Quellregisters
+│   ├── oscalVersionMatrix.{mjs,ts} # Root-Typ × OSCAL-Version × gepinntes Schema
+│   ├── oscalVersionMatrix.d.mts  # Typen der Versionsmatrix
 │   ├── controlRef.ts             # Kataloggescopte interne Control-Referenzen
 │   └── controlRelationships.ts   # Steuerungsbeziehungen
 ├── adapters/         # Infrastruktur- und Datengrenzen
@@ -101,7 +103,10 @@ BSI GitHub Repository
 npm run fetch-catalog → scripts/fetch-catalog.mjs
 • Abruf über die GitHub-API (Retry mit Backoff bei transienten Fehlern)
 • Snapshot-Pinning: BSI_SNAPSHOT_SHA aus upstream-manifest.json
-• sourceRegistry: einzige Ingestion-Quelle für Pfad, Root-Typ und Lifecycle
+• sourceRegistry: einzige Ingestion-Quelle für Pfad, Root-Typ, Lifecycle und
+  erwartete oscal-version je Artefakt
+• oscalVersionMatrix: fail-closed Schemaauswahl über Root-Typ × oscal-version;
+  fehlende, nicht gepinnte oder unmögliche Version bricht den Lauf ab
 • Security-Guards: nur erlaubtes Repo, erlaubte Hosts, Pfade und Refs
 • registrierte preview-/draft-Artefakte werden transient geprüft, nicht ausgeliefert
 • nur supported Katalog und direkte Namespace-CSVs → JSON + Provenance

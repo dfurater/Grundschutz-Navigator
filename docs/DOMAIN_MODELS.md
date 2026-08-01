@@ -390,6 +390,45 @@ export function toModalverb(value: string | undefined): Modalverb | undefined {
 }
 ```
 
+## OSCAL-Versionsmatrix
+
+Root-Typ und deklarierte `metadata.oscal-version` bilden gemeinsam den
+Schema-Schlüssel. `src/domain/oscalVersionMatrix.mjs` führt alle acht
+OSCAL-Root-Modelle über die vier gepinnten Versionen und ist die einzige
+Quelle für Schema-Provenienz:
+
+```typescript
+export type OscalRootKey =
+  | 'catalog' | 'profile' | 'mapping-collection' | 'component-definition'
+  | 'system-security-plan' | 'assessment-plan' | 'assessment-results'
+  | 'plan-of-action-and-milestones';
+
+export type PinnedOscalVersion = '1.1.2' | '1.1.3' | '1.2.1' | '1.2.2';
+
+export interface OscalSchemaPin {
+  readonly rootKey: OscalRootKey;
+  readonly oscalVersion: PinnedOscalVersion;
+  readonly schemaFileName: string;   // Asset-Name im NIST-Release
+  readonly releaseTag: string;       // Herkunft, z. B. `v1.2.2`
+  readonly schemaId: string;         // Selbstnachweis des Schemas
+  readonly vendorPath: string;       // reservierter Ablageort im Repo
+  readonly sha256: string;
+  readonly sizeBytes: number;
+}
+```
+
+Root-Typ × Version ist **keine freie Kreuzmenge**: `mapping-collection`
+existiert erst ab OSCAL 1.2.0, weshalb 30 der 32 Felder belegt sind.
+`resolveSchemaBinding()` wählt fail-closed aus und gibt bei jeder Abweichung
+einen stabilen Diagnosecode zurück, statt auf eine Nachbarversion auszuweichen.
+
+Die vom konkreten BSI-Artefakt deklarierte Version steht dagegen als
+`oscalVersion` am jeweiligen Eintrag im Quellregister;
+`validateSourceRegistry()` kreuzt beide beim Import.
+
+Details, Hash-Pins und Migrationspolitik:
+[OSCAL_VERSION_MATRIX.md](./OSCAL_VERSION_MATRIX.md).
+
 ## Upstream-Manifest Types
 
 Das Update-Contract mit dem BSI-Repository (Basis für `update-catalog.yml` und das Snapshot-Pinning):
@@ -444,5 +483,7 @@ interface CatalogState {
 - [FILTERING.md](./FILTERING.md) — Filter-System
 - [INTEGRITY.md](./INTEGRITY.md) — Integritätsprüfung
 - [VOCABULARY.md](./VOCABULARY.md) — Vokabular-System
+- [OSCAL_VERSION_MATRIX.md](./OSCAL_VERSION_MATRIX.md) — Versionsmatrix, Schema-Provenienz, Migrationspolitik
+- [OSCAL_VALIDATION.md](./OSCAL_VALIDATION.md) — Validierungsvertrag
 - `src/domain/models.ts` — TypeScript Definitionen
 - `src/adapters/oscalAdapter.ts` — Parser-Implementierung

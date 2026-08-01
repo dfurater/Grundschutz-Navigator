@@ -24,6 +24,7 @@ import {
   SOURCE_REGISTRY,
   SUPPORTED_CATALOG,
 } from '../src/domain/sourceRegistry.mjs';
+import { resolveSchemaBinding } from '../src/domain/oscalVersionMatrix.mjs';
 import {
   buildUpstreamManifest,
   normalizeGitTree,
@@ -309,7 +310,49 @@ const OSCAL_ROOT_TYPE_LABELS = {
 
 const KNOWN_OSCAL_ROOT_TYPES = Object.freeze(Object.keys(OSCAL_ROOT_TYPE_LABELS));
 
-function validateFetchedOscalArtifact(artifactBuffer, expectedRootType) {
+/**
+ * Fail-closed Versionsprüfung gegen die Matrix (GSPP-283).
+ *
+ * `metadata.oscal-version` ist alleinige Versionsautorität. Der optionale
+ * Top-Level-`$schema`-Direktivwert ist laut NIST-Schema ausdrücklich erlaubt,
+ * aber weder Pflichtfeld noch wertbeschränkt — er wird deshalb nur als
+ * Kreuzprobe herangezogen, nie zur Auswahl. Bei Widerspruch wird abgelehnt.
+ *
+ * Die Diagnose nennt Artefaktkontext, erwartete und gefundene Version, aber
+ * keine Dokumentinhalte.
+ */
+function assertDeclaredOscalVersion(artifactDocument, descriptor, labels) {
+  const { rootType, artifactKey, expectedOscalVersion } = descriptor;
+  const declaredVersion = artifactDocument[rootType]?.metadata?.['oscal-version'];
+  const context = `${labels.artifact} (${artifactKey})`;
+
+  const binding = resolveSchemaBinding({
+    rootType,
+    oscalVersion: declaredVersion,
+    schemaDirective: artifactDocument.$schema,
+  });
+
+  if (!binding.ok) {
+    throw new Error(
+      `${context}: OSCAL-Versionsprüfung fehlgeschlagen [${binding.code}] — ` +
+      `Root ${rootType}, gefunden ${JSON.stringify(binding.oscalVersion)}` +
+      (binding.expected ? `, erwartet ${binding.expected}` : '') + '.',
+    );
+  }
+
+  if (expectedOscalVersion !== undefined && declaredVersion !== expectedOscalVersion) {
+    throw new Error(
+      `${context}: Deklarierte OSCAL-Version weicht vom Quellregister ab — ` +
+      `erwartet ${expectedOscalVersion}, gefunden ${declaredVersion}. ` +
+      'Quellregister und Versionsmatrix manuell gegen den BSI-Snapshot prüfen; ' +
+      'keine automatische Übernahme.',
+    );
+  }
+
+  return binding.pin;
+}
+
+function validateFetchedOscalArtifact(artifactBuffer, expectedRootType, versionContext) {
   const labels = OSCAL_ROOT_TYPE_LABELS[expectedRootType];
   if (!labels) {
     throw new Error(`Unbekannter OSCAL-Root-Typ: ${expectedRootType}`);
@@ -343,9 +386,20 @@ function validateFetchedOscalArtifact(artifactBuffer, expectedRootType) {
     );
   }
 
+  const schemaPin = assertDeclaredOscalVersion(
+    artifactDocument,
+    {
+      rootType: expectedRootType,
+      artifactKey: versionContext?.artifactKey ?? expectedRootType,
+      expectedOscalVersion: versionContext?.expectedOscalVersion,
+    },
+    labels,
+  );
+
   return {
     json: artifactDocument,
     buffer: artifactBuffer,
+    schemaPin,
   };
 }
 
@@ -502,6 +556,10 @@ async function buildFetchArtifacts(logger = console, {
   const catalogArtifact = validateFetchedOscalArtifact(
     catalogRaw.buffer,
     SUPPORTED_CATALOG.expectedRootType,
+    {
+      artifactKey: SUPPORTED_CATALOG.artifactKey,
+      expectedOscalVersion: SUPPORTED_CATALOG.oscalVersion,
+    },
   );
   const catalogJson = catalogArtifact.json;
   const catalogQuality = validateCatalogControlIdentities(catalogJson, SUPPORTED_CATALOG.artifactKey);
@@ -552,7 +610,10 @@ async function buildFetchArtifacts(logger = console, {
     }
 
     if (descriptor.rootType !== 'vocabulary') {
-      validateFetchedOscalArtifact(rawFile.buffer, descriptor.rootType);
+      validateFetchedOscalArtifact(rawFile.buffer, descriptor.rootType, {
+        artifactKey: descriptor.artifactKey,
+        expectedOscalVersion: descriptor.registryEntry?.oscalVersion,
+      });
     }
 
     return {

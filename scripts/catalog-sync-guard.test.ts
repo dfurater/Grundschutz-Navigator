@@ -77,6 +77,7 @@ function makeOscalContents(
         uuid: 'supported-catalog-fixture',
         metadata: {
           title: 'Grundschutz++ Fixture',
+          'oscal-version': entry.oscalVersion,
           namespaceReferences: catalogNamespaceUrls.map((ns) => ({ ns })),
         },
         controls: [
@@ -111,6 +112,7 @@ function makeOscalContents(
   return Buffer.from(JSON.stringify({
     [entry.expectedRootType]: {
       uuid: `${entry.artifactKey}-fixture`,
+      metadata: { 'oscal-version': entry.oscalVersion },
     },
   }));
 }

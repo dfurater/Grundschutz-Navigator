@@ -45,6 +45,16 @@ export const SYNC_TITLE_PREFIX = 'chore(ci): BSI-Katalog-Sync ';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 
+/**
+ * Registrierte OSCAL-Artefakte nach Schlüssel — Grundlage der
+ * Versionskreuzprüfung beim Blob-Verify (GSPP-283).
+ */
+const REGISTRY_BY_ARTIFACT_KEY = new Map(
+  SOURCE_REGISTRY
+    .filter((entry) => entry.kind === 'oscal')
+    .map((entry) => [entry.artifactKey, entry]),
+);
+
 export function computeManifestSignature(manifest) {
   return computeV2ManifestSignature(manifest);
 }
@@ -259,7 +269,12 @@ export async function verifySnapshotFiles(manifest, {
       });
     }
 
-    const artifact = validateFetchedOscalArtifact(contents, file.rootType);
+    // Registry-Erwartung mitgeben, damit auch die Sync-Lane einen stillen
+    // Versionswechsel eines BSI-Artefakts fail-closed erkennt (GSPP-283).
+    const artifact = validateFetchedOscalArtifact(contents, file.rootType, {
+      artifactKey: file.artifactKey,
+      expectedOscalVersion: REGISTRY_BY_ARTIFACT_KEY.get(file.artifactKey)?.oscalVersion,
+    });
     if (file.path === SUPPORTED_CATALOG.upstreamPath) {
       validateCatalogControlIdentities(artifact.json, file.artifactKey);
     }

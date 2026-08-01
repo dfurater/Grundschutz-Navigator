@@ -6,12 +6,15 @@ import {
   SUPPORTED_CATALOG_KEY,
   getArtifactByUpstreamPath,
   getCatalogByKey,
+  getExpectedOscalVersion,
   getExpectedRootType,
+  getSchemaPinForArtifact,
   isCatalogKey,
   isPathWithinMonitoredRoot,
   isSafeRepoPath,
   listArtifacts,
   listCatalogKeys,
+  listOscalArtifacts,
   validateSourceRegistry,
   type CatalogKey,
   type OscalArtifactEntry,
@@ -32,6 +35,7 @@ function makeOscalEntry(overrides: Partial<OscalArtifactEntry> = {}): OscalArtif
   return {
     artifactKey: 'catalog-test',
     kind: 'oscal',
+    oscalVersion: '1.1.3',
     expectedRootType: 'catalog',
     catalogKey: 'gspp',
     upstreamPath: 'control_layer/Test/Test-catalog.json',
@@ -89,6 +93,7 @@ describe('sourceRegistry', () => {
       {
         artifactKey: 'component-aws-security-hub',
         kind: 'oscal',
+        oscalVersion: '1.1.3',
         expectedRootType: 'component-definition',
         upstreamPath:
           'implementation_layer/AWS Beispiel-Components/AWS Security Hub-component_definition.json',
@@ -197,6 +202,106 @@ describe('sourceRegistry', () => {
     for (const entry of SOURCE_REGISTRY) {
       expect(Object.isFrozen(entry)).toBe(true);
     }
+  });
+
+  describe('OSCAL-Versionskompatibilität (GSPP-283)', () => {
+    /**
+     * Die am BSI-Snapshot 47de2824 aus `metadata.oscal-version` ausgelesenen
+     * Versionen aller registrierten OSCAL-Artefakte. Blob-SHA und SHA-256 der
+     * Quelldokumente wurden dabei gegen `upstream-manifest.json` geprüft.
+     *
+     * Dieser Erwartungswert wird bewusst ausgeschrieben statt aus der Registry
+     * abgeleitet: Er ist das unabhängige Orakel, das eine stille Änderung an
+     * der Registry auffällig macht.
+     */
+    const DECLARED_UPSTREAM_VERSIONS: Record<string, string> = {
+      'catalog-gspp': '1.1.3',
+      'catalog-iso27001-annex-a': '1.1.3',
+      'catalog-lieferkette': '1.1.3',
+      'catalog-mindeststandard-tls': '1.1.3',
+      'catalog-wlan': '1.1.3',
+      'component-aws-security-hub': '1.1.3',
+      'component-ga-lotse-grundmodul': '1.1.2',
+      'component-keycloak': '1.2.2',
+      'component-lieferkette': '1.1.2',
+      'component-netzarchitektur': '1.2.2',
+      'component-passwortrichtlinie': '1.1.2',
+      'mapping-iso27001-annex-a-zu-gspp': '1.2.2',
+      'mapping-itgs2023-zu-gspp': '1.2.1',
+      'profile-gspp': '1.1.3',
+      'profile-lieferkette': '1.1.3',
+      'profile-wlan': '1.1.3',
+    };
+
+    it('covers every registered OSCAL artifact exactly once', () => {
+      expect(listOscalArtifacts().map((entry) => entry.artifactKey).sort()).toEqual(
+        Object.keys(DECLARED_UPSTREAM_VERSIONS).sort(),
+      );
+    });
+
+    it('matches the version declared by every registered upstream artifact', () => {
+      for (const entry of listOscalArtifacts()) {
+        expect(entry.oscalVersion).toBe(DECLARED_UPSTREAM_VERSIONS[entry.artifactKey]);
+      }
+    });
+
+    it('resolves a pinned schema for every registered artifact', () => {
+      for (const entry of listOscalArtifacts()) {
+        const pin = getSchemaPinForArtifact(entry.artifactKey);
+        expect(pin, `kein Schema-Pin für ${entry.artifactKey}`).not.toBeNull();
+        expect(pin!.oscalVersion).toBe(entry.oscalVersion);
+        expect(pin!.rootKey).toBe(entry.expectedRootType);
+        expect(pin!.releaseTag).toBe(`v${entry.oscalVersion}`);
+        expect(pin!.sha256).toMatch(/^[0-9a-f]{64}$/);
+      }
+    });
+
+    it('spans exactly the four pinned versions found in the BSI corpus', () => {
+      expect([...new Set(listOscalArtifacts().map((entry) => entry.oscalVersion))].sort()).toEqual([
+        '1.1.2',
+        '1.1.3',
+        '1.2.1',
+        '1.2.2',
+      ]);
+    });
+
+    it('exposes the expected version per upstream path', () => {
+      expect(getExpectedOscalVersion(OFFICIAL_CATALOG_PATH)).toBe('1.1.3');
+      expect(
+        getExpectedOscalVersion(
+          'control_layer/Mappings/IT-GS2023-zu-GSpp/ITGS-to-GS++-mapping_collection.json',
+        ),
+      ).toBe('1.2.1');
+      expect(getExpectedOscalVersion('documentation/namespaces/tags.csv')).toBeNull();
+      expect(getExpectedOscalVersion('unknown.json')).toBeNull();
+      expect(getSchemaPinForArtifact('namespaces-bsi')).toBeNull();
+      expect(getSchemaPinForArtifact('unbekannt')).toBeNull();
+    });
+
+    it('rejects a registry entry without a declared version', () => {
+      expect(() =>
+        validateSourceRegistry([makeOscalEntry({ oscalVersion: undefined as never })]),
+      ).toThrow(/Missing oscalVersion/);
+    });
+
+    it('rejects a registry entry with an unpinned version', () => {
+      expect(() =>
+        validateSourceRegistry([makeOscalEntry({ oscalVersion: '1.0.4' as never })]),
+      ).toThrow(/unpinned OSCAL version/);
+    });
+
+    it('rejects a mapping-collection entry below OSCAL 1.2.0', () => {
+      expect(() =>
+        validateSourceRegistry([
+          makeOscalEntry({
+            artifactKey: 'mapping-test',
+            expectedRootType: 'mapping-collection',
+            catalogKey: undefined,
+            oscalVersion: '1.1.3',
+          }),
+        ]),
+      ).toThrow(/impossible OSCAL combination/);
+    });
   });
 
   describe('validateSourceRegistry invariants', () => {

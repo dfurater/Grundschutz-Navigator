@@ -11,7 +11,21 @@
  * Auslieferungs-Allowlist. `preview`/`draft` dürfen ausschließlich transient
  * für Manifest-Provenienz und Root-Typ-Validierung gelesen werden; ihre Bytes
  * werden nie als App-Artefakte ausgegeben.
+ *
+ * Jeder OSCAL-Eintrag führt zusätzlich die vom Artefakt deklarierte
+ * `metadata.oscal-version` (GSPP-283). Das ist die erwartete Version des
+ * konkreten BSI-Artefakts; welche Root×Version-Paare der Standard überhaupt
+ * kennt und welches Schema dafür gilt, beantwortet ausschließlich
+ * `oscalVersionMatrix.mjs`. Beide Fakten haben genau einen Ort, und
+ * `validateSourceRegistry` kreuzt sie gegeneinander.
  */
+
+import {
+  getSchemaPin,
+  isImpossibleCombination,
+  isKnownOscalRootKey,
+  isPinnedOscalVersion,
+} from './oscalVersionMatrix.mjs';
 
 const KEY_GRAMMAR = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
@@ -46,6 +60,7 @@ export const SOURCE_REGISTRY = Object.freeze(
     {
       artifactKey: 'catalog-gspp',
       kind: 'oscal',
+      oscalVersion: '1.1.3',
       expectedRootType: 'catalog',
       catalogKey: 'gspp',
       upstreamPath: 'control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json',
@@ -63,6 +78,7 @@ export const SOURCE_REGISTRY = Object.freeze(
     {
       artifactKey: 'catalog-lieferkette',
       kind: 'oscal',
+      oscalVersion: '1.1.3',
       expectedRootType: 'catalog',
       catalogKey: 'lieferkette',
       upstreamPath: 'control_layer/Lieferkettensicherheit/Lieferkettensicherheit-resolved_catalog.json',
@@ -72,6 +88,7 @@ export const SOURCE_REGISTRY = Object.freeze(
     {
       artifactKey: 'catalog-wlan',
       kind: 'oscal',
+      oscalVersion: '1.1.3',
       expectedRootType: 'catalog',
       catalogKey: 'wlan',
       upstreamPath: 'control_layer/WLAN/WLAN-resolved_catalog.json',
@@ -81,6 +98,7 @@ export const SOURCE_REGISTRY = Object.freeze(
     {
       artifactKey: 'catalog-iso27001-annex-a',
       kind: 'oscal',
+      oscalVersion: '1.1.3',
       expectedRootType: 'catalog',
       catalogKey: 'iso27001-annex-a',
       upstreamPath: 'control_layer/ISO27001/ISO27001-AnnexA-catalog.json',
@@ -90,6 +108,7 @@ export const SOURCE_REGISTRY = Object.freeze(
     {
       artifactKey: 'catalog-mindeststandard-tls',
       kind: 'oscal',
+      oscalVersion: '1.1.3',
       expectedRootType: 'catalog',
       catalogKey: 'mindeststandard-tls',
       upstreamPath: 'control_layer/Mindeststandard-TLS/Entwurf-Mindeststandard-TLS-catalog.json',
@@ -99,6 +118,7 @@ export const SOURCE_REGISTRY = Object.freeze(
     {
       artifactKey: 'profile-gspp',
       kind: 'oscal',
+      oscalVersion: '1.1.3',
       expectedRootType: 'profile',
       upstreamPath: 'control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json',
       lifecycle: 'preview',
@@ -107,6 +127,7 @@ export const SOURCE_REGISTRY = Object.freeze(
     {
       artifactKey: 'profile-lieferkette',
       kind: 'oscal',
+      oscalVersion: '1.1.3',
       expectedRootType: 'profile',
       upstreamPath: 'control_layer/Lieferkettensicherheit/sources/profiles/Lieferkettensicherheit-profile.json',
       lifecycle: 'preview',
@@ -115,6 +136,7 @@ export const SOURCE_REGISTRY = Object.freeze(
     {
       artifactKey: 'profile-wlan',
       kind: 'oscal',
+      oscalVersion: '1.1.3',
       expectedRootType: 'profile',
       upstreamPath: 'control_layer/WLAN/sources/profiles/WLAN-profile.json',
       lifecycle: 'preview',
@@ -123,6 +145,7 @@ export const SOURCE_REGISTRY = Object.freeze(
     {
       artifactKey: 'mapping-iso27001-annex-a-zu-gspp',
       kind: 'oscal',
+      oscalVersion: '1.2.2',
       expectedRootType: 'mapping-collection',
       upstreamPath: 'control_layer/Mappings/ISO-27001-zu-GSpp/ISO27001-AnnexA-to-GS++-mapping_collection.json',
       lifecycle: 'preview',
@@ -131,6 +154,7 @@ export const SOURCE_REGISTRY = Object.freeze(
     {
       artifactKey: 'mapping-itgs2023-zu-gspp',
       kind: 'oscal',
+      oscalVersion: '1.2.1',
       expectedRootType: 'mapping-collection',
       upstreamPath: 'control_layer/Mappings/IT-GS2023-zu-GSpp/ITGS-to-GS++-mapping_collection.json',
       lifecycle: 'preview',
@@ -139,6 +163,7 @@ export const SOURCE_REGISTRY = Object.freeze(
     {
       artifactKey: 'component-aws-security-hub',
       kind: 'oscal',
+      oscalVersion: '1.1.3',
       expectedRootType: 'component-definition',
       upstreamPath: `${COMPONENT_DIRECTORY}/AWS Beispiel-Components/AWS Security Hub-component_definition.json`,
       lifecycle: 'preview',
@@ -147,6 +172,7 @@ export const SOURCE_REGISTRY = Object.freeze(
     {
       artifactKey: 'component-ga-lotse-grundmodul',
       kind: 'oscal',
+      oscalVersion: '1.1.2',
       expectedRootType: 'component-definition',
       upstreamPath: `${COMPONENT_DIRECTORY}/GA-Lotse_Grundmodul/GA-Lotse_Grundmodul-component_definition.json`,
       lifecycle: 'preview',
@@ -155,6 +181,7 @@ export const SOURCE_REGISTRY = Object.freeze(
     {
       artifactKey: 'component-lieferkette',
       kind: 'oscal',
+      oscalVersion: '1.1.2',
       expectedRootType: 'component-definition',
       upstreamPath: `${COMPONENT_DIRECTORY}/Lieferkettensicherheit/Lieferkettensicherheit-component_definition.json`,
       lifecycle: 'preview',
@@ -163,6 +190,7 @@ export const SOURCE_REGISTRY = Object.freeze(
     {
       artifactKey: 'component-netzarchitektur',
       kind: 'oscal',
+      oscalVersion: '1.2.2',
       expectedRootType: 'component-definition',
       upstreamPath: `${COMPONENT_DIRECTORY}/Netzarchitektur/Netzarchitektur-component_definition.json`,
       lifecycle: 'preview',
@@ -171,6 +199,7 @@ export const SOURCE_REGISTRY = Object.freeze(
     {
       artifactKey: 'component-passwortrichtlinie',
       kind: 'oscal',
+      oscalVersion: '1.1.2',
       expectedRootType: 'component-definition',
       upstreamPath: `${COMPONENT_DIRECTORY}/Passwortrichtlinie/Passwortrichtlinie-component_definition.json`,
       lifecycle: 'preview',
@@ -179,6 +208,7 @@ export const SOURCE_REGISTRY = Object.freeze(
     {
       artifactKey: 'component-keycloak',
       kind: 'oscal',
+      oscalVersion: '1.2.2',
       expectedRootType: 'component-definition',
       upstreamPath: `${COMPONENT_DIRECTORY}/Keycloak/Keycloak-component_definition.json`,
       lifecycle: 'preview',
@@ -208,6 +238,40 @@ export function isPathWithinMonitoredRoot(path) {
   );
 }
 
+/**
+ * Kreuzt die vom Artefakt deklarierte OSCAL-Version gegen die Versionsmatrix
+ * (GSPP-283). Fail-closed: eine fehlende, nicht gepinnte oder für diesen
+ * Root-Typ unmögliche Version lässt das Register beim Import scheitern, statt
+ * das Artefakt später gegen eine Nachbarversion zu prüfen.
+ */
+function assertMatrixCompatibleVersion(entry) {
+  const { artifactKey, expectedRootType, oscalVersion } = entry;
+
+  if (!isNonEmptyString(oscalVersion)) {
+    throw new Error(`Missing oscalVersion in source registry entry ${artifactKey}`);
+  }
+  if (!isKnownOscalRootKey(expectedRootType)) {
+    throw new Error(
+      `Source registry entry ${artifactKey} uses a root type the version matrix does not know: ${expectedRootType}`,
+    );
+  }
+  if (isImpossibleCombination(expectedRootType, oscalVersion)) {
+    throw new Error(
+      `Source registry entry ${artifactKey} declares an impossible OSCAL combination: ${expectedRootType} @ ${oscalVersion}`,
+    );
+  }
+  if (!isPinnedOscalVersion(oscalVersion)) {
+    throw new Error(
+      `Source registry entry ${artifactKey} declares an unpinned OSCAL version: ${oscalVersion}`,
+    );
+  }
+  if (!getSchemaPin(expectedRootType, oscalVersion)) {
+    throw new Error(
+      `Source registry entry ${artifactKey} has no pinned schema for ${expectedRootType} @ ${oscalVersion}`,
+    );
+  }
+}
+
 export function validateSourceRegistry(entries = SOURCE_REGISTRY) {
   const artifactKeys = new Set();
   const upstreamPaths = new Set();
@@ -235,6 +299,7 @@ export function validateSourceRegistry(entries = SOURCE_REGISTRY) {
           `Unknown OSCAL root type in source registry entry ${entry.artifactKey}: ${entry.expectedRootType}`,
         );
       }
+      assertMatrixCompatibleVersion(entry);
       if (!isSafeRepoPath(entry.upstreamPath)) {
         throw new Error(`Unsafe upstream path in source registry: ${entry.upstreamPath}`);
       }
@@ -312,6 +377,28 @@ export function getArtifactByUpstreamPath(path) {
 export function getExpectedRootType(path) {
   const entry = getArtifactByUpstreamPath(path);
   return entry?.kind === 'oscal' ? entry.expectedRootType : null;
+}
+
+export function listOscalArtifacts() {
+  return SOURCE_REGISTRY.filter((entry) => entry.kind === 'oscal');
+}
+
+export function getExpectedOscalVersion(path) {
+  const entry = getArtifactByUpstreamPath(path);
+  return entry?.kind === 'oscal' ? entry.oscalVersion : null;
+}
+
+/**
+ * Verbindet Registry und Versionsmatrix: liefert den gepinnten Schema-Vertrag
+ * für ein registriertes Artefakt. Die Registry steuert Root-Typ und Version
+ * bei, die Matrix Herkunft, `$id` und Hash.
+ */
+export function getSchemaPinForArtifact(artifactKey) {
+  const entry = SOURCE_REGISTRY.find(
+    (candidate) => candidate.kind === 'oscal' && candidate.artifactKey === artifactKey,
+  );
+  if (!entry) return null;
+  return getSchemaPin(entry.expectedRootType, entry.oscalVersion);
 }
 
 export function getCatalogByKey(catalogKey) {

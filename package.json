@@ -14,7 +14,9 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint .",
-    "fetch-catalog": "node scripts/fetch-catalog.mjs"
+    "fetch-catalog": "node scripts/fetch-catalog.mjs",
+    "verify-oscal-schemas": "node scripts/sync-oscal-schemas.mjs",
+    "sync-oscal-schemas": "node scripts/sync-oscal-schemas.mjs --write"
   },
   "engines": {
     "node": ">=22.22.0"
