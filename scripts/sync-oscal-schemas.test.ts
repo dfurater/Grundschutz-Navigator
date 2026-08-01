@@ -5,6 +5,7 @@ import {
   assertAllowedRedirectTarget,
   assertOfficialSchemaUrl,
   fetchSchemaWithValidatedRedirects,
+  readBodyWithLimit,
   resolveSchemaVendorTarget,
   syncOscalSchemas,
 } from './sync-oscal-schemas.mjs';
@@ -151,6 +152,77 @@ describe('sync-oscal-schemas', () => {
       await expect(
         fetchSchemaWithValidatedRedirects(CATALOG_PIN.releaseUrl, fetchImpl),
       ).rejects.toThrow(/Redirect 302 ohne Ziel/);
+    });
+  });
+
+  describe('Größenlimit', () => {
+    /**
+     * Baut eine Antwort, die ihren Körper in Blöcken liefert und mitzählt,
+     * wie viele Bytes tatsächlich abgeflossen sind. So lässt sich belegen,
+     * dass der Abbruch früh erfolgt und nicht erst nach vollem Puffern.
+     */
+    function streamingResponse(totalBytes: number, chunkSize = 64 * 1024) {
+      const emitted = { bytes: 0 };
+      const stream = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (emitted.bytes >= totalBytes) {
+            controller.close();
+            return;
+          }
+          const size = Math.min(chunkSize, totalBytes - emitted.bytes);
+          emitted.bytes += size;
+          controller.enqueue(new Uint8Array(size));
+        },
+      });
+      return { response: new Response(stream), emitted };
+    }
+
+    it('aborts an oversized response before the whole body is transferred', async () => {
+      const oversized = 8 * 1024 * 1024;
+      const { response, emitted } = streamingResponse(oversized);
+
+      await expect(readBodyWithLimit(response, { maxBytes: 1024 * 1024, label: 'Schema' }))
+        .rejects.toThrow(/überschreitet das Limit von 1048576 Bytes/);
+
+      // Entscheidend: nicht alle 8 MiB sind geflossen.
+      expect(emitted.bytes).toBeLessThan(oversized);
+      expect(emitted.bytes).toBeLessThanOrEqual(1024 * 1024 + 64 * 1024);
+    });
+
+    it('accepts a response exactly at the limit', async () => {
+      const { response } = streamingResponse(1024, 256);
+      const buffer = await readBodyWithLimit(response, { maxBytes: 1024, label: 'Schema' });
+      expect(buffer.length).toBe(1024);
+    });
+
+    it('rejects a response one byte over the limit', async () => {
+      const { response } = streamingResponse(1025, 256);
+      await expect(readBodyWithLimit(response, { maxBytes: 1024, label: 'Schema' }))
+        .rejects.toThrow(/überschreitet das Limit/);
+    });
+
+    it('preserves the exact bytes of a streamed body', async () => {
+      const payload = JSON.stringify({ $id: CATALOG_PIN.schemaId });
+      const buffer = await readBodyWithLimit(responseOf(payload), { maxBytes: 1024 });
+      expect(buffer.toString('utf8')).toBe(payload);
+    });
+
+    it('still enforces the limit when no stream is available', async () => {
+      const bodyless = {
+        body: null,
+        arrayBuffer: async () => new ArrayBuffer(2048),
+      } as unknown as Response;
+
+      await expect(readBodyWithLimit(bodyless, { maxBytes: 1024, label: 'Schema' }))
+        .rejects.toThrow(/überschreitet das Limit/);
+    });
+
+    it('rejects an oversized schema through the full sync flow', async () => {
+      const { response } = streamingResponse(4 * 1024 * 1024);
+      const fetchImpl = vi.fn(async () => response);
+
+      await expect(syncOscalSchemas({ pins: [CATALOG_PIN], fetchImpl, logger: { log: () => {} } }))
+        .rejects.toThrow(/Schema catalog @ 1\.2\.2 überschreitet das Limit/);
     });
   });
 
