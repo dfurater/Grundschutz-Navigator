@@ -5,6 +5,25 @@ importiert, exportiert oder in der Build-Pipeline prüft. Er definiert die
 Prüfkette und ihre Lieferkette; er aktiviert noch keinen produktiven Import.
 YAML und XML sind nicht unterstützt.
 
+## Status: verbindlicher Zielzustand, noch nicht implementiert
+
+Dieses Dokument legt den verbindlichen Zielzustand für den künftigen
+OSCAL-Import- und -Prüfpfad fest. Die Schutzkette ist noch nicht in den
+produktiven Katalog-Ladepfad integriert. Der aktuelle Katalog-Loader in
+[`CatalogContext.tsx`](../src/state/CatalogContext.tsx) ruft
+`fetchCatalogWithBuffer` auf; dessen Implementierung in
+[`integrity.ts`](../src/domain/integrity.ts) dekodiert mit einem nicht-fatalen
+`TextDecoder`. `CatalogContext` übergibt den zurückgegebenen Text anschließend
+unmittelbar `JSON.parse`. Dieser Pfad besitzt derzeit kein Byte-Limit, keinen
+Duplicate-Member-Scanner, keinen exakten OSCAL-Root-Dispatcher und keine
+OSCAL-Schema-Prüfung.
+
+Die bestehende Integritätsprüfung und `parseCatalog` ersetzen diese Gates
+nicht. Bis die vollständige Kette samt Negativtests in Browser und CI
+integriert ist, darf die App weder ihre Stufen als ausgeführt ausweisen noch
+behaupten, dass der aktuelle Katalog-Loader durch diesen Vertrag abgesichert
+ist. Eine Teilimplementierung aktiviert den Vertrag nicht.
+
 Die Validierung ist von der bestehenden
 [Integritätsprüfung](INTEGRITY.md) getrennt: SHA-256 schützt die Übereinstimmung
 eines ausgelieferten Artefakts mit seinen Build-Metadaten. Die hier beschriebene
@@ -30,11 +49,11 @@ verändern das Validierungsergebnis nicht.
 „CI“ bezeichnet in diesem Dokument die Build- und Prüfzeit auf einem isolierten
 GitHub-Actions-Runner; Browserprüfungen laufen ausschließlich im Modul-Worker.
 
-| Stufe | Werkzeug und Ausführungsort | Pinning und Fehlersemantik |
+| Stufe | Vorgeschriebener Zielzustand | Pinning und Fehlersemantik |
 | --- | --- | --- |
 | 1. Größenlimit und JSON-Syntax | Plattformfunktionen (`Uint8Array`, fataler UTF-8-Decoder), projekteigener Streaming-Token-Scanner und danach `JSON.parse` im isolierten Worker; dieselbe Reihenfolge in CI | Das Byte-Limit muss vor Decoder, Scanner und Parser gesetzt sein. Fehlt ein Limit oder wird es überschritten, wird nicht dekodiert. Nach erfolgreicher fataler Dekodierung lehnt der Scanner doppelte Member-Namen auf jeder Objekttiefe ab; nur dann wird `JSON.parse` aufgerufen. CI verwendet Node 22 gemäß Workflow und der Mindestversion in `package.json`; die Prüflogik einschließlich Scanner ist über den App-Commit gepinnt. |
 | 2. Root-Erkennung | Projekteigener exakter Dispatcher im Worker und in CI | Das Top-Level-Objekt muss genau einen der acht bekannten Root-Keys besitzen. Null, Arrays, mehrere Keys, unbekannte Keys und zusätzliche Keys wie `$schema` werden abgelehnt. Eine Katalog-Interpretation als Fallback ist verboten. |
-| 3. JSON-Schema | Browser: `ajv` 8.20.0 im Modul-Worker. CI: zusätzlich `go-oscal` 0.7.1 als unabhängiges Schema- und Upgrade-Orakel | Auswahl ausschließlich über den exakten Root×`oscal-version`-Schlüssel. Fehlende Kombinationen werden abgelehnt. Nur exakt registrierte, additive `additionalProperties`-Abweichungen dürfen die Fortsetzung zu Stufe 4 und 5 erlauben; die Schema-Stufe bleibt `failed`. Ajv wird erst nach der OSS-Zulassung aus [ADR-5](https://linear.app/grundschutz-plus-plus/issue/ADR-5) produktiv aufgenommen. Bis Paket-Lock, Schema-Manifest und Hashprüfung vorhanden sind, bleibt der betreffende Importpfad deaktiviert. |
+| 3. JSON-Schema | Browser nach Aktivierung: `ajv` 8.20.0 im Modul-Worker. CI dann zusätzlich: `go-oscal` 0.7.1 als unabhängiges Schema- und Upgrade-Orakel | Auswahl ausschließlich über den exakten Root×`oscal-version`-Schlüssel. Fehlende Kombinationen werden abgelehnt. Nur exakt registrierte, additive `additionalProperties`-Abweichungen dürfen die Fortsetzung zu Stufe 4 und 5 erlauben; die Schema-Stufe bleibt `failed`. Ajv wird erst nach der OSS-Zulassung aus [ADR-5](https://linear.app/grundschutz-plus-plus/issue/ADR-5) produktiv aufgenommen. Bis direkte Abhängigkeit, Paket-Lock, Schema-Manifest und Hashprüfung vorhanden sind, bleibt der betreffende Importpfad deaktiviert. |
 | 4. zusätzliche OSCAL-Constraints | Derzeit **kein zugelassener Validator** für OSCAL 1.2.2; im Browser und in CI als `not-checked` ausgewiesen | Diese Stufe darf weder übersprungen noch als bestanden dargestellt werden. Die zulässige Konformitätsaussage wird deshalb begrenzt. Das konkrete Mapping-Orakel ist als bekannte Lücke registriert. |
 | 5. Referenzen und Projektregeln | Projekteigener, kataloggescopter Referenzgraph und explizit versionierte Regeln im Worker und in CI; Vertrag in [GSPP-251](https://linear.app/grundschutz-plus-plus/issue/GSPP-251) | Prüft UUID-/ID-Eindeutigkeit, interne und dokumentübergreifende Referenzen, URI- und Medientypregeln sowie ausdrücklich benannte GRC-Regeln. Externe `href`-Ziele werden klassifiziert, niemals während der Validierung abgerufen. Unbekannte Regeln gelten nicht als bestanden. |
 
@@ -50,12 +69,12 @@ unbekannte Segmente werden als Platzhalter redigiert. Damit interpretieren
 Browser, CI und nachgelagerte Werkzeuge dasselbe eindeutige Dokument, ohne eine
 zusätzliche Abhängigkeit einzuführen.
 
-Ajv wurde gegenüber `@hyperjump/json-schema` 1.17.7 ausgewählt. Beide
-Kandidaten trafen die Schema-Orakel, aber Hyperjump startete in einem echten
-ESM-Web-Worker nicht unverändert: Eine transitive Browserkomponente greift auf
-`document.location` zu, das im Worker nicht existiert. Ein
-Kompatibilitäts-Shim wird nicht Teil der Produktarchitektur. Der vollständige
-Auswahlnachweis ist in
+Ajv wurde als künftiger Validator gegenüber `@hyperjump/json-schema` 1.17.7
+ausgewählt. Beide Kandidaten trafen die Schema-Orakel, aber Hyperjump startete
+in einem echten ESM-Web-Worker nicht unverändert: Eine transitive
+Browserkomponente greift auf `document.location` zu, das im Worker nicht
+existiert. Ein Kompatibilitäts-Shim wird nicht Teil der Produktarchitektur. Der
+vollständige Auswahlnachweis ist in
 [GSPP-282](https://linear.app/grundschutz-plus-plus/issue/GSPP-282)
 nachvollziehbar; der temporäre Harnisch gehört nicht in das Repository.
 
@@ -89,14 +108,22 @@ NIST-Schemas und erweitert keine Produktfreigabe.
 
 ## Lieferkettenregeln
 
-Es gibt keinen Laufzeit-Netzbezug für Schema, Validator, Constraint-Datei oder
-Dokumentreferenz.
+Für die aktivierte Zielkette ist kein Laufzeit-Netzbezug für Schema, Validator,
+Constraint-Datei oder Dokumentreferenz zulässig.
+
+Ajv 8.20.0 ist aktuell keine direkte Abhängigkeit der App. Das vorhandene
+transitive `ajv` 6.15.0 stammt ausschließlich aus dem ESLint-Werkzeugpfad und
+ist ausdrücklich nicht der OSCAL-Validator dieses Vertrags. Die spätere
+Aktivierung muss Ajv als exakte direkte Abhängigkeit, den zugehörigen
+`package-lock.json`-Eintrag mit SRI, das Schema-Manifest, die Hashprüfung und die
+Implementierung samt Tests atomar einführen. Vorher existiert kein produktiver
+Ajv-8.20.0-Pin.
 
 | Artefakt | Verbindliche Herkunft und Pinning | Verifikation |
 | --- | --- | --- |
 | NIST-JSON-Schemas | Offizielle Releases `v1.1.2`, `v1.1.3`, `v1.2.1` und `v1.2.2`; root-spezifische JSON-Schemadatei | Eine maschinenlesbare Allowlist bindet Release, Root, Version, Dateiname und SHA-256. Download ist nur in einem expliziten Wartungslauf erlaubt. Fehlender oder abweichender Hash blockiert Build und Import. |
-| Ajv | npm-Paket `ajv` exakt 8.20.0, MIT | `package-lock.json` bindet Tarball und SRI-Integrität. Die OSS-Zulassung prüft Lizenz, Herkunft, Wartung, Transitivabhängigkeiten, Sicherheitslage, Bundle-/Worker-Eignung und Updateweg, bevor das Paket produktiv wird. |
-| go-oscal | Offizielles GitHub-Release `v0.7.1`, Apache-2.0 | CI lädt nur das Plattformartefakt des exakten Releases, prüft den von GitHub veröffentlichten Asset-Digest und `checksums.txt` und archiviert die zugehörige SBOM als Build-Nachweis. Die ausführbare Datei wird nicht in dieses Repository eingecheckt. |
+| Ajv, nach Aktivierung | npm-Paket `ajv` exakt 8.20.0, MIT | Der dann atomar aktualisierte `package-lock.json` bindet Tarball und SRI-Integrität. Die OSS-Zulassung prüft Lizenz, Herkunft, Wartung, Transitivabhängigkeiten, Sicherheitslage, Bundle-/Worker-Eignung und Updateweg, bevor das Paket produktiv wird. |
+| go-oscal, nach Aktivierung | Offizielles GitHub-Release `v0.7.1`, Apache-2.0 | Die künftige CI-Stufe lädt nur das Plattformartefakt des exakten Releases, prüft den von GitHub veröffentlichten Asset-Digest und `checksums.txt` und archiviert die zugehörige SBOM als Build-Nachweis. Die ausführbare Datei wird nicht in dieses Repository eingecheckt. |
 | Eigene Regeln | App-Quellcode und Tests | Pinning durch Commit-SHA; jede Regel nennt betroffene Root×Version-Paare und stabile Diagnostic-Codes. |
 
 Schema- und Toolupdates sind atomar: neue Datei beziehungsweise neue Version,
