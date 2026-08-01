@@ -14,21 +14,41 @@ Compliance-Nachweis.
 
 ## Verbindliche Kette
 
-Jede Stufe läuft nur nach erfolgreichem Abschluss der vorherigen Stufe. Ein
+Stufe 1 und 2 sind harte Eingangsgates: Schlagen sie fehl, erhalten alle
+folgenden Stufen den terminalen Status `not-run`. Stufe 3 läuft nur nach
+bestandener Stufe 2. Stufe 4 und die von ihr unabhängige Stufe 5 laufen nur,
+wenn Stufe 3 `passed` ist oder eine ausschließlich additive, strukturell sicher
+weiterverarbeitbare Schemaabweichung nach der unten definierten Policy
+ausdrücklich `continuationAllowed: true` erhält. Stufe 5 läuft auch dann, wenn
+Stufe 4 für eine dokumentierte versionsgebundene Lücke `not-checked` ist. Ein
 Fehler oder eine technisch nicht verfügbare, aber für die jeweilige Aussage
-erforderliche Stufe führt fail-closed zu einem negativen Ergebnis. Diagnosen
-werden separat erzeugt und verändern dieses Ergebnis nicht.
+erforderliche Stufe hält das Validierungsergebnis fail-closed negativ.
+Unabhängig ausführbare Folgestufen werden trotzdem geprüft und mit einem
+eigenen terminalen Status ausgewiesen. Diagnosen werden separat erzeugt und
+verändern das Validierungsergebnis nicht.
 
 „CI“ bezeichnet in diesem Dokument die Build- und Prüfzeit auf einem isolierten
 GitHub-Actions-Runner; Browserprüfungen laufen ausschließlich im Modul-Worker.
 
 | Stufe | Werkzeug und Ausführungsort | Pinning und Fehlersemantik |
 | --- | --- | --- |
-| 1. Größenlimit und JSON-Syntax | Plattformfunktionen (`Uint8Array`, fataler UTF-8-Decoder, `JSON.parse`) im isolierten Worker; dieselbe Reihenfolge in CI | Das Byte-Limit muss vor Decoder und Parser gesetzt sein. Fehlt ein Limit oder wird es überschritten, wird nicht geparst. CI verwendet Node 22 gemäß Workflow und der Mindestversion in `package.json`; die Prüflogik ist über den App-Commit gepinnt. |
+| 1. Größenlimit und JSON-Syntax | Plattformfunktionen (`Uint8Array`, fataler UTF-8-Decoder), projekteigener Streaming-Token-Scanner und danach `JSON.parse` im isolierten Worker; dieselbe Reihenfolge in CI | Das Byte-Limit muss vor Decoder, Scanner und Parser gesetzt sein. Fehlt ein Limit oder wird es überschritten, wird nicht dekodiert. Nach erfolgreicher fataler Dekodierung lehnt der Scanner doppelte Member-Namen auf jeder Objekttiefe ab; nur dann wird `JSON.parse` aufgerufen. CI verwendet Node 22 gemäß Workflow und der Mindestversion in `package.json`; die Prüflogik einschließlich Scanner ist über den App-Commit gepinnt. |
 | 2. Root-Erkennung | Projekteigener exakter Dispatcher im Worker und in CI | Das Top-Level-Objekt muss genau einen der acht bekannten Root-Keys besitzen. Null, Arrays, mehrere Keys, unbekannte Keys und zusätzliche Keys wie `$schema` werden abgelehnt. Eine Katalog-Interpretation als Fallback ist verboten. |
-| 3. JSON-Schema | Browser: `ajv` 8.20.0 im Modul-Worker. CI: zusätzlich `go-oscal` 0.7.1 als unabhängiges Schema- und Upgrade-Orakel | Auswahl ausschließlich über den exakten Root×`oscal-version`-Schlüssel. Fehlende Kombinationen werden abgelehnt. Ajv wird erst nach der OSS-Zulassung aus [ADR-5](https://linear.app/grundschutz-plus-plus/issue/ADR-5) produktiv aufgenommen. Bis Paket-Lock, Schema-Manifest und Hashprüfung vorhanden sind, bleibt der betreffende Importpfad deaktiviert. |
+| 3. JSON-Schema | Browser: `ajv` 8.20.0 im Modul-Worker. CI: zusätzlich `go-oscal` 0.7.1 als unabhängiges Schema- und Upgrade-Orakel | Auswahl ausschließlich über den exakten Root×`oscal-version`-Schlüssel. Fehlende Kombinationen werden abgelehnt. Nur exakt registrierte, additive `additionalProperties`-Abweichungen dürfen die Fortsetzung zu Stufe 4 und 5 erlauben; die Schema-Stufe bleibt `failed`. Ajv wird erst nach der OSS-Zulassung aus [ADR-5](https://linear.app/grundschutz-plus-plus/issue/ADR-5) produktiv aufgenommen. Bis Paket-Lock, Schema-Manifest und Hashprüfung vorhanden sind, bleibt der betreffende Importpfad deaktiviert. |
 | 4. zusätzliche OSCAL-Constraints | Derzeit **kein zugelassener Validator** für OSCAL 1.2.2; im Browser und in CI als `not-checked` ausgewiesen | Diese Stufe darf weder übersprungen noch als bestanden dargestellt werden. Die zulässige Konformitätsaussage wird deshalb begrenzt. Das konkrete Mapping-Orakel ist als bekannte Lücke registriert. |
 | 5. Referenzen und Projektregeln | Projekteigener, kataloggescopter Referenzgraph und explizit versionierte Regeln im Worker und in CI; Vertrag in [GSPP-251](https://linear.app/grundschutz-plus-plus/issue/GSPP-251) | Prüft UUID-/ID-Eindeutigkeit, interne und dokumentübergreifende Referenzen, URI- und Medientypregeln sowie ausdrücklich benannte GRC-Regeln. Externe `href`-Ziele werden klassifiziert, niemals während der Validierung abgerufen. Unbekannte Regeln gelten nicht als bestanden. |
+
+Der Streaming-Token-Scanner führt für jedes geöffnete JSON-Objekt eine eigene
+Menge bereits gelesener Member-Namen. Verglichen wird der logische Name nach
+Auflösung von JSON-Escapes, sodass etwa `catalog` und eine escape-äquivalente
+Schreibweise als Duplikat gelten. Ein Duplikat beendet Stufe 1 vor `JSON.parse`
+mit `OSCAL_JSON_DUPLICATE_MEMBER`; Root-Dispatcher und alle späteren Stufen
+erhalten `not-run`. Die Diagnose nennt weder den unvertrauenswürdigen
+Member-Namen noch dessen Wert, sondern nur den stabilen Code und einen sicheren
+strukturellen Containerpfad: Nur positiv gelistete Pfadsegmente werden genannt,
+unbekannte Segmente werden als Platzhalter redigiert. Damit interpretieren
+Browser, CI und nachgelagerte Werkzeuge dasselbe eindeutige Dokument, ohne eine
+zusätzliche Abhängigkeit einzuführen.
 
 Ajv wurde gegenüber `@hyperjump/json-schema` 1.17.7 ausgewählt. Beide
 Kandidaten trafen die Schema-Orakel, aber Hyperjump startete in einem echten
@@ -181,6 +201,7 @@ Verboten sind insbesondere:
 - Titel, Beschreibungen, Bemerkungen, Evidenzen und Geheimnisse;
 - komplette Validator-Meldungen, Stacktraces und lokale Systempfade;
 - Dokument- oder Referenz-URLs sowie Request-/Response-Inhalte;
+- rohe doppelte Member-Namen und die zugehörigen Werte;
 - unvertrauenswürdiges Markup oder dessen HTML-Rendering.
 
 Beispiel: Ein roher Validatorbefund mit `failedValue: "<EVIDENZ>"`, lokalem
@@ -193,9 +214,28 @@ sicher normalisiert werden, entsteht stattdessen
 ## Bekannte BSI-Schemaabweichungen
 
 Ausnahmen sind ausschließlich CI-Policy. Sie unterdrücken keine Diagnose und
-ändern `validationValid: false` niemals in `true`. Separat darf
-`policyAccepted: true` nur entstehen, wenn **jede** Diagnose exakt durch einen
-Eintrag mit diesen fünf Feldern gedeckt ist:
+ändern `validationValid: false` niemals in `true`. Ein Eintrag darf zusätzlich
+`continuationEligible: true` tragen, aber nur für eine additive
+`additionalProperties`-Abweichung, nach der das erwartete OSCAL-Modell sicher
+weiter geprüft werden kann. Nur wenn jede Diagnose der Schema-Stufe einen
+solchen Eintrag exakt trifft, wird `continuationAllowed: true` gesetzt. Diese
+Fortsetzung ändert weder `validationValid: false` noch unterdrückt eine
+Diagnose; sie erlaubt ausschließlich die Ausführung der Stufen 4 und 5.
+
+Separat darf `policyAccepted: true` nur entstehen, wenn alle fünf Stufen einen
+terminalen Status besitzen und zusätzlich sämtliche Bedingungen erfüllt sind:
+
+- Stufe 1, 2 und 5 sind `passed`;
+- Stufe 3 ist entweder `passed` oder ausschließlich wegen exakt gedeckter,
+  fortsetzungsfähiger Diagnosen `failed`;
+- Stufe 4 ist `passed` oder für die dokumentierte versionsgebundene
+  Constraint-Lücke ausdrücklich `not-checked`; dieser Status bleibt sichtbar;
+- keine Stufe ist `not-run`;
+- **jede** Diagnose ist exakt durch einen Eintrag mit den folgenden fünf
+  Matchfeldern gedeckt.
+
+Eine zusätzliche Diagnose, ein fehlender terminaler Stufenstatus oder
+`not-run` lässt das Policy-Gate fehlschlagen. Die fünf exakten Matchfelder sind:
 
 1. Artefaktschlüssel,
 2. Root-Typ,
@@ -212,14 +252,15 @@ Der Validator meldet die zusätzlichen Eigenschaften gemeinsam am
 `provenance`-Objekt. Der Adapter zerlegt ausschließlich diese strukturelle
 Eigenschaftsliste deterministisch in zwei weiterhin sichtbare Diagnosen:
 
-| Artefakt | Root / Version | Feldpfad und Signatur | Begründung / erfasst |
-| --- | --- | --- | --- |
-| `mapping-iso27001-annex-a-zu-gspp` | `mapping-collection` / 1.2.2 | `/mapping-collection/provenance/qa-reviewed` — `go-oscal@0.7.1\|additionalProperties\|/mapping-collection/provenance\|qa-reviewed` | bekannte BSI-QA-Erweiterung / 2026-08-01 |
-| `mapping-iso27001-annex-a-zu-gspp` | `mapping-collection` / 1.2.2 | `/mapping-collection/provenance/qa-note` — `go-oscal@0.7.1\|additionalProperties\|/mapping-collection/provenance\|qa-note` | bekannte BSI-QA-Erweiterung / 2026-08-01 |
+| Artefakt | Root / Version | Feldpfad und Signatur | Fortsetzung | Begründung / erfasst |
+| --- | --- | --- | --- | --- |
+| `mapping-iso27001-annex-a-zu-gspp` | `mapping-collection` / 1.2.2 | `/mapping-collection/provenance/qa-reviewed` — `go-oscal@0.7.1\|additionalProperties\|/mapping-collection/provenance\|qa-reviewed` | `continuationEligible: true` | bekannte additive BSI-QA-Erweiterung / 2026-08-01 |
+| `mapping-iso27001-annex-a-zu-gspp` | `mapping-collection` / 1.2.2 | `/mapping-collection/provenance/qa-note` — `go-oscal@0.7.1\|additionalProperties\|/mapping-collection/provenance\|qa-note` | `continuationEligible: true` | bekannte additive BSI-QA-Erweiterung / 2026-08-01 |
 
 Wenn die Aggregatmeldung nicht exakt aus diesen beiden Eigenschaften besteht,
-wird sie nicht zerlegt und nicht von der Policy akzeptiert. Die schemafremden
-Felder bleiben im verlustfreien Dokument erhalten.
+wird sie nicht zerlegt, erhält keine Fortsetzungserlaubnis und wird nicht von
+der Policy akzeptiert. Die schemafremden Felder bleiben im verlustfreien
+Dokument erhalten.
 
 ## Belegte Orakel
 
@@ -234,6 +275,7 @@ Repository gehalten.
 | aus dem realen Mapping abgeleitet, `relationship: "maps-to"` | JSON-Schema besteht; die nicht verfügbare allgemeine Constraint-Stufe bleibt als Lücke sichtbar. |
 | aus dem realen Mapping abgeleitet, `status: "veröffentlicht"` | JSON-Schema scheitert. |
 | null, mehrere, unbekannte oder zusätzliche Root-Keys | Root-Erkennung scheitert. |
+| doppelter Root-Key oder doppeltes `metadata.oscal-version` | Der Streaming-Token-Scanner lehnt das Dokument auf der jeweiligen Objekttiefe vor `JSON.parse` mit `OSCAL_JSON_DUPLICATE_MEMBER` ab; Root-Erkennung und Schema-Auswahl laufen nicht. Escape-äquivalente Member-Namen gelten ebenfalls als Duplikat. |
 | nicht vorhandenes Root×Version-Paar | Auswahl scheitert ohne Fallback. |
 | Dokument über dem konfigurierten Byte-Limit | Ablehnung erfolgt vor Decoder und Parser. |
 | Validierung nach initialem Laden im Browser-Worker | Keine Schema- oder Dokumentanfrage wird ausgelöst. |
