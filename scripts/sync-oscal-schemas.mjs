@@ -32,18 +32,38 @@ import { REPO_ROOT } from './security-guards.mjs';
 const NIST_RELEASE_HOST = 'github.com';
 const NIST_RELEASE_PATH_PREFIX = '/usnistgov/OSCAL/releases/download/';
 const MAX_SCHEMA_BYTES = 1024 * 1024;
+const MAX_REDIRECT_HOPS = 5;
+
+/**
+ * GitHub liefert Release-Assets nicht selbst aus, sondern leitet auf einen
+ * eigenen Asset-Host mit signierter Query weiter. Diese Hosts gehören deshalb
+ * zur Lieferkette und müssen erlaubt sein — aber ausschließlich als
+ * Redirect-Ziel, nie als Startpunkt.
+ *
+ * `release-assets.githubusercontent.com` ist der am 2026-08-01 beobachtete
+ * Zielhost; `objects.githubusercontent.com` ist der zuvor von GitHub genutzte.
+ * Ein dritter Host lässt den Wartungslauf bewusst fail-closed scheitern und
+ * benennt den unerwarteten Host, statt still zu folgen.
+ */
+const GITHUB_RELEASE_ASSET_HOSTS = Object.freeze([
+  'release-assets.githubusercontent.com',
+  'objects.githubusercontent.com',
+]);
+
+function parseUrl(rawUrl, label) {
+  try {
+    return new URL(rawUrl);
+  } catch {
+    throw new Error(`${label} ist keine gültige URL: ${rawUrl}`);
+  }
+}
 
 /**
  * Härtet die Bezugs-URL gegen eine manipulierte Matrix: nur HTTPS, nur der
- * offizielle NIST-Release-Pfad. Kein Redirect auf einen fremden Host.
+ * offizielle NIST-Release-Pfad, keine Query und keine Credentials.
  */
 export function assertOfficialSchemaUrl(rawUrl) {
-  let url;
-  try {
-    url = new URL(rawUrl);
-  } catch {
-    throw new Error(`Schema-URL ist keine gültige URL: ${rawUrl}`);
-  }
+  const url = parseUrl(rawUrl, 'Schema-URL');
 
   if (
     url.protocol !== 'https:' ||
@@ -58,6 +78,60 @@ export function assertOfficialSchemaUrl(rawUrl) {
   }
 
   return url.toString();
+}
+
+/**
+ * Prüft ein Redirect-Ziel. Erlaubt ist entweder erneut die strenge
+ * NIST-Release-Form oder ein GitHub-Asset-Host; letzterer darf die signierte
+ * Query tragen, aber keine Credentials.
+ */
+export function assertAllowedRedirectTarget(rawUrl) {
+  const url = parseUrl(rawUrl, 'Redirect-Ziel');
+
+  if (url.protocol !== 'https:' || url.username || url.password) {
+    throw new Error(`Redirect-Ziel ist nicht vertrauenswürdig: ${url.origin}${url.pathname}`);
+  }
+
+  if (url.host === NIST_RELEASE_HOST) {
+    return assertOfficialSchemaUrl(url.toString());
+  }
+
+  if (!GITHUB_RELEASE_ASSET_HOSTS.includes(url.host)) {
+    throw new Error(
+      `Schema-Download folgt einem Redirect auf einen nicht freigegebenen Host: ${url.host}`,
+    );
+  }
+
+  return url.toString();
+}
+
+/**
+ * Folgt Redirects selbst und validiert **jeden** Hop. `redirect: 'follow'`
+ * würde die Host-Grenze zwar nicht für den Startpunkt, wohl aber für alle
+ * weiteren Sprünge aushebeln: ein Redirect von der freigegebenen
+ * Release-URL auf einen fremden Host bliebe unbemerkt, solange die Bytes
+ * ihre Pins treffen. Die Hashprüfung schützt den Inhalt, nicht die
+ * Netzgrenze.
+ */
+export async function fetchSchemaWithValidatedRedirects(startUrl, fetchImpl) {
+  let currentUrl = assertOfficialSchemaUrl(startUrl);
+
+  for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop += 1) {
+    const response = await fetchImpl(currentUrl, { redirect: 'manual' });
+
+    if (response.status < 300 || response.status > 399) {
+      return { response, finalUrl: currentUrl };
+    }
+
+    const location = response.headers?.get?.('location');
+    if (!location) {
+      throw new Error(`Schema-Download meldet Redirect ${response.status} ohne Ziel`);
+    }
+
+    currentUrl = assertAllowedRedirectTarget(new URL(location, currentUrl).toString());
+  }
+
+  throw new Error(`Schema-Download überschreitet ${MAX_REDIRECT_HOPS} Redirects`);
 }
 
 /** Hält die Ablage innerhalb des reservierten Schema-Verzeichnisses. */
@@ -83,8 +157,7 @@ export async function syncOscalSchemas({
   const results = [];
 
   for (const pin of pins) {
-    const url = assertOfficialSchemaUrl(pin.releaseUrl);
-    const response = await fetchImpl(url, { redirect: 'follow' });
+    const { response } = await fetchSchemaWithValidatedRedirects(pin.releaseUrl, fetchImpl);
     if (!response.ok) {
       throw new Error(
         `Schema-Download fehlgeschlagen: ${pin.rootKey} @ ${pin.oscalVersion} — HTTP ${response.status}`,

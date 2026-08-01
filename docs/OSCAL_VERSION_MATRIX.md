@@ -145,11 +145,35 @@ drei Stützen:
    [`scripts/sync-oscal-schemas.mjs`](../scripts/sync-oscal-schemas.mjs). Er
    ist nicht Teil von `npm run build`, `npm run dev` oder `npm run
    fetch-catalog` und läuft nur auf ausdrückliche Anforderung.
-2. Das Skript akzeptiert ausschließlich HTTPS-URLs auf
-   `github.com/usnistgov/OSCAL/releases/download/`; ein manipulierter Pin mit
-   fremdem Host wird vor dem ersten Netzaufruf abgewiesen.
+2. Der Startpunkt muss eine HTTPS-URL auf
+   `github.com/usnistgov/OSCAL/releases/download/` ohne Query sein; ein
+   manipulierter Pin mit fremdem Host wird vor dem ersten Netzaufruf
+   abgewiesen.
 3. Die Matrix selbst enthält keinen Ladepfad — `resolveSchemaBinding()` liefert
    nur Metadaten und greift nie auf das Netz zu.
+
+### Redirects werden Hop für Hop validiert
+
+GitHub liefert Release-Assets nicht selbst aus, sondern antwortet mit `302`
+auf einen eigenen Asset-Host mit signierter Query:
+
+```
+github.com  →302→  release-assets.githubusercontent.com  →200
+```
+
+Der Wartungslauf folgt deshalb **nicht** automatisch (`redirect: 'manual'`),
+sondern prüft jeden Sprung einzeln gegen eine Allowlist. Erlaubt sind nur die
+strenge NIST-Release-Form und die GitHub-Asset-Hosts
+`release-assets.githubusercontent.com` und `objects.githubusercontent.com`;
+letztere dürfen die signierte Query tragen, aber keine Credentials. Die Kette
+ist auf fünf Sprünge begrenzt.
+
+Ein automatisches Folgen wäre nicht ausreichend: die Hash- und
+`$id`-Prüfung schützt den **Inhalt**, nicht die **Netzgrenze**. Ein Redirect
+von der freigegebenen Release-URL auf einen fremden Host bliebe sonst
+unbemerkt, solange die gelieferten Bytes ihre Pins treffen. Wechselt GitHub
+den Asset-Host, scheitert der Wartungslauf fail-closed und benennt den
+unerwarteten Host, statt ihm still zu folgen.
 
 ## Verhalten bei Versionsabweichung
 

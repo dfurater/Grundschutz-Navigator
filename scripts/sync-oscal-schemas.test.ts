@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import {
+  assertAllowedRedirectTarget,
   assertOfficialSchemaUrl,
+  fetchSchemaWithValidatedRedirects,
   resolveSchemaVendorTarget,
   syncOscalSchemas,
 } from './sync-oscal-schemas.mjs';
@@ -73,6 +75,85 @@ describe('sync-oscal-schemas', () => {
     });
   });
 
+  describe('Redirect-Validierung', () => {
+    /** Der am 2026-08-01 beobachtete echte Zielhost von GitHub-Release-Assets. */
+    const REAL_ASSET_URL =
+      'https://release-assets.githubusercontent.com/github-production-release-asset/68406934/abc?sig=x&jwt=y';
+
+    function redirectResponse(location: string, status = 302) {
+      return new Response('', { status, headers: location ? { location } : {} });
+    }
+
+    it('accepts the real GitHub release-asset redirect target with its signed query', () => {
+      expect(assertAllowedRedirectTarget(REAL_ASSET_URL)).toBe(REAL_ASSET_URL);
+      expect(() =>
+        assertAllowedRedirectTarget('https://objects.githubusercontent.com/x?sig=y'),
+      ).not.toThrow();
+    });
+
+    it.each([
+      'https://foreign.invalid/redirected/oscal_catalog_schema.json',
+      'https://raw.githubusercontent.com/usnistgov/OSCAL/main/oscal_catalog_schema.json',
+      'https://githubusercontent.com.evil.example/x',
+      'http://release-assets.githubusercontent.com/x',
+      'https://user:pass@release-assets.githubusercontent.com/x',
+    ])('rejects the redirect target %s', (url) => {
+      expect(() => assertAllowedRedirectTarget(url)).toThrow();
+    });
+
+    it('follows the real two-hop chain github.com to the asset host', async () => {
+      const fetchImpl = vi.fn(async (url: string) =>
+        url === CATALOG_PIN.releaseUrl ? redirectResponse(REAL_ASSET_URL) : responseOf('{}'),
+      );
+
+      const { finalUrl, response } = await fetchSchemaWithValidatedRedirects(
+        CATALOG_PIN.releaseUrl,
+        fetchImpl,
+      );
+
+      expect(finalUrl).toBe(REAL_ASSET_URL);
+      expect(response.status).toBe(200);
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+      // Jeder Hop wird ohne automatisches Folgen ausgeführt.
+      for (const call of fetchImpl.mock.calls) {
+        expect(call[1]).toEqual({ redirect: 'manual' });
+      }
+    });
+
+    it('rejects a redirect to a foreign host even when the bytes match the pins', async () => {
+      // Reproduziert den Greptile-Befund: die Hashprüfung schützt den Inhalt,
+      // nicht die Netzgrenze. Der Lauf muss vor dem Lesen der Bytes abbrechen.
+      const foreignUrl = 'https://foreign.invalid/redirected/oscal_catalog_schema.json';
+      const fetchImpl = vi.fn(async (url: string) =>
+        url === CATALOG_PIN.releaseUrl
+          ? redirectResponse(foreignUrl)
+          : responseOf(JSON.stringify({ $id: CATALOG_PIN.schemaId })),
+      );
+
+      await expect(syncOscalSchemas({ pins: [CATALOG_PIN], fetchImpl, logger: { log: () => {} } }))
+        .rejects.toThrow(/nicht freigegebenen Host: foreign\.invalid/);
+      // Der fremde Host wurde nie kontaktiert.
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      expect(fetchImpl).toHaveBeenCalledWith(CATALOG_PIN.releaseUrl, { redirect: 'manual' });
+    });
+
+    it('rejects a redirect chain that never terminates', async () => {
+      const fetchImpl = vi.fn(async () => redirectResponse(REAL_ASSET_URL));
+
+      await expect(
+        fetchSchemaWithValidatedRedirects(CATALOG_PIN.releaseUrl, fetchImpl),
+      ).rejects.toThrow(/überschreitet 5 Redirects/);
+    });
+
+    it('rejects a redirect without a location header', async () => {
+      const fetchImpl = vi.fn(async () => redirectResponse('', 302));
+
+      await expect(
+        fetchSchemaWithValidatedRedirects(CATALOG_PIN.releaseUrl, fetchImpl),
+      ).rejects.toThrow(/Redirect 302 ohne Ziel/);
+    });
+  });
+
   describe('resolveSchemaVendorTarget', () => {
     it('resolves a pinned vendor path below the reserved directory', () => {
       const target = resolveSchemaVendorTarget(CATALOG_PIN.vendorPath, { repoRoot: '/repo' });
@@ -100,7 +181,7 @@ describe('sync-oscal-schemas', () => {
       await expect(syncOscalSchemas({ pins: [CATALOG_PIN], fetchImpl, logger })).rejects.toThrow(
         /OSCAL_SCHEMA_HASH_MISMATCH/,
       );
-      expect(fetchImpl).toHaveBeenCalledWith(CATALOG_PIN.releaseUrl, { redirect: 'follow' });
+      expect(fetchImpl).toHaveBeenCalledWith(CATALOG_PIN.releaseUrl, { redirect: 'manual' });
     });
 
     it('cannot be tricked by a pin object that overrides the expected hash', () => {
