@@ -6,11 +6,13 @@ import {
 } from '@/test/fixtures/losslessCatalog';
 import {
   arrayOrderSignature,
+  containerIdentities,
   contentMultiset,
   countPropRemarks,
   deepFreeze,
   missingFromMultiset,
   scalarLeafPaths,
+  sharedContainerPaths,
 } from '@/test/oscalStructure';
 import type { CatalogDocumentContext } from '@/domain/models';
 
@@ -317,5 +319,20 @@ describe('parseCatalogDocument — Nicht-Mutation (§1)', () => {
     expect(JSON.stringify(document.source)).toBe(
       JSON.stringify(JSON.parse(LOSSLESS_CATALOG_JSON)),
     );
+  });
+
+  it('teilt kein einziges Objekt und kein Array zwischen view und source', () => {
+    // Die Prüfung einzelner Mutationspfade genügt nicht: Sie belegt nur, dass
+    // die zufällig gewählte Stelle entkoppelt ist. Geteilt werden darf
+    // ausschließlich Unveränderliches — Strings tragen das String-Sharing und
+    // sind unbedenklich, jeder gemeinsame Container ist ein Leck.
+    const document = parseFixture();
+
+    const shared = sharedContainerPaths(
+      document.view,
+      containerIdentities(document.source),
+    );
+
+    expect(shared).toEqual([]);
   });
 });

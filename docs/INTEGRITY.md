@@ -152,8 +152,9 @@ export async function fetchCatalogWithBuffer(
 `src/state/CatalogContext.tsx` orchestriert den Ladevorgang:
 
 1. `catalog.json` und `vocabularies.json` werden **parallel** als ArrayBuffer geladen (Startlatenz). Fehlt `catalog.json`, ist das ein harter Ladefehler; fehlt nur `vocabularies.json`, läuft die App ohne Vokabular-Registry weiter.
-2. Der Katalog wird als verlustfreies Dokument geparst (`parseCatalogDocument`, siehe [DOMAIN_MODELS.md](./DOMAIN_MODELS.md#verlustfreies-dokumentmodell)), die Vokabular-Registry gebaut (`buildVocabularyRegistry`).
+2. Die Vokabular-Registry wird gebaut (`buildVocabularyRegistry`).
 3. Für den Katalog wird `catalog-metadata.json` geladen und `verifyArtifactIntegrity` ausgeführt; für die Vokabulare analog `upstream-sources-metadata.json` (siehe [Vocabulary Integrity](#vocabulary-integrity)).
+3a. Erst danach wird der Katalog als verlustfreies Dokument geparst (`parseCatalogDocument`, siehe [DOMAIN_MODELS.md](./DOMAIN_MODELS.md#verlustfreies-dokumentmodell)). Die Reihenfolge ist bewusst: Die Vertrauensklasse `class-1-verified-public` schließt die bestandene Hashprüfung ein und darf deshalb nicht vergeben werden, bevor sie gelaufen ist. Ohne Metadaten oder bei abweichendem Hash trägt das Dokument `class-1-unverified-public`.
 4. Fehlen zu einem vorhandenen Datenartefakt nur die Metadaten, bleibt das Artefakt nutzbar. Provenance und Verifikation bleiben `null`, die App protokolliert eine Warnung in der Konsole und überspringt die Prüfung.
 5. Ein `cancelled`-Flag verhindert State-Updates nach Unmount.
 

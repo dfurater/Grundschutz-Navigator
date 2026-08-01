@@ -441,7 +441,10 @@ export function parseMetadata(raw: RawOscalCatalog): CatalogMetadataInfo {
     parties,
     responsibleParties: (meta['responsible-parties'] ?? []).map((entry) => ({
       roleId: entry['role-id'],
-      partyUuids: entry['party-uuids'],
+      // Eigenes Array: Der Quellgraph bleibt neben dem Domänenmodell erhalten
+      // (ADR-0002 §1), und eine Mutation hier dürfte ihn nicht verändern.
+      // Die enthaltenen Strings bleiben geteilt — sie sind unveränderlich.
+      partyUuids: [...entry['party-uuids']],
     })),
   };
 }
@@ -458,7 +461,12 @@ function parseBackMatter(
     title: resource.title,
     rlinks: (resource.rlinks ?? []).map((link) => ({
       href: link.href,
-      hashes: link.hashes ?? [],
+      // Eigenes Array **und** eigene Hash-Objekte: Ein neues Array allein
+      // würde die Elemente weiterhin mit dem Quellgraphen teilen (ADR-0002 §1).
+      hashes: (link.hashes ?? []).map((hash) => ({
+        algorithm: hash.algorithm,
+        value: hash.value,
+      })),
     })),
   }));
 }

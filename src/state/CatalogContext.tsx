@@ -131,16 +131,7 @@ export function CatalogProvider({
 
         if (cancelled) return;
 
-        // 2. Parse OSCAL JSON into the lossless document model (ADR-0002).
-        //    Der Quellgraph bleibt am Dokument erhalten, statt nach dem
-        //    Ableiten des Domänenmodells aus dem Scope zu fallen.
-        const catalogDocument = parseCatalogDocument(JSON.parse(text), {
-          catalogKey: SUPPORTED_CATALOG_KEY,
-          // Registrierte, manifest- und hashgeprüfte BSI-Artefakte (§10).
-          trustClass: 'class-1-verified-public',
-        });
-
-        // 3. Try to fetch provenance metadata and verify integrity
+        // 2. Try to fetch provenance metadata and verify integrity
         let provenance: CatalogProvenance | null = null;
         let verification: VerificationResult | null = null;
         let vocabularyRegistry: VocabularyRegistry | null = null;
@@ -191,6 +182,25 @@ export function CatalogProvider({
             'Catalog provenance metadata not available. Integrity verification skipped.',
           );
         }
+
+        if (cancelled) return;
+
+        // 3. Parse OSCAL JSON into the lossless document model (ADR-0002).
+        //    Der Quellgraph bleibt am Dokument erhalten, statt nach dem
+        //    Ableiten des Domänenmodells aus dem Scope zu fallen.
+        //
+        //    Erst hier, weil die Vertrauensklasse nach §10 die bestandene
+        //    Laufzeit-Hashprüfung einschließt. Würde das Dokument vorher
+        //    gebaut, behauptete es "verifiziert", bevor geprüft wurde — und
+        //    behielte diese Aussage auch bei fehlenden Metadaten oder einem
+        //    abweichenden Hash.
+        const catalogDocument = parseCatalogDocument(JSON.parse(text), {
+          catalogKey: SUPPORTED_CATALOG_KEY,
+          trustClass:
+            verification?.valid === true
+              ? 'class-1-verified-public'
+              : 'class-1-unverified-public',
+        });
 
         if (!cancelled) {
           dispatch({

@@ -367,8 +367,18 @@ export interface ControlRef {
  * Die Klassen werden nie vermischt: Klasse 2 läuft nicht über den
  * Manifest-/Hash-Mechanismus, und die Provenienzanzeige suggeriert für sie
  * keine Verifikation.
+ *
+ * Klasse 1 ist in zwei Zustände aufgeteilt, weil ihre Definition die
+ * Laufzeit-Hashprüfung einschließt: Ein Dokument aus dem Quellregister ist
+ * erst dann `verified`, wenn diese Prüfung tatsächlich bestanden wurde.
+ * Fehlen die Integritätsmetadaten oder weicht der Hash ab, bleibt es
+ * `unverified` — die Anwendung nutzt es weiter, behauptet aber keine
+ * Verifikation.
  */
-export type TrustClass = 'class-1-verified-public' | 'class-2-local-user';
+export type TrustClass =
+  | 'class-1-verified-public'
+  | 'class-1-unverified-public'
+  | 'class-2-local-user';
 
 /**
  * Expliziter, typisierter Ableitungskontext (ADR-0002 §2).

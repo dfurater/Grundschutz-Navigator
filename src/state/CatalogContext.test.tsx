@@ -366,13 +366,115 @@ describe('CatalogProvider', () => {
     expect(result.current.catalog).toBe(document?.view);
 
     // §2: Der Kontext wird explizit geführt, nicht aus dem Dokument geraten.
-    expect(document?.context).toEqual({
-      catalogKey: SUPPORTED_CATALOG_KEY,
-      trustClass: 'class-1-verified-public',
-    });
+    expect(document?.context.catalogKey).toBe(SUPPORTED_CATALOG_KEY);
 
     // §0/§1: Der Quellgraph überlebt den gesamten Ladepfad unverändert.
     expect(JSON.stringify(document?.source)).toBe(JSON.stringify(rawCatalogDocument));
     expect(countPropRemarks(document?.source)).toBe(1);
+  });
+
+  /* ---------------------------------------------------------------- */
+  /*  Vertrauensklasse (ADR-0002 §10)                                  */
+  /* ---------------------------------------------------------------- */
+
+  async function renderWithCatalogMetadata(
+    metadata: Record<string, unknown> | null,
+  ) {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+
+      if (url === '/catalog.json') {
+        return new Response(JSON.stringify(rawCatalogDocument), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (url === '/catalog-metadata.json' && metadata) {
+        return new Response(JSON.stringify(metadata), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      return new Response(null, { status: 404, statusText: 'Not Found' });
+    });
+
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <CatalogProvider
+        catalogUrl="/catalog.json"
+        metadataUrl="/catalog-metadata.json"
+        vocabulariesUrl="/vocabularies.json"
+        upstreamSourcesMetadataUrl="/upstream-sources-metadata.json"
+      >
+        {children}
+      </CatalogProvider>
+    );
+
+    const { result } = renderHook(() => useCatalog(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+      expect(result.current.catalogDocument?.view).toBeDefined();
+    });
+
+    return result;
+  }
+
+  function makeCatalogProvenance(sha256: string, sizeBytes: number) {
+    return {
+      source: {
+        repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
+        file: 'control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json',
+        commit_sha: 'snapshot-123',
+        git_blob_sha: 'blob-catalog',
+      },
+      integrity: {
+        sha256,
+        size_bytes: sizeBytes,
+        fetched_at: '2026-03-27T12:00:00Z',
+      },
+      build: {
+        workflow_run_id: 'local',
+        workflow_run_url: null,
+        runner_environment: 'local',
+      },
+    };
+  }
+
+  it('führt den Katalog erst nach bestandener Hashprüfung als verifiziert', async () => {
+    const bytes = new TextEncoder().encode(JSON.stringify(rawCatalogDocument));
+    const provenance = makeCatalogProvenance(
+      await computeSHA256(bytes.buffer as ArrayBuffer),
+      bytes.byteLength,
+    );
+
+    const result = await renderWithCatalogMetadata(provenance);
+
+    expect(result.current.verification?.valid).toBe(true);
+    expect(result.current.catalogDocument?.context.trustClass).toBe(
+      'class-1-verified-public',
+    );
+  });
+
+  it('führt den Katalog nicht als verifiziert, wenn der Hash nicht passt', async () => {
+    const provenance = makeCatalogProvenance('bad-hash-for-test', 42);
+
+    const result = await renderWithCatalogMetadata(provenance);
+
+    expect(result.current.verification?.valid).toBe(false);
+    expect(result.current.catalogDocument?.context.trustClass).toBe(
+      'class-1-unverified-public',
+    );
+  });
+
+  it('führt den Katalog nicht als verifiziert, wenn die Integritätsmetadaten fehlen', async () => {
+    const result = await renderWithCatalogMetadata(null);
+
+    expect(result.current.provenance).toBeNull();
+    expect(result.current.verification).toBeNull();
+    expect(result.current.catalogDocument?.context.trustClass).toBe(
+      'class-1-unverified-public',
+    );
   });
 });

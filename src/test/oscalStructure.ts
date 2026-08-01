@@ -165,6 +165,67 @@ export function countContainers(node: unknown): {
   return { objects, arrays, total: objects + arrays };
 }
 
+/** Sammelt die Identitäten aller Container eines Graphen, inklusive `Map`-Werten. */
+export function containerIdentities(node: unknown, seen = new Set<object>()): Set<object> {
+  if (node === null || typeof node !== 'object') return seen;
+  if (seen.has(node)) return seen;
+  seen.add(node);
+
+  if (node instanceof Map) {
+    for (const value of node.values()) containerIdentities(value, seen);
+    return seen;
+  }
+  if (Array.isArray(node)) {
+    for (const entry of node) containerIdentities(entry, seen);
+    return seen;
+  }
+  for (const key of Object.keys(node as Record<string, unknown>)) {
+    containerIdentities((node as Record<string, unknown>)[key], seen);
+  }
+  return seen;
+}
+
+/**
+ * Findet Container, die sich `node` und `foreign` **als Objekt** teilen.
+ *
+ * Geteilte Strings sind unbedenklich und ausdrücklich erwünscht — sie sind
+ * unveränderlich und tragen das String-Sharing. Geteilte Objekte und Arrays
+ * sind es nicht: Eine Mutation am einen Graphen schlägt dann auf den anderen
+ * durch und bricht die Zusicherung, dass der Quellgraph unverändert bleibt.
+ *
+ * Zurückgegeben werden Pfade, nicht Objekte — sonst wäre die Fehlermeldung
+ * eines fehlschlagenden Tests unlesbar.
+ */
+export function sharedContainerPaths(
+  node: unknown,
+  foreign: Set<object>,
+  path = '$',
+  seen = new Set<object>(),
+): string[] {
+  if (node === null || typeof node !== 'object') return [];
+  if (seen.has(node)) return [];
+  seen.add(node);
+
+  if (foreign.has(node)) {
+    return [path];
+  }
+
+  if (node instanceof Map) {
+    return [...node.entries()].flatMap(([key, value]) =>
+      sharedContainerPaths(value, foreign, `${path}.get(${String(key)})`, seen),
+    );
+  }
+  if (Array.isArray(node)) {
+    return node.flatMap((entry, index) =>
+      sharedContainerPaths(entry, foreign, `${path}[${index}]`, seen),
+    );
+  }
+  const record = node as Record<string, unknown>;
+  return Object.keys(record).flatMap((key) =>
+    sharedContainerPaths(record[key], foreign, `${path}.${key}`, seen),
+  );
+}
+
 /** Friert einen Objektgraphen rekursiv ein. Schreibzugriffe werfen dann im Strict Mode. */
 export function deepFreeze<T>(node: T): T {
   if (Array.isArray(node)) {

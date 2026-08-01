@@ -25,7 +25,10 @@ Der Katalogpfad folgt dem verbindlichen Vertrag aus ADR-0002: **Das
 Originaldokument ist die Wahrheit, das Domänenmodell eine Projektion darauf.**
 
 ```typescript
-type TrustClass = 'class-1-verified-public' | 'class-2-local-user';
+type TrustClass =
+  | 'class-1-verified-public'    // Quellregister-Artefakt, Hashprüfung bestanden
+  | 'class-1-unverified-public'  // Quellregister-Artefakt, Prüfung fehlt oder schlug fehl
+  | 'class-2-local-user';        // lokales Nutzerdokument
 
 interface CatalogDocumentContext {
   catalogKey: CatalogKey;   // Identität aus dem Quellregister (ADR-0001)
@@ -42,6 +45,24 @@ interface CatalogDocument {
 Einstiegspunkt ist `parseCatalogDocument()` in
 `src/adapters/oscalDocument.ts`. `parseCatalog()` bleibt die reine
 Ableitungsfunktion und wird von dort aufgerufen.
+
+### Vertrauensklasse ist ein Ergebnis, keine Herkunftsangabe
+
+Klasse 1 ist nach ADR-0002 §10 über drei Eigenschaften definiert:
+Quellregister-Herkunft, Manifest-v2-Provenienz **und bestandene
+Laufzeit-Hashprüfung**. Ein Dokument darf sich deshalb erst dann
+`class-1-verified-public` nennen, wenn diese Prüfung tatsächlich gelaufen und
+erfolgreich war.
+
+`CatalogProvider` baut das Dokument aus diesem Grund **nach** der
+Integritätsprüfung, nicht davor. Fehlen die Metadaten oder weicht der Hash ab,
+bleibt das Dokument nutzbar, trägt aber `class-1-unverified-public`. Ein
+Konsument, der sich auf die Klasse verlässt, akzeptiert damit keinen
+ungeprüften Katalog als geprüft.
+
+Die Verifikationsdetails selbst bleiben unverändert in
+`CatalogState.verification`; die Klasse dupliziert sie nicht, sondern fasst
+nur ihr Ergebnis für die Dokumentebene zusammen.
 
 ### Warum
 
@@ -79,6 +100,13 @@ vermuten lässt. Grund ist das **String-Sharing**: Das Domänenmodell übernimmt
 Titel, Prosa und Prop-Werte per Referenz auf dieselben Quellstrings, statt sie
 zu kopieren — in `src/adapters/oscalAdapter.ts` unter anderem
 `title: raw.title`, `statementRaw` und `value: prop.value`.
+
+Geteilt werden dabei ausschließlich **Strings** — sie sind unveränderlich, ihr
+Teilen ist folgenlos. Objekte und Arrays werden nie geteilt: Der Adapter kopiert
+auch `responsible-parties/party-uuids` und `rlinks/hashes` samt der einzelnen
+Hash-Objekte, weil eine Mutation am Domänenmodell sonst auf den Quellgraphen
+durchschlüge. `src/adapters/oscalDocument.test.ts` prüft die Trennung generisch
+über Objektidentitäten, nicht an einzelnen Beispielpfaden.
 
 Damit trägt der Quellgraph im Wesentlichen nur seine Container-Hüllen bei.
 Gemessen am Grundschutz++-Katalog (~21.300 Container): rund **1,9 MB
