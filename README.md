@@ -93,7 +93,6 @@ Tiefe:
 - [`docs/OSCAL_VALIDATION.md`](docs/OSCAL_VALIDATION.md) — Zielvertrag für die künftige fail-closed OSCAL-Prüf- und Lieferkette
 - [`docs/FILTERING.md`](docs/FILTERING.md) — Filter-Parameter, URL-Sync, Reihenfolge
 - [`docs/VOCABULARY.md`](docs/VOCABULARY.md) — Namespace-Modell für BSI-Vokabulare
-- [`docs/performance/GRU-217.md`](docs/performance/GRU-217.md) — Profiler-Vergleich der Kataloglisten
 
 ## Deployment
 
