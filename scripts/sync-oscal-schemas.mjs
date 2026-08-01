@@ -27,7 +27,7 @@ import {
   listSchemaPins,
   verifySchemaArtifact,
 } from '../src/domain/oscalVersionMatrix.mjs';
-import { REPO_ROOT } from './security-guards.mjs';
+import { REPO_ROOT, readBodyWithLimit } from './security-guards.mjs';
 
 const NIST_RELEASE_HOST = 'github.com';
 const NIST_RELEASE_PATH_PREFIX = '/usnistgov/OSCAL/releases/download/';
@@ -145,48 +145,6 @@ export function resolveSchemaVendorTarget(vendorPath, { repoRoot = REPO_ROOT } =
   }
 
   return target;
-}
-
-/**
- * Liest den Antwortkörper strombasiert und bricht ab, **sobald** das Limit
- * überschritten ist.
- *
- * `response.arrayBuffer()` würde die vollständige Antwort erst puffern und
- * das Limit danach prüfen — eine übergroße Antwort wäre dann bereits
- * vollständig im Speicher. Die Grenze wäre damit nur eine Nachkontrolle,
- * kein Schutz.
- */
-export async function readBodyWithLimit(response, {
-  maxBytes = MAX_SCHEMA_BYTES,
-  label = 'Schema',
-} = {}) {
-  const body = response.body;
-  if (!body || typeof body.getReader !== 'function') {
-    // Kein Stream verfügbar: weiterhin begrenzen, aber ohne Frühabbruch.
-    const buffered = Buffer.from(await response.arrayBuffer());
-    if (buffered.length > maxBytes) {
-      throw new Error(`${label} überschreitet das Limit von ${maxBytes} Bytes.`);
-    }
-    return buffered;
-  }
-
-  const reader = body.getReader();
-  const chunks = [];
-  let receivedBytes = 0;
-
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    receivedBytes += value.byteLength;
-    if (receivedBytes > maxBytes) {
-      await reader.cancel().catch(() => {});
-      throw new Error(`${label} überschreitet das Limit von ${maxBytes} Bytes.`);
-    }
-    chunks.push(Buffer.from(value));
-  }
-
-  return Buffer.concat(chunks);
 }
 
 export async function syncOscalSchemas({

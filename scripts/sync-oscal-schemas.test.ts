@@ -5,10 +5,10 @@ import {
   assertAllowedRedirectTarget,
   assertOfficialSchemaUrl,
   fetchSchemaWithValidatedRedirects,
-  readBodyWithLimit,
   resolveSchemaVendorTarget,
   syncOscalSchemas,
 } from './sync-oscal-schemas.mjs';
+import { readBodyWithLimit } from './security-guards.mjs';
 import { getSchemaPin, listSchemaPins } from '../src/domain/oscalVersionMatrix.mjs';
 
 const CATALOG_PIN = getSchemaPin('catalog', '1.2.2')!;

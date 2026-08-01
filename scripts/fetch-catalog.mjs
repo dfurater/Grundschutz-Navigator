@@ -17,6 +17,7 @@ import {
   OFFICIAL_CATALOG_PATH,
   assertAllowedGitHubRef,
   assertRegisteredUpstreamRepoPath,
+  readBodyWithLimit,
   resolveOptionalSnapshotSha,
 } from './security-guards.mjs';
 import {
@@ -222,11 +223,34 @@ async function resolveSnapshot(logger = console, retryDelaysMs = DEFAULT_RETRY_D
   }
 }
 
+/**
+ * Begrenzung des Downloads (GSPP-324).
+ *
+ * Steht die Dateigröße aus dem BSI-Tree fest, ist sie die engere Schranke: ein
+ * Artefakt darf nie mehr Bytes liefern, als der Tree für seinen Blob ausweist.
+ * Die Diagnose bleibt dabei bewusst dieselbe wie beim nachgelagerten exakten
+ * Größenabgleich — die Prüfung wandert nur nach vorn, die Aussage ändert sich
+ * nicht. Ohne bekannte Größe greift das allgemeine Artefaktlimit.
+ */
+function resolveDownloadLimit(path, expectedSizeBytes) {
+  if (Number.isSafeInteger(expectedSizeBytes) && expectedSizeBytes >= 0) {
+    return {
+      maxBytes: Math.max(expectedSizeBytes, 1),
+      limitMessage: `Dateigröße stimmt nicht mit dem BSI-Tree überein: ${path}`,
+    };
+  }
+  return {
+    maxBytes: MAX_CATALOG_ARTIFACT_BYTES,
+    limitMessage: `Artefakt überschreitet das erlaubte Artefaktlimit von ${MAX_CATALOG_ARTIFACT_BYTES} Bytes: ${path}`,
+  };
+}
+
 async function fetchRawRegisteredFile(
   path,
   ref,
   materializedNamespacePaths,
   retryDelaysMs = DEFAULT_RETRY_DELAYS_MS,
+  expectedSizeBytes = null,
 ) {
   const allowedPath = assertRegisteredUpstreamRepoPath(path, { materializedNamespacePaths });
   const allowedRef = assertAllowedGitHubRef(ref, 'GitHub fetch ref');
@@ -243,7 +267,10 @@ async function fetchRawRegisteredFile(
     throw new Error(`Download fehlgeschlagen für ${path}: ${response.status} ${response.statusText}`);
   }
 
-  const buffer = Buffer.from(await response.arrayBuffer());
+  const buffer = await readBodyWithLimit(
+    response,
+    resolveDownloadLimit(allowedPath, expectedSizeBytes),
+  );
   return {
     buffer,
     text: buffer.toString('utf8'),
@@ -549,7 +576,13 @@ async function buildFetchArtifacts(logger = console, {
   }
 
   logger.log('[2/5] Lade unterstützten Katalog und ermittle Namespace-Mitglieder ...');
-  const catalogRaw = await fetchRawRegisteredFile(CATALOG_PATH, fetchRef, [], retryDelaysMs);
+  const catalogRaw = await fetchRawRegisteredFile(
+    CATALOG_PATH,
+    fetchRef,
+    [],
+    retryDelaysMs,
+    catalogTreeFile.sizeBytes,
+  );
   if (computeGitBlobSha(catalogRaw.buffer) !== catalogTreeFile.gitBlobSha) {
     throw new Error(`Git-Blob-SHA stimmt nicht mit dem BSI-Tree überein: ${CATALOG_PATH}`);
   }
@@ -598,6 +631,7 @@ async function buildFetchArtifacts(logger = console, {
         fetchRef,
         materializedNamespacePaths,
         retryDelaysMs,
+        descriptor.sizeBytes,
       );
       rawFileByPath.set(descriptor.path, rawFile);
     }

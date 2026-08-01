@@ -61,6 +61,63 @@ function assertAllowedAbsolutePath(resolvedPath, {
   throw new Error(`${label} must stay within an allowed working directory`);
 }
 
+/**
+ * Liest einen Antwortkörper strombasiert und bricht ab, **sobald** das Limit
+ * überschritten ist (GSPP-283, GSPP-324).
+ *
+ * `response.arrayBuffer()` würde die vollständige Antwort erst puffern und das
+ * Limit danach prüfen — eine übergroße Antwort wäre dann bereits im Speicher.
+ * Die Grenze wäre damit nur eine Nachkontrolle, kein Schutz vor
+ * Speichererschöpfung auf dem Runner.
+ *
+ * Gemeinsame Implementierung für den Katalog-Fetch und den Schema-Wartungslauf;
+ * beide Pfade dürfen sich nicht auseinanderentwickeln.
+ *
+ * @param {Response} response
+ * @param {{maxBytes: number, label?: string, limitMessage?: string}} options
+ * @returns {Promise<Buffer>}
+ */
+export async function readBodyWithLimit(response, {
+  maxBytes,
+  label = 'Antwort',
+  limitMessage,
+} = {}) {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
+    throw new Error(`${label}: maxBytes muss eine positive ganze Zahl sein`);
+  }
+
+  const exceeded = () =>
+    new Error(limitMessage ?? `${label} überschreitet das Limit von ${maxBytes} Bytes.`);
+
+  const body = response.body;
+  if (!body || typeof body.getReader !== 'function') {
+    // Kein Stream verfügbar: weiterhin begrenzen, aber ohne Frühabbruch.
+    const buffered = Buffer.from(await response.arrayBuffer());
+    if (buffered.length > maxBytes) {
+      throw exceeded();
+    }
+    return buffered;
+  }
+
+  const reader = body.getReader();
+  const chunks = [];
+  let receivedBytes = 0;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    receivedBytes += value.byteLength;
+    if (receivedBytes > maxBytes) {
+      await reader.cancel().catch(() => {});
+      throw exceeded();
+    }
+    chunks.push(Buffer.from(value));
+  }
+
+  return Buffer.concat(chunks);
+}
+
 export function resolveOptionalSnapshotSha(configuredValue = process.env.BSI_SNAPSHOT_SHA) {
   if (typeof configuredValue !== 'string') {
     return '';

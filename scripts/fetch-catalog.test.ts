@@ -778,6 +778,43 @@ describe('fetch-catalog', () => {
     )).rejects.toThrow(`Dateigröße stimmt nicht mit dem BSI-Tree überein: ${OFFICIAL_CATALOG_PATH}`);
   });
 
+  it('aborts an oversized artifact download before the whole body is transferred', async () => {
+    // GSPP-324: Die Baumgröße ist die engere Schranke. Ein Artefakt, das mehr
+    // Bytes liefert als der Tree ausweist, muss abbrechen, bevor alles im
+    // Speicher liegt — nicht erst beim nachgelagerten Größenabgleich.
+    const input = makeMinimalFetchInput();
+    const treeResponse = makeTreeResponse(input.rawByPath);
+    const oversized = 4 * 1024 * 1024;
+    let emittedBytes = 0;
+
+    installSnapshotFetch({
+      rawByPath: input.rawByPath,
+      rawResponse: (path, contents) => {
+        if (path !== OFFICIAL_CATALOG_PATH) return responseWithContents(contents);
+        const stream = new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (emittedBytes >= oversized) {
+              controller.close();
+              return;
+            }
+            const size = Math.min(64 * 1024, oversized - emittedBytes);
+            emittedBytes += size;
+            controller.enqueue(new Uint8Array(size));
+          },
+        });
+        return new Response(stream);
+      },
+    });
+
+    await expect(buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      { registryEntries: MINIMAL_REGISTRY, treeResponse },
+    )).rejects.toThrow(`Dateigröße stimmt nicht mit dem BSI-Tree überein: ${OFFICIAL_CATALOG_PATH}`);
+
+    // Entscheidend: die 4 MiB sind nicht vollständig geflossen.
+    expect(emittedBytes).toBeLessThan(oversized);
+  });
+
   it('rejects a preview artifact root mismatch through buildFetchArtifacts', async () => {
     const previewPath = 'control_layer/WLAN/sources/profiles/WLAN-profile.json';
     const input = makeMinimalFetchInput();
