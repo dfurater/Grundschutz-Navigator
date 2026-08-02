@@ -1230,7 +1230,7 @@ describe('ControlDetail', () => {
     });
 
     expect(outgoingButton).toBeInTheDocument();
-    expect(within(outgoingButton).getByText('erforderlich · ↔ verwandt')).toBeInTheDocument();
+    expect(screen.getByText('Erforderlich · ↔ verwandt')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Wird referenziert von', level: 4 })).not.toBeInTheDocument();
   });
 
