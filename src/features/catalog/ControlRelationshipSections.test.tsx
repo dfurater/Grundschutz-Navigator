@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { Control } from '@/domain/models';
@@ -63,10 +63,11 @@ describe('ControlDependencies', () => {
       level: 4,
     })).toBeInTheDocument();
 
-    // Jedes Beziehungslabel erscheint als Gruppenüberschrift genau einmal,
-    // auch wenn mehrere Links dasselbe Label tragen.
-    expect(screen.getByText('Erforderlich · ↔ verwandt')).toBeInTheDocument();
-    expect(screen.getByText('Verwandt')).toBeInTheDocument();
+    // Jedes Beziehungslabel erscheint als programmatisch benannte Gruppe
+    // genau einmal, auch wenn mehrere Links dasselbe Label tragen.
+    expect(screen.getByRole('group', { name: 'Erforderlich · ↔ verwandt' }))
+      .toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Verwandt' })).toBeInTheDocument();
 
     const reciprocal = screen.getByRole('button', {
       name: 'GC.2.2 Zielkontrolle (erforderlich · ↔ verwandt)',
@@ -108,9 +109,15 @@ describe('ControlDependencies', () => {
       />,
     );
 
-    // Jedes Label erscheint genau einmal als Gruppenüberschrift, nicht je Zeile.
+    // Jedes Label erscheint genau einmal als Gruppenüberschrift, nicht je Zeile,
+    // und ist als programmatisch benannte Gruppe (nicht nur visueller Text) exponiert.
     expect(screen.getAllByText('Erforderlich')).toHaveLength(1);
     expect(screen.getAllByText('Verwandt')).toHaveLength(1);
+
+    const requiredGroup = screen.getByRole('group', { name: 'Erforderlich' });
+    const relatedGroup = screen.getByRole('group', { name: 'Verwandt' });
+    expect(within(requiredGroup).getAllByRole('button')).toHaveLength(1);
+    expect(within(relatedGroup).getAllByRole('button')).toHaveLength(3);
 
     expect(screen.getByRole('button', {
       name: 'STM.2.1.4.1 Vererbung von Zielobjektkategorien (verwandt)',

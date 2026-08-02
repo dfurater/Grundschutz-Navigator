@@ -121,45 +121,49 @@ export function ControlDependencies({
           <div>
             <SubSectionHeading>Verknüpfte Kontrollen</SubSectionHeading>
             <div className="space-y-3">
-              {linkGroups.map((group) => (
-                <div key={group.label}>
-                  <p className="text-xs font-medium text-slate-500 mb-1">
-                    {capitalize(group.label)}
-                  </p>
-                  <div className="space-y-1">
-                    {group.links.map((link) => {
-                      const targetControl = controlsById?.get(link.targetId);
-                      const ariaLabel = `${link.targetId}${targetControl?.title ? ` ${targetControl.title}` : ''} (${group.label})`;
+              {linkGroups.map((group, groupIndex) => {
+                const groupLabelId = `control-dependencies-group-label-${groupIndex}`;
 
-                      return (
-                        <button
-                          key={`${link.targetId}-${link.relation}`}
-                          type="button"
-                          aria-label={ariaLabel}
-                          disabled={!targetControl}
-                          className={`${detailLinkRowClass} disabled:cursor-not-allowed disabled:opacity-60`}
-                          onClick={() => {
-                            if (targetControl) {
-                              onNavigateToControl?.(targetControl);
-                            }
-                          }}
-                        >
-                          <div className="flex items-baseline gap-2">
-                            <span className="font-mono text-xs text-slate-500 shrink-0 group-hover:text-primary-main">
-                              {link.targetId}
-                            </span>
-                            {targetControl?.title && (
-                              <span className="text-sm text-slate-700 leading-snug">
-                                {targetControl.title}
+                return (
+                  <div key={group.label} role="group" aria-labelledby={groupLabelId}>
+                    <p id={groupLabelId} className="text-xs font-medium text-slate-500 mb-1">
+                      {capitalize(group.label)}
+                    </p>
+                    <div className="space-y-1">
+                      {group.links.map((link) => {
+                        const targetControl = controlsById?.get(link.targetId);
+                        const ariaLabel = `${link.targetId}${targetControl?.title ? ` ${targetControl.title}` : ''} (${group.label})`;
+
+                        return (
+                          <button
+                            key={`${link.targetId}-${link.relation}`}
+                            type="button"
+                            aria-label={ariaLabel}
+                            disabled={!targetControl}
+                            className={`${detailLinkRowClass} disabled:cursor-not-allowed disabled:opacity-60`}
+                            onClick={() => {
+                              if (targetControl) {
+                                onNavigateToControl?.(targetControl);
+                              }
+                            }}
+                          >
+                            <div className="flex items-baseline gap-2">
+                              <span className="font-mono text-xs text-slate-500 shrink-0 group-hover:text-primary-main">
+                                {link.targetId}
                               </span>
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })}
+                              {targetControl?.title && (
+                                <span className="text-sm text-slate-700 leading-snug">
+                                  {targetControl.title}
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
