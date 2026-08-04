@@ -198,8 +198,9 @@ durch Profile Resolution erzeugten Katalogs. Alle vier Träger —
 `resolution-tool` und `source-profile-uuid` als `metadata`-`prop`,
 `source-profile` und `source-profile-uuid` als `metadata`-`link` — kommen in
 keinem der vier gepinnten `oscal_catalog_schema.json` und auch nicht in
-`oscal_catalog_schema.xsd` 1.2.2 vor. Dasselbe gilt für `keywords`. Geprüft am
-2026-08-04 über alle vier Releases: null Treffer je Begriff und Datei.
+`oscal_catalog_schema.xsd` 1.2.2 vor. Dasselbe gilt für die übrigen
+target-gebundenen `prop`-Werte `keywords` und `marking`. Geprüft am 2026-08-04
+über alle vier Releases: null Treffer je Begriff und Datei.
 
 Die Träger existieren ausschließlich als Metaschema-Constraint. Über den
 Schemapfad aus
@@ -274,9 +275,21 @@ und die [Wertelisten für Status und Methode](https://github.com/usnistgov/OSCAL
 ### Catalog 1.1.2 bis 1.2.2
 
 Das Catalog-Modell ist das einzige, das der Navigator heute produktiv
-verarbeitet. Beide `metadata`-Wertebereiche entstehen aus je zwei
-`allowed-values`-Constraints, die denselben Knoten treffen: einem im
-Metadata-Modul und einem im Catalog-Modul.
+verarbeitet. Beide `metadata`-Wertebereiche entstehen aus je **drei**
+`allowed-values`-Constraints, die denselben Knoten treffen. Sie sitzen auf drei
+verschiedenen Definitionsebenen:
+
+| Ebene | Wirkt auf | `metadata`-`prop`-Name | `metadata`-`link`-`rel` |
+| --- | --- | --- | --- |
+| globale `property`- beziehungsweise `link`-Definition | jede Instanz im gesamten Dokument | `marking` | `reference` |
+| `metadata`-Assembly | `metadata` jedes Modells | `keywords` | `canonical`, `alternate`, `latest-version`, `predecessor-version`, `successor-version` |
+| `catalog`-Assembly | nur `catalog/metadata` | `resolution-tool`, `source-profile-uuid` | `source-profile`, `source-profile-uuid` |
+
+Die oberste Zeile ist leicht zu übersehen: Ihr Constraint ist auf der globalen
+`property`-Definition mit dem Target `.[has-oscal-namespace(...)]/@name`
+verankert und gilt deshalb für **jeden** `prop` im Dokument, auch für die in
+`catalog/metadata`. `catalog/metadata/props` referenziert genau diese globale
+Definition (`<assembly ref="property" group-as="props">`).
 
 Der Referenzvalidator wertet alle auf einen Knoten registrierten
 `allowed-values`-Constraints gemeinsam aus. In
@@ -287,8 +300,10 @@ trägt. Der effektive Wertebereich ist damit die **Vereinigung** der Wertelisten
 bei der restriktivsten Offenheit.
 
 Der Metaschema-Default für `@allow-other` ist `no`, der für `@level` ist
-`ERROR`; beide Catalog-Constraints setzen keinen der beiden Werte. Der Default
-für `@extensible` taugt dagegen nicht als Begründung: Er ist in den
+`ERROR`. Keiner der sechs Constraints setzt `@level`; die drei `prop`-Constraints
+setzen auch `@allow-other` nicht und sind damit geschlossen, die drei
+`link`-Constraints setzen es ausdrücklich auf `yes`. Der Default für
+`@extensible` taugt dagegen nicht als Begründung: Er ist in den
 NIST-Quellen widersprüchlich dokumentiert — die
 [Syntaxtabelle der Metaschema-Spezifikation](https://pages.nist.gov/metaschema/specification/syntax/constraints/)
 nennt `no`, was kein gültiger Wert der eigenen Werteliste
@@ -304,22 +319,27 @@ oben belegte Auswertungslogik ist in beiden Branches wortgleich, und
 
 | JSON-Pfad | JSON-Schema | Zusätzlicher Metaschema-Constraint | Konsequenz |
 | --- | --- | --- | --- |
-| `/catalog/metadata/props/*/name` | `TokenDatatype`, kein Enum | Bei OSCAL-Namespace **geschlossen** auf `keywords` (Metadata-Modul) ∪ `resolution-tool`, `source-profile-uuid` (Catalog-Modul); beide Constraints ohne `@allow-other`, also `no` | Ein OSCAL-namespaced `metadata`-`prop` mit anderem Namen besteht die Schema-Stufe und verletzt den Constraint auf `ERROR`-Niveau. |
-| `/catalog/metadata/links/*/rel` | `anyOf[TokenDatatype, enum["reference"]]` — faktisch jeder Token | **Offen**; beide Constraints tragen `allow-other="yes"`. Benannt sind `source-profile`, `source-profile-uuid` (Catalog-Modul) sowie `canonical`, `alternate`, `latest-version`, `predecessor-version`, `successor-version` (Metadata-Modul) | Keine Prüftiefendifferenz, weil der Wertebereich offen ist. Die benannten Werte sind Empfehlungen, keine Schranke. |
+| `/catalog/metadata/props/*/name` | `TokenDatatype`, kein Enum | Bei OSCAL-Namespace **geschlossen** auf die Vereinigung `marking` ∪ `keywords` ∪ `resolution-tool`, `source-profile-uuid`; alle drei Constraints ohne `@allow-other`, also `no` | Ein OSCAL-namespaced `metadata`-`prop` mit anderem Namen besteht die Schema-Stufe und verletzt den Constraint auf `ERROR`-Niveau. |
+| `/catalog/metadata/links/*/rel` | `anyOf[TokenDatatype, enum["reference"]]` — faktisch jeder Token | **Offen**; alle drei Constraints tragen `allow-other="yes"`. Benannt sind `reference` ∪ `canonical`, `alternate`, `latest-version`, `predecessor-version`, `successor-version` ∪ `source-profile`, `source-profile-uuid` | Keine Prüftiefendifferenz, weil der Wertebereich offen ist. Die benannten Werte sind Empfehlungen, keine Schranke. |
 
-Der Unterschied zum `reference`-Enum im JSON-Schema ist strukturell: Diese
-Werteliste sitzt auf der `rel`-Flagdefinition selbst und gelangt deshalb in das
-generierte Schema. Die beiden Wertelisten der Tabelle sind an ein `@target`
-gebunden und gelangen nicht hinein. `prop/name` besitzt keine solche
-Flag-Werteliste und bleibt deshalb ohne jedes Enum.
+Dass ausgerechnet `reference` als einziger dieser Werte im JSON-Schema
+auftaucht, ist strukturell begründet: Diese Werteliste sitzt unmittelbar auf der
+`rel`-Flagdefinition und gelangt deshalb in das generierte Schema. Alle übrigen
+Wertelisten sind an ein `@target` gebunden und gelangen nicht hinein — auch der
+globale `marking`-Constraint nicht, dessen Target `.[has-oscal-namespace(...)]`
+lautet. `prop/name` besitzt keine Flag-Werteliste und bleibt deshalb ohne jedes
+Enum.
 
-Beide Zeilen gelten unverändert für alle vier gepinnten Versionen. Die
-Constraints sind in den Catalog- und Metadata-Metaschemata von 1.1.2, 1.1.3,
-1.2.1 und 1.2.2 wortgleich; ab 1.2.1 tragen sie zusätzlich stabile `@id`s.
-Primärquellen sind die
+Beide Zeilen gelten unverändert für alle vier gepinnten Versionen: Alle sechs
+beteiligten Constraints sind in den Catalog- und Metadata-Metaschemata von
+1.1.2, 1.1.3, 1.2.1 und 1.2.2 wortgleich; ab 1.2.1 tragen sie zusätzlich stabile
+`@id`s. Primärquellen sind die
 [Katalogreferenz 1.2.2](https://pages.nist.gov/OSCAL-Reference/models/v1.2.2/catalog/json-reference/),
-die [Catalog-Metaschema-Quelle](https://github.com/usnistgov/OSCAL/blob/v1.2.2/src/metaschema/oscal_catalog_metaschema.xml#L53-L60)
-und die [Metadata-Metaschema-Quelle](https://github.com/usnistgov/OSCAL/blob/v1.2.2/src/metaschema/oscal_metadata_metaschema.xml#L407-L416).
+die [Constraints der `catalog`-Assembly](https://github.com/usnistgov/OSCAL/blob/v1.2.2/src/metaschema/oscal_catalog_metaschema.xml#L53-L60),
+die [Constraints der `metadata`-Assembly](https://github.com/usnistgov/OSCAL/blob/v1.2.2/src/metaschema/oscal_metadata_metaschema.xml#L407-L416)
+sowie die globalen Wertelisten für
+[`property`](https://github.com/usnistgov/OSCAL/blob/v1.2.2/src/metaschema/oscal_metadata_metaschema.xml#L705-L707)
+und [`link`](https://github.com/usnistgov/OSCAL/blob/v1.2.2/src/metaschema/oscal_metadata_metaschema.xml#L734-L736).
 
 ## Diagnostic-Vertrag
 
