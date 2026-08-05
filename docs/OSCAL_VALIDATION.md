@@ -191,7 +191,69 @@ JSON-Schema für Root und Version geprüft“ und „die ausdrücklich benannten
 Projektregeln wurden geprüft“. Der Status der Constraint-Stufe muss daneben
 sichtbar bleiben.
 
-## Prüftiefen-Landkarte für Mapping 1.2.2
+### Provenienzträger aufgelöster Kataloge sind in keinem Schema abgebildet
+
+Ein versionsunabhängiger Teil dieser Lücke betrifft die Provenienzträger eines
+durch Profile Resolution erzeugten Katalogs. Alle vier Träger —
+`resolution-tool` und `source-profile-uuid` als `metadata`-`prop`,
+`source-profile` und `source-profile-uuid` als `metadata`-`link` — kommen in
+keinem der vier gepinnten `oscal_catalog_schema.json` und auch nicht in
+`oscal_catalog_schema.xsd` 1.2.2 vor. Dasselbe gilt für die übrigen
+target-gebundenen `prop`-Werte `keywords` und `marking`. Geprüft am 2026-08-04
+über alle vier Releases: null Treffer je Begriff und Datei.
+
+Die Träger existieren ausschließlich als Metaschema-Constraint. Über den
+Schemapfad aus
+[GSPP-283](https://linear.app/grundschutz-plus-plus/issue/GSPP-283) sind sie
+deshalb grundsätzlich nicht prüfbar: Weder ihre Anwesenheit noch ihre
+Schreibweise lässt sich mit Stufe 3 belegen. Solange Stufe 4 `not-checked`
+bleibt, ist ein ausdrücklich benanntes Projektorakel nach Stufe 5 der einzige
+Weg, sie zu prüfen — und ein solches Orakel ist ein Projektbefund, kein
+Schemabeleg. Die vollständige Normklärung samt Normstärke je Träger steht in
+[GSPP-327](https://linear.app/grundschutz-plus-plus/issue/GSPP-327).
+
+## Prüftiefen-Landkarte
+
+Die Landkarte hält je Feldpfad fest, wo die Schemaprüfung endet und ab wo
+ausschließlich ein Metaschema-Constraint greift. Sie ist das Instrument, mit dem
+das Projekt eine ungeprüfte Konformitätsaussage vermeidet, solange die
+Constraint-Stufe nach dem obigen Negativbefund `not-checked` bleibt.
+
+Erfasst sind das Mapping-Modell und das Catalog-Modell. Die übrigen sechs
+Root-Modelle folgen mit ihrer jeweiligen Erschließung; ihr Fehlen ist eine
+bekannte Lücke und keine Aussage über ihre Prüftiefe.
+
+### Reichweite der namespace-gebundenen Constraints
+
+Die `prop`-Constraints des OSCAL-Metaschemas binden ihr Ziel über ein
+`has-oscal-namespace(...)`-Prädikat. Diese Metapath-Funktion vergleicht die
+Zeichenkette **exakt** und nicht als Präfix. Belegkette aus
+[liboscal-java](https://github.com/usnistgov/liboscal-java), NISTs
+Referenzbibliothek hinter der OSCAL CLI, Stand `49e9768`:
+
+| Baustein | Datei | Befund |
+| --- | --- | --- |
+| Konstante | [`IProperty.java`](https://github.com/usnistgov/liboscal-java/blob/49e9768b0551aec7202c46b23aee6feed668eff4/src/main/java/gov/nist/secauto/oscal/lib/model/metadata/IProperty.java#L36) | `URI OSCAL_NAMESPACE = URI.create("http://csrc.nist.gov/ns/oscal")` — ohne `/1.0` |
+| Normalisierung | [`AbstractProperty.java`](https://github.com/usnistgov/liboscal-java/blob/49e9768b0551aec7202c46b23aee6feed668eff4/src/main/java/gov/nist/secauto/oscal/lib/model/metadata/AbstractProperty.java#L58-L64) | `normalizeNamespace()` ersetzt ausschließlich `null` durch `OSCAL_NAMESPACE` und reicht jeden anderen Wert unverändert durch |
+| Vergleich | [`HasOscalNamespace.java`](https://github.com/usnistgov/liboscal-java/blob/49e9768b0551aec7202c46b23aee6feed668eff4/src/main/java/gov/nist/secauto/oscal/lib/metapath/function/library/HasOscalNamespace.java#L170-L173) | `nodeNamespaceString.equals(node.asString())` über `.anyMatch(...)` |
+
+Daraus folgt für jede Zeile der Landkarte, deren Constraint ein
+`has-oscal-namespace(...)`-Prädikat trägt: Ein `prop` in einem abweichenden
+Namespace ist vom Constraint **nicht erfasst**. Die Prüftiefe fällt dort auf die
+reine Schemaprüfung zurück, ohne dass das aus dem Dokument selbst erkennbar
+wäre. Ein fehlendes `ns` bedeutet dagegen den OSCAL-Namespace; dort greift der
+Constraint.
+
+Am Bestand belegt: Der ausgelieferte Grundschutz++-Anwenderkatalog führt in
+`metadata` zwei `props`. `keywords` trägt kein `ns`, liegt damit im
+OSCAL-Namespace und im erlaubten Wertesatz. `scope_implements_norm` trägt
+`ns` = `http://csrc.nist.gov/ns/oscal/1.0` — den XML-Dokumentnamespace und
+nicht den Property-Namespace — und wird deshalb von keinem OSCAL-Constraint
+erfasst. Der Bestand ist konform; die Konformität beruht an dieser Stelle aber
+auf einem Namespace, der wie OSCAL aussieht und keiner ist. Details in
+[GSPP-241](https://linear.app/grundschutz-plus-plus/issue/GSPP-241).
+
+### Mapping 1.2.2
 
 Die unterschiedliche Tiefe entsteht durch die Modellierung im NIST-Metaschema:
 `relationship` ist ein Feld, dessen bedingte `allowed-values` nicht in das
@@ -209,6 +271,75 @@ Primärquellen sind die
 [Mapping-Referenz 1.2.2](https://pages.nist.gov/OSCAL-Reference/models/v1.2.2/mapping/json-reference/),
 die [Mapping-Metaschema-Quelle](https://github.com/usnistgov/OSCAL/blob/v1.2.2/src/metaschema/oscal_mapping-common_metaschema.xml#L99-L150)
 und die [Wertelisten für Status und Methode](https://github.com/usnistgov/OSCAL/blob/v1.2.2/src/metaschema/oscal_mapping-common_metaschema.xml#L590-L642).
+
+### Catalog 1.1.2 bis 1.2.2
+
+Das Catalog-Modell ist das einzige, das der Navigator heute produktiv
+verarbeitet. Beide `metadata`-Wertebereiche entstehen aus je **drei**
+`allowed-values`-Constraints, die denselben Knoten treffen. Sie sitzen auf drei
+verschiedenen Definitionsebenen:
+
+| Ebene | Wirkt auf | `metadata`-`prop`-Name | `metadata`-`link`-`rel` |
+| --- | --- | --- | --- |
+| globale `property`- beziehungsweise `link`-Definition | jede Instanz im gesamten Dokument | `marking` | `reference` |
+| `metadata`-Assembly | `metadata` jedes Modells | `keywords` | `canonical`, `alternate`, `latest-version`, `predecessor-version`, `successor-version` |
+| `catalog`-Assembly | nur `catalog/metadata` | `resolution-tool`, `source-profile-uuid` | `source-profile`, `source-profile-uuid` |
+
+Die oberste Zeile ist leicht zu übersehen: Ihr Constraint ist auf der globalen
+`property`-Definition mit dem Target `.[has-oscal-namespace(...)]/@name`
+verankert und gilt deshalb für **jeden** `prop` im Dokument, auch für die in
+`catalog/metadata`. `catalog/metadata/props` referenziert genau diese globale
+Definition (`<assembly ref="property" group-as="props">`).
+
+Der Referenzvalidator wertet alle auf einen Knoten registrierten
+`allowed-values`-Constraints gemeinsam aus. In
+[`DefaultConstraintValidator.ValueStatus`](https://github.com/usnistgov/metaschema-java/blob/030d102dcbf51564edb5bb9dd98286d684e06250/core/src/main/java/gov/nist/secauto/metaschema/core/model/constraint/DefaultConstraintValidator.java#L482-L547)
+gilt ein Wert als zulässig, sobald **ein** Constraint ihn kennt, und der
+Wertebereich ist geschlossen, sobald **ein** Constraint `@allow-other` = `no`
+trägt. Der effektive Wertebereich ist damit die **Vereinigung** der Wertelisten
+bei der restriktivsten Offenheit.
+
+Der Metaschema-Default für `@allow-other` ist `no`, der für `@level` ist
+`ERROR`. Keiner der sechs Constraints setzt `@level`; die drei `prop`-Constraints
+setzen auch `@allow-other` nicht und sind damit geschlossen, die drei
+`link`-Constraints setzen es ausdrücklich auf `yes`. Der Default für
+`@extensible` taugt dagegen nicht als Begründung: Er ist in den
+NIST-Quellen widersprüchlich dokumentiert — die
+[Syntaxtabelle der Metaschema-Spezifikation](https://pages.nist.gov/metaschema/specification/syntax/constraints/)
+nennt `no`, was kein gültiger Wert der eigenen Werteliste
+`model`/`external`/`none` ist, das
+[Metaschema-Modell](https://github.com/usnistgov/metaschema/blob/2673565db0d2dd937a8c2da013e3843b52c73d5c/schema/metaschema/metaschema-module-metaschema.xml#L1042)
+und das
+[zugehörige XSD](https://github.com/usnistgov/metaschema/blob/2673565db0d2dd937a8c2da013e3843b52c73d5c/schema/xml/metaschema.xsd#L902)
+nennen `external`, und die Referenzimplementierung nennt in
+[`IAllowedValuesConstraint`](https://github.com/usnistgov/metaschema-java/blob/030d102dcbf51564edb5bb9dd98286d684e06250/core/src/main/java/gov/nist/secauto/metaschema/core/model/constraint/IAllowedValuesConstraint.java#L39-L41)
+je nach Branch `MODEL` oder `EXTERNAL`. Die Vereinigung hängt nicht daran: Die
+oben belegte Auswertungslogik ist in beiden Branches wortgleich, und
+`@extensible` wirkt dort nur als Erweiterungs-Scope, nicht als Wertebereich.
+
+| JSON-Pfad | JSON-Schema | Zusätzlicher Metaschema-Constraint | Konsequenz |
+| --- | --- | --- | --- |
+| `/catalog/metadata/props/*/name` | `TokenDatatype`, kein Enum | Bei OSCAL-Namespace **geschlossen** auf die Vereinigung `marking` ∪ `keywords` ∪ `resolution-tool`, `source-profile-uuid`; alle drei Constraints ohne `@allow-other`, also `no` | Ein OSCAL-namespaced `metadata`-`prop` mit anderem Namen besteht die Schema-Stufe und verletzt den Constraint auf `ERROR`-Niveau. |
+| `/catalog/metadata/links/*/rel` | `anyOf[TokenDatatype, enum["reference"]]` — faktisch jeder Token | **Offen**; alle drei Constraints tragen `allow-other="yes"`. Benannt sind `reference` ∪ `canonical`, `alternate`, `latest-version`, `predecessor-version`, `successor-version` ∪ `source-profile`, `source-profile-uuid` | Keine Prüftiefendifferenz, weil der Wertebereich offen ist. Die benannten Werte sind Empfehlungen, keine Schranke. |
+
+Dass ausgerechnet `reference` als einziger dieser Werte im JSON-Schema
+auftaucht, ist strukturell begründet: Diese Werteliste sitzt unmittelbar auf der
+`rel`-Flagdefinition und gelangt deshalb in das generierte Schema. Alle übrigen
+Wertelisten sind an ein `@target` gebunden und gelangen nicht hinein — auch der
+globale `marking`-Constraint nicht, dessen Target `.[has-oscal-namespace(...)]`
+lautet. `prop/name` besitzt keine Flag-Werteliste und bleibt deshalb ohne jedes
+Enum.
+
+Beide Zeilen gelten unverändert für alle vier gepinnten Versionen: Alle sechs
+beteiligten Constraints sind in den Catalog- und Metadata-Metaschemata von
+1.1.2, 1.1.3, 1.2.1 und 1.2.2 wortgleich; ab 1.2.1 tragen sie zusätzlich stabile
+`@id`s. Primärquellen sind die
+[Katalogreferenz 1.2.2](https://pages.nist.gov/OSCAL-Reference/models/v1.2.2/catalog/json-reference/),
+die [Constraints der `catalog`-Assembly](https://github.com/usnistgov/OSCAL/blob/v1.2.2/src/metaschema/oscal_catalog_metaschema.xml#L53-L60),
+die [Constraints der `metadata`-Assembly](https://github.com/usnistgov/OSCAL/blob/v1.2.2/src/metaschema/oscal_metadata_metaschema.xml#L407-L416)
+sowie die globalen Wertelisten für
+[`property`](https://github.com/usnistgov/OSCAL/blob/v1.2.2/src/metaschema/oscal_metadata_metaschema.xml#L705-L707)
+und [`link`](https://github.com/usnistgov/OSCAL/blob/v1.2.2/src/metaschema/oscal_metadata_metaschema.xml#L734-L736).
 
 ## Diagnostic-Vertrag
 
@@ -323,7 +454,9 @@ Dokument erhalten.
 
 Der temporäre Prototyp verwendete ausschließlich checksum-geprüfte Artefakte
 des gepinnten BSI-Snapshots; weder Artefakte noch Testharnisch werden im
-Repository gehalten.
+Repository gehalten. Das Catalog-Paar zu `metadata.props` belegt beide Aussagen
+der Landkarte zugleich: die Prüftiefendifferenz und die Reichweite der
+namespace-gebundenen Constraints.
 
 | Fall | Erwarteter und beobachteter Befund |
 | --- | --- |
@@ -331,6 +464,8 @@ Repository gehalten.
 | reales ISO→Grundschutz++-Mapping, OSCAL 1.2.2 | Das unveränderte Artefakt bleibt wegen `qa-reviewed` und `qa-note` schema-invalid; die separate Policy kann nur diese exakten Diagnosen akzeptieren. |
 | aus dem realen Mapping abgeleitet, `relationship: "maps-to"` | JSON-Schema besteht; die nicht verfügbare allgemeine Constraint-Stufe bleibt als Lücke sichtbar. |
 | aus dem realen Mapping abgeleitet, `status: "veröffentlicht"` | JSON-Schema scheitert. |
+| aus dem realen `catalog-gspp` abgeleitet, `metadata.props` um `{ "name": "erfundener-name" }` **ohne** `ns` ergänzt | JSON-Schema besteht, weil `prop/name` kein Enum trägt. Der Name verletzt den geschlossenen OSCAL-Wertebereich; die nicht verfügbare Constraint-Stufe bleibt als Lücke sichtbar. |
+| dieselbe Variante mit `ns: "https://example.org/ns"` | JSON-Schema besteht ebenso. Ein Constraint-Verstoß liegt hier **nicht** vor: Der Fremd-Namespace ist regulär und vom `has-oscal-namespace(...)`-Prädikat nicht erfasst. Solange Stufe 4 `not-checked` ist, ist das am Metaschema belegt und nicht an einem Lauf beobachtet. |
 | null, mehrere, unbekannte oder zusätzliche Root-Keys | Root-Erkennung scheitert. |
 | doppelter Root-Key oder doppeltes `metadata.oscal-version` | Der Streaming-Token-Scanner lehnt das Dokument auf der jeweiligen Objekttiefe vor `JSON.parse` mit `OSCAL_JSON_DUPLICATE_MEMBER` ab; Root-Erkennung und Schema-Auswahl laufen nicht. Escape-äquivalente Member-Namen gelten ebenfalls als Duplikat. |
 | nicht vorhandenes Root×Version-Paar | Auswahl scheitert ohne Fallback. |
@@ -343,6 +478,10 @@ Repository gehalten.
 - [NIST: OSCAL-Layer und Modelle](https://pages.nist.gov/OSCAL/learn/concepts/layer/)
 - [NIST: OSCAL 1.2.2 Release](https://github.com/usnistgov/OSCAL/releases/tag/v1.2.2)
 - [NIST: OSCAL 1.2.2 Model Reference](https://pages.nist.gov/OSCAL-Reference/models/v1.2.2/)
+- [NIST: Metaschema-Spezifikation, Constraints](https://pages.nist.gov/metaschema/specification/syntax/constraints/)
+- [NIST: Property-Namespaces und Extension-Modell](https://pages.nist.gov/OSCAL/learn/tutorials/general/extension/)
+- [liboscal-java — Referenzbibliothek hinter der OSCAL CLI](https://github.com/usnistgov/liboscal-java)
+- [metaschema-java — Referenzimplementierung der Constraint-Auswertung](https://github.com/usnistgov/metaschema-java)
 - [go-oscal 0.7.1 Release](https://github.com/defenseunicorns/go-oscal/releases/tag/v0.7.1)
 - [Metaschema OSCAL CLI 3.2.0 Release](https://github.com/metaschema-framework/oscal-cli/releases/tag/v3.2.0)
 - [Compliance Trestle 4.2.0 Release](https://github.com/oscal-compass/compliance-trestle/releases/tag/v4.2.0)
