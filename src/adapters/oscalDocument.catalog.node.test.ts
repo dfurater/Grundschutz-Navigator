@@ -96,7 +96,7 @@ describe.skipIf(!catalogAvailable)('Verlustfreiheit am realen Katalog', () => {
     // Der Referenzwert aus GSPP-280 (21.289 Container) wurde an einem älteren
     // Katalogstand gemessen; der Wert wandert mit jedem Upstream-Update.
     // Geprüft wird deshalb die Größenordnung, nicht die exakte Zahl — sie
-    // bindet den Heap-Referenzwert aus scripts/measure-catalog-heap.mjs an
+    // bindet den Wert je Container aus oscalDocument.heap.node.test.ts an
     // ein plausibles Dokument.
     const { total } = countContainers(document.source);
 

@@ -442,7 +442,7 @@ export function parseMetadata(raw: RawOscalCatalog): CatalogMetadataInfo {
     responsibleParties: (meta['responsible-parties'] ?? []).map((entry) => ({
       roleId: entry['role-id'],
       // Eigenes Array: Der Quellgraph bleibt neben dem Domänenmodell erhalten
-      // (ADR-0002 §1), und eine Mutation hier dürfte ihn nicht verändern.
+      // (ADR-2 §1), und eine Mutation hier dürfte ihn nicht verändern.
       // Die enthaltenen Strings bleiben geteilt — sie sind unveränderlich.
       partyUuids: [...entry['party-uuids']],
     })),
@@ -462,7 +462,7 @@ function parseBackMatter(
     rlinks: (resource.rlinks ?? []).map((link) => ({
       href: link.href,
       // Eigenes Array **und** eigene Hash-Objekte: Ein neues Array allein
-      // würde die Elemente weiterhin mit dem Quellgraphen teilen (ADR-0002 §1).
+      // würde die Elemente weiterhin mit dem Quellgraphen teilen (ADR-2 §1).
       hashes: (link.hashes ?? []).map((hash) => ({
         algorithm: hash.algorithm,
         value: hash.value,
@@ -485,7 +485,7 @@ export interface ParseCatalogOptions {
  * Parse a raw OSCAL document into an enriched Catalog.
  *
  * @param raw - The parsed JSON (either { catalog: ... } or the catalog itself)
- * @param options - Catalog scope; identity per ADR-0001
+ * @param options - Catalog scope; identity per ADR-1
  * @returns A fully enriched Catalog with practices, topics, and controls
  * @throws Error if the input structure is invalid or alt-identifiers collide
  */
@@ -519,7 +519,7 @@ export function parseCatalog(raw: unknown, options: ParseCatalogOptions = {}): C
     controlsById.set(c.id, c);
   }
 
-  // Kanonische URL-Identität (ADR-0001): pro Katalog vollständig und
+  // Kanonische URL-Identität (ADR-1): pro Katalog vollständig und
   // eindeutig, fail-closed — ein Control ohne alt-identifier wäre nach dem
   // Routen-Cutover (GRU-235) nicht mehr adressierbar.
   const controlsByAltIdentifier = new Map<string, Control>();

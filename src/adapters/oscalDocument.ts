@@ -1,5 +1,5 @@
 // =============================================================================
-// OSCAL-Dokumentmodell — verlustfreier Einstieg in den Katalogpfad (ADR-0002)
+// OSCAL-Dokumentmodell — verlustfreier Einstieg in den Katalogpfad (ADR-2)
 //
 // Der Katalog wurde bisher beim Parsen auf das Domänenmodell reduziert; der
 // Quellgraph fiel danach aus dem Scope. Damit ging jedes OSCAL-Feld verloren,
@@ -15,7 +15,7 @@ import { parseCatalog } from '@/adapters/oscalAdapter';
 import type { CatalogDocument, CatalogDocumentContext } from '@/domain/models';
 
 /**
- * Parst ein OSCAL-Katalogdokument verlustfrei nach ADR-0002.
+ * Parst ein OSCAL-Katalogdokument verlustfrei nach ADR-2.
  *
  * `source` bleibt unverändert am Dokument erhalten und wird nicht mutiert (§1).
  * Das Domänenmodell entsteht als Projektion `view = derive(source, context)`
@@ -24,8 +24,8 @@ import type { CatalogDocument, CatalogDocumentContext } from '@/domain/models';
  * Aufwand und Speicher tragen die Container-Hüllen des Quellgraphen, nicht
  * dessen Textmasse: Das Domänenmodell hält seine Strings per Referenz auf
  * dieselben Quellwerte. Dieses String-Sharing ist der Grund, warum der
- * Zusatzspeicher weit unter der Dateigröße liegt — siehe
- * `scripts/measure-catalog-heap.mjs`.
+ * Zusatzspeicher weit unter der Dateigröße liegt — gemessen in
+ * `src/adapters/oscalDocument.heap.node.test.ts`.
  *
  * @param source Ergebnis von `JSON.parse` über das OSCAL-Dokument
  * @param context Ableitungskontext: Katalogidentität und Vertrauensklasse

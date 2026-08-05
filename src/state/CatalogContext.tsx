@@ -185,7 +185,7 @@ export function CatalogProvider({
 
         if (cancelled) return;
 
-        // 3. Parse OSCAL JSON into the lossless document model (ADR-0002).
+        // 3. Parse OSCAL JSON into the lossless document model (ADR-2).
         //    Der Quellgraph bleibt am Dokument erhalten, statt nach dem
         //    Ableiten des Domänenmodells aus dem Scope zu fallen.
         //

@@ -323,7 +323,7 @@ export interface CatalogMetadataInfo {
 
 /** The fully parsed catalog */
 export interface Catalog {
-  /** Stable catalog key from the source registry (ADR-0001), e.g. "gspp" */
+  /** Stable catalog key from the source registry (ADR-1), e.g. "gspp" */
   catalogKey: CatalogKey;
   /** OSCAL document UUID */
   uuid: string;
@@ -335,7 +335,7 @@ export interface Catalog {
   controlsById: Map<string, Control>;
   /**
    * All controls indexed by their alt-identifier (canonical URL identity,
-   * ADR-0001). Missing or duplicate alt-identifiers within one catalog are
+   * ADR-1). Missing or duplicate alt-identifiers within one catalog are
    * rejected at parse time, so this map always covers every control.
    */
   controlsByAltIdentifier: Map<string, Control>;
@@ -348,7 +348,7 @@ export interface Catalog {
 }
 
 /**
- * Catalog-scoped internal control reference (ADR-0001).
+ * Catalog-scoped internal control reference (ADR-1).
  * URLs use catalogKey + altIdentifier instead; this pair is the
  * OSCAL/reference identity for lookups and relations.
  */
@@ -358,11 +358,11 @@ export interface ControlRef {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Verlustfreies Dokumentmodell (ADR-0002)                            */
+/*  Verlustfreies Dokumentmodell (ADR-2)                              */
 /* ------------------------------------------------------------------ */
 
 /**
- * Vertrauensklasse eines Dokuments (ADR-0002 §10).
+ * Vertrauensklasse eines Dokuments (ADR-2 §10).
  *
  * Die Klassen werden nie vermischt: Klasse 2 läuft nicht über den
  * Manifest-/Hash-Mechanismus, und die Provenienzanzeige suggeriert für sie
@@ -381,16 +381,16 @@ export type TrustClass =
   | 'class-2-local-user';
 
 /**
- * Expliziter, typisierter Ableitungskontext (ADR-0002 §2).
+ * Expliziter, typisierter Ableitungskontext (ADR-2 §2).
  *
  * Der Kontext ist nicht implizit und nicht global; er wird als Parameter
  * gereicht und ist prüfbar. Er trägt genau die Information, die das
  * Domänenmodell braucht, aber nicht aus dem Dokument stammt.
  */
 export interface CatalogDocumentContext {
-  /** Identität aus dem Quellregister (ADR-0001) — steht nicht im Dokument */
+  /** Identität aus dem Quellregister (ADR-1) — steht nicht im Dokument */
   catalogKey: CatalogKey;
-  /** Vertrauensklasse nach ADR-0002 §10 */
+  /** Vertrauensklasse nach ADR-2 §10 */
   trustClass: TrustClass;
 }
 
@@ -538,14 +538,14 @@ export interface TopicVocabularyCoverage {
   }>;
 }
 
-/** Integrity record shared by every shipped artifact (ADR-0001) */
+/** Integrity record shared by every shipped artifact (ADR-1) */
 export interface ArtifactIntegrity {
   sha256: string;
   size_bytes: number;
   fetched_at: string;
 }
 
-/** Build context shared by every shipped artifact (ADR-0001) */
+/** Build context shared by every shipped artifact (ADR-1) */
 export interface ArtifactBuildInfo {
   workflow_run_id: string;
   workflow_run_url: string | null;
@@ -606,7 +606,7 @@ export interface VerificationResult {
 
 export interface CatalogState {
   /**
-   * Das geladene Katalogdokument mit erhaltenem Quellgraphen (ADR-0002).
+   * Das geladene Katalogdokument mit erhaltenem Quellgraphen (ADR-2).
    * Definierte Zugriffsstelle für alles, was das Domänenmodell nicht abbildet.
    */
   catalogDocument: CatalogDocument | null;

@@ -21,7 +21,8 @@ Dokumentmodell neben dem angereicherten Katalog geführt — siehe
 
 ## Verlustfreies Dokumentmodell
 
-Der Katalogpfad folgt dem verbindlichen Vertrag aus ADR-0002: **Das
+Der Katalogpfad folgt dem verbindlichen Vertrag aus
+[ADR-2](https://linear.app/grundschutz-plus-plus/issue/ADR-2): **Das
 Originaldokument ist die Wahrheit, das Domänenmodell eine Projektion darauf.**
 
 ```typescript
@@ -31,8 +32,8 @@ type TrustClass =
   | 'class-2-local-user';        // lokales Nutzerdokument
 
 interface CatalogDocumentContext {
-  catalogKey: CatalogKey;   // Identität aus dem Quellregister (ADR-0001)
-  trustClass: TrustClass;   // Vertrauensklasse (ADR-0002 §10)
+  catalogKey: CatalogKey;   // Identität aus dem Quellregister (ADR-1)
+  trustClass: TrustClass;   // Vertrauensklasse (ADR-2 §10)
 }
 
 interface CatalogDocument {
@@ -48,7 +49,8 @@ Ableitungsfunktion und wird von dort aufgerufen.
 
 ### Vertrauensklasse ist ein Ergebnis, keine Herkunftsangabe
 
-Klasse 1 ist nach ADR-0002 §10 über drei Eigenschaften definiert:
+Klasse 1 ist nach [ADR-2](https://linear.app/grundschutz-plus-plus/issue/ADR-2)
+§10 über drei Eigenschaften definiert:
 Quellregister-Herkunft, Manifest-v2-Provenienz **und bestandene
 Laufzeit-Hashprüfung**. Ein Dokument darf sich deshalb erst dann
 `class-1-verified-public` nennen, wenn diese Prüfung tatsächlich gelaufen und

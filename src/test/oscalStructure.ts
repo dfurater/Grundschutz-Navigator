@@ -1,5 +1,5 @@
 // =============================================================================
-// Strukturorakel — Zählregeln A und B aus dem Dokumentmodell-Vertrag (ADR-0002)
+// Strukturorakel — Zählregeln A und B aus dem Dokumentmodell-Vertrag (ADR-2)
 //
 // Testwerkzeug, keine Produktionsschnittstelle. Es beantwortet genau eine
 // Frage: Verliert ein Verarbeitungsweg Inhalt gegenüber dem Original?

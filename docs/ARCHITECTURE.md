@@ -123,7 +123,7 @@ public/data/
 CatalogContext (useEffect on mount)
 • fetchCatalogWithBuffer()   → ArrayBuffer (Katalog + Vokabulare parallel)
 • parseCatalogDocument()     → CatalogDocument { source, context, view }
-                               source = unveränderter Quellgraph (ADR-0002)
+                               source = unveränderter Quellgraph (ADR-2)
                                view   = kataloggescopter, angereicherter Catalog
 • verifyArtifactIntegrity()  → VerificationResult (Katalog + Vokabulare)
 • buildVocabularyRegistry()
@@ -145,7 +145,8 @@ Die Anwendung verwendet React Context für den globalen Zustand:
 
 Zentraler Provider, der folgende Daten bereitstellt:
 
-- `catalogDocument` — Katalogdokument nach ADR-0002: unveränderter Quellgraph
+- `catalogDocument` — Katalogdokument nach
+  [ADR-2](https://linear.app/grundschutz-plus-plus/issue/ADR-2): unveränderter Quellgraph
   (`source`), expliziter Ableitungskontext (`context`) und die Projektion
   (`view`). Siehe [DOMAIN_MODELS.md](./DOMAIN_MODELS.md#verlustfreies-dokumentmodell).
 - `catalog` — Angereicherter Katalog (Practices, Topics, Controls); identisch

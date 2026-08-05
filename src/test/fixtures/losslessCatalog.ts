@@ -1,7 +1,7 @@
 // =============================================================================
 // Fixture — OSCAL-Katalog mit allen verlustkritischen Strukturen
 //
-// Positiv- und Negativkorpus für den verlustfreien Dokumentvertrag (ADR-0002).
+// Positiv- und Negativkorpus für den verlustfreien Dokumentvertrag (ADR-2).
 // Der Katalog ist bewusst als JSON-Text hinterlegt: nur so existiert ein
 // unverändertes Original, gegen das die No-op-Serialisierung vergleichen kann.
 //

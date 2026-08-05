@@ -328,7 +328,7 @@ describe('CatalogProvider', () => {
     expect(result.current.vocabularyProvenance).toBeNull();
   });
 
-  it('hält den Quellgraphen des Katalogs neben dem Domänenmodell (ADR-0002 §1)', async () => {
+  it('hält den Quellgraphen des Katalogs neben dem Domänenmodell (ADR-2 §1)', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
 
@@ -374,7 +374,7 @@ describe('CatalogProvider', () => {
   });
 
   /* ---------------------------------------------------------------- */
-  /*  Vertrauensklasse (ADR-0002 §10)                                  */
+  /*  Vertrauensklasse (ADR-2 §10)                                    */
   /* ---------------------------------------------------------------- */
 
   async function renderWithCatalogMetadata(
