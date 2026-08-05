@@ -373,12 +373,15 @@ Ein fehlendes oder nicht parsebares `catalog.json` bleibt dagegen ein harter Lad
 
 Zusätzlich zur internen Integritätsprüfung generiert `.github/workflows/deploy.yml` Build-Provenance über GitHub Artifact Attestations (`actions/attest` mit `subject-path: dist/**`). Die Attestierung wird OIDC-signiert und bei GitHub gespeichert; sie belegt, welcher Workflow-Lauf die deployten Artefakte gebaut hat.
 
+Damit die Aussage über den Build-Prozess trägt, ist auch der Build-Prozess selbst festgeschrieben: Alle Actions in `.github/workflows/` sind auf 40-stellige Commit-SHAs gepinnt statt auf verschiebbare Versions-Tags.
+
 ## Sicherheitshinweise
 
 - **SHA-256** ist kollisionsresistent (praktisch)
 - **Git Blob SHA** wird zusätzlich verwendet für Git-Integration
 - **Workflow Run ID** ermöglicht Rückverfolgung zum Build-Prozess
 - **Runner Environment** identifiziert die Build-Plattform
+- **SHA-Pinning der Workflow-Actions** (`.github/workflows/**`) macht jede Action-Referenz unveränderlich: Ein Tag lässt sich bei einer Übernahme des Action-Repositories auf beliebigen Code umbiegen, ein Commit-SHA nicht. Der Guard `scripts/workflow-action-pinning.test.ts` liest das Workflow-Verzeichnis dynamisch ein und lässt `npm run test` fehlschlagen, sobald eine `uses:`-Zeile ohne 40-stelligen SHA oder ohne Versionskommentar hinzukommt. Da GitHub für SHA-gepinnte Actions keine Dependabot-Security-Alerts mehr erzeugt, läuft der `github-actions`-Eintrag in `.github/dependabot.yml` als Ausgleich täglich statt wöchentlich.
 - **Quellregister und Upstream-Grenzen** (`src/domain/sourceRegistry.mjs`, `scripts/security-guards.mjs`) verhindern, dass der Fetch auf fremde Repositories, externe Hosts, nicht registrierte Pfade oder unzulässige Refs umgelenkt wird. Pfad-Traversal, Symlinks bzw. andere nicht reguläre Tree-Einträge und ein OSCAL-Root-Type-Mismatch führen geschlossen zum Abbruch.
 - **Vollständiger Read-only-Tree-Diff** (`scripts/upstream-artifacts.mjs`) klassifiziert Änderungen unter allen überwachten Wurzeln als `added`, `modified` oder `removed`. Neue nicht registrierte Pfade werden als `unclassified` gemeldet, ohne ihren Blob zu laden oder sie auszuliefern. Unvollständige Trees und doppelte bzw. unsichere Pfade werden abgelehnt.
 - **Catalog-Sync-Guard** (`scripts/catalog-sync-guard.mjs`) prüft bei Sync-PRs Branch und Titel, einen exakt auf `upstream-manifest.json` begrenzten Diff, das strikte Manifest-v2-Schema für das bisherige und das neue Manifest, Registry-Metadaten, kanonische Dateireihenfolge und Signatur. Der neue BSI-Snapshot muss per GitHub Compare API ausnahmslos `ahead` sein; `scripts/sync-upstream-manifest.mjs` blockiert eine Signaturänderung bei unverändertem Snapshot bereits vor jedem Schreibzugriff. Git-Blob-SHAs und Content-Hashes werden gegen den vollständigen Snapshot gebunden; die Namespace-Inventur muss exakt allen direkten `.csv`-Mitgliedern des registrierten Verzeichnisses entsprechen, während externe oder anderweitig unzulässige `ns`-Referenzen weiterhin blockieren. API- und Netzwerkfehler sowie `identical`, `behind` und `diverged` blockieren.
