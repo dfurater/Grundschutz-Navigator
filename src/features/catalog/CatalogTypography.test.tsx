@@ -275,6 +275,7 @@ function makeVocabularyRegistry() {
 
 function makeCatalogState(): CatalogState {
   return {
+    catalogDocument: null,
     catalog: {
       catalogKey: 'gspp',
       uuid: 'catalog-typography',

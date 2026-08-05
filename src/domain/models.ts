@@ -323,7 +323,7 @@ export interface CatalogMetadataInfo {
 
 /** The fully parsed catalog */
 export interface Catalog {
-  /** Stable catalog key from the source registry (ADR-0001), e.g. "gspp" */
+  /** Stable catalog key from the source registry (ADR-1), e.g. "gspp" */
   catalogKey: CatalogKey;
   /** OSCAL document UUID */
   uuid: string;
@@ -335,7 +335,7 @@ export interface Catalog {
   controlsById: Map<string, Control>;
   /**
    * All controls indexed by their alt-identifier (canonical URL identity,
-   * ADR-0001). Missing or duplicate alt-identifiers within one catalog are
+   * ADR-1). Missing or duplicate alt-identifiers within one catalog are
    * rejected at parse time, so this map always covers every control.
    */
   controlsByAltIdentifier: Map<string, Control>;
@@ -348,13 +348,74 @@ export interface Catalog {
 }
 
 /**
- * Catalog-scoped internal control reference (ADR-0001).
+ * Catalog-scoped internal control reference (ADR-1).
  * URLs use catalogKey + altIdentifier instead; this pair is the
  * OSCAL/reference identity for lookups and relations.
  */
 export interface ControlRef {
   catalogKey: CatalogKey;
   controlId: string;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Verlustfreies Dokumentmodell (ADR-2)                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Vertrauensklasse eines Dokuments (ADR-2 §10).
+ *
+ * Die Klassen werden nie vermischt: Klasse 2 läuft nicht über den
+ * Manifest-/Hash-Mechanismus, und die Provenienzanzeige suggeriert für sie
+ * keine Verifikation.
+ *
+ * Klasse 1 ist in zwei Zustände aufgeteilt, weil ihre Definition die
+ * Laufzeit-Hashprüfung einschließt: Ein Dokument aus dem Quellregister ist
+ * erst dann `verified`, wenn diese Prüfung tatsächlich bestanden wurde.
+ * Fehlen die Integritätsmetadaten oder weicht der Hash ab, bleibt es
+ * `unverified` — die Anwendung nutzt es weiter, behauptet aber keine
+ * Verifikation.
+ */
+export type TrustClass =
+  | 'class-1-verified-public'
+  | 'class-1-unverified-public'
+  | 'class-2-local-user';
+
+/**
+ * Expliziter, typisierter Ableitungskontext (ADR-2 §2).
+ *
+ * Der Kontext ist nicht implizit und nicht global; er wird als Parameter
+ * gereicht und ist prüfbar. Er trägt genau die Information, die das
+ * Domänenmodell braucht, aber nicht aus dem Dokument stammt.
+ */
+export interface CatalogDocumentContext {
+  /** Identität aus dem Quellregister (ADR-1) — steht nicht im Dokument */
+  catalogKey: CatalogKey;
+  /** Vertrauensklasse nach ADR-2 §10 */
+  trustClass: TrustClass;
+}
+
+/**
+ * Ein geparstes OSCAL-Katalogdokument nach dem verlustfreien Vertrag.
+ *
+ * `source` ist die Wahrheit, `view` eine Projektion darauf:
+ * `view = derive(source, context)`. Ein Export wird nie aus `view` neu
+ * aufgebaut (§7).
+ */
+export interface CatalogDocument {
+  /**
+   * Originalknoten (§1): das unveränderte Ergebnis von `JSON.parse`,
+   * einschließlich unbekannter Felder, Extensions, nicht ausgewerteter
+   * `props`/`links` und des vollständigen `back-matter`. Wird nie mutiert.
+   *
+   * Bewusst `unknown`: `JSON.parse` liefert keine geprüfte Struktur, und der
+   * Vertrag filtert den Quellgraphen ausdrücklich nicht nach bekannten
+   * Feldern. Wer ihn liest, grenzt selbst ein.
+   */
+  readonly source: unknown;
+  /** Ableitungskontext, aus dem `view` zusammen mit `source` reproduzierbar ist */
+  readonly context: CatalogDocumentContext;
+  /** Projektion für die UI; trägt keine Information außerhalb von `source` und `context` */
+  readonly view: Catalog;
 }
 
 /* ------------------------------------------------------------------ */
@@ -477,14 +538,14 @@ export interface TopicVocabularyCoverage {
   }>;
 }
 
-/** Integrity record shared by every shipped artifact (ADR-0001) */
+/** Integrity record shared by every shipped artifact (ADR-1) */
 export interface ArtifactIntegrity {
   sha256: string;
   size_bytes: number;
   fetched_at: string;
 }
 
-/** Build context shared by every shipped artifact (ADR-0001) */
+/** Build context shared by every shipped artifact (ADR-1) */
 export interface ArtifactBuildInfo {
   workflow_run_id: string;
   workflow_run_url: string | null;
@@ -544,6 +605,15 @@ export interface VerificationResult {
 /* ------------------------------------------------------------------ */
 
 export interface CatalogState {
+  /**
+   * Das geladene Katalogdokument mit erhaltenem Quellgraphen (ADR-2).
+   * Definierte Zugriffsstelle für alles, was das Domänenmodell nicht abbildet.
+   */
+  catalogDocument: CatalogDocument | null;
+  /**
+   * Projektion des Dokuments für die UI — identisch mit
+   * `catalogDocument.view`. Bequemer Zugriff, kein zweiter Zustand.
+   */
   catalog: Catalog | null;
   provenance: CatalogProvenance | null;
   verification: VerificationResult | null;

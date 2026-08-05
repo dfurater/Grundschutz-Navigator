@@ -57,6 +57,7 @@ function makeControl(overrides: Partial<Control> = {}): Control {
 
 function makeCatalogState(overrides: Partial<CatalogState> = {}): CatalogState {
   return {
+    catalogDocument: null,
     catalog: {
       catalogKey: 'gspp',
       uuid: 'test-catalog',

@@ -83,7 +83,7 @@ Statements 54 %. Sie sollen nicht ohne neue Baseline-Messung gesenkt werden.
 
 ## Architektur (Kurzfassung)
 
-Single-Page-App mit **Zwei-Schichten-Datenmodell**: Raw-OSCAL-Typen werden im Adapter-Layer in angereicherte Domain-Typen überführt (`Control`, `Topic`, `Practice`, `Catalog`). Globaler Zustand via React Context; Filter werden bidirektional mit URL-Parametern synchronisiert und überleben Navigation. Die Katalog-Integrität wird per SHA-256 zur Laufzeit überprüft.
+Single-Page-App mit **Zwei-Schichten-Datenmodell**: Raw-OSCAL-Typen werden im Adapter-Layer in angereicherte Domain-Typen überführt (`Control`, `Topic`, `Practice`, `Catalog`). Der unveränderte OSCAL-Quellgraph bleibt dabei erhalten — das Domänenmodell ist eine Projektion darauf, kein Ersatz, sodass auch nicht abgebildete Felder und Extensions nicht verloren gehen. Globaler Zustand via React Context; Filter werden bidirektional mit URL-Parametern synchronisiert und überleben Navigation. Die Katalog-Integrität wird per SHA-256 zur Laufzeit überprüft.
 
 Tiefe:
 

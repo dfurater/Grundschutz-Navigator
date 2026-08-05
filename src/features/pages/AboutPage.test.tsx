@@ -28,6 +28,7 @@ afterEach(() => {
 
 function makeCatalogState(): CatalogState {
   return {
+    catalogDocument: null,
     catalog: {
       totalControls: 42,
       metadata: {

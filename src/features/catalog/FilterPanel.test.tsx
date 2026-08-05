@@ -51,6 +51,7 @@ const emptyFacetCounts: FacetCounts = {
 
 function makeCatalogState(): CatalogState {
   return {
+    catalogDocument: null,
     catalog: null,
     provenance: null,
     verification: null,

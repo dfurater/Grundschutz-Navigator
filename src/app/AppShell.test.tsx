@@ -77,6 +77,7 @@ describe('AppShell', () => {
     mockedUseMediaQuery.mockReset();
 
     mockedUseCatalog.mockReturnValue({
+      catalogDocument: null,
       catalog: {
         catalogKey: 'gspp',
         uuid: 'catalog-1',
