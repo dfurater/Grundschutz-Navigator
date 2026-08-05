@@ -8,14 +8,23 @@ const WORKFLOW_DIR = resolve(process.cwd(), '.github/workflows');
 // bleiben deshalb ausgenommen.
 const LOCAL_REFERENCE = /^\.\//;
 
+// Ein Pre-Release- oder Build-Bezeichner nach SemVer: alphanumerisch und
+// Bindestrich, mit mindestens einem alphanumerischen Zeichen. Damit fallen
+// leere und rein aus Punkten oder Bindestrichen bestehende Bezeichner heraus.
+const VERSION_IDENTIFIER = String.raw`[0-9A-Za-z-]*[0-9A-Za-z][0-9A-Za-z-]*`;
+
 // owner/repo@<40-stelliger-SHA> plus Versionskommentar auf derselben Zeile.
 // Der Kommentar muss versionsförmig sein — optionales `v`, mindestens eine
-// Zahlenkomponente, optionaler Pre-Release-/Build-Zusatz — damit hinter dem
-// SHA nachvollziehbar ein Tag steht und Dependabot ihn fortschreiben kann.
-// Platzhalter wie `# pinned` oder `# TODO` erfüllen das nicht. Beim Abstand
-// hinter `#` bleibt das Muster tolerant, weil Dependabot die Form
-// `@<commit> #<tag>` ohne Leerzeichen dokumentiert.
-const PINNED_REFERENCE = /^[^@\s]+@[0-9a-f]{40}\s+#\s*v?\d+(?:\.\d+)*(?:[-+][0-9A-Za-z.-]+)?$/;
+// Zahlenkomponente, optionaler Pre-Release-/Build-Zusatz aus punktgetrennten
+// Bezeichnern — damit hinter dem SHA nachvollziehbar ein Tag steht und
+// Dependabot ihn fortschreiben kann. Platzhalter wie `# pinned` und
+// Scheinversionen wie `# v7-...` erfüllen das nicht. Beim Abstand hinter `#`
+// bleibt das Muster tolerant, weil Dependabot die Form `@<commit> #<tag>`
+// ohne Leerzeichen dokumentiert.
+const PINNED_REFERENCE = new RegExp(
+  String.raw`^[^@\s]+@[0-9a-f]{40}\s+#\s*v?\d+(?:\.\d+)*` +
+    String.raw`(?:[-+]${VERSION_IDENTIFIER}(?:\.${VERSION_IDENTIFIER})*)?$`,
+);
 
 const USES_LINE = /^\s*(?:-\s+)?uses:\s*(\S.*?)\s*$/;
 
@@ -93,6 +102,25 @@ describe('workflow action pinning rule', () => {
     expect(check(`actions/checkout@${sha} # TODO`)).toHaveLength(1);
     expect(check(`actions/checkout@${sha} # latest`)).toHaveLength(1);
     expect(check(`actions/checkout@${sha} # v7.0.1 vorerst`)).toHaveLength(1);
+  });
+
+  it('rejects a version suffix without a usable identifier', () => {
+    const sha = '3d3c42e5aac5ba805825da76410c181273ba90b1';
+
+    expect(check(`actions/checkout@${sha} # v7-...`)).toHaveLength(1);
+    expect(check(`actions/checkout@${sha} # v7+.`)).toHaveLength(1);
+    expect(check(`actions/checkout@${sha} # v7-`)).toHaveLength(1);
+    expect(check(`actions/checkout@${sha} # v7+`)).toHaveLength(1);
+    expect(check(`actions/checkout@${sha} # v7---`)).toHaveLength(1);
+    expect(check(`actions/checkout@${sha} # v7-beta.`)).toHaveLength(1);
+  });
+
+  it('accepts well-formed pre-release and build identifiers', () => {
+    const sha = '3d3c42e5aac5ba805825da76410c181273ba90b1';
+
+    expect(check(`actions/checkout@${sha} # v4.2.2-beta.1`)).toEqual([]);
+    expect(check(`actions/checkout@${sha} # v1.0.0-rc-1`)).toEqual([]);
+    expect(check(`actions/checkout@${sha} # v1.0.0+build.5`)).toEqual([]);
   });
 
   it('rejects a shortened SHA', () => {
