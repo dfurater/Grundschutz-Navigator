@@ -9,10 +9,13 @@ const WORKFLOW_DIR = resolve(process.cwd(), '.github/workflows');
 const LOCAL_REFERENCE = /^\.\//;
 
 // owner/repo@<40-stelliger-SHA> plus Versionskommentar auf derselben Zeile.
-// Der Kommentar ist Pflicht, damit Dependabot die Version fortschreiben kann;
-// beim Abstand hinter `#` bleibt das Muster tolerant, weil Dependabot die
-// Form `@<commit> #<tag>` ohne Leerzeichen dokumentiert.
-const PINNED_REFERENCE = /^[^@\s]+@[0-9a-f]{40}\s+#\s*\S+/;
+// Der Kommentar muss versionsförmig sein — optionales `v`, mindestens eine
+// Zahlenkomponente, optionaler Pre-Release-/Build-Zusatz — damit hinter dem
+// SHA nachvollziehbar ein Tag steht und Dependabot ihn fortschreiben kann.
+// Platzhalter wie `# pinned` oder `# TODO` erfüllen das nicht. Beim Abstand
+// hinter `#` bleibt das Muster tolerant, weil Dependabot die Form
+// `@<commit> #<tag>` ohne Leerzeichen dokumentiert.
+const PINNED_REFERENCE = /^[^@\s]+@[0-9a-f]{40}\s+#\s*v?\d+(?:\.\d+)*(?:[-+][0-9A-Za-z.-]+)?$/;
 
 const USES_LINE = /^\s*(?:-\s+)?uses:\s*(\S.*?)\s*$/;
 
@@ -66,6 +69,9 @@ describe('workflow action pinning rule', () => {
   it('accepts a full-length SHA followed by a version comment', () => {
     expect(check('actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1')).toEqual([]);
     expect(check('actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1')).toEqual([]);
+    expect(check('actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7')).toEqual([]);
+    expect(check('actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # 3.2.0')).toEqual([]);
+    expect(check('actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2-beta.1')).toEqual([]);
   });
 
   it('exempts actions referenced from within this repository', () => {
@@ -78,6 +84,15 @@ describe('workflow action pinning rule', () => {
 
   it('rejects a full-length SHA without a version comment', () => {
     expect(check('actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1')).toHaveLength(1);
+  });
+
+  it('rejects a comment that names no version', () => {
+    const sha = '3d3c42e5aac5ba805825da76410c181273ba90b1';
+
+    expect(check(`actions/checkout@${sha} # pinned`)).toHaveLength(1);
+    expect(check(`actions/checkout@${sha} # TODO`)).toHaveLength(1);
+    expect(check(`actions/checkout@${sha} # latest`)).toHaveLength(1);
+    expect(check(`actions/checkout@${sha} # v7.0.1 vorerst`)).toHaveLength(1);
   });
 
   it('rejects a shortened SHA', () => {
