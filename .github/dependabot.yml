@@ -29,13 +29,15 @@ updates:
           - "minor"
           - "patch"
 
-  # Stagger workflow updates so CI maintenance stays visible and low-noise.
+  # Workflow-Referenzen sind auf Commit-SHAs gepinnt. Dependabot erzeugt für
+  # SHA-gepinnte Actions keine Security-Alerts mehr, deshalb ist das
+  # Update-Intervall der einzige verbleibende Kanal für sicherheitsrelevante
+  # Action-Versionen und läuft täglich statt wöchentlich (GSPP-333).
   - package-ecosystem: "github-actions"
     directory: "/"
     target-branch: "main"
     schedule:
-      interval: "weekly"
-      day: "thursday"
+      interval: "daily"
       time: "06:00"
       timezone: "Europe/Berlin"
     open-pull-requests-limit: 3
