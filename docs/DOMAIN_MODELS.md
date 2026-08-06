@@ -347,7 +347,9 @@ Adaptern:
 
 1. Modelladapter als eigene Datei unter `src/adapters/` anlegen, mit eigenem
    Testvertrag. Er bekommt den **Root-Körper** und den Kontext — nicht das
-   Gesamtdokument und keine Zuständigkeit für die Root-Bestimmung.
+   Gesamtdokument und keine Zuständigkeit für die Root-Bestimmung. Braucht das
+   Modell eine Identität, die nicht im Dokument steht, löst er sie aus Kontext
+   oder Quellregister auf und bricht sonst ab; ein Default würde sie erfinden.
 2. Einen Eintrag in `OSCAL_ROOT_ADAPTERS` ergänzen und, falls der Körper
    modelliert wird, den Zweig in `RawOscalRootBodyFor` erweitern.
 
@@ -542,15 +544,15 @@ Die Transformation von Raw → Enriched erfolgt in `src/adapters/oscalAdapter.ts
 
 ```typescript
 interface ParseCatalogOptions {
-  catalogKey?: CatalogKey;
+  catalogKey: CatalogKey;   // Pflicht (ADR-1) — kein Default
 }
 
 /** `raw` ist der Katalog**körper**, nicht das Gesamtdokument. */
 export function parseCatalog(
   raw: unknown,
-  options: ParseCatalogOptions = {},
+  options: ParseCatalogOptions,
 ): Catalog {
-  const catalogKey = options.catalogKey ?? SUPPORTED_CATALOG_KEY;
+  const { catalogKey } = options;
 
   const catalog = raw as RawOscalCatalog;
 
@@ -564,7 +566,9 @@ export function parseCatalog(
 }
 ```
 
-Der optionale `catalogKey` stammt aus dem Quellregister. Beim Aufbau von `controlsByAltIdentifier` failt `parseCatalog` geschlossen, wenn ein Control keinen Alt-Identifier besitzt oder derselbe Wert innerhalb des Katalogs mehrfach vorkommt.
+Der `catalogKey` stammt aus dem Quellregister und ist **Pflicht**: Die Katalogidentität nach [ADR-1](https://linear.app/grundschutz-plus-plus/issue/ADR-1) steht nicht im Dokument, und ein Default würde sie erfinden — ein WLAN-Katalog käme sonst als `gspp` heraus, sobald ein Aufrufer sie vergisst. Der Katalogadapter löst sie über `resolveCatalogKey()` auf: erst aus dem Kontext, dann aus dem Quellregister über `upstreamPath`, sonst bricht er ab.
+
+Beim Aufbau von `controlsByAltIdentifier` failt `parseCatalog` geschlossen, wenn ein Control keinen Alt-Identifier besitzt oder derselbe Wert innerhalb des Katalogs mehrfach vorkommt.
 
 Der Envelope wird hier **nicht** ausgepackt: Welcher Root-Typ vorliegt,
 entscheidet allein der [Root-Dispatch](#root-envelope-und-root-dispatch). Der

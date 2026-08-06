@@ -1,7 +1,7 @@
 // =============================================================================
-// OSCAL Adapter — Parses raw OSCAL 1.1.3 JSON into domain models
+// OSCAL Adapter — Parses an OSCAL catalog body into domain models
 //
-// Central function: parseCatalog(raw) -> Catalog
+// Central function: parseCatalog(catalogBody, { catalogKey }) -> Catalog
 // =============================================================================
 
 import type {
@@ -26,7 +26,6 @@ import type {
   LinkRelation,
   SecurityTargetRelevance,
 } from '@/domain/models';
-import { SUPPORTED_CATALOG_KEY } from '@/domain/sourceRegistry';
 import type { CatalogKey } from '@/domain/sourceRegistry';
 import { SECURITY_TARGET_LEVELS_NAMESPACE_URL } from '@/domain/vocabularyNamespaces';
 
@@ -34,9 +33,7 @@ import { SECURITY_TARGET_LEVELS_NAMESPACE_URL } from '@/domain/vocabularyNamespa
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
-/**
- * Extract a named prop value from an array of OSCAL props.
- */
+/** Extract a named prop value from an array of OSCAL props. */
 function findProp(
   props: RawOscalProp[] | undefined,
   name: string,
@@ -477,25 +474,27 @@ function parseBackMatter(
 
 /** Options for parseCatalog */
 export interface ParseCatalogOptions {
-  /** Source-registry catalog key; defaults to the supported catalog */
-  catalogKey?: CatalogKey;
+  /**
+   * Source-registry catalog key (ADR-1). **Pflicht**: Die Identität steht
+   * nicht im Dokument; ein Default würde sie erfinden — ein WLAN-Katalog käme
+   * sonst als `gspp` heraus, sobald ein Aufrufer sie vergisst.
+   */
+  catalogKey: CatalogKey;
 }
 
 /**
  * Parse the body of an OSCAL catalog root into an enriched Catalog.
  *
  * Nimmt den **Katalogkörper** entgegen, nicht das Gesamtdokument: Den Root-Typ
- * bestimmt allein der Root-Dispatch (`oscalRootDispatch.ts`, GSPP-285). Der
- * frühere Fallback `doc.catalog ? doc.catalog : doc` ist ersatzlos entfallen.
+ * bestimmt allein der Root-Dispatch (`oscalRootDispatch.ts`, GSPP-285); der
+ * Fallback `doc.catalog ? doc.catalog : doc` ist ersatzlos entfallen.
  *
  * @param raw - Der Katalogkörper aus dem Envelope `{ catalog: … }`
  * @param options - Catalog scope; identity per ADR-1
- * @returns A fully enriched Catalog with practices, topics, and controls
  * @throws Error if the input structure is invalid or alt-identifiers collide
  */
-export function parseCatalog(raw: unknown, options: ParseCatalogOptions = {}): Catalog {
-  const catalogKey = options.catalogKey ?? SUPPORTED_CATALOG_KEY;
-
+export function parseCatalog(raw: unknown, options: ParseCatalogOptions): Catalog {
+  const { catalogKey } = options;
   const catalog = raw as RawOscalCatalog;
 
   if (!catalog?.uuid || !catalog.metadata || !catalog.groups) {

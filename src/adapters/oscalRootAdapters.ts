@@ -27,6 +27,8 @@ import type {
 import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { Catalog, OscalDocumentContext } from '@/domain/models';
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
+import { getArtifactByUpstreamPath } from '@/domain/sourceRegistry';
+import type { CatalogKey } from '@/domain/sourceRegistry';
 
 /**
  * Ein Modelladapter leitet aus dem erkannten Root-Körper sein Read-Model ab.
@@ -39,18 +41,46 @@ export interface OscalRootAdapter<TView = unknown> {
   readonly rootType: OscalRootKey;
   /** Repo-relativer Modul-Einstiegspunkt des Modells — Dokumentationsanker. */
   readonly moduleEntryPoint: string;
+  /**
+   * Wirft bei modellinternen Verstößen — etwa fehlender Identität oder
+   * ungültiger Struktur. Das Ergebnisobjekt des Dispatch deckt Stufe 2 ab,
+   * nicht die Modellinvarianten dahinter.
+   */
   readonly derive: (body: unknown, context: OscalDocumentContext) => TView;
 }
 
 /**
- * Katalogadapter (Control Layer). Der `catalogKey` kommt aus dem Kontext und
- * nie aus dem Dokument (ADR-1).
+ * Löst die Katalogidentität nach ADR-1 auf: entweder trägt der Kontext sie,
+ * oder das Quellregister leitet sie aus dem Upstream-Pfad ab.
+ *
+ * Fehlt beides, bricht die Ableitung ab. Ein Rückfall auf den unterstützten
+ * Katalog wäre genau die stille Deutung, die dieser Dispatch beseitigt: Ein
+ * gültiger WLAN-Katalog käme als `gspp` heraus und wäre danach unter der
+ * falschen Katalogidentität adressierbar.
+ */
+function resolveCatalogKey(context: OscalDocumentContext): CatalogKey {
+  if (context.catalogKey) return context.catalogKey;
+
+  const entry = context.upstreamPath
+    ? getArtifactByUpstreamPath(context.upstreamPath)
+    : null;
+  const registered = entry?.kind === 'oscal' ? entry.catalogKey : undefined;
+  if (registered) return registered;
+
+  throw new Error(
+    'Missing catalog identity: parsing a catalog root requires a catalogKey or a registered upstreamPath (ADR-1)',
+  );
+}
+
+/**
+ * Katalogadapter (Control Layer). Der `catalogKey` kommt aus dem Kontext oder
+ * dem Quellregister und nie aus dem Dokument (ADR-1).
  */
 export const catalogRootAdapter: OscalRootAdapter<Catalog> = Object.freeze({
   rootType: 'catalog',
   moduleEntryPoint: 'src/adapters/oscalAdapter.ts',
   derive: (body: unknown, context: OscalDocumentContext) =>
-    parseCatalog(body, { catalogKey: context.catalogKey }),
+    parseCatalog(body, { catalogKey: resolveCatalogKey(context) }),
 });
 
 /** Registrierte Modelladapter. Ein neues Modell ergänzt hier genau eine Zeile. */

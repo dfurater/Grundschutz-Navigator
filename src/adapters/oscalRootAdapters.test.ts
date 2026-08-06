@@ -8,6 +8,7 @@ import {
 import { ROOT_DISPATCH_DIAGNOSTIC_CODES } from './oscalRootDispatch';
 import type { Catalog, OscalDocumentContext } from '@/domain/models';
 import { OSCAL_ROOT_KEYS, VERSION_MATRIX_DIAGNOSTIC_CODES } from '@/domain/oscalVersionMatrix';
+import { listOscalArtifacts } from '@/domain/sourceRegistry';
 
 const context: OscalDocumentContext = {
   trustClass: 'class-1-verified-public',
@@ -114,6 +115,38 @@ describe('parseOscalDocument', () => {
 
     expect(unknown.diagnostic.code).toBe(VERSION_MATRIX_DIAGNOSTIC_CODES.ROOT_TYPE_UNKNOWN);
     expect(unknown.diagnostic.code).not.toBe(known.diagnostic.code);
+  });
+
+  it('löst die Katalogidentität aus dem Quellregister auf, wenn der Kontext sie nicht trägt', () => {
+    const wlan = listOscalArtifacts().find((entry) => entry.catalogKey === 'wlan');
+    expect(wlan).toBeDefined();
+    if (!wlan) return;
+
+    const result = parseOscalDocument(makeCatalogDocument(), {
+      trustClass: 'class-1-verified-public',
+      upstreamPath: wlan.upstreamPath,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Ohne diese Auflösung fiele die Ableitung still auf "gspp" zurück und der
+    // WLAN-Katalog wäre unter der falschen Identität adressierbar.
+    expect((result.view as Catalog).catalogKey).toBe('wlan');
+  });
+
+  it('bricht ab, statt eine Katalogidentität zu erfinden', () => {
+    expect(() =>
+      parseOscalDocument(makeCatalogDocument(), {
+        trustClass: 'class-1-verified-public',
+      }),
+    ).toThrow('Missing catalog identity');
+
+    expect(() =>
+      parseOscalDocument(makeCatalogDocument(), {
+        trustClass: 'class-1-verified-public',
+        upstreamPath: 'control_layer/Nicht/Registriert.json',
+      }),
+    ).toThrow('Missing catalog identity');
   });
 
   it('reicht eine Dispatch-Diagnose unverändert nach außen', () => {
