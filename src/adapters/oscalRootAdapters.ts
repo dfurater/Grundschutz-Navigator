@@ -53,23 +53,37 @@ export interface OscalRootAdapter<TView = unknown> {
  * Löst die Katalogidentität nach ADR-1 auf: entweder trägt der Kontext sie,
  * oder das Quellregister leitet sie aus dem Upstream-Pfad ab.
  *
- * Fehlt beides, bricht die Ableitung ab. Ein Rückfall auf den unterstützten
- * Katalog wäre genau die stille Deutung, die dieser Dispatch beseitigt: Ein
- * gültiger WLAN-Katalog käme als `gspp` heraus und wäre danach unter der
- * falschen Katalogidentität adressierbar.
+ * Zwei Fälle brechen ab, statt sich auf einen Wert zu einigen:
+ *
+ * - **Fehlt beides**, wäre ein Rückfall auf den unterstützten Katalog genau
+ *   die stille Deutung, die dieser Dispatch beseitigt: Ein gültiger
+ *   WLAN-Katalog käme als `gspp` heraus.
+ * - **Widersprechen sich beide**, gewönne sonst der Kontext, und ein
+ *   registriertes Artefakt wäre unter einer fremden Katalogidentität
+ *   adressierbar. Dieselbe Regel gilt bereits für den Root-Typ, den der
+ *   Dispatch mit `OSCAL_ROOT_TYPE_MISMATCH` abweist.
  */
 function resolveCatalogKey(context: OscalDocumentContext): CatalogKey {
-  if (context.catalogKey) return context.catalogKey;
-
   const entry = context.upstreamPath
     ? getArtifactByUpstreamPath(context.upstreamPath)
     : null;
   const registered = entry?.kind === 'oscal' ? entry.catalogKey : undefined;
-  if (registered) return registered;
 
-  throw new Error(
-    'Missing catalog identity: parsing a catalog root requires a catalogKey or a registered upstreamPath (ADR-1)',
-  );
+  if (context.catalogKey && registered && context.catalogKey !== registered) {
+    // Beide Werte stammen aus der geschlossenen `CatalogKey`-Menge und sind
+    // kein Dokumentinhalt; sie dürfen benannt werden.
+    throw new Error(
+      `Conflicting catalog identity: context declares "${context.catalogKey}", the source registry expects "${registered}" (ADR-1)`,
+    );
+  }
+
+  const catalogKey = context.catalogKey ?? registered;
+  if (!catalogKey) {
+    throw new Error(
+      'Missing catalog identity: parsing a catalog root requires a catalogKey or a registered upstreamPath (ADR-1)',
+    );
+  }
+  return catalogKey;
 }
 
 /**

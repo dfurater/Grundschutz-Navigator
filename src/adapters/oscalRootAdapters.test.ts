@@ -134,6 +134,37 @@ describe('parseOscalDocument', () => {
     expect((result.view as Catalog).catalogKey).toBe('wlan');
   });
 
+  it('weist eine Identität ab, die der Registry-Erwartung widerspricht', () => {
+    const wlan = listOscalArtifacts().find((entry) => entry.catalogKey === 'wlan');
+    expect(wlan).toBeDefined();
+    if (!wlan) return;
+
+    // Sonst gewönne der Kontext, und das registrierte WLAN-Artefakt wäre unter
+    // der Katalogidentität "gspp" adressierbar.
+    expect(() =>
+      parseOscalDocument(makeCatalogDocument(), {
+        trustClass: 'class-1-verified-public',
+        upstreamPath: wlan.upstreamPath,
+        catalogKey: 'gspp',
+      }),
+    ).toThrow('Conflicting catalog identity');
+  });
+
+  it('akzeptiert eine Identität, die der Registry-Erwartung entspricht', () => {
+    const wlan = listOscalArtifacts().find((entry) => entry.catalogKey === 'wlan');
+    expect(wlan).toBeDefined();
+    if (!wlan) return;
+
+    const result = parseOscalDocument(makeCatalogDocument(), {
+      trustClass: 'class-1-verified-public',
+      upstreamPath: wlan.upstreamPath,
+      catalogKey: 'wlan',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && (result.view as Catalog).catalogKey).toBe('wlan');
+  });
+
   it('bricht ab, statt eine Katalogidentität zu erfinden', () => {
     expect(() =>
       parseOscalDocument(makeCatalogDocument(), {

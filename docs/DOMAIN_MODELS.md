@@ -566,7 +566,19 @@ export function parseCatalog(
 }
 ```
 
-Der `catalogKey` stammt aus dem Quellregister und ist **Pflicht**: Die Katalogidentität nach [ADR-1](https://linear.app/grundschutz-plus-plus/issue/ADR-1) steht nicht im Dokument, und ein Default würde sie erfinden — ein WLAN-Katalog käme sonst als `gspp` heraus, sobald ein Aufrufer sie vergisst. Der Katalogadapter löst sie über `resolveCatalogKey()` auf: erst aus dem Kontext, dann aus dem Quellregister über `upstreamPath`, sonst bricht er ab.
+Der `catalogKey` stammt aus dem Quellregister und ist **Pflicht**: Die Katalogidentität nach [ADR-1](https://linear.app/grundschutz-plus-plus/issue/ADR-1) steht nicht im Dokument, und ein Default würde sie erfinden — ein WLAN-Katalog käme sonst als `gspp` heraus, sobald ein Aufrufer sie vergisst.
+
+Der Katalogadapter löst sie über `resolveCatalogKey()` auf und bricht in zwei Fällen ab, statt sich auf einen Wert zu einigen:
+
+| Kontext-`catalogKey` | Registry über `upstreamPath` | Ergebnis |
+| --- | --- | --- |
+| gesetzt | nicht auflösbar | Kontextwert |
+| nicht gesetzt | auflösbar | Registry-Wert |
+| gesetzt | auflösbar, gleich | dieser Wert |
+| gesetzt | auflösbar, **abweichend** | Abbruch — ein registriertes Artefakt darf nicht unter fremder Identität adressierbar sein |
+| nicht gesetzt | nicht auflösbar | Abbruch — keine Identität wird erfunden |
+
+Die vierte Zeile ist dieselbe Regel, die der Dispatch für den Root-Typ mit `OSCAL_ROOT_TYPE_MISMATCH` anwendet.
 
 Beim Aufbau von `controlsByAltIdentifier` failt `parseCatalog` geschlossen, wenn ein Control keinen Alt-Identifier besitzt oder derselbe Wert innerhalb des Katalogs mehrfach vorkommt.
 
