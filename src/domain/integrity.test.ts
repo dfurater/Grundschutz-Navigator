@@ -24,6 +24,23 @@ function hangUntilAborted(signal: AbortSignal | null | undefined): Promise<Respo
   });
 }
 
+/**
+ * Simuliert eine Response, deren Header sofort ankommen, deren Body-Lesen
+ * (`json()`/`arrayBuffer()`) aber erst mit dem AbortSignal settelt — das
+ * Zeitlimit muss also auch das Body-Lesen abdecken, nicht nur das Warten
+ * auf die Antwort selbst.
+ */
+function responseWithHangingBody(signal: AbortSignal | null | undefined): Response {
+  const hangingBody = () => hangUntilAborted(signal);
+  return {
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    json: hangingBody,
+    arrayBuffer: hangingBody,
+  } as unknown as Response;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Test Fixtures                                                      */
 /* ------------------------------------------------------------------ */
@@ -366,6 +383,19 @@ describe('fetchJsonDocument', () => {
 
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it('rejects once reading the response body exceeds the timeout, even though the response itself arrived', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async (_input, init) => responseWithHangingBody(init?.signal),
+    );
+
+    const pending = fetchJsonDocument('/data/vocabularies.json', 'vocabulary registry');
+    const assertion = expect(pending).rejects.toBeDefined();
+
+    await vi.advanceTimersByTimeAsync(ARTIFACT_FETCH_TIMEOUT_MS);
+    await assertion;
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -444,6 +474,19 @@ describe('fetchCatalogWithBuffer', () => {
     await fetchCatalogWithBuffer('/data/catalog.json');
 
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('rejects once reading the response body exceeds the timeout, even though the response itself arrived', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async (_input, init) => responseWithHangingBody(init?.signal),
+    );
+
+    const pending = fetchCatalogWithBuffer('/data/catalog.json');
+    const assertion = expect(pending).rejects.toBeDefined();
+
+    await vi.advanceTimersByTimeAsync(ARTIFACT_FETCH_TIMEOUT_MS);
+    await assertion;
   });
 });
 
