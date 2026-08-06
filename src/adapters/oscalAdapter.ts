@@ -482,9 +482,13 @@ export interface ParseCatalogOptions {
 }
 
 /**
- * Parse a raw OSCAL document into an enriched Catalog.
+ * Parse the body of an OSCAL catalog root into an enriched Catalog.
  *
- * @param raw - The parsed JSON (either { catalog: ... } or the catalog itself)
+ * Nimmt den **Katalogkörper** entgegen, nicht das Gesamtdokument: Den Root-Typ
+ * bestimmt allein der Root-Dispatch (`oscalRootDispatch.ts`, GSPP-285). Der
+ * frühere Fallback `doc.catalog ? doc.catalog : doc` ist ersatzlos entfallen.
+ *
+ * @param raw - Der Katalogkörper aus dem Envelope `{ catalog: … }`
  * @param options - Catalog scope; identity per ADR-1
  * @returns A fully enriched Catalog with practices, topics, and controls
  * @throws Error if the input structure is invalid or alt-identifiers collide
@@ -492,13 +496,9 @@ export interface ParseCatalogOptions {
 export function parseCatalog(raw: unknown, options: ParseCatalogOptions = {}): Catalog {
   const catalogKey = options.catalogKey ?? SUPPORTED_CATALOG_KEY;
 
-  // Accept both { catalog: ... } wrapper and direct catalog object
-  const doc = raw as Record<string, unknown>;
-  const catalog: RawOscalCatalog = (
-    doc.catalog ? doc.catalog : doc
-  ) as RawOscalCatalog;
+  const catalog = raw as RawOscalCatalog;
 
-  if (!catalog.uuid || !catalog.metadata || !catalog.groups) {
+  if (!catalog?.uuid || !catalog.metadata || !catalog.groups) {
     throw new Error(
       'Invalid OSCAL catalog: missing uuid, metadata, or groups',
     );

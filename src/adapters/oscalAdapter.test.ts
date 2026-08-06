@@ -21,8 +21,8 @@ import type {
   RawOscalControl,
   RawOscalGroup,
   RawOscalCatalog,
-  RawOscalDocument,
 } from '@/domain/models';
+import type { RawOscalCatalogDocument } from '@/domain/oscalRootDocument';
 
 /* ------------------------------------------------------------------ */
 /*  Test Fixtures                                                      */
@@ -139,7 +139,7 @@ function makePracticeGroup(overrides: Partial<RawOscalGroup> = {}): RawOscalGrou
   };
 }
 
-function makeCatalog(): RawOscalDocument {
+function makeCatalog(): RawOscalCatalogDocument {
   return {
     catalog: {
       uuid: 'test-uuid-1234',
@@ -749,7 +749,7 @@ describe('parseMetadata', () => {
 
 describe('parseCatalog', () => {
   it('parses a complete catalog document', () => {
-    const catalog = parseCatalog(makeCatalog());
+    const catalog = parseCatalog(makeCatalog().catalog);
     expect(catalog.uuid).toBe('test-uuid-1234');
     expect(catalog.metadata.title).toBe('Anwenderkatalog Grundschutz++');
     expect(catalog.practices).toHaveLength(1);
@@ -769,7 +769,7 @@ describe('parseCatalog', () => {
   });
 
   it('builds controlsById map', () => {
-    const catalog = parseCatalog(makeCatalog());
+    const catalog = parseCatalog(makeCatalog().catalog);
     expect(catalog.controlsById.has('GC.1.1')).toBe(true);
     expect(catalog.controlsById.get('GC.1.1')?.title).toBe(
       'Errichtung und Aufrechterhaltung eines ISMS',
@@ -777,40 +777,42 @@ describe('parseCatalog', () => {
   });
 
   it('controls array matches controlsById size', () => {
-    const catalog = parseCatalog(makeCatalog());
-    expect(catalog.controls.length).toBe(catalog.controlsById.size);
-  });
-
-  it('accepts unwrapped catalog (without { catalog: ... })', () => {
     const catalog = parseCatalog(makeCatalog().catalog);
-    expect(catalog.uuid).toBe('test-uuid-1234');
+    expect(catalog.controls.length).toBe(catalog.controlsById.size);
   });
 
   it('returns empty backMatter when the source catalog has none', () => {
     const doc = makeCatalog();
     delete doc.catalog['back-matter'];
-    const catalog = parseCatalog(doc);
+    const catalog = parseCatalog(doc.catalog);
     expect(catalog.backMatter).toEqual([]);
   });
 
   it('throws on invalid input', () => {
     expect(() => parseCatalog({})).toThrow('Invalid OSCAL catalog');
     expect(() => parseCatalog({ uuid: 'x' })).toThrow('Invalid OSCAL catalog');
-    expect(() => parseCatalog(null)).toThrow();
+    expect(() => parseCatalog(null)).toThrow('Invalid OSCAL catalog');
+  });
+
+  it('interpretiert einen Envelope nicht mehr als Katalogkörper', () => {
+    // Der frühere Fallback `doc.catalog ? doc.catalog : doc` hat den Envelope
+    // ausgepackt. Die Root-Bestimmung liegt jetzt ausschließlich im Dispatch;
+    // der Adapter sieht nur noch den Körper.
+    expect(() => parseCatalog(makeCatalog())).toThrow('Invalid OSCAL catalog');
   });
 
   it('defaults the catalogKey to the supported catalog', () => {
-    const catalog = parseCatalog(makeCatalog());
+    const catalog = parseCatalog(makeCatalog().catalog);
     expect(catalog.catalogKey).toBe('gspp');
   });
 
   it('accepts an explicit catalogKey', () => {
-    const catalog = parseCatalog(makeCatalog(), { catalogKey: 'wlan' });
+    const catalog = parseCatalog(makeCatalog().catalog, { catalogKey: 'wlan' });
     expect(catalog.catalogKey).toBe('wlan');
   });
 
   it('builds a catalog-scoped controlsByAltIdentifier map', () => {
-    const catalog = parseCatalog(makeCatalog());
+    const catalog = parseCatalog(makeCatalog().catalog);
     expect(catalog.controlsByAltIdentifier.get('uuid-control-1')?.id).toBe('GC.1.1');
     expect(catalog.controlsByAltIdentifier.size).toBe(1);
   });
@@ -822,7 +824,7 @@ describe('parseCatalog', () => {
         groups: [makeGroup({ controls: [makeControl({ props: [] })] })],
       }),
     ];
-    expect(() => parseCatalog(doc)).toThrow(
+    expect(() => parseCatalog(doc.catalog)).toThrow(
       'Missing alt-identifier for control "GC.1.1" in catalog "gspp"',
     );
   });
@@ -838,7 +840,7 @@ describe('parseCatalog', () => {
         ],
       }),
     ];
-    expect(() => parseCatalog(doc)).toThrow(
+    expect(() => parseCatalog(doc.catalog)).toThrow(
       'Duplicate alt-identifier "uuid-control-1" in catalog "gspp"',
     );
   });
@@ -871,7 +873,7 @@ describe('parseCatalog', () => {
         ],
       }),
     ];
-    const catalog = parseCatalog(doc);
+    const catalog = parseCatalog(doc.catalog);
     expect(catalog.practices).toHaveLength(2);
     expect(catalog.totalControls).toBe(3);
     expect(catalog.controlsById.has('STM.1.1')).toBe(true);

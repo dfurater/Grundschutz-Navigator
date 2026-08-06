@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { parseCatalogDocument } from './oscalDocument';
 import {
+  OscalRootDispatchError,
+  ROOT_DISPATCH_DIAGNOSTIC_CODES,
+} from './oscalRootDispatch';
+import { buildSchemaId } from '@/domain/oscalVersionMatrix';
+import {
   LOSSLESS_CATALOG_JSON,
   makeLosslessCatalogSource,
 } from '@/test/fixtures/losslessCatalog';
@@ -58,10 +63,78 @@ describe('parseCatalogDocument — Quellgraph (§1)', () => {
     expect(document.view.controlsByAltIdentifier.has('alt-orp-1')).toBe(true);
   });
 
-  it('weist einen strukturell ungültigen Katalog ab', () => {
+  it('weist einen Katalog ohne oscal-version schon im Dispatch ab', () => {
+    // Vor GSPP-285 kam dieses Dokument bis in den Katalogadapter. Jetzt hält
+    // die Versionsbindung es fail-closed auf, bevor irgendetwas gedeutet wird.
     expect(() => parseCatalogDocument({ catalog: { uuid: 'x' } }, context)).toThrow(
-      'Invalid OSCAL catalog',
+      'OSCAL_VERSION_MISSING',
     );
+  });
+
+  it('weist einen strukturell ungültigen Katalogkörper ab', () => {
+    const source = makeLosslessCatalogSource() as { catalog: Record<string, unknown> };
+    delete source.catalog.groups;
+
+    expect(() => parseCatalogDocument(source, context)).toThrow('Invalid OSCAL catalog');
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Root-Dispatch (GSPP-285)                                           */
+/* ------------------------------------------------------------------ */
+
+describe('parseCatalogDocument — Root-Dispatch', () => {
+  /** Ein Profil-Envelope: bekannter Root, aber nicht der erwartete. */
+  const profileSource = {
+    profile: {
+      uuid: 'uuid-profile',
+      metadata: {
+        title: 'Profil',
+        'last-modified': '2026-08-06T00:00:00Z',
+        version: '1',
+        'oscal-version': '1.1.3',
+      },
+    },
+  };
+
+  it('löst den Upstream-Pfad aus dem Quellregister auf, wenn keiner übergeben wird', () => {
+    // Ohne Pfad hätte der Dispatch keine Registry-Erwartung — der
+    // Root-Abgleich liefe für den Katalogpfad also ins Leere.
+    let thrown: unknown;
+    try {
+      parseCatalogDocument(profileSource, context);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(OscalRootDispatchError);
+    const { diagnostic } = thrown as OscalRootDispatchError;
+    expect(diagnostic.code).toBe(ROOT_DISPATCH_DIAGNOSTIC_CODES.ROOT_TYPE_MISMATCH);
+    expect(diagnostic.artifact.key).toBe('catalog-gspp');
+  });
+
+  it('weist einen fremden Root auch ohne Registry-Erwartung ab', () => {
+    expect(() =>
+      parseCatalogDocument(profileSource, {
+        ...context,
+        upstreamPath: 'control_layer/Nicht/Registriert.json',
+      }),
+    ).toThrow(ROOT_DISPATCH_DIAGNOSTIC_CODES.ROOT_TYPE_MISMATCH);
+  });
+
+  it('lehnt einen unbekannten Root ab, statt ihn als Katalog zu deuten', () => {
+    expect(() =>
+      parseCatalogDocument({ 'geheimes-modell': { metadata: {} } }, context),
+    ).toThrow('OSCAL_ROOT_TYPE_UNKNOWN');
+  });
+
+  it('akzeptiert den Envelope mit passender Schema-Direktive', () => {
+    const source = makeLosslessCatalogSource() as Record<string, unknown>;
+    source.$schema = buildSchemaId('catalog', '1.1.3');
+
+    const document = parseCatalogDocument(source, context);
+
+    expect(document.view.totalControls).toBe(4);
   });
 });
 
