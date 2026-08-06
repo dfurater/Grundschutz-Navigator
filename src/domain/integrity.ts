@@ -14,6 +14,14 @@ import type {
 type IntegrityMetadata = CatalogProvenance | VocabularyProvenance;
 
 /**
+ * Zeitlimit je Artefakt-Fetch (Antwort + Body-Lesen). Schützt vor einem
+ * hängenden Request, der sonst den Ladepfad dauerhaft im Ladezustand hält
+ * (GSPP-331). Bemessen an der ausgelieferten Artefaktgröße mit reichlich
+ * Spielraum gegenüber einer schlechten Mobilverbindung, siehe Issue.
+ */
+export const ARTIFACT_FETCH_TIMEOUT_MS = 60_000;
+
+/**
  * Compute the SHA-256 hash of an ArrayBuffer using the Web Crypto API.
  *
  * @param buffer - The raw bytes to hash
@@ -73,14 +81,24 @@ export async function fetchVocabularyProvenance(
 export async function fetchJsonDocument<T>(
   url: string,
   label = 'JSON document',
+  timeoutMs = ARTIFACT_FETCH_TIMEOUT_MS,
 ): Promise<T> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(
-      `Failed to load ${label}: ${response.status} ${response.statusText}`,
-    );
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(new Error(`Timed out loading ${label} after ${timeoutMs}ms`)),
+    timeoutMs,
+  );
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(
+        `Failed to load ${label}: ${response.status} ${response.statusText}`,
+      );
+    }
+    return (await response.json()) as T;
+  } finally {
+    clearTimeout(timer);
   }
-  return response.json() as Promise<T>;
 }
 
 /**
@@ -92,15 +110,25 @@ export async function fetchJsonDocument<T>(
  */
 export async function fetchCatalogWithBuffer(
   catalogUrl: string,
+  timeoutMs = ARTIFACT_FETCH_TIMEOUT_MS,
 ): Promise<{ buffer: ArrayBuffer; text: string }> {
-  const response = await fetch(catalogUrl);
-  if (!response.ok) {
-    throw new Error(
-      `Failed to load catalog: ${response.status} ${response.statusText}`,
-    );
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(new Error(`Timed out loading catalog after ${timeoutMs}ms`)),
+    timeoutMs,
+  );
+  try {
+    const response = await fetch(catalogUrl, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(
+        `Failed to load catalog: ${response.status} ${response.statusText}`,
+      );
+    }
+    const buffer = await response.arrayBuffer();
+    const decoder = new TextDecoder('utf-8');
+    const text = decoder.decode(buffer);
+    return { buffer, text };
+  } finally {
+    clearTimeout(timer);
   }
-  const buffer = await response.arrayBuffer();
-  const decoder = new TextDecoder('utf-8');
-  const text = decoder.decode(buffer);
-  return { buffer, text };
 }

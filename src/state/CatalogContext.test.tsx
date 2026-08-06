@@ -1,14 +1,29 @@
-import { renderHook, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   VocabularyProvenance,
   VocabularyRegistryData,
 } from '@/domain/models';
 import { CatalogProvider } from './CatalogContext';
-import { computeSHA256 } from '@/domain/integrity';
+import { ARTIFACT_FETCH_TIMEOUT_MS, computeSHA256 } from '@/domain/integrity';
 import { useCatalog } from '@/hooks/useCatalog';
 import { SUPPORTED_CATALOG_KEY } from '@/domain/sourceRegistry';
 import { countPropRemarks } from '@/test/oscalStructure';
+
+/**
+ * Simuliert einen Fetch, der nie settelt, bis das übergebene AbortSignal
+ * feuert — genau das Verhalten eines hängenden Netzwerk-Requests (GSPP-331).
+ */
+function hangUntilAborted(signal: AbortSignal | null | undefined): Promise<Response> {
+  return new Promise((_resolve, reject) => {
+    if (!signal) return;
+    if (signal.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+  });
+}
 
 const securityNamespace =
   'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_level.csv';
@@ -191,6 +206,10 @@ describe('CatalogProvider', () => {
     vi.restoreAllMocks();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('loads catalog and vocabulary artifacts together without external runtime fetches', async () => {
     const vocabularyResponseText = JSON.stringify(vocabularyRegistryData);
     const vocabularyResponseBytes = new TextEncoder().encode(vocabularyResponseText);
@@ -326,6 +345,186 @@ describe('CatalogProvider', () => {
 
     expect(result.current.vocabularyRegistry).toBeNull();
     expect(result.current.vocabularyProvenance).toBeNull();
+  });
+
+  /* ---------------------------------------------------------------- */
+  /*  Hängende Artefakt-Fetches (GSPP-331)                            */
+  /* ---------------------------------------------------------------- */
+
+  it('erreicht loading===false mit vocabularyRegistry===null, wenn der Vokabular-Fetch hängt', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+
+      if (url === '/catalog.json') {
+        return new Response(JSON.stringify(rawCatalogDocument), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (url === '/vocabularies.json') {
+        return hangUntilAborted(init?.signal);
+      }
+
+      return new Response(null, { status: 404, statusText: 'Not Found' });
+    });
+
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <CatalogProvider
+        catalogUrl="/catalog.json"
+        metadataUrl="/catalog-metadata.json"
+        vocabulariesUrl="/vocabularies.json"
+        upstreamSourcesMetadataUrl="/upstream-sources-metadata.json"
+      >
+        {children}
+      </CatalogProvider>
+    );
+
+    const { result } = renderHook(() => useCatalog(), { wrapper });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ARTIFACT_FETCH_TIMEOUT_MS);
+    });
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.catalog?.controlsById.has('GC.1.1')).toBe(true);
+    expect(result.current.vocabularyRegistry).toBeNull();
+  });
+
+  it('erreicht loading===false mit gesetztem error, wenn der Katalog-Fetch hängt', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+
+      if (url === '/catalog.json') {
+        return hangUntilAborted(init?.signal);
+      }
+
+      if (url === '/vocabularies.json') {
+        return new Response(JSON.stringify(vocabularyRegistryData), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      return new Response(null, { status: 404, statusText: 'Not Found' });
+    });
+
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <CatalogProvider
+        catalogUrl="/catalog.json"
+        metadataUrl="/catalog-metadata.json"
+        vocabulariesUrl="/vocabularies.json"
+        upstreamSourcesMetadataUrl="/upstream-sources-metadata.json"
+      >
+        {children}
+      </CatalogProvider>
+    );
+
+    const { result } = renderHook(() => useCatalog(), { wrapper });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ARTIFACT_FETCH_TIMEOUT_MS);
+    });
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.error).not.toBeNull();
+  });
+
+  it('erreicht einen nutzbaren Katalog mit provenance/verification===null, wenn der Provenienz-Fetch (catalog-metadata.json) hängt', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+
+      if (url === '/catalog.json') {
+        return new Response(JSON.stringify(rawCatalogDocument), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (url === '/catalog-metadata.json') {
+        return hangUntilAborted(init?.signal);
+      }
+
+      return new Response(null, { status: 404, statusText: 'Not Found' });
+    });
+
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <CatalogProvider
+        catalogUrl="/catalog.json"
+        metadataUrl="/catalog-metadata.json"
+        vocabulariesUrl="/vocabularies.json"
+        upstreamSourcesMetadataUrl="/upstream-sources-metadata.json"
+      >
+        {children}
+      </CatalogProvider>
+    );
+
+    const { result } = renderHook(() => useCatalog(), { wrapper });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ARTIFACT_FETCH_TIMEOUT_MS);
+    });
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.catalog?.controlsById.has('GC.1.1')).toBe(true);
+    expect(result.current.provenance).toBeNull();
+    expect(result.current.verification).toBeNull();
+    expect(result.current.catalogDocument?.context.trustClass).toBe(
+      'class-1-unverified-public',
+    );
+  });
+
+  it('erreicht einen nutzbaren Katalog mit vocabularyProvenance/vocabularyVerification===null, wenn der Vokabular-Provenienz-Fetch (upstream-sources-metadata.json) hängt', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+
+      if (url === '/catalog.json') {
+        return new Response(JSON.stringify(rawCatalogDocument), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (url === '/vocabularies.json') {
+        return new Response(JSON.stringify(vocabularyRegistryData), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (url === '/upstream-sources-metadata.json') {
+        return hangUntilAborted(init?.signal);
+      }
+
+      return new Response(null, { status: 404, statusText: 'Not Found' });
+    });
+
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <CatalogProvider
+        catalogUrl="/catalog.json"
+        metadataUrl="/catalog-metadata.json"
+        vocabulariesUrl="/vocabularies.json"
+        upstreamSourcesMetadataUrl="/upstream-sources-metadata.json"
+      >
+        {children}
+      </CatalogProvider>
+    );
+
+    const { result } = renderHook(() => useCatalog(), { wrapper });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ARTIFACT_FETCH_TIMEOUT_MS);
+    });
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.catalog?.controlsById.has('GC.1.1')).toBe(true);
+    expect(result.current.vocabularyRegistry).not.toBeNull();
+    expect(result.current.vocabularyProvenance).toBeNull();
+    expect(result.current.vocabularyVerification).toBeNull();
   });
 
   it('hält den Quellgraphen des Katalogs neben dem Domänenmodell (ADR-2 §1)', async () => {
