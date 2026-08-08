@@ -1,12 +1,45 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   computeSHA256,
   verifyArtifactIntegrity,
   fetchJsonDocument,
   fetchProvenance,
   fetchCatalogWithBuffer,
+  ARTIFACT_FETCH_TIMEOUT_MS,
 } from './integrity';
 import type { CatalogProvenance, VocabularyProvenance } from './models';
+
+/**
+ * Simuliert einen Fetch, der nie settelt, bis das übergebene AbortSignal
+ * feuert — genau das Verhalten eines hängenden Netzwerk-Requests.
+ */
+function hangUntilAborted(signal: AbortSignal | null | undefined): Promise<Response> {
+  return new Promise((_resolve, reject) => {
+    if (!signal) return;
+    if (signal.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+  });
+}
+
+/**
+ * Simuliert eine Response, deren Header sofort ankommen, deren Body-Lesen
+ * (`json()`/`arrayBuffer()`) aber erst mit dem AbortSignal settelt — das
+ * Zeitlimit muss also auch das Body-Lesen abdecken, nicht nur das Warten
+ * auf die Antwort selbst.
+ */
+function responseWithHangingBody(signal: AbortSignal | null | undefined): Response {
+  const hangingBody = () => hangUntilAborted(signal);
+  return {
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    json: hangingBody,
+    arrayBuffer: hangingBody,
+  } as unknown as Response;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Test Fixtures                                                      */
@@ -284,6 +317,10 @@ describe('fetchJsonDocument', () => {
     vi.restoreAllMocks();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('loads arbitrary JSON documents with a custom label', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ ok: true }), {
@@ -306,6 +343,59 @@ describe('fetchJsonDocument', () => {
       fetchJsonDocument('/data/vocabularies.json', 'vocabulary registry'),
     ).rejects.toThrow('Failed to load vocabulary registry: 503 Service Unavailable');
   });
+
+  it('rejects once the request exceeds the given timeout', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async (_input, init) => hangUntilAborted(init?.signal),
+    );
+
+    const pending = fetchJsonDocument('/data/vocabularies.json', 'vocabulary registry', 5000);
+    const assertion = expect(pending).rejects.toBeDefined();
+
+    await vi.advanceTimersByTimeAsync(5000);
+    await assertion;
+  });
+
+  it('defaults the timeout to ARTIFACT_FETCH_TIMEOUT_MS', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async (_input, init) => hangUntilAborted(init?.signal),
+    );
+
+    const pending = fetchJsonDocument('/data/vocabularies.json', 'vocabulary registry');
+    const assertion = expect(pending).rejects.toBeDefined();
+
+    await vi.advanceTimersByTimeAsync(ARTIFACT_FETCH_TIMEOUT_MS);
+    await assertion;
+  });
+
+  it('clears the timeout timer after a successful fetch', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    await fetchJsonDocument('/data/vocabularies.json', 'vocabulary registry');
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('rejects once reading the response body exceeds the timeout, even though the response itself arrived', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async (_input, init) => responseWithHangingBody(init?.signal),
+    );
+
+    const pending = fetchJsonDocument('/data/vocabularies.json', 'vocabulary registry');
+    const assertion = expect(pending).rejects.toBeDefined();
+
+    await vi.advanceTimersByTimeAsync(ARTIFACT_FETCH_TIMEOUT_MS);
+    await assertion;
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -315,6 +405,10 @@ describe('fetchJsonDocument', () => {
 describe('fetchCatalogWithBuffer', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('returns buffer and decoded text', async () => {
@@ -340,5 +434,64 @@ describe('fetchCatalogWithBuffer', () => {
     await expect(fetchCatalogWithBuffer('/data/catalog.json')).rejects.toThrow(
       'Failed to load catalog: 500 Internal Server Error',
     );
+  });
+
+  it('rejects once the request exceeds the given timeout', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async (_input, init) => hangUntilAborted(init?.signal),
+    );
+
+    const pending = fetchCatalogWithBuffer('/data/catalog.json', 5000);
+    const assertion = expect(pending).rejects.toBeDefined();
+
+    await vi.advanceTimersByTimeAsync(5000);
+    await assertion;
+  });
+
+  it('defaults the timeout to ARTIFACT_FETCH_TIMEOUT_MS', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async (_input, init) => hangUntilAborted(init?.signal),
+    );
+
+    const pending = fetchCatalogWithBuffer('/data/catalog.json');
+    const assertion = expect(pending).rejects.toBeDefined();
+
+    await vi.advanceTimersByTimeAsync(ARTIFACT_FETCH_TIMEOUT_MS);
+    await assertion;
+  });
+
+  it('clears the timeout timer after a successful fetch', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('{"catalog": "test content"}', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    await fetchCatalogWithBuffer('/data/catalog.json');
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('rejects once reading the response body exceeds the timeout, even though the response itself arrived', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async (_input, init) => responseWithHangingBody(init?.signal),
+    );
+
+    const pending = fetchCatalogWithBuffer('/data/catalog.json');
+    const assertion = expect(pending).rejects.toBeDefined();
+
+    await vi.advanceTimersByTimeAsync(ARTIFACT_FETCH_TIMEOUT_MS);
+    await assertion;
+  });
+});
+
+describe('ARTIFACT_FETCH_TIMEOUT_MS', () => {
+  it('is 60000 milliseconds', () => {
+    expect(ARTIFACT_FETCH_TIMEOUT_MS).toBe(60_000);
   });
 });

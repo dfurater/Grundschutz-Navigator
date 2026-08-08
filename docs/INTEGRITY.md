@@ -99,6 +99,16 @@ export async function verifyArtifactIntegrity(
 }
 ```
 
+### Zeitlimit je Artefakt-Fetch
+
+Jeder Artefakt-Fetch (Antwort **und** Body-Lesen) ist auf ein Zeitlimit begrenzt. Ohne dieses Limit hält ein hängender Request — eine Verbindung, die weder antwortet noch fehlschlägt — den Ladepfad dauerhaft im Ladezustand, weil kein `catch`-Zweig je erreicht wird ([GSPP-331](https://linear.app/grundschutz-plus-plus/issue/GSPP-331/fixruntime-hangender-artefakt-fetch-lasst-den-katalog-dauerhaft-im)):
+
+```typescript
+export const ARTIFACT_FETCH_TIMEOUT_MS = 60_000;
+```
+
+Umgesetzt mit `AbortController` + `setTimeout`, nicht mit `AbortSignal.timeout()` — Letzteres lässt sich unter Vitest nicht mit `vi.useFakeTimers()` vorspulen, wodurch die Akzeptanztests nur mit echten Wartezeiten schreibbar wären. Der Timer wird in einem `finally` aufgeräumt, damit ein erfolgreicher Fetch keinen offenen Timer hinterlässt.
+
 ### Provenance-Abruf
 
 ```typescript
@@ -117,14 +127,24 @@ export async function fetchVocabularyProvenance(
 export async function fetchJsonDocument<T>(
   url: string,
   label = 'JSON document',
+  timeoutMs = ARTIFACT_FETCH_TIMEOUT_MS,
 ): Promise<T> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(
-      `Failed to load ${label}: ${response.status} ${response.statusText}`,
-    );
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(new Error(`Timed out loading ${label} after ${timeoutMs}ms`)),
+    timeoutMs,
+  );
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(
+        `Failed to load ${label}: ${response.status} ${response.statusText}`,
+      );
+    }
+    return (await response.json()) as T;
+  } finally {
+    clearTimeout(timer);
   }
-  return response.json() as Promise<T>;
 }
 ```
 
@@ -133,17 +153,27 @@ export async function fetchJsonDocument<T>(
 ```typescript
 export async function fetchCatalogWithBuffer(
   catalogUrl: string,
+  timeoutMs = ARTIFACT_FETCH_TIMEOUT_MS,
 ): Promise<{ buffer: ArrayBuffer; text: string }> {
-  const response = await fetch(catalogUrl);
-  if (!response.ok) {
-    throw new Error(
-      `Failed to load catalog: ${response.status} ${response.statusText}`,
-    );
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(new Error(`Timed out loading catalog after ${timeoutMs}ms`)),
+    timeoutMs,
+  );
+  try {
+    const response = await fetch(catalogUrl, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(
+        `Failed to load catalog: ${response.status} ${response.statusText}`,
+      );
+    }
+    const buffer = await response.arrayBuffer();
+    const decoder = new TextDecoder('utf-8');
+    const text = decoder.decode(buffer);
+    return { buffer, text };
+  } finally {
+    clearTimeout(timer);
   }
-  const buffer = await response.arrayBuffer();
-  const decoder = new TextDecoder('utf-8');
-  const text = decoder.decode(buffer);
-  return { buffer, text };
 }
 ```
 
@@ -157,6 +187,7 @@ export async function fetchCatalogWithBuffer(
 3a. Erst danach wird der Katalog als verlustfreies Dokument geparst (`parseCatalogDocument`, siehe [DOMAIN_MODELS.md](./DOMAIN_MODELS.md#verlustfreies-dokumentmodell)). Die Reihenfolge ist bewusst: Die Vertrauensklasse `class-1-verified-public` schließt die bestandene Hashprüfung ein und darf deshalb nicht vergeben werden, bevor sie gelaufen ist. Ohne Metadaten oder bei abweichendem Hash trägt das Dokument `class-1-unverified-public`.
 4. Fehlen zu einem vorhandenen Datenartefakt nur die Metadaten, bleibt das Artefakt nutzbar. Provenance und Verifikation bleiben `null`, die App protokolliert eine Warnung in der Konsole und überspringt die Prüfung.
 5. Ein `cancelled`-Flag verhindert State-Updates nach Unmount.
+6. Alle vier Start-Fetches (`catalog.json`, `vocabularies.json`, `catalog-metadata.json`, `upstream-sources-metadata.json`) sind einzeln auf [`ARTIFACT_FETCH_TIMEOUT_MS`](#zeitlimit-je-artefakt-fetch) begrenzt. Läuft ein optionales Artefakt (Vokabulare oder eine der beiden Provenance-Dateien) ins Zeitlimit, greift derselbe `error`- bzw. `catch`-Zweig wie bei einem 404 — die App startet mit dem betroffenen Feld auf `null`. Läuft `catalog.json` selbst ins Zeitlimit, führt der äußere `catch` zu `LOAD_ERROR` mit einer Fehlermeldung statt zu einem dauerhaft hängenden Ladezustand.
 
 ## VerificationResult Typ
 
