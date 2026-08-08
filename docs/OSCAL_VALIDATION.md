@@ -5,7 +5,7 @@ importiert, exportiert oder in der Build-Pipeline prüft. Er definiert die
 Prüfkette und ihre Lieferkette; er aktiviert noch keinen produktiven Import.
 YAML und XML sind nicht unterstützt.
 
-## Status: verbindlicher Zielzustand, Stufe 2 umgesetzt
+## Status: verbindlicher Zielzustand, Stufe 2 und unabhängiger CI-Schema-Korpuslauf umgesetzt
 
 Dieses Dokument legt den verbindlichen Zielzustand für den künftigen
 OSCAL-Import- und -Prüfpfad fest. Die Schutzkette ist **nicht** vollständig in
@@ -26,6 +26,17 @@ die Katalog-Interpretation als Fallback existiert nicht mehr. Der Dispatcher
 wählt zugleich den Schema-Pin aus, **wendet** ihn aber nicht an — das bleibt
 Stufe 3.
 
+**GSPP-336 führt zusätzlich die unabhängige CI-Schema-Stufe ein.**
+[`npm run verify-upstream-oscal`](../package.json) lädt ausschließlich
+`go-oscal` 0.7.1 aus der statisch gepinnten Release-Tabelle,
+verifiziert Release-Metadaten, API-Digest, `checksums.txt` und berechnete
+SHA-256-Werte und prüft den vollständigen im gepinnten
+`upstream-manifest.json` registrierten OSCAL-Korpus. Der Lauf verarbeitet die
+16 OSCAL-Artefakte über alle vier belegten Versionen und überspringt die 13
+`vocabulary`-Dateien, weil sie kein OSCAL-Root-Modell tragen. Sein Ergebnis ist
+ein eigenständiges Schema-Orakel: Es aktiviert weder den Browser-Validator noch
+behauptet es eine vollständige Validierung der Stufen 1, 2, 4 oder 5.
+
 Die bestehende Integritätsprüfung und `parseCatalog` ersetzen diese Gates
 nicht. Bis die vollständige Kette samt Negativtests in Browser und CI
 integriert ist, darf die App weder ihre Stufen als ausgeführt ausweisen noch
@@ -43,16 +54,14 @@ Compliance-Nachweis.
 
 Stufe 1 und 2 sind harte Eingangsgates: Schlagen sie fehl, erhalten alle
 folgenden Stufen den terminalen Status `not-run`. Stufe 3 läuft nur nach
-bestandener Stufe 2. Stufe 4 und die von ihr unabhängige Stufe 5 laufen nur,
-wenn Stufe 3 `passed` ist oder eine ausschließlich additive, strukturell sicher
-weiterverarbeitbare Schemaabweichung nach der unten definierten Policy
-ausdrücklich `continuationAllowed: true` erhält. Stufe 5 läuft auch dann, wenn
-Stufe 4 für eine dokumentierte versionsgebundene Lücke `not-checked` ist. Ein
-Fehler oder eine technisch nicht verfügbare, aber für die jeweilige Aussage
-erforderliche Stufe hält das Validierungsergebnis fail-closed negativ.
-Unabhängig ausführbare Folgestufen werden trotzdem geprüft und mit einem
-eigenen terminalen Status ausgewiesen. Diagnosen werden separat erzeugt und
-verändern das Validierungsergebnis nicht.
+bestandener Stufe 2. Stufe 4 und die von ihr unabhängige Stufe 5 laufen nur
+nach `passed` in Stufe 3. Stufe 5 läuft auch dann, wenn Stufe 4 für eine
+dokumentierte versionsgebundene Lücke `not-checked` ist. Ein Fehler oder eine
+technisch nicht verfügbare, aber für die jeweilige Aussage erforderliche Stufe
+hält das Validierungsergebnis fail-closed negativ. Unabhängig ausführbare
+Folgestufen werden trotzdem geprüft und mit einem eigenen terminalen Status
+ausgewiesen. Diagnosen werden separat erzeugt und verändern das
+Validierungsergebnis nicht.
 
 „CI“ bezeichnet in diesem Dokument die Build- und Prüfzeit auf einem isolierten
 GitHub-Actions-Runner; Browserprüfungen laufen ausschließlich im Modul-Worker.
@@ -61,7 +70,7 @@ GitHub-Actions-Runner; Browserprüfungen laufen ausschließlich im Modul-Worker.
 | --- | --- | --- |
 | 1. Größenlimit und JSON-Syntax | Plattformfunktionen (`Uint8Array`, fataler UTF-8-Decoder), projekteigener Streaming-Token-Scanner und danach `JSON.parse` im isolierten Worker; dieselbe Reihenfolge in CI | Das Byte-Limit muss vor Decoder, Scanner und Parser gesetzt sein. Fehlt ein Limit oder wird es überschritten, wird nicht dekodiert. Nach erfolgreicher fataler Dekodierung lehnt der Scanner doppelte Member-Namen auf jeder Objekttiefe ab; nur dann wird `JSON.parse` aufgerufen. CI verwendet Node 22 gemäß Workflow und der Mindestversion in `package.json`; die Prüflogik einschließlich Scanner ist über den App-Commit gepinnt. |
 | 2. Root-Erkennung | **Umgesetzt:** `dispatchOscalDocument()` in [`oscalRootDispatch.ts`](../src/adapters/oscalRootDispatch.ts), projekteigen und ohne externes Werkzeug | Das Top-Level-Objekt muss genau einen der acht bekannten Root-Keys besitzen. Null, Arrays, mehrere Root-Keys und unbekannte Keys werden abgelehnt. Die optionale Schema-Direktive `$schema` ist die einzige zusätzlich zulässige Top-Level-Property; sie ist kein zweiter Root und **niemals** Versionsautorität. Eine Katalog-Interpretation als Fallback ist verboten. |
-| 3. JSON-Schema | Browser nach Aktivierung: `ajv` 8.20.0 im Modul-Worker. CI dann zusätzlich: `go-oscal` 0.7.1 als unabhängiges Schema- und Upgrade-Orakel | Auswahl ausschließlich über den exakten Root×`oscal-version`-Schlüssel. Fehlende Kombinationen werden abgelehnt. Nur exakt registrierte, additive `additionalProperties`-Abweichungen dürfen die Fortsetzung zu Stufe 4 und 5 erlauben; die Schema-Stufe bleibt `failed`. Ajv wird erst nach der OSS-Zulassung aus [ADR-5](https://linear.app/grundschutz-plus-plus/issue/ADR-5) produktiv aufgenommen. Bis direkte Abhängigkeit, Paket-Lock, Schema-Manifest und Hashprüfung vorhanden sind, bleibt der betreffende Importpfad deaktiviert. |
+| 3. JSON-Schema | Browser nach Aktivierung: `ajv` 8.20.0 im Modul-Worker. **CI umgesetzt:** [`verify-upstream-oscal.mjs`](../scripts/verify-upstream-oscal.mjs) nutzt `go-oscal` 0.7.1 als unabhängiges Schema- und Upgrade-Orakel | Auswahl ausschließlich über den exakten Root×`oscal-version`-Schlüssel. Der Korpuslauf bezieht Dokumente nur aus dem gepinnten BSI-Snapshot und führt weder Schema- noch Dokumentreferenz-Anfragen aus. Jedes nicht gesperrte Artefakt muss bestehen; ein gesperrtes Artefakt muss fehlschlagen. Fehlende oder nicht auswertbare Werkzeugergebnisse bleiben ein eigener fail-closed Werkzeugfehler. Ajv wird erst nach der OSS-Zulassung aus [ADR-5](https://linear.app/grundschutz-plus-plus/issue/ADR-5) produktiv aufgenommen. Bis direkte Abhängigkeit, Paket-Lock, Schema-Manifest und Hashprüfung vorhanden sind, bleibt der betreffende Importpfad deaktiviert. |
 | 4. zusätzliche OSCAL-Constraints | Derzeit **kein zugelassener Validator** für OSCAL 1.2.2; im Browser und in CI als `not-checked` ausgewiesen | Diese Stufe darf weder übersprungen noch als bestanden dargestellt werden. Die zulässige Konformitätsaussage wird deshalb begrenzt. Das konkrete Mapping-Orakel ist als bekannte Lücke registriert. |
 | 5. Referenzen und Projektregeln | Projekteigener, kataloggescopter Referenzgraph und explizit versionierte Regeln im Worker und in CI; Vertrag in [GSPP-251](https://linear.app/grundschutz-plus-plus/issue/GSPP-251) | Prüft UUID-/ID-Eindeutigkeit, interne und dokumentübergreifende Referenzen, URI- und Medientypregeln sowie ausdrücklich benannte GRC-Regeln. Externe `href`-Ziele werden klassifiziert, niemals während der Validierung abgerufen. Unbekannte Regeln gelten nicht als bestanden. |
 
@@ -193,14 +202,14 @@ Ajv-8.20.0-Pin.
 | --- | --- | --- |
 | NIST-JSON-Schemas | Offizielle Releases `v1.1.2`, `v1.1.3`, `v1.2.1` und `v1.2.2`; root-spezifische JSON-Schemadatei | Eine maschinenlesbare Allowlist bindet Release, Root, Version, Dateiname und SHA-256. Download ist nur in einem expliziten Wartungslauf erlaubt. Fehlender oder abweichender Hash blockiert Build und Import. |
 | Ajv, nach Aktivierung | npm-Paket `ajv` exakt 8.20.0, MIT | Der dann atomar aktualisierte `package-lock.json` bindet Tarball und SRI-Integrität. Die OSS-Zulassung prüft Lizenz, Herkunft, Wartung, Transitivabhängigkeiten, Sicherheitslage, Bundle-/Worker-Eignung und Updateweg, bevor das Paket produktiv wird. |
-| go-oscal, nach Aktivierung | Offizielles GitHub-Release `v0.7.1`, Apache-2.0 | Die künftige CI-Stufe lädt nur das Plattformartefakt des exakten Releases, prüft den von GitHub veröffentlichten Asset-Digest und `checksums.txt` und archiviert die zugehörige SBOM als Build-Nachweis. Die ausführbare Datei wird nicht in dieses Repository eingecheckt. |
+| go-oscal, CI aktiviert | Offizielles GitHub-Release `v0.7.1`, Apache-2.0; Namen und SHA-256 aller unterstützten Plattformartefakte sind statisch in [`verify-upstream-oscal.mjs`](../scripts/verify-upstream-oscal.mjs) gepinnt | Vor der Ausführung müssen Tag, direkter Release-URL und GitHub-API-Digest zum statischen Pin passen. Das geladene Binary und die SBOM müssen zusätzlich ihren statischen SHA-256 und den zugehörigen Eintrag aus `checksums.txt` erfüllen. CI nutzt Linux amd64, schreibt die verifizierte SBOM nur nach `$RUNNER_TEMP` und archiviert sie via SHA-gepinntem `actions/upload-artifact`. Die ausführbare Datei wird weder eingecheckt noch außerhalb des temporären Laufs abgelegt. |
 | Eigene Regeln | App-Quellcode und Tests | Pinning durch Commit-SHA; jede Regel nennt betroffene Root×Version-Paare und stabile Diagnostic-Codes. |
 
 Schema- und Toolupdates sind atomar: neue Datei beziehungsweise neue Version,
-neuer Hash, Positiv- und Negativorakel und Review im selben Änderungssatz.
-Ein Update, das die Constraint-Lücke oder Diagnostic-Signaturen verändert,
-erfordert auch die Anpassung der Aussagegrenzen beziehungsweise der eng
-gebundenen Policy-Einträge.
+neuer Hash, Positiv- und Negativorakel und Review im selben Änderungssatz. Ein
+Update, das die Constraint-Lücke, die Lifecycle-Erwartung oder die
+`$schema`-Kompatibilitätsgrenze verändert, erfordert auch die Anpassung der
+Aussagegrenzen und Tests.
 
 ## Befund zur Constraint-Stufe
 
@@ -449,67 +458,55 @@ sicher normalisiert werden, entsteht stattdessen
 
 ## Bekannte BSI-Schemaabweichungen
 
-Ausnahmen sind ausschließlich CI-Policy. Sie unterdrücken keine Diagnose und
-ändern `validationValid: false` niemals in `true`. Ein Eintrag darf zusätzlich
-`continuationEligible: true` tragen, aber nur für eine additive
-`additionalProperties`-Abweichung, nach der das erwartete OSCAL-Modell sicher
-weiter geprüft werden kann. Nur wenn jede Diagnose der Schema-Stufe einen
-solchen Eintrag exakt trifft, wird `continuationAllowed: true` gesetzt. Diese
-Fortsetzung ändert weder `validationValid: false` noch unterdrückt eine
-Diagnose; sie erlaubt ausschließlich die Ausführung der Stufen 4 und 5.
+Ein Klasse-1-Artefakt mit reproduziertem, im Upstream-Artefakt liegendem und
+upstream gemeldetem Schemadefekt wird als `blocked-by-upstream` im
+Quellregister gesperrt. Die BSI-Meldung ist Pflichtreferenz des Eintrags. Die
+Sperrung ist keine Validatorausnahme: Das Artefakt wird weiter geprüft und sein
+Schema-Status bleibt sichtbar `failed`.
 
-Separat darf `policyAccepted: true` nur entstehen, wenn alle fünf Stufen einen
-terminalen Status besitzen und zusätzlich sämtliche Bedingungen erfüllt sind:
+| Artefakt | Root / Version | Upstream-Meldung |
+| --- | --- | --- |
+| `catalog-iso27001-annex-a` | `catalog` / 1.1.3 | [BSI #69](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/69) |
+| `component-ga-lotse-grundmodul` | `component-definition` / 1.1.2 | [BSI #70](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/70) |
+| `component-lieferkette` | `component-definition` / 1.1.2 | [BSI #71](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/71) |
+| `mapping-iso27001-annex-a-zu-gspp` | `mapping-collection` / 1.2.2 | [BSI #68](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/68) |
 
-- Stufe 1, 2 und 5 sind `passed`;
-- Stufe 3 ist entweder `passed` oder ausschließlich wegen exakt gedeckter,
-  fortsetzungsfähiger Diagnosen `failed`;
-- Stufe 4 ist `passed` oder für die dokumentierte versionsgebundene
-  Constraint-Lücke ausdrücklich `not-checked`; dieser Status bleibt sichtbar;
-- keine Stufe ist `not-run`;
-- **jede** Diagnose ist exakt durch einen Eintrag mit den folgenden fünf
-  Matchfeldern gedeckt.
+Der Korpuslauf erwartet für jedes nicht gesperrte Artefakt `schema=passed` und
+für jedes gesperrte Artefakt `schema=failed`. Ein neuer Fehler eines nicht
+gesperrten Artefakts oder ein bestandenes gesperrtes Artefakt lässt den Lauf
+fehlschlagen; letzteres wird als Entsperrungskandidat ausgewiesen. Es existiert
+keine Diagnosesignatur-Liste, keine Aggregat-Zerlegung und keine
+Fortsetzungssemantik für diesen Lauf.
 
-Eine zusätzliche Diagnose, ein fehlender terminaler Stufenstatus oder
-`not-run` lässt das Policy-Gate fehlschlagen. Die fünf exakten Matchfelder sind:
+Für diesen Lauf gibt es keine aktive Ausnahme. Eine spätere Ausnahme für ein
+unverzichtbares ausgeliefertes Artefakt wäre eine neue, ADR-pflichtige
+Produktentscheidung; sie darf weder durch eine Diagnosesignatur noch durch eine
+Änderung der Sperrsemantik dieses Korpuslaufs entstehen.
 
-1. Artefaktschlüssel,
-2. Root-Typ,
-3. `oscal-version`,
-4. normalisierter Feldpfad,
-5. Diagnosesignatur einschließlich Validatorpin und strukturellem Fehlermerkmal.
-
-Begründung und Erfassungsdatum sind Pflichtmetadaten. Jede weitere Diagnose,
-eine geänderte Signatur oder derselbe Pfad mit einer anderen Fehlerart lässt das
-Policy-Gate fehlschlagen.
-
-Der erste bekannte Befund stammt aus einem tatsächlichen go-oscal-0.7.1-Lauf.
-Der Validator meldet die zusätzlichen Eigenschaften gemeinsam am
-`provenance`-Objekt. Der Adapter zerlegt ausschließlich diese strukturelle
-Eigenschaftsliste deterministisch in zwei weiterhin sichtbare Diagnosen:
-
-| Artefakt | Root / Version | Feldpfad und Signatur | Fortsetzung | Begründung / erfasst |
-| --- | --- | --- | --- | --- |
-| `mapping-iso27001-annex-a-zu-gspp` | `mapping-collection` / 1.2.2 | `/mapping-collection/provenance/qa-reviewed` — `go-oscal@0.7.1\|additionalProperties\|/mapping-collection/provenance\|qa-reviewed` | `continuationEligible: true` | bekannte additive BSI-QA-Erweiterung / 2026-08-01 |
-| `mapping-iso27001-annex-a-zu-gspp` | `mapping-collection` / 1.2.2 | `/mapping-collection/provenance/qa-note` — `go-oscal@0.7.1\|additionalProperties\|/mapping-collection/provenance\|qa-note` | `continuationEligible: true` | bekannte additive BSI-QA-Erweiterung / 2026-08-01 |
-
-Wenn die Aggregatmeldung nicht exakt aus diesen beiden Eigenschaften besteht,
-wird sie nicht zerlegt, erhält keine Fortsetzungserlaubnis und wird nicht von
-der Policy akzeptiert. Die schemafremden Felder bleiben im verlustfreien
-Dokument erhalten.
+`mapping-itgs2023-zu-gspp` ist nicht gesperrt. go-oscal 0.7.1 lehnt ein
+standardkonformes Dokument mit Top-Level-`$schema` vor der Schemaauswertung ab,
+weil sein Modelldetektor genau einen Top-Level-Key verlangt. Der Korpuslauf
+entfernt deshalb ausschließlich eine stringförmige `$schema`-Direktive aus der
+temporären Werkzeugkopie. Die verifizierten Upstream-Bytes und der
+Schema-Schlüssel aus `metadata.oscal-version` bleiben unverändert. Fehlt danach
+ein auswertbares Werkzeugergebnis, endet der Lauf als redigierter Werkzeugfehler
+statt als Schemabefund.
 
 ## Belegte Orakel
 
-Der temporäre Prototyp verwendete ausschließlich checksum-geprüfte Artefakte
-des gepinnten BSI-Snapshots; weder Artefakte noch Testharnisch werden im
-Repository gehalten. Das Catalog-Paar zu `metadata.props` belegt beide Aussagen
-der Landkarte zugleich: die Prüftiefendifferenz und die Reichweite der
-namespace-gebundenen Constraints.
+Der CI-Korpuslauf verwendet ausschließlich checksum-geprüfte Artefakte des
+gepinnten BSI-Snapshots; weder Upstream-Dokumente noch go-oscal-Binary oder
+SBOM werden im Repository gehalten. Seine Zusammenfassung ist deterministisch
+und enthält nur Registry-Schlüssel, Lifecycle, Erwartung, Schemaergebnis und
+Versions-Zählung — keine Dokumentwerte, lokalen Pfade oder Stacktraces. Das
+Catalog-Paar zu `metadata.props` belegt beide Aussagen der Landkarte zugleich:
+die Prüftiefendifferenz und die Reichweite der namespace-gebundenen Constraints.
 
 | Fall | Erwarteter und beobachteter Befund |
 | --- | --- |
 | reales `catalog-gspp`, OSCAL 1.1.3 | Root-/Versionswahl und Schema-Prüfung bestehen. Eine abgeleitete Variante ohne Pflichtfeld `metadata.title` scheitert an der Schema-Stufe. |
-| reales ISO→Grundschutz++-Mapping, OSCAL 1.2.2 | Das unveränderte Artefakt bleibt wegen `qa-reviewed` und `qa-note` schema-invalid; die separate Policy kann nur diese exakten Diagnosen akzeptieren. |
+| reales ISO→Grundschutz++-Mapping, OSCAL 1.2.2 | Das unveränderte Artefakt bleibt schema-invalid und ist als `blocked-by-upstream` ein erwarteter Sperrbefund. |
+| reales ITGS→Grundschutz++-Mapping, OSCAL 1.2.1 | Das Artefakt ist schema-valide. Die temporäre Entfernung seiner zulässigen `$schema`-Direktive umgeht ausschließlich den Modelldetektor-Defekt von go-oscal 0.7.1; die gepinnten Quellbytes bleiben unverändert. |
 | aus dem realen Mapping abgeleitet, `relationship: "maps-to"` | JSON-Schema besteht; die nicht verfügbare allgemeine Constraint-Stufe bleibt als Lücke sichtbar. |
 | aus dem realen Mapping abgeleitet, `status: "veröffentlicht"` | JSON-Schema scheitert. |
 | aus dem realen `catalog-gspp` abgeleitet, `metadata.props` um `{ "name": "erfundener-name" }` **ohne** `ns` ergänzt | JSON-Schema besteht, weil `prop/name` kein Enum trägt. Der Name verletzt den geschlossenen OSCAL-Wertebereich; die nicht verfügbare Constraint-Stufe bleibt als Lücke sichtbar. |

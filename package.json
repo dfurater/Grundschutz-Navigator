@@ -15,6 +15,7 @@
     "test:coverage": "vitest run --coverage",
     "lint": "eslint .",
     "fetch-catalog": "node scripts/fetch-catalog.mjs",
+    "verify-upstream-oscal": "node scripts/verify-upstream-oscal.mjs",
     "verify-oscal-schemas": "node scripts/sync-oscal-schemas.mjs",
     "sync-oscal-schemas": "node scripts/sync-oscal-schemas.mjs --write"
   },

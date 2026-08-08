@@ -8,9 +8,9 @@
  * importiert; deshalb reines ESM ohne Node-Abhängigkeiten.
  *
  * Nur Einträge mit `lifecycle: 'supported'` weiten die produktive Fetch- und
- * Auslieferungs-Allowlist. `preview`/`draft` dürfen ausschließlich transient
- * für Manifest-Provenienz und Root-Typ-Validierung gelesen werden; ihre Bytes
- * werden nie als App-Artefakte ausgegeben.
+ * Auslieferungs-Allowlist. `preview`, `draft` und `blocked-by-upstream` dürfen
+ * ausschließlich transient für Manifest-Provenienz und Root-Typ-Validierung
+ * gelesen werden; ihre Bytes werden nie als App-Artefakte ausgegeben.
  *
  * Jeder OSCAL-Eintrag führt zusätzlich die vom Artefakt deklarierte
  * `metadata.oscal-version` (GSPP-283). Das ist die erwartete Version des
@@ -37,6 +37,8 @@ const OSCAL_ROOT_TYPES = Object.freeze([
 ]);
 
 const LIFECYCLES = Object.freeze(['supported', 'preview', 'draft', 'blocked-by-upstream']);
+const BSI_UPSTREAM_ISSUE_URL =
+  /^https:\/\/github\.com\/BSI-Bund\/Stand-der-Technik-Bibliothek\/issues\/[1-9]\d*$/;
 
 const COMPONENT_DIRECTORY = 'implementation_layer';
 
@@ -102,7 +104,8 @@ export const SOURCE_REGISTRY = Object.freeze(
       expectedRootType: 'catalog',
       catalogKey: 'iso27001-annex-a',
       upstreamPath: 'control_layer/ISO27001/ISO27001-AnnexA-catalog.json',
-      lifecycle: 'preview',
+      lifecycle: 'blocked-by-upstream',
+      upstreamIssue: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/69',
       title: 'ISO/IEC 27001 Annex A Referenzkatalog',
     },
     {
@@ -148,7 +151,8 @@ export const SOURCE_REGISTRY = Object.freeze(
       oscalVersion: '1.2.2',
       expectedRootType: 'mapping-collection',
       upstreamPath: 'control_layer/Mappings/ISO-27001-zu-GSpp/ISO27001-AnnexA-to-GS++-mapping_collection.json',
-      lifecycle: 'preview',
+      lifecycle: 'blocked-by-upstream',
+      upstreamIssue: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/68',
       title: 'Mapping ISO/IEC 27001 Annex A zu Grundschutz++',
     },
     {
@@ -175,7 +179,8 @@ export const SOURCE_REGISTRY = Object.freeze(
       oscalVersion: '1.1.2',
       expectedRootType: 'component-definition',
       upstreamPath: `${COMPONENT_DIRECTORY}/GA-Lotse_Grundmodul/GA-Lotse_Grundmodul-component_definition.json`,
-      lifecycle: 'preview',
+      lifecycle: 'blocked-by-upstream',
+      upstreamIssue: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/70',
       title: 'Component Definition GA-Lotse Grundmodul',
     },
     {
@@ -184,7 +189,8 @@ export const SOURCE_REGISTRY = Object.freeze(
       oscalVersion: '1.1.2',
       expectedRootType: 'component-definition',
       upstreamPath: `${COMPONENT_DIRECTORY}/Lieferkettensicherheit/Lieferkettensicherheit-component_definition.json`,
-      lifecycle: 'preview',
+      lifecycle: 'blocked-by-upstream',
+      upstreamIssue: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/71',
       title: 'Component Definition Lieferkettensicherheit',
     },
     {
@@ -288,6 +294,13 @@ export function validateSourceRegistry(entries = SOURCE_REGISTRY) {
 
     if (!LIFECYCLES.includes(entry.lifecycle)) {
       throw new Error(`Unknown lifecycle in source registry entry ${entry.artifactKey}: ${entry.lifecycle}`);
+    }
+    if (entry.lifecycle === 'blocked-by-upstream') {
+      if (entry.kind !== 'oscal' || !BSI_UPSTREAM_ISSUE_URL.test(entry.upstreamIssue ?? '')) {
+        throw new Error(`Blocked source registry entry requires a BSI upstream issue: ${entry.artifactKey}`);
+      }
+    } else if (entry.upstreamIssue !== undefined) {
+      throw new Error(`Only blocked source registry entries may declare an upstream issue: ${entry.artifactKey}`);
     }
     if (!isNonEmptyString(entry.title)) {
       throw new Error(`Missing title in source registry entry ${entry.artifactKey}`);

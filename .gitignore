@@ -18,6 +18,7 @@ dist/
 # Local tool artifacts
 /.playwright-mcp/
 /tmp/
+/go-oscal/
 
 # OS
 .DS_Store

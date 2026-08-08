@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   computeManifestSignature,
   guardCatalogSyncPullRequest,
+  isRegistryLifecycleOnlyMigration,
   parseNameStatusDiff,
   validateCatalogSyncManifest,
   validateCatalogSyncPullRequest,
@@ -419,6 +420,65 @@ describe('catalog sync PR shape', () => {
       fetchImpl,
     })).resolves.toEqual({ catalogSync: false });
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('allows only a signed registry lifecycle migration without catalog-sync network work', async () => {
+    const next = makeFixture({ snapshotCommitSha: OLD_SHA });
+    const previous = rebuildManifest(
+      next.manifest,
+      next.manifest.files.map((file) =>
+        file.lifecycle === 'blocked-by-upstream' ? { ...file, lifecycle: 'preview' } : file,
+      ),
+    );
+    const diffEntries = [
+      { status: 'M', path: 'src/domain/sourceRegistry.mjs' },
+      { status: 'M', path: 'upstream-manifest.json' },
+    ];
+    const fetchImpl = vi.fn();
+
+    expect(isRegistryLifecycleOnlyMigration({ diffEntries, previousManifest: previous, nextManifest: next.manifest })).toBe(true);
+    await expect(guardCatalogSyncPullRequest({
+      branch: 'codex/gspp-336',
+      title: 'feat(oscal): lifecycle migration',
+      diffEntries,
+      previousManifest: previous,
+      nextManifest: next.manifest,
+      fetchImpl,
+    })).resolves.toEqual({ catalogSync: false, registryLifecycleMigration: true });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('does not classify content or snapshot changes as a registry lifecycle migration', () => {
+    const next = makeFixture({ snapshotCommitSha: OLD_SHA });
+    const previous = rebuildManifest(
+      next.manifest,
+      next.manifest.files.map((file) =>
+        file.lifecycle === 'blocked-by-upstream' ? { ...file, lifecycle: 'preview' } : file,
+      ),
+    );
+    const contentChanged = rebuildManifest(
+      next.manifest,
+      next.manifest.files.map((file, index) =>
+        index === 0 ? { ...file, contentSha256: 'f'.repeat(64) } : file,
+      ),
+    );
+
+    expect(isRegistryLifecycleOnlyMigration({
+      diffEntries: [
+        { status: 'M', path: 'src/domain/sourceRegistry.mjs' },
+        { status: 'M', path: 'upstream-manifest.json' },
+      ],
+      previousManifest: previous,
+      nextManifest: contentChanged,
+    })).toBe(false);
+    expect(isRegistryLifecycleOnlyMigration({
+      diffEntries: [
+        { status: 'M', path: 'src/domain/sourceRegistry.mjs' },
+        { status: 'M', path: 'upstream-manifest.json' },
+      ],
+      previousManifest: previous,
+      nextManifest: { ...next.manifest, snapshotCommitSha: NEW_SHA },
+    })).toBe(false);
   });
 });
 
