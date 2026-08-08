@@ -64,4 +64,24 @@ describe('Diagnosemodell', () => {
     expect(Object.isFrozen(diagnostic.artifact)).toBe(true);
     expect(Object.isFrozen(diagnostic.params)).toBe(true);
   });
+
+  it('stellt den redigierten Konstruktor für Node-CI-Skripte bereit', async () => {
+    const { createOscalDiagnostic: createNodeDiagnostic } = await import('./oscalDiagnostics.mjs');
+
+    const diagnostic = createNodeDiagnostic({
+      code: 'OSCAL_SCHEMA_ADDITIONAL_PROPERTY',
+      stage: 'json-schema',
+      validator: { name: 'go-oscal', version: '0.7.1' },
+      path: '/mapping-collection/provenance/qa-reviewed',
+      signatureParts: [
+        'additionalProperties',
+        '/mapping-collection/provenance',
+        'qa-reviewed',
+      ],
+    });
+
+    expect(diagnostic.signature).toBe(
+      'go-oscal@0.7.1|additionalProperties|/mapping-collection/provenance|qa-reviewed',
+    );
+  });
 });
