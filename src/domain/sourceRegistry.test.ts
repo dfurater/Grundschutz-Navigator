@@ -65,6 +65,34 @@ describe('sourceRegistry', () => {
     ]);
   });
 
+  it('blocks exactly the upstream-reported schema-defective OSCAL artifacts', () => {
+    expect(
+      SOURCE_REGISTRY.filter(
+        (entry): entry is OscalArtifactEntry =>
+          entry.kind === 'oscal' && entry.lifecycle === 'blocked-by-upstream',
+      )
+        .map((entry) => ({ artifactKey: entry.artifactKey, upstreamIssue: entry.upstreamIssue }))
+        .sort((left, right) => left.artifactKey.localeCompare(right.artifactKey)),
+    ).toEqual([
+      {
+        artifactKey: 'catalog-iso27001-annex-a',
+        upstreamIssue: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/69',
+      },
+      {
+        artifactKey: 'component-ga-lotse-grundmodul',
+        upstreamIssue: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/70',
+      },
+      {
+        artifactKey: 'component-lieferkette',
+        upstreamIssue: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/71',
+      },
+      {
+        artifactKey: 'mapping-iso27001-annex-a-zu-gspp',
+        upstreamIssue: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/68',
+      },
+    ]);
+  });
+
   it('monitors exactly the registry-backed BSI discovery roots', () => {
     expect(MONITORED_UPSTREAM_ROOTS).toEqual([
       'control_layer',
@@ -373,6 +401,29 @@ describe('sourceRegistry', () => {
           makeOscalEntry({ expectedRootType: 'plan' as never }),
         ]),
       ).toThrow(/root type/i);
+    });
+
+    it('requires an exact BSI issue only for blocked upstream artifacts', () => {
+      expect(() =>
+        validateSourceRegistry([
+          makeOscalEntry({ lifecycle: 'blocked-by-upstream' }),
+        ]),
+      ).toThrow(/requires a BSI upstream issue/);
+      expect(() =>
+        validateSourceRegistry([
+          makeOscalEntry({
+            lifecycle: 'blocked-by-upstream',
+            upstreamIssue: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/1',
+          }),
+        ]),
+      ).not.toThrow();
+      expect(() =>
+        validateSourceRegistry([
+          makeOscalEntry({
+            upstreamIssue: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/1',
+          }),
+        ]),
+      ).toThrow(/Only blocked source registry entries/);
     });
   });
 });

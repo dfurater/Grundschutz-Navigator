@@ -32,6 +32,8 @@ export interface OscalArtifactEntry {
   readonly catalogKey?: CatalogKey;
   readonly upstreamPath: string;
   readonly lifecycle: ArtifactLifecycle;
+  /** Pflichtreferenz bei lifecycle 'blocked-by-upstream'. */
+  readonly upstreamIssue?: string;
   readonly title: string;
 }
 
