@@ -103,21 +103,22 @@ export function ControlDependencies({
   incomingLinks = [],
   onNavigateToControl,
 }: ControlDependenciesProps) {
+  const resolvedLinks = links.filter((link) => controlsById?.has(link.targetId));
   const incomingByControlId = buildIncomingLinksByControlId(incomingLinks);
-  const outgoingIds = new Set(links.map((link) => link.targetId));
+  const outgoingIds = new Set(resolvedLinks.map((link) => link.targetId));
   const incomingOnlyLinks = incomingLinks.filter(
     (incoming) => !outgoingIds.has(incoming.control.id),
   );
-  const linkGroups = groupLinksByLabel(links, incomingByControlId);
+  const linkGroups = groupLinksByLabel(resolvedLinks, incomingByControlId);
 
-  if (links.length === 0 && incomingOnlyLinks.length === 0) {
+  if (resolvedLinks.length === 0 && incomingOnlyLinks.length === 0) {
     return null;
   }
 
   return (
     <ControlDetailSection heading="Abhängigkeiten">
       <div className="space-y-3">
-        {links.length > 0 && (
+        {resolvedLinks.length > 0 && (
           <div>
             <SubSectionHeading>Verknüpfte Kontrollen</SubSectionHeading>
             <div className="space-y-3">
@@ -132,30 +133,24 @@ export function ControlDependencies({
                     <div className="space-y-1">
                       {group.links.map((link) => {
                         const targetControl = controlsById?.get(link.targetId);
-                        const ariaLabel = `${link.targetId}${targetControl?.title ? ` ${targetControl.title}` : ''} (${group.label})`;
+                        if (!targetControl) return null;
+                        const ariaLabel = `${link.targetId} ${targetControl.title} (${group.label})`;
 
                         return (
                           <button
                             key={`${link.targetId}-${link.relation}`}
                             type="button"
                             aria-label={ariaLabel}
-                            disabled={!targetControl}
-                            className={`${detailLinkRowClass} disabled:cursor-not-allowed disabled:opacity-60`}
-                            onClick={() => {
-                              if (targetControl) {
-                                onNavigateToControl?.(targetControl);
-                              }
-                            }}
+                            className={detailLinkRowClass}
+                            onClick={() => onNavigateToControl?.(targetControl)}
                           >
                             <div className="flex items-baseline gap-2">
                               <span className="font-mono text-xs text-slate-500 shrink-0 group-hover:text-primary-main">
                                 {link.targetId}
                               </span>
-                              {targetControl?.title && (
-                                <span className="text-sm text-slate-700 leading-snug">
-                                  {targetControl.title}
-                                </span>
-                              )}
+                              <span className="text-sm text-slate-700 leading-snug">
+                                {targetControl.title}
+                              </span>
                             </div>
                           </button>
                         );

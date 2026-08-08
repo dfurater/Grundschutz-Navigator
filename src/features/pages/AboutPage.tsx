@@ -8,13 +8,18 @@ import {
   IconLink,
 } from '@/components/icons';
 import type {
-  CatalogMetadataLink,
   CatalogParty,
   CatalogProvenance,
-  CatalogResource,
   CatalogRole,
   CatalogResponsibleParty,
 } from '@/domain/models';
+import {
+  referenceDocumentFromCatalog,
+  resolveCatalogMetadataReferences,
+  resolveCatalogResources,
+  type ResolvedOscalReference,
+  type ResolvedResource,
+} from '@/domain/referenceResolution';
 import { SUPPORTED_CATALOG } from '@/domain/sourceRegistry';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useClipboard } from '@/hooks/useClipboard';
@@ -90,22 +95,6 @@ function formatDate(iso: string): string {
   } catch {
     return iso;
   }
-}
-
-function isNavigableHref(href: string): boolean {
-  return /^(https?:|mailto:)/.test(href);
-}
-
-function resolveMetadataLinkHref(
-  link: CatalogMetadataLink,
-  backMatter: CatalogResource[],
-): string | undefined {
-  if (!link.href.startsWith('#')) {
-    return link.href;
-  }
-
-  const resource = backMatter.find((entry) => `#${entry.uuid}` === link.href);
-  return resource?.rlinks[0]?.href;
 }
 
 function getRoleTitle(roleId: string, roles: CatalogRole[]): string {
@@ -228,16 +217,105 @@ function LinkRow({ label, href }: { label: string; href: string }) {
   );
 }
 
+function ExternalReferenceLink({ href, label }: { href: string; label: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="catalog-link-color inline-flex items-center gap-1 break-all text-sm"
+    >
+      {label}
+      <span className="sr-only"> (externer Link, öffnet in neuem Tab)</span>
+      <IconExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
+    </a>
+  );
+}
+
+function ResourceLinkList({ resource }: { resource: ResolvedResource }) {
+  if (resource.rlinks.length === 0) {
+    return <p className="type-secondary text-sm">Keine verknüpften Links vorhanden.</p>;
+  }
+
+  return (
+    <ul className="space-y-2">
+      {resource.rlinks.map((rlink) => (
+        <li key={`${resource.uuid}-${rlink.href}`} className="space-y-1">
+          {rlink.target.kind === 'external' && rlink.target.href ? (
+            <ExternalReferenceLink href={rlink.target.href} label={rlink.href} />
+          ) : (
+            <p className="break-all text-sm text-[var(--color-text-primary)]">{rlink.href}</p>
+          )}
+          {rlink.mediaType && <p className="type-meta">Medientyp: {rlink.mediaType}</p>}
+          {rlink.integrity === 'missing' ? (
+            <p className="type-meta">Ohne Integritätsnachweis</p>
+          ) : (
+            <ul className="space-y-1">
+              {rlink.hashes.map((hash) => (
+                <li
+                  key={`${rlink.href}-${hash.algorithm}-${hash.value}`}
+                  className="type-meta break-all"
+                >
+                  {hash.algorithm}: <code className="font-mono">{hash.value}</code>
+                </li>
+              ))}
+            </ul>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function MetadataReference({ reference }: { reference: ResolvedOscalReference }) {
+  if (reference.kind === 'provenance') return null;
+
+  const label = reference.text?.trim() || reference.href;
+  const resourceLink = reference.kind === 'resource'
+    ? reference.resource.rlinks.find((rlink) => rlink.target.kind === 'external')
+    : undefined;
+  const targetHref = reference.kind === 'external'
+    ? reference.href
+    : resourceLink?.target.kind === 'external'
+      ? resourceLink.target.href
+      : undefined;
+
+  return (
+    <li className="space-y-1">
+      {targetHref ? (
+        <ExternalReferenceLink href={targetHref} label={label} />
+      ) : (
+        <p className="break-all text-sm text-[var(--color-text-primary)]">{label}</p>
+      )}
+      <p className="type-meta break-all">
+        Relation: {reference.rel ?? 'nicht gesetzt'} · Quelle: {reference.href}
+      </p>
+      {reference.kind === 'resource' && reference.resourceFragment && (
+        <p className="type-meta">Fragment: {reference.resourceFragment}</p>
+      )}
+    </li>
+  );
+}
+
 export function AboutPage() {
   const {
     provenance,
     verification,
     catalog,
+    catalogDocument,
     vocabularyProvenance,
     vocabularyVerification,
   } = useCatalog();
   const metadata = catalog?.metadata;
-  const backMatter = catalog?.backMatter ?? [];
+  const referenceDocument = catalogDocument
+    ? referenceDocumentFromCatalog(catalogDocument)
+    : null;
+  const metadataReferences = referenceDocument
+    ? resolveCatalogMetadataReferences({ document: referenceDocument })
+    : [];
+  const resolvedResources = referenceDocument
+    ? resolveCatalogResources({ document: referenceDocument })
+    : [];
   const appCatalogUrl = buildAppCatalogUrl();
   const upstreamCatalogUrl = buildUpstreamCatalogUrl(provenance);
   const verifyCommand = buildVerifyCommand(appCatalogUrl, upstreamCatalogUrl);
@@ -622,58 +700,28 @@ export function AboutPage() {
               </div>
             )}
 
-            {metadata.links.length > 0 && (
+            {metadataReferences.some((reference) => reference.kind !== 'provenance') && (
               <div className="mt-6 border-t border-[var(--color-border-subtle)] pt-4">
                 <h3 className={`${subsectionHeadingClass} flex items-center gap-2`}>
                   <IconLink className="h-4 w-4 text-[var(--color-text-secondary)]" />
                   Referenzen
                 </h3>
                 <ul className="mt-3 space-y-3">
-                  {metadata.links.map((link) => {
-                    const resolvedHref = resolveMetadataLinkHref(link, backMatter);
-                    const targetHref = resolvedHref && isNavigableHref(resolvedHref)
-                      ? resolvedHref
-                      : isNavigableHref(link.href)
-                        ? link.href
-                        : undefined;
-                    const linkLabel = link.text?.trim() || resolvedHref || link.href;
-
-                    return (
-                      <li key={`${link.href}-${link.rel ?? 'none'}`} className="space-y-1">
-                        {targetHref ? (
-                          <a
-                            href={targetHref}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="catalog-link-color inline-flex items-center gap-1 text-sm"
-                          >
-                            {linkLabel}
-                            <span className="sr-only"> (öffnet in neuem Tab)</span>
-                            <IconExternalLink className="h-3 w-3" aria-hidden="true" />
-                          </a>
-                        ) : (
-                          <p className="break-all text-sm text-[var(--color-text-primary)]">
-                            {linkLabel}
-                          </p>
-                        )}
-                        <p className="type-meta break-all">
-                          Relation: {link.rel ?? 'nicht gesetzt'} · Quelle: {link.href}
-                        </p>
-                      </li>
-                    );
-                  })}
+                  {metadataReferences.map((reference) => (
+                    <MetadataReference key={reference.path} reference={reference} />
+                  ))}
                 </ul>
               </div>
             )}
 
-            {backMatter.length > 0 && (
+            {resolvedResources.length > 0 && (
               <div className="mt-6 border-t border-[var(--color-border-subtle)] pt-4">
                 <h3 className={`${subsectionHeadingClass} flex items-center gap-2`}>
                   <IconDocument className="h-4 w-4 text-[var(--color-text-secondary)]" />
                   Referenzierte Ressourcen
                 </h3>
                 <ul className="mt-3 space-y-4">
-                  {backMatter.map((resource) => (
+                  {resolvedResources.map((resource) => (
                     <li key={resource.uuid} className="space-y-2">
                       <div>
                         <p className="text-sm font-medium text-[var(--color-text-primary)]">
@@ -683,46 +731,24 @@ export function AboutPage() {
                           UUID: <code className="font-mono">{resource.uuid}</code>
                         </p>
                       </div>
-
-                      {resource.rlinks.length > 0 ? (
-                        <ul className="space-y-2">
-                          {resource.rlinks.map((rlink) => (
-                            <li key={`${resource.uuid}-${rlink.href}`} className="space-y-1">
-                              {isNavigableHref(rlink.href) ? (
-                                <a
-                                  href={rlink.href}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="catalog-link-color inline-flex items-center gap-1 break-all text-sm"
-                                >
-                                  {rlink.href}
-                                  <span className="sr-only"> (öffnet in neuem Tab)</span>
-                                  <IconExternalLink className="h-3 w-3 shrink-0" aria-hidden="true" />
-                                </a>
-                              ) : (
-                                <p className="break-all text-sm text-[var(--color-text-primary)]">
-                                  {rlink.href}
-                                </p>
-                              )}
-
-                              {rlink.hashes.length > 0 && (
-                                <ul className="space-y-1">
-                                  {rlink.hashes.map((hash) => (
-                                    <li
-                                      key={`${rlink.href}-${hash.algorithm}-${hash.value}`}
-                                      className="type-meta break-all"
-                                    >
-                                      {hash.algorithm}: <code className="font-mono">{hash.value}</code>
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="type-secondary text-sm">Keine verknüpften Links vorhanden.</p>
+                      {resource.description && (
+                        <p className="text-sm text-[var(--color-text-primary)]">{resource.description}</p>
                       )}
+                      {resource.citation && (
+                        <p className="text-sm text-[var(--color-text-primary)]">{resource.citation}</p>
+                      )}
+                      {resource.content === 'empty' && (
+                        <p className="type-secondary text-sm">Ressource enthält keine darstellbaren Inhalte.</p>
+                      )}
+                      {resource.embeddedContent && (
+                        <p className="type-meta">
+                          Eingebetteter Inhalt: {resource.embeddedContent.filename ?? 'ohne Dateiname'}
+                          {resource.embeddedContent.mediaType
+                            ? ` (${resource.embeddedContent.mediaType})`
+                            : ''}
+                        </p>
+                      )}
+                      <ResourceLinkList resource={resource} />
                     </li>
                   ))}
                 </ul>

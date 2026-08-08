@@ -7,6 +7,10 @@ import {
 import type { IncomingControlLink } from '@/domain/controlRelationships';
 import type { Control } from '@/domain/models';
 import type { CatalogKey } from '@/domain/sourceRegistry';
+import {
+  referenceDocumentFromCatalog,
+  resolveControlReferences,
+} from '@/domain/referenceResolution';
 import { resolveControlVocabularies } from '@/domain/vocabulary';
 import {
   resolvePracticeVocabulary,
@@ -20,6 +24,7 @@ import { VocabularyEntryCard } from '@/features/vocabularies/VocabularyEntryCard
 import { buildControlUrlForControl } from '@/app/routes';
 import { ControlClassification } from './ControlClassification';
 import { ControlDependencies } from './ControlDependencies';
+import { ControlSources } from './ControlSources';
 import { ControlGuidance } from './ControlGuidance';
 import { ControlHierarchy } from './ControlHierarchy';
 import { ControlMetadata } from './ControlMetadata';
@@ -64,7 +69,7 @@ export function ControlDetail({
   onClose,
   onNavigateToControl,
 }: ControlDetailProps) {
-  const { vocabularyRegistry, catalog } = useCatalog();
+  const { vocabularyRegistry, catalog, catalogDocument } = useCatalog();
   if (!catalog) {
     throw new Error('ControlDetail requires a loaded catalog context');
   }
@@ -92,6 +97,29 @@ export function ControlDetail({
   const resolvedVocabularies = useMemo(
     () => resolveControlVocabularies(vocabularyRegistry, control),
     [control, vocabularyRegistry],
+  );
+  const resolvedControlReferences = useMemo(() => {
+    if (!catalogDocument) return [];
+
+    return resolveControlReferences({
+      document: referenceDocumentFromCatalog(catalogDocument),
+      controlId: control.id,
+      catalogsByKey: new Map([[
+        catalog.catalogKey,
+        controlsById ? { ...catalog, controlsById } : catalog,
+      ]]),
+    });
+  }, [catalog, catalogDocument, control.id, controlsById]);
+  const resolvedControlLinks = useMemo(
+    () => resolvedControlReferences.flatMap((reference) => (
+      reference.kind === 'control'
+        ? [{
+          targetId: reference.control.id,
+          relation: reference.rel === 'required' ? 'required' as const : 'related' as const,
+        }]
+        : []
+    )),
+    [resolvedControlReferences],
   );
   const renderVocabularyCard = useCallback<RenderVocabularyCard>(
     (resolution, options) => (
@@ -220,11 +248,12 @@ export function ControlDetail({
           onToggleExpanded={toggleGuidanceExpanded}
         />
         <ControlDependencies
-          links={control.links}
+          links={resolvedControlLinks}
           controlsById={controlsById}
           incomingLinks={incomingLinks}
           onNavigateToControl={onNavigateToControl}
         />
+        <ControlSources references={resolvedControlReferences} />
         <ControlHierarchy
           parentControl={parentControl}
           childControls={childControls}

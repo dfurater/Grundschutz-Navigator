@@ -29,7 +29,7 @@ function makeControl(id: string, title: string, overrides: Partial<Control> = {}
 }
 
 describe('ControlDependencies', () => {
-  it('preserves reverse labels, reciprocal filtering, unresolved targets, and navigation', async () => {
+  it('preserves reverse labels, reciprocal filtering, and navigation without dead targets', async () => {
     const user = userEvent.setup();
     const target = makeControl('GC.2.2', 'Zielkontrolle');
     const reciprocalSource = target;
@@ -67,14 +67,10 @@ describe('ControlDependencies', () => {
     // genau einmal, auch wenn mehrere Links dasselbe Label tragen.
     expect(screen.getByRole('group', { name: 'Erforderlich · ↔ verwandt' }))
       .toBeInTheDocument();
-    expect(screen.getByRole('group', { name: 'Verwandt' })).toBeInTheDocument();
-
     const reciprocal = screen.getByRole('button', {
       name: 'GC.2.2 Zielkontrolle (erforderlich · ↔ verwandt)',
     });
-    expect(screen.getByRole('button', {
-      name: 'GC.9.9 (verwandt)',
-    })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'GC.9.9 (verwandt)' })).not.toBeInTheDocument();
     expect(screen.getAllByText('GC.2.2')).toHaveLength(1);
 
     const incomingOnly = screen.getByRole('button', {
