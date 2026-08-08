@@ -9,45 +9,44 @@ import {
 import type { Catalog } from '@/domain/models';
 import type { CatalogKey } from '@/domain/sourceRegistry';
 
-function makeRawDoc(title: string, altIdentifier: string) {
+/** Katalogkörper — die Root-Bestimmung liegt seit GSPP-285 allein im Dispatch. */
+function makeRawCatalogBody(title: string, altIdentifier: string) {
   return {
-    catalog: {
-      uuid: `uuid-${altIdentifier}`,
-      metadata: {
-        title,
-        'last-modified': '2026-03-05T08:08:21Z',
-        version: '2026-03-05',
-        'oscal-version': '1.1.3',
-      },
-      groups: [
-        {
-          id: 'GC',
-          title: 'Practice',
-          groups: [
-            {
-              id: 'GC.1',
-              title: 'Topic',
-              controls: [
-                {
-                  id: 'GC.1.1',
-                  title,
-                  props: [{ name: 'alt-identifier', value: altIdentifier }],
-                },
-              ],
-            },
-          ],
-        },
-      ],
+    uuid: `uuid-${altIdentifier}`,
+    metadata: {
+      title,
+      'last-modified': '2026-03-05T08:08:21Z',
+      version: '2026-03-05',
+      'oscal-version': '1.1.3',
     },
+    groups: [
+      {
+        id: 'GC',
+        title: 'Practice',
+        groups: [
+          {
+            id: 'GC.1',
+            title: 'Topic',
+            controls: [
+              {
+                id: 'GC.1.1',
+                title,
+                props: [{ name: 'alt-identifier', value: altIdentifier }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
   };
 }
 
 /** Zwei Kataloge mit identischer Control-ID GC.1.1 — Kernbeweis für AC3. */
 function makeCatalogsByKey(): ReadonlyMap<CatalogKey, Catalog> {
-  const gspp = parseCatalog(makeRawDoc('Control in gspp', 'uuid-gspp-1'), {
+  const gspp = parseCatalog(makeRawCatalogBody('Control in gspp', 'uuid-gspp-1'), {
     catalogKey: 'gspp',
   });
-  const wlan = parseCatalog(makeRawDoc('Control in wlan', 'uuid-wlan-1'), {
+  const wlan = parseCatalog(makeRawCatalogBody('Control in wlan', 'uuid-wlan-1'), {
     catalogKey: 'wlan',
   });
   return new Map([

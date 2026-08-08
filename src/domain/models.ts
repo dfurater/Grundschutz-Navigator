@@ -11,6 +11,7 @@ import type {
   CatalogKey,
   ManifestRootType,
 } from '@/domain/sourceRegistry';
+import type { CatalogDocumentContext } from '@/domain/oscalDocumentContext';
 
 /* ------------------------------------------------------------------ */
 /*  Raw OSCAL 1.1.3 Types                                             */
@@ -104,10 +105,9 @@ export interface RawOscalCatalog {
   };
 }
 
-/** Root wrapper — OSCAL files wrap the catalog in { catalog: ... } */
-export interface RawOscalDocument {
-  catalog: RawOscalCatalog;
-}
+// Der Root-Envelope ist nicht mehr auf `{ catalog: ... }` verdrahtet: Die
+// diskriminierte Union über alle acht Root-Keys steht in
+// `@/domain/oscalRootDocument` (GSPP-285).
 
 /* ------------------------------------------------------------------ */
 /*  Domain Types — Enriched, flattened, UI-ready                      */
@@ -361,38 +361,14 @@ export interface ControlRef {
 /*  Verlustfreies Dokumentmodell (ADR-2)                              */
 /* ------------------------------------------------------------------ */
 
-/**
- * Vertrauensklasse eines Dokuments (ADR-2 §10).
- *
- * Die Klassen werden nie vermischt: Klasse 2 läuft nicht über den
- * Manifest-/Hash-Mechanismus, und die Provenienzanzeige suggeriert für sie
- * keine Verifikation.
- *
- * Klasse 1 ist in zwei Zustände aufgeteilt, weil ihre Definition die
- * Laufzeit-Hashprüfung einschließt: Ein Dokument aus dem Quellregister ist
- * erst dann `verified`, wenn diese Prüfung tatsächlich bestanden wurde.
- * Fehlen die Integritätsmetadaten oder weicht der Hash ab, bleibt es
- * `unverified` — die Anwendung nutzt es weiter, behauptet aber keine
- * Verifikation.
- */
-export type TrustClass =
-  | 'class-1-verified-public'
-  | 'class-1-unverified-public'
-  | 'class-2-local-user';
-
-/**
- * Expliziter, typisierter Ableitungskontext (ADR-2 §2).
- *
- * Der Kontext ist nicht implizit und nicht global; er wird als Parameter
- * gereicht und ist prüfbar. Er trägt genau die Information, die das
- * Domänenmodell braucht, aber nicht aus dem Dokument stammt.
- */
-export interface CatalogDocumentContext {
-  /** Identität aus dem Quellregister (ADR-1) — steht nicht im Dokument */
-  catalogKey: CatalogKey;
-  /** Vertrauensklasse nach ADR-2 §10 */
-  trustClass: TrustClass;
-}
+// Vertrauensklasse und Ableitungskontext stehen in
+// `@/domain/oscalDocumentContext` und werden hier weiterexportiert, damit
+// `@/domain/models` die gewohnte Einstiegsstelle für Domänentypen bleibt.
+export type {
+  TrustClass,
+  OscalDocumentContext,
+  CatalogDocumentContext,
+} from '@/domain/oscalDocumentContext';
 
 /**
  * Ein geparstes OSCAL-Katalogdokument nach dem verlustfreien Vertrag.
