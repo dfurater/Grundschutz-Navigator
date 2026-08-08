@@ -5,18 +5,26 @@ importiert, exportiert oder in der Build-Pipeline prüft. Er definiert die
 Prüfkette und ihre Lieferkette; er aktiviert noch keinen produktiven Import.
 YAML und XML sind nicht unterstützt.
 
-## Status: verbindlicher Zielzustand, noch nicht implementiert
+## Status: verbindlicher Zielzustand, Stufe 2 umgesetzt
 
 Dieses Dokument legt den verbindlichen Zielzustand für den künftigen
-OSCAL-Import- und -Prüfpfad fest. Die Schutzkette ist noch nicht in den
-produktiven Katalog-Ladepfad integriert. Der aktuelle Katalog-Loader in
+OSCAL-Import- und -Prüfpfad fest. Die Schutzkette ist **nicht** vollständig in
+den produktiven Katalog-Ladepfad integriert. Der aktuelle Katalog-Loader in
 [`CatalogContext.tsx`](../src/state/CatalogContext.tsx) ruft
 `fetchCatalogWithBuffer` auf; dessen Implementierung in
 [`integrity.ts`](../src/domain/integrity.ts) dekodiert mit einem nicht-fatalen
 `TextDecoder`. `CatalogContext` übergibt den zurückgegebenen Text anschließend
 unmittelbar `JSON.parse`. Dieser Pfad besitzt derzeit kein Byte-Limit, keinen
-Duplicate-Member-Scanner, keinen exakten OSCAL-Root-Dispatcher und keine
-OSCAL-Schema-Prüfung.
+Duplicate-Member-Scanner und keine OSCAL-Schema-Prüfung.
+
+**Stufe 2 ist seit
+[GSPP-285](https://linear.app/grundschutz-plus-plus/issue/GSPP-285) umgesetzt
+und im Katalogpfad aktiv.** `dispatchOscalDocument()` in
+[`oscalRootDispatch.ts`](../src/adapters/oscalRootDispatch.ts) ist der exakte
+Root-Dispatcher dieses Vertrags; `parseCatalogDocument()` läuft über ihn, und
+die Katalog-Interpretation als Fallback existiert nicht mehr. Der Dispatcher
+wählt zugleich den Schema-Pin aus, **wendet** ihn aber nicht an — das bleibt
+Stufe 3.
 
 Die bestehende Integritätsprüfung und `parseCatalog` ersetzen diese Gates
 nicht. Bis die vollständige Kette samt Negativtests in Browser und CI
@@ -52,7 +60,7 @@ GitHub-Actions-Runner; Browserprüfungen laufen ausschließlich im Modul-Worker.
 | Stufe | Vorgeschriebener Zielzustand | Pinning und Fehlersemantik |
 | --- | --- | --- |
 | 1. Größenlimit und JSON-Syntax | Plattformfunktionen (`Uint8Array`, fataler UTF-8-Decoder), projekteigener Streaming-Token-Scanner und danach `JSON.parse` im isolierten Worker; dieselbe Reihenfolge in CI | Das Byte-Limit muss vor Decoder, Scanner und Parser gesetzt sein. Fehlt ein Limit oder wird es überschritten, wird nicht dekodiert. Nach erfolgreicher fataler Dekodierung lehnt der Scanner doppelte Member-Namen auf jeder Objekttiefe ab; nur dann wird `JSON.parse` aufgerufen. CI verwendet Node 22 gemäß Workflow und der Mindestversion in `package.json`; die Prüflogik einschließlich Scanner ist über den App-Commit gepinnt. |
-| 2. Root-Erkennung | Projekteigener exakter Dispatcher im Worker und in CI | Das Top-Level-Objekt muss genau einen der acht bekannten Root-Keys besitzen. Null, Arrays, mehrere Root-Keys und unbekannte Keys werden abgelehnt. Die optionale Schema-Direktive `$schema` ist die einzige zusätzlich zulässige Top-Level-Property; sie ist kein zweiter Root und **niemals** Versionsautorität. Eine Katalog-Interpretation als Fallback ist verboten. |
+| 2. Root-Erkennung | **Umgesetzt:** `dispatchOscalDocument()` in [`oscalRootDispatch.ts`](../src/adapters/oscalRootDispatch.ts), projekteigen und ohne externes Werkzeug | Das Top-Level-Objekt muss genau einen der acht bekannten Root-Keys besitzen. Null, Arrays, mehrere Root-Keys und unbekannte Keys werden abgelehnt. Die optionale Schema-Direktive `$schema` ist die einzige zusätzlich zulässige Top-Level-Property; sie ist kein zweiter Root und **niemals** Versionsautorität. Eine Katalog-Interpretation als Fallback ist verboten. |
 | 3. JSON-Schema | Browser nach Aktivierung: `ajv` 8.20.0 im Modul-Worker. CI dann zusätzlich: `go-oscal` 0.7.1 als unabhängiges Schema- und Upgrade-Orakel | Auswahl ausschließlich über den exakten Root×`oscal-version`-Schlüssel. Fehlende Kombinationen werden abgelehnt. Nur exakt registrierte, additive `additionalProperties`-Abweichungen dürfen die Fortsetzung zu Stufe 4 und 5 erlauben; die Schema-Stufe bleibt `failed`. Ajv wird erst nach der OSS-Zulassung aus [ADR-5](https://linear.app/grundschutz-plus-plus/issue/ADR-5) produktiv aufgenommen. Bis direkte Abhängigkeit, Paket-Lock, Schema-Manifest und Hashprüfung vorhanden sind, bleibt der betreffende Importpfad deaktiviert. |
 | 4. zusätzliche OSCAL-Constraints | Derzeit **kein zugelassener Validator** für OSCAL 1.2.2; im Browser und in CI als `not-checked` ausgewiesen | Diese Stufe darf weder übersprungen noch als bestanden dargestellt werden. Die zulässige Konformitätsaussage wird deshalb begrenzt. Das konkrete Mapping-Orakel ist als bekannte Lücke registriert. |
 | 5. Referenzen und Projektregeln | Projekteigener, kataloggescopter Referenzgraph und explizit versionierte Regeln im Worker und in CI; Vertrag in [GSPP-251](https://linear.app/grundschutz-plus-plus/issue/GSPP-251) | Prüft UUID-/ID-Eindeutigkeit, interne und dokumentübergreifende Referenzen, URI- und Medientypregeln sowie ausdrücklich benannte GRC-Regeln. Externe `href`-Ziele werden klassifiziert, niemals während der Validierung abgerufen. Unbekannte Regeln gelten nicht als bestanden. |
@@ -100,6 +108,38 @@ Belegt am realen Bestand: `mapping-itgs2023-zu-gspp` trägt
 `$schema: "http://csrc.nist.gov/ns/oscal/1.2.1/oscal-mapping-schema.json"`
 neben `oscal-version: 1.2.1`. Die offiziellen NIST-Beispieldokumente setzen
 `$schema` dagegen nicht.
+
+### Umgesetzte Stufe 2: Codes, Reihenfolge und Validatoridentität
+
+Die Prüfreihenfolge ist festgelegt, damit ein Dokument die inhaltlich engste
+Diagnose erhält, und nicht bloß die erste, die zufällig zutrifft:
+
+| Reihenfolge | Fall | Code | Herkunft |
+| --- | --- | --- | --- |
+| 1 | Top-Level ist kein JSON-Objekt (`null`, Array, String, Zahl) | `OSCAL_DOCUMENT_NOT_OBJECT` | Dispatch |
+| 2 | kein Root-Key | `OSCAL_ROOT_KEY_MISSING` | Dispatch |
+| 3 | mehrere Root-Keys, auch wenn einer `catalog` ist | `OSCAL_ROOT_KEY_AMBIGUOUS` | Dispatch |
+| 4 | Root-Key gehört nicht zu den acht bekannten | `OSCAL_ROOT_TYPE_UNKNOWN` | Versionsmatrix |
+| 5 | Root widerspricht `getExpectedRootType()` des Quellregisters | `OSCAL_ROOT_TYPE_MISMATCH` | Dispatch |
+| 6 | Root × `metadata.oscal-version` × `$schema` | `OSCAL_VERSION_MISSING`, `OSCAL_VERSION_MALFORMED`, `OSCAL_ROOT_VERSION_IMPOSSIBLE`, `OSCAL_ROOT_VERSION_UNSUPPORTED`, `OSCAL_SCHEMA_DIRECTIVE_CONFLICT` | Versionsmatrix |
+| 7 | Root bekannt, aber kein Modelladapter registriert | `OSCAL_ROOT_TYPE_UNSUPPORTED` | Dispatch |
+
+Die Codes der Versionsmatrix werden aus `src/domain/oscalVersionMatrix.mjs`
+bezogen und unverändert durchgereicht; der Dispatcher definiert sie nicht neu
+und führt keine eigene Versionskonstante. Zeile 4 und Zeile 7 sind bewusst
+unterscheidbar: „nicht bekannt“ ist etwas anderes als „bekannt, aber noch nicht
+verarbeitbar“.
+
+Stufe 2 verwendet kein externes Werkzeug. Ihre Diagnosen tragen deshalb die
+projekteigene Validatoridentität `gspp-root-dispatch@1`; die Version ist die
+Vertragsversion des Moduls und wird erhöht, sobald sich Code, Pfad oder
+Parameter einer bestehenden Diagnose ändern. Der Modulinhalt selbst ist wie
+jede projekteigene Regel über den Commit-SHA gepinnt.
+
+Ein `metadata.oscal-version`, das kein String ist, gilt als fehlende Angabe und
+führt zu `OSCAL_VERSION_MISSING`. Es wird ausdrücklich **nicht** nach String
+konvertiert: Eine Koerzierung würde unvertrauenswürdige Eingabe in eine
+scheinbare Versionsangabe verwandeln.
 
 ## Root- und Versionsauswahl
 
@@ -375,6 +415,14 @@ Der Artefaktkontext kann zusätzlich Lifecycle und Snapshot tragen. Dieses
 Grundformat wird von der Referenzprüfung aus
 [GSPP-251](https://linear.app/grundschutz-plus-plus/issue/GSPP-251)
 wiederverwendet; es entsteht kein zweites Diagnosemodell.
+
+Das Format ist als Typ und Konstruktor in
+[`oscalDiagnostics.ts`](../src/domain/oscalDiagnostics.ts) verankert.
+`messageKey` und `signature` werden dort deterministisch aus Stufe, Code, Pfad
+und Validatorpin abgeleitet, damit sie nicht je Aufrufstelle neu erfunden
+werden. `artifact.key`, `artifact.rootType` und `artifact.oscalVersion` sind
+`null`, solange sie nicht aus einer geschlossenen Menge belegt sind — sie
+werden nie aus dem Dokument geraten.
 
 ### Redaction
 

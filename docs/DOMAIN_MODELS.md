@@ -31,9 +31,8 @@ type TrustClass =
   | 'class-1-unverified-public'  // Quellregister-Artefakt, Prüfung fehlt oder schlug fehl
   | 'class-2-local-user';        // lokales Nutzerdokument
 
-interface CatalogDocumentContext {
+interface CatalogDocumentContext extends OscalDocumentContext {
   catalogKey: CatalogKey;   // Identität aus dem Quellregister (ADR-1)
-  trustClass: TrustClass;   // Vertrauensklasse (ADR-2 §10)
 }
 
 interface CatalogDocument {
@@ -43,9 +42,15 @@ interface CatalogDocument {
 }
 ```
 
+`TrustClass`, `OscalDocumentContext` und `CatalogDocumentContext` stehen in
+`src/domain/oscalDocumentContext.ts` und werden aus `@/domain/models`
+weiterexportiert.
+
 Einstiegspunkt ist `parseCatalogDocument()` in
-`src/adapters/oscalDocument.ts`. `parseCatalog()` bleibt die reine
-Ableitungsfunktion und wird von dort aufgerufen.
+`src/adapters/oscalDocument.ts`. Es führt das Dokument über den
+[Root-Dispatch](#root-envelope-und-root-dispatch): Dass hier ein Katalog
+vorliegt, wird geprüft und nicht angenommen. `parseCatalog()` bleibt die reine
+Ableitungsfunktion und bekommt nur noch den **Katalogkörper**.
 
 ### Vertrauensklasse ist ein Ergebnis, keine Herkunftsangabe
 
@@ -232,11 +237,137 @@ interface RawOscalCatalog {
   };
 }
 
-/** Root wrapper — OSCAL-Dateien wrappen den Katalog in { catalog: ... } */
-interface RawOscalDocument {
-  catalog: RawOscalCatalog;
+```
+
+Der Root-Envelope steht nicht mehr hier, sondern in
+`src/domain/oscalRootDocument.ts` — siehe
+[Root-Envelope und Root-Dispatch](#root-envelope-und-root-dispatch).
+
+## Root-Envelope und Root-Dispatch
+
+Bis
+[GSPP-285](https://linear.app/grundschutz-plus-plus/issue/GSPP-285)
+war die Typebene auf einen Root verdrahtet (`RawOscalDocument { catalog }`),
+und der Adapter deutete zur Laufzeit jedes Dokument ohne `catalog`-Key
+stillschweigend als Katalog. Beides ist ersetzt: Der Envelope kennt alle acht
+OSCAL-Root-Keys, und genau **eine** Stelle bestimmt den Root-Typ.
+
+### Envelope-Typen
+
+```typescript
+/** Gemeinsamer Anteil aller acht Roots: metadata ist überall Pflichtfeld. */
+interface RawOscalRootBody {
+  metadata: RawOscalMetadata;
+}
+
+/** Nur modellierte Roots tragen ihren eigenen Körpertyp. */
+type RawOscalRootBodyFor<K extends OscalRootKey> =
+  K extends 'catalog' ? RawOscalCatalog : RawOscalRootBody;
+
+/** Genau ein Root-Key plus die zulässige Schema-Direktive. */
+type RawOscalDocumentFor<K extends OscalRootKey> =
+  { $schema?: string } & { [P in K]: RawOscalRootBodyFor<K> };
+
+/** Diskriminierte Union über alle acht Root-Keys. */
+type RawOscalDocument = { [K in OscalRootKey]: RawOscalDocumentFor<K> }[OscalRootKey];
+```
+
+`OscalRootKey` stammt aus der Versionsmatrix
+(`src/domain/oscalVersionMatrix.mjs`, GSPP-283) und wird **nicht** dupliziert:
+Eine zweite Liste der acht Root-Keys könnte von der Matrix abdriften.
+
+Die strukturelle Regel dahinter steht in allen acht NIST-Schemas: `required`
+enthält genau den Root-Key, `additionalProperties` ist `false`, und die
+Top-Level-`properties` sind exakt `["$schema", "<root-key>"]`.
+
+### Fehlerverhalten des Dispatch
+
+`dispatchOscalDocument()` in `src/adapters/oscalRootDispatch.ts` implementiert
+Stufe 2 des [Validierungsvertrags](OSCAL_VALIDATION.md). Er ist fail-closed:
+im Zweifel ablehnen, nie „bestmöglich“ interpretieren. Die Prüfreihenfolge ist
+festgelegt, damit ein Dokument die inhaltlich engste Diagnose erhält.
+
+| Reihenfolge | Fall | Code |
+| --- | --- | --- |
+| 1 | Top-Level ist kein JSON-Objekt (`null`, Array, String, Zahl) | `OSCAL_DOCUMENT_NOT_OBJECT` |
+| 2 | kein Root-Key | `OSCAL_ROOT_KEY_MISSING` |
+| 3 | mehrere Root-Keys, auch wenn einer `catalog` ist | `OSCAL_ROOT_KEY_AMBIGUOUS` |
+| 4 | Root-Key gehört nicht zu den acht bekannten | `OSCAL_ROOT_TYPE_UNKNOWN` |
+| 5 | Root widerspricht `getExpectedRootType()` des Quellregisters | `OSCAL_ROOT_TYPE_MISMATCH` |
+| 6 | Root × Version über `resolveSchemaBinding()` | `OSCAL_VERSION_MISSING`, `OSCAL_VERSION_MALFORMED`, `OSCAL_ROOT_VERSION_IMPOSSIBLE`, `OSCAL_ROOT_VERSION_UNSUPPORTED`, `OSCAL_SCHEMA_DIRECTIVE_CONFLICT` |
+| 7 | Root bekannt, aber kein Adapter registriert | `OSCAL_ROOT_TYPE_UNSUPPORTED` |
+
+Die Codes aus Schritt 6 gehören der Versionsmatrix und werden unverändert
+durchgereicht; der Dispatch enthält weder eine eigene Versionskonstante noch
+eine Kopie der Matrixlogik. Schritt 4 und 7 sind bewusst unterscheidbar:
+„kenne ich nicht“ ist etwas anderes als „kenne ich, kann ich aber noch nicht
+verarbeiten“.
+
+`$schema` ist zulässig und zählt nicht als zweiter Root. Es ist aber niemals
+Versionsautorität — allein `metadata.oscal-version` wählt die Matrixzelle,
+`$schema` wird nur als Kreuzprobe ausgewertet.
+
+Nicht Aufgabe des Dispatch: Stufe-1-Prüfungen wie Größenlimit oder doppelte
+Member-Namen ([GSPP-289](https://linear.app/grundschutz-plus-plus/issue/GSPP-289)
+— auf einem `JSON.parse`-Ergebnis grundsätzlich nicht mehr erkennbar) und die
+Schema-Validierung selbst. Der Dispatch **wählt** den Schema-Pin aus,
+**wendet** ihn nicht an.
+
+### Kontext und Vertrauensklasse
+
+```typescript
+interface OscalDocumentContext {
+  trustClass: TrustClass;    // ADR-2 §10 — entgegengenommen, nie vergeben
+  upstreamPath?: string;     // Registry-Pfad: Root-Abgleich + Artefaktschlüssel
+  catalogKey?: CatalogKey;   // ADR-1, nur für Katalogwurzeln
 }
 ```
+
+Der Dispatch führt die Vertrauensklasse unverändert mit und leitet sie **nie**
+aus dem Dokument ab. Damit können nachgelagerte Stufen die Klasse-2-Gates nicht
+umgehen.
+
+### Diagnosen und Redaction
+
+Jede Dispatch-Diagnose folgt dem Diagnostic-Vertrag aus
+[OSCAL_VALIDATION.md](OSCAL_VALIDATION.md#diagnostic-vertrag), trägt
+`stage: "root-dispatch"` und wird über `createOscalDiagnostic()` in
+`src/domain/oscalDiagnostics.ts` aus einer Positivliste **konstruiert**, nicht
+aus einem rohen Befund gefiltert.
+
+Ein unbekannter Root-Key ist selbst unvertrauenswürdige Eingabe: Er erscheint
+weder im Pfad noch im Artefaktkontext noch in den Parametern. Bei mehreren
+Root-Keys wird nur ihre Anzahl genannt.
+
+### Adapter-Registrierung: ein neues Modell erschließen
+
+Die Registrierung steht in `src/adapters/oscalRootAdapters.ts`. Ein neues
+Root-Modell erfordert genau zwei Schritte und keine Änderung an bestehenden
+Adaptern:
+
+1. Modelladapter als eigene Datei unter `src/adapters/` anlegen, mit eigenem
+   Testvertrag. Er bekommt den **Root-Körper** und den Kontext — nicht das
+   Gesamtdokument und keine Zuständigkeit für die Root-Bestimmung. Braucht das
+   Modell eine Identität, die nicht im Dokument steht, löst er sie aus Kontext
+   oder Quellregister auf und bricht sonst ab; ein Default würde sie erfinden.
+2. Einen Eintrag in `OSCAL_ROOT_ADAPTERS` ergänzen und, falls der Körper
+   modelliert wird, den Zweig in `RawOscalRootBodyFor` erweitern.
+
+Modulgrenzen: Geteilt werden Envelope, Root-Erkennung, Versionsbindung und
+Diagnosevertrag. Parsing und Read-Model-Ableitung bleiben je Root-Typ in
+fokussierten Modulen — ein zentraler Universaladapter entsteht ausdrücklich
+nicht, und `models.ts` wächst dafür nicht zu einer monolithischen Modellschicht.
+
+| Root-Key | Layer | Adapter | Status |
+| --- | --- | --- | --- |
+| `catalog` | Control | `src/adapters/oscalAdapter.ts` | registriert |
+| `profile` | Control | — | [GSPP-240](https://linear.app/grundschutz-plus-plus/issue/GSPP-240) |
+| `mapping-collection` | Control | — | [GSPP-245](https://linear.app/grundschutz-plus-plus/issue/GSPP-245) |
+| `component-definition` | Implementation | — | [GSPP-248](https://linear.app/grundschutz-plus-plus/issue/GSPP-248) |
+| `system-security-plan` | Implementation | — | [GSPP-293](https://linear.app/grundschutz-plus-plus/issue/GSPP-293) |
+| `assessment-plan` | Assessment | — | nicht erschlossen |
+| `assessment-results` | Assessment | — | nicht erschlossen |
+| `plan-of-action-and-milestones` | Assessment | — | nicht erschlossen |
 
 ## Enriched Domain Types
 
@@ -413,22 +544,19 @@ Die Transformation von Raw → Enriched erfolgt in `src/adapters/oscalAdapter.ts
 
 ```typescript
 interface ParseCatalogOptions {
-  catalogKey?: CatalogKey;
+  catalogKey: CatalogKey;   // Pflicht (ADR-1) — kein Default
 }
 
+/** `raw` ist der Katalog**körper**, nicht das Gesamtdokument. */
 export function parseCatalog(
   raw: unknown,
-  options: ParseCatalogOptions = {},
+  options: ParseCatalogOptions,
 ): Catalog {
-  const catalogKey = options.catalogKey ?? SUPPORTED_CATALOG_KEY;
+  const { catalogKey } = options;
 
-  // Accept both { catalog: ... } wrapper and direct catalog object
-  const doc = raw as Record<string, unknown>;
-  const catalog: RawOscalCatalog = (
-    doc.catalog ? doc.catalog : doc
-  ) as RawOscalCatalog;
+  const catalog = raw as RawOscalCatalog;
 
-  if (!catalog.uuid || !catalog.metadata || !catalog.groups) {
+  if (!catalog?.uuid || !catalog.metadata || !catalog.groups) {
     throw new Error(
       'Invalid OSCAL catalog: missing uuid, metadata, or groups',
     );
@@ -438,7 +566,26 @@ export function parseCatalog(
 }
 ```
 
-Der optionale `catalogKey` stammt aus dem Quellregister. Beim Aufbau von `controlsByAltIdentifier` failt `parseCatalog` geschlossen, wenn ein Control keinen Alt-Identifier besitzt oder derselbe Wert innerhalb des Katalogs mehrfach vorkommt.
+Der `catalogKey` stammt aus dem Quellregister und ist **Pflicht**: Die Katalogidentität nach [ADR-1](https://linear.app/grundschutz-plus-plus/issue/ADR-1) steht nicht im Dokument, und ein Default würde sie erfinden — ein WLAN-Katalog käme sonst als `gspp` heraus, sobald ein Aufrufer sie vergisst.
+
+Der Katalogadapter löst sie über `resolveCatalogKey()` auf und bricht in zwei Fällen ab, statt sich auf einen Wert zu einigen:
+
+| Kontext-`catalogKey` | Registry über `upstreamPath` | Ergebnis |
+| --- | --- | --- |
+| gesetzt | nicht auflösbar | Kontextwert |
+| nicht gesetzt | auflösbar | Registry-Wert |
+| gesetzt | auflösbar, gleich | dieser Wert |
+| gesetzt | auflösbar, **abweichend** | Abbruch — ein registriertes Artefakt darf nicht unter fremder Identität adressierbar sein |
+| nicht gesetzt | nicht auflösbar | Abbruch — keine Identität wird erfunden |
+
+Die vierte Zeile ist dieselbe Regel, die der Dispatch für den Root-Typ mit `OSCAL_ROOT_TYPE_MISMATCH` anwendet.
+
+Beim Aufbau von `controlsByAltIdentifier` failt `parseCatalog` geschlossen, wenn ein Control keinen Alt-Identifier besitzt oder derselbe Wert innerhalb des Katalogs mehrfach vorkommt.
+
+Der Envelope wird hier **nicht** ausgepackt: Welcher Root-Typ vorliegt,
+entscheidet allein der [Root-Dispatch](#root-envelope-und-root-dispatch). Der
+frühere Fallback `doc.catalog ? doc.catalog : doc` deutete jedes Dokument ohne
+`catalog`-Key als Katalog und ist ersatzlos entfallen.
 
 ### Rekursives Steuerungs-Parsing
 
