@@ -227,6 +227,7 @@ const MAX_RELEASE_BINARY_BYTES = 16 * 1024 * 1024;
 const MAX_SBOM_BYTES = 1024 * 1024;
 const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 const MAX_REDIRECT_HOPS = 5;
+export const GO_OSCAL_EXECUTION_TIMEOUT_MS = 60_000;
 const execFileAsync = promisify(execFile);
 const SAFE_ARTIFACT_KEY = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
@@ -364,21 +365,31 @@ async function fetchVerifiedBsiArtifact(manifest, artifact, fetchImpl) {
   return bytes;
 }
 
-async function defaultExecuteTool({ binaryPath, inputPath, resultPath, artifactKey }) {
+export async function executeGoOscal(
+  { binaryPath, inputPath, resultPath, artifactKey },
+  { execFileImpl = execFileAsync } = {},
+) {
   try {
-    await execFileAsync(
+    await execFileImpl(
       binaryPath,
       ['validate', '--input-file', inputPath, '--validation-result', resultPath],
-      { maxBuffer: 1024 * 1024, windowsHide: true },
+      {
+        maxBuffer: 1024 * 1024,
+        timeout: GO_OSCAL_EXECUTION_TIMEOUT_MS,
+        windowsHide: true,
+      },
     );
   } catch (error) {
-    // Exit 1 ist der dokumentierte Schemafehlerpfad. Rohes stderr kann lokale
-    // Pfade und Dokumentwerte enthalten und wird deshalb bewusst verworfen.
+    // Exit 1 ist der dokumentierte Schemafehlerpfad. Timeout, Spawn- und
+    // sonstige Werkzeugfehler dürfen weder lokale Pfade noch Dokumentwerte
+    // aus stderr in die CI-Ausgabe übernehmen.
     if (error?.code !== 1) {
       throw createVerificationToolError('GO_OSCAL_TOOL_EXECUTION_FAILED', artifactKey);
     }
   }
 }
+
+const defaultExecuteTool = executeGoOscal;
 
 export function classifyValidationResult(validationResult) {
   if (!validationResult || typeof validationResult.valid !== 'boolean') {

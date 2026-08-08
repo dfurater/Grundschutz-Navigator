@@ -6,8 +6,10 @@ import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { buildUpstreamManifest } from './upstream-artifacts.mjs';
 import {
+  GO_OSCAL_EXECUTION_TIMEOUT_MS,
   GO_OSCAL_RELEASE,
   classifyValidationResult,
+  executeGoOscal,
   evaluateArtifactExpectation,
   formatVerificationFailure,
   getReleaseAssetsForPlatform,
@@ -261,6 +263,46 @@ describe('Sperrsemantik und Werkzeugfehler', () => {
         resultPath: '/private/tmp/does-not-leave-the-runner.json',
       }),
     ).toBe('GO_OSCAL_VALIDATION_RESULT_UNAVAILABLE artifact=mapping-itgs2023-zu-gspp');
+  });
+
+  it('begrenzt jede go-oscal-Ausführung und redigiert einen Timeout', async () => {
+    const execFileImpl = vi.fn(async () => {
+      const timeoutError = Object.assign(new Error('private/path/to/untrusted-input.json'), {
+        code: null,
+        killed: true,
+        signal: 'SIGTERM',
+      });
+      throw timeoutError;
+    });
+
+    const failure = await executeGoOscal(
+      {
+        binaryPath: '/private/tmp/go-oscal',
+        inputPath: '/private/tmp/document.json',
+        resultPath: '/private/tmp/result.json',
+        artifactKey: 'catalog-fixture',
+      },
+      { execFileImpl },
+    ).catch((error) => error);
+
+    expect(failure).toMatchObject({
+      code: 'GO_OSCAL_TOOL_EXECUTION_FAILED',
+      artifactKey: 'catalog-fixture',
+    });
+    expect(formatVerificationFailure(failure)).toBe(
+      'GO_OSCAL_TOOL_EXECUTION_FAILED artifact=catalog-fixture',
+    );
+    expect(execFileImpl).toHaveBeenCalledWith(
+      '/private/tmp/go-oscal',
+      [
+        'validate',
+        '--input-file',
+        '/private/tmp/document.json',
+        '--validation-result',
+        '/private/tmp/result.json',
+      ],
+      { maxBuffer: 1024 * 1024, timeout: GO_OSCAL_EXECUTION_TIMEOUT_MS, windowsHide: true },
+    );
   });
 
   it('entfernt nur die zulässige Schema-Direktive aus der temporären go-oscal-Eingabe', () => {
