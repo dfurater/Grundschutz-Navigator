@@ -24,6 +24,7 @@ import type {
 } from '@/domain/oscalVersionMatrix';
 import {
   isKnownOscalRootKey,
+  isPinnedOscalVersion,
   resolveSchemaBinding,
   VERSION_MATRIX_DIAGNOSTIC_CODES,
 } from '@/domain/oscalVersionMatrix';
@@ -132,6 +133,19 @@ function pathForBindingFailure(code: string, rootType: OscalRootKey): string {
 }
 
 /**
+ * `resolveSchemaBinding()` liefert bei `OSCAL_ROOT_VERSION_IMPOSSIBLE` und
+ * `OSCAL_ROOT_VERSION_UNSUPPORTED` den rohen, nur gegen die Versionsform
+ * geprüften Dokumentwert zurück — er kann jede syntaktisch gültige, aber
+ * nicht gepinnte Zahl sein. `artifact.oscalVersion` darf laut Redaction-Regel
+ * ausschließlich aus einer geschlossenen Menge stammen; hier ist das
+ * `PINNED_OSCAL_VERSIONS`. Kein Mitglied dieser Menge wird durch `null`
+ * ersetzt, statt den Dokumentwert durchzureichen.
+ */
+function toRedactedOscalVersion(oscalVersion: string | null): PinnedOscalVersion | null {
+  return oscalVersion !== null && isPinnedOscalVersion(oscalVersion) ? oscalVersion : null;
+}
+
+/**
  * Erkennt den Root-Typ eines geparsten OSCAL-Dokuments und bindet ihn
  * gemeinsam mit der deklarierten `oscal-version` an einen gepinnten
  * Schema-Vertrag.
@@ -229,7 +243,7 @@ export function dispatchOscalDocument(
     return reject(
       binding.code,
       pathForBindingFailure(binding.code, rootKey),
-      { rootType: binding.rootType, oscalVersion: binding.oscalVersion },
+      { rootType: binding.rootType, oscalVersion: toRedactedOscalVersion(binding.oscalVersion) },
       binding.expected === undefined ? undefined : { expected: binding.expected },
     );
   }

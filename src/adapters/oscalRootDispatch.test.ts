@@ -115,6 +115,19 @@ describe('dispatchOscalDocument — Versionsbindung', () => {
     expect(diagnostic.code).toBe(VERSION_MATRIX_DIAGNOSTIC_CODES.ROOT_VERSION_IMPOSSIBLE);
     expect(diagnostic.code).not.toBe(VERSION_MATRIX_DIAGNOSTIC_CODES.ROOT_VERSION_UNSUPPORTED);
     expect(diagnostic.params.expected).toBe('>= 1.2.0');
+    // 1.1.3 ist Mitglied von PINNED_OSCAL_VERSIONS — kein Dokumentwert, sondern
+    // eine projekteigene Konstante, die die Redaction-Regel nicht betrifft.
+    expect(diagnostic.artifact.oscalVersion).toBe('1.1.3');
+  });
+
+  it('redigiert eine nicht gepinnte Version bei einer unmöglichen Kombination', () => {
+    const { diagnostic } = expectFailure(
+      dispatchOscalDocument(makeEnvelope('mapping-collection', '0.5.0'), context),
+    );
+
+    expect(diagnostic.code).toBe(VERSION_MATRIX_DIAGNOSTIC_CODES.ROOT_VERSION_IMPOSSIBLE);
+    expect(diagnostic.artifact.oscalVersion).toBeNull();
+    expect(JSON.stringify(diagnostic)).not.toContain('0.5.0');
   });
 
   it('unterscheidet die nicht gepinnte Version von der unmöglichen Kombination', () => {
@@ -123,6 +136,19 @@ describe('dispatchOscalDocument — Versionsbindung', () => {
     );
 
     expect(diagnostic.code).toBe(VERSION_MATRIX_DIAGNOSTIC_CODES.ROOT_VERSION_UNSUPPORTED);
+  });
+
+  it('reicht eine nicht gepinnte oscal-version nie roh in die Diagnose durch', () => {
+    // Belegt exakt das im Review genannte Beispiel: syntaktisch gültig gegen
+    // die Versionsform, aber kein Mitglied von PINNED_OSCAL_VERSIONS.
+    const rawVersion = '123456789012345678901234567890.0.0';
+    const { diagnostic } = expectFailure(
+      dispatchOscalDocument(makeEnvelope('catalog', rawVersion), context),
+    );
+
+    expect(diagnostic.code).toBe(VERSION_MATRIX_DIAGNOSTIC_CODES.ROOT_VERSION_UNSUPPORTED);
+    expect(diagnostic.artifact.oscalVersion).toBeNull();
+    expect(JSON.stringify(diagnostic)).not.toContain(rawVersion);
   });
 
   it.each([
