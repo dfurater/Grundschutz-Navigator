@@ -22,7 +22,7 @@
     {
       "artifactKey": "catalog-iso27001-annex-a",
       "rootType": "catalog",
-      "lifecycle": "preview",
+      "lifecycle": "blocked-by-upstream",
       "path": "control_layer/ISO27001/ISO27001-AnnexA-catalog.json",
       "gitBlobSha": "3baae9b0ff18787a5057ec5644aa143602d4bf29",
       "contentSha256": "4d3142b499b83516558534ed4d7c686ccc9a1bb2afb1f7e61b9fe150d4aaeacc"
@@ -46,7 +46,7 @@
     {
       "artifactKey": "mapping-iso27001-annex-a-zu-gspp",
       "rootType": "mapping-collection",
-      "lifecycle": "preview",
+      "lifecycle": "blocked-by-upstream",
       "path": "control_layer/Mappings/ISO-27001-zu-GSpp/ISO27001-AnnexA-to-GS++-mapping_collection.json",
       "gitBlobSha": "788429377673e1261735037c24cc82a2ab91215b",
       "contentSha256": "ffb785b2b0026e4c95f3eaee7a59f7ca894a298fb90743b5237a348870e91662"
@@ -198,7 +198,7 @@
     {
       "artifactKey": "component-ga-lotse-grundmodul",
       "rootType": "component-definition",
-      "lifecycle": "preview",
+      "lifecycle": "blocked-by-upstream",
       "path": "implementation_layer/GA-Lotse_Grundmodul/GA-Lotse_Grundmodul-component_definition.json",
       "gitBlobSha": "426122576d1b18983baa9301315c7d31b156e0a1",
       "contentSha256": "41a72b330294e82e7cee2ca61101eaae85ff54008f9a3dc8183d3c51ac257826"
@@ -214,7 +214,7 @@
     {
       "artifactKey": "component-lieferkette",
       "rootType": "component-definition",
-      "lifecycle": "preview",
+      "lifecycle": "blocked-by-upstream",
       "path": "implementation_layer/Lieferkettensicherheit/Lieferkettensicherheit-component_definition.json",
       "gitBlobSha": "2cac30b087e09a919d6d57f37ea868c48766c2d2",
       "contentSha256": "df78e8b337026b06726e398070fcdcfd1fd632e650975a74075e73b55729bb5e"
@@ -236,5 +236,5 @@
       "contentSha256": "08c7ab6bb442a87eba4e407d272fecd179bc61c47c2419843d7f4cfcd4077235"
     }
   ],
-  "signatureSha256": "fd9e5d887481466616451d315fbbf34bbf82aa5d95f2e12e5aa5dadd2a7bd80a"
+  "signatureSha256": "4b98c85d1cd1dcc511db6a7391a5f2a985f9d2e3203cdd4f2a48a551e37b1e53"
 }
