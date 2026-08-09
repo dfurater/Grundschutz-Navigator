@@ -55,11 +55,16 @@ lassen.
 
 `src/test/browser/browserEgressDecision.ts` entscheidet als reine Funktion
 über HTTP(S)-, WebSocket- und Service-Worker-Ereignisse. Der Playwright-Guard
-in `browserEgressGuard.ts` verwendet genau diese Entscheidung: Nur die lokale
-Vitest-Origin beziehungsweise der lokale WebSocket-Host darf passieren; jeder
-andere Request wird vor Namens- oder Netzauflösung abgebrochen und als
-`[BROWSER_EGRESS_BLOCKED]` festgehalten. Bereits vorhandene oder neu
-registrierte Service Worker gelten ebenfalls als Verstoß.
+in `browserEgressGuard.ts` nutzt sie für HTTP(S) und Service Worker; fremde
+HTTP(S)-Requests werden vor Namens- oder Netzauflösung abgebrochen. Für
+WebSockets setzt der Guard im tatsächlich ausgeführten Vitest-Testframe eine
+`connect-src`-CSP: Sie erlaubt nur den lokalen WebSocket-Host, verhindert
+fremde Verbindungen vor dem Netzwerkzugriff und erfasst die dadurch ausgelöste
+Browser-Verletzung mit eigenem Zähler. Der HTTP-Zähler wird erst beim
+zugehörigen `ERR_BLOCKED_BY_CLIENT`-Ereignis erhöht; der WebSocket-Zähler erst
+bei der CSP-Verletzung erhöht, während der Chromium-Referenztest den daraus
+resultierenden geschlossenen Browser-WebSocket prüft. Bereits vorhandene oder
+neu registrierte Service Worker gelten ebenfalls als Verstoß.
 
 `npm run test:browser:egress-negative` aktiviert einen absichtlich nicht
 erlaubten Request an die aus `window.location` abgeleitete Loopback-Origin mit
