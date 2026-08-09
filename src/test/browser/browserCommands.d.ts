@@ -8,6 +8,7 @@ declare module 'vitest/internal/browser' {
     getBrowserEgressEnforcements: () => Promise<{
       httpAborts: number;
       webSocketCloses: number;
+      violations: string[];
     }>;
   }
 }

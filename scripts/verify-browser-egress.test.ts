@@ -1,21 +1,52 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   EGRESS_FAILURE_MARKER,
+  NEGATIVE_EGRESS_TEST_NAME,
   verifyBrowserEgress,
 } from './verify-browser-egress.mjs';
 
 function browserRun(overrides: Record<string, unknown> = {}) {
   return {
     status: 1,
-    stdout: `${EGRESS_FAILURE_MARKER} Egress-Oracle GET <same-origin>`,
+    signal: null,
+    stdout: 'JSON report written to /tmp/gspp-browser-egress/result.json',
     stderr: '',
     ...overrides,
   };
 }
 
-function options(result: ReturnType<typeof browserRun>) {
+function expectedReport(overrides: Record<string, unknown> = {}) {
+  return {
+    numTotalTestSuites: 1,
+    numPassedTestSuites: 0,
+    numFailedTestSuites: 1,
+    numPendingTestSuites: 0,
+    numTotalTests: 1,
+    numPassedTests: 0,
+    numFailedTests: 1,
+    numPendingTests: 0,
+    numTodoTests: 0,
+    success: false,
+    testResults: [{
+      assertionResults: [{
+        fullName: NEGATIVE_EGRESS_TEST_NAME,
+        status: 'failed',
+        failureMessages: [`Error: ${EGRESS_FAILURE_MARKER} GET <loopback-origin>`],
+      }],
+    }],
+    ...overrides,
+  };
+}
+
+function options(
+  result: ReturnType<typeof browserRun>,
+  report = expectedReport(),
+) {
   return {
     spawnSyncImpl: vi.fn(() => result),
+    mkdtempSyncImpl: vi.fn(() => '/tmp/gspp-browser-egress'),
+    readFileSyncImpl: vi.fn(() => JSON.stringify(report)),
+    rmSyncImpl: vi.fn(),
     write: vi.fn(),
   };
 }
@@ -26,7 +57,7 @@ describe('verifyBrowserEgress', () => {
 
     expect(verifyBrowserEgress(fixture)).toBeUndefined();
     expect(fixture.write).toHaveBeenCalledWith(
-      `${EGRESS_FAILURE_MARKER} Egress-Oracle GET <same-origin>`,
+      `Error: ${EGRESS_FAILURE_MARKER} GET <loopback-origin>\n`,
     );
   });
 
@@ -46,10 +77,34 @@ describe('verifyBrowserEgress', () => {
   });
 
   it('rejects a failed browser run without the egress marker', () => {
-    const fixture = options(browserRun({ stdout: 'Vitest failed before the egress check' }));
+    const fixture = options(browserRun(), expectedReport({
+      testResults: [{
+        assertionResults: [{
+          fullName: NEGATIVE_EGRESS_TEST_NAME,
+          status: 'failed',
+          failureMessages: ['Error: browser setup failed'],
+        }],
+      }],
+    }));
 
     expect(() => verifyBrowserEgress(fixture)).toThrow(
-      'Der negative Browser-Egress-Nachweis scheiterte nicht am Egress-Oracle.',
+      'Der negative Browser-Egress-Nachweis entspricht nicht dem erwarteten Testergebnisvertrag.',
+    );
+  });
+
+  it('rejects an additional browser-runner failure even when the egress marker exists', () => {
+    const fixture = options(browserRun(), expectedReport({ numFailedTests: 2 }));
+
+    expect(() => verifyBrowserEgress(fixture)).toThrow(
+      'Der negative Browser-Egress-Nachweis entspricht nicht dem erwarteten Testergebnisvertrag.',
+    );
+  });
+
+  it('rejects a browser-runner signal even with an otherwise expected report', () => {
+    const fixture = options(browserRun({ signal: 'SIGTERM', status: null }));
+
+    expect(() => verifyBrowserEgress(fixture)).toThrow(
+      'Der negative Browser-Egress-Nachweis entspricht nicht dem erwarteten Testergebnisvertrag.',
     );
   });
 });

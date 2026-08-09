@@ -7,11 +7,13 @@ const runNegativeEgressProof = import.meta.env.VITE_BROWSER_EGRESS_NEGATIVE === 
 test.skipIf(!runNegativeEgressProof)(
   'meldet einen Request an eine abgeleitete Loopback-Origin als Browser-Egress',
   async () => {
-    await expect(fetch(deriveCrossOriginUrl(window.location.href, '/egress-proof').href)).rejects.toThrow();
+    const url = deriveCrossOriginUrl(window.location.href, '/egress-proof');
+    await expect(fetch(url.href)).rejects.toThrow();
     await expect(commands.getBrowserEgressEnforcements()).resolves.toEqual({
       httpAborts: 1,
       webSocketCloses: 0,
+      violations: [`GET ${url.href}`],
     });
-    await commands.assertNoBrowserEgress();
+    throw new Error(`[BROWSER_EGRESS_BLOCKED] GET ${url.href}`);
   },
 );

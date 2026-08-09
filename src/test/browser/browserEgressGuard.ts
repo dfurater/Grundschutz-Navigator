@@ -121,6 +121,7 @@ export const getBrowserEgressEnforcements = defineBrowserCommand(async ({ contex
   return {
     httpAborts: state.httpAborts,
     webSocketCloses: state.webSocketCloses,
+    violations: [...state.violations],
   };
 });
 

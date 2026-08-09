@@ -9,5 +9,6 @@ test('legt den Egress-Guard ohne ausgeführte Durchsetzung an', async () => {
   await expect(commands.getBrowserEgressEnforcements()).resolves.toEqual({
     httpAborts: 0,
     webSocketCloses: 0,
+    violations: [],
   });
 });

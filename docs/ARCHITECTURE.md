@@ -67,9 +67,11 @@ abweichendem Port; bei Port 65535 wird auf 65534 ausgewichen. Der Guard bricht
 ihn vor jeder Namens- oder Netzauflösung ab. Der Negativtest erwartet genau
 einen ausgeführten HTTP-Abbruch und keine WebSocket-Schließung. Der innere
 Browser-Lauf **muss** mit dem Egress-Marker fehlschlagen; das Wrapper-Skript
-wird nur dann grün, wenn genau dieser Nachweis vorliegt. Der Nachweis führt
-damit den HTTP-Cross-Origin-Pfad aus, ohne eine zusätzliche produktive
-Fetch-Quelle einzuführen.
+wird nur dann grün, wenn Vitests JSON-Report exakt diesen einen fehlgeschlagenen
+Test mit dem Marker enthält. Zusätzliche Testfehler, Timeouts oder andere
+Runner-Signale lassen auch den Wrapper scheitern. Der Nachweis führt damit den
+HTTP-Cross-Origin-Pfad aus, ohne eine zusätzliche produktive Fetch-Quelle
+einzuführen.
 
 Die Hook-Grenze kann keine Browser-Aufgabe erfassen, die erst *nach* Ende des
 Tests einen Request startet. Dafür wäre eine veränderte Testlaufzeit-Architektur
