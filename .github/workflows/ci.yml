@@ -96,5 +96,14 @@ jobs:
       - name: Run tests
         run: npm run test
 
+      - name: Install pinned Chromium for browser tests
+        run: ./node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Run Chromium browser tests
+        run: npm run test:browser
+
+      - name: Verify browser egress oracle
+        run: npm run test:browser:egress-negative
+
       - name: Build application
         run: npm run build

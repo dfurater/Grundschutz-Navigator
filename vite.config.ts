@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath } from 'url';
@@ -41,6 +41,7 @@ export default defineConfig(({ command }) => ({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test-setup.ts'],
+    exclude: [...configDefaults.exclude, 'src/test/browser/**/*.browser.test.ts'],
     globals: true,
     css: true,
     coverage: {
@@ -50,6 +51,7 @@ export default defineConfig(({ command }) => ({
         'src/**/*.test.*',
         'src/**/*.d.ts',
         'src/main.tsx',
+        'src/test/browser/**',
         'src/test-setup.ts',
         'src/vite-env.d.ts',
       ],

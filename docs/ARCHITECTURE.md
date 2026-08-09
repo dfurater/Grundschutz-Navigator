@@ -15,8 +15,55 @@ Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application 
 | Styling | Tailwind CSS v4 (via `@tailwindcss/vite` Plugin) |
 | Routing | React Router v8 |
 | Volltextsuche | FlexSearch |
-| Testing | Vitest + @testing-library/react + jsdom |
+| Testing | Vitest + @testing-library/react + jsdom + Chromium-Browser-Lane |
 | Deployment | GitHub Pages (via GitHub Actions) |
+
+## Browser-Testlane
+
+Die Standard-Lane bleibt `npm run test`: Sie läuft vollständig in jsdom und
+schließt Dateien unter `src/test/browser/**/*.browser.test.ts` explizit aus.
+Damit bleibt sie schnell und alle bestehenden Tests laufen unverändert weiter.
+
+`npm run test:browser` startet die getrennte Vitest-Browser-Lane aus
+`vitest.browser.config.ts` mit dem Playwright-Provider und Chromium. Sie
+verwendet einen gemeinsamen Test-iframe (`browser.isolate: false`), weil
+Vitest 4.1 den absoluten Dateipfad als Query-Parameter des isolierten iframes
+verwendet; ein lokaler Projektpfad mit `+` würde dabei in Leerzeichen
+dekodiert und den Ready-Handshake blockieren. Jeder Test bereinigt seine
+eigene IndexedDB-Datenbank, und der Egress-Guard setzt seinen Zustand vor jedem
+Test zurück.
+
+| Abhängigkeit | Exakte Version | Lizenz | Zweck |
+| --- | --- | --- | --- |
+| `vitest` + `@vitest/coverage-v8` | `4.1.10` | MIT | Kompatible Test- und Coverage-Basis für beide Vitest-Lanes |
+| `@vitest/browser-playwright` | `4.1.10` | MIT | Playwright-Provider für das Vitest-Browser-Projekt |
+| `playwright` | `1.62.1` | Apache-2.0 | Startet das gepinnte Chromium in CI und lokal |
+
+Die exakte `playwright`-Version `1.62.1` liefert laut ihrem mitinstallierten
+`browsers.json` Chromium-Revision `1234` als Chrome for Testing
+`151.0.7922.34`. Der CI-Schritt verwendet ausschließlich den lokalen Befehl
+`./node_modules/.bin/playwright install --with-deps chromium`; es gibt keinen
+`latest`-Tag oder unversionierten Browser-Download.
+
+Der Referenztest in `src/test/browser/indexedDb.browser.test.ts` legt eine
+IndexedDB-Datenbank an, schreibt und liest einen Datensatz, löscht die
+Datenbank und prüft anschließend ihre Abwesenheit über
+`indexedDB.databases()`. `src/test/browser/browserEgressGuard.ts` registriert
+auf dem Playwright-Context Routen für HTTP(S) und WebSockets: Nur die lokale
+Vitest-Origin darf passieren; jeder andere Request wird abgebrochen und als
+`[BROWSER_EGRESS_BLOCKED]` festgehalten. Bereits vorhandene oder neu
+registrierte Service Worker gelten ebenfalls als Verstoß.
+
+`npm run test:browser:egress-negative` aktiviert einen absichtlich externen
+Request. Der innere Browser-Lauf **muss** mit dem Egress-Marker fehlschlagen;
+das Wrapper-Skript wird nur dann grün, wenn genau dieser Nachweis vorliegt.
+
+Die Browser-Lane erzeugt keine Coverage-Ausgabe. Die verbindlichen
+V8-Coverage-Schwellen bleiben ausschließlich in der jsdom-Lane
+(`npm run test:coverage`) und unverändert bei Lines 57, Branches 55,
+Functions 56 und Statements 54. So senkt die zusätzliche Infrastruktur weder
+die Messlatte noch vermischt sie Browser-Referenztests mit der bestehenden
+Quellabdeckung.
 
 ## Verzeichnisstruktur
 
