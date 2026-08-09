@@ -1,5 +1,6 @@
 import { defineBrowserCommand } from '@vitest/browser-playwright';
 import type { BrowserContext } from 'playwright';
+import { isBrowserEgressOracleRequest } from './egressOracleSignal.ts';
 
 const EGRESS_FAILURE_MARKER = '[BROWSER_EGRESS_BLOCKED]';
 
@@ -44,6 +45,15 @@ export const installBrowserEgressGuard = defineBrowserCommand(async ({ context, 
   await context.route('**/*', async (route) => {
     const request = route.request();
     const requestUrl = new URL(request.url());
+
+    if (
+      requestUrl.origin === state.allowedOrigin
+      && isBrowserEgressOracleRequest(request.headers())
+    ) {
+      recordViolation(state, `Egress-Oracle ${request.method()} ${requestUrl.href}`);
+      await route.abort('blockedbyclient');
+      return;
+    }
 
     if (requestUrl.origin === state.allowedOrigin) {
       await route.continue();

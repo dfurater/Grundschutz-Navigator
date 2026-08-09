@@ -7,7 +7,7 @@ import {
 function browserRun(overrides: Record<string, unknown> = {}) {
   return {
     status: 1,
-    stdout: `${EGRESS_FAILURE_MARKER} GET http://127.0.0.1:1/egress-proof`,
+    stdout: `${EGRESS_FAILURE_MARKER} Egress-Oracle GET <same-origin>`,
     stderr: '',
     ...overrides,
   };
@@ -26,7 +26,7 @@ describe('verifyBrowserEgress', () => {
 
     expect(verifyBrowserEgress(fixture)).toBeUndefined();
     expect(fixture.write).toHaveBeenCalledWith(
-      `${EGRESS_FAILURE_MARKER} GET http://127.0.0.1:1/egress-proof`,
+      `${EGRESS_FAILURE_MARKER} Egress-Oracle GET <same-origin>`,
     );
   });
 

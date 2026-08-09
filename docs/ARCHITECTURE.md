@@ -52,13 +52,17 @@ Datenbank und prüft anschließend ihre Abwesenheit über
 auf dem Playwright-Context Routen für HTTP(S) und WebSockets: Nur die lokale
 Vitest-Origin darf passieren; jeder andere Request wird abgebrochen und als
 `[BROWSER_EGRESS_BLOCKED]` festgehalten. Bereits vorhandene oder neu
-registrierte Service Worker gelten ebenfalls als Verstoß.
+registrierte Service Worker gelten ebenfalls als Verstoß. Der ausschließlich
+testinterne Canary-Header `x-gspp-browser-egress-oracle: block` ist auf der
+lokalen Origin zusätzlich gesperrt, damit der Negativnachweis keine weitere
+Fetch-Quelle benötigt.
 
 `npm run test:browser:egress-negative` aktiviert einen absichtlich nicht
-erlaubten Loopback-Request auf einer anderen Origin. Der innere Browser-Lauf
-**muss** mit dem Egress-Marker fehlschlagen; das Wrapper-Skript wird nur dann
-grün, wenn genau dieser Nachweis vorliegt. Der Nachweis enthält damit keinen
-externen Fetch-Endpunkt.
+erlaubten, gleichoriginigen Request an die bereits geladene Vitest-Seite mit
+diesem Canary-Header. Der Guard bricht ihn vor dem Testserver ab. Der innere
+Browser-Lauf **muss** mit dem Egress-Marker fehlschlagen; das Wrapper-Skript
+wird nur dann grün, wenn genau dieser Nachweis vorliegt. Der Nachweis enthält
+damit weder einen weiteren Host noch einen externen Fetch-Endpunkt.
 
 Die Browser-Lane erzeugt keine Coverage-Ausgabe. Die verbindlichen
 V8-Coverage-Schwellen bleiben ausschließlich in der jsdom-Lane
