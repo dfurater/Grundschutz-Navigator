@@ -49,8 +49,9 @@ Der Referenztest in `src/test/browser/indexedDb.browser.test.ts` legt eine
 IndexedDB-Datenbank an, schreibt und liest einen Datensatz, löscht die
 Datenbank und prüft anschließend ihre Abwesenheit über
 `indexedDB.databases()`. Ein durch eine noch offene Verbindung blockiertes
-`deleteDatabase()` lehnt mit einem erklärenden Fehler ab, statt den Hook bis
-zum Timeout hängen zu lassen.
+`deleteDatabase()` wartet bis zu zwei Sekunden auf deren Schließen und lehnt
+danach mit einem erklärenden Fehler ab, statt den Hook unbefristet hängen zu
+lassen.
 
 `src/test/browser/browserEgressDecision.ts` entscheidet als reine Funktion
 über HTTP(S)-, WebSocket- und Service-Worker-Ereignisse. Der Playwright-Guard
