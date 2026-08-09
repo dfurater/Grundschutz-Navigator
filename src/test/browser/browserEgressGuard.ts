@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 import { defineBrowserCommand } from '@vitest/browser-playwright';
-import type { BrowserContext, Frame, Request } from 'playwright';
+import type { BrowserContext, Frame, Page, Request } from 'playwright';
 import {
   decideBrowserEgress,
   type BrowserEgressDecision,
@@ -22,6 +22,8 @@ type WebSocketGuardState = {
 };
 
 const guardStates = new WeakMap<BrowserContext, EgressGuardState>();
+const webSocketGuardFrames = new WeakMap<Frame, EgressGuardState>();
+const monitoredWebSocketGuardPages = new WeakSet<Page>();
 
 function recordViolation(state: EgressGuardState, detail: string): void {
   state.violations.push(detail);
@@ -40,6 +42,33 @@ function assertNoViolations(state: EgressGuardState): void {
   if (state.violations.length > 0) {
     throw new Error(`${EGRESS_FAILURE_MARKER} ${state.violations.join('; ')}`);
   }
+}
+
+function violationFailureMessage(state: EgressGuardState): string | undefined {
+  try {
+    assertNoViolations(state);
+  } catch (error) {
+    if (error instanceof Error) {
+      return error.message;
+    }
+    throw error;
+  }
+
+  return undefined;
+}
+
+function monitorWebSocketGuardNavigations(page: Page): void {
+  if (monitoredWebSocketGuardPages.has(page)) {
+    return;
+  }
+
+  monitoredWebSocketGuardPages.add(page);
+  page.on('framenavigated', (navigatedFrame) => {
+    const state = webSocketGuardFrames.get(navigatedFrame);
+    if (state) {
+      recordViolation(state, 'Browser-Testframe navigiert; der WebSocket-Egress-Guard wurde entfernt.');
+    }
+  });
 }
 
 async function installWebSocketEgressGuard(frame: Frame, allowedHost: string): Promise<void> {
@@ -152,7 +181,10 @@ export const installBrowserEgressGuard = defineBrowserCommand(async ({ context, 
     });
   }
 
-  await installWebSocketEgressGuard(await frame(), state.allowedHost);
+  monitorWebSocketGuardNavigations(page);
+  const browserTestFrame = await frame();
+  webSocketGuardFrames.set(browserTestFrame, state);
+  await installWebSocketEgressGuard(browserTestFrame, state.allowedHost);
 });
 
 export const resetBrowserEgressGuard = defineBrowserCommand(async ({ context, frame }) => {
@@ -186,8 +218,13 @@ export const assertNoBrowserEgress = defineBrowserCommand(async ({ context, fram
     throw new Error('Browser-Egress-Guard wurde nicht installiert.');
   }
 
+  const nodeFailureMessage = violationFailureMessage(state);
+  if (nodeFailureMessage) {
+    return nodeFailureMessage;
+  }
+
   const webSocketState = await getWebSocketEgressGuardState(await frame());
-  assertNoViolations({
+  return violationFailureMessage({
     ...state,
     violations: [...state.violations, ...webSocketState.violations],
   });

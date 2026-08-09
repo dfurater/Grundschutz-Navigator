@@ -54,17 +54,27 @@ danach mit einem erklärenden Fehler ab, statt den Hook unbefristet hängen zu
 lassen.
 
 `src/test/browser/browserEgressDecision.ts` entscheidet als reine Funktion
-über HTTP(S)-, WebSocket- und Service-Worker-Ereignisse. Der Playwright-Guard
-in `browserEgressGuard.ts` nutzt sie für HTTP(S) und Service Worker; fremde
-HTTP(S)-Requests werden vor Namens- oder Netzauflösung abgebrochen. Für
-WebSockets setzt der Guard im tatsächlich ausgeführten Vitest-Testframe eine
-`connect-src`-CSP: Sie erlaubt nur den lokalen WebSocket-Host, verhindert
-fremde Verbindungen vor dem Netzwerkzugriff und erfasst die dadurch ausgelöste
-Browser-Verletzung mit eigenem Zähler. Der HTTP-Zähler wird erst beim
+über HTTP(S)- und Service-Worker-Ereignisse. Der Playwright-Guard in
+`browserEgressGuard.ts` nutzt sie dafür; fremde HTTP(S)-Requests werden vor
+Namens- oder Netzauflösung abgebrochen. Für WebSockets setzt der Guard im
+tatsächlich ausgeführten Vitest-Testframe eine `connect-src`-CSP: Sie erlaubt
+nur den lokalen WebSocket-Host, verhindert fremde Verbindungen vor dem
+Netzwerkzugriff und erfasst die dadurch ausgelöste Browser-Verletzung mit
+eigenem Zähler. `context.routeWebSocket()` ist hier bewusst keine zweite
+Durchsetzungsschicht: Der Handler läuft im gemeinsamen Vitest-Testframe mit
+`browser.isolate: false` nicht verlässlich. Der HTTP-Zähler wird erst beim
 zugehörigen `ERR_BLOCKED_BY_CLIENT`-Ereignis erhöht; der WebSocket-Zähler erst
 bei der CSP-Verletzung erhöht, während der Chromium-Referenztest den daraus
 resultierenden geschlossenen Browser-WebSocket prüft. Bereits vorhandene oder
 neu registrierte Service Worker gelten ebenfalls als Verstoß.
+
+Der WebSocket-Zustand liegt absichtlich im `window` des aktuellen Testframes:
+Die Browser-Commands lesen ihn aus derselben Ausführungsumgebung aus, die die
+CSP tatsächlich durchsetzt. Navigiert ein Test diesen Frame, entfernt der
+Browser die CSP zusammen mit dem Dokument. Der Guard registriert diese
+Navigation deshalb Node-seitig als Verstoß und installiert die CSP nicht still
+im Ziel-Dokument neu; der anschließende `afterEach` schlägt mit dem
+Egress-Marker fehl.
 
 `npm run test:browser:egress-negative` aktiviert einen absichtlich nicht
 erlaubten Request an die aus `window.location` abgeleitete Loopback-Origin mit
@@ -73,10 +83,12 @@ ihn vor jeder Namens- oder Netzauflösung ab. Der Negativtest erwartet genau
 einen ausgeführten HTTP-Abbruch und keine WebSocket-Schließung. Der innere
 Browser-Lauf **muss** mit dem Egress-Marker fehlschlagen; das Wrapper-Skript
 wird nur dann grün, wenn Vitests JSON-Report exakt diesen einen fehlgeschlagenen
-Test mit dem Marker enthält. Zusätzliche Testfehler, Timeouts oder andere
-Runner-Signale lassen auch den Wrapper scheitern. Der Nachweis führt damit den
-HTTP-Cross-Origin-Pfad aus, ohne eine zusätzliche produktive Fetch-Quelle
-einzuführen.
+Test mit dem Marker enthält. Der Testkörper endet nach der Abbruchzählung
+normal; erst der immer aktive `afterEach` ruft `assertNoViolations` über den
+Browser-Command auf und erzeugt den Marker. Zusätzliche Testfehler, Timeouts
+oder andere Runner-Signale lassen auch den Wrapper scheitern. Der Nachweis
+führt damit den HTTP-Cross-Origin-Pfad aus, ohne eine zusätzliche produktive
+Fetch-Quelle einzuführen.
 
 Die Hook-Grenze kann keine Browser-Aufgabe erfassen, die erst *nach* Ende des
 Tests einen Request startet. Dafür wäre eine veränderte Testlaufzeit-Architektur

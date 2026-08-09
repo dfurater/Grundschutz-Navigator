@@ -3,10 +3,11 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { NEGATIVE_EGRESS_TEST_NAME } from '../src/test/browser/egressOracleContract.mjs';
 
 export const EGRESS_FAILURE_MARKER = '[BROWSER_EGRESS_BLOCKED]';
 export const NEGATIVE_EGRESS_TEST_PATH = 'src/test/browser/egressOracle.negative.browser.test.ts';
-export const NEGATIVE_EGRESS_TEST_NAME = 'meldet einen Request an eine abgeleitete Loopback-Origin als Browser-Egress';
+export { NEGATIVE_EGRESS_TEST_NAME };
 
 function expectedEgressFailure(report) {
   if (!report || typeof report !== 'object') {

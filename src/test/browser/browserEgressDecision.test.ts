@@ -37,19 +37,6 @@ describe('decideBrowserEgress', () => {
     expect(url.port).toBe('65534');
   });
 
-  it('erlaubt ausschließlich WebSockets am erlaubten Host', () => {
-    const allowed = new URL('/socket', state.allowedOrigin);
-    allowed.protocol = 'ws:';
-    const blocked = deriveCrossOriginUrl(state.allowedOrigin, '/socket');
-    blocked.protocol = 'ws:';
-
-    expect(decideBrowserEgress(state, { kind: 'websocket', url: allowed })).toEqual({ action: 'allow' });
-    expect(decideBrowserEgress(state, { kind: 'websocket', url: blocked })).toEqual({
-      action: 'violation',
-      detail: `WebSocket ${blocked.href}`,
-    });
-  });
-
   it.each([
     ['aktive', 'active'],
     ['neu registrierte', 'registered'],

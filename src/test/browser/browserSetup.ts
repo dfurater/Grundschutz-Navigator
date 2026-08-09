@@ -1,20 +1,24 @@
 import { afterEach, beforeEach } from 'vitest';
 import { commands } from 'vitest/browser';
 
-const runNegativeEgressProof = import.meta.env.VITE_BROWSER_EGRESS_NEGATIVE === '1';
-
 await commands.installBrowserEgressGuard();
+
+async function assertNoBrowserEgress(): Promise<void> {
+  const failureMessage = await commands.assertNoBrowserEgress();
+  if (failureMessage) {
+    // Browser-Commands übertragen Fehlertexte nicht zuverlässig; der Guard liefert den von ihm erzeugten Marker zurück.
+    throw new Error(failureMessage);
+  }
+}
 
 beforeEach(async () => {
   try {
-    await commands.assertNoBrowserEgress();
+    await assertNoBrowserEgress();
   } finally {
     await commands.resetBrowserEgressGuard();
   }
 });
 
 afterEach(async () => {
-  if (!runNegativeEgressProof) {
-    await commands.assertNoBrowserEgress();
-  }
+  await assertNoBrowserEgress();
 });

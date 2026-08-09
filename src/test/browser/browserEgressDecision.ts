@@ -10,10 +10,6 @@ type BrowserEgressEvent =
       url: URL;
     }
   | {
-      kind: 'websocket';
-      url: URL;
-    }
-  | {
       kind: 'service-worker';
       lifecycle: 'active' | 'registered';
       url: URL;
@@ -47,11 +43,6 @@ export function decideBrowserEgress(
         return { action: 'allow' };
       }
       return { action: 'violation', detail: `${event.method} ${event.url.href}` };
-    case 'websocket':
-      if (event.url.host === state.allowedHost) {
-        return { action: 'allow' };
-      }
-      return { action: 'violation', detail: `WebSocket ${event.url.href}` };
     case 'service-worker':
       return {
         action: 'violation',
