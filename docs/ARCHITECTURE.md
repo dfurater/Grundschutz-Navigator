@@ -15,8 +15,95 @@ Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application 
 | Styling | Tailwind CSS v4 (via `@tailwindcss/vite` Plugin) |
 | Routing | React Router v8 |
 | Volltextsuche | FlexSearch |
-| Testing | Vitest + @testing-library/react + jsdom |
+| Testing | Vitest + @testing-library/react + jsdom + Chromium-Browser-Lane |
 | Deployment | GitHub Pages (via GitHub Actions) |
+
+## Browser-Testlane
+
+Die Standard-Lane bleibt `npm run test`: Sie läuft vollständig in jsdom und
+schließt Dateien unter `src/test/browser/**/*.browser.test.ts` explizit aus.
+Damit bleibt sie schnell und alle bestehenden Tests laufen unverändert weiter.
+
+`npm run test:browser` startet die getrennte Vitest-Browser-Lane aus
+`vitest.browser.config.ts` mit dem Playwright-Provider und Chromium. Sie
+verwendet einen gemeinsamen Test-iframe (`browser.isolate: false`), weil
+Vitest 4.1 den absoluten Dateipfad als Query-Parameter des isolierten iframes
+verwendet; ein lokaler Projektpfad mit `+` würde dabei in Leerzeichen
+dekodiert und den Ready-Handshake blockieren. Jeder Test bereinigt seine
+eigene IndexedDB-Datenbank, und der Egress-Guard setzt seinen Zustand vor jedem
+Test zurück.
+
+| Abhängigkeit | Exakte Version | Lizenz | Zweck |
+| --- | --- | --- | --- |
+| `vitest` + `@vitest/coverage-v8` | `4.1.10` | MIT | Kompatible Test- und Coverage-Basis für beide Vitest-Lanes |
+| `@vitest/browser-playwright` | `4.1.10` | MIT | Playwright-Provider für das Vitest-Browser-Projekt |
+| `playwright` | `1.62.1` | Apache-2.0 | Startet das gepinnte Chromium in CI und lokal |
+
+Die exakte `playwright`-Version `1.62.1` liefert laut ihrem mitinstallierten
+`browsers.json` Chromium-Revision `1234` als Chrome for Testing
+`151.0.7922.34`. Der CI-Schritt verwendet ausschließlich den lokalen Befehl
+`./node_modules/.bin/playwright install chromium`; es gibt keinen
+`latest`-Tag oder unversionierten Browser-Download.
+
+Der Referenztest in `src/test/browser/indexedDb.browser.test.ts` legt eine
+IndexedDB-Datenbank an, schreibt und liest einen Datensatz, löscht die
+Datenbank und prüft anschließend ihre Abwesenheit über
+`indexedDB.databases()`. Ein durch eine noch offene Verbindung blockiertes
+`deleteDatabase()` wartet bis zu zwei Sekunden auf deren Schließen und lehnt
+danach mit einem erklärenden Fehler ab, statt den Hook unbefristet hängen zu
+lassen.
+
+`src/test/browser/browserEgressDecision.ts` entscheidet als reine Funktion
+über HTTP(S)- und Service-Worker-Ereignisse. Der Playwright-Guard in
+`browserEgressGuard.ts` nutzt sie dafür; fremde HTTP(S)-Requests werden vor
+Namens- oder Netzauflösung abgebrochen. Für WebSockets setzt der Guard im
+tatsächlich ausgeführten Vitest-Testframe eine `connect-src`-CSP: Sie erlaubt
+nur den lokalen WebSocket-Host, verhindert fremde Verbindungen vor dem
+Netzwerkzugriff und erfasst die dadurch ausgelöste Browser-Verletzung mit
+eigenem Zähler. `context.routeWebSocket()` ist hier bewusst keine zweite
+Durchsetzungsschicht: Der Handler läuft im gemeinsamen Vitest-Testframe mit
+`browser.isolate: false` nicht verlässlich. Der HTTP-Zähler wird erst beim
+zugehörigen `ERR_BLOCKED_BY_CLIENT`-Ereignis erhöht; der WebSocket-Zähler erst
+bei der CSP-Verletzung erhöht, während der Chromium-Referenztest den daraus
+resultierenden geschlossenen Browser-WebSocket prüft. Bereits vorhandene oder
+neu registrierte Service Worker gelten ebenfalls als Verstoß.
+
+Der WebSocket-Zustand liegt absichtlich im `window` des aktuellen Testframes:
+Die Browser-Commands lesen ihn aus derselben Ausführungsumgebung aus, die die
+CSP tatsächlich durchsetzt. Navigiert ein Test diesen Frame, entfernt der
+Browser die CSP zusammen mit dem Dokument. Der Guard registriert diese
+Navigation deshalb Node-seitig als Verstoß und installiert die CSP nicht still
+im Ziel-Dokument neu; der anschließende `afterEach` schlägt mit dem
+Egress-Marker fehl.
+
+`npm run test:browser:egress-negative` aktiviert einen absichtlich nicht
+erlaubten Request an die aus `window.location` abgeleitete Loopback-Origin mit
+abweichendem Port; bei Port 65535 wird auf 65534 ausgewichen. Der Guard bricht
+ihn vor jeder Namens- oder Netzauflösung ab. Der Negativtest erwartet genau
+einen ausgeführten HTTP-Abbruch und keine WebSocket-Schließung. Der innere
+Browser-Lauf **muss** mit dem Egress-Marker fehlschlagen; das Wrapper-Skript
+wird nur dann grün, wenn Vitests JSON-Report exakt diesen einen fehlgeschlagenen
+Test mit dem Marker enthält. Der Testkörper endet nach der Abbruchzählung
+normal; erst der immer aktive `afterEach` ruft `assertNoViolations` über den
+Browser-Command auf und erzeugt den Marker. Zusätzliche Testfehler, Timeouts
+oder andere Runner-Signale lassen auch den Wrapper scheitern. Der Nachweis
+führt damit den HTTP-Cross-Origin-Pfad aus, ohne eine zusätzliche produktive
+Fetch-Quelle einzuführen.
+
+Die Hook-Grenze kann keine Browser-Aufgabe erfassen, die erst *nach* Ende des
+Tests einen Request startet. Dafür wäre eine veränderte Testlaufzeit-Architektur
+erforderlich, nicht ein zufallsabhängiger Timeout. Die konsumierenden
+[GSPP-289](https://linear.app/grundschutz-plus-plus/issue/GSPP-289) und
+[GSPP-340](https://linear.app/grundschutz-plus-plus/issue/GSPP-340) führen
+deshalb einen eigenen Akzeptanznachweis für bewusst nicht abgewartete
+Requests.
+
+Die Browser-Lane erzeugt keine Coverage-Ausgabe. Die verbindlichen
+V8-Coverage-Schwellen bleiben ausschließlich in der jsdom-Lane
+(`npm run test:coverage`) und unverändert bei Lines 57, Branches 55,
+Functions 56 und Statements 54. So senkt die zusätzliche Infrastruktur weder
+die Messlatte noch vermischt sie Browser-Referenztests mit der bestehenden
+Quellabdeckung.
 
 ## Verzeichnisstruktur
 
