@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 import {
   assertNoBrowserEgress,
+  getBrowserEgressEnforcements,
   installBrowserEgressGuard,
   resetBrowserEgressGuard,
 } from './src/test/browser/browserEgressGuard.ts';
@@ -40,6 +41,7 @@ export default defineConfig({
         installBrowserEgressGuard,
         resetBrowserEgressGuard,
         assertNoBrowserEgress,
+        getBrowserEgressEnforcements,
       },
     },
   },

@@ -5,5 +5,9 @@ declare module 'vitest/internal/browser' {
     installBrowserEgressGuard: () => Promise<void>;
     resetBrowserEgressGuard: () => Promise<void>;
     assertNoBrowserEgress: () => Promise<void>;
+    getBrowserEgressEnforcements: () => Promise<{
+      httpAborts: number;
+      webSocketCloses: number;
+    }>;
   }
 }

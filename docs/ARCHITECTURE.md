@@ -59,17 +59,17 @@ in `browserEgressGuard.ts` verwendet genau diese Entscheidung: Nur die lokale
 Vitest-Origin beziehungsweise der lokale WebSocket-Host darf passieren; jeder
 andere Request wird vor Namens- oder Netzauflösung abgebrochen und als
 `[BROWSER_EGRESS_BLOCKED]` festgehalten. Bereits vorhandene oder neu
-registrierte Service Worker gelten ebenfalls als Verstoß. Der ausschließlich
-testinterne Canary-Header `x-gspp-browser-egress-oracle: block` bleibt auch
-auf der lokalen Origin als kontrollierbares Signal gesperrt.
+registrierte Service Worker gelten ebenfalls als Verstoß.
 
 `npm run test:browser:egress-negative` aktiviert einen absichtlich nicht
 erlaubten Request an die aus `window.location` abgeleitete Loopback-Origin mit
-um eins erhöhtem Port. Der Guard bricht ihn vor jeder Namens- oder
-Netzauflösung ab. Der innere Browser-Lauf **muss** mit dem Egress-Marker
-fehlschlagen; das Wrapper-Skript wird nur dann grün, wenn genau dieser
-Nachweis vorliegt. Der Nachweis führt damit den HTTP-Cross-Origin-Pfad aus,
-ohne eine zusätzliche produktive Fetch-Quelle einzuführen.
+abweichendem Port; bei Port 65535 wird auf 65534 ausgewichen. Der Guard bricht
+ihn vor jeder Namens- oder Netzauflösung ab. Der Negativtest erwartet genau
+einen ausgeführten HTTP-Abbruch und keine WebSocket-Schließung. Der innere
+Browser-Lauf **muss** mit dem Egress-Marker fehlschlagen; das Wrapper-Skript
+wird nur dann grün, wenn genau dieser Nachweis vorliegt. Der Nachweis führt
+damit den HTTP-Cross-Origin-Pfad aus, ohne eine zusätzliche produktive
+Fetch-Quelle einzuführen.
 
 Die Hook-Grenze kann keine Browser-Aufgabe erfassen, die erst *nach* Ende des
 Tests einen Request startet. Dafür wäre eine veränderte Testlaufzeit-Architektur

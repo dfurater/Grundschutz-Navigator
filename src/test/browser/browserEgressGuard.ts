@@ -8,7 +8,12 @@ import {
 
 const EGRESS_FAILURE_MARKER = '[BROWSER_EGRESS_BLOCKED]';
 
-type EgressGuardState = BrowserEgressGuardState & {
+type BrowserEgressEnforcementCounts = {
+  httpAborts: number;
+  webSocketCloses: number;
+};
+
+type EgressGuardState = BrowserEgressGuardState & BrowserEgressEnforcementCounts & {
   violations: string[];
 };
 
@@ -43,6 +48,8 @@ export const installBrowserEgressGuard = defineBrowserCommand(async ({ context, 
     allowedOrigin: testServerUrl.origin,
     allowedHost: testServerUrl.host,
     violations: [],
+    httpAborts: 0,
+    webSocketCloses: 0,
   };
   guardStates.set(context, state);
 
@@ -67,7 +74,6 @@ export const installBrowserEgressGuard = defineBrowserCommand(async ({ context, 
       kind: 'http',
       method: request.method(),
       url: new URL(request.url()),
-      headers: request.headers(),
     });
 
     if (!recordEgressDecision(state, decision)) {
@@ -76,6 +82,7 @@ export const installBrowserEgressGuard = defineBrowserCommand(async ({ context, 
     }
 
     await route.abort('blockedbyclient');
+    state.httpAborts += 1;
   });
 
   await context.routeWebSocket('**/*', async (webSocket) => {
@@ -90,6 +97,7 @@ export const installBrowserEgressGuard = defineBrowserCommand(async ({ context, 
     }
 
     await webSocket.close({ code: 1008, reason: 'Browser-Egress ist im Test nicht erlaubt.' });
+    state.webSocketCloses += 1;
   });
 });
 
@@ -100,6 +108,20 @@ export const resetBrowserEgressGuard = defineBrowserCommand(async ({ context }) 
   }
 
   state.violations.length = 0;
+  state.httpAborts = 0;
+  state.webSocketCloses = 0;
+});
+
+export const getBrowserEgressEnforcements = defineBrowserCommand(async ({ context }) => {
+  const state = guardStates.get(context);
+  if (!state) {
+    throw new Error('Browser-Egress-Guard wurde nicht installiert.');
+  }
+
+  return {
+    httpAborts: state.httpAborts,
+    webSocketCloses: state.webSocketCloses,
+  };
 });
 
 export const assertNoBrowserEgress = defineBrowserCommand(async ({ context }) => {

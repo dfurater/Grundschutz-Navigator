@@ -1,6 +1,8 @@
 import { afterEach, beforeEach } from 'vitest';
 import { commands } from 'vitest/browser';
 
+const runNegativeEgressProof = import.meta.env.VITE_BROWSER_EGRESS_NEGATIVE === '1';
+
 await commands.installBrowserEgressGuard();
 
 beforeEach(async () => {
@@ -12,5 +14,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await commands.assertNoBrowserEgress();
+  if (!runNegativeEgressProof) {
+    await commands.assertNoBrowserEgress();
+  }
 });

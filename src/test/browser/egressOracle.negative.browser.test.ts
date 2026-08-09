@@ -1,19 +1,17 @@
 import { expect, test } from 'vitest';
+import { commands } from 'vitest/browser';
+import { deriveCrossOriginUrl } from './browserEgressDecision';
 
 const runNegativeEgressProof = import.meta.env.VITE_BROWSER_EGRESS_NEGATIVE === '1';
-
-function crossOriginLoopbackUrl(): URL {
-  const url = new URL(window.location.href);
-  url.port = String(Number(url.port) + 1);
-  url.pathname = '/egress-proof';
-  url.search = '';
-  url.hash = '';
-  return url;
-}
 
 test.skipIf(!runNegativeEgressProof)(
   'meldet einen Request an eine abgeleitete Loopback-Origin als Browser-Egress',
   async () => {
-    await expect(fetch(crossOriginLoopbackUrl().href)).rejects.toThrow();
+    await expect(fetch(deriveCrossOriginUrl(window.location.href, '/egress-proof').href)).rejects.toThrow();
+    await expect(commands.getBrowserEgressEnforcements()).resolves.toEqual({
+      httpAborts: 1,
+      webSocketCloses: 0,
+    });
+    await commands.assertNoBrowserEgress();
   },
 );
