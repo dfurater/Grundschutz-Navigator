@@ -1,18 +1,19 @@
 import { expect, test } from 'vitest';
-import {
-  BROWSER_EGRESS_ORACLE_HEADER,
-  BROWSER_EGRESS_ORACLE_VALUE,
-} from './egressOracleSignal';
 
 const runNegativeEgressProof = import.meta.env.VITE_BROWSER_EGRESS_NEGATIVE === '1';
 
+function crossOriginLoopbackUrl(): URL {
+  const url = new URL(window.location.href);
+  url.port = String(Number(url.port) + 1);
+  url.pathname = '/egress-proof';
+  url.search = '';
+  url.hash = '';
+  return url;
+}
+
 test.skipIf(!runNegativeEgressProof)(
-  'meldet einen bewusst markierten gleichoriginigen Request als Browser-Egress',
+  'meldet einen Request an eine abgeleitete Loopback-Origin als Browser-Egress',
   async () => {
-    await expect(
-      fetch(window.location.href, {
-        headers: { [BROWSER_EGRESS_ORACLE_HEADER]: BROWSER_EGRESS_ORACLE_VALUE },
-      }),
-    ).rejects.toThrow();
+    await expect(fetch(crossOriginLoopbackUrl().href)).rejects.toThrow();
   },
 );

@@ -42,27 +42,41 @@ Test zurück.
 Die exakte `playwright`-Version `1.62.1` liefert laut ihrem mitinstallierten
 `browsers.json` Chromium-Revision `1234` als Chrome for Testing
 `151.0.7922.34`. Der CI-Schritt verwendet ausschließlich den lokalen Befehl
-`./node_modules/.bin/playwright install --with-deps chromium`; es gibt keinen
+`./node_modules/.bin/playwright install chromium`; es gibt keinen
 `latest`-Tag oder unversionierten Browser-Download.
 
 Der Referenztest in `src/test/browser/indexedDb.browser.test.ts` legt eine
 IndexedDB-Datenbank an, schreibt und liest einen Datensatz, löscht die
 Datenbank und prüft anschließend ihre Abwesenheit über
-`indexedDB.databases()`. `src/test/browser/browserEgressGuard.ts` registriert
-auf dem Playwright-Context Routen für HTTP(S) und WebSockets: Nur die lokale
-Vitest-Origin darf passieren; jeder andere Request wird abgebrochen und als
+`indexedDB.databases()`. Ein durch eine noch offene Verbindung blockiertes
+`deleteDatabase()` lehnt mit einem erklärenden Fehler ab, statt den Hook bis
+zum Timeout hängen zu lassen.
+
+`src/test/browser/browserEgressDecision.ts` entscheidet als reine Funktion
+über HTTP(S)-, WebSocket- und Service-Worker-Ereignisse. Der Playwright-Guard
+in `browserEgressGuard.ts` verwendet genau diese Entscheidung: Nur die lokale
+Vitest-Origin beziehungsweise der lokale WebSocket-Host darf passieren; jeder
+andere Request wird vor Namens- oder Netzauflösung abgebrochen und als
 `[BROWSER_EGRESS_BLOCKED]` festgehalten. Bereits vorhandene oder neu
 registrierte Service Worker gelten ebenfalls als Verstoß. Der ausschließlich
-testinterne Canary-Header `x-gspp-browser-egress-oracle: block` ist auf der
-lokalen Origin zusätzlich gesperrt, damit der Negativnachweis keine weitere
-Fetch-Quelle benötigt.
+testinterne Canary-Header `x-gspp-browser-egress-oracle: block` bleibt auch
+auf der lokalen Origin als kontrollierbares Signal gesperrt.
 
 `npm run test:browser:egress-negative` aktiviert einen absichtlich nicht
-erlaubten, gleichoriginigen Request an die bereits geladene Vitest-Seite mit
-diesem Canary-Header. Der Guard bricht ihn vor dem Testserver ab. Der innere
-Browser-Lauf **muss** mit dem Egress-Marker fehlschlagen; das Wrapper-Skript
-wird nur dann grün, wenn genau dieser Nachweis vorliegt. Der Nachweis enthält
-damit weder einen weiteren Host noch einen externen Fetch-Endpunkt.
+erlaubten Request an die aus `window.location` abgeleitete Loopback-Origin mit
+um eins erhöhtem Port. Der Guard bricht ihn vor jeder Namens- oder
+Netzauflösung ab. Der innere Browser-Lauf **muss** mit dem Egress-Marker
+fehlschlagen; das Wrapper-Skript wird nur dann grün, wenn genau dieser
+Nachweis vorliegt. Der Nachweis führt damit den HTTP-Cross-Origin-Pfad aus,
+ohne eine zusätzliche produktive Fetch-Quelle einzuführen.
+
+Die Hook-Grenze kann keine Browser-Aufgabe erfassen, die erst *nach* Ende des
+Tests einen Request startet. Dafür wäre eine veränderte Testlaufzeit-Architektur
+erforderlich, nicht ein zufallsabhängiger Timeout. Die konsumierenden
+[GSPP-289](https://linear.app/grundschutz-plus-plus/issue/GSPP-289) und
+[GSPP-340](https://linear.app/grundschutz-plus-plus/issue/GSPP-340) führen
+deshalb einen eigenen Akzeptanznachweis für bewusst nicht abgewartete
+Requests.
 
 Die Browser-Lane erzeugt keine Coverage-Ausgabe. Die verbindlichen
 V8-Coverage-Schwellen bleiben ausschließlich in der jsdom-Lane

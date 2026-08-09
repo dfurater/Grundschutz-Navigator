@@ -1,12 +1,14 @@
 import { defineBrowserCommand } from '@vitest/browser-playwright';
 import type { BrowserContext } from 'playwright';
-import { isBrowserEgressOracleRequest } from './egressOracleSignal.ts';
+import {
+  decideBrowserEgress,
+  type BrowserEgressDecision,
+  type BrowserEgressGuardState,
+} from './browserEgressDecision.ts';
 
 const EGRESS_FAILURE_MARKER = '[BROWSER_EGRESS_BLOCKED]';
 
-type EgressGuardState = {
-  allowedOrigin: string;
-  allowedHost: string;
+type EgressGuardState = BrowserEgressGuardState & {
   violations: string[];
 };
 
@@ -14,6 +16,15 @@ const guardStates = new WeakMap<BrowserContext, EgressGuardState>();
 
 function recordViolation(state: EgressGuardState, detail: string): void {
   state.violations.push(detail);
+}
+
+function recordEgressDecision(state: EgressGuardState, decision: BrowserEgressDecision): boolean {
+  if (decision.action === 'allow') {
+    return false;
+  }
+
+  recordViolation(state, decision.detail);
+  return true;
 }
 
 function assertNoViolations(state: EgressGuardState): void {
@@ -36,43 +47,48 @@ export const installBrowserEgressGuard = defineBrowserCommand(async ({ context, 
   guardStates.set(context, state);
 
   for (const serviceWorker of context.serviceWorkers()) {
-    recordViolation(state, `Service Worker aktiv: ${serviceWorker.url()}`);
+    recordEgressDecision(state, decideBrowserEgress(state, {
+      kind: 'service-worker',
+      lifecycle: 'active',
+      url: new URL(serviceWorker.url()),
+    }));
   }
   context.on('serviceworker', (serviceWorker) => {
-    recordViolation(state, `Service Worker registriert: ${serviceWorker.url()}`);
+    recordEgressDecision(state, decideBrowserEgress(state, {
+      kind: 'service-worker',
+      lifecycle: 'registered',
+      url: new URL(serviceWorker.url()),
+    }));
   });
 
   await context.route('**/*', async (route) => {
     const request = route.request();
-    const requestUrl = new URL(request.url());
+    const decision = decideBrowserEgress(state, {
+      kind: 'http',
+      method: request.method(),
+      url: new URL(request.url()),
+      headers: request.headers(),
+    });
 
-    if (
-      requestUrl.origin === state.allowedOrigin
-      && isBrowserEgressOracleRequest(request.headers())
-    ) {
-      recordViolation(state, `Egress-Oracle ${request.method()} ${requestUrl.href}`);
-      await route.abort('blockedbyclient');
-      return;
-    }
-
-    if (requestUrl.origin === state.allowedOrigin) {
+    if (!recordEgressDecision(state, decision)) {
       await route.continue();
       return;
     }
 
-    recordViolation(state, `${request.method()} ${requestUrl.href}`);
     await route.abort('blockedbyclient');
   });
 
   await context.routeWebSocket('**/*', async (webSocket) => {
-    const webSocketUrl = new URL(webSocket.url());
+    const decision = decideBrowserEgress(state, {
+      kind: 'websocket',
+      url: new URL(webSocket.url()),
+    });
 
-    if (webSocketUrl.host === state.allowedHost) {
+    if (!recordEgressDecision(state, decision)) {
       webSocket.connectToServer();
       return;
     }
 
-    recordViolation(state, `WebSocket ${webSocketUrl.href}`);
     await webSocket.close({ code: 1008, reason: 'Browser-Egress ist im Test nicht erlaubt.' });
   });
 });

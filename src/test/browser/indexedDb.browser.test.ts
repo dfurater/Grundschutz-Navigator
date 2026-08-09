@@ -40,6 +40,7 @@ function deleteDatabase(name: string): Promise<void> {
     const request = indexedDB.deleteDatabase(name);
 
     request.onerror = () => reject(request.error ?? new Error('IndexedDB-Datenbank konnte nicht gelöscht werden.'));
+    request.onblocked = () => reject(new Error('IndexedDB-Datenbanklöschung wurde durch eine offene Verbindung blockiert.'));
     request.onsuccess = () => resolve();
   });
 }
