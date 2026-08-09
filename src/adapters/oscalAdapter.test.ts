@@ -17,6 +17,8 @@ import {
   toSecurityTargetRelevance,
   toModalverb,
 } from './oscalAdapter';
+import { parseCatalogDocument } from './oscalDocument';
+import { projectResolvedControlLinks } from '@/domain/catalogReferenceProjection';
 import type {
   RawOscalControl,
   RawOscalGroup,
@@ -782,6 +784,50 @@ describe('parseCatalog', () => {
   it('controls array matches controlsById size', () => {
     const catalog = parseCatalog(makeCatalog().catalog, GSPP);
     expect(catalog.controls.length).toBe(catalog.controlsById.size);
+  });
+
+  it('retains only centrally resolved control links when a resource UUID collides with a control ID', () => {
+    const doc = makeCatalog();
+    doc.catalog.groups = [
+      makePracticeGroup({
+        groups: [
+          makeGroup({
+            controls: [
+              makeControl({
+                id: 'GC.1.1',
+                props: [{ name: 'alt-identifier', value: 'uuid-source' }],
+                links: [
+                  { href: '#resource-and-control', rel: 'related' },
+                  { href: '#GC.1.3', rel: 'required' },
+                ],
+              }),
+              makeControl({
+                id: 'resource-and-control',
+                props: [{ name: 'alt-identifier', value: 'uuid-collision' }],
+                links: [],
+              }),
+              makeControl({
+                id: 'GC.1.3',
+                props: [{ name: 'alt-identifier', value: 'uuid-target' }],
+                links: [],
+              }),
+            ],
+          }),
+        ],
+      }),
+    ];
+    doc.catalog['back-matter'] = { resources: [{ uuid: 'resource-and-control' }] };
+
+    const catalog = projectResolvedControlLinks(
+      parseCatalogDocument(doc, {
+        catalogKey: 'gspp',
+        trustClass: 'class-1-verified-public',
+      }),
+    ).view;
+
+    expect(catalog.controlsById.get('GC.1.1')?.links).toEqual([
+      { targetId: 'GC.1.3', relation: 'required' },
+    ]);
   });
 
   it('returns empty backMatter when the source catalog has none', () => {

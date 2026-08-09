@@ -31,6 +31,7 @@ src/
 │   ├── oscalVersionMatrix.{mjs,ts} # Root-Typ × OSCAL-Version × gepinntes Schema
 │   ├── oscalVersionMatrix.d.mts  # Typen der Versionsmatrix
 │   ├── controlRef.ts             # Kataloggescopte interne Control-Referenzen
+│   ├── referenceResolution.ts    # Fail-closed OSCAL-Referenzauflösung auf source
 │   └── controlRelationships.ts   # Steuerungsbeziehungen
 ├── adapters/         # Infrastruktur- und Datengrenzen
 │   ├── oscalAdapter.ts           # OSCAL → Domain Model Parser
@@ -125,6 +126,12 @@ CatalogContext (useEffect on mount)
 • parseCatalogDocument()     → CatalogDocument { source, context, view }
                                source = unveränderter Quellgraph (ADR-2)
                                view   = kataloggescopter, angereicherter Catalog
+• catalogReferenceProjection.ts → ruft referenceResolution.ts gegen source
+                               + expliziten Kontext auf (ohne Netzwerk-,
+                               Datei- oder Pfadauflösung) und ergänzt vor
+                               Veröffentlichung die View: Control.links enthält
+                               nur aufgelöste, kataloggescopte Ziele; der
+                               Quellbaum wird dafür nur einmal indiziert
 • verifyArtifactIntegrity()  → VerificationResult (Katalog + Vokabulare)
 • buildVocabularyRegistry()
         │
@@ -243,7 +250,8 @@ und sind dadurch ohne Router oder Katalogprovider isoliert testbar.
 | `ControlStatement` | Rendert den Anforderungstext. |
 | `ControlStatementDetails` | Rendert Ergebnis, Präzisierung, Handlungswort und Dokumentation mit korrekter `dl`-Semantik. |
 | `ControlGuidance` | Rendert die kontrollierte, bei Bedarf aufklappbare Guidance; Messung und State liegen im Hook. |
-| `ControlDependencies` | Baut die lokale Incoming-Map, kombiniert reziproke Relationstexte und rendert aus- und eingehende Beziehungen. |
+| `ControlDependencies` | Baut die lokale Incoming-Map, kombiniert reziproke Relationstexte und rendert ausschließlich aufgelöste interne Control-Beziehungen — nie deaktivierte Pseudo-Ziele. |
+| `ControlSources` | Rendert aufgelöste `back-matter`-, externe und nicht auflösbare Quellen getrennt von Abhängigkeiten; nur die Auflösungsschicht entscheidet über Navigation. |
 | `ControlHierarchy` | Rendert aufgelösten Parent und Erweiterungen. |
 | `ControlMetadata` | Rendert UUID und nur bei nicht auflösbarem Parent den Parent-ID-Fallback. |
 

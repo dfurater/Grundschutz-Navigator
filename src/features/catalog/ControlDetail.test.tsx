@@ -90,6 +90,58 @@ function makeCatalogState(overrides: Partial<CatalogState> = {}): CatalogState {
   };
 }
 
+function makeCatalogStateWithControlSource(
+  control: Control,
+  controlsById?: ReadonlyMap<string, Control>,
+  sourceLinks?: readonly Record<string, unknown>[],
+  sourceResources?: readonly Record<string, unknown>[],
+): CatalogState {
+  const state = makeCatalogState();
+  const sourceControlsById = controlsById ?? new Map(
+    control.links.map((link) => [
+      link.targetId,
+      makeControl({ id: link.targetId, title: link.targetId }),
+    ]),
+  );
+  state.catalog!.controlsById = new Map(sourceControlsById);
+  state.catalogDocument = {
+    source: {
+      catalog: {
+        uuid: 'test-catalog',
+        metadata: {
+          title: 'Testkatalog',
+          'last-modified': '2026-07-21T00:00:00Z',
+          version: 'test',
+          'oscal-version': '1.1.3',
+        },
+        groups: [{
+          id: 'GC',
+          title: 'Praktik',
+          groups: [{
+            id: 'GC.2',
+            title: 'Thema',
+            controls: [{
+              id: control.id,
+              title: control.title,
+              links: sourceLinks ?? control.links.map((link) => ({
+                href: `#${link.targetId}`,
+                rel: link.relation,
+              })),
+            }],
+          }],
+        }],
+        'back-matter': sourceResources ? { resources: sourceResources } : undefined,
+      },
+    },
+    context: {
+      catalogKey: 'gspp',
+      trustClass: 'class-1-verified-public',
+    },
+    view: state.catalog!,
+  };
+  return state;
+}
+
 describe('ControlDetail', () => {
   beforeEach(() => {
     mockedUseCatalog.mockReset();
@@ -790,10 +842,14 @@ describe('ControlDetail', () => {
       title: 'Erweiterung',
       parentId: control.id,
     });
+    const linkedControl = makeControl({ id: 'GC.2.3', title: 'Verknüpfte Kontrolle' });
+    const controlsById = new Map([[linkedControl.id, linkedControl]]);
+    mockedUseCatalog.mockReturnValue(makeCatalogStateWithControlSource(control, controlsById));
 
     render(
       <ControlDetail
         control={control}
+        controlsById={controlsById}
         incomingLinks={incomingLinks}
         parentControl={parentControl}
         childControls={[childControl]}
@@ -1063,6 +1119,7 @@ describe('ControlDetail', () => {
     const control = makeControl({
       links: [{ targetId: 'GC.2.3', relation: 'related' }],
     });
+    mockedUseCatalog.mockReturnValue(makeCatalogStateWithControlSource(control, controlsById));
 
     render(
       <ControlDetail
@@ -1085,11 +1142,12 @@ describe('ControlDetail', () => {
     expect(onNavigateToControl).toHaveBeenCalledWith(linkedControl);
   });
 
-  it('keeps unresolved outgoing OSCAL links non-navigable', () => {
+  it('moves unresolved outgoing OSCAL links to sources instead of rendering a dead dependency', () => {
     const onNavigateToControl = vi.fn();
     const control = makeControl({
       links: [{ targetId: 'MISSING.1', relation: 'related' }],
     });
+    mockedUseCatalog.mockReturnValue(makeCatalogStateWithControlSource(control, new Map()));
 
     render(
       <ControlDetail
@@ -1100,8 +1158,38 @@ describe('ControlDetail', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: /MISSING\.1/ })).toBeDisabled();
+    expect(screen.getByRole('heading', { name: 'Quellen und Verweise', level: 3 }))
+      .toBeInTheDocument();
+    expect(screen.getByText('#MISSING.1')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /MISSING\.1/ })).not.toBeInTheDocument();
     expect(onNavigateToControl).not.toHaveBeenCalled();
+  });
+
+  it('renders a source-only back-matter resource below dependencies', () => {
+    const control = makeControl({ links: [] });
+    const state = makeCatalogStateWithControlSource(
+      control,
+      new Map(),
+      [{ href: '#resource-uuid', 'resource-fragment': 'abschnitt-2.4' }],
+      [{
+        uuid: 'resource-uuid',
+        title: 'Quellendokument',
+        description: 'Bewertungsgrundlage',
+        rlinks: [{ href: 'https://example.com/quellen.pdf' }],
+      }],
+    );
+    mockedUseCatalog.mockReturnValue(state);
+
+    render(<ControlDetail control={control} controlsById={new Map()} onClose={vi.fn()} />);
+
+    expect(screen.getByRole('heading', { name: 'Quellen und Verweise', level: 3 }))
+      .toBeInTheDocument();
+    expect(screen.getByText('Quellendokument')).toBeInTheDocument();
+    expect(screen.getByText('Fragment: abschnitt-2.4')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /quellen.pdf/i }))
+      .toHaveAttribute('href', 'https://example.com/quellen.pdf');
+    expect(screen.queryByRole('heading', { name: 'Abhängigkeiten', level: 3 }))
+      .not.toBeInTheDocument();
   });
 
   it('renders and navigates incoming control references', async () => {
@@ -1119,6 +1207,7 @@ describe('ControlDetail', () => {
         relation: 'required',
       },
     ];
+    mockedUseCatalog.mockReturnValue(makeCatalogStateWithControlSource(control, new Map()));
 
     render(
       <ControlDetail
@@ -1161,6 +1250,7 @@ describe('ControlDetail', () => {
         relation: 'related',
       },
     ];
+    mockedUseCatalog.mockReturnValue(makeCatalogStateWithControlSource(control, controlsById));
 
     render(
       <ControlDetail
@@ -1215,6 +1305,7 @@ describe('ControlDetail', () => {
         relation: 'related',
       },
     ];
+    mockedUseCatalog.mockReturnValue(makeCatalogStateWithControlSource(control, controlsById));
 
     render(
       <ControlDetail
@@ -1250,6 +1341,7 @@ describe('ControlDetail', () => {
         relation: 'required',
       },
     ];
+    mockedUseCatalog.mockReturnValue(makeCatalogStateWithControlSource(control, controlsById));
 
     render(
       <ControlDetail

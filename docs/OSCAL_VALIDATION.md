@@ -72,7 +72,7 @@ GitHub-Actions-Runner; Browserprüfungen laufen ausschließlich im Modul-Worker.
 | 2. Root-Erkennung | **Umgesetzt:** `dispatchOscalDocument()` in [`oscalRootDispatch.ts`](../src/adapters/oscalRootDispatch.ts), projekteigen und ohne externes Werkzeug | Das Top-Level-Objekt muss genau einen der acht bekannten Root-Keys besitzen. Null, Arrays, mehrere Root-Keys und unbekannte Keys werden abgelehnt. Die optionale Schema-Direktive `$schema` ist die einzige zusätzlich zulässige Top-Level-Property; sie ist kein zweiter Root und **niemals** Versionsautorität. Eine Katalog-Interpretation als Fallback ist verboten. |
 | 3. JSON-Schema | Browser nach Aktivierung: `ajv` 8.20.0 im Modul-Worker. **CI umgesetzt:** [`verify-upstream-oscal.mjs`](../scripts/verify-upstream-oscal.mjs) nutzt `go-oscal` 0.7.1 als unabhängiges Schema- und Upgrade-Orakel | Auswahl ausschließlich über den exakten Root×`oscal-version`-Schlüssel. Der Korpuslauf bezieht Dokumente nur aus dem gepinnten BSI-Snapshot und führt weder Schema- noch Dokumentreferenz-Anfragen aus. Jedes nicht gesperrte Artefakt muss bestehen; ein gesperrtes Artefakt muss fehlschlagen. Fehlende oder nicht auswertbare Werkzeugergebnisse bleiben ein eigener fail-closed Werkzeugfehler. Ajv wird erst nach der OSS-Zulassung aus [ADR-5](https://linear.app/grundschutz-plus-plus/issue/ADR-5) produktiv aufgenommen. Bis direkte Abhängigkeit, Paket-Lock, Schema-Manifest und Hashprüfung vorhanden sind, bleibt der betreffende Importpfad deaktiviert. |
 | 4. zusätzliche OSCAL-Constraints | Derzeit **kein zugelassener Validator** für OSCAL 1.2.2; im Browser und in CI als `not-checked` ausgewiesen | Diese Stufe darf weder übersprungen noch als bestanden dargestellt werden. Die zulässige Konformitätsaussage wird deshalb begrenzt. Das konkrete Mapping-Orakel ist als bekannte Lücke registriert. |
-| 5. Referenzen und Projektregeln | Projekteigener, kataloggescopter Referenzgraph und explizit versionierte Regeln im Worker und in CI; Vertrag in [GSPP-251](https://linear.app/grundschutz-plus-plus/issue/GSPP-251) | Prüft UUID-/ID-Eindeutigkeit, interne und dokumentübergreifende Referenzen, URI- und Medientypregeln sowie ausdrücklich benannte GRC-Regeln. Externe `href`-Ziele werden klassifiziert, niemals während der Validierung abgerufen. Unbekannte Regeln gelten nicht als bestanden. |
+| 5. Referenzen und Projektregeln | [`referenceResolution.ts`](../src/domain/referenceResolution.ts) ist der gemeinsame, fail-closed Klassifikator; der vollständige Referenzgraph bleibt Vertrag von [GSPP-251](https://linear.app/grundschutz-plus-plus/issue/GSPP-251) | Prüft UUID-/ID-Eindeutigkeit, interne und dokumentübergreifende Referenzen, URI- und Medientypregeln sowie ausdrücklich benannte GRC-Regeln. Die Schicht klassifiziert externe `https:`-Ziele, relative Ziele und abgelehnte Protokolle ohne sie abzurufen; Stufe 5 konsumiert sie statt eine zweite Klassifikation einzuführen. Unbekannte Regeln gelten nicht als bestanden. |
 
 Der Streaming-Token-Scanner führt für jedes geöffnete JSON-Objekt eine eigene
 Menge bereits gelesener Member-Namen. Verglichen wird der logische Name nach
@@ -420,10 +420,12 @@ Jede Diagnose ist maschinenlesbar und besitzt mindestens:
 
 `stage` verwendet die stabilen Werte `resource-limit`, `json-syntax`,
 `root-dispatch`, `json-schema`, `oscal-constraint`, `reference` und `domain`.
-Der Artefaktkontext kann zusätzlich Lifecycle und Snapshot tragen. Dieses
-Grundformat wird von der Referenzprüfung aus
+Der Artefaktkontext kann zusätzlich Lifecycle und Snapshot tragen. Die zentrale
+Referenzauflösung und die spätere Referenzprüfung aus
 [GSPP-251](https://linear.app/grundschutz-plus-plus/issue/GSPP-251)
-wiederverwendet; es entsteht kein zweites Diagnosemodell.
+verwenden dieses Grundformat; es entsteht kein zweites Diagnosemodell. Nicht
+auflösbare Ziele liefern ausschließlich Code, Stufe und strukturellen JSON
+Pointer — nie den `href`-Wert.
 
 Das Format ist als Typ und Konstruktor in
 [`oscalDiagnostics.ts`](../src/domain/oscalDiagnostics.ts) verankert.

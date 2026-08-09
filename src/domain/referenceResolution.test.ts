@@ -1,0 +1,244 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { parseCatalog } from '@/adapters/oscalAdapter';
+import {
+  REFERENCE_RESOLUTION_VALIDATOR,
+  createReferenceDocument,
+  resolveCatalogMetadataReferences,
+  resolveCatalogControlLinks,
+  resolveCatalogResources,
+  resolveControlReferences,
+  resolveOscalReference,
+} from '@/domain/referenceResolution';
+import type { UnresolvedOscalReference } from '@/domain/referenceResolution';
+import type { CatalogKey } from '@/domain/sourceRegistry';
+import {
+  EXTERNAL_HTTPS_SOURCE,
+  makeReferenceResolutionCatalogSource,
+} from '@/test/fixtures/referenceResolution';
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+function makeDocument(catalogKey: CatalogKey = 'gspp') {
+  return createReferenceDocument({
+    source: makeReferenceResolutionCatalogSource(),
+    context: {
+      catalogKey,
+      trustClass: 'class-1-verified-public',
+    },
+    rootType: 'catalog',
+    oscalVersion: '1.1.3',
+  });
+}
+
+function makeCatalogsByKey() {
+  const gsppSource = makeReferenceResolutionCatalogSource();
+  const wlanSource = makeReferenceResolutionCatalogSource();
+  wlanSource.catalog.groups[0]!.groups[0]!.controls![1]!.title = 'WLAN-Zielkontrolle';
+
+  const gspp = parseCatalog(gsppSource.catalog, { catalogKey: 'gspp' });
+  const wlan = parseCatalog(wlanSource.catalog, { catalogKey: 'wlan' });
+  return new Map([
+    [gspp.catalogKey, gspp],
+    [wlan.catalogKey, wlan],
+  ]);
+}
+
+describe('referenceResolution', () => {
+  it('resolves control resources from source, retains resource fragments, and omits base64 payloads', () => {
+    const resolved = resolveControlReferences({
+      document: makeDocument(),
+      controlId: 'GC.1.1',
+      catalogsByKey: makeCatalogsByKey(),
+    });
+
+    const resource = resolved.find((reference) => reference.kind === 'resource');
+    expect(resource).toMatchObject({
+      kind: 'resource',
+      resourceFragment: 'abschnitt-2.4',
+      resource: {
+        uuid: 'resource-empty',
+        content: 'empty',
+      },
+    });
+
+    const resources = resolveCatalogResources({ document: makeDocument() });
+    expect(resources.find((resource) => resource.uuid === 'resource-rich')).toMatchObject({
+      rlinks: [
+        { href: 'https://example.invalid/first.pdf', integrity: 'missing' },
+        { href: 'https://example.invalid/second.pdf', integrity: 'declared' },
+      ],
+    });
+    expect(resources.find((resource) => resource.uuid === 'resource-embedded')).toMatchObject({
+      embeddedContent: {
+        filename: 'evidence.pdf',
+        mediaType: 'application/pdf',
+      },
+    });
+    expect(JSON.stringify(resources)).not.toContain('DO-NOT-COPY-OR-DECODE-THIS-PAYLOAD');
+  });
+
+  it('resolves control ids only in the explicitly supplied catalog context', () => {
+    const gsppResolved = resolveControlReferences({
+      document: makeDocument('gspp'),
+      controlId: 'GC.1.1',
+      catalogsByKey: makeCatalogsByKey(),
+    });
+    const wlanResolved = resolveControlReferences({
+      document: makeDocument('wlan'),
+      controlId: 'GC.1.1',
+      catalogsByKey: makeCatalogsByKey(),
+    });
+
+    expect(gsppResolved.find((reference) => reference.kind === 'control')).toMatchObject({
+      control: { title: 'Zielkontrolle' },
+      catalogKey: 'gspp',
+    });
+    expect(wlanResolved.find((reference) => reference.kind === 'control')).toMatchObject({
+      control: { title: 'WLAN-Zielkontrolle' },
+      catalogKey: 'wlan',
+    });
+  });
+
+  it('fails closed without I/O and redacts the href from unresolved diagnostics', () => {
+    const fetch = vi.fn(() => { throw new Error('network access is forbidden'); });
+    const XMLHttpRequest = vi.fn(() => { throw new Error('network access is forbidden'); });
+    const sendBeacon = vi.fn(() => { throw new Error('network access is forbidden'); });
+    vi.stubGlobal('fetch', fetch);
+    vi.stubGlobal('XMLHttpRequest', XMLHttpRequest);
+    vi.stubGlobal('navigator', { sendBeacon });
+
+    const resolved = resolveControlReferences({
+      document: makeDocument(),
+      controlId: 'GC.1.1',
+      catalogsByKey: makeCatalogsByKey(),
+    });
+
+    const relative = resolved.find(
+      (reference): reference is UnresolvedOscalReference =>
+        reference.kind === 'unresolved' && reference.reason === 'relative',
+    );
+    expect(relative).toMatchObject({
+      kind: 'unresolved',
+      diagnostic: {
+        stage: 'reference',
+        validator: REFERENCE_RESOLUTION_VALIDATOR,
+        path: '/catalog/groups/0/groups/0/controls/0/links/4/href',
+      },
+    });
+    expect(JSON.stringify(relative?.diagnostic)).not.toContain('../catalogs/Kernel/catalog.json');
+    expect(fetch).not.toHaveBeenCalled();
+    expect(XMLHttpRequest).not.toHaveBeenCalled();
+    expect(sendBeacon).not.toHaveBeenCalled();
+  });
+
+  it('classifies only HTTPS URLs as external and rejects all other protocols', () => {
+    const context = { document: makeDocument() };
+
+    expect(resolveOscalReference({ href: EXTERNAL_HTTPS_SOURCE, path: '/source' }, context))
+      .toMatchObject({ kind: 'external', href: EXTERNAL_HTTPS_SOURCE });
+    for (const href of [
+      'javascript:alert(1)',
+      'data:text/plain,unsafe',
+      'file:///etc/passwd',
+      'http://example.invalid/untrusted',
+      'mailto:unsafe@example.invalid',
+    ]) {
+      expect(resolveOscalReference({ href, path: '/source' }, context)).toMatchObject({
+        kind: 'unresolved',
+        reason: 'unsafe-protocol',
+      });
+    }
+  });
+
+  it('only resolves cross-document references explicitly supplied by the caller', () => {
+    const href = 'explicit-profile.json#resource-empty';
+    const context = { document: makeDocument() };
+
+    expect(resolveOscalReference({ href, path: '/import-profile/href' }, context)).toMatchObject({
+      kind: 'unresolved',
+      reason: 'document-not-provided',
+    });
+    expect(resolveOscalReference(
+      { href, path: '/import-profile/href' },
+      {
+        ...context,
+        documentsByHref: new Map([[href, makeDocument('wlan')]]),
+      },
+    )).toMatchObject({
+      kind: 'cross-document',
+      document: { context: { catalogKey: 'wlan' } },
+      resource: { uuid: 'resource-empty', content: 'empty' },
+    });
+  });
+
+  it('excludes provenance links from resolution and diagnostics', () => {
+    const references = resolveCatalogMetadataReferences({ document: makeDocument() });
+
+    expect(references.filter((reference) => reference.kind === 'provenance')).toHaveLength(2);
+    expect(references.some((reference) => reference.kind === 'unresolved')).toBe(false);
+  });
+
+  it('classifies self-referential and mutually referential resource rlinks without recursion', () => {
+    const source = {
+      catalog: {
+        ...makeReferenceResolutionCatalogSource().catalog,
+        'back-matter': {
+          resources: [
+            { uuid: 'self', rlinks: [{ href: '#self' }] },
+            { uuid: 'first', rlinks: [{ href: '#second' }] },
+            { uuid: 'second', rlinks: [{ href: '#first' }] },
+          ],
+        },
+      },
+    };
+    const document = createReferenceDocument({
+      source,
+      context: { catalogKey: 'gspp', trustClass: 'class-1-verified-public' },
+      rootType: 'catalog',
+      oscalVersion: '1.1.3',
+    });
+
+    const resources = resolveCatalogResources({ document });
+
+    expect(resources).toMatchObject([
+      {
+        uuid: 'self',
+        rlinks: [{ href: '#self', target: { kind: 'resource', resourceUuid: 'self' } }],
+      },
+      {
+        uuid: 'first',
+        rlinks: [{ href: '#second', target: { kind: 'resource', resourceUuid: 'second' } }],
+      },
+      {
+        uuid: 'second',
+        rlinks: [{ href: '#first', target: { kind: 'resource', resourceUuid: 'first' } }],
+      },
+    ]);
+  });
+
+  it('indexes back-matter resources once for catalog link projection', () => {
+    const source = makeReferenceResolutionCatalogSource();
+    const backMatter = source.catalog['back-matter'];
+    const resources = backMatter.resources;
+    let resourceReads = 0;
+    Object.defineProperty(backMatter, 'resources', {
+      configurable: true,
+      get: () => {
+        resourceReads += 1;
+        return resources;
+      },
+    });
+    const document = createReferenceDocument({
+      source,
+      context: { catalogKey: 'gspp', trustClass: 'class-1-verified-public' },
+      rootType: 'catalog',
+      oscalVersion: '1.1.3',
+    });
+
+    resolveCatalogControlLinks({ document });
+
+    expect(resourceReads).toBe(1);
+  });
+});

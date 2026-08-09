@@ -151,10 +151,14 @@ export function parseTags(tagValue: string | undefined): string[] {
 }
 
 /**
- * Parse a control link href (e.g., "#GC.2.2") into a target ID.
+ * Projektionshelfer für das alte `ControlLink`-Read-Model (z. B. "#GC.2.2").
+ *
+ * Er klassifiziert keine OSCAL-Referenzen und trifft keine Navigations- oder
+ * Vertrauensentscheidung; dafür ist ausschließlich `referenceResolution.ts`
+ * zuständig. Der Helfer entfernt nur einen möglichen Fragmentmarker.
  */
 export function parseLinkHref(href: string): string {
-  return href.startsWith('#') ? href.slice(1) : href;
+  return href.replace(/^#/, '');
 }
 
 /**

@@ -20,6 +20,7 @@ import type {
   VocabularyRegistryData,
 } from '@/domain/models';
 import { parseCatalogDocument } from '@/adapters/oscalDocument';
+import { projectResolvedControlLinks } from '@/domain/catalogReferenceProjection';
 import { SUPPORTED_CATALOG_KEY } from '@/domain/sourceRegistry';
 import { buildVocabularyRegistry } from '@/domain/vocabulary';
 import {
@@ -194,13 +195,15 @@ export function CatalogProvider({
         //    gebaut, behauptete es "verifiziert", bevor geprüft wurde — und
         //    behielte diese Aussage auch bei fehlenden Metadaten oder einem
         //    abweichenden Hash.
-        const catalogDocument = parseCatalogDocument(JSON.parse(text), {
-          catalogKey: SUPPORTED_CATALOG_KEY,
-          trustClass:
-            verification?.valid === true
-              ? 'class-1-verified-public'
-              : 'class-1-unverified-public',
-        });
+        const catalogDocument = projectResolvedControlLinks(
+          parseCatalogDocument(JSON.parse(text), {
+            catalogKey: SUPPORTED_CATALOG_KEY,
+            trustClass:
+              verification?.valid === true
+                ? 'class-1-verified-public'
+                : 'class-1-unverified-public',
+          }),
+        );
 
         if (!cancelled) {
           dispatch({

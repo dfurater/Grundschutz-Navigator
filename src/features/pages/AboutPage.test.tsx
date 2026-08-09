@@ -27,65 +27,106 @@ afterEach(() => {
 });
 
 function makeCatalogState(): CatalogState {
-  return {
-    catalogDocument: null,
-    catalog: {
-      totalControls: 42,
-      metadata: {
-        title: 'Anwenderkatalog Grundschutz++',
-        lastModified: '2026-03-05T08:08:21Z',
-        version: '2026-03-05',
-        oscalVersion: '1.1.3',
-        remarks: 'Normativer Scope nach § 44 Abs. 1 BSIG.',
-        publisherName: 'Bundesamt für Sicherheit in der Informationstechnik',
-        publisherEmail: 'kontakt@bsi.bund.de',
-        props: [
+  const catalog = {
+    totalControls: 42,
+    metadata: {
+      title: 'Anwenderkatalog Grundschutz++',
+      lastModified: '2026-03-05T08:08:21Z',
+      version: '2026-03-05',
+      oscalVersion: '1.1.3',
+      remarks: 'Normativer Scope nach § 44 Abs. 1 BSIG.',
+      publisherName: 'Bundesamt für Sicherheit in der Informationstechnik',
+      publisherEmail: 'kontakt@bsi.bund.de',
+      props: [
+        {
+          name: 'resolution-tool',
+          value: 'Grundschutz++ Navigator',
+          ns: 'https://example.com/namespaces/tool',
+        },
+      ],
+      links: [
+        {
+          href: '#resource-uuid',
+          rel: 'reference',
+          text: 'BSI IT-Grundschutz Edition 2023',
+        },
+      ],
+      roles: [
+        { id: 'creator', title: 'Ersteller' },
+      ],
+      parties: [
+        {
+          uuid: 'party-uuid',
+          type: 'organization',
+          name: 'Bundesamt für Sicherheit in der Informationstechnik',
+          email: 'kontakt@bsi.bund.de',
+        },
+      ],
+      responsibleParties: [
+        {
+          roleId: 'creator',
+          partyUuids: ['party-uuid'],
+        },
+      ],
+    },
+    backMatter: [
+      {
+        uuid: 'resource-uuid',
+        title: 'BSI IT-Grundschutz Edition 2023',
+        rlinks: [
           {
-            name: 'resolution-tool',
-            value: 'Grundschutz++ Navigator',
-            ns: 'https://example.com/namespaces/tool',
-          },
-        ],
-        links: [
-          {
-            href: '#resource-uuid',
-            rel: 'reference',
-            text: 'BSI IT-Grundschutz Edition 2023',
-          },
-        ],
-        roles: [
-          { id: 'creator', title: 'Ersteller' },
-        ],
-        parties: [
-          {
-            uuid: 'party-uuid',
-            type: 'organization',
-            name: 'Bundesamt für Sicherheit in der Informationstechnik',
-            email: 'kontakt@bsi.bund.de',
-          },
-        ],
-        responsibleParties: [
-          {
-            roleId: 'creator',
-            partyUuids: ['party-uuid'],
+            href: 'https://example.com/grundschutz-edition-2023.pdf',
+            hashes: [
+              { algorithm: 'sha-256', value: 'abc123' },
+            ],
           },
         ],
       },
-      backMatter: [
-        {
-          uuid: 'resource-uuid',
-          title: 'BSI IT-Grundschutz Edition 2023',
-          rlinks: [
-            {
-              href: 'https://example.com/grundschutz-edition-2023.pdf',
-              hashes: [
-                { algorithm: 'sha-256', value: 'abc123' },
-              ],
-            },
-          ],
+    ],
+  } as Catalog;
+
+  return {
+    catalogDocument: {
+      source: {
+        catalog: {
+          uuid: 'catalog-uuid',
+          metadata: {
+            title: 'Anwenderkatalog Grundschutz++',
+            'last-modified': '2026-03-05T08:08:21Z',
+            version: '2026-03-05',
+            'oscal-version': '1.1.3',
+            links: [
+              {
+                href: '#resource-uuid',
+                rel: 'reference',
+                text: 'BSI IT-Grundschutz Edition 2023',
+              },
+            ],
+          },
+          groups: [],
+          'back-matter': {
+            resources: [
+              {
+                uuid: 'resource-uuid',
+                title: 'BSI IT-Grundschutz Edition 2023',
+                rlinks: [
+                  {
+                    href: 'https://example.com/grundschutz-edition-2023.pdf',
+                    hashes: [{ algorithm: 'sha-256', value: 'abc123' }],
+                  },
+                ],
+              },
+            ],
+          },
         },
-      ],
-    } as Catalog,
+      },
+      context: {
+        catalogKey: 'gspp',
+        trustClass: 'class-1-verified-public',
+      },
+      view: catalog,
+    },
+    catalog,
     provenance: null,
     verification: null,
     vocabularyRegistry: null,
@@ -94,6 +135,19 @@ function makeCatalogState(): CatalogState {
     loading: false,
     error: null,
   };
+}
+
+function addSourceOnlyResourceLink(state: CatalogState) {
+  const source = state.catalogDocument!.source as {
+    catalog: {
+      'back-matter': {
+        resources: Array<{ rlinks: Array<{ href: string; hashes?: Array<{ algorithm: string; value: string }> }> }>;
+      };
+    };
+  };
+  source.catalog['back-matter'].resources[0]!.rlinks.push({
+    href: 'https://example.com/source-only.pdf',
+  });
 }
 
 function makeProvenance(): NonNullable<CatalogState['provenance']> {
@@ -245,6 +299,18 @@ describe('AboutPage', () => {
     expect(screen.getByText('Referenzierte Ressourcen')).toBeInTheDocument();
     expect(screen.getByText(/sha-256:/i)).toBeInTheDocument();
     expect(screen.getByText('abc123')).toBeInTheDocument();
+  });
+
+  it('uses the preserved source for every resource link and flags missing integrity metadata', () => {
+    const state = makeCatalogState();
+    addSourceOnlyResourceLink(state);
+    mockedUseCatalog.mockReturnValue(state);
+
+    render(<AboutPage />);
+
+    expect(screen.getByRole('link', { name: /source-only.pdf/i }))
+      .toHaveAttribute('href', 'https://example.com/source-only.pdf');
+    expect(screen.getByText('Ohne Integritätsnachweis')).toBeInTheDocument();
   });
 
   it('shows app and upstream catalog links plus a single sha comparison command', () => {

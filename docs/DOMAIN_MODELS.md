@@ -100,6 +100,36 @@ nach bekannten Feldern. Unbekannte Felder bleiben ausschließlich in `source`
 — sie werden nie ins `view` gehoben, nie gerendert und nie interpretiert, aber
 auch nie entfernt.
 
+### Referenzauflösung auf dem Quellgraphen
+
+[`referenceResolution.ts`](../src/domain/referenceResolution.ts) verarbeitet
+`link`, `back-matter`, `resource`, `rlink`, `citation` und `base64` deshalb
+direkt aus `CatalogDocument.source` mit dem expliziten Dokument- und
+Katalogkontext. Das `view` kann weder `resource-fragment` noch `media-type`,
+`citation` oder `base64` verlustfrei tragen und ist keine Eingabe dieser
+Schicht.
+
+Der Klassifikator löst nur dokumentinterne Fragmente und ausschließlich
+explizit bereitgestellte Cross-Dokument-Ziele auf. Relative Ziele erhalten
+keinen Verzeichniskontext; externe Ziele werden ausschließlich für `https:`
+als externe Navigation ausgewiesen. Alle anderen Protokolle bleiben Text. Die
+Schicht führt weder Netzwerk- noch Dateizugriffe aus, dekodiert keine
+`base64`-Nutzlast und führt diese auch nicht im Ergebnisobjekt. Ein fehlender
+`rlink`-Hash wird als fehlender Integritätsnachweis angezeigt; vorhandene
+Upstream-Hashes sind keine Projekt-SHA-256-Verifikation.
+
+Die abgeleitete `Control.links`-Projektion enthält ausschließlich damit
+aufgelöste, kataloggescopte Control-Ziele. Ressourcen, externe und nicht
+auflösbare Referenzen bleiben im Quellgraphen und werden nicht als Control-Link
+in Suche, Export oder Beziehungsansicht fehlinterpretiert.
+[`catalogReferenceProjection.ts`](../src/domain/catalogReferenceProjection.ts)
+wendet diese schlanke Projektion im `CatalogContext` genau einmal an, bevor die
+View veröffentlicht wird; der reine Adapter bleibt frei von Referenzklassifikation.
+
+Ein `rlink` klassifiziert sein Ziel nur flach; er expandiert die Zielressource
+nicht erneut. Selbstreferenzen und Zyklen zwischen Ressourcen bleiben damit
+sichtbar, ohne die Darstellung durch Rekursion zu blockieren.
+
 ### Speicherstrategie: String-Sharing
 
 Der Quellgraph kostet zusätzlichen Heap, aber weit weniger als die Dateigröße
