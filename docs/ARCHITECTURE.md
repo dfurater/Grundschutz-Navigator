@@ -54,9 +54,11 @@ Vitest-Origin darf passieren; jeder andere Request wird abgebrochen und als
 `[BROWSER_EGRESS_BLOCKED]` festgehalten. Bereits vorhandene oder neu
 registrierte Service Worker gelten ebenfalls als Verstoß.
 
-`npm run test:browser:egress-negative` aktiviert einen absichtlich externen
-Request. Der innere Browser-Lauf **muss** mit dem Egress-Marker fehlschlagen;
-das Wrapper-Skript wird nur dann grün, wenn genau dieser Nachweis vorliegt.
+`npm run test:browser:egress-negative` aktiviert einen absichtlich nicht
+erlaubten Loopback-Request auf einer anderen Origin. Der innere Browser-Lauf
+**muss** mit dem Egress-Marker fehlschlagen; das Wrapper-Skript wird nur dann
+grün, wenn genau dieser Nachweis vorliegt. Der Nachweis enthält damit keinen
+externen Fetch-Endpunkt.
 
 Die Browser-Lane erzeugt keine Coverage-Ausgabe. Die verbindlichen
 V8-Coverage-Schwellen bleiben ausschließlich in der jsdom-Lane
