@@ -21,6 +21,9 @@ export default defineConfig({
       '@': resolve(__dirname, './src'),
     },
   },
+  optimizeDeps: {
+    include: ['dexie', 'idb'],
+  },
   test: {
     name: 'browser-chromium',
     include: ['src/test/browser/**/*.browser.test.ts'],

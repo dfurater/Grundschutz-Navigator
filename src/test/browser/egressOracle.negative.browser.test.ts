@@ -1,19 +1,24 @@
-import { expect, test } from 'vitest';
-import { commands } from 'vitest/browser';
+import { test } from 'vitest';
 import { deriveCrossOriginUrl } from './browserEgressDecision';
-import { NEGATIVE_EGRESS_TEST_NAME } from './egressOracleContract.mjs';
+import { NEGATIVE_EGRESS_CASES } from './egressOracleContract.mjs';
 
-const runNegativeEgressProof = import.meta.env.VITE_BROWSER_EGRESS_NEGATIVE === '1';
+const negativeCase = NEGATIVE_EGRESS_CASES.find(
+  ({ id }) => id === import.meta.env.VITE_BROWSER_EGRESS_NEGATIVE,
+);
 
-test.skipIf(!runNegativeEgressProof)(
-  NEGATIVE_EGRESS_TEST_NAME,
-  async () => {
-    const url = deriveCrossOriginUrl(window.location.href, '/egress-proof');
-    await expect(fetch(url.href)).rejects.toThrow();
-    await expect(commands.getBrowserEgressEnforcements()).resolves.toEqual({
-      httpAborts: 1,
-      webSocketCloses: 0,
-      violations: [`GET ${url.href}`],
-    });
+test.skipIf(!negativeCase)(
+  negativeCase?.testName ?? 'kein negativer Browser-Egress-Fall ausgewählt',
+  () => {
+    const url = deriveCrossOriginUrl(
+      window.location.href,
+      `/egress-proof/${negativeCase?.id ?? 'inactive'}`,
+    );
+
+    if (negativeCase?.id === 'fetch') {
+      void fetch(url.href).catch(() => undefined);
+      return;
+    }
+
+    navigator.sendBeacon(url.href, 'gspp-340-egress-proof');
   },
 );
