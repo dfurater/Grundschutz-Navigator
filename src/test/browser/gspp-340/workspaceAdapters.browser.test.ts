@@ -97,8 +97,8 @@ describe.each(candidates)('$name adapter', ({ name, createAdapter }) => {
     'nimmt einen beim versionchange noch committed v1-Datensatz atomar in die Migration auf',
     async () => {
       const adapter = createAdapter(createDatabaseName(name, 'concurrent-migration'));
-      const original = createV1Document('local-concurrent-a', 'idb-concurrent-a');
-      const lateDocument = createV1Document('local-concurrent-b', 'idb-concurrent-b');
+      const original = createV1Document('local-concurrent-a', `${name}-concurrent-a`);
+      const lateDocument = createV1Document('local-concurrent-b', `${name}-concurrent-b`);
       let writer: IDBDatabase | undefined;
 
       try {

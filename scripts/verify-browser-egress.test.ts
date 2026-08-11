@@ -200,6 +200,43 @@ describe('verifyBrowserEgress', () => {
     );
   });
 
+  it.each([
+    [
+      'eine externe Origin',
+      `Error: ${EGRESS_FAILURE_MARKER} GET https://example.com/egress-proof/fetch`,
+    ],
+    [
+      'einen Query-String',
+      `Error: ${EGRESS_FAILURE_MARKER} GET http://localhost:63316/egress-proof/fetch?leak=1`,
+    ],
+    [
+      'ein Fragment',
+      `Error: ${EGRESS_FAILURE_MARKER} GET http://localhost:63316/egress-proof/fetch#leak`,
+    ],
+    [
+      'eine unparsbare URL',
+      `Error: ${EGRESS_FAILURE_MARKER} GET keine-url`,
+    ],
+  ])('rejects %s in der gemeldeten Egress-URL', (_description, failureMessage) => {
+    const reports = new Map(NEGATIVE_EGRESS_CASES.map((negativeCase) => [
+      negativeCase.id,
+      expectedReport(negativeCase),
+    ]));
+    reports.set('fetch', expectedReport(NEGATIVE_EGRESS_CASES[0], {
+      testResults: [{
+        assertionResults: [{
+          fullName: NEGATIVE_EGRESS_CASES[0].testName,
+          status: 'failed',
+          failureMessages: [failureMessage],
+        }],
+      }],
+    }));
+
+    expect(() => verifyBrowserEgress(options(browserRun(), reports))).toThrow(
+      'Der negative Browser-Egress-Nachweis entspricht nicht dem erwarteten Testergebnisvertrag.',
+    );
+  });
+
   it('rejects a browser-runner signal even with an otherwise expected report', () => {
     const fixture = options(browserRun({ signal: 'SIGTERM', status: null }));
 

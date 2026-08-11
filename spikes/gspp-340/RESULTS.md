@@ -4,7 +4,7 @@
 
 ## Ergebnis
 
-**Auswahl: Dexie 4.4.4.** Beide Kandidaten erfüllen den gemeinsamen Pflichtvertrag für Migration, Export/Restore, vollständige Löschung und Netzwerkfreiheit. Dexie verlangt in diesem Vergleich 174 kandidatenspezifische Codezeilen, `idb` 222. Der Unterschied liegt vor allem im sicherheits- und datenschutzrelevanten Öffnen und Versionieren: 25 Zeilen bei Dexie gegenüber 67 Zeilen bei `idb`.
+**Auswahl: Dexie 4.4.4.** Beide Kandidaten erfüllen den gemeinsamen Pflichtvertrag für Migration, Export/Restore, vollständige Löschung und Netzwerkfreiheit. Dexie verlangt in diesem Vergleich 174 kandidatenspezifische Codezeilen, `idb` 222. Die Differenz von 48 Zeilen verteilt sich vor allem auf die sicherheits- und datenschutzrelevante Schema-Migration (+18 Zeilen bei `idb`), das Öffnen und Versionieren (+16) sowie die Index- und Cache-Bereinigung (+10).
 
 Der Nachteil ist ein deutlich größeres Produktionsbundle: Dexie erhöht den gemeinsamen minifizierten Baseline-Build um 36.803 gzip-Bytes, `idb` um 2.991 gzip-Bytes. Diese Differenz von 33.812 Bytes ist materiell. Nach der Prioritätenfolge des Projekts überwiegt trotzdem die geringere langfristige Eigenbau- und Migrationslast: Die Lösch-, Migrations- und Transaktionslogik liegt näher an einem dafür vorgesehenen, versionierten Persistenzmodell und muss nicht in gleichem Umfang über dem dünnen IndexedDB-Wrapper selbst dauerhaft getragen werden.
 
@@ -52,8 +52,8 @@ Zählregel: physische, nichtleere und nicht ausschließlich kommentierende TypeS
 | Funktionsbereich | Dexie | idb | Differenz idb − Dexie |
 | --- | ---: | ---: | ---: |
 | Scaffolding | 11 | 12 | +1 |
-| Schema-Migration | 59 | 51 | −8 |
-| Öffnen und Versionieren | 25 | 67 | +42 |
+| Schema-Migration | 52 | 70 | +18 |
+| Öffnen und Versionieren | 32 | 48 | +16 |
 | CRUD | 13 | 15 | +2 |
 | Export/Restore | 15 | 15 | 0 |
 | Einzel- und Gesamtlöschung | 23 | 23 | 0 |
@@ -61,7 +61,7 @@ Zählregel: physische, nichtleere und nicht ausschließlich kommentierende TypeS
 | Transaktions-/Fehlerbehandlung | 7 | 8 | +1 |
 | **Gesamt** | **174** | **222** | **+48** |
 
-Der gemeinsam ausgewiesene Mess- und Testcode umfasst 949 Zeilen. Er ist bewusst nicht Teil der Kandidatendifferenz.
+Der gemeinsam ausgewiesene Mess- und Testcode umfasst 1.004 Zeilen. Er ist bewusst nicht Teil der Kandidatendifferenz.
 
 ## Produktionsbundle
 

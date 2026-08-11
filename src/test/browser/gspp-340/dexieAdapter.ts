@@ -63,20 +63,22 @@ function migrateV1Record(value: unknown): WorkspaceDocumentV2 {
   };
 }
 
+// GSPP-340 area: Öffnen und Versionieren
 function configureDatabase(databaseName: string): Dexie {
   const database = new Dexie(databaseName);
   database.version(1).stores({ [DOCUMENT_STORE]: 'localId, view.title' });
   database.version(2)
     .stores({ [DOCUMENT_STORE]: 'localId, derived.view.title' })
+    // GSPP-340 area: Schema-Migration
     .upgrade(async (transaction: Transaction) => {
       const table = transaction.table(DOCUMENT_STORE);
       const records = await table.toArray();
       await table.bulkPut(records.map(migrateV1Record));
     });
+  // GSPP-340 area: Öffnen und Versionieren
   return database;
 }
 
-// GSPP-340 area: Öffnen und Versionieren
 class DexieWorkspaceAdapter implements WorkspaceAdapter {
   readonly candidate = 'dexie' as const;
   readonly databaseName: string;

@@ -64,12 +64,12 @@ function migrateV1Record(value: unknown): WorkspaceDocumentV2 {
   };
 }
 
+// GSPP-340 area: Öffnen und Versionieren
 function createV1Store(database: IDBPDatabase<unknown>): void {
   const store = database.createObjectStore(DOCUMENT_STORE, { keyPath: 'localId' });
   store.createIndex(VIEW_TITLE_INDEX, 'view.title');
 }
 
-// GSPP-340 area: Öffnen und Versionieren
 class IdbWorkspaceAdapter implements WorkspaceAdapter {
   readonly candidate = 'idb' as const;
   readonly databaseName: string;
@@ -113,6 +113,7 @@ class IdbWorkspaceAdapter implements WorkspaceAdapter {
             return;
           }
 
+          // GSPP-340 area: Schema-Migration
           const store = transaction.objectStore(DOCUMENT_STORE);
           if (store.indexNames.contains(VIEW_TITLE_INDEX)) {
             store.deleteIndex(VIEW_TITLE_INDEX);
@@ -131,17 +132,20 @@ class IdbWorkspaceAdapter implements WorkspaceAdapter {
             migrationError = error instanceof Error ? error : new Error(String(error));
             transaction.abort();
           });
+          // GSPP-340 area: Öffnen und Versionieren
         },
         blocking: () => {
           this.database?.close();
         },
       });
+      // GSPP-340 area: Schema-Migration
     } catch (error) {
       if (migrationError) {
         throw migrationError;
       }
       throw error;
     }
+    // GSPP-340 area: Öffnen und Versionieren
   }
 
   // GSPP-340 area: CRUD

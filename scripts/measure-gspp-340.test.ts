@@ -3,6 +3,7 @@ import {
   countLinesByArea,
   countPhysicalLines,
   measureCandidateBundles,
+  measureCandidateLoc,
 } from './measure-gspp-340.mjs';
 
 const sampleSource = `
@@ -31,6 +32,19 @@ describe('GSPP-340 LOC-Zählregel', () => {
       Scaffolding: 1,
       'Öffnen und Versionieren': 3,
       CRUD: 1,
+    });
+  });
+
+  it('schneidet Migration und Öffnen für beide Kandidaten semantisch deckungsgleich', () => {
+    const { candidates } = measureCandidateLoc();
+
+    expect(candidates.dexie.areas).toMatchObject({
+      'Schema-Migration': 52,
+      'Öffnen und Versionieren': 32,
+    });
+    expect(candidates.idb.areas).toMatchObject({
+      'Schema-Migration': 70,
+      'Öffnen und Versionieren': 48,
     });
   });
 

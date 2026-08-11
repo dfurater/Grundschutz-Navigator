@@ -9,16 +9,23 @@ const negativeCase = NEGATIVE_EGRESS_CASES.find(
 test.skipIf(!negativeCase)(
   negativeCase?.testName ?? 'kein negativer Browser-Egress-Fall ausgewählt',
   () => {
+    if (!negativeCase) {
+      throw new Error('GSPP339_NEGATIVE_EGRESS_CASE_MISSING');
+    }
     const url = deriveCrossOriginUrl(
       window.location.href,
-      `/egress-proof/${negativeCase?.id ?? 'inactive'}`,
+      `/egress-proof/${negativeCase.id}`,
     );
 
-    if (negativeCase?.id === 'fetch') {
-      void fetch(url.href).catch(() => undefined);
-      return;
+    switch (negativeCase.id) {
+      case 'fetch':
+        void fetch(url.href).catch(() => undefined);
+        return;
+      case 'sendBeacon':
+        navigator.sendBeacon(url.href, 'gspp-340-egress-proof');
+        return;
+      default:
+        throw new Error('GSPP339_UNSUPPORTED_NEGATIVE_EGRESS_CASE');
     }
-
-    navigator.sendBeacon(url.href, 'gspp-340-egress-proof');
   },
 );

@@ -10,5 +10,3 @@ export const NEGATIVE_EGRESS_CASES = [
     expectedMethod: 'POST',
   },
 ];
-
-export const NEGATIVE_EGRESS_TEST_NAME = NEGATIVE_EGRESS_CASES[0].testName;
