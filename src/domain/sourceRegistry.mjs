@@ -1,5 +1,5 @@
 /**
- * Quellregister für BSI-Upstream-Artefakte (ADR-0001).
+ * Quellregister für BSI-Upstream-Artefakte (ADR-1).
  *
  * Einzige Quelle der Wahrheit dafür, welche Upstream-Pfade das Projekt kennt,
  * welcher OSCAL-Root-Typ dort erwartet wird und welche Artefakte produktiv

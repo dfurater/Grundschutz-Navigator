@@ -1,5 +1,5 @@
 // =============================================================================
-// ControlRef — kataloggescopte interne Control-Identität (ADR-0001)
+// ControlRef — kataloggescopte interne Control-Identität (ADR-1)
 //
 // `catalogKey + controlId` ist die OSCAL-/Referenzidentität für Lookups und
 // Relationen. Kanonische URLs verwenden stattdessen catalogKey + altIdentifier

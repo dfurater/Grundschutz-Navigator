@@ -1,5 +1,5 @@
 /**
- * Typdeklarationen für das Quellregister (ADR-0001).
+ * Typdeklarationen für das Quellregister (ADR-1).
  * Muss mit sourceRegistry.mjs übereinstimmen; die Laufzeitkonsistenz der
  * CatalogKey-Union sichert sourceRegistry.test.ts ab.
  */

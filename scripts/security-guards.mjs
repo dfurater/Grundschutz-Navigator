@@ -191,7 +191,7 @@ function normalizeUpstreamRepoPath(repoPath) {
 export function assertAllowedUpstreamRepoPath(repoPath) {
   const normalizedPosixPath = normalizeUpstreamRepoPath(repoPath);
 
-  // Registry-getriebene Allowlist (ADR-0001): Nur supported-Artefakte sind
+  // Registry-getriebene Allowlist (ADR-1): Nur supported-Artefakte sind
   // fetchbar; preview/draft-Einträge bleiben bewusst ausgeschlossen.
   const registryEntry = getArtifactByUpstreamPath(normalizedPosixPath);
   if (registryEntry && registryEntry.lifecycle === 'supported') {
