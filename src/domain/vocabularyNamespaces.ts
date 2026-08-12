@@ -2,7 +2,7 @@
  * Namespace-URLs der offiziellen BSI-Vokabulare.
  *
  * Der Verzeichnispfad wird bewusst NICHT hier hartcodiert, sondern aus dem
- * Quellregister (ADR-0001) abgeleitet. Grund: Die `ns`-Werte im Katalog zeigen
+ * Quellregister (ADR-1) abgeleitet. Grund: Die `ns`-Werte im Katalog zeigen
  * auf denselben Upstream-Pfad, und die Auflösung in `vocabulary.ts` und
  * `taxonomyVocabulary.ts` vergleicht exakte URL-Strings mit stillem
  * `null`-Fallback. Eine Upstream-Umbenennung — wie die Kleinschreibung des

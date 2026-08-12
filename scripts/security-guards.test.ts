@@ -10,7 +10,7 @@ import {
 } from './security-guards.mjs';
 
 /**
- * Verhaltensmatrix für die Upstream-Allowlist. Der Registry-Umbau (ADR-0001)
+ * Verhaltensmatrix für die Upstream-Allowlist. Der Registry-Umbau (ADR-1)
  * darf die erlaubte Menge nicht verändern: genau der Grundschutz++-Katalog
  * plus direkte Namespace-CSVs, alles andere fail-closed.
  */

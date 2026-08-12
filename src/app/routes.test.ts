@@ -12,7 +12,7 @@ import {
 import type { Control } from '@/domain/models';
 import type { CatalogKey } from '@/domain/sourceRegistry';
 
-describe('routes (Navigationsvertrag ADR-0001)', () => {
+describe('routes (Navigationsvertrag ADR-1)', () => {
   it('declares the canonical route patterns', () => {
     expect(CATALOG_ROUTE_PATTERN).toBe('/katalog/:catalogKey');
     expect(GROUP_ROUTE_PATTERN).toBe('/katalog/:catalogKey/:groupId');

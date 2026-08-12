@@ -1,5 +1,5 @@
 // =============================================================================
-// Navigationsvertrag (ADR-0001) — kanonische Routen und URL-Builder
+// Navigationsvertrag (ADR-1) — kanonische Routen und URL-Builder
 //
 // Kanonische Control-URLs verwenden ausschließlich catalogKey + altIdentifier;
 // catalogKey + controlId bleibt interne Referenzidentität (src/domain/controlRef.ts).
