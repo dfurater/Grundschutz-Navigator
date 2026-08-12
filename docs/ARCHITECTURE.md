@@ -247,7 +247,9 @@ seinen Abstieg zusätzlich auf die zulässige Tiefe. Das Ergebnis ist
 entweder ein vollständiger Root-Envelope mit explizitem
 `class-2-local-user`-Kontext oder genau eine redigierte Diagnose. Der Worker
 führt keine Netzwerk-, Dateisystem-, Telemetrie- oder URL-Operation aus und
-terminiert nach seiner Antwort.
+nach seiner Antwort beendet ihn der Adapter; bleibt eine Antwort aus, beendet
+der Adapter ihn nach 30 Sekunden fail-closed mit einer redigierten
+Worker-Diagnose.
 
 Dieser Einstieg liefert weder Dateiauswahl noch Persistenz, UI oder Renderer.
 Er ändert deshalb weder den Klasse-1-Katalogladepfad noch dessen

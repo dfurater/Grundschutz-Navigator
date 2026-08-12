@@ -12,6 +12,9 @@ export const CLASS_2_IMPORT_VALIDATOR = Object.freeze({
   version: '1',
 });
 
+/** Verhindert einen dauerhaft hängenden Klasse-2-Import im Main-Thread. */
+export const CLASS_2_IMPORT_WORKER_TIMEOUT_MS = 30_000;
+
 export function createClass2ByteLimitDiagnostic(): OscalDiagnostic {
   return createOscalDiagnostic({
     code: 'OSCAL_BYTE_LIMIT_EXCEEDED',

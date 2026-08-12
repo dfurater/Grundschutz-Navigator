@@ -2,6 +2,7 @@ import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
 import {
   CLASS_2_IMPORT_LIMITS,
   CLASS_2_IMPORT_VALIDATOR,
+  CLASS_2_IMPORT_WORKER_TIMEOUT_MS,
   createClass2ByteLimitDiagnostic,
 } from '@/domain/oscalImportContract';
 import type {
@@ -62,17 +63,31 @@ export function importClass2OscalDocument(
       return;
     }
 
-    const complete = (result: Class2OscalImportResult): void => {
+    let completed = false;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+
+    function complete(result: Class2OscalImportResult): void {
+      if (completed) return;
+      completed = true;
+
+      if (timeout !== undefined) clearTimeout(timeout);
+      worker.removeEventListener('message', onMessage);
+      worker.removeEventListener('error', onWorkerFailure);
+      worker.removeEventListener('messageerror', onWorkerFailure);
       worker.terminate();
       resolve(result);
+    }
+
+    const onMessage = (event: MessageEvent<OscalImportWorkerResponse | null>): void => {
+      if (event.data?.type === 'result') complete(event.data.result);
     };
-    worker.addEventListener('message', (event: MessageEvent<OscalImportWorkerResponse>) => {
-      if (event.data.type === 'result') complete(event.data.result);
-    }, { once: true });
-    worker.addEventListener('error', () => complete(workerFailure()), { once: true });
-    worker.addEventListener('messageerror', () => complete(workerFailure()), { once: true });
+    const onWorkerFailure = (): void => complete(workerFailure());
 
     try {
+      worker.addEventListener('message', onMessage);
+      worker.addEventListener('error', onWorkerFailure);
+      worker.addEventListener('messageerror', onWorkerFailure);
+      timeout = setTimeout(onWorkerFailure, CLASS_2_IMPORT_WORKER_TIMEOUT_MS);
       worker.postMessage({ type: 'import', bytes: transferable, context }, [transferable]);
     } catch {
       complete(workerFailure());

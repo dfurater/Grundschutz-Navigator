@@ -59,7 +59,7 @@ describe('parseClass2OscalInput', () => {
     expect(JSON.stringify(result)).not.toContain('oscal-version');
   });
 
-  it('redigiert ungültige JSON-Syntax nach dem Scanner', () => {
+  it('weist ungültige JSON-Syntax aus dem Scanner fail-closed vor JSON.parse ab', () => {
     const jsonParse = vi.spyOn(JSON, 'parse');
     const secret = 'NUR-IN-TEST-FIXTURE';
     const result = parseClass2OscalInput(new TextEncoder().encode(`{"catalog":"${secret}"`));
@@ -72,7 +72,7 @@ describe('parseClass2OscalInput', () => {
         path: '/',
       },
     });
-    expect(jsonParse).toHaveBeenCalledOnce();
+    expect(jsonParse).not.toHaveBeenCalled();
     expect(JSON.stringify(result)).not.toContain(secret);
   });
 

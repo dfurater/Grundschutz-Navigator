@@ -256,6 +256,17 @@ export function parseClass2OscalInput(bytes: Uint8Array): Class2OscalInputResult
       }),
     };
   }
+  if (scan.kind === 'invalid') {
+    return {
+      ok: false,
+      diagnostic: createOscalDiagnostic({
+        code: 'OSCAL_JSON_MALFORMED',
+        stage: 'json-syntax',
+        validator: CLASS_2_IMPORT_VALIDATOR,
+        path: '/',
+      }),
+    };
+  }
 
   try {
     const source = JSON.parse(text);
