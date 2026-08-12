@@ -8,6 +8,32 @@ const UI_FILES = [
   'src/components/**/*.{ts,tsx}',
 ];
 
+const oscalSecurity = {
+  rules: {
+    'no-dangerous-oscal-markup': {
+      meta: {
+        type: 'problem',
+        docs: {
+          description: 'forbid raw HTML insertion for OSCAL content',
+        },
+        schema: [],
+        messages: {
+          forbidden: 'dangerouslySetInnerHTML is forbidden for OSCAL content; render untrusted markup as text.',
+        },
+      },
+      create(context) {
+        return {
+          JSXAttribute(node) {
+            if (node.name.type === 'JSXIdentifier' && node.name.name === 'dangerouslySetInnerHTML') {
+              context.report({ node, messageId: 'forbidden' });
+            }
+          },
+        };
+      },
+    },
+  },
+};
+
 export default tseslint.config(
   { ignores: ['dist', 'coverage'] },
   {
@@ -15,6 +41,7 @@ export default tseslint.config(
     files: ['**/*.{ts,tsx}'],
     plugins: {
       'react-hooks': reactHooks,
+      'oscal-security': oscalSecurity,
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
@@ -23,6 +50,7 @@ export default tseslint.config(
   {
     files: ['src/**/*.{ts,tsx}'],
     rules: {
+      'oscal-security/no-dangerous-oscal-markup': 'error',
       'max-lines': ['warn', {
         max: 300,
         skipBlankLines: false,
