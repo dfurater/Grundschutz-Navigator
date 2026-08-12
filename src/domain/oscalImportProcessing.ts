@@ -2,8 +2,12 @@ import { createOscalDiagnostic, type OscalDiagnostic } from '@/domain/oscalDiagn
 import {
   CLASS_2_IMPORT_LIMITS,
   CLASS_2_IMPORT_VALIDATOR,
+  createClass2ByteLimitDiagnostic,
 } from '@/domain/oscalImportContract';
-import { enforceClass2ResourceLimits } from '@/domain/oscalResourceLimits';
+import {
+  createClass2ResourceLimitDiagnostic,
+  enforceClass2ResourceLimits,
+} from '@/domain/oscalResourceLimits';
 
 export {
   CLASS_2_IMPORT_LIMITS,
@@ -17,7 +21,8 @@ export type Class2OscalInputResult =
 
 type JsonScanResult =
   | { readonly kind: 'valid'; readonly duplicatePath?: string }
-  | { readonly kind: 'invalid' };
+  | { readonly kind: 'invalid' }
+  | { readonly kind: 'depth-limit' };
 
 function childContainerPath(path: string, kind: 'array' | 'object', index: number): string {
   return `${path === '/' ? '' : path}/${kind}/${index}`;
@@ -29,19 +34,21 @@ class DuplicateMemberScanner {
   constructor(private readonly text: string) {}
 
   scan(): JsonScanResult {
-    const result = this.scanValue('/');
-    if (result.kind === 'invalid' || result.duplicatePath !== undefined) return result;
+    const result = this.scanValue('/', 1);
+    if (result.kind !== 'valid' || result.duplicatePath !== undefined) return result;
 
     this.skipWhitespace();
     return this.position === this.text.length ? result : { kind: 'invalid' };
   }
 
-  private scanValue(path: string): JsonScanResult {
+  private scanValue(path: string, depth: number): JsonScanResult {
+    if (depth > CLASS_2_IMPORT_LIMITS.maxDepth) return { kind: 'depth-limit' };
+
     this.skipWhitespace();
     const character = this.text[this.position];
 
-    if (character === '{') return this.scanObject(path);
-    if (character === '[') return this.scanArray(path);
+    if (character === '{') return this.scanObject(path, depth);
+    if (character === '[') return this.scanArray(path, depth);
     if (character === '"') return this.readString() === null ? { kind: 'invalid' } : { kind: 'valid' };
     if (character === 't') return this.readLiteral('true');
     if (character === 'f') return this.readLiteral('false');
@@ -49,7 +56,7 @@ class DuplicateMemberScanner {
     return this.readNumber();
   }
 
-  private scanObject(path: string): JsonScanResult {
+  private scanObject(path: string, depth: number): JsonScanResult {
     this.position += 1;
     this.skipWhitespace();
     if (this.consume('}')) return { kind: 'valid' };
@@ -65,8 +72,8 @@ class DuplicateMemberScanner {
       this.skipWhitespace();
       if (!this.consume(':')) return { kind: 'invalid' };
 
-      const value = this.scanValue(childContainerPath(path, 'object', memberIndex));
-      if (value.kind === 'invalid' || value.duplicatePath !== undefined) return value;
+      const value = this.scanValue(childContainerPath(path, 'object', memberIndex), depth + 1);
+      if (value.kind !== 'valid' || value.duplicatePath !== undefined) return value;
       memberIndex += 1;
 
       this.skipWhitespace();
@@ -78,15 +85,15 @@ class DuplicateMemberScanner {
     return { kind: 'invalid' };
   }
 
-  private scanArray(path: string): JsonScanResult {
+  private scanArray(path: string, depth: number): JsonScanResult {
     this.position += 1;
     this.skipWhitespace();
     if (this.consume(']')) return { kind: 'valid' };
 
     let index = 0;
     while (this.position < this.text.length) {
-      const value = this.scanValue(childContainerPath(path, 'array', index));
-      if (value.kind === 'invalid' || value.duplicatePath !== undefined) return value;
+      const value = this.scanValue(childContainerPath(path, 'array', index), depth + 1);
+      if (value.kind !== 'valid' || value.duplicatePath !== undefined) return value;
       index += 1;
 
       this.skipWhitespace();
@@ -210,13 +217,7 @@ export function parseClass2OscalInput(bytes: Uint8Array): Class2OscalInputResult
   if (bytes.byteLength > CLASS_2_IMPORT_LIMITS.maxBytes) {
     return {
       ok: false,
-      diagnostic: createOscalDiagnostic({
-        code: 'OSCAL_BYTE_LIMIT_EXCEEDED',
-        stage: 'resource-limit',
-        validator: CLASS_2_IMPORT_VALIDATOR,
-        path: '/',
-        params: { limitBytes: CLASS_2_IMPORT_LIMITS.maxBytes },
-      }),
+      diagnostic: createClass2ByteLimitDiagnostic(),
     };
   }
 
@@ -236,6 +237,14 @@ export function parseClass2OscalInput(bytes: Uint8Array): Class2OscalInputResult
   }
 
   const scan = new DuplicateMemberScanner(text).scan();
+  if (scan.kind === 'depth-limit') {
+    return {
+      ok: false,
+      diagnostic: createClass2ResourceLimitDiagnostic('OSCAL_RESOURCE_DEPTH_LIMIT_EXCEEDED', {
+        limitDepth: CLASS_2_IMPORT_LIMITS.maxDepth,
+      }),
+    };
+  }
   if (scan.kind === 'valid' && scan.duplicatePath !== undefined) {
     return {
       ok: false,

@@ -93,6 +93,25 @@ describe('parseClass2OscalInput', () => {
     });
   });
 
+  it('weist eine Tiefenbombe schon im Scanner ohne JSON.parse oder Stacküberlauf ab', () => {
+    const jsonParse = vi.spyOn(JSON, 'parse');
+    jsonParse.mockClear();
+    const nesting = CLASS_2_IMPORT_LIMITS.maxDepth + 2_000;
+    const text = `${'['.repeat(nesting)}null${']'.repeat(nesting)}`;
+
+    const result = parseClass2OscalInput(new TextEncoder().encode(text));
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: 'OSCAL_RESOURCE_DEPTH_LIMIT_EXCEEDED',
+        stage: 'resource-limit',
+        path: '/',
+      },
+    });
+    expect(jsonParse).not.toHaveBeenCalled();
+  });
+
   it('akzeptiert genau 64 Verschachtelungsebenen', () => {
     let source: unknown = null;
     for (let depth = 1; depth < CLASS_2_IMPORT_LIMITS.maxDepth; depth += 1) {

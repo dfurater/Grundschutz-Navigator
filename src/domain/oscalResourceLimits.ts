@@ -16,7 +16,7 @@ function isJsonObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function resourceLimitDiagnostic(
+export function createClass2ResourceLimitDiagnostic(
   code: string,
   params: Readonly<Record<string, number>>,
 ): OscalDiagnostic {
@@ -52,12 +52,12 @@ export function enforceClass2ResourceLimits(source: unknown): OscalDiagnostic | 
     const current = pending.pop()!;
     nodeCount += 1;
     if (nodeCount > CLASS_2_IMPORT_LIMITS.maxNodes) {
-      return resourceLimitDiagnostic('OSCAL_RESOURCE_NODE_LIMIT_EXCEEDED', {
+      return createClass2ResourceLimitDiagnostic('OSCAL_RESOURCE_NODE_LIMIT_EXCEEDED', {
         limitNodes: CLASS_2_IMPORT_LIMITS.maxNodes,
       });
     }
     if (current.depth > CLASS_2_IMPORT_LIMITS.maxDepth) {
-      return resourceLimitDiagnostic('OSCAL_RESOURCE_DEPTH_LIMIT_EXCEEDED', {
+      return createClass2ResourceLimitDiagnostic('OSCAL_RESOURCE_DEPTH_LIMIT_EXCEEDED', {
         limitDepth: CLASS_2_IMPORT_LIMITS.maxDepth,
       });
     }
@@ -66,7 +66,7 @@ export function enforceClass2ResourceLimits(source: unknown): OscalDiagnostic | 
       if (isEmbeddedBase64(current.path) && typeof current.value.value === 'string') {
         decodedBase64Bytes += decodedBase64ByteLength(current.value.value);
         if (decodedBase64Bytes > CLASS_2_IMPORT_LIMITS.maxDecodedBase64Bytes) {
-          return resourceLimitDiagnostic('OSCAL_RESOURCE_BASE64_LIMIT_EXCEEDED', {
+          return createClass2ResourceLimitDiagnostic('OSCAL_RESOURCE_BASE64_LIMIT_EXCEEDED', {
             limitDecodedBase64Bytes: CLASS_2_IMPORT_LIMITS.maxDecodedBase64Bytes,
           });
         }

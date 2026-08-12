@@ -238,10 +238,12 @@ kopiert `ArrayBuffer` oder `Uint8Array` nur für die Übertragung und startet
 `src/workers/oscalImport.worker.ts` als Modul-Worker. Der Main-Thread dekodiert,
 parst oder interpretiert die Bytes nicht.
 
-Im Worker läuft die feste Reihenfolge aus dem
+Nach der Größenkontrolle läuft im Worker die feste Reihenfolge aus dem
 [OSCAL-Validierungsvertrag](./OSCAL_VALIDATION.md): Bytelimit, fataler
 UTF-8-Decoder, Duplicate-Member-Scanner, `JSON.parse`, iterative
-Ressourcenlimits und anschließend `dispatchOscalDocument()`. Das Ergebnis ist
+Ressourcenlimits und anschließend `dispatchOscalDocument()`. Das Bytelimit
+greift bereits vor Worker-Erzeugung und Transferkopie; der Scanner begrenzt
+seinen Abstieg zusätzlich auf die zulässige Tiefe. Das Ergebnis ist
 entweder ein vollständiger Root-Envelope mit explizitem
 `class-2-local-user`-Kontext oder genau eine redigierte Diagnose. Der Worker
 führt keine Netzwerk-, Dateisystem-, Telemetrie- oder URL-Operation aus und

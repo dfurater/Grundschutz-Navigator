@@ -1,9 +1,13 @@
 import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
+import {
+  CLASS_2_IMPORT_LIMITS,
+  CLASS_2_IMPORT_VALIDATOR,
+  createClass2ByteLimitDiagnostic,
+} from '@/domain/oscalImportContract';
 import type {
   Class2OscalDocumentContext,
   Class2OscalImportResult,
 } from '@/domain/oscalClass2Import';
-import { CLASS_2_IMPORT_VALIDATOR } from '@/domain/oscalImportProcessing';
 import type {
   OscalImportWorkerResponse,
 } from '@/workers/oscalImport.worker';
@@ -36,6 +40,17 @@ export function importClass2OscalDocument(
   bytes: ArrayBuffer | Uint8Array,
   context: Class2OscalDocumentContext,
 ): Promise<Class2OscalImportResult> {
+  if (bytes.byteLength > CLASS_2_IMPORT_LIMITS.maxBytes) {
+    return Promise.resolve({ ok: false, diagnostic: createClass2ByteLimitDiagnostic() });
+  }
+
+  let transferable: ArrayBuffer;
+  try {
+    transferable = copyForTransfer(bytes);
+  } catch {
+    return Promise.resolve(workerFailure());
+  }
+
   return new Promise((resolve) => {
     let worker: Worker;
     try {
@@ -57,7 +72,6 @@ export function importClass2OscalDocument(
     worker.addEventListener('error', () => complete(workerFailure()), { once: true });
     worker.addEventListener('messageerror', () => complete(workerFailure()), { once: true });
 
-    const transferable = copyForTransfer(bytes);
     try {
       worker.postMessage({ type: 'import', bytes: transferable, context }, [transferable]);
     } catch {
