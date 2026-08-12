@@ -96,7 +96,7 @@ describe('parseClass2OscalInput', () => {
   it('weist eine Tiefenbombe schon im Scanner ohne JSON.parse oder Stacküberlauf ab', () => {
     const jsonParse = vi.spyOn(JSON, 'parse');
     jsonParse.mockClear();
-    const nesting = CLASS_2_IMPORT_LIMITS.maxDepth + 2_000;
+    const nesting = 8_000;
     const text = `${'['.repeat(nesting)}null${']'.repeat(nesting)}`;
 
     const result = parseClass2OscalInput(new TextEncoder().encode(text));

@@ -53,3 +53,18 @@ test('prüft das Bytelimit im Worker ohne Netzwerkzugriff', async () => {
     diagnostic: { code: 'OSCAL_BYTE_LIMIT_EXCEEDED', stage: 'resource-limit' },
   });
 });
+
+test('weist 8 000 Ebenen im öffentlichen Workerpfad mit der Tiefendiagnose ab', async () => {
+  const nesting = 8_000;
+  const text = `${'['.repeat(nesting)}null${']'.repeat(nesting)}`;
+
+  const result = await importClass2OscalDocument(
+    new TextEncoder().encode(text),
+    { trustClass: 'class-2-local-user' },
+  );
+
+  expect(result).toMatchObject({
+    ok: false,
+    diagnostic: { code: 'OSCAL_RESOURCE_DEPTH_LIMIT_EXCEEDED', stage: 'resource-limit' },
+  });
+});
