@@ -229,6 +229,28 @@ Feature-Komponenten und Hooks
 • resolveControlVocabularies() → Vokabular-Auflösung
 ```
 
+### Klasse-2-OSCAL-Eingang
+
+Der bestehende Katalogfluss verarbeitet ausschließlich Build-Zeit-Artefakte
+aus dem Quellregister. Lokale Klasse-2-Dokumente benutzen ihn nicht.
+`src/adapters/oscalImportGate.ts` ist ihr einziger Anwendungseinstieg: Er
+kopiert `ArrayBuffer` oder `Uint8Array` nur für die Übertragung und startet
+`src/workers/oscalImport.worker.ts` als Modul-Worker. Der Main-Thread dekodiert,
+parst oder interpretiert die Bytes nicht.
+
+Im Worker läuft die feste Reihenfolge aus dem
+[OSCAL-Validierungsvertrag](./OSCAL_VALIDATION.md): Bytelimit, fataler
+UTF-8-Decoder, Duplicate-Member-Scanner, `JSON.parse`, iterative
+Ressourcenlimits und anschließend `dispatchOscalDocument()`. Das Ergebnis ist
+entweder ein vollständiger Root-Envelope mit explizitem
+`class-2-local-user`-Kontext oder genau eine redigierte Diagnose. Der Worker
+führt keine Netzwerk-, Dateisystem-, Telemetrie- oder URL-Operation aus und
+terminiert nach seiner Antwort.
+
+Dieser Einstieg liefert weder Dateiauswahl noch Persistenz, UI oder Renderer.
+Er ändert deshalb weder den Klasse-1-Katalogladepfad noch dessen
+Integritätskette.
+
 Der separate Sync-Pfad (`scripts/sync-upstream-manifest.mjs` mit `scripts/upstream-artifacts.mjs`) vergleicht die vollständigen normalisierten Trees des bisherigen und des neuen Snapshots. Erst dort entstehen die Status `added`, `modified` und `removed`; neue nicht registrierte Pfade werden als `unclassified` gemeldet, ohne ihren Blob zu fetchen oder sie auszuliefern. Weil `snapshotCommitSha` Bestandteil der Manifest-Signatur ist, löst auch ein neuer Snapshot, dessen einziges Delta eine unregistrierte Datei ist, diesen Vergleich aus.
 
 ## Zustandsverwaltung

@@ -5,17 +5,28 @@ importiert, exportiert oder in der Build-Pipeline prüft. Er definiert die
 Prüfkette und ihre Lieferkette; er aktiviert noch keinen produktiven Import.
 YAML und XML sind nicht unterstützt.
 
-## Status: verbindlicher Zielzustand, Stufe 2 und unabhängiger CI-Schema-Korpuslauf umgesetzt
+## Status: Stufe 1 für Klasse 2, Stufe 2 und unabhängiger CI-Schema-Korpuslauf umgesetzt
 
 Dieses Dokument legt den verbindlichen Zielzustand für den künftigen
 OSCAL-Import- und -Prüfpfad fest. Die Schutzkette ist **nicht** vollständig in
-den produktiven Katalog-Ladepfad integriert. Der aktuelle Katalog-Loader in
+den bestehenden Klasse-1-Katalog-Ladepfad integriert. Der aktuelle Katalog-Loader in
 [`CatalogContext.tsx`](../src/state/CatalogContext.tsx) ruft
 `fetchCatalogWithBuffer` auf; dessen Implementierung in
 [`integrity.ts`](../src/domain/integrity.ts) dekodiert mit einem nicht-fatalen
 `TextDecoder`. `CatalogContext` übergibt den zurückgegebenen Text anschließend
-unmittelbar `JSON.parse`. Dieser Pfad besitzt derzeit kein Byte-Limit, keinen
-Duplicate-Member-Scanner und keine OSCAL-Schema-Prüfung.
+unmittelbar `JSON.parse`. Dieser Klasse-1-Pfad besitzt weiterhin kein Byte-Limit,
+keinen Duplicate-Member-Scanner und keine OSCAL-Schema-Prüfung.
+
+**Stufe 1 ist seit [GSPP-289](https://linear.app/grundschutz-plus-plus/issue/GSPP-289)
+für den einzigen Klasse-2-Einstieg umgesetzt.**
+[`importClass2OscalDocument()`](../src/adapters/oscalImportGate.ts) überträgt
+`ArrayBuffer` oder `Uint8Array` an einen Modul-Worker. Dort erzwingt die Pipeline
+zuerst das 10-MiB-Bytelimit, dekodiert mit fatalem UTF-8-Decoder, erkennt doppelte
+JSON-Member nach Escape-Auflösung, parst erst danach JSON und prüft iterative
+Grenzen für Tiefe (64), Knotenzahl (1 000 000) und die arithmetische Summe
+eingebetteter Base64-Größen (10 MiB). Danach übergibt sie ausschließlich an
+`dispatchOscalDocument()`. Es gibt noch keine Import-UI, Persistenz oder
+Klasse-2-Anzeige.
 
 **Stufe 2 ist seit
 [GSPP-285](https://linear.app/grundschutz-plus-plus/issue/GSPP-285) umgesetzt
@@ -38,10 +49,9 @@ ein eigenständiges Schema-Orakel: Es aktiviert weder den Browser-Validator noch
 behauptet es eine vollständige Validierung der Stufen 1, 2, 4 oder 5.
 
 Die bestehende Integritätsprüfung und `parseCatalog` ersetzen diese Gates
-nicht. Bis die vollständige Kette samt Negativtests in Browser und CI
-integriert ist, darf die App weder ihre Stufen als ausgeführt ausweisen noch
-behaupten, dass der aktuelle Katalog-Loader durch diesen Vertrag abgesichert
-ist. Eine Teilimplementierung aktiviert den Vertrag nicht.
+nicht. Die App darf ausschließlich die für den Klasse-2-Einstieg tatsächlich
+ausgeführten Stufen 1 und 2 ausweisen, nie die vollständige Kette. Insbesondere
+ist der aktuelle Klasse-1-Katalog-Loader nicht durch diesen Vertrag abgesichert.
 
 Die Validierung ist von der bestehenden
 [Integritätsprüfung](INTEGRITY.md) getrennt: SHA-256 schützt die Übereinstimmung
@@ -68,23 +78,43 @@ GitHub-Actions-Runner; Browserprüfungen laufen ausschließlich im Modul-Worker.
 
 | Stufe | Vorgeschriebener Zielzustand | Pinning und Fehlersemantik |
 | --- | --- | --- |
-| 1. Größenlimit und JSON-Syntax | Plattformfunktionen (`Uint8Array`, fataler UTF-8-Decoder), projekteigener Streaming-Token-Scanner und danach `JSON.parse` im isolierten Worker; dieselbe Reihenfolge in CI | Das Byte-Limit muss vor Decoder, Scanner und Parser gesetzt sein. Fehlt ein Limit oder wird es überschritten, wird nicht dekodiert. Nach erfolgreicher fataler Dekodierung lehnt der Scanner doppelte Member-Namen auf jeder Objekttiefe ab; nur dann wird `JSON.parse` aufgerufen. CI verwendet Node 22 gemäß Workflow und der Mindestversion in `package.json`; die Prüflogik einschließlich Scanner ist über den App-Commit gepinnt. |
+| 1. Größenlimit und JSON-Syntax | **Für Klasse 2 umgesetzt:** Plattformfunktionen (`Uint8Array`, fataler UTF-8-Decoder), projekteigener Token-Scanner und danach `JSON.parse` im isolierten Modul-Worker | Das Bytelimit von 10 MiB greift vor Decoder, Scanner und Parser. Nach erfolgreicher fataler Dekodierung lehnt der Scanner doppelte Member auf jeder Objekttiefe ab; nur dann wird `JSON.parse` aufgerufen. Die nachfolgende, iterative Prüfung begrenzt Tiefe auf 64, Knoten auf 1 000 000 und die arithmetische Summe dekodierter Base64-Größen auf 10 MiB, ohne Base64 zu dekodieren. Node-Tests verwenden dieselbe Worker-Logik; der Browsernachweis läuft in Chromium. |
 | 2. Root-Erkennung | **Umgesetzt:** `dispatchOscalDocument()` in [`oscalRootDispatch.ts`](../src/adapters/oscalRootDispatch.ts), projekteigen und ohne externes Werkzeug | Das Top-Level-Objekt muss genau einen der acht bekannten Root-Keys besitzen. Null, Arrays, mehrere Root-Keys und unbekannte Keys werden abgelehnt. Die optionale Schema-Direktive `$schema` ist die einzige zusätzlich zulässige Top-Level-Property; sie ist kein zweiter Root und **niemals** Versionsautorität. Eine Katalog-Interpretation als Fallback ist verboten. |
 | 3. JSON-Schema | Browser nach Aktivierung: `ajv` 8.20.0 im Modul-Worker. **CI umgesetzt:** [`verify-upstream-oscal.mjs`](../scripts/verify-upstream-oscal.mjs) nutzt `go-oscal` 0.7.1 als unabhängiges Schema- und Upgrade-Orakel | Auswahl ausschließlich über den exakten Root×`oscal-version`-Schlüssel. Der Korpuslauf bezieht Dokumente nur aus dem gepinnten BSI-Snapshot und führt weder Schema- noch Dokumentreferenz-Anfragen aus. Jedes nicht gesperrte Artefakt muss bestehen; ein gesperrtes Artefakt muss fehlschlagen. Fehlende oder nicht auswertbare Werkzeugergebnisse bleiben ein eigener fail-closed Werkzeugfehler. Ajv wird erst nach der OSS-Zulassung aus [ADR-5](https://linear.app/grundschutz-plus-plus/issue/ADR-5) produktiv aufgenommen. Bis direkte Abhängigkeit, Paket-Lock, Schema-Manifest und Hashprüfung vorhanden sind, bleibt der betreffende Importpfad deaktiviert. |
 | 4. zusätzliche OSCAL-Constraints | Derzeit **kein zugelassener Validator** für OSCAL 1.2.2; im Browser und in CI als `not-checked` ausgewiesen | Diese Stufe darf weder übersprungen noch als bestanden dargestellt werden. Die zulässige Konformitätsaussage wird deshalb begrenzt. Das konkrete Mapping-Orakel ist als bekannte Lücke registriert. |
 | 5. Referenzen und Projektregeln | [`referenceResolution.ts`](../src/domain/referenceResolution.ts) ist der gemeinsame, fail-closed Klassifikator; der vollständige Referenzgraph bleibt Vertrag von [GSPP-251](https://linear.app/grundschutz-plus-plus/issue/GSPP-251) | Prüft UUID-/ID-Eindeutigkeit, interne und dokumentübergreifende Referenzen, URI- und Medientypregeln sowie ausdrücklich benannte GRC-Regeln. Die Schicht klassifiziert externe `https:`-Ziele, relative Ziele und abgelehnte Protokolle ohne sie abzurufen; Stufe 5 konsumiert sie statt eine zweite Klassifikation einzuführen. Unbekannte Regeln gelten nicht als bestanden. |
 
-Der Streaming-Token-Scanner führt für jedes geöffnete JSON-Objekt eine eigene
+Der Token-Scanner führt für jedes geöffnete JSON-Objekt eine eigene
 Menge bereits gelesener Member-Namen. Verglichen wird der logische Name nach
 Auflösung von JSON-Escapes, sodass etwa `catalog` und eine escape-äquivalente
 Schreibweise als Duplikat gelten. Ein Duplikat beendet Stufe 1 vor `JSON.parse`
 mit `OSCAL_JSON_DUPLICATE_MEMBER`; Root-Dispatcher und alle späteren Stufen
 erhalten `not-run`. Die Diagnose nennt weder den unvertrauenswürdigen
-Member-Namen noch dessen Wert, sondern nur den stabilen Code und einen sicheren
-strukturellen Containerpfad: Nur positiv gelistete Pfadsegmente werden genannt,
-unbekannte Segmente werden als Platzhalter redigiert. Damit interpretieren
-Browser, CI und nachgelagerte Werkzeuge dasselbe eindeutige Dokument, ohne eine
-zusätzliche Abhängigkeit einzuführen.
+Member-Namen noch dessen Wert, sondern nur den stabilen Code und einen sicheren,
+generischen strukturellen Containerpfad aus Objekt- und Arraypositionen. Damit
+interpretieren Browser und nachgelagerte Werkzeuge dasselbe eindeutige Dokument,
+ohne eine zusätzliche Abhängigkeit einzuführen.
+
+Für Klasse-2-Referenzen ist `https:` das einzige als extern klassifizierbare
+Protokoll. `javascript:`, `data:`, `file:` sowie jedes andere Protokoll werden
+von [`referenceResolution.ts`](../src/domain/referenceResolution.ts)
+fail-closed als `unsafe-protocol` behandelt; die Klassifikation führt weder
+Netzwerk- noch Dateizugriffe aus. Fehlende `rlink.hashes` ergeben
+`integrity: 'missing'`, nicht Vertrauen.
+
+### Klasse-2-Grenzwerte
+
+Die Startwerte wurden am 2026-08-11 gegen `public/data/catalog.json` als
+größtes ausgeliefertes Artefakt gemessen: 5 399 453 Bytes, maximale
+Verschachtelungstiefe 18 und 70 851 Knoten. Sie begrenzen ausschließlich den
+lokalen Klasse-2-Einstieg; der bestehende Klasse-1-Loader bleibt davon getrennt.
+
+| Grenze | Wert | Begründung |
+| --- | --- | --- |
+| Bytes vor Dekodierung | 10 MiB | Entspricht `MAX_CATALOG_ARTIFACT_BYTES` in [`fetch-catalog.mjs`](../scripts/fetch-catalog.mjs) und liegt rund doppelt über dem gemessenen Katalog. |
+| Verschachtelungstiefe | 64 | Mehr als das Dreifache der gemessenen Tiefe 18. |
+| Knoten | 1 000 000 | Rund das Vierzehnfache der gemessenen 70 851 Knoten. |
+| Summe dekodierter Base64-Größen | 10 MiB | Dieselbe Sicherheitsgrenze wie das Bytelimit; ausschließlich arithmetisch über kodierte Länge bestimmt. |
 
 Ajv wurde als künftiger Validator gegenüber `@hyperjump/json-schema` 1.17.7
 ausgewählt. Beide Kandidaten trafen die Schema-Orakel, aber Hyperjump startete
@@ -514,10 +544,10 @@ die Prüftiefendifferenz und die Reichweite der namespace-gebundenen Constraints
 | aus dem realen `catalog-gspp` abgeleitet, `metadata.props` um `{ "name": "erfundener-name" }` **ohne** `ns` ergänzt | JSON-Schema besteht, weil `prop/name` kein Enum trägt. Der Name verletzt den geschlossenen OSCAL-Wertebereich; die nicht verfügbare Constraint-Stufe bleibt als Lücke sichtbar. |
 | dieselbe Variante mit `ns: "https://example.org/ns"` | JSON-Schema besteht ebenso. Ein Constraint-Verstoß liegt hier **nicht** vor: Der Fremd-Namespace ist regulär und vom `has-oscal-namespace(...)`-Prädikat nicht erfasst. Solange Stufe 4 `not-checked` ist, ist das am Metaschema belegt und nicht an einem Lauf beobachtet. |
 | null, mehrere, unbekannte oder zusätzliche Root-Keys | Root-Erkennung scheitert. |
-| doppelter Root-Key oder doppeltes `metadata.oscal-version` | Der Streaming-Token-Scanner lehnt das Dokument auf der jeweiligen Objekttiefe vor `JSON.parse` mit `OSCAL_JSON_DUPLICATE_MEMBER` ab; Root-Erkennung und Schema-Auswahl laufen nicht. Escape-äquivalente Member-Namen gelten ebenfalls als Duplikat. |
+| doppelter Root-Key oder doppeltes `metadata.oscal-version` | Der Token-Scanner lehnt das Dokument auf der jeweiligen Objekttiefe vor `JSON.parse` mit `OSCAL_JSON_DUPLICATE_MEMBER` ab; Root-Erkennung und Schema-Auswahl laufen nicht. Escape-äquivalente Member-Namen gelten ebenfalls als Duplikat. |
 | nicht vorhandenes Root×Version-Paar | Auswahl scheitert ohne Fallback. |
 | Dokument über dem konfigurierten Byte-Limit | Ablehnung erfolgt vor Decoder und Parser. |
-| Validierung nach initialem Laden im Browser-Worker | Keine Schema- oder Dokumentanfrage wird ausgelöst. |
+| Klasse-2-Validierung im Browser-Worker | Keine Schema-, Dokument- oder Referenzanfrage wird ausgelöst. |
 
 ## Quellen
 
