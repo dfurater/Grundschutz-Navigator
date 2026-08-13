@@ -16,6 +16,10 @@ const OFFICIAL_REPOSITORY =
 const EXPECTED_SHA = '1'.repeat(40);
 const FOUND_SHA = '2'.repeat(40);
 
+function getAllowedTempRoot() {
+  return process.env.RUNNER_TEMP ?? tmpdir();
+}
+
 function makeManifest({
   snapshotCommitSha = EXPECTED_SHA,
   contentSha256 = 'a'.repeat(64),
@@ -37,7 +41,7 @@ function makeManifest({
 }
 
 async function makePaths() {
-  const directory = await mkdtemp(path.join(tmpdir(), 'catalog-freshness-'));
+  const directory = await mkdtemp(path.join(getAllowedTempRoot(), 'catalog-freshness-'));
   return {
     manifestPath: path.join(directory, 'upstream-manifest.json'),
     metadataPath: path.join(directory, 'upstream-sources-metadata.json'),

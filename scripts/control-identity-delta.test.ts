@@ -20,6 +20,10 @@ const FIXTURE_A_NEXT_SHA = '12abb438fcdb4f4b63fb3e751e89d7c526e647b5';
 const FIXTURE_B_PREVIOUS_SHA = 'cea4589c2b8337207772a88dd82d808cba5e1d89';
 const FIXTURE_B_NEXT_SHA = 'c1e53dcfbb5adc503964042a859f01ea721a4419';
 
+function getAllowedTempRoot() {
+  return process.env.RUNNER_TEMP ?? tmpdir();
+}
+
 function makeControl(id: string, altIdentifier: string, title: string) {
   return {
     id,
@@ -355,7 +359,9 @@ describe('manifest-driven catalog loading', () => {
   });
 
   it('writes deterministic JSON only below the repository or temp roots', async () => {
-    const directory = await mkdtemp(path.join(tmpdir(), 'control-identity-delta-'));
+    const directory = await mkdtemp(
+      path.join(getAllowedTempRoot(), 'control-identity-delta-'),
+    );
     const outputPath = path.join(directory, 'control-identity-delta.json');
     const delta = {
       schemaVersion: 1,
