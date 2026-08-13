@@ -6,7 +6,7 @@ import {
   assertTopicVocabularyCoverage,
 } from './taxonomy-coverage.mjs';
 
-const PINNED_SHA = '12abb438fcdb4f4b63fb3e751e89d7c526e647b5';
+const ARBITRARY_SHA = '12abb438fcdb4f4b63fb3e751e89d7c526e647b5';
 const FUTURE_SHA = 'f'.repeat(40);
 
 function makePracticeCoverageFixture() {
@@ -126,7 +126,7 @@ function makeCoverageFixture() {
 }
 
 describe('topic taxonomy coverage', () => {
-  it('measures and accepts the exact pinned 139-to-119 coverage', () => {
+  it('measures and accepts complete 139-to-119 coverage', () => {
     const fixture = makeCoverageFixture();
     const coverage = analyzeTopicVocabularyCoverage(
       fixture.catalog,
@@ -143,10 +143,28 @@ describe('topic taxonomy coverage', () => {
       missingCatalogUuidCount: 0,
       duplicateCsvUuidCount: 0,
     });
-    expect(() => assertTopicVocabularyCoverage(PINNED_SHA, coverage)).not.toThrow();
+    expect(() => assertTopicVocabularyCoverage(ARBITRARY_SHA, coverage)).not.toThrow();
   });
 
-  it('reports both mismatch directions and rejects drift on the pinned snapshot', () => {
+  it('accepts a strongly different but fully resolved topic quantity', () => {
+    const coverage = {
+      catalogTopicCount: 2,
+      distinctCatalogUuidCount: 2,
+      csvEntryCount: 2,
+      matchedCatalogTopicCount: 2,
+      unmatchedCatalogTopicCount: 0,
+      orphanCsvEntryCount: 0,
+      missingCatalogUuidCount: 0,
+      duplicateCsvUuidCount: 0,
+      unmatchedCatalogTopics: [],
+      orphanCsvEntries: [],
+      duplicateCsvUuids: [],
+    };
+
+    expect(() => assertTopicVocabularyCoverage(ARBITRARY_SHA, coverage)).not.toThrow();
+  });
+
+  it('reports both mismatch directions and rejects drift on every snapshot', () => {
     const fixture = makeCoverageFixture();
     fixture.namespace.entries[118].columns.UUID = 'uuid-orphan';
     const coverage = analyzeTopicVocabularyCoverage(
@@ -163,7 +181,7 @@ describe('topic taxonomy coverage', () => {
       value: 'Thema 118',
       uuid: 'uuid-orphan',
     });
-    expect(() => assertTopicVocabularyCoverage(PINNED_SHA, coverage)).toThrow(
+    expect(() => assertTopicVocabularyCoverage(ARBITRARY_SHA, coverage)).toThrow(
       'Topic-Coverage',
     );
   });

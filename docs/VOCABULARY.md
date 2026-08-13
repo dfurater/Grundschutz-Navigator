@@ -263,17 +263,17 @@ ControlDetail-Breadcrumb sichtbar und erhält den dezenten Hinweis
 Katalogtreffer vollständig auf `/vokabular` auffindbar; Definitionen werden
 nicht auf Übersichtsseiten dupliziert.
 
-Für den gepinnten BSI-Snapshot `cea4589c2b8337207772a88dd82d808cba5e1d89`
-wurde die Deckung explizit gemessen: 140 Katalog-Untergruppen verwenden 120
+Die Deckung wird bei jedem Fetch für den aufgelösten BSI-Snapshot gemessen:
+140 Katalog-Untergruppen verwenden im aktuellen Datenstand 120
 verschiedene UUIDs und lösen vollständig auf die 120 CSV-Einträge auf. Es gibt
 kein Katalogthema ohne Treffer und keinen verwaisten CSV-Eintrag.
 Die UI-Tests halten dennoch beide Abweichungsrichtungen für künftige Snapshots
 sichtbar. Fetch und Catalog-Sync-Guard behandeln solche Abweichungen zugleich
-für jeden Snapshot als Integritätsfehler; die exakten Zählwerte bleiben nur für
-bekannte Snapshots zusätzlich gepinnt (`scripts/taxonomy-coverage.mjs`).
+für jeden Snapshot als Integritätsfehler. Die Zählwerte bleiben in der
+Provenienz sichtbar, blockieren aber keine konsistente Mengenänderung des BSI.
 
 Für `practices.csv` gilt eine namentlich begrenzte Ausnahme: Das BSI liefert
-seit diesem Snapshot die Beispielpraktik „EXMP“ ohne zugehörige Katalog-Gruppe
+die Beispielpraktik „EXMP“ ohne zugehörige Katalog-Gruppe
 mit aus. Genau diese UUID ist in `TOLERATED_ORPHAN_PRACTICE_UUIDS` geduldet und
 wird separat als `toleratedOrphanCsvEntryCount` ausgewiesen; jede andere
 verwaiste CSV-Zeile lässt den Guard weiterhin hart fehlschlagen.
