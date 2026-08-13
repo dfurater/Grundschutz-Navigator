@@ -751,6 +751,7 @@ async function buildFetchArtifacts(logger = console, {
     dataQualityFindings: catalogQuality.findings,
     taxonomyCoverage: {
       topics: topicCoverage,
+      practices: practiceIntegrity,
     },
     integrity: {
       sha256: sha256Hex(vocabulariesArtifact),

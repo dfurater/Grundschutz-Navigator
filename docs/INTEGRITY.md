@@ -212,7 +212,7 @@ Dazu kommen Quell-Repository, Commit-SHA und Abrufzeitpunkt mit Link auf den exa
 
 ## Vocabulary Integrity
 
-Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funktion `verifyArtifactIntegrity` auf (die `IntegrityMetadata`-Union deckt beide Provenance-Typen ab). Die zugehörigen Metadaten stehen in `upstream-sources-metadata.json`. Darin umfasst `manifest` alle materialisierten Registry-Artefakte; das separate Top-Level-Feld `files` enthält ausschließlich die Datei-Provenance der ausgelieferten Namespace-CSVs. `dataQualityFindings` hält nicht blockierende fachliche Befunde zum unterstützten Katalog fest. `taxonomyCoverage.topics` protokolliert die gemessene UUID-Deckung zwischen Katalogthemen und `topics.csv`. Fetch und Catalog-Sync-Guard verlangen `practices.csv` und blockieren für jeden Snapshot fehlende oder doppelte Practice-UUIDs sowie Practice-Katalog- oder CSV-Orphans. Entsprechend blockieren sie leere Topic-Taxonomiedaten, fehlende oder doppelte Topic-UUIDs und Topic-Katalog- oder CSV-Orphans.
+Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funktion `verifyArtifactIntegrity` auf (die `IntegrityMetadata`-Union deckt beide Provenance-Typen ab). Die zugehörigen Metadaten stehen in `upstream-sources-metadata.json`. Darin umfasst `manifest` alle materialisierten Registry-Artefakte; das separate Top-Level-Feld `files` enthält ausschließlich die Datei-Provenance der ausgelieferten Namespace-CSVs. `dataQualityFindings` hält nicht blockierende fachliche Befunde zum unterstützten Katalog fest. `taxonomyCoverage.topics` protokolliert die gemessene UUID-Deckung zwischen Katalogthemen und `topics.csv`; `taxonomyCoverage.practices` hält symmetrisch die Practice-Deckung einschließlich der namentlich geduldeten `EXMP`-Ausnahme fest. Fetch und Catalog-Sync-Guard verlangen `practices.csv` und blockieren für jeden Snapshot fehlende oder doppelte Practice-UUIDs sowie Practice-Katalog- oder CSV-Orphans. Entsprechend blockieren sie leere Topic-Taxonomiedaten, fehlende oder doppelte Topic-UUIDs und Topic-Katalog- oder CSV-Orphans.
 
 ### Provenance-Metadaten (upstream-sources-metadata.json)
 
@@ -263,10 +263,10 @@ Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funkt
   "dataQualityFindings": [],
   "taxonomyCoverage": {
     "topics": {
-      "catalogTopicCount": 139,
-      "distinctCatalogUuidCount": 119,
-      "csvEntryCount": 119,
-      "matchedCatalogTopicCount": 139,
+      "catalogTopicCount": 140,
+      "distinctCatalogUuidCount": 120,
+      "csvEntryCount": 120,
+      "matchedCatalogTopicCount": 140,
       "unmatchedCatalogTopicCount": 0,
       "orphanCsvEntryCount": 0,
       "missingCatalogUuidCount": 0,
@@ -274,6 +274,30 @@ Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funkt
       "unmatchedCatalogTopics": [],
       "orphanCsvEntries": [],
       "duplicateCsvUuids": []
+    },
+    "practices": {
+      "catalogPracticeCount": 20,
+      "distinctCatalogUuidCount": 20,
+      "csvEntryCount": 21,
+      "matchedCatalogPracticeCount": 20,
+      "unmatchedCatalogPracticeCount": 0,
+      "orphanCsvEntryCount": 0,
+      "toleratedOrphanCsvEntryCount": 1,
+      "missingCatalogUuidCount": 0,
+      "missingUuidCount": 0,
+      "duplicateCatalogUuidCount": 0,
+      "duplicateUuidCount": 0,
+      "unmatchedCatalogPractices": [],
+      "orphanCsvEntries": [],
+      "toleratedOrphanCsvEntries": [
+        {
+          "value": "EXMP",
+          "uuid": "9d330062-5c39-4bb0-bef2-62ab66414aa5"
+        }
+      ],
+      "entriesWithoutUuid": [],
+      "duplicateCatalogUuids": [],
+      "duplicateUuids": []
     }
   },
   "integrity": {
@@ -366,6 +390,26 @@ interface TopicVocabularyCoverage {
   duplicateCsvUuids: Array<{ value: string; count: number }>;
 }
 
+interface PracticeVocabularyIntegrity {
+  catalogPracticeCount: number;
+  distinctCatalogUuidCount: number;
+  csvEntryCount: number;
+  matchedCatalogPracticeCount: number;
+  unmatchedCatalogPracticeCount: number;
+  orphanCsvEntryCount: number;
+  toleratedOrphanCsvEntryCount: number;
+  missingCatalogUuidCount: number;
+  missingUuidCount: number;
+  duplicateCatalogUuidCount: number;
+  duplicateUuidCount: number;
+  unmatchedCatalogPractices: Array<{ id?: string; uuid?: string }>;
+  orphanCsvEntries: Array<{ value?: string; uuid?: string }>;
+  toleratedOrphanCsvEntries: Array<{ value?: string; uuid?: string }>;
+  entriesWithoutUuid: string[];
+  duplicateCatalogUuids: Array<{ value: string; count: number }>;
+  duplicateUuids: Array<{ value: string; count: number }>;
+}
+
 interface VocabularyProvenance {
   artifactKey?: string;
   source: {
@@ -379,6 +423,7 @@ interface VocabularyProvenance {
   dataQualityFindings?: string[];
   taxonomyCoverage?: {
     topics: TopicVocabularyCoverage | null;
+    practices: PracticeVocabularyIntegrity | null;
   };
   integrity: ArtifactIntegrity;
   build: ArtifactBuildInfo;

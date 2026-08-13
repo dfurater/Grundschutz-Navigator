@@ -263,8 +263,9 @@ ControlDetail-Breadcrumb sichtbar und erhält den dezenten Hinweis
 Katalogtreffer vollständig auf `/vokabular` auffindbar; Definitionen werden
 nicht auf Übersichtsseiten dupliziert.
 
-Die Deckung wird bei jedem Fetch für den aufgelösten BSI-Snapshot gemessen:
-140 Katalog-Untergruppen verwenden im aktuellen Datenstand 120
+Für den am 2026-08-13 im Manifest gepinnten BSI-Snapshot
+`80694713a7a430d12eb2099893de23ad8bb6f780` wurde die Deckung gemessen:
+140 Katalog-Untergruppen verwenden 120
 verschiedene UUIDs und lösen vollständig auf die 120 CSV-Einträge auf. Es gibt
 kein Katalogthema ohne Treffer und keinen verwaisten CSV-Eintrag.
 Die UI-Tests halten dennoch beide Abweichungsrichtungen für künftige Snapshots
@@ -276,7 +277,9 @@ Für `practices.csv` gilt eine namentlich begrenzte Ausnahme: Das BSI liefert
 die Beispielpraktik „EXMP“ ohne zugehörige Katalog-Gruppe
 mit aus. Genau diese UUID ist in `TOLERATED_ORPHAN_PRACTICE_UUIDS` geduldet und
 wird separat als `toleratedOrphanCsvEntryCount` ausgewiesen; jede andere
-verwaiste CSV-Zeile lässt den Guard weiterhin hart fehlschlagen.
+verwaiste CSV-Zeile lässt den Guard weiterhin hart fehlschlagen. Die gemessene
+Practice-Deckung wird unter `taxonomyCoverage.practices` in
+`upstream-sources-metadata.json` als Provenienz des Fetch-Laufs festgehalten.
 
 ### Such-Text-Sammlung
 
