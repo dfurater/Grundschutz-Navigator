@@ -32,6 +32,33 @@ Das System prüft, ob die geladenen Artefakte zu den gemeinsam ausgelieferten In
 5. **Abruf über erlaubte GitHub-Endpunkte** mit Retry und Backoff bei transienten Fehlern; optional authentifiziert über `GH_TOKEN`/`GITHUB_TOKEN`.
 6. **Integritätsdaten**: SHA-256, Dateigröße, Git-Blob-SHA und Commit-Informationen werden je ausgeliefertem Artefakt erfasst. Das vollständige Manifest v2 enthält zusätzlich für jede materialisierte Registry-Datei Root-Typ und Lifecycle.
 
+### Lokale Snapshot-Freshness
+
+`public/data/` ist gitignoriert und kann nach einem Pull deshalb noch zu einem
+älteren oder neueren Snapshot gehören als das eingecheckte
+`upstream-manifest.json`. `scripts/check-catalog-freshness.mjs` vergleicht vor
+jedem Vitest-Lauf die kanonische `signatureSha256` des eingecheckten Manifests
+mit dem in `public/data/upstream-sources-metadata.json` eingebetteten Manifest.
+Damit wird auch ein geänderter Registry-Vertrag bei unverändertem
+Upstream-Commit erkannt; ein reiner Commit-SHA-Vergleich würde diesen Fall
+übersehen.
+
+Jede Abweichung, unabhängig von ihrer zeitlichen Richtung, bricht Tests über
+Vitests `globalSetup` mit erwarteter und gefundener 12-Zeichen-SHA ab. Beim
+lokalen Dev-Server bleibt dieselbe Diagnose bewusst nicht blockierend, wird
+aber über den Vite-Hook `catalog-freshness-diagnostic` als deutliches
+Terminal-Banner ausgegeben. Fehlende oder ungültige lokale Metadaten werden
+getrennt von einem fehlenden beziehungsweise ungültigen eingecheckten Manifest
+gemeldet. Für lokale Drift oder fehlende lokale Daten lautet die Reparatur:
+
+```bash
+npm run fetch-catalog
+```
+
+CI liest `snapshotCommitSha` aus dem eingecheckten Manifest und setzt ihn als
+`BSI_SNAPSHOT_SHA`, bevor `npm run fetch-catalog` läuft. Die dort erzeugten
+Metadaten tragen daher dieselbe Signatur und lösen keinen Freshness-Fehler aus.
+
 ### Provenance-Metadaten (catalog-metadata.json)
 
 ```json
