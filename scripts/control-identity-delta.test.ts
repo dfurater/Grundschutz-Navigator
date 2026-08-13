@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -104,10 +105,10 @@ function fixtureA() {
 }
 
 function gitBlobSha(buffer: Buffer) {
-  return createHash('sha1')
-    .update(Buffer.from(`blob ${buffer.length}\0`, 'utf8'))
-    .update(buffer)
-    .digest('hex');
+  return execFileSync('git', ['hash-object', '--stdin'], {
+    encoding: 'utf8',
+    input: buffer,
+  }).trim();
 }
 
 function manifestCatalogFile(

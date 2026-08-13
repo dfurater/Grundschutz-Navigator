@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -116,10 +117,10 @@ function completeTree(entries: GitTreeEntry[]) {
 }
 
 function gitBlobResponse(buffer: Buffer) {
-  const sha = createHash('sha1')
-    .update(Buffer.from(`blob ${buffer.length}\0`, 'utf8'))
-    .update(buffer)
-    .digest('hex');
+  const sha = execFileSync('git', ['hash-object', '--stdin'], {
+    encoding: 'utf8',
+    input: buffer,
+  }).trim();
   return {
     sha,
     contentSha256: createHash('sha256').update(buffer).digest('hex'),

@@ -328,6 +328,9 @@ export function compareCatalogControlIdentities({
 }
 
 function gitBlobSha(buffer) {
+  // GitHub's git/blobs API addresses objects with Git's SHA-1 object ID. This
+  // is a protocol-consistency check, not the content trust decision; the
+  // manifest-bound SHA-256 is checked independently below.
   return createHash('sha1')
     .update(Buffer.from(`blob ${buffer.length}\0`, 'utf8'))
     .update(buffer)
