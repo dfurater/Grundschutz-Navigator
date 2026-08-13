@@ -28,4 +28,15 @@ describe('catalog update workflow schedule', () => {
       ['  workflow_dispatch:', '  push:', '    branches: [main]'].join('\n'),
     );
   });
+
+  it('publishes the semantic control identity summary in the sync pull request', () => {
+    const workflow = readFileSync(WORKFLOW_PATH, 'utf8');
+
+    expect(workflow).toContain("printf 'control_identity_summary<<%s\\n'");
+    expect(workflow).toContain(
+      'CONTROL_IDENTITY_SUMMARY: ${{ steps.compare.outputs.control_identity_summary }}',
+    );
+    expect(workflow).toContain('## Semantisches Control-Identitätsdelta');
+    expect(workflow).toContain('printf \'%s\\n\' "$CONTROL_IDENTITY_SUMMARY"');
+  });
 });

@@ -59,6 +59,44 @@ CI liest `snapshotCommitSha` aus dem eingecheckten Manifest und setzt ihn als
 `BSI_SNAPSHOT_SHA`, bevor `npm run fetch-catalog` läuft. Die dort erzeugten
 Metadaten tragen daher dieselbe Signatur und lösen keinen Freshness-Fehler aus.
 
+### Semantisches Control-Identitätsdelta
+
+Bei einem Snapshot-Wechsel ergänzt `scripts/sync-upstream-manifest.mjs` das
+reine Datei-Delta um einen semantischen Vergleich aller Manifest-Einträge mit
+`rootType: catalog` — unabhängig davon, ob ihr Lifecycle `supported`,
+`preview`, `draft` oder `blocked-by-upstream` ist. Das Skript lädt die alte und
+die neue Katalogfassung über ihre im jeweiligen Manifest gebundenen
+Git-Blob-SHAs. Vor der Interpretation müssen sowohl die SHA-1 im Git-Blob-Format
+als auch der SHA-256-Inhaltshash zum Manifest passen.
+
+`scripts/control-identity-delta.mjs` rekursiert durch Gruppen und verschachtelte
+Controls und klassifiziert Änderungen anhand der kataloginternen
+`alt-identifier`-Identität:
+
+- `added` und `removed`: Identität kommt nur in einem Snapshot vor
+- `moved`: gleicher `alt-identifier`, aber eine andere Control-ID
+- `id-rebound`: eine weiterverwendete Control-ID bezeichnet eine neu
+  hinzugekommene Identität
+- `identifier-changed`: genau ein alter und ein neuer Kandidat haben denselben
+  Titel, aber verschiedene `alt-identifier`
+- `ambiguous`: insbesondere doppelte `alt-identifier` oder nicht eindeutige
+  Titelkandidaten
+
+Die Titelgleichheit bei `identifier-changed` ist ausdrücklich nur
+nicht-kryptographische Evidenz; mehrdeutige Kandidaten werden nicht geraten.
+Der vollständige maschinenlesbare Befund wird als generierte, gitignorierte
+Datei `public/data/control-identity-delta.json` geschrieben. Jeder Eintrag enthält
+Artefaktschlüssel, beide Snapshot-SHAs, alte und neue Control-ID, alte und neue
+`alt-identifier`, Titel und Klassifikation. Der Sync-PR erhält zusätzlich eine
+menschenlesbare Zusammenfassung mit den alten und neuen Control-Zahlen und den
+Klassifikationssummen je Katalog.
+
+Der Vergleich ist bewusst diagnostisch: Fehler beim Blob-Abruf, bei der
+Hashprüfung, beim Parse oder beim Schreiben werden im Sync-Output sichtbar,
+ändern aber weder die `changed`-Entscheidung noch die Manifest-Aktualisierung
+oder den Exit-Code des ansonsten erfolgreichen Syncs. Die bestehenden harten
+Manifest-, Tree- und Catalog-Sync-Guards bleiben davon unberührt.
+
 ### Provenance-Metadaten (catalog-metadata.json)
 
 ```json
