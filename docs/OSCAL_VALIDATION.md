@@ -502,6 +502,7 @@ Schema-Status bleibt sichtbar `failed`.
 | `component-ga-lotse-grundmodul` | `component-definition` / 1.1.2 | [BSI #70](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/70) |
 | `component-lieferkette` | `component-definition` / 1.1.2 | [BSI #71](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/71) |
 | `mapping-iso27001-annex-a-zu-gspp` | `mapping-collection` / 1.2.2 | [BSI #68](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/68) |
+| `profile-wlan` | `profile` / 1.1.3 | [BSI #87](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/87) |
 
 Der Korpuslauf erwartet für jedes nicht gesperrte Artefakt `schema=passed` und
 für jedes gesperrte Artefakt `schema=failed`. Ein neuer Fehler eines nicht

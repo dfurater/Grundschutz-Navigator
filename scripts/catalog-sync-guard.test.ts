@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   computeManifestSignature,
   guardCatalogSyncPullRequest,
+  isAtomicSnapshotBlockMigration,
   isRegistryLifecycleOnlyMigration,
   parseNameStatusDiff,
   validateCatalogSyncManifest,
@@ -18,6 +19,9 @@ import { buildUpstreamManifest } from './upstream-artifacts.mjs';
 
 const OLD_SHA = '1'.repeat(40);
 const NEW_SHA = '2'.repeat(40);
+const REAL_OLD_SHA = '47de2824a341812438ef3f044b3f65ce2cad6e32';
+const REAL_NEW_SHA = '6e709692521823c5ab75cf7a7dec3034b1e0326b';
+const WLAN_PROFILE_KEY = 'profile-wlan';
 const RESULT_NAMESPACE_PATH = 'documentation/namespaces/result.csv';
 const RESULT_NAMESPACE_URL = `${OFFICIAL_BSI_REPOSITORY_URL}/tree/main/${RESULT_NAMESPACE_PATH}`;
 const UNREFERENCED_NAMESPACE_PATH =
@@ -285,12 +289,49 @@ function validShape(snapshotCommitSha = NEW_SHA) {
 function rebuildManifest(
   manifest: ReturnType<typeof buildUpstreamManifest>,
   files: ManifestFile[],
+  snapshotCommitSha = manifest.snapshotCommitSha,
 ) {
   return buildUpstreamManifest({
     repository: manifest.repository,
-    snapshotCommitSha: manifest.snapshotCommitSha,
+    snapshotCommitSha,
     files,
   });
+}
+
+function makeAtomicSnapshotBlockFixture() {
+  const next = makeFixture({ snapshotCommitSha: REAL_NEW_SHA });
+  next.manifest = rebuildManifest(
+    next.manifest,
+    next.manifest.files.map((file) =>
+      file.artifactKey === WLAN_PROFILE_KEY
+        ? { ...file, lifecycle: 'blocked-by-upstream' }
+        : file,
+    ),
+    REAL_NEW_SHA,
+  );
+  const previousManifest = rebuildManifest(
+    next.manifest,
+    next.manifest.files.map((file) =>
+      file.artifactKey === WLAN_PROFILE_KEY
+        ? { ...file, lifecycle: 'preview' }
+        : file,
+    ),
+    REAL_OLD_SHA,
+  );
+  const diffEntries = [
+    { status: 'M', path: 'src/domain/sourceRegistry.mjs' },
+    { status: 'M', path: 'upstream-manifest.json' },
+    { status: 'M', path: 'scripts/catalog-sync-guard.mjs' },
+    { status: 'M', path: 'scripts/catalog-sync-guard.test.ts' },
+  ];
+
+  return {
+    branch: 'codex/gspp-353-atomic-snapshot-block',
+    title: 'fix(upstream/oscal): WLAN-Profil atomar sperren',
+    diffEntries,
+    previousManifest,
+    next,
+  };
 }
 
 function makeLegacyV1Manifest() {
@@ -479,6 +520,267 @@ describe('catalog sync PR shape', () => {
       previousManifest: previous,
       nextManifest: { ...next.manifest, snapshotCommitSha: NEW_SHA },
     })).toBe(false);
+  });
+});
+
+describe('atomic snapshot block migration', () => {
+  it('accepts the real WLAN snapshot transition only through the atomic migration path', async () => {
+    const fixture = makeAtomicSnapshotBlockFixture();
+
+    expect(isAtomicSnapshotBlockMigration({
+      diffEntries: fixture.diffEntries,
+      previousManifest: fixture.previousManifest,
+      nextManifest: fixture.next.manifest,
+    })).toBe(true);
+    await expect(guardCatalogSyncPullRequest({
+      branch: fixture.branch,
+      title: fixture.title,
+      diffEntries: fixture.diffEntries,
+      previousManifest: fixture.previousManifest,
+      nextManifest: fixture.next.manifest,
+      fetchImpl: makeGitHubFetch(fixture.next),
+    })).resolves.toEqual({
+      catalogSync: false,
+      atomicSnapshotBlockMigration: true,
+    });
+  });
+
+  it.each([
+    ['unblocks an artifact', 'blocked-by-upstream', 'preview'],
+    ['changes an artifact to another lifecycle', 'preview', 'supported'],
+  ])('rejects when the lifecycle transition %s', async (_label, previousLifecycle, nextLifecycle) => {
+    const fixture = makeAtomicSnapshotBlockFixture();
+    fixture.previousManifest = rebuildManifest(
+      fixture.previousManifest,
+      fixture.previousManifest.files.map((file) =>
+        file.artifactKey === WLAN_PROFILE_KEY
+          ? { ...file, lifecycle: previousLifecycle }
+          : file,
+      ),
+      REAL_OLD_SHA,
+    );
+    fixture.next.manifest = rebuildManifest(
+      fixture.next.manifest,
+      fixture.next.manifest.files.map((file) =>
+        file.artifactKey === WLAN_PROFILE_KEY
+          ? { ...file, lifecycle: nextLifecycle }
+          : file,
+      ),
+      REAL_NEW_SHA,
+    );
+
+    await expect(guardCatalogSyncPullRequest({
+      branch: fixture.branch,
+      title: fixture.title,
+      diffEntries: fixture.diffEntries,
+      previousManifest: fixture.previousManifest,
+      nextManifest: fixture.next.manifest,
+      fetchImpl: makeGitHubFetch(fixture.next),
+    })).rejects.toThrow();
+  });
+
+  it.each([
+    ['src/domain/sourceRegistry.mjs'],
+    ['upstream-manifest.json'],
+  ])('rejects when the required modified path %s is absent', async (missingPath) => {
+    const fixture = makeAtomicSnapshotBlockFixture();
+    const diffEntries = fixture.diffEntries.filter((entry) => entry.path !== missingPath);
+    const shape = missingPath === 'upstream-manifest.json'
+      ? validShape(REAL_NEW_SHA)
+      : { branch: fixture.branch, title: fixture.title };
+
+    await expect(guardCatalogSyncPullRequest({
+      ...shape,
+      diffEntries,
+      previousManifest: fixture.previousManifest,
+      nextManifest: fixture.next.manifest,
+      fetchImpl: makeGitHubFetch(fixture.next),
+    })).rejects.toThrow();
+  });
+
+  it('rejects an unchanged snapshot with changed pins instead of treating it as atomic', async () => {
+    const fixture = makeAtomicSnapshotBlockFixture();
+    fixture.next.manifest = rebuildManifest(
+      fixture.next.manifest,
+      fixture.next.manifest.files.map((file, index) =>
+        index === 0 ? { ...file, contentSha256: 'f'.repeat(64) } : file,
+      ),
+      REAL_OLD_SHA,
+    );
+
+    expect(isRegistryLifecycleOnlyMigration({
+      diffEntries: fixture.diffEntries,
+      previousManifest: fixture.previousManifest,
+      nextManifest: fixture.next.manifest,
+    })).toBe(false);
+    await expect(guardCatalogSyncPullRequest({
+      branch: fixture.branch,
+      title: fixture.title,
+      diffEntries: fixture.diffEntries,
+      previousManifest: fixture.previousManifest,
+      nextManifest: fixture.next.manifest,
+      fetchImpl: makeGitHubFetch(fixture.next),
+    })).rejects.toThrow();
+  });
+
+  it.each([
+    ['artifact key', (file: ManifestFile) => ({ ...file, artifactKey: 'profile-wlan-rekeyed' })],
+    ['root type', (file: ManifestFile) => ({ ...file, rootType: 'catalog' })],
+  ])('rejects a %s reinterpretation at an existing path', async (_label, mutate) => {
+    const fixture = makeAtomicSnapshotBlockFixture();
+    fixture.next.manifest = rebuildManifest(
+      fixture.next.manifest,
+      fixture.next.manifest.files.map((file) =>
+        file.artifactKey === WLAN_PROFILE_KEY ? mutate(file) : file,
+      ),
+      REAL_NEW_SHA,
+    );
+
+    await expect(guardCatalogSyncPullRequest({
+      branch: fixture.branch,
+      title: fixture.title,
+      diffEntries: fixture.diffEntries,
+      previousManifest: fixture.previousManifest,
+      nextManifest: fixture.next.manifest,
+      fetchImpl: makeGitHubFetch(fixture.next),
+    })).rejects.toThrow();
+  });
+
+  it.each(['added', 'removed'])('rejects a %s manifest entry', async (change) => {
+    const fixture = makeAtomicSnapshotBlockFixture();
+    const files = change === 'removed'
+      ? fixture.next.manifest.files.slice(1)
+      : [
+          ...fixture.next.manifest.files,
+          {
+            artifactKey: 'unregistered-extra',
+            rootType: 'catalog',
+            lifecycle: 'preview',
+            path: 'control_layer/Extra/extra.json',
+            gitBlobSha: 'a'.repeat(40),
+            contentSha256: 'b'.repeat(64),
+          },
+        ];
+    fixture.next.manifest = rebuildManifest(fixture.next.manifest, files, REAL_NEW_SHA);
+
+    await expect(guardCatalogSyncPullRequest({
+      branch: fixture.branch,
+      title: fixture.title,
+      diffEntries: fixture.diffEntries,
+      previousManifest: fixture.previousManifest,
+      nextManifest: fixture.next.manifest,
+      fetchImpl: makeGitHubFetch(fixture.next),
+    })).rejects.toThrow();
+  });
+
+  it('rejects lifecycle drift between the signed manifest and source registry', async () => {
+    const fixture = makeAtomicSnapshotBlockFixture();
+    const extraPreview = fixture.next.manifest.files.find(
+      (file) => file.lifecycle === 'preview' && file.artifactKey !== WLAN_PROFILE_KEY,
+    );
+    expect(extraPreview).toBeDefined();
+    fixture.next.manifest = rebuildManifest(
+      fixture.next.manifest,
+      fixture.next.manifest.files.map((file) =>
+        file.path === extraPreview!.path
+          ? { ...file, lifecycle: 'blocked-by-upstream' }
+          : file,
+      ),
+      REAL_NEW_SHA,
+    );
+
+    await expect(guardCatalogSyncPullRequest({
+      branch: fixture.branch,
+      title: fixture.title,
+      diffEntries: fixture.diffEntries,
+      previousManifest: fixture.previousManifest,
+      nextManifest: fixture.next.manifest,
+      fetchImpl: makeGitHubFetch(fixture.next),
+    })).rejects.toThrow('metadata does not match sourceRegistry');
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['foreign', 'https://example.com/issues/87'],
+  ])('rejects a blocked registry entry with a %s upstream issue', async (_label, upstreamIssue) => {
+    const fixture = makeAtomicSnapshotBlockFixture();
+    const sourceRegistryEntries = SOURCE_REGISTRY.map((entry) => {
+      if (entry.artifactKey !== WLAN_PROFILE_KEY) return entry;
+      const { upstreamIssue: _verifiedIssue, ...withoutUpstreamIssue } = entry;
+      void _verifiedIssue;
+      return {
+        ...withoutUpstreamIssue,
+        lifecycle: 'blocked-by-upstream' as const,
+        ...(upstreamIssue === undefined ? {} : { upstreamIssue }),
+      };
+    });
+
+    await expect(guardCatalogSyncPullRequest({
+      branch: fixture.branch,
+      title: fixture.title,
+      diffEntries: fixture.diffEntries,
+      previousManifest: fixture.previousManifest,
+      nextManifest: fixture.next.manifest,
+      fetchImpl: makeGitHubFetch(fixture.next),
+      sourceRegistryEntries,
+    })).rejects.toThrow('requires a BSI upstream issue');
+  });
+
+  it.each(['contentSha256', 'gitBlobSha'] as const)(
+    'rejects a manipulated %s against the selected snapshot',
+    async (field) => {
+      const fixture = makeAtomicSnapshotBlockFixture();
+      fixture.next.manifest = rebuildManifest(
+        fixture.next.manifest,
+        fixture.next.manifest.files.map((file, index) =>
+          index === 0
+            ? { ...file, [field]: field === 'contentSha256' ? 'f'.repeat(64) : 'f'.repeat(40) }
+            : file,
+        ),
+        REAL_NEW_SHA,
+      );
+
+      await expect(guardCatalogSyncPullRequest({
+        branch: fixture.branch,
+        title: fixture.title,
+        diffEntries: fixture.diffEntries,
+        previousManifest: fixture.previousManifest,
+        nextManifest: fixture.next.manifest,
+        fetchImpl: makeGitHubFetch(fixture.next),
+      })).rejects.toThrow(
+        field === 'contentSha256' ? 'contentSha256 does not match' : 'blob SHA does not match',
+      );
+    },
+  );
+
+  it.each(['identical', 'behind', 'diverged'])(
+    'rejects an atomic migration when snapshot comparison is %s',
+    async (compareStatus) => {
+      const fixture = makeAtomicSnapshotBlockFixture();
+      await expect(guardCatalogSyncPullRequest({
+        branch: fixture.branch,
+        title: fixture.title,
+        diffEntries: fixture.diffEntries,
+        previousManifest: fixture.previousManifest,
+        nextManifest: fixture.next.manifest,
+        fetchImpl: makeGitHubFetch(fixture.next, { compareStatus }),
+      })).rejects.toThrow(`status=${compareStatus}`);
+    },
+  );
+
+  it('keeps a manifest-only autonomous sync on the existing sync path', async () => {
+    const previous = makeFixture({ snapshotCommitSha: REAL_OLD_SHA });
+    const next = makeFixture({ snapshotCommitSha: REAL_NEW_SHA });
+
+    await expect(guardCatalogSyncPullRequest({
+      ...validShape(REAL_NEW_SHA),
+      previousManifest: previous.manifest,
+      nextManifest: next.manifest,
+      fetchImpl: makeGitHubFetch(next),
+    })).resolves.toEqual({
+      catalogSync: true,
+      snapshotCommitSha: REAL_NEW_SHA,
+    });
   });
 });
 

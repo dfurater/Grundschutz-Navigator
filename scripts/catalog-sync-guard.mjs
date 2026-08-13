@@ -26,6 +26,7 @@ import {
   SOURCE_REGISTRY,
   SUPPORTED_CATALOG,
   getArtifactByUpstreamPath,
+  validateSourceRegistry,
 } from '../src/domain/sourceRegistry.mjs';
 import {
   computeManifestSignature as computeV2ManifestSignature,
@@ -175,6 +176,72 @@ export function isRegistryLifecycleOnlyMigration({ diffEntries, previousManifest
       previousFile.rootType !== nextFile.rootType ||
       previousFile.gitBlobSha !== nextFile.gitBlobSha ||
       previousFile.contentSha256 !== nextFile.contentSha256
+    ) {
+      return false;
+    }
+    if (previousFile.lifecycle === nextFile.lifecycle) continue;
+    if (
+      previousFile.lifecycle === 'blocked-by-upstream' ||
+      nextFile.lifecycle !== 'blocked-by-upstream'
+    ) {
+      return false;
+    }
+    lifecycleChanges += 1;
+  }
+
+  return lifecycleChanges > 0;
+}
+
+/**
+ * Ein neuer BSI-Snapshot und die dadurch notwendige Sperrung müssen atomar
+ * landen können. Das Prädikat klassifiziert ausschließlich strukturerhaltende
+ * Snapshotwechsel, bei denen mindestens ein Lifecycle nach
+ * blocked-by-upstream wechselt. Pins werden anschließend gegen den offiziellen
+ * Snapshot verifiziert und sind deshalb bewusst kein Klassifikationsmerkmal.
+ */
+export function isAtomicSnapshotBlockMigration({
+  diffEntries,
+  previousManifest,
+  nextManifest,
+}) {
+  if (
+    !Array.isArray(diffEntries) ||
+    !diffEntries.some(
+      (entry) => entry.status === 'M' && entry.path === TRACKED_MANIFEST_PATH,
+    ) ||
+    !diffEntries.some(
+      (entry) => entry.status === 'M' && entry.path === REGISTRY_LIFECYCLE_MIGRATION_PATH,
+    ) ||
+    !previousManifest ||
+    typeof previousManifest !== 'object' ||
+    Array.isArray(previousManifest) ||
+    !nextManifest ||
+    typeof nextManifest !== 'object' ||
+    Array.isArray(nextManifest) ||
+    !Array.isArray(previousManifest.files) ||
+    !Array.isArray(nextManifest.files) ||
+    previousManifest.files.length !== nextManifest.files.length ||
+    previousManifest.snapshotCommitSha === nextManifest.snapshotCommitSha
+  ) {
+    return false;
+  }
+
+  const previousByPath = new Map(previousManifest.files.map((file) => [file.path, file]));
+  const nextPaths = new Set(nextManifest.files.map((file) => file.path));
+  if (
+    previousByPath.size !== previousManifest.files.length ||
+    nextPaths.size !== nextManifest.files.length
+  ) {
+    return false;
+  }
+
+  let lifecycleChanges = 0;
+  for (const nextFile of nextManifest.files) {
+    const previousFile = previousByPath.get(nextFile.path);
+    if (
+      !previousFile ||
+      previousFile.artifactKey !== nextFile.artifactKey ||
+      previousFile.rootType !== nextFile.rootType
     ) {
       return false;
     }
@@ -416,7 +483,24 @@ export async function guardCatalogSyncPullRequest({
   nextManifest,
   fetchImpl = fetch,
   token,
+  sourceRegistryEntries = SOURCE_REGISTRY,
 }) {
+  if (isAtomicSnapshotBlockMigration({ diffEntries, previousManifest, nextManifest })) {
+    validateManifestV2Shape(previousManifest);
+    if (previousManifest.repository !== OFFICIAL_BSI_REPOSITORY_URL) {
+      throw new Error(`Previous manifest repository must be ${OFFICIAL_BSI_REPOSITORY_URL}`);
+    }
+    validateSourceRegistry(sourceRegistryEntries);
+    validateCatalogSyncManifest(nextManifest);
+    await verifySnapshotProgress(
+      previousManifest.snapshotCommitSha,
+      nextManifest.snapshotCommitSha,
+      { fetchImpl, token },
+    );
+    await verifySnapshotFiles(nextManifest, { fetchImpl, token });
+    return { catalogSync: false, atomicSnapshotBlockMigration: true };
+  }
+
   if (isRegistryLifecycleOnlyMigration({ diffEntries, previousManifest, nextManifest })) {
     validateManifestV2Shape(previousManifest);
     if (previousManifest.repository !== OFFICIAL_BSI_REPOSITORY_URL) {
@@ -511,6 +595,10 @@ async function runCli() {
 
   if (result.registryLifecycleMigration) {
     console.log('Registry-Lifecycle-Migration geprüft; kein autonomer Catalog-Sync.');
+    return;
+  }
+  if (result.atomicSnapshotBlockMigration) {
+    console.log('Atomare Snapshot-Sperrmigration geprüft; kein autonomer Catalog-Sync.');
     return;
   }
   console.log(`Catalog sync guard passed for snapshot ${result.snapshotCommitSha}.`);

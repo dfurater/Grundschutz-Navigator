@@ -90,6 +90,10 @@ describe('sourceRegistry', () => {
         artifactKey: 'mapping-iso27001-annex-a-zu-gspp',
         upstreamIssue: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/68',
       },
+      {
+        artifactKey: 'profile-wlan',
+        upstreamIssue: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/87',
+      },
     ]);
   });
 
@@ -234,7 +238,7 @@ describe('sourceRegistry', () => {
 
   describe('OSCAL-Versionskompatibilität (GSPP-283)', () => {
     /**
-     * Die am BSI-Snapshot 47de2824 aus `metadata.oscal-version` ausgelesenen
+     * Die am BSI-Snapshot 6e709692 aus `metadata.oscal-version` ausgelesenen
      * Versionen aller registrierten OSCAL-Artefakte. Blob-SHA und SHA-256 der
      * Quelldokumente wurden dabei gegen `upstream-manifest.json` geprüft.
      *

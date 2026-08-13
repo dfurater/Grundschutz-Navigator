@@ -277,7 +277,7 @@ damit eine stille Änderung an der Registry auffällt.
 
 ## Deklarierte Versionen im Bestand
 
-Ausgelesen am BSI-Snapshot `47de2824a341812438ef3f044b3f65ce2cad6e32`;
+Ausgelesen am BSI-Snapshot `6e709692521823c5ab75cf7a7dec3034b1e0326b`;
 Git-Blob-SHA und SHA-256 jedes Dokuments wurden dabei gegen
 `upstream-manifest.json` verifiziert.
 

@@ -142,7 +142,8 @@ export const SOURCE_REGISTRY = Object.freeze(
       oscalVersion: '1.1.3',
       expectedRootType: 'profile',
       upstreamPath: 'control_layer/WLAN/sources/profiles/WLAN-profile.json',
-      lifecycle: 'preview',
+      lifecycle: 'blocked-by-upstream',
+      upstreamIssue: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/87',
       title: 'WLAN Profil',
     },
     {

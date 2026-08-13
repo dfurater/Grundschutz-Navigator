@@ -190,7 +190,7 @@ describe('manifestgestützter OSCAL-Korpus', () => {
     });
   });
 
-  it('führt vier gesperrte Artefakte mit inverser Erwartung im vollständigen Korpus', () => {
+  it('führt fünf gesperrte Artefakte mit inverser Erwartung im vollständigen Korpus', () => {
     const { oscalArtifacts } = selectManifestOscalArtifacts(manifest);
 
     expect(
@@ -203,6 +203,7 @@ describe('manifestgestützter OSCAL-Korpus', () => {
       'component-ga-lotse-grundmodul',
       'component-lieferkette',
       'mapping-iso27001-annex-a-zu-gspp',
+      'profile-wlan',
     ]);
   });
 });
