@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   DEFAULT_ARTIFACTS_DIR,
-  OFFICIAL_BSI_REPO,
   OFFICIAL_BSI_REPOSITORY_URL,
   REPO_ROOT,
+  buildOfficialBsiGitBlobApiUrl,
   readBodyWithLimit,
 } from './security-guards.mjs';
 import { validateManifestV2Shape } from './upstream-artifacts.mjs';
@@ -354,13 +354,16 @@ function parseBase64(value, label) {
   return decoded;
 }
 
-async function fetchCatalogBlob(file, { fetchImpl, token }) {
+async function fetchCatalogBlob(file, { fetchImpl, token, repository }) {
   const headers = {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
-  const url = `https://api.github.com/repos/${OFFICIAL_BSI_REPO}/git/blobs/${file.gitBlobSha}`;
+  const url = buildOfficialBsiGitBlobApiUrl({
+    repository,
+    gitBlobSha: file.gitBlobSha,
+  });
   let response;
   try {
     response = await fetchImpl(url, { headers });
@@ -440,11 +443,11 @@ export async function buildControlIdentityDelta(
   const artifactKeys = [...new Set([...previousFiles.keys(), ...nextFiles.keys()])].sort();
   const cache = new Map();
 
-  function load(file) {
+  function load(file, repository) {
     if (!file) return Promise.resolve(emptyCatalog());
-    const cacheKey = `${file.gitBlobSha}:${file.contentSha256}`;
+    const cacheKey = `${repository}:${file.gitBlobSha}:${file.contentSha256}`;
     if (!cache.has(cacheKey)) {
-      cache.set(cacheKey, fetchCatalogBlob(file, { fetchImpl, token }));
+      cache.set(cacheKey, fetchCatalogBlob(file, { fetchImpl, token, repository }));
     }
     return cache.get(cacheKey);
   }
@@ -454,8 +457,8 @@ export async function buildControlIdentityDelta(
     const previousFile = previousFiles.get(artifactKey);
     const nextFile = nextFiles.get(artifactKey);
     const [previousCatalog, nextCatalog] = await Promise.all([
-      load(previousFile),
-      load(nextFile),
+      load(previousFile, previousManifest.repository),
+      load(nextFile, nextManifest.repository),
     ]);
     artifacts.push(compareCatalogControlIdentities({
       artifactKey,

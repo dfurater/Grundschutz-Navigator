@@ -162,6 +162,17 @@ export function assertOfficialBsiRepository(repository, label = 'Upstream reposi
   throw new Error(`${label} must be ${OFFICIAL_BSI_REPOSITORY_URL}`);
 }
 
+export function buildOfficialBsiGitBlobApiUrl({ repository, gitBlobSha } = {}) {
+  const officialRepository = assertOfficialBsiRepository(
+    repository,
+    'Git blob repository',
+  );
+  if (!/^[0-9a-f]{40}$/.test(gitBlobSha ?? '')) {
+    throw new Error('gitBlobSha must be a lowercase 40-character Git SHA');
+  }
+  return `https://api.github.com/repos/${officialRepository}/git/blobs/${gitBlobSha}`;
+}
+
 function normalizeUpstreamRepoPath(repoPath) {
   if (!isNonEmptyString(repoPath)) {
     throw new Error('Upstream repository path must not be empty');

@@ -7,6 +7,7 @@ import {
   assertAllowedUpstreamRepoPath,
   assertOfficialBsiRepository,
   assertRegisteredUpstreamRepoPath,
+  buildOfficialBsiGitBlobApiUrl,
 } from './security-guards.mjs';
 
 /**
@@ -27,6 +28,25 @@ describe('security-guards', () => {
   it('normalizes only the official BSI repository slug or exact URL', () => {
     expect(assertOfficialBsiRepository(OFFICIAL_BSI_REPO)).toBe(OFFICIAL_BSI_REPO);
     expect(assertOfficialBsiRepository(OFFICIAL_BSI_REPOSITORY_URL)).toBe(OFFICIAL_BSI_REPO);
+  });
+
+  it('centrally resolves Git blob endpoints only for the official repository and valid SHAs', () => {
+    const gitBlobSha = 'a'.repeat(40);
+
+    expect(buildOfficialBsiGitBlobApiUrl({
+      repository: OFFICIAL_BSI_REPOSITORY_URL,
+      gitBlobSha,
+    })).toBe(
+      `https://api.github.com/repos/${OFFICIAL_BSI_REPO}/git/blobs/${gitBlobSha}`,
+    );
+    expect(() => buildOfficialBsiGitBlobApiUrl({
+      repository: 'https://github.com/attacker/Stand-der-Technik-Bibliothek',
+      gitBlobSha,
+    })).toThrow(`must be ${OFFICIAL_BSI_REPOSITORY_URL}`);
+    expect(() => buildOfficialBsiGitBlobApiUrl({
+      repository: OFFICIAL_BSI_REPOSITORY_URL,
+      gitBlobSha: 'A'.repeat(40),
+    })).toThrow('lowercase 40-character Git SHA');
   });
 
   it.each([
