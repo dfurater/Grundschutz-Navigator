@@ -9,6 +9,7 @@ import {
   OFFICIAL_BSI_REPO,
   OFFICIAL_BSI_REPOSITORY_URL,
   assertRegisteredUpstreamRepoPath,
+  buildOfficialBsiGitBlobApiUrl,
 } from './security-guards.mjs';
 import {
   buildVocabularyNamespaceData,
@@ -292,7 +293,10 @@ export async function verifySnapshotFiles(manifest, {
 
   const fetchAndValidateArtifact = async (file) => {
     const blob = await fetchGitHubJson(
-      `${apiBase}/git/blobs/${file.gitBlobSha}`,
+      buildOfficialBsiGitBlobApiUrl({
+        repository: manifest.repository,
+        gitBlobSha: file.gitBlobSha,
+      }),
       { fetchImpl, token, label: `BSI artifact blob lookup (${file.path})` },
     );
     if (

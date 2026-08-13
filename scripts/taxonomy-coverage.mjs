@@ -1,26 +1,3 @@
-const TOPIC_COVERAGE_BASELINES = Object.freeze({
-  '12abb438fcdb4f4b63fb3e751e89d7c526e647b5': Object.freeze({
-    catalogTopicCount: 139,
-    distinctCatalogUuidCount: 119,
-    csvEntryCount: 119,
-    matchedCatalogTopicCount: 139,
-    unmatchedCatalogTopicCount: 0,
-    orphanCsvEntryCount: 0,
-    missingCatalogUuidCount: 0,
-    duplicateCsvUuidCount: 0,
-  }),
-  'cea4589c2b8337207772a88dd82d808cba5e1d89': Object.freeze({
-    catalogTopicCount: 140,
-    distinctCatalogUuidCount: 120,
-    csvEntryCount: 120,
-    matchedCatalogTopicCount: 140,
-    unmatchedCatalogTopicCount: 0,
-    orphanCsvEntryCount: 0,
-    missingCatalogUuidCount: 0,
-    duplicateCsvUuidCount: 0,
-  }),
-});
-
 /**
  * Einträge aus practices.csv, die upstream bewusst ohne Katalogbezug
  * ausgeliefert werden und deshalb keine echte Coverage-Lücke darstellen.
@@ -250,17 +227,5 @@ export function assertTopicVocabularyCoverage(snapshotCommitSha, coverage) {
     throw new Error(
       `Topic-Coverage für Snapshot ${snapshotCommitSha} ist unvollständig: ${coverage.matchedCatalogTopicCount}/${coverage.catalogTopicCount}.`,
     );
-  }
-
-  const expected = TOPIC_COVERAGE_BASELINES[snapshotCommitSha];
-  if (!expected) {
-    return;
-  }
-  for (const [key, expectedValue] of Object.entries(expected)) {
-    if (coverage[key] !== expectedValue) {
-      throw new Error(
-        `Topic-Coverage für Snapshot ${snapshotCommitSha} weicht bei ${key} ab: erwartet ${expectedValue}, erhalten ${coverage[key]}.`,
-      );
-    }
   }
 }

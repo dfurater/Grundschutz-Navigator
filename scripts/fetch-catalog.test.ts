@@ -917,6 +917,34 @@ describe('fetch-catalog', () => {
     })).rejects.toThrow('Practice-UUID-Integrität');
   });
 
+  it('persists the measured Practice UUID coverage in upstream provenance', async () => {
+    const { payload } = await buildMinimalArtifacts();
+    const upstreamMetadata = parseArtifactJson(
+      payload,
+      'upstream-sources-metadata.json',
+    );
+
+    expect(upstreamMetadata.taxonomyCoverage.practices).toEqual({
+      catalogPracticeCount: 1,
+      distinctCatalogUuidCount: 1,
+      csvEntryCount: 1,
+      matchedCatalogPracticeCount: 1,
+      unmatchedCatalogPracticeCount: 0,
+      orphanCsvEntryCount: 0,
+      toleratedOrphanCsvEntryCount: 0,
+      missingCatalogUuidCount: 0,
+      missingUuidCount: 0,
+      duplicateCatalogUuidCount: 0,
+      duplicateUuidCount: 0,
+      unmatchedCatalogPractices: [],
+      orphanCsvEntries: [],
+      toleratedOrphanCsvEntries: [],
+      entriesWithoutUuid: [],
+      duplicateCatalogUuids: [],
+      duplicateUuids: [],
+    });
+  });
+
   it('emits a workflow run URL only when GitHub Actions metadata is present', async () => {
     vi.stubEnv('GITHUB_RUN_ID', '12345');
     vi.stubEnv('GITHUB_REPOSITORY', 'dfurater/Grundschutz-Navigator');

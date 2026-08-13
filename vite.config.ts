@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 import { copyFileSync, existsSync } from 'fs';
+import { catalogFreshnessPlugin } from './scripts/check-catalog-freshness.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -32,7 +33,7 @@ function spaFallbackPlugin() {
 
 export default defineConfig(({ command }) => ({
   base: command === 'build' ? (process.env.BUILD_BASE ?? GITHUB_PAGES_BASE) : '/',
-  plugins: [react(), tailwindcss(), spaFallbackPlugin()],
+  plugins: [react(), tailwindcss(), catalogFreshnessPlugin(), spaFallbackPlugin()],
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),
@@ -40,6 +41,7 @@ export default defineConfig(({ command }) => ({
   },
   test: {
     environment: 'jsdom',
+    globalSetup: ['./scripts/check-catalog-freshness.mjs'],
     setupFiles: ['./src/test-setup.ts'],
     exclude: [...configDefaults.exclude, 'src/test/browser/**/*.browser.test.ts'],
     globals: true,

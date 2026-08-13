@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -114,6 +116,23 @@ function completeTree(entries: GitTreeEntry[]) {
   return { truncated: false, tree: entries };
 }
 
+function gitBlobResponse(buffer: Buffer) {
+  const sha = execFileSync('git', ['hash-object', '--stdin'], {
+    encoding: 'utf8',
+    input: buffer,
+  }).trim();
+  return {
+    sha,
+    contentSha256: createHash('sha256').update(buffer).digest('hex'),
+    response: new Response(JSON.stringify({
+      sha,
+      encoding: 'base64',
+      size: buffer.length,
+      content: buffer.toString('base64'),
+    }), { headers: { 'Content-Type': 'application/json' } }),
+  };
+}
+
 async function writeJson(filePath: string, value: unknown) {
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
@@ -182,12 +201,16 @@ describe('change summaries', () => {
         },
       ],
       dataQualityFindings: ['Alt-Identifier vollständig und eindeutig.'],
+      controlIdentitySummary:
+        '- **catalog-gspp**: 998 → 999 Controls (added: 1, removed: 0)',
     });
 
     expect(summary).toContain('### Datei-Delta');
     expect(summary).toContain('**added** (unclassified): `Mappings/new.json`');
     expect(summary).toContain('### Bekannte Datenqualitätsbefunde');
     expect(summary).toContain('- Alt-Identifier vollständig und eindeutig.');
+    expect(summary).toContain('### Semantisches Control-Identitätsdelta');
+    expect(summary).toContain('998 → 999 Controls');
   });
 
   it('rejects malformed or unsafe data-quality findings', () => {
@@ -476,12 +499,105 @@ describe('syncUpstreamManifest', () => {
     expect(result.outputs.change_summary).toContain(
       '### Bekannte Datenqualitätsbefunde',
     );
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(result.controlIdentityDelta).toBeNull();
+    expect(result.outputs.control_identity_summary).toContain('nicht verfügbar');
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
     expect(fetchImpl.mock.calls.map(([input]) => String(input))).toEqual([
       `https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/git/trees/${BASE_SNAPSHOT_SHA}?recursive=1`,
       `https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/git/trees/${HEAD_SNAPSHOT_SHA}?recursive=1`,
+      `https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek/git/blobs/${newCatalogBlob}`,
     ]);
     expect(persistedManifest).toEqual(nextManifest);
+  });
+
+  it('persists and reports the semantic control identity delta for changed catalogs', async () => {
+    const tempDir = await mkdtemp(path.join(getAllowedTempRoot(), 'sync-upstream-manifest-'));
+    const metadataPath = path.join(tempDir, 'upstream-sources-metadata.json');
+    const manifestPath = path.join(tempDir, 'upstream-manifest.json');
+    const controlIdentityDeltaPath = path.join(tempDir, 'control-identity-delta.json');
+    const catalogPath = 'control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json';
+    const previousDocument = Buffer.from(JSON.stringify({
+      catalog: {
+        groups: [{
+          controls: [{
+            id: 'TEST.1',
+            title: 'Bestehend',
+            props: [{ name: 'alt-identifier', value: 'alt-existing' }],
+          }],
+        }],
+      },
+    }), 'utf8');
+    const nextDocument = Buffer.from(JSON.stringify({
+      catalog: {
+        groups: [{
+          controls: [
+            {
+              id: 'TEST.1',
+              title: 'Bestehend',
+              props: [{ name: 'alt-identifier', value: 'alt-existing' }],
+            },
+            {
+              id: 'TEST.2',
+              title: 'Neu',
+              props: [{ name: 'alt-identifier', value: 'alt-new' }],
+            },
+          ],
+        }],
+      },
+    }), 'utf8');
+    const previousBlob = gitBlobResponse(previousDocument);
+    const nextBlob = gitBlobResponse(nextDocument);
+    const previousManifest = makeManifest({
+      snapshotCommitSha: BASE_SNAPSHOT_SHA,
+      files: [manifestFile({
+        gitBlobSha: previousBlob.sha,
+        contentSha256: previousBlob.contentSha256,
+      })],
+    });
+    const nextManifest = makeManifest({
+      snapshotCommitSha: HEAD_SNAPSHOT_SHA,
+      files: [manifestFile({
+        gitBlobSha: nextBlob.sha,
+        contentSha256: nextBlob.contentSha256,
+      })],
+    });
+    const fetchImpl = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('/git/trees/')) {
+        return new Response(JSON.stringify(completeTree([
+          blob(
+            catalogPath,
+            url.includes(BASE_SNAPSHOT_SHA) ? previousBlob.sha : nextBlob.sha,
+          ),
+        ])), { headers: { 'Content-Type': 'application/json' } });
+      }
+      return url.endsWith(previousBlob.sha) ? previousBlob.response : nextBlob.response;
+    });
+
+    await writeJson(manifestPath, previousManifest);
+    await writeJson(metadataPath, makeVocabularyMetadata(nextManifest));
+    const result = await syncUpstreamManifest({
+      metadataPath,
+      manifestPath,
+      controlIdentityDeltaPath,
+      fetchImpl,
+      token: '',
+    });
+    const persistedDelta = JSON.parse(await readFile(controlIdentityDeltaPath, 'utf8'));
+
+    expect(result.changed).toBe(true);
+    expect(result.controlIdentityDelta?.artifacts[0]).toMatchObject({
+      artifactKey: 'catalog-gspp',
+      previousControlCount: 1,
+      nextControlCount: 2,
+      counts: { added: 1 },
+    });
+    expect(persistedDelta).toEqual(result.controlIdentityDelta);
+    expect(result.outputs.control_identity_summary).toContain('1 → 2 Controls');
+    expect(result.outputs.change_summary).toContain(
+      '### Semantisches Control-Identitätsdelta',
+    );
+    expect(JSON.parse(await readFile(manifestPath, 'utf8'))).toEqual(nextManifest);
   });
 
   it('rejects v2 signature changes for an unchanged snapshot before writing', async () => {

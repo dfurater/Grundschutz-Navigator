@@ -98,6 +98,9 @@ jobs:
             printf 'data_quality_summary<<%s\n' "$DELIMITER"
             printf '%s\n' "$(printf '%s' "$SYNC_JSON" | jq -r '.data_quality_summary')"
             printf '%s\n' "$DELIMITER"
+            printf 'control_identity_summary<<%s\n' "$DELIMITER"
+            printf '%s\n' "$(printf '%s' "$SYNC_JSON" | jq -r '.control_identity_summary')"
+            printf '%s\n' "$DELIMITER"
             printf 'change_summary<<%s\n' "$DELIMITER"
             printf '%s\n' "$(printf '%s' "$SYNC_JSON" | jq -r '.change_summary')"
             printf '%s\n' "$DELIMITER"
@@ -169,6 +172,7 @@ jobs:
         if: steps.compare.outputs.changed == 'true'
         env:
           BRANCH: ${{ steps.sync.outputs.branch }}
+          CONTROL_IDENTITY_SUMMARY: ${{ steps.compare.outputs.control_identity_summary }}
           DATA_QUALITY_SUMMARY: ${{ steps.compare.outputs.data_quality_summary }}
           EXISTING_PR_NUMBER: ${{ steps.sync.outputs.pr_number }}
           FILE_DELTA_SUMMARY: ${{ steps.compare.outputs.file_delta_summary }}
@@ -189,6 +193,10 @@ jobs:
             echo "## Bekannte Datenqualitaetsbefunde"
             echo ""
             printf '%s\n' "$DATA_QUALITY_SUMMARY"
+            echo ""
+            echo "## Semantisches Control-Identitätsdelta"
+            echo ""
+            printf '%s\n' "$CONTROL_IDENTITY_SUMMARY"
             echo ""
             printf '**BSI-Snapshot:** [`%s`](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/commit/%s)\n' \
               "$SNAPSHOT_SHA" "$SNAPSHOT_SHA"

@@ -19,6 +19,12 @@ import {
   materializeRegisteredPathMap,
   validateManifestV2Shape,
 } from './upstream-artifacts.mjs';
+import {
+  DEFAULT_CONTROL_IDENTITY_DELTA_PATH,
+  buildControlIdentityDelta,
+  formatControlIdentityDeltaSummary,
+  writeControlIdentityDelta,
+} from './control-identity-delta.mjs';
 
 const DEFAULT_METADATA_PATH = DEFAULT_UPSTREAM_METADATA_PATH;
 const DEFAULT_MANIFEST_PATH = DEFAULT_TRACKED_MANIFEST_PATH;
@@ -108,12 +114,34 @@ function formatDataQualityFindings(findings) {
     : findings.map((finding) => `- ${finding}`).join('\n');
 }
 
+function normalizeControlIdentitySummary(summary) {
+  if (!isNonEmptyString(summary) || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(summary)) {
+    throw new Error('controlIdentitySummary must contain safe text');
+  }
+  return summary;
+}
+
+function formatControlIdentityFailure(error) {
+  const rawMessage = error instanceof Error ? error.message : 'unbekannter Fehler';
+  const safeMessage = rawMessage
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .slice(0, 240);
+  return `- Control-Identitätsdelta nicht verfügbar: ${safeMessage}`;
+}
+
 export function buildChangeSummary(
   previousManifest,
   nextManifest,
-  { fileDelta = [], dataQualityFindings = [] } = {},
+  {
+    fileDelta = [],
+    dataQualityFindings = [],
+    controlIdentitySummary = '- Kein semantischer Control-Identitätsvergleich erforderlich',
+  } = {},
 ) {
   const normalizedFindings = normalizeDataQualityFindings(dataQualityFindings);
+  const normalizedControlIdentitySummary = normalizeControlIdentitySummary(
+    controlIdentitySummary,
+  );
 
   return [
     '### Datei-Delta',
@@ -121,6 +149,9 @@ export function buildChangeSummary(
     '',
     '### Bekannte Datenqualitätsbefunde',
     formatDataQualityFindings(normalizedFindings),
+    '',
+    '### Semantisches Control-Identitätsdelta',
+    normalizedControlIdentitySummary,
   ].join('\n');
 }
 
@@ -179,6 +210,7 @@ export async function buildFileDelta(previousManifest, nextManifest, options = {
 export async function syncUpstreamManifest({
   metadataPath = DEFAULT_METADATA_PATH,
   manifestPath = DEFAULT_MANIFEST_PATH,
+  controlIdentityDeltaPath = DEFAULT_CONTROL_IDENTITY_DELTA_PATH,
   fetchImpl = fetch,
   token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN,
 } = {}) {
@@ -201,6 +233,26 @@ export async function syncUpstreamManifest({
   const fileDelta = changed
     ? await buildFileDelta(previousManifest, nextManifest, { fetchImpl, token })
     : [];
+  let controlIdentityDelta = null;
+  let controlIdentitySummary = changed
+    ? '- Kein vorheriger Snapshot für einen semantischen Control-Identitätsvergleich vorhanden'
+    : '- Kein Snapshot-Wechsel; kein semantischer Control-Identitätsvergleich erforderlich';
+
+  if (changed && previousManifest) {
+    try {
+      controlIdentityDelta = await buildControlIdentityDelta(
+        previousManifest,
+        nextManifest,
+        { fetchImpl, token },
+      );
+      await writeControlIdentityDelta(controlIdentityDelta, controlIdentityDeltaPath);
+      controlIdentitySummary = formatControlIdentityDeltaSummary(controlIdentityDelta);
+    } catch (error) {
+      controlIdentityDelta = null;
+      controlIdentitySummary = formatControlIdentityFailure(error);
+      console.warn(controlIdentitySummary);
+    }
+  }
 
   console.log(`Local signature:  ${previousManifest?.signatureSha256 ?? 'none'}`);
   console.log(`Remote signature: ${nextManifest.signatureSha256}`);
@@ -217,6 +269,7 @@ export async function syncUpstreamManifest({
   const changeSummary = buildChangeSummary(previousManifest, nextManifest, {
     fileDelta,
     dataQualityFindings,
+    controlIdentitySummary,
   });
 
   return {
@@ -225,6 +278,7 @@ export async function syncUpstreamManifest({
     nextManifest,
     fileDelta,
     dataQualityFindings,
+    controlIdentityDelta,
     outputs: {
       changed: String(changed),
       local_signature: previousManifest?.signatureSha256 ?? 'none',
@@ -232,6 +286,7 @@ export async function syncUpstreamManifest({
       snapshot_commit_sha: nextManifest.snapshotCommitSha,
       file_delta_summary: fileDeltaSummary,
       data_quality_summary: dataQualitySummary,
+      control_identity_summary: controlIdentitySummary,
       change_summary: changeSummary,
     },
   };

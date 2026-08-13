@@ -514,6 +514,41 @@ export interface TopicVocabularyCoverage {
   }>;
 }
 
+export interface PracticeVocabularyIntegrity {
+  catalogPracticeCount: number;
+  distinctCatalogUuidCount: number;
+  csvEntryCount: number;
+  matchedCatalogPracticeCount: number;
+  unmatchedCatalogPracticeCount: number;
+  orphanCsvEntryCount: number;
+  toleratedOrphanCsvEntryCount: number;
+  missingCatalogUuidCount: number;
+  missingUuidCount: number;
+  duplicateCatalogUuidCount: number;
+  duplicateUuidCount: number;
+  unmatchedCatalogPractices: Array<{
+    id?: string;
+    uuid?: string;
+  }>;
+  orphanCsvEntries: Array<{
+    value?: string;
+    uuid?: string;
+  }>;
+  toleratedOrphanCsvEntries: Array<{
+    value?: string;
+    uuid?: string;
+  }>;
+  entriesWithoutUuid: string[];
+  duplicateCatalogUuids: Array<{
+    value: string;
+    count: number;
+  }>;
+  duplicateUuids: Array<{
+    value: string;
+    count: number;
+  }>;
+}
+
 /** Integrity record shared by every shipped artifact (ADR-1) */
 export interface ArtifactIntegrity {
   sha256: string;
@@ -542,6 +577,7 @@ export interface VocabularyProvenance {
   dataQualityFindings?: string[];
   taxonomyCoverage?: {
     topics: TopicVocabularyCoverage | null;
+    practices: PracticeVocabularyIntegrity | null;
   };
   integrity: ArtifactIntegrity;
   build: ArtifactBuildInfo;

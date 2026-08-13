@@ -32,6 +32,71 @@ Das System prüft, ob die geladenen Artefakte zu den gemeinsam ausgelieferten In
 5. **Abruf über erlaubte GitHub-Endpunkte** mit Retry und Backoff bei transienten Fehlern; optional authentifiziert über `GH_TOKEN`/`GITHUB_TOKEN`.
 6. **Integritätsdaten**: SHA-256, Dateigröße, Git-Blob-SHA und Commit-Informationen werden je ausgeliefertem Artefakt erfasst. Das vollständige Manifest v2 enthält zusätzlich für jede materialisierte Registry-Datei Root-Typ und Lifecycle.
 
+### Lokale Snapshot-Freshness
+
+`public/data/` ist gitignoriert und kann nach einem Pull deshalb noch zu einem
+älteren oder neueren Snapshot gehören als das eingecheckte
+`upstream-manifest.json`. `scripts/check-catalog-freshness.mjs` vergleicht vor
+jedem Vitest-Lauf die kanonische `signatureSha256` des eingecheckten Manifests
+mit dem in `public/data/upstream-sources-metadata.json` eingebetteten Manifest.
+Damit wird auch ein geänderter Registry-Vertrag bei unverändertem
+Upstream-Commit erkannt; ein reiner Commit-SHA-Vergleich würde diesen Fall
+übersehen.
+
+Jede Abweichung, unabhängig von ihrer zeitlichen Richtung, bricht Tests über
+Vitests `globalSetup` mit erwarteter und gefundener 12-Zeichen-SHA ab. Beim
+lokalen Dev-Server bleibt dieselbe Diagnose bewusst nicht blockierend, wird
+aber über den Vite-Hook `catalog-freshness-diagnostic` als deutliches
+Terminal-Banner ausgegeben. Fehlende oder ungültige lokale Metadaten werden
+getrennt von einem fehlenden beziehungsweise ungültigen eingecheckten Manifest
+gemeldet. Für lokale Drift oder fehlende lokale Daten lautet die Reparatur:
+
+```bash
+npm run fetch-catalog
+```
+
+CI liest `snapshotCommitSha` aus dem eingecheckten Manifest und setzt ihn als
+`BSI_SNAPSHOT_SHA`, bevor `npm run fetch-catalog` läuft. Die dort erzeugten
+Metadaten tragen daher dieselbe Signatur und lösen keinen Freshness-Fehler aus.
+
+### Semantisches Control-Identitätsdelta
+
+Bei einem Snapshot-Wechsel ergänzt `scripts/sync-upstream-manifest.mjs` das
+reine Datei-Delta um einen semantischen Vergleich aller Manifest-Einträge mit
+`rootType: catalog` — unabhängig davon, ob ihr Lifecycle `supported`,
+`preview`, `draft` oder `blocked-by-upstream` ist. Das Skript lädt die alte und
+die neue Katalogfassung über ihre im jeweiligen Manifest gebundenen
+Git-Blob-SHAs. Vor der Interpretation müssen sowohl die SHA-1 im Git-Blob-Format
+als auch der SHA-256-Inhaltshash zum Manifest passen.
+
+`scripts/control-identity-delta.mjs` rekursiert durch Gruppen und verschachtelte
+Controls und klassifiziert Änderungen anhand der kataloginternen
+`alt-identifier`-Identität:
+
+- `added` und `removed`: Identität kommt nur in einem Snapshot vor
+- `moved`: gleicher `alt-identifier`, aber eine andere Control-ID
+- `id-rebound`: eine weiterverwendete Control-ID bezeichnet eine neu
+  hinzugekommene Identität
+- `identifier-changed`: genau ein alter und ein neuer Kandidat haben denselben
+  Titel, aber verschiedene `alt-identifier`
+- `ambiguous`: insbesondere doppelte `alt-identifier` oder nicht eindeutige
+  Titelkandidaten
+
+Die Titelgleichheit bei `identifier-changed` ist ausdrücklich nur
+nicht-kryptographische Evidenz; mehrdeutige Kandidaten werden nicht geraten.
+Der vollständige maschinenlesbare Befund wird als generierte, gitignorierte
+Datei `public/data/control-identity-delta.json` geschrieben. Jeder Eintrag enthält
+Artefaktschlüssel, beide Snapshot-SHAs, alte und neue Control-ID, alte und neue
+`alt-identifier`, Titel und Klassifikation. Der Sync-PR erhält zusätzlich eine
+menschenlesbare Zusammenfassung mit den alten und neuen Control-Zahlen und den
+Klassifikationssummen je Katalog.
+
+Der Vergleich ist bewusst diagnostisch: Fehler beim Blob-Abruf, bei der
+Hashprüfung, beim Parse oder beim Schreiben werden im Sync-Output sichtbar,
+ändern aber weder die `changed`-Entscheidung noch die Manifest-Aktualisierung
+oder den Exit-Code des ansonsten erfolgreichen Syncs. Die bestehenden harten
+Manifest-, Tree- und Catalog-Sync-Guards bleiben davon unberührt.
+
 ### Provenance-Metadaten (catalog-metadata.json)
 
 ```json
@@ -212,7 +277,7 @@ Dazu kommen Quell-Repository, Commit-SHA und Abrufzeitpunkt mit Link auf den exa
 
 ## Vocabulary Integrity
 
-Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funktion `verifyArtifactIntegrity` auf (die `IntegrityMetadata`-Union deckt beide Provenance-Typen ab). Die zugehörigen Metadaten stehen in `upstream-sources-metadata.json`. Darin umfasst `manifest` alle materialisierten Registry-Artefakte; das separate Top-Level-Feld `files` enthält ausschließlich die Datei-Provenance der ausgelieferten Namespace-CSVs. `dataQualityFindings` hält nicht blockierende fachliche Befunde zum unterstützten Katalog fest. `taxonomyCoverage.topics` protokolliert die gemessene UUID-Deckung zwischen Katalogthemen und `topics.csv`. Fetch und Catalog-Sync-Guard verlangen `practices.csv` und blockieren für jeden Snapshot fehlende oder doppelte Practice-UUIDs sowie Practice-Katalog- oder CSV-Orphans. Entsprechend blockieren sie leere Topic-Taxonomiedaten, fehlende oder doppelte Topic-UUIDs und Topic-Katalog- oder CSV-Orphans; für den bekannten gepinnten Snapshot gilt zusätzlich die exakte Topic-Zählwert-Baseline.
+Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funktion `verifyArtifactIntegrity` auf (die `IntegrityMetadata`-Union deckt beide Provenance-Typen ab). Die zugehörigen Metadaten stehen in `upstream-sources-metadata.json`. Darin umfasst `manifest` alle materialisierten Registry-Artefakte; das separate Top-Level-Feld `files` enthält ausschließlich die Datei-Provenance der ausgelieferten Namespace-CSVs. `dataQualityFindings` hält nicht blockierende fachliche Befunde zum unterstützten Katalog fest. `taxonomyCoverage.topics` protokolliert die gemessene UUID-Deckung zwischen Katalogthemen und `topics.csv`; `taxonomyCoverage.practices` hält symmetrisch die Practice-Deckung einschließlich der namentlich geduldeten `EXMP`-Ausnahme fest. Fetch und Catalog-Sync-Guard verlangen `practices.csv` und blockieren für jeden Snapshot fehlende oder doppelte Practice-UUIDs sowie Practice-Katalog- oder CSV-Orphans. Entsprechend blockieren sie leere Topic-Taxonomiedaten, fehlende oder doppelte Topic-UUIDs und Topic-Katalog- oder CSV-Orphans.
 
 ### Provenance-Metadaten (upstream-sources-metadata.json)
 
@@ -263,10 +328,10 @@ Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funkt
   "dataQualityFindings": [],
   "taxonomyCoverage": {
     "topics": {
-      "catalogTopicCount": 139,
-      "distinctCatalogUuidCount": 119,
-      "csvEntryCount": 119,
-      "matchedCatalogTopicCount": 139,
+      "catalogTopicCount": 140,
+      "distinctCatalogUuidCount": 120,
+      "csvEntryCount": 120,
+      "matchedCatalogTopicCount": 140,
       "unmatchedCatalogTopicCount": 0,
       "orphanCsvEntryCount": 0,
       "missingCatalogUuidCount": 0,
@@ -274,6 +339,30 @@ Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funkt
       "unmatchedCatalogTopics": [],
       "orphanCsvEntries": [],
       "duplicateCsvUuids": []
+    },
+    "practices": {
+      "catalogPracticeCount": 20,
+      "distinctCatalogUuidCount": 20,
+      "csvEntryCount": 21,
+      "matchedCatalogPracticeCount": 20,
+      "unmatchedCatalogPracticeCount": 0,
+      "orphanCsvEntryCount": 0,
+      "toleratedOrphanCsvEntryCount": 1,
+      "missingCatalogUuidCount": 0,
+      "missingUuidCount": 0,
+      "duplicateCatalogUuidCount": 0,
+      "duplicateUuidCount": 0,
+      "unmatchedCatalogPractices": [],
+      "orphanCsvEntries": [],
+      "toleratedOrphanCsvEntries": [
+        {
+          "value": "EXMP",
+          "uuid": "9d330062-5c39-4bb0-bef2-62ab66414aa5"
+        }
+      ],
+      "entriesWithoutUuid": [],
+      "duplicateCatalogUuids": [],
+      "duplicateUuids": []
     }
   },
   "integrity": {
@@ -366,6 +455,26 @@ interface TopicVocabularyCoverage {
   duplicateCsvUuids: Array<{ value: string; count: number }>;
 }
 
+interface PracticeVocabularyIntegrity {
+  catalogPracticeCount: number;
+  distinctCatalogUuidCount: number;
+  csvEntryCount: number;
+  matchedCatalogPracticeCount: number;
+  unmatchedCatalogPracticeCount: number;
+  orphanCsvEntryCount: number;
+  toleratedOrphanCsvEntryCount: number;
+  missingCatalogUuidCount: number;
+  missingUuidCount: number;
+  duplicateCatalogUuidCount: number;
+  duplicateUuidCount: number;
+  unmatchedCatalogPractices: Array<{ id?: string; uuid?: string }>;
+  orphanCsvEntries: Array<{ value?: string; uuid?: string }>;
+  toleratedOrphanCsvEntries: Array<{ value?: string; uuid?: string }>;
+  entriesWithoutUuid: string[];
+  duplicateCatalogUuids: Array<{ value: string; count: number }>;
+  duplicateUuids: Array<{ value: string; count: number }>;
+}
+
 interface VocabularyProvenance {
   artifactKey?: string;
   source: {
@@ -379,6 +488,7 @@ interface VocabularyProvenance {
   dataQualityFindings?: string[];
   taxonomyCoverage?: {
     topics: TopicVocabularyCoverage | null;
+    practices: PracticeVocabularyIntegrity | null;
   };
   integrity: ArtifactIntegrity;
   build: ArtifactBuildInfo;
