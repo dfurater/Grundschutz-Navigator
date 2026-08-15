@@ -376,6 +376,28 @@ werden durch Integrationstests abgesichert. Der Render-Callback für
 Vokabelkarten nimmt optional `hiddenColumns` entgegen, damit eine Sektion
 Spalten ausblenden kann, deren Wert sie bereits selbst sichtbar macht.
 
+## Suchseiten-Grenzen
+
+`src/features/search/SearchPage.tsx` ist der Composer der Volltextsuche
+(`/suche?q=…`). Er bindet `useSearch`, die 50er-Pagination und dieselben
+Desktop-/Mobile-Präsentationskomponenten wie der Katalog-Browser ein, hält
+dafür aber eine eigene, unabhängige Auswahl- und Export-Grenze.
+
+| Baustein | Verantwortung |
+|----------|----------------|
+| `useControlSelection` | Läuft mit dem Scope `search:<catalogKey>:<query>` — unabhängig vom Katalog-Browser-Scope (`catalogKey` allein). Beide Auswahlen beeinflussen einander nicht; jede Änderung von `q` liefert synchron eine leere Auswahl. |
+| `resultsUiState` | Führt `sort`, `visibleResultCount` und `mobileSelectMode` gemeinsam query-gebunden: Ein Vergleich mit der aktuellen Query entscheidet pro Feld, ob der gespeicherte Wert gilt oder auf den Ausgangszustand zurückfällt. Ein echter Query-Wechsel setzt damit synchron auch den mobilen Auswahlmodus zurück. |
+| `SearchResultsToolbar` | Schlanker Composer aus Auswahlanzahl/Aufheben, mobilem Auswahlmodus-Toggle sowie den wiederverwendeten `CatalogExportMenu`- und `CatalogMobileExportSheet`-Komponenten. Kein Filter-Zugang — die Suche hat keine Filterleiste. |
+| `ControlTable`s `selectableControls` | Optionale Prop, die ausschließlich die Header-Aktion „Alle auswählen" und ihren vollständig/teilweise ausgewählten Zustand bestimmt; Standard bleibt `controls`. `SearchPage` übergibt weiterhin nur die gerenderte Seite als `controls`, aber alle sortierten Query-Treffer als `selectableControls`, sodass „Alle auswählen" auch nicht nachgeladene Treffer erfasst. `CatalogBrowser` übergibt die Prop nicht und bleibt unverändert. |
+| `CatalogMobileSelectionBar` | Unverändert wiederverwendet; `SearchPage` rendert sie selbst (nicht die Toolbar) im mobilen Auswahlmodus und beendet Modus und Auswahl nach Export oder „Fertig". |
+
+Export-Dateinamen sind fest: Query-Treffer heißen
+`grundschutz-suchergebnisse.csv` (Desktop in aktueller Tabellensortierung,
+Mobile in Suchrelevanzreihenfolge), Auswahl heißt `grundschutz-auswahl.csv`,
+der Gesamtkatalogexport bleibt `grundschutz-gesamtkatalog.csv`. Der
+Suchbegriff selbst fließt nie in Dateiname, Log oder zusätzlichen Speicher
+ein.
+
 ## Filter-System
 
 Filter werden bidirektional mit URL-Suchparametern synchronisiert (`src/hooks/useFilterParams.ts`). Die Parameter-Keys sind bewusst kurz gehalten:

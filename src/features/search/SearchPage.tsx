@@ -5,6 +5,10 @@ import { useSearch } from './useSearch';
 import { Button } from '@/components/Button';
 import { ControlTable } from '@/features/catalog/ControlTable';
 import { ControlMobileReferenceRow } from '@/features/catalog/ControlMobileReferenceRow';
+import { CatalogMobileSelectionBar } from '@/features/catalog/CatalogMobileSelectionBar';
+import { SearchResultsToolbar } from './SearchResultsToolbar';
+import { useControlSelection } from '@/hooks/useControlSelection';
+import type { Control } from '@/domain/models';
 import {
   emptyFilters,
   useFilteredControls,
@@ -14,6 +18,22 @@ import { IconSearch } from '@/components/icons';
 import { buildControlUrlForControl } from '@/app/routes';
 
 const SEARCH_RESULTS_PAGE_SIZE = 50;
+
+interface ResultsUiState {
+  query: string;
+  sort: SortConfig;
+  visibleResultCount: number;
+  mobileSelectMode: boolean;
+}
+
+function createResultsUiState(query: string): ResultsUiState {
+  return {
+    query,
+    sort: [],
+    visibleResultCount: SEARCH_RESULTS_PAGE_SIZE,
+    mobileSelectMode: false,
+  };
+}
 
 export function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -33,51 +53,44 @@ export function SearchPage() {
     vocabularyRegistry,
     catalog?.practices ?? [],
   );
-  const [resultsUiState, setResultsUiState] = useState(() => ({
-    query,
-    sort: [] as SortConfig,
-    visibleResultCount: SEARCH_RESULTS_PAGE_SIZE,
-  }));
-  const sort =
-    resultsUiState.query === query ? resultsUiState.sort : [];
-  const visibleResultCount =
-    resultsUiState.query === query
-      ? resultsUiState.visibleResultCount
-      : SEARCH_RESULTS_PAGE_SIZE;
+  const [resultsUiState, setResultsUiState] = useState<ResultsUiState>(() =>
+    createResultsUiState(query),
+  );
+  const { sort, visibleResultCount, mobileSelectMode } =
+    resultsUiState.query === query ? resultsUiState : createResultsUiState(query);
 
   const setSort = useCallback(
     (next: SortConfig) => {
-      setResultsUiState((current) => {
-        const currentVisible =
-          current.query === query
-            ? current.visibleResultCount
-            : SEARCH_RESULTS_PAGE_SIZE;
-
-        return {
-          query,
-          sort: next,
-          visibleResultCount: currentVisible,
-        };
-      });
+      setResultsUiState((current) => ({
+        ...(current.query === query ? current : createResultsUiState(query)),
+        query,
+        sort: next,
+      }));
     },
     [query],
   );
 
   const handleShowMoreResults = useCallback(() => {
     setResultsUiState((current) => {
-      const currentVisible =
-        current.query === query
-          ? current.visibleResultCount
-          : SEARCH_RESULTS_PAGE_SIZE;
-      const currentSort = current.query === query ? current.sort : [];
-
+      const base = current.query === query ? current : createResultsUiState(query);
       return {
+        ...base,
         query,
-        sort: currentSort,
-        visibleResultCount: currentVisible + SEARCH_RESULTS_PAGE_SIZE,
+        visibleResultCount: base.visibleResultCount + SEARCH_RESULTS_PAGE_SIZE,
       };
     });
   }, [query]);
+
+  const setMobileSelectMode = useCallback(
+    (next: boolean) => {
+      setResultsUiState((current) => ({
+        ...(current.query === query ? current : createResultsUiState(query)),
+        query,
+        mobileSelectMode: next,
+      }));
+    },
+    [query],
+  );
 
   const handleInputChange = useCallback(
     (value: string) => {
@@ -95,6 +108,33 @@ export function SearchPage() {
   );
 
   const controlsById = catalog?.controlsById;
+  const catalogKey = catalog?.catalogKey ?? '__unknown_catalog__';
+  const {
+    checkedIds,
+    setCheckedIds,
+    setChecked,
+    clear: clearSelection,
+  } = useControlSelection({ scopeId: `search:${catalogKey}:${query}` });
+
+  const finishMobileSelection = useCallback(() => {
+    setMobileSelectMode(false);
+    clearSelection();
+  }, [clearSelection, setMobileSelectMode]);
+
+  const toggleMobileSelectMode = useCallback(() => {
+    if (mobileSelectMode) {
+      finishMobileSelection();
+    } else {
+      setMobileSelectMode(true);
+    }
+  }, [finishMobileSelection, mobileSelectMode, setMobileSelectMode]);
+
+  const handleMobileCheckedChange = useCallback(
+    (control: Control, checked: boolean) => {
+      setChecked(control.id, checked);
+    },
+    [setChecked],
+  );
 
   const { filtered: tableControls } = useFilteredControls(
     resultControls,
@@ -179,33 +219,58 @@ export function SearchPage() {
       {/* Results — breakpoint-spezifisch */}
       {!isLoading && controlsById && results.length > 0 && (
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+          <SearchResultsToolbar
+            checkedIds={checkedIds}
+            onClearSelection={clearSelection}
+            mobileSelectMode={mobileSelectMode}
+            onToggleMobileSelectMode={toggleMobileSelectMode}
+            desktopViewControls={tableControls}
+            mobileViewControls={resultControls}
+            allControls={catalog?.controls ?? []}
+            onSelectionExported={finishMobileSelection}
+          />
           {/* Desktop: volle Katalogtabelle */}
           <div data-testid="search-results-desktop" className="hidden lg:flex flex-1 min-h-0 flex-col overflow-hidden">
             <ControlTable
               controls={visibleTableControls}
               controlsById={controlsById}
               selectedControlId={undefined}
+              selectableControls={tableControls}
+              checkedIds={checkedIds}
               sort={sort}
               onSortChange={setSort}
               onSelectControl={(control) =>
                 catalog && navigate(buildControlUrlForControl(catalog.catalogKey, control))
               }
-              showSelection={false}
+              onCheckedChange={setCheckedIds}
             />
           </div>
           {/* Mobile: Katalog-Mobile-Referenzliste */}
-          <div data-testid="search-results-mobile" className="lg:hidden flex-1 md:overflow-y-auto divide-y divide-[var(--color-border-subtle)]">
+          <div
+            data-testid="search-results-mobile"
+            className={`lg:hidden flex-1 md:overflow-y-auto divide-y divide-[var(--color-border-subtle)] ${mobileSelectMode ? 'pb-[calc(7rem+env(safe-area-inset-bottom,0px))]' : 'pb-safe'}`}
+          >
             {visibleMobileControls.map((control) => (
               <ControlMobileReferenceRow
                 key={control.id}
                 control={control}
                 controlsById={controlsById}
+                selectMode={mobileSelectMode}
+                checked={checkedIds.has(control.id)}
                 onSelect={(control) =>
                   catalog && navigate(buildControlUrlForControl(catalog.catalogKey, control))
                 }
+                onCheckedChange={handleMobileCheckedChange}
               />
             ))}
           </div>
+          {mobileSelectMode && catalog && (
+            <CatalogMobileSelectionBar
+              checkedIds={checkedIds}
+              allControls={catalog.controls}
+              onDone={finishMobileSelection}
+            />
+          )}
           {hasHiddenResults && (
             <div className="shrink-0 border-t border-[var(--color-border-default)] bg-[var(--color-surface-base)] px-4 py-3 text-center">
               <Button
