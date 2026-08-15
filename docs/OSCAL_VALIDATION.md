@@ -48,6 +48,14 @@ SHA-256-Werte und prüft den vollständigen im gepinnten
 ein eigenständiges Schema-Orakel: Es aktiviert weder den Browser-Validator noch
 behauptet es eine vollständige Validierung der Stufen 1, 2, 4 oder 5.
 
+Ein geworfener Transportfehler oder ein HTTP-5xx beim CI-Abruf wird pro
+einzelnem HTTP-Aufruf höchstens zweimal mit festen kurzen Delays wiederholt.
+Das gilt für Release-Metadaten, jeden erlaubten Redirect-Hop und gepinnte
+BSI-Blob-Abrufe. HTTP-4xx, Redirect-Verstöße, Größen- und Parsefehler sowie
+sämtliche API-, Checksum-, SHA-256- und Blob-Pin-Abweichungen bleiben dagegen
+sofort fail-closed. Die Wiederholung verbessert ausschließlich die
+Verfügbarkeit des bereits gepinnten Abrufs; sie ist keine Lieferkettenausnahme.
+
 Die bestehende Integritätsprüfung und `parseCatalog` ersetzen diese Gates
 nicht. Die App darf ausschließlich die für den Klasse-2-Einstieg tatsächlich
 ausgeführten Stufen 1 und 2 ausweisen, nie die vollständige Kette. Insbesondere
@@ -232,7 +240,7 @@ Ajv-8.20.0-Pin.
 | --- | --- | --- |
 | NIST-JSON-Schemas | Offizielle Releases `v1.1.2`, `v1.1.3`, `v1.2.1` und `v1.2.2`; root-spezifische JSON-Schemadatei | Eine maschinenlesbare Allowlist bindet Release, Root, Version, Dateiname und SHA-256. Download ist nur in einem expliziten Wartungslauf erlaubt. Fehlender oder abweichender Hash blockiert Build und Import. |
 | Ajv, nach Aktivierung | npm-Paket `ajv` exakt 8.20.0, MIT | Der dann atomar aktualisierte `package-lock.json` bindet Tarball und SRI-Integrität. Die OSS-Zulassung prüft Lizenz, Herkunft, Wartung, Transitivabhängigkeiten, Sicherheitslage, Bundle-/Worker-Eignung und Updateweg, bevor das Paket produktiv wird. |
-| go-oscal, CI aktiviert | Offizielles GitHub-Release `v0.7.1`, Apache-2.0; Namen und SHA-256 aller unterstützten Plattformartefakte sind statisch in [`verify-upstream-oscal.mjs`](../scripts/verify-upstream-oscal.mjs) gepinnt | Vor der Ausführung müssen Tag, direkter Release-URL und GitHub-API-Digest zum statischen Pin passen. Das geladene Binary und die SBOM müssen zusätzlich ihren statischen SHA-256 und den zugehörigen Eintrag aus `checksums.txt` erfüllen. CI nutzt Linux amd64, schreibt die verifizierte SBOM nur nach `$RUNNER_TEMP` und archiviert sie via SHA-gepinntem `actions/upload-artifact`. Die ausführbare Datei wird weder eingecheckt noch außerhalb des temporären Laufs abgelegt. |
+| go-oscal, CI aktiviert | Offizielles GitHub-Release `v0.7.1`, Apache-2.0; Namen und SHA-256 aller unterstützten Plattformartefakte sind statisch in [`verify-upstream-oscal.mjs`](../scripts/verify-upstream-oscal.mjs) gepinnt | Vor der Ausführung müssen Tag, direkter Release-URL und GitHub-API-Digest zum statischen Pin passen. Das geladene Binary und die SBOM müssen zusätzlich ihren statischen SHA-256 und den zugehörigen Eintrag aus `checksums.txt` erfüllen. Ausschließlich geworfene Transportfehler und HTTP-5xx erhalten pro HTTP-Aufruf höchstens zwei Wiederholungen; alle Pin- und sonstigen Prüffehler bleiben sofort fail-closed. CI nutzt Linux amd64, schreibt die verifizierte SBOM nur nach `$RUNNER_TEMP` und archiviert sie via SHA-gepinntem `actions/upload-artifact`. Die ausführbare Datei wird weder eingecheckt noch außerhalb des temporären Laufs abgelegt. |
 | Eigene Regeln | App-Quellcode und Tests | Pinning durch Commit-SHA; jede Regel nennt betroffene Root×Version-Paare und stabile Diagnostic-Codes. |
 
 Schema- und Toolupdates sind atomar: neue Datei beziehungsweise neue Version,
