@@ -19,6 +19,8 @@ interface ControlTableBaseProps {
   sort: SortConfig;
   onSortChange: (sort: SortConfig) => void;
   onSelectControl: (control: Control) => void;
+  /** Full set "select all" spans for the header tri-state and toggle. Defaults to `controls`. */
+  selectableControls?: Control[];
 }
 
 type ControlTableSelectionProps =
@@ -204,6 +206,7 @@ export function ControlTable(props: ControlTableProps) {
     sort,
     onSortChange,
     onSelectControl,
+    selectableControls = controls,
   } = props;
   const showSelection = props.showSelection !== false;
   const checkedIds = showSelection && 'checkedIds' in props ? props.checkedIds : EMPTY_CHECKED_IDS;
@@ -275,20 +278,20 @@ export function ControlTable(props: ControlTableProps) {
 
   const tabStopIndex = Math.min(focusedIndex, Math.max(controls.length - 1, 0));
 
-  const allChecked = showSelection && controls.length > 0 && controls.every((c) => checkedIds.has(c.id));
-  const someChecked = showSelection && !allChecked && controls.some((c) => checkedIds.has(c.id));
+  const allChecked = showSelection && selectableControls.length > 0 && selectableControls.every((c) => checkedIds.has(c.id));
+  const someChecked = showSelection && !allChecked && selectableControls.some((c) => checkedIds.has(c.id));
 
   const handleToggleAll = () => {
     if (!onCheckedChange) return;
     if (allChecked) {
-      // Deselect all visible
+      // Deselect the full selection universe
       const next = new Set(checkedIds);
-      controls.forEach((c) => next.delete(c.id));
+      selectableControls.forEach((c) => next.delete(c.id));
       onCheckedChange(next);
     } else {
-      // Select all visible
+      // Select the full selection universe
       const next = new Set(checkedIds);
-      controls.forEach((c) => next.add(c.id));
+      selectableControls.forEach((c) => next.add(c.id));
       onCheckedChange(next);
     }
   };

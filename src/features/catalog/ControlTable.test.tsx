@@ -232,6 +232,66 @@ describe('ControlTable', () => {
     expect(onSelectControl).not.toHaveBeenCalled();
   });
 
+  it('spans "select all" across a selection universe larger than the rendered rows', async () => {
+    const user = userEvent.setup();
+    const renderedControls = Array.from({ length: 50 }, (_, i) =>
+      makeControl({ id: `GC.1.${i + 1}` }),
+    );
+    const hiddenControl = makeControl({ id: 'GC.1.51' });
+    const selectableControls = [...renderedControls, hiddenControl];
+    const onCheckedChange = vi.fn();
+
+    render(
+      <ControlTable
+        controls={renderedControls}
+        controlsById={new Map(selectableControls.map((c) => [c.id, c]))}
+        selectableControls={selectableControls}
+        checkedIds={new Set<string>()}
+        sort={[{ field: 'id', direction: 'asc' }]}
+        onSortChange={vi.fn()}
+        onSelectControl={vi.fn()}
+        onCheckedChange={onCheckedChange}
+      />,
+    );
+
+    await user.click(screen.getByRole('checkbox', { name: 'Alle auswählen' }));
+
+    expect(onCheckedChange).toHaveBeenCalledWith(
+      new Set(selectableControls.map((c) => c.id)),
+    );
+  });
+
+  it('shows the "select all" header as fully checked and demarks the whole universe, not just rendered rows', async () => {
+    const user = userEvent.setup();
+    const renderedControls = Array.from({ length: 50 }, (_, i) =>
+      makeControl({ id: `GC.1.${i + 1}` }),
+    );
+    const hiddenControl = makeControl({ id: 'GC.1.51' });
+    const selectableControls = [...renderedControls, hiddenControl];
+    const onCheckedChange = vi.fn();
+
+    render(
+      <ControlTable
+        controls={renderedControls}
+        controlsById={new Map(selectableControls.map((c) => [c.id, c]))}
+        selectableControls={selectableControls}
+        checkedIds={new Set(selectableControls.map((c) => c.id))}
+        sort={[{ field: 'id', direction: 'asc' }]}
+        onSortChange={vi.fn()}
+        onSelectControl={vi.fn()}
+        onCheckedChange={onCheckedChange}
+      />,
+    );
+
+    const selectAll = screen.getByRole('checkbox', { name: 'Alle auswählen' });
+    expect((selectAll as HTMLInputElement).checked).toBe(true);
+    expect((selectAll as HTMLInputElement).indeterminate).toBe(false);
+
+    await user.click(selectAll);
+
+    expect(onCheckedChange).toHaveBeenCalledWith(new Set());
+  });
+
   it('keeps exactly one row tabbable when filtering shortens the result', () => {
     const controls = [
       makeControl({ id: 'GC.1.1' }),
