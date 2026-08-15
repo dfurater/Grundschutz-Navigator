@@ -76,19 +76,23 @@ Navigation deshalb Node-seitig als Verstoß und installiert die CSP nicht still
 im Ziel-Dokument neu; der anschließende `afterEach` schlägt mit dem
 Egress-Marker fehl.
 
-`npm run test:browser:egress-negative` aktiviert einen absichtlich nicht
-erlaubten Request an die aus `window.location` abgeleitete Loopback-Origin mit
-abweichendem Port; bei Port 65535 wird auf 65534 ausgewichen. Der Guard bricht
-ihn vor jeder Namens- oder Netzauflösung ab. Der Negativtest erwartet genau
-einen ausgeführten HTTP-Abbruch und keine WebSocket-Schließung. Der innere
-Browser-Lauf **muss** mit dem Egress-Marker fehlschlagen; das Wrapper-Skript
-wird nur dann grün, wenn Vitests JSON-Report exakt diesen einen fehlgeschlagenen
-Test mit dem Marker enthält. Der Testkörper endet nach der Abbruchzählung
-normal; erst der immer aktive `afterEach` ruft `assertNoViolations` über den
-Browser-Command auf und erzeugt den Marker. Zusätzliche Testfehler, Timeouts
-oder andere Runner-Signale lassen auch den Wrapper scheitern. Der Nachweis
-führt damit den HTTP-Cross-Origin-Pfad aus, ohne eine zusätzliche produktive
-Fetch-Quelle einzuführen.
+`npm run test:browser:egress-negative` startet zwei getrennte innere
+Browser-Läufe für absichtlich nicht abgewartete `fetch`- und
+`navigator.sendBeacon`-Requests. Beide Ziele werden aus `window.location` als
+Loopback-Origin mit abweichendem Port abgeleitet; bei Port 65535 wird auf 65534
+ausgewichen. Der Guard bricht sie vor jeder Namens- oder Netzauflösung ab. Die
+Testkörper werfen nicht selbst und warten die Requests nicht ab. Erst der immer
+aktive `afterEach` ruft `assertNoViolations` über den Browser-Command auf und
+erzeugt den Egress-Marker.
+
+Jeder innere Lauf **muss** mit genau einem Marker, der zum ausgewählten Fall,
+zur erwarteten HTTP-Methode und zum erwarteten Loopback-Pfad passt,
+fehlschlagen. Das Wrapper-Skript wird nur dann grün, wenn Vitests JSON-Report
+exakt diesen einen fehlgeschlagenen Test enthält. Eine falsche Methode, mehrere
+Marker, ein zusätzlicher Verstoß, ein unerwartet grüner Lauf, weitere
+Testfehler, Timeouts oder Runner-Signale lassen auch den Wrapper scheitern. Die
+Nachweise führen damit die HTTP-Cross-Origin-Pfade aus, ohne zusätzliche
+produktive Fetch-Quellen einzuführen.
 
 Die Hook-Grenze kann keine Browser-Aufgabe erfassen, die erst *nach* Ende des
 Tests einen Request startet. Dafür wäre eine veränderte Testlaufzeit-Architektur

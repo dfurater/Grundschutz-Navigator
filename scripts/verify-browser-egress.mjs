@@ -3,13 +3,42 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { NEGATIVE_EGRESS_TEST_NAME } from '../src/test/browser/egressOracleContract.mjs';
+import { NEGATIVE_EGRESS_CASES } from '../src/test/browser/egressOracleContract.mjs';
 
 export const EGRESS_FAILURE_MARKER = '[BROWSER_EGRESS_BLOCKED]';
 export const NEGATIVE_EGRESS_TEST_PATH = 'src/test/browser/egressOracle.negative.browser.test.ts';
-export { NEGATIVE_EGRESS_TEST_NAME };
+export { NEGATIVE_EGRESS_CASES };
 
-function expectedEgressFailure(report) {
+function hasExpectedEgressViolation(failureMessage, negativeCase) {
+  const markerCount = failureMessage.split(EGRESS_FAILURE_MARKER).length - 1;
+  if (markerCount !== 1) {
+    return false;
+  }
+
+  const [firstLine] = failureMessage.split(/\r?\n/u);
+  const prefix = `Error: ${EGRESS_FAILURE_MARKER} ${negativeCase.expectedMethod} `;
+  if (!firstLine.startsWith(prefix)) {
+    return false;
+  }
+
+  let url;
+  try {
+    url = new URL(firstLine.slice(prefix.length));
+  } catch {
+    return false;
+  }
+
+  const loopbackHosts = new Set(['localhost', '127.0.0.1', '[::1]']);
+  return (
+    (url.protocol === 'http:' || url.protocol === 'https:')
+    && loopbackHosts.has(url.hostname)
+    && url.pathname === `/egress-proof/${negativeCase.id}`
+    && url.search === ''
+    && url.hash === ''
+  );
+}
+
+function expectedEgressFailure(report, negativeCase) {
   if (!report || typeof report !== 'object') {
     return undefined;
   }
@@ -36,11 +65,11 @@ function expectedEgressFailure(report) {
   if (
     report.testResults?.length !== 1
     || testResult?.assertionResults?.length !== 1
-    || assertion?.fullName !== NEGATIVE_EGRESS_TEST_NAME
+    || assertion?.fullName !== negativeCase.testName
     || assertion?.status !== 'failed'
     || assertion?.failureMessages?.length !== 1
     || typeof failureMessage !== 'string'
-    || !failureMessage.includes(EGRESS_FAILURE_MARKER)
+    || !hasExpectedEgressViolation(failureMessage, negativeCase)
   ) {
     return undefined;
   }
@@ -57,45 +86,49 @@ export function verifyBrowserEgress({
 } = {}) {
   const vitestEntryPoint = resolve('node_modules/vitest/vitest.mjs');
   const reportDirectory = mkdtempSyncImpl(join(tmpdir(), 'gspp-browser-egress-'));
-  const reportPath = join(reportDirectory, 'result.json');
-
   try {
-    const result = spawnSyncImpl(
-      process.execPath,
-      [
-        vitestEntryPoint,
-        'run',
-        '--config',
-        'vitest.browser.config.ts',
-        NEGATIVE_EGRESS_TEST_PATH,
-        '--reporter=json',
-        `--outputFile=${reportPath}`,
-      ],
-      {
-        encoding: 'utf8',
-        env: {
-          ...process.env,
-          VITE_BROWSER_EGRESS_NEGATIVE: '1',
+    for (const negativeCase of NEGATIVE_EGRESS_CASES) {
+      const reportPath = join(reportDirectory, `${negativeCase.id}.json`);
+      const result = spawnSyncImpl(
+        process.execPath,
+        [
+          vitestEntryPoint,
+          'run',
+          '--config',
+          'vitest.browser.config.ts',
+          NEGATIVE_EGRESS_TEST_PATH,
+          '--reporter=json',
+          `--outputFile=${reportPath}`,
+        ],
+        {
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            VITE_BROWSER_EGRESS_NEGATIVE: negativeCase.id,
+          },
         },
-      },
-    );
+      );
 
-    if (result.error) {
-      throw result.error;
-    }
-    if (result.status === 0) {
-      throw new Error('Der negative Browser-Egress-Nachweis ist unerwartet grün.');
-    }
-    if (result.status !== 1 || result.signal) {
-      throw new Error('Der negative Browser-Egress-Nachweis entspricht nicht dem erwarteten Testergebnisvertrag.');
-    }
+      if (result.error) {
+        throw result.error;
+      }
+      if (result.status === 0) {
+        throw new Error('Der negative Browser-Egress-Nachweis ist unerwartet grün.');
+      }
+      if (result.status !== 1 || result.signal) {
+        throw new Error('Der negative Browser-Egress-Nachweis entspricht nicht dem erwarteten Testergebnisvertrag.');
+      }
 
-    const failureMessage = expectedEgressFailure(JSON.parse(readFileSyncImpl(reportPath, 'utf8')));
-    if (!failureMessage) {
-      throw new Error('Der negative Browser-Egress-Nachweis entspricht nicht dem erwarteten Testergebnisvertrag.');
-    }
+      const failureMessage = expectedEgressFailure(
+        JSON.parse(readFileSyncImpl(reportPath, 'utf8')),
+        negativeCase,
+      );
+      if (!failureMessage) {
+        throw new Error('Der negative Browser-Egress-Nachweis entspricht nicht dem erwarteten Testergebnisvertrag.');
+      }
 
-    write(`${failureMessage}\n`);
+      write(`${failureMessage}\n`);
+    }
   } finally {
     rmSyncImpl(reportDirectory, { force: true, recursive: true });
   }
