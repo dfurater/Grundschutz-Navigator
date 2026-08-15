@@ -138,6 +138,19 @@ describe('transiente Abrufe für die go-oscal-Lieferkette', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
+  it('bricht bei einem von Undici signalisierten Redirect sofort ab', async () => {
+    const redirectError = new TypeError('fetch failed', {
+      cause: new Error('unexpected redirect'),
+    });
+    const fetchImpl = vi.fn().mockRejectedValue(redirectError);
+
+    await expect(
+      fetchWithTransientRetry(fetchImpl, 'https://example.test/pinned', { redirect: 'error' }, [0, 0]),
+    ).rejects.toBe(redirectError);
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it('wiederholt HTTP-5xx, aber HTTP-4xx nicht', async () => {
     const transientFailure = vi.fn()
       .mockResolvedValueOnce(new Response('temporary failure', { status: 502 }))
@@ -555,6 +568,30 @@ describe('Korpus-Orchestrierung', () => {
           ([url]) => url === `${releaseBase}/${releaseConfig.platforms['linux-x64'].binaryName}`,
         ),
       ).toHaveLength(1);
+
+      const exhaustedServerErrorFetch = vi.fn(async (url: string) => {
+        if (url === 'https://api.github.com/repos/example/go-oscal/releases/tags/vtest') {
+          return new Response('temporary failure', { status: 503 });
+        }
+        return fetchImpl(url);
+      });
+      await expect(
+        runVerifyUpstreamOscal({
+          repoRoot: tempRoot,
+          registry,
+          fetchImpl: exhaustedServerErrorFetch,
+          executeTool,
+          platform: 'linux',
+          arch: 'x64',
+          releaseConfig,
+          retryDelaysMs: [0, 0],
+        }),
+      ).rejects.toThrow('GitHub-Release-Metadaten konnten nicht geladen werden');
+      expect(
+        exhaustedServerErrorFetch.mock.calls.filter(
+          ([url]) => url === 'https://api.github.com/repos/example/go-oscal/releases/tags/vtest',
+        ),
+      ).toHaveLength(3);
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }

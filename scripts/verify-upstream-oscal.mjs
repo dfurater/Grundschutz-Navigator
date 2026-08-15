@@ -311,6 +311,10 @@ function sleep(milliseconds) {
   });
 }
 
+function isUnexpectedRedirectError(error) {
+  return error?.cause?.message === 'unexpected redirect';
+}
+
 /** Wiederholt ausschließlich Transportfehler und HTTP-5xx pro HTTP-Aufruf. */
 export async function fetchWithTransientRetry(
   fetchImpl,
@@ -326,7 +330,7 @@ export async function fetchWithTransientRetry(
         return response;
       }
     } catch (error) {
-      if (isLastAttempt) throw error;
+      if (isLastAttempt || isUnexpectedRedirectError(error)) throw error;
     }
     await sleep(retryDelaysMs[attempt]);
   }
