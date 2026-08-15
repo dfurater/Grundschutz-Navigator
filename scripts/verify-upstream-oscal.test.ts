@@ -11,6 +11,7 @@ import {
   classifyValidationResult,
   executeGoOscal,
   evaluateArtifactExpectation,
+  fetchWithTransientRetry,
   formatVerificationFailure,
   getReleaseAssetsForPlatform,
   parseChecksums,
@@ -121,6 +122,72 @@ describe('GitHub-Release-Metadaten', () => {
     expect(() => getReleaseAssetsForPlatform(release('0'.repeat(64)), linux)).toThrow(
       'GitHub-Release-Metadaten widersprechen dem statischen Pin',
     );
+  });
+});
+
+describe('transiente Abrufe für die go-oscal-Lieferkette', () => {
+  it('wiederholt einen geworfenen Transportfehler höchstens zweimal', async () => {
+    const fetchImpl = vi.fn()
+      .mockRejectedValueOnce(new Error('UND_ERR_SOCKET: other side closed'))
+      .mockRejectedValueOnce(new Error('UND_ERR_SOCKET: other side closed'))
+      .mockResolvedValue(new Response('ok'));
+
+    await expect(
+      fetchWithTransientRetry(fetchImpl, 'https://example.test/pinned', {}, [0, 0]),
+    ).resolves.toMatchObject({ status: 200 });
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it('wiederholt HTTP-5xx, aber HTTP-4xx nicht', async () => {
+    const transientFailure = vi.fn()
+      .mockResolvedValueOnce(new Response('temporary failure', { status: 502 }))
+      .mockResolvedValueOnce(new Response('temporary failure', { status: 503 }))
+      .mockResolvedValue(new Response('ok'));
+    const permanentFailure = vi.fn().mockResolvedValue(new Response('forbidden', { status: 403 }));
+
+    await expect(
+      fetchWithTransientRetry(transientFailure, 'https://example.test/pinned', {}, [0, 0]),
+    ).resolves.toMatchObject({ status: 200 });
+    await expect(
+      fetchWithTransientRetry(permanentFailure, 'https://example.test/pinned', {}, [0, 0]),
+    ).resolves.toMatchObject({ status: 403 });
+
+    expect(transientFailure).toHaveBeenCalledTimes(3);
+    expect(permanentFailure).toHaveBeenCalledTimes(1);
+  });
+
+  it('wiederholt weder Integritätsfehler noch leakt es ausgeschöpfte Transportfehler', async () => {
+    const integrityFailure = vi.fn().mockResolvedValue(new Response('wrong bytes'));
+    const response = await fetchWithTransientRetry(
+      integrityFailure,
+      'https://example.test/pinned',
+      {},
+      [0, 0],
+    );
+    const bytes = Buffer.from(await response.text());
+
+    expect(() =>
+      verifyPinnedAsset({
+        bytes,
+        expectedSha256: '0'.repeat(64),
+        apiDigest: `sha256:${'0'.repeat(64)}`,
+        checksumDigest: '0'.repeat(64),
+      }),
+    ).toThrow('Berechneter SHA-256 stimmt nicht mit dem Pin überein');
+    expect(integrityFailure).toHaveBeenCalledTimes(1);
+
+    const exhaustedFailure = vi.fn().mockRejectedValue(
+      new Error('UND_ERR_SOCKET https://example.test/pinned?secret=redact /private/tmp/input'),
+    );
+    const error = await fetchWithTransientRetry(
+      exhaustedFailure,
+      'https://example.test/pinned',
+      {},
+      [0, 0],
+    ).catch((failure) => failure);
+
+    expect(exhaustedFailure).toHaveBeenCalledTimes(3);
+    expect(formatVerificationFailure(error)).toBe('GO_OSCAL_VERIFICATION_FAILED');
   });
 });
 
@@ -388,9 +455,14 @@ describe('Korpus-Orchestrierung', () => {
 
     const releaseBase = 'https://github.com/example/go-oscal/releases/download/vtest';
     const calls: string[] = [];
+    let remainingMetadataTransportFailures = 1;
     const fetchImpl = vi.fn(async (url: string) => {
       calls.push(url);
       if (url === 'https://api.github.com/repos/example/go-oscal/releases/tags/vtest') {
+        if (remainingMetadataTransportFailures > 0) {
+          remainingMetadataTransportFailures -= 1;
+          throw new Error('UND_ERR_SOCKET: other side closed');
+        }
         return new Response(JSON.stringify({
           tag_name: 'vtest',
           assets: [
@@ -422,6 +494,7 @@ describe('Korpus-Orchestrierung', () => {
         platform: 'linux',
         arch: 'x64',
         releaseConfig,
+        retryDelaysMs: [0, 0],
       });
       const second = await runVerifyUpstreamOscal({
         repoRoot: tempRoot,
@@ -437,7 +510,7 @@ describe('Korpus-Orchestrierung', () => {
       expect(first.summary).toContain('OSCAL: 1 geprüft');
       expect(first.summary).toContain('vocabulary: 1 übersprungen (kein OSCAL-Root-Modell)');
       expect(first.summary).not.toMatch(/private\/|documentPath|failedValue|stack/i);
-      expect(calls).toHaveLength(10);
+      expect(calls).toHaveLength(11);
       expect(calls.every((url) =>
         url.startsWith('https://api.github.com/repos/example/go-oscal/') ||
         url.startsWith(releaseBase) ||
@@ -458,6 +531,30 @@ describe('Korpus-Orchestrierung', () => {
         code: 'GO_OSCAL_VALIDATION_RESULT_UNAVAILABLE',
         artifactKey: 'catalog-fixture',
       });
+
+      const integrityFailureFetch = vi.fn(async (url: string) => {
+        const response = await fetchImpl(url);
+        return url === `${releaseBase}/${releaseConfig.platforms['linux-x64'].binaryName}`
+          ? new Response('wrong bytes')
+          : response;
+      });
+      await expect(
+        runVerifyUpstreamOscal({
+          repoRoot: tempRoot,
+          registry,
+          fetchImpl: integrityFailureFetch,
+          executeTool,
+          platform: 'linux',
+          arch: 'x64',
+          releaseConfig,
+          retryDelaysMs: [0, 0],
+        }),
+      ).rejects.toThrow('Berechneter SHA-256 stimmt nicht mit dem Pin überein');
+      expect(
+        integrityFailureFetch.mock.calls.filter(
+          ([url]) => url === `${releaseBase}/${releaseConfig.platforms['linux-x64'].binaryName}`,
+        ),
+      ).toHaveLength(1);
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }

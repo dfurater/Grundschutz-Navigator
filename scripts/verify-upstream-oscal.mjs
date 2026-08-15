@@ -227,6 +227,7 @@ const MAX_RELEASE_BINARY_BYTES = 16 * 1024 * 1024;
 const MAX_SBOM_BYTES = 1024 * 1024;
 const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 const MAX_REDIRECT_HOPS = 5;
+const TRANSIENT_RETRY_DELAYS_MS = Object.freeze([1000, 3000]);
 export const GO_OSCAL_EXECUTION_TIMEOUT_MS = 60_000;
 const execFileAsync = promisify(execFile);
 const SAFE_ARTIFACT_KEY = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
@@ -304,11 +305,43 @@ function assertAllowedReleaseRedirect(rawUrl) {
   return url.toString();
 }
 
-async function fetchReleaseAsset(asset, fetchImpl, maxBytes) {
+function sleep(milliseconds) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+}
+
+/** Wiederholt ausschließlich Transportfehler und HTTP-5xx pro HTTP-Aufruf. */
+export async function fetchWithTransientRetry(
+  fetchImpl,
+  url,
+  init,
+  retryDelaysMs = TRANSIENT_RETRY_DELAYS_MS,
+) {
+  for (let attempt = 0; ; attempt += 1) {
+    const isLastAttempt = attempt >= retryDelaysMs.length;
+    try {
+      const response = await fetchImpl(url, init);
+      if (response.status < 500 || response.status > 599 || isLastAttempt) {
+        return response;
+      }
+    } catch (error) {
+      if (isLastAttempt) throw error;
+    }
+    await sleep(retryDelaysMs[attempt]);
+  }
+}
+
+async function fetchReleaseAsset(asset, fetchImpl, maxBytes, retryDelaysMs) {
   let url = assertAllowedReleaseRedirect(asset.browser_download_url);
 
   for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop += 1) {
-    const response = await fetchImpl(url, { redirect: 'manual' });
+    const response = await fetchWithTransientRetry(
+      fetchImpl,
+      url,
+      { redirect: 'manual' },
+      retryDelaysMs,
+    );
     if (response.status < 300 || response.status > 399) {
       if (!response.ok) throw new Error('Release-Asset-Download fehlgeschlagen');
       return readBodyWithLimit(response, { maxBytes, label: 'Release-Asset' });
@@ -321,12 +354,17 @@ async function fetchReleaseAsset(asset, fetchImpl, maxBytes) {
   throw new Error('Release-Asset-Download überschreitet die Redirect-Grenze');
 }
 
-async function fetchReleaseMetadata(releaseConfig, fetchImpl) {
+async function fetchReleaseMetadata(releaseConfig, fetchImpl, retryDelaysMs) {
   const url = `https://api.github.com/repos/${releaseConfig.repository}/releases/tags/${releaseConfig.tag}`;
-  const response = await fetchImpl(url, {
-    headers: { Accept: 'application/vnd.github+json' },
-    redirect: 'error',
-  });
+  const response = await fetchWithTransientRetry(
+    fetchImpl,
+    url,
+    {
+      headers: { Accept: 'application/vnd.github+json' },
+      redirect: 'error',
+    },
+    retryDelaysMs,
+  );
   if (!response.ok) throw new Error('GitHub-Release-Metadaten konnten nicht geladen werden');
   try {
     return await response.json();
@@ -349,8 +387,13 @@ function computeGitBlobSha(contents) {
     .digest('hex');
 }
 
-async function fetchVerifiedBsiArtifact(manifest, artifact, fetchImpl) {
-  const response = await fetchImpl(bsiRawUrl(manifest, artifact), { redirect: 'error' });
+async function fetchVerifiedBsiArtifact(manifest, artifact, fetchImpl, retryDelaysMs) {
+  const response = await fetchWithTransientRetry(
+    fetchImpl,
+    bsiRawUrl(manifest, artifact),
+    { redirect: 'error' },
+    retryDelaysMs,
+  );
   if (!response.ok) throw new Error('BSI-Artefakt-Download fehlgeschlagen');
   const bytes = await readBodyWithLimit(response, {
     maxBytes: MAX_DOCUMENT_BYTES,
@@ -490,6 +533,7 @@ export async function runVerifyUpstreamOscal({
   releaseConfig = GO_OSCAL_RELEASE,
   sbomOutputPath = process.env.GO_OSCAL_SBOM_OUTPUT,
   runnerTempDirectory = process.env.RUNNER_TEMP,
+  retryDelaysMs = TRANSIENT_RETRY_DELAYS_MS,
 } = {}) {
   const manifestPath = path.join(repoRoot, 'upstream-manifest.json');
   let manifest;
@@ -501,19 +545,34 @@ export async function runVerifyUpstreamOscal({
 
   const selection = selectManifestOscalArtifacts(manifest, registry);
   const target = resolveGoOscalPlatform({ platform, arch }, releaseConfig);
-  const release = await fetchReleaseMetadata(releaseConfig, fetchImpl);
+  const release = await fetchReleaseMetadata(releaseConfig, fetchImpl, retryDelaysMs);
   const assets = getReleaseAssetsForPlatform(release, target, releaseConfig);
-  const checksumsBytes = await fetchReleaseAsset(assets.checksums, fetchImpl, MAX_SBOM_BYTES);
+  const checksumsBytes = await fetchReleaseAsset(
+    assets.checksums,
+    fetchImpl,
+    MAX_SBOM_BYTES,
+    retryDelaysMs,
+  );
   verifyApiPinnedAsset(checksumsBytes, releaseConfig.checksumsSha256, assets.checksums.digest);
   const checksums = parseChecksums(checksumsBytes.toString('utf8'));
-  const binaryBytes = await fetchReleaseAsset(assets.binary, fetchImpl, MAX_RELEASE_BINARY_BYTES);
+  const binaryBytes = await fetchReleaseAsset(
+    assets.binary,
+    fetchImpl,
+    MAX_RELEASE_BINARY_BYTES,
+    retryDelaysMs,
+  );
   verifyPinnedAsset({
     bytes: binaryBytes,
     expectedSha256: target.binarySha256,
     apiDigest: assets.binary.digest,
     checksumDigest: checksums.get(target.binaryName),
   });
-  const sbomBytes = await fetchReleaseAsset(assets.sbom, fetchImpl, MAX_SBOM_BYTES);
+  const sbomBytes = await fetchReleaseAsset(
+    assets.sbom,
+    fetchImpl,
+    MAX_SBOM_BYTES,
+    retryDelaysMs,
+  );
   verifyPinnedAsset({
     bytes: sbomBytes,
     expectedSha256: target.sbomSha256,
@@ -534,7 +593,12 @@ export async function runVerifyUpstreamOscal({
     for (const [index, artifact] of selection.oscalArtifacts.entries()) {
       const inputPath = path.join(tempDirectory, `document-${index}.json`);
       const resultPath = path.join(tempDirectory, `result-${index}.json`);
-      const verifiedBytes = await fetchVerifiedBsiArtifact(manifest, artifact, fetchImpl);
+      const verifiedBytes = await fetchVerifiedBsiArtifact(
+        manifest,
+        artifact,
+        fetchImpl,
+        retryDelaysMs,
+      );
       await writeFile(inputPath, prepareGoOscalInput(verifiedBytes, artifact.artifactKey));
       await executeTool({ binaryPath, inputPath, resultPath, artifactKey: artifact.artifactKey });
       artifactResults.push(
