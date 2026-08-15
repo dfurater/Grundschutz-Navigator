@@ -186,24 +186,39 @@ export function SearchPage() {
           </div>
         </form>
 
-        <div>
-          <h1 className="type-page-title flex items-center gap-2">
-            <IconSearch className="w-5 h-5 text-[var(--color-text-muted)] hidden sm:block" aria-hidden={true} />
-            Suchergebnisse
-          </h1>
-          {query && !isLoading && (
-            <p className="type-secondary mt-1">
-              {hasHiddenResults
-                ? `${displayedResultCount} von ${totalResults} Ergebnissen`
-                : `${totalResults} Ergebnis${totalResults !== 1 ? 'se' : ''}`}{' '}
-              für{' '}
-              <span className="font-medium text-[var(--color-text-secondary)]">"{query}"</span>
-            </p>
-          )}
-          {!query && (
-            <p className="type-secondary mt-1">
-              Geben Sie einen Suchbegriff ein.
-            </p>
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+          <div className="min-w-0">
+            <h1 className="type-page-title flex items-center gap-2">
+              <IconSearch className="w-5 h-5 text-[var(--color-text-muted)] hidden sm:block" aria-hidden={true} />
+              Suchergebnisse
+            </h1>
+            {query && !isLoading && (
+              <p className="type-secondary mt-1">
+                {hasHiddenResults
+                  ? `${displayedResultCount} von ${totalResults} Ergebnissen`
+                  : `${totalResults} Ergebnis${totalResults !== 1 ? 'se' : ''}`}{' '}
+                für{' '}
+                <span className="font-medium text-[var(--color-text-secondary)]">"{query}"</span>
+              </p>
+            )}
+            {!query && (
+              <p className="type-secondary mt-1">
+                Geben Sie einen Suchbegriff ein.
+              </p>
+            )}
+          </div>
+
+          {!isLoading && controlsById && results.length > 0 && (
+            <SearchResultsToolbar
+              checkedIds={checkedIds}
+              onClearSelection={clearSelection}
+              mobileSelectMode={mobileSelectMode}
+              onToggleMobileSelectMode={toggleMobileSelectMode}
+              desktopViewControls={tableControls}
+              mobileViewControls={resultControls}
+              allControls={catalog?.controls ?? []}
+              onSelectionExported={finishMobileSelection}
+            />
           )}
         </div>
       </div>
@@ -219,16 +234,6 @@ export function SearchPage() {
       {/* Results — breakpoint-spezifisch */}
       {!isLoading && controlsById && results.length > 0 && (
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-          <SearchResultsToolbar
-            checkedIds={checkedIds}
-            onClearSelection={clearSelection}
-            mobileSelectMode={mobileSelectMode}
-            onToggleMobileSelectMode={toggleMobileSelectMode}
-            desktopViewControls={tableControls}
-            mobileViewControls={resultControls}
-            allControls={catalog?.controls ?? []}
-            onSelectionExported={finishMobileSelection}
-          />
           {/* Desktop: volle Katalogtabelle */}
           <div data-testid="search-results-desktop" className="hidden lg:flex flex-1 min-h-0 flex-col overflow-hidden">
             <ControlTable
