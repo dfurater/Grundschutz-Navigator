@@ -206,6 +206,14 @@ describe('verifyBrowserEgress', () => {
       `Error: ${EGRESS_FAILURE_MARKER} GET https://example.com/egress-proof/fetch`,
     ],
     [
+      'ein nicht erlaubtes Protokoll',
+      `Error: ${EGRESS_FAILURE_MARKER} GET ftp://localhost:63316/egress-proof/fetch`,
+    ],
+    [
+      'einen falschen Proof-Pfad',
+      `Error: ${EGRESS_FAILURE_MARKER} GET http://localhost:63316/egress-proof/anderer-fall`,
+    ],
+    [
       'einen Query-String',
       `Error: ${EGRESS_FAILURE_MARKER} GET http://localhost:63316/egress-proof/fetch?leak=1`,
     ],
