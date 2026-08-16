@@ -1,8 +1,9 @@
 // @vitest-environment node
 
 import { describe, expect, it } from 'vitest';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import viteConfig from '../../vite.config';
+import { listSchemaPins } from './oscalVersionMatrix.mjs';
 
 describe('Bauzeitvertrag des Schema-Bundles', () => {
   it('baut den Import-Worker als ES-Modul, damit Stufe 3 je Zelle splittet', async () => {
@@ -26,5 +27,20 @@ describe('Bauzeitvertrag des Schema-Bundles', () => {
     // Zählungen gleich, gibt es keinen weiteren, dynamisch gebauten Ladeweg.
     expect(literalImports).toHaveLength(30);
     expect(source.match(/\bimport\(/g)).toHaveLength(30);
+  });
+
+  it('bindet jedes Literal an den vendorPath genau seiner Matrixzelle', async () => {
+    // Die Pfade sind bewusst relativ statt über `@/` geschrieben — der Alias
+    // zeigt auf `./src/`, und `schemas/oscal/` liegt außerhalb. Was ein Alias
+    // an Wartbarkeit brächte, leistet diese Bindung besser: Sie fängt nicht nur
+    // ein verschobenes Verzeichnis, sondern auch ein Literal, das zwar auflöst,
+    // aber auf die Datei der falschen Zelle zeigt.
+    const source = await readFile('src/domain/oscalSchemaBundle.ts', 'utf8');
+
+    for (const pin of listSchemaPins()) {
+      const entry = `'${pin.rootKey}@${pin.oscalVersion}': () => import('../../${pin.vendorPath}')`;
+      expect(source, `${pin.rootKey} @ ${pin.oscalVersion}`).toContain(entry);
+      await expect(stat(pin.vendorPath)).resolves.toBeDefined();
+    }
   });
 });

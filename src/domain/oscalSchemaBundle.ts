@@ -12,6 +12,17 @@
 // Der dynamische Import lädt genau die ausgewählte Zelle; die übrigen 29
 // Schemas bleiben in eigenen Chunks und werden nie angefasst. Ein Netzbezug
 // findet nicht statt — die Bytes liegen im Bundle.
+//
+// Die Schemapfade sind als **einzige** Ausnahme relativ und nicht über `@/`
+// geschrieben: Der Alias ist auf `./src/` abgebildet (vite.config.ts,
+// vitest.browser.config.ts, tsconfig.app.json), und `schemas/oscal/` liegt
+// bewusst außerhalb von `src/` — es sind vendorte NIST-Artefakte, die ein
+// eigenes Bauzeit-Gate (`npm run verify-oscal-schemas`) bewacht, kein
+// Anwendungsquellcode. Ein Alias kann diese Pfade also gar nicht ausdrücken.
+// Gegen ein Abdriften von der Matrix schützt statt eines Alias ein Test:
+// `oscalSchemaBundle.node.test.ts` bindet jedes Literal an den `vendorPath`
+// seiner Zelle, und `oscalSchemaValidation.test.ts` prüft je Zelle die geladene
+// `$id` gegen den Pin.
 // =============================================================================
 
 import type {
