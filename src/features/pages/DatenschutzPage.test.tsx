@@ -43,7 +43,25 @@ describe('DatenschutzPage', () => {
       ).toHaveAttribute('href', 'mailto:datenschutz@example.org');
     });
 
-    it('verweist auf das Impressum, wenn eine Pflichtangabe fehlt', () => {
+    it('zeigt die vorhandenen Angaben auch bei fehlender E-Mail-Adresse', () => {
+      setImpressum({
+        VITE_IMPRESSUM_NAME: 'Erika Mustermann',
+        VITE_IMPRESSUM_STRASSE: 'Beispielweg 2',
+        VITE_IMPRESSUM_PLZ_ORT: '54321 Beispielstadt',
+      });
+
+      const { container } = render(<DatenschutzPage />);
+      const anschrift = container.querySelector('address');
+
+      expect(anschrift).toHaveTextContent('Erika Mustermann');
+      expect(anschrift).toHaveTextContent('54321 Beispielstadt');
+      expect(anschrift).not.toHaveTextContent('E-Mail:');
+    });
+
+    // Regression: Der frühere Fallback verwies auf das Impressum. ImpressumPage
+    // blendet bei derselben unvollständigen Konfiguration jedoch sämtliche
+    // Angaben aus, sodass der Verweis ins Leere lief.
+    it('verweist nicht auf das Impressum, das dieselben Angaben ausblendet', () => {
       setImpressum({
         VITE_IMPRESSUM_NAME: 'Erika Mustermann',
         VITE_IMPRESSUM_STRASSE: 'Beispielweg 2',
@@ -52,13 +70,19 @@ describe('DatenschutzPage', () => {
 
       const { container } = render(<DatenschutzPage />);
 
+      expect(container.textContent).not.toMatch(/im Impressum/);
+    });
+
+    it('sagt es offen, wenn gar keine Angaben hinterlegt sind', () => {
+      setImpressum({});
+
+      const { container } = render(<DatenschutzPage />);
+
       expect(
-        screen.getByText(/die im Impressum genannte Person/),
+        screen.getByText(/Angaben zum Verantwortlichen sind derzeit nicht hinterlegt/),
       ).toBeInTheDocument();
-      // Gegen den Textinhalt prüfen, nicht per queryByText: der Name stünde in
-      // <address> zwischen weiteren Textknoten und würde dort nie exakt matchen.
       expect(container.querySelector('address')).toBeNull();
-      expect(container.textContent).not.toMatch(/Erika Mustermann/);
+      expect(container.textContent).not.toMatch(/im Impressum/);
     });
   });
 

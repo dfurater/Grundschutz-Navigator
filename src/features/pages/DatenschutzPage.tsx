@@ -4,7 +4,12 @@ export function DatenschutzPage() {
   const plzOrt = import.meta.env.VITE_IMPRESSUM_PLZ_ORT;
   const email = import.meta.env.VITE_IMPRESSUM_EMAIL;
 
-  const hasVerantwortlicher = name && strasse && plzOrt && email;
+  // Bewusst nur der Name als Bedingung: Die Seite zeigt, was hinterlegt ist,
+  // statt auf das Impressum zu verweisen. Ein Verweis wäre unzuverlässig, weil
+  // ImpressumPage bei jeder fehlenden Angabe alle übrigen ausblendet — der
+  // Hinweis liefe dann ins Leere, ausgerechnet bei der Erreichbarkeit des
+  // Verantwortlichen.
+  const hasVerantwortlicher = Boolean(name);
 
   return (
     <div className="max-w-3xl mx-auto py-8 px-6 space-y-6">
@@ -36,25 +41,35 @@ export function DatenschutzPage() {
             </p>
             <address className="not-italic">
               {name}
-              <br />
-              {strasse}
-              <br />
-              {plzOrt}
-              <br />
-              E-Mail:{' '}
-              <a
-                href={`mailto:${email}`}
-                className="rounded text-sky-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
-              >
-                {email}
-              </a>
+              {strasse && (
+                <>
+                  <br />
+                  {strasse}
+                </>
+              )}
+              {plzOrt && (
+                <>
+                  <br />
+                  {plzOrt}
+                </>
+              )}
+              {email && (
+                <>
+                  <br />
+                  E-Mail:{' '}
+                  <a
+                    href={`mailto:${email}`}
+                    className="rounded text-sky-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+                  >
+                    {email}
+                  </a>
+                </>
+              )}
             </address>
           </div>
         ) : (
           <p className="text-sm text-slate-700 leading-relaxed">
-            Verantwortlich für die Verarbeitung personenbezogener Daten im
-            Sinne der Datenschutz-Grundverordnung ist die im Impressum genannte
-            Person. Die Kontaktdaten finden Sie dort.
+            Die Angaben zum Verantwortlichen sind derzeit nicht hinterlegt.
           </p>
         )}
       </section>
