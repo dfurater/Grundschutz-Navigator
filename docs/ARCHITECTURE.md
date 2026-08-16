@@ -449,6 +449,8 @@ Die Policy begrenzt Skripte, Datenabrufe, Bilder und Schriften auf die ausgelief
 
 `connect-src 'self'` ist nicht nur eine Härtungsmaßnahme. Zusammen mit den Egress-Nachweisen der Browser-Testlane (`src/test/browser/browserEgressGuard.ts`, `src/test/browser/egressOracle.negative.browser.test.ts`) bildet die Direktive die technische Grundlage, auf der die datenschutzrechtliche Einordnung lokaler Nutzerdokumente ruht: Dokumentinhalte verlassen das Gerät nicht. Wer diese Grenze aufweicht — Telemetrie, Fehlerreporting, Synchronisation, Dokumentinhalte in URL-Parametern —, ändert damit auch die Rolle des Betreibers gegenüber diesen Daten. Ein solcher Eingriff ist deshalb nicht allein eine technische Entscheidung; die Einordnung in [GSPP-341](https://linear.app/grundschutz-plus-plus/issue/GSPP-341) ist vorher fortzuschreiben.
 
+[GSPP-341](https://linear.app/grundschutz-plus-plus/issue/GSPP-341) trägt neben dieser Einordnung auch die ausformulierte Textvorgabe für `src/features/pages/DatenschutzPage.tsx` — einschließlich der heute dort noch fehlenden Pflichtangaben nach Art. 13 DSGVO. Ihre Übernahme in den Code ist ein eigener Schritt und bewusst nicht Teil dieses Abschnitts: Der Seitentext wird eingesetzt, sobald der jeweilige Auslöser eintritt, der in [GSPP-341](https://linear.app/grundschutz-plus-plus/issue/GSPP-341) je Abschnitt benannt ist.
+
 ## Import-Alias
 
 Das Projekt verwendet den `@/` Alias für projektinterne Importe:
