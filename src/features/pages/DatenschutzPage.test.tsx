@@ -73,6 +73,33 @@ describe('DatenschutzPage', () => {
       expect(container.textContent).not.toMatch(/im Impressum/);
     });
 
+    // Regression: Eine Bedingung allein auf den Namen hätte vorhandene
+    // Kontaktwege verschwiegen und zugleich behauptet, es sei nichts hinterlegt.
+    it('zeigt die E-Mail-Adresse auch ohne hinterlegten Namen', () => {
+      setImpressum({ VITE_IMPRESSUM_EMAIL: 'datenschutz@example.org' });
+
+      const { container } = render(<DatenschutzPage />);
+
+      expect(
+        screen.getByRole('link', { name: 'datenschutz@example.org' }),
+      ).toHaveAttribute('href', 'mailto:datenschutz@example.org');
+      expect(container.textContent).not.toMatch(/nicht hinterlegt/);
+    });
+
+    it('zeigt eine vorhandene Anschrift auch ohne Namen, ohne führenden Umbruch', () => {
+      setImpressum({
+        VITE_IMPRESSUM_STRASSE: 'Beispielweg 2',
+        VITE_IMPRESSUM_PLZ_ORT: '54321 Beispielstadt',
+      });
+
+      const { container } = render(<DatenschutzPage />);
+      const anschrift = container.querySelector('address');
+
+      expect(anschrift).toHaveTextContent('Beispielweg 2');
+      expect(anschrift?.firstElementChild?.tagName).not.toBe('BR');
+      expect(container.textContent).not.toMatch(/nicht hinterlegt/);
+    });
+
     it('sagt es offen, wenn gar keine Angaben hinterlegt sind', () => {
       setImpressum({});
 

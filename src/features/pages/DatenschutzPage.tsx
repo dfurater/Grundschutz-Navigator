@@ -4,12 +4,14 @@ export function DatenschutzPage() {
   const plzOrt = import.meta.env.VITE_IMPRESSUM_PLZ_ORT;
   const email = import.meta.env.VITE_IMPRESSUM_EMAIL;
 
-  // Bewusst nur der Name als Bedingung: Die Seite zeigt, was hinterlegt ist,
-  // statt auf das Impressum zu verweisen. Ein Verweis wäre unzuverlässig, weil
-  // ImpressumPage bei jeder fehlenden Angabe alle übrigen ausblendet — der
-  // Hinweis liefe dann ins Leere, ausgerechnet bei der Erreichbarkeit des
+  // Jede einzelne hinterlegte Angabe genügt, um den Block zu zeigen. Eine
+  // strengere Bedingung würde vorhandene Kontaktwege verschweigen und zugleich
+  // behaupten, es sei nichts hinterlegt. Ein Verweis auf das Impressum wäre
+  // ebenfalls unzuverlässig, weil ImpressumPage bei jeder fehlenden Angabe alle
+  // übrigen ausblendet — beides trifft ausgerechnet die Erreichbarkeit des
   // Verantwortlichen.
-  const hasVerantwortlicher = Boolean(name);
+  const anschriftszeilen = [name, strasse, plzOrt].filter(Boolean);
+  const hasVerantwortlicher = anschriftszeilen.length > 0 || Boolean(email);
 
   return (
     <div className="max-w-3xl mx-auto py-8 px-6 space-y-6">
@@ -40,22 +42,15 @@ export function DatenschutzPage() {
               Sinne der Datenschutz-Grundverordnung ist:
             </p>
             <address className="not-italic">
-              {name}
-              {strasse && (
-                <>
-                  <br />
-                  {strasse}
-                </>
-              )}
-              {plzOrt && (
-                <>
-                  <br />
-                  {plzOrt}
-                </>
-              )}
+              {anschriftszeilen.map((zeile, index) => (
+                <span key={zeile}>
+                  {index > 0 && <br />}
+                  {zeile}
+                </span>
+              ))}
               {email && (
                 <>
-                  <br />
+                  {anschriftszeilen.length > 0 && <br />}
                   E-Mail:{' '}
                   <a
                     href={`mailto:${email}`}
