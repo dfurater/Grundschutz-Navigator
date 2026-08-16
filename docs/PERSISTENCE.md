@@ -150,9 +150,20 @@ umgekehrt.
 
 | Operation | umfasst |
 | --- | --- |
-| Dokument speichern | `documents`, betroffene Indizes, `drafts` (Verwerfen) |
+| Dokument speichern | `documents`, `bindings` (alle in diesem Vorgang geänderten), `drafts` (Verwerfen), `toolHistory` (soweit fortgeschrieben) |
+| Autosave eines Entwurfs | `drafts`, `toolHistory` (soweit fortgeschrieben) |
+| Übernahme aus dem Quellregister (§8) | `documents`, `bindings` (soweit dabei gesetzt) |
 | Dokument löschen | `documents`, `drafts`, `bindings` beider Richtungen, `toolHistory` |
+| Backup wiederherstellen | `documents`, `bindings`, `workspaceMeta` |
 | Migration | alle Stores, ein einziger `versionchange` |
+
+Indizes gehören zu ihrem Store und werden mit ihm geschrieben; sie sind kein
+eigener Transaktionsteilnehmer.
+
+**Regelform statt Aufzählung:** Jede Operation, die eine Bindung anlegt, ändert
+oder entfernt, führt `bindings` in **derselben** Transaktion wie das betroffene
+Dokument. Die Tabelle zählt die heute vorgesehenen Operationen auf; die Regel
+gilt auch für später hinzukommende.
 
 Bricht eine Transaktion ab, gilt der Vorzustand. Es gibt keine Teilübernahme.
 
