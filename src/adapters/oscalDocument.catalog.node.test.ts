@@ -34,7 +34,7 @@ import {
 } from '@/test/oscalStructure';
 
 /** Relativ zum Projektwurzelverzeichnis, dem Arbeitsverzeichnis des Testlaufs. */
-const catalogPath = 'public/data/catalog.json';
+const catalogPath = process.env.GSPP_CATALOG_CORPUS_PATH ?? 'public/data/catalog.json';
 const catalogAvailable = existsSync(catalogPath);
 
 function loadCatalogCorpus(path: string) {
