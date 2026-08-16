@@ -7,15 +7,18 @@
  * aus den offiziellen NIST-Releases, prüft jedes gegen seinen SHA-256 und seine
  * selbstdeklarierte `$id` und legt es unter `schemas/oscal/v<VERSION>/` ab.
  *
- * Bewusst **kein** Bestandteil von `npm run build` oder des Fetch-Laufs: die
- * Validierungskette liest ausschließlich lokale Bytes. Dieses Skript ist der
- * einzige Ort, an dem ein Schema über das Netz bezogen werden darf, und es
- * läuft nur auf ausdrückliche Anforderung.
+ * Bewusst **kein** Bestandteil von `npm run build`, des Fetch-Laufs oder von
+ * CI: die Validierungskette liest ausschließlich lokale Bytes. Dieses Skript
+ * ist der einzige Ort, an dem ein Schema über das Netz bezogen werden darf,
+ * und es läuft nur auf ausdrückliche Anforderung (`npm run sync-oscal-schemas`).
  *
- * Ohne `--write` prüft es nur (Verify-Modus) und schreibt nichts.
+ * Nicht zu verwechseln mit `scripts/verify-oscal-schemas.mjs`: Der prüft die
+ * **eingecheckten** Bytes ohne jeden Netzzugriff und ist das CI-Gate. Dieser
+ * Lauf hier prüft dagegen einen frischen Download — ohne `--write` verwirft er
+ * ihn anschließend, statt die Platte anzufassen.
  *
- *   node scripts/sync-oscal-schemas.mjs            # nur prüfen
- *   node scripts/sync-oscal-schemas.mjs --write    # prüfen und ablegen
+ *   node scripts/sync-oscal-schemas.mjs            # herunterladen und nur prüfen
+ *   node scripts/sync-oscal-schemas.mjs --write    # herunterladen, prüfen und ablegen
  */
 
 import { createHash } from 'node:crypto';
@@ -27,7 +30,10 @@ import {
   listSchemaPins,
   verifySchemaArtifact,
 } from '../src/domain/oscalVersionMatrix.mjs';
+import { resolveSchemaVendorTarget } from './oscal-schema-vendor.mjs';
 import { REPO_ROOT, readBodyWithLimit } from './security-guards.mjs';
+
+export { resolveSchemaVendorTarget } from './oscal-schema-vendor.mjs';
 
 const NIST_RELEASE_HOST = 'github.com';
 const NIST_RELEASE_PATH_PREFIX = '/usnistgov/OSCAL/releases/download/';
@@ -132,19 +138,6 @@ export async function fetchSchemaWithValidatedRedirects(startUrl, fetchImpl) {
   }
 
   throw new Error(`Schema-Download überschreitet ${MAX_REDIRECT_HOPS} Redirects`);
-}
-
-/** Hält die Ablage innerhalb des reservierten Schema-Verzeichnisses. */
-export function resolveSchemaVendorTarget(vendorPath, { repoRoot = REPO_ROOT } = {}) {
-  const vendorRoot = path.resolve(repoRoot, SCHEMA_VENDOR_DIRECTORY);
-  const target = path.resolve(repoRoot, vendorPath);
-  const relative = path.relative(vendorRoot, target);
-
-  if (relative.startsWith('..') || path.isAbsolute(relative) || relative === '') {
-    throw new Error(`Schema-Ablageort liegt außerhalb von ${SCHEMA_VENDOR_DIRECTORY}: ${vendorPath}`);
-  }
-
-  return target;
 }
 
 export async function syncOscalSchemas({

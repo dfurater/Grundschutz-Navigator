@@ -29,13 +29,13 @@ function internalFailure(): Class2OscalImportResult {
 self.addEventListener('message', (event: MessageEvent<OscalImportWorkerRequest>) => {
   if (event.data.type !== 'import') return;
 
-  let result: Class2OscalImportResult;
-  try {
-    result = processClass2OscalBytes(new Uint8Array(event.data.bytes), event.data.context);
-  } catch {
-    result = internalFailure();
-  }
-
-  const response: OscalImportWorkerResponse = { type: 'result', result };
-  self.postMessage(response);
+  // Stufe 3 lädt das Schema der gewählten Zelle nach; die Pipeline ist deshalb
+  // asynchron. Ein Fehler aus dem Ladeweg darf den Worker nicht antwortlos
+  // lassen — er wird wie jeder andere zur redigierten internen Diagnose.
+  void processClass2OscalBytes(new Uint8Array(event.data.bytes), event.data.context)
+    .catch(() => internalFailure())
+    .then((result: Class2OscalImportResult) => {
+      const response: OscalImportWorkerResponse = { type: 'result', result };
+      self.postMessage(response);
+    });
 });

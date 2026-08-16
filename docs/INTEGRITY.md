@@ -12,6 +12,27 @@ Die Anwendung verwendet ein **Integrity-Verification-System**, das:
 
 Das System prüft, ob die geladenen Artefakte zu den gemeinsam ausgelieferten Integritätsmetadaten passen. Da Artefakt und Metadaten aus demselben Deployment stammen, erkennt die Prüfung Inkonsistenzen zwischen beiden (z.B. beschädigte oder unvollständige Deployments) — sie ist aber kein unabhängiger Herkunftsnachweis. Den liefert die extern bei GitHub gespeicherte Artifact Attestation (siehe [SLSA Provenance](#slsa-provenance)); die Upstream-Authentizität wird zur Fetch-Zeit über Snapshot-Pinning und die Upstream-Allowlist verankert.
 
+### Abgrenzung: gebündelte OSCAL-Schemas werden zur Bauzeit geprüft, nicht zur Laufzeit
+
+Die 30 gepinnten NIST-JSON-Schemas unter `schemas/oscal/` gehören **nicht** zu
+diesem Laufzeitmechanismus. Der Unterschied ist keine Nachlässigkeit, sondern
+folgt aus dem Auslieferungsweg:
+
+| | `public/data/`-Artefakte | `schemas/oscal/`-Schemas |
+| --- | --- | --- |
+| Auslieferung | zur Laufzeit über `fetch` nachgeladen | zur Bauzeit in den Worker-Chunk gebündelt |
+| Bytes beim Prüfen | exakt die Bytes der Quelldatei | vom Bundler transformiert |
+| Prüfort | `src/domain/integrity.ts`, im Browser | `npm run verify-oscal-schemas`, in CI |
+
+Ein zur Laufzeit im selben Bundle mitgelieferter Sollhash würde sich selbst
+bestätigen und nichts beweisen: Wer die gebündelten Schemabytes ändern kann,
+ändert den mitgelieferten Sollwert gleich mit. Deshalb trägt die
+Integritätszusage für die Schemas ausschließlich der CI-Schritt
+`npm run verify-oscal-schemas` — netzfrei, gegen SHA-256, `$id` und die
+draft-07-Zusage aus `src/domain/oscalVersionMatrix.mjs`, und zusätzlich gegen
+jede Datei unter `schemas/oscal/`, die zu keinem Pin gehört. Details in
+[OSCAL_VERSION_MATRIX.md](./OSCAL_VERSION_MATRIX.md#schema-provenienz).
+
 **Gegenstand der Hashprüfung ist die ausgelieferte Datei, nicht das Parse-Ergebnis.** Der Hash wird über den rohen `ArrayBuffer` von `catalog.json` beziehungsweise `vocabularies.json` berechnet — vor jeder Interpretation und unabhängig davon, wie die Anwendung den Inhalt anschließend repräsentiert. Das verlustfreie Dokumentmodell ([ADR-2](https://linear.app/grundschutz-plus-plus/issue/ADR-2)) hält den Quellgraphen zwar zusätzlich im Speicher, ist aber kein Bezugspunkt der Prüfung: Ein wiederhergestelltes `JSON.stringify(source)` wäre schon wegen Formatierung und Einrückung nicht byteidentisch zur Quelldatei und taugt deshalb grundsätzlich nicht als Hashbasis.
 
 ## Build-Zeitpunkt (scripts/fetch-catalog.mjs)

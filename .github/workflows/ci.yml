@@ -65,6 +65,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Trägt die Integritätszusage der gebündelten Stufe-3-Schemas. Läuft
+      # bewusst vor jedem Netzschritt und ohne selbst einen auszuführen; der
+      # Netzpfad bleibt allein `npm run sync-oscal-schemas` und ist kein
+      # CI-Schritt.
+      - name: Verify pinned OSCAL schemas
+        run: npm run verify-oscal-schemas
+
       - name: Read pinned snapshot SHA from manifest
         id: manifest
         run: |
