@@ -259,6 +259,14 @@ Dieser Einstieg liefert weder Dateiauswahl noch Persistenz, UI oder Renderer.
 Er ändert deshalb weder den Klasse-1-Katalogladepfad noch dessen
 Integritätskette.
 
+Wohin ein importiertes Klasse-2-Dokument gespeichert wird, sobald Persistenz
+entsteht, legt der [Persistenzvertrag](./PERSISTENCE.md) fest: eine eigene
+IndexedDB-Datenbank `gspp-workspace`, in der Klasse 1 **keinen** Store besitzt.
+Der Arbeitsbereich kann Klasse-1-Inhalte damit strukturell nicht aufnehmen; er
+hält allenfalls einen `artifactKey`-Verweis. Speicherschlüssel, Envelope,
+Versionsführung, Referenzbindung, Migration, Export und Löschung sind dort
+verbindlich beschrieben.
+
 Der separate Sync-Pfad (`scripts/sync-upstream-manifest.mjs` mit `scripts/upstream-artifacts.mjs`) vergleicht die vollständigen normalisierten Trees des bisherigen und des neuen Snapshots. Erst dort entstehen die Status `added`, `modified` und `removed`; neue nicht registrierte Pfade werden als `unclassified` gemeldet, ohne ihren Blob zu fetchen oder sie auszuliefern. Weil `snapshotCommitSha` Bestandteil der Manifest-Signatur ist, löst auch ein neuer Snapshot, dessen einziges Delta eine unregistrierte Datei ist, diesen Vergleich aus.
 
 ## Zustandsverwaltung
@@ -518,4 +526,5 @@ Bei fehlender oder abweichender vom Preflight geprüfter Policy, einem API-Fehle
 - [DOMAIN_MODELS.md](./DOMAIN_MODELS.md) — Domänenmodelle
 - [FILTERING.md](./FILTERING.md) — Filter-System
 - [INTEGRITY.md](./INTEGRITY.md) — Integritätsprüfung
+- [PERSISTENCE.md](./PERSISTENCE.md) — Persistenzvertrag für lokale Arbeitsbereiche
 - [VOCABULARY.md](./VOCABULARY.md) — Vokabular-System
