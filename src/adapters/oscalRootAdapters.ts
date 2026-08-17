@@ -19,6 +19,8 @@ import {
   deriveComponentDefinition,
 } from '@/adapters/oscalComponentAdapter';
 import type { ComponentDefinition } from '@/adapters/oscalComponentAdapter';
+import { deriveProfile, PROFILE_ROOT_TYPE } from '@/adapters/oscalProfileAdapter';
+import type { Profile } from '@/adapters/oscalProfileAdapter';
 import {
   dispatchOscalDocument,
   ROOT_DISPATCH_DIAGNOSTIC_CODES,
@@ -114,6 +116,19 @@ export const componentDefinitionRootAdapter: OscalRootAdapter<ComponentDefinitio
     deriveComponentDefinition(body, context),
 });
 
+/**
+ * Profile-Adapter (Control Layer). Wie die Component Definition braucht ein
+ * Profil keine Identität aus Kontext oder Register: Es trägt seine `uuid`
+ * selbst und ist nicht kataloggescopt. Der `catalogKey` bleibt hier bewusst
+ * ungenutzt — ein Profil **wählt** Controls aus importierten Quellen aus, es
+ * gehört keiner (GSPP-240).
+ */
+export const profileRootAdapter: OscalRootAdapter<Profile> = Object.freeze({
+  rootType: PROFILE_ROOT_TYPE,
+  moduleEntryPoint: 'src/adapters/oscalProfileAdapter.ts',
+  derive: (body: unknown, context: OscalDocumentContext) => deriveProfile(body, context),
+});
+
 /** Registrierte Modelladapter. Ein neues Modell ergänzt hier genau eine Zeile. */
 const OSCAL_ROOT_ADAPTERS: ReadonlyMap<OscalRootKey, OscalRootAdapter> = new Map<
   OscalRootKey,
@@ -121,6 +136,7 @@ const OSCAL_ROOT_ADAPTERS: ReadonlyMap<OscalRootKey, OscalRootAdapter> = new Map
 >([
   [catalogRootAdapter.rootType, catalogRootAdapter],
   [componentDefinitionRootAdapter.rootType, componentDefinitionRootAdapter],
+  [profileRootAdapter.rootType, profileRootAdapter],
 ]);
 
 export function getOscalRootAdapter(rootType: OscalRootKey): OscalRootAdapter | null {

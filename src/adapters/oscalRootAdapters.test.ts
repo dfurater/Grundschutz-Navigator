@@ -5,6 +5,7 @@ import {
   getOscalRootAdapter,
   listAdaptedOscalRootTypes,
   parseOscalDocument,
+  profileRootAdapter,
 } from './oscalRootAdapters';
 import { ROOT_DISPATCH_DIAGNOSTIC_CODES } from './oscalRootDispatch';
 import type { Catalog, OscalDocumentContext } from '@/domain/models';
@@ -50,10 +51,15 @@ function makeCatalogDocument() {
 }
 
 describe('Adapter-Registrierung', () => {
-  it('führt heute den Katalog- und den Component-Definition-Adapter', () => {
-    expect(listAdaptedOscalRootTypes()).toEqual(['catalog', 'component-definition']);
+  it('führt heute den Katalog-, den Component-Definition- und den Profile-Adapter', () => {
+    expect(listAdaptedOscalRootTypes()).toEqual([
+      'catalog',
+      'component-definition',
+      'profile',
+    ]);
     expect(getOscalRootAdapter('catalog')).toBe(catalogRootAdapter);
     expect(getOscalRootAdapter('component-definition')).toBe(componentDefinitionRootAdapter);
+    expect(getOscalRootAdapter('profile')).toBe(profileRootAdapter);
   });
 
   it('benennt für jeden registrierten Root-Typ einen Modul-Einstiegspunkt', () => {
@@ -63,14 +69,14 @@ describe('Adapter-Registrierung', () => {
     }
   });
 
-  it('meldet für die sechs noch nicht adaptierten Root-Typen keinen Adapter', () => {
+  it('meldet für die fünf noch nicht adaptierten Root-Typen keinen Adapter', () => {
     const unadapted = OSCAL_ROOT_KEYS.filter(
       (rootKey) => !listAdaptedOscalRootTypes().includes(rootKey),
     );
 
     // Die Zahl steht bewusst ausgeschrieben: Ein neuer Modelladapter soll
     // diesen Test rot machen und bewusst nachgezogen werden.
-    expect(unadapted).toHaveLength(6);
+    expect(unadapted).toHaveLength(5);
     for (const rootKey of unadapted) {
       expect(getOscalRootAdapter(rootKey)).toBeNull();
     }
@@ -89,12 +95,14 @@ describe('parseOscalDocument', () => {
   });
 
   it('unterscheidet „bekannt, aber nicht unterstützt" von „unbekannt"', () => {
+    // Seit GSPP-240 ist `profile` adaptiert; als „bekannt, aber ohne Adapter"
+    // dient deshalb ein Root aus den fünf verbliebenen.
     const known = parseOscalDocument(
       {
-        profile: {
-          uuid: 'uuid-profile',
+        'system-security-plan': {
+          uuid: 'uuid-ssp',
           metadata: {
-            title: 'Profil',
+            title: 'Sicherheitsplan',
             'last-modified': '2026-08-06T00:00:00Z',
             version: '1',
             'oscal-version': '1.1.3',
@@ -113,9 +121,9 @@ describe('parseOscalDocument', () => {
     if (known.ok || unknown.ok) return;
 
     expect(known.diagnostic.code).toBe(ROOT_DISPATCH_DIAGNOSTIC_CODES.ROOT_TYPE_UNSUPPORTED);
-    expect(known.diagnostic.artifact.rootType).toBe('profile');
+    expect(known.diagnostic.artifact.rootType).toBe('system-security-plan');
     expect(known.diagnostic.artifact.oscalVersion).toBe('1.1.3');
-    expect(known.diagnostic.path).toBe('/profile');
+    expect(known.diagnostic.path).toBe('/system-security-plan');
 
     expect(unknown.diagnostic.code).toBe(VERSION_MATRIX_DIAGNOSTIC_CODES.ROOT_TYPE_UNKNOWN);
     expect(unknown.diagnostic.code).not.toBe(known.diagnostic.code);
