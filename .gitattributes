@@ -1,0 +1,5 @@
+# Die eingecheckten NIST-OSCAL-Schemas werden byteweise gegen ihren SHA-256 aus
+# src/domain/oscalVersionMatrix.mjs geprüft. Ohne diese Zeile würde ein Clone mit
+# core.autocrlf=true die Zeilenenden normalisieren und die Hashprüfung auf genau
+# dieser Maschine falsch-rot machen — bei unverändertem Repository-Inhalt.
+schemas/oscal/** -text

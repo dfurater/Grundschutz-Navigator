@@ -27,8 +27,9 @@ const NIST_SCHEMA_ID_BASE = 'http://csrc.nist.gov/ns/oscal';
 
 /**
  * Ablageort der gepinnten Schemadateien im Repository. Der Pfad ist Teil des
- * Vertrags: die spätere Validierung liest ausschließlich von hier, niemals aus
- * dem Netz. Befüllt wird er durch `scripts/sync-oscal-schemas.mjs`.
+ * Vertrags: die spätere Validierung liest ausschließlich diese Dateien —
+ * gebündelt und zur Laufzeit von derselben Origin geladen, niemals von einem
+ * fremden Host. Befüllt wird er durch `scripts/sync-oscal-schemas.mjs`.
  */
 export const SCHEMA_VENDOR_DIRECTORY = 'schemas/oscal';
 
@@ -241,7 +242,7 @@ export function isPinnedOscalVersion(value) {
 
 /**
  * Baut die erwartete NIST-Bezugs-URL eines Schemas. Nur für den expliziten
- * Wartungslauf; zur Laufzeit wird kein Schema über das Netz bezogen.
+ * Wartungslauf; zur Laufzeit wird kein Schema von einer fremden Origin bezogen.
  */
 export function buildSchemaReleaseUrl(rootKey, version) {
   const pin = SCHEMA_PINS.get(rootKey);

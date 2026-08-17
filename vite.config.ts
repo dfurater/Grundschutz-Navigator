@@ -39,6 +39,17 @@ export default defineConfig(({ command }) => ({
       '@': resolve(__dirname, './src'),
     },
   },
+  /*
+   * Der OSCAL-Import-Worker wird als Modul-Worker erzeugt (`type: 'module'`).
+   * Ohne dieses Format baut Vite ihn als IIFE, und ein IIFE kann nicht
+   * code-splitten: Alle 30 gepinnten Schemas (2,83 MiB) lägen dann in einer
+   * einzigen Worker-Datei und würden bei jedem Import geladen. Mit `es` bleibt
+   * je Matrixzelle ein eigener Chunk, und Stufe 3 lädt nur die ausgewählte
+   * Zelle.
+   */
+  worker: {
+    format: 'es',
+  },
   test: {
     environment: 'jsdom',
     globalSetup: ['./scripts/check-catalog-freshness.mjs'],

@@ -5,7 +5,7 @@ importiert, exportiert oder in der Build-Pipeline prüft. Er definiert die
 Prüfkette und ihre Lieferkette; er aktiviert noch keinen produktiven Import.
 YAML und XML sind nicht unterstützt.
 
-## Status: Stufe 1 für Klasse 2, Stufe 2 und unabhängiger CI-Schema-Korpuslauf umgesetzt
+## Status: Stufe 1 bis 3 für Klasse 2 und unabhängiger CI-Schema-Korpuslauf umgesetzt
 
 Dieses Dokument legt den verbindlichen Zielzustand für den künftigen
 OSCAL-Import- und -Prüfpfad fest. Die Schutzkette ist **nicht** vollständig in
@@ -34,8 +34,18 @@ und im Katalogpfad aktiv.** `dispatchOscalDocument()` in
 [`oscalRootDispatch.ts`](../src/adapters/oscalRootDispatch.ts) ist der exakte
 Root-Dispatcher dieses Vertrags; `parseCatalogDocument()` läuft über ihn, und
 die Katalog-Interpretation als Fallback existiert nicht mehr. Der Dispatcher
-wählt zugleich den Schema-Pin aus, **wendet** ihn aber nicht an — das bleibt
-Stufe 3.
+wählt zugleich den Schema-Pin aus; **angewandt** wird er in Stufe 3.
+
+**Stufe 3 ist seit
+[GSPP-343](https://linear.app/grundschutz-plus-plus/issue/GSPP-343) im Browser
+aktiv.** `validateAgainstPinnedSchema()` in
+[`oscalSchemaValidation.ts`](../src/domain/oscalSchemaValidation.ts) prüft das
+Dokument im Modul-Worker gegen das gepinnte NIST-Schema der von Stufe 2
+gewählten Zelle. Validator, Schemabytes, Hashprüfung und Implementierung wurden
+atomar aktiviert: `ajv` exakt 8.20.0 als direkte Abhängigkeit mit
+Lockfile-Eintrag, die 30 Schemadateien unter `schemas/oscal/`, das CI-Gate
+`npm run verify-oscal-schemas` und die Tests. Einzelheiten unten unter
+[Umgesetzte Stufe 3](#umgesetzte-stufe-3-ajv-konfiguration-schemazugriff-und-codes).
 
 **GSPP-336 führt zusätzlich die unabhängige CI-Schema-Stufe ein.**
 [`npm run verify-upstream-oscal`](../package.json) lädt ausschließlich
@@ -88,7 +98,7 @@ GitHub-Actions-Runner; Browserprüfungen laufen ausschließlich im Modul-Worker.
 | --- | --- | --- |
 | 1. Größenlimit und JSON-Syntax | **Für Klasse 2 umgesetzt:** Plattformfunktionen (`Uint8Array`, fataler UTF-8-Decoder), projekteigener Token-Scanner und danach `JSON.parse` im isolierten Modul-Worker | Das Bytelimit von 10 MiB greift vor Worker-Erzeugung, Kopie, Decoder, Scanner und Parser. Nach erfolgreicher fataler Dekodierung lehnt der Scanner doppelte Member auf jeder erlaubten Objekttiefe ab und begrenzt seinen eigenen Abstieg auf Tiefe 64; nur dann wird `JSON.parse` aufgerufen. Ein vom Scanner als ungültig bewerteter Text endet ebenfalls vor `JSON.parse` fail-closed. Die nachfolgende, iterative Prüfung prüft die Tiefe erneut und begrenzt Knotenzahl auf 1 000 000 sowie die arithmetische Summe dekodierter Base64-Größen auf 10 MiB, ohne Base64 zu dekodieren. Der Adapter beendet einen antwortlosen Worker nach 30 Sekunden mit einer redigierten Fehlerdiagnose. Node-Tests verwenden dieselbe Worker-Logik; der Browsernachweis läuft in Chromium. |
 | 2. Root-Erkennung | **Umgesetzt:** `dispatchOscalDocument()` in [`oscalRootDispatch.ts`](../src/adapters/oscalRootDispatch.ts), projekteigen und ohne externes Werkzeug | Das Top-Level-Objekt muss genau einen der acht bekannten Root-Keys besitzen. Null, Arrays, mehrere Root-Keys und unbekannte Keys werden abgelehnt. Die optionale Schema-Direktive `$schema` ist die einzige zusätzlich zulässige Top-Level-Property; sie ist kein zweiter Root und **niemals** Versionsautorität. Eine Katalog-Interpretation als Fallback ist verboten. |
-| 3. JSON-Schema | Browser nach Aktivierung: `ajv` 8.20.0 im Modul-Worker. **CI umgesetzt:** [`verify-upstream-oscal.mjs`](../scripts/verify-upstream-oscal.mjs) nutzt `go-oscal` 0.7.1 als unabhängiges Schema- und Upgrade-Orakel | Auswahl ausschließlich über den exakten Root×`oscal-version`-Schlüssel. Der Korpuslauf bezieht Dokumente nur aus dem gepinnten BSI-Snapshot und führt weder Schema- noch Dokumentreferenz-Anfragen aus. Jedes nicht gesperrte Artefakt muss bestehen; ein gesperrtes Artefakt muss fehlschlagen. Fehlende oder nicht auswertbare Werkzeugergebnisse bleiben ein eigener fail-closed Werkzeugfehler. Ajv wird erst nach der OSS-Zulassung aus [ADR-5](https://linear.app/grundschutz-plus-plus/issue/ADR-5) produktiv aufgenommen. Bis direkte Abhängigkeit, Paket-Lock, Schema-Manifest und Hashprüfung vorhanden sind, bleibt der betreffende Importpfad deaktiviert. |
+| 3. JSON-Schema | **Für Klasse 2 umgesetzt:** `ajv` 8.20.0 im Modul-Worker, gegen die eingecheckten NIST-Schemas unter `schemas/oscal/`. **CI umgesetzt:** [`verify-upstream-oscal.mjs`](../scripts/verify-upstream-oscal.mjs) nutzt `go-oscal` 0.7.1 als unabhängiges Schema- und Upgrade-Orakel | Auswahl ausschließlich über den exakten Root×`oscal-version`-Schlüssel; kein Fallback auf eine Nachbarversion. Die Schemabytes kommen aus dem eigenen Bundle; der Chunk der ausgewählten Zelle wird zur Laufzeit von derselben Origin nachgeladen, nie von einer fremden. Ihre Integrität trägt der Bauzeitschritt `npm run verify-oscal-schemas`. Ist die Zelle nicht im Bundle oder lässt sich ihr Validator nicht bauen, endet der Import fail-closed mit `OSCAL_SCHEMA_UNAVAILABLE` — Stufe 3 wird weder übersprungen noch als bestanden ausgewiesen. Der CI-Korpuslauf bezieht Dokumente nur aus dem gepinnten BSI-Snapshot und führt weder Schema- noch Dokumentreferenz-Anfragen aus. Jedes nicht gesperrte Artefakt muss bestehen; ein gesperrtes Artefakt muss fehlschlagen. Fehlende oder nicht auswertbare Werkzeugergebnisse bleiben ein eigener fail-closed Werkzeugfehler. |
 | 4. zusätzliche OSCAL-Constraints | Derzeit **kein zugelassener Validator** für OSCAL 1.2.2; im Browser und in CI als `not-checked` ausgewiesen | Diese Stufe darf weder übersprungen noch als bestanden dargestellt werden. Die zulässige Konformitätsaussage wird deshalb begrenzt. Das konkrete Mapping-Orakel ist als bekannte Lücke registriert. |
 | 5. Referenzen und Projektregeln | [`referenceResolution.ts`](../src/domain/referenceResolution.ts) ist der gemeinsame, fail-closed Klassifikator; der vollständige Referenzgraph bleibt Vertrag von [GSPP-251](https://linear.app/grundschutz-plus-plus/issue/GSPP-251) | Prüft UUID-/ID-Eindeutigkeit, interne und dokumentübergreifende Referenzen, URI- und Medientypregeln sowie ausdrücklich benannte GRC-Regeln. Die Schicht klassifiziert externe `https:`-Ziele, relative Ziele und abgelehnte Protokolle ohne sie abzurufen; Stufe 5 konsumiert sie statt eine zweite Klassifikation einzuführen. Unbekannte Regeln gelten nicht als bestanden. |
 
@@ -124,7 +134,7 @@ lokalen Klasse-2-Einstieg; der bestehende Klasse-1-Loader bleibt davon getrennt.
 | Knoten | 1 000 000 | Rund das Vierzehnfache der gemessenen 70 851 Knoten. |
 | Summe dekodierter Base64-Größen | 10 MiB | Dieselbe Sicherheitsgrenze wie das Bytelimit; ausschließlich arithmetisch über kodierte Länge bestimmt. |
 
-Ajv wurde als künftiger Validator gegenüber `@hyperjump/json-schema` 1.17.7
+Ajv wurde als Validator gegenüber `@hyperjump/json-schema` 1.17.7
 ausgewählt. Beide Kandidaten trafen die Schema-Orakel, aber Hyperjump startete
 in einem echten ESM-Web-Worker nicht unverändert: Eine transitive
 Browserkomponente greift auf `document.location` zu, das im Worker nicht
@@ -188,6 +198,104 @@ führt zu `OSCAL_VERSION_MISSING`. Es wird ausdrücklich **nicht** nach String
 konvertiert: Eine Koerzierung würde unvertrauenswürdige Eingabe in eine
 scheinbare Versionsangabe verwandeln.
 
+### Umgesetzte Stufe 3: Ajv-Konfiguration, Schemazugriff und Codes
+
+#### „Schema-valide" ist eine Strukturaussage, keine Vertrauensaussage
+
+Das ist keine Vorsichtsformel, sondern am Modell belegt: OSCAL erzeugt für
+jedes Feld mit `allow-other="yes"` das Muster `anyOf: [<Datatype>, enum]`, und
+die Aufzählung bindet dann nicht. Betroffen sind unter anderem
+`implementation-status.state`, `risk.status`, `response.lifecycle`,
+`observation.methods[]`, `defined-component.type`, `hash.algorithm` und
+`link.rel`. **Ein erfundener Wert besteht die Schemavalidierung.** NIST kennt
+genau zwei Validierungsstufen — Wohlgeformtheit und Validität; Referenzintegrität,
+Vokabulartreue und Zykelfreiheit sind keine davon. Eine Vokabularprüfung ist
+eigene Projektarbeit, gehört sichtbar getrennt und ist nicht Teil von Stufe 3.
+Stufe 4 bleibt `not-checked`.
+
+#### Konfiguration des Validators
+
+| Option | Wert | Begründung |
+| --- | --- | --- |
+| Einstieg | Standardexport (draft-07) | Alle 30 gepinnten Schemas deklarieren `http://json-schema.org/draft-07/schema#` und sind selbstenthalten — kein externer `$ref`. Deshalb **nicht** `ajv/dist/2019` oder `ajv/dist/2020`, kein `loadSchema`, kein `addSchema` fremder Dokumente. |
+| `validateFormats` | `false` | In draft-07 ist `format` eine Annotation, keine Assertion. In den Schemas erscheinen `date-time`, `email`, `uri` und `uri-reference`. Eine Formatprüfung bräuchte `ajv-formats` als zweite Lieferkettenabhängigkeit, ohne eine Vertrauensaussage zu begründen. |
+| `allErrors` | `false` | Die erste Verletzung genügt und verkleinert die Leckfläche. |
+| `unicodeRegExp` | Vorgabe `true`, nicht gesetzt | OSCALs `TokenDatatype` lautet `^(\p{L}\|_)(\p{L}\|\p{N}\|[.\-_])*$`. Ohne `u`-Flag liest eine JavaScript-Regex `\p` als `p` und **jedes** OSCAL-Dokument fällt durch. Der Wert wird bewusst nicht gesetzt, damit er nicht versehentlich abgeschaltet werden kann; ein Positivfixture mit der gewöhnlichen `id` `ac-1` ist das billige Negativorakel dafür. |
+| `strictTypes` | `false` | NISTs `DecimalDatatype` und `percentage` setzen `pattern` ohne begleitendes `type`. Das ist ein Autorenhinweis über das Schema, keine Abschwächung der Prüfung; ohne diese Zeile schreibt Ajv ihn bei jedem Import in die Konsole. |
+
+Das transitiv über den ESLint-Pfad vorhandene `ajv` 6.15.0 ist ausdrücklich
+**nicht** der Validator dieses Vertrags: Es kennt `unicodeRegExp` nicht und
+lehnt jedes OSCAL-Dokument am `TokenDatatype`-Muster ab. Die direkte
+Abhängigkeit ist deshalb keine Doppelung, sondern notwendig.
+
+#### Schemazugriff: ein lazy Chunk derselben Origin, kein externer Bezug
+
+[`oscalSchemaBundle.ts`](../src/domain/oscalSchemaBundle.ts) bildet jede
+Matrixzelle auf **einen festen** `import()` einer Datei unter `schemas/oscal/`
+ab. Die Tabelle ist ausgeschrieben und wird nicht aus `vendorPath`
+zusammengesetzt: Ein aus Daten gebauter Importpfad wäre zur Bauzeit nicht
+analysierbar, ein aus Dokumentinhalt gebauter eine Pfadinjektion. Geladen wird
+nur die ausgewählte Zelle; `worker.format: 'es'` in `vite.config.ts` hält den
+Modul-Worker code-splitting-fähig, sonst lägen alle 30 Schemas in einer
+einzigen Worker-Datei. Der kompilierte Validator wird je Zelle im Worker
+zwischengespeichert.
+
+Was das für den Laufzeitbezug heißt, gehört auseinandergehalten:
+
+* **Verboten und nicht vorhanden:** jeder Bezug von einer fremden Origin —
+  insbesondere das Release-Asset auf `github.com` und die `$id`-Domain
+  `csrc.nist.gov`. Kein Schema, kein Validator und keine Constraint-Datei wird
+  zur Laufzeit von außen geholt.
+* **Vorhanden und beabsichtigt:** genau ein Modulabruf **derselben Origin** für
+  den Chunk der ausgewählten Zelle. Der `import()` ist lazy, sonst lägen die
+  Bytes aller 30 Zellen im Worker.
+
+Das ist auch die Grenze, die das Egress-Orakel aus
+[GSPP-339](https://linear.app/grundschutz-plus-plus/issue/GSPP-339) zieht:
+`decideBrowserEgress()` bewertet einen HTTP-Bezug genau dann als Verletzung,
+wenn seine Origin nicht die erlaubte ist. Der Browsernachweis über Import und
+Validierung endet deshalb mit `violations`, `httpAborts` und `webSocketCloses`
+je `0`, ohne den Same-Origin-Chunk zu verschweigen.
+
+#### Diagnosen der Stufe 3
+
+Diagnosen tragen die Validatoridentität `ajv@8.20.0`. Übernommen werden
+ausschließlich ein aus dem Ajv-Keyword abgeleiteter projekteigener Code und der
+redigierte `instancePath`. **Ajvs `message` und `params` werden nie
+durchgereicht** — `params.additionalProperty` trägt einen Dokumentschlüssel.
+
+Redaktionsregel für den Pfad: Ein Segment wird übernommen, wenn es ein
+numerischer Arrayindex oder ein im ausgewählten Schema deklarierter
+Property-Name ist; jedes andere Segment wird durch den festen Platzhalter `*`
+ersetzt. Bei `additionalProperties` zeigt Ajv auf das Elternobjekt — die
+Diagnose hängt dort den Platzhalter an, statt den beanstandeten Namen zu
+nennen.
+
+| Ajv-Keyword | Code |
+| --- | --- |
+| `required` | `OSCAL_SCHEMA_REQUIRED_PROPERTY_MISSING` |
+| `additionalProperties` | `OSCAL_SCHEMA_ADDITIONAL_PROPERTY` |
+| `propertyNames` | `OSCAL_SCHEMA_PROPERTY_NAME_INVALID` |
+| `type` | `OSCAL_SCHEMA_TYPE_MISMATCH` |
+| `enum`, `const` | `OSCAL_SCHEMA_ENUM_MISMATCH`, `OSCAL_SCHEMA_CONST_MISMATCH` |
+| `pattern` | `OSCAL_SCHEMA_PATTERN_MISMATCH` |
+| `minLength`, `maxLength` | `OSCAL_SCHEMA_LENGTH_OUT_OF_RANGE` |
+| `minItems`, `maxItems` | `OSCAL_SCHEMA_ITEM_COUNT_OUT_OF_RANGE` |
+| `minProperties`, `maxProperties` | `OSCAL_SCHEMA_PROPERTY_COUNT_OUT_OF_RANGE` |
+| `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf` | `OSCAL_SCHEMA_NUMBER_OUT_OF_RANGE` |
+| `uniqueItems` | `OSCAL_SCHEMA_DUPLICATE_ITEM` |
+| `contains` | `OSCAL_SCHEMA_CONTAINS_UNSATISFIED` |
+| `items`, `additionalItems` | `OSCAL_SCHEMA_ITEM_INVALID` |
+| `dependencies`, `dependentRequired`, `dependentSchemas` | `OSCAL_SCHEMA_DEPENDENCY_UNSATISFIED` |
+| `anyOf`, `oneOf`, `allOf`, `not`, `if`, `false schema` | `OSCAL_SCHEMA_COMBINATOR_MISMATCH` |
+| jedes andere Keyword | `OSCAL_VALIDATOR_OUTPUT_UNRECOGNIZED` |
+| Zelle nicht ladbar oder nicht kompilierbar | `OSCAL_SCHEMA_UNAVAILABLE` |
+
+Die Tabelle ist eine Positivliste: Ein hier nicht geführtes Keyword erzeugt
+nach Vertrag `OSCAL_VALIDATOR_OUTPUT_UNRECOGNIZED` und das Gate schlägt fehl,
+statt eine geratene Diagnose zu erzeugen. `format` fehlt bewusst — die
+Formatprüfung ist abgeschaltet.
+
 ## Root- und Versionsauswahl
 
 Der Root-Key und `metadata.oscal-version` bilden gemeinsam den Schema-Schlüssel.
@@ -225,21 +333,27 @@ erweitert keine Produktfreigabe.
 
 ## Lieferkettenregeln
 
-Für die aktivierte Zielkette ist kein Laufzeit-Netzbezug für Schema, Validator,
-Constraint-Datei oder Dokumentreferenz zulässig.
+Für die aktivierte Zielkette ist kein **externer** Laufzeitbezug für Schema,
+Validator, Constraint-Datei oder Dokumentreferenz zulässig: Was geprüft wird,
+liegt zur Bauzeit eingecheckt und gehasht im Repository, nicht auf einem
+fremden Host. Zulässig und tatsächlich vorhanden ist allein der lazy Modulabruf
+des Schema-Chunks **derselben Origin** — siehe
+[Schemazugriff](#schemazugriff-ein-lazy-chunk-derselben-origin-kein-externer-bezug).
 
-Ajv 8.20.0 ist aktuell keine direkte Abhängigkeit der App. Das vorhandene
-transitive `ajv` 6.15.0 stammt ausschließlich aus dem ESLint-Werkzeugpfad und
-ist ausdrücklich nicht der OSCAL-Validator dieses Vertrags. Die spätere
-Aktivierung muss Ajv als exakte direkte Abhängigkeit, den zugehörigen
-`package-lock.json`-Eintrag mit SRI, das Schema-Manifest, die Hashprüfung und die
-Implementierung samt Tests atomar einführen. Vorher existiert kein produktiver
-Ajv-8.20.0-Pin.
+Ajv 8.20.0 ist seit
+[GSPP-343](https://linear.app/grundschutz-plus-plus/issue/GSPP-343) exakte
+direkte Abhängigkeit der App, mit `package-lock.json`-Eintrag samt
+SRI-Integrität. Lizenz MIT; Transitivabhängigkeiten sind `fast-deep-equal`,
+`fast-uri`, `json-schema-traverse` und `require-from-string`. Das ebenfalls
+vorhandene transitive `ajv` 6.15.0 stammt ausschließlich aus dem
+ESLint-Werkzeugpfad und ist ausdrücklich nicht der OSCAL-Validator dieses
+Vertrags. Validator, Paket-Lock, Schemabytes, Hashprüfung und Implementierung
+samt Tests wurden wie gefordert atomar eingeführt.
 
 | Artefakt | Verbindliche Herkunft und Pinning | Verifikation |
 | --- | --- | --- |
-| NIST-JSON-Schemas | Offizielle Releases `v1.1.2`, `v1.1.3`, `v1.2.1` und `v1.2.2`; root-spezifische JSON-Schemadatei | Eine maschinenlesbare Allowlist bindet Release, Root, Version, Dateiname und SHA-256. Download ist nur in einem expliziten Wartungslauf erlaubt. Fehlender oder abweichender Hash blockiert Build und Import. |
-| Ajv, nach Aktivierung | npm-Paket `ajv` exakt 8.20.0, MIT | Der dann atomar aktualisierte `package-lock.json` bindet Tarball und SRI-Integrität. Die OSS-Zulassung prüft Lizenz, Herkunft, Wartung, Transitivabhängigkeiten, Sicherheitslage, Bundle-/Worker-Eignung und Updateweg, bevor das Paket produktiv wird. |
+| NIST-JSON-Schemas, eingecheckt | Offizielle Releases `v1.1.2`, `v1.1.3`, `v1.2.1` und `v1.2.2`; root-spezifische JSON-Schemadatei, abgelegt unter `schemas/oscal/v<VERSION>/<ASSET>`. CC0 1.0 / Public Domain | Eine maschinenlesbare Allowlist bindet Release, Root, Version, Dateiname und SHA-256. Download ist nur im expliziten Wartungslauf `npm run sync-oscal-schemas` erlaubt. Das netzfreie CI-Gate `npm run verify-oscal-schemas` prüft jede eingecheckte Datei gegen SHA-256, `$id` und draft-07 und lehnt jede Datei ohne Pin ab. Fehlender oder abweichender Hash blockiert den Build. |
+| Ajv, aktiviert | npm-Paket `ajv` exakt 8.20.0, MIT | Der `package-lock.json` bindet Tarball und SRI-Integrität. Transitiv: `fast-deep-equal`, `fast-uri`, `json-schema-traverse`, `require-from-string`. Konfiguration und Begründung stehen unter [Umgesetzte Stufe 3](#umgesetzte-stufe-3-ajv-konfiguration-schemazugriff-und-codes). |
 | go-oscal, CI aktiviert | Offizielles GitHub-Release `v0.7.1`, Apache-2.0; Namen und SHA-256 aller unterstützten Plattformartefakte sind statisch in [`verify-upstream-oscal.mjs`](../scripts/verify-upstream-oscal.mjs) gepinnt | Vor der Ausführung müssen Tag, direkter Release-URL und GitHub-API-Digest zum statischen Pin passen. Das geladene Binary und die SBOM müssen zusätzlich ihren statischen SHA-256 und den zugehörigen Eintrag aus `checksums.txt` erfüllen. Ausschließlich geworfene Transportfehler und HTTP-5xx erhalten pro HTTP-Aufruf höchstens zwei Wiederholungen; alle Pin- und sonstigen Prüffehler bleiben sofort fail-closed. CI nutzt Linux amd64, schreibt die verifizierte SBOM nur nach `$RUNNER_TEMP` und archiviert sie via SHA-gepinntem `actions/upload-artifact`. Die ausführbare Datei wird weder eingecheckt noch außerhalb des temporären Laufs abgelegt. |
 | Eigene Regeln | App-Quellcode und Tests | Pinning durch Commit-SHA; jede Regel nennt betroffene Root×Version-Paare und stabile Diagnostic-Codes. |
 
@@ -442,19 +556,21 @@ Jede Diagnose ist maschinenlesbar und besitzt mindestens:
     "rootType": "mapping-collection",
     "oscalVersion": "1.2.2"
   },
-  "path": "/mapping-collection/provenance/qa-reviewed",
+  "path": "/mapping-collection/provenance/*",
   "validator": {
-    "name": "go-oscal",
-    "version": "0.7.1"
+    "name": "ajv",
+    "version": "8.20.0"
   },
-  "signature": "go-oscal@0.7.1|additionalProperties|/mapping-collection/provenance|qa-reviewed",
-  "messageKey": "oscal.schema.additionalProperty",
-  "params": {
-    "keyword": "additionalProperties",
-    "propertyName": "qa-reviewed"
-  }
+  "signature": "ajv@8.20.0|OSCAL_SCHEMA_ADDITIONAL_PROPERTY|/mapping-collection/provenance/*",
+  "messageKey": "oscal.jsonSchema.schemaAdditionalProperty",
+  "params": {}
 }
 ```
+
+Das Beispiel zeigt die Redaktionsregel an ihrem schärfsten Fall: Der
+beanstandete Property-Name steht bei Ajv allein in `params.additionalProperty`
+und ist Dokumentinhalt. Er erscheint deshalb weder im Pfad noch in den
+Parametern — an seiner Stelle steht der feste Platzhalter `*`.
 
 `stage` verwendet die stabilen Werte `resource-limit`, `json-syntax`,
 `root-dispatch`, `json-schema`, `oscal-constraint`, `reference` und `domain`.
@@ -555,7 +671,14 @@ die Prüftiefendifferenz und die Reichweite der namespace-gebundenen Constraints
 | doppelter Root-Key oder doppeltes `metadata.oscal-version` | Der Token-Scanner lehnt das Dokument auf der jeweiligen Objekttiefe vor `JSON.parse` mit `OSCAL_JSON_DUPLICATE_MEMBER` ab; Root-Erkennung und Schema-Auswahl laufen nicht. Escape-äquivalente Member-Namen gelten ebenfalls als Duplikat. |
 | nicht vorhandenes Root×Version-Paar | Auswahl scheitert ohne Fallback. |
 | Dokument über dem konfigurierten Byte-Limit | Ablehnung erfolgt vor Decoder und Parser. |
-| Klasse-2-Validierung im Browser-Worker | Keine Schema-, Dokument- oder Referenzanfrage wird ausgelöst. |
+| Klasse-2-Validierung im Browser-Worker | Während Import und Stufe-3-Validierung geht kein Request an eine **fremde** Origin aus — insbesondere keiner an `github.com` (Release-Asset) oder `csrc.nist.gov` (die `$id` des Schemas). Belegt über das Egress-Orakel aus [GSPP-339](https://linear.app/grundschutz-plus-plus/issue/GSPP-339); Chunks derselben Origin sind kein Verstoß und auch der Weg, auf dem die gewählte Schemazelle geladen wird. |
+| schemavalides Minimaldokument je Root-Modell, alle 30 Zellen | Stufe 3 besteht. Mindestens ein Fixture trägt die gewöhnliche `id` `ac-1` und belegt damit, dass die Engine `TokenDatatype` mit `u`-Flag auswertet. |
+| dasselbe Dokument ohne `metadata.title` | Stufe 3 scheitert mit `OSCAL_SCHEMA_REQUIRED_PROPERTY_MISSING` auf `/<root>/metadata`. |
+| Katalog mit einer charakteristischen Zeichenkette zugleich als Wert und als unbekanntem Property-Namen | Stufe 3 scheitert mit `OSCAL_SCHEMA_ADDITIONAL_PROPERTY`; die Zeichenkette erscheint weder in der Diagnose noch in der Konsole, und der Pfad trägt den Platzhalter statt des Namens. |
+| Zelle nicht im Bundle | `OSCAL_SCHEMA_UNAVAILABLE`; kein Ergebnis weist Stufe 3 als bestanden aus. |
+| Schemaladung des Chunks zurückgewiesen | Derselbe Code auf Stufe `json-schema`, obwohl das geprüfte Dokument schemavalide ist. Der lokale Pfad aus der Fehlermeldung erscheint nicht in der Diagnose. Ein Fehlversuch verbrennt die Zelle nicht: mit intaktem Loader besteht sie anschließend. |
+| geladenes Schema nicht kompilierbar | Ebenso `OSCAL_SCHEMA_UNAVAILABLE`; der Schemaschlüssel aus Ajvs Kompilierfehler erscheint nicht in der Diagnose. Belegt getrennt vom Ladefehler, weil die Ladung hier gelingt. |
+| Teilschema `false` im gewählten Schema | `OSCAL_SCHEMA_COMBINATOR_MISMATCH` statt eines Werkzeugfehlers. Ajv schreibt dieses Keyword als `false schema` mit Leerzeichen; die gepinnten Schemas setzen `false` ausschließlich an `additionalProperties`, weshalb der Beleg ein synthetisches Schema braucht. |
 
 ## Quellen
 

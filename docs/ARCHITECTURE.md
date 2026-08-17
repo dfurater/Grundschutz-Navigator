@@ -245,15 +245,32 @@ parst oder interpretiert die Bytes nicht.
 Nach der Größenkontrolle läuft im Worker die feste Reihenfolge aus dem
 [OSCAL-Validierungsvertrag](./OSCAL_VALIDATION.md): Bytelimit, fataler
 UTF-8-Decoder, Duplicate-Member-Scanner, `JSON.parse`, iterative
-Ressourcenlimits und anschließend `dispatchOscalDocument()`. Das Bytelimit
-greift bereits vor Worker-Erzeugung und Transferkopie; der Scanner begrenzt
-seinen Abstieg zusätzlich auf die zulässige Tiefe. Das Ergebnis ist
-entweder ein vollständiger Root-Envelope mit explizitem
-`class-2-local-user`-Kontext oder genau eine redigierte Diagnose. Der Worker
-führt keine Netzwerk-, Dateisystem-, Telemetrie- oder URL-Operation aus und
-nach seiner Antwort beendet ihn der Adapter; bleibt eine Antwort aus, beendet
-der Adapter ihn nach 30 Sekunden fail-closed mit einer redigierten
-Worker-Diagnose.
+Ressourcenlimits, `dispatchOscalDocument()` und anschließend
+`validateAgainstPinnedSchema()` als Stufe 3. Das Bytelimit greift bereits vor
+Worker-Erzeugung und Transferkopie; der Scanner begrenzt seinen Abstieg
+zusätzlich auf die zulässige Tiefe. Das Ergebnis ist entweder ein vollständiger
+Root-Envelope mit explizitem `class-2-local-user`-Kontext oder genau eine
+redigierte Diagnose. Der Worker führt keine Dateisystem-, Telemetrie- oder
+URL-Operation aus und bezieht nichts von einer fremden Origin; sein einziger
+Netzbezug ist der Modulabruf des Schema-Chunks derselben Origin, siehe den
+folgenden Absatz. Nach seiner Antwort beendet ihn der Adapter; bleibt eine
+Antwort aus, beendet der Adapter ihn nach 30 Sekunden fail-closed mit einer
+redigierten Worker-Diagnose.
+
+Stufe 3 prüft mit `ajv` 8.20.0 gegen das gepinnte NIST-Schema der von Stufe 2
+gewählten Matrixzelle. Die Schemabytes liegen eingecheckt unter
+`schemas/oscal/` und werden über `src/domain/oscalSchemaBundle.ts` je Zelle in
+einen eigenen Chunk gebaut. Zur Laufzeit lädt der Worker genau einen davon
+nach — den der ausgewählten Zelle, als Modul **derselben Origin** wie die
+Anwendung. Das ist kein externer Bezug: Weder das Release-Asset auf
+`github.com` noch die `$id`-Domain `csrc.nist.gov` wird angefragt, und ein
+Browsertest belegt das über das Egress-Orakel aus
+[GSPP-339](https://linear.app/grundschutz-plus-plus/issue/GSPP-339). Damit der
+Modul-Worker überhaupt code-splitten kann, baut Vite ihn über
+`worker.format: 'es'` als ES-Modul; andernfalls lägen alle 30 Schemas in einer
+einzigen Worker-Datei. `processClass2OscalBytes()` ist deshalb `async`,
+während der öffentliche Einstieg `importClass2OscalDocument()` unverändert ein
+`Promise` liefert.
 
 Dieser Einstieg liefert weder Dateiauswahl noch Persistenz, UI oder Renderer.
 Er ändert deshalb weder den Klasse-1-Katalogladepfad noch dessen

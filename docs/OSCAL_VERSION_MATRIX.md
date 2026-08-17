@@ -74,12 +74,38 @@ Bezugsmuster:
 
 Ablageort im Repository: `schemas/oscal/v<VERSION>/<ASSET>`
 
-Der Ablageort ist reserviert und aktuell **leer**. Dieses Issue liefert das
-Schema-Manifest — Herkunft, `$id` und Hash je Zelle — sowie das Werkzeug, das
-beides gegen die Realität prüft. Die Bytes werden erst zusammen mit dem
-Validator eingecheckt, weil der Validierungsvertrag verlangt, dass Validator,
-Paket-Lock, Schema-Manifest, Hashprüfung und Implementierung **atomar**
-aktiviert werden. Bis dahin konsumiert nichts die Dateien.
+Seit [GSPP-343](https://linear.app/grundschutz-plus-plus/issue/GSPP-343) liegen
+alle 30 existierenden Zellen als Datei dort — zusammen 2 967 207 Bytes. Die
+beiden unmöglichen `mapping-collection`-Zellen haben bewusst **keine** Datei.
+Eingecheckt wurden sie gemeinsam mit Validator, Paket-Lock, Hashprüfung und
+Implementierung, wie der Validierungsvertrag es verlangt.
+
+Die Artefakte stammen unverändert aus den offiziellen NIST-Releases und stehen
+unter **CC0 1.0 / Public Domain** mit erbetener Quellennennung
+([`LICENSE.md` @ v1.2.2](https://github.com/usnistgov/OSCAL/blob/v1.2.2/LICENSE.md)).
+Quelle ist das OSCAL-Projekt von NIST, <https://github.com/usnistgov/OSCAL>.
+
+### Zwei Kommandos, zwei Aufgaben
+
+| Kommando | Netz | Prüft | Läuft in CI |
+| --- | --- | --- | --- |
+| `npm run verify-oscal-schemas` | nein | die **eingecheckten** Bytes: SHA-256, `$id`, `$schema` = draft-07, und dass unter `schemas/oscal/` keine Datei ohne Pin liegt | ja |
+| `npm run sync-oscal-schemas` | ja | einen **frischen Download** gegen dieselben Pins und legt ihn ab | nein |
+
+Der Verify-Lauf (`scripts/verify-oscal-schemas.mjs`) nimmt kein `fetch` in die
+Hand; das ist als Test festgehalten. Der Wartungslauf
+(`scripts/sync-oscal-schemas.mjs`) bleibt der einzige Ort, an dem ein Schema
+über das Netz bezogen werden darf, und läuft nur auf ausdrückliche Anforderung.
+
+`.gitattributes` schließt für `schemas/oscal/**` die Zeilenenden-Normalisierung
+aus (`-text`). Ohne diese Zeile würde ein Clone mit `core.autocrlf=true` die
+Bytes verändern und die Hashprüfung auf genau dieser Maschine falsch-rot
+machen, bei unverändertem Repository-Inhalt.
+
+Die Bytes werden zur Laufzeit **nicht** erneut gehasht. Der Bundler
+transformiert sie, und ein im selben Bundle mitgelieferter Sollwert würde sich
+selbst bestätigen; die Abgrenzung zur Laufzeitprüfung der
+`public/data/`-Artefakte steht in [INTEGRITY.md](./INTEGRITY.md#überblick).
 
 ### Die `$id` ist nicht aus dem Dateinamen ableitbar
 
@@ -136,10 +162,19 @@ Die Releases 1.2.1 und 1.2.2 erzeugen für jeden Root-Typ byte-gleich große
 Dateien mit unterschiedlichem Inhalt. Größe allein unterscheidet sie also
 nicht; nur der Hash trennt sie.
 
-## Bauzeitgarantie: kein Laufzeit-Netzbezug
+## Bauzeitgarantie: kein Schemabezug von einer fremden Origin
 
-Kein Schema wird zur Laufzeit über das Netz bezogen. Die Garantie ruht auf
-drei Stützen:
+Kein Schema wird zur Laufzeit von einem fremden Host bezogen. Die Bytes stammen
+ausnahmslos aus den eingecheckten, gehashten Dateien unter `schemas/oscal/`;
+`github.com` und `csrc.nist.gov` werden zur Laufzeit nie angefragt.
+
+Das ist **nicht** gleichbedeutend mit „kein Netzverkehr“: Der Worker lädt den
+Chunk der ausgewählten Zelle zur Laufzeit als Modul **derselben Origin** nach,
+damit nicht alle 30 Schemas in einer Datei liegen. Wo diese Grenze im Code und
+im Browserorakel verläuft, steht in
+[OSCAL_VALIDATION.md](./OSCAL_VALIDATION.md#schemazugriff-ein-lazy-chunk-derselben-origin-kein-externer-bezug).
+
+Die Garantie ruht auf drei Stützen:
 
 1. Es gibt genau einen Ort, der ein Schema beziehen darf:
    [`scripts/sync-oscal-schemas.mjs`](../scripts/sync-oscal-schemas.mjs). Er
