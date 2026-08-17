@@ -162,10 +162,19 @@ Die Releases 1.2.1 und 1.2.2 erzeugen für jeden Root-Typ byte-gleich große
 Dateien mit unterschiedlichem Inhalt. Größe allein unterscheidet sie also
 nicht; nur der Hash trennt sie.
 
-## Bauzeitgarantie: kein Laufzeit-Netzbezug
+## Bauzeitgarantie: kein Schemabezug von einer fremden Origin
 
-Kein Schema wird zur Laufzeit über das Netz bezogen. Die Garantie ruht auf
-drei Stützen:
+Kein Schema wird zur Laufzeit von einem fremden Host bezogen. Die Bytes stammen
+ausnahmslos aus den eingecheckten, gehashten Dateien unter `schemas/oscal/`;
+`github.com` und `csrc.nist.gov` werden zur Laufzeit nie angefragt.
+
+Das ist **nicht** gleichbedeutend mit „kein Netzverkehr“: Der Worker lädt den
+Chunk der ausgewählten Zelle zur Laufzeit als Modul **derselben Origin** nach,
+damit nicht alle 30 Schemas in einer Datei liegen. Wo diese Grenze im Code und
+im Browserorakel verläuft, steht in
+[OSCAL_VALIDATION.md](./OSCAL_VALIDATION.md#schemazugriff-ein-lazy-chunk-derselben-origin-kein-externer-bezug).
+
+Die Garantie ruht auf drei Stützen:
 
 1. Es gibt genau einen Ort, der ein Schema beziehen darf:
    [`scripts/sync-oscal-schemas.mjs`](../scripts/sync-oscal-schemas.mjs). Er

@@ -25,7 +25,7 @@ function responseOf(body: string) {
 }
 
 describe('sync-oscal-schemas', () => {
-  describe('Bauzeitgarantie: kein Laufzeit-Netzbezug', () => {
+  describe('Bauzeitgarantie: kein Schemabezug von einer fremden Origin', () => {
     it('keeps every network path out of the version matrix module', async () => {
       // Die Matrix liefert ausschließlich Metadaten. Entsteht dort ein
       // Ladepfad, wäre die dokumentierte Bauzeitgarantie gebrochen: der

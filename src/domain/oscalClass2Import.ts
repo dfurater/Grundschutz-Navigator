@@ -32,7 +32,8 @@ export type Class2OscalImportResult =
  * ausgelagert.
  *
  * `async`, weil Stufe 3 das Schema der ausgewählten Zelle als eigenen Chunk
- * nachlädt — nur die eine Zelle, aus dem Bundle, ohne Netzbezug.
+ * nachlädt — nur die eine Zelle, aus dem eigenen Bundle und von derselben
+ * Origin, nie von einem fremden Host.
  */
 export async function processClass2OscalBytes(
   bytes: Uint8Array,

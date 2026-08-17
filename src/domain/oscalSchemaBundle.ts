@@ -10,8 +10,11 @@
 // validierten Schema-Pin der Stufe 2.
 //
 // Der dynamische Import lädt genau die ausgewählte Zelle; die übrigen 29
-// Schemas bleiben in eigenen Chunks und werden nie angefasst. Ein Netzbezug
-// findet nicht statt — die Bytes liegen im Bundle.
+// Schemas bleiben in eigenen Chunks und werden nie angefasst. Dieser eine
+// Modulabruf geht zur Laufzeit an **dieselbe Origin** wie die Anwendung — die
+// Bytes stammen aus dem eigenen Bundle. Ein Bezug von einer fremden Origin
+// findet nicht statt, insbesondere nicht von `github.com` (Release-Asset) oder
+// `csrc.nist.gov` (die `$id` der Schemas).
 //
 // Die Schemapfade sind als **einzige** Ausnahme relativ und nicht über `@/`
 // geschrieben: Der Alias ist auf `./src/` abgebildet (vite.config.ts,

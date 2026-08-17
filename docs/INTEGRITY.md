@@ -20,7 +20,7 @@ folgt aus dem Auslieferungsweg:
 
 | | `public/data/`-Artefakte | `schemas/oscal/`-Schemas |
 | --- | --- | --- |
-| Auslieferung | zur Laufzeit über `fetch` nachgeladen | zur Bauzeit in den Worker-Chunk gebündelt |
+| Auslieferung | zur Laufzeit über `fetch` nachgeladen | zur Bauzeit in je eigene Chunks gebaut; der Chunk der ausgewählten Zelle wird zur Laufzeit als Modul derselben Origin nachgeladen |
 | Bytes beim Prüfen | exakt die Bytes der Quelldatei | vom Bundler transformiert |
 | Prüfort | `src/domain/integrity.ts`, im Browser | `npm run verify-oscal-schemas`, in CI |
 

@@ -3,7 +3,9 @@
 //
 // Läuft ausschließlich im Modul-Worker und ausschließlich mit der von Stufe 2
 // gelieferten Matrixzelle. Es gibt keinen Fallback auf eine Nachbarversion und
-// keinen Netzbezug: die Schemabytes kommen aus dem statischen Bundle.
+// keinen Bezug von einer fremden Origin: die Schemabytes kommen aus dem eigenen
+// Bundle, dessen ausgewählter Chunk zur Laufzeit von derselben Origin geladen
+// wird — siehe `oscalSchemaBundle.ts`.
 //
 // „Schema-valide" ist eine Strukturaussage, keine Vertrauensaussage. OSCAL
 // erzeugt für jedes Feld mit `allow-other="yes"` das Muster
@@ -83,7 +85,13 @@ const KEYWORD_DIAGNOSTIC_CODES: Readonly<Record<string, string>> = Object.freeze
   allOf: 'OSCAL_SCHEMA_COMBINATOR_MISMATCH',
   not: 'OSCAL_SCHEMA_COMBINATOR_MISMATCH',
   if: 'OSCAL_SCHEMA_COMBINATOR_MISMATCH',
-  false_schema: 'OSCAL_SCHEMA_COMBINATOR_MISMATCH',
+  // Ajv 8.20.0 schreibt dieses Keyword mit Leerzeichen, nicht als
+  // `false_schema` — nachgeprüft am Befund `{"keyword":"false schema"}` für ein
+  // Teilschema `false`. Defensiv: Die gepinnten Schemas setzen `false`
+  // ausschließlich an `additionalProperties` und können den Befund nicht
+  // erzeugen; ein künftiges Schema mit echtem Teilschema `false` soll dennoch
+  // als Schemabefund und nicht als Werkzeugfehler enden.
+  'false schema': 'OSCAL_SCHEMA_COMBINATOR_MISMATCH',
 });
 
 export interface OscalSchemaValidationSuccess {
