@@ -292,7 +292,9 @@ interface RawOscalRootBody {
 
 /** Nur modellierte Roots tragen ihren eigenen Körpertyp. */
 type RawOscalRootBodyFor<K extends OscalRootKey> =
-  K extends 'catalog' ? RawOscalCatalog : RawOscalRootBody;
+  K extends 'catalog' ? RawOscalCatalog
+    : K extends 'component-definition' ? RawOscalComponentDefinition
+      : RawOscalRootBody;
 
 /** Genau ein Root-Key plus die zulässige Schema-Direktive. */
 type RawOscalDocumentFor<K extends OscalRootKey> =
@@ -393,11 +395,147 @@ nicht, und `models.ts` wächst dafür nicht zu einer monolithischen Modellschich
 | `catalog` | Control | `src/adapters/oscalAdapter.ts` | registriert |
 | `profile` | Control | — | [GSPP-240](https://linear.app/grundschutz-plus-plus/issue/GSPP-240) |
 | `mapping-collection` | Control | — | [GSPP-245](https://linear.app/grundschutz-plus-plus/issue/GSPP-245) |
-| `component-definition` | Implementation | — | [GSPP-248](https://linear.app/grundschutz-plus-plus/issue/GSPP-248) |
+| `component-definition` | Implementation | `src/adapters/oscalComponentAdapter.ts` | registriert |
 | `system-security-plan` | Implementation | — | [GSPP-293](https://linear.app/grundschutz-plus-plus/issue/GSPP-293) |
 | `assessment-plan` | Assessment | — | nicht erschlossen |
 | `assessment-results` | Assessment | — | nicht erschlossen |
 | `plan-of-action-and-milestones` | Assessment | — | nicht erschlossen |
+
+## Component Definitions (Implementation Layer)
+
+Das zweite erschlossene Root-Modell, eingeführt mit
+[GSPP-248](https://linear.app/grundschutz-plus-plus/issue/GSPP-248).
+
+| Datei | Rolle |
+| --- | --- |
+| `src/domain/oscalComponentDefinition.ts` | Raw-Typen, über `PinnedOscalVersion` parametrisiert |
+| `src/domain/componentDefinitionModel.ts` | Projektion (`ComponentDefinition` und Teiltypen), ohne Logik |
+| `src/adapters/oscalComponentReaders.ts` | Knotenleser und Diagnosesammler |
+| `src/adapters/oscalComponentAdapter.ts` | Ableitung `derive(body, context)` |
+| `src/adapters/oscalComponentDocument.ts` | Dokumenteinstieg mit Root-Dispatch und Übergang nach Stufe 3 |
+
+### Implementierungsbehauptung ≠ nachgewiesene Compliance
+
+Eine `implemented-requirement` dokumentiert, dass eine Komponente eine
+Kontrolle **nach Aussage der Definition** umsetzt. Sie ist kein automatisch
+geprüfter Compliance-, Audit- oder Zertifizierungsstatus, und kein Feld des
+Domänenmodells behauptet etwas anderes. Der Navigator liest diese Aussagen und
+macht sie navigierbar — er bewertet sie nicht.
+
+Der fachliche Nutzen dieses Slices ist deshalb Navigierbarkeit („welche
+Kontrollen adressiert Komponente X", „welche Komponenten adressieren Kontrolle
+Y") und die Vorbereitung des Implementation Layers. Nach NIST sind Component
+Definitions dafür gedacht, dass ihre Inhalte in einen SSP übernommen werden;
+eine Import-Kante SSP → Component Definition gibt es dabei **nicht** — der SSP
+importiert ausschließlich ein Profile (`import-profile`, required). Die
+Übernahme ist eine Werkzeugfunktion, keine Dokumentreferenz.
+
+### Versionsspreizung im Bestand
+
+Die sechs registrierten BSI-Definitionen deklarieren **drei** verschiedene
+OSCAL-Versionen. Eine einheitliche Modellversionsannahme wäre am Bestand
+belegbar falsch, und es gibt deshalb keine Component-Definition-Versionskonstante
+im Code: Die Zelle wählt allein `metadata.oscal-version` über den Root-Dispatch.
+
+| Deklarierte Version | Artefakte |
+| --- | --- |
+| 1.1.2 | `component-ga-lotse-grundmodul`, `component-lieferkette`, `component-passwortrichtlinie` |
+| 1.1.3 | `component-aws-security-hub` |
+| 1.2.2 | `component-keycloak`, `component-netzarchitektur` |
+
+Zwischen den vier gepinnten Schemas unterscheiden sich drei parserrelevante
+Felder. Sie sind als Feldprädikate in `oscalComponentDefinition.ts` abgebildet
+und hängen über `oscalComponentDefinition.versionDrift.test.ts` am vendorierten
+Schema, statt am Gedächtnis:
+
+| Feld | Unterschied |
+| --- | --- |
+| `import-component-definition.remarks` | erst ab 1.2.1 deklariert; in 1.1.2/1.1.3 verletzt es `additionalProperties: false` |
+| `port-range.remarks` | erst ab 1.2.1 deklariert |
+| `protocol.name` | nur in 1.1.2 Pflichtfeld |
+
+Der erste Unterschied ist zugleich der Sperrgrund von
+`component-ga-lotse-grundmodul` nach
+[ADR-7](https://linear.app/grundschutz-plus-plus/issue/ADR-7)
+([BSI #70](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/70)):
+Dasselbe Feld ist je nach deklarierter Version gültig oder schemawidrig.
+
+### Zwei Muster für `control-implementation.source`
+
+`source` ist Pflichtfeld und die Kante des Implementation Layers hinunter in den
+Control Layer. Sie hängt an **jeder** Implementierung, nicht am Dokument — im
+Bestand kommen zwei Muster vor:
+
+| Muster | Vorkommen | Klassifikation |
+| --- | --- | --- |
+| `#uuid` auf eine back-matter-Ressource desselben Dokuments | Keycloak, Lieferkette, Netzarchitektur, Passwortrichtlinie | `resource` |
+| absolute HTTPS-URL | AWS Security Hub | `external`, wird nie aufgelöst |
+
+Die AWS-URL zeigt zusätzlich auf den Branch `main` statt auf einen gepinnten
+Commit und ist damit nicht versionsstabil. Klassifiziert wird sie — wie jede
+Referenz — ausschließlich über `src/domain/referenceResolution.ts`
+([GSPP-286](https://linear.app/grundschutz-plus-plus/issue/GSPP-286)); der
+Adapter verzweigt an keiner Stelle selbst auf die Form eines `href` und lädt
+nichts nach.
+
+**Ein Dokument kann mehrere Quellen führen.** `component-netzarchitektur` trägt
+zwei verschiedene `#uuid`-Quellen. `ComponentDefinition.implementationsBySource`
+hält sie deshalb getrennt; ein Adapter, der eine Definition auf genau eine
+Quelle reduziert, läge dort still falsch.
+
+Daraus folgt die Behandlung von `implemented-requirement.control-id`: Sie ist
+eine Control-ID **im Kontext ihrer** `source` und nie global. Aufgelöst wird sie
+nur, wenn der Aufrufer über `catalogsBySource` einen Zielkatalog zu genau diesem
+`source`-Wert bereitstellt. Ohne diese Bindung bleibt sie `unresolved` mit einer
+Diagnose — die 17 `control-id`-Referenzen der AWS-Definition zeigen auf einen
+nicht registrierten Kernel-G0-Katalog und bleiben deshalb dauerhaft in diesem
+Zustand, ohne dass die Definition verworfen wird.
+
+### Verlustfreiheit gilt auch für schemawidrige Dokumente
+
+Nach ADR-2 ist der unveränderte `source` die Wahrheit und `view` die Projektion.
+Der Adapter repariert deshalb nichts: `component-lieferkette` schreibt an drei
+Stellen `implemented-requirement.links` als **Einzelobjekt** statt als Array
+([BSI #71](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/71)).
+Das Objekt bleibt im Quellgraphen unverändert stehen und wird nicht in ein Array
+normalisiert; die Verletzung erscheint als Diagnose — aus Stufe 3 als
+Schemabefund und aus dem Adapter als struktureller Befund mit exaktem JSON
+Pointer.
+
+Beide nach ADR-7 gesperrten Definitionen werden vollständig geparst: Die
+Sperrung betrifft die **Auslieferung**, nicht das Parsen.
+
+### Modellinterne Diagnosen
+
+Stufe `domain`, Validator `gspp-component-adapter`. Sie verwerfen ein Dokument
+nie; verworfen wird ausschließlich vorher, im Root-Dispatch.
+
+| Code | Anlass |
+| --- | --- |
+| `OSCAL_COMPONENT_DUPLICATE_UUID` | Component-, Capability- oder implemented-requirement-`uuid` dokumentweit doppelt |
+| `OSCAL_COMPONENT_IMPLEMENTATION_SOURCE_MISSING` | `control-implementation` ohne `source` |
+| `OSCAL_COMPONENT_CONTROL_ID_MISSING` | `implemented-requirement` ohne `control-id` |
+| `OSCAL_COMPONENT_CONTROL_REFERENCE_UNRESOLVED` | `control-id` im Kontext ihrer `source` nicht auflösbar |
+| `OSCAL_COMPONENT_STRUCTURE_UNEXPECTED` | Knoten hat nicht die erwartete Form, etwa Objekt statt Array |
+
+Die Leser diagnostizieren dabei ausdrücklich einen **vorhandenen** Wert der
+falschen Form, statt ihn still zu `[]` zu machen — sonst verschwände genau der
+Lieferketten-Befund aus der Projektion.
+
+### Testkorpus
+
+Die sechs realen Definitionen liegen nicht im Repository: `npm run fetch-catalog`
+materialisiert ausschließlich `supported`-Artefakte, und alle sechs sind
+`preview` oder `blocked-by-upstream`. Verbindlich ist deshalb der eingefrorene
+Fixture-Korpus in `src/test/fixtures/componentDefinitions.ts` mit den am
+Snapshot `80694713a7a430d12eb2099893de23ad8bb6f780` gemessenen Strukturzahlen —
+in Summe 35 Components, 10 Capabilities, 35 Control-Implementations und 307
+implemented requirements.
+
+Der Realkorpus ist optional: `oscalComponentDocument.node.test.ts` läuft nur,
+wenn `GSPP_COMPONENT_CORPUS_PATH` auf ein lokal geholtes Verzeichnis zeigt, und
+wird sonst übersprungen. Er prüft Erhaltung und die Byte-Identität gegen
+`contentSha256` aus `upstream-manifest.json`, nie feste Inhaltszahlen.
 
 ## Enriched Domain Types
 
