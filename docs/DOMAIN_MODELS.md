@@ -294,7 +294,8 @@ interface RawOscalRootBody {
 type RawOscalRootBodyFor<K extends OscalRootKey> =
   K extends 'catalog' ? RawOscalCatalog
     : K extends 'component-definition' ? RawOscalComponentDefinition
-      : RawOscalRootBody;
+      : K extends 'profile' ? RawOscalProfile
+        : RawOscalRootBody;
 
 /** Genau ein Root-Key plus die zulässige Schema-Direktive. */
 type RawOscalDocumentFor<K extends OscalRootKey> =
@@ -393,13 +394,160 @@ nicht, und `models.ts` wächst dafür nicht zu einer monolithischen Modellschich
 | Root-Key | Layer | Adapter | Status |
 | --- | --- | --- | --- |
 | `catalog` | Control | `src/adapters/oscalAdapter.ts` | registriert |
-| `profile` | Control | — | [GSPP-240](https://linear.app/grundschutz-plus-plus/issue/GSPP-240) |
+| `profile` | Control | `src/adapters/oscalProfileAdapter.ts` | registriert |
 | `mapping-collection` | Control | — | [GSPP-245](https://linear.app/grundschutz-plus-plus/issue/GSPP-245) |
 | `component-definition` | Implementation | `src/adapters/oscalComponentAdapter.ts` | registriert |
 | `system-security-plan` | Implementation | — | [GSPP-293](https://linear.app/grundschutz-plus-plus/issue/GSPP-293) |
 | `assessment-plan` | Assessment | — | nicht erschlossen |
 | `assessment-results` | Assessment | — | nicht erschlossen |
 | `plan-of-action-and-milestones` | Assessment | — | nicht erschlossen |
+
+## Profile (Control Layer)
+
+Eingeführt mit
+[GSPP-240](https://linear.app/grundschutz-plus-plus/issue/GSPP-240).
+
+| Datei | Rolle |
+| --- | --- |
+| `src/domain/oscalProfile.ts` | Raw-Typen, über `PinnedOscalVersion` parametrisiert |
+| `src/domain/profileModel.ts` | Projektion (`Profile` und Teiltypen), ohne Logik |
+| `src/adapters/oscalProfileReaders.ts` | Knotenleser und Diagnosesammler |
+| `src/adapters/oscalProfileAdapter.ts` | Ableitung `deriveProfile(body, context)` |
+| `src/adapters/oscalProfileDocument.ts` | Dokumenteinstieg mit Root-Dispatch und Übergang nach Stufe 3 |
+
+### Ein Profile ist eine Anweisung, kein Katalog
+
+Ein Profile importiert einen Catalog **oder ein weiteres Profile** und
+beschreibt, welche Controls daraus ausgewählt, wie sie gruppiert und wie sie
+geändert werden sollen. Erst die Profile Resolution macht daraus einen Catalog.
+NIST formuliert das Profile deshalb als Pflichteinstieg in die oberen Layer:
+Ein SSP importiert genau ein Profile, keinen Catalog.
+
+Dieser Slice liest die Anweisung und führt sie **nicht** aus. Kein Feld der
+Projektion kann ein aufgelöstes Control-Set ausdrücken; `Profile`,
+`ProfileMerge` und `ProfileModify` tragen stattdessen den eingefrorenen Marker
+`PROFILE_RESOLUTION_STATE` mit `status: "not-resolved"` und dem Grund
+`profile-resolution-out-of-scope`. Die Auflösung selbst ist
+[GSPP-291](https://linear.app/grundschutz-plus-plus/issue/GSPP-291).
+
+### Unterstützte Semantik
+
+| Konstrukt | Abbildung |
+| --- | --- |
+| `imports[]` | `Profile.imports` in Quellreihenfolge, je Eintrag mit `href`, klassifizierter `reference`, `selection` und `excludeControls` |
+| `include-all` | `selection.kind === 'include-all'` — die Anwesenheit des Schlüssels zählt, nicht sein Wert; das leere Objekt ist bedeutungstragend |
+| `include-controls` | `selection.kind === 'include-controls'` mit den Selektoren |
+| `exclude-controls` | `ProfileImport.excludeControls`, dieselbe Selektorform |
+| `with-ids` | `ProfileControlSelector.withIds` |
+| `matching` | `ProfileControlSelector.matching` — **getrennte** Liste, erhalten, aber nie ausgewertet |
+| `with-child-controls` | `ProfileControlSelector.withChildControls`, beide Werte `yes` und `no` |
+| `merge.flat` / `as-is` / `custom` | `ProfileMerge.structure` als diskriminierte Union; `as-is` trägt seinen Booleschen Wert mit |
+| `merge.combine` | `ProfileMerge.combine.method`, unverändert übernommen |
+| `custom.groups` / `insert-controls` | `ProfileCustomGrouping`, Gruppen rekursiv, `insert-controls.order` erhalten |
+| `modify.set-parameters` | `ProfileModify.setParameters` |
+| `modify.alters` | `ProfileModify.alters` als Liste plus `altersByControlId` als Gruppierung |
+| `alters[].adds` | `ProfileAddition` mit allen vier Positionen `before`/`after`/`starting`/`ending` und rekursiven `parts` |
+| `alters[].removes` | `ProfileRemoval` mit `by-name`, `by-class`, `by-id`, `by-item-name`, `by-ns` |
+
+### Bewusst **nicht** unterstützt
+
+* **Keine Profile Resolution.** Selektion, Merge und Modify werden erhalten und
+  nicht angewandt; es entsteht kein aufgelöstes Control-Set
+  ([GSPP-291](https://linear.app/grundschutz-plus-plus/issue/GSPP-291)).
+* **Keine Auswertung von `matching`.** Glob-Muster werden erhalten, aber nicht
+  gegen Control-IDs abgeglichen.
+* **Keine Auflösung relativer oder externer Quellen.** Ein `import.href` wird
+  klassifiziert, nicht geladen — kein Netz-, kein Dateizugriff.
+* **Kein Profile Authoring und keine Persistenz**
+  ([GSPP-292](https://linear.app/grundschutz-plus-plus/issue/GSPP-292)).
+* **Keine UI** und keine Aussage über Vollständigkeit oder Konformität eines
+  Profils jenseits des geprüften Umfangs.
+
+### Zwei Kanten bis zur Quelldatei
+
+Im BSI-Bestand ist **jedes** `import.href` ein dokumentinternes
+`#uuid`-Fragment auf eine `back-matter`-Ressource. Der relative Pfad liegt eine
+Kante weiter, in `back-matter.resources[].rlinks[].href`, und zeigt mit
+`../`-Segmenten auf Quellkataloge, die das Quellregister nicht führt.
+
+Die Referenz wird deshalb als `kind: 'resource'` aufgelöst — die Ressource ist
+da —, während ihr `rlink` das Ergebnis `relative` behält. „Aufgelöst, aber ohne
+auflösbares Ziel“ ist der zutreffende Zustand, nicht ein Fehler.
+
+Nach [GSPP-286](https://linear.app/grundschutz-plus-plus/issue/GSPP-286) gibt es
+clientseitig keinen Verzeichniskontext: `../catalogs/…`, `foo.json` und
+`../../etc/passwd` erhalten **dasselbe** Ergebnis `relative`. Es gibt keine
+Pfadnormalisierung und keine Traversal-Sonderbehandlung, und der Adapter
+verzweigt nirgends selbst auf die Form eines `href`
+(`oscalProfileAdapter.boundaries.node.test.ts`).
+
+### Versionsdrift ist beim Profile strukturell
+
+Alle drei registrierten Profile deklarieren `1.1.3`. Eine
+Profile-Versionskonstante gäbe es trotzdem nicht — und beim Profile ist das
+nicht nur Prinzip, sondern am vendorierten Schema messbar:
+
+| Konstrukt | 1.1.2 / 1.1.3 | 1.2.1 / 1.2.2 |
+| --- | --- | --- |
+| `import.href` | Pflichtfeld | optional |
+| `import`-Selektion | `include-all` und `include-controls` dürfen koexistieren oder fehlen | `anyOf`: **genau eine** der beiden |
+| `merge` | `combine`, `flat`, `as-is`, `custom` alle optional und koexistierbar | `anyOf`: genau eine Direktive, optional mit `combine` |
+| `insert-controls` | gewöhnliches Objekt | `anyOf` wie bei `import` |
+| `matching.remarks` | nicht deklariert | deklariert |
+
+**Derselbe** `import` mit beiden Selektionsformen ist unter 1.1.3 schemavalide
+und ab 1.2.1 ein Befund; ein `import` ohne `href` genau umgekehrt. Die
+Feldprädikate in `src/domain/oscalProfile.ts` bilden das ab und hängen über
+`oscalProfile.versionDrift.test.ts` am Schema, nicht am Gedächtnis.
+
+### Modellinterne Diagnosen
+
+Stufe `domain`, Validator `gspp-profile-adapter`. Sie verwerfen ein Dokument
+nie; verworfen wird ausschließlich vorher, im Root-Dispatch.
+
+| Code | Anlass |
+| --- | --- |
+| `OSCAL_PROFILE_IMPORTS_MISSING` | `imports` fehlt oder ist leer |
+| `OSCAL_PROFILE_IMPORT_HREF_MISSING` | `import` ohne `href` — die zu tailorende Quelle ist nicht benannt |
+| `OSCAL_PROFILE_SELECTION_AMBIGUOUS` | `include-all` **und** `include-controls` am selben Knoten |
+| `OSCAL_PROFILE_SELECTION_MISSING` | weder `include-all` noch `include-controls` am selben Knoten |
+| `OSCAL_PROFILE_MERGE_STRUCTURE_AMBIGUOUS` | mehr als eine Strukturdirektive in `merge` |
+| `OSCAL_PROFILE_MERGE_STRUCTURE_MISSING` | `merge` ohne `flat`, `as-is` oder `custom` |
+| `OSCAL_PROFILE_ALTER_CONTROL_ID_MISSING` | `alter` ohne `control-id` |
+| `OSCAL_PROFILE_STRUCTURE_UNEXPECTED` | Knoten hat nicht die erwartete Form, etwa Objekt statt Array |
+
+Die vier mit `AMBIGUOUS`/`MISSING` benannten Befunde sind **Modell**aussagen,
+keine Schemaaussagen: Ob derselbe Knoten schemawidrig ist, hängt an der
+deklarierten Version und entscheidet Stufe 3. Der Knoten bleibt in beiden Fällen
+verlustfrei in der Projektion — ein mehrdeutiger `import` behält seine
+Selektoren, ein `alter` ohne `control-id` bleibt in `alters` stehen und fehlt
+nur in der Gruppierung.
+
+### Mehrfache `alter`-Einträge auf derselben `control-id`
+
+Das WLAN-Profil trägt am Snapshot 290 `alters` über 58 eindeutige `control-id`,
+bis zu fünf Einträge je Control. Ihre Wirkung entsteht erst aus allen zusammen.
+`ProfileModify.alters` ist deshalb eine Liste in Quellreihenfolge, und
+`altersByControlId` bildet auf **Listen** ab; ein `Map.set()` je `control-id`
+verlöre dort den Großteil der Anweisungen.
+
+### Testkorpus
+
+Die drei realen Profile liegen nicht im Repository: `npm run fetch-catalog`
+materialisiert ausschließlich `supported`-Artefakte, und alle drei sind
+`preview`. Verbindlich ist deshalb der eingefrorene Fixture-Korpus in
+`src/test/fixtures/profiles.ts` mit den am Snapshot
+`80694713a7a430d12eb2099893de23ad8bb6f780` gemessenen Strukturen. Die im
+BSI-Bestand nicht vorkommenden, normativ aber vorhandenen Fälle — `matching`,
+`merge: flat`, `combine`, `insert-controls.order`, die Positionen `before`,
+`after` und `ending`, `exclude-controls`, `import` ohne `href` — stehen als
+ergänzende synthetische Fixtures daneben.
+
+Der Realkorpus ist optional: `oscalProfileDocument.node.test.ts` läuft nur, wenn
+`GSPP_PROFILE_CORPUS_PATH` auf ein lokal geholtes Verzeichnis zeigt, und wird
+sonst übersprungen. Er prüft Erhaltung und die Byte-Identität gegen
+`contentSha256` aus `upstream-manifest.json`, nie feste Inhaltszahlen — das
+WLAN-Profil hat seine `alters`-Zahl upstream schon einmal gewechselt.
 
 ## Component Definitions (Implementation Layer)
 
