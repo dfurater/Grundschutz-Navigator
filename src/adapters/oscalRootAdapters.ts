@@ -19,6 +19,11 @@ import {
   deriveComponentDefinition,
 } from '@/adapters/oscalComponentAdapter';
 import type { ComponentDefinition } from '@/adapters/oscalComponentAdapter';
+import {
+  deriveMappingCollection,
+  MAPPING_COLLECTION_ROOT_TYPE,
+} from '@/adapters/oscalMappingAdapter';
+import type { MappingCollection } from '@/adapters/oscalMappingAdapter';
 import { deriveProfile, PROFILE_ROOT_TYPE } from '@/adapters/oscalProfileAdapter';
 import type { Profile } from '@/adapters/oscalProfileAdapter';
 import {
@@ -129,6 +134,18 @@ export const profileRootAdapter: OscalRootAdapter<Profile> = Object.freeze({
   derive: (body: unknown, context: OscalDocumentContext) => deriveProfile(body, context),
 });
 
+/**
+ * Mapping-Adapter (Control Layer). Eine Mapping Collection trägt ihre `uuid`
+ * selbst und ist nicht kataloggescopt: Sie **beschreibt** Beziehungen zwischen
+ * Controls zweier Quellen, gehört aber keiner von beiden (GSPP-245).
+ */
+export const mappingCollectionRootAdapter: OscalRootAdapter<MappingCollection> = Object.freeze({
+  rootType: MAPPING_COLLECTION_ROOT_TYPE,
+  moduleEntryPoint: 'src/adapters/oscalMappingAdapter.ts',
+  derive: (body: unknown, context: OscalDocumentContext) =>
+    deriveMappingCollection(body, context),
+});
+
 /** Registrierte Modelladapter. Ein neues Modell ergänzt hier genau eine Zeile. */
 const OSCAL_ROOT_ADAPTERS: ReadonlyMap<OscalRootKey, OscalRootAdapter> = new Map<
   OscalRootKey,
@@ -137,6 +154,7 @@ const OSCAL_ROOT_ADAPTERS: ReadonlyMap<OscalRootKey, OscalRootAdapter> = new Map
   [catalogRootAdapter.rootType, catalogRootAdapter],
   [componentDefinitionRootAdapter.rootType, componentDefinitionRootAdapter],
   [profileRootAdapter.rootType, profileRootAdapter],
+  [mappingCollectionRootAdapter.rootType, mappingCollectionRootAdapter],
 ]);
 
 export function getOscalRootAdapter(rootType: OscalRootKey): OscalRootAdapter | null {

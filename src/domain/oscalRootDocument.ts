@@ -12,15 +12,16 @@
 // dupliziert — eine zweite Liste könnte von der Versionsmatrix abdriften.
 //
 // Modelliert sind heute der Katalogkörper (GSPP-285), der Körper einer
-// Component Definition (GSPP-248) und der Profilkörper (GSPP-240). Die übrigen
-// fünf Roots tragen den gemeinsamen Anteil, bis ihr jeweiliger Adapter kommt;
-// eine unionsweite Struktur mit optionalen Feldern aller acht Modelle entsteht
-// bewusst nicht.
+// Component Definition (GSPP-248), der Profilkörper (GSPP-240) und der Körper
+// einer Mapping Collection (GSPP-245). Die übrigen vier Roots tragen den
+// gemeinsamen Anteil, bis ihr jeweiliger Adapter kommt; eine unionsweite
+// Struktur mit optionalen Feldern aller acht Modelle entsteht bewusst nicht.
 // =============================================================================
 
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
 import type { RawOscalCatalog, RawOscalMetadata } from '@/domain/models';
 import type { RawOscalComponentDefinition } from '@/domain/oscalComponentDefinition';
+import type { RawOscalMappingCollection } from '@/domain/oscalMapping';
 import type { RawOscalProfile } from '@/domain/oscalProfile';
 
 /**
@@ -51,7 +52,9 @@ export type RawOscalRootBodyFor<K extends OscalRootKey> = K extends 'catalog'
     ? RawOscalComponentDefinition
     : K extends 'profile'
       ? RawOscalProfile
-      : RawOscalRootBody;
+      : K extends 'mapping-collection'
+        ? RawOscalMappingCollection
+        : RawOscalRootBody;
 
 /**
  * Ein OSCAL-Dokument mit genau dem Root-Key `K`.
@@ -77,3 +80,4 @@ export type RawOscalDocument = {
 export type RawOscalCatalogDocument = RawOscalDocumentFor<'catalog'>;
 export type RawOscalComponentDefinitionDocument = RawOscalDocumentFor<'component-definition'>;
 export type RawOscalProfileDocument = RawOscalDocumentFor<'profile'>;
+export type RawOscalMappingCollectionDocument = RawOscalDocumentFor<'mapping-collection'>;
