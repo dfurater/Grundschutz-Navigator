@@ -409,6 +409,36 @@ export function makeMappingWithExplicitGap(): JsonObject {
   });
 }
 
+/**
+ * Die **zweite** Ausdrucksform der Lücke: Controls, die ausschließlich in den
+ * Gap-Summaries beider Seiten namentlich als ungemappt geführt werden. Dazu ein
+ * Widerspruch — eine ID, die zugleich abgebildet und als ungemappt aufgezählt
+ * ist — und ein Muster, das nie ausgewertet wird.
+ */
+export function makeMappingWithGapSummaryIds(): JsonObject {
+  return makeMinimalMappingSource({
+    entry: {
+      uuid: makeUuid('gap-summary-map', 0),
+      relationship: 'subset-of',
+      sources: [{ type: 'control', 'id-ref': 'SRC-WIDERSPRUCH' }],
+      targets: [{ type: 'control', 'id-ref': 'TGT-1' }],
+    },
+    set: {
+      'source-gap-summary': {
+        uuid: makeUuid('gap-summary-ids', 0),
+        'unmapped-controls': [
+          { 'with-ids': ['SRC-NUR-SUMMARY', 'SRC-WIDERSPRUCH'] },
+          { matching: [{ pattern: 'SRC-MUSTER-*' }] },
+        ],
+      },
+      'target-gap-summary': {
+        uuid: makeUuid('gap-summary-ids', 1),
+        'unmapped-controls': [{ 'with-ids': ['TGT-NUR-SUMMARY'] }],
+      },
+    },
+  });
+}
+
 /** Echtes m:n plus `statement`-Granularität — beides im Bestand nicht belegt. */
 export function makeMappingWithManyToMany(): JsonObject {
   return makeMinimalMappingSource({

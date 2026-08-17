@@ -583,7 +583,7 @@ Das ist die fachlich kritische Unterscheidung des Modells und der Grund für
 | Zustand | Bedeutung | Grundlage |
 | --- | --- | --- |
 | `mapped` | Es besteht eine Beziehung | mindestens ein `map` mit einem Beziehungstyp ungleich `no-relationship` |
-| `explicit-gap` | Es besteht **ausdrücklich keine** Beziehung | `map` mit `relationship: "no-relationship"`, ergänzend `source-gap-summary`/`target-gap-summary` |
+| `explicit-gap` | Es besteht **ausdrücklich keine** Beziehung | `map` mit `relationship: "no-relationship"` **oder** namentliche Aufzählung in der Gap-Summary der Seite |
 | `unknown` | Es wurde nichts ausgesagt | kein `map`-Eintrag zu dieser `id-ref` — oder nur einer mit unlesbarem Beziehungstyp |
 
 Einen vierten Zustand „nicht abgedeckt" gibt es nicht. Abgefragt wird die
@@ -592,6 +592,15 @@ Abdeckung über `coverageForSourceIdRef(mapping, idRef)` und
 `map.get(id) ?? 'nicht-abgedeckt'` entstehen kann. Ein Eintrag mit **unbekanntem**
 Beziehungstyp zählt bewusst nicht als Abdeckung: Was niemand deuten kann, darf
 keine behaupten.
+
+Die Lücke hat **zwei** Ausdrucksformen, und beide gehen in die Abfrage ein: der
+`map` mit `no-relationship` und die Gap-Summary der jeweiligen Seite, die nach
+Schema „all controls that were not mapped at all" aufzählt. Aus ihr zählen
+ausschließlich die namentlich genannten `with-ids` (`sourceGapIdRefs`,
+`targetGapIdRefs`); ein `matching`-Muster bleibt erhalten, verändert aber keine
+Abdeckungsaussage, weil dieser Slice nirgends einen Glob auswertet. Führt ein
+Dokument dieselbe ID zugleich als abgebildet und als ungemappt, widerspricht es
+sich — dann gewinnt die konkrete Beziehung, die Quelle und Ziel benennt.
 
 Die Indizes `mapsBySourceIdRef` und `mapsByTargetIdRef` hängen am einzelnen
 Mapping Set, nicht an der Sammlung. Erst das Set benennt die Ressource, in der
@@ -675,6 +684,12 @@ ein Befund.
 * **Keine Umkehrnavigation als Modelloperation.** Die Umkehrbarkeit der
   Beziehungstypen ist oben dokumentiert, wird aber nicht automatisch als
   zusätzliche Kante materialisiert.
+* **Keine Auflösung der Geltungsbereiche.** `method`, `matching-rationale`,
+  `status`, `confidence-score` und `coverage` sind gestuft: Die `provenance`
+  setzt sie global, `mapping` und `map` überschreiben sie lokal. Alle Ebenen
+  bleiben getrennt erhalten; das Modell rechnet daraus **keinen** effektiven
+  Wert aus. `provenance.method` ist deshalb die globale Angabe, nicht die
+  wirksame — der einzige abgeleitete Wert dieses Modells ist die Abdeckung.
 
 ### Keine Versionsdrift — gemessen, nicht angenommen
 

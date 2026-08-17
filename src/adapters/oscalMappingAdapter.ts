@@ -429,6 +429,23 @@ function indexByIdRef(
   return index;
 }
 
+/**
+ * Sammelt die **namentlich** aufgezählten IDs einer Gap-Summary.
+ *
+ * Nur `with-ids`: Ein `matching`-Muster wird in diesem Slice nirgends
+ * ausgewertet, und `with-child-controls` ließe sich ohne geladenen Katalog
+ * ohnehin nicht auflösen. Eine gemusterte Aufzählung bleibt deshalb in der
+ * Projektion erhalten, ohne die Abdeckungsaussage zu verändern — sonst würde
+ * hier ein Glob-Matcher entstehen, den das Modell ausdrücklich nicht hat.
+ */
+function collectGapIdRefs(summary: MappingGapSummary | undefined): ReadonlySet<string> {
+  const identifiers = new Set<string>();
+  for (const selector of summary?.unmappedControls ?? []) {
+    for (const identifier of selector.withIds) identifiers.add(identifier);
+  }
+  return identifiers;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Mapping Sets                                                       */
 /* ------------------------------------------------------------------ */
@@ -453,6 +470,9 @@ function deriveMapping(mapping: JsonObject, path: string, state: DeriveState): M
   const sourceResource = readResourceReference(mapping, 'source-resource', path, state);
   const targetResource = readResourceReference(mapping, 'target-resource', path, state);
   const maps = readMaps(mapping, path, state);
+  const mappingDescription = readString(mapping['mapping-description']);
+  const sourceGapSummary = readGapSummary(mapping, 'source-gap-summary', path, state);
+  const targetGapSummary = readGapSummary(mapping, 'target-gap-summary', path, state);
 
   return {
     uuid,
@@ -464,9 +484,13 @@ function deriveMapping(mapping: JsonObject, path: string, state: DeriveState): M
     maps,
     mapsBySourceIdRef: indexByIdRef(maps, 'sources'),
     mapsByTargetIdRef: indexByIdRef(maps, 'targets'),
-    mappingDescription: readString(mapping['mapping-description']),
-    sourceGapSummary: readGapSummary(mapping, 'source-gap-summary', path, state),
-    targetGapSummary: readGapSummary(mapping, 'target-gap-summary', path, state),
+    mappingDescription,
+    sourceGapSummary,
+    targetGapSummary,
+    // Die zweite Ausdrucksform der Lücke — ohne sie läse die Abdeckungsabfrage
+    // eine ausgesprochene Lücke als „nichts ausgesagt".
+    sourceGapIdRefs: collectGapIdRefs(sourceGapSummary),
+    targetGapIdRefs: collectGapIdRefs(targetGapSummary),
     confidenceScore: readConfidenceScore(mapping, path, state),
     coverage: readCoverage(mapping, path, state),
     props: readProps(mapping, path, state),

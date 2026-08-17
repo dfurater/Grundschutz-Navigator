@@ -143,12 +143,18 @@ export type MappingVocabularyBinding<T extends string> =
  * Mapping Sets.
  *
  * Es gibt bewusst keinen vierten Zustand „nicht abgedeckt": Aus dem Fehlen
- * eines Eintrags folgt ausschließlich, dass niemand etwas ausgesagt hat.
+ * eines Eintrags folgt ausschließlich, dass niemand etwas ausgesagt hat. Eine
+ * ausgesprochene Lücke ist dagegen immer eine Aussage — gleich, ob sie als
+ * `no-relationship` oder in der Gap-Summary der Seite steht.
  */
 export type MappingCoverageState =
   /** Mindestens eine Beziehung, die keine erklärte Lücke ist. */
   | 'mapped'
-  /** Ausschließlich `no-relationship` — die ausgesprochene Lücke. */
+  /**
+   * Die ausgesprochene Lücke. Sie hat **zwei** Ausdrucksformen: einen `map`
+   * mit `no-relationship` und die Aufzählung der ID in der Gap-Summary der
+   * jeweiligen Seite.
+   */
   | 'explicit-gap'
   /** Keine Aussage — oder nur eine, deren Beziehungstyp unbekannt ist. */
   | 'unknown';
@@ -311,6 +317,17 @@ export interface Mapping {
   readonly mappingDescription?: string;
   readonly sourceGapSummary?: MappingGapSummary;
   readonly targetGapSummary?: MappingGapSummary;
+  /**
+   * Die in der jeweiligen Gap-Summary **namentlich** aufgezählten IDs.
+   *
+   * Nur `with-ids`: Ein `matching`-Muster wird in diesem Slice nirgends
+   * ausgewertet, und `with-child-controls` ließe sich ohne geladenen Katalog
+   * ohnehin nicht auflösen. Eine gemusterte Aufzählung bleibt deshalb in
+   * `sourceGapSummary`/`targetGapSummary` erhalten, ohne die Abdeckungsaussage
+   * zu verändern — geraten wird auch hier nichts.
+   */
+  readonly sourceGapIdRefs: ReadonlySet<string>;
+  readonly targetGapIdRefs: ReadonlySet<string>;
   readonly confidenceScore?: MappingConfidenceScore;
   readonly coverage?: MappingCoverage;
   readonly props: readonly MappingProp[];
@@ -376,28 +393,41 @@ function assertsRelationship(entry: MappingEntry): boolean {
   return relationship.kind === 'known' && relationship.value !== MAPPING_RELATIONSHIP_GAP;
 }
 
-function coverageOf(entries: readonly MappingEntry[] | undefined): MappingCoverageState {
-  // Kein Eintrag heißt: Es wurde nichts ausgesagt. Diese Zeile ist der Grund
-  // für die Funktion — ein `map.get(id) ?? 'not-covered'` an der Aufrufstelle
-  // wäre genau die Fehlinterpretation, die das Modell ausschließen soll.
-  if (entries === undefined || entries.length === 0) return 'unknown';
-  if (entries.some(assertsRelationship)) return 'mapped';
+function assertsGap(entry: MappingEntry): boolean {
+  return entry.relationship.kind === 'known'
+    && entry.relationship.value === MAPPING_RELATIONSHIP_GAP;
+}
 
-  return entries.some(
-    (entry) =>
-      entry.relationship.kind === 'known'
-      && entry.relationship.value === MAPPING_RELATIONSHIP_GAP,
-  )
-    ? 'explicit-gap'
-    : 'unknown';
+/**
+ * Wertet beide Ausdrucksformen der Lücke gemeinsam aus.
+ *
+ * Reihenfolge der Prüfung ist eine Entscheidung, keine Bequemlichkeit: Führt
+ * ein Dokument dieselbe ID sowohl als abgebildet **als auch** in seiner
+ * Gap-Summary, widerspricht es sich. Die konkrete Beziehung gewinnt dann — sie
+ * benennt Quelle und Ziel, während die Gap-Summary nur eine pauschale Aussage
+ * über die Seite trifft. Ein vierter Zustand für den Widerspruch entstünde
+ * sonst allein aus einem Dokumentfehler.
+ */
+function coverageOf(
+  entries: readonly MappingEntry[] | undefined,
+  listedAsGap: boolean,
+): MappingCoverageState {
+  if (entries?.some(assertsRelationship)) return 'mapped';
+  if (listedAsGap || entries?.some(assertsGap)) return 'explicit-gap';
+
+  // Weder Beziehung noch benannte Lücke heißt: Es wurde nichts ausgesagt. Diese
+  // Zeile ist der Grund für die Funktion — ein `map.get(id) ?? 'not-covered'`
+  // an der Aufrufstelle wäre genau die Fehlinterpretation, die das Modell
+  // ausschließen soll.
+  return 'unknown';
 }
 
 /** Die Abdeckungsaussage über eine Quell-`id-ref` innerhalb eines Mapping Sets. */
 export function coverageForSourceIdRef(mapping: Mapping, idRef: string): MappingCoverageState {
-  return coverageOf(mapping.mapsBySourceIdRef.get(idRef));
+  return coverageOf(mapping.mapsBySourceIdRef.get(idRef), mapping.sourceGapIdRefs.has(idRef));
 }
 
 /** Die Abdeckungsaussage über eine Ziel-`id-ref` innerhalb eines Mapping Sets. */
 export function coverageForTargetIdRef(mapping: Mapping, idRef: string): MappingCoverageState {
-  return coverageOf(mapping.mapsByTargetIdRef.get(idRef));
+  return coverageOf(mapping.mapsByTargetIdRef.get(idRef), mapping.targetGapIdRefs.has(idRef));
 }

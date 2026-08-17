@@ -42,6 +42,7 @@ import {
   makeMappingWithDuplicateUuid,
   makeMappingWithExplicitGap,
   makeMappingWithExternalHref,
+  makeMappingWithGapSummaryIds,
   makeMappingWithManyToMany,
   makeMappingWithNamespacedRelationship,
   makeMappingWithoutItemIdRef,
@@ -337,7 +338,45 @@ describe('Dreistufige Abdeckungsaussage', () => {
     expect(codesOf(view)).not.toContain(codes.RESOURCE_TYPE_INVALID);
   });
 
-  it('erhält die Gap-Summary als zweite Ausdrucksform der Lücke', () => {
+  it('wertet die Gap-Summary als zweite Ausdrucksform der Lücke aus', () => {
+    const view = viewOf(makeMappingWithGapSummaryIds());
+    const mapping = view.mappings[0]!;
+
+    // Beide Seiten: Eine ID, die ausschließlich in der Gap-Summary steht, ist
+    // ausdrücklich als ungemappt bezeichnet — das ist eine Aussage, kein
+    // Schweigen.
+    expect(coverageForSourceIdRef(mapping, 'SRC-NUR-SUMMARY')).toBe('explicit-gap');
+    expect(coverageForTargetIdRef(mapping, 'TGT-NUR-SUMMARY')).toBe('explicit-gap');
+    // Gegenprobe: Eine nirgends genannte ID bleibt unbekannt.
+    expect(coverageForSourceIdRef(mapping, 'SRC-NIE-ERWAEHNT')).toBe('unknown');
+  });
+
+  it('lässt die konkrete Beziehung einen Widerspruch zur Gap-Summary entscheiden', () => {
+    const view = viewOf(makeMappingWithGapSummaryIds());
+    const mapping = view.mappings[0]!;
+
+    // Das Dokument widerspricht sich: dieselbe ID ist abgebildet **und** als
+    // ungemappt aufgezählt. Die konkrete Beziehung benennt Quelle und Ziel und
+    // gewinnt deshalb; ein vierter Zustand entstünde allein aus einem
+    // Dokumentfehler.
+    expect(mapping.sourceGapIdRefs.has('SRC-WIDERSPRUCH')).toBe(true);
+    expect(coverageForSourceIdRef(mapping, 'SRC-WIDERSPRUCH')).toBe('mapped');
+  });
+
+  it('wertet ein Muster in der Gap-Summary nicht aus', () => {
+    const view = viewOf(makeMappingWithGapSummaryIds());
+    const mapping = view.mappings[0]!;
+
+    // Das Muster bleibt erhalten …
+    expect(mapping.sourceGapSummary?.unmappedControls[1]?.matching[0]?.pattern)
+      .toBe('SRC-MUSTER-*');
+    // … verändert aber keine Abdeckungsaussage: Dieser Slice hat keinen
+    // Glob-Matcher, und einen zu erfinden hieße raten.
+    expect(mapping.sourceGapIdRefs.has('SRC-MUSTER-1')).toBe(false);
+    expect(coverageForSourceIdRef(mapping, 'SRC-MUSTER-1')).toBe('unknown');
+  });
+
+  it('erhält die Gap-Summary als Selektorliste', () => {
     const view = viewOf(makeMappingWithQualityAnnotations());
     const mapping = view.mappings[0]!;
 
