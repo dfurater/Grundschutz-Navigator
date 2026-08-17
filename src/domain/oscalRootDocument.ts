@@ -11,13 +11,15 @@
 // Root-Key-Menge wird aus `OscalRootKey` (GSPP-283) abgeleitet und nicht
 // dupliziert — eine zweite Liste könnte von der Versionsmatrix abdriften.
 //
-// Modelliert ist heute nur der Katalogkörper. Die übrigen sieben Roots tragen
-// den gemeinsamen Anteil, bis ihr jeweiliger Adapter kommt; eine unionsweite
+// Modelliert sind heute der Katalogkörper (GSPP-285) und der Körper einer
+// Component Definition (GSPP-248). Die übrigen sechs Roots tragen den
+// gemeinsamen Anteil, bis ihr jeweiliger Adapter kommt; eine unionsweite
 // Struktur mit optionalen Feldern aller acht Modelle entsteht bewusst nicht.
 // =============================================================================
 
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
 import type { RawOscalCatalog, RawOscalMetadata } from '@/domain/models';
+import type { RawOscalComponentDefinition } from '@/domain/oscalComponentDefinition';
 
 /**
  * Top-Level-Property der Schema-Direktive. Sie ist in allen acht NIST-Schemas
@@ -43,7 +45,9 @@ export interface RawOscalRootBody {
  */
 export type RawOscalRootBodyFor<K extends OscalRootKey> = K extends 'catalog'
   ? RawOscalCatalog
-  : RawOscalRootBody;
+  : K extends 'component-definition'
+    ? RawOscalComponentDefinition
+    : RawOscalRootBody;
 
 /**
  * Ein OSCAL-Dokument mit genau dem Root-Key `K`.
@@ -65,5 +69,6 @@ export type RawOscalDocument = {
   [K in OscalRootKey]: RawOscalDocumentFor<K>;
 }[OscalRootKey];
 
-/** Bequemer Alias für den heute einzigen modellierten Root. */
+/** Bequeme Aliase für die modellierten Roots. */
 export type RawOscalCatalogDocument = RawOscalDocumentFor<'catalog'>;
+export type RawOscalComponentDefinitionDocument = RawOscalDocumentFor<'component-definition'>;

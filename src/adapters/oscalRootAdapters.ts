@@ -15,6 +15,11 @@
 
 import { parseCatalog } from '@/adapters/oscalAdapter';
 import {
+  COMPONENT_DEFINITION_ROOT_TYPE,
+  deriveComponentDefinition,
+} from '@/adapters/oscalComponentAdapter';
+import type { ComponentDefinition } from '@/adapters/oscalComponentAdapter';
+import {
   dispatchOscalDocument,
   ROOT_DISPATCH_DIAGNOSTIC_CODES,
   ROOT_DISPATCH_STAGE,
@@ -97,9 +102,25 @@ export const catalogRootAdapter: OscalRootAdapter<Catalog> = Object.freeze({
     parseCatalog(body, { catalogKey: resolveCatalogKey(context) }),
 });
 
+/**
+ * Component-Definition-Adapter (Implementation Layer). Er braucht keine
+ * Identität aus Kontext oder Register: Eine Component Definition trägt ihre
+ * `uuid` selbst und ist nicht kataloggescopt (GSPP-248).
+ */
+export const componentDefinitionRootAdapter: OscalRootAdapter<ComponentDefinition> = Object.freeze({
+  rootType: COMPONENT_DEFINITION_ROOT_TYPE,
+  moduleEntryPoint: 'src/adapters/oscalComponentAdapter.ts',
+  derive: (body: unknown, context: OscalDocumentContext) =>
+    deriveComponentDefinition(body, context),
+});
+
 /** Registrierte Modelladapter. Ein neues Modell ergänzt hier genau eine Zeile. */
-const OSCAL_ROOT_ADAPTERS: ReadonlyMap<OscalRootKey, OscalRootAdapter> = new Map([
+const OSCAL_ROOT_ADAPTERS: ReadonlyMap<OscalRootKey, OscalRootAdapter> = new Map<
+  OscalRootKey,
+  OscalRootAdapter
+>([
   [catalogRootAdapter.rootType, catalogRootAdapter],
+  [componentDefinitionRootAdapter.rootType, componentDefinitionRootAdapter],
 ]);
 
 export function getOscalRootAdapter(rootType: OscalRootKey): OscalRootAdapter | null {
