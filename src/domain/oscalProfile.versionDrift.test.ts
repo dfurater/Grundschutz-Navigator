@@ -17,8 +17,15 @@
 
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { PINNED_OSCAL_VERSIONS } from '@/domain/oscalVersionMatrix';
+import { getSchemaPin, PINNED_OSCAL_VERSIONS } from '@/domain/oscalVersionMatrix';
 import type { PinnedOscalVersion } from '@/domain/oscalVersionMatrix';
+import type {
+  OscalVersionsWithImportSelectionConstraint,
+  OscalVersionsWithInsertControlsConstraint,
+  OscalVersionsWithMatchingRemarks,
+  OscalVersionsWithMergeVariantConstraint,
+  OscalVersionsWithRequiredImportHref,
+} from '@/domain/oscalProfile';
 
 interface SchemaNode {
   properties?: Record<string, unknown>;
@@ -33,11 +40,21 @@ interface DefinitionShape {
   readonly variants: readonly (readonly string[])[];
 }
 
-/** Repo-relativ; das Arbeitsverzeichnis des Testlaufs ist die Projektwurzel. */
+/**
+ * Liest das für `profile` × `version` gepinnte Schema.
+ *
+ * Der Pfad kommt aus der Versionsmatrix und wird hier nicht zweitgepflegt: Ein
+ * eigenes Pfadmuster würde nach einer Pin-Aktualisierung entweder rot oder,
+ * schlimmer, weiter das alte Asset lesen. Repo-relativ; das Arbeitsverzeichnis
+ * des Testlaufs ist die Projektwurzel.
+ */
 function readProfileSchema(version: PinnedOscalVersion): { definitions: Record<string, SchemaNode> } {
-  return JSON.parse(
-    readFileSync(`schemas/oscal/v${version}/oscal_profile_schema.json`, 'utf8'),
-  ) as { definitions: Record<string, SchemaNode> };
+  const pin = getSchemaPin('profile', version);
+  if (!pin) throw new Error(`Die Versionsmatrix pinnt profile@${version} nicht`);
+
+  return JSON.parse(readFileSync(pin.vendorPath, 'utf8')) as {
+    definitions: Record<string, SchemaNode>;
+  };
 }
 
 /**
@@ -81,6 +98,84 @@ function variantsOf(
 ): readonly (readonly string[])[] {
   return shapes.get(version)?.get(name)?.variants ?? [];
 }
+
+/* ------------------------------------------------------------------ */
+/*  Bindung der Feldprädikate an die gemessene Partition                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Die Partition „welche Versionen kennen dieses Konstrukt" ist eine Aussage
+ * über das **Schema**, nicht über die Versionsmatrix: Die Matrix pinnt Root ×
+ * Version auf ein Schema-Asset und führt keine modellinternen Strukturfakten.
+ * Ableitbar ist die Partition deshalb nur aus den vendorierten Schemas selbst.
+ *
+ * Was sie braucht, ist trotzdem eine Bindung an `PINNED_OSCAL_VERSIONS` —
+ * sonst fiele eine fünfte gepinnte Version stillschweigend in den jeweils
+ * permissiven Zweig. Die Tupel unten schließen diese Lücke doppelt:
+ *
+ *  * **zur Laufzeit** gegen die am Schema gemessene Menge über *alle* gepinnten
+ *    Versionen, und
+ *  * **zur Übersetzungszeit** gegen das Typprädikat in `oscalProfile.ts` — die
+ *    `AssertTrue`-Aliase unten kompilieren nur, wenn Tupel und Union dieselbe
+ *    Menge bezeichnen.
+ *
+ * Eine neue gepinnte Version macht damit zuerst den Laufzeitvergleich rot; wer
+ * daraufhin nur das Tupel nachzieht, bekommt den Übersetzungsfehler.
+ */
+const IMPORT_SELECTION_CONSTRAINED = ['1.2.1', '1.2.2'] as const;
+const REQUIRED_IMPORT_HREF = ['1.1.2', '1.1.3'] as const;
+const MERGE_VARIANT_CONSTRAINED = ['1.2.1', '1.2.2'] as const;
+const INSERT_CONTROLS_CONSTRAINED = ['1.2.1', '1.2.2'] as const;
+const MATCHING_REMARKS = ['1.2.1', '1.2.2'] as const;
+
+type Equals<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+type AssertTrue<T extends true> = T;
+
+export type ImportSelectionPartitionBound = AssertTrue<
+  Equals<OscalVersionsWithImportSelectionConstraint, typeof IMPORT_SELECTION_CONSTRAINED[number]>
+>;
+export type RequiredImportHrefPartitionBound = AssertTrue<
+  Equals<OscalVersionsWithRequiredImportHref, typeof REQUIRED_IMPORT_HREF[number]>
+>;
+export type MergeVariantPartitionBound = AssertTrue<
+  Equals<OscalVersionsWithMergeVariantConstraint, typeof MERGE_VARIANT_CONSTRAINED[number]>
+>;
+export type InsertControlsPartitionBound = AssertTrue<
+  Equals<OscalVersionsWithInsertControlsConstraint, typeof INSERT_CONTROLS_CONSTRAINED[number]>
+>;
+export type MatchingRemarksPartitionBound = AssertTrue<
+  Equals<OscalVersionsWithMatchingRemarks, typeof MATCHING_REMARKS[number]>
+>;
+
+describe('Feldprädikate decken alle gepinnten Versionen ab', () => {
+  it('misst jede Partition über PINNED_OSCAL_VERSIONS statt sie zu behaupten', () => {
+    const withVariants = (name: string) =>
+      PINNED_OSCAL_VERSIONS.filter((version) => variantsOf(version, name).length > 0);
+
+    expect(withVariants('import')).toEqual([...IMPORT_SELECTION_CONSTRAINED]);
+    expect(withVariants('merge')).toEqual([...MERGE_VARIANT_CONSTRAINED]);
+    expect(withVariants('insert-controls')).toEqual([...INSERT_CONTROLS_CONSTRAINED]);
+
+    expect(
+      PINNED_OSCAL_VERSIONS.filter((version) => requiredOf(version, 'import').includes('href')),
+    ).toEqual([...REQUIRED_IMPORT_HREF]);
+    expect(
+      PINNED_OSCAL_VERSIONS.filter((version) => propsOf(version, 'matching').includes('remarks')),
+    ).toEqual([...MATCHING_REMARKS]);
+  });
+
+  it('lässt keine gepinnte Version ohne Zuordnung', () => {
+    // Gegenprobe zur Filterlogik: Jede gepinnte Version gehört bei `import`
+    // entweder zur eingeschränkten oder zur permissiven Seite — eine Version
+    // ohne vendoriertes Schema fiele schon beim Lesen auf.
+    const partitioned = new Set([
+      ...IMPORT_SELECTION_CONSTRAINED,
+      ...REQUIRED_IMPORT_HREF,
+    ]);
+
+    expect([...partitioned].sort()).toEqual([...PINNED_OSCAL_VERSIONS].sort());
+  });
+});
 
 describe('oscal_profile_schema — Unterschiede über die vier gepinnten Versionen', () => {
   it('führt genau die bekannten abweichenden Definitionen', () => {

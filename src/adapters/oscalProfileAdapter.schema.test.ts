@@ -18,7 +18,8 @@ import { parseProfileDocument, validateProfileSchema } from './oscalProfileDocum
 import { OscalRootDispatchError } from './oscalRootDispatch';
 import { resetCompiledSchemaCache } from '@/domain/oscalSchemaValidation';
 import type { OscalDocumentContext } from '@/domain/models';
-import { PINNED_OSCAL_VERSIONS } from '@/domain/oscalVersionMatrix';
+import { getSchemaPin, PINNED_OSCAL_VERSIONS } from '@/domain/oscalVersionMatrix';
+import type { OscalSchemaPin, PinnedOscalVersion } from '@/domain/oscalVersionMatrix';
 import {
   makeProfileSource,
   makeProfileWithBothSelections,
@@ -42,6 +43,22 @@ beforeEach(() => {
   resetCompiledSchemaCache();
 });
 
+/**
+ * Die Matrixzelle für `profile` × Version.
+ *
+ * Erwartungswerte werden **abgeleitet**, nicht zweitgepflegt: Eine hier
+ * hartkodierte Schema-`$id` oder ein hartkodierter Vendor-Pfad würde bei einer
+ * legitimen Pin-Aktualisierung in `oscalVersionMatrix.mjs` fälschlich rot —
+ * oder, schlimmer, eine falsche Bindung verdecken, weil beide Seiten dieselbe
+ * veraltete Konstante trügen. Geprüft wird deshalb die **Bindung**: dass das
+ * Dokument genau die Zelle seiner deklarierten Version bekommt.
+ */
+function pinFor(version: PinnedOscalVersion): OscalSchemaPin {
+  const pin = getSchemaPin('profile', version);
+  if (!pin) throw new Error(`Die Versionsmatrix pinnt profile@${version} nicht`);
+  return pin;
+}
+
 function dispatchErrorOf(makeSource: () => unknown): OscalRootDispatchError {
   let thrown: unknown;
   try {
@@ -63,7 +80,7 @@ describe('Versionsbindung der Schemaprüfung', () => {
 
       expect(document.pin.rootKey).toBe('profile');
       expect(document.pin.oscalVersion).toBe(specification.oscalVersion);
-      expect(document.pin.vendorPath).toContain(`v${specification.oscalVersion}`);
+      expect(document.pin).toEqual(pinFor(specification.oscalVersion));
 
       const result = await validateProfileSchema(document);
       expect(result.ok, specification.artifactKey).toBe(specification.schemaValid);
@@ -74,10 +91,8 @@ describe('Versionsbindung der Schemaprüfung', () => {
     for (const version of PINNED_OSCAL_VERSIONS) {
       const document = parseProfileDocument(makeProfileWithoutSelection(version), context);
 
+      expect(document.pin, version).toEqual(pinFor(version));
       expect(document.pin.oscalVersion, version).toBe(version);
-      expect(document.pin.vendorPath, version).toBe(
-        `schemas/oscal/v${version}/oscal_profile_schema.json`,
-      );
     }
   });
 
@@ -98,31 +113,27 @@ describe('Versionsbindung der Schemaprüfung', () => {
   });
 
   it('wählt die Zelle nach metadata.oscal-version und nie nach $schema', () => {
+    const declared = '1.2.2';
+    const foreign = '1.1.3';
+
     const matching = parseProfileDocument(
-      makeProfileWithSchemaDirective(
-        '1.2.2',
-        'http://csrc.nist.gov/ns/oscal/1.2.2/oscal-profile-schema.json',
-      ),
+      makeProfileWithSchemaDirective(declared, pinFor(declared).schemaId),
       context,
     );
-    expect(matching.oscalVersion).toBe('1.2.2');
+    expect(matching.oscalVersion).toBe(declared);
+    expect(matching.pin).toEqual(pinFor(declared));
 
     // `$schema` zeigt auf 1.1.3, `metadata.oscal-version` auf 1.2.2.
     const { diagnostic } = dispatchErrorOf(() =>
-      makeProfileWithSchemaDirective(
-        '1.2.2',
-        'http://csrc.nist.gov/ns/oscal/1.1.3/oscal-profile-schema.json',
-      ),
+      makeProfileWithSchemaDirective(declared, pinFor(foreign).schemaId),
     );
 
     expect(diagnostic.code).toBe('OSCAL_SCHEMA_DIRECTIVE_CONFLICT');
     expect(diagnostic.path).toBe('/$schema');
     // Ausgewählt wurde die Zelle aus metadata.oscal-version — die Direktive
     // hat den Konflikt ausgelöst, aber nichts ausgewählt.
-    expect(diagnostic.artifact.oscalVersion).toBe('1.2.2');
-    expect(diagnostic.params.expected).toBe(
-      'http://csrc.nist.gov/ns/oscal/1.2.2/oscal-profile-schema.json',
-    );
+    expect(diagnostic.artifact.oscalVersion).toBe(declared);
+    expect(diagnostic.params.expected).toBe(pinFor(declared).schemaId);
   });
 });
 
