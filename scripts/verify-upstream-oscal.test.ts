@@ -287,6 +287,74 @@ describe('manifestgestützter OSCAL-Korpus', () => {
   });
 });
 
+describe('ADR-7-Nachtrag: gesperrtes Artefakt vollständig aus dem Upstream-Tree entfernt', () => {
+  function sha256(bytes: Buffer) {
+    return createHash('sha256').update(bytes).digest('hex');
+  }
+
+  function gitBlobSha(bytes: Buffer) {
+    return createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+  }
+
+  const document = Buffer.from('{"catalog":{"metadata":{"oscal-version":"1.1.3"}}}');
+  const blockedRegistryEntry = {
+    artifactKey: 'catalog-blocked-missing',
+    expectedRootType: 'catalog',
+    oscalVersion: '1.1.3',
+    lifecycle: 'blocked-by-upstream',
+    upstreamPath: 'control_layer/blocked-missing.json',
+  };
+  const presentRegistryEntry = {
+    artifactKey: 'catalog-fixture',
+    expectedRootType: 'catalog',
+    oscalVersion: '1.1.3',
+    lifecycle: 'preview',
+    upstreamPath: 'control_layer/fixture.json',
+  };
+  const manifestWithoutBlockedFile = buildUpstreamManifest({
+    repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
+    snapshotCommitSha: 'a'.repeat(40),
+    files: [
+      {
+        artifactKey: presentRegistryEntry.artifactKey,
+        rootType: presentRegistryEntry.expectedRootType,
+        lifecycle: presentRegistryEntry.lifecycle,
+        path: presentRegistryEntry.upstreamPath,
+        contentSha256: sha256(document),
+        gitBlobSha: gitBlobSha(document),
+      },
+    ],
+  });
+
+  it('überspringt ein gesperrtes Artefakt ohne Manifesteintrag, statt einen Mismatch zu werfen', () => {
+    const selection = selectManifestOscalArtifacts(manifestWithoutBlockedFile, [
+      presentRegistryEntry,
+      blockedRegistryEntry,
+    ]);
+
+    expect(selection.oscalArtifacts.map((artifact) => artifact.artifactKey)).toEqual([
+      presentRegistryEntry.artifactKey,
+    ]);
+    expect(selection.missingBlockedArtifacts).toEqual([
+      {
+        artifactKey: blockedRegistryEntry.artifactKey,
+        upstreamPath: blockedRegistryEntry.upstreamPath,
+      },
+    ]);
+  });
+
+  it('lehnt weiterhin ein nicht gesperrtes Artefakt ohne Manifesteintrag fail-closed ab', () => {
+    const unblockedMissingEntry = { ...blockedRegistryEntry, lifecycle: 'preview' };
+
+    expect(() =>
+      selectManifestOscalArtifacts(manifestWithoutBlockedFile, [
+        presentRegistryEntry,
+        unblockedMissingEntry,
+      ]),
+    ).toThrow('Manifest und OSCAL-Quellregister stimmen nicht überein');
+  });
+});
+
 describe('Sperrsemantik und Werkzeugfehler', () => {
   function artifact(lifecycle: string) {
     return {

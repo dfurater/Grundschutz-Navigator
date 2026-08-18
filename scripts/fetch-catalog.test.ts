@@ -871,6 +871,42 @@ describe('fetch-catalog', () => {
     );
   });
 
+  it('stays open (ADR-7-Nachtrag) and warns when a blocked-by-upstream artifact is missing from the tree', async () => {
+    const missingBlockedPath = 'control_layer/ISO27001/retired-blocked-fixture.json';
+    const input = makeMinimalFetchInput();
+    const blockedRegistry = [
+      ...MINIMAL_REGISTRY,
+      {
+        artifactKey: 'catalog-blocked-fixture',
+        kind: 'oscal',
+        oscalVersion: '1.1.3',
+        expectedRootType: 'catalog',
+        upstreamPath: missingBlockedPath,
+        lifecycle: 'blocked-by-upstream',
+        upstreamIssue: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/1',
+        title: 'Blocked Fixture',
+      },
+    ] as const;
+    installSnapshotFetch({ rawByPath: input.rawByPath });
+    const warn = vi.fn();
+
+    const payload = await buildFetchArtifacts(
+      { log: () => {}, warn },
+      {
+        registryEntries: blockedRegistry,
+        treeResponse: input.treeResponse,
+      },
+    );
+
+    const upstreamMetadata = parseArtifactJson(payload, 'upstream-sources-metadata.json');
+    expect(
+      upstreamMetadata.manifest.files.some((file: { path: string }) => file.path === missingBlockedPath),
+    ).toBe(false);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(missingBlockedPath),
+    );
+  });
+
   it('emits catalog.json with exact upstream bytes and local build metadata', async () => {
     vi.stubEnv('GITHUB_RUN_ID', undefined);
     vi.stubEnv('GITHUB_REPOSITORY', undefined);
