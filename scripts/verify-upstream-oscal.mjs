@@ -179,10 +179,22 @@ export function selectManifestOscalArtifacts(manifest, registry = listOscalArtif
   }
 
   const manifestByPath = new Map(manifest.files.map((file) => [file.path, file]));
-  const oscalArtifacts = registry.map((entry) => {
+  const missingBlockedArtifacts = [];
+  const oscalArtifacts = registry.flatMap((entry) => {
     const manifestFile = manifestByPath.get(entry.upstreamPath);
+    if (!manifestFile) {
+      // ADR-7-Nachtrag: Ein gesperrtes Artefakt, das vollständig aus dem
+      // BSI-Tree entfernt wurde, hat keinen Manifesteintrag mehr und kann
+      // nicht gegen go-oscal geprüft werden — es bleibt weiterhin gesperrt.
+      if (entry.lifecycle === 'blocked-by-upstream') {
+        missingBlockedArtifacts.push(
+          Object.freeze({ artifactKey: entry.artifactKey, upstreamPath: entry.upstreamPath }),
+        );
+        return [];
+      }
+      throw new Error('Manifest und OSCAL-Quellregister stimmen nicht überein');
+    }
     if (
-      !manifestFile ||
       manifestFile.artifactKey !== entry.artifactKey ||
       manifestFile.rootType !== entry.expectedRootType ||
       manifestFile.lifecycle !== entry.lifecycle
@@ -190,7 +202,7 @@ export function selectManifestOscalArtifacts(manifest, registry = listOscalArtif
       throw new Error('Manifest und OSCAL-Quellregister stimmen nicht überein');
     }
 
-    return Object.freeze({
+    return [Object.freeze({
       artifactKey: entry.artifactKey,
       rootType: entry.expectedRootType,
       oscalVersion: entry.oscalVersion,
@@ -198,7 +210,7 @@ export function selectManifestOscalArtifacts(manifest, registry = listOscalArtif
       upstreamPath: entry.upstreamPath,
       contentSha256: manifestFile.contentSha256,
       gitBlobSha: manifestFile.gitBlobSha,
-    });
+    })];
   });
 
   const vocabularyArtifacts = manifest.files.filter((file) => file.rootType === 'vocabulary');
@@ -215,6 +227,7 @@ export function selectManifestOscalArtifacts(manifest, registry = listOscalArtif
     oscalArtifacts: Object.freeze(oscalArtifacts),
     vocabularyArtifacts: Object.freeze(vocabularyArtifacts),
     versionCoverage: Object.freeze(versionCoverage),
+    missingBlockedArtifacts: Object.freeze(missingBlockedArtifacts),
   });
 }
 
@@ -495,11 +508,21 @@ export function formatVerifyUpstreamOscalSummary({ snapshotCommitSha, selection,
     )
     .join('\n');
 
+  const missingBlockedLines = selection.missingBlockedArtifacts.length === 0
+    ? []
+    : [
+        `gesperrt, im Snapshot fehlend: ${selection.missingBlockedArtifacts.length} übersprungen`,
+        ...selection.missingBlockedArtifacts.map(
+          (artifact) => `  ${artifact.artifactKey}: ${artifact.upstreamPath}`,
+        ),
+      ];
+
   return [
     'go-oscal@0.7.1 — Upstream-OSCAL-Schemaprüfung',
     `Snapshot: ${snapshotCommitSha}`,
     `OSCAL: ${artifactResults.length} geprüft`,
     `vocabulary: ${selection.vocabularyArtifacts.length} übersprungen (kein OSCAL-Root-Modell)`,
+    ...missingBlockedLines,
     'Versionen:',
     versionLines,
     'Artefakte:',

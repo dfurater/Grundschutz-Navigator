@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { buildUpstreamManifest } from './upstream-artifacts.mjs';
+import { SOURCE_REGISTRY } from '../src/domain/sourceRegistry.mjs';
 import {
   GO_OSCAL_EXECUTION_TIMEOUT_MS,
   GO_OSCAL_RELEASE,
@@ -284,6 +285,78 @@ describe('manifestgestützter OSCAL-Korpus', () => {
       'component-lieferkette',
       'mapping-iso27001-annex-a-zu-gspp',
     ]);
+  });
+});
+
+describe('ADR-7-Nachtrag: gesperrtes Artefakt vollständig aus dem Upstream-Tree entfernt', () => {
+  function sha256(bytes: Buffer) {
+    return createHash('sha256').update(bytes).digest('hex');
+  }
+
+  function gitBlobSha(bytes: Buffer) {
+    return createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+  }
+
+  const document = Buffer.from('{"catalog":{"metadata":{"oscal-version":"1.1.3"}}}');
+  // R4-keine-doppelten-registerfakten: reale Registry-Einträge verwenden statt
+  // Pfad/Lifecycle/Version hier erneut zu deklarieren.
+  const oscalEntries = SOURCE_REGISTRY.filter((entry) => entry.kind === 'oscal');
+  const blockedRegistryEntry = oscalEntries.find(
+    (entry) => entry.lifecycle === 'blocked-by-upstream',
+  );
+  const presentRegistryEntry = oscalEntries.find(
+    (entry) => entry.lifecycle !== 'blocked-by-upstream' && entry.artifactKey !== blockedRegistryEntry?.artifactKey,
+  );
+  const secondMissingNonBlockedEntry = oscalEntries.find(
+    (entry) =>
+      entry.lifecycle !== 'blocked-by-upstream' &&
+      entry.artifactKey !== presentRegistryEntry?.artifactKey &&
+      entry.artifactKey !== blockedRegistryEntry?.artifactKey,
+  );
+  if (!blockedRegistryEntry || !presentRegistryEntry || !secondMissingNonBlockedEntry) {
+    throw new Error(
+      'Fixture braucht ein gesperrtes und mindestens zwei nicht gesperrte OSCAL-Registry-Einträge',
+    );
+  }
+  const manifestWithoutBlockedFile = buildUpstreamManifest({
+    repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
+    snapshotCommitSha: 'a'.repeat(40),
+    files: [
+      {
+        artifactKey: presentRegistryEntry.artifactKey,
+        rootType: presentRegistryEntry.expectedRootType,
+        lifecycle: presentRegistryEntry.lifecycle,
+        path: presentRegistryEntry.upstreamPath,
+        contentSha256: sha256(document),
+        gitBlobSha: gitBlobSha(document),
+      },
+    ],
+  });
+
+  it('überspringt ein gesperrtes Artefakt ohne Manifesteintrag, statt einen Mismatch zu werfen', () => {
+    const selection = selectManifestOscalArtifacts(manifestWithoutBlockedFile, [
+      presentRegistryEntry,
+      blockedRegistryEntry,
+    ]);
+
+    expect(selection.oscalArtifacts.map((artifact) => artifact.artifactKey)).toEqual([
+      presentRegistryEntry.artifactKey,
+    ]);
+    expect(selection.missingBlockedArtifacts).toEqual([
+      {
+        artifactKey: blockedRegistryEntry.artifactKey,
+        upstreamPath: blockedRegistryEntry.upstreamPath,
+      },
+    ]);
+  });
+
+  it('lehnt weiterhin ein nicht gesperrtes Artefakt ohne Manifesteintrag fail-closed ab', () => {
+    expect(() =>
+      selectManifestOscalArtifacts(manifestWithoutBlockedFile, [
+        presentRegistryEntry,
+        secondMissingNonBlockedEntry,
+      ]),
+    ).toThrow('Manifest und OSCAL-Quellregister stimmen nicht überein');
   });
 });
 

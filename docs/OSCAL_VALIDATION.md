@@ -641,6 +641,18 @@ unverzichtbares ausgeliefertes Artefakt wäre eine neue, ADR-pflichtige
 Produktentscheidung; sie darf weder durch eine Diagnosesignatur noch durch eine
 Änderung der Sperrsemantik dieses Korpuslaufs entstehen.
 
+**Tree-Abwesenheit (ADR-7-Nachtrag, 2026-08-18):** Verschwindet der
+registrierte Pfad eines gesperrten Artefakts vollständig aus dem gepinnten
+BSI-Tree, statt nur schema-defekt zu bleiben, gilt das als dieselbe inverse
+Erwartung wie ein Schemafehlschlag. `fetch-catalog.mjs`, der Catalog-Sync-Guard
+und dieser Korpuslauf lassen das Artefakt dann aus, statt den Lauf
+abzubrechen. `verifySnapshotFiles` prüft jede Sync-PR dabei gegen den
+tatsächlichen BSI-Tree des gepinnten Snapshots nach, damit eine Sync-PR ein
+dort noch vorhandenes Artefakt nicht stillschweigend auslassen kann. Für nicht
+gesperrte Artefakte (`supported`, `preview`, `draft`) bleibt ein fehlender
+Pfad weiterhin ein harter, fail-closed Abbruch — keine automatische
+Pfadfreigabe.
+
 `mapping-itgs2023-zu-gspp` ist nicht gesperrt. go-oscal 0.7.1 lehnt ein
 standardkonformes Dokument mit Top-Level-`$schema` vor der Schemaauswertung ab,
 weil sein Modelldetektor genau einen Top-Level-Key verlangt. Der Korpuslauf

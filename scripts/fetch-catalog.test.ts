@@ -871,6 +871,35 @@ describe('fetch-catalog', () => {
     );
   });
 
+  it('stays open (ADR-7-Nachtrag) and warns when a blocked-by-upstream artifact is missing from the tree', async () => {
+    // R4-keine-doppelten-registerfakten: den realen gesperrten Registry-Eintrag
+    // verwenden statt Pfad/Lifecycle/Version hier erneut zu deklarieren.
+    const blockedEntry = SOURCE_REGISTRY.find(
+      (entry) => entry.kind === 'oscal' && entry.lifecycle === 'blocked-by-upstream',
+    );
+    expect(blockedEntry).toBeDefined();
+    const input = makeMinimalFetchInput();
+    const blockedRegistry = [...MINIMAL_REGISTRY, blockedEntry!] as const;
+    installSnapshotFetch({ rawByPath: input.rawByPath });
+    const warn = vi.fn();
+
+    const payload = await buildFetchArtifacts(
+      { log: () => {}, warn },
+      {
+        registryEntries: blockedRegistry,
+        treeResponse: input.treeResponse,
+      },
+    );
+
+    const upstreamMetadata = parseArtifactJson(payload, 'upstream-sources-metadata.json');
+    expect(
+      upstreamMetadata.manifest.files.some((file: { path: string }) => file.path === blockedEntry!.upstreamPath),
+    ).toBe(false);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(blockedEntry!.upstreamPath),
+    );
+  });
+
   it('emits catalog.json with exact upstream bytes and local build metadata', async () => {
     vi.stubEnv('GITHUB_RUN_ID', undefined);
     vi.stubEnv('GITHUB_REPOSITORY', undefined);

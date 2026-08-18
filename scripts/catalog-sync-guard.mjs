@@ -80,6 +80,10 @@ export function validateCatalogSyncManifest(manifest) {
 
   for (const [repoPath, entry] of exactRegistryFiles) {
     if (!manifestPaths.has(repoPath)) {
+      // ADR-7-Nachtrag: Ein gesperrtes Artefakt darf im Manifest fehlen, wenn
+      // es upstream vollständig entfernt wurde. verifySnapshotFiles prüft die
+      // Tree-Abwesenheit gegen den Snapshot nach, bevor eine Sync-PR gilt.
+      if (entry.lifecycle === 'blocked-by-upstream') continue;
       throw new Error(`Manifest is missing registered artifact: ${repoPath}`);
     }
     const file = manifest.files.find((candidate) => candidate.path === repoPath);
@@ -288,6 +292,21 @@ export async function verifySnapshotFiles(manifest, {
   for (const file of manifest.files) {
     if (blobShaByPath.get(file.path) !== file.gitBlobSha) {
       throw new Error(`Manifest blob SHA does not match the BSI snapshot: ${file.path}`);
+    }
+  }
+
+  // ADR-7-Nachtrag: Ein im Manifest fehlendes, gesperrtes Artefakt darf die
+  // Sync-PR nur dann passieren, wenn es tatsächlich aus dem gepinnten Tree
+  // verschwunden ist — sonst könnte eine Sync-PR ein noch vorhandenes
+  // Artefakt stillschweigend aus dem Manifest auslassen.
+  const manifestPaths = new Set(manifest.files.map((file) => file.path));
+  for (const entry of SOURCE_REGISTRY) {
+    if (entry.kind !== 'oscal' || entry.lifecycle !== 'blocked-by-upstream') continue;
+    if (manifestPaths.has(entry.upstreamPath)) continue;
+    if (blobShaByPath.has(entry.upstreamPath)) {
+      throw new Error(
+        `Manifest omits blocked artifact that is still present in the BSI snapshot: ${entry.upstreamPath}`,
+      );
     }
   }
 

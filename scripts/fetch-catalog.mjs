@@ -497,6 +497,10 @@ function materializeRegistryFiles({ registryEntries, treeFiles, namespaceRefs })
     if (entry.kind !== 'oscal') continue;
     const treeFile = treeFileByPath.get(entry.upstreamPath);
     if (!treeFile) {
+      // ADR-7-Nachtrag: Ein bereits gesperrtes Artefakt, das vollständig aus
+      // dem Tree verschwindet, erfüllt dieselbe inverse Erwartung wie ein
+      // Schema-Fehlschlag — es bleibt gesperrt statt den Fetch abzubrechen.
+      if (entry.lifecycle === 'blocked-by-upstream') continue;
       throw new Error(
         `Registriertes Artefakt fehlt im vollständigen BSI-Tree: ${entry.upstreamPath}. ` +
         'Quellregister manuell gegen den gepinnten BSI-Snapshot prüfen; ' +
@@ -619,6 +623,19 @@ async function buildFetchArtifacts(logger = console, {
     treeFiles: tree.files,
     namespaceRefs,
   });
+
+  const materializedRegistryPaths = new Set(registryFiles.map((file) => file.path));
+  for (const entry of registryEntries) {
+    if (
+      entry.kind === 'oscal' &&
+      entry.lifecycle === 'blocked-by-upstream' &&
+      !materializedRegistryPaths.has(entry.upstreamPath)
+    ) {
+      logger.warn(
+        `  ! Gesperrtes Artefakt ${entry.artifactKey} fehlt im BSI-Tree (${entry.upstreamPath}) — bleibt gesperrt, kein Fetch.`,
+      );
+    }
+  }
 
   logger.log(`[3/5] Validiere ${registryFiles.length} registrierte Artefakte ...`);
   const rawFileByPath = new Map([[CATALOG_PATH, catalogRaw]]);
