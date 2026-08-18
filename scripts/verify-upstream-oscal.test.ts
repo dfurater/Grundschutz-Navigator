@@ -250,10 +250,10 @@ describe('manifestgestützter OSCAL-Korpus', () => {
     readFileSync(resolve(process.cwd(), 'upstream-manifest.json'), 'utf8'),
   );
 
-  it('prüft alle 16 OSCAL-Artefakte und überspringt nur die 13 Vokabulare', () => {
+  it('prüft alle 15 OSCAL-Artefakte und überspringt nur die 13 Vokabulare', () => {
     const selection = selectManifestOscalArtifacts(manifest);
 
-    expect(selection.oscalArtifacts).toHaveLength(16);
+    expect(selection.oscalArtifacts).toHaveLength(15);
     expect(selection.vocabularyArtifacts).toHaveLength(13);
     expect(selection.oscalArtifacts.map((artifact) => artifact.artifactKey)).toContain(
       'mapping-iso27001-annex-a-zu-gspp',
@@ -265,13 +265,13 @@ describe('manifestgestützter OSCAL-Korpus', () => {
 
     expect(versionCoverage).toEqual({
       '1.1.2': 3,
-      '1.1.3': 9,
+      '1.1.3': 8,
       '1.2.1': 1,
       '1.2.2': 3,
     });
   });
 
-  it('führt vier gesperrte Artefakte mit inverser Erwartung im vollständigen Korpus', () => {
+  it('führt drei gesperrte Artefakte mit inverser Erwartung im vollständigen Korpus', () => {
     const { oscalArtifacts } = selectManifestOscalArtifacts(manifest);
 
     expect(
@@ -280,10 +280,20 @@ describe('manifestgestützter OSCAL-Korpus', () => {
         .map((artifact) => artifact.artifactKey)
         .sort(),
     ).toEqual([
-      'catalog-iso27001-annex-a',
       'component-ga-lotse-grundmodul',
       'component-lieferkette',
       'mapping-iso27001-annex-a-zu-gspp',
+    ]);
+  });
+
+  it('ADR-7-Nachtrag: meldet catalog-iso27001-annex-a als aus dem BSI-Tree entferntes gesperrtes Artefakt', () => {
+    const { missingBlockedArtifacts } = selectManifestOscalArtifacts(manifest);
+
+    expect(missingBlockedArtifacts).toEqual([
+      {
+        artifactKey: 'catalog-iso27001-annex-a',
+        upstreamPath: 'control_layer/ISO27001/ISO27001-AnnexA-catalog.json',
+      },
     ]);
   });
 });
