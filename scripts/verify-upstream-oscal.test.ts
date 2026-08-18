@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { buildUpstreamManifest } from './upstream-artifacts.mjs';
+import { SOURCE_REGISTRY } from '../src/domain/sourceRegistry.mjs';
 import {
   GO_OSCAL_EXECUTION_TIMEOUT_MS,
   GO_OSCAL_RELEASE,
@@ -297,20 +298,26 @@ describe('ADR-7-Nachtrag: gesperrtes Artefakt vollständig aus dem Upstream-Tree
   }
 
   const document = Buffer.from('{"catalog":{"metadata":{"oscal-version":"1.1.3"}}}');
-  const blockedRegistryEntry = {
-    artifactKey: 'catalog-blocked-missing',
-    expectedRootType: 'catalog',
-    oscalVersion: '1.1.3',
-    lifecycle: 'blocked-by-upstream',
-    upstreamPath: 'control_layer/blocked-missing.json',
-  };
-  const presentRegistryEntry = {
-    artifactKey: 'catalog-fixture',
-    expectedRootType: 'catalog',
-    oscalVersion: '1.1.3',
-    lifecycle: 'preview',
-    upstreamPath: 'control_layer/fixture.json',
-  };
+  // R4-keine-doppelten-registerfakten: reale Registry-Einträge verwenden statt
+  // Pfad/Lifecycle/Version hier erneut zu deklarieren.
+  const oscalEntries = SOURCE_REGISTRY.filter((entry) => entry.kind === 'oscal');
+  const blockedRegistryEntry = oscalEntries.find(
+    (entry) => entry.lifecycle === 'blocked-by-upstream',
+  );
+  const presentRegistryEntry = oscalEntries.find(
+    (entry) => entry.lifecycle !== 'blocked-by-upstream' && entry.artifactKey !== blockedRegistryEntry?.artifactKey,
+  );
+  const secondMissingNonBlockedEntry = oscalEntries.find(
+    (entry) =>
+      entry.lifecycle !== 'blocked-by-upstream' &&
+      entry.artifactKey !== presentRegistryEntry?.artifactKey &&
+      entry.artifactKey !== blockedRegistryEntry?.artifactKey,
+  );
+  if (!blockedRegistryEntry || !presentRegistryEntry || !secondMissingNonBlockedEntry) {
+    throw new Error(
+      'Fixture braucht ein gesperrtes und mindestens zwei nicht gesperrte OSCAL-Registry-Einträge',
+    );
+  }
   const manifestWithoutBlockedFile = buildUpstreamManifest({
     repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
     snapshotCommitSha: 'a'.repeat(40),
@@ -344,12 +351,10 @@ describe('ADR-7-Nachtrag: gesperrtes Artefakt vollständig aus dem Upstream-Tree
   });
 
   it('lehnt weiterhin ein nicht gesperrtes Artefakt ohne Manifesteintrag fail-closed ab', () => {
-    const unblockedMissingEntry = { ...blockedRegistryEntry, lifecycle: 'preview' };
-
     expect(() =>
       selectManifestOscalArtifacts(manifestWithoutBlockedFile, [
         presentRegistryEntry,
-        unblockedMissingEntry,
+        secondMissingNonBlockedEntry,
       ]),
     ).toThrow('Manifest und OSCAL-Quellregister stimmen nicht überein');
   });

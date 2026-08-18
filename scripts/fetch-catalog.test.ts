@@ -872,21 +872,14 @@ describe('fetch-catalog', () => {
   });
 
   it('stays open (ADR-7-Nachtrag) and warns when a blocked-by-upstream artifact is missing from the tree', async () => {
-    const missingBlockedPath = 'control_layer/ISO27001/retired-blocked-fixture.json';
+    // R4-keine-doppelten-registerfakten: den realen gesperrten Registry-Eintrag
+    // verwenden statt Pfad/Lifecycle/Version hier erneut zu deklarieren.
+    const blockedEntry = SOURCE_REGISTRY.find(
+      (entry) => entry.kind === 'oscal' && entry.lifecycle === 'blocked-by-upstream',
+    );
+    expect(blockedEntry).toBeDefined();
     const input = makeMinimalFetchInput();
-    const blockedRegistry = [
-      ...MINIMAL_REGISTRY,
-      {
-        artifactKey: 'catalog-blocked-fixture',
-        kind: 'oscal',
-        oscalVersion: '1.1.3',
-        expectedRootType: 'catalog',
-        upstreamPath: missingBlockedPath,
-        lifecycle: 'blocked-by-upstream',
-        upstreamIssue: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/1',
-        title: 'Blocked Fixture',
-      },
-    ] as const;
+    const blockedRegistry = [...MINIMAL_REGISTRY, blockedEntry!] as const;
     installSnapshotFetch({ rawByPath: input.rawByPath });
     const warn = vi.fn();
 
@@ -900,10 +893,10 @@ describe('fetch-catalog', () => {
 
     const upstreamMetadata = parseArtifactJson(payload, 'upstream-sources-metadata.json');
     expect(
-      upstreamMetadata.manifest.files.some((file: { path: string }) => file.path === missingBlockedPath),
+      upstreamMetadata.manifest.files.some((file: { path: string }) => file.path === blockedEntry!.upstreamPath),
     ).toBe(false);
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining(missingBlockedPath),
+      expect.stringContaining(blockedEntry!.upstreamPath),
     );
   });
 
