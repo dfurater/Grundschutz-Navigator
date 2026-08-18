@@ -47,17 +47,24 @@ describe('validateAgainstPinnedSchema', () => {
     resetCompiledSchemaCache();
   });
 
-  it('kompiliert alle 30 gepinnten Schemas mit der produktiven Konfiguration', async () => {
-    // Kompilierfehler enden fail-closed als OSCAL_SCHEMA_UNAVAILABLE; dass
-    // keine Zelle diesen Code liefert, ist der Kompilierbeleg.
-    for (const pin of pins) {
-      const result = await validateAgainstPinnedSchema(
-        makeSchemaValidOscalDocument(pin.rootKey, pin.oscalVersion),
-        pin,
-      );
-      expect(result, `${pin.rootKey} @ ${pin.oscalVersion}`).toEqual({ ok: true });
-    }
-  });
+  it(
+    'kompiliert alle 30 gepinnten Schemas mit der produktiven Konfiguration',
+    async () => {
+      // Kompilierfehler enden fail-closed als OSCAL_SCHEMA_UNAVAILABLE; dass
+      // keine Zelle diesen Code liefert, ist der Kompilierbeleg.
+      for (const pin of pins) {
+        const result = await validateAgainstPinnedSchema(
+          makeSchemaValidOscalDocument(pin.rootKey, pin.oscalVersion),
+          pin,
+        );
+        expect(result, `${pin.rootKey} @ ${pin.oscalVersion}`).toEqual({ ok: true });
+      }
+    },
+    // 30 echte Ajv-Kompilierungen in einem Test liegen lokal bei ~950ms, auf
+    // den GitHub-Actions-Runnern aber beobachtet bei 4,7–5,2s (Runs 32069019414,
+    // 32128784915) — zu nah am 5000ms-Default, um zuverlässig zu bestehen.
+    20000,
+  );
 
   it('lehnt je Root-Modell ein schemawidriges Dokument fail-closed ab', async () => {
     for (const pin of pins) {
