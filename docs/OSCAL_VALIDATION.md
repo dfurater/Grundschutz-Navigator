@@ -53,7 +53,7 @@ Lockfile-Eintrag, die 30 Schemadateien unter `schemas/oscal/`, das CI-Gate
 verifiziert Release-Metadaten, API-Digest, `checksums.txt` und berechnete
 SHA-256-Werte und prüft den vollständigen im gepinnten
 `upstream-manifest.json` registrierten OSCAL-Korpus. Der Lauf verarbeitet die
-16 OSCAL-Artefakte über alle vier belegten Versionen und überspringt die 13
+15 OSCAL-Artefakte über alle vier belegten Versionen und überspringt die 13
 `vocabulary`-Dateien, weil sie kein OSCAL-Root-Modell tragen. Sein Ergebnis ist
 ein eigenständiges Schema-Orakel: Es aktiviert weder den Browser-Validator noch
 behauptet es eine vollständige Validierung der Stufen 1, 2, 4 oder 5.
