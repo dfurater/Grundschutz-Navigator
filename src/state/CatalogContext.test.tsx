@@ -352,6 +352,54 @@ describe('CatalogProvider', () => {
     expect(result.current.vocabularyProvenance).toBeNull();
   });
 
+  it.each([
+    ['ungültigem JSON', 'nicht json'],
+    ['unzulässiger Registry-Struktur', JSON.stringify({ namespaces: 'keine Liste' })],
+  ])(
+    'endet bei %s der Vokabulardatei in einem sichtbaren Ladefehler statt im Ladezustand',
+    async (_name, vocabularyBody) => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+        const url = String(input);
+
+        if (url === '/catalog.json') {
+          return new Response(JSON.stringify(rawCatalogDocument), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+
+        if (url === '/vocabularies.json') {
+          return new Response(vocabularyBody, {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+
+        return new Response(null, { status: 404, statusText: 'Not Found' });
+      });
+
+      const wrapper = ({ children }: { children: React.ReactNode }) => (
+        <CatalogProvider
+          catalogUrl="/catalog.json"
+          metadataUrl="/catalog-metadata.json"
+          vocabulariesUrl="/vocabularies.json"
+          upstreamSourcesMetadataUrl="/upstream-sources-metadata.json"
+        >
+          {children}
+        </CatalogProvider>
+      );
+
+      const { result } = renderHook(() => useCatalog(), { wrapper });
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      expect(result.current.error).not.toBeNull();
+      expect(result.current.vocabularyRegistry).toBeNull();
+    },
+  );
+
   /* ---------------------------------------------------------------- */
   /*  Hängende Artefakt-Fetches (GSPP-331)                            */
   /* ---------------------------------------------------------------- */

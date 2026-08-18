@@ -155,64 +155,79 @@ export function CatalogProvider({
         (error: unknown) => ({ ok: false as const, error }),
       );
 
-      // Der Einstiegskatalog entscheidet zuerst: schlägt er fehl, bleibt es beim
-      // Fehlerzustand — unveränderte Bestandssemantik des eager Ladepfads.
-      const catalogFetch = await catalogPromise;
-      if (cancelled) return;
+      // Auffangnetz um den gesamten eager Ladepfad: jeder Wurf zwischen hier und
+      // dem abschließenden Dispatch muss als sichtbarer Ladefehler enden statt
+      // als dauerhafter Ladezustand. Das betrifft besonders das Bauen der
+      // Vokabular-Registry, die bei ungültigem JSON, unzulässiger Struktur oder
+      // doppelten Werten wirft.
+      try {
+        // Der Einstiegskatalog entscheidet zuerst: schlägt er fehl, bleibt es
+        // beim Fehlerzustand — unveränderte Bestandssemantik des eager Pfads.
+        const catalogFetch = await catalogPromise;
+        if (cancelled) return;
 
-      if (!catalogFetch.ok) {
-        dispatch({
-          type: 'CATALOG_LOAD_ERROR',
-          catalogKey: entryCatalogKey,
-          error: toCatalogErrorMessage(catalogFetch.error),
-        });
-        return;
-      }
-      if (!catalogFetch.result) return;
+        if (!catalogFetch.ok) {
+          dispatch({
+            type: 'CATALOG_LOAD_ERROR',
+            catalogKey: entryCatalogKey,
+            error: toCatalogErrorMessage(catalogFetch.error),
+          });
+          return;
+        }
+        if (!catalogFetch.result) return;
 
-      let vocabularyRegistry: VocabularyRegistry | null = null;
-      let vocabularyProvenance: VocabularyProvenance | null = null;
-      let vocabularyVerification: VerificationResult | null = null;
+        let vocabularyRegistry: VocabularyRegistry | null = null;
+        let vocabularyProvenance: VocabularyProvenance | null = null;
+        let vocabularyVerification: VerificationResult | null = null;
 
-      const vocabularyFetch = await vocabularyPromise;
-      if (cancelled) return;
+        const vocabularyFetch = await vocabularyPromise;
+        if (cancelled) return;
 
-      if (!vocabularyFetch.ok) {
-        console.warn('Vocabulary artifacts not available. Runtime registry skipped.');
-      } else {
-        const { buffer: vocabularyBuffer, text: vocabularyText } = vocabularyFetch.result;
+        if (!vocabularyFetch.ok) {
+          console.warn('Vocabulary artifacts not available. Runtime registry skipped.');
+        } else {
+          const { buffer: vocabularyBuffer, text: vocabularyText } = vocabularyFetch.result;
 
-        vocabularyRegistry = buildVocabularyRegistry(
-          JSON.parse(vocabularyText) as VocabularyRegistryData,
-        );
+          vocabularyRegistry = buildVocabularyRegistry(
+            JSON.parse(vocabularyText) as VocabularyRegistryData,
+          );
 
-        try {
-          vocabularyProvenance = await fetchVocabularyProvenance(upstreamSourcesMetadataUrl);
-          if (!cancelled) {
-            vocabularyVerification = await verifyArtifactIntegrity(
-              vocabularyBuffer,
-              vocabularyProvenance,
+          try {
+            vocabularyProvenance = await fetchVocabularyProvenance(upstreamSourcesMetadataUrl);
+            if (!cancelled) {
+              vocabularyVerification = await verifyArtifactIntegrity(
+                vocabularyBuffer,
+                vocabularyProvenance,
+              );
+            }
+          } catch {
+            console.warn(
+              'Vocabulary provenance metadata not available. Integrity verification skipped.',
             );
           }
-        } catch {
-          console.warn(
-            'Vocabulary provenance metadata not available. Integrity verification skipped.',
-          );
+        }
+
+        if (cancelled) return;
+        dispatch({
+          type: 'VOCABULARY_LOADED',
+          vocabularyRegistry,
+          vocabularyProvenance,
+          vocabularyVerification,
+        });
+        dispatch({
+          type: 'CATALOG_LOAD_SUCCESS',
+          catalogKey: entryCatalogKey,
+          ...catalogFetch.result,
+        });
+      } catch (err) {
+        if (!cancelled) {
+          dispatch({
+            type: 'CATALOG_LOAD_ERROR',
+            catalogKey: entryCatalogKey,
+            error: toCatalogErrorMessage(err),
+          });
         }
       }
-
-      if (cancelled) return;
-      dispatch({
-        type: 'VOCABULARY_LOADED',
-        vocabularyRegistry,
-        vocabularyProvenance,
-        vocabularyVerification,
-      });
-      dispatch({
-        type: 'CATALOG_LOAD_SUCCESS',
-        catalogKey: entryCatalogKey,
-        ...catalogFetch.result,
-      });
     }
 
     loadEntryCatalog();
