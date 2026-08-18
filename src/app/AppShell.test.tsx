@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { AppShell } from './AppShell';
+import { catalogCollectionDefaults } from '@/test/catalogState';
 
 vi.mock('@/hooks/useCatalog', () => ({
   useCatalog: vi.fn(),
@@ -77,6 +78,7 @@ describe('AppShell', () => {
     mockedUseMediaQuery.mockReset();
 
     mockedUseCatalog.mockReturnValue({
+      ...catalogCollectionDefaults(),
       catalogDocument: null,
       catalog: {
         catalogKey: 'gspp',
@@ -223,6 +225,67 @@ describe('AppShell', () => {
     );
 
     expect(screen.getByTestId('catalog-browser')).toBeInTheDocument();
+  });
+
+  /* ---------------------------------------------------------------- */
+  /*  Mehr-Katalog-Navigation (GSPP-284)                                */
+  /* ---------------------------------------------------------------- */
+
+  it('meldet den Routen-catalogKey an die Katalogauswahl', () => {
+    const selectCatalog = vi.fn();
+    mockedUseCatalog.mockReturnValue({
+      ...mockedUseCatalog(),
+      selectCatalog,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/katalog/wlan/kontrolle/stable-alt-id']}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+
+    expect(selectCatalog).toHaveBeenCalledWith('wlan');
+  });
+
+  it('folgt dem geladenen Routen-Katalog statt auf den Einstieg zurückzufallen', () => {
+    const base = mockedUseCatalog();
+    mockedUseCatalog.mockReturnValue({
+      ...base,
+      activeCatalogKey: 'wlan',
+      catalog: base.catalog ? { ...base.catalog, catalogKey: 'wlan' } : null,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/katalog/wlan']}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('link', { name: 'Katalog' })).toHaveAttribute(
+      'href',
+      '/katalog/wlan',
+    );
+  });
+
+  it('hält die Navigation beim ausgewählten Katalog, solange er noch lädt', () => {
+    mockedUseCatalog.mockReturnValue({
+      ...mockedUseCatalog(),
+      activeCatalogKey: 'wlan',
+      catalog: null,
+      catalogDocument: null,
+      loading: true,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/katalog/wlan']}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('link', { name: 'Katalog' })).toHaveAttribute(
+      'href',
+      '/katalog/wlan',
+    );
   });
 
   it('does not register or redirect the unscoped catalog route', () => {

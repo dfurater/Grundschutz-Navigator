@@ -24,7 +24,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseCatalogDocument } from './oscalDocument';
-import { SUPPORTED_CATALOG_KEY } from '@/domain/sourceRegistry';
+import { ENTRY_CATALOG_KEY } from '@/domain/sourceRegistry';
 import {
   arrayOrderSignature,
   contentMultiset,
@@ -44,7 +44,7 @@ function loadCatalogCorpus(path: string) {
   return {
     original,
     document: parseCatalogDocument(original, {
-      catalogKey: SUPPORTED_CATALOG_KEY,
+      catalogKey: ENTRY_CATALOG_KEY,
       trustClass: 'class-1-verified-public',
     }),
   };

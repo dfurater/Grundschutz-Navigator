@@ -15,7 +15,7 @@ import {
 } from '@/domain/vocabularyNamespaces';
 
 /**
- * Regressionsschutz gegen den stillen Namespace-Ausfall aus GRU-304.
+ * Regressionsschutz gegen den stillen Namespace-Ausfall aus GSPP-304.
  *
  * Die Auflösung in vocabulary.ts und taxonomyVocabulary.ts vergleicht exakte
  * URL-Strings und liefert bei Fehlschlag `null` statt zu werfen. Als das BSI in
@@ -153,7 +153,7 @@ describe('vocabularyNamespaces', () => {
   it('schlägt fehl, sobald die Registry auf ein anderes Namespace-Verzeichnis zeigt', () => {
     // Negativkontrolle: belegt, dass der Test oben echtes Signal hat und nicht
     // unabhängig vom Upstream-Pfad immer grün ist. Entspricht exakt dem
-    // Zustand vor GRU-304, als der Hardcode auf "Dokumentation/namespaces"
+    // Zustand vor GSPP-304, als der Hardcode auf "Dokumentation/namespaces"
     // stehen blieb, während Upstream und Registry weitergezogen waren.
     const staleRegistry = createRegistry('Dokumentation/namespaces');
 

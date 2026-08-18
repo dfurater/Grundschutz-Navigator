@@ -7,7 +7,7 @@ import type {
 import { CatalogProvider } from './CatalogContext';
 import { ARTIFACT_FETCH_TIMEOUT_MS, computeSHA256 } from '@/domain/integrity';
 import { useCatalog } from '@/hooks/useCatalog';
-import { SUPPORTED_CATALOG_KEY } from '@/domain/sourceRegistry';
+import { ENTRY_CATALOG_KEY } from '@/domain/sourceRegistry';
 import { countPropRemarks } from '@/test/oscalStructure';
 
 /**
@@ -303,11 +303,16 @@ describe('CatalogProvider', () => {
     expect(result.current.vocabularyVerification?.valid).toBe(true);
     expect(result.current.vocabularyVerification?.sourceCommit).toBe('snapshot-123');
     expect(result.current.vocabularyVerification?.fetchedAt).toBe('2026-03-27T12:00:00Z');
-    expect(fetchSpy.mock.calls.map(([url]) => String(url))).toEqual([
-      '/catalog.json',
-      '/vocabularies.json',
-      '/upstream-sources-metadata.json',
+    const requestedUrls = fetchSpy.mock.calls.map(([url]) => String(url));
+    // Die beiden Artefakt-Downloads starten gemeinsam; das ist die Zusage.
+    // Die Reihenfolge der beiden Metadaten-Nachladungen danach ist nicht
+    // zugesagt und hängt am Auflösungszeitpunkt des jeweiligen Downloads.
+    expect(requestedUrls.slice(0, 2)).toEqual(['/catalog.json', '/vocabularies.json']);
+    expect([...requestedUrls].sort()).toEqual([
       '/catalog-metadata.json',
+      '/catalog.json',
+      '/upstream-sources-metadata.json',
+      '/vocabularies.json',
     ]);
   });
 
@@ -346,6 +351,54 @@ describe('CatalogProvider', () => {
     expect(result.current.vocabularyRegistry).toBeNull();
     expect(result.current.vocabularyProvenance).toBeNull();
   });
+
+  it.each([
+    ['ungültigem JSON', 'nicht json'],
+    ['unzulässiger Registry-Struktur', JSON.stringify({ namespaces: 'keine Liste' })],
+  ])(
+    'endet bei %s der Vokabulardatei in einem sichtbaren Ladefehler statt im Ladezustand',
+    async (_name, vocabularyBody) => {
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+        const url = String(input);
+
+        if (url === '/catalog.json') {
+          return new Response(JSON.stringify(rawCatalogDocument), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+
+        if (url === '/vocabularies.json') {
+          return new Response(vocabularyBody, {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+
+        return new Response(null, { status: 404, statusText: 'Not Found' });
+      });
+
+      const wrapper = ({ children }: { children: React.ReactNode }) => (
+        <CatalogProvider
+          catalogUrl="/catalog.json"
+          metadataUrl="/catalog-metadata.json"
+          vocabulariesUrl="/vocabularies.json"
+          upstreamSourcesMetadataUrl="/upstream-sources-metadata.json"
+        >
+          {children}
+        </CatalogProvider>
+      );
+
+      const { result } = renderHook(() => useCatalog(), { wrapper });
+
+      await waitFor(() => {
+        expect(result.current.loading).toBe(false);
+      });
+
+      expect(result.current.error).not.toBeNull();
+      expect(result.current.vocabularyRegistry).toBeNull();
+    },
+  );
 
   /* ---------------------------------------------------------------- */
   /*  Hängende Artefakt-Fetches (GSPP-331)                            */
@@ -565,7 +618,7 @@ describe('CatalogProvider', () => {
     expect(result.current.catalog).toBe(document?.view);
 
     // §2: Der Kontext wird explizit geführt, nicht aus dem Dokument geraten.
-    expect(document?.context.catalogKey).toBe(SUPPORTED_CATALOG_KEY);
+    expect(document?.context.catalogKey).toBe(ENTRY_CATALOG_KEY);
 
     // §0/§1: Der Quellgraph überlebt den gesamten Ladepfad unverändert.
     expect(JSON.stringify(document?.source)).toBe(JSON.stringify(rawCatalogDocument));

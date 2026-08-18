@@ -564,7 +564,7 @@ export interface ArtifactBuildInfo {
 }
 
 export interface VocabularyProvenance {
-  /** Source-registry artifact key; written by the multi-artifact fetch (GRU-249) */
+  /** Source-registry artifact key; written by the multi-artifact fetch (GSPP-249) */
   artifactKey?: string;
   source: {
     repository: string;
@@ -584,7 +584,7 @@ export interface VocabularyProvenance {
 }
 
 export interface CatalogProvenance {
-  /** Source-registry artifact key; written by the multi-artifact fetch (GRU-249) */
+  /** Source-registry artifact key; written by the multi-artifact fetch (GSPP-249) */
   artifactKey?: string;
   source: {
     repository: string;
@@ -616,22 +616,60 @@ export interface VerificationResult {
 /*  Application State Types                                            */
 /* ------------------------------------------------------------------ */
 
-export interface CatalogState {
+/**
+ * Ladezustand genau eines Katalogs (GSPP-284).
+ *
+ * Jeder ausgelieferte Katalog trägt seine eigene Provenienz, sein eigenes
+ * Verifikationsergebnis und seinen eigenen Fehlerzustand. Die Vertrauensklasse
+ * hängt damit am einzelnen Katalog statt global am Zustand: ein Katalog mit
+ * abweichendem Hash wird auf `class-1-unverified-public` herabgestuft, ohne die
+ * Vertrauensklasse eines anderen geladenen Katalogs zu berühren.
+ */
+export interface LoadedCatalogState {
+  readonly catalogKey: CatalogKey;
   /**
    * Das geladene Katalogdokument mit erhaltenem Quellgraphen (ADR-2).
    * Definierte Zugriffsstelle für alles, was das Domänenmodell nicht abbildet.
    */
-  catalogDocument: CatalogDocument | null;
+  readonly catalogDocument: CatalogDocument | null;
   /**
    * Projektion des Dokuments für die UI — identisch mit
    * `catalogDocument.view`. Bequemer Zugriff, kein zweiter Zustand.
    */
+  readonly catalog: Catalog | null;
+  readonly provenance: CatalogProvenance | null;
+  readonly verification: VerificationResult | null;
+  readonly loading: boolean;
+  readonly error: string | null;
+}
+
+export interface CatalogState {
+  /**
+   * Alle angeforderten Kataloge, je Katalog isoliert. Der Einstiegskatalog ist
+   * ab dem ersten Rendern enthalten; weitere kommen bedarfsgerecht dazu, sobald
+   * eine Route sie auswählt.
+   */
+  catalogs: ReadonlyMap<CatalogKey, LoadedCatalogState>;
+  /** Der eager geladene Einstiegskatalog aus dem Quellregister. */
+  entryCatalogKey: CatalogKey;
+  /** Der aktuell ausgewählte Katalog; speist die Projektionen unten. */
+  activeCatalogKey: CatalogKey;
+  /**
+   * Wählt einen ausgelieferten Katalog aus und stößt ihn bei Bedarf an.
+   * Ein nicht ausgelieferter `catalogKey` wird ignoriert — die Auswahl bleibt
+   * fail-closed beim zuletzt gültigen Katalog.
+   */
+  selectCatalog: (catalogKey: CatalogKey) => void;
+
+  /* Projektionen des aktiven Katalogs — unveränderte Zugriffsform. */
+  catalogDocument: CatalogDocument | null;
   catalog: Catalog | null;
   provenance: CatalogProvenance | null;
   verification: VerificationResult | null;
+  loading: boolean;
+  error: string | null;
+
   vocabularyRegistry: VocabularyRegistry | null;
   vocabularyProvenance: VocabularyProvenance | null;
   vocabularyVerification: VerificationResult | null;
-  loading: boolean;
-  error: string | null;
 }

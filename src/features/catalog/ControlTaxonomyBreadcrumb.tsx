@@ -60,7 +60,7 @@ export function ControlTaxonomyBreadcrumb({
   const practiceActive = isVocabularyActive(practiceKey);
   const topicActive = isVocabularyActive(topicKey);
   // Der offizielle Begriff steht als Praktik-Name bereits im Breadcrumb; nur bei
-  // exakter Übereinstimmung ist die Metadatenzeile redundant (GRU-301).
+  // exakter Übereinstimmung ist die Metadatenzeile redundant (GSPP-301).
   const practiceHiddenColumns =
     practiceVocabulary?.entry.columns['Begriff'] === practiceName
       ? ['UUID', 'Nummerierung', 'Begriff']

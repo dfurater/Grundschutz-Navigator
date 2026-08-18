@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Catalog, CatalogState } from '@/domain/models';
 import { useCatalog } from '@/hooks/useCatalog';
 import { AboutPage } from './AboutPage';
+import { catalogCollectionDefaults } from '@/test/catalogState';
 
 vi.mock('@/hooks/useCatalog', () => ({
   useCatalog: vi.fn(),
@@ -86,6 +87,7 @@ function makeCatalogState(): CatalogState {
   } as Catalog;
 
   return {
+    ...catalogCollectionDefaults(),
     catalogDocument: {
       source: {
         catalog: {
