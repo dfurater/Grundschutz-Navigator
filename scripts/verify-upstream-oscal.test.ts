@@ -692,7 +692,9 @@ describe('Korpus-Orchestrierung', () => {
 });
 
 describe('Stufe 5 — Referenzgraph im Korpuslauf', () => {
-  const SNAPSHOT = '8213e3a087976f0ba8019f2ef081924d9ce49666';
+  // Synthetisch wie im übrigen Korpus-Orchestrierungstest: Geprüft wird die
+  // Bindung an *einen* Snapshot, nicht an den gerade aktuellen.
+  const SNAPSHOT = 'c'.repeat(40);
 
   function catalogSource(controlId: string, linkHref: string) {
     return {
@@ -797,7 +799,7 @@ describe('Stufe 5 — Referenzgraph im Korpuslauf', () => {
       artifacts: [artifact()],
       sources,
       results,
-      allowlist: [{ signature, snapshotCommitSha: 'b'.repeat(40), reason: 'alter Snapshot' }],
+      allowlist: [{ signature, snapshotCommitSha: 'd'.repeat(40), reason: 'alter Snapshot' }],
     });
     expect(expired.referenceGraphPassed).toBe(false);
     expect(expired.report.expiredAllowlistEntries).toHaveLength(1);

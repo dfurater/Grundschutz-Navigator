@@ -15,7 +15,13 @@ import {
 } from '@/domain/referenceGraphPolicy';
 import type { ArtifactLifecycle } from '@/domain/sourceRegistry';
 
-const SNAPSHOT = '8213e3a087976f0ba8019f2ef081924d9ce49666';
+/*
+ * Synthetische Werte mit Absicht: Diese Tests prüfen die Politik, nicht den
+ * Bestand. Der reale Snapshot und die realen Artefaktschlüssel stehen im
+ * Manifest und im Quellregister; sie hier zu wiederholen würde die Tests an
+ * eine Autorität koppeln, von der sie nichts wissen müssen.
+ */
+const SNAPSHOT = 'a'.repeat(40);
 
 function diagnostic(artifactKey: string | null, path: string): OscalDiagnostic {
   return createOscalDiagnostic({
@@ -63,8 +69,8 @@ function graphWith(
 describe('Fail-closed nur für produktive Artefakte', () => {
   it('blockiert einen Befund an einem supported-Artefakt', () => {
     const evaluation = evaluateReferenceGraph({
-      graph: graphWith([diagnostic('catalog-gspp', '/catalog/groups/0')], [
-        artifact('catalog-gspp', 'supported', { unresolvable: 1, diagnostics: 1 }),
+      graph: graphWith([diagnostic('catalog-fixture', '/catalog/groups/0')], [
+        artifact('catalog-fixture', 'supported', { unresolvable: 1, diagnostics: 1 }),
       ]),
       snapshotCommitSha: SNAPSHOT,
     });
@@ -77,12 +83,12 @@ describe('Fail-closed nur für produktive Artefakte', () => {
     const evaluation = evaluateReferenceGraph({
       graph: graphWith(
         [
-          diagnostic('mapping-itgs2023-zu-gspp', '/mapping-collection/mappings/0'),
-          diagnostic('mapping-iso27001-annex-a-zu-gspp', '/mapping-collection/mappings/1'),
+          diagnostic('mapping-fixture-preview', '/mapping-collection/mappings/0'),
+          diagnostic('mapping-fixture-blocked', '/mapping-collection/mappings/1'),
         ],
         [
-          artifact('mapping-itgs2023-zu-gspp', 'preview'),
-          artifact('mapping-iso27001-annex-a-zu-gspp', 'blocked-by-upstream'),
+          artifact('mapping-fixture-preview', 'preview'),
+          artifact('mapping-fixture-blocked', 'blocked-by-upstream'),
         ],
       ),
       snapshotCommitSha: SNAPSHOT,
@@ -105,8 +111,8 @@ describe('Fail-closed nur für produktive Artefakte', () => {
 });
 
 describe('Allowlisting mit Auslaufregel', () => {
-  const finding = diagnostic('catalog-gspp', '/catalog/groups/0/controls/1/links/0/href');
-  const artifacts = [artifact('catalog-gspp', 'supported', { unresolvable: 1, diagnostics: 1 })];
+  const finding = diagnostic('catalog-fixture', '/catalog/groups/0/controls/1/links/0/href');
+  const artifacts = [artifact('catalog-fixture', 'supported', { unresolvable: 1, diagnostics: 1 })];
 
   function entry(overrides: Partial<ReferenceGraphAllowlistEntry> = {}): ReferenceGraphAllowlistEntry {
     return {
@@ -133,7 +139,7 @@ describe('Allowlisting mit Auslaufregel', () => {
   it('lässt den Eintrag mit einem neuen Snapshot auslaufen statt ihn zu übertragen', () => {
     const evaluation = evaluateReferenceGraph({
       graph: graphWith([finding], artifacts),
-      snapshotCommitSha: '1111111111111111111111111111111111111111',
+      snapshotCommitSha: 'b'.repeat(40),
       allowlist: [entry()],
     });
 
@@ -145,7 +151,7 @@ describe('Allowlisting mit Auslaufregel', () => {
 
   it('lässt den Eintrag bei geändertem Pfad auslaufen', () => {
     const movedFinding = diagnostic(
-      'catalog-gspp',
+      'catalog-fixture',
       '/catalog/groups/0/controls/2/links/0/href',
     );
     const evaluation = evaluateReferenceGraph({
@@ -163,13 +169,13 @@ describe('Allowlisting mit Auslaufregel', () => {
 
 describe('Ausgabe', () => {
   const graph = graphWith(
-    [diagnostic('mapping-itgs2023-zu-gspp', '/mapping-collection/mappings/0')],
+    [diagnostic('mapping-fixture-preview', '/mapping-collection/mappings/0')],
     [
-      artifact('catalog-gspp', 'supported', { resolved: 277 }),
-      artifact('mapping-itgs2023-zu-gspp', 'preview', {
+      artifact('catalog-fixture', 'supported', { resolved: 3 }),
+      artifact('mapping-fixture-preview', 'preview', {
         rootType: 'mapping-collection',
-        oscalVersion: '1.2.1',
-        notEvaluable: 2370,
+        oscalVersion: '1.2.2',
+        notEvaluable: 7,
         diagnostics: 1,
       }),
     ],
@@ -178,9 +184,9 @@ describe('Ausgabe', () => {
   const summary = formatReferenceGraphSummary(graph, evaluation);
 
   it('weist ein preview-Artefakt nie als abschließend bewertet aus', () => {
-    expect(summary).toContain('mapping-itgs2023-zu-gspp');
-    expect(summary).toMatch(/mapping-itgs2023-zu-gspp.*status=nicht abschliessend bewertet/);
-    expect(summary).toMatch(/catalog-gspp.*status=ohne Referenzfehler/);
+    expect(summary).toContain('mapping-fixture-preview');
+    expect(summary).toMatch(/mapping-fixture-preview.*status=nicht abschliessend bewertet/);
+    expect(summary).toMatch(/catalog-fixture.*status=ohne Referenzfehler/);
   });
 
   it('liefert einen maschinenlesbaren Bericht ohne Dokumentwerte', () => {
