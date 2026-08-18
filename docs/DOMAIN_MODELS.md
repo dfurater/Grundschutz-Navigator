@@ -395,7 +395,7 @@ nicht, und `models.ts` wächst dafür nicht zu einer monolithischen Modellschich
 | --- | --- | --- | --- |
 | `catalog` | Control | `src/adapters/oscalAdapter.ts` | registriert |
 | `profile` | Control | `src/adapters/oscalProfileAdapter.ts` | registriert |
-| `mapping-collection` | Control | — | [GSPP-245](https://linear.app/grundschutz-plus-plus/issue/GSPP-245) |
+| `mapping-collection` | Control | `src/adapters/oscalMappingAdapter.ts` | registriert |
 | `component-definition` | Implementation | `src/adapters/oscalComponentAdapter.ts` | registriert |
 | `system-security-plan` | Implementation | — | [GSPP-293](https://linear.app/grundschutz-plus-plus/issue/GSPP-293) |
 | `assessment-plan` | Assessment | — | nicht erschlossen |
@@ -548,6 +548,233 @@ Der Realkorpus ist optional: `oscalProfileDocument.node.test.ts` läuft nur, wen
 sonst übersprungen. Er prüft Erhaltung und die Byte-Identität gegen
 `contentSha256` aus `upstream-manifest.json`, nie feste Inhaltszahlen — das
 WLAN-Profil hat seine `alters`-Zahl upstream schon einmal gewechselt.
+
+## Mapping Collections (Control Layer)
+
+Eingeführt mit
+[GSPP-245](https://linear.app/grundschutz-plus-plus/issue/GSPP-245).
+
+| Datei | Rolle |
+| --- | --- |
+| `src/domain/oscalMapping.ts` | Raw-Typen, bewusst **nicht** versionsparametrisiert |
+| `src/domain/mappingModel.ts` | Projektion (`MappingCollection` und Teiltypen) plus Vokabulare |
+| `src/adapters/oscalMappingReaders.ts` | Knotenleser, Vokabularbindung und Diagnosesammler |
+| `src/adapters/oscalMappingAdapter.ts` | Ableitung `deriveMappingCollection(body, context)` |
+| `src/adapters/oscalMappingDocument.ts` | Dokumenteinstieg mit Root-Dispatch und Übergang nach Stufe 3 |
+
+### Ein Mapping ist ein Crosswalk, keine Aussage über Compliance
+
+Eine Mapping Collection beschreibt Beziehungen zwischen Controls oder
+Control-Statements **zweier autoritativer Quellen**. Sie ist kein Bestandteil
+der Import-Kette Catalog → Profile → SSP: Kein anderes OSCAL-Modell importiert
+sie. Sie benennt ihre beiden Seiten über `source-resource` und
+`target-resource` und setzt voraus, dass die dort referenzierten Kataloge
+vorliegen — was im BSI-Bestand für **keine** der sechs Referenzen zutrifft.
+
+Der Navigator liest diese Beziehungen und macht sie navigierbar. Aus einem
+Mapping folgt keine Compliance-, Audit- oder Zertifizierungsaussage, und kein
+Feld des Domänenmodells behauptet etwas anderes.
+
+### Die Lücke ist eine Aussage, kein fehlender Eintrag
+
+Das ist die fachlich kritische Unterscheidung des Modells und der Grund für
+`MappingCoverageState`:
+
+| Zustand | Bedeutung | Grundlage |
+| --- | --- | --- |
+| `mapped` | Es besteht eine Beziehung | mindestens ein `map` mit einem Beziehungstyp ungleich `no-relationship` |
+| `explicit-gap` | Es besteht **ausdrücklich keine** Beziehung | `map` mit `relationship: "no-relationship"` **oder** namentliche Aufzählung in der Gap-Summary der Seite |
+| `unknown` | Es wurde nichts ausgesagt | kein `map`-Eintrag zu dieser `id-ref` — oder nur einer mit unlesbarem Beziehungstyp |
+
+Einen vierten Zustand „nicht abgedeckt" gibt es nicht. Abgefragt wird die
+Abdeckung über `coverageForSourceIdRef(mapping, idRef)` und
+`coverageForTargetIdRef(…)`; sie existieren, damit an keiner Aufrufstelle ein
+`map.get(id) ?? 'nicht-abgedeckt'` entstehen kann. Ein Eintrag mit **unbekanntem**
+Beziehungstyp zählt bewusst nicht als Abdeckung: Was niemand deuten kann, darf
+keine behaupten.
+
+Die Lücke hat **zwei** Ausdrucksformen, und beide gehen in die Abfrage ein: der
+`map` mit `no-relationship` und die Gap-Summary der jeweiligen Seite, die nach
+Schema „all controls that were not mapped at all" aufzählt. Aus ihr zählen
+ausschließlich die namentlich genannten `with-ids` (`sourceGapIdRefs`,
+`targetGapIdRefs`); ein `matching`-Muster bleibt erhalten, verändert aber keine
+Abdeckungsaussage, weil dieser Slice nirgends einen Glob auswertet. Führt ein
+Dokument dieselbe ID zugleich als abgebildet und als ungemappt, widerspricht es
+sich — dann gewinnt die konkrete Beziehung, die Quelle und Ziel benennt.
+
+Die Indizes `mapsBySourceIdRef` und `mapsByTargetIdRef` hängen am einzelnen
+Mapping Set, nicht an der Sammlung. Erst das Set benennt die Ressource, in der
+eine ID etwas bedeutet; ein sammlungsweiter Index würde zwei Quellkataloge mit
+gleichlautenden IDs einebnen.
+
+### Das vollständige Beziehungsvokabular
+
+| Wert | Bedeutung | Umkehrung |
+| --- | --- | --- |
+| `equivalent-to` | inhaltlich gleichwertig, nicht wortgleich | symmetrisch |
+| `equal-to` | gleich bis auf Schreibweise | symmetrisch |
+| `subset-of` | Quelle ist Teilmenge des Ziels | `superset-of` |
+| `superset-of` | Quelle ist Obermenge des Ziels | `subset-of` |
+| `intersects-with` | teilweise Überschneidung | symmetrisch |
+| `no-relationship` | ausdrücklich keine Beziehung | symmetrisch |
+
+Keiner dieser Werte wird zu einem generischen `related` zusammengefasst. Fünf
+sind am Bestand belegt; `no-relationship` kommt in keinem der beiden
+BSI-Artefakte vor und ist deshalb über ein synthetisches Fixture abgedeckt.
+
+### Feldweise unterschiedliche Prüftiefe
+
+Das JSON-Schema prüft weniger, als das Modell festlegt — und zwar
+unterschiedlich viel je Feld. Genau deshalb bringt dieser Adapter als einziger
+eine eigene Vokabularprüfung mit:
+
+| Feld | JSON-Schema | Wer prüft |
+| --- | --- | --- |
+| `map/relationship` | `TokenDatatype`, **kein** Enum | **allein** der Adapter (`OSCAL_MAPPING_RELATIONSHIP_INVALID`) |
+| `mapping-resource-reference/type` | `anyOf` mit freiem Datentyp (`allow-other="yes"`) | **allein** der Adapter (`OSCAL_MAPPING_RESOURCE_TYPE_INVALID`) |
+| `mapping-item/type` | `allOf` mit Enum `control`/`statement` | Schema und Adapter |
+| `method`, `status`, `matching-rationale` | `allOf` mit Enum | Schema und Adapter |
+| `qualifier/subject`, `/predicate`, `/category` | `allOf` mit Enum | Schema und Adapter |
+
+Der Grund steht im Metaschema: Die `allowed-values` von `relationship` tragen
+das Ziel `.[has-oscal-namespace('…')]` und werden deshalb nicht in das
+JSON-Schema übernommen. Ein erfundenes `relationship: "maps-to"` ist damit
+schemavalide — und ohne die eigene Prüfung wäre die Gap-Semantik ungesichert.
+
+Dieselbe Namensraumbindung wird im Modell **positiv** abgebildet: Ein `ns`, der
+einen fremden Namensraum benennt, hebt die Vokabularbindung auf. Der Wert wird
+dann als `extension` geführt statt als Befund — eigene Beziehungs- und
+Ressourcentypen sind dort ausdrücklich vorgesehen. Fehlt `ns`, gilt laut
+Metaschema der OSCAL-Namensraum, und das Vokabular bindet. Bei
+`mapping-resource-reference/type` ist der Adapter damit **strenger** als
+`allow-other="yes"`: Ein unbekannter Typ ohne fremden `ns` ist hier fail-closed
+ein Befund.
+
+### Unterstützte Semantik
+
+| Konstrukt | Abbildung |
+| --- | --- |
+| `mappings` als Objekt **oder** Liste | `MappingCollection.mappings` immer als Liste, die Quellform in `declaredMappingsForm` |
+| `provenance` | `MappingCollection.provenance` — Pflichtfeld; fehlt es, steht das in `diagnostics` |
+| `mapping` | `Mapping` je Set mit `method`, `matchingRationale`, `status`, beiden Ressourcen und `maps` |
+| `source-resource` / `target-resource` | `MappingResourceReference` mit klassifizierter `reference` (GSPP-286) |
+| `map` | `MappingEntry` mit Beziehungsbindung, `ns`, `sources`, `targets` in Quellreihenfolge |
+| `mapping-item` | `MappingItem` mit `type`, `idRef`, `props`, `links`, `remarks` |
+| `qualifiers` | `MappingQualifier` mit allen drei gebundenen Vokabularen und der Beschreibung |
+| `confidence-score` | `MappingConfidenceScore` — Kategorie **oder** Prozentwert |
+| `coverage` | `MappingCoverage` mit `generationMethod` und `targetCoverage` |
+| `source-gap-summary` / `target-gap-summary` | `MappingGapSummary` mit den Selektoren der ungemappten Controls |
+
+### Bewusst **nicht** unterstützt
+
+* **Keine Auflösung der Ressourcenreferenzen gegen die Gegenseite.** Alle sechs
+  `href` des Bestands sind relative Dateinamen, und außer
+  `ISO27001-AnnexA-catalog.json` ist keiner im Quellregister vertreten. Nach
+  [GSPP-286](https://linear.app/grundschutz-plus-plus/issue/GSPP-286) werden
+  relative Referenzen **nie** aufgelöst: kein Verzeichniskontext, keine
+  Pfadnormalisierung, keine Traversal-Sonderbehandlung.
+* **Keine Deutung einer `id-ref` ohne Ressourcenkontext.** Jedes Item trägt den
+  Marker `MAPPING_ID_REF_UNRESOLVED`; je Mapping-Seite benennt eine Diagnose den
+  Grund. Eine `id-ref` gegen einen beliebigen geladenen Katalog aufzulösen wäre
+  geraten, nicht ermittelt.
+* **Keine Crosswalk-UI** — das sind
+  [GSPP-246](https://linear.app/grundschutz-plus-plus/issue/GSPP-246) und
+  [GSPP-247](https://linear.app/grundschutz-plus-plus/issue/GSPP-247).
+* **Kein Erzeugen und kein Bearbeiten** von Mappings; rein lesend.
+* **Keine Umkehrnavigation als Modelloperation.** Die Umkehrbarkeit der
+  Beziehungstypen ist oben dokumentiert, wird aber nicht automatisch als
+  zusätzliche Kante materialisiert.
+* **Keine Auflösung der Geltungsbereiche.** `method`, `matching-rationale`,
+  `status`, `confidence-score` und `coverage` sind gestuft: Die `provenance`
+  setzt sie global, `mapping` und `map` überschreiben sie lokal. Alle Ebenen
+  bleiben getrennt erhalten; das Modell rechnet daraus **keinen** effektiven
+  Wert aus. `provenance.method` ist deshalb die globale Angabe, nicht die
+  wirksame — der einzige abgeleitete Wert dieses Modells ist die Abdeckung.
+
+### Keine Versionsdrift — gemessen, nicht angenommen
+
+`mapping-collection` existiert erst ab OSCAL 1.2.0; gepinnt sind damit genau
+zwei Zellen. Deren vendorierte Schemas sind bis auf ihre `$id`
+**definitionsgleich** — es gibt keine Partition, die ein Feldprädikat
+beschreiben könnte, und die Raw-Typen sind deshalb als einzige der drei
+erschlossenen Modelle nicht über `PinnedOscalVersion` parametrisiert.
+
+Das ist eine Aussage über Dateien und hängt an
+`oscalMapping.versionDrift.test.ts`: Er vergleicht alle Definitionen beider
+gepinnter Schemas, prüft die Modellexistenz gegen `isImpossibleCombination()`
+und misst die Prüftiefe je Feld. Eine Mapping-Versionskonstante gibt es
+trotzdem nicht — die beiden BSI-Artefakte deklarieren **verschiedene**
+Versionen (1.2.2 und 1.2.1), und jedes wird gegen seine eigene geprüft.
+
+### Modellinterne Diagnosen
+
+Stufe `domain`, Validator `gspp-mapping-adapter`. Sie verwerfen ein Dokument
+nie; verworfen wird ausschließlich vorher, im Root-Dispatch.
+
+| Code | Anlass |
+| --- | --- |
+| `OSCAL_MAPPING_MAPPINGS_MISSING` | `mappings` fehlt, ist leer oder hat weder Objekt- noch Arrayform |
+| `OSCAL_MAPPING_PROVENANCE_MISSING` | `provenance` fehlt — sie ist Pflichtfeld, kein Extra |
+| `OSCAL_MAPPING_MAPS_MISSING` | `mapping` ohne `maps` |
+| `OSCAL_MAPPING_RESOURCE_MISSING` | eine Seite des Mappings ist unbenannt |
+| `OSCAL_MAPPING_RESOURCE_HREF_MISSING` | Ressourcenreferenz ohne `href` |
+| `OSCAL_MAPPING_RESOURCE_TYPE_INVALID` | Ressourcentyp fehlt oder liegt außerhalb von `catalog`/`profile` |
+| `OSCAL_MAPPING_RELATIONSHIP_MISSING` | `map` ohne `relationship` |
+| `OSCAL_MAPPING_RELATIONSHIP_INVALID` | Beziehungstyp außerhalb des Vokabulars im OSCAL-Namensraum |
+| `OSCAL_MAPPING_ITEM_TYPE_INVALID` | `mapping-item/type` außerhalb von `control`/`statement` |
+| `OSCAL_MAPPING_ITEM_ID_REF_MISSING` | `mapping-item` ohne `id-ref` |
+| `OSCAL_MAPPING_ITEM_SET_EMPTY` | `sources` oder `targets` fehlt oder ist leer |
+| `OSCAL_MAPPING_ID_REF_CONTEXT_UNRESOLVED` | Ressourcenkontext einer Seite nicht aufgelöst; ihre `id-ref` bleiben uninterpretiert |
+| `OSCAL_MAPPING_METHOD_INVALID` | `method` außerhalb ihres Vokabulars |
+| `OSCAL_MAPPING_STATUS_INVALID` | `status` außerhalb des fünfwertigen Dokumentstatus |
+| `OSCAL_MAPPING_MATCHING_RATIONALE_INVALID` | `matching-rationale` außerhalb ihres Vokabulars |
+| `OSCAL_MAPPING_QUALIFIER_VALUE_INVALID` | `qualifier`-Wert außerhalb seines Vokabulars; der Pfad nennt das Feld |
+| `OSCAL_MAPPING_UUID_MISSING` | `mapping` oder `map` ohne `uuid` |
+| `OSCAL_MAPPING_UUID_DUPLICATE` | dieselbe `uuid` an mehr als einer Stelle; der Befund hängt am **zweiten** Fundort |
+| `OSCAL_MAPPING_STRUCTURE_UNEXPECTED` | Knoten hat nicht die erwartete Form, etwa Objekt statt Array |
+
+`ID_REF_CONTEXT_UNRESOLVED` entsteht **je Mapping-Seite**, nicht je `id-ref`:
+Bei 1185 Einträgen wäre dieselbe Aussage sonst 2370-mal dieselbe Aussage. Der
+Zustand jeder einzelnen `id-ref` steht am Item.
+
+### ADR-7 am realen Bestand
+
+`mapping-iso27001-annex-a-zu-gspp` steht im Quellregister auf
+`lifecycle: 'blocked-by-upstream'` und ist gegen sein gepinntes Schema
+**invalide**: `provenance` trägt mit `qa-reviewed` und `qa-note` zwei Felder,
+die `additionalProperties: false` verletzt — genau zwei Befunde, sonst ist das
+Dokument valide.
+
+Der Adapter parst es trotzdem verlustfrei und diagnostiziert die Verletzung
+([ADR-7](https://linear.app/grundschutz-plus-plus/issue/ADR-7)); die Sperrung
+betrifft die Auslieferung, nicht das Parsen. Fachlich ist der Fall der reale
+Beleg für die Verlustfreiheitsregel: Ein Adapter, der `provenance` auf die
+bekannten Felder projiziert, verlöre beide Felder stillschweigend — und die
+Qualitätsaussage des Mappings mit ihnen.
+
+### Testkorpus
+
+Die beiden realen Mappings liegen nicht im Repository: `npm run fetch-catalog`
+materialisiert ausschließlich `supported`-Artefakte, und die beiden sind
+`preview` beziehungsweise `blocked-by-upstream`. Verbindlich ist deshalb der
+eingefrorene Fixture-Korpus in `src/test/fixtures/mappings.ts` mit den am
+Snapshot `80694713a7a430d12eb2099893de23ad8bb6f780` gemessenen Strukturen: 2
+Mapping Sets je Artefakt, 96 beziehungsweise 1185 `maps`, die gemessene
+Verteilung der fünf vorkommenden Beziehungstypen, bis zu zehn `targets` je
+Eintrag, die sechs relativen `href`, das Top-Level-`$schema` des ITGS-Mappings
+und die beiden schemafremden `provenance`-Felder des ISO-Mappings.
+
+Die normativ vorhandenen, im Bestand fehlenden Fälle stehen als ergänzende
+synthetische Fixtures daneben: `no-relationship`, `mapping-item.type:
+"statement"`, echtes m:n mit mehreren `sources`, `qualifiers`,
+`confidence-score`, `coverage`, beide Gap-Summaries, `matching-rationale` auf
+`map`-Ebene, `mapping-resource-reference.type: "profile"` und die Einzelform
+von `mappings`.
+
+Der Realkorpus ist optional: `oscalMappingDocument.node.test.ts` läuft nur, wenn
+`GSPP_MAPPING_CORPUS_PATH` auf ein lokal geholtes Verzeichnis zeigt, und wird
+sonst übersprungen. Er prüft Erhaltung und die Byte-Identität gegen
+`contentSha256` aus `upstream-manifest.json`, nie feste Inhaltszahlen.
 
 ## Component Definitions (Implementation Layer)
 

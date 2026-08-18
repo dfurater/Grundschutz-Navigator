@@ -4,6 +4,7 @@ import {
   componentDefinitionRootAdapter,
   getOscalRootAdapter,
   listAdaptedOscalRootTypes,
+  mappingCollectionRootAdapter,
   parseOscalDocument,
   profileRootAdapter,
 } from './oscalRootAdapters';
@@ -51,15 +52,17 @@ function makeCatalogDocument() {
 }
 
 describe('Adapter-Registrierung', () => {
-  it('führt heute den Katalog-, den Component-Definition- und den Profile-Adapter', () => {
+  it('führt heute den Katalog-, Component-Definition-, Profile- und Mapping-Adapter', () => {
     expect(listAdaptedOscalRootTypes()).toEqual([
       'catalog',
       'component-definition',
       'profile',
+      'mapping-collection',
     ]);
     expect(getOscalRootAdapter('catalog')).toBe(catalogRootAdapter);
     expect(getOscalRootAdapter('component-definition')).toBe(componentDefinitionRootAdapter);
     expect(getOscalRootAdapter('profile')).toBe(profileRootAdapter);
+    expect(getOscalRootAdapter('mapping-collection')).toBe(mappingCollectionRootAdapter);
   });
 
   it('benennt für jeden registrierten Root-Typ einen Modul-Einstiegspunkt', () => {
@@ -69,14 +72,14 @@ describe('Adapter-Registrierung', () => {
     }
   });
 
-  it('meldet für die fünf noch nicht adaptierten Root-Typen keinen Adapter', () => {
+  it('meldet für die vier noch nicht adaptierten Root-Typen keinen Adapter', () => {
     const unadapted = OSCAL_ROOT_KEYS.filter(
       (rootKey) => !listAdaptedOscalRootTypes().includes(rootKey),
     );
 
     // Die Zahl steht bewusst ausgeschrieben: Ein neuer Modelladapter soll
     // diesen Test rot machen und bewusst nachgezogen werden.
-    expect(unadapted).toHaveLength(5);
+    expect(unadapted).toHaveLength(4);
     for (const rootKey of unadapted) {
       expect(getOscalRootAdapter(rootKey)).toBeNull();
     }
