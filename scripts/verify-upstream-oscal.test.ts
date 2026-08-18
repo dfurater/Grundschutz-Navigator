@@ -288,11 +288,19 @@ describe('manifestgestützter OSCAL-Korpus', () => {
 
   it('ADR-7-Nachtrag: meldet catalog-iso27001-annex-a als aus dem BSI-Tree entferntes gesperrtes Artefakt', () => {
     const { missingBlockedArtifacts } = selectManifestOscalArtifacts(manifest);
+    // R4-keine-doppelten-registerfakten: Pfad aus SOURCE_REGISTRY ableiten
+    // statt hier erneut zu deklarieren.
+    const registryEntry = SOURCE_REGISTRY.find(
+      (entry) => entry.artifactKey === 'catalog-iso27001-annex-a',
+    );
+    if (!registryEntry) {
+      throw new Error('SOURCE_REGISTRY enthält keinen Eintrag für catalog-iso27001-annex-a');
+    }
 
     expect(missingBlockedArtifacts).toEqual([
       {
-        artifactKey: 'catalog-iso27001-annex-a',
-        upstreamPath: 'control_layer/ISO27001/ISO27001-AnnexA-catalog.json',
+        artifactKey: registryEntry.artifactKey,
+        upstreamPath: registryEntry.upstreamPath,
       },
     ]);
   });
