@@ -100,7 +100,7 @@ GitHub-Actions-Runner; Browserprüfungen laufen ausschließlich im Modul-Worker.
 | 2. Root-Erkennung | **Umgesetzt:** `dispatchOscalDocument()` in [`oscalRootDispatch.ts`](../src/adapters/oscalRootDispatch.ts), projekteigen und ohne externes Werkzeug | Das Top-Level-Objekt muss genau einen der acht bekannten Root-Keys besitzen. Null, Arrays, mehrere Root-Keys und unbekannte Keys werden abgelehnt. Die optionale Schema-Direktive `$schema` ist die einzige zusätzlich zulässige Top-Level-Property; sie ist kein zweiter Root und **niemals** Versionsautorität. Eine Katalog-Interpretation als Fallback ist verboten. |
 | 3. JSON-Schema | **Für Klasse 2 umgesetzt:** `ajv` 8.20.0 im Modul-Worker, gegen die eingecheckten NIST-Schemas unter `schemas/oscal/`. **CI umgesetzt:** [`verify-upstream-oscal.mjs`](../scripts/verify-upstream-oscal.mjs) nutzt `go-oscal` 0.7.1 als unabhängiges Schema- und Upgrade-Orakel | Auswahl ausschließlich über den exakten Root×`oscal-version`-Schlüssel; kein Fallback auf eine Nachbarversion. Die Schemabytes kommen aus dem eigenen Bundle; der Chunk der ausgewählten Zelle wird zur Laufzeit von derselben Origin nachgeladen, nie von einer fremden. Ihre Integrität trägt der Bauzeitschritt `npm run verify-oscal-schemas`. Ist die Zelle nicht im Bundle oder lässt sich ihr Validator nicht bauen, endet der Import fail-closed mit `OSCAL_SCHEMA_UNAVAILABLE` — Stufe 3 wird weder übersprungen noch als bestanden ausgewiesen. Der CI-Korpuslauf bezieht Dokumente nur aus dem gepinnten BSI-Snapshot und führt weder Schema- noch Dokumentreferenz-Anfragen aus. Jedes nicht gesperrte Artefakt muss bestehen; ein gesperrtes Artefakt muss fehlschlagen. Fehlende oder nicht auswertbare Werkzeugergebnisse bleiben ein eigener fail-closed Werkzeugfehler. |
 | 4. zusätzliche OSCAL-Constraints | Derzeit **kein zugelassener Validator** für OSCAL 1.2.2; im Browser und in CI als `not-checked` ausgewiesen | Diese Stufe darf weder übersprungen noch als bestanden dargestellt werden. Die zulässige Konformitätsaussage wird deshalb begrenzt. Das konkrete Mapping-Orakel ist als bekannte Lücke registriert. |
-| 5. Referenzen und Projektregeln | [`referenceResolution.ts`](../src/domain/referenceResolution.ts) ist der gemeinsame, fail-closed Klassifikator; der vollständige Referenzgraph bleibt Vertrag von [GSPP-251](https://linear.app/grundschutz-plus-plus/issue/GSPP-251) | Prüft UUID-/ID-Eindeutigkeit, interne und dokumentübergreifende Referenzen, URI- und Medientypregeln sowie ausdrücklich benannte GRC-Regeln. Die Schicht klassifiziert externe `https:`-Ziele, relative Ziele und abgelehnte Protokolle ohne sie abzurufen; Stufe 5 konsumiert sie statt eine zweite Klassifikation einzuführen. Unbekannte Regeln gelten nicht als bestanden. |
+| 5. Referenzen und Projektregeln | **Umgesetzt:** [`referenceResolution.ts`](../src/domain/referenceResolution.ts) ist der gemeinsame, fail-closed Klassifikator; der Referenzgraph darüber steht in [`referenceGraph.ts`](../src/domain/referenceGraph.ts) mit der CI-Politik in [`referenceGraphPolicy.ts`](../src/domain/referenceGraphPolicy.ts) ([GSPP-251](https://linear.app/grundschutz-plus-plus/issue/GSPP-251)) | Prüft UUID-/ID-Eindeutigkeit, interne und dokumentübergreifende Referenzen, URI- und Medientypregeln sowie ausdrücklich benannte GRC-Regeln. Die Schicht klassifiziert externe `https:`-Ziele, relative Ziele und abgelehnte Protokolle ohne sie abzurufen; der Graph konsumiert sie und führt keine zweite Klassifikation ein. Unbekannte Regeln gelten nicht als bestanden. Details unter [Stufe 5 — Referenzgraph](#stufe-5--referenzgraph). |
 
 Der Token-Scanner führt für jedes geöffnete JSON-Objekt eine eigene
 Menge bereits gelesener Member-Namen. Verglichen wird der logische Name nach
@@ -412,6 +412,158 @@ bleibt, ist ein ausdrücklich benanntes Projektorakel nach Stufe 5 der einzige
 Weg, sie zu prüfen — und ein solches Orakel ist ein Projektbefund, kein
 Schemabeleg. Die vollständige Normklärung samt Normstärke je Träger steht in
 [GSPP-327](https://linear.app/grundschutz-plus-plus/issue/GSPP-327).
+
+## Stufe 5 — Referenzgraph
+
+Der Referenzgraph in
+[`referenceGraph.ts`](../src/domain/referenceGraph.ts) verbindet den Control
+Layer (`catalog`, `profile`, `mapping-collection`) mit dem Implementation Layer
+(`component-definition`). Er läuft nur über Artefakte, die Stufe 3 bestanden
+haben, und ist rein: kein Netzwerk-, kein Dateizugriff, keine Auswertung
+eingebetteter Nutzlasten. Der Assessment Layer ist noch nicht erschlossen; die
+Kantendefinition ist so gefasst, dass `import-ssp` und `import-ap` ohne Umbau
+ergänzt werden können.
+
+### Vier Zustände, nicht drei
+
+Die schärfste Anforderung an diese Stufe ist, vier Aussagen **nicht** zu
+vermischen. Werden sie vermischt, entsteht genau die falsche Abdeckungsaussage,
+die dieses Projekt ausschließt.
+
+| Zustand | Bedeutung | Diagnose |
+| --- | --- | --- |
+| `resolved` | Das Ziel liegt im geprüften Kontext und ist dort vorhanden | keine |
+| `unresolvable` | Das Ziel liegt im geprüften Kontext und ist dort **nicht** vorhanden — ein Referenzfehler | ja |
+| `not-evaluable` | Das Ziel liegt **außerhalb** des geprüften Kontexts (relativ oder extern) und wird bewusst nicht aufgelöst | nur für Kontextverweise nach außen |
+| `no-relationship` | Eine gültige fachliche Aussage: „es besteht keine Beziehung" — gar keine Kante, sondern eine Lückenaussage | keine |
+
+Das Fehlen eines Eintrags ist keiner dieser Zustände: Es bedeutet
+ausschließlich, dass nichts ausgesagt wurde, und erzeugt weder Kante noch
+Befund.
+
+### Knotenidentität
+
+`control/@id` trägt im Catalog-Metaschema `identifier-uniqueness="local"` —
+dieselbe Control-ID bezeichnet in zwei Katalogen zwei verschiedene Controls. Ein
+Knoten ist deshalb nie eine nackte ID, sondern immer das Paar aus
+Dokumentidentität und lokaler ID. Es gibt keinen Typ, der eine kontextlose ID
+ausdrücken könnte, und keinen Codepfad, der beim Auflösen auf einen anderen
+geladenen Katalog ausweicht.
+
+Die Knoten entstehen aus dem Quellgraphen, nicht aus der Projektion: Eine
+Projektion, die IDs in einer Map führt, hat eine doppelt vergebene ID bereits
+eingeebnet. Jeder Knoten trägt die `metadata.oscal-version` seines
+Quelldokuments; eine gemeinsame Versionsannahme gibt es nicht.
+
+### Geprüfte Kanten
+
+| Kante | Feld | Prüffrage |
+| --- | --- | --- |
+| `profile-import` | `profile.imports[].href` | Ziel vorhanden, Root-Typ ∈ {`catalog`, `profile`}, kein Zyklus |
+| `profile-selection` | `include-controls[].with-ids`, `exclude-controls[].with-ids` | ID im importierten Kontext vorhanden |
+| `mapping-resource` | `mapping.source-resource.href` / `target-resource.href` | Ziel vorhanden, `type` ∈ {`catalog`, `profile`} |
+| `mapping-item` | `mapping-item.id-ref` mit `type` ∈ {`control`, `statement`} | ID im Kontext der jeweiligen Ressource auflösbar |
+| `component-source` | `control-implementation.source` | Ziel vorhanden oder als extern gekennzeichnet |
+| `component-control` | `implemented-requirement.control-id` | ID im Kontext der `source` auflösbar |
+| `document-internal` | `link.href = "#<uuid>"` bzw. `"#<control-id>"` | Ziel in `back-matter/resources` oder im eigenen Katalog vorhanden |
+
+`implemented-requirements` werden aus `components[]` **und** `capabilities[]`
+erhoben. Eine Capability kann eine eigene `control-implementation` führen; ein
+Durchlauf nur über `components` verlöre deren Referenzen still.
+
+### Keine Auflösung relativer oder externer Ziele
+
+Der Graph verzweigt an keiner Stelle selbst auf die Form eines `href`. Die
+Klassifikation kommt ausschließlich aus
+[`referenceResolution.ts`](../src/domain/referenceResolution.ts); ein
+Fragmentvergleich oder Protokollvergleich außerhalb dieses Moduls existiert
+nicht.
+
+Ein relatives oder externes Ziel wird nie aufgelöst — auch nicht über
+Titelähnlichkeit, Dateinamen oder Fremd-Namespace-`props`. Die
+`catalog_uuid`-`props` der ITGS-Zielressourcen sehen wie ein Auflösungsweg aus
+und sind keiner: Ein Fremd-Namespace-`prop` ist keine OSCAL-Referenzkante. Die
+Klassifikation ist außerdem invariant dagegen, ob das durch einen Dateinamen
+benannte Zielartefakt im Upstream-Tree vorhanden, gesperrt oder vollständig
+entfernt ist.
+
+Dokumentübergreifend auflösbar wird eine Referenz allein durch eine
+**ausdrückliche Bindung des Aufrufers** (`bindings`). Der CI-Lauf übergibt
+keine: Welcher relative Dateiname welches Artefakt meint, ist eine Behauptung,
+die niemand belegen kann.
+
+### Diagnostic-Codes
+
+Alle Befunde entstehen über `createOscalDiagnostic()` mit `stage: 'reference'`
+und dem Validatorpin `reference-graph@1`. Es gibt kein zweites Diagnosemodell
+und keine eigene Severity-Skala. Eine Diagnose benennt die Referenz über ihren
+strukturellen JSON Pointer und trägt nie einen `href`-Wert, eine ID oder
+sonstigen Dokumentinhalt.
+
+| Code | Bedeutung |
+| --- | --- |
+| `OSCAL_GRAPH_TARGET_NOT_FOUND` | Das Ziel liegt im geprüften Kontext und fehlt dort |
+| `OSCAL_GRAPH_TARGET_AMBIGUOUS` | Die ID ist im Zielkontext mehrfach vergeben |
+| `OSCAL_GRAPH_DUPLICATE_NODE_ID` | Zwei Knoten desselben Dokuments tragen dieselbe lokale Identität |
+| `OSCAL_GRAPH_ROOT_TYPE_MISMATCH` | Das gebundene Zieldokument hat für diese Kante den falschen Root-Typ |
+| `OSCAL_GRAPH_EXTERNAL_CONTEXT_UNPINNED` | Ein Kontextverweis zeigt nach außen und ist damit nicht versionsstabil überprüfbar |
+| `OSCAL_GRAPH_ITEM_TYPE_UNSUPPORTED` | `mapping-item.type` außerhalb von {`control`, `statement`} |
+| `OSCAL_GRAPH_RESOURCE_TYPE_UNSUPPORTED` | `mapping-resource-reference.type` außerhalb von {`catalog`, `profile`} |
+| `OSCAL_GRAPH_IMPORT_CYCLE` | Eine Profilkette schließt sich; die Auswertung endet dort |
+
+`OSCAL_GRAPH_EXTERNAL_CONTEXT_UNPINNED` entsteht je Vorkommen eines
+Kontextverweises nach außen, nicht je untergeordneter ID. Das ist der Befund
+„extern und deshalb nicht versionsstabil überprüfbar" und ausdrücklich **nicht**
+„ID nicht gefunden". Ein rein informativer `link` nach außen erzeugt keinen
+Befund: Er eröffnet keinen Auflösungskontext.
+
+### CI-Lauf
+
+Der Graphlauf hängt an der bestehenden Korpuslane
+[`verify-upstream-oscal.mjs`](../scripts/verify-upstream-oscal.mjs); es gibt
+keine zweite CI-Lane. Er verarbeitet dieselben gepinnten, gegen Content- und
+Blobpin geprüften Bytes wie Stufe 3 und lädt nichts erneut. Ein registriertes,
+gesperrtes Artefakt, das vollständig aus dem BSI-Tree entfernt wurde, hat keinen
+Manifesteintrag mehr, wird über `missingBlockedArtifacts` gemeldet und ist für
+den Graphen schlicht nicht geladen — kein Knoten, kein Abbruch.
+
+Ein neuer Referenzfehler an einem `supported`-Artefakt lässt den Lauf
+fehlschlagen. Befunde an `preview`, `draft` und `blocked-by-upstream` werden
+ausgewiesen, blockieren aber nicht; ein Artefakt außerhalb von `supported`
+erscheint in keiner Ausgabe als abschließend bewertet. Die Allowlist-Politik mit
+ihrer Auslaufregel steht in [INTEGRITY.md](INTEGRITY.md#referenzbefunde-und-ihre-allowlist).
+
+Damit die Node-Lane denselben Klassifikator ausführt wie App und Tests, lädt
+[`oscal-domain-bridge.mjs`](../scripts/oscal-domain-bridge.mjs) die
+TypeScript-Module über Nodes eigenes Typ-Stripping und bildet dabei nur den
+Projektalias `@/` auf `src/` ab — dieselbe Abbildung wie in `vite.config.ts`.
+Deshalb ist `erasableSyntaxOnly` in beiden `tsconfig`-Projekten gesetzt: Nicht
+löschbare TypeScript-Syntax würde die CI-Lane brechen.
+
+### Gemessener Bestand
+
+`npm run verify-upstream-oscal` am Snapshot
+`8213e3a087976f0ba8019f2ef081924d9ce49666`: Von den 15 im Manifest geführten
+Artefakten gehen **12** in den Graphen ein — die drei gesperrten scheitern
+erwartungsgemäß an Stufe 3 und liefern keine belastbaren Referenzaussagen.
+
+Ergebnis: 2742 Knoten, 344 aufgelöste Kanten, **0 Referenzfehler**, 2734 nicht
+bewertbare Kanten, keine `no-relationship`-Aussage, kein blockierender Befund.
+
+* Der ausgelieferte Grundschutz++-Katalog löst alle 278 dokumentinternen
+  Verweise auf.
+* Die 2374 `mapping-item`-Verweise des ITGS-Mappings sind nicht bewertbar, weil
+  sämtliche Ressourcen-`href` relative Dateinamen sind — ausdrücklich keine
+  Referenzfehler. Dasselbe gilt für die 96 `maps` des ISO-Mappings, sobald es
+  wieder in den Graphen eingeht.
+* Die drei `control-implementation.source` der AWS-Component-Definition tragen
+  denselben externen Wert auf einem beweglichen Branch und erzeugen je einen
+  Befund `OSCAL_GRAPH_EXTERNAL_CONTEXT_UNPINNED`; die 17
+  `implemented-requirements` darunter bleiben nicht bewertbar und erzeugen
+  keinen einzigen Referenzfehler.
+* Die Profilimporte zeigen als `#uuid` auf eigene `back-matter`-Ressourcen. Sie
+  lösen auf, eröffnen aber keinen Katalogkontext — die 195 `with-ids` darunter
+  sind deshalb nicht bewertbar.
 
 ## Prüftiefen-Landkarte
 

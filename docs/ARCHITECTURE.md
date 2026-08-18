@@ -123,6 +123,12 @@ src/
 │   ├── oscalVersionMatrix.d.mts  # Typen der Versionsmatrix
 │   ├── controlRef.ts             # Kataloggescopte interne Control-Referenzen
 │   ├── referenceResolution.ts    # Fail-closed OSCAL-Referenzauflösung auf source
+│   ├── referenceGraph.ts         # Referenzgraph über alle vier Root-Typen (Stufe 5)
+│   ├── referenceGraphModel.ts    # Knoten, Kanten, Zustände, Diagnostic-Codes
+│   ├── referenceGraphIndex.ts    # Knotenindex je Dokument aus dem Quellgraphen
+│   ├── referenceGraphContext.ts  # Auswertungskontext und Kantenablage
+│   ├── referenceGraphEdges.ts    # Kanten für Profile, Mappings, Components
+│   ├── referenceGraphPolicy.ts   # CI-Politik: fail-closed, Allowlist, Bericht
 │   └── controlRelationships.ts   # Steuerungsbeziehungen
 ├── adapters/         # Infrastruktur- und Datengrenzen
 │   ├── oscalAdapter.ts           # OSCAL → Domain Model Parser

@@ -31,7 +31,11 @@ function childContainerPath(path: string, kind: 'array' | 'object', index: numbe
 class DuplicateMemberScanner {
   private position = 0;
 
-  constructor(private readonly text: string) {}
+  private readonly text: string;
+
+  constructor(text: string) {
+    this.text = text;
+  }
 
   scan(): JsonScanResult {
     const result = this.scanValue('/', 1);
