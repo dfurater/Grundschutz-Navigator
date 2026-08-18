@@ -50,6 +50,15 @@ const OUTPUT_ARTIFACT_FILE_NAMES = [
   'vocabularies.json',
   'upstream-sources-metadata.json',
 ] as const;
+/**
+ * Der zweite Katalog des Fixtures nutzt einen real registrierten Upstream-Pfad:
+ * `assertRegisteredUpstreamRepoPath` ist ein echter Guard und liest bewusst das
+ * reale Quellregister, nicht die Fixture-Liste. Nur der Lifecycle wird im
+ * Fixture auf `supported` gehoben — das Repository bleibt unverändert.
+ */
+const SECOND_CATALOG_PATH = 'control_layer/WLAN/WLAN-resolved_catalog.json';
+/** Bewusst eine andere gepinnte Version: die Lane darf keine gemeinsame annehmen. */
+const SECOND_CATALOG_OSCAL_VERSION = '1.1.2';
 const temporaryOutputDirectories = new Set<string>();
 
 /** Die vom echten Grundschutz++-Katalog deklarierte Modellversion (GSPP-283). */
@@ -82,6 +91,7 @@ const MINIMAL_REGISTRY = [
     catalogKey: 'gspp',
     upstreamPath: OFFICIAL_CATALOG_PATH,
     lifecycle: 'supported',
+    entryCatalog: true,
     title: 'Grundschutz++ Anwenderkatalog',
   },
   {
@@ -92,6 +102,26 @@ const MINIMAL_REGISTRY = [
     lifecycle: 'supported',
     title: 'Offizielle BSI-Namespace-Vokabulare',
   },
+] as const;
+
+/**
+ * Fixture-Register mit zwei `supported`-Katalogen (GSPP-284). Die reale
+ * Registry liefert genau einen aus, und dieses Issue ändert keinen Lifecycle —
+ * ohne Fixture wäre die Ableitung der Ausgabemenge nicht beobachtbar.
+ */
+const TWO_CATALOG_REGISTRY = [
+  MINIMAL_REGISTRY[0],
+  {
+    artifactKey: 'catalog-wlan',
+    kind: 'oscal',
+    oscalVersion: SECOND_CATALOG_OSCAL_VERSION,
+    expectedRootType: 'catalog',
+    catalogKey: 'wlan',
+    upstreamPath: SECOND_CATALOG_PATH,
+    lifecycle: 'supported',
+    title: 'Zweitkatalog',
+  },
+  MINIMAL_REGISTRY[1],
 ] as const;
 
 type RawContents = string | Buffer;
@@ -216,7 +246,10 @@ function installSnapshotFetch({
   };
 }
 
-function makeCatalogText(namespaceUrls: string[] = []) {
+function makeCatalogText(
+  namespaceUrls: string[] = [],
+  { oscalVersion = CATALOG_OSCAL_VERSION, uuid = 'demo' } = {},
+) {
   const controls = namespaceUrls.length === 0
     ? []
     : [
@@ -248,8 +281,8 @@ function makeCatalogText(namespaceUrls: string[] = []) {
 
   return `${JSON.stringify({
     catalog: {
-      uuid: 'demo',
-      metadata: { title: 'Grundschutz++', 'oscal-version': CATALOG_OSCAL_VERSION },
+      uuid,
+      metadata: { title: 'Grundschutz++', 'oscal-version': oscalVersion },
       groups,
     },
   }, null, 2)}\n`;
@@ -1346,5 +1379,120 @@ describe('upstream manifest v2', () => {
     });
 
     expect(changed.signatureSha256).not.toBe(unchanged.signatureSha256);
+  });
+  /* ---------------------------------------------------------------- */
+  /*  Mehrere ausgelieferte Kataloge (GSPP-284)                        */
+  /* ---------------------------------------------------------------- */
+
+  describe('mehrere supported-Kataloge', () => {
+    async function buildTwoCatalogArtifacts() {
+      const input = makeMinimalFetchInput();
+      const secondCatalogText = makeCatalogText([], {
+        oscalVersion: SECOND_CATALOG_OSCAL_VERSION,
+        uuid: 'zweitkatalog',
+      });
+      const rawByPath = new Map<string, RawContents>([
+        ...input.rawByPath,
+        [SECOND_CATALOG_PATH, secondCatalogText],
+      ]);
+
+      installSnapshotFetch({ rawByPath });
+      const payload = await buildFetchArtifacts(
+        { log: () => {}, warn: () => {} },
+        {
+          retryDelaysMs: [0, 0],
+          registryEntries: TWO_CATALOG_REGISTRY,
+          treeResponse: makeTreeResponse(rawByPath),
+        },
+      );
+
+      return { payload, secondCatalogText, catalogText: input.catalogText };
+    }
+
+    it('leitet Daten- und Metadatenartefakt je Katalog aus dem catalogKey ab', async () => {
+      const { payload } = await buildTwoCatalogArtifacts();
+
+      expect(payload.artifacts.map((artifact) => artifact.fileName)).toEqual([
+        'catalog.json',
+        'catalog-metadata.json',
+        'catalog-wlan.json',
+        'catalog-wlan-metadata.json',
+        'vocabularies.json',
+        'upstream-sources-metadata.json',
+      ]);
+    });
+
+    it('gibt jedem Katalog eigene Integritäts- und Provenienzwerte', async () => {
+      const { payload, secondCatalogText, catalogText } = await buildTwoCatalogArtifacts();
+
+      const entryMetadata = parseArtifactJson(payload, 'catalog-metadata.json');
+      const secondMetadata = parseArtifactJson(payload, 'catalog-wlan-metadata.json');
+
+      expect(entryMetadata.artifactKey).toBe('catalog-gspp');
+      expect(entryMetadata.catalogKey).toBe('gspp');
+      expect(entryMetadata.oscalVersion).toBe(CATALOG_OSCAL_VERSION);
+      expect(entryMetadata.source.file).toBe(OFFICIAL_CATALOG_PATH);
+      expect(entryMetadata.integrity.sha256).toBe(sha256Hex(Buffer.from(catalogText, 'utf8')));
+
+      expect(secondMetadata.artifactKey).toBe('catalog-wlan');
+      expect(secondMetadata.catalogKey).toBe('wlan');
+      expect(secondMetadata.oscalVersion).toBe(SECOND_CATALOG_OSCAL_VERSION);
+      expect(secondMetadata.source.file).toBe(SECOND_CATALOG_PATH);
+      expect(secondMetadata.integrity.sha256).toBe(
+        sha256Hex(Buffer.from(secondCatalogText, 'utf8')),
+      );
+
+      expect(secondMetadata.integrity.sha256).not.toBe(entryMetadata.integrity.sha256);
+      expect(secondMetadata.source.git_blob_sha).not.toBe(entryMetadata.source.git_blob_sha);
+      expect(secondMetadata.source.commit_sha).toBe(entryMetadata.source.commit_sha);
+    });
+
+    it('nennt alle ausgelieferten Katalogpfade in den Upstream-Metadaten', async () => {
+      const { payload } = await buildTwoCatalogArtifacts();
+      const upstreamMetadata = parseArtifactJson(payload, 'upstream-sources-metadata.json');
+
+      expect(upstreamMetadata.source.catalogPath).toBe(OFFICIAL_CATALOG_PATH);
+      expect(upstreamMetadata.source.catalogPaths).toEqual([
+        OFFICIAL_CATALOG_PATH,
+        SECOND_CATALOG_PATH,
+      ]);
+    });
+
+    it('schreibt die aus dem Register abgeleitete Dateimenge', async () => {
+      const { payload } = await buildTwoCatalogArtifacts();
+      const outputDirectory = await makeTemporaryOutputDirectoryPath();
+
+      await writeArtifacts(payload, outputDirectory, { registryEntries: TWO_CATALOG_REGISTRY });
+
+      await expect(
+        readdir(outputDirectory).then((fileNames) => fileNames.sort()),
+      ).resolves.toEqual([
+        'catalog-metadata.json',
+        'catalog-wlan-metadata.json',
+        'catalog-wlan.json',
+        'catalog.json',
+        'upstream-sources-metadata.json',
+        'vocabularies.json',
+      ]);
+    });
+
+    it('lehnt eine nicht aus dem Register abgeleitete Ausgabedatei ab', async () => {
+      const { payload } = await buildTwoCatalogArtifacts();
+      const outputDirectory = await makeTemporaryOutputDirectoryPath();
+
+      // Dasselbe Payload gegen das Einzelkatalog-Register: `catalog-wlan.json`
+      // ist dort nicht abgeleitet und darf nicht geschrieben werden.
+      await expect(
+        writeArtifacts(payload, outputDirectory, { registryEntries: MINIMAL_REGISTRY }),
+      ).rejects.toThrow('fetch-catalog payload contains an unexpected file: catalog-wlan.json');
+    });
+
+    it('hält die Einzelkatalog-Ausgabemenge unverändert', async () => {
+      const { payload } = await buildMinimalArtifacts();
+
+      expect(payload.artifacts.map((artifact) => artifact.fileName)).toEqual([
+        ...OUTPUT_ARTIFACT_FILE_NAMES,
+      ]);
+    });
   });
 });

@@ -20,13 +20,25 @@ import {
   type ResolvedOscalReference,
   type ResolvedResource,
 } from '@/domain/referenceResolution';
-import { SUPPORTED_CATALOG } from '@/domain/sourceRegistry';
+import {
+  ENTRY_CATALOG,
+  SUPPORTED_CATALOGS,
+  catalogDataFileName,
+  type CatalogKey,
+} from '@/domain/sourceRegistry';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useClipboard } from '@/hooks/useClipboard';
 
 const DEFAULT_UPSTREAM_REPOSITORY_PATH = 'BSI-Bund/Stand-der-Technik-Bibliothek';
-/** Aus dem Quellregister abgeleitet, damit Upstream-Umbenennungen nicht doppelt gepflegt werden. */
-const DEFAULT_CATALOG_PATH = SUPPORTED_CATALOG.upstreamPath;
+
+/**
+ * Registereintrag des angezeigten Katalogs. Aus dem Quellregister abgeleitet,
+ * damit Upstream-Umbenennungen nicht doppelt gepflegt werden; bei unbekanntem
+ * Schlüssel bleibt es beim Einstiegskatalog.
+ */
+function resolveCatalogRegistryEntry(catalogKey: CatalogKey) {
+  return SUPPORTED_CATALOGS.find((entry) => entry.catalogKey === catalogKey) ?? ENTRY_CATALOG;
+}
 
 const surfacePanelClass =
   'rounded-[var(--radius-md)] border border-[var(--color-border-default)] bg-[var(--color-surface-base)]';
@@ -69,16 +81,24 @@ function resolveUpstreamRepositoryPath(repositoryUrl?: string): string {
   }
 }
 
-function buildUpstreamCatalogUrl(provenance: CatalogProvenance | null): string {
+function buildUpstreamCatalogUrl(
+  provenance: CatalogProvenance | null,
+  catalogKey: CatalogKey,
+): string {
   const repositoryPath = resolveUpstreamRepositoryPath(provenance?.source.repository);
   const ref = resolveUpstreamRef(provenance);
-  const catalogPath = provenance?.source.file || DEFAULT_CATALOG_PATH;
+  const catalogPath =
+    provenance?.source.file || resolveCatalogRegistryEntry(catalogKey).upstreamPath;
 
   return `https://raw.githubusercontent.com/${repositoryPath}/${ref}/${catalogPath}`;
 }
 
-function buildAppCatalogUrl(baseUrl = import.meta.env.BASE_URL): string {
-  return new URL('data/catalog.json', new URL(baseUrl, window.location.origin)).toString();
+function buildAppCatalogUrl(
+  catalogKey: CatalogKey,
+  baseUrl = import.meta.env.BASE_URL,
+): string {
+  const fileName = catalogDataFileName(resolveCatalogRegistryEntry(catalogKey));
+  return new URL(`data/${fileName}`, new URL(baseUrl, window.location.origin)).toString();
 }
 
 function buildVerifyCommand(appUrl: string, upstreamUrl: string): string {
@@ -303,6 +323,7 @@ export function AboutPage() {
     verification,
     catalog,
     catalogDocument,
+    activeCatalogKey,
     vocabularyProvenance,
     vocabularyVerification,
   } = useCatalog();
@@ -316,8 +337,8 @@ export function AboutPage() {
   const resolvedResources = referenceDocument
     ? resolveCatalogResources({ document: referenceDocument })
     : [];
-  const appCatalogUrl = buildAppCatalogUrl();
-  const upstreamCatalogUrl = buildUpstreamCatalogUrl(provenance);
+  const appCatalogUrl = buildAppCatalogUrl(activeCatalogKey);
+  const upstreamCatalogUrl = buildUpstreamCatalogUrl(provenance, activeCatalogKey);
   const verifyCommand = buildVerifyCommand(appCatalogUrl, upstreamCatalogUrl);
   const verificationTone = verification?.valid
     ? verificationSuccessTone

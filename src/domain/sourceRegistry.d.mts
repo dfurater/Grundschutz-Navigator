@@ -32,6 +32,12 @@ export interface OscalArtifactEntry {
   readonly catalogKey?: CatalogKey;
   readonly upstreamPath: string;
   readonly lifecycle: ArtifactLifecycle;
+  /**
+   * Auszeichnung des Einstiegskatalogs (GSPP-284). Nur auf genau einem
+   * `supported`-Katalog zulässig; sein Auslieferungsvertrag bleibt
+   * `catalog.json` / `catalog-metadata.json`.
+   */
+  readonly entryCatalog?: true;
   /** Pflichtreferenz bei lifecycle 'blocked-by-upstream'. */
   readonly upstreamIssue?: string;
   readonly title: string;
@@ -50,8 +56,16 @@ export type SourceRegistryEntry = OscalArtifactEntry | VocabularyCollectionEntry
 
 export declare const SOURCE_REGISTRY: readonly SourceRegistryEntry[];
 export declare const MONITORED_UPSTREAM_ROOTS: readonly string[];
-export declare const SUPPORTED_CATALOG: OscalArtifactEntry & { readonly catalogKey: CatalogKey };
-export declare const SUPPORTED_CATALOG_KEY: CatalogKey;
+export type SupportedCatalogEntry = OscalArtifactEntry & {
+  readonly expectedRootType: 'catalog';
+  readonly lifecycle: 'supported';
+  readonly catalogKey: CatalogKey;
+};
+
+export declare const SUPPORTED_CATALOGS: readonly SupportedCatalogEntry[];
+export declare const SUPPORTED_CATALOG_KEYS: readonly CatalogKey[];
+export declare const ENTRY_CATALOG: SupportedCatalogEntry;
+export declare const ENTRY_CATALOG_KEY: CatalogKey;
 
 export declare function validateSourceRegistry(entries?: readonly SourceRegistryEntry[]): void;
 export declare function isSafeRepoPath(path: string): boolean;
@@ -67,3 +81,14 @@ export declare function getSchemaPinForArtifact(artifactKey: string): OscalSchem
 export declare function getCatalogByKey(catalogKey: string): OscalArtifactEntry | null;
 export declare function listCatalogKeys(): readonly CatalogKey[];
 export declare function isCatalogKey(value: string): value is CatalogKey;
+export declare function listSupportedCatalogs(
+  entries?: readonly SourceRegistryEntry[],
+): readonly SupportedCatalogEntry[];
+export declare function resolveEntryCatalog(
+  entries?: readonly SourceRegistryEntry[],
+): SupportedCatalogEntry;
+export declare function catalogDataFileName(entry: SupportedCatalogEntry): string;
+export declare function catalogMetadataFileName(entry: SupportedCatalogEntry): string;
+export declare function listCatalogArtifactFileNames(
+  entries?: readonly SourceRegistryEntry[],
+): readonly string[];

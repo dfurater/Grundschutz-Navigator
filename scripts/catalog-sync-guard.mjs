@@ -23,9 +23,10 @@ import {
   assertTopicVocabularyCoverage,
 } from './taxonomy-coverage.mjs';
 import {
+  ENTRY_CATALOG,
   MONITORED_UPSTREAM_ROOTS,
   SOURCE_REGISTRY,
-  SUPPORTED_CATALOG,
+  SUPPORTED_CATALOGS,
   getArtifactByUpstreamPath,
 } from '../src/domain/sourceRegistry.mjs';
 import {
@@ -51,6 +52,12 @@ const SHA_PATTERN = /^[0-9a-f]{40}$/;
  * Registrierte OSCAL-Artefakte nach Schlüssel — Grundlage der
  * Versionskreuzprüfung beim Blob-Verify (GSPP-283).
  */
+/**
+ * Upstream-Pfade aller ausgelieferten Kataloge (GSPP-284). Die Sync-Lane prüft
+ * jeden davon, nicht nur den Einstiegskatalog.
+ */
+const SUPPORTED_CATALOG_PATHS = new Set(SUPPORTED_CATALOGS.map((entry) => entry.upstreamPath));
+
 const REGISTRY_BY_ARTIFACT_KEY = new Map(
   SOURCE_REGISTRY
     .filter((entry) => entry.kind === 'oscal')
@@ -359,26 +366,46 @@ export async function verifySnapshotFiles(manifest, {
       artifactKey: file.artifactKey,
       expectedOscalVersion: registryEntry.oscalVersion,
     });
-    if (file.path === SUPPORTED_CATALOG.upstreamPath) {
+    if (SUPPORTED_CATALOG_PATHS.has(file.path)) {
       validateCatalogControlIdentities(artifact.json, file.artifactKey);
     }
     return artifact.json;
   };
 
-  const catalogFile = manifest.files.find(
-    (file) => file.path === SUPPORTED_CATALOG.upstreamPath,
-  );
-  if (!catalogFile) {
-    throw new Error('Manifest does not contain the supported catalog document');
-  }
+  const supportedCatalogFiles = SUPPORTED_CATALOGS.map((entry) => {
+    const file = manifest.files.find((candidate) => candidate.path === entry.upstreamPath);
+    if (!file) {
+      throw new Error(
+        `Manifest does not contain the supported catalog document: ${entry.upstreamPath}`,
+      );
+    }
+    return { entry, file };
+  });
   // Validate all catalog references before any vocabulary blob is requested,
   // then derive delivery membership from the registered direct directory.
-  const catalogDocument = await fetchAndValidateArtifact(catalogFile);
-
-  const referencedNamespaceUrls = extractReferencedNamespaceUrls(
-    catalogDocument,
-    OFFICIAL_BSI_REPO,
+  const supportedCatalogDocuments = await Promise.all(
+    supportedCatalogFiles.map(async ({ entry, file }) => ({
+      entry,
+      document: await fetchAndValidateArtifact(file),
+    })),
   );
+  const catalogDocument = supportedCatalogDocuments.find(
+    ({ entry }) => entry.artifactKey === ENTRY_CATALOG.artifactKey,
+  )?.document;
+  if (!catalogDocument) {
+    throw new Error(`Manifest does not contain the entry catalog: ${ENTRY_CATALOG.upstreamPath}`);
+  }
+
+  // Identisch zur Fetch-Lane: die Vokabular-Membership entsteht aus allen
+  // ausgelieferten Katalogen. Liefen beide Ableitungen auseinander, würde die
+  // Manifest-Inventarprüfung unten dauerhaft fehlschlagen.
+  const referencedNamespaceUrls = [
+    ...new Set(
+      supportedCatalogDocuments.flatMap(({ document }) =>
+        extractReferencedNamespaceUrls(document, OFFICIAL_BSI_REPO),
+      ),
+    ),
+  ].sort();
   const vocabularyCollection = SOURCE_REGISTRY.find(
     (entry) => entry.kind === 'vocabulary-collection' && entry.lifecycle === 'supported',
   );
@@ -401,7 +428,7 @@ export async function verifySnapshotFiles(manifest, {
 
   const validatedArtifacts = await Promise.all(
     manifest.files
-      .filter((file) => file.path !== SUPPORTED_CATALOG.upstreamPath)
+      .filter((file) => !SUPPORTED_CATALOG_PATHS.has(file.path))
       .map(async (file) => ({
         file,
         artifact: await fetchAndValidateArtifact(file),

@@ -524,7 +524,7 @@ export function parseCatalog(raw: unknown, options: ParseCatalogOptions): Catalo
 
   // Kanonische URL-Identität (ADR-1): pro Katalog vollständig und
   // eindeutig, fail-closed — ein Control ohne alt-identifier wäre nach dem
-  // Routen-Cutover (GRU-235) nicht mehr adressierbar.
+  // Routen-Cutover (GSPP-235) nicht mehr adressierbar.
   const controlsByAltIdentifier = new Map<string, Control>();
   for (const c of allControls) {
     if (!c.altIdentifier) {

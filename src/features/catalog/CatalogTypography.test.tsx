@@ -14,6 +14,7 @@ import { SearchPage } from '@/features/search/SearchPage';
 import { useSearch } from '@/features/search/useSearch';
 import { ControlDetail } from './ControlDetail';
 import { ControlTable } from './ControlTable';
+import { catalogCollectionDefaults } from '@/test/catalogState';
 
 vi.mock('@/hooks/useCatalog', () => ({
   useCatalog: vi.fn(),
@@ -275,6 +276,7 @@ function makeVocabularyRegistry() {
 
 function makeCatalogState(): CatalogState {
   return {
+    ...catalogCollectionDefaults(),
     catalogDocument: null,
     catalog: {
       catalogKey: 'gspp',

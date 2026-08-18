@@ -1068,6 +1068,26 @@ interface Catalog {
 
 `controlsByAltIdentifier` ist katalogintern vollständig und eindeutig. Der Parser lehnt Kontrollen mit fehlendem oder im selben Katalog doppeltem Alt-Identifier als Integritätsfehler ab. Derselbe Alt-Identifier darf in verschiedenen Katalogen vorkommen, weil die kanonische URL-Identität immer aus `catalogKey + altIdentifier` besteht.
 
+#### Warum jede Identität den `catalogKey` mitführt
+
+Das OSCAL-Catalog-Metaschema legt die Eindeutigkeit der Identitäten unterschiedlich weit fest:
+
+| Identität | `identifier-uniqueness` | Bedeutung |
+| --- | --- | --- |
+| `catalog/@uuid` | `global` | dokumentweit und global eindeutig |
+| `group/@id` | `instance` | eindeutig innerhalb des Dokuments |
+| `control/@id` | `local` | **nur lokal eindeutig — keine katalogübergreifende Garantie** |
+
+Zwei Kataloge mit derselben `control/@id` sind damit der Normalfall, nicht die Ausnahme. Eine Control-ID ist ohne Katalogkontext bedeutungslos; Routen, Zustand, Suchtreffer und Referenzen führen deshalb ausnahmslos den `catalogKey` mit. Die einzige global eindeutige OSCAL-Identität ist die Dokument-UUID des Katalogs, und sie ist der Anker der Provenienz.
+
+`catalogKey` selbst ist **kein OSCAL-Begriff**, sondern ein Projektkonstrukt: ein stabiler Registerschlüssel für Routing und Zustand ([ADR-1](https://linear.app/grundschutz-plus-plus/issue/ADR-1)). Er ersetzt die Dokument-UUID nicht, sondern adressiert das registrierte Artefakt.
+
+#### Mehrere Kataloge gleichzeitig
+
+Seit [GSPP-284](https://linear.app/grundschutz-plus-plus/issue/GSPP-284) hält der Ladepfad eine Katalogsammlung statt genau eines Katalogs (`CatalogState.catalogs`, siehe [ARCHITECTURE.md](./ARCHITECTURE.md#catalogcontext-srcstatecatalogcontexttsx)). Jeder Katalog trägt sein eigenes `controlsById`, sein eigenes `controlsByAltIdentifier` und seine eigene Vertrauensklasse — identische Control-IDs zweier Kataloge können deshalb weder in Routen noch im Zustand noch in der Suche kollidieren. `resolveControlRef(catalogsByKey, ref)` löst strikt innerhalb des adressierten Katalogs auf.
+
+Die deklarierte `metadata.oscal-version` bleibt dabei eine Eigenschaft **jedes einzelnen** Katalogs. Kataloge unterschiedlicher OSCAL-Versionen dürfen gleichzeitig geladen sein; der Ladepfad trifft bewusst keine gemeinsame Versionsannahme ([GSPP-283](https://linear.app/grundschutz-plus-plus/issue/GSPP-283)).
+
 ### ControlRef (interne Referenzidentität)
 
 ```typescript

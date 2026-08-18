@@ -33,7 +33,7 @@ import { ImpressumPage } from '@/features/pages/ImpressumPage';
 import { LizenzenPage } from '@/features/pages/LizenzenPage';
 import { VocabularyOverviewPage } from '@/features/vocabularies/VocabularyOverviewPage';
 import { VocabularyNamespacePage } from '@/features/vocabularies/VocabularyNamespacePage';
-import { SUPPORTED_CATALOG_KEY } from '@/domain/sourceRegistry';
+import { isCatalogKey } from '@/domain/sourceRegistry';
 import {
   CATALOG_ROUTE_PATTERN,
   CONTROL_ROUTE_PATTERN,
@@ -105,8 +105,27 @@ export function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
   const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
-  const { catalog, loading, error } = useCatalog();
-  const activeCatalogKey = catalog?.catalogKey ?? SUPPORTED_CATALOG_KEY;
+  const { catalog, activeCatalogKey: selectedCatalogKey, selectCatalog, loading, error } = useCatalog();
+
+  // Die Route wählt den Katalog, nicht der Einstieg. Ein Routen-catalogKey darf
+  // deshalb einen anderen ausgelieferten Katalog aktivieren, statt still auf den
+  // Einstiegskatalog zurückzufallen (GSPP-284).
+  const routeCatalogKey = useMemo(() => {
+    const params =
+      matchPath(CONTROL_ROUTE_PATTERN, location.pathname)?.params ??
+      matchPath(GROUP_ROUTE_PATTERN, location.pathname)?.params ??
+      matchPath(CATALOG_ROUTE_PATTERN, location.pathname)?.params;
+    const candidate = params?.catalogKey;
+    return candidate !== undefined && isCatalogKey(candidate) ? candidate : null;
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (routeCatalogKey) selectCatalog(routeCatalogKey);
+  }, [routeCatalogKey, selectCatalog]);
+
+  // Während ein nachgeladener Katalog noch unterwegs ist, trägt der ausgewählte
+  // Schlüssel die Navigation weiter — kein Sprung zurück auf den Einstieg.
+  const activeCatalogKey = catalog?.catalogKey ?? selectedCatalogKey;
   const activeCatalogUrl = buildCatalogUrl(activeCatalogKey);
 
   // Update document title on route change (a11y: screen readers announce page)

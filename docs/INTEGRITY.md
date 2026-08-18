@@ -37,12 +37,25 @@ jede Datei unter `schemas/oscal/`, die zu keinem Pin gehört. Details in
 
 ## Build-Zeitpunkt (scripts/fetch-catalog.mjs)
 
-`npm run fetch-catalog` startet `scripts/fetch-catalog.mjs`. Das Skript ruft die Upstream-Daten ab, validiert den vollständigen Output-Vertrag und schreibt ausschließlich diese vier generierten Dateien nach `public/data/`:
+`npm run fetch-catalog` startet `scripts/fetch-catalog.mjs`. Das Skript ruft die Upstream-Daten ab, validiert den vollständigen Output-Vertrag und schreibt ausschließlich die aus dem Quellregister abgeleiteten Dateien nach `public/data/`.
 
-- `catalog.json` — der OSCAL-Katalog
-- `catalog-metadata.json` — Katalog-Provenance + Integrity
+### Artefaktvertrag je Katalog
+
+Seit [GSPP-284](https://linear.app/grundschutz-plus-plus/issue/GSPP-284) kann die Lane mehrere `supported`-Kataloge tragen. Die Ausgabemenge wird deshalb nicht mehr als Festliste gepflegt, sondern aus dem Register abgeleitet (`listCatalogArtifactFileNames` in `src/domain/sourceRegistry.mjs`, `listOutputArtifactFileNames` in `scripts/fetch-catalog.mjs`):
+
+| Registereintrag | Datenartefakt | Metadatenartefakt |
+| --- | --- | --- |
+| Einstiegskatalog (`entryCatalog: true`) | `catalog.json` | `catalog-metadata.json` |
+| jeder weitere `supported`-Katalog | `catalog-<catalogKey>.json` | `catalog-<catalogKey>-metadata.json` |
+
+Der Einstiegskatalog behält seine Dateinamen bewusst unverändert: Deploy- und Cache-Vertrag der ausgelieferten App bleiben damit stabil, und bei genau einem ausgelieferten Katalog ist die Dateimenge byteweise dieselbe wie zuvor. Genau ein `supported`-Katalog trägt die Auszeichnung `entryCatalog: true`; ein Register ohne ausgelieferten Katalog oder ohne genau einen ausgezeichneten Einstieg schlägt beim Import fehl.
+
+Dazu kommen unverändert die beiden generierten Sammelartefakte:
+
 - `vocabularies.json` — offizielle BSI-Vokabulare (aus CSV konvertiert)
 - `upstream-sources-metadata.json` — Vokabular-Provenance + Upstream-Manifest
+
+Bei genau einem ausgelieferten Katalog ist die Ausgabemenge damit weiterhin `catalog.json`, `catalog-metadata.json`, `vocabularies.json`, `upstream-sources-metadata.json`. Eine Ausgabedatei, die sich nicht aus dem Register ableiten lässt, wird von `writeArtifacts` abgelehnt.
 
 `fetch-catalog.mjs` führt den eigentlichen Abruf durch:
 
@@ -51,7 +64,7 @@ jede Datei unter `schemas/oscal/`, die zu keinem Pin gehört. Details in
 3. **Vollständiger Tree vor Blob-Abruf**: Der rekursive GitHub-Tree der überwachten Wurzeln muss vollständig und darf weder Symlinks noch andere nicht reguläre Dateien enthalten. Erst danach werden registrierte Pfade materialisiert.
 4. **Lifecycle-getrennte Verarbeitung**: `preview`- und `draft`-Artefakte werden transient auf Pfad, Blob, Inhalt und Root-Typ geprüft. Nur `supported`-Artefakte werden als App-Daten ausgeliefert; die Namespace-Collection materialisiert alle regulären `.csv`-Dateien direkt aus ihrem registrierten Verzeichnis. `ns`-Referenzen des unterstützten Katalogs werden separat als zulässige fachliche Auflösungsquellen validiert.
 5. **Abruf über erlaubte GitHub-Endpunkte** mit Retry und Backoff bei transienten Fehlern; optional authentifiziert über `GH_TOKEN`/`GITHUB_TOKEN`.
-6. **Integritätsdaten**: SHA-256, Dateigröße, Git-Blob-SHA und Commit-Informationen werden je ausgeliefertem Artefakt erfasst. Das vollständige Manifest v2 enthält zusätzlich für jede materialisierte Registry-Datei Root-Typ und Lifecycle.
+6. **Integritätsdaten**: SHA-256, Dateigröße, Git-Blob-SHA und Commit-Informationen werden je ausgeliefertem Artefakt erfasst. Jeder ausgelieferte Katalog erhält dabei eigene Werte samt seiner deklarierten `metadata.oscal-version` — eine gemeinsame Versionsannahme über mehrere Kataloge gibt es bewusst nicht ([GSPP-283](https://linear.app/grundschutz-plus-plus/issue/GSPP-283)). Das vollständige Manifest v2 enthält zusätzlich für jede materialisierte Registry-Datei Root-Typ und Lifecycle.
 
 ### Lokale Snapshot-Freshness
 
@@ -267,13 +280,25 @@ export async function fetchCatalogWithBuffer(
 
 `src/state/CatalogContext.tsx` orchestriert den Ladevorgang:
 
-1. `catalog.json` und `vocabularies.json` werden **parallel** als ArrayBuffer geladen (Startlatenz). Fehlt `catalog.json`, ist das ein harter Ladefehler; fehlt nur `vocabularies.json`, läuft die App ohne Vokabular-Registry weiter.
+1. `catalog.json` (der Einstiegskatalog) und `vocabularies.json` werden **parallel** als ArrayBuffer geladen (Startlatenz). Fehlt `catalog.json`, ist das ein harter Ladefehler; fehlt nur `vocabularies.json`, läuft die App ohne Vokabular-Registry weiter.
 2. Die Vokabular-Registry wird gebaut (`buildVocabularyRegistry`).
 3. Für den Katalog wird `catalog-metadata.json` geladen und `verifyArtifactIntegrity` ausgeführt; für die Vokabulare analog `upstream-sources-metadata.json` (siehe [Vocabulary Integrity](#vocabulary-integrity)).
 3a. Erst danach wird der Katalog als verlustfreies Dokument geparst (`parseCatalogDocument`, siehe [DOMAIN_MODELS.md](./DOMAIN_MODELS.md#verlustfreies-dokumentmodell)). Die Reihenfolge ist bewusst: Die Vertrauensklasse `class-1-verified-public` schließt die bestandene Hashprüfung ein und darf deshalb nicht vergeben werden, bevor sie gelaufen ist. Ohne Metadaten oder bei abweichendem Hash trägt das Dokument `class-1-unverified-public`.
 4. Fehlen zu einem vorhandenen Datenartefakt nur die Metadaten, bleibt das Artefakt nutzbar. Provenance und Verifikation bleiben `null`, die App protokolliert eine Warnung in der Konsole und überspringt die Prüfung.
 5. Ein `cancelled`-Flag verhindert State-Updates nach Unmount.
-6. Alle vier Start-Fetches (`catalog.json`, `vocabularies.json`, `catalog-metadata.json`, `upstream-sources-metadata.json`) sind einzeln auf [`ARTIFACT_FETCH_TIMEOUT_MS`](#zeitlimit-je-artefakt-fetch) begrenzt. Läuft ein optionales Artefakt (Vokabulare oder eine der beiden Provenance-Dateien) ins Zeitlimit, greift derselbe `error`- bzw. `catch`-Zweig wie bei einem 404 — die App startet mit dem betroffenen Feld auf `null`. Läuft `catalog.json` selbst ins Zeitlimit, führt der äußere `catch` zu `LOAD_ERROR` mit einer Fehlermeldung statt zu einem dauerhaft hängenden Ladezustand.
+6. Alle Start-Fetches (`catalog.json`, `vocabularies.json`, `catalog-metadata.json`, `upstream-sources-metadata.json`) sind einzeln auf [`ARTIFACT_FETCH_TIMEOUT_MS`](#zeitlimit-je-artefakt-fetch) begrenzt. Läuft ein optionales Artefakt (Vokabulare oder eine der beiden Provenance-Dateien) ins Zeitlimit, greift derselbe `error`- bzw. `catch`-Zweig wie bei einem 404 — die App startet mit dem betroffenen Feld auf `null`. Läuft `catalog.json` selbst ins Zeitlimit, führt der äußere `catch` zu einem Fehlerzustand mit Meldung statt zu einem dauerhaft hängenden Ladezustand.
+
+### Mehrere Kataloge — Isolation der Prüfung
+
+Der Kontext hält eine Katalogsammlung (`catalogs: ReadonlyMap<CatalogKey, LoadedCatalogState>`). Der Einstiegskatalog wird eager geladen; jeder weitere erst, wenn eine Route ihn über `selectCatalog(catalogKey)` auswählt. Der Initial-Load wächst dadurch nicht mit der Zahl ausgelieferter Kataloge.
+
+Jeder Katalog durchläuft `verifyArtifactIntegrity` gegen **seine eigenen** Metadaten. Provenance, Verifikationsergebnis, Vertrauensklasse und Fehlerzustand hängen deshalb am einzelnen Katalog statt global am Zustand:
+
+- Ein Katalog mit abweichendem Hash oder fehlenden Metadaten trägt `class-1-unverified-public` und bleibt sichtbar — die unveränderte Bestandssemantik.
+- Kein anderer geladener Katalog verliert dadurch seine Vertrauensklasse, und kein Katalog wird still als verifiziert dargestellt.
+- Ein fehlender oder beschädigter Katalog erzeugt einen Fehlerzustand für genau diesen Katalog; die übrigen bleiben nutzbar.
+
+Die Projektionen `catalog`, `provenance`, `verification`, `loading` und `error` aus `useCatalog()` beziehen sich unverändert auf **einen** Katalog — jetzt auf den per Route aktiven statt auf den einzigen.
 
 ## VerificationResult Typ
 
@@ -529,7 +554,7 @@ In diesen Fällen wird:
 - eine Warnung in der Konsole protokolliert,
 - kein Provenance-/Verifikationsblock für dieses Artefakt angezeigt.
 
-Ein fehlendes oder nicht parsebares `catalog.json` bleibt dagegen ein harter Ladefehler. Ein fehlendes `vocabularies.json` ist optional und führt zu einer App ohne Vokabular-Registry.
+Ein fehlendes oder nicht parsebares `catalog.json` bleibt dagegen ein harter Ladefehler für den Einstiegskatalog. Ein fehlendes `vocabularies.json` ist optional und führt zu einer App ohne Vokabular-Registry. Fehlt ein **weiterer** Katalog, bleibt der Fehler auf diesen Katalog beschränkt.
 
 ## SLSA Provenance
 

@@ -1,92 +1,57 @@
 // =============================================================================
-// CatalogContext — Loads, parses, and verifies the BSI catalog
+// CatalogContext — Loads, parses, and verifies the shipped BSI catalogs
 //
 // Provides the entire catalog state to the component tree.
+//
+// Seit GSPP-284 hält der Kontext eine Katalogsammlung statt genau eines
+// Katalogs. Der Einstiegskatalog wird eager geladen, jeder weitere erst, wenn
+// eine Route ihn auswählt — der Initial-Load wächst deshalb nicht mit der Zahl
+// ausgelieferter Kataloge. Integritätsprüfung, Vertrauensklasse und
+// Fehlerzustand hängen je Katalog, damit ein beschädigter Katalog die übrigen
+// nicht unbrauchbar macht.
 // =============================================================================
 
 import {
   createContext,
+  useCallback,
   useEffect,
+  useMemo,
   useReducer,
+  useRef,
   type ReactNode,
 } from 'react';
 import type {
-  CatalogDocument,
-  CatalogProvenance,
   CatalogState,
   VerificationResult,
   VocabularyProvenance,
   VocabularyRegistry,
   VocabularyRegistryData,
 } from '@/domain/models';
-import { parseCatalogDocument } from '@/adapters/oscalDocument';
-import { projectResolvedControlLinks } from '@/domain/catalogReferenceProjection';
-import { SUPPORTED_CATALOG_KEY } from '@/domain/sourceRegistry';
+import { ENTRY_CATALOG_KEY, type CatalogKey } from '@/domain/sourceRegistry';
 import { buildVocabularyRegistry } from '@/domain/vocabulary';
 import {
   fetchCatalogWithBuffer,
-  fetchProvenance,
   fetchVocabularyProvenance,
   verifyArtifactIntegrity,
 } from '@/domain/integrity';
+import {
+  buildSupportedCatalogDescriptors,
+  loadCatalogArtifacts,
+  toCatalogErrorMessage,
+  type SupportedCatalogDescriptor,
+} from '@/state/catalogArtifacts';
 
-/* ------------------------------------------------------------------ */
-/*  State                                                              */
-/* ------------------------------------------------------------------ */
+import {
+  catalogReducer,
+  createInitialState,
+  projectPublicState,
+} from '@/state/catalogReducer';
 
-const initialState: CatalogState = {
-  catalogDocument: null,
-  catalog: null,
-  provenance: null,
-  verification: null,
-  vocabularyRegistry: null,
-  vocabularyProvenance: null,
-  vocabularyVerification: null,
-  loading: true,
-  error: null,
-};
+export type { SupportedCatalogDescriptor } from '@/state/catalogArtifacts';
 
-type CatalogAction =
-  | { type: 'LOAD_START' }
-  | {
-      type: 'LOAD_SUCCESS';
-      catalogDocument: CatalogDocument;
-      provenance: CatalogProvenance | null;
-      verification: VerificationResult | null;
-      vocabularyRegistry: VocabularyRegistry | null;
-      vocabularyProvenance: VocabularyProvenance | null;
-      vocabularyVerification: VerificationResult | null;
-    }
-  | { type: 'LOAD_ERROR'; error: string };
-
-function catalogReducer(state: CatalogState, action: CatalogAction): CatalogState {
-  switch (action.type) {
-    case 'LOAD_START':
-      return { ...state, loading: true, error: null };
-    case 'LOAD_SUCCESS':
-      return {
-        catalogDocument: action.catalogDocument,
-        // Immer aus dem Dokument abgeleitet — die beiden Felder können
-        // deshalb nicht auseinanderlaufen.
-        catalog: action.catalogDocument.view,
-        provenance: action.provenance,
-        verification: action.verification,
-        vocabularyRegistry: action.vocabularyRegistry,
-        vocabularyProvenance: action.vocabularyProvenance,
-        vocabularyVerification: action.vocabularyVerification,
-        loading: false,
-        error: null,
-      };
-    case 'LOAD_ERROR':
-      return { ...state, loading: false, error: action.error };
-  }
-}
-
-/* ------------------------------------------------------------------ */
-/*  Context                                                            */
-/* ------------------------------------------------------------------ */
-
-export const CatalogContext = createContext<CatalogState>(initialState);
+export const CatalogContext = createContext<CatalogState>(
+  projectPublicState(createInitialState(ENTRY_CATALOG_KEY), () => {}),
+);
 
 /* ------------------------------------------------------------------ */
 /*  Provider                                                           */
@@ -94,149 +59,221 @@ export const CatalogContext = createContext<CatalogState>(initialState);
 
 export interface CatalogProviderProps {
   children: ReactNode;
-  /** Override catalog URL (for testing) */
+  /** Override entry catalog URL (for testing) */
   catalogUrl?: string;
-  /** Override metadata URL (for testing) */
+  /** Override entry catalog metadata URL (for testing) */
   metadataUrl?: string;
   /** Override vocabulary registry URL (for testing) */
   vocabulariesUrl?: string;
   /** Override upstream sources provenance URL (for testing) */
   upstreamSourcesMetadataUrl?: string;
+  /**
+   * Override the shipped catalog set (for testing). Erlaubt ein Fixture-Register
+   * mit mehreren `supported`-Katalogen, das die reale Registry — die heute genau
+   * einen ausgeliefert — nicht herstellen kann.
+   */
+  supportedCatalogs?: readonly SupportedCatalogDescriptor[];
 }
 
 export function CatalogProvider({
   children,
-  catalogUrl = `${import.meta.env.BASE_URL}data/catalog.json`,
-  metadataUrl = `${import.meta.env.BASE_URL}data/catalog-metadata.json`,
+  catalogUrl,
+  metadataUrl,
   vocabulariesUrl = `${import.meta.env.BASE_URL}data/vocabularies.json`,
   upstreamSourcesMetadataUrl = `${import.meta.env.BASE_URL}data/upstream-sources-metadata.json`,
+  supportedCatalogs,
 }: CatalogProviderProps) {
-  const [state, dispatch] = useReducer(catalogReducer, initialState);
+  const descriptors = useMemo<readonly SupportedCatalogDescriptor[]>(() => {
+    const base =
+      supportedCatalogs ?? buildSupportedCatalogDescriptors(import.meta.env.BASE_URL);
 
+    if (catalogUrl === undefined && metadataUrl === undefined) return base;
+
+    return base.map((descriptor) =>
+      descriptor.isEntryCatalog
+        ? {
+            ...descriptor,
+            dataUrl: catalogUrl ?? descriptor.dataUrl,
+            metadataUrl: metadataUrl ?? descriptor.metadataUrl,
+          }
+        : descriptor,
+    );
+  }, [supportedCatalogs, catalogUrl, metadataUrl]);
+
+  const entryDescriptor = useMemo(() => {
+    const entry = descriptors.find((descriptor) => descriptor.isEntryCatalog);
+    if (!entry) {
+      throw new Error('Catalog provider requires exactly one entry catalog descriptor');
+    }
+    return entry;
+  }, [descriptors]);
+
+  const descriptorByKey = useMemo(
+    () => new Map(descriptors.map((descriptor) => [descriptor.catalogKey, descriptor])),
+    [descriptors],
+  );
+
+  const [state, dispatch] = useReducer(
+    catalogReducer,
+    entryDescriptor.catalogKey,
+    createInitialState,
+  );
+
+  /**
+   * Bereits angestoßene Nachlade-Vorgänge. Ohne diese Merkliste würde ein
+   * erneuter Effektlauf (React StrictMode, Re-Render) denselben Katalog ein
+   * zweites Mal anfordern — der Test über die Zahl ausgelöster Fetches misst
+   * genau das.
+   */
+  const requestedKeysRef = useRef<Set<CatalogKey>>(new Set());
+  useEffect(() => {
+    requestedKeysRef.current = new Set();
+  }, [descriptorByKey]);
+
+  const entryDataUrl = entryDescriptor.dataUrl;
+  const entryMetadataUrl = entryDescriptor.metadataUrl;
+  const entryCatalogKey = entryDescriptor.catalogKey;
+
+  // Einstiegskatalog und Vokabulare: der einzige eager Ladepfad.
   useEffect(() => {
     let cancelled = false;
+    const isCancelled = () => cancelled;
 
-    async function loadCatalog() {
-      dispatch({ type: 'LOAD_START' });
+    async function loadEntryCatalog() {
+      dispatch({ type: 'CATALOG_LOAD_START', catalogKey: entryCatalogKey });
 
-      try {
-        // Start both artifact downloads together to reduce startup latency.
-        const catalogPromise = fetchCatalogWithBuffer(catalogUrl);
-        const vocabularyPromise = fetchCatalogWithBuffer(vocabulariesUrl).then(
-          (result) => ({ ok: true as const, result }),
-          (error) => ({ ok: false as const, error }),
+      // Start both artifact downloads together to reduce startup latency.
+      const catalogPromise = loadCatalogArtifacts(
+        { catalogKey: entryCatalogKey, dataUrl: entryDataUrl, metadataUrl: entryMetadataUrl, isEntryCatalog: true },
+        isCancelled,
+      ).then(
+        (result) => ({ ok: true as const, result }),
+        (error: unknown) => ({ ok: false as const, error }),
+      );
+      const vocabularyPromise = fetchCatalogWithBuffer(vocabulariesUrl).then(
+        (result) => ({ ok: true as const, result }),
+        (error: unknown) => ({ ok: false as const, error }),
+      );
+
+      // Der Einstiegskatalog entscheidet zuerst: schlägt er fehl, bleibt es beim
+      // Fehlerzustand — unveränderte Bestandssemantik des eager Ladepfads.
+      const catalogFetch = await catalogPromise;
+      if (cancelled) return;
+
+      if (!catalogFetch.ok) {
+        dispatch({
+          type: 'CATALOG_LOAD_ERROR',
+          catalogKey: entryCatalogKey,
+          error: toCatalogErrorMessage(catalogFetch.error),
+        });
+        return;
+      }
+      if (!catalogFetch.result) return;
+
+      let vocabularyRegistry: VocabularyRegistry | null = null;
+      let vocabularyProvenance: VocabularyProvenance | null = null;
+      let vocabularyVerification: VerificationResult | null = null;
+
+      const vocabularyFetch = await vocabularyPromise;
+      if (cancelled) return;
+
+      if (!vocabularyFetch.ok) {
+        console.warn('Vocabulary artifacts not available. Runtime registry skipped.');
+      } else {
+        const { buffer: vocabularyBuffer, text: vocabularyText } = vocabularyFetch.result;
+
+        vocabularyRegistry = buildVocabularyRegistry(
+          JSON.parse(vocabularyText) as VocabularyRegistryData,
         );
-
-        // 1. Fetch catalog (as ArrayBuffer for integrity check + text for parsing)
-        const { buffer, text } = await catalogPromise;
-
-        if (cancelled) return;
-
-        // 2. Try to fetch provenance metadata and verify integrity
-        let provenance: CatalogProvenance | null = null;
-        let verification: VerificationResult | null = null;
-        let vocabularyRegistry: VocabularyRegistry | null = null;
-        let vocabularyProvenance: VocabularyProvenance | null = null;
-        let vocabularyVerification: VerificationResult | null = null;
-
-        const vocabularyFetch = await vocabularyPromise;
-        if (!vocabularyFetch.ok) {
-          console.warn(
-            'Vocabulary artifacts not available. Runtime registry skipped.',
-          );
-        } else {
-          const { buffer: vocabularyBuffer, text: vocabularyText } =
-            vocabularyFetch.result;
-
-          if (cancelled) return;
-
-          vocabularyRegistry = buildVocabularyRegistry(
-            JSON.parse(vocabularyText) as VocabularyRegistryData,
-          );
-
-          try {
-            vocabularyProvenance = await fetchVocabularyProvenance(
-              upstreamSourcesMetadataUrl,
-            );
-            if (!cancelled) {
-              vocabularyVerification = await verifyArtifactIntegrity(
-                vocabularyBuffer,
-                vocabularyProvenance,
-              );
-            }
-          } catch {
-            console.warn(
-              'Vocabulary provenance metadata not available. Integrity verification skipped.',
-            );
-          }
-        }
 
         try {
-          provenance = await fetchProvenance(metadataUrl);
+          vocabularyProvenance = await fetchVocabularyProvenance(upstreamSourcesMetadataUrl);
           if (!cancelled) {
-            verification = await verifyArtifactIntegrity(buffer, provenance);
+            vocabularyVerification = await verifyArtifactIntegrity(
+              vocabularyBuffer,
+              vocabularyProvenance,
+            );
           }
         } catch {
-          // Metadata not available (e.g., local dev without running npm run fetch-catalog)
-          // The catalog is still usable, just not verified
           console.warn(
-            'Catalog provenance metadata not available. Integrity verification skipped.',
+            'Vocabulary provenance metadata not available. Integrity verification skipped.',
           );
         }
-
-        if (cancelled) return;
-
-        // 3. Parse OSCAL JSON into the lossless document model (ADR-2).
-        //    Der Quellgraph bleibt am Dokument erhalten, statt nach dem
-        //    Ableiten des Domänenmodells aus dem Scope zu fallen.
-        //
-        //    Erst hier, weil die Vertrauensklasse nach §10 die bestandene
-        //    Laufzeit-Hashprüfung einschließt. Würde das Dokument vorher
-        //    gebaut, behauptete es "verifiziert", bevor geprüft wurde — und
-        //    behielte diese Aussage auch bei fehlenden Metadaten oder einem
-        //    abweichenden Hash.
-        const catalogDocument = projectResolvedControlLinks(
-          parseCatalogDocument(JSON.parse(text), {
-            catalogKey: SUPPORTED_CATALOG_KEY,
-            trustClass:
-              verification?.valid === true
-                ? 'class-1-verified-public'
-                : 'class-1-unverified-public',
-          }),
-        );
-
-        if (!cancelled) {
-          dispatch({
-            type: 'LOAD_SUCCESS',
-            catalogDocument,
-            provenance,
-            verification,
-            vocabularyRegistry,
-            vocabularyProvenance,
-            vocabularyVerification,
-          });
-        }
-      } catch (err) {
-        if (!cancelled) {
-          dispatch({
-            type: 'LOAD_ERROR',
-            error:
-              err instanceof Error
-                ? err.message
-                : 'Unbekannter Fehler beim Laden des Katalogs',
-          });
-        }
       }
+
+      if (cancelled) return;
+      dispatch({
+        type: 'VOCABULARY_LOADED',
+        vocabularyRegistry,
+        vocabularyProvenance,
+        vocabularyVerification,
+      });
+      dispatch({
+        type: 'CATALOG_LOAD_SUCCESS',
+        catalogKey: entryCatalogKey,
+        ...catalogFetch.result,
+      });
     }
 
-    loadCatalog();
+    loadEntryCatalog();
 
     return () => {
       cancelled = true;
     };
-  }, [catalogUrl, metadataUrl, vocabulariesUrl, upstreamSourcesMetadataUrl]);
+  }, [
+    entryCatalogKey,
+    entryDataUrl,
+    entryMetadataUrl,
+    vocabulariesUrl,
+    upstreamSourcesMetadataUrl,
+  ]);
+
+  // Bedarfsgerechtes Nachladen: nur der per Route ausgewählte Katalog.
+  const activeCatalogKey = state.activeCatalogKey;
+  useEffect(() => {
+    if (activeCatalogKey === entryCatalogKey) return;
+
+    const descriptor = descriptorByKey.get(activeCatalogKey);
+    if (!descriptor) return;
+    if (requestedKeysRef.current.has(activeCatalogKey)) return;
+    requestedKeysRef.current.add(activeCatalogKey);
+
+    dispatch({ type: 'CATALOG_LOAD_START', catalogKey: activeCatalogKey });
+
+    loadCatalogArtifacts(descriptor, () => false)
+      .then((result) => {
+        if (!result) return;
+        dispatch({
+          type: 'CATALOG_LOAD_SUCCESS',
+          catalogKey: descriptor.catalogKey,
+          ...result,
+        });
+      })
+      .catch((error: unknown) => {
+        // Fail-closed je Katalog: der beschädigte Katalog trägt den Fehler,
+        // die übrigen bleiben unberührt nutzbar.
+        dispatch({
+          type: 'CATALOG_LOAD_ERROR',
+          catalogKey: descriptor.catalogKey,
+          error: toCatalogErrorMessage(error),
+        });
+      });
+  }, [activeCatalogKey, entryCatalogKey, descriptorByKey]);
+
+  const selectCatalog = useCallback(
+    (catalogKey: CatalogKey) => {
+      if (!descriptorByKey.has(catalogKey)) return;
+      dispatch({ type: 'SELECT_CATALOG', catalogKey });
+    },
+    [descriptorByKey],
+  );
+
+  const value = useMemo(
+    () => projectPublicState(state, selectCatalog),
+    [state, selectCatalog],
+  );
 
   return (
-    <CatalogContext.Provider value={state}>{children}</CatalogContext.Provider>
+    <CatalogContext.Provider value={value}>{children}</CatalogContext.Provider>
   );
 }

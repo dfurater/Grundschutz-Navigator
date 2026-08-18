@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   MONITORED_UPSTREAM_ROOTS,
+  ENTRY_CATALOG,
+  ENTRY_CATALOG_KEY,
   SOURCE_REGISTRY,
-  SUPPORTED_CATALOG,
-  SUPPORTED_CATALOG_KEY,
+  SUPPORTED_CATALOGS,
+  SUPPORTED_CATALOG_KEYS,
+  catalogDataFileName,
+  catalogMetadataFileName,
   getArtifactByUpstreamPath,
   getCatalogByKey,
   getExpectedOscalVersion,
@@ -13,11 +17,15 @@ import {
   isPathWithinMonitoredRoot,
   isSafeRepoPath,
   listArtifacts,
+  listCatalogArtifactFileNames,
   listCatalogKeys,
   listOscalArtifacts,
+  listSupportedCatalogs,
+  resolveEntryCatalog,
   validateSourceRegistry,
   type CatalogKey,
   type OscalArtifactEntry,
+  type SupportedCatalogEntry,
 } from '@/domain/sourceRegistry';
 
 const OFFICIAL_CATALOG_PATH = 'control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json';
@@ -50,11 +58,17 @@ describe('sourceRegistry', () => {
     expect(() => validateSourceRegistry()).not.toThrow();
   });
 
-  it('declares gspp as the supported catalog', () => {
-    expect(SUPPORTED_CATALOG_KEY).toBe('gspp');
-    expect(SUPPORTED_CATALOG.catalogKey).toBe('gspp');
-    expect(SUPPORTED_CATALOG.upstreamPath).toBe(OFFICIAL_CATALOG_PATH);
-    expect(SUPPORTED_CATALOG.lifecycle).toBe('supported');
+  it('declares gspp as the entry catalog', () => {
+    expect(ENTRY_CATALOG_KEY).toBe('gspp');
+    expect(ENTRY_CATALOG.catalogKey).toBe('gspp');
+    expect(ENTRY_CATALOG.upstreamPath).toBe(OFFICIAL_CATALOG_PATH);
+    expect(ENTRY_CATALOG.lifecycle).toBe('supported');
+    expect(ENTRY_CATALOG.entryCatalog).toBe(true);
+  });
+
+  it('ships exactly one catalog today, but no longer caps the number', () => {
+    expect(SUPPORTED_CATALOG_KEYS).toEqual(['gspp']);
+    expect(SUPPORTED_CATALOGS.map((entry) => entry.artifactKey)).toEqual(['catalog-gspp']);
   });
 
   it('limits the supported lifecycle exactly to the Grundschutz++ catalog and the namespace collection', () => {
@@ -329,6 +343,94 @@ describe('sourceRegistry', () => {
           }),
         ]),
       ).toThrow(/impossible OSCAL combination/);
+    });
+  });
+
+  /* ---------------------------------------------------------------- */
+  /*  Mehr-Katalog-Contract (GSPP-284)                                  */
+  /* ---------------------------------------------------------------- */
+
+  describe('supported catalog contract', () => {
+    function makeSupportedCatalog(
+      overrides: Partial<SupportedCatalogEntry> = {},
+    ): SupportedCatalogEntry {
+      return makeOscalEntry({ lifecycle: 'supported', ...overrides }) as SupportedCatalogEntry;
+    }
+
+    const entryFixture = makeSupportedCatalog({
+      artifactKey: 'catalog-entry',
+      catalogKey: 'gspp',
+      entryCatalog: true,
+    });
+    const secondFixture = makeSupportedCatalog({
+      artifactKey: 'catalog-second',
+      catalogKey: 'wlan',
+      upstreamPath: 'control_layer/WLAN/WLAN-catalog.json',
+    });
+
+    it('accepts more than one supported catalog', () => {
+      expect(listSupportedCatalogs([entryFixture, secondFixture])).toHaveLength(2);
+      expect(resolveEntryCatalog([entryFixture, secondFixture]).artifactKey).toBe(
+        'catalog-entry',
+      );
+    });
+
+    it('rejects a registry without any supported catalog', () => {
+      expect(() => resolveEntryCatalog([makeOscalEntry()])).toThrow(
+        /at least one supported catalog/,
+      );
+    });
+
+    it('rejects a registry without exactly one designated entry catalog', () => {
+      expect(() => resolveEntryCatalog([secondFixture])).toThrow(
+        /exactly one supported entry catalog/,
+      );
+      expect(() =>
+        resolveEntryCatalog([entryFixture, { ...secondFixture, entryCatalog: true }]),
+      ).toThrow(/exactly one supported entry catalog/);
+    });
+
+    it('rejects an entry-catalog marker outside a supported catalog entry', () => {
+      expect(() =>
+        validateSourceRegistry([makeOscalEntry({ entryCatalog: true })]),
+      ).toThrow(/entry catalog/);
+      expect(() =>
+        validateSourceRegistry([
+          makeOscalEntry({
+            artifactKey: 'profile-test',
+            expectedRootType: 'profile',
+            catalogKey: undefined,
+            lifecycle: 'supported',
+            entryCatalog: true,
+          }),
+        ]),
+      ).toThrow(/entry catalog/);
+    });
+
+    it('derives the artifact file names from the catalogKey', () => {
+      expect(catalogDataFileName(entryFixture)).toBe('catalog.json');
+      expect(catalogMetadataFileName(entryFixture)).toBe('catalog-metadata.json');
+      expect(catalogDataFileName(secondFixture)).toBe('catalog-wlan.json');
+      expect(catalogMetadataFileName(secondFixture)).toBe('catalog-wlan-metadata.json');
+    });
+
+    it('derives the shipped catalog file set from the registry', () => {
+      expect(listCatalogArtifactFileNames([entryFixture, secondFixture])).toEqual([
+        'catalog.json',
+        'catalog-metadata.json',
+        'catalog-wlan.json',
+        'catalog-wlan-metadata.json',
+      ]);
+    });
+
+    it('keeps the single-catalog file set unchanged', () => {
+      expect(listCatalogArtifactFileNames()).toEqual(['catalog.json', 'catalog-metadata.json']);
+    });
+
+    it('refuses to derive file names for entries that are not shipped catalogs', () => {
+      expect(() => catalogDataFileName(makeOscalEntry() as SupportedCatalogEntry)).toThrow(
+        /Not a supported catalog registry entry/,
+      );
     });
   });
 

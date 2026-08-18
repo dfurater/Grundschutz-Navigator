@@ -12,7 +12,7 @@ import {
 import { OFFICIAL_BSI_REPOSITORY_URL } from './security-guards.mjs';
 import {
   SOURCE_REGISTRY,
-  SUPPORTED_CATALOG,
+  ENTRY_CATALOG,
 } from '../src/domain/sourceRegistry.mjs';
 import { buildUpstreamManifest } from './upstream-artifacts.mjs';
 
@@ -72,7 +72,7 @@ function makeOscalContents(
     throw new Error('Fixture requested OSCAL content for a vocabulary collection');
   }
 
-  if (entry.artifactKey === SUPPORTED_CATALOG.artifactKey) {
+  if (entry.artifactKey === ENTRY_CATALOG.artifactKey) {
     return Buffer.from(JSON.stringify({
       catalog: {
         uuid: 'supported-catalog-fixture',

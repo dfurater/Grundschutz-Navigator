@@ -7,6 +7,7 @@ import type { IncomingControlLink } from '@/domain/controlRelationships';
 import { useCatalog } from '@/hooks/useCatalog';
 import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
 import { ControlDetail, getControlDetailUrl } from './ControlDetail';
+import { catalogCollectionDefaults } from '@/test/catalogState';
 
 vi.mock('@/hooks/useCatalog', () => ({
   useCatalog: vi.fn(),
@@ -57,6 +58,7 @@ function makeControl(overrides: Partial<Control> = {}): Control {
 
 function makeCatalogState(overrides: Partial<CatalogState> = {}): CatalogState {
   return {
+    ...catalogCollectionDefaults(),
     catalogDocument: null,
     catalog: {
       catalogKey: 'gspp',
@@ -252,7 +254,7 @@ describe('ControlDetail', () => {
     expect(screen.getByText('Corporate Governance')).toBeInTheDocument();
     expect(screen.queryByText('uuid-practice-1')).not.toBeInTheDocument();
     expect(screen.queryByText('Nummerierung')).not.toBeInTheDocument();
-    // GRU-301: Der offizielle Begriff steht bereits im Breadcrumb.
+    // GSPP-301: Der offizielle Begriff steht bereits im Breadcrumb.
     expect(within(practiceCard).queryByText('Begriff')).not.toBeInTheDocument();
     expect(within(practiceCard).getByText('Schwerpunkt').tagName).toBe('DT');
     expect(within(practiceCard).getByRole('link', { name: 'Zu den Vokabularen →' }))

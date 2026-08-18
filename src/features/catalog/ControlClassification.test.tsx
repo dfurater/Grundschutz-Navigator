@@ -73,7 +73,7 @@ function renderVocabularyCard(resolution: typeof resolvedVocabularies.modalverb)
 }
 
 describe('ControlClassification', () => {
-  it('renders the resolved classification and GRU-140 taxonomy in one classification section', () => {
+  it('renders the resolved classification and GSPP-140 taxonomy in one classification section', () => {
     render(
       <ControlClassification
         control={resolvedControl}

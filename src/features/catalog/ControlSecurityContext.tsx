@@ -89,7 +89,7 @@ function buildSecurityTargetRows(
 }
 
 /**
- * Anzeigename `Begriff (ID)` laut GRU-302; ohne auflösbaren Begriff bleibt es bei
+ * Anzeigename `Begriff (ID)` laut GSPP-302; ohne auflösbaren Begriff bleibt es bei
  * der reinen ID. Der Vokabular-Key behält den Index aus der Prop-Reihenfolge,
  * damit die alphabetische Sortierung den aufgeklappten Zustand nicht verschiebt
  * und doppelte Werte unterscheidbar bleiben.
