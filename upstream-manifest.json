@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "repository": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek",
-  "snapshotCommitSha": "80694713a7a430d12eb2099893de23ad8bb6f780",
+  "snapshotCommitSha": "8213e3a087976f0ba8019f2ef081924d9ce49666",
   "files": [
     {
       "artifactKey": "catalog-gspp",
@@ -18,14 +18,6 @@
       "path": "control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json",
       "gitBlobSha": "87ea078d0e73ca4b1938171c852f4641e94a2c16",
       "contentSha256": "c4a5db5d8a7f2d35e22704b9791cbae7c0911517c9b91a1daa5fe50a5b4bc7e3"
-    },
-    {
-      "artifactKey": "catalog-iso27001-annex-a",
-      "rootType": "catalog",
-      "lifecycle": "blocked-by-upstream",
-      "path": "control_layer/ISO27001/ISO27001-AnnexA-catalog.json",
-      "gitBlobSha": "3baae9b0ff18787a5057ec5644aa143602d4bf29",
-      "contentSha256": "4d3142b499b83516558534ed4d7c686ccc9a1bb2afb1f7e61b9fe150d4aaeacc"
     },
     {
       "artifactKey": "catalog-lieferkette",
@@ -236,5 +228,5 @@
       "contentSha256": "08c7ab6bb442a87eba4e407d272fecd179bc61c47c2419843d7f4cfcd4077235"
     }
   ],
-  "signatureSha256": "b40a116ed3ae521e1c32018fd3d1b7e8ede50d6615cbe61b445f8cf1c9384617"
+  "signatureSha256": "fe699921f327a0a27f958405aa2730504da6ab56af4aea404c6de2d61174fc6f"
 }
