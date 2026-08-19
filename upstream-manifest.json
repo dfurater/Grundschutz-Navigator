@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "repository": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek",
-  "snapshotCommitSha": "8213e3a087976f0ba8019f2ef081924d9ce49666",
+  "snapshotCommitSha": "a8a9b8ec983248562a98575029345ad034ee8787",
   "files": [
     {
       "artifactKey": "catalog-gspp",
@@ -228,5 +228,5 @@
       "contentSha256": "08c7ab6bb442a87eba4e407d272fecd179bc61c47c2419843d7f4cfcd4077235"
     }
   ],
-  "signatureSha256": "fe699921f327a0a27f958405aa2730504da6ab56af4aea404c6de2d61174fc6f"
+  "signatureSha256": "89d95dce93dc9610477f74c4b2ef9c6bb0cf5cb27bdc600a3552332913239773"
 }
