@@ -1050,6 +1050,15 @@ Lieferkettenkatalogs und alle Gruppen des Grundschutz++-Katalogs tragen eine
 `id`. Die Abdeckung liegt deshalb in synthetischen Fixtures
 (`src/adapters/oscalDocument.catalogEdgeCases.test.ts`).
 
+Dieselbe Abwesenheit trifft **Controls am Katalog-Root**: `catalog.controls`
+steht im Schema gleichberechtigt neben `groups`, und solche Controls gehören zu
+keiner Gruppe. `parseCatalog` projiziert sie mit `groupId: undefined` und
+`practiceId: undefined` in `catalog.controls`, `controlsById` und
+`controlsByAltIdentifier`; die Referenzauflösung besucht sie über denselben
+Zweig, damit ihre `links` nicht verlorengehen. Der Empty State greift nur, wenn
+`groups` **und** `controls` fehlen — andernfalls wäre ein schema-valider
+Katalog stillschweigend leer statt vollständig projiziert.
+
 ### Topic (Thema)
 
 ```typescript

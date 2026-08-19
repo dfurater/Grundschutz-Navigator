@@ -104,6 +104,13 @@ export interface RawOscalCatalog {
   uuid: string;
   metadata: RawOscalMetadata;
   groups?: RawOscalGroup[];
+  /**
+   * Controls direkt am Katalog-Root. Laut OSCAL 1.1.3 zulässig — `catalog`
+   * verlangt nur `uuid` und `metadata`, und `controls` steht gleichberechtigt
+   * neben `groups`. Solche Controls gehören zu keiner Gruppe und tragen
+   * deshalb weder `groupId` noch `practiceId` (GSPP-242).
+   */
+  controls?: RawOscalControl[];
   params?: RawOscalParam[];
   'back-matter'?: {
     resources?: RawOscalResource[];

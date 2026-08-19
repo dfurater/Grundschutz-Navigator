@@ -84,6 +84,99 @@ describe('Katalog ohne groups und ohne controls', () => {
 });
 
 /* ------------------------------------------------------------------ */
+/*  Controls am Katalog-Root                                           */
+/* ------------------------------------------------------------------ */
+
+describe('Controls direkt am Katalog-Root', () => {
+  // `catalog.controls` steht im gepinnten 1.1.3-Schema gleichberechtigt neben
+  // `groups`. Der Empty State darf deshalb nur greifen, wenn **beide** fehlen —
+  // sonst verliert ein schema-valider Katalog stillschweigend alle Controls.
+  const body = {
+    controls: [
+      makeControl('R.1', 'aaaaaaaa-3333-4333-8333-333333333333', {
+        controls: [makeControl('R.1.1', 'bbbbbbbb-3333-4333-8333-333333333333')],
+      }),
+      makeControl('R.2', 'cccccccc-3333-4333-8333-333333333333'),
+    ],
+  };
+
+  it('projiziert sie, statt sie stillschweigend zu verwerfen', () => {
+    const { view } = parse(body);
+
+    // Zwei Root-Controls plus ein verschachteltes Enhancement.
+    expect(view.totalControls).toBe(3);
+    expect([...view.controlsById.keys()].sort()).toEqual(['R.1', 'R.1.1', 'R.2']);
+    expect(view.controlsByAltIdentifier.size).toBe(3);
+  });
+
+  it('führt sie ohne Gruppen- und Praktikkennung, weil sie zu keiner Gruppe gehören', () => {
+    const { view } = parse(body);
+    const root = view.controlsById.get('R.1')!;
+
+    expect(view.practices).toEqual([]);
+    expect(root.groupId).toBeUndefined();
+    expect(root.practiceId).toBeUndefined();
+    // Über den kanonischen alt-identifier bleiben sie adressierbar.
+    expect(buildControlUrlForControl(CATALOG_KEY, root)).toBe(
+      '/katalog/lieferkette/kontrolle/aaaaaaaa-3333-4333-8333-333333333333',
+    );
+  });
+
+  it('trägt sie neben Gruppen-Controls im selben Katalog', () => {
+    const { view } = parse({
+      ...body,
+      groups: [
+        {
+          id: 'G',
+          title: 'Gruppe',
+          controls: [makeControl('G.1', 'dddddddd-3333-4333-8333-333333333333')],
+        },
+      ],
+    });
+
+    expect(view.totalControls).toBe(4);
+    expect(view.controlsById.get('G.1')!.groupId).toBe('G');
+    expect(view.controlsById.get('R.1')!.groupId).toBeUndefined();
+    expect(view.practices).toHaveLength(1);
+  });
+
+  it('löst auch die Links eines Root-Controls auf', () => {
+    // Dieselbe Lücke steckte in der Referenzauflösung: sie lief nur über
+    // `catalog.groups` und hätte die Links eines Root-Controls verloren.
+    const document = projectResolvedControlLinks(
+      parse({
+        controls: [
+          makeControl('R.1', 'ffffffff-3333-4333-8333-333333333333', {
+            links: [{ href: '#R.2', rel: 'related' }],
+          }),
+          makeControl('R.2', 'aaaaaaaa-4444-4444-8444-444444444444'),
+        ],
+      }),
+    );
+
+    expect(document.view.controlsById.get('R.1')!.links).toEqual([
+      { targetId: 'R.2', relation: 'related' },
+    ]);
+  });
+
+  it('prüft die alt-identifier-Eindeutigkeit auch über Root-Controls hinweg', () => {
+    expect(() =>
+      parse({
+        controls: [makeControl('R.1', 'eeeeeeee-3333-4333-8333-333333333333')],
+        groups: [
+          {
+            id: 'G',
+            title: 'Gruppe',
+            // Derselbe alt-identifier wie das Root-Control.
+            controls: [makeControl('G.1', 'eeeeeeee-3333-4333-8333-333333333333')],
+          },
+        ],
+      }),
+    ).toThrow(/Duplicate alt-identifier/);
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /*  Gruppe ohne id                                                     */
 /* ------------------------------------------------------------------ */
 

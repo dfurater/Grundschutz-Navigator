@@ -514,6 +514,15 @@ export function parseCatalog(raw: unknown, options: ParseCatalogOptions): Catalo
   const practices: Practice[] = [];
   const allControls: Control[] = [];
 
+  // Controls am Katalog-Root sind schema-valide und gehören zu keiner Gruppe.
+  // Sie werden projiziert statt verworfen: Der Empty State gilt nur für einen
+  // Katalog, der weder `groups` noch `controls` führt. Ohne diesen Zweig
+  // erzeugte ein Katalog mit ausschließlich Root-Controls stillen Datenverlust
+  // (GSPP-242).
+  for (const c of catalog.controls ?? []) {
+    allControls.push(...parseControlRecursive(c, undefined, undefined));
+  }
+
   for (const g of catalog.groups ?? []) {
     const { practice, controls } = parsePractice(g);
     practices.push(practice);

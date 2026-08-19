@@ -372,7 +372,12 @@ und `controls` ist schema-valide. Eine Gruppe ohne `id` bleibt vollständig
 sichtbar — Titel, Badge, Untergruppen und Controls —, ist aber **nicht
 adressierbar**: sie erzeugt weder Route noch Anker, und ein aktiver Gruppen-
 oder Praktik-Filter trifft sie nie. Es wird kein Ersatzbezeichner erfunden.
-Ein leerer Katalog erzeugt einen Empty State, keinen Fehler.
+Ein leerer Katalog erzeugt einen Empty State, keinen Fehler — der Empty State
+gilt aber nur, wenn **weder** `groups` **noch** `controls` vorhanden sind.
+`catalog.controls` steht im Schema gleichberechtigt neben `groups`; solche
+Root-Controls gehören zu keiner Gruppe, werden ohne `groupId` und `practiceId`
+geführt und bleiben über ihren kanonischen `altIdentifier` adressierbar. Sie
+werden projiziert, nie stillschweigend verworfen.
 
 Die Vokabular-Membership wird aus **allen** ausgelieferten Katalogen abgeleitet
 (`scripts/fetch-catalog.mjs`), damit ein Nicht-Einstiegskatalog sein Vokabular
