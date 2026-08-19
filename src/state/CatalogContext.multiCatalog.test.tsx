@@ -1,16 +1,20 @@
 // =============================================================================
 // Mehr-Katalog-Ladepfad (GSPP-284)
 //
-// Der reale Auslieferungsstand kennt genau einen `supported`-Katalog, und
-// dieses Issue ändert keinen Lifecycle. Der Korpus ist deshalb fixture-basiert:
-// der Provider nimmt seine Katalogmenge als Deskriptorliste entgegen, damit
-// Identitätskollision, Integritätsisolation und bedarfsgerechtes Nachladen
-// überhaupt beobachtbar sind.
+// Der Korpus ist fixture-basiert: der Provider nimmt seine Katalogmenge als
+// Deskriptorliste entgegen, damit Identitätskollision, Integritätsisolation und
+// bedarfsgerechtes Nachladen unabhängig vom jeweiligen Auslieferungsstand
+// beobachtbar sind.
+//
+// Seit GSPP-242 liefert das reale Register mehr als einen Katalog aus. Der
+// abschließende Block prüft deshalb zusätzlich gegen die **realen** Deskriptoren,
+// dass die Promotion den Initial-Load nicht vergrößert hat.
 // =============================================================================
 
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CatalogProvider, type SupportedCatalogDescriptor } from './CatalogContext';
+import { buildSupportedCatalogDescriptors } from './catalogArtifacts';
 import { computeSHA256 } from '@/domain/integrity';
 import { useCatalog } from '@/hooks/useCatalog';
 
@@ -331,10 +335,70 @@ describe('CatalogProvider — mehrere Kataloge', () => {
     await waitForEntryCatalog(result);
 
     act(() => {
-      result.current.selectCatalog('lieferkette');
+      // Ein registrierter, aber nicht ausgelieferter Katalog: der Provider
+      // kennt ausschließlich seine Deskriptormenge.
+      result.current.selectCatalog('mindeststandard-tls');
     });
 
     expect(result.current.activeCatalogKey).toBe('gspp');
     expect([...result.current.catalogs.keys()]).toEqual(['gspp']);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/*  Realer Auslieferungsstand (GSPP-242)                               */
+/* ------------------------------------------------------------------ */
+
+describe('CatalogProvider — reales Quellregister', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('leitet je supported-Katalog genau ein Daten- und ein Metadatenartefakt ab', () => {
+    const real = buildSupportedCatalogDescriptors('/');
+
+    // Untergrenze: mit nur einem Katalog wäre der Nachweis gegenstandslos.
+    expect(real.length).toBeGreaterThan(1);
+    expect(real.filter((descriptor) => descriptor.isEntryCatalog)).toHaveLength(1);
+
+    const entry = real.find((descriptor) => descriptor.isEntryCatalog)!;
+    const promoted = real.find((descriptor) => descriptor.catalogKey === 'lieferkette')!;
+
+    // Der Einstiegskatalog behält seinen unveränderten Auslieferungsvertrag.
+    expect(entry.dataUrl).toBe('/data/catalog.json');
+    expect(entry.metadataUrl).toBe('/data/catalog-metadata.json');
+    // Der promotete Katalog erhält den aus seinem catalogKey abgeleiteten Namen.
+    expect(promoted.isEntryCatalog).toBe(false);
+    expect(promoted.dataUrl).toBe('/data/catalog-lieferkette.json');
+    expect(promoted.metadataUrl).toBe('/data/catalog-lieferkette-metadata.json');
+  });
+
+  it('lässt den Initial-Load durch die Promotion nicht wachsen', async () => {
+    const real = buildSupportedCatalogDescriptors('/');
+    const entry = real.find((descriptor) => descriptor.isEntryCatalog)!;
+    const fetchSpy = mockArtifacts({ [entry.dataUrl]: entryCatalogJson });
+
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <CatalogProvider
+        vocabulariesUrl="/data/vocabularies.json"
+        upstreamSourcesMetadataUrl="/data/upstream-sources-metadata.json"
+      >
+        {children}
+      </CatalogProvider>
+    );
+    const { result } = renderHook(() => useCatalog(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+      expect(result.current.catalogs.get(entry.catalogKey)?.catalog).not.toBeNull();
+    });
+
+    const requested = fetchSpy.mock.calls.map(([url]) => String(url));
+    // Kein ausgelieferter Nicht-Einstiegskatalog wird eager angefordert.
+    for (const descriptor of real.filter((candidate) => !candidate.isEntryCatalog)) {
+      expect(requested).not.toContain(descriptor.dataUrl);
+      expect(requested).not.toContain(descriptor.metadataUrl);
+    }
+    expect([...result.current.catalogs.keys()]).toEqual([entry.catalogKey]);
   });
 });

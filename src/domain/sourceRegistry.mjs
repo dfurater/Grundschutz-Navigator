@@ -85,7 +85,7 @@ export const SOURCE_REGISTRY = Object.freeze(
       expectedRootType: 'catalog',
       catalogKey: 'lieferkette',
       upstreamPath: 'control_layer/Lieferkettensicherheit/Lieferkettensicherheit-resolved_catalog.json',
-      lifecycle: 'preview',
+      lifecycle: 'supported',
       title: 'Anwenderkatalog Lieferkettensicherheit',
     },
     {

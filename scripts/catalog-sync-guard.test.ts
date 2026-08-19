@@ -460,6 +460,85 @@ describe('catalog sync PR shape', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it('trägt eine Lifecycle-Promotion als Registry-Migration, ohne Netzwerkarbeit (GSPP-242)', async () => {
+    // preview → supported: derselbe Snapshot, identische Content-Pins. Genau
+    // der Fall der Auslieferung des Lieferkettenkatalogs.
+    const next = makeFixture({ snapshotCommitSha: OLD_SHA });
+    const promoted = rebuildManifest(
+      next.manifest,
+      next.manifest.files.map((file, index) =>
+        index === 0 ? { ...file, lifecycle: 'supported' } : file,
+      ),
+    );
+    const previous = rebuildManifest(
+      next.manifest,
+      next.manifest.files.map((file, index) =>
+        index === 0 ? { ...file, lifecycle: 'preview' } : file,
+      ),
+    );
+    const diffEntries = [
+      { status: 'M', path: 'src/domain/sourceRegistry.mjs' },
+      { status: 'M', path: 'upstream-manifest.json' },
+    ];
+    const fetchImpl = vi.fn();
+
+    expect(isRegistryLifecycleOnlyMigration({
+      diffEntries,
+      previousManifest: previous,
+      nextManifest: promoted,
+    })).toBe(true);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('entsperrt ein blocked-by-upstream-Artefakt nicht über die Ausnahme', () => {
+    // Deeskalation aus blocked-by-upstream heraus gehört in die vollständige
+    // Snapshot-Verifikation, nicht in die Registry-Ausnahme.
+    const next = makeFixture({ snapshotCommitSha: OLD_SHA });
+    const unblocked = rebuildManifest(
+      next.manifest,
+      next.manifest.files.map((file) =>
+        file.lifecycle === 'blocked-by-upstream' ? { ...file, lifecycle: 'preview' } : file,
+      ),
+    );
+
+    expect(isRegistryLifecycleOnlyMigration({
+      diffEntries: [
+        { status: 'M', path: 'src/domain/sourceRegistry.mjs' },
+        { status: 'M', path: 'upstream-manifest.json' },
+      ],
+      previousManifest: next.manifest,
+      nextManifest: unblocked,
+    })).toBe(false);
+  });
+
+  it('weist einen undeklarierten Lifecycle-Wert fail-closed ab', () => {
+    // Das Vormanifest liest die CLI per rohem JSON.parse, ohne Normalisierung.
+    // Das Prädikat muss einen undeklarierten Wert deshalb selbst abweisen,
+    // statt sich auf die Manifest-Shape-Prüfung zu verlassen.
+    const next = makeFixture({ snapshotCommitSha: OLD_SHA });
+    const previous = rebuildManifest(
+      next.manifest,
+      next.manifest.files.map((file, index) =>
+        index === 0 ? { ...file, lifecycle: 'preview' } : file,
+      ),
+    );
+    const bogus = {
+      ...next.manifest,
+      files: next.manifest.files.map((file, index) =>
+        index === 0 ? { ...file, lifecycle: 'experimental' } : file,
+      ),
+    };
+
+    expect(isRegistryLifecycleOnlyMigration({
+      diffEntries: [
+        { status: 'M', path: 'src/domain/sourceRegistry.mjs' },
+        { status: 'M', path: 'upstream-manifest.json' },
+      ],
+      previousManifest: previous,
+      nextManifest: bogus,
+    })).toBe(false);
+  });
+
   it('does not classify content or snapshot changes as a registry lifecycle migration', () => {
     const next = makeFixture({ snapshotCommitSha: OLD_SHA });
     const previous = rebuildManifest(

@@ -206,8 +206,8 @@ export function toModalverb(value: string | undefined): Modalverb | undefined {
  */
 export function parseControl(
   raw: RawOscalControl,
-  groupId: string,
-  practiceId: string,
+  groupId: string | undefined,
+  practiceId: string | undefined,
   parentId?: string,
 ): Control {
   const paramMap = buildParamMap(raw.params);
@@ -330,8 +330,8 @@ export function parseControl(
  */
 export function parseControlRecursive(
   raw: RawOscalControl,
-  groupId: string,
-  practiceId: string,
+  groupId: string | undefined,
+  practiceId: string | undefined,
   parentId?: string,
 ): Control[] {
   const control = parseControl(raw, groupId, practiceId, parentId);
@@ -346,10 +346,10 @@ export function parseControlRecursive(
  */
 export function parseTopic(
   raw: RawOscalGroup,
-  practiceId: string,
+  practiceId: string | undefined,
 ): { topic: Topic; controls: Control[] } {
   const altIdentifier = getPropValue(raw.props, 'alt-identifier');
-  const label = getPropValue(raw.props, 'label') ?? raw.id;
+  const label = getPropValue(raw.props, 'label') ?? raw.id ?? raw.title;
 
   const controls = (raw.controls ?? []).flatMap((c) =>
     parseControlRecursive(c, raw.id, practiceId),
@@ -375,7 +375,7 @@ export function parsePractice(
   raw: RawOscalGroup,
 ): { practice: Practice; controls: Control[] } {
   const altIdentifier = getPropValue(raw.props, 'alt-identifier');
-  const label = getPropValue(raw.props, 'label') ?? raw.id;
+  const label = getPropValue(raw.props, 'label') ?? raw.id ?? raw.title;
 
   const topics: Topic[] = [];
   const allControls: Control[] = [];
@@ -501,9 +501,12 @@ export function parseCatalog(raw: unknown, options: ParseCatalogOptions): Catalo
   const { catalogKey } = options;
   const catalog = raw as RawOscalCatalog;
 
-  if (!catalog?.uuid || !catalog.metadata || !catalog.groups) {
+  // `groups` ist laut OSCAL 1.1.3 optional — ein Katalog ohne Gruppen und ohne
+  // Controls ist schema-valide und muss einen Empty State erzeugen, keinen
+  // Fehler (GSPP-242).
+  if (!catalog?.uuid || !catalog.metadata) {
     throw new Error(
-      'Invalid OSCAL catalog: missing uuid, metadata, or groups',
+      'Invalid OSCAL catalog: missing uuid or metadata',
     );
   }
 
@@ -511,7 +514,16 @@ export function parseCatalog(raw: unknown, options: ParseCatalogOptions): Catalo
   const practices: Practice[] = [];
   const allControls: Control[] = [];
 
-  for (const g of catalog.groups) {
+  // Controls am Katalog-Root sind schema-valide und gehören zu keiner Gruppe.
+  // Sie werden projiziert statt verworfen: Der Empty State gilt nur für einen
+  // Katalog, der weder `groups` noch `controls` führt. Ohne diesen Zweig
+  // erzeugte ein Katalog mit ausschließlich Root-Controls stillen Datenverlust
+  // (GSPP-242).
+  for (const c of catalog.controls ?? []) {
+    allControls.push(...parseControlRecursive(c, undefined, undefined));
+  }
+
+  for (const g of catalog.groups ?? []) {
     const { practice, controls } = parsePractice(g);
     practices.push(practice);
     allControls.push(...controls);

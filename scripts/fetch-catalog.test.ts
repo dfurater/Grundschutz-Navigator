@@ -27,7 +27,10 @@ import {
   parseVocabularyCsv,
   sha256Hex,
 } from './vocabulary-utils.mjs';
-import { SOURCE_REGISTRY } from '../src/domain/sourceRegistry.mjs';
+import {
+  SOURCE_REGISTRY,
+  listCatalogArtifactFileNames,
+} from '../src/domain/sourceRegistry.mjs';
 
 const SNAPSHOT_SHA = 'a'.repeat(40);
 const REPOSITORY_API = 'https://api.github.com/repos/BSI-Bund/Stand-der-Technik-Bibliothek';
@@ -44,11 +47,22 @@ const TOPICS_NAMESPACE_PATH = 'documentation/namespaces/topics.csv';
 const TOPIC_ALT_IDENTIFIER = '22222222-2222-4222-8222-222222222222';
 const TOPICS_CSV =
   `Begriff,Definition,UUID\nFixture,Fixture definition,${TOPIC_ALT_IDENTIFIER}\n`;
+const GENERATED_ARTIFACT_FILE_NAMES = ['vocabularies.json', 'upstream-sources-metadata.json'] as const;
+/**
+ * Ausgabemenge des **realen** Quellregisters. Aus `listCatalogArtifactFileNames`
+ * abgeleitet statt fest verdrahtet: jede Lifecycle-Promotion (GSPP-242) fügt
+ * genau zwei Katalogdateien hinzu, und eine gepflegte Festliste würde bei
+ * jeder weiteren Promotion erneut auseinanderlaufen.
+ */
 const OUTPUT_ARTIFACT_FILE_NAMES = [
+  ...listCatalogArtifactFileNames(),
+  ...GENERATED_ARTIFACT_FILE_NAMES,
+] as const;
+/** Ausgabemenge des Ein-Katalog-Fixtures `MINIMAL_REGISTRY`. */
+const MINIMAL_OUTPUT_ARTIFACT_FILE_NAMES = [
   'catalog.json',
   'catalog-metadata.json',
-  'vocabularies.json',
-  'upstream-sources-metadata.json',
+  ...GENERATED_ARTIFACT_FILE_NAMES,
 ] as const;
 /**
  * Der zweite Katalog des Fixtures nutzt einen real registrierten Upstream-Pfad:
@@ -1188,6 +1202,8 @@ describe('fetch-catalog', () => {
     expect(payload.artifacts.map((artifact) => artifact.fileName)).toEqual([
       'catalog.json',
       'catalog-metadata.json',
+      'catalog-lieferkette.json',
+      'catalog-lieferkette-metadata.json',
       'vocabularies.json',
       'upstream-sources-metadata.json',
     ]);
@@ -1491,7 +1507,7 @@ describe('upstream manifest v2', () => {
       const { payload } = await buildMinimalArtifacts();
 
       expect(payload.artifacts.map((artifact) => artifact.fileName)).toEqual([
-        ...OUTPUT_ARTIFACT_FILE_NAMES,
+        ...MINIMAL_OUTPUT_ARTIFACT_FILE_NAMES,
       ]);
     });
   });

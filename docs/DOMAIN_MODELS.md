@@ -972,8 +972,8 @@ interface Control {
   title: string;
   altIdentifier?: string;        // kanonischer Control-Identifier für URLs
 
-  groupId: string;               // e.g. "GC.1" (Topic)
-  practiceId: string;            // e.g. "GC" (Practice)
+  groupId?: string;              // e.g. "GC.1" (Topic); fehlt ohne Gruppen-id
+  practiceId?: string;           // e.g. "GC" (Practice); fehlt ohne Gruppen-id
 
   securityLevel?: SecurityLevel;
   securityLevelProp?: PropValue;
@@ -1023,15 +1023,51 @@ interface Control {
 
 Die `*Prop`-Felder behalten den OSCAL-Namespace (`ns`) der Quell-Prop und ermöglichen so die Auflösung gegen die offiziellen BSI-Vokabulare (siehe [VOCABULARY.md](./VOCABULARY.md)).
 
+### Optionale Gruppen-Identifikatoren
+
+`group.id` ist in OSCAL 1.1.3 optional — `group` verlangt ausschließlich
+`title`. Das Domänenmodell bildet das ab, statt eine Pflicht zu behaupten, die
+das Metaschema nicht kennt ([GSPP-242](https://linear.app/grundschutz-plus-plus/issue/GSPP-242)):
+`Topic.id`, `Practice.id`, `Control.groupId` und `Control.practiceId` sind
+optional.
+
+Eine Gruppe ohne `id` ist **nicht referenzierbar**. Sie bleibt vollständig
+sichtbar — Titel, Label, Untergruppen und Controls gehen nicht verloren —,
+erzeugt aber weder Route noch Anker, und ein aktiver Gruppen- oder
+Praktik-Filter trifft sie nie. Es wird kein Ersatzbezeichner erfunden; `label`
+fällt auf die `id` und danach auf den `title` zurück. Die Controls einer
+solchen Gruppe bleiben über ihren kanonischen `altIdentifier` adressierbar.
+
+Zwei Fallstricke, die daraus folgen und im Code ausdrücklich abgefangen sind:
+ein Lookup der Form `practice.id === control.practiceId` würde bei beidseitiger
+Abwesenheit über `undefined === undefined` eine **falsche** Zuordnung erzeugen
+(`src/features/catalog/ControlDetail.tsx`), und ein React-`key` aus der
+Gruppen-`id` wäre bei mehreren id-losen Geschwistern nicht eindeutig
+(`src/components/TreeNav.tsx`).
+
+Im ausgelieferten Bestand tritt der Fall derzeit nicht auf: alle 30 Gruppen des
+Lieferkettenkatalogs und alle Gruppen des Grundschutz++-Katalogs tragen eine
+`id`. Die Abdeckung liegt deshalb in synthetischen Fixtures
+(`src/adapters/oscalDocument.catalogEdgeCases.test.ts`).
+
+Dieselbe Abwesenheit trifft **Controls am Katalog-Root**: `catalog.controls`
+steht im Schema gleichberechtigt neben `groups`, und solche Controls gehören zu
+keiner Gruppe. `parseCatalog` projiziert sie mit `groupId: undefined` und
+`practiceId: undefined` in `catalog.controls`, `controlsById` und
+`controlsByAltIdentifier`; die Referenzauflösung besucht sie über denselben
+Zweig, damit ihre `links` nicht verlorengehen. Der Empty State greift nur, wenn
+`groups` **und** `controls` fehlen — andernfalls wäre ein schema-valider
+Katalog stillschweigend leer statt vollständig projiziert.
+
 ### Topic (Thema)
 
 ```typescript
 interface Topic {
-  id: string;              // e.g. "GC.1"
+  id?: string;             // e.g. "GC.1"; fehlt, wenn die Quellgruppe keine id trägt
   title: string;
-  label: string;           // e.g. "1"
+  label: string;           // e.g. "1"; fällt ohne label-Prop auf id, dann Titel zurück
   altIdentifier?: string;
-  practiceId: string;
+  practiceId?: string;
   controlCount: number;
   controlIds: string[];
 }
@@ -1041,7 +1077,7 @@ interface Topic {
 
 ```typescript
 interface Practice {
-  id: string;              // e.g. "GC"
+  id?: string;             // e.g. "GC"; fehlt, wenn die Quellgruppe keine id trägt
   title: string;
   label: string;           // e.g. "GC"
   altIdentifier?: string;
@@ -1157,8 +1193,8 @@ Nested Controls (Enhancements) werden rekursiv entpackt:
 ```typescript
 export function parseControlRecursive(
   raw: RawOscalControl,
-  groupId: string,
-  practiceId: string,
+  groupId: string | undefined,
+  practiceId: string | undefined,
   parentId?: string,
 ): Control[] {
   const control = parseControl(raw, groupId, practiceId, parentId);

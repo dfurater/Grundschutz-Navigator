@@ -511,6 +511,10 @@ function visitCatalogControls(
     }
   };
 
+  // Controls am Katalog-Root sind schema-valide (OSCAL 1.1.3) und gehören zu
+  // keiner Gruppe. Ohne diesen Durchlauf blieben ihre Links unaufgelöst —
+  // dieselbe Lücke wie im Adapter (GSPP-242).
+  visitControls(readArray(catalog.controls), '/catalog/controls');
   visitGroups(readArray(catalog.groups), '/catalog/groups');
 }
 

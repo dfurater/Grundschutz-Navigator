@@ -58,7 +58,12 @@ export interface RawOscalControl {
 }
 
 export interface RawOscalGroup {
-  id: string;
+  /**
+   * Optional laut OSCAL 1.1.3: `group` verlangt nur `title`. Eine Gruppe ohne
+   * `id` ist nicht referenzierbar — Routing und Anker dürfen sie deshalb nicht
+   * voraussetzen (GSPP-242).
+   */
+  id?: string;
   title: string;
   props?: RawOscalProp[];
   groups?: RawOscalGroup[];
@@ -99,6 +104,13 @@ export interface RawOscalCatalog {
   uuid: string;
   metadata: RawOscalMetadata;
   groups?: RawOscalGroup[];
+  /**
+   * Controls direkt am Katalog-Root. Laut OSCAL 1.1.3 zulässig — `catalog`
+   * verlangt nur `uuid` und `metadata`, und `controls` steht gleichberechtigt
+   * neben `groups`. Solche Controls gehören zu keiner Gruppe und tragen
+   * deshalb weder `groupId` noch `practiceId` (GSPP-242).
+   */
+  controls?: RawOscalControl[];
   params?: RawOscalParam[];
   'back-matter'?: {
     resources?: RawOscalResource[];
@@ -151,10 +163,10 @@ export interface Control {
   title: string;
   /** UUID alternate identifier */
   altIdentifier?: string;
-  /** Parent group ID (Thema), e.g. "GC.1" */
-  groupId: string;
-  /** Root practice ID (Praktik), e.g. "GC" */
-  practiceId: string;
+  /** Parent group ID (Thema), e.g. "GC.1"; fehlt bei einer Quellgruppe ohne `id` */
+  groupId?: string;
+  /** Root practice ID (Praktik), e.g. "GC"; fehlt bei einer Quellgruppe ohne `id` */
+  practiceId?: string;
 
   /** Security level: normal-SdT or erhöht */
   securityLevel?: SecurityLevel;
@@ -228,16 +240,20 @@ export interface Control {
 
 /** A topic (Thema) — second-level group */
 export interface Topic {
-  /** Topic ID, e.g. "GC.1" */
-  id: string;
+  /**
+   * Topic ID, e.g. "GC.1". Fehlt, wenn die Quellgruppe keine `id` trägt
+   * (OSCAL 1.1.3: optional). Ein Topic ohne `id` ist nicht adressierbar und
+   * erzeugt weder Route noch Anker (GSPP-242).
+   */
+  id?: string;
   /** Human-readable title */
   title: string;
   /** Short label, e.g. "1" */
   label: string;
   /** UUID alternate identifier */
   altIdentifier?: string;
-  /** Parent practice ID */
-  practiceId: string;
+  /** Parent practice ID; fehlt, wenn die übergeordnete Gruppe keine `id` trägt */
+  practiceId?: string;
   /** Number of controls in this topic */
   controlCount: number;
   /** Control IDs belonging to this topic */
@@ -246,8 +262,11 @@ export interface Topic {
 
 /** A practice (Praktik) — top-level group */
 export interface Practice {
-  /** Practice ID, e.g. "GC" */
-  id: string;
+  /**
+   * Practice ID, e.g. "GC". Fehlt, wenn die Quellgruppe keine `id` trägt
+   * (OSCAL 1.1.3: optional) — dann ist die Praktik nicht adressierbar.
+   */
+  id?: string;
   /** Human-readable title */
   title: string;
   /** Short label, e.g. "GC" */

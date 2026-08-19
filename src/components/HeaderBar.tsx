@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { Link } from 'react-router';
+import { CatalogSwitcher } from './CatalogSwitcher';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import { IconSearch, IconShield, IconMenu } from './icons';
 
@@ -116,6 +117,7 @@ export function HeaderBar({
         </div>
       </div>
 
+      <CatalogSwitcher />
     </header>
   );
 }

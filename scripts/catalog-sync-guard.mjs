@@ -45,6 +45,13 @@ export const TRACKED_MANIFEST_PATH = 'upstream-manifest.json';
 export const SYNC_BRANCH_PATTERN = /^chore\/catalog-sync-([0-9a-f]{12})$/;
 export const SYNC_TITLE_PREFIX = 'chore(ci): BSI-Katalog-Sync ';
 const REGISTRY_LIFECYCLE_MIGRATION_PATH = 'src/domain/sourceRegistry.mjs';
+/** Die im Quellregister deklarierten Lifecycles — einzige zulässige Werte. */
+const REGISTRY_LIFECYCLES = new Set([
+  'supported',
+  'preview',
+  'draft',
+  'blocked-by-upstream',
+]);
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 
@@ -154,9 +161,21 @@ export function isCatalogSyncCandidate({ branch, title, diffEntries }) {
 /**
  * Ein fachlich geprüfter Lifecycle-Wechsel ist kein autonomer Catalog-Sync.
  * Er ist nur zulässig, wenn derselbe Snapshot und sämtliche Content-Pins
- * unverändert bleiben, die PR zugleich das Quellregister ändert und jeder
- * Manifestwechsel ausschließlich nach blocked-by-upstream führt. Der nächste
- * Manifeststand wird anschließend noch gegen das aktuelle Registry validiert.
+ * unverändert bleiben und die PR zugleich das Quellregister ändert. Der
+ * nächste Manifeststand wird anschließend noch gegen das aktuelle Registry
+ * validiert.
+ *
+ * Die tragende Sicherheitseigenschaft ist, dass **keine neuen Bytes gepinnt
+ * werden**: `gitBlobSha` und `contentSha256` jeder Datei bleiben identisch, die
+ * Dateimenge bleibt identisch, und der Snapshot wechselt nicht. Über diese
+ * Bedingungen hinaus ist die Richtung des Wechsels nicht sicherheitsrelevant —
+ * eine Promotion wie `preview` → `supported` (GSPP-242) liefert ausschließlich
+ * bereits gepinnte und beim Fetch bereits transient validierte Bytes aus.
+ *
+ * Ausgenommen bleibt allein die Deeskalation **aus** `blocked-by-upstream`
+ * heraus: Ein wegen eines Upstream-Defekts gesperrtes Artefakt wird über diesen
+ * Pfad nicht entsperrt. Dieser Fall gehört in die vollständige
+ * Snapshot-Verifikation, nicht in die Ausnahme.
  */
 export function isRegistryLifecycleOnlyMigration({ diffEntries, previousManifest, nextManifest }) {
   if (
@@ -191,10 +210,16 @@ export function isRegistryLifecycleOnlyMigration({ diffEntries, previousManifest
       return false;
     }
     if (previousFile.lifecycle === nextFile.lifecycle) continue;
+    // Fail-closed gegen undeklarierte Werte: Nur die im Quellregister
+    // definierten Lifecycles sind überhaupt vergleichbar.
     if (
-      previousFile.lifecycle === 'blocked-by-upstream' ||
-      nextFile.lifecycle !== 'blocked-by-upstream'
+      !REGISTRY_LIFECYCLES.has(previousFile.lifecycle) ||
+      !REGISTRY_LIFECYCLES.has(nextFile.lifecycle)
     ) {
+      return false;
+    }
+    // Keine Entsperrung über diesen Pfad.
+    if (previousFile.lifecycle === 'blocked-by-upstream') {
       return false;
     }
     lifecycleChanges += 1;
