@@ -21,6 +21,9 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
+    /* Die CI-Lane lädt src/domain über Nodes Typ-Stripping (GSPP-251):
+       nicht löschbare TS-Syntax würde sie brechen. */
+    "erasableSyntaxOnly": true,
 
     /* Paths */
     "paths": {

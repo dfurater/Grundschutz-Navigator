@@ -207,6 +207,10 @@ export function selectManifestOscalArtifacts(manifest, registry = listOscalArtif
       rootType: entry.expectedRootType,
       oscalVersion: entry.oscalVersion,
       lifecycle: entry.lifecycle,
+      // Nur Katalogwurzeln tragen eine Katalogidentität (ADR-1); der
+      // Referenzgraph braucht sie, um `#<control-id>` kataloggescopt
+      // aufzulösen.
+      catalogKey: entry.catalogKey ?? null,
       upstreamPath: entry.upstreamPath,
       contentSha256: manifestFile.contentSha256,
       gitBlobSha: manifestFile.gitBlobSha,
@@ -496,6 +500,137 @@ export function evaluateArtifactExpectation(artifact, schemaStatus) {
   });
 }
 
+/* ------------------------------------------------------------------ */
+/*  Stufe 5 — Referenzgraph (GSPP-251)                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Bewusst akzeptierte Referenzbefunde.
+ *
+ * Ein Eintrag ist `{ signature, snapshotCommitSha, reason }` und greift nur für
+ * genau diese Diagnosesignatur **und** genau diesen Snapshot. Ändert sich der
+ * Snapshot oder der strukturelle Pfad, läuft er aus und wird gemeldet — er
+ * wandert nie auf ein Nachfolgeartefakt. Politik und Verfahren stehen in
+ * `docs/INTEGRITY.md`.
+ */
+export const REFERENCE_GRAPH_ALLOWLIST = Object.freeze([]);
+
+/** Lädt die TS-Domänenschicht erst, wenn der Graphlauf sie wirklich braucht. */
+async function loadDefaultOscalDomain() {
+  const { loadOscalDomain } = await import('./oscal-domain-bridge.mjs');
+  return loadOscalDomain();
+}
+
+/**
+ * Baut die Graphquellen aus den verifizierten Bytes.
+ *
+ * Stufe 5 läuft nur über Artefakte, die Stufe 3 bestanden haben — ein gesperrtes
+ * Artefakt, das erwartungsgemäß am Schema scheitert, liefert keine belastbaren
+ * Referenzaussagen. Ein Adapterfehler wird als eigener, redigierter Befund
+ * geführt: Seine Meldung könnte Dokumentwerte tragen und erscheint deshalb nie.
+ */
+export function buildReferenceGraphDocuments({ domain, selection, artifactResults, sources }) {
+  const schemaPassed = new Set(
+    artifactResults
+      .filter((result) => result.schemaStatus === 'passed')
+      .map((result) => result.artifactKey),
+  );
+  const documents = [];
+  const parseFailures = [];
+
+  for (const artifact of selection.oscalArtifacts) {
+    const source = sources.get(artifact.artifactKey);
+    if (!source || !schemaPassed.has(artifact.artifactKey)) continue;
+
+    let parsed;
+    try {
+      parsed = domain.parseOscalDocument(source, {
+        trustClass: 'class-1-verified-public',
+        upstreamPath: artifact.upstreamPath,
+        // Beide Werte stammen aus demselben Registereintrag; der Dispatch
+        // prüft sie gegeneinander und lehnt einen Widerspruch ab.
+        ...(artifact.catalogKey ? { catalogKey: artifact.catalogKey } : {}),
+      });
+    } catch {
+      parsed = null;
+    }
+    if (!parsed?.ok) {
+      parseFailures.push(
+        Object.freeze({ artifactKey: artifact.artifactKey, lifecycle: artifact.lifecycle }),
+      );
+      continue;
+    }
+
+    documents.push(Object.freeze({
+      artifactKey: artifact.artifactKey,
+      lifecycle: artifact.lifecycle,
+      rootType: artifact.rootType,
+      oscalVersion: artifact.oscalVersion,
+      source,
+      view: parsed.view,
+      ...(artifact.catalogKey ? { catalogKey: artifact.catalogKey } : {}),
+    }));
+  }
+
+  return Object.freeze({
+    documents: Object.freeze(documents),
+    parseFailures: Object.freeze(parseFailures),
+  });
+}
+
+/**
+ * Führt Stufe 5 aus.
+ *
+ * Der Graph erhält **keine** Dokumentbindungen: Welcher relative Dateiname oder
+ * welche externe URL welches Artefakt meint, ist eine Behauptung, die niemand
+ * belegen kann — solche Ziele bleiben nicht bewertbar (GSPP-286).
+ */
+export async function runReferenceGraphStage({
+  manifest,
+  selection,
+  artifactResults,
+  sources,
+  loadDomain = loadDefaultOscalDomain,
+  allowlist = REFERENCE_GRAPH_ALLOWLIST,
+}) {
+  const domain = await loadDomain();
+  const { documents, parseFailures } = buildReferenceGraphDocuments({
+    domain,
+    selection,
+    artifactResults,
+    sources,
+  });
+
+  const graph = domain.buildReferenceGraph({ documents });
+  const evaluation = domain.evaluateReferenceGraph({
+    graph,
+    snapshotCommitSha: manifest.snapshotCommitSha,
+    allowlist,
+  });
+  const blockingParseFailures = parseFailures.filter(
+    (failure) => failure.lifecycle === 'supported',
+  );
+
+  const summaryLines = [
+    domain.formatReferenceGraphSummary(graph, evaluation),
+    ...(parseFailures.length === 0
+      ? []
+      : [
+        `Nicht ableitbare Artefakte: ${parseFailures.length}`,
+        ...parseFailures.map(
+          (failure) => `  ${failure.artifactKey}: lifecycle=${failure.lifecycle}`,
+        ),
+      ]),
+  ];
+
+  return Object.freeze({
+    summary: summaryLines.join('\n'),
+    report: domain.toReferenceGraphReport(graph, evaluation),
+    parseFailures,
+    referenceGraphPassed: evaluation.evaluationPassed && blockingParseFailures.length === 0,
+  });
+}
+
 export function formatVerifyUpstreamOscalSummary({ snapshotCommitSha, selection, artifactResults }) {
   const versionLines = Object.entries(selection.versionCoverage)
     .map(([version, count]) => `  ${version}: ${count}`)
@@ -561,6 +696,7 @@ export async function runVerifyUpstreamOscal({
   sbomOutputPath = process.env.GO_OSCAL_SBOM_OUTPUT,
   runnerTempDirectory = process.env.RUNNER_TEMP,
   retryDelaysMs = TRANSIENT_RETRY_DELAYS_MS,
+  loadDomain = loadDefaultOscalDomain,
 } = {}) {
   const manifestPath = path.join(repoRoot, 'upstream-manifest.json');
   let manifest;
@@ -617,6 +753,9 @@ export async function runVerifyUpstreamOscal({
     await chmod(binaryPath, 0o700);
 
     const artifactResults = [];
+    // Die verifizierten Dokumente für Stufe 5. Sie stammen aus denselben
+    // gepinnten Bytes wie die Schemaprüfung; es wird nichts erneut geladen.
+    const sources = new Map();
     for (const [index, artifact] of selection.oscalArtifacts.entries()) {
       const inputPath = path.join(tempDirectory, `document-${index}.json`);
       const resultPath = path.join(tempDirectory, `result-${index}.json`);
@@ -626,6 +765,12 @@ export async function runVerifyUpstreamOscal({
         fetchImpl,
         retryDelaysMs,
       );
+      try {
+        sources.set(artifact.artifactKey, JSON.parse(verifiedBytes.toString('utf8')));
+      } catch {
+        // Ein syntaktisch defektes Dokument ist ein Befund der Stufe 1 und wird
+        // von go-oscal ausgewiesen; Stufe 5 lässt es schlicht aus.
+      }
       await writeFile(inputPath, prepareGoOscalInput(verifiedBytes, artifact.artifactKey));
       await executeTool({ binaryPath, inputPath, resultPath, artifactKey: artifact.artifactKey });
       artifactResults.push(
@@ -636,16 +781,30 @@ export async function runVerifyUpstreamOscal({
       );
     }
 
-    const summary = formatVerifyUpstreamOscalSummary({
-      snapshotCommitSha: manifest.snapshotCommitSha,
+    const referenceGraph = await runReferenceGraphStage({
+      manifest,
       selection,
       artifactResults,
+      sources,
+      loadDomain,
     });
+
+    const summary = [
+      formatVerifyUpstreamOscalSummary({
+        snapshotCommitSha: manifest.snapshotCommitSha,
+        selection,
+        artifactResults,
+      }),
+      referenceGraph.summary,
+    ].join('\n\n');
     return Object.freeze({
       summary,
       selection,
       artifactResults: Object.freeze(artifactResults),
-      verificationPassed: artifactResults.every((artifact) => artifact.verificationPassed),
+      referenceGraph,
+      verificationPassed:
+        artifactResults.every((artifact) => artifact.verificationPassed) &&
+        referenceGraph.referenceGraphPassed,
     });
   } finally {
     await rm(tempDirectory, { recursive: true, force: true });

@@ -15,7 +15,11 @@ interface RegisteredWorkerListener {
 class FakeWorker {
   private readonly listeners = new Map<string, RegisteredWorkerListener[]>();
 
-  constructor(private readonly onPostMessage: (worker: FakeWorker) => void = () => {}) {}
+  private readonly onPostMessage: (worker: FakeWorker) => void;
+
+  constructor(onPostMessage: (worker: FakeWorker) => void = () => {}) {
+    this.onPostMessage = onPostMessage;
+  }
 
   readonly terminate = vi.fn();
 

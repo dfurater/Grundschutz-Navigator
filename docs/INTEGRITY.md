@@ -556,6 +556,69 @@ In diesen Fällen wird:
 
 Ein fehlendes oder nicht parsebares `catalog.json` bleibt dagegen ein harter Ladefehler für den Einstiegskatalog. Ein fehlendes `vocabularies.json` ist optional und führt zu einer App ohne Vokabular-Registry. Fehlt ein **weiterer** Katalog, bleibt der Fehler auf diesen Katalog beschränkt.
 
+## Referenzbefunde und ihre Allowlist
+
+Die Referenzprüfung (Stufe 5 des
+[Validierungsvertrags](OSCAL_VALIDATION.md#stufe-5--referenzgraph)) ist von der
+Hashprüfung getrennt: SHA-256 belegt, dass ein ausgeliefertes Artefakt seinen
+Build-Metadaten entspricht; der Referenzgraph prüft, ob die Verweise zwischen
+Artefakten tragen. Keine der beiden Prüfungen ist allein ein Herkunfts-,
+Vertrauens- oder Compliance-Nachweis.
+
+### Blockierend und nicht blockierend
+
+Ein Referenzfehler an einem `supported`-Artefakt lässt
+`npm run verify-upstream-oscal` fehlschlagen. Befunde an `preview`, `draft` und
+`blocked-by-upstream` werden in der CI-Zusammenfassung und im maschinenlesbaren
+Bericht ausgewiesen, blockieren aber nicht — sie zu verstecken wäre die
+schlechtere Alternative. Ein Artefakt außerhalb von `supported` wird in keiner
+Ausgabe als abschließend bewertet dargestellt, auch nicht bei null Befunden.
+
+Ein Befund, dessen Artefaktschlüssel keinem bekannten Lifecycle zugeordnet
+werden kann, gilt fail-closed als blockierend.
+
+### Allowlist mit Auslaufregel
+
+Ein bewusst akzeptierter Befund wird in `REFERENCE_GRAPH_ALLOWLIST` in
+[`verify-upstream-oscal.mjs`](../scripts/verify-upstream-oscal.mjs) eingetragen:
+
+```js
+{
+  signature: 'reference-graph@1|OSCAL_GRAPH_TARGET_NOT_FOUND|/catalog/groups/0/controls/1/links/0/href',
+  snapshotCommitSha: '8213e3a087976f0ba8019f2ef081924d9ce49666',
+  reason: 'Upstream gemeldet unter <Issue-Link>',
+}
+```
+
+Der Matchschlüssel ist die Diagnosesignatur (`name@version|code|path`) **und**
+der Snapshot-Commit — nicht der Artefaktschlüssel. Ein Eintrag deckt damit genau
+den Befund, den jemand geprüft hat, und nicht jeden späteren am selben Artefakt.
+
+**Ein Eintrag läuft aus, statt zu wandern.** Ändert sich der Snapshot oder der
+strukturelle Pfad des Befunds, greift er nicht mehr; der Befund wird wieder
+blockierend und der Eintrag erscheint in der Zusammenfassung unter
+„Abgelaufene Allowlist-Einträge". Abgelaufene Einträge gehören entfernt, nicht
+auf den neuen Snapshot fortgeschrieben — die erneute Prüfung ist der Zweck der
+Regel.
+
+### Recovery
+
+Blockiert ein Befund den Lauf, sind das die Wege in dieser Reihenfolge:
+
+1. **Fehler im Graphen oder in den Erwartungen**: Test ergänzen und den Code
+   korrigieren. Ein neuer Befund an einem produktiven Artefakt ist zuerst ein
+   Verdacht gegen die eigene Auswertung.
+2. **Echter Upstream-Defekt**: beim BSI melden, das Issue verlinken und den
+   Befund mit Signatur, Snapshot und Begründung in die Allowlist aufnehmen.
+   Betrifft der Defekt das Artefakt als Ganzes, ist stattdessen der Lifecycle
+   `blocked-by-upstream` das richtige Mittel (ADR-7).
+3. **Absicht des Upstreams**: Wenn die Referenz gar kein Fehler ist, gehört die
+   Regel korrigiert — nicht der Befund unterdrückt.
+
+Ein Artefakt, das Stufe 3 nicht besteht, geht nicht in den Graphen ein; ein
+Artefakt, dessen Projektion nicht ableitbar ist, wird als eigener, redigierter
+Befund gemeldet und blockiert nur bei `supported`.
+
 ## SLSA Provenance
 
 Zusätzlich zur internen Integritätsprüfung generiert `.github/workflows/deploy.yml` Build-Provenance über GitHub Artifact Attestations (`actions/attest` mit `subject-path: dist/**`). Die Attestierung wird OIDC-signiert und bei GitHub gespeichert; sie belegt, welcher Workflow-Lauf die deployten Artefakte gebaut hat.

@@ -19,6 +19,8 @@ import {
   prepareGoOscalInput,
   resolveGoOscalPlatform,
   resolveSbomOutputPath,
+  REFERENCE_GRAPH_ALLOWLIST,
+  runReferenceGraphStage,
   runVerifyUpstreamOscal,
   selectManifestOscalArtifacts,
   verifyPinnedAsset,
@@ -686,5 +688,171 @@ describe('Korpus-Orchestrierung', () => {
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }
+  });
+});
+
+describe('Stufe 5 — Referenzgraph im Korpuslauf', () => {
+  // Synthetisch wie im übrigen Korpus-Orchestrierungstest: Geprüft wird die
+  // Bindung an *einen* Snapshot, nicht an den gerade aktuellen.
+  const SNAPSHOT = 'c'.repeat(40);
+
+  function catalogSource(controlId: string, linkHref: string) {
+    return {
+      catalog: {
+        uuid: '11111111-1111-4111-8111-111111111111',
+        metadata: {
+          title: 'Fixture',
+          'last-modified': '2026-08-18T00:00:00Z',
+          version: '1.0',
+          'oscal-version': '1.1.3',
+        },
+        groups: [
+          {
+            id: 'GRP',
+            title: 'Gruppe',
+            props: [{ name: 'alt-identifier', value: 'grp' }],
+            controls: [
+              {
+                id: controlId,
+                title: 'Control',
+                props: [{ name: 'alt-identifier', value: 'ctl' }],
+                links: [{ href: linkHref, rel: 'related' }],
+              },
+            ],
+          },
+        ],
+      },
+    };
+  }
+
+  function artifact(overrides: Record<string, unknown> = {}) {
+    return {
+      artifactKey: 'catalog-fixture',
+      rootType: 'catalog',
+      oscalVersion: '1.1.3',
+      lifecycle: 'supported',
+      catalogKey: 'gspp',
+      upstreamPath: 'control_layer/fixture.json',
+      ...overrides,
+    };
+  }
+
+  async function loadDomain() {
+    const [adapters, graph, policy] = await Promise.all([
+      import('../src/adapters/oscalRootAdapters'),
+      import('../src/domain/referenceGraph'),
+      import('../src/domain/referenceGraphPolicy'),
+    ]);
+    return {
+      parseOscalDocument: adapters.parseOscalDocument,
+      buildReferenceGraph: graph.buildReferenceGraph,
+      evaluateReferenceGraph: policy.evaluateReferenceGraph,
+      formatReferenceGraphSummary: policy.formatReferenceGraphSummary,
+      toReferenceGraphReport: policy.toReferenceGraphReport,
+    };
+  }
+
+  async function runStage(input: {
+    artifacts: readonly ReturnType<typeof artifact>[];
+    sources: Map<string, unknown>;
+    results: readonly { artifactKey: string; schemaStatus: string }[];
+    allowlist?: readonly { signature: string; snapshotCommitSha: string; reason: string }[];
+  }) {
+    return runReferenceGraphStage({
+      manifest: { snapshotCommitSha: SNAPSHOT },
+      selection: { oscalArtifacts: input.artifacts },
+      artifactResults: input.results,
+      sources: input.sources,
+      loadDomain,
+      ...(input.allowlist ? { allowlist: input.allowlist } : {}),
+    });
+  }
+
+  it('lässt einen Referenzfehler an einem supported-Artefakt fehlschlagen', async () => {
+    const stage = await runStage({
+      artifacts: [artifact()],
+      sources: new Map([['catalog-fixture', catalogSource('C.1', '#C.99')]]),
+      results: [{ artifactKey: 'catalog-fixture', schemaStatus: 'passed' }],
+    });
+
+    expect(stage.referenceGraphPassed).toBe(false);
+    expect(stage.report.blocking).toHaveLength(1);
+    expect(stage.summary).toContain('OSCAL_GRAPH_TARGET_NOT_FOUND');
+  });
+
+  it('deckt denselben Befund über Signatur und Snapshot ab, aber nicht über einen anderen Snapshot', async () => {
+    const sources = new Map([['catalog-fixture', catalogSource('C.1', '#C.99')]]);
+    const results = [{ artifactKey: 'catalog-fixture', schemaStatus: 'passed' }];
+    const uncovered = await runStage({ artifacts: [artifact()], sources, results });
+    const signature = uncovered.report.blocking[0].signature;
+
+    const covered = await runStage({
+      artifacts: [artifact()],
+      sources,
+      results,
+      allowlist: [{ signature, snapshotCommitSha: SNAPSHOT, reason: 'upstream gemeldet' }],
+    });
+    expect(covered.referenceGraphPassed).toBe(true);
+    expect(covered.report.allowed).toHaveLength(1);
+
+    const expired = await runStage({
+      artifacts: [artifact()],
+      sources,
+      results,
+      allowlist: [{ signature, snapshotCommitSha: 'd'.repeat(40), reason: 'alter Snapshot' }],
+    });
+    expect(expired.referenceGraphPassed).toBe(false);
+    expect(expired.report.expiredAllowlistEntries).toHaveLength(1);
+  });
+
+  it('nimmt ein Artefakt ohne bestandene Stufe 3 nicht in den Graphen auf', async () => {
+    const stage = await runStage({
+      artifacts: [artifact({ lifecycle: 'blocked-by-upstream' })],
+      sources: new Map([['catalog-fixture', catalogSource('C.1', '#C.99')]]),
+      results: [{ artifactKey: 'catalog-fixture', schemaStatus: 'failed' }],
+    });
+
+    expect(stage.report.artifacts).toHaveLength(0);
+    expect(stage.referenceGraphPassed).toBe(true);
+  });
+
+  it('meldet ein nicht ableitbares Artefakt redigiert und blockiert nur bei supported', async () => {
+    const undeducible = { catalog: { metadata: { 'oscal-version': '1.1.3' } } };
+
+    const blocking = await runStage({
+      artifacts: [artifact()],
+      sources: new Map([['catalog-fixture', undeducible]]),
+      results: [{ artifactKey: 'catalog-fixture', schemaStatus: 'passed' }],
+    });
+    expect(blocking.referenceGraphPassed).toBe(false);
+    expect(blocking.parseFailures).toEqual([
+      { artifactKey: 'catalog-fixture', lifecycle: 'supported' },
+    ]);
+    expect(blocking.summary).not.toMatch(/alt-identifier|uuid|Invalid OSCAL/i);
+
+    const tolerated = await runStage({
+      artifacts: [artifact({ lifecycle: 'preview' })],
+      sources: new Map([['catalog-fixture', undeducible]]),
+      results: [{ artifactKey: 'catalog-fixture', schemaStatus: 'passed' }],
+    });
+    expect(tolerated.referenceGraphPassed).toBe(true);
+  });
+
+  it('bindet keine relativen oder externen Ziele und weist sie als nicht bewertbar aus', async () => {
+    const stage = await runStage({
+      artifacts: [artifact({ lifecycle: 'preview' })],
+      sources: new Map([
+        ['catalog-fixture', catalogSource('C.1', 'anderer-katalog.json')],
+      ]),
+      results: [{ artifactKey: 'catalog-fixture', schemaStatus: 'passed' }],
+    });
+
+    expect(stage.report.edges.notEvaluable).toBe(1);
+    expect(stage.report.edges.unresolvable).toBe(0);
+    expect(stage.summary).toContain('status=nicht abschliessend bewertet');
+  });
+
+  it('hält die Allowlist der CI-Lane leer, solange kein Befund akzeptiert ist', () => {
+    expect(REFERENCE_GRAPH_ALLOWLIST).toEqual([]);
   });
 });
