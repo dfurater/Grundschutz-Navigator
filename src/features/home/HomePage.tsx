@@ -96,26 +96,43 @@ export function HomePage() {
           </div>
 
           <div className="border border-[var(--color-border-default)] rounded-[var(--radius-md)] bg-[var(--color-surface-base)] divide-y divide-[var(--color-border-subtle)]">
-            {catalog.practices.map((practice) => (
-              <Link
-                key={practice.id}
-                to={buildGroupUrl(catalog.catalogKey, practice.id)}
-                className="grid grid-cols-[3.5rem_1fr] sm:grid-cols-[3.5rem_1fr_4.5rem_4rem] items-baseline gap-x-3 px-4 py-2.5 hover:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus-ring)] transition-colors"
-              >
-                <span className="catalog-reference-text text-xs text-[var(--color-accent-default)]">
-                  {practice.label}
-                </span>
-                <span className="type-object-title min-w-0 truncate">
-                  {practice.title}
-                </span>
-                <span className="type-meta text-right text-[var(--color-text-muted)] tabular-nums hidden sm:block">
-                  {practice.topics.length}
-                </span>
-                <span className="type-meta text-right text-[var(--color-text-muted)] tabular-nums hidden sm:block">
-                  {practice.controlCount}
-                </span>
-              </Link>
-            ))}
+            {catalog.practices.map((practice, index) => {
+              const cells = (
+                <>
+                  <span className="catalog-reference-text text-xs text-[var(--color-accent-default)]">
+                    {practice.label}
+                  </span>
+                  <span className="type-object-title min-w-0 truncate">
+                    {practice.title}
+                  </span>
+                  <span className="type-meta text-right text-[var(--color-text-muted)] tabular-nums hidden sm:block">
+                    {practice.topics.length}
+                  </span>
+                  <span className="type-meta text-right text-[var(--color-text-muted)] tabular-nums hidden sm:block">
+                    {practice.controlCount}
+                  </span>
+                </>
+              );
+              const rowClass =
+                'grid grid-cols-[3.5rem_1fr] sm:grid-cols-[3.5rem_1fr_4.5rem_4rem] items-baseline gap-x-3 px-4 py-2.5';
+
+              // Eine Gruppe ohne `id` ist nicht adressierbar (OSCAL 1.1.3:
+              // `group.id` ist optional). Sie bleibt vollständig sichtbar,
+              // erzeugt aber kein Navigationsziel (GSPP-242).
+              return practice.id === undefined ? (
+                <div key={`ohne-id-${index}`} className={rowClass}>
+                  {cells}
+                </div>
+              ) : (
+                <Link
+                  key={practice.id}
+                  to={buildGroupUrl(catalog.catalogKey, practice.id)}
+                  className={`${rowClass} hover:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus-ring)] transition-colors`}
+                >
+                  {cells}
+                </Link>
+              );
+            })}
           </div>
         </section>
       )}

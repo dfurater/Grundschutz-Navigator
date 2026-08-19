@@ -352,8 +352,16 @@ Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funkt
       {
         "artifactKey": "catalog-lieferkette",
         "rootType": "catalog",
-        "lifecycle": "preview",
+        "lifecycle": "supported",
         "path": "control_layer/Lieferkettensicherheit/Lieferkettensicherheit-resolved_catalog.json",
+        "gitBlobSha": "<git-blob-sha>",
+        "contentSha256": "<sha256>"
+      },
+      {
+        "artifactKey": "catalog-wlan",
+        "rootType": "catalog",
+        "lifecycle": "preview",
+        "path": "control_layer/WLAN/WLAN-resolved_catalog.json",
         "gitBlobSha": "<git-blob-sha>",
         "contentSha256": "<sha256>"
       }

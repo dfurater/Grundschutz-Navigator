@@ -22,7 +22,7 @@
     {
       "artifactKey": "catalog-lieferkette",
       "rootType": "catalog",
-      "lifecycle": "preview",
+      "lifecycle": "supported",
       "path": "control_layer/Lieferkettensicherheit/Lieferkettensicherheit-resolved_catalog.json",
       "gitBlobSha": "2e5c709771ab87d70986b564d9db03daf4488806",
       "contentSha256": "7eb8fe506ddfdf5cf0e54124ca6b01e922c4e4a935c2bec8c90ab132c63140e5"
@@ -228,5 +228,5 @@
       "contentSha256": "08c7ab6bb442a87eba4e407d272fecd179bc61c47c2419843d7f4cfcd4077235"
     }
   ],
-  "signatureSha256": "89d95dce93dc9610477f74c4b2ef9c6bb0cf5cb27bdc600a3552332913239773"
+  "signatureSha256": "c2c948051fd39984ebdb3cc5aebf16c2670998884dcff0267aba076de96a074b"
 }

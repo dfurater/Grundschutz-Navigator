@@ -333,6 +333,58 @@ Projektionen des **aktiven** Katalogs — unveränderte Zugriffsform:
 - `loading` — Ladezustand
 - `error` — Fehlermeldung
 
+## Anwenderkataloge sind fachlich getrennt
+
+Die App liefert mehrere BSI-Anwenderkataloge aus. Jeder ist ein **eigenständiges
+OSCAL-Dokument** mit eigener `uuid` — kein Ausschnitt und keine Variante eines
+anderen. Ausgeliefert wird, was im Quellregister `lifecycle: 'supported'` trägt;
+die Lifecycle-Promotion des Anwenderkatalogs Lieferkettensicherheit erfolgte in
+[GSPP-242](https://linear.app/grundschutz-plus-plus/issue/GSPP-242).
+
+Daraus folgen drei Regeln, die der gesamte Katalogpfad einhält:
+
+**1. Gleiche Control-IDs sind erwartbar, nicht fehlerhaft.** `control/@id` trägt
+im OSCAL-Catalog-Metaschema `identifier-uniqueness="local"` und ist ausdrücklich
+nur innerhalb seines Katalogs eindeutig. Zwei aufgelöste Kataloge aus demselben
+Quellbestand teilen sich deshalb regelmäßig Control-IDs — am gepinnten Snapshot
+kollidieren *sämtliche* Controls des Lieferkettenkatalogs mit dem
+Grundschutz++-Katalog. Eine Kollision wird **nie** als Fehler gemeldet.
+Unterschieden wird ausschließlich über den `catalogKey`: Lookups laufen über
+`ControlRef = { catalogKey, controlId }` (`src/domain/controlRef.ts`), jeder
+Katalog hält seine eigene `controlsById`-Map, und es findet an keiner Stelle
+eine Zusammenführung oder katalogübergreifende Verlinkung statt.
+
+**2. Keine gemeinsamen Props oder Taxonomien.** `prop.ns` ist im Metaschema
+optional, und OSCAL garantiert zwischen zwei Katalogen weder dieselben `props`
+noch dieselben Namensräume. Der vorgefundene `ns` wird unverändert übernommen —
+einschließlich seines Fehlens; es wird kein projekteigener Namensraum vergeben
+und kein fremder normalisiert. Real belegt: der Lieferkettenkatalog führt nur
+`alt-identifier` (ohne `ns`), `sec_level`, `effort_level` und `tags`. Die
+Schutzziel-Props (`confidentiality`, `integrity`, `availability`,
+`authenticity`), `threats` und `label` fehlen dort vollständig. Sie werden
+deshalb weder angezeigt noch als fehlend bemängelt, und die Facettenzählung
+erzeugt aus ihrer Abwesenheit keine leeren Filtereinträge
+(`src/hooks/useFilteredControls.ts`).
+
+**3. Optionale Identifikatoren erzwingen kein Routing.** `group.id` ist in OSCAL
+1.1.3 optional, `part` verlangt nur `name`, und ein Katalog ganz ohne `groups`
+und `controls` ist schema-valide. Eine Gruppe ohne `id` bleibt vollständig
+sichtbar — Titel, Badge, Untergruppen und Controls —, ist aber **nicht
+adressierbar**: sie erzeugt weder Route noch Anker, und ein aktiver Gruppen-
+oder Praktik-Filter trifft sie nie. Es wird kein Ersatzbezeichner erfunden.
+Ein leerer Katalog erzeugt einen Empty State, keinen Fehler.
+
+Die Vokabular-Membership wird aus **allen** ausgelieferten Katalogen abgeleitet
+(`scripts/fetch-catalog.mjs`), damit ein Nicht-Einstiegskatalog sein Vokabular
+nicht verliert; alle Namensräume stammen aus demselben Snapshot und durchlaufen
+dieselbe Hash-Prüfung. Die Topic- und Practice-Coverage-Baselines
+(`scripts/taxonomy-coverage.mjs`) bleiben dagegen bewusst auf den
+Einstiegskatalog bezogen: Sie fordern `orphanCsvEntryCount === 0`, also die
+exakte wechselseitige Entsprechung von CSV und Katalog. Für einen
+Teilmengenkatalog wie Lieferkettensicherheit ist diese Bedingung strukturell
+nicht erfüllbar — er nutzt 23 der 140 Themen — und würde einen korrekten
+Bestand fälschlich als Drift melden.
+
 ## Routing
 
 Die Anwendung verwendet React Router mit `BrowserRouter` und pfadbasierten URLs. Das `basename` wird aus `import.meta.env.BASE_URL` abgeleitet (`src/main.tsx`), sodass die App auch unter dem GitHub-Pages-Unterpfad `/Grundschutz-Navigator/` funktioniert. Für Deep Links kopiert das Vite-Plugin `github-pages-spa-fallback` (`vite.config.ts`) beim Build `index.html` nach `404.html`, sodass GitHub Pages unbekannte Pfade an die SPA durchreicht.

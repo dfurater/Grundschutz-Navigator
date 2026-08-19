@@ -63,8 +63,8 @@ export function controlToCSVRow(control: Control): string {
   const fields = [
     control.id,
     control.parentId ?? '',
-    control.practiceId,
-    control.groupId,
+    control.practiceId ?? '',
+    control.groupId ?? '',
     control.title,
     control.statement,
     control.guidance,

@@ -66,15 +66,19 @@ describe('sourceRegistry', () => {
     expect(ENTRY_CATALOG.entryCatalog).toBe(true);
   });
 
-  it('ships exactly one catalog today, but no longer caps the number', () => {
-    expect(SUPPORTED_CATALOG_KEYS).toEqual(['gspp']);
-    expect(SUPPORTED_CATALOGS.map((entry) => entry.artifactKey)).toEqual(['catalog-gspp']);
+  it('ships the entry catalog and the promoted Lieferkette catalog (GSPP-242)', () => {
+    expect(SUPPORTED_CATALOG_KEYS).toEqual(['gspp', 'lieferkette']);
+    expect(SUPPORTED_CATALOGS.map((entry) => entry.artifactKey)).toEqual([
+      'catalog-gspp',
+      'catalog-lieferkette',
+    ]);
   });
 
-  it('limits the supported lifecycle exactly to the Grundschutz++ catalog and the namespace collection', () => {
+  it('limits the supported lifecycle exactly to both shipped catalogs and the namespace collection', () => {
     const supported = listArtifacts({ lifecycle: 'supported' });
     expect(supported.map((entry) => entry.artifactKey).sort()).toEqual([
       'catalog-gspp',
+      'catalog-lieferkette',
       'namespaces-bsi',
     ]);
   });
@@ -225,7 +229,8 @@ describe('sourceRegistry', () => {
 
   it('exposes catalog entries by key', () => {
     expect(getCatalogByKey('gspp')?.artifactKey).toBe('catalog-gspp');
-    expect(getCatalogByKey('lieferkette')?.lifecycle).toBe('preview');
+    expect(getCatalogByKey('lieferkette')?.lifecycle).toBe('supported');
+    expect(getCatalogByKey('wlan')?.lifecycle).toBe('preview');
     expect(getCatalogByKey('unbekannt')).toBeNull();
   });
 
@@ -423,8 +428,13 @@ describe('sourceRegistry', () => {
       ]);
     });
 
-    it('keeps the single-catalog file set unchanged', () => {
-      expect(listCatalogArtifactFileNames()).toEqual(['catalog.json', 'catalog-metadata.json']);
+    it('derives the real shipped file set from the registry, entry catalog unchanged', () => {
+      expect(listCatalogArtifactFileNames()).toEqual([
+        'catalog.json',
+        'catalog-metadata.json',
+        'catalog-lieferkette.json',
+        'catalog-lieferkette-metadata.json',
+      ]);
     });
 
     it('refuses to derive file names for entries that are not shipped catalogs', () => {

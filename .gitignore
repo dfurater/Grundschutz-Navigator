@@ -32,11 +32,7 @@ coverage/
 /src/test/browser/__screenshots__/
 
 # Catalog data (fetched at build time, never committed)
-public/data/catalog.json
-public/data/catalog-metadata.json
-public/data/vocabularies.json
-public/data/vocabularies-metadata.json
-public/data/upstream-sources-metadata.json
+public/data/
 
 # Environment files with secrets
 .env
