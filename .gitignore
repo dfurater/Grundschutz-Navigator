@@ -39,6 +39,9 @@ public/data/
 .env.local
 .env.*.local
 
+# Interne Produktvision (nicht im öffentlichen Repo)
+/docs/userStories/
+
 # Claude local settings (machine-specific paths)
 AGENTS.md
 CLAUDE.md
