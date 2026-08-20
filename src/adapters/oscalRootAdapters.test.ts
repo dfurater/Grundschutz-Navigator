@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   catalogRootAdapter,
+  componentDefinitionRootAdapter,
   getOscalRootAdapter,
   listAdaptedOscalRootTypes,
+  mappingCollectionRootAdapter,
   parseOscalDocument,
+  profileRootAdapter,
 } from './oscalRootAdapters';
 import { ROOT_DISPATCH_DIAGNOSTIC_CODES } from './oscalRootDispatch';
 import type { Catalog, OscalDocumentContext } from '@/domain/models';
@@ -49,9 +52,17 @@ function makeCatalogDocument() {
 }
 
 describe('Adapter-Registrierung', () => {
-  it('führt heute genau den Katalogadapter', () => {
-    expect(listAdaptedOscalRootTypes()).toEqual(['catalog']);
+  it('führt heute den Katalog-, Component-Definition-, Profile- und Mapping-Adapter', () => {
+    expect(listAdaptedOscalRootTypes()).toEqual([
+      'catalog',
+      'component-definition',
+      'profile',
+      'mapping-collection',
+    ]);
     expect(getOscalRootAdapter('catalog')).toBe(catalogRootAdapter);
+    expect(getOscalRootAdapter('component-definition')).toBe(componentDefinitionRootAdapter);
+    expect(getOscalRootAdapter('profile')).toBe(profileRootAdapter);
+    expect(getOscalRootAdapter('mapping-collection')).toBe(mappingCollectionRootAdapter);
   });
 
   it('benennt für jeden registrierten Root-Typ einen Modul-Einstiegspunkt', () => {
@@ -61,12 +72,14 @@ describe('Adapter-Registrierung', () => {
     }
   });
 
-  it('meldet für die sieben noch nicht adaptierten Root-Typen keinen Adapter', () => {
+  it('meldet für die vier noch nicht adaptierten Root-Typen keinen Adapter', () => {
     const unadapted = OSCAL_ROOT_KEYS.filter(
       (rootKey) => !listAdaptedOscalRootTypes().includes(rootKey),
     );
 
-    expect(unadapted).toHaveLength(OSCAL_ROOT_KEYS.length - 1);
+    // Die Zahl steht bewusst ausgeschrieben: Ein neuer Modelladapter soll
+    // diesen Test rot machen und bewusst nachgezogen werden.
+    expect(unadapted).toHaveLength(4);
     for (const rootKey of unadapted) {
       expect(getOscalRootAdapter(rootKey)).toBeNull();
     }
@@ -85,12 +98,14 @@ describe('parseOscalDocument', () => {
   });
 
   it('unterscheidet „bekannt, aber nicht unterstützt" von „unbekannt"', () => {
+    // Seit GSPP-240 ist `profile` adaptiert; als „bekannt, aber ohne Adapter"
+    // dient deshalb ein Root aus den fünf verbliebenen.
     const known = parseOscalDocument(
       {
-        profile: {
-          uuid: 'uuid-profile',
+        'system-security-plan': {
+          uuid: 'uuid-ssp',
           metadata: {
-            title: 'Profil',
+            title: 'Sicherheitsplan',
             'last-modified': '2026-08-06T00:00:00Z',
             version: '1',
             'oscal-version': '1.1.3',
@@ -109,9 +124,9 @@ describe('parseOscalDocument', () => {
     if (known.ok || unknown.ok) return;
 
     expect(known.diagnostic.code).toBe(ROOT_DISPATCH_DIAGNOSTIC_CODES.ROOT_TYPE_UNSUPPORTED);
-    expect(known.diagnostic.artifact.rootType).toBe('profile');
+    expect(known.diagnostic.artifact.rootType).toBe('system-security-plan');
     expect(known.diagnostic.artifact.oscalVersion).toBe('1.1.3');
-    expect(known.diagnostic.path).toBe('/profile');
+    expect(known.diagnostic.path).toBe('/system-security-plan');
 
     expect(unknown.diagnostic.code).toBe(VERSION_MATRIX_DIAGNOSTIC_CODES.ROOT_TYPE_UNKNOWN);
     expect(unknown.diagnostic.code).not.toBe(known.diagnostic.code);

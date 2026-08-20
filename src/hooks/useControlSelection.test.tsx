@@ -34,7 +34,7 @@ describe('useControlSelection', () => {
   });
 
   it('returns an empty selection synchronously when the scope changes', () => {
-    // CatalogBrowser passes the catalogKey alone as scopeId (GRU-267): the
+    // CatalogBrowser passes the catalogKey alone as scopeId (GSPP-267): the
     // selection must reset on an actual catalog switch, but callers are
     // responsible for keeping scopeId stable across in-catalog navigation
     // (topic/practice changes, cross-reference jumps) so it is preserved.

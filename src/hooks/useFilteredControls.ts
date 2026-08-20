@@ -66,10 +66,12 @@ function matchesFilter(
   control: Control,
   filters: ControlFilters,
 ): boolean {
-  // Practice filter
+  // Practice filter — ein Control aus einer Gruppe ohne `id` ist über keine
+  // Praktik-Facette auswählbar und fällt bei aktivem Filter heraus (GSPP-242).
   if (
     filters.practiceIds.length > 0 &&
-    !filters.practiceIds.includes(control.practiceId)
+    (control.practiceId === undefined ||
+      !filters.practiceIds.includes(control.practiceId))
   ) {
     return false;
   }
@@ -77,7 +79,7 @@ function matchesFilter(
   // Group/Topic filter
   if (
     filters.groupIds.length > 0 &&
-    !filters.groupIds.includes(control.groupId)
+    (control.groupId === undefined || !filters.groupIds.includes(control.groupId))
   ) {
     return false;
   }

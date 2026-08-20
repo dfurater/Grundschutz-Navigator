@@ -73,9 +73,23 @@ describe('parseCatalogDocument — Quellgraph (§1)', () => {
 
   it('weist einen strukturell ungültigen Katalogkörper ab', () => {
     const source = makeLosslessCatalogSource() as { catalog: Record<string, unknown> };
-    delete source.catalog.groups;
+    delete source.catalog.uuid;
 
     expect(() => parseCatalogDocument(source, context)).toThrow('Invalid OSCAL catalog');
+  });
+
+  // `groups` ist in OSCAL 1.1.3 optional: `catalog` verlangt nur `uuid` und
+  // `metadata`. Ein Katalog ohne Gruppen ist schema-valide und muss einen
+  // Empty State erzeugen statt eines Fehlers (GSPP-242).
+  it('trägt einen Katalog ohne groups als leeren Katalog statt als Fehler', () => {
+    const source = makeLosslessCatalogSource() as { catalog: Record<string, unknown> };
+    delete source.catalog.groups;
+
+    const document = parseCatalogDocument(source, context);
+
+    expect(document.view.practices).toEqual([]);
+    expect(document.view.controls).toEqual([]);
+    expect(document.view.totalControls).toBe(0);
   });
 });
 

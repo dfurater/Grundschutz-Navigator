@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { buildUpstreamManifest } from './upstream-artifacts.mjs';
+import { SOURCE_REGISTRY } from '../src/domain/sourceRegistry.mjs';
 import {
   GO_OSCAL_EXECUTION_TIMEOUT_MS,
   GO_OSCAL_RELEASE,
@@ -18,6 +19,8 @@ import {
   prepareGoOscalInput,
   resolveGoOscalPlatform,
   resolveSbomOutputPath,
+  REFERENCE_GRAPH_ALLOWLIST,
+  runReferenceGraphStage,
   runVerifyUpstreamOscal,
   selectManifestOscalArtifacts,
   verifyPinnedAsset,
@@ -249,10 +252,10 @@ describe('manifestgestützter OSCAL-Korpus', () => {
     readFileSync(resolve(process.cwd(), 'upstream-manifest.json'), 'utf8'),
   );
 
-  it('prüft alle 16 OSCAL-Artefakte und überspringt nur die 13 Vokabulare', () => {
+  it('prüft alle 15 OSCAL-Artefakte und überspringt nur die 13 Vokabulare', () => {
     const selection = selectManifestOscalArtifacts(manifest);
 
-    expect(selection.oscalArtifacts).toHaveLength(16);
+    expect(selection.oscalArtifacts).toHaveLength(15);
     expect(selection.vocabularyArtifacts).toHaveLength(13);
     expect(selection.oscalArtifacts.map((artifact) => artifact.artifactKey)).toContain(
       'mapping-iso27001-annex-a-zu-gspp',
@@ -264,13 +267,13 @@ describe('manifestgestützter OSCAL-Korpus', () => {
 
     expect(versionCoverage).toEqual({
       '1.1.2': 3,
-      '1.1.3': 9,
+      '1.1.3': 8,
       '1.2.1': 1,
       '1.2.2': 3,
     });
   });
 
-  it('führt vier gesperrte Artefakte mit inverser Erwartung im vollständigen Korpus', () => {
+  it('führt drei gesperrte Artefakte mit inverser Erwartung im vollständigen Korpus', () => {
     const { oscalArtifacts } = selectManifestOscalArtifacts(manifest);
 
     expect(
@@ -279,11 +282,101 @@ describe('manifestgestützter OSCAL-Korpus', () => {
         .map((artifact) => artifact.artifactKey)
         .sort(),
     ).toEqual([
-      'catalog-iso27001-annex-a',
       'component-ga-lotse-grundmodul',
       'component-lieferkette',
       'mapping-iso27001-annex-a-zu-gspp',
     ]);
+  });
+
+  it('ADR-7-Nachtrag: meldet catalog-iso27001-annex-a als aus dem BSI-Tree entferntes gesperrtes Artefakt', () => {
+    const { missingBlockedArtifacts } = selectManifestOscalArtifacts(manifest);
+    // R4-keine-doppelten-registerfakten: Pfad aus SOURCE_REGISTRY ableiten
+    // statt hier erneut zu deklarieren.
+    const registryEntry = SOURCE_REGISTRY.find(
+      (entry) => entry.artifactKey === 'catalog-iso27001-annex-a',
+    );
+    if (!registryEntry) {
+      throw new Error('SOURCE_REGISTRY enthält keinen Eintrag für catalog-iso27001-annex-a');
+    }
+
+    expect(missingBlockedArtifacts).toEqual([
+      {
+        artifactKey: registryEntry.artifactKey,
+        upstreamPath: registryEntry.upstreamPath,
+      },
+    ]);
+  });
+});
+
+describe('ADR-7-Nachtrag: gesperrtes Artefakt vollständig aus dem Upstream-Tree entfernt', () => {
+  function sha256(bytes: Buffer) {
+    return createHash('sha256').update(bytes).digest('hex');
+  }
+
+  function gitBlobSha(bytes: Buffer) {
+    return createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+  }
+
+  const document = Buffer.from('{"catalog":{"metadata":{"oscal-version":"1.1.3"}}}');
+  // R4-keine-doppelten-registerfakten: reale Registry-Einträge verwenden statt
+  // Pfad/Lifecycle/Version hier erneut zu deklarieren.
+  const oscalEntries = SOURCE_REGISTRY.filter((entry) => entry.kind === 'oscal');
+  const blockedRegistryEntry = oscalEntries.find(
+    (entry) => entry.lifecycle === 'blocked-by-upstream',
+  );
+  const presentRegistryEntry = oscalEntries.find(
+    (entry) => entry.lifecycle !== 'blocked-by-upstream' && entry.artifactKey !== blockedRegistryEntry?.artifactKey,
+  );
+  const secondMissingNonBlockedEntry = oscalEntries.find(
+    (entry) =>
+      entry.lifecycle !== 'blocked-by-upstream' &&
+      entry.artifactKey !== presentRegistryEntry?.artifactKey &&
+      entry.artifactKey !== blockedRegistryEntry?.artifactKey,
+  );
+  if (!blockedRegistryEntry || !presentRegistryEntry || !secondMissingNonBlockedEntry) {
+    throw new Error(
+      'Fixture braucht ein gesperrtes und mindestens zwei nicht gesperrte OSCAL-Registry-Einträge',
+    );
+  }
+  const manifestWithoutBlockedFile = buildUpstreamManifest({
+    repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
+    snapshotCommitSha: 'a'.repeat(40),
+    files: [
+      {
+        artifactKey: presentRegistryEntry.artifactKey,
+        rootType: presentRegistryEntry.expectedRootType,
+        lifecycle: presentRegistryEntry.lifecycle,
+        path: presentRegistryEntry.upstreamPath,
+        contentSha256: sha256(document),
+        gitBlobSha: gitBlobSha(document),
+      },
+    ],
+  });
+
+  it('überspringt ein gesperrtes Artefakt ohne Manifesteintrag, statt einen Mismatch zu werfen', () => {
+    const selection = selectManifestOscalArtifacts(manifestWithoutBlockedFile, [
+      presentRegistryEntry,
+      blockedRegistryEntry,
+    ]);
+
+    expect(selection.oscalArtifacts.map((artifact) => artifact.artifactKey)).toEqual([
+      presentRegistryEntry.artifactKey,
+    ]);
+    expect(selection.missingBlockedArtifacts).toEqual([
+      {
+        artifactKey: blockedRegistryEntry.artifactKey,
+        upstreamPath: blockedRegistryEntry.upstreamPath,
+      },
+    ]);
+  });
+
+  it('lehnt weiterhin ein nicht gesperrtes Artefakt ohne Manifesteintrag fail-closed ab', () => {
+    expect(() =>
+      selectManifestOscalArtifacts(manifestWithoutBlockedFile, [
+        presentRegistryEntry,
+        secondMissingNonBlockedEntry,
+      ]),
+    ).toThrow('Manifest und OSCAL-Quellregister stimmen nicht überein');
   });
 });
 
@@ -595,5 +688,171 @@ describe('Korpus-Orchestrierung', () => {
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }
+  });
+});
+
+describe('Stufe 5 — Referenzgraph im Korpuslauf', () => {
+  // Synthetisch wie im übrigen Korpus-Orchestrierungstest: Geprüft wird die
+  // Bindung an *einen* Snapshot, nicht an den gerade aktuellen.
+  const SNAPSHOT = 'c'.repeat(40);
+
+  function catalogSource(controlId: string, linkHref: string) {
+    return {
+      catalog: {
+        uuid: '11111111-1111-4111-8111-111111111111',
+        metadata: {
+          title: 'Fixture',
+          'last-modified': '2026-08-18T00:00:00Z',
+          version: '1.0',
+          'oscal-version': '1.1.3',
+        },
+        groups: [
+          {
+            id: 'GRP',
+            title: 'Gruppe',
+            props: [{ name: 'alt-identifier', value: 'grp' }],
+            controls: [
+              {
+                id: controlId,
+                title: 'Control',
+                props: [{ name: 'alt-identifier', value: 'ctl' }],
+                links: [{ href: linkHref, rel: 'related' }],
+              },
+            ],
+          },
+        ],
+      },
+    };
+  }
+
+  function artifact(overrides: Record<string, unknown> = {}) {
+    return {
+      artifactKey: 'catalog-fixture',
+      rootType: 'catalog',
+      oscalVersion: '1.1.3',
+      lifecycle: 'supported',
+      catalogKey: 'gspp',
+      upstreamPath: 'control_layer/fixture.json',
+      ...overrides,
+    };
+  }
+
+  async function loadDomain() {
+    const [adapters, graph, policy] = await Promise.all([
+      import('../src/adapters/oscalRootAdapters'),
+      import('../src/domain/referenceGraph'),
+      import('../src/domain/referenceGraphPolicy'),
+    ]);
+    return {
+      parseOscalDocument: adapters.parseOscalDocument,
+      buildReferenceGraph: graph.buildReferenceGraph,
+      evaluateReferenceGraph: policy.evaluateReferenceGraph,
+      formatReferenceGraphSummary: policy.formatReferenceGraphSummary,
+      toReferenceGraphReport: policy.toReferenceGraphReport,
+    };
+  }
+
+  async function runStage(input: {
+    artifacts: readonly ReturnType<typeof artifact>[];
+    sources: Map<string, unknown>;
+    results: readonly { artifactKey: string; schemaStatus: string }[];
+    allowlist?: readonly { signature: string; snapshotCommitSha: string; reason: string }[];
+  }) {
+    return runReferenceGraphStage({
+      manifest: { snapshotCommitSha: SNAPSHOT },
+      selection: { oscalArtifacts: input.artifacts },
+      artifactResults: input.results,
+      sources: input.sources,
+      loadDomain,
+      ...(input.allowlist ? { allowlist: input.allowlist } : {}),
+    });
+  }
+
+  it('lässt einen Referenzfehler an einem supported-Artefakt fehlschlagen', async () => {
+    const stage = await runStage({
+      artifacts: [artifact()],
+      sources: new Map([['catalog-fixture', catalogSource('C.1', '#C.99')]]),
+      results: [{ artifactKey: 'catalog-fixture', schemaStatus: 'passed' }],
+    });
+
+    expect(stage.referenceGraphPassed).toBe(false);
+    expect(stage.report.blocking).toHaveLength(1);
+    expect(stage.summary).toContain('OSCAL_GRAPH_TARGET_NOT_FOUND');
+  });
+
+  it('deckt denselben Befund über Signatur und Snapshot ab, aber nicht über einen anderen Snapshot', async () => {
+    const sources = new Map([['catalog-fixture', catalogSource('C.1', '#C.99')]]);
+    const results = [{ artifactKey: 'catalog-fixture', schemaStatus: 'passed' }];
+    const uncovered = await runStage({ artifacts: [artifact()], sources, results });
+    const signature = uncovered.report.blocking[0].signature;
+
+    const covered = await runStage({
+      artifacts: [artifact()],
+      sources,
+      results,
+      allowlist: [{ signature, snapshotCommitSha: SNAPSHOT, reason: 'upstream gemeldet' }],
+    });
+    expect(covered.referenceGraphPassed).toBe(true);
+    expect(covered.report.allowed).toHaveLength(1);
+
+    const expired = await runStage({
+      artifacts: [artifact()],
+      sources,
+      results,
+      allowlist: [{ signature, snapshotCommitSha: 'd'.repeat(40), reason: 'alter Snapshot' }],
+    });
+    expect(expired.referenceGraphPassed).toBe(false);
+    expect(expired.report.expiredAllowlistEntries).toHaveLength(1);
+  });
+
+  it('nimmt ein Artefakt ohne bestandene Stufe 3 nicht in den Graphen auf', async () => {
+    const stage = await runStage({
+      artifacts: [artifact({ lifecycle: 'blocked-by-upstream' })],
+      sources: new Map([['catalog-fixture', catalogSource('C.1', '#C.99')]]),
+      results: [{ artifactKey: 'catalog-fixture', schemaStatus: 'failed' }],
+    });
+
+    expect(stage.report.artifacts).toHaveLength(0);
+    expect(stage.referenceGraphPassed).toBe(true);
+  });
+
+  it('meldet ein nicht ableitbares Artefakt redigiert und blockiert nur bei supported', async () => {
+    const undeducible = { catalog: { metadata: { 'oscal-version': '1.1.3' } } };
+
+    const blocking = await runStage({
+      artifacts: [artifact()],
+      sources: new Map([['catalog-fixture', undeducible]]),
+      results: [{ artifactKey: 'catalog-fixture', schemaStatus: 'passed' }],
+    });
+    expect(blocking.referenceGraphPassed).toBe(false);
+    expect(blocking.parseFailures).toEqual([
+      { artifactKey: 'catalog-fixture', lifecycle: 'supported' },
+    ]);
+    expect(blocking.summary).not.toMatch(/alt-identifier|uuid|Invalid OSCAL/i);
+
+    const tolerated = await runStage({
+      artifacts: [artifact({ lifecycle: 'preview' })],
+      sources: new Map([['catalog-fixture', undeducible]]),
+      results: [{ artifactKey: 'catalog-fixture', schemaStatus: 'passed' }],
+    });
+    expect(tolerated.referenceGraphPassed).toBe(true);
+  });
+
+  it('bindet keine relativen oder externen Ziele und weist sie als nicht bewertbar aus', async () => {
+    const stage = await runStage({
+      artifacts: [artifact({ lifecycle: 'preview' })],
+      sources: new Map([
+        ['catalog-fixture', catalogSource('C.1', 'anderer-katalog.json')],
+      ]),
+      results: [{ artifactKey: 'catalog-fixture', schemaStatus: 'passed' }],
+    });
+
+    expect(stage.report.edges.notEvaluable).toBe(1);
+    expect(stage.report.edges.unresolvable).toBe(0);
+    expect(stage.summary).toContain('status=nicht abschliessend bewertet');
+  });
+
+  it('hält die Allowlist der CI-Lane leer, solange kein Befund akzeptiert ist', () => {
+    expect(REFERENCE_GRAPH_ALLOWLIST).toEqual([]);
   });
 });

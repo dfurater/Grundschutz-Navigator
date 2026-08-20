@@ -38,7 +38,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { getHeapStatistics, setFlagsFromString } from 'node:v8';
 import { runInNewContext } from 'node:vm';
 import { parseCatalogDocument } from './oscalDocument';
-import { SUPPORTED_CATALOG_KEY } from '@/domain/sourceRegistry';
+import { ENTRY_CATALOG_KEY } from '@/domain/sourceRegistry';
 import { countContainers } from '@/test/oscalStructure';
 import type { Catalog } from '@/domain/models';
 
@@ -79,7 +79,7 @@ function settledHeap(gc: () => void): number {
 function buildAndMeasure(gc: () => void): { withSource: number; view: Catalog } {
   const document = parseCatalogDocument(
     JSON.parse(readFileSync(catalogPath, 'utf8')),
-    { catalogKey: SUPPORTED_CATALOG_KEY, trustClass: 'class-1-verified-public' },
+    { catalogKey: ENTRY_CATALOG_KEY, trustClass: 'class-1-verified-public' },
   );
 
   return { withSource: settledHeap(gc), view: document.view };

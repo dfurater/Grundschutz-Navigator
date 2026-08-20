@@ -123,6 +123,12 @@ src/
 │   ├── oscalVersionMatrix.d.mts  # Typen der Versionsmatrix
 │   ├── controlRef.ts             # Kataloggescopte interne Control-Referenzen
 │   ├── referenceResolution.ts    # Fail-closed OSCAL-Referenzauflösung auf source
+│   ├── referenceGraph.ts         # Referenzgraph über alle vier Root-Typen (Stufe 5)
+│   ├── referenceGraphModel.ts    # Knoten, Kanten, Zustände, Diagnostic-Codes
+│   ├── referenceGraphIndex.ts    # Knotenindex je Dokument aus dem Quellgraphen
+│   ├── referenceGraphContext.ts  # Auswertungskontext und Kantenablage
+│   ├── referenceGraphEdges.ts    # Kanten für Profile, Mappings, Components
+│   ├── referenceGraphPolicy.ts   # CI-Politik: fail-closed, Allowlist, Bericht
 │   └── controlRelationships.ts   # Steuerungsbeziehungen
 ├── adapters/         # Infrastruktur- und Datengrenzen
 │   ├── oscalAdapter.ts           # OSCAL → Domain Model Parser
@@ -201,18 +207,20 @@ npm run fetch-catalog → scripts/fetch-catalog.mjs
   fehlende, nicht gepinnte oder unmögliche Version bricht den Lauf ab
 • Security-Guards: nur erlaubtes Repo, erlaubte Hosts, Pfade und Refs
 • registrierte preview-/draft-Artefakte werden transient geprüft, nicht ausgeliefert
-• nur supported Katalog und direkte Namespace-CSVs → JSON + Provenance
+• jeder supported Katalog und die direkten Namespace-CSVs → JSON + Provenance
 • Manifest v2 bindet Registry-Metadaten, Git-Blob-SHA und Content-SHA-256
         │
         ▼
-public/data/
-• catalog.json                    (OSCAL 1.1.3 JSON)
-• catalog-metadata.json           (Provenance + Integrity)
+public/data/  (Dateimenge aus dem Quellregister abgeleitet)
+• catalog.json                    (Einstiegskatalog, OSCAL-JSON)
+• catalog-metadata.json           (Provenance + Integrity des Einstiegs)
+• catalog-<catalogKey>.json       (je weiterem supported Katalog)
+• catalog-<catalogKey>-metadata.json
 • vocabularies.json               (Offizielle BSI-Vokabulare)
 • upstream-sources-metadata.json  (Vokabular-Provenance + Manifest v2)
         │
         ▼
-CatalogContext (useEffect on mount)
+CatalogContext (Einstiegskatalog eager, weitere bedarfsgerecht)
 • fetchCatalogWithBuffer()   → ArrayBuffer (Katalog + Vokabulare parallel)
 • parseCatalogDocument()     → CatalogDocument { source, context, view }
                                source = unveränderter Quellgraph (ADR-2)
@@ -292,7 +300,24 @@ Die Anwendung verwendet React Context für den globalen Zustand:
 
 ### CatalogContext (`src/state/CatalogContext.tsx`)
 
-Zentraler Provider, der folgende Daten bereitstellt:
+Zentraler Provider, der eine **Katalogsammlung** hält
+([GSPP-284](https://linear.app/grundschutz-plus-plus/issue/GSPP-284)). Der
+Einstiegskatalog aus dem Quellregister wird beim Mounten geladen; jeder weitere
+ausgelieferte Katalog erst, wenn eine Route ihn auswählt. Der Initial-Load
+wächst dadurch nicht mit der Zahl ausgelieferter Kataloge.
+
+Sammlungsbezogene Felder:
+
+- `catalogs` — `ReadonlyMap<CatalogKey, LoadedCatalogState>` aller angeforderten
+  Kataloge. Jeder Eintrag trägt sein eigenes Dokument, seine eigene Provenance,
+  sein eigenes Verifikationsergebnis und seinen eigenen Fehlerzustand.
+- `entryCatalogKey` — der ausgezeichnete Einstiegskatalog
+- `activeCatalogKey` — der aktuell ausgewählte Katalog
+- `selectCatalog(catalogKey)` — wählt einen ausgelieferten Katalog aus und stößt
+  ihn bei Bedarf an. `AppShell` ruft das aus dem Routen-`catalogKey` auf; ein
+  nicht ausgelieferter Schlüssel wird fail-closed ignoriert.
+
+Projektionen des **aktiven** Katalogs — unveränderte Zugriffsform:
 
 - `catalogDocument` — Katalogdokument nach
   [ADR-2](https://linear.app/grundschutz-plus-plus/issue/ADR-2): unveränderter Quellgraph
@@ -307,6 +332,63 @@ Zentraler Provider, der folgende Daten bereitstellt:
 - `vocabularyVerification` — Vocabulary Integritätsprüfung
 - `loading` — Ladezustand
 - `error` — Fehlermeldung
+
+## Anwenderkataloge sind fachlich getrennt
+
+Die App liefert mehrere BSI-Anwenderkataloge aus. Jeder ist ein **eigenständiges
+OSCAL-Dokument** mit eigener `uuid` — kein Ausschnitt und keine Variante eines
+anderen. Ausgeliefert wird, was im Quellregister `lifecycle: 'supported'` trägt;
+die Lifecycle-Promotion des Anwenderkatalogs Lieferkettensicherheit erfolgte in
+[GSPP-242](https://linear.app/grundschutz-plus-plus/issue/GSPP-242).
+
+Daraus folgen drei Regeln, die der gesamte Katalogpfad einhält:
+
+**1. Gleiche Control-IDs sind erwartbar, nicht fehlerhaft.** `control/@id` trägt
+im OSCAL-Catalog-Metaschema `identifier-uniqueness="local"` und ist ausdrücklich
+nur innerhalb seines Katalogs eindeutig. Zwei aufgelöste Kataloge aus demselben
+Quellbestand teilen sich deshalb regelmäßig Control-IDs — am gepinnten Snapshot
+kollidieren *sämtliche* Controls des Lieferkettenkatalogs mit dem
+Grundschutz++-Katalog. Eine Kollision wird **nie** als Fehler gemeldet.
+Unterschieden wird ausschließlich über den `catalogKey`: Lookups laufen über
+`ControlRef = { catalogKey, controlId }` (`src/domain/controlRef.ts`), jeder
+Katalog hält seine eigene `controlsById`-Map, und es findet an keiner Stelle
+eine Zusammenführung oder katalogübergreifende Verlinkung statt.
+
+**2. Keine gemeinsamen Props oder Taxonomien.** `prop.ns` ist im Metaschema
+optional, und OSCAL garantiert zwischen zwei Katalogen weder dieselben `props`
+noch dieselben Namensräume. Der vorgefundene `ns` wird unverändert übernommen —
+einschließlich seines Fehlens; es wird kein projekteigener Namensraum vergeben
+und kein fremder normalisiert. Real belegt: der Lieferkettenkatalog führt nur
+`alt-identifier` (ohne `ns`), `sec_level`, `effort_level` und `tags`. Die
+Schutzziel-Props (`confidentiality`, `integrity`, `availability`,
+`authenticity`), `threats` und `label` fehlen dort vollständig. Sie werden
+deshalb weder angezeigt noch als fehlend bemängelt, und die Facettenzählung
+erzeugt aus ihrer Abwesenheit keine leeren Filtereinträge
+(`src/hooks/useFilteredControls.ts`).
+
+**3. Optionale Identifikatoren erzwingen kein Routing.** `group.id` ist in OSCAL
+1.1.3 optional, `part` verlangt nur `name`, und ein Katalog ganz ohne `groups`
+und `controls` ist schema-valide. Eine Gruppe ohne `id` bleibt vollständig
+sichtbar — Titel, Badge, Untergruppen und Controls —, ist aber **nicht
+adressierbar**: sie erzeugt weder Route noch Anker, und ein aktiver Gruppen-
+oder Praktik-Filter trifft sie nie. Es wird kein Ersatzbezeichner erfunden.
+Ein leerer Katalog erzeugt einen Empty State, keinen Fehler — der Empty State
+gilt aber nur, wenn **weder** `groups` **noch** `controls` vorhanden sind.
+`catalog.controls` steht im Schema gleichberechtigt neben `groups`; solche
+Root-Controls gehören zu keiner Gruppe, werden ohne `groupId` und `practiceId`
+geführt und bleiben über ihren kanonischen `altIdentifier` adressierbar. Sie
+werden projiziert, nie stillschweigend verworfen.
+
+Die Vokabular-Membership wird aus **allen** ausgelieferten Katalogen abgeleitet
+(`scripts/fetch-catalog.mjs`), damit ein Nicht-Einstiegskatalog sein Vokabular
+nicht verliert; alle Namensräume stammen aus demselben Snapshot und durchlaufen
+dieselbe Hash-Prüfung. Die Topic- und Practice-Coverage-Baselines
+(`scripts/taxonomy-coverage.mjs`) bleiben dagegen bewusst auf den
+Einstiegskatalog bezogen: Sie fordern `orphanCsvEntryCount === 0`, also die
+exakte wechselseitige Entsprechung von CSV und Katalog. Für einen
+Teilmengenkatalog wie Lieferkettensicherheit ist diese Bedingung strukturell
+nicht erfüllbar — er nutzt 23 der 140 Themen — und würde einen korrekten
+Bestand fälschlich als Drift melden.
 
 ## Routing
 
@@ -342,7 +424,7 @@ Die Zuständigkeiten sind wie folgt getrennt:
 | Baustein | Verantwortung |
 |----------|----------------|
 | `useControlNavigation` | Löst Control-Route, Scope und Not-found-Zustand auf und erhält Push-/Replace-Semantik sowie Query-Parameter. Routerwerte und `NavigateFunction` werden injiziert; der Hook verwendet keine Router-Hooks. |
-| `useControlSelection` | Verwaltet die markierten Control-IDs. Der Hook selbst ist scope-agnostisch: Er liefert synchron eine leere Auswahl, sobald sich der von außen übergebene `scopeId`-Wert ändert. `CatalogBrowser` übergibt dafür ausschließlich den `catalogKey` (GRU-267), sodass die Auswahl bei Themen-/Practice-Navigation und Cross-Referenz-Sprüngen innerhalb desselben Katalogs erhalten bleibt und nur bei einem echten Katalogwechsel geleert wird. |
+| `useControlSelection` | Verwaltet die markierten Control-IDs. Der Hook selbst ist scope-agnostisch: Er liefert synchron eine leere Auswahl, sobald sich der von außen übergebene `scopeId`-Wert ändert. `CatalogBrowser` übergibt dafür ausschließlich den `catalogKey` (GSPP-267), sodass die Auswahl bei Themen-/Practice-Navigation und Cross-Referenz-Sprüngen innerhalb desselben Katalogs erhalten bleibt und nur bei einem echten Katalogwechsel geleert wird. |
 | `CatalogToolbar` | Stellt Titel, Counts, Auswahlmodus sowie Filter- und Exportzugänge ausschließlich aus Props zusammen. |
 | `CatalogExportMenu` | Besitzt den Desktop-Menüzustand, Outside-Click, Escape, Autofokus und die Desktop-Exportaktionen. |
 | `CatalogMobileFilterSheet` | Besitzt Trigger, Sichtbarkeit, Focus-Trap, Escape, Backdrop, Drag-Dismiss und Scroll-Lock des mobilen Filters. |
@@ -385,7 +467,7 @@ und sind dadurch ohne Router oder Katalogprovider isoliert testbar.
 |----------|----------------|
 | `useActiveVocabulary` | Hält höchstens eine Vokabularkarte offen und setzt den Zustand bei Katalog- oder Control-Wechsel synchron und dauerhaft zurück. |
 | `useGuidanceOverflow` | Besitzt Expansion, Overflow-Messung, `ResizeObserver`, Window-Fallback und symmetrisches Listener-/Observer-Cleanup. |
-| `ControlClassification` | Rendert Kriterien und bindet `ControlTaxonomy` an der fachlich festgelegten GRU-140-Position ein. |
+| `ControlClassification` | Rendert Kriterien und bindet `ControlTaxonomy` an der fachlich festgelegten GSPP-140-Position ein. |
 | `ControlTaxonomy` | Rendert Tags und Zielobjektkategorien einschließlich optionaler Vokabularinteraktion. |
 | `ControlSecurityContext` | Rendert die Sektion „Schutzziele und Gefährdungen": delegiert die Schutzziele an `ControlSecurityTargets` und rendert die elementaren Gefährdungen als `Begriff (ID)`, alphabetisch nach Anzeigename sortiert. |
 | `ControlSecurityTargets` | Rendert die vier Schutzziele als Tabelle mit `sr-only`-Spaltenkopf „Schutzziel", sichtbarem Spaltenkopf „Relevanz" und der Relevanz als zweistufige Punkte-Skala; Schutzziel- und Relevanz-Trigger bleiben unabhängig aufklappbar. |
@@ -454,7 +536,7 @@ Siehe [FILTERING.md](./FILTERING.md) für Details.
 
 ## Integritätsprüfung
 
-Die ausgelieferten Artefakte `catalog.json` und `vocabularies.json` werden zum Build-Zeitpunkt jeweils mit einem SHA-256-Hash versehen. Zur Laufzeit wird der Hash erneut berechnet und mit den gespeicherten Metadaten verglichen. Abweichungen werden der Benutzerin / dem Benutzer in der UI angezeigt.
+Jeder ausgelieferte Katalog und `vocabularies.json` werden zum Build-Zeitpunkt mit einem eigenen SHA-256-Hash versehen. Zur Laufzeit wird der Hash je Artefakt erneut berechnet und mit **dessen eigenen** Metadaten verglichen. Abweichungen werden der Benutzerin / dem Benutzer in der UI angezeigt und bleiben auf das betroffene Artefakt beschränkt.
 
 Siehe [INTEGRITY.md](./INTEGRITY.md) für Details.
 

@@ -58,7 +58,12 @@ export interface RawOscalControl {
 }
 
 export interface RawOscalGroup {
-  id: string;
+  /**
+   * Optional laut OSCAL 1.1.3: `group` verlangt nur `title`. Eine Gruppe ohne
+   * `id` ist nicht referenzierbar — Routing und Anker dürfen sie deshalb nicht
+   * voraussetzen (GSPP-242).
+   */
+  id?: string;
   title: string;
   props?: RawOscalProp[];
   groups?: RawOscalGroup[];
@@ -99,6 +104,13 @@ export interface RawOscalCatalog {
   uuid: string;
   metadata: RawOscalMetadata;
   groups?: RawOscalGroup[];
+  /**
+   * Controls direkt am Katalog-Root. Laut OSCAL 1.1.3 zulässig — `catalog`
+   * verlangt nur `uuid` und `metadata`, und `controls` steht gleichberechtigt
+   * neben `groups`. Solche Controls gehören zu keiner Gruppe und tragen
+   * deshalb weder `groupId` noch `practiceId` (GSPP-242).
+   */
+  controls?: RawOscalControl[];
   params?: RawOscalParam[];
   'back-matter'?: {
     resources?: RawOscalResource[];
@@ -151,10 +163,10 @@ export interface Control {
   title: string;
   /** UUID alternate identifier */
   altIdentifier?: string;
-  /** Parent group ID (Thema), e.g. "GC.1" */
-  groupId: string;
-  /** Root practice ID (Praktik), e.g. "GC" */
-  practiceId: string;
+  /** Parent group ID (Thema), e.g. "GC.1"; fehlt bei einer Quellgruppe ohne `id` */
+  groupId?: string;
+  /** Root practice ID (Praktik), e.g. "GC"; fehlt bei einer Quellgruppe ohne `id` */
+  practiceId?: string;
 
   /** Security level: normal-SdT or erhöht */
   securityLevel?: SecurityLevel;
@@ -228,16 +240,20 @@ export interface Control {
 
 /** A topic (Thema) — second-level group */
 export interface Topic {
-  /** Topic ID, e.g. "GC.1" */
-  id: string;
+  /**
+   * Topic ID, e.g. "GC.1". Fehlt, wenn die Quellgruppe keine `id` trägt
+   * (OSCAL 1.1.3: optional). Ein Topic ohne `id` ist nicht adressierbar und
+   * erzeugt weder Route noch Anker (GSPP-242).
+   */
+  id?: string;
   /** Human-readable title */
   title: string;
   /** Short label, e.g. "1" */
   label: string;
   /** UUID alternate identifier */
   altIdentifier?: string;
-  /** Parent practice ID */
-  practiceId: string;
+  /** Parent practice ID; fehlt, wenn die übergeordnete Gruppe keine `id` trägt */
+  practiceId?: string;
   /** Number of controls in this topic */
   controlCount: number;
   /** Control IDs belonging to this topic */
@@ -246,8 +262,11 @@ export interface Topic {
 
 /** A practice (Praktik) — top-level group */
 export interface Practice {
-  /** Practice ID, e.g. "GC" */
-  id: string;
+  /**
+   * Practice ID, e.g. "GC". Fehlt, wenn die Quellgruppe keine `id` trägt
+   * (OSCAL 1.1.3: optional) — dann ist die Praktik nicht adressierbar.
+   */
+  id?: string;
   /** Human-readable title */
   title: string;
   /** Short label, e.g. "GC" */
@@ -564,7 +583,7 @@ export interface ArtifactBuildInfo {
 }
 
 export interface VocabularyProvenance {
-  /** Source-registry artifact key; written by the multi-artifact fetch (GRU-249) */
+  /** Source-registry artifact key; written by the multi-artifact fetch (GSPP-249) */
   artifactKey?: string;
   source: {
     repository: string;
@@ -584,7 +603,7 @@ export interface VocabularyProvenance {
 }
 
 export interface CatalogProvenance {
-  /** Source-registry artifact key; written by the multi-artifact fetch (GRU-249) */
+  /** Source-registry artifact key; written by the multi-artifact fetch (GSPP-249) */
   artifactKey?: string;
   source: {
     repository: string;
@@ -616,22 +635,60 @@ export interface VerificationResult {
 /*  Application State Types                                            */
 /* ------------------------------------------------------------------ */
 
-export interface CatalogState {
+/**
+ * Ladezustand genau eines Katalogs (GSPP-284).
+ *
+ * Jeder ausgelieferte Katalog trägt seine eigene Provenienz, sein eigenes
+ * Verifikationsergebnis und seinen eigenen Fehlerzustand. Die Vertrauensklasse
+ * hängt damit am einzelnen Katalog statt global am Zustand: ein Katalog mit
+ * abweichendem Hash wird auf `class-1-unverified-public` herabgestuft, ohne die
+ * Vertrauensklasse eines anderen geladenen Katalogs zu berühren.
+ */
+export interface LoadedCatalogState {
+  readonly catalogKey: CatalogKey;
   /**
    * Das geladene Katalogdokument mit erhaltenem Quellgraphen (ADR-2).
    * Definierte Zugriffsstelle für alles, was das Domänenmodell nicht abbildet.
    */
-  catalogDocument: CatalogDocument | null;
+  readonly catalogDocument: CatalogDocument | null;
   /**
    * Projektion des Dokuments für die UI — identisch mit
    * `catalogDocument.view`. Bequemer Zugriff, kein zweiter Zustand.
    */
+  readonly catalog: Catalog | null;
+  readonly provenance: CatalogProvenance | null;
+  readonly verification: VerificationResult | null;
+  readonly loading: boolean;
+  readonly error: string | null;
+}
+
+export interface CatalogState {
+  /**
+   * Alle angeforderten Kataloge, je Katalog isoliert. Der Einstiegskatalog ist
+   * ab dem ersten Rendern enthalten; weitere kommen bedarfsgerecht dazu, sobald
+   * eine Route sie auswählt.
+   */
+  catalogs: ReadonlyMap<CatalogKey, LoadedCatalogState>;
+  /** Der eager geladene Einstiegskatalog aus dem Quellregister. */
+  entryCatalogKey: CatalogKey;
+  /** Der aktuell ausgewählte Katalog; speist die Projektionen unten. */
+  activeCatalogKey: CatalogKey;
+  /**
+   * Wählt einen ausgelieferten Katalog aus und stößt ihn bei Bedarf an.
+   * Ein nicht ausgelieferter `catalogKey` wird ignoriert — die Auswahl bleibt
+   * fail-closed beim zuletzt gültigen Katalog.
+   */
+  selectCatalog: (catalogKey: CatalogKey) => void;
+
+  /* Projektionen des aktiven Katalogs — unveränderte Zugriffsform. */
+  catalogDocument: CatalogDocument | null;
   catalog: Catalog | null;
   provenance: CatalogProvenance | null;
   verification: VerificationResult | null;
+  loading: boolean;
+  error: string | null;
+
   vocabularyRegistry: VocabularyRegistry | null;
   vocabularyProvenance: VocabularyProvenance | null;
   vocabularyVerification: VerificationResult | null;
-  loading: boolean;
-  error: string | null;
 }

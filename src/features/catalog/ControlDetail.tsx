@@ -34,6 +34,13 @@ import { ControlStatementDetails } from './ControlStatementDetails';
 import { ControlTaxonomyBreadcrumb } from './ControlTaxonomyBreadcrumb';
 import type { RenderVocabularyCard } from './ControlVocabularyPrimitives';
 
+/**
+ * Platzhalter für eine Taxonomie-Ebene, deren Quellgruppe keine `id` trägt
+ * (OSCAL 1.1.3: `group.id` ist optional). Es wird bewusst kein Ersatzbezeichner
+ * erfunden — die Ebene ist nicht adressierbar (GSPP-242).
+ */
+const UNBENANNTE_TAXONOMIE = 'Ohne Gruppenkennung';
+
 export interface ControlDetailProps {
   control: Control;
   controlsById?: Map<string, Control>;
@@ -130,14 +137,20 @@ export function ControlDetail({
     ),
     [],
   );
-  const practice = catalog.practices.find(
-    (candidate) => candidate.id === control.practiceId,
-  );
-  const topic = practice?.topics.find(
-    (candidate) => candidate.id === control.groupId,
-  );
-  const practiceName = practice?.title ?? control.practiceId;
-  const topicName = topic?.title ?? control.groupId;
+  // Ohne Gruppen-`id` gibt es keinen adressierbaren Taxonomie-Eintrag. Der
+  // Vergleich muss die Abwesenheit ausdrücklich ausschließen, sonst würde
+  // `undefined === undefined` das Control der ersten id-losen Gruppe
+  // zuschreiben — eine falsche Zuordnung statt einer fehlenden (GSPP-242).
+  const practice =
+    control.practiceId === undefined
+      ? undefined
+      : catalog.practices.find((candidate) => candidate.id === control.practiceId);
+  const topic =
+    control.groupId === undefined
+      ? undefined
+      : practice?.topics.find((candidate) => candidate.id === control.groupId);
+  const practiceName = practice?.title ?? control.practiceId ?? UNBENANNTE_TAXONOMIE;
+  const topicName = topic?.title ?? control.groupId ?? UNBENANNTE_TAXONOMIE;
   const practiceVocabulary = useMemo(
     () => resolvePracticeVocabulary(vocabularyRegistry, practice),
     [practice, vocabularyRegistry],

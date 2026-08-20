@@ -5,6 +5,7 @@ import type { CatalogState, VocabularyRegistryData } from '@/domain/models';
 import { buildVocabularyRegistry } from '@/domain/vocabulary';
 import { useCatalog } from '@/hooks/useCatalog';
 import { VocabularyOverviewPage } from './VocabularyOverviewPage';
+import { catalogCollectionDefaults } from '@/test/catalogState';
 
 vi.mock('@/hooks/useCatalog', () => ({
   useCatalog: vi.fn(),
@@ -111,6 +112,7 @@ function makeCatalogState(): CatalogState {
   };
 
   return {
+    ...catalogCollectionDefaults(),
     catalogDocument: null,
     catalog: null,
     provenance: null,

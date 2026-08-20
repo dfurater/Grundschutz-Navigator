@@ -3,7 +3,13 @@ import type { KeyboardEvent } from 'react';
 import { IconChevronRight, IconChevronDown } from './icons';
 
 export interface TreeItem {
-  id: string;
+  /**
+   * Fehlt, wenn die Quellgruppe keine `id` trägt (OSCAL 1.1.3: `group.id` ist
+   * optional). Ein solcher Eintrag bleibt sichtbar und aufklappbar, ist aber
+   * kein Navigationsziel — Anker und Routen setzen keine Gruppen-`id`
+   * voraus (GSPP-242).
+   */
+  id?: string;
   label: string;
   /** Short prefix shown as a distinct tag before the label */
   prefix?: string;
@@ -27,7 +33,8 @@ function hasSelectedDescendant(item: TreeItem, selectedId?: string): boolean {
   if (!selectedId || !item.children) return false;
   return item.children.some(
     (child) =>
-      child.id === selectedId || hasSelectedDescendant(child, selectedId),
+      (child.id !== undefined && child.id === selectedId) ||
+      hasSelectedDescendant(child, selectedId),
   );
 }
 
@@ -46,7 +53,9 @@ const TREE_DEPTH_PADDING_CLASSES = ['pl-2', 'pl-5', 'pl-8', 'pl-11'] as const;
 
 function TreeNavItem({ item, level, onSelect, selectedId }: TreeNavItemProps) {
   const hasChildren = Boolean(item.children && item.children.length > 0);
-  const isSelected = selectedId === item.id;
+  /** Ohne `id` ist der Eintrag nicht adressierbar und damit nie ausgewählt. */
+  const isSelectable = item.id !== undefined;
+  const isSelected = isSelectable && selectedId === item.id;
   const shouldAutoExpand =
     hasChildren && hasSelectedDescendant(item, selectedId);
   const autoExpandKey = shouldAutoExpand ? selectedId : undefined;
@@ -103,7 +112,7 @@ function TreeNavItem({ item, level, onSelect, selectedId }: TreeNavItemProps) {
           if (hasChildren) {
             setExpanded((prev) => !prev);
           }
-          onSelect(item.id);
+          if (item.id !== undefined) onSelect(item.id);
           break;
       }
     },
@@ -128,10 +137,10 @@ function TreeNavItem({ item, level, onSelect, selectedId }: TreeNavItemProps) {
           if (hasChildren) {
             setExpanded((prev) => !prev);
           }
-          onSelect(item.id);
+          if (item.id !== undefined) onSelect(item.id);
         }}
         onKeyDown={handleKeyDown}
-        data-testid={`tree-item-${item.id}`}
+        data-testid={item.id === undefined ? 'tree-item-ohne-id' : `tree-item-${item.id}`}
       >
         <span className="mr-1 flex h-4 w-4 shrink-0 items-center justify-center text-[var(--color-text-muted)]">
           {hasChildren &&
@@ -157,9 +166,9 @@ function TreeNavItem({ item, level, onSelect, selectedId }: TreeNavItemProps) {
       </button>
       {hasChildren && expanded && (
         <ul role="group">
-          {item.children!.map((child) => (
+          {item.children!.map((child, index) => (
             <TreeNavItem
-              key={child.id}
+              key={child.id ?? `ohne-id-${index}`}
               item={child}
               level={level + 1}
               onSelect={onSelect}
@@ -189,9 +198,9 @@ export function TreeNav({
       data-testid="tree-nav"
     >
       <ul role="tree">
-        {items.map((item) => (
+        {items.map((item, index) => (
           <TreeNavItem
-            key={item.id}
+            key={item.id ?? `ohne-id-${index}`}
             item={item}
             level={0}
             onSelect={onSelect}

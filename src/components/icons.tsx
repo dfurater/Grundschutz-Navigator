@@ -209,6 +209,26 @@ export function IconTarget({ className, 'aria-hidden': ariaHidden = true }: Icon
   );
 }
 
+export function IconWifi({ className, 'aria-hidden': ariaHidden = true }: IconProps) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden={ariaHidden}>
+      <path d="M5 13a10 10 0 0 1 14 0" />
+      <path d="M8.5 16.5a5 5 0 0 1 7 0" />
+      <line x1="12" x2="12.01" y1="20" y2="20" />
+    </svg>
+  );
+}
+
+export function IconLayers({ className, 'aria-hidden': ariaHidden = true }: IconProps) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden={ariaHidden}>
+      <path d="m12.83 2.18 8.9 4.05a1 1 0 0 1 0 1.83l-8.9 4.05a2 2 0 0 1-1.66 0L2.27 8.06a1 1 0 0 1 0-1.83l8.9-4.05a2 2 0 0 1 1.66 0Z" />
+      <path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65" />
+      <path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65" />
+    </svg>
+  );
+}
+
 export function IconScale({ className, 'aria-hidden': ariaHidden = true }: IconProps) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"

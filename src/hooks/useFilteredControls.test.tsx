@@ -194,3 +194,87 @@ describe('useFilteredControls', () => {
     expect(result.current.facetCounts.linkRelationen.related).toBe(2);
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  Schmales Prop-Set (GSPP-242)                                       */
+/* ------------------------------------------------------------------ */
+
+describe('useFilteredControls — Katalog mit schmalem Prop-Set', () => {
+  /**
+   * Formtreu zum Anwenderkatalog Lieferkettensicherheit: `sec_level`,
+   * `effort_level` und `tags` sind gesetzt, Schutzziel-Props, `threats` und
+   * `label` fehlen vollständig.
+   */
+  function makeLieferketteControl(overrides: Partial<Control> = {}): Control {
+    return makeControl({
+      securityLevel: 'normal-SdT',
+      effortLevel: '2',
+      tags: ['Inventories'],
+      ...overrides,
+    });
+  }
+
+  it('erzeugt aus fehlenden Props keine leeren oder irreführenden Facetten', () => {
+    const { result } = renderHook(() =>
+      useFilteredControls([makeLieferketteControl()], emptyFilters),
+    );
+    const { facetCounts } = result.current;
+
+    // Vorhandene Dimensionen werden gezählt …
+    expect(facetCounts.securityLevels).toEqual({ 'normal-SdT': 1 });
+    expect(facetCounts.effortLevels).toEqual({ '2': 1 });
+    expect(facetCounts.tags).toEqual({ Inventories: 1 });
+
+    // … abwesende erzeugen keinen Eintrag, auch keinen mit Zählwert 0.
+    expect(facetCounts.modalverben).toEqual({});
+    expect(facetCounts.zielobjektKategorien).toEqual({});
+    expect(facetCounts.handlungsworte).toEqual({});
+    expect(facetCounts.dokumentationstypen).toEqual({});
+    expect(facetCounts.linkRelationen).toEqual({});
+
+    // Schutzziele und Bedrohungen sind überhaupt keine Filterdimension; sie
+    // können deshalb auch keine irreführende Facette erzeugen (GSPP-224).
+    expect(Object.keys(facetCounts)).not.toContain('confidentiality');
+    expect(Object.keys(facetCounts)).not.toContain('threats');
+  });
+
+  it('zählt und filtert unverändert, obwohl die Grundschutz++-Props fehlen', () => {
+    const controls = [
+      makeLieferketteControl({ id: 'ASST.2.3' }),
+      makeLieferketteControl({ id: 'BES.1.7', securityLevel: 'erhöht', tags: [] }),
+    ];
+    const { result } = renderHook(() =>
+      useFilteredControls(controls, { ...emptyFilters, securityLevels: ['erhöht'] }),
+    );
+
+    expect(result.current.totalCount).toBe(2);
+    expect(result.current.filtered.map((control) => control.id)).toEqual(['BES.1.7']);
+  });
+
+  it('wählt ein Control ohne Gruppen-id über keine Gruppen- oder Praktik-Facette aus', () => {
+    // Eine Gruppe ohne `id` ist laut OSCAL 1.1.3 zulässig und nicht
+    // adressierbar; ein aktiver Gruppenfilter darf sie deshalb nie treffen.
+    const ohneGruppe = makeLieferketteControl({
+      id: 'X.1',
+      groupId: undefined,
+      practiceId: undefined,
+    });
+    const mitGruppe = makeLieferketteControl({ id: 'GC.1.1' });
+
+    const byGroup = renderHook(() =>
+      useFilteredControls([ohneGruppe, mitGruppe], { ...emptyFilters, groupIds: ['GC.1'] }),
+    );
+    expect(byGroup.result.current.filtered.map((control) => control.id)).toEqual(['GC.1.1']);
+
+    const byPractice = renderHook(() =>
+      useFilteredControls([ohneGruppe, mitGruppe], { ...emptyFilters, practiceIds: ['GC'] }),
+    );
+    expect(byPractice.result.current.filtered.map((control) => control.id)).toEqual(['GC.1.1']);
+
+    // Ohne aktiven Filter bleibt es sichtbar — nicht adressierbar heißt nicht unsichtbar.
+    const ungefiltert = renderHook(() =>
+      useFilteredControls([ohneGruppe, mitGruppe], emptyFilters),
+    );
+    expect(ungefiltert.result.current.filtered).toHaveLength(2);
+  });
+});

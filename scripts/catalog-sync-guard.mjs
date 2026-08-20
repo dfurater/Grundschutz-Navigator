@@ -23,9 +23,10 @@ import {
   assertTopicVocabularyCoverage,
 } from './taxonomy-coverage.mjs';
 import {
+  ENTRY_CATALOG,
   MONITORED_UPSTREAM_ROOTS,
   SOURCE_REGISTRY,
-  SUPPORTED_CATALOG,
+  SUPPORTED_CATALOGS,
   getArtifactByUpstreamPath,
 } from '../src/domain/sourceRegistry.mjs';
 import {
@@ -44,6 +45,13 @@ export const TRACKED_MANIFEST_PATH = 'upstream-manifest.json';
 export const SYNC_BRANCH_PATTERN = /^chore\/catalog-sync-([0-9a-f]{12})$/;
 export const SYNC_TITLE_PREFIX = 'chore(ci): BSI-Katalog-Sync ';
 const REGISTRY_LIFECYCLE_MIGRATION_PATH = 'src/domain/sourceRegistry.mjs';
+/** Die im Quellregister deklarierten Lifecycles — einzige zulässige Werte. */
+const REGISTRY_LIFECYCLES = new Set([
+  'supported',
+  'preview',
+  'draft',
+  'blocked-by-upstream',
+]);
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 
@@ -51,6 +59,12 @@ const SHA_PATTERN = /^[0-9a-f]{40}$/;
  * Registrierte OSCAL-Artefakte nach Schlüssel — Grundlage der
  * Versionskreuzprüfung beim Blob-Verify (GSPP-283).
  */
+/**
+ * Upstream-Pfade aller ausgelieferten Kataloge (GSPP-284). Die Sync-Lane prüft
+ * jeden davon, nicht nur den Einstiegskatalog.
+ */
+const SUPPORTED_CATALOG_PATHS = new Set(SUPPORTED_CATALOGS.map((entry) => entry.upstreamPath));
+
 const REGISTRY_BY_ARTIFACT_KEY = new Map(
   SOURCE_REGISTRY
     .filter((entry) => entry.kind === 'oscal')
@@ -80,6 +94,10 @@ export function validateCatalogSyncManifest(manifest) {
 
   for (const [repoPath, entry] of exactRegistryFiles) {
     if (!manifestPaths.has(repoPath)) {
+      // ADR-7-Nachtrag: Ein gesperrtes Artefakt darf im Manifest fehlen, wenn
+      // es upstream vollständig entfernt wurde. verifySnapshotFiles prüft die
+      // Tree-Abwesenheit gegen den Snapshot nach, bevor eine Sync-PR gilt.
+      if (entry.lifecycle === 'blocked-by-upstream') continue;
       throw new Error(`Manifest is missing registered artifact: ${repoPath}`);
     }
     const file = manifest.files.find((candidate) => candidate.path === repoPath);
@@ -143,9 +161,21 @@ export function isCatalogSyncCandidate({ branch, title, diffEntries }) {
 /**
  * Ein fachlich geprüfter Lifecycle-Wechsel ist kein autonomer Catalog-Sync.
  * Er ist nur zulässig, wenn derselbe Snapshot und sämtliche Content-Pins
- * unverändert bleiben, die PR zugleich das Quellregister ändert und jeder
- * Manifestwechsel ausschließlich nach blocked-by-upstream führt. Der nächste
- * Manifeststand wird anschließend noch gegen das aktuelle Registry validiert.
+ * unverändert bleiben und die PR zugleich das Quellregister ändert. Der
+ * nächste Manifeststand wird anschließend noch gegen das aktuelle Registry
+ * validiert.
+ *
+ * Die tragende Sicherheitseigenschaft ist, dass **keine neuen Bytes gepinnt
+ * werden**: `gitBlobSha` und `contentSha256` jeder Datei bleiben identisch, die
+ * Dateimenge bleibt identisch, und der Snapshot wechselt nicht. Über diese
+ * Bedingungen hinaus ist die Richtung des Wechsels nicht sicherheitsrelevant —
+ * eine Promotion wie `preview` → `supported` (GSPP-242) liefert ausschließlich
+ * bereits gepinnte und beim Fetch bereits transient validierte Bytes aus.
+ *
+ * Ausgenommen bleibt allein die Deeskalation **aus** `blocked-by-upstream`
+ * heraus: Ein wegen eines Upstream-Defekts gesperrtes Artefakt wird über diesen
+ * Pfad nicht entsperrt. Dieser Fall gehört in die vollständige
+ * Snapshot-Verifikation, nicht in die Ausnahme.
  */
 export function isRegistryLifecycleOnlyMigration({ diffEntries, previousManifest, nextManifest }) {
   if (
@@ -180,10 +210,16 @@ export function isRegistryLifecycleOnlyMigration({ diffEntries, previousManifest
       return false;
     }
     if (previousFile.lifecycle === nextFile.lifecycle) continue;
+    // Fail-closed gegen undeklarierte Werte: Nur die im Quellregister
+    // definierten Lifecycles sind überhaupt vergleichbar.
     if (
-      previousFile.lifecycle === 'blocked-by-upstream' ||
-      nextFile.lifecycle !== 'blocked-by-upstream'
+      !REGISTRY_LIFECYCLES.has(previousFile.lifecycle) ||
+      !REGISTRY_LIFECYCLES.has(nextFile.lifecycle)
     ) {
+      return false;
+    }
+    // Keine Entsperrung über diesen Pfad.
+    if (previousFile.lifecycle === 'blocked-by-upstream') {
       return false;
     }
     lifecycleChanges += 1;
@@ -291,6 +327,21 @@ export async function verifySnapshotFiles(manifest, {
     }
   }
 
+  // ADR-7-Nachtrag: Ein im Manifest fehlendes, gesperrtes Artefakt darf die
+  // Sync-PR nur dann passieren, wenn es tatsächlich aus dem gepinnten Tree
+  // verschwunden ist — sonst könnte eine Sync-PR ein noch vorhandenes
+  // Artefakt stillschweigend aus dem Manifest auslassen.
+  const manifestPaths = new Set(manifest.files.map((file) => file.path));
+  for (const entry of SOURCE_REGISTRY) {
+    if (entry.kind !== 'oscal' || entry.lifecycle !== 'blocked-by-upstream') continue;
+    if (manifestPaths.has(entry.upstreamPath)) continue;
+    if (blobShaByPath.has(entry.upstreamPath)) {
+      throw new Error(
+        `Manifest omits blocked artifact that is still present in the BSI snapshot: ${entry.upstreamPath}`,
+      );
+    }
+  }
+
   const fetchAndValidateArtifact = async (file) => {
     const blob = await fetchGitHubJson(
       buildOfficialBsiGitBlobApiUrl({
@@ -340,26 +391,46 @@ export async function verifySnapshotFiles(manifest, {
       artifactKey: file.artifactKey,
       expectedOscalVersion: registryEntry.oscalVersion,
     });
-    if (file.path === SUPPORTED_CATALOG.upstreamPath) {
+    if (SUPPORTED_CATALOG_PATHS.has(file.path)) {
       validateCatalogControlIdentities(artifact.json, file.artifactKey);
     }
     return artifact.json;
   };
 
-  const catalogFile = manifest.files.find(
-    (file) => file.path === SUPPORTED_CATALOG.upstreamPath,
-  );
-  if (!catalogFile) {
-    throw new Error('Manifest does not contain the supported catalog document');
-  }
+  const supportedCatalogFiles = SUPPORTED_CATALOGS.map((entry) => {
+    const file = manifest.files.find((candidate) => candidate.path === entry.upstreamPath);
+    if (!file) {
+      throw new Error(
+        `Manifest does not contain the supported catalog document: ${entry.upstreamPath}`,
+      );
+    }
+    return { entry, file };
+  });
   // Validate all catalog references before any vocabulary blob is requested,
   // then derive delivery membership from the registered direct directory.
-  const catalogDocument = await fetchAndValidateArtifact(catalogFile);
-
-  const referencedNamespaceUrls = extractReferencedNamespaceUrls(
-    catalogDocument,
-    OFFICIAL_BSI_REPO,
+  const supportedCatalogDocuments = await Promise.all(
+    supportedCatalogFiles.map(async ({ entry, file }) => ({
+      entry,
+      document: await fetchAndValidateArtifact(file),
+    })),
   );
+  const catalogDocument = supportedCatalogDocuments.find(
+    ({ entry }) => entry.artifactKey === ENTRY_CATALOG.artifactKey,
+  )?.document;
+  if (!catalogDocument) {
+    throw new Error(`Manifest does not contain the entry catalog: ${ENTRY_CATALOG.upstreamPath}`);
+  }
+
+  // Identisch zur Fetch-Lane: die Vokabular-Membership entsteht aus allen
+  // ausgelieferten Katalogen. Liefen beide Ableitungen auseinander, würde die
+  // Manifest-Inventarprüfung unten dauerhaft fehlschlagen.
+  const referencedNamespaceUrls = [
+    ...new Set(
+      supportedCatalogDocuments.flatMap(({ document }) =>
+        extractReferencedNamespaceUrls(document, OFFICIAL_BSI_REPO),
+      ),
+    ),
+  ].sort();
   const vocabularyCollection = SOURCE_REGISTRY.find(
     (entry) => entry.kind === 'vocabulary-collection' && entry.lifecycle === 'supported',
   );
@@ -382,7 +453,7 @@ export async function verifySnapshotFiles(manifest, {
 
   const validatedArtifacts = await Promise.all(
     manifest.files
-      .filter((file) => file.path !== SUPPORTED_CATALOG.upstreamPath)
+      .filter((file) => !SUPPORTED_CATALOG_PATHS.has(file.path))
       .map(async (file) => ({
         file,
         artifact: await fetchAndValidateArtifact(file),

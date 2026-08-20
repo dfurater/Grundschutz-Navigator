@@ -5,6 +5,7 @@ import { emptyFilters, type FacetCounts } from '@/hooks/useFilteredControls';
 import { useCatalog } from '@/hooks/useCatalog';
 import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
 import { FilterPanel } from './FilterPanel';
+import { catalogCollectionDefaults } from '@/test/catalogState';
 
 vi.mock('@/hooks/useCatalog', () => ({
   useCatalog: vi.fn(),
@@ -51,6 +52,7 @@ const emptyFacetCounts: FacetCounts = {
 
 function makeCatalogState(): CatalogState {
   return {
+    ...catalogCollectionDefaults(),
     catalogDocument: null,
     catalog: null,
     provenance: null,

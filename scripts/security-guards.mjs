@@ -2,7 +2,7 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { posix as posixPath } from 'node:path';
 import {
-  SUPPORTED_CATALOG,
+  ENTRY_CATALOG,
   getArtifactByUpstreamPath,
   listArtifacts,
 } from '../src/domain/sourceRegistry.mjs';
@@ -16,7 +16,12 @@ if (!supportedVocabularyCollection) {
 
 export const REPO_ROOT = process.cwd();
 export const OFFICIAL_BSI_REPO = 'BSI-Bund/Stand-der-Technik-Bibliothek';
-export const OFFICIAL_CATALOG_PATH = SUPPORTED_CATALOG.upstreamPath;
+/**
+ * Upstream-Pfad des Einstiegskatalogs (GSPP-284). Seit der Auflösung des
+ * Ein-Katalog-Contracts kann die Lane mehrere `supported`-Kataloge tragen;
+ * dieser Pfad benennt weiterhin genau den Einstieg, nicht "den einen Katalog".
+ */
+export const OFFICIAL_CATALOG_PATH = ENTRY_CATALOG.upstreamPath;
 export const OFFICIAL_NAMESPACE_DIRECTORY = supportedVocabularyCollection.upstreamDirectory;
 export const DEFAULT_ARTIFACTS_DIR = path.join(REPO_ROOT, 'public', 'data');
 export const DEFAULT_UPSTREAM_METADATA_PATH = path.join(DEFAULT_ARTIFACTS_DIR, 'upstream-sources-metadata.json');

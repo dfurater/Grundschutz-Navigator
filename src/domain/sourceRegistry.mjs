@@ -67,6 +67,7 @@ export const SOURCE_REGISTRY = Object.freeze(
       catalogKey: 'gspp',
       upstreamPath: 'control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json',
       lifecycle: 'supported',
+      entryCatalog: true,
       title: 'Grundschutz++ Anwenderkatalog',
     },
     {
@@ -84,7 +85,7 @@ export const SOURCE_REGISTRY = Object.freeze(
       expectedRootType: 'catalog',
       catalogKey: 'lieferkette',
       upstreamPath: 'control_layer/Lieferkettensicherheit/Lieferkettensicherheit-resolved_catalog.json',
-      lifecycle: 'preview',
+      lifecycle: 'supported',
       title: 'Anwenderkatalog Lieferkettensicherheit',
     },
     {
@@ -336,7 +337,20 @@ export function validateSourceRegistry(entries = SOURCE_REGISTRY) {
         }
         catalogKeys.add(entry.catalogKey);
       }
+      if (entry.entryCatalog !== undefined) {
+        if (entry.entryCatalog !== true) {
+          throw new Error(`entryCatalog must be true when present: ${entry.artifactKey}`);
+        }
+        if (!isCatalog || entry.lifecycle !== 'supported') {
+          throw new Error(
+            `Only a supported catalog entry may be the entry catalog: ${entry.artifactKey}`,
+          );
+        }
+      }
     } else if (entry.kind === 'vocabulary-collection') {
+      if (entry.entryCatalog !== undefined) {
+        throw new Error(`Only a supported catalog entry may be the entry catalog: ${entry.artifactKey}`);
+      }
       if (!isSafeRepoPath(entry.upstreamDirectory)) {
         throw new Error(`Unsafe upstream path in source registry: ${entry.upstreamDirectory}`);
       }
@@ -429,15 +443,98 @@ export function isCatalogKey(value) {
   return listCatalogKeys().includes(value);
 }
 
-validateSourceRegistry(SOURCE_REGISTRY);
-
-const supportedCatalogs = SOURCE_REGISTRY.filter(
-  (entry) => entry.kind === 'oscal' && entry.expectedRootType === 'catalog' && entry.lifecycle === 'supported',
-);
-if (supportedCatalogs.length !== 1) {
-  // Ein-Katalog-Contract der aktuellen Fetch-Lane; wird erst mit GRU-249 aufgeweicht.
-  throw new Error(`Source registry must declare exactly one supported catalog, found ${supportedCatalogs.length}`);
+/**
+ * Alle produktiv ausgelieferten Kataloge in Registerreihenfolge (GSPP-284).
+ *
+ * Der frühere Ein-Katalog-Contract ist aufgelöst: die Lane trägt beliebig
+ * viele `supported`-Kataloge. Die Untergrenze bleibt hart — ohne
+ * ausgelieferten Katalog hätte die App keinen Einstieg.
+ */
+export function listSupportedCatalogs(entries = SOURCE_REGISTRY) {
+  return entries.filter(
+    (entry) =>
+      entry.kind === 'oscal' &&
+      entry.expectedRootType === 'catalog' &&
+      entry.lifecycle === 'supported',
+  );
 }
 
-export const SUPPORTED_CATALOG = supportedCatalogs[0];
-export const SUPPORTED_CATALOG_KEY = SUPPORTED_CATALOG.catalogKey;
+/**
+ * Der ausgewiesene Einstiegskatalog: der Katalog, den die App eager lädt und
+ * dessen Artefakte den unveränderten Auslieferungsvertrag `catalog.json` /
+ * `catalog-metadata.json` behalten.
+ *
+ * Die Auszeichnung ist ein explizites Registerfeld statt der Registerposition.
+ * Eine Umsortierung des Registers darf den Einstiegs- und Cache-Vertrag der
+ * ausgelieferten App nicht still verschieben.
+ */
+export function resolveEntryCatalog(entries = SOURCE_REGISTRY) {
+  const supported = listSupportedCatalogs(entries);
+  if (supported.length === 0) {
+    throw new Error('Source registry must declare at least one supported catalog, found 0');
+  }
+
+  const designated = supported.filter((entry) => entry.entryCatalog === true);
+  if (designated.length !== 1) {
+    throw new Error(
+      `Source registry must designate exactly one supported entry catalog, found ${designated.length}`,
+    );
+  }
+  return designated[0];
+}
+
+/**
+ * Dateiname des ausgelieferten Katalogdatenartefakts.
+ *
+ * Der Einstiegskatalog behält `catalog.json`; jeder weitere `supported`-Katalog
+ * erhält einen aus seinem `catalogKey` abgeleiteten Namen. Der Name wird nie
+ * von Hand gepflegt, damit Fetch-Lane, Ausgabe-Allowlist und Ladepfad nicht
+ * auseinanderlaufen können.
+ */
+export function catalogDataFileName(entry) {
+  assertSupportedCatalogEntry(entry);
+  return entry.entryCatalog === true ? 'catalog.json' : `catalog-${entry.catalogKey}.json`;
+}
+
+/** Dateiname der Provenienz-/Integritätsmetadaten eines ausgelieferten Katalogs. */
+export function catalogMetadataFileName(entry) {
+  assertSupportedCatalogEntry(entry);
+  return entry.entryCatalog === true
+    ? 'catalog-metadata.json'
+    : `catalog-${entry.catalogKey}-metadata.json`;
+}
+
+function assertSupportedCatalogEntry(entry) {
+  if (
+    entry?.kind !== 'oscal' ||
+    entry.expectedRootType !== 'catalog' ||
+    entry.lifecycle !== 'supported' ||
+    !KEY_GRAMMAR.test(entry.catalogKey ?? '')
+  ) {
+    throw new Error(
+      `Not a supported catalog registry entry: ${entry?.artifactKey ?? '<unknown>'}`,
+    );
+  }
+}
+
+/**
+ * Vollständige Menge der Katalog-Ausgabedateien, abgeleitet aus dem
+ * Quellregister. Ausgabe-Allowlist und Auslieferungsprüfung ziehen ihre
+ * Erwartung hierher, statt eine gepflegte Liste zu führen.
+ */
+export function listCatalogArtifactFileNames(entries = SOURCE_REGISTRY) {
+  const fileNames = [];
+  for (const entry of listSupportedCatalogs(entries)) {
+    fileNames.push(catalogDataFileName(entry), catalogMetadataFileName(entry));
+  }
+  return fileNames;
+}
+
+validateSourceRegistry(SOURCE_REGISTRY);
+
+export const SUPPORTED_CATALOGS = Object.freeze(listSupportedCatalogs(SOURCE_REGISTRY));
+export const ENTRY_CATALOG = resolveEntryCatalog(SOURCE_REGISTRY);
+export const ENTRY_CATALOG_KEY = ENTRY_CATALOG.catalogKey;
+export const SUPPORTED_CATALOG_KEYS = Object.freeze(
+  SUPPORTED_CATALOGS.map((entry) => entry.catalogKey),
+);

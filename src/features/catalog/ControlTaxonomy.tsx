@@ -51,7 +51,7 @@ export function ControlTaxonomy({
       aria-label="Taxonomie"
       className={`space-y-2 ${hasControllingCriteria ? 'border-t border-[var(--color-border-subtle)] pt-3' : ''}`}
     >
-      {/* GRU-140: Zielobjekt-Kategorien bleiben als filterbare Taxonomie in Klassifikation, nicht in Anforderungsdetails. */}
+      {/* GSPP-140: Zielobjekt-Kategorien bleiben als filterbare Taxonomie in Klassifikation, nicht in Anforderungsdetails. */}
       <div>
         <h4 className="text-sm font-semibold text-slate-800 mb-2">
           Tags und Zielobjektkategorien

@@ -14,7 +14,6 @@ import {
   DEFAULT_ARTIFACTS_DIR,
   OFFICIAL_BSI_REPO,
   OFFICIAL_BSI_REPOSITORY_URL,
-  OFFICIAL_CATALOG_PATH,
   assertAllowedGitHubRef,
   assertRegisteredUpstreamRepoPath,
   readBodyWithLimit,
@@ -23,7 +22,11 @@ import {
 import {
   MONITORED_UPSTREAM_ROOTS,
   SOURCE_REGISTRY,
-  SUPPORTED_CATALOG,
+  catalogDataFileName,
+  catalogMetadataFileName,
+  listCatalogArtifactFileNames,
+  listSupportedCatalogs,
+  resolveEntryCatalog,
 } from '../src/domain/sourceRegistry.mjs';
 import { resolveSchemaBinding } from '../src/domain/oscalVersionMatrix.mjs';
 import {
@@ -38,27 +41,33 @@ import {
 } from './taxonomy-coverage.mjs';
 
 const REPO = OFFICIAL_BSI_REPO;
-const CATALOG_PATH = OFFICIAL_CATALOG_PATH;
 const OUTPUT_DIR = DEFAULT_ARTIFACTS_DIR;
 const TOKEN = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN ?? '';
 
 const PINNED_SHA = resolveOptionalSnapshotSha();
 
-const CATALOG_FILE_NAME = 'catalog.json';
-const CATALOG_METADATA_FILE_NAME = 'catalog-metadata.json';
 const VOCABULARIES_FILE_NAME = 'vocabularies.json';
 const UPSTREAM_SOURCES_METADATA_FILE_NAME = 'upstream-sources-metadata.json';
-const OUTPUT_ARTIFACT_FILE_NAMES = Object.freeze([
-  CATALOG_FILE_NAME,
-  CATALOG_METADATA_FILE_NAME,
+const GENERATED_ARTIFACT_FILE_NAMES = Object.freeze([
   VOCABULARIES_FILE_NAME,
   UPSTREAM_SOURCES_METADATA_FILE_NAME,
 ]);
-const ALLOWED_OUTPUT_ARTIFACT_FILE_NAMES = new Set(OUTPUT_ARTIFACT_FILE_NAMES);
-const CATALOG_FILE = join(OUTPUT_DIR, CATALOG_FILE_NAME);
-const CATALOG_METADATA_FILE = join(OUTPUT_DIR, CATALOG_METADATA_FILE_NAME);
 const VOCABULARIES_FILE = join(OUTPUT_DIR, VOCABULARIES_FILE_NAME);
 const UPSTREAM_SOURCES_METADATA_FILE = join(OUTPUT_DIR, UPSTREAM_SOURCES_METADATA_FILE_NAME);
+
+/**
+ * Erwartete Ausgabemenge, vollständig aus dem Quellregister abgeleitet
+ * (GSPP-284). Je `supported`-Katalog ein Daten- und ein Metadatenartefakt,
+ * dazu die beiden generierten Sammelartefakte. Eine gepflegte Festliste würde
+ * bei jedem zusätzlichen Katalog auseinanderlaufen; die Ableitung hält
+ * Erzeugung und Ausgabe-Allowlist an einer Quelle.
+ */
+function listOutputArtifactFileNames(registryEntries = SOURCE_REGISTRY) {
+  return [
+    ...listCatalogArtifactFileNames(registryEntries),
+    ...GENERATED_ARTIFACT_FILE_NAMES,
+  ];
+}
 const MAX_CATALOG_ARTIFACT_BYTES = 10 * 1024 * 1024;
 const DEFAULT_RETRY_DELAYS_MS = [1000, 3000];
 const MAX_ERROR_BODY_CHARS = 280;
@@ -89,7 +98,12 @@ function truncateResponseBody(text) {
   return `${normalized.slice(0, MAX_ERROR_BODY_CHARS)} [gekürzt, ${text.length} Zeichen insgesamt]`;
 }
 
-async function writeArtifacts(payload, outputDir = OUTPUT_DIR) {
+async function writeArtifacts(payload, outputDir = OUTPUT_DIR, {
+  registryEntries = SOURCE_REGISTRY,
+} = {}) {
+  const expectedFileNames = listOutputArtifactFileNames(registryEntries);
+  const allowedFileNames = new Set(expectedFileNames);
+
   if (
     !payload ||
     typeof payload !== 'object' ||
@@ -112,7 +126,7 @@ async function writeArtifacts(payload, outputDir = OUTPUT_DIR) {
       throw new Error('fetch-catalog payload contains an invalid artifact record');
     }
 
-    if (!ALLOWED_OUTPUT_ARTIFACT_FILE_NAMES.has(artifact.fileName)) {
+    if (!allowedFileNames.has(artifact.fileName)) {
       throw new Error(`fetch-catalog payload contains an unexpected file: ${artifact.fileName}`);
     }
 
@@ -127,7 +141,7 @@ async function writeArtifacts(payload, outputDir = OUTPUT_DIR) {
     };
   });
 
-  for (const fileName of OUTPUT_ARTIFACT_FILE_NAMES) {
+  for (const fileName of expectedFileNames) {
     if (!seenFiles.has(fileName)) {
       throw new Error(`fetch-catalog payload omitted expected file: ${fileName}`);
     }
@@ -497,6 +511,10 @@ function materializeRegistryFiles({ registryEntries, treeFiles, namespaceRefs })
     if (entry.kind !== 'oscal') continue;
     const treeFile = treeFileByPath.get(entry.upstreamPath);
     if (!treeFile) {
+      // ADR-7-Nachtrag: Ein bereits gesperrtes Artefakt, das vollständig aus
+      // dem Tree verschwindet, erfüllt dieselbe inverse Erwartung wie ein
+      // Schema-Fehlschlag — es bleibt gesperrt statt den Fetch abzubrechen.
+      if (entry.lifecycle === 'blocked-by-upstream') continue;
       throw new Error(
         `Registriertes Artefakt fehlt im vollständigen BSI-Tree: ${entry.upstreamPath}. ` +
         'Quellregister manuell gegen den gepinnten BSI-Snapshot prüfen; ' +
@@ -553,11 +571,17 @@ async function buildFetchArtifacts(logger = console, {
   registryEntries = SOURCE_REGISTRY,
   treeResponse: providedTreeResponse,
 } = {}) {
+  // Mehrere ausgelieferte Kataloge sind seit GSPP-284 der Regelfall. Die Lane
+  // liest ihre Katalogmenge deshalb aus dem Quellregister; der Einstiegskatalog
+  // bleibt der Taxonomie- und Provenienzanker.
+  const supportedCatalogs = listSupportedCatalogs(registryEntries);
+  const entryCatalog = resolveEntryCatalog(registryEntries);
+
   logger.log('================================================');
   logger.log('  Grundschutz++ Katalog + Vokabulare Fetch');
   logger.log('================================================');
   logger.log(`Repository: ${REPO}`);
-  logger.log(`Katalog:    ${CATALOG_PATH}`);
+  logger.log(`Kataloge:   ${supportedCatalogs.map((entry) => entry.upstreamPath).join(', ')}`);
 
   const snapshot = await resolveSnapshot(logger, retryDelaysMs);
   const fetchRef = assertAllowedGitHubRef(snapshot.snapshotCommitSha, 'Snapshot commit SHA');
@@ -570,34 +594,60 @@ async function buildFetchArtifacts(logger = console, {
       }
     : await fetchSnapshotTree(fetchRef, retryDelaysMs);
 
-  const catalogTreeFile = tree.files.find((file) => file.path === CATALOG_PATH);
-  if (!catalogTreeFile) {
-    throw new Error(`Unterstützter Katalog fehlt im vollständigen BSI-Tree: ${CATALOG_PATH}`);
+  logger.log(
+    `[2/5] Lade ${supportedCatalogs.length} unterstützte Kataloge und ermittle Namespace-Mitglieder ...`,
+  );
+  const catalogRecords = [];
+  for (const entry of supportedCatalogs) {
+    const treeFile = tree.files.find((file) => file.path === entry.upstreamPath);
+    if (!treeFile) {
+      throw new Error(`Unterstützter Katalog fehlt im vollständigen BSI-Tree: ${entry.upstreamPath}`);
+    }
+
+    const raw = await fetchRawRegisteredFile(
+      entry.upstreamPath,
+      fetchRef,
+      [],
+      retryDelaysMs,
+      treeFile.sizeBytes,
+    );
+    if (computeGitBlobSha(raw.buffer) !== treeFile.gitBlobSha) {
+      throw new Error(`Git-Blob-SHA stimmt nicht mit dem BSI-Tree überein: ${entry.upstreamPath}`);
+    }
+
+    // Jeder Katalog wird gegen seine eigene deklarierte Version geprüft.
+    // Eine gemeinsame Versionsannahme über alle Kataloge gibt es bewusst nicht
+    // (GSPP-283): metadata.oscal-version ist eine Eigenschaft des Artefakts.
+    const artifact = validateFetchedOscalArtifact(raw.buffer, entry.expectedRootType, {
+      artifactKey: entry.artifactKey,
+      expectedOscalVersion: entry.oscalVersion,
+    });
+
+    catalogRecords.push({
+      entry,
+      treeFile,
+      raw,
+      artifact,
+      quality: validateCatalogControlIdentities(artifact.json, entry.artifactKey),
+    });
   }
 
-  logger.log('[2/5] Lade unterstützten Katalog und ermittle Namespace-Mitglieder ...');
-  const catalogRaw = await fetchRawRegisteredFile(
-    CATALOG_PATH,
-    fetchRef,
-    [],
-    retryDelaysMs,
-    catalogTreeFile.sizeBytes,
+  const entryCatalogRecord = catalogRecords.find(
+    (record) => record.entry.artifactKey === entryCatalog.artifactKey,
   );
-  if (computeGitBlobSha(catalogRaw.buffer) !== catalogTreeFile.gitBlobSha) {
-    throw new Error(`Git-Blob-SHA stimmt nicht mit dem BSI-Tree überein: ${CATALOG_PATH}`);
+  if (!entryCatalogRecord) {
+    throw new Error(`Einstiegskatalog wurde nicht materialisiert: ${entryCatalog.artifactKey}`);
   }
-  const catalogArtifact = validateFetchedOscalArtifact(
-    catalogRaw.buffer,
-    SUPPORTED_CATALOG.expectedRootType,
-    {
-      artifactKey: SUPPORTED_CATALOG.artifactKey,
-      expectedOscalVersion: SUPPORTED_CATALOG.oscalVersion,
-    },
-  );
-  const catalogJson = catalogArtifact.json;
-  const catalogQuality = validateCatalogControlIdentities(catalogJson, SUPPORTED_CATALOG.artifactKey);
+  const catalogJson = entryCatalogRecord.artifact.json;
 
-  const referencedNamespaceUrls = extractReferencedNamespaceUrls(catalogJson, REPO);
+  // Vokabular-Membership wird aus allen ausgelieferten Katalogen abgeleitet.
+  // Ein zweiter Katalog darf sein Vokabular nicht verlieren, nur weil er nicht
+  // der Einstieg ist; catalog-sync-guard.mjs leitet identisch ab.
+  const referencedNamespaceUrls = [
+    ...new Set(
+      catalogRecords.flatMap((record) => extractReferencedNamespaceUrls(record.artifact.json, REPO)),
+    ),
+  ].sort();
   const vocabularyCollection = registryEntries.find(
     (entry) => entry.kind === 'vocabulary-collection' && entry.lifecycle === 'supported',
   );
@@ -620,8 +670,23 @@ async function buildFetchArtifacts(logger = console, {
     namespaceRefs,
   });
 
+  const materializedRegistryPaths = new Set(registryFiles.map((file) => file.path));
+  for (const entry of registryEntries) {
+    if (
+      entry.kind === 'oscal' &&
+      entry.lifecycle === 'blocked-by-upstream' &&
+      !materializedRegistryPaths.has(entry.upstreamPath)
+    ) {
+      logger.warn(
+        `  ! Gesperrtes Artefakt ${entry.artifactKey} fehlt im BSI-Tree (${entry.upstreamPath}) — bleibt gesperrt, kein Fetch.`,
+      );
+    }
+  }
+
   logger.log(`[3/5] Validiere ${registryFiles.length} registrierte Artefakte ...`);
-  const rawFileByPath = new Map([[CATALOG_PATH, catalogRaw]]);
+  const rawFileByPath = new Map(
+    catalogRecords.map((record) => [record.entry.upstreamPath, record.raw]),
+  );
   const inspectedArtifacts = await Promise.all(registryFiles.map(async (descriptor) => {
     let rawFile = rawFileByPath.get(descriptor.path);
     if (!rawFile) {
@@ -742,13 +807,14 @@ async function buildFetchArtifacts(logger = console, {
     artifactKey: 'namespaces-bsi',
     source: {
       repository: OFFICIAL_BSI_REPOSITORY_URL,
-      catalogPath: CATALOG_PATH,
+      catalogPath: entryCatalog.upstreamPath,
+      catalogPaths: catalogRecords.map((record) => record.entry.upstreamPath),
       snapshotCommitSha: snapshot.snapshotCommitSha,
       snapshotCommitDate: snapshot.snapshotCommitDate,
     },
     manifest,
     files: vocabularyFiles,
-    dataQualityFindings: catalogQuality.findings,
+    dataQualityFindings: catalogRecords.flatMap((record) => record.quality.findings),
     taxonomyCoverage: {
       topics: topicCoverage,
       practices: practiceIntegrity,
@@ -761,35 +827,48 @@ async function buildFetchArtifacts(logger = console, {
     build: buildMetadata,
   }, 'Upstream-Metadaten');
 
-  const catalogMetadataArtifact = buildJsonArtifactBuffer({
-    artifactKey: SUPPORTED_CATALOG.artifactKey,
-    source: {
-      repository: OFFICIAL_BSI_REPOSITORY_URL,
-      file: CATALOG_PATH,
-      commit_sha: snapshot.snapshotCommitSha,
-      commit_date: snapshot.snapshotCommitDate,
-      git_blob_sha: catalogTreeFile.gitBlobSha,
-      upstream_sha256: sha256Hex(catalogRaw.buffer),
-      upstream_size_bytes: catalogRaw.buffer.length,
-    },
-    integrity: {
-      sha256: sha256Hex(catalogArtifact.buffer),
-      size_bytes: catalogArtifact.buffer.length,
-      fetched_at: fetchedAt,
-    },
-    build: buildMetadata,
-  }, 'Katalog-Metadaten');
+  // Je Katalog ein eigenes Daten- und Metadatenartefakt mit eigenem SHA-256,
+  // Git-Blob-SHA, Snapshot-Bezug und deklarierter OSCAL-Version. Die
+  // Laufzeitprüfung vergleicht jeden Katalog gegen genau diese Metadaten.
+  const catalogArtifactFiles = catalogRecords.flatMap((record) => {
+    const dataFileName = catalogDataFileName(record.entry);
+    const metadataFileName = catalogMetadataFileName(record.entry);
+    const metadataArtifact = buildJsonArtifactBuffer({
+      artifactKey: record.entry.artifactKey,
+      catalogKey: record.entry.catalogKey,
+      oscalVersion: record.entry.oscalVersion,
+      source: {
+        repository: OFFICIAL_BSI_REPOSITORY_URL,
+        file: record.entry.upstreamPath,
+        commit_sha: snapshot.snapshotCommitSha,
+        commit_date: snapshot.snapshotCommitDate,
+        git_blob_sha: record.treeFile.gitBlobSha,
+        upstream_sha256: sha256Hex(record.raw.buffer),
+        upstream_size_bytes: record.raw.buffer.length,
+      },
+      integrity: {
+        sha256: sha256Hex(record.artifact.buffer),
+        size_bytes: record.artifact.buffer.length,
+        fetched_at: fetchedAt,
+      },
+      build: buildMetadata,
+    }, `Katalog-Metadaten (${record.entry.catalogKey})`);
+
+    return [
+      {
+        fileName: dataFileName,
+        contentsBase64: record.artifact.buffer.toString('base64'),
+      },
+      {
+        fileName: metadataFileName,
+        contentsBase64: metadataArtifact.toString('base64'),
+      },
+    ];
+  });
 
   return {
     artifacts: [
-      {
-        fileName: CATALOG_FILE_NAME,
-        contentsBase64: catalogArtifact.buffer.toString('base64'),
-      },
-      {
-        fileName: CATALOG_METADATA_FILE_NAME,
-        contentsBase64: catalogMetadataArtifact.toString('base64'),
-      },
+      ...catalogArtifactFiles,
       {
         fileName: VOCABULARIES_FILE_NAME,
         contentsBase64: vocabulariesArtifact.toString('base64'),
@@ -800,8 +879,11 @@ async function buildFetchArtifacts(logger = console, {
       },
     ],
     summary: {
-      catalogFilePath: CATALOG_FILE,
-      catalogMetadataFilePath: CATALOG_METADATA_FILE,
+      catalogFilePath: join(OUTPUT_DIR, catalogDataFileName(entryCatalog)),
+      catalogMetadataFilePath: join(OUTPUT_DIR, catalogMetadataFileName(entryCatalog)),
+      catalogArtifactFilePaths: catalogArtifactFiles.map(
+        (artifact) => join(OUTPUT_DIR, artifact.fileName),
+      ),
       vocabulariesFilePath: VOCABULARIES_FILE,
       upstreamSourcesMetadataFilePath: UPSTREAM_SOURCES_METADATA_FILE,
       snapshotCommitSha: snapshot.snapshotCommitSha,
@@ -812,6 +894,7 @@ async function buildFetchArtifacts(logger = console, {
 
 export {
   buildFetchArtifacts,
+  listOutputArtifactFileNames,
   validateFetchedCatalogArtifact,
   validateFetchedOscalArtifact,
   resolveOptionalSnapshotSha,
@@ -833,8 +916,9 @@ if (isDirectExecution) {
     .then(async (payload) => {
       await writeArtifacts(payload);
       console.error('[5/5] Fertig.');
-      console.error(`  Katalog:             ${payload.summary.catalogFilePath}`);
-      console.error(`  Katalog-Metadaten:   ${payload.summary.catalogMetadataFilePath}`);
+      for (const filePath of payload.summary.catalogArtifactFilePaths) {
+        console.error(`  Katalogartefakt:     ${filePath}`);
+      }
       console.error(`  Vokabulare:          ${payload.summary.vocabulariesFilePath}`);
       console.error(`  Upstream-Metadaten:  ${payload.summary.upstreamSourcesMetadataFilePath}`);
       console.error(`  Snapshot:            ${payload.summary.snapshotCommitSha}`);

@@ -12,7 +12,7 @@ import {
 import { OFFICIAL_BSI_REPOSITORY_URL } from './security-guards.mjs';
 import {
   SOURCE_REGISTRY,
-  SUPPORTED_CATALOG,
+  ENTRY_CATALOG,
 } from '../src/domain/sourceRegistry.mjs';
 import { buildUpstreamManifest } from './upstream-artifacts.mjs';
 
@@ -72,7 +72,7 @@ function makeOscalContents(
     throw new Error('Fixture requested OSCAL content for a vocabulary collection');
   }
 
-  if (entry.artifactKey === SUPPORTED_CATALOG.artifactKey) {
+  if (entry.artifactKey === ENTRY_CATALOG.artifactKey) {
     return Buffer.from(JSON.stringify({
       catalog: {
         uuid: 'supported-catalog-fixture',
@@ -353,6 +353,18 @@ describe('validateCatalogSyncManifest v2', () => {
     );
   });
 
+  it('accepts a manifest that omits a blocked-by-upstream registry artifact (ADR-7-Nachtrag)', () => {
+    const { manifest } = makeFixture();
+    const blockedFile = manifest.files.find((file) => file.lifecycle === 'blocked-by-upstream');
+    expect(blockedFile).toBeDefined();
+
+    const missingBlocked = rebuildManifest(
+      manifest,
+      manifest.files.filter((file) => file.path !== blockedFile!.path),
+    );
+    expect(validateCatalogSyncManifest(missingBlocked)).toBe(missingBlocked);
+  });
+
   it('rejects unregistered manifest entries while leaving them eligible for tree reporting', () => {
     const fixture = makeFixture();
     const unregistered = rebuildManifest(fixture.manifest, [
@@ -448,6 +460,85 @@ describe('catalog sync PR shape', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it('trägt eine Lifecycle-Promotion als Registry-Migration, ohne Netzwerkarbeit (GSPP-242)', async () => {
+    // preview → supported: derselbe Snapshot, identische Content-Pins. Genau
+    // der Fall der Auslieferung des Lieferkettenkatalogs.
+    const next = makeFixture({ snapshotCommitSha: OLD_SHA });
+    const promoted = rebuildManifest(
+      next.manifest,
+      next.manifest.files.map((file, index) =>
+        index === 0 ? { ...file, lifecycle: 'supported' } : file,
+      ),
+    );
+    const previous = rebuildManifest(
+      next.manifest,
+      next.manifest.files.map((file, index) =>
+        index === 0 ? { ...file, lifecycle: 'preview' } : file,
+      ),
+    );
+    const diffEntries = [
+      { status: 'M', path: 'src/domain/sourceRegistry.mjs' },
+      { status: 'M', path: 'upstream-manifest.json' },
+    ];
+    const fetchImpl = vi.fn();
+
+    expect(isRegistryLifecycleOnlyMigration({
+      diffEntries,
+      previousManifest: previous,
+      nextManifest: promoted,
+    })).toBe(true);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('entsperrt ein blocked-by-upstream-Artefakt nicht über die Ausnahme', () => {
+    // Deeskalation aus blocked-by-upstream heraus gehört in die vollständige
+    // Snapshot-Verifikation, nicht in die Registry-Ausnahme.
+    const next = makeFixture({ snapshotCommitSha: OLD_SHA });
+    const unblocked = rebuildManifest(
+      next.manifest,
+      next.manifest.files.map((file) =>
+        file.lifecycle === 'blocked-by-upstream' ? { ...file, lifecycle: 'preview' } : file,
+      ),
+    );
+
+    expect(isRegistryLifecycleOnlyMigration({
+      diffEntries: [
+        { status: 'M', path: 'src/domain/sourceRegistry.mjs' },
+        { status: 'M', path: 'upstream-manifest.json' },
+      ],
+      previousManifest: next.manifest,
+      nextManifest: unblocked,
+    })).toBe(false);
+  });
+
+  it('weist einen undeklarierten Lifecycle-Wert fail-closed ab', () => {
+    // Das Vormanifest liest die CLI per rohem JSON.parse, ohne Normalisierung.
+    // Das Prädikat muss einen undeklarierten Wert deshalb selbst abweisen,
+    // statt sich auf die Manifest-Shape-Prüfung zu verlassen.
+    const next = makeFixture({ snapshotCommitSha: OLD_SHA });
+    const previous = rebuildManifest(
+      next.manifest,
+      next.manifest.files.map((file, index) =>
+        index === 0 ? { ...file, lifecycle: 'preview' } : file,
+      ),
+    );
+    const bogus = {
+      ...next.manifest,
+      files: next.manifest.files.map((file, index) =>
+        index === 0 ? { ...file, lifecycle: 'experimental' } : file,
+      ),
+    };
+
+    expect(isRegistryLifecycleOnlyMigration({
+      diffEntries: [
+        { status: 'M', path: 'src/domain/sourceRegistry.mjs' },
+        { status: 'M', path: 'upstream-manifest.json' },
+      ],
+      previousManifest: previous,
+      nextManifest: bogus,
+    })).toBe(false);
+  });
+
   it('does not classify content or snapshot changes as a registry lifecycle migration', () => {
     const next = makeFixture({ snapshotCommitSha: OLD_SHA });
     const previous = rebuildManifest(
@@ -483,6 +574,54 @@ describe('catalog sync PR shape', () => {
 });
 
 describe('catalog sync artifact verification', () => {
+  it('accepts a sync when a blocked-by-upstream artifact is missing from both the manifest and the tree (ADR-7-Nachtrag)', async () => {
+    const previous = makeFixture({ snapshotCommitSha: OLD_SHA });
+    const full = makeFixture({ snapshotCommitSha: NEW_SHA });
+    const blockedEntry = SOURCE_REGISTRY.find(
+      (entry) => entry.kind === 'oscal' && entry.lifecycle === 'blocked-by-upstream',
+    );
+    expect(blockedEntry).toBeDefined();
+
+    const next = rebuildManifest(
+      full.manifest,
+      full.manifest.files.filter((file) => file.path !== blockedEntry!.upstreamPath),
+    );
+    const treeEntries = full.treeEntries.filter((entry) => entry.path !== blockedEntry!.upstreamPath);
+    const fetchImpl = makeGitHubFetch({ ...full, manifest: next }, { treeEntries });
+
+    await expect(guardCatalogSyncPullRequest({
+      ...validShape(),
+      previousManifest: previous.manifest,
+      nextManifest: next,
+      fetchImpl,
+    })).resolves.toEqual({ catalogSync: true, snapshotCommitSha: NEW_SHA });
+  });
+
+  it('rejects a manifest that omits a blocked-by-upstream artifact still present in the BSI snapshot (ADR-7-Nachtrag)', async () => {
+    const previous = makeFixture({ snapshotCommitSha: OLD_SHA });
+    const full = makeFixture({ snapshotCommitSha: NEW_SHA });
+    const blockedEntry = SOURCE_REGISTRY.find(
+      (entry) => entry.kind === 'oscal' && entry.lifecycle === 'blocked-by-upstream',
+    );
+    expect(blockedEntry).toBeDefined();
+
+    const next = rebuildManifest(
+      full.manifest,
+      full.manifest.files.filter((file) => file.path !== blockedEntry!.upstreamPath),
+    );
+    // treeEntries stays at full.treeEntries: the blocked artifact is still present upstream.
+    const fetchImpl = makeGitHubFetch({ ...full, manifest: next });
+
+    await expect(guardCatalogSyncPullRequest({
+      ...validShape(),
+      previousManifest: previous.manifest,
+      nextManifest: next,
+      fetchImpl,
+    })).rejects.toThrow(
+      `Manifest omits blocked artifact that is still present in the BSI snapshot: ${blockedEntry!.upstreamPath}`,
+    );
+  });
+
   it('accepts unreferenced direct CSV members from the registered namespace directory', async () => {
     const previous = makeFixture({
       snapshotCommitSha: OLD_SHA,

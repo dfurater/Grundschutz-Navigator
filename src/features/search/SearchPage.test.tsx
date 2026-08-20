@@ -8,6 +8,7 @@ import { downloadCSV } from '@/features/export/csvExport';
 import { SearchPage } from './SearchPage';
 import { useSearch } from './useSearch';
 import { CONTROL_ROUTE_PATTERN } from '@/app/routes';
+import { catalogCollectionDefaults } from '@/test/catalogState';
 
 vi.mock('@/hooks/useCatalog', () => ({
   useCatalog: vi.fn(),
@@ -51,6 +52,7 @@ function makeControl(overrides: Partial<Control> = {}): Control {
 
 function makeCatalogState(controls: Control[]): CatalogState {
   return {
+    ...catalogCollectionDefaults(),
     catalogDocument: null,
     catalog: {
       catalogKey: 'gspp',

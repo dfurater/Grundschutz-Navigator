@@ -80,9 +80,7 @@ describe('security-guards', () => {
 
   it('rejects registered preview artifacts for fetching', () => {
     expect(() =>
-      assertAllowedUpstreamRepoPath(
-        'control_layer/Lieferkettensicherheit/Lieferkettensicherheit-resolved_catalog.json',
-      ),
+      assertAllowedUpstreamRepoPath('control_layer/WLAN/WLAN-resolved_catalog.json'),
     ).toThrow('outside the allowed BSI contract');
     expect(() =>
       assertAllowedUpstreamRepoPath('control_layer/WLAN/sources/profiles/WLAN-profile.json'),
@@ -90,8 +88,7 @@ describe('security-guards', () => {
   });
 
   it('allows exact preview OSCAL paths for read-only registry inspection', () => {
-    const previewCatalog =
-      'control_layer/Lieferkettensicherheit/Lieferkettensicherheit-resolved_catalog.json';
+    const previewCatalog = 'control_layer/WLAN/WLAN-resolved_catalog.json';
     const previewProfile = 'control_layer/WLAN/sources/profiles/WLAN-profile.json';
 
     expect(assertRegisteredUpstreamRepoPath(previewCatalog)).toBe(previewCatalog);

@@ -15,6 +15,18 @@
 
 import { parseCatalog } from '@/adapters/oscalAdapter';
 import {
+  COMPONENT_DEFINITION_ROOT_TYPE,
+  deriveComponentDefinition,
+} from '@/adapters/oscalComponentAdapter';
+import type { ComponentDefinition } from '@/adapters/oscalComponentAdapter';
+import {
+  deriveMappingCollection,
+  MAPPING_COLLECTION_ROOT_TYPE,
+} from '@/adapters/oscalMappingAdapter';
+import type { MappingCollection } from '@/adapters/oscalMappingAdapter';
+import { deriveProfile, PROFILE_ROOT_TYPE } from '@/adapters/oscalProfileAdapter';
+import type { Profile } from '@/adapters/oscalProfileAdapter';
+import {
   dispatchOscalDocument,
   ROOT_DISPATCH_DIAGNOSTIC_CODES,
   ROOT_DISPATCH_STAGE,
@@ -97,9 +109,52 @@ export const catalogRootAdapter: OscalRootAdapter<Catalog> = Object.freeze({
     parseCatalog(body, { catalogKey: resolveCatalogKey(context) }),
 });
 
+/**
+ * Component-Definition-Adapter (Implementation Layer). Er braucht keine
+ * Identität aus Kontext oder Register: Eine Component Definition trägt ihre
+ * `uuid` selbst und ist nicht kataloggescopt (GSPP-248).
+ */
+export const componentDefinitionRootAdapter: OscalRootAdapter<ComponentDefinition> = Object.freeze({
+  rootType: COMPONENT_DEFINITION_ROOT_TYPE,
+  moduleEntryPoint: 'src/adapters/oscalComponentAdapter.ts',
+  derive: (body: unknown, context: OscalDocumentContext) =>
+    deriveComponentDefinition(body, context),
+});
+
+/**
+ * Profile-Adapter (Control Layer). Wie die Component Definition braucht ein
+ * Profil keine Identität aus Kontext oder Register: Es trägt seine `uuid`
+ * selbst und ist nicht kataloggescopt. Der `catalogKey` bleibt hier bewusst
+ * ungenutzt — ein Profil **wählt** Controls aus importierten Quellen aus, es
+ * gehört keiner (GSPP-240).
+ */
+export const profileRootAdapter: OscalRootAdapter<Profile> = Object.freeze({
+  rootType: PROFILE_ROOT_TYPE,
+  moduleEntryPoint: 'src/adapters/oscalProfileAdapter.ts',
+  derive: (body: unknown, context: OscalDocumentContext) => deriveProfile(body, context),
+});
+
+/**
+ * Mapping-Adapter (Control Layer). Eine Mapping Collection trägt ihre `uuid`
+ * selbst und ist nicht kataloggescopt: Sie **beschreibt** Beziehungen zwischen
+ * Controls zweier Quellen, gehört aber keiner von beiden (GSPP-245).
+ */
+export const mappingCollectionRootAdapter: OscalRootAdapter<MappingCollection> = Object.freeze({
+  rootType: MAPPING_COLLECTION_ROOT_TYPE,
+  moduleEntryPoint: 'src/adapters/oscalMappingAdapter.ts',
+  derive: (body: unknown, context: OscalDocumentContext) =>
+    deriveMappingCollection(body, context),
+});
+
 /** Registrierte Modelladapter. Ein neues Modell ergänzt hier genau eine Zeile. */
-const OSCAL_ROOT_ADAPTERS: ReadonlyMap<OscalRootKey, OscalRootAdapter> = new Map([
+const OSCAL_ROOT_ADAPTERS: ReadonlyMap<OscalRootKey, OscalRootAdapter> = new Map<
+  OscalRootKey,
+  OscalRootAdapter
+>([
   [catalogRootAdapter.rootType, catalogRootAdapter],
+  [componentDefinitionRootAdapter.rootType, componentDefinitionRootAdapter],
+  [profileRootAdapter.rootType, profileRootAdapter],
+  [mappingCollectionRootAdapter.rootType, mappingCollectionRootAdapter],
 ]);
 
 export function getOscalRootAdapter(rootType: OscalRootKey): OscalRootAdapter | null {
