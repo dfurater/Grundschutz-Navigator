@@ -53,7 +53,14 @@ function unresolvedImport({ index, state, importHref = null, resourceUuid = null
   };
 }
 
-function resolveImport({ imported, index, resourcesByUuid, configuredImportsByHref, artifactsByKey }) {
+function resolveImport({
+  imported,
+  index,
+  resourcesByUuid,
+  configuredImportsByHref,
+  configuredImportHrefs,
+  artifactsByKey,
+}) {
   const importHref = nonEmptyString(imported?.href);
   if (!importHref) {
     return unresolvedImport({ index, state: 'import-href-missing' });
@@ -83,6 +90,7 @@ function resolveImport({ imported, index, resourcesByUuid, configuredImportsByHr
   // Keine URL- oder Pfadnormalisierung: Die Map akzeptiert nur den exakten
   // `rlinks.href`-String, der im Quellregister dokumentiert wurde.
   const configuredMatches = hrefs.filter((href) => configuredImportsByHref.has(href));
+  for (const href of configuredMatches) configuredImportHrefs.add(href);
   if (configuredMatches.length === 0) {
     return unresolvedImport({
       index,
@@ -147,19 +155,31 @@ export function projectCatalogLineage({ lineage, artifactsByKey }) {
     resourcesByUuid.set(uuid, matchingResources);
   }
   const configuredImportsByHref = new Map(lineage.imports.map((item) => [item.href, item]));
-  const imports = Array.isArray(profile.imports) ? profile.imports : [];
+  const profileImports = Array.isArray(profile.imports) ? profile.imports : [];
+  const configuredImportHrefs = new Set();
+  const imports = profileImports.map((imported, index) =>
+    resolveImport({
+      imported: asRecord(imported),
+      index,
+      resourcesByUuid,
+      configuredImportsByHref,
+      configuredImportHrefs,
+      artifactsByKey,
+    }),
+  );
+  const missingConfiguredImports = lineage.imports
+    .filter((configuredImport) => !configuredImportHrefs.has(configuredImport.href))
+    .map((configuredImport) =>
+      unresolvedImport({
+        index: null,
+        state: 'configured-import-missing',
+        rlinkHref: configuredImport.href,
+      }),
+    );
 
   return {
     catalogKey: lineage.catalogKey,
     profile: projectDocument(lineage.profileArtifactKey, profileArtifact, 'profile'),
-    imports: imports.map((imported, index) =>
-      resolveImport({
-        imported: asRecord(imported),
-        index,
-        resourcesByUuid,
-        configuredImportsByHref,
-        artifactsByKey,
-      }),
-    ),
+    imports: [...imports, ...missingConfiguredImports],
   };
 }

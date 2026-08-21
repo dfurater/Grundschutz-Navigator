@@ -143,8 +143,31 @@ describe('projectCatalogLineage', () => {
 
     const result = projectCatalogLineage({ lineage, artifactsByKey: artifacts });
 
-    expect(result.imports).toEqual([
+    expect(result.imports[0]).toEqual(
       expect.objectContaining({ state: expectedState, source: null }),
+    );
+  });
+
+  it('retains a named failure for every configured source import absent from the profile', () => {
+    const result = projectCatalogLineage({
+      lineage,
+      artifactsByKey: makeArtifacts([
+        { href: '#kernel-resource' },
+        { href: '#risiko-resource' },
+      ]),
+    });
+
+    expect(result.imports).toEqual([
+      expect.objectContaining({ state: 'complete', rlinkHref: KERNEL_HREF }),
+      expect.objectContaining({ state: 'complete', rlinkHref: RISIKO_HREF }),
+      expect.objectContaining({
+        index: null,
+        state: 'configured-import-missing',
+        importHref: null,
+        resourceUuid: null,
+        rlinkHref: METHODIK_HREF,
+        source: null,
+      }),
     ]);
   });
 });

@@ -341,6 +341,7 @@ const lineageStateLabels: Record<Exclude<CatalogLineageState, 'complete'>, strin
   'rlink-missing': 'Ressourcen-Link fehlt',
   'rlink-ambiguous': 'Ressourcen-Link ist mehrdeutig',
   'artifact-unregistered': 'Quelle ist nicht explizit im Quellregister zugeordnet',
+  'configured-import-missing': 'Konfigurierter Quellimport fehlt im Profil',
 };
 
 const lineageStates = new Set<CatalogLineageState>([
@@ -352,6 +353,7 @@ const lineageStates = new Set<CatalogLineageState>([
   'rlink-missing',
   'rlink-ambiguous',
   'artifact-unregistered',
+  'configured-import-missing',
 ]);
 
 function isNullableString(value: unknown): value is string | null {
@@ -377,8 +379,10 @@ function isCatalogLineageImport(value: unknown): value is CatalogLineageImport {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
   const importedCatalog = value as Record<string, unknown>;
   if (
-    !Number.isSafeInteger(importedCatalog.index) ||
-    (importedCatalog.index as number) < 0 ||
+    !(
+      importedCatalog.index === null ||
+      (Number.isSafeInteger(importedCatalog.index) && (importedCatalog.index as number) >= 0)
+    ) ||
     typeof importedCatalog.state !== 'string' ||
     !lineageStates.has(importedCatalog.state as CatalogLineageState) ||
     !isNullableString(importedCatalog.importHref) ||

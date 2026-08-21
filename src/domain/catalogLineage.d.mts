@@ -8,7 +8,8 @@ export type CatalogLineageState =
   | 'resource-ambiguous'
   | 'rlink-missing'
   | 'rlink-ambiguous'
-  | 'artifact-unregistered';
+  | 'artifact-unregistered'
+  | 'configured-import-missing';
 
 export interface CatalogLineageDocument {
   readonly artifactKey: string;
@@ -22,7 +23,8 @@ export interface CatalogLineageDocument {
 }
 
 export interface CatalogLineageImport {
-  readonly index: number;
+  /** `null`, wenn allein der konfigurierte Import im Profil fehlt. */
+  readonly index: number | null;
   readonly state: CatalogLineageState;
   readonly importHref: string | null;
   readonly resourceUuid: string | null;

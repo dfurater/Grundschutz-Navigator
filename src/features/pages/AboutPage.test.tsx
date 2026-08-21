@@ -444,6 +444,14 @@ describe('AboutPage', () => {
             rlinkHref: null,
             source: null,
           },
+          {
+            index: null,
+            state: 'configured-import-missing',
+            importHref: null,
+            resourceUuid: null,
+            rlinkHref: '../catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json',
+            source: null,
+          },
         ],
       },
     ];
@@ -460,6 +468,7 @@ describe('AboutPage', () => {
     expect(screen.getByText('Kernel G0')).toBeInTheDocument();
     expect(screen.getByText('kernel-uuid')).toBeInTheDocument();
     expect(screen.getByText(/Back-matter-Ressource fehlt/i)).toBeInTheDocument();
+    expect(screen.getByText(/Konfigurierter Quellimport fehlt im Profil/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Kernel G0/i })).toHaveAttribute(
       'href',
       'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/blob/fedcba0987654321fedcba0987654321fedcba09/control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
