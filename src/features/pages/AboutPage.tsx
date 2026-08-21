@@ -787,13 +787,9 @@ export function AboutPage() {
                   )}
                 />
                 <ul className="mt-4 space-y-4">
-                  {activeCatalogLineage.imports.map((importedCatalog) => (
+                  {activeCatalogLineage.imports.map((importedCatalog, importPosition) => (
                     <LineageImportEntry
-                      key={
-                        importedCatalog.index === null
-                          ? `configured:${importedCatalog.rlinkHref ?? 'missing'}`
-                          : `profile:${importedCatalog.index}`
-                      }
+                      key={`lineage-import:${importedCatalog.index ?? 'configured'}:${importPosition}`}
                       importedCatalog={importedCatalog}
                       repositoryUrl={vocabularyProvenance.source?.repository}
                       snapshotCommitSha={vocabularyProvenance.source?.snapshotCommitSha}

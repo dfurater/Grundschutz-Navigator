@@ -513,7 +513,7 @@ describe('AboutPage', () => {
             state: 'configured-import-missing',
             importHref: null,
             resourceUuid: null,
-            rlinkHref: '../../../Risikomanagement/BSI-Anforderungen-zum-Risikomanagement-catalog.json',
+            rlinkHref: '../catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json',
             source: null,
           },
         ],
