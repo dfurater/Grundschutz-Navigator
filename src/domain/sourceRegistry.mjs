@@ -523,6 +523,48 @@ export function listSupportedCatalogs(entries = SOURCE_REGISTRY) {
   );
 }
 
+function isInternalPreviewCatalogSource(entry) {
+  return (
+    entry?.kind === 'oscal' &&
+    entry.expectedRootType === 'catalog' &&
+    entry.lifecycle === 'preview' &&
+    entry.catalogKey === undefined
+  );
+}
+
+function validateCatalogLineageImport(importedCatalog, hrefs, artifactKeys, entriesByKey) {
+  if (!isNonEmptyString(importedCatalog.href) || hrefs.has(importedCatalog.href)) {
+    throw new Error(`Catalog lineage has duplicate or invalid href: ${importedCatalog.href}`);
+  }
+  hrefs.add(importedCatalog.href);
+
+  if (!isNonEmptyString(importedCatalog.artifactKey) || artifactKeys.has(importedCatalog.artifactKey)) {
+    throw new Error(
+      `Catalog lineage has duplicate or invalid source artifact: ${importedCatalog.artifactKey}`,
+    );
+  }
+  artifactKeys.add(importedCatalog.artifactKey);
+
+  const source = entriesByKey.get(importedCatalog.artifactKey);
+  if (!isInternalPreviewCatalogSource(source)) {
+    throw new Error(
+      `Catalog lineage source must be an internal preview catalog: ${importedCatalog.artifactKey}`,
+    );
+  }
+}
+
+function validateCatalogLineageImports(lineage, entriesByKey) {
+  if (!Array.isArray(lineage.imports) || lineage.imports.length === 0) {
+    throw new Error(`Catalog lineage requires at least one import: ${lineage.catalogKey}`);
+  }
+
+  const hrefs = new Set();
+  const artifactKeys = new Set();
+  for (const importedCatalog of lineage.imports) {
+    validateCatalogLineageImport(importedCatalog, hrefs, artifactKeys, entriesByKey);
+  }
+}
+
 /** Validiert, dass jede Lineage rein explizite, Registry-gebundene Kanten enthält. */
 export function validateCatalogLineages(lineages = CATALOG_LINEAGES, entries = SOURCE_REGISTRY) {
   const lineagesByCatalog = new Set();
@@ -534,10 +576,10 @@ export function validateCatalogLineages(lineages = CATALOG_LINEAGES, entries = S
     }
     lineagesByCatalog.add(lineage.catalogKey);
 
-    const targetCatalog = entries.find(
+    const hasTargetCatalog = entries.some(
       (entry) => entry.kind === 'oscal' && entry.catalogKey === lineage.catalogKey,
     );
-    if (!targetCatalog) {
+    if (!hasTargetCatalog) {
       throw new Error(`Catalog lineage references unknown catalogKey: ${lineage.catalogKey}`);
     }
 
@@ -546,37 +588,7 @@ export function validateCatalogLineages(lineages = CATALOG_LINEAGES, entries = S
       throw new Error(`Catalog lineage references no profile artifact: ${lineage.profileArtifactKey}`);
     }
 
-    if (!Array.isArray(lineage.imports) || lineage.imports.length === 0) {
-      throw new Error(`Catalog lineage requires at least one import: ${lineage.catalogKey}`);
-    }
-
-    const hrefs = new Set();
-    const artifactKeys = new Set();
-    for (const importedCatalog of lineage.imports) {
-      if (!isNonEmptyString(importedCatalog.href) || hrefs.has(importedCatalog.href)) {
-        throw new Error(`Catalog lineage has duplicate or invalid href: ${importedCatalog.href}`);
-      }
-      hrefs.add(importedCatalog.href);
-
-      if (!isNonEmptyString(importedCatalog.artifactKey) || artifactKeys.has(importedCatalog.artifactKey)) {
-        throw new Error(
-          `Catalog lineage has duplicate or invalid source artifact: ${importedCatalog.artifactKey}`,
-        );
-      }
-      artifactKeys.add(importedCatalog.artifactKey);
-
-      const source = entriesByKey.get(importedCatalog.artifactKey);
-      if (
-        source?.kind !== 'oscal' ||
-        source.expectedRootType !== 'catalog' ||
-        source.lifecycle !== 'preview' ||
-        source.catalogKey !== undefined
-      ) {
-        throw new Error(
-          `Catalog lineage source must be an internal preview catalog: ${importedCatalog.artifactKey}`,
-        );
-      }
-    }
+    validateCatalogLineageImports(lineage, entriesByKey);
   }
 }
 

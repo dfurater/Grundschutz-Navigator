@@ -433,11 +433,11 @@ function LineageDocumentDetails({
   document,
   snapshotUrl,
   label,
-}: {
+}: Readonly<{
   document: CatalogLineageDocument;
   snapshotUrl: string | null;
   label: string;
-}) {
+}>) {
   const title = document.title ?? document.artifactKey;
 
   return (
@@ -470,11 +470,11 @@ function LineageImportEntry({
   importedCatalog,
   repositoryUrl,
   snapshotCommitSha,
-}: {
+}: Readonly<{
   importedCatalog: CatalogLineageImport;
   repositoryUrl: string | undefined;
   snapshotCommitSha: string | undefined;
-}) {
+}>) {
   if (importedCatalog.state === 'complete' && importedCatalog.source) {
     return (
       <li className="border-t border-[var(--color-border-subtle)] pt-4 first:border-t-0 first:pt-0">
