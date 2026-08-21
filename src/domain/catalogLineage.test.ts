@@ -171,6 +171,28 @@ describe('projectCatalogLineage', () => {
     ]);
   });
 
+  it('does not treat a repeated configured source import as fully resolved twice', () => {
+    const result = projectCatalogLineage({
+      lineage,
+      artifactsByKey: makeArtifacts([
+        { href: '#kernel-resource' },
+        { href: '#kernel-resource' },
+        { href: '#risiko-resource' },
+      ]),
+    });
+
+    expect(result.imports[1]).toEqual(
+      expect.objectContaining({
+        index: 1,
+        state: 'import-duplicate',
+        importHref: '#kernel-resource',
+        resourceUuid: 'kernel-resource',
+        rlinkHref: KERNEL_HREF,
+        source: null,
+      }),
+    );
+  });
+
   it('keeps configured source imports unresolved after an ambiguous rlink match', () => {
     const artifacts = makeArtifacts([
       { href: '#kernel-resource' },

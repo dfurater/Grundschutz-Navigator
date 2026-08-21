@@ -341,6 +341,7 @@ const lineageStateLabels: Record<Exclude<CatalogLineageState, 'complete'>, strin
   'rlink-missing': 'Ressourcen-Link fehlt',
   'rlink-ambiguous': 'Ressourcen-Link ist mehrdeutig',
   'artifact-unregistered': 'Quelle ist nicht explizit im Quellregister zugeordnet',
+  'import-duplicate': 'Profilimport ist mehrfach vorhanden',
   'configured-import-missing': 'Konfigurierter Quellimport fehlt im Profil',
 };
 
@@ -353,6 +354,7 @@ const lineageStates = new Set<CatalogLineageState>([
   'rlink-missing',
   'rlink-ambiguous',
   'artifact-unregistered',
+  'import-duplicate',
   'configured-import-missing',
 ]);
 

@@ -9,6 +9,7 @@ export type CatalogLineageState =
   | 'rlink-missing'
   | 'rlink-ambiguous'
   | 'artifact-unregistered'
+  | 'import-duplicate'
   | 'configured-import-missing';
 
 export interface CatalogLineageDocument {

@@ -115,6 +115,15 @@ function resolveImport({
       rlinkHref,
     });
   }
+  if (configuredImportHrefs.has(rlinkHref)) {
+    return unresolvedImport({
+      index,
+      state: 'import-duplicate',
+      importHref,
+      resourceUuid,
+      rlinkHref,
+    });
+  }
 
   configuredImportHrefs.add(rlinkHref);
   return {
