@@ -600,6 +600,20 @@ Das Deployment erfolgt automatisch via GitHub Actions bei Push auf `main` (`.git
 5. SLSA-Provenance wird generiert (`actions/attest` über `dist/**`)
 6. Deployment auf GitHub Pages
 
+### Ausführungsumgebung und Berechtigungen
+
+Jeder Workflow, der Abhängigkeiten installiert, verwendet `npm ci --ignore-scripts`.
+Damit bleibt das Lockfile die einzige Installationsquelle, ohne dass Lifecycle-Skripte
+von transitiven Abhängigkeiten während des CI-Setups ausgeführt werden. Der
+Coverage-Lauf des Deploy-Workflows ruft Vitest mit
+`npm exec --no -- vitest run --coverage` aus der lokalen, durch `package-lock.json`
+festgelegten Installation auf. `--no` unterbindet einen Registry-Fallback.
+
+Die Standardberechtigung des Deploy-Workflows beschränkt sich auf
+`contents: read`. Schreibrechte für GitHub Pages, OIDC, Attestations und
+Artefaktmetadaten besitzt ausschließlich der Job `build-and-deploy`; der
+vorgeschaltete `idempotency_guard` behält nur seine erforderlichen Lesezugriffe.
+
 Die generierten Katalog- und Vokabulardaten werden **nie** im Repository committet — sie werden immer frisch zum Build-Zeitpunkt von BSI abgerufen. Der Workflow `.github/workflows/update-catalog.yml` vergleicht die vollständigen Trees der in `sourceRegistry` definierten Monitoring-Wurzeln. Änderungen an registrierten Artefakten aktualisieren `upstream-manifest.json`; neue, nicht registrierte Dateien werden ausschließlich als `unclassified` gemeldet und weder gefetcht noch ausgeliefert. Tree-Dateidelta und Datenqualitätsbefunde erscheinen getrennt in Workflow-Ausgabe und PR-Beschreibung.
 
 Manifest v2 enthält für jede materialisierte Datei `artifactKey`, erwarteten `rootType`, `lifecycle`, Pfad, Git-Blob-SHA und Content-SHA-256. Dadurch umfasst das Delta auch registrierte Kataloge, Profile, Mappings und Component Definitions; produktiv ausgeliefert werden weiterhin ausschließlich `supported`-Artefakte.
