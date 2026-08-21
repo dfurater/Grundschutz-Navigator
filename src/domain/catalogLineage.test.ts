@@ -117,6 +117,7 @@ describe('projectCatalogLineage', () => {
     ['import-href-missing', [{}]],
     ['import-href-not-fragment', [{ href: KERNEL_HREF }]],
     ['resource-missing', [{ href: '#unbekannte-resource' }]],
+    ['resource-ambiguous', [{ href: '#kernel-resource' }]],
     ['rlink-missing', [{ href: '#kernel-resource' }]],
     ['rlink-ambiguous', [{ href: '#kernel-resource' }]],
     ['artifact-unregistered', [{ href: '#kernel-resource' }]],
@@ -126,6 +127,12 @@ describe('projectCatalogLineage', () => {
 
     if (expectedState === 'rlink-missing') {
       profile['back-matter']!.resources[0]!.rlinks = [];
+    }
+    if (expectedState === 'resource-ambiguous') {
+      profile['back-matter']!.resources.push({
+        uuid: 'kernel-resource',
+        rlinks: [{ href: METHODIK_HREF }],
+      });
     }
     if (expectedState === 'rlink-ambiguous') {
       profile['back-matter']!.resources[0]!.rlinks.push({ href: KERNEL_HREF });

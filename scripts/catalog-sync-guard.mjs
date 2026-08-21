@@ -228,6 +228,64 @@ export function isRegistryLifecycleOnlyMigration({ diffEntries, previousManifest
   return lifecycleChanges > 0;
 }
 
+/**
+ * Ein neuer interner Preview-Katalog darf derselbe Snapshot ergänzen, wenn
+ * alle bestehenden Pins unverändert bleiben und die vollständige Snapshot-
+ * Verifikation die neuen Bytes gegen Tree, Blob und Inhaltspins prüft.
+ *
+ * Die Ausnahme ist absichtlich enger als ein allgemeiner Registry-Import:
+ * Sie erlaubt nur nicht auslieferbare Katalogquellen ohne `catalogKey`.
+ */
+export function isRegistryPreviewArtifactExpansion({ diffEntries, previousManifest, nextManifest }) {
+  if (
+    !Array.isArray(diffEntries) ||
+    !diffEntries.some(
+      (entry) => entry.status === 'M' && entry.path === TRACKED_MANIFEST_PATH,
+    ) ||
+    !diffEntries.some(
+      (entry) => entry.status === 'M' && entry.path === REGISTRY_LIFECYCLE_MIGRATION_PATH,
+    ) ||
+    !previousManifest ||
+    !nextManifest ||
+    previousManifest.snapshotCommitSha !== nextManifest.snapshotCommitSha ||
+    !Array.isArray(previousManifest.files) ||
+    !Array.isArray(nextManifest.files) ||
+    previousManifest.files.length >= nextManifest.files.length
+  ) {
+    return false;
+  }
+
+  const nextByPath = new Map(nextManifest.files.map((file) => [file.path, file]));
+  for (const previousFile of previousManifest.files) {
+    const nextFile = nextByPath.get(previousFile.path);
+    if (
+      !nextFile ||
+      nextFile.artifactKey !== previousFile.artifactKey ||
+      nextFile.rootType !== previousFile.rootType ||
+      nextFile.lifecycle !== previousFile.lifecycle ||
+      nextFile.gitBlobSha !== previousFile.gitBlobSha ||
+      nextFile.contentSha256 !== previousFile.contentSha256
+    ) {
+      return false;
+    }
+  }
+
+  const previousPaths = new Set(previousManifest.files.map((file) => file.path));
+  const addedFiles = nextManifest.files.filter((file) => !previousPaths.has(file.path));
+  return addedFiles.length > 0 && addedFiles.every((file) => {
+    const registryEntry = getArtifactByUpstreamPath(file.path);
+    return (
+      registryEntry?.kind === 'oscal' &&
+      registryEntry.expectedRootType === 'catalog' &&
+      registryEntry.lifecycle === 'preview' &&
+      registryEntry.catalogKey === undefined &&
+      file.artifactKey === registryEntry.artifactKey &&
+      file.rootType === registryEntry.expectedRootType &&
+      file.lifecycle === registryEntry.lifecycle
+    );
+  });
+}
+
 export function validateCatalogSyncPullRequest({ branch, title, diffEntries }) {
   const match = SYNC_BRANCH_PATTERN.exec(branch);
   if (!match) {
@@ -501,6 +559,16 @@ export async function guardCatalogSyncPullRequest({
     return { catalogSync: false, registryLifecycleMigration: true };
   }
 
+  if (isRegistryPreviewArtifactExpansion({ diffEntries, previousManifest, nextManifest })) {
+    validateManifestV2Shape(previousManifest);
+    if (previousManifest.repository !== OFFICIAL_BSI_REPOSITORY_URL) {
+      throw new Error(`Previous manifest repository must be ${OFFICIAL_BSI_REPOSITORY_URL}`);
+    }
+    validateCatalogSyncManifest(nextManifest);
+    await verifySnapshotFiles(nextManifest, { fetchImpl, token });
+    return { catalogSync: false, registryPreviewArtifactExpansion: true };
+  }
+
   if (!isCatalogSyncCandidate({ branch, title, diffEntries })) {
     return { catalogSync: false };
   }
@@ -586,6 +654,10 @@ async function runCli() {
 
   if (result.registryLifecycleMigration) {
     console.log('Registry-Lifecycle-Migration geprüft; kein autonomer Catalog-Sync.');
+    return;
+  }
+  if (result.registryPreviewArtifactExpansion) {
+    console.log('Registry-Preview-Erweiterung vollständig gegen denselben Snapshot geprüft.');
     return;
   }
   console.log(`Catalog sync guard passed for snapshot ${result.snapshotCommitSha}.`);

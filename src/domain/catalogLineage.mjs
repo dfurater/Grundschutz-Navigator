@@ -63,10 +63,14 @@ function resolveImport({ imported, index, resourcesByUuid, configuredImportsByHr
   }
 
   const resourceUuid = importHref.slice(1);
-  const resource = resourcesByUuid.get(resourceUuid);
-  if (!resource) {
+  const resources = resourcesByUuid.get(resourceUuid);
+  if (!resources) {
     return unresolvedImport({ index, state: 'resource-missing', importHref, resourceUuid });
   }
+  if (resources.length !== 1) {
+    return unresolvedImport({ index, state: 'resource-ambiguous', importHref, resourceUuid });
+  }
+  const [resource] = resources;
 
   const rlinks = Array.isArray(resource.rlinks) ? resource.rlinks : [];
   const hrefs = rlinks
@@ -133,11 +137,15 @@ export function projectCatalogLineage({ lineage, artifactsByKey }) {
   const profile = getRootDocument(profileArtifact, 'profile');
   const backMatter = asRecord(profile['back-matter']);
   const resources = Array.isArray(backMatter?.resources) ? backMatter.resources : [];
-  const resourcesByUuid = new Map(
-    resources
-      .map((resource) => [nonEmptyString(asRecord(resource)?.uuid), asRecord(resource)])
-      .filter(([uuid, resource]) => uuid !== null && resource !== null),
-  );
+  const resourcesByUuid = new Map();
+  for (const candidate of resources) {
+    const resource = asRecord(candidate);
+    const uuid = nonEmptyString(resource?.uuid);
+    if (!uuid || !resource) continue;
+    const matchingResources = resourcesByUuid.get(uuid) ?? [];
+    matchingResources.push(resource);
+    resourcesByUuid.set(uuid, matchingResources);
+  }
   const configuredImportsByHref = new Map(lineage.imports.map((item) => [item.href, item]));
   const imports = Array.isArray(profile.imports) ? profile.imports : [];
 

@@ -337,10 +337,91 @@ const lineageStateLabels: Record<Exclude<CatalogLineageState, 'complete'>, strin
   'import-href-missing': 'Import ohne href',
   'import-href-not-fragment': 'Import-href ist kein lokales Fragment',
   'resource-missing': 'Back-matter-Ressource fehlt',
+  'resource-ambiguous': 'Back-matter-Ressource ist mehrdeutig',
   'rlink-missing': 'Ressourcen-Link fehlt',
   'rlink-ambiguous': 'Ressourcen-Link ist mehrdeutig',
   'artifact-unregistered': 'Quelle ist nicht explizit im Quellregister zugeordnet',
 };
+
+const lineageStates = new Set<CatalogLineageState>([
+  'complete',
+  'import-href-missing',
+  'import-href-not-fragment',
+  'resource-missing',
+  'resource-ambiguous',
+  'rlink-missing',
+  'rlink-ambiguous',
+  'artifact-unregistered',
+]);
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === 'string';
+}
+
+function isCatalogLineageDocument(value: unknown): value is CatalogLineageDocument {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const document = value as Record<string, unknown>;
+  return (
+    typeof document.artifactKey === 'string' &&
+    isNullableString(document.title) &&
+    isNullableString(document.documentUuid) &&
+    isNullableString(document.oscalVersion) &&
+    isNullableString(document.version) &&
+    isNullableString(document.upstreamPath) &&
+    isNullableString(document.gitBlobSha) &&
+    isNullableString(document.contentSha256)
+  );
+}
+
+function isCatalogLineageImport(value: unknown): value is CatalogLineageImport {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const importedCatalog = value as Record<string, unknown>;
+  if (
+    !Number.isSafeInteger(importedCatalog.index) ||
+    (importedCatalog.index as number) < 0 ||
+    typeof importedCatalog.state !== 'string' ||
+    !lineageStates.has(importedCatalog.state as CatalogLineageState) ||
+    !isNullableString(importedCatalog.importHref) ||
+    !isNullableString(importedCatalog.resourceUuid) ||
+    !isNullableString(importedCatalog.rlinkHref)
+  ) {
+    return false;
+  }
+
+  return importedCatalog.state === 'complete'
+    ? isCatalogLineageDocument(importedCatalog.source)
+    : importedCatalog.source === null;
+}
+
+function isCatalogLineageProjection(value: unknown): value is CatalogLineageProjection {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const lineage = value as Record<string, unknown>;
+  return (
+    typeof lineage.catalogKey === 'string' &&
+    lineage.catalogKey.length > 0 &&
+    isCatalogLineageDocument(lineage.profile) &&
+    Array.isArray(lineage.imports) &&
+    lineage.imports.every(isCatalogLineageImport)
+  );
+}
+
+function resolveActiveCatalogLineage(lineages: unknown, activeCatalogKey: CatalogKey) {
+  if (lineages === undefined) return { lineage: null, invalid: false };
+  if (!Array.isArray(lineages)) return { lineage: null, invalid: true };
+
+  const candidates = lineages.filter(
+    (candidate) =>
+      candidate !== null &&
+      typeof candidate === 'object' &&
+      !Array.isArray(candidate) &&
+      (candidate as { catalogKey?: unknown }).catalogKey === activeCatalogKey,
+  );
+  if (candidates.length === 0) return { lineage: null, invalid: false };
+  if (candidates.length !== 1 || !isCatalogLineageProjection(candidates[0])) {
+    return { lineage: null, invalid: true };
+  }
+  return { lineage: candidates[0], invalid: false };
+}
 
 function LineageDocumentDetails({
   document,
@@ -460,13 +541,8 @@ export function AboutPage() {
     : vocabularyVerification
       ? verificationFailureTone
       : null;
-  const catalogLineages: readonly CatalogLineageProjection[] = Array.isArray(
-    vocabularyProvenance?.catalogLineages,
-  )
-    ? (vocabularyProvenance.catalogLineages as readonly CatalogLineageProjection[])
-    : [];
-  const activeCatalogLineage =
-    catalogLineages.find((lineage) => lineage.catalogKey === activeCatalogKey) ?? null;
+  const { lineage: activeCatalogLineage, invalid: invalidCatalogLineage } =
+    resolveActiveCatalogLineage(vocabularyProvenance?.catalogLineages, activeCatalogKey);
   const hasResolutionTool = metadata?.props.some((prop) => prop.name === 'resolution-tool') ?? false;
   const hasSourceProfile = metadata?.links.some((link) => link.rel === 'source-profile') ?? false;
 
@@ -669,6 +745,16 @@ export function AboutPage() {
                   referenzierte Ressourcen, nie einen Hash des Katalogdokuments über sich selbst.
                 </p>
               </div>
+            </div>
+          )}
+
+          {invalidCatalogLineage && vocabularyProvenance && (
+            <div className={`${surfacePanelClass} mt-5 px-4 py-3`}>
+              <p className="type-meta">Quellkatalog-Lineage nicht verfügbar</p>
+              <p className="mt-1 text-xs leading-relaxed text-[var(--color-text-secondary)]">
+                Die im Build-Sidecar enthaltene Lineage ist unvollständig oder widersprüchlich und wird
+                nicht angezeigt.
+              </p>
             </div>
           )}
 

@@ -5,6 +5,7 @@ export type CatalogLineageState =
   | 'import-href-missing'
   | 'import-href-not-fragment'
   | 'resource-missing'
+  | 'resource-ambiguous'
   | 'rlink-missing'
   | 'rlink-ambiguous'
   | 'artifact-unregistered';

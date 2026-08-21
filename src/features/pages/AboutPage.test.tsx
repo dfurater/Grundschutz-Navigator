@@ -468,6 +468,19 @@ describe('AboutPage', () => {
     expect(screen.getByText('Ressourcen-Hashes')).toBeInTheDocument();
   });
 
+  it('keeps the About page available and rejects a malformed lineage sidecar visibly', () => {
+    const state = makeCatalogState();
+    state.vocabularyProvenance = makeVocabularyProvenance();
+    state.vocabularyProvenance.catalogLineages = [{ catalogKey: 'gspp' }] as unknown as [];
+    mockedUseCatalog.mockReturnValue(state);
+
+    render(<AboutPage />);
+
+    expect(screen.getByText('Quellkatalog-Lineage nicht verfügbar')).toBeInTheDocument();
+    expect(screen.getByText(/unvollständig oder widersprüchlich/i)).toBeInTheDocument();
+    expect(screen.queryByText('Aufgelöster Katalog ← Profil ← registrierte Quellkataloge')).not.toBeInTheDocument();
+  });
+
   it('uses semantic token classes for the vocabulary verification states', () => {
     const validState = makeCatalogState();
     validState.vocabularyProvenance = makeVocabularyProvenance();
