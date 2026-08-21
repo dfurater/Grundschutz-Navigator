@@ -13,6 +13,12 @@ import type {
   CatalogRole,
   CatalogResponsibleParty,
 } from '@/domain/models';
+import type {
+  CatalogLineageDocument,
+  CatalogLineageImport,
+  CatalogLineageProjection,
+  CatalogLineageState,
+} from '@/domain/catalogLineage';
 import {
   referenceDocumentFromCatalog,
   resolveCatalogMetadataReferences,
@@ -91,6 +97,16 @@ function buildUpstreamCatalogUrl(
     provenance?.source.file || resolveCatalogRegistryEntry(catalogKey).upstreamPath;
 
   return `https://raw.githubusercontent.com/${repositoryPath}/${ref}/${catalogPath}`;
+}
+
+function buildUpstreamSnapshotUrl(
+  repositoryUrl: string | undefined,
+  snapshotCommitSha: string | undefined,
+  upstreamPath: string | null,
+): string | null {
+  if (!upstreamPath || !snapshotCommitSha || snapshotCommitSha === 'unknown') return null;
+
+  return `https://github.com/${resolveUpstreamRepositoryPath(repositoryUrl)}/blob/${snapshotCommitSha}/${upstreamPath}`;
 }
 
 function buildAppCatalogUrl(
@@ -317,6 +333,100 @@ function MetadataReference({ reference }: { reference: ResolvedOscalReference })
   );
 }
 
+const lineageStateLabels: Record<Exclude<CatalogLineageState, 'complete'>, string> = {
+  'import-href-missing': 'Import ohne href',
+  'import-href-not-fragment': 'Import-href ist kein lokales Fragment',
+  'resource-missing': 'Back-matter-Ressource fehlt',
+  'rlink-missing': 'Ressourcen-Link fehlt',
+  'rlink-ambiguous': 'Ressourcen-Link ist mehrdeutig',
+  'artifact-unregistered': 'Quelle ist nicht explizit im Quellregister zugeordnet',
+};
+
+function LineageDocumentDetails({
+  document,
+  snapshotUrl,
+  label,
+}: {
+  document: CatalogLineageDocument;
+  snapshotUrl: string | null;
+  label: string;
+}) {
+  const title = document.title ?? document.artifactKey;
+
+  return (
+    <div className="space-y-1.5">
+      <p className="type-meta">{label}</p>
+      {snapshotUrl ? (
+        <ExternalReferenceLink href={snapshotUrl} label={title} />
+      ) : (
+        <p className="text-sm font-medium text-[var(--color-text-primary)]">{title}</p>
+      )}
+      <dl className="grid grid-cols-[6.5rem_1fr] gap-x-3 gap-y-1 text-xs">
+        <dt className={metaLabelClass}>Dokument-UUID</dt>
+        <dd className="break-all font-mono text-[var(--color-text-primary)]">
+          {document.documentUuid ?? 'nicht angegeben'}
+        </dd>
+        <dt className={metaLabelClass}>OSCAL-Version</dt>
+        <dd className="text-[var(--color-text-primary)]">
+          {document.oscalVersion ?? 'nicht angegeben'}
+        </dd>
+        <dt className={metaLabelClass}>Version / Stand</dt>
+        <dd className="break-all text-[var(--color-text-primary)]">
+          {document.version ?? 'nicht angegeben'}
+        </dd>
+      </dl>
+    </div>
+  );
+}
+
+function LineageImportEntry({
+  importedCatalog,
+  repositoryUrl,
+  snapshotCommitSha,
+}: {
+  importedCatalog: CatalogLineageImport;
+  repositoryUrl: string | undefined;
+  snapshotCommitSha: string | undefined;
+}) {
+  if (importedCatalog.state === 'complete' && importedCatalog.source) {
+    return (
+      <li className="border-t border-[var(--color-border-subtle)] pt-4 first:border-t-0 first:pt-0">
+        <LineageDocumentDetails
+          label="Quellkatalog"
+          document={importedCatalog.source}
+          snapshotUrl={buildUpstreamSnapshotUrl(
+            repositoryUrl,
+            snapshotCommitSha,
+            importedCatalog.source.upstreamPath,
+          )}
+        />
+        <p className="type-meta mt-2 break-all">
+          Profilreferenz: {importedCatalog.importHref} · Ressourcen-Link: {importedCatalog.rlinkHref}
+        </p>
+      </li>
+    );
+  }
+
+  const unresolvedState = importedCatalog.state === 'complete'
+    ? 'artifact-unregistered'
+    : importedCatalog.state;
+
+  return (
+    <li className="border-t border-[var(--color-border-subtle)] pt-4 first:border-t-0 first:pt-0">
+      <p className="text-sm font-medium text-[var(--color-text-primary)]">
+        {lineageStateLabels[unresolvedState]}
+      </p>
+      {(importedCatalog.importHref || importedCatalog.resourceUuid || importedCatalog.rlinkHref) && (
+        <p className="type-meta mt-1 break-all">
+          {importedCatalog.importHref && `Import: ${importedCatalog.importHref}`}
+          {importedCatalog.resourceUuid && ` · Ressource: ${importedCatalog.resourceUuid}`}
+          {importedCatalog.rlinkHref && ` · Link: ${importedCatalog.rlinkHref}`}
+        </p>
+      )}
+    </li>
+  );
+}
+
 export function AboutPage() {
   const {
     provenance,
@@ -350,6 +460,15 @@ export function AboutPage() {
     : vocabularyVerification
       ? verificationFailureTone
       : null;
+  const catalogLineages: readonly CatalogLineageProjection[] = Array.isArray(
+    vocabularyProvenance?.catalogLineages,
+  )
+    ? (vocabularyProvenance.catalogLineages as readonly CatalogLineageProjection[])
+    : [];
+  const activeCatalogLineage =
+    catalogLineages.find((lineage) => lineage.catalogKey === activeCatalogKey) ?? null;
+  const hasResolutionTool = metadata?.props.some((prop) => prop.name === 'resolution-tool') ?? false;
+  const hasSourceProfile = metadata?.links.some((link) => link.rel === 'source-profile') ?? false;
 
   return (
     <div className="mx-auto max-w-3xl px-6 pt-8 pb-12">
@@ -519,12 +638,83 @@ export function AboutPage() {
             )}
           </div>
 
+          {catalog && metadata && (
+            <div className={`${surfacePanelClass} mt-5 divide-y divide-[var(--color-border-subtle)]`}>
+              <div className="px-4 py-3">
+                <p className="type-meta">OSCAL-Ableitungsprovenienz</p>
+                <p className="mt-1 text-sm font-medium text-[var(--color-text-primary)]">
+                  Markierungen im ausgelieferten OSCAL-Dokument
+                </p>
+                <p className="type-meta mt-2">
+                  Diese optionalen Angaben beschreiben die Ableitung des Dokuments selbst.
+                </p>
+              </div>
+              <div className="divide-y divide-[var(--color-border-subtle)]">
+                <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+                  <span className={metaLabelClass}>resolution-tool</span>
+                  <span className={metaValueClass}>{hasResolutionTool ? 'vorhanden' : 'nicht vorhanden'}</span>
+                </div>
+                <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+                  <span className={metaLabelClass}>source-profile</span>
+                  <span className={metaValueClass}>{hasSourceProfile ? 'vorhanden' : 'nicht vorhanden'}</span>
+                </div>
+              </div>
+              <p className="px-4 py-3 text-xs leading-relaxed text-[var(--color-text-secondary)]">
+                Fehlende optionale Marker sind ein Projektbefund, kein Schemafehler.
+              </p>
+              <div className="border-t border-[var(--color-border-subtle)] px-4 py-3">
+                <p className="type-meta">Ressourcen-Hashes</p>
+                <p className="mt-1 text-xs leading-relaxed text-[var(--color-text-secondary)]">
+                  Hashes unter <code className="font-mono">back-matter.resource.rlinks</code> beschreiben
+                  referenzierte Ressourcen, nie einen Hash des Katalogdokuments über sich selbst.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {activeCatalogLineage && vocabularyProvenance && (
+            <div className={`${surfacePanelClass} mt-5 overflow-hidden`}>
+              <div className="px-4 py-3">
+                <p className="type-meta">Quellkatalog-Lineage</p>
+                <p className="mt-1 text-sm font-medium text-[var(--color-text-primary)]">
+                  Aufgelöster Katalog ← Profil ← registrierte Quellkataloge
+                </p>
+                <p className="type-meta mt-2">Profile Resolution: Draft · keine Control-genaue Herkunftsaussage</p>
+              </div>
+              <div className="border-t border-[var(--color-border-default)] px-4 py-4">
+                <LineageDocumentDetails
+                  label="Profil"
+                  document={activeCatalogLineage.profile}
+                  snapshotUrl={buildUpstreamSnapshotUrl(
+                    vocabularyProvenance.source?.repository,
+                    vocabularyProvenance.source?.snapshotCommitSha,
+                    activeCatalogLineage.profile.upstreamPath,
+                  )}
+                />
+                <ul className="mt-4 space-y-4">
+                  {activeCatalogLineage.imports.map((importedCatalog) => (
+                    <LineageImportEntry
+                      key={`${importedCatalog.index}-${importedCatalog.importHref ?? 'missing'}`}
+                      importedCatalog={importedCatalog}
+                      repositoryUrl={vocabularyProvenance.source?.repository}
+                      snapshotCommitSha={vocabularyProvenance.source?.snapshotCommitSha}
+                    />
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+
           {vocabularyProvenance && (
             <div className={`${surfacePanelClass} mt-5 overflow-hidden`}>
               <div className="px-4 py-3">
-                <p className="type-meta">Vokabulare</p>
+                <p className="type-meta">Projekt-Build-Provenienz</p>
                 <p className="mt-1 text-sm font-medium text-[var(--color-text-primary)]">
-                  Offizielle BSI-Vokabulare aus demselben Upstream-Snapshot
+                  Manifest v2 und Vokabulare aus demselben Upstream-Snapshot
+                </p>
+                <p className="type-meta mt-2">
+                  Git-Blob-SHA und SHA-256 stammen aus den Build-Metadaten, nicht aus einem
+                  Selbsthash des OSCAL-Dokuments.
                 </p>
               </div>
 

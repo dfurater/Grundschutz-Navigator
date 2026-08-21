@@ -315,7 +315,7 @@ describe('validateCatalogSyncManifest v2', () => {
 
     expect(validateCatalogSyncManifest(manifest)).toBe(manifest);
     expect(computeManifestSignature(manifest)).toBe(manifest.signatureSha256);
-    expect(manifest.files.filter((file) => file.rootType !== 'vocabulary')).toHaveLength(16);
+    expect(manifest.files.filter((file) => file.rootType !== 'vocabulary')).toHaveLength(19);
   });
 
   it('rejects schema additions and a manipulated signature', () => {

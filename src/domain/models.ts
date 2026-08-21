@@ -12,6 +12,7 @@ import type {
   ManifestRootType,
 } from '@/domain/sourceRegistry';
 import type { CatalogDocumentContext } from '@/domain/oscalDocumentContext';
+import type { CatalogLineageProjection } from '@/domain/catalogLineage';
 
 /* ------------------------------------------------------------------ */
 /*  Raw OSCAL 1.1.3 Types                                             */
@@ -592,6 +593,8 @@ export interface VocabularyProvenance {
     snapshotCommitDate?: string;
   };
   manifest: UpstreamManifest;
+  /** Rein lesende, profilbasierte Dokumentkette; bei älteren Deployments nicht vorhanden. */
+  catalogLineages?: readonly CatalogLineageProjection[];
   files: VocabularyFileProvenance[];
   dataQualityFindings?: string[];
   taxonomyCoverage?: {

@@ -138,6 +138,53 @@ const TWO_CATALOG_REGISTRY = [
   MINIMAL_REGISTRY[1],
 ] as const;
 
+const LINEAGE_PROFILE_PATH = 'control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json';
+const LINEAGE_KERNEL_PATH =
+  'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json';
+const LINEAGE_METHODIK_PATH =
+  'control_layer/Grundschutz++/sources/catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json';
+const LINEAGE_RISIKO_PATH =
+  'control_layer/Risikomanagement/BSI-Anforderungen-zum-Risikomanagement-catalog.json';
+const LINEAGE_REGISTRY = [
+  ...MINIMAL_REGISTRY,
+  {
+    artifactKey: 'profile-gspp',
+    kind: 'oscal',
+    oscalVersion: '1.1.3',
+    expectedRootType: 'profile',
+    upstreamPath: LINEAGE_PROFILE_PATH,
+    lifecycle: 'preview',
+    title: 'Grundschutz++ Profil',
+  },
+  {
+    artifactKey: 'catalog-source-gspp-kernel-g0',
+    kind: 'oscal',
+    oscalVersion: '1.1.3',
+    expectedRootType: 'catalog',
+    upstreamPath: LINEAGE_KERNEL_PATH,
+    lifecycle: 'preview',
+    title: 'Kernel G0',
+  },
+  {
+    artifactKey: 'catalog-source-gspp-methodik',
+    kind: 'oscal',
+    oscalVersion: '1.1.3',
+    expectedRootType: 'catalog',
+    upstreamPath: LINEAGE_METHODIK_PATH,
+    lifecycle: 'preview',
+    title: 'Methodik',
+  },
+  {
+    artifactKey: 'catalog-source-risikomanagement',
+    kind: 'oscal',
+    oscalVersion: '1.1.3',
+    expectedRootType: 'catalog',
+    upstreamPath: LINEAGE_RISIKO_PATH,
+    lifecycle: 'preview',
+    title: 'Risikomanagement',
+  },
+] as const;
+
 type RawContents = string | Buffer;
 type RawFileMap = Map<string, RawContents>;
 type ResponseFactory = (attempt: number) => Response | Promise<Response>;
@@ -300,6 +347,38 @@ function makeCatalogText(
       groups,
     },
   }, null, 2)}\n`;
+}
+
+function makeLineageProfileText() {
+  return `${JSON.stringify({
+    profile: {
+      uuid: 'profile-uuid',
+      metadata: {
+        title: 'Grundschutz++ Profil',
+        version: '2026-08-13',
+        'oscal-version': '1.1.3',
+      },
+      imports: [
+        { href: '#kernel-resource' },
+        { href: '#methodik-resource' },
+        { href: '#risiko-resource' },
+      ],
+      'back-matter': {
+        resources: [
+          { uuid: 'kernel-resource', rlinks: [{ href: '../catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json' }] },
+          { uuid: 'methodik-resource', rlinks: [{ href: '../catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json' }] },
+          { uuid: 'risiko-resource', rlinks: [{ href: '../../../Risikomanagement/BSI-Anforderungen-zum-Risikomanagement-catalog.json' }] },
+        ],
+      },
+    },
+  })}\n`;
+}
+
+function makeLineageSourceCatalogText(title: string, uuid: string) {
+  return makeOscalDocumentText('catalog', '1.1.3', {
+    uuid,
+    metadata: { title, version: '2026-08-13', 'oscal-version': '1.1.3' },
+  });
 }
 
 function makeMinimalFetchInput(
@@ -1213,6 +1292,67 @@ describe('fetch-catalog', () => {
       SOURCE_REGISTRY.filter((entry) => entry.kind === 'oscal').length + 3,
     );
     expect(manifest.files.some((file) => file.path === unclassifiedPath)).toBe(false);
+  });
+
+  it('serializes the exact, validated profile-to-source lineage into the provenance sidecar', async () => {
+    const input = makeMinimalFetchInput();
+    const rawByPath = new Map<string, RawContents>([
+      ...input.rawByPath,
+      [LINEAGE_PROFILE_PATH, makeLineageProfileText()],
+      [LINEAGE_KERNEL_PATH, makeLineageSourceCatalogText('Kernel G0', 'kernel-uuid')],
+      [LINEAGE_METHODIK_PATH, makeLineageSourceCatalogText('Methodik', 'methodik-uuid')],
+      [LINEAGE_RISIKO_PATH, makeLineageSourceCatalogText('Risikomanagement', 'risiko-uuid')],
+    ]);
+    installSnapshotFetch({ rawByPath });
+
+    const payload = await buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      {
+        retryDelaysMs: [0, 0],
+        registryEntries: LINEAGE_REGISTRY,
+        treeResponse: makeTreeResponse(rawByPath),
+      },
+    );
+    const upstreamMetadata = parseArtifactJson(payload, 'upstream-sources-metadata.json');
+
+    expect(upstreamMetadata.catalogLineages).toEqual([
+      expect.objectContaining({
+        catalogKey: 'gspp',
+        profile: expect.objectContaining({
+          artifactKey: 'profile-gspp',
+          documentUuid: 'profile-uuid',
+          oscalVersion: '1.1.3',
+          version: '2026-08-13',
+        }),
+        imports: [
+          expect.objectContaining({
+            state: 'complete',
+            source: expect.objectContaining({
+              artifactKey: 'catalog-source-gspp-kernel-g0',
+              documentUuid: 'kernel-uuid',
+              upstreamPath: LINEAGE_KERNEL_PATH,
+            }),
+          }),
+          expect.objectContaining({
+            state: 'complete',
+            source: expect.objectContaining({
+              artifactKey: 'catalog-source-gspp-methodik',
+              documentUuid: 'methodik-uuid',
+              upstreamPath: LINEAGE_METHODIK_PATH,
+            }),
+          }),
+          expect.objectContaining({
+            state: 'complete',
+            source: expect.objectContaining({
+              artifactKey: 'catalog-source-risikomanagement',
+              documentUuid: 'risiko-uuid',
+              upstreamPath: LINEAGE_RISIKO_PATH,
+            }),
+          }),
+        ],
+      }),
+    ]);
+    expect(JSON.stringify(upstreamMetadata.catalogLineages)).not.toContain('"document":');
   });
 
   it('serializes generated metadata with a trailing newline', () => {

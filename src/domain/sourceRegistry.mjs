@@ -129,6 +129,35 @@ export const SOURCE_REGISTRY = Object.freeze(
       title: 'Grundschutz++ Profil',
     },
     {
+      artifactKey: 'catalog-source-gspp-kernel-g0',
+      kind: 'oscal',
+      oscalVersion: '1.1.3',
+      expectedRootType: 'catalog',
+      upstreamPath:
+        'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
+      lifecycle: 'preview',
+      title: 'BSI Stand der Technik Kernel G0',
+    },
+    {
+      artifactKey: 'catalog-source-gspp-methodik',
+      kind: 'oscal',
+      oscalVersion: '1.1.3',
+      expectedRootType: 'catalog',
+      upstreamPath:
+        'control_layer/Grundschutz++/sources/catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json',
+      lifecycle: 'preview',
+      title: 'BSI Methodik Grundschutz++',
+    },
+    {
+      artifactKey: 'catalog-source-risikomanagement',
+      kind: 'oscal',
+      oscalVersion: '1.1.3',
+      expectedRootType: 'catalog',
+      upstreamPath: 'control_layer/Risikomanagement/BSI-Anforderungen-zum-Risikomanagement-catalog.json',
+      lifecycle: 'preview',
+      title: 'BSI Anforderungen zum Risikomanagement',
+    },
+    {
       artifactKey: 'profile-lieferkette',
       kind: 'oscal',
       oscalVersion: '1.1.3',
@@ -223,6 +252,35 @@ export const SOURCE_REGISTRY = Object.freeze(
     },
   ].map((entry) => Object.freeze(entry)),
 );
+
+/**
+ * Explizite, unveränderte Zuordnung zwischen den relativen `rlinks.href` des
+ * Grundschutz++-Profils und den materialisierten Registry-Artefakten.
+ *
+ * Die Resolver-Logik normalisiert relative Referenzen absichtlich nicht. Die
+ * Zuordnung bleibt deshalb hier prüfbar und darf keine Pfadheuristik oder
+ * Netzauflösung ersetzen.
+ */
+export const CATALOG_LINEAGES = Object.freeze([
+  Object.freeze({
+    catalogKey: 'gspp',
+    profileArtifactKey: 'profile-gspp',
+    imports: Object.freeze([
+      Object.freeze({
+        href: '../catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
+        artifactKey: 'catalog-source-gspp-kernel-g0',
+      }),
+      Object.freeze({
+        href: '../catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json',
+        artifactKey: 'catalog-source-gspp-methodik',
+      }),
+      Object.freeze({
+        href: '../../../Risikomanagement/BSI-Anforderungen-zum-Risikomanagement-catalog.json',
+        artifactKey: 'catalog-source-risikomanagement',
+      }),
+    ]),
+  }),
+]);
 
 function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0;
@@ -323,12 +381,12 @@ export function validateSourceRegistry(entries = SOURCE_REGISTRY) {
       upstreamPaths.add(entry.upstreamPath);
 
       const isCatalog = entry.expectedRootType === 'catalog';
-      if (isCatalog !== (entry.catalogKey !== undefined)) {
+      if (!isCatalog && entry.catalogKey !== undefined) {
         throw new Error(
-          `Entry ${entry.artifactKey} must define catalogKey exactly for root type "catalog"`,
+          `Entry ${entry.artifactKey} may define catalogKey only for root type "catalog"`,
         );
       }
-      if (isCatalog) {
+      if (entry.catalogKey !== undefined) {
         if (!KEY_GRAMMAR.test(entry.catalogKey)) {
           throw new Error(`catalogKey violates the key grammar: ${entry.catalogKey}`);
         }
@@ -336,6 +394,11 @@ export function validateSourceRegistry(entries = SOURCE_REGISTRY) {
           throw new Error(`Duplicate catalogKey in source registry: ${entry.catalogKey}`);
         }
         catalogKeys.add(entry.catalogKey);
+      }
+      if (isCatalog && entry.lifecycle === 'supported' && entry.catalogKey === undefined) {
+        throw new Error(
+          `Supported catalog entry ${entry.artifactKey} requires a catalogKey for app delivery`,
+        );
       }
       if (entry.entryCatalog !== undefined) {
         if (entry.entryCatalog !== true) {
@@ -455,8 +518,66 @@ export function listSupportedCatalogs(entries = SOURCE_REGISTRY) {
     (entry) =>
       entry.kind === 'oscal' &&
       entry.expectedRootType === 'catalog' &&
-      entry.lifecycle === 'supported',
+      entry.lifecycle === 'supported' &&
+      entry.catalogKey !== undefined,
   );
+}
+
+/** Validiert, dass jede Lineage rein explizite, Registry-gebundene Kanten enthält. */
+export function validateCatalogLineages(lineages = CATALOG_LINEAGES, entries = SOURCE_REGISTRY) {
+  const lineagesByCatalog = new Set();
+  const entriesByKey = new Map(entries.map((entry) => [entry.artifactKey, entry]));
+
+  for (const lineage of lineages) {
+    if (!isNonEmptyString(lineage.catalogKey) || lineagesByCatalog.has(lineage.catalogKey)) {
+      throw new Error(`Duplicate or invalid catalog lineage key: ${lineage.catalogKey}`);
+    }
+    lineagesByCatalog.add(lineage.catalogKey);
+
+    const targetCatalog = entries.find(
+      (entry) => entry.kind === 'oscal' && entry.catalogKey === lineage.catalogKey,
+    );
+    if (!targetCatalog) {
+      throw new Error(`Catalog lineage references unknown catalogKey: ${lineage.catalogKey}`);
+    }
+
+    const profile = entriesByKey.get(lineage.profileArtifactKey);
+    if (profile?.kind !== 'oscal' || profile.expectedRootType !== 'profile') {
+      throw new Error(`Catalog lineage references no profile artifact: ${lineage.profileArtifactKey}`);
+    }
+
+    if (!Array.isArray(lineage.imports) || lineage.imports.length === 0) {
+      throw new Error(`Catalog lineage requires at least one import: ${lineage.catalogKey}`);
+    }
+
+    const hrefs = new Set();
+    const artifactKeys = new Set();
+    for (const importedCatalog of lineage.imports) {
+      if (!isNonEmptyString(importedCatalog.href) || hrefs.has(importedCatalog.href)) {
+        throw new Error(`Catalog lineage has duplicate or invalid href: ${importedCatalog.href}`);
+      }
+      hrefs.add(importedCatalog.href);
+
+      if (!isNonEmptyString(importedCatalog.artifactKey) || artifactKeys.has(importedCatalog.artifactKey)) {
+        throw new Error(
+          `Catalog lineage has duplicate or invalid source artifact: ${importedCatalog.artifactKey}`,
+        );
+      }
+      artifactKeys.add(importedCatalog.artifactKey);
+
+      const source = entriesByKey.get(importedCatalog.artifactKey);
+      if (
+        source?.kind !== 'oscal' ||
+        source.expectedRootType !== 'catalog' ||
+        source.lifecycle !== 'preview' ||
+        source.catalogKey !== undefined
+      ) {
+        throw new Error(
+          `Catalog lineage source must be an internal preview catalog: ${importedCatalog.artifactKey}`,
+        );
+      }
+    }
+  }
 }
 
 /**
@@ -531,6 +652,7 @@ export function listCatalogArtifactFileNames(entries = SOURCE_REGISTRY) {
 }
 
 validateSourceRegistry(SOURCE_REGISTRY);
+validateCatalogLineages(CATALOG_LINEAGES, SOURCE_REGISTRY);
 
 export const SUPPORTED_CATALOGS = Object.freeze(listSupportedCatalogs(SOURCE_REGISTRY));
 export const ENTRY_CATALOG = resolveEntryCatalog(SOURCE_REGISTRY);

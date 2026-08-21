@@ -53,7 +53,8 @@ Der Einstiegskatalog behält seine Dateinamen bewusst unverändert: Deploy- und 
 Dazu kommen unverändert die beiden generierten Sammelartefakte:
 
 - `vocabularies.json` — offizielle BSI-Vokabulare (aus CSV konvertiert)
-- `upstream-sources-metadata.json` — Vokabular-Provenance + Upstream-Manifest
+- `upstream-sources-metadata.json` — Vokabular-Provenance + Upstream-Manifest +
+  rein lesende Katalog-Lineage
 
 Bei genau einem ausgelieferten Katalog ist die Ausgabemenge damit weiterhin `catalog.json`, `catalog-metadata.json`, `vocabularies.json`, `upstream-sources-metadata.json`. Eine Ausgabedatei, die sich nicht aus dem Register ableiten lässt, wird von `writeArtifacts` abgelehnt.
 
@@ -63,8 +64,9 @@ Bei genau einem ausgelieferten Katalog ist die Ausgabemenge damit weiterhin `cat
 2. **Snapshot-Pinning**: Ist `BSI_SNAPSHOT_SHA` gesetzt (in CI aus `upstream-manifest.json` gelesen), wird exakt dieser Commit abgerufen statt `main`.
 3. **Vollständiger Tree vor Blob-Abruf**: Der rekursive GitHub-Tree der überwachten Wurzeln muss vollständig und darf weder Symlinks noch andere nicht reguläre Dateien enthalten. Erst danach werden registrierte Pfade materialisiert.
 4. **Lifecycle-getrennte Verarbeitung**: `preview`- und `draft`-Artefakte werden transient auf Pfad, Blob, Inhalt und Root-Typ geprüft. Nur `supported`-Artefakte werden als App-Daten ausgeliefert; die Namespace-Collection materialisiert alle regulären `.csv`-Dateien direkt aus ihrem registrierten Verzeichnis. `ns`-Referenzen des unterstützten Katalogs werden separat als zulässige fachliche Auflösungsquellen validiert.
-5. **Abruf über erlaubte GitHub-Endpunkte** mit Retry und Backoff bei transienten Fehlern; optional authentifiziert über `GH_TOKEN`/`GITHUB_TOKEN`.
-6. **Integritätsdaten**: SHA-256, Dateigröße, Git-Blob-SHA und Commit-Informationen werden je ausgeliefertem Artefakt erfasst. Jeder ausgelieferte Katalog erhält dabei eigene Werte samt seiner deklarierten `metadata.oscal-version` — eine gemeinsame Versionsannahme über mehrere Kataloge gibt es bewusst nicht ([GSPP-283](https://linear.app/grundschutz-plus-plus/issue/GSPP-283)). Das vollständige Manifest v2 enthält zusätzlich für jede materialisierte Registry-Datei Root-Typ und Lifecycle.
+5. **Katalog-Lineage**: Die drei Grundschutz++-Quellkataloge und das Profil sind `preview`-Artefakte. Nach ihrer eigenen Versions- und Root-Typ-Prüfung folgt `catalogLineage.mjs` ausschließlich die belegte Dreifachkante `profile.import.href` (Fragment) → `back-matter.resource` → exakter `rlinks.href`-String → expliziter Registry-Eintrag. Relative Pfade werden dabei weder normalisiert noch über Netzwerk, Dateisystem oder den generischen Referenzresolver aufgelöst. Nur die serialisierte Projektion steht im Sidecar; die Quellkatalog-Bytes werden nicht ausgeliefert.
+6. **Abruf über erlaubte GitHub-Endpunkte** mit Retry und Backoff bei transienten Fehlern; optional authentifiziert über `GH_TOKEN`/`GITHUB_TOKEN`.
+7. **Integritätsdaten**: SHA-256, Dateigröße, Git-Blob-SHA und Commit-Informationen werden je ausgeliefertem Artefakt erfasst. Jeder ausgelieferte Katalog erhält dabei eigene Werte samt seiner deklarierten `metadata.oscal-version` — eine gemeinsame Versionsannahme über mehrere Kataloge gibt es bewusst nicht ([GSPP-283](https://linear.app/grundschutz-plus-plus/issue/GSPP-283)). Das vollständige Manifest v2 enthält zusätzlich für jede materialisierte Registry-Datei Root-Typ und Lifecycle.
 
 ### Lokale Snapshot-Freshness
 
@@ -321,6 +323,8 @@ Provenance und Verifikationsergebnis werden auf der Seite **„Über das Projekt
 
 Dazu kommen Quell-Repository, Commit-SHA und Abrufzeitpunkt mit Link auf den exakten Upstream-Stand; für die Vokabulare Abrufzeitpunkt, Anzahl der Namespace-Dateien und Snapshot-Commit. Fehlen die jeweiligen Metadaten, wird für dieses Artefakt kein Provenance-/Verifikationsblock angezeigt. Der Text „Verifikation ausstehend“ erscheint nur, wenn Provenance vorhanden ist, aber das Prüfergebnis noch nicht vorliegt.
 
+Für den Grundschutz++-Katalog unterscheidet die About-Fläche zusätzlich drei Provenienzarten: (1) optionale OSCAL-Ableitungsmarker im Dokument (`resolution-tool`, `link[@rel='source-profile']`), (2) die profilbasierte, rein lesende Dokumentkette im Sidecar und (3) Projekt-Build-Provenienz aus Manifest v2. Fehlen die optionalen OSCAL-Marker, ist das ein sichtbarer Projektbefund und keine Schemadiagnose. `back-matter.resource.rlinks.hashes` beschreibt referenzierte Ressourcen; OSCAL kennt keinen Hash eines Dokuments über sich selbst. Die Ansicht trifft bewusst keine Control-genaue Herkunftsaussage.
+
 ## Vocabulary Integrity
 
 Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funktion `verifyArtifactIntegrity` auf (die `IntegrityMetadata`-Union deckt beide Provenance-Typen ab). Die zugehörigen Metadaten stehen in `upstream-sources-metadata.json`. Darin umfasst `manifest` alle materialisierten Registry-Artefakte; das separate Top-Level-Feld `files` enthält ausschließlich die Datei-Provenance der ausgelieferten Namespace-CSVs. `dataQualityFindings` hält nicht blockierende fachliche Befunde zum unterstützten Katalog fest. `taxonomyCoverage.topics` protokolliert die gemessene UUID-Deckung zwischen Katalogthemen und `topics.csv`; `taxonomyCoverage.practices` hält symmetrisch die Practice-Deckung einschließlich der namentlich geduldeten `EXMP`-Ausnahme fest. Fetch und Catalog-Sync-Guard verlangen `practices.csv` und blockieren für jeden Snapshot fehlende oder doppelte Practice-UUIDs sowie Practice-Katalog- oder CSV-Orphans. Entsprechend blockieren sie leere Topic-Taxonomiedaten, fehlende oder doppelte Topic-UUIDs und Topic-Katalog- oder CSV-Orphans.
@@ -368,6 +372,20 @@ Für das Vokabular-Artefakt `vocabularies.json` ruft der Ladepfad dieselbe Funkt
     ],
     "signatureSha256": "<sha256>"
   },
+  "catalogLineages": [
+    {
+      "catalogKey": "gspp",
+      "profile": { "artifactKey": "profile-gspp", "documentUuid": "<uuid>" },
+      "imports": [
+        {
+          "state": "complete",
+          "importHref": "#<resource-uuid>",
+          "rlinkHref": "../catalogs/...",
+          "source": { "artifactKey": "catalog-source-gspp-kernel-g0" }
+        }
+      ]
+    }
+  ],
   "files": [
     {
       "namespace": "https://github.com/…/tree/main/documentation/namespaces/modal_verbs.csv",
