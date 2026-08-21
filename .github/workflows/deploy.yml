@@ -14,10 +14,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-  attestations: write
-  artifact-metadata: write
 
 concurrency:
   group: pages
@@ -60,6 +56,12 @@ jobs:
     # never a required one.
     if: ${{ !cancelled() && needs.idempotency_guard.outputs.skip_deploy != 'true' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -75,7 +77,7 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Read pinned snapshot SHA from manifest
         id: manifest
@@ -90,7 +92,7 @@ jobs:
         run: npm run fetch-catalog
 
       - name: Run tests with coverage
-        run: npx vitest run --coverage
+        run: npm exec --no -- vitest run --coverage
 
       - name: Build application
         env:

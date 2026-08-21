@@ -39,6 +39,9 @@ public/data/
 .env.local
 .env.*.local
 
+# Design-System-Skill (Spiegel des claude.ai-Design-Projekts, nicht im öffentlichen Repo)
+/.agents/
+
 # Interne Produktvision (nicht im öffentlichen Repo)
 /docs/userStories/
 
