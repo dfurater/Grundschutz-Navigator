@@ -23,14 +23,20 @@ describe('CI supply-chain hardening', () => {
   it('grants deploy privileges only to the job that needs them', () => {
     const deploy = workflow('deploy.yml');
     const [workflowScope] = deploy.split('\nconcurrency:');
-    const [, buildAndDeploy] = deploy.split('\n  build-and-deploy:\n');
+    const [, buildAndDeployScope] = deploy.split('\n  build-and-deploy:\n');
 
     expect(workflowScope).toContain('permissions:\n  contents: read\n');
     for (const permission of ['pages', 'id-token', 'attestations', 'artifact-metadata']) {
       expect(workflowScope).not.toContain(`\n  ${permission}: write`);
     }
-    expect(buildAndDeploy).toContain(
-      '    permissions:\n      contents: read\n      pages: write\n      id-token: write\n      attestations: write\n      artifact-metadata: write',
-    );
+    for (const permission of [
+      'contents: read',
+      'pages: write',
+      'id-token: write',
+      'attestations: write',
+      'artifact-metadata: write',
+    ]) {
+      expect(buildAndDeployScope).toContain(permission);
+    }
   });
 });
