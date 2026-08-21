@@ -90,7 +90,6 @@ function resolveImport({
   // Keine URL- oder Pfadnormalisierung: Die Map akzeptiert nur den exakten
   // `rlinks.href`-String, der im Quellregister dokumentiert wurde.
   const configuredMatches = hrefs.filter((href) => configuredImportsByHref.has(href));
-  for (const href of configuredMatches) configuredImportHrefs.add(href);
   if (configuredMatches.length === 0) {
     return unresolvedImport({
       index,
@@ -117,6 +116,7 @@ function resolveImport({
     });
   }
 
+  configuredImportHrefs.add(rlinkHref);
   return {
     index,
     state: 'complete',

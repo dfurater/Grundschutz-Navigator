@@ -170,4 +170,32 @@ describe('projectCatalogLineage', () => {
       }),
     ]);
   });
+
+  it('keeps configured source imports unresolved after an ambiguous rlink match', () => {
+    const artifacts = makeArtifacts([
+      { href: '#kernel-resource' },
+      { href: '#risiko-resource' },
+    ]);
+    const profile = (artifacts.get('profile-gspp')!.document as FixtureOscalDocument).profile!;
+    profile['back-matter']!.resources[0]!.rlinks.push({ href: METHODIK_HREF });
+
+    const result = projectCatalogLineage({ lineage, artifactsByKey: artifacts });
+
+    expect(result.imports).toEqual([
+      expect.objectContaining({ state: 'rlink-ambiguous', source: null }),
+      expect.objectContaining({ state: 'complete', rlinkHref: RISIKO_HREF }),
+      expect.objectContaining({
+        index: null,
+        state: 'configured-import-missing',
+        rlinkHref: KERNEL_HREF,
+        source: null,
+      }),
+      expect.objectContaining({
+        index: null,
+        state: 'configured-import-missing',
+        rlinkHref: METHODIK_HREF,
+        source: null,
+      }),
+    ]);
+  });
 });
