@@ -1,20 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import { projectCatalogLineage } from './catalogLineage';
 import type { ValidatedLineageArtifact } from './catalogLineage';
+import { CATALOG_LINEAGES } from './sourceRegistry.mjs';
 
-const KERNEL_HREF = '../catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json';
-const METHODIK_HREF = '../catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json';
-const RISIKO_HREF = '../../../Risikomanagement/BSI-Anforderungen-zum-Risikomanagement-catalog.json';
+const lineage = CATALOG_LINEAGES.find((candidate) => candidate.catalogKey === 'gspp');
+if (!lineage) {
+  throw new Error('Fixture requires the registered GSPP catalog lineage');
+}
 
-const lineage = {
-  catalogKey: 'gspp',
-  profileArtifactKey: 'profile-gspp',
-  imports: [
-    { href: KERNEL_HREF, artifactKey: 'catalog-source-gspp-kernel-g0' },
-    { href: METHODIK_HREF, artifactKey: 'catalog-source-gspp-methodik' },
-    { href: RISIKO_HREF, artifactKey: 'catalog-source-risikomanagement' },
-  ],
-} as const;
+const [kernelImport, methodikImport, risikoImport] = lineage.imports;
+if (lineage.imports.length !== 3 || !kernelImport || !methodikImport || !risikoImport) {
+  throw new Error('Fixture requires exactly three registered GSPP source imports');
+}
+
+const PROFILE_ARTIFACT_KEY = lineage.profileArtifactKey;
+const { href: KERNEL_HREF, artifactKey: KERNEL_ARTIFACT_KEY } = kernelImport;
+const { href: METHODIK_HREF, artifactKey: METHODIK_ARTIFACT_KEY } = methodikImport;
+const { href: RISIKO_HREF, artifactKey: RISIKO_ARTIFACT_KEY } = risikoImport;
 
 interface FixtureOscalRoot {
   uuid: string;
@@ -69,10 +71,10 @@ function makeArtifacts(profileImports: Array<{ href?: string }> = [
   };
 
   return new Map<string, ValidatedLineageArtifact>([
-    ['profile-gspp', { document: profile, manifestFile: { path: 'profiles/gspp.json', gitBlobSha: 'profile-blob', contentSha256: 'profile-sha' } }],
-    ['catalog-source-gspp-kernel-g0', { document: oscalDocument('catalog', 'Kernel G0', 'kernel-uuid', '2026-08-13'), manifestFile: { path: 'catalogs/kernel-g0.json', gitBlobSha: 'kernel-blob', contentSha256: 'kernel-sha' } }],
-    ['catalog-source-gspp-methodik', { document: oscalDocument('catalog', 'Methodik', 'methodik-uuid', '2026-08-13'), manifestFile: { path: 'catalogs/methodik.json', gitBlobSha: 'methodik-blob', contentSha256: 'methodik-sha' } }],
-    ['catalog-source-risikomanagement', { document: oscalDocument('catalog', 'Risikomanagement', 'risiko-uuid', '2026-08-13'), manifestFile: { path: 'catalogs/risiko.json', gitBlobSha: 'risiko-blob', contentSha256: 'risiko-sha' } }],
+    [PROFILE_ARTIFACT_KEY, { document: profile, manifestFile: { path: 'profiles/gspp.json', gitBlobSha: 'profile-blob', contentSha256: 'profile-sha' } }],
+    [KERNEL_ARTIFACT_KEY, { document: oscalDocument('catalog', 'Kernel G0', 'kernel-uuid', '2026-08-13'), manifestFile: { path: 'catalogs/kernel-g0.json', gitBlobSha: 'kernel-blob', contentSha256: 'kernel-sha' } }],
+    [METHODIK_ARTIFACT_KEY, { document: oscalDocument('catalog', 'Methodik', 'methodik-uuid', '2026-08-13'), manifestFile: { path: 'catalogs/methodik.json', gitBlobSha: 'methodik-blob', contentSha256: 'methodik-sha' } }],
+    [RISIKO_ARTIFACT_KEY, { document: oscalDocument('catalog', 'Risikomanagement', 'risiko-uuid', '2026-08-13'), manifestFile: { path: 'catalogs/risiko.json', gitBlobSha: 'risiko-blob', contentSha256: 'risiko-sha' } }],
   ]);
 }
 
@@ -82,7 +84,7 @@ describe('projectCatalogLineage', () => {
 
     expect(result.catalogKey).toBe('gspp');
     expect(result.profile).toMatchObject({
-      artifactKey: 'profile-gspp',
+      artifactKey: PROFILE_ARTIFACT_KEY,
       title: 'Grundschutz++ Profil',
       documentUuid: 'profile-uuid',
       oscalVersion: '1.1.3',
@@ -94,21 +96,21 @@ describe('projectCatalogLineage', () => {
         importHref: '#kernel-resource',
         resourceUuid: 'kernel-resource',
         rlinkHref: KERNEL_HREF,
-        source: expect.objectContaining({ artifactKey: 'catalog-source-gspp-kernel-g0', title: 'Kernel G0' }),
+        source: expect.objectContaining({ artifactKey: KERNEL_ARTIFACT_KEY, title: 'Kernel G0' }),
       }),
       expect.objectContaining({
         state: 'complete',
         importHref: '#methodik-resource',
         resourceUuid: 'methodik-resource',
         rlinkHref: METHODIK_HREF,
-        source: expect.objectContaining({ artifactKey: 'catalog-source-gspp-methodik', title: 'Methodik' }),
+        source: expect.objectContaining({ artifactKey: METHODIK_ARTIFACT_KEY, title: 'Methodik' }),
       }),
       expect.objectContaining({
         state: 'complete',
         importHref: '#risiko-resource',
         resourceUuid: 'risiko-resource',
         rlinkHref: RISIKO_HREF,
-        source: expect.objectContaining({ artifactKey: 'catalog-source-risikomanagement', title: 'Risikomanagement' }),
+        source: expect.objectContaining({ artifactKey: RISIKO_ARTIFACT_KEY, title: 'Risikomanagement' }),
       }),
     ]);
   });
@@ -123,7 +125,7 @@ describe('projectCatalogLineage', () => {
     ['artifact-unregistered', [{ href: '#kernel-resource' }]],
   ] as const)('reports the named fail-closed state %s', (expectedState, imports) => {
     const artifacts = makeArtifacts([...imports]);
-    const profile = (artifacts.get('profile-gspp')!.document as FixtureOscalDocument).profile!;
+    const profile = (artifacts.get(PROFILE_ARTIFACT_KEY)!.document as FixtureOscalDocument).profile!;
 
     if (expectedState === 'rlink-missing') {
       profile['back-matter']!.resources[0]!.rlinks = [];
@@ -198,7 +200,7 @@ describe('projectCatalogLineage', () => {
       { href: '#kernel-resource' },
       { href: '#risiko-resource' },
     ]);
-    const profile = (artifacts.get('profile-gspp')!.document as FixtureOscalDocument).profile!;
+    const profile = (artifacts.get(PROFILE_ARTIFACT_KEY)!.document as FixtureOscalDocument).profile!;
     profile['back-matter']!.resources[0]!.rlinks.push({ href: METHODIK_HREF });
 
     const result = projectCatalogLineage({ lineage, artifactsByKey: artifacts });
