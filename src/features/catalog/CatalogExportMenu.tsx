@@ -75,6 +75,7 @@ export function CatalogExportMenu({
         <div
           className="absolute right-0 top-full mt-1 w-56 bg-[var(--color-surface-raised)] border border-[var(--color-border-default)] rounded-lg shadow-[var(--shadow-overlay)] z-50 py-1"
           role="menu"
+          tabIndex={-1}
           aria-label="Exportoptionen"
           onKeyDown={(event) => {
             if (event.key === 'Escape') {

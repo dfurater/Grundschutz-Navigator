@@ -94,6 +94,7 @@ describe('CatalogExportMenu', () => {
     const trigger = screen.getByRole('button', { name: 'Weitere Exportoptionen' });
     fireEvent.click(trigger);
 
+    expect(screen.getByRole('menu')).toHaveAttribute('tabindex', '-1');
     expect(
       screen.getByRole('menuitem', { name: 'Aktuelle Ansicht (1)' }),
     ).toHaveFocus();
