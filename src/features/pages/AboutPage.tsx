@@ -378,13 +378,15 @@ function isCatalogLineageDocument(value: unknown): value is CatalogLineageDocume
 function isCatalogLineageImport(value: unknown): value is CatalogLineageImport {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
   const importedCatalog = value as Record<string, unknown>;
+  const state = importedCatalog.state;
+  if (typeof state !== 'string' || !lineageStates.has(state as CatalogLineageState)) return false;
+
+  const hasValidIndex =
+    state === 'configured-import-missing'
+      ? importedCatalog.index === null
+      : Number.isSafeInteger(importedCatalog.index) && (importedCatalog.index as number) >= 0;
   if (
-    !(
-      importedCatalog.index === null ||
-      (Number.isSafeInteger(importedCatalog.index) && (importedCatalog.index as number) >= 0)
-    ) ||
-    typeof importedCatalog.state !== 'string' ||
-    !lineageStates.has(importedCatalog.state as CatalogLineageState) ||
+    !hasValidIndex ||
     !isNullableString(importedCatalog.importHref) ||
     !isNullableString(importedCatalog.resourceUuid) ||
     !isNullableString(importedCatalog.rlinkHref)
@@ -495,17 +497,20 @@ function LineageImportEntry({
   const unresolvedState = importedCatalog.state === 'complete'
     ? 'artifact-unregistered'
     : importedCatalog.state;
+  const referenceDetails = [
+    importedCatalog.importHref ? `Import: ${importedCatalog.importHref}` : null,
+    importedCatalog.resourceUuid ? `Ressource: ${importedCatalog.resourceUuid}` : null,
+    importedCatalog.rlinkHref ? `Link: ${importedCatalog.rlinkHref}` : null,
+  ].filter((detail): detail is string => detail !== null);
 
   return (
     <li className="border-t border-[var(--color-border-subtle)] pt-4 first:border-t-0 first:pt-0">
       <p className="text-sm font-medium text-[var(--color-text-primary)]">
         {lineageStateLabels[unresolvedState]}
       </p>
-      {(importedCatalog.importHref || importedCatalog.resourceUuid || importedCatalog.rlinkHref) && (
+      {referenceDetails.length > 0 && (
         <p className="type-meta mt-1 break-all">
-          {importedCatalog.importHref && `Import: ${importedCatalog.importHref}`}
-          {importedCatalog.resourceUuid && ` · Ressource: ${importedCatalog.resourceUuid}`}
-          {importedCatalog.rlinkHref && ` · Link: ${importedCatalog.rlinkHref}`}
+          {referenceDetails.join(' · ')}
         </p>
       )}
     </li>

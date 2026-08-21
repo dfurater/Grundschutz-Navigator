@@ -469,6 +469,11 @@ describe('AboutPage', () => {
     expect(screen.getByText('kernel-uuid')).toBeInTheDocument();
     expect(screen.getByText(/Back-matter-Ressource fehlt/i)).toBeInTheDocument();
     expect(screen.getByText(/Konfigurierter Quellimport fehlt im Profil/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /^Link: \.\.\/catalogs\/Methodik-Grundschutz\+\+\/BSI-Methodik-Grundschutz\+\+-catalog\.json$/,
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Kernel G0/i })).toHaveAttribute(
       'href',
       'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/blob/fedcba0987654321fedcba0987654321fedcba09/control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
@@ -488,6 +493,41 @@ describe('AboutPage', () => {
     expect(screen.getByText('Quellkatalog-Lineage nicht verfügbar')).toBeInTheDocument();
     expect(screen.getByText(/unvollständig oder widersprüchlich/i)).toBeInTheDocument();
     expect(screen.queryByText('Aufgelöster Katalog ← Profil ← registrierte Quellkataloge')).not.toBeInTheDocument();
+  });
+
+  it('rejects a complete lineage import with a null index', () => {
+    const state = makeCatalogState();
+    const documentFields = {
+      title: null,
+      documentUuid: null,
+      oscalVersion: null,
+      version: null,
+      upstreamPath: null,
+      gitBlobSha: null,
+      contentSha256: null,
+    };
+    state.vocabularyProvenance = makeVocabularyProvenance();
+    state.vocabularyProvenance.catalogLineages = [
+      {
+        catalogKey: 'gspp',
+        profile: { artifactKey: 'profile-gspp', ...documentFields },
+        imports: [
+          {
+            index: null,
+            state: 'complete',
+            importHref: '#kernel-resource',
+            resourceUuid: 'kernel-resource',
+            rlinkHref: '../catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
+            source: { artifactKey: 'catalog-source-gspp-kernel-g0', ...documentFields },
+          },
+        ],
+      },
+    ];
+    mockedUseCatalog.mockReturnValue(state);
+
+    render(<AboutPage />);
+
+    expect(screen.getByText('Quellkatalog-Lineage nicht verfügbar')).toBeInTheDocument();
   });
 
   it('uses semantic token classes for the vocabulary verification states', () => {
