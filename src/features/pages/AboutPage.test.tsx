@@ -482,6 +482,54 @@ describe('AboutPage', () => {
     expect(screen.getByText('Ressourcen-Hashes')).toBeInTheDocument();
   });
 
+  it('renders multiple configured missing imports without duplicate React keys', () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const state = makeCatalogState();
+    state.vocabularyProvenance = makeVocabularyProvenance();
+    state.vocabularyProvenance.catalogLineages = [
+      {
+        catalogKey: 'gspp',
+        profile: {
+          artifactKey: 'profile-gspp',
+          title: 'Grundschutz++ Profil',
+          documentUuid: 'profile-uuid',
+          oscalVersion: '1.1.3',
+          version: '2026-08-13',
+          upstreamPath: 'control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json',
+          gitBlobSha: 'profile-blob',
+          contentSha256: 'profile-sha',
+        },
+        imports: [
+          {
+            index: null,
+            state: 'configured-import-missing',
+            importHref: null,
+            resourceUuid: null,
+            rlinkHref: '../catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json',
+            source: null,
+          },
+          {
+            index: null,
+            state: 'configured-import-missing',
+            importHref: null,
+            resourceUuid: null,
+            rlinkHref: '../../../Risikomanagement/BSI-Anforderungen-zum-Risikomanagement-catalog.json',
+            source: null,
+          },
+        ],
+      },
+    ];
+    mockedUseCatalog.mockReturnValue(state);
+
+    render(<AboutPage />);
+
+    expect(screen.getAllByText('Konfigurierter Quellimport fehlt im Profil')).toHaveLength(2);
+    expect(consoleError.mock.calls.flat().join(' ')).not.toContain(
+      'Encountered two children with the same key',
+    );
+    consoleError.mockRestore();
+  });
+
   it('keeps the About page available and rejects a malformed lineage sidecar visibly', () => {
     const state = makeCatalogState();
     state.vocabularyProvenance = makeVocabularyProvenance();

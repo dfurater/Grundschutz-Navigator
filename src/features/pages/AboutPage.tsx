@@ -789,7 +789,11 @@ export function AboutPage() {
                 <ul className="mt-4 space-y-4">
                   {activeCatalogLineage.imports.map((importedCatalog) => (
                     <LineageImportEntry
-                      key={`${importedCatalog.index}-${importedCatalog.importHref ?? 'missing'}`}
+                      key={
+                        importedCatalog.index === null
+                          ? `configured:${importedCatalog.rlinkHref ?? 'missing'}`
+                          : `profile:${importedCatalog.index}`
+                      }
                       importedCatalog={importedCatalog}
                       repositoryUrl={vocabularyProvenance.source?.repository}
                       snapshotCommitSha={vocabularyProvenance.source?.snapshotCommitSha}
