@@ -75,6 +75,7 @@ export function CatalogSwitcher() {
       {open && (
         <div
           role="menu"
+          tabIndex={-1}
           aria-label="Katalog wechseln"
           className="absolute right-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-raised)] p-1.5 shadow-[var(--shadow-overlay)]"
           onKeyDown={(event) => {

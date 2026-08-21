@@ -106,6 +106,7 @@ describe('CatalogSwitcher', () => {
     const trigger = screen.getByRole('button', { name: 'Katalog wechseln' });
 
     fireEvent.click(trigger);
+    expect(screen.getByRole('menu')).toHaveAttribute('tabindex', '-1');
     expect(screen.getAllByRole('menuitem')[0]).toHaveFocus();
 
     fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
