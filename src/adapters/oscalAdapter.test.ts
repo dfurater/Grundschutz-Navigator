@@ -316,6 +316,15 @@ describe('resolveParams', () => {
     expect(result).toBe('ein Reaktiv-, Aufbau- oder Standard-BCMS nach einem anerkannten BCM-Standard');
   });
 
+  it('leaves empty choice brackets {{}} untouched (S8786-linearized pattern)', () => {
+    // Der linearisierte Ausdruck verlangt nichtleeren Inhalt zwischen den
+    // Klammern; leere Klammern kommen in der BSI-Notation nicht vor und
+    // bleiben bewusst unverändert stehen.
+    expect(resolveParams('vorher {{}} nachher', {})).toBe(
+      'vorher {{}} nachher',
+    );
+  });
+
   it('resolves OSCAL params first, then strips remaining choice brackets', () => {
     const result = resolveParams(
       '{{ insert: param, prm1 }} und {{Auswahl}}',

@@ -113,7 +113,13 @@ export function buildVocabularySourceUrl(
     return source.namespace;
   }
 
-  const repositoryUrl = source.repository.replace(/\/+$/, '');
+  // Trailing Slashes ohne Regex entfernen — der end-verankerte Quantifier
+  // `/\/+$/` löst die S8786-Superlinearitäts-Heuristik aus; das Muster ist
+  // hier zwar linear, aber die regexfreie Form ist äquivalent und regelkonform.
+  let repositoryUrl = source.repository;
+  while (repositoryUrl.endsWith('/')) {
+    repositoryUrl = repositoryUrl.slice(0, -1);
+  }
   const encodedPath = encodeRepositoryPath(source.path);
 
   if (!encodedPath) {

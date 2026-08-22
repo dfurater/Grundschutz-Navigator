@@ -2,6 +2,36 @@ import { Link } from 'react-router';
 import { IconShield } from '@/components/icons';
 import { useCatalog } from '@/hooks/useCatalog';
 import { buildGroupUrl } from '@/app/routes';
+import type { Practice } from '@/domain/models';
+
+/**
+ * Stabiler Listen-Key je Praktik (S6479): die Datensatz-ID, sonst ein
+ * persistenter Fallback-Key aus der Objektidentität (WeakMap). Ein
+ * inhaltsbasierter Tiebreak (Label, altIdentifier, Nummerierung nach
+ * Listenposition) wäre positionsabhängig — nach einem Umsortieren würde die
+ * Position den alten Key behalten, während ein anderer Datensatz erscheint
+ * (Greptile-P1, PR #156, T-Rex-Repro). Die Objektidentität ist dagegen pro
+ * Datensatz stabil und reihenfolgeunabhängig, auch für inhaltlich identische
+ * Duplikate; beim Neuladen des Katalogs entstehen neue Objekte und damit neue
+ * Keys (Remount der statischen Liste ist unbeobachtbar).
+ */
+const fallbackKeysByPractice = new WeakMap<Practice, string>();
+let nextFallbackKeyNumber = 0;
+
+function getFallbackKey(practice: Practice): string {
+  const existing = fallbackKeysByPractice.get(practice);
+  if (existing !== undefined) {
+    return existing;
+  }
+  nextFallbackKeyNumber += 1;
+  const generated = `ohne-id-${nextFallbackKeyNumber}`;
+  fallbackKeysByPractice.set(practice, generated);
+  return generated;
+}
+
+export function buildPracticeListKey(practice: Practice): string {
+  return practice.id ?? getFallbackKey(practice);
+}
 
 export function HomePage() {
   const { catalog, loading } = useCatalog();
@@ -69,9 +99,10 @@ export function HomePage() {
       {/* Practice register */}
       {loading && (
         <div className="py-8 text-center">
-          <div
+          {/* S6819: <output> trägt die implizite Rolle "status" — das div
+              mit role="status" ist dadurch ersetzt. */}
+          <output
             className="inline-block w-5 h-5 animate-spin rounded-full border-2 border-[var(--color-border-default)] border-t-[var(--color-accent-default)]"
-            role="status"
             aria-label="Katalog wird geladen"
           />
         </div>
@@ -96,7 +127,8 @@ export function HomePage() {
           </div>
 
           <div className="border border-[var(--color-border-default)] rounded-[var(--radius-md)] bg-[var(--color-surface-base)] divide-y divide-[var(--color-border-subtle)]">
-            {catalog.practices.map((practice, index) => {
+            {catalog.practices.map((practice) => {
+              const listKey = buildPracticeListKey(practice);
               const cells = (
                 <>
                   <span className="catalog-reference-text text-xs text-[var(--color-accent-default)]">
@@ -118,14 +150,16 @@ export function HomePage() {
 
               // Eine Gruppe ohne `id` ist nicht adressierbar (OSCAL 1.1.3:
               // `group.id` ist optional). Sie bleibt vollständig sichtbar,
-              // erzeugt aber kein Navigationsziel (GSPP-242).
+              // erzeugt aber kein Navigationsziel (GSPP-242). Als stabiler,
+              // eindeutiger Key dient `buildPracticeListKey` statt des
+              // Array-Index (S6479).
               return practice.id === undefined ? (
-                <div key={`ohne-id-${index}`} className={rowClass}>
+                <div key={listKey} className={rowClass}>
                   {cells}
                 </div>
               ) : (
                 <Link
-                  key={practice.id}
+                  key={listKey}
                   to={buildGroupUrl(catalog.catalogKey, practice.id)}
                   className={`${rowClass} hover:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus-ring)] transition-colors`}
                 >

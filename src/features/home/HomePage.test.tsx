@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCatalog } from '@/hooks/useCatalog';
-import { HomePage } from './HomePage';
+import { buildPracticeListKey, HomePage } from './HomePage';
 
 vi.mock('@/hooks/useCatalog', () => ({
   useCatalog: vi.fn(),
@@ -238,5 +238,56 @@ describe('HomePage', () => {
     expect(summarySection).toHaveClass('pt-6');
     expect(summarySection).not.toHaveClass('mt-6');
     expect(practiceRegister).toHaveClass('mt-8');
+  });
+});
+
+describe('buildPracticeListKey', () => {
+  it('uses the practice id as list key when present', () => {
+    const practice = {
+      id: 'GC',
+      title: 'Grundschutz-Consulting',
+      label: 'GC',
+      topics: [],
+      controlCount: 0,
+    };
+
+    expect(buildPracticeListKey(practice)).toBe('GC');
+    expect(buildPracticeListKey(practice)).toBe('GC');
+  });
+
+  it('keeps exactly one stable key per id-less practice object', () => {
+    const practice = {
+      title: 'Ohne ID',
+      label: 'X?',
+      topics: [],
+      controlCount: 0,
+    };
+
+    const firstKey = buildPracticeListKey(practice);
+    expect(buildPracticeListKey(practice)).toBe(firstKey);
+  });
+
+  it('gives identical id-less duplicates distinct keys that stay bound to their record', () => {
+    // Greptile-P1 (PR #156): Suffixe dürfen nicht von der Listenposition
+    // abhängen — der Key muss am Datensatz (Objektidentität) hängen und
+    // Umsortierungen überleben.
+    const first = { title: 'Erste', label: 'DUP', topics: [], controlCount: 0 };
+    const second = {
+      title: 'Zweite',
+      label: 'DUP',
+      topics: [],
+      controlCount: 0,
+    };
+
+    const keyFirst = buildPracticeListKey(first);
+    const keySecond = buildPracticeListKey(second);
+    expect(keyFirst).not.toBe(keySecond);
+
+    // Unabhängig von Zuordnungsreihenfolge und weiteren Datensätzen bleibt
+    // jeder Key an sein Objekt gebunden.
+    const third = { title: 'Dritte', label: 'DUP', topics: [], controlCount: 0 };
+    buildPracticeListKey(third);
+    expect(buildPracticeListKey(second)).toBe(keySecond);
+    expect(buildPracticeListKey(first)).toBe(keyFirst);
   });
 });
