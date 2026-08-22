@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Catalog, CatalogState, Control } from '@/domain/models';
+import type { Catalog, CatalogState, Control, ControlLink } from '@/domain/models';
 import type { IncomingControlLink } from '@/domain/controlRelationships';
 import { useCatalog } from '@/hooks/useCatalog';
 import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
@@ -54,6 +54,25 @@ function makeControl(overrides: Partial<Control> = {}): Control {
     params: {},
     ...overrides,
   };
+}
+
+function makeControlLink(
+  targetId: string,
+  rel: 'required' | 'related' = 'related',
+): ControlLink {
+  return {
+    targetId,
+    href: `#${targetId}`,
+    rel,
+    relStatus: 'custom',
+  };
+}
+
+function makeIncomingLink(
+  control: Control,
+  rel: 'required' | 'related',
+): IncomingControlLink {
+  return { control, link: makeControlLink(control.id, rel) };
 }
 
 function makeCatalogState(overrides: Partial<CatalogState> = {}): CatalogState {
@@ -126,8 +145,8 @@ function makeCatalogStateWithControlSource(
               id: control.id,
               title: control.title,
               links: sourceLinks ?? control.links.map((link) => ({
-                href: `#${link.targetId}`,
-                rel: link.relation,
+                href: link.href,
+                rel: link.rel,
               })),
             }],
           }],
@@ -824,16 +843,13 @@ describe('ControlDetail', () => {
         dokumentation: 'Richtlinie A',
         zielobjektKategorien: ['Server'],
       },
-      links: [{ targetId: 'GC.2.3', relation: 'related' }],
+      links: [makeControlLink('GC.2.3')],
     });
     const incomingLinks: IncomingControlLink[] = [
-      {
-        control: makeControl({
+      makeIncomingLink(makeControl({
           id: 'GC.2.1',
           title: 'Voraussetzung',
-        }),
-        relation: 'required',
-      },
+        }), 'required'),
     ];
     const parentControl = makeControl({
       id: 'GC.2',
@@ -1119,7 +1135,7 @@ describe('ControlDetail', () => {
     const linkedControl = makeControl({ id: 'GC.2.3', title: 'Verknüpfte Basiskontrolle' });
     const controlsById = new Map([[linkedControl.id, linkedControl]]);
     const control = makeControl({
-      links: [{ targetId: 'GC.2.3', relation: 'related' }],
+      links: [makeControlLink('GC.2.3')],
     });
     mockedUseCatalog.mockReturnValue(makeCatalogStateWithControlSource(control, controlsById));
 
@@ -1147,7 +1163,7 @@ describe('ControlDetail', () => {
   it('moves unresolved outgoing OSCAL links to sources instead of rendering a dead dependency', () => {
     const onNavigateToControl = vi.fn();
     const control = makeControl({
-      links: [{ targetId: 'MISSING.1', relation: 'related' }],
+      links: [makeControlLink('MISSING.1')],
     });
     mockedUseCatalog.mockReturnValue(makeCatalogStateWithControlSource(control, new Map()));
 
@@ -1198,16 +1214,13 @@ describe('ControlDetail', () => {
     const user = userEvent.setup();
     const onNavigateToControl = vi.fn();
     const control = makeControl({
-      links: [{ targetId: 'GC.2.3', relation: 'related' }],
+      links: [makeControlLink('GC.2.3')],
     });
     const incomingLinks: IncomingControlLink[] = [
-      {
-        control: makeControl({
+      makeIncomingLink(makeControl({
           id: 'GC.2.1',
           title: 'Voraussetzung',
-        }),
-        relation: 'required',
-      },
+        }), 'required'),
     ];
     mockedUseCatalog.mockReturnValue(makeCatalogStateWithControlSource(control, new Map()));
 
@@ -1221,7 +1234,9 @@ describe('ControlDetail', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'Wird referenziert von', level: 4 })).toBeInTheDocument();
-    const reverseLinkButton = screen.getByRole('button', { name: /GC\.2\.1 Voraussetzung \(erforderlich\)/ });
+    const reverseLinkButton = screen.getByRole('button', {
+      name: /GC\.2\.1 Voraussetzung \(required · nicht im OSCAL-Catalog dokumentiert\)/,
+    });
     expect(reverseLinkButton).toBeInTheDocument();
 
     await user.click(reverseLinkButton);
@@ -1240,17 +1255,11 @@ describe('ControlDetail', () => {
     });
     const controlsById = new Map([[reciprocalControl.id, reciprocalControl]]);
     const control = makeControl({
-      links: [{ targetId: reciprocalControl.id, relation: 'required' }],
+      links: [makeControlLink(reciprocalControl.id, 'required')],
     });
     const incomingLinks: IncomingControlLink[] = [
-      {
-        control: reciprocalControl,
-        relation: 'required',
-      },
-      {
-        control: incomingOnlyControl,
-        relation: 'related',
-      },
+      makeIncomingLink(reciprocalControl, 'required'),
+      makeIncomingLink(incomingOnlyControl, 'related'),
     ];
     mockedUseCatalog.mockReturnValue(makeCatalogStateWithControlSource(control, controlsById));
 
@@ -1273,7 +1282,7 @@ describe('ControlDetail', () => {
 
     expect(
       screen.getByRole('button', {
-        name: /GC\.2\.3 Gegenseitige Kontrolle \(erforderlich\)/,
+        name: /GC\.2\.3 Gegenseitige Kontrolle \(required · nicht im OSCAL-Catalog dokumentiert\)/,
       }),
     ).toBeInTheDocument();
     expect(
@@ -1283,7 +1292,7 @@ describe('ControlDetail', () => {
     ).not.toBeInTheDocument();
     expect(
       within(incomingSection).getByRole('button', {
-        name: /GC\.2\.1 Nur eingehende Kontrolle \(verwandt\)/,
+        name: /GC\.2\.1 Nur eingehende Kontrolle \(related · nicht im OSCAL-Catalog dokumentiert\)/,
       }),
     ).toBeInTheDocument();
   });
@@ -1295,17 +1304,11 @@ describe('ControlDetail', () => {
     });
     const controlsById = new Map([[reciprocalControl.id, reciprocalControl]]);
     const control = makeControl({
-      links: [{ targetId: reciprocalControl.id, relation: 'required' }],
+      links: [makeControlLink(reciprocalControl.id, 'required')],
     });
     const incomingLinks: IncomingControlLink[] = [
-      {
-        control: reciprocalControl,
-        relation: 'required',
-      },
-      {
-        control: reciprocalControl,
-        relation: 'related',
-      },
+      makeIncomingLink(reciprocalControl, 'required'),
+      makeIncomingLink(reciprocalControl, 'related'),
     ];
     mockedUseCatalog.mockReturnValue(makeCatalogStateWithControlSource(control, controlsById));
 
@@ -1320,11 +1323,13 @@ describe('ControlDetail', () => {
     );
 
     const outgoingButton = screen.getByRole('button', {
-      name: /GC\.2\.3 Gegenseitige Kontrolle \(erforderlich · ↔ verwandt\)/,
+      name: /GC\.2\.3 Gegenseitige Kontrolle \(required · nicht im OSCAL-Catalog dokumentiert · ↔ related · nicht im OSCAL-Catalog dokumentiert\)/,
     });
 
     expect(outgoingButton).toBeInTheDocument();
-    expect(screen.getByText('Erforderlich · ↔ verwandt')).toBeInTheDocument();
+    expect(screen.getByText(
+      'Required · nicht im OSCAL-Catalog dokumentiert · ↔ related · nicht im OSCAL-Catalog dokumentiert',
+    )).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Wird referenziert von', level: 4 })).not.toBeInTheDocument();
   });
 
@@ -1335,13 +1340,10 @@ describe('ControlDetail', () => {
     });
     const controlsById = new Map([[reciprocalControl.id, reciprocalControl]]);
     const control = makeControl({
-      links: [{ targetId: reciprocalControl.id, relation: 'required' }],
+      links: [makeControlLink(reciprocalControl.id, 'required')],
     });
     const incomingLinks: IncomingControlLink[] = [
-      {
-        control: reciprocalControl,
-        relation: 'required',
-      },
+      makeIncomingLink(reciprocalControl, 'required'),
     ];
     mockedUseCatalog.mockReturnValue(makeCatalogStateWithControlSource(control, controlsById));
 
@@ -1356,7 +1358,7 @@ describe('ControlDetail', () => {
     );
 
     const outgoingButton = screen.getByRole('button', {
-      name: /GC\.2\.3 Gegenseitige Kontrolle \(erforderlich\)/,
+      name: /GC\.2\.3 Gegenseitige Kontrolle \(required · nicht im OSCAL-Catalog dokumentiert\)/,
     });
 
     expect(outgoingButton).toBeInTheDocument();

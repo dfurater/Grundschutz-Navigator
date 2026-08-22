@@ -97,11 +97,11 @@ describe('useSearch', () => {
     const controls = [
       makeControl({
         id: 'GC.2.1',
-        links: [{ targetId: 'GC.2.2', relation: 'required' }],
+        links: [{ targetId: 'GC.2.2', href: '#GC.2.2', rel: 'required', relStatus: 'custom' }],
       }),
       makeControl({
         id: 'GC.2.3',
-        links: [{ targetId: 'GC.2.4', relation: 'related' }],
+        links: [{ targetId: 'GC.2.4', href: '#GC.2.4', rel: 'related', relStatus: 'custom' }],
       }),
     ];
 
@@ -219,7 +219,7 @@ describe('useSearch', () => {
       makeControl({
         id: 'GC.2.1',
         title: 'Anderer Control',
-        links: [{ targetId: 'GC.1.1', relation: 'required' }],
+        links: [{ targetId: 'GC.1.1', href: '#GC.1.1', rel: 'required', relStatus: 'custom' }],
       }),
     ];
 

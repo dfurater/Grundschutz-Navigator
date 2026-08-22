@@ -117,17 +117,6 @@ export function ControlDetail({
       ]]),
     });
   }, [catalog, catalogDocument, control.id, controlsById]);
-  const resolvedControlLinks = useMemo(
-    () => resolvedControlReferences.flatMap((reference) => (
-      reference.kind === 'control'
-        ? [{
-          targetId: reference.control.id,
-          relation: reference.rel === 'required' ? 'required' as const : 'related' as const,
-        }]
-        : []
-    )),
-    [resolvedControlReferences],
-  );
   const renderVocabularyCard = useCallback<RenderVocabularyCard>(
     (resolution, options) => (
       <VocabularyEntryCard
@@ -261,7 +250,7 @@ export function ControlDetail({
           onToggleExpanded={toggleGuidanceExpanded}
         />
         <ControlDependencies
-          links={resolvedControlLinks}
+          links={control.links}
           controlsById={controlsById}
           incomingLinks={incomingLinks}
           onNavigateToControl={onNavigateToControl}

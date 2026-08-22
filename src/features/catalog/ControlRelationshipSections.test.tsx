@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import type { Control } from '@/domain/models';
+import type { Control, ControlLink } from '@/domain/models';
 import type { IncomingControlLink } from '@/domain/controlRelationships';
 import { ControlDependencies } from './ControlDependencies';
 import { ControlHierarchy } from './ControlHierarchy';
@@ -28,6 +28,17 @@ function makeControl(id: string, title: string, overrides: Partial<Control> = {}
   };
 }
 
+function makeLink(targetId: string, rel: 'required' | 'related'): ControlLink {
+  return { targetId, href: `#${targetId}`, rel, relStatus: 'custom' };
+}
+
+function makeIncomingLink(
+  control: Control,
+  rel: 'required' | 'related',
+): IncomingControlLink {
+  return { control, link: makeLink(control.id, rel) };
+}
+
 describe('ControlDependencies', () => {
   it('preserves reverse labels, reciprocal filtering, and navigation without dead targets', async () => {
     const user = userEvent.setup();
@@ -35,16 +46,16 @@ describe('ControlDependencies', () => {
     const reciprocalSource = target;
     const incomingOnlySource = makeControl('GC.3.1', 'Eingehende Kontrolle');
     const incomingLinks: IncomingControlLink[] = [
-      { control: reciprocalSource, relation: 'related' },
-      { control: incomingOnlySource, relation: 'related' },
+      makeIncomingLink(reciprocalSource, 'related'),
+      makeIncomingLink(incomingOnlySource, 'related'),
     ];
     const onNavigateToControl = vi.fn();
 
     render(
       <ControlDependencies
         links={[
-          { targetId: target.id, relation: 'required' },
-          { targetId: 'GC.9.9', relation: 'related' },
+          makeLink(target.id, 'required'),
+          makeLink('GC.9.9', 'related'),
         ]}
         controlsById={new Map([[target.id, target]])}
         incomingLinks={incomingLinks}
@@ -65,16 +76,20 @@ describe('ControlDependencies', () => {
 
     // Jedes Beziehungslabel erscheint als programmatisch benannte Gruppe
     // genau einmal, auch wenn mehrere Links dasselbe Label tragen.
-    expect(screen.getByRole('group', { name: 'Erforderlich · ↔ verwandt' }))
+    expect(screen.getByRole('group', {
+      name: 'Required · nicht im OSCAL-Catalog dokumentiert · ↔ related · nicht im OSCAL-Catalog dokumentiert',
+    }))
       .toBeInTheDocument();
     const reciprocal = screen.getByRole('button', {
-      name: 'GC.2.2 Zielkontrolle (erforderlich · ↔ verwandt)',
+      name: 'GC.2.2 Zielkontrolle (required · nicht im OSCAL-Catalog dokumentiert · ↔ related · nicht im OSCAL-Catalog dokumentiert)',
     });
-    expect(screen.queryByRole('button', { name: 'GC.9.9 (verwandt)' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {
+      name: 'GC.9.9 (related · nicht im OSCAL-Catalog dokumentiert)',
+    })).not.toBeInTheDocument();
     expect(screen.getAllByText('GC.2.2')).toHaveLength(1);
 
     const incomingOnly = screen.getByRole('button', {
-      name: 'GC.3.1 Eingehende Kontrolle (verwandt)',
+      name: 'GC.3.1 Eingehende Kontrolle (related · nicht im OSCAL-Catalog dokumentiert)',
     });
     await user.click(reciprocal);
     await user.click(incomingOnly);
@@ -91,10 +106,10 @@ describe('ControlDependencies', () => {
     render(
       <ControlDependencies
         links={[
-          { targetId: required.id, relation: 'required' },
-          { targetId: relatedA.id, relation: 'related' },
-          { targetId: relatedB.id, relation: 'related' },
-          { targetId: relatedC.id, relation: 'related' },
+          makeLink(required.id, 'required'),
+          makeLink(relatedA.id, 'related'),
+          makeLink(relatedB.id, 'related'),
+          makeLink(relatedC.id, 'related'),
         ]}
         controlsById={new Map([
           [required.id, required],
@@ -107,22 +122,26 @@ describe('ControlDependencies', () => {
 
     // Jedes Label erscheint genau einmal als Gruppenüberschrift, nicht je Zeile,
     // und ist als programmatisch benannte Gruppe (nicht nur visueller Text) exponiert.
-    expect(screen.getAllByText('Erforderlich')).toHaveLength(1);
-    expect(screen.getAllByText('Verwandt')).toHaveLength(1);
+    expect(screen.getAllByText('Required · nicht im OSCAL-Catalog dokumentiert')).toHaveLength(1);
+    expect(screen.getAllByText('Related · nicht im OSCAL-Catalog dokumentiert')).toHaveLength(1);
 
-    const requiredGroup = screen.getByRole('group', { name: 'Erforderlich' });
-    const relatedGroup = screen.getByRole('group', { name: 'Verwandt' });
+    const requiredGroup = screen.getByRole('group', {
+      name: 'Required · nicht im OSCAL-Catalog dokumentiert',
+    });
+    const relatedGroup = screen.getByRole('group', {
+      name: 'Related · nicht im OSCAL-Catalog dokumentiert',
+    });
     expect(within(requiredGroup).getAllByRole('button')).toHaveLength(1);
     expect(within(relatedGroup).getAllByRole('button')).toHaveLength(3);
 
     expect(screen.getByRole('button', {
-      name: 'STM.2.1.4.1 Vererbung von Zielobjektkategorien (verwandt)',
+      name: 'STM.2.1.4.1 Vererbung von Zielobjektkategorien (related · nicht im OSCAL-Catalog dokumentiert)',
     })).toBeInTheDocument();
     expect(screen.getByRole('button', {
-      name: 'STM.2.1.4.2 Konsolidierung und Redundanzprüfung (verwandt)',
+      name: 'STM.2.1.4.2 Konsolidierung und Redundanzprüfung (related · nicht im OSCAL-Catalog dokumentiert)',
     })).toBeInTheDocument();
     expect(screen.getByRole('button', {
-      name: 'STM.2.1.5 Modellierung ohne Zielobjektkategorie (verwandt)',
+      name: 'STM.2.1.5 Modellierung ohne Zielobjektkategorie (related · nicht im OSCAL-Catalog dokumentiert)',
     })).toBeInTheDocument();
   });
 });

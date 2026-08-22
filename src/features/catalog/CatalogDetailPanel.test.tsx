@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { Catalog, Control } from '@/domain/models';
+import type { IncomingControlLink } from '@/domain/controlRelationships';
 import { CatalogDetailPanel } from './CatalogDetailPanel';
 
 const onControlDetailRender = vi.fn();
@@ -9,7 +10,7 @@ vi.mock('./ControlDetail', () => ({
   ControlDetail: (props: {
     control: Control;
     controlsById: Map<string, Control>;
-    incomingLinks: Array<{ control: Control; relation: string }>;
+    incomingLinks: IncomingControlLink[];
     parentControl?: Control;
     childControls: Control[];
     onClose: () => void;
@@ -68,7 +69,12 @@ const child = makeControl({
 const source = makeControl({
   id: 'TOP.1.3',
   title: 'Verknüpfte Kontrolle',
-  links: [{ targetId: selected.id, relation: 'required' }],
+  links: [{
+    targetId: selected.id,
+    href: `#${selected.id}`,
+    rel: 'required',
+    relStatus: 'custom',
+  }],
 });
 const controls = [parent, selected, child, source];
 const catalog = {
@@ -98,7 +104,7 @@ describe('CatalogDetailPanel', () => {
       controlsById: catalog.controlsById,
       parentControl: parent,
       childControls: [child],
-      incomingLinks: [{ control: source, relation: 'required' }],
+      incomingLinks: [{ control: source, link: source.links[0] }],
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));

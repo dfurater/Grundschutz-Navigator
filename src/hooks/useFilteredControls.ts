@@ -6,6 +6,7 @@ import type {
   Modalverb,
   LinkRelation,
 } from '@/domain/models';
+import { toFilterableLinkRelation } from '@/domain/controlRelationships';
 
 /* ------------------------------------------------------------------ */
 /*  Filter State                                                       */
@@ -142,7 +143,11 @@ function matchesFilter(
 
   // Link relation filter (OR)
   if (filters.linkRelationen.length > 0) {
-    const relationen = new Set(control.links.map((link) => link.relation));
+    const relationen = new Set(
+      control.links
+        .map((link) => toFilterableLinkRelation(link.rel))
+        .filter((relation): relation is LinkRelation => relation !== undefined),
+    );
     const hasMatch = filters.linkRelationen.some((relation) => relationen.has(relation));
     if (!hasMatch) return false;
   }
@@ -227,7 +232,11 @@ function computeFacetCounts(controls: Control[]): FacetCounts {
     }
     incrementCount(counts.handlungsworte, c.statementProps.handlungsworte);
     incrementCount(counts.dokumentationstypen, c.statementProps.dokumentation);
-    const relations = new Set(c.links.map((link) => link.relation));
+    const relations = new Set(
+      c.links
+        .map((link) => toFilterableLinkRelation(link.rel))
+        .filter((relation): relation is LinkRelation => relation !== undefined),
+    );
     for (const relation of relations) {
       incrementCount(counts.linkRelationen, relation);
     }

@@ -93,7 +93,12 @@ const control: Control = {
       ns: 'https://example.com/namespaces/target_object_categories.csv',
     },
   },
-  links: [{ targetId: 'ASST.1.2', relation: 'related' }],
+  links: [{
+    targetId: 'ASST.1.2',
+    href: '#ASST.1.2',
+    rel: 'related',
+    relStatus: 'custom',
+  }],
   params: {},
 };
 

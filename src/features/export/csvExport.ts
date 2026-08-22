@@ -77,7 +77,7 @@ export function controlToCSVRow(control: Control): string {
     control.statementProps.praezisierung ?? '',
     control.statementProps.handlungsworte ?? '',
     control.statementProps.dokumentation ?? '',
-    control.links.map((l) => `${l.targetId} (${l.relation})`).join(', '),
+    control.links.map((l) => `${l.targetId} (${l.rel ?? 'ohne Relation'})`).join(', '),
     relationTargets.required.join(', '),
     relationTargets.related.join(', '),
     control.confidentiality ?? '',

@@ -141,10 +141,16 @@ export type Modalverb = 'MUSS' | 'SOLLTE' | 'KANN';
 /** Link relationship type */
 export type LinkRelation = 'related' | 'required';
 
-/** A parsed control link */
+/** OSCAL-Catalog-Dokumentationsstatus des originalen optionalen `link.rel`. */
+export type LinkRelationStatus = 'documented' | 'custom' | 'missing';
+
+/** A resolved catalog-internal control link with lossless source semantics. */
 export interface ControlLink {
   targetId: string;
-  relation: LinkRelation;
+  href: string;
+  rel?: string;
+  relStatus: LinkRelationStatus;
+  resourceFragment?: string;
 }
 
 /** A prop value with retained OSCAL provenance */

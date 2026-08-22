@@ -13,6 +13,7 @@ import type {
   CatalogDocumentContext,
   Control,
   ControlLink,
+  LinkRelationStatus,
   OscalDocumentContext,
 } from '@/domain/models';
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
@@ -22,6 +23,17 @@ export const REFERENCE_RESOLUTION_VALIDATOR = Object.freeze({
   name: 'reference-resolution',
   version: '1',
 });
+
+/**
+ * Das Catalog-Modell dokumentiert ausschließlich `reference`; sein
+ * Token-Vokabular bleibt dennoch offen und `rel` ist optional.
+ */
+export function classifyCatalogLinkRelation(
+  rel: string | undefined,
+): LinkRelationStatus {
+  if (rel === undefined) return 'missing';
+  return rel === 'reference' ? 'documented' : 'custom';
+}
 
 const PROVENANCE_LINK_RELATIONS = new Set(['source-profile', 'source-profile-uuid']);
 
@@ -579,7 +591,10 @@ export function resolveCatalogControlLinks(
         return resolved.kind === 'control'
           ? [{
             targetId: resolved.control.id,
-            relation: resolved.rel === 'required' ? 'required' as const : 'related' as const,
+            href: resolved.href,
+            rel: resolved.rel,
+            relStatus: classifyCatalogLinkRelation(resolved.rel),
+            resourceFragment: resolved.resourceFragment,
           }]
           : [];
       });

@@ -265,9 +265,10 @@ describe.skipIf(!lieferketteAvailable)('Lieferkettenkatalog am realen Snapshot',
     const projectedRelCounts = new Map<string, number>();
     for (const control of document.view.controls) {
       for (const link of control.links) {
+        const rel = link.rel ?? '<kein rel>';
         projectedRelCounts.set(
-          link.relation,
-          (projectedRelCounts.get(link.relation) ?? 0) + 1,
+          rel,
+          (projectedRelCounts.get(rel) ?? 0) + 1,
         );
       }
     }

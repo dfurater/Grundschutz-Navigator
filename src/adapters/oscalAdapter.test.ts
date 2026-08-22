@@ -526,12 +526,9 @@ describe('parseControl', () => {
     expect(control.statementProps.zielobjektKategorien).toEqual(['Server', 'Client']);
   });
 
-  it('parses links with correct relations', () => {
+  it('leaves link target classification to the central resolver', () => {
     const control = parseControl(makeControl(), 'GC.1', 'GC');
-    expect(control.links).toEqual([
-      { targetId: 'GC.2.2', relation: 'related' },
-      { targetId: 'GC.3.1', relation: 'required' },
-    ]);
+    expect(control.links).toEqual([]);
   });
 
   it('builds param map', () => {
@@ -826,7 +823,13 @@ describe('parseCatalog', () => {
     ).view;
 
     expect(catalog.controlsById.get('GC.1.1')?.links).toEqual([
-      { targetId: 'GC.1.3', relation: 'required' },
+      {
+        targetId: 'GC.1.3',
+        href: '#GC.1.3',
+        rel: 'required',
+        relStatus: 'custom',
+        resourceFragment: undefined,
+      },
     ]);
   });
 

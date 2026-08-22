@@ -19,11 +19,9 @@ import type {
   Practice,
   Topic,
   Control,
-  ControlLink,
   SecurityLevel,
   EffortLevel,
   Modalverb,
-  LinkRelation,
   SecurityTargetRelevance,
 } from '@/domain/models';
 import type { CatalogKey } from '@/domain/sourceRegistry';
@@ -273,12 +271,6 @@ export function parseControl(
   const dokumentation = dokumentationProp?.value || undefined;
   const zielobjektKategorien = parseTags(zielobjektKategorienProp?.value);
 
-  // Links
-  const links: ControlLink[] = (raw.links ?? []).map((l) => ({
-    targetId: parseLinkHref(l.href),
-    relation: (l.rel === 'required' ? 'required' : 'related') as LinkRelation,
-  }));
-
   return {
     id: raw.id,
     title: raw.title,
@@ -319,7 +311,10 @@ export function parseControl(
       zielobjektKategorien,
       zielobjektKategorienProp,
     },
-    links,
+    // Zielarten und sichere Navigation werden ausschließlich durch die
+    // zentrale Referenzauflösung klassifiziert. Die Dokumentprojektion ersetzt
+    // diese leere Zwischenansicht vor der Veröffentlichung (GSPP-243/286).
+    links: [],
     params: paramMap,
   };
 }
