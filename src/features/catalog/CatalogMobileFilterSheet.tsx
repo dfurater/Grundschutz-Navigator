@@ -3,11 +3,12 @@ import { Button } from '@/components/Button';
 import { IconFilter } from '@/components/icons';
 import { useBottomSheetDrag } from '@/hooks/useBottomSheetDrag';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { FilterPanel, type FilterPanelProps } from './FilterPanel';
 
 interface CatalogMobileFilterSheetProps {
-  filterPanelProps: FilterPanelProps;
+  readonly filterPanelProps: FilterPanelProps;
 }
 
 export function CatalogMobileFilterSheet({
@@ -28,6 +29,9 @@ export function CatalogMobileFilterSheet({
   });
   useFocusTrap(sheetRef, open);
   useScrollLock(open);
+  useGlobalEventListener('document', 'keydown', (event) => {
+    if (event.key === 'Escape') close();
+  }, open);
 
   return (
     <>
@@ -53,9 +57,6 @@ export function CatalogMobileFilterSheet({
           <aside
             ref={sheetRef}
             className="fixed inset-x-0 bottom-0 z-50 bg-[var(--color-surface-raised)] rounded-t-2xl shadow-xl max-h-[80dvh] flex flex-col overflow-hidden lg:hidden animate-slide-up"
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') close();
-            }}
           >
             <div
               ref={handleRef}

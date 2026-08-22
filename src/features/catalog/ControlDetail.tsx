@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   IconArrowLeft,
   IconCheck,
@@ -42,13 +42,13 @@ import type { RenderVocabularyCard } from './ControlVocabularyPrimitives';
 const UNBENANNTE_TAXONOMIE = 'Ohne Gruppenkennung';
 
 export interface ControlDetailProps {
-  control: Control;
-  controlsById?: Map<string, Control>;
-  incomingLinks?: IncomingControlLink[];
-  parentControl?: Control;
-  childControls?: Control[];
-  onClose: () => void;
-  onNavigateToControl?: (control: Control) => void;
+  readonly control: Control;
+  readonly controlsById?: Map<string, Control>;
+  readonly incomingLinks?: IncomingControlLink[];
+  readonly parentControl?: Control;
+  readonly childControls?: Control[];
+  readonly onClose: () => void;
+  readonly onNavigateToControl?: (control: Control) => void;
 }
 
 export function getControlDetailUrl(
@@ -88,6 +88,13 @@ export function ControlDetail({
     copied: linkCopied,
     error: linkCopyError,
   } = useClipboard();
+  // Fehlerpfad: Der Direktlink-Fallback muss stabil gerendert bleiben — ein
+  // erneuter Kopierversuch darf ihn nicht unmounten, sonst verliert eine
+  // markierte URL ihre Auswahl (Greptile-Finding PR #155). Der Zähler hält
+  // die Anzeige über ALLE gleichzeitig laufenden Versuche offen; nur der
+  // Abschluss des letzten Versuchs kann sie entfernen (Race-sicher).
+  const [pendingCopyRetries, setPendingCopyRetries] = useState(0);
+  const showCopyError = Boolean(linkCopyError) || pendingCopyRetries > 0;
   const {
     isActive: isVocabularyActive,
     toggle: toggleVocabulary,
@@ -151,6 +158,16 @@ export function ControlDetail({
 
   const handleCopyLink = () => {
     const url = getControlDetailUrl(catalogKey, control);
+    if (showCopyError) {
+      setPendingCopyRetries((pending) => pending + 1);
+      void copyLink(url).finally(() => {
+        // Nur der letzte laufende Versuch darf die Anzeige schließen —
+        // sonst entfernt ein früher fertig werdender älterer Versuch den
+        // Fallback unter einem noch laufenden neueren Versuch (Race).
+        setPendingCopyRetries((pending) => Math.max(0, pending - 1));
+      });
+      return;
+    }
     void copyLink(url);
   };
 
@@ -190,18 +207,24 @@ export function ControlDetail({
             )}
           </button>
         </div>
-        {linkCopyError && (
+        {showCopyError && (
           <div className="mb-2 space-y-1.5 rounded-md bg-[var(--color-danger-surface)] px-3 py-2">
             <p role="alert" className="text-xs text-[var(--color-danger-text)]">
               Kopieren nicht möglich. Bitte den vollständigen Wert manuell markieren und kopieren.
             </p>
             <code
-              tabIndex={0}
               aria-label="Direktlink zum manuellen Kopieren"
               className="block select-all break-all font-mono text-xs text-[var(--color-text-primary)]"
             >
               {getControlDetailUrl(catalogKey, control)}
             </code>
+            <button
+              type="button"
+              onClick={handleCopyLink}
+              className="rounded-md px-2 py-1 text-xs font-medium text-[var(--color-accent-default)] transition-colors hover:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]"
+            >
+              Erneut kopieren
+            </button>
           </div>
         )}
         <ControlTaxonomyBreadcrumb
