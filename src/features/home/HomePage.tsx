@@ -13,9 +13,8 @@ import type { Practice } from '@/domain/models';
  */
 export function buildPracticeListKey(practice: Practice, used: Set<string>): string {
   const base =
-    practice.id !== undefined
-      ? practice.id
-      : `ohne-id-${practice.altIdentifier ?? practice.label}`;
+    practice.id ??
+    `ohne-id-${practice.altIdentifier ?? practice.label}`;
   if (!used.has(base)) {
     used.add(base);
     return base;
