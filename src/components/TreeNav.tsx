@@ -19,10 +19,10 @@ export interface TreeItem {
 }
 
 export interface TreeNavProps {
-  items: TreeItem[];
-  onSelect: (id: string) => void;
-  selectedId?: string;
-  className?: string;
+  readonly items: TreeItem[];
+  readonly onSelect: (id: string) => void;
+  readonly selectedId?: string;
+  readonly className?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -43,10 +43,10 @@ function hasSelectedDescendant(item: TreeItem, selectedId?: string): boolean {
 /* ------------------------------------------------------------------ */
 
 interface TreeNavItemProps {
-  item: TreeItem;
-  level: number;
-  onSelect: (id: string) => void;
-  selectedId?: string;
+  readonly item: TreeItem;
+  readonly level: number;
+  readonly onSelect: (id: string) => void;
+  readonly selectedId?: string;
 }
 
 const TREE_DEPTH_PADDING_CLASSES = ['pl-2', 'pl-5', 'pl-8', 'pl-11'] as const;
@@ -165,6 +165,11 @@ function TreeNavItem({ item, level, onSelect, selectedId }: TreeNavItemProps) {
         )}
       </button>
       {hasChildren && expanded && (
+        // S6819 bewusst NICHT „fixierbar": <ul role="group"> ist das kanonische
+        // WAI-ARIA-APG-Muster für Baum-Untergruppen; die Regel-Alternativen
+        // (<details>/<fieldset>/<optgroup>/<address>) sind hier entweder
+        // ungültiges HTML (<li> nur in Listen) oder semantisch falsch
+        // (Triage FALSE_POSITIVE, begründet am Sonar-Issue AaAkEZpoFj4WkVJvb09P).
         <ul role="group">
           {item.children!.map((child, index) => (
             <TreeNavItem
