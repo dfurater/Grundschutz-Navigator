@@ -2,6 +2,32 @@ import { Link } from 'react-router';
 import { IconShield } from '@/components/icons';
 import { useCatalog } from '@/hooks/useCatalog';
 import { buildGroupUrl } from '@/app/routes';
+import type { Practice } from '@/domain/models';
+
+/**
+ * Stabiler Listen-Key je Praktik (S6479): die Datensatz-ID, sonst ein
+ * Fallback aus altIdentifier bzw. Label. Bereits vergebene Keys werden über
+ * `used` deterministisch nummeriert, damit der Key trotz Duplikaten im
+ * Bestand je Datensatz eindeutig bleibt (Greptile-Befund PR #156: zwei
+ * id-lose Practices mit identischem Label würden kollidieren).
+ */
+export function buildPracticeListKey(practice: Practice, used: Set<string>): string {
+  const base =
+    practice.id !== undefined
+      ? practice.id
+      : `ohne-id-${practice.altIdentifier ?? practice.label}`;
+  if (!used.has(base)) {
+    used.add(base);
+    return base;
+  }
+  for (let n = 2; ; n += 1) {
+    const candidate = `${base}--${n}`;
+    if (!used.has(candidate)) {
+      used.add(candidate);
+      return candidate;
+    }
+  }
+}
 
 export function HomePage() {
   const { catalog, loading } = useCatalog();
@@ -18,6 +44,7 @@ export function HomePage() {
         ),
       }
     : null;
+  const usedListKeys = new Set<string>();
 
   return (
     <div className="mx-auto max-w-3xl px-6 pt-8 pb-12">
@@ -98,6 +125,7 @@ export function HomePage() {
 
           <div className="border border-[var(--color-border-default)] rounded-[var(--radius-md)] bg-[var(--color-surface-base)] divide-y divide-[var(--color-border-subtle)]">
             {catalog.practices.map((practice) => {
+              const listKey = buildPracticeListKey(practice, usedListKeys);
               const cells = (
                 <>
                   <span className="catalog-reference-text text-xs text-[var(--color-accent-default)]">
@@ -119,16 +147,16 @@ export function HomePage() {
 
               // Eine Gruppe ohne `id` ist nicht adressierbar (OSCAL 1.1.3:
               // `group.id` ist optional). Sie bleibt vollständig sichtbar,
-              // erzeugt aber kein Navigationsziel (GSPP-242). Als stabiler
-              // Key dient das Pflichtfeld `label` statt des Array-Index
-              // (S6479).
+              // erzeugt aber kein Navigationsziel (GSPP-242). Als stabiler,
+              // eindeutiger Key dient `buildPracticeListKey` statt des
+              // Array-Index (S6479).
               return practice.id === undefined ? (
-                <div key={`ohne-id-${practice.label}`} className={rowClass}>
+                <div key={listKey} className={rowClass}>
                   {cells}
                 </div>
               ) : (
                 <Link
-                  key={practice.id}
+                  key={listKey}
                   to={buildGroupUrl(catalog.catalogKey, practice.id)}
                   className={`${rowClass} hover:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus-ring)] transition-colors`}
                 >

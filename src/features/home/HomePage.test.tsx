@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCatalog } from '@/hooks/useCatalog';
-import { HomePage } from './HomePage';
+import { buildPracticeListKey, HomePage } from './HomePage';
 
 vi.mock('@/hooks/useCatalog', () => ({
   useCatalog: vi.fn(),
@@ -238,5 +238,55 @@ describe('HomePage', () => {
     expect(summarySection).toHaveClass('pt-6');
     expect(summarySection).not.toHaveClass('mt-6');
     expect(practiceRegister).toHaveClass('mt-8');
+  });
+});
+
+describe('buildPracticeListKey', () => {
+  it('uses the practice id as list key when present', () => {
+    const used = new Set<string>();
+    const practice = {
+      id: 'GC',
+      title: 'Grundschutz-Consulting',
+      label: 'GC',
+      topics: [],
+      controlCount: 0,
+    };
+
+    expect(buildPracticeListKey(practice, used)).toBe('GC');
+  });
+
+  it('falls back to altIdentifier before label for id-less practices', () => {
+    const used = new Set<string>();
+    const practice = {
+      title: 'Ohne ID',
+      label: 'X?',
+      altIdentifier: 'uuid-alt',
+      topics: [],
+      controlCount: 0,
+    };
+
+    expect(buildPracticeListKey(practice, used)).toBe('ohne-id-uuid-alt');
+  });
+
+  it('keeps keys unique for two id-less practices with identical label', () => {
+    // Greptile-Befund PR #156: zwei id-lose Practices mit demselben Label
+    // dürfen nie denselben React-Key erhalten.
+    const first = { title: 'Erste', label: 'DUP', topics: [], controlCount: 0 };
+    const second = {
+      title: 'Zweite',
+      label: 'DUP',
+      topics: [],
+      controlCount: 0,
+    };
+
+    const usedFirstPass = new Set<string>();
+    const keyFirst = buildPracticeListKey(first, usedFirstPass);
+    const keySecond = buildPracticeListKey(second, usedFirstPass);
+    expect(keyFirst).not.toBe(keySecond);
+
+    // Deterministisch: dieselbe Reihenfolge liefert dieselben Keys.
+    const usedSecondPass = new Set<string>();
+    expect(buildPracticeListKey(first, usedSecondPass)).toBe(keyFirst);
+    expect(buildPracticeListKey(second, usedSecondPass)).toBe(keySecond);
   });
 });
