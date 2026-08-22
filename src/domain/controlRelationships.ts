@@ -10,13 +10,19 @@ export interface IncomingControlLink {
   link: ControlLink;
 }
 
-const LINK_RELATION_LABELS: Record<LinkRelation, string> = {
+const LINK_RELATION_LABELS: Record<LinkRelation | 'reference', string> = {
+  reference: 'Referenz',
   required: 'erforderlich',
   related: 'verwandt',
 };
 
 export function getLinkRelationLabel(relation: LinkRelation): string {
   return LINK_RELATION_LABELS[relation];
+}
+
+function getKnownLinkRelationLabel(rel: string | undefined): string | undefined {
+  if (!rel || !(rel in LINK_RELATION_LABELS)) return undefined;
+  return LINK_RELATION_LABELS[rel as keyof typeof LINK_RELATION_LABELS];
 }
 
 export function toFilterableLinkRelation(
@@ -31,13 +37,7 @@ export function getLinkRelationDescription(
 ): string {
   if (status === 'missing') return 'ohne Relationsangabe';
 
-  const knownLabel = rel === 'reference'
-    ? 'Referenz'
-    : rel === 'required'
-      ? 'erforderlich'
-      : rel === 'related'
-        ? 'verwandt'
-        : undefined;
+  const knownLabel = getKnownLinkRelationLabel(rel);
 
   if (status === 'documented') {
     return knownLabel
