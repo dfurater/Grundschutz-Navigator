@@ -10,10 +10,10 @@ import {
 } from './ControlVocabularyPrimitives';
 
 export interface ControlDependenciesProps {
-  links: readonly ControlLink[];
-  controlsById?: ReadonlyMap<string, Control>;
-  incomingLinks?: readonly IncomingControlLink[];
-  onNavigateToControl?: (control: Control) => void;
+  readonly links: readonly ControlLink[];
+  readonly controlsById?: ReadonlyMap<string, Control>;
+  readonly incomingLinks?: readonly IncomingControlLink[];
+  readonly onNavigateToControl?: (control: Control) => void;
 }
 
 function buildIncomingLinksByControlId(
@@ -131,10 +131,10 @@ export function ControlDependencies({
                 const groupLabelId = `control-dependencies-group-label-${groupIndex}`;
 
                 return (
-                  <div key={group.label} role="group" aria-labelledby={groupLabelId}>
-                    <p id={groupLabelId} className="text-xs font-medium text-slate-500 mb-1">
+                  <fieldset key={group.label} aria-labelledby={groupLabelId} className="min-w-0">
+                    <legend id={groupLabelId} className="text-xs font-medium text-slate-500 mb-1">
                       {capitalize(group.label)}
-                    </p>
+                    </legend>
                     <div className="space-y-1">
                       {group.links.map((link) => {
                         const targetControl = controlsById?.get(link.targetId);
@@ -161,7 +161,7 @@ export function ControlDependencies({
                         );
                       })}
                     </div>
-                  </div>
+                  </fieldset>
                 );
               })}
             </div>

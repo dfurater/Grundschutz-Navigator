@@ -29,12 +29,12 @@ type TaxonomyVocabularies = Pick<ResolvedControlVocabularies, 'tags'> & {
 };
 
 export interface ControlTaxonomyProps {
-  control: TaxonomyControl;
-  resolvedVocabularies: TaxonomyVocabularies;
-  hasControllingCriteria: boolean;
-  isVocabularyActive: (key: string) => boolean;
-  onToggleVocabulary: (key: string) => void;
-  renderVocabularyCard: RenderVocabularyCard;
+  readonly control: TaxonomyControl;
+  readonly resolvedVocabularies: TaxonomyVocabularies;
+  readonly hasControllingCriteria: boolean;
+  readonly isVocabularyActive: (key: string) => boolean;
+  readonly onToggleVocabulary: (key: string) => void;
+  readonly renderVocabularyCard: RenderVocabularyCard;
 }
 
 export function ControlTaxonomy({
@@ -54,10 +54,9 @@ export function ControlTaxonomy({
   }
 
   return (
-    <div
-      role="group"
+    <fieldset
       aria-label="Taxonomie"
-      className={`space-y-2 ${hasControllingCriteria ? 'border-t border-[var(--color-border-subtle)] pt-3' : ''}`}
+      className={`min-w-0 space-y-2 ${hasControllingCriteria ? 'border-t border-[var(--color-border-subtle)] pt-3' : ''}`}
     >
       {/* GSPP-140: Zielobjekt-Kategorien bleiben als filterbare Taxonomie in Klassifikation, nicht in Anforderungsdetails. */}
       {(control.tags.length > 0 || control.statementProps.zielobjektKategorien.length > 0) && (
@@ -194,6 +193,6 @@ export function ControlTaxonomy({
           </div>
         );
       })}
-    </div>
+    </fieldset>
   );
 }

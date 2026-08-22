@@ -5,14 +5,15 @@ import {
   buildIncomingLinkMap,
 } from '@/domain/controlRelationships';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { ControlDetail } from './ControlDetail';
 
 interface CatalogDetailPanelProps {
-  catalog: Catalog;
-  control: Control;
-  onClose: () => void;
-  onNavigateToControl: (control: Control) => void;
+  readonly catalog: Catalog;
+  readonly control: Control;
+  readonly onClose: () => void;
+  readonly onNavigateToControl: (control: Control) => void;
 }
 
 export function CatalogDetailPanel({
@@ -64,6 +65,9 @@ export function CatalogMobileDetailOverlay({
 
   useFocusTrap(overlayRef, active);
   useScrollLock(active);
+  useGlobalEventListener('document', 'keydown', (event) => {
+    if (event.key === 'Escape') onClose();
+  }, active);
 
   if (!active || !control) return null;
 
@@ -72,9 +76,6 @@ export function CatalogMobileDetailOverlay({
       key={`${catalog.catalogKey}:${control.id}`}
       ref={overlayRef}
       className="fixed inset-0 z-50 lg:hidden flex flex-col bg-[var(--color-surface-raised)]"
-      onKeyDown={(event) => {
-        if (event.key === 'Escape') onClose();
-      }}
     >
       <CatalogDetailPanel
         catalog={catalog}
