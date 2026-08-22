@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   IconArrowLeft,
   IconCheck,
@@ -90,11 +90,12 @@ export function ControlDetail({
   } = useClipboard();
   // Fehlerpfad: Der Direktlink-Fallback muss stabil gerendert bleiben — ein
   // erneuter Kopierversuch darf ihn nicht unmounten, sonst verliert eine
-  // markierte URL ihre Auswahl (Greptile-Finding PR #155). Während eines
-  // Versuchs nach Fehler setzt die Hook den Fehlerzustand kurz zurück; der
-  // Latch hält die Anzeige deshalb über die komplette Attempt-Dauer offen.
-  const [copyAttemptAfterError, setCopyAttemptAfterError] = useState(false);
-  const showCopyError = Boolean(linkCopyError) || copyAttemptAfterError;
+  // markierte URL ihre Auswahl (Greptile-Finding PR #155). Der Zähler hält
+  // die Anzeige über ALLE gleichzeitig laufenden Versuche offen; nur der
+  // Abschluss des letzten Versuchs kann sie entfernen (Race-sicher).
+  const [pendingCopyRetries, setPendingCopyRetries] = useState(0);
+  const copyRetryCounter = useRef(0);
+  const showCopyError = Boolean(linkCopyError) || pendingCopyRetries > 0;
   const {
     isActive: isVocabularyActive,
     toggle: toggleVocabulary,
@@ -158,9 +159,18 @@ export function ControlDetail({
 
   const handleCopyLink = () => {
     const url = getControlDetailUrl(catalogKey, control);
-    if (linkCopyError) {
-      setCopyAttemptAfterError(true);
-      void copyLink(url).finally(() => setCopyAttemptAfterError(false));
+    if (showCopyError) {
+      copyRetryCounter.current += 1;
+      setPendingCopyRetries((pending) => pending + 1);
+      void copyLink(url).finally(() => {
+        // Nur der letzte laufende Versuch darf die Anzeige schließen —
+        // sonst entfernt ein früher fertig werdender älterer Versuch den
+        // Fallback unter einem noch laufenden neueren Versuch (Race).
+        if (copyRetryCounter.current > 0) {
+          copyRetryCounter.current -= 1;
+        }
+        setPendingCopyRetries((pending) => Math.max(0, pending - 1));
+      });
       return;
     }
     void copyLink(url);

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -1527,6 +1527,45 @@ describe('ControlDetail', () => {
     expect(writeText).toHaveBeenCalledTimes(2);
     expect(screen.getByLabelText('Direktlink zum manuellen Kopieren')).toBe(fallback);
     expect(screen.getByRole('alert')).toBeInTheDocument();
+  });
+
+  it('keeps the fallback visible while a newer retry is still pending after an older one settles', async () => {
+    const user = userEvent.setup();
+    let resolveOld!: () => void;
+    const oldAttempt = new Promise<void>((resolve) => {
+      resolveOld = resolve;
+    });
+    const writeText = vi.fn()
+      .mockImplementationOnce(() => Promise.reject(new Error('Browser detail')))
+      .mockImplementationOnce(() => oldAttempt.then(() => undefined))
+      .mockRejectedValue(new Error('Browser detail'));
+    setClipboard(writeText);
+
+    render(
+      <MemoryRouter>
+        <ControlDetail
+          control={makeControl({ id: 'DET.5.4', altIdentifier: 'stable-det-5-4' })}
+          onClose={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Link kopieren' }));
+    const fallback = screen.getByLabelText('Direktlink zum manuellen Kopieren');
+
+    // Älterer Retry (bleibt zunächst offen) …
+    await user.click(screen.getByRole('button', { name: 'Erneut kopieren' }));
+    // … gefolgt von einem neueren, der zuerst fertig wird.
+    await user.click(screen.getByRole('button', { name: 'Erneut kopieren' }));
+
+    await act(async () => {
+      resolveOld();
+    });
+
+    // Der ältere Versuch darf den Fallback nicht unter dem noch laufenden
+    // neueren Versuch entfernen — sonst verliert die Auswahl ihre URL.
+    expect(writeText).toHaveBeenCalledTimes(3);
+    expect(screen.getByLabelText('Direktlink zum manuellen Kopieren')).toBe(fallback);
   });
 
   it('keeps long tags wrap-capable inside outline badges', () => {
