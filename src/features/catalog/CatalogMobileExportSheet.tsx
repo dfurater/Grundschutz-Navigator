@@ -4,14 +4,15 @@ import { Button } from '@/components/Button';
 import { IconDownload } from '@/components/icons';
 import { downloadCSV } from '@/features/export/csvExport';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import { useScrollLock } from '@/hooks/useScrollLock';
 
 interface CatalogMobileExportSheetProps {
-  checkedIds: ReadonlySet<string>;
-  filteredControls: Control[];
-  allControls: Control[];
-  sectionFilename: string;
-  onSelectionExported?: () => void;
+  readonly checkedIds: ReadonlySet<string>;
+  readonly filteredControls: Control[];
+  readonly allControls: Control[];
+  readonly sectionFilename: string;
+  readonly onSelectionExported?: () => void;
 }
 
 export function CatalogMobileExportSheet({
@@ -27,6 +28,9 @@ export function CatalogMobileExportSheet({
 
   useFocusTrap(sheetRef, open);
   useScrollLock(open);
+  useGlobalEventListener('document', 'keydown', (event) => {
+    if (event.key === 'Escape') close();
+  }, open);
 
   const exportSelected = () => {
     downloadCSV(
@@ -60,9 +64,6 @@ export function CatalogMobileExportSheet({
           <div
             ref={sheetRef}
             className="fixed inset-x-0 bottom-0 z-50 bg-[var(--color-surface-raised)] rounded-t-2xl shadow-xl flex flex-col overflow-hidden lg:hidden animate-slide-up"
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') close();
-            }}
           >
             <div
               className="flex justify-center items-center min-h-[44px] shrink-0 select-none"

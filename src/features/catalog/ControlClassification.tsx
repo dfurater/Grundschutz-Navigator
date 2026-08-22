@@ -25,17 +25,17 @@ type ClassificationVocabularies = Pick<
 };
 
 export interface ControlClassificationProps {
-  control: ClassificationControl;
-  resolvedVocabularies: ClassificationVocabularies;
-  isVocabularyActive: (key: string) => boolean;
-  onToggleVocabulary: (key: string) => void;
-  renderVocabularyCard: RenderVocabularyCard;
+  readonly control: ClassificationControl;
+  readonly resolvedVocabularies: ClassificationVocabularies;
+  readonly isVocabularyActive: (key: string) => boolean;
+  readonly onToggleVocabulary: (key: string) => void;
+  readonly renderVocabularyCard: RenderVocabularyCard;
 }
 
 interface ClassificationVocabularyBadgeProps {
-  vocabKey: 'modalverb' | 'securityLevel' | 'effortLevel';
-  active: boolean;
-  onToggleVocabulary: (key: string) => void;
+  readonly vocabKey: 'modalverb' | 'securityLevel' | 'effortLevel';
+  readonly active: boolean;
+  readonly onToggleVocabulary: (key: string) => void;
   children: React.ReactNode;
 }
 
@@ -85,7 +85,7 @@ export function ControlClassification({
     <ControlDetailSection heading="Klassifikation">
       <div className="space-y-4">
         {hasControllingCriteria && (
-          <div role="group" aria-label="Kriterien" className="space-y-3">
+          <fieldset aria-label="Kriterien" className="space-y-3">
             <div className="flex flex-wrap gap-2">
               {control.modalverb && (
                 resolvedVocabularies.modalverb ? (
@@ -158,7 +158,7 @@ export function ControlClassification({
                 {effortLevelActive && renderVocabularyCard(resolvedVocabularies.effortLevel)}
               </div>
             )}
-          </div>
+          </fieldset>
         )}
 
         <ControlTaxonomy

@@ -42,13 +42,13 @@ import type { RenderVocabularyCard } from './ControlVocabularyPrimitives';
 const UNBENANNTE_TAXONOMIE = 'Ohne Gruppenkennung';
 
 export interface ControlDetailProps {
-  control: Control;
-  controlsById?: Map<string, Control>;
-  incomingLinks?: IncomingControlLink[];
-  parentControl?: Control;
-  childControls?: Control[];
-  onClose: () => void;
-  onNavigateToControl?: (control: Control) => void;
+  readonly control: Control;
+  readonly controlsById?: Map<string, Control>;
+  readonly incomingLinks?: IncomingControlLink[];
+  readonly parentControl?: Control;
+  readonly childControls?: Control[];
+  readonly onClose: () => void;
+  readonly onNavigateToControl?: (control: Control) => void;
 }
 
 export function getControlDetailUrl(
@@ -195,13 +195,16 @@ export function ControlDetail({
             <p role="alert" className="text-xs text-[var(--color-danger-text)]">
               Kopieren nicht möglich. Bitte den vollständigen Wert manuell markieren und kopieren.
             </p>
-            <code
-              tabIndex={0}
+            <button
+              type="button"
+              onClick={() => {
+                void copyLink(getControlDetailUrl(catalogKey, control));
+              }}
               aria-label="Direktlink zum manuellen Kopieren"
-              className="block select-all break-all font-mono text-xs text-[var(--color-text-primary)]"
+              className="block w-full cursor-text select-all break-all text-left font-mono text-xs text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]"
             >
               {getControlDetailUrl(catalogKey, control)}
-            </code>
+            </button>
           </div>
         )}
         <ControlTaxonomyBreadcrumb
