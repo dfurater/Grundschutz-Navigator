@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   IconArrowLeft,
   IconCheck,
@@ -94,7 +94,6 @@ export function ControlDetail({
   // die Anzeige über ALLE gleichzeitig laufenden Versuche offen; nur der
   // Abschluss des letzten Versuchs kann sie entfernen (Race-sicher).
   const [pendingCopyRetries, setPendingCopyRetries] = useState(0);
-  const copyRetryCounter = useRef(0);
   const showCopyError = Boolean(linkCopyError) || pendingCopyRetries > 0;
   const {
     isActive: isVocabularyActive,
@@ -160,15 +159,11 @@ export function ControlDetail({
   const handleCopyLink = () => {
     const url = getControlDetailUrl(catalogKey, control);
     if (showCopyError) {
-      copyRetryCounter.current += 1;
       setPendingCopyRetries((pending) => pending + 1);
       void copyLink(url).finally(() => {
         // Nur der letzte laufende Versuch darf die Anzeige schließen —
         // sonst entfernt ein früher fertig werdender älterer Versuch den
         // Fallback unter einem noch laufenden neueren Versuch (Race).
-        if (copyRetryCounter.current > 0) {
-          copyRetryCounter.current -= 1;
-        }
         setPendingCopyRetries((pending) => Math.max(0, pending - 1));
       });
       return;
