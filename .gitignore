@@ -45,6 +45,9 @@ public/data/
 # Interne Produktvision (nicht im öffentlichen Repo)
 /docs/userStories/
 
+# Lokale Superpowers-Artefakte (Spezifikation und Ausführungsplan)
+/docs/superpowers/
+
 # Claude local settings (machine-specific paths)
 AGENTS.md
 CLAUDE.md

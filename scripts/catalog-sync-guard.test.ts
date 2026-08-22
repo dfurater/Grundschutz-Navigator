@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   computeManifestSignature,
   guardCatalogSyncPullRequest,
+  isRegistryPreviewArtifactExpansion,
   isRegistryLifecycleOnlyMigration,
   parseNameStatusDiff,
   validateCatalogSyncManifest,
@@ -315,7 +316,7 @@ describe('validateCatalogSyncManifest v2', () => {
 
     expect(validateCatalogSyncManifest(manifest)).toBe(manifest);
     expect(computeManifestSignature(manifest)).toBe(manifest.signatureSha256);
-    expect(manifest.files.filter((file) => file.rootType !== 'vocabulary')).toHaveLength(16);
+    expect(manifest.files.filter((file) => file.rootType !== 'vocabulary')).toHaveLength(19);
   });
 
   it('rejects schema additions and a manipulated signature', () => {
@@ -458,6 +459,43 @@ describe('catalog sync PR shape', () => {
       fetchImpl,
     })).resolves.toEqual({ catalogSync: false, registryLifecycleMigration: true });
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('permits only a fully verified same-snapshot expansion by internal preview catalogs', async () => {
+    const next = makeFixture({ snapshotCommitSha: OLD_SHA });
+    const previewSourcePaths = SOURCE_REGISTRY
+      .filter(
+        (entry) =>
+          entry.kind === 'oscal' &&
+          entry.expectedRootType === 'catalog' &&
+          entry.lifecycle === 'preview' &&
+          entry.catalogKey === undefined,
+      )
+      .map((entry) => entry.upstreamPath);
+    const previous = rebuildManifest(
+      next.manifest,
+      next.manifest.files.filter((file) => !previewSourcePaths.includes(file.path)),
+    );
+    const diffEntries = [
+      { status: 'M', path: 'src/domain/sourceRegistry.mjs' },
+      { status: 'M', path: 'upstream-manifest.json' },
+    ];
+    const fetchImpl = makeGitHubFetch(next);
+
+    expect(isRegistryPreviewArtifactExpansion({
+      diffEntries,
+      previousManifest: previous,
+      nextManifest: next.manifest,
+    })).toBe(true);
+    await expect(guardCatalogSyncPullRequest({
+      branch: 'codex/gspp-241',
+      title: 'feat(provenance): source lineage',
+      diffEntries,
+      previousManifest: previous,
+      nextManifest: next.manifest,
+      fetchImpl,
+    })).resolves.toEqual({ catalogSync: false, registryPreviewArtifactExpansion: true });
+    expect(fetchImpl).toHaveBeenCalled();
   });
 
   it('trägt eine Lifecycle-Promotion als Registry-Migration, ohne Netzwerkarbeit (GSPP-242)', async () => {

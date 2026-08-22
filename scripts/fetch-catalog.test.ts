@@ -28,6 +28,7 @@ import {
   sha256Hex,
 } from './vocabulary-utils.mjs';
 import {
+  CATALOG_LINEAGES,
   SOURCE_REGISTRY,
   listCatalogArtifactFileNames,
 } from '../src/domain/sourceRegistry.mjs';
@@ -137,6 +138,32 @@ const TWO_CATALOG_REGISTRY = [
   },
   MINIMAL_REGISTRY[1],
 ] as const;
+
+const GSPP_LINEAGE = CATALOG_LINEAGES.find((lineage) => lineage.catalogKey === 'gspp');
+if (!GSPP_LINEAGE) {
+  throw new Error('Fixture requires the registered GSPP catalog lineage');
+}
+
+function getLineageOscalArtifact(artifactKey: string) {
+  const artifact = SOURCE_REGISTRY.find((entry) => entry.artifactKey === artifactKey);
+  if (!artifact || artifact.kind !== 'oscal') {
+    throw new Error(`Fixture requires the registered OSCAL artifact: ${artifactKey}`);
+  }
+  return artifact;
+}
+
+const LINEAGE_PROFILE = getLineageOscalArtifact(GSPP_LINEAGE.profileArtifactKey);
+const LINEAGE_SOURCE_FIXTURES = GSPP_LINEAGE.imports.map((configuredImport, index) => ({
+  configuredImport,
+  source: getLineageOscalArtifact(configuredImport.artifactKey),
+  resourceUuid: `lineage-resource-${index}`,
+  documentUuid: `lineage-source-${index}-uuid`,
+}));
+const LINEAGE_REGISTRY = [
+  ...MINIMAL_REGISTRY,
+  LINEAGE_PROFILE,
+  ...LINEAGE_SOURCE_FIXTURES.map(({ source }) => source),
+];
 
 type RawContents = string | Buffer;
 type RawFileMap = Map<string, RawContents>;
@@ -300,6 +327,36 @@ function makeCatalogText(
       groups,
     },
   }, null, 2)}\n`;
+}
+
+function makeLineageProfileText() {
+  return `${JSON.stringify({
+    [LINEAGE_PROFILE.expectedRootType]: {
+      uuid: 'profile-uuid',
+      metadata: {
+        title: 'Grundschutz++ Profil',
+        version: '2026-08-13',
+        'oscal-version': LINEAGE_PROFILE.oscalVersion,
+      },
+      imports: LINEAGE_SOURCE_FIXTURES.map(({ resourceUuid }) => ({ href: `#${resourceUuid}` })),
+      'back-matter': {
+        resources: LINEAGE_SOURCE_FIXTURES.map(({ configuredImport, resourceUuid }) => ({
+          uuid: resourceUuid,
+          rlinks: [{ href: configuredImport.href }],
+        })),
+      },
+    },
+  })}\n`;
+}
+
+function makeLineageSourceCatalogText(
+  source: ReturnType<typeof getLineageOscalArtifact>,
+  uuid: string,
+) {
+  return makeOscalDocumentText(source.expectedRootType, source.oscalVersion, {
+    uuid,
+    metadata: { title: source.title, version: '2026-08-13', 'oscal-version': source.oscalVersion },
+  });
 }
 
 function makeMinimalFetchInput(
@@ -1213,6 +1270,52 @@ describe('fetch-catalog', () => {
       SOURCE_REGISTRY.filter((entry) => entry.kind === 'oscal').length + 3,
     );
     expect(manifest.files.some((file) => file.path === unclassifiedPath)).toBe(false);
+  });
+
+  it('serializes the exact, validated profile-to-source lineage into the provenance sidecar', async () => {
+    const input = makeMinimalFetchInput();
+    const rawByPath = new Map<string, RawContents>([
+      ...input.rawByPath,
+      [LINEAGE_PROFILE.upstreamPath, makeLineageProfileText()],
+      ...LINEAGE_SOURCE_FIXTURES.map(({ source, documentUuid }) => [
+        source.upstreamPath,
+        makeLineageSourceCatalogText(source, documentUuid),
+      ] as const),
+    ]);
+    installSnapshotFetch({ rawByPath });
+
+    const payload = await buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      {
+        retryDelaysMs: [0, 0],
+        registryEntries: LINEAGE_REGISTRY,
+        treeResponse: makeTreeResponse(rawByPath),
+      },
+    );
+    const upstreamMetadata = parseArtifactJson(payload, 'upstream-sources-metadata.json');
+
+    expect(upstreamMetadata.catalogLineages).toEqual([
+      expect.objectContaining({
+        catalogKey: GSPP_LINEAGE.catalogKey,
+        profile: expect.objectContaining({
+          artifactKey: LINEAGE_PROFILE.artifactKey,
+          documentUuid: 'profile-uuid',
+          oscalVersion: LINEAGE_PROFILE.oscalVersion,
+          version: '2026-08-13',
+        }),
+        imports: LINEAGE_SOURCE_FIXTURES.map(({ source, documentUuid }) =>
+          expect.objectContaining({
+            state: 'complete',
+            source: expect.objectContaining({
+              artifactKey: source.artifactKey,
+              documentUuid,
+              upstreamPath: source.upstreamPath,
+            }),
+          }),
+        ),
+      }),
+    ]);
+    expect(JSON.stringify(upstreamMetadata.catalogLineages)).not.toContain('"document":');
   });
 
   it('serializes generated metadata with a trailing newline', () => {

@@ -12,6 +12,22 @@
       "contentSha256": "4503a2e5b4a8c03333d1b27b42a754278542ca458cfa142cc0288cf761e343f4"
     },
     {
+      "artifactKey": "catalog-source-gspp-kernel-g0",
+      "rootType": "catalog",
+      "lifecycle": "preview",
+      "path": "control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json",
+      "gitBlobSha": "e05f2ad1042b1c62a1239017c7da988f4b4ee71e",
+      "contentSha256": "e19f45ddbba3f4405c639171d524c04995b36f8ea3795727c72fed432cc3d464"
+    },
+    {
+      "artifactKey": "catalog-source-gspp-methodik",
+      "rootType": "catalog",
+      "lifecycle": "preview",
+      "path": "control_layer/Grundschutz++/sources/catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json",
+      "gitBlobSha": "2be05a2d6e08892259553b7e0e379020d7d98441",
+      "contentSha256": "dc1d72d0147d1ade9e9c18a6e3114700b5788a64ddeeee854b9913f969310ea0"
+    },
+    {
       "artifactKey": "profile-gspp",
       "rootType": "profile",
       "lifecycle": "preview",
@@ -58,6 +74,14 @@
       "path": "control_layer/Mindeststandard-TLS/Entwurf-Mindeststandard-TLS-catalog.json",
       "gitBlobSha": "607b4651df5cc6ab8ab76d93d7cf16bce86ce2ad",
       "contentSha256": "9859fb94ee752d677898f813bd2bc869f1a32e5062732da1e7de01babf7ff5da"
+    },
+    {
+      "artifactKey": "catalog-source-risikomanagement",
+      "rootType": "catalog",
+      "lifecycle": "preview",
+      "path": "control_layer/Risikomanagement/BSI-Anforderungen-zum-Risikomanagement-catalog.json",
+      "gitBlobSha": "4c3f7f2410fd43fbb7ab2395a4c0462b537ae6e9",
+      "contentSha256": "3b11d856cf484f9f91c60394ba2d23ed4b34793153e777d644075a2923e4190b"
     },
     {
       "artifactKey": "catalog-wlan",
@@ -228,5 +252,5 @@
       "contentSha256": "08c7ab6bb442a87eba4e407d272fecd179bc61c47c2419843d7f4cfcd4077235"
     }
   ],
-  "signatureSha256": "b5b54fccacd03b1e5e14324cfba6bea6cec59d74d1a45cebd100d4d360e1a6fe"
+  "signatureSha256": "b149e8bea661ef98ac719a14e731a988b08f92976b0bc911f3f1a10d8eca2662"
 }

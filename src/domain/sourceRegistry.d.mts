@@ -54,7 +54,19 @@ export interface VocabularyCollectionEntry {
 
 export type SourceRegistryEntry = OscalArtifactEntry | VocabularyCollectionEntry;
 
+export interface CatalogLineageImport {
+  readonly href: string;
+  readonly artifactKey: string;
+}
+
+export interface CatalogLineage {
+  readonly catalogKey: CatalogKey;
+  readonly profileArtifactKey: string;
+  readonly imports: readonly CatalogLineageImport[];
+}
+
 export declare const SOURCE_REGISTRY: readonly SourceRegistryEntry[];
+export declare const CATALOG_LINEAGES: readonly CatalogLineage[];
 export declare const MONITORED_UPSTREAM_ROOTS: readonly string[];
 export type SupportedCatalogEntry = OscalArtifactEntry & {
   readonly expectedRootType: 'catalog';
@@ -68,6 +80,10 @@ export declare const ENTRY_CATALOG: SupportedCatalogEntry;
 export declare const ENTRY_CATALOG_KEY: CatalogKey;
 
 export declare function validateSourceRegistry(entries?: readonly SourceRegistryEntry[]): void;
+export declare function validateCatalogLineages(
+  lineages?: readonly CatalogLineage[],
+  entries?: readonly SourceRegistryEntry[],
+): void;
 export declare function isSafeRepoPath(path: string): boolean;
 export declare function isPathWithinMonitoredRoot(path: string): boolean;
 export declare function listArtifacts(filter?: {

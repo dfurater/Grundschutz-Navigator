@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CATALOG_LINEAGES,
   MONITORED_UPSTREAM_ROOTS,
   ENTRY_CATALOG,
   ENTRY_CATALOG_KEY,
@@ -81,6 +82,58 @@ describe('sourceRegistry', () => {
       'catalog-lieferkette',
       'namespaces-bsi',
     ]);
+  });
+
+  it('registers exactly the three profile-imported GSPP source catalogs as preview lineage inputs', () => {
+    expect(CATALOG_LINEAGES).toEqual([
+      {
+        catalogKey: 'gspp',
+        profileArtifactKey: 'profile-gspp',
+        imports: [
+          {
+            href: '../catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
+            artifactKey: 'catalog-source-gspp-kernel-g0',
+          },
+          {
+            href: '../catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json',
+            artifactKey: 'catalog-source-gspp-methodik',
+          },
+          {
+            href: '../../../Risikomanagement/BSI-Anforderungen-zum-Risikomanagement-catalog.json',
+            artifactKey: 'catalog-source-risikomanagement',
+          },
+        ],
+      },
+    ]);
+
+    expect(
+      SOURCE_REGISTRY.filter((entry) => entry.artifactKey.startsWith('catalog-source-')),
+    ).toEqual([
+      expect.objectContaining({
+        artifactKey: 'catalog-source-gspp-kernel-g0',
+        expectedRootType: 'catalog',
+        lifecycle: 'preview',
+        upstreamPath:
+          'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
+      }),
+      expect.objectContaining({
+        artifactKey: 'catalog-source-gspp-methodik',
+        expectedRootType: 'catalog',
+        lifecycle: 'preview',
+        upstreamPath:
+          'control_layer/Grundschutz++/sources/catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json',
+      }),
+      expect.objectContaining({
+        artifactKey: 'catalog-source-risikomanagement',
+        expectedRootType: 'catalog',
+        lifecycle: 'preview',
+        upstreamPath: 'control_layer/Risikomanagement/BSI-Anforderungen-zum-Risikomanagement-catalog.json',
+      }),
+    ]);
+
+    expect(getArtifactByUpstreamPath(
+      'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
+    )).toBeNull();
   });
 
   it('blocks exactly the upstream-reported schema-defective OSCAL artifacts', () => {
@@ -266,6 +319,9 @@ describe('sourceRegistry', () => {
       'catalog-iso27001-annex-a': '1.1.3',
       'catalog-lieferkette': '1.1.3',
       'catalog-mindeststandard-tls': '1.1.3',
+      'catalog-source-gspp-kernel-g0': '1.1.3',
+      'catalog-source-gspp-methodik': '1.1.3',
+      'catalog-source-risikomanagement': '1.1.3',
       'catalog-wlan': '1.1.3',
       'component-aws-security-hub': '1.1.3',
       'component-ga-lotse-grundmodul': '1.1.2',
@@ -467,10 +523,13 @@ describe('sourceRegistry', () => {
       ).toThrow(/catalogKey/);
     });
 
-    it('requires catalogKey exactly for catalog root types', () => {
-      expect(() => validateSourceRegistry([makeOscalEntry({ catalogKey: undefined })])).toThrow(
-        /catalogKey/,
-      );
+    it('allows unshipped source catalogs without a catalogKey but requires it for app delivery', () => {
+      expect(() => validateSourceRegistry([makeOscalEntry({ catalogKey: undefined })])).not.toThrow();
+      expect(() =>
+        validateSourceRegistry([
+          makeOscalEntry({ catalogKey: undefined, lifecycle: 'supported' }),
+        ]),
+      ).toThrow(/catalogKey/);
       expect(() =>
         validateSourceRegistry([
           makeOscalEntry({ expectedRootType: 'profile', artifactKey: 'profile-test' }),

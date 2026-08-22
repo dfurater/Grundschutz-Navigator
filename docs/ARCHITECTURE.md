@@ -207,6 +207,9 @@ npm run fetch-catalog → scripts/fetch-catalog.mjs
   fehlende, nicht gepinnte oder unmögliche Version bricht den Lauf ab
 • Security-Guards: nur erlaubtes Repo, erlaubte Hosts, Pfade und Refs
 • registrierte preview-/draft-Artefakte werden transient geprüft, nicht ausgeliefert
+• catalogLineage.mjs projiziert für registrierte Profile die belegte Kette
+  Import-Fragment → back-matter.resource → exakter rlinks.href → Registry-Artefakt;
+  keine Pfadnormalisierung, kein Netzwerk und keine Änderung des Referenzresolvers
 • jeder supported Katalog und die direkten Namespace-CSVs → JSON + Provenance
 • Manifest v2 bindet Registry-Metadaten, Git-Blob-SHA und Content-SHA-256
         │
@@ -217,7 +220,7 @@ public/data/  (Dateimenge aus dem Quellregister abgeleitet)
 • catalog-<catalogKey>.json       (je weiterem supported Katalog)
 • catalog-<catalogKey>-metadata.json
 • vocabularies.json               (Offizielle BSI-Vokabulare)
-• upstream-sources-metadata.json  (Vokabular-Provenance + Manifest v2)
+• upstream-sources-metadata.json  (Vokabular-Provenance + Manifest v2 + Lineage-Projektion)
         │
         ▼
 CatalogContext (Einstiegskatalog eager, weitere bedarfsgerecht)

@@ -20,6 +20,7 @@ import {
   resolveOptionalSnapshotSha,
 } from './security-guards.mjs';
 import {
+  CATALOG_LINEAGES,
   MONITORED_UPSTREAM_ROOTS,
   SOURCE_REGISTRY,
   catalogDataFileName,
@@ -28,6 +29,7 @@ import {
   listSupportedCatalogs,
   resolveEntryCatalog,
 } from '../src/domain/sourceRegistry.mjs';
+import { projectCatalogLineage } from '../src/domain/catalogLineage.mjs';
 import { resolveSchemaBinding } from '../src/domain/oscalVersionMatrix.mjs';
 import {
   buildUpstreamManifest,
@@ -708,16 +710,17 @@ async function buildFetchArtifacts(logger = console, {
       throw new Error(`Git-Blob-SHA stimmt nicht mit dem BSI-Tree überein: ${descriptor.path}`);
     }
 
-    if (descriptor.rootType !== 'vocabulary') {
-      validateFetchedOscalArtifact(rawFile.buffer, descriptor.rootType, {
+    const validatedArtifact = descriptor.rootType !== 'vocabulary'
+      ? validateFetchedOscalArtifact(rawFile.buffer, descriptor.rootType, {
         artifactKey: descriptor.artifactKey,
         expectedOscalVersion: descriptor.registryEntry?.oscalVersion,
-      });
-    }
+      })
+      : null;
 
     return {
       descriptor,
       rawFile,
+      document: validatedArtifact?.json ?? null,
       manifestFile: {
         artifactKey: descriptor.artifactKey,
         rootType: descriptor.rootType,
@@ -731,6 +734,14 @@ async function buildFetchArtifacts(logger = console, {
 
   const inspectedByPath = new Map(
     inspectedArtifacts.map((artifact) => [artifact.descriptor.path, artifact]),
+  );
+  const lineageArtifactsByKey = new Map(
+    inspectedArtifacts
+      .filter((artifact) => artifact.document !== null)
+      .map((artifact) => [
+        artifact.descriptor.artifactKey,
+        { document: artifact.document, manifestFile: artifact.manifestFile },
+      ]),
   );
   const namespaceArtifacts = namespaceRefs.map((namespaceRef) => {
     const inspected = inspectedByPath.get(namespaceRef.path);
@@ -794,6 +805,11 @@ async function buildFetchArtifacts(logger = console, {
     snapshotCommitSha: snapshot.snapshotCommitSha,
     files: inspectedArtifacts.map((artifact) => artifact.manifestFile),
   });
+  const catalogLineages = CATALOG_LINEAGES
+    .filter((lineage) =>
+      registryEntries.some((entry) => entry.artifactKey === lineage.profileArtifactKey),
+    )
+    .map((lineage) => projectCatalogLineage({ lineage, artifactsByKey: lineageArtifactsByKey }));
 
   const fetchedAt = new Date().toISOString();
   const buildMetadata = buildBuildMetadata();
@@ -813,6 +829,7 @@ async function buildFetchArtifacts(logger = console, {
       snapshotCommitDate: snapshot.snapshotCommitDate,
     },
     manifest,
+    catalogLineages,
     files: vocabularyFiles,
     dataQualityFindings: catalogRecords.flatMap((record) => record.quality.findings),
     taxonomyCoverage: {

@@ -269,7 +269,7 @@ describe('AboutPage', () => {
     expect(
       screen.getByRole('heading', { name: 'Katalog-Metadaten' }),
     ).toBeInTheDocument();
-    expect(screen.getByText('resolution-tool')).toBeInTheDocument();
+    expect(screen.getAllByText('resolution-tool')).toHaveLength(2);
     expect(screen.getByText('Grundschutz++ Navigator')).toBeInTheDocument();
     expect(screen.getAllByText('Ersteller')).toHaveLength(2);
     expect(
@@ -398,6 +398,184 @@ describe('AboutPage', () => {
     expect(screen.getByText('Abgerufen am')).toBeInTheDocument();
     expect(screen.getByText('Namespace-Dateien')).toBeInTheDocument();
     expect(screen.getByText('fedcba098765')).toBeInTheDocument();
+  });
+
+  it('shows the profile-derived source catalog lineage and keeps all provenance kinds distinct', () => {
+    const state = makeCatalogState();
+    state.catalog!.metadata.props = [];
+    state.vocabularyProvenance = makeVocabularyProvenance();
+    state.vocabularyProvenance.catalogLineages = [
+      {
+        catalogKey: 'gspp',
+        profile: {
+          artifactKey: 'profile-gspp',
+          title: 'Grundschutz++ Profil',
+          documentUuid: 'profile-uuid',
+          oscalVersion: '1.1.3',
+          version: '2026-08-13',
+          upstreamPath: 'control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json',
+          gitBlobSha: 'profile-blob',
+          contentSha256: 'profile-sha',
+        },
+        imports: [
+          {
+            index: 0,
+            state: 'complete',
+            importHref: '#kernel-resource',
+            resourceUuid: 'kernel-resource',
+            rlinkHref: '../catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
+            source: {
+              artifactKey: 'catalog-source-gspp-kernel-g0',
+              title: 'Kernel G0',
+              documentUuid: 'kernel-uuid',
+              oscalVersion: '1.1.3',
+              version: '2026-08-13T04:09:30.129500+00:00',
+              upstreamPath:
+                'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
+              gitBlobSha: 'kernel-blob',
+              contentSha256: 'kernel-sha',
+            },
+          },
+          {
+            index: 1,
+            state: 'resource-missing',
+            importHref: '#fehlende-resource',
+            resourceUuid: 'fehlende-resource',
+            rlinkHref: null,
+            source: null,
+          },
+          {
+            index: null,
+            state: 'configured-import-missing',
+            importHref: null,
+            resourceUuid: null,
+            rlinkHref: '../catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json',
+            source: null,
+          },
+        ],
+      },
+    ];
+    mockedUseCatalog.mockReturnValue(state);
+
+    render(<AboutPage />);
+
+    expect(screen.getByText('OSCAL-Ableitungsprovenienz')).toBeInTheDocument();
+    expect(screen.getAllByText('nicht vorhanden')).toHaveLength(2);
+    expect(screen.getByText(/Projektbefund, kein Schemafehler/i)).toBeInTheDocument();
+    expect(screen.getByText('Quellkatalog-Lineage')).toBeInTheDocument();
+    expect(screen.getByText(/Profile Resolution: Draft/i)).toBeInTheDocument();
+    expect(screen.getByText('Grundschutz++ Profil')).toBeInTheDocument();
+    expect(screen.getByText('Kernel G0')).toBeInTheDocument();
+    expect(screen.getByText('kernel-uuid')).toBeInTheDocument();
+    expect(screen.getByText(/Back-matter-Ressource fehlt/i)).toBeInTheDocument();
+    expect(screen.getByText(/Konfigurierter Quellimport fehlt im Profil/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /^Link: \.\.\/catalogs\/Methodik-Grundschutz\+\+\/BSI-Methodik-Grundschutz\+\+-catalog\.json$/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Kernel G0/i })).toHaveAttribute(
+      'href',
+      'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/blob/fedcba0987654321fedcba0987654321fedcba09/control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
+    );
+    expect(screen.getByText('Projekt-Build-Provenienz')).toBeInTheDocument();
+    expect(screen.getByText('Ressourcen-Hashes')).toBeInTheDocument();
+  });
+
+  it('renders multiple configured missing imports without duplicate React keys', () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const state = makeCatalogState();
+    state.vocabularyProvenance = makeVocabularyProvenance();
+    state.vocabularyProvenance.catalogLineages = [
+      {
+        catalogKey: 'gspp',
+        profile: {
+          artifactKey: 'profile-gspp',
+          title: 'Grundschutz++ Profil',
+          documentUuid: 'profile-uuid',
+          oscalVersion: '1.1.3',
+          version: '2026-08-13',
+          upstreamPath: 'control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json',
+          gitBlobSha: 'profile-blob',
+          contentSha256: 'profile-sha',
+        },
+        imports: [
+          {
+            index: null,
+            state: 'configured-import-missing',
+            importHref: null,
+            resourceUuid: null,
+            rlinkHref: '../catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json',
+            source: null,
+          },
+          {
+            index: null,
+            state: 'configured-import-missing',
+            importHref: null,
+            resourceUuid: null,
+            rlinkHref: '../catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json',
+            source: null,
+          },
+        ],
+      },
+    ];
+    mockedUseCatalog.mockReturnValue(state);
+
+    render(<AboutPage />);
+
+    expect(screen.getAllByText('Konfigurierter Quellimport fehlt im Profil')).toHaveLength(2);
+    expect(consoleError.mock.calls.flat().join(' ')).not.toContain(
+      'Encountered two children with the same key',
+    );
+    consoleError.mockRestore();
+  });
+
+  it('keeps the About page available and rejects a malformed lineage sidecar visibly', () => {
+    const state = makeCatalogState();
+    state.vocabularyProvenance = makeVocabularyProvenance();
+    state.vocabularyProvenance.catalogLineages = [{ catalogKey: 'gspp' }] as unknown as [];
+    mockedUseCatalog.mockReturnValue(state);
+
+    render(<AboutPage />);
+
+    expect(screen.getByText('Quellkatalog-Lineage nicht verfügbar')).toBeInTheDocument();
+    expect(screen.getByText(/unvollständig oder widersprüchlich/i)).toBeInTheDocument();
+    expect(screen.queryByText('Aufgelöster Katalog ← Profil ← registrierte Quellkataloge')).not.toBeInTheDocument();
+  });
+
+  it('rejects a complete lineage import with a null index', () => {
+    const state = makeCatalogState();
+    const documentFields = {
+      title: null,
+      documentUuid: null,
+      oscalVersion: null,
+      version: null,
+      upstreamPath: null,
+      gitBlobSha: null,
+      contentSha256: null,
+    };
+    state.vocabularyProvenance = makeVocabularyProvenance();
+    state.vocabularyProvenance.catalogLineages = [
+      {
+        catalogKey: 'gspp',
+        profile: { artifactKey: 'profile-gspp', ...documentFields },
+        imports: [
+          {
+            index: null,
+            state: 'complete',
+            importHref: '#kernel-resource',
+            resourceUuid: 'kernel-resource',
+            rlinkHref: '../catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
+            source: { artifactKey: 'catalog-source-gspp-kernel-g0', ...documentFields },
+          },
+        ],
+      },
+    ];
+    mockedUseCatalog.mockReturnValue(state);
+
+    render(<AboutPage />);
+
+    expect(screen.getByText('Quellkatalog-Lineage nicht verfügbar')).toBeInTheDocument();
   });
 
   it('uses semantic token classes for the vocabulary verification states', () => {
