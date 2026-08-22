@@ -24,10 +24,11 @@ export function LizenzenPage() {
             className="inline-flex items-center gap-0.5 rounded text-sky-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
           >
             Stand-der-Technik-Bibliothek
+            {' '}
             <span className="sr-only"> (öffnet in neuem Tab)</span>
             <IconExternalLink className="w-3 h-3" aria-hidden="true" />
           </a>
-          .
+          {'.'}
         </p>
         <div className="bg-white border border-sky-200 rounded p-4">
           <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
@@ -146,10 +147,11 @@ export function LizenzenPage() {
             className="inline-flex items-center gap-0.5 rounded text-sky-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
           >
             dfurater/Grundschutz-Navigator
+            {' '}
             <span className="sr-only"> (öffnet in neuem Tab)</span>
             <IconExternalLink className="w-3 h-3" aria-hidden="true" />
           </a>
-          .
+          {'.'}
         </p>
         <p className="text-sm text-slate-700 leading-relaxed">
           Diese Seite fasst vor allem die Herkunft des BSI-Katalogs und

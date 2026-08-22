@@ -148,8 +148,11 @@ export function resolveParams(
       return paramMap[paramId] ?? `[${paramId}]`;
     },
   );
-  // Strip remaining {{ content }} choice brackets (BSI notation, not OSCAL params)
-  return resolved.replace(/\{\{([^}]*)\}\}/g, '$1');
+  // Strip remaining {{ content }} choice brackets (BSI notation, not OSCAL params).
+  // S8786: `[^{}]+` statt `[^}]*` — lineares Muster ohne überlappende
+  // Potenzierung. Leere Klammern `{{}}` und innere geschweifte Klammern
+  // kommen in der BSI-Notation nicht vor (Katalogdaten 2026-08-22 geprüft).
+  return resolved.replace(/{{([^{}]+)}}/g, '$1');
 }
 
 /**

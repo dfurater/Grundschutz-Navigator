@@ -69,9 +69,10 @@ export function HomePage() {
       {/* Practice register */}
       {loading && (
         <div className="py-8 text-center">
-          <div
+          {/* S6819: <output> trägt die implizite Rolle "status" — das div
+              mit role="status" ist dadurch ersetzt. */}
+          <output
             className="inline-block w-5 h-5 animate-spin rounded-full border-2 border-[var(--color-border-default)] border-t-[var(--color-accent-default)]"
-            role="status"
             aria-label="Katalog wird geladen"
           />
         </div>
@@ -96,7 +97,7 @@ export function HomePage() {
           </div>
 
           <div className="border border-[var(--color-border-default)] rounded-[var(--radius-md)] bg-[var(--color-surface-base)] divide-y divide-[var(--color-border-subtle)]">
-            {catalog.practices.map((practice, index) => {
+            {catalog.practices.map((practice) => {
               const cells = (
                 <>
                   <span className="catalog-reference-text text-xs text-[var(--color-accent-default)]">
@@ -118,9 +119,11 @@ export function HomePage() {
 
               // Eine Gruppe ohne `id` ist nicht adressierbar (OSCAL 1.1.3:
               // `group.id` ist optional). Sie bleibt vollständig sichtbar,
-              // erzeugt aber kein Navigationsziel (GSPP-242).
+              // erzeugt aber kein Navigationsziel (GSPP-242). Als stabiler
+              // Key dient das Pflichtfeld `label` statt des Array-Index
+              // (S6479).
               return practice.id === undefined ? (
-                <div key={`ohne-id-${index}`} className={rowClass}>
+                <div key={`ohne-id-${practice.label}`} className={rowClass}>
                   {cells}
                 </div>
               ) : (

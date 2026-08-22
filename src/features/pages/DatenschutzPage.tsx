@@ -85,9 +85,10 @@ export function DatenschutzPage() {
             className="rounded text-sky-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
           >
             GitHub Privacy Statement
+            {' '}
             <span className="sr-only"> (öffnet in neuem Tab)</span>
           </a>
-          .
+          {'.'}
         </p>
         <p className="text-sm text-slate-700 leading-relaxed">
           Rechtsgrundlage für diese Verarbeitung ist unser berechtigtes
@@ -108,6 +109,7 @@ export function DatenschutzPage() {
             className="rounded text-sky-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
           >
             Data Privacy Framework
+            {' '}
             <span className="sr-only"> (öffnet in neuem Tab)</span>
           </a>{' '}
           einsehen.

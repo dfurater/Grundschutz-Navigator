@@ -11,14 +11,11 @@ function subscribeToMediaQuery(
   const mediaQuery = window.matchMedia(query);
   const handleChange = () => onStoreChange();
 
-  if (typeof mediaQuery.addEventListener === 'function') {
-    mediaQuery.addEventListener('change', handleChange);
-
-    return () => mediaQuery.removeEventListener('change', handleChange);
-  }
-
-  mediaQuery.addListener(handleChange);
-  return () => mediaQuery.removeListener(handleChange);
+  // addEventListener('change') ist seit 2019 in allen unterstützten Browsern
+  // verfügbar; der Legacy-Fallback über addListener/removeListener (S1874)
+  // ist entfernt.
+  mediaQuery.addEventListener('change', handleChange);
+  return () => mediaQuery.removeEventListener('change', handleChange);
 }
 
 function getMediaQuerySnapshot(query: string) {
