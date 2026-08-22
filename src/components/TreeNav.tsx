@@ -19,10 +19,10 @@ export interface TreeItem {
 }
 
 export interface TreeNavProps {
-  items: TreeItem[];
-  onSelect: (id: string) => void;
-  selectedId?: string;
-  className?: string;
+  readonly items: TreeItem[];
+  readonly onSelect: (id: string) => void;
+  readonly selectedId?: string;
+  readonly className?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -43,10 +43,10 @@ function hasSelectedDescendant(item: TreeItem, selectedId?: string): boolean {
 /* ------------------------------------------------------------------ */
 
 interface TreeNavItemProps {
-  item: TreeItem;
-  level: number;
-  onSelect: (id: string) => void;
-  selectedId?: string;
+  readonly item: TreeItem;
+  readonly level: number;
+  readonly onSelect: (id: string) => void;
+  readonly selectedId?: string;
 }
 
 const TREE_DEPTH_PADDING_CLASSES = ['pl-2', 'pl-5', 'pl-8', 'pl-11'] as const;
@@ -165,7 +165,10 @@ function TreeNavItem({ item, level, onSelect, selectedId }: TreeNavItemProps) {
         )}
       </button>
       {hasChildren && expanded && (
-        <ul role="group">
+        // S6819: <fieldset> statt role="group" — implizite Rolle bleibt „group“;
+        // min-w-0 gegen den von Tailwind-Preflight nicht resetteten
+        // min-inline-size des fieldset (Muster aus PR-01/#155).
+        <fieldset className="min-w-0">
           {item.children!.map((child, index) => (
             <TreeNavItem
               key={child.id ?? `ohne-id-${index}`}
@@ -175,7 +178,7 @@ function TreeNavItem({ item, level, onSelect, selectedId }: TreeNavItemProps) {
               selectedId={selectedId}
             />
           ))}
-        </ul>
+        </fieldset>
       )}
     </li>
   );

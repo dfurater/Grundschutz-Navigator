@@ -4,10 +4,10 @@ export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: ButtonVariant;
-  size?: ButtonSize;
-  icon?: React.ComponentType<{ className?: string }>;
-  children?: ReactNode;
+  readonly variant?: ButtonVariant;
+  readonly size?: ButtonSize;
+  readonly icon?: React.ComponentType<{ className?: string }>;
+  readonly children?: ReactNode;
 }
 
 const baseStyle =
@@ -36,12 +36,16 @@ export function Button({
   icon: Icon,
   children,
   className = '',
+  // S9011: expliziter Button-Typ; Default „button", damit kein <Button> je zum
+  // versehentlichen Formular-Submit wird (Aufrufstellen geprueft: keine in <form>).
+  type = 'button',
   ...props
 }: ButtonProps) {
   const iconSize = size === 'sm' ? 'w-3.5 h-3.5' : 'w-4 h-4';
 
   return (
     <button
+      type={type}
       className={`${baseStyle} ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
       {...props}
     >
