@@ -99,8 +99,10 @@ async function main() {
 const isDirectExecution = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isDirectExecution) {
-  main().catch((error) => {
+  try {
+    await main();
+  } catch (error) {
     // Same rule at the top level: an unexpected failure must not cancel a deploy.
     console.error(error instanceof Error ? error.message : error);
-  });
+  }
 }
