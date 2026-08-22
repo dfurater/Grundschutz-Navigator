@@ -1503,6 +1503,32 @@ describe('ControlDetail', () => {
     expect(screen.getByLabelText('Direktlink zum manuellen Kopieren')).toHaveClass('select-all');
   });
 
+  it('keeps the direct-link fallback mounted when a retry fails again', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockRejectedValue(new Error('Browser detail'));
+    setClipboard(writeText);
+
+    render(
+      <MemoryRouter>
+        <ControlDetail
+          control={makeControl({ id: 'DET.5.4', altIdentifier: 'stable-det-5-4' })}
+          onClose={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Link kopieren' }));
+    const fallback = screen.getByLabelText('Direktlink zum manuellen Kopieren');
+
+    // Ein Retry darf den Fallback nicht neu mounten — sonst verliert eine
+    // markierte URL ihre Auswahl und der manuelle Kopierweg bricht (PR #155).
+    await user.click(screen.getByRole('button', { name: 'Erneut kopieren' }));
+
+    expect(writeText).toHaveBeenCalledTimes(2);
+    expect(screen.getByLabelText('Direktlink zum manuellen Kopieren')).toBe(fallback);
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+  });
+
   it('keeps long tags wrap-capable inside outline badges', () => {
     const longTag = 'Advanced Persistent Threats (APT) mit sehr langen Zusatzbezeichnungen';
     const control = makeControl({
