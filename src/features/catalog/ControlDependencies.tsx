@@ -51,11 +51,11 @@ function getOutgoingLinkLabel(
         .map((incoming) => incoming.link)
         .filter((reverseLink) => (
           reverseLink.rel !== link.rel || reverseLink.relStatus !== link.relStatus
+        ))
+        .map((reverseLink) => getLinkRelationDescription(
+          reverseLink.rel,
+          reverseLink.relStatus,
         )),
-    ),
-    (reverseLink) => getLinkRelationDescription(
-      reverseLink.rel,
-      reverseLink.relStatus,
     ),
   );
 

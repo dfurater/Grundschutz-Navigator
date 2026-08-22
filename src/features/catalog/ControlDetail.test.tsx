@@ -1309,6 +1309,7 @@ describe('ControlDetail', () => {
     const incomingLinks: IncomingControlLink[] = [
       makeIncomingLink(reciprocalControl, 'required'),
       makeIncomingLink(reciprocalControl, 'related'),
+      makeIncomingLink(reciprocalControl, 'related'),
     ];
     mockedUseCatalog.mockReturnValue(makeCatalogStateWithControlSource(control, controlsById));
 
