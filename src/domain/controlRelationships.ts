@@ -29,9 +29,25 @@ export function getLinkRelationDescription(
   rel: string | undefined,
   status: LinkRelationStatus,
 ): string {
-  if (status === 'missing') return 'ohne Relation';
-  if (status === 'documented') return `${rel} · OSCAL-dokumentiert`;
-  return `${rel} · nicht im OSCAL-Catalog dokumentiert`;
+  if (status === 'missing') return 'ohne Relationsangabe';
+
+  const knownLabel = rel === 'reference'
+    ? 'Referenz'
+    : rel === 'required'
+      ? 'erforderlich'
+      : rel === 'related'
+        ? 'verwandt'
+        : undefined;
+
+  if (status === 'documented') {
+    return knownLabel
+      ? `${knownLabel} · OSCAL-dokumentiert`
+      : `OSCAL-dokumentierte Relation „${rel ?? ''}“`;
+  }
+
+  return knownLabel
+    ? `${knownLabel} · benutzerdefinierte OSCAL-Relation`
+    : `benutzerdefinierte OSCAL-Relation „${rel ?? ''}“`;
 }
 
 export function getControlLinkSearchText(links: ControlLink[]): string {

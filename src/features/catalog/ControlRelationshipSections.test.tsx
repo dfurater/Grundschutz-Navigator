@@ -77,19 +77,19 @@ describe('ControlDependencies', () => {
     // Jedes Beziehungslabel erscheint als programmatisch benannte Gruppe
     // genau einmal, auch wenn mehrere Links dasselbe Label tragen.
     expect(screen.getByRole('group', {
-      name: 'Required · nicht im OSCAL-Catalog dokumentiert · ↔ related · nicht im OSCAL-Catalog dokumentiert',
+      name: 'Erforderlich · benutzerdefinierte OSCAL-Relation · ↔ verwandt · benutzerdefinierte OSCAL-Relation',
     }))
       .toBeInTheDocument();
     const reciprocal = screen.getByRole('button', {
-      name: 'GC.2.2 Zielkontrolle (required · nicht im OSCAL-Catalog dokumentiert · ↔ related · nicht im OSCAL-Catalog dokumentiert)',
+      name: 'GC.2.2 Zielkontrolle (erforderlich · benutzerdefinierte OSCAL-Relation · ↔ verwandt · benutzerdefinierte OSCAL-Relation)',
     });
     expect(screen.queryByRole('button', {
-      name: 'GC.9.9 (related · nicht im OSCAL-Catalog dokumentiert)',
+      name: 'GC.9.9 (verwandt · benutzerdefinierte OSCAL-Relation)',
     })).not.toBeInTheDocument();
     expect(screen.getAllByText('GC.2.2')).toHaveLength(1);
 
     const incomingOnly = screen.getByRole('button', {
-      name: 'GC.3.1 Eingehende Kontrolle (related · nicht im OSCAL-Catalog dokumentiert)',
+      name: 'GC.3.1 Eingehende Kontrolle (verwandt · benutzerdefinierte OSCAL-Relation)',
     });
     await user.click(reciprocal);
     await user.click(incomingOnly);
@@ -122,26 +122,26 @@ describe('ControlDependencies', () => {
 
     // Jedes Label erscheint genau einmal als Gruppenüberschrift, nicht je Zeile,
     // und ist als programmatisch benannte Gruppe (nicht nur visueller Text) exponiert.
-    expect(screen.getAllByText('Required · nicht im OSCAL-Catalog dokumentiert')).toHaveLength(1);
-    expect(screen.getAllByText('Related · nicht im OSCAL-Catalog dokumentiert')).toHaveLength(1);
+    expect(screen.getAllByText('Erforderlich · benutzerdefinierte OSCAL-Relation')).toHaveLength(1);
+    expect(screen.getAllByText('Verwandt · benutzerdefinierte OSCAL-Relation')).toHaveLength(1);
 
     const requiredGroup = screen.getByRole('group', {
-      name: 'Required · nicht im OSCAL-Catalog dokumentiert',
+      name: 'Erforderlich · benutzerdefinierte OSCAL-Relation',
     });
     const relatedGroup = screen.getByRole('group', {
-      name: 'Related · nicht im OSCAL-Catalog dokumentiert',
+      name: 'Verwandt · benutzerdefinierte OSCAL-Relation',
     });
     expect(within(requiredGroup).getAllByRole('button')).toHaveLength(1);
     expect(within(relatedGroup).getAllByRole('button')).toHaveLength(3);
 
     expect(screen.getByRole('button', {
-      name: 'STM.2.1.4.1 Vererbung von Zielobjektkategorien (related · nicht im OSCAL-Catalog dokumentiert)',
+      name: 'STM.2.1.4.1 Vererbung von Zielobjektkategorien (verwandt · benutzerdefinierte OSCAL-Relation)',
     })).toBeInTheDocument();
     expect(screen.getByRole('button', {
-      name: 'STM.2.1.4.2 Konsolidierung und Redundanzprüfung (related · nicht im OSCAL-Catalog dokumentiert)',
+      name: 'STM.2.1.4.2 Konsolidierung und Redundanzprüfung (verwandt · benutzerdefinierte OSCAL-Relation)',
     })).toBeInTheDocument();
     expect(screen.getByRole('button', {
-      name: 'STM.2.1.5 Modellierung ohne Zielobjektkategorie (related · nicht im OSCAL-Catalog dokumentiert)',
+      name: 'STM.2.1.5 Modellierung ohne Zielobjektkategorie (verwandt · benutzerdefinierte OSCAL-Relation)',
     })).toBeInTheDocument();
   });
 });

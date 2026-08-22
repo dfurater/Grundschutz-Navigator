@@ -20,7 +20,7 @@ function makeControl(id: string): Control {
 }
 
 describe('ControlDependencies', () => {
-  it('shows raw documented, custom, and missing OSCAL relation states', () => {
+  it('shows German status labels and keeps custom tokens as technical metadata', () => {
     const targets = ['GC.1.2', 'GC.1.3', 'GC.1.4'].map(makeControl);
     const links: ControlLink[] = [
       {
@@ -49,9 +49,9 @@ describe('ControlDependencies', () => {
       />,
     );
 
-    expect(screen.getByText('Reference · OSCAL-dokumentiert')).toBeInTheDocument();
-    expect(screen.getByText('Maps-to · nicht im OSCAL-Catalog dokumentiert'))
+    expect(screen.getByText('Referenz · OSCAL-dokumentiert')).toBeInTheDocument();
+    expect(screen.getByText('Benutzerdefinierte OSCAL-Relation „maps-to“'))
       .toBeInTheDocument();
-    expect(screen.getByText('Ohne Relation')).toBeInTheDocument();
+    expect(screen.getByText('Ohne Relationsangabe')).toBeInTheDocument();
   });
 });

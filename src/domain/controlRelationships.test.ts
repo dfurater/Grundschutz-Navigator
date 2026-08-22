@@ -50,10 +50,14 @@ describe('controlRelationships', () => {
     expect(toFilterableLinkRelation(undefined)).toBeUndefined();
 
     expect(getLinkRelationDescription('reference', 'documented'))
-      .toBe('reference · OSCAL-dokumentiert');
+      .toBe('Referenz · OSCAL-dokumentiert');
+    expect(getLinkRelationDescription('required', 'custom'))
+      .toBe('erforderlich · benutzerdefinierte OSCAL-Relation');
+    expect(getLinkRelationDescription('related', 'custom'))
+      .toBe('verwandt · benutzerdefinierte OSCAL-Relation');
     expect(getLinkRelationDescription('maps-to', 'custom'))
-      .toBe('maps-to · nicht im OSCAL-Catalog dokumentiert');
-    expect(getLinkRelationDescription(undefined, 'missing')).toBe('ohne Relation');
+      .toBe('benutzerdefinierte OSCAL-Relation „maps-to“');
+    expect(getLinkRelationDescription(undefined, 'missing')).toBe('ohne Relationsangabe');
   });
 
   it('builds reverse-link lookups sorted by source control id', () => {

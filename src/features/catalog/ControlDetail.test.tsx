@@ -1235,7 +1235,7 @@ describe('ControlDetail', () => {
 
     expect(screen.getByRole('heading', { name: 'Wird referenziert von', level: 4 })).toBeInTheDocument();
     const reverseLinkButton = screen.getByRole('button', {
-      name: /GC\.2\.1 Voraussetzung \(required · nicht im OSCAL-Catalog dokumentiert\)/,
+      name: /GC\.2\.1 Voraussetzung \(erforderlich · benutzerdefinierte OSCAL-Relation\)/,
     });
     expect(reverseLinkButton).toBeInTheDocument();
 
@@ -1282,7 +1282,7 @@ describe('ControlDetail', () => {
 
     expect(
       screen.getByRole('button', {
-        name: /GC\.2\.3 Gegenseitige Kontrolle \(required · nicht im OSCAL-Catalog dokumentiert\)/,
+        name: /GC\.2\.3 Gegenseitige Kontrolle \(erforderlich · benutzerdefinierte OSCAL-Relation\)/,
       }),
     ).toBeInTheDocument();
     expect(
@@ -1292,7 +1292,7 @@ describe('ControlDetail', () => {
     ).not.toBeInTheDocument();
     expect(
       within(incomingSection).getByRole('button', {
-        name: /GC\.2\.1 Nur eingehende Kontrolle \(related · nicht im OSCAL-Catalog dokumentiert\)/,
+        name: /GC\.2\.1 Nur eingehende Kontrolle \(verwandt · benutzerdefinierte OSCAL-Relation\)/,
       }),
     ).toBeInTheDocument();
   });
@@ -1324,12 +1324,12 @@ describe('ControlDetail', () => {
     );
 
     const outgoingButton = screen.getByRole('button', {
-      name: /GC\.2\.3 Gegenseitige Kontrolle \(required · nicht im OSCAL-Catalog dokumentiert · ↔ related · nicht im OSCAL-Catalog dokumentiert\)/,
+      name: /GC\.2\.3 Gegenseitige Kontrolle \(erforderlich · benutzerdefinierte OSCAL-Relation · ↔ verwandt · benutzerdefinierte OSCAL-Relation\)/,
     });
 
     expect(outgoingButton).toBeInTheDocument();
     expect(screen.getByText(
-      'Required · nicht im OSCAL-Catalog dokumentiert · ↔ related · nicht im OSCAL-Catalog dokumentiert',
+      'Erforderlich · benutzerdefinierte OSCAL-Relation · ↔ verwandt · benutzerdefinierte OSCAL-Relation',
     )).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Wird referenziert von', level: 4 })).not.toBeInTheDocument();
   });
@@ -1359,7 +1359,7 @@ describe('ControlDetail', () => {
     );
 
     const outgoingButton = screen.getByRole('button', {
-      name: /GC\.2\.3 Gegenseitige Kontrolle \(required · nicht im OSCAL-Catalog dokumentiert\)/,
+      name: /GC\.2\.3 Gegenseitige Kontrolle \(erforderlich · benutzerdefinierte OSCAL-Relation\)/,
     });
 
     expect(outgoingButton).toBeInTheDocument();
