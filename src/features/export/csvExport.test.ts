@@ -241,7 +241,7 @@ describe('controlToCSVRow', () => {
   it('produces semicolon-delimited row with 33 fields', () => {
     const row = controlToCSVRow(makeControl());
     const fields = row.split(';');
-    expect(fields.length).toBe(33);
+    expect(fields).toHaveLength(33);
   });
 
   it('aligns row fields with the logical export order', () => {
@@ -519,7 +519,7 @@ describe('controlsToCSV', () => {
   it('uses semicolon as delimiter', () => {
     const csv = controlsToCSV([]);
     const header = csv.split('\r\n')[0];
-    expect(header.split(';').length).toBe(33);
+    expect(header.split(';')).toHaveLength(33);
   });
 
   it('uses CRLF row separators and terminates with a final CRLF', () => {
