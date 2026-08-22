@@ -86,7 +86,7 @@
     {
       "artifactKey": "catalog-wlan",
       "rootType": "catalog",
-      "lifecycle": "preview",
+      "lifecycle": "supported",
       "path": "control_layer/WLAN/WLAN-resolved_catalog.json",
       "gitBlobSha": "f898ceb04e718c3f4cd5e92cba576864f0255e01",
       "contentSha256": "a909b0542c359a96f9a145e0f04f85e4e0ac3e45f24e07eb666b06951a706e55"
@@ -252,5 +252,5 @@
       "contentSha256": "08c7ab6bb442a87eba4e407d272fecd179bc61c47c2419843d7f4cfcd4077235"
     }
   ],
-  "signatureSha256": "b149e8bea661ef98ac719a14e731a988b08f92976b0bc911f3f1a10d8eca2662"
+  "signatureSha256": "54e17277a8f454aade24b52280e40c9b00f91e59cc8c71c6e17d1a2fda05a138"
 }

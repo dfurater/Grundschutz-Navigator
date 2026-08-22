@@ -1,6 +1,6 @@
-import type { Control, ControlLink, LinkRelation } from '@/domain/models';
+import type { Control, ControlLink } from '@/domain/models';
 import {
-  getLinkRelationLabel,
+  getLinkRelationDescription,
   type IncomingControlLink,
 } from '@/domain/controlRelationships';
 import { ControlDetailSection } from './ControlDetailSection';
@@ -36,10 +36,10 @@ function buildIncomingLinksByControlId(
 }
 
 function getOutgoingLinkLabel(
-  relation: LinkRelation,
+  link: ControlLink,
   reverseLinks: readonly IncomingControlLink[] | undefined,
 ) {
-  const relationLabel = getLinkRelationLabel(relation);
+  const relationLabel = getLinkRelationDescription(link.rel, link.relStatus);
 
   if (!reverseLinks?.length) {
     return relationLabel;
@@ -48,10 +48,15 @@ function getOutgoingLinkLabel(
   const differingReverseLabels = Array.from(
     new Set(
       reverseLinks
-        .map((incoming) => incoming.relation)
-        .filter((reverseRelation) => reverseRelation !== relation),
+        .map((incoming) => incoming.link)
+        .filter((reverseLink) => (
+          reverseLink.rel !== link.rel || reverseLink.relStatus !== link.relStatus
+        ))
+        .map((reverseLink) => getLinkRelationDescription(
+          reverseLink.rel,
+          reverseLink.relStatus,
+        )),
     ),
-    (reverseRelation) => getLinkRelationLabel(reverseRelation),
   );
 
   if (differingReverseLabels.length === 0) {
@@ -79,7 +84,7 @@ function groupLinksByLabel(
 
   for (const link of links) {
     const label = getOutgoingLinkLabel(
-      link.relation,
+      link,
       incomingByControlId.get(link.targetId),
     );
     const existing = groupsByLabel.get(label);
@@ -138,7 +143,7 @@ export function ControlDependencies({
 
                         return (
                           <button
-                            key={`${link.targetId}-${link.relation}`}
+                            key={`${link.targetId}-${link.href}-${link.rel ?? 'missing'}-${link.resourceFragment ?? ''}`}
                             type="button"
                             aria-label={ariaLabel}
                             className={detailLinkRowClass}
@@ -169,9 +174,9 @@ export function ControlDependencies({
             <div className="space-y-1">
               {incomingOnlyLinks.map((incoming) => (
                 <button
-                  key={`${incoming.control.id}-${incoming.relation}`}
+                  key={`${incoming.control.id}-${incoming.link.href}-${incoming.link.rel ?? 'missing'}`}
                   type="button"
-                  aria-label={`${incoming.control.id} ${incoming.control.title} (${getLinkRelationLabel(incoming.relation)})`}
+                  aria-label={`${incoming.control.id} ${incoming.control.title} (${getLinkRelationDescription(incoming.link.rel, incoming.link.relStatus)})`}
                   className={detailLinkRowClass}
                   onClick={() => onNavigateToControl?.(incoming.control)}
                 >
@@ -184,7 +189,7 @@ export function ControlDependencies({
                     </span>
                   </div>
                   <span className="mt-0.5 text-xs text-slate-400">
-                    {getLinkRelationLabel(incoming.relation)}
+                    {getLinkRelationDescription(incoming.link.rel, incoming.link.relStatus)}
                   </span>
                 </button>
               ))}

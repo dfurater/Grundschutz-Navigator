@@ -155,7 +155,13 @@ describe('Controls direkt am Katalog-Root', () => {
     );
 
     expect(document.view.controlsById.get('R.1')!.links).toEqual([
-      { targetId: 'R.2', relation: 'related' },
+      {
+        targetId: 'R.2',
+        href: '#R.2',
+        rel: 'related',
+        relStatus: 'custom',
+        resourceFragment: undefined,
+      },
     ]);
   });
 

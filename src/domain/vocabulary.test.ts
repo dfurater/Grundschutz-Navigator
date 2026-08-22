@@ -186,6 +186,7 @@ describe('vocabulary runtime', () => {
       groupId: 'GC.1',
       practiceId: 'GC',
       tags: [],
+      taxonomy: [],
       confidentiality: '2',
       confidentialityProp: {
         name: 'confidentiality',

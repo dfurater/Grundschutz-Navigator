@@ -17,6 +17,7 @@ function makeControl(overrides: Partial<Control> = {}): Control {
     groupId: 'GC.1',
     practiceId: 'GC',
     tags: [],
+    taxonomy: [],
     threats: [],
     statement: 'Governance MUSS verankert werden.',
     statementRaw: 'Governance MUSS verankert werden.',
@@ -97,11 +98,11 @@ describe('useSearch', () => {
     const controls = [
       makeControl({
         id: 'GC.2.1',
-        links: [{ targetId: 'GC.2.2', relation: 'required' }],
+        links: [{ targetId: 'GC.2.2', href: '#GC.2.2', rel: 'required', relStatus: 'custom' }],
       }),
       makeControl({
         id: 'GC.2.3',
-        links: [{ targetId: 'GC.2.4', relation: 'related' }],
+        links: [{ targetId: 'GC.2.4', href: '#GC.2.4', rel: 'related', relStatus: 'custom' }],
       }),
     ];
 
@@ -117,6 +118,25 @@ describe('useSearch', () => {
       expect(
         relationSearch.result.current.results.map((entry) => entry.control.id),
       ).toContain('GC.2.1');
+    });
+  });
+
+  it('finds controls by WLAN taxonomy level names and values', async () => {
+    const controls = [
+      makeControl({
+        id: 'WLAN.1.1',
+        taxonomy: [
+          { name: 'Taxonomy-L1', value: 'Infrastruktur' },
+          { name: 'Taxonomy-L4', value: 'Funknetz' },
+        ],
+      }),
+    ];
+    const valueSearch = renderHook(() => useSearch(controls, 'Infrastruktur'));
+    const nameSearch = renderHook(() => useSearch(controls, 'Taxonomy-L4'));
+
+    await waitFor(() => {
+      expect(valueSearch.result.current.results[0]?.control.id).toBe('WLAN.1.1');
+      expect(nameSearch.result.current.results[0]?.control.id).toBe('WLAN.1.1');
     });
   });
 
@@ -219,7 +239,7 @@ describe('useSearch', () => {
       makeControl({
         id: 'GC.2.1',
         title: 'Anderer Control',
-        links: [{ targetId: 'GC.1.1', relation: 'required' }],
+        links: [{ targetId: 'GC.1.1', href: '#GC.1.1', rel: 'required', relStatus: 'custom' }],
       }),
     ];
 

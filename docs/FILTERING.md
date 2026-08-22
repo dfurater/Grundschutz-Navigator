@@ -25,9 +25,22 @@ Practice- und Topic-Auswahl laufen nicht über Query-Parameter, sondern über di
 | Link-Beziehung | `lr` | `related`, `required` | Mehrfachauswahl |
 | Sortierung | `sort` | `<feld>:<richtung>[,…]` | Einzelwert |
 
+Der Linkfilter ist eine enge Kompatibilitätsprojektion für die beiden bereits
+vorhandenen Projektwerte `related` und `required`. Andere offene OSCAL-Tokens,
+der dokumentierte Wert `reference` und ein fehlendes `rel` werden nicht darauf
+umgedeutet. Sie bleiben in Detailansicht, Suche und allgemeiner Linkspalte des
+Exports nachvollziehbar, erzeugen aber keine zusätzliche Filtersemantik.
+
 Mehrfachwerte werden kommasepariert in einem Parameter kodiert (z.B. `mv=MUSS,SOLLTE`).
 Die Volltextsuche ist davon getrennt und läuft ausschließlich über `/suche?q=…`.
 Ein `q`-Parameter auf einer Katalogroute ist kein Katalogfilter und wird ignoriert.
+
+Die WLAN-Props `Taxonomy-L1` bis `Taxonomy-L4` sind keine zusätzliche
+Filterdimension. Ihre exakten Namen und Werte fließen in den Volltextindex ein;
+dadurch bleiben sie über `/suche?q=…` auffindbar, ohne aus dem derzeitigen
+Placeholder-Namensraum eine fachliche Facette abzuleiten. Der CSV-Export führt
+je Ebene eine Wert- und eine optionale Namespace-Spalte (`taxonomy_l1[_ns]`
+bis `taxonomy_l4[_ns]`).
 
 ## Filter-Zustand
 

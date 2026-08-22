@@ -37,6 +37,7 @@ function makeControl(overrides: Partial<Control> = {}): Control {
     effortLevel: '4',
     modalverb: 'MUSS',
     tags: [],
+    taxonomy: [],
     threats: [],
     statement: 'Ein Verfahren ist nachvollziehbar dokumentiert.',
     statementRaw: 'Ein Verfahren ist nachvollziehbar dokumentiert.',

@@ -234,6 +234,11 @@ CatalogContext (Einstiegskatalog eager, weitere bedarfsgerecht)
                                Veröffentlichung die View: Control.links enthält
                                nur aufgelöste, kataloggescopte Ziele; der
                                Quellbaum wird dafür nur einmal indiziert
+• Referenzauflösung trennt Fragmentziele nach dem tatsächlichen Dokumentgraphen:
+                               control/@id → kataloginterne Navigation,
+                               back-matter.resource/@uuid → Ressourcenmetadaten;
+                               resource.rlinks bleiben externe Metadaten und
+                               werden niemals automatisch geladen
 • verifyArtifactIntegrity()  → VerificationResult (Katalog + Vokabulare)
 • buildVocabularyRegistry()
         │
@@ -342,9 +347,10 @@ Die App liefert mehrere BSI-Anwenderkataloge aus. Jeder ist ein **eigenständige
 OSCAL-Dokument** mit eigener `uuid` — kein Ausschnitt und keine Variante eines
 anderen. Ausgeliefert wird, was im Quellregister `lifecycle: 'supported'` trägt;
 die Lifecycle-Promotion des Anwenderkatalogs Lieferkettensicherheit erfolgte in
-[GSPP-242](https://linear.app/grundschutz-plus-plus/issue/GSPP-242).
+[GSPP-242](https://linear.app/grundschutz-plus-plus/issue/GSPP-242), die des
+WLAN-Katalogs in [GSPP-243](https://linear.app/grundschutz-plus-plus/issue/GSPP-243).
 
-Daraus folgen drei Regeln, die der gesamte Katalogpfad einhält:
+Daraus folgen vier Regeln, die der gesamte Katalogpfad einhält:
 
 **1. Gleiche Control-IDs sind erwartbar, nicht fehlerhaft.** `control/@id` trägt
 im OSCAL-Catalog-Metaschema `identifier-uniqueness="local"` und ist ausdrücklich
@@ -369,7 +375,26 @@ deshalb weder angezeigt noch als fehlend bemängelt, und die Facettenzählung
 erzeugt aus ihrer Abwesenheit keine leeren Filtereinträge
 (`src/hooks/useFilteredControls.ts`).
 
-**3. Optionale Identifikatoren erzwingen kein Routing.** `group.id` ist in OSCAL
+Der WLAN-Katalog ergänzt auf jedem Control die offenen Props `Taxonomy-L1` bis
+`Taxonomy-L4`. Der Adapter projiziert ausschließlich diese exakten Namen in
+Ebenenreihenfolge und erhält `name`, `value` und den optionalen Originalwert
+von `ns`. Der aktuell vorgefundene Placeholder-Namensraum ist keine
+Vokabular- oder Vertrauensentscheidung: Kein Verhalten hängt an seiner URI,
+und `Taxonomy-Mapping-Rationale` wird nicht als zusätzliche Ebene erfunden.
+Die Werte erscheinen in der Detailansicht, im Volltextindex und in separaten
+CSV-Wert-/Namespace-Spalten; sie erzeugen bewusst keine neue Filterfacette.
+
+**3. Referenzen bleiben Daten bis zur bewussten Navigation.** Der originale,
+optionale `link.rel`-Wert wird mit seinem Dokumentationsstatus erhalten;
+`reference` ist der einzige im Catalog-Modell dokumentierte Wert, während
+offene Tokens wie `related` als benutzerdefiniert sichtbar bleiben. Die
+Zielart folgt ausschließlich aus dem Fragmenttreffer. Externe
+`resource.rlinks[].href` sind nur bei einer syntaktisch gültigen absoluten
+HTTPS-URL ohne eingebettete Zugangsdaten klickbar. Der Resolver führt dabei
+kein I/O aus. Ohne deklarierten `media-type` gibt es weder Vorschau noch
+Content-Sniffing; Dateiendungen sind keine Medienaussage.
+
+**4. Optionale Identifikatoren erzwingen kein Routing.** `group.id` ist in OSCAL
 1.1.3 optional, `part` verlangt nur `name`, und ein Katalog ganz ohne `groups`
 und `controls` ist schema-valide. Eine Gruppe ohne `id` bleibt vollständig
 sichtbar — Titel, Badge, Untergruppen und Controls —, ist aber **nicht

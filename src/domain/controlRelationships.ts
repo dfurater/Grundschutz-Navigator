@@ -1,11 +1,17 @@
-import type { Control, ControlLink, LinkRelation } from '@/domain/models';
+import type {
+  Control,
+  ControlLink,
+  LinkRelation,
+  LinkRelationStatus,
+} from '@/domain/models';
 
 export interface IncomingControlLink {
   control: Control;
-  relation: LinkRelation;
+  link: ControlLink;
 }
 
-const LINK_RELATION_LABELS: Record<LinkRelation, string> = {
+const LINK_RELATION_LABELS: Record<LinkRelation | 'reference', string> = {
+  reference: 'Referenz',
   required: 'erforderlich',
   related: 'verwandt',
 };
@@ -14,21 +20,57 @@ export function getLinkRelationLabel(relation: LinkRelation): string {
   return LINK_RELATION_LABELS[relation];
 }
 
+function getKnownLinkRelationLabel(rel: string | undefined): string | undefined {
+  if (!rel || !(rel in LINK_RELATION_LABELS)) return undefined;
+  return LINK_RELATION_LABELS[rel as keyof typeof LINK_RELATION_LABELS];
+}
+
+export function toFilterableLinkRelation(
+  rel: string | undefined,
+): LinkRelation | undefined {
+  return rel === 'required' || rel === 'related' ? rel : undefined;
+}
+
+export function getLinkRelationDescription(
+  rel: string | undefined,
+  status: LinkRelationStatus,
+): string {
+  if (status === 'missing') return 'ohne Relationsangabe';
+
+  const knownLabel = getKnownLinkRelationLabel(rel);
+
+  if (status === 'documented') {
+    return knownLabel
+      ? `${knownLabel} · OSCAL-dokumentiert`
+      : `OSCAL-dokumentierte Relation „${rel ?? ''}“`;
+  }
+
+  return knownLabel
+    ? `${knownLabel} · benutzerdefinierte OSCAL-Relation`
+    : `benutzerdefinierte OSCAL-Relation „${rel ?? ''}“`;
+}
+
 export function getControlLinkSearchText(links: ControlLink[]): string {
-  return links.flatMap((link) => [
-    link.targetId,
-    link.relation,
-    getLinkRelationLabel(link.relation),
-  ]).join(' ');
+  return links.flatMap((link) => {
+    const filterableRelation = toFilterableLinkRelation(link.rel);
+    return [
+      link.targetId,
+      link.href,
+      link.rel ?? '',
+      getLinkRelationDescription(link.rel, link.relStatus),
+      filterableRelation ? getLinkRelationLabel(filterableRelation) : '',
+      link.resourceFragment ?? '',
+    ];
+  }).join(' ');
 }
 
 export function getControlLinkTargetsByRelation(links: ControlLink[]): Record<LinkRelation, string[]> {
   return {
     required: links
-      .filter((link) => link.relation === 'required')
+      .filter((link) => toFilterableLinkRelation(link.rel) === 'required')
       .map((link) => link.targetId),
     related: links
-      .filter((link) => link.relation === 'related')
+      .filter((link) => toFilterableLinkRelation(link.rel) === 'related')
       .map((link) => link.targetId),
   };
 }
@@ -39,7 +81,7 @@ export function buildIncomingLinkMap(controls: Control[]): Map<string, IncomingC
   for (const control of controls) {
     for (const link of control.links) {
       const existing = incomingByTarget.get(link.targetId) ?? [];
-      existing.push({ control, relation: link.relation });
+      existing.push({ control, link });
       incomingByTarget.set(link.targetId, existing);
     }
   }

@@ -20,6 +20,7 @@ import type {
   CatalogLineageState,
 } from '@/domain/catalogLineage';
 import {
+  isSafeExternalHref,
   referenceDocumentFromCatalog,
   resolveCatalogMetadataReferences,
   resolveCatalogResources,
@@ -254,6 +255,10 @@ function LinkRow({ label, href }: { label: string; href: string }) {
 }
 
 function ExternalReferenceLink({ href, label }: { href: string; label: string }) {
+  if (!isSafeExternalHref(href)) {
+    return <span className="break-all text-sm text-[var(--color-text-primary)]">{label}</span>;
+  }
+
   return (
     <a
       href={href}

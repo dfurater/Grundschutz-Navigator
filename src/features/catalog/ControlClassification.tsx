@@ -12,7 +12,7 @@ import {
 
 type ClassificationControl = Pick<
   Control,
-  'modalverb' | 'securityLevel' | 'effortLevel' | 'tags'
+  'modalverb' | 'securityLevel' | 'effortLevel' | 'tags' | 'taxonomy'
 > & {
   statementProps: Pick<Control['statementProps'], 'zielobjektKategorien'>;
 };
@@ -70,7 +70,8 @@ export function ControlClassification({
     control.modalverb || control.securityLevel || control.effortLevel,
   );
   const hasTaxonomy = control.tags.length > 0
-    || control.statementProps.zielobjektKategorien.length > 0;
+    || control.statementProps.zielobjektKategorien.length > 0
+    || control.taxonomy.length > 0;
 
   if (!hasControllingCriteria && !hasTaxonomy) {
     return null;

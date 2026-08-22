@@ -95,7 +95,7 @@ export const SOURCE_REGISTRY = Object.freeze(
       expectedRootType: 'catalog',
       catalogKey: 'wlan',
       upstreamPath: 'control_layer/WLAN/WLAN-resolved_catalog.json',
-      lifecycle: 'preview',
+      lifecycle: 'supported',
       title: 'Anwenderkatalog WLAN',
     },
     {

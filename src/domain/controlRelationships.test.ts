@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import type { Control } from '@/domain/models';
+import type { Control, ControlLink } from '@/domain/models';
 import {
   buildChildControlMap,
   buildIncomingLinkMap,
   getControlHierarchyDepth,
   getControlLinkSearchText,
   getControlLinkTargetsByRelation,
+  getLinkRelationDescription,
   getLinkRelationLabel,
+  toFilterableLinkRelation,
 } from './controlRelationships';
 
 function makeControl(overrides: Partial<Control> = {}): Control {
@@ -16,6 +18,7 @@ function makeControl(overrides: Partial<Control> = {}): Control {
     groupId: 'GC.1',
     practiceId: 'GC',
     tags: [],
+    taxonomy: [],
     threats: [],
     statement: 'Governance MUSS verankert werden.',
     statementRaw: 'Governance MUSS verankert werden.',
@@ -30,32 +33,59 @@ function makeControl(overrides: Partial<Control> = {}): Control {
   };
 }
 
+function makeLink(targetId: string, rel: 'required' | 'related'): ControlLink {
+  return {
+    targetId,
+    href: `#${targetId}`,
+    rel,
+    relStatus: 'custom',
+  };
+}
+
 describe('controlRelationships', () => {
+  it('keeps legacy filters narrow while describing documented, custom, and missing rel values', () => {
+    expect(toFilterableLinkRelation('required')).toBe('required');
+    expect(toFilterableLinkRelation('related')).toBe('related');
+    expect(toFilterableLinkRelation('reference')).toBeUndefined();
+    expect(toFilterableLinkRelation('maps-to')).toBeUndefined();
+    expect(toFilterableLinkRelation(undefined)).toBeUndefined();
+
+    expect(getLinkRelationDescription('reference', 'documented'))
+      .toBe('Referenz · OSCAL-dokumentiert');
+    expect(getLinkRelationDescription('required', 'custom'))
+      .toBe('erforderlich · benutzerdefinierte OSCAL-Relation');
+    expect(getLinkRelationDescription('related', 'custom'))
+      .toBe('verwandt · benutzerdefinierte OSCAL-Relation');
+    expect(getLinkRelationDescription('maps-to', 'custom'))
+      .toBe('benutzerdefinierte OSCAL-Relation „maps-to“');
+    expect(getLinkRelationDescription(undefined, 'missing')).toBe('ohne Relationsangabe');
+  });
+
   it('builds reverse-link lookups sorted by source control id', () => {
     const controls = [
       makeControl({
         id: 'GC.2.2',
-        links: [{ targetId: 'GC.2.3', relation: 'related' }],
+        links: [makeLink('GC.2.3', 'related')],
       }),
       makeControl({
         id: 'GC.2.1',
-        links: [{ targetId: 'GC.2.3', relation: 'required' }],
+        links: [makeLink('GC.2.3', 'required')],
       }),
     ];
 
     const incoming = buildIncomingLinkMap(controls).get('GC.2.3');
 
     expect(incoming).toEqual([
-      { control: controls[1], relation: 'required' },
-      { control: controls[0], relation: 'related' },
+      { control: controls[1], link: controls[1]!.links[0] },
+      { control: controls[0], link: controls[0]!.links[0] },
     ]);
   });
 
   it('collects link targets by relation for structured export columns', () => {
     const grouped = getControlLinkTargetsByRelation([
-      { targetId: 'GC.2.2', relation: 'required' },
-      { targetId: 'GC.2.3', relation: 'related' },
-      { targetId: 'GC.2.4', relation: 'required' },
+      makeLink('GC.2.2', 'required'),
+      makeLink('GC.2.3', 'related'),
+      makeLink('GC.2.4', 'required'),
     ]);
 
     expect(grouped).toEqual({
@@ -67,8 +97,8 @@ describe('controlRelationships', () => {
   it('includes relation ids and labels in link search text', () => {
     expect(
       getControlLinkSearchText([
-        { targetId: 'GC.2.2', relation: 'required' },
-        { targetId: 'GC.2.3', relation: 'related' },
+        makeLink('GC.2.2', 'required'),
+        makeLink('GC.2.3', 'related'),
       ]),
     ).toContain('erforderlich');
     expect(getLinkRelationLabel('related')).toBe('verwandt');

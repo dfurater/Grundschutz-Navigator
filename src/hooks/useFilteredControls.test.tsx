@@ -15,6 +15,7 @@ function makeControl(overrides: Partial<Control> = {}): Control {
     groupId: 'GC.1',
     practiceId: 'GC',
     tags: [],
+    taxonomy: [],
     threats: [],
     statement: 'Governance MUSS verankert werden.',
     statementRaw: 'Governance MUSS verankert werden.',
@@ -165,19 +166,19 @@ describe('useFilteredControls', () => {
       makeControl({
         id: 'GC.2.1',
         links: [
-          { targetId: 'GC.2.2', relation: 'required' },
-          { targetId: 'GC.2.3', relation: 'required' },
+          { targetId: 'GC.2.2', href: '#GC.2.2', rel: 'required', relStatus: 'custom' },
+          { targetId: 'GC.2.3', href: '#GC.2.3', rel: 'required', relStatus: 'custom' },
         ],
       }),
       makeControl({
         id: 'GC.2.4',
-        links: [{ targetId: 'GC.2.5', relation: 'related' }],
+        links: [{ targetId: 'GC.2.5', href: '#GC.2.5', rel: 'related', relStatus: 'custom' }],
       }),
       makeControl({
         id: 'GC.2.6',
         links: [
-          { targetId: 'GC.2.7', relation: 'required' },
-          { targetId: 'GC.2.8', relation: 'related' },
+          { targetId: 'GC.2.7', href: '#GC.2.7', rel: 'required', relStatus: 'custom' },
+          { targetId: 'GC.2.8', href: '#GC.2.8', rel: 'related', relStatus: 'custom' },
         ],
       }),
     ];

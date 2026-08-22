@@ -4,6 +4,7 @@ import type {
   ResolvedResource,
   ResolvedResourceLink,
 } from '@/domain/referenceResolution';
+import { isSafeExternalHref } from '@/domain/referenceResolution';
 import { ControlDetailSection } from './ControlDetailSection';
 
 export interface ControlSourcesProps {
@@ -11,6 +12,10 @@ export interface ControlSourcesProps {
 }
 
 function ExternalLink({ href, label }: { href: string; label: string }) {
+  if (!isSafeExternalHref(href)) {
+    return <span className="break-all text-sm text-slate-700">{label}</span>;
+  }
+
   return (
     <a
       href={href}

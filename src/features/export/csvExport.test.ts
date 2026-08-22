@@ -49,6 +49,16 @@ function makeControl(overrides: Partial<Control> = {}): Control {
       value: 'BCM, Compliance Management',
       ns: 'https://example.com/namespaces/tags.csv',
     },
+    taxonomy: [
+      {
+        name: 'Taxonomy-L1',
+        value: 'Infrastruktur',
+        ns: 'https://example.com/taxonomy/wlan',
+      },
+      { name: 'Taxonomy-L2', value: 'Kommunikation' },
+      { name: 'Taxonomy-L3', value: 'Netzkomponente' },
+      { name: 'Taxonomy-L4', value: 'WLAN' },
+    ],
     confidentiality: '2',
     confidentialityProp: {
       name: 'confidentiality',
@@ -115,8 +125,8 @@ function makeControl(overrides: Partial<Control> = {}): Control {
       },
     },
     links: [
-      { targetId: 'GC.2.2', relation: 'related' },
-      { targetId: 'GC.3.1', relation: 'required' },
+      { targetId: 'GC.2.2', href: '#GC.2.2', rel: 'related', relStatus: 'custom' },
+      { targetId: 'GC.3.1', href: '#GC.3.1', rel: 'required', relStatus: 'custom' },
     ],
     params: { 'gc.1.1-prm1': 'BSI Grundschutz++' },
     ...overrides,
@@ -228,10 +238,10 @@ describe('escapeCSVField', () => {
 /* ------------------------------------------------------------------ */
 
 describe('controlToCSVRow', () => {
-  it('produces semicolon-delimited row with 25 fields', () => {
+  it('produces semicolon-delimited row with 33 fields', () => {
     const row = controlToCSVRow(makeControl());
     const fields = row.split(';');
-    expect(fields.length).toBe(25);
+    expect(fields).toHaveLength(33);
   });
 
   it('aligns row fields with the logical export order', () => {
@@ -248,6 +258,14 @@ describe('controlToCSVRow', () => {
       'normal-SdT',
       '3',
       'BCM, Compliance Management',
+      'Infrastruktur',
+      'https://example.com/taxonomy/wlan',
+      'Kommunikation',
+      '',
+      'Netzkomponente',
+      '',
+      'WLAN',
+      '',
       'Server, Client',
       'Verfahren und Regelungen',
       'nach einem Standard',
@@ -280,12 +298,35 @@ describe('controlToCSVRow', () => {
     expect(row).toContain('BCM, Compliance Management');
   });
 
+  it('exports WLAN taxonomy values and exact optional namespaces by level', () => {
+    const csv = controlsToCSV([makeControl()]);
+    const [header, row] = parseSemicolonCSV(csv);
+
+    expect(header).toEqual(expect.arrayContaining([
+      'taxonomy_l1',
+      'taxonomy_l1_ns',
+      'taxonomy_l2',
+      'taxonomy_l2_ns',
+      'taxonomy_l3',
+      'taxonomy_l3_ns',
+      'taxonomy_l4',
+      'taxonomy_l4_ns',
+    ]));
+    expect(row[header.indexOf('taxonomy_l1')]).toBe('Infrastruktur');
+    expect(row[header.indexOf('taxonomy_l1_ns')])
+      .toBe('https://example.com/taxonomy/wlan');
+    expect(row[header.indexOf('taxonomy_l2')]).toBe('Kommunikation');
+    expect(row[header.indexOf('taxonomy_l2_ns')]).toBe('');
+    expect(row[header.indexOf('taxonomy_l4')]).toBe('WLAN');
+  });
+
   it('handles missing optional fields', () => {
     const control = makeControl({
       securityLevel: undefined,
       effortLevel: undefined,
       modalverb: undefined,
       tags: [],
+      taxonomy: [],
       confidentiality: undefined,
       integrity: undefined,
       availability: undefined,
@@ -296,7 +337,7 @@ describe('controlToCSVRow', () => {
     });
     const fields = parseSemicolonCSV(`${controlToCSVRow(control)}\r\n`)[0];
 
-    expect(fields).toHaveLength(25);
+    expect(fields).toHaveLength(33);
     expect(fields.slice(-6)).toEqual(['', '', '', '', '', 'uuid-1']);
   });
 
@@ -307,7 +348,7 @@ describe('controlToCSVRow', () => {
     const fields = parseSemicolonCSV(`${row}\r\n`)[0];
 
     expect(row).toContain('"G 0.18, G 0.19; ""Kommentar"""');
-    expect(fields).toHaveLength(25);
+    expect(fields).toHaveLength(33);
     expect(fields.at(-2)).toBe('G 0.18, G 0.19; "Kommentar"');
   });
 
@@ -322,7 +363,7 @@ describe('controlToCSVRow', () => {
       makeControl({ altIdentifier: undefined }),
     )}\r\n`)[0];
 
-    expect(fields).toHaveLength(25);
+    expect(fields).toHaveLength(33);
     expect(fields.at(-1)).toBe('');
     expect(fields.at(-1)).not.toBe('GC.1.1');
   });
@@ -333,7 +374,7 @@ describe('controlToCSVRow', () => {
     const fields = parseSemicolonCSV(`${row}\r\n`)[0];
 
     expect(row).toContain('"uuid; ""mit Anführungszeichen""\nzweite Zeile"');
-    expect(fields).toHaveLength(25);
+    expect(fields).toHaveLength(33);
     expect(fields.at(-1)).toBe(altIdentifier);
   });
 
@@ -420,6 +461,14 @@ describe('controlsToCSV', () => {
       'sec_level',
       'effort_level',
       'tags',
+      'taxonomy_l1',
+      'taxonomy_l1_ns',
+      'taxonomy_l2',
+      'taxonomy_l2_ns',
+      'taxonomy_l3',
+      'taxonomy_l3_ns',
+      'taxonomy_l4',
+      'taxonomy_l4_ns',
       'target_object_categories',
       'result',
       'result_specification',
@@ -446,7 +495,7 @@ describe('controlsToCSV', () => {
     expect(header).not.toContain('catalog_key');
   });
 
-  it('header omits namespace columns', () => {
+  it('omits legacy vocabulary namespaces while retaining taxonomy provenance', () => {
     const csv = controlsToCSV([]);
     const header = csv.split('\r\n')[0];
     expect(header).not.toContain('modal_verb_ns');
@@ -463,12 +512,14 @@ describe('controlsToCSV', () => {
     expect(header).not.toContain('availability_ns');
     expect(header).not.toContain('authenticity_ns');
     expect(header).not.toContain('threats_ns');
+    expect(header).toContain('taxonomy_l1_ns');
+    expect(header).toContain('taxonomy_l4_ns');
   });
 
   it('uses semicolon as delimiter', () => {
     const csv = controlsToCSV([]);
     const header = csv.split('\r\n')[0];
-    expect(header.split(';').length).toBe(25);
+    expect(header.split(';')).toHaveLength(33);
   });
 
   it('uses CRLF row separators and terminates with a final CRLF', () => {
@@ -535,6 +586,14 @@ describe('controlsToCSV', () => {
       'normal-SdT',
       '3',
       'BCM, Compliance Management',
+      'Infrastruktur',
+      'https://example.com/taxonomy/wlan',
+      'Kommunikation',
+      '',
+      'Netzkomponente',
+      '',
+      'WLAN',
+      '',
       'Server, Client',
       'Verfahren und Regelungen',
       'nach einem Standard',

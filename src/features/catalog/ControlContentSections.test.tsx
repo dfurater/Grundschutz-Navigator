@@ -17,6 +17,7 @@ function makeControl(overrides: Partial<Control> = {}): Control {
     groupId: 'GC.2',
     practiceId: 'GC',
     tags: [],
+    taxonomy: [],
     threats: [],
     statement: 'Mehrzeilige\nAnforderung',
     statementRaw: 'Mehrzeilige\nAnforderung',

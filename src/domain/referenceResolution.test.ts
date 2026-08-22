@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseCatalog } from '@/adapters/oscalAdapter';
 import {
   REFERENCE_RESOLUTION_VALIDATOR,
+  classifyCatalogLinkRelation,
   createReferenceDocument,
+  isSafeExternalHref,
   resolveCatalogMetadataReferences,
   resolveCatalogControlLinks,
   resolveCatalogResources,
@@ -46,6 +48,48 @@ function makeCatalogsByKey() {
 }
 
 describe('referenceResolution', () => {
+  it('preserves original optional rel values and resource-fragment in projected control links', () => {
+    const source = makeReferenceResolutionCatalogSource();
+    const sourceControl = source.catalog.groups[0]!.groups[0]!.controls![0]!;
+    (sourceControl as { links: Array<Record<string, unknown>> }).links = [
+      {
+        href: '#GC.1.2',
+        rel: 'maps-to',
+        'resource-fragment': 'statement',
+      },
+      { href: '#GC.1.2' },
+    ];
+    const document = createReferenceDocument({
+      source,
+      context: { catalogKey: 'gspp', trustClass: 'class-1-verified-public' },
+      rootType: 'catalog',
+      oscalVersion: '1.1.3',
+    });
+
+    expect(resolveCatalogControlLinks({
+      document,
+      catalogsByKey: makeCatalogsByKey(),
+    }).get('GC.1.1')).toEqual([
+      {
+        targetId: 'GC.1.2',
+        href: '#GC.1.2',
+        rel: 'maps-to',
+        relStatus: 'custom',
+        resourceFragment: 'statement',
+      },
+      {
+        targetId: 'GC.1.2',
+        href: '#GC.1.2',
+        rel: undefined,
+        relStatus: 'missing',
+        resourceFragment: undefined,
+      },
+    ]);
+    expect(classifyCatalogLinkRelation('reference')).toBe('documented');
+    expect(classifyCatalogLinkRelation('related')).toBe('custom');
+    expect(classifyCatalogLinkRelation(undefined)).toBe('missing');
+  });
+
   it('resolves control resources from source, retains resource fragments, and omits base64 payloads', () => {
     const resolved = resolveControlReferences({
       document: makeDocument(),
@@ -139,6 +183,9 @@ describe('referenceResolution', () => {
     expect(resolveOscalReference({ href: EXTERNAL_HTTPS_SOURCE, path: '/source' }, context))
       .toMatchObject({ kind: 'external', href: EXTERNAL_HTTPS_SOURCE });
     for (const href of [
+      'https:example.invalid/ambiguous',
+      'https://',
+      'https://user:password@example.invalid/private',
       'javascript:alert(1)',
       'data:text/plain,unsafe',
       'file:///etc/passwd',
@@ -150,6 +197,11 @@ describe('referenceResolution', () => {
         reason: 'unsafe-protocol',
       });
     }
+
+    expect(isSafeExternalHref(EXTERNAL_HTTPS_SOURCE)).toBe(true);
+    expect(isSafeExternalHref('HTTPS://example.invalid/upper-case')).toBe(true);
+    expect(isSafeExternalHref('https:example.invalid/ambiguous')).toBe(false);
+    expect(isSafeExternalHref('https://user:password@example.invalid/private')).toBe(false);
   });
 
   it('only resolves cross-document references explicitly supplied by the caller', () => {

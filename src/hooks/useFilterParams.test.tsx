@@ -13,6 +13,7 @@ function makeControl(id: string, title: string): Control {
     groupId: 'GC.1',
     practiceId: 'GC',
     tags: [],
+    taxonomy: [],
     threats: [],
     statement: `${title} MUSS umgesetzt werden.`,
     statementRaw: `${title} MUSS umgesetzt werden.`,

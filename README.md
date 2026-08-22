@@ -17,11 +17,11 @@ Die App läuft vollständig im Browser. Keine Anmeldung, keine Installation.
 
 ## Was kann die App?
 
-- **Katalog browsen** — Hierarchische Navigation durch Praktiken, Themen und Kontrollen in einem ergonomischen 3-Panel-Layout (Tree, Tabelle, Detail). Route `/katalog/gspp`.
+- **Kataloge browsen** — Hierarchische Navigation durch Praktiken, Themen und Kontrollen der ausgelieferten Grundschutz++-, Lieferketten- und WLAN-Kataloge in einem ergonomischen 3-Panel-Layout (Tree, Tabelle, Detail). Der app-weite Katalogwechsler hält die Dokumente über ihren `catalogKey` getrennt; Routen beginnen mit `/katalog/:catalogKey`.
 - **Volltextsuche** — Schnelle, relevanzbasierte Suche über alle Kontrollen einschließlich offizieller Praktik-Aliase: FlexSearch baut die Indizes vollständig im Browser auf, die UI zeigt Treffer schrittweise in 50er-Portionen. Route `/suche`.
 - **Vokabulare nachschlagen** — Alle 13 offiziellen BSI-Namespace-CSVs direkt aus dem freigegebenen Verzeichnis als eigenständige, provenance- und integritätsgesicherte Übersichten. Praktik- und Themen-Definitionen werden per UUID angebunden; Schutzziel-Typen und ihre Relevanzstufen `0`–`2` werden getrennt erklärt. Nicht auflösbare Werte bleiben sichtbar diagnostizierbar. Route `/vokabular`.
 - **Multi-Filter** — Kombinierbar: Sicherheitsniveau, Aufwandsstufe, Modalverb, Tags, Zielobjekt, Handlungswort, Dokumentationstyp, Link-Relation. Der gesamte Filterzustand wird in der URL gespiegelt und ist damit **teil- und bookmarkbar**.
-- **CSV-Export** — Gefilterte Katalogtabelle, Suchtreffer oder manuelle Auswahl als CSV exportieren (semikolon-getrennt, Excel-freundlich) — `/katalog` und `/suche` verwenden dasselbe Auswahl- und Exportmodell für Desktop und Mobile. Der enthaltene Alt-Identifier ist im aktuellen Katalog eindeutig, aber nicht garantiert versionsstabil.
+- **CSV-Export** — Gefilterte Katalogtabelle, Suchtreffer oder manuelle Auswahl als CSV exportieren (semikolon-getrennt, Excel-freundlich) — `/katalog` und `/suche` verwenden dasselbe Auswahl- und Exportmodell für Desktop und Mobile. WLAN-Taxonomiewerte und ihre optionalen Original-Namensräume werden je L1–L4 separat exportiert. Der enthaltene Alt-Identifier ist im aktuellen Katalog eindeutig, aber nicht garantiert versionsstabil.
 - **Integritätsprüfung** — Zur Laufzeit wird die SHA-256 der ausgelieferten Katalog- und Vokabular-Artefakte gegen beim Build gepinnte Werte verglichen. Details für beide Artefakte stehen unter `/about`; der Footer zeigt zusätzlich den Kurzstatus des Katalogs.
 - **Responsive** — Desktop mit verschiebbaren Panels, Mobile mit Drawer und Touch-Gesten.
 

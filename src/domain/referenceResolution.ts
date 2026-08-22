@@ -13,6 +13,7 @@ import type {
   CatalogDocumentContext,
   Control,
   ControlLink,
+  LinkRelationStatus,
   OscalDocumentContext,
 } from '@/domain/models';
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
@@ -22,6 +23,17 @@ export const REFERENCE_RESOLUTION_VALIDATOR = Object.freeze({
   name: 'reference-resolution',
   version: '1',
 });
+
+/**
+ * Das Catalog-Modell dokumentiert ausschließlich `reference`; sein
+ * Token-Vokabular bleibt dennoch offen und `rel` ist optional.
+ */
+export function classifyCatalogLinkRelation(
+  rel: string | undefined,
+): LinkRelationStatus {
+  if (rel === undefined) return 'missing';
+  return rel === 'reference' ? 'documented' : 'custom';
+}
 
 const PROVENANCE_LINK_RELATIONS = new Set(['source-profile', 'source-profile-uuid']);
 
@@ -272,6 +284,26 @@ function getProtocol(href: string): string | null {
   return match?.[1]?.toLowerCase() ?? null;
 }
 
+/**
+ * Prüft ausschließlich die Syntax eines externen Navigationsziels. Der
+ * Originalwert wird weder normalisiert noch geladen. Zugangsdaten in URLs
+ * werden fail-closed abgelehnt, damit sie nicht über Browsernavigation oder
+ * Referrer-Metadaten weitergegeben werden.
+ */
+export function isSafeExternalHref(href: string): boolean {
+  if (!/^https:\/\//iu.test(href)) return false;
+
+  try {
+    const parsed = new URL(href);
+    return parsed.protocol === 'https:'
+      && parsed.hostname.length > 0
+      && parsed.username.length === 0
+      && parsed.password.length === 0;
+  } catch {
+    return false;
+  }
+}
+
 function getHrefFragment(href: string): string | null {
   const fragmentIndex = href.indexOf('#');
   return fragmentIndex >= 0 ? href.slice(fragmentIndex + 1) : null;
@@ -461,7 +493,7 @@ function resolveOscalReferenceInternal(
   }
 
   const protocol = getProtocol(input.href);
-  if (protocol === 'https') {
+  if (isSafeExternalHref(input.href)) {
     return { ...input, kind: 'external' };
   }
   if (protocol) {
@@ -579,7 +611,10 @@ export function resolveCatalogControlLinks(
         return resolved.kind === 'control'
           ? [{
             targetId: resolved.control.id,
-            relation: resolved.rel === 'required' ? 'required' as const : 'related' as const,
+            href: resolved.href,
+            rel: resolved.rel,
+            relStatus: classifyCatalogLinkRelation(resolved.rel),
+            resourceFragment: resolved.resourceFragment,
           }]
           : [];
       });
