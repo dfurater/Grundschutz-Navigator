@@ -56,7 +56,7 @@ export function ControlTaxonomy({
   return (
     <fieldset
       aria-label="Taxonomie"
-      className={`space-y-2 ${hasControllingCriteria ? 'border-t border-[var(--color-border-subtle)] pt-3' : ''}`}
+      className={`min-w-0 space-y-2 ${hasControllingCriteria ? 'border-t border-[var(--color-border-subtle)] pt-3' : ''}`}
     >
       {/* GSPP-140: Zielobjekt-Kategorien bleiben als filterbare Taxonomie in Klassifikation, nicht in Anforderungsdetails. */}
       {(control.tags.length > 0 || control.statementProps.zielobjektKategorien.length > 0) && (

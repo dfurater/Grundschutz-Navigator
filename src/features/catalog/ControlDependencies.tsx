@@ -131,7 +131,7 @@ export function ControlDependencies({
                 const groupLabelId = `control-dependencies-group-label-${groupIndex}`;
 
                 return (
-                  <fieldset key={group.label} aria-labelledby={groupLabelId}>
+                  <fieldset key={group.label} aria-labelledby={groupLabelId} className="min-w-0">
                     <legend id={groupLabelId} className="text-xs font-medium text-slate-500 mb-1">
                       {capitalize(group.label)}
                     </legend>

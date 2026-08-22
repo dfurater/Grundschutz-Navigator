@@ -85,7 +85,7 @@ export function ControlClassification({
     <ControlDetailSection heading="Klassifikation">
       <div className="space-y-4">
         {hasControllingCriteria && (
-          <fieldset aria-label="Kriterien" className="space-y-3">
+          <fieldset aria-label="Kriterien" className="min-w-0 space-y-3">
             <div className="flex flex-wrap gap-2">
               {control.modalverb && (
                 resolvedVocabularies.modalverb ? (
