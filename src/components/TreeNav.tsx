@@ -165,10 +165,12 @@ function TreeNavItem({ item, level, onSelect, selectedId }: TreeNavItemProps) {
         )}
       </button>
       {hasChildren && expanded && (
-        // S6819: <fieldset> statt role="group" — implizite Rolle bleibt „group“;
-        // min-w-0 gegen den von Tailwind-Preflight nicht resetteten
-        // min-inline-size des fieldset (Muster aus PR-01/#155).
-        <fieldset className="min-w-0">
+        // S6819 bewusst NICHT „fixierbar": <ul role="group"> ist das kanonische
+        // WAI-ARIA-APG-Muster für Baum-Untergruppen; die Regel-Alternativen
+        // (<details>/<fieldset>/<optgroup>/<address>) sind hier entweder
+        // ungültiges HTML (<li> nur in Listen) oder semantisch falsch
+        // (Triage FALSE_POSITIVE, begründet am Sonar-Issue AaAkEZpoFj4WkVJvb09P).
+        <ul role="group">
           {item.children!.map((child, index) => (
             <TreeNavItem
               key={child.id ?? `ohne-id-${index}`}
@@ -178,7 +180,7 @@ function TreeNavItem({ item, level, onSelect, selectedId }: TreeNavItemProps) {
               selectedId={selectedId}
             />
           ))}
-        </fieldset>
+        </ul>
       )}
     </li>
   );
