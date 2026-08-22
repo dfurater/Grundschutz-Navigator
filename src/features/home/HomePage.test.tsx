@@ -243,7 +243,6 @@ describe('HomePage', () => {
 
 describe('buildPracticeListKey', () => {
   it('uses the practice id as list key when present', () => {
-    const used = new Set<string>();
     const practice = {
       id: 'GC',
       title: 'Grundschutz-Consulting',
@@ -252,25 +251,26 @@ describe('buildPracticeListKey', () => {
       controlCount: 0,
     };
 
-    expect(buildPracticeListKey(practice, used)).toBe('GC');
+    expect(buildPracticeListKey(practice)).toBe('GC');
+    expect(buildPracticeListKey(practice)).toBe('GC');
   });
 
-  it('falls back to altIdentifier before label for id-less practices', () => {
-    const used = new Set<string>();
+  it('keeps exactly one stable key per id-less practice object', () => {
     const practice = {
       title: 'Ohne ID',
       label: 'X?',
-      altIdentifier: 'uuid-alt',
       topics: [],
       controlCount: 0,
     };
 
-    expect(buildPracticeListKey(practice, used)).toBe('ohne-id-uuid-alt');
+    const firstKey = buildPracticeListKey(practice);
+    expect(buildPracticeListKey(practice)).toBe(firstKey);
   });
 
-  it('keeps keys unique for two id-less practices with identical label', () => {
-    // Greptile-Befund PR #156: zwei id-lose Practices mit demselben Label
-    // dürfen nie denselben React-Key erhalten.
+  it('gives identical id-less duplicates distinct keys that stay bound to their record', () => {
+    // Greptile-P1 (PR #156): Suffixe dürfen nicht von der Listenposition
+    // abhängen — der Key muss am Datensatz (Objektidentität) hängen und
+    // Umsortierungen überleben.
     const first = { title: 'Erste', label: 'DUP', topics: [], controlCount: 0 };
     const second = {
       title: 'Zweite',
@@ -279,14 +279,15 @@ describe('buildPracticeListKey', () => {
       controlCount: 0,
     };
 
-    const usedFirstPass = new Set<string>();
-    const keyFirst = buildPracticeListKey(first, usedFirstPass);
-    const keySecond = buildPracticeListKey(second, usedFirstPass);
+    const keyFirst = buildPracticeListKey(first);
+    const keySecond = buildPracticeListKey(second);
     expect(keyFirst).not.toBe(keySecond);
 
-    // Deterministisch: dieselbe Reihenfolge liefert dieselben Keys.
-    const usedSecondPass = new Set<string>();
-    expect(buildPracticeListKey(first, usedSecondPass)).toBe(keyFirst);
-    expect(buildPracticeListKey(second, usedSecondPass)).toBe(keySecond);
+    // Unabhängig von Zuordnungsreihenfolge und weiteren Datensätzen bleibt
+    // jeder Key an sein Objekt gebunden.
+    const third = { title: 'Dritte', label: 'DUP', topics: [], controlCount: 0 };
+    buildPracticeListKey(third);
+    expect(buildPracticeListKey(second)).toBe(keySecond);
+    expect(buildPracticeListKey(first)).toBe(keyFirst);
   });
 });

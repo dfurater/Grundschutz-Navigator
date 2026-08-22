@@ -6,26 +6,31 @@ import type { Practice } from '@/domain/models';
 
 /**
  * Stabiler Listen-Key je Praktik (S6479): die Datensatz-ID, sonst ein
- * Fallback aus altIdentifier bzw. Label. Bereits vergebene Keys werden über
- * `used` deterministisch nummeriert, damit der Key trotz Duplikaten im
- * Bestand je Datensatz eindeutig bleibt (Greptile-Befund PR #156: zwei
- * id-lose Practices mit identischem Label würden kollidieren).
+ * persistenter Fallback-Key aus der Objektidentität (WeakMap). Ein
+ * inhaltsbasierter Tiebreak (Label, altIdentifier, Nummerierung nach
+ * Listenposition) wäre positionsabhängig — nach einem Umsortieren würde die
+ * Position den alten Key behalten, während ein anderer Datensatz erscheint
+ * (Greptile-P1, PR #156, T-Rex-Repro). Die Objektidentität ist dagegen pro
+ * Datensatz stabil und reihenfolgeunabhängig, auch für inhaltlich identische
+ * Duplikate; beim Neuladen des Katalogs entstehen neue Objekte und damit neue
+ * Keys (Remount der statischen Liste ist unbeobachtbar).
  */
-export function buildPracticeListKey(practice: Practice, used: Set<string>): string {
-  const base =
-    practice.id ??
-    `ohne-id-${practice.altIdentifier ?? practice.label}`;
-  if (!used.has(base)) {
-    used.add(base);
-    return base;
+const fallbackKeysByPractice = new WeakMap<Practice, string>();
+let nextFallbackKeyNumber = 0;
+
+function getFallbackKey(practice: Practice): string {
+  const existing = fallbackKeysByPractice.get(practice);
+  if (existing !== undefined) {
+    return existing;
   }
-  for (let n = 2; ; n += 1) {
-    const candidate = `${base}--${n}`;
-    if (!used.has(candidate)) {
-      used.add(candidate);
-      return candidate;
-    }
-  }
+  nextFallbackKeyNumber += 1;
+  const generated = `ohne-id-${nextFallbackKeyNumber}`;
+  fallbackKeysByPractice.set(practice, generated);
+  return generated;
+}
+
+export function buildPracticeListKey(practice: Practice): string {
+  return practice.id ?? getFallbackKey(practice);
 }
 
 export function HomePage() {
@@ -43,7 +48,6 @@ export function HomePage() {
         ),
       }
     : null;
-  const usedListKeys = new Set<string>();
 
   return (
     <div className="mx-auto max-w-3xl px-6 pt-8 pb-12">
@@ -124,7 +128,7 @@ export function HomePage() {
 
           <div className="border border-[var(--color-border-default)] rounded-[var(--radius-md)] bg-[var(--color-surface-base)] divide-y divide-[var(--color-border-subtle)]">
             {catalog.practices.map((practice) => {
-              const listKey = buildPracticeListKey(practice, usedListKeys);
+              const listKey = buildPracticeListKey(practice);
               const cells = (
                 <>
                   <span className="catalog-reference-text text-xs text-[var(--color-accent-default)]">
