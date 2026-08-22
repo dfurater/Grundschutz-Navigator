@@ -284,6 +284,26 @@ function getProtocol(href: string): string | null {
   return match?.[1]?.toLowerCase() ?? null;
 }
 
+/**
+ * Prüft ausschließlich die Syntax eines externen Navigationsziels. Der
+ * Originalwert wird weder normalisiert noch geladen. Zugangsdaten in URLs
+ * werden fail-closed abgelehnt, damit sie nicht über Browsernavigation oder
+ * Referrer-Metadaten weitergegeben werden.
+ */
+export function isSafeExternalHref(href: string): boolean {
+  if (!/^https:\/\//iu.test(href)) return false;
+
+  try {
+    const parsed = new URL(href);
+    return parsed.protocol === 'https:'
+      && parsed.hostname.length > 0
+      && parsed.username.length === 0
+      && parsed.password.length === 0;
+  } catch {
+    return false;
+  }
+}
+
 function getHrefFragment(href: string): string | null {
   const fragmentIndex = href.indexOf('#');
   return fragmentIndex >= 0 ? href.slice(fragmentIndex + 1) : null;
@@ -473,7 +493,7 @@ function resolveOscalReferenceInternal(
   }
 
   const protocol = getProtocol(input.href);
-  if (protocol === 'https') {
+  if (isSafeExternalHref(input.href)) {
     return { ...input, kind: 'external' };
   }
   if (protocol) {

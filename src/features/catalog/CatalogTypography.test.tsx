@@ -52,6 +52,7 @@ const control: Control = {
     ns: 'https://example.com/namespaces/modal_verbs.csv',
   },
   tags: ['Governance'],
+  taxonomy: [],
   threats: [],
   tagsProp: {
     name: 'tags',

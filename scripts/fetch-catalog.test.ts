@@ -1261,6 +1261,8 @@ describe('fetch-catalog', () => {
       'catalog-metadata.json',
       'catalog-lieferkette.json',
       'catalog-lieferkette-metadata.json',
+      'catalog-wlan.json',
+      'catalog-wlan-metadata.json',
       'vocabularies.json',
       'upstream-sources-metadata.json',
     ]);

@@ -67,19 +67,21 @@ describe('sourceRegistry', () => {
     expect(ENTRY_CATALOG.entryCatalog).toBe(true);
   });
 
-  it('ships the entry catalog and the promoted Lieferkette catalog (GSPP-242)', () => {
-    expect(SUPPORTED_CATALOG_KEYS).toEqual(['gspp', 'lieferkette']);
+  it('ships the entry, Lieferkette, and WLAN catalogs', () => {
+    expect(SUPPORTED_CATALOG_KEYS).toEqual(['gspp', 'lieferkette', 'wlan']);
     expect(SUPPORTED_CATALOGS.map((entry) => entry.artifactKey)).toEqual([
       'catalog-gspp',
       'catalog-lieferkette',
+      'catalog-wlan',
     ]);
   });
 
-  it('limits the supported lifecycle exactly to both shipped catalogs and the namespace collection', () => {
+  it('limits the supported lifecycle exactly to all shipped catalogs and the namespace collection', () => {
     const supported = listArtifacts({ lifecycle: 'supported' });
     expect(supported.map((entry) => entry.artifactKey).sort()).toEqual([
       'catalog-gspp',
       'catalog-lieferkette',
+      'catalog-wlan',
       'namespaces-bsi',
     ]);
   });
@@ -283,7 +285,7 @@ describe('sourceRegistry', () => {
   it('exposes catalog entries by key', () => {
     expect(getCatalogByKey('gspp')?.artifactKey).toBe('catalog-gspp');
     expect(getCatalogByKey('lieferkette')?.lifecycle).toBe('supported');
-    expect(getCatalogByKey('wlan')?.lifecycle).toBe('preview');
+    expect(getCatalogByKey('wlan')?.lifecycle).toBe('supported');
     expect(getCatalogByKey('unbekannt')).toBeNull();
   });
 
@@ -490,6 +492,8 @@ describe('sourceRegistry', () => {
         'catalog-metadata.json',
         'catalog-lieferkette.json',
         'catalog-lieferkette-metadata.json',
+        'catalog-wlan.json',
+        'catalog-wlan-metadata.json',
       ]);
     });
 

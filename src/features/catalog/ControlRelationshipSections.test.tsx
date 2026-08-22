@@ -14,6 +14,7 @@ function makeControl(id: string, title: string, overrides: Partial<Control> = {}
     groupId: 'GC.2',
     practiceId: 'GC',
     tags: [],
+    taxonomy: [],
     threats: [],
     statement: 'Anforderung',
     statementRaw: 'Anforderung',

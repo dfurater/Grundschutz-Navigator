@@ -42,6 +42,7 @@ function makeControl(overrides: Partial<Control> = {}): Control {
     groupId: 'GC.2',
     practiceId: 'GC',
     tags: [],
+    taxonomy: [],
     threats: [],
     statement: 'Diese Kontrolle steht mit anderen in Beziehung.',
     statementRaw: 'Diese Kontrolle steht mit anderen in Beziehung.',

@@ -39,6 +39,14 @@ const CSV_HEADERS = [
   'sec_level',
   'effort_level',
   'tags',
+  'taxonomy_l1',
+  'taxonomy_l1_ns',
+  'taxonomy_l2',
+  'taxonomy_l2_ns',
+  'taxonomy_l3',
+  'taxonomy_l3_ns',
+  'taxonomy_l4',
+  'taxonomy_l4_ns',
   'target_object_categories',
   'result',
   'result_specification',
@@ -54,6 +62,23 @@ const CSV_HEADERS = [
   'threats',
   'control_alt_identifier',
 ];
+
+const TAXONOMY_LEVELS = [
+  'Taxonomy-L1',
+  'Taxonomy-L2',
+  'Taxonomy-L3',
+  'Taxonomy-L4',
+] as const;
+
+function taxonomyCSVFields(control: Control): string[] {
+  return TAXONOMY_LEVELS.flatMap((name) => {
+    const props = control.taxonomy.filter((prop) => prop.name === name);
+    return [
+      props.map((prop) => prop.value).join(', '),
+      props.map((prop) => prop.ns ?? '').join(', '),
+    ];
+  });
+}
 
 /**
  * Convert a single control to a CSV row (semicolon-delimited).
@@ -72,6 +97,7 @@ export function controlToCSVRow(control: Control): string {
     control.securityLevel ?? '',
     control.effortLevel ?? '',
     control.tags.join(', '),
+    ...taxonomyCSVFields(control),
     control.statementProps.zielobjektKategorien.join(', '),
     control.statementProps.ergebnis ?? '',
     control.statementProps.praezisierung ?? '',

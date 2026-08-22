@@ -78,20 +78,20 @@ describe('security-guards', () => {
     );
   });
 
-  it('rejects registered preview artifacts for fetching', () => {
-    expect(() =>
+  it('allows the supported WLAN catalog but rejects its preview profile for fetching', () => {
+    expect(
       assertAllowedUpstreamRepoPath('control_layer/WLAN/WLAN-resolved_catalog.json'),
-    ).toThrow('outside the allowed BSI contract');
+    ).toBe('control_layer/WLAN/WLAN-resolved_catalog.json');
     expect(() =>
       assertAllowedUpstreamRepoPath('control_layer/WLAN/sources/profiles/WLAN-profile.json'),
     ).toThrow('outside the allowed BSI contract');
   });
 
-  it('allows exact preview OSCAL paths for read-only registry inspection', () => {
-    const previewCatalog = 'control_layer/WLAN/WLAN-resolved_catalog.json';
+  it('allows exact registered OSCAL paths for read-only registry inspection', () => {
+    const supportedCatalog = 'control_layer/WLAN/WLAN-resolved_catalog.json';
     const previewProfile = 'control_layer/WLAN/sources/profiles/WLAN-profile.json';
 
-    expect(assertRegisteredUpstreamRepoPath(previewCatalog)).toBe(previewCatalog);
+    expect(assertRegisteredUpstreamRepoPath(supportedCatalog)).toBe(supportedCatalog);
     expect(assertRegisteredUpstreamRepoPath(previewProfile)).toBe(previewProfile);
   });
 

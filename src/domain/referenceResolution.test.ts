@@ -4,6 +4,7 @@ import {
   REFERENCE_RESOLUTION_VALIDATOR,
   classifyCatalogLinkRelation,
   createReferenceDocument,
+  isSafeExternalHref,
   resolveCatalogMetadataReferences,
   resolveCatalogControlLinks,
   resolveCatalogResources,
@@ -182,6 +183,9 @@ describe('referenceResolution', () => {
     expect(resolveOscalReference({ href: EXTERNAL_HTTPS_SOURCE, path: '/source' }, context))
       .toMatchObject({ kind: 'external', href: EXTERNAL_HTTPS_SOURCE });
     for (const href of [
+      'https:example.invalid/ambiguous',
+      'https://',
+      'https://user:password@example.invalid/private',
       'javascript:alert(1)',
       'data:text/plain,unsafe',
       'file:///etc/passwd',
@@ -193,6 +197,11 @@ describe('referenceResolution', () => {
         reason: 'unsafe-protocol',
       });
     }
+
+    expect(isSafeExternalHref(EXTERNAL_HTTPS_SOURCE)).toBe(true);
+    expect(isSafeExternalHref('HTTPS://example.invalid/upper-case')).toBe(true);
+    expect(isSafeExternalHref('https:example.invalid/ambiguous')).toBe(false);
+    expect(isSafeExternalHref('https://user:password@example.invalid/private')).toBe(false);
   });
 
   it('only resolves cross-document references explicitly supplied by the caller', () => {

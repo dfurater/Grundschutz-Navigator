@@ -15,6 +15,7 @@ function makeControl(overrides: Partial<Control> = {}): Control {
     effortLevel: '3',
     modalverb: 'MUSS',
     tags: [],
+    taxonomy: [],
     threats: [],
     statement: 'Verantwortlichkeiten müssen festgelegt werden.',
     statementRaw: 'Verantwortlichkeiten müssen festgelegt werden.',

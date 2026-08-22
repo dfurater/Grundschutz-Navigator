@@ -39,6 +39,7 @@ function makeControl(overrides: Partial<Control>): Control {
     groupId: 'TOP.1',
     practiceId: 'TOP',
     tags: [],
+    taxonomy: [],
     threats: [],
     statement: '',
     statementRaw: '',

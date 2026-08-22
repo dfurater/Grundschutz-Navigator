@@ -9,6 +9,7 @@ function makeControl(id: string): Control {
     altIdentifier: `alt-${id}`,
     title: `Kontrolle ${id}`,
     tags: [],
+    taxonomy: [],
     threats: [],
     statement: '',
     statementRaw: '',

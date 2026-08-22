@@ -193,6 +193,9 @@ export interface Control {
   /** Structured tags prop with namespace provenance */
   tagsProp?: PropValue;
 
+  /** Ordered WLAN taxonomy props (`Taxonomy-L1` through `Taxonomy-L4`) */
+  taxonomy: PropValue[];
+
   /** Relevanz für das Schutzziel Vertraulichkeit (0–2) */
   confidentiality?: SecurityTargetRelevance;
   /** Structured confidentiality prop with the canonical relevance vocabulary namespace */

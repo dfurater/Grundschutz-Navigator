@@ -50,6 +50,13 @@ Seit [GSPP-284](https://linear.app/grundschutz-plus-plus/issue/GSPP-284) kann di
 
 Der Einstiegskatalog behält seine Dateinamen bewusst unverändert: Deploy- und Cache-Vertrag der ausgelieferten App bleiben damit stabil, und bei genau einem ausgelieferten Katalog ist die Dateimenge byteweise dieselbe wie zuvor. Genau ein `supported`-Katalog trägt die Auszeichnung `entryCatalog: true`; ein Register ohne ausgelieferten Katalog oder ohne genau einen ausgezeichneten Einstieg schlägt beim Import fehl.
 
+Der aktuelle Registerstand liefert drei Kataloge aus: `catalog-gspp` als
+Einstieg sowie `catalog-lieferkette` und `catalog-wlan` als bedarfsgerecht
+geladene Sekundärkataloge. Daraus entstehen zusätzlich
+`catalog-lieferkette.json`, `catalog-lieferkette-metadata.json`,
+`catalog-wlan.json` und `catalog-wlan-metadata.json` nach dem obigen generischen
+Vertrag; die Dateinamen werden nicht an einer zweiten Stelle gepflegt.
+
 Dazu kommen unverändert die beiden generierten Sammelartefakte:
 
 - `vocabularies.json` — offizielle BSI-Vokabulare (aus CSV konvertiert)
@@ -63,7 +70,7 @@ Bei genau einem ausgelieferten Katalog ist die Ausgabemenge damit weiterhin `cat
 1. **Quellregister als Vertrag**: `src/domain/sourceRegistry.mjs` ist die einzige Ingestion-Quelle für Artefaktschlüssel, Pfade, erwartete OSCAL-Root-Typen, Katalogschlüssel und Lifecycle. `scripts/security-guards.mjs` leitet daraus die Allowlist ab und begrenzt zusätzlich Repository, Hosts, Pfade und Refs.
 2. **Snapshot-Pinning**: Ist `BSI_SNAPSHOT_SHA` gesetzt (in CI aus `upstream-manifest.json` gelesen), wird exakt dieser Commit abgerufen statt `main`.
 3. **Vollständiger Tree vor Blob-Abruf**: Der rekursive GitHub-Tree der überwachten Wurzeln muss vollständig und darf weder Symlinks noch andere nicht reguläre Dateien enthalten. Erst danach werden registrierte Pfade materialisiert.
-4. **Lifecycle-getrennte Verarbeitung**: `preview`- und `draft`-Artefakte werden transient auf Pfad, Blob, Inhalt und Root-Typ geprüft. Nur `supported`-Artefakte werden als App-Daten ausgeliefert; die Namespace-Collection materialisiert alle regulären `.csv`-Dateien direkt aus ihrem registrierten Verzeichnis. `ns`-Referenzen des unterstützten Katalogs werden separat als zulässige fachliche Auflösungsquellen validiert.
+4. **Lifecycle-getrennte Verarbeitung**: `preview`- und `draft`-Artefakte werden transient auf Pfad, Blob, Inhalt und Root-Typ geprüft. Nur `supported`-Artefakte werden als App-Daten ausgeliefert; die Namespace-Collection materialisiert alle regulären `.csv`-Dateien direkt aus ihrem registrierten Verzeichnis. `ns`-Referenzen der unterstützten Kataloge werden separat als zulässige fachliche Auflösungsquellen validiert. Eine Lifecycle-Promotion ändert auch den kanonischen Manifest-v2-Payload und seine `signatureSha256`; Registry und Manifest mit abweichendem Lifecycle werden fail-closed abgelehnt.
 5. **Katalog-Lineage**: Die drei Grundschutz++-Quellkataloge und das Profil sind `preview`-Artefakte. Nach ihrer eigenen Versions- und Root-Typ-Prüfung folgt `catalogLineage.mjs` ausschließlich die belegte Dreifachkante `profile.import.href` (Fragment) → genau eine `back-matter.resource` → exakter `rlinks.href`-String → expliziter Registry-Eintrag. Fehlende konfigurierte Importe sowie fehlende oder mehrdeutige Ressourcen bleiben benannte, nicht vollständige Zustände. Relative Pfade werden dabei weder normalisiert noch über Netzwerk, Dateisystem oder den generischen Referenzresolver aufgelöst. Nur die serialisierte Projektion steht im Sidecar; die Quellkatalog-Bytes werden nicht ausgeliefert.
 6. **Abruf über erlaubte GitHub-Endpunkte** mit Retry und Backoff bei transienten Fehlern; optional authentifiziert über `GH_TOKEN`/`GITHUB_TOKEN`.
 7. **Integritätsdaten**: SHA-256, Dateigröße, Git-Blob-SHA und Commit-Informationen werden je ausgeliefertem Artefakt erfasst. Jeder ausgelieferte Katalog erhält dabei eigene Werte samt seiner deklarierten `metadata.oscal-version` — eine gemeinsame Versionsannahme über mehrere Kataloge gibt es bewusst nicht ([GSPP-283](https://linear.app/grundschutz-plus-plus/issue/GSPP-283)). Das vollständige Manifest v2 enthält zusätzlich für jede materialisierte Registry-Datei Root-Typ und Lifecycle.
@@ -293,6 +300,11 @@ export async function fetchCatalogWithBuffer(
 ### Mehrere Kataloge — Isolation der Prüfung
 
 Der Kontext hält eine Katalogsammlung (`catalogs: ReadonlyMap<CatalogKey, LoadedCatalogState>`). Der Einstiegskatalog wird eager geladen; jeder weitere erst, wenn eine Route ihn über `selectCatalog(catalogKey)` auswählt. Der Initial-Load wächst dadurch nicht mit der Zahl ausgelieferter Kataloge.
+
+Das gilt auch nach der WLAN-Promotion: `catalog-wlan.json` und seine eigenen
+Metadaten werden erst beim Wechsel auf `/katalog/wlan` angefordert. Ein Fehler
+oder Hashbefund dort verändert weder Vertrauensklasse noch Nutzbarkeit der
+anderen Kataloge.
 
 Jeder Katalog durchläuft `verifyArtifactIntegrity` gegen **seine eigenen** Metadaten. Provenance, Verifikationsergebnis, Vertrauensklasse und Fehlerzustand hängen deshalb am einzelnen Katalog statt global am Zustand:
 

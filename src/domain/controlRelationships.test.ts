@@ -18,6 +18,7 @@ function makeControl(overrides: Partial<Control> = {}): Control {
     groupId: 'GC.1',
     practiceId: 'GC',
     tags: [],
+    taxonomy: [],
     threats: [],
     statement: 'Governance MUSS verankert werden.',
     statementRaw: 'Governance MUSS verankert werden.',

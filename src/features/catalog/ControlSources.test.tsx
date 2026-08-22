@@ -39,6 +39,12 @@ const references: readonly ResolvedOscalReference[] = [
           integrity: 'missing',
           target: { kind: 'unresolved', reason: 'unsafe-protocol' },
         },
+        {
+          href: 'javascript:alert(1)',
+          hashes: [],
+          integrity: 'missing',
+          target: { kind: 'external', href: 'javascript:alert(1)' },
+        },
       ],
     },
   },
@@ -76,7 +82,7 @@ describe('ControlSources', () => {
     expect(screen.getByText('Fragment: abschnitt-2.4')).toBeInTheDocument();
     expect(screen.getByText('Ressource enthält keine darstellbaren Inhalte.')).toBeInTheDocument();
     expect(screen.getByText('Eingebetteter Inhalt: evidence.pdf (application/pdf)')).toBeInTheDocument();
-    expect(screen.getAllByText('Ohne Integritätsnachweis')).toHaveLength(2);
+    expect(screen.getAllByText('Ohne Integritätsnachweis')).toHaveLength(3);
 
     const external = screen.getByRole('link', { name: /Externe Quelle/i });
     expect(external).toHaveAttribute('href', 'https://example.invalid/external');
@@ -88,6 +94,10 @@ describe('ControlSources', () => {
       .toHaveAttribute('href', 'https://example.invalid/first.pdf');
     expect(within(resource).queryByRole('link', { name: /not-safe/i })).not.toBeInTheDocument();
     expect(within(resource).getByText('http://example.invalid/not-safe')).toBeInTheDocument();
+    expect(within(resource).queryByRole('link', { name: /javascript/i })).not.toBeInTheDocument();
+    expect(within(resource).getByText('javascript:alert(1)')).toBeInTheDocument();
+    expect(within(resource).queryByText(/Medientyp:/i)).not.toBeInTheDocument();
+    expect(resource.querySelector('img, iframe, object, embed, video, audio')).toBeNull();
     expect(screen.getByText('../unresolved.json')).toBeInTheDocument();
   });
 

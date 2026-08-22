@@ -482,6 +482,34 @@ describe('parseControl', () => {
     expect(control.tags).toEqual(['BCM', 'Compliance Management']);
   });
 
+  it('projects exact Taxonomy-L1 through Taxonomy-L4 props in level order with provenance', () => {
+    const control = parseControl(makeControl({
+      props: [
+        { name: 'Taxonomy-L3', value: 'Netzkomponente' },
+        {
+          name: 'Taxonomy-L1',
+          value: 'Infrastruktur',
+          ns: 'https://example.com/taxonomy/wlan',
+        },
+        { name: 'taxonomy-l2', value: 'nicht übernehmen' },
+        { name: 'Taxonomy-Mapping-Rationale', value: 'nicht als Ebene behandeln' },
+        { name: 'Taxonomy-L2', value: 'Kommunikation' },
+        { name: 'Taxonomy-L4', value: 'WLAN' },
+      ],
+    }), 'WLAN.1', 'WLAN');
+
+    expect(control.taxonomy).toEqual([
+      {
+        name: 'Taxonomy-L1',
+        value: 'Infrastruktur',
+        ns: 'https://example.com/taxonomy/wlan',
+      },
+      { name: 'Taxonomy-L2', value: 'Kommunikation', ns: undefined },
+      { name: 'Taxonomy-L3', value: 'Netzkomponente', ns: undefined },
+      { name: 'Taxonomy-L4', value: 'WLAN', ns: undefined },
+    ]);
+  });
+
   it('parses security targets and threats while preserving prop provenance', () => {
     const control = parseControl(makeControl(), 'GC.1', 'GC');
 
@@ -547,6 +575,7 @@ describe('parseControl', () => {
     expect(control.effortLevel).toBeUndefined();
     expect(control.modalverb).toBeUndefined();
     expect(control.tags).toEqual([]);
+    expect(control.taxonomy).toEqual([]);
     expect(control.threats).toEqual([]);
     expect(control.statement).toBe('');
     expect(control.guidance).toBe('');

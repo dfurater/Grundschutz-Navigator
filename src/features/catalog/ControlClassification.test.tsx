@@ -14,6 +14,7 @@ function makeControl(overrides: Partial<Control> = {}): Control {
     groupId: 'GC.2',
     practiceId: 'GC',
     tags: [],
+    taxonomy: [],
     threats: [],
     statement: 'Anforderung',
     statementRaw: 'Anforderung',
@@ -53,6 +54,14 @@ const resolvedControl = makeControl({
     value: 'Governance',
     ns: 'https://example.com/namespaces/tags.csv',
   },
+  taxonomy: [
+    {
+      name: 'Taxonomy-L1',
+      value: 'Infrastruktur',
+      ns: 'https://example.com/taxonomy/wlan',
+    },
+    { name: 'Taxonomy-L2', value: 'Kommunikation' },
+  ],
   statementProps: {
     zielobjektKategorien: ['Server'],
     zielobjektKategorienProp: {
@@ -91,6 +100,11 @@ describe('ControlClassification', () => {
       name: 'Tags und Zielobjektkategorien',
       level: 4,
     })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'WLAN-Taxonomie', level: 4 }))
+      .toBeInTheDocument();
+    expect(screen.getByText('Taxonomie L1')).toBeInTheDocument();
+    expect(screen.getByText('Infrastruktur')).toBeInTheDocument();
+    expect(screen.getByText('https://example.com/taxonomy/wlan')).toBeInTheDocument();
 
     const modalverb = screen.getByRole('button', { name: 'MUSS' });
     const tag = screen.getByRole('button', { name: 'Tag: Governance' });
@@ -104,6 +118,29 @@ describe('ControlClassification', () => {
     expect(document.getElementById('vocab-card-modalverb')).toHaveAttribute('hidden');
     expect(document.getElementById('vocab-card-tag-Governance')).toHaveAttribute('hidden');
     expect(document.getElementById('vocab-card-zielobjekt-Server')).toHaveAttribute('hidden');
+  });
+
+  it('renders a taxonomy-only classification without inventing vocabulary behavior', () => {
+    const control = makeControl({
+      taxonomy: [{ name: 'Taxonomy-L4', value: 'WLAN', ns: 'urn:placeholder' }],
+    });
+
+    render(
+      <ControlClassification
+        control={control}
+        resolvedVocabularies={resolveControlVocabularies(null, control)}
+        isVocabularyActive={() => false}
+        onToggleVocabulary={vi.fn()}
+        renderVocabularyCard={renderVocabularyCard}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Klassifikation', level: 3 }))
+      .toBeInTheDocument();
+    expect(screen.getByText('Taxonomie L4')).toBeInTheDocument();
+    expect(screen.getByText('WLAN')).toBeInTheDocument();
+    expect(screen.getByText('urn:placeholder')).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
   it('renders unresolved taxonomy values as non-interactive outline badges', () => {

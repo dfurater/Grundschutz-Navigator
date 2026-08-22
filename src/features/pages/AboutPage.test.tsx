@@ -313,6 +313,8 @@ describe('AboutPage', () => {
     expect(screen.getByRole('link', { name: /source-only.pdf/i }))
       .toHaveAttribute('href', 'https://example.com/source-only.pdf');
     expect(screen.getByText('Ohne Integritätsnachweis')).toBeInTheDocument();
+    expect(screen.queryByText(/Medientyp:/i)).not.toBeInTheDocument();
+    expect(document.querySelector('img, iframe, object, embed, video, audio')).toBeNull();
   });
 
   it('shows app and upstream catalog links plus a single sha comparison command', () => {

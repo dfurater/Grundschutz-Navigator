@@ -121,6 +121,7 @@ export function useSearch(
         linkText: getControlLinkSearchText(control.links),
         metadataText: [
           control.tags.join(' '),
+          control.taxonomy.flatMap((prop) => [prop.name, prop.value]).join(' '),
           control.modalverb ?? '',
           control.statementProps.ergebnis ?? '',
           control.statementProps.praezisierung ?? '',
