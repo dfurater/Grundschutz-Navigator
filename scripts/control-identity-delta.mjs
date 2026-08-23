@@ -165,6 +165,16 @@ function sortEntries(entries) {
   );
 }
 
+/**
+ * Code-Unit-Vergleich zweier Strings — semantisch identisch zur impliziten
+ * Sortiersemantik von Array.prototype.sort(), aber ohne Ternär-Kaskade.
+ */
+function compareStringsByCodeUnit(left, right) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 function createComparisonState() {
   return {
     entries: [],
@@ -493,7 +503,7 @@ export async function buildControlIdentityDelta(
     // Code-Unit-Komparator: bewahrt exakt die bisherige implizite
     // Sortiersemantik von Array.prototype.sort(), damit die Reihenfolge der
     // Delta-Artefakte deterministisch und unverändert bleibt (S2871).
-  ].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+  ].sort(compareStringsByCodeUnit);
   const cache = new Map();
 
   function load(file, repository) {

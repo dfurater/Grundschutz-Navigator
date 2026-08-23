@@ -376,6 +376,16 @@ function computeGitBlobSha(contents) {
     .digest('hex');
 }
 
+/**
+ * Code-Unit-Vergleich zweier Strings — semantisch identisch zur impliziten
+ * Sortiersemantik von Array.prototype.sort(), aber ohne Ternär-Kaskade.
+ */
+function compareStringsByCodeUnit(left, right) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 export async function verifySnapshotFiles(manifest, {
   fetchImpl = fetch,
   token,
@@ -500,7 +510,7 @@ export async function verifySnapshotFiles(manifest, {
     // Sortiersemantik von Array.prototype.sort() für Strings, damit die
     // JSON.stringify-Gegenprüfung gegen die Manifest-Pfade byte-identisch
     // bleibt (S2871 verlangt den Komparator, keine neue Kollation).
-  ].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+  ].sort(compareStringsByCodeUnit);
   const vocabularyCollection = SOURCE_REGISTRY.find(
     (entry) => entry.kind === 'vocabulary-collection' && entry.lifecycle === 'supported',
   );
