@@ -13,12 +13,12 @@ const EFFORT_TEXT_COLORS: Record<string, string> = {
 };
 
 interface ControlMobileReferenceRowProps {
-  control: Control;
-  controlsById: Map<string, Control>;
-  selectMode?: boolean;
-  checked?: boolean;
-  onSelect: (control: Control) => void;
-  onCheckedChange?: (control: Control, checked: boolean) => void;
+  readonly control: Control;
+  readonly controlsById: Map<string, Control>;
+  readonly selectMode?: boolean;
+  readonly checked?: boolean;
+  readonly onSelect: (control: Control) => void;
+  readonly onCheckedChange?: (control: Control, checked: boolean) => void;
 }
 
 export const ControlMobileReferenceRow = memo(function ControlMobileReferenceRow({
@@ -30,10 +30,17 @@ export const ControlMobileReferenceRow = memo(function ControlMobileReferenceRow
   onCheckedChange,
 }: ControlMobileReferenceRowProps) {
   const depth = getControlHierarchyDepth(control, controlsById);
+  const isSelectable = selectMode && onCheckedChange !== undefined;
 
-  const handleClick = () => {
-    if (selectMode) {
-      onCheckedChange?.(control, !checked);
+  // S2301: getrennte Handler statt eines Selektors über `selectMode` —
+  // jede Methode hat genau einen Zweck; das Verhalten bleibt identisch.
+  const handleSelectClick = () => {
+    onSelect(control);
+  };
+
+  const handleToggleClick = () => {
+    if (onCheckedChange) {
+      onCheckedChange(control, !checked);
     } else {
       onSelect(control);
     }
@@ -42,7 +49,7 @@ export const ControlMobileReferenceRow = memo(function ControlMobileReferenceRow
   return (
     <button
       type="button"
-      onClick={handleClick}
+      onClick={isSelectable ? handleToggleClick : handleSelectClick}
       aria-pressed={selectMode ? checked : undefined}
       className={`catalog-mobile-reference-row w-full flex items-center gap-2 px-3 py-2 transition-colors cursor-pointer active:bg-[var(--color-surface-subtle)] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus-ring)] ${
         selectMode && checked
