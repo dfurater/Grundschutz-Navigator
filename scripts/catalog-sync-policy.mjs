@@ -36,13 +36,7 @@ function representsSameInstant(actualTimestamp, expectedTimestamp) {
     actualInstant === expectedInstant;
 }
 
-export function validateCatalogSyncPolicy(repository, ruleset, {
-  expectedRepository = CATALOG_SYNC_REPOSITORY,
-  expectedRulesetId = CATALOG_SYNC_RULESET_ID,
-  expectedRulesetUpdatedAt,
-  githubActionsIntegrationId = GITHUB_ACTIONS_INTEGRATION_ID,
-  allowRedactedBypassActors = false,
-} = {}) {
+function collectRepositoryMergeErrors(repository, expectedRepository) {
   const errors = [];
 
   if (repository?.full_name !== expectedRepository) {
@@ -60,6 +54,13 @@ export function validateCatalogSyncPolicy(repository, ruleset, {
   if (repository?.default_branch !== CATALOG_SYNC_PROTECTED_BRANCH) {
     errors.push(`repository default branch must be ${CATALOG_SYNC_PROTECTED_BRANCH}`);
   }
+
+  return errors;
+}
+
+function collectRulesetIdentityErrors(ruleset, { expectedRepository, expectedRulesetId }) {
+  const errors = [];
+
   if (ruleset?.id !== expectedRulesetId) {
     errors.push(`ruleset id must be ${expectedRulesetId}`);
   }
@@ -70,34 +71,41 @@ export function validateCatalogSyncPolicy(repository, ruleset, {
     errors.push('ruleset must belong to the expected repository');
   }
 
-  const refName = ruleset?.conditions?.ref_name;
+  return errors;
+}
+
+function collectRefConditionErrors(refName) {
+  const errors = [];
+
   if (!refName || typeof refName !== 'object' || Array.isArray(refName)) {
     errors.push(
       `ruleset conditions.ref_name must scope the ruleset to ${CATALOG_SYNC_PROTECTED_BRANCH}`,
     );
-  } else {
-    const include = Array.isArray(refName.include) ? refName.include : undefined;
-    if (!include?.some((pattern) => ACCEPTED_REF_INCLUDES.includes(pattern))) {
-      errors.push(
-        `ruleset conditions.ref_name.include must cover ${CATALOG_SYNC_PROTECTED_BRANCH} via one of ${ACCEPTED_REF_INCLUDES.join(', ')}`,
-      );
-    }
-    // Any exclude entry is rejected: matching fnmatch patterns against `main` here
-    // would reimplement GitHub's ref matching, and getting that wrong fails open.
-    if (!Array.isArray(refName.exclude)) {
-      errors.push('ruleset conditions.ref_name.exclude must be an explicit array');
-    } else if (refName.exclude.length > 0) {
-      errors.push(
-        `ruleset conditions.ref_name.exclude must be empty so that ${CATALOG_SYNC_PROTECTED_BRANCH} cannot be carved out`,
-      );
-    }
+    return errors;
   }
-  if (
-    expectedRulesetUpdatedAt &&
-    !representsSameInstant(ruleset?.updated_at, expectedRulesetUpdatedAt)
-  ) {
-    errors.push(`ruleset updated_at must match the audited version ${expectedRulesetUpdatedAt}`);
+
+  const include = Array.isArray(refName.include) ? refName.include : undefined;
+  if (!include?.some((pattern) => ACCEPTED_REF_INCLUDES.includes(pattern))) {
+    errors.push(
+      `ruleset conditions.ref_name.include must cover ${CATALOG_SYNC_PROTECTED_BRANCH} via one of ${ACCEPTED_REF_INCLUDES.join(', ')}`,
+    );
   }
+  // Any exclude entry is rejected: matching fnmatch patterns against `main` here
+  // would reimplement GitHub's ref matching, and getting that wrong fails open.
+  if (!Array.isArray(refName.exclude)) {
+    errors.push('ruleset conditions.ref_name.exclude must be an explicit array');
+  } else if (refName.exclude.length > 0) {
+    errors.push(
+      `ruleset conditions.ref_name.exclude must be empty so that ${CATALOG_SYNC_PROTECTED_BRANCH} cannot be carved out`,
+    );
+  }
+
+  return errors;
+}
+
+function collectBypassActorErrors(ruleset, { allowRedactedBypassActors, expectedRulesetUpdatedAt }) {
+  const errors = [];
+
   if (Array.isArray(ruleset?.bypass_actors)) {
     if (ruleset.bypass_actors.length !== 0) {
       errors.push('ruleset must not contain bypass actors');
@@ -105,6 +113,12 @@ export function validateCatalogSyncPolicy(repository, ruleset, {
   } else if (!allowRedactedBypassActors || !expectedRulesetUpdatedAt) {
     errors.push('ruleset bypass actors are redacted without an audited version pin');
   }
+
+  return errors;
+}
+
+function collectRulePresenceErrors(ruleset) {
+  const errors = [];
 
   const pullRequestRule = findRule(ruleset, 'pull_request');
   if (pullRequestRule?.parameters?.required_approving_review_count !== 0) {
@@ -115,6 +129,12 @@ export function validateCatalogSyncPolicy(repository, ruleset, {
       errors.push(`ruleset must preserve the ${preservedRule} rule`);
     }
   }
+
+  return errors;
+}
+
+function collectRequiredStatusChecksErrors(ruleset, githubActionsIntegrationId) {
+  const errors = [];
 
   const requiredStatusRule = findRule(ruleset, 'required_status_checks');
   if (requiredStatusRule?.parameters?.strict_required_status_checks_policy !== true) {
@@ -132,6 +152,12 @@ export function validateCatalogSyncPolicy(repository, ruleset, {
     }
   }
 
+  return errors;
+}
+
+function collectCodeScanningErrors(ruleset) {
+  const errors = [];
+
   const codeScanningRule = findRule(ruleset, 'code_scanning');
   const codeQl = codeScanningRule?.parameters?.code_scanning_tools?.find(
     (tool) => tool?.tool === 'CodeQL',
@@ -142,6 +168,30 @@ export function validateCatalogSyncPolicy(repository, ruleset, {
   ) {
     errors.push('CodeQL rule must block high-or-higher security alerts and errors');
   }
+
+  return errors;
+}
+
+export function validateCatalogSyncPolicy(repository, ruleset, {
+  expectedRepository = CATALOG_SYNC_REPOSITORY,
+  expectedRulesetId = CATALOG_SYNC_RULESET_ID,
+  expectedRulesetUpdatedAt,
+  githubActionsIntegrationId = GITHUB_ACTIONS_INTEGRATION_ID,
+  allowRedactedBypassActors = false,
+} = {}) {
+  const errors = [
+    ...collectRepositoryMergeErrors(repository, expectedRepository),
+    ...collectRulesetIdentityErrors(ruleset, { expectedRepository, expectedRulesetId }),
+    ...collectRefConditionErrors(ruleset?.conditions?.ref_name),
+    ...(expectedRulesetUpdatedAt &&
+    !representsSameInstant(ruleset?.updated_at, expectedRulesetUpdatedAt)
+      ? [`ruleset updated_at must match the audited version ${expectedRulesetUpdatedAt}`]
+      : []),
+    ...collectBypassActorErrors(ruleset, { allowRedactedBypassActors, expectedRulesetUpdatedAt }),
+    ...collectRulePresenceErrors(ruleset),
+    ...collectRequiredStatusChecksErrors(ruleset, githubActionsIntegrationId),
+    ...collectCodeScanningErrors(ruleset),
+  ];
 
   if (errors.length > 0) {
     throw new Error(`Catalog sync policy check failed:\n- ${errors.join('\n- ')}`);
@@ -264,10 +314,11 @@ export async function fetchAndValidateCatalogSyncPolicy({
 const isDirectExecution = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isDirectExecution) {
-  fetchAndValidateCatalogSyncPolicy()
-    .then(() => console.log('Catalog sync repository policy is active and valid.'))
-    .catch((error) => {
-      console.error(error instanceof Error ? error.message : error);
-      process.exitCode = 1;
-    });
+  try {
+    await fetchAndValidateCatalogSyncPolicy();
+    console.log('Catalog sync repository policy is active and valid.');
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  }
 }
