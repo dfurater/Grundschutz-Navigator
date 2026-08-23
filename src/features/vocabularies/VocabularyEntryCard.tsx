@@ -2,8 +2,8 @@ import { Link } from 'react-router';
 import type { VocabularyResolution } from '@/domain/vocabulary';
 
 export interface VocabularyEntryCardProps {
-  resolution: VocabularyResolution;
-  hiddenColumns?: string[];
+  readonly resolution: VocabularyResolution;
+  readonly hiddenColumns?: string[];
 }
 
 export function VocabularyEntryCard({

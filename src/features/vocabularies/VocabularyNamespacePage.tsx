@@ -18,8 +18,8 @@ function InlineVocabularyEntryDetails({
   namespace,
   entry,
 }: {
-  namespace: VocabularyNamespace;
-  entry: VocabularyEntry;
+  readonly namespace: VocabularyNamespace;
+  readonly entry: VocabularyEntry;
 }) {
   const extraColumns = namespace.columnOrder.filter((column) => {
     if (column === namespace.valueColumn || column === namespace.definitionColumn) {

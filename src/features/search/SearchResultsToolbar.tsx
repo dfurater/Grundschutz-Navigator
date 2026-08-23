@@ -7,16 +7,16 @@ import { CatalogMobileExportSheet } from '@/features/catalog/CatalogMobileExport
 const SEARCH_RESULTS_FILENAME = 'grundschutz-suchergebnisse.csv';
 
 interface SearchResultsToolbarProps {
-  checkedIds: ReadonlySet<string>;
-  onClearSelection: () => void;
-  mobileSelectMode: boolean;
-  onToggleMobileSelectMode: () => void;
+  readonly checkedIds: ReadonlySet<string>;
+  readonly onClearSelection: () => void;
+  readonly mobileSelectMode: boolean;
+  readonly onToggleMobileSelectMode: () => void;
   /** All query matches in the current desktop table sort order. */
-  desktopViewControls: Control[];
+  readonly desktopViewControls: Control[];
   /** All query matches in search relevance order. */
-  mobileViewControls: Control[];
-  allControls: Control[];
-  onSelectionExported: () => void;
+  readonly mobileViewControls: Control[];
+  readonly allControls: Control[];
+  readonly onSelectionExported: () => void;
 }
 
 export function SearchResultsToolbar({
