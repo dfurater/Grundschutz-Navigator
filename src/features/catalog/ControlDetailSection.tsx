@@ -1,6 +1,6 @@
 interface ControlDetailSectionProps {
-  heading: string;
-  children: React.ReactNode;
+  readonly heading: string;
+  readonly children: React.ReactNode;
 }
 
 export function ControlDetailSection({ heading, children }: ControlDetailSectionProps) {

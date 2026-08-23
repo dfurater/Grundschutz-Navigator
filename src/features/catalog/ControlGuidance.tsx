@@ -3,11 +3,11 @@ import type { Control } from '@/domain/models';
 import { ControlDetailSection } from './ControlDetailSection';
 
 export interface ControlGuidanceProps {
-  guidance: Control['guidance'];
-  guidanceRef: RefObject<HTMLParagraphElement | null>;
-  expanded: boolean;
-  hasOverflow: boolean;
-  onToggleExpanded: () => void;
+  readonly guidance: Control['guidance'];
+  readonly guidanceRef: RefObject<HTMLParagraphElement | null>;
+  readonly expanded: boolean;
+  readonly hasOverflow: boolean;
+  readonly onToggleExpanded: () => void;
 }
 
 export function ControlGuidance({

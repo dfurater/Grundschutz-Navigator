@@ -6,10 +6,10 @@ import { downloadCSV } from '@/features/export/csvExport';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 
 interface CatalogExportMenuProps {
-  checkedIds: ReadonlySet<string>;
-  filteredControls: Control[];
-  allControls: Control[];
-  sectionFilename: string;
+  readonly checkedIds: ReadonlySet<string>;
+  readonly filteredControls: Control[];
+  readonly allControls: Control[];
+  readonly sectionFilename: string;
 }
 
 export function CatalogExportMenu({

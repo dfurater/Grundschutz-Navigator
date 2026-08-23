@@ -6,9 +6,9 @@ import {
 } from './ControlVocabularyPrimitives';
 
 export interface ControlHierarchyProps {
-  parentControl?: Control;
-  childControls?: readonly Control[];
-  onNavigateToControl?: (control: Control) => void;
+  readonly parentControl?: Control;
+  readonly childControls?: readonly Control[];
+  readonly onNavigateToControl?: (control: Control) => void;
 }
 
 export function ControlHierarchy({

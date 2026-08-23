@@ -22,21 +22,21 @@ type StatementDetailResolutions = Pick<
 >;
 
 export interface ControlStatementDetailsProps {
-  statementProps: StatementDetails;
-  resolutions: StatementDetailResolutions;
-  isVocabularyActive: (key: string) => boolean;
-  onToggleVocabulary: (key: string) => void;
-  renderVocabularyCard: RenderVocabularyCard;
+  readonly statementProps: StatementDetails;
+  readonly resolutions: StatementDetailResolutions;
+  readonly isVocabularyActive: (key: string) => boolean;
+  readonly onToggleVocabulary: (key: string) => void;
+  readonly renderVocabularyCard: RenderVocabularyCard;
 }
 
 interface DetailFieldProps {
-  label: string;
-  value: string;
-  resolution?: VocabularyResolution | null;
-  active?: boolean;
-  onClick?: () => void;
-  vocabKey?: string;
-  children?: ReactNode;
+  readonly label: string;
+  readonly value: string;
+  readonly resolution?: VocabularyResolution | null;
+  readonly active?: boolean;
+  readonly onClick?: () => void;
+  readonly vocabKey?: string;
+  readonly children?: ReactNode;
 }
 
 function DetailField({

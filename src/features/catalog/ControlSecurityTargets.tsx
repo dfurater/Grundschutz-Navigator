@@ -19,10 +19,10 @@ export interface SecurityTargetRow {
 }
 
 export interface ControlSecurityTargetsProps {
-  securityTargets: SecurityTargetRow[];
-  isVocabularyActive: (key: string) => boolean;
-  onToggleVocabulary: (key: string) => void;
-  renderVocabularyCard: RenderVocabularyCard;
+  readonly securityTargets: SecurityTargetRow[];
+  readonly isVocabularyActive: (key: string) => boolean;
+  readonly onToggleVocabulary: (key: string) => void;
+  readonly renderVocabularyCard: RenderVocabularyCard;
 }
 
 const cellClass = 'py-0.5 align-top';

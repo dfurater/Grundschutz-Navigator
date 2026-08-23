@@ -2,7 +2,7 @@ import type { Control } from '@/domain/models';
 import { ControlDetailSection } from './ControlDetailSection';
 
 export interface ControlStatementProps {
-  statement: Control['statement'];
+  readonly statement: Control['statement'];
 }
 
 export function ControlStatement({ statement }: ControlStatementProps) {
