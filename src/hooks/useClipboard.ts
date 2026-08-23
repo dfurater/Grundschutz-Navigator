@@ -53,7 +53,7 @@ export function useClipboard({ resetMs = 2000 }: UseClipboardOptions = {}): UseC
 
     try {
       if (typeof navigator === 'undefined' || typeof navigator.clipboard?.writeText !== 'function') {
-        throw new Error('Clipboard API is not available.');
+        throw new TypeError('Clipboard API is not available.');
       }
 
       await navigator.clipboard.writeText(text);
