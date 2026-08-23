@@ -68,13 +68,13 @@ const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 
 export function parseChecksums(text) {
   if (typeof text !== 'string') {
-    throw new Error('checksums.txt ist kein Text');
+    throw new TypeError('checksums.txt ist kein Text');
   }
 
   const checksums = new Map();
   for (const line of text.split(/\r?\n/)) {
     if (line.length === 0) continue;
-    const match = /^([0-9a-f]{64})  ([A-Za-z0-9._-]+)$/.exec(line);
+    const match = /^([0-9a-f]{64}) {2}([A-Za-z0-9._-]+)$/.exec(line);
     if (!match || checksums.has(match[2])) {
       throw new Error('checksums.txt hat ein ungültiges Format');
     }
@@ -220,7 +220,7 @@ export function selectManifestOscalArtifacts(manifest, registry = listOscalArtif
   const vocabularyArtifacts = manifest.files.filter((file) => file.rootType === 'vocabulary');
   const versionCoverage = Object.fromEntries(
     [...new Set(oscalArtifacts.map((artifact) => artifact.oscalVersion))]
-      .sort()
+      .sort(compareVersionStrings)
       .map((version) => [
         version,
         oscalArtifacts.filter((artifact) => artifact.oscalVersion === version).length,
@@ -233,6 +233,13 @@ export function selectManifestOscalArtifacts(manifest, registry = listOscalArtif
     versionCoverage: Object.freeze(versionCoverage),
     missingBlockedArtifacts: Object.freeze(missingBlockedArtifacts),
   });
+}
+
+// Deterministische Codepunktauflage (identisch zur früheren parameterlosen
+// Sortierung), unabhängig von Locale und ICU-Version der Laufzeit.
+function compareVersionStrings(left, right) {
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
 }
 
 const RELEASE_ASSET_HOSTS = new Set([
@@ -286,7 +293,8 @@ export function prepareGoOscalInput(bytes, artifactKey) {
     throw createVerificationToolError('GO_OSCAL_SCHEMA_DIRECTIVE_INVALID', artifactKey);
   }
 
-  const { $schema: _schemaDirective, ...withoutSchemaDirective } = document;
+  const withoutSchemaDirective = { ...document };
+  delete withoutSchemaDirective.$schema;
   return Buffer.from(JSON.stringify(withoutSchemaDirective));
 }
 
@@ -473,6 +481,17 @@ async function readValidationResult(resultPath, artifactKey) {
   }
 }
 
+function resolveArtifactExpectationOutcome(expectedSchemaStatus, verificationPassed) {
+  if (!verificationPassed) {
+    return expectedSchemaStatus === 'failed'
+      ? 'unblock-candidate'
+      : 'unexpected-schema-failure';
+  }
+  return expectedSchemaStatus === 'failed'
+    ? 'expected-blocked-schema-failure'
+    : 'expected-schema-success';
+}
+
 export function evaluateArtifactExpectation(artifact, schemaStatus) {
   if (schemaStatus !== 'passed' && schemaStatus !== 'failed') {
     throw new Error('Schema status is invalid');
@@ -480,13 +499,7 @@ export function evaluateArtifactExpectation(artifact, schemaStatus) {
 
   const expectedSchemaStatus = artifact.lifecycle === 'blocked-by-upstream' ? 'failed' : 'passed';
   const verificationPassed = schemaStatus === expectedSchemaStatus;
-  const outcome = verificationPassed
-    ? expectedSchemaStatus === 'failed'
-      ? 'expected-blocked-schema-failure'
-      : 'expected-schema-success'
-    : expectedSchemaStatus === 'failed'
-      ? 'unblock-candidate'
-      : 'unexpected-schema-failure';
+  const outcome = resolveArtifactExpectationOutcome(expectedSchemaStatus, verificationPassed);
 
   return Object.freeze({
     artifactKey: artifact.artifactKey,
@@ -814,13 +827,12 @@ export async function runVerifyUpstreamOscal({
 const isDirectExecution = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isDirectExecution) {
-  runVerifyUpstreamOscal()
-    .then((result) => {
-      console.log(result.summary);
-      if (!result.verificationPassed) process.exitCode = 1;
-    })
-    .catch((error) => {
-      console.error(formatVerificationFailure(error));
-      process.exitCode = 1;
-    });
+  try {
+    const result = await runVerifyUpstreamOscal();
+    console.log(result.summary);
+    if (!result.verificationPassed) process.exitCode = 1;
+  } catch (error) {
+    console.error(formatVerificationFailure(error));
+    process.exitCode = 1;
+  }
 }
