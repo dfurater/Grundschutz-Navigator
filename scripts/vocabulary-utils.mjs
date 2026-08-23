@@ -22,11 +22,14 @@ function toRepositoryParts(repository) {
 }
 
 export function sha256Hex(input) {
-  const buffer = Buffer.isBuffer(input)
-    ? input
-    : input instanceof Uint8Array
-      ? Buffer.from(input)
-      : Buffer.from(String(input), 'utf8');
+  let buffer;
+  if (Buffer.isBuffer(input)) {
+    buffer = input;
+  } else if (input instanceof Uint8Array) {
+    buffer = Buffer.from(input);
+  } else {
+    buffer = Buffer.from(String(input), 'utf8');
+  }
 
   return createHash('sha256').update(buffer).digest('hex');
 }
@@ -36,7 +39,8 @@ export function deriveRouteId(path) {
     .replace(/\.[^.]+$/, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+    .replace(/^-+/, '')
+    .replace(/-+$/, '');
 }
 
 export function namespaceUrlToRepoPath(namespaceUrl, repository) {
@@ -89,6 +93,12 @@ function walkJson(value, visit) {
   Object.values(value).forEach((child) => walkJson(child, visit));
 }
 
+function compareStringsByCodeUnit(left, right) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 export function extractReferencedNamespaceUrls(catalogDocument, repository) {
   const urls = new Set();
 
@@ -120,7 +130,7 @@ export function extractReferencedNamespaceUrls(catalogDocument, repository) {
     }
   });
 
-  return [...urls].sort();
+  return [...urls].sort(compareStringsByCodeUnit);
 }
 
 function encodeRepositoryPath(path) {
@@ -146,15 +156,13 @@ export function materializeVocabularyCollectionMembers({
     throw new Error('Vokabular-Membership benötigt eine registrierte Vokabularsammlung.');
   }
   if (!Array.isArray(treeFiles) || !Array.isArray(referencedNamespaceUrls)) {
-    throw new Error('Vokabular-Membership benötigt vollständige Tree- und Referenzlisten.');
+    throw new TypeError('Vokabular-Membership benötigt vollständige Tree- und Referenzlisten.');
   }
 
   const repo = toRepositoryParts(repository);
   const members = treeFiles
     .filter((file) => matchesVocabularyCollection(collection, file.path))
-    .sort((left, right) => (
-      left.path < right.path ? -1 : left.path > right.path ? 1 : 0
-    ));
+    .sort((left, right) => compareStringsByCodeUnit(left.path, right.path));
   const memberPaths = new Set(members.map((file) => file.path));
   const referencedUrlByPath = new Map();
 
@@ -180,51 +188,75 @@ export function materializeVocabularyCollectionMembers({
   }));
 }
 
+function isLineBreak(char) {
+  return char === '\n' || char === '\r';
+}
+
+function createCsvState() {
+  return { cell: '', inQuotes: false, row: [] };
+}
+
+function endCell(state) {
+  state.row.push(state.cell);
+  state.cell = '';
+}
+
+function endRow(rows, state) {
+  endCell(state);
+  rows.push(state.row);
+  state.row = [];
+}
+
+function consumeQuotedCharacter(state, source, index) {
+  if (state.inQuotes && source[index + 1] === '"') {
+    state.cell += '"';
+    return 1;
+  }
+  state.inQuotes = !state.inQuotes;
+  return 0;
+}
+
+function consumeCsvCharacter(rows, state, source, index) {
+  const char = source[index];
+
+  if (char === '"') {
+    return consumeQuotedCharacter(state, source, index);
+  }
+
+  if (!state.inQuotes && char === ',') {
+    endCell(state);
+    return 0;
+  }
+
+  if (!state.inQuotes && isLineBreak(char)) {
+    endRow(rows, state);
+    if (char === '\r' && source[index + 1] === '\n') {
+      return 1;
+    }
+    return 0;
+  }
+
+  state.cell += char;
+  return 0;
+}
+
+function flushFinalRow(rows, state) {
+  endCell(state);
+  if (state.row.length > 1 || state.row[0] !== '' || rows.length === 0) {
+    rows.push(state.row);
+  }
+}
+
 export function parseCsv(text) {
   const rows = [];
   const source = text.replace(/^\uFEFF/, '');
-  let row = [];
-  let cell = '';
-  let inQuotes = false;
+  const state = createCsvState();
 
   for (let index = 0; index < source.length; index += 1) {
-    const char = source[index];
-
-    if (char === '"') {
-      if (inQuotes && source[index + 1] === '"') {
-        cell += '"';
-        index += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-
-    if (!inQuotes && char === ',') {
-      row.push(cell);
-      cell = '';
-      continue;
-    }
-
-    if (!inQuotes && (char === '\n' || char === '\r')) {
-      row.push(cell);
-      rows.push(row);
-      row = [];
-      cell = '';
-
-      if (char === '\r' && source[index + 1] === '\n') {
-        index += 1;
-      }
-      continue;
-    }
-
-    cell += char;
+    index += consumeCsvCharacter(rows, state, source, index);
   }
 
-  row.push(cell);
-  if (row.length > 1 || row[0] !== '' || rows.length === 0) {
-    rows.push(row);
-  }
+  flushFinalRow(rows, state);
 
   return rows.filter((currentRow) => currentRow.some((value) => value !== ''));
 }
