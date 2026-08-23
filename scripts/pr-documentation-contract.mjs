@@ -38,9 +38,9 @@ function isInsideHtmlComment(value, index) {
 }
 
 function getCheckboxState(section, label) {
-  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
   const optionPattern = new RegExp(
-    `^- \\[([ xX])\\] \\*\\*${escaped}\\*\\*[ \\t]*\\r?$`,
+    String.raw`^- \[([ xX])\] \*\*${escaped}\*\*[ \t]*\r?$`,
     'gm',
   );
   const visibleMatches = [...section.matchAll(optionPattern)]

@@ -18,11 +18,12 @@ const execFileAsync = promisify(execFile);
  *   - verify-oscal-schemas:     fail-closed (Exit 0 bei Erfolg, Exit 1 bei Befund)
  *   - verify-catalog-deploy:    fail-closed (Exit 1 bei Verifikationsversagen)
  *
- * `sync-oscal-schemas` ist bewusst nicht darunter: Sein CLI-Pfad ruft ohne
- * Netzzugriff nichts Sinnvolles auf (es werden immer die 30 Upstream-Schemas
- * geholt); die Kernlogik ist in `sync-oscal-schemas.test.ts` über injiziertes
- * `fetchImpl` abgedeckt, und sein try/catch ist textgleich mit dem des
- * offline getesteten `verify-oscal-schemas`.
+ * `sync-oscal-schemas` und `sync-upstream-manifest` sind bewusst nicht darunter:
+ * Ihre CLI-Pfade rufen ohne Netzzugriff nichts Sinnvolles auf (sie holen immer die
+ * 30 Upstream-Schemas bzw. den BSI-Snapshot-Tree von GitHub); die Kernlogik ist in
+ * `sync-oscal-schemas.test.ts` bzw. `sync-upstream-manifest.test.ts` über injiziertes
+ * `fetchImpl` abgedeckt, und ihr try/catch ist textgleich mit dem des offline
+ * getesteten `verify-oscal-schemas`.
  */
 async function runScript(scriptName: string, {
   args = [],

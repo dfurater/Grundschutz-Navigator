@@ -192,7 +192,7 @@ describe('sync-oscal-schemas', () => {
     it('accepts a response exactly at the limit', async () => {
       const { response } = streamingResponse(1024, 256);
       const buffer = await readBodyWithLimit(response, { maxBytes: 1024, label: 'Schema' });
-      expect(buffer.length).toBe(1024);
+      expect(buffer).toHaveLength(1024);
     });
 
     it('rejects a response one byte over the limit', async () => {
