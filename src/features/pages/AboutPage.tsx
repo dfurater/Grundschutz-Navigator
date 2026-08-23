@@ -8,10 +8,13 @@ import {
   IconLink,
 } from '@/components/icons';
 import type {
+  CatalogMetadataInfo,
   CatalogParty,
   CatalogProvenance,
   CatalogRole,
   CatalogResponsibleParty,
+  VerificationResult,
+  VocabularyProvenance,
 } from '@/domain/models';
 import type {
   CatalogLineageDocument,
@@ -69,6 +72,16 @@ const verificationFailureTone = {
 const copyErrorMessage =
   'Kopieren nicht möglich. Bitte den vollständigen Wert manuell markieren und kopieren.';
 
+type VerificationTone = typeof verificationSuccessTone | typeof verificationFailureTone;
+
+function resolveVerificationTone(
+  verification: VerificationResult | null,
+): VerificationTone | null {
+  if (!verification) return null;
+
+  return verification.valid ? verificationSuccessTone : verificationFailureTone;
+}
+
 function resolveUpstreamRef(provenance: CatalogProvenance | null): string {
   const ref = provenance?.source.commit_sha && provenance.source.commit_sha !== 'unknown'
     ? provenance.source.commit_sha
@@ -77,12 +90,21 @@ function resolveUpstreamRef(provenance: CatalogProvenance | null): string {
   return ref;
 }
 
+// Slash-Randtrimm bewusst ohne Regex: `/\/+$/` gilt unter Sonar S8786 als superlinear.
+function trimSlashes(value: string): string {
+  let start = 0;
+  let end = value.length;
+
+  while (start < end && value[start] === '/') start += 1;
+  while (end > start && value[end - 1] === '/') end -= 1;
+
+  return value.slice(start, end);
+}
+
 function resolveUpstreamRepositoryPath(repositoryUrl?: string): string {
   try {
-    const path = new URL(repositoryUrl ?? `https://github.com/${DEFAULT_UPSTREAM_REPOSITORY_PATH}`)
-      .pathname
-      .replace(/^\/+|\/+$/g, '');
-    return path || DEFAULT_UPSTREAM_REPOSITORY_PATH;
+    const url = new URL(repositoryUrl ?? `https://github.com/${DEFAULT_UPSTREAM_REPOSITORY_PATH}`);
+    return trimSlashes(url.pathname) || DEFAULT_UPSTREAM_REPOSITORY_PATH;
   } catch {
     return DEFAULT_UPSTREAM_REPOSITORY_PATH;
   }
@@ -119,7 +141,7 @@ function buildAppCatalogUrl(
 }
 
 function buildVerifyCommand(appUrl: string, upstreamUrl: string): string {
-  return `bash -lc '[ "$(curl -fsSL "$1" | sha256sum | cut -d" " -f1)" = "$(curl -fsSL "$2" | sha256sum | cut -d" " -f1)" ] && printf "true\\n" || printf "false\\n"' bash '${appUrl}' '${upstreamUrl}'`;
+  return String.raw`bash -lc '[ "$(curl -fsSL "$1" | sha256sum | cut -d" " -f1)" = "$(curl -fsSL "$2" | sha256sum | cut -d" " -f1)" ] && printf "true\n" || printf "false\n"' bash '${appUrl}' '${upstreamUrl}'`;
 }
 
 function formatDate(iso: string): string {
@@ -150,11 +172,11 @@ function CopyableValue({
   label,
   value,
   displayValue,
-}: {
+}: Readonly<{
   label: string;
   value: string;
   displayValue?: string;
-}) {
+}>) {
   const { copy, copied, error } = useClipboard();
 
   return (
@@ -201,7 +223,7 @@ function CopyableValue({
   );
 }
 
-function CopyButton({ command }: { command: string }) {
+function CopyButton({ command }: Readonly<{ command: string }>) {
   const { copy, copied, error } = useClipboard();
 
   return (
@@ -236,7 +258,7 @@ function CopyButton({ command }: { command: string }) {
   );
 }
 
-function LinkRow({ label, href }: { label: string; href: string }) {
+function LinkRow({ label, href }: Readonly<{ label: string; href: string }>) {
   return (
     <div className="px-4 py-2.5">
       <span className={`block ${metaLabelClass}`}>{label}</span>
@@ -254,7 +276,7 @@ function LinkRow({ label, href }: { label: string; href: string }) {
   );
 }
 
-function ExternalReferenceLink({ href, label }: { href: string; label: string }) {
+function ExternalReferenceLink({ href, label }: Readonly<{ href: string; label: string }>) {
   if (!isSafeExternalHref(href)) {
     return <span className="break-all text-sm text-[var(--color-text-primary)]">{label}</span>;
   }
@@ -273,7 +295,7 @@ function ExternalReferenceLink({ href, label }: { href: string; label: string })
   );
 }
 
-function ResourceLinkList({ resource }: { resource: ResolvedResource }) {
+function ResourceLinkList({ resource }: Readonly<{ resource: ResolvedResource }>) {
   if (resource.rlinks.length === 0) {
     return <p className="type-secondary text-sm">Keine verknüpften Links vorhanden.</p>;
   }
@@ -308,18 +330,17 @@ function ResourceLinkList({ resource }: { resource: ResolvedResource }) {
   );
 }
 
-function MetadataReference({ reference }: { reference: ResolvedOscalReference }) {
+function MetadataReference({ reference }: Readonly<{ reference: ResolvedOscalReference }>) {
   if (reference.kind === 'provenance') return null;
 
   const label = reference.text?.trim() || reference.href;
   const resourceLink = reference.kind === 'resource'
     ? reference.resource.rlinks.find((rlink) => rlink.target.kind === 'external')
     : undefined;
-  const targetHref = reference.kind === 'external'
-    ? reference.href
-    : resourceLink?.target.kind === 'external'
-      ? resourceLink.target.href
-      : undefined;
+  const externalResourceHref = resourceLink?.target.kind === 'external'
+    ? resourceLink.target.href
+    : undefined;
+  const targetHref = reference.kind === 'external' ? reference.href : externalResourceHref;
 
   return (
     <li className="space-y-1">
@@ -524,6 +545,414 @@ function LineageImportEntry({
   );
 }
 
+function UpstreamVerificationPanel({
+  provenance,
+  verification,
+  appCatalogUrl,
+  upstreamCatalogUrl,
+}: Readonly<{
+  provenance: CatalogProvenance;
+  verification: VerificationResult | null;
+  appCatalogUrl: string;
+  upstreamCatalogUrl: string;
+}>) {
+  const verificationTone = resolveVerificationTone(verification);
+
+  return (
+    <div className="border-t border-[var(--color-border-default)]">
+      <div
+        className={`px-4 py-3 ${
+          verificationTone?.banner ?? 'bg-[var(--color-surface-subtle)]'
+        }`}
+      >
+        {verification ? (
+          <div className="flex items-center gap-2.5">
+            <IconShieldCheck className={`h-4.5 w-4.5 ${verificationTone!.icon}`} />
+            <div>
+              <span className={`text-sm font-semibold ${verificationTone!.text}`}>
+                {verification.valid
+                  ? 'Katalog verifiziert'
+                  : 'Verifikation fehlgeschlagen'}
+              </span>
+              <p className={`mt-0.5 text-xs ${verificationTone!.text}`}>
+                {verification.valid
+                  ? 'Datei-Hash stimmt mit den Build-Metadaten überein'
+                  : 'Datei-Hash weicht von den Build-Metadaten ab'}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <span className="type-meta">Verifikation ausstehend…</span>
+        )}
+      </div>
+
+      <div className="divide-y divide-[var(--color-border-subtle)] bg-[var(--color-surface-base)]">
+        {provenance.source.commit_date && provenance.source.commit_date !== 'unknown' && (
+          <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+            <span className={metaLabelClass}>Commit-Datum</span>
+            <span className={metaValueClass}>
+              {formatDate(provenance.source.commit_date)}
+            </span>
+          </div>
+        )}
+        <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+          <span className={metaLabelClass}>Abgerufen am</span>
+          <span className={metaValueClass}>
+            {formatDate(provenance.integrity.fetched_at)}
+          </span>
+        </div>
+        <LinkRow label="App-Katalog" href={appCatalogUrl} />
+        <LinkRow label="Upstream-Katalog" href={upstreamCatalogUrl} />
+        {provenance.source.commit_sha && provenance.source.commit_sha !== 'unknown' && (
+          <CopyableValue
+            label="Commit"
+            value={provenance.source.commit_sha}
+            displayValue={provenance.source.commit_sha.slice(0, 12)}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function OscalDerivationPanel({ metadata }: Readonly<{ metadata: CatalogMetadataInfo }>) {
+  const hasResolutionTool = metadata.props.some((prop) => prop.name === 'resolution-tool');
+  const hasSourceProfile = metadata.links.some((link) => link.rel === 'source-profile');
+
+  return (
+    <div className={`${surfacePanelClass} mt-5 divide-y divide-[var(--color-border-subtle)]`}>
+      <div className="px-4 py-3">
+        <p className="type-meta">OSCAL-Ableitungsprovenienz</p>
+        <p className="mt-1 text-sm font-medium text-[var(--color-text-primary)]">
+          Markierungen im ausgelieferten OSCAL-Dokument
+        </p>
+        <p className="type-meta mt-2">
+          Diese optionalen Angaben beschreiben die Ableitung des Dokuments selbst.
+        </p>
+      </div>
+      <div className="divide-y divide-[var(--color-border-subtle)]">
+        <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+          <span className={metaLabelClass}>resolution-tool</span>
+          <span className={metaValueClass}>{hasResolutionTool ? 'vorhanden' : 'nicht vorhanden'}</span>
+        </div>
+        <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+          <span className={metaLabelClass}>source-profile</span>
+          <span className={metaValueClass}>{hasSourceProfile ? 'vorhanden' : 'nicht vorhanden'}</span>
+        </div>
+      </div>
+      <p className="px-4 py-3 text-xs leading-relaxed text-[var(--color-text-secondary)]">
+        Fehlende optionale Marker sind ein Projektbefund, kein Schemafehler.
+      </p>
+      <div className="border-t border-[var(--color-border-subtle)] px-4 py-3">
+        <p className="type-meta">Ressourcen-Hashes</p>
+        <p className="mt-1 text-xs leading-relaxed text-[var(--color-text-secondary)]">
+          Hashes unter <code className="font-mono">back-matter.resource.rlinks</code> beschreiben
+          referenzierte Ressourcen, nie einen Hash des Katalogdokuments über sich selbst.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function VocabularyBuildPanel({
+  vocabularyProvenance,
+  vocabularyVerification,
+}: Readonly<{
+  vocabularyProvenance: VocabularyProvenance;
+  vocabularyVerification: VerificationResult | null;
+}>) {
+  const vocabularyVerificationTone = resolveVerificationTone(vocabularyVerification);
+
+  return (
+    <div className={`${surfacePanelClass} mt-5 overflow-hidden`}>
+      <div className="px-4 py-3">
+        <p className="type-meta">Projekt-Build-Provenienz</p>
+        <p className="mt-1 text-sm font-medium text-[var(--color-text-primary)]">
+          Manifest v2 und Vokabulare aus demselben Upstream-Snapshot
+        </p>
+        <p className="type-meta mt-2">
+          Git-Blob-SHA und SHA-256 stammen aus den Build-Metadaten, nicht aus einem
+          Selbsthash des OSCAL-Dokuments.
+        </p>
+      </div>
+
+      <div className="border-t border-[var(--color-border-default)]">
+        <div
+          className={`px-4 py-3 ${
+            vocabularyVerificationTone?.banner ?? 'bg-[var(--color-surface-subtle)]'
+          }`}
+        >
+          {vocabularyVerification ? (
+            <div className="flex items-center gap-2.5">
+              <IconShieldCheck
+                className={`h-4.5 w-4.5 ${vocabularyVerificationTone!.icon}`}
+              />
+              <div>
+                <span
+                  className={`text-sm font-semibold ${vocabularyVerificationTone!.text}`}
+                >
+                  {vocabularyVerification.valid
+                    ? 'Vokabulare verifiziert'
+                    : 'Vokabular-Verifikation fehlgeschlagen'}
+                </span>
+                <p className={`mt-0.5 text-xs ${vocabularyVerificationTone!.text}`}>
+                  {vocabularyVerification.valid
+                    ? 'Vokabular-Hash stimmt mit den Build-Metadaten überein'
+                    : 'Vokabular-Hash weicht von den Build-Metadaten ab'}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <span className="type-meta">Verifikation ausstehend…</span>
+          )}
+        </div>
+
+        <div className="divide-y divide-[var(--color-border-subtle)] bg-[var(--color-surface-base)]">
+          {/* Laufzeit-JSON kann von älteren Deployments stammen — Felder nie unbedingt dereferenzieren */}
+          {typeof vocabularyProvenance.integrity?.fetched_at === 'string' && (
+            <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+              <span className={metaLabelClass}>Abgerufen am</span>
+              <span className={metaValueClass}>
+                {formatDate(vocabularyProvenance.integrity.fetched_at)}
+              </span>
+            </div>
+          )}
+          {Array.isArray(vocabularyProvenance.files) && (
+            <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+              <span className={metaLabelClass}>Namespace-Dateien</span>
+              <span className={metaValueClass}>
+                {vocabularyProvenance.files.length}
+              </span>
+            </div>
+          )}
+          {vocabularyProvenance.source?.snapshotCommitSha &&
+            vocabularyProvenance.source.snapshotCommitSha !== 'unknown' && (
+              <CopyableValue
+                label="Snapshot-Commit"
+                value={vocabularyProvenance.source.snapshotCommitSha}
+                displayValue={vocabularyProvenance.source.snapshotCommitSha.slice(0, 12)}
+              />
+            )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ResolvedReferenceLists({
+  metadataReferences,
+  resolvedResources,
+}: Readonly<{
+  metadataReferences: readonly ResolvedOscalReference[];
+  resolvedResources: readonly ResolvedResource[];
+}>) {
+  return (
+    <>
+      {metadataReferences.some((reference) => reference.kind !== 'provenance') && (
+        <div className="mt-6 border-t border-[var(--color-border-subtle)] pt-4">
+          <h3 className={`${subsectionHeadingClass} flex items-center gap-2`}>
+            <IconLink className="h-4 w-4 text-[var(--color-text-secondary)]" />
+            Referenzen
+          </h3>
+          <ul className="mt-3 space-y-3">
+            {metadataReferences.map((reference) => (
+              <MetadataReference key={reference.path} reference={reference} />
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {resolvedResources.length > 0 && (
+        <div className="mt-6 border-t border-[var(--color-border-subtle)] pt-4">
+          <h3 className={`${subsectionHeadingClass} flex items-center gap-2`}>
+            <IconDocument className="h-4 w-4 text-[var(--color-text-secondary)]" />
+            Referenzierte Ressourcen
+          </h3>
+          <ul className="mt-3 space-y-4">
+            {resolvedResources.map((resource) => (
+              <li key={resource.uuid} className="space-y-2">
+                <div>
+                  <p className="text-sm font-medium text-[var(--color-text-primary)]">
+                    {resource.title ?? resource.uuid}
+                  </p>
+                  <p className="type-meta">
+                    UUID: <code className="font-mono">{resource.uuid}</code>
+                  </p>
+                </div>
+                {resource.description && (
+                  <p className="text-sm text-[var(--color-text-primary)]">{resource.description}</p>
+                )}
+                {resource.citation && (
+                  <p className="text-sm text-[var(--color-text-primary)]">{resource.citation}</p>
+                )}
+                {resource.content === 'empty' && (
+                  <p className="type-secondary text-sm">Ressource enthält keine darstellbaren Inhalte.</p>
+                )}
+                {resource.embeddedContent && (
+                  <p className="type-meta">
+                    Eingebetteter Inhalt: {resource.embeddedContent.filename ?? 'ohne Dateiname'}
+                    {resource.embeddedContent.mediaType
+                      ? ` (${resource.embeddedContent.mediaType})`
+                      : ''}
+                  </p>
+                )}
+                <ResourceLinkList resource={resource} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </>
+  );
+}
+
+function CatalogMetadataSection({
+  metadata,
+  metadataReferences,
+  resolvedResources,
+}: Readonly<{
+  metadata: CatalogMetadataInfo;
+  metadataReferences: readonly ResolvedOscalReference[];
+  resolvedResources: readonly ResolvedResource[];
+}>) {
+  return (
+    <section className={pageSectionClass}>
+      <h2 className={sectionLabelClass}>Katalog-Metadaten</h2>
+      <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--color-text-primary)]">
+        Diese Angaben stammen aus dem offiziellen OSCAL-Katalog und ergänzen
+        die Build- und Integritätsdaten um Geltungsbereich, Rollen,
+        Verantwortlichkeiten und Referenzen.
+      </p>
+
+      <div className={`${surfacePanelClass} mt-4 divide-y divide-[var(--color-border-subtle)]`}>
+        <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+          <span className={metaLabelClass}>Katalogtitel</span>
+          <span className={`${metaValueClass} text-right`}>{metadata.title}</span>
+        </div>
+        <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+          <span className={metaLabelClass}>Version</span>
+          <span className={metaValueClass}>{metadata.version}</span>
+        </div>
+        <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+          <span className={metaLabelClass}>OSCAL-Version</span>
+          <span className={metaValueClass}>{metadata.oscalVersion}</span>
+        </div>
+        <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+          <span className={metaLabelClass}>Zuletzt geändert</span>
+          <span className={metaValueClass}>{formatDate(metadata.lastModified)}</span>
+        </div>
+        {metadata.publisherName && (
+          <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+            <span className={metaLabelClass}>Herausgeber</span>
+            <span className={`${metaValueClass} text-right`}>
+              {metadata.publisherEmail
+                ? `${metadata.publisherName} (${metadata.publisherEmail})`
+                : metadata.publisherName}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {metadata.remarks && (
+        <div className="mt-6 space-y-2">
+          <h3 className={subsectionHeadingClass}>Bemerkungen</h3>
+          <p className="whitespace-pre-line break-words text-sm text-[var(--color-text-primary)]">
+            {metadata.remarks}
+          </p>
+        </div>
+      )}
+
+      {metadata.roles.length > 0 && (
+        <div className="mt-6 border-t border-[var(--color-border-subtle)] pt-4">
+          <h3 className={subsectionHeadingClass}>Rollen</h3>
+          <ul className="mt-3 space-y-2">
+            {metadata.roles.map((role) => (
+              <li
+                key={role.id}
+                className="flex items-center justify-between gap-4 text-sm text-[var(--color-text-primary)]"
+              >
+                <span>{role.title}</span>
+                <code className="font-mono text-xs text-[var(--color-text-secondary)]">
+                  {role.id}
+                </code>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {metadata.responsibleParties.length > 0 && (
+        <div className="mt-6 border-t border-[var(--color-border-subtle)] pt-4">
+          <h3 className={subsectionHeadingClass}>Verantwortliche Parteien</h3>
+          <ul className="mt-3 space-y-3">
+            {metadata.responsibleParties.map((entry: CatalogResponsibleParty) => {
+              const linkedParties = entry.partyUuids
+                .map((uuid) => getPartyByUuid(uuid, metadata.parties))
+                .filter((party): party is CatalogParty => Boolean(party));
+
+              return (
+                <li key={`${entry.roleId}-${entry.partyUuids.join(',')}`} className="space-y-1">
+                  <p className="text-sm font-medium text-[var(--color-text-primary)]">
+                    {getRoleTitle(entry.roleId, metadata.roles)}
+                  </p>
+                  <p className="text-sm text-[var(--color-text-primary)]">
+                    {linkedParties.length > 0
+                      ? linkedParties.map(formatPartyLabel).join(', ')
+                      : entry.partyUuids.join(', ')}
+                  </p>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      {metadata.parties.length > 0 && (
+        <div className="mt-6 border-t border-[var(--color-border-subtle)] pt-4">
+          <h3 className={subsectionHeadingClass}>Parteien</h3>
+          <ul className="mt-3 space-y-2">
+            {metadata.parties.map((party) => (
+              <li
+                key={party.uuid}
+                className="flex flex-col gap-0.5 text-sm text-[var(--color-text-primary)]"
+              >
+                <span>{formatPartyLabel(party)}</span>
+                <span className="type-meta">
+                  Typ: {party.type} · UUID: <code className="font-mono">{party.uuid}</code>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {metadata.props.length > 0 && (
+        <div className="mt-6 border-t border-[var(--color-border-subtle)] pt-4">
+          <h3 className={subsectionHeadingClass}>Zusätzliche Metadaten</h3>
+          <dl className="mt-3 space-y-3">
+            {metadata.props.map((prop) => (
+              <div key={`${prop.name}-${prop.value}`} className="space-y-1">
+                <dt className="text-sm font-medium text-[var(--color-text-primary)]">
+                  {prop.name}
+                </dt>
+                <dd className="break-words text-sm text-[var(--color-text-primary)]">
+                  {prop.value}
+                </dd>
+                {prop.ns && <dd className="type-meta break-all">Namespace: {prop.ns}</dd>}
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
+
+      <ResolvedReferenceLists
+        metadataReferences={metadataReferences}
+        resolvedResources={resolvedResources}
+      />
+    </section>
+  );
+}
+
 export function AboutPage() {
   const {
     provenance,
@@ -547,20 +976,8 @@ export function AboutPage() {
   const appCatalogUrl = buildAppCatalogUrl(activeCatalogKey);
   const upstreamCatalogUrl = buildUpstreamCatalogUrl(provenance, activeCatalogKey);
   const verifyCommand = buildVerifyCommand(appCatalogUrl, upstreamCatalogUrl);
-  const verificationTone = verification?.valid
-    ? verificationSuccessTone
-    : verification
-      ? verificationFailureTone
-      : null;
-  const vocabularyVerificationTone = vocabularyVerification?.valid
-    ? verificationSuccessTone
-    : vocabularyVerification
-      ? verificationFailureTone
-      : null;
   const { lineage: activeCatalogLineage, invalid: invalidCatalogLineage } =
     resolveActiveCatalogLineage(vocabularyProvenance?.catalogLineages, activeCatalogKey);
-  const hasResolutionTool = metadata?.props.some((prop) => prop.name === 'resolution-tool') ?? false;
-  const hasSourceProfile = metadata?.links.some((link) => link.rel === 'source-profile') ?? false;
 
   return (
     <div className="mx-auto max-w-3xl px-6 pt-8 pb-12">
@@ -623,7 +1040,7 @@ export function AboutPage() {
                 rel="noopener noreferrer"
                 className={externalLinkClass}
               >
-                github.com/BSI-Bund/Stand-der-Technik-Bibliothek
+                github.com/BSI-Bund/Stand-der-Technik-Bibliothek{' '}
                 <span className="sr-only"> (öffnet in neuem Tab)</span>
                 <IconExternalLink className="h-3 w-3" aria-hidden="true" />
               </a>
@@ -674,95 +1091,16 @@ export function AboutPage() {
             </div>
 
             {provenance && (
-              <div className="border-t border-[var(--color-border-default)]">
-                <div
-                  className={`px-4 py-3 ${
-                    verificationTone?.banner ?? 'bg-[var(--color-surface-subtle)]'
-                  }`}
-                >
-                  {verification ? (
-                    <div className="flex items-center gap-2.5">
-                      <IconShieldCheck className={`h-4.5 w-4.5 ${verificationTone!.icon}`} />
-                      <div>
-                        <span className={`text-sm font-semibold ${verificationTone!.text}`}>
-                          {verification.valid
-                            ? 'Katalog verifiziert'
-                            : 'Verifikation fehlgeschlagen'}
-                        </span>
-                        <p className={`mt-0.5 text-xs ${verificationTone!.text}`}>
-                          {verification.valid
-                            ? 'Datei-Hash stimmt mit den Build-Metadaten überein'
-                            : 'Datei-Hash weicht von den Build-Metadaten ab'}
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <span className="type-meta">Verifikation ausstehend…</span>
-                  )}
-                </div>
-
-                <div className="divide-y divide-[var(--color-border-subtle)] bg-[var(--color-surface-base)]">
-                  {provenance.source.commit_date && provenance.source.commit_date !== 'unknown' && (
-                    <div className="flex items-center justify-between gap-4 px-4 py-2.5">
-                      <span className={metaLabelClass}>Commit-Datum</span>
-                      <span className={metaValueClass}>
-                        {formatDate(provenance.source.commit_date)}
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between gap-4 px-4 py-2.5">
-                    <span className={metaLabelClass}>Abgerufen am</span>
-                    <span className={metaValueClass}>
-                      {formatDate(provenance.integrity.fetched_at)}
-                    </span>
-                  </div>
-                  <LinkRow label="App-Katalog" href={appCatalogUrl} />
-                  <LinkRow label="Upstream-Katalog" href={upstreamCatalogUrl} />
-                  {provenance.source.commit_sha && provenance.source.commit_sha !== 'unknown' && (
-                    <CopyableValue
-                      label="Commit"
-                      value={provenance.source.commit_sha}
-                      displayValue={provenance.source.commit_sha.slice(0, 12)}
-                    />
-                  )}
-                </div>
-              </div>
+              <UpstreamVerificationPanel
+                provenance={provenance}
+                verification={verification}
+                appCatalogUrl={appCatalogUrl}
+                upstreamCatalogUrl={upstreamCatalogUrl}
+              />
             )}
           </div>
 
-          {catalog && metadata && (
-            <div className={`${surfacePanelClass} mt-5 divide-y divide-[var(--color-border-subtle)]`}>
-              <div className="px-4 py-3">
-                <p className="type-meta">OSCAL-Ableitungsprovenienz</p>
-                <p className="mt-1 text-sm font-medium text-[var(--color-text-primary)]">
-                  Markierungen im ausgelieferten OSCAL-Dokument
-                </p>
-                <p className="type-meta mt-2">
-                  Diese optionalen Angaben beschreiben die Ableitung des Dokuments selbst.
-                </p>
-              </div>
-              <div className="divide-y divide-[var(--color-border-subtle)]">
-                <div className="flex items-center justify-between gap-4 px-4 py-2.5">
-                  <span className={metaLabelClass}>resolution-tool</span>
-                  <span className={metaValueClass}>{hasResolutionTool ? 'vorhanden' : 'nicht vorhanden'}</span>
-                </div>
-                <div className="flex items-center justify-between gap-4 px-4 py-2.5">
-                  <span className={metaLabelClass}>source-profile</span>
-                  <span className={metaValueClass}>{hasSourceProfile ? 'vorhanden' : 'nicht vorhanden'}</span>
-                </div>
-              </div>
-              <p className="px-4 py-3 text-xs leading-relaxed text-[var(--color-text-secondary)]">
-                Fehlende optionale Marker sind ein Projektbefund, kein Schemafehler.
-              </p>
-              <div className="border-t border-[var(--color-border-subtle)] px-4 py-3">
-                <p className="type-meta">Ressourcen-Hashes</p>
-                <p className="mt-1 text-xs leading-relaxed text-[var(--color-text-secondary)]">
-                  Hashes unter <code className="font-mono">back-matter.resource.rlinks</code> beschreiben
-                  referenzierte Ressourcen, nie einen Hash des Katalogdokuments über sich selbst.
-                </p>
-              </div>
-            </div>
-          )}
+          {catalog && metadata && <OscalDerivationPanel metadata={metadata} />}
 
           {invalidCatalogLineage && vocabularyProvenance && (
             <div className={`${surfacePanelClass} mt-5 px-4 py-3`}>
@@ -808,266 +1146,19 @@ export function AboutPage() {
           )}
 
           {vocabularyProvenance && (
-            <div className={`${surfacePanelClass} mt-5 overflow-hidden`}>
-              <div className="px-4 py-3">
-                <p className="type-meta">Projekt-Build-Provenienz</p>
-                <p className="mt-1 text-sm font-medium text-[var(--color-text-primary)]">
-                  Manifest v2 und Vokabulare aus demselben Upstream-Snapshot
-                </p>
-                <p className="type-meta mt-2">
-                  Git-Blob-SHA und SHA-256 stammen aus den Build-Metadaten, nicht aus einem
-                  Selbsthash des OSCAL-Dokuments.
-                </p>
-              </div>
-
-              <div className="border-t border-[var(--color-border-default)]">
-                <div
-                  className={`px-4 py-3 ${
-                    vocabularyVerificationTone?.banner ?? 'bg-[var(--color-surface-subtle)]'
-                  }`}
-                >
-                  {vocabularyVerification ? (
-                    <div className="flex items-center gap-2.5">
-                      <IconShieldCheck
-                        className={`h-4.5 w-4.5 ${vocabularyVerificationTone!.icon}`}
-                      />
-                      <div>
-                        <span
-                          className={`text-sm font-semibold ${vocabularyVerificationTone!.text}`}
-                        >
-                          {vocabularyVerification.valid
-                            ? 'Vokabulare verifiziert'
-                            : 'Vokabular-Verifikation fehlgeschlagen'}
-                        </span>
-                        <p className={`mt-0.5 text-xs ${vocabularyVerificationTone!.text}`}>
-                          {vocabularyVerification.valid
-                            ? 'Vokabular-Hash stimmt mit den Build-Metadaten überein'
-                            : 'Vokabular-Hash weicht von den Build-Metadaten ab'}
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <span className="type-meta">Verifikation ausstehend…</span>
-                  )}
-                </div>
-
-                <div className="divide-y divide-[var(--color-border-subtle)] bg-[var(--color-surface-base)]">
-                  {/* Laufzeit-JSON kann von älteren Deployments stammen — Felder nie unbedingt dereferenzieren */}
-                  {typeof vocabularyProvenance.integrity?.fetched_at === 'string' && (
-                    <div className="flex items-center justify-between gap-4 px-4 py-2.5">
-                      <span className={metaLabelClass}>Abgerufen am</span>
-                      <span className={metaValueClass}>
-                        {formatDate(vocabularyProvenance.integrity.fetched_at)}
-                      </span>
-                    </div>
-                  )}
-                  {Array.isArray(vocabularyProvenance.files) && (
-                    <div className="flex items-center justify-between gap-4 px-4 py-2.5">
-                      <span className={metaLabelClass}>Namespace-Dateien</span>
-                      <span className={metaValueClass}>
-                        {vocabularyProvenance.files.length}
-                      </span>
-                    </div>
-                  )}
-                  {vocabularyProvenance.source?.snapshotCommitSha &&
-                    vocabularyProvenance.source.snapshotCommitSha !== 'unknown' && (
-                      <CopyableValue
-                        label="Snapshot-Commit"
-                        value={vocabularyProvenance.source.snapshotCommitSha}
-                        displayValue={vocabularyProvenance.source.snapshotCommitSha.slice(0, 12)}
-                      />
-                    )}
-                </div>
-              </div>
-            </div>
+            <VocabularyBuildPanel
+              vocabularyProvenance={vocabularyProvenance}
+              vocabularyVerification={vocabularyVerification}
+            />
           )}
         </section>
 
         {catalog && metadata && (
-          <section className={pageSectionClass}>
-            <h2 className={sectionLabelClass}>Katalog-Metadaten</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--color-text-primary)]">
-              Diese Angaben stammen aus dem offiziellen OSCAL-Katalog und ergänzen
-              die Build- und Integritätsdaten um Geltungsbereich, Rollen,
-              Verantwortlichkeiten und Referenzen.
-            </p>
-
-            <div className={`${surfacePanelClass} mt-4 divide-y divide-[var(--color-border-subtle)]`}>
-              <div className="flex items-center justify-between gap-4 px-4 py-2.5">
-                <span className={metaLabelClass}>Katalogtitel</span>
-                <span className={`${metaValueClass} text-right`}>{metadata.title}</span>
-              </div>
-              <div className="flex items-center justify-between gap-4 px-4 py-2.5">
-                <span className={metaLabelClass}>Version</span>
-                <span className={metaValueClass}>{metadata.version}</span>
-              </div>
-              <div className="flex items-center justify-between gap-4 px-4 py-2.5">
-                <span className={metaLabelClass}>OSCAL-Version</span>
-                <span className={metaValueClass}>{metadata.oscalVersion}</span>
-              </div>
-              <div className="flex items-center justify-between gap-4 px-4 py-2.5">
-                <span className={metaLabelClass}>Zuletzt geändert</span>
-                <span className={metaValueClass}>{formatDate(metadata.lastModified)}</span>
-              </div>
-              {metadata.publisherName && (
-                <div className="flex items-center justify-between gap-4 px-4 py-2.5">
-                  <span className={metaLabelClass}>Herausgeber</span>
-                  <span className={`${metaValueClass} text-right`}>
-                    {metadata.publisherEmail
-                      ? `${metadata.publisherName} (${metadata.publisherEmail})`
-                      : metadata.publisherName}
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {metadata.remarks && (
-              <div className="mt-6 space-y-2">
-                <h3 className={subsectionHeadingClass}>Bemerkungen</h3>
-                <p className="whitespace-pre-line break-words text-sm text-[var(--color-text-primary)]">
-                  {metadata.remarks}
-                </p>
-              </div>
-            )}
-
-            {metadata.roles.length > 0 && (
-              <div className="mt-6 border-t border-[var(--color-border-subtle)] pt-4">
-                <h3 className={subsectionHeadingClass}>Rollen</h3>
-                <ul className="mt-3 space-y-2">
-                  {metadata.roles.map((role) => (
-                    <li
-                      key={role.id}
-                      className="flex items-center justify-between gap-4 text-sm text-[var(--color-text-primary)]"
-                    >
-                      <span>{role.title}</span>
-                      <code className="font-mono text-xs text-[var(--color-text-secondary)]">
-                        {role.id}
-                      </code>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {metadata.responsibleParties.length > 0 && (
-              <div className="mt-6 border-t border-[var(--color-border-subtle)] pt-4">
-                <h3 className={subsectionHeadingClass}>Verantwortliche Parteien</h3>
-                <ul className="mt-3 space-y-3">
-                  {metadata.responsibleParties.map((entry: CatalogResponsibleParty) => {
-                    const linkedParties = entry.partyUuids
-                      .map((uuid) => getPartyByUuid(uuid, metadata.parties))
-                      .filter((party): party is CatalogParty => Boolean(party));
-
-                    return (
-                      <li key={`${entry.roleId}-${entry.partyUuids.join(',')}`} className="space-y-1">
-                        <p className="text-sm font-medium text-[var(--color-text-primary)]">
-                          {getRoleTitle(entry.roleId, metadata.roles)}
-                        </p>
-                        <p className="text-sm text-[var(--color-text-primary)]">
-                          {linkedParties.length > 0
-                            ? linkedParties.map(formatPartyLabel).join(', ')
-                            : entry.partyUuids.join(', ')}
-                        </p>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            )}
-
-            {metadata.parties.length > 0 && (
-              <div className="mt-6 border-t border-[var(--color-border-subtle)] pt-4">
-                <h3 className={subsectionHeadingClass}>Parteien</h3>
-                <ul className="mt-3 space-y-2">
-                  {metadata.parties.map((party) => (
-                    <li
-                      key={party.uuid}
-                      className="flex flex-col gap-0.5 text-sm text-[var(--color-text-primary)]"
-                    >
-                      <span>{formatPartyLabel(party)}</span>
-                      <span className="type-meta">
-                        Typ: {party.type} · UUID: <code className="font-mono">{party.uuid}</code>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {metadata.props.length > 0 && (
-              <div className="mt-6 border-t border-[var(--color-border-subtle)] pt-4">
-                <h3 className={subsectionHeadingClass}>Zusätzliche Metadaten</h3>
-                <dl className="mt-3 space-y-3">
-                  {metadata.props.map((prop) => (
-                    <div key={`${prop.name}-${prop.value}`} className="space-y-1">
-                      <dt className="text-sm font-medium text-[var(--color-text-primary)]">
-                        {prop.name}
-                      </dt>
-                      <dd className="break-words text-sm text-[var(--color-text-primary)]">
-                        {prop.value}
-                      </dd>
-                      {prop.ns && <dd className="type-meta break-all">Namespace: {prop.ns}</dd>}
-                    </div>
-                  ))}
-                </dl>
-              </div>
-            )}
-
-            {metadataReferences.some((reference) => reference.kind !== 'provenance') && (
-              <div className="mt-6 border-t border-[var(--color-border-subtle)] pt-4">
-                <h3 className={`${subsectionHeadingClass} flex items-center gap-2`}>
-                  <IconLink className="h-4 w-4 text-[var(--color-text-secondary)]" />
-                  Referenzen
-                </h3>
-                <ul className="mt-3 space-y-3">
-                  {metadataReferences.map((reference) => (
-                    <MetadataReference key={reference.path} reference={reference} />
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {resolvedResources.length > 0 && (
-              <div className="mt-6 border-t border-[var(--color-border-subtle)] pt-4">
-                <h3 className={`${subsectionHeadingClass} flex items-center gap-2`}>
-                  <IconDocument className="h-4 w-4 text-[var(--color-text-secondary)]" />
-                  Referenzierte Ressourcen
-                </h3>
-                <ul className="mt-3 space-y-4">
-                  {resolvedResources.map((resource) => (
-                    <li key={resource.uuid} className="space-y-2">
-                      <div>
-                        <p className="text-sm font-medium text-[var(--color-text-primary)]">
-                          {resource.title ?? resource.uuid}
-                        </p>
-                        <p className="type-meta">
-                          UUID: <code className="font-mono">{resource.uuid}</code>
-                        </p>
-                      </div>
-                      {resource.description && (
-                        <p className="text-sm text-[var(--color-text-primary)]">{resource.description}</p>
-                      )}
-                      {resource.citation && (
-                        <p className="text-sm text-[var(--color-text-primary)]">{resource.citation}</p>
-                      )}
-                      {resource.content === 'empty' && (
-                        <p className="type-secondary text-sm">Ressource enthält keine darstellbaren Inhalte.</p>
-                      )}
-                      {resource.embeddedContent && (
-                        <p className="type-meta">
-                          Eingebetteter Inhalt: {resource.embeddedContent.filename ?? 'ohne Dateiname'}
-                          {resource.embeddedContent.mediaType
-                            ? ` (${resource.embeddedContent.mediaType})`
-                            : ''}
-                        </p>
-                      )}
-                      <ResourceLinkList resource={resource} />
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </section>
+          <CatalogMetadataSection
+            metadata={metadata}
+            metadataReferences={metadataReferences}
+            resolvedResources={resolvedResources}
+          />
         )}
 
         <section className={pageSectionClass}>
