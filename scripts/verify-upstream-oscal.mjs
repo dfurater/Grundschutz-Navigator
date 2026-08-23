@@ -220,7 +220,7 @@ export function selectManifestOscalArtifacts(manifest, registry = listOscalArtif
   const vocabularyArtifacts = manifest.files.filter((file) => file.rootType === 'vocabulary');
   const versionCoverage = Object.fromEntries(
     [...new Set(oscalArtifacts.map((artifact) => artifact.oscalVersion))]
-      .sort((left, right) => left.localeCompare(right))
+      .sort(compareVersionStrings)
       .map((version) => [
         version,
         oscalArtifacts.filter((artifact) => artifact.oscalVersion === version).length,
@@ -233,6 +233,13 @@ export function selectManifestOscalArtifacts(manifest, registry = listOscalArtif
     versionCoverage: Object.freeze(versionCoverage),
     missingBlockedArtifacts: Object.freeze(missingBlockedArtifacts),
   });
+}
+
+// Deterministische Codepunktauflage (identisch zur früheren parameterlosen
+// Sortierung), unabhängig von Locale und ICU-Version der Laufzeit.
+function compareVersionStrings(left, right) {
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
 }
 
 const RELEASE_ASSET_HOSTS = new Set([
