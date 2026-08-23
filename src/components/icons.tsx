@@ -4,8 +4,8 @@
  */
 
 interface IconProps {
-  className?: string;
-  'aria-hidden'?: boolean | 'true' | 'false';
+  readonly className?: string;
+  readonly 'aria-hidden'?: boolean | 'true' | 'false';
 }
 
 export function IconSearch({ className, 'aria-hidden': ariaHidden = true }: IconProps) {

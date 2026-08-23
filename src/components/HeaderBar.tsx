@@ -7,9 +7,9 @@ import { IconSearch, IconShield, IconMenu } from './icons';
 
 
 export interface HeaderBarProps {
-  onSearch?: (term: string) => void;
-  onMenuToggle?: () => void;
-  className?: string;
+  readonly onSearch?: (term: string) => void;
+  readonly onMenuToggle?: () => void;
+  readonly className?: string;
 }
 
 const TEXT_INPUT_TYPES = new Set([

@@ -58,21 +58,21 @@ export const CatalogContext = createContext<CatalogState>(
 /* ------------------------------------------------------------------ */
 
 export interface CatalogProviderProps {
-  children: ReactNode;
+  readonly children: ReactNode;
   /** Override entry catalog URL (for testing) */
-  catalogUrl?: string;
+  readonly catalogUrl?: string;
   /** Override entry catalog metadata URL (for testing) */
-  metadataUrl?: string;
+  readonly metadataUrl?: string;
   /** Override vocabulary registry URL (for testing) */
-  vocabulariesUrl?: string;
+  readonly vocabulariesUrl?: string;
   /** Override upstream sources provenance URL (for testing) */
-  upstreamSourcesMetadataUrl?: string;
+  readonly upstreamSourcesMetadataUrl?: string;
   /**
    * Override the shipped catalog set (for testing). Erlaubt ein Fixture-Register
    * mit mehreren `supported`-Katalogen, das die reale Registry — die heute genau
    * einen ausgeliefert — nicht herstellen kann.
    */
-  supportedCatalogs?: readonly SupportedCatalogDescriptor[];
+  readonly supportedCatalogs?: readonly SupportedCatalogDescriptor[];
 }
 
 export function CatalogProvider({
