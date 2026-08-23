@@ -419,73 +419,83 @@ export function verifySchemaArtifact({ rootKey, version, sha256, schemaId }) {
   return { ok: true, pin };
 }
 
-/** Strukturinvarianten der Matrix; läuft beim Import. */
-export function validateVersionMatrix() {
-  if (new Set(OSCAL_ROOT_KEYS).size !== OSCAL_ROOT_KEYS.length) {
-    throw new Error('OSCAL_ROOT_KEYS must not contain duplicates');
+function assertNoDuplicates(values, containerName) {
+  if (new Set(values).size !== values.length) {
+    throw new Error(`${containerName} must not contain duplicates`);
   }
-  if (new Set(PINNED_OSCAL_VERSIONS).size !== PINNED_OSCAL_VERSIONS.length) {
-    throw new Error('PINNED_OSCAL_VERSIONS must not contain duplicates');
-  }
+}
+
+function assertPinnedVersionsAreWellFormed() {
   for (const version of PINNED_OSCAL_VERSIONS) {
     if (!VERSION_PATTERN.test(version)) {
       throw new Error(`Pinned OSCAL version is malformed: ${version}`);
     }
   }
+}
 
-  const seenFileNames = new Set();
-  const seenIdSlugs = new Set();
+function assertSchemaProvenanceIsUnique(rootKey, pin, seenFileNames, seenIdSlugs) {
+  if (!pin) {
+    throw new Error(`Version matrix is missing schema provenance for root key: ${rootKey}`);
+  }
+  if (seenFileNames.has(pin.schemaFileName)) {
+    throw new Error(`Duplicate schema file name in version matrix: ${pin.schemaFileName}`);
+  }
+  seenFileNames.add(pin.schemaFileName);
+  if (seenIdSlugs.has(pin.schemaIdSlug)) {
+    throw new Error(`Duplicate schema id slug in version matrix: ${pin.schemaIdSlug}`);
+  }
+  seenIdSlugs.add(pin.schemaIdSlug);
+}
 
-  for (const rootKey of OSCAL_ROOT_KEYS) {
-    const pin = SCHEMA_PINS.get(rootKey);
-    if (!pin) {
-      throw new Error(`Version matrix is missing schema provenance for root key: ${rootKey}`);
-    }
-    if (seenFileNames.has(pin.schemaFileName)) {
-      throw new Error(`Duplicate schema file name in version matrix: ${pin.schemaFileName}`);
-    }
-    seenFileNames.add(pin.schemaFileName);
-    if (seenIdSlugs.has(pin.schemaIdSlug)) {
-      throw new Error(`Duplicate schema id slug in version matrix: ${pin.schemaIdSlug}`);
-    }
-    seenIdSlugs.add(pin.schemaIdSlug);
+function assertMatrixCellIsValid(rootKey, version, cell) {
+  if (!SHA256_PATTERN.test(cell.sha256 ?? '')) {
+    throw new Error(`Version matrix cell ${rootKey} @ ${version} has an invalid SHA-256`);
+  }
+  if (!Number.isSafeInteger(cell.sizeBytes) || cell.sizeBytes <= 0) {
+    throw new Error(`Version matrix cell ${rootKey} @ ${version} has an invalid size`);
+  }
+}
 
-    const versions = Object.keys(pin.versions);
-    if (versions.length === 0) {
-      throw new Error(`Version matrix has no pinned version for root key: ${rootKey}`);
-    }
-
-    for (const version of versions) {
-      if (!isPinnedOscalVersion(version)) {
-        throw new Error(`Version matrix pins an unlisted version for ${rootKey}: ${version}`);
-      }
-      if (isImpossibleCombination(rootKey, version)) {
-        throw new Error(
-          `Version matrix pins an impossible combination: ${rootKey} @ ${version}`,
-        );
-      }
-      const cell = pin.versions[version];
-      if (!SHA256_PATTERN.test(cell.sha256 ?? '')) {
-        throw new Error(`Version matrix cell ${rootKey} @ ${version} has an invalid SHA-256`);
-      }
-      if (!Number.isSafeInteger(cell.sizeBytes) || cell.sizeBytes <= 0) {
-        throw new Error(`Version matrix cell ${rootKey} @ ${version} has an invalid size`);
-      }
-    }
-
-    // Jede möglich Zelle muss gepinnt sein: eine Lücke wäre eine stille
-    // Validierungslücke statt einer bewussten Entscheidung.
-    for (const version of PINNED_OSCAL_VERSIONS) {
-      const expectedToExist = !isImpossibleCombination(rootKey, version);
-      const isPinned = pin.versions[version] !== undefined;
-      if (expectedToExist !== isPinned) {
-        throw new Error(
-          `Version matrix coverage gap: ${rootKey} @ ${version} (expected pinned: ${expectedToExist})`,
-        );
-      }
-    }
+function assertVersionCellsAreValid(rootKey, pin) {
+  const versions = Object.keys(pin.versions);
+  if (versions.length === 0) {
+    throw new Error(`Version matrix has no pinned version for root key: ${rootKey}`);
   }
 
+  for (const version of versions) {
+    if (!isPinnedOscalVersion(version)) {
+      throw new Error(`Version matrix pins an unlisted version for ${rootKey}: ${version}`);
+    }
+    if (isImpossibleCombination(rootKey, version)) {
+      throw new Error(
+        `Version matrix pins an impossible combination: ${rootKey} @ ${version}`,
+      );
+    }
+    assertMatrixCellIsValid(rootKey, version, pin.versions[version]);
+  }
+}
+
+// Jede mögliche Zelle muss gepinnt sein: eine Lücke wäre eine stille
+// Validierungslücke statt einer bewussten Entscheidung.
+function assertMatrixCoverageIsComplete(rootKey, pin) {
+  for (const version of PINNED_OSCAL_VERSIONS) {
+    const expectedToExist = !isImpossibleCombination(rootKey, version);
+    const isPinned = pin.versions[version] !== undefined;
+    if (expectedToExist !== isPinned) {
+      throw new Error(
+        `Version matrix coverage gap: ${rootKey} @ ${version} (expected pinned: ${expectedToExist})`,
+      );
+    }
+  }
+}
+
+function assertRootMatrixEntryIsValid(rootKey, pin, seenFileNames, seenIdSlugs) {
+  assertSchemaProvenanceIsUnique(rootKey, pin, seenFileNames, seenIdSlugs);
+  assertVersionCellsAreValid(rootKey, pin);
+  assertMatrixCoverageIsComplete(rootKey, pin);
+}
+
+function assertModelIntroducedInIsValid() {
   for (const rootKey of Object.keys(MODEL_INTRODUCED_IN)) {
     if (!isKnownOscalRootKey(rootKey)) {
       throw new Error(`MODEL_INTRODUCED_IN references an unknown root key: ${rootKey}`);
@@ -494,6 +504,22 @@ export function validateVersionMatrix() {
       throw new Error(`MODEL_INTRODUCED_IN has a malformed version for ${rootKey}`);
     }
   }
+}
+
+/** Strukturinvarianten der Matrix; läuft beim Import. */
+export function validateVersionMatrix() {
+  assertNoDuplicates(OSCAL_ROOT_KEYS, 'OSCAL_ROOT_KEYS');
+  assertNoDuplicates(PINNED_OSCAL_VERSIONS, 'PINNED_OSCAL_VERSIONS');
+  assertPinnedVersionsAreWellFormed();
+
+  const seenFileNames = new Set();
+  const seenIdSlugs = new Set();
+
+  for (const rootKey of OSCAL_ROOT_KEYS) {
+    assertRootMatrixEntryIsValid(rootKey, SCHEMA_PINS.get(rootKey), seenFileNames, seenIdSlugs);
+  }
+
+  assertModelIntroducedInIsValid();
 }
 
 validateVersionMatrix();
