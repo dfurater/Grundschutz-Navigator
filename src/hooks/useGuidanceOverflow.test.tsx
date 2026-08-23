@@ -62,31 +62,29 @@ afterEach(() => {
 });
 
 describe('useGuidanceOverflow', () => {
-  it('does not report overflow when the guidance text exactly fits', () => {
+  it.each([
+    {
+      name: 'does not report overflow when the guidance text exactly fits',
+      scrollHeight: 120,
+      expectedHasOverflow: 'false',
+    },
+    {
+      name: 'tolerates one physical pixel of height difference',
+      scrollHeight: 121,
+      expectedHasOverflow: 'false',
+    },
+    {
+      name: 'reports overflow when the text exceeds the tolerance',
+      scrollHeight: 122,
+      expectedHasOverflow: 'true',
+    },
+  ])('$name', ({ scrollHeight, expectedHasOverflow }) => {
     vi.stubGlobal('ResizeObserver', ResizeObserverMock);
-    mockElementHeights(120, 120);
+    mockElementHeights(scrollHeight, 120);
 
     render(<GuidanceHarness scopeId="gspp:TOP.1.1" enabled />);
 
-    expect(screen.getByTestId('has-overflow')).toHaveTextContent('false');
-  });
-
-  it('tolerates one physical pixel of height difference', () => {
-    vi.stubGlobal('ResizeObserver', ResizeObserverMock);
-    mockElementHeights(121, 120);
-
-    render(<GuidanceHarness scopeId="gspp:TOP.1.1" enabled />);
-
-    expect(screen.getByTestId('has-overflow')).toHaveTextContent('false');
-  });
-
-  it('reports overflow when the text exceeds the tolerance', () => {
-    vi.stubGlobal('ResizeObserver', ResizeObserverMock);
-    mockElementHeights(122, 120);
-
-    render(<GuidanceHarness scopeId="gspp:TOP.1.1" enabled />);
-
-    expect(screen.getByTestId('has-overflow')).toHaveTextContent('true');
+    expect(screen.getByTestId('has-overflow')).toHaveTextContent(expectedHasOverflow);
   });
 
   it('observes the paragraph and its parent and remeasures after an observer callback', () => {

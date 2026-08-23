@@ -818,7 +818,7 @@ describe('parseCatalog', () => {
 
   it('controls array matches controlsById size', () => {
     const catalog = parseCatalog(makeCatalog().catalog, GSPP);
-    expect(catalog.controls.length).toBe(catalog.controlsById.size);
+    expect(catalog.controls).toHaveLength(catalog.controlsById.size);
   });
 
   it('retains only centrally resolved control links when a resource UUID collides with a control ID', () => {

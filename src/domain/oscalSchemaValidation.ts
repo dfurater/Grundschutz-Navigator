@@ -193,7 +193,7 @@ async function getCompiledCell(pin: OscalSchemaPin): Promise<CompiledSchemaCell 
 
 /** Ein JSON-Pointer-Segment zurück in seinen logischen Namen. */
 function unescapePointerSegment(segment: string): string {
-  return segment.replace(/~1/g, '/').replace(/~0/g, '~');
+  return segment.replaceAll('~1', '/').replaceAll('~0', '~');
 }
 
 /**
