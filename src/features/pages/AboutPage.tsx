@@ -90,13 +90,21 @@ function resolveUpstreamRef(provenance: CatalogProvenance | null): string {
   return ref;
 }
 
+// Slash-Randtrimm bewusst ohne Regex: `/\/+$/` gilt unter Sonar S8786 als superlinear.
+function trimSlashes(value: string): string {
+  let start = 0;
+  let end = value.length;
+
+  while (start < end && value[start] === '/') start += 1;
+  while (end > start && value[end - 1] === '/') end -= 1;
+
+  return value.slice(start, end);
+}
+
 function resolveUpstreamRepositoryPath(repositoryUrl?: string): string {
   try {
-    const path = new URL(repositoryUrl ?? `https://github.com/${DEFAULT_UPSTREAM_REPOSITORY_PATH}`)
-      .pathname
-      .replace(/^\/+/, '')
-      .replace(/\/+$/, '');
-    return path || DEFAULT_UPSTREAM_REPOSITORY_PATH;
+    const url = new URL(repositoryUrl ?? `https://github.com/${DEFAULT_UPSTREAM_REPOSITORY_PATH}`);
+    return trimSlashes(url.pathname) || DEFAULT_UPSTREAM_REPOSITORY_PATH;
   } catch {
     return DEFAULT_UPSTREAM_REPOSITORY_PATH;
   }
