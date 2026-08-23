@@ -97,7 +97,7 @@ function formatFileDelta(fileDelta) {
 
 function normalizeDataQualityFindings(findings) {
   if (!Array.isArray(findings)) {
-    throw new Error('dataQualityFindings must be an array');
+    throw new TypeError('dataQualityFindings must be an array');
   }
   return findings.map((finding, index) => {
     const value = typeof finding === 'string' ? finding : finding?.message;
@@ -295,12 +295,11 @@ export async function syncUpstreamManifest({
 const isDirectExecution = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isDirectExecution) {
-  syncUpstreamManifest()
-    .then((result) => {
-      console.log(`SYNC_RESULT_JSON=${JSON.stringify(result.outputs)}`);
-    })
-    .catch((error) => {
-      console.error(error instanceof Error ? error.message : error);
-      process.exitCode = 1;
-    });
+  try {
+    const result = await syncUpstreamManifest();
+    console.log(`SYNC_RESULT_JSON=${JSON.stringify(result.outputs)}`);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  }
 }
