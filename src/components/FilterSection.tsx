@@ -3,11 +3,13 @@ import type { ReactNode } from 'react';
 import { IconChevronRight, IconChevronDown } from './icons';
 
 export interface FilterSectionProps {
-  title: string;
-  children: ReactNode;
-  defaultExpanded?: boolean;
-  /** Number of active filter selections in this section */
-  activeCount?: number;
+  readonly title: string;
+  readonly children: ReactNode;
+  readonly defaultExpanded?: boolean;
+  /**
+   * Number of active filter selections in this section
+   */
+  readonly activeCount?: number;
 }
 
 export function FilterSection({

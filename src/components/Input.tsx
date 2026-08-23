@@ -1,9 +1,9 @@
 import type { InputHTMLAttributes } from 'react';
 
-export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
-  icon?: React.ComponentType<{ className?: string }>;
-  label?: string;
-}
+export type InputProps = Readonly<InputHTMLAttributes<HTMLInputElement>> & {
+  readonly icon?: React.ComponentType<{ className?: string }>;
+  readonly label?: string;
+};
 
 export function Input({ icon: Icon, label, className = '', id, ...props }: InputProps) {
   const inputEl = (

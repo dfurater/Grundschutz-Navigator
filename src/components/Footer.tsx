@@ -4,7 +4,7 @@ import { useCatalog } from '@/hooks/useCatalog';
 import { buildVocabularyIndexPath } from '@/features/vocabulary/routes';
 
 export interface FooterProps {
-  className?: string;
+  readonly className?: string;
 }
 
 const secondaryFooterLinks = [

@@ -10,11 +10,11 @@ export type BadgeVariant =
   | 'outline';
 
 export interface BadgeProps {
-  children: ReactNode;
-  variant?: BadgeVariant;
-  className?: string;
-  title?: string;
-  trailingIcon?: ReactNode;
+  readonly children: ReactNode;
+  readonly variant?: BadgeVariant;
+  readonly className?: string;
+  readonly title?: string;
+  readonly trailingIcon?: ReactNode;
 }
 
 const variantClasses: Record<BadgeVariant, string> = {

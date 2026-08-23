@@ -1,11 +1,11 @@
 import { IconCheck } from './icons';
 
 export interface CheckboxLabelProps {
-  label: string;
-  count?: number;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-  title?: string;
+  readonly label: string;
+  readonly count?: number;
+  readonly checked: boolean;
+  readonly onChange: (checked: boolean) => void;
+  readonly title?: string;
 }
 
 export function CheckboxLabel({
