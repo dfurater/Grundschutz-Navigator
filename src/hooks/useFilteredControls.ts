@@ -63,95 +63,60 @@ export type SortConfig = SortEntry[];
 /*  Filter Logic                                                       */
 /* ------------------------------------------------------------------ */
 
+function passesSelectionFilter<T>(value: T | undefined, selected: readonly T[]): boolean {
+  return selected.length === 0 || (value !== undefined && selected.includes(value));
+}
+
+function passesTruthySelectionFilter<T>(value: T | undefined, selected: readonly T[]): boolean {
+  return selected.length === 0 || (!!value && selected.includes(value));
+}
+
+function passesOverlapFilter(values: readonly string[], selected: readonly string[]): boolean {
+  return selected.length === 0 || values.some((value) => selected.includes(value));
+}
+
+function passesLinkRelationFilter(control: Control, selected: readonly LinkRelation[]): boolean {
+  if (selected.length === 0) return true;
+  const relationen = new Set(
+    control.links
+      .map((link) => toFilterableLinkRelation(link.rel))
+      .filter((relation): relation is LinkRelation => relation !== undefined),
+  );
+  return selected.some((relation) => relationen.has(relation));
+}
+
 function matchesFilter(
   control: Control,
   filters: ControlFilters,
 ): boolean {
   // Practice filter — ein Control aus einer Gruppe ohne `id` ist über keine
   // Praktik-Facette auswählbar und fällt bei aktivem Filter heraus (GSPP-242).
+  if (!passesSelectionFilter(control.practiceId, filters.practiceIds)) return false;
+  if (!passesSelectionFilter(control.groupId, filters.groupIds)) return false;
+  if (!passesTruthySelectionFilter(control.securityLevel, filters.securityLevels)) return false;
+  if (!passesTruthySelectionFilter(control.effortLevel, filters.effortLevels)) return false;
+  if (!passesTruthySelectionFilter(control.modalverb, filters.modalverben)) return false;
+  if (!passesOverlapFilter(control.tags, filters.tags)) return false;
   if (
-    filters.practiceIds.length > 0 &&
-    (control.practiceId === undefined ||
-      !filters.practiceIds.includes(control.practiceId))
+    !passesOverlapFilter(
+      control.statementProps.zielobjektKategorien,
+      filters.zielobjektKategorien,
+    )
   ) {
     return false;
   }
-
-  // Group/Topic filter
+  if (!passesTruthySelectionFilter(control.statementProps.handlungsworte, filters.handlungsworte)) {
+    return false;
+  }
   if (
-    filters.groupIds.length > 0 &&
-    (control.groupId === undefined || !filters.groupIds.includes(control.groupId))
+    !passesTruthySelectionFilter(
+      control.statementProps.dokumentation,
+      filters.dokumentationstypen,
+    )
   ) {
     return false;
   }
-
-  // Security level filter
-  if (
-    filters.securityLevels.length > 0 &&
-    (!control.securityLevel ||
-      !filters.securityLevels.includes(control.securityLevel))
-  ) {
-    return false;
-  }
-
-  // Effort level filter
-  if (
-    filters.effortLevels.length > 0 &&
-    (!control.effortLevel ||
-      !filters.effortLevels.includes(control.effortLevel))
-  ) {
-    return false;
-  }
-
-  // Modalverb filter
-  if (
-    filters.modalverben.length > 0 &&
-    (!control.modalverb || !filters.modalverben.includes(control.modalverb))
-  ) {
-    return false;
-  }
-
-  // Tags filter (OR — control must have at least one selected tag)
-  if (filters.tags.length > 0) {
-    const hasMatchingTag = control.tags.some((t) => filters.tags.includes(t));
-    if (!hasMatchingTag) return false;
-  }
-
-  // Zielobjekt-Kategorien filter (OR)
-  if (filters.zielobjektKategorien.length > 0) {
-    const hasMatch = control.statementProps.zielobjektKategorien.some((k) =>
-      filters.zielobjektKategorien.includes(k),
-    );
-    if (!hasMatch) return false;
-  }
-
-  // Action words filter (OR)
-  if (filters.handlungsworte.length > 0) {
-    const handlungswort = control.statementProps.handlungsworte;
-    if (!handlungswort || !filters.handlungsworte.includes(handlungswort)) {
-      return false;
-    }
-  }
-
-  // Documentation filter (OR)
-  if (filters.dokumentationstypen.length > 0) {
-    const dokumentation = control.statementProps.dokumentation;
-    if (!dokumentation || !filters.dokumentationstypen.includes(dokumentation)) {
-      return false;
-    }
-  }
-
-  // Link relation filter (OR)
-  if (filters.linkRelationen.length > 0) {
-    const relationen = new Set(
-      control.links
-        .map((link) => toFilterableLinkRelation(link.rel))
-        .filter((relation): relation is LinkRelation => relation !== undefined),
-    );
-    const hasMatch = filters.linkRelationen.some((relation) => relationen.has(relation));
-    if (!hasMatch) return false;
-  }
-
+  if (!passesLinkRelationFilter(control, filters.linkRelationen)) return false;
   return true;
 }
 

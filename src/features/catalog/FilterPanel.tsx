@@ -14,15 +14,15 @@ import {
 } from '@/features/vocabulary/display';
 
 export interface FilterPanelProps {
-  filters: ControlFilters;
-  facetCounts: FacetCounts;
-  filteredFacetCounts: FacetCounts;
-  hasActiveFilters: boolean;
-  filteredCount: number;
-  totalCount: number;
-  onFiltersChange: (filters: ControlFilters) => void;
-  onClearFilters: () => void;
-  onCollapse?: () => void;
+  readonly filters: ControlFilters;
+  readonly facetCounts: FacetCounts;
+  readonly filteredFacetCounts: FacetCounts;
+  readonly hasActiveFilters: boolean;
+  readonly filteredCount: number;
+  readonly totalCount: number;
+  readonly onFiltersChange: (filters: ControlFilters) => void;
+  readonly onClearFilters: () => void;
+  readonly onCollapse?: () => void;
 }
 
 const MODALVERB_LABELS: Record<Modalverb, string> = {
@@ -54,6 +54,40 @@ function hasDimensionFilter(filters: ControlFilters, dimension: keyof FacetCount
   }
 }
 
+function resolveDimensionCounts(
+  filters: ControlFilters,
+  dimension: keyof FacetCounts,
+  facetCounts: FacetCounts,
+  filteredFacetCounts: FacetCounts,
+): Record<string, number> {
+  return hasDimensionFilter(filters, dimension)
+    ? facetCounts[dimension]
+    : filteredFacetCounts[dimension];
+}
+
+/**
+ * Sorted entries of a dimension; when the dimension is filtered, selected
+ * values missing from the current result set are appended with count 0.
+ */
+function visibleEntries(
+  filters: ControlFilters,
+  dimension: keyof FacetCounts,
+  sortedEntries: [string, number][],
+  selectedValues: readonly string[],
+  filteredCounts: Record<string, number>,
+): [string, number][] {
+  if (!hasDimensionFilter(filters, dimension)) return sortedEntries;
+  const missingSelected = selectedValues
+    .filter((value) => !filteredCounts[value])
+    .map((value) => [value, 0] as [string, number]);
+  return [...sortedEntries, ...missingSelected];
+}
+
+/** A filter section renders when it offers options or carries an active selection. */
+function isSectionVisible(visibleCount: number, activeCount: number): boolean {
+  return visibleCount > 0 || activeCount > 0;
+}
+
 export function FilterPanel({
   filters,
   facetCounts,
@@ -69,30 +103,14 @@ export function FilterPanel({
 
   // Per-dimension: use global counts if this dimension has active filters (freeze),
   // otherwise use filtered counts so the user sees what's actually in the current result set.
-  const modalverbCounts = hasDimensionFilter(filters, 'modalverben')
-    ? facetCounts.modalverben
-    : filteredFacetCounts.modalverben;
-  const securityLevelCounts = hasDimensionFilter(filters, 'securityLevels')
-    ? facetCounts.securityLevels
-    : filteredFacetCounts.securityLevels;
-  const effortLevelCounts = hasDimensionFilter(filters, 'effortLevels')
-    ? facetCounts.effortLevels
-    : filteredFacetCounts.effortLevels;
-  const zielobjektCounts = hasDimensionFilter(filters, 'zielobjektKategorien')
-    ? facetCounts.zielobjektKategorien
-    : filteredFacetCounts.zielobjektKategorien;
-  const handlungswortCounts = hasDimensionFilter(filters, 'handlungsworte')
-    ? facetCounts.handlungsworte
-    : filteredFacetCounts.handlungsworte;
-  const dokumentationCounts = hasDimensionFilter(filters, 'dokumentationstypen')
-    ? facetCounts.dokumentationstypen
-    : filteredFacetCounts.dokumentationstypen;
-  const linkRelationCounts = hasDimensionFilter(filters, 'linkRelationen')
-    ? facetCounts.linkRelationen
-    : filteredFacetCounts.linkRelationen;
-  const tagCounts = hasDimensionFilter(filters, 'tags')
-    ? facetCounts.tags
-    : filteredFacetCounts.tags;
+  const modalverbCounts = resolveDimensionCounts(filters, 'modalverben', facetCounts, filteredFacetCounts);
+  const securityLevelCounts = resolveDimensionCounts(filters, 'securityLevels', facetCounts, filteredFacetCounts);
+  const effortLevelCounts = resolveDimensionCounts(filters, 'effortLevels', facetCounts, filteredFacetCounts);
+  const zielobjektCounts = resolveDimensionCounts(filters, 'zielobjektKategorien', facetCounts, filteredFacetCounts);
+  const handlungswortCounts = resolveDimensionCounts(filters, 'handlungsworte', facetCounts, filteredFacetCounts);
+  const dokumentationCounts = resolveDimensionCounts(filters, 'dokumentationstypen', facetCounts, filteredFacetCounts);
+  const linkRelationCounts = resolveDimensionCounts(filters, 'linkRelationen', facetCounts, filteredFacetCounts);
+  const tagCounts = resolveDimensionCounts(filters, 'tags', facetCounts, filteredFacetCounts);
 
   // Sort dynamic lists by count descending (use filteredFacetCounts for relevance ordering)
   const sortedTags = Object.entries(filteredFacetCounts.tags)
@@ -105,38 +123,34 @@ export function FilterPanel({
     .sort(([a], [b]) => a.localeCompare(b, 'de'));
 
   // For active-filter dimensions, include all selected values even if count is 0
-  const visibleZielobjekte = hasDimensionFilter(filters, 'zielobjektKategorien')
-    ? [
-        ...sortedZielobjekte,
-        ...filters.zielobjektKategorien
-          .filter((k) => !filteredFacetCounts.zielobjektKategorien[k])
-          .map((k) => [k, 0] as [string, number]),
-      ]
-    : sortedZielobjekte;
-  const visibleHandlungsworte = hasDimensionFilter(filters, 'handlungsworte')
-    ? [
-        ...sortedHandlungsworte,
-        ...filters.handlungsworte
-          .filter((h) => !filteredFacetCounts.handlungsworte[h])
-          .map((h) => [h, 0] as [string, number]),
-      ]
-    : sortedHandlungsworte;
-  const visibleDokumentationstypen = hasDimensionFilter(filters, 'dokumentationstypen')
-    ? [
-        ...sortedDokumentationstypen,
-        ...filters.dokumentationstypen
-          .filter((d) => !filteredFacetCounts.dokumentationstypen[d])
-          .map((d) => [d, 0] as [string, number]),
-      ]
-    : sortedDokumentationstypen;
-  const visibleTags = hasDimensionFilter(filters, 'tags')
-    ? [
-        ...sortedTags,
-        ...filters.tags
-          .filter((t) => !filteredFacetCounts.tags[t])
-          .map((t) => [t, 0] as [string, number]),
-      ]
-    : sortedTags;
+  const visibleZielobjekte = visibleEntries(
+    filters,
+    'zielobjektKategorien',
+    sortedZielobjekte,
+    filters.zielobjektKategorien,
+    filteredFacetCounts.zielobjektKategorien,
+  );
+  const visibleHandlungsworte = visibleEntries(
+    filters,
+    'handlungsworte',
+    sortedHandlungsworte,
+    filters.handlungsworte,
+    filteredFacetCounts.handlungsworte,
+  );
+  const visibleDokumentationstypen = visibleEntries(
+    filters,
+    'dokumentationstypen',
+    sortedDokumentationstypen,
+    filters.dokumentationstypen,
+    filteredFacetCounts.dokumentationstypen,
+  );
+  const visibleTags = visibleEntries(
+    filters,
+    'tags',
+    sortedTags,
+    filters.tags,
+    filteredFacetCounts.tags,
+  );
 
   const activeModalverben = filters.modalverben.length;
   const activeSecurityLevels = filters.securityLevels.length;
@@ -146,6 +160,15 @@ export function FilterPanel({
   const activeDokumentationstypen = filters.dokumentationstypen.length;
   const activeLinkRelationen = filters.linkRelationen.length;
   const activeTags = filters.tags.length;
+
+  const showZielobjekte = isSectionVisible(visibleZielobjekte.length, activeZielobjekte);
+  const showHandlungsworte = isSectionVisible(visibleHandlungsworte.length, activeHandlungsworte);
+  const showDokumentationstypen = isSectionVisible(visibleDokumentationstypen.length, activeDokumentationstypen);
+  const showLinkRelationen = isSectionVisible(
+    Object.keys(filteredFacetCounts.linkRelationen).length,
+    activeLinkRelationen,
+  );
+  const showTags = isSectionVisible(visibleTags.length, activeTags);
 
   return (
     <form
@@ -265,7 +288,7 @@ export function FilterPanel({
         </FilterSection>
 
         {/* Zielobjekt-Kategorien */}
-        {(visibleZielobjekte.length > 0 || activeZielobjekte > 0) && (
+        {showZielobjekte && (
           <FilterSection title="Zielobjekt-Kategorien" activeCount={activeZielobjekte}>
             {visibleZielobjekte.map(([kat]) => {
               const count = zielobjektCounts[kat] ?? 0;
@@ -289,7 +312,7 @@ export function FilterPanel({
           </FilterSection>
         )}
 
-        {(visibleHandlungsworte.length > 0 || activeHandlungsworte > 0) && (
+        {showHandlungsworte && (
           <FilterSection title="Handlungsworte" activeCount={activeHandlungsworte}>
             {visibleHandlungsworte.map(([handlungswort]) => {
               const count = handlungswortCounts[handlungswort] ?? 0;
@@ -313,7 +336,7 @@ export function FilterPanel({
           </FilterSection>
         )}
 
-        {(visibleDokumentationstypen.length > 0 || activeDokumentationstypen > 0) && (
+        {showDokumentationstypen && (
           <FilterSection title="Dokumentationsvorgaben" activeCount={activeDokumentationstypen}>
             {visibleDokumentationstypen.map(([dokumentation]) => {
               const count = dokumentationCounts[dokumentation] ?? 0;
@@ -337,7 +360,7 @@ export function FilterPanel({
           </FilterSection>
         )}
 
-        {(Object.keys(filteredFacetCounts.linkRelationen).length > 0 || activeLinkRelationen > 0) && (
+        {showLinkRelationen && (
           <FilterSection title="Link-Relationen" activeCount={activeLinkRelationen}>
             {(Object.keys(LINK_RELATION_LABELS) as LinkRelation[]).map((relation) => {
               const count = linkRelationCounts[relation] ?? 0;
@@ -362,7 +385,7 @@ export function FilterPanel({
         )}
 
         {/* Tags */}
-        {(visibleTags.length > 0 || activeTags > 0) && (
+        {showTags && (
           <FilterSection title="Tags" activeCount={activeTags}>
             {visibleTags.map(([tag]) => {
               const count = tagCounts[tag] ?? 0;
