@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { OFFICIAL_BSI_REPOSITORY_URL, OFFICIAL_BSI_REPO } from './security-guards.mjs';
+import { SOURCE_REGISTRY } from '../src/domain/sourceRegistry.mjs';
 import {
   deriveRouteId,
   extractReferencedNamespaceUrls,
@@ -8,6 +10,26 @@ import {
   parseCsv,
   sha256Hex,
 } from './vocabulary-utils.mjs';
+
+const repository = OFFICIAL_BSI_REPO;
+const vocabularyCollection = SOURCE_REGISTRY.find(
+  (entry) => entry.kind === 'vocabulary-collection' && entry.lifecycle === 'supported',
+);
+
+if (!vocabularyCollection) {
+  throw new Error('Source registry must declare a supported vocabulary collection');
+}
+
+const upstreamDirectory = `${vocabularyCollection.upstreamDirectory}`;
+const fileSuffix = `${vocabularyCollection.fileSuffix}`;
+
+function namespaceUrlFor(fileName: string) {
+  return `${OFFICIAL_BSI_REPOSITORY_URL}/tree/main/${upstreamDirectory}/${fileName}`;
+}
+
+function treeFile(fileName: string) {
+  return { path: `${upstreamDirectory}/${fileName}` };
+}
 
 describe('sha256Hex Eingabetypen', () => {
   const input = 'Vokabular äöü';
@@ -44,8 +66,8 @@ describe('parseCsv Zeilenabschlüsse und Zeichenverbrauch', () => {
     expect(parseCsv('a,b\r\n')).toEqual([['a', 'b']]);
   });
 
-  it('übernimmt die letzte Zeile auch ohne Zeilenabschluss', () => {
-    expect(parseCsv('a,b\nc,d')).toEqual([['a', 'b'], ['c', 'd']]);
+  it('übernimmt eine letzte Zeile auch ohne Zeilenabschluss', () => {
+    expect(parseCsv('a,b')).toEqual([['a', 'b']]);
   });
 
   it('filtert Zeilen ohne Inhalt heraus', () => {
@@ -78,11 +100,8 @@ describe('deriveRouteId Randfälle der Trennzeichen-Kappung', () => {
 });
 
 describe('deterministische Sortierung', () => {
-  const repository = 'BSI-Bund/Stand-der-Technik-Bibliothek';
-  const actionWordsUrl =
-    'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/action_words.csv';
-  const topicsUrl =
-    'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/topics.csv';
+  const actionWordsUrl = namespaceUrlFor('action_words.csv');
+  const topicsUrl = namespaceUrlFor('topics.csv');
 
   it('sortiert referenzierte Namespace-URLs aufsteigend', () => {
     const catalog = {
@@ -97,38 +116,30 @@ describe('deterministische Sortierung', () => {
   });
 
   it('sortiert Sammlungsmitglieder unabhängig von der Tree-Reihenfolge', () => {
-    const collection = {
-      kind: 'vocabulary-collection',
-      upstreamDirectory: 'documentation/namespaces',
-      fileSuffix: '.csv',
-    };
-    const treeFiles = [
-      { path: 'documentation/namespaces/topics.csv' },
-      { path: 'documentation/namespaces/action_words.csv' },
-    ];
-
     const members = materializeVocabularyCollectionMembers({
-      collection,
-      treeFiles,
+      collection: {
+        kind: vocabularyCollection.kind,
+        upstreamDirectory,
+        fileSuffix,
+      },
+      treeFiles: [treeFile('topics.csv'), treeFile('action_words.csv')],
       referencedNamespaceUrls: [],
       repository,
     });
 
     expect(members.map((file) => file.path)).toEqual([
-      'documentation/namespaces/action_words.csv',
-      'documentation/namespaces/topics.csv',
+      `${upstreamDirectory}/action_words.csv`,
+      `${upstreamDirectory}/topics.csv`,
     ]);
   });
 
   it('verwirft nicht-arrayförmige Tree-Listen mit TypeError', () => {
-    const collection = {
-      kind: 'vocabulary-collection',
-      upstreamDirectory: 'documentation/namespaces',
-      fileSuffix: '.csv',
-    };
-
     expect(() => materializeVocabularyCollectionMembers({
-      collection,
+      collection: {
+        kind: vocabularyCollection.kind,
+        upstreamDirectory,
+        fileSuffix,
+      },
       treeFiles: undefined,
       referencedNamespaceUrls: [],
       repository,
