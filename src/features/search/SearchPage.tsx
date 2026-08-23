@@ -19,6 +19,10 @@ import { buildControlUrlForControl } from '@/app/routes';
 
 const SEARCH_RESULTS_PAGE_SIZE = 50;
 
+function pluralizedResultSuffix(count: number): string {
+  return count === 1 ? '' : 'se';
+}
+
 interface ResultsUiState {
   query: string;
   sort: SortConfig;
@@ -163,6 +167,7 @@ export function SearchPage() {
   };
 
   const isLoading = loading;
+  const resultCountSuffix = pluralizedResultSuffix(totalResults);
 
   return (
     <div className="flex-1 min-w-0 flex flex-col md:overflow-hidden">
@@ -196,7 +201,7 @@ export function SearchPage() {
               <p className="type-secondary mt-1">
                 {hasHiddenResults
                   ? `${displayedResultCount} von ${totalResults} Ergebnissen`
-                  : `${totalResults} Ergebnis${totalResults !== 1 ? 'se' : ''}`}{' '}
+                  : `${totalResults} Ergebnis${resultCountSuffix}`}{' '}
                 für{' '}
                 <span className="font-medium text-[var(--color-text-secondary)]">"{query}"</span>
               </p>
