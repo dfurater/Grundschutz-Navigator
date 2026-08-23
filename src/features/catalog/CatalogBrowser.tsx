@@ -27,7 +27,11 @@ const DETAIL_MIN_WIDTH = 320;
 const DETAIL_MAX_WIDTH = 720;
 const EMPTY_CONTROLS_BY_ID = new Map<string, Control>();
 
-function CatalogTargetNotFound({ catalog }: { catalog: Catalog | null }) {
+interface CatalogTargetNotFoundProps {
+  readonly catalog: Catalog | null;
+}
+
+function CatalogTargetNotFound({ catalog }: CatalogTargetNotFoundProps) {
   return (
     <div className="flex-1 p-6">
       <h1 className="text-xl font-bold text-slate-900">
@@ -113,8 +117,9 @@ export function CatalogBrowser() {
   const scopedControls = useMemo(() => {
     if (!catalog) return [];
     if (!scopeId) return catalog.controls;
-    const practice = catalog.practices.find((item) => item.id === scopeId);
-    return practice
+    // S7754: Existenzprüfung — das gefundene Practice-Objekt wird nicht verwendet.
+    const hasPractice = catalog.practices.some((item) => item.id === scopeId);
+    return hasPractice
       ? catalog.controls.filter((control) => control.practiceId === scopeId)
       : catalog.controls.filter((control) => control.groupId === scopeId);
   }, [catalog, scopeId]);
