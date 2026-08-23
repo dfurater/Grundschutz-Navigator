@@ -42,13 +42,60 @@ export type ControlTableProps = ControlTableBaseProps & ControlTableSelectionPro
 
 const EMPTY_CHECKED_IDS = new Set<string>();
 
+const DEFAULT_SORT: SortConfig = [{ field: 'id', direction: 'asc' }];
+
+function getRowBackgroundClass(isOpen: boolean, isChecked: boolean): string {
+  if (isOpen) return 'bg-[var(--color-accent-soft)]';
+  if (isChecked) return 'bg-[var(--color-surface-subtle)]';
+  return 'hover:bg-[var(--color-surface-subtle)]';
+}
+
+function getNextRowIndex(key: string, index: number, rowCount: number): number | null {
+  switch (key) {
+    case 'ArrowDown':
+      return Math.min(rowCount - 1, index + 1);
+    case 'ArrowUp':
+      return Math.max(0, index - 1);
+    case 'Home':
+      return 0;
+    case 'End':
+      return rowCount - 1;
+    default:
+      return null;
+  }
+}
+
+/** Multi-sort (shift): add the column, toggle its direction, or remove it again. */
+function applyMultiSort(sort: SortConfig, field: SortField): SortConfig {
+  const idx = sort.findIndex((s) => s.field === field);
+  if (idx < 0) {
+    return [...sort, { field, direction: 'asc' }];
+  }
+  const next = [...sort];
+  if (next[idx].direction === 'asc') {
+    next[idx] = { ...next[idx], direction: 'desc' };
+    return next;
+  }
+  next.splice(idx, 1);
+  return next.length > 0 ? next : DEFAULT_SORT;
+}
+
+/** Single-sort: make the column the primary sort and toggle its direction. */
+function applySingleSort(sort: SortConfig, field: SortField): SortConfig {
+  const current = sort.length === 1 && sort[0].field === field ? sort[0] : null;
+  return [{
+    field,
+    direction: current?.direction === 'asc' ? 'desc' : 'asc',
+  }];
+}
+
 const MV_DOT_CLASSES: Record<string, string> = {
   MUSS: 'bg-red-600',
   SOLLTE: 'bg-yellow-500',
   KANN: 'bg-green-600',
 };
 
-function ModalVerbCell({ value }: { value?: string }) {
+function ModalVerbCell({ value }: Readonly<{ value?: string }>) {
   if (!value) return null;
   const dotClass = MV_DOT_CLASSES[value] ?? 'bg-slate-300';
 
@@ -60,7 +107,7 @@ function ModalVerbCell({ value }: { value?: string }) {
   );
 }
 
-function SecLevelCell({ value }: { value?: string }) {
+function SecLevelCell({ value }: Readonly<{ value?: string }>) {
   if (!value) return null;
   const isErhoeht = value !== 'normal-SdT';
 
@@ -71,7 +118,7 @@ function SecLevelCell({ value }: { value?: string }) {
   );
 }
 
-function SortIcon({ field, sort }: { field: SortField; sort: SortConfig }) {
+function SortIcon({ field, sort }: Readonly<{ field: SortField; sort: SortConfig }>) {
   const idx = sort.findIndex((s) => s.field === field);
   if (idx < 0) return <span aria-hidden="true" className="text-[var(--color-text-muted)] ml-1">&#8597;</span>;
   const arrow = sort[idx].direction === 'asc' ? '↑' : '↓';
@@ -133,7 +180,7 @@ const ControlTableRow = memo(function ControlTableRow({
       className={`
         border-b border-[var(--color-border-subtle)] cursor-pointer transition-colors
         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus-ring)]
-        ${isOpen ? 'bg-[var(--color-accent-soft)]' : isChecked ? 'bg-[var(--color-surface-subtle)]' : 'hover:bg-[var(--color-surface-subtle)]'}
+        ${getRowBackgroundClass(isOpen, isChecked)}
       `}
       onClick={() => onSelectControl(control)}
       role="row"
@@ -255,16 +302,7 @@ export function ControlTable(props: ControlTableProps) {
       toggleRowSelection(control.id);
       return;
     }
-    const nextIndex =
-      e.key === 'ArrowDown'
-        ? Math.min(controls.length - 1, index + 1)
-        : e.key === 'ArrowUp'
-          ? Math.max(0, index - 1)
-          : e.key === 'Home'
-            ? 0
-            : e.key === 'End'
-              ? controls.length - 1
-              : null;
+    const nextIndex = getNextRowIndex(e.key, index, controls.length);
     if (nextIndex === null) return;
     e.preventDefault();
     setFocusedIndex(nextIndex);
@@ -296,29 +334,12 @@ export function ControlTable(props: ControlTableProps) {
     }
   };
 
-  const handleSort = (field: SortField, shiftKey: boolean) => {
-    if (shiftKey) {
-      // Multi-sort: add, toggle direction, or remove
-      const idx = sort.findIndex((s) => s.field === field);
-      if (idx >= 0) {
-        const next = [...sort];
-        if (next[idx].direction === 'asc') {
-          next[idx] = { ...next[idx], direction: 'desc' };
-        } else {
-          next.splice(idx, 1);
-        }
-        onSortChange(next.length > 0 ? next : [{ field: 'id', direction: 'asc' }]);
-      } else {
-        onSortChange([...sort, { field, direction: 'asc' }]);
-      }
-    } else {
-      // Single-sort: set or toggle direction
-      const current = sort.length === 1 && sort[0].field === field ? sort[0] : null;
-      onSortChange([{
-        field,
-        direction: current?.direction === 'asc' ? 'desc' : 'asc',
-      }]);
-    }
+  const handleSingleSort = (field: SortField) => {
+    onSortChange(applySingleSort(sort, field));
+  };
+
+  const handleMultiSort = (field: SortField) => {
+    onSortChange(applyMultiSort(sort, field));
   };
 
   if (controls.length === 0) {
@@ -362,7 +383,7 @@ export function ControlTable(props: ControlTableProps) {
                 <button
                   type="button"
                   className="inline-flex w-full items-center rounded px-0 py-1 text-left transition-colors hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--color-surface-subtle)]"
-                  onClick={(e) => handleSort(col.field, e.shiftKey)}
+                  onClick={(e) => (e.shiftKey ? handleMultiSort(col.field) : handleSingleSort(col.field))}
                 >
                   <span>{col.label}</span>
                   <SortIcon field={col.field} sort={sort} />
