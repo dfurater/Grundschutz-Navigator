@@ -337,91 +337,133 @@ function assertMatrixCompatibleVersion(entry) {
   }
 }
 
+function assertArtifactKeyIsValid(entry, artifactKeys) {
+  if (!KEY_GRAMMAR.test(entry.artifactKey ?? '')) {
+    throw new Error(`artifactKey violates the key grammar: ${entry.artifactKey}`);
+  }
+  if (artifactKeys.has(entry.artifactKey)) {
+    throw new Error(`Duplicate artifactKey in source registry: ${entry.artifactKey}`);
+  }
+  artifactKeys.add(entry.artifactKey);
+}
+
+function assertLifecycleIsValid(entry) {
+  if (!LIFECYCLES.includes(entry.lifecycle)) {
+    throw new Error(`Unknown lifecycle in source registry entry ${entry.artifactKey}: ${entry.lifecycle}`);
+  }
+}
+
+function assertUpstreamIssueUsageIsValid(entry) {
+  if (entry.lifecycle === 'blocked-by-upstream') {
+    if (entry.kind !== 'oscal' || !BSI_UPSTREAM_ISSUE_URL.test(entry.upstreamIssue ?? '')) {
+      throw new Error(`Blocked source registry entry requires a BSI upstream issue: ${entry.artifactKey}`);
+    }
+    return;
+  }
+  if (entry.upstreamIssue !== undefined) {
+    throw new Error(`Only blocked source registry entries may declare an upstream issue: ${entry.artifactKey}`);
+  }
+}
+
+function assertOscalRootTypeIsKnown(entry) {
+  if (!OSCAL_ROOT_TYPES.includes(entry.expectedRootType)) {
+    throw new Error(
+      `Unknown OSCAL root type in source registry entry ${entry.artifactKey}: ${entry.expectedRootType}`,
+    );
+  }
+}
+
+function assertCatalogKeyUsageIsValid(entry, catalogKeys) {
+  const isCatalog = entry.expectedRootType === 'catalog';
+  if (!isCatalog && entry.catalogKey !== undefined) {
+    throw new Error(
+      `Entry ${entry.artifactKey} may define catalogKey only for root type "catalog"`,
+    );
+  }
+  if (entry.catalogKey === undefined) {
+    if (isCatalog && entry.lifecycle === 'supported') {
+      throw new Error(
+        `Supported catalog entry ${entry.artifactKey} requires a catalogKey for app delivery`,
+      );
+    }
+    return;
+  }
+  if (!KEY_GRAMMAR.test(entry.catalogKey)) {
+    throw new Error(`catalogKey violates the key grammar: ${entry.catalogKey}`);
+  }
+  if (catalogKeys.has(entry.catalogKey)) {
+    throw new Error(`Duplicate catalogKey in source registry: ${entry.catalogKey}`);
+  }
+  catalogKeys.add(entry.catalogKey);
+}
+
+function assertEntryCatalogUsageIsValid(entry) {
+  if (entry.entryCatalog === undefined) return;
+  if (entry.entryCatalog !== true) {
+    throw new Error(`entryCatalog must be true when present: ${entry.artifactKey}`);
+  }
+  const isSupportedCatalog =
+    entry.expectedRootType === 'catalog' && entry.lifecycle === 'supported';
+  if (!isSupportedCatalog) {
+    throw new Error(
+      `Only a supported catalog entry may be the entry catalog: ${entry.artifactKey}`,
+    );
+  }
+}
+
+function assertOscalEntryIsValid(entry, upstreamPaths, catalogKeys) {
+  assertOscalRootTypeIsKnown(entry);
+  assertMatrixCompatibleVersion(entry);
+
+  if (!isSafeRepoPath(entry.upstreamPath)) {
+    throw new Error(`Unsafe upstream path in source registry: ${entry.upstreamPath}`);
+  }
+  if (upstreamPaths.has(entry.upstreamPath)) {
+    throw new Error(`Duplicate upstreamPath in source registry: ${entry.upstreamPath}`);
+  }
+  upstreamPaths.add(entry.upstreamPath);
+
+  assertCatalogKeyUsageIsValid(entry, catalogKeys);
+  assertEntryCatalogUsageIsValid(entry);
+}
+
+function assertVocabularyCollectionEntryIsValid(entry) {
+  if (entry.entryCatalog !== undefined) {
+    throw new Error(`Only a supported catalog entry may be the entry catalog: ${entry.artifactKey}`);
+  }
+  if (!isSafeRepoPath(entry.upstreamDirectory)) {
+    throw new Error(`Unsafe upstream path in source registry: ${entry.upstreamDirectory}`);
+  }
+  if (!isNonEmptyString(entry.fileSuffix) || !entry.fileSuffix.startsWith('.')) {
+    throw new Error(`Invalid fileSuffix in source registry entry ${entry.artifactKey}`);
+  }
+}
+
+function assertEntryKindIsValid(entry) {
+  if (entry.kind !== 'oscal' && entry.kind !== 'vocabulary-collection') {
+    throw new Error(`Unknown kind in source registry entry ${entry.artifactKey}: ${entry.kind}`);
+  }
+}
+
 export function validateSourceRegistry(entries = SOURCE_REGISTRY) {
   const artifactKeys = new Set();
   const upstreamPaths = new Set();
   const catalogKeys = new Set();
 
   for (const entry of entries) {
-    if (!KEY_GRAMMAR.test(entry.artifactKey ?? '')) {
-      throw new Error(`artifactKey violates the key grammar: ${entry.artifactKey}`);
-    }
-    if (artifactKeys.has(entry.artifactKey)) {
-      throw new Error(`Duplicate artifactKey in source registry: ${entry.artifactKey}`);
-    }
-    artifactKeys.add(entry.artifactKey);
-
-    if (!LIFECYCLES.includes(entry.lifecycle)) {
-      throw new Error(`Unknown lifecycle in source registry entry ${entry.artifactKey}: ${entry.lifecycle}`);
-    }
-    if (entry.lifecycle === 'blocked-by-upstream') {
-      if (entry.kind !== 'oscal' || !BSI_UPSTREAM_ISSUE_URL.test(entry.upstreamIssue ?? '')) {
-        throw new Error(`Blocked source registry entry requires a BSI upstream issue: ${entry.artifactKey}`);
-      }
-    } else if (entry.upstreamIssue !== undefined) {
-      throw new Error(`Only blocked source registry entries may declare an upstream issue: ${entry.artifactKey}`);
-    }
+    assertArtifactKeyIsValid(entry, artifactKeys);
+    assertLifecycleIsValid(entry);
+    assertUpstreamIssueUsageIsValid(entry);
     if (!isNonEmptyString(entry.title)) {
       throw new Error(`Missing title in source registry entry ${entry.artifactKey}`);
     }
 
     if (entry.kind === 'oscal') {
-      if (!OSCAL_ROOT_TYPES.includes(entry.expectedRootType)) {
-        throw new Error(
-          `Unknown OSCAL root type in source registry entry ${entry.artifactKey}: ${entry.expectedRootType}`,
-        );
-      }
-      assertMatrixCompatibleVersion(entry);
-      if (!isSafeRepoPath(entry.upstreamPath)) {
-        throw new Error(`Unsafe upstream path in source registry: ${entry.upstreamPath}`);
-      }
-      if (upstreamPaths.has(entry.upstreamPath)) {
-        throw new Error(`Duplicate upstreamPath in source registry: ${entry.upstreamPath}`);
-      }
-      upstreamPaths.add(entry.upstreamPath);
-
-      const isCatalog = entry.expectedRootType === 'catalog';
-      if (!isCatalog && entry.catalogKey !== undefined) {
-        throw new Error(
-          `Entry ${entry.artifactKey} may define catalogKey only for root type "catalog"`,
-        );
-      }
-      if (entry.catalogKey !== undefined) {
-        if (!KEY_GRAMMAR.test(entry.catalogKey)) {
-          throw new Error(`catalogKey violates the key grammar: ${entry.catalogKey}`);
-        }
-        if (catalogKeys.has(entry.catalogKey)) {
-          throw new Error(`Duplicate catalogKey in source registry: ${entry.catalogKey}`);
-        }
-        catalogKeys.add(entry.catalogKey);
-      }
-      if (isCatalog && entry.lifecycle === 'supported' && entry.catalogKey === undefined) {
-        throw new Error(
-          `Supported catalog entry ${entry.artifactKey} requires a catalogKey for app delivery`,
-        );
-      }
-      if (entry.entryCatalog !== undefined) {
-        if (entry.entryCatalog !== true) {
-          throw new Error(`entryCatalog must be true when present: ${entry.artifactKey}`);
-        }
-        if (!isCatalog || entry.lifecycle !== 'supported') {
-          throw new Error(
-            `Only a supported catalog entry may be the entry catalog: ${entry.artifactKey}`,
-          );
-        }
-      }
+      assertOscalEntryIsValid(entry, upstreamPaths, catalogKeys);
     } else if (entry.kind === 'vocabulary-collection') {
-      if (entry.entryCatalog !== undefined) {
-        throw new Error(`Only a supported catalog entry may be the entry catalog: ${entry.artifactKey}`);
-      }
-      if (!isSafeRepoPath(entry.upstreamDirectory)) {
-        throw new Error(`Unsafe upstream path in source registry: ${entry.upstreamDirectory}`);
-      }
-      if (!isNonEmptyString(entry.fileSuffix) || !entry.fileSuffix.startsWith('.')) {
-        throw new Error(`Invalid fileSuffix in source registry entry ${entry.artifactKey}`);
-      }
+      assertVocabularyCollectionEntryIsValid(entry);
     } else {
-      throw new Error(`Unknown kind in source registry entry ${entry.artifactKey}: ${entry.kind}`);
+      assertEntryKindIsValid(entry);
     }
   }
 }

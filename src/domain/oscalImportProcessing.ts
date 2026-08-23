@@ -117,7 +117,7 @@ class DuplicateMemberScanner {
       const character = this.text[this.position]!;
       this.position += 1;
       if (character === '"') return value;
-      if (character.charCodeAt(0) < 0x20) return null;
+      if ((character.codePointAt(0) ?? 0) < 0x20) return null;
 
       if (character !== '\\') {
         value += character;
@@ -150,7 +150,7 @@ class DuplicateMemberScanner {
         case 'u': {
           const hexadecimal = this.text.slice(this.position, this.position + 4);
           if (!/^[0-9a-fA-F]{4}$/.test(hexadecimal)) return null;
-          value += String.fromCharCode(Number.parseInt(hexadecimal, 16));
+          value += String.fromCodePoint(Number.parseInt(hexadecimal, 16));
           this.position += 4;
           break;
         }
@@ -168,32 +168,55 @@ class DuplicateMemberScanner {
     return { kind: 'valid' };
   }
 
+  private skipDigits(): void {
+    while (this.isDigit(this.text[this.position])) this.position += 1;
+  }
+
+  /** Ganzzahlanteil; `null` heißt weiterlesen, sonst liegt `invalid` vor. */
+  private readNumberIntegerPart(start: number): JsonScanResult | null {
+    if (this.consume('0')) {
+      // JSON verbietet führende Nullen; das abschließende JSON.parse liefert
+      // dafür die redigierte Syntaxdiagnose.
+      return null;
+    }
+    if (!this.isDigitOneToNine(this.text[this.position])) {
+      this.position = start;
+      return { kind: 'invalid' };
+    }
+    this.position += 1;
+    this.skipDigits();
+    return null;
+  }
+
+  private readNumberFractionPart(): JsonScanResult | null {
+    if (!this.consume('.')) return null;
+    if (!this.isDigit(this.text[this.position])) return { kind: 'invalid' };
+    this.skipDigits();
+    return null;
+  }
+
+  private readNumberExponentPart(): JsonScanResult | null {
+    const exponentMarker = this.text[this.position];
+    if (exponentMarker !== 'e' && exponentMarker !== 'E') return null;
+    this.position += 1;
+    if (this.text[this.position] === '+' || this.text[this.position] === '-') this.position += 1;
+    if (!this.isDigit(this.text[this.position])) return { kind: 'invalid' };
+    this.skipDigits();
+    return null;
+  }
+
   private readNumber(): JsonScanResult {
     const start = this.position;
     this.consume('-');
 
-    if (this.consume('0')) {
-      // JSON verbietet führende Nullen; das abschließende JSON.parse liefert
-      // dafür die redigierte Syntaxdiagnose.
-    } else if (this.isDigitOneToNine(this.text[this.position])) {
-      this.position += 1;
-      while (this.isDigit(this.text[this.position])) this.position += 1;
-    } else {
-      this.position = start;
-      return { kind: 'invalid' };
-    }
+    const integerPart = this.readNumberIntegerPart(start);
+    if (integerPart !== null) return integerPart;
 
-    if (this.consume('.')) {
-      if (!this.isDigit(this.text[this.position])) return { kind: 'invalid' };
-      while (this.isDigit(this.text[this.position])) this.position += 1;
-    }
+    const fractionPart = this.readNumberFractionPart();
+    if (fractionPart !== null) return fractionPart;
 
-    if (this.text[this.position] === 'e' || this.text[this.position] === 'E') {
-      this.position += 1;
-      if (this.text[this.position] === '+' || this.text[this.position] === '-') this.position += 1;
-      if (!this.isDigit(this.text[this.position])) return { kind: 'invalid' };
-      while (this.isDigit(this.text[this.position])) this.position += 1;
-    }
+    const exponentPart = this.readNumberExponentPart();
+    if (exponentPart !== null) return exponentPart;
 
     return { kind: 'valid' };
   }
