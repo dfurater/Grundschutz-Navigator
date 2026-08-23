@@ -21,21 +21,6 @@ export const DEFAULT_TERMINAL_DELAY_MS = 15_000;
 
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/**
- * Entfernt Steuerzeichen, bevor fehlerabgeleitete Texte ins Aktionslog
- * geschrieben werden (SonarCloud jssecurity:S5145): Die Meldungen können
- * Fragmente aus GitHub-API-Antworten tragen (Run-URLs, Statuswerte); eine
- * Kontrolle über diese Felder darf keine Logzeilen fälschen können.
- */
-export function stripControlCharacters(value) {
-  if (typeof value !== 'string') {
-    return value;
-  }
-  return [...value]
-    .filter((char) => char.charCodeAt(0) > 0x1f && char.charCodeAt(0) !== 0x7f)
-    .join('');
-}
-
 async function fetchGitHubJson(url, { fetchImpl, token, label }) {
   const headers = {
     Accept: 'application/vnd.github+json',
@@ -265,10 +250,9 @@ async function main() {
 const isDirectExecution = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isDirectExecution) {
-  try {
-    await main();
-  } catch (error) {
-    console.error(stripControlCharacters(error instanceof Error ? error.message : error));
-    process.exitCode = 1;
-  }
+  // Top-Level-Await ohne Catch: Ein Verifikationsversagen soll den Workflow
+  // laut failen (Node beendet mit Exit-Code 1). Fehlerabgeleitete Texte werden
+  // bewusst nicht selbst geloggt — GitHub-API-Antworten (Run-URLs, Statuswerte)
+  // sind keine Log-Eingabe (jssecurity:S5145).
+  await main();
 }

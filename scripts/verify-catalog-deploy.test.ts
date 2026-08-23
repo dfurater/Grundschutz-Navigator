@@ -3,7 +3,6 @@ import {
   DEPLOY_CONFIRMED,
   FALLBACK_REQUIRED,
   findPushDeployRun,
-  stripControlCharacters,
   verifyCatalogDeploy,
 } from './verify-catalog-deploy.mjs';
 
@@ -214,25 +213,5 @@ describe('verifyCatalogDeploy — no push deploy', () => {
     await expect(
       verifyCatalogDeploy(options(fetchImpl, { discoveryAttempts: 1 })),
     ).rejects.toThrow('completed with conclusion failure');
-  });
-});
-
-describe('stripControlCharacters', () => {
-  it('strips control characters so API-derived text cannot forge log lines', () => {
-    const forged = 'deploy run 1 failed: HTTP 500\u001b]0;pwned\u0007 / status x';
-    expect(stripControlCharacters(forged)).toBe('deploy run 1 failed: HTTP 500]0;pwned / status x');
-  });
-
-  it('also strips DEL and line breaks, but keeps readable text including umlauts', () => {
-    expect(stripControlCharacters('Zeile 1\nZeile 2\u007f')).toBe('Zeile 1Zeile 2');
-    expect(stripControlCharacters('Verifikation fehlgeschlagen: Manifest ≠ erwartet ✓')).toBe(
-      'Verifikation fehlgeschlagen: Manifest ≠ erwartet ✓',
-    );
-  });
-
-  it('passes non-string values through unchanged, like console.error would', () => {
-    const sentinel = { unexpected: true };
-    expect(stripControlCharacters(sentinel)).toBe(sentinel);
-    expect(stripControlCharacters(undefined)).toBe(undefined);
   });
 });
