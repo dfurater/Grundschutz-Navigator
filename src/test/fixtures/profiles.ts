@@ -48,7 +48,7 @@ export const PROFILE_SOURCE_RLINKS = Object.freeze({
 function makeUuid(seed: string, index: number): string {
   let hash = 0;
   for (const character of seed) {
-    hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+    hash = (hash * 31 + character.codePointAt(0)!) >>> 0;
   }
   return `${hash.toString(16).padStart(8, '0')}-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;
 }
@@ -101,9 +101,15 @@ const REGISTERED_PROFILE_ARTIFACTS = new Map(
     .map((entry) => [entry.artifactKey, entry] as const),
 );
 
+function compareStringsByCodeUnit(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 /** Die Schlüssel der registrierten Profile, alphabetisch. */
 export function listRegisteredProfileArtifactKeys(): readonly string[] {
-  return [...REGISTERED_PROFILE_ARTIFACTS.keys()].sort();
+  return [...REGISTERED_PROFILE_ARTIFACTS.keys()].sort(compareStringsByCodeUnit);
 }
 
 function registryFactsFor(artifactKey: string): {
@@ -414,7 +420,7 @@ function makeSyntheticBody(oscalVersion: string, extra: JsonObject = {}): JsonOb
 
 /** Ein Profil mit frei gesetztem Körperinhalt, sonst gültigem Rahmen. */
 export function makeSyntheticProfile(
-  oscalVersion: PinnedOscalVersion | string,
+  oscalVersion: string,
   extra: JsonObject = {},
 ): JsonObject {
   return { profile: makeSyntheticBody(oscalVersion, extra) };

@@ -48,7 +48,7 @@ type JsonObject = Record<string, unknown>;
 function makeUuid(seed: string, index: number): string {
   let hash = 0;
   for (const character of seed) {
-    hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+    hash = (hash * 31 + character.codePointAt(0)!) >>> 0;
   }
   const high = hash.toString(16).padStart(8, '0');
   const low = index.toString(16).padStart(12, '0');
@@ -124,8 +124,7 @@ function componentsFrom(
         source: source(componentIndex, implementationIndex),
         requirementCount,
         singleObjectLinksAt:
-          singleObjectLinks
-          && singleObjectLinks.component === componentIndex
+          singleObjectLinks?.component === componentIndex
           && singleObjectLinks.implementation === implementationIndex
             ? singleObjectLinks.requirements
             : undefined,
@@ -155,9 +154,15 @@ const REGISTERED_COMPONENT_ARTIFACTS = new Map(
     .map((entry) => [entry.artifactKey, entry] as const),
 );
 
+function compareStringsByCodeUnit(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 /** Die Schlüssel der registrierten Component Definitions, alphabetisch. */
 export function listRegisteredComponentArtifactKeys(): readonly string[] {
-  return [...REGISTERED_COMPONENT_ARTIFACTS.keys()].sort();
+  return [...REGISTERED_COMPONENT_ARTIFACTS.keys()].sort(compareStringsByCodeUnit);
 }
 
 function registryFactsFor(artifactKey: string): {

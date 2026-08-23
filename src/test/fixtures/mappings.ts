@@ -35,7 +35,7 @@ export const MAPPING_PINNED_VERSIONS: readonly PinnedOscalVersion[] =
   PINNED_OSCAL_VERSIONS.filter((version) => getSchemaPin('mapping-collection', version) !== null);
 
 /** Die jüngste gepinnte Mapping-Zelle; Vorgabe der synthetischen Fixtures. */
-const DEFAULT_VERSION = MAPPING_PINNED_VERSIONS[MAPPING_PINNED_VERSIONS.length - 1];
+const DEFAULT_VERSION = MAPPING_PINNED_VERSIONS.at(-1)!;
 
 /**
  * Die sechs am Bestand erhobenen Ressourcen-`href`.
@@ -61,7 +61,7 @@ export const MAPPING_RESOURCE_HREFS = Object.freeze({
 function makeUuid(seed: string, index: number): string {
   let hash = 0;
   for (const character of seed) {
-    hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+    hash = (hash * 31 + character.codePointAt(0)!) >>> 0;
   }
   return `${hash.toString(16).padStart(8, '0')}-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;
 }
@@ -110,9 +110,15 @@ const REGISTERED_MAPPING_ARTIFACTS = new Map(
     .map((entry) => [entry.artifactKey, entry] as const),
 );
 
+function compareStringsByCodeUnit(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 /** Die Schlüssel der registrierten Mappings, alphabetisch. */
 export function listRegisteredMappingArtifactKeys(): readonly string[] {
-  return [...REGISTERED_MAPPING_ARTIFACTS.keys()].sort();
+  return [...REGISTERED_MAPPING_ARTIFACTS.keys()].sort(compareStringsByCodeUnit);
 }
 
 function registryFactsFor(artifactKey: string): {
@@ -299,7 +305,7 @@ export function makeMappingSource(spec: MappingArtifactSpec): JsonObject {
       'matching-rationale': 'semantic',
       status: spec.sets[0]?.status ?? 'draft',
       'mapping-description': 'Fixture-Nachbildung der gemessenen Struktur.',
-      ...(spec.provenanceExtras ?? {}),
+      ...spec.provenanceExtras,
     },
     mappings: spec.sets.map((set, index) => makeSet(set, spec.artifactKey, index)),
   };
