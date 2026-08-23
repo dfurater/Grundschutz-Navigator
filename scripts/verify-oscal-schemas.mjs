@@ -178,16 +178,15 @@ const isDirectExecution =
 if (isDirectExecution) {
   console.log('OSCAL-Schema-Verifikation (eingecheckte Bytes, ohne Netzzugriff)');
 
-  verifyOscalSchemas()
-    .then((results) => {
-      const totalBytes = results.reduce((sum, result) => sum + result.sizeBytes, 0);
-      console.log(
-        `\n${results.length} eingecheckte Schemas gegen Hash, $id und draft-07 verifiziert ` +
-        `(${totalBytes} Bytes).`,
-      );
-    })
-    .catch((error) => {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exitCode = 1;
-    });
+  try {
+    const results = await verifyOscalSchemas();
+    const totalBytes = results.reduce((sum, result) => sum + result.sizeBytes, 0);
+    console.log(
+      `\n${results.length} eingecheckte Schemas gegen Hash, $id und draft-07 verifiziert ` +
+      `(${totalBytes} Bytes).`,
+    );
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
 }

@@ -2,8 +2,8 @@ import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { playwright } from '@vitest/browser-playwright';
-import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
 import {
   assertNoBrowserEgress,
   getBrowserEgressEnforcements,

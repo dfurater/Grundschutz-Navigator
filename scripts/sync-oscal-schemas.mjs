@@ -203,15 +203,14 @@ if (isDirectExecution) {
   const write = process.argv.includes('--write');
   console.log(`OSCAL-Schema-Sync (${write ? 'prüfen und ablegen' : 'nur prüfen'})`);
 
-  syncOscalSchemas({ write })
-    .then((results) => {
-      console.log(`\n${results.length} Schemas gegen Hash und $id verifiziert.`);
-      if (write) {
-        console.log(`Abgelegt unter ${SCHEMA_VENDOR_DIRECTORY}/.`);
-      }
-    })
-    .catch((error) => {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exitCode = 1;
-    });
+  try {
+    const results = await syncOscalSchemas({ write });
+    console.log(`\n${results.length} Schemas gegen Hash und $id verifiziert.`);
+    if (write) {
+      console.log(`Abgelegt unter ${SCHEMA_VENDOR_DIRECTORY}/.`);
+    }
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
 }
