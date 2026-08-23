@@ -165,69 +165,89 @@ function sortEntries(entries) {
   );
 }
 
-export function compareCatalogControlIdentities({
-  artifactKey,
-  previousSnapshotSha,
-  nextSnapshotSha,
-  previousCatalog,
-  nextCatalog,
-}) {
-  const previousControls = collectControls(previousCatalog, 'Previous catalog');
-  const nextControls = collectControls(nextCatalog, 'Next catalog');
-  const context = { artifactKey, previousSnapshotSha, nextSnapshotSha };
-  const entries = [];
-  const handledPrevious = new Set();
-  const handledNext = new Set();
-  const previousBaseClass = new Map();
-  const nextBaseClass = new Map();
-  const previousByAlt = groupBy(previousControls, 'altIdentifier');
-  const nextByAlt = groupBy(nextControls, 'altIdentifier');
+/**
+ * Code-Unit-Vergleich zweier Strings — semantisch identisch zur impliziten
+ * Sortiersemantik von Array.prototype.sort(), aber ohne Ternär-Kaskade.
+ */
+function compareStringsByCodeUnit(left, right) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
 
-  function markAmbiguous(records, side, kind) {
-    for (const record of records) {
-      const handled = side === 'previous' ? handledPrevious : handledNext;
-      if (handled.has(record.index)) continue;
-      handled.add(record.index);
-      (side === 'previous' ? previousBaseClass : nextBaseClass)
-        .set(record.index, 'ambiguous');
-      entries.push(makeEntry({
-        ...context,
-        classification: 'ambiguous',
-        previous: side === 'previous' ? record : null,
-        next: side === 'next' ? record : null,
-        evidence: { kind, cryptographicallyProven: false },
-      }));
-    }
+function createComparisonState() {
+  return {
+    entries: [],
+    handledPrevious: new Set(),
+    handledNext: new Set(),
+    previousBaseClass: new Map(),
+    nextBaseClass: new Map(),
+  };
+}
+
+function markAmbiguousRecords(state, context, records, side, kind) {
+  const handled = side === 'previous' ? state.handledPrevious : state.handledNext;
+  for (const record of records) {
+    if (handled.has(record.index)) continue;
+    handled.add(record.index);
+    (side === 'previous' ? state.previousBaseClass : state.nextBaseClass)
+      .set(record.index, 'ambiguous');
+    state.entries.push(makeEntry({
+      ...context,
+      classification: 'ambiguous',
+      previous: side === 'previous' ? record : null,
+      next: side === 'next' ? record : null,
+      evidence: { kind, cryptographicallyProven: false },
+    }));
   }
+}
 
-  markAmbiguous(
+function markAltIdentifierAmbiguities(
+  state,
+  context,
+  previousControls,
+  nextControls,
+  previousByAlt,
+  nextByAlt,
+) {
+  markAmbiguousRecords(
+    state,
+    context,
     previousControls.filter((control) => control.altIdentifier === null),
     'previous',
     'missing-alt-identifier',
   );
-  markAmbiguous(
+  markAmbiguousRecords(
+    state,
+    context,
     nextControls.filter((control) => control.altIdentifier === null),
     'next',
     'missing-alt-identifier',
   );
   for (const records of previousByAlt.values()) {
-    if (records.length > 1) markAmbiguous(records, 'previous', 'duplicate-alt-identifier');
+    if (records.length > 1) {
+      markAmbiguousRecords(state, context, records, 'previous', 'duplicate-alt-identifier');
+    }
   }
   for (const records of nextByAlt.values()) {
-    if (records.length > 1) markAmbiguous(records, 'next', 'duplicate-alt-identifier');
+    if (records.length > 1) {
+      markAmbiguousRecords(state, context, records, 'next', 'duplicate-alt-identifier');
+    }
   }
+}
 
+function recordAltIdentifierMatches(state, context, previousByAlt, nextByAlt) {
   for (const [altIdentifier, previousMatches] of previousByAlt) {
     const nextMatches = nextByAlt.get(altIdentifier);
     if (previousMatches.length !== 1 || nextMatches?.length !== 1) continue;
     const previous = previousMatches[0];
     const next = nextMatches[0];
-    handledPrevious.add(previous.index);
-    handledNext.add(next.index);
-    previousBaseClass.set(previous.index, 'alt-identifier-match');
-    nextBaseClass.set(next.index, 'alt-identifier-match');
+    state.handledPrevious.add(previous.index);
+    state.handledNext.add(next.index);
+    state.previousBaseClass.set(previous.index, 'alt-identifier-match');
+    state.nextBaseClass.set(next.index, 'alt-identifier-match');
     if (previous.controlId !== next.controlId) {
-      entries.push(makeEntry({
+      state.entries.push(makeEntry({
         ...context,
         classification: 'moved',
         previous,
@@ -236,11 +256,13 @@ export function compareCatalogControlIdentities({
       }));
     }
   }
+}
 
+function recordTitleMatches(state, context, previousControls, nextControls) {
   const unmatchedPrevious = previousControls.filter(
-    (control) => !handledPrevious.has(control.index),
+    (control) => !state.handledPrevious.has(control.index),
   );
-  const unmatchedNext = nextControls.filter((control) => !handledNext.has(control.index));
+  const unmatchedNext = nextControls.filter((control) => !state.handledNext.has(control.index));
   const previousByTitle = groupBy(unmatchedPrevious, 'title');
   const nextByTitle = groupBy(unmatchedNext, 'title');
   const allPreviousByTitle = groupBy(previousControls, 'title');
@@ -255,11 +277,11 @@ export function compareCatalogControlIdentities({
     ) {
       const previous = previousMatches[0];
       const next = nextMatches[0];
-      handledPrevious.add(previous.index);
-      handledNext.add(next.index);
-      previousBaseClass.set(previous.index, 'identifier-changed');
-      nextBaseClass.set(next.index, 'identifier-changed');
-      entries.push(makeEntry({
+      state.handledPrevious.add(previous.index);
+      state.handledNext.add(next.index);
+      state.previousBaseClass.set(previous.index, 'identifier-changed');
+      state.nextBaseClass.set(next.index, 'identifier-changed');
+      state.entries.push(makeEntry({
         ...context,
         classification: 'identifier-changed',
         previous,
@@ -268,23 +290,37 @@ export function compareCatalogControlIdentities({
       }));
       continue;
     }
-    markAmbiguous(previousMatches, 'previous', 'repeated-title-candidate');
-    markAmbiguous(nextMatches, 'next', 'repeated-title-candidate');
+    markAmbiguousRecords(state, context, previousMatches, 'previous', 'repeated-title-candidate');
+    markAmbiguousRecords(state, context, nextMatches, 'next', 'repeated-title-candidate');
   }
+}
 
+function recordRemovalsAndAdditions(state, context, previousControls, nextControls) {
   for (const previous of previousControls) {
-    if (handledPrevious.has(previous.index)) continue;
-    handledPrevious.add(previous.index);
-    previousBaseClass.set(previous.index, 'removed');
-    entries.push(makeEntry({ ...context, classification: 'removed', previous }));
+    if (state.handledPrevious.has(previous.index)) continue;
+    state.handledPrevious.add(previous.index);
+    state.previousBaseClass.set(previous.index, 'removed');
+    state.entries.push(makeEntry({ ...context, classification: 'removed', previous }));
   }
   for (const next of nextControls) {
-    if (handledNext.has(next.index)) continue;
-    handledNext.add(next.index);
-    nextBaseClass.set(next.index, 'added');
-    entries.push(makeEntry({ ...context, classification: 'added', next }));
+    if (state.handledNext.has(next.index)) continue;
+    state.handledNext.add(next.index);
+    state.nextBaseClass.set(next.index, 'added');
+    state.entries.push(makeEntry({ ...context, classification: 'added', next }));
   }
+}
 
+function isIncidentalControlIdRebound(previous, next, oldClassification, newClassification) {
+  return (
+    previous.altIdentifier !== null &&
+    next.altIdentifier !== null &&
+    previous.altIdentifier !== next.altIdentifier &&
+    newClassification === 'added' &&
+    (oldClassification === 'removed' || oldClassification === 'identifier-changed')
+  );
+}
+
+function recordControlIdRebounds(state, context, previousControls, nextControls) {
   const previousById = groupBy(previousControls, 'controlId');
   const nextById = groupBy(nextControls, 'controlId');
   for (const [controlId, previousMatches] of previousById) {
@@ -292,20 +328,14 @@ export function compareCatalogControlIdentities({
     if (previousMatches.length !== 1 || nextMatches?.length !== 1) continue;
     const previous = previousMatches[0];
     const next = nextMatches[0];
-    const oldClassification = previousBaseClass.get(previous.index);
-    const newClassification = nextBaseClass.get(next.index);
+    const oldClassification = state.previousBaseClass.get(previous.index);
+    const newClassification = state.nextBaseClass.get(next.index);
     // A shifted sequence reuses several numeric IDs incidentally. Once both
     // sides are already paired by stable alt-identifier or unique title, that
     // is not an additional rebound. Only a newly introduced, otherwise
     // unpaired identity occupying an old ID gets this overlapping diagnostic.
-    if (
-      previous.altIdentifier !== null &&
-      next.altIdentifier !== null &&
-      previous.altIdentifier !== next.altIdentifier &&
-      newClassification === 'added' &&
-      (oldClassification === 'removed' || oldClassification === 'identifier-changed')
-    ) {
-      entries.push(makeEntry({
+    if (isIncidentalControlIdRebound(previous, next, oldClassification, newClassification)) {
+      state.entries.push(makeEntry({
         ...context,
         classification: 'id-rebound',
         previous,
@@ -314,8 +344,36 @@ export function compareCatalogControlIdentities({
       }));
     }
   }
+}
 
-  const sortedEntries = sortEntries(entries);
+export function compareCatalogControlIdentities({
+  artifactKey,
+  previousSnapshotSha,
+  nextSnapshotSha,
+  previousCatalog,
+  nextCatalog,
+}) {
+  const previousControls = collectControls(previousCatalog, 'Previous catalog');
+  const nextControls = collectControls(nextCatalog, 'Next catalog');
+  const context = { artifactKey, previousSnapshotSha, nextSnapshotSha };
+  const state = createComparisonState();
+  const previousByAlt = groupBy(previousControls, 'altIdentifier');
+  const nextByAlt = groupBy(nextControls, 'altIdentifier');
+
+  markAltIdentifierAmbiguities(
+    state,
+    context,
+    previousControls,
+    nextControls,
+    previousByAlt,
+    nextByAlt,
+  );
+  recordAltIdentifierMatches(state, context, previousByAlt, nextByAlt);
+  recordTitleMatches(state, context, previousControls, nextControls);
+  recordRemovalsAndAdditions(state, context, previousControls, nextControls);
+  recordControlIdRebounds(state, context, previousControls, nextControls);
+
+  const sortedEntries = sortEntries(state.entries);
   return {
     artifactKey,
     previousSnapshotSha,
@@ -440,7 +498,12 @@ export async function buildControlIdentityDelta(
   const nextManifest = validateOfficialManifest(nextManifestInput);
   const previousFiles = indexCatalogFiles(previousManifest, 'Previous manifest');
   const nextFiles = indexCatalogFiles(nextManifest, 'Next manifest');
-  const artifactKeys = [...new Set([...previousFiles.keys(), ...nextFiles.keys()])].sort();
+  const artifactKeys = [
+    ...new Set([...previousFiles.keys(), ...nextFiles.keys()]),
+    // Code-Unit-Komparator: bewahrt exakt die bisherige implizite
+    // Sortiersemantik von Array.prototype.sort(), damit die Reihenfolge der
+    // Delta-Artefakte deterministisch und unverändert bleibt (S2871).
+  ].sort(compareStringsByCodeUnit);
   const cache = new Map();
 
   function load(file, repository) {

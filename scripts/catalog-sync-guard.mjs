@@ -75,22 +75,12 @@ export function computeManifestSignature(manifest) {
   return computeV2ManifestSignature(manifest);
 }
 
-export function validateCatalogSyncManifest(manifest) {
-  validateManifestV2Shape(manifest);
-
-  if (manifest.repository !== OFFICIAL_BSI_REPOSITORY_URL) {
-    throw new Error(`Manifest repository must be ${OFFICIAL_BSI_REPOSITORY_URL}`);
-  }
-
+function assertRegisteredArtifactsPresent(manifestPaths, manifest) {
   const exactRegistryFiles = new Map(
     SOURCE_REGISTRY
       .filter((entry) => entry.kind === 'oscal')
       .map((entry) => [entry.upstreamPath, entry]),
   );
-  const manifestPaths = new Set(manifest.files.map((file) => file.path));
-  const materializedNamespacePaths = manifest.files
-    .filter((file) => file.rootType === 'vocabulary')
-    .map((file) => file.path);
 
   for (const [repoPath, entry] of exactRegistryFiles) {
     if (!manifestPaths.has(repoPath)) {
@@ -109,7 +99,9 @@ export function validateCatalogSyncManifest(manifest) {
       throw new Error(`Manifest registry metadata does not match sourceRegistry: ${repoPath}`);
     }
   }
+}
 
+function assertManifestPathsAreRegistered(manifest, materializedNamespacePaths) {
   for (const file of manifest.files) {
     const registryEntry = getArtifactByUpstreamPath(file.path);
     if (!registryEntry) {
@@ -126,6 +118,22 @@ export function validateCatalogSyncManifest(manifest) {
     }
     assertRegisteredUpstreamRepoPath(file.path, { materializedNamespacePaths });
   }
+}
+
+export function validateCatalogSyncManifest(manifest) {
+  validateManifestV2Shape(manifest);
+
+  if (manifest.repository !== OFFICIAL_BSI_REPOSITORY_URL) {
+    throw new Error(`Manifest repository must be ${OFFICIAL_BSI_REPOSITORY_URL}`);
+  }
+
+  const manifestPaths = new Set(manifest.files.map((file) => file.path));
+  const materializedNamespacePaths = manifest.files
+    .filter((file) => file.rootType === 'vocabulary')
+    .map((file) => file.path);
+
+  assertRegisteredArtifactsPresent(manifestPaths, manifest);
+  assertManifestPathsAreRegistered(manifest, materializedNamespacePaths);
 
   return manifest;
 }
@@ -368,6 +376,16 @@ function computeGitBlobSha(contents) {
     .digest('hex');
 }
 
+/**
+ * Code-Unit-Vergleich zweier Strings — semantisch identisch zur impliziten
+ * Sortiersemantik von Array.prototype.sort(), aber ohne Ternär-Kaskade.
+ */
+function compareStringsByCodeUnit(left, right) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 export async function verifySnapshotFiles(manifest, {
   fetchImpl = fetch,
   token,
@@ -488,7 +506,11 @@ export async function verifySnapshotFiles(manifest, {
         extractReferencedNamespaceUrls(document, OFFICIAL_BSI_REPO),
       ),
     ),
-  ].sort();
+    // Code-Unit-Komparator: bewahrt exakt die bisherige implizite
+    // Sortiersemantik von Array.prototype.sort() für Strings, damit die
+    // JSON.stringify-Gegenprüfung gegen die Manifest-Pfade byte-identisch
+    // bleibt (S2871 verlangt den Komparator, keine neue Kollation).
+  ].sort(compareStringsByCodeUnit);
   const vocabularyCollection = SOURCE_REGISTRY.find(
     (entry) => entry.kind === 'vocabulary-collection' && entry.lifecycle === 'supported',
   );
@@ -666,8 +688,10 @@ async function runCli() {
 const isDirectExecution = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isDirectExecution) {
-  runCli().catch((error) => {
+  try {
+    await runCli();
+  } catch (error) {
     console.error(error instanceof Error ? error.message : error);
     process.exitCode = 1;
-  });
+  }
 }
