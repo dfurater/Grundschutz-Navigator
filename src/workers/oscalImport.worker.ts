@@ -1,7 +1,6 @@
-import { processClass2OscalBytes, type Class2OscalDocumentContext } from '@/domain/oscalClass2Import';
+import { processClass2OscalBytes, type Class2OscalDocumentContext, type Class2OscalImportResult } from '@/domain/oscalClass2Import';
 import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
 import { CLASS_2_IMPORT_VALIDATOR } from '@/domain/oscalImportProcessing';
-import type { Class2OscalImportResult } from '@/domain/oscalClass2Import';
 
 export interface OscalImportWorkerRequest {
   readonly type: 'import';
