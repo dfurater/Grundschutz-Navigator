@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { execFile } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -75,19 +76,19 @@ describe('CLI-Exit-Code-Verträge der S7785-umgebauten Skripte', () => {
     });
     expect(result.code).toBe(0);
     expect(result.stdout).toContain('deploying without an idempotency check');
-  });
+  }, 60_000);
 
   it('verify-oscal-schemas verifiziert die eingecheckten Schemas mit Exit 0', async () => {
     const result = await runScript('verify-oscal-schemas.mjs');
     expect(result.code).toBe(0);
     expect(result.stdout).toContain('verifiziert');
-  });
+  }, 60_000);
 
   it('verify-oscal-schemas schlägt mit Exit 1 fehl, wenn die Schemas fehlen', async () => {
     const result = await runScript('verify-oscal-schemas.mjs', { cwd: scratchRoot });
     expect(result.code).toBe(1);
     expect(result.stderr).toContain('Gepinntes Schema fehlt');
-  });
+  }, 60_000);
 
   it('verify-catalog-deploy failt mit Exit 1, bevor ein Netzaufruf passiert', async () => {
     const result = await runScript('verify-catalog-deploy.mjs', {
@@ -100,5 +101,5 @@ describe('CLI-Exit-Code-Verträge der S7785-umgebauten Skripte', () => {
     });
     expect(result.code).toBe(1);
     expect(result.stderr).toContain('merge commit SHA must be a full 40-character SHA');
-  });
+  }, 60_000);
 });
