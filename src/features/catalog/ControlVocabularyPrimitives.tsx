@@ -18,7 +18,11 @@ export const outlineBadgeClass =
 export const detailLinkRowClass =
   'group block w-full rounded px-2 py-2 -mx-2 text-left transition-colors hover:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]';
 
-export function SubSectionHeading({ children }: { children: ReactNode }) {
+export function SubSectionHeading({
+  children,
+}: {
+  readonly children: ReactNode;
+}) {
   return (
     <h4 className="text-xs font-medium uppercase tracking-wide text-slate-500 mb-1">
       {children}
@@ -37,8 +41,8 @@ export function VocabularyAffordanceIcon({
   active = false,
   placement = 'inline',
 }: {
-  active?: boolean;
-  placement?: keyof typeof AFFORDANCE_PLACEMENT_CLASS;
+  readonly active?: boolean;
+  readonly placement?: keyof typeof AFFORDANCE_PLACEMENT_CLASS;
 }) {
   const icon = (
     <IconInfo

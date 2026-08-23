@@ -7,21 +7,21 @@ import { CatalogMobileExportSheet } from './CatalogMobileExportSheet';
 import { CatalogMobileFilterSheet } from './CatalogMobileFilterSheet';
 
 interface CatalogToolbarProps {
-  title: string;
-  filteredCount: number;
-  totalCount: number;
-  hasActiveFilters: boolean;
-  onClearFilters: () => void;
-  checkedIds: ReadonlySet<string>;
-  mobileSelectMode: boolean;
-  onToggleMobileSelectMode: () => void;
-  onClearSelection: () => void;
-  filteredControls: Control[];
-  allControls: Control[];
-  sectionFilename: string;
-  filterPanelProps: FilterPanelProps;
-  isDesktop: boolean;
-  onSelectionExported?: () => void;
+  readonly title: string;
+  readonly filteredCount: number;
+  readonly totalCount: number;
+  readonly hasActiveFilters: boolean;
+  readonly onClearFilters: () => void;
+  readonly checkedIds: ReadonlySet<string>;
+  readonly mobileSelectMode: boolean;
+  readonly onToggleMobileSelectMode: () => void;
+  readonly onClearSelection: () => void;
+  readonly filteredControls: Control[];
+  readonly allControls: Control[];
+  readonly sectionFilename: string;
+  readonly filterPanelProps: FilterPanelProps;
+  readonly isDesktop: boolean;
+  readonly onSelectionExported?: () => void;
 }
 
 export function CatalogToolbar({

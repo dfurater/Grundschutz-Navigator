@@ -4,9 +4,9 @@ import { IconDownload } from '@/components/icons';
 import { downloadCSV } from '@/features/export/csvExport';
 
 interface CatalogMobileSelectionBarProps {
-  checkedIds: ReadonlySet<string>;
-  allControls: Control[];
-  onDone: () => void;
+  readonly checkedIds: ReadonlySet<string>;
+  readonly allControls: Control[];
+  readonly onDone: () => void;
 }
 
 export function CatalogMobileSelectionBar({

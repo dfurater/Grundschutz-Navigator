@@ -34,11 +34,11 @@ type SecurityContextVocabularies = Pick<
 >;
 
 export interface ControlSecurityContextProps {
-  control: SecurityContextControl;
-  resolvedVocabularies: SecurityContextVocabularies;
-  isVocabularyActive: (key: string) => boolean;
-  onToggleVocabulary: (key: string) => void;
-  renderVocabularyCard: RenderVocabularyCard;
+  readonly control: SecurityContextControl;
+  readonly resolvedVocabularies: SecurityContextVocabularies;
+  readonly isVocabularyActive: (key: string) => boolean;
+  readonly onToggleVocabulary: (key: string) => void;
+  readonly renderVocabularyCard: RenderVocabularyCard;
 }
 
 interface ThreatItem {

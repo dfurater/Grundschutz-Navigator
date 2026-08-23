@@ -8,10 +8,16 @@ import { isSafeExternalHref } from '@/domain/referenceResolution';
 import { ControlDetailSection } from './ControlDetailSection';
 
 export interface ControlSourcesProps {
-  references: readonly ResolvedOscalReference[];
+  readonly references: readonly ResolvedOscalReference[];
 }
 
-function ExternalLink({ href, label }: { href: string; label: string }) {
+function ExternalLink({
+  href,
+  label,
+}: {
+  readonly href: string;
+  readonly label: string;
+}) {
   if (!isSafeExternalHref(href)) {
     return <span className="break-all text-sm text-slate-700">{label}</span>;
   }
@@ -30,7 +36,7 @@ function ExternalLink({ href, label }: { href: string; label: string }) {
   );
 }
 
-function ResourceLink({ link }: { link: ResolvedResourceLink }) {
+function ResourceLink({ link }: { readonly link: ResolvedResourceLink }) {
   return (
     <li className="space-y-1">
       {link.target.kind === 'external' && link.target.href ? (
@@ -54,7 +60,11 @@ function ResourceLink({ link }: { link: ResolvedResourceLink }) {
   );
 }
 
-function ResourceDetails({ resource }: { resource: ResolvedResource }) {
+function ResourceDetails({
+  resource,
+}: {
+  readonly resource: ResolvedResource;
+}) {
   return (
     <div className="space-y-2">
       {resource.description && <p className="text-sm text-slate-700">{resource.description}</p>}

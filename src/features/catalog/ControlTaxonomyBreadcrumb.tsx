@@ -6,11 +6,11 @@ import {
 } from './ControlVocabularyPrimitives';
 
 interface TaxonomyTriggerProps {
-  ariaLabel: string;
-  label: string;
-  vocabKey: string;
-  active: boolean;
-  onToggle: (key: string) => void;
+  readonly ariaLabel: string;
+  readonly label: string;
+  readonly vocabKey: string;
+  readonly active: boolean;
+  readonly onToggle: (key: string) => void;
 }
 
 function TaxonomyTrigger({
@@ -37,13 +37,13 @@ function TaxonomyTrigger({
 }
 
 export interface ControlTaxonomyBreadcrumbProps {
-  practiceName: string;
-  topicName: string;
-  hasTopic: boolean;
-  practiceVocabulary: VocabularyResolution | null;
-  topicVocabulary: VocabularyResolution | null;
-  isVocabularyActive: (key: string) => boolean;
-  onToggleVocabulary: (key: string) => void;
+  readonly practiceName: string;
+  readonly topicName: string;
+  readonly hasTopic: boolean;
+  readonly practiceVocabulary: VocabularyResolution | null;
+  readonly topicVocabulary: VocabularyResolution | null;
+  readonly isVocabularyActive: (key: string) => boolean;
+  readonly onToggleVocabulary: (key: string) => void;
 }
 
 export function ControlTaxonomyBreadcrumb({
