@@ -34,13 +34,22 @@ export function sha256Hex(input) {
   return createHash('sha256').update(buffer).digest('hex');
 }
 
+function trimTrailingDashes(value) {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === '-') {
+    end -= 1;
+  }
+  return value.slice(0, end);
+}
+
 export function deriveRouteId(path) {
-  return path
+  const withoutLeadingSeparators = path
     .replace(/\.[^.]+$/, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+/, '')
-    .replace(/-+$/, '');
+    .replace(/^-+/, '');
+
+  return trimTrailingDashes(withoutLeadingSeparators);
 }
 
 export function namespaceUrlToRepoPath(namespaceUrl, repository) {
