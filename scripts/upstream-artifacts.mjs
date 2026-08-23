@@ -193,6 +193,45 @@ function sha256Hex(value) {
   return createHash('sha256').update(value).digest('hex');
 }
 
+function normalizeGitTreeEntry(entry, index, roots, seenPaths) {
+  assertObject(entry, `Upstream tree entry ${index}`);
+  const repoPath = assertSafeRepoPath(entry.path, `Upstream tree entry ${index}.path`);
+  if (seenPaths.has(repoPath)) {
+    throw new Error(`Upstream tree contains duplicate path: ${repoPath}`);
+  }
+  seenPaths.add(repoPath);
+
+  if (!GIT_SHA_PATTERN.test(entry.sha ?? '')) {
+    throw new Error(`Upstream tree entry ${repoPath} has an invalid Git SHA`);
+  }
+
+  const monitored = isInsideMonitoredRoot(repoPath, roots);
+  if (entry.type === 'tree' && entry.mode === '040000') {
+    return null;
+  }
+  if (!monitored) {
+    return null;
+  }
+  if (entry.type !== 'blob' || entry.mode !== '100644') {
+    throw new Error(
+      `Upstream tree entry ${repoPath} is not a regular file (type=${entry.type ?? 'missing'}, mode=${entry.mode ?? 'missing'})`,
+    );
+  }
+
+  if (
+    entry.size !== undefined &&
+    (!Number.isSafeInteger(entry.size) || entry.size < 0)
+  ) {
+    throw new Error(`Upstream tree entry ${repoPath} has an invalid size`);
+  }
+
+  return {
+    path: repoPath,
+    gitBlobSha: entry.sha,
+    sizeBytes: entry.size ?? null,
+  };
+}
+
 /**
  * Normalizes the regular files below caller-supplied monitoring roots from a
  * complete GitHub recursive-tree response. No content is fetched here.
@@ -203,7 +242,7 @@ export function normalizeGitTree(treeResponse, { monitoredRoots }) {
     throw new Error('Upstream tree response is truncated or incomplete');
   }
   if (!Array.isArray(treeResponse.tree)) {
-    throw new Error('Upstream tree response must include a tree array');
+    throw new TypeError('Upstream tree response must include a tree array');
   }
 
   const roots = normalizeMonitoredRoots(monitoredRoots);
@@ -211,42 +250,10 @@ export function normalizeGitTree(treeResponse, { monitoredRoots }) {
   const files = [];
 
   for (const [index, entry] of treeResponse.tree.entries()) {
-    assertObject(entry, `Upstream tree entry ${index}`);
-    const repoPath = assertSafeRepoPath(entry.path, `Upstream tree entry ${index}.path`);
-    if (seenPaths.has(repoPath)) {
-      throw new Error(`Upstream tree contains duplicate path: ${repoPath}`);
+    const file = normalizeGitTreeEntry(entry, index, roots, seenPaths);
+    if (file) {
+      files.push(file);
     }
-    seenPaths.add(repoPath);
-
-    if (!GIT_SHA_PATTERN.test(entry.sha ?? '')) {
-      throw new Error(`Upstream tree entry ${repoPath} has an invalid Git SHA`);
-    }
-
-    const monitored = isInsideMonitoredRoot(repoPath, roots);
-    if (entry.type === 'tree' && entry.mode === '040000') {
-      continue;
-    }
-    if (!monitored) {
-      continue;
-    }
-    if (entry.type !== 'blob' || entry.mode !== '100644') {
-      throw new Error(
-        `Upstream tree entry ${repoPath} is not a regular file (type=${entry.type ?? 'missing'}, mode=${entry.mode ?? 'missing'})`,
-      );
-    }
-
-    if (
-      entry.size !== undefined &&
-      (!Number.isSafeInteger(entry.size) || entry.size < 0)
-    ) {
-      throw new Error(`Upstream tree entry ${repoPath} has an invalid size`);
-    }
-
-    files.push({
-      path: repoPath,
-      gitBlobSha: entry.sha,
-      sizeBytes: entry.size ?? null,
-    });
   }
 
   return files.sort((left, right) => comparePaths(left.path, right.path));
@@ -258,7 +265,7 @@ export function normalizeGitTree(treeResponse, { monitoredRoots }) {
  */
 export function materializeRegisteredPathMap(entries) {
   if (!Array.isArray(entries)) {
-    throw new Error('Registered path entries must be an array');
+    throw new TypeError('Registered path entries must be an array');
   }
 
   const registeredPaths = new Map();
@@ -296,7 +303,7 @@ export function materializeRegisteredPathMap(entries) {
 
 function validateRegisteredPathMap(registeredPaths) {
   if (!(registeredPaths instanceof Map)) {
-    throw new Error('registeredPaths must be a Map created from explicit registry paths');
+    throw new TypeError('registeredPaths must be a Map created from explicit registry paths');
   }
 
   for (const [repoPath, entry] of registeredPaths) {
@@ -323,7 +330,7 @@ function validateRegisteredPathMap(registeredPaths) {
 
 function indexNormalizedTree(files, label) {
   if (!Array.isArray(files)) {
-    throw new Error(`${label} must be an array`);
+    throw new TypeError(`${label} must be an array`);
   }
 
   const indexed = new Map();
@@ -445,7 +452,7 @@ export function validateManifestV2Shape(manifest) {
     throw new Error('Manifest signatureSha256 must be a lowercase SHA-256 value');
   }
   if (!Array.isArray(manifest.files)) {
-    throw new Error('Manifest files must be a non-empty array');
+    throw new TypeError('Manifest files must be a non-empty array');
   }
 
   for (const [index, file] of manifest.files.entries()) {
