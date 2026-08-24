@@ -50,8 +50,8 @@ export function CatalogDetailPanel({
 
 interface CatalogMobileDetailOverlayProps
   extends Omit<CatalogDetailPanelProps, 'control'> {
-  control: Control | null;
-  active: boolean;
+  readonly control: Control | null;
+  readonly active: boolean;
 }
 
 export function CatalogMobileDetailOverlay({

@@ -1,6 +1,5 @@
-import path from 'node:path';
+import path, { posix as posixPath } from 'node:path';
 import { tmpdir } from 'node:os';
-import { posix as posixPath } from 'node:path';
 import {
   ENTRY_CATALOG,
   getArtifactByUpstreamPath,
@@ -210,7 +209,7 @@ export function assertAllowedUpstreamRepoPath(repoPath) {
   // Registry-getriebene Allowlist (ADR-1): Nur supported-Artefakte sind
   // fetchbar; preview/draft-Einträge bleiben bewusst ausgeschlossen.
   const registryEntry = getArtifactByUpstreamPath(normalizedPosixPath);
-  if (registryEntry && registryEntry.lifecycle === 'supported') {
+  if (registryEntry?.lifecycle === 'supported') {
     return normalizedPosixPath;
   }
 
