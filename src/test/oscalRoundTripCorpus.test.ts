@@ -3,6 +3,7 @@ import {
   OSCAL_ROOT_KEYS,
   listSchemaPins,
   type OscalRootKey,
+  type PinnedOscalVersion,
 } from '@/domain/oscalVersionMatrix';
 import { computeSHA256 } from '@/domain/integrity';
 import {
@@ -193,9 +194,12 @@ describe('Dokumentierte Hashes des Korpus', () => {
    * SHA-256 über die kanonische Serialisierung — exakt die Definition aus
    * `MAXIMAL_CORPUS_HASHES` (JSON.stringify des gebauten Dokuments, hexkodiert).
    */
-  async function canonicalHash(rootKey: OscalRootKey, version: string): Promise<string> {
+  async function canonicalHash(
+    rootKey: OscalRootKey,
+    version: PinnedOscalVersion,
+  ): Promise<string> {
     const canonical = JSON.stringify(makeMaximalOscalDocument(rootKey, version));
-    return computeSHA256(new TextEncoder().encode(canonical).buffer);
+    return computeSHA256(new TextEncoder().encode(canonical).buffer as ArrayBuffer);
   }
 
   it('deckt exakt die existierenden Matrixzellen ab — ohne gespiegelte Versionsliste', () => {
