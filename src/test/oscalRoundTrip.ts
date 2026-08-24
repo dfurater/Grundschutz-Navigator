@@ -71,6 +71,16 @@ export type OscalRoundTripBinding =
     readonly ok: false;
     readonly reason: 'dispatch-rejected';
     readonly diagnostic: OscalDiagnostic;
+  }
+  /**
+   * Die erneute Bindung des reimportierten Exportartefakts wurde abgewiesen.
+   * Die Diagnose bleibt hier erhalten; alle Validierungsstufen bleiben
+   * gemäß Kettenregel 'not-run'.
+   */
+  | {
+    readonly ok: false;
+    readonly reason: 'export-rebinding-failed';
+    readonly diagnostic: OscalDiagnostic;
   };
 
 /** Terminale Laufzustände der Vergleichs- und Identitätsebene. */
@@ -597,42 +607,46 @@ async function successfulNoOpResult(
   );
 
   // Stufen 3–5 gegen die **erneut gebundene** Exportartefakt-Bindung: Ein
-  // Export darf das Modell wechseln — dann muss auch Root-, Versions- und
-  // Schema-Kontext dem Exportartefakt folgen, nicht der Eingabe.
+  // Export darf das Modell wechseln — Root-, Versions-, Schema- und
+  // Berichtskontext folgen dem Exportartefakt, nicht der Eingabe.
   const exportContext: OscalDocumentContext = {
     trustClass: HARNESS_TRUST_CLASS,
     ...(input.upstreamPath !== undefined ? { upstreamPath: input.upstreamPath } : {}),
     ...(input.catalogKey !== undefined ? { catalogKey: input.catalogKey } : {}),
   };
   const reBound = dispatchOscalDocument(imported, exportContext);
-  let stages: OscalRoundTripStages;
   if (!reBound.ok) {
-    // Die Re-Bindung ist Teil des Exportnachweises: Ihre Ablehnung fällt in
-    // die Stufe vor dem Schema und hält Stufe 5 not-run.
-    stages = {
-      schemaValidation: {
-        stage: 'json-schema',
-        status: 'failed',
+    // Kettenregel: Ohne erfolgreiche Bindung laufen keine Validierungsstufen.
+    // Die Diagnose bleibt als Bindungsfehler erhalten; die Vergleichsebenen
+    // (kein Teil der Stufenkette) zeigen den Modellwechsel zusätzlich.
+    return deepFreeze({
+      mode: 'no-op',
+      rootType: null,
+      resourceLimit: { status: 'passed' },
+      binding: {
+        ok: false,
+        reason: 'export-rebinding-failed',
         diagnostic: reBound.diagnostic,
       },
-      constraints: {
-        stage: 'oscal-constraint',
-        status: 'not-checked',
-        documentedGap: true,
-        reference: CONSTRAINT_STAGE_REFERENCE,
-        pendingCases: collectConstraintPendingCases(imported),
+      serialization: serializationEqual ? { status: 'passed' } : { status: 'failed' },
+      graph: differences.length === 0
+        ? ({ status: 'passed', differences } satisfies OscalRoundTripGraphReport)
+        : ({ status: 'failed', differences } satisfies OscalRoundTripGraphReport),
+      identities: {
+        status: identityFindings.length === 0 ? 'passed' : 'failed',
+        findings: identityFindings,
       },
-      references: { stage: 'reference', status: 'not-run' },
-    };
-  } else {
-    stages = await evaluateStages(reBound, input.catalogKey);
+      stages: stagesNotRun(),
+    });
   }
+
+  const stages = await evaluateStages(reBound, input.catalogKey);
 
   return deepFreeze({
     mode: 'no-op',
-    rootType: success.rootType,
+    rootType: reBound.rootType,
     resourceLimit: { status: 'passed' },
-    binding: { ok: true, pin: success.pin },
+    binding: { ok: true, pin: reBound.pin },
     serialization: serializationEqual ? { status: 'passed' } : { status: 'failed' },
     graph: differences.length === 0
       ? ({ status: 'passed', differences } satisfies OscalRoundTripGraphReport)

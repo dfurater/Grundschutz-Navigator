@@ -482,19 +482,22 @@ describe('runNoOpRoundTrip', () => {
     expect(result.serialization.status).toBe('failed');
   });
 
-  it('bindet das Exportartefakt erneut: Ein Katalog, der ein valides Profil exportiert, wird als Profil geprüft', async () => {
+  it('bindet das Exportartefakt erneut: Ein Katalog, der ein valides Profil exportiert, wird als Profil geprüft und berichtet', async () => {
     // Greptile-Befund (T-Rex-Reproduktion): Ohne Re-Bindung wurde das
-    // exportierte Profil gegen das Katalogschema geprüft und meldete
-    // Katalog-Diagnosen. Mit Re-Bindung besteht es Stufe 3 als Profil.
+    // exportierte Profil gegen das Katalogschema geprüft; mit Re-Bindung
+    // aber weiterhin als Katalog BERICHTET. Jetzt folgen Root-, Pin- und
+    // Schema-Kontext dem Exportartefakt.
     const result = await runNoOpRoundTrip({
       fixtureText: JSON.stringify(CATALOG_122()),
       exportDocument: () =>
         makeSchemaValidOscalDocument('profile', '1.2.2'),
     });
 
+    expect(result.rootType).toBe('profile');
     expect(result.binding).toMatchObject({ ok: true });
     if (result.binding.ok) {
-      expect(result.binding.pin.rootKey).toBe('catalog');
+      expect(result.binding.pin.rootKey).toBe('profile');
+      expect(result.binding.pin.oscalVersion).toBe('1.2.2');
     }
     expect(result.stages.schemaValidation).toEqual({
       stage: 'json-schema',
@@ -506,6 +509,29 @@ describe('runNoOpRoundTrip', () => {
       status: 'not-available',
       reason: 'catalog-only-implementation',
     });
+    // Die Vergleichsebenen zeigen den Modellwechsel zusätzlich auf.
+    expect(result.serialization.status).toBe('failed');
+    expect(result.graph.status).toBe('failed');
+  });
+
+  it('hält bei scheiternder Export-Re-Bindung alle Stufen not-run und bewahrt die Diagnose am Binding', async () => {
+    // Kettenregel: Ohne erfolgreiche Bindung läuft keine Validierungsstufe.
+    const result = await runNoOpRoundTrip({
+      fixtureText: JSON.stringify(CATALOG_122()),
+      exportDocument: () => ({ 'unbekanntes-modell': { metadata: {} } }),
+    });
+
+    expect(result.binding).toMatchObject({
+      ok: false,
+      reason: 'export-rebinding-failed',
+      diagnostic: { code: VERSION_MATRIX_DIAGNOSTIC_CODES.ROOT_TYPE_UNKNOWN },
+    });
+    expect(result.rootType).toBeNull();
+    for (const stage of ['schemaValidation', 'constraints', 'references'] as const) {
+      expect(result.stages[stage].status).toBe('not-run');
+    }
+    // Die Vergleichsebenen sind keine Stufenkette und zeigen den Wechsel.
+    expect(result.graph.status).toBe('failed');
   });
 });
 
