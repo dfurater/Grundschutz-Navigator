@@ -414,12 +414,13 @@ describe('runNoOpRoundTrip', () => {
     });
     expect(profileResult.rootType).toBe('profile');
 
-    const rejectedResult = await runNoOpRoundTrip({
+    // Passender Registry-Kontext: Der abgeleitete Root bleibt der wahre.
+    const catalogResult = await runNoOpRoundTrip({
       fixtureText: JSON.stringify(CATALOG_122()),
       upstreamPath: CATALOG_UPSTREAM_PATH,
-      exportDocument: (parsed) => parsed,
     });
-    void rejectedResult;
+    expect(catalogResult.rootType).toBe('catalog');
+    expect(catalogResult.binding).toMatchObject({ ok: true });
   });
 
   it('erzwingt die Registry-Erwartung: Profil-Bytes am Katalog-Artefaktpfad werden abgewiesen', async () => {
