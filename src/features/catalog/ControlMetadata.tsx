@@ -2,12 +2,12 @@ import type { ReactNode } from 'react';
 import type { Control } from '@/domain/models';
 
 export interface ControlMetadataProps {
-  parentId?: Control['parentId'];
-  altIdentifier?: Control['altIdentifier'];
-  hasResolvedParent: boolean;
+  readonly parentId: Control['parentId'];
+  readonly altIdentifier: Control['altIdentifier'];
+  readonly hasResolvedParent: boolean;
 }
 
-function SectionHeading({ children }: { children: ReactNode }) {
+function SectionHeading({ children }: { readonly children: ReactNode }) {
   return (
     <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-2">
       {children}
