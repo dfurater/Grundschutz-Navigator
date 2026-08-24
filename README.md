@@ -15,6 +15,11 @@ Inoffizielles Werkzeug zum Durchsuchen, Filtern und Exportieren des offiziellen 
 
 Die App läuft vollständig im Browser. Keine Anmeldung, keine Installation.
 
+## Code Quality:
+[![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=gspp&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=gspp)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=gspp&metric=bugs)](https://sonarcloud.io/summary/new_code?id=gspp)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=gspp&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=gspp)
+
 ## Was kann die App?
 
 - **Kataloge browsen** — Hierarchische Navigation durch Praktiken, Themen und Kontrollen der ausgelieferten Grundschutz++-, Lieferketten- und WLAN-Kataloge in einem ergonomischen 3-Panel-Layout (Tree, Tabelle, Detail). Der app-weite Katalogwechsler hält die Dokumente über ihren `catalogKey` getrennt; Routen beginnen mit `/katalog/:catalogKey`.
@@ -78,8 +83,10 @@ npm run dev                        # http://localhost:5173
 | `npm run fetch-catalog` | registrierte BSI-Artefakte validieren und unterstützte Daten nach `public/data/` ausliefern |
 
 Die Coverage-Thresholds in `vite.config.ts` sind anhand der gemessenen
-Repository-Coverage kalibriert: Lines 57 %, Branches 55 %, Functions 56 %,
-Statements 54 %. Sie sollen nicht ohne neue Baseline-Messung gesenkt werden.
+Repository-Coverage kalibriert (gemessen 2026-08-24: Lines 92,67 %, Branches
+82,71 %, Functions 93,04 %, Statements 90,57 %; Thresholds jeweils ca. 5
+Prozentpunkte darunter): Lines 87 %, Branches 77 %, Functions 88 %,
+Statements 85 %. Sie sollen nicht ohne neue Baseline-Messung gesenkt werden.
 
 ## Architektur (Kurzfassung)
 

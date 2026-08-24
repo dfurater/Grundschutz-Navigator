@@ -69,10 +69,32 @@ export default defineConfig(({ command }) => ({
         'src/vite-env.d.ts',
       ],
       thresholds: {
-        lines: 57,
-        branches: 55,
-        functions: 56,
-        statements: 54,
+        lines: 87,
+        branches: 77,
+        functions: 88,
+        statements: 85,
+        /*
+         * Zieht die Thresholds automatisch nach, sobald die gemessene Coverage
+         * über threshold+5 liegt — mit demselben 5-Punkte-Puffer wie bei der
+         * letzten manuellen Kalibrierung, statt den exakten Messwert (Vitest-
+         * Default bei `autoUpdate: true`) ohne Puffer einzufrieren. Zieht nur
+         * nach oben, nie nach unten. Der Schreibzugriff passiert nur bei einem
+         * vollständigen Testlauf mit Konfigurationsdatei (`allTestsRun`); der
+         * CI-Coverage-Lauf in deploy.yml committet ihn nicht zurück.
+         */
+        autoUpdate: (newThreshold: number) => Math.max(0, Math.floor(newThreshold) - 5),
+        'src/domain/**': {
+          lines: 86,
+          branches: 70,
+          functions: 91,
+          statements: 82,
+        },
+        'src/adapters/**': {
+          lines: 94,
+          branches: 92,
+          functions: 95,
+          statements: 94,
+        },
       },
     },
   },
