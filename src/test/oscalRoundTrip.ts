@@ -37,6 +37,7 @@ import {
   type ReferenceDocument,
 } from '@/domain/referenceResolution';
 import { validateAgainstPinnedSchema } from '@/domain/oscalSchemaValidation';
+import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { CatalogKey } from '@/domain/sourceRegistry';
 import type { OscalSchemaPin } from '@/domain/oscalVersionMatrix';
 import { compareJsonGraphs, type JsonGraphDifference } from './oscalGraphCompare';
@@ -47,6 +48,12 @@ import { compareJsonGraphs, type JsonGraphDifference } from './oscalGraphCompare
  * Klasse-2-Eingaben.
  */
 const HARNESS_TRUST_CLASS = 'class-2-local-user' as const;
+
+/** Validator-Identität des Harnischs für eigene Diagnosen. */
+const ROUND_TRIP_HARNESS_VALIDATOR = Object.freeze({
+  name: 'gspp-round-trip-harness',
+  version: '1',
+});
 
 /** Die Laufart dieses Moduls. Das Edit-Folge-Issue ergänzt hier additiv. */
 export const ROUND_TRIP_RUN_MODES = Object.freeze(['no-op'] as const);
@@ -80,6 +87,17 @@ export type OscalRoundTripBinding =
   | {
     readonly ok: false;
     readonly reason: 'export-rebinding-failed';
+    readonly diagnostic: OscalDiagnostic;
+  }
+  /**
+   * Das Exportergebnis besitzt keine JSON-Darstellung (`undefined`, Funktion,
+   * Symbol): Der Round-trip scheitert auf der Serialisierungsebene; Reimport,
+   * Vergleichsebenen und Stufen bleiben aus. Die Diagnose benennt den Fehler,
+   * ohne Dokumentwerte preiszugeben.
+   */
+  | {
+    readonly ok: false;
+    readonly reason: 'export-not-serializable';
     readonly diagnostic: OscalDiagnostic;
   };
 
@@ -146,16 +164,18 @@ export interface OscalRoundTripStages {
 
 /**
  * Erzwingt die dokumentierte Constraint-Lücke gegen stille Erosion
- * (GSPP-282): Ein Ergebnis, das die Constraint-Stufe als geprüft meldet,
- * ist fehlerhaft — es gibt keinen zugelassenen Validator.
+ * (GSPP-282): Ein Ergebnis, das die Constraint-Stufe als geprüft meldet
+ * (`passed`/`failed`), ist fehlerhaft — es gibt keinen zugelassenen
+ * Validator. Entlang der Kettenregel rechtmäßig nicht gelaufene Stufen
+ * (`not-run`) und die terminale Lücke selbst (`not-checked`) sind zulässig.
  */
 export function assertConstraintGapDocumented(
   result: { readonly stages?: { readonly constraints?: { readonly status?: string } } },
 ): void {
   const status = result.stages?.constraints?.status;
-  if (status !== 'not-checked') {
+  if (status === 'passed' || status === 'failed') {
     throw new Error(
-      `Die Constraint-Stufe bleibt terminal "not-checked"; gemeldet wurde "${String(status)}". Es existiert kein zugelassener Constraint-Validator (GSPP-282, ADR-5, GSPP-336).`,
+      `Die Constraint-Stufe darf nicht als geprüft gemeldet werden ("${status}"); es existiert kein zugelassener Constraint-Validator (GSPP-282, ADR-5, GSPP-336). Zulässig sind "not-checked" nach Stufe 3 und entlang der Kettenregel "not-run".`,
     );
   }
 }
@@ -535,6 +555,35 @@ function dispatchRejectionResult(
   });
 }
 
+/** Diagnose für ein Exportergebnis ohne JSON-Darstellung — ohne Dokumentwerte. */
+function createExportNotSerializableDiagnostic(): OscalDiagnostic {
+  return createOscalDiagnostic({
+    code: 'OSCAL_EXPORT_NOT_SERIALIZABLE',
+    stage: 'json-syntax',
+    validator: ROUND_TRIP_HARNESS_VALIDATOR,
+    path: '/',
+  });
+}
+
+/**
+ * Ergebnisrahmen eines Laufs, dessen eingespeister Export keine
+ * JSON-Darstellung besitzt (`JSON.stringify` liefert kein Textergebnis).
+ * Kettenregel: Ohne reimportierbares Artefakt laufen Vergleich und Stufen nicht.
+ */
+function nonSerializableExportResult(): OscalNoOpRunResult {
+  const diagnostic = createExportNotSerializableDiagnostic();
+  return deepFreeze({
+    mode: 'no-op',
+    rootType: null,
+    resourceLimit: { status: 'passed' },
+    binding: { ok: false, reason: 'export-not-serializable', diagnostic },
+    serialization: { status: 'failed', diagnostic },
+    graph: { status: 'not-run', differences: [] },
+    identities: { status: 'not-run', findings: [] },
+    stages: stagesNotRun(),
+  });
+}
+
 /**
  * Stufen 3–5 gegen das **reimportierte Exportartefakt** — nicht gegen die
  * Eingabe. Nur so certifieren die Status tatsächlich das Dokument, das den
@@ -593,9 +642,15 @@ async function successfulNoOpResult(
   // Export — Identität als Vorgabe, einspeisbar für künftige Serializer.
   const exported = input.exportDocument ? input.exportDocument(success.source) : success.source;
 
-  // Ebene 1 — byte-identische Serialisierung.
+  // Ebene 1 — byte-identische Serialisierung. Ein Exportergebnis ohne
+  // JSON-Darstellung (z. B. `undefined`) ist ein Serialisierungsfehler des
+  // eingespeisten Exports und wird berichtet, nicht als Ausnahme geworfen.
+  const sourceBytes = JSON.stringify(success.source);
   const exportBytes = JSON.stringify(exported);
-  const serializationEqual = exportBytes === JSON.stringify(success.source);
+  if (typeof exportBytes !== 'string') {
+    return nonSerializableExportResult();
+  }
+  const serializationEqual = exportBytes === sourceBytes;
 
   // Ebene 2 — geparster Graph mit Object.is-Semantik.
   const imported = JSON.parse(exportBytes);

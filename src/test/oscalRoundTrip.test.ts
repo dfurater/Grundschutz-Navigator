@@ -157,16 +157,37 @@ describe('Stufenstatusmodell', () => {
   });
 
   it('erzwingt die dokumentierte Lücke gegen stille Erosion', () => {
-    const forged = {
-      stages: {
-        constraints: { stage: 'oscal-constraint', status: 'passed' },
-      },
-    };
+    // Ein Ergebnis, das die Stufe als geprüft meldet, ist fehlerhaft.
+    expect(() => assertConstraintGapDocumented({
+      stages: { constraints: { status: 'passed' } },
+    } as never)).toThrow(/geprüft/);
+    expect(() => assertConstraintGapDocumented({
+      stages: { constraints: { status: 'failed' } },
+    } as never)).toThrow(/geprüft/);
 
-    expect(() => assertConstraintGapDocumented(forged as never)).toThrow(/not-checked/);
+    // Die terminale Lücke selbst ist der erwartete Zustand.
     expect(() => assertConstraintGapDocumented({
       stages: { constraints: { status: 'not-checked' } },
     } as never)).not.toThrow();
+
+    // Entlang der Kettenregel rechtmäßig nicht gelaufene Stufen — etwa nach
+    // einer abgewiesenen Stufe 2 — sind kein Erosionsbefund.
+    expect(() => assertConstraintGapDocumented({
+      stages: { constraints: { status: 'not-run' } },
+    } as never)).not.toThrow();
+  });
+
+  it('nimmt das Assertionsergebnis eines abgewiesenen Laufs ohne Fehlwurf an', async () => {
+    // Review-Befund: Ein Lauf, den Stufe 2 abweist, trägt "not-run" — die
+    // Assertion darf genau diesen rechtmäßigen Zustand nicht anmahnen.
+    const document = CATALOG_122();
+    setCatalogOscalVersion(document, '9.9.9');
+    const result = await runNoOpRoundTrip({
+      fixtureText: JSON.stringify(document),
+    });
+
+    expect(result.stages.constraints.status).toBe('not-run');
+    expect(() => assertConstraintGapDocumented(result)).not.toThrow();
   });
 });
 
@@ -512,6 +533,33 @@ describe('runNoOpRoundTrip', () => {
     // Die Vergleichsebenen zeigen den Modellwechsel zusätzlich auf.
     expect(result.serialization.status).toBe('failed');
     expect(result.graph.status).toBe('failed');
+  });
+
+  it('berichtet einen nicht serialisierbaren Export als failed, statt zu werfen', async () => {
+    // Review-Befund: JSON.stringify(undefined) liefert kein Textergebnis —
+    // der Lauf muss das als Serialisierungsfehler berichten, nicht als
+    // opaken SyntaxError aus dem Reimport werfen.
+    const result = await runNoOpRoundTrip({
+      fixtureText: JSON.stringify(CATALOG_122()),
+      exportDocument: () => undefined,
+    });
+
+    expect(result.serialization.status).toBe('failed');
+    if (result.serialization.status === 'failed') {
+      expect(result.serialization.diagnostic?.code).toBe('OSCAL_EXPORT_NOT_SERIALIZABLE');
+      expect(result.serialization.diagnostic?.validator)
+        .toEqual({ name: 'gspp-round-trip-harness', version: '1' });
+    }
+    expect(result.binding).toMatchObject({
+      ok: false,
+      reason: 'export-not-serializable',
+    });
+    expect(result.rootType).toBeNull();
+    expect(result.graph).toEqual({ status: 'not-run', differences: [] });
+    expect(result.identities).toEqual({ status: 'not-run', findings: [] });
+    for (const stage of ['schemaValidation', 'constraints', 'references'] as const) {
+      expect(result.stages[stage].status).toBe('not-run');
+    }
   });
 
   it('hält bei scheiternder Export-Re-Bindung alle Stufen not-run und bewahrt die Diagnose am Binding', async () => {

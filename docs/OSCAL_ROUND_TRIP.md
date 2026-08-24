@@ -32,7 +32,11 @@ Ergebnis:
 3. **Export und Reimport** — Vorgabe ist die Identität (heute existiert kein
    Exportpfad). Künftige Serializer reichen `exportDocument` ein, ohne den
    No-op-Pfad zu ändern. Anschließend liegen beide Seiten fest: das Original
-   (geparste Eingabe) und das **reimportierte Exportartefakt**.
+   (geparste Eingabe) und das **reimportierte Exportartefakt**. Ein
+   Exportergebnis ohne JSON-Darstellung (`undefined`, Funktion, Symbol) wird
+   als `serialization: failed` mit Diagnose (`OSCAL_EXPORT_NOT_SERIALIZABLE`,
+   Bindungsgrund `export-not-serializable`) berichtet, nicht als Ausnahme
+   geworfen; entlang der Kettenregel bleiben Vergleich und Stufen aus.
 4. **Vergleichsebenen** (siehe unten) und **Identitätsprüfung** zwischen
    Original und reimportiertem Export.
 5. **Validierungsstufen 3–5** mit terminalem Status je Stufe — geprüft wird
