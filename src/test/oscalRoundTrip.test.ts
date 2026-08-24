@@ -562,6 +562,40 @@ describe('runNoOpRoundTrip', () => {
     }
   });
 
+  it('berichtet Exporte, die stringify zum Werfen bringen, auf demselben Wege', async () => {
+    // Gleiche Befundklasse wie undefined-Rückgaben: BigInt und zirkuläre
+    // Strukturen lassen JSON.stringify werfen — auch das ist ein
+    // Serialisierungsfehler des Serialisators, kein opaker Wurf des Laufs.
+    const withBigInt = await runNoOpRoundTrip({
+      fixtureText: JSON.stringify(CATALOG_122()),
+      exportDocument: (parsed) => {
+        const copy = structuredClone(parsed) as Record<string, unknown>;
+        const body = copy.catalog as Record<string, unknown>;
+        body['x-fixture-bigint'] = BigInt(1);
+        return copy;
+      },
+    });
+
+    expect(withBigInt.serialization).toMatchObject({
+      status: 'failed',
+      diagnostic: { code: 'OSCAL_EXPORT_NOT_SERIALIZABLE' },
+    });
+    expect(withBigInt.binding).toMatchObject({ ok: false, reason: 'export-not-serializable' });
+
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    const withCycle = await runNoOpRoundTrip({
+      fixtureText: JSON.stringify(CATALOG_122()),
+      exportDocument: () => circular,
+    });
+
+    expect(withCycle.serialization).toMatchObject({
+      status: 'failed',
+      diagnostic: { code: 'OSCAL_EXPORT_NOT_SERIALIZABLE' },
+    });
+    expect(withCycle.stages.schemaValidation.status).toBe('not-run');
+  });
+
   it('hält bei scheiternder Export-Re-Bindung alle Stufen not-run und bewahrt die Diagnose am Binding', async () => {
     // Kettenregel: Ohne erfolgreiche Bindung läuft keine Validierungsstufe.
     const result = await runNoOpRoundTrip({

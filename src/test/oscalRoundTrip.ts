@@ -566,6 +566,22 @@ function createExportNotSerializableDiagnostic(): OscalDiagnostic {
 }
 
 /**
+ * Serialisiert ein Exportergebnis für die Byte-Ebene — oder `null`, wenn es
+ * keine JSON-Darstellung besitzt: `JSON.stringify` liefert dann kein
+ * Textergebnis (`undefined`, Funktion, Symbol) oder wirft (BigInt,
+ * zirkuläre Struktur). Beides ist ein Serialisierungsfehler des
+ * eingespeisten Exports und gehört berichtet, nicht geworfen.
+ */
+function serializeExportArtifact(exported: unknown): string | null {
+  try {
+    const bytes = JSON.stringify(exported);
+    return typeof bytes === 'string' ? bytes : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Ergebnisrahmen eines Laufs, dessen eingespeister Export keine
  * JSON-Darstellung besitzt (`JSON.stringify` liefert kein Textergebnis).
  * Kettenregel: Ohne reimportierbares Artefakt laufen Vergleich und Stufen nicht.
@@ -643,11 +659,13 @@ async function successfulNoOpResult(
   const exported = input.exportDocument ? input.exportDocument(success.source) : success.source;
 
   // Ebene 1 — byte-identische Serialisierung. Ein Exportergebnis ohne
-  // JSON-Darstellung (z. B. `undefined`) ist ein Serialisierungsfehler des
-  // eingespeisten Exports und wird berichtet, nicht als Ausnahme geworfen.
+  // JSON-Darstellung — stringify liefert kein Textergebnis oder wirft — ist
+  // ein Serialisierungsfehler des eingespeisten Exports und wird berichtet,
+  // nicht als Ausnahme geworfen. Die Eingabeseite ist sicher: Sie stammt
+  // aus JSON.parse und besitzt stets eine JSON-Darstellung.
   const sourceBytes = JSON.stringify(success.source);
-  const exportBytes = JSON.stringify(exported);
-  if (typeof exportBytes !== 'string') {
+  const exportBytes = serializeExportArtifact(exported);
+  if (exportBytes === null) {
     return nonSerializableExportResult();
   }
   const serializationEqual = exportBytes === sourceBytes;
