@@ -128,6 +128,15 @@ describe('compareJsonGraphs', () => {
     });
   });
 
+  it('meldet bei unterschiedlicher Schlüsselmenge keine Rausch-Reihenfolge-Differenz', () => {
+    // Review-Befund: Gleiche Anzahl heißt nicht gleiche Schlüsselmenge —
+    // {a,b} gegen {a,c} ist bereits über key-missing/key-added berichtet und
+    // erhält keinen zusätzlichen key-order-changed-Eintrag.
+    const differences = compareJsonGraphs({ a: 1, b: 2 }, { a: 1, c: 2 });
+
+    expect(differences.map((entry) => entry.kind)).toEqual(['key-missing', 'key-added']);
+  });
+
   it('meldet Längen- und Typabweichungen in Arrays elementweise', () => {
     const differences = compareJsonGraphs(
       { list: [1, 2, 3] },

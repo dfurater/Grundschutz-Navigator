@@ -163,8 +163,12 @@ function walkObject(
   }
 
   // Reihenfolge nur bei gleicher Schlüsselmenge vergleichen; eine
-  // Mengenabweichung ist bereits über key-missing/key-added berichtet.
+  // Mengenabweichung ist bereits über key-missing/key-added berichtet. Der
+  // Mengenvergleich läuft über die Schlüsselmengen selbst — gleiche Anzahl
+  // allein genügt nicht, weil unterschiedliche Schlüssel dieselbe Anzahl
+  // haben können.
   if (expectedKeys.length === actualKeys.size
+    && expectedKeys.every((key) => actualKeys.has(key))
     && expectedKeys.length > 1
     && canonicalKeyOrder(expectedKeys).join('\u0000') !== canonicalKeyOrder([...actualKeys]).join('\u0000')) {
     differences.push({ path, kind: 'key-order-changed', leftKind: 'object', rightKind: 'object' });
