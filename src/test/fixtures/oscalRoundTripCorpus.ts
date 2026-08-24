@@ -81,7 +81,8 @@ const LOSS_CRITICAL_PROPS = [
     uuid: 'aaaaaaaa-0000-4000-8000-000000000001',
     class: 'informational',
     group: 'publication',
-    ns: 'http://csrc.nist.gov/ns/oscal',
+    // Nur ein Bezeichner-String im Fixture, kein Abrufziel — deshalb https.
+    ns: 'https://csrc.nist.gov/ns/oscal',
     remarks: 'Nebenfelder dürfen nicht verworfen werden.',
   },
   {

@@ -71,13 +71,16 @@ export type OscalRoundTripBinding =
     readonly diagnostic: OscalDiagnostic;
   };
 
+/** Terminale Laufzustände der Vergleichs- und Identitätsebene. */
+export type OscalRoundTripOutcome = 'passed' | 'failed' | 'not-run';
+
 export interface OscalRoundTripGraphReport {
-  readonly status: 'passed' | 'failed' | 'not-run';
+  readonly status: OscalRoundTripOutcome;
   readonly differences: readonly JsonGraphDifference[];
 }
 
 export interface OscalRoundTripIdentityReport {
-  readonly status: 'passed' | 'failed' | 'not-run';
+  readonly status: OscalRoundTripOutcome;
   /** Stabile Befundkennungen, keine Dokumentwerte. */
   readonly findings: readonly string[];
 }
@@ -88,7 +91,7 @@ export interface OscalRoundTripIdentityReport {
  */
 export interface OscalStageSchemaValidationReport {
   readonly stage: 'json-schema';
-  readonly status: 'passed' | 'failed' | 'not-run';
+  readonly status: OscalRoundTripOutcome;
   readonly diagnostic?: OscalDiagnostic;
 }
 
@@ -473,100 +476,49 @@ export function formatRoundTripDifferences(
   );
 }
 
-/**
- * Führt genau einen No-op-Round-trip aus.
- *
- * Reihenfolge nach docs/OSCAL_VALIDATION.md: Bytelimit vor dem Parsen,
- * strukturelle Limits auf dem geparsten Wert, dann Root-Erkennung und
- * Versionsbindung. Erst nach bestandener Bindung laufen Export, beide
- * Vergleichsebenen und die Identitätsprüfung.
- */
-export async function runNoOpRoundTrip(input: OscalNoOpRunInput): Promise<OscalNoOpRunResult> {
-  const notRun = Object.freeze({ status: 'not-run' } as const);
-
-  // Stufe 1a — Byte-Eingangsgrenze vor dem Parsen.
-  if (utf8ByteLength(input.fixtureText) > CLASS_2_IMPORT_LIMITS.maxBytes) {
-    return deepFreeze({
-      mode: 'no-op',
-      rootType: input.rootType,
-      resourceLimit: {
-        status: 'failed',
-        diagnostic: createClass2ByteLimitDiagnostic(),
-      },
-      binding: { ok: false, reason: 'limits-not-run' },
-      serialization: notRun,
-      graph: { status: 'not-run', differences: [] },
-      identities: { status: 'not-run', findings: [] },
-      stages: stagesNotRun(),
-    });
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(input.fixtureText);
-  } catch {
-    // Ein nicht parsbarer Fixture ist ein Fehler des Testautors, kein
-    // Dokumentbefund: Stufe 1 (Token-Scanner) gehört zur Importpipeline,
-    // nicht zum Harnisch.
-    throw new SyntaxError('Fixture ist kein wohlgeformtes JSON');
-  }
-
-  // Stufe 1b — strukturelle Limits auf dem geparsten Wert.
-  const limitViolation = enforceClass2ResourceLimits(parsed);
-  if (limitViolation !== null) {
-    return deepFreeze({
-      mode: 'no-op',
-      rootType: input.rootType,
-      resourceLimit: { status: 'failed', diagnostic: limitViolation },
-      binding: { ok: false, reason: 'limits-not-run' },
-      serialization: notRun,
-      graph: { status: 'not-run', differences: [] },
-      identities: { status: 'not-run', findings: [] },
-      stages: stagesNotRun(),
-    });
-  }
-
-  // Stufe 2 — Root-Erkennung und Versionsbindung, bezogen statt nachgebaut.
-  const dispatched = dispatchOscalDocument(parsed, {
-    trustClass: HARNESS_TRUST_CLASS,
-    ...(input.artifactKey ? {} : {}),
+/** Ergebnisrahmen eines Laufs, dessen Kette vor Stufe 2 endet. */
+function rejectionBeforeBinding(
+  input: OscalNoOpRunInput,
+  resourceLimit: OscalRoundTripStatusFailed,
+): OscalNoOpRunResult {
+  return deepFreeze({
+    mode: 'no-op',
+    rootType: input.rootType,
+    resourceLimit,
+    binding: { ok: false, reason: 'limits-not-run' },
+    serialization: { status: 'not-run' },
+    graph: { status: 'not-run', differences: [] },
+    identities: { status: 'not-run', findings: [] },
+    stages: stagesNotRun(),
   });
-  if (!dispatched.ok) {
-    return deepFreeze({
-      mode: 'no-op',
-      rootType: input.rootType,
-      resourceLimit: { status: 'passed' },
-      binding: { ok: false, reason: 'dispatch-rejected', diagnostic: dispatched.diagnostic },
-      serialization: notRun,
-      graph: { status: 'not-run', differences: [] },
-      identities: { status: 'not-run', findings: [] },
-      stages: stagesNotRun(),
-    });
-  }
+}
 
-  const success: OscalRootDispatchSuccess = dispatched;
+/** Ergebnisrahmen eines Laufs, den Stufe 2 abgewiesen hat. */
+function dispatchRejectionResult(
+  input: OscalNoOpRunInput,
+  diagnostic: OscalDiagnostic,
+): OscalNoOpRunResult {
+  return deepFreeze({
+    mode: 'no-op',
+    rootType: input.rootType,
+    resourceLimit: { status: 'passed' },
+    binding: { ok: false, reason: 'dispatch-rejected', diagnostic },
+    serialization: { status: 'not-run' },
+    graph: { status: 'not-run', differences: [] },
+    identities: { status: 'not-run', findings: [] },
+    stages: stagesNotRun(),
+  });
+}
 
-  // Export — Identität als Vorgabe, einspeisbar für künftige Serializer.
-  const exported = input.exportDocument ? input.exportDocument(success.source) : success.source;
-
-  // Ebene 1 — byte-identische Serialisierung.
-  const exportBytes = JSON.stringify(exported);
-  const serializationEqual = exportBytes === JSON.stringify(success.source);
-
-  // Ebene 2 — geparster Graph mit Object.is-Semantik.
-  const imported = JSON.parse(exportBytes);
-  const differences = compareJsonGraphs(success.source, imported);
-
-  const identityFindings = compareIdentities(
-    readDocumentIdentities(success.source),
-    readDocumentIdentities(imported),
-  );
-
-  // Stufe 3 — JSON-Schema gegen die gebundene Zelle. Stufe 4 bleibt terminal
-  // not-checked; Stufe 5 läuft unabhängig davon nur nach bestandener Stufe 3
-  // und ausschließlich am Katalogpfad.
+/**
+ * Stufen 3–5 nach bestandener Bindung. Stufe 4 bleibt terminal `not-checked`;
+ * Stufe 5 läuft nur nach bestandener Stufe 3 und ausschließlich am
+ * Katalogpfad.
+ */
+async function evaluateStages(
+  success: OscalRootDispatchSuccess,
+): Promise<OscalRoundTripStages> {
   const schemaResult = await validateAgainstPinnedSchema(success.source, success.pin);
-  const constraintPendingCases = collectConstraintPendingCases(success.source);
 
   let referencesReport: OscalStageReferencesReport;
   if (!schemaResult.ok) {
@@ -586,6 +538,43 @@ export async function runNoOpRoundTrip(input: OscalNoOpRunInput): Promise<OscalN
     }));
   }
 
+  return {
+    schemaValidation: schemaResult.ok
+      ? { stage: 'json-schema', status: 'passed' }
+      : { stage: 'json-schema', status: 'failed', diagnostic: schemaResult.diagnostic },
+    constraints: {
+      stage: 'oscal-constraint',
+      status: 'not-checked',
+      documentedGap: true,
+      reference: CONSTRAINT_STAGE_REFERENCE,
+      pendingCases: collectConstraintPendingCases(success.source),
+    },
+    references: referencesReport,
+  };
+}
+
+/** Export, beide Vergleichsebenen und Identitätsprüfung nach bestandener Bindung. */
+function successfulNoOpResult(
+  input: OscalNoOpRunInput,
+  success: OscalRootDispatchSuccess,
+  stages: OscalRoundTripStages,
+): OscalNoOpRunResult {
+  // Export — Identität als Vorgabe, einspeisbar für künftige Serializer.
+  const exported = input.exportDocument ? input.exportDocument(success.source) : success.source;
+
+  // Ebene 1 — byte-identische Serialisierung.
+  const exportBytes = JSON.stringify(exported);
+  const serializationEqual = exportBytes === JSON.stringify(success.source);
+
+  // Ebene 2 — geparster Graph mit Object.is-Semantik.
+  const imported = JSON.parse(exportBytes);
+  const differences = compareJsonGraphs(success.source, imported);
+
+  const identityFindings = compareIdentities(
+    readDocumentIdentities(success.source),
+    readDocumentIdentities(imported),
+  );
+
   return deepFreeze({
     mode: 'no-op',
     rootType: input.rootType,
@@ -599,22 +588,49 @@ export async function runNoOpRoundTrip(input: OscalNoOpRunInput): Promise<OscalN
       status: identityFindings.length === 0 ? 'passed' : 'failed',
       findings: identityFindings,
     },
-    stages: {
-      schemaValidation: schemaResult.ok
-        ? { stage: 'json-schema', status: 'passed' }
-        : {
-          stage: 'json-schema',
-          status: 'failed',
-          diagnostic: schemaResult.diagnostic,
-        },
-      constraints: {
-        stage: 'oscal-constraint',
-        status: 'not-checked',
-        documentedGap: true,
-        reference: CONSTRAINT_STAGE_REFERENCE,
-        pendingCases: constraintPendingCases,
-      },
-      references: referencesReport,
-    },
+    stages,
   });
+}
+
+/**
+ * Führt genau einen No-op-Round-trip aus.
+ *
+ * Reihenfolge nach docs/OSCAL_VALIDATION.md: Bytelimit vor dem Parsen,
+ * strukturelle Limits auf dem geparsten Wert, dann Root-Erkennung und
+ * Versionsbindung. Erst nach bestandener Bindung laufen Export, beide
+ * Vergleichsebenen und die Identitätsprüfung.
+ */
+export async function runNoOpRoundTrip(input: OscalNoOpRunInput): Promise<OscalNoOpRunResult> {
+  // Stufe 1a — Byte-Eingangsgrenze vor dem Parsen.
+  if (utf8ByteLength(input.fixtureText) > CLASS_2_IMPORT_LIMITS.maxBytes) {
+    return rejectionBeforeBinding(input, {
+      status: 'failed',
+      diagnostic: createClass2ByteLimitDiagnostic(),
+    });
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(input.fixtureText);
+  } catch {
+    // Ein nicht parsbarer Fixture ist ein Fehler des Testautors, kein
+    // Dokumentbefund: Stufe 1 (Token-Scanner) gehört zur Importpipeline,
+    // nicht zum Harnisch.
+    throw new SyntaxError('Fixture ist kein wohlgeformtes JSON');
+  }
+
+  // Stufe 1b — strukturelle Limits auf dem geparsten Wert.
+  const limitViolation = enforceClass2ResourceLimits(parsed);
+  if (limitViolation !== null) {
+    return rejectionBeforeBinding(input, { status: 'failed', diagnostic: limitViolation });
+  }
+
+  // Stufe 2 — Root-Erkennung und Versionsbindung, bezogen statt nachgebaut.
+  const dispatched = dispatchOscalDocument(parsed, { trustClass: HARNESS_TRUST_CLASS });
+  if (!dispatched.ok) {
+    return dispatchRejectionResult(input, dispatched.diagnostic);
+  }
+
+  const stages = await evaluateStages(dispatched);
+  return successfulNoOpResult(input, dispatched, stages);
 }
