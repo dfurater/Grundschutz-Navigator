@@ -20,7 +20,6 @@ describe('No-op-Korpus über alle acht Root-Modelle', () => {
   for (const rootKey of OSCAL_ROOT_KEYS) {
     it(`durchläuft das Maximaldokument von ${rootKey} ohne Verlust und mit bestandener Stufe 3`, async () => {
       const result = await runNoOpRoundTrip({
-        rootType: rootKey,
         fixtureText: JSON.stringify(makeMaximalOscalDocument(rootKey, '1.2.2')),
         catalogKey: rootKey === 'catalog' ? 'gspp' : undefined,
       });
@@ -48,7 +47,6 @@ describe('Versionsabdeckung des Korpus', () => {
   it('führt ein Maximaldokument des Katalogs in allen vier Bestandsversionen verlustfrei', async () => {
     for (const version of ['1.1.2', '1.1.3', '1.2.1', '1.2.2'] as const) {
       const result = await runNoOpRoundTrip({
-        rootType: 'catalog',
         fixtureText: JSON.stringify(makeMaximalOscalDocument('catalog', version)),
         catalogKey: 'gspp',
       });
@@ -94,7 +92,6 @@ describe('Verlustkritische Strukturen (Befund 5)', () => {
   it('beweist mit Multiset und Ordnungssignatur, dass der Lauf nichts wegoptimiert', async () => {
     const original = CATALOG_MAX();
     const result = await runNoOpRoundTrip({
-      rootType: 'catalog',
       fixtureText: JSON.stringify(original),
       catalogKey: 'gspp',
     });
@@ -114,7 +111,6 @@ describe('Verlustkritische Strukturen (Befund 5)', () => {
     ]);
 
     const result = await runNoOpRoundTrip({
-      rootType: 'catalog',
       fixtureText: JSON.stringify(document),
       catalogKey: 'gspp',
     });
@@ -138,7 +134,6 @@ describe('Verlustkritische Strukturen (Befund 5)', () => {
     expect(revisions).toHaveLength(1);
 
     const result = await runNoOpRoundTrip({
-      rootType: 'catalog',
       fixtureText: JSON.stringify(document),
       catalogKey: 'gspp',
     });
@@ -154,7 +149,6 @@ describe('$schema-Direktive', () => {
     const document = makeCatalogTextWithSchemaDirective(pin);
 
     const result = await runNoOpRoundTrip({
-      rootType: 'catalog',
       fixtureText: JSON.stringify(document),
     });
 
@@ -169,7 +163,6 @@ describe('$schema-Direktive', () => {
     expect('$schema' in document).toBe(false);
 
     const result = await runNoOpRoundTrip({
-      rootType: 'catalog',
       fixtureText: JSON.stringify(document),
     });
 

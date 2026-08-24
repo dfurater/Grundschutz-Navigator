@@ -13,9 +13,10 @@ ist das Freigabegate für jeden späteren Import-, Authoring- und Export-Slice.
 
 ## Die No-op-Laufart
 
-`runNoOpRoundTrip()` nimmt Root-Typ, Fixture (als JSON-Quelltext) und optional
-einen eingespeisten Export entgegen und liefert ein eingefrorenes,
-deterministisches Ergebnis:
+`runNoOpRoundTrip()` nimmt den Fixture als JSON-Quelltext und optional einen
+eingespeisten Export, einen Registry-Pfad (`upstreamPath`) sowie eine
+Katalogidentität entgegen und liefert ein eingefrorenes, deterministisches
+Ergebnis:
 
 1. **Stufe 1** — Byte-Eingangsgrenze vor dem Parsen, strukturelle Limits
    (Tiefe, Knoten, Base64-Summe) nach dem Parsen; beides aus
@@ -24,12 +25,19 @@ deterministisches Ergebnis:
 2. **Stufe 2** — Root-Erkennung und Versionsbindung über
    `dispatchOscalDocument()`. Der Harnisch führt **keine eigene Versionsliste**
    und baut keine Diagnose der Matrix nach; ein statischer Test im Guard-File
-   belegt die Delegation.
-3. **Export** — Vorgabe ist die Identität (heute existiert kein Exportpfad).
-   Künftige Serializer reichen `exportDocument` ein, ohne den No-op-Pfad zu
-   ändern.
-4. **Vergleichsebenen** (siehe unten), **Identitätsprüfung**, dann die
-   **Validierungsstufen 3–5** mit terminalem Status je Stufe.
+   belegt die Delegation. Es gibt keine `rootType`-Eingabe: Der gemeldete
+   Root-Typ ist ausschließlich der **abgeleitete** aus dem Dokument. Ein
+   optionaler `upstreamPath` erzwingt die artefaktscharfe Registry-Erwartung
+   (`OSCAL_ROOT_TYPE_MISMATCH`) und ordnet Diagnosen dem Artefaktschlüssel zu.
+3. **Export und Reimport** — Vorgabe ist die Identität (heute existiert kein
+   Exportpfad). Künftige Serializer reichen `exportDocument` ein, ohne den
+   No-op-Pfad zu ändern. Anschließend liegen beide Seiten fest: das Original
+   (geparste Eingabe) und das **reimportierte Exportartefakt**.
+4. **Vergleichsebenen** (siehe unten) und **Identitätsprüfung** zwischen
+   Original und reimportiertem Export.
+5. **Validierungsstufen 3–5** mit terminalem Status je Stufe — geprüft wird
+   das **reimportierte Exportartefakt**, nie die Eingabe: Nur so certifieren
+   die Status das Dokument, das den Prozess tatsächlich verlässt.
 
 Die Edit-Laufart (`change-on-write`: neue Dokument-`uuid`, neuer
 `last-modified`-Zeitstempel) ist ausdrücklich **nicht** Teil dieses Moduls;
@@ -156,6 +164,24 @@ Ein Root-Modell-Adapter gilt erst dann als „Import unterstützt“ beziehungsw
 Edit-Bedingung tritt mit dem Folge-Issue „Edit-Laufart“ hinzu. Die CI erzwingt
 das, indem der Harnisch regulär läuft — ein neuer Adapter ohne grünen
 No-op-Lauf fällt in der nächsten Korpusänderung auf.
+
+## Normative Verankerung
+
+Alle normativen OSCAL-Aussagen dieses Dokuments sind an gepinnte
+`usnistgov`-Quellen gebunden; keine Aussage stützt sich auf ungepinnte
+Netzabrufe:
+
+| Aussage | Gepinnte Quelle |
+| --- | --- |
+| Root-Typen, Pflicht-/Optionalitätsverhältnisse, `required` + `additionalProperties: false` an der Wurzel, Identitätsregeln (`control/@id` lokal, `group/@id` instanzweit, Dokument-`uuid` global/change-on-write), `minItems: 1` bei `revisions`, `anyOf`-Muster ungebundener Vokabulare, geschlossene Ausnahme `origin-actor.type` | Die eingecheckten NIST-Release-Assets unter `schemas/oscal/v1.1.2`, `v1.1.3`, `v1.2.1`, `v1.2.2` — SHA-256-gepinnt über die [Versionsmatrix](OSCAL_VERSION_MATRIX.md), Reproduktion via `npm run verify-oscal-schemas`; Release-Tags [v1.1.2](https://github.com/usnistgov/OSCAL/releases/tag/v1.1.2), [v1.1.3](https://github.com/usnistgov/OSCAL/releases/tag/v1.1.3), [v1.2.1](https://github.com/usnistgov/OSCAL/releases/tag/v1.2.1), [v1.2.2](https://github.com/usnistgov/OSCAL/releases/tag/v1.2.2) |
+| Existenz der acht Root-Modelle je Version; `mapping-collection` erst ab 1.2.0 | Versionsmatrix ([GSPP-283]) aus denselben Release-Assets (7 Schemadateien unter 1.1.x, 8 unter 1.2.x); [Release v1.2.0](https://github.com/usnistgov/OSCAL/releases/tag/v1.2.0) |
+| Zwei Validierungsstufen (Wohlgeformtheit, Validität) | [NIST — OSCAL Validation Concepts](https://pages.nist.gov/OSCAL/learn/concepts/validation/) |
+| Modellsemantik je Feld | [Model Reference v1.2.2](https://pages.nist.gov/OSCAL-Reference/models/v1.2.2/), [v1.1.3](https://pages.nist.gov/OSCAL-Reference/models/v1.1.3/) |
+| Verlustfreiheitsvertrag (bewahrt das `JSON.parse`-Ergebnis, nicht die Quellbytes) | [ADR-2](https://linear.app/grundschutz-plus-plus/issue/ADR-2); die `Infinity`/`-0`-Blindstelle ist am V8-Verhalten von `JSON.stringify` gemessen (Befund 7 im [Issue GSPP-298](https://linear.app/grundschutz-plus-plus/issue/GSPP-298)) |
+
+Alles darüber hinaus — byte-identische No-op-Gleichheit, zweite Vergleichsebene,
+Korpuszuschnitt, QA-Lane, Adapter-Freigaberegel und der `not-checked`-Status
+der Constraint-Stufe — bleibt ausdrücklich **Projektentscheidung** (siehe unten).
 
 ## Projektentscheidung vs. NIST-Vorgabe
 

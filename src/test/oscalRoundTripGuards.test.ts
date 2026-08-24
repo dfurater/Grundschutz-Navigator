@@ -25,7 +25,6 @@ describe('Offline-Vertrag des Harnischs', () => {
 
     const document = CATALOG_122_WITH_EXTERNAL_HREFS();
     const result = await runNoOpRoundTrip({
-      rootType: 'catalog',
       fixtureText: JSON.stringify(document),
       catalogKey: 'gspp',
     });
@@ -40,7 +39,6 @@ describe('Offline-Vertrag des Harnischs', () => {
       .links = [{ href: 'javascript:beispiel' }];
 
     await expect(runNoOpRoundTrip({
-      rootType: 'catalog',
       fixtureText: JSON.stringify(unsafe),
       catalogKey: 'gspp',
     })).resolves.toMatchObject({ stages: { references: { status: 'failed' } } });
@@ -55,12 +53,10 @@ describe('Determinismus', () => {
     const fixtureText = JSON.stringify(CATALOG_MAX());
 
     const first = await runNoOpRoundTrip({
-      rootType: 'catalog',
       fixtureText,
       catalogKey: 'gspp',
     });
     const second = await runNoOpRoundTrip({
-      rootType: 'catalog',
       fixtureText,
       catalogKey: 'gspp',
     });
@@ -81,7 +77,6 @@ describe('Redaction der Fehlerausgabe', () => {
 
     // Ein eingespeister Export verwirft das Feld, damit eine Differenz entsteht.
     const result = await runNoOpRoundTrip({
-      rootType: 'catalog',
       fixtureText: JSON.stringify(document),
       exportDocument: (parsed) => {
         const copy = structuredClone(parsed) as Record<string, unknown>;

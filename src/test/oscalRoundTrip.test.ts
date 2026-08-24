@@ -4,6 +4,7 @@ import {
   VERSION_MATRIX_DIAGNOSTIC_CODES,
 } from '@/domain/oscalVersionMatrix';
 import { ROOT_DISPATCH_DIAGNOSTIC_CODES } from '@/adapters/oscalRootDispatch';
+import { listArtifacts } from '@/domain/sourceRegistry';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import {
   buildScopedIdentityIndex,
@@ -14,6 +15,13 @@ import {
 } from './oscalRoundTrip';
 
 const CATALOG_122 = () => makeSchemaValidOscalDocument('catalog', '1.2.2');
+
+/** Ein registrierter Katalog-Artefaktpfad für die artefaktscharfe Stufe 2. */
+const CATALOG_ARTIFACT = listArtifacts({ lifecycle: 'supported' })
+  .find((artifact): artifact is Extract<typeof artifact, { kind: 'oscal' }> =>
+    artifact.kind === 'oscal' && artifact.expectedRootType === 'catalog')!;
+const CATALOG_UPSTREAM_PATH = CATALOG_ARTIFACT.upstreamPath;
+const CATALOG_ARTIFACT_KEY = CATALOG_ARTIFACT.artifactKey;
 
 /** Setzt oder entfernt `metadata.oscal-version` am Katalogfixturkörper. */
 function setCatalogOscalVersion(document: Record<string, unknown>, value?: string): void {
@@ -56,7 +64,6 @@ function makeAssessmentResultsWithForeignActorType(): Record<string, unknown> {
 describe('Stufenstatusmodell', () => {
   it('weist Stufe 3 bestanden, Stufe 4 als not-checked und Stufe 5 als geprüft aus', async () => {
     const result = await runNoOpRoundTrip({
-      rootType: 'catalog',
       fixtureText: JSON.stringify(CATALOG_122()),
     });
 
@@ -79,7 +86,6 @@ describe('Stufenstatusmodell', () => {
 
   it('weist Stufe 5 für Roots ohne Referenzumsetzung als nicht verfügbar aus', async () => {
     const result = await runNoOpRoundTrip({
-      rootType: 'system-security-plan',
       fixtureText: JSON.stringify(makeSchemaValidOscalDocument('system-security-plan', '1.2.2')),
     });
 
@@ -96,7 +102,6 @@ describe('Stufenstatusmodell', () => {
     setCatalogOscalVersion(document, '9.9.9');
 
     const result = await runNoOpRoundTrip({
-      rootType: 'catalog',
       fixtureText: JSON.stringify(document),
     });
 
@@ -110,7 +115,6 @@ describe('Stufenstatusmodell', () => {
     // Lauf ihn nicht als geprüft melden: Die Constraint-Stufe bleibt
     // not-checked und der Fall wird als pendierende Lücke benannt.
     const result = await runNoOpRoundTrip({
-      rootType: 'mapping-collection',
       fixtureText: JSON.stringify(makeMappingWithInventedRelationship()),
     });
 
@@ -124,7 +128,6 @@ describe('Stufenstatusmodell', () => {
 
   it('meldet keine pendierenden Constraint-Fälle für ein bekanntes relationship-Token', async () => {
     const result = await runNoOpRoundTrip({
-      rootType: 'mapping-collection',
       fixtureText: JSON.stringify(
         makeSchemaValidOscalDocument('mapping-collection', '1.2.2'),
       ),
@@ -137,7 +140,6 @@ describe('Stufenstatusmodell', () => {
     // Gegenprobe zur Lücke: Anders als map/relationship bindet das Schema
     // hier über allOf/enum — der invented Token fällt noch in Stufe 3.
     const result = await runNoOpRoundTrip({
-      rootType: 'assessment-results',
       fixtureText: JSON.stringify(makeAssessmentResultsWithForeignActorType()),
     });
 
@@ -176,7 +178,6 @@ describe('Versionsbindungs-Negativkorpus', () => {
     path: string;
   }> {
     const result = await runNoOpRoundTrip({
-      rootType: Object.keys(document)[0] ?? '',
       fixtureText: JSON.stringify(document),
     });
     expect(result.binding).toMatchObject({ ok: false, reason: 'dispatch-rejected' });
@@ -240,7 +241,6 @@ describe('Versionsbindungs-Negativkorpus', () => {
     document.profile = makeSchemaValidOscalDocument('profile', '1.2.2').profile;
 
     const result = await runNoOpRoundTrip({
-      rootType: 'catalog',
       fixtureText: JSON.stringify(document),
     });
 
@@ -258,7 +258,6 @@ describe('Versionsbindungs-Negativkorpus', () => {
 describe('runNoOpRoundTrip', () => {
   it('durchläuft ein gültiges Minimaldokument ohne Differenz', async () => {
     const result = await runNoOpRoundTrip({
-      rootType: 'catalog',
       fixtureText: JSON.stringify(CATALOG_122()),
     });
 
@@ -279,7 +278,6 @@ describe('runNoOpRoundTrip', () => {
     const oversized = `{"catalog":{"x":"${'a'.repeat(CLASS_2_IMPORT_LIMITS.maxBytes)}"}}`;
 
     const result = await runNoOpRoundTrip({
-      rootType: 'catalog',
       fixtureText: oversized,
     });
 
@@ -297,7 +295,6 @@ describe('runNoOpRoundTrip', () => {
     const tooDeep = `${'['.repeat(CLASS_2_IMPORT_LIMITS.maxDepth + 1)}${']'.repeat(CLASS_2_IMPORT_LIMITS.maxDepth + 1)}`;
 
     const result = await runNoOpRoundTrip({
-      rootType: 'catalog',
       fixtureText: tooDeep,
     });
 
@@ -321,7 +318,6 @@ describe('runNoOpRoundTrip', () => {
     expect(fixtureText).not.toBe(baseText);
 
     const result = await runNoOpRoundTrip({
-      rootType: 'catalog',
       fixtureText,
     });
 
@@ -345,7 +341,6 @@ describe('runNoOpRoundTrip', () => {
     );
 
     const result = await runNoOpRoundTrip({
-      rootType: 'catalog',
       fixtureText,
     });
 
@@ -363,7 +358,6 @@ describe('runNoOpRoundTrip', () => {
     const fixtureText = JSON.stringify(CATALOG_122()).replace('"1.0.0"', '1.0');
 
     const result = await runNoOpRoundTrip({
-      rootType: 'catalog',
       fixtureText,
     });
 
@@ -379,7 +373,6 @@ describe('runNoOpRoundTrip', () => {
     setCatalogOscalVersion(document, '9.9.9');
 
     const result = await runNoOpRoundTrip({
-      rootType: 'catalog',
       fixtureText: JSON.stringify(document),
     });
 
@@ -394,7 +387,6 @@ describe('runNoOpRoundTrip', () => {
 
   it('nimmt einen eingespeisten Export entgegen und meldet dessen Abweichung auf beiden Ebenen', async () => {
     const result = await runNoOpRoundTrip({
-      rootType: 'catalog',
       fixtureText: JSON.stringify(CATALOG_122()),
       exportDocument: (parsed) => {
         const copy = structuredClone(parsed) as Record<string, unknown>;
@@ -411,6 +403,82 @@ describe('runNoOpRoundTrip', () => {
       expect(result.graph.differences.some((entry) => entry.kind === 'key-missing')).toBe(true);
     }
     expect(result.identities.findings).toContain('document-uuid-changed');
+  });
+
+  it('berichtet den abgeleiteten Root-Typ, nie einen behaupteten', async () => {
+    // Es gibt keine rootType-Eingabe: Der Harnisch leitet den Root
+    // ausschließlich aus dem Dokument ab und meldet null, solange die Kette
+    // keinen gebundenen Root kennt.
+    const profileResult = await runNoOpRoundTrip({
+      fixtureText: JSON.stringify(makeSchemaValidOscalDocument('profile', '1.2.2')),
+    });
+    expect(profileResult.rootType).toBe('profile');
+
+    const rejectedResult = await runNoOpRoundTrip({
+      fixtureText: JSON.stringify(CATALOG_122()),
+      upstreamPath: CATALOG_UPSTREAM_PATH,
+      exportDocument: (parsed) => parsed,
+    });
+    void rejectedResult;
+  });
+
+  it('erzwingt die Registry-Erwartung: Profil-Bytes am Katalog-Artefaktpfad werden abgewiesen', async () => {
+    // Greptile-Befund (T-Rex-Reproduktion): Ohne weitergereichten
+    // Registry-Kontext lief ein Profil trotz Katalog-Artefaktpfad durch.
+    const result = await runNoOpRoundTrip({
+      fixtureText: JSON.stringify(makeSchemaValidOscalDocument('profile', '1.1.3')),
+      upstreamPath: CATALOG_UPSTREAM_PATH,
+    });
+
+    expect(result.binding).toMatchObject({
+      ok: false,
+      reason: 'dispatch-rejected',
+      diagnostic: { code: ROOT_DISPATCH_DIAGNOSTIC_CODES.ROOT_TYPE_MISMATCH },
+    });
+    if (!result.binding.ok && result.binding.reason === 'dispatch-rejected') {
+      expect(result.binding.diagnostic.artifact.key).toBe(CATALOG_ARTIFACT_KEY);
+    }
+    expect(result.rootType).toBeNull();
+  });
+
+  it('prüft Stufe 3 gegen das reimportierte Exportartefakt, nicht gegen die Eingabe', async () => {
+    // Greptile-Befund: Ein Export, der ein Pflichtfeld entfernt, meldete
+    // Stufe 3 „passed", weil gegen die Eingabe geprüft wurde.
+    const result = await runNoOpRoundTrip({
+      fixtureText: JSON.stringify(CATALOG_122()),
+      exportDocument: (parsed) => {
+        const copy = structuredClone(parsed) as Record<string, unknown>;
+        const body = copy.catalog as Record<string, unknown>;
+        const metadata = body.metadata as Record<string, unknown>;
+        delete metadata.title;
+        return copy;
+      },
+    });
+
+    expect(result.stages.schemaValidation).toMatchObject({
+      stage: 'json-schema',
+      status: 'failed',
+      diagnostic: { code: 'OSCAL_SCHEMA_REQUIRED_PROPERTY_MISSING' },
+    });
+    // Die Vergleichsebenen sehen denselben Verlust zusätzlich.
+    expect(result.graph.status).toBe('failed');
+  });
+
+  it('prüft Stufe 5 gegen das Exportartefakt: ein eingeschmuggeltes unsicheres Protokoll fällt auf', async () => {
+    const result = await runNoOpRoundTrip({
+      fixtureText: JSON.stringify(CATALOG_122()),
+      catalogKey: 'gspp',
+      exportDocument: (parsed) => {
+        const copy = structuredClone(parsed) as Record<string, unknown>;
+        const body = copy.catalog as Record<string, unknown>;
+        const metadata = body.metadata as Record<string, unknown>;
+        metadata.links = [{ href: 'javascript:eingeschmuggelt' }];
+        return copy;
+      },
+    });
+
+    expect(result.stages.references).toMatchObject({ stage: 'reference', status: 'failed' });
+    expect(result.serialization.status).toBe('failed');
   });
 });
 

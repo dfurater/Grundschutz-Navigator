@@ -180,7 +180,7 @@ function collectConstraintPendingCases(source: unknown): string[] {
  */
 function* iterateCatalogReferenceTargets(
   referenceDocument: ReferenceDocument,
-): Generator<{ readonly reason?: string; readonly diagnostic?: OscalDiagnostic }> {
+): Generator<unknown> {
   yield* resolveCatalogMetadataReferences({ document: referenceDocument });
   for (const references of resolveCatalogControlReferences({
     document: referenceDocument,
@@ -192,12 +192,19 @@ function* iterateCatalogReferenceTargets(
   }
 }
 
+type UnsafeProtocolTarget = { readonly diagnostic?: OscalDiagnostic };
+
+function isUnsafeProtocolTarget(target: unknown): target is UnsafeProtocolTarget {
+  return typeof target === 'object' && target !== null && 'reason' in target
+    && (target as { reason?: unknown }).reason === 'unsafe-protocol';
+}
+
 /** Sammelt Stufe 5 über die drei Katalogauflösungen; fail-closed bei unsicheren Protokollen. */
 function evaluateCatalogReferences(
   referenceDocument: ReferenceDocument,
 ): OscalStageReferencesReport {
   for (const target of iterateCatalogReferenceTargets(referenceDocument)) {
-    if (target.reason === 'unsafe-protocol') {
+    if (isUnsafeProtocolTarget(target)) {
       return target.diagnostic
         ? { stage: 'reference', status: 'failed', diagnostic: target.diagnostic }
         : { stage: 'reference', status: 'failed' };
@@ -208,7 +215,12 @@ function evaluateCatalogReferences(
 
 export interface OscalNoOpRunResult {
   readonly mode: OscalRoundTripRunMode;
-  readonly rootType: string;
+  /**
+   * Der **abgeleitete** Root-Typ aus Stufe 2 — nie der vom Aufrufer behauptete.
+   * Solange die Kette keinen gebundenen Root kennt (Limits, unbekannter Root),
+   * ist er `null`.
+   */
+  readonly rootType: string | null;
   readonly resourceLimit: OscalRoundTripStatusPassed | OscalRoundTripStatusFailed
   | OscalRoundTripStatusNotRun;
   readonly binding: OscalRoundTripBinding;
@@ -222,7 +234,6 @@ export interface OscalNoOpRunResult {
 }
 
 export interface OscalNoOpRunInput {
-  readonly rootType: string;
   /**
    * Der Fixture als JSON-Quelltext. Nur so existiert eine Byte-Ebene, deren
    * Grenze vor dem Parsen greift; verglichen wird gegen die Quellbytes nie.
@@ -231,9 +242,18 @@ export interface OscalNoOpRunInput {
   /**
    * Exportiert das geparste Original in sein Ausgabeartefakt. Vorgabe ist die
    * Identität — der heutige Zustand ohne Exportpfad. Künftige Serializer
-   * reichen ihre Funktion hier ein, ohne den No-op-Pfad zu ändern.
+   * reichen ihre Funktion hier ein, ohne den No-op-Pfad zu ändern. Die
+   * Validierungsstufen 3–5 prüfen das **reimportierte Exportartefakt**, nicht
+   * die Eingabe.
    */
   readonly exportDocument?: (parsed: unknown) => unknown;
+  /**
+   * Optionaler Registry-Pfad für eine artefaktscharfe Stufe 2: Der Dispatch
+   * prüft dann den gefundenen Root gegen die Registry-Erwartung
+   * (`OSCAL_ROOT_TYPE_MISMATCH`) und benennt den Artefaktschlüssel in
+   * Diagnosen.
+   */
+  readonly upstreamPath?: string;
   /** Katalogidentität — fließt in Stufe 2 und die kataloggescopte Zuordnung ein. */
   readonly catalogKey?: CatalogKey;
 }
@@ -474,12 +494,11 @@ export function formatRoundTripDifferences(
 
 /** Ergebnisrahmen eines Laufs, dessen Kette vor Stufe 2 endet. */
 function rejectionBeforeBinding(
-  input: OscalNoOpRunInput,
   resourceLimit: OscalRoundTripStatusFailed,
 ): OscalNoOpRunResult {
   return deepFreeze({
     mode: 'no-op',
-    rootType: input.rootType,
+    rootType: null,
     resourceLimit,
     binding: { ok: false, reason: 'limits-not-run' },
     serialization: { status: 'not-run' },
@@ -491,12 +510,11 @@ function rejectionBeforeBinding(
 
 /** Ergebnisrahmen eines Laufs, den Stufe 2 abgewiesen hat. */
 function dispatchRejectionResult(
-  input: OscalNoOpRunInput,
   diagnostic: OscalDiagnostic,
 ): OscalNoOpRunResult {
   return deepFreeze({
     mode: 'no-op',
-    rootType: input.rootType,
+    rootType: null,
     resourceLimit: { status: 'passed' },
     binding: { ok: false, reason: 'dispatch-rejected', diagnostic },
     serialization: { status: 'not-run' },
@@ -507,20 +525,22 @@ function dispatchRejectionResult(
 }
 
 /**
- * Stufen 3–5 nach bestandener Bindung. Stufe 4 bleibt terminal `not-checked`;
- * Stufe 5 läuft nur nach bestandener Stufe 3 und ausschließlich am
- * Katalogpfad.
+ * Stufen 3–5 gegen das **reimportierte Exportartefakt** — nicht gegen die
+ * Eingabe. Nur so certifieren die Status tatsächlich das Dokument, das den
+ * Prozess verlässt. Stufe 4 bleibt terminal `not-checked`; Stufe 5 läuft nur
+ * nach bestandener Stufe 3 und ausschließlich am Katalogpfad.
  */
 async function evaluateStages(
-  success: OscalRootDispatchSuccess,
+  exportedArtifact: unknown,
+  pin: OscalSchemaPin,
   catalogKey: CatalogKey | undefined,
 ): Promise<OscalRoundTripStages> {
-  const schemaResult = await validateAgainstPinnedSchema(success.source, success.pin);
+  const schemaResult = await validateAgainstPinnedSchema(exportedArtifact, pin);
 
   let referencesReport: OscalStageReferencesReport;
   if (!schemaResult.ok) {
     referencesReport = { stage: 'reference', status: 'not-run' };
-  } else if (success.rootType !== 'catalog') {
+  } else if (pin.rootKey !== 'catalog') {
     referencesReport = {
       stage: 'reference',
       status: 'not-available',
@@ -528,12 +548,12 @@ async function evaluateStages(
     };
   } else {
     referencesReport = evaluateCatalogReferences(createReferenceDocument({
-      source: success.source,
+      source: exportedArtifact,
       context: catalogKey === undefined
         ? { trustClass: HARNESS_TRUST_CLASS }
         : { trustClass: HARNESS_TRUST_CLASS, catalogKey },
       rootType: 'catalog',
-      oscalVersion: success.pin.oscalVersion,
+      oscalVersion: pin.oscalVersion,
     }));
   }
 
@@ -546,18 +566,20 @@ async function evaluateStages(
       status: 'not-checked',
       documentedGap: true,
       reference: CONSTRAINT_STAGE_REFERENCE,
-      pendingCases: collectConstraintPendingCases(success.source),
+      pendingCases: collectConstraintPendingCases(exportedArtifact),
     },
     references: referencesReport,
   };
 }
 
-/** Export, beide Vergleichsebenen und Identitätsprüfung nach bestandener Bindung. */
-function successfulNoOpResult(
+/**
+ * Export, beide Vergleichsebenen, Identitätsprüfung und anschließende
+ * Stufenprüfung des reimportierten Exportartefakts nach bestandener Bindung.
+ */
+async function successfulNoOpResult(
   input: OscalNoOpRunInput,
   success: OscalRootDispatchSuccess,
-  stages: OscalRoundTripStages,
-): OscalNoOpRunResult {
+): Promise<OscalNoOpRunResult> {
   // Export — Identität als Vorgabe, einspeisbar für künftige Serializer.
   const exported = input.exportDocument ? input.exportDocument(success.source) : success.source;
 
@@ -574,9 +596,11 @@ function successfulNoOpResult(
     readDocumentIdentities(imported),
   );
 
+  const stages = await evaluateStages(imported, success.pin, input.catalogKey);
+
   return deepFreeze({
     mode: 'no-op',
-    rootType: input.rootType,
+    rootType: success.rootType,
     resourceLimit: { status: 'passed' },
     binding: { ok: true, pin: success.pin },
     serialization: serializationEqual ? { status: 'passed' } : { status: 'failed' },
@@ -602,7 +626,7 @@ function successfulNoOpResult(
 export async function runNoOpRoundTrip(input: OscalNoOpRunInput): Promise<OscalNoOpRunResult> {
   // Stufe 1a — Byte-Eingangsgrenze vor dem Parsen.
   if (utf8ByteLength(input.fixtureText) > CLASS_2_IMPORT_LIMITS.maxBytes) {
-    return rejectionBeforeBinding(input, {
+    return rejectionBeforeBinding({
       status: 'failed',
       diagnostic: createClass2ByteLimitDiagnostic(),
     });
@@ -621,19 +645,20 @@ export async function runNoOpRoundTrip(input: OscalNoOpRunInput): Promise<OscalN
   // Stufe 1b — strukturelle Limits auf dem geparsten Wert.
   const limitViolation = enforceClass2ResourceLimits(parsed);
   if (limitViolation !== null) {
-    return rejectionBeforeBinding(input, { status: 'failed', diagnostic: limitViolation });
+    return rejectionBeforeBinding({ status: 'failed', diagnostic: limitViolation });
   }
 
   // Stufe 2 — Root-Erkennung und Versionsbindung, bezogen statt nachgebaut.
-  // Die Katalogidentität wird mitgeführt und in Stufe 5 konsumiert.
+  // Die Katalogidentität wird mitgeführt und in Stufe 5 konsumiert; ein
+  // optionaler Registry-Pfad erzwingt die artefaktscharfe Root-Erwartung.
   const dispatched = dispatchOscalDocument(parsed, {
     trustClass: HARNESS_TRUST_CLASS,
+    ...(input.upstreamPath !== undefined ? { upstreamPath: input.upstreamPath } : {}),
     ...(input.catalogKey !== undefined ? { catalogKey: input.catalogKey } : {}),
   });
   if (!dispatched.ok) {
-    return dispatchRejectionResult(input, dispatched.diagnostic);
+    return dispatchRejectionResult(dispatched.diagnostic);
   }
 
-  const stages = await evaluateStages(dispatched, input.catalogKey);
-  return successfulNoOpResult(input, dispatched, stages);
+  return successfulNoOpResult(input, dispatched);
 }

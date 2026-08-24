@@ -25,7 +25,6 @@ describe('QA-Sweep über alle 30 Matrixzellen', () => {
   for (const pin of pins) {
     it(`${pin.rootKey} @ ${pin.oscalVersion}: Maximaldokument ohne Verlust, Stufe 3 bestanden`, async () => {
       const result = await runNoOpRoundTrip({
-        rootType: pin.rootKey,
         fixtureText: JSON.stringify(
           makeMaximalOscalDocument(pin.rootKey, pin.oscalVersion),
         ),
