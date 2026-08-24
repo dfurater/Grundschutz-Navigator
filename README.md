@@ -98,6 +98,7 @@ Tiefe:
 - [`docs/DOMAIN_MODELS.md`](docs/DOMAIN_MODELS.md) — Typen, Anreicherung, OSCAL-Mapping
 - [`docs/INTEGRITY.md`](docs/INTEGRITY.md) — SHA-256-Pinning und Verify
 - [`docs/OSCAL_VALIDATION.md`](docs/OSCAL_VALIDATION.md) — Zielvertrag für die künftige fail-closed OSCAL-Prüf- und Lieferkette
+- [`docs/OSCAL_ROUND_TRIP.md`](docs/OSCAL_ROUND_TRIP.md) — No-op-Round-trip-Harnisch: Verlustfreiheit je OSCAL-Modell
 - [`docs/FILTERING.md`](docs/FILTERING.md) — Filter-Parameter, URL-Sync, Reihenfolge
 - [`docs/VOCABULARY.md`](docs/VOCABULARY.md) — Namespace-Modell für BSI-Vokabulare
 

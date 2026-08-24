@@ -54,6 +54,9 @@ export default defineConfig(({ command }) => ({
     environment: 'jsdom',
     globalSetup: ['./scripts/check-catalog-freshness.mjs'],
     setupFiles: ['./src/test-setup.ts'],
+    // Die QA-Lane des Round-trip-Harnischs (`*.qa.test.ts`, GSPP-298) läuft
+    // bewusst IM regulären Lauf mit — ein Ausschluss wäre eine Abschwächung.
+    // Gezielt einzeln: `npm run test:qa`.
     exclude: [...configDefaults.exclude, 'src/test/browser/**/*.browser.test.ts'],
     globals: true,
     css: true,
