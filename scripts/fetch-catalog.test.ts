@@ -1325,6 +1325,13 @@ describe('fetch-catalog', () => {
       serializeJsonArtifact({ integrity: { fetchedAt: '2026-04-03T00:00:00.000Z' } }, 'Metadaten'),
     ).toBe('{\n  "integrity": {\n    "fetchedAt": "2026-04-03T00:00:00.000Z"\n  }\n}\n');
   });
+
+  it('throws a TypeError when the payload does not serialize to a string', () => {
+    expect(() => serializeJsonArtifact(undefined, 'Upstream-Metadaten')).toThrow(TypeError);
+    expect(() => serializeJsonArtifact(undefined, 'Upstream-Metadaten')).toThrow(
+      'Upstream-Metadaten konnte nicht als JSON serialisiert werden.',
+    );
+  });
 });
 
 describe('vocabulary-utils', () => {
