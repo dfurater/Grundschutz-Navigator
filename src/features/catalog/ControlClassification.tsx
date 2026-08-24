@@ -36,7 +36,7 @@ interface ClassificationVocabularyBadgeProps {
   readonly vocabKey: 'modalverb' | 'securityLevel' | 'effortLevel';
   readonly active: boolean;
   readonly onToggleVocabulary: (key: string) => void;
-  children: React.ReactNode;
+  readonly children: React.ReactNode;
 }
 
 function ClassificationVocabularyBadge({
