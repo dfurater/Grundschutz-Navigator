@@ -69,10 +69,41 @@ export default defineConfig(({ command }) => ({
         'src/vite-env.d.ts',
       ],
       thresholds: {
-        lines: 57,
-        branches: 55,
-        functions: 56,
-        statements: 54,
+        lines: 87,
+        branches: 77,
+        functions: 88,
+        statements: 85,
+        /*
+         * `autoUpdate` bewusst NICHT gesetzt (Vitest-Default: false). Der
+         * Formatter bekommt von Vitest ausschliesslich den gemessenen Rohwert -
+         * nicht den bisherigen Threshold, nicht die Metrik, nicht den Bucket.
+         * Ein fixer Puffer-Abzug (z. B. -5) ist damit nicht sicher: Liegt die
+         * Messung weniger als der Abzugsbetrag ueber dem bestehenden Gate,
+         * senkt ein gruener Lauf das Gate (verifiziert reproduziert: Gate 92,
+         * Messung 93.04 -> faelschlich 88 geschrieben). Ein reines `Math.floor`
+         * ohne Abzug waere zwar nachweislich monoton (Schreibpfad ruft den
+         * Formatter nur bei `actual > threshold` auf, jeder Threshold ist
+         * ganzzahlig, also folgt floor(actual) >= threshold) - aber genau
+         * dieser Test hat den kompletten 5-Punkte-Puffer aller Werte unten in
+         * einem einzigen Lauf auf den exakten Messwert abgeschmolzen, weil
+         * "gemessen > gepuffertes Gate" bei einem gepufferten Threshold immer
+         * zutrifft. Mit Vitests zustandslosem Formatter (nur der Messwert, kein
+         * Zugriff auf den Ist-Threshold) ist "puffert" und "senkt nie ab"
+         * strukturell nicht gleichzeitig erreichbar. Threshold-Pflege bleibt
+         * deshalb manuell, mit demselben "gemessen - 5 Punkte"-Muster wie hier.
+         */
+        'src/domain/**': {
+          lines: 86,
+          branches: 70,
+          functions: 91,
+          statements: 82,
+        },
+        'src/adapters/**': {
+          lines: 94,
+          branches: 92,
+          functions: 95,
+          statements: 94,
+        },
       },
     },
   },
