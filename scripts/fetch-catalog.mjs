@@ -337,7 +337,7 @@ function assertJsonObject(value, label) {
 function serializeJsonArtifact(value, label) {
   const serializedBody = JSON.stringify(value, null, 2);
   if (typeof serializedBody !== 'string') {
-    throw new Error(`${label} konnte nicht als JSON serialisiert werden.`);
+    throw new TypeError(`${label} konnte nicht als JSON serialisiert werden.`);
   }
 
   const serialized = `${serializedBody}\n`;
@@ -505,8 +505,13 @@ function matchesVocabularyCollection(entry, repoPath) {
   );
 }
 
-function materializeRegistryFiles({ registryEntries, treeFiles, namespaceRefs }) {
-  const treeFileByPath = new Map(treeFiles.map((file) => [file.path, file]));
+function compareStringsByCodeUnit(left, right) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+function collectOscalRegistryDescriptors(registryEntries, treeFileByPath) {
   const descriptors = [];
 
   for (const entry of registryEntries) {
@@ -534,6 +539,12 @@ function materializeRegistryFiles({ registryEntries, treeFiles, namespaceRefs })
     });
   }
 
+  return descriptors;
+}
+
+function collectNamespaceRefDescriptors(registryEntries, treeFileByPath, namespaceRefs) {
+  const descriptors = [];
+
   for (const namespaceRef of namespaceRefs) {
     const collection = registryEntries.find(
       (entry) => entry.kind === 'vocabulary-collection' && matchesVocabularyCollection(entry, namespaceRef.path),
@@ -557,6 +568,10 @@ function materializeRegistryFiles({ registryEntries, treeFiles, namespaceRefs })
     });
   }
 
+  return descriptors;
+}
+
+function assertUniqueDescriptorPaths(descriptors) {
   const seenPaths = new Set();
   for (const descriptor of descriptors) {
     if (seenPaths.has(descriptor.path)) {
@@ -564,8 +579,18 @@ function materializeRegistryFiles({ registryEntries, treeFiles, namespaceRefs })
     }
     seenPaths.add(descriptor.path);
   }
+}
 
-  return descriptors.sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
+function materializeRegistryFiles({ registryEntries, treeFiles, namespaceRefs }) {
+  const treeFileByPath = new Map(treeFiles.map((file) => [file.path, file]));
+  const descriptors = [
+    ...collectOscalRegistryDescriptors(registryEntries, treeFileByPath),
+    ...collectNamespaceRefDescriptors(registryEntries, treeFileByPath, namespaceRefs),
+  ];
+
+  assertUniqueDescriptorPaths(descriptors);
+
+  return descriptors.sort((left, right) => compareStringsByCodeUnit(left.path, right.path));
 }
 
 async function buildFetchArtifacts(logger = console, {
@@ -649,7 +674,7 @@ async function buildFetchArtifacts(logger = console, {
     ...new Set(
       catalogRecords.flatMap((record) => extractReferencedNamespaceUrls(record.artifact.json, REPO)),
     ),
-  ].sort();
+  ].sort(compareStringsByCodeUnit);
   const vocabularyCollection = registryEntries.find(
     (entry) => entry.kind === 'vocabulary-collection' && entry.lifecycle === 'supported',
   );
@@ -929,21 +954,20 @@ if (isDirectExecution) {
     warn: (...args) => console.error(...args),
   };
 
-  buildFetchArtifacts(stderrLogger)
-    .then(async (payload) => {
-      await writeArtifacts(payload);
-      console.error('[5/5] Fertig.');
-      for (const filePath of payload.summary.catalogArtifactFilePaths) {
-        console.error(`  Katalogartefakt:     ${filePath}`);
-      }
-      console.error(`  Vokabulare:          ${payload.summary.vocabulariesFilePath}`);
-      console.error(`  Upstream-Metadaten:  ${payload.summary.upstreamSourcesMetadataFilePath}`);
-      console.error(`  Snapshot:            ${payload.summary.snapshotCommitSha}`);
-      console.error(`  Manifest-Signatur:   ${payload.summary.manifestSignature}`);
-      console.error('================================================');
-    })
-    .catch((error) => {
-      console.error(error instanceof Error ? error.message : String(error));
-      process.exitCode = 1;
-    });
+  try {
+    const payload = await buildFetchArtifacts(stderrLogger);
+    await writeArtifacts(payload);
+    console.error('[5/5] Fertig.');
+    for (const filePath of payload.summary.catalogArtifactFilePaths) {
+      console.error(`  Katalogartefakt:     ${filePath}`);
+    }
+    console.error(`  Vokabulare:          ${payload.summary.vocabulariesFilePath}`);
+    console.error(`  Upstream-Metadaten:  ${payload.summary.upstreamSourcesMetadataFilePath}`);
+    console.error(`  Snapshot:            ${payload.summary.snapshotCommitSha}`);
+    console.error(`  Manifest-Signatur:   ${payload.summary.manifestSignature}`);
+    console.error('================================================');
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
 }
