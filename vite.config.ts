@@ -74,15 +74,24 @@ export default defineConfig(({ command }) => ({
         functions: 88,
         statements: 85,
         /*
-         * Zieht die Thresholds automatisch nach, sobald die gemessene Coverage
-         * über threshold+5 liegt — mit demselben 5-Punkte-Puffer wie bei der
-         * letzten manuellen Kalibrierung, statt den exakten Messwert (Vitest-
-         * Default bei `autoUpdate: true`) ohne Puffer einzufrieren. Zieht nur
-         * nach oben, nie nach unten. Der Schreibzugriff passiert nur bei einem
-         * vollständigen Testlauf mit Konfigurationsdatei (`allTestsRun`); der
-         * CI-Coverage-Lauf in deploy.yml committet ihn nicht zurück.
+         * `autoUpdate` bewusst NICHT gesetzt (Vitest-Default: false). Der
+         * Formatter bekommt von Vitest ausschliesslich den gemessenen Rohwert -
+         * nicht den bisherigen Threshold, nicht die Metrik, nicht den Bucket.
+         * Ein fixer Puffer-Abzug (z. B. -5) ist damit nicht sicher: Liegt die
+         * Messung weniger als der Abzugsbetrag ueber dem bestehenden Gate,
+         * senkt ein gruener Lauf das Gate (verifiziert reproduziert: Gate 92,
+         * Messung 93.04 -> faelschlich 88 geschrieben). Ein reines `Math.floor`
+         * ohne Abzug waere zwar nachweislich monoton (Schreibpfad ruft den
+         * Formatter nur bei `actual > threshold` auf, jeder Threshold ist
+         * ganzzahlig, also folgt floor(actual) >= threshold) - aber genau
+         * dieser Test hat den kompletten 5-Punkte-Puffer aller Werte unten in
+         * einem einzigen Lauf auf den exakten Messwert abgeschmolzen, weil
+         * "gemessen > gepuffertes Gate" bei einem gepufferten Threshold immer
+         * zutrifft. Mit Vitests zustandslosem Formatter (nur der Messwert, kein
+         * Zugriff auf den Ist-Threshold) ist "puffert" und "senkt nie ab"
+         * strukturell nicht gleichzeitig erreichbar. Threshold-Pflege bleibt
+         * deshalb manuell, mit demselben "gemessen - 5 Punkte"-Muster wie hier.
          */
-        autoUpdate: (newThreshold: number) => Math.max(0, Math.floor(newThreshold) - 5),
         'src/domain/**': {
           lines: 86,
           branches: 70,
