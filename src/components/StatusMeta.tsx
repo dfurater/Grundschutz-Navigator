@@ -16,9 +16,9 @@ export function modalverbVariant(value?: string): BadgeVariant {
 }
 
 export interface StatusBadgeProps {
-  value?: string | null;
-  className?: string;
-  trailingIcon?: ReactNode;
+  readonly value?: string | null;
+  readonly className?: string;
+  readonly trailingIcon?: ReactNode;
 }
 
 export interface SecurityLevelBadgeProps extends StatusBadgeProps {
@@ -26,7 +26,15 @@ export interface SecurityLevelBadgeProps extends StatusBadgeProps {
    * Classification surfaces use Deniz's quieter rollback mapping; SearchPage uses
    * namespace to preserve the vocabulary metadata color outside classification UI.
    */
-  appearance?: 'classification' | 'namespace';
+  readonly appearance?: 'classification' | 'namespace';
+}
+
+function securityLevelVariant(
+  value: string,
+  appearance: SecurityLevelBadgeProps['appearance'],
+): BadgeVariant {
+  if (appearance === 'namespace') return 'sec_level';
+  return value === 'normal-SdT' ? 'outline' : 'soll';
 }
 
 export function ModalverbBadge({ value, className = '', trailingIcon }: StatusBadgeProps) {
@@ -47,12 +55,7 @@ export function SecurityLevelBadge({
 }: SecurityLevelBadgeProps) {
   if (!value) return null;
 
-  const variant =
-    appearance === 'namespace'
-      ? 'sec_level'
-      : value === 'normal-SdT'
-        ? 'outline'
-        : 'soll';
+  const variant = securityLevelVariant(value, appearance);
 
   return (
     <Badge variant={variant} className={className} trailingIcon={trailingIcon}>
@@ -73,7 +76,7 @@ const EFFORT_DOT_VARS = [
 export const RELEVANCE_SCALE_MAX = 2;
 
 export interface RelevanceScaleProps {
-  value: number;
+  readonly value: number;
 }
 
 /**
