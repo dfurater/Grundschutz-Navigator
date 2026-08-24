@@ -533,6 +533,24 @@ describe('runNoOpRoundTrip', () => {
     // Die Vergleichsebenen sind keine Stufenkette und zeigen den Wechsel.
     expect(result.graph.status).toBe('failed');
   });
+
+  it('sichert der Eingabe-upstreamPath nur die Quellbindung — die Re-Bindung des Exports bleibt frei', async () => {
+    // Greptile-Befund (T-Rex-Reproduktion): Wurde der Quellpfad in die
+    // Re-Bindung übernommen, erzwang ein Katalog-Artefaktpfad beim exportierten
+    // Profil OSCAL_ROOT_TYPE_MISMATCH. Der Pfad beschreibt nur das Quelldokument.
+    const result = await runNoOpRoundTrip({
+      fixtureText: JSON.stringify(CATALOG_122()),
+      upstreamPath: CATALOG_UPSTREAM_PATH,
+      exportDocument: () => makeSchemaValidOscalDocument('profile', '1.2.2'),
+    });
+
+    expect(result.binding).toMatchObject({ ok: true });
+    if (result.binding.ok) {
+      expect(result.binding.pin.rootKey).toBe('profile');
+    }
+    expect(result.rootType).toBe('profile');
+    expect(result.stages.schemaValidation).toEqual({ stage: 'json-schema', status: 'passed' });
+  });
 });
 
 describe('readDocumentIdentities', () => {

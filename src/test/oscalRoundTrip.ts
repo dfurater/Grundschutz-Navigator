@@ -608,10 +608,12 @@ async function successfulNoOpResult(
 
   // Stufen 3–5 gegen die **erneut gebundene** Exportartefakt-Bindung: Ein
   // Export darf das Modell wechseln — Root-, Versions-, Schema- und
-  // Berichtskontext folgen dem Exportartefakt, nicht der Eingabe.
+  // Berichtskontext folgen dem Exportartefakt. Der Eingabe-upstreamPath
+  // sichert allein die Quellbindung und wird bewusst NICHT mitgeführt; er
+  // beschreibt die Registry-Erwartung an das Quelldokument, nicht an
+  // abgeleitete Ausgaben.
   const exportContext: OscalDocumentContext = {
     trustClass: HARNESS_TRUST_CLASS,
-    ...(input.upstreamPath !== undefined ? { upstreamPath: input.upstreamPath } : {}),
     ...(input.catalogKey !== undefined ? { catalogKey: input.catalogKey } : {}),
   };
   const reBound = dispatchOscalDocument(imported, exportContext);
