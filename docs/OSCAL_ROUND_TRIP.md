@@ -141,6 +141,15 @@ wenn `$schema` der über `metadata.oscal-version` gewählten Zelle widerspricht.
   **keine** produktiven SSP-, Assessment- oder POA&M-Artefakte; die
   entsprechenden Modelle werden nicht als reale BSI-Fälle ausgegeben. Keine
   realen Organisations-, Evidenz- oder Personendaten.
+* Dokumentierter Hash je Maximaldokument: `MAXIMAL_CORPUS_HASHES` trägt den
+  SHA-256 über die kanonische Serialisierung (`JSON.stringify` des gebauten
+  Dokuments) für jede der 30 Matrixzellen. Da der Korpus programmatisch
+  erzeugt statt als Datei eingecheckt wird, ist die Tabelle die dokumentierte
+  Herkunft des Inhalts: Der Korpus-Test gleicht jede Zelle dagegen ab und
+  deckt damit stille Korpusdrift auf; eine beabsichtigte Änderung aktualisiert
+  die Hashes bewusst im selben Commit. Welche Zellen existieren, entscheidet
+  ausschließlich die Versionsmatrix — die Vollständigkeit beider Seiten wird
+  gegeneinander geprüft.
 
 ## Redaction
 

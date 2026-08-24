@@ -64,6 +64,71 @@ export const MAXIMAL_CORPUS_PROVENANCE: Readonly<
   },
 });
 
+/**
+ * SHA-256 über die **kanonische Serialisierung** jedes Maximaldokuments —
+ * `JSON.stringify` des von `makeMaximalOscalDocument(rootKey, version)`
+ * erzeugten Objekts, hexkodiert. Da der Korpus programmatisch statt als
+ * Datei eingecheckt wird, ist diese Tabelle die dokumentierte Herkunft des
+ * Inhalts: Jede stille Korpusänderung ändert einen Hash und lässt den
+ * Abgleich im Korpus-Test fehlschlagen. Eine beabsichtigte Korpusänderung
+ * aktualisiert die Werte bewusst im selben Commit.
+ *
+ * Die Versionsschlüssel sind Strings und spiegeln die Matrixzellen nicht
+ * als eigene Liste; welche Zellen existieren, entscheidet ausschließlich
+ * `listSchemaPins()` (`mapping-collection` trägt deshalb nur 1.2.x). Die
+ * Vollständigkeit beider Seiten wird im Korpus-Test gegeneinander geprüft.
+ */
+export const MAXIMAL_CORPUS_HASHES: Readonly<
+  Record<OscalRootKey, Readonly<Record<string, string>>>
+> = Object.freeze({
+  catalog: Object.freeze({
+    '1.1.2': 'dd1e6a08ffb7e84a541ea618f09c2ad805ee0f12be89ec115c8a0d4d6b06f326',
+    '1.1.3': '029d231b06f38f6f6581f41070ba84ff3903012bfd0ff9bd8942f8ef9b828686',
+    '1.2.1': 'c00fb49ab12ec70e7dbd4618784051c30bd18fb915fe79cc15cc90c8b374866b',
+    '1.2.2': '69d473541bb810a075e7c23d225459cd217c3b8e59a276df9599bc4c2598e865',
+  }),
+  profile: Object.freeze({
+    '1.1.2': '88d11b01eec8abcf3088deb43ad499eae55e4366d24dd4b2b8ed7d188197dab0',
+    '1.1.3': '2566e17dd5c92cad3b9f65347c7c59251f9a2d2060f20d86faa0893ee2524de6',
+    '1.2.1': '572d4cd78938ef00e438c469ca42e76d83142fefdc26fd6e72534281b35e46b4',
+    '1.2.2': '4b05665fcb064b53e202cbe431241faf8985a6cd69ce5a16a171a5cb6a72d1b5',
+  }),
+  'mapping-collection': Object.freeze({
+    '1.2.1': 'bce1018946add0f784bff82276ddf30008f91abc57747cccb1cd49bf5636f7ab',
+    '1.2.2': '3e62d2da70b18f455183df011e11711ebe1c9a21a98468961e2093133d0642e0',
+  }),
+  'component-definition': Object.freeze({
+    '1.1.2': 'e6d3e0a13735a2fd31d7d5134d0bcdbf594e3686227dfc1a4535c9cda240a39e',
+    '1.1.3': 'a5ceb3ba9ff511ea1994cbe4d7f975a07367b8fecfbc1c0bcf2a0c5d8850d95f',
+    '1.2.1': 'f512ae868ee5897278e30d652cae627ecae111b5032b9081a9fd03a4cf77f1a3',
+    '1.2.2': '48578534012507e3d996145da69a1adf8bf7722b6ce4e08940902a9062b0e80b',
+  }),
+  'system-security-plan': Object.freeze({
+    '1.1.2': '87246dec0e728b4da79c714b40fb6f7af1bbfd69989549644e76a6230af6c3d7',
+    '1.1.3': 'f87fbef993cd090f9c188dd0c7b481c5ca60918f9b15e2523c1e929a580a3d8b',
+    '1.2.1': 'b71a35536687191e58bf29631b898d0f8794150941940a62f8bb59553d91358d',
+    '1.2.2': 'f6968be12c4067d07beb459b735b2f2675b34b6ffcb9497ea808c37ecf527c0a',
+  }),
+  'assessment-plan': Object.freeze({
+    '1.1.2': 'bbe2f83a0f6f12503f2282b3889f27e8657d808d57269dadc9893ae41094d4e9',
+    '1.1.3': '237417e7eb9ce394f8eaf0450974e115ec5b31a07790a55a40b5f3cafcfa6442',
+    '1.2.1': 'a59d5425c82c5c7be72b7dbe69ec5b3bdbae89e2d70131e101a787ef96a6c905',
+    '1.2.2': '25d0106e56db2ff61a6c354b7bb1d6876e22cbd31577dde2b503a2d4c79b533d',
+  }),
+  'assessment-results': Object.freeze({
+    '1.1.2': '17f47d922ce62fb569ebc33323aea39b34c7e16a41df4af8eb7c4559620a8a42',
+    '1.1.3': 'e128a02430291a834c38c3897452426ce6c3b0d462ef059e107adf6175ce231d',
+    '1.2.1': '433c94ac519bffb299a0312f54505f9a9aee696f51d7e96723c27c1a7c75cad6',
+    '1.2.2': '5e4fda47a64ccd3e32ce143390e0193495cd22523cfd61e951134743ed9d835b',
+  }),
+  'plan-of-action-and-milestones': Object.freeze({
+    '1.1.2': 'ee5f4dfc972cd138ccb771c1cbaffa7883b008f968d219eb2e100ae7207aa7ec',
+    '1.1.3': '50413a6cafd3b7ff79b661a0cb8f1d4242813e89cd0f699496bb6ddf1135c088',
+    '1.2.1': 'f71173a0a1ffd22dc18dbc4218ecf6cf85ddd6c86a979f975468152ae8e4d16a',
+    '1.2.2': '64b1a52d6adf7e7fbbeac6aa2b468c5d86ffb22faf966974ce145d6e9151af09',
+  }),
+});
+
 function makeMetadata(oscalVersion: PinnedOscalVersion): Record<string, unknown> {
   return {
     title: 'Maximalkorpus ohne reale Organisationsdaten',

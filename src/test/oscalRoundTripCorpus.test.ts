@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   OSCAL_ROOT_KEYS,
+  listSchemaPins,
   type OscalRootKey,
 } from '@/domain/oscalVersionMatrix';
+import { computeSHA256 } from '@/domain/integrity';
 import {
   arrayOrderSignature,
   contentMultiset,
@@ -11,6 +13,7 @@ import {
 import {
   makeMaximalOscalDocument,
   MAXIMAL_CORPUS_PROVENANCE,
+  MAXIMAL_CORPUS_HASHES,
   makeCatalogTextWithSchemaDirective,
   makeCatalogRevisionsFixture,
 } from './fixtures/oscalRoundTripCorpus';
@@ -182,5 +185,54 @@ describe('Provenienz des Korpus', () => {
       expect(entry.note.length).toBeGreaterThan(0);
       expect(entry.note).not.toMatch(/https?:\/\//);
     }
+  });
+});
+
+describe('Dokumentierte Hashes des Korpus', () => {
+  /**
+   * SHA-256 über die kanonische Serialisierung — exakt die Definition aus
+   * `MAXIMAL_CORPUS_HASHES` (JSON.stringify des gebauten Dokuments, hexkodiert).
+   */
+  async function canonicalHash(rootKey: OscalRootKey, version: string): Promise<string> {
+    const canonical = JSON.stringify(makeMaximalOscalDocument(rootKey, version));
+    return computeSHA256(new TextEncoder().encode(canonical).buffer);
+  }
+
+  it('deckt exakt die existierenden Matrixzellen ab — ohne gespiegelte Versionsliste', () => {
+    // Beide Seiten werden aus ihren eigenen Quellen gelesen: Die Zellen
+    // ausschließlich aus der Matrix, die Hash-Tabelle aus dem Korpus. Jede
+    // einseitige Ergänzung oder Lücke fällt hier auf.
+    const matrixCells = listSchemaPins()
+      .map((pin) => `${pin.rootKey}@${pin.oscalVersion}`)
+      .sort();
+    const hashCells = (Object.entries(MAXIMAL_CORPUS_HASHES) as readonly [
+      OscalRootKey,
+      Readonly<Record<string, string>>,
+    ][]).flatMap(([rootKey, versions]) =>
+      Object.keys(versions).map((version) => `${rootKey}@${version}`)).sort();
+
+    expect(hashCells).toEqual(matrixCells);
+  });
+
+  it('stimmt mit dem dokumentierten SHA-256 der kanonischen Serialisierung je Zelle überein', async () => {
+    for (const pin of listSchemaPins()) {
+      const expected = MAXIMAL_CORPUS_HASHES[pin.rootKey][pin.oscalVersion];
+      expect(expected, `${pin.rootKey} @ ${pin.oscalVersion}`).toMatch(/^[0-9a-f]{64}$/);
+      expect(await canonicalHash(pin.rootKey, pin.oscalVersion), `${pin.rootKey} @ ${pin.oscalVersion}`)
+        .toBe(expected);
+    }
+  });
+
+  it('ändert den Hash bei jeder Inhaltsänderung — stille Korpusdrift ist damit sichtbar', async () => {
+    const document = makeMaximalOscalDocument('catalog', '1.2.2');
+    const body = structuredClone(document.catalog) as Record<string, unknown>;
+    const metadata = body.metadata as Record<string, unknown>;
+    metadata.title = 'Geänderte Titelzeile';
+
+    const tampered = await computeSHA256(
+      new TextEncoder().encode(JSON.stringify({ catalog: body })).buffer,
+    );
+
+    expect(tampered).not.toBe(MAXIMAL_CORPUS_HASHES.catalog['1.2.2']);
   });
 });
