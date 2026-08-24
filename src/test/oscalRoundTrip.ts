@@ -18,6 +18,7 @@
 // =============================================================================
 
 import type { OscalDiagnostic } from '@/domain/oscalDiagnostics';
+import type { OscalDocumentContext } from '@/domain/models';
 import { enforceClass2ResourceLimits } from '@/domain/oscalResourceLimits';
 import {
   CLASS_2_IMPORT_LIMITS,
@@ -531,16 +532,15 @@ function dispatchRejectionResult(
  * nach bestandener Stufe 3 und ausschließlich am Katalogpfad.
  */
 async function evaluateStages(
-  exportedArtifact: unknown,
-  pin: OscalSchemaPin,
+  reBound: OscalRootDispatchSuccess,
   catalogKey: CatalogKey | undefined,
 ): Promise<OscalRoundTripStages> {
-  const schemaResult = await validateAgainstPinnedSchema(exportedArtifact, pin);
+  const schemaResult = await validateAgainstPinnedSchema(reBound.source, reBound.pin);
 
   let referencesReport: OscalStageReferencesReport;
   if (!schemaResult.ok) {
     referencesReport = { stage: 'reference', status: 'not-run' };
-  } else if (pin.rootKey !== 'catalog') {
+  } else if (reBound.rootType !== 'catalog') {
     referencesReport = {
       stage: 'reference',
       status: 'not-available',
@@ -548,12 +548,12 @@ async function evaluateStages(
     };
   } else {
     referencesReport = evaluateCatalogReferences(createReferenceDocument({
-      source: exportedArtifact,
+      source: reBound.source,
       context: catalogKey === undefined
         ? { trustClass: HARNESS_TRUST_CLASS }
         : { trustClass: HARNESS_TRUST_CLASS, catalogKey },
       rootType: 'catalog',
-      oscalVersion: pin.oscalVersion,
+      oscalVersion: reBound.pin.oscalVersion,
     }));
   }
 
@@ -566,7 +566,7 @@ async function evaluateStages(
       status: 'not-checked',
       documentedGap: true,
       reference: CONSTRAINT_STAGE_REFERENCE,
-      pendingCases: collectConstraintPendingCases(exportedArtifact),
+      pendingCases: collectConstraintPendingCases(reBound.source),
     },
     references: referencesReport,
   };
@@ -596,7 +596,37 @@ async function successfulNoOpResult(
     readDocumentIdentities(imported),
   );
 
-  const stages = await evaluateStages(imported, success.pin, input.catalogKey);
+  // Stufen 3–5 gegen die **erneut gebundene** Exportartefakt-Bindung: Ein
+  // Export darf das Modell wechseln — dann muss auch Root-, Versions- und
+  // Schema-Kontext dem Exportartefakt folgen, nicht der Eingabe.
+  const exportContext: OscalDocumentContext = {
+    trustClass: HARNESS_TRUST_CLASS,
+    ...(input.upstreamPath !== undefined ? { upstreamPath: input.upstreamPath } : {}),
+    ...(input.catalogKey !== undefined ? { catalogKey: input.catalogKey } : {}),
+  };
+  const reBound = dispatchOscalDocument(imported, exportContext);
+  let stages: OscalRoundTripStages;
+  if (!reBound.ok) {
+    // Die Re-Bindung ist Teil des Exportnachweises: Ihre Ablehnung fällt in
+    // die Stufe vor dem Schema und hält Stufe 5 not-run.
+    stages = {
+      schemaValidation: {
+        stage: 'json-schema',
+        status: 'failed',
+        diagnostic: reBound.diagnostic,
+      },
+      constraints: {
+        stage: 'oscal-constraint',
+        status: 'not-checked',
+        documentedGap: true,
+        reference: CONSTRAINT_STAGE_REFERENCE,
+        pendingCases: collectConstraintPendingCases(imported),
+      },
+      references: { stage: 'reference', status: 'not-run' },
+    };
+  } else {
+    stages = await evaluateStages(reBound, input.catalogKey);
+  }
 
   return deepFreeze({
     mode: 'no-op',

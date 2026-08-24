@@ -481,6 +481,32 @@ describe('runNoOpRoundTrip', () => {
     expect(result.stages.references).toMatchObject({ stage: 'reference', status: 'failed' });
     expect(result.serialization.status).toBe('failed');
   });
+
+  it('bindet das Exportartefakt erneut: Ein Katalog, der ein valides Profil exportiert, wird als Profil geprüft', async () => {
+    // Greptile-Befund (T-Rex-Reproduktion): Ohne Re-Bindung wurde das
+    // exportierte Profil gegen das Katalogschema geprüft und meldete
+    // Katalog-Diagnosen. Mit Re-Bindung besteht es Stufe 3 als Profil.
+    const result = await runNoOpRoundTrip({
+      fixtureText: JSON.stringify(CATALOG_122()),
+      exportDocument: () =>
+        makeSchemaValidOscalDocument('profile', '1.2.2'),
+    });
+
+    expect(result.binding).toMatchObject({ ok: true });
+    if (result.binding.ok) {
+      expect(result.binding.pin.rootKey).toBe('catalog');
+    }
+    expect(result.stages.schemaValidation).toEqual({
+      stage: 'json-schema',
+      status: 'passed',
+    });
+    expect(result.stages.constraints).toMatchObject({ status: 'not-checked' });
+    expect(result.stages.references).toEqual({
+      stage: 'reference',
+      status: 'not-available',
+      reason: 'catalog-only-implementation',
+    });
+  });
 });
 
 describe('readDocumentIdentities', () => {
