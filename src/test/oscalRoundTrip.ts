@@ -174,38 +174,35 @@ function collectConstraintPendingCases(source: unknown): string[] {
   return [...pending];
 }
 
+/**
+ * Alle Referenzziele des Katalogdokuments als einen Strom — Metadaten-Links,
+ * Control-Links und Rlinks der Back-matter-Ressourcen.
+ */
+function* iterateCatalogReferenceTargets(
+  referenceDocument: ReferenceDocument,
+): Generator<{ readonly reason?: string; readonly diagnostic?: OscalDiagnostic }> {
+  yield* resolveCatalogMetadataReferences({ document: referenceDocument });
+  for (const references of resolveCatalogControlReferences({
+    document: referenceDocument,
+  }).values()) {
+    yield* references;
+  }
+  for (const resource of resolveCatalogResources({ document: referenceDocument })) {
+    for (const rlink of resource.rlinks) yield rlink.target;
+  }
+}
+
 /** Sammelt Stufe 5 über die drei Katalogauflösungen; fail-closed bei unsicheren Protokollen. */
 function evaluateCatalogReferences(
   referenceDocument: ReferenceDocument,
 ): OscalStageReferencesReport {
-  const isUnsafeProtocol = (candidate: unknown): boolean =>
-    typeof candidate === 'object' && candidate !== null && 'reason' in candidate
-    && (candidate as { reason?: unknown }).reason === 'unsafe-protocol';
-
-  for (const reference of resolveCatalogMetadataReferences({ document: referenceDocument })) {
-    if (isUnsafeProtocol(reference)) {
-      return { stage: 'reference', status: 'failed', diagnostic: (reference as { diagnostic: OscalDiagnostic }).diagnostic };
+  for (const target of iterateCatalogReferenceTargets(referenceDocument)) {
+    if (target.reason === 'unsafe-protocol') {
+      return target.diagnostic
+        ? { stage: 'reference', status: 'failed', diagnostic: target.diagnostic }
+        : { stage: 'reference', status: 'failed' };
     }
   }
-
-  for (const references of resolveCatalogControlReferences({ document: referenceDocument }).values()) {
-    for (const reference of references) {
-      if (isUnsafeProtocol(reference)) {
-        return { stage: 'reference', status: 'failed', diagnostic: (reference as { diagnostic: OscalDiagnostic }).diagnostic };
-      }
-    }
-  }
-
-  for (const resource of resolveCatalogResources({ document: referenceDocument })) {
-    for (const rlink of resource.rlinks) {
-      if (rlink.target.kind === 'unresolved' && rlink.target.reason === 'unsafe-protocol') {
-        return rlink.target.diagnostic
-          ? { stage: 'reference', status: 'failed', diagnostic: rlink.target.diagnostic }
-          : { stage: 'reference', status: 'failed' };
-      }
-    }
-  }
-
   return { stage: 'reference', status: 'passed' };
 }
 
