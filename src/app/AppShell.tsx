@@ -48,7 +48,7 @@ import {
 /*  Footer lives outside as a direct child of <main> on all routes.  */
 /* ------------------------------------------------------------------ */
 
-function PageScroll({ children }: { children: React.ReactNode }) {
+function PageScroll({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <div className="flex-1 md:overflow-y-auto pb-safe lg:pb-0">
       {children}
@@ -342,13 +342,11 @@ export function AppShell() {
 
           {/* Resize handle — only on desktop, only when expanded */}
           {!sidebarCollapsed && (
-            <div
+            <button
+              type="button"
               className="resize-handle resize-handle--right absolute right-0 top-0 bottom-0 z-20 hidden w-1.5 cursor-col-resize focus-visible:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] md:block"
               onMouseDown={handleSidebarResizeStart}
-              role="separator"
-              aria-orientation="vertical"
               aria-label="Sidebar-Breite anpassen"
-              tabIndex={0}
               onKeyDown={(e) => {
                 if (e.key === 'ArrowRight') { e.preventDefault(); setSidebarWidth((w) => Math.min(SIDEBAR_MAX_WIDTH, w + 20)); }
                 if (e.key === 'ArrowLeft') { e.preventDefault(); setSidebarWidth((w) => Math.max(SIDEBAR_MIN_WIDTH, w - 20)); }

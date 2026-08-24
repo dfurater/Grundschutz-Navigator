@@ -144,7 +144,7 @@ describe('AppShell', () => {
 
     const explorerButton = screen.getByRole('button', { name: 'Katalog-Explorer' });
     const collapseButton = screen.getByRole('button', { name: 'Katalog-Explorer ausblenden' });
-    const resizeHandle = screen.getByRole('separator', { name: 'Sidebar-Breite anpassen' });
+    const resizeHandle = screen.getByRole('button', { name: 'Sidebar-Breite anpassen' });
     const homeLink = screen.getByRole('link', { name: 'Zur Startseite' });
 
     expect(explorerButton.className).toContain('focus-visible:ring-2');
