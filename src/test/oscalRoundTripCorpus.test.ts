@@ -22,7 +22,7 @@ describe('No-op-Korpus über alle acht Root-Modelle', () => {
       const result = await runNoOpRoundTrip({
         rootType: rootKey,
         fixtureText: JSON.stringify(makeMaximalOscalDocument(rootKey, '1.2.2')),
-        catalogKey: rootKey === 'catalog' ? 'catalog-gspp' : undefined,
+        catalogKey: rootKey === 'catalog' ? 'gspp' : undefined,
       });
 
       expect(result.serialization, rootKey).toEqual({ status: 'passed' });
@@ -50,7 +50,7 @@ describe('Versionsabdeckung des Korpus', () => {
       const result = await runNoOpRoundTrip({
         rootType: 'catalog',
         fixtureText: JSON.stringify(makeMaximalOscalDocument('catalog', version)),
-        catalogKey: 'catalog-gspp',
+        catalogKey: 'gspp',
       });
 
       expect(result.binding.ok, version).toBe(true);
@@ -96,7 +96,7 @@ describe('Verlustkritische Strukturen (Befund 5)', () => {
     const result = await runNoOpRoundTrip({
       rootType: 'catalog',
       fixtureText: JSON.stringify(original),
-      catalogKey: 'catalog-gspp',
+      catalogKey: 'gspp',
     });
 
     expect(result.graph.status).toBe('passed');
@@ -116,7 +116,7 @@ describe('Verlustkritische Strukturen (Befund 5)', () => {
     const result = await runNoOpRoundTrip({
       rootType: 'catalog',
       fixtureText: JSON.stringify(document),
-      catalogKey: 'catalog-gspp',
+      catalogKey: 'gspp',
     });
 
     expect(result.graph.status).toBe('passed');
@@ -140,7 +140,7 @@ describe('Verlustkritische Strukturen (Befund 5)', () => {
     const result = await runNoOpRoundTrip({
       rootType: 'catalog',
       fixtureText: JSON.stringify(document),
-      catalogKey: 'catalog-gspp',
+      catalogKey: 'gspp',
     });
 
     expect(result.stages.schemaValidation.status).toBe('passed');

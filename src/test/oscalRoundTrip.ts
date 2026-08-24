@@ -36,6 +36,7 @@ import {
   type ReferenceDocument,
 } from '@/domain/referenceResolution';
 import { validateAgainstPinnedSchema } from '@/domain/oscalSchemaValidation';
+import type { CatalogKey } from '@/domain/sourceRegistry';
 import type { OscalSchemaPin } from '@/domain/oscalVersionMatrix';
 import { compareJsonGraphs, type JsonGraphDifference } from './oscalGraphCompare';
 
@@ -236,10 +237,8 @@ export interface OscalNoOpRunInput {
    * reichen ihre Funktion hier ein, ohne den No-op-Pfad zu ändern.
    */
   readonly exportDocument?: (parsed: unknown) => unknown;
-  /** Registry-Schlüssel für Diagnosen, wenn der Aufrufer einen kennt. */
-  readonly artifactKey?: string | null;
-  /** Katalogidentität für kataloggescopte Control-Zuordnung. */
-  readonly catalogKey?: string;
+  /** Katalogidentität — fließt in Stufe 2 und die kataloggescopte Zuordnung ein. */
+  readonly catalogKey?: CatalogKey;
 }
 
 const FINDING_DOCUMENT_UUID_CHANGED = 'document-uuid-changed';
@@ -517,6 +516,7 @@ function dispatchRejectionResult(
  */
 async function evaluateStages(
   success: OscalRootDispatchSuccess,
+  catalogKey: CatalogKey | undefined,
 ): Promise<OscalRoundTripStages> {
   const schemaResult = await validateAgainstPinnedSchema(success.source, success.pin);
 
@@ -532,7 +532,9 @@ async function evaluateStages(
   } else {
     referencesReport = evaluateCatalogReferences(createReferenceDocument({
       source: success.source,
-      context: { trustClass: HARNESS_TRUST_CLASS },
+      context: catalogKey === undefined
+        ? { trustClass: HARNESS_TRUST_CLASS }
+        : { trustClass: HARNESS_TRUST_CLASS, catalogKey },
       rootType: 'catalog',
       oscalVersion: success.pin.oscalVersion,
     }));
@@ -626,11 +628,15 @@ export async function runNoOpRoundTrip(input: OscalNoOpRunInput): Promise<OscalN
   }
 
   // Stufe 2 — Root-Erkennung und Versionsbindung, bezogen statt nachgebaut.
-  const dispatched = dispatchOscalDocument(parsed, { trustClass: HARNESS_TRUST_CLASS });
+  // Die Katalogidentität wird mitgeführt und in Stufe 5 konsumiert.
+  const dispatched = dispatchOscalDocument(parsed, {
+    trustClass: HARNESS_TRUST_CLASS,
+    ...(input.catalogKey !== undefined ? { catalogKey: input.catalogKey } : {}),
+  });
   if (!dispatched.ok) {
     return dispatchRejectionResult(input, dispatched.diagnostic);
   }
 
-  const stages = await evaluateStages(dispatched);
+  const stages = await evaluateStages(dispatched, input.catalogKey);
   return successfulNoOpResult(input, dispatched, stages);
 }

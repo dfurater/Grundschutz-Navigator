@@ -27,7 +27,7 @@ describe('Offline-Vertrag des Harnischs', () => {
     const result = await runNoOpRoundTrip({
       rootType: 'catalog',
       fixtureText: JSON.stringify(document),
-      catalogKey: 'catalog-gspp',
+      catalogKey: 'gspp',
     });
 
     expect(result.stages.references.status).toBe('passed');
@@ -42,7 +42,7 @@ describe('Offline-Vertrag des Harnischs', () => {
     await expect(runNoOpRoundTrip({
       rootType: 'catalog',
       fixtureText: JSON.stringify(unsafe),
-      catalogKey: 'catalog-gspp',
+      catalogKey: 'gspp',
     })).resolves.toMatchObject({ stages: { references: { status: 'failed' } } });
 
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -57,12 +57,12 @@ describe('Determinismus', () => {
     const first = await runNoOpRoundTrip({
       rootType: 'catalog',
       fixtureText,
-      catalogKey: 'catalog-gspp',
+      catalogKey: 'gspp',
     });
     const second = await runNoOpRoundTrip({
       rootType: 'catalog',
       fixtureText,
-      catalogKey: 'catalog-gspp',
+      catalogKey: 'gspp',
     });
 
     expect(JSON.parse(JSON.stringify(second))).toEqual(JSON.parse(JSON.stringify(first)));

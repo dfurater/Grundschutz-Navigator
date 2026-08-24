@@ -433,11 +433,11 @@ describe('Kataloggescopte Control-Identitäten', () => {
 
   it('sammelt Controls kataloggescopt und Gruppen nach Instanzregel', () => {
     const parsed = makeSchemaValidOscalDocument('catalog', '1.2.2');
-    const identities = collectScopedIdentities(parsed, { catalogKey: 'catalog-gspp' });
+    const identities = collectScopedIdentities(parsed, { catalogKey: 'gspp' });
 
     // Das Minimaldokument führt genau einen Control in einer Gruppe.
     expect(identities.controls).toEqual([
-      { scope: 'catalog', catalogKey: 'catalog-gspp', controlId: 'ac-1' },
+      { scope: 'catalog', catalogKey: 'gspp', controlId: 'ac-1' },
     ]);
     expect(identities.groups).toEqual([
       { scope: 'instance', groupId: 'ac' },

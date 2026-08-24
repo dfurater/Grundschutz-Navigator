@@ -29,7 +29,7 @@ describe('QA-Sweep über alle 30 Matrixzellen', () => {
         fixtureText: JSON.stringify(
           makeMaximalOscalDocument(pin.rootKey, pin.oscalVersion),
         ),
-        catalogKey: pin.rootKey === 'catalog' ? 'catalog-gspp' : undefined,
+        catalogKey: pin.rootKey === 'catalog' ? 'gspp' : undefined,
       });
 
       expect(result.binding, `${pin.rootKey} @ ${pin.oscalVersion}`).toMatchObject({ ok: true });
