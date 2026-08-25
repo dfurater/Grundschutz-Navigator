@@ -54,8 +54,26 @@ export interface CatalogControlIndex {
   readonly parentOf: ReadonlyMap<string, string>;
 }
 
+function isJsonObject(value: unknown): value is JsonObject {
+  return value !== null && typeof value === 'object';
+}
+
+/** Objekt ohne Array — nur solche Werte zählen als Dokumentbestandteil am Root. */
+function isPlainObjectBody(value: unknown): value is JsonObject {
+  return isJsonObject(value) && !Array.isArray(value);
+}
+
+/**
+ * Rein deskriptorbasierter Wertezugriff: Ein Accessor erscheint als
+ * abwesend und wird niemals ausgeführt (Greptile-Befund zu 7012528).
+ */
+function ownDataValue(container: object, key: string | number): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(container, key);
+  return descriptor !== undefined && 'value' in descriptor ? descriptor.value : undefined;
+}
+
 function readControlId(node: JsonObject): string | null {
-  const id = node['id'];
+  const id = ownDataValue(node, 'id');
   return typeof id === 'string' && id.length > 0 ? id : null;
 }
 
@@ -64,10 +82,6 @@ interface IndexState {
   byId: Map<string, JsonObject>;
   childrenOf: Map<string, string[]>;
   parentOf: Map<string, string>;
-}
-
-function isJsonObject(value: unknown): value is JsonObject {
-  return value !== null && typeof value === 'object';
 }
 
 function visitControl(
@@ -87,7 +101,7 @@ function visitControl(
     state.childrenOf.set(parentControlId, siblings);
   }
 
-  const children = node['controls'];
+  const children = ownDataValue(node, 'controls');
   if (Array.isArray(children)) {
     for (const child of children) {
       if (isJsonObject(child)) visitControl(child, id, state);
@@ -98,8 +112,11 @@ function visitControl(
 function visitContainer(container: JsonObject, state: IndexState): void {
   // Originalordnung: Die Reihenfolge des Quelldokuments ist bedeutungstragend
   // — `controls` und `groups` werden in der Dokumentreihenfolge ihrer
-  // Schlüssel besucht, nicht starr controls-zuerst.
-  for (const [key, value] of Object.entries(container)) {
+  // Schlüssel besucht, nicht starr controls-zuerst. Rein
+  // deskriptorbasiert: Accessoren erscheinen als abwesend.
+  for (const key of Reflect.ownKeys(container)) {
+    if (typeof key !== 'string') continue;
+    const value = ownDataValue(container, key);
     if (!Array.isArray(value)) continue;
     if (key === 'controls') {
       for (const node of value) {
@@ -121,16 +138,19 @@ export function indexCatalogControls(document: unknown): CatalogControlIndex {
     childrenOf: new Map(),
     parentOf: new Map(),
   };
-  if (isJsonObject(document)) {
-    // Rohdokument mit Root-Key (`catalog`/`profile`): unter den Schlüssel
-    // hinabsteigen, bevor Container und Gruppen besucht werden.
-    const bodies = Object.values(document).filter(isJsonObject);
-    if (bodies.length === 1) {
-      visitContainer(bodies[0]!, state);
-      return state;
-    }
-    visitContainer(document, state);
-  }
+  if (!isPlainObjectBody(document)) return state;
+
+  // Root-Key rein deskriptorbasierend lokalisieren; Arrays zählen nicht als
+  // Body, damit ein Array-Geschwister am Root die Eindeutigkeit nicht
+  // verwässert (Gitar-Hinweis zu 7012528).
+  const bodyKeys = Reflect.ownKeys(document).filter(
+    (key): key is string =>
+      typeof key === 'string' && isPlainObjectBody(ownDataValue(document, key)),
+  );
+  if (bodyKeys.length !== 1) return state;
+
+  const body = ownDataValue(document, bodyKeys[0]!) as JsonObject;
+  visitContainer(body, state);
   return state;
 }
 

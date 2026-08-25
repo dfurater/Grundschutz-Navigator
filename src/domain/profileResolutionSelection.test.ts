@@ -192,6 +192,35 @@ describe('Selektion Phase 1 — Exclusion und Kumulation', () => {
 });
 
 describe('Selektion Phase 1 — Fail-closed', () => {
+  it('indexiert ohne Dokument-Accessoren auszuführen — werfender Root-Getter bleibt strukturell', () => {
+    const hostile: Record<string, unknown> = {};
+    Object.defineProperty(hostile, 'catalog', {
+      get() {
+        throw new Error('Getter wurde ausgeführt');
+      },
+      enumerable: true,
+      configurable: true,
+    });
+
+    expect(() => indexCatalogControls(hostile)).not.toThrow();
+    const index = indexCatalogControls(hostile);
+    expect(index.order).toEqual([]);
+  });
+
+  it('behandelt Array-Geschwister am Root nicht als Body — die Body-Erkennung bleibt präzise', () => {
+    const malformed = {
+      catalog: { controls: [control('ac-1')] },
+      sibling: [control('zz-0')],
+    };
+
+    const index = indexCatalogControls(malformed);
+
+    // Arrays zählen nicht als Body-Kandidaten: Das einzige Objekt-Body
+    // (`catalog`) wird eindeutig erkannt und indexiert, statt in einen
+    // stillen Leerlauf zu fallen.
+    expect(index.order).toEqual(['ac-1']);
+  });
+
   it('ambiguous und none liefern eine strukturelle Ablehnung', () => {
     const index = indexCatalogControls(baseCatalog);
     const diagnostic = { code: 'X', stage: 'domain' } as never;
