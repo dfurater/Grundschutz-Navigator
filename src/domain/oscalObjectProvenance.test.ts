@@ -274,7 +274,10 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
     const metadata = (
       input.source as { catalog: { metadata: Record<string, unknown> } }
     ).catalog.metadata;
-    metadata['K'.repeat(CLASS_2_IMPORT_LIMITS.maxBytes)] = [];
+    // Primitiver Wert, damit ausschließlich die Schlüsselbuchhaltung geprüft
+    // wird — ein Container-Wert würde zusätzlich die Herkunftsdiagnose
+    // auslösen und den Nachweis verwässern.
+    metadata['K'.repeat(CLASS_2_IMPORT_LIMITS.maxBytes)] = 0;
 
     const result = await processClass2OscalValue(input.source, context);
 
