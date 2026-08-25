@@ -562,6 +562,25 @@ describe('runNoOpRoundTrip', () => {
     }
   });
 
+  it('vergleicht gegen eine private Quellkopie: Mutation durch den Export fällt auf', async () => {
+    // Greptile-Befund: Ein Callback, der das empfangene Objekt destruktiv
+    // verändert und zurückgibt, dürfte die Vergleichsbasis nicht
+    // verschieben — sonst würde mutiert-gegen-mutiert verglichen und ein
+    // Verlust fälschlich als byte-, graph- und identitätsgleich bestätigt.
+    const result = await runNoOpRoundTrip({
+      fixtureText: JSON.stringify(CATALOG_122()),
+      exportDocument: (parsed) => {
+        const body = (parsed as Record<string, unknown>).catalog as Record<string, unknown>;
+        delete body.uuid;
+        return parsed;
+      },
+    });
+
+    expect(result.serialization.status).toBe('failed');
+    expect(result.graph.status).toBe('failed');
+    expect(result.identities.findings).toContain('document-uuid-changed');
+  });
+
   it('berichtet Exporte, die stringify zum Werfen bringen, auf demselben Wege', async () => {
     // Gleiche Befundklasse wie undefined-Rückgaben: BigInt und zirkuläre
     // Strukturen lassen JSON.stringify werfen — auch das ist ein

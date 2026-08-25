@@ -275,7 +275,11 @@ export interface OscalNoOpRunInput {
    * Identität — der heutige Zustand ohne Exportpfad. Künftige Serializer
    * reichen ihre Funktion hier ein, ohne den No-op-Pfad zu ändern. Die
    * Validierungsstufen 3–5 prüfen das **reimportierte Exportartefakt**, nicht
-   * die Eingabe.
+   * die Eingabe. Der Callback erhält eine **private Kopie** des geparsten
+   * Originals — eine In-place-Mutation kann die Vergleichsbasis nicht
+   * verschieben. Jedes Ergebnis ohne JSON-Darstellung — kein Textergebnis,
+   * stringify-Wurf oder Ausnahme im Callback — berichtet der Lauf als
+   * `serialization: failed`, statt zu werfen.
    */
   readonly exportDocument?: (parsed: unknown) => unknown;
   /**
@@ -656,7 +660,14 @@ async function successfulNoOpResult(
   success: OscalRootDispatchSuccess,
 ): Promise<OscalNoOpRunResult> {
   // Export — Identität als Vorgabe, einspeisbar für künftige Serializer.
-  const exported = input.exportDocument ? input.exportDocument(success.source) : success.source;
+  // Der Callback erhält eine private Kopie des geparsten Originals: Eine
+  // In-place-Mutation dürfte sonst die Vergleichsbasis verschieben —
+  // Quellbytes, Graphvergleich und Identitäten werden aus dem Original
+  // erhoben und würden mutiert-gegen-mutiert vergleichen (Greptile-Befund).
+  const sourceSnapshot = structuredClone(success.source);
+  const exported = input.exportDocument
+    ? input.exportDocument(sourceSnapshot)
+    : success.source;
 
   // Ebene 1 — byte-identische Serialisierung. Ein Exportergebnis ohne
   // JSON-Darstellung — stringify liefert kein Textergebnis oder wirft — ist
