@@ -167,6 +167,75 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
     });
   });
 
+  it('misst die Nutzlast in UTF-8-Bytes — Mehrbytezeichen umgehen die Grenze nicht', async () => {
+    // Greptile-Befund zu cb5f960: UTF-16-.length unterzählt mehrbyteige
+    // Zeichen; dieselben Inhalte scheitern am Byteeintritt an derselben
+    // Grenze. Der Wertpfad muss denselben Byteetat in derselben Einheit
+    // messen.
+    const input = await parseClass2OscalInput(
+      new TextEncoder().encode('{"catalog":{"metadata":{"title":"x"}}}'),
+    );
+    if (!input.ok) throw new Error('Fixture muss parsen');
+
+    const metadata = (
+      input.source as { catalog: { metadata: Record<string, unknown> } }
+    ).catalog.metadata;
+    // '😀' trägt 2 UTF-16-Einheiten, aber 4 UTF-8-Bytes: Die Wiederholung
+    // bleibt in UTF-16-Einheiten unter der Grenze und übersteigt sie in
+    // UTF-8-Bytes deutlich.
+    const units = Math.floor(CLASS_2_IMPORT_LIMITS.maxBytes / 3);
+    metadata['title'] = '😀'.repeat(units);
+
+    const result = await processClass2OscalValue(input.source, context);
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: { code: 'OSCAL_BYTE_LIMIT_EXCEEDED', stage: 'resource-limit' },
+    });
+  });
+
+  it('rechnet Arrayindizes nicht als Nutzlast — große Arrays behalten ihre Kettendiagnose', async () => {
+    // Gitar-Befund zu cb5f960: Indizes und `length` erscheinen nicht in der
+    // Serialisierung; ihr Mitsumrieren würde die Untergrenze zur Obergrenze
+    // kippen und entry-zulässige Arrays fälschlich an der Bytegrenze
+    // ablehnen.
+    const elements = JSON.stringify(new Array(300_000).fill(''));
+    const input = await parseClass2OscalInput(
+      new TextEncoder().encode(`{"a":${elements}}`),
+    );
+    if (!input.ok) throw new Error('Fixture muss parsen');
+
+    const result = await processClass2OscalValue(input.source, context);
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: { stage: 'root-dispatch' },
+    });
+  });
+
+  it('überlässt Symbol-Schlüssel der strukturellen Diagnose statt der Bytegrenze', async () => {
+    // Gitar-Befund zu cb5f960: Symbol-Schlüssel machten die Nutzlastsumme
+    // zu NaN und erzeugten eine irreführende Byte-Diagnose statt der
+    // etablierten Strukturdiagnose.
+    const input = await parseClass2OscalInput(
+      new TextEncoder().encode('{"a":{"b":1}}'),
+    );
+    if (!input.ok) throw new Error('Fixture muss parsen');
+
+    const inner = (input.source as { a: Record<string, unknown> }).a as Record<
+      PropertyKey,
+      unknown
+    >;
+    inner[Symbol.iterator] = function* () {};
+
+    const result = await processClass2OscalValue(input.source, context);
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: { code: 'OSCAL_OBJECT_SYMBOL_KEY_REJECTED', stage: OBJECT_GRAPH_STAGE },
+    });
+  });
+
   it('registriert auch tief verschachtelte Dokumente ohne Stapelüberlauf', async () => {
     // Greptile-Befund zu 04ccf9c: Die Registrierung rekurrierte unbegrenzt und
     // warf bei tiefer Verschachtelung einen RangeError statt kontrolliert zu

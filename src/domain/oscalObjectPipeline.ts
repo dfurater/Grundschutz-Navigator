@@ -58,6 +58,9 @@ type ProvenanceVerdict = {
   readonly withinByteBudget: boolean;
 };
 
+/** Misst Strings in UTF-8-Bytes — derselben Einheit wie der Byteeintritt. */
+const utf8Encoder = new TextEncoder();
+
 /**
  * Prüft die Herkunft der Wurzel und aller Container in einem eigenen,
  * rein identitätsbasierten Durchlauf vor jeder Reflexion. Er läuft über
@@ -65,11 +68,16 @@ type ProvenanceVerdict = {
  * und kann sich von ihr deshalb nicht auseinanderleben; der frühe Abbruch
  * endet beim ersten Container ohne Beleg.
  *
- * Derselbe Lauf summiert die Nutzlast (Schlüssellängen plus String- und
- * endliche Zahlenwerte). Die Summe ist eine Untergrenze der serialisierten
- * Größe: Übersteigt sie die Byte-Zulassungsgrenze, so hätte derselbe Inhalt auch den öffentlichen Byteeintritt nicht passiert — ein
- * nach dem Parse nachgeladener Primitive-Wert kann die Importgröße damit
- * nicht mehr über die Grenze bringen (Greptile-Befund zu 6f39e72).
+ * Derselbe Lauf summiert eine Untergrenze der serialisierten UTF-8-Größe:
+ * Schlüsselnamen von Objekten sowie String-, endliche Zahlen-, Boolean- und
+ * null-Werte in exakt ihrer UTF-8-Bytegröße. Nicht gezählt wird alles, was
+ * in der Serialisierung fehlt oder sie nur vergrößern kann — Arrayindizes
+ * samt `length`, Symbol-Schlüssel samt Werten, Anführungszeichen, Trenner
+ * und Escape-Erweiterungen; Accessor-Werte werden nie gelesen. Übersteigt
+ * die Summe die Byte-Zulassungsgrenze, so hätte derselbe Inhalt auch den
+ * öffentlichen Byteeintritt nicht passiert — Nachbeladung über den Wertpfad
+ * umgeht die Importgröße damit nicht mehr (Greptile-Befund zu 6f39e72,
+ * UTF-8-Parität zu cb5f960).
  */
 function verifyProvenance(root: unknown): ProvenanceVerdict {
   let provenanced = true;
@@ -79,15 +87,24 @@ function verifyProvenance(root: unknown): ProvenanceVerdict {
       provenanced = false;
       return false;
     }
-    for (const key of Reflect.ownKeys(container) as string[]) {
-      payloadBytes += key.length;
+    const isArray = Array.isArray(container);
+    for (const key of Reflect.ownKeys(container)) {
+      // Symbole erscheinen nicht in der Serialisierung; ihre Buchhaltung
+      // überlässt die Diagnose der Strukturinvariante.
+      if (typeof key !== 'string') continue;
+      if (!isArray) payloadBytes += utf8Encoder.encode(key).length;
+
       const descriptor = Object.getOwnPropertyDescriptor(container, key);
       if (descriptor === undefined || !('value' in descriptor)) continue;
-      const value = descriptor.value;
+      const value: unknown = descriptor.value;
       if (typeof value === 'string') {
-        payloadBytes += value.length;
-      } else if (typeof value === 'number' && Number.isFinite(value)) {
-        payloadBytes += String(value).length;
+        payloadBytes += utf8Encoder.encode(value).length;
+      } else if (typeof value === 'number') {
+        payloadBytes += Number.isFinite(value) ? String(value).length : 4;
+      } else if (typeof value === 'boolean') {
+        payloadBytes += value ? 4 : 5;
+      } else if (value === null) {
+        payloadBytes += 4;
       }
     }
     return payloadBytes <= CLASS_2_IMPORT_LIMITS.maxBytes;
