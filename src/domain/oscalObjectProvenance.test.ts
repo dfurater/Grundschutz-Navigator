@@ -3,7 +3,6 @@ import {
   createClass2UnprovenancedDiagnostic,
   isParserProducedRoot,
   OSCAL_OBJECT_UNPROVENANCED,
-  parseAndRegisterOscalJson,
 } from './oscalObjectProvenance';
 import { OBJECT_GRAPH_STAGE } from './oscalObjectGraph';
 import { processClass2OscalValue } from './oscalObjectPipeline';
@@ -72,8 +71,10 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
   });
 
   it('stellt die registrierte Herkunft als reine Identitätsfrage bereit', async () => {
-    const reparsed = parseAndRegisterOscalJson('{"a":1}') as object;
-    expect(isParserProducedRoot(reparsed)).toBe(true);
+    const input = await parseClass2OscalInput(new TextEncoder().encode('{"a":1}'));
+    if (!input.ok) throw new Error('Fixture muss parsen');
+
+    expect(isParserProducedRoot(input.source as object)).toBe(true);
 
     const foreign = { a: 1 };
     expect(isParserProducedRoot(foreign)).toBe(false);
@@ -118,30 +119,33 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
     });
   });
 
-  it('registriert auch tief verschachtelte Dokumente ohne Stapelüberlauf', () => {
+  it('registriert auch tief verschachtelte Dokumente ohne Stapelüberlauf', async () => {
     // Greptile-Befund zu 04ccf9c: Die Registrierung rekurrierte unbegrenzt und
     // warf bei tiefer Verschachtelung einen RangeError statt kontrolliert zu
-    // antworten. Die Registrierung muss jeden Baum ohne Kontrollverlust tragen.
+    // antworten. Der Byteweg muss jeden Baum ohne Kontrollverlust tragen.
     const depth = 20_000;
     const text = `${'['.repeat(depth)}null${']'.repeat(depth)}`;
 
-    let parsed: unknown;
-    expect(() => {
-      parsed = parseAndRegisterOscalJson(text);
-    }).not.toThrow(RangeError);
+    const result = await processClass2OscalBytes(new TextEncoder().encode(text), context);
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: { code: 'OSCAL_RESOURCE_DEPTH_LIMIT_EXCEEDED', stage: 'resource-limit' },
+    });
 
-    expect(isParserProducedRoot(parsed as object)).toBe(true);
+    const input = await parseClass2OscalInput(new TextEncoder().encode('{"a":1}'));
+    if (!input.ok) throw new Error('Fixture muss parsen');
+    expect(isParserProducedRoot(input.source as object)).toBe(true);
   });
 
   it('führt ein tiefes Dokument zur etablierten Tiefendiagnose — ohne Stapelüberlauf auf dem Prüfpfad', async () => {
     // Dasselbe Muster für den Beleg-Durchlauf der Kette: Auch er muss einen
-    // vollständig registrierten tiefen Baum tragen, bis die begrenzte
-    // Invariantenprüfung die etablierte Diagnose liefert.
+    // tiefen Baum kontrolliert tragen, bis die begrenzte Invariantenprüfung
+    // die etablierte Diagnose liefert. Der Weg läuft über den echten
+    // Byte-Eintrittspunkt — der einzige Beleggeber.
     const depth = 20_000;
     const text = `${'['.repeat(depth)}null${']'.repeat(depth)}`;
-    const parsed = parseAndRegisterOscalJson(text);
 
-    const result = await processClass2OscalValue(parsed, context);
+    const result = await processClass2OscalBytes(new TextEncoder().encode(text), context);
 
     expect(result).toMatchObject({
       ok: false,

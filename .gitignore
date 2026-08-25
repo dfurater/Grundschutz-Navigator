@@ -42,11 +42,8 @@ public/data/
 # Design-System-Skill (Spiegel des claude.ai-Design-Projekts, nicht im öffentlichen Repo)
 /.agents/
 
-# Interne Produktvision (nicht im öffentlichen Repo)
-/docs/userStories/
-
-# Lokale Superpowers-Artefakte (Spezifikation und Ausführungsplan)
-/docs/superpowers/
+# Interne Dokumente (Produktvision, Pläne, Specs, Audits — nicht im öffentlichen Repo)
+/docs/internal/
 
 # Claude local settings (machine-specific paths)
 AGENTS.md

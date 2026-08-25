@@ -7,23 +7,63 @@ import {
 import {
   createClass2ResourceLimitDiagnostic,
 } from '@/domain/oscalObjectGraph';
-import {
-  parseAndRegisterOscalJson,
-} from '@/domain/oscalObjectProvenance';
+
+// =============================================================================
+// Modulprivates Herkunftsregister des Byte-Eintrittspunkts (ADR-8 Festlegung 3)
+//
+// Register und Identitätsfrage leben hier gemeinsam: Der einzige Schreibpfad
+// ist die Registrierung nach bestandener vollständiger Byte- und Textpolitik
+// unmittelbar unten; er ist bewusst NICHT exportiert. Exportiert wird allein
+// die nur-lesende Identitätsfrage — ein importierbarer Weg zu einem Beleg
+// existiert nicht. oscalObjectProvenance.ts führt die Frage unter ihrem
+// etablierten Namen unverändert weiter.
+// =============================================================================
+const parserProducedContainers = new WeakSet<object>();
+
+function registerParsedTree(root: unknown): void {
+  if (root === null || typeof root !== 'object') return;
+
+  const visited = new Set<object>();
+  const pending: unknown[] = [root];
+  while (pending.length > 0) {
+    const value = pending.pop();
+    if (value === null || typeof value !== 'object') continue;
+
+    const container = value as object;
+    if (visited.has(container)) continue;
+    visited.add(container);
+
+    parserProducedContainers.add(container);
+    for (const key of Reflect.ownKeys(container) as string[]) {
+      // Parse-Produkte tragen nur Data-Properties; der Deskriptorzugriff liest
+      // den Wert nicht aus und kann daher keinen Accessor ausführen.
+      const descriptor = Object.getOwnPropertyDescriptor(container, key);
+      if (descriptor !== undefined && 'value' in descriptor) {
+        pending.push(descriptor.value);
+      }
+    }
+  }
+}
+
+/**
+ * Nur-lesende Identitätsfrage über das Register des Byte-Eintrittspunkts und
+ * dessen einziger Export: Mitgliedschaft ist von außen weder erzwingbar noch
+ * löschbar; ein Schreibzugriff existiert nirgends importierbar.
+ */
+export function isParserProducedRoot(source: object): boolean {
+  return parserProducedContainers.has(source);
+}
 
 // Die gemeinsame objektorientierte Prüfkette lebt in ihren eigenen Einheiten
 // (ADR-8 Festlegung 1+3). Diese Bestandsmodule führen sie nur unter ihren
-// etablierten Namen weiter — eine zweite Logik entsteht hier nicht.
+// etablierten Namen weiter — eine zweite Logik entsteht hier nicht. Die
+// Prüfkette liest das Register dieses Byte-Eintrittspunkts direkt; ein
+// Rückexport ihrer Schnittstelle entfällt bewusst, damit die Abhängigkeit
+// zwischen Byte-Eintritt und Objektprüfung zyklenfrei in eine Richtung zeigt.
 export {
   CLASS_2_IMPORT_LIMITS,
   CLASS_2_IMPORT_VALIDATOR,
 } from '@/domain/oscalImportContract';
-export {
-  processClass2OscalValue,
-  type Class2ObjectPipelineContext,
-  type Class2OscalValueDocument,
-  type Class2OscalValueResult,
-} from '@/domain/oscalObjectPipeline';
 export {
   createClass2ResourceLimitDiagnostic,
   enforceClass2ObjectGraphInvariants,
@@ -312,13 +352,13 @@ export function parseClass2OscalInput(bytes: Uint8Array): Class2OscalInputResult
   }
 
   try {
-    // Stufe 1 endet hier: Der Byte-Eintrittspunkt gibt ausschließlich das
-    // unmittelbare Ergebnis seines eigenen JSON.parse weiter. Die Herkunfts-
-    // belegung entsteht ausschließlich in oscalObjectProvenance.ts — dort
-    // führt der Parse-Lauf selbst die Registrierung als Nebenprodukt aus;
-    // ein importierbarer Schreibzugriff auf das Register existiert nicht.
-    const parsed = parseAndRegisterOscalJson(text);
-    return { ok: true, source: parsed };
+    // Stufe 1 endet hier: Der Byte-Eintrittspunkt parst selbst und gibt das
+    // unmittelbare Ergebnis weiter. Erst wenn Byte-Limit, UTF-8-, Syntax- und
+    // Duplicate-Member-Prüfung bestanden sind, wird der Baum registriert —
+    // ein Beleg trägt damit stets die vollständige Bytepolitik.
+    const source = JSON.parse(text);
+    registerParsedTree(source);
+    return { ok: true, source };
   } catch {
     return {
       ok: false,
