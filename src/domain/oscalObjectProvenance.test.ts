@@ -309,6 +309,28 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
     });
   });
 
+  it('zählt verschachtelte Container genau einmal — der Grenzgraph von genau einer Million Knoten läuft durch', async () => {
+    // Greptile-Befund zu efa1cfa: Die Knotenuntergrenze zählte einen
+    // containerwertigen Slot zusätzlich zum späteren Besuch des Containers
+    // und lehnte den exakt millionenknotigen Grenzgraphen vor der
+    // Strukturvalidierung ab. Die Untergrenze lasst Container-Slots aus;
+    // deren Beitrag entsteht ausschließlich am eigenen Besuch.
+    const inner = `[${'null,'.repeat(999_997)}null]`;
+    const text = `[${inner}]`;
+    const input = await parseClass2OscalInput(new TextEncoder().encode(text));
+    if (!input.ok) throw new Error('Fixture muss parsen');
+
+    const result = await processClass2OscalValue(input.source, context);
+
+    // Kein OSCAL-Root-Modell: die Kette antwortet mit der stabilen
+    // Root-Dispatch-Diagnose — beweisend, dass Herkunft, Knoten- und
+    // Bytegrenze den Grenzgraphen getragen haben.
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: { stage: 'root-dispatch' },
+    });
+  });
+
   it('rechnet sparse Arrays voll — definierte Riesenwerte entgehen der Grenze nicht', async () => {
     // Greptile-Befund zu bcde872: Die Dichte-Frühantwort 0 unterschlug die
     // definierten Slots und ihre null-gefüllten Löcher; dasselbe JSON war am

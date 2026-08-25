@@ -138,10 +138,8 @@ function verifyProvenance(root: unknown): ProvenanceVerdict {
       provenanced = false;
       return false;
     }
-    nodeFloor += 1;
-    nodeFloor += Array.isArray(container)
-      ? container.length
-      : Reflect.ownKeys(container).length;
+    const isArray = Array.isArray(container);
+    nodeFloor += 1 + childNodeFloorDelta(container, isArray);
     if (nodeFloor > CLASS_2_IMPORT_LIMITS.maxNodes) {
       return false;
     }
@@ -167,6 +165,55 @@ function serializedDenseArrayBytes(container: readonly unknown[], length: number
     bytes += slotValue === undefined ? 4 : serializedValueBytes(slotValue);
   }
   return bytes;
+}
+
+/**
+ * Knotenbeitrag der KINDER eines Containers zur Untergrenze: primitive
+ * Mitglieder und Slots zählen hier, containerwertige ausschließlich an
+ * ihrem eigenen Besuch — dieselbe Knotensemantik wie die Struktur-
+ * invariante, damit die Untergrenze nie über der echten Knotenzahl liegt
+ * (Greptile-Befund zu efa1cfa). Rein deskriptorbasiert; Containererkennung
+ * über den Typ des Data-Werts.
+ */
+function childNodeFloorDelta(container: object, isArray: boolean): number {
+  let delta = 0;
+  if (isArray) {
+    const length = (container as readonly unknown[]).length;
+    let canonicalSlots = 0;
+    for (const key of Reflect.ownKeys(container)) {
+      if (typeof key !== 'string') continue;
+      const index = Number(key);
+      if (
+        !Number.isInteger(index) ||
+        index < 0 ||
+        index >= length ||
+        String(index) !== key
+      ) {
+        continue;
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(container, index);
+      const slotValue =
+        descriptor !== undefined && 'value' in descriptor ? descriptor.value : undefined;
+      // Fehlende und ausdrücklich undefined Slots serialisieren als null
+      // und sind Knoten; verschachtelte Container zählen an ihrem Besuch.
+      const isNestedContainer = slotValue !== null && typeof slotValue === 'object';
+      if (!isNestedContainer) delta += 1;
+      canonicalSlots += 1;
+    }
+    delta += Math.max(length - canonicalSlots, 0); // Löcher sind null-Knoten.
+    return delta;
+  }
+
+  for (const key of Reflect.ownKeys(container)) {
+    if (typeof key !== 'string') continue;
+    const descriptor = Object.getOwnPropertyDescriptor(container, key);
+    if (descriptor === undefined || !('value' in descriptor)) continue;
+    const value: unknown = descriptor.value;
+    if (value === undefined) continue; // Serialisierung lässt das Mitglied fort.
+    const isNestedContainer = value !== null && typeof value === 'object';
+    if (!isNestedContainer) delta += 1;
+  }
+  return delta;
 }
 
 /**
