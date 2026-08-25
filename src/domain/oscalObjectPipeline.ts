@@ -51,19 +51,26 @@ export type Class2OscalValueResult =
 /**
  * Prüft die Herkunft der Wurzel und aller Container in einem eigenen,
  * rein identitätsbasierten Durchlauf vor jeder Reflexion. Ein fehlender Beleg
- * eines einzelnen Containers genügt für die Ablehnung.
+ * eines einzelnen Containers genügt für die Ablehnung. Iterativ mit explizitem
+ * Stack — tiefe Dokumente dürfen keinen Stapelüberlauf auslösen (Greptile-
+ * Befund zu 04ccf9c).
  */
-function verifyProvenance(value: unknown): boolean {
-  if (value === null || typeof value !== 'object') return true;
+function verifyProvenance(root: unknown): boolean {
+  const pending: unknown[] = [root];
+  while (pending.length > 0) {
+    const value = pending.pop();
+    if (value === null || typeof value !== 'object') continue;
 
-  const container = value as object;
-  if (!isParserProducedRoot(container)) return false;
-  if (Array.isArray(container)) {
-    return container.every((element) => verifyProvenance(element));
+    if (!isParserProducedRoot(value)) return false;
+    if (Array.isArray(value)) {
+      for (const element of value) pending.push(element);
+      continue;
+    }
+    // Der Prototyp ist hier Object.prototype oder ein registrierter
+    // Proxy-Ersatz; beide Fälle tragen nur aufzählbare eigene Member.
+    for (const propertyValue of Object.values(value)) pending.push(propertyValue);
   }
-  return Object.values(container).every((propertyValue) =>
-    verifyProvenance(propertyValue),
-  );
+  return true;
 }
 
 /**

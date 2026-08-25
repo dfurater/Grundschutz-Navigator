@@ -13,6 +13,12 @@
 // vor jeder Reflexion statt; ein Proxy um einen echten Container besitzt eine
 // andere Identität und bleibt unbelegt. Der Ableitungsweg erhält sein eigenes,
 // ebenso geschlossen verwaltetes Handle-Register mit GSPP-291 Commit B.
+//
+// Sämtliche Baumdurchläufe dieses Moduls sind ITERATIV mit explizitem Stack:
+// JSON kann tiefer verschachtelt sein, als der Aufrufstapel trägt (Greptile-
+// Befund zu 04ccf9c), und ein RangeError wäre ein Kontrollverlust. Die Tiefe
+// selbst begrenzt die Invariantenprüfung der Kette mit ihrer etablierten
+// Diagnose, nicht diese Registrierung.
 // =============================================================================
 
 import { createOscalDiagnostic, type OscalDiagnostic } from '@/domain/oscalDiagnostics';
@@ -24,14 +30,27 @@ export const OSCAL_OBJECT_UNPROVENANCED = 'OSCAL_OBJECT_UNPROVENANCED';
 /** Modulprivates Register aller Container, die das eigene JSON.parse erzeugte. */
 const parserProducedContainers = new WeakSet<object>();
 
-function registerTree(value: unknown): void {
-  if (value === null || typeof value !== 'object') return;
-  parserProducedContainers.add(value);
-  if (Array.isArray(value)) {
-    for (const element of value) registerTree(element);
-    return;
+/**
+ * Registriert jeden Container eines geparsten Werts — iterativ mit explizitem
+ * Stack, damit tiefe Dokumente keinen Stapelüberlauf auslösen.
+ */
+function registerTree(root: unknown): void {
+  if (root === null || typeof root !== 'object') return;
+
+  const pending: unknown[] = [root];
+  while (pending.length > 0) {
+    const value = pending.pop();
+    if (value === null || typeof value !== 'object') continue;
+
+    parserProducedContainers.add(value);
+    if (Array.isArray(value)) {
+      for (const element of value) pending.push(element);
+      continue;
+    }
+    // Nicht-Array-Container: Eigenschaften auf den Stack. Der Prototyp ist
+    // hier garantiert Object.prototype — der Wert stammt aus JSON.parse.
+    for (const propertyValue of Object.values(value)) pending.push(propertyValue);
   }
-  for (const propertyValue of Object.values(value)) registerTree(propertyValue);
 }
 
 /**

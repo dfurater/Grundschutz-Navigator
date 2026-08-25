@@ -117,4 +117,35 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
       diagnostic: { code: OSCAL_OBJECT_UNPROVENANCED },
     });
   });
+
+  it('registriert auch tief verschachtelte Dokumente ohne Stapelüberlauf', () => {
+    // Greptile-Befund zu 04ccf9c: Die Registrierung rekurrierte unbegrenzt und
+    // warf bei tiefer Verschachtelung einen RangeError statt kontrolliert zu
+    // antworten. Die Registrierung muss jeden Baum ohne Kontrollverlust tragen.
+    const depth = 20_000;
+    const text = `${'['.repeat(depth)}null${']'.repeat(depth)}`;
+
+    let parsed: unknown;
+    expect(() => {
+      parsed = parseAndRegisterOscalJson(text);
+    }).not.toThrow(RangeError);
+
+    expect(isParserProducedRoot(parsed as object)).toBe(true);
+  });
+
+  it('führt ein tiefes Dokument zur etablierten Tiefendiagnose — ohne Stapelüberlauf auf dem Prüfpfad', async () => {
+    // Dasselbe Muster für den Beleg-Durchlauf der Kette: Auch er muss einen
+    // vollständig registrierten tiefen Baum tragen, bis die begrenzte
+    // Invariantenprüfung die etablierte Diagnose liefert.
+    const depth = 20_000;
+    const text = `${'['.repeat(depth)}null${']'.repeat(depth)}`;
+    const parsed = parseAndRegisterOscalJson(text);
+
+    const result = await processClass2OscalValue(parsed, context);
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: { code: 'OSCAL_RESOURCE_DEPTH_LIMIT_EXCEEDED', stage: 'resource-limit' },
+    });
+  });
 });
