@@ -100,18 +100,13 @@ function spaFallbackPlugin() {
 const CANONICAL_ORIGIN = 'https://dfurater.github.io';
 
 /*
- * Der Sitemap-Namespace ist protokollfix `https://www.sitemaps.org/schemas/sitemap/0.9`.
- * Er wird zusammengesetzt statt als http-URI-Literal notiert, damit die Regel
- * gegen unsichere http-Literale (SonarQube S5332) nicht auf eine reine
- * XML-Namespace-Kennung anspringt — hier wird nie per http kommuniziert.
+ * Der XML-Namespace des Sitemap-Protokolls ist als Identifier byte-exakt
+ * `http://www.sitemaps.org/schemas/sitemap/0.9` vorgeschrieben — er ist eine
+ * opaque Kennung, über die nie eine unverschlüsselte Verbindung aufgebaut
+ * wird. Das http-Literal ist daher korrekt (SonarQube S5332 hier gezielt
+ * unterdrückt) und das https-Pendant wäre ein protokollfremder Namespace.
  */
-const SITEMAP_URL_SCHEME = 'https:';
-const SITEMAP_NAMESPACE = `${SITEMAP_URL_SCHEME}//${[
-  'www.sitemaps.org',
-  'schemas',
-  'sitemap',
-  '0.9',
-].join('/')}`;
+const SITEMAP_NAMESPACE = 'http://www.sitemaps.org/schemas/sitemap/0.9'; // NOSONAR: opaque XML-Namespace-Kennung, kein Netzwerkzugriff
 
 /**
  * Dieselbe aufgelöste Deployment-Basis wie die Vite-Option `base` im

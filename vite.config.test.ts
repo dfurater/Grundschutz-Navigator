@@ -109,7 +109,7 @@ afterEach(() => {
 describe('writeSitemapFile / buildSitemapXml', () => {
   const EXPECTED_SITEMAP = [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    '<urlset xmlns="https://www.sitemaps.org/schemas/sitemap/0.9">',
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
     '  <url><loc>https://dfurater.github.io/Grundschutz-Navigator/</loc></url>',
     ...listCanonicalEntryRoutes().map(
       (route) =>
@@ -182,7 +182,7 @@ describe('writeSitemapFile / buildSitemapXml', () => {
     const { document } = window;
 
     expect(document.documentElement.namespaceURI).toBe(
-      'https://www.sitemaps.org/schemas/sitemap/0.9',
+      'http://www.sitemaps.org/schemas/sitemap/0.9',
     );
     const locs = [...document.querySelectorAll('loc')].map(
       (node) => node.textContent ?? '',
