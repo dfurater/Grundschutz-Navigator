@@ -4,16 +4,27 @@ import {
   CLASS_2_IMPORT_VALIDATOR,
   createClass2ByteLimitDiagnostic,
 } from '@/domain/oscalImportContract';
-import {
-  createClass2ResourceLimitDiagnostic,
-  enforceClass2ResourceLimits,
-} from '@/domain/oscalResourceLimits';
+import { createClass2ResourceLimitDiagnostic } from '@/domain/oscalObjectGraph';
 
+// Die gemeinsame objektorientierte Prüfkette lebt in ihren eigenen Einheiten
+// (ADR-8 Festlegung 1+3). Diese Bestandsmodule führen sie nur unter ihren
+// etablierten Namen weiter — eine zweite Logik entsteht hier nicht.
 export {
   CLASS_2_IMPORT_LIMITS,
   CLASS_2_IMPORT_VALIDATOR,
 } from '@/domain/oscalImportContract';
-export { enforceClass2ResourceLimits } from '@/domain/oscalResourceLimits';
+export {
+  processClass2OscalValue,
+  type Class2ObjectPipelineContext,
+  type Class2OscalValueDocument,
+  type Class2OscalValueResult,
+} from '@/domain/oscalObjectPipeline';
+export {
+  createClass2ResourceLimitDiagnostic,
+  enforceClass2ObjectGraphInvariants,
+  OBJECT_GRAPH_DIAGNOSTIC_CODES,
+  OBJECT_GRAPH_STAGE,
+} from '@/domain/oscalObjectGraph';
 
 export type Class2OscalInputResult =
   | { readonly ok: true; readonly source: unknown }
@@ -296,11 +307,12 @@ export function parseClass2OscalInput(bytes: Uint8Array): Class2OscalInputResult
   }
 
   try {
+    // Stufe 1 endet hier: Der Byte-Eintrittspunkt gibt ausschließlich das
+    // unmittelbare Ergebnis seines eigenen JSON.parse weiter. Strukturinvariante
+    // und Ressourcenlimits laufen in der gemeinsamen objektorientierten Einheit
+    // (oscalObjectPipeline), damit beide Herkunftswege denselben Durchlauf nutzen.
     const source = JSON.parse(text);
-    const resourceLimitFailure = enforceClass2ResourceLimits(source);
-    return resourceLimitFailure === null
-      ? { ok: true, source }
-      : { ok: false, diagnostic: resourceLimitFailure };
+    return { ok: true, source };
   } catch {
     return {
       ok: false,

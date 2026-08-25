@@ -260,9 +260,15 @@ parst oder interpretiert die Bytes nicht.
 
 Nach der Größenkontrolle läuft im Worker die feste Reihenfolge aus dem
 [OSCAL-Validierungsvertrag](./OSCAL_VALIDATION.md): Bytelimit, fataler
-UTF-8-Decoder, Duplicate-Member-Scanner, `JSON.parse`, iterative
-Ressourcenlimits, `dispatchOscalDocument()` und anschließend
-`validateAgainstPinnedSchema()` als Stufe 3. Das Bytelimit greift bereits vor
+UTF-8-Decoder, Duplicate-Member-Scanner, `JSON.parse` — und ab dort die
+gemeinsame objektorientierte Prüfkette
+([`oscalObjectPipeline.ts`](../src/domain/oscalObjectPipeline.ts)): iterative
+Ressourcenlimits und Strukturinvariante in einem Durchlauf,
+`dispatchOscalDocument()` und anschließend `validateAgainstPinnedSchema()`
+als Stufe 3. Der Byte-Eintrittspunkt `processClass2OscalBytes()` ruft
+ausschließlich diese Einheit auf; der Ableitungsweg der Profile Resolution
+([GSPP-291](https://linear.app/grundschutz-plus-plus/issue/GSPP-291)) teilt sie.
+Das Bytelimit greift bereits vor
 Worker-Erzeugung und Transferkopie; der Scanner begrenzt seinen Abstieg
 zusätzlich auf die zulässige Tiefe. Das Ergebnis ist entweder ein vollständiger
 Root-Envelope mit explizitem `class-2-local-user`-Kontext oder genau eine

@@ -19,7 +19,7 @@
 
 import type { OscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { OscalDocumentContext } from '@/domain/models';
-import { enforceClass2ResourceLimits } from '@/domain/oscalResourceLimits';
+import { enforceClass2ObjectGraphInvariants } from '@/domain/oscalObjectGraph';
 import {
   CLASS_2_IMPORT_LIMITS,
   createClass2ByteLimitDiagnostic,
@@ -780,8 +780,9 @@ export async function runNoOpRoundTrip(input: OscalNoOpRunInput): Promise<OscalN
     throw new SyntaxError('Fixture ist kein wohlgeformtes JSON');
   }
 
-  // Stufe 1b — strukturelle Limits auf dem geparsten Wert.
-  const limitViolation = enforceClass2ResourceLimits(parsed);
+  // Stufe 1b — Strukturinvariante samt Ressourcenlimits auf dem geparsten
+  // Wert, aus der gemeinsamen objektorientierten Einheit (ADR-8 Festlegung 1+3).
+  const limitViolation = enforceClass2ObjectGraphInvariants(parsed);
   if (limitViolation !== null) {
     return rejectionBeforeBinding({ status: 'failed', diagnostic: limitViolation });
   }

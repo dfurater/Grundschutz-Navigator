@@ -23,6 +23,7 @@ import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
 export const OSCAL_DIAGNOSTIC_STAGES = [
   'resource-limit',
   'json-syntax',
+  'object-structure',
   'root-dispatch',
   'json-schema',
   'oscal-constraint',

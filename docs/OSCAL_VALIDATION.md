@@ -22,10 +22,14 @@ für den einzigen Klasse-2-Einstieg umgesetzt.**
 [`importClass2OscalDocument()`](../src/adapters/oscalImportGate.ts) überträgt
 `ArrayBuffer` oder `Uint8Array` nach einem 10-MiB-Bytelimit an einen Modul-Worker.
 Dort dekodiert die Pipeline mit fatalem UTF-8-Decoder, erkennt doppelte
-JSON-Member nach Escape-Auflösung, parst erst danach JSON und prüft iterative
-Grenzen für Tiefe (64), Knotenzahl (1 000 000) und die arithmetische Summe
-eingebetteter Base64-Größen (10 MiB). Danach übergibt sie ausschließlich an
-`dispatchOscalDocument()`. Es gibt noch keine Import-UI, Persistenz oder
+JSON-Member nach Escape-Auflösung und parst erst danach JSON. Seit
+[GSPP-291](https://linear.app/grundschutz-plus-plus/issue/GSPP-291) (ADR-8
+Festlegung 1) übergibt sie das unmittelbare Ergebnis ihres eigenen `JSON.parse`
+an die **gemeinsame objektorientierte Prüfkette**
+([`oscalObjectPipeline.ts`](../src/domain/oscalObjectPipeline.ts)); dort laufen
+Ressourcenlimits (Tiefe 64, Knotenzahl 1 000 000, arithmetische Base64-Summe
+10 MiB), die Strukturinvariante, `dispatchOscalDocument()` und die Schemastufe
+in einer Einheit. Es gibt noch keine Import-UI, Persistenz oder
 Klasse-2-Anzeige.
 
 **Stufe 2 ist seit
@@ -103,7 +107,8 @@ nur referenziert wird.
 
 | Stufe | Vorgeschriebener Zielzustand | Pinning und Fehlersemantik |
 | --- | --- | --- |
-| 1. Größenlimit und JSON-Syntax | **Für Klasse 2 umgesetzt:** Plattformfunktionen (`Uint8Array`, fataler UTF-8-Decoder), projekteigener Token-Scanner und danach `JSON.parse` im isolierten Modul-Worker | Das Bytelimit von 10 MiB greift vor Worker-Erzeugung, Kopie, Decoder, Scanner und Parser. Nach erfolgreicher fataler Dekodierung lehnt der Scanner doppelte Member auf jeder erlaubten Objekttiefe ab und begrenzt seinen eigenen Abstieg auf Tiefe 64; nur dann wird `JSON.parse` aufgerufen. Ein vom Scanner als ungültig bewerteter Text endet ebenfalls vor `JSON.parse` fail-closed. Die nachfolgende, iterative Prüfung prüft die Tiefe erneut und begrenzt Knotenzahl auf 1 000 000 sowie die arithmetische Summe dekodierter Base64-Größen auf 10 MiB, ohne Base64 zu dekodieren. Der Adapter beendet einen antwortlosen Worker nach 30 Sekunden mit einer redigierten Fehlerdiagnose. Node-Tests verwenden dieselbe Worker-Logik; der Browsernachweis läuft in Chromium. |
+| 1. Größenlimit und JSON-Syntax | **Für Klasse 2 umgesetzt:** Plattformfunktionen (`Uint8Array`, fataler UTF-8-Decoder), projekteigener Token-Scanner und danach `JSON.parse` im isolierten Modul-Worker | Das Bytelimit von 10 MiB greift vor Worker-Erzeugung, Kopie, Decoder, Scanner und Parser. Nach erfolgreicher fataler Dekodierung lehnt der Scanner doppelte Member auf jeder erlaubten Objekttiefe ab und begrenzt seinen eigenen Abstieg auf Tiefe 64; nur dann wird `JSON.parse` aufgerufen. Ein vom Scanner als ungültig bewerteter Text endet ebenfalls vor `JSON.parse` fail-closed. Stufe 1 endet mit dem unmittelbaren `JSON.parse`-Ergebnis; die iterative Grenzprüfung (Tiefe 64, Knotenzahl 1 000 000, Base64-Summe 10 MiB ohne Dekodierung) gehört seit [GSPP-291](https://linear.app/grundschutz-plus-plus/issue/GSPP-291) zur objektorientierten Kette (Stufe 2a). Der Adapter beendet einen antwortlosen Worker nach 30 Sekunden mit einer redigierten Fehlerdiagnose. Node-Tests verwenden dieselbe Worker-Logik; der Browsernachweis läuft in Chromium. |
+| 2a. Objektgraph-Invariante | **Für Klasse 2 umgesetzt:** gemeinsame objektorientierte Prüfkette in [`oscalObjectGraph.ts`](../src/domain/oscalObjectGraph.ts) und [`oscalObjectPipeline.ts`](../src/domain/oscalObjectPipeline.ts); setzt keine Bytes voraus | Strukturinvariante und Ressourcenlimits in **einem** terminierenden Baumdurchlauf mit Identitätsmenge über den ganzen Lauf (Zyklen und geteilte Containeridentität fail-closed). Positivdefinition: null, Boolean, String, Number außer NaN (±Infinity zulässig), Arrays exakt `Array.prototype` mit dichten Indizes plus `length`, Objekte exakt `Object.prototype`; keine Symbol-Schlüssel; nur voll schreibbare, aufzählbare, konfigurierbare Data-Properties. Kein Serialisieren, kein Klonen; keine Proxy-Erkennungsbehauptung — der Ausschluss entsteht durch den Herkunftsnachweis (unmittelbares `JSON.parse`-Ergebnis oder Builder-Handle). Diagnosen tragen stabile Codes auf der eigenen Stufe `object-structure` und nennen weder Werte noch Property-Namen. Details unter [Die gemeinsame objektorientierte Prüfkette](#die-gemeinsame-objektorientierte-prüfkette). |
 | 2. Root-Erkennung | **Umgesetzt:** `dispatchOscalDocument()` in [`oscalRootDispatch.ts`](../src/adapters/oscalRootDispatch.ts), projekteigen und ohne externes Werkzeug | Das Top-Level-Objekt muss genau einen der acht bekannten Root-Keys besitzen. Null, Arrays, mehrere Root-Keys und unbekannte Keys werden abgelehnt. Die optionale Schema-Direktive `$schema` ist die einzige zusätzlich zulässige Top-Level-Property; sie ist kein zweiter Root und **niemals** Versionsautorität. Eine Katalog-Interpretation als Fallback ist verboten. |
 | 3. JSON-Schema | **Für Klasse 2 umgesetzt:** `ajv` 8.20.0 im Modul-Worker, gegen die eingecheckten NIST-Schemas unter `schemas/oscal/`. **CI umgesetzt:** [`verify-upstream-oscal.mjs`](../scripts/verify-upstream-oscal.mjs) nutzt `go-oscal` 0.7.1 als unabhängiges Schema- und Upgrade-Orakel | Auswahl ausschließlich über den exakten Root×`oscal-version`-Schlüssel; kein Fallback auf eine Nachbarversion. Die Schemabytes kommen aus dem eigenen Bundle; der Chunk der ausgewählten Zelle wird zur Laufzeit von derselben Origin nachgeladen, nie von einer fremden. Ihre Integrität trägt der Bauzeitschritt `npm run verify-oscal-schemas`. Ist die Zelle nicht im Bundle oder lässt sich ihr Validator nicht bauen, endet der Import fail-closed mit `OSCAL_SCHEMA_UNAVAILABLE` — Stufe 3 wird weder übersprungen noch als bestanden ausgewiesen. Der CI-Korpuslauf bezieht Dokumente nur aus dem gepinnten BSI-Snapshot und führt weder Schema- noch Dokumentreferenz-Anfragen aus. Jedes nicht gesperrte Artefakt muss bestehen; ein gesperrtes Artefakt muss fehlschlagen. Fehlende oder nicht auswertbare Werkzeugergebnisse bleiben ein eigener fail-closed Werkzeugfehler. |
 | 4. zusätzliche OSCAL-Constraints | Derzeit **kein zugelassener Validator** für OSCAL 1.2.2; im Browser und in CI als `not-checked` ausgewiesen | Diese Stufe darf weder übersprungen noch als bestanden dargestellt werden. Die zulässige Konformitätsaussage wird deshalb begrenzt. Das konkrete Mapping-Orakel ist als bekannte Lücke registriert. |
@@ -119,6 +124,58 @@ Member-Namen noch dessen Wert, sondern nur den stabilen Code und einen sicheren,
 generischen strukturellen Containerpfad aus Objekt- und Arraypositionen. Damit
 interpretieren Browser und nachgelagerte Werkzeuge dasselbe eindeutige Dokument,
 ohne eine zusätzliche Abhängigkeit einzuführen.
+
+### Die gemeinsame objektorientierte Prüfkette
+
+Seit [GSPP-291](https://linear.app/grundschutz-plus-plus/issue/GSPP-291)
+(ADR-8 Festlegungen 1 und 3) verläuft der Schnitt der Prüfkette zwischen
+Stufe 1 und Stufe 2: **Stufe 1 gilt für jedes Dokument, das als Bytes in die
+Anwendung gelangt; alles, was auf dem geparsten Objekt arbeitet —
+Ressourcenlimits, Strukturinvariante, Stufe 2 und 3 — gilt für jedes Dokument
+unabhängig von seiner Entstehung** und läuft durch genau eine exportierte
+Einheit: [`processClass2OscalValue()`](../src/domain/oscalObjectPipeline.ts).
+Es gibt keine zweite Root-, Versions-, Limit- oder Referenzlogik.
+
+Zwei Herkunftsnachweise berechtigen zum Eintritt in diese Einheit:
+
+| Weg | Herkunftsnachweis |
+| --- | --- |
+| Importweg (Bytes) | Das unmittelbare Ergebnis des eigenen `JSON.parse`-Aufrufs in [`parseClass2OscalInput()`](../src/domain/oscalImportProcessing.ts) — es gibt keinen öffentlichen Objekt-Eintrittspunkt, der ein beliebiges Ersatzobjekt als „geparst“ markieren könnte. |
+| Ableitungsweg (GSPP-291 Commit B) | Ein kontrollierter Builder erzeugt alle Container selbst und gibt nur ein über eine private `WeakMap` registriertes, opakes `DerivedJsonTree`-Handle aus; Rohobjekte und nachgebaute Handles scheitern vor jeder Reflexion. |
+
+Die Strukturinvariante ist eine **Positivdefinition** — zulässig ist nur, was
+hier steht; alles andere wird fail-closed abgelehnt:
+
+| Form | Bedingung |
+| --- | --- |
+| `null`, Boolean, String | Primitiv |
+| Number | Primitiv außer `NaN`; `±Infinity` bleibt zulässig, weil `JSON.parse("1e400")` es erzeugt |
+| Array | Prototyp exakt `Array.prototype`; eigene Schlüssel genau die Indizes `0..length-1` plus `length`; keine Symbol-Schlüssel; jede Elementposition eine Data-Property mit `writable`, `enumerable`, `configurable` je `true` |
+| Objekt | Prototyp exakt `Object.prototype`; keine Symbol-Schlüssel; jede eigene Property eine solche Data-Property |
+
+Dazu die **Baumform**: Der Durchlauf führt eine Identitätsmenge über den
+**gesamten** Lauf, nicht nur über den aktiven Rekursionspfad. Ein Container, der
+an zweiter Stelle erscheint, wird abgelehnt (`OSCAL_OBJECT_IDENTITY_REJECTED`) —
+das deckt Zyklen und geteilte Containeridentität gleichermaßen ab und macht den
+Limitdurchlauf terminierend. Weder `JSON.stringify` noch `structuredClone`
+werden als Prüfmittel verwendet; beide reparieren still statt zu melden.
+
+Diagnosen dieser Kette tragen die eigene Stufe `object-structure` mit stabilen,
+redigierten Codes (`OSCAL_OBJECT_*`); Pfad ist stets `/`, die Parameterliste
+leer — Werte und unvertrauenswürdige Property-Namen treten strukturell nicht
+auf. Die Positivprüfung behauptet ausdrücklich **nicht**, Proxy-Werte erkennen
+zu können; deren Ausschluss entsteht allein durch den vorgelagerten
+Herkunftsnachweis.
+
+Zulässige terminale Zustände für den Eintritt in das Dokumentmodell:
+
+| Status | Eintritt erlaubt? |
+| --- | --- |
+| `passed` | ja |
+| `failed` | nein — fail-closed, ohne Ausnahme |
+| `not-checked` | nur dort, wo der Vertrag ihn ausdrücklich vorsieht (heute ausschließlich Stufe 4) |
+| `not-run` | nein, sobald die Stufe für die getroffene Aussage erforderlich ist |
+
 
 Für Klasse-2-Referenzen ist `https:` das einzige als extern klassifizierbare
 Protokoll. `javascript:`, `data:`, `file:` sowie jedes andere Protokoll werden
