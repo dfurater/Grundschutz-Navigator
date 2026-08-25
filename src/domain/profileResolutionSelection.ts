@@ -148,6 +148,21 @@ type MatchOutcome =
   | { readonly matched: ReadonlySet<string> }
   | { readonly diagnostic: OscalDiagnostic };
 
+/** Ergänzt alle IDs, die eines der Glob-Muster trifft. */
+function addPatternMatches(
+  index: CatalogControlIndex,
+  matchers: readonly ProfileControlSelector['matching'][number][],
+  matched: Set<string>,
+): void {
+  for (const matcher of matchers) {
+    const regexp = globToRegExp(matcher.pattern);
+    if (regexp === null) continue;
+    for (const id of index.order) {
+      if (regexp.test(id)) matched.add(id);
+    }
+  }
+}
+
 function selectorMatches(
   index: CatalogControlIndex,
   selector: ProfileControlSelector,
@@ -156,13 +171,7 @@ function selectorMatches(
   for (const id of selector.withIds) {
     if (index.byId.has(id)) matched.add(id);
   }
-  for (const matcher of selector.matching) {
-    const regexp = globToRegExp(matcher.pattern);
-    if (regexp === null) continue;
-    for (const id of index.order) {
-      if (regexp.test(id)) matched.add(id);
-    }
-  }
+  addPatternMatches(index, selector.matching, matched);
 
   const withChild = selector.withChildControls;
   if (withChild === undefined || withChild === 'no') {
