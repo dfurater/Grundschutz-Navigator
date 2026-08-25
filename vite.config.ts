@@ -112,10 +112,14 @@ const SITEMAP_NAMESPACE = 'http://www.sitemaps.org/schemas/sitemap/0.9'; // NOSO
  * Dieselbe aufgelöste Deployment-Basis wie die Vite-Option `base` im
  * Build-Fall (Greptile-Befund zu GSPP-231): Statische Einstiege und
  * Sitemap-URLs müssen zur tatsächlich konfigurierten Auslieferung passen,
- * auch wenn `BUILD_BASE` davon abweicht.
+ * auch wenn `BUILD_BASE` davon abweicht. Ein `BUILD_BASE` ohne
+ * abschließenden Slash wird hier normalisiert (Greptile-Befund auf
+ * PR #187): sonst verschmelzen Basispfad und Routensegment beim
+ * String-Concat in `buildSitemapXml()` zu einer nicht erreichbaren URL.
  */
 export function resolveDeploymentBase(): string {
-  return process.env.BUILD_BASE ?? GITHUB_PAGES_BASE;
+  const base = process.env.BUILD_BASE ?? GITHUB_PAGES_BASE;
+  return base.endsWith('/') ? base : `${base}/`;
 }
 
 function escapeXml(value: string): string {
