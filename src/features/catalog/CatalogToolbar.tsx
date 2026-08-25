@@ -86,15 +86,21 @@ export function CatalogToolbar({
             <IconCheck className="w-4 h-4" />
           </Button>
 
+          {/* Breakpoint-Mount-Strategie (GSPP-268): Alle drei Filter-/Export-
+              Zugänge werden über isDesktop bedingt gemountet, nicht per CSS
+              versteckt — zu jedem Zeitpunkt ist nur der passende Teilbaum im
+              DOM (Invariante aus GRU-217). */}
           {!isDesktop && (
             <CatalogMobileFilterSheet filterPanelProps={filterPanelProps} />
           )}
-          <CatalogExportMenu
-            checkedIds={checkedIds}
-            filteredControls={filteredControls}
-            allControls={allControls}
-            sectionFilename={sectionFilename}
-          />
+          {isDesktop && (
+            <CatalogExportMenu
+              checkedIds={checkedIds}
+              filteredControls={filteredControls}
+              allControls={allControls}
+              sectionFilename={sectionFilename}
+            />
+          )}
           {!isDesktop && (
             <CatalogMobileExportSheet
               checkedIds={checkedIds}

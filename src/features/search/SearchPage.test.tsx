@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import type { Catalog, CatalogState, Control } from '@/domain/models';
 import { useCatalog } from '@/hooks/useCatalog';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { downloadCSV } from '@/features/export/csvExport';
 import { SearchPage } from './SearchPage';
 import { useSearch } from './useSearch';
@@ -22,8 +23,13 @@ vi.mock('@/features/export/csvExport', () => ({
   downloadCSV: vi.fn(),
 }));
 
+vi.mock('@/hooks/useMediaQuery', () => ({
+  useMediaQuery: vi.fn(),
+}));
+
 const mockedUseCatalog = vi.mocked(useCatalog);
 const mockedUseSearch = vi.mocked(useSearch);
+const mockedUseMediaQuery = vi.mocked(useMediaQuery);
 
 function makeControl(overrides: Partial<Control> = {}): Control {
   const id = overrides.id ?? 'ASST.1.1';
@@ -83,6 +89,17 @@ function makeControls(count: number): Control[] {
   );
 }
 
+function searchRoutes() {
+  return (
+    <MemoryRouter initialEntries={['/suche?q=verfahren']}>
+      <Routes>
+        <Route path="/suche" element={<SearchPage />} />
+        <Route path={CONTROL_ROUTE_PATTERN} element={<div>Katalogdetail</div>} />
+      </Routes>
+    </MemoryRouter>
+  );
+}
+
 function renderSearch(controls: Control[]) {
   mockedUseCatalog.mockReturnValue(makeCatalogState(controls));
   mockedUseSearch.mockReturnValue({
@@ -90,14 +107,7 @@ function renderSearch(controls: Control[]) {
     totalResults: controls.length,
   });
 
-  return render(
-    <MemoryRouter initialEntries={['/suche?q=verfahren']}>
-      <Routes>
-        <Route path="/suche" element={<SearchPage />} />
-        <Route path={CONTROL_ROUTE_PATTERN} element={<div>Katalogdetail</div>} />
-      </Routes>
-    </MemoryRouter>,
-  );
+  return render(searchRoutes());
 }
 
 describe('SearchPage', () => {
@@ -105,6 +115,9 @@ describe('SearchPage', () => {
     mockedUseCatalog.mockReset();
     mockedUseSearch.mockReset();
     vi.mocked(downloadCSV).mockReset();
+    mockedUseMediaQuery.mockReset();
+    // jsdom-Default ist der Mobile-Zweig; Desktop-Tests überschreiben explizit.
+    mockedUseMediaQuery.mockReturnValue(false);
   });
 
   it('passes practices to the search hook for UUID-based alias indexing', () => {
@@ -136,6 +149,10 @@ describe('SearchPage', () => {
   });
 
   describe('Desktop-Ergebnisse', () => {
+    beforeEach(() => {
+      mockedUseMediaQuery.mockReturnValue(true);
+    });
+
     it('keeps the result pane outside the shrink-0 header wrapper', () => {
       renderSearch([makeControl()]);
 
@@ -253,6 +270,8 @@ describe('SearchPage', () => {
 
     it('behält Suchrelevanzreihenfolge auf Mobile auch nach Desktop-Sortierung', async () => {
       const user = userEvent.setup();
+      let isDesktop = true;
+      mockedUseMediaQuery.mockImplementation(() => isDesktop);
       const rankedFirst = makeControl({
         id: 'ZZ.9.1',
         title: 'Zweiter Treffer mit hoher Suchrelevanz',
@@ -262,13 +281,18 @@ describe('SearchPage', () => {
         title: 'Alphabetisch erster Treffer',
       });
 
-      renderSearch([rankedFirst, rankedSecond]);
+      const view = renderSearch([rankedFirst, rankedSecond]);
 
       // Desktop nach ID sortieren
       const desktop = screen.getByTestId('search-results-desktop');
       await user.click(within(desktop).getByRole('button', { name: /ID/ }));
 
+      // Breakpoint-Wechsel nach Mobile
+      isDesktop = false;
+      view.rerender(searchRoutes());
+
       // Mobile muss weiterhin in Relevanzreihenfolge sein: ZZ.9.1 zuerst
+      expect(screen.queryByTestId('search-results-desktop')).not.toBeInTheDocument();
       const mobile = screen.getByTestId('search-results-mobile');
       const mobileButtons = within(mobile).getAllByRole('button');
       const zzIndex = mobileButtons.findIndex((btn) => btn.textContent?.includes('ZZ.9.1'));
@@ -281,6 +305,7 @@ describe('SearchPage', () => {
 
   describe('Auswahl und Export', () => {
     it('zeigt auf Desktop eine Checkbox pro Zeile sowie „Alle auswählen"', () => {
+      mockedUseMediaQuery.mockReturnValue(true);
       renderSearch([
         makeControl({ id: 'ASST.1.1' }),
         makeControl({ id: 'ASST.1.2' }),
@@ -294,6 +319,7 @@ describe('SearchPage', () => {
 
     it('„Alle auswählen" markiert und demarkiert alle 51 Treffer der Query, auch nicht gerenderte', async () => {
       const user = userEvent.setup();
+      mockedUseMediaQuery.mockReturnValue(true);
       renderSearch(makeControls(51));
 
       const desktop = screen.getByTestId('search-results-desktop');
@@ -319,6 +345,7 @@ describe('SearchPage', () => {
 
     it('exportiert die Auswahl über das Desktop-Menü als grundschutz-auswahl.csv', async () => {
       const user = userEvent.setup();
+      mockedUseMediaQuery.mockReturnValue(true);
       const control = makeControl({ id: 'ASST.1.1' });
       renderSearch([control, makeControl({ id: 'ASST.1.2' })]);
 
@@ -333,6 +360,7 @@ describe('SearchPage', () => {
 
     it('exportiert „Aktuelle Ansicht" ohne Auswahl als grundschutz-suchergebnisse.csv inklusive nicht gerenderter Treffer', async () => {
       const user = userEvent.setup();
+      mockedUseMediaQuery.mockReturnValue(true);
       const controls = makeControls(51);
       renderSearch(controls);
 
@@ -386,6 +414,8 @@ describe('SearchPage', () => {
 
     it('exportiert „Aktuelle Ansicht" auf Mobile in Suchrelevanzreihenfolge als grundschutz-suchergebnisse.csv', async () => {
       const user = userEvent.setup();
+      let isDesktop = true;
+      mockedUseMediaQuery.mockImplementation(() => isDesktop);
       const rankedFirst = makeControl({
         id: 'ZZ.9.1',
         title: 'Zweiter Treffer mit hoher Suchrelevanz',
@@ -394,10 +424,15 @@ describe('SearchPage', () => {
         id: 'AA.1.1',
         title: 'Alphabetisch erster Treffer',
       });
-      renderSearch([rankedFirst, rankedSecond]);
+      const view = renderSearch([rankedFirst, rankedSecond]);
 
+      // Desktop-Sortierung ändern — der Mobile-Export bleibt relevanzsortiert
       const desktop = screen.getByTestId('search-results-desktop');
       await user.click(within(desktop).getByRole('button', { name: /ID/ }));
+
+      // Breakpoint-Wechsel nach Mobile
+      isDesktop = false;
+      view.rerender(searchRoutes());
 
       await user.click(screen.getByRole('button', { name: 'CSV' }));
       await user.click(screen.getByRole('button', { name: /Aktuelle Ansicht/ }));
@@ -410,8 +445,10 @@ describe('SearchPage', () => {
 
     it('lässt den Gesamtkatalogexport auf Desktop und Mobile als grundschutz-gesamtkatalog.csv verfügbar', async () => {
       const user = userEvent.setup();
+      let isDesktop = true;
+      mockedUseMediaQuery.mockImplementation(() => isDesktop);
       const control = makeControl({ id: 'ASST.1.1' });
-      renderSearch([control]);
+      const view = renderSearch([control]);
 
       await user.click(screen.getByRole('button', { name: 'Weitere Exportoptionen' }));
       await user.click(screen.getByRole('menuitem', { name: /Gesamtkatalog/ }));
@@ -419,8 +456,12 @@ describe('SearchPage', () => {
 
       vi.mocked(downloadCSV).mockClear();
 
+      // Breakpoint-Wechsel: Das Mobile-Sheet übernimmt den Gesamtkatalogexport
+      isDesktop = false;
+      view.rerender(searchRoutes());
+
       await user.click(screen.getByRole('button', { name: 'CSV' }));
-      await user.click(screen.getByRole('button', { name: /Gesamtkatalog/ }));
+      await user.click(screen.getByRole('button', { name: /Gesamtkatalog \(/ }));
       expect(downloadCSV).toHaveBeenCalledWith([control], 'grundschutz-gesamtkatalog.csv');
     });
 
@@ -441,6 +482,58 @@ describe('SearchPage', () => {
       expect(
         screen.getByRole('button', { name: 'Kontrollen auswählen' }),
       ).toHaveAttribute('aria-pressed', 'false');
+    });
+  });
+
+  describe('Breakpoint-Mounting (GSPP-261)', () => {
+    it('mounts exactly one result list per breakpoint', () => {
+      let isDesktop = false;
+      mockedUseMediaQuery.mockImplementation(() => isDesktop);
+      const view = renderSearch(makeControls(3));
+
+      expect(screen.getByTestId('search-results-mobile')).toBeInTheDocument();
+      expect(screen.queryByTestId('search-results-desktop')).not.toBeInTheDocument();
+
+      isDesktop = true;
+      view.rerender(searchRoutes());
+
+      expect(screen.getByTestId('search-results-desktop')).toBeInTheDocument();
+      expect(screen.queryByTestId('search-results-mobile')).not.toBeInTheDocument();
+
+      isDesktop = false;
+      view.rerender(searchRoutes());
+
+      expect(screen.getByTestId('search-results-mobile')).toBeInTheDocument();
+      expect(screen.queryByTestId('search-results-desktop')).not.toBeInTheDocument();
+    });
+
+    it('preserves visible count and desktop sort across a breakpoint switch', async () => {
+      const user = userEvent.setup();
+      let isDesktop = true;
+      mockedUseMediaQuery.mockImplementation(() => isDesktop);
+      const view = renderSearch(makeControls(51));
+
+      // Desktop: weitere Ergebnisse nachladen und nach ID sortieren
+      fireEvent.click(
+        screen.getByRole('button', { name: /Weitere Suchergebnisse anzeigen/ }),
+      );
+      let desktop = screen.getByTestId('search-results-desktop');
+      await user.click(within(desktop).getByRole('button', { name: /ID/ }));
+      expect(within(desktop).getAllByRole('row').slice(1)).toHaveLength(51);
+
+      // Wechsel nach Mobile: sichtbare Ergebnisanzahl erhalten
+      isDesktop = false;
+      view.rerender(searchRoutes());
+      expect(screen.queryByTestId('search-results-desktop')).not.toBeInTheDocument();
+      expect(screen.getByText(/51 Ergebnisse für/)).toBeInTheDocument();
+
+      // Zurück nach Desktop: Sortierung erhalten
+      isDesktop = true;
+      view.rerender(searchRoutes());
+      desktop = screen.getByTestId('search-results-desktop');
+      const rows = within(desktop).getAllByRole('row').slice(1);
+      expect(rows).toHaveLength(51);
+      expect(within(rows[0]).getByText('ASST.1.1')).toBeInTheDocument();
     });
   });
 });

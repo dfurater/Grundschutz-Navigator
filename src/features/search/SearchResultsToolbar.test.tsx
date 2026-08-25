@@ -23,6 +23,7 @@ describe('SearchResultsToolbar', () => {
         onClearSelection={onClearSelection}
         mobileSelectMode={false}
         onToggleMobileSelectMode={onToggleMobileSelectMode}
+        isDesktop={false}
         desktopViewControls={[makeControl('S.1')]}
         mobileViewControls={[makeControl('S.1')]}
         allControls={[makeControl('S.1')]}
@@ -50,6 +51,7 @@ describe('SearchResultsToolbar', () => {
         onClearSelection={vi.fn()}
         mobileSelectMode={false}
         onToggleMobileSelectMode={vi.fn()}
+        isDesktop
         desktopViewControls={desktopControls}
         mobileViewControls={[makeControl('B.1'), makeControl('A.1')]}
         allControls={desktopControls}
@@ -74,6 +76,7 @@ describe('SearchResultsToolbar', () => {
         onClearSelection={vi.fn()}
         mobileSelectMode={false}
         onToggleMobileSelectMode={vi.fn()}
+        isDesktop={false}
         desktopViewControls={[makeControl('A.1'), makeControl('B.1')]}
         mobileViewControls={relevanceOrder}
         allControls={relevanceOrder}
@@ -100,6 +103,7 @@ describe('SearchResultsToolbar', () => {
         onClearSelection={vi.fn()}
         mobileSelectMode
         onToggleMobileSelectMode={vi.fn()}
+        isDesktop={false}
         desktopViewControls={[makeControl('A.1'), makeControl('B.1')]}
         mobileViewControls={[makeControl('A.1'), makeControl('B.1')]}
         allControls={[makeControl('A.1'), makeControl('B.1')]}
@@ -114,5 +118,30 @@ describe('SearchResultsToolbar', () => {
 
     expect(downloadCSV).toHaveBeenCalledWith(selected, 'grundschutz-auswahl.csv');
     expect(onSelectionExported).toHaveBeenCalledOnce();
+  });
+
+  it('mounts exactly one export access per breakpoint (GSPP-268)', () => {
+    const props = {
+      checkedIds: new Set<string>(),
+      onClearSelection: vi.fn(),
+      mobileSelectMode: false,
+      onToggleMobileSelectMode: vi.fn(),
+      desktopViewControls: [makeControl('A.1'), makeControl('B.1')],
+      mobileViewControls: [makeControl('B.1'), makeControl('A.1')],
+      allControls: [makeControl('A.1'), makeControl('B.1')],
+      onSelectionExported: vi.fn(),
+    };
+
+    const view = render(<SearchResultsToolbar {...props} isDesktop={false} />);
+
+    expect(screen.queryByRole('button', { name: 'CSV Export' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Weitere Exportoptionen' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'CSV' })).toBeInTheDocument();
+
+    view.rerender(<SearchResultsToolbar {...props} isDesktop />);
+
+    expect(screen.getByRole('button', { name: 'CSV Export' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Weitere Exportoptionen' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'CSV' })).not.toBeInTheDocument();
   });
 });
