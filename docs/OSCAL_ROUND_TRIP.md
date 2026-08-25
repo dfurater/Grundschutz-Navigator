@@ -34,11 +34,14 @@ Ergebnis:
    No-op-Pfad zu ändern. Anschließend liegen beide Seiten fest: das Original
    (geparste Eingabe) und das **reimportierte Exportartefakt**. Ein
    Exportergebnis ohne JSON-Darstellung — `JSON.stringify` liefert kein
-   Textergebnis (`undefined`, Funktion, Symbol) oder wirft (BigInt,
-   zirkuläre Struktur) — wird als `serialization: failed` mit Diagnose
+   Textergebnis (`undefined`, Funktion, Symbol), wirft (BigInt,
+   zirkuläre Struktur) oder der Callback fällt mit einer Ausnahme aus —
+   wird als `serialization: failed` mit Diagnose
    (`OSCAL_EXPORT_NOT_SERIALIZABLE`, Bindungsgrund
    `export-not-serializable`) berichtet, nicht als Ausnahme geworfen;
-   entlang der Kettenregel bleiben Vergleich und Stufen aus.
+   entlang der Kettenregel bleiben Vergleich und Stufen aus. Der Callback
+   erhält eine private Kopie des geparsten Originals; eine In-place-Mutation
+   kann die Vergleichsbasen nicht verschieben.
 4. **Vergleichsebenen** (siehe unten) und **Identitätsprüfung** zwischen
    Original und reimportiertem Export.
 5. **Validierungsstufen 3–5** mit terminalem Status je Stufe — geprüft wird

@@ -503,6 +503,29 @@ describe('runNoOpRoundTrip', () => {
     expect(result.serialization.status).toBe('failed');
   });
 
+  it('berichtet einen ausfallenden Serializer als Serialisierungsfehler, statt zu werfen', async () => {
+    // Greptile-Befund: Ein Wurf im Callback darf den Fehlerrahmen des Laufs
+    // nicht umgehen — ohne Artefakt gibt es keinen Reimport und keine
+    // Stufen, berichtet wird wie bei jeder anderen fehlenden
+    // JSON-Darstellung.
+    const result = await runNoOpRoundTrip({
+      fixtureText: JSON.stringify(CATALOG_122()),
+      exportDocument: () => {
+        throw new TypeError('Serializer ausgefallen');
+      },
+    });
+
+    expect(result.serialization).toMatchObject({
+      status: 'failed',
+      diagnostic: { code: 'OSCAL_EXPORT_NOT_SERIALIZABLE' },
+    });
+    expect(result.binding).toMatchObject({ ok: false, reason: 'export-not-serializable' });
+    expect(result.graph).toEqual({ status: 'not-run', differences: [] });
+    for (const stage of ['schemaValidation', 'constraints', 'references'] as const) {
+      expect(result.stages[stage].status).toBe('not-run');
+    }
+  });
+
   it('bindet das Exportartefakt erneut: Ein Katalog, der ein valides Profil exportiert, wird als Profil geprüft und berichtet', async () => {
     // Greptile-Befund (T-Rex-Reproduktion): Ohne Re-Bindung wurde das
     // exportierte Profil gegen das Katalogschema geprüft; mit Re-Bindung

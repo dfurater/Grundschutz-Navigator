@@ -665,9 +665,17 @@ async function successfulNoOpResult(
   // Quellbytes, Graphvergleich und Identitäten werden aus dem Original
   // erhoben und würden mutiert-gegen-mutiert vergleichen (Greptile-Befund).
   const sourceSnapshot = structuredClone(success.source);
-  const exported = input.exportDocument
-    ? input.exportDocument(sourceSnapshot)
-    : success.source;
+  let exported: unknown;
+  try {
+    exported = input.exportDocument
+      ? input.exportDocument(sourceSnapshot)
+      : success.source;
+  } catch {
+    // Ein Serializer, der ausfällt, statt ein Artefakt zu liefern, ist
+    // derselbe Serialisierungsfehler wie eine Rückgabe ohne
+    // JSON-Darstellung — berichtet, nicht geworfen (Greptile-Befund).
+    return nonSerializableExportResult();
+  }
 
   // Ebene 1 — byte-identische Serialisierung. Ein Exportergebnis ohne
   // JSON-Darstellung — stringify liefert kein Textergebnis oder wirft — ist
