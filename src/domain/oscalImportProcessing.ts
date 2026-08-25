@@ -8,7 +8,7 @@ import {
   createClass2ResourceLimitDiagnostic,
 } from '@/domain/oscalObjectGraph';
 import {
-  registerParserProducedRoot,
+  parseAndRegisterOscalJson,
 } from '@/domain/oscalObjectProvenance';
 
 // Die gemeinsame objektorientierte Prüfkette lebt in ihren eigenen Einheiten
@@ -313,15 +313,11 @@ export function parseClass2OscalInput(bytes: Uint8Array): Class2OscalInputResult
 
   try {
     // Stufe 1 endet hier: Der Byte-Eintrittspunkt gibt ausschließlich das
-    // unmittelbare Ergebnis seines eigenen JSON.parse weiter — und belegt
-    // dessen Herkunft durch die modulprivate Registrierung, damit die
-    // gemeinsame Kette Unbelegtes vor jeder Reflexion ablehnen kann.
-    const parsed: unknown = JSON.parse(text);
-    // Nur Container sind im WeakSet registrierbar; primitive Wurzeln laufen
-    // unverändert in den Root-Dispatch und erhalten dort ihre Diagnose.
-    if (parsed !== null && typeof parsed === 'object') {
-      registerParserProducedRoot(parsed);
-    }
+    // unmittelbare Ergebnis seines eigenen JSON.parse weiter. Die Herkunfts-
+    // belegung entsteht ausschließlich in oscalObjectProvenance.ts — dort
+    // führt der Parse-Lauf selbst die Registrierung als Nebenprodukt aus;
+    // ein importierbarer Schreibzugriff auf das Register existiert nicht.
+    const parsed = parseAndRegisterOscalJson(text);
     return { ok: true, source: parsed };
   } catch {
     return {

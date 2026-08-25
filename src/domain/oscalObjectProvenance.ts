@@ -2,13 +2,14 @@
 // Herkunftsnachweis der Klasse-2-Kette (ADR-8 Festlegung 3)
 //
 // Die Kette akzeptiert am Objekteinstieg ausschließlich Werte mit belegter
-// Herkunft. Der Byte-Eintrittspunkt registriert hier das unmittelbare Ergebnis
-// seines eigenen JSON.parse in einer modulprivaten WeakSet; die Prüfung ist
-// eine reine Identitätsfrage und findet vor jeder Reflexion statt. Ein Proxy
-// um ein echtes Ergebnis besitzt eine andere Containeridentität und bleibt
-// unbelegt. Es gibt keinen öffentlichen Weg, ein fremdes Objekt als „geparst“
-// zu markieren. Der Ableitungsweg erhält sein eigenes Handle-Register mit
-// GSPP-291 Commit B.
+// Herkunft. Diese Einheit ist die einzige Quelle solcher Belege: Sie führt das
+// JSON.parse selbst aus und registriert sein Ergebnis in einem modulprivaten
+// WeakSet. Es gibt keinen importierbaren Schreibzugriff auf das Register —
+// ein Beleg entsteht ausschließlich als Nebenprodukt eines echten Parse-Laufs.
+// Die Prüfung ist eine reine Identitätsfrage und findet vor jeder Reflexion
+// statt; ein Proxy um ein echtes Ergebnis besitzt eine andere Containeridentität
+// und bleibt unbelegt. Der Ableitungsweg erhält sein eigenes, ebenso
+// geschlossen verwaltetes Handle-Register mit GSPP-291 Commit B.
 // =============================================================================
 
 import { createOscalDiagnostic, type OscalDiagnostic } from '@/domain/oscalDiagnostics';
@@ -21,11 +22,18 @@ export const OSCAL_OBJECT_UNPROVENANCED = 'OSCAL_OBJECT_UNPROVENANCED';
 const parserProducedRoots = new WeakSet<object>();
 
 /**
- * Belegt einen Wurzelwert als Produkt des eigenen JSON.parse. Ausschließlich
- * für den Byte-Eintrittspunkt (`parseClass2OscalInput`) bestimmt.
+ * Führt das JSON.parse des Byte-Eintrittspunkts aus und belegt das Ergebnis
+ * als parser-erzeugt. Die Registrierung ist nicht einzeln aufrufbar: Ein Beleg
+ * entsteht ausschließlich hier, als Nebenprodukt des eigenen Parse-Laufs.
  */
-export function registerParserProducedRoot(source: object): void {
-  parserProducedRoots.add(source);
+export function parseAndRegisterOscalJson(text: string): unknown {
+  const parsed: unknown = JSON.parse(text);
+  // Nur Container sind im WeakSet registrierbar; primitive Wurzeln laufen
+  // unverändert in den Root-Dispatch und erhalten dort ihre Diagnose.
+  if (parsed !== null && typeof parsed === 'object') {
+    parserProducedRoots.add(parsed);
+  }
+  return parsed;
 }
 
 /** Reine Identitätsfrage; kein Feldzugriff, keine Reflexion, nicht fälschbar. */
