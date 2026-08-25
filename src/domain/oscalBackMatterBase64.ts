@@ -49,7 +49,15 @@ export function accountEmbeddedBase64(
   payload: Record<string, unknown>,
   totalBytesSoFar: number,
 ): EmbeddedBase64Accounting {
-  const encoded = payload['value'];
+  // Rein deskriptorbasierter Zugriff: Ein Accessor an `value` wird nie
+  // ausgeführt — er erscheint hier als abwesend und scheitert anschließend
+  // an der Formprüfung des eigenen Containers (DESCRIPTOR_REJECTED), statt
+  // eine Ausnahme zu entfesseln (Greptile-Befund zu b5ece34).
+  const valueDescriptor = Object.getOwnPropertyDescriptor(payload, 'value');
+  const encoded =
+    valueDescriptor !== undefined && 'value' in valueDescriptor
+      ? valueDescriptor.value
+      : undefined;
   if (typeof encoded !== 'string') {
     return { kind: 'accounted', totalBytes: totalBytesSoFar };
   }

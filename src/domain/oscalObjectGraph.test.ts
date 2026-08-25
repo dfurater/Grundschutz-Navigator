@@ -96,6 +96,21 @@ describe('enforceClass2ObjectGraphInvariants — Negativkorpus der Objektgraphfo
       secret: 'geheimesfeld',
     },
     {
+      name: 'Accessor im base64-Wert — die Base64-Buchhaltung führt keinen Getter aus',
+      build: () => {
+        const payload: Record<string, unknown> = {};
+        Object.defineProperty(payload, 'value', {
+          get: () => {
+            throw new Error('Getter wurde ausgeführt');
+          },
+          enumerable: true,
+          configurable: true,
+        });
+        return { 'back-matter': { resources: [{ base64: payload }] } };
+      },
+      expectedCode: OBJECT_GRAPH_DIAGNOSTIC_CODES.DESCRIPTOR_REJECTED,
+    },
+    {
       name: 'Objekt mit eigenem toJSON',
       build: () => ({ toJSON: () => ({}) }),
       expectedCode: OBJECT_GRAPH_DIAGNOSTIC_CODES.VALUE_TYPE_REJECTED,
