@@ -29,6 +29,7 @@ export const OSCAL_DIAGNOSTIC_STAGES = [
   'oscal-constraint',
   'reference',
   'domain',
+  'profile-resolution',
 ] as const;
 
 export type OscalDiagnosticStage = (typeof OSCAL_DIAGNOSTIC_STAGES)[number];
