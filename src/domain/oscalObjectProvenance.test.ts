@@ -81,7 +81,7 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
     expect(isParserProducedRoot(new Proxy(foreign, {}))).toBe(false);
   });
 
-  it('bindet die Herkunft über den gesamten Baum — eingetauschter Teilbaum nach dem Parse fällt auf', async () => {
+  it('bindet die Herkunft über den gesamten Baum — eingetauschter Teilbaum fällt auf', async () => {
     // Greptile-Befund zu 3a1b1d6: Nur die Wurzel war registriert. Ein Aufrufer,
     // der nach dem Parse catalog.metadata durch ein Fremdobjekt ersetzt, muss
     // am fehlenden Beleg des Ersatzcontainers scheitern — nicht erst am
@@ -116,6 +116,28 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
     expect(result).toMatchObject({
       ok: false,
       diagnostic: { code: OSCAL_OBJECT_UNPROVENANCED },
+    });
+  });
+
+  it('terminiert den Belegdurchlauf kontrolliert, wenn registrierte Container nachträglich in einen Kreis gehängt werden', async () => {
+    // Gitar-Befund zu 7e2fa02 (Lockstep) und Greptile zu 76746af: Der gemeinsame
+    // Durchlauf muss auch dann kontrolliert enden, wenn ein nach dem Parse
+    // verketteter registrierter Container einen Zyklus bildet; die Antwort ist
+    // die etablierte Identitätsdiagnose der Invariantenprüfung, nie Hängen
+    // oder Stapelüberlauf.
+    const input = await parseClass2OscalInput(
+      new TextEncoder().encode('{"a":{"b":{"c":1}}}'),
+    );
+    if (!input.ok) throw new Error('Fixture muss parsen');
+
+    const root = input.source as { a: { b: Record<string, unknown> } };
+    root.a.b['next'] = root.a.b;
+
+    const result = await processClass2OscalValue(input.source, context);
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: { code: 'OSCAL_OBJECT_IDENTITY_REJECTED', stage: OBJECT_GRAPH_STAGE },
     });
   });
 

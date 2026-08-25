@@ -7,6 +7,7 @@ import {
 import {
   createClass2ResourceLimitDiagnostic,
 } from '@/domain/oscalObjectGraph';
+import { walkOwnContainers } from '@/domain/oscalObjectWalk';
 
 // =============================================================================
 // Modulprivates Herkunftsregister des Byte-Eintrittspunkts (ADR-8 Festlegung 3)
@@ -21,28 +22,16 @@ import {
 const parserProducedContainers = new WeakSet<object>();
 
 function registerParsedTree(root: unknown): void {
-  if (root === null || typeof root !== 'object') return;
-
-  const visited = new Set<object>();
-  const pending: unknown[] = [root];
-  while (pending.length > 0) {
-    const value = pending.pop();
-    if (value === null || typeof value !== 'object') continue;
-
-    const container = value as object;
-    if (visited.has(container)) continue;
-    visited.add(container);
-
+  // Der Lauf ist der gemeinsame Helper der Kette; Registrierung und Prüfung
+  // können sich dadurch nicht auseinanderleben (Gitar-Befund zu 7e2fa02).
+  // Bewusst kein Einfrieren: Die Positivdefinition der Strukturinvariante
+  // verlangt vollständig schreibbare, aufzählbare, konfigurierbare
+  // Data-Properties (ADR-8), und die Inhaltsbindung entsteht pro Aufruf
+  // durch Bytepolitik plus Schemastufe.
+  walkOwnContainers(root, (container) => {
     parserProducedContainers.add(container);
-    for (const key of Reflect.ownKeys(container) as string[]) {
-      // Parse-Produkte tragen nur Data-Properties; der Deskriptorzugriff liest
-      // den Wert nicht aus und kann daher keinen Accessor ausführen.
-      const descriptor = Object.getOwnPropertyDescriptor(container, key);
-      if (descriptor !== undefined && 'value' in descriptor) {
-        pending.push(descriptor.value);
-      }
-    }
-  }
+    return true;
+  });
 }
 
 /**

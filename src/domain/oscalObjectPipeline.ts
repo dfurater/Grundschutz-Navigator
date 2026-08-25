@@ -20,6 +20,7 @@ import { createOscalDiagnostic, type OscalDiagnostic } from '@/domain/oscalDiagn
 import { CLASS_2_IMPORT_VALIDATOR } from '@/domain/oscalImportContract';
 import { createClass2UnprovenancedDiagnostic } from '@/domain/oscalObjectProvenance';
 import { isParserProducedRoot } from '@/domain/oscalImportProcessing';
+import { walkOwnContainers } from '@/domain/oscalObjectWalk';
 import { enforceClass2ObjectGraphInvariants } from '@/domain/oscalObjectGraph';
 import { validateAgainstPinnedSchema } from '@/domain/oscalSchemaValidation';
 import type { OscalDocumentContext } from '@/domain/models';
@@ -46,34 +47,21 @@ export type Class2OscalValueResult =
 
 /**
  * Prüft die Herkunft der Wurzel und aller Container in einem eigenen,
- * rein identitätsbasierten Durchlauf vor jeder Reflexion. Iterativ mit
- * explizitem Stack; Visited-Menge über den ganzen Lauf, sodass auch ein nach
- * dem Parse in einen Kreis eingehängter registrierter Container kontrolliert
- * terminiert; Traversierung über Property-Deskriptoren, damit Accessor-Getter
- * niemals ausgeführt werden.
+ * rein identitätsbasierten Durchlauf vor jeder Reflexion. Er läuft über
+ * denselben gemeinsamen Helper wie die Registrierung am Byte-Eintrittspunkt
+ * und kann sich von ihr deshalb nicht auseinanderleben; der frühe Abbruch
+ * endet beim ersten Container ohne Beleg.
  */
 function verifyProvenance(root: unknown): boolean {
-  if (root === null || typeof root !== 'object') return true;
-
-  const visited = new Set<object>();
-  const pending: unknown[] = [root];
-  while (pending.length > 0) {
-    const value = pending.pop();
-    if (value === null || typeof value !== 'object') continue;
-
-    const container = value as object;
-    if (visited.has(container)) continue;
-    visited.add(container);
-
-    if (!isParserProducedRoot(container)) return false;
-    for (const key of Reflect.ownKeys(container) as string[]) {
-      const descriptor = Object.getOwnPropertyDescriptor(container, key);
-      if (descriptor !== undefined && 'value' in descriptor) {
-        pending.push(descriptor.value);
-      }
-    }
-  }
-  return true;
+  // Derselbe Durchlauf wie bei der Registrierung (gemeinsamer Helper); der
+  // frühe Abbruch endet beim ersten Container ohne Beleg.
+  let allProvenanced = true;
+  walkOwnContainers(root, (container) => {
+    const provenanced = isParserProducedRoot(container);
+    if (!provenanced) allProvenanced = false;
+    return provenanced;
+  });
+  return allProvenanced;
 }
 
 /**
