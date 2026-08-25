@@ -124,40 +124,50 @@ function verifyProvenance(root: unknown): ProvenanceVerdict {
       provenanced = false;
       return false;
     }
-
-    if (Array.isArray(container)) {
-      const length = container.length;
-      for (let index = 0; index < length; index += 1) {
-        const descriptor = Object.getOwnPropertyDescriptor(container, index);
-        const slotValue =
-          descriptor !== undefined && 'value' in descriptor ? descriptor.value : undefined;
-        const slotBytes = serializedValueBytes(slotValue, true);
-        if (slotBytes !== null) payloadBytes += slotBytes;
-      }
-      payloadBytes += 2 + Math.max(length - 1, 0);
-      return payloadBytes <= CLASS_2_IMPORT_LIMITS.maxBytes;
-    }
-
-    let members = 0;
-    for (const key of Reflect.ownKeys(container)) {
-      // Symbole erscheinen nicht in der Serialisierung; ihre Diagnose
-      // überlässt die Buchhaltung der Strukturinvariante. Accessor-Werte
-      // werden nie gelesen — solche Einschübe scheitern ohnehin an der
-      // anschließenden Invariantenprüfung.
-      if (typeof key !== 'string') continue;
-      const descriptor = Object.getOwnPropertyDescriptor(container, key);
-      if (descriptor === undefined || !('value' in descriptor)) continue;
-
-      const memberBytes = serializedValueBytes(descriptor.value, false);
-      if (memberBytes === null) continue; // `undefined`-Mitglieder fallen fort.
-
-      members += 1;
-      payloadBytes += 2 + serializedStringBytes(key) + 1 + memberBytes;
-    }
-    payloadBytes += 2 + Math.max(members - 1, 0);
+    payloadBytes += Array.isArray(container)
+      ? serializedArrayBytes(container)
+      : serializedObjectBytes(container);
     return payloadBytes <= CLASS_2_IMPORT_LIMITS.maxBytes;
   });
   return { provenanced, withinByteBudget: payloadBytes <= CLASS_2_IMPORT_LIMITS.maxBytes };
+}
+
+/** Serialisierte Bytegröße eines Arrays samt Strukturzeichen; Löcher als null. */
+function serializedArrayBytes(container: readonly unknown[]): number {
+  const length = container.length;
+  let bytes = 2 + Math.max(length - 1, 0);
+  for (let index = 0; index < length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(container, index);
+    const slotValue =
+      descriptor !== undefined && 'value' in descriptor ? descriptor.value : undefined;
+    const slotBytes = serializedValueBytes(slotValue, true);
+    if (slotBytes !== null) bytes += slotBytes;
+  }
+  return bytes;
+}
+
+/**
+ * Serialisierte Bytegröße eines Objekts samt Strukturzeichen. Symbole
+ * erscheinen nicht in der Serialisierung; ihre Diagnose überlässt die
+ * Buchhaltung der Strukturinvariante. Accessor-Werte werden nie gelesen —
+ * solche Einschübe scheitern ohnehin an der anschließenden
+ * Invariantenprüfung. `undefined`-Mitglieder fallen wie serialisiert fort.
+ */
+function serializedObjectBytes(container: object): number {
+  let members = 0;
+  let bytes = 2;
+  for (const key of Reflect.ownKeys(container)) {
+    if (typeof key !== 'string') continue;
+    const descriptor = Object.getOwnPropertyDescriptor(container, key);
+    if (descriptor === undefined || !('value' in descriptor)) continue;
+
+    const memberBytes = serializedValueBytes(descriptor.value, false);
+    if (memberBytes === null) continue; // `undefined`-Mitglieder fallen fort.
+
+    members += 1;
+    bytes += 2 + serializedStringBytes(key) + 1 + memberBytes;
+  }
+  return bytes + Math.max(members - 1, 0);
 }
 
 /**
