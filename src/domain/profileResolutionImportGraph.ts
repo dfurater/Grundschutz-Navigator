@@ -93,13 +93,16 @@ function declaredOscalVersion(document: unknown): string | null {
 /**
  * Baut den Auflösungsplan: Preorder-Walk über die normalisierten Kanten ab
  * dem steuernden Profil mit globaler Besuchsmenge (geteilte Ziele sind
- * zulässig und werden genau einmal geplant), Zyklenerkennung über den
- * aktiven Pfad und Versionsbindung an das oberste Profil.
+ * zulässig und werden genau einmal geplant) und Zyklenerkennung über den
+ * aktiven Pfad. Die Traversierung läuft auf einem expliziten Frame-Stack —
+ * tiefe azyklische Ketten erschöpfen keinen Aufrufstapel (Greptile-Befund
+ * zu 9da9883) — und bindet die Graphenversion an das oberste Profil.
  */
 export function buildProfileResolutionPlan(
   input: ProfileResolutionPlanInput,
 ): ProfileResolutionPlan {
   const { topProfileArtifactKey, documents, edgesByArtifactKey } = input;
+  const emptyEdges: readonly ProfileResolutionEdge[] = [];
 
   const topDocument = documents.get(topProfileArtifactKey);
   if (topDocument === undefined) return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.TARGET_MISSING);
@@ -115,46 +118,59 @@ export function buildProfileResolutionPlan(
   const order: string[] = [];
   const planned = new Set<string>();
   const activePath = new Set<string>();
+  const stack: { readonly artifactKey: string; readonly edges: readonly ProfileResolutionEdge[]; index: number }[] = [];
 
-  const visit = (artifactKey: string): OscalDiagnostic | null => {
-    if (activePath.has(artifactKey)) {
-      return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.CYCLE).diagnostic;
+  activePath.add(topProfileArtifactKey);
+  planned.add(topProfileArtifactKey);
+  order.push(topProfileArtifactKey);
+  stack.push({
+    artifactKey: topProfileArtifactKey,
+    edges: edgesByArtifactKey.get(topProfileArtifactKey) ?? emptyEdges,
+    index: 0,
+  });
+
+  while (stack.length > 0) {
+    const frame = stack[stack.length - 1]!;
+    if (frame.index >= frame.edges.length) {
+      activePath.delete(frame.artifactKey);
+      stack.pop();
+      continue;
     }
-    if (planned.has(artifactKey)) return null;
+    const edge = frame.edges[frame.index]!;
+    frame.index += 1;
 
-    const document = documents.get(artifactKey);
+    if (activePath.has(edge.artifactKey)) {
+      return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.CYCLE);
+    }
+    if (planned.has(edge.artifactKey)) continue;
+
+    const document = documents.get(edge.artifactKey);
     if (document === undefined) {
-      return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.TARGET_MISSING).diagnostic;
+      return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.TARGET_MISSING);
     }
     const root = rootEntry(document);
     if (root === null || (root[0] !== 'catalog' && root[0] !== 'profile')) {
-      return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.ROOT_TYPE_MISMATCH).diagnostic;
+      return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.ROOT_TYPE_MISMATCH);
     }
-    const version = artifactKey === topProfileArtifactKey
-      ? graphVersion
-      : declaredOscalVersion(document);
+    const version = declaredOscalVersion(document);
     if (version === null) {
-      return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.VERSION_MISSING).diagnostic;
+      return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.VERSION_MISSING);
     }
     if (version !== graphVersion) {
-      return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.VERSION_MISMATCH).diagnostic;
+      return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.VERSION_MISMATCH);
     }
 
-    activePath.add(artifactKey);
-    planned.add(artifactKey);
-    order.push(artifactKey);
+    activePath.add(edge.artifactKey);
+    planned.add(edge.artifactKey);
+    order.push(edge.artifactKey);
 
-    for (const edge of edgesByArtifactKey.get(artifactKey) ?? []) {
-      const failure = visit(edge.artifactKey);
-      if (failure !== null) return failure;
+    const childEdges = edgesByArtifactKey.get(edge.artifactKey) ?? emptyEdges;
+    if (childEdges.length === 0) {
+      activePath.delete(edge.artifactKey);
+      continue;
     }
-
-    activePath.delete(artifactKey);
-    return null;
-  };
-
-  const failure = visit(topProfileArtifactKey);
-  if (failure !== null) return { ok: false, diagnostic: failure };
+    stack.push({ artifactKey: edge.artifactKey, edges: childEdges, index: 0 });
+  }
 
   return { ok: true, order, documents, oscalVersion: graphVersion };
 }

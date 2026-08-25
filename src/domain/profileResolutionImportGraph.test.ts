@@ -164,4 +164,37 @@ describe('Deterministischer Importgraph der Profile Resolution', () => {
       oscalVersion: '1.1.3',
     });
   });
+
+  it('antwortet auf eine tiefe azyklische Kette kontrolliert statt mit Stapelüberlauf', () => {
+    // Greptile-Befund zu 9da9883: Die Rekursion warf bei 12.000 Kettengliedern
+    // einen RangeError; der Planer muss tiefe Graphen mit einer stabilen
+    // Grenzdiagnose tragen oder ordnen.
+    const depth = 12_000;
+    const documents = new Map<string, unknown>();
+    const edges = new Map<string, { href: string; artifactKey: string }[]>();
+    for (let index = 0; index < depth; index += 1) {
+      const key = `profile-${index}`;
+      const nextKey = `profile-${index + 1}`;
+      documents.set(key, profileWithImports('1.1.3', [{ href: `#${nextKey}` }]));
+      edges.set(key, [{ href: `#${nextKey}`, artifactKey: nextKey }]);
+    }
+    documents.set(
+      `profile-${depth}`,
+      profileWithImports('1.1.3', []),
+    );
+
+    const plan = buildProfileResolutionPlan({
+      topProfileArtifactKey: 'profile-0',
+      documents,
+      edgesByArtifactKey: edges,
+    });
+
+    // Die iterative Traversierung trägt die tiefe Kette kontrolliert und
+    // ordnet sie vollständig — kein Stapelüberlauf, kein Teilergebnis.
+    expect(plan).toMatchObject({ ok: true });
+    if (plan.ok) {
+      expect(plan.order).toHaveLength(depth + 1);
+      expect(plan.order[0]).toBe('profile-0');
+    }
+  });
 });
