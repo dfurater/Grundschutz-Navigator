@@ -7,13 +7,14 @@
 // Entstehung und läuft durch genau diese exportierte Einheit.
 //
 // Herkunftsnachweis (ADR-8 Festlegung 3): Die Kette akzeptiert ausschließlich
-// Werte mit belegter Herkunft. Der Byte-Eintrittspunkt registriert das
-// unmittelbare Ergebnis seines eigenen JSON.parse; die Prüfung ist eine reine
-// Identitätsfrage und läuft vor jeder Reflexion, vor dem Root-Dispatch und vor
-// dem Modelleingang. Der Ableitungsweg tritt mit Commit B über ein eigenes,
-// privat registriertes `DerivedJsonTree`-Handle hier ein. Es gibt keinen
-// öffentlichen Weg, ein fremdes Objekt oder einen Proxy als „geparst“ zu
-// markieren.
+// Werte mit belegter Herkunft — für die Wurzel UND jeden Container des Baums.
+// Das Herkunftsmodul führt das JSON.parse selbst aus und registriert jeden
+// Container des Parse-Produkts; ein nach dem Parse eingetauschter Teilbaum
+// (Fremdobjekt oder Proxy) trägt keinen Beleg und scheitert an derselben
+// fail-closed Diagnose wie ein fremdes Rohobjekt. Die Prüfung ist eine reine
+// Identitätsfrage und läuft vor jeder Reflexion. Der Ableitungsweg tritt mit
+// Commit B über ein eigenes, ebenso geschlossen verwaltetes Handle-Register
+// hier ein.
 // =============================================================================
 
 import { dispatchOscalDocument, type OscalRootDispatchSuccess } from '@/adapters/oscalRootDispatch';
@@ -48,11 +49,29 @@ export type Class2OscalValueResult =
   | { readonly ok: false; readonly diagnostic: OscalDiagnostic };
 
 /**
+ * Prüft die Herkunft der Wurzel und aller Container in einem eigenen,
+ * rein identitätsbasierten Durchlauf vor jeder Reflexion. Ein fehlender Beleg
+ * eines einzelnen Containers genügt für die Ablehnung.
+ */
+function verifyProvenance(value: unknown): boolean {
+  if (value === null || typeof value !== 'object') return true;
+
+  const container = value as object;
+  if (!isParserProducedRoot(container)) return false;
+  if (Array.isArray(container)) {
+    return container.every((element) => verifyProvenance(element));
+  }
+  return Object.values(container).every((propertyValue) =>
+    verifyProvenance(propertyValue),
+  );
+}
+
+/**
  * Gemeinsame objektorientierte Prüfkette: Ein Wert mit belegter Herkunft plus
- * Kontext durchlaufen in dieser Reihenfolge Herkunftsprüfung (reine
- * Identitätsfrage), Strukturinvariante samt Ressourcenlimits (ein Durchlauf),
- * `dispatchOscalDocument()` und die gepinnte Schemastufe. Es entsteht bewusst
- * keine zweite Root-, Versions-, Limit- oder Referenzlogik.
+ * Kontext durchlaufen in dieser Reihenfolge Herkunftsprüfung (Wurzel und jeder
+ * Container, rein identitätsbasiert), Strukturinvariante samt Ressourcenlimits
+ * (ein Durchlauf), `dispatchOscalDocument()` und die gepinnte Schemastufe. Es
+ * entsteht bewusst keine zweite Root-, Versions-, Limit- oder Referenzlogik.
  *
  * `async`, weil die Schemastufe die Schema-Zelle als eigenen Chunk nachlädt.
  */
@@ -72,16 +91,12 @@ export async function processClass2OscalValue(
     };
   }
 
-  // Herkunft vor Reflexion: Container-Werte müssen in der modulprivaten Menge
-  // registriert sein, bevor der Durchlauf sie berührt. Rohobjekte, nachgebaute
-  // Handles und Proxy-Hüllen scheitern hier mit stabiler fail-closed Diagnose.
+  // Herkunft vor Reflexion: Wurzel und jeder Container müssen belegt sein.
+  // Rohobjekte, nachgebaute Handles, Proxy-Hüllen und nach dem Parse
+  // eingetauschte Teilbäume scheitern hier mit stabiler fail-closed Diagnose.
   // Primitive und `null` tragen keine Containeridentität; sie laufen unverändert
   // in den Root-Dispatch und erhalten dort ihre bestehende Diagnose.
-  if (
-    source !== null
-    && typeof source === 'object'
-    && !isParserProducedRoot(source)
-  ) {
+  if (!verifyProvenance(source)) {
     return { ok: false, diagnostic: createClass2UnprovenancedDiagnostic() };
   }
 

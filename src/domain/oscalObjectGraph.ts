@@ -125,7 +125,7 @@ function isObjectFormAllowed(record: Record<string, unknown>): boolean {
 }
 
 /** Primitivwerte: zulässig sind null, Boolean, String und Number außer NaN. */
-function visitPrimitive(value: Exclude<unknown, object | null>): OscalDiagnostic | null {
+function visitPrimitive(value: unknown): OscalDiagnostic | null {
   if (typeof value === 'number') {
     // ±Infinity bleibt zulässig, weil JSON.parse("1e400") es erzeugt.
     return Number.isNaN(value)
