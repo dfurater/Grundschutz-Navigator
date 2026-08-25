@@ -1,0 +1,155 @@
+// =============================================================================
+// Deterministischer Importgraph der Profile Resolution (GSPP-291 Commit B)
+//
+// Normalisiert Profil-zu-Profil- und Profil-zu-Katalog-Kanten zu einer
+// festen Auswertungsreihenfolge und prüft fail-closed, bevor irgendeine
+// Semantik läuft: Zyklusabbruch ohne Teilergebnis, fehlende Ziele,
+// Root-Type-Mismatch und gemischte OSCAL-Versionen im Graphen.
+//
+// Die Kanten kommen aus der Quellregister-Nachfolgetafel
+// (`CATALOG_LINEAGES`-Nachfolger); aufgelöst wird ausschließlich gegen
+// explizit bereitgestellte, verifizierte Dokumente — kein Netzwerk, kein
+// Dateizugriff.
+// =============================================================================
+
+import { createOscalDiagnostic, type OscalDiagnostic } from '@/domain/oscalDiagnostics';
+
+export const PROFILE_RESOLUTION_STAGE = 'profile-resolution' as const;
+
+export const PROFILE_RESOLUTION_VALIDATOR = Object.freeze({
+  name: 'gspp-profile-resolution',
+  version: '1',
+});
+
+/** Stabile, redigierte Codes des Importgraphen. */
+export const PROFILE_RESOLUTION_DIAGNOSTIC_CODES = Object.freeze({
+  /** Ein Profil importiert sich mittelbar oder unmittelbar selbst. */
+  CYCLE: 'PROFILE_RESOLUTION_CYCLE',
+  /** Eine Importkante zeigt auf kein bereitgestelltes Dokument. */
+  TARGET_MISSING: 'PROFILE_RESOLUTION_TARGET_MISSING',
+  /** Ziel-Dokument trägt weder `catalog` noch `profile` als Root-Key. */
+  ROOT_TYPE_MISMATCH: 'PROFILE_RESOLUTION_ROOT_TYPE_MISMATCH',
+  /** Der Graph trägt gemischte `oscal-version`-Werte. */
+  VERSION_MISMATCH: 'PROFILE_RESOLUTION_VERSION_MISMATCH',
+} as const);
+
+/** Eine normalisierte Importkante. */
+export interface ProfileResolutionEdge {
+  readonly href: string;
+  readonly artifactKey: string;
+}
+
+export interface ProfileResolutionPlanInput {
+  /** Artefaktschlüssel des obersten, steuernden Profils. */
+  readonly topProfileArtifactKey: string;
+  /** Verifizierte Rohdokumente nach Artefaktschlüssel. */
+  readonly documents: ReadonlyMap<string, unknown>;
+  /** Normalisierte Importkanten je Artefaktschlüssel. */
+  readonly edgesByArtifactKey: ReadonlyMap<string, readonly ProfileResolutionEdge[]>;
+}
+
+export type ProfileResolutionPlan =
+  | {
+    readonly ok: true;
+    /** Feste Preorder-Reihenfolge: das steuernde Profil zuerst. */
+    readonly order: readonly string[];
+    readonly documents: ReadonlyMap<string, unknown>;
+    /** Deklarierte Version des obersten Profils — die Graphenversion. */
+    readonly oscalVersion: string;
+  }
+  | { readonly ok: false; readonly diagnostic: OscalDiagnostic };
+
+function reject(code: string): { readonly ok: false; readonly diagnostic: OscalDiagnostic } {
+  return {
+    ok: false,
+    diagnostic: createOscalDiagnostic({
+      code,
+      stage: PROFILE_RESOLUTION_STAGE,
+      validator: PROFILE_RESOLUTION_VALIDATOR,
+      path: '/',
+    }),
+  };
+}
+
+function rootEntry(document: unknown): [string, Record<string, unknown>] | null {
+  if (document === null || typeof document !== 'object') return null;
+  const entries = Object.entries(document as Record<string, unknown>);
+  if (entries.length !== 1) return null;
+  const [rootKey, body] = entries[0]!;
+  if (body === null || typeof body !== 'object') return null;
+  return [rootKey, body as Record<string, unknown>];
+}
+
+function declaredOscalVersion(document: unknown): string | null {
+  const entry = rootEntry(document);
+  if (entry === null) return null;
+  const [, body] = entry;
+  const metadata = body['metadata'];
+  if (metadata === null || typeof metadata !== 'object') return null;
+  const version = (metadata as Record<string, unknown>)['oscal-version'];
+  return typeof version === 'string' && version.length > 0 ? version : null;
+}
+
+/**
+ * Baut den Auflösungsplan: Preorder-Walk über die normalisierten Kanten ab
+ * dem steuernden Profil mit globaler Besuchsmenge (geteilte Ziele sind
+ * zulässig und werden genau einmal geplant), Zyklenerkennung über den
+ * aktiven Pfad und Versionsbindung an das oberste Profil.
+ */
+export function buildProfileResolutionPlan(
+  input: ProfileResolutionPlanInput,
+): ProfileResolutionPlan {
+  const { topProfileArtifactKey, documents, edgesByArtifactKey } = input;
+
+  const topDocument = documents.get(topProfileArtifactKey);
+  if (topDocument === undefined) return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.TARGET_MISSING);
+  const topRoot = rootEntry(topDocument);
+  if (topRoot === null || topRoot[0] !== 'profile') {
+    return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.ROOT_TYPE_MISMATCH);
+  }
+  const graphVersion = declaredOscalVersion(topDocument);
+  if (graphVersion === null) return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.VERSION_MISMATCH);
+
+  const order: string[] = [];
+  const planned = new Set<string>();
+  const activePath = new Set<string>();
+
+  const visit = (artifactKey: string): OscalDiagnostic | null => {
+    if (activePath.has(artifactKey)) {
+      return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.CYCLE).diagnostic;
+    }
+    if (planned.has(artifactKey)) return null;
+
+    const document = documents.get(artifactKey);
+    if (document === undefined) {
+      return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.TARGET_MISSING).diagnostic;
+    }
+    const root = rootEntry(document);
+    if (root === null || (root[0] !== 'catalog' && root[0] !== 'profile')) {
+      return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.ROOT_TYPE_MISMATCH).diagnostic;
+    }
+    const version = artifactKey === topProfileArtifactKey
+      ? graphVersion
+      : declaredOscalVersion(document);
+    if (version !== graphVersion) {
+      return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.VERSION_MISMATCH).diagnostic;
+    }
+
+    activePath.add(artifactKey);
+    planned.add(artifactKey);
+    order.push(artifactKey);
+
+    for (const edge of edgesByArtifactKey.get(artifactKey) ?? []) {
+      const failure = visit(edge.artifactKey);
+      if (failure !== null) return failure;
+    }
+
+    activePath.delete(artifactKey);
+    return null;
+  };
+
+  const failure = visit(topProfileArtifactKey);
+  if (failure !== null) return { ok: false, diagnostic: failure };
+
+  return { ok: true, order, documents, oscalVersion: graphVersion };
+}
