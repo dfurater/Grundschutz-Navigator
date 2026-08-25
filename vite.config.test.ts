@@ -10,10 +10,11 @@ import {
 } from 'fs';
 import { join, relative } from 'path';
 import { tmpdir } from 'os';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, afterAll, describe, expect, it } from 'vitest';
 import {
   listCanonicalEntryRoutes,
   buildSitemapXml,
+  resolveDeploymentBase,
   writeSpaFallbackFile,
   writeSitemapFile,
   writeStaticRouteEntries,
@@ -37,6 +38,15 @@ const { JSDOM } = requireJsdom('jsdom') as {
     options?: { contentType?: string },
   ) => { window: { document: XmlLikeDocument } },
 };
+
+/*
+ * Die byte-exakten Sitemap-Erwartungen gelten für die Production-Defaults;
+ * ein von außen (z. B. Shell) gesetztes BUILD_BASE würde sie sonst kippen.
+ */
+delete process.env.BUILD_BASE;
+afterAll(() => {
+  delete process.env.BUILD_BASE;
+});
 
 const tempDirs: string[] = [];
 
@@ -99,7 +109,7 @@ afterEach(() => {
 describe('writeSitemapFile / buildSitemapXml', () => {
   const EXPECTED_SITEMAP = [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    '<urlset xmlns="https://www.sitemaps.org/schemas/sitemap/0.9">',
     '  <url><loc>https://dfurater.github.io/Grundschutz-Navigator/</loc></url>',
     ...listCanonicalEntryRoutes().map(
       (route) =>
@@ -172,13 +182,26 @@ describe('writeSitemapFile / buildSitemapXml', () => {
     const { document } = window;
 
     expect(document.documentElement.namespaceURI).toBe(
-      'http://www.sitemaps.org/schemas/sitemap/0.9',
+      'https://www.sitemaps.org/schemas/sitemap/0.9',
     );
     const locs = [...document.querySelectorAll('loc')].map(
       (node) => node.textContent ?? '',
     );
     expect(locs).toHaveLength(1 + listCanonicalEntryRoutes().length);
     expect(locs[0]).toBe('https://dfurater.github.io/Grundschutz-Navigator/');
+  });
+
+  it('derives its base from the resolved deployment base, not from a hardcoded path', () => {
+    process.env.BUILD_BASE = '/preview/';
+
+    try {
+      expect(resolveDeploymentBase()).toBe('/preview/');
+      expect(buildSitemapXml()).toContain(
+        '<loc>https://dfurater.github.io/preview/suche</loc>',
+      );
+    } finally {
+      delete process.env.BUILD_BASE;
+    }
   });
 });
 

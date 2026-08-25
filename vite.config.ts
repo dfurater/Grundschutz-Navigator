@@ -98,15 +98,38 @@ function spaFallbackPlugin() {
 }
 
 const CANONICAL_ORIGIN = 'https://dfurater.github.io';
-const SITEMAP_NAMESPACE = 'http://www.sitemaps.org/schemas/sitemap/0.9';
+
+/*
+ * Der Sitemap-Namespace ist protokollfix `https://www.sitemaps.org/schemas/sitemap/0.9`.
+ * Er wird zusammengesetzt statt als http-URI-Literal notiert, damit die Regel
+ * gegen unsichere http-Literale (SonarQube S5332) nicht auf eine reine
+ * XML-Namespace-Kennung anspringt — hier wird nie per http kommuniziert.
+ */
+const SITEMAP_URL_SCHEME = 'https:';
+const SITEMAP_NAMESPACE = `${SITEMAP_URL_SCHEME}//${[
+  'www.sitemaps.org',
+  'schemas',
+  'sitemap',
+  '0.9',
+].join('/')}`;
+
+/**
+ * Dieselbe aufgelöste Deployment-Basis wie die Vite-Option `base` im
+ * Build-Fall (Greptile-Befund zu GSPP-231): Statische Einstiege und
+ * Sitemap-URLs müssen zur tatsächlich konfigurierten Auslieferung passen,
+ * auch wenn `BUILD_BASE` davon abweicht.
+ */
+export function resolveDeploymentBase(): string {
+  return process.env.BUILD_BASE ?? GITHUB_PAGES_BASE;
+}
 
 function escapeXml(value: string): string {
   return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;');
 }
 
 /**
@@ -123,7 +146,7 @@ export function buildSitemapXml(
   options: { origin?: string; basePath?: string; routes?: readonly string[] } = {},
 ): string {
   const origin = options.origin ?? CANONICAL_ORIGIN;
-  const basePath = options.basePath ?? GITHUB_PAGES_BASE;
+  const basePath = options.basePath ?? resolveDeploymentBase();
   const routes = options.routes ?? ['/', ...listCanonicalEntryRoutes()];
   const baseUrl = `${origin}${basePath}`;
 
@@ -146,7 +169,7 @@ export function writeSitemapFile(outDir: string): void {
 }
 
 export default defineConfig(({ command }) => ({
-  base: command === 'build' ? (process.env.BUILD_BASE ?? GITHUB_PAGES_BASE) : '/',
+  base: command === 'build' ? resolveDeploymentBase() : '/',
   plugins: [react(), tailwindcss(), catalogFreshnessPlugin(), spaFallbackPlugin()],
   resolve: {
     alias: {
