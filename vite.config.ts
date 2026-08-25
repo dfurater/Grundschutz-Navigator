@@ -145,9 +145,10 @@ export function buildSitemapXml(
   const routes = options.routes ?? ['/', ...listCanonicalEntryRoutes()];
   const baseUrl = `${origin}${basePath}`;
 
-  const urlEntries = routes.map(
-    (route) => `  <url><loc>${escapeXml(`${baseUrl}${route.slice(1)}`)}</loc></url>`,
-  );
+  const urlEntries = routes.map((route) => {
+    const loc = escapeXml(`${baseUrl}${route.slice(1)}`);
+    return `  <url><loc>${loc}</loc></url>`;
+  });
 
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
