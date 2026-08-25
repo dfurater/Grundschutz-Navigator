@@ -213,9 +213,10 @@ export async function processClass2OscalValue(
 
   // Herkunft vor Reflexion: Wurzel und jeder Container müssen belegt sein.
   // Rohobjekte, Proxy-Hüllen, eingetauschte Teilbäume und Accessor-Einschübe
-  // scheitern hier bzw. an der anschließenden Invariantenprüfung. Für am
-  // Byteeintritt belegte Wurzeln gilt zusätzlich dieselbe Importgrößengrenze
-  // wie dort — Nachbeladung über den Wertpfad umgeht sie nicht.
+  // scheitern hier bzw. an der anschließenden Invariantenprüfung. Die
+  // Importgrößengrenze ist die Verfügbarkeitsgrenze der Klasse-2-Verarbeitung
+  // insgesamt — sie gilt für beide Herkunftswege gleichermaßen, damit kein
+  // Weg die Grenze des anderen umgeht (Greptile-Befund zu 57a3a86).
   const admission = verifyProvenance(source);
   if (!admission.provenanced) {
     return { ok: false, diagnostic: createClass2UnprovenancedDiagnostic() };
@@ -223,8 +224,8 @@ export async function processClass2OscalValue(
   if (
     typeof source === 'object' &&
     source !== null &&
-    isParserProducedRoot(source) &&
-    !admission.withinByteBudget
+    !admission.withinByteBudget &&
+    (isParserProducedRoot(source) || isDerivedProducedContainer(source))
   ) {
     return { ok: false, diagnostic: createClass2ByteLimitDiagnostic() };
   }

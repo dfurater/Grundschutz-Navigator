@@ -4,6 +4,7 @@ import {
   type DerivedGraphValue,
 } from './oscalDerivedGraph';
 import { processClass2OscalValue } from './oscalObjectPipeline';
+import { CLASS_2_IMPORT_LIMITS } from './oscalImportContract';
 
 const context = { trustClass: 'class-2-local-user' as const };
 
@@ -162,6 +163,31 @@ describe('Kontrollierter Builder für den Ableitungsweg', () => {
     expect(result).toMatchObject({
       ok: false,
       diagnostic: { stage: 'root-dispatch' },
+    });
+  });
+
+  it('bindet auch den Ableitungspfad an die Importgröße — Parität beider Wege', async () => {
+    // Greptile-Befund zu 57a3a86: Ein über den Builder erstelltes,
+    // schema-valides Dokument oberhalb der 10-MiB-Grenze wurde akzeptiert,
+    // während derselbe Inhalt am Byteeingang abgewiesen worden wäre. Die
+    // Grenze ist die Verfügbarkeitsgrenze der Klasse-2-Verarbeitung
+    // insgesamt — sie gilt für beide Herkunftswege gleichermaßen.
+    const builder = createOscalDerivedGraph();
+    const object = builder.object();
+    builder.setObjectMember(
+      object,
+      'unknownroot',
+      rebuildInto(builder, {
+        'metadata': { 'oscal-version': '1.1.3', 'title': 'x'.repeat(CLASS_2_IMPORT_LIMITS.maxBytes + 1) },
+      }),
+    );
+    const root = builder.finishRoot(object);
+
+    const result = await processClass2OscalValue(root, context);
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: { code: 'OSCAL_BYTE_LIMIT_EXCEEDED', stage: 'resource-limit' },
     });
   });
 });
