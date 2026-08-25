@@ -92,8 +92,57 @@ function spaFallbackPlugin() {
     closeBundle() {
       writeSpaFallbackFile(DIST_DIR);
       writeStaticRouteEntries(DIST_DIR);
+      writeSitemapFile(DIST_DIR);
     },
   };
+}
+
+const CANONICAL_ORIGIN = 'https://dfurater.github.io';
+const SITEMAP_NAMESPACE = 'http://www.sitemaps.org/schemas/sitemap/0.9';
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+/**
+ * Deterministische Sitemap der kanonischen Einstiegsseiten (GSPP-231): die
+ * Startseite plus exakt die Routen aus demselben Vertrag wie die statischen
+ * 200-Einstiege von GSPP-210 — dadurch kann keine der beiden Listen driftet.
+ * Nur die Pflichtfelder des Sitemap-Protokolls (`urlset`, `url`, `loc`); auf
+ * unbelegte optionale Felder (`lastmod`, `changefreq`, `priority`) wird
+ * bewusst verzichtet. Pfade müssen vertragsseitig URL-pfadkonform sein
+ * (`listCanonicalEntryRoutes()` kodiert die Katalogschlüssel bereits),
+ * XML-Sonderzeichen werden hier escaped.
+ */
+export function buildSitemapXml(
+  options: { origin?: string; basePath?: string; routes?: readonly string[] } = {},
+): string {
+  const origin = options.origin ?? CANONICAL_ORIGIN;
+  const basePath = options.basePath ?? GITHUB_PAGES_BASE;
+  const routes = options.routes ?? ['/', ...listCanonicalEntryRoutes()];
+  const baseUrl = `${origin}${basePath}`;
+
+  const urlEntries = routes.map(
+    (route) => `  <url><loc>${escapeXml(`${baseUrl}${route.slice(1)}`)}</loc></url>`,
+  );
+
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    `<urlset xmlns="${SITEMAP_NAMESPACE}">`,
+    ...urlEntries,
+    '</urlset>',
+    '',
+  ].join('\n');
+}
+
+/** Schreibt die Sitemap byte-deterministisch nach `dist/sitemap.xml`. */
+export function writeSitemapFile(outDir: string): void {
+  writeFileSync(resolve(outDir, 'sitemap.xml'), buildSitemapXml());
 }
 
 export default defineConfig(({ command }) => ({

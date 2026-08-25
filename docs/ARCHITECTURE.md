@@ -424,6 +424,10 @@ Die Anwendung verwendet React Router mit `BrowserRouter` und pfadbasierten URLs.
 
 Für kanonische Einstiegsrouten erzeugt das Vite-Plugin `github-pages-spa-fallback` (`vite.config.ts`) beim Build zusätzlich zu `404.html` je Route ein statisches `dist/<route>/index.html`, bytegleich zum gebauten `index.html`. GitHub Pages liefert diese Dokumente mit HTTP 200 aus; die Routen kommen ausschließlich aus dem gemeinsamen Vertrag `listCanonicalEntryRoutes()` — den sechs festen Inhaltsrouten (`/suche`, `/vokabular`, `/about`, `/datenschutz`, `/impressum`, `/lizenzen`) plus je einem Einstieg `/katalog/<catalogKey>` für jeden von `listSupportedCatalogs()` im Quellregister (`src/domain/sourceRegistry.mjs`) als `supported` geführten Katalog. Das absichtlich ungültige `/katalog`, der Redirect `/mehr`, parametrisierte Gruppen-, Control- und Vokabular-Detailrouten sowie Query-/Filter-URLs werden bewusst nicht materialisiert. Für alle übrigen Pfade dient `dist/404.html` weiterhin als Fallback: GitHub Pages reicht unbekannte Pfade an die SPA durch, allerdings mit HTTP-Status 404.
 
+### Sitemap
+
+Beim Build entsteht deterministisch eine UTF-8-kodierte `dist/sitemap.xml` mit XML-Deklaration und dem Namespace `http://www.sitemaps.org/schemas/sitemap/0.9`. Sie enthält genau einmal die absolute kanonische URL der Startseite, der sechs festen Inhaltsrouten und jedes von `listSupportedCatalogs()` gelieferten Katalogeinstiegs — dieselbe Positivliste wie die statischen 200-Einstiege, gebildet aus demselben Vertrag `listCanonicalEntryRoutes()`, sodass beide Ausgaben nicht driften können. Origin (`https://dfurater.github.io`) und Basispfad (`/Grundschutz-Navigator/`) sind die Production-Defaults des Buildvertrags; XML-Sonderzeichen werden escaped. Geschrieben werden ausschließlich die Pflichtfelder `urlset`, `url` und `loc` — bewusst ohne unbelegte optionale Felder wie `lastmod`, `changefreq` oder `priority`. Die manuelle Einreichung in der Search Console liegt beim Projekt-Owner und ist kein Teil des Builds.
+
 | Route | Komponente | Beschreibung |
 |-------|------------|--------------|
 | `/` | HomePage | Startseite |

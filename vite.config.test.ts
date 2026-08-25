@@ -13,9 +13,30 @@ import { tmpdir } from 'os';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   listCanonicalEntryRoutes,
+  buildSitemapXml,
   writeSpaFallbackFile,
+  writeSitemapFile,
   writeStaticRouteEntries,
 } from './vite.config';
+import { createRequire } from 'node:module';
+
+// jsdom ist als Dev-Dependency vorhanden (Vitest-jsdom-Umgebung), bringt aber
+// keine Typen mit. Der Laufzeit-Import über createRequire hält die
+// Abhängigkeitsliste und die Typwelt unverändert und dient ausschließlich der
+// echten XML-Parsing-Validierung der Sitemap im Test.
+const requireJsdom = createRequire(import.meta.url);
+
+interface XmlLikeDocument {
+  documentElement: { namespaceURI: string | null };
+  querySelectorAll(selector: string): { textContent: string | null }[];
+}
+
+const { JSDOM } = requireJsdom('jsdom') as {
+  JSDOM: new (
+    input: string,
+    options?: { contentType?: string },
+  ) => { window: { document: XmlLikeDocument } },
+};
 
 const tempDirs: string[] = [];
 
@@ -73,6 +94,92 @@ afterEach(() => {
   while (tempDirs.length > 0) {
     rmSync(tempDirs.pop()!, { recursive: true, force: true });
   }
+});
+
+describe('writeSitemapFile / buildSitemapXml', () => {
+  const EXPECTED_SITEMAP = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    '  <url><loc>https://dfurater.github.io/Grundschutz-Navigator/</loc></url>',
+    ...listCanonicalEntryRoutes().map(
+      (route) =>
+        `  <url><loc>https://dfurater.github.io/Grundschutz-Navigator${route}</loc></url>`,
+    ),
+    '</urlset>',
+    '',
+  ].join('\n');
+
+  it('emits a deterministic UTF-8 document with XML declaration and urlset namespace', () => {
+    expect(buildSitemapXml()).toBe(EXPECTED_SITEMAP);
+    expect(Buffer.from(buildSitemapXml(), 'utf8')).toEqual(
+      Buffer.from(EXPECTED_SITEMAP, 'utf8'),
+    );
+  });
+
+  it('lists the start page, all fixed content routes, and every supported catalog entry exactly once', () => {
+    const xml = buildSitemapXml();
+    const locs = [...xml.matchAll(/<loc>([^<]*)<\/loc>/g)].map((match) => match[1]);
+
+    expect(new Set(locs).size).toBe(locs.length);
+    expect(locs).toContain('https://dfurater.github.io/Grundschutz-Navigator/');
+    for (const route of listCanonicalEntryRoutes()) {
+      expect(locs).toContain(`https://dfurater.github.io/Grundschutz-Navigator${route}`);
+    }
+    expect(locs).toHaveLength(1 + listCanonicalEntryRoutes().length);
+  });
+
+  it('excludes /katalog, /mehr, detail routes, query URLs, and unsupported catalogs from the sitemap', () => {
+    const locs = buildSitemapXml().match(/<loc>[^<]*<\/loc>/g) ?? [];
+
+    for (const loc of locs) {
+      expect(loc).not.toMatch(/^<loc>https:\/\/dfurater\.github\.io\/Grundschutz-Navigator\/katalog<\/loc>$/);
+      expect(loc).not.toContain('/mehr');
+      expect(loc).not.toContain('/kontrolle/');
+      expect(loc).not.toContain('?');
+      expect(loc).toMatch(/^<loc>https:\/\/dfurater\.github\.io/);
+    }
+  });
+
+  it('never emits optional sitemap fields and keeps every loc inside the canonical origin and base path', () => {
+    const xml = buildSitemapXml();
+
+    expect(xml).not.toContain('<lastmod>');
+    expect(xml).not.toContain('<changefreq>');
+    expect(xml).not.toContain('<priority>');
+    expect(xml).not.toContain('&amp;apos;');
+  });
+
+  it('escapes XML special characters in generated values', () => {
+    const xml = buildSitemapXml({
+      origin: 'https://example.com',
+      basePath: '/base/',
+      routes: ['/a&b<c>d"e\''],
+    });
+
+    expect(xml).toContain('<loc>https://example.com/base/a&amp;b&lt;c&gt;d&quot;e&apos;</loc>');
+  });
+
+  it('writes byte-deterministically to dist/sitemap.xml', () => {
+    const distDir = createTempDistWithIndex();
+
+    writeSitemapFile(distDir);
+
+    expect(readFileSync(join(distDir, 'sitemap.xml'), 'utf8')).toBe(EXPECTED_SITEMAP);
+  });
+
+  it('parses as valid XML with the sitemap namespace and one loc per canonical URL', () => {
+    const { window } = new JSDOM(buildSitemapXml(), { contentType: 'application/xml' });
+    const { document } = window;
+
+    expect(document.documentElement.namespaceURI).toBe(
+      'http://www.sitemaps.org/schemas/sitemap/0.9',
+    );
+    const locs = [...document.querySelectorAll('loc')].map(
+      (node) => node.textContent ?? '',
+    );
+    expect(locs).toHaveLength(1 + listCanonicalEntryRoutes().length);
+    expect(locs[0]).toBe('https://dfurater.github.io/Grundschutz-Navigator/');
+  });
 });
 
 describe('listCanonicalEntryRoutes', () => {
