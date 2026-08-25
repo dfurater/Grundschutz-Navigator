@@ -114,6 +114,41 @@ type IndexTask =
  * tiefe Hierarchien erschöpfen den Aufrufstapel nicht (Greptile-Befund zu
  * 0034765). Rein deskriptorbasiert; Accessoren erscheinen als abwesend.
  */
+/** Gruppen- und Control-Kinder eines Containers in Dokumentreihenfolge. */
+function collectContainerChildTasks(
+  container: JsonObject,
+  childTasks: IndexTask[],
+): void {
+  // Dokumentreihenfolge der Schlüssel ist bedeutungstragend.
+  for (const key of Reflect.ownKeys(container)) {
+    if (typeof key !== 'string') continue;
+    const value = ownDataValue(container, key);
+    if (!Array.isArray(value)) continue;
+    if (key === 'groups') {
+      for (const group of value) {
+        if (isPlainObjectBody(group)) childTasks.push({ kind: 'container', node: group });
+      }
+    } else if (key === 'controls') {
+      for (const node of value) {
+        if (isJsonObject(node)) childTasks.push({ kind: 'control', node, parent: null });
+      }
+    }
+  }
+}
+
+/** Kind-Controls einer Control in Dokumentreihenfolge. */
+function collectControlChildTasks(
+  control: JsonObject,
+  parentControlId: string,
+  childTasks: IndexTask[],
+): void {
+  const children = ownDataValue(control, 'controls');
+  if (!Array.isArray(children)) return;
+  for (const child of children) {
+    if (isJsonObject(child)) childTasks.push({ kind: 'control', node: child, parent: parentControlId });
+  }
+}
+
 function indexCatalogBody(body: JsonObject, state: IndexState): void {
   const stack: IndexTask[] = [{ kind: 'container', node: body }];
 
@@ -122,30 +157,11 @@ function indexCatalogBody(body: JsonObject, state: IndexState): void {
     const childTasks: IndexTask[] = [];
 
     if (task.kind === 'container') {
-      // Dokumentreihenfolge der Schlüssel ist bedeutungstragend.
-      for (const key of Reflect.ownKeys(task.node)) {
-        if (typeof key !== 'string') continue;
-        const value = ownDataValue(task.node, key);
-        if (!Array.isArray(value)) continue;
-        if (key === 'groups') {
-          for (const group of value) {
-            if (isPlainObjectBody(group)) childTasks.push({ kind: 'container', node: group });
-          }
-        } else if (key === 'controls') {
-          for (const node of value) {
-            if (isJsonObject(node)) childTasks.push({ kind: 'control', node, parent: null });
-          }
-        }
-      }
+      collectContainerChildTasks(task.node, childTasks);
     } else {
-      const id = readControlId(task.node);
       registerControl(task.node, task.parent, state);
-      if (id === null) continue;
-      const children = ownDataValue(task.node, 'controls');
-      if (!Array.isArray(children)) continue;
-      for (const child of children) {
-        if (isJsonObject(child)) childTasks.push({ kind: 'control', node: child, parent: id });
-      }
+      const id = readControlId(task.node);
+      if (id !== null) collectControlChildTasks(task.node, id, childTasks);
     }
 
     // Umgekehrt pushen, damit der Stapel die Originalordnung liefert.
