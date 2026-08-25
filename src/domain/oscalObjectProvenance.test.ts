@@ -260,6 +260,45 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
     });
   });
 
+  it('zählt Riesenschlüssel hinter Container-Werten — keine Buchhaltungslücke für verschachtelte Graphen', async () => {
+    // Greptile-Befund zu e1d884f: Mitglieder mit Container-Wert durften ihren
+    // Schlüssel unaufgerechnet behalten; eine Nachbeladung mit Riesenschlüssel
+    // und leerem Array umging die Grenze erneut. Der Schlüssel jedes
+    // gezählten Mitglieds trägt seinen serialisierten Anteil, der Container
+    // ausschließlich an seinem eigenen Besuch.
+    const input = await parseClass2OscalInput(
+      new TextEncoder().encode('{"catalog":{"metadata":{"title":"x"}}}'),
+    );
+    if (!input.ok) throw new Error('Fixture muss parsen');
+
+    const metadata = (
+      input.source as { catalog: { metadata: Record<string, unknown> } }
+    ).catalog.metadata;
+    metadata['K'.repeat(CLASS_2_IMPORT_LIMITS.maxBytes)] = [];
+
+    const result = await processClass2OscalValue(input.source, context);
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: { code: 'OSCAL_BYTE_LIMIT_EXCEEDED', stage: 'resource-limit' },
+    });
+  });
+
+  it('zählt verschachtelte Container genau einmal — kein Doppelsummen-Falschabschluss', async () => {
+    // Derselbe Befund, Gegenrichtung: Der Slot eines verschachtelten Arrays
+    // darf nicht zusätzlich als null-Pseudowert in den Elternbeitrag laufen.
+    const input = await parseClass2OscalInput(
+      new TextEncoder().encode(
+        JSON.stringify(makeSchemaValidOscalDocument('catalog', '1.1.3')),
+      ),
+    );
+    if (!input.ok) throw new Error('Fixture muss parsen');
+
+    const result = await processClass2OscalValue(input.source, context);
+
+    expect(result).toMatchObject({ ok: true, document: { rootType: 'catalog' } });
+  });
+
   it('registriert auch tief verschachtelte Dokumente ohne Stapelüberlauf', async () => {
     // Greptile-Befund zu 04ccf9c: Die Registrierung rekurrierte unbegrenzt und
     // warf bei tiefer Verschachtelung einen RangeError statt kontrolliert zu

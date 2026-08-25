@@ -87,13 +87,14 @@ function serializedStringBytes(value: string): number {
 }
 
 /** Serialisierter Wertbeitrag ohne umschließende Anführungszeichen. */
-function serializedValueBytes(value: unknown, isArraySlot: boolean): number | null {
+function serializedValueBytes(value: unknown): number {
   if (typeof value === 'string') return 2 + serializedStringBytes(value);
   if (typeof value === 'number') return Number.isFinite(value) ? String(value).length : 4;
   if (typeof value === 'boolean') return value ? 4 : 5;
   if (value === null) return 4;
-  // `undefined` fällt im Objekt fort; als Arrayslot serialisiert es als null.
-  return isArraySlot ? 4 : null;
+  // Verschachtelte Container zählt der Lauf exakt einmal — bei ihrem eigenen
+  // Besuch, mitsamt Klammen, Trennern und Mitgliedern.
+  return 0;
 }
 
 /**
@@ -140,8 +141,9 @@ function serializedArrayBytes(container: readonly unknown[]): number {
     const descriptor = Object.getOwnPropertyDescriptor(container, index);
     const slotValue =
       descriptor !== undefined && 'value' in descriptor ? descriptor.value : undefined;
-    const slotBytes = serializedValueBytes(slotValue, true);
-    if (slotBytes !== null) bytes += slotBytes;
+    // Fehlende und ausdrücklich undefined Slots serialisieren als null;
+    // verschachtelte Container liefern hier 0 und zählen an ihrem Besuch.
+    bytes += slotValue === undefined ? 4 : serializedValueBytes(slotValue);
   }
   return bytes;
 }
@@ -151,7 +153,9 @@ function serializedArrayBytes(container: readonly unknown[]): number {
  * erscheinen nicht in der Serialisierung; ihre Diagnose überlässt die
  * Buchhaltung der Strukturinvariante. Accessor-Werte werden nie gelesen —
  * solche Einschübe scheitern ohnehin an der anschließenden
- * Invariantenprüfung. `undefined`-Mitglieder fallen wie serialisiert fort.
+ * Invariantenprüfung. `undefined`-Mitglieder fallen wie serialisiert fort,
+ * jedes verbleibende Mitglied trägt Schlüssel, Doppelpunkt und Wertbeitrag;
+ * Container-Werte liefern beim Wert selbst 0 und zählen an ihrem Besuch.
  */
 function serializedObjectBytes(container: object): number {
   let members = 0;
@@ -160,12 +164,10 @@ function serializedObjectBytes(container: object): number {
     if (typeof key !== 'string') continue;
     const descriptor = Object.getOwnPropertyDescriptor(container, key);
     if (descriptor === undefined || !('value' in descriptor)) continue;
-
-    const memberBytes = serializedValueBytes(descriptor.value, false);
-    if (memberBytes === null) continue; // `undefined`-Mitglieder fallen fort.
+    if (descriptor.value === undefined) continue; // Serialisierung lässt es fort.
 
     members += 1;
-    bytes += 2 + serializedStringBytes(key) + 1 + memberBytes;
+    bytes += 2 + serializedStringBytes(key) + 1 + serializedValueBytes(descriptor.value);
   }
   return bytes + Math.max(members - 1, 0);
 }
