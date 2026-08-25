@@ -140,40 +140,58 @@ function verifyProvenance(root: unknown): ProvenanceVerdict {
   return { provenanced, withinByteBudget: payloadBytes <= CLASS_2_IMPORT_LIMITS.maxBytes };
 }
 
-/** Serialisierte Bytegröße eines Arrays samt Strukturzeichen; Löcher als null. */
-function serializedArrayBytes(container: readonly unknown[]): number {
-  const length = container.length;
+/** Serialisierte Bytegröße eines dichten Arrays: Indizes exakt, Löcher unmöglich. */
+function serializedDenseArrayBytes(container: readonly unknown[], length: number): number {
   let bytes = 2 + Math.max(length - 1, 0);
-
-  // Ein dichtes Array trägt genau die Indizes 0..length-1 plus `length`;
-  // dann läuft der Slot-Loop unten in linearer Zeit über echte Elemente.
-  if (Reflect.ownKeys(container).length === length + 1) {
-    for (let index = 0; index < length; index += 1) {
-      const descriptor = Object.getOwnPropertyDescriptor(container, index);
-      const slotValue =
-        descriptor !== undefined && 'value' in descriptor ? descriptor.value : undefined;
-      bytes += slotValue === undefined ? 4 : serializedValueBytes(slotValue);
-    }
-    return bytes;
-  }
-
-  // Nicht dicht: Die Form scheitert ohnehin an der Invariante — die
-  // Buchhaltung bleibt trotzdem vollständig und richtungstreu, ohne die
-  // deklarierte Länge zu iterieren: existierende Slots exakt, jedes Loch
-  // als null, alles rein arithmetisch (Greptile-Befund zu bcde872).
-  let definedSlots = 0;
-  for (const key of Reflect.ownKeys(container)) {
-    if (typeof key !== 'string') continue;
-    const index = Number(key);
-    if (!Number.isInteger(index)) continue; // `length` und Fremdschlüssel serialisieren nicht.
+  for (let index = 0; index < length; index += 1) {
     const descriptor = Object.getOwnPropertyDescriptor(container, index);
     const slotValue =
       descriptor !== undefined && 'value' in descriptor ? descriptor.value : undefined;
     bytes += slotValue === undefined ? 4 : serializedValueBytes(slotValue);
-    definedSlots += 1;
   }
-  const holes = Math.max(length - definedSlots, 0);
+  return bytes;
+}
+
+/**
+ * Serialisierte Bytegröße eines nicht dichten Arrays: existierende Slots
+ * exakt über ihre Schlüssel, jedes Loch arithmetisch als null — vollständig
+ * richtungstreu, ohne die deklarierte Länge zu iterieren.
+ */
+function serializedSparseArrayBytes(container: readonly unknown[], length: number): number {
+  let bytes = 2 + Math.max(length - 1, 0);
+  let canonicalSlots = 0;
+  for (const key of Reflect.ownKeys(container)) {
+    if (typeof key !== 'string') continue;
+    const index = Number(key);
+    // Nur kanonische Indizes 0 <= i < length sind Arrayslots; "-1", "01"
+    // oder außerhalb der Länge liegende Schlüssel erscheinen nicht in der
+    // Serialisierung und dürfen Löcherzahl wie Wertbeitrag nicht berühren
+    // (Greptile-Befund zu 43105b4).
+    if (
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= length ||
+      String(index) !== key
+    ) {
+      continue;
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(container, index);
+    const slotValue =
+      descriptor !== undefined && 'value' in descriptor ? descriptor.value : undefined;
+    bytes += slotValue === undefined ? 4 : serializedValueBytes(slotValue);
+    canonicalSlots += 1;
+  }
+  const holes = Math.max(length - canonicalSlots, 0);
   return bytes + holes * 4;
+}
+
+/** Serialisierte Bytegröße eines Arrays samt Strukturzeichen; Löcher als null. */
+function serializedArrayBytes(container: readonly unknown[]): number {
+  const length = container.length;
+  const dense = Reflect.ownKeys(container).length === length + 1;
+  return dense
+    ? serializedDenseArrayBytes(container, length)
+    : serializedSparseArrayBytes(container, length);
 }
 
 /**
@@ -229,8 +247,10 @@ export async function processClass2OscalValue(
   // Rohobjekte, Proxy-Hüllen, eingetauschte Teilbäume und Accessor-Einschübe
   // scheitern hier bzw. an der anschließenden Invariantenprüfung. Die
   // Importgrößengrenze ist die Verfügbarkeitsgrenze der Klasse-2-Verarbeitung
-  // insgesamt — sie gilt für beide Herkunftswege gleichermaßen, damit kein
-  // Weg die Grenze des anderen umgeht (Greptile-Befund zu 57a3a86).
+  // insgesamt — sobald die Herkunft steht, gilt sie für den Wert unabhängig
+  // davon, welcher der beiden geschlossenen Wege ihn hervorgebracht hat
+  // (eine erneute Aufzählung der Quellen hier wäre ein Driftvektor,
+  // Gitar-Hinweis zu b55404a).
   const admission = verifyProvenance(source);
   if (!admission.provenanced) {
     return { ok: false, diagnostic: createClass2UnprovenancedDiagnostic() };
@@ -238,8 +258,7 @@ export async function processClass2OscalValue(
   if (
     typeof source === 'object' &&
     source !== null &&
-    !admission.withinByteBudget &&
-    (isParserProducedRoot(source) || isDerivedProducedContainer(source))
+    !admission.withinByteBudget
   ) {
     return { ok: false, diagnostic: createClass2ByteLimitDiagnostic() };
   }
