@@ -91,14 +91,19 @@ describe('Kontrollierter Builder für den Ableitungsweg', () => {
     });
   });
 
-  it('lehnt einen Proxy um ein echtes Builder-Handle ab — andere Containeridentität', () => {
+  it('lehnt einen Proxy um ein echtes Builder-Handle an der Kette ab — andere Containeridentität', async () => {
     const builder = createOscalDerivedGraph();
     const object = builder.object();
     const root = builder.finishRoot(object);
 
-    const wrapped = new Proxy(root as object, {});
+    const wrapped = new Proxy(root, {});
 
-    expect(wrapped).not.toBe(root);
+    const result = await processClass2OscalValue(wrapped, context);
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: { code: 'OSCAL_OBJECT_UNPROVENANCED' },
+    });
   });
 
   it('wirft bei fremden Objekt- oder Arraywerten sofort', () => {

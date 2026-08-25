@@ -96,6 +96,52 @@ function resolveGraphValue(value: DerivedGraphValue): unknown {
  * Builder-Sicht; Container entstehen ausschließlich hier und landen sofort
  * im Herkunftsregister dieses Moduls.
  */
+function object(): DerivedObjectHandle {
+  const handle = {} as DerivedObjectHandle;
+  const container: Record<string, unknown> = {};
+  containerByHandle.set(handle, container);
+  derivedContainers.add(container);
+  return handle;
+}
+
+function array(): DerivedArrayHandle {
+  const handle = [] as unknown as DerivedArrayHandle;
+  const container: unknown[] = [];
+  containerByHandle.set(handle, container);
+  derivedContainers.add(container);
+  return handle;
+}
+
+function setObjectMember(
+  handle: DerivedObjectHandle,
+  key: string,
+  value: DerivedGraphValue,
+): void {
+  if (typeof key !== 'string') throw new TypeError('Mitgliederschlüssel muss ein String sein');
+  const container = internalContainer(handle) as Record<string, unknown>;
+  if (Object.hasOwn(container, key)) {
+    throw new TypeError('Doppeltes Mitglied: Schlüssel bereits vorhanden');
+  }
+  // Eigene __proto__-Felder bleiben Data-Property statt Prototypwechsel.
+  defineDataMember(container, key, resolveGraphValue(value));
+}
+
+function pushArrayItem(handle: DerivedArrayHandle, value: DerivedGraphValue): void {
+  const container = internalContainer(handle) as unknown[];
+  container.push(resolveGraphValue(value));
+}
+
+function finishRoot(handle: DerivedObjectHandle | DerivedArrayHandle): DerivedJsonTree {
+  // Freigegeben wird der registrierte Container selbst — nie ein
+  // unverknüpftes Handle-Objekt, sonst trüge die Wurzel keinen Beleg.
+  return internalContainer(handle) as DerivedJsonTree;
+}
+
+/**
+ * Fabrik des kontrollierten Builders. Der Builder trägt keinen
+ * instanzgebundenen Zustand — das Register lebt modulglobal —, daher sind
+ * alle Operationen Modulfunktionen; die Fabrik bündelt nur die Sicht.
+ */
 export function createOscalDerivedGraph(): {
   object(): DerivedObjectHandle;
   array(): DerivedArrayHandle;
@@ -107,46 +153,5 @@ export function createOscalDerivedGraph(): {
   pushArrayItem(handle: DerivedArrayHandle, value: DerivedGraphValue): void;
   finishRoot(handle: DerivedObjectHandle | DerivedArrayHandle): DerivedJsonTree;
 } {
-  function object(): DerivedObjectHandle {
-    const handle = {} as DerivedObjectHandle;
-    const container: Record<string, unknown> = {};
-    containerByHandle.set(handle, container);
-    derivedContainers.add(container);
-    return handle;
-  }
-
-  function array(): DerivedArrayHandle {
-    const handle = [] as unknown as DerivedArrayHandle;
-    const container: unknown[] = [];
-    containerByHandle.set(handle, container);
-    derivedContainers.add(container);
-    return handle;
-  }
-
-  function setObjectMember(
-    handle: DerivedObjectHandle,
-    key: string,
-    value: DerivedGraphValue,
-  ): void {
-    if (typeof key !== 'string') throw new TypeError('Mitgliederschlüssel muss ein String sein');
-    const container = internalContainer(handle) as Record<string, unknown>;
-    if (Object.prototype.hasOwnProperty.call(container, key)) {
-      throw new TypeError(`Doppeltes Mitglied: ${key.length > 0 ? 'Schlüssel bereits vorhanden' : 'leerer Schlüssel'}`);
-    }
-    // Eigene __proto__-Felder bleiben Data-Property statt Prototypwechsel.
-    defineDataMember(container, key, resolveGraphValue(value));
-  }
-
-  function pushArrayItem(handle: DerivedArrayHandle, value: DerivedGraphValue): void {
-    const container = internalContainer(handle) as unknown[];
-    container.push(resolveGraphValue(value));
-  }
-
-  function finishRoot(handle: DerivedObjectHandle | DerivedArrayHandle): DerivedJsonTree {
-    // Freigegeben wird der registrierte Container selbst — nie ein
-    // unverknüpftes Handle-Objekt, sonst trüge die Wurzel keinen Beleg.
-    return internalContainer(handle) as DerivedJsonTree;
-  }
-
   return { object, array, setObjectMember, pushArrayItem, finishRoot };
 }

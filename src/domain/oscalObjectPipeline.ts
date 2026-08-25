@@ -124,6 +124,10 @@ function verifyProvenance(root: unknown): ProvenanceVerdict {
   walkOwnContainers(root, (container) => {
     // Zwei geschlossene Herkunftsquellen: der Byte-Eintrittspunkt und der
     // kontrollierte Builder des Ableitungswegs; alles andere scheitert.
+    // Der Lauf endet NUR bei fehlendem Beleg vorzeitig — eine Budget-
+    // überschreitung darf den Belegnachweis nie abkürzen, sonst trügen
+    // übergroße Graphen unbelegte Nachfahren unausgeprüft durch
+    // (Gitar-Befund zu 185062c).
     if (!isParserProducedRoot(container) && !isDerivedProducedContainer(container)) {
       provenanced = false;
       return false;
@@ -131,7 +135,7 @@ function verifyProvenance(root: unknown): ProvenanceVerdict {
     payloadBytes += Array.isArray(container)
       ? serializedArrayBytes(container)
       : serializedObjectBytes(container);
-    return payloadBytes <= CLASS_2_IMPORT_LIMITS.maxBytes;
+    return true;
   });
   return { provenanced, withinByteBudget: payloadBytes <= CLASS_2_IMPORT_LIMITS.maxBytes };
 }

@@ -29,6 +29,8 @@ export const PROFILE_RESOLUTION_DIAGNOSTIC_CODES = Object.freeze({
   TARGET_MISSING: 'PROFILE_RESOLUTION_TARGET_MISSING',
   /** Ziel-Dokument trägt weder `catalog` noch `profile` als Root-Key. */
   ROOT_TYPE_MISMATCH: 'PROFILE_RESOLUTION_ROOT_TYPE_MISMATCH',
+  /** Ein Dokument des Graphen deklariert keine `oscal-version`. */
+  VERSION_MISSING: 'PROFILE_RESOLUTION_VERSION_MISSING',
   /** Der Graph trägt gemischte `oscal-version`-Werte. */
   VERSION_MISMATCH: 'PROFILE_RESOLUTION_VERSION_MISMATCH',
 } as const);
@@ -84,9 +86,7 @@ function declaredOscalVersion(document: unknown): string | null {
   const entry = rootEntry(document);
   if (entry === null) return null;
   const [, body] = entry;
-  const metadata = body['metadata'];
-  if (metadata === null || typeof metadata !== 'object') return null;
-  const version = (metadata as Record<string, unknown>)['oscal-version'];
+  const version = (body['metadata'] as Record<string, unknown> | undefined)?.['oscal-version'];
   return typeof version === 'string' && version.length > 0 ? version : null;
 }
 
@@ -108,7 +108,9 @@ export function buildProfileResolutionPlan(
     return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.ROOT_TYPE_MISMATCH);
   }
   const graphVersion = declaredOscalVersion(topDocument);
-  if (graphVersion === null) return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.VERSION_MISMATCH);
+  if (graphVersion === null) {
+    return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.VERSION_MISSING);
+  }
 
   const order: string[] = [];
   const planned = new Set<string>();
@@ -131,6 +133,9 @@ export function buildProfileResolutionPlan(
     const version = artifactKey === topProfileArtifactKey
       ? graphVersion
       : declaredOscalVersion(document);
+    if (version === null) {
+      return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.VERSION_MISSING).diagnostic;
+    }
     if (version !== graphVersion) {
       return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.VERSION_MISMATCH).diagnostic;
     }

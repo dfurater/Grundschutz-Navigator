@@ -117,6 +117,24 @@ describe('Deterministischer Importgraph der Profile Resolution', () => {
     });
   });
 
+  it('meldet eine fehlende Zielversion als eigene Diagnose statt als Versionskonflikt', () => {
+    const plan = buildProfileResolutionPlan({
+      topProfileArtifactKey: 'profile-a',
+      documents: new Map<string, unknown>([
+        ['profile-a', profileWithImports('1.1.3', [{ href: '../c.json' }])],
+        ['catalog-c', { catalog: {} }],
+      ]),
+      edgesByArtifactKey: new Map([
+        ['profile-a', [{ href: '../c.json', artifactKey: 'catalog-c' }]],
+      ]),
+    });
+
+    expect(plan).toMatchObject({
+      ok: false,
+      diagnostic: { code: PROFILE_RESOLUTION_DIAGNOSTIC_CODES.VERSION_MISSING },
+    });
+  });
+
   it('löst Profilketten deterministisch in Importreihenfolge auf', () => {
     const plan = buildProfileResolutionPlan({
       topProfileArtifactKey: 'profile-top',
