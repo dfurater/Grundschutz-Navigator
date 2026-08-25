@@ -93,7 +93,7 @@ function declaredOscalVersion(document: unknown): string | null {
 /** Prüft Root-Typ und Versionsbindung eines Dokuments des Graphen. */
 function admitDocument(document: unknown, graphVersion: string): OscalDiagnostic | null {
   const root = rootEntry(document);
-  if (root === null || (root[0] !== 'catalog' && root[0] !== 'profile')) {
+  if (root?.[0] !== 'catalog' && root?.[0] !== 'profile') {
     return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.ROOT_TYPE_MISMATCH).diagnostic;
   }
   const version = declaredOscalVersion(document);
@@ -121,7 +121,7 @@ export function buildProfileResolutionPlan(
   const topDocument = documents.get(topProfileArtifactKey);
   if (topDocument === undefined) return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.TARGET_MISSING);
   const topRoot = rootEntry(topDocument);
-  if (topRoot === null || topRoot[0] !== 'profile') {
+  if (topRoot?.[0] !== 'profile') {
     return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.ROOT_TYPE_MISMATCH);
   }
   const graphVersion = declaredOscalVersion(topDocument);
@@ -133,6 +133,18 @@ export function buildProfileResolutionPlan(
   const planned = new Set<string>();
   const activePath = new Set<string>();
   const stack: { readonly artifactKey: string; readonly edges: readonly ProfileResolutionEdge[]; index: number }[] = [];
+
+  /** Zyklus, Zielvorhandensein und Dokumentaufnahme je Kante. */
+  const planEdge = (edge: ProfileResolutionEdge): OscalDiagnostic | null => {
+    if (activePath.has(edge.artifactKey)) {
+      return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.CYCLE).diagnostic;
+    }
+    const document = documents.get(edge.artifactKey);
+    if (document === undefined) {
+      return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.TARGET_MISSING).diagnostic;
+    }
+    return admitDocument(document, graphVersion);
+  };
 
   activePath.add(topProfileArtifactKey);
   planned.add(topProfileArtifactKey);
@@ -158,11 +170,7 @@ export function buildProfileResolutionPlan(
     }
     if (planned.has(edge.artifactKey)) continue;
 
-    const document = documents.get(edge.artifactKey);
-    if (document === undefined) {
-      return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.TARGET_MISSING);
-    }
-    const failure = admitDocument(document, graphVersion);
+    const failure = planEdge(edge);
     if (failure !== null) return { ok: false, diagnostic: failure };
 
     activePath.add(edge.artifactKey);
