@@ -106,10 +106,6 @@ Tiefe:
 
 Pushes nach `main` triggern den Deploy-Workflow: registrierte BSI-Artefakte validieren und unterstützte Daten ziehen → Tests → Build → [SLSA-Provenance-Attestation](https://slsa.dev/) → GitHub Pages. Der Upstream-Sync vergleicht täglich um 06:00 UTC sowie bei Main-Push und manuell den vollständigen überwachten BSI-Baum, erstellt bei einem Delta einen Manifest-PR und fordert Auto-Squash mit Branch-Löschung an. Die Post-Merge-Lane prüft anschließend den Stand auf `main`, bestätigt den normalen Push-Deploy erst bei erfolgreichem Abschluss und dispatcht einen Fallback nur nach erneuter Zustandsprüfung.
 
-### SEO-Artefakte des Builds
-
-Der Build erzeugt neben der App zusätzlich deterministische SEO-Artefakte: `dist/404.html` als SPA-Fallback, bytegleiche statische Einstiege unter `dist/<route>/index.html` für alle kanonischen Routen (`/suche`, `/vokabular`, `/about`, `/datenschutz`, `/impressum`, `/lizenzen`, je Katalog `/katalog/<catalogKey>`), damit GitHub Pages diese Deep Links mit HTTP 200 ausliefert, sowie eine `dist/sitemap.xml` mit genau diesen URLs plus Startseite. Alle Listen stammen aus demselben Vertrag (`listCanonicalEntryRoutes()` in `vite.config.ts`, Katalogeinstiege aus `listSupportedCatalogs()`), können sich also nicht auseinanderentwickeln. Die Sitemap enthält nur die Pflichtfelder des [Sitemap-Protokolls](https://www.sitemaps.org/protocol.html) — kein `lastmod`, `changefreq` oder `priority`. Die Einreichung in der Google Search Console ist ein manueller Schritt des Projekt-Owners; sie sendet keine Daten und ist kein Tracking. Details: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#routing).
-
 ## Beitragen
 
 Issues und Pull Requests sind willkommen. Bitte vor dem Einreichen:
