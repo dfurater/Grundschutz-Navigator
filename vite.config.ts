@@ -3,13 +3,54 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { copyFileSync, existsSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { listSupportedCatalogs } from './src/domain/sourceRegistry.mjs';
 import { catalogFreshnessPlugin } from './scripts/check-catalog-freshness.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const GITHUB_PAGES_BASE = '/Grundschutz-Navigator/';
 const DIST_DIR = resolve(__dirname, 'dist');
+
+/*
+ * Kanonischer Routenvertrag der SEO-Einstiege (GSPP-210).
+ *
+ * Die beim Build materialisierten 200-Einstiege lesen ihre Routen ausschließlich
+ * aus dieser Allowlist bzw. aus dem Quellregister; es gibt keine zweite Liste,
+ * die driften könnte. Bewusst NICHT im Vertrag: das absichtlich ungültige
+ * `/katalog`, der Redirect `/mehr`, parametrisierte Gruppen-, Control- und
+ * Vokabular-Detailrouten sowie Query-/Filter-URLs.
+ */
+const CANONICAL_CONTENT_ROUTES = [
+  '/suche',
+  '/vokabular',
+  '/about',
+  '/datenschutz',
+  '/impressum',
+  '/lizenzen',
+] as const;
+
+/**
+ * Vollständige Positivliste der kanonischen Einstiegsrouten: zuerst die festen
+ * Inhaltsrouten in Vertragsreihenfolge, dann je produktiv ausgeliefertem Katalog
+ * ein Einstieg in Registerreihenfolge. Preview-, Draft- und
+ * blocked-by-upstream-Kataloge erreichen die Liste nie, weil
+ * `listSupportedCatalogs()` sie bereits aussortiert.
+ */
+export function listCanonicalEntryRoutes(
+  catalogKeys: readonly string[] = listSupportedCatalogKeys(),
+): string[] {
+  return [
+    ...CANONICAL_CONTENT_ROUTES,
+    ...catalogKeys.map((catalogKey) => `/katalog/${encodeURIComponent(catalogKey)}`),
+  ];
+}
+
+function listSupportedCatalogKeys(): string[] {
+  return listSupportedCatalogs().flatMap((entry) =>
+    entry.catalogKey !== undefined ? [entry.catalogKey] : [],
+  );
+}
 
 export function writeSpaFallbackFile(outDir: string) {
   const indexHtmlPath = resolve(outDir, 'index.html');
@@ -22,11 +63,35 @@ export function writeSpaFallbackFile(outDir: string) {
   copyFileSync(indexHtmlPath, fallbackHtmlPath);
 }
 
+/**
+ * Materialisiert die kanonischen Einstiegsrouten als echte HTTP-200-Dokumente:
+ * `dist/<route>/index.html`, bytegleich zum gebauten `index.html`. GitHub Pages
+ * liefert diese Pfade mit Status 200 aus, während `404.html` weiterhin nur den
+ * Fallback für nicht materialisierte SPA-Routen trägt. Fail-closed vor dem
+ * ersten Schreiben, damit bei fehlendem Build kein halber Zustand bleibt.
+ */
+export function writeStaticRouteEntries(outDir: string, catalogKeys?: readonly string[]): void {
+  const indexHtmlPath = resolve(outDir, 'index.html');
+
+  if (!existsSync(indexHtmlPath)) {
+    throw new Error(`Cannot create static route entries without build output at ${indexHtmlPath}`);
+  }
+
+  const indexHtml = readFileSync(indexHtmlPath);
+
+  for (const route of listCanonicalEntryRoutes(catalogKeys)) {
+    const entryPath = resolve(outDir, `.${route}`, 'index.html');
+    mkdirSync(dirname(entryPath), { recursive: true });
+    writeFileSync(entryPath, indexHtml);
+  }
+}
+
 function spaFallbackPlugin() {
   return {
     name: 'github-pages-spa-fallback',
     closeBundle() {
       writeSpaFallbackFile(DIST_DIR);
+      writeStaticRouteEntries(DIST_DIR);
     },
   };
 }

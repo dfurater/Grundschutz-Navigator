@@ -420,7 +420,9 @@ Bestand fälschlich als Drift melden.
 
 ## Routing
 
-Die Anwendung verwendet React Router mit `BrowserRouter` und pfadbasierten URLs. Das `basename` wird aus `import.meta.env.BASE_URL` abgeleitet (`src/main.tsx`), sodass die App auch unter dem GitHub-Pages-Unterpfad `/Grundschutz-Navigator/` funktioniert. Für Deep Links kopiert das Vite-Plugin `github-pages-spa-fallback` (`vite.config.ts`) beim Build `index.html` nach `404.html`, sodass GitHub Pages unbekannte Pfade an die SPA durchreicht.
+Die Anwendung verwendet React Router mit `BrowserRouter` und pfadbasierten URLs. Das `basename` wird aus `import.meta.env.BASE_URL` abgeleitet (`src/main.tsx`), sodass die App auch unter dem GitHub-Pages-Unterpfad `/Grundschutz-Navigator/` funktioniert.
+
+Für kanonische Einstiegsrouten erzeugt das Vite-Plugin `github-pages-spa-fallback` (`vite.config.ts`) beim Build zusätzlich zu `404.html` je Route ein statisches `dist/<route>/index.html`, bytegleich zum gebauten `index.html`. GitHub Pages liefert diese Dokumente mit HTTP 200 aus; die Routen kommen ausschließlich aus dem gemeinsamen Vertrag `listCanonicalEntryRoutes()` — den sechs festen Inhaltsrouten (`/suche`, `/vokabular`, `/about`, `/datenschutz`, `/impressum`, `/lizenzen`) plus je einem Einstieg `/katalog/<catalogKey>` für jeden von `listSupportedCatalogs()` im Quellregister (`src/domain/sourceRegistry.mjs`) als `supported` geführten Katalog. Das absichtlich ungültige `/katalog`, der Redirect `/mehr`, parametrisierte Gruppen-, Control- und Vokabular-Detailrouten sowie Query-/Filter-URLs werden bewusst nicht materialisiert. Für alle übrigen Pfade dient `dist/404.html` weiterhin als Fallback: GitHub Pages reicht unbekannte Pfade an die SPA durch, allerdings mit HTTP-Status 404.
 
 | Route | Komponente | Beschreibung |
 |-------|------------|--------------|
