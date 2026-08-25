@@ -225,4 +225,26 @@ describe('useBottomSheetDrag', () => {
     act(() => vi.runAllTimers());
     expect(onDismiss).not.toHaveBeenCalled();
   });
+
+  it('clears a pending dismiss timer on unmount so the delayed onDismiss never runs', () => {
+    vi.useFakeTimers();
+    const refs = setupSheet();
+    const onDismiss = vi.fn();
+    vi.spyOn(Date, 'now').mockReturnValue(1_000);
+    const { unmount } = renderHook(() => useBottomSheetDrag({ ...refs, onDismiss }));
+
+    // Geste jenseits des Schwellwerts: Der Dismiss-Pfad legt den Timer an.
+    refs.handle.dispatchEvent(touchEvent('touchstart', 100));
+    refs.handle.dispatchEvent(touchEvent('touchmove', 221));
+    refs.handle.dispatchEvent(touchEvent('touchend', 221));
+
+    expect(refs.sheet.style.transform).toBe('translateY(400px)');
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    // Unmount, bevor der Timer abläuft: Der verzögerte Dismiss darf danach
+    // nicht mehr feuern.
+    unmount();
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
 });

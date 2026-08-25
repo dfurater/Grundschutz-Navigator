@@ -91,9 +91,9 @@ export function AppShell() {
   const [sideNavOpen, setSideNavOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const {
-    width: sidebarWidth,
+    size: sidebarWidth,
     isResizing: isSidebarResizing,
-    setWidth: setSidebarWidth,
+    setSize: setSidebarWidth,
     startResize: handleSidebarResizeStart,
   } = useDragToResize({
     axis: 'x',

@@ -68,9 +68,9 @@ export function CatalogBrowser() {
   const [filterCollapsed, setFilterCollapsed] = useState(false);
   const [mobileSelectMode, setMobileSelectMode] = useState(false);
   const {
-    width: detailWidth,
+    size: detailWidth,
     isResizing,
-    setWidth: setDetailWidth,
+    setSize: setDetailWidth,
     startResize: handleResizeStart,
   } = useDragToResize({
     axis: 'x',
