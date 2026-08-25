@@ -167,53 +167,57 @@ function serializedDenseArrayBytes(container: readonly unknown[], length: number
   return bytes;
 }
 
-/**
- * Knotenbeitrag der KINDER eines Containers zur Untergrenze: primitive
- * Mitglieder und Slots zählen hier, containerwertige ausschließlich an
- * ihrem eigenen Besuch — dieselbe Knotensemantik wie die Struktur-
- * invariante, damit die Untergrenze nie über der echten Knotenzahl liegt
- * (Greptile-Befund zu efa1cfa). Rein deskriptorbasiert; Containererkennung
- * über den Typ des Data-Werts.
- */
-function childNodeFloorDelta(container: object, isArray: boolean): number {
+/** Knotenbeitrag der Slots eines NICHT dichten Arrays; Löcher als null-Knoten. */
+function sparseChildNodeFloorDelta(
+  container: readonly unknown[],
+  length: number,
+): number {
   let delta = 0;
-  if (isArray) {
-    const length = (container as readonly unknown[]).length;
-    let canonicalSlots = 0;
-    for (const key of Reflect.ownKeys(container)) {
-      if (typeof key !== 'string') continue;
-      const index = Number(key);
-      if (
-        !Number.isInteger(index) ||
-        index < 0 ||
-        index >= length ||
-        String(index) !== key
-      ) {
-        continue;
-      }
-      const descriptor = Object.getOwnPropertyDescriptor(container, index);
-      const slotValue =
-        descriptor !== undefined && 'value' in descriptor ? descriptor.value : undefined;
-      // Fehlende und ausdrücklich undefined Slots serialisieren als null
-      // und sind Knoten; verschachtelte Container zählen an ihrem Besuch.
-      const isNestedContainer = slotValue !== null && typeof slotValue === 'object';
-      if (!isNestedContainer) delta += 1;
-      canonicalSlots += 1;
+  let canonicalSlots = 0;
+  for (const key of Reflect.ownKeys(container)) {
+    if (typeof key !== 'string') continue;
+    const index = Number(key);
+    // Nur kanonische Indizes sind Slots; alles andere serialisiert nicht.
+    if (!Number.isInteger(index) || index < 0 || index >= length || String(index) !== key) {
+      continue;
     }
-    delta += Math.max(length - canonicalSlots, 0); // Löcher sind null-Knoten.
-    return delta;
+    const descriptor = Object.getOwnPropertyDescriptor(container, index);
+    const slotValue =
+      descriptor !== undefined && 'value' in descriptor ? descriptor.value : undefined;
+    const isNestedContainer = slotValue !== null && typeof slotValue === 'object';
+    if (!isNestedContainer) delta += 1;
+    canonicalSlots += 1;
   }
+  const holes = Math.max(length - canonicalSlots, 0);
+  return delta + holes; // Jedes Loch serialisiert als null und ist ein Knoten.
+}
 
+/** Knotenbeitrag der Mitglieder eines Objekts; `undefined` fällt fort. */
+function objectChildNodeFloorDelta(container: object): number {
+  let delta = 0;
   for (const key of Reflect.ownKeys(container)) {
     if (typeof key !== 'string') continue;
     const descriptor = Object.getOwnPropertyDescriptor(container, key);
     if (descriptor === undefined || !('value' in descriptor)) continue;
     const value: unknown = descriptor.value;
-    if (value === undefined) continue; // Serialisierung lässt das Mitglied fort.
+    if (value === undefined) continue;
     const isNestedContainer = value !== null && typeof value === 'object';
     if (!isNestedContainer) delta += 1;
   }
   return delta;
+}
+
+/**
+ * Knotenbeitrag der KINDER eines Containers zur Untergrenze: primitive
+ * Mitglieder und Slots zählen hier, containerwertige ausschließlich an
+ * ihrem eigenen Besuch — dieselbe Knotensemantik wie die Struktur-
+ * invariante, damit die Untergrenze nie über der echten Knotenzahl liegt
+ * (Greptile-Befund zu efa1cfa). Rein deskriptorbasiert.
+ */
+function childNodeFloorDelta(container: object, isArray: boolean): number {
+  return isArray
+    ? sparseChildNodeFloorDelta(container as readonly unknown[], (container as readonly unknown[]).length)
+    : objectChildNodeFloorDelta(container);
 }
 
 /**

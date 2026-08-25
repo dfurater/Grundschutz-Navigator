@@ -163,20 +163,28 @@ function addPatternMatches(
   }
 }
 
-function selectorMatches(
+/** Ergänzt alle IDs aus einer with-ids-Liste, die im Katalog existieren. */
+function addWithIdsMatches(
   index: CatalogControlIndex,
-  selector: ProfileControlSelector,
-): MatchOutcome {
-  const matched = new Set<string>();
-  for (const id of selector.withIds) {
+  withIds: readonly string[],
+  matched: Set<string>,
+): void {
+  for (const id of withIds) {
     if (index.byId.has(id)) matched.add(id);
   }
-  addPatternMatches(index, selector.matching, matched);
+}
 
-  const withChild = selector.withChildControls;
-  if (withChild === undefined || withChild === 'no') {
-    return { matched };
-  }
+/**
+ * Wendet die with-child-controls-Richtlinie an: yes erweitert auf alle
+ * Nachfahren, no bzw. fehlend belässt den Selbsttreffer, alles andere ist
+ * fail-closed.
+ */
+function applyWithChildPolicy(
+  index: CatalogControlIndex,
+  matched: ReadonlySet<string>,
+  withChild: string | undefined,
+): MatchOutcome {
+  if (withChild === undefined || withChild === 'no') return { matched };
   if (withChild !== 'yes') {
     return {
       diagnostic: reject(
@@ -184,8 +192,17 @@ function selectorMatches(
       ).diagnostic,
     };
   }
-
   return { matched: expandWithDescendants(index, matched) };
+}
+
+function selectorMatches(
+  index: CatalogControlIndex,
+  selector: ProfileControlSelector,
+): MatchOutcome {
+  const matched = new Set<string>();
+  addWithIdsMatches(index, selector.withIds, matched);
+  addPatternMatches(index, selector.matching, matched);
+  return applyWithChildPolicy(index, matched, selector.withChildControls);
 }
 
 function ancestorsOf(index: CatalogControlIndex, id: string): string[] {
