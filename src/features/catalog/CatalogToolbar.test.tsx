@@ -161,4 +161,42 @@ describe('CatalogToolbar', () => {
     ).not.toBeInTheDocument();
     expect(getBody().style.overflow).toBe('scroll');
   });
+
+  it('mounts the export menu only on desktop (GSPP-268)', () => {
+    const props = {
+      title: 'Alle Kontrollen',
+      filteredCount: 1,
+      totalCount: 1,
+      hasActiveFilters: false,
+      onClearFilters: vi.fn(),
+      checkedIds: new Set<string>(),
+      mobileSelectMode: false,
+      onToggleMobileSelectMode: vi.fn(),
+      onClearSelection: vi.fn(),
+      filteredControls: [control],
+      allControls: [control],
+      sectionFilename: 'grundschutz-katalog.csv',
+      filterPanelProps: {} as FilterPanelProps,
+    };
+    const view = render(<CatalogToolbar {...props} isDesktop={false} />);
+
+    expect(screen.queryByRole('button', { name: 'CSV Export' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Weitere Exportoptionen' }),
+    ).not.toBeInTheDocument();
+
+    view.rerender(<CatalogToolbar {...props} isDesktop />);
+
+    expect(screen.getByRole('button', { name: 'CSV Export' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Weitere Exportoptionen' }),
+    ).toBeInTheDocument();
+
+    view.rerender(<CatalogToolbar {...props} isDesktop={false} />);
+
+    expect(screen.queryByRole('button', { name: 'CSV Export' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Weitere Exportoptionen' }),
+    ).not.toBeInTheDocument();
+  });
 });

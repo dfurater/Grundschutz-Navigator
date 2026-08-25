@@ -8,6 +8,7 @@ import { ControlMobileReferenceRow } from '@/features/catalog/ControlMobileRefer
 import { CatalogMobileSelectionBar } from '@/features/catalog/CatalogMobileSelectionBar';
 import { SearchResultsToolbar } from './SearchResultsToolbar';
 import { useControlSelection } from '@/hooks/useControlSelection';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { Control } from '@/domain/models';
 import {
   emptyFilters,
@@ -43,6 +44,9 @@ export function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get('q') ?? '';
   const navigate = useNavigate();
+  // Genau ein Media-Query-Abo pro Seite: steuert das Mount-Gate der
+  // Exportzugänge in der Toolbar (GSPP-268) und der Ergebnislisten (GSPP-261).
+  const isDesktop = useMediaQuery('(min-width: 1024px)');
   const { catalog, loading, vocabularyRegistry } = useCatalog();
   const [inputState, setInputState] = useState(() => ({
     query,
@@ -219,6 +223,7 @@ export function SearchPage() {
               onClearSelection={clearSelection}
               mobileSelectMode={mobileSelectMode}
               onToggleMobileSelectMode={toggleMobileSelectMode}
+              isDesktop={isDesktop}
               desktopViewControls={tableControls}
               mobileViewControls={resultControls}
               allControls={catalog?.controls ?? []}
@@ -236,50 +241,56 @@ export function SearchPage() {
         </div>
       )}
 
-      {/* Results — breakpoint-spezifisch */}
+      {/* Results — genau ein gemounteter Ergebniszweig je Breakpoint
+          (GSPP-261, Invariante aus GRU-217); kein CSS-Doppel-Mount mehr. */}
       {!isLoading && controlsById && results.length > 0 && (
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-          {/* Desktop: volle Katalogtabelle */}
-          <div data-testid="search-results-desktop" className="hidden lg:flex flex-1 min-h-0 flex-col overflow-hidden">
-            <ControlTable
-              controls={visibleTableControls}
-              controlsById={controlsById}
-              selectedControlId={undefined}
-              selectableControls={tableControls}
-              checkedIds={checkedIds}
-              sort={sort}
-              onSortChange={setSort}
-              onSelectControl={(control) =>
-                catalog && navigate(buildControlUrlForControl(catalog.catalogKey, control))
-              }
-              onCheckedChange={setCheckedIds}
-            />
-          </div>
-          {/* Mobile: Katalog-Mobile-Referenzliste */}
-          <div
-            data-testid="search-results-mobile"
-            className={`lg:hidden flex-1 md:overflow-y-auto divide-y divide-[var(--color-border-subtle)] ${mobileSelectMode ? 'pb-[calc(7rem+env(safe-area-inset-bottom,0px))]' : 'pb-safe'}`}
-          >
-            {visibleMobileControls.map((control) => (
-              <ControlMobileReferenceRow
-                key={control.id}
-                control={control}
+          {isDesktop ? (
+            /* Desktop: volle Katalogtabelle */
+            <div data-testid="search-results-desktop" className="flex flex-1 min-h-0 flex-col overflow-hidden">
+              <ControlTable
+                controls={visibleTableControls}
                 controlsById={controlsById}
-                selectMode={mobileSelectMode}
-                checked={checkedIds.has(control.id)}
-                onSelect={(control) =>
+                selectedControlId={undefined}
+                selectableControls={tableControls}
+                checkedIds={checkedIds}
+                sort={sort}
+                onSortChange={setSort}
+                onSelectControl={(control) =>
                   catalog && navigate(buildControlUrlForControl(catalog.catalogKey, control))
                 }
-                onCheckedChange={handleMobileCheckedChange}
+                onCheckedChange={setCheckedIds}
               />
-            ))}
-          </div>
-          {mobileSelectMode && catalog && (
-            <CatalogMobileSelectionBar
-              checkedIds={checkedIds}
-              allControls={catalog.controls}
-              onDone={finishMobileSelection}
-            />
+            </div>
+          ) : (
+            <>
+              {/* Mobile: Katalog-Mobile-Referenzliste */}
+              <div
+                data-testid="search-results-mobile"
+                className={`flex-1 md:overflow-y-auto divide-y divide-[var(--color-border-subtle)] ${mobileSelectMode ? 'pb-[calc(7rem+env(safe-area-inset-bottom,0px))]' : 'pb-safe'}`}
+              >
+                {visibleMobileControls.map((control) => (
+                  <ControlMobileReferenceRow
+                    key={control.id}
+                    control={control}
+                    controlsById={controlsById}
+                    selectMode={mobileSelectMode}
+                    checked={checkedIds.has(control.id)}
+                    onSelect={(control) =>
+                      catalog && navigate(buildControlUrlForControl(catalog.catalogKey, control))
+                    }
+                    onCheckedChange={handleMobileCheckedChange}
+                  />
+                ))}
+              </div>
+              {mobileSelectMode && catalog && (
+                <CatalogMobileSelectionBar
+                  checkedIds={checkedIds}
+                  allControls={catalog.controls}
+                  onDone={finishMobileSelection}
+                />
+              )}
+            </>
           )}
           {hasHiddenResults && (
             <div className="shrink-0 border-t border-[var(--color-border-default)] bg-[var(--color-surface-base)] px-4 py-3 text-center">

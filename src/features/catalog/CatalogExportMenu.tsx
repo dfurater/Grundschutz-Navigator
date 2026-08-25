@@ -48,8 +48,11 @@ export function CatalogExportMenu({
     if (open) firstMenuItemRef.current?.focus();
   }, [open]);
 
+  // Kein CSS-Breakpoint-Gate mehr: Das Mount-Gate liegt beim Aufrufer
+  // (isDesktop), damit auf Mobile kein unsichtbar gemounteter Knoten
+  // übrig bleibt (GSPP-268).
   return (
-    <div className="hidden lg:flex relative" ref={menuContainerRef}>
+    <div className="flex relative" ref={menuContainerRef}>
       <Button
         variant="secondary"
         size="sm"

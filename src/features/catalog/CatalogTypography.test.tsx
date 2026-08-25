@@ -10,6 +10,7 @@ import type {
 } from '@/domain/models';
 import { buildVocabularyRegistry } from '@/domain/vocabulary';
 import { useCatalog } from '@/hooks/useCatalog';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { SearchPage } from '@/features/search/SearchPage';
 import { useSearch } from '@/features/search/useSearch';
 import { ControlDetail } from './ControlDetail';
@@ -24,8 +25,13 @@ vi.mock('@/features/search/useSearch', () => ({
   useSearch: vi.fn(),
 }));
 
+vi.mock('@/hooks/useMediaQuery', () => ({
+  useMediaQuery: vi.fn(),
+}));
+
 const mockedUseCatalog = vi.mocked(useCatalog);
 const mockedUseSearch = vi.mocked(useSearch);
+const mockedUseMediaQuery = vi.mocked(useMediaQuery);
 
 const control: Control = {
   id: 'ASST.1.1',
@@ -457,6 +463,7 @@ describe('catalog typography', () => {
       results: [{ control }],
       totalResults: 1,
     });
+    mockedUseMediaQuery.mockReturnValue(true);
 
     render(
       <MemoryRouter initialEntries={['/suche?q=verfahren']}>

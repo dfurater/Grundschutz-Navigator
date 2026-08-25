@@ -453,20 +453,30 @@ Liste, Toolbar und Seitenleisten. Direkte CSV-Downloads, Beziehungsgraphen und
 imperative Zugriffe auf `document.body` gehören ausdrücklich nicht zu dieser
 Grenze.
 
+**Breakpoint-Mount-Strategie (GSPP-268):** Breakpoint-abhängige UI wird über
+`useMediaQuery('(min-width: 1024px)')` (`isDesktop`) bedingt **gemountet**,
+nicht per CSS versteckt — zu jedem Zeitpunkt ist nur der passende Teilbaum im
+DOM (Invariante aus GRU-217; kein dauerhaft gemounteter, unsichtbarer Knoten).
+Zwei bewusste Ausnahmen: Der `CatalogMobileDetailOverlay` behält sein
+`active`-Prop-Muster, weil er inaktiv bereits `null` rendert und seinen
+Modal-Lifecycle (Focus-Trap, Scroll-Lock, Escape) selbst besitzt; kleine
+stateless Buttons (z. B. der Mobile-Auswahl-Toggle) dürfen bei `lg:hidden`
+bleiben, da sie keinen schweren Teilbaum doppelt mounten.
+
 Die Zuständigkeiten sind wie folgt getrennt:
 
 | Baustein | Verantwortung |
 |----------|----------------|
 | `useControlNavigation` | Löst Control-Route, Scope und Not-found-Zustand auf und erhält Push-/Replace-Semantik sowie Query-Parameter. Routerwerte und `NavigateFunction` werden injiziert; der Hook verwendet keine Router-Hooks. |
 | `useControlSelection` | Verwaltet die markierten Control-IDs. Der Hook selbst ist scope-agnostisch: Er liefert synchron eine leere Auswahl, sobald sich der von außen übergebene `scopeId`-Wert ändert. `CatalogBrowser` übergibt dafür ausschließlich den `catalogKey` (GSPP-267), sodass die Auswahl bei Themen-/Practice-Navigation und Cross-Referenz-Sprüngen innerhalb desselben Katalogs erhalten bleibt und nur bei einem echten Katalogwechsel geleert wird. |
-| `CatalogToolbar` | Stellt Titel, Counts, Auswahlmodus sowie Filter- und Exportzugänge ausschließlich aus Props zusammen. |
-| `CatalogExportMenu` | Besitzt den Desktop-Menüzustand, Outside-Click, Escape, Autofokus und die Desktop-Exportaktionen. |
+| `CatalogToolbar` | Stellt Titel, Counts, Auswahlmodus sowie Filter- und Exportzugänge ausschließlich aus Props zusammen und mountet Filter-Sheet, Export-Menü und Export-Sheet breakpoint-conditional über `isDesktop`. |
+| `CatalogExportMenu` | Besitzt den Desktop-Menüzustand, Outside-Click, Escape, Autofokus und die Desktop-Exportaktionen. Das Mount-Gate liegt beim Aufrufer (`isDesktop`); die Komponente führt selbst kein CSS-Breakpoint-Gate mehr. |
 | `CatalogMobileFilterSheet` | Besitzt Trigger, Sichtbarkeit, Focus-Trap, Escape, Backdrop, Drag-Dismiss und Scroll-Lock des mobilen Filters. |
 | `CatalogMobileExportSheet` | Besitzt Trigger, Sichtbarkeit, Focus-Trap, Escape, Backdrop, Scroll-Lock und mobile Exportaktionen. |
 | `CatalogMobileSelectionBar` | Exportiert die mobile Auswahl und beendet anschließend den Auswahlmodus. |
 | `CatalogDesktopSidebar` | Kapselt Filter-/Detaildarstellung und die veränderbare Desktop-Panelbreite; der Breitenzustand bleibt beim Composer. |
 | `CatalogDetailPanel` | Baut eingehende Links und Parent-/Child-Beziehungen auf und versorgt `ControlDetail`. |
-| `CatalogMobileDetailOverlay` | Besitzt Focus-Trap, Escape und Scroll-Lock des mobilen Details. |
+| `CatalogMobileDetailOverlay` | Besitzt Focus-Trap, Escape und Scroll-Lock des mobilen Details. Bleibt als Komponente gemountet und steuert Sichtbarkeit über das `active`-Flag; inaktiv rendert sie `null`, sodass kein dauerhafter DOM-Knoten entsteht (dokumentierte Ausnahme der Breakpoint-Mount-Strategie). |
 
 Mobile Overlays sind weiterhin modal und über die vorhandenen Interaktionspfade
 gegenseitig ausschließend. `useScrollLock` speichert deshalb bewusst keinen
@@ -526,13 +536,16 @@ Spalten ausblenden kann, deren Wert sie bereits selbst sichtbar macht.
 `src/features/search/SearchPage.tsx` ist der Composer der Volltextsuche
 (`/suche?q=…`). Er bindet `useSearch`, die 50er-Pagination und dieselben
 Desktop-/Mobile-Präsentationskomponenten wie der Katalog-Browser ein, hält
-dafür aber eine eigene, unabhängige Auswahl- und Export-Grenze.
+dafür aber eine eigene, unabhängige Auswahl- und Export-Grenze. Die
+Ergebnislisten folgen derselben Breakpoint-Mount-Strategie wie der
+Katalog-Browser (GSPP-261): genau eine gemountete Liste je Breakpoint,
+Auswahl-, Sortier- und Paginierungszustand überstehen den Wechsel.
 
 | Baustein | Verantwortung |
 |----------|----------------|
 | `useControlSelection` | Läuft mit dem Scope `search:<catalogKey>:<query>` — unabhängig vom Katalog-Browser-Scope (`catalogKey` allein). Beide Auswahlen beeinflussen einander nicht; jede Änderung von `q` liefert synchron eine leere Auswahl. |
 | `resultsUiState` | Führt `sort`, `visibleResultCount` und `mobileSelectMode` gemeinsam query-gebunden: Ein Vergleich mit der aktuellen Query entscheidet pro Feld, ob der gespeicherte Wert gilt oder auf den Ausgangszustand zurückfällt. Ein echter Query-Wechsel setzt damit synchron auch den mobilen Auswahlmodus zurück. |
-| `SearchResultsToolbar` | Schlanker Composer aus Auswahlanzahl/Aufheben, mobilem Auswahlmodus-Toggle sowie den wiederverwendeten `CatalogExportMenu`- und `CatalogMobileExportSheet`-Komponenten. Kein Filter-Zugang — die Suche hat keine Filterleiste. |
+| `SearchResultsToolbar` | Schlanker Composer aus Auswahlanzahl/Aufheben, mobilem Auswahlmodus-Toggle sowie den wiederverwendeten `CatalogExportMenu`- und `CatalogMobileExportSheet`-Komponenten; beide Exportzugänge werden über die Prop `isDesktop` bedingt gemountet (GSPP-268). Kein Filter-Zugang — die Suche hat keine Filterleiste. |
 | `ControlTable`s `selectableControls` | Optionale Prop, die ausschließlich die Header-Aktion „Alle auswählen" und ihren vollständig/teilweise ausgewählten Zustand bestimmt; Standard bleibt `controls`. `SearchPage` übergibt weiterhin nur die gerenderte Seite als `controls`, aber alle sortierten Query-Treffer als `selectableControls`, sodass „Alle auswählen" auch nicht nachgeladene Treffer erfasst. `CatalogBrowser` übergibt die Prop nicht und bleibt unverändert. |
 | `CatalogMobileSelectionBar` | Unverändert wiederverwendet; `SearchPage` rendert sie selbst (nicht die Toolbar) im mobilen Auswahlmodus und beendet Modus und Auswahl nach Export oder „Fertig". |
 

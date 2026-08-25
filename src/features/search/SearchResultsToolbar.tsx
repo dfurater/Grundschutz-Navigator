@@ -11,6 +11,8 @@ interface SearchResultsToolbarProps {
   readonly onClearSelection: () => void;
   readonly mobileSelectMode: boolean;
   readonly onToggleMobileSelectMode: () => void;
+  /** Steuert das Mount-Gate der Exportzugänge: Desktop-Menü ab lg, Mobile-Sheet darunter (GSPP-268). */
+  readonly isDesktop: boolean;
   /** All query matches in the current desktop table sort order. */
   readonly desktopViewControls: Control[];
   /** All query matches in search relevance order. */
@@ -24,6 +26,7 @@ export function SearchResultsToolbar({
   onClearSelection,
   mobileSelectMode,
   onToggleMobileSelectMode,
+  isDesktop,
   desktopViewControls,
   mobileViewControls,
   allControls,
@@ -56,19 +59,23 @@ export function SearchResultsToolbar({
         <IconCheck className="w-4 h-4" />
       </Button>
 
-      <CatalogExportMenu
-        checkedIds={checkedIds}
-        filteredControls={desktopViewControls}
-        allControls={allControls}
-        sectionFilename={SEARCH_RESULTS_FILENAME}
-      />
-      <CatalogMobileExportSheet
-        checkedIds={checkedIds}
-        filteredControls={mobileViewControls}
-        allControls={allControls}
-        sectionFilename={SEARCH_RESULTS_FILENAME}
-        onSelectionExported={onSelectionExported}
-      />
+      {isDesktop && (
+        <CatalogExportMenu
+          checkedIds={checkedIds}
+          filteredControls={desktopViewControls}
+          allControls={allControls}
+          sectionFilename={SEARCH_RESULTS_FILENAME}
+        />
+      )}
+      {!isDesktop && (
+        <CatalogMobileExportSheet
+          checkedIds={checkedIds}
+          filteredControls={mobileViewControls}
+          allControls={allControls}
+          sectionFilename={SEARCH_RESULTS_FILENAME}
+          onSelectionExported={onSelectionExported}
+        />
+      )}
     </div>
   );
 }

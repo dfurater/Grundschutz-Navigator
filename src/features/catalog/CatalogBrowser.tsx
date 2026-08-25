@@ -285,6 +285,8 @@ export function CatalogBrowser() {
         />
       </div>
 
+      {/* GSPP-268, bewusste Ausnahme: rendert inaktiv bereits null und besitzt
+        seinen Modal-Lifecycle selbst (GSPP-188) — ein parent-Gate brächte keinen Mount-Gewinn. */}
       <CatalogMobileDetailOverlay
         catalog={catalog}
         control={selectedControl}
