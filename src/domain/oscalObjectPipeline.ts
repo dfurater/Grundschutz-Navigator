@@ -17,7 +17,11 @@
 
 import { dispatchOscalDocument, type OscalRootDispatchSuccess } from '@/adapters/oscalRootDispatch';
 import { createOscalDiagnostic, type OscalDiagnostic } from '@/domain/oscalDiagnostics';
-import { CLASS_2_IMPORT_VALIDATOR } from '@/domain/oscalImportContract';
+import {
+  CLASS_2_IMPORT_LIMITS,
+  CLASS_2_IMPORT_VALIDATOR,
+  createClass2ByteLimitDiagnostic,
+} from '@/domain/oscalImportContract';
 import { createClass2UnprovenancedDiagnostic } from '@/domain/oscalObjectProvenance';
 import { isParserProducedRoot } from '@/domain/oscalImportProcessing';
 import { walkOwnContainers } from '@/domain/oscalObjectWalk';
@@ -46,22 +50,49 @@ export type Class2OscalValueResult =
   | { readonly ok: false; readonly diagnostic: OscalDiagnostic };
 
 /**
+ * Ergebnis des Belegdurchlaufs: ob jeder Container belegt ist und ob die
+ * kumulierte Nutzlast innerhalb der Byte-Zulassungsgrenze bleibt.
+ */
+type ProvenanceVerdict = {
+  readonly provenanced: boolean;
+  readonly withinByteBudget: boolean;
+};
+
+/**
  * Prüft die Herkunft der Wurzel und aller Container in einem eigenen,
  * rein identitätsbasierten Durchlauf vor jeder Reflexion. Er läuft über
  * denselben gemeinsamen Helper wie die Registrierung am Byte-Eintrittspunkt
  * und kann sich von ihr deshalb nicht auseinanderleben; der frühe Abbruch
  * endet beim ersten Container ohne Beleg.
+ *
+ * Derselbe Lauf summiert die Nutzlast (Schlüssellängen plus String- und
+ * endliche Zahlenwerte). Die Summe ist eine Untergrenze der serialisierten
+ * Größe: Übersteigt sie die Byte-Zulassungsgrenze, so hätte derselbe Inhalt auch den öffentlichen Byteeintritt nicht passiert — ein
+ * nach dem Parse nachgeladener Primitive-Wert kann die Importgröße damit
+ * nicht mehr über die Grenze bringen (Greptile-Befund zu 6f39e72).
  */
-function verifyProvenance(root: unknown): boolean {
-  // Derselbe Durchlauf wie bei der Registrierung (gemeinsamer Helper); der
-  // frühe Abbruch endet beim ersten Container ohne Beleg.
-  let allProvenanced = true;
+function verifyProvenance(root: unknown): ProvenanceVerdict {
+  let provenanced = true;
+  let payloadBytes = 0;
   walkOwnContainers(root, (container) => {
-    const provenanced = isParserProducedRoot(container);
-    if (!provenanced) allProvenanced = false;
-    return provenanced;
+    if (!isParserProducedRoot(container)) {
+      provenanced = false;
+      return false;
+    }
+    for (const key of Reflect.ownKeys(container) as string[]) {
+      payloadBytes += key.length;
+      const descriptor = Object.getOwnPropertyDescriptor(container, key);
+      if (descriptor === undefined || !('value' in descriptor)) continue;
+      const value = descriptor.value;
+      if (typeof value === 'string') {
+        payloadBytes += value.length;
+      } else if (typeof value === 'number' && Number.isFinite(value)) {
+        payloadBytes += String(value).length;
+      }
+    }
+    return payloadBytes <= CLASS_2_IMPORT_LIMITS.maxBytes;
   });
-  return allProvenanced;
+  return { provenanced, withinByteBudget: payloadBytes <= CLASS_2_IMPORT_LIMITS.maxBytes };
 }
 
 /**
@@ -91,9 +122,20 @@ export async function processClass2OscalValue(
 
   // Herkunft vor Reflexion: Wurzel und jeder Container müssen belegt sein.
   // Rohobjekte, Proxy-Hüllen, eingetauschte Teilbäume und Accessor-Einschübe
-  // scheitern hier bzw. an der anschließenden Invariantenprüfung.
-  if (!verifyProvenance(source)) {
+  // scheitern hier bzw. an der anschließenden Invariantenprüfung. Für am
+  // Byteeintritt belegte Wurzeln gilt zusätzlich dieselbe Importgrößengrenze
+  // wie dort — Nachbeladung über den Wertpfad umgeht sie nicht.
+  const admission = verifyProvenance(source);
+  if (!admission.provenanced) {
     return { ok: false, diagnostic: createClass2UnprovenancedDiagnostic() };
+  }
+  if (
+    typeof source === 'object' &&
+    source !== null &&
+    isParserProducedRoot(source) &&
+    !admission.withinByteBudget
+  ) {
+    return { ok: false, diagnostic: createClass2ByteLimitDiagnostic() };
   }
 
   const structuralFailure = enforceClass2ObjectGraphInvariants(source);

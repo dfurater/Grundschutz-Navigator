@@ -8,6 +8,7 @@ import { OBJECT_GRAPH_STAGE } from './oscalObjectGraph';
 import { processClass2OscalValue } from './oscalObjectPipeline';
 import { processClass2OscalBytes } from './oscalClass2Import';
 import { parseClass2OscalInput } from './oscalImportProcessing';
+import { CLASS_2_IMPORT_LIMITS } from './oscalImportContract';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 
 const context = { trustClass: 'class-2-local-user' } as const;
@@ -138,6 +139,31 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
     expect(result).toMatchObject({
       ok: false,
       diagnostic: { code: 'OSCAL_OBJECT_IDENTITY_REJECTED', stage: OBJECT_GRAPH_STAGE },
+    });
+  });
+
+  it('bindet den Parser-erzeugten Wertpfad an dieselbe Byte-Zulassungsgrenze wie den Byteweg', async () => {
+    // Greptile-Befund zu 6f39e72 (P1): Eine Primitive-Nachbeladung am
+    // registrierten Graphen durfte die Importgröße über die Grenze treiben,
+    // die der öffentliche Byteeintritt für dieselben Inhalte durchsetzt. Der
+    // Belegdurchlauf summiert deshalb die Nutzlast des Baums und endet
+    // fail-closed an derselben Grenze — ohne Serialisierung als Prüfmittel,
+    // denn die Nutzlastsumme unterschreitet die serialisierte Größe nie.
+    const input = await parseClass2OscalInput(
+      new TextEncoder().encode('{"catalog":{"metadata":{"title":"kurz"}}}'),
+    );
+    if (!input.ok) throw new Error('Fixture muss parsen');
+
+    const metadata = (
+      input.source as { catalog: { metadata: Record<string, unknown> } }
+    ).catalog.metadata;
+    metadata['title'] = 'x'.repeat(CLASS_2_IMPORT_LIMITS.maxBytes + 1);
+
+    const result = await processClass2OscalValue(input.source, context);
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: { code: 'OSCAL_BYTE_LIMIT_EXCEEDED', stage: 'resource-limit' },
     });
   });
 
