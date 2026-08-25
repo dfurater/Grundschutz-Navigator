@@ -3,13 +3,54 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { copyFileSync, existsSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { listSupportedCatalogs } from './src/domain/sourceRegistry.mjs';
 import { catalogFreshnessPlugin } from './scripts/check-catalog-freshness.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const GITHUB_PAGES_BASE = '/Grundschutz-Navigator/';
 const DIST_DIR = resolve(__dirname, 'dist');
+
+/*
+ * Kanonischer Routenvertrag der SEO-Einstiege (GSPP-210).
+ *
+ * Die beim Build materialisierten 200-Einstiege lesen ihre Routen ausschließlich
+ * aus dieser Allowlist bzw. aus dem Quellregister; es gibt keine zweite Liste,
+ * die driften könnte. Bewusst NICHT im Vertrag: das absichtlich ungültige
+ * `/katalog`, der Redirect `/mehr`, parametrisierte Gruppen-, Control- und
+ * Vokabular-Detailrouten sowie Query-/Filter-URLs.
+ */
+const CANONICAL_CONTENT_ROUTES = [
+  '/suche',
+  '/vokabular',
+  '/about',
+  '/datenschutz',
+  '/impressum',
+  '/lizenzen',
+] as const;
+
+/**
+ * Vollständige Positivliste der kanonischen Einstiegsrouten: zuerst die festen
+ * Inhaltsrouten in Vertragsreihenfolge, dann je produktiv ausgeliefertem Katalog
+ * ein Einstieg in Registerreihenfolge. Preview-, Draft- und
+ * blocked-by-upstream-Kataloge erreichen die Liste nie, weil
+ * `listSupportedCatalogs()` sie bereits aussortiert.
+ */
+export function listCanonicalEntryRoutes(
+  catalogKeys: readonly string[] = listSupportedCatalogKeys(),
+): string[] {
+  return [
+    ...CANONICAL_CONTENT_ROUTES,
+    ...catalogKeys.map((catalogKey) => `/katalog/${encodeURIComponent(catalogKey)}`),
+  ];
+}
+
+function listSupportedCatalogKeys(): string[] {
+  return listSupportedCatalogs().flatMap((entry) =>
+    entry.catalogKey !== undefined ? [entry.catalogKey] : [],
+  );
+}
 
 export function writeSpaFallbackFile(outDir: string) {
   const indexHtmlPath = resolve(outDir, 'index.html');
@@ -22,17 +63,109 @@ export function writeSpaFallbackFile(outDir: string) {
   copyFileSync(indexHtmlPath, fallbackHtmlPath);
 }
 
+/**
+ * Materialisiert die kanonischen Einstiegsrouten als echte HTTP-200-Dokumente:
+ * `dist/<route>/index.html`, bytegleich zum gebauten `index.html`. GitHub Pages
+ * liefert diese Pfade mit Status 200 aus, während `404.html` weiterhin nur den
+ * Fallback für nicht materialisierte SPA-Routen trägt. Fail-closed vor dem
+ * ersten Schreiben, damit bei fehlendem Build kein halber Zustand bleibt.
+ */
+export function writeStaticRouteEntries(outDir: string, catalogKeys?: readonly string[]): void {
+  const indexHtmlPath = resolve(outDir, 'index.html');
+
+  if (!existsSync(indexHtmlPath)) {
+    throw new Error(`Cannot create static route entries without build output at ${indexHtmlPath}`);
+  }
+
+  const indexHtml = readFileSync(indexHtmlPath);
+
+  for (const route of listCanonicalEntryRoutes(catalogKeys)) {
+    const entryPath = resolve(outDir, `.${route}`, 'index.html');
+    mkdirSync(dirname(entryPath), { recursive: true });
+    writeFileSync(entryPath, indexHtml);
+  }
+}
+
 function spaFallbackPlugin() {
   return {
     name: 'github-pages-spa-fallback',
     closeBundle() {
       writeSpaFallbackFile(DIST_DIR);
+      writeStaticRouteEntries(DIST_DIR);
+      writeSitemapFile(DIST_DIR);
     },
   };
 }
 
+const CANONICAL_ORIGIN = 'https://dfurater.github.io';
+
+/*
+ * Der XML-Namespace des Sitemap-Protokolls ist als Identifier byte-exakt
+ * `http://www.sitemaps.org/schemas/sitemap/0.9` vorgeschrieben — er ist eine
+ * opaque Kennung, über die nie eine unverschlüsselte Verbindung aufgebaut
+ * wird. Das http-Literal ist daher korrekt (SonarQube S5332 hier gezielt
+ * unterdrückt) und das https-Pendant wäre ein protokollfremder Namespace.
+ */
+const SITEMAP_NAMESPACE = 'http://www.sitemaps.org/schemas/sitemap/0.9'; // NOSONAR: opaque XML-Namespace-Kennung, kein Netzwerkzugriff
+
+/**
+ * Dieselbe aufgelöste Deployment-Basis wie die Vite-Option `base` im
+ * Build-Fall (Greptile-Befund zu GSPP-231): Statische Einstiege und
+ * Sitemap-URLs müssen zur tatsächlich konfigurierten Auslieferung passen,
+ * auch wenn `BUILD_BASE` davon abweicht.
+ */
+export function resolveDeploymentBase(): string {
+  return process.env.BUILD_BASE ?? GITHUB_PAGES_BASE;
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&apos;');
+}
+
+/**
+ * Deterministische Sitemap der kanonischen Einstiegsseiten (GSPP-231): die
+ * Startseite plus exakt die Routen aus demselben Vertrag wie die statischen
+ * 200-Einstiege von GSPP-210 — dadurch kann keine der beiden Listen driftet.
+ * Nur die Pflichtfelder des Sitemap-Protokolls (`urlset`, `url`, `loc`); auf
+ * unbelegte optionale Felder (`lastmod`, `changefreq`, `priority`) wird
+ * bewusst verzichtet. Pfade müssen vertragsseitig URL-pfadkonform sein
+ * (`listCanonicalEntryRoutes()` kodiert die Katalogschlüssel bereits),
+ * XML-Sonderzeichen werden hier escaped.
+ */
+export function buildSitemapXml(
+  options: { origin?: string; basePath?: string; routes?: readonly string[] } = {},
+): string {
+  const origin = options.origin ?? CANONICAL_ORIGIN;
+  const basePath = options.basePath ?? resolveDeploymentBase();
+  const routes = options.routes ?? ['/', ...listCanonicalEntryRoutes()];
+  const baseUrl = `${origin}${basePath}`;
+
+  const urlEntries = routes.map((route) => {
+    const loc = escapeXml(`${baseUrl}${route.slice(1)}`);
+    return `  <url><loc>${loc}</loc></url>`;
+  });
+
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    `<urlset xmlns="${SITEMAP_NAMESPACE}">`,
+    ...urlEntries,
+    '</urlset>',
+    '',
+  ].join('\n');
+}
+
+/** Schreibt die Sitemap byte-deterministisch nach `dist/sitemap.xml`. */
+export function writeSitemapFile(outDir: string): void {
+  writeFileSync(resolve(outDir, 'sitemap.xml'), buildSitemapXml());
+}
+
 export default defineConfig(({ command }) => ({
-  base: command === 'build' ? (process.env.BUILD_BASE ?? GITHUB_PAGES_BASE) : '/',
+  base: command === 'build' ? resolveDeploymentBase() : '/',
   plugins: [react(), tailwindcss(), catalogFreshnessPlugin(), spaFallbackPlugin()],
   resolve: {
     alias: {
