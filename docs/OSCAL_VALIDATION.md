@@ -96,6 +96,11 @@ Validierungsergebnis nicht.
 „CI“ bezeichnet in diesem Dokument die Build- und Prüfzeit auf einem isolierten
 GitHub-Actions-Runner; Browserprüfungen laufen ausschließlich im Modul-Worker.
 
+Der modellübergreifende [Round-trip-Harnisch](OSCAL_ROUND_TRIP.md) konsumiert
+diese Kette für den No-op-Lauf — inklusive des hier dokumentierten
+`not-checked`-Status der Constraint-Stufe, der dort nicht dupliziert, sondern
+nur referenziert wird.
+
 | Stufe | Vorgeschriebener Zielzustand | Pinning und Fehlersemantik |
 | --- | --- | --- |
 | 1. Größenlimit und JSON-Syntax | **Für Klasse 2 umgesetzt:** Plattformfunktionen (`Uint8Array`, fataler UTF-8-Decoder), projekteigener Token-Scanner und danach `JSON.parse` im isolierten Modul-Worker | Das Bytelimit von 10 MiB greift vor Worker-Erzeugung, Kopie, Decoder, Scanner und Parser. Nach erfolgreicher fataler Dekodierung lehnt der Scanner doppelte Member auf jeder erlaubten Objekttiefe ab und begrenzt seinen eigenen Abstieg auf Tiefe 64; nur dann wird `JSON.parse` aufgerufen. Ein vom Scanner als ungültig bewerteter Text endet ebenfalls vor `JSON.parse` fail-closed. Die nachfolgende, iterative Prüfung prüft die Tiefe erneut und begrenzt Knotenzahl auf 1 000 000 sowie die arithmetische Summe dekodierter Base64-Größen auf 10 MiB, ohne Base64 zu dekodieren. Der Adapter beendet einen antwortlosen Worker nach 30 Sekunden mit einer redigierten Fehlerdiagnose. Node-Tests verwenden dieselbe Worker-Logik; der Browsernachweis läuft in Chromium. |
