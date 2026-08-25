@@ -24,6 +24,7 @@ import {
 } from '@/domain/oscalImportContract';
 import { createClass2UnprovenancedDiagnostic } from '@/domain/oscalObjectProvenance';
 import { isParserProducedRoot } from '@/domain/oscalImportProcessing';
+import { isDerivedProducedContainer } from '@/domain/oscalDerivedGraph';
 import { walkOwnContainers } from '@/domain/oscalObjectWalk';
 import { enforceClass2ObjectGraphInvariants } from '@/domain/oscalObjectGraph';
 import { validateAgainstPinnedSchema } from '@/domain/oscalSchemaValidation';
@@ -121,7 +122,9 @@ function verifyProvenance(root: unknown): ProvenanceVerdict {
   let provenanced = true;
   let payloadBytes = 0;
   walkOwnContainers(root, (container) => {
-    if (!isParserProducedRoot(container)) {
+    // Zwei geschlossene Herkunftsquellen: der Byte-Eintrittspunkt und der
+    // kontrollierte Builder des Ableitungswegs; alles andere scheitert.
+    if (!isParserProducedRoot(container) && !isDerivedProducedContainer(container)) {
       provenanced = false;
       return false;
     }
