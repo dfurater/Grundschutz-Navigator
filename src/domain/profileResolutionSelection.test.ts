@@ -221,6 +221,30 @@ describe('Selektion Phase 1 — Fail-closed', () => {
     expect(index.order).toEqual(['ac-1']);
   });
 
+  it('indexiert eine 12.000 Ebenen tiefe Gruppenhierarchie ohne Stapelüberlauf', () => {
+    // Greptile-Befund zu 0034765: Die rekursive Gruppentraversierung warf bei
+    // tiefen Hierarchien einen RangeError; der Index trägt sie iterativ.
+    let wrapped: Record<string, unknown> = {
+      id: 'lvl-0',
+      class: 'family',
+      title: '',
+      controls: [control('deep-leaf')],
+    };
+    for (let level = 1; level < 12_000; level += 1) {
+      wrapped = {
+        id: `lvl-${level}`,
+        class: 'family',
+        title: '',
+        groups: [wrapped],
+      };
+    }
+    const deepCatalog = catalog({ metadata: {}, groups: [wrapped] });
+
+    expect(() => indexCatalogControls(deepCatalog)).not.toThrow();
+    const index = indexCatalogControls(deepCatalog);
+    expect(index.byId.has('deep-leaf')).toBe(true);
+  });
+
   it('ambiguous und none liefern eine strukturelle Ablehnung', () => {
     const index = indexCatalogControls(baseCatalog);
     const diagnostic = { code: 'X', stage: 'domain' } as never;

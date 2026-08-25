@@ -84,7 +84,8 @@ interface IndexState {
   parentOf: Map<string, string>;
 }
 
-function visitControl(
+/** Registriert eine Control im Index; Duplikate bleiben beim Erstanteil. */
+function registerControl(
   node: JsonObject,
   parentControlId: string | null,
   state: IndexState,
@@ -100,32 +101,56 @@ function visitControl(
     siblings.push(id);
     state.childrenOf.set(parentControlId, siblings);
   }
-
-  const children = ownDataValue(node, 'controls');
-  if (Array.isArray(children)) {
-    for (const child of children) {
-      if (isJsonObject(child)) visitControl(child, id, state);
-    }
-  }
 }
 
-function visitContainer(container: JsonObject, state: IndexState): void {
-  // Originalordnung: Die Reihenfolge des Quelldokuments ist bedeutungstragend
-  // — `controls` und `groups` werden in der Dokumentreihenfolge ihrer
-  // Schlüssel besucht, nicht starr controls-zuerst. Rein
-  // deskriptorbasiert: Accessoren erscheinen als abwesend.
-  for (const key of Reflect.ownKeys(container)) {
-    if (typeof key !== 'string') continue;
-    const value = ownDataValue(container, key);
-    if (!Array.isArray(value)) continue;
-    if (key === 'controls') {
-      for (const node of value) {
-        if (isJsonObject(node)) visitControl(node, null, state);
+type IndexTask =
+  | { readonly kind: 'container'; readonly node: JsonObject }
+  | { readonly kind: 'control'; readonly node: JsonObject; readonly parent: string | null };
+
+/**
+ * Indexiert die komplette Control-Hierarchie eines importierten Dokuments
+ * iterativ: Eine explizite Aufgabenliste trägt Container- und Control-
+ * Tiefenreihenfolge des Quelldokuments ohne jeden rekursiven Abstieg —
+ * tiefe Hierarchien erschöpfen den Aufrufstapel nicht (Greptile-Befund zu
+ * 0034765). Rein deskriptorbasiert; Accessoren erscheinen als abwesend.
+ */
+function indexCatalogBody(body: JsonObject, state: IndexState): void {
+  const stack: IndexTask[] = [{ kind: 'container', node: body }];
+
+  while (stack.length > 0) {
+    const task = stack.pop()!;
+    const childTasks: IndexTask[] = [];
+
+    if (task.kind === 'container') {
+      // Dokumentreihenfolge der Schlüssel ist bedeutungstragend.
+      for (const key of Reflect.ownKeys(task.node)) {
+        if (typeof key !== 'string') continue;
+        const value = ownDataValue(task.node, key);
+        if (!Array.isArray(value)) continue;
+        if (key === 'groups') {
+          for (const group of value) {
+            if (isPlainObjectBody(group)) childTasks.push({ kind: 'container', node: group });
+          }
+        } else if (key === 'controls') {
+          for (const node of value) {
+            if (isJsonObject(node)) childTasks.push({ kind: 'control', node, parent: null });
+          }
+        }
       }
-    } else if (key === 'groups') {
-      for (const group of value) {
-        if (isJsonObject(group)) visitContainer(group, state);
+    } else {
+      const id = readControlId(task.node);
+      registerControl(task.node, task.parent, state);
+      if (id === null) continue;
+      const children = ownDataValue(task.node, 'controls');
+      if (!Array.isArray(children)) continue;
+      for (const child of children) {
+        if (isJsonObject(child)) childTasks.push({ kind: 'control', node: child, parent: id });
       }
+    }
+
+    // Umgekehrt pushen, damit der Stapel die Originalordnung liefert.
+    for (let index = childTasks.length - 1; index >= 0; index -= 1) {
+      stack.push(childTasks[index]!);
     }
   }
 }
@@ -150,7 +175,7 @@ export function indexCatalogControls(document: unknown): CatalogControlIndex {
   if (bodyKeys.length !== 1) return state;
 
   const body = ownDataValue(document, bodyKeys[0]!) as JsonObject;
-  visitContainer(body, state);
+  indexCatalogBody(body, state);
   return state;
 }
 
