@@ -203,6 +203,20 @@ describe('writeSitemapFile / buildSitemapXml', () => {
       delete process.env.BUILD_BASE;
     }
   });
+
+  it('normalizes a BUILD_BASE without a trailing slash before joining it to routes', () => {
+    process.env.BUILD_BASE = '/preview';
+
+    try {
+      expect(resolveDeploymentBase()).toBe('/preview/');
+      expect(buildSitemapXml()).toContain(
+        '<loc>https://dfurater.github.io/preview/suche</loc>',
+      );
+      expect(buildSitemapXml()).not.toContain('previewsuche');
+    } finally {
+      delete process.env.BUILD_BASE;
+    }
+  });
 });
 
 describe('listCanonicalEntryRoutes', () => {
