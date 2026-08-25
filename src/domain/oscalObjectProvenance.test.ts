@@ -300,9 +300,33 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
 
     const result = await processClass2OscalValue(input.source, context);
 
+    // Ohne Iteration über die Länge gerechnet: 100 Mio null-Löcher ≈ 400 MB
+    // serialisiertes Äquivalent — derselbe Inhalt wäre am Byteeingang mit
+    // derselben Diagnose abgewiesen worden. Keine Indexiteration, keine
+    // Blockierung, richtungstreue Grenzentscheidung.
     expect(result).toMatchObject({
       ok: false,
-      diagnostic: { code: 'OSCAL_OBJECT_ARRAY_SHAPE_REJECTED', stage: OBJECT_GRAPH_STAGE },
+      diagnostic: { code: 'OSCAL_BYTE_LIMIT_EXCEEDED', stage: 'resource-limit' },
+    });
+  });
+
+  it('rechnet sparse Arrays voll — definierte Riesenwerte entgehen der Grenze nicht', async () => {
+    // Greptile-Befund zu bcde872: Die Dichte-Frühantwort 0 unterschlug die
+    // definierten Slots und ihre null-gefüllten Löcher; dasselbe JSON war am
+    // Byteweg OSCAL_BYTE_LIMIT_EXCEEDED. Die Buchhaltung rechnet auch bei
+    // Nicht-Dichte vollständig — nur eben ohne Iteration über die Länge.
+    const input = await parseClass2OscalInput(new TextEncoder().encode('[1,2,3]'));
+    if (!input.ok) throw new Error('Fixture muss parsen');
+
+    const array = input.source as unknown[];
+    array[0] = 'y'.repeat(CLASS_2_IMPORT_LIMITS.maxBytes - 1024);
+    array.length = 5_000_000;
+
+    const result = await processClass2OscalValue(input.source, context);
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: { code: 'OSCAL_BYTE_LIMIT_EXCEEDED', stage: 'resource-limit' },
     });
   });
 

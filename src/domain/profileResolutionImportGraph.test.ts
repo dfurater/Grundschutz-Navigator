@@ -165,6 +165,28 @@ describe('Deterministischer Importgraph der Profile Resolution', () => {
     });
   });
 
+  it('führt keine Dokument-Accessoren aus — werfender Root-Getter bleibt strukturell', () => {
+    const hostile: Record<string, unknown> = {};
+    Object.defineProperty(hostile, 'profile', {
+      get() {
+        throw new Error('Getter wurde ausgeführt');
+      },
+      enumerable: true,
+      configurable: true,
+    });
+
+    const plan = buildProfileResolutionPlan({
+      topProfileArtifactKey: 'profile-hostile',
+      documents: new Map([['profile-hostile', hostile]]),
+      edgesByArtifactKey: new Map(),
+    });
+
+    expect(plan).toMatchObject({
+      ok: false,
+      diagnostic: { stage: 'profile-resolution' },
+    });
+  });
+
   it('antwortet auf eine tiefe azyklische Kette kontrolliert statt mit Stapelüberlauf', () => {
     // Greptile-Befund zu 9da9883: Die Rekursion warf bei 12.000 Kettengliedern
     // einen RangeError; der Planer muss tiefe Graphen mit einer stabilen

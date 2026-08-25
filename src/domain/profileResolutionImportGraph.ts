@@ -75,9 +75,16 @@ function reject(code: string): { readonly ok: false; readonly diagnostic: OscalD
 
 function rootEntry(document: unknown): [string, Record<string, unknown>] | null {
   if (document === null || typeof document !== 'object') return null;
-  const entries = Object.entries(document as Record<string, unknown>);
-  if (entries.length !== 1) return null;
-  const [rootKey, body] = entries[0]!;
+  const keys = Reflect.ownKeys(document as object);
+  if (keys.length !== 1) return null;
+  const rootKey = keys[0]!;
+  if (typeof rootKey !== 'string') return null;
+  // Rein deskriptorbasierter Zugriff: Ein Root-Accessor wird nie ausgeführt
+  // und führt fail-closed zur strukturellen Ablehnung (Greptile-Befund zu
+  // bcde872).
+  const descriptor = Object.getOwnPropertyDescriptor(document, rootKey);
+  if (descriptor === undefined || !('value' in descriptor)) return null;
+  const body: unknown = descriptor.value;
   if (body === null || typeof body !== 'object') return null;
   return [rootKey, body as Record<string, unknown>];
 }
@@ -86,7 +93,22 @@ function declaredOscalVersion(document: unknown): string | null {
   const entry = rootEntry(document);
   if (entry === null) return null;
   const [, body] = entry;
-  const version = (body['metadata'] as Record<string, unknown> | undefined)?.['oscal-version'];
+  // Auch hier nur Deskriptorzugriff — kein Feld eines Dokuments wird gelesen,
+  // ohne seine Data-Property-Natur vorher festzustellen.
+  const metadataDescriptor = Object.getOwnPropertyDescriptor(body, 'metadata');
+  const metadata =
+    metadataDescriptor !== undefined && 'value' in metadataDescriptor
+      ? metadataDescriptor.value
+      : undefined;
+  if (metadata === null || typeof metadata !== 'object') return null;
+  const versionDescriptor = Object.getOwnPropertyDescriptor(
+    metadata as object,
+    'oscal-version',
+  );
+  const version =
+    versionDescriptor !== undefined && 'value' in versionDescriptor
+      ? versionDescriptor.value
+      : undefined;
   return typeof version === 'string' && version.length > 0 ? version : null;
 }
 
