@@ -4,7 +4,12 @@ import {
   CLASS_2_IMPORT_VALIDATOR,
   createClass2ByteLimitDiagnostic,
 } from '@/domain/oscalImportContract';
-import { createClass2ResourceLimitDiagnostic } from '@/domain/oscalObjectGraph';
+import {
+  createClass2ResourceLimitDiagnostic,
+} from '@/domain/oscalObjectGraph';
+import {
+  registerParserProducedRoot,
+} from '@/domain/oscalObjectProvenance';
 
 // Die gemeinsame objektorientierte Prüfkette lebt in ihren eigenen Einheiten
 // (ADR-8 Festlegung 1+3). Diese Bestandsmodule führen sie nur unter ihren
@@ -308,11 +313,16 @@ export function parseClass2OscalInput(bytes: Uint8Array): Class2OscalInputResult
 
   try {
     // Stufe 1 endet hier: Der Byte-Eintrittspunkt gibt ausschließlich das
-    // unmittelbare Ergebnis seines eigenen JSON.parse weiter. Strukturinvariante
-    // und Ressourcenlimits laufen in der gemeinsamen objektorientierten Einheit
-    // (oscalObjectPipeline), damit beide Herkunftswege denselben Durchlauf nutzen.
-    const source = JSON.parse(text);
-    return { ok: true, source };
+    // unmittelbare Ergebnis seines eigenen JSON.parse weiter — und belegt
+    // dessen Herkunft durch die modulprivate Registrierung, damit die
+    // gemeinsame Kette Unbelegtes vor jeder Reflexion ablehnen kann.
+    const parsed: unknown = JSON.parse(text);
+    // Nur Container sind im WeakSet registrierbar; primitive Wurzeln laufen
+    // unverändert in den Root-Dispatch und erhalten dort ihre Diagnose.
+    if (parsed !== null && typeof parsed === 'object') {
+      registerParserProducedRoot(parsed);
+    }
+    return { ok: true, source: parsed };
   } catch {
     return {
       ok: false,

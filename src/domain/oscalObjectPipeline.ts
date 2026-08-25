@@ -4,15 +4,25 @@
 // Der Schnitt verläuft zwischen Stufe 1 (Bytes) und Stufe 2 (Objekt): Alles,
 // was auf dem geparsten Objekt arbeitet — Ressourcenlimits, Strukturinvariante,
 // Root-Dispatch und Schemastufe — gilt für jedes Dokument unabhängig von seiner
-// Entstehung und läuft durch genau diese exportierte Einheit. Der Byte-Eintrittspunkt
-// (`processClass2OscalBytes`) ruft sie mit dem unmittelbaren Ergebnis seines eigenen
-// `JSON.parse` auf; der Ableitungsweg tritt ausschließlich über ein privat
-// registriertes `DerivedJsonTree`-Handle hier ein (GSPP-291 Commit B).
+// Entstehung und läuft durch genau diese exportierte Einheit.
+//
+// Herkunftsnachweis (ADR-8 Festlegung 3): Die Kette akzeptiert ausschließlich
+// Werte mit belegter Herkunft. Der Byte-Eintrittspunkt registriert das
+// unmittelbare Ergebnis seines eigenen JSON.parse; die Prüfung ist eine reine
+// Identitätsfrage und läuft vor jeder Reflexion, vor dem Root-Dispatch und vor
+// dem Modelleingang. Der Ableitungsweg tritt mit Commit B über ein eigenes,
+// privat registriertes `DerivedJsonTree`-Handle hier ein. Es gibt keinen
+// öffentlichen Weg, ein fremdes Objekt oder einen Proxy als „geparst“ zu
+// markieren.
 // =============================================================================
 
 import { dispatchOscalDocument, type OscalRootDispatchSuccess } from '@/adapters/oscalRootDispatch';
 import { createOscalDiagnostic, type OscalDiagnostic } from '@/domain/oscalDiagnostics';
 import { CLASS_2_IMPORT_VALIDATOR } from '@/domain/oscalImportContract';
+import {
+  createClass2UnprovenancedDiagnostic,
+  isParserProducedRoot,
+} from '@/domain/oscalObjectProvenance';
 import { enforceClass2ObjectGraphInvariants } from '@/domain/oscalObjectGraph';
 import { validateAgainstPinnedSchema } from '@/domain/oscalSchemaValidation';
 import type { OscalDocumentContext } from '@/domain/models';
@@ -38,10 +48,11 @@ export type Class2OscalValueResult =
   | { readonly ok: false; readonly diagnostic: OscalDiagnostic };
 
 /**
- * Gemeinsame objektorientierte Prüfkette: Ein geparster Wert plus Kontext
- * durchlaufen in dieser Reihenfolge Strukturinvariante samt Ressourcenlimits
- * (ein Durchlauf), `dispatchOscalDocument()` und die gepinnte Schemastufe.
- * Es entsteht bewusst keine zweite Root-, Versions-, Limit- oder Referenzlogik.
+ * Gemeinsame objektorientierte Prüfkette: Ein Wert mit belegter Herkunft plus
+ * Kontext durchlaufen in dieser Reihenfolge Herkunftsprüfung (reine
+ * Identitätsfrage), Strukturinvariante samt Ressourcenlimits (ein Durchlauf),
+ * `dispatchOscalDocument()` und die gepinnte Schemastufe. Es entsteht bewusst
+ * keine zweite Root-, Versions-, Limit- oder Referenzlogik.
  *
  * `async`, weil die Schemastufe die Schema-Zelle als eigenen Chunk nachlädt.
  */
@@ -59,6 +70,19 @@ export async function processClass2OscalValue(
         path: '/',
       }),
     };
+  }
+
+  // Herkunft vor Reflexion: Container-Werte müssen in der modulprivaten Menge
+  // registriert sein, bevor der Durchlauf sie berührt. Rohobjekte, nachgebaute
+  // Handles und Proxy-Hüllen scheitern hier mit stabiler fail-closed Diagnose.
+  // Primitive und `null` tragen keine Containeridentität; sie laufen unverändert
+  // in den Root-Dispatch und erhalten dort ihre bestehende Diagnose.
+  if (
+    source !== null
+    && typeof source === 'object'
+    && !isParserProducedRoot(source)
+  ) {
+    return { ok: false, diagnostic: createClass2UnprovenancedDiagnostic() };
   }
 
   const structuralFailure = enforceClass2ObjectGraphInvariants(source);

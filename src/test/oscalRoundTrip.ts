@@ -5,12 +5,12 @@
 // OSCAL-Dokument: Ein Round-trip ohne fachlichen Schreibvorgang verändert
 // nichts — weder auf der Serialisierung noch auf dem geparsten Graphen.
 //
-// Der Harnisch definiert nichts Neuem, was der Validierungsvertrag bereits
-// entscheidet: Ressourcenlimits kommen aus `oscalResourceLimits.ts`
-// (Stufe 1), Root-Erkennung und Versionsbindung aus `dispatchOscalDocument()`
-// beziehungsweise `resolveSchemaBinding()` (Stufe 2), Schemaprüfung aus
-// `validateAgainstPinnedSchema()` (Stufe 3) und Referenzklassifikation aus
-// `referenceResolution.ts` (Stufe 5, nur Katalogpfad).
+// Der Harnisch definiert nichts Neues, was der Validierungsvertrag bereits
+// entscheidet: Strukturinvariante samt Ressourcenlimits kommen aus
+// `oscalObjectGraph.ts` (Stufe 2a), Root-Erkennung und Versionsbindung aus
+// `dispatchOscalDocument()` beziehungsweise `resolveSchemaBinding()` (Stufe 2),
+// Schemaprüfung aus `validateAgainstPinnedSchema()` (Stufe 3) und
+// Referenzklassifikation aus `referenceResolution.ts` (Stufe 5, nur Katalogpfad).
 //
 // Zwei Vergleichsebenen (Befund 7): Die byte-identische Serialisierung ist
 // blind für `Infinity` und `-0`; deshalb läuft zusätzlich ein Vergleich auf

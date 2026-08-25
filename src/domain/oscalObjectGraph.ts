@@ -1,17 +1,24 @@
 // =============================================================================
 // Objektgraph-Invariante der Klasse-2-Kette (ADR-8 Festlegung 3)
 //
-// Positivdefinition statt Verbotsliste; Details und Normbezug:
-// docs/OSCAL_VALIDATION.md, „Die gemeinsame objektorientierte Prüfkette“.
-// Strukturinvariante und Ressourcenlimits laufen in EINEM terminierenden
-// Baumdurchlauf mit einer Identitätsmenge über den ganzen Lauf — Zyklen und
-// geteilte Containeridentität werden fail-closed abgelehnt, was den Durchlauf
-// zugleich terminierend macht. Weder JSON.stringify noch structuredClone
-// werden als Prüfmittel verwendet.
+// Positivdefinition statt Verbotsliste; Details: docs/OSCAL_VALIDATION.md,
+// „Die gemeinsame objektorientierte Prüfkette“. Strukturinvariante und
+// Ressourcenlimits laufen in EINEM terminierenden Baumdurchlauf mit globaler
+// Identitätsmenge (Zyklen und geteilte Containeridentität fail-closed). Weder
+// JSON.stringify noch structuredClone als Prüfmittel. Die Einheit ist die
+// Postcondition gegen Builderfehler: Der Byteweg kann die geprüften Formen
+// sprachlich nicht erzeugen, der Ableitungsweg (Commit B) schon — sein
+// Herkunftsnachweis liegt in oscalObjectProvenance.ts.
 // =============================================================================
 
 import { createOscalDiagnostic, type OscalDiagnostic } from '@/domain/oscalDiagnostics';
 import { CLASS_2_IMPORT_LIMITS, CLASS_2_IMPORT_VALIDATOR } from '@/domain/oscalImportContract';
+import {
+  accountEmbeddedBase64,
+  windowForElement,
+  windowForKey,
+  type PathWindow,
+} from '@/domain/oscalBackMatterBase64';
 
 /** Eigene Prüfstufe der Objektgraph-Invariante in der Diagnose-Signatur. */
 export const OBJECT_GRAPH_STAGE = 'object-structure' as const;
@@ -51,7 +58,7 @@ export function createClass2ResourceLimitDiagnostic(
   });
 }
 
-function createObjectGraphDiagnostic(code: string): OscalDiagnostic {
+function reject(code: string): OscalDiagnostic {
   return createOscalDiagnostic({
     code,
     stage: OBJECT_GRAPH_STAGE,
@@ -68,68 +75,6 @@ interface WalkState {
   decodedBase64Bytes: number;
 }
 
-/**
- * Pfadfenster für die Base64-Erkennung. Das Ressourcenlimit erkennt die
- * Payload über die Adjazenz `'back-matter' → 'resources' → <Index> → 'base64'`;
- * das Fenster bildet genau diese Kante ohne volle Pfadarrays ab.
- */
-type PathWindow =
-  | 'none'
-  | 'after-back-matter-key'
-  | 'in-resources-array'
-  | 'in-resource-element';
-
-function windowForKey(window: PathWindow, key: string): PathWindow | 'base64-payload' {
-  if (key === 'back-matter') return 'after-back-matter-key';
-  if (key === 'resources' && window === 'after-back-matter-key') return 'in-resources-array';
-  if (key === 'base64' && window === 'in-resource-element') return 'base64-payload';
-  return 'none';
-}
-
-/** Fenster eines Arrayelements: nur Elemente des `resources`-Arrays tragen weiter. */
-function windowForElement(window: PathWindow): PathWindow {
-  return window === 'in-resources-array' ? 'in-resource-element' : 'none';
-}
-
-function countBase64Padding(encoded: string): number {
-  if (encoded.endsWith('==')) return 2;
-  if (encoded.endsWith('=')) return 1;
-  return 0;
-}
-
-function decodedBase64ByteLength(encoded: string): number {
-  return Math.max(0, Math.floor(encoded.length / 4) * 3 - countBase64Padding(encoded));
-}
-
-type EmbeddedBase64Accounting =
-  | { readonly kind: 'accounted'; readonly totalBytes: number }
-  | { readonly kind: 'exceeded'; readonly diagnostic: OscalDiagnostic };
-
-/**
- * Summiert die dekodierte Größe eingebetteter Back-matter-Ressourcen ohne
- * tatsächliche Dekodierung und wacht über das Byte-Limit.
- */
-function accountEmbeddedBase64(
-  payload: Record<string, unknown>,
-  totalBytesSoFar: number,
-): EmbeddedBase64Accounting {
-  const encoded = payload['value'];
-  if (typeof encoded !== 'string') {
-    return { kind: 'accounted', totalBytes: totalBytesSoFar };
-  }
-
-  const totalBytes = totalBytesSoFar + decodedBase64ByteLength(encoded);
-  if (totalBytes > CLASS_2_IMPORT_LIMITS.maxDecodedBase64Bytes) {
-    return {
-      kind: 'exceeded',
-      diagnostic: createClass2ResourceLimitDiagnostic('OSCAL_RESOURCE_BASE64_LIMIT_EXCEEDED', {
-        limitDecodedBase64Bytes: CLASS_2_IMPORT_LIMITS.maxDecodedBase64Bytes,
-      }),
-    };
-  }
-  return { kind: 'accounted', totalBytes };
-}
-
 function isPlainDataDescriptor(descriptor: PropertyDescriptor | undefined): boolean {
   return (
     descriptor !== undefined
@@ -144,36 +89,32 @@ function isPlainDataDescriptor(descriptor: PropertyDescriptor | undefined): bool
 /**
  * Positivdefinition der Arrayform: eigener Schlüsselbestand genau die Indizes
  * `0..length-1` plus `length`, keine Lücken, keine Symbol- oder Fremdschlüssel,
- * `length` als normale Data-Property, jede Elementposition voll
- * schreibbar, aufzählbar und konfigurierbar.
+ * `length` als normale Data-Property, jede Elementposition voll schreibbar,
+ * aufzählbar und konfigurierbar.
  */
 function isArrayFormAllowed(array: unknown[]): boolean {
   if (Object.getPrototypeOf(array) !== Array.prototype) return false;
 
-  const length = array.length;
   // Genau die Indizes plus `length`; ein Symbol- oder Fremdschlüssel würde die
   // Anzahl überschreiten und fällt damit ohne Einzelaufzählung heraus.
-  if (Reflect.ownKeys(array).length !== length + 1) return false;
+  if (Reflect.ownKeys(array).length !== array.length + 1) return false;
 
-  for (let index = 0; index < length; index += 1) {
-    if (!Object.prototype.hasOwnProperty.call(array, index)) return false;
+  for (let index = 0; index < array.length; index += 1) {
+    if (!Object.hasOwn(array, index)) return false;
     if (!isPlainDataDescriptor(Object.getOwnPropertyDescriptor(array, index))) return false;
   }
 
   const lengthDescriptor = Object.getOwnPropertyDescriptor(array, 'length');
   return (
-    lengthDescriptor !== undefined
-    && lengthDescriptor.writable === true
+    lengthDescriptor?.writable === true
     && lengthDescriptor.enumerable === false
     && lengthDescriptor.configurable === false
   );
 }
 
 /**
- * Positivdefinition der Objektform: keine Symbol-Schlüssel, jede eigene
- * Property eine voll schreibbare, aufzählbare, konfigurierbare Data-Property.
- * Geerbte Member sind hier unsichtbar und scheitern am Prototypvergleich bzw.
- * als unzulässiger Wertetyp.
+ * Objektform: keine Symbol-Schlüssel, jede eigene Property voll schreibbar,
+ * aufzählbar und konfigurierbar; Geerbtes scheitert am Prototypvergleich.
  */
 function isObjectFormAllowed(record: Record<string, unknown>): boolean {
   const ownKeys = Reflect.ownKeys(record);
@@ -183,76 +124,53 @@ function isObjectFormAllowed(record: Record<string, unknown>): boolean {
   );
 }
 
-/**
- * EIN terminierender Baumdurchlauf für Strukturinvariante und Ressourcenlimits.
- * Reihenfolge je Knoten: Knotenzahl vor Tiefe, dann Form, dann Buchhaltung,
- * dann Kinder.
- */
-function walkObjectGraph(
-  value: unknown,
+/** Primitivwerte: zulässig sind null, Boolean, String und Number außer NaN. */
+function visitPrimitive(value: Exclude<unknown, object | null>): OscalDiagnostic | null {
+  if (typeof value === 'number') {
+    // ±Infinity bleibt zulässig, weil JSON.parse("1e400") es erzeugt.
+    return Number.isNaN(value)
+      ? reject(OBJECT_GRAPH_DIAGNOSTIC_CODES.VALUE_TYPE_REJECTED)
+      : null;
+  }
+  if (typeof value === 'boolean' || typeof value === 'string') return null;
+  // undefined, Funktion, BigInt und Symbol als Wert haben keine
+  // JSON.parse-Entsprechung.
+  return reject(OBJECT_GRAPH_DIAGNOSTIC_CODES.VALUE_TYPE_REJECTED);
+}
+
+/** Arrayform prüfen, registrieren und Elemente im selben Durchlauf besuchen. */
+function visitArray(
+  array: unknown[],
   depth: number,
   state: WalkState,
   window: PathWindow,
 ): OscalDiagnostic | null {
-  state.nodeCount += 1;
-  if (state.nodeCount > CLASS_2_IMPORT_LIMITS.maxNodes) {
-    return createClass2ResourceLimitDiagnostic('OSCAL_RESOURCE_NODE_LIMIT_EXCEEDED', {
-      limitNodes: CLASS_2_IMPORT_LIMITS.maxNodes,
-    });
+  if (!isArrayFormAllowed(array)) {
+    return reject(OBJECT_GRAPH_DIAGNOSTIC_CODES.ARRAY_SHAPE_REJECTED);
   }
-  if (depth > CLASS_2_IMPORT_LIMITS.maxDepth) {
-    return createClass2ResourceLimitDiagnostic('OSCAL_RESOURCE_DEPTH_LIMIT_EXCEEDED', {
-      limitDepth: CLASS_2_IMPORT_LIMITS.maxDepth,
-    });
+  state.seenContainers.add(array);
+  const elementWindow = windowForElement(window);
+  for (const element of array) {
+    const failure = walkObjectGraph(element, depth + 1, state, elementWindow);
+    if (failure !== null) return failure;
   }
+  return null;
+}
 
-  if (value === null) return null;
-
-  if (typeof value !== 'object') {
-    if (typeof value === 'number') {
-      // ±Infinity bleibt zulässig, weil JSON.parse("1e400") es erzeugt.
-      return Number.isNaN(value)
-        ? createObjectGraphDiagnostic(OBJECT_GRAPH_DIAGNOSTIC_CODES.VALUE_TYPE_REJECTED)
-        : null;
-    }
-    if (typeof value === 'boolean' || typeof value === 'string') return null;
-    // undefined, Funktion, BigInt und Symbol als Wert haben keine
-    // JSON.parse-Entsprechung.
-    return createObjectGraphDiagnostic(OBJECT_GRAPH_DIAGNOSTIC_CODES.VALUE_TYPE_REJECTED);
-  }
-
-  const container = value as object;
-  if (state.seenContainers.has(container)) {
-    // Derselbe Container an zweiter Stelle: Zyklus oder geteilte Identität —
-    // beides fail-closed, auch wenn der Graph azyklisch wäre.
-    return createObjectGraphDiagnostic(OBJECT_GRAPH_DIAGNOSTIC_CODES.IDENTITY_REJECTED);
-  }
-
-  if (Array.isArray(container)) {
-    if (!isArrayFormAllowed(container)) {
-      return createObjectGraphDiagnostic(OBJECT_GRAPH_DIAGNOSTIC_CODES.ARRAY_SHAPE_REJECTED);
-    }
-    state.seenContainers.add(container);
-    const elementWindow = windowForElement(window);
-    for (let index = 0; index < container.length; index += 1) {
-      const failure = walkObjectGraph(container[index], depth + 1, state, elementWindow);
-      if (failure !== null) return failure;
-    }
-    return null;
-  }
-
-  if (Object.getPrototypeOf(container) !== Object.prototype) {
-    // Date, Map, Klasseninstanzen, Null-Prototyp und jeder Custom-Prototyp.
-    return createObjectGraphDiagnostic(OBJECT_GRAPH_DIAGNOSTIC_CODES.PROTOTYPE_REJECTED);
-  }
-  const record = container as Record<string, unknown>;
+/** Objektform prüfen, registrieren, Base64-Buchhaltung führen und Kinder besuchen. */
+function visitRecord(
+  record: Record<string, unknown>,
+  depth: number,
+  state: WalkState,
+  window: PathWindow,
+): OscalDiagnostic | null {
   if (Reflect.ownKeys(record).some((key) => typeof key === 'symbol')) {
-    return createObjectGraphDiagnostic(OBJECT_GRAPH_DIAGNOSTIC_CODES.SYMBOL_KEY_REJECTED);
+    return reject(OBJECT_GRAPH_DIAGNOSTIC_CODES.SYMBOL_KEY_REJECTED);
   }
   if (!isObjectFormAllowed(record)) {
-    return createObjectGraphDiagnostic(OBJECT_GRAPH_DIAGNOSTIC_CODES.DESCRIPTOR_REJECTED);
+    return reject(OBJECT_GRAPH_DIAGNOSTIC_CODES.DESCRIPTOR_REJECTED);
   }
-  state.seenContainers.add(container);
+  state.seenContainers.add(record);
 
   for (const [key, propertyValue] of Object.entries(record)) {
     const childWindow = windowForKey(window, key);
@@ -285,9 +203,56 @@ function walkObjectGraph(
 }
 
 /**
+ * EIN terminierender Baumdurchlauf: Knotenzahl vor Tiefe, dann Form, dann
+ * Buchhaltung, dann Kinder.
+ */
+function walkObjectGraph(
+  value: unknown,
+  depth: number,
+  state: WalkState,
+  window: PathWindow,
+): OscalDiagnostic | null {
+  state.nodeCount += 1;
+  if (state.nodeCount > CLASS_2_IMPORT_LIMITS.maxNodes) {
+    return createClass2ResourceLimitDiagnostic('OSCAL_RESOURCE_NODE_LIMIT_EXCEEDED', {
+      limitNodes: CLASS_2_IMPORT_LIMITS.maxNodes,
+    });
+  }
+  if (depth > CLASS_2_IMPORT_LIMITS.maxDepth) {
+    return createClass2ResourceLimitDiagnostic('OSCAL_RESOURCE_DEPTH_LIMIT_EXCEEDED', {
+      limitDepth: CLASS_2_IMPORT_LIMITS.maxDepth,
+    });
+  }
+
+  if (value === null) return null;
+  if (typeof value !== 'object') return visitPrimitive(value);
+
+  const container = value as object;
+  if (state.seenContainers.has(container)) {
+    // Derselbe Container an zweiter Stelle: Zyklus oder geteilte Identität —
+    // beides fail-closed, auch wenn der Graph azyklisch wäre.
+    return reject(OBJECT_GRAPH_DIAGNOSTIC_CODES.IDENTITY_REJECTED);
+  }
+
+  if (Array.isArray(container)) {
+    return visitArray(container, depth, state, window);
+  }
+  if (Object.getPrototypeOf(container) !== Object.prototype) {
+    // Date, Map, Klasseninstanzen, Null-Prototyp und jeder Custom-Prototyp.
+    return reject(OBJECT_GRAPH_DIAGNOSTIC_CODES.PROTOTYPE_REJECTED);
+  }
+  return visitRecord(container as Record<string, unknown>, depth, state, window);
+}
+
+/**
  * Führt Strukturinvariante und Ressourcenlimits in einem Durchlauf aus.
  * Rückgabe ist `null` bei Erfolg, sonst die erste fail-closed Diagnose.
  */
 export function enforceClass2ObjectGraphInvariants(source: unknown): OscalDiagnostic | null {
-  return walkObjectGraph(source, 1, { seenContainers: new Set(), nodeCount: 0, decodedBase64Bytes: 0 }, 'none');
+  return walkObjectGraph(
+    source,
+    1,
+    { seenContainers: new Set(), nodeCount: 0, decodedBase64Bytes: 0 },
+    'none',
+  );
 }
