@@ -236,6 +236,30 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
     });
   });
 
+  it('misst escapepflichtige Zeichen in ihrer serialisierten Länge — Anführungszeichen füllen das Budget', async () => {
+    // Greptile-Befund zu 176307f: Escape-Erweiterungen (z. B. \" für jedes
+    // Anführungszeichen) verdoppeln die serialisierte Länge gegenüber der
+    // Rohform; die Buchhaltung muss die serialisierte Gestalt messen, sonst
+    // kippt die Richtungsparität zum Byteeintritt.
+    const input = await parseClass2OscalInput(
+      new TextEncoder().encode('{"catalog":{"metadata":{"title":"x"}}}'),
+    );
+    if (!input.ok) throw new Error('Fixture muss parsen');
+
+    const metadata = (
+      input.source as { catalog: { metadata: Record<string, unknown> } }
+    ).catalog.metadata;
+    const quotes = Math.floor(CLASS_2_IMPORT_LIMITS.maxBytes / 2);
+    metadata['title'] = '"'.repeat(quotes);
+
+    const result = await processClass2OscalValue(input.source, context);
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: { code: 'OSCAL_BYTE_LIMIT_EXCEEDED', stage: 'resource-limit' },
+    });
+  });
+
   it('registriert auch tief verschachtelte Dokumente ohne Stapelüberlauf', async () => {
     // Greptile-Befund zu 04ccf9c: Die Registrierung rekurrierte unbegrenzt und
     // warf bei tiefer Verschachtelung einen RangeError statt kontrolliert zu

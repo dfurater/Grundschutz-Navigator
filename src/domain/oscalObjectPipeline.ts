@@ -58,8 +58,43 @@ type ProvenanceVerdict = {
   readonly withinByteBudget: boolean;
 };
 
-/** Misst Strings in UTF-8-Bytes — derselben Einheit wie der Byteeintritt. */
-const utf8Encoder = new TextEncoder();
+/** UTF-8-Breite eines code points außerhalb der Escape-Fälle. */
+function utf8Width(codePoint: number): number {
+  if (codePoint < 0x80) return 1;
+  if (codePoint < 0x800) return 2;
+  if (codePoint < 0x10000) return 3;
+  return 4;
+}
+
+/**
+ * Serialisierte UTF-8-Bytegröße eines Stringinhalts exakt nach den
+ * Escape-Regeln von JSON.stringify: Anführungszeichen und Backslash doppelt,
+ * die fünf kurzen Steuerzeichen escapes zweibyte, alle übrigen
+ * Steuerzeichen und einzelne Surrogate als sechsbbyteiges `\uXXXX`, alles
+ * Übrige in seiner UTF-8-Breite.
+ */
+function serializedStringBytes(value: string): number {
+  let bytes = 0;
+  for (const character of value) {
+    const codePoint = character.codePointAt(0)!;
+    if (codePoint === 0x22 || codePoint === 0x5c) bytes += 2;
+    else if (codePoint < 0x20) {
+      bytes += codePoint === 8 || codePoint === 9 || codePoint === 10 || codePoint === 12 || codePoint === 13 ? 2 : 6;
+    } else if (codePoint >= 0xd800 && codePoint <= 0xdfff) bytes += 6;
+    else bytes += utf8Width(codePoint);
+  }
+  return bytes;
+}
+
+/** Serialisierter Wertbeitrag ohne umschließende Anführungszeichen. */
+function serializedValueBytes(value: unknown, isArraySlot: boolean): number | null {
+  if (typeof value === 'string') return 2 + serializedStringBytes(value);
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value).length : 4;
+  if (typeof value === 'boolean') return value ? 4 : 5;
+  if (value === null) return 4;
+  // `undefined` fällt im Objekt fort; als Arrayslot serialisiert es als null.
+  return isArraySlot ? 4 : null;
+}
 
 /**
  * Prüft die Herkunft der Wurzel und aller Container in einem eigenen,
@@ -68,16 +103,18 @@ const utf8Encoder = new TextEncoder();
  * und kann sich von ihr deshalb nicht auseinanderleben; der frühe Abbruch
  * endet beim ersten Container ohne Beleg.
  *
- * Derselbe Lauf summiert eine Untergrenze der serialisierten UTF-8-Größe:
- * Schlüsselnamen von Objekten sowie String-, endliche Zahlen-, Boolean- und
- * null-Werte in exakt ihrer UTF-8-Bytegröße. Nicht gezählt wird alles, was
- * in der Serialisierung fehlt oder sie nur vergrößern kann — Arrayindizes
- * samt `length`, Symbol-Schlüssel samt Werten, Anführungszeichen, Trenner
- * und Escape-Erweiterungen; Accessor-Werte werden nie gelesen. Übersteigt
- * die Summe die Byte-Zulassungsgrenze, so hätte derselbe Inhalt auch den
- * öffentlichen Byteeintritt nicht passiert — Nachbeladung über den Wertpfad
- * umgeht die Importgröße damit nicht mehr (Greptile-Befund zu 6f39e72,
- * UTF-8-Parität zu cb5f960).
+ * Derselbe Lauf summiert die Bytegröße der Minifikatserialisierung —
+ * JSON.stringify-äquivalent und ohne JSON.stringify als Prüfmittel:
+ * Containerklammern, Trenner, Doppelpunkte, Schlüssel samt Anführungs-
+ * zeichen sowie Werte in exakt ihrer serialisierten Gestalt einschließlich
+ * Escape-Erweiterungen. Arraylöcher zählen als null, `undefined`-Mitglieder
+ * entfallen wie in der Serialisierung; Symbol-Schlüssel erscheinen dort
+ * nie und bleiben deshalb nichtssagend unberücksichtigt, Accessor-Werte
+ * werden nie gelesen. Für Herkunft-gedeckte Graphen ist die Summe damit
+ * exakt: Überschreitet sie die Byte-Zulassungsgrenze, scheitert dieselbe
+ * Inhaltsgestalt auch am öffentlichen Byteeintritt; ein dort zulässiges
+ * Dokument liegt mit seinem Minifikat stets darunter (Greptile-Befunde zu
+ * 6f39e72, cb5f960 und 176307f).
  */
 function verifyProvenance(root: unknown): ProvenanceVerdict {
   let provenanced = true;
@@ -87,26 +124,37 @@ function verifyProvenance(root: unknown): ProvenanceVerdict {
       provenanced = false;
       return false;
     }
-    const isArray = Array.isArray(container);
-    for (const key of Reflect.ownKeys(container)) {
-      // Symbole erscheinen nicht in der Serialisierung; ihre Buchhaltung
-      // überlässt die Diagnose der Strukturinvariante.
-      if (typeof key !== 'string') continue;
-      if (!isArray) payloadBytes += utf8Encoder.encode(key).length;
 
+    if (Array.isArray(container)) {
+      const length = container.length;
+      for (let index = 0; index < length; index += 1) {
+        const descriptor = Object.getOwnPropertyDescriptor(container, index);
+        const slotValue =
+          descriptor !== undefined && 'value' in descriptor ? descriptor.value : undefined;
+        const slotBytes = serializedValueBytes(slotValue, true);
+        if (slotBytes !== null) payloadBytes += slotBytes;
+      }
+      payloadBytes += 2 + Math.max(length - 1, 0);
+      return payloadBytes <= CLASS_2_IMPORT_LIMITS.maxBytes;
+    }
+
+    let members = 0;
+    for (const key of Reflect.ownKeys(container)) {
+      // Symbole erscheinen nicht in der Serialisierung; ihre Diagnose
+      // überlässt die Buchhaltung der Strukturinvariante. Accessor-Werte
+      // werden nie gelesen — solche Einschübe scheitern ohnehin an der
+      // anschließenden Invariantenprüfung.
+      if (typeof key !== 'string') continue;
       const descriptor = Object.getOwnPropertyDescriptor(container, key);
       if (descriptor === undefined || !('value' in descriptor)) continue;
-      const value: unknown = descriptor.value;
-      if (typeof value === 'string') {
-        payloadBytes += utf8Encoder.encode(value).length;
-      } else if (typeof value === 'number') {
-        payloadBytes += Number.isFinite(value) ? String(value).length : 4;
-      } else if (typeof value === 'boolean') {
-        payloadBytes += value ? 4 : 5;
-      } else if (value === null) {
-        payloadBytes += 4;
-      }
+
+      const memberBytes = serializedValueBytes(descriptor.value, false);
+      if (memberBytes === null) continue; // `undefined`-Mitglieder fallen fort.
+
+      members += 1;
+      payloadBytes += 2 + serializedStringBytes(key) + 1 + memberBytes;
     }
+    payloadBytes += 2 + Math.max(members - 1, 0);
     return payloadBytes <= CLASS_2_IMPORT_LIMITS.maxBytes;
   });
   return { provenanced, withinByteBudget: payloadBytes <= CLASS_2_IMPORT_LIMITS.maxBytes };
