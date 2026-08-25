@@ -139,7 +139,10 @@ function verifyProvenance(root: unknown): ProvenanceVerdict {
       return false;
     }
     const isArray = Array.isArray(container);
-    nodeFloor += 1 + childNodeFloorDelta(container, isArray);
+    nodeFloor += 1;
+    nodeFloor += isArray
+      ? sparseChildNodeFloorDelta(container as readonly unknown[], container.length)
+      : objectChildNodeFloorDelta(container);
     if (nodeFloor > CLASS_2_IMPORT_LIMITS.maxNodes) {
       return false;
     }
@@ -214,11 +217,6 @@ function objectChildNodeFloorDelta(container: object): number {
  * invariante, damit die Untergrenze nie über der echten Knotenzahl liegt
  * (Greptile-Befund zu efa1cfa). Rein deskriptorbasiert.
  */
-function childNodeFloorDelta(container: object, isArray: boolean): number {
-  return isArray
-    ? sparseChildNodeFloorDelta(container as readonly unknown[], (container as readonly unknown[]).length)
-    : objectChildNodeFloorDelta(container);
-}
 
 /**
  * Serialisierte Bytegröße eines nicht dichten Arrays: existierende Slots
