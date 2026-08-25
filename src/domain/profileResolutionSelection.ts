@@ -138,9 +138,9 @@ export function indexCatalogControls(document: unknown): CatalogControlIndex {
 function globToRegExp(pattern: string | undefined): RegExp | null {
   if (pattern === undefined || pattern.length === 0) return null;
   const escaped = pattern
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*/g, '.*')
-    .replace(/\?/g, '.');
+    .replace(/[.+^${}()|[\]\\]/g, String.raw`\$&`)
+    .replaceAll('*', '.*')
+    .replaceAll('?', '.');
   return new RegExp(`^${escaped}$`);
 }
 
@@ -224,6 +224,41 @@ function applySelector(
   return null;
 }
 
+function applyInclusions(
+  index: CatalogControlIndex,
+  selection: ProfileSelection & { readonly kind: 'include-all' | 'include-controls' },
+  included: Set<string>,
+): OscalDiagnostic | null {
+  if (selection.kind === 'include-all') {
+    for (const id of index.order) included.add(id);
+    return null;
+  }
+  for (const selector of selection.includeControls) {
+    const failure = applySelector(index, selector, included);
+    if (failure !== null) return failure;
+  }
+  return null;
+}
+
+function applyExcludes(
+  index: CatalogControlIndex,
+  included: Set<string>,
+  excludeControls: readonly ProfileControlSelector[],
+): OscalDiagnostic | null {
+  for (const selector of excludeControls) {
+    const excluded = selectorMatches(index, selector);
+    if ('diagnostic' in excluded) return excluded.diagnostic;
+    // Mit with-child-controls: yes entfällt der ganze Zweig; sonst nur der
+    // Selbsttreffer — dieselbe Mechanik wie bei der Inklusion.
+    const targets =
+      selector.withChildControls === 'yes'
+        ? expandWithDescendants(index, excluded.matched)
+        : excluded.matched;
+    for (const id of targets) included.delete(id);
+  }
+  return null;
+}
+
 export type SelectionOutcome =
   | { readonly ok: true; readonly ids: ReadonlySet<string> }
   | { readonly ok: false; readonly diagnostic: OscalDiagnostic };
@@ -249,28 +284,12 @@ export function resolveSelectionIds(
   }
 
   const included = new Set<string>();
+  const inclusionFailure = applyInclusions(index, selection, included);
+  if (inclusionFailure !== null) return { ok: false, diagnostic: inclusionFailure };
+  const exclusionFailure = applyExcludes(index, included, excludeControls);
+  if (exclusionFailure !== null) return { ok: false, diagnostic: exclusionFailure };
 
-  if (selection.kind === 'include-all') {
-    for (const id of index.order) included.add(id);
-  } else {
-    for (const selector of selection.includeControls) {
-      const failure = applySelector(index, selector, included);
-      if (failure !== null) return { ok: false, diagnostic: failure };
-    }
-  }
-
-  for (const selector of excludeControls) {
-    const excluded = selectorMatches(index, selector);
-    if ('diagnostic' in excluded) return { ok: false, diagnostic: excluded.diagnostic };
-    // Mit with-child-controls: yes entfällt der ganze Zweig; sonst nur der
-    // Selbsttreffer — dieselbe Mechanik wie bei der Inklusion.
-    const targets =
-      selector.withChildControls === 'yes'
-        ? expandWithDescendants(index, excluded.matched)
-        : excluded.matched;
-    for (const id of targets) included.delete(id);
-  }
-
+  // Ergebnis in Originalordnung des Dokuments.
   const ordered = new Set<string>();
   for (const id of index.order) {
     if (included.has(id)) ordered.add(id);

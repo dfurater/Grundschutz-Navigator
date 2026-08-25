@@ -26,7 +26,10 @@ import { createClass2UnprovenancedDiagnostic } from '@/domain/oscalObjectProvena
 import { isParserProducedRoot } from '@/domain/oscalImportProcessing';
 import { isDerivedProducedContainer } from '@/domain/oscalDerivedGraph';
 import { walkOwnContainers } from '@/domain/oscalObjectWalk';
-import { enforceClass2ObjectGraphInvariants } from '@/domain/oscalObjectGraph';
+import {
+  createClass2ResourceLimitDiagnostic,
+  enforceClass2ObjectGraphInvariants,
+} from '@/domain/oscalObjectGraph';
 import { validateAgainstPinnedSchema } from '@/domain/oscalSchemaValidation';
 import type { OscalDocumentContext } from '@/domain/models';
 
@@ -57,6 +60,7 @@ export type Class2OscalValueResult =
 type ProvenanceVerdict = {
   readonly provenanced: boolean;
   readonly withinByteBudget: boolean;
+  readonly withinNodeBudget: boolean;
 };
 
 /** UTF-8-Breite eines code points außerhalb der Escape-Fälle. */
@@ -121,15 +125,24 @@ function serializedValueBytes(value: unknown): number {
 function verifyProvenance(root: unknown): ProvenanceVerdict {
   let provenanced = true;
   let payloadBytes = 0;
+  let nodeFloor = 0;
   walkOwnContainers(root, (container) => {
     // Zwei geschlossene Herkunftsquellen: der Byte-Eintrittspunkt und der
     // kontrollierte Builder des Ableitungswegs; alles andere scheitert.
-    // Der Lauf endet NUR bei fehlendem Beleg vorzeitig — eine Budget-
-    // überschreitung darf den Belegnachweis nie abkürzen, sonst trügen
-    // übergroße Graphen unbelegte Nachfahren unausgeprüft durch
-    // (Gitar-Befund zu 185062c).
+    // Der Lauf endet NUR bei fehlendem Beleg oder GARANTIERTER
+    // Gesamtablehnung vorzeitig — Letzteres, sobald die Knotenuntergrenze
+    // das Node-Limit reißt: Dann lehnt die Invariante ohnehin ab, und die
+    // Per-Element-Buchhaltung eines übergroßen Arrays darf keinen
+    // zusätzlichen Volllauf kosten (Greptile-Befund zu 0dd56ab).
     if (!isParserProducedRoot(container) && !isDerivedProducedContainer(container)) {
       provenanced = false;
+      return false;
+    }
+    nodeFloor += 1;
+    nodeFloor += Array.isArray(container)
+      ? container.length
+      : Reflect.ownKeys(container).length;
+    if (nodeFloor > CLASS_2_IMPORT_LIMITS.maxNodes) {
       return false;
     }
     payloadBytes += Array.isArray(container)
@@ -137,7 +150,11 @@ function verifyProvenance(root: unknown): ProvenanceVerdict {
       : serializedObjectBytes(container);
     return true;
   });
-  return { provenanced, withinByteBudget: payloadBytes <= CLASS_2_IMPORT_LIMITS.maxBytes };
+  return {
+    provenanced,
+    withinByteBudget: payloadBytes <= CLASS_2_IMPORT_LIMITS.maxBytes,
+    withinNodeBudget: nodeFloor <= CLASS_2_IMPORT_LIMITS.maxNodes,
+  };
 }
 
 /** Serialisierte Bytegröße eines dichten Arrays: Indizes exakt, Löcher unmöglich. */
@@ -254,6 +271,18 @@ export async function processClass2OscalValue(
   const admission = verifyProvenance(source);
   if (!admission.provenanced) {
     return { ok: false, diagnostic: createClass2UnprovenancedDiagnostic() };
+  }
+  if (
+    typeof source === 'object' &&
+    source !== null &&
+    !admission.withinNodeBudget
+  ) {
+    return {
+      ok: false,
+      diagnostic: createClass2ResourceLimitDiagnostic('OSCAL_RESOURCE_NODE_LIMIT_EXCEEDED', {
+        limitNodes: CLASS_2_IMPORT_LIMITS.maxNodes,
+      }),
+    };
   }
   if (
     typeof source === 'object' &&

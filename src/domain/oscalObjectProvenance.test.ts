@@ -300,13 +300,12 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
 
     const result = await processClass2OscalValue(input.source, context);
 
-    // Ohne Iteration über die Länge gerechnet: 100 Mio null-Löcher ≈ 400 MB
-    // serialisiertes Äquivalent — derselbe Inhalt wäre am Byteeingang mit
-    // derselben Diagnose abgewiesen worden. Keine Indexiteration, keine
-    // Blockierung, richtungstreue Grenzentscheidung.
+    // Ohne Iteration über die Länge gerechnet: 100 Mio null-Löcher reißen
+    // zuerst die Knotenuntergrenze — dieselbe Diagnose wie am Byteeingang,
+    // ohne Indexiteration und Blockierung.
     expect(result).toMatchObject({
       ok: false,
-      diagnostic: { code: 'OSCAL_BYTE_LIMIT_EXCEEDED', stage: 'resource-limit' },
+      diagnostic: { code: 'OSCAL_RESOURCE_NODE_LIMIT_EXCEEDED', stage: 'resource-limit' },
     });
   });
 
@@ -320,7 +319,8 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
 
     const array = input.source as unknown[];
     array[0] = 'y'.repeat(CLASS_2_IMPORT_LIMITS.maxBytes - 1024);
-    array.length = 5_000_000;
+    // Unterhalb der Knotengrenze bleiben: Nur die Bytegrenze soll sprechen.
+    array.length = 900_000;
 
     const result = await processClass2OscalValue(input.source, context);
 
