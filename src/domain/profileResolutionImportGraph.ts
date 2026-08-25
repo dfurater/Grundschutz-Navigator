@@ -90,6 +90,20 @@ function declaredOscalVersion(document: unknown): string | null {
   return typeof version === 'string' && version.length > 0 ? version : null;
 }
 
+/** Prüft Root-Typ und Versionsbindung eines Dokuments des Graphen. */
+function admitDocument(document: unknown, graphVersion: string): OscalDiagnostic | null {
+  const root = rootEntry(document);
+  if (root === null || (root[0] !== 'catalog' && root[0] !== 'profile')) {
+    return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.ROOT_TYPE_MISMATCH).diagnostic;
+  }
+  const version = declaredOscalVersion(document);
+  if (version === null) return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.VERSION_MISSING).diagnostic;
+  if (version !== graphVersion) {
+    return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.VERSION_MISMATCH).diagnostic;
+  }
+  return null;
+}
+
 /**
  * Baut den Auflösungsplan: Preorder-Walk über die normalisierten Kanten ab
  * dem steuernden Profil mit globaler Besuchsmenge (geteilte Ziele sind
@@ -130,7 +144,7 @@ export function buildProfileResolutionPlan(
   });
 
   while (stack.length > 0) {
-    const frame = stack[stack.length - 1]!;
+    const frame = stack.at(-1)!;
     if (frame.index >= frame.edges.length) {
       activePath.delete(frame.artifactKey);
       stack.pop();
@@ -148,17 +162,8 @@ export function buildProfileResolutionPlan(
     if (document === undefined) {
       return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.TARGET_MISSING);
     }
-    const root = rootEntry(document);
-    if (root === null || (root[0] !== 'catalog' && root[0] !== 'profile')) {
-      return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.ROOT_TYPE_MISMATCH);
-    }
-    const version = declaredOscalVersion(document);
-    if (version === null) {
-      return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.VERSION_MISSING);
-    }
-    if (version !== graphVersion) {
-      return reject(PROFILE_RESOLUTION_DIAGNOSTIC_CODES.VERSION_MISMATCH);
-    }
+    const failure = admitDocument(document, graphVersion);
+    if (failure !== null) return { ok: false, diagnostic: failure };
 
     activePath.add(edge.artifactKey);
     planned.add(edge.artifactKey);

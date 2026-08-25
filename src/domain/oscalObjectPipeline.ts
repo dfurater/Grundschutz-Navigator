@@ -142,6 +142,13 @@ function verifyProvenance(root: unknown): ProvenanceVerdict {
 
 /** Serialisierte Bytegröße eines Arrays samt Strukturzeichen; Löcher als null. */
 function serializedArrayBytes(container: readonly unknown[]): number {
+  // Ein dichtes Array trägt genau die Indizes 0..length-1 plus `length`.
+  // Jede andere eigene Schlüsselzahl scheitert ohnehin an der Formprüfung —
+  // die Buchhaltung steigt dann gar nicht erst in die Indexschleife und
+  // lässt sich nicht über eine nachträglich gesprengte length blockieren
+  // (Greptile-Befund zu fe596a5).
+  if (Reflect.ownKeys(container).length !== container.length + 1) return 0;
+
   const length = container.length;
   let bytes = 2 + Math.max(length - 1, 0);
   for (let index = 0; index < length; index += 1) {
@@ -149,7 +156,7 @@ function serializedArrayBytes(container: readonly unknown[]): number {
     const slotValue =
       descriptor !== undefined && 'value' in descriptor ? descriptor.value : undefined;
     // Fehlende und ausdrücklich undefined Slots serialisieren als null;
-    // verschachtelte Container liefern hier 0 und zählen an ihrem Besuch.
+    // verschachtelte Container liefern 0 und zählen an ihrem eigenen Besuch.
     bytes += slotValue === undefined ? 4 : serializedValueBytes(slotValue);
   }
   return bytes;

@@ -287,6 +287,25 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
     });
   });
 
+  it('weist ein nachträglich sparsam gemachtes registriertes Array ohne Indexiteration ab', async () => {
+    // Greptile-Befund zu fe596a5: Das bloße Setzen von length auf einen
+    // Riesenwert durfte die Bytebuchhaltung jeden Index durchlaufen lassen,
+    // bevor die Formprüfung die Lücken erkennt. Die Dichteprüfung ist eine
+    // O(eigene Schlüssel)-Frage — die Iteration startet gar nicht erst.
+    const input = await parseClass2OscalInput(new TextEncoder().encode('[1,2,3]'));
+    if (!input.ok) throw new Error('Fixture muss parsen');
+
+    const array = input.source as unknown[];
+    array.length = 100_000_000;
+
+    const result = await processClass2OscalValue(input.source, context);
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: { code: 'OSCAL_OBJECT_ARRAY_SHAPE_REJECTED', stage: OBJECT_GRAPH_STAGE },
+    });
+  });
+
   it('zählt verschachtelte Container genau einmal — kein Doppelsummen-Falschabschluss', async () => {
     // Derselbe Befund, Gegenrichtung: Der Slot eines verschachtelten Arrays
     // darf nicht zusätzlich als null-Pseudowert in den Elternbeitrag laufen.
