@@ -334,6 +334,11 @@ export function buildCustomGroups(
     if (!outcome.ok) return outcome;
 
     for (const id of orderedInsertIds(outcome.ids, directive.order)) {
+      // Fehlt einer selektierten ID ihr eigener Definitions-Bucket, steckt
+      // sie bereits vollständig im Baum eines mitausgegebenen Vorfahren
+      // (Gitar-Hinweis zu 7fe9880): Ihre Definition würde sonst doppelt
+      // erscheinen. Ein eigener Bucket existiert genau dann, wenn das
+      // Dokument den Knoten einzeln trägt — er wird dann ausgegeben.
       for (const definition of combined.controls.get(id) ?? []) {
         if (emittedDefinitions.has(definition)) continue;
         emittedDefinitions.add(definition);

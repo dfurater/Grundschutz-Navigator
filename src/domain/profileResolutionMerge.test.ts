@@ -264,6 +264,28 @@ describe('custom-Struktur', () => {
     expect(result.controls.map((c) => c['id'])).toEqual(['p-1', 'p-1.1']);
   });
 
+  it('Nachfahren ohne eigenen Pool-Bucket stecken im Vorfahren und werden nicht doppelt ausgegeben', () => {
+    // Das Kind existiert nur innerhalb der Parent-Definition (Phase 1 hat
+    // es nicht einzeln selektiert); die Erweiterung auf p-1.1 darf den
+    // Inhalt deshalb nicht ein zweites Mal ausgeben.
+    const parent = control('q-1', { controls: [control('q-1.1')] });
+    const combined = applyCombine([{ documentKey: 'doc-a', controls: [parent] }], 'use-first');
+    const directive: ProfileInsertControls = {
+      selection: {
+        kind: 'include-controls',
+        includeControls: [withIdsSelector(['q-1'], { withChildControls: 'yes' })],
+      },
+      excludeControls: [],
+      path: '/profile/merge/custom/insert-controls',
+    };
+    const result = buildCustomGroups({ rawGroups: [], insertControls: [directive] }, combined);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.controls).toHaveLength(1);
+    expect(result.controls[0]!['id']).toBe('q-1');
+  });
+
   it('mehrere Anweisungen wirken kumulativ ohne Doppel-Ausgabe derselben Definition', () => {
     const combined = applyCombine([inclusion('doc-a', 'a-1', 'b-1')], 'use-first');
     const first: ProfileInsertControls = {
