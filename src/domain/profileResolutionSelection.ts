@@ -208,7 +208,7 @@ function indexCatalogBody(body: JsonObject, state: IndexState): void {
       // Selbstreferenzen enden kontrolliert statt endlos zu planen.
       if (id === null || state.byId.has(id)) continue;
       registerControl(task.node, task.parent, state);
-      if (id !== null) collectControlChildTasks(task.node, id, childTasks);
+      collectControlChildTasks(task.node, id, childTasks);
     }
 
     // Umgekehrt pushen, damit der Stapel die Originalordnung liefert.

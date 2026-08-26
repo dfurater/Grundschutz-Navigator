@@ -48,6 +48,12 @@ export interface AlterationDirective {
 
 import { isJsonObject, ownDataValue } from './profileResolutionSelection';
 
+/** Array-Wert eines Mitglieds, rein deskriptorbasiert gelesen. */
+function safeArrayMember(node: JsonObject, key: string): readonly unknown[] | undefined {
+  const value = ownDataValue(node, key);
+  return Array.isArray(value) ? value : undefined;
+}
+
 /** Kanonische Schlüsselordnung eines Control-/Group-Knotens. */
 const CANONICAL_CONTROL_KEYS = [
   'id',
@@ -72,10 +78,6 @@ export function canonicalizeControlKeys(node: JsonObject): JsonObject {
   return result;
 }
 
-function arrayMember(node: JsonObject, key: string): readonly unknown[] | undefined {
-  const value = node[key];
-  return Array.isArray(value) ? value : undefined;
-}
 
 function readStringMember(node: JsonObject, key: string): string | undefined {
   const value = node[key];
@@ -89,7 +91,7 @@ export function applySetParametersToControl(
 ): JsonObject {
   if (setParameters.length === 0) return control;
 
-  const sourceParams = arrayMember(control, 'params') ?? [];
+  const sourceParams = safeArrayMember(control, 'params') ?? [];
   let params: readonly unknown[] = sourceParams;
 
   for (const directive of setParameters) {
@@ -121,7 +123,7 @@ function applySingleSetParameter(
     for (const field of ['props', 'links'] as const) {
       const additions = ownDataValue(directive as unknown as JsonObject, field);
       if (!Array.isArray(additions)) continue;
-      const existing = arrayMember(target, field) ?? [];
+      const existing = safeArrayMember(target, field) ?? [];
       target[field] = [...existing, ...additions];
     }
 
@@ -187,7 +189,7 @@ function applyImplicitAddition(
   }
 
   for (const [listKey, additions] of pendingLists) {
-    const existing = arrayMember(result, listKey) ?? [];
+    const existing = safeArrayMember(result, listKey) ?? [];
     result[listKey] = startLike ? [...additions, ...existing] : [...existing, ...additions];
   }
 
@@ -293,7 +295,7 @@ function applyRemovals(
   const result: JsonObject = { ...control };
 
   for (const listKey of ['params', 'props', 'links', 'parts'] as const) {
-    const members = arrayMember(control, listKey);
+    const members = safeArrayMember(control, listKey);
     if (members === undefined) continue;
     result[listKey] = members.filter((member) => {
       if (!isJsonObject(member)) return true;

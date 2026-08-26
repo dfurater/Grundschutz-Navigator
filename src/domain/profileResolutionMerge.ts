@@ -21,6 +21,7 @@ import type { JsonObject } from '@/adapters/oscalProfileReaders';
 import {
   isJsonObject,
   ownArrayDataElements,
+  ownDataValue,
 } from './profileResolutionSelection';
 
 export type CombineMethod = 'use-first' | 'keep';
@@ -30,9 +31,9 @@ function readIdOrEmpty(node: JsonObject): string {
   return typeof id === 'string' ? id : '';
 }
 
-/** Array-Wert eines Mitglieds, sofern vorhanden. */
-function arrayMember(node: JsonObject, key: string): readonly unknown[] | undefined {
-  const value = node[key];
+/** Array-Wert eines Mitglieds, rein deskriptorbasiert gelesen. */
+function safeArrayMember(node: JsonObject, key: string): readonly unknown[] | undefined {
+  const value = ownDataValue(node, key);
   return Array.isArray(value) ? value : undefined;
 }
 
@@ -110,7 +111,7 @@ function filterNestedIncluded(
   const copy: JsonObject = { ...control };
   // Nur setzen, wenn es gefilterte Kinder gibt — keine leeren controls:[]
   // in Blätter injizieren (Gitar-Hinweis zu bce6b68).
-  const filtered = ownArrayDataElements(arrayMember(control, 'controls') ?? [])
+  const filtered = ownArrayDataElements(safeArrayMember(control, 'controls') ?? [])
     .filter((child) => isJsonObject(child) && includedIds.has(readIdOrEmpty(child)))
     .map((child) => filterNestedIncluded(child as JsonObject, includedIds));
   if (filtered.length > 0) copy['controls'] = filtered;
@@ -134,7 +135,7 @@ function appendIncludedChain(
     out.push(filterNestedIncluded(control, includedIds));
     return;
   }
-  const children = arrayMember(control, 'controls');
+  const children = safeArrayMember(control, 'controls');
   if (children !== undefined) {
     for (const child of ownArrayDataElements(children)) {
       if (isJsonObject(child)) appendIncludedChain(child as JsonObject, includedIds, out);
@@ -172,7 +173,7 @@ function filterContainerForAsIs(
 
   // Direkte Controls: inkludierte behalten (gefiltert auf inkludierte
   // Nachfahren); nicht inkludierte up-leveln ihre inkludierten Nachfahren.
-  const directControls = arrayMember(containerNode, 'controls');
+  const directControls = safeArrayMember(containerNode, 'controls');
   if (directControls !== undefined) {
     for (const child of ownArrayDataElements(directControls)) {
       if (!isJsonObject(child)) continue;
@@ -181,7 +182,7 @@ function filterContainerForAsIs(
   }
 
   // Gruppen: rekursiv filtern und behalten, wenn Inhalt übrig bleibt.
-  const nestedGroups = arrayMember(containerNode, 'groups');
+  const nestedGroups = safeArrayMember(containerNode, 'groups');
   if (nestedGroups !== undefined) {
     for (const group of ownArrayDataElements(nestedGroups)) {
       if (!isJsonObject(group)) continue;
