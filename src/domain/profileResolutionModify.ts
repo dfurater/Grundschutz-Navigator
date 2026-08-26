@@ -221,6 +221,27 @@ function applyExplicitAddition(
   return control;
 }
 
+/** Fügt die Addition relativ zum getroffenen Part ein. */
+function insertAtPart(
+  parts: JsonObject[],
+  index: number,
+  addition: NonNullable<AlterationDirective['adds']>[number],
+): { readonly inserted: boolean; readonly value: unknown } {
+  const position = addition.position ?? 'ending';
+  const additions = collectAdditionLists(addition);
+
+  if (position === 'before') {
+    return { inserted: true, value: [...parts.slice(0, index), ...additions, ...parts.slice(index)] };
+  }
+  if (position === 'after' || position === 'ending') {
+    return { inserted: true, value: [...parts.slice(0, index + 1), ...additions, ...parts.slice(index + 1)] };
+  }
+  // starting: innerhalb des Ziel-Parts am Anfang einfügen.
+  const inner = filterAsIsInnerParts(parts[index]!);
+  const merged = [...additions, ...inner];
+  return { inserted: true, value: { ...parts[index]!, parts: merged } as JsonObject };
+}
+
 function insertIntoPartsTree(
   partsValue: unknown,
   targetPartId: string,
@@ -235,19 +256,7 @@ function insertIntoPartsTree(
     if (!isJsonObject(part)) continue;
     const partId = readStringMember(part, 'id');
     if (partId === targetPartId) {
-      const position = addition.position ?? 'ending';
-      const additions = collectAdditionLists(addition);
-
-      if (position === 'before') {
-        return { inserted: true, value: [...parts.slice(0, index), ...additions, ...parts.slice(index)] };
-      }
-      if (position === 'after' || position === 'ending') {
-        return { inserted: true, value: [...parts.slice(0, index + 1), ...additions, ...parts.slice(index + 1)] };
-      }
-      // starting: innerhalb des Ziel-Parts am Anfang einfügen.
-      const inner = filterAsIsInnerParts(part);
-      const merged = [...additions, ...inner];
-      return { inserted: true, value: { ...part, parts: merged } as JsonObject };
+      return insertAtPart(parts, index, addition);
     }
 
     // Rekursiv in verschachtelte parts absteigen.
