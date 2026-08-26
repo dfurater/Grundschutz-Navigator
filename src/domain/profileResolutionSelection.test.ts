@@ -263,6 +263,24 @@ describe('Selektion Phase 1 — Fail-closed', () => {
     expect(index.order).toEqual([]);
   });
 
+  it('behandelt Schlüssel außerhalb des Array-Indexbereichs nicht als Controls', () => {
+    // Greptile-Befund zu bce6b68: "4294967295" ist kein ECMAScript-Array-
+    // Index (Grenze 2**32-1) und erscheint nie in der Serialisierung —
+    // ein Slot mit diesem Schlüssel darf nicht als Control einfließen.
+    const controls: Record<string, unknown>[] = [];
+    Object.defineProperty(controls, '4294967295', {
+      value: control('ghost'),
+      enumerable: true,
+      configurable: true,
+    });
+    controls.push(control('real'));
+    const hostile = catalog({ metadata: {}, controls });
+
+    const index = indexCatalogControls(hostile);
+
+    expect(index.order).toEqual(['real']);
+  });
+
   it('führt keine Accessoren an Gruppen-Arrayslots aus', () => {
     const groups: Record<string, unknown>[] = [];
     Object.defineProperty(groups, '0', {

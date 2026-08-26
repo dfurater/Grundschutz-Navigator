@@ -112,14 +112,20 @@ type IndexTask =
 /**
  * Elemente eines Arrays über eigene Data-Property-Deskriptoren, in
  * aufsteigender Indexreihenfolge; Accessor-Slots erscheinen als abwesend
- * und werden nie ausgeführt (Greptile-Befund zu 49d0984).
+ * und werden nie ausgeführt (Greptile-Befund zu 49d0984). Nur echte
+ * ECMAScript-Array-Indizes (0 <= i < 2**32 - 1) gelten als Slots —
+ * Schlüssel wie "4294967295" erscheinen nicht in der Serialisierung
+ * (Greptile-Befund zu bce6b68).
  */
 export function ownArrayDataElements(array: readonly unknown[]): unknown[] {
+  const maxExclusive = 2 ** 32 - 1;
   const indices = Reflect.ownKeys(array)
     .filter((key): key is string => {
       if (typeof key !== 'string') return false;
       const index = Number(key);
-      return Number.isInteger(index) && index >= 0 && String(index) === key;
+      return (
+        Number.isInteger(index) && index >= 0 && index < maxExclusive && String(index) === key
+      );
     })
     .map(Number)
     .sort((a, b) => a - b);
