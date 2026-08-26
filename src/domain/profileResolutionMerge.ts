@@ -162,43 +162,33 @@ function promotedControls(
   includedIds: ReadonlySet<string>,
 ): JsonObject[] {
   const kept: JsonObject[] = [];
-  const promoted: JsonObject[] = [];
-  const children = safeArrayMember(control, 'controls');
-  if (children !== undefined) {
-    for (const child of ownArrayDataElements(children)) {
-      if (!isJsonObject(child)) continue;
-      if (includedIds.has(readIdOrEmpty(child))) {
-        kept.push(filterNestedIncluded(child, includedIds));
-      }
-    }
-    for (const child of ownArrayDataElements(children)) {
-      if (!isJsonObject(child)) continue;
-      if (!includedIds.has(readIdOrEmpty(child))) {
-        promoted.push(...promotedControls(child as JsonObject, includedIds));
-      }
-    }
+  const excludedBranches: JsonObject[] = [];
+  collectIncludedAndExcludedChildren(control, includedIds, kept, excludedBranches);
+  for (const branch of excludedBranches) {
+    kept.push(...promotedControls(branch, includedIds));
   }
-  return [...kept, ...promoted];
+  return kept;
 }
 
-/**
- * Reiht eine Control ein: inkludiert erscheint sie mit gefiltertem
- * Nachfahrenbaum; sonst steigen ihre inkludierten Nachfahren unverhüllt an
- * diese Stelle hoch. Direkte Treffer stehen vor den Hochgelevelten
- * (Orakelordnung: KONF.2.7 vor dem hochgelevelten KONF.2.4.2).
- */
-function appendIncludedChain(
+/** Sortiert die Kinder eines Zweigs in direkte Treffer und Ausschluss-Zweige. */
+function collectIncludedAndExcludedChildren(
   control: JsonObject,
   includedIds: ReadonlySet<string>,
-  out: JsonObject[],
+  kept: JsonObject[],
+  excludedBranches: JsonObject[],
 ): void {
-  const id = readIdOrEmpty(control);
-  if (id.length > 0 && includedIds.has(id)) {
-    out.push(filterNestedIncluded(control, includedIds));
-    return;
+  const children = safeArrayMember(control, 'controls');
+  if (children === undefined) return;
+  for (const child of ownArrayDataElements(children)) {
+    if (!isJsonObject(child)) continue;
+    if (includedIds.has(readIdOrEmpty(child))) {
+      kept.push(filterNestedIncluded(child, includedIds));
+    } else {
+      excludedBranches.push(child);
+    }
   }
-  out.push(...promotedControls(control, includedIds));
 }
+
 
 /**
  * Reproduziert die Quellhierarchie für as-is: Gruppen erscheinen, solange
@@ -223,23 +213,15 @@ function collectDirectControls(
   includedIds: ReadonlySet<string>,
   controls: JsonObject[],
 ): void {
-  const directControls = safeArrayMember(containerNode, 'controls');
-  if (directControls === undefined) return;
-  const children = ownArrayDataElements(directControls);
-  // Phase 1: Direkte Treffer in Quellordnung (Orakelordnung am BSI-Korpus:
-  // KONF.2.7 steht vor dem hochgelevelten KONF.2.4.2).
-  for (const child of children) {
-    if (!isJsonObject(child)) continue;
-    if (includedIds.has(readIdOrEmpty(child))) {
-      appendIncludedChain(child as JsonObject, includedIds, controls);
-    }
-  }
-  // Phase 2: Hochgelevelte Nachfahren nicht inkludierter Zweige.
-  for (const child of children) {
-    if (!isJsonObject(child)) continue;
-    if (!includedIds.has(readIdOrEmpty(child))) {
-      controls.push(...promotedControls(child as JsonObject, includedIds));
-    }
+  if (safeArrayMember(containerNode, 'controls') === undefined) return;
+  const kept: JsonObject[] = [];
+  const excludedBranches: JsonObject[] = [];
+  collectIncludedAndExcludedChildren(containerNode, includedIds, kept, excludedBranches);
+  // Phase 1 vor Phase 2 (Orakelordnung am BSI-Korpus: KONF.2.7 steht vor
+  // dem hochgelevelten KONF.2.4.2).
+  controls.push(...kept);
+  for (const branch of excludedBranches) {
+    controls.push(...promotedControls(branch, includedIds));
   }
 }
 
@@ -362,6 +344,21 @@ function copyCustomGroup(group: JsonObject): JsonObject {
   return copy;
 }
 
+/** Liest die ID eines Part-Eintrags als String; ohne ID zählt leer. */
+function partIdOf(part: unknown): string {
+  if (!isJsonObject(part)) return '';
+  const id = ownDataValue(part, 'id');
+  return typeof id === 'string' ? id : '';
+}
+
+function byPartId(left: unknown, right: unknown): number {
+  const leftId = partIdOf(left);
+  const rightId = partIdOf(right);
+  if (leftId < rightId) return -1;
+  if (leftId > rightId) return 1;
+  return 0;
+}
+
 /**
  * Versieht eine eingefügte Control und ihre gesamte verschachtelte
  * Subcontrol-Hierarchie mit Positions-Labels (`<Gruppe>.<n>`, darunter
@@ -379,11 +376,7 @@ function withPositionalLabels(
 
   const partsValue = ownDataValue(control, 'parts');
   if (Array.isArray(partsValue)) {
-    copy['parts'] = [...partsValue].sort((left, right) => {
-      const leftId = isJsonObject(left) ? String(ownDataValue(left, 'id') ?? '') : '';
-      const rightId = isJsonObject(right) ? String(ownDataValue(right, 'id') ?? '') : '';
-      return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
-    });
+    copy['parts'] = [...partsValue].sort(byPartId);
   }
 
   const childrenValue = ownDataValue(control, 'controls');
@@ -450,44 +443,64 @@ function assembleGroups(
   const assembled: JsonObject[] = [];
 
   for (let index = 0; index < rawGroups.length; index += 1) {
-    const raw = rawGroups[index]!;
-    const copy = copyCustomGroup(raw);
-    // Die Projektion liest dasselbe Array in derselben Ordnung; bei einer
-    // Abweichung (sollte unmöglich sein) bleibt die Gruppe ohne Direktiven.
-    const typed = typedGroups[index];
-
-    if (typed !== undefined && typed.id !== undefined && typed.insertControls.length > 0) {
-      const groupDefinitions = new Set<object>();
-      const placed = assembleGroupControls(
-        typed.id,
-        typed.insertControls,
-        context,
-        groupDefinitions,
-      );
-      if (!placed.ok) return placed;
-      if (placed.placed.length > 0) {
-        copy['controls'] = placed.placed;
-      }
-    }
-
-    const nestedRawValue = ownDataValue(raw, 'groups');
-    if (Array.isArray(nestedRawValue)) {
-      const nestedRaw = ownArrayDataElements(nestedRawValue).filter(
-        (child): child is JsonObject => isJsonObject(child),
-      );
-      const nestedTyped = typed?.groups ?? [];
-      const nestedResult = assembleGroups(nestedRaw, nestedTyped, context);
-      if (!nestedResult.ok) return nestedResult;
-      if (nestedResult.groups.length > 0 || nestedRaw.length > 0) {
-        copy['groups'] = nestedResult.groups;
-      } else {
-        delete copy['groups'];
-      }
-    }
-
-    assembled.push(copy);
+    const assembledGroup = assembleSingleGroup(
+      rawGroups[index]!,
+      typedGroups[index],
+      context,
+    );
+    if (!assembledGroup.ok) return assembledGroup;
+    assembled.push(assembledGroup.group);
   }
   return { ok: true, groups: assembled };
+}
+
+/** Baut eine einzelne Custom-Gruppe samt Direktiven und Untergruppen. */
+function assembleSingleGroup(
+  raw: JsonObject,
+  typed: ProfileGroup | undefined,
+  context: AssemblyContext,
+): { readonly ok: true; readonly group: JsonObject } | { readonly ok: false; readonly diagnostic: OscalDiagnostic } {
+  const copy = copyCustomGroup(raw);
+
+  // Die Projektion liest dasselbe Array in derselben Ordnung; bei einer
+  // Abweichung (sollte unmöglich sein) bleibt die Gruppe ohne Direktiven.
+  if (typed !== undefined && typed.id !== undefined && typed.insertControls.length > 0) {
+    const placed = assembleGroupControls(typed.id, typed.insertControls, context, new Set<object>());
+    if (!placed.ok) return placed;
+    if (placed.placed.length > 0) {
+      copy['controls'] = placed.placed;
+    }
+  }
+
+  const nestedFailure = attachNestedGroups(copy, raw, typed, context);
+  if (nestedFailure !== null) return nestedFailure;
+  return { ok: true, group: copy };
+}
+
+/**
+ * Baut die Untergruppen einer Raw-Gruppe nach; ohne Raw-Kinder entfällt
+ * das Mitglied. Rückgabe: Diagnose beim Scheitern, sonst null.
+ */
+function attachNestedGroups(
+  copy: JsonObject,
+  raw: JsonObject,
+  typed: ProfileGroup | undefined,
+  context: AssemblyContext,
+): { readonly ok: false; readonly diagnostic: OscalDiagnostic } | null {
+  const nestedRawValue = ownDataValue(raw, 'groups');
+  if (!Array.isArray(nestedRawValue)) return null;
+
+  const nestedRaw = ownArrayDataElements(nestedRawValue).filter(
+    (child): child is JsonObject => isJsonObject(child),
+  );
+  const nestedResult = assembleGroups(nestedRaw, typed?.groups ?? [], context);
+  if (!nestedResult.ok) return nestedResult;
+  if (nestedResult.groups.length > 0 || nestedRaw.length > 0) {
+    copy['groups'] = nestedResult.groups;
+  } else {
+    delete copy['groups'];
+  }
+  return null;
 }
 
 /**

@@ -9,23 +9,52 @@
 // herausgerechnet und getrennt geprüft.
 //
 // Volatile Felder (dokumentiert): metadata/uuid und metadata/last-modified
-// sind werkzeug­spezifisch; prop[@name='resolution-tool'] und
-// link[@rel='source-profile'] sind unsere Träger. Alles andere zählt.
+// sind werkzeugspezifisch; die Dokument-UUID am Körper wird vom erzeugenden
+// Werkzeug gemint und ist nicht ableitbar; prop[@name='resolution-tool']
+// und link[@rel='source-profile'] sind unsere Träger. Alles andere zählt.
 // =============================================================================
 
-type JsonValue = unknown;
 interface JsonObjectLike {
-  [key: string]: JsonValue;
+  [key: string]: unknown;
 }
 
-const VOLATILE_METADATA_FIELDS = ['uuid', 'last-modified'] as const;
-
-function isJsonObject(value: JsonValue): value is JsonObjectLike {
+function isJsonObject(value: unknown): value is JsonObjectLike {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** Tiefe Kopie ohne die dokumentierten volatilen Metadatenfelder. */
-export function stripVolatileFields(value: JsonValue): JsonValue {
+function byCodeUnit(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+/**
+ * Filtert eine Trägerliste heraus; ohne Array passiert nichts, nach dem
+ * Filter verschwindet ein leerer Rest samt Mitglied — es entstehen keine
+ * Phantom-Schlüssel.
+ */
+function stripCarrierList(
+  metadata: JsonObjectLike,
+  key: string,
+  matches: (entry: JsonObjectLike) => boolean,
+): void {
+  const value = metadata[key];
+  if (!Array.isArray(value)) return;
+  const kept = value.filter((entry) => !(isJsonObject(entry) && matches(entry)));
+  if (kept.length === 0) delete metadata[key];
+  else metadata[key] = kept;
+}
+
+/** Entfernt die volatilen Mitglieder eines Metadatenknotens in-place. */
+function stripMetadataVolatiles(metadata: JsonObjectLike): void {
+  delete metadata['uuid'];
+  delete metadata['last-modified'];
+  stripCarrierList(metadata, 'props', (entry) => entry['name'] === 'resolution-tool');
+  stripCarrierList(metadata, 'links', (entry) => entry['rel'] === 'source-profile');
+}
+
+/** Tiefe Kopie ohne die dokumentierten volatilen Felder. */
+export function stripVolatileFields(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stripVolatileFields);
   if (!isJsonObject(value)) return value;
 
@@ -33,68 +62,67 @@ export function stripVolatileFields(value: JsonValue): JsonValue {
   for (const key of Object.keys(value)) {
     copy[key] = stripVolatileFields(value[key]);
   }
-
-  // Dokument-UUIDs am Körper sind werkzeuggeneriert (die BSI-resolved_
-  // catalogs tragen dort Instanz-UUIDs ohne erkennbare Ableitung) und
-  // werden symmetrisch auf beiden Seiten herausgerechnet — dieselbe Klasse
-  // dokumentierter Volatilität wie metadata/last-modified.
-  if ('metadata' in copy && 'uuid' in copy) {
-    delete copy['uuid'];
+  if ('metadata' in copy) {
+    const metadata = copy['metadata'];
+    if (isJsonObject(metadata)) stripMetadataVolatiles(metadata);
   }
-
-  const metadata = copy['metadata'];
-  if (isJsonObject(metadata)) {
-    for (const field of VOLATILE_METADATA_FIELDS) delete metadata[field];
-    const props = metadata['props'];
-    if (Array.isArray(props)) {
-      metadata['props'] = props.filter(
-        (entry) => !(isJsonObject(entry) && entry['name'] === 'resolution-tool'),
-      );
-      if ((metadata['props'] as unknown[]).length === 0) delete metadata['props'];
-    }
-    const links = metadata['links'];
-    if (Array.isArray(links)) {
-      metadata['links'] = links.filter(
-        (entry) => !(isJsonObject(entry) && entry['rel'] === 'source-profile'),
-      );
-      if ((metadata['links'] as unknown[]).length === 0) delete metadata['links'];
-    }
-    if (Object.keys(metadata).length === 0) delete copy['metadata'];
+  if ('uuid' in copy && 'metadata' in copy) {
+    // Dokument-UUID am Körper: werkzeuggeneriert, symmetrisch entfernt.
+    delete copy['uuid'];
   }
   return copy;
 }
 
 /** Kanonische Form mit sortierten Schlüsseln — Arrayordnung bleibt Bedeutung. */
-export function canonicalJson(value: JsonValue): string {
+export function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
   if (isJsonObject(value)) {
     const members = Object.keys(value)
-      .sort()
+      .sort(byCodeUnit)
       .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`);
     return `{${members.join(',')}}`;
   }
   return JSON.stringify(value) ?? 'null';
 }
 
+function firstArrayDivergence(
+  actual: readonly unknown[],
+  expected: readonly unknown[],
+  path: string,
+): string | null {
+  if (actual.length !== expected.length) {
+    return `${path} (Länge ${actual.length} ≠ ${expected.length})`;
+  }
+  for (let index = 0; index < actual.length; index += 1) {
+    const found = firstDivergence(actual[index], expected[index], `${path}[${index}]`);
+    if (found !== null) return found;
+  }
+  return null;
+}
+
+function firstObjectDivergence(
+  actual: JsonObjectLike,
+  expected: JsonObjectLike,
+  path: string,
+): string | null {
+  for (const key of new Set([...Object.keys(actual), ...Object.keys(expected)])) {
+    if (!(key in actual)) return `${path}/${key}`;
+    if (!(key in expected)) return `${path}/${key}`;
+    const found = firstDivergence(actual[key], expected[key], `${path}/${key}`);
+    if (found !== null) return found;
+  }
+  return null;
+}
+
 /** Erste semantische Divergenz als Pfadangabe für die Fehlermeldung. */
-export function firstDivergence(actual: JsonValue, expected: JsonValue, path = '$'): string | null {
+export function firstDivergence(actual: unknown, expected: unknown, path = '$'): string | null {
   if (Array.isArray(actual) || Array.isArray(expected)) {
     if (!Array.isArray(actual) || !Array.isArray(expected)) return path;
-    if (actual.length !== expected.length) return `${path} (Länge ${actual.length} ≠ ${expected.length})`;
-    for (let index = 0; index < actual.length; index += 1) {
-      const found = firstDivergence(actual[index], expected[index], `${path}[${index}]`);
-      if (found !== null) return found;
-    }
-    return null;
+    return firstArrayDivergence(actual, expected, path);
   }
   if (isJsonObject(actual) || isJsonObject(expected)) {
     if (!isJsonObject(actual) || !isJsonObject(expected)) return path;
-    for (const key of new Set([...Object.keys(actual), ...Object.keys(expected)])) {
-      if (!(key in actual) || !(key in expected)) return `${path}/${key}`;
-      const found = firstDivergence(actual[key], expected[key], `${path}/${key}`);
-      if (found !== null) return found;
-    }
-    return null;
+    return firstObjectDivergence(actual, expected, path);
   }
   return actual === expected ? null : `${path} (${JSON.stringify(actual)} ≠ ${JSON.stringify(expected)})`;
 }

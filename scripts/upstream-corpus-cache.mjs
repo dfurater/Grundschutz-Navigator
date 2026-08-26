@@ -37,7 +37,7 @@ export function corpusArtifactKeys(lineages) {
     // ist als unterstützter Anwenderkatalog registriert.
     keys.add(`catalog-${lineage.catalogKey}`);
   }
-  return [...keys].sort();
+  return [...keys].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
 }
 
 /**
@@ -60,7 +60,7 @@ export function buildCorpusCachePayload({
   const missingKeys = [];
   for (const artifactKey of wantedKeys) {
     const artifact = byArtifactKey.get(artifactKey);
-    if (!artifact || !artifact.rawFile) {
+    if (!artifact?.rawFile) {
       // Bewusst kein Wurf: Der Schreibweg bleibt auch mit Teilbeständen
       // benutzbar (etwa in Testfixtures); die verpflichtende Vollständig-
       // keit prüft die Korpus-Suite hart gegen das Begleitmanifest.

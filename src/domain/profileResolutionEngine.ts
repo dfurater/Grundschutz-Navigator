@@ -539,6 +539,85 @@ function collectModifyTransform(document: ProfileDocument): ControlTransform {
  * Metadaten ebenso, sodass der Orakelvergleich nur die dokumentierten
  * Volatile unterscheidet.
  */
+/**
+ * Baut das Metadaten-Handle: ererbte Mitglieder (ohne werkzeugspezifische
+ * Felder), danach die neuen Werte und die beiden Trägerlisten — unsere
+ * Einträge stehen hinter den ererbten.
+ */
+function emitMetadataHandle(
+  graph: ReturnType<typeof createOscalDerivedGraph>,
+  sourceMetadata: JsonObject,
+  derivedUuid: string,
+  oscalVersion: string,
+  topUuid: string,
+): DerivedObjectHandle {
+  const inheritedMetadata = copyOwnDataMembersSkipping(sourceMetadata, [
+    'uuid',
+    'last-modified',
+    'oscal-version',
+    'props',
+    'links',
+  ]);
+  const metadataHandle = emitValue(graph, inheritedMetadata, 0) as DerivedObjectHandle;
+  graph.setObjectMember(metadataHandle, 'uuid', derivedUuid);
+  graph.setObjectMember(metadataHandle, 'last-modified', PROFILE_RESOLUTION_TIMESTAMP);
+  graph.setObjectMember(metadataHandle, 'oscal-version', oscalVersion);
+
+  const propsHandle = emitCarrierEntries(graph, ownDataValue(sourceMetadata, 'props'));
+  const toolProp = graph.object();
+  graph.setObjectMember(toolProp, 'name', 'resolution-tool');
+  graph.setObjectMember(toolProp, 'value', `${PROFILE_RESOLUTION_VALIDATOR.name}@${PROFILE_RESOLUTION_VALIDATOR.version}`);
+  graph.pushArrayItem(propsHandle, toolProp);
+  graph.setObjectMember(metadataHandle, 'props', propsHandle);
+
+  const linksHandle = emitCarrierEntries(graph, ownDataValue(sourceMetadata, 'links'));
+  const sourceLink = graph.object();
+  graph.setObjectMember(sourceLink, 'rel', 'source-profile');
+  graph.setObjectMember(sourceLink, 'href', `urn:uuid:${topUuid}`);
+  graph.pushArrayItem(linksHandle, sourceLink);
+  graph.setObjectMember(metadataHandle, 'links', linksHandle);
+
+  return metadataHandle;
+}
+
+/** Trägerliste: ererbte Einträge gefolgt vom projektspezifischen. */
+function emitCarrierEntries(
+  graph: ReturnType<typeof createOscalDerivedGraph>,
+  inherited: unknown,
+): ReturnType<typeof graph.array> {
+  const handle = graph.array();
+  if (Array.isArray(inherited)) {
+    for (const entry of ownArrayDataElements(inherited)) {
+      if (isJsonObject(entry)) graph.pushArrayItem(handle, emitValue(graph, entry, 1));
+    }
+  }
+  return handle;
+}
+
+/**
+ * Back-matter fortgeführt MINUS die als Importbindung verbrauchten
+ * Ressourcen; ohne verbleibende Ressourcen entfällt das Mitglied.
+ */
+function filteredBackMatter(
+  sourceBody: JsonObject,
+  consumedResourceUuids: ReadonlySet<string>,
+): JsonObject | null {
+  const backMatter = ownDataValue(sourceBody, 'back-matter');
+  if (!isJsonObject(backMatter)) return null;
+
+  const resources = ownDataValue(backMatter, 'resources');
+  if (!Array.isArray(resources)) return { ...backMatter };
+
+  const kept = ownArrayDataElements(resources).filter((entry) => {
+    if (!isJsonObject(entry)) return true;
+    const uuid = ownDataValue(entry, 'uuid');
+    return !(typeof uuid === 'string' && consumedResourceUuids.has(uuid));
+  });
+  const filtered: JsonObject = { ...backMatter, resources: kept };
+  if (kept.length === 0) delete filtered['resources'];
+  return filtered;
+}
+
 function emitResolvedCatalog(
   plan: Extract<ProfileResolutionPlan, { ok: true }>,
   document: ProfileDocument,
@@ -553,46 +632,13 @@ function emitResolvedCatalog(
   const sourceBody = readRootBody(document.source);
   const sourceMetadataValue = ownDataValue(sourceBody, 'metadata');
   const sourceMetadata = isJsonObject(sourceMetadataValue) ? sourceMetadataValue : {};
-  // Werkzeugspezifische Mitglieder werden nicht übernommen, sondern unten
-  // neu gesetzt; die Trägerlisten werden separat aufgebaut, damit unsere
-  // Einträge hinter den ererbten stehen.
-  const inheritedMetadata = copyOwnDataMembersSkipping(sourceMetadata, [
-    'uuid',
-    'last-modified',
-    'oscal-version',
-    'props',
-    'links',
-  ]);
-  const metadataHandle = emitValue(graph, inheritedMetadata, 0) as DerivedObjectHandle;
-  graph.setObjectMember(metadataHandle, 'uuid', derivedUuid);
-  graph.setObjectMember(metadataHandle, 'last-modified', PROFILE_RESOLUTION_TIMESTAMP);
-  graph.setObjectMember(metadataHandle, 'oscal-version', plan.oscalVersion);
-
-  const propsHandle = graph.array();
-  const inheritedProps = ownDataValue(sourceMetadata, 'props');
-  if (Array.isArray(inheritedProps)) {
-    for (const entry of ownArrayDataElements(inheritedProps)) {
-      if (isJsonObject(entry)) graph.pushArrayItem(propsHandle, emitValue(graph, entry, 1));
-    }
-  }
-  const toolProp = graph.object();
-  graph.setObjectMember(toolProp, 'name', 'resolution-tool');
-  graph.setObjectMember(toolProp, 'value', `${PROFILE_RESOLUTION_VALIDATOR.name}@${PROFILE_RESOLUTION_VALIDATOR.version}`);
-  graph.pushArrayItem(propsHandle, toolProp);
-  graph.setObjectMember(metadataHandle, 'props', propsHandle);
-
-  const linksHandle = graph.array();
-  const inheritedLinks = ownDataValue(sourceMetadata, 'links');
-  if (Array.isArray(inheritedLinks)) {
-    for (const entry of ownArrayDataElements(inheritedLinks)) {
-      if (isJsonObject(entry)) graph.pushArrayItem(linksHandle, emitValue(graph, entry, 1));
-    }
-  }
-  const sourceLink = graph.object();
-  graph.setObjectMember(sourceLink, 'rel', 'source-profile');
-  graph.setObjectMember(sourceLink, 'href', `urn:uuid:${topUuid}`);
-  graph.pushArrayItem(linksHandle, sourceLink);
-  graph.setObjectMember(metadataHandle, 'links', linksHandle);
+  const metadataHandle = emitMetadataHandle(
+    graph,
+    sourceMetadata,
+    derivedUuid,
+    plan.oscalVersion,
+    topUuid,
+  );
 
   const bodyHandle = graph.object();
   graph.setObjectMember(bodyHandle, 'uuid', derivedUuid);
@@ -608,22 +654,9 @@ function emitResolvedCatalog(
   // resolved_catalogs streichen genau diese und behalten die externen
   // Referenzen (Orakelbefund gspp: drei Import-Ressourcen fallen,
   // die BSI-Website-Referenz bleibt).
-  const backMatter = ownDataValue(sourceBody, 'back-matter');
-  if (isJsonObject(backMatter)) {
-    let filteredBackMatter: JsonObject = backMatter;
-    const resources = ownDataValue(backMatter, 'resources');
-    if (Array.isArray(resources)) {
-      const kept = ownArrayDataElements(resources).filter((entry) => {
-        if (!isJsonObject(entry)) return true;
-        const uuid = ownDataValue(entry, 'uuid');
-        return !(typeof uuid === 'string' && consumedResourceUuids.has(uuid));
-      });
-      filteredBackMatter = { ...backMatter, resources: kept };
-      if (kept.length === 0) delete filteredBackMatter['resources'];
-    }
-    if (Object.keys(filteredBackMatter).length > 0) {
-      graph.setObjectMember(bodyHandle, 'back-matter', emitValue(graph, filteredBackMatter, 0));
-    }
+  const backMatter = filteredBackMatter(sourceBody, consumedResourceUuids);
+  if (backMatter !== null && Object.keys(backMatter).length > 0) {
+    graph.setObjectMember(bodyHandle, 'back-matter', emitValue(graph, backMatter, 0));
   }
 
   const rootHandle = graph.object();
@@ -657,27 +690,42 @@ function collectPlacedIds(
 }
 
 /**
+ * Entfernt aus dem links-Mitglied eines Knotens die Fragment-Links auf
+ * nicht platzierte Ziele. Rückgabe: true, wenn das Mitglied verändert oder
+ * entfernt wurde.
+ */
+function pruneLinksMember(node: JsonObject, placedIds: ReadonlySet<string>): boolean {
+  const links = ownDataValue(node, 'links');
+  if (!Array.isArray(links)) return false;
+
+  const kept = ownArrayDataElements(links).filter((link) => {
+    if (!isJsonObject(link)) return true;
+    const href = ownDataValue(link, 'href');
+    if (typeof href !== 'string' || !href.startsWith('#')) return true;
+    return placedIds.has(href.slice(1));
+  });
+  if (kept.length === 0) {
+    delete node['links'];
+    return true;
+  }
+  if (kept.length !== links.length) {
+    node['links'] = kept;
+    return true;
+  }
+  return false;
+}
+
+/**
  * Schneidet interne Fragment-Links (`#<id>`) ab, deren Ziel nicht Teil des
  * zusammengebauten Dokuments ist: Der resolvierte Katalog ist
- * selbst-contained und trägt keine ins Leere zeigenden Verweise (Orakel-
+ * selbst-contained und trägt keine ins Leere zeigende Verweise (Orakel-
  * befund am BSI-Korpus: ASST.5.6 → #SENS.8.6 entfällt mit dem Ziel).
- * Verschwindet das letzte Mitglied, entfällt das Mitglied selbst.
  */
 function pruneUnresolvedInternalLinks(nodes: readonly JsonObject[], placedIds: ReadonlySet<string>): void {
   const stack: JsonObject[] = [...nodes];
   while (stack.length > 0) {
     const node = stack.pop()!;
-    const links = ownDataValue(node, 'links');
-    if (Array.isArray(links)) {
-      const kept = ownArrayDataElements(links).filter((link) => {
-        if (!isJsonObject(link)) return true;
-        const href = ownDataValue(link, 'href');
-        if (typeof href !== 'string' || !href.startsWith('#')) return true;
-        return placedIds.has(href.slice(1));
-      });
-      if (kept.length === 0) delete node['links'];
-      else if (kept.length !== links.length) node['links'] = kept;
-    }
+    pruneLinksMember(node, placedIds);
     for (const listKey of ['controls', 'groups'] as const) {
       const value = ownDataValue(node, listKey);
       if (!Array.isArray(value)) continue;
