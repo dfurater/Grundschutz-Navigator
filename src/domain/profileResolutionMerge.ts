@@ -160,6 +160,43 @@ export function buildAsIsGroups(
  * Filtert einen Container rekursiv für die as-is-Ausgabe. Die Besuchsmenge
  * schützt gegen Zyklen; der Stack trägt die Tiefenreihenfolge.
  */
+/** Direkte Controls eines Containers einreihen (inkludierte + Up-Level). */
+function collectDirectControls(
+  containerNode: JsonObject,
+  includedIds: ReadonlySet<string>,
+  controls: JsonObject[],
+): void {
+  const directControls = safeArrayMember(containerNode, 'controls');
+  if (directControls === undefined) return;
+  for (const child of ownArrayDataElements(directControls)) {
+    if (!isJsonObject(child)) continue;
+    appendIncludedChain(child, includedIds, controls);
+  }
+}
+
+/** Gefilterte Untergruppen eines Containers sammeln. */
+function collectNestedGroups(
+  containerNode: JsonObject,
+  includedIds: ReadonlySet<string>,
+  visited: Set<object>,
+  groups: JsonObject[],
+): void {
+  const nestedGroups = safeArrayMember(containerNode, 'groups');
+  if (nestedGroups === undefined) return;
+  for (const group of ownArrayDataElements(nestedGroups)) {
+    if (!isJsonObject(group)) continue;
+    const filteredGroup = filterContainerForAsIs(group, includedIds, visited);
+    const groupControls =
+      (filteredGroup['controls'] as readonly unknown[] | undefined) ?? [];
+    const groupSubGroups =
+      (filteredGroup['groups'] as readonly unknown[] | undefined) ?? [];
+    if (groupControls.length > 0 || groupSubGroups.length > 0) {
+      groups.push({ ...group, ...filteredGroup });
+    }
+  }
+}
+
+/** Filtert einen Container rekursiv für die as-is-Ausgabe. */
 function filterContainerForAsIs(
   containerNode: JsonObject,
   includedIds: ReadonlySet<string>,
@@ -170,32 +207,8 @@ function filterContainerForAsIs(
 
   const groups: JsonObject[] = [];
   const controls: JsonObject[] = [];
-
-  // Direkte Controls: inkludierte behalten (gefiltert auf inkludierte
-  // Nachfahren); nicht inkludierte up-leveln ihre inkludierten Nachfahren.
-  const directControls = safeArrayMember(containerNode, 'controls');
-  if (directControls !== undefined) {
-    for (const child of ownArrayDataElements(directControls)) {
-      if (!isJsonObject(child)) continue;
-      appendIncludedChain(child, includedIds, controls);
-    }
-  }
-
-  // Gruppen: rekursiv filtern und behalten, wenn Inhalt übrig bleibt.
-  const nestedGroups = safeArrayMember(containerNode, 'groups');
-  if (nestedGroups !== undefined) {
-    for (const group of ownArrayDataElements(nestedGroups)) {
-      if (!isJsonObject(group)) continue;
-      const filteredGroup = filterContainerForAsIs(group, includedIds, visited);
-      const groupControls =
-        (filteredGroup['controls'] as readonly unknown[] | undefined) ?? [];
-      const groupSubGroups =
-        (filteredGroup['groups'] as readonly unknown[] | undefined) ?? [];
-      if (groupControls.length > 0 || groupSubGroups.length > 0) {
-        groups.push({ ...group, ...filteredGroup });
-      }
-    }
-  }
+  collectDirectControls(containerNode, includedIds, controls);
+  collectNestedGroups(containerNode, includedIds, visited, groups);
 
   return { groups, controls };
 }

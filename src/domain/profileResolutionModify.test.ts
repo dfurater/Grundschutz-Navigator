@@ -41,7 +41,7 @@ describe('set-parameter', () => {
     expect(params[0]!['label']).toBe('NEU');
     expect(params[0]!['values']).toEqual(['v1']);
     // Anreicherung statt Ersetzung bei props/links:
-    expect((params[0]!['props'] as unknown[]).length).toBe(2);
+    expect(params[0]!['props'] as unknown[]).toHaveLength(2);
     // Der Parameter trug selbst keine links — die Addition erscheint allein:
     expect((params[0]!['links'] as unknown[]).map((l) => (l as Record<string, unknown>)['href'])).toEqual(['#neu']);
     // Control selbst unverändert außerhalb von params:
@@ -54,7 +54,7 @@ describe('set-parameter', () => {
       { paramId: 'unbekannt', values: [], props: [], links: [], path: '/modify/sp1' },
     ]);
 
-    expect((result['params'] as unknown[]).length).toBe(1);
+    expect(result['params'] as unknown[]).toHaveLength(1);
     expect(
       ((result['params'] as Record<string, unknown>[])[0] as Record<string, unknown>)['id'],
     ).toBe('ac-1_prm_1');
