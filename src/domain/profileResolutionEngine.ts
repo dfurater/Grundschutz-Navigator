@@ -408,6 +408,26 @@ function collectPhaseOne(
   return { ok: true, value: { records, inclusions } };
 }
 
+/** Führt die as-is-Filterung je Quelldokument in Importreihenfolge zusammen. */
+function collectAsIsOutput(records: readonly SelectionRecord[]): {
+  groups: JsonObject[];
+  controls: JsonObject[];
+} {
+  const groups: JsonObject[] = [];
+  const controls: JsonObject[] = [];
+  const append = (candidates: readonly unknown[], target: JsonObject[]): void => {
+    for (const candidate of candidates) {
+      if (isJsonObject(candidate)) target.push(candidate);
+    }
+  };
+  for (const record of records) {
+    const filtered = buildAsIsGroups(readRootBody(record.sourceDocument), record.ids);
+    append(filtered['groups'] ?? [], groups);
+    append(filtered['controls'] ?? [], controls);
+  }
+  return { groups, controls };
+}
+
 /** Phase 2 — combine-Richtung und Strukturdirektive. */
 function buildStructuredOutput(
   input: SingleProfileInput,
@@ -421,43 +441,34 @@ function buildStructuredOutput(
   }
   const combined = applyCombine(inclusions, declaredMethod);
 
-  const structureKind = merge === null ? ('as-is' as const) : merge.structure.kind;
-
-  if (structureKind === 'flat') {
-    return { ok: true, value: { groups: [], controls: [...combined.order] } };
+  // Fehlende Merge-Direktive bedeutet as-is (Projektentscheidung, siehe
+  // Modulkopf).
+  if (merge === null) {
+    return { ok: true, value: collectAsIsOutput(records) };
   }
 
-  if (structureKind === 'as-is') {
-    const groups: JsonObject[] = [];
-    const controls: JsonObject[] = [];
-    for (const record of records) {
-      const body = readRootBody(record.sourceDocument);
-      const filtered = buildAsIsGroups(body, record.ids);
-      for (const group of filtered['groups'] ?? []) {
-        if (isJsonObject(group)) groups.push(group);
-      }
-      for (const control of filtered['controls'] ?? []) {
-        if (isJsonObject(control)) controls.push(control);
-      }
+  switch (merge.structure.kind) {
+    case 'flat':
+      return { ok: true, value: { groups: [], controls: [...combined.order] } };
+    case 'as-is':
+      return { ok: true, value: collectAsIsOutput(records) };
+    case 'custom': {
+      const assembly = buildCustomGroups(
+        {
+          rawGroups: readRawCustomGroups(input.document.source),
+          insertControls: merge.structure.custom.insertControls,
+        },
+        combined,
+      );
+      if (!assembly.ok) return assembly;
+      return {
+        ok: true,
+        value: { groups: [...assembly.groups], controls: [...assembly.controls] },
+      };
     }
-    return { ok: true, value: { groups, controls } };
+    default:
+      return reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.MERGE_STRUCTURE_UNRESOLVED, merge.path);
   }
-
-  if (structureKind !== 'custom' || merge!.structure.kind !== 'custom') {
-    return reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.MERGE_STRUCTURE_UNRESOLVED, merge?.path ?? '/');
-  }
-  const assembly = buildCustomGroups(
-    {
-      rawGroups: readRawCustomGroups(input.document.source),
-      insertControls: merge!.structure.custom.insertControls,
-    },
-    combined,
-  );
-  if (!assembly.ok) return assembly;
-  return {
-    ok: true,
-    value: { groups: [...assembly.groups], controls: [...assembly.controls] },
-  };
 }
 
 /** Phase 3 — Modify-Direktiven als Transformation über alle platzierten Controls. */
