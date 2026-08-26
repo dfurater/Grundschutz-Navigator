@@ -204,6 +204,18 @@ describe('referenceResolution', () => {
     expect(isSafeExternalHref('https://user:password@example.invalid/private')).toBe(false);
   });
 
+  it('weist die externe GitHub-Referenz des WLAN-Profils (c820c541) als external ab und löst sie nie auf', () => {
+    const context = { document: makeDocument() };
+    // Exakte URL aus dem WLAN-Profil am Snapshot 9008ca0: dieselbe Ressource
+    // wie der relative Import, aber an einem FREMDEN Commit gepinnt.
+    const wlanExternalHref =
+      'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/blob/47de2824a341812438ef3f044b3f65ce2cad6e32/control_layer/Grundschutz%2B%2B/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json';
+
+    const resolved = resolveOscalReference({ href: wlanExternalHref, path: '/back-matter/rlinks/0/href' }, context);
+    expect(resolved).toMatchObject({ kind: 'external', href: wlanExternalHref });
+    expect('document' in resolved).toBe(false);
+  });
+
   it('only resolves cross-document references explicitly supplied by the caller', () => {
     const href = 'explicit-profile.json#resource-empty';
     const context = { document: makeDocument() };

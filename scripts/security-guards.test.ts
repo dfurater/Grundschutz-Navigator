@@ -128,7 +128,7 @@ describe('security-guards', () => {
     ).toThrow('not a materialized registry artifact');
     expect(() =>
       assertRegisteredUpstreamRepoPath(
-        'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
+        'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-Entwurf-catalog.json',
       ),
     ).toThrow('not a materialized registry artifact');
     expect(() =>

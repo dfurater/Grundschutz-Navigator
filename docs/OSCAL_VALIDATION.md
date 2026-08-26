@@ -57,7 +57,7 @@ Lockfile-Eintrag, die 30 Schemadateien unter `schemas/oscal/`, das CI-Gate
 verifiziert Release-Metadaten, API-Digest, `checksums.txt` und berechnete
 SHA-256-Werte und prüft den vollständigen im gepinnten
 `upstream-manifest.json` registrierten OSCAL-Korpus. Der Lauf verarbeitet die
-18 registrierten OSCAL-Artefakte über alle vier belegten Versionen und
+19 registrierten OSCAL-Artefakte über alle vier belegten Versionen und
 überspringt die 13 `vocabulary`-Dateien, weil sie kein OSCAL-Root-Modell
 tragen. Ein als `blocked-by-upstream` registrierter, im Snapshot fehlender
 Katalog wird dabei transparent als übersprungen gemeldet. Sein Ergebnis ist
@@ -607,10 +607,10 @@ löschbare TypeScript-Syntax würde die CI-Lane brechen.
 ### Gemessener Bestand
 
 `npm run verify-upstream-oscal` am Snapshot
-`9008ca0baecd958d175bbb994d6121865e266600`: Von 18 registrierten OSCAL-
+`9008ca0baecd958d175bbb994d6121865e266600`: Von 19 registrierten OSCAL-
 Artefakten wird eines als `blocked-by-upstream` aus dem Snapshot fehlend
 übersprungen. Zwei weitere gesperrte Artefakte scheitern erwartungsgemäß an
-Stufe 3. **12** Artefakte gehen in den Graphen ein; die drei profilbasierten
+Stufe 3. **12** Artefakte gehen in den Graphen ein; die vier profilbasierten
 Quellkataloge bleiben ohne App-`catalogKey` bewusst außerhalb des Graphen und
 liefern keine belastbaren Referenzaussagen.
 
