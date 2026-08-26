@@ -54,7 +54,7 @@ export interface CatalogControlIndex {
   readonly parentOf: ReadonlyMap<string, string>;
 }
 
-function isJsonObject(value: unknown): value is JsonObject {
+export function isJsonObject(value: unknown): value is JsonObject {
   return value !== null && typeof value === 'object';
 }
 
@@ -67,7 +67,7 @@ function isPlainObjectBody(value: unknown): value is JsonObject {
  * Rein deskriptorbasierter Wertezugriff: Ein Accessor erscheint als
  * abwesend und wird niemals ausgeführt (Greptile-Befund zu 7012528).
  */
-function ownDataValue(container: object, key: string | number): unknown {
+export function ownDataValue(container: object, key: string | number): unknown {
   const descriptor = Object.getOwnPropertyDescriptor(container, key);
   return descriptor !== undefined && 'value' in descriptor ? descriptor.value : undefined;
 }
@@ -114,7 +114,7 @@ type IndexTask =
  * aufsteigender Indexreihenfolge; Accessor-Slots erscheinen als abwesend
  * und werden nie ausgeführt (Greptile-Befund zu 49d0984).
  */
-function ownArrayDataElements(array: readonly unknown[]): unknown[] {
+export function ownArrayDataElements(array: readonly unknown[]): unknown[] {
   const indices = Reflect.ownKeys(array)
     .filter((key): key is string => {
       if (typeof key !== 'string') return false;
