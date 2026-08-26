@@ -108,13 +108,6 @@ type IndexTask =
   | { readonly kind: 'control'; readonly node: JsonObject; readonly parent: string | null };
 
 /**
- * Indexiert die komplette Control-Hierarchie eines importierten Dokuments
- * iterativ: Eine explizite Aufgabenliste trägt Container- und Control-
- * Tiefenreihenfolge des Quelldokuments ohne jeden rekursiven Abstieg —
- * tiefe Hierarchien erschöpfen den Aufrufstapel nicht (Greptile-Befund zu
- * 0034765). Rein deskriptorbasiert; Accessoren erscheinen als abwesend.
- */
-/**
  * Elemente eines Arrays über eigene Data-Property-Deskriptoren, in
  * aufsteigender Indexreihenfolge; Accessor-Slots erscheinen als abwesend
  * und werden nie ausgeführt (Greptile-Befund zu 49d0984).
@@ -139,7 +132,9 @@ function ownArrayDataElements(array: readonly unknown[]): unknown[] {
 
 /** Gruppenebenen als Container-Aufgaben in Dokumentreihenfolge. */
 function pushGroupTasks(value: readonly unknown[], childTasks: IndexTask[]): void {
-  for (const group of value) {
+  // Deskriptorbasiert wie bei controls — Accessoren werden nie ausgeführt
+  // (Greptile-Befunde zu 49d0984/0034765).
+  for (const group of ownArrayDataElements(value)) {
     if (isPlainObjectBody(group)) childTasks.push({ kind: 'container', node: group });
   }
 }
@@ -179,6 +174,13 @@ function collectControlChildTasks(
   }
 }
 
+/**
+ * Indexiert die komplette Control-Hierarchie eines importierten Dokuments
+ * iterativ: Eine explizite Aufgabenliste trägt Container- und Control-
+ * Tiefenreihenfolge des Quelldokuments ohne jeden rekursiven Abstieg —
+ * tiefe Hierarchien erschöpfen den Aufrufstapel nicht (Greptile-Befund zu
+ * 0034765).
+ */
 function indexCatalogBody(body: JsonObject, state: IndexState): void {
   const stack: IndexTask[] = [{ kind: 'container', node: body }];
 

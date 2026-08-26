@@ -262,6 +262,21 @@ describe('Selektion Phase 1 — Fail-closed', () => {
     expect(index.order).toEqual([]);
   });
 
+  it('führt keine Accessoren an Gruppen-Arrayslots aus', () => {
+    const groups: Record<string, unknown>[] = [];
+    Object.defineProperty(groups, '0', {
+      get() {
+        throw new Error('Getter wurde ausgeführt');
+      },
+      enumerable: true,
+      configurable: true,
+    });
+    const hostile = catalog({ metadata: {}, groups });
+
+    expect(() => indexCatalogControls(hostile)).not.toThrow();
+    expect(indexCatalogControls(hostile).order).toEqual([]);
+  });
+
   it('ambiguous und none liefern eine strukturelle Ablehnung', () => {
     const index = indexCatalogControls(baseCatalog);
     const diagnostic = { code: 'X', stage: 'domain' } as never;
