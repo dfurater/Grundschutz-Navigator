@@ -82,6 +82,8 @@ interface IndexState {
   byId: Map<string, JsonObject>;
   childrenOf: Map<string, string[]>;
   parentOf: Map<string, string>;
+  /** Besuchte Containeridentitäten — Zyklus-/Teilungsschutz des Stapellaufs. */
+  seenContainers: Set<object>;
 }
 
 /** Registriert eine Control im Index; Duplikate bleiben beim Erstanteil. */
@@ -189,10 +191,17 @@ function indexCatalogBody(body: JsonObject, state: IndexState): void {
     const childTasks: IndexTask[] = [];
 
     if (task.kind === 'container') {
+      // Zyklus- und Teilungsschutz: Ein Container wird höchstens einmal
+      // besucht (Greptile-Befund zu fe06afb).
+      if (state.seenContainers.has(task.node)) continue;
+      state.seenContainers.add(task.node);
       collectContainerChildTasks(task.node, childTasks);
     } else {
-      registerControl(task.node, task.parent, state);
       const id = readControlId(task.node);
+      // Bereits registrierte Controls erhalten keine Kindaufgaben mehr —
+      // Selbstreferenzen enden kontrolliert statt endlos zu planen.
+      if (id === null || state.byId.has(id)) continue;
+      registerControl(task.node, task.parent, state);
       if (id !== null) collectControlChildTasks(task.node, id, childTasks);
     }
 
@@ -210,6 +219,7 @@ export function indexCatalogControls(document: unknown): CatalogControlIndex {
     byId: new Map(),
     childrenOf: new Map(),
     parentOf: new Map(),
+    seenContainers: new Set<object>(),
   };
   if (!isPlainObjectBody(document)) return state;
 
