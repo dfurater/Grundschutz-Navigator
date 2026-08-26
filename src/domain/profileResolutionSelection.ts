@@ -114,6 +114,29 @@ type IndexTask =
  * tiefe Hierarchien erschöpfen den Aufrufstapel nicht (Greptile-Befund zu
  * 0034765). Rein deskriptorbasiert; Accessoren erscheinen als abwesend.
  */
+/**
+ * Elemente eines Arrays über eigene Data-Property-Deskriptoren, in
+ * aufsteigender Indexreihenfolge; Accessor-Slots erscheinen als abwesend
+ * und werden nie ausgeführt (Greptile-Befund zu 49d0984).
+ */
+function ownArrayDataElements(array: readonly unknown[]): unknown[] {
+  const indices = Reflect.ownKeys(array)
+    .filter((key): key is string => {
+      if (typeof key !== 'string') return false;
+      const index = Number(key);
+      return Number.isInteger(index) && index >= 0 && String(index) === key;
+    })
+    .map(Number)
+    .sort((a, b) => a - b);
+
+  const elements: unknown[] = [];
+  for (const index of indices) {
+    const descriptor = Object.getOwnPropertyDescriptor(array, index);
+    if (descriptor !== undefined && 'value' in descriptor) elements.push(descriptor.value);
+  }
+  return elements;
+}
+
 /** Gruppen- und Control-Kinder eines Containers in Dokumentreihenfolge. */
 function collectContainerChildTasks(
   container: JsonObject,
@@ -124,12 +147,13 @@ function collectContainerChildTasks(
     if (typeof key !== 'string') continue;
     const value = ownDataValue(container, key);
     if (!Array.isArray(value)) continue;
+    const elements = ownArrayDataElements(value);
     if (key === 'groups') {
-      for (const group of value) {
+      for (const group of elements) {
         if (isPlainObjectBody(group)) childTasks.push({ kind: 'container', node: group });
       }
     } else if (key === 'controls') {
-      for (const node of value) {
+      for (const node of elements) {
         if (isJsonObject(node)) childTasks.push({ kind: 'control', node, parent: null });
       }
     }
@@ -144,7 +168,7 @@ function collectControlChildTasks(
 ): void {
   const children = ownDataValue(control, 'controls');
   if (!Array.isArray(children)) return;
-  for (const child of children) {
+  for (const child of ownArrayDataElements(children)) {
     if (isJsonObject(child)) childTasks.push({ kind: 'control', node: child, parent: parentControlId });
   }
 }

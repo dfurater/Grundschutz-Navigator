@@ -245,6 +245,23 @@ describe('Selektion Phase 1 — Fail-closed', () => {
     expect(index.byId.has('deep-leaf')).toBe(true);
   });
 
+  it('führt keine Accessoren an Arrayindizes aus — werfender Slot bleibt strukturell', () => {
+    const controls: Record<string, unknown>[] = [];
+    Object.defineProperty(controls, '0', {
+      get() {
+        throw new Error('Getter wurde ausgeführt');
+      },
+      enumerable: true,
+      configurable: true,
+    });
+    const hostile = catalog({ metadata: {}, controls });
+
+    const index = indexCatalogControls(hostile);
+
+    // Der Accessor erscheint als abwesender Slot; nichts wird ausgeführt.
+    expect(index.order).toEqual([]);
+  });
+
   it('ambiguous und none liefern eine strukturelle Ablehnung', () => {
     const index = indexCatalogControls(baseCatalog);
     const diagnostic = { code: 'X', stage: 'domain' } as never;
