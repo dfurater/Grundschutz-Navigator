@@ -15,13 +15,29 @@
 // - Alle Rekursionen sind durch die maximale Verschachtelungstiefe des
 //   JSON-Quellgraphen begrenzt (der Entry-Scanner lehnt >maxDepth ab);
 //   innerhalb dieser Grenze ist der Stack-Bedarf konstant klein.
+//
+// Custom-Zusammenbauung (`merge: { custom }`): Die Gruppen werden
+// mitgliedergenau kopiert — unbekannte Mitglieder bleiben erhalten (ADR-2),
+// ihre `insert-controls`-Direktiven jedoch werden weder ausgeführt noch
+// fortgetragen, denn ein unaufgelöster Direktivtext darf im resolvierten
+// Dokument nicht als Inhalt erscheinen. Die insert-controls-Anweisungen der
+// Custom-Ebene selektieren gegen einen synthetischen Index des kombinierten
+// Pools mit exakt derselben Selektormechanik wie Phase 1 (einschließlich
+// des Vorfahren-Defaults); mehrere Anweisungen wirken kumulativ ohne
+// Doppelausgabe derselben Definition. `order` sortiert aufsteigend oder
+// absteigend nach Control-ID; fehlende, `keep` und unbekannte Werte
+// bewahren die Pool-Erscheinungsreihenfolge.
 // =============================================================================
 
 import type { JsonObject } from '@/adapters/oscalProfileReaders';
+import type { OscalDiagnostic } from '@/domain/oscalDiagnostics';
+import type { ProfileInsertControls } from './profileModel';
 import {
+  indexCatalogControls,
   isJsonObject,
   ownArrayDataElements,
   ownDataValue,
+  resolveSelectionIds,
 } from './profileResolutionSelection';
 
 export type CombineMethod = 'use-first' | 'keep';
@@ -211,4 +227,119 @@ function filterContainerForAsIs(
   collectNestedGroups(containerNode, includedIds, visited, groups);
 
   return { groups, controls };
+}
+
+/* ------------------------------------------------------------------ */
+/* Custom-Zusammenbauung                                               */
+/* ------------------------------------------------------------------ */
+
+/** Auftrag der Custom-Zusammenbauung: Rohgruppen plus Anweisungen. */
+export interface CustomAssemblyRequest {
+  /** Raw-Gruppenknoten aus `merge/custom/groups` in Dokumentordnung. */
+  readonly rawGroups: readonly JsonObject[];
+  readonly insertControls: readonly ProfileInsertControls[];
+}
+
+export type CustomAssemblyResult =
+  | {
+    readonly ok: true;
+    /** Exakt kopierte Gruppen ohne ihre insert-controls-Direktiven. */
+    readonly groups: readonly JsonObject[];
+    /** Eingesetzte Controls in anweisungsweiser Reihenfolge. */
+    readonly controls: readonly JsonObject[];
+  }
+  | { readonly ok: false; readonly diagnostic: OscalDiagnostic };
+
+/**
+ * Kopiert alle eigenen Mitglieder über Data-Property-Deskriptoren.
+ * Accessor-Slots erscheinen als abwesend und werden nie ausgeführt —
+ * dieselbe Semantik wie in der Selektionsphase.
+ */
+function copyOwnDataMembers(node: JsonObject): JsonObject {
+  const copy: JsonObject = {};
+  for (const key of Reflect.ownKeys(node)) {
+    if (typeof key !== 'string') continue;
+    const value = ownDataValue(node, key);
+    if (value !== undefined) copy[key] = value;
+  }
+  return copy;
+}
+
+/**
+ * Kopiert eine Custom-Gruppe mitgliedergenau; verschachtelte Gruppen
+ * werden ebenso behandelt. Die Rekursionstiefe entspricht der Gruppen-
+ * Verschachtelung des Quelldokuments und ist durch den Entry-Scanner
+ * (maxDepth) begrenzt.
+ */
+function copyCustomGroup(group: JsonObject): JsonObject {
+  const copy = copyOwnDataMembers(group);
+  delete copy['insert-controls'];
+
+  const nested = ownDataValue(group, 'groups');
+  if (Array.isArray(nested)) {
+    copy['groups'] = ownArrayDataElements(nested).map((child) =>
+      isJsonObject(child) ? copyCustomGroup(child as JsonObject) : child,
+    );
+  }
+  return copy;
+}
+
+/**
+ * Wendet die order-Richtlinie auf die selektierten IDs an (bereits in
+ * Pool-Erscheinungsreihenfolge). Aufsteigend/absteigend sortiert nach
+ * Codepunkten; jeder andere Wert bewahrt die Reihenfolge.
+ */
+function orderedInsertIds(
+  ids: ReadonlySet<string>,
+  order: string | undefined,
+): readonly string[] {
+  if (order === 'ascending') return [...ids].sort();
+  if (order === 'descending') {
+    return [...ids].sort((left, right) => (left < right ? 1 : left > right ? -1 : 0));
+  }
+  return [...ids];
+}
+
+/**
+ * Baut das custom-Strukturbild: Gruppen exakt kopiert (ohne Ausführung
+ * ihrer insert-controls), Controls ausschließlich aus den Anweisungen der
+ * Custom-Ebene gegen den kombinierten Pool. Nicht getroffene Selektionen
+ * tragen nichts bei und sind kein Fehler.
+ */
+export function buildCustomGroups(
+  request: CustomAssemblyRequest,
+  combined: CombinedControls,
+): CustomAssemblyResult {
+  // Synthetischer Index über den kombinierten Pool: Die Selektormechanik
+  // (with-ids, matching, with-child-controls, Ausschlüsse) verhält sich
+  // damit exakt wie in Phase 1 — ein zweiter Selektionscodepfad entsteht
+  // nicht. Verschachtelte Kind-Controls eines Pool-Knotens registriert
+  // derselbe Tiefendurchlauf, sodass with-child-controls echte Struktur
+  // sieht.
+  const poolIndex = indexCatalogControls({ pool: { controls: [...combined.order] } });
+
+  const controls: JsonObject[] = [];
+  const emittedDefinitions = new Set<object>();
+
+  for (const directive of request.insertControls) {
+    const outcome = resolveSelectionIds(poolIndex, {
+      selection: directive.selection,
+      excludeControls: directive.excludeControls,
+    });
+    if (!outcome.ok) return outcome;
+
+    for (const id of orderedInsertIds(outcome.ids, directive.order)) {
+      for (const definition of combined.controls.get(id) ?? []) {
+        if (emittedDefinitions.has(definition)) continue;
+        emittedDefinitions.add(definition);
+        controls.push(definition);
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    groups: request.rawGroups.filter((group) => isJsonObject(group)).map(copyCustomGroup),
+    controls,
+  };
 }
