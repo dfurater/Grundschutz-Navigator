@@ -31,7 +31,7 @@
 
 import type { JsonObject } from '@/adapters/oscalProfileReaders';
 import type { OscalDiagnostic } from '@/domain/oscalDiagnostics';
-import type { ProfileInsertControls } from './profileModel';
+import type { ProfileGroup, ProfileInsertControls } from './profileModel';
 import {
   indexCatalogControls,
   isJsonObject,
@@ -119,27 +119,73 @@ export function buildFlatControls(combined: CombinedControls): JsonObject {
   };
 }
 
-/** Filtert eine Control-Hierarchie: nur inkludierte IDs bleiben (rekursiv). */
+/**
+ * Filtert einen inkludierten Control-Knoten auf seinen inkludierten
+ * Nachfahrenbaum; nicht inkludierte Zwischenebenen lösen sich dabei ebenso
+ * auf wie an der Gruppenoberkante — ihre inkludierten Nachfahren werden
+ * unverhüllt hinter die direkten Treffer gereiht.
+ */
 function filterNestedIncluded(
   control: JsonObject,
   includedIds: ReadonlySet<string>,
 ): JsonObject {
   const copy: JsonObject = { ...control };
+  const kept: JsonObject[] = [];
+  const promoted: JsonObject[] = [];
   // Nur setzen, wenn es gefilterte Kinder gibt — keine leeren controls:[]
-  // in Blätter injizieren (Gitar-Hinweis zu bce6b68).
-  const filtered = ownArrayDataElements(safeArrayMember(control, 'controls') ?? [])
-    .filter((child) => isJsonObject(child) && includedIds.has(readIdOrEmpty(child)))
-    .map((child) => filterNestedIncluded(child as JsonObject, includedIds));
-  if (filtered.length > 0) copy['controls'] = filtered;
-  else delete copy['controls'];
+  // in Blättern injizieren (Gitar-Hinweis zu bce6b68).
+  const children = safeArrayMember(control, 'controls') ?? [];
+  for (const child of ownArrayDataElements(children)) {
+    if (!isJsonObject(child)) continue;
+    if (includedIds.has(readIdOrEmpty(child))) {
+      kept.push(filterNestedIncluded(child, includedIds));
+    } else {
+      promoted.push(...promotedControls(child, includedIds));
+    }
+  }
+  delete copy['controls'];
+  if (kept.length + promoted.length > 0) copy['controls'] = [...kept, ...promoted];
   return copy;
 }
 
 /**
- * Reiht eine Control ein, wenn sie inkludiert ist; andernfalls steigen die
- * inkludierten Nachfahren an diese Stelle hoch (as-is Up-Levelling).
- * Die Rekursionstiefe entspricht der Control-Verschachtelung des Quell-
- * dokuments und ist durch den Entry-Scanner (maxDepth) begrenzt.
+ * Liefert die Knoten, mit denen eine Control an DERJENIGEN Stelle erscheint,
+ * an der sie im Quellbaum steht: inkludierte Controls erscheinen selbst
+ * (gefiltert auf inkludierte Nachfahren), nicht inkludierte Zwischenebenen
+ * lösen sich auf — ihre inkludierten Nachfahren werden unverhüllt
+ * hochgelevelt (Orakelbefund am BSI-Korpus: KONF.2.4.2 erscheint direkt
+ * unter KONF.2, nicht in einer KONF.2.4-Schale). Die Rekursionstiefe ist
+ * durch den Entry-Scanner (maxDepth) gedeckt.
+ */
+function promotedControls(
+  control: JsonObject,
+  includedIds: ReadonlySet<string>,
+): JsonObject[] {
+  const kept: JsonObject[] = [];
+  const promoted: JsonObject[] = [];
+  const children = safeArrayMember(control, 'controls');
+  if (children !== undefined) {
+    for (const child of ownArrayDataElements(children)) {
+      if (!isJsonObject(child)) continue;
+      if (includedIds.has(readIdOrEmpty(child))) {
+        kept.push(filterNestedIncluded(child, includedIds));
+      }
+    }
+    for (const child of ownArrayDataElements(children)) {
+      if (!isJsonObject(child)) continue;
+      if (!includedIds.has(readIdOrEmpty(child))) {
+        promoted.push(...promotedControls(child as JsonObject, includedIds));
+      }
+    }
+  }
+  return [...kept, ...promoted];
+}
+
+/**
+ * Reiht eine Control ein: inkludiert erscheint sie mit gefiltertem
+ * Nachfahrenbaum; sonst steigen ihre inkludierten Nachfahren unverhüllt an
+ * diese Stelle hoch. Direkte Treffer stehen vor den Hochgelevelten
+ * (Orakelordnung: KONF.2.7 vor dem hochgelevelten KONF.2.4.2).
  */
 function appendIncludedChain(
   control: JsonObject,
@@ -151,12 +197,7 @@ function appendIncludedChain(
     out.push(filterNestedIncluded(control, includedIds));
     return;
   }
-  const children = safeArrayMember(control, 'controls');
-  if (children !== undefined) {
-    for (const child of ownArrayDataElements(children)) {
-      if (isJsonObject(child)) appendIncludedChain(child as JsonObject, includedIds, out);
-    }
-  }
+  out.push(...promotedControls(control, includedIds));
 }
 
 /**
@@ -184,9 +225,21 @@ function collectDirectControls(
 ): void {
   const directControls = safeArrayMember(containerNode, 'controls');
   if (directControls === undefined) return;
-  for (const child of ownArrayDataElements(directControls)) {
+  const children = ownArrayDataElements(directControls);
+  // Phase 1: Direkte Treffer in Quellordnung (Orakelordnung am BSI-Korpus:
+  // KONF.2.7 steht vor dem hochgelevelten KONF.2.4.2).
+  for (const child of children) {
     if (!isJsonObject(child)) continue;
-    appendIncludedChain(child, includedIds, controls);
+    if (includedIds.has(readIdOrEmpty(child))) {
+      appendIncludedChain(child as JsonObject, includedIds, controls);
+    }
+  }
+  // Phase 2: Hochgelevelte Nachfahren nicht inkludierter Zweige.
+  for (const child of children) {
+    if (!isJsonObject(child)) continue;
+    if (!includedIds.has(readIdOrEmpty(child))) {
+      controls.push(...promotedControls(child as JsonObject, includedIds));
+    }
   }
 }
 
@@ -207,7 +260,15 @@ function collectNestedGroups(
     const groupSubGroups =
       (filteredGroup['groups'] as readonly unknown[] | undefined) ?? [];
     if (groupControls.length > 0 || groupSubGroups.length > 0) {
-      groups.push({ ...group, ...filteredGroup });
+      // Die Hierarchielisten werden nur gesetzt, wenn Inhalt erhalten bleibt —
+      // leere Gruppen-/Controls-Mitglieder erscheinen im resolved Dokument
+      // nicht (Orakelvertrag gegen die BSI-resolved_catalogs).
+      const merged: JsonObject = { ...group };
+      delete merged['controls'];
+      delete merged['groups'];
+      if (groupControls.length > 0) merged['controls'] = groupControls;
+      if (groupSubGroups.length > 0) merged['groups'] = groupSubGroups;
+      groups.push(merged);
     }
   }
 }
@@ -233,19 +294,29 @@ function filterContainerForAsIs(
 /* Custom-Zusammenbauung                                               */
 /* ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ */
+/* Custom-Zusammenbauung                                               */
+/* ------------------------------------------------------------------ */
+
 /** Auftrag der Custom-Zusammenbauung: Rohgruppen plus Anweisungen. */
 export interface CustomAssemblyRequest {
-  /** Raw-Gruppenknoten aus `merge/custom/groups` in Dokumentordnung. */
+  /**
+   * Raw-Gruppenknoten aus `merge/custom/groups` in Dokumentordnung. Die
+   * parallele Liste `typedGroups` trägt die projizierten Direktiven
+   * derselben Gruppen (gleiche Reihenfolge, gleiche Länge).
+   */
   readonly rawGroups: readonly JsonObject[];
+  readonly typedGroups: readonly ProfileGroup[];
+  /** Anweisungen auf Catalog-Ebene (direkt unter dem Root). */
   readonly insertControls: readonly ProfileInsertControls[];
 }
 
 export type CustomAssemblyResult =
   | {
     readonly ok: true;
-    /** Exakt kopierte Gruppen ohne ihre insert-controls-Direktiven. */
+    /** Zusammengebaute Gruppen einschließlich ihrer eingefügten Controls. */
     readonly groups: readonly JsonObject[];
-    /** Eingesetzte Controls in anweisungsweiser Reihenfolge. */
+    /** Eingesetzte Controls auf Catalog-Ebene in anweisungsweiser Reihenfolge. */
     readonly controls: readonly JsonObject[];
   }
   | { readonly ok: false; readonly diagnostic: OscalDiagnostic };
@@ -270,31 +341,169 @@ function copyOwnDataMembers(node: JsonObject): JsonObject {
  * werden ebenso behandelt. Die Rekursionstiefe entspricht der Gruppen-
  * Verschachtelung des Quelldokuments und ist durch den Entry-Scanner
  * (maxDepth) begrenzt.
+ *
+ * Gruppen ohne eigenes props-Mitglied erhalten einen Label-Träger aus
+ * ihrer ID (`prop[@name='label']`): Die Quellkataloge des BSI-Korpus
+ * tragen durchweg Gruppen-Labels, und die BSI-resolved_catalogs setzen
+ * diese Konvention auch über die custom-Zusammenbauung fort — der
+ * Orakelvergleich nagelt das Verhalten fest.
  */
 function copyCustomGroup(group: JsonObject): JsonObject {
   const copy = copyOwnDataMembers(group);
   delete copy['insert-controls'];
 
-  const nested = ownDataValue(group, 'groups');
-  if (Array.isArray(nested)) {
-    copy['groups'] = ownArrayDataElements(nested).map((child) =>
-      isJsonObject(child) ? copyCustomGroup(child as JsonObject) : child,
+  if (!('props' in copy)) {
+    const groupId = ownDataValue(group, 'id');
+    if (typeof groupId === 'string' && groupId.length > 0) {
+      copy['props'] = [{ name: 'label', value: groupId }];
+    }
+  }
+
+  return copy;
+}
+
+/**
+ * Versieht eine eingefügte Control und ihre gesamte verschachtelte
+ * Subcontrol-Hierarchie mit Positions-Labels (`<Gruppe>.<n>`, darunter
+ * `<Gruppe>.<n>.<m>` …) und trägt die Parts jeder Ebene aufsteigend nach
+ * ID. Der BSI-Korpus nagelt beide Konventionen für den Custom-Pfad fest;
+ * der as-is-Pfad bewahrt dagegen Quellordnung und ursprüngliche Labels.
+ */
+function withPositionalLabels(
+  control: JsonObject,
+  label: string,
+): JsonObject {
+  const sourcePropsValue = ownDataValue(control, 'props');
+  const sourceProps = Array.isArray(sourcePropsValue) ? [...sourcePropsValue] : [];
+  const copy: JsonObject = { ...control, props: [{ name: 'label', value: label }, ...sourceProps] };
+
+  const partsValue = ownDataValue(control, 'parts');
+  if (Array.isArray(partsValue)) {
+    copy['parts'] = [...partsValue].sort((left, right) => {
+      const leftId = isJsonObject(left) ? String(ownDataValue(left, 'id') ?? '') : '';
+      const rightId = isJsonObject(right) ? String(ownDataValue(right, 'id') ?? '') : '';
+      return leftId < rightId ? -1 : leftId > rightId ? 1 : 0;
+    });
+  }
+
+  const childrenValue = ownDataValue(control, 'controls');
+  if (Array.isArray(childrenValue)) {
+    copy['controls'] = ownArrayDataElements(childrenValue).map((child, index) =>
+      isJsonObject(child) ? withPositionalLabels(child, `${label}.${index + 1}`) : child,
     );
   }
   return copy;
 }
 
 /**
- * Wendet die order-Richtlinie auf die selektierten IDs an (bereits in
- * Pool-Erscheinungsreihenfolge). Aufsteigend/absteigend sortiert nach
- * UTF-16-Codepunkten; jeder andere Wert bewahrt die Reihenfolge.
- * Bewusst KEIN localeCompare: Dessen Kollation hängt von der ICU-Umgebung
- * ab und würde die geforderte Byte-Identität des Doppel-Laufs brechen
- * (SonarQube S2871).
+ * Wertet die insert-controls-Direktiven EINER Gruppe gegen den Pool aus
+ * und liefert die getroffenen Definitionen mit Positions-Labels. Mehrere
+ * Anweisungen wirken kumulativ; Deduplizierung läuft je Gruppe.
+ */
+function assembleGroupControls(
+  groupId: string,
+  directives: readonly ProfileInsertControls[],
+  context: AssemblyContext,
+  groupDefinitions: Set<object>,
+): { readonly ok: true; readonly placed: readonly JsonObject[] } | { readonly ok: false; readonly diagnostic: OscalDiagnostic } {
+  const placed: JsonObject[] = [];
+
+  for (const directive of directives) {
+    const outcome = resolveSelectionIds(context.poolIndex, {
+      selection: directive.selection,
+      excludeControls: directive.excludeControls,
+    });
+    if (!outcome.ok) return outcome;
+
+    for (const id of orderedInsertIds(outcome.ids, directive)) {
+      for (const definition of context.combined.controls.get(id) ?? []) {
+        if (groupDefinitions.has(definition)) continue;
+        groupDefinitions.add(definition);
+        placed.push(withPositionalLabels(definition, `${groupId}.${placed.length + 1}`));
+      }
+    }
+  }
+  return { ok: true, placed };
+}
+
+interface AssemblyContext {
+  readonly poolIndex: ReturnType<typeof indexCatalogControls>;
+  readonly combined: CombinedControls;
+}
+
+type GroupAssemblyResult =
+  | { readonly ok: true; readonly groups: readonly JsonObject[] }
+  | { readonly ok: false; readonly diagnostic: OscalDiagnostic };
+
+/**
+ * Baut die Gruppenhierarchie rekuriv auf: Rohknoten und projizierte
+ * Direktiven werden über den Index gekoppelt; jede Gruppe erhält ihre
+ * eigenen insert-controls als `controls`-Mitglied, verschachtelte Gruppen
+ * werden genauso behandelt. Die Rekursionstiefe ist durch den Entry-
+ * Scanner (maxDepth) gedeckt.
+ */
+function assembleGroups(
+  rawGroups: readonly JsonObject[],
+  typedGroups: readonly ProfileGroup[],
+  context: AssemblyContext,
+): GroupAssemblyResult {
+  const assembled: JsonObject[] = [];
+
+  for (let index = 0; index < rawGroups.length; index += 1) {
+    const raw = rawGroups[index]!;
+    const copy = copyCustomGroup(raw);
+    // Die Projektion liest dasselbe Array in derselben Ordnung; bei einer
+    // Abweichung (sollte unmöglich sein) bleibt die Gruppe ohne Direktiven.
+    const typed = typedGroups[index];
+
+    if (typed !== undefined && typed.id !== undefined && typed.insertControls.length > 0) {
+      const groupDefinitions = new Set<object>();
+      const placed = assembleGroupControls(
+        typed.id,
+        typed.insertControls,
+        context,
+        groupDefinitions,
+      );
+      if (!placed.ok) return placed;
+      if (placed.placed.length > 0) {
+        copy['controls'] = placed.placed;
+      }
+    }
+
+    const nestedRawValue = ownDataValue(raw, 'groups');
+    if (Array.isArray(nestedRawValue)) {
+      const nestedRaw = ownArrayDataElements(nestedRawValue).filter(
+        (child): child is JsonObject => isJsonObject(child),
+      );
+      const nestedTyped = typed?.groups ?? [];
+      const nestedResult = assembleGroups(nestedRaw, nestedTyped, context);
+      if (!nestedResult.ok) return nestedResult;
+      if (nestedResult.groups.length > 0 || nestedRaw.length > 0) {
+        copy['groups'] = nestedResult.groups;
+      } else {
+        delete copy['groups'];
+      }
+    }
+
+    assembled.push(copy);
+  }
+  return { ok: true, groups: assembled };
+}
+
+/**
+ * Wendet die order-Richtlinie auf die selektierten IDs an. Aufsteigend/
+ * absteigend sortiert nach UTF-16-Codepunkten. Ohne order (`keep`) gilt:
+ * Eine with-ids-Deklaration ordnet nach ihrer eigenen Liste (Orakelbefund
+ * WLAN.3: ARCH.3.2 vor BES.2.1.4.2, obwohl BES im Quelldokument früher
+ * liegt); Selektionen ohne Deklaration (include-all, matching) behalten
+ * die Pool-Erscheinungsreihenfolge, nicht deklarierte Treffer schließen
+ * sich ebensolcher an. Bewusst KEIN localeCompare: Dessen Kollation hängt
+ * von der ICU-Umgebung ab und würde die Byte-Identität des Doppel-Laufs
+ * brechen (SonarQube S2871).
  */
 function orderedInsertIds(
   ids: ReadonlySet<string>,
-  order: string | undefined,
+  directive: ProfileInsertControls,
 ): readonly string[] {
   const ascending = (left: string, right: string): number => {
     if (left < right) return -1;
@@ -306,15 +515,27 @@ function orderedInsertIds(
     if (left < right) return 1;
     return 0;
   };
-  if (order === 'ascending') return [...ids].sort(ascending);
-  if (order === 'descending') return [...ids].sort(descending);
-  return [...ids];
+  if (directive.order === 'ascending') return [...ids].sort(ascending);
+  if (directive.order === 'descending') return [...ids].sort(descending);
+
+  const declared: string[] = [];
+  if (directive.selection.kind === 'include-controls') {
+    for (const selector of directive.selection.includeControls) {
+      for (const id of selector.withIds) {
+        if (ids.has(id) && !declared.includes(id)) declared.push(id);
+      }
+    }
+  }
+  if (declared.length === ids.size) return declared;
+  const rest = [...ids].filter((id) => !declared.includes(id));
+  return [...declared, ...rest];
 }
 
 /**
- * Baut das custom-Strukturbild: Gruppen exakt kopiert (ohne Ausführung
- * ihrer insert-controls), Controls ausschließlich aus den Anweisungen der
- * Custom-Ebene gegen den kombinierten Pool. Nicht getroffene Selektionen
+ * Baut das custom-Strukturbild: Gruppen werden mit ihren eigenen
+ * insert-controls zusammengesetzt (eingefügte Controls tragen
+ * Positions-Labels `<Gruppen-ID>.<n>`), die Anweisungen der Custom-Ebene
+ * füllen die Controls auf Catalog-Ebene. Nicht getroffene Selektionen
  * tragen nichts bei und sind kein Fehler.
  */
 export function buildCustomGroups(
@@ -327,19 +548,24 @@ export function buildCustomGroups(
   // nicht. Verschachtelte Kind-Controls eines Pool-Knotens registriert
   // derselbe Tiefendurchlauf, sodass with-child-controls echte Struktur
   // sieht.
-  const poolIndex = indexCatalogControls({ pool: { controls: [...combined.order] } });
+  const context: AssemblyContext = {
+    poolIndex: indexCatalogControls({ pool: { controls: [...combined.order] } }),
+    combined,
+  };
+
+  const groupsResult = assembleGroups(request.rawGroups, request.typedGroups, context);
+  if (!groupsResult.ok) return groupsResult;
 
   const controls: JsonObject[] = [];
   const emittedDefinitions = new Set<object>();
-
   for (const directive of request.insertControls) {
-    const outcome = resolveSelectionIds(poolIndex, {
+    const outcome = resolveSelectionIds(context.poolIndex, {
       selection: directive.selection,
       excludeControls: directive.excludeControls,
     });
     if (!outcome.ok) return outcome;
 
-    for (const id of orderedInsertIds(outcome.ids, directive.order)) {
+    for (const id of orderedInsertIds(outcome.ids, directive)) {
       // Fehlt einer selektierten ID ihr eigener Definitions-Bucket, steckt
       // sie bereits vollständig im Baum eines mitausgegebenen Vorfahren
       // (Gitar-Hinweis zu 7fe9880): Ihre Definition würde sonst doppelt
@@ -353,9 +579,5 @@ export function buildCustomGroups(
     }
   }
 
-  return {
-    ok: true,
-    groups: request.rawGroups.filter((group) => isJsonObject(group)).map(copyCustomGroup),
-    controls,
-  };
+  return { ok: true, groups: groupsResult.groups, controls };
 }

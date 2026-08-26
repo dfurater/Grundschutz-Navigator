@@ -32,6 +32,11 @@ import {
 import { projectCatalogLineage } from '../src/domain/catalogLineage.mjs';
 import { resolveSchemaBinding } from '../src/domain/oscalVersionMatrix.mjs';
 import {
+  buildCorpusCachePayload,
+  CORPUS_CACHE_DIRECTORY,
+  writeCorpusCache,
+} from './upstream-corpus-cache.mjs';
+import {
   buildUpstreamManifest,
   normalizeGitTree,
 } from './upstream-artifacts.mjs';
@@ -931,6 +936,14 @@ async function buildFetchArtifacts(logger = console, {
       snapshotCommitSha: snapshot.snapshotCommitSha,
       manifestSignature: manifest.signatureSha256,
     },
+    // Verpflichtender Bauzeitlauf (GSPP-291): die verifizierten Rohbytes der
+    // drei Profile, ihrer Importziele und der drei Vergleichskataloge für
+    // den gitignorierten Korpus-Cache — kein zweiter Fetch, keine Auslieferung.
+    corpusCache: buildCorpusCachePayload({
+      inspectedArtifacts,
+      lineages: CATALOG_LINEAGES,
+      snapshotCommitSha: snapshot.snapshotCommitSha,
+    }),
   };
 }
 
@@ -957,6 +970,10 @@ if (isDirectExecution) {
   try {
     const payload = await buildFetchArtifacts(stderrLogger);
     await writeArtifacts(payload);
+    if (payload.corpusCache) {
+      await writeCorpusCache(payload.corpusCache);
+      console.error(`  Korpus-Cache:        ${CORPUS_CACHE_DIRECTORY}/ (${payload.corpusCache.cacheManifest.files.length} Dokumente)`);
+    }
     console.error('[5/5] Fertig.');
     for (const filePath of payload.summary.catalogArtifactFilePaths) {
       console.error(`  Katalogartefakt:     ${filePath}`);

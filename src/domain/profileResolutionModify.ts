@@ -91,9 +91,22 @@ export function applySetParametersToControl(
 ): JsonObject {
   if (setParameters.length === 0) return control;
 
-  const sourceParams = safeArrayMember(control, 'params') ?? [];
-  let params: readonly unknown[] = sourceParams;
+  const sourceParams = safeArrayMember(control, 'params');
+  if (sourceParams === undefined) {
+    // Ohne bestehende Params-Mitglied wird die Control nur berührt, wenn
+    // eine Anweisung tatsächlich einen Parameter trägt — ein leeres
+    // params-Mitglied wird nicht erfunden (Orakelvertrag gegen die
+    // BSI-resolved_catalogs).
+    for (const directive of setParameters) {
+      const matched = applySingleSetParameter([], directive);
+      if (matched.length > 0) {
+        return canonicalizeControlKeys({ ...control, params: matched });
+      }
+    }
+    return canonicalizeControlKeys(control);
+  }
 
+  let params: readonly unknown[] = sourceParams;
   for (const directive of setParameters) {
     params = applySingleSetParameter(params, directive);
   }
@@ -105,10 +118,12 @@ function applySingleSetParameter(
   params: readonly unknown[],
   directive: ProfileSetParameter,
 ): readonly unknown[] {
-  return params.map((param) => {
+  let changed = false;
+  const next = params.map((param) => {
     if (!isJsonObject(param)) return param;
     if (readStringMember(param, 'id') !== directive.paramId) return param;
 
+    changed = true;
     const target: JsonObject = { ...param };
 
     // Skalarfelder: ersetzen, sofern in der Anweisung vorhanden.
@@ -129,6 +144,9 @@ function applySingleSetParameter(
 
     return target;
   });
+  // Ohne Treffer bleibt die ursprüngliche Liste erhalten — Referenz- und
+  // inhaltsgleich, damit Aufrufer Abwesenheit von Wirkung zuverlässig sehen.
+  return changed ? next : params;
 }
 
 /** Ergebnis einer Alteration: gefilterter/neuer Control-Knoten. */
@@ -138,11 +156,15 @@ export function applyAlteration(
 ): JsonObject {
   let working = control;
 
-  for (const addition of alteration.adds ?? []) {
-    working = applyAddition(working, addition);
-  }
+  // Removes wirken VOR den Adds (Orakelbefund am WLAN-Profil: `removes`
+  // nimmt das Original-Part heraus, `adds` setzt es an neuer Position
+  // wieder ein — umgekehrte Reihenfolge würde den Einsatz doppelt
+  // entfernen).
   for (const removal of alteration.removes ?? []) {
     working = applyRemovals(working, removal);
+  }
+  for (const addition of alteration.adds ?? []) {
+    working = applyAddition(working, addition);
   }
 
   return canonicalizeControlKeys(working);

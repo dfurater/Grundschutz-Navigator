@@ -84,6 +84,9 @@ jobs:
           BSI_SNAPSHOT_SHA: ${{ steps.manifest.outputs.sha }}
         run: npm run fetch-catalog
 
+      - name: Resolve all BSI profiles deterministically (mandatory build-time corpus)
+        run: npm run test:profile-resolution
+
       - name: Verify upstream OSCAL schemas with go-oscal
         env:
           GO_OSCAL_SBOM_OUTPUT: ${{ runner.temp }}/sbom_go-oscal_v0.7.1_Linux_amd64.sbom

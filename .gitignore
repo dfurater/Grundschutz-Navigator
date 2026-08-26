@@ -51,3 +51,6 @@ CLAUDE.md
 
 # TypeScript build info
 *.tsbuildinfo
+
+# Korpus-Cache des verpflichtenden Bauzeitlaufs (GSPP-291)
+/.cache/

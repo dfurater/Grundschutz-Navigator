@@ -12,6 +12,7 @@
     "preview:local": "npm run build:local && vite preview",
     "test": "vitest run",
     "test:qa": "vitest run src/test/oscalRoundTripCorpus.qa.test.ts",
+    "test:profile-resolution": "vitest run --config scripts/vitest.corpus.config.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:browser": "vitest run --config vitest.browser.config.ts",

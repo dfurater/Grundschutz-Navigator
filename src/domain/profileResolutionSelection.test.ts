@@ -105,7 +105,10 @@ describe('Selektion Phase 1 — Inklusion', () => {
     expect(idsOf(index, request('no'))).toEqual(['ac-2']);
   });
 
-  it('ohne with-child-controls gilt no — aber Vorfahren-Controls kommen mit (Default)', () => {
+  it('ohne with-child-controls gilt no — und Vorfahren werden NICHT automatisch mitgezogen', () => {
+    // Orakelbefund BSI-Korpus (GSPP-291): Gezogene Ahnen würden als leere
+    // Schalen materialisieren; die Auflösung zieht sie deshalb bewusst
+    // nicht nach.
     const index = indexCatalogControls(baseCatalog);
     expect(
       idsOf(index, {
@@ -115,7 +118,7 @@ describe('Selektion Phase 1 — Inklusion', () => {
         },
         excludeControls: [],
       }),
-    ).toEqual(['ac-2', 'ac-2.1']);
+    ).toEqual(['ac-2.1']);
   });
 
   it('matching wertet Glob-Muster gegen die Control-ID aus', () => {

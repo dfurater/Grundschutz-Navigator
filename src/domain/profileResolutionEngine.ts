@@ -65,6 +65,7 @@ import {
   createOscalDerivedGraph,
   type DerivedGraphValue,
   type DerivedJsonTree,
+  type DerivedObjectHandle,
 } from './oscalDerivedGraph';
 import { CLASS_2_IMPORT_LIMITS } from './oscalImportContract';
 import {
@@ -257,7 +258,10 @@ function toAlterationDirective(alterNode: JsonObject): AlterationDirective {
     adds: objectEntriesOf(alterNode, 'adds').map(
       (entry) => projectMembers(entry, ALTERATION_STRING_MEMBERS, ALTERATION_LIST_MEMBERS) as NonNullable<AlterationDirective['adds']>[number],
     ),
-    removes: objectEntriesOf(alterNode, 'remove').map(
+    // Das Schema kennt ausschließlich `removes` (Plural); ein Singular-Key
+    // existiert nicht — Stille hier würde Remove-Anweisungen verlieren
+    // (Orakelbefund WLAN: alter verschiebt ASST.2.2_gdn per removes+adds).
+    removes: objectEntriesOf(alterNode, 'removes').map(
       (entry) => projectMembers(entry, REMOVAL_STRING_MEMBERS, []) as NonNullable<AlterationDirective['removes']>[number],
     ),
   };
@@ -279,6 +283,22 @@ function identity(control: JsonObject): JsonObject {
   return control;
 }
 
+/**
+ * Flache Kopie über Data-Property-Deskriptoren mit Ausschlussliste —
+ * Accessor-Slots erscheinen als abwesend, Schlüsselordnung bleibt erhalten.
+ */
+function copyOwnDataMembersSkipping(node: JsonObject, skipKeys: readonly string[]): JsonObject {
+  const skip = new Set(skipKeys);
+  const copy: JsonObject = {};
+  for (const key of Reflect.ownKeys(node)) {
+    if (typeof key === 'string' && !skip.has(key)) {
+      const value = ownDataValue(node, key);
+      if (value !== undefined) copy[key] = value;
+    }
+  }
+  return copy;
+}
+
 function createControlTransform(
   setParameters: readonly ProfileSetParameter[],
   altersByControlId: ReadonlyMap<string, readonly AlterationDirective[]>,
@@ -290,7 +310,7 @@ function createControlTransform(
     return typeof id === 'string' ? id : null;
   };
 
-  return (control: JsonObject): JsonObject => {
+  const applyShallow = (control: JsonObject): JsonObject => {
     let transformed = applySetParametersToControl(control, setParameters);
     const id = controlIdOf(transformed);
     if (id === null) return transformed;
@@ -301,6 +321,21 @@ function createControlTransform(
     }
     return transformed;
   };
+
+  // Modify wirkt auf die ganze Control-Hierarchie: verschachtelte
+  // Subcontrols werden mit derselben Transformation behandelt. Die
+  // Rekursionstiefe ist durch die Entry-Scanner-Grenze gedeckt.
+  const applyDeep = (control: JsonObject): JsonObject => {
+    const transformed = applyShallow(control);
+    const children = ownDataValue(transformed, 'controls');
+    if (Array.isArray(children)) {
+      transformed['controls'] = ownArrayDataElements(children).map((child) =>
+        isJsonObject(child) ? applyDeep(child) : child,
+      );
+    }
+    return transformed;
+  };
+  return applyDeep;
 }
 
 /**
@@ -373,9 +408,10 @@ type PhaseOutcome<T> =
 /** Phase 1 — Selektion je Import gegen sein Quelldokument. */
 function collectPhaseOne(
   input: SingleProfileInput,
-): PhaseOutcome<{ records: SelectionRecord[]; inclusions: ControlInclusion[] }> {
+): PhaseOutcome<{ records: SelectionRecord[]; inclusions: ControlInclusion[]; consumedResourceUuids: Set<string> }> {
   const records: SelectionRecord[] = [];
   const inclusions: ControlInclusion[] = [];
+  const consumedResourceUuids = new Set<string>();
 
   for (const profileImport of input.document.view.imports) {
     const edge = (input.edgesByArtifactKey.get(input.artifactKey) ?? []).find(
@@ -403,9 +439,12 @@ function collectPhaseOne(
       if (node !== undefined) controls.push(node);
     }
     records.push({ artifactKey: edge.artifactKey, ids: outcome.ids, sourceDocument });
+    if (profileImport.href.startsWith('#')) {
+      consumedResourceUuids.add(profileImport.href.slice(1));
+    }
     inclusions.push({ documentKey: edge.artifactKey, controls });
   }
-  return { ok: true, value: { records, inclusions } };
+  return { ok: true, value: { records, inclusions, consumedResourceUuids } };
 }
 
 /** Führt die as-is-Filterung je Quelldokument in Importreihenfolge zusammen. */
@@ -456,6 +495,7 @@ function buildStructuredOutput(
       const assembly = buildCustomGroups(
         {
           rawGroups: readRawCustomGroups(input.document.source),
+          typedGroups: merge.structure.custom.groups,
           insertControls: merge.structure.custom.insertControls,
         },
         combined,
@@ -487,8 +527,17 @@ function collectModifyTransform(document: ProfileDocument): ControlTransform {
 
 /**
  * Emission — ausschließlich über den kontrollierten Builder. Erzeugt das
- * Dokument mit Root-Key `catalog`, Metadaten und den beiden
- * Provenienzträgern.
+ * Dokument mit Root-Key `catalog`.
+ *
+ * Metadaten-Erbvertrag: Die Metadaten des Ergebnisses stammen vollständig
+ * aus dem steuernden Profil (Titel, Version, document-ids, roles, parties,
+ * remarks und unbekannte Mitglieder bleiben gemäß ADR-2 erhalten). Nur die
+ * werkzeugspezifischen Felder werden ersetzt — eigene UUID (UUIDv5),
+ * Stempel-`last-modified`, gebundene `oscal-version` — und die beiden
+ * Provenienzträger werden angehängt (`resolution-tool`-prop,
+ * `source-profile`-link). Die BSI-resolved_catalogs erben dieselben
+ * Metadaten ebenso, sodass der Orakelvergleich nur die dokumentierten
+ * Volatile unterscheidet.
  */
 function emitResolvedCatalog(
   plan: Extract<ProfileResolutionPlan, { ok: true }>,
@@ -497,17 +546,35 @@ function emitResolvedCatalog(
   derivedUuid: string,
   groups: readonly JsonObject[],
   controls: readonly JsonObject[],
+  consumedResourceUuids: ReadonlySet<string>,
 ): DerivedJsonTree {
   const graph = createOscalDerivedGraph();
 
-  const metadataHandle = graph.object();
-  const title = document.view.metadata.title;
-  if (title !== undefined) graph.setObjectMember(metadataHandle, 'title', title);
+  const sourceBody = readRootBody(document.source);
+  const sourceMetadataValue = ownDataValue(sourceBody, 'metadata');
+  const sourceMetadata = isJsonObject(sourceMetadataValue) ? sourceMetadataValue : {};
+  // Werkzeugspezifische Mitglieder werden nicht übernommen, sondern unten
+  // neu gesetzt; die Trägerlisten werden separat aufgebaut, damit unsere
+  // Einträge hinter den ererbten stehen.
+  const inheritedMetadata = copyOwnDataMembersSkipping(sourceMetadata, [
+    'uuid',
+    'last-modified',
+    'oscal-version',
+    'props',
+    'links',
+  ]);
+  const metadataHandle = emitValue(graph, inheritedMetadata, 0) as DerivedObjectHandle;
   graph.setObjectMember(metadataHandle, 'uuid', derivedUuid);
   graph.setObjectMember(metadataHandle, 'last-modified', PROFILE_RESOLUTION_TIMESTAMP);
   graph.setObjectMember(metadataHandle, 'oscal-version', plan.oscalVersion);
 
   const propsHandle = graph.array();
+  const inheritedProps = ownDataValue(sourceMetadata, 'props');
+  if (Array.isArray(inheritedProps)) {
+    for (const entry of ownArrayDataElements(inheritedProps)) {
+      if (isJsonObject(entry)) graph.pushArrayItem(propsHandle, emitValue(graph, entry, 1));
+    }
+  }
   const toolProp = graph.object();
   graph.setObjectMember(toolProp, 'name', 'resolution-tool');
   graph.setObjectMember(toolProp, 'value', `${PROFILE_RESOLUTION_VALIDATOR.name}@${PROFILE_RESOLUTION_VALIDATOR.version}`);
@@ -515,6 +582,12 @@ function emitResolvedCatalog(
   graph.setObjectMember(metadataHandle, 'props', propsHandle);
 
   const linksHandle = graph.array();
+  const inheritedLinks = ownDataValue(sourceMetadata, 'links');
+  if (Array.isArray(inheritedLinks)) {
+    for (const entry of ownArrayDataElements(inheritedLinks)) {
+      if (isJsonObject(entry)) graph.pushArrayItem(linksHandle, emitValue(graph, entry, 1));
+    }
+  }
   const sourceLink = graph.object();
   graph.setObjectMember(sourceLink, 'rel', 'source-profile');
   graph.setObjectMember(sourceLink, 'href', `urn:uuid:${topUuid}`);
@@ -522,6 +595,7 @@ function emitResolvedCatalog(
   graph.setObjectMember(metadataHandle, 'links', linksHandle);
 
   const bodyHandle = graph.object();
+  graph.setObjectMember(bodyHandle, 'uuid', derivedUuid);
   graph.setObjectMember(bodyHandle, 'metadata', metadataHandle);
   if (groups.length > 0) {
     graph.setObjectMember(bodyHandle, 'groups', emitValue(graph, groups, 0));
@@ -529,10 +603,89 @@ function emitResolvedCatalog(
   if (controls.length > 0) {
     graph.setObjectMember(bodyHandle, 'controls', emitValue(graph, controls, 0));
   }
+  // Das Back-matter des steuernden Profils wird fortgeführt, MINUS die
+  // Ressourcen, deren rlink als Importbindung verbraucht wurde — die BSI-
+  // resolved_catalogs streichen genau diese und behalten die externen
+  // Referenzen (Orakelbefund gspp: drei Import-Ressourcen fallen,
+  // die BSI-Website-Referenz bleibt).
+  const backMatter = ownDataValue(sourceBody, 'back-matter');
+  if (isJsonObject(backMatter)) {
+    let filteredBackMatter: JsonObject = backMatter;
+    const resources = ownDataValue(backMatter, 'resources');
+    if (Array.isArray(resources)) {
+      const kept = ownArrayDataElements(resources).filter((entry) => {
+        if (!isJsonObject(entry)) return true;
+        const uuid = ownDataValue(entry, 'uuid');
+        return !(typeof uuid === 'string' && consumedResourceUuids.has(uuid));
+      });
+      filteredBackMatter = { ...backMatter, resources: kept };
+      if (kept.length === 0) delete filteredBackMatter['resources'];
+    }
+    if (Object.keys(filteredBackMatter).length > 0) {
+      graph.setObjectMember(bodyHandle, 'back-matter', emitValue(graph, filteredBackMatter, 0));
+    }
+  }
 
   const rootHandle = graph.object();
   graph.setObjectMember(rootHandle, 'catalog', bodyHandle);
   return graph.finishRoot(rootHandle);
+}
+
+/**
+ * Sammelt alle platzierten Control- und Gruppen-IDs des zusammengebauten
+ * Baums (iterativ über den frischen Engine-Baum).
+ */
+function collectPlacedIds(
+  groups: readonly JsonObject[],
+  controls: readonly JsonObject[],
+): Set<string> {
+  const ids = new Set<string>();
+  const stack: JsonObject[] = [...groups, ...controls];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    const id = ownDataValue(node, 'id');
+    if (typeof id === 'string') ids.add(id);
+    for (const listKey of ['controls', 'groups'] as const) {
+      const value = ownDataValue(node, listKey);
+      if (!Array.isArray(value)) continue;
+      for (const child of ownArrayDataElements(value)) {
+        if (isJsonObject(child)) stack.push(child);
+      }
+    }
+  }
+  return ids;
+}
+
+/**
+ * Schneidet interne Fragment-Links (`#<id>`) ab, deren Ziel nicht Teil des
+ * zusammengebauten Dokuments ist: Der resolvierte Katalog ist
+ * selbst-contained und trägt keine ins Leere zeigenden Verweise (Orakel-
+ * befund am BSI-Korpus: ASST.5.6 → #SENS.8.6 entfällt mit dem Ziel).
+ * Verschwindet das letzte Mitglied, entfällt das Mitglied selbst.
+ */
+function pruneUnresolvedInternalLinks(nodes: readonly JsonObject[], placedIds: ReadonlySet<string>): void {
+  const stack: JsonObject[] = [...nodes];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    const links = ownDataValue(node, 'links');
+    if (Array.isArray(links)) {
+      const kept = ownArrayDataElements(links).filter((link) => {
+        if (!isJsonObject(link)) return true;
+        const href = ownDataValue(link, 'href');
+        if (typeof href !== 'string' || !href.startsWith('#')) return true;
+        return placedIds.has(href.slice(1));
+      });
+      if (kept.length === 0) delete node['links'];
+      else if (kept.length !== links.length) node['links'] = kept;
+    }
+    for (const listKey of ['controls', 'groups'] as const) {
+      const value = ownDataValue(node, listKey);
+      if (!Array.isArray(value)) continue;
+      for (const child of ownArrayDataElements(value)) {
+        if (isJsonObject(child)) stack.push(child);
+      }
+    }
+  }
 }
 
 function resolveSingleProfile(input: SingleProfileInput): { readonly ok: true; readonly tree: DerivedJsonTree } | { readonly ok: false; readonly diagnostic: OscalDiagnostic } {
@@ -547,6 +700,11 @@ function resolveSingleProfile(input: SingleProfileInput): { readonly ok: true; r
   const controls = structured.value.controls.map(transform);
   applyTransformToGroups(groups, transform);
 
+  // Interne Links auf nicht platzierte Ziele werden abgeschnitten — der
+  // resolvierte Katalog ist selbst-contained.
+  const placedIds = collectPlacedIds(groups, controls);
+  pruneUnresolvedInternalLinks([...groups, ...controls], placedIds);
+
   const topUuid = input.document.view.uuid;
   if (topUuid === undefined) {
     return failure(reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.TOP_PROFILE_UUID_MISSING, '/'));
@@ -555,7 +713,7 @@ function resolveSingleProfile(input: SingleProfileInput): { readonly ok: true; r
 
   return {
     ok: true,
-    tree: emitResolvedCatalog(input.plan, input.document, topUuid, derivedUuid, groups, controls),
+    tree: emitResolvedCatalog(input.plan, input.document, topUuid, derivedUuid, groups, controls, phaseOne.value.consumedResourceUuids),
   };
 }
 

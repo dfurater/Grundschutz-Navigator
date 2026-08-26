@@ -225,9 +225,31 @@ describe('Auflösung — custom-Struktur', () => {
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
     const body = bodyOf(outcome);
+    // Die Gruppe führt ihr eigenes insert-controls aus und trägt ihre
+    // eingefügten Controls mit Positions-Labels; unbekannte Mitglieder
+    // bleiben erhalten.
     const groups = body['groups'] as Record<string, unknown>[];
     expect(groups).toEqual([
-      { id: 'asm-1', title: 'Zusammenbau', 'unbekanntes-mitglied': { bleibt: true } },
+      {
+        id: 'asm-1',
+        title: 'Zusammenbau',
+        'unbekanntes-mitglied': { bleibt: true },
+        props: [{ name: 'label', value: 'asm-1' }],
+        controls: [
+          {
+            id: 'zz-1',
+            class: 'SP800-53',
+            title: 'ZZ-1',
+            props: [{ name: 'label', value: 'asm-1.1' }],
+          },
+          {
+            id: 'aa-1',
+            class: 'SP800-53',
+            title: 'AA-1',
+            props: [{ name: 'label', value: 'asm-1.2' }],
+          },
+        ],
+      },
     ]);
     const controls = body['controls'] as Record<string, unknown>[];
     expect(controls.map((control) => control['id'])).toEqual(['aa-1', 'zz-1']);

@@ -194,7 +194,15 @@ export default defineConfig(({ command }) => ({
     // Die QA-Lane des Round-trip-Harnischs (`*.qa.test.ts`, GSPP-298) läuft
     // bewusst IM regulären Lauf mit — ein Ausschluss wäre eine Abschwächung.
     // Gezielt einzeln: `npm run test:qa`.
-    exclude: [...configDefaults.exclude, 'src/test/browser/**/*.browser.test.ts'],
+    // Der Bauzeitlauf der Profile Resolution (GSPP-291) läuft ausschließlich
+    // als eigener Workflow-Schritt nach `npm run fetch-catalog`
+    // (`npm run test:profile-resolution`) und scheitert dort hart ohne
+    // Korpus-Cache; im Default-Lauf hätte er die Daten nie garantiert.
+    exclude: [
+      ...configDefaults.exclude,
+      'src/test/browser/**/*.browser.test.ts',
+      'scripts/profileResolutionCorpus.test.ts',
+    ],
     globals: true,
     css: true,
     coverage: {

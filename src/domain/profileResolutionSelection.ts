@@ -6,10 +6,12 @@
 // include-all wählt alle Controls inklusive Nachfahren; with-ids und
 // matching (Glob gegen die Control-ID) treffen einzelne Controls; ein
 // fehlendes Matching-Muster trifft nichts. Inklusion zieht ohne
-// `with-child-controls: yes` keine Nachfahren, aber standardmäßig alle
-// Vorfahren-Controls. Ausschlüsse nutzen dieselben Mechaniken und schlagen
-// Inklusion unabhängig von deren Spezifität; innerhalb eines Imports ist
-// jede Wirkung kumulativ und Duplikate zählen einmal.
+// `with-child-controls: yes` keine Nachfahren — und auch keine Vorfahren:
+// gezogene Ahnen würden im as-is-Bild als leere Schalen materialisieren,
+// was der BSI-Realkorpus als Orakel widerlegt (GSPP-291). Ausschlüsse
+// nutzen dieselben Mechaniken und schlagen Inklusion unabhängig von deren
+// Spezifität; innerhalb eines Imports ist jede Wirkung kumulativ und
+// Duplikate zählen einmal.
 //
 // Alle Abfragen laufen rein identitäts-/strukturbasiert über Data-
 // Properties des Rohdokuments; Werte werden nie über Accessoren gelesen.
@@ -314,16 +316,6 @@ function selectorMatches(
   return applyWithChildPolicy(index, matched, selector.withChildControls);
 }
 
-function ancestorsOf(index: CatalogControlIndex, id: string): string[] {
-  const ancestors: string[] = [];
-  let current = index.parentOf.get(id);
-  while (current !== undefined) {
-    ancestors.push(current);
-    current = index.parentOf.get(current) ?? undefined;
-  }
-  return ancestors;
-}
-
 function expandWithDescendants(
   index: CatalogControlIndex,
   ids: ReadonlySet<string>,
@@ -350,12 +342,15 @@ function applySelector(
   const outcome = selectorMatches(index, selector);
   if ('diagnostic' in outcome) return outcome.diagnostic;
 
-  // Vorfahren-Controls kommen standardmäßig mit (NIST-Draft, Default
-  // with-parent-controls: yes).
-  for (const id of outcome.matched) {
-    included.add(id);
-    for (const ancestor of ancestorsOf(index, id)) included.add(ancestor);
-  }
+  // Bewusst KEINE automatische Vorfahren-Inklusion: Der BSI-Realkorpus
+  // beweist am Orakel (lieferkette: KONF.2.4.2 erscheint hochgelevelt,
+  // ohne dass KONF.2.4 als Schale materialisiert wird), dass gezogene
+  // Ahnen nicht als Kontrollen ausgegeben werden — und die Ausgabe eines
+  // Ahnen ohne eigene Selektion wäre genau eine solche Schale. Die
+  // Projektion trägt diese Entscheidung; der Draft-Default
+  // (with-parent-controls: yes) bleibt in der Dokumentation als
+  // Abweichung ausgewiesen.
+  for (const id of outcome.matched) included.add(id);
   return null;
 }
 

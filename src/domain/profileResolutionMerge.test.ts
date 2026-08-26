@@ -155,7 +155,7 @@ describe('custom-Struktur', () => {
   it('include-all ohne order erhält die Pool-Erscheinungsreihenfolge', () => {
     const combined = applyCombine([inclusion('doc-a', 'b-1', 'a-1')], 'use-first');
     const result = buildCustomGroups(
-      { rawGroups: [], insertControls: [includeAllDirective()] },
+      { rawGroups: [], typedGroups: [], insertControls: [includeAllDirective()] },
       combined,
     );
 
@@ -171,7 +171,7 @@ describe('custom-Struktur', () => {
   ] as const)('order=%s sortiert nach Control-ID', (order, expected) => {
     const combined = applyCombine([inclusion('doc-a', 'b-1', 'c-1', 'a-1')], 'use-first');
     const result = buildCustomGroups(
-      { rawGroups: [], insertControls: [includeAllDirective(order)] },
+      { rawGroups: [], typedGroups: [], insertControls: [includeAllDirective(order)] },
       combined,
     );
 
@@ -194,11 +194,13 @@ describe('custom-Struktur', () => {
       ],
     });
     const combined = applyCombine([inclusion('doc-a', 'a-1')], 'use-first');
-    const result = buildCustomGroups({ rawGroups: [group], insertControls: [] }, combined);
+    const result = buildCustomGroups({ rawGroups: [group], typedGroups: [], insertControls: [] }, combined);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.groups).toHaveLength(1);
+    // Gruppen ohne eigenes props-Mitglied erhalten den Label-Träger aus
+    // ihrer ID — auch verschachtelt.
     expect(result.groups[0]).toEqual({
       id: 'g-1',
       class: 'family',
@@ -206,7 +208,13 @@ describe('custom-Struktur', () => {
       params: [{ id: 'p1', values: ['v'] }],
       parts: [{ id: 'g-1_part', name: 'overview', prose: 'Text' }],
       'unbekanntes-mitglied': { tief: [1, 2] },
-      groups: [{ id: 'g-1-1', title: 'Kind', controls: [] }],
+      props: [{ name: 'label', value: 'g-1' }],
+      groups: [{
+        id: 'g-1-1',
+        title: 'Kind',
+        controls: [],
+        props: [{ name: 'label', value: 'g-1-1' }],
+      }],
     });
     // Nicht ausgeführte Direktiven erscheinen weder in den Gruppen noch
     // als Root-Controls.
@@ -224,7 +232,7 @@ describe('custom-Struktur', () => {
       excludeControls: [],
       path: '/profile/merge/custom/insert-controls',
     };
-    const result = buildCustomGroups({ rawGroups: [], insertControls: [directive] }, combined);
+    const result = buildCustomGroups({ rawGroups: [], typedGroups: [], insertControls: [directive] }, combined);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -238,7 +246,7 @@ describe('custom-Struktur', () => {
       excludeControls: [withIdsSelector(['b-1'])],
       path: '/profile/merge/custom/insert-controls',
     };
-    const result = buildCustomGroups({ rawGroups: [], insertControls: [directive] }, combined);
+    const result = buildCustomGroups({ rawGroups: [], typedGroups: [], insertControls: [directive] }, combined);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -257,7 +265,7 @@ describe('custom-Struktur', () => {
       excludeControls: [],
       path: '/profile/merge/custom/insert-controls',
     };
-    const result = buildCustomGroups({ rawGroups: [], insertControls: [directive] }, combined);
+    const result = buildCustomGroups({ rawGroups: [], typedGroups: [], insertControls: [directive] }, combined);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -278,7 +286,7 @@ describe('custom-Struktur', () => {
       excludeControls: [],
       path: '/profile/merge/custom/insert-controls',
     };
-    const result = buildCustomGroups({ rawGroups: [], insertControls: [directive] }, combined);
+    const result = buildCustomGroups({ rawGroups: [], typedGroups: [], insertControls: [directive] }, combined);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -298,7 +306,7 @@ describe('custom-Struktur', () => {
     };
     const second: ProfileInsertControls = includeAllDirective();
     const result = buildCustomGroups(
-      { rawGroups: [], insertControls: [first, second] },
+      { rawGroups: [], typedGroups: [], insertControls: [first, second] },
       combined,
     );
 
@@ -310,7 +318,7 @@ describe('custom-Struktur', () => {
   it('combine=keep gibt alle Definitionen einer kollidierenden ID hintereinander aus', () => {
     const combined = applyCombine([inclusion('doc-a', 'ac-1'), inclusion('doc-b', 'ac-1')], 'keep');
     const result = buildCustomGroups(
-      { rawGroups: [], insertControls: [includeAllDirective()] },
+      { rawGroups: [], typedGroups: [], insertControls: [includeAllDirective()] },
       combined,
     );
 
@@ -329,7 +337,7 @@ describe('custom-Struktur', () => {
       excludeControls: [],
       path: '/profile/merge/custom/insert-controls',
     };
-    const result = buildCustomGroups({ rawGroups: [], insertControls: [directive] }, combined);
+    const result = buildCustomGroups({ rawGroups: [], typedGroups: [], insertControls: [directive] }, combined);
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -353,7 +361,7 @@ describe('custom-Struktur', () => {
     });
     const combined = applyCombine([{ documentKey: 'doc-a', controls: [pooled] }], 'use-first');
     const result = buildCustomGroups(
-      { rawGroups: [group], insertControls: [includeAllDirective()] },
+      { rawGroups: [group], typedGroups: [], insertControls: [includeAllDirective()] },
       combined,
     );
 
