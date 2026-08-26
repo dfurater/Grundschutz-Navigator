@@ -37,7 +37,13 @@ export function corpusArtifactKeys(lineages) {
     // ist als unterstützter Anwenderkatalog registriert.
     keys.add(`catalog-${lineage.catalogKey}`);
   }
-  return [...keys].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+  return [...keys].sort(byCodeUnit);
+}
+
+function byCodeUnit(left, right) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
 }
 
 /**

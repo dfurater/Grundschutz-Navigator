@@ -464,7 +464,7 @@ function assembleSingleGroup(
 
   // Die Projektion liest dasselbe Array in derselben Ordnung; bei einer
   // Abweichung (sollte unmöglich sein) bleibt die Gruppe ohne Direktiven.
-  if (typed !== undefined && typed.id !== undefined && typed.insertControls.length > 0) {
+  if (typed?.id !== undefined && typed.insertControls.length > 0) {
     const placed = assembleGroupControls(typed.id, typed.insertControls, context, new Set<object>());
     if (!placed.ok) return placed;
     if (placed.placed.length > 0) {
