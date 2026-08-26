@@ -33,8 +33,8 @@ describe('combine', () => {
     );
 
     expect([...result.clashes].sort()).toEqual([]);
-    expect(result.controls.get('ac-1')).toBe(first);
-    expect(result.order).toEqual(['ac-1']);
+    expect(result.controls.get('ac-1')).toEqual([first]);
+    expect(result.order).toEqual([first]);
   });
 
   it('keep behält beide Kollisionen und meldet sie', () => {
@@ -47,13 +47,15 @@ describe('combine', () => {
     );
 
     expect(result.clashes).toEqual(['ac-1']);
-    expect(result.order).toEqual(['ac-1', 'ac-1']);
+    // Beide Definitionen bleiben als Liste je ID erhalten:
+    expect(result.controls.get('ac-1')).toHaveLength(2);
+    expect(result.order).toHaveLength(2);
   });
 
   it('ohne Kollision bleiben alle Controls in Erscheinungsreihenfolge', () => {
     const result = applyCombine([inclusion('doc-a', 'b-1', 'a-1')], 'use-first');
 
-    expect(result.order).toEqual(['b-1', 'a-1']);
+    expect(result.order.map((n) => n['id'])).toEqual(['b-1', 'a-1']);
     expect(result.clashes).toEqual([]);
   });
 });
@@ -63,11 +65,8 @@ describe('flat-Struktur', () => {
     const combined = applyCombine([inclusion('doc-a', 'ac-1', 'bc-1')], 'use-first');
     const body = buildFlatControls(combined);
 
-    expect(body['controls']).toHaveLength(2);
-    expect((body['controls'] as unknown[]).map((c) => (c as Record<string, unknown>)['id'])).toEqual([
-      'ac-1',
-      'bc-1',
-    ]);
+    const controls = body['controls'] as Record<string, unknown>[];
+    expect(controls.map((c) => c['id'])).toEqual(['ac-1', 'bc-1']);
   });
 });
 
