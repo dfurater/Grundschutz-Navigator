@@ -287,15 +287,20 @@ function copyCustomGroup(group: JsonObject): JsonObject {
 /**
  * Wendet die order-Richtlinie auf die selektierten IDs an (bereits in
  * Pool-Erscheinungsreihenfolge). Aufsteigend/absteigend sortiert nach
- * Codepunkten; jeder andere Wert bewahrt die Reihenfolge.
+ * UTF-16-Codepunkten; jeder andere Wert bewahrt die Reihenfolge.
+ * Bewusst KEIN localeCompare: Dessen Kollation hängt von der ICU-Umgebung
+ * ab und würde die geforderte byte-identische Determinismus brechen
+ * (SonarQube S2871).
  */
 function orderedInsertIds(
   ids: ReadonlySet<string>,
   order: string | undefined,
 ): readonly string[] {
-  if (order === 'ascending') return [...ids].sort();
+  const byCodeUnit = (left: string, right: string): number =>
+    left < right ? -1 : left > right ? 1 : 0;
+  if (order === 'ascending') return [...ids].sort(byCodeUnit);
   if (order === 'descending') {
-    return [...ids].sort((left, right) => (left < right ? 1 : left > right ? -1 : 0));
+    return [...ids].sort((left, right) => byCodeUnit(right, left));
   }
   return [...ids];
 }
