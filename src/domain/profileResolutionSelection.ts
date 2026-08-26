@@ -137,6 +137,20 @@ function ownArrayDataElements(array: readonly unknown[]): unknown[] {
   return elements;
 }
 
+/** Gruppenebenen als Container-Aufgaben in Dokumentreihenfolge. */
+function pushGroupTasks(value: readonly unknown[], childTasks: IndexTask[]): void {
+  for (const group of value) {
+    if (isPlainObjectBody(group)) childTasks.push({ kind: 'container', node: group });
+  }
+}
+
+/** Controls als Control-Aufgaben in Dokumentreihenfolge. */
+function pushControlTasks(value: readonly unknown[], childTasks: IndexTask[]): void {
+  for (const node of ownArrayDataElements(value)) {
+    if (isJsonObject(node)) childTasks.push({ kind: 'control', node, parent: null });
+  }
+}
+
 /** Gruppen- und Control-Kinder eines Containers in Dokumentreihenfolge. */
 function collectContainerChildTasks(
   container: JsonObject,
@@ -147,16 +161,8 @@ function collectContainerChildTasks(
     if (typeof key !== 'string') continue;
     const value = ownDataValue(container, key);
     if (!Array.isArray(value)) continue;
-    const elements = ownArrayDataElements(value);
-    if (key === 'groups') {
-      for (const group of elements) {
-        if (isPlainObjectBody(group)) childTasks.push({ kind: 'container', node: group });
-      }
-    } else if (key === 'controls') {
-      for (const node of elements) {
-        if (isJsonObject(node)) childTasks.push({ kind: 'control', node, parent: null });
-      }
-    }
+    if (key === 'groups') pushGroupTasks(value, childTasks);
+    else if (key === 'controls') pushControlTasks(value, childTasks);
   }
 }
 
