@@ -46,7 +46,6 @@ import {
   applyCombine,
   buildAsIsGroups,
   buildCustomGroups,
-  type CombinedControls,
   type ControlInclusion,
 } from './profileResolutionMerge';
 import {
@@ -191,9 +190,57 @@ function optionalString(node: JsonObject, key: string): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-function optionalArray(node: JsonObject, key: string): readonly unknown[] | undefined {
+/** Paare aus Raw-Schlüssel (kebab-case) und Direktivenschlüssel. */
+type MemberPair = readonly [rawKey: string, directiveKey: string];
+
+const ALTERATION_STRING_MEMBERS: readonly MemberPair[] = [
+  ['position', 'position'],
+  ['by-id', 'byId'],
+  ['title', 'title'],
+] as const;
+
+const ALTERATION_LIST_MEMBERS: readonly MemberPair[] = [
+  ['params', 'params'],
+  ['props', 'props'],
+  ['links', 'links'],
+  ['parts', 'parts'],
+] as const;
+
+const REMOVAL_STRING_MEMBERS: readonly MemberPair[] = [
+  ['by-name', 'byName'],
+  ['by-class', 'byClass'],
+  ['by-id', 'byId'],
+  ['by-item-name', 'byItemName'],
+  ['by-ns', 'byNs'],
+] as const;
+
+/**
+ * Projiziert die tabellierten Mitglieder eines Rohknotens in ein neues
+ * Direktivenobjekt — nur vorhandene Werte, keine Phantom-Mitglieder.
+ */
+function projectMembers(
+  source: JsonObject,
+  stringPairs: readonly MemberPair[],
+  listPairs: readonly MemberPair[],
+): Record<string, unknown> {
+  const projected: Record<string, unknown> = {};
+  for (const [rawKey, directiveKey] of stringPairs) {
+    const value = ownDataValue(source, rawKey);
+    if (typeof value === 'string') projected[directiveKey] = value;
+  }
+  for (const [rawKey, directiveKey] of listPairs) {
+    const value = ownDataValue(source, rawKey);
+    if (Array.isArray(value)) projected[directiveKey] = value;
+  }
+  return projected;
+}
+
+function objectEntriesOf(node: JsonObject, key: string): JsonObject[] {
   const value = ownDataValue(node, key);
-  return Array.isArray(value) ? value : undefined;
+  if (!Array.isArray(value)) return [];
+  return ownArrayDataElements(value).filter((entry): entry is JsonObject =>
+    isJsonObject(entry),
+  );
 }
 
 /**
@@ -201,46 +248,18 @@ function optionalArray(node: JsonObject, key: string): readonly unknown[] | unde
  * Modify-Schicht ab (`by-id` → `byId` usw.). Bewusst aus dem QUELLDOKUMENT
  * und nicht aus der Projektion: Die verlustfreie Projektion ergänzt leere
  * Sammelfelder, die als Phantom-Mitglieder im Ergebnisdokument enden
- * würden. Nur vorhandene Listen werden durchgereicht.
+ * würden.
  */
 function toAlterationDirective(alterNode: JsonObject): AlterationDirective {
-  const adds: NonNullable<AlterationDirective['adds']> = [];
-  const addsValue = optionalArray(alterNode, 'adds');
-  if (addsValue !== undefined) {
-    for (const entry of ownArrayDataElements(addsValue)) {
-      if (!isJsonObject(entry)) continue;
-      adds.push({
-        ...(optionalString(entry, 'position') !== undefined && { position: optionalString(entry, 'position') }),
-        ...(optionalString(entry, 'by-id') !== undefined && { byId: optionalString(entry, 'by-id') }),
-        ...(optionalString(entry, 'title') !== undefined && { title: optionalString(entry, 'title') }),
-        ...(optionalArray(entry, 'params') !== undefined && { params: optionalArray(entry, 'params') }),
-        ...(optionalArray(entry, 'props') !== undefined && { props: optionalArray(entry, 'props') }),
-        ...(optionalArray(entry, 'links') !== undefined && { links: optionalArray(entry, 'links') }),
-        ...(optionalArray(entry, 'parts') !== undefined && { parts: optionalArray(entry, 'parts') }),
-      });
-    }
-  }
-
-  const removes: NonNullable<AlterationDirective['removes']> = [];
-  const removesValue = optionalArray(alterNode, 'remove');
-  if (removesValue !== undefined) {
-    for (const entry of ownArrayDataElements(removesValue)) {
-      if (!isJsonObject(entry)) continue;
-      removes.push({
-        ...(optionalString(entry, 'by-name') !== undefined && { byName: optionalString(entry, 'by-name') }),
-        ...(optionalString(entry, 'by-class') !== undefined && { byClass: optionalString(entry, 'by-class') }),
-        ...(optionalString(entry, 'by-id') !== undefined && { byId: optionalString(entry, 'by-id') }),
-        ...(optionalString(entry, 'by-item-name') !== undefined && { byItemName: optionalString(entry, 'by-item-name') }),
-        ...(optionalString(entry, 'by-ns') !== undefined && { byNs: optionalString(entry, 'by-ns') }),
-      });
-    }
-  }
-
   const controlId = optionalString(alterNode, 'control-id');
   return {
     ...(controlId !== undefined && { controlId }),
-    adds,
-    removes,
+    adds: objectEntriesOf(alterNode, 'adds').map(
+      (entry) => projectMembers(entry, ALTERATION_STRING_MEMBERS, ALTERATION_LIST_MEMBERS) as NonNullable<AlterationDirective['adds']>[number],
+    ),
+    removes: objectEntriesOf(alterNode, 'remove').map(
+      (entry) => projectMembers(entry, REMOVAL_STRING_MEMBERS, []) as NonNullable<AlterationDirective['removes']>[number],
+    ),
   };
 }
 
@@ -251,9 +270,7 @@ function readRawAlters(source: unknown): readonly JsonObject[] {
   const body = readRootBody(source);
   const modify = ownDataValue(body, 'modify');
   if (!isJsonObject(modify)) return [];
-  const alters = ownDataValue(modify, 'alters');
-  if (!Array.isArray(alters)) return [];
-  return ownArrayDataElements(alters).filter((entry): entry is JsonObject => isJsonObject(entry));
+  return objectEntriesOf(modify, 'alters');
 }
 
 type ControlTransform = (control: JsonObject) => JsonObject;
@@ -349,23 +366,26 @@ interface SingleProfileInput {
   readonly resolvedByArtifact: ReadonlyMap<string, unknown>;
 }
 
-function resolveSingleProfile(input: SingleProfileInput): { readonly ok: true; readonly tree: DerivedJsonTree } | { readonly ok: false; readonly diagnostic: OscalDiagnostic } {
-  const { artifactKey, document, plan } = input;
-  const view = document.view;
+type PhaseOutcome<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly diagnostic: OscalDiagnostic };
 
-  /* Phase 1 — Selektion je Import gegen sein Quelldokument. */
+/** Phase 1 — Selektion je Import gegen sein Quelldokument. */
+function collectPhaseOne(
+  input: SingleProfileInput,
+): PhaseOutcome<{ records: SelectionRecord[]; inclusions: ControlInclusion[] }> {
   const records: SelectionRecord[] = [];
   const inclusions: ControlInclusion[] = [];
 
-  for (const profileImport of view.imports) {
-    const edge = (input.edgesByArtifactKey.get(artifactKey) ?? []).find(
+  for (const profileImport of input.document.view.imports) {
+    const edge = (input.edgesByArtifactKey.get(input.artifactKey) ?? []).find(
       (candidate) => candidate.href === profileImport.href,
     );
     if (edge === undefined) {
       return failure(reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.IMPORT_UNMAPPED, profileImport.path));
     }
 
-    const sourceDocument = input.resolvedByArtifact.get(edge.artifactKey) ?? plan.documents.get(edge.artifactKey);
+    const sourceDocument = input.resolvedByArtifact.get(edge.artifactKey) ?? input.plan.documents.get(edge.artifactKey);
     if (sourceDocument === undefined) {
       return failure(reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.IMPORT_UNMAPPED, profileImport.path));
     }
@@ -375,7 +395,7 @@ function resolveSingleProfile(input: SingleProfileInput): { readonly ok: true; r
       selection: profileImport.selection,
       excludeControls: profileImport.excludeControls,
     });
-    if (!outcome.ok) return failure(outcome);
+    if (!outcome.ok) return outcome;
 
     const controls: JsonObject[] = [];
     for (const id of outcome.ids) {
@@ -385,23 +405,31 @@ function resolveSingleProfile(input: SingleProfileInput): { readonly ok: true; r
     records.push({ artifactKey: edge.artifactKey, ids: outcome.ids, sourceDocument });
     inclusions.push({ documentKey: edge.artifactKey, controls });
   }
+  return { ok: true, value: { records, inclusions } };
+}
 
-  /* Phase 2a — combine-Richtung. */
-  const declaredMethod = view.merge?.combine?.method ?? 'use-first';
+/** Phase 2 — combine-Richtung und Strukturdirektive. */
+function buildStructuredOutput(
+  input: SingleProfileInput,
+  records: readonly SelectionRecord[],
+  inclusions: readonly ControlInclusion[],
+): PhaseOutcome<{ groups: JsonObject[]; controls: JsonObject[] }> {
+  const merge = input.document.view.merge;
+  const declaredMethod = merge?.combine?.method ?? 'use-first';
   if (declaredMethod !== 'use-first' && declaredMethod !== 'keep') {
-    return failure(reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.COMBINE_METHOD_INVALID, view.merge?.path ?? '/'));
+    return reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.COMBINE_METHOD_INVALID, merge?.path ?? '/');
   }
-  const combined: CombinedControls = applyCombine(inclusions, declaredMethod);
+  const combined = applyCombine(inclusions, declaredMethod);
 
-  /* Phase 2b — Strukturdirektive. */
-  const structureKind = view.merge === null ? ('as-is' as const) : view.merge.structure.kind;
-  let groups: JsonObject[] = [];
-  let controls: JsonObject[];
+  const structureKind = merge === null ? ('as-is' as const) : merge.structure.kind;
 
   if (structureKind === 'flat') {
-    controls = [...combined.order];
-  } else if (structureKind === 'as-is') {
-    controls = [];
+    return { ok: true, value: { groups: [], controls: [...combined.order] } };
+  }
+
+  if (structureKind === 'as-is') {
+    const groups: JsonObject[] = [];
+    const controls: JsonObject[] = [];
     for (const record of records) {
       const body = readRootBody(record.sourceDocument);
       const filtered = buildAsIsGroups(body, record.ids);
@@ -412,29 +440,29 @@ function resolveSingleProfile(input: SingleProfileInput): { readonly ok: true; r
         if (isJsonObject(control)) controls.push(control);
       }
     }
-  } else if (structureKind === 'custom') {
-    if (view.merge!.structure.kind !== 'custom') {
-      return failure(reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.MERGE_STRUCTURE_UNRESOLVED, view.merge?.path ?? '/'));
-    }
-    const assembly = buildCustomGroups(
-      {
-        rawGroups: readRawCustomGroups(document.source),
-        insertControls: view.merge!.structure.custom.insertControls,
-      },
-      combined,
-    );
-    if (!assembly.ok) return failure(assembly);
-    groups = [...assembly.groups];
-    controls = [...assembly.controls];
-  } else {
-    return failure(reject(
-      PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.MERGE_STRUCTURE_UNRESOLVED,
-      view.merge?.path ?? '/',
-    ));
+    return { ok: true, value: { groups, controls } };
   }
 
-  /* Phase 3 — Modify über alle platzierten Controls. */
-  const setParameters = (view.modify?.setParameters ?? []).map(toSetParameterDirective);
+  if (structureKind !== 'custom' || merge!.structure.kind !== 'custom') {
+    return reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.MERGE_STRUCTURE_UNRESOLVED, merge?.path ?? '/');
+  }
+  const assembly = buildCustomGroups(
+    {
+      rawGroups: readRawCustomGroups(input.document.source),
+      insertControls: merge!.structure.custom.insertControls,
+    },
+    combined,
+  );
+  if (!assembly.ok) return assembly;
+  return {
+    ok: true,
+    value: { groups: [...assembly.groups], controls: [...assembly.controls] },
+  };
+}
+
+/** Phase 3 — Modify-Direktiven als Transformation über alle platzierten Controls. */
+function collectModifyTransform(document: ProfileDocument): ControlTransform {
+  const setParameters = (document.view.modify?.setParameters ?? []).map(toSetParameterDirective);
   const altersByControlId = new Map<string, AlterationDirective[]>();
   for (const alterNode of readRawAlters(document.source)) {
     const directive = toAlterationDirective(alterNode);
@@ -443,21 +471,26 @@ function resolveSingleProfile(input: SingleProfileInput): { readonly ok: true; r
     bucket.push(directive);
     altersByControlId.set(directive.controlId, bucket);
   }
-  const transform = createControlTransform(setParameters, altersByControlId);
-  controls = controls.map(transform);
-  applyTransformToGroups(groups, transform);
+  return createControlTransform(setParameters, altersByControlId);
+}
 
-  /* Emission — ausschließlich über den kontrollierten Builder. */
+/**
+ * Emission — ausschließlich über den kontrollierten Builder. Erzeugt das
+ * Dokument mit Root-Key `catalog`, Metadaten und den beiden
+ * Provenienzträgern.
+ */
+function emitResolvedCatalog(
+  plan: Extract<ProfileResolutionPlan, { ok: true }>,
+  document: ProfileDocument,
+  topUuid: string,
+  derivedUuid: string,
+  groups: readonly JsonObject[],
+  controls: readonly JsonObject[],
+): DerivedJsonTree {
   const graph = createOscalDerivedGraph();
 
-  const topUuid = view.uuid;
-  if (topUuid === undefined) {
-    return failure(reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.TOP_PROFILE_UUID_MISSING, '/'));
-  }
-  const derivedUuid = deriveUuidV5(PROFILE_RESOLUTION_NAMESPACE_UUID, topUuid);
-
   const metadataHandle = graph.object();
-  const title = view.metadata.title;
+  const title = document.view.metadata.title;
   if (title !== undefined) graph.setObjectMember(metadataHandle, 'title', title);
   graph.setObjectMember(metadataHandle, 'uuid', derivedUuid);
   graph.setObjectMember(metadataHandle, 'last-modified', PROFILE_RESOLUTION_TIMESTAMP);
@@ -488,7 +521,31 @@ function resolveSingleProfile(input: SingleProfileInput): { readonly ok: true; r
 
   const rootHandle = graph.object();
   graph.setObjectMember(rootHandle, 'catalog', bodyHandle);
-  return { ok: true, tree: graph.finishRoot(rootHandle) };
+  return graph.finishRoot(rootHandle);
+}
+
+function resolveSingleProfile(input: SingleProfileInput): { readonly ok: true; readonly tree: DerivedJsonTree } | { readonly ok: false; readonly diagnostic: OscalDiagnostic } {
+  const phaseOne = collectPhaseOne(input);
+  if (!phaseOne.ok) return failure(phaseOne);
+
+  const structured = buildStructuredOutput(input, phaseOne.value.records, phaseOne.value.inclusions);
+  if (!structured.ok) return failure(structured);
+
+  const transform = collectModifyTransform(input.document);
+  const groups = structured.value.groups;
+  const controls = structured.value.controls.map(transform);
+  applyTransformToGroups(groups, transform);
+
+  const topUuid = input.document.view.uuid;
+  if (topUuid === undefined) {
+    return failure(reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.TOP_PROFILE_UUID_MISSING, '/'));
+  }
+  const derivedUuid = deriveUuidV5(PROFILE_RESOLUTION_NAMESPACE_UUID, topUuid);
+
+  return {
+    ok: true,
+    tree: emitResolvedCatalog(input.plan, input.document, topUuid, derivedUuid, groups, controls),
+  };
 }
 
 /**
