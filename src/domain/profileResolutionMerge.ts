@@ -36,12 +36,19 @@ import {
   PROFILE_RESOLUTION_STAGE,
   PROFILE_RESOLUTION_VALIDATOR,
 } from './profileResolutionImportGraph';
-import type { ProfileGroup, ProfileInsertControls } from './profileModel';
+import type {
+  ProfileControlMatcher,
+  ProfileControlSelector,
+  ProfileGroup,
+  ProfileInsertControls,
+  ProfileSelection,
+} from './profileModel';
 import {
   indexCatalogControls,
   isJsonObject,
   ownArrayDataElements,
   ownDataValue,
+  PROFILE_RESOLUTION_SELECTION_DIAGNOSTIC_CODES,
   resolveSelectionIds,
 } from './profileResolutionSelection';
 
@@ -580,7 +587,7 @@ type GroupAssemblyResult =
  */
 function assembleGroups(
   rawGroups: readonly JsonObject[],
-  typedGroups: readonly ProfileGroup[],
+  typedGroups: readonly unknown[],
   context: AssemblyContext,
 ): GroupAssemblyResult {
   const assembled: JsonObject[] = [];
@@ -600,22 +607,28 @@ function assembleGroups(
 /** Baut eine einzelne Custom-Gruppe samt Direktiven und Untergruppen. */
 function assembleSingleGroup(
   raw: JsonObject,
-  typed: ProfileGroup | undefined,
+  typed: unknown,
   context: AssemblyContext,
 ): { readonly ok: true; readonly group: JsonObject } | { readonly ok: false; readonly diagnostic: OscalDiagnostic } {
   const copy = copyCustomGroup(raw);
+  const projected = projectAssemblyGroup(typed);
 
   // Die Projektion liest dasselbe Array in derselben Ordnung; bei einer
   // Abweichung (sollte unmöglich sein) bleibt die Gruppe ohne Direktiven.
-  if (typed?.id !== undefined && typed.insertControls.length > 0) {
-    const placed = assembleGroupControls(typed.id, typed.insertControls, context, new Set<object>());
+  if (projected.id !== undefined && projected.insertControls.length > 0) {
+    const placed = assembleGroupControls(
+      projected.id,
+      projected.insertControls,
+      context,
+      new Set<object>(),
+    );
     if (!placed.ok) return placed;
     if (placed.placed.length > 0) {
       copy['controls'] = placed.placed;
     }
   }
 
-  const nestedFailure = attachNestedGroups(copy, raw, typed, context);
+  const nestedFailure = attachNestedGroups(copy, raw, projected, context);
   if (nestedFailure !== null) return nestedFailure;
   return { ok: true, group: copy };
 }
@@ -627,7 +640,7 @@ function assembleSingleGroup(
 function attachNestedGroups(
   copy: JsonObject,
   raw: JsonObject,
-  typed: ProfileGroup | undefined,
+  typed: ProjectedAssemblyGroup,
   context: AssemblyContext,
 ): { readonly ok: false; readonly diagnostic: OscalDiagnostic } | null {
   const nestedRawValue = ownDataValue(raw, 'groups');
@@ -636,7 +649,7 @@ function attachNestedGroups(
   const nestedRaw = ownArrayDataElements(nestedRawValue).filter(
     (child): child is JsonObject => isJsonObject(child),
   );
-  const nestedResult = assembleGroups(nestedRaw, typed?.groups ?? [], context);
+  const nestedResult = assembleGroups(nestedRaw, typed.groups, context);
   if (!nestedResult.ok) return nestedResult;
   if (nestedResult.groups.length > 0 || nestedRaw.length > 0) {
     copy['groups'] = nestedResult.groups;
@@ -737,6 +750,103 @@ function arrayMember<T>(node: object, key: string): readonly T[] {
   return Array.isArray(value) ? ownArrayDataElements(value) as T[] : [];
 }
 
+function projectMatcher(value: unknown): ProfileControlMatcher {
+  if (!isJsonObject(value)) return {};
+  const pattern = ownDataValue(value, 'pattern');
+  const remarks = ownDataValue(value, 'remarks');
+  return {
+    ...(typeof pattern === 'string' && { pattern }),
+    ...(typeof remarks === 'string' && { remarks }),
+  };
+}
+
+function projectSelector(value: unknown): ProfileControlSelector {
+  if (!isJsonObject(value)) {
+    return { withIds: [], matching: [], path: '/' };
+  }
+  const withChildControls = ownDataValue(value, 'withChildControls');
+  const withIds = ownDataValue(value, 'withIds');
+  const matching = ownDataValue(value, 'matching');
+  const path = ownDataValue(value, 'path');
+  return {
+    ...(typeof withChildControls === 'string' && { withChildControls }),
+    withIds: Array.isArray(withIds)
+      ? ownArrayDataElements(withIds).filter((id): id is string => typeof id === 'string')
+      : [],
+    matching: Array.isArray(matching)
+      ? ownArrayDataElements(matching).map(projectMatcher)
+      : [],
+    path: typeof path === 'string' ? path : '/',
+  };
+}
+
+function invalidSelection(): ProfileSelection {
+  return {
+    kind: 'none',
+    diagnostic: createOscalDiagnostic({
+      code: PROFILE_RESOLUTION_SELECTION_DIAGNOSTIC_CODES.SELECTION_INVALID,
+      stage: PROFILE_RESOLUTION_STAGE,
+      validator: PROFILE_RESOLUTION_VALIDATOR,
+      path: '/',
+    }),
+  };
+}
+
+function projectSelection(value: unknown): ProfileSelection {
+  if (!isJsonObject(value)) return invalidSelection();
+  const kind = ownDataValue(value, 'kind');
+  if (kind === 'include-all') return { kind };
+  if (kind !== 'include-controls') return invalidSelection();
+  const includeControls = ownDataValue(value, 'includeControls');
+  return {
+    kind,
+    includeControls: Array.isArray(includeControls)
+      ? ownArrayDataElements(includeControls).map(projectSelector)
+      : [],
+  };
+}
+
+function projectInsertControls(value: unknown): ProfileInsertControls {
+  if (!isJsonObject(value)) {
+    return {
+      selection: invalidSelection(),
+      excludeControls: [],
+      path: '/',
+    };
+  }
+  const order = ownDataValue(value, 'order');
+  const excludeControls = ownDataValue(value, 'excludeControls');
+  const path = ownDataValue(value, 'path');
+  return {
+    ...(typeof order === 'string' && { order }),
+    selection: projectSelection(ownDataValue(value, 'selection')),
+    excludeControls: Array.isArray(excludeControls)
+      ? ownArrayDataElements(excludeControls).map(projectSelector)
+      : [],
+    path: typeof path === 'string' ? path : '/',
+  };
+}
+
+interface ProjectedAssemblyGroup {
+  readonly id?: string;
+  readonly insertControls: readonly ProfileInsertControls[];
+  readonly groups: readonly unknown[];
+}
+
+function projectAssemblyGroup(value: unknown): ProjectedAssemblyGroup {
+  if (!isJsonObject(value)) return { insertControls: [], groups: [] };
+  const id = ownDataValue(value, 'id');
+  const insertControls = ownDataValue(value, 'insertControls');
+  const groups = ownDataValue(value, 'groups');
+  return {
+    ...(typeof id === 'string' && { id }),
+    insertControls: Array.isArray(insertControls)
+      ? ownArrayDataElements(insertControls).map(projectInsertControls)
+      : [],
+    groups: Array.isArray(groups) ? ownArrayDataElements(groups) : [],
+  };
+}
+
 function sanitizeCombinedControls(combined: CombinedControls): CombinedControls {
   const controls = ownDataValue(combined as unknown as object, 'controls');
   return {
@@ -767,6 +877,8 @@ function hasEmittedAncestor(
     ) {
       return true;
     }
+    const nestedDefinition = index.byId.get(ancestorId);
+    if (nestedDefinition !== undefined && emittedDefinitions.has(nestedDefinition)) return true;
     ancestorId = index.parentOf.get(ancestorId);
   }
   return false;
@@ -828,7 +940,7 @@ function emitRootControlId(
   state: RootControlEmissionState,
 ): void {
   const hasDirectDefinitions = context.combined.controls.has(id);
-  if (hasDirectDefinitions) removeEarlierNestedDescendants(id, context, state);
+  removeEarlierNestedDescendants(id, context, state);
   const definitions = definitionsForInsertion(id, context, state.emittedDefinitions);
   for (const definition of ownArrayDataElements(definitions)) {
     if (!isJsonObject(definition) || state.emittedDefinitions.has(definition)) continue;
@@ -870,8 +982,9 @@ export function buildCustomGroups(
 ): CustomAssemblyResult {
   const requestObject = request as unknown as object;
   const rawGroups = jsonObjectArrayMember(requestObject, 'rawGroups');
-  const typedGroups = arrayMember<ProfileGroup>(requestObject, 'typedGroups');
-  const insertControls = arrayMember<ProfileInsertControls>(requestObject, 'insertControls');
+  const typedGroups = arrayMember<unknown>(requestObject, 'typedGroups');
+  const insertControls = arrayMember<unknown>(requestObject, 'insertControls')
+    .map(projectInsertControls);
   const safeCombined = sanitizeCombinedControls(combined);
   // Tiefenbegrenzung am exportierten Rand: Eine 12.000-Ebenen-Kette kann die
   // Klasse-2-Kette nicht passieren (maxDepth 64); statt RangeError wird

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { ProfileControlSelector, ProfileInsertControls } from './profileModel';
+import type {
+  ProfileControlSelector,
+  ProfileGroup,
+  ProfileInsertControls,
+} from './profileModel';
 import {
   applyCombine,
   buildAsIsGroups,
@@ -435,6 +439,36 @@ describe('custom-Struktur', () => {
     expect(result.controls).toEqual([parent]);
   });
 
+  it.each([
+    ['Kind vor Vorfahr', ['q-4.1.1', 'q-4.1']],
+    ['Vorfahr vor Kind', ['q-4.1', 'q-4.1.1']],
+  ] as const)(
+    'gibt bei einem nur verschachtelt vorhandenen Vorfahren keine doppelten Nachfahren aus: %s',
+    (_label, selectedIds) => {
+      const leaf = control('q-4.1.1');
+      const middle = control('q-4.1', { controls: [leaf] });
+      const parent = control('q-4', { controls: [middle] });
+      const combined = applyCombine([{ documentKey: 'doc-a', controls: [parent] }], 'use-first');
+      const directives = selectedIds.map((id, index): ProfileInsertControls => ({
+        selection: {
+          kind: 'include-controls',
+          includeControls: [withIdsSelector([id])],
+        },
+        excludeControls: [],
+        path: `/profile/merge/custom/insert-controls[${index}]`,
+      }));
+
+      const result = buildCustomGroups(
+        { rawGroups: [], typedGroups: [], insertControls: directives },
+        combined,
+      );
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.controls).toEqual([middle]);
+    },
+  );
+
   it('mehrere Anweisungen wirken kumulativ ohne Doppel-Ausgabe derselben Definition', () => {
     const combined = applyCombine([inclusion('doc-a', 'a-1', 'b-1')], 'use-first');
     const first: ProfileInsertControls = {
@@ -511,5 +545,80 @@ describe('custom-Struktur', () => {
     expect(groupGetterCalls).toBe(0);
     if (!result.ok) return;
     expect(result.controls[0]!['id']).toBe('a-1');
+  });
+
+  it('führt Accessoren in projizierten Custom-Gruppen nicht aus', () => {
+    const combined = applyCombine([inclusion('doc-a', 'a-1')], 'use-first');
+    const idAccessorGroup = {} as Record<string, unknown>;
+    Object.defineProperty(idAccessorGroup, 'id', {
+      enumerable: true,
+      configurable: true,
+      get: () => {
+        throw new Error('typed group id getter must not run');
+      },
+    });
+    const directiveAccessorGroup = { id: 'g-1' } as Record<string, unknown>;
+    Object.defineProperty(directiveAccessorGroup, 'insertControls', {
+      enumerable: true,
+      configurable: true,
+      get: () => {
+        throw new Error('typed group insertControls getter must not run');
+      },
+    });
+
+    for (const typedGroup of [idAccessorGroup, directiveAccessorGroup]) {
+      expect(() => buildCustomGroups(
+        {
+          rawGroups: [rawGroup()],
+          typedGroups: [typedGroup as unknown as ProfileGroup],
+          insertControls: [],
+        },
+        combined,
+      )).not.toThrow();
+    }
+  });
+
+  it('führt Accessoren in Root-insert-controls nicht aus', () => {
+    const combined = applyCombine([inclusion('doc-a', 'a-1')], 'use-first');
+    const selectionAccessor = { excludeControls: [] } as Record<string, unknown>;
+    Object.defineProperty(selectionAccessor, 'selection', {
+      enumerable: true,
+      configurable: true,
+      get: () => {
+        throw new Error('directive selection getter must not run');
+      },
+    });
+    const excludeAccessor = { selection: { kind: 'include-all' } } as Record<string, unknown>;
+    Object.defineProperty(excludeAccessor, 'excludeControls', {
+      enumerable: true,
+      configurable: true,
+      get: () => {
+        throw new Error('directive excludeControls getter must not run');
+      },
+    });
+
+    const invalidSelection = buildCustomGroups(
+      {
+        rawGroups: [],
+        typedGroups: [],
+        insertControls: [selectionAccessor as unknown as ProfileInsertControls],
+      },
+      combined,
+    );
+    expect(invalidSelection.ok).toBe(false);
+    if (!invalidSelection.ok) {
+      expect(invalidSelection.diagnostic.code).toBe('PROFILE_RESOLUTION_SELECTION_INVALID');
+    }
+    const excluded = buildCustomGroups(
+      {
+        rawGroups: [],
+        typedGroups: [],
+        insertControls: [excludeAccessor as unknown as ProfileInsertControls],
+      },
+      combined,
+    );
+    expect(excluded.ok).toBe(true);
+    if (!excluded.ok) return;
+    expect(excluded.controls.map((node) => node['id'])).toEqual(['a-1']);
   });
 });
