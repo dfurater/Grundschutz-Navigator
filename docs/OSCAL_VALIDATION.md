@@ -938,6 +938,8 @@ Ergebnisgraphen.
 - Back-matter übernimmt nur Quellressourcen, deren UUID-Fragmente im
   Ergebnis referenziert werden, in stabiler Import-/Quellreihenfolge; danach
   folgen unverbrauchte Profilressourcen und die übrigen Profilmitglieder.
+  Bei case-insensitiv gleichen Ressourcen-UUIDs gewinnt die erste Ressource;
+  damit bleibt die Reihenfolge stabil und der Ergebnisgraph eindeutig.
 
 **Draft-Status:** Die NIST-Spezifikation
 (https://pages.nist.gov/OSCAL/learn/concepts/processing/profile-resolution/,

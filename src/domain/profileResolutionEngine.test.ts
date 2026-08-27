@@ -383,6 +383,46 @@ describe('Ergebnisvertrag', () => {
     });
   });
 
+  it('übernimmt überlappende Quellressourcen nur einmal und bewahrt die erste', async () => {
+    const sharedUuid = '22222222-2222-4222-8222-222222222222';
+    const sourceCatalog = (controlId: string, title: string) => ({
+      catalog: {
+        metadata: { 'oscal-version': VERSION },
+        controls: [
+          controlNode(controlId, {
+            parts: [{ name: 'guidance', prose: `Siehe [Quelle](#${sharedUuid}).` }],
+          }),
+        ],
+        'back-matter': { resources: [{ uuid: sharedUuid, title }] },
+      },
+    });
+    const outcome = await resolveWorld({
+      documents: {
+        'profile-top': profileDoc({
+          imports: [
+            { href: './a.json', includeAll: true },
+            { href: './b.json', includeAll: true },
+          ],
+          merge: { flat: {} },
+        }),
+        'cat-a': sourceCatalog('ac-1', 'Erste Quelle'),
+        'cat-b': sourceCatalog('ac-2', 'Zweite Quelle'),
+      },
+      edges: {
+        'profile-top': [
+          { href: './a.json', artifactKey: 'cat-a' },
+          { href: './b.json', artifactKey: 'cat-b' },
+        ],
+      },
+    });
+
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(bodyOf(outcome)['back-matter']).toEqual({
+      resources: [{ uuid: sharedUuid, title: 'Erste Quelle' }],
+    });
+  });
+
   it('liefert bei zweifacher Ausführung ein byte-identisches Ergebnis', async () => {
     const first = await resolveWorld(baseWorld());
     const second = await resolveWorld(baseWorld());

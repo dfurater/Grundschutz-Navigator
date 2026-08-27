@@ -239,7 +239,8 @@ Profile Resolution (deterministisch, GSPP-291 Commit B)
 • jedes Zwischen- und Endergebnis durchläuft fail-closed dieselbe Objekt-,
   Root-, Versions- und Schema-Pipeline wie lokale Klasse-2-Dokumente
 • Back-matter: referenzierte Quellressourcen in Import-/Quellreihenfolge,
-  danach unverbrauchte Profilressourcen und übrige Profilmitglieder
+  danach unverbrauchte Profilressourcen und übrige Profilmitglieder;
+  UUID-Kollisionen werden case-insensitiv nach first occurrence aufgelöst
 • Orakel zweigeteilt: BSI (3× resolved_catalog, feste Registry aus 21 Link-
   und 2 Positionsabweichungen) und NIST (4× Baselines v1.5.0, vollständiges
   Back-matter und as-is-Reihenfolge; nur belegte XML-Whitespace-Artefakte

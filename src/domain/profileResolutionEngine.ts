@@ -699,6 +699,22 @@ function referencedSourceResources(
   return resources;
 }
 
+/** Entfernt UUID-Duplikate case-insensitiv; die erste Quelle gewinnt stabil. */
+function uniqueResources(resources: readonly JsonObject[]): JsonObject[] {
+  const seenUuids = new Set<string>();
+  const unique: JsonObject[] = [];
+  for (const resource of resources) {
+    const uuid = ownDataValue(resource, 'uuid');
+    if (typeof uuid === 'string') {
+      const normalizedUuid = uuid.toLowerCase();
+      if (seenUuids.has(normalizedUuid)) continue;
+      seenUuids.add(normalizedUuid);
+    }
+    unique.push(resource);
+  }
+  return unique;
+}
+
 /** Verschmilzt referenzierte Quellressourcen mit unverbrauchtem Profil-Back-matter. */
 function mergedBackMatter(
   sourceBody: JsonObject,
@@ -710,17 +726,28 @@ function mergedBackMatter(
   const profileResources = isJsonObject(profileBackMatter)
     ? ownDataValue(profileBackMatter, 'resources')
     : undefined;
-  const resources = [
+  const resources = uniqueResources([
     ...referencedSourceResources(records, referencedUuids),
     ...(Array.isArray(profileResources)
       ? ownArrayDataElements(profileResources).filter(isJsonObject)
       : []),
-  ];
+  ]);
   const merged = profileBackMatter === null
     ? {}
     : copyOwnDataMembersSkipping(profileBackMatter, ['resources']);
   if (resources.length > 0) merged['resources'] = resources;
   return Object.keys(merged).length > 0 ? merged : null;
+}
+
+interface ResolvedCatalogEmission {
+  readonly plan: Extract<ProfileResolutionPlan, { ok: true }>;
+  readonly document: ProfileDocument;
+  readonly topUuid: string;
+  readonly derivedUuid: string;
+  readonly groups: readonly JsonObject[];
+  readonly controls: readonly JsonObject[];
+  readonly records: readonly SelectionRecord[];
+  readonly consumedResourceUuids: ReadonlySet<string>;
 }
 
 /**
@@ -729,16 +756,17 @@ function mergedBackMatter(
  * referenzierte Quellressourcen werden davor in stabiler Import- und
  * Quellreihenfolge ergänzt. Die Dokument-UUID steht an `catalog.uuid`.
  */
-function emitResolvedCatalog(
-  plan: Extract<ProfileResolutionPlan, { ok: true }>,
-  document: ProfileDocument,
-  topUuid: string,
-  derivedUuid: string,
-  groups: readonly JsonObject[],
-  controls: readonly JsonObject[],
-  records: readonly SelectionRecord[],
-  consumedResourceUuids: ReadonlySet<string>,
-): DerivedJsonTree {
+function emitResolvedCatalog(input: ResolvedCatalogEmission): DerivedJsonTree {
+  const {
+    plan,
+    document,
+    topUuid,
+    derivedUuid,
+    groups,
+    controls,
+    records,
+    consumedResourceUuids,
+  } = input;
   const graph = createOscalDerivedGraph();
 
   const sourceBody = readRootBody(document.source);
@@ -808,16 +836,16 @@ function resolveSingleProfile(input: SingleProfileInput): { readonly ok: true; r
 
   return {
     ok: true,
-    tree: emitResolvedCatalog(
-      input.plan,
-      input.document,
+    tree: emitResolvedCatalog({
+      plan: input.plan,
+      document: input.document,
       topUuid,
       derivedUuid,
       groups,
       controls,
-      phaseOne.value.records,
-      phaseOne.value.consumedResourceUuids,
-    ),
+      records: phaseOne.value.records,
+      consumedResourceUuids: phaseOne.value.consumedResourceUuids,
+    }),
   };
 }
 
