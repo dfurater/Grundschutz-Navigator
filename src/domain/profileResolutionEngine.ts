@@ -421,6 +421,18 @@ type PhaseOutcome<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly diagnostic: OscalDiagnostic };
 
+function selectedControlNodes(
+  index: ReturnType<typeof indexCatalogControls>,
+  ids: ReadonlySet<string>,
+): JsonObject[] {
+  const controls: JsonObject[] = [];
+  for (const id of ids) {
+    const node = index.byId.get(id);
+    if (node !== undefined) controls.push(node);
+  }
+  return controls;
+}
+
 /** Phase 1 — Selektion je Import gegen sein Quelldokument. */
 function collectPhaseOne(
   input: SingleProfileInput,
@@ -453,11 +465,7 @@ function collectPhaseOne(
     });
     if (!outcome.ok) return outcome;
 
-    const controls: JsonObject[] = [];
-    for (const id of outcome.ids) {
-      const node = index.byId.get(id);
-      if (node !== undefined) controls.push(node);
-    }
+    const controls = selectedControlNodes(index, outcome.ids);
     records.push({ artifactKey: edge.artifactKey, ids: outcome.ids, sourceDocument });
     if (href.startsWith('#')) {
       consumedResourceUuids.add(href.slice(1));

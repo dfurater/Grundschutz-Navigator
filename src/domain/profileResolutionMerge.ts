@@ -167,7 +167,10 @@ export function buildFlatControls(combined: CombinedControls): JsonObject {
 function filterNestedIncluded(
   control: JsonObject,
   includedIds: ReadonlySet<string>,
+  path: ReadonlySet<object>,
 ): JsonObject {
+  const childPath = new Set(path);
+  childPath.add(control);
   const copy = copyOwnDataMembers(control);
   const kept: JsonObject[] = [];
   const promoted: JsonObject[] = [];
@@ -176,10 +179,11 @@ function filterNestedIncluded(
   const children = safeArrayMember(control, 'controls') ?? [];
   for (const child of ownArrayDataElements(children)) {
     if (!isJsonObject(child)) continue;
+    if (childPath.has(child)) continue;
     if (includedIds.has(readIdOrEmpty(child))) {
-      kept.push(filterNestedIncluded(child, includedIds));
+      kept.push(filterNestedIncluded(child, includedIds, childPath));
     } else {
-      promoted.push(...promotedControls(child, includedIds));
+      promoted.push(...promotedControls(child, includedIds, childPath));
     }
   }
   delete copy['controls'];
@@ -199,12 +203,16 @@ function filterNestedIncluded(
 function promotedControls(
   control: JsonObject,
   includedIds: ReadonlySet<string>,
+  path: ReadonlySet<object>,
 ): JsonObject[] {
+  if (path.has(control)) return [];
+  const childPath = new Set(path);
+  childPath.add(control);
   const kept: JsonObject[] = [];
   const excludedBranches: JsonObject[] = [];
-  collectIncludedAndExcludedChildren(control, includedIds, kept, excludedBranches);
+  collectIncludedAndExcludedChildren(control, includedIds, childPath, kept, excludedBranches);
   for (const branch of excludedBranches) {
-    kept.push(...promotedControls(branch, includedIds));
+    kept.push(...promotedControls(branch, includedIds, childPath));
   }
   return kept;
 }
@@ -213,6 +221,7 @@ function promotedControls(
 function collectIncludedAndExcludedChildren(
   control: JsonObject,
   includedIds: ReadonlySet<string>,
+  path: ReadonlySet<object>,
   kept: JsonObject[],
   excludedBranches: JsonObject[],
 ): void {
@@ -220,8 +229,9 @@ function collectIncludedAndExcludedChildren(
   if (children === undefined) return;
   for (const child of ownArrayDataElements(children)) {
     if (!isJsonObject(child)) continue;
+    if (path.has(child)) continue;
     if (includedIds.has(readIdOrEmpty(child))) {
-      kept.push(filterNestedIncluded(child, includedIds));
+      kept.push(filterNestedIncluded(child, includedIds, path));
     } else {
       excludedBranches.push(child);
     }
@@ -291,12 +301,13 @@ function collectDirectControls(
   if (safeArrayMember(containerNode, 'controls') === undefined) return;
   const kept: JsonObject[] = [];
   const excludedBranches: JsonObject[] = [];
-  collectIncludedAndExcludedChildren(containerNode, includedIds, kept, excludedBranches);
+  const rootPath = new Set<object>();
+  collectIncludedAndExcludedChildren(containerNode, includedIds, rootPath, kept, excludedBranches);
   // Phase 1 vor Phase 2 (Orakelordnung am BSI-Korpus: KONF.2.7 steht vor
   // dem hochgelevelten KONF.2.4.2).
   controls.push(...kept);
   for (const branch of excludedBranches) {
-    controls.push(...promotedControls(branch, includedIds));
+    controls.push(...promotedControls(branch, includedIds, rootPath));
   }
 }
 
@@ -775,6 +786,84 @@ function definitionsForInsertion(
   return nested === undefined ? [] : [nested];
 }
 
+interface RootControlEmissionState {
+  readonly controls: JsonObject[];
+  readonly emittedDefinitions: Set<object>;
+  readonly nestedOnlyDefinitions: Set<object>;
+}
+
+function isDescendantId(
+  candidateId: string,
+  ancestorId: string,
+  index: ReturnType<typeof indexCatalogControls>,
+): boolean {
+  const visited = new Set<string>();
+  let parentId = index.parentOf.get(candidateId);
+  while (parentId !== undefined && !visited.has(parentId)) {
+    if (parentId === ancestorId) return true;
+    visited.add(parentId);
+    parentId = index.parentOf.get(parentId);
+  }
+  return false;
+}
+
+function removeEarlierNestedDescendants(
+  ancestorId: string,
+  context: AssemblyContext,
+  state: RootControlEmissionState,
+): void {
+  for (let index = state.controls.length - 1; index >= 0; index -= 1) {
+    const definition = state.controls[index]!;
+    if (!state.nestedOnlyDefinitions.has(definition)) continue;
+    if (!isDescendantId(readIdOrEmpty(definition), ancestorId, context.poolIndex)) continue;
+    state.controls.splice(index, 1);
+    state.emittedDefinitions.delete(definition);
+    state.nestedOnlyDefinitions.delete(definition);
+  }
+}
+
+function emitRootControlId(
+  id: string,
+  context: AssemblyContext,
+  state: RootControlEmissionState,
+): void {
+  const hasDirectDefinitions = context.combined.controls.has(id);
+  if (hasDirectDefinitions) removeEarlierNestedDescendants(id, context, state);
+  const definitions = definitionsForInsertion(id, context, state.emittedDefinitions);
+  for (const definition of ownArrayDataElements(definitions)) {
+    if (!isJsonObject(definition) || state.emittedDefinitions.has(definition)) continue;
+    state.emittedDefinitions.add(definition);
+    if (!hasDirectDefinitions) state.nestedOnlyDefinitions.add(definition);
+    state.controls.push(definition);
+  }
+}
+
+type RootControlsResult =
+  | { readonly ok: true; readonly controls: readonly JsonObject[] }
+  | { readonly ok: false; readonly diagnostic: OscalDiagnostic };
+
+function collectRootControls(
+  directives: readonly ProfileInsertControls[],
+  context: AssemblyContext,
+): RootControlsResult {
+  const state: RootControlEmissionState = {
+    controls: [],
+    emittedDefinitions: new Set<object>(),
+    nestedOnlyDefinitions: new Set<object>(),
+  };
+  for (const directive of directives) {
+    const outcome = resolveSelectionIds(context.poolIndex, {
+      selection: directive.selection,
+      excludeControls: directive.excludeControls,
+    });
+    if (!outcome.ok) return outcome;
+    for (const id of orderedInsertIds(outcome.ids, directive)) {
+      emitRootControlId(id, context, state);
+    }
+  }
+  return { ok: true, controls: state.controls };
+}
+
 export function buildCustomGroups(
   request: CustomAssemblyRequest,
   combined: CombinedControls,
@@ -811,29 +900,7 @@ export function buildCustomGroups(
 
   const groupsResult = assembleGroups(rawGroups, typedGroups, context);
   if (!groupsResult.ok) return groupsResult;
-
-  const controls: JsonObject[] = [];
-  const emittedDefinitions = new Set<object>();
-  for (const directive of insertControls) {
-    const outcome = resolveSelectionIds(context.poolIndex, {
-      selection: directive.selection,
-      excludeControls: directive.excludeControls,
-    });
-    if (!outcome.ok) return outcome;
-
-    for (const id of orderedInsertIds(outcome.ids, directive)) {
-      // Ein nur verschachtelt vorhandener Knoten wird bei direkter Selektion
-      // aus dem Pool-Index ausgegeben. Ist sein Vorfahr bereits ausgegeben,
-      // steckt er dort schon vollständig im Baum und wird nicht dupliziert.
-      const definitions = definitionsForInsertion(id, context, emittedDefinitions);
-      for (const definition of ownArrayDataElements(definitions)) {
-        if (!isJsonObject(definition)) continue;
-        if (emittedDefinitions.has(definition)) continue;
-        emittedDefinitions.add(definition);
-        controls.push(definition);
-      }
-    }
-  }
-
-  return { ok: true, groups: groupsResult.groups, controls };
+  const controlsResult = collectRootControls(insertControls, context);
+  if (!controlsResult.ok) return controlsResult;
+  return { ok: true, groups: groupsResult.groups, controls: controlsResult.controls };
 }

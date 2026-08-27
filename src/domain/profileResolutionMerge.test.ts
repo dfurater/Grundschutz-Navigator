@@ -196,6 +196,31 @@ describe('as-is-Struktur', () => {
       new Set(['ac-1']),
     )).not.toThrow();
   });
+
+  it('bricht zyklische Control-Kanten kontrolliert ab', () => {
+    const selected = control('cycle-1');
+    selected['controls'] = [selected];
+
+    const body = buildAsIsGroups(
+      { groups: [], controls: [selected] },
+      new Set(['cycle-1']),
+    );
+
+    expect(body).toEqual({
+      groups: [],
+      controls: [control('cycle-1')],
+    });
+  });
+
+  it('läuft bei einem zyklischen ausgeschlossenen Control-Zweig nicht über', () => {
+    const excluded = control('cycle-drop');
+    excluded['controls'] = [excluded];
+
+    expect(buildAsIsGroups(
+      { groups: [], controls: [excluded] },
+      new Set(['nicht-vorhanden']),
+    )).toEqual({ groups: [], controls: [] });
+  });
 });
 
 describe('custom-Struktur', () => {
@@ -373,6 +398,41 @@ describe('custom-Struktur', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.controls).toEqual([child]);
+  });
+
+  it('ersetzt ein zuerst einzeln ausgegebenes Nested-only-Kind durch den späteren Vorfahren', () => {
+    const child = control('q-3.1');
+    const parent = control('q-3', { controls: [child] });
+    const combined = applyCombine([{ documentKey: 'doc-a', controls: [parent] }], 'use-first');
+    const childDirective: ProfileInsertControls = {
+      selection: {
+        kind: 'include-controls',
+        includeControls: [withIdsSelector(['q-3.1'])],
+      },
+      excludeControls: [],
+      path: '/profile/merge/custom/insert-controls[0]',
+    };
+    const parentDirective: ProfileInsertControls = {
+      selection: {
+        kind: 'include-controls',
+        includeControls: [withIdsSelector(['q-3'])],
+      },
+      excludeControls: [],
+      path: '/profile/merge/custom/insert-controls[1]',
+    };
+
+    const result = buildCustomGroups(
+      {
+        rawGroups: [],
+        typedGroups: [],
+        insertControls: [childDirective, parentDirective],
+      },
+      combined,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.controls).toEqual([parent]);
   });
 
   it('mehrere Anweisungen wirken kumulativ ohne Doppel-Ausgabe derselben Definition', () => {
