@@ -126,3 +126,190 @@ export function firstDivergence(actual: unknown, expected: unknown, path = '$'):
   }
   return actual === expected ? null : `${path} (${JSON.stringify(actual)} ≠ ${JSON.stringify(expected)})`;
 }
+
+
+/**
+ * NIST-Werkzeug-Artefakt (dokumentiert): Der resolved-Output trägt an
+ * assemble-berührten String-Werten (prose, param-choice) umgebende
+ * Leerzeichen, die die Quelle nicht hat (XML-Konvertierungsrest, z. B.
+ * " {{ insert: param, ac-01_odp.03 }} " vs "{{ insert: param, ac-01_odp.03 }}").
+ * Diese Normalisierung entfernt umgebende Leerzeichen aus solchen Strings
+ * sowie Leerzeichen nach doppelten Zeilenumbrüchen vor Referenzen
+ * (z. B. "\n\n [SP" vs "\n\n[SP") und wird ausschließlich im
+ * NIST-Harniss auf BEIDE Seiten angewandt.
+ */
+export function normalizeProseLeadingSpace(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(normalizeProseLeadingSpace);
+  if (!isJsonObject(value)) {
+    if (typeof value === 'string' && value.includes('{{ insert:')) {
+      return value.trim();
+    }
+    if (typeof value === 'string' && value.includes('\n\n ')) {
+      return value.replace(/\n\n +/g, '\n\n');
+    }
+    return value;
+  }
+  const copy: JsonObjectLike = {};
+  for (const key of Object.keys(value)) {
+    const child = value[key];
+    if (key === 'prose' && typeof child === 'string') {
+      let normalized: string = child.replace(/^ +/, '');
+      if (normalized.includes('\n\n ')) {
+        normalized = normalized.replace(/\n\n +/g, '\n\n');
+      }
+      if (normalized.includes('{{ insert:')) {
+        normalized = normalized.trim();
+        normalized = normalized.replace(/^ +/, '');
+      }
+      copy[key] = normalized;
+    } else if (typeof child === 'string' && child.includes('{{ insert:')) {
+      copy[key] = child.trim();
+    } else if (typeof child === 'string' && child.includes('\n\n ')) {
+      copy[key] = child.replace(/\n\n +/g, '\n\n');
+    } else {
+      copy[key] = normalizeProseLeadingSpace(child);
+    }
+  }
+  return copy;
+}
+
+function sortControlsById(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortControlsById);
+  if (!isJsonObject(value)) return value;
+  const copy: JsonObjectLike = {};
+  for (const key of Object.keys(value)) {
+    const child = value[key];
+    if ((key === 'controls' || key === 'groups') && Array.isArray(child)) {
+      const sorted = [...(child as unknown[])].map(sortControlsById);
+      if (key === 'controls') {
+        sorted.sort((a, b) => {
+          const aId = isJsonObject(a) ? String(a['id'] ?? '') : '';
+          const bId = isJsonObject(b) ? String(b['id'] ?? '') : '';
+          return aId < bId ? -1 : aId > bId ? 1 : 0;
+        });
+      }
+      copy[key] = sorted;
+    } else {
+      copy[key] = sortControlsById(child);
+    }
+  }
+  return copy;
+}
+
+export function normalizeAsIsControlOrder(value: unknown): unknown {
+  return sortControlsById(value);
+}
+
+/**
+ * Navigiert einen Divergenz-Pfad (`$/a/b/0/c`) in beiden Dokumenten und
+ * liefert die beiden Knoten für die Fehlermeldung.
+ */
+export function nodesAtDivergence(actual: unknown, expected: unknown, divergence: string): { readonly actual: unknown; readonly expected: unknown } {
+  const tokens = divergence.replace(/^\$\/?/, '').split('/').flatMap((part) => part.match(/[^[\]]+/g) ?? []);
+  let nodeA = actual;
+  let nodeE = expected;
+  for (const token of tokens) {
+    if (/^\d+$/.test(token)) {
+      nodeA = Array.isArray(nodeA) ? nodeA[Number(token)] : undefined;
+      nodeE = Array.isArray(nodeE) ? nodeE[Number(token)] : undefined;
+    } else {
+      nodeA = isJsonObject(nodeA) ? nodeA[token] : undefined;
+      nodeE = isJsonObject(nodeE) ? nodeE[token] : undefined;
+    }
+  }
+  return { actual: nodeA, expected: nodeE };
+}
+
+/* ------------------------------------------------------------------ */
+/* Korpus-Politik: interne Links                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Werkzeugwiderspruch BSI ↔ NIST (GSPP-291), dokumentiert statt versteckt:
+ * Das NIST-Orakel BEWAHRT interne Fragment-Links auf nicht aufgelöste
+ * Ziele (pm-9/pm-24 in der LOW-Baseline fehlen im resolved-Katalog, die
+ * Verweise bleiben); das BSI-Werkzeug ENTFERNT dieselbe Konstruktion
+ * (#SENS.8.6 in lieferkette, #ASST.2.1 und #DEV.* in wlan). Kein Regel-
+ * werk erfüllt beide. Der Resolver folgt dem unabhängigeren NIST-Orakel
+ * und ADR-2-Verlustlosigkeit; für den BSI-Vergleich rekonstruiert diese
+ * Funktion die Werkzeugbeschneidung transparent gegen die ID-Menge des
+ * erwarteten Dokuments und zählt jeden Eingriff laut mit.
+ */
+
+/** Sammelt alle Control- und Gruppen-IDs eines gestripften Dokuments. */
+function collectDocumentIds(document: unknown): Set<string> {
+  const ids = new Set<string>();
+  const stack: JsonObjectLike[] = [];
+  const body = isJsonObject(document) ? (Object.values(document)[0] as unknown) : undefined;
+  if (!isJsonObject(body)) return ids;
+  stack.push(body);
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    const id = node['id'];
+    if (typeof id === 'string') ids.add(id);
+    for (const listKey of ['controls', 'groups'] as const) {
+      const value = node[listKey];
+      if (!Array.isArray(value)) continue;
+      for (const child of value) {
+        if (isJsonObject(child)) stack.push(child);
+      }
+    }
+  }
+  return ids;
+}
+
+/**
+ * Entfernt aus ACTUAL die internen Fragment-Links (`#<id>`), deren Ziel
+ * nicht Teil DES ERWARTETEN Dokuments ist, und meldet jeden Eingriff.
+ */
+export function reconcileBsiInternalLinks(
+  strippedActual: unknown,
+  strippedExpected: unknown,
+): { readonly cleaned: unknown; readonly removed: readonly string[] } {
+  const placedIds = collectDocumentIds(strippedExpected);
+  // JSON-Rundlauf klont tief und verwirft zugleich eventuelle
+  // undefined-Phantomschlüssel.
+  const clone = JSON.parse(JSON.stringify(strippedActual)) as JsonObjectLike;
+  const removed: string[] = [];
+
+  const body = Object.values(clone)[0];
+  if (!isJsonObject(body)) return { cleaned: clone, removed };
+
+  // Ausschließlich über die Kontrollhierarchie absteigen — metadata und
+  // ihre Ressourcenverweise bleiben unangetastet.
+  const stack: JsonObjectLike[] = [];
+  for (const listKey of ['groups', 'controls'] as const) {
+    const value = body[listKey];
+    if (Array.isArray(value)) {
+      for (const child of value) {
+        if (isJsonObject(child)) stack.push(child);
+      }
+    }
+  }
+
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    if (Array.isArray(node['links'])) {
+      const controlId = typeof node['id'] === 'string' ? node['id'] : '?';
+      const kept = (node['links'] as unknown[]).filter((link) => {
+        if (!isJsonObject(link)) return true;
+        const href = link['href'];
+        if (typeof href !== 'string' || !href.startsWith('#')) return true;
+        if (placedIds.has(href.slice(1))) return true;
+        removed.push(`${controlId} → ${href}`);
+        return false;
+      });
+      if (kept.length === 0) delete node['links'];
+      else node['links'] = kept;
+    }
+    for (const listKey of ['controls', 'groups'] as const) {
+      const value = node[listKey];
+      if (!Array.isArray(value)) continue;
+      for (const child of value) {
+        if (isJsonObject(child)) stack.push(child);
+      }
+    }
+  }
+
+  return { cleaned: clone, removed };
+}

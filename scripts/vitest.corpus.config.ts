@@ -19,6 +19,10 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['scripts/profileResolutionCorpus.test.ts'],
+    include: [
+      'scripts/profileResolutionCorpus.test.ts',
+      'scripts/profileResolutionNistOracle.test.ts',
+      'scripts/profileResolutionSpecFixtures.test.ts',
+    ],
   },
 });

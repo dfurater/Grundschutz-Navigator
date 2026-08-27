@@ -212,6 +212,10 @@ npm run fetch-catalog → scripts/fetch-catalog.mjs
   keine Pfadnormalisierung, kein Netzwerk und keine Änderung des Referenzresolvers
 • jeder supported Katalog und die direkten Namespace-CSVs → JSON + Provenance
 • Manifest v2 bindet Registry-Metadaten, Git-Blob-SHA und Content-SHA-256
+• Korpus-Cache (gitignoriert): 10 Dokumente der Lineages (Profile + Quell- und
+  Anwenderkataloge) → `.cache/upstream-corpus/` + Begleitmanifest; kein zweiter
+  Fetch, keine Env-Pfade, kein Überspringen — der Harnisch scheitert hart
+  ohne Cache
         │
         ▼
 public/data/  (Dateimenge aus dem Quellregister abgeleitet)
@@ -221,6 +225,24 @@ public/data/  (Dateimenge aus dem Quellregister abgeleitet)
 • catalog-<catalogKey>-metadata.json
 • vocabularies.json               (Offizielle BSI-Vokabulare)
 • upstream-sources-metadata.json  (Vokabular-Provenance + Manifest v2 + Lineage-Projektion)
+• .cache/upstream-corpus/         (verpflichtender Bauzeitlauf: 10 Lineage-Dokumente)
+        │
+        ▼
+Profile Resolution (deterministisch, GSPP-291 Commit B)
+• Plan: Importgraph (Zyklus/Versions/Root-Prüfungen) → Ordnung (Preorder)
+• Selektion je Import, danach Merge (combine use-first/keep, flat/as-is/custom
+  mit insert-controls/order) und Modify (set-parameter, alters) in der
+  Reihenfolge Import → Merge → Modify
+• Ergebnis ausschließlich über `createOscalDerivedGraph()` (kontrollierter
+  Builder, kein Fremdobjekt, __proto__ als Data-Property, opakes
+  DerivedJsonTree-Handle, Vertrauensklasse class-2-local-user)
+• Orakel zweigeteilt: BSI (3× resolved_catalog, volatile Felder + interne
+  Links rekonziliert) und NIST (4× Baselines v1.5.0, prose/back-matter und
+  as-is-Reihenfolge normalisiert) plus synthetische Fixtures mit
+  Draft-/XSpec-Quellenangaben
+        │
+        ▼
+CatalogContext (Einstiegskatalog eager, weitere bedarfsgerecht)
         │
         ▼
 CatalogContext (Einstiegskatalog eager, weitere bedarfsgerecht)

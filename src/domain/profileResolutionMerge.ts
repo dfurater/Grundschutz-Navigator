@@ -112,10 +112,21 @@ export function applyCombine(
   return { controls: definitions, order: finalOrder, clashes: [...clashes] };
 }
 
+/** Entfernt verschachtelte Kinder (controls, groups) für echte Flachdarstellung. */
+export function stripNestedChildren(node: JsonObject): JsonObject {
+  const copy: JsonObject = {};
+  for (const key of Object.keys(node)) {
+    if (key === 'controls' || key === 'groups') continue;
+    const value = node[key];
+    copy[key] = value;
+  }
+  return copy;
+}
+
 /** Flache Ausgabe: kombinierte Controls direkt unter catalog. */
 export function buildFlatControls(combined: CombinedControls): JsonObject {
   return {
-    controls: combined.order,
+    controls: combined.order.map(stripNestedChildren),
   };
 }
 

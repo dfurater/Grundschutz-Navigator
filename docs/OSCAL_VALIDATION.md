@@ -891,6 +891,91 @@ Versions-Zählung — keine Dokumentwerte, lokalen Pfade oder Stacktraces. Das
 Catalog-Paar zu `metadata.props` belegt beide Aussagen der Landkarte zugleich:
 die Prüftiefendifferenz und die Reichweite der namespace-gebundenen Constraints.
 
+## Profile Resolution — Resolver-Vertrag, Phasen, Orakel
+
+**Status:** Seit GSPP-291 (Commit B) ist die deterministische Profile
+Resolution mit kontrolliertem Builder, verpflichtendem Bauzeitlauf und
+zweigeteiltem Referenznachweis umgesetzt. Die Ausgabe ist ein Dokument
+mit Root-Key `catalog`, das vollständig über den kontrollierten Builder
+erschaffen wird; Rohobjekte fremder Herkunft gelangen nie in den
+Ergebnisgraphen.
+
+**Phasen (Import → Merge → Modify):**
+1. **Import:** Selektion je Kante gegen das Quelldokument (Selektoren:
+   `include-all`, `include-controls` mit `with-ids`/`matching`/`with-child-controls`,
+   `exclude-controls`). `with-child-controls: yes` erweitert auf alle
+   Nachfahren, sonst bleibt der Selbsttreffer. `matching` wertet Globs
+   gegen die Control-ID aus.
+2. **Merge:** `combine` (`use-first` behält erste Definition, `keep`
+   beide) und Struktur (`flat`, `as-is`, `custom` mit `insert-controls`
+   und `order` ascending/descending/keep). `custom`-Gruppen werden
+   exakt kopiert (ohne `insert-controls`), `insert-controls` füllen
+   Controls an Gruppenpositionen; nicht getroffene Selektionen tragen
+   nichts bei.
+3. **Modify:** `set-parameter` (Skalarfelder ersetzen, `props`/`links`
+   anreichern) und `alters` (`adds`/`removes` mit `by-id`/`by-name`/…),
+   danach kanonische Schlüsselordnung.
+
+**Ergebnisvertrag (ADR-2 §10, ADR-8):**
+- Eigene Dokument-UUID als UUIDv5 aus festem Projektnamensraum + UUID
+  des steuernden Profils (deterministisch, Byte-identität beim Doppel-Lauf).
+- Eigenes `last-modified` als Stempel `1970-01-01T00:00:00.000Z` (kein
+  Wanduhrwert — Byte-Determinismus vor Verifikation).
+- Provenienzträger `prop[name='resolution-tool']` und
+  `link[rel='source-profile' href='urn:uuid:<Top-Profil-UUID>]`;
+  `source-profile-uuid` wird nie gesetzt.
+- Vertrauensklasse `class-2-local-user` auch bei Klasse-1-Eingaben
+  (kein Manifest-/Hash-Indikator am Ergebnis).
+
+**Draft-Status:** Die NIST-Spezifikation
+(https://pages.nist.gov/OSCAL/learn/concepts/processing/profile-resolution/,
+Stand 2026-07-29) trägt den Hinweis „work in progress and is subject to
+change“ und wird nicht als endgültig normativ dargestellt. Sie bleibt
+dennoch verbindlicher Umsetzungsmaßstab, weil keine konkurrierende
+Norm existiert. Vollständige Konformität wird weder für hergeleitete
+Fixtures noch insgesamt behauptet.
+
+**Abdeckungsgrenzen:** Der BSI-Realkorpus (3 Profile am Snapshot 9008ca0)
+deckt `include-all`, `include-controls`, `as-is` und `set-parameters`
+ab. Nicht im Realkorpus und deshalb nur über synthetische Fixtures
+belegt: `exclude-controls`, `with-child-controls`, `matching`,
+`combine`, `flat`/`custom`, `alters`, Profilketten. Ein bestandener
+Realkorpuslauf darf nie als Nachweis vollständiger Semantik ausgegeben
+werden.
+
+**Bekannte Differenzen (Werkzeugwiderspruch BSI ↔ NIST):**
+- Interne Fragment-Links (`#<id>`) auf nicht aufgelöste Ziele bewahrt
+  das NIST-Orakel (pm-9/pm-24 in LOW fehlen im resolved, Verweise
+  bleiben), das BSI-Werkzeug entfernt sie (#SENS.8.6 u. a.). Kein
+  Regelwerk erfüllt beide; der Resolver folgt NIST/ADR-2, die BSI-
+  Differenzen sind im Korpus-Harniss als `reconcileBsiInternalLinks`
+  transparent rekonstruiert und geloggt.
+- `prose`-Leerzeichen (XML-Rest): NIST resolved trägt führende Leer-
+  zeichen vor `{{ insert: param…` und nach `\n\n`; symmetrisch normalisiert.
+- Back-matter-Provenienz: NIST verschmilzt Quellkatalog-Back-matter
+  (140 Ressourcen), BSI führt nur Profil-Back-matter fort; für NIST
+  gilt Back-matter als volatil im Vergleich.
+
+**Orakel-Architektur (zweigeteilt):**
+- **Realer Ausschnitt:** Vergleich gegen gepinnte, gehashte JSON-
+  Ergebnisse von BSI (3 resolved_catalogs) und NIST (4 Baselines
+  v1.5.0, Min-Variante, SHA-256-gepinnt unter
+  `src/test/fixtures/oscal-content-v1.5.0/`). Volatile Felder
+  (metadata uuid/last-modified, Dokument-UUID am Körper,
+  resolution-tool/source-profile) symmetrisch entfernt; zusätzlich
+  BSI-Link-Rekonziliation und NIST-Prose-Normalisierung.
+- **Übrige Semantik:** Kleine synthetische Fixtures, deren Erwartungs-
+  werte pro Fall aus Draft + XSpec (usnistgov/OSCAL Tag v1.1.3,
+  src/utils/resolver-pipeline/testing/*.xspec) hergeleitet und mit
+  konkreter Quelle dokumentiert sind — hergeleitete Spezifikations-
+  tests, kein unabhängiges Orakel.
+- **Bauzeitlauf:** Verpflichtend nach `npm run fetch-catalog`, schreibt
+  verifizierte Rohbytes nach `.cache/upstream-corpus/` (gitignoriert,
+  10 Dokumente), kein zweiter Fetch, keine Env-Variablen-Pfade, kein
+  Überspringen. Workflows `ci.yml`/`deploy.yml` führen
+  `npm run test:profile-resolution` (eigene Vitest-Lane
+  `scripts/vitest.corpus.config.ts`) direkt nach dem Fetch aus.
+
 | Fall | Erwarteter und beobachteter Befund |
 | --- | --- |
 | reales `catalog-gspp`, OSCAL 1.1.3 | Root-/Versionswahl und Schema-Prüfung bestehen. Eine abgeleitete Variante ohne Pflichtfeld `metadata.title` scheitert an der Schema-Stufe. |

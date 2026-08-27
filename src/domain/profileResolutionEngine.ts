@@ -46,6 +46,7 @@ import {
   applyCombine,
   buildAsIsGroups,
   buildCustomGroups,
+  stripNestedChildren,
   type ControlInclusion,
 } from './profileResolutionMerge';
 import {
@@ -487,8 +488,10 @@ function buildStructuredOutput(
   }
 
   switch (merge.structure.kind) {
-    case 'flat':
-      return { ok: true, value: { groups: [], controls: [...combined.order] } };
+    case 'flat': {
+      const flatControls = combined.order.map(stripNestedChildren);
+      return { ok: true, value: { groups: [], controls: flatControls } };
+    }
     case 'as-is':
       return { ok: true, value: collectAsIsOutput(records) };
     case 'custom': {
@@ -668,52 +671,12 @@ function emitResolvedCatalog(
  * Sammelt alle platzierten Control- und Gruppen-IDs des zusammengebauten
  * Baums (iterativ über den frischen Engine-Baum).
  */
-function collectPlacedIds(
-  groups: readonly JsonObject[],
-  controls: readonly JsonObject[],
-): Set<string> {
-  const ids = new Set<string>();
-  const stack: JsonObject[] = [...groups, ...controls];
-  while (stack.length > 0) {
-    const node = stack.pop()!;
-    const id = ownDataValue(node, 'id');
-    if (typeof id === 'string') ids.add(id);
-    for (const listKey of ['controls', 'groups'] as const) {
-      const value = ownDataValue(node, listKey);
-      if (!Array.isArray(value)) continue;
-      for (const child of ownArrayDataElements(value)) {
-        if (isJsonObject(child)) stack.push(child);
-      }
-    }
-  }
-  return ids;
-}
 
 /**
  * Entfernt aus dem links-Mitglied eines Knotens die Fragment-Links auf
  * nicht platzierte Ziele. Rückgabe: true, wenn das Mitglied verändert oder
  * entfernt wurde.
  */
-function pruneLinksMember(node: JsonObject, placedIds: ReadonlySet<string>): boolean {
-  const links = ownDataValue(node, 'links');
-  if (!Array.isArray(links)) return false;
-
-  const kept = ownArrayDataElements(links).filter((link) => {
-    if (!isJsonObject(link)) return true;
-    const href = ownDataValue(link, 'href');
-    if (typeof href !== 'string' || !href.startsWith('#')) return true;
-    return placedIds.has(href.slice(1));
-  });
-  if (kept.length === 0) {
-    delete node['links'];
-    return true;
-  }
-  if (kept.length !== links.length) {
-    node['links'] = kept;
-    return true;
-  }
-  return false;
-}
 
 /**
  * Schneidet interne Fragment-Links (`#<id>`) ab, deren Ziel nicht Teil des
@@ -721,20 +684,6 @@ function pruneLinksMember(node: JsonObject, placedIds: ReadonlySet<string>): boo
  * selbst-contained und trägt keine ins Leere zeigende Verweise (Orakel-
  * befund am BSI-Korpus: ASST.5.6 → #SENS.8.6 entfällt mit dem Ziel).
  */
-function pruneUnresolvedInternalLinks(nodes: readonly JsonObject[], placedIds: ReadonlySet<string>): void {
-  const stack: JsonObject[] = [...nodes];
-  while (stack.length > 0) {
-    const node = stack.pop()!;
-    pruneLinksMember(node, placedIds);
-    for (const listKey of ['controls', 'groups'] as const) {
-      const value = ownDataValue(node, listKey);
-      if (!Array.isArray(value)) continue;
-      for (const child of ownArrayDataElements(value)) {
-        if (isJsonObject(child)) stack.push(child);
-      }
-    }
-  }
-}
 
 function resolveSingleProfile(input: SingleProfileInput): { readonly ok: true; readonly tree: DerivedJsonTree } | { readonly ok: false; readonly diagnostic: OscalDiagnostic } {
   const phaseOne = collectPhaseOne(input);
@@ -748,10 +697,13 @@ function resolveSingleProfile(input: SingleProfileInput): { readonly ok: true; r
   const controls = structured.value.controls.map(transform);
   applyTransformToGroups(groups, transform);
 
-  // Interne Links auf nicht platzierte Ziele werden abgeschnitten — der
-  // resolvierte Katalog ist selbst-contained.
-  const placedIds = collectPlacedIds(groups, controls);
-  pruneUnresolvedInternalLinks([...groups, ...controls], placedIds);
+  // Interne Fragment-Links werden bewusst NICHT beschnitten: Das
+  // unabhängige NIST-Orakel behält Verweise auf nicht aufgelöste Ziele
+  // (pm-9/pm-24 in der LOW-Baseline), während das BSI-Werkzeug sie
+  // entfernt (#SENS.8.6 in lieferkette). Die Werkzeuge widersprechen sich;
+  // ADR-2-Verlustlosigkeit und das unabhängigere Orakel entscheiden — die
+  // verbleibende BSI-Differenz ist als bekannte Differenz im Harniss
+  // laut registriert und dem Review zur Entscheidung vorgelegt.
 
   const topUuid = input.document.view.uuid;
   if (topUuid === undefined) {

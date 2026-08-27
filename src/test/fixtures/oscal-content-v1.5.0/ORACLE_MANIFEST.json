@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "repository": "https://github.com/usnistgov/oscal-content",
+    "tag": "v1.5.0",
+    "commit": "78650f02ad9321bb7b817846f8fbd4f2bcd620de",
+    "variant": "-min (minifizierte Veröffentlichungsvariante, inhaltsgleich)"
+  },
+  "files": [
+    {
+      "artifactKey": "nist-sp800-53-rev5-catalog",
+      "role": "source",
+      "fileName": "rev5-catalog.json",
+      "remotePath": "nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_catalog-min.json",
+      "sizeBytes": 4906119,
+      "sha256": "d820835aa54aeb2265bdacdf8e678af7530443a59556563df898addf012024cb"
+    },
+    {
+      "artifactKey": "nist-sp800-53-rev5-low-profile",
+      "role": "input",
+      "fileName": "low-profile.json",
+      "remotePath": "nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_LOW-baseline_profile-min.json",
+      "sizeBytes": 3520,
+      "sha256": "09928e76e21f70455818e6acfd785a87cb6fae500f2342a38fd8cbcc44227102"
+    },
+    {
+      "artifactKey": "nist-sp800-53-rev5-low-resolved",
+      "role": "expected",
+      "fileName": "low-resolved.json",
+      "remotePath": "nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_LOW-baseline-resolved-profile_catalog-min.json",
+      "sizeBytes": 1210383,
+      "sha256": "5c5765f8c22cbdee51c13d57e0223489c3632db136e2c952bc4ef75d27fbea05"
+    },
+    {
+      "artifactKey": "nist-sp800-53-rev5-moderate-profile",
+      "role": "input",
+      "fileName": "moderate-profile.json",
+      "remotePath": "nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_MODERATE-baseline_profile-min.json",
+      "sizeBytes": 4714,
+      "sha256": "117d5c5392126f6f4107809858e30086edf903df01d99aebf2b0543d6caf581f"
+    },
+    {
+      "artifactKey": "nist-sp800-53-rev5-moderate-resolved",
+      "role": "expected",
+      "fileName": "moderate-resolved.json",
+      "remotePath": "nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_MODERATE-baseline-resolved-profile_catalog-min.json",
+      "sizeBytes": 1823964,
+      "sha256": "27936e7023400619300e5deddeb87c2bee05f03cea37d65fabba0fe21d1fe8e7"
+    },
+    {
+      "artifactKey": "nist-sp800-53-rev5-high-profile",
+      "role": "input",
+      "fileName": "high-profile.json",
+      "remotePath": "nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_HIGH-baseline_profile-min.json",
+      "sizeBytes": 5463,
+      "sha256": "602b2f705e840faba552f86f89d848a5ae66b776e244f04667bd24cec7554bff"
+    },
+    {
+      "artifactKey": "nist-sp800-53-rev5-high-resolved",
+      "role": "expected",
+      "fileName": "high-resolved.json",
+      "remotePath": "nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_HIGH-baseline-resolved-profile_catalog-min.json",
+      "sizeBytes": 2155167,
+      "sha256": "778d87c6cd1c2aa227600fb172af128d65ebe002b2bace0af6c0b1dc3815a0f8"
+    },
+    {
+      "artifactKey": "nist-sp800-53-rev5-privacy-profile",
+      "role": "input",
+      "fileName": "privacy-profile.json",
+      "remotePath": "nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_PRIVACY-baseline_profile-min.json",
+      "sizeBytes": 3145,
+      "sha256": "dc834de94de407dad6a281edffc466125281459d37525a54e3a853258b5e08d7"
+    },
+    {
+      "artifactKey": "nist-sp800-53-rev5-privacy-resolved",
+      "role": "expected",
+      "fileName": "privacy-resolved.json",
+      "remotePath": "nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_PRIVACY-baseline-resolved-profile_catalog-min.json",
+      "sizeBytes": 812060,
+      "sha256": "cbb608058a4537a3dae9495172ba1b01b4227bf17e46afcd20d8aa7b4a60e57f"
+    }
+  ]
+}
