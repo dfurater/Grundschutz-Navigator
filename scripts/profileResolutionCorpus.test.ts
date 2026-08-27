@@ -27,9 +27,10 @@ import { projectCatalogLineage } from '../src/domain/catalogLineage.mjs';
 import { CATALOG_LINEAGES } from '../src/domain/sourceRegistry.mjs';
 import {
   canonicalJson,
+  BSI_PROFILE_RESOLUTION_DIFFERENCES,
   firstDivergence,
   nodesAtDivergence,
-  reconcileBsiInternalLinks,
+  reconcileBsiKnownDifferences,
   stripVolatileFields,
 } from './profileResolutionCorpusOracle';
 
@@ -101,7 +102,7 @@ describe('Korpus-Cache', () => {
 
 describe('verpflichtende Auflösung aller drei BSI-Profile', () => {
   for (const lineage of CATALOG_LINEAGES) {
-    it(`löst ${lineage.profileArtifactKey} deterministisch auf und vergleicht gegen den BSI-Katalog`, () => {
+    it(`löst ${lineage.profileArtifactKey} deterministisch auf und vergleicht gegen den BSI-Katalog`, async () => {
       requireCorpus();
 
       // Kanten über die registrierte Lineage-Projektion: Der Import-Fragment-href
@@ -159,8 +160,8 @@ describe('verpflichtende Auflösung aller drei BSI-Profile', () => {
         return resolveProfile({ plan, edgesByArtifactKey, profileViews });
       };
 
-      const firstRun = buildOutcome();
-      const secondRun = buildOutcome();
+      const firstRun = await buildOutcome();
+      const secondRun = await buildOutcome();
 
       expect(firstRun.ok, firstRun.ok ? '' : `Auflösung scheiterte: ${JSON.stringify(!firstRun.ok ? firstRun.diagnostic : null)}`).toBe(true);
       expect(secondRun.ok).toBe(true);
@@ -200,15 +201,19 @@ describe('verpflichtende Auflösung aller drei BSI-Profile', () => {
       const expectedCatalog = documentsByArtifactKey.get(`catalog-${lineage.catalogKey}`);
       expect(expectedCatalog, `BSI-Katalog für ${lineage.catalogKey} fehlt im Korpus`).toBeDefined();
 
-      // Korpus-Politik (siehe Oracle-Kopf): die BSI-Werkzeugbeschneidung
-      // interner Links wird gegen das erwartete Dokument rekonstruiert und
-      // laut mitgezählt.
-      const { cleaned, removed } = reconcileBsiInternalLinks(
+      // Korpus-Politik (siehe Oracle-Kopf): ausschließlich die namentlich
+      // registrierten, erwartungsunabhängigen Differenzen werden angewandt.
+      const { cleaned, applied, missing } = reconcileBsiKnownDifferences(
+        lineage.catalogKey,
         strippedActual,
-        stripVolatileFields(expectedCatalog),
       );
-      if (removed.length > 0) {
-        console.error(`Korpus ${lineage.catalogKey}: ${removed.length} interne Links gemäß BSI-Werkzeugpolitik rekonstruiert — ${removed.join(', ')}`);
+      const registeredCount = BSI_PROFILE_RESOLUTION_DIFFERENCES.filter(
+        (difference) => difference.corpusKey === lineage.catalogKey,
+      ).length;
+      expect(missing, `Registrierte BSI-Differenz fehlt für ${lineage.catalogKey}`).toEqual([]);
+      expect(applied).toHaveLength(registeredCount);
+      if (applied.length > 0) {
+        console.error(`Korpus ${lineage.catalogKey}: ${applied.length} fest registrierte BSI-Differenzen angewandt — ${applied.join(', ')}`);
       }
 
       const actualCanonical = canonicalJson(cleaned);

@@ -185,6 +185,29 @@ describe('as-is-Struktur', () => {
     expect(body['controls']).toEqual([]);
   });
 
+  it('hält hochgelevelte Controls an der Quellposition ihres Ahnen', () => {
+    const body = buildAsIsGroups(
+      {
+        controls: [
+          control('direct-before'),
+          {
+            ...control('excluded-parent'),
+            controls: [control('promoted-child')],
+          },
+          control('direct-after'),
+        ],
+      },
+      new Set(['direct-before', 'promoted-child', 'direct-after']),
+    );
+
+    const controls = body['controls'] as Record<string, unknown>[];
+    expect(controls.map((candidate) => candidate['id'])).toEqual([
+      'direct-before',
+      'promoted-child',
+      'direct-after',
+    ]);
+  });
+
   it('führt beim Kopieren inkludierter Controls keine Getter aus', () => {
     const selected = control('ac-1');
     Object.defineProperty(selected, 'title', {

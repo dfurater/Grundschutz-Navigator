@@ -169,7 +169,7 @@ export function buildFlatControls(combined: CombinedControls): JsonObject {
  * Filtert einen inkludierten Control-Knoten auf seinen inkludierten
  * Nachfahrenbaum; nicht inkludierte Zwischenebenen lösen sich dabei ebenso
  * auf wie an der Gruppenoberkante — ihre inkludierten Nachfahren werden
- * unverhüllt hinter die direkten Treffer gereiht.
+ * unverhüllt an der Quellposition der Zwischenebene eingereiht.
  */
 function filterNestedIncluded(
   control: JsonObject,
@@ -179,8 +179,7 @@ function filterNestedIncluded(
   const childPath = new Set(path);
   childPath.add(control);
   const copy = copyOwnDataMembers(control);
-  const kept: JsonObject[] = [];
-  const promoted: JsonObject[] = [];
+  const ordered: JsonObject[] = [];
   // Nur setzen, wenn es gefilterte Kinder gibt — keine leeren controls:[]
   // in Blättern injizieren (Gitar-Hinweis zu bce6b68).
   const children = safeArrayMember(control, 'controls') ?? [];
@@ -188,13 +187,13 @@ function filterNestedIncluded(
     if (!isJsonObject(child)) continue;
     if (childPath.has(child)) continue;
     if (includedIds.has(readIdOrEmpty(child))) {
-      kept.push(filterNestedIncluded(child, includedIds, childPath));
+      ordered.push(filterNestedIncluded(child, includedIds, childPath));
     } else {
-      promoted.push(...promotedControls(child, includedIds, childPath));
+      ordered.push(...promotedControls(child, includedIds, childPath));
     }
   }
   delete copy['controls'];
-  if (kept.length + promoted.length > 0) copy['controls'] = [...kept, ...promoted];
+  if (ordered.length > 0) copy['controls'] = ordered;
   return copy;
 }
 
@@ -216,42 +215,19 @@ function promotedControls(
   const childPath = new Set(path);
   childPath.add(control);
   const kept: JsonObject[] = [];
-  const excludedBranches: JsonObject[] = [];
-  collectIncludedAndExcludedChildren(control, includedIds, childPath, kept, excludedBranches);
-  for (const branch of excludedBranches) {
-    kept.push(...promotedControls(branch, includedIds, childPath));
+  const children = safeArrayMember(control, 'controls');
+  if (children === undefined) return kept;
+  for (const child of ownArrayDataElements(children)) {
+    if (!isJsonObject(child)) continue;
+    if (childPath.has(child)) continue;
+    if (includedIds.has(readIdOrEmpty(child))) {
+      kept.push(filterNestedIncluded(child, includedIds, childPath));
+    } else {
+      kept.push(...promotedControls(child, includedIds, childPath));
+    }
   }
   return kept;
 }
-
-/** Sortiert die Kinder eines Zweigs in direkte Treffer und Ausschluss-Zweige. */
-function collectIncludedAndExcludedChildren(
-  control: JsonObject,
-  includedIds: ReadonlySet<string>,
-  path: ReadonlySet<object>,
-  kept: JsonObject[],
-  excludedBranches: JsonObject[],
-): void {
-  const children = safeArrayMember(control, 'controls');
-  if (children === undefined) return;
-  for (const child of ownArrayDataElements(children)) {
-    if (!isJsonObject(child)) continue;
-    if (path.has(child)) continue;
-    if (includedIds.has(readIdOrEmpty(child))) {
-      kept.push(filterNestedIncluded(child, includedIds, path));
-    } else {
-      excludedBranches.push(child);
-    }
-  }
-}
-
-
-/**
- * Reproduziert die Quellhierarchie für as-is: Gruppen erscheinen, solange
- * sie eine inkludierte Control halten (Non-Control-Kinder intakt);
- * inkludierte Controls unter nicht inkludierten Parents werden rekursiv
- * hochgelevelt.
- */
 /** Misst die maximale Schachtelungstiefe (groups + controls) iterativ. */
 function pushHierarchyChildren(
   node: JsonObject,
@@ -282,6 +258,12 @@ function measureGroupsDepth(containerNode: JsonObject): number {
   return maxDepth;
 }
 
+/**
+ * Reproduziert die Quellhierarchie für as-is: Gruppen erscheinen, solange
+ * sie eine inkludierte Control halten (Non-Control-Kinder intakt);
+ * inkludierte Controls unter nicht inkludierten Parents werden an deren
+ * Quellposition rekursiv hochgelevelt.
+ */
 export function buildAsIsGroups(
   containerNode: JsonObject,
   includedIds: ReadonlySet<string>,
@@ -295,26 +277,22 @@ export function buildAsIsGroups(
   return filterContainerForAsIs(containerNode, includedIds, new Set<object>());
 }
 
-/**
- * Filtert einen Container rekursiv für die as-is-Ausgabe. Die Besuchsmenge
- * schützt gegen Zyklen; der Stack trägt die Tiefenreihenfolge.
- */
 /** Direkte Controls eines Containers einreihen (inkludierte + Up-Level). */
 function collectDirectControls(
   containerNode: JsonObject,
   includedIds: ReadonlySet<string>,
   controls: JsonObject[],
 ): void {
-  if (safeArrayMember(containerNode, 'controls') === undefined) return;
-  const kept: JsonObject[] = [];
-  const excludedBranches: JsonObject[] = [];
+  const children = safeArrayMember(containerNode, 'controls');
+  if (children === undefined) return;
   const rootPath = new Set<object>();
-  collectIncludedAndExcludedChildren(containerNode, includedIds, rootPath, kept, excludedBranches);
-  // Phase 1 vor Phase 2 (Orakelordnung am BSI-Korpus: KONF.2.7 steht vor
-  // dem hochgelevelten KONF.2.4.2).
-  controls.push(...kept);
-  for (const branch of excludedBranches) {
-    controls.push(...promotedControls(branch, includedIds, rootPath));
+  for (const child of ownArrayDataElements(children)) {
+    if (!isJsonObject(child)) continue;
+    if (includedIds.has(readIdOrEmpty(child))) {
+      controls.push(filterNestedIncluded(child, includedIds, rootPath));
+    } else {
+      controls.push(...promotedControls(child, includedIds, rootPath));
+    }
   }
 }
 
@@ -700,13 +678,6 @@ function orderedInsertIds(
   return [...declared, ...rest];
 }
 
-/**
- * Baut das custom-Strukturbild: Gruppen werden mit ihren eigenen
- * insert-controls zusammengesetzt (eingefügte Controls tragen
- * Positions-Labels `<Gruppen-ID>.<n>`), die Anweisungen der Custom-Ebene
- * füllen die Controls auf Catalog-Ebene. Nicht getroffene Selektionen
- * tragen nichts bei und sind kein Fehler.
- */
 /** Misst die maximale Schachtelungstiefe von Custom-Gruppen iterativ. */
 function nestedCustomGroups(group: unknown): readonly JsonObject[] {
   if (!isJsonObject(group)) return [];
@@ -976,6 +947,13 @@ function collectRootControls(
   return { ok: true, controls: state.controls };
 }
 
+/**
+ * Baut das custom-Strukturbild: Gruppen werden mit ihren eigenen
+ * insert-controls zusammengesetzt (eingefügte Controls tragen
+ * Positions-Labels `<Gruppen-ID>.<n>`), die Anweisungen der Custom-Ebene
+ * füllen die Controls auf Catalog-Ebene. Nicht getroffene Selektionen
+ * tragen nichts bei und sind kein Fehler.
+ */
 export function buildCustomGroups(
   request: CustomAssemblyRequest,
   combined: CombinedControls,

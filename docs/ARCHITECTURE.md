@@ -229,16 +229,21 @@ public/data/  (Dateimenge aus dem Quellregister abgeleitet)
         │
         ▼
 Profile Resolution (deterministisch, GSPP-291 Commit B)
-• Plan: Importgraph (Zyklus/Versions/Root-Prüfungen) → Ordnung (Preorder)
+• Plan: Importgraph (Zyklus/Versions/Root-Prüfungen) → DAG-sichere Postorder
 • Selektion je Import, danach Merge (combine use-first/keep, flat/as-is/custom
   mit insert-controls/order) und Modify (set-parameter, alters) in der
   Reihenfolge Import → Merge → Modify
 • Ergebnis ausschließlich über `createOscalDerivedGraph()` (kontrollierter
   Builder, kein Fremdobjekt, __proto__ als Data-Property, opakes
   DerivedJsonTree-Handle, Vertrauensklasse class-2-local-user)
-• Orakel zweigeteilt: BSI (3× resolved_catalog, volatile Felder + interne
-  Links rekonziliert) und NIST (4× Baselines v1.5.0, prose/back-matter und
-  as-is-Reihenfolge normalisiert) plus synthetische Fixtures mit
+• jedes Zwischen- und Endergebnis durchläuft fail-closed dieselbe Objekt-,
+  Root-, Versions- und Schema-Pipeline wie lokale Klasse-2-Dokumente
+• Back-matter: referenzierte Quellressourcen in Import-/Quellreihenfolge,
+  danach unverbrauchte Profilressourcen und übrige Profilmitglieder
+• Orakel zweigeteilt: BSI (3× resolved_catalog, feste Registry aus 21 Link-
+  und 2 Positionsabweichungen) und NIST (4× Baselines v1.5.0, vollständiges
+  Back-matter und as-is-Reihenfolge; nur belegte XML-Whitespace-Artefakte
+  symmetrisch normalisiert) plus synthetische Fixtures mit
   Draft-/XSpec-Quellenangaben
         │
         ▼
@@ -284,8 +289,10 @@ Nach der Größenkontrolle läuft im Worker die feste Reihenfolge aus dem
 [OSCAL-Validierungsvertrag](./OSCAL_VALIDATION.md): Bytelimit, fataler
 UTF-8-Decoder, Duplicate-Member-Scanner, `JSON.parse` — und ab dort die
 gemeinsame objektorientierte Prüfkette
-([`oscalObjectPipeline.ts`](../src/domain/oscalObjectPipeline.ts)): iterative
-Ressourcenlimits und Strukturinvariante in einem Durchlauf,
+([`oscalObjectPipeline.ts`](../src/domain/oscalObjectPipeline.ts)): zuerst ein
+rein identitätsbasierter Herkunfts- und Serialisierungsbudget-Durchlauf vor
+jeder Wertreflexion, danach der terminierende Struktur-, Tiefen-, Knoten- und
+Base64-Durchlauf mit globaler Identitätsmenge,
 `dispatchOscalDocument()` und anschließend `validateAgainstPinnedSchema()`
 als Stufe 3. Der Byte-Eintrittspunkt `processClass2OscalBytes()` ruft
 ausschließlich diese Einheit auf; der Ableitungsweg der Profile Resolution

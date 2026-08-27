@@ -36,7 +36,7 @@ describe('Deterministischer Importgraph der Profile Resolution', () => {
 
     expect(plan).toMatchObject({
       ok: true,
-      order: ['profile-a', 'catalog-c'],
+      order: ['catalog-c', 'profile-a'],
       oscalVersion: '1.1.3',
     });
   });
@@ -160,8 +160,33 @@ describe('Deterministischer Importgraph der Profile Resolution', () => {
 
     expect(plan).toMatchObject({
       ok: true,
-      order: ['profile-top', 'profile-mid', 'catalog-base'],
+      order: ['catalog-base', 'profile-mid', 'profile-top'],
       oscalVersion: '1.1.3',
+    });
+  });
+
+  it('ordnet einen Diamantgraphen in Postorder — jedes Profilziel vor allen Importeuren', () => {
+    const plan = buildProfileResolutionPlan({
+      topProfileArtifactKey: 'profile-top',
+      documents: new Map<string, unknown>([
+        ['profile-top', profileWithImports('1.1.3', [{ href: '#sub' }, { href: '#mid' }])],
+        ['profile-mid', profileWithImports('1.1.3', [{ href: '#sub' }])],
+        ['profile-sub', profileWithImports('1.1.3', [{ href: '#catalog' }])],
+        ['catalog-a', catalog('1.1.3')],
+      ]),
+      edgesByArtifactKey: new Map([
+        ['profile-top', [
+          { href: '#sub', artifactKey: 'profile-sub' },
+          { href: '#mid', artifactKey: 'profile-mid' },
+        ]],
+        ['profile-mid', [{ href: '#sub', artifactKey: 'profile-sub' }]],
+        ['profile-sub', [{ href: '#catalog', artifactKey: 'catalog-a' }]],
+      ]),
+    });
+
+    expect(plan).toMatchObject({
+      ok: true,
+      order: ['catalog-a', 'profile-sub', 'profile-mid', 'profile-top'],
     });
   });
 
@@ -216,7 +241,8 @@ describe('Deterministischer Importgraph der Profile Resolution', () => {
     expect(plan).toMatchObject({ ok: true });
     if (plan.ok) {
       expect(plan.order).toHaveLength(depth + 1);
-      expect(plan.order[0]).toBe('profile-0');
+      expect(plan.order[0]).toBe(`profile-${depth}`);
+      expect(plan.order.at(-1)).toBe('profile-0');
     }
   });
 });

@@ -68,6 +68,7 @@ import {
   type DerivedJsonTree,
   type DerivedObjectHandle,
 } from './oscalDerivedGraph';
+import { processClass2OscalValue } from './oscalObjectPipeline';
 import { CLASS_2_IMPORT_LIMITS } from './oscalImportContract';
 import {
   deriveUuidV5,
@@ -86,6 +87,8 @@ export const PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES = Object.freeze({
   TOP_PROFILE_UUID_MISSING: 'PROFILE_RESOLUTION_TOP_PROFILE_UUID_MISSING',
   /** Das steuernde Profil wurde nicht als Profilprojektion bereitgestellt. */
   TOP_PROFILE_UNRESOLVED: 'PROFILE_RESOLUTION_TOP_PROFILE_UNRESOLVED',
+  /** Ein importiertes Profilziel war bei der Auswertung noch nicht aufgelöst. */
+  IMPORT_PROFILE_UNRESOLVED: 'PROFILE_RESOLUTION_IMPORT_PROFILE_UNRESOLVED',
 } as const);
 
 /**
@@ -433,6 +436,10 @@ function selectedControlNodes(
   return controls;
 }
 
+function isProfileRoot(document: unknown): boolean {
+  return document !== null && typeof document === 'object' && Object.hasOwn(document, 'profile');
+}
+
 /** Phase 1 — Selektion je Import gegen sein Quelldokument. */
 function collectPhaseOne(
   input: SingleProfileInput,
@@ -453,7 +460,15 @@ function collectPhaseOne(
       return failure(reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.IMPORT_UNMAPPED, profileImport.path));
     }
 
-    const sourceDocument = input.resolvedByArtifact.get(edge.artifactKey) ?? input.plan.documents.get(edge.artifactKey);
+    const resolvedSource = input.resolvedByArtifact.get(edge.artifactKey);
+    const plannedSource = input.plan.documents.get(edge.artifactKey);
+    if (resolvedSource === undefined && isProfileRoot(plannedSource)) {
+      return failure(reject(
+        PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.IMPORT_PROFILE_UNRESOLVED,
+        profileImport.path,
+      ));
+    }
+    const sourceDocument = resolvedSource ?? plannedSource;
     if (sourceDocument === undefined) {
       return failure(reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.IMPORT_UNMAPPED, profileImport.path));
     }
@@ -558,28 +573,14 @@ function collectModifyTransform(document: ProfileDocument): ControlTransform {
 }
 
 /**
- * Emission — ausschließlich über den kontrollierten Builder. Erzeugt das
- * Dokument mit Root-Key `catalog`.
- *
- * Metadaten-Erbvertrag: Die Metadaten des Ergebnisses stammen vollständig
- * aus dem steuernden Profil (Titel, Version, document-ids, roles, parties,
- * remarks und unbekannte Mitglieder bleiben gemäß ADR-2 erhalten). Nur die
- * werkzeugspezifischen Felder werden ersetzt — eigene UUID (UUIDv5),
- * Stempel-`last-modified`, gebundene `oscal-version` — und die beiden
- * Provenienzträger werden angehängt (`resolution-tool`-prop,
- * `source-profile`-link). Die BSI-resolved_catalogs erben dieselben
- * Metadaten ebenso, sodass der Orakelvergleich nur die dokumentierten
- * Volatile unterscheidet.
- */
-/**
  * Baut das Metadaten-Handle: ererbte Mitglieder (ohne werkzeugspezifische
- * Felder), danach die neuen Werte und die beiden Trägerlisten — unsere
- * Einträge stehen hinter den ererbten.
+ * Felder), danach Stempel, gebundene OSCAL-Version und die beiden
+ * Provenienzträger. Die Dokument-UUID gehört schema-gemäß an `catalog.uuid`,
+ * nicht in die Metadaten.
  */
 function emitMetadataHandle(
   graph: ReturnType<typeof createOscalDerivedGraph>,
   sourceMetadata: JsonObject,
-  derivedUuid: string,
   oscalVersion: string,
   topUuid: string,
 ): DerivedObjectHandle {
@@ -591,7 +592,6 @@ function emitMetadataHandle(
     'links',
   ]);
   const metadataHandle = emitValue(graph, inheritedMetadata, 0) as DerivedObjectHandle;
-  graph.setObjectMember(metadataHandle, 'uuid', derivedUuid);
   graph.setObjectMember(metadataHandle, 'last-modified', PROFILE_RESOLUTION_TIMESTAMP);
   graph.setObjectMember(metadataHandle, 'oscal-version', oscalVersion);
 
@@ -650,6 +650,85 @@ function filteredBackMatter(
   return filtered;
 }
 
+const RESOURCE_FRAGMENT_PATTERN = /#([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/gi;
+
+/** Sammelt UUID-Fragmente aus allen Stringwerten ohne Accessors auszuführen. */
+function collectReferencedResourceUuids(values: readonly unknown[]): Set<string> {
+  const referenced = new Set<string>();
+  const visited = new Set<object>();
+  const stack = [...values];
+
+  while (stack.length > 0) {
+    const value = stack.pop();
+    if (typeof value === 'string') {
+      for (const match of value.matchAll(RESOURCE_FRAGMENT_PATTERN)) {
+        referenced.add(match[1]!.toLowerCase());
+      }
+      continue;
+    }
+    if (value === null || typeof value !== 'object' || visited.has(value)) continue;
+    visited.add(value);
+    for (const key of Reflect.ownKeys(value)) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (descriptor !== undefined && 'value' in descriptor) stack.push(descriptor.value);
+    }
+  }
+  return referenced;
+}
+
+/** Übernimmt referenzierte Quellressourcen in stabiler Import-/Quellordnung. */
+function referencedSourceResources(
+  records: readonly SelectionRecord[],
+  referencedUuids: ReadonlySet<string>,
+): JsonObject[] {
+  const resources: JsonObject[] = [];
+  for (const record of records) {
+    const sourceBody = readRootBody(record.sourceDocument);
+    const backMatter = ownDataValue(sourceBody, 'back-matter');
+    if (!isJsonObject(backMatter)) continue;
+    const sourceResources = ownDataValue(backMatter, 'resources');
+    if (!Array.isArray(sourceResources)) continue;
+    for (const resource of ownArrayDataElements(sourceResources)) {
+      if (!isJsonObject(resource)) continue;
+      const uuid = ownDataValue(resource, 'uuid');
+      if (typeof uuid === 'string' && referencedUuids.has(uuid.toLowerCase())) {
+        resources.push(resource);
+      }
+    }
+  }
+  return resources;
+}
+
+/** Verschmilzt referenzierte Quellressourcen mit unverbrauchtem Profil-Back-matter. */
+function mergedBackMatter(
+  sourceBody: JsonObject,
+  records: readonly SelectionRecord[],
+  consumedResourceUuids: ReadonlySet<string>,
+  referencedUuids: ReadonlySet<string>,
+): JsonObject | null {
+  const profileBackMatter = filteredBackMatter(sourceBody, consumedResourceUuids);
+  const profileResources = isJsonObject(profileBackMatter)
+    ? ownDataValue(profileBackMatter, 'resources')
+    : undefined;
+  const resources = [
+    ...referencedSourceResources(records, referencedUuids),
+    ...(Array.isArray(profileResources)
+      ? ownArrayDataElements(profileResources).filter(isJsonObject)
+      : []),
+  ];
+  const merged = profileBackMatter === null
+    ? {}
+    : copyOwnDataMembersSkipping(profileBackMatter, ['resources']);
+  if (resources.length > 0) merged['resources'] = resources;
+  return Object.keys(merged).length > 0 ? merged : null;
+}
+
+/**
+ * Emittiert das Ergebnis ausschließlich über den kontrollierten Builder.
+ * Metadaten und unverbrauchtes Profil-Back-matter bleiben erhalten;
+ * referenzierte Quellressourcen werden davor in stabiler Import- und
+ * Quellreihenfolge ergänzt. Die Dokument-UUID steht an `catalog.uuid`.
+ */
 function emitResolvedCatalog(
   plan: Extract<ProfileResolutionPlan, { ok: true }>,
   document: ProfileDocument,
@@ -657,6 +736,7 @@ function emitResolvedCatalog(
   derivedUuid: string,
   groups: readonly JsonObject[],
   controls: readonly JsonObject[],
+  records: readonly SelectionRecord[],
   consumedResourceUuids: ReadonlySet<string>,
 ): DerivedJsonTree {
   const graph = createOscalDerivedGraph();
@@ -667,7 +747,6 @@ function emitResolvedCatalog(
   const metadataHandle = emitMetadataHandle(
     graph,
     sourceMetadata,
-    derivedUuid,
     plan.oscalVersion,
     topUuid,
   );
@@ -681,13 +760,18 @@ function emitResolvedCatalog(
   if (controls.length > 0) {
     graph.setObjectMember(bodyHandle, 'controls', emitValue(graph, controls, 0));
   }
-  // Das Back-matter des steuernden Profils wird fortgeführt, MINUS die
-  // Ressourcen, deren rlink als Importbindung verbraucht wurde — die BSI-
-  // resolved_catalogs streichen genau diese und behalten die externen
-  // Referenzen (Orakelbefund gspp: drei Import-Ressourcen fallen,
-  // die BSI-Website-Referenz bleibt).
-  const backMatter = filteredBackMatter(sourceBody, consumedResourceUuids);
-  if (backMatter !== null && Object.keys(backMatter).length > 0) {
+  const referencedUuids = collectReferencedResourceUuids([
+    sourceMetadata,
+    groups,
+    controls,
+  ]);
+  const backMatter = mergedBackMatter(
+    sourceBody,
+    records,
+    consumedResourceUuids,
+    referencedUuids,
+  );
+  if (backMatter !== null) {
     graph.setObjectMember(bodyHandle, 'back-matter', emitValue(graph, backMatter, 0));
   }
 
@@ -695,24 +779,6 @@ function emitResolvedCatalog(
   graph.setObjectMember(rootHandle, 'catalog', bodyHandle);
   return graph.finishRoot(rootHandle);
 }
-
-/**
- * Sammelt alle platzierten Control- und Gruppen-IDs des zusammengebauten
- * Baums (iterativ über den frischen Engine-Baum).
- */
-
-/**
- * Entfernt aus dem links-Mitglied eines Knotens die Fragment-Links auf
- * nicht platzierte Ziele. Rückgabe: true, wenn das Mitglied verändert oder
- * entfernt wurde.
- */
-
-/**
- * Schneidet interne Fragment-Links (`#<id>`) ab, deren Ziel nicht Teil des
- * zusammengebauten Dokuments ist: Der resolvierte Katalog ist
- * selbst-contained und trägt keine ins Leere zeigende Verweise (Orakel-
- * befund am BSI-Korpus: ASST.5.6 → #SENS.8.6 entfällt mit dem Ziel).
- */
 
 function resolveSingleProfile(input: SingleProfileInput): { readonly ok: true; readonly tree: DerivedJsonTree } | { readonly ok: false; readonly diagnostic: OscalDiagnostic } {
   const phaseOne = collectPhaseOne(input);
@@ -742,22 +808,31 @@ function resolveSingleProfile(input: SingleProfileInput): { readonly ok: true; r
 
   return {
     ok: true,
-    tree: emitResolvedCatalog(input.plan, input.document, topUuid, derivedUuid, groups, controls, phaseOne.value.consumedResourceUuids),
+    tree: emitResolvedCatalog(
+      input.plan,
+      input.document,
+      topUuid,
+      derivedUuid,
+      groups,
+      controls,
+      phaseOne.value.records,
+      phaseOne.value.consumedResourceUuids,
+    ),
   };
 }
 
 /**
- * Löst den gesamten Plan nachgelagert auf: Kinder (Kataloge wie importierte
- * Profile) stehen nach Umkehrung der Preorder vor ihren Eltern, sodass ein
- * importierendes Profil stets auf fertige Quellen zugreift.
+ * Löst den gesamten Postorder-Plan vorwärts auf: Jedes importierte Profil
+ * steht vor allen Importeuren und ist deshalb beim Zugriff bereits fertig.
  */
-export function resolveProfile(request: ProfileResolutionRequest): ProfileResolutionOutcome {
+export async function resolveProfile(
+  request: ProfileResolutionRequest,
+): Promise<ProfileResolutionOutcome> {
   const plan = request.plan;
   if (!plan.ok) return { ok: false, diagnostic: plan.diagnostic };
 
   const resolvedByArtifact = new Map<string, unknown>();
-  for (let index = plan.order.length - 1; index >= 0; index -= 1) {
-    const artifactKey = plan.order[index]!;
+  for (const artifactKey of plan.order) {
     const document = request.profileViews.get(artifactKey);
     if (document === undefined) continue;
 
@@ -769,10 +844,14 @@ export function resolveProfile(request: ProfileResolutionRequest): ProfileResolu
       resolvedByArtifact,
     });
     if (!outcome.ok) return failure(outcome);
+    const validated = await processClass2OscalValue(outcome.tree, {
+      trustClass: 'class-2-local-user',
+    });
+    if (!validated.ok) return failure(validated);
     resolvedByArtifact.set(artifactKey, outcome.tree);
   }
 
-  const topLevel = plan.order[0]!;
+  const topLevel = plan.order.at(-1)!;
   if (!resolvedByArtifact.has(topLevel)) {
     return failure(reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.TOP_PROFILE_UNRESOLVED, '/'));
   }

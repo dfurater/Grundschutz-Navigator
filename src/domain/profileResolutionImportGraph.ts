@@ -53,7 +53,7 @@ export interface ProfileResolutionPlanInput {
 export type ProfileResolutionPlan =
   | {
     readonly ok: true;
-    /** Feste Preorder-Reihenfolge: das steuernde Profil zuerst. */
+    /** Feste Postorder-Reihenfolge: jedes Ziel vor seinen Importeuren. */
     readonly order: readonly string[];
     readonly documents: ReadonlyMap<string, unknown>;
     /** Deklarierte Version des obersten Profils — die Graphenversion. */
@@ -127,7 +127,7 @@ function admitDocument(document: unknown, graphVersion: string): OscalDiagnostic
 }
 
 /**
- * Baut den Auflösungsplan: Preorder-Walk über die normalisierten Kanten ab
+ * Baut den Auflösungsplan: Postorder-Walk über die normalisierten Kanten ab
  * dem steuernden Profil mit globaler Besuchsmenge (geteilte Ziele sind
  * zulässig und werden genau einmal geplant) und Zyklenerkennung über den
  * aktiven Pfad. Die Traversierung läuft auf einem expliziten Frame-Stack —
@@ -170,7 +170,6 @@ export function buildProfileResolutionPlan(
 
   activePath.add(topProfileArtifactKey);
   planned.add(topProfileArtifactKey);
-  order.push(topProfileArtifactKey);
   stack.push({
     artifactKey: topProfileArtifactKey,
     edges: edgesByArtifactKey.get(topProfileArtifactKey) ?? emptyEdges,
@@ -181,6 +180,7 @@ export function buildProfileResolutionPlan(
     const frame = stack.at(-1)!;
     if (frame.index >= frame.edges.length) {
       activePath.delete(frame.artifactKey);
+      order.push(frame.artifactKey);
       stack.pop();
       continue;
     }
@@ -197,13 +197,8 @@ export function buildProfileResolutionPlan(
 
     activePath.add(edge.artifactKey);
     planned.add(edge.artifactKey);
-    order.push(edge.artifactKey);
 
     const childEdges = edgesByArtifactKey.get(edge.artifactKey) ?? emptyEdges;
-    if (childEdges.length === 0) {
-      activePath.delete(edge.artifactKey);
-      continue;
-    }
     stack.push({ artifactKey: edge.artifactKey, edges: childEdges, index: 0 });
   }
 

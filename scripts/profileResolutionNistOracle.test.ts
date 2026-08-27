@@ -28,7 +28,6 @@ import { parseProfileDocument } from '../src/adapters/oscalProfileDocument';
 import {
   canonicalJson,
   firstDivergence,
-  normalizeAsIsControlOrder,
   normalizeProseLeadingSpace,
   stripVolatileFields,
 } from './profileResolutionCorpusOracle';
@@ -55,7 +54,24 @@ const manifest = JSON.parse(
 ) as OracleManifest;
 
 const documentsByArtifactKey = new Map<string, unknown>();
-const baselineKeys: Array<{ input: string; expected: string; label: string }> = [];
+const NIST_BASELINE_INTEGRITY = Object.freeze({
+  LOW: { resourceCount: 135, unresolvedFragments: 125 },
+  MODERATE: { resourceCount: 147, unresolvedFragments: 90 },
+  HIGH: { resourceCount: 147, unresolvedFragments: 81 },
+  PRIVACY: { resourceCount: 82, unresolvedFragments: 117 },
+});
+
+type BaselineLabel = keyof typeof NIST_BASELINE_INTEGRITY;
+
+const baselineKeys: Array<{
+  input: string;
+  expected: string;
+  label: BaselineLabel;
+}> = [];
+
+function isBaselineLabel(value: string): value is BaselineLabel {
+  return Object.hasOwn(NIST_BASELINE_INTEGRITY, value);
+}
 
 function verifyFixtureIntegrity(
   file: OracleManifestFile,
@@ -81,12 +97,75 @@ for (const file of manifest.files) {
   documentsByArtifactKey.set(file.artifactKey, JSON.parse(bytes.toString('utf8')));
   if (file.role === 'input') {
     const baseline = file.artifactKey.replace('nist-sp800-53-rev5-', '').replace('-profile', '');
+    const label = baseline.toUpperCase();
+    if (!isBaselineLabel(label)) throw new Error(`Unbekannte NIST-Baseline: ${label}`);
     baselineKeys.push({
       input: file.artifactKey,
       expected: `nist-sp800-53-rev5-${baseline}-resolved`,
-      label: baseline.toUpperCase(),
+      label,
     });
   }
+}
+
+function catalogBody(document: unknown): Record<string, unknown> {
+  if (document === null || typeof document !== 'object' || Array.isArray(document)) {
+    throw new Error('NIST-resolved-Baseline erwartet ein Dokumentobjekt');
+  }
+  const catalog = (document as Record<string, unknown>)['catalog'];
+  if (catalog === null || typeof catalog !== 'object' || Array.isArray(catalog)) {
+    throw new Error('NIST-resolved-Baseline erwartet catalog');
+  }
+  return catalog as Record<string, unknown>;
+}
+
+function resourceUuids(document: unknown): Set<string> {
+  const backMatter = catalogBody(document)['back-matter'] as Record<string, unknown> | undefined;
+  const resources = backMatter?.['resources'];
+  if (!Array.isArray(resources)) return new Set();
+  return new Set(
+    resources.flatMap((resource) => {
+      if (resource === null || typeof resource !== 'object' || Array.isArray(resource)) return [];
+      const uuid = (resource as Record<string, unknown>)['uuid'];
+      return typeof uuid === 'string' ? [uuid.toLowerCase()] : [];
+    }),
+  );
+}
+
+function unresolvedFragmentCount(document: unknown): number {
+  const identifiers = new Set<string>();
+  const body = catalogBody(document);
+  const identifierStack: unknown[] = [body];
+  while (identifierStack.length > 0) {
+    const value = identifierStack.pop();
+    if (Array.isArray(value)) {
+      identifierStack.push(...value);
+    } else if (value !== null && typeof value === 'object') {
+      for (const [key, member] of Object.entries(value)) {
+        if ((key === 'id' || key === 'uuid') && typeof member === 'string') {
+          identifiers.add(member);
+        }
+        identifierStack.push(member);
+      }
+    }
+  }
+
+  const unresolved = new Set<string>();
+  const stack: unknown[] = [body];
+  while (stack.length > 0) {
+    const value = stack.pop();
+    if (Array.isArray(value)) {
+      stack.push(...value);
+    } else if (value !== null && typeof value === 'object') {
+      for (const [key, member] of Object.entries(value)) {
+        if (key === 'href' && typeof member === 'string' && member.startsWith('#')) {
+          const target = member.slice(1);
+          if (!identifiers.has(target)) unresolved.add(target);
+        }
+        stack.push(member);
+      }
+    }
+  }
+  return unresolved.size;
 }
 
 function importFragmentOf(profileDocument: unknown): string {
@@ -108,7 +187,7 @@ describe('NIST-Orakelvergleich der vier Baselines', () => {
     // dem jetzt vendierten Quellkatalog empirisch gegen das NIST-Orakel
     // entschieden; verbleibende Werkzeugdifferenzen wären als bekannte
     // Differenzen zu registrieren.
-    it(`löst ${baseline.label} deterministisch auf und stimmt mit dem NIST-resolved_catalog überein`, () => {
+    it(`löst ${baseline.label} deterministisch auf und stimmt mit dem NIST-resolved_catalog überein`, async () => {
       const profileDocument = documentsByArtifactKey.get(baseline.input)!;
       const fragment = importFragmentOf(profileDocument);
 
@@ -139,8 +218,8 @@ describe('NIST-Orakelvergleich der vier Baselines', () => {
         return resolveProfile({ plan, edgesByArtifactKey, profileViews });
       };
 
-      const firstRun = buildOutcome();
-      const secondRun = buildOutcome();
+      const firstRun = await buildOutcome();
+      const secondRun = await buildOutcome();
       expect(firstRun.ok, firstRun.ok ? '' : JSON.stringify(!firstRun.ok ? firstRun.diagnostic : null)).toBe(true);
       expect(secondRun.ok).toBe(true);
       if (!firstRun.ok || !secondRun.ok) return;
@@ -152,28 +231,20 @@ describe('NIST-Orakelvergleich der vier Baselines', () => {
       expect(Object.keys(tree)).toEqual(['catalog']);
       expect(firstRun.output.oscalVersion).toBe('1.2.2');
 
+      const integrity = NIST_BASELINE_INTEGRITY[baseline.label];
+      expect(resourceUuids(tree).size).toBe(integrity.resourceCount);
+      expect(unresolvedFragmentCount(tree)).toBe(
+        integrity.unresolvedFragments,
+      );
+
       // NIST-Werkzeug-Artefakte symmetrisch normalisiert.
       // - Prose-Leerzeichen (XML-Rest, siehe Oracle-Funktion)
-      // - Back-matter: NIST verschmilzt das Back-matter des QUELLKATALOGS
-      //   (140 externe Referenzen), wir führen das des Profils fort.
-      //   Back-matter-Provenienz gilt als dokumentiert volatil für diesen
-      //   Vergleich; Kernsemantik (groups/controls/params) bleibt geprüft.
-      // - As-is Control-Reihenfolge: BSI-Werkzeug stellt direkte Treffer
-      //   vor hochgelevelte (KONF.2.7 vor KONF.2.4.2), NIST interleaved
-      //   (au-3.3 vor au-11, Quellposition). Kein Regelwerk erfüllt beide;
-      //   für NIST wird die Reihenfolge innerhalb as-is-Gruppen sortiert
-      //   verglichen.
-      const stripForNist = (doc: unknown) => {
-        const stripped = stripVolatileFields(doc) as Record<string, unknown>;
-        const catalog = (stripped['catalog'] ?? stripped) as Record<string, unknown>;
-        delete catalog['back-matter'];
-        return stripped;
-      };
-      const actualNormalized = normalizeAsIsControlOrder(
-        normalizeProseLeadingSpace(stripForNist(tree)),
-      );
-      const expectedNormalized = normalizeAsIsControlOrder(
-        normalizeProseLeadingSpace(stripForNist(documentsByArtifactKey.get(baseline.expected))),
+      // Fachliche Struktur, Reihenfolge und Back-matter bleiben vollständig
+      // im Gleichheitsvergleich; nur das benannte Prose-Werkzeugartefakt und
+      // die dokumentierten Volatilen werden symmetrisch normalisiert.
+      const actualNormalized = normalizeProseLeadingSpace(stripVolatileFields(tree));
+      const expectedNormalized = normalizeProseLeadingSpace(
+        stripVolatileFields(documentsByArtifactKey.get(baseline.expected)),
       );
       const actualCanonical = canonicalJson(actualNormalized);
       const expectedCanonical = canonicalJson(expectedNormalized);

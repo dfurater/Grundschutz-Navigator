@@ -8,8 +8,8 @@
 // nicht, unsere Ergebnisse schon; beide Seiten werden symmetrisch
 // herausgerechnet und getrennt geprüft.
 //
-// Volatile Felder (dokumentiert): metadata/uuid und metadata/last-modified
-// sind werkzeugspezifisch; die Dokument-UUID am Körper wird vom erzeugenden
+// Volatile Felder (dokumentiert): metadata/last-modified ist
+// werkzeugspezifisch; die Dokument-UUID am Körper wird vom erzeugenden
 // Werkzeug gemint und ist nicht ableitbar; prop[@name='resolution-tool']
 // und link[@rel='source-profile'] sind unsere Träger. Alles andere zählt.
 // =============================================================================
@@ -47,7 +47,6 @@ function stripCarrierList(
 
 /** Entfernt die volatilen Mitglieder eines Metadatenknotens in-place. */
 function stripMetadataVolatiles(metadata: JsonObjectLike): void {
-  delete metadata['uuid'];
   delete metadata['last-modified'];
   stripCarrierList(metadata, 'props', (entry) => entry['name'] === 'resolution-tool');
   stripCarrierList(metadata, 'links', (entry) => entry['rel'] === 'source-profile');
@@ -130,7 +129,7 @@ export function firstDivergence(actual: unknown, expected: unknown, path = '$'):
 
 /**
  * NIST-Werkzeug-Artefakt (dokumentiert): Der resolved-Output trägt an
- * assemble-berührten String-Werten (prose, param-choice) umgebende
+ * assemble-berührten String-Werten (prose, param-choice, citation/text) umgebende
  * Leerzeichen, die die Quelle nicht hat (XML-Konvertierungsrest, z. B.
  * " {{ insert: param, ac-01_odp.03 }} " vs "{{ insert: param, ac-01_odp.03 }}").
  * Diese Normalisierung entfernt umgebende Leerzeichen aus solchen Strings
@@ -138,17 +137,22 @@ export function firstDivergence(actual: unknown, expected: unknown, path = '$'):
  * (z. B. "\n\n [SP" vs "\n\n[SP") und wird ausschließlich im
  * NIST-Harniss auf BEIDE Seiten angewandt.
  */
-export function normalizeProseLeadingSpace(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(normalizeProseLeadingSpace);
+export function normalizeProseLeadingSpace(value: unknown, parentKey = ''): unknown {
+  if (Array.isArray(value)) {
+    return value.map((child) => normalizeProseLeadingSpace(child, parentKey));
+  }
   if (typeof value === 'string') return normalizeOracleString(value);
   if (!isJsonObject(value)) return value;
   const copy: JsonObjectLike = {};
   for (const key of Object.keys(value)) {
     const child = value[key];
-    if (key === 'prose' && typeof child === 'string') {
+    if (
+      typeof child === 'string' &&
+      (key === 'prose' || (parentKey === 'citation' && key === 'text'))
+    ) {
       copy[key] = normalizeOracleProse(child);
     } else {
-      copy[key] = normalizeProseLeadingSpace(child);
+      copy[key] = normalizeProseLeadingSpace(child, key);
     }
   }
   return copy;
@@ -164,35 +168,6 @@ function normalizeOracleProse(value: string): string {
   if (normalized.includes('\n\n ')) normalized = normalized.replace(/\n\n +/g, '\n\n');
   if (normalized.includes('{{ insert:')) normalized = normalized.trim().replace(/^ +/, '');
   return normalized;
-}
-
-function controlId(value: unknown): string {
-  if (!isJsonObject(value)) return '';
-  const id = value['id'];
-  return typeof id === 'string' ? id : '';
-}
-
-function sortControlsById(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sortControlsById);
-  if (!isJsonObject(value)) return value;
-  const copy: JsonObjectLike = {};
-  for (const key of Object.keys(value)) {
-    const child = value[key];
-    if ((key === 'controls' || key === 'groups') && Array.isArray(child)) {
-      const sorted = [...(child as unknown[])].map(sortControlsById);
-      if (key === 'controls') {
-        sorted.sort((a, b) => byCodeUnit(controlId(a), controlId(b)));
-      }
-      copy[key] = sorted;
-    } else {
-      copy[key] = sortControlsById(child);
-    }
-  }
-  return copy;
-}
-
-export function normalizeAsIsControlOrder(value: unknown): unknown {
-  return sortControlsById(value);
 }
 
 /**
@@ -228,12 +203,12 @@ function nodeAtPathToken(node: unknown, token: string): unknown {
  * Verweise bleiben); das BSI-Werkzeug ENTFERNT dieselbe Konstruktion
  * (#SENS.8.6 in lieferkette, #ASST.2.1 und #DEV.* in wlan). Kein Regel-
  * werk erfüllt beide. Der Resolver folgt dem unabhängigeren NIST-Orakel
- * und ADR-2-Verlustlosigkeit; für den BSI-Vergleich rekonstruiert diese
- * Funktion die Werkzeugbeschneidung transparent gegen die ID-Menge des
- * erwarteten Dokuments und zählt jeden Eingriff laut mit.
+ * und ADR-2-Verlustlosigkeit. Für den BSI-Vergleich beschreibt die feste
+ * Differenzregistry jede Werkzeugbeschneidung und die zwei belegten
+ * Positionsabweichungen vollständig; das erwartete Dokument steuert die
+ * Rekonziliation nicht.
  */
 
-/** Sammelt alle Control- und Gruppen-IDs eines gestripften Dokuments. */
 function documentBody(document: unknown): JsonObjectLike | undefined {
   if (!isJsonObject(document)) return undefined;
   const body = Object.values(document)[0];
@@ -250,21 +225,6 @@ function pushHierarchyChildren(node: JsonObjectLike, stack: JsonObjectLike[]): v
   }
 }
 
-function collectDocumentIds(document: unknown): Set<string> {
-  const ids = new Set<string>();
-  const stack: JsonObjectLike[] = [];
-  const body = documentBody(document);
-  if (body === undefined) return ids;
-  stack.push(body);
-  while (stack.length > 0) {
-    const node = stack.pop()!;
-    const id = node['id'];
-    if (typeof id === 'string') ids.add(id);
-    pushHierarchyChildren(node, stack);
-  }
-  return ids;
-}
-
 function cloneJsonWithoutUndefined(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map((child) => child === undefined ? null : cloneJsonWithoutUndefined(child));
@@ -279,60 +239,127 @@ function cloneJsonWithoutUndefined(value: unknown): unknown {
   return clone;
 }
 
-function reconcileNodeLinks(
+export type BsiCorpusDifference =
+  | {
+    readonly corpusKey: 'lieferkette' | 'wlan';
+    readonly controlId: string;
+    readonly member: 'links';
+    readonly href: string;
+    readonly reason: string;
+  }
+  | {
+    readonly corpusKey: 'lieferkette' | 'wlan';
+    readonly controlId: string;
+    readonly member: 'controls';
+    readonly position: 'end';
+    readonly reason: string;
+  };
+
+const LINK_REASON = 'BSI entfernt internen Fragment-Link; NIST-Orakel bewahrt ihn.';
+const ORDER_REASON = 'BSI stellt hochgeleveltes Control ans Ende; NIST bewahrt die Quellposition des Ahnen.';
+
+/** Vollständiges, festes Differenzregister aus der Owner-Konfliktregel. */
+export const BSI_PROFILE_RESOLUTION_DIFFERENCES: readonly BsiCorpusDifference[] = Object.freeze([
+  { corpusKey: 'lieferkette', controlId: 'DEV.4.3', member: 'links', href: '#TEST.3.1.8', reason: LINK_REASON },
+  { corpusKey: 'lieferkette', controlId: 'DEV.4.2', member: 'links', href: '#DET.5.10.1', reason: LINK_REASON },
+  { corpusKey: 'lieferkette', controlId: 'DEV.4.2', member: 'links', href: '#TEST.3.1.2', reason: LINK_REASON },
+  { corpusKey: 'lieferkette', controlId: 'KONF.12.1', member: 'links', href: '#DEV.2.6.1', reason: LINK_REASON },
+  { corpusKey: 'lieferkette', controlId: 'DLS.4.1.2', member: 'links', href: '#BER.1.1', reason: LINK_REASON },
+  { corpusKey: 'lieferkette', controlId: 'BES.7.4.4.1', member: 'links', href: '#TEST.3.1.8', reason: LINK_REASON },
+  { corpusKey: 'lieferkette', controlId: 'BES.7.4.3', member: 'links', href: '#KONF.2.1', reason: LINK_REASON },
+  { corpusKey: 'lieferkette', controlId: 'BES.7.4.3', member: 'links', href: '#KONF.10.1', reason: LINK_REASON },
+  { corpusKey: 'lieferkette', controlId: 'BES.7.2', member: 'links', href: '#TEST.1.1', reason: LINK_REASON },
+  { corpusKey: 'lieferkette', controlId: 'BES.6.2.1', member: 'links', href: '#ASST.7.3.2', reason: LINK_REASON },
+  { corpusKey: 'lieferkette', controlId: 'BES.5.9.1', member: 'links', href: '#TEST.4.1', reason: LINK_REASON },
+  { corpusKey: 'lieferkette', controlId: 'BES.4.9', member: 'links', href: '#PERS.3.6.1', reason: LINK_REASON },
+  { corpusKey: 'lieferkette', controlId: 'BES.4.5', member: 'links', href: '#DEV.1.1', reason: LINK_REASON },
+  { corpusKey: 'lieferkette', controlId: 'BES.4.5', member: 'links', href: '#DEV.2.1', reason: LINK_REASON },
+  { corpusKey: 'lieferkette', controlId: 'ASST.5.6', member: 'links', href: '#SENS.8.6', reason: LINK_REASON },
+  { corpusKey: 'wlan', controlId: 'DET.4.11.2', member: 'links', href: '#DET.4.10', reason: LINK_REASON },
+  { corpusKey: 'wlan', controlId: 'ARCH.5.1.10', member: 'links', href: '#KONF.12.1.7', reason: LINK_REASON },
+  { corpusKey: 'wlan', controlId: 'ARCH.4.1', member: 'links', href: '#DET.4.4', reason: LINK_REASON },
+  { corpusKey: 'wlan', controlId: 'ARCH.4.1', member: 'links', href: '#DET.3.1.8', reason: LINK_REASON },
+  { corpusKey: 'wlan', controlId: 'ARCH.2.2.8', member: 'links', href: '#TEST.3.1.5', reason: LINK_REASON },
+  { corpusKey: 'wlan', controlId: 'ARCH.2.4', member: 'links', href: '#ASST.2.1', reason: LINK_REASON },
+  { corpusKey: 'lieferkette', controlId: 'KONF.2.4.2', member: 'controls', position: 'end', reason: ORDER_REASON },
+  { corpusKey: 'wlan', controlId: 'BES.2.1.4.2', member: 'controls', position: 'end', reason: ORDER_REASON },
+]);
+
+function differenceKey(difference: BsiCorpusDifference): string {
+  return difference.member === 'links'
+    ? `${difference.corpusKey}:${difference.controlId}:links:${difference.href}`
+    : `${difference.corpusKey}:${difference.controlId}:controls:${difference.position}`;
+}
+
+function reconcileRegisteredLinks(
   node: JsonObjectLike,
-  placedIds: ReadonlySet<string>,
-  removed: string[],
+  differences: readonly BsiCorpusDifference[],
+  applied: Set<string>,
 ): void {
-  const links = node['links'];
-  if (!Array.isArray(links)) return;
-  const controlId = typeof node['id'] === 'string' ? node['id'] : '?';
-  const kept = links.filter((link) => keepBsiInternalLink(link, controlId, placedIds, removed));
+  const controlId = typeof node['id'] === 'string' ? node['id'] : '';
+  const registered = differences.filter(
+    (difference): difference is Extract<BsiCorpusDifference, { member: 'links' }> =>
+      difference.member === 'links' && difference.controlId === controlId,
+  );
+  if (registered.length === 0 || !Array.isArray(node['links'])) return;
+  const kept = node['links'].filter((link) => {
+    if (!isJsonObject(link) || typeof link['href'] !== 'string') return true;
+    const match = registered.find((difference) => difference.href === link['href']);
+    if (match === undefined) return true;
+    applied.add(differenceKey(match));
+    return false;
+  });
   if (kept.length === 0) delete node['links'];
   else node['links'] = kept;
 }
 
-function keepBsiInternalLink(
-  link: unknown,
-  controlId: string,
-  placedIds: ReadonlySet<string>,
-  removed: string[],
-): boolean {
-  if (!isJsonObject(link)) return true;
-  const href = link['href'];
-  if (typeof href !== 'string' || !href.startsWith('#')) return true;
-  if (placedIds.has(href.slice(1))) return true;
-  removed.push(`${controlId} → ${href}`);
-  return false;
+function reconcileRegisteredOrder(
+  controls: unknown[],
+  differences: readonly BsiCorpusDifference[],
+  applied: Set<string>,
+): void {
+  for (const difference of differences) {
+    if (difference.member !== 'controls') continue;
+    const index = controls.findIndex(
+      (control) => isJsonObject(control) && control['id'] === difference.controlId,
+    );
+    if (index < 0) continue;
+    const [control] = controls.splice(index, 1);
+    controls.push(control);
+    applied.add(differenceKey(difference));
+  }
 }
 
-/**
- * Entfernt aus ACTUAL die internen Fragment-Links (`#<id>`), deren Ziel
- * nicht Teil DES ERWARTETEN Dokuments ist, und meldet jeden Eingriff.
- */
-export function reconcileBsiInternalLinks(
+/** Wendet ausschließlich die fest registrierten BSI-Abweichungen an. */
+export function reconcileBsiKnownDifferences(
+  corpusKey: string,
   strippedActual: unknown,
-  strippedExpected: unknown,
-): { readonly cleaned: unknown; readonly removed: readonly string[] } {
-  const placedIds = collectDocumentIds(strippedExpected);
-  // Der zielgerichtete JSON-Klon verwirft undefined-Phantomschlüssel, ohne
-  // Accessoren oder strukturierte Nicht-JSON-Typen als Orakel anzunehmen.
+): {
+  readonly cleaned: unknown;
+  readonly applied: readonly string[];
+  readonly missing: readonly string[];
+} {
+  const differences = BSI_PROFILE_RESOLUTION_DIFFERENCES.filter(
+    (difference) => difference.corpusKey === corpusKey,
+  );
   const clonedValue = cloneJsonWithoutUndefined(strippedActual);
-  const removed: string[] = [];
-
+  const applied = new Set<string>();
   const body = documentBody(clonedValue);
-  if (body === undefined) return { cleaned: clonedValue, removed };
-
-  // Ausschließlich über die Kontrollhierarchie absteigen — metadata und
-  // ihre Ressourcenverweise bleiben unangetastet.
-  const stack: JsonObjectLike[] = [];
-  pushHierarchyChildren(body, stack);
-
-  while (stack.length > 0) {
-    const node = stack.pop()!;
-    reconcileNodeLinks(node, placedIds, removed);
-    pushHierarchyChildren(node, stack);
+  if (body !== undefined) {
+    const stack: JsonObjectLike[] = [];
+    pushHierarchyChildren(body, stack);
+    while (stack.length > 0) {
+      const node = stack.pop()!;
+      reconcileRegisteredLinks(node, differences, applied);
+      const controls = node['controls'];
+      if (Array.isArray(controls)) reconcileRegisteredOrder(controls, differences, applied);
+      pushHierarchyChildren(node, stack);
+    }
   }
-
-  return { cleaned: clonedValue, removed };
+  const registered = differences.map(differenceKey);
+  return {
+    cleaned: clonedValue,
+    applied: registered.filter((key) => applied.has(key)),
+    missing: registered.filter((key) => !applied.has(key)),
+  };
 }

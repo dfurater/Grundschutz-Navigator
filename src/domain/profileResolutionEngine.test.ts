@@ -30,11 +30,17 @@ function profileDoc(spec: {
   imports: ImportSpec[];
   merge?: Record<string, unknown>;
   modify?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
 }): Record<string, unknown> {
   return {
     profile: {
       uuid: TOP_UUID,
-      metadata: { title: 'Testprofil', 'oscal-version': VERSION },
+      metadata: {
+        title: 'Testprofil',
+        version: '1.0.0',
+        'oscal-version': VERSION,
+        ...spec.metadata,
+      },
       imports: spec.imports.map((imp) => ({
         href: imp.href,
         ...(imp.includeAll
@@ -77,12 +83,12 @@ function resolveWorld(
   return resolveProfile({ plan, edgesByArtifactKey, profileViews });
 }
 
-function bodyOf(okResult: Extract<ReturnType<typeof resolveProfile>, { ok: true }>): Record<string, unknown> {
+function bodyOf(okResult: Extract<Awaited<ReturnType<typeof resolveProfile>>, { ok: true }>): Record<string, unknown> {
   return (okResult.output.tree as Record<string, unknown>)['catalog'] as Record<string, unknown>;
 }
 
 describe('Auflösung — flat-Struktur', () => {
-  it('use-first ist der Default und behält die erste Definition', () => {
+  it('use-first ist der Default und behält die erste Definition', async () => {
     const world: WorldSpec = {
       documents: {
         'profile-top': profileDoc({
@@ -103,14 +109,14 @@ describe('Auflösung — flat-Struktur', () => {
       },
     };
 
-    const outcome = resolveWorld(world);
+    const outcome = await resolveWorld(world);
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
     const controls = bodyOf(outcome)['controls'] as Record<string, unknown>[];
     expect(controls.map((control) => control['title'])).toEqual(['ERSTE', 'VPN']);
   });
 
-  it('combine=keep erhält beide kollidierenden Definitionen', () => {
+  it('combine=keep erhält beide kollidierenden Definitionen', async () => {
     const world: WorldSpec = {
       documents: {
         'profile-top': profileDoc({
@@ -131,7 +137,7 @@ describe('Auflösung — flat-Struktur', () => {
       },
     };
 
-    const outcome = resolveWorld(world);
+    const outcome = await resolveWorld(world);
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
     const controls = bodyOf(outcome)['controls'] as Record<string, unknown>[];
@@ -155,7 +161,7 @@ describe('Auflösung — as-is-Struktur', () => {
     },
   });
 
-  it('erhält die Quellhierarchie und levelt nicht Inkludiertes hoch', () => {
+  it('erhält die Quellhierarchie und levelt nicht Inkludiertes hoch', async () => {
     const world: WorldSpec = {
       documents: {
         'profile-top': profileDoc({
@@ -167,7 +173,7 @@ describe('Auflösung — as-is-Struktur', () => {
       edges: { 'profile-top': [{ href: './a.json', artifactKey: 'cat-a' }] },
     };
 
-    const outcome = resolveWorld(world);
+    const outcome = await resolveWorld(world);
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
     const groups = bodyOf(outcome)['groups'] as Record<string, unknown>[];
@@ -178,7 +184,7 @@ describe('Auflösung — as-is-Struktur', () => {
     expect(controls.map((control) => control['id'])).toEqual(['ac-1']);
   });
 
-  it('fehlende Merge-Direktive bedeutet as-is (Projektentscheidung)', () => {
+  it('fehlende Merge-Direktive bedeutet as-is (Projektentscheidung)', async () => {
     const world: WorldSpec = {
       documents: {
         'profile-top': profileDoc({
@@ -189,7 +195,7 @@ describe('Auflösung — as-is-Struktur', () => {
       edges: { 'profile-top': [{ href: './a.json', artifactKey: 'cat-a' }] },
     };
 
-    const outcome = resolveWorld(world);
+    const outcome = await resolveWorld(world);
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
     expect(bodyOf(outcome)['groups']).toHaveLength(1);
@@ -197,7 +203,7 @@ describe('Auflösung — as-is-Struktur', () => {
 });
 
 describe('Auflösung — custom-Struktur', () => {
-  it('kopiert Raw-Gruppen exakt und setzt insert-controls gegen den Pool ab', () => {
+  it('kopiert Raw-Gruppen exakt und setzt insert-controls gegen den Pool ab', async () => {
     const world: WorldSpec = {
       documents: {
         'profile-top': profileDoc({
@@ -208,7 +214,11 @@ describe('Auflösung — custom-Struktur', () => {
                 {
                   id: 'asm-1',
                   title: 'Zusammenbau',
-                  'unbekanntes-mitglied': { bleibt: true },
+                  props: [{
+                    name: 'projekterweiterung',
+                    ns: 'https://grundschutz.plus/ns/test',
+                    value: 'bleibt',
+                  }],
                   'insert-controls': [{ 'include-all': {} }],
                 },
               ],
@@ -221,20 +231,25 @@ describe('Auflösung — custom-Struktur', () => {
       edges: { 'profile-top': [{ href: './a.json', artifactKey: 'cat-a' }] },
     };
 
-    const outcome = resolveWorld(world);
+    const outcome = await resolveWorld(world);
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
     const body = bodyOf(outcome);
     // Die Gruppe führt ihr eigenes insert-controls aus und trägt ihre
-    // eingefügten Controls mit Positions-Labels; unbekannte Mitglieder
+    // eingefügten Controls mit Positions-Labels; schema-gültige Erweiterungen
     // bleiben erhalten.
     const groups = body['groups'] as Record<string, unknown>[];
     expect(groups).toEqual([
       {
         id: 'asm-1',
         title: 'Zusammenbau',
-        'unbekanntes-mitglied': { bleibt: true },
-        props: [{ name: 'label', value: 'asm-1' }],
+        props: [
+          {
+            name: 'projekterweiterung',
+            ns: 'https://grundschutz.plus/ns/test',
+            value: 'bleibt',
+          },
+        ],
         controls: [
           {
             id: 'zz-1',
@@ -269,18 +284,20 @@ describe('Ergebnisvertrag', () => {
     edges: { 'profile-top': [{ href: './a.json', artifactKey: 'cat-a' }] },
   });
 
-  it('trägt eigene UUID (UUIDv5), Stempelzeitpunkt, Version und Provenienzträger', () => {
-    const outcome = resolveWorld(baseWorld());
+  it('trägt eigene UUID (UUIDv5), Stempelzeitpunkt, Version und Provenienzträger', async () => {
+    const outcome = await resolveWorld(baseWorld());
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
 
     expect(outcome.output.trustClass).toBe('class-2-local-user');
     expect(outcome.output.oscalVersion).toBe(VERSION);
 
-    const metadata = bodyOf(outcome)['metadata'] as Record<string, unknown>;
-    expect(metadata['uuid']).toBe(
+    const body = bodyOf(outcome);
+    expect(body['uuid']).toBe(
       deriveUuidV5(PROFILE_RESOLUTION_NAMESPACE_UUID, TOP_UUID),
     );
+    const metadata = body['metadata'] as Record<string, unknown>;
+    expect(metadata).not.toHaveProperty('uuid');
     expect(metadata['last-modified']).toBe('1970-01-01T00:00:00.000Z');
     expect(metadata['oscal-version']).toBe(VERSION);
 
@@ -300,8 +317,8 @@ describe('Ergebnisvertrag', () => {
     expect(serialized).not.toContain('source-profile-uuid');
   });
 
-  it('gibt die Wurzel ausschließlich als registriertes Builder-Derivat heraus', () => {
-    const outcome = resolveWorld(baseWorld());
+  it('gibt die Wurzel ausschließlich als registriertes Builder-Derivat heraus', async () => {
+    const outcome = await resolveWorld(baseWorld());
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
     expect(isDerivedProducedContainer(outcome.output.tree)).toBe(true);
@@ -309,9 +326,66 @@ describe('Ergebnisvertrag', () => {
     expect(isDerivedProducedContainer(metadata as object)).toBe(true);
   });
 
-  it('liefert bei zweifacher Ausführung ein byte-identisches Ergebnis', () => {
-    const first = resolveWorld(baseWorld());
-    const second = resolveWorld(baseWorld());
+  it('weist ein schema-ungültiges Resolver-Ergebnis über die gemeinsame Klasse-2-Kette ab', async () => {
+    const outcome = await resolveWorld({
+      documents: {
+        'profile-top': profileDoc({
+          imports: [{ href: './a.json', includeAll: true }],
+          merge: { flat: {} },
+          metadata: { 'unbekanntes-mitglied': true },
+        }),
+        'cat-a': catalogDoc(controlNode('ac-1')),
+      },
+      edges: { 'profile-top': [{ href: './a.json', artifactKey: 'cat-a' }] },
+    });
+
+    expect(outcome).toMatchObject({
+      ok: false,
+      diagnostic: { code: 'OSCAL_SCHEMA_ADDITIONAL_PROPERTY' },
+    });
+  });
+
+  it('führt referenzierte Back-matter-Ressourcen des Quellkatalogs mit', async () => {
+    const referencedUuid = '22222222-2222-4222-8222-222222222222';
+    const unusedUuid = '33333333-3333-4333-8333-333333333333';
+    const world: WorldSpec = {
+      documents: {
+        'profile-top': profileDoc({
+          imports: [{ href: './a.json', includeAll: true }],
+          merge: { flat: {} },
+        }),
+        'cat-a': {
+          catalog: {
+            metadata: { 'oscal-version': VERSION },
+            controls: [
+              controlNode('ac-1', {
+                parts: [{ name: 'guidance', prose: `Siehe [Quelle](#${referencedUuid}).` }],
+              }),
+            ],
+            'back-matter': {
+              resources: [
+                { uuid: referencedUuid, title: 'Verwendet' },
+                { uuid: unusedUuid, title: 'Nicht verwendet' },
+              ],
+            },
+          },
+        },
+      },
+      edges: { 'profile-top': [{ href: './a.json', artifactKey: 'cat-a' }] },
+    };
+
+    const outcome = await resolveWorld(world);
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+
+    expect(bodyOf(outcome)['back-matter']).toEqual({
+      resources: [{ uuid: referencedUuid, title: 'Verwendet' }],
+    });
+  });
+
+  it('liefert bei zweifacher Ausführung ein byte-identisches Ergebnis', async () => {
+    const first = await resolveWorld(baseWorld());
+    const second = await resolveWorld(baseWorld());
     expect(first.ok && second.ok).toBe(true);
     if (!first.ok || !second.ok) return;
     expect(JSON.stringify(first.output.tree)).toBe(JSON.stringify(second.output.tree));
@@ -319,7 +393,7 @@ describe('Ergebnisvertrag', () => {
 });
 
 describe('Modify-Phase', () => {
-  it('überträgt set-parameter einschließlich kebab-case-Feldern auf getroffene Controls', () => {
+  it('überträgt set-parameter einschließlich kebab-case-Feldern auf getroffene Controls', async () => {
     const world: WorldSpec = {
       documents: {
         'profile-top': profileDoc({
@@ -346,7 +420,7 @@ describe('Modify-Phase', () => {
       edges: { 'profile-top': [{ href: './a.json', artifactKey: 'cat-a' }] },
     };
 
-    const outcome = resolveWorld(world);
+    const outcome = await resolveWorld(world);
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
     const controls = bodyOf(outcome)['controls'] as Record<string, unknown>[];
@@ -355,7 +429,7 @@ describe('Modify-Phase', () => {
     ]);
   });
 
-  it('hängt alters-Anhänge ans Ende und hält kanonische Schlüsselordnung', () => {
+  it('hängt alters-Anhänge ans Ende und hält kanonische Schlüsselordnung', async () => {
     const world: WorldSpec = {
       documents: {
         'profile-top': profileDoc({
@@ -375,7 +449,7 @@ describe('Modify-Phase', () => {
       edges: { 'profile-top': [{ href: './a.json', artifactKey: 'cat-a' }] },
     };
 
-    const outcome = resolveWorld(world);
+    const outcome = await resolveWorld(world);
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
     const controls = bodyOf(outcome)['controls'] as Record<string, unknown>[];
@@ -390,7 +464,7 @@ describe('Modify-Phase', () => {
 });
 
 describe('Profilketten', () => {
-  it('löst Profil-zu-Profil-Ketten nachgelagert auf (Kind vor Eltern)', () => {
+  it('löst Profil-zu-Profil-Ketten nachgelagert auf (Kind vor Eltern)', async () => {
     const world: WorldSpec = {
       documents: {
         'profile-top': profileDoc({
@@ -409,16 +483,93 @@ describe('Profilketten', () => {
       },
     };
 
-    const outcome = resolveWorld(world);
+    const outcome = await resolveWorld(world);
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
     const controls = bodyOf(outcome)['controls'] as Record<string, unknown>[];
     expect(controls.map((control) => control['id'])).toEqual(['deep-1']);
   });
+
+  it('löst einen Diamantgraphen ohne stilles Profil-Fallback vollständig auf', async () => {
+    const subProfile = profileDoc({
+      imports: [{ href: './catalog.json', includeAll: true }],
+      merge: { flat: {} },
+    });
+    const midProfile = profileDoc({
+      imports: [{ href: './sub.json', includeAll: true }],
+      merge: { flat: {} },
+    });
+    const topProfile = profileDoc({
+      imports: [
+        { href: './sub.json', includeAll: true },
+        { href: './mid.json', includeAll: true },
+      ],
+      merge: { flat: {}, combine: { method: 'keep' } },
+    });
+    const outcome = await resolveWorld({
+      documents: {
+        'profile-top': topProfile,
+        'profile-mid': midProfile,
+        'profile-sub': subProfile,
+        'cat-a': catalogDoc(controlNode('ac-1'), controlNode('ac-2')),
+      },
+      edges: {
+        'profile-top': [
+          { href: './sub.json', artifactKey: 'profile-sub' },
+          { href: './mid.json', artifactKey: 'profile-mid' },
+        ],
+        'profile-mid': [{ href: './sub.json', artifactKey: 'profile-sub' }],
+        'profile-sub': [{ href: './catalog.json', artifactKey: 'cat-a' }],
+      },
+    });
+
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    const controls = bodyOf(outcome)['controls'] as Record<string, unknown>[];
+    expect(controls.map((control) => control['id'])).toEqual([
+      'ac-1',
+      'ac-2',
+      'ac-1',
+      'ac-2',
+    ]);
+  });
 });
 
 describe('fail-closed Diagnosen der Engine', () => {
-  it('unterscheidet ein nicht aufgelöstes Top-Profil von einer fehlenden Profil-UUID', () => {
+  it('lehnt ein noch nicht aufgelöstes Profilziel am Import ab', async () => {
+    const documents = new Map<string, unknown>([
+      ['profile-top', profileDoc({ imports: [{ href: './child.json', includeAll: true }] })],
+      ['profile-child', profileDoc({ imports: [{ href: './a.json', includeAll: true }] })],
+      ['cat-a', catalogDoc(controlNode('ac-1'))],
+    ]);
+    const edgesByArtifactKey = new Map<string, readonly ProfileResolutionEdge[]>([
+      ['profile-top', [{ href: './child.json', artifactKey: 'profile-child' }]],
+      ['profile-child', [{ href: './a.json', artifactKey: 'cat-a' }]],
+    ]);
+    const built = buildProfileResolutionPlan({
+      topProfileArtifactKey: 'profile-top',
+      documents,
+      edgesByArtifactKey,
+    });
+    if (!built.ok) throw new Error(built.diagnostic.code);
+    const invalidPlan = {
+      ...built,
+      order: ['profile-top', 'profile-child', 'cat-a'],
+    } as const;
+    const profileViews = new Map([
+      ['profile-top', parseProfileDocument(documents.get('profile-top'), { trustClass: 'class-1-verified-public' })],
+      ['profile-child', parseProfileDocument(documents.get('profile-child'), { trustClass: 'class-1-verified-public' })],
+    ]);
+
+    const outcome = await resolveProfile({ plan: invalidPlan, edgesByArtifactKey, profileViews });
+
+    expect(outcome).toMatchObject({
+      ok: false,
+      diagnostic: { code: 'PROFILE_RESOLUTION_IMPORT_PROFILE_UNRESOLVED' },
+    });
+  });
+
+  it('unterscheidet ein nicht aufgelöstes Top-Profil von einer fehlenden Profil-UUID', async () => {
     const documents = new Map<string, unknown>([
       ['profile-top', profileDoc({ imports: [{ href: './a.json', includeAll: true }] })],
       ['cat-a', catalogDoc(controlNode('ac-1'))],
@@ -433,7 +584,7 @@ describe('fail-closed Diagnosen der Engine', () => {
     });
     if (!plan.ok) throw new Error(`Plan scheiterte: ${plan.diagnostic.code}`);
 
-    const outcome = resolveProfile({ plan, edgesByArtifactKey, profileViews: new Map() });
+    const outcome = await resolveProfile({ plan, edgesByArtifactKey, profileViews: new Map() });
 
     expect(outcome).toMatchObject({
       ok: false,
@@ -441,7 +592,7 @@ describe('fail-closed Diagnosen der Engine', () => {
     });
   });
 
-  it('lehnt eine mehrdeutige Merge-Struktur ab', () => {
+  it('lehnt eine mehrdeutige Merge-Struktur ab', async () => {
     const world: WorldSpec = {
       documents: {
         'profile-top': profileDoc({
@@ -452,14 +603,14 @@ describe('fail-closed Diagnosen der Engine', () => {
       },
       edges: { 'profile-top': [{ href: './a.json', artifactKey: 'cat-a' }] },
     };
-    const outcome = resolveWorld(world);
+    const outcome = await resolveWorld(world);
     expect(outcome).toMatchObject({
       ok: false,
       diagnostic: { code: 'PROFILE_RESOLUTION_MERGE_STRUCTURE_UNRESOLVED' },
     });
   });
 
-  it('lehnt eine unbekannte combine-Methode ab', () => {
+  it('lehnt eine unbekannte combine-Methode ab', async () => {
     const world: WorldSpec = {
       documents: {
         'profile-top': profileDoc({
@@ -470,14 +621,14 @@ describe('fail-closed Diagnosen der Engine', () => {
       },
       edges: { 'profile-top': [{ href: './a.json', artifactKey: 'cat-a' }] },
     };
-    const outcome = resolveWorld(world);
+    const outcome = await resolveWorld(world);
     expect(outcome).toMatchObject({
       ok: false,
       diagnostic: { code: 'PROFILE_RESOLUTION_COMBINE_METHOD_INVALID' },
     });
   });
 
-  it('lehnt einen Import ohne zugeordnete Kante ab', () => {
+  it('lehnt einen Import ohne zugeordnete Kante ab', async () => {
     const world: WorldSpec = {
       documents: {
         'profile-top': profileDoc({
@@ -488,7 +639,7 @@ describe('fail-closed Diagnosen der Engine', () => {
       },
       edges: { 'profile-top': [] },
     };
-    const outcome = resolveWorld(world);
+    const outcome = await resolveWorld(world);
     expect(outcome).toMatchObject({
       ok: false,
       diagnostic: { code: 'PROFILE_RESOLUTION_IMPORT_UNMAPPED' },
