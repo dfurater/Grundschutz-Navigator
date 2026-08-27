@@ -47,6 +47,7 @@ export interface AlterationDirective {
 }
 
 import { isJsonObject, ownDataValue } from './profileResolutionSelection';
+import { CLASS_2_IMPORT_LIMITS } from './oscalImportContract';
 
 /** Array-Wert eines Mitglieds, rein deskriptorbasiert gelesen. */
 function safeArrayMember(node: JsonObject, key: string): readonly unknown[] | undefined {
@@ -264,12 +265,44 @@ function insertAtPart(
   return { inserted: true, value: { ...parts[index]!, parts: merged } as JsonObject };
 }
 
+/** Misst die maximale Schachtelungstiefe eines Parts-Baums iterativ. */
+function measurePartsDepth(partsValue: unknown): number {
+  if (!Array.isArray(partsValue)) return 0;
+  let maxDepth = 0;
+  const stack: Array<{ parts: unknown[]; depth: number }> = [
+    { parts: partsValue as unknown[], depth: 1 },
+  ];
+  const visited = new Set<object>();
+  while (stack.length > 0) {
+    const { parts, depth } = stack.pop()!;
+    if (visited.has(parts as object)) continue;
+    visited.add(parts as object);
+    maxDepth = Math.max(maxDepth, depth);
+    if (depth > CLASS_2_IMPORT_LIMITS.maxDepth) return depth;
+    for (const part of parts) {
+      if (isJsonObject(part)) {
+        const nested = ownDataValue(part, 'parts');
+        if (Array.isArray(nested)) {
+          stack.push({ parts: nested as unknown[], depth: depth + 1 });
+        }
+      }
+    }
+  }
+  return maxDepth;
+}
+
 function insertIntoPartsTree(
   partsValue: unknown,
   targetPartId: string,
   addition: NonNullable<AlterationDirective['adds']>[number],
 ): { readonly inserted: boolean; readonly value: unknown } {
   if (!Array.isArray(partsValue)) return { inserted: false, value: partsValue };
+  // Tiefenbegrenzung am exportierten Rand: Eine 12.000-Ebenen-Kette kann die
+  // Klasse-2-Kette nicht passieren (maxDepth 64); statt RangeError wird
+  // kontrolliert nicht eingefügt.
+  if (measurePartsDepth(partsValue) > CLASS_2_IMPORT_LIMITS.maxDepth) {
+    return { inserted: false, value: partsValue };
+  }
 
   const parts = [...partsValue];
 

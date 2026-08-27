@@ -30,7 +30,12 @@
 // =============================================================================
 
 import type { JsonObject } from '@/adapters/oscalProfileReaders';
-import type { OscalDiagnostic } from '@/domain/oscalDiagnostics';
+import { createOscalDiagnostic, type OscalDiagnostic } from '@/domain/oscalDiagnostics';
+import { CLASS_2_IMPORT_LIMITS } from './oscalImportContract';
+import {
+  PROFILE_RESOLUTION_STAGE,
+  PROFILE_RESOLUTION_VALIDATOR,
+} from './profileResolutionImportGraph';
 import type { ProfileGroup, ProfileInsertControls } from './profileModel';
 import {
   indexCatalogControls,
@@ -207,10 +212,39 @@ function collectIncludedAndExcludedChildren(
  * inkludierte Controls unter nicht inkludierten Parents werden rekursiv
  * hochgelevelt.
  */
+/** Misst die maximale Gruppen-Schachtelungstiefe iterativ. */
+function measureGroupsDepth(containerNode: JsonObject): number {
+  let maxDepth = 0;
+  const stack: Array<{ node: JsonObject; depth: number }> = [{ node: containerNode, depth: 0 }];
+  const visited = new Set<object>();
+  while (stack.length > 0) {
+    const { node, depth } = stack.pop()!;
+    if (visited.has(node)) continue;
+    visited.add(node);
+    maxDepth = Math.max(maxDepth, depth);
+    if (depth > CLASS_2_IMPORT_LIMITS.maxDepth) return depth;
+    const nestedGroups = safeArrayMember(node, 'groups');
+    if (nestedGroups !== undefined) {
+      for (const group of ownArrayDataElements(nestedGroups)) {
+        if (isJsonObject(group)) {
+          stack.push({ node: group, depth: depth + 1 });
+        }
+      }
+    }
+  }
+  return maxDepth;
+}
+
 export function buildAsIsGroups(
   containerNode: JsonObject,
   includedIds: ReadonlySet<string>,
 ): JsonObject {
+  // Tiefenbegrenzung am exportierten Rand: Eine 12.000-Ebenen-Kette kann die
+  // Klasse-2-Kette nicht passieren (maxDepth 64); statt RangeError wird
+  // kontrolliert leer zurückgegeben.
+  if (measureGroupsDepth(containerNode) > CLASS_2_IMPORT_LIMITS.maxDepth) {
+    return { groups: [], controls: [] };
+  }
   return filterContainerForAsIs(containerNode, includedIds, new Set<object>());
 }
 
@@ -562,10 +596,52 @@ function orderedInsertIds(
  * füllen die Controls auf Catalog-Ebene. Nicht getroffene Selektionen
  * tragen nichts bei und sind kein Fehler.
  */
+/** Misst die maximale Schachtelungstiefe von Custom-Gruppen iterativ. */
+function measureCustomGroupsDepth(rawGroups: readonly JsonObject[]): number {
+  let maxDepth = 0;
+  const stack: Array<{ groups: readonly JsonObject[]; depth: number }> = [
+    { groups: rawGroups, depth: 1 },
+  ];
+  const visited = new Set<object>();
+  while (stack.length > 0) {
+    const { groups, depth } = stack.pop()!;
+    if (visited.has(groups as object)) continue;
+    visited.add(groups as object);
+    maxDepth = Math.max(maxDepth, depth);
+    if (depth > CLASS_2_IMPORT_LIMITS.maxDepth) return depth;
+    for (const group of groups) {
+      const nested = ownDataValue(group, 'groups');
+      if (Array.isArray(nested)) {
+        const nestedGroups = ownArrayDataElements(nested).filter(
+          (child): child is JsonObject => isJsonObject(child),
+        );
+        if (nestedGroups.length > 0) {
+          stack.push({ groups: nestedGroups, depth: depth + 1 });
+        }
+      }
+    }
+  }
+  return maxDepth;
+}
+
 export function buildCustomGroups(
   request: CustomAssemblyRequest,
   combined: CombinedControls,
 ): CustomAssemblyResult {
+  // Tiefenbegrenzung am exportierten Rand: Eine 12.000-Ebenen-Kette kann die
+  // Klasse-2-Kette nicht passieren (maxDepth 64); statt RangeError wird
+  // kontrolliert mit Diagnose abgebrochen.
+  if (measureCustomGroupsDepth(request.rawGroups) > CLASS_2_IMPORT_LIMITS.maxDepth) {
+    return {
+      ok: false,
+      diagnostic: createOscalDiagnostic({
+        code: 'PROFILE_RESOLUTION_CUSTOM_DEPTH_LIMIT_EXCEEDED',
+        stage: PROFILE_RESOLUTION_STAGE,
+        validator: PROFILE_RESOLUTION_VALIDATOR,
+        path: '/',
+      }),
+    };
+  }
   // Synthetischer Index über den kombinierten Pool: Die Selektormechanik
   // (with-ids, matching, with-child-controls, Ausschlüsse) verhält sich
   // damit exakt wie in Phase 1 — ein zweiter Selektionscodepfad entsteht
