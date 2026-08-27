@@ -164,9 +164,11 @@ describe('sourceRegistry', () => {
   it('resolves every lineage import target through its registered upstream path', () => {
     for (const lineage of CATALOG_LINEAGES) {
       for (const imported of lineage.imports) {
+        const registeredArtifact = listOscalArtifacts().find(
+          (entry) => entry.artifactKey === imported.artifactKey,
+        );
         const artifact = getArtifactByUpstreamPath(
-          SOURCE_REGISTRY.find((entry) => entry.artifactKey === imported.artifactKey)
-            ?.upstreamPath ?? '',
+          registeredArtifact?.upstreamPath ?? '',
         );
         expect(artifact?.artifactKey).toBe(imported.artifactKey);
       }

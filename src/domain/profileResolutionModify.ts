@@ -93,6 +93,32 @@ function readStringMember(node: JsonObject, key: string): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
+function copyOwnDataMembers(node: JsonObject): JsonObject {
+  const copy: JsonObject = {};
+  for (const key of Reflect.ownKeys(node)) {
+    if (typeof key !== 'string') continue;
+    const value = ownDataValue(node, key);
+    if (value !== undefined) copy[key] = value;
+  }
+  return copy;
+}
+
+function canonicalCopyWithParams(control: JsonObject, params: readonly unknown[]): JsonObject {
+  const copy = copyOwnDataMembers(control);
+  copy['params'] = params;
+  return canonicalizeControlKeys(copy);
+}
+
+function firstEffectiveParameterDirective(
+  directives: readonly ProfileSetParameter[],
+): readonly unknown[] | undefined {
+  for (const directive of directives) {
+    const matched = applySingleSetParameter([], directive);
+    if (matched.length > 0) return matched;
+  }
+  return undefined;
+}
+
 /** Wendet alle set-parameter-Anweisungen in Profilreihenfolge auf eine Control an. */
 export function applySetParametersToControl(
   control: JsonObject,
@@ -109,20 +135,10 @@ export function applySetParametersToControl(
     // eine Anweisung tatsächlich einen Parameter trägt — ein leeres
     // params-Mitglied wird nicht erfunden (Orakelvertrag gegen die
     // BSI-resolved_catalogs).
-    for (const directive of directives) {
-      const matched = applySingleSetParameter([], directive);
-      if (matched.length > 0) {
-        const copy: JsonObject = {};
-        for (const key of Reflect.ownKeys(control)) {
-          if (typeof key !== 'string') continue;
-          const value = ownDataValue(control, key);
-          if (value !== undefined) copy[key] = value;
-        }
-        copy['params'] = matched;
-        return canonicalizeControlKeys(copy);
-      }
-    }
-    return canonicalizeControlKeys(control);
+    const matched = firstEffectiveParameterDirective(directives);
+    return matched === undefined
+      ? canonicalizeControlKeys(control)
+      : canonicalCopyWithParams(control, matched);
   }
 
   let params: readonly unknown[] = sourceParams;
@@ -130,14 +146,7 @@ export function applySetParametersToControl(
     params = applySingleSetParameter(params, directive);
   }
 
-  const copyParams: JsonObject = {};
-  for (const key of Reflect.ownKeys(control)) {
-    if (typeof key !== 'string') continue;
-    const value = ownDataValue(control, key);
-    if (value !== undefined) copyParams[key] = value;
-  }
-  copyParams['params'] = params;
-  return canonicalizeControlKeys(copyParams);
+  return canonicalCopyWithParams(control, params);
 }
 
 function applySingleSetParameter(
@@ -243,22 +252,8 @@ function applyImplicitAddition(
   const position = typeof positionValue === 'string' ? positionValue : 'ending';
   const startLike = position === 'starting' || position === 'before';
 
-  const result: JsonObject = {};
-  for (const key of Reflect.ownKeys(control)) {
-    if (typeof key !== 'string') continue;
-    const value = ownDataValue(control, key);
-    if (value !== undefined) result[key] = value;
-  }
-  const pendingLists = new Map<string, readonly unknown[]>();
-
-  for (const listKey of ['params', 'props', 'links', 'parts'] as const) {
-    const additions = ownDataValue(addition as JsonObject, listKey);
-    if (Array.isArray(additions) && additions.length > 0) {
-      pendingLists.set(listKey, ownArrayDataElements(additions));
-    } else if (listKey === 'parts' && Array.isArray(additions) && additions.length === 0) {
-      pendingLists.set(listKey, []);
-    }
-  }
+  const result = copyOwnDataMembers(control);
+  const pendingLists = collectPendingAdditionLists(addition);
 
   const addTitle = ownDataValue(addition as JsonObject, 'title');
   if (typeof addTitle === 'string' && !('title' in result)) {
@@ -274,6 +269,20 @@ function applyImplicitAddition(
   }
 
   return canonicalizeControlKeys(result);
+}
+
+function collectPendingAdditionLists(
+  addition: NonNullable<AlterationDirective['adds']>[number],
+): ReadonlyMap<string, readonly unknown[]> {
+  const pending = new Map<string, readonly unknown[]>();
+  for (const listKey of ['params', 'props', 'links', 'parts'] as const) {
+    const additions = ownDataValue(addition as JsonObject, listKey);
+    if (!Array.isArray(additions)) continue;
+    if (additions.length > 0 || listKey === 'parts') {
+      pending.set(listKey, ownArrayDataElements(additions));
+    }
+  }
+  return pending;
 }
 
 /**
@@ -393,12 +402,7 @@ function insertIntoPartsTree(
     if (nestedParts !== undefined) {
       const nestedResult = insertIntoPartsTree(nestedParts, targetPartId, addition);
       if (nestedResult.inserted) {
-        const copy: JsonObject = {};
-        for (const key of Reflect.ownKeys(part)) {
-          if (typeof key !== 'string') continue;
-          const value = ownDataValue(part, key);
-          if (value !== undefined) copy[key] = value;
-        }
+        const copy = copyOwnDataMembers(part);
         copy['parts'] = nestedResult.value;
         parts[index] = copy;
         return { inserted: true, value: parts };

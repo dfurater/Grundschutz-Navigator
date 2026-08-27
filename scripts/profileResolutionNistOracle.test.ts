@@ -57,13 +57,27 @@ const manifest = JSON.parse(
 const documentsByArtifactKey = new Map<string, unknown>();
 const baselineKeys: Array<{ input: string; expected: string; label: string }> = [];
 
+function verifyFixtureIntegrity(
+  file: OracleManifestFile,
+  bytes: Buffer,
+  sha256: string,
+): void {
+  if (sha256 !== file.sha256) {
+    throw new Error(`Hashabweichung bei ${file.artifactKey}`);
+  }
+  if (bytes.length !== file.sizeBytes) {
+    throw new Error(
+      `Größenabweichung bei ${file.artifactKey}: ${bytes.length} statt ${file.sizeBytes} Bytes`,
+    );
+  }
+}
+
 // Synchron auf Modulebene: Die Testschleife braucht die Baseline-Liste zur
 // Sammelzeit, und die committeten Fixtures machen den Lauf ohnehin offline.
 for (const file of manifest.files) {
   const bytes = readFileSync(join(FIXTURE_DIRECTORY, file.fileName));
   const sha256 = createHash('sha256').update(bytes).digest('hex');
-  expect(sha256, `Hashabweichung bei ${file.artifactKey}`).toBe(file.sha256);
-  expect(bytes.length).toBe(file.sizeBytes);
+  verifyFixtureIntegrity(file, bytes, sha256);
   documentsByArtifactKey.set(file.artifactKey, JSON.parse(bytes.toString('utf8')));
   if (file.role === 'input') {
     const baseline = file.artifactKey.replace('nist-sp800-53-rev5-', '').replace('-profile', '');

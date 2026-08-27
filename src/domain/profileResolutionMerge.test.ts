@@ -352,6 +352,29 @@ describe('custom-Struktur', () => {
     expect(result.controls[0]!['id']).toBe('q-1');
   });
 
+  it('gibt eine direkt selektierte, nur verschachtelt vorhandene Control eigenständig aus', () => {
+    const child = control('q-2.1');
+    const parent = control('q-2', { controls: [child] });
+    const combined = applyCombine([{ documentKey: 'doc-a', controls: [parent] }], 'use-first');
+    const directive: ProfileInsertControls = {
+      selection: {
+        kind: 'include-controls',
+        includeControls: [withIdsSelector(['q-2.1'])],
+      },
+      excludeControls: [],
+      path: '/profile/merge/custom/insert-controls',
+    };
+
+    const result = buildCustomGroups(
+      { rawGroups: [], typedGroups: [], insertControls: [directive] },
+      combined,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.controls).toEqual([child]);
+  });
+
   it('mehrere Anweisungen wirken kumulativ ohne Doppel-Ausgabe derselben Definition', () => {
     const combined = applyCombine([inclusion('doc-a', 'a-1', 'b-1')], 'use-first');
     const first: ProfileInsertControls = {

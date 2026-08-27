@@ -108,7 +108,4 @@ async function main() {
   console.log(`Manifest geschrieben: ${manifestPath} (${entries.length} Artefakte)`);
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
+await main();

@@ -140,37 +140,36 @@ export function firstDivergence(actual: unknown, expected: unknown, path = '$'):
  */
 export function normalizeProseLeadingSpace(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(normalizeProseLeadingSpace);
-  if (!isJsonObject(value)) {
-    if (typeof value === 'string' && value.includes('{{ insert:')) {
-      return value.trim();
-    }
-    if (typeof value === 'string' && value.includes('\n\n ')) {
-      return value.replace(/\n\n +/g, '\n\n');
-    }
-    return value;
-  }
+  if (typeof value === 'string') return normalizeOracleString(value);
+  if (!isJsonObject(value)) return value;
   const copy: JsonObjectLike = {};
   for (const key of Object.keys(value)) {
     const child = value[key];
     if (key === 'prose' && typeof child === 'string') {
-      let normalized: string = child.replace(/^ +/, '');
-      if (normalized.includes('\n\n ')) {
-        normalized = normalized.replace(/\n\n +/g, '\n\n');
-      }
-      if (normalized.includes('{{ insert:')) {
-        normalized = normalized.trim();
-        normalized = normalized.replace(/^ +/, '');
-      }
-      copy[key] = normalized;
-    } else if (typeof child === 'string' && child.includes('{{ insert:')) {
-      copy[key] = child.trim();
-    } else if (typeof child === 'string' && child.includes('\n\n ')) {
-      copy[key] = child.replace(/\n\n +/g, '\n\n');
+      copy[key] = normalizeOracleProse(child);
     } else {
       copy[key] = normalizeProseLeadingSpace(child);
     }
   }
   return copy;
+}
+
+function normalizeOracleString(value: string): string {
+  if (value.includes('{{ insert:')) return value.trim();
+  return value.includes('\n\n ') ? value.replace(/\n\n +/g, '\n\n') : value;
+}
+
+function normalizeOracleProse(value: string): string {
+  let normalized = value.replace(/^ +/, '');
+  if (normalized.includes('\n\n ')) normalized = normalized.replace(/\n\n +/g, '\n\n');
+  if (normalized.includes('{{ insert:')) normalized = normalized.trim().replace(/^ +/, '');
+  return normalized;
+}
+
+function controlId(value: unknown): string {
+  if (!isJsonObject(value)) return '';
+  const id = value['id'];
+  return typeof id === 'string' ? id : '';
 }
 
 function sortControlsById(value: unknown): unknown {
@@ -182,11 +181,7 @@ function sortControlsById(value: unknown): unknown {
     if ((key === 'controls' || key === 'groups') && Array.isArray(child)) {
       const sorted = [...(child as unknown[])].map(sortControlsById);
       if (key === 'controls') {
-        sorted.sort((a, b) => {
-          const aId = isJsonObject(a) ? String(a['id'] ?? '') : '';
-          const bId = isJsonObject(b) ? String(b['id'] ?? '') : '';
-          return aId < bId ? -1 : aId > bId ? 1 : 0;
-        });
+        sorted.sort((a, b) => byCodeUnit(controlId(a), controlId(b)));
       }
       copy[key] = sorted;
     } else {
@@ -209,15 +204,17 @@ export function nodesAtDivergence(actual: unknown, expected: unknown, divergence
   let nodeA = actual;
   let nodeE = expected;
   for (const token of tokens) {
-    if (/^\d+$/.test(token)) {
-      nodeA = Array.isArray(nodeA) ? nodeA[Number(token)] : undefined;
-      nodeE = Array.isArray(nodeE) ? nodeE[Number(token)] : undefined;
-    } else {
-      nodeA = isJsonObject(nodeA) ? nodeA[token] : undefined;
-      nodeE = isJsonObject(nodeE) ? nodeE[token] : undefined;
-    }
+    nodeA = nodeAtPathToken(nodeA, token);
+    nodeE = nodeAtPathToken(nodeE, token);
   }
   return { actual: nodeA, expected: nodeE };
+}
+
+function nodeAtPathToken(node: unknown, token: string): unknown {
+  if (/^\d+$/.test(token)) {
+    return Array.isArray(node) ? node[Number(token)] : undefined;
+  }
+  return isJsonObject(node) ? node[token] : undefined;
 }
 
 /* ------------------------------------------------------------------ */
@@ -237,25 +234,76 @@ export function nodesAtDivergence(actual: unknown, expected: unknown, divergence
  */
 
 /** Sammelt alle Control- und Gruppen-IDs eines gestripften Dokuments. */
+function documentBody(document: unknown): JsonObjectLike | undefined {
+  if (!isJsonObject(document)) return undefined;
+  const body = Object.values(document)[0];
+  return isJsonObject(body) ? body : undefined;
+}
+
+function pushHierarchyChildren(node: JsonObjectLike, stack: JsonObjectLike[]): void {
+  for (const listKey of ['controls', 'groups'] as const) {
+    const value = node[listKey];
+    if (!Array.isArray(value)) continue;
+    for (const child of value) {
+      if (isJsonObject(child)) stack.push(child);
+    }
+  }
+}
+
 function collectDocumentIds(document: unknown): Set<string> {
   const ids = new Set<string>();
   const stack: JsonObjectLike[] = [];
-  const body = isJsonObject(document) ? (Object.values(document)[0] as unknown) : undefined;
-  if (!isJsonObject(body)) return ids;
+  const body = documentBody(document);
+  if (body === undefined) return ids;
   stack.push(body);
   while (stack.length > 0) {
     const node = stack.pop()!;
     const id = node['id'];
     if (typeof id === 'string') ids.add(id);
-    for (const listKey of ['controls', 'groups'] as const) {
-      const value = node[listKey];
-      if (!Array.isArray(value)) continue;
-      for (const child of value) {
-        if (isJsonObject(child)) stack.push(child);
-      }
-    }
+    pushHierarchyChildren(node, stack);
   }
   return ids;
+}
+
+function cloneJsonWithoutUndefined(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((child) => child === undefined ? null : cloneJsonWithoutUndefined(child));
+  }
+  if (typeof value === 'number' && !Number.isFinite(value)) return null;
+  if (!isJsonObject(value)) return value;
+  const clone: JsonObjectLike = {};
+  for (const key of Object.keys(value)) {
+    const child = value[key];
+    if (child !== undefined) clone[key] = cloneJsonWithoutUndefined(child);
+  }
+  return clone;
+}
+
+function reconcileNodeLinks(
+  node: JsonObjectLike,
+  placedIds: ReadonlySet<string>,
+  removed: string[],
+): void {
+  const links = node['links'];
+  if (!Array.isArray(links)) return;
+  const controlId = typeof node['id'] === 'string' ? node['id'] : '?';
+  const kept = links.filter((link) => keepBsiInternalLink(link, controlId, placedIds, removed));
+  if (kept.length === 0) delete node['links'];
+  else node['links'] = kept;
+}
+
+function keepBsiInternalLink(
+  link: unknown,
+  controlId: string,
+  placedIds: ReadonlySet<string>,
+  removed: string[],
+): boolean {
+  if (!isJsonObject(link)) return true;
+  const href = link['href'];
+  if (typeof href !== 'string' || !href.startsWith('#')) return true;
+  if (placedIds.has(href.slice(1))) return true;
+  removed.push(`${controlId} → ${href}`);
+  return false;
 }
 
 /**
@@ -267,49 +315,24 @@ export function reconcileBsiInternalLinks(
   strippedExpected: unknown,
 ): { readonly cleaned: unknown; readonly removed: readonly string[] } {
   const placedIds = collectDocumentIds(strippedExpected);
-  // JSON-Rundlauf klont tief und verwirft zugleich eventuelle
-  // undefined-Phantomschlüssel.
-  const clone = JSON.parse(JSON.stringify(strippedActual)) as JsonObjectLike;
+  // Der zielgerichtete JSON-Klon verwirft undefined-Phantomschlüssel, ohne
+  // Accessoren oder strukturierte Nicht-JSON-Typen als Orakel anzunehmen.
+  const clonedValue = cloneJsonWithoutUndefined(strippedActual);
   const removed: string[] = [];
 
-  const body = Object.values(clone)[0];
-  if (!isJsonObject(body)) return { cleaned: clone, removed };
+  const body = documentBody(clonedValue);
+  if (body === undefined) return { cleaned: clonedValue, removed };
 
   // Ausschließlich über die Kontrollhierarchie absteigen — metadata und
   // ihre Ressourcenverweise bleiben unangetastet.
   const stack: JsonObjectLike[] = [];
-  for (const listKey of ['groups', 'controls'] as const) {
-    const value = body[listKey];
-    if (Array.isArray(value)) {
-      for (const child of value) {
-        if (isJsonObject(child)) stack.push(child);
-      }
-    }
-  }
+  pushHierarchyChildren(body, stack);
 
   while (stack.length > 0) {
     const node = stack.pop()!;
-    if (Array.isArray(node['links'])) {
-      const controlId = typeof node['id'] === 'string' ? node['id'] : '?';
-      const kept = (node['links'] as unknown[]).filter((link) => {
-        if (!isJsonObject(link)) return true;
-        const href = link['href'];
-        if (typeof href !== 'string' || !href.startsWith('#')) return true;
-        if (placedIds.has(href.slice(1))) return true;
-        removed.push(`${controlId} → ${href}`);
-        return false;
-      });
-      if (kept.length === 0) delete node['links'];
-      else node['links'] = kept;
-    }
-    for (const listKey of ['controls', 'groups'] as const) {
-      const value = node[listKey];
-      if (!Array.isArray(value)) continue;
-      for (const child of value) {
-        if (isJsonObject(child)) stack.push(child);
-      }
-    }
+    reconcileNodeLinks(node, placedIds, removed);
+    pushHierarchyChildren(node, stack);
   }
 
-  return { cleaned: clone, removed };
+  return { cleaned: clonedValue, removed };
 }

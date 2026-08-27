@@ -84,6 +84,8 @@ export const PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES = Object.freeze({
   IMPORT_UNMAPPED: 'PROFILE_RESOLUTION_IMPORT_UNMAPPED',
   /** Das steuernde Profil trägt keine verwertbare Dokument-UUID. */
   TOP_PROFILE_UUID_MISSING: 'PROFILE_RESOLUTION_TOP_PROFILE_UUID_MISSING',
+  /** Das steuernde Profil wurde nicht als Profilprojektion bereitgestellt. */
+  TOP_PROFILE_UNRESOLVED: 'PROFILE_RESOLUTION_TOP_PROFILE_UNRESOLVED',
 } as const);
 
 /**
@@ -130,7 +132,10 @@ function reject(code: string, path: string): { readonly ok: false; readonly diag
   };
 }
 
-function failure(result: { readonly ok: false; readonly diagnostic: OscalDiagnostic }): ProfileResolutionOutcome {
+function failure(result: { readonly ok: false; readonly diagnostic: OscalDiagnostic }): {
+  readonly ok: false;
+  readonly diagnostic: OscalDiagnostic;
+} {
   return { ok: false, diagnostic: result.diagnostic };
 }
 
@@ -374,7 +379,17 @@ function emitValue(graph: ReturnType<typeof createOscalDerivedGraph>, value: unk
   if (depth > CLASS_2_IMPORT_LIMITS.maxDepth) {
     throw new TypeError('Emissionstiefe überschreitet die geprüfte Dokumenttiefe');
   }
-  if (value === null || typeof value !== 'object') return value;
+  if (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  ) {
+    return value;
+  }
+  if (typeof value !== 'object') {
+    throw new TypeError('Emissionswert ist kein unterstützter JSON-Wert');
+  }
 
   if (Array.isArray(value)) {
     const handle = graph.array();
@@ -415,8 +430,12 @@ function collectPhaseOne(
   const consumedResourceUuids = new Set<string>();
 
   for (const profileImport of input.document.view.imports) {
+    const href = profileImport.href;
+    if (href === undefined) {
+      return reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.IMPORT_UNMAPPED, profileImport.path);
+    }
     const edge = (input.edgesByArtifactKey.get(input.artifactKey) ?? []).find(
-      (candidate) => candidate.href === profileImport.href,
+      (candidate) => candidate.href === href,
     );
     if (edge === undefined) {
       return failure(reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.IMPORT_UNMAPPED, profileImport.path));
@@ -440,8 +459,8 @@ function collectPhaseOne(
       if (node !== undefined) controls.push(node);
     }
     records.push({ artifactKey: edge.artifactKey, ids: outcome.ids, sourceDocument });
-    if (profileImport.href.startsWith('#')) {
-      consumedResourceUuids.add(profileImport.href.slice(1));
+    if (href.startsWith('#')) {
+      consumedResourceUuids.add(href.slice(1));
     }
     inclusions.push({ documentKey: edge.artifactKey, controls });
   }
@@ -462,8 +481,10 @@ function collectAsIsOutput(records: readonly SelectionRecord[]): {
   };
   for (const record of records) {
     const filtered = buildAsIsGroups(readRootBody(record.sourceDocument), record.ids);
-    append(filtered['groups'] ?? [], groups);
-    append(filtered['controls'] ?? [], controls);
+    const filteredGroups = ownDataValue(filtered, 'groups');
+    const filteredControls = ownDataValue(filtered, 'controls');
+    if (Array.isArray(filteredGroups)) append(filteredGroups, groups);
+    if (Array.isArray(filteredControls)) append(filteredControls, controls);
   }
   return { groups, controls };
 }
@@ -745,7 +766,7 @@ export function resolveProfile(request: ProfileResolutionRequest): ProfileResolu
 
   const topLevel = plan.order[0]!;
   if (!resolvedByArtifact.has(topLevel)) {
-    return failure(reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.TOP_PROFILE_UUID_MISSING, '/'));
+    return failure(reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.TOP_PROFILE_UNRESOLVED, '/'));
   }
   return {
     ok: true,

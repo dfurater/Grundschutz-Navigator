@@ -418,6 +418,29 @@ describe('Profilketten', () => {
 });
 
 describe('fail-closed Diagnosen der Engine', () => {
+  it('unterscheidet ein nicht aufgelöstes Top-Profil von einer fehlenden Profil-UUID', () => {
+    const documents = new Map<string, unknown>([
+      ['profile-top', profileDoc({ imports: [{ href: './a.json', includeAll: true }] })],
+      ['cat-a', catalogDoc(controlNode('ac-1'))],
+    ]);
+    const edgesByArtifactKey = new Map<string, readonly ProfileResolutionEdge[]>([
+      ['profile-top', [{ href: './a.json', artifactKey: 'cat-a' }]],
+    ]);
+    const plan = buildProfileResolutionPlan({
+      topProfileArtifactKey: 'profile-top',
+      documents,
+      edgesByArtifactKey,
+    });
+    if (!plan.ok) throw new Error(`Plan scheiterte: ${plan.diagnostic.code}`);
+
+    const outcome = resolveProfile({ plan, edgesByArtifactKey, profileViews: new Map() });
+
+    expect(outcome).toMatchObject({
+      ok: false,
+      diagnostic: { code: 'PROFILE_RESOLUTION_TOP_PROFILE_UNRESOLVED' },
+    });
+  });
+
   it('lehnt eine mehrdeutige Merge-Struktur ab', () => {
     const world: WorldSpec = {
       documents: {
