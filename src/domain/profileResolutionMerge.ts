@@ -418,22 +418,75 @@ function withPositionalLabels(
   control: JsonObject,
   label: string,
 ): JsonObject {
-  const sourcePropsValue = ownDataValue(control, 'props');
-  const sourceProps = Array.isArray(sourcePropsValue) ? [...sourcePropsValue] : [];
-  const copy: JsonObject = { ...control, props: [{ name: 'label', value: label }, ...sourceProps] };
-
+  // Tiefenmessung: Eine 12.000-Ebenen-Kette kann die Klasse-2-Kette nicht
+  // passieren (maxDepth 64); statt RangeError wird die Beschriftung nur
+  // für die erreichbare Tiefe vergeben und tiefere Ebenen bleiben unverändert.
+  let maxDepth = 0;
+  const depthStack: Array<{ node: JsonObject; depth: number }> = [{ node: control, depth: 1 }];
+  const visitedDepth = new Set<object>();
+  while (depthStack.length > 0) {
+    const { node, depth } = depthStack.pop()!;
+    if (visitedDepth.has(node)) continue;
+    visitedDepth.add(node);
+    maxDepth = Math.max(maxDepth, depth);
+    if (depth > CLASS_2_IMPORT_LIMITS.maxDepth) break;
+    const children = ownDataValue(node, 'controls');
+    if (Array.isArray(children)) {
+      for (const child of ownArrayDataElements(children)) {
+        if (isJsonObject(child)) depthStack.push({ node: child, depth: depth + 1 });
+      }
+    }
+  }
+  // Iterative Beschriftung mit explizitem Stack, um tiefe Hierarchien ohne
+  // Call-Stack-Überlauf zu verarbeiten.
+  const rootCopy = copyWithLabel(control, label);
   const partsValue = ownDataValue(control, 'parts');
   if (Array.isArray(partsValue)) {
-    copy['parts'] = [...partsValue].sort(byPartId);
+    rootCopy['parts'] = [...partsValue].sort(byPartId);
   }
+  if (maxDepth > CLASS_2_IMPORT_LIMITS.maxDepth) {
+    // Zu tief für vollständige Beschriftung — nur die Wurzel wird beschriftet.
+    return rootCopy;
+  }
+  type StackFrame = { original: JsonObject; copy: JsonObject; label: string };
+  const stack: StackFrame[] = [{ original: control, copy: rootCopy, label }];
+  const visited = new Set<object>();
+  visited.add(control);
+  while (stack.length > 0) {
+    const frame = stack.pop()!;
+    const childrenValue = ownDataValue(frame.original, 'controls');
+    if (!Array.isArray(childrenValue)) continue;
+    const children = ownArrayDataElements(childrenValue);
+    const labeledChildren: unknown[] = [];
+    for (let index = 0; index < children.length; index += 1) {
+      const child = children[index];
+      if (!isJsonObject(child)) {
+        labeledChildren.push(child);
+        continue;
+      }
+      if (visited.has(child)) {
+        labeledChildren.push(child);
+        continue;
+      }
+      visited.add(child);
+      const childLabel = `${frame.label}.${index + 1}`;
+      const childCopy = copyWithLabel(child, childLabel);
+      const childParts = ownDataValue(child, 'parts');
+      if (Array.isArray(childParts)) {
+        childCopy['parts'] = [...childParts].sort(byPartId);
+      }
+      labeledChildren.push(childCopy);
+      stack.push({ original: child, copy: childCopy, label: childLabel });
+    }
+    frame.copy['controls'] = labeledChildren;
+  }
+  return rootCopy;
+}
 
-  const childrenValue = ownDataValue(control, 'controls');
-  if (Array.isArray(childrenValue)) {
-    copy['controls'] = ownArrayDataElements(childrenValue).map((child, index) =>
-      isJsonObject(child) ? withPositionalLabels(child, `${label}.${index + 1}`) : child,
-    );
-  }
-  return copy;
+function copyWithLabel(control: JsonObject, label: string): JsonObject {
+  const sourcePropsValue = ownDataValue(control, 'props');
+  const sourceProps = Array.isArray(sourcePropsValue) ? [...sourcePropsValue] : [];
+  return { ...control, props: [{ name: 'label', value: label }, ...sourceProps] };
 }
 
 /**
