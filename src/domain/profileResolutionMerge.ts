@@ -91,8 +91,12 @@ export function applyCombine(
   const order: JsonObject[] = [];
   const clashes = new Set<string>();
 
-  for (const inclusion of inclusions) {
-    for (const node of inclusion.controls) {
+  for (const inclusion of ownArrayDataElements(inclusions)) {
+    if (!isJsonObject(inclusion)) continue;
+    const controlsValue = ownDataValue(inclusion as unknown as object, 'controls');
+    if (!Array.isArray(controlsValue)) continue;
+    for (const node of ownArrayDataElements(controlsValue)) {
+      if (!isJsonObject(node)) continue;
       const id = readIdOrEmpty(node);
       if (id.length === 0) continue;
 
@@ -120,18 +124,24 @@ export function applyCombine(
 /** Entfernt verschachtelte Kinder (controls, groups) für echte Flachdarstellung. */
 export function stripNestedChildren(node: JsonObject): JsonObject {
   const copy: JsonObject = {};
-  for (const key of Object.keys(node)) {
+  for (const key of Reflect.ownKeys(node)) {
+    if (typeof key !== 'string') continue;
     if (key === 'controls' || key === 'groups') continue;
-    const value = node[key];
-    copy[key] = value;
+    const value = ownDataValue(node, key);
+    if (value !== undefined) copy[key] = value;
   }
   return copy;
 }
 
 /** Flache Ausgabe: kombinierte Controls direkt unter catalog. */
 export function buildFlatControls(combined: CombinedControls): JsonObject {
+  const orderValue = ownDataValue(combined as unknown as object, 'order');
   return {
-    controls: combined.order.map(stripNestedChildren),
+    controls: Array.isArray(orderValue)
+      ? ownArrayDataElements(orderValue)
+        .filter((node): node is JsonObject => isJsonObject(node))
+        .map(stripNestedChildren)
+      : [],
   };
 }
 
@@ -145,7 +155,7 @@ function filterNestedIncluded(
   control: JsonObject,
   includedIds: ReadonlySet<string>,
 ): JsonObject {
-  const copy: JsonObject = { ...control };
+  const copy = copyOwnDataMembers(control);
   const kept: JsonObject[] = [];
   const promoted: JsonObject[] = [];
   // Nur setzen, wenn es gefilterte Kinder gibt — keine leeren controls:[]
@@ -442,7 +452,7 @@ function withPositionalLabels(
   const rootCopy = copyWithLabel(control, label);
   const partsValue = ownDataValue(control, 'parts');
   if (Array.isArray(partsValue)) {
-    rootCopy['parts'] = [...partsValue].sort(byPartId);
+    rootCopy['parts'] = ownArrayDataElements(partsValue).sort(byPartId);
   }
   if (maxDepth > CLASS_2_IMPORT_LIMITS.maxDepth) {
     // Zu tief für vollständige Beschriftung — nur die Wurzel wird beschriftet.
@@ -473,7 +483,7 @@ function withPositionalLabels(
       const childCopy = copyWithLabel(child, childLabel);
       const childParts = ownDataValue(child, 'parts');
       if (Array.isArray(childParts)) {
-        childCopy['parts'] = [...childParts].sort(byPartId);
+        childCopy['parts'] = ownArrayDataElements(childParts).sort(byPartId);
       }
       labeledChildren.push(childCopy);
       stack.push({ original: child, copy: childCopy, label: childLabel });
@@ -485,8 +495,12 @@ function withPositionalLabels(
 
 function copyWithLabel(control: JsonObject, label: string): JsonObject {
   const sourcePropsValue = ownDataValue(control, 'props');
-  const sourceProps = Array.isArray(sourcePropsValue) ? [...sourcePropsValue] : [];
-  return { ...control, props: [{ name: 'label', value: label }, ...sourceProps] };
+  const sourceProps = Array.isArray(sourcePropsValue)
+    ? ownArrayDataElements(sourcePropsValue)
+    : [];
+  const copy = copyOwnDataMembers(control);
+  copy['props'] = [{ name: 'label', value: label }, ...sourceProps];
+  return copy;
 }
 
 /**
@@ -665,7 +679,8 @@ function measureCustomGroupsDepth(rawGroups: readonly JsonObject[]): number {
     visited.add(groups as object);
     maxDepth = Math.max(maxDepth, depth);
     if (depth > CLASS_2_IMPORT_LIMITS.maxDepth) return depth;
-    for (const group of groups) {
+    for (const group of ownArrayDataElements(groups)) {
+      if (!isJsonObject(group)) continue;
       const nested = ownDataValue(group, 'groups');
       if (Array.isArray(nested)) {
         const nestedGroups = ownArrayDataElements(nested).filter(
@@ -684,10 +699,40 @@ export function buildCustomGroups(
   request: CustomAssemblyRequest,
   combined: CombinedControls,
 ): CustomAssemblyResult {
+  const rawGroupsValue = ownDataValue(request as unknown as object, 'rawGroups');
+  const typedGroupsValue = ownDataValue(request as unknown as object, 'typedGroups');
+  const insertControlsValue = ownDataValue(request as unknown as object, 'insertControls');
+  const rawGroups = Array.isArray(rawGroupsValue)
+    ? ownArrayDataElements(rawGroupsValue).filter(
+      (group): group is JsonObject => isJsonObject(group),
+    )
+    : [];
+  const typedGroups = Array.isArray(typedGroupsValue)
+    ? ownArrayDataElements(typedGroupsValue) as ProfileGroup[]
+    : [];
+  const insertControls = Array.isArray(insertControlsValue)
+    ? ownArrayDataElements(insertControlsValue) as ProfileInsertControls[]
+    : [];
+  const combinedOrderValue = ownDataValue(combined as unknown as object, 'order');
+  const combinedControlsValue = ownDataValue(combined as unknown as object, 'controls');
+  const combinedClashesValue = ownDataValue(combined as unknown as object, 'clashes');
+  const safeCombined: CombinedControls = {
+    order: Array.isArray(combinedOrderValue)
+      ? ownArrayDataElements(combinedOrderValue).filter(
+        (node): node is JsonObject => isJsonObject(node),
+      )
+      : [],
+    controls: combinedControlsValue instanceof Map ? combinedControlsValue : new Map(),
+    clashes: Array.isArray(combinedClashesValue)
+      ? ownArrayDataElements(combinedClashesValue).filter(
+        (clash): clash is string => typeof clash === 'string',
+      )
+      : [],
+  };
   // Tiefenbegrenzung am exportierten Rand: Eine 12.000-Ebenen-Kette kann die
   // Klasse-2-Kette nicht passieren (maxDepth 64); statt RangeError wird
   // kontrolliert mit Diagnose abgebrochen.
-  if (measureCustomGroupsDepth(request.rawGroups) > CLASS_2_IMPORT_LIMITS.maxDepth) {
+  if (measureCustomGroupsDepth(rawGroups) > CLASS_2_IMPORT_LIMITS.maxDepth) {
     return {
       ok: false,
       diagnostic: createOscalDiagnostic({
@@ -705,16 +750,16 @@ export function buildCustomGroups(
   // derselbe Tiefendurchlauf, sodass with-child-controls echte Struktur
   // sieht.
   const context: AssemblyContext = {
-    poolIndex: indexCatalogControls({ pool: { controls: [...combined.order] } }),
-    combined,
+    poolIndex: indexCatalogControls({ pool: { controls: safeCombined.order } }),
+    combined: safeCombined,
   };
 
-  const groupsResult = assembleGroups(request.rawGroups, request.typedGroups, context);
+  const groupsResult = assembleGroups(rawGroups, typedGroups, context);
   if (!groupsResult.ok) return groupsResult;
 
   const controls: JsonObject[] = [];
   const emittedDefinitions = new Set<object>();
-  for (const directive of request.insertControls) {
+  for (const directive of insertControls) {
     const outcome = resolveSelectionIds(context.poolIndex, {
       selection: directive.selection,
       excludeControls: directive.excludeControls,
@@ -727,7 +772,10 @@ export function buildCustomGroups(
       // (Gitar-Hinweis zu 7fe9880): Ihre Definition würde sonst doppelt
       // erscheinen. Ein eigener Bucket existiert genau dann, wenn das
       // Dokument den Knoten einzeln trägt — er wird dann ausgegeben.
-      for (const definition of combined.controls.get(id) ?? []) {
+      const definitions = safeCombined.controls.get(id);
+      if (!Array.isArray(definitions)) continue;
+      for (const definition of ownArrayDataElements(definitions)) {
+        if (!isJsonObject(definition)) continue;
         if (emittedDefinitions.has(definition)) continue;
         emittedDefinitions.add(definition);
         controls.push(definition);

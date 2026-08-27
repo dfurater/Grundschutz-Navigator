@@ -36,6 +36,30 @@ function inclusion(
 }
 
 describe('combine', () => {
+  it('ignoriert Accessor-Slots und Accessor-IDs in den Inklusionen', () => {
+    const controls: Record<string, unknown>[] = [];
+    Object.defineProperty(controls, 0, {
+      enumerable: true,
+      configurable: true,
+      get: () => {
+        throw new Error('controls-slot getter must not run');
+      },
+    });
+
+    const accessorId = control('ignored');
+    Object.defineProperty(accessorId, 'id', {
+      enumerable: true,
+      configurable: true,
+      get: () => {
+        throw new Error('id getter must not run');
+      },
+    });
+    controls.push(accessorId);
+
+    expect(() => applyCombine([{ documentKey: 'doc-a', controls }], 'use-first')).not.toThrow();
+    expect(applyCombine([{ documentKey: 'doc-a', controls }], 'use-first').order).toEqual([]);
+  });
+
   it('use-first behält die erste Definition und verwirft spätere Kollisionen', () => {
     const first = control('ac-1', { title: 'ERSTE' });
     const second = control('ac-1', { title: 'ZWEITE' });
@@ -82,6 +106,24 @@ describe('flat-Struktur', () => {
 
     const controls = body['controls'] as Record<string, unknown>[];
     expect(controls.map((c) => c['id'])).toEqual(['ac-1', 'bc-1']);
+  });
+
+  it('kopiert nur eigene Data-Properties und führt keine Control-Getter aus', () => {
+    const source = control('ac-1');
+    Object.defineProperty(source, 'title', {
+      enumerable: true,
+      configurable: true,
+      get: () => {
+        throw new Error('title getter must not run');
+      },
+    });
+    const combined = applyCombine([{ documentKey: 'doc-a', controls: [source] }], 'use-first');
+
+    expect(() => buildFlatControls(combined)).not.toThrow();
+    expect((buildFlatControls(combined)['controls'] as Record<string, unknown>[])[0]).toEqual({
+      id: 'ac-1',
+      class: 'SP800-53',
+    });
   });
 });
 
@@ -137,6 +179,22 @@ describe('as-is-Struktur', () => {
     const controls = groups[0]!['controls'] as Record<string, unknown>[];
     expect(controls.map((c) => c['id'])).toEqual(['x-keep.1']);
     expect(body['controls']).toEqual([]);
+  });
+
+  it('führt beim Kopieren inkludierter Controls keine Getter aus', () => {
+    const selected = control('ac-1');
+    Object.defineProperty(selected, 'title', {
+      enumerable: true,
+      configurable: true,
+      get: () => {
+        throw new Error('title getter must not run');
+      },
+    });
+
+    expect(() => buildAsIsGroups(
+      { groups: [], controls: [selected] },
+      new Set(['ac-1']),
+    )).not.toThrow();
   });
 });
 

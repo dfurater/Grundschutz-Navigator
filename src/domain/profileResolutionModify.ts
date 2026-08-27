@@ -46,7 +46,11 @@ export interface AlterationDirective {
   }[];
 }
 
-import { isJsonObject, ownDataValue } from './profileResolutionSelection';
+import {
+  isJsonObject,
+  ownArrayDataElements,
+  ownDataValue,
+} from './profileResolutionSelection';
 import { CLASS_2_IMPORT_LIMITS } from './oscalImportContract';
 
 /** Array-Wert eines Mitglieds, rein deskriptorbasiert gelesen. */
@@ -94,7 +98,10 @@ export function applySetParametersToControl(
   control: JsonObject,
   setParameters: readonly ProfileSetParameter[],
 ): JsonObject {
-  if (setParameters.length === 0) return control;
+  const directives = ownArrayDataElements(setParameters).filter(
+    (directive): directive is ProfileSetParameter => isJsonObject(directive),
+  );
+  if (directives.length === 0) return control;
 
   const sourceParams = safeArrayMember(control, 'params');
   if (sourceParams === undefined) {
@@ -102,7 +109,7 @@ export function applySetParametersToControl(
     // eine Anweisung tatsächlich einen Parameter trägt — ein leeres
     // params-Mitglied wird nicht erfunden (Orakelvertrag gegen die
     // BSI-resolved_catalogs).
-    for (const directive of setParameters) {
+    for (const directive of directives) {
       const matched = applySingleSetParameter([], directive);
       if (matched.length > 0) {
         const copy: JsonObject = {};
@@ -119,7 +126,7 @@ export function applySetParametersToControl(
   }
 
   let params: readonly unknown[] = sourceParams;
-  for (const directive of setParameters) {
+  for (const directive of directives) {
     params = applySingleSetParameter(params, directive);
   }
 
@@ -138,9 +145,10 @@ function applySingleSetParameter(
   directive: ProfileSetParameter,
 ): readonly unknown[] {
   let changed = false;
-  const next = params.map((param) => {
+  const directiveParamId = readStringMember(directive as unknown as JsonObject, 'paramId');
+  const next = ownArrayDataElements(params).map((param) => {
     if (!isJsonObject(param)) return param;
-    if (readStringMember(param, 'id') !== directive.paramId) return param;
+    if (readStringMember(param, 'id') !== directiveParamId) return param;
 
     changed = true;
     const target: JsonObject = {};
@@ -163,7 +171,10 @@ function applySingleSetParameter(
       const additions = ownDataValue(directive as unknown as JsonObject, field);
       if (!Array.isArray(additions)) continue;
       const existing = safeArrayMember(target, field) ?? [];
-      target[field] = [...existing, ...additions];
+      target[field] = [
+        ...ownArrayDataElements(existing),
+        ...ownArrayDataElements(additions),
+      ];
     }
 
     return target;
@@ -179,16 +190,30 @@ export function applyAlteration(
   alteration: AlterationDirective,
 ): JsonObject {
   let working = control;
+  const removesValue = ownDataValue(alteration as unknown as JsonObject, 'removes');
+  const addsValue = ownDataValue(alteration as unknown as JsonObject, 'adds');
+  const removals = Array.isArray(removesValue) ? ownArrayDataElements(removesValue) : [];
+  const additions = Array.isArray(addsValue) ? ownArrayDataElements(addsValue) : [];
 
   // Removes wirken VOR den Adds (Orakelbefund am WLAN-Profil: `removes`
   // nimmt das Original-Part heraus, `adds` setzt es an neuer Position
   // wieder ein — umgekehrte Reihenfolge würde den Einsatz doppelt
   // entfernen).
-  for (const removal of alteration.removes ?? []) {
-    working = applyRemovals(working, removal);
+  for (const removal of removals) {
+    if (isJsonObject(removal)) {
+      working = applyRemovals(
+        working,
+        removal as NonNullable<AlterationDirective['removes']>[number],
+      );
+    }
   }
-  for (const addition of alteration.adds ?? []) {
-    working = applyAddition(working, addition);
+  for (const addition of additions) {
+    if (isJsonObject(addition)) {
+      working = applyAddition(
+        working,
+        addition as NonNullable<AlterationDirective['adds']>[number],
+      );
+    }
   }
 
   return canonicalizeControlKeys(working);
@@ -229,7 +254,7 @@ function applyImplicitAddition(
   for (const listKey of ['params', 'props', 'links', 'parts'] as const) {
     const additions = ownDataValue(addition as JsonObject, listKey);
     if (Array.isArray(additions) && additions.length > 0) {
-      pendingLists.set(listKey, additions);
+      pendingLists.set(listKey, ownArrayDataElements(additions));
     } else if (listKey === 'parts' && Array.isArray(additions) && additions.length === 0) {
       pendingLists.set(listKey, []);
     }
@@ -242,7 +267,10 @@ function applyImplicitAddition(
 
   for (const [listKey, additions] of pendingLists) {
     const existing = safeArrayMember(result, listKey) ?? [];
-    result[listKey] = startLike ? [...additions, ...existing] : [...existing, ...additions];
+    const existingElements = ownArrayDataElements(existing);
+    result[listKey] = startLike
+      ? [...additions, ...existingElements]
+      : [...existingElements, ...additions];
   }
 
   return canonicalizeControlKeys(result);
@@ -286,7 +314,8 @@ function insertAtPart(
   index: number,
   addition: NonNullable<AlterationDirective['adds']>[number],
 ): { readonly inserted: boolean; readonly value: unknown } {
-  const position = addition.position ?? 'ending';
+  const positionValue = ownDataValue(addition as JsonObject, 'position');
+  const position = typeof positionValue === 'string' ? positionValue : 'ending';
   const additions = collectAdditionLists(addition);
 
   if (position === 'before') {
@@ -322,7 +351,7 @@ function measurePartsDepth(partsValue: unknown): number {
     visited.add(parts as object);
     maxDepth = Math.max(maxDepth, depth);
     if (depth > CLASS_2_IMPORT_LIMITS.maxDepth) return depth;
-    for (const part of parts) {
+    for (const part of ownArrayDataElements(parts)) {
       if (isJsonObject(part)) {
         const nested = ownDataValue(part, 'parts');
         if (Array.isArray(nested)) {
@@ -347,7 +376,9 @@ function insertIntoPartsTree(
     return { inserted: false, value: partsValue };
   }
 
-  const parts = [...partsValue];
+  const parts = ownArrayDataElements(partsValue).filter(
+    (part): part is JsonObject => isJsonObject(part),
+  );
 
   for (let index = 0; index < parts.length; index += 1) {
     const part = parts[index];
@@ -381,7 +412,7 @@ function insertIntoPartsTree(
 /** Bestehende parts-Liste eines Parts als Kopie. */
 function filterAsIsInnerParts(part: JsonObject): readonly unknown[] {
   const value = ownDataValue(part, 'parts');
-  return Array.isArray(value) ? [...value] : [];
+  return Array.isArray(value) ? ownArrayDataElements(value) : [];
 }
 
 
@@ -392,7 +423,7 @@ function collectAdditionLists(
   for (const key of ['params', 'props', 'links', 'parts'] as const) {
     const value = ownDataValue(addition as JsonObject, key);
     if (Array.isArray(value)) {
-      for (const entry of value) {
+      for (const entry of ownArrayDataElements(value)) {
         if (isJsonObject(entry)) lists.push(entry);
       }
     }
@@ -415,7 +446,7 @@ function applyRemovals(
   for (const listKey of ['params', 'props', 'links', 'parts'] as const) {
     const members = safeArrayMember(control, listKey);
     if (members === undefined) continue;
-    result[listKey] = members.filter((member) => {
+    result[listKey] = ownArrayDataElements(members).filter((member) => {
       if (!isJsonObject(member)) return true;
       return !removalMatches(member, removal, listKey);
     });
@@ -429,11 +460,17 @@ function removalMatches(
   removal: NonNullable<AlterationDirective['removes']>[number],
   listKey: string,
 ): boolean {
-  if (removal.byName !== undefined && member['name'] === removal.byName) return true;
-  if (removal.byClass !== undefined && member['class'] === removal.byClass) return true;
-  if (removal.byId !== undefined && member['id'] === removal.byId) return true;
-  if (removal.byNs !== undefined && member['ns'] === removal.byNs) return true;
-  if (removal.byItemName !== undefined && listKey === 'parts' && member['name'] === removal.byItemName) {
+  const removalNode = removal as unknown as JsonObject;
+  const byName = readStringMember(removalNode, 'byName');
+  const byClass = readStringMember(removalNode, 'byClass');
+  const byId = readStringMember(removalNode, 'byId');
+  const byNs = readStringMember(removalNode, 'byNs');
+  const byItemName = readStringMember(removalNode, 'byItemName');
+  if (byName !== undefined && readStringMember(member, 'name') === byName) return true;
+  if (byClass !== undefined && readStringMember(member, 'class') === byClass) return true;
+  if (byId !== undefined && readStringMember(member, 'id') === byId) return true;
+  if (byNs !== undefined && readStringMember(member, 'ns') === byNs) return true;
+  if (byItemName !== undefined && listKey === 'parts' && readStringMember(member, 'name') === byItemName) {
     return true;
   }
   return false;

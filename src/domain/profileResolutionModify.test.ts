@@ -24,6 +24,36 @@ function baseControl(): Record<string, unknown> {
 }
 
 describe('set-parameter', () => {
+  it('führt weder Accessor-Slots noch Accessor-Member aus', () => {
+    const params: Record<string, unknown>[] = [];
+    Object.defineProperty(params, 0, {
+      enumerable: true,
+      configurable: true,
+      get: () => {
+        throw new Error('params-slot getter must not run');
+      },
+    });
+    const control = { ...baseControl(), params };
+
+    const directives: Array<Parameters<typeof applySetParametersToControl>[1][number]> = [];
+    Object.defineProperty(directives, 0, {
+      enumerable: true,
+      configurable: true,
+      get: () => {
+        throw new Error('directive-slot getter must not run');
+      },
+    });
+    directives.push({
+      paramId: 'ac-1_prm_1',
+      values: ['safe'],
+      props: [],
+      links: [],
+      path: '/modify/safe',
+    });
+
+    expect(() => applySetParametersToControl(control, directives)).not.toThrow();
+  });
+
   it('ersetzt Skalarfelder und reichert props/links an', () => {
     const control = baseControl();
     const result = applySetParametersToControl(control, [
@@ -135,6 +165,60 @@ describe('alter — removes', () => {
     expect(result['props']).toEqual([]);
     expect(result['parts']).toEqual([]);
     expect(result['links']).toHaveLength(1); // unverändert
+  });
+
+  it('führt keine Getter auf Alteration, Removal oder Mitgliedern aus', () => {
+    const alteration = {
+      controlId: 'ac-1',
+      adds: [],
+    } as Record<string, unknown>;
+    Object.defineProperty(alteration, 'removes', {
+      enumerable: true,
+      configurable: true,
+      get: () => {
+        throw new Error('removes getter must not run');
+      },
+    });
+
+    expect(() => applyAlteration(
+      baseControl(),
+      alteration as Parameters<typeof applyAlteration>[1],
+    )).not.toThrow();
+
+    const addsAccessor = { controlId: 'ac-1', removes: [] } as Record<string, unknown>;
+    Object.defineProperty(addsAccessor, 'adds', {
+      enumerable: true,
+      configurable: true,
+      get: () => {
+        throw new Error('adds getter must not run');
+      },
+    });
+    expect(() => applyAlteration(
+      baseControl(),
+      addsAccessor as Parameters<typeof applyAlteration>[1],
+    )).not.toThrow();
+
+    const removal = {} as Record<string, unknown>;
+    Object.defineProperty(removal, 'byName', {
+      enumerable: true,
+      configurable: true,
+      get: () => {
+        throw new Error('byName getter must not run');
+      },
+    });
+    const member = { name: 'status', value: 'ready' };
+    Object.defineProperty(member, 'name', {
+      enumerable: true,
+      configurable: true,
+      get: () => {
+        throw new Error('member name getter must not run');
+      },
+    });
+
+    expect(() => applyAlteration(
+      { ...baseControl(), props: [member] },
+      { controlId: 'ac-1', adds: [], removes: [removal] } as Parameters<typeof applyAlteration>[1],
+    )).not.toThrow();
   });
 });
 
