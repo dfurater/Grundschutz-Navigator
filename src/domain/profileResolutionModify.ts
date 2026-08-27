@@ -71,17 +71,21 @@ const CANONICAL_CONTROL_KEYS = [
 export function canonicalizeControlKeys(node: JsonObject): JsonObject {
   const result: JsonObject = {};
   for (const key of CANONICAL_CONTROL_KEYS) {
-    if (key in node) result[key] = node[key];
+    const value = ownDataValue(node, key);
+    if (value !== undefined) result[key] = value;
   }
-  for (const key of Object.keys(node)) {
-    if (!(key in result)) result[key] = node[key];
+  for (const key of Reflect.ownKeys(node)) {
+    if (typeof key !== 'string') continue;
+    if (key in result) continue;
+    const value = ownDataValue(node, key);
+    if (value !== undefined) result[key] = value;
   }
   return result;
 }
 
 
 function readStringMember(node: JsonObject, key: string): string | undefined {
-  const value = node[key];
+  const value = ownDataValue(node, key);
   return typeof value === 'string' ? value : undefined;
 }
 
@@ -101,7 +105,14 @@ export function applySetParametersToControl(
     for (const directive of setParameters) {
       const matched = applySingleSetParameter([], directive);
       if (matched.length > 0) {
-        return canonicalizeControlKeys({ ...control, params: matched });
+        const copy: JsonObject = {};
+        for (const key of Reflect.ownKeys(control)) {
+          if (typeof key !== 'string') continue;
+          const value = ownDataValue(control, key);
+          if (value !== undefined) copy[key] = value;
+        }
+        copy['params'] = matched;
+        return canonicalizeControlKeys(copy);
       }
     }
     return canonicalizeControlKeys(control);
@@ -112,7 +123,14 @@ export function applySetParametersToControl(
     params = applySingleSetParameter(params, directive);
   }
 
-  return canonicalizeControlKeys({ ...control, params });
+  const copyParams: JsonObject = {};
+  for (const key of Reflect.ownKeys(control)) {
+    if (typeof key !== 'string') continue;
+    const value = ownDataValue(control, key);
+    if (value !== undefined) copyParams[key] = value;
+  }
+  copyParams['params'] = params;
+  return canonicalizeControlKeys(copyParams);
 }
 
 function applySingleSetParameter(
@@ -125,7 +143,12 @@ function applySingleSetParameter(
     if (readStringMember(param, 'id') !== directive.paramId) return param;
 
     changed = true;
-    const target: JsonObject = { ...param };
+    const target: JsonObject = {};
+    for (const key of Reflect.ownKeys(param)) {
+      if (typeof key !== 'string') continue;
+      const value = ownDataValue(param, key);
+      if (value !== undefined) target[key] = value;
+    }
 
     // Skalarfelder: ersetzen, sofern in der Anweisung vorhanden.
     for (const field of ['class', 'depends-on', 'label', 'usage'] as const) {
@@ -175,8 +198,8 @@ function applyAddition(
   control: JsonObject,
   addition: NonNullable<AlterationDirective['adds']>[number],
 ): JsonObject {
-  const explicitPartId = addition.byId;
-  if (explicitPartId !== undefined) {
+  const explicitPartId = ownDataValue(addition as JsonObject, 'byId');
+  if (typeof explicitPartId === 'string' && explicitPartId.length > 0) {
     return applyExplicitAddition(control, explicitPartId, addition);
   }
   return applyImplicitAddition(control, addition);
@@ -191,10 +214,16 @@ function applyImplicitAddition(
   control: JsonObject,
   addition: NonNullable<AlterationDirective['adds']>[number],
 ): JsonObject {
-  const position = addition.position ?? 'ending';
+  const positionValue = ownDataValue(addition as JsonObject, 'position');
+  const position = typeof positionValue === 'string' ? positionValue : 'ending';
   const startLike = position === 'starting' || position === 'before';
 
-  const result: JsonObject = { ...control };
+  const result: JsonObject = {};
+  for (const key of Reflect.ownKeys(control)) {
+    if (typeof key !== 'string') continue;
+    const value = ownDataValue(control, key);
+    if (value !== undefined) result[key] = value;
+  }
   const pendingLists = new Map<string, readonly unknown[]>();
 
   for (const listKey of ['params', 'props', 'links', 'parts'] as const) {
@@ -236,7 +265,14 @@ function applyExplicitAddition(
     addition,
   );
   if (updatedParts.inserted) {
-    return canonicalizeControlKeys({ ...control, parts: updatedParts.value });
+    const copyExp: JsonObject = {};
+    for (const key of Reflect.ownKeys(control)) {
+      if (typeof key !== 'string') continue;
+      const value = ownDataValue(control, key);
+      if (value !== undefined) copyExp[key] = value;
+    }
+    copyExp['parts'] = updatedParts.value;
+    return canonicalizeControlKeys(copyExp);
   }
 
   // Ziel-Part nicht gefunden: unverändert (fail-silent gemäß Draft-Vertrag
@@ -262,7 +298,14 @@ function insertAtPart(
   // starting: innerhalb des Ziel-Parts am Anfang einfügen.
   const inner = filterAsIsInnerParts(parts[index]!);
   const merged = [...additions, ...inner];
-  return { inserted: true, value: { ...parts[index]!, parts: merged } as JsonObject };
+  const copyStart: JsonObject = {};
+  for (const key of Reflect.ownKeys(parts[index]!)) {
+    if (typeof key !== 'string') continue;
+    const value = ownDataValue(parts[index]! as object, key);
+    if (value !== undefined) copyStart[key] = value;
+  }
+  copyStart['parts'] = merged;
+  return { inserted: true, value: copyStart as JsonObject };
 }
 
 /** Misst die maximale Schachtelungstiefe eines Parts-Baums iterativ. */
@@ -319,7 +362,13 @@ function insertIntoPartsTree(
     if (nestedParts !== undefined) {
       const nestedResult = insertIntoPartsTree(nestedParts, targetPartId, addition);
       if (nestedResult.inserted) {
-        const copy: JsonObject = { ...part, parts: nestedResult.value };
+        const copy: JsonObject = {};
+        for (const key of Reflect.ownKeys(part)) {
+          if (typeof key !== 'string') continue;
+          const value = ownDataValue(part, key);
+          if (value !== undefined) copy[key] = value;
+        }
+        copy['parts'] = nestedResult.value;
         parts[index] = copy;
         return { inserted: true, value: parts };
       }
@@ -356,7 +405,12 @@ function applyRemovals(
   control: JsonObject,
   removal: NonNullable<AlterationDirective['removes']>[number],
 ): JsonObject {
-  const result: JsonObject = { ...control };
+  const result: JsonObject = {};
+  for (const key of Reflect.ownKeys(control)) {
+    if (typeof key !== 'string') continue;
+    const value = ownDataValue(control, key);
+    if (value !== undefined) result[key] = value;
+  }
 
   for (const listKey of ['params', 'props', 'links', 'parts'] as const) {
     const members = safeArrayMember(control, listKey);

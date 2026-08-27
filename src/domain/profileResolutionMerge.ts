@@ -48,7 +48,7 @@ import {
 export type CombineMethod = 'use-first' | 'keep';
 
 function readIdOrEmpty(node: JsonObject): string {
-  const id = node['id'];
+  const id = ownDataValue(node, 'id');
   return typeof id === 'string' ? id : '';
 }
 
@@ -212,7 +212,7 @@ function collectIncludedAndExcludedChildren(
  * inkludierte Controls unter nicht inkludierten Parents werden rekursiv
  * hochgelevelt.
  */
-/** Misst die maximale Gruppen-Schachtelungstiefe iterativ. */
+/** Misst die maximale Schachtelungstiefe (groups + controls) iterativ. */
 function measureGroupsDepth(containerNode: JsonObject): number {
   let maxDepth = 0;
   const stack: Array<{ node: JsonObject; depth: number }> = [{ node: containerNode, depth: 0 }];
@@ -223,11 +223,13 @@ function measureGroupsDepth(containerNode: JsonObject): number {
     visited.add(node);
     maxDepth = Math.max(maxDepth, depth);
     if (depth > CLASS_2_IMPORT_LIMITS.maxDepth) return depth;
-    const nestedGroups = safeArrayMember(node, 'groups');
-    if (nestedGroups !== undefined) {
-      for (const group of ownArrayDataElements(nestedGroups)) {
-        if (isJsonObject(group)) {
-          stack.push({ node: group, depth: depth + 1 });
+    for (const listKey of ['groups', 'controls'] as const) {
+      const nested = safeArrayMember(node, listKey);
+      if (nested !== undefined) {
+        for (const child of ownArrayDataElements(nested)) {
+          if (isJsonObject(child)) {
+            stack.push({ node: child, depth: depth + 1 });
+          }
         }
       }
     }
@@ -290,7 +292,8 @@ function collectNestedGroups(
       // Die Hierarchielisten werden nur gesetzt, wenn Inhalt erhalten bleibt —
       // leere Gruppen-/Controls-Mitglieder erscheinen im resolved Dokument
       // nicht (Orakelvertrag gegen die BSI-resolved_catalogs).
-      const merged: JsonObject = { ...group };
+      // Deskriptorbasiert, um Getter nicht auszuführen.
+      const merged = copyOwnDataMembers(group);
       delete merged['controls'];
       delete merged['groups'];
       if (groupControls.length > 0) merged['controls'] = groupControls;
