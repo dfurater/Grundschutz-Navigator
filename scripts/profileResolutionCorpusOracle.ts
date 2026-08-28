@@ -204,8 +204,8 @@ function nodeAtPathToken(node: unknown, token: string): unknown {
  * (#SENS.8.6 in lieferkette, #ASST.2.1 und #DEV.* in wlan). Kein Regel-
  * werk erfüllt beide. Der Resolver folgt dem unabhängigeren NIST-Orakel
  * und ADR-2-Verlustlosigkeit. Für den BSI-Vergleich beschreibt die feste
- * Differenzregistry jede Werkzeugbeschneidung und die zwei belegten
- * Positionsabweichungen vollständig; das erwartete Dokument steuert die
+ * Differenzregistry jede Werkzeugbeschneidung und die belegte
+ * Positionsabweichung vollständig; das erwartete Dokument steuert die
  * Rekonziliation nicht.
  */
 
@@ -337,12 +337,10 @@ function reconcileRegisteredLinks(
 function reconcileRegisteredOrder(
   controls: unknown[],
   differences: BsiDifferenceIndex,
-  applied: Set<string>,
 ): void {
   interface IndexedControl {
     readonly control: unknown;
     readonly index: number;
-    readonly registered?: readonly OrderDifference[];
   }
 
   const kept: IndexedControl[] = [];
@@ -358,23 +356,82 @@ function reconcileRegisteredOrder(
       kept.push({ control, index });
       continue;
     }
-    postponed.push({ control, index, registered });
+    postponed.push({ control, index });
   }
   const reconciled = [...kept, ...postponed];
   let moved = false;
   for (const [index, entry] of reconciled.entries()) {
-    if (entry.index === index) continue;
-    moved = true;
-    for (const difference of entry.registered ?? []) {
-      applied.add(differenceKey(difference));
-    }
+    if (entry.index !== index) moved = true;
   }
   if (moved) {
     controls.splice(0, controls.length, ...reconciled.map((entry) => entry.control));
   }
 }
 
-/** Wendet ausschließlich die fest registrierten BSI-Abweichungen an. */
+function applyBsiDifferences(
+  strippedActual: unknown,
+  differences: readonly BsiCorpusDifference[],
+): { readonly cleaned: unknown; readonly linkEffects: ReadonlySet<string> } {
+  const differenceIndex = indexBsiDifferences(differences);
+  const clonedValue = cloneJsonWithoutUndefined(strippedActual);
+  const linkEffects = new Set<string>();
+  const body = documentBody(clonedValue);
+  if (body !== undefined) {
+    reconcileRegisteredLinks(body, differenceIndex, linkEffects);
+    const rootControls = body['controls'];
+    if (Array.isArray(rootControls)) reconcileRegisteredOrder(rootControls, differenceIndex);
+    const stack: JsonObjectLike[] = [];
+    pushHierarchyChildren(body, stack);
+    while (stack.length > 0) {
+      const node = stack.pop()!;
+      reconcileRegisteredLinks(node, differenceIndex, linkEffects);
+      const controls = node['controls'];
+      if (Array.isArray(controls)) reconcileRegisteredOrder(controls, differenceIndex);
+      pushHierarchyChildren(node, stack);
+    }
+  }
+  return { cleaned: clonedValue, linkEffects };
+}
+
+/**
+ * Wendet eine geschlossene Differenzliste an und misst jeden Eintrag kausal:
+ * Ein Eintrag gilt genau dann als wirksam, wenn sein Weglassen das bereinigte
+ * Ergebnis ändert. Dadurch bleiben interagierende Positionsregeln sichtbar,
+ * auch wenn der eigene Control-Index zufällig unverändert bleibt.
+ */
+export function reconcileBsiDifferences(
+  differences: readonly BsiCorpusDifference[],
+  strippedActual: unknown,
+): {
+  readonly cleaned: unknown;
+  readonly applied: readonly string[];
+  readonly missing: readonly string[];
+} {
+  if (differences.length === 0) {
+    return { cleaned: strippedActual, applied: [], missing: [] };
+  }
+
+  const { cleaned, linkEffects } = applyBsiDifferences(strippedActual, differences);
+  const fullCanonical = canonicalJson(cleaned);
+  const applied = new Set(linkEffects);
+  for (const difference of differences) {
+    if (difference.member !== 'controls') continue;
+    const withoutDifference = differences.filter((candidate) => candidate !== difference);
+    const counterfactual = applyBsiDifferences(strippedActual, withoutDifference).cleaned;
+    if (canonicalJson(counterfactual) !== fullCanonical) {
+      applied.add(differenceKey(difference));
+    }
+  }
+
+  const registered = differences.map(differenceKey);
+  return {
+    cleaned,
+    applied: registered.filter((key) => applied.has(key)),
+    missing: registered.filter((key) => !applied.has(key)),
+  };
+}
+
+/** Wendet ausschließlich die für den Korpus fest registrierten Abweichungen an. */
 export function reconcileBsiKnownDifferences(
   corpusKey: string,
   strippedActual: unknown,
@@ -386,28 +443,5 @@ export function reconcileBsiKnownDifferences(
   const differences = BSI_PROFILE_RESOLUTION_DIFFERENCES.filter(
     (difference) => difference.corpusKey === corpusKey,
   );
-  const differenceIndex = indexBsiDifferences(differences);
-  const clonedValue = cloneJsonWithoutUndefined(strippedActual);
-  const applied = new Set<string>();
-  const body = documentBody(clonedValue);
-  if (body !== undefined) {
-    reconcileRegisteredLinks(body, differenceIndex, applied);
-    const rootControls = body['controls'];
-    if (Array.isArray(rootControls)) reconcileRegisteredOrder(rootControls, differenceIndex, applied);
-    const stack: JsonObjectLike[] = [];
-    pushHierarchyChildren(body, stack);
-    while (stack.length > 0) {
-      const node = stack.pop()!;
-      reconcileRegisteredLinks(node, differenceIndex, applied);
-      const controls = node['controls'];
-      if (Array.isArray(controls)) reconcileRegisteredOrder(controls, differenceIndex, applied);
-      pushHierarchyChildren(node, stack);
-    }
-  }
-  const registered = differences.map(differenceKey);
-  return {
-    cleaned: clonedValue,
-    applied: registered.filter((key) => applied.has(key)),
-    missing: registered.filter((key) => !applied.has(key)),
-  };
+  return reconcileBsiDifferences(differences, strippedActual);
 }

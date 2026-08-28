@@ -143,13 +143,6 @@ function reject(
   };
 }
 
-function failure(result: { readonly ok: false; readonly diagnostic: OscalDiagnostic }): {
-  readonly ok: false;
-  readonly diagnostic: OscalDiagnostic;
-} {
-  return { ok: false, diagnostic: result.diagnostic };
-}
-
 /** Ergänzt den geschlossenen Plan-Kontext, ohne die Pipelinestufe umzudeuten. */
 function withResolvedCatalogArtifact(
   diagnostic: OscalDiagnostic,
@@ -162,6 +155,21 @@ function withResolvedCatalogArtifact(
     validator: diagnostic.validator,
     path: diagnostic.path,
     artifact: { key: artifactKey, rootType: 'catalog', oscalVersion },
+    params: diagnostic.params,
+  });
+}
+
+/** Ordnet eine durchgereichte Phasendiagnose ihrem Profilpfad zu. */
+function withCurrentProfileArtifact(
+  diagnostic: OscalDiagnostic,
+  input: SingleProfileInput,
+): OscalDiagnostic {
+  return createOscalDiagnostic({
+    code: diagnostic.code,
+    stage: diagnostic.stage,
+    validator: diagnostic.validator,
+    path: diagnostic.path,
+    artifact: currentProfileArtifact(input),
     params: diagnostic.params,
   });
 }
@@ -504,11 +512,11 @@ function collectPhaseOne(
       (candidate) => candidate.href === href,
     );
     if (edge === undefined) {
-      return failure(reject(
+      return reject(
         PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.IMPORT_UNMAPPED,
         profileImport.path,
         currentProfileArtifact(input),
-      ));
+      );
     }
 
     const resolvedSource = input.resolvedByArtifact.get(edge.artifactKey);
@@ -517,19 +525,19 @@ function collectPhaseOne(
       resolvedSource === undefined &&
       input.plan.rootTypesByArtifactKey.get(edge.artifactKey) === 'profile'
     ) {
-      return failure(reject(
+      return reject(
         PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.IMPORT_PROFILE_UNRESOLVED,
         profileImport.path,
-        plannedArtifact(input.plan, edge.artifactKey),
-      ));
+        currentProfileArtifact(input),
+      );
     }
     const sourceDocument = resolvedSource ?? plannedSource;
     if (sourceDocument === undefined) {
-      return failure(reject(
+      return reject(
         PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.IMPORT_UNMAPPED,
         profileImport.path,
-        plannedArtifact(input.plan, edge.artifactKey),
-      ));
+        currentProfileArtifact(input),
+      );
     }
 
     const index = indexCatalogControls(sourceDocument);
@@ -537,7 +545,12 @@ function collectPhaseOne(
       selection: profileImport.selection,
       excludeControls: profileImport.excludeControls,
     });
-    if (!outcome.ok) return outcome;
+    if (!outcome.ok) {
+      return {
+        ok: false,
+        diagnostic: withCurrentProfileArtifact(outcome.diagnostic, input),
+      };
+    }
 
     const controls = selectedControlNodes(index, outcome.ids);
     records.push({ artifactKey: edge.artifactKey, ids: outcome.ids, sourceDocument });
@@ -610,7 +623,12 @@ function buildStructuredOutput(
         },
         combined,
       );
-      if (!assembly.ok) return assembly;
+      if (!assembly.ok) {
+        return {
+          ok: false,
+          diagnostic: withCurrentProfileArtifact(assembly.diagnostic, input),
+        };
+      }
       return {
         ok: true,
         value: { groups: [...assembly.groups], controls: [...assembly.controls] },
@@ -890,10 +908,10 @@ function emitResolvedCatalog(input: ResolvedCatalogEmission): DerivedJsonTree {
 
 function resolveSingleProfile(input: SingleProfileInput): { readonly ok: true; readonly tree: DerivedJsonTree } | { readonly ok: false; readonly diagnostic: OscalDiagnostic } {
   const phaseOne = collectPhaseOne(input);
-  if (!phaseOne.ok) return failure(phaseOne);
+  if (!phaseOne.ok) return phaseOne;
 
   const structured = buildStructuredOutput(input, phaseOne.value.records, phaseOne.value.inclusions);
-  if (!structured.ok) return failure(structured);
+  if (!structured.ok) return structured;
 
   const transform = collectModifyTransform(input.document);
   const groups = structured.value.groups;
@@ -911,17 +929,13 @@ function resolveSingleProfile(input: SingleProfileInput): { readonly ok: true; r
   const profileUuid = input.document.view.uuid;
   if (profileUuid === undefined) {
     const isTopProfile = input.artifactKey === input.plan.topProfileArtifactKey;
-    return failure(reject(
+    return reject(
       isTopProfile
         ? PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.TOP_PROFILE_UUID_MISSING
         : PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.PROFILE_UUID_MISSING,
       '/uuid',
-      {
-        key: input.artifactKey,
-        rootType: 'profile',
-        oscalVersion: input.plan.oscalVersion,
-      },
-    ));
+      currentProfileArtifact(input),
+    );
   }
   const derivedUuid = deriveUuidV5(PROFILE_RESOLUTION_NAMESPACE_UUID, profileUuid);
 
@@ -962,30 +976,30 @@ export async function resolveProfile(
       edgesByArtifactKey: request.edgesByArtifactKey,
       resolvedByArtifact,
     });
-    if (!outcome.ok) return failure(outcome);
+    if (!outcome.ok) return outcome;
     const validated = await processClass2OscalValue(outcome.tree, {
       trustClass: 'class-2-local-user',
     });
     if (!validated.ok) {
-      return failure({
+      return {
         ok: false,
         diagnostic: withResolvedCatalogArtifact(
           validated.diagnostic,
           artifactKey,
           plan.oscalVersion,
         ),
-      });
+      };
     }
     resolvedByArtifact.set(artifactKey, outcome.tree);
   }
 
   const topLevel = plan.topProfileArtifactKey;
   if (!resolvedByArtifact.has(topLevel)) {
-    return failure(reject(
+    return reject(
       PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.TOP_PROFILE_UNRESOLVED,
       '/',
       plannedArtifact(plan, topLevel),
-    ));
+    );
   }
   return {
     ok: true,

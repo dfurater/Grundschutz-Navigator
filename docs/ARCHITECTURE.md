@@ -242,7 +242,7 @@ Profile Resolution (deterministisch, GSPP-291 Commit B)
   danach unverbrauchte Profilressourcen und übrige Profilmitglieder;
   UUID-Kollisionen werden case-insensitiv nach first occurrence aufgelöst
 • Orakel zweigeteilt: BSI (3× resolved_catalog, feste Registry aus 21 Link-
-  und 2 Positionsabweichungen) und NIST (4× Baselines v1.5.0, vollständiges
+  und einer Positionsabweichung) und NIST (4× Baselines v1.5.0, vollständiges
   Back-matter und as-is-Reihenfolge; nur belegte XML-Whitespace-Artefakte
   symmetrisch normalisiert) plus synthetische Fixtures mit
   Draft-/XSpec-Quellenangaben

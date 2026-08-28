@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   normalizeProseLeadingSpace,
+  reconcileBsiDifferences,
   reconcileBsiKnownDifferences,
 } from './profileResolutionCorpusOracle';
 
@@ -76,5 +77,46 @@ describe('Profile-Resolution-Korpusorakel', () => {
     ]);
     expect(applied).not.toContain('lieferkette:KONF.2.4.2:controls:end');
     expect(missing).toContain('lieferkette:KONF.2.4.2:controls:end');
+  });
+
+  it('erkennt eine kausal wirksame Positionsabweichung auch bei unverändertem Eigenindex', () => {
+    const differences = [
+      {
+        corpusKey: 'lieferkette',
+        controlId: 'KONF.2.4.2',
+        member: 'controls',
+        position: 'end',
+        reason: 'Test: erste Positionsabweichung.',
+      },
+      {
+        corpusKey: 'lieferkette',
+        controlId: 'ZWEITER',
+        member: 'controls',
+        position: 'end',
+        reason: 'Test: zweite Positionsabweichung.',
+      },
+    ] as const;
+
+    const { cleaned, applied, missing } = reconcileBsiDifferences(differences, {
+      catalog: {
+        controls: [
+          { id: 'KONF.2.4.2' },
+          { id: 'b' },
+          { id: 'ZWEITER' },
+        ],
+      },
+    });
+    const body = (cleaned as { catalog: { controls: Array<{ id: string }> } }).catalog;
+
+    expect(body.controls.map((control) => control.id)).toEqual([
+      'b',
+      'KONF.2.4.2',
+      'ZWEITER',
+    ]);
+    expect(applied).toEqual([
+      'lieferkette:KONF.2.4.2:controls:end',
+      'lieferkette:ZWEITER:controls:end',
+    ]);
+    expect(missing).toEqual([]);
   });
 });

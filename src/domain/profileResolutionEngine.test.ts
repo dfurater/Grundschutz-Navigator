@@ -24,6 +24,7 @@ interface ImportSpec {
   href: string;
   includeAll?: boolean;
   withIds?: string[];
+  withChildControls?: string;
 }
 
 function profileDoc(spec: {
@@ -47,7 +48,14 @@ function profileDoc(spec: {
         href: imp.href,
         ...(imp.includeAll
           ? { 'include-all': {} }
-          : { 'include-controls': [{ 'with-ids': imp.withIds ?? [] }] }),
+          : {
+              'include-controls': [{
+                'with-ids': imp.withIds ?? [],
+                ...(imp.withChildControls !== undefined && {
+                  'with-child-controls': imp.withChildControls,
+                }),
+              }],
+            }),
       })),
       ...(spec.merge !== undefined && { merge: spec.merge }),
       ...(spec.modify !== undefined && { modify: spec.modify }),
@@ -790,7 +798,7 @@ describe('fail-closed Diagnosen der Engine', () => {
     });
   });
 
-  it('verwendet den im Plan geprüften Profil-Roottyp für noch nicht aufgelöste Ziele', async () => {
+  it('ordnet ein noch nicht aufgelöstes Profilziel dem importierenden Profilpfad zu', async () => {
     const documents = new Map<string, unknown>([
       ['profile-top', profileDoc({ imports: [{ href: './child.json', includeAll: true }], merge: { flat: {} } })],
       ['profile-child', profileDoc({ imports: [{ href: './a.json', includeAll: true }], merge: { flat: {} } })],
@@ -818,7 +826,8 @@ describe('fail-closed Diagnosen der Engine', () => {
       ok: false,
       diagnostic: {
         code: 'PROFILE_RESOLUTION_IMPORT_PROFILE_UNRESOLVED',
-        artifact: { key: 'profile-child', rootType: 'profile', oscalVersion: VERSION },
+        artifact: { key: 'profile-top', rootType: 'profile', oscalVersion: VERSION },
+        path: '/profile/imports/0',
       },
     });
   });
@@ -854,7 +863,96 @@ describe('fail-closed Diagnosen der Engine', () => {
       ok: false,
       diagnostic: {
         code: 'PROFILE_RESOLUTION_IMPORT_PROFILE_UNRESOLVED',
-        artifact: { key: 'profile-child', rootType: 'profile', oscalVersion: VERSION },
+        artifact: { key: 'profile-top', rootType: 'profile', oscalVersion: VERSION },
+        path: '/profile/imports/0',
+      },
+    });
+  });
+
+  it('ordnet ein im manipulierten Plan fehlendes Importziel dem importierenden Profilpfad zu', async () => {
+    const documents = new Map<string, unknown>([
+      ['profile-top', profileDoc({ imports: [{ href: './a.json', includeAll: true }] })],
+      ['cat-a', catalogDoc(controlNode('ac-1'))],
+    ]);
+    const edgesByArtifactKey = new Map<string, readonly ProfileResolutionEdge[]>([
+      ['profile-top', [{ href: './a.json', artifactKey: 'cat-a' }]],
+    ]);
+    const built = buildProfileResolutionPlan({
+      topProfileArtifactKey: 'profile-top',
+      documents,
+      edgesByArtifactKey,
+    });
+    if (!built.ok) throw new Error(built.diagnostic.code);
+    const invalidPlan = {
+      ...built,
+      documents: new Map<string, unknown>(),
+    } as const;
+    const profileViews = new Map([
+      ['profile-top', parseProfileDocument(documents.get('profile-top'), { trustClass: 'class-1-verified-public' })],
+    ]);
+
+    const outcome = await resolveProfile({ plan: invalidPlan, edgesByArtifactKey, profileViews });
+
+    expect(outcome).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: 'PROFILE_RESOLUTION_IMPORT_UNMAPPED',
+        artifact: { key: 'profile-top', rootType: 'profile', oscalVersion: VERSION },
+        path: '/profile/imports/0',
+      },
+    });
+  });
+
+  it('ergänzt Selektionsdiagnosen um den Kontext des importierenden Profils', async () => {
+    const outcome = await resolveWorld({
+      documents: {
+        'profile-top': profileDoc({
+          imports: [{
+            href: './a.json',
+            withIds: ['ac-1'],
+            withChildControls: 'vielleicht',
+          }],
+        }),
+        'cat-a': catalogDoc(controlNode('ac-1')),
+      },
+      edges: { 'profile-top': [{ href: './a.json', artifactKey: 'cat-a' }] },
+    });
+
+    expect(outcome).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: 'PROFILE_RESOLUTION_WITH_CHILD_CONTROLS_INVALID',
+        artifact: { key: 'profile-top', rootType: 'profile', oscalVersion: VERSION },
+      },
+    });
+  });
+
+  it('ergänzt Custom-Assembly-Diagnosen um den Kontext des steuernden Profils', async () => {
+    const outcome = await resolveWorld({
+      documents: {
+        'profile-top': profileDoc({
+          imports: [{ href: './a.json', includeAll: true }],
+          merge: {
+            custom: {
+              'insert-controls': [{
+                'include-controls': [{
+                  'with-ids': ['ac-1'],
+                  'with-child-controls': 'vielleicht',
+                }],
+              }],
+            },
+          },
+        }),
+        'cat-a': catalogDoc(controlNode('ac-1')),
+      },
+      edges: { 'profile-top': [{ href: './a.json', artifactKey: 'cat-a' }] },
+    });
+
+    expect(outcome).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: 'PROFILE_RESOLUTION_WITH_CHILD_CONTROLS_INVALID',
+        artifact: { key: 'profile-top', rootType: 'profile', oscalVersion: VERSION },
       },
     });
   });

@@ -935,11 +935,12 @@ Ergebnisgraphen.
 - Jedes aufgelöste Zwischenprofil und das Endergebnis muss die gemeinsame
   Objekt-, Root-, Versions- und Schema-Pipeline bestehen; ein ungültiger
   Builder-Output wird nicht zwischengespeichert und nicht ausgegeben.
-- Fehlerdiagnosen der Resolver-Engine tragen für das aktuelle Profil oder
-  eine bereits im geschlossenen Plan geprüfte Kante deren Artefaktschlüssel,
-  Root-Typ und gebundene OSCAL-Version. Für einen nicht im Plan vorhandenen
-  Schlüssel wird kein Artefaktkontext geraten; die Diagnose bleibt dort
-  absichtlich ohne diese Angaben.
+- Fehlerdiagnosen aus Import, Selektion, Merge und Modify tragen das aktuelle
+  Profil als Artefaktkontext, weil ihr strukturierter Pfad in genau diesem
+  Profil liegt. Diagnosen der anschließenden Ergebnisvalidierung tragen das
+  erzeugende Zwischen- oder Top-Profil als Schlüssel, den Ergebnis-Root
+  `catalog` und die gebundene OSCAL-Version. Artefaktschlüssel und Pfad werden
+  nie aus unterschiedlichen Dokumenten kombiniert.
 - Back-matter startet mit UUID-Fragmenten aus den Ergebnisstrukturen und dem
   vollständigen unverbrauchten Profil-Back-matter. Referenzierte
   Quellressourcen werden dann bis zum Fixpunkt ergänzt: Jeder in einer neu
@@ -971,7 +972,7 @@ werden.
   bleiben), das BSI-Werkzeug entfernt sie (#SENS.8.6 u. a.). Kein
   Regelwerk erfüllt beide; der Resolver folgt NIST/ADR-2, die BSI-
   Differenzen stehen im Korpus-Harniss in einer festen, reviewbaren Registry:
-  21 konkrete Linkentfernungen und 2 konkrete Positionsabweichungen. Das
+  21 konkrete Linkentfernungen und eine konkrete Positionsabweichung. Das
   erwartete BSI-Dokument steuert diese Rekonziliation nicht.
 - NIST-Whitespace-Artefakte (XML-Rest) werden ausschließlich in `prose`,
   `params[].select.choice[]` und `citation.text` symmetrisch normalisiert.
