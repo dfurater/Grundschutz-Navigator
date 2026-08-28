@@ -69,6 +69,7 @@ import {
   type DerivedObjectHandle,
 } from './oscalDerivedGraph';
 import { processClass2OscalValue } from './oscalObjectPipeline';
+import { walkOwnContainers } from './oscalObjectWalk';
 import { CLASS_2_IMPORT_LIMITS } from './oscalImportContract';
 import {
   deriveUuidV5,
@@ -85,6 +86,8 @@ export const PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES = Object.freeze({
   IMPORT_UNMAPPED: 'PROFILE_RESOLUTION_IMPORT_UNMAPPED',
   /** Das steuernde Profil trägt keine verwertbare Dokument-UUID. */
   TOP_PROFILE_UUID_MISSING: 'PROFILE_RESOLUTION_TOP_PROFILE_UUID_MISSING',
+  /** Ein aufzulösendes Zwischenprofil trägt keine verwertbare Dokument-UUID. */
+  PROFILE_UUID_MISSING: 'PROFILE_RESOLUTION_PROFILE_UUID_MISSING',
   /** Das steuernde Profil wurde nicht als Profilprojektion bereitgestellt. */
   TOP_PROFILE_UNRESOLVED: 'PROFILE_RESOLUTION_TOP_PROFILE_UNRESOLVED',
   /** Ein importiertes Profilziel war bei der Auswertung noch nicht aufgelöst. */
@@ -123,7 +126,11 @@ interface SelectionRecord {
   readonly sourceDocument: unknown;
 }
 
-function reject(code: string, path: string): { readonly ok: false; readonly diagnostic: OscalDiagnostic } {
+function reject(
+  code: string,
+  path: string,
+  artifact?: { readonly key: string; readonly rootType: 'catalog' | 'profile'; readonly oscalVersion: string },
+): { readonly ok: false; readonly diagnostic: OscalDiagnostic } {
   return {
     ok: false,
     diagnostic: createOscalDiagnostic({
@@ -131,6 +138,7 @@ function reject(code: string, path: string): { readonly ok: false; readonly diag
       stage: PROFILE_RESOLUTION_STAGE,
       validator: PROFILE_RESOLUTION_VALIDATOR,
       path,
+      artifact,
     }),
   };
 }
@@ -140,6 +148,22 @@ function failure(result: { readonly ok: false; readonly diagnostic: OscalDiagnos
   readonly diagnostic: OscalDiagnostic;
 } {
   return { ok: false, diagnostic: result.diagnostic };
+}
+
+/** Ergänzt den geschlossenen Plan-Kontext, ohne die Pipelinestufe umzudeuten. */
+function withResolvedCatalogArtifact(
+  diagnostic: OscalDiagnostic,
+  artifactKey: string,
+  oscalVersion: string,
+): OscalDiagnostic {
+  return createOscalDiagnostic({
+    code: diagnostic.code,
+    stage: diagnostic.stage,
+    validator: diagnostic.validator,
+    path: diagnostic.path,
+    artifact: { key: artifactKey, rootType: 'catalog', oscalVersion },
+    params: diagnostic.params,
+  });
 }
 
 /** Einzelner plain-object-Körper eines Dokuments (Root-Key-Eintrag). */
@@ -436,10 +460,6 @@ function selectedControlNodes(
   return controls;
 }
 
-function isProfileRoot(document: unknown): boolean {
-  return document !== null && typeof document === 'object' && Object.hasOwn(document, 'profile');
-}
-
 /** Phase 1 — Selektion je Import gegen sein Quelldokument. */
 function collectPhaseOne(
   input: SingleProfileInput,
@@ -462,7 +482,10 @@ function collectPhaseOne(
 
     const resolvedSource = input.resolvedByArtifact.get(edge.artifactKey);
     const plannedSource = input.plan.documents.get(edge.artifactKey);
-    if (resolvedSource === undefined && isProfileRoot(plannedSource)) {
+    if (
+      resolvedSource === undefined &&
+      input.plan.rootTypesByArtifactKey.get(edge.artifactKey) === 'profile'
+    ) {
       return failure(reject(
         PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.IMPORT_PROFILE_UNRESOLVED,
         profileImport.path,
@@ -483,7 +506,7 @@ function collectPhaseOne(
     const controls = selectedControlNodes(index, outcome.ids);
     records.push({ artifactKey: edge.artifactKey, ids: outcome.ids, sourceDocument });
     if (href.startsWith('#')) {
-      consumedResourceUuids.add(href.slice(1));
+      consumedResourceUuids.add(href.slice(1).toLowerCase());
     }
     inclusions.push({ documentKey: edge.artifactKey, controls });
   }
@@ -643,7 +666,7 @@ function filteredBackMatter(
   const kept = ownArrayDataElements(resources).filter((entry) => {
     if (!isJsonObject(entry)) return true;
     const uuid = ownDataValue(entry, 'uuid');
-    return !(typeof uuid === 'string' && consumedResourceUuids.has(uuid));
+    return !(typeof uuid === 'string' && consumedResourceUuids.has(uuid.toLowerCase()));
   });
   const filtered: JsonObject = { ...backMatter, resources: kept };
   if (kept.length === 0) delete filtered['resources'];
@@ -655,24 +678,17 @@ const RESOURCE_FRAGMENT_PATTERN = /#([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[8
 /** Sammelt UUID-Fragmente aus allen Stringwerten ohne Accessors auszuführen. */
 function collectReferencedResourceUuids(values: readonly unknown[]): Set<string> {
   const referenced = new Set<string>();
-  const visited = new Set<object>();
-  const stack = [...values];
-
-  while (stack.length > 0) {
-    const value = stack.pop();
-    if (typeof value === 'string') {
-      for (const match of value.matchAll(RESOURCE_FRAGMENT_PATTERN)) {
+  walkOwnContainers(values, (container) => {
+    for (const key of Reflect.ownKeys(container)) {
+      const descriptor = Object.getOwnPropertyDescriptor(container, key);
+      if (descriptor === undefined || !('value' in descriptor)) continue;
+      if (typeof descriptor.value !== 'string') continue;
+      for (const match of descriptor.value.matchAll(RESOURCE_FRAGMENT_PATTERN)) {
         referenced.add(match[1]!.toLowerCase());
       }
-      continue;
     }
-    if (value === null || typeof value !== 'object' || visited.has(value)) continue;
-    visited.add(value);
-    for (const key of Reflect.ownKeys(value)) {
-      const descriptor = Object.getOwnPropertyDescriptor(value, key);
-      if (descriptor !== undefined && 'value' in descriptor) stack.push(descriptor.value);
-    }
-  }
+    return true;
+  });
   return referenced;
 }
 
@@ -699,6 +715,27 @@ function referencedSourceResources(
   return resources;
 }
 
+/** Ergänzt Quellressourcen, bis kein mitgeführter Fragmentverweis mehr fehlt. */
+function referencedSourceResourcesAtFixpoint(
+  records: readonly SelectionRecord[],
+  initialReferencedUuids: ReadonlySet<string>,
+): JsonObject[] {
+  const referencedUuids = new Set(initialReferencedUuids);
+  let resources = referencedSourceResources(records, referencedUuids);
+
+  while (true) {
+    const discoveredUuids = collectReferencedResourceUuids(resources);
+    let changed = false;
+    for (const uuid of discoveredUuids) {
+      if (referencedUuids.has(uuid)) continue;
+      referencedUuids.add(uuid);
+      changed = true;
+    }
+    if (!changed) return resources;
+    resources = referencedSourceResources(records, referencedUuids);
+  }
+}
+
 /** Entfernt UUID-Duplikate case-insensitiv; die erste Quelle gewinnt stabil. */
 function uniqueResources(resources: readonly JsonObject[]): JsonObject[] {
   const seenUuids = new Set<string>();
@@ -717,17 +754,15 @@ function uniqueResources(resources: readonly JsonObject[]): JsonObject[] {
 
 /** Verschmilzt referenzierte Quellressourcen mit unverbrauchtem Profil-Back-matter. */
 function mergedBackMatter(
-  sourceBody: JsonObject,
+  profileBackMatter: JsonObject | null,
   records: readonly SelectionRecord[],
-  consumedResourceUuids: ReadonlySet<string>,
   referencedUuids: ReadonlySet<string>,
 ): JsonObject | null {
-  const profileBackMatter = filteredBackMatter(sourceBody, consumedResourceUuids);
   const profileResources = isJsonObject(profileBackMatter)
     ? ownDataValue(profileBackMatter, 'resources')
     : undefined;
   const resources = uniqueResources([
-    ...referencedSourceResources(records, referencedUuids),
+    ...referencedSourceResourcesAtFixpoint(records, referencedUuids),
     ...(Array.isArray(profileResources)
       ? ownArrayDataElements(profileResources).filter(isJsonObject)
       : []),
@@ -788,15 +823,16 @@ function emitResolvedCatalog(input: ResolvedCatalogEmission): DerivedJsonTree {
   if (controls.length > 0) {
     graph.setObjectMember(bodyHandle, 'controls', emitValue(graph, controls, 0));
   }
+  const profileBackMatter = filteredBackMatter(sourceBody, consumedResourceUuids);
   const referencedUuids = collectReferencedResourceUuids([
     sourceMetadata,
     groups,
     controls,
+    profileBackMatter,
   ]);
   const backMatter = mergedBackMatter(
-    sourceBody,
+    profileBackMatter,
     records,
-    consumedResourceUuids,
     referencedUuids,
   );
   if (backMatter !== null) {
@@ -828,18 +864,29 @@ function resolveSingleProfile(input: SingleProfileInput): { readonly ok: true; r
   // verbleibende BSI-Differenz ist als bekannte Differenz im Harniss
   // laut registriert und dem Review zur Entscheidung vorgelegt.
 
-  const topUuid = input.document.view.uuid;
-  if (topUuid === undefined) {
-    return failure(reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.TOP_PROFILE_UUID_MISSING, '/'));
+  const profileUuid = input.document.view.uuid;
+  if (profileUuid === undefined) {
+    const isTopProfile = input.artifactKey === input.plan.topProfileArtifactKey;
+    return failure(reject(
+      isTopProfile
+        ? PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.TOP_PROFILE_UUID_MISSING
+        : PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.PROFILE_UUID_MISSING,
+      '/uuid',
+      {
+        key: input.artifactKey,
+        rootType: 'profile',
+        oscalVersion: input.plan.oscalVersion,
+      },
+    ));
   }
-  const derivedUuid = deriveUuidV5(PROFILE_RESOLUTION_NAMESPACE_UUID, topUuid);
+  const derivedUuid = deriveUuidV5(PROFILE_RESOLUTION_NAMESPACE_UUID, profileUuid);
 
   return {
     ok: true,
     tree: emitResolvedCatalog({
       plan: input.plan,
       document: input.document,
-      topUuid,
+      topUuid: profileUuid,
       derivedUuid,
       groups,
       controls,
@@ -875,11 +922,20 @@ export async function resolveProfile(
     const validated = await processClass2OscalValue(outcome.tree, {
       trustClass: 'class-2-local-user',
     });
-    if (!validated.ok) return failure(validated);
+    if (!validated.ok) {
+      return failure({
+        ok: false,
+        diagnostic: withResolvedCatalogArtifact(
+          validated.diagnostic,
+          artifactKey,
+          plan.oscalVersion,
+        ),
+      });
+    }
     resolvedByArtifact.set(artifactKey, outcome.tree);
   }
 
-  const topLevel = plan.order.at(-1)!;
+  const topLevel = plan.topProfileArtifactKey;
   if (!resolvedByArtifact.has(topLevel)) {
     return failure(reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.TOP_PROFILE_UNRESOLVED, '/'));
   }

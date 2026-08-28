@@ -245,4 +245,25 @@ describe('Deterministischer Importgraph der Profile Resolution', () => {
       expect(plan.order.at(-1)).toBe('profile-0');
     }
   });
+
+  it('trägt den angeforderten Top-Schlüssel und die geprüften Roottypen im Plan', () => {
+    const plan = buildProfileResolutionPlan({
+      topProfileArtifactKey: 'profile-a',
+      documents: new Map<string, unknown>([
+        ['profile-a', profileWithImports('1.1.3', [{ href: '#catalog-c' }])],
+        ['catalog-c', catalog('1.1.3')],
+      ]),
+      edgesByArtifactKey: new Map([
+        ['profile-a', [{ href: '#catalog-c', artifactKey: 'catalog-c' }]],
+      ]),
+    });
+
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.topProfileArtifactKey).toBe('profile-a');
+    expect(plan.rootTypesByArtifactKey).toEqual(new Map([
+      ['profile-a', 'profile'],
+      ['catalog-c', 'catalog'],
+    ]));
+  });
 });

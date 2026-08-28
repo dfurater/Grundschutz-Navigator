@@ -935,11 +935,14 @@ Ergebnisgraphen.
 - Jedes aufgelöste Zwischenprofil und das Endergebnis muss die gemeinsame
   Objekt-, Root-, Versions- und Schema-Pipeline bestehen; ein ungültiger
   Builder-Output wird nicht zwischengespeichert und nicht ausgegeben.
-- Back-matter übernimmt nur Quellressourcen, deren UUID-Fragmente im
-  Ergebnis referenziert werden, in stabiler Import-/Quellreihenfolge; danach
-  folgen unverbrauchte Profilressourcen und die übrigen Profilmitglieder.
-  Bei case-insensitiv gleichen Ressourcen-UUIDs gewinnt die erste Ressource;
-  damit bleibt die Reihenfolge stabil und der Ergebnisgraph eindeutig.
+- Back-matter startet mit UUID-Fragmenten aus den Ergebnisstrukturen und dem
+  vollständigen unverbrauchten Profil-Back-matter. Referenzierte
+  Quellressourcen werden dann bis zum Fixpunkt ergänzt: Jeder in einer neu
+  übernommenen Quelle gefundene UUID-Fragmentverweis wird wiederum aufgelöst.
+  Die Abschlussmenge steht in stabiler Import-/Quellreihenfolge vor den
+  unverbrauchten Profilressourcen und übrigen Profilmitgliedern. Bei
+  case-insensitiv gleichen Ressourcen-UUIDs gewinnt die erste Quelle; auch
+  Verbrauch einer Importbindung wird case-insensitiv bestimmt.
 
 **Draft-Status:** Die NIST-Spezifikation
 (https://pages.nist.gov/OSCAL/learn/concepts/processing/profile-resolution/,
@@ -965,8 +968,9 @@ werden.
   Differenzen stehen im Korpus-Harniss in einer festen, reviewbaren Registry:
   21 konkrete Linkentfernungen und 2 konkrete Positionsabweichungen. Das
   erwartete BSI-Dokument steuert diese Rekonziliation nicht.
-- `prose`-Leerzeichen (XML-Rest): NIST resolved trägt führende Leer-
-  zeichen vor `{{ insert: param…` und nach `\n\n`; symmetrisch normalisiert.
+- NIST-Whitespace-Artefakte (XML-Rest) werden ausschließlich in `prose`,
+  `params[].select.choice[]` und `citation.text` symmetrisch normalisiert.
+  Titel, Hrefs, IDs und alle übrigen Stringmitglieder bleiben Vergleichssignal.
 - Back-matter-Provenienz: NIST übernimmt ausschließlich die im Ergebnis
   referenzierten Quellressourcen; Ressourcenanzahl und eindeutige nicht
   auflösbare `href`-Fragmentziele sind pro Baseline fest gepinnt und Teil
@@ -983,7 +987,8 @@ werden.
   (`metadata.last-modified`, Dokument-UUID am Körper,
   resolution-tool/source-profile) symmetrisch entfernt; zusätzlich
   feste BSI-Differenzregistry und symmetrische Normalisierung ausschließlich
-  belegter NIST-XML-Whitespace-Artefakte in `prose` und `citation.text`.
+  belegter NIST-XML-Whitespace-Artefakte in `prose`,
+  `params[].select.choice[]` und `citation.text`.
 - **Übrige Semantik:** Kleine synthetische Fixtures, deren Erwartungs-
   werte pro Fall aus Draft + XSpec (usnistgov/OSCAL Tag v1.1.3,
   src/utils/resolver-pipeline/testing/*.xspec) hergeleitet und mit

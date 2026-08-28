@@ -228,7 +228,6 @@ function promotedControls(
   }
   return kept;
 }
-/** Misst die maximale Schachtelungstiefe (groups + controls) iterativ. */
 function pushHierarchyChildren(
   node: JsonObject,
   depth: number,
@@ -243,6 +242,7 @@ function pushHierarchyChildren(
   }
 }
 
+/** Misst die maximale Schachtelungstiefe (groups + controls) iterativ. */
 function measureGroupsDepth(containerNode: JsonObject): number {
   let maxDepth = 0;
   const stack: Array<{ node: JsonObject; depth: number }> = [{ node: containerNode, depth: 0 }];
@@ -678,7 +678,6 @@ function orderedInsertIds(
   return [...declared, ...rest];
 }
 
-/** Misst die maximale Schachtelungstiefe von Custom-Gruppen iterativ. */
 function nestedCustomGroups(group: unknown): readonly JsonObject[] {
   if (!isJsonObject(group)) return [];
   const nested = ownDataValue(group, 'groups');
@@ -688,6 +687,7 @@ function nestedCustomGroups(group: unknown): readonly JsonObject[] {
   );
 }
 
+/** Misst die maximale Schachtelungstiefe von Custom-Gruppen iterativ. */
 function measureCustomGroupsDepth(rawGroups: readonly JsonObject[]): number {
   let maxDepth = 0;
   const stack: Array<{ groups: readonly JsonObject[]; depth: number }> = [

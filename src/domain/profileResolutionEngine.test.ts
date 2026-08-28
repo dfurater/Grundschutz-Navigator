@@ -28,13 +28,15 @@ interface ImportSpec {
 
 function profileDoc(spec: {
   imports: ImportSpec[];
+  uuid?: string;
   merge?: Record<string, unknown>;
   modify?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
+  backMatter?: Record<string, unknown>;
 }): Record<string, unknown> {
   return {
     profile: {
-      uuid: TOP_UUID,
+      uuid: spec.uuid ?? TOP_UUID,
       metadata: {
         title: 'Testprofil',
         version: '1.0.0',
@@ -49,6 +51,7 @@ function profileDoc(spec: {
       })),
       ...(spec.merge !== undefined && { merge: spec.merge }),
       ...(spec.modify !== undefined && { modify: spec.modify }),
+      ...(spec.backMatter !== undefined && { 'back-matter': spec.backMatter }),
     },
   };
 }
@@ -383,6 +386,119 @@ describe('Ergebnisvertrag', () => {
     });
   });
 
+  it('schließt referenzierte Quellressourcen transitiv über ihre Citation', async () => {
+    const firstUuid = '22222222-2222-4222-8222-222222222222';
+    const transitiveUuid = '33333333-3333-4333-8333-333333333333';
+    const outcome = await resolveWorld({
+      documents: {
+        'profile-top': profileDoc({
+          imports: [{ href: './a.json', includeAll: true }],
+          merge: { flat: {} },
+        }),
+        'cat-a': {
+          catalog: {
+            metadata: { 'oscal-version': VERSION },
+            controls: [
+              controlNode('ac-1', {
+                parts: [{ name: 'guidance', prose: `Siehe [A](#${firstUuid}).` }],
+              }),
+            ],
+            'back-matter': {
+              resources: [
+                {
+                  uuid: firstUuid,
+                  title: 'A',
+                  citation: { text: `Siehe [B](#${transitiveUuid}).` },
+                },
+                { uuid: transitiveUuid, title: 'B' },
+              ],
+            },
+          },
+        },
+      },
+      edges: { 'profile-top': [{ href: './a.json', artifactKey: 'cat-a' }] },
+    });
+
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(bodyOf(outcome)['back-matter']).toEqual({
+      resources: [
+        {
+          uuid: firstUuid,
+          title: 'A',
+          citation: { text: `Siehe [B](#${transitiveUuid}).` },
+        },
+        { uuid: transitiveUuid, title: 'B' },
+      ],
+    });
+  });
+
+  it('schließt Referenzen aus unverbrauchtem Profil-Back-matter gegen Quellressourcen', async () => {
+    const sourceUuid = '22222222-2222-4222-8222-222222222222';
+    const profileUuid = '33333333-3333-4333-8333-333333333333';
+    const outcome = await resolveWorld({
+      documents: {
+        'profile-top': profileDoc({
+          imports: [{ href: './a.json', includeAll: true }],
+          merge: { flat: {} },
+          backMatter: {
+            resources: [
+              {
+                uuid: profileUuid,
+                title: 'Profilquelle',
+                citation: { text: `Siehe [Quelle](#${sourceUuid}).` },
+              },
+            ],
+          },
+        }),
+        'cat-a': {
+          catalog: {
+            metadata: { 'oscal-version': VERSION },
+            controls: [controlNode('ac-1')],
+            'back-matter': { resources: [{ uuid: sourceUuid, title: 'Quelle' }] },
+          },
+        },
+      },
+      edges: { 'profile-top': [{ href: './a.json', artifactKey: 'cat-a' }] },
+    });
+
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(bodyOf(outcome)['back-matter']).toEqual({
+      resources: [
+        { uuid: sourceUuid, title: 'Quelle' },
+        {
+          uuid: profileUuid,
+          title: 'Profilquelle',
+          citation: { text: `Siehe [Quelle](#${sourceUuid}).` },
+        },
+      ],
+    });
+  });
+
+  it('behandelt die UUID einer verbrauchten Importbindung case-insensitiv', async () => {
+    const resourceUuid = 'abcdef01-4444-4444-8444-444444444444';
+    const outcome = await resolveWorld({
+      documents: {
+        'profile-top': profileDoc({
+          imports: [{ href: '#ABCDEF01-4444-4444-8444-444444444444', includeAll: true }],
+          merge: { flat: {} },
+          backMatter: {
+            resources: [{ uuid: resourceUuid, title: 'Verbrauchte Importbindung', rlinks: [{ href: 'cat.json' }] }],
+          },
+        }),
+        'cat-a': catalogDoc(controlNode('ac-1')),
+      },
+      edges: {
+        'profile-top': [{ href: '#ABCDEF01-4444-4444-8444-444444444444', artifactKey: 'cat-a' }],
+      },
+    });
+
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(bodyOf(outcome)).not.toHaveProperty('back-matter');
+  });
+
   it('übernimmt überlappende Quellressourcen nur einmal und bewahrt die erste', async () => {
     const sharedUuid = '22222222-2222-4222-8222-222222222222';
     const sourceCatalog = (controlId: string, title: string) => ({
@@ -505,14 +621,18 @@ describe('Modify-Phase', () => {
 
 describe('Profilketten', () => {
   it('löst Profil-zu-Profil-Ketten nachgelagert auf (Kind vor Eltern)', async () => {
+    const topUuid = '11111111-1111-5111-8111-111111111111';
+    const childUuid = '22222222-2222-5222-8222-222222222222';
     const world: WorldSpec = {
       documents: {
         'profile-top': profileDoc({
           imports: [{ href: './child.json', includeAll: true }],
+          uuid: topUuid,
           merge: { flat: {} },
         }),
         'profile-child': profileDoc({
           imports: [{ href: './a.json', includeAll: true }],
+          uuid: childUuid,
           merge: { flat: {} },
         }),
         'cat-a': catalogDoc(controlNode('deep-1')),
@@ -528,6 +648,12 @@ describe('Profilketten', () => {
     if (!outcome.ok) return;
     const controls = bodyOf(outcome)['controls'] as Record<string, unknown>[];
     expect(controls.map((control) => control['id'])).toEqual(['deep-1']);
+    expect(bodyOf(outcome)['uuid']).toBe(
+      deriveUuidV5(PROFILE_RESOLUTION_NAMESPACE_UUID, topUuid),
+    );
+    expect(bodyOf(outcome)['uuid']).not.toBe(
+      deriveUuidV5(PROFILE_RESOLUTION_NAMESPACE_UUID, childUuid),
+    );
   });
 
   it('löst einen Diamantgraphen ohne stilles Profil-Fallback vollständig auf', async () => {
@@ -576,6 +702,124 @@ describe('Profilketten', () => {
 });
 
 describe('fail-closed Diagnosen der Engine', () => {
+  it('berichtet eine fehlende UUID eines Zwischenprofils nicht als Top-Profil-Fehler', async () => {
+    const middleProfile = profileDoc({
+      imports: [{ href: './a.json', includeAll: true }],
+      merge: { flat: {} },
+    });
+    delete (middleProfile['profile'] as Record<string, unknown>)['uuid'];
+    const outcome = await resolveWorld({
+      documents: {
+        'profile-top': profileDoc({
+          imports: [{ href: './middle.json', includeAll: true }],
+          merge: { flat: {} },
+        }),
+        'profile-middle': middleProfile,
+        'cat-a': catalogDoc(controlNode('ac-1')),
+      },
+      edges: {
+        'profile-top': [{ href: './middle.json', artifactKey: 'profile-middle' }],
+        'profile-middle': [{ href: './a.json', artifactKey: 'cat-a' }],
+      },
+    });
+
+    expect(outcome).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: 'PROFILE_RESOLUTION_PROFILE_UUID_MISSING',
+        artifact: { key: 'profile-middle', rootType: 'profile' },
+        path: '/uuid',
+      },
+    });
+  });
+
+  it('ordnet eine Klasse-2-Diagnose dem erzeugenden Zwischenprofil zu', async () => {
+    const outcome = await resolveWorld({
+      documents: {
+        'profile-top': profileDoc({
+          imports: [{ href: './middle.json', includeAll: true }],
+          merge: { flat: {} },
+        }),
+        'profile-middle': profileDoc({
+          imports: [{ href: './a.json', includeAll: true }],
+          merge: { flat: {} },
+          metadata: { 'unbekanntes-mitglied': true },
+        }),
+        'cat-a': catalogDoc(controlNode('ac-1')),
+      },
+      edges: {
+        'profile-top': [{ href: './middle.json', artifactKey: 'profile-middle' }],
+        'profile-middle': [{ href: './a.json', artifactKey: 'cat-a' }],
+      },
+    });
+
+    expect(outcome).toMatchObject({
+      ok: false,
+      diagnostic: {
+        code: 'OSCAL_SCHEMA_ADDITIONAL_PROPERTY',
+        stage: 'json-schema',
+        artifact: { key: 'profile-middle', rootType: 'catalog', oscalVersion: VERSION },
+      },
+    });
+  });
+
+  it('verwendet den geplanten Top-Profil-Schlüssel statt der letzten Postorder-Position', async () => {
+    const documents = new Map<string, unknown>([
+      ['profile-top', profileDoc({ imports: [{ href: './a.json', includeAll: true }], merge: { flat: {} } })],
+      ['cat-a', catalogDoc(controlNode('ac-1'))],
+    ]);
+    const edgesByArtifactKey = new Map<string, readonly ProfileResolutionEdge[]>([
+      ['profile-top', [{ href: './a.json', artifactKey: 'cat-a' }]],
+    ]);
+    const built = buildProfileResolutionPlan({
+      topProfileArtifactKey: 'profile-top',
+      documents,
+      edgesByArtifactKey,
+    });
+    if (!built.ok) throw new Error(built.diagnostic.code);
+    const alteredPlan = { ...built, order: [...built.order, 'cat-a'] } as const;
+    const profileViews = new Map([
+      ['profile-top', parseProfileDocument(documents.get('profile-top'), { trustClass: 'class-1-verified-public' })],
+    ]);
+
+    const outcome = await resolveProfile({ plan: alteredPlan, edgesByArtifactKey, profileViews });
+
+    expect(outcome).toMatchObject({
+      ok: true,
+      output: { topProfileArtifactKey: 'profile-top' },
+    });
+  });
+
+  it('verwendet den im Plan geprüften Profil-Roottyp für noch nicht aufgelöste Ziele', async () => {
+    const documents = new Map<string, unknown>([
+      ['profile-top', profileDoc({ imports: [{ href: './child.json', includeAll: true }], merge: { flat: {} } })],
+      ['profile-child', profileDoc({ imports: [{ href: './a.json', includeAll: true }], merge: { flat: {} } })],
+      ['cat-a', catalogDoc(controlNode('ac-1'))],
+    ]);
+    const edgesByArtifactKey = new Map<string, readonly ProfileResolutionEdge[]>([
+      ['profile-top', [{ href: './child.json', artifactKey: 'profile-child' }]],
+      ['profile-child', [{ href: './a.json', artifactKey: 'cat-a' }]],
+    ]);
+    const built = buildProfileResolutionPlan({
+      topProfileArtifactKey: 'profile-top',
+      documents,
+      edgesByArtifactKey,
+    });
+    if (!built.ok) throw new Error(built.diagnostic.code);
+    documents.set('profile-child', catalogDoc(controlNode('replaced')));
+    const alteredPlan = { ...built, order: ['profile-top', 'profile-child', 'cat-a'] } as const;
+    const profileViews = new Map([
+      ['profile-top', parseProfileDocument(documents.get('profile-top'), { trustClass: 'class-1-verified-public' })],
+    ]);
+
+    const outcome = await resolveProfile({ plan: alteredPlan, edgesByArtifactKey, profileViews });
+
+    expect(outcome).toMatchObject({
+      ok: false,
+      diagnostic: { code: 'PROFILE_RESOLUTION_IMPORT_PROFILE_UNRESOLVED' },
+    });
+  });
+
   it('lehnt ein noch nicht aufgelöstes Profilziel am Import ab', async () => {
     const documents = new Map<string, unknown>([
       ['profile-top', profileDoc({ imports: [{ href: './child.json', includeAll: true }] })],

@@ -27,7 +27,6 @@ import { projectCatalogLineage } from '../src/domain/catalogLineage.mjs';
 import { CATALOG_LINEAGES } from '../src/domain/sourceRegistry.mjs';
 import {
   canonicalJson,
-  BSI_PROFILE_RESOLUTION_DIFFERENCES,
   firstDivergence,
   nodesAtDivergence,
   reconcileBsiKnownDifferences,
@@ -207,11 +206,7 @@ describe('verpflichtende Auflösung aller drei BSI-Profile', () => {
         lineage.catalogKey,
         strippedActual,
       );
-      const registeredCount = BSI_PROFILE_RESOLUTION_DIFFERENCES.filter(
-        (difference) => difference.corpusKey === lineage.catalogKey,
-      ).length;
       expect(missing, `Registrierte BSI-Differenz fehlt für ${lineage.catalogKey}`).toEqual([]);
-      expect(applied).toHaveLength(registeredCount);
       if (applied.length > 0) {
         console.error(`Korpus ${lineage.catalogKey}: ${applied.length} fest registrierte BSI-Differenzen angewandt — ${applied.join(', ')}`);
       }

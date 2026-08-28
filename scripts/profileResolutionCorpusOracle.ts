@@ -141,26 +141,25 @@ export function normalizeProseLeadingSpace(value: unknown, parentKey = ''): unkn
   if (Array.isArray(value)) {
     return value.map((child) => normalizeProseLeadingSpace(child, parentKey));
   }
-  if (typeof value === 'string') return normalizeOracleString(value);
+  if (typeof value === 'string') {
+    return parentKey === 'prose' ||
+      parentKey === 'select.choice' ||
+      parentKey === 'citation.text'
+      ? normalizeOracleProse(value)
+      : value;
+  }
   if (!isJsonObject(value)) return value;
   const copy: JsonObjectLike = {};
   for (const key of Object.keys(value)) {
     const child = value[key];
-    if (
-      typeof child === 'string' &&
-      (key === 'prose' || (parentKey === 'citation' && key === 'text'))
-    ) {
-      copy[key] = normalizeOracleProse(child);
-    } else {
-      copy[key] = normalizeProseLeadingSpace(child, key);
-    }
+    const memberKey = parentKey === 'select' && key === 'choice'
+      ? 'select.choice'
+      : parentKey === 'citation' && key === 'text'
+        ? 'citation.text'
+        : key;
+    copy[key] = normalizeProseLeadingSpace(child, memberKey);
   }
   return copy;
-}
-
-function normalizeOracleString(value: string): string {
-  if (value.includes('{{ insert:')) return value.trim();
-  return value.includes('\n\n ') ? value.replace(/\n\n +/g, '\n\n') : value;
 }
 
 function normalizeOracleProse(value: string): string {
@@ -291,20 +290,42 @@ function differenceKey(difference: BsiCorpusDifference): string {
     : `${difference.corpusKey}:${difference.controlId}:controls:${difference.position}`;
 }
 
+type LinkDifference = Extract<BsiCorpusDifference, { member: 'links' }>;
+type OrderDifference = Extract<BsiCorpusDifference, { member: 'controls' }>;
+
+interface BsiDifferenceIndex {
+  readonly linksByControlId: ReadonlyMap<string, ReadonlyMap<string, LinkDifference>>;
+  readonly ordersByControlId: ReadonlyMap<string, readonly OrderDifference[]>;
+}
+
+function indexBsiDifferences(differences: readonly BsiCorpusDifference[]): BsiDifferenceIndex {
+  const linksByControlId = new Map<string, Map<string, LinkDifference>>();
+  const ordersByControlId = new Map<string, OrderDifference[]>();
+  for (const difference of differences) {
+    if (difference.member === 'links') {
+      const linksByHref = linksByControlId.get(difference.controlId) ?? new Map();
+      linksByHref.set(difference.href, difference);
+      linksByControlId.set(difference.controlId, linksByHref);
+      continue;
+    }
+    const orders = ordersByControlId.get(difference.controlId) ?? [];
+    orders.push(difference);
+    ordersByControlId.set(difference.controlId, orders);
+  }
+  return { linksByControlId, ordersByControlId };
+}
+
 function reconcileRegisteredLinks(
   node: JsonObjectLike,
-  differences: readonly BsiCorpusDifference[],
+  differences: BsiDifferenceIndex,
   applied: Set<string>,
 ): void {
   const controlId = typeof node['id'] === 'string' ? node['id'] : '';
-  const registered = differences.filter(
-    (difference): difference is Extract<BsiCorpusDifference, { member: 'links' }> =>
-      difference.member === 'links' && difference.controlId === controlId,
-  );
-  if (registered.length === 0 || !Array.isArray(node['links'])) return;
+  const registered = differences.linksByControlId.get(controlId);
+  if (registered === undefined || !Array.isArray(node['links'])) return;
   const kept = node['links'].filter((link) => {
     if (!isJsonObject(link) || typeof link['href'] !== 'string') return true;
-    const match = registered.find((difference) => difference.href === link['href']);
+    const match = registered.get(link['href']);
     if (match === undefined) return true;
     applied.add(differenceKey(match));
     return false;
@@ -315,19 +336,26 @@ function reconcileRegisteredLinks(
 
 function reconcileRegisteredOrder(
   controls: unknown[],
-  differences: readonly BsiCorpusDifference[],
+  differences: BsiDifferenceIndex,
   applied: Set<string>,
 ): void {
-  for (const difference of differences) {
-    if (difference.member !== 'controls') continue;
-    const index = controls.findIndex(
-      (control) => isJsonObject(control) && control['id'] === difference.controlId,
-    );
-    if (index < 0) continue;
-    const [control] = controls.splice(index, 1);
-    controls.push(control);
-    applied.add(differenceKey(difference));
+  const kept: unknown[] = [];
+  const postponed: unknown[] = [];
+  for (const control of controls) {
+    const controlId = isJsonObject(control) && typeof control['id'] === 'string'
+      ? control['id']
+      : undefined;
+    const registered = controlId === undefined
+      ? undefined
+      : differences.ordersByControlId.get(controlId);
+    if (registered === undefined) {
+      kept.push(control);
+      continue;
+    }
+    postponed.push(control);
+    for (const difference of registered) applied.add(differenceKey(difference));
   }
+  if (postponed.length > 0) controls.splice(0, controls.length, ...kept, ...postponed);
 }
 
 /** Wendet ausschließlich die fest registrierten BSI-Abweichungen an. */
@@ -342,17 +370,21 @@ export function reconcileBsiKnownDifferences(
   const differences = BSI_PROFILE_RESOLUTION_DIFFERENCES.filter(
     (difference) => difference.corpusKey === corpusKey,
   );
+  const differenceIndex = indexBsiDifferences(differences);
   const clonedValue = cloneJsonWithoutUndefined(strippedActual);
   const applied = new Set<string>();
   const body = documentBody(clonedValue);
   if (body !== undefined) {
+    reconcileRegisteredLinks(body, differenceIndex, applied);
+    const rootControls = body['controls'];
+    if (Array.isArray(rootControls)) reconcileRegisteredOrder(rootControls, differenceIndex, applied);
     const stack: JsonObjectLike[] = [];
     pushHierarchyChildren(body, stack);
     while (stack.length > 0) {
       const node = stack.pop()!;
-      reconcileRegisteredLinks(node, differences, applied);
+      reconcileRegisteredLinks(node, differenceIndex, applied);
       const controls = node['controls'];
-      if (Array.isArray(controls)) reconcileRegisteredOrder(controls, differences, applied);
+      if (Array.isArray(controls)) reconcileRegisteredOrder(controls, differenceIndex, applied);
       pushHierarchyChildren(node, stack);
     }
   }
