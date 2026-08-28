@@ -98,6 +98,21 @@ function bodyOf(okResult: Extract<Awaited<ReturnType<typeof resolveProfile>>, { 
   return (okResult.output.tree as Record<string, unknown>)['catalog'] as Record<string, unknown>;
 }
 
+function expectTopProfileDiagnostic(
+  outcome: Awaited<ReturnType<typeof resolveProfile>>,
+  code: string,
+  path?: string,
+): void {
+  expect(outcome).toMatchObject({
+    ok: false,
+    diagnostic: {
+      code,
+      artifact: { key: 'profile-top', rootType: 'profile', oscalVersion: VERSION },
+      ...(path !== undefined && { path }),
+    },
+  });
+}
+
 describe('Auflösung — flat-Struktur', () => {
   it('use-first ist der Default und behält die erste Definition', async () => {
     const world: WorldSpec = {
@@ -822,14 +837,11 @@ describe('fail-closed Diagnosen der Engine', () => {
 
     const outcome = await resolveProfile({ plan: alteredPlan, edgesByArtifactKey, profileViews });
 
-    expect(outcome).toMatchObject({
-      ok: false,
-      diagnostic: {
-        code: 'PROFILE_RESOLUTION_IMPORT_PROFILE_UNRESOLVED',
-        artifact: { key: 'profile-top', rootType: 'profile', oscalVersion: VERSION },
-        path: '/profile/imports/0',
-      },
-    });
+    expectTopProfileDiagnostic(
+      outcome,
+      'PROFILE_RESOLUTION_IMPORT_PROFILE_UNRESOLVED',
+      '/profile/imports/0',
+    );
   });
 
   it('lehnt ein noch nicht aufgelöstes Profilziel am Import ab', async () => {
@@ -859,14 +871,11 @@ describe('fail-closed Diagnosen der Engine', () => {
 
     const outcome = await resolveProfile({ plan: invalidPlan, edgesByArtifactKey, profileViews });
 
-    expect(outcome).toMatchObject({
-      ok: false,
-      diagnostic: {
-        code: 'PROFILE_RESOLUTION_IMPORT_PROFILE_UNRESOLVED',
-        artifact: { key: 'profile-top', rootType: 'profile', oscalVersion: VERSION },
-        path: '/profile/imports/0',
-      },
-    });
+    expectTopProfileDiagnostic(
+      outcome,
+      'PROFILE_RESOLUTION_IMPORT_PROFILE_UNRESOLVED',
+      '/profile/imports/0',
+    );
   });
 
   it('ordnet ein im manipulierten Plan fehlendes Importziel dem importierenden Profilpfad zu', async () => {
@@ -893,14 +902,11 @@ describe('fail-closed Diagnosen der Engine', () => {
 
     const outcome = await resolveProfile({ plan: invalidPlan, edgesByArtifactKey, profileViews });
 
-    expect(outcome).toMatchObject({
-      ok: false,
-      diagnostic: {
-        code: 'PROFILE_RESOLUTION_IMPORT_UNMAPPED',
-        artifact: { key: 'profile-top', rootType: 'profile', oscalVersion: VERSION },
-        path: '/profile/imports/0',
-      },
-    });
+    expectTopProfileDiagnostic(
+      outcome,
+      'PROFILE_RESOLUTION_IMPORT_UNMAPPED',
+      '/profile/imports/0',
+    );
   });
 
   it('ergänzt Selektionsdiagnosen um den Kontext des importierenden Profils', async () => {
@@ -918,13 +924,7 @@ describe('fail-closed Diagnosen der Engine', () => {
       edges: { 'profile-top': [{ href: './a.json', artifactKey: 'cat-a' }] },
     });
 
-    expect(outcome).toMatchObject({
-      ok: false,
-      diagnostic: {
-        code: 'PROFILE_RESOLUTION_WITH_CHILD_CONTROLS_INVALID',
-        artifact: { key: 'profile-top', rootType: 'profile', oscalVersion: VERSION },
-      },
-    });
+    expectTopProfileDiagnostic(outcome, 'PROFILE_RESOLUTION_WITH_CHILD_CONTROLS_INVALID');
   });
 
   it('ergänzt Custom-Assembly-Diagnosen um den Kontext des steuernden Profils', async () => {
@@ -948,13 +948,7 @@ describe('fail-closed Diagnosen der Engine', () => {
       edges: { 'profile-top': [{ href: './a.json', artifactKey: 'cat-a' }] },
     });
 
-    expect(outcome).toMatchObject({
-      ok: false,
-      diagnostic: {
-        code: 'PROFILE_RESOLUTION_WITH_CHILD_CONTROLS_INVALID',
-        artifact: { key: 'profile-top', rootType: 'profile', oscalVersion: VERSION },
-      },
-    });
+    expectTopProfileDiagnostic(outcome, 'PROFILE_RESOLUTION_WITH_CHILD_CONTROLS_INVALID');
   });
 
   it('unterscheidet ein nicht aufgelöstes Top-Profil von einer fehlenden Profil-UUID', async () => {
@@ -974,13 +968,7 @@ describe('fail-closed Diagnosen der Engine', () => {
 
     const outcome = await resolveProfile({ plan, edgesByArtifactKey, profileViews: new Map() });
 
-    expect(outcome).toMatchObject({
-      ok: false,
-      diagnostic: {
-        code: 'PROFILE_RESOLUTION_TOP_PROFILE_UNRESOLVED',
-        artifact: { key: 'profile-top', rootType: 'profile', oscalVersion: VERSION },
-      },
-    });
+    expectTopProfileDiagnostic(outcome, 'PROFILE_RESOLUTION_TOP_PROFILE_UNRESOLVED');
   });
 
   it('lehnt eine mehrdeutige Merge-Struktur ab', async () => {
@@ -995,13 +983,7 @@ describe('fail-closed Diagnosen der Engine', () => {
       edges: { 'profile-top': [{ href: './a.json', artifactKey: 'cat-a' }] },
     };
     const outcome = await resolveWorld(world);
-    expect(outcome).toMatchObject({
-      ok: false,
-      diagnostic: {
-        code: 'PROFILE_RESOLUTION_MERGE_STRUCTURE_UNRESOLVED',
-        artifact: { key: 'profile-top', rootType: 'profile', oscalVersion: VERSION },
-      },
-    });
+    expectTopProfileDiagnostic(outcome, 'PROFILE_RESOLUTION_MERGE_STRUCTURE_UNRESOLVED');
   });
 
   it('lehnt eine unbekannte combine-Methode ab', async () => {
@@ -1016,13 +998,7 @@ describe('fail-closed Diagnosen der Engine', () => {
       edges: { 'profile-top': [{ href: './a.json', artifactKey: 'cat-a' }] },
     };
     const outcome = await resolveWorld(world);
-    expect(outcome).toMatchObject({
-      ok: false,
-      diagnostic: {
-        code: 'PROFILE_RESOLUTION_COMBINE_METHOD_INVALID',
-        artifact: { key: 'profile-top', rootType: 'profile', oscalVersion: VERSION },
-      },
-    });
+    expectTopProfileDiagnostic(outcome, 'PROFILE_RESOLUTION_COMBINE_METHOD_INVALID');
   });
 
   it('lehnt einen Import ohne zugeordnete Kante ab', async () => {
@@ -1037,12 +1013,6 @@ describe('fail-closed Diagnosen der Engine', () => {
       edges: { 'profile-top': [] },
     };
     const outcome = await resolveWorld(world);
-    expect(outcome).toMatchObject({
-      ok: false,
-      diagnostic: {
-        code: 'PROFILE_RESOLUTION_IMPORT_UNMAPPED',
-        artifact: { key: 'profile-top', rootType: 'profile', oscalVersion: VERSION },
-      },
-    });
+    expectTopProfileDiagnostic(outcome, 'PROFILE_RESOLUTION_IMPORT_UNMAPPED');
   });
 });
