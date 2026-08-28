@@ -641,6 +641,41 @@ describe('registry OSCAL version migration (GSPP-283 deadlock)', () => {
     })).toBe(true);
   });
 
+  it('rejects a foreign file riding alongside the migration diff', () => {
+    const next = makeFixture({ snapshotCommitSha: NEW_SHA });
+    const previous = buildUpstreamManifest({
+      repository: next.manifest.repository,
+      snapshotCommitSha: OLD_SHA,
+      files: next.manifest.files,
+    });
+
+    expect(isRegistryOscalVersionMigration({
+      diffEntries: [...diffEntries, { status: 'M', path: '.github/workflows/deploy.yml' }],
+      previousManifest: previous,
+      nextManifest: next.manifest,
+      previousSourceRegistry: withAwsVersion('1.1.2'),
+    })).toBe(false);
+  });
+
+  it('rejects when a non-oscal registry entry (vocabulary-collection) also changes', () => {
+    const next = makeFixture({ snapshotCommitSha: NEW_SHA });
+    const previous = buildUpstreamManifest({
+      repository: next.manifest.repository,
+      snapshotCommitSha: OLD_SHA,
+      files: next.manifest.files,
+    });
+    const previousSourceRegistry = withAwsVersion('1.1.2').map((entry) =>
+      entry.kind === 'vocabulary-collection' ? { ...entry, upstreamDirectory: 'documentation/other' } : entry,
+    );
+
+    expect(isRegistryOscalVersionMigration({
+      diffEntries,
+      previousManifest: previous,
+      nextManifest: next.manifest,
+      previousSourceRegistry,
+    })).toBe(false);
+  });
+
   it('rejects an identical snapshot (no snapshot progress)', () => {
     const next = makeFixture({ snapshotCommitSha: OLD_SHA });
     const previous = buildUpstreamManifest({

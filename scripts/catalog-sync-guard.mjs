@@ -327,6 +327,12 @@ export function isRegistryOscalVersionMigration({
 }) {
   if (
     !Array.isArray(diffEntries) ||
+    // Fail-closed gegen jede Mitnahme: Der Diff darf ausschließlich diese
+    // zwei Pfade tragen, sonst könnte eine Versionsmigration eine dritte,
+    // unbeteiligte Datei (etwa einen Workflow) an der strengen
+    // Einzeldatei-Prüfung des regulären Sync-Pfads vorbeischleusen
+    // (Greptile-Fund).
+    diffEntries.length !== 2 ||
     !diffEntries.some(
       (entry) => entry.status === 'M' && entry.path === TRACKED_MANIFEST_PATH,
     ) ||
@@ -340,7 +346,8 @@ export function isRegistryOscalVersionMigration({
     previousManifest.snapshotCommitSha === nextManifest.snapshotCommitSha ||
     !Array.isArray(previousManifest.files) ||
     !Array.isArray(nextManifest.files) ||
-    previousManifest.files.length !== nextManifest.files.length
+    previousManifest.files.length !== nextManifest.files.length ||
+    previousSourceRegistry.length !== nextSourceRegistry.length
   ) {
     return false;
   }
@@ -360,27 +367,35 @@ export function isRegistryOscalVersionMigration({
     }
   }
 
-  const previousOscalEntries = previousSourceRegistry.filter((entry) => entry.kind === 'oscal');
-  const nextOscalEntries = nextSourceRegistry.filter((entry) => entry.kind === 'oscal');
-  if (previousOscalEntries.length !== nextOscalEntries.length) return false;
-
+  // Gegen den VOLLSTÄNDIGEN Registerbestand vergleichen, nicht nur gegen
+  // die oscal-Teilmenge: Sonst könnte eine sonst gültige Versionsmigration
+  // zugleich eine vocabulary-collection-Angabe (etwa upstreamDirectory)
+  // unbewertet mitführen (Greptile-Fund).
   const previousEntryByKey = new Map(
-    previousOscalEntries.map((entry) => [entry.artifactKey, entry]),
+    previousSourceRegistry.map((entry) => [entry.artifactKey, entry]),
   );
   let versionChanges = 0;
-  for (const nextEntry of nextOscalEntries) {
+  for (const nextEntry of nextSourceRegistry) {
     const previousEntry = previousEntryByKey.get(nextEntry.artifactKey);
     if (!previousEntry) return false;
 
     const fieldNames = new Set([...Object.keys(previousEntry), ...Object.keys(nextEntry)]);
     for (const fieldName of fieldNames) {
-      if (fieldName === 'oscalVersion') continue;
+      if (fieldName === 'oscalVersion' && previousEntry.kind === 'oscal' && nextEntry.kind === 'oscal') {
+        continue;
+      }
       // Fail-closed gegen jede Mitnahme: Ändert sich neben `oscalVersion`
-      // auch nur ein weiteres Feld — etwa `lifecycle` oder `upstreamPath` —,
-      // ist das keine reine Versionsmigration mehr.
+      // eines oscal-Artefakts auch nur ein weiteres Feld — etwa `lifecycle`
+      // oder `upstreamPath` — oder irgendein Feld eines Nicht-oscal-Eintrags
+      // (etwa einer vocabulary-collection), ist das keine reine
+      // Versionsmigration mehr.
       if (previousEntry[fieldName] !== nextEntry[fieldName]) return false;
     }
-    if (previousEntry.oscalVersion !== nextEntry.oscalVersion) {
+    if (
+      previousEntry.kind === 'oscal' &&
+      nextEntry.kind === 'oscal' &&
+      previousEntry.oscalVersion !== nextEntry.oscalVersion
+    ) {
       versionChanges += 1;
     }
   }
