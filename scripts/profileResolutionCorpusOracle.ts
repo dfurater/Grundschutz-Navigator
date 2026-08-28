@@ -152,11 +152,12 @@ export function normalizeProseLeadingSpace(value: unknown, parentKey = ''): unkn
   const copy: JsonObjectLike = {};
   for (const key of Object.keys(value)) {
     const child = value[key];
-    const memberKey = parentKey === 'select' && key === 'choice'
-      ? 'select.choice'
-      : parentKey === 'citation' && key === 'text'
-        ? 'citation.text'
-        : key;
+    let memberKey = key;
+    if (parentKey === 'select' && key === 'choice') {
+      memberKey = 'select.choice';
+    } else if (parentKey === 'citation' && key === 'text') {
+      memberKey = 'citation.text';
+    }
     copy[key] = normalizeProseLeadingSpace(child, memberKey);
   }
   return copy;
