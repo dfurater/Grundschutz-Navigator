@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   CLASS_2_IMPORT_LIMITS,
-  enforceClass2ResourceLimits,
+  enforceClass2ObjectGraphInvariants,
   parseClass2OscalInput,
 } from './oscalImportProcessing';
+import { processClass2OscalBytes } from './oscalClass2Import';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -123,10 +124,16 @@ describe('parseClass2OscalInput', () => {
     expect(result).toMatchObject({ ok: true });
   });
 
-  it('weist mehr als eine Million JSON-Knoten ab', () => {
+  it('weist mehr als eine Million JSON-Knoten an der öffentlichen Byte-Eintrittskette ab', async () => {
+    // Die Objektgraph-Limits liegen seit der gemeinsamen objektorientierten
+    // Einheit hinter Stufe 1; der End-to-End-Nachweis läuft deshalb über
+    // `processClass2OscalBytes` (Stufe 1 + gemeinsame Kette).
     const text = `[${'null,'.repeat(CLASS_2_IMPORT_LIMITS.maxNodes)}null]`;
 
-    const result = parseClass2OscalInput(new TextEncoder().encode(text));
+    const result = await processClass2OscalBytes(
+      new TextEncoder().encode(text),
+      { trustClass: 'class-2-local-user' },
+    );
 
     expect(result).toMatchObject({
       ok: false,
@@ -140,7 +147,18 @@ describe('parseClass2OscalInput', () => {
   it('akzeptiert genau eine Million JSON-Knoten', () => {
     const source = { values: Array.from({ length: CLASS_2_IMPORT_LIMITS.maxNodes - 2 }, () => null) };
 
-    expect(enforceClass2ResourceLimits(source)).toBeNull();
+    expect(enforceClass2ObjectGraphInvariants(source)).toBeNull();
+  });
+
+  it('nimmt dem Byte-Eintrittspunkt die Objektgraph-Limits ab — sie liegen in der gemeinsamen Einheit', () => {
+    // Mehr Knoten, als das Limit erlaubt: Der Byte-Eintrittspunkt parst nur
+    // noch; die Ablehnung geschieht ausschließlich in der gemeinsamen
+    // objektorientierten Einheit.
+    const source = { values: Array.from({ length: CLASS_2_IMPORT_LIMITS.maxNodes - 1 }, () => null) };
+
+    const result = parseClass2OscalInput(new TextEncoder().encode(JSON.stringify(source)));
+
+    expect(result).toMatchObject({ ok: true });
   });
 
   it('weist die arithmetisch bestimmte Base64-Gesamtgröße ohne Dekodierung ab', () => {
@@ -161,7 +179,7 @@ describe('parseClass2OscalInput', () => {
       },
     };
 
-    const diagnostic = enforceClass2ResourceLimits(source);
+    const diagnostic = enforceClass2ObjectGraphInvariants(source);
 
     expect(diagnostic).toMatchObject({
       code: 'OSCAL_RESOURCE_BASE64_LIMIT_EXCEEDED',
@@ -187,7 +205,7 @@ describe('parseClass2OscalInput', () => {
       },
     };
 
-    expect(enforceClass2ResourceLimits(source)).toBeNull();
+    expect(enforceClass2ObjectGraphInvariants(source)).toBeNull();
     expect(atob).not.toHaveBeenCalled();
   });
 });

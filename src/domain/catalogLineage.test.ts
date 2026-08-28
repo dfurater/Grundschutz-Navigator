@@ -79,6 +79,55 @@ function makeArtifacts(profileImports: Array<{ href?: string }> = [
 }
 
 describe('projectCatalogLineage', () => {
+  it('löst die WLAN-Lineage ausschließlich über die relative Ressource und trägt die externe Referenz c820c541 nie', () => {
+    const wlanLineage = CATALOG_LINEAGES.find((candidate) => candidate.catalogKey === 'wlan');
+    if (!wlanLineage) throw new Error('Fixture requires the registered WLAN catalog lineage');
+    const [wlanImport] = wlanLineage.imports;
+
+    // Exakte Werte aus dem WLAN-Profil am Snapshot 9008ca0: Der Import geht
+    // über Fragment 16f610d3 auf den relativen rlink; dieselbe Ressource
+    // existiert daneben als externe GitHub-Referenz an einem fremden Commit
+    // (c820c541, 47de2824) und darf niemals aufgelöst werden.
+    const relativeHref = '../../../Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json';
+    const externalHref =
+      'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/blob/47de2824a341812438ef3f044b3f65ce2cad6e32/control_layer/Grundschutz%2B%2B/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json';
+
+    const profile = oscalDocument('profile', 'WLAN Profil', 'wlan-profile-uuid', '2026-08-13');
+    profile.profile!.imports = [{ href: '#16f610d3-acbf-4b72-83b7-8d4a0454d6c6' }];
+    profile.profile!['back-matter'] = {
+      resources: [
+        { uuid: '16f610d3-acbf-4b72-83b7-8d4a0454d6c6', rlinks: [{ href: relativeHref }] },
+        { uuid: 'c820c541-0000-4000-8000-000000000000', rlinks: [{ href: externalHref }] },
+      ],
+    };
+
+    const artifacts = new Map<string, ValidatedLineageArtifact>([
+      [
+        wlanLineage.profileArtifactKey,
+        { document: profile, manifestFile: { path: 'profiles/wlan.json', gitBlobSha: 'wlan-blob', contentSha256: 'wlan-sha' } },
+      ],
+      [
+        wlanImport.artifactKey,
+        { document: oscalDocument('catalog', 'Kernel G0', 'kernel-uuid', '2026-08-13'), manifestFile: { path: 'catalogs/kernel-g0.json', gitBlobSha: 'kernel-blob', contentSha256: 'kernel-sha' } },
+      ],
+    ]);
+
+    const result = projectCatalogLineage({ lineage: wlanLineage, artifactsByKey: artifacts });
+
+    expect(result.imports).toEqual([
+      expect.objectContaining({
+        state: 'complete',
+        resourceUuid: '16f610d3-acbf-4b72-83b7-8d4a0454d6c6',
+        rlinkHref: relativeHref,
+        source: expect.objectContaining({ artifactKey: wlanImport.artifactKey }),
+      }),
+    ]);
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain('c820c541');
+    expect(serialized).not.toContain('github.com');
+    expect(serialized).not.toContain(externalHref);
+  });
+
   it('projects the three-stage profile import chain through exact registered rlink href values', () => {
     const result = projectCatalogLineage({ lineage, artifactsByKey: makeArtifacts() });
 

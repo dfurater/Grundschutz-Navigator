@@ -158,6 +158,16 @@ export const SOURCE_REGISTRY = Object.freeze(
       title: 'BSI Anforderungen zum Risikomanagement',
     },
     {
+      artifactKey: 'catalog-source-lieferkette-kernel',
+      kind: 'oscal',
+      oscalVersion: '1.1.3',
+      expectedRootType: 'catalog',
+      upstreamPath:
+        'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
+      lifecycle: 'preview',
+      title: 'BSI Stand der Technik Kernel',
+    },
+    {
       artifactKey: 'profile-lieferkette',
       kind: 'oscal',
       oscalVersion: '1.1.3',
@@ -277,6 +287,26 @@ export const CATALOG_LINEAGES = Object.freeze([
       Object.freeze({
         href: '../../../Risikomanagement/BSI-Anforderungen-zum-Risikomanagement-catalog.json',
         artifactKey: 'catalog-source-risikomanagement',
+      }),
+    ]),
+  }),
+  Object.freeze({
+    catalogKey: 'lieferkette',
+    profileArtifactKey: 'profile-lieferkette',
+    imports: Object.freeze([
+      Object.freeze({
+        href: '../../../Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
+        artifactKey: 'catalog-source-lieferkette-kernel',
+      }),
+    ]),
+  }),
+  Object.freeze({
+    catalogKey: 'wlan',
+    profileArtifactKey: 'profile-wlan',
+    imports: Object.freeze([
+      Object.freeze({
+        href: '../../../Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
+        artifactKey: 'catalog-source-gspp-kernel-g0',
       }),
     ]),
   }),

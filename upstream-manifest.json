@@ -20,6 +20,14 @@
       "contentSha256": "e19f45ddbba3f4405c639171d524c04995b36f8ea3795727c72fed432cc3d464"
     },
     {
+      "artifactKey": "catalog-source-lieferkette-kernel",
+      "rootType": "catalog",
+      "lifecycle": "preview",
+      "path": "control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json",
+      "gitBlobSha": "74f482b4a3735450d18c237b6c81a6dfa34971e4",
+      "contentSha256": "940b8623a6eaa447159ea95fc9e955b3f14b4049ab24e644a089795ce08cf6e2"
+    },
+    {
       "artifactKey": "catalog-source-gspp-methodik",
       "rootType": "catalog",
       "lifecycle": "preview",
@@ -252,5 +260,5 @@
       "contentSha256": "08c7ab6bb442a87eba4e407d272fecd179bc61c47c2419843d7f4cfcd4077235"
     }
   ],
-  "signatureSha256": "54e17277a8f454aade24b52280e40c9b00f91e59cc8c71c6e17d1a2fda05a138"
+  "signatureSha256": "de30357f561e78b247d9897167a58f76c17b4a87c1162a07eb094b8684d91c84"
 }

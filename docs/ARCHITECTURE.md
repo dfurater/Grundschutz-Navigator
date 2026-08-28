@@ -212,6 +212,10 @@ npm run fetch-catalog → scripts/fetch-catalog.mjs
   keine Pfadnormalisierung, kein Netzwerk und keine Änderung des Referenzresolvers
 • jeder supported Katalog und die direkten Namespace-CSVs → JSON + Provenance
 • Manifest v2 bindet Registry-Metadaten, Git-Blob-SHA und Content-SHA-256
+• Korpus-Cache (gitignoriert): 10 Dokumente der Lineages (Profile + Quell- und
+  Anwenderkataloge) → `.cache/upstream-corpus/` + Begleitmanifest; kein zweiter
+  Fetch, keine Env-Pfade, kein Überspringen — der Harnisch scheitert hart
+  ohne Cache
         │
         ▼
 public/data/  (Dateimenge aus dem Quellregister abgeleitet)
@@ -221,6 +225,30 @@ public/data/  (Dateimenge aus dem Quellregister abgeleitet)
 • catalog-<catalogKey>-metadata.json
 • vocabularies.json               (Offizielle BSI-Vokabulare)
 • upstream-sources-metadata.json  (Vokabular-Provenance + Manifest v2 + Lineage-Projektion)
+• .cache/upstream-corpus/         (verpflichtender Bauzeitlauf: 10 Lineage-Dokumente)
+        │
+        ▼
+Profile Resolution (deterministisch, GSPP-291 Commit B)
+• Plan: Importgraph (Zyklus/Versions/Root-Prüfungen) → DAG-sichere Postorder
+• Selektion je Import, danach Merge (combine use-first/keep, flat/as-is/custom
+  mit insert-controls/order) und Modify (set-parameter, alters) in der
+  Reihenfolge Import → Merge → Modify
+• Ergebnis ausschließlich über `createOscalDerivedGraph()` (kontrollierter
+  Builder, kein Fremdobjekt, __proto__ als Data-Property, opakes
+  DerivedJsonTree-Handle, Vertrauensklasse class-2-local-user)
+• jedes Zwischen- und Endergebnis durchläuft fail-closed dieselbe Objekt-,
+  Root-, Versions- und Schema-Pipeline wie lokale Klasse-2-Dokumente
+• Back-matter: referenzierte Quellressourcen in Import-/Quellreihenfolge,
+  danach unverbrauchte Profilressourcen und übrige Profilmitglieder;
+  UUID-Kollisionen werden case-insensitiv nach first occurrence aufgelöst
+• Orakel zweigeteilt: BSI (3× resolved_catalog, feste Registry aus 21 Link-
+  und einer Positionsabweichung) und NIST (4× Baselines v1.5.0, vollständiges
+  Back-matter und as-is-Reihenfolge; nur belegte XML-Whitespace-Artefakte
+  symmetrisch normalisiert) plus synthetische Fixtures mit
+  Draft-/XSpec-Quellenangaben
+        │
+        ▼
+CatalogContext (Einstiegskatalog eager, weitere bedarfsgerecht)
         │
         ▼
 CatalogContext (Einstiegskatalog eager, weitere bedarfsgerecht)
@@ -260,9 +288,17 @@ parst oder interpretiert die Bytes nicht.
 
 Nach der Größenkontrolle läuft im Worker die feste Reihenfolge aus dem
 [OSCAL-Validierungsvertrag](./OSCAL_VALIDATION.md): Bytelimit, fataler
-UTF-8-Decoder, Duplicate-Member-Scanner, `JSON.parse`, iterative
-Ressourcenlimits, `dispatchOscalDocument()` und anschließend
-`validateAgainstPinnedSchema()` als Stufe 3. Das Bytelimit greift bereits vor
+UTF-8-Decoder, Duplicate-Member-Scanner, `JSON.parse` — und ab dort die
+gemeinsame objektorientierte Prüfkette
+([`oscalObjectPipeline.ts`](../src/domain/oscalObjectPipeline.ts)): zuerst ein
+rein identitätsbasierter Herkunfts- und Serialisierungsbudget-Durchlauf vor
+jeder Wertreflexion, danach der terminierende Struktur-, Tiefen-, Knoten- und
+Base64-Durchlauf mit globaler Identitätsmenge,
+`dispatchOscalDocument()` und anschließend `validateAgainstPinnedSchema()`
+als Stufe 3. Der Byte-Eintrittspunkt `processClass2OscalBytes()` ruft
+ausschließlich diese Einheit auf; der Ableitungsweg der Profile Resolution
+([GSPP-291](https://linear.app/grundschutz-plus-plus/issue/GSPP-291)) teilt sie.
+Das Bytelimit greift bereits vor
 Worker-Erzeugung und Transferkopie; der Scanner begrenzt seinen Abstieg
 zusätzlich auf die zulässige Tiefe. Das Ergebnis ist entweder ein vollständiger
 Root-Envelope mit explizitem `class-2-local-user`-Kontext oder genau eine

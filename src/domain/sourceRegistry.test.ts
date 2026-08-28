@@ -86,7 +86,7 @@ describe('sourceRegistry', () => {
     ]);
   });
 
-  it('registers exactly the three profile-imported GSPP source catalogs as preview lineage inputs', () => {
+  it('registers exactly the profile-imported source catalogs and all three lineage graphs', () => {
     expect(CATALOG_LINEAGES).toEqual([
       {
         catalogKey: 'gspp',
@@ -103,6 +103,26 @@ describe('sourceRegistry', () => {
           {
             href: '../../../Risikomanagement/BSI-Anforderungen-zum-Risikomanagement-catalog.json',
             artifactKey: 'catalog-source-risikomanagement',
+          },
+        ],
+      },
+      {
+        catalogKey: 'lieferkette',
+        profileArtifactKey: 'profile-lieferkette',
+        imports: [
+          {
+            href: '../../../Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
+            artifactKey: 'catalog-source-lieferkette-kernel',
+          },
+        ],
+      },
+      {
+        catalogKey: 'wlan',
+        profileArtifactKey: 'profile-wlan',
+        imports: [
+          {
+            href: '../../../Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
+            artifactKey: 'catalog-source-gspp-kernel-g0',
           },
         ],
       },
@@ -131,11 +151,32 @@ describe('sourceRegistry', () => {
         lifecycle: 'preview',
         upstreamPath: 'control_layer/Risikomanagement/BSI-Anforderungen-zum-Risikomanagement-catalog.json',
       }),
+      expect.objectContaining({
+        artifactKey: 'catalog-source-lieferkette-kernel',
+        expectedRootType: 'catalog',
+        lifecycle: 'preview',
+        upstreamPath:
+          'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
+      }),
     ]);
+  });
 
+  it('resolves every lineage import target through its registered upstream path', () => {
+    for (const lineage of CATALOG_LINEAGES) {
+      for (const imported of lineage.imports) {
+        const registeredArtifact = listOscalArtifacts().find(
+          (entry) => entry.artifactKey === imported.artifactKey,
+        );
+        const artifact = getArtifactByUpstreamPath(
+          registeredArtifact?.upstreamPath ?? '',
+        );
+        expect(artifact?.artifactKey).toBe(imported.artifactKey);
+      }
+    }
+    // profile-lieferkette importiert ausschließlich den Kernel ohne G0.
     expect(getArtifactByUpstreamPath(
       'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
-    )).toBeNull();
+    )?.artifactKey).toBe('catalog-source-lieferkette-kernel');
   });
 
   it('blocks exactly the upstream-reported schema-defective OSCAL artifacts', () => {
@@ -247,11 +288,6 @@ describe('sourceRegistry', () => {
 
   it('rejects unknown upstream paths', () => {
     expect(getArtifactByUpstreamPath('documentation/OSCAL.md')).toBeNull();
-    expect(
-      getArtifactByUpstreamPath(
-        'control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json',
-      ),
-    ).toBeNull();
     expect(getArtifactByUpstreamPath('')).toBeNull();
   });
 
@@ -323,6 +359,7 @@ describe('sourceRegistry', () => {
       'catalog-mindeststandard-tls': '1.1.3',
       'catalog-source-gspp-kernel-g0': '1.1.3',
       'catalog-source-gspp-methodik': '1.1.3',
+      'catalog-source-lieferkette-kernel': '1.1.3',
       'catalog-source-risikomanagement': '1.1.3',
       'catalog-wlan': '1.1.3',
       'component-aws-security-hub': '1.1.3',

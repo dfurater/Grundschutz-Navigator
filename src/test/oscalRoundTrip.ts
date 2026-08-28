@@ -5,12 +5,12 @@
 // OSCAL-Dokument: Ein Round-trip ohne fachlichen Schreibvorgang verändert
 // nichts — weder auf der Serialisierung noch auf dem geparsten Graphen.
 //
-// Der Harnisch definiert nichts Neuem, was der Validierungsvertrag bereits
-// entscheidet: Ressourcenlimits kommen aus `oscalResourceLimits.ts`
-// (Stufe 1), Root-Erkennung und Versionsbindung aus `dispatchOscalDocument()`
-// beziehungsweise `resolveSchemaBinding()` (Stufe 2), Schemaprüfung aus
-// `validateAgainstPinnedSchema()` (Stufe 3) und Referenzklassifikation aus
-// `referenceResolution.ts` (Stufe 5, nur Katalogpfad).
+// Der Harnisch definiert nichts Neues, was der Validierungsvertrag bereits
+// entscheidet: Strukturinvariante samt Ressourcenlimits kommen aus
+// `oscalObjectGraph.ts` (Stufe 2a), Root-Erkennung und Versionsbindung aus
+// `dispatchOscalDocument()` beziehungsweise `resolveSchemaBinding()` (Stufe 2),
+// Schemaprüfung aus `validateAgainstPinnedSchema()` (Stufe 3) und
+// Referenzklassifikation aus `referenceResolution.ts` (Stufe 5, nur Katalogpfad).
 //
 // Zwei Vergleichsebenen (Befund 7): Die byte-identische Serialisierung ist
 // blind für `Infinity` und `-0`; deshalb läuft zusätzlich ein Vergleich auf
@@ -19,7 +19,7 @@
 
 import type { OscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { OscalDocumentContext } from '@/domain/models';
-import { enforceClass2ResourceLimits } from '@/domain/oscalResourceLimits';
+import { enforceClass2ObjectGraphInvariants } from '@/domain/oscalObjectGraph';
 import {
   CLASS_2_IMPORT_LIMITS,
   createClass2ByteLimitDiagnostic,
@@ -780,8 +780,9 @@ export async function runNoOpRoundTrip(input: OscalNoOpRunInput): Promise<OscalN
     throw new SyntaxError('Fixture ist kein wohlgeformtes JSON');
   }
 
-  // Stufe 1b — strukturelle Limits auf dem geparsten Wert.
-  const limitViolation = enforceClass2ResourceLimits(parsed);
+  // Stufe 1b — Strukturinvariante samt Ressourcenlimits auf dem geparsten
+  // Wert, aus der gemeinsamen objektorientierten Einheit (ADR-8 Festlegung 1+3).
+  const limitViolation = enforceClass2ObjectGraphInvariants(parsed);
   if (limitViolation !== null) {
     return rejectionBeforeBinding({ status: 'failed', diagnostic: limitViolation });
   }

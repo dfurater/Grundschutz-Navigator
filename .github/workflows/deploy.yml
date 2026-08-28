@@ -91,6 +91,9 @@ jobs:
           BSI_SNAPSHOT_SHA: ${{ steps.manifest.outputs.sha }}
         run: npm run fetch-catalog
 
+      - name: Resolve all BSI profiles deterministically (mandatory build-time corpus)
+        run: npm run test:profile-resolution
+
       - name: Run tests with coverage
         run: npm exec --no -- vitest run --coverage
 

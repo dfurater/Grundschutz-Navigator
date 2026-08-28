@@ -10,15 +10,21 @@ const validator = { name: 'test-validator', version: '9' };
 
 describe('Diagnosemodell', () => {
   it('führt genau die Stufen des Validierungsvertrags', () => {
-    // docs/OSCAL_VALIDATION.md, Abschnitt „Diagnostic-Vertrag".
+    // docs/OSCAL_VALIDATION.md, Abschnitt „Diagnostic-Vertrag“. Die Stufe
+    // `object-structure` kommt mit der gemeinsamen objektorientierten
+    // Prüfkette hinzu (GSPP-291 Commit A, ADR-8 Festlegung 1+3), die Stufe
+    // `profile-resolution` mit dem Importgraphen des Ableitungswegs
+    // (GSPP-291 Commit B).
     expect([...OSCAL_DIAGNOSTIC_STAGES]).toEqual([
       'resource-limit',
       'json-syntax',
+      'object-structure',
       'root-dispatch',
       'json-schema',
       'oscal-constraint',
       'reference',
       'domain',
+      'profile-resolution',
     ]);
   });
 

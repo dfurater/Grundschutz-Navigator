@@ -18,9 +18,10 @@ eingespeisten Export, einen Registry-Pfad (`upstreamPath`) sowie eine
 Katalogidentität entgegen und liefert ein eingefrorenes, deterministisches
 Ergebnis:
 
-1. **Stufe 1** — Byte-Eingangsgrenze vor dem Parsen, strukturelle Limits
-   (Tiefe, Knoten, Base64-Summe) nach dem Parsen; beides aus
-   [`oscalResourceLimits.ts`](../src/domain/oscalResourceLimits.ts) bzw. dem
+1. **Stufe 1** — Byte-Eingangsgrenze vor dem Parsen; Strukturinvariante samt
+   struktureller Limits (Tiefe, Knoten, Base64-Summe) nach dem Parsen aus der
+   gemeinsamen objektorientierten Einheit
+   [`oscalObjectPipeline.ts`](../src/domain/oscalObjectPipeline.ts) bzw. dem
    Importvertrag.
 2. **Stufe 2** — Root-Erkennung und Versionsbindung über
    `dispatchOscalDocument()`. Der Harnisch führt **keine eigene Versionsliste**
