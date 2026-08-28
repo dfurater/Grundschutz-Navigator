@@ -58,4 +58,23 @@ describe('Profile-Resolution-Korpusorakel', () => {
     expect(applied).toContain('lieferkette:KONF.2.4.2:controls:end');
     expect(missing).not.toContain('lieferkette:KONF.2.4.2:controls:end');
   });
+
+  it('meldet eine wirkungslose registrierte Positionsabweichung als fehlend', () => {
+    const { cleaned, applied, missing } = reconcileBsiKnownDifferences('lieferkette', {
+      catalog: {
+        controls: [
+          { id: 'vorher' },
+          { id: 'KONF.2.4.2' },
+        ],
+      },
+    });
+    const body = (cleaned as { catalog: { controls: Array<{ id: string }> } }).catalog;
+
+    expect(body.controls.map((control) => control.id)).toEqual([
+      'vorher',
+      'KONF.2.4.2',
+    ]);
+    expect(applied).not.toContain('lieferkette:KONF.2.4.2:controls:end');
+    expect(missing).toContain('lieferkette:KONF.2.4.2:controls:end');
+  });
 });

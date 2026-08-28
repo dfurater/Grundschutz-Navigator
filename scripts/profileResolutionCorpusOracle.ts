@@ -282,7 +282,6 @@ export const BSI_PROFILE_RESOLUTION_DIFFERENCES: readonly BsiCorpusDifference[] 
   { corpusKey: 'wlan', controlId: 'ARCH.2.2.8', member: 'links', href: '#TEST.3.1.5', reason: LINK_REASON },
   { corpusKey: 'wlan', controlId: 'ARCH.2.4', member: 'links', href: '#ASST.2.1', reason: LINK_REASON },
   { corpusKey: 'lieferkette', controlId: 'KONF.2.4.2', member: 'controls', position: 'end', reason: ORDER_REASON },
-  { corpusKey: 'wlan', controlId: 'BES.2.1.4.2', member: 'controls', position: 'end', reason: ORDER_REASON },
 ]);
 
 function differenceKey(difference: BsiCorpusDifference): string {
@@ -340,9 +339,15 @@ function reconcileRegisteredOrder(
   differences: BsiDifferenceIndex,
   applied: Set<string>,
 ): void {
-  const kept: unknown[] = [];
-  const postponed: unknown[] = [];
-  for (const control of controls) {
+  interface IndexedControl {
+    readonly control: unknown;
+    readonly index: number;
+    readonly registered?: readonly OrderDifference[];
+  }
+
+  const kept: IndexedControl[] = [];
+  const postponed: IndexedControl[] = [];
+  for (const [index, control] of controls.entries()) {
     const controlId = isJsonObject(control) && typeof control['id'] === 'string'
       ? control['id']
       : undefined;
@@ -350,13 +355,23 @@ function reconcileRegisteredOrder(
       ? undefined
       : differences.ordersByControlId.get(controlId);
     if (registered === undefined) {
-      kept.push(control);
+      kept.push({ control, index });
       continue;
     }
-    postponed.push(control);
-    for (const difference of registered) applied.add(differenceKey(difference));
+    postponed.push({ control, index, registered });
   }
-  if (postponed.length > 0) controls.splice(0, controls.length, ...kept, ...postponed);
+  const reconciled = [...kept, ...postponed];
+  let moved = false;
+  for (const [index, entry] of reconciled.entries()) {
+    if (entry.index === index) continue;
+    moved = true;
+    for (const difference of entry.registered ?? []) {
+      applied.add(differenceKey(difference));
+    }
+  }
+  if (moved) {
+    controls.splice(0, controls.length, ...reconciled.map((entry) => entry.control));
+  }
 }
 
 /** Wendet ausschließlich die fest registrierten BSI-Abweichungen an. */

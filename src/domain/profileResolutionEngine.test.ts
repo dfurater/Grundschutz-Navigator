@@ -816,7 +816,10 @@ describe('fail-closed Diagnosen der Engine', () => {
 
     expect(outcome).toMatchObject({
       ok: false,
-      diagnostic: { code: 'PROFILE_RESOLUTION_IMPORT_PROFILE_UNRESOLVED' },
+      diagnostic: {
+        code: 'PROFILE_RESOLUTION_IMPORT_PROFILE_UNRESOLVED',
+        artifact: { key: 'profile-child', rootType: 'profile', oscalVersion: VERSION },
+      },
     });
   });
 
@@ -849,7 +852,10 @@ describe('fail-closed Diagnosen der Engine', () => {
 
     expect(outcome).toMatchObject({
       ok: false,
-      diagnostic: { code: 'PROFILE_RESOLUTION_IMPORT_PROFILE_UNRESOLVED' },
+      diagnostic: {
+        code: 'PROFILE_RESOLUTION_IMPORT_PROFILE_UNRESOLVED',
+        artifact: { key: 'profile-child', rootType: 'profile', oscalVersion: VERSION },
+      },
     });
   });
 
@@ -872,7 +878,10 @@ describe('fail-closed Diagnosen der Engine', () => {
 
     expect(outcome).toMatchObject({
       ok: false,
-      diagnostic: { code: 'PROFILE_RESOLUTION_TOP_PROFILE_UNRESOLVED' },
+      diagnostic: {
+        code: 'PROFILE_RESOLUTION_TOP_PROFILE_UNRESOLVED',
+        artifact: { key: 'profile-top', rootType: 'profile', oscalVersion: VERSION },
+      },
     });
   });
 
@@ -890,7 +899,10 @@ describe('fail-closed Diagnosen der Engine', () => {
     const outcome = await resolveWorld(world);
     expect(outcome).toMatchObject({
       ok: false,
-      diagnostic: { code: 'PROFILE_RESOLUTION_MERGE_STRUCTURE_UNRESOLVED' },
+      diagnostic: {
+        code: 'PROFILE_RESOLUTION_MERGE_STRUCTURE_UNRESOLVED',
+        artifact: { key: 'profile-top', rootType: 'profile', oscalVersion: VERSION },
+      },
     });
   });
 
@@ -908,7 +920,10 @@ describe('fail-closed Diagnosen der Engine', () => {
     const outcome = await resolveWorld(world);
     expect(outcome).toMatchObject({
       ok: false,
-      diagnostic: { code: 'PROFILE_RESOLUTION_COMBINE_METHOD_INVALID' },
+      diagnostic: {
+        code: 'PROFILE_RESOLUTION_COMBINE_METHOD_INVALID',
+        artifact: { key: 'profile-top', rootType: 'profile', oscalVersion: VERSION },
+      },
     });
   });
 
@@ -926,7 +941,10 @@ describe('fail-closed Diagnosen der Engine', () => {
     const outcome = await resolveWorld(world);
     expect(outcome).toMatchObject({
       ok: false,
-      diagnostic: { code: 'PROFILE_RESOLUTION_IMPORT_UNMAPPED' },
+      diagnostic: {
+        code: 'PROFILE_RESOLUTION_IMPORT_UNMAPPED',
+        artifact: { key: 'profile-top', rootType: 'profile', oscalVersion: VERSION },
+      },
     });
   });
 });

@@ -935,6 +935,11 @@ Ergebnisgraphen.
 - Jedes aufgelöste Zwischenprofil und das Endergebnis muss die gemeinsame
   Objekt-, Root-, Versions- und Schema-Pipeline bestehen; ein ungültiger
   Builder-Output wird nicht zwischengespeichert und nicht ausgegeben.
+- Fehlerdiagnosen der Resolver-Engine tragen für das aktuelle Profil oder
+  eine bereits im geschlossenen Plan geprüfte Kante deren Artefaktschlüssel,
+  Root-Typ und gebundene OSCAL-Version. Für einen nicht im Plan vorhandenen
+  Schlüssel wird kein Artefaktkontext geraten; die Diagnose bleibt dort
+  absichtlich ohne diese Angaben.
 - Back-matter startet mit UUID-Fragmenten aus den Ergebnisstrukturen und dem
   vollständigen unverbrauchten Profil-Back-matter. Referenzierte
   Quellressourcen werden dann bis zum Fixpunkt ergänzt: Jeder in einer neu

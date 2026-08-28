@@ -444,6 +444,29 @@ interface SingleProfileInput {
   readonly resolvedByArtifact: ReadonlyMap<string, unknown>;
 }
 
+/** Kontext des gerade ausgewerteten Profils: Die Projektion beweist den Root-Typ. */
+function currentProfileArtifact(input: SingleProfileInput): {
+  readonly key: string;
+  readonly rootType: 'profile';
+  readonly oscalVersion: string;
+} {
+  return {
+    key: input.artifactKey,
+    rootType: 'profile',
+    oscalVersion: input.plan.oscalVersion,
+  };
+}
+
+/** Übernimmt Kontext nur aus der geschlossenen, bereits geprüften Plan-Map. */
+function plannedArtifact(
+  plan: Extract<ProfileResolutionPlan, { ok: true }>,
+  artifactKey: string,
+): { readonly key: string; readonly rootType: 'catalog' | 'profile'; readonly oscalVersion: string } | undefined {
+  const rootType = plan.rootTypesByArtifactKey.get(artifactKey);
+  if (rootType === undefined) return undefined;
+  return { key: artifactKey, rootType, oscalVersion: plan.oscalVersion };
+}
+
 type PhaseOutcome<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly diagnostic: OscalDiagnostic };
@@ -471,13 +494,21 @@ function collectPhaseOne(
   for (const profileImport of input.document.view.imports) {
     const href = profileImport.href;
     if (href === undefined) {
-      return reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.IMPORT_UNMAPPED, profileImport.path);
+      return reject(
+        PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.IMPORT_UNMAPPED,
+        profileImport.path,
+        currentProfileArtifact(input),
+      );
     }
     const edge = (input.edgesByArtifactKey.get(input.artifactKey) ?? []).find(
       (candidate) => candidate.href === href,
     );
     if (edge === undefined) {
-      return failure(reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.IMPORT_UNMAPPED, profileImport.path));
+      return failure(reject(
+        PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.IMPORT_UNMAPPED,
+        profileImport.path,
+        currentProfileArtifact(input),
+      ));
     }
 
     const resolvedSource = input.resolvedByArtifact.get(edge.artifactKey);
@@ -489,11 +520,16 @@ function collectPhaseOne(
       return failure(reject(
         PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.IMPORT_PROFILE_UNRESOLVED,
         profileImport.path,
+        plannedArtifact(input.plan, edge.artifactKey),
       ));
     }
     const sourceDocument = resolvedSource ?? plannedSource;
     if (sourceDocument === undefined) {
-      return failure(reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.IMPORT_UNMAPPED, profileImport.path));
+      return failure(reject(
+        PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.IMPORT_UNMAPPED,
+        profileImport.path,
+        plannedArtifact(input.plan, edge.artifactKey),
+      ));
     }
 
     const index = indexCatalogControls(sourceDocument);
@@ -544,7 +580,11 @@ function buildStructuredOutput(
   const merge = input.document.view.merge;
   const declaredMethod = merge?.combine?.method ?? 'use-first';
   if (declaredMethod !== 'use-first' && declaredMethod !== 'keep') {
-    return reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.COMBINE_METHOD_INVALID, merge?.path ?? '/');
+    return reject(
+      PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.COMBINE_METHOD_INVALID,
+      merge?.path ?? '/',
+      currentProfileArtifact(input),
+    );
   }
   const combined = applyCombine(inclusions, declaredMethod);
 
@@ -577,7 +617,11 @@ function buildStructuredOutput(
       };
     }
     default:
-      return reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.MERGE_STRUCTURE_UNRESOLVED, merge.path);
+      return reject(
+        PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.MERGE_STRUCTURE_UNRESOLVED,
+        merge.path,
+        currentProfileArtifact(input),
+      );
   }
 }
 
@@ -937,7 +981,11 @@ export async function resolveProfile(
 
   const topLevel = plan.topProfileArtifactKey;
   if (!resolvedByArtifact.has(topLevel)) {
-    return failure(reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.TOP_PROFILE_UNRESOLVED, '/'));
+    return failure(reject(
+      PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.TOP_PROFILE_UNRESOLVED,
+      '/',
+      plannedArtifact(plan, topLevel),
+    ));
   }
   return {
     ok: true,
