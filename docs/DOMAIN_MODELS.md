@@ -807,7 +807,7 @@ importiert ausschließlich ein Profile (`import-profile`, required). Die
 
 ### Versionsspreizung im Bestand
 
-Die sechs registrierten BSI-Definitionen deklarieren **drei** verschiedene
+Die sechs registrierten BSI-Definitionen deklarieren **zwei** verschiedene
 OSCAL-Versionen. Eine einheitliche Modellversionsannahme wäre am Bestand
 belegbar falsch, und es gibt deshalb keine Component-Definition-Versionskonstante
 im Code: Die Zelle wählt allein `metadata.oscal-version` über den Root-Dispatch.
@@ -815,8 +815,7 @@ im Code: Die Zelle wählt allein `metadata.oscal-version` über den Root-Dispatc
 | Deklarierte Version | Artefakte |
 | --- | --- |
 | 1.1.2 | `component-ga-lotse-grundmodul`, `component-lieferkette`, `component-passwortrichtlinie` |
-| 1.1.3 | `component-aws-security-hub` |
-| 1.2.2 | `component-keycloak`, `component-netzarchitektur` |
+| 1.2.2 | `component-aws-security-hub`, `component-keycloak`, `component-netzarchitektur` |
 
 Zwischen den vier gepinnten Schemas unterscheiden sich drei parserrelevante
 Felder. Sie sind als Feldprädikate in `oscalComponentDefinition.ts` abgebildet

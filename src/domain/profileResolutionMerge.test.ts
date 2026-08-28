@@ -332,6 +332,50 @@ describe('custom-Struktur', () => {
     expect(result.controls).toEqual([]);
   });
 
+  it('prunt ein selbst nicht selektiertes Geschwister-Kind aus einem in eine Gruppe eingefügten Eltern-Control (BSI-Korpus-Befund ARCH.2.2.12)', () => {
+    // Quellknoten trägt zwei Kinder, aber nur eines ist eine eigenständige
+    // Phase-1-Selektion (das andere existiert nur als Rohstruktur unter
+    // r-1, wie es der Poolindex für with-child-controls braucht — GSPP-291).
+    const selectedChild = control('r-1.a');
+    const unselectedChild = control('r-1.b');
+    const parent = control('r-1', { controls: [selectedChild, unselectedChild] });
+    const combined = applyCombine(
+      [{ documentKey: 'doc-a', controls: [parent, selectedChild] }],
+      'use-first',
+    );
+    const directive: ProfileInsertControls = {
+      selection: {
+        kind: 'include-controls',
+        includeControls: [withIdsSelector(['r-1'])],
+      },
+      excludeControls: [],
+      path: '/profile/merge/custom/insert-controls',
+    };
+    const typedGroup: ProfileGroup = {
+      id: 'g-1',
+      params: [],
+      props: [],
+      links: [],
+      parts: [],
+      groups: [],
+      insertControls: [directive],
+      path: '/profile/merge/custom/groups/0',
+    };
+
+    const result = buildCustomGroups(
+      { rawGroups: [rawGroup()], typedGroups: [typedGroup], insertControls: [] },
+      combined,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.groups).toHaveLength(1);
+    const groupControls = result.groups[0]!['controls'] as Record<string, unknown>[];
+    expect(groupControls).toHaveLength(1);
+    expect(groupControls[0]!['id']).toBe('r-1');
+    expect((groupControls[0]!['controls'] as Record<string, unknown>[]).map((c) => c['id'])).toEqual(['r-1.a']);
+  });
+
   it('with-ids trifft nur im Pool vorhandene IDs; Ungetroffenes bleibt außen', () => {
     const combined = applyCombine([inclusion('doc-a', 'a-1', 'b-1')], 'use-first');
     const directive: ProfileInsertControls = {

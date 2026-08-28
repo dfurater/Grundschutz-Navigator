@@ -217,7 +217,7 @@ describe('Fixture-Korpus — gemessene Strukturzahlen', () => {
     ]);
   });
 
-  it('deklariert drei verschiedene OSCAL-Versionen und bindet jede an ihre eigene Zelle', () => {
+  it('deklariert zwei verschiedene OSCAL-Versionen und bindet jede an ihre eigene Zelle', () => {
     const bindings = makeAllComponentDefinitionSources().map(({ specification, source }) => {
       const document = parseComponentDefinitionDocument(source, {
         ...context,
@@ -236,7 +236,7 @@ describe('Fixture-Korpus — gemessene Strukturzahlen', () => {
       expect(binding.pinned, binding.artifactKey).toBe(binding.declared);
     }
     expect(new Set(bindings.map((binding) => binding.bound))).toEqual(
-      new Set(['1.1.2', '1.1.3', '1.2.2']),
+      new Set(['1.1.2', '1.2.2']),
     );
   });
 });

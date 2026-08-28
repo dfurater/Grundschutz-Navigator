@@ -141,11 +141,33 @@ describe.skipIf(!wlanAvailable)('WLAN-Katalog am realen Snapshot', () => {
   it('klassifiziert Fragmentziele nach dem Dokumentgraphen und behält href sowie rel', () => {
     const { body, document } = current();
     const sourceControls = collectSourceControls(body);
-    const sourceLinks = sourceControls.flatMap((control) => control.links.map((link) => ({
-      controlId: control.id,
-      href: typeof link.href === 'string' ? link.href : '',
-      rel: typeof link.rel === 'string' ? link.rel : undefined,
-    })));
+    const controlIds = new Set(sourceControls.map((control) => control.id));
+    const backMatterResourceUuids = new Set(
+      isJsonObject(body['back-matter'])
+        ? readArray(body['back-matter'].resources)
+          .filter(isJsonObject)
+          .map((resource) => resource.uuid)
+          .filter((uuid): uuid is string => typeof uuid === 'string')
+        : [],
+    );
+    // Auflösung prüft erst den Ressourcenindex, dann Control-IDs (GSPP-242):
+    // ein Fragment ist genau dann 'control', wenn sein Ziel keine
+    // Back-Matter-Ressource, aber eine Control-ID desselben Katalogs ist.
+    const sourceLinks = sourceControls.flatMap((control) => control.links.map((link) => {
+      const href = typeof link.href === 'string' ? link.href : '';
+      const fragment = href.startsWith('#') ? href.slice(1) : null;
+      const expectedKind = fragment !== null && backMatterResourceUuids.has(fragment)
+        ? 'resource' as const
+        : fragment !== null && controlIds.has(fragment)
+          ? 'control' as const
+          : 'unresolved' as const;
+      return {
+        controlId: control.id,
+        href,
+        rel: typeof link.rel === 'string' ? link.rel : undefined,
+        expectedKind,
+      };
+    }));
     const references = resolveCatalogControlReferences({
       document: referenceDocumentFromCatalog(document),
       catalogsByKey: new Map<CatalogKey, Catalog>([[WLAN_KEY, document.view]]),
@@ -153,8 +175,9 @@ describe.skipIf(!wlanAvailable)('WLAN-Katalog am realen Snapshot', () => {
     const resolved = [...references.values()].flat();
 
     expect(sourceLinks.length).toBeGreaterThan(0);
+    expect(sourceLinks.some((link) => link.expectedKind === 'control')).toBe(true);
+    expect(sourceLinks.some((link) => link.expectedKind === 'resource')).toBe(true);
     expect(resolved).toHaveLength(sourceLinks.length);
-    expect(resolved.every((reference) => reference.kind === 'control')).toBe(true);
     expect(resolved.every((reference) => reference.kind !== 'unresolved')).toBe(true);
 
     for (const sourceLink of sourceLinks) {
@@ -162,6 +185,7 @@ describe.skipIf(!wlanAvailable)('WLAN-Katalog am realen Snapshot', () => {
         (reference) => reference.href === sourceLink.href,
       );
       expect(match?.rel).toBe(sourceLink.rel);
+      expect(match?.kind).toBe(sourceLink.expectedKind);
     }
 
     const metadataReferences = resolveCatalogMetadataReferences({

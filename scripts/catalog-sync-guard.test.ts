@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   computeManifestSignature,
   guardCatalogSyncPullRequest,
+  isRegistryOscalVersionMigration,
   isRegistryPreviewArtifactExpansion,
   isRegistryLifecycleOnlyMigration,
   parseNameStatusDiff,
@@ -608,6 +609,188 @@ describe('catalog sync PR shape', () => {
       previousManifest: previous,
       nextManifest: { ...next.manifest, snapshotCommitSha: NEW_SHA },
     })).toBe(false);
+  });
+});
+
+describe('registry OSCAL version migration (GSPP-283 deadlock)', () => {
+  const AWS_ARTIFACT_KEY = 'component-aws-security-hub';
+  const diffEntries = [
+    { status: 'M', path: 'src/domain/sourceRegistry.mjs' },
+    { status: 'M', path: 'upstream-manifest.json' },
+  ];
+
+  function withAwsVersion(oscalVersion: string) {
+    return SOURCE_REGISTRY.map((entry) =>
+      entry.artifactKey === AWS_ARTIFACT_KEY ? { ...entry, oscalVersion } : entry,
+    );
+  }
+
+  it('accepts an isolated oscalVersion bump on a new snapshot, bytes and all', () => {
+    const next = makeFixture({ snapshotCommitSha: NEW_SHA });
+    const previous = buildUpstreamManifest({
+      repository: next.manifest.repository,
+      snapshotCommitSha: OLD_SHA,
+      files: next.manifest.files,
+    });
+
+    expect(isRegistryOscalVersionMigration({
+      diffEntries,
+      previousManifest: previous,
+      nextManifest: next.manifest,
+      previousSourceRegistry: withAwsVersion('1.1.2'),
+    })).toBe(true);
+  });
+
+  it('rejects an identical snapshot (no snapshot progress)', () => {
+    const next = makeFixture({ snapshotCommitSha: OLD_SHA });
+    const previous = buildUpstreamManifest({
+      repository: next.manifest.repository,
+      snapshotCommitSha: OLD_SHA,
+      files: next.manifest.files,
+    });
+
+    expect(isRegistryOscalVersionMigration({
+      diffEntries,
+      previousManifest: previous,
+      nextManifest: next.manifest,
+      previousSourceRegistry: withAwsVersion('1.1.2'),
+    })).toBe(false);
+  });
+
+  it('rejects when no oscalVersion actually differs', () => {
+    const next = makeFixture({ snapshotCommitSha: NEW_SHA });
+    const previous = buildUpstreamManifest({
+      repository: next.manifest.repository,
+      snapshotCommitSha: OLD_SHA,
+      files: next.manifest.files,
+    });
+
+    expect(isRegistryOscalVersionMigration({
+      diffEntries,
+      previousManifest: previous,
+      nextManifest: next.manifest,
+      previousSourceRegistry: SOURCE_REGISTRY,
+    })).toBe(false);
+  });
+
+  it('rejects a version bump riding alongside a lifecycle change on the same entry', () => {
+    const next = makeFixture({ snapshotCommitSha: NEW_SHA });
+    const previous = buildUpstreamManifest({
+      repository: next.manifest.repository,
+      snapshotCommitSha: OLD_SHA,
+      files: next.manifest.files,
+    });
+    const previousSourceRegistry = SOURCE_REGISTRY.map((entry) =>
+      entry.artifactKey === AWS_ARTIFACT_KEY
+        ? { ...entry, oscalVersion: '1.1.2', lifecycle: 'draft' }
+        : entry,
+    );
+
+    expect(isRegistryOscalVersionMigration({
+      diffEntries,
+      previousManifest: previous,
+      nextManifest: next.manifest,
+      previousSourceRegistry,
+    })).toBe(false);
+  });
+
+  it('rejects a version bump riding alongside an added or removed artifact', () => {
+    const next = makeFixture({ snapshotCommitSha: NEW_SHA });
+    const previous = buildUpstreamManifest({
+      repository: next.manifest.repository,
+      snapshotCommitSha: OLD_SHA,
+      files: next.manifest.files,
+    });
+    const previousSourceRegistry = withAwsVersion('1.1.2').filter(
+      (entry) => entry.artifactKey !== 'component-keycloak',
+    );
+
+    expect(isRegistryOscalVersionMigration({
+      diffEntries,
+      previousManifest: previous,
+      nextManifest: next.manifest,
+      previousSourceRegistry,
+    })).toBe(false);
+  });
+
+  it('rejects a manifest that also changes artifactKey, rootType, or lifecycle for a file', () => {
+    const next = makeFixture({ snapshotCommitSha: NEW_SHA });
+    const previous = buildUpstreamManifest({
+      repository: next.manifest.repository,
+      snapshotCommitSha: OLD_SHA,
+      files: next.manifest.files.map((file, index) =>
+        index === 0 ? { ...file, lifecycle: 'draft' } : file,
+      ),
+    });
+
+    expect(isRegistryOscalVersionMigration({
+      diffEntries,
+      previousManifest: previous,
+      nextManifest: next.manifest,
+      previousSourceRegistry: withAwsVersion('1.1.2'),
+    })).toBe(false);
+  });
+
+  it.each([
+    [[{ status: 'M', path: 'upstream-manifest.json' }]],
+    [[{ status: 'M', path: 'src/domain/sourceRegistry.mjs' }]],
+  ])('rejects when the diff omits either required path', (partialDiffEntries) => {
+    const next = makeFixture({ snapshotCommitSha: NEW_SHA });
+    const previous = buildUpstreamManifest({
+      repository: next.manifest.repository,
+      snapshotCommitSha: OLD_SHA,
+      files: next.manifest.files,
+    });
+
+    expect(isRegistryOscalVersionMigration({
+      diffEntries: partialDiffEntries,
+      previousManifest: previous,
+      nextManifest: next.manifest,
+      previousSourceRegistry: withAwsVersion('1.1.2'),
+    })).toBe(false);
+  });
+
+  it('runs full snapshot verification and reports the migration through the guard', async () => {
+    const next = makeFixture({ snapshotCommitSha: NEW_SHA });
+    const previous = buildUpstreamManifest({
+      repository: next.manifest.repository,
+      snapshotCommitSha: OLD_SHA,
+      files: next.manifest.files,
+    });
+    const fetchImpl = makeGitHubFetch(next);
+
+    await expect(guardCatalogSyncPullRequest({
+      branch: 'fix/aws-security-hub-oscal-version',
+      title: 'fix(sync): AWS Security Hub OSCAL-Version nachziehen',
+      diffEntries,
+      previousManifest: previous,
+      nextManifest: next.manifest,
+      previousSourceRegistry: withAwsVersion('1.1.2'),
+      fetchImpl,
+    })).resolves.toEqual({
+      catalogSync: false,
+      registryOscalVersionMigration: true,
+      snapshotCommitSha: NEW_SHA,
+    });
+    expect(fetchImpl).toHaveBeenCalled();
+  });
+
+  it('falls through to the strict single-file sync check without a previousSourceRegistry', async () => {
+    const next = makeFixture({ snapshotCommitSha: NEW_SHA });
+    const previous = buildUpstreamManifest({
+      repository: next.manifest.repository,
+      snapshotCommitSha: OLD_SHA,
+      files: next.manifest.files,
+    });
+
+    await expect(guardCatalogSyncPullRequest({
+      branch: 'fix/aws-security-hub-oscal-version',
+      title: 'fix(sync): AWS Security Hub OSCAL-Version nachziehen',
+      diffEntries,
+      previousManifest: previous,
+      nextManifest: next.manifest,
+      fetchImpl: vi.fn(),
+    })).rejects.toThrow('branch must match chore/catalog-sync-');
   });
 });
 

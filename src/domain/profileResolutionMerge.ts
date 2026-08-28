@@ -520,6 +520,14 @@ function copyWithLabel(control: JsonObject, label: string): JsonObject {
  * Wertet die insert-controls-Direktiven EINER Gruppe gegen den Pool aus
  * und liefert die getroffenen Definitionen mit Positions-Labels. Mehrere
  * Anweisungen wirken kumulativ; Deduplizierung läuft je Gruppe.
+ *
+ * `combined.controls` trägt Rohknoten (der Poolindex braucht die volle
+ * Quellstruktur für `with-child-controls`, siehe `buildCustomGroups`) —
+ * ihre verschachtelten Kinder sind also nicht auf Phase 1 vorgefiltert.
+ * Ein eingefügtes Control muss deshalb selbst noch gegen den Phase-1-Pool
+ * geprunt werden, sonst entkommen nicht selektierte Geschwister-Controls
+ * (BSI-Korpus-Befund: `ARCH.2.2` bringt ein neu hinzugekommenes 12. Kind
+ * mit, das `with-ids` bewusst ausspart) unverändert aus dem Quelldokument.
  */
 function assembleGroupControls(
   groupId: string,
@@ -528,6 +536,7 @@ function assembleGroupControls(
   groupDefinitions: Set<object>,
 ): { readonly ok: true; readonly placed: readonly JsonObject[] } | { readonly ok: false; readonly diagnostic: OscalDiagnostic } {
   const placed: JsonObject[] = [];
+  const poolIds = new Set(context.combined.controls.keys());
 
   for (const directive of directives) {
     const outcome = resolveSelectionIds(context.poolIndex, {
@@ -540,7 +549,8 @@ function assembleGroupControls(
       for (const definition of context.combined.controls.get(id) ?? []) {
         if (groupDefinitions.has(definition)) continue;
         groupDefinitions.add(definition);
-        placed.push(withPositionalLabels(definition, `${groupId}.${placed.length + 1}`));
+        const pruned = filterNestedIncluded(definition, poolIds, new Set());
+        placed.push(withPositionalLabels(pruned, `${groupId}.${placed.length + 1}`));
       }
     }
   }

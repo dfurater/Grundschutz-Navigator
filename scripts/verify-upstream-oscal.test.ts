@@ -267,9 +267,9 @@ describe('manifestgestützter OSCAL-Korpus', () => {
 
     expect(versionCoverage).toEqual({
       '1.1.2': 3,
-      '1.1.3': 12,
+      '1.1.3': 11,
       '1.2.1': 1,
-      '1.2.2': 3,
+      '1.2.2': 4,
     });
   });
 
