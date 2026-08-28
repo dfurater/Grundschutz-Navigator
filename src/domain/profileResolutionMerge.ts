@@ -82,6 +82,14 @@ export type CombinedControls = {
   readonly order: readonly JsonObject[];
   /** Bei keep: IDs, deren Definitionen kollidieren. */
   readonly clashes: readonly string[];
+  /**
+   * Je Definitionsknoten die ID-Menge, die aus DERSELBEN Inklusion (also
+   * demselben Import) stammt. Trägt zwei kollidierende Imports dieselbe
+   * ID mit unterschiedlich selektierten Kindern, prunt eine Definition
+   * sonst gegen den globalen Pool und übernimmt ein Kind, das nur im
+   * jeweils ANDEREN Import selektiert wurde.
+   */
+  readonly sourceIdsByDefinition: ReadonlyMap<object, ReadonlySet<string>>;
 };
 
 function controlsFromInclusion(inclusion: unknown): readonly unknown[] {
@@ -124,12 +132,20 @@ export function applyCombine(
   const definitions = new Map<string, JsonObject[]>();
   const order: JsonObject[] = [];
   const clashes = new Set<string>();
+  const sourceIdsByDefinition = new Map<object, ReadonlySet<string>>();
 
   for (const inclusion of ownArrayDataElements(inclusions)) {
+    const nodesInInclusion: JsonObject[] = [];
     for (const node of controlsFromInclusion(inclusion)) {
-      if (isJsonObject(node)) {
-        registerCombinedControl(node, method, definitions, order, clashes);
-      }
+      if (isJsonObject(node)) nodesInInclusion.push(node);
+    }
+    // Eigene ID-Menge je Inklusion: dieselbe ID in zwei kollidierenden
+    // Imports (combine=keep) darf beim Prunen eines verschachtelten Kindes
+    // nicht den Pool des jeweils ANDEREN Imports mitziehen.
+    const idsInInclusion = new Set(nodesInInclusion.map(readIdOrEmpty));
+    for (const node of nodesInInclusion) {
+      registerCombinedControl(node, method, definitions, order, clashes);
+      sourceIdsByDefinition.set(node, idsInInclusion);
     }
   }
 
@@ -138,7 +154,7 @@ export function applyCombine(
       ? [...definitions.values()].map((defs) => defs[0]!)
       : [...order];
 
-  return { controls: definitions, order: finalOrder, clashes: [...clashes] };
+  return { controls: definitions, order: finalOrder, clashes: [...clashes], sourceIdsByDefinition };
 }
 
 /** Entfernt verschachtelte Kinder (controls, groups) für echte Flachdarstellung. */
@@ -524,10 +540,14 @@ function copyWithLabel(control: JsonObject, label: string): JsonObject {
  * `combined.controls` trägt Rohknoten (der Poolindex braucht die volle
  * Quellstruktur für `with-child-controls`, siehe `buildCustomGroups`) —
  * ihre verschachtelten Kinder sind also nicht auf Phase 1 vorgefiltert.
- * Ein eingefügtes Control muss deshalb selbst noch gegen den Phase-1-Pool
- * geprunt werden, sonst entkommen nicht selektierte Geschwister-Controls
- * (BSI-Korpus-Befund: `ARCH.2.2` bringt ein neu hinzugekommenes 12. Kind
- * mit, das `with-ids` bewusst ausspart) unverändert aus dem Quelldokument.
+ * Ein eingefügtes Control muss deshalb selbst noch gegen die Phase-1-
+ * Selektion SEINES EIGENEN Imports geprunt werden (BSI-Korpus-Befund:
+ * `ARCH.2.2` bringt ein neu hinzugekommenes 12. Kind mit, das `with-ids`
+ * bewusst ausspart). Die Prüfmenge ist bewusst je Definition — nicht der
+ * globale Pool: Tragen zwei kollidierende Imports (combine=keep) dieselbe
+ * Control-ID mit unterschiedlich selektierten Kindern, entkäme sonst ein
+ * nur im JEWEILS ANDEREN Import selektiertes Kind über den globalen Pool
+ * (Greptile-Fund an dieser Stelle, T-Rex-verifiziert).
  */
 function assembleGroupControls(
   groupId: string,
@@ -536,7 +556,6 @@ function assembleGroupControls(
   groupDefinitions: Set<object>,
 ): { readonly ok: true; readonly placed: readonly JsonObject[] } | { readonly ok: false; readonly diagnostic: OscalDiagnostic } {
   const placed: JsonObject[] = [];
-  const poolIds = new Set(context.combined.controls.keys());
 
   for (const directive of directives) {
     const outcome = resolveSelectionIds(context.poolIndex, {
@@ -549,7 +568,11 @@ function assembleGroupControls(
       for (const definition of context.combined.controls.get(id) ?? []) {
         if (groupDefinitions.has(definition)) continue;
         groupDefinitions.add(definition);
-        const pruned = filterNestedIncluded(definition, poolIds, new Set());
+        // Fail-closed statt globalem Pool: Fehlt ausnahmsweise ein
+        // Eintrag, prunt die leere Menge sämtliche Kinder heraus, statt
+        // den ungeprüften globalen Pool als Ersatz zu übernehmen.
+        const sourceIds = context.combined.sourceIdsByDefinition.get(definition) ?? new Set<string>();
+        const pruned = filterNestedIncluded(definition, sourceIds, new Set());
         placed.push(withPositionalLabels(pruned, `${groupId}.${placed.length + 1}`));
       }
     }
@@ -830,12 +853,14 @@ function projectAssemblyGroup(value: unknown): ProjectedAssemblyGroup {
 
 function sanitizeCombinedControls(combined: CombinedControls): CombinedControls {
   const controls = ownDataValue(combined as unknown as object, 'controls');
+  const sourceIdsByDefinition = ownDataValue(combined as unknown as object, 'sourceIdsByDefinition');
   return {
     order: jsonObjectArrayMember(combined as unknown as object, 'order'),
     controls: controls instanceof Map ? controls : new Map(),
     clashes: arrayMember<unknown>(combined as unknown as object, 'clashes').filter(
       (clash): clash is string => typeof clash === 'string',
     ),
+    sourceIdsByDefinition: sourceIdsByDefinition instanceof Map ? sourceIdsByDefinition : new Map(),
   };
 }
 

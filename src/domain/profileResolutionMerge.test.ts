@@ -376,6 +376,55 @@ describe('custom-Struktur', () => {
     expect((groupControls[0]!['controls'] as Record<string, unknown>[]).map((c) => c['id'])).toEqual(['r-1.a']);
   });
 
+  it('prunt jede kollidierende Definition nur gegen die Selektion IHRES EIGENEN Imports (Greptile-Fund, combine=keep)', () => {
+    // Zwei Imports tragen dieselbe Control-ID „SHARED“ (combine=keep hält
+    // beide); jeder hat ein eigenes Kind mit derselben ID „child-x“, aber
+    // nur Import A selektiert es eigenständig. Ein globaler Pool würde
+    // „child-x“ fälschlich auch in Import Bs Definition durchlassen.
+    const childFromA = control('child-x', { title: 'AUS-A' });
+    const parentA = control('SHARED', { title: 'PARENT-A', controls: [childFromA] });
+    const childFromB = control('child-x', { title: 'AUS-B' });
+    const parentB = control('SHARED', { title: 'PARENT-B', controls: [childFromB] });
+    const combined = applyCombine(
+      [
+        { documentKey: 'doc-a', controls: [parentA, childFromA] },
+        { documentKey: 'doc-b', controls: [parentB] },
+      ],
+      'keep',
+    );
+    const directive: ProfileInsertControls = {
+      selection: {
+        kind: 'include-controls',
+        includeControls: [withIdsSelector(['SHARED'])],
+      },
+      excludeControls: [],
+      path: '/profile/merge/custom/insert-controls',
+    };
+    const typedGroup: ProfileGroup = {
+      id: 'g-1',
+      params: [],
+      props: [],
+      links: [],
+      parts: [],
+      groups: [],
+      insertControls: [directive],
+      path: '/profile/merge/custom/groups/0',
+    };
+
+    const result = buildCustomGroups(
+      { rawGroups: [rawGroup()], typedGroups: [typedGroup], insertControls: [] },
+      combined,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const groupControls = result.groups[0]!['controls'] as Record<string, unknown>[];
+    expect(groupControls).toHaveLength(2);
+    const byTitle = new Map(groupControls.map((c) => [c['title'], c]));
+    expect((byTitle.get('PARENT-A')!['controls'] as Record<string, unknown>[] | undefined)?.map((c) => c['id'])).toEqual(['child-x']);
+    expect(byTitle.get('PARENT-B')!['controls']).toBeUndefined();
+  });
+
   it('with-ids trifft nur im Pool vorhandene IDs; Ungetroffenes bleibt außen', () => {
     const combined = applyCombine([inclusion('doc-a', 'a-1', 'b-1')], 'use-first');
     const directive: ProfileInsertControls = {
