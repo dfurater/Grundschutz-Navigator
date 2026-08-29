@@ -262,15 +262,20 @@ describe('manifestgestützter OSCAL-Korpus', () => {
     );
   });
 
-  it('weist die vier tatsächlich belegten OSCAL-Versionen aus', () => {
-    const { versionCoverage } = selectManifestOscalArtifacts(manifest);
+  it('belegt genau die vier gepinnten OSCAL-Versionen und zählt jedes ausgewählte Artefakt genau einmal', () => {
+    const { versionCoverage, oscalArtifacts } = selectManifestOscalArtifacts(manifest);
 
-    expect(versionCoverage).toEqual({
-      '1.1.2': 3,
-      '1.1.3': 12,
-      '1.2.1': 1,
-      '1.2.2': 3,
-    });
+    // Bewusst ohne Häufigkeitstabelle: Die exakte Artefakt-zu-Version-Zuordnung
+    // ist der schärfere Vier-Augen-Nachweis und steht vollständig in
+    // `DECLARED_UPSTREAM_VERSIONS` (src/domain/sourceRegistry.test.ts). Eine
+    // Häufigkeitsverteilung wäre dasselbe schwächer — und würde bei jeder
+    // BSI-Rolling-Publication veralten, obwohl sich an der Zuständigkeit dieses
+    // Skripts nichts ändert (GSPP-375). Was hier zählt, ist die Auswahl selbst:
+    // welche Versionen sie belegt, und dass ihre Aggregation vollständig ist.
+    expect(Object.keys(versionCoverage)).toEqual(['1.1.2', '1.1.3', '1.2.1', '1.2.2']);
+    expect(Object.values(versionCoverage).reduce((sum, count) => sum + count, 0)).toBe(
+      oscalArtifacts.length,
+    );
   });
 
   it('führt drei gesperrte Artefakte mit inverser Erwartung im vollständigen Korpus', () => {

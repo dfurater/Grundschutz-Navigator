@@ -992,7 +992,9 @@ werden.
   `src/test/fixtures/oscal-content-v1.5.0/`). Volatile Felder
   (`metadata.last-modified`, Dokument-UUID am Körper,
   resolution-tool/source-profile) symmetrisch entfernt; zusätzlich
-  feste BSI-Differenzregistry und symmetrische Normalisierung ausschließlich
+  feste BSI-Differenzregistry (`src/test/fixtures/bsiProfileResolutionDifferences.ts`,
+  snapshotgebunden und deshalb bei den Testdaten statt beim auswertenden
+  Skript) und symmetrische Normalisierung ausschließlich
   belegter NIST-XML-Whitespace-Artefakte in `prose`,
   `params[].select.choice[]` und `citation.text`.
 - **Übrige Semantik:** Kleine synthetische Fixtures, deren Erwartungs-
