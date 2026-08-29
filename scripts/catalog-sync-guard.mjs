@@ -2,7 +2,9 @@
 
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { lstat, readFile } from 'node:fs/promises';
+import { lstat, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { basename, join } from 'node:path';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import {
@@ -28,6 +30,7 @@ import {
   SOURCE_REGISTRY,
   SUPPORTED_CATALOGS,
   getArtifactByUpstreamPath,
+  isSafeRepoPath,
 } from '../src/domain/sourceRegistry.mjs';
 import {
   computeManifestSignature as computeV2ManifestSignature,
@@ -292,6 +295,211 @@ export function isRegistryPreviewArtifactExpansion({ diffEntries, previousManife
       file.lifecycle === registryEntry.lifecycle
     );
   });
+}
+
+/**
+ * Zulässige Begleitpfade einer OSCAL-Versionsmigration — Positivliste, kein
+ * Verbot. Was hier nicht aufgeführt ist, lässt die Ausnahme fail-closed auf
+ * den regulären Sync-Pfad zurückfallen.
+ *
+ * Warum `src/` und `docs/` genügen, obwohl dort Produktcode liegt: Die harten
+ * Regeln des autonomen Sync-Pfads — Branchname, exakter Titel, genau eine
+ * Datei — schützen vor Auto-Merge-Missbrauch. `update-catalog.yml` aktiviert
+ * Auto-Merge ausschließlich auf der PR, die es selbst erzeugt hat; eine
+ * Migrations-PR trägt einen anderen Branchnamen, bekommt deshalb nie
+ * Auto-Merge und durchläuft validate, documentation-contract, CodeQL, Sonar,
+ * Greptile und einen menschlichen Merge. Für Produktcode ist dieser Guard also
+ * nicht das Kontrollinstrument — das sind die anderen Checks. Was er schützen
+ * muss, ist die Beweiskette der Lane selbst: Fetch, Manifest-Erzeugung,
+ * Policy, dieser Guard und die Workflows, die sie aufrufen. Sie liegt
+ * vollständig unter `scripts/` und `.github/` — und genau die sind hier nicht
+ * aufgeführt, ohne dass eine einzige Datei namentlich verboten werden müsste.
+ */
+const MIGRATION_COMPANION_PREFIXES = Object.freeze(['src/', 'docs/']);
+
+/** Beide Pfade müssen im Diff stehen; ohne sie ist es keine Migration. */
+const MIGRATION_REQUIRED_PATHS = Object.freeze([
+  TRACKED_MANIFEST_PATH,
+  REGISTRY_LIFECYCLE_MIGRATION_PATH,
+]);
+
+/**
+ * Wird als `node --input-type=module -e <script> -- <url>` ausgeführt und gibt
+ * das geladene Register als JSON auf stdout aus.
+ */
+const LOAD_REGISTRY_CHILD_SCRIPT =
+  'const loaded = await import(process.argv[1]); '
+  + 'process.stdout.write(JSON.stringify(loaded.SOURCE_REGISTRY ?? null));';
+
+/**
+ * Die Modulkette, die `SOURCE_REGISTRY` zum Auswerten braucht. Alle Module
+ * liegen flach im selben temporären Verzeichnis, weshalb ihre relativen
+ * Importe untereinander auflösen.
+ *
+ * Die Liste ist bewusst explizit und nicht aus dem Importgraph abgeleitet:
+ * Eine Ableitung müsste den Graph am Base-SHA selbst traversieren, also genau
+ * die Datei parsen, die sie erst materialisieren will. Statt der Ableitung
+ * hängt die Kopplung an einem Test — `catalog-sync-guard.test.ts` liest die
+ * relativen Importe jedes Kettenglieds aus dem Quellbaum und schlägt fehl,
+ * sobald eines davon hier fehlt. Ohne diesen Test bräche ein neuer relativer
+ * Import in `sourceRegistry.mjs` den Migrationspfad still und fail-closed mit
+ * einem irreführenden Modulauflösungsfehler (Gitar-Befund).
+ */
+export const REGISTRY_MODULE_CHAIN = Object.freeze([
+  REGISTRY_LIFECYCLE_MIGRATION_PATH,
+  'src/domain/oscalVersionMatrix.mjs',
+]);
+
+function isMigrationSafePath(path) {
+  // Ein Pfad, den das Quellregister selbst nicht als sicher anerkennt —
+  // absolut, mit Backslash oder mit `..`-Segment — passiert die Positivliste
+  // nie, auch wenn er zufällig mit einem erlaubten Präfix beginnt.
+  if (!isSafeRepoPath(path)) return false;
+  if (MIGRATION_REQUIRED_PATHS.includes(path)) return true;
+  return MIGRATION_COMPANION_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+
+function hasRequiredMigrationPaths(diffEntries) {
+  return MIGRATION_REQUIRED_PATHS.every((requiredPath) =>
+    diffEntries.some((entry) => entry.status === 'M' && entry.path === requiredPath),
+  );
+}
+
+/**
+ * Der Snapshot bewegt sich, die Artefaktidentität nicht: gleiche Pfadmenge,
+ * je Datei unveränderte `artifactKey`, `rootType` und `lifecycle`. Nur die
+ * Pins dürfen neue Bytes benennen — sie werden anschließend vollständig gegen
+ * die echte BSI-API geprüft. Ein hinzugekommener oder entfallener Pfad gehört
+ * in den regulären Sync- oder Preview-Erweiterungspfad, nicht hierher.
+ */
+function manifestAdvancesSnapshotOnly(previousManifest, nextManifest) {
+  if (
+    previousManifest.snapshotCommitSha === nextManifest.snapshotCommitSha ||
+    !Array.isArray(previousManifest.files) ||
+    !Array.isArray(nextManifest.files) ||
+    previousManifest.files.length !== nextManifest.files.length
+  ) {
+    return false;
+  }
+
+  const previousByPath = new Map(previousManifest.files.map((file) => [file.path, file]));
+  return nextManifest.files.every((nextFile) => {
+    const previousFile = previousByPath.get(nextFile.path);
+    return (
+      previousFile !== undefined &&
+      previousFile.artifactKey === nextFile.artifactKey &&
+      previousFile.rootType === nextFile.rootType &&
+      previousFile.lifecycle === nextFile.lifecycle
+    );
+  });
+}
+
+/**
+ * Strukturelle Gleichheit über JSON-Werte. Ein Referenzvergleich genügt hier
+ * nicht: Der Vorstand kommt als frisch geparstes JSON aus einem Kindprozess,
+ * der aktuelle Stand ist das eingefrorene `SOURCE_REGISTRY` dieses Prozesses.
+ * Ein künftig hinzukommendes Objekt- oder Array-Feld wäre per `!==` immer
+ * ungleich und würde die Ausnahme still und unbemerkt verschließen.
+ */
+function isStructurallyEqual(left, right) {
+  if (left === right) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+      return false;
+    }
+    return left.every((value, index) => isStructurallyEqual(value, right[index]));
+  }
+  if (typeof left !== 'object' || typeof right !== 'object' || left === null || right === null) {
+    return false;
+  }
+  const leftKeys = Object.keys(left).sort(compareStringsByCodeUnit);
+  const rightKeys = Object.keys(right).sort(compareStringsByCodeUnit);
+  if (!isStructurallyEqual(leftKeys, rightKeys)) return false;
+  return leftKeys.every((key) => isStructurallyEqual(left[key], right[key]));
+}
+
+function entryChangesOnlyOscalVersion(previousEntry, nextEntry) {
+  const isOscalPair = previousEntry.kind === 'oscal' && nextEntry.kind === 'oscal';
+  const fieldNames = new Set([...Object.keys(previousEntry), ...Object.keys(nextEntry)]);
+  for (const fieldName of fieldNames) {
+    if (fieldName === 'oscalVersion' && isOscalPair) continue;
+    if (!isStructurallyEqual(previousEntry[fieldName], nextEntry[fieldName])) return false;
+  }
+  return true;
+}
+
+/**
+ * Der Registerdiff bewegt ausschließlich `oscalVersion` von OSCAL-Artefakten,
+ * und mindestens eines muss sich bewegen.
+ *
+ * Verglichen wird der VOLLSTÄNDIGE Bestand über `artifactKey`, einschließlich
+ * der Nicht-OSCAL-Einträge: Eine Beschränkung auf die oscal-Teilmenge ließe
+ * eine sonst gültige Migration nebenbei etwa das `upstreamDirectory` einer
+ * vocabulary-collection verschieben, ohne dass es hier bewertet würde.
+ */
+function registryChangesOnlyOscalVersions(previousSourceRegistry, nextSourceRegistry) {
+  if (
+    !Array.isArray(previousSourceRegistry) ||
+    !Array.isArray(nextSourceRegistry) ||
+    previousSourceRegistry.length !== nextSourceRegistry.length
+  ) {
+    return false;
+  }
+
+  const previousByKey = new Map(
+    previousSourceRegistry.map((entry) => [entry?.artifactKey, entry]),
+  );
+  let versionChanges = 0;
+
+  for (const nextEntry of nextSourceRegistry) {
+    const previousEntry = previousByKey.get(nextEntry?.artifactKey);
+    if (previousEntry === undefined) return false;
+    if (!entryChangesOnlyOscalVersion(previousEntry, nextEntry)) return false;
+    if (
+      previousEntry.kind === 'oscal' &&
+      nextEntry.kind === 'oscal' &&
+      previousEntry.oscalVersion !== nextEntry.oscalVersion
+    ) {
+      versionChanges += 1;
+    }
+  }
+
+  return versionChanges > 0;
+}
+
+/**
+ * BSI veröffentlicht abgeleitete Kataloge und Profile gebündelt neu, sobald
+ * sich irgendeine Quelle ändert; ein isolierter Schritt, der nur ein einzelnes
+ * Artefakt bewegt, existiert dort nicht. Hebt dabei ein bereits registriertes
+ * Artefakt seine `metadata.oscal-version`, blockiert der fail-closed-Abgleich
+ * (GSPP-283) jeden weiteren Fetch — und beide Einzelwege bleiben rot: Eine
+ * reine Registeränderung fetcht am alten Snapshot gegen die neue Erwartung,
+ * eine reine Manifest-PR am neuen Snapshot gegen die alte. Die autonome Lane
+ * kann sich nicht selbst befreien, weil `update-catalog.yml` `fetch-catalog`
+ * vor der Manifest-Erzeugung aufruft und dort bereits scheitert.
+ *
+ * Diese Ausnahme löst genau diesen Deadlock, ohne die Beweislast zu senken.
+ * Anders als `isRegistryLifecycleOnlyMigration` und
+ * `isRegistryPreviewArtifactExpansion` stammt ihre Sicherheit nicht aus
+ * "keine neuen Bytes" — hier darf jeder Pin neue Bytes benennen. Sie stammt
+ * aus der vollständigen `verifySnapshotFiles`-Prüfung gegen die echte
+ * BSI-API, die für diesen Zweig zwingend läuft, und aus vier eng gefassten
+ * Struktureigenschaften des Diffs: beide Pflichtpfade vorhanden, kein Pfad
+ * außerhalb der Positivliste, unveränderte Artefaktidentität im Manifest,
+ * ausschließlich `oscalVersion`-Bewegung im Register.
+ */
+export function isRegistryOscalVersionMigration({
+  diffEntries,
+  previousManifest,
+  nextManifest,
+  previousSourceRegistry,
+  nextSourceRegistry = SOURCE_REGISTRY,
+}) {
+  if (!Array.isArray(diffEntries) || !previousManifest || !nextManifest) return false;
+  if (!hasRequiredMigrationPaths(diffEntries)) return false;
+  if (!diffEntries.every((entry) => isMigrationSafePath(entry.path))) return false;
+  if (!manifestAdvancesSnapshotOnly(previousManifest, nextManifest)) return false;
+  return registryChangesOnlyOscalVersions(previousSourceRegistry, nextSourceRegistry);
 }
 
 export function validateCatalogSyncPullRequest({ branch, title, diffEntries }) {
@@ -569,6 +777,7 @@ export async function guardCatalogSyncPullRequest({
   diffEntries,
   previousManifest,
   nextManifest,
+  previousSourceRegistry,
   fetchImpl = fetch,
   token,
 }) {
@@ -589,6 +798,32 @@ export async function guardCatalogSyncPullRequest({
     validateCatalogSyncManifest(nextManifest);
     await verifySnapshotFiles(nextManifest, { fetchImpl, token });
     return { catalogSync: false, registryPreviewArtifactExpansion: true };
+  }
+
+  if (isRegistryOscalVersionMigration({
+    diffEntries,
+    previousManifest,
+    nextManifest,
+    previousSourceRegistry,
+  })) {
+    validateManifestV2Shape(previousManifest);
+    if (previousManifest.repository !== OFFICIAL_BSI_REPOSITORY_URL) {
+      throw new Error(`Previous manifest repository must be ${OFFICIAL_BSI_REPOSITORY_URL}`);
+    }
+    validateCatalogSyncManifest(nextManifest);
+    // Ungekürzt gegenüber dem regulären Sync-Pfad: Die Sicherheit dieses
+    // Zweigs steht und fällt mit diesen beiden Prüfungen.
+    await verifySnapshotProgress(
+      previousManifest.snapshotCommitSha,
+      nextManifest.snapshotCommitSha,
+      { fetchImpl, token },
+    );
+    await verifySnapshotFiles(nextManifest, { fetchImpl, token });
+    return {
+      catalogSync: false,
+      registryOscalVersionMigration: true,
+      snapshotCommitSha: nextManifest.snapshotCommitSha,
+    };
   }
 
   if (!isCatalogSyncCandidate({ branch, title, diffEntries })) {
@@ -620,6 +855,53 @@ export async function guardCatalogSyncPullRequest({
 
 async function readJson(filePath) {
   return JSON.parse(await readFile(filePath, 'utf8'));
+}
+
+/**
+ * Lädt `SOURCE_REGISTRY`, wie es am PR-Base-SHA stand.
+ *
+ * Die gesamte Modulkette — Register plus die von ihm importierte
+ * Versionsmatrix — wird in ein temporäres Verzeichnis AUSSERHALB des
+ * Quellbaums geschrieben, damit der relative Import `./oscalVersionMatrix.mjs`
+ * dort auflöst. Nichts landet unter `src/`: Ein hart abgebrochener Lauf kann
+ * so keinen importierbaren Rest in einem getrackten Quellverzeichnis
+ * hinterlassen, den Build- oder Test-Globs später aufsammeln.
+ *
+ * Der Import ist zugleich die Gültigkeitsprüfung: `sourceRegistry.mjs`
+ * validiert sich beim Laden selbst. Ein am Base-SHA ungültiges Register lässt
+ * diesen Aufruf fail-closed scheitern, statt einen halben Stand durchzulassen.
+ *
+ * Er läuft in einem Kindprozess statt als `import()` in diesem Modul, weil ein
+ * dynamischer Import mit berechnetem Pfad Vites Rolldown-SSR-Transform dieses
+ * Skripts zum Abbruch bringt — reproduziert beim Testlauf, der Fehlbericht
+ * zeigt irreführend auf die Shebang-Zeile (`Invalid Character '!'` an
+ * `catalog-sync-guard.mjs:1:68`). Der Kindprozess wird von Vite nie geparst.
+ */
+export async function loadSourceRegistryAtRef(baseSha) {
+  const directory = await mkdtemp(join(tmpdir(), 'gspp-source-registry-'));
+  try {
+    for (const modulePath of REGISTRY_MODULE_CHAIN) {
+      const { stdout } = await execFileAsync(
+        'git',
+        ['show', `${baseSha}:${modulePath}`],
+        { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 },
+      );
+      await writeFile(join(directory, basename(modulePath)), stdout, 'utf8');
+    }
+    const entryModule = join(directory, basename(REGISTRY_LIFECYCLE_MIGRATION_PATH));
+    const { stdout } = await execFileAsync(
+      process.execPath,
+      ['--input-type=module', '-e', LOAD_REGISTRY_CHILD_SCRIPT, '--', pathToFileURL(entryModule).href],
+      { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 },
+    );
+    const previousRegistry = JSON.parse(stdout);
+    if (!Array.isArray(previousRegistry)) {
+      throw new TypeError('Base-ref sourceRegistry.mjs exports no SOURCE_REGISTRY array');
+    }
+    return previousRegistry;
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 }
 
 async function runCli() {
@@ -665,12 +947,20 @@ async function runCli() {
   );
   const previousManifest = JSON.parse(previousManifestText);
   const nextManifest = await readJson(TRACKED_MANIFEST_PATH);
+  // Nur laden, wenn die PR das Register überhaupt anfasst — sonst kostet der
+  // Kettenimport jede gewöhnliche Manifest-PR unnötig Zeit.
+  const previousSourceRegistry = diffEntries.some(
+    (entry) => entry.status === 'M' && entry.path === REGISTRY_LIFECYCLE_MIGRATION_PATH,
+  )
+    ? await loadSourceRegistryAtRef(baseSha)
+    : undefined;
   const result = await guardCatalogSyncPullRequest({
     branch,
     title,
     diffEntries,
     previousManifest,
     nextManifest,
+    previousSourceRegistry,
     token: process.env.GH_TOKEN || process.env.GITHUB_TOKEN,
   });
 
@@ -680,6 +970,12 @@ async function runCli() {
   }
   if (result.registryPreviewArtifactExpansion) {
     console.log('Registry-Preview-Erweiterung vollständig gegen denselben Snapshot geprüft.');
+    return;
+  }
+  if (result.registryOscalVersionMigration) {
+    console.log(
+      `Registry-OSCAL-Versionsmigration vollständig gegen Snapshot ${result.snapshotCommitSha} geprüft.`,
+    );
     return;
   }
   console.log(`Catalog sync guard passed for snapshot ${result.snapshotCommitSha}.`);

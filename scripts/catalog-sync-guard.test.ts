@@ -1,10 +1,14 @@
 import { createHash } from 'node:crypto';
+import { readdir, readFile } from 'node:fs/promises';
 import { describe, expect, it, vi } from 'vitest';
 import {
   computeManifestSignature,
   guardCatalogSyncPullRequest,
   isRegistryPreviewArtifactExpansion,
   isRegistryLifecycleOnlyMigration,
+  isRegistryOscalVersionMigration,
+  loadSourceRegistryAtRef,
+  REGISTRY_MODULE_CHAIN,
   parseNameStatusDiff,
   validateCatalogSyncManifest,
   validateCatalogSyncPullRequest,
@@ -1116,5 +1120,277 @@ describe('snapshot progression', () => {
       nextManifest: next.manifest,
       fetchImpl: makeGitHubFetch(next),
     })).rejects.toThrow('must match the new snapshot');
+  });
+});
+
+
+describe('OSCAL-Versionsmigration (GSPP-376)', () => {
+  const MIGRATED_KEY = 'component-aws-security-hub';
+
+  /**
+   * Registerstand mit gesetzter Version für das migrierte Artefakt. Bewusst
+   * über einen JSON-Roundtrip: Genau so kommt der Vorstand im Betrieb an —
+   * frisch geparst und referenziell fremd zum eingefrorenen SOURCE_REGISTRY
+   * dieses Prozesses.
+   */
+  function registryAtVersion(oscalVersion: string, overrides: Record<string, unknown> = {}) {
+    const clone = JSON.parse(JSON.stringify(SOURCE_REGISTRY)) as Record<string, unknown>[];
+    return clone.map((entry) =>
+      entry.artifactKey === MIGRATED_KEY
+        ? { ...entry, oscalVersion, ...overrides }
+        : entry,
+    );
+  }
+
+  const registryBefore = (overrides: Record<string, unknown> = {}) =>
+    registryAtVersion('1.1.3', overrides);
+  const migratedRegistry = () => registryAtVersion('1.2.2');
+
+  function manifestPair(files?: ManifestFile[]) {
+    const next = makeFixture({ snapshotCommitSha: NEW_SHA });
+    const nextManifest = files
+      ? rebuildManifest(next.manifest, files)
+      : next.manifest;
+    const previousManifest = buildUpstreamManifest({
+      repository: nextManifest.repository,
+      snapshotCommitSha: OLD_SHA,
+      files: next.manifest.files,
+    });
+    return { fixture: next, previousManifest, nextManifest };
+  }
+
+  const REQUIRED_ENTRIES = [
+    { status: 'M', path: 'upstream-manifest.json' },
+    { status: 'M', path: 'src/domain/sourceRegistry.mjs' },
+  ];
+
+  function subject(diffEntries: { status: string; path: string }[], overrides = {}) {
+    const { previousManifest, nextManifest } = manifestPair();
+    return isRegistryOscalVersionMigration({
+      diffEntries,
+      previousManifest,
+      nextManifest,
+      previousSourceRegistry: registryBefore(),
+      nextSourceRegistry: migratedRegistry(),
+      ...overrides,
+    });
+  }
+
+  it('erkennt die reine Versionsmigration aus Manifest und Quellregister', () => {
+    expect(subject(REQUIRED_ENTRIES)).toBe(true);
+  });
+
+  it('lässt Begleitpfade unter src/ und docs/ zu', () => {
+    expect(subject([
+      ...REQUIRED_ENTRIES,
+      { status: 'M', path: 'src/domain/sourceRegistry.test.ts' },
+      { status: 'A', path: 'src/test/fixtures/neuerKorpus.ts' },
+      { status: 'M', path: 'docs/DOMAIN_MODELS.md' },
+    ])).toBe(true);
+  });
+
+  it.each([
+    ['Workflow', '.github/workflows/deploy.yml'],
+    ['Lane-Skript', 'scripts/catalog-sync-guard.mjs'],
+    ['Lane-Test', 'scripts/catalog-sync-guard.test.ts'],
+    ['Wurzeldatei', 'package.json'],
+    ['unsicherer Pfad', 'src/../scripts/fetch-catalog.mjs'],
+  ])('weist einen Zusatzpfad ausserhalb der Positivliste ab: %s', (_label, path) => {
+    expect(subject([...REQUIRED_ENTRIES, { status: 'M', path }])).toBe(false);
+  });
+
+  it.each([
+    ['ohne Manifest', [{ status: 'M', path: 'src/domain/sourceRegistry.mjs' }]],
+    ['ohne Quellregister', [{ status: 'M', path: 'upstream-manifest.json' }]],
+    ['Quellregister nur hinzugefügt statt geändert', [
+      { status: 'M', path: 'upstream-manifest.json' },
+      { status: 'A', path: 'src/domain/sourceRegistry.mjs' },
+    ]],
+  ])('verlangt beide Pflichtpfade als Änderung: %s', (_label, diffEntries) => {
+    expect(subject(diffEntries)).toBe(false);
+  });
+
+  it('weist eine Registeränderung ab, die neben der Version ein weiteres Feld bewegt', () => {
+    expect(subject(REQUIRED_ENTRIES, {
+      previousSourceRegistry: registryBefore({ lifecycle: 'blocked-by-upstream' }),
+    })).toBe(false);
+  });
+
+  it('weist eine mitgeführte Änderung an einem Nicht-OSCAL-Eintrag ab', () => {
+    const previous = registryBefore().map((entry) =>
+      entry.kind === 'vocabulary-collection'
+        ? { ...entry, upstreamDirectory: 'documentation/andere-namespaces' }
+        : entry,
+    );
+    expect(subject(REQUIRED_ENTRIES, { previousSourceRegistry: previous })).toBe(false);
+  });
+
+  it('verlangt mindestens eine tatsächliche Versionsänderung', () => {
+    expect(subject(REQUIRED_ENTRIES, {
+      previousSourceRegistry: registryAtVersion('1.1.3'),
+      nextSourceRegistry: registryAtVersion('1.1.3'),
+    })).toBe(false);
+  });
+
+  it('weist eine geänderte Artefaktmenge im Register ab', () => {
+    expect(subject(REQUIRED_ENTRIES, {
+      previousSourceRegistry: registryBefore().slice(1),
+    })).toBe(false);
+  });
+
+  it('vergleicht Registerfelder strukturell, nicht per Referenz', () => {
+    // Ein Objektfeld ist im Bestand heute nicht belegt. Käme eines hinzu,
+    // wäre es per !== zwischen geparstem Vorstand und eingefrorenem Register
+    // immer ungleich — die Ausnahme verschlösse sich still.
+    const before = [
+      { artifactKey: 'a', kind: 'oscal', oscalVersion: '1.1.3', meta: { pins: ['x'] } },
+      { artifactKey: 'b', kind: 'vocabulary-collection', meta: { pins: ['y'] } },
+    ];
+    const after = [
+      { artifactKey: 'a', kind: 'oscal', oscalVersion: '1.2.2', meta: { pins: ['x'] } },
+      { artifactKey: 'b', kind: 'vocabulary-collection', meta: { pins: ['y'] } },
+    ];
+    expect(subject(REQUIRED_ENTRIES, {
+      previousSourceRegistry: before,
+      nextSourceRegistry: after,
+    })).toBe(true);
+
+    const diverging = after.map((entry) =>
+      entry.artifactKey === 'b' ? { ...entry, meta: { pins: ['z'] } } : entry,
+    );
+    expect(subject(REQUIRED_ENTRIES, {
+      previousSourceRegistry: before,
+      nextSourceRegistry: diverging,
+    })).toBe(false);
+  });
+
+  it('verlangt einen bewegten Snapshot', () => {
+    const { nextManifest } = manifestPair();
+    expect(isRegistryOscalVersionMigration({
+      diffEntries: REQUIRED_ENTRIES,
+      previousManifest: nextManifest,
+      nextManifest,
+      previousSourceRegistry: registryBefore(),
+      nextSourceRegistry: migratedRegistry(),
+    })).toBe(false);
+  });
+
+  it.each([
+    ['hinzugefügten Pfad', (files: ManifestFile[]) => files.slice(1)],
+    ['entfernten Pfad', (files: ManifestFile[]) => [...files, { ...files[0], path: 'control_layer/Neu/neu.json' }]],
+    ['gewechselten Lifecycle', (files: ManifestFile[]) =>
+      files.map((file, index) =>
+        index === 0
+          ? { ...file, lifecycle: file.lifecycle === 'supported' ? 'preview' : 'supported' }
+          : file,
+      )],
+    ['umgehängten artifactKey', (files: ManifestFile[]) =>
+      files.map((file, index) => (index === 0 ? { ...file, artifactKey: 'fremd' } : file))],
+  ])('weist eine Manifestbewegung jenseits von Snapshot und Pins ab: %s', (_label, mutate) => {
+    const { fixture, nextManifest } = manifestPair();
+    const previousManifest = buildUpstreamManifest({
+      repository: nextManifest.repository,
+      snapshotCommitSha: OLD_SHA,
+      files: mutate(fixture.manifest.files),
+    });
+    expect(isRegistryOscalVersionMigration({
+      diffEntries: REQUIRED_ENTRIES,
+      previousManifest,
+      nextManifest,
+      previousSourceRegistry: registryBefore(),
+      nextSourceRegistry: migratedRegistry(),
+    })).toBe(false);
+  });
+
+  it('prüft die Migration vollständig gegen Tree, Blobs und Snapshotfortschritt', async () => {
+    const { fixture, previousManifest, nextManifest } = manifestPair();
+    const fetchImpl = makeGitHubFetch(fixture);
+
+    await expect(guardCatalogSyncPullRequest({
+      branch: 'claude/gspp-377-snapshot-migration',
+      title: 'fix(sync/oscal): BSI-Snapshot nachziehen',
+      diffEntries: [
+        ...REQUIRED_ENTRIES,
+        { status: 'M', path: 'docs/DOMAIN_MODELS.md' },
+      ],
+      previousManifest,
+      nextManifest,
+      // Der Guard vergleicht gegen das echte SOURCE_REGISTRY des
+      // Arbeitsbaums; der Vorstand muss dafür eine andere Version tragen.
+      previousSourceRegistry: registryAtVersion('1.1.2'),
+      fetchImpl,
+    })).resolves.toEqual({
+      catalogSync: false,
+      registryOscalVersionMigration: true,
+      snapshotCommitSha: NEW_SHA,
+    });
+
+    const requested = fetchImpl.mock.calls.map(([input]) => String(input));
+    expect(requested.some((url) => url.includes('/compare/'))).toBe(true);
+    expect(requested.some((url) => url.includes('/git/trees/'))).toBe(true);
+    expect(requested.some((url) => url.includes('/git/blobs/'))).toBe(true);
+  });
+
+  it('lädt den Registervorstand aus einem git-Ref, ohne den Quellbaum zu berühren', async () => {
+    const before = await readdir('src/domain');
+    const loaded = await loadSourceRegistryAtRef('HEAD');
+    const after = await readdir('src/domain');
+
+    // Der Vorstand ist ein vollwertiges, selbstvalidiertes Register: Der
+    // Import im Kindprozess führt validateSourceRegistry mit aus.
+    expect(Array.isArray(loaded)).toBe(true);
+    expect(loaded).toHaveLength(SOURCE_REGISTRY.length);
+    expect(loaded.every((entry) => typeof entry.artifactKey === 'string')).toBe(true);
+    expect(new Set(loaded.map((entry) => entry.artifactKey)).size).toBe(loaded.length);
+
+    // Kern der Ablage ausserhalb des Quellbaums: Selbst im Erfolgsfall darf
+    // in src/domain kein temporäres, importierbares Modul auftauchen.
+    expect(after).toEqual(before);
+  });
+
+  it('deckt jeden relativen Import der Registerkette ab', async () => {
+    // Die Kette wird flach in ein Temp-Verzeichnis materialisiert. Bekommt ein
+    // Kettenglied einen weiteren relativen Import, der hier nicht gelistet ist,
+    // scheitert der Kindprozess-Import mit einem irreführenden
+    // Modulauflösungsfehler und blockiert Migrationen still (Gitar-Befund).
+    const declared = new Set(REGISTRY_MODULE_CHAIN.map((path) => path.split('/').pop()));
+
+    for (const modulePath of REGISTRY_MODULE_CHAIN) {
+      const source = await readFile(modulePath, 'utf8');
+      const relativeImports = [...source.matchAll(/from\s+'(\.[^']+)'/g)].map((match) => match[1]);
+      for (const specifier of relativeImports) {
+        expect(
+          declared.has(specifier.split('/').pop()),
+          `${modulePath} importiert ${specifier}, das nicht in REGISTRY_MODULE_CHAIN steht`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('materialisiert die Kette flach, ohne Namenskollision', () => {
+    const baseNames = REGISTRY_MODULE_CHAIN.map((path) => path.split('/').pop());
+    expect(new Set(baseNames).size).toBe(baseNames.length);
+  });
+
+  it('scheitert fail-closed an einem Ref ohne Quellregister', async () => {
+    await expect(loadSourceRegistryAtRef('4'.repeat(40))).rejects.toThrow();
+  });
+
+  it('fällt ohne geladenen Registervorstand auf den regulären Sync-Pfad zurück', async () => {
+    const { previousManifest, nextManifest } = manifestPair();
+    const fetchImpl = vi.fn();
+
+    // Kein previousSourceRegistry: Das Prädikat greift nicht, der Guard
+    // behandelt die PR als gewöhnlichen Sync-Kandidaten und lehnt sie an der
+    // Branchnamensregel ab statt sie durchzulassen.
+    await expect(guardCatalogSyncPullRequest({
+      branch: 'claude/gspp-377-snapshot-migration',
+      title: 'fix(sync/oscal): BSI-Snapshot nachziehen',
+      diffEntries: REQUIRED_ENTRIES,
+      previousManifest,
+      nextManifest,
+      fetchImpl,
+    })).rejects.toThrow(/Catalog sync branch must match/);
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
