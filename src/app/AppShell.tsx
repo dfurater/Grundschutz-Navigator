@@ -24,14 +24,7 @@ import type { TreeItem } from '@/components/TreeNav';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useDragToResize } from '@/hooks/useDragToResize';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { HomePage } from '@/features/home/HomePage';
 import { CatalogBrowser } from '@/features/catalog/CatalogBrowser';
-import { SearchPage } from '@/features/search/SearchPage';
-import { AboutPage } from '@/features/pages/AboutPage';
-import { DatenschutzPage } from '@/features/pages/DatenschutzPage';
-import { ImpressumPage } from '@/features/pages/ImpressumPage';
-import { LizenzenPage } from '@/features/pages/LizenzenPage';
-import { VocabularyOverviewPage } from '@/features/vocabularies/VocabularyOverviewPage';
 import { VocabularyNamespacePage } from '@/features/vocabularies/VocabularyNamespacePage';
 import { isCatalogKey } from '@/domain/sourceRegistry';
 import {
@@ -42,6 +35,9 @@ import {
   buildGroupUrl,
   resolveControlRoute,
 } from '@/app/routes';
+import { PageTitle } from '@/app/PageTitle';
+import { PAGE_TITLES } from '@/app/pageTitles';
+import { STATIC_PAGE_ROUTES } from '@/app/staticPageRoutes';
 
 /* ------------------------------------------------------------------ */
 /*  PageScroll — scroll wrapper for page content                      */
@@ -127,40 +123,6 @@ export function AppShell() {
   // Schlüssel die Navigation weiter — kein Sprung zurück auf den Einstieg.
   const activeCatalogKey = catalog?.catalogKey ?? selectedCatalogKey;
   const activeCatalogUrl = buildCatalogUrl(activeCatalogKey);
-
-  // Update document title on route change (a11y: screen readers announce page)
-  useEffect(() => {
-    const path = location.pathname;
-    const base = 'Grundschutz++ Navigator';
-    const titles: Record<string, string> = {
-      '/': base,
-      '/suche': `Suche — ${base}`,
-      '/vokabular': `Vokabulare — ${base}`,
-      '/about': `Über das Projekt — ${base}`,
-      '/datenschutz': `Datenschutz — ${base}`,
-      '/impressum': `Impressum — ${base}`,
-      '/lizenzen': `Lizenzen — ${base}`,
-      '/mehr': `Über das Projekt — ${base}`,
-    };
-    const controlMatch = matchPath(CONTROL_ROUTE_PATTERN, path);
-    const routedControl = resolveControlRoute(
-      catalog,
-      controlMatch?.params.catalogKey,
-      controlMatch?.params.altIdentifier,
-    );
-
-    if (routedControl) {
-      document.title = `${routedControl.id} — ${base}`;
-    } else if (titles[path]) {
-      document.title = titles[path];
-    } else if (path.startsWith('/katalog')) {
-      document.title = `Katalog — ${base}`;
-    } else if (path.startsWith('/vokabular/')) {
-      document.title = `${decodeURIComponent(path.replace('/vokabular/', ''))} — Vokabulare — ${base}`;
-    } else {
-      document.title = base;
-    }
-  }, [catalog, location.pathname]);
 
   // Derive selectedId from URL so tree highlights work for all navigation sources
   const selectedId = useMemo(() => {
@@ -361,34 +323,45 @@ export function AppShell() {
           className="flex-1 min-w-0 flex flex-col bg-white md:overflow-hidden"
         >
           <Routes>
-              <Route path="/" element={<PageScroll><HomePage /></PageScroll>} />
+              {STATIC_PAGE_ROUTES.map(({ path, title, element, scroll = true }) => (
+                <Route
+                  key={path}
+                  path={path}
+                  element={
+                    <>
+                      <PageTitle title={title} />
+                      {scroll ? <PageScroll>{element}</PageScroll> : element}
+                    </>
+                  }
+                />
+              ))}
               <Route path={CONTROL_ROUTE_PATTERN} element={<CatalogBrowser />} />
               <Route path={GROUP_ROUTE_PATTERN} element={<CatalogBrowser />} />
               <Route path={CATALOG_ROUTE_PATTERN} element={<CatalogBrowser />} />
-              <Route path="/suche" element={<SearchPage />} />
-              <Route path="/vokabular" element={<PageScroll><VocabularyOverviewPage /></PageScroll>} />
               <Route path="/vokabular/:namespaceId" element={<PageScroll><VocabularyNamespacePage /></PageScroll>} />
-              <Route path="/about" element={<PageScroll><AboutPage /></PageScroll>} />
-              <Route path="/datenschutz" element={<PageScroll><DatenschutzPage /></PageScroll>} />
-              <Route path="/impressum" element={<PageScroll><ImpressumPage /></PageScroll>} />
-              <Route path="/lizenzen" element={<PageScroll><LizenzenPage /></PageScroll>} />
-              <Route path="/mehr" element={<Navigate to="/about" replace />} />
+              <Route
+                path="/mehr"
+                element={<><PageTitle title={PAGE_TITLES.about} /><Navigate to="/about" replace /></>}
+              />
               <Route
                 path="*"
                 element={
-                  <PageScroll>
-                    <div className="p-6">
-                      <h1 className="text-xl font-bold text-slate-900">
-                        404 — Seite nicht gefunden
-                      </h1>
-                      <p className="mt-3 text-sm text-slate-600">
-                        Diese Seite existiert nicht.{' '}
-                        <Link to="/" className="rounded text-sky-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]">
-                          Zur Startseite
-                        </Link>
-                      </p>
-                    </div>
-                  </PageScroll>
+                  <>
+                    <PageTitle title={PAGE_TITLES.notFound} />
+                    <PageScroll>
+                      <div className="p-6">
+                        <h1 className="text-xl font-bold text-slate-900">
+                          404 — Seite nicht gefunden
+                        </h1>
+                        <p className="mt-3 text-sm text-slate-600">
+                          Diese Seite existiert nicht.{' '}
+                          <Link to="/" className="rounded text-sky-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]">
+                            Zur Startseite
+                          </Link>
+                        </p>
+                      </div>
+                    </PageScroll>
+                  </>
                 }
               />
             </Routes>

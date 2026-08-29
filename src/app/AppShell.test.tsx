@@ -4,7 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { AppShell } from './AppShell';
+import { STATIC_PAGE_ROUTES } from './staticPageRoutes';
+import { PAGE_TITLES, PRODUCT_TITLE } from './pageTitles';
 import { catalogCollectionDefaults } from '@/test/catalogState';
+import { expectSingleDocumentTitle } from '@/test/documentTitle';
 
 vi.mock('@/hooks/useCatalog', () => ({
   useCatalog: vi.fn(),
@@ -158,6 +161,35 @@ describe('AppShell', () => {
     expect(container.querySelector('aside')).toBeInTheDocument();
   });
 
+  // Deckt jede statische Route ab: keine Route kann ohne geprüften Titel
+  // hinzukommen, weil sie sonst gar nicht in STATIC_PAGE_ROUTES steht.
+  it.each(STATIC_PAGE_ROUTES.map(({ path, title }) => ({ path, title })))(
+    'gives the static route $path its declared document title',
+    ({ path, title }) => {
+      render(
+        <MemoryRouter initialEntries={[path]}>
+          <AppShell />
+        </MemoryRouter>,
+      );
+
+      expectSingleDocumentTitle(
+        title === undefined ? PRODUCT_TITLE : `${title} — ${PRODUCT_TITLE}`,
+      );
+    },
+  );
+
+  it('covers every static page route the shell renders', () => {
+    expect(STATIC_PAGE_ROUTES.map(({ path }) => path)).toEqual([
+      '/',
+      '/suche',
+      '/vokabular',
+      '/about',
+      '/datenschutz',
+      '/impressum',
+      '/lizenzen',
+    ]);
+  });
+
   it('registers vocabulary routes and document titles', () => {
     render(
       <MemoryRouter initialEntries={['/vokabular']}>
@@ -166,10 +198,20 @@ describe('AppShell', () => {
     );
 
     expect(screen.getByText('Vokabulare Seite')).toBeInTheDocument();
-    expect(document.title).toBe('Vokabulare — Grundschutz++ Navigator');
+    expectSingleDocumentTitle(`${PAGE_TITLES.vocabularies} — ${PRODUCT_TITLE}`);
   });
 
-  it('registers vocabulary detail routes and document titles', () => {
+  it('titles the /mehr redirect with its destination', () => {
+    render(
+      <MemoryRouter initialEntries={['/mehr']}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+
+    expectSingleDocumentTitle(`${PAGE_TITLES.about} — ${PRODUCT_TITLE}`);
+  });
+
+  it('registers vocabulary detail routes', () => {
     render(
       <MemoryRouter initialEntries={['/vokabular/security-level']}>
         <AppShell />
@@ -177,7 +219,16 @@ describe('AppShell', () => {
     );
 
     expect(screen.getByText('Vokabular-Detail')).toBeInTheDocument();
-    expect(document.title).toBe('security-level — Vokabulare — Grundschutz++ Navigator');
+  });
+
+  it('uses a specific title for the general catch-all route', () => {
+    render(
+      <MemoryRouter initialEntries={['/missing']}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+
+    expectSingleDocumentTitle(`${PAGE_TITLES.notFound} — ${PRODUCT_TITLE}`);
   });
 
   it('renders the footer without hiding it below desktop breakpoints', () => {

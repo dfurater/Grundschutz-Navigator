@@ -1,29 +1,8 @@
 import { Link } from 'react-router';
 import { useCatalog } from '@/hooks/useCatalog';
 import { buildVocabularySourceUrl } from '@/domain/vocabulary';
-
-const vocabularyTitles: Record<string, string> = {
-  'action_words.csv': 'Handlungsworte',
-  'basethreats.csv': 'Elementare Gefährdungen',
-  'documentation_guidelines.csv': 'Dokumentationsvorgaben',
-  'effort_level.csv': 'Aufwandsstufen',
-  'modal_verbs.csv': 'Modalverben',
-  'practices.csv': 'Praktiken',
-  'result.csv': 'Ergebnisse',
-  'security_level.csv': 'Sicherheitsniveaus',
-  'security_targets.csv': 'Schutzziele',
-  'security_targets_levels.csv': 'Schutzziel-Relevanz',
-  'tags.csv': 'Tags',
-  'target_object_categories.csv': 'Zielobjekt-Kategorien',
-  'topics.csv': 'Themen',
-};
-
-function humanizeVocabularyFileName(fileName: string) {
-  return fileName
-    .replace(/\.csv$/i, '')
-    .replace(/[_-]+/g, ' ')
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-}
+import { PAGE_TITLES } from '@/app/pageTitles';
+import { getVocabularyTitle } from './vocabularyTitle';
 
 export function VocabularyOverviewPage() {
   const { vocabularyRegistry, loading, error } = useCatalog();
@@ -42,7 +21,7 @@ export function VocabularyOverviewPage() {
   if (error) {
     return (
       <div className="p-4 sm:p-6">
-        <h1 className="type-page-title">Vokabulare</h1>
+        <h1 className="type-page-title">{PAGE_TITLES.vocabularies}</h1>
         <p className="mt-3 text-sm text-red-600">{error}</p>
       </div>
     );
@@ -51,7 +30,7 @@ export function VocabularyOverviewPage() {
   if (!vocabularyRegistry || vocabularyRegistry.namespaces.length === 0) {
     return (
       <div className="p-4 sm:p-6">
-        <h1 className="type-page-title">Vokabulare</h1>
+        <h1 className="type-page-title">{PAGE_TITLES.vocabularies}</h1>
         <p className="mt-3 text-sm text-[var(--color-text-secondary)]">
           Für den aktuell geladenen Katalog sind keine offiziellen
           Vokabular-Dateien verfügbar.
@@ -67,7 +46,7 @@ export function VocabularyOverviewPage() {
   return (
     <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-5">
       <div className="space-y-1">
-        <h1 className="type-page-title">Vokabulare</h1>
+        <h1 className="type-page-title">{PAGE_TITLES.vocabularies}</h1>
         <p className="type-secondary">
           {namespaces.length} offizielle Vokabulare stehen für den aktuellen Katalog bereit.
         </p>
@@ -94,7 +73,7 @@ export function VocabularyOverviewPage() {
                     to={`/vokabular/${namespace.source.routeId}`}
                     className="type-object-title block min-w-0 rounded hover:text-[var(--color-accent-default)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
                   >
-                    {vocabularyTitles[namespace.source.fileName] ?? humanizeVocabularyFileName(namespace.source.fileName)}
+                    {getVocabularyTitle(namespace.source.fileName)}
                   </Link>
                   <a
                     href={sourceHref}
