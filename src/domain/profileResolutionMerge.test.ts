@@ -676,6 +676,44 @@ describe('custom-Struktur: Pruning nicht selektierter Nachfahren (GSPP-377)', ()
       .map((c) => String(c['id']));
   }
 
+  function separatedPlacementChildIds(
+    rootIds: string[],
+    groupIds: string[][],
+  ): { root: unknown[]; groups: unknown[][] } {
+    const parent = control('a-1', { controls: [control('a-1-1'), control('a-1-2')] });
+    const combined = applyCombine([{ documentKey: 'doc-a', controls: [parent] }], 'use-first');
+    const result = buildCustomGroups(
+      {
+        rawGroups: groupIds.map((_, index) => ({
+          id: `g-${index + 1}`,
+          title: `Gruppe ${index + 1}`,
+        })),
+        typedGroups: groupIds.map((ids, index) => ({
+          id: `g-${index + 1}`,
+          insertControls: [withIdsDirective(ids)],
+          groups: [], params: [], props: [], links: [], parts: [],
+          path: `/profile/merge/custom/groups[${index}]`,
+        })),
+        insertControls: rootIds.length > 0 ? [withIdsDirective(rootIds)] : [],
+      },
+      combined,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return { root: [], groups: [] };
+    const childIdsOf = (controls: readonly Record<string, unknown>[]) => {
+      const placed = controls.find((candidate) => candidate['id'] === 'a-1');
+      return ((placed?.['controls'] ?? []) as Record<string, unknown>[])
+        .map((child) => child['id']);
+    };
+    return {
+      root: childIdsOf(result.controls),
+      groups: result.groups.map((group) => childIdsOf(
+        ((group as Record<string, unknown>)['controls'] ?? []) as Record<string, unknown>[],
+      )),
+    };
+  }
+
   it('entfernt ein nicht selektiertes verschachteltes Kind aus der Definition', () => {
     // Der reale BSI-Fall: Das WLAN-Profil führt ARCH.2.2 und elf seiner zwölf
     // Kernel-Kinder einzeln in with-ids, ARCH.2.2.12 aber nicht. Bis GSPP-377
@@ -790,6 +828,29 @@ describe('custom-Struktur: Pruning nicht selektierter Nachfahren (GSPP-377)', ()
       [parent, { title: 'auch ohne id' } as Record<string, unknown>],
       ['a-1'],
     )).toEqual([]);
+  });
+
+  it('hält die Auswahl zweier Gruppen auseinander', () => {
+    // Wird derselbe Parent in zwei Gruppen mit unterschiedlichen
+    // Kindselektionen eingefügt, darf jede Gruppe nur ihre eigenen Kinder
+    // zeigen. Eine global vereinigte Selektionsmenge liesse in beiden Gruppen
+    // beide Kinder stehen (Greptile-Befund).
+    const childIds = separatedPlacementChildIds(
+      [],
+      [['a-1', 'a-1-1'], ['a-1', 'a-1-2']],
+    );
+
+    expect(childIds.groups).toEqual([['a-1-1'], ['a-1-2']]);
+  });
+
+  it('hält Root- und Gruppenauswahl auseinander', () => {
+    const childIds = separatedPlacementChildIds(
+      ['a-1', 'a-1-1'],
+      [['a-1', 'a-1-2']],
+    );
+
+    expect(childIds.root).toEqual(['a-1-1']);
+    expect(childIds.groups).toEqual([['a-1-2']]);
   });
 
   it('prunt in einer Custom-Gruppe genauso wie auf Catalog-Ebene', () => {

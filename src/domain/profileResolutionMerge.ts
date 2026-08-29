@@ -564,15 +564,11 @@ function assembleGroupControls(
   groupDefinitions: Set<object>,
 ): { readonly ok: true; readonly placed: readonly JsonObject[] } | { readonly ok: false; readonly diagnostic: OscalDiagnostic } {
   const placed: JsonObject[] = [];
+  const selection = resolvePlacementSelections(directives, context.poolIndex);
+  if (!selection.ok) return selection;
 
-  for (const directive of directives) {
-    const outcome = resolveSelectionIds(context.poolIndex, {
-      selection: directive.selection,
-      excludeControls: directive.excludeControls,
-    });
-    if (!outcome.ok) return outcome;
-
-    for (const id of orderedInsertIds(outcome.ids, directive)) {
+  for (const resolved of selection.directives) {
+    for (const id of orderedInsertIds(resolved.ids, resolved.directive)) {
       for (const definition of context.combined.controls.get(id) ?? []) {
         if (groupDefinitions.has(definition)) continue;
         groupDefinitions.add(definition);
@@ -581,7 +577,11 @@ function assembleGroupControls(
         // verschachtelte Kinder unverändert mit (GSPP-377). Der as-is-Zweig
         // tut dasselbe über filterContainerForAsIs.
         placed.push(withPositionalLabels(
-          filterNestedIncluded(definition, selectionScopeFor(definition, context), new Set<object>()),
+          filterNestedIncluded(
+            definition,
+            selectionScopeFor(definition, context, selection.ids),
+            new Set<object>(),
+          ),
           `${groupId}.${placed.length + 1}`,
         ));
       }
@@ -593,11 +593,45 @@ function assembleGroupControls(
 interface AssemblyContext {
   readonly poolIndex: ReturnType<typeof indexCatalogControls>;
   readonly combined: CombinedControls;
-  /**
-   * Alle in dieser Assemblierung durch Direktiven aufgelösten Control-IDs.
-   * Zweite Quelle der Prune-Menge, siehe `selectionScopeFor`.
-   */
-  readonly selectedIds: ReadonlySet<string>;
+}
+
+interface ResolvedPlacementDirective {
+  readonly directive: ProfileInsertControls;
+  readonly ids: ReadonlySet<string>;
+}
+
+type PlacementSelectionResult =
+  | {
+      readonly ok: true;
+      readonly directives: readonly ResolvedPlacementDirective[];
+      readonly ids: ReadonlySet<string>;
+    }
+  | { readonly ok: false; readonly diagnostic: OscalDiagnostic };
+
+/**
+ * Löst alle kumulativen Direktiven EINER Platzierung vorab auf. Root und jede
+ * Custom-Gruppe erhalten damit eine eigene Selektionsmenge; spätere
+ * Direktiven derselben Platzierung können weiterhin einen zuvor platzierten
+ * Vorfahren ergänzen.
+ */
+function resolvePlacementSelections(
+  directives: readonly ProfileInsertControls[],
+  poolIndex: ReturnType<typeof indexCatalogControls>,
+): PlacementSelectionResult {
+  const resolved: ResolvedPlacementDirective[] = [];
+  const ids = new Set<string>();
+
+  for (const directive of directives) {
+    const outcome = resolveSelectionIds(poolIndex, {
+      selection: directive.selection,
+      excludeControls: directive.excludeControls,
+    });
+    if (!outcome.ok) return outcome;
+    resolved.push({ directive, ids: outcome.ids });
+    for (const id of outcome.ids) ids.add(id);
+  }
+
+  return { ok: true, directives: resolved, ids };
 }
 
 type GroupAssemblyResult =
@@ -611,51 +645,6 @@ type GroupAssemblyResult =
  * werden genauso behandelt. Die Rekursionstiefe ist durch den Entry-
  * Scanner (maxDepth) gedeckt.
  */
-/**
- * Sammelt alle Direktiven des custom-Bildes: die der Catalog-Ebene und die
- * jeder Gruppe, rekursiv über verschachtelte Gruppen. Grundlage der zweiten
- * Quelle in `selectionScopeFor`; die Tiefe ist am exportierten Rand bereits
- * durch `measureCustomGroupsDepth` begrenzt, `visited` deckt Zyklen ab.
- */
-function collectAllDirectives(
-  typedGroups: readonly unknown[],
-  rootDirectives: readonly ProfileInsertControls[],
-): ProfileInsertControls[] {
-  const all = [...rootDirectives];
-  const stack: unknown[] = [...typedGroups];
-  const visited = new Set<object>();
-  while (stack.length > 0) {
-    const node = stack.pop();
-    if (typeof node !== 'object' || node === null || visited.has(node)) continue;
-    visited.add(node);
-    const projected = projectAssemblyGroup(node);
-    all.push(...projected.insertControls);
-    for (const nested of projected.groups) stack.push(nested);
-  }
-  return all;
-}
-
-/**
- * Vereinigt die aufgelösten IDs aller Direktiven. Eine Direktive, deren
- * Selektion nicht auflösbar ist, trägt hier nichts bei — ihre Diagnose
- * entsteht an der Stelle, die sie tatsächlich ausführt.
- */
-function resolveSelectedIds(
-  directives: readonly ProfileInsertControls[],
-  poolIndex: ReturnType<typeof indexCatalogControls>,
-): ReadonlySet<string> {
-  const ids = new Set<string>();
-  for (const directive of directives) {
-    const outcome = resolveSelectionIds(poolIndex, {
-      selection: directive.selection,
-      excludeControls: directive.excludeControls,
-    });
-    if (!outcome.ok) continue;
-    for (const id of outcome.ids) ids.add(id);
-  }
-  return ids;
-}
-
 function assembleGroups(
   rawGroups: readonly JsonObject[],
   typedGroups: readonly unknown[],
@@ -962,9 +951,10 @@ function hasEmittedAncestor(
  * 1. Die Phase-1-Selektion DERSELBEN Inklusion. Quellenscharf statt global:
  *    Tragen zwei Importe dieselbe Control-ID und hat nur einer das Kind
  *    eigenständig inkludiert, erscheint es auch nur dort.
- * 2. Die in dieser Assemblierung durch Direktiven aufgelösten IDs. Ein Kind,
- *    das eine Direktive ausdrücklich selektiert, gehört ins Ergebnis, auch
- *    wenn Phase 1 es nur als Teil des Elternteilbaums geliefert hat.
+ * 2. Die ausschließlich für DIESE Platzierung aufgelösten IDs. Ein Kind, das
+ *    Root oder die aktuelle Gruppe ausdrücklich selektiert, gehört ins
+ *    Ergebnis, auch wenn Phase 1 es nur als Teil des Elternteilbaums geliefert
+ *    hat. Andere Gruppen tragen nichts zu dieser Menge bei.
  *
  * Am BSI-WLAN-Profil gemessen: Dort stehen Eltern und Kinder einzeln in
  * `with-ids` — `ARCH.2.2` und elf seiner zwölf Kernel-Kinder, aber nicht
@@ -979,11 +969,12 @@ function hasEmittedAncestor(
 function selectionScopeFor(
   definition: JsonObject,
   context: AssemblyContext,
+  placementIds: ReadonlySet<string>,
 ): ReadonlySet<string> {
   const fromInclusion = context.combined.sourceIdsByDefinition.get(definition);
-  if (fromInclusion === undefined) return context.selectedIds;
+  if (fromInclusion === undefined) return placementIds;
   const scope = new Set(fromInclusion);
-  for (const id of context.selectedIds) scope.add(id);
+  for (const id of placementIds) scope.add(id);
   return scope;
 }
 
@@ -1051,6 +1042,7 @@ function removeEarlierNestedDescendants(
 
 function emitRootControlId(
   id: string,
+  placementIds: ReadonlySet<string>,
   context: AssemblyContext,
   state: RootControlEmissionState,
 ): void {
@@ -1063,7 +1055,7 @@ function emitRootControlId(
     if (!hasDirectDefinitions) state.nestedOnlyDefinitions.add(definition);
     const emitted = filterNestedIncluded(
       definition,
-      selectionScopeFor(definition, context),
+      selectionScopeFor(definition, context, placementIds),
       new Set<object>(),
     );
     state.originalByEmitted.set(emitted, definition);
@@ -1079,20 +1071,17 @@ function collectRootControls(
   directives: readonly ProfileInsertControls[],
   context: AssemblyContext,
 ): RootControlsResult {
+  const selection = resolvePlacementSelections(directives, context.poolIndex);
+  if (!selection.ok) return selection;
   const state: RootControlEmissionState = {
     controls: [],
     originalByEmitted: new Map<JsonObject, JsonObject>(),
     emittedDefinitions: new Set<object>(),
     nestedOnlyDefinitions: new Set<object>(),
   };
-  for (const directive of directives) {
-    const outcome = resolveSelectionIds(context.poolIndex, {
-      selection: directive.selection,
-      excludeControls: directive.excludeControls,
-    });
-    if (!outcome.ok) return outcome;
-    for (const id of orderedInsertIds(outcome.ids, directive)) {
-      emitRootControlId(id, context, state);
+  for (const resolved of selection.directives) {
+    for (const id of orderedInsertIds(resolved.ids, resolved.directive)) {
+      emitRootControlId(id, selection.ids, context, state);
     }
   }
   return { ok: true, controls: state.controls };
@@ -1139,10 +1128,6 @@ export function buildCustomGroups(
   const context: AssemblyContext = {
     poolIndex,
     combined: safeCombined,
-    selectedIds: resolveSelectedIds(
-      collectAllDirectives(typedGroups, insertControls),
-      poolIndex,
-    ),
   };
 
   const groupsResult = assembleGroups(rawGroups, typedGroups, context);
