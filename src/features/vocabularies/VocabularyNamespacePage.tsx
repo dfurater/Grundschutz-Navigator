@@ -1,5 +1,6 @@
 import { Link, useParams, useSearchParams } from 'react-router';
 import { PageTitle } from '@/app/PageTitle';
+import { PAGE_TITLES } from '@/app/pageTitles';
 import type { VocabularyEntry, VocabularyNamespace } from '@/domain/models';
 import { useCatalog } from '@/hooks/useCatalog';
 import { getVocabularyTitle } from './vocabularyTitle';
@@ -78,7 +79,7 @@ export function VocabularyNamespacePage() {
   if (loading) {
     return (
       <>
-        <PageTitle title="Vokabulare" />
+        <PageTitle title={PAGE_TITLES.vocabularies} />
         <div className="p-4 sm:p-6">
           <div className="flex items-center gap-3 py-4">
             <div className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-[var(--color-border-default)] border-t-[var(--color-accent-default)]" />
@@ -92,9 +93,9 @@ export function VocabularyNamespacePage() {
   if (error) {
     return (
       <>
-        <PageTitle title="Vokabulare" />
+        <PageTitle title={PAGE_TITLES.vocabularies} />
         <div className="p-4 sm:p-6">
-          <h1 className="type-page-title">Vokabulare</h1>
+          <h1 className="type-page-title">{PAGE_TITLES.vocabularies}</h1>
           <p className="mt-3 text-sm text-red-600">{error}</p>
         </div>
       </>
@@ -108,9 +109,9 @@ export function VocabularyNamespacePage() {
   if (!namespace) {
     return (
       <>
-        <PageTitle title="Vokabular nicht verfügbar" />
+        <PageTitle title={PAGE_TITLES.vocabularyUnavailable} />
         <div className="p-4 sm:p-6 space-y-3">
-          <h1 className="type-page-title">Vokabulare</h1>
+          <h1 className="type-page-title">{PAGE_TITLES.vocabularies}</h1>
           <p className="text-sm text-[var(--color-text-secondary)]">
             Dieses Vokabular ist im aktuellen Katalog nicht verfügbar.
           </p>
@@ -130,9 +131,13 @@ export function VocabularyNamespacePage() {
     ? namespace.entriesByValue.get(selectedValue)
     : null;
 
+  // Überschrift und Dokumenttitel tragen denselben kuratierten Namen wie der
+  // Verweis in der Übersicht; der rohe Dateiname bleibt über den Quellpfad sichtbar.
+  const vocabularyTitle = getVocabularyTitle(namespace.source.fileName);
+
   return (
     <>
-      <PageTitle title={`${getVocabularyTitle(namespace.source.fileName)} — Vokabulare`} />
+      <PageTitle title={`${vocabularyTitle} — ${PAGE_TITLES.vocabularies}`} />
       <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-5">
         <div className="space-y-1">
           <Link
@@ -141,7 +146,7 @@ export function VocabularyNamespacePage() {
           >
             Zur Übersicht der Vokabulare
           </Link>
-          <h1 className="type-page-title">{namespace.source.fileName}</h1>
+          <h1 className="type-page-title">{vocabularyTitle}</h1>
           <p className="type-secondary">{namespace.source.path}</p>
         </div>
 

@@ -6,6 +6,7 @@ import { buildVocabularyRegistry } from '@/domain/vocabulary';
 import { useCatalog } from '@/hooks/useCatalog';
 import { VocabularyNamespacePage } from './VocabularyNamespacePage';
 import { catalogCollectionDefaults } from '@/test/catalogState';
+import { expectSingleDocumentTitle } from '@/test/documentTitle';
 
 vi.mock('@/hooks/useCatalog', () => ({
   useCatalog: vi.fn(),
@@ -149,7 +150,7 @@ describe('VocabularyNamespacePage', () => {
     expect(nextLink.className).toContain('hover:border-[var(--color-border-default)]');
     expect(nextLink.className).toContain('hover:bg-[var(--color-surface-subtle)]');
     expect(screen.queryByRole('link', { name: 'Vokabularseite öffnen' })).not.toBeInTheDocument();
-    expect(document.title).toBe('Aufwandsstufen — Vokabulare — Grundschutz++ Navigator');
+    expectSingleDocumentTitle('Aufwandsstufen — Vokabulare — Grundschutz++ Navigator');
   });
 
   it('uses a fixed unavailable title without putting an unknown route parameter in it', () => {
@@ -164,8 +165,7 @@ describe('VocabularyNamespacePage', () => {
       </MemoryRouter>,
     );
 
-    expect(document.title).toBe('Vokabular nicht verfügbar — Grundschutz++ Navigator');
-    expect(document.title).not.toContain(unknownNamespaceId);
+    expectSingleDocumentTitle('Vokabular nicht verfügbar — Grundschutz++ Navigator');
   });
 
   it.each([
@@ -186,7 +186,7 @@ describe('VocabularyNamespacePage', () => {
       </MemoryRouter>,
     );
 
-    expect(document.title).toBe('Vokabulare — Grundschutz++ Navigator');
+    expectSingleDocumentTitle('Vokabulare — Grundschutz++ Navigator');
   });
 
   it('keeps a concise inline hint when no value is selected yet', () => {

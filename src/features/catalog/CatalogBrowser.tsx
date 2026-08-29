@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { PageTitle } from '@/app/PageTitle';
+import { PAGE_TITLES } from '@/app/pageTitles';
 import type { Control } from '@/domain/models';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useControlNavigation } from '@/hooks/useControlNavigation';
@@ -139,7 +140,7 @@ export function CatalogBrowser() {
   if (loading) {
     return (
       <>
-        <PageTitle title="Katalog" />
+        <PageTitle title={PAGE_TITLES.catalog} />
         <div className="flex-1 flex items-center justify-center min-h-[50vh]">
           <div className="text-center">
             <div className="inline-block w-6 h-6 border-2 border-[var(--color-border-strong)] border-t-[var(--color-primary-main)] rounded-full animate-spin" />
@@ -155,7 +156,7 @@ export function CatalogBrowser() {
   if (error) {
     return (
       <>
-        <PageTitle title="Katalog" />
+        <PageTitle title={PAGE_TITLES.catalog} />
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="text-center max-w-sm">
             <p className="text-red-600 font-medium">Fehler beim Laden</p>
@@ -169,18 +170,21 @@ export function CatalogBrowser() {
   if (routeNotFound || !catalog) {
     return (
       <>
-        <PageTitle title="Katalogziel nicht gefunden" />
+        <PageTitle title={PAGE_TITLES.catalogTargetNotFound} />
         <CatalogTargetNotFound catalog={catalog} />
       </>
     );
   }
 
-  let pageTitle = catalog.metadata.title;
-  if (scopeId) {
-    pageTitle = `${currentTitle} — ${catalog.metadata.title}`;
-  }
+  // Titelpriorität: Kontrolle vor Gruppe vor Katalogwurzel. Alle Bestandteile
+  // stammen aus aufgelösten Domain-Daten, nie aus rohen URL-Segmenten.
+  let pageTitle: string;
   if (selectedControl) {
     pageTitle = `${selectedControl.id} — ${selectedControl.title} — ${catalog.metadata.title}`;
+  } else if (scopeId) {
+    pageTitle = `${currentTitle} — ${catalog.metadata.title}`;
+  } else {
+    pageTitle = catalog.metadata.title;
   }
 
   const controlsById = catalog.controlsById ?? EMPTY_CONTROLS_BY_ID;

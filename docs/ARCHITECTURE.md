@@ -163,7 +163,11 @@ src/
 │   ├── StatusMeta.tsx
 │   └── ...
 ├── app/              # Anwendungshell
-│   ├── AppShell.tsx              # Routing-Konfiguration
+│   ├── AppShell.tsx              # Routing-Konfiguration und Layoutrahmen
+│   ├── PageTitle.tsx             # Deklarativer Routentitel (hebt <title> in den <head>)
+│   ├── pageTitles.ts             # Feste Seitentitel als einzige Quelle der Wahrheit
+│   ├── staticPageRoutes.tsx      # Statische Routen samt deklariertem Titel
+│   ├── staticTitleFallback.ts    # Entfernt den markierten index.html-Titel
 │   └── routes.ts                 # Kanonische URL-Builder und Resolver
 └── main.tsx          # Einstiegspunkt
 

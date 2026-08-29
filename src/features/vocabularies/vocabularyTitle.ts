@@ -14,9 +14,23 @@ const vocabularyTitles: Readonly<Record<string, string>> = {
   'topics.csv': 'Themen',
 };
 
-export function getVocabularyTitle(fileName: string): string {
-  return vocabularyTitles[fileName] ?? fileName
+/**
+ * Fallback für nicht kuratierte Vokabulardateien.
+ *
+ * Die Wortanfangserkennung läuft über `\p{L}` mit `u`-Flag: `\w` würde Umlaute
+ * als Wortgrenze behandeln und „gefährdungen“ zu „GefäHrdungen“ verstümmeln.
+ */
+function humanizeVocabularyFileName(fileName: string): string {
+  return fileName
     .replace(/\.csv$/i, '')
     .replace(/[_-]+/g, ' ')
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+    .replace(
+      /(^|\s)(\p{L})/gu,
+      (_match, boundary: string, letter: string) =>
+        `${boundary}${letter.toLocaleUpperCase('de-DE')}`,
+    );
+}
+
+export function getVocabularyTitle(fileName: string): string {
+  return vocabularyTitles[fileName] ?? humanizeVocabularyFileName(fileName);
 }

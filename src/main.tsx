@@ -1,15 +1,12 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router';
-import { removeStaticTitleFallback } from '@/app/staticTitleFallback';
 import { CatalogProvider } from '@/state/CatalogContext';
 import { AppShell } from '@/app/AppShell';
 import '@/index.css';
 
 const routerBasename =
   import.meta.env.BASE_URL === '/' ? undefined : import.meta.env.BASE_URL.replace(/\/$/, '');
-
-removeStaticTitleFallback();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

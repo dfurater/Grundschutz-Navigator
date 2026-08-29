@@ -24,14 +24,7 @@ import type { TreeItem } from '@/components/TreeNav';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useDragToResize } from '@/hooks/useDragToResize';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { HomePage } from '@/features/home/HomePage';
 import { CatalogBrowser } from '@/features/catalog/CatalogBrowser';
-import { SearchPage } from '@/features/search/SearchPage';
-import { AboutPage } from '@/features/pages/AboutPage';
-import { DatenschutzPage } from '@/features/pages/DatenschutzPage';
-import { ImpressumPage } from '@/features/pages/ImpressumPage';
-import { LizenzenPage } from '@/features/pages/LizenzenPage';
-import { VocabularyOverviewPage } from '@/features/vocabularies/VocabularyOverviewPage';
 import { VocabularyNamespacePage } from '@/features/vocabularies/VocabularyNamespacePage';
 import { isCatalogKey } from '@/domain/sourceRegistry';
 import {
@@ -42,7 +35,9 @@ import {
   buildGroupUrl,
   resolveControlRoute,
 } from '@/app/routes';
-import { PageTitle } from './PageTitle';
+import { PageTitle } from '@/app/PageTitle';
+import { PAGE_TITLES } from '@/app/pageTitles';
+import { STATIC_PAGE_ROUTES } from '@/app/staticPageRoutes';
 
 /* ------------------------------------------------------------------ */
 /*  PageScroll — scroll wrapper for page content                      */
@@ -328,23 +323,31 @@ export function AppShell() {
           className="flex-1 min-w-0 flex flex-col bg-white md:overflow-hidden"
         >
           <Routes>
-              <Route path="/" element={<><PageTitle /><PageScroll><HomePage /></PageScroll></>} />
+              {STATIC_PAGE_ROUTES.map(({ path, title, element, scroll = true }) => (
+                <Route
+                  key={path}
+                  path={path}
+                  element={
+                    <>
+                      <PageTitle title={title} />
+                      {scroll ? <PageScroll>{element}</PageScroll> : element}
+                    </>
+                  }
+                />
+              ))}
               <Route path={CONTROL_ROUTE_PATTERN} element={<CatalogBrowser />} />
               <Route path={GROUP_ROUTE_PATTERN} element={<CatalogBrowser />} />
               <Route path={CATALOG_ROUTE_PATTERN} element={<CatalogBrowser />} />
-              <Route path="/suche" element={<><PageTitle title="Suche" /><SearchPage /></>} />
-              <Route path="/vokabular" element={<><PageTitle title="Vokabulare" /><PageScroll><VocabularyOverviewPage /></PageScroll></>} />
               <Route path="/vokabular/:namespaceId" element={<PageScroll><VocabularyNamespacePage /></PageScroll>} />
-              <Route path="/about" element={<><PageTitle title="Über das Projekt" /><PageScroll><AboutPage /></PageScroll></>} />
-              <Route path="/datenschutz" element={<><PageTitle title="Datenschutz" /><PageScroll><DatenschutzPage /></PageScroll></>} />
-              <Route path="/impressum" element={<><PageTitle title="Impressum" /><PageScroll><ImpressumPage /></PageScroll></>} />
-              <Route path="/lizenzen" element={<><PageTitle title="Lizenzen" /><PageScroll><LizenzenPage /></PageScroll></>} />
-              <Route path="/mehr" element={<Navigate to="/about" replace />} />
+              <Route
+                path="/mehr"
+                element={<><PageTitle title={PAGE_TITLES.about} /><Navigate to="/about" replace /></>}
+              />
               <Route
                 path="*"
                 element={
                   <>
-                    <PageTitle title="Seite nicht gefunden" />
+                    <PageTitle title={PAGE_TITLES.notFound} />
                     <PageScroll>
                       <div className="p-6">
                         <h1 className="text-xl font-bold text-slate-900">

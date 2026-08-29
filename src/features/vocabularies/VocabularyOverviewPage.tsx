@@ -1,6 +1,7 @@
 import { Link } from 'react-router';
 import { useCatalog } from '@/hooks/useCatalog';
 import { buildVocabularySourceUrl } from '@/domain/vocabulary';
+import { PAGE_TITLES } from '@/app/pageTitles';
 import { getVocabularyTitle } from './vocabularyTitle';
 
 export function VocabularyOverviewPage() {
@@ -20,7 +21,7 @@ export function VocabularyOverviewPage() {
   if (error) {
     return (
       <div className="p-4 sm:p-6">
-        <h1 className="type-page-title">Vokabulare</h1>
+        <h1 className="type-page-title">{PAGE_TITLES.vocabularies}</h1>
         <p className="mt-3 text-sm text-red-600">{error}</p>
       </div>
     );
@@ -29,7 +30,7 @@ export function VocabularyOverviewPage() {
   if (!vocabularyRegistry || vocabularyRegistry.namespaces.length === 0) {
     return (
       <div className="p-4 sm:p-6">
-        <h1 className="type-page-title">Vokabulare</h1>
+        <h1 className="type-page-title">{PAGE_TITLES.vocabularies}</h1>
         <p className="mt-3 text-sm text-[var(--color-text-secondary)]">
           Für den aktuell geladenen Katalog sind keine offiziellen
           Vokabular-Dateien verfügbar.
@@ -45,7 +46,7 @@ export function VocabularyOverviewPage() {
   return (
     <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-5">
       <div className="space-y-1">
-        <h1 className="type-page-title">Vokabulare</h1>
+        <h1 className="type-page-title">{PAGE_TITLES.vocabularies}</h1>
         <p className="type-secondary">
           {namespaces.length} offizielle Vokabulare stehen für den aktuellen Katalog bereit.
         </p>

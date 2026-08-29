@@ -9,4 +9,10 @@ describe('getVocabularyTitle', () => {
   it('humanizes an uncurated vocabulary file name', () => {
     expect(getVocabularyTitle('custom-security_topic.csv')).toBe('Custom Security Topic');
   });
+
+  it('keeps umlauts inside words lowercase', () => {
+    // `\w` wuerde den Umlaut als Wortgrenze werten und „GefäHrdungen“ erzeugen.
+    expect(getVocabularyTitle('gefährdungen.csv')).toBe('Gefährdungen');
+    expect(getVocabularyTitle('öffentliche_werte.csv')).toBe('Öffentliche Werte');
+  });
 });

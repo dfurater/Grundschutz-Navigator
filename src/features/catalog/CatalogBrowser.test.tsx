@@ -23,6 +23,7 @@ import {
   CONTROL_ROUTE_PATTERN,
   GROUP_ROUTE_PATTERN,
 } from '@/app/routes';
+import { expectSingleDocumentTitle } from '@/test/documentTitle';
 
 vi.mock('@/hooks/useCatalog', () => ({
   useCatalog: vi.fn(),
@@ -464,7 +465,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
 
     renderCatalogBrowser(`/katalog/${catalogKey}/kontrolle/shared-alt-identifier`);
 
-    expect(document.title).toBe(
+    expectSingleDocumentTitle(
       `${expectedControl.id} — ${expectedControl.title} — ${catalogTitle} — Grundschutz++ Navigator`,
     );
   });
@@ -472,12 +473,14 @@ describe('CatalogBrowser mobile focus restoration', () => {
   it('uses catalog domain titles for the root and a resolved group', () => {
     const rootView = renderCatalogBrowser('/katalog/gspp');
 
-    expect(document.title).toBe('Grundschutz++-Katalog — Grundschutz++ Navigator');
+    expectSingleDocumentTitle('Grundschutz++-Katalog — Grundschutz++ Navigator');
 
+    // Unmount ist zwingend: zwei gleichzeitig gemountete Titel wuerden den
+    // Vergleich still gegen den falschen Knoten laufen lassen.
     rootView.unmount();
     renderCatalogBrowser('/katalog/gspp/TOP.1');
 
-    expect(document.title).toBe(
+    expectSingleDocumentTitle(
       'TOP.1 — Testthema — Grundschutz++-Katalog — Grundschutz++ Navigator',
     );
   });
@@ -487,8 +490,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
 
     renderCatalogBrowser(`/katalog/gspp/kontrolle/${unknownAltIdentifier}`);
 
-    expect(document.title).toBe('Katalogziel nicht gefunden — Grundschutz++ Navigator');
-    expect(document.title).not.toContain(unknownAltIdentifier);
+    expectSingleDocumentTitle('Katalogziel nicht gefunden — Grundschutz++ Navigator');
   });
 
   it.each([
@@ -504,7 +506,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
 
     renderCatalogBrowser('/katalog/wlan');
 
-    expect(document.title).toBe('Katalog — Grundschutz++ Navigator');
+    expectSingleDocumentTitle('Katalog — Grundschutz++ Navigator');
   });
 
   it('keeps a stable alt-identifier addressable after its control ID changes', () => {
