@@ -331,8 +331,21 @@ const LOAD_REGISTRY_CHILD_SCRIPT =
   'const loaded = await import(process.argv[1]); '
   + 'process.stdout.write(JSON.stringify(loaded.SOURCE_REGISTRY ?? null));';
 
-/** Die Modulkette, die `SOURCE_REGISTRY` zum Auswerten braucht. */
-const REGISTRY_MODULE_CHAIN = Object.freeze([
+/**
+ * Die Modulkette, die `SOURCE_REGISTRY` zum Auswerten braucht. Alle Module
+ * liegen flach im selben temporären Verzeichnis, weshalb ihre relativen
+ * Importe untereinander auflösen.
+ *
+ * Die Liste ist bewusst explizit und nicht aus dem Importgraph abgeleitet:
+ * Eine Ableitung müsste den Graph am Base-SHA selbst traversieren, also genau
+ * die Datei parsen, die sie erst materialisieren will. Statt der Ableitung
+ * hängt die Kopplung an einem Test — `catalog-sync-guard.test.ts` liest die
+ * relativen Importe jedes Kettenglieds aus dem Quellbaum und schlägt fehl,
+ * sobald eines davon hier fehlt. Ohne diesen Test bräche ein neuer relativer
+ * Import in `sourceRegistry.mjs` den Migrationspfad still und fail-closed mit
+ * einem irreführenden Modulauflösungsfehler (Gitar-Befund).
+ */
+export const REGISTRY_MODULE_CHAIN = Object.freeze([
   REGISTRY_LIFECYCLE_MIGRATION_PATH,
   'src/domain/oscalVersionMatrix.mjs',
 ]);

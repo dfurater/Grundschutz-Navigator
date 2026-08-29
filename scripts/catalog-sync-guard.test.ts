@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readdir } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { describe, expect, it, vi } from 'vitest';
 import {
   computeManifestSignature,
@@ -8,6 +8,7 @@ import {
   isRegistryLifecycleOnlyMigration,
   isRegistryOscalVersionMigration,
   loadSourceRegistryAtRef,
+  REGISTRY_MODULE_CHAIN,
   parseNameStatusDiff,
   validateCatalogSyncManifest,
   validateCatalogSyncPullRequest,
@@ -1338,13 +1339,37 @@ describe('OSCAL-Versionsmigration (GSPP-376)', () => {
     // Der Vorstand ist ein vollwertiges, selbstvalidiertes Register: Der
     // Import im Kindprozess führt validateSourceRegistry mit aus.
     expect(Array.isArray(loaded)).toBe(true);
-    expect(loaded.length).toBe(SOURCE_REGISTRY.length);
+    expect(loaded).toHaveLength(SOURCE_REGISTRY.length);
     expect(loaded.every((entry) => typeof entry.artifactKey === 'string')).toBe(true);
     expect(new Set(loaded.map((entry) => entry.artifactKey)).size).toBe(loaded.length);
 
     // Kern der Ablage ausserhalb des Quellbaums: Selbst im Erfolgsfall darf
     // in src/domain kein temporäres, importierbares Modul auftauchen.
     expect(after).toEqual(before);
+  });
+
+  it('deckt jeden relativen Import der Registerkette ab', async () => {
+    // Die Kette wird flach in ein Temp-Verzeichnis materialisiert. Bekommt ein
+    // Kettenglied einen weiteren relativen Import, der hier nicht gelistet ist,
+    // scheitert der Kindprozess-Import mit einem irreführenden
+    // Modulauflösungsfehler und blockiert Migrationen still (Gitar-Befund).
+    const declared = new Set(REGISTRY_MODULE_CHAIN.map((path) => path.split('/').pop()));
+
+    for (const modulePath of REGISTRY_MODULE_CHAIN) {
+      const source = await readFile(modulePath, 'utf8');
+      const relativeImports = [...source.matchAll(/from\s+'(\.[^']+)'/g)].map((match) => match[1]);
+      for (const specifier of relativeImports) {
+        expect(
+          declared.has(specifier.split('/').pop()),
+          `${modulePath} importiert ${specifier}, das nicht in REGISTRY_MODULE_CHAIN steht`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('materialisiert die Kette flach, ohne Namenskollision', () => {
+    const baseNames = REGISTRY_MODULE_CHAIN.map((path) => path.split('/').pop());
+    expect(new Set(baseNames).size).toBe(baseNames.length);
   });
 
   it('scheitert fail-closed an einem Ref ohne Quellregister', async () => {
