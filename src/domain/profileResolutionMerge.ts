@@ -82,6 +82,16 @@ export type CombinedControls = {
   readonly order: readonly JsonObject[];
   /** Bei keep: IDs, deren Definitionen kollidieren. */
   readonly clashes: readonly string[];
+  /**
+   * Je Definitionsknoten die selektierten IDs DERSELBEN Inklusion.
+   *
+   * Quellenscharf statt global: Tragen zwei Importe dieselbe Control-ID und
+   * selektiert nur einer davon ein verschachteltes Kind, dürfte das Kind auch
+   * nur in der Definition dieses einen Imports erscheinen. Gegen die globale
+   * ID-Menge aus `controls` geprunt bliebe es in beiden stehen und brächte
+   * eine aus dieser Quelle nie selektierte Control in den aufgelösten Katalog.
+   */
+  readonly sourceIdsByDefinition: ReadonlyMap<JsonObject, ReadonlySet<string>>;
 };
 
 function controlsFromInclusion(inclusion: unknown): readonly unknown[] {
@@ -124,12 +134,19 @@ export function applyCombine(
   const definitions = new Map<string, JsonObject[]>();
   const order: JsonObject[] = [];
   const clashes = new Set<string>();
+  const sourceIdsByDefinition = new Map<JsonObject, ReadonlySet<string>>();
 
   for (const inclusion of ownArrayDataElements(inclusions)) {
-    for (const node of controlsFromInclusion(inclusion)) {
-      if (isJsonObject(node)) {
-        registerCombinedControl(node, method, definitions, order, clashes);
-      }
+    const nodesInInclusion = controlsFromInclusion(inclusion).filter(isJsonObject);
+    // Leere IDs ausfiltern: `readIdOrEmpty` liefert '' für ID-lose Knoten, und
+    // eine Prune-Menge mit '' würde jedes ID-lose verschachtelte Kind als
+    // "selektiert" behandeln und stehen lassen.
+    const idsInInclusion: ReadonlySet<string> = new Set(
+      nodesInInclusion.map(readIdOrEmpty).filter((id) => id.length > 0),
+    );
+    for (const node of nodesInInclusion) {
+      registerCombinedControl(node, method, definitions, order, clashes);
+      sourceIdsByDefinition.set(node, idsInInclusion);
     }
   }
 
@@ -138,7 +155,12 @@ export function applyCombine(
       ? [...definitions.values()].map((defs) => defs[0]!)
       : [...order];
 
-  return { controls: definitions, order: finalOrder, clashes: [...clashes] };
+  return {
+    controls: definitions,
+    order: finalOrder,
+    clashes: [...clashes],
+    sourceIdsByDefinition,
+  };
 }
 
 /** Entfernt verschachtelte Kinder (controls, groups) für echte Flachdarstellung. */
@@ -540,7 +562,14 @@ function assembleGroupControls(
       for (const definition of context.combined.controls.get(id) ?? []) {
         if (groupDefinitions.has(definition)) continue;
         groupDefinitions.add(definition);
-        placed.push(withPositionalLabels(definition, `${groupId}.${placed.length + 1}`));
+        // Gegen die Selektion DERSELBEN Inklusion prunen, bevor die Definition
+        // platziert wird: Ohne diesen Schritt fahren nicht selektierte
+        // verschachtelte Kinder unverändert mit (GSPP-377). Der as-is-Zweig
+        // tut dasselbe über filterContainerForAsIs.
+        placed.push(withPositionalLabels(
+          filterNestedIncluded(definition, selectionScopeFor(definition, context), new Set<object>()),
+          `${groupId}.${placed.length + 1}`,
+        ));
       }
     }
   }
@@ -550,6 +579,11 @@ function assembleGroupControls(
 interface AssemblyContext {
   readonly poolIndex: ReturnType<typeof indexCatalogControls>;
   readonly combined: CombinedControls;
+  /**
+   * Alle in dieser Assemblierung durch Direktiven aufgelösten Control-IDs.
+   * Zweite Quelle der Prune-Menge, siehe `selectionScopeFor`.
+   */
+  readonly selectedIds: ReadonlySet<string>;
 }
 
 type GroupAssemblyResult =
@@ -563,6 +597,51 @@ type GroupAssemblyResult =
  * werden genauso behandelt. Die Rekursionstiefe ist durch den Entry-
  * Scanner (maxDepth) gedeckt.
  */
+/**
+ * Sammelt alle Direktiven des custom-Bildes: die der Catalog-Ebene und die
+ * jeder Gruppe, rekursiv über verschachtelte Gruppen. Grundlage der zweiten
+ * Quelle in `selectionScopeFor`; die Tiefe ist am exportierten Rand bereits
+ * durch `measureCustomGroupsDepth` begrenzt, `visited` deckt Zyklen ab.
+ */
+function collectAllDirectives(
+  typedGroups: readonly unknown[],
+  rootDirectives: readonly ProfileInsertControls[],
+): ProfileInsertControls[] {
+  const all = [...rootDirectives];
+  const stack: unknown[] = [...typedGroups];
+  const visited = new Set<object>();
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (typeof node !== 'object' || node === null || visited.has(node)) continue;
+    visited.add(node);
+    const projected = projectAssemblyGroup(node);
+    all.push(...projected.insertControls);
+    for (const nested of projected.groups) stack.push(nested);
+  }
+  return all;
+}
+
+/**
+ * Vereinigt die aufgelösten IDs aller Direktiven. Eine Direktive, deren
+ * Selektion nicht auflösbar ist, trägt hier nichts bei — ihre Diagnose
+ * entsteht an der Stelle, die sie tatsächlich ausführt.
+ */
+function resolveSelectedIds(
+  directives: readonly ProfileInsertControls[],
+  poolIndex: ReturnType<typeof indexCatalogControls>,
+): ReadonlySet<string> {
+  const ids = new Set<string>();
+  for (const directive of directives) {
+    const outcome = resolveSelectionIds(poolIndex, {
+      selection: directive.selection,
+      excludeControls: directive.excludeControls,
+    });
+    if (!outcome.ok) continue;
+    for (const id of outcome.ids) ids.add(id);
+  }
+  return ids;
+}
+
 function assembleGroups(
   rawGroups: readonly JsonObject[],
   typedGroups: readonly unknown[],
@@ -820,12 +899,17 @@ function projectAssemblyGroup(value: unknown): ProjectedAssemblyGroup {
 
 function sanitizeCombinedControls(combined: CombinedControls): CombinedControls {
   const controls = ownDataValue(combined as unknown as object, 'controls');
+  const sourceIds = ownDataValue(combined as unknown as object, 'sourceIdsByDefinition');
   return {
     order: jsonObjectArrayMember(combined as unknown as object, 'order'),
     controls: controls instanceof Map ? controls : new Map(),
     clashes: arrayMember<unknown>(combined as unknown as object, 'clashes').filter(
       (clash): clash is string => typeof clash === 'string',
     ),
+    // Fehlt die Zuordnung, bleibt sie leer: Das prunt jede verschachtelte
+    // Control weg, statt eine nicht selektierte durchzulassen — fail-closed
+    // in Richtung "nur Selektiertes erscheint".
+    sourceIdsByDefinition: sourceIds instanceof Map ? sourceIds : new Map(),
   };
 }
 
@@ -855,6 +939,40 @@ function hasEmittedAncestor(
   return false;
 }
 
+/**
+ * Die Prune-Menge einer Definition — welche verschachtelten Nachfahren beim
+ * Platzieren erhalten bleiben.
+ *
+ * Zwei Quellen, vereinigt:
+ *
+ * 1. Die Phase-1-Selektion DERSELBEN Inklusion. Quellenscharf statt global:
+ *    Tragen zwei Importe dieselbe Control-ID und hat nur einer das Kind
+ *    eigenständig inkludiert, erscheint es auch nur dort.
+ * 2. Die in dieser Assemblierung durch Direktiven aufgelösten IDs. Ein Kind,
+ *    das eine Direktive ausdrücklich selektiert, gehört ins Ergebnis, auch
+ *    wenn Phase 1 es nur als Teil des Elternteilbaums geliefert hat.
+ *
+ * Am BSI-WLAN-Profil gemessen: Dort stehen Eltern und Kinder einzeln in
+ * `with-ids` — `ARCH.2.2` und elf seiner zwölf Kernel-Kinder, aber nicht
+ * `ARCH.2.2.12`. Das nicht selektierte zwölfte Kind fällt damit durch beide
+ * Quellen und verschwindet, wie es BSIs eigener Resolver auch tut.
+ *
+ * Fehlt die Inklusionszuordnung — bei einem Knoten, den
+ * `definitionsForInsertion` aus `poolIndex.byId` holt, weil er nur
+ * verschachtelt existiert — trägt allein die Direktiven-Selektion. Eine leere
+ * Menge wäre dort falsch: Sie verwürfe auch ausdrücklich selektierte Kinder.
+ */
+function selectionScopeFor(
+  definition: JsonObject,
+  context: AssemblyContext,
+): ReadonlySet<string> {
+  const fromInclusion = context.combined.sourceIdsByDefinition.get(definition);
+  if (fromInclusion === undefined) return context.selectedIds;
+  const scope = new Set(fromInclusion);
+  for (const id of context.selectedIds) scope.add(id);
+  return scope;
+}
+
 function definitionsForInsertion(
   id: string,
   context: AssemblyContext,
@@ -870,7 +988,17 @@ function definitionsForInsertion(
 }
 
 interface RootControlEmissionState {
+  /** Projizierte Ausgabe — auf die Selektion geprunte Kopien. */
   readonly controls: JsonObject[];
+  /**
+   * Rückabbildung projizierte Kopie → Originaldefinition.
+   *
+   * Die Dedup- und Nested-only-Logik dieses Pfads ist identitätsbasiert
+   * (`emittedDefinitions`, `nestedOnlyDefinitions` halten Originalknoten).
+   * Das Pruning erzeugt aber Kopien; ohne diese Rückabbildung verlöre jede
+   * spätere Identitätsprüfung ihren Bezug.
+   */
+  readonly originalByEmitted: Map<JsonObject, JsonObject>;
   readonly emittedDefinitions: Set<object>;
   readonly nestedOnlyDefinitions: Set<object>;
 }
@@ -896,10 +1024,12 @@ function removeEarlierNestedDescendants(
   state: RootControlEmissionState,
 ): void {
   for (let index = state.controls.length - 1; index >= 0; index -= 1) {
-    const definition = state.controls[index]!;
+    const emitted = state.controls[index]!;
+    const definition = state.originalByEmitted.get(emitted) ?? emitted;
     if (!state.nestedOnlyDefinitions.has(definition)) continue;
     if (!isDescendantId(readIdOrEmpty(definition), ancestorId, context.poolIndex)) continue;
     state.controls.splice(index, 1);
+    state.originalByEmitted.delete(emitted);
     state.emittedDefinitions.delete(definition);
     state.nestedOnlyDefinitions.delete(definition);
   }
@@ -917,7 +1047,13 @@ function emitRootControlId(
     if (!isJsonObject(definition) || state.emittedDefinitions.has(definition)) continue;
     state.emittedDefinitions.add(definition);
     if (!hasDirectDefinitions) state.nestedOnlyDefinitions.add(definition);
-    state.controls.push(definition);
+    const emitted = filterNestedIncluded(
+      definition,
+      selectionScopeFor(definition, context),
+      new Set<object>(),
+    );
+    state.originalByEmitted.set(emitted, definition);
+    state.controls.push(emitted);
   }
 }
 
@@ -931,6 +1067,7 @@ function collectRootControls(
 ): RootControlsResult {
   const state: RootControlEmissionState = {
     controls: [],
+    originalByEmitted: new Map<JsonObject, JsonObject>(),
     emittedDefinitions: new Set<object>(),
     nestedOnlyDefinitions: new Set<object>(),
   };
@@ -984,9 +1121,14 @@ export function buildCustomGroups(
   // nicht. Verschachtelte Kind-Controls eines Pool-Knotens registriert
   // derselbe Tiefendurchlauf, sodass with-child-controls echte Struktur
   // sieht.
+  const poolIndex = indexCatalogControls({ pool: { controls: safeCombined.order } });
   const context: AssemblyContext = {
-    poolIndex: indexCatalogControls({ pool: { controls: safeCombined.order } }),
+    poolIndex,
     combined: safeCombined,
+    selectedIds: resolveSelectedIds(
+      collectAllDirectives(typedGroups, insertControls),
+      poolIndex,
+    ),
   };
 
   const groupsResult = assembleGroups(rawGroups, typedGroups, context);

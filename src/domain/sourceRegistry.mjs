@@ -207,7 +207,7 @@ export const SOURCE_REGISTRY = Object.freeze(
     {
       artifactKey: 'component-aws-security-hub',
       kind: 'oscal',
-      oscalVersion: '1.1.3',
+      oscalVersion: '1.2.2',
       expectedRootType: 'component-definition',
       upstreamPath: `${COMPONENT_DIRECTORY}/AWS Beispiel-Components/AWS Security Hub-component_definition.json`,
       lifecycle: 'preview',

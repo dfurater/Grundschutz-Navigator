@@ -1,63 +1,63 @@
 {
   "schemaVersion": 2,
   "repository": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek",
-  "snapshotCommitSha": "9008ca0baecd958d175bbb994d6121865e266600",
+  "snapshotCommitSha": "8a97764ff4f23c2b7945c64344eecbf5a2053db2",
   "files": [
     {
       "artifactKey": "catalog-gspp",
       "rootType": "catalog",
       "lifecycle": "supported",
       "path": "control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json",
-      "gitBlobSha": "6dc35bfb23c45e40d0275d93428b063816fb967e",
-      "contentSha256": "4503a2e5b4a8c03333d1b27b42a754278542ca458cfa142cc0288cf761e343f4"
+      "gitBlobSha": "3878e6d72d30d455ab7abbf26331034e22e8a574",
+      "contentSha256": "7c3c5172806d60b219bd210f7b51a8b492c5d18dd603c95039a8ed2d35a41146"
     },
     {
       "artifactKey": "catalog-source-gspp-kernel-g0",
       "rootType": "catalog",
       "lifecycle": "preview",
       "path": "control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json",
-      "gitBlobSha": "e05f2ad1042b1c62a1239017c7da988f4b4ee71e",
-      "contentSha256": "e19f45ddbba3f4405c639171d524c04995b36f8ea3795727c72fed432cc3d464"
+      "gitBlobSha": "0222a8eb2ae95d7ebfe51100066e714f4d411e14",
+      "contentSha256": "fbfe55f021103ad845686364f1d412e2a48e0146c1a609bdfdd0220296d651df"
     },
     {
       "artifactKey": "catalog-source-lieferkette-kernel",
       "rootType": "catalog",
       "lifecycle": "preview",
       "path": "control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json",
-      "gitBlobSha": "74f482b4a3735450d18c237b6c81a6dfa34971e4",
-      "contentSha256": "940b8623a6eaa447159ea95fc9e955b3f14b4049ab24e644a089795ce08cf6e2"
+      "gitBlobSha": "a70041f481029eaa39923eaef6230d0af33fc3da",
+      "contentSha256": "dcf7f94cb33a32e672fc6b50d5ee1b87551b0e42f42c781cb9a2799f1b368d90"
     },
     {
       "artifactKey": "catalog-source-gspp-methodik",
       "rootType": "catalog",
       "lifecycle": "preview",
       "path": "control_layer/Grundschutz++/sources/catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json",
-      "gitBlobSha": "2be05a2d6e08892259553b7e0e379020d7d98441",
-      "contentSha256": "dc1d72d0147d1ade9e9c18a6e3114700b5788a64ddeeee854b9913f969310ea0"
+      "gitBlobSha": "a2bbae570efa0c535b8374d35df0fe46fbaa1cf1",
+      "contentSha256": "a2881b2a0015b0e01c4584603b1574c4b665521518f8679a42a78e09a77d5406"
     },
     {
       "artifactKey": "profile-gspp",
       "rootType": "profile",
       "lifecycle": "preview",
       "path": "control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json",
-      "gitBlobSha": "be7c80fb1ba1785a578a971bcc73baca8a158de6",
-      "contentSha256": "2883612fac772bc278c940683b688c06c0ea7501838ae071c3d3ac27917938ad"
+      "gitBlobSha": "7aa505346fb968fbedadbb2800f7b620b4b7c904",
+      "contentSha256": "6b854bca05ea2dd061e93cbdc6c1c40c26135863875d89164585326f2aaf6a96"
     },
     {
       "artifactKey": "catalog-lieferkette",
       "rootType": "catalog",
       "lifecycle": "supported",
       "path": "control_layer/Lieferkettensicherheit/Lieferkettensicherheit-resolved_catalog.json",
-      "gitBlobSha": "2210e60dbea27047acb33ce030bc00fc4e4204e2",
-      "contentSha256": "c5a498c4887b991db71679ee24132c9a414933843c61f077d01f3539eec629cf"
+      "gitBlobSha": "1f98c96de816aa174427b2036779d7f565d41fae",
+      "contentSha256": "ce503670d98cd59bdb22ee8c2569285891c5c2e6bc4b875ce9d3ec4ba19904e1"
     },
     {
       "artifactKey": "profile-lieferkette",
       "rootType": "profile",
       "lifecycle": "preview",
       "path": "control_layer/Lieferkettensicherheit/sources/profiles/Lieferkettensicherheit-profile.json",
-      "gitBlobSha": "867bbb93306572d118520fbd99cdd3315c4f55d0",
-      "contentSha256": "0370783569240e4d15095d68434d93b4e2fbe653cff32a749b08e12ce716ba6b"
+      "gitBlobSha": "a397508f200a88ba69a120ec00865a450709be1f",
+      "contentSha256": "484b327c3e2eabaf79f656b76ac5f75d7d47c1b8e33e0bb1b6f18380a314aabf"
     },
     {
       "artifactKey": "mapping-iso27001-annex-a-zu-gspp",
@@ -88,24 +88,24 @@
       "rootType": "catalog",
       "lifecycle": "preview",
       "path": "control_layer/Risikomanagement/BSI-Anforderungen-zum-Risikomanagement-catalog.json",
-      "gitBlobSha": "4c3f7f2410fd43fbb7ab2395a4c0462b537ae6e9",
-      "contentSha256": "3b11d856cf484f9f91c60394ba2d23ed4b34793153e777d644075a2923e4190b"
+      "gitBlobSha": "f9ba8b4754c3f05c27de5d8d70ef0d195971662d",
+      "contentSha256": "760289c0809aecbd776caf8e5ace8e5e80954b7d49c6d10bf5e6e38d786c3bdc"
     },
     {
       "artifactKey": "catalog-wlan",
       "rootType": "catalog",
       "lifecycle": "supported",
       "path": "control_layer/WLAN/WLAN-resolved_catalog.json",
-      "gitBlobSha": "f898ceb04e718c3f4cd5e92cba576864f0255e01",
-      "contentSha256": "a909b0542c359a96f9a145e0f04f85e4e0ac3e45f24e07eb666b06951a706e55"
+      "gitBlobSha": "785bbd42a9160b96f3185ff447a8b7bfaade2b86",
+      "contentSha256": "da8f959d18d0751db01532a1f7730c12f182aeb0abe1c45bdea2f21fa4091c69"
     },
     {
       "artifactKey": "profile-wlan",
       "rootType": "profile",
       "lifecycle": "preview",
       "path": "control_layer/WLAN/sources/profiles/WLAN-profile.json",
-      "gitBlobSha": "b8ad323057726b43247e52d2c18ea4071dcfe975",
-      "contentSha256": "f16d8ae1a9a54bdcbbaa5aa5d67d680233a2f9ee4290507568e78c6834dd3221"
+      "gitBlobSha": "20d76c2c521bfaa893510acec7bf61c77f5d625f",
+      "contentSha256": "ed4fee918185588e47d8087c54efaa78c23c66d04657694b7fd411eef1dc9c71"
     },
     {
       "artifactKey": "namespaces-bsi",
@@ -216,8 +216,8 @@
       "rootType": "component-definition",
       "lifecycle": "preview",
       "path": "implementation_layer/AWS Beispiel-Components/AWS Security Hub-component_definition.json",
-      "gitBlobSha": "3083f81dadf875136b303c0406deaa1503e076f8",
-      "contentSha256": "745f1557607d94e501f764d5e00a4845806e583a52f91e2a256a1e3b696ab1ec"
+      "gitBlobSha": "05c8dd3d9a0d301a2da1fe8300ed3a8e54f37855",
+      "contentSha256": "bdcbd4ea18d9b07e7cf890700d06dcaa1b3e7240e70a885a5086cc1aaade1667"
     },
     {
       "artifactKey": "component-ga-lotse-grundmodul",
@@ -260,5 +260,5 @@
       "contentSha256": "08c7ab6bb442a87eba4e407d272fecd179bc61c47c2419843d7f4cfcd4077235"
     }
   ],
-  "signatureSha256": "de30357f561e78b247d9897167a58f76c17b4a87c1162a07eb094b8684d91c84"
+  "signatureSha256": "5d14431e1ffb02ad18b2e5bfff823233ca0bdf179e4c7a34b64246b8cbf44f42"
 }

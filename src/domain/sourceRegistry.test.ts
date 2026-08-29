@@ -235,7 +235,7 @@ describe('sourceRegistry', () => {
       {
         artifactKey: 'component-aws-security-hub',
         kind: 'oscal',
-        oscalVersion: '1.1.3',
+        oscalVersion: '1.2.2',
         expectedRootType: 'component-definition',
         upstreamPath:
           'implementation_layer/AWS Beispiel-Components/AWS Security Hub-component_definition.json',
@@ -362,7 +362,7 @@ describe('sourceRegistry', () => {
       'catalog-source-lieferkette-kernel': '1.1.3',
       'catalog-source-risikomanagement': '1.1.3',
       'catalog-wlan': '1.1.3',
-      'component-aws-security-hub': '1.1.3',
+      'component-aws-security-hub': '1.2.2',
       'component-ga-lotse-grundmodul': '1.1.2',
       'component-keycloak': '1.2.2',
       'component-lieferkette': '1.1.2',
