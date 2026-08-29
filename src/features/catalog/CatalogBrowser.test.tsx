@@ -143,6 +143,10 @@ const defaultSort: SortConfig = [{ field: 'id', direction: 'asc' }];
 function makeCatalog(catalogKey: CatalogKey, primaryControl: Control = control): Catalog {
   return {
     catalogKey,
+    uuid: `${catalogKey}-catalog`,
+    metadata: {
+      title: catalogKey === 'wlan' ? 'WLAN-Katalog' : 'Grundschutz++-Katalog',
+    },
     controls: [primaryControl],
     controlsById: new Map([
       [primaryControl.id, primaryControl],
@@ -434,6 +438,73 @@ describe('CatalogBrowser mobile focus restoration', () => {
 
     expect(screen.getByText('Detail TOP.9.9')).toBeInTheDocument();
     expect(screen.queryByText('Detail TOP.1.1')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    {
+      catalogKey: 'gspp' as CatalogKey,
+      catalogTitle: 'Grundschutz++-Katalog',
+      expectedControl: control,
+    },
+    {
+      catalogKey: 'wlan' as CatalogKey,
+      catalogTitle: 'WLAN-Katalog',
+      expectedControl: {
+        ...control,
+        id: 'WLAN.9.9',
+        title: 'WLAN-Kontrolle',
+      } as Control,
+    },
+  ])('uses the resolved $catalogKey control and catalog metadata for the document title', ({
+    catalogKey,
+    catalogTitle,
+    expectedControl,
+  }) => {
+    mockCatalog(makeCatalog(catalogKey, expectedControl));
+
+    renderCatalogBrowser(`/katalog/${catalogKey}/kontrolle/shared-alt-identifier`);
+
+    expect(document.title).toBe(
+      `${expectedControl.id} — ${expectedControl.title} — ${catalogTitle} — Grundschutz++ Navigator`,
+    );
+  });
+
+  it('uses catalog domain titles for the root and a resolved group', () => {
+    const rootView = renderCatalogBrowser('/katalog/gspp');
+
+    expect(document.title).toBe('Grundschutz++-Katalog — Grundschutz++ Navigator');
+
+    rootView.unmount();
+    renderCatalogBrowser('/katalog/gspp/TOP.1');
+
+    expect(document.title).toBe(
+      'TOP.1 — Testthema — Grundschutz++-Katalog — Grundschutz++ Navigator',
+    );
+  });
+
+  it('uses a fixed not-found title without putting an unknown URL fragment in it', () => {
+    const unknownAltIdentifier = 'unbekannter-roher-url-wert';
+
+    renderCatalogBrowser(`/katalog/gspp/kontrolle/${unknownAltIdentifier}`);
+
+    expect(document.title).toBe('Katalogziel nicht gefunden — Grundschutz++ Navigator');
+    expect(document.title).not.toContain(unknownAltIdentifier);
+  });
+
+  it.each([
+    { loading: true, error: null, description: 'loading' },
+    { loading: false, error: 'Netzwerkfehler', description: 'error' },
+  ])('uses a neutral catalog title while $description', ({ loading, error }) => {
+    mockedUseCatalog.mockReturnValue({
+      catalog: null,
+      loading,
+      error,
+      vocabularyRegistry: null,
+    } as unknown as ReturnType<typeof useCatalog>);
+
+    renderCatalogBrowser('/katalog/wlan');
+
+    expect(document.title).toBe('Katalog — Grundschutz++ Navigator');
   });
 
   it('keeps a stable alt-identifier addressable after its control ID changes', () => {

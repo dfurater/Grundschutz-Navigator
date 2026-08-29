@@ -42,6 +42,7 @@ import {
   buildGroupUrl,
   resolveControlRoute,
 } from '@/app/routes';
+import { PageTitle } from './PageTitle';
 
 /* ------------------------------------------------------------------ */
 /*  PageScroll — scroll wrapper for page content                      */
@@ -127,40 +128,6 @@ export function AppShell() {
   // Schlüssel die Navigation weiter — kein Sprung zurück auf den Einstieg.
   const activeCatalogKey = catalog?.catalogKey ?? selectedCatalogKey;
   const activeCatalogUrl = buildCatalogUrl(activeCatalogKey);
-
-  // Update document title on route change (a11y: screen readers announce page)
-  useEffect(() => {
-    const path = location.pathname;
-    const base = 'Grundschutz++ Navigator';
-    const titles: Record<string, string> = {
-      '/': base,
-      '/suche': `Suche — ${base}`,
-      '/vokabular': `Vokabulare — ${base}`,
-      '/about': `Über das Projekt — ${base}`,
-      '/datenschutz': `Datenschutz — ${base}`,
-      '/impressum': `Impressum — ${base}`,
-      '/lizenzen': `Lizenzen — ${base}`,
-      '/mehr': `Über das Projekt — ${base}`,
-    };
-    const controlMatch = matchPath(CONTROL_ROUTE_PATTERN, path);
-    const routedControl = resolveControlRoute(
-      catalog,
-      controlMatch?.params.catalogKey,
-      controlMatch?.params.altIdentifier,
-    );
-
-    if (routedControl) {
-      document.title = `${routedControl.id} — ${base}`;
-    } else if (titles[path]) {
-      document.title = titles[path];
-    } else if (path.startsWith('/katalog')) {
-      document.title = `Katalog — ${base}`;
-    } else if (path.startsWith('/vokabular/')) {
-      document.title = `${decodeURIComponent(path.replace('/vokabular/', ''))} — Vokabulare — ${base}`;
-    } else {
-      document.title = base;
-    }
-  }, [catalog, location.pathname]);
 
   // Derive selectedId from URL so tree highlights work for all navigation sources
   const selectedId = useMemo(() => {
@@ -361,34 +328,37 @@ export function AppShell() {
           className="flex-1 min-w-0 flex flex-col bg-white md:overflow-hidden"
         >
           <Routes>
-              <Route path="/" element={<PageScroll><HomePage /></PageScroll>} />
+              <Route path="/" element={<><PageTitle /><PageScroll><HomePage /></PageScroll></>} />
               <Route path={CONTROL_ROUTE_PATTERN} element={<CatalogBrowser />} />
               <Route path={GROUP_ROUTE_PATTERN} element={<CatalogBrowser />} />
               <Route path={CATALOG_ROUTE_PATTERN} element={<CatalogBrowser />} />
-              <Route path="/suche" element={<SearchPage />} />
-              <Route path="/vokabular" element={<PageScroll><VocabularyOverviewPage /></PageScroll>} />
+              <Route path="/suche" element={<><PageTitle title="Suche" /><SearchPage /></>} />
+              <Route path="/vokabular" element={<><PageTitle title="Vokabulare" /><PageScroll><VocabularyOverviewPage /></PageScroll></>} />
               <Route path="/vokabular/:namespaceId" element={<PageScroll><VocabularyNamespacePage /></PageScroll>} />
-              <Route path="/about" element={<PageScroll><AboutPage /></PageScroll>} />
-              <Route path="/datenschutz" element={<PageScroll><DatenschutzPage /></PageScroll>} />
-              <Route path="/impressum" element={<PageScroll><ImpressumPage /></PageScroll>} />
-              <Route path="/lizenzen" element={<PageScroll><LizenzenPage /></PageScroll>} />
+              <Route path="/about" element={<><PageTitle title="Über das Projekt" /><PageScroll><AboutPage /></PageScroll></>} />
+              <Route path="/datenschutz" element={<><PageTitle title="Datenschutz" /><PageScroll><DatenschutzPage /></PageScroll></>} />
+              <Route path="/impressum" element={<><PageTitle title="Impressum" /><PageScroll><ImpressumPage /></PageScroll></>} />
+              <Route path="/lizenzen" element={<><PageTitle title="Lizenzen" /><PageScroll><LizenzenPage /></PageScroll></>} />
               <Route path="/mehr" element={<Navigate to="/about" replace />} />
               <Route
                 path="*"
                 element={
-                  <PageScroll>
-                    <div className="p-6">
-                      <h1 className="text-xl font-bold text-slate-900">
-                        404 — Seite nicht gefunden
-                      </h1>
-                      <p className="mt-3 text-sm text-slate-600">
-                        Diese Seite existiert nicht.{' '}
-                        <Link to="/" className="rounded text-sky-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]">
-                          Zur Startseite
-                        </Link>
-                      </p>
-                    </div>
-                  </PageScroll>
+                  <>
+                    <PageTitle title="Seite nicht gefunden" />
+                    <PageScroll>
+                      <div className="p-6">
+                        <h1 className="text-xl font-bold text-slate-900">
+                          404 — Seite nicht gefunden
+                        </h1>
+                        <p className="mt-3 text-sm text-slate-600">
+                          Diese Seite existiert nicht.{' '}
+                          <Link to="/" className="rounded text-sky-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]">
+                            Zur Startseite
+                          </Link>
+                        </p>
+                      </div>
+                    </PageScroll>
+                  </>
                 }
               />
             </Routes>

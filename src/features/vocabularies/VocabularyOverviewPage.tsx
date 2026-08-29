@@ -1,29 +1,7 @@
 import { Link } from 'react-router';
 import { useCatalog } from '@/hooks/useCatalog';
 import { buildVocabularySourceUrl } from '@/domain/vocabulary';
-
-const vocabularyTitles: Record<string, string> = {
-  'action_words.csv': 'Handlungsworte',
-  'basethreats.csv': 'Elementare Gefährdungen',
-  'documentation_guidelines.csv': 'Dokumentationsvorgaben',
-  'effort_level.csv': 'Aufwandsstufen',
-  'modal_verbs.csv': 'Modalverben',
-  'practices.csv': 'Praktiken',
-  'result.csv': 'Ergebnisse',
-  'security_level.csv': 'Sicherheitsniveaus',
-  'security_targets.csv': 'Schutzziele',
-  'security_targets_levels.csv': 'Schutzziel-Relevanz',
-  'tags.csv': 'Tags',
-  'target_object_categories.csv': 'Zielobjekt-Kategorien',
-  'topics.csv': 'Themen',
-};
-
-function humanizeVocabularyFileName(fileName: string) {
-  return fileName
-    .replace(/\.csv$/i, '')
-    .replace(/[_-]+/g, ' ')
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-}
+import { getVocabularyTitle } from './vocabularyTitle';
 
 export function VocabularyOverviewPage() {
   const { vocabularyRegistry, loading, error } = useCatalog();
@@ -94,7 +72,7 @@ export function VocabularyOverviewPage() {
                     to={`/vokabular/${namespace.source.routeId}`}
                     className="type-object-title block min-w-0 rounded hover:text-[var(--color-accent-default)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
                   >
-                    {vocabularyTitles[namespace.source.fileName] ?? humanizeVocabularyFileName(namespace.source.fileName)}
+                    {getVocabularyTitle(namespace.source.fileName)}
                   </Link>
                   <a
                     href={sourceHref}

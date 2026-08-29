@@ -149,6 +149,44 @@ describe('VocabularyNamespacePage', () => {
     expect(nextLink.className).toContain('hover:border-[var(--color-border-default)]');
     expect(nextLink.className).toContain('hover:bg-[var(--color-surface-subtle)]');
     expect(screen.queryByRole('link', { name: 'Vokabularseite öffnen' })).not.toBeInTheDocument();
+    expect(document.title).toBe('Aufwandsstufen — Vokabulare — Grundschutz++ Navigator');
+  });
+
+  it('uses a fixed unavailable title without putting an unknown route parameter in it', () => {
+    const unknownNamespaceId = 'unbekannter-roher-url-wert';
+    mockedUseCatalog.mockReturnValue(makeCatalogState());
+
+    render(
+      <MemoryRouter initialEntries={[`/vokabular/${unknownNamespaceId}`]}>
+        <Routes>
+          <Route path="/vokabular/:namespaceId" element={<VocabularyNamespacePage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(document.title).toBe('Vokabular nicht verfügbar — Grundschutz++ Navigator');
+    expect(document.title).not.toContain(unknownNamespaceId);
+  });
+
+  it.each([
+    { loading: true, error: null, description: 'loading' },
+    { loading: false, error: 'Netzwerkfehler', description: 'error' },
+  ])('uses a neutral vocabulary title while $description', ({ loading, error }) => {
+    mockedUseCatalog.mockReturnValue({
+      ...makeCatalogState(),
+      loading,
+      error,
+    });
+
+    render(
+      <MemoryRouter initialEntries={['/vokabular/documentation-namespaces-effort-level']}>
+        <Routes>
+          <Route path="/vokabular/:namespaceId" element={<VocabularyNamespacePage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(document.title).toBe('Vokabulare — Grundschutz++ Navigator');
   });
 
   it('keeps a concise inline hint when no value is selected yet', () => {

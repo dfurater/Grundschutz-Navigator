@@ -158,6 +158,16 @@ describe('AppShell', () => {
     expect(container.querySelector('aside')).toBeInTheDocument();
   });
 
+  it('uses the product name as the home page title', () => {
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+
+    expect(document.title).toBe('Grundschutz++ Navigator');
+  });
+
   it('registers vocabulary routes and document titles', () => {
     render(
       <MemoryRouter initialEntries={['/vokabular']}>
@@ -169,7 +179,7 @@ describe('AppShell', () => {
     expect(document.title).toBe('Vokabulare — Grundschutz++ Navigator');
   });
 
-  it('registers vocabulary detail routes and document titles', () => {
+  it('registers vocabulary detail routes', () => {
     render(
       <MemoryRouter initialEntries={['/vokabular/security-level']}>
         <AppShell />
@@ -177,7 +187,16 @@ describe('AppShell', () => {
     );
 
     expect(screen.getByText('Vokabular-Detail')).toBeInTheDocument();
-    expect(document.title).toBe('security-level — Vokabulare — Grundschutz++ Navigator');
+  });
+
+  it('uses a specific title for the general catch-all route', () => {
+    render(
+      <MemoryRouter initialEntries={['/missing']}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+
+    expect(document.title).toBe('Seite nicht gefunden — Grundschutz++ Navigator');
   });
 
   it('renders the footer without hiding it below desktop breakpoints', () => {
