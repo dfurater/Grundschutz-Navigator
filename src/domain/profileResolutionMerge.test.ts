@@ -695,12 +695,40 @@ describe('custom-Struktur: Pruning nicht selektierter Nachfahren (GSPP-377)', ()
     expect(placedChildIdsOf([parent], ['a-1', 'a-1-1-1'])).toEqual(['a-1-1-1']);
   });
 
-  it('vereinigt die Auswahlen, wenn derselbe Knoten aus zwei Importen stammt', () => {
+  it('bindet die Auswahl an die gewinnende Importinstanz, wenn derselbe Knoten mehrfach importiert wird', () => {
     // Importiert ein Profil denselben href zweimal mit unterschiedlichen
     // include-controls, liefert Phase 1 in beiden Inklusionen DASSELBE
-    // Knotenobjekt. Als Map-Schlüssel fällt es zusammen: Ein blosses
-    // Überschreiben gäbe der ersten Inklusion die Auswahl der zweiten und
-    // prunte ein dort sehr wohl selektiertes Kind weg (Greptile-Befund).
+    // Knotenobjekt; als Map-Schlüssel fällt es zusammen. Bei use-first gewinnt
+    // die erste Instanz — ihre Auswahl prunt, nicht die der zweiten und auch
+    // nicht deren Vereinigung. Das nur später selektierte Kind geht dabei
+    // nicht verloren: Es ist dort als eigener Knoten registriert und erscheint
+    // eigenständig.
+    const parent = control('a-1', { controls: [control('a-1-1'), control('a-1-2')] });
+    const combined = applyCombine(
+      [
+        { documentKey: 'doc-a', controls: [parent, control('a-1-1')] },
+        { documentKey: 'doc-a', controls: [parent, control('a-1-2')] },
+      ],
+      'use-first',
+    );
+
+    // Nur das Elternteil per Direktive, damit allein die Inklusionsbindung wirkt.
+    const result = buildCustomGroups(
+      { rawGroups: [], typedGroups: [], insertControls: [withIdsDirective(['a-1'])] },
+      combined,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const placed = result.controls.find((c) => c['id'] === 'a-1');
+    const children = (placed?.['controls'] ?? []) as Record<string, unknown>[];
+    expect(children.map((c) => c['id'])).toEqual(['a-1-1']);
+  });
+
+  it('behält ein nur später importiertes Kind, sobald eine Direktive es selektiert', () => {
+    // Gegenstück zum vorigen Fall: Die Bindung an die erste Importinstanz
+    // verwirft nichts ausdrücklich Selektiertes — die Direktiven-Selektion
+    // bleibt die zweite Quelle der Prune-Menge.
     const parent = control('a-1', { controls: [control('a-1-1'), control('a-1-2')] });
     const combined = applyCombine(
       [
@@ -711,7 +739,7 @@ describe('custom-Struktur: Pruning nicht selektierter Nachfahren (GSPP-377)', ()
     );
 
     const result = buildCustomGroups(
-      { rawGroups: [], typedGroups: [], insertControls: [withIdsDirective(['a-1'])] },
+      { rawGroups: [], typedGroups: [], insertControls: [withIdsDirective(['a-1', 'a-1-2'])] },
       combined,
     );
 

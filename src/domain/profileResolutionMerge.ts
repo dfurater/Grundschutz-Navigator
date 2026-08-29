@@ -134,7 +134,7 @@ export function applyCombine(
   const definitions = new Map<string, JsonObject[]>();
   const order: JsonObject[] = [];
   const clashes = new Set<string>();
-  const sourceIdsByDefinition = new Map<JsonObject, Set<string>>();
+  const sourceIdsByDefinition = new Map<JsonObject, ReadonlySet<string>>();
 
   for (const inclusion of ownArrayDataElements(inclusions)) {
     const nodesInInclusion = controlsFromInclusion(inclusion).filter(isJsonObject);
@@ -146,16 +146,21 @@ export function applyCombine(
       .filter((id) => id.length > 0);
     for (const node of nodesInInclusion) {
       registerCombinedControl(node, method, definitions, order, clashes);
-      // Akkumulieren, nicht überschreiben: Importiert ein Profil denselben
-      // href mehrfach mit unterschiedlichen include-controls, liefert Phase 1
-      // in jeder Inklusion DASSELBE Knotenobjekt. Als Map-Schlüssel fällt es
-      // zusammen — ein `set` gäbe der ersten Inklusion die Auswahl der
-      // späteren und prunte ein dort selektiertes Kind weg. Der Knoten wird
-      // nur einmal ausgegeben, seine Prune-Menge ist deshalb die Vereinigung
-      // aller Inklusionen, aus denen er stammt.
-      const scope = sourceIdsByDefinition.get(node);
-      if (scope === undefined) sourceIdsByDefinition.set(node, new Set(idsInInclusion));
-      else for (const id of idsInInclusion) scope.add(id);
+      // Erste Registrierung gewinnt — dieselbe Regel, nach der auch
+      // `registerCombinedControl` die Definition wählt.
+      //
+      // Importiert ein Profil denselben href mehrfach mit unterschiedlichen
+      // include-controls, liefert Phase 1 in jeder Inklusion DASSELBE
+      // Knotenobjekt; als Map-Schlüssel fällt es zusammen. Ein `set` gäbe der
+      // gewinnenden ersten Definition die Auswahl der späteren Instanz, eine
+      // Vereinigung gäbe ihr die Auswahl aller Instanzen — beides prunt gegen
+      // eine Menge, die der gewinnende Import gar nicht selektiert hat.
+      // Ein Control, das nur eine spätere Instanz selektiert, geht dadurch
+      // nicht verloren: Es ist dort als eigener Knoten registriert und
+      // erscheint eigenständig im Ergebnis.
+      if (!sourceIdsByDefinition.has(node)) {
+        sourceIdsByDefinition.set(node, new Set(idsInInclusion));
+      }
     }
   }
 
