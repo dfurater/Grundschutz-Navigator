@@ -655,45 +655,44 @@ describe('custom-Struktur: Pruning nicht selektierter Nachfahren (GSPP-377)', ()
     };
   }
 
+  /** IDs der verschachtelten Kinder, mit denen `a-1` platziert wurde. */
+  function placedChildIdsOf(
+    inclusionControls: Record<string, unknown>[],
+    selectedIds: string[],
+  ): string[] {
+    const combined = applyCombine(
+      [{ documentKey: 'doc-a', controls: inclusionControls }],
+      'use-first',
+    );
+    const result = buildCustomGroups(
+      { rawGroups: [], typedGroups: [], insertControls: [withIdsDirective(selectedIds)] },
+      combined,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return [];
+    const placed = result.controls.find((c) => c['id'] === 'a-1');
+    return ((placed?.['controls'] ?? []) as Record<string, unknown>[])
+      .map((c) => String(c['id']));
+  }
+
   it('entfernt ein nicht selektiertes verschachteltes Kind aus der Definition', () => {
     // Der reale BSI-Fall: Das WLAN-Profil führt ARCH.2.2 und elf seiner zwölf
     // Kernel-Kinder einzeln in with-ids, ARCH.2.2.12 aber nicht. Bis GSPP-377
     // übernahm die Assemblierung die Elterndefinition unverändert und lieferte
     // das zwölfte Kind mit — der aufgelöste Katalog hatte eine Control zu viel.
     const parent = control('a-1', { controls: [control('a-1-1'), control('a-1-2')] });
-    const combined = applyCombine(
-      [{ documentKey: 'doc-a', controls: [parent, control('a-1-1')] }],
-      'use-first',
-    );
 
-    const result = buildCustomGroups(
-      { rawGroups: [], typedGroups: [], insertControls: [withIdsDirective(['a-1', 'a-1-1'])] },
-      combined,
-    );
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    const placed = result.controls.find((c) => c['id'] === 'a-1');
-    const children = (placed?.['controls'] ?? []) as Record<string, unknown>[];
-    expect(children.map((c) => c['id'])).toEqual(['a-1-1']);
+    expect(placedChildIdsOf([parent, control('a-1-1')], ['a-1', 'a-1-1']))
+      .toEqual(['a-1-1']);
   });
 
   it('zieht den selektierten Enkel hoch, wenn die Zwischenebene nicht selektiert ist', () => {
     const parent = control('a-1', {
       controls: [control('a-1-1', { controls: [control('a-1-1-1')] })],
     });
-    const combined = applyCombine([{ documentKey: 'doc-a', controls: [parent] }], 'use-first');
 
-    const result = buildCustomGroups(
-      { rawGroups: [], typedGroups: [], insertControls: [withIdsDirective(['a-1', 'a-1-1-1'])] },
-      combined,
-    );
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    const placed = result.controls.find((c) => c['id'] === 'a-1');
-    const children = (placed?.['controls'] ?? []) as Record<string, unknown>[];
-    expect(children.map((c) => c['id'])).toEqual(['a-1-1-1']);
+    expect(placedChildIdsOf([parent], ['a-1', 'a-1-1-1'])).toEqual(['a-1-1-1']);
   });
 
   it('prunt quellenscharf, wenn zwei Importe dieselbe Control-ID tragen', () => {
@@ -731,23 +730,11 @@ describe('custom-Struktur: Pruning nicht selektierter Nachfahren (GSPP-377)', ()
     // ID-lose Knoten ein leerer String darin — ein ID-loses verschachteltes
     // Kind bliebe dann erhalten statt geprunt zu werden.
     const parent = control('a-1', { controls: [{ title: 'ohne id' }] });
-    const combined = applyCombine(
-      [{
-        documentKey: 'doc-a',
-        controls: [parent, { title: 'auch ohne id' } as Record<string, unknown>],
-      }],
-      'use-first',
-    );
 
-    const result = buildCustomGroups(
-      { rawGroups: [], typedGroups: [], insertControls: [withIdsDirective(['a-1'])] },
-      combined,
-    );
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    const placed = result.controls.find((c) => c['id'] === 'a-1');
-    expect(placed?.['controls']).toBeUndefined();
+    expect(placedChildIdsOf(
+      [parent, { title: 'auch ohne id' } as Record<string, unknown>],
+      ['a-1'],
+    )).toEqual([]);
   });
 
   it('prunt in einer Custom-Gruppe genauso wie auf Catalog-Ebene', () => {
