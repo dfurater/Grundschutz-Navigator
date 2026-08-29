@@ -3,9 +3,11 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 describe('PageTitle deployment contract', () => {
-  it('leaves the document title to the declarative React title source', () => {
+  it('provides a marked product-title fallback before React starts', () => {
     const indexHtml = readFileSync(resolve(process.cwd(), 'index.html'), 'utf8');
 
-    expect(indexHtml).not.toMatch(/<title(?:\s|>)/i);
+    expect(indexHtml).toContain(
+      '<title data-page-title-fallback>Grundschutz++ Navigator</title>',
+    );
   });
 });
