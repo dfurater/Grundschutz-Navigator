@@ -175,11 +175,13 @@ export function CatalogBrowser() {
     );
   }
 
-  const pageTitle = selectedControl
-    ? `${selectedControl.id} — ${selectedControl.title} — ${catalog.metadata.title}`
-    : scopeId
-      ? `${currentTitle} — ${catalog.metadata.title}`
-      : catalog.metadata.title;
+  let pageTitle = catalog.metadata.title;
+  if (scopeId) {
+    pageTitle = `${currentTitle} — ${catalog.metadata.title}`;
+  }
+  if (selectedControl) {
+    pageTitle = `${selectedControl.id} — ${selectedControl.title} — ${catalog.metadata.title}`;
+  }
 
   const controlsById = catalog.controlsById ?? EMPTY_CONTROLS_BY_ID;
   const filterPanelProps: FilterPanelProps = {
