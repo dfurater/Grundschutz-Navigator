@@ -134,19 +134,28 @@ export function applyCombine(
   const definitions = new Map<string, JsonObject[]>();
   const order: JsonObject[] = [];
   const clashes = new Set<string>();
-  const sourceIdsByDefinition = new Map<JsonObject, ReadonlySet<string>>();
+  const sourceIdsByDefinition = new Map<JsonObject, Set<string>>();
 
   for (const inclusion of ownArrayDataElements(inclusions)) {
     const nodesInInclusion = controlsFromInclusion(inclusion).filter(isJsonObject);
     // Leere IDs ausfiltern: `readIdOrEmpty` liefert '' für ID-lose Knoten, und
     // eine Prune-Menge mit '' würde jedes ID-lose verschachtelte Kind als
     // "selektiert" behandeln und stehen lassen.
-    const idsInInclusion: ReadonlySet<string> = new Set(
-      nodesInInclusion.map(readIdOrEmpty).filter((id) => id.length > 0),
-    );
+    const idsInInclusion = nodesInInclusion
+      .map(readIdOrEmpty)
+      .filter((id) => id.length > 0);
     for (const node of nodesInInclusion) {
       registerCombinedControl(node, method, definitions, order, clashes);
-      sourceIdsByDefinition.set(node, idsInInclusion);
+      // Akkumulieren, nicht überschreiben: Importiert ein Profil denselben
+      // href mehrfach mit unterschiedlichen include-controls, liefert Phase 1
+      // in jeder Inklusion DASSELBE Knotenobjekt. Als Map-Schlüssel fällt es
+      // zusammen — ein `set` gäbe der ersten Inklusion die Auswahl der
+      // späteren und prunte ein dort selektiertes Kind weg. Der Knoten wird
+      // nur einmal ausgegeben, seine Prune-Menge ist deshalb die Vereinigung
+      // aller Inklusionen, aus denen er stammt.
+      const scope = sourceIdsByDefinition.get(node);
+      if (scope === undefined) sourceIdsByDefinition.set(node, new Set(idsInInclusion));
+      else for (const id of idsInInclusion) scope.add(id);
     }
   }
 

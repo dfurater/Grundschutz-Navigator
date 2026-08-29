@@ -695,6 +695,33 @@ describe('custom-Struktur: Pruning nicht selektierter Nachfahren (GSPP-377)', ()
     expect(placedChildIdsOf([parent], ['a-1', 'a-1-1-1'])).toEqual(['a-1-1-1']);
   });
 
+  it('vereinigt die Auswahlen, wenn derselbe Knoten aus zwei Importen stammt', () => {
+    // Importiert ein Profil denselben href zweimal mit unterschiedlichen
+    // include-controls, liefert Phase 1 in beiden Inklusionen DASSELBE
+    // Knotenobjekt. Als Map-Schlüssel fällt es zusammen: Ein blosses
+    // Überschreiben gäbe der ersten Inklusion die Auswahl der zweiten und
+    // prunte ein dort sehr wohl selektiertes Kind weg (Greptile-Befund).
+    const parent = control('a-1', { controls: [control('a-1-1'), control('a-1-2')] });
+    const combined = applyCombine(
+      [
+        { documentKey: 'doc-a', controls: [parent, control('a-1-1')] },
+        { documentKey: 'doc-a', controls: [parent, control('a-1-2')] },
+      ],
+      'use-first',
+    );
+
+    const result = buildCustomGroups(
+      { rawGroups: [], typedGroups: [], insertControls: [withIdsDirective(['a-1'])] },
+      combined,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const placed = result.controls.find((c) => c['id'] === 'a-1');
+    const children = (placed?.['controls'] ?? []) as Record<string, unknown>[];
+    expect(children.map((c) => c['id'])).toEqual(['a-1-1', 'a-1-2']);
+  });
+
   it('prunt quellenscharf, wenn zwei Importe dieselbe Control-ID tragen', () => {
     // combine=keep hält beide Definitionen. Nur Import B hat das Kind
     // eigenständig inkludiert; gegen eine globale ID-Menge geprunt bliebe es
