@@ -788,6 +788,47 @@ describe('custom-Struktur: Pruning nicht selektierter Nachfahren (GSPP-377)', ()
     expect(children.map((c) => c['id'])).toEqual(['a-1-1', 'a-1-2']);
   });
 
+  it.each(['Root', 'Custom-Gruppe'] as const)(
+    'behält bei combine=keep die Auswahl jeder wiederholten Importinstanz auf %s',
+    (placement) => {
+      const firstChild = control('a-1-1');
+      const secondChild = control('a-1-2');
+      const parent = control('a-1', { controls: [firstChild, secondChild] });
+      const combined = applyCombine(
+        [
+          { documentKey: 'doc-a', controls: [parent, firstChild] },
+          { documentKey: 'doc-a', controls: [parent, secondChild] },
+        ],
+        'keep',
+      );
+      const inGroup = placement === 'Custom-Gruppe';
+      const result = buildCustomGroups(
+        {
+          rawGroups: inGroup ? [{ id: 'g-1', title: 'Gruppe 1' }] : [],
+          typedGroups: inGroup ? [{
+            id: 'g-1',
+            insertControls: [withIdsDirective(['a-1'])],
+            groups: [], params: [], props: [], links: [], parts: [],
+            path: '/profile/merge/custom/groups[0]',
+          }] : [],
+          insertControls: inGroup ? [] : [withIdsDirective(['a-1'])],
+        },
+        combined,
+      );
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const placed = inGroup
+        ? (((result.groups[0] as Record<string, unknown>)['controls'] ?? []) as Record<string, unknown>[])
+        : result.controls;
+      const parents = placed.filter((definition) => definition['id'] === 'a-1');
+      expect(parents).toHaveLength(2);
+      expect(parents.map((definition) =>
+        ((definition['controls'] ?? []) as Record<string, unknown>[])
+          .map((child) => child['id']))).toEqual([['a-1-1'], ['a-1-2']]);
+    },
+  );
+
   it('prunt quellenscharf, wenn zwei Importe dieselbe Control-ID tragen', () => {
     // combine=keep hält beide Definitionen. Nur Import B hat das Kind
     // eigenständig inkludiert; gegen eine globale ID-Menge geprunt bliebe es

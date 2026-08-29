@@ -145,9 +145,19 @@ export function applyCombine(
       .map(readIdOrEmpty)
       .filter((id) => id.length > 0);
     for (const node of nodesInInclusion) {
-      registerCombinedControl(node, method, definitions, order, clashes);
-      // Erste Registrierung gewinnt — dieselbe Regel, nach der auch
-      // `registerCombinedControl` die Definition wählt.
+      // `keep` erhält jedes Importvorkommen — auch wenn zwei Inklusionen wegen
+      // desselben href dasselbe Rohobjekt wiederverwenden. Nur in diesem
+      // Kollisionsfall gibt eine flache, deskriptorbasierte Kopie dem späteren
+      // Vorkommen eine eigene Identität; unterschiedliche Rohknoten und
+      // `use-first` behalten ihre bisherige Identität. Die späteren
+      // Projektionspfade kopieren den verschachtelten Baum ohnehin und
+      // verändern diese Werte nie.
+      const definition = method === 'keep' && sourceIdsByDefinition.has(node)
+        ? copyOwnDataMembers(node)
+        : node;
+      registerCombinedControl(definition, method, definitions, order, clashes);
+      // Bei use-first gewinnt die erste Registrierung — dieselbe Regel, nach
+      // der auch `registerCombinedControl` die Definition wählt.
       //
       // Importiert ein Profil denselben href mehrfach mit unterschiedlichen
       // include-controls, liefert Phase 1 in jeder Inklusion DASSELBE
@@ -157,9 +167,10 @@ export function applyCombine(
       // eine Menge, die der gewinnende Import gar nicht selektiert hat.
       // Ein Control, das nur eine spätere Instanz selektiert, geht dadurch
       // nicht verloren: Es ist dort als eigener Knoten registriert und
-      // erscheint eigenständig im Ergebnis.
-      if (!sourceIdsByDefinition.has(node)) {
-        sourceIdsByDefinition.set(node, new Set(idsInInclusion));
+      // erscheint eigenständig im Ergebnis. Bei keep ist `definition` dagegen
+      // pro Importvorkommen eindeutig und bewahrt deshalb jede Auswahl separat.
+      if (!sourceIdsByDefinition.has(definition)) {
+        sourceIdsByDefinition.set(definition, new Set(idsInInclusion));
       }
     }
   }
