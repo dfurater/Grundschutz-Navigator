@@ -49,10 +49,10 @@ export const BSI_PROFILE_RESOLUTION_DIFFERENCES: readonly BsiCorpusDifference[] 
   { corpusKey: 'lieferkette', controlId: 'BES.4.5', member: 'links', href: '#DEV.2.1', reason: LINK_REASON },
   { corpusKey: 'lieferkette', controlId: 'ASST.5.6', member: 'links', href: '#SENS.8.6', reason: LINK_REASON },
   { corpusKey: 'wlan', controlId: 'DET.4.11.2', member: 'links', href: '#DET.4.10', reason: LINK_REASON },
-  { corpusKey: 'wlan', controlId: 'ARCH.5.1.10', member: 'links', href: '#KONF.12.1.7', reason: LINK_REASON },
   { corpusKey: 'wlan', controlId: 'ARCH.4.1', member: 'links', href: '#DET.4.4', reason: LINK_REASON },
   { corpusKey: 'wlan', controlId: 'ARCH.4.1', member: 'links', href: '#DET.3.1.8', reason: LINK_REASON },
   { corpusKey: 'wlan', controlId: 'ARCH.2.2.8', member: 'links', href: '#TEST.3.1.5', reason: LINK_REASON },
   { corpusKey: 'wlan', controlId: 'ARCH.2.4', member: 'links', href: '#ASST.2.1', reason: LINK_REASON },
+  { corpusKey: 'wlan', controlId: 'SENS.7.14', member: 'links', href: '#ASST.4.1', reason: LINK_REASON },
   { corpusKey: 'lieferkette', controlId: 'KONF.2.4.2', member: 'controls', position: 'end', reason: ORDER_REASON },
 ]);

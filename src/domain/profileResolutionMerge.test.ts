@@ -645,3 +645,288 @@ describe('custom-Struktur', () => {
     expect(excluded.controls.map((node) => node['id'])).toEqual(['a-1']);
   });
 });
+
+describe('custom-Struktur: Pruning nicht selektierter Nachfahren (GSPP-377)', () => {
+  function withIdsDirective(ids: string[]): ProfileInsertControls {
+    return {
+      selection: { kind: 'include-controls', includeControls: [withIdsSelector(ids)] },
+      excludeControls: [],
+      path: '/profile/merge/custom/insert-controls',
+    };
+  }
+
+  /** IDs der verschachtelten Kinder, mit denen `a-1` platziert wurde. */
+  function placedChildIdsOf(
+    inclusionControls: Record<string, unknown>[],
+    selectedIds: string[],
+  ): string[] {
+    const combined = applyCombine(
+      [{ documentKey: 'doc-a', controls: inclusionControls }],
+      'use-first',
+    );
+    const result = buildCustomGroups(
+      { rawGroups: [], typedGroups: [], insertControls: [withIdsDirective(selectedIds)] },
+      combined,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return [];
+    const placed = result.controls.find((c) => c['id'] === 'a-1');
+    return ((placed?.['controls'] ?? []) as Record<string, unknown>[])
+      .map((c) => String(c['id']));
+  }
+
+  function separatedPlacementChildIds(
+    rootIds: string[],
+    groupIds: string[][],
+  ): { root: unknown[]; groups: unknown[][] } {
+    const parent = control('a-1', { controls: [control('a-1-1'), control('a-1-2')] });
+    const combined = applyCombine([{ documentKey: 'doc-a', controls: [parent] }], 'use-first');
+    const result = buildCustomGroups(
+      {
+        rawGroups: groupIds.map((_, index) => ({
+          id: `g-${index + 1}`,
+          title: `Gruppe ${index + 1}`,
+        })),
+        typedGroups: groupIds.map((ids, index) => ({
+          id: `g-${index + 1}`,
+          insertControls: [withIdsDirective(ids)],
+          groups: [], params: [], props: [], links: [], parts: [],
+          path: `/profile/merge/custom/groups[${index}]`,
+        })),
+        insertControls: rootIds.length > 0 ? [withIdsDirective(rootIds)] : [],
+      },
+      combined,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return { root: [], groups: [] };
+    const childIdsOf = (controls: readonly Record<string, unknown>[]) => {
+      const placed = controls.find((candidate) => candidate['id'] === 'a-1');
+      return ((placed?.['controls'] ?? []) as Record<string, unknown>[])
+        .map((child) => child['id']);
+    };
+    return {
+      root: childIdsOf(result.controls),
+      groups: result.groups.map((group) => childIdsOf(
+        ((group as Record<string, unknown>)['controls'] ?? []) as Record<string, unknown>[],
+      )),
+    };
+  }
+
+  it('entfernt ein nicht selektiertes verschachteltes Kind aus der Definition', () => {
+    // Der reale BSI-Fall: Das WLAN-Profil führt ARCH.2.2 und elf seiner zwölf
+    // Kernel-Kinder einzeln in with-ids, ARCH.2.2.12 aber nicht. Bis GSPP-377
+    // übernahm die Assemblierung die Elterndefinition unverändert und lieferte
+    // das zwölfte Kind mit — der aufgelöste Katalog hatte eine Control zu viel.
+    const parent = control('a-1', { controls: [control('a-1-1'), control('a-1-2')] });
+
+    expect(placedChildIdsOf([parent, control('a-1-1')], ['a-1', 'a-1-1']))
+      .toEqual(['a-1-1']);
+  });
+
+  it('zieht den selektierten Enkel hoch, wenn die Zwischenebene nicht selektiert ist', () => {
+    const parent = control('a-1', {
+      controls: [control('a-1-1', { controls: [control('a-1-1-1')] })],
+    });
+
+    expect(placedChildIdsOf([parent], ['a-1', 'a-1-1-1'])).toEqual(['a-1-1-1']);
+  });
+
+  it('bindet die Auswahl an die gewinnende Importinstanz, wenn derselbe Knoten mehrfach importiert wird', () => {
+    // Importiert ein Profil denselben href zweimal mit unterschiedlichen
+    // include-controls, liefert Phase 1 in beiden Inklusionen DASSELBE
+    // Knotenobjekt; als Map-Schlüssel fällt es zusammen. Bei use-first gewinnt
+    // die erste Instanz — ihre Auswahl prunt, nicht die der zweiten und auch
+    // nicht deren Vereinigung. Das nur später selektierte Kind geht dabei
+    // nicht verloren: Es ist dort als eigener Knoten registriert und erscheint
+    // eigenständig.
+    const parent = control('a-1', { controls: [control('a-1-1'), control('a-1-2')] });
+    const combined = applyCombine(
+      [
+        { documentKey: 'doc-a', controls: [parent, control('a-1-1')] },
+        { documentKey: 'doc-a', controls: [parent, control('a-1-2')] },
+      ],
+      'use-first',
+    );
+
+    // Nur das Elternteil per Direktive, damit allein die Inklusionsbindung wirkt.
+    const result = buildCustomGroups(
+      { rawGroups: [], typedGroups: [], insertControls: [withIdsDirective(['a-1'])] },
+      combined,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const placed = result.controls.find((c) => c['id'] === 'a-1');
+    const children = (placed?.['controls'] ?? []) as Record<string, unknown>[];
+    expect(children.map((c) => c['id'])).toEqual(['a-1-1']);
+  });
+
+  it('behält ein nur später importiertes Kind, sobald eine Direktive es selektiert', () => {
+    // Gegenstück zum vorigen Fall: Die Bindung an die erste Importinstanz
+    // verwirft nichts ausdrücklich Selektiertes — die Direktiven-Selektion
+    // bleibt die zweite Quelle der Prune-Menge.
+    const parent = control('a-1', { controls: [control('a-1-1'), control('a-1-2')] });
+    const combined = applyCombine(
+      [
+        { documentKey: 'doc-a', controls: [parent, control('a-1-1')] },
+        { documentKey: 'doc-a', controls: [parent, control('a-1-2')] },
+      ],
+      'use-first',
+    );
+
+    const result = buildCustomGroups(
+      { rawGroups: [], typedGroups: [], insertControls: [withIdsDirective(['a-1', 'a-1-2'])] },
+      combined,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const placed = result.controls.find((c) => c['id'] === 'a-1');
+    const children = (placed?.['controls'] ?? []) as Record<string, unknown>[];
+    expect(children.map((c) => c['id'])).toEqual(['a-1-1', 'a-1-2']);
+  });
+
+  it.each(['Root', 'Custom-Gruppe'] as const)(
+    'behält bei combine=keep die Auswahl jeder wiederholten Importinstanz auf %s',
+    (placement) => {
+      const firstChild = control('a-1-1');
+      const secondChild = control('a-1-2');
+      const parent = control('a-1', { controls: [firstChild, secondChild] });
+      const combined = applyCombine(
+        [
+          { documentKey: 'doc-a', controls: [parent, firstChild] },
+          { documentKey: 'doc-a', controls: [parent, secondChild] },
+        ],
+        'keep',
+      );
+      const inGroup = placement === 'Custom-Gruppe';
+      const result = buildCustomGroups(
+        {
+          rawGroups: inGroup ? [{ id: 'g-1', title: 'Gruppe 1' }] : [],
+          typedGroups: inGroup ? [{
+            id: 'g-1',
+            insertControls: [withIdsDirective(['a-1'])],
+            groups: [], params: [], props: [], links: [], parts: [],
+            path: '/profile/merge/custom/groups[0]',
+          }] : [],
+          insertControls: inGroup ? [] : [withIdsDirective(['a-1'])],
+        },
+        combined,
+      );
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const placed = inGroup
+        ? (((result.groups[0] as Record<string, unknown>)['controls'] ?? []) as Record<string, unknown>[])
+        : result.controls;
+      const parents = placed.filter((definition) => definition['id'] === 'a-1');
+      expect(parents).toHaveLength(2);
+      expect(parents.map((definition) =>
+        ((definition['controls'] ?? []) as Record<string, unknown>[])
+          .map((child) => child['id']))).toEqual([['a-1-1'], ['a-1-2']]);
+    },
+  );
+
+  it('prunt quellenscharf, wenn zwei Importe dieselbe Control-ID tragen', () => {
+    // combine=keep hält beide Definitionen. Nur Import B hat das Kind
+    // eigenständig inkludiert; gegen eine globale ID-Menge geprunt bliebe es
+    // auch in der Definition von Import A stehen und brächte eine dort nie
+    // inkludierte Control in den aufgelösten Katalog.
+    const fromA = control('shared', { controls: [control('child')] });
+    const fromB = control('shared', { controls: [control('child')] });
+    const combined = applyCombine(
+      [
+        { documentKey: 'doc-a', controls: [fromA] },
+        { documentKey: 'doc-b', controls: [fromB, control('child')] },
+      ],
+      'keep',
+    );
+
+    const result = buildCustomGroups(
+      { rawGroups: [], typedGroups: [], insertControls: [withIdsDirective(['shared'])] },
+      combined,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const shared = result.controls.filter((c) => c['id'] === 'shared');
+    expect(shared).toHaveLength(2);
+    const childCounts = shared.map(
+      (definition) => ((definition['controls'] ?? []) as unknown[]).length,
+    );
+    expect(childCounts.toSorted()).toEqual([0, 1]);
+  });
+
+  it('prunt ID-lose verschachtelte Kinder auch neben einem ID-losen Wurzelknoten', () => {
+    // Wird die Prune-Menge aus ALLEN Knoten der Inklusion gebildet, landet für
+    // ID-lose Knoten ein leerer String darin — ein ID-loses verschachteltes
+    // Kind bliebe dann erhalten statt geprunt zu werden.
+    const parent = control('a-1', { controls: [{ title: 'ohne id' }] });
+
+    expect(placedChildIdsOf(
+      [parent, { title: 'auch ohne id' } as Record<string, unknown>],
+      ['a-1'],
+    )).toEqual([]);
+  });
+
+  it('hält die Auswahl zweier Gruppen auseinander', () => {
+    // Wird derselbe Parent in zwei Gruppen mit unterschiedlichen
+    // Kindselektionen eingefügt, darf jede Gruppe nur ihre eigenen Kinder
+    // zeigen. Eine global vereinigte Selektionsmenge liesse in beiden Gruppen
+    // beide Kinder stehen (Greptile-Befund).
+    const childIds = separatedPlacementChildIds(
+      [],
+      [['a-1', 'a-1-1'], ['a-1', 'a-1-2']],
+    );
+
+    expect(childIds.groups).toEqual([['a-1-1'], ['a-1-2']]);
+  });
+
+  it('hält Root- und Gruppenauswahl auseinander', () => {
+    const childIds = separatedPlacementChildIds(
+      ['a-1', 'a-1-1'],
+      [['a-1', 'a-1-2']],
+    );
+
+    expect(childIds.root).toEqual(['a-1-1']);
+    expect(childIds.groups).toEqual([['a-1-2']]);
+  });
+
+  it('prunt in einer Custom-Gruppe genauso wie auf Catalog-Ebene', () => {
+    // Der reale BSI-Pfad: Das WLAN-Profil platziert seine Controls über
+    // insert-controls IN Gruppen, nicht auf Catalog-Ebene.
+    const parent = control('a-1', { controls: [control('a-1-1'), control('a-1-2')] });
+    const combined = applyCombine(
+      [{ documentKey: 'doc-a', controls: [parent, control('a-1-1')] }],
+      'use-first',
+    );
+
+    const result = buildCustomGroups(
+      {
+        rawGroups: [{ id: 'g-1', title: 'Gruppe 1' }],
+        typedGroups: [{
+          id: 'g-1',
+          insertControls: [withIdsDirective(['a-1', 'a-1-1'])],
+          groups: [],
+          params: [],
+          props: [],
+          links: [],
+          parts: [],
+          path: '/profile/merge/custom/groups[0]',
+        }],
+        insertControls: [],
+      },
+      combined,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const group = result.groups[0] as Record<string, unknown>;
+    const placed = ((group['controls'] ?? []) as Record<string, unknown>[])
+      .find((c) => c['id'] === 'a-1');
+    const children = (placed?.['controls'] ?? []) as Record<string, unknown>[];
+    expect(children.map((c) => c['id'])).toEqual(['a-1-1']);
+  });
+});
