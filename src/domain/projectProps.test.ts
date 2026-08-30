@@ -60,7 +60,9 @@ describe('effort-estimate-hours', () => {
     (value) => expect(parseCanonicalEffortEstimate(value)).toBe(value),
   );
 
-  it.each(['0', '-1', '1.234', '1e3', '1 h', '01', '1.0', '1.50', '.5', '1.'])(
+  it.each([
+    '0', '-1', '1.234', '1.2.3', '1e3', '1 h', '01', '00.1', '1.0', '1.50', '.5', '1.',
+  ])(
     'weist den nichtkanonischen Speicherwert %s ab',
     (value) => expect(parseCanonicalEffortEstimate(value)).toBeNull(),
   );
@@ -186,6 +188,28 @@ describe('projectProps read contract', () => {
 
     expect(result.diagnostics[0]?.code).toBe(PROJECT_PROP_DIAGNOSTIC_CODES.GROUP_INVALID);
     expect(JSON.stringify(result.diagnostics)).not.toContain(marker);
+  });
+
+  it.each([
+    ['nicht-stringförmiger Name', {
+      name: null, ns: PROJECT_PROPS_NAMESPACE, value: 'high',
+    }, 'poam-item', PROJECT_PROP_DIAGNOSTIC_CODES.NAME_INVALID],
+    ['nicht-stringförmiger Wert', {
+      name: 'effort-estimate-hours', ns: PROJECT_PROPS_NAMESPACE, value: null,
+    }, 'poam-item', PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID],
+    ['nicht-stringförmige Gruppe', {
+      name: 'implementation-priority', ns: PROJECT_PROPS_NAMESPACE, value: 'high', group: null,
+    }, 'poam-item', PROJECT_PROP_DIAGNOSTIC_CODES.GROUP_INVALID],
+    ['nicht-stringförmige Remarks', {
+      name: 'protection-need-level', ns: PROJECT_PROPS_NAMESPACE, value: 'hoch', remarks: null,
+    }, 'system-component', PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID],
+  ] as const)('weist %s am Reader-Boundary redigiert ab', (_label, prop, carrier, code) => {
+    const result = readProjectProps([prop] as never, carrier);
+
+    expect(result.writeAllowed).toBe(false);
+    expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toContain(code);
+    expect(result.diagnostics.every((diagnostic) => diagnostic.path.length > 0)).toBe(true);
+    expect(JSON.stringify(result.diagnostics)).not.toContain('hoch');
   });
 
   it.each([

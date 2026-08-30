@@ -136,41 +136,46 @@ function isAsciiDigit(character: string): boolean {
   return character >= '0' && character <= '9';
 }
 
-export function parseCanonicalEffortEstimate(value: string): string | null {
-  let decimalPosition = -1;
-
-  for (let index = 0; index < value.length; index += 1) {
-    const character = value[index];
-    if (character === '.') {
-      if (decimalPosition !== -1) return null;
-      decimalPosition = index;
-      continue;
-    }
-    if (!isAsciiDigit(character)) return null;
+function containsOnlyAsciiDigits(value: string): boolean {
+  if (value.length === 0) return false;
+  for (const character of value) {
+    if (!isAsciiDigit(character)) return false;
   }
+  return true;
+}
 
-  const integerLength = decimalPosition === -1 ? value.length : decimalPosition;
-  if (integerLength === 0) return null;
-  if (integerLength > 1 && value[0] === '0') return null;
+function isCanonicalEffortInteger(value: string): boolean {
+  return containsOnlyAsciiDigits(value)
+    && (value.length === 1 || !value.startsWith('0'));
+}
+
+function isCanonicalEffortFraction(value: string): boolean {
+  return value.length <= 2
+    && containsOnlyAsciiDigits(value)
+    && !value.endsWith('0');
+}
+
+export function parseCanonicalEffortEstimate(value: string): string | null {
+  const decimalPosition = value.indexOf('.');
+  if (decimalPosition !== value.lastIndexOf('.')) return null;
+
+  const integer = decimalPosition === -1 ? value : value.slice(0, decimalPosition);
+  if (!isCanonicalEffortInteger(integer)) return null;
 
   if (decimalPosition === -1) {
-    return value[0] === '0' ? null : value;
+    return value.startsWith('0') ? null : value;
   }
 
-  const fractionLength = value.length - decimalPosition - 1;
-  if (fractionLength < 1 || fractionLength > 2) return null;
-  if (value[value.length - 1] === '0') return null;
+  const fraction = value.slice(decimalPosition + 1);
+  if (!isCanonicalEffortFraction(fraction)) return null;
 
   return value;
 }
 
 export function normalizeEffortEstimateInput(value: string): string | null {
-  let commaPosition = -1;
-  for (let index = 0; index < value.length; index += 1) {
-    if (value[index] !== ',') continue;
-    if (commaPosition !== -1 || value.includes('.')) return null;
-    commaPosition = index;
-  }
+  const commaPosition = value.indexOf(',');
+  if (commaPosition !== value.lastIndexOf(',')) return null;
+  if (commaPosition !== -1 && value.includes('.')) return null;
 
   const normalized = commaPosition === -1
     ? value
@@ -250,75 +255,49 @@ function isProjectPropName(name: string): name is ProjectPropName {
 }
 
 function isProjectPropCarrier(value: unknown): value is ProjectPropCarrier {
-  return PROJECT_PROP_CARRIERS.some((carrier) => carrier === value);
+  return PROJECT_PROP_CARRIERS.includes(value as ProjectPropCarrier);
 }
 
 function validateProjectPropGroup(
   prop: RawOscalProp,
   carrier: ProjectPropCarrier,
 ): OscalDiagnostic[] {
-  return prop.group !== undefined && !isOscalToken(prop.group)
+  return prop.group !== undefined
+    && (typeof prop.group !== 'string' || !isOscalToken(prop.group))
     ? [diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.GROUP_INVALID, carrier)]
     : [];
 }
 
-function validateKnownProjectProp(
+function invalidProjectPropValue(carrier: ProjectPropCarrier): OscalDiagnostic[] {
+  return [diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID, carrier)];
+}
+
+function validateProtectionNeedValue(
   prop: RawOscalProp,
-  name: ProjectPropName,
   carrier: ProjectPropCarrier,
 ): OscalDiagnostic[] {
-  const diagnostics: OscalDiagnostic[] = [];
-  const entry = PROJECT_PROP_REGISTRY[name];
-
-  if (!entry.carriers.includes(carrier)) {
-    diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.CARRIER_INVALID, carrier));
+  if (prop.value !== 'normal' && prop.value !== 'hoch') {
+    return invalidProjectPropValue(carrier);
   }
+  return prop.remarks === undefined || prop.remarks.trim().length === 0
+    ? [diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.REMARKS_REQUIRED, carrier)]
+    : [];
+}
 
-  if (
-    entry.valueContract === 'implementation-priority'
-    && !['high', 'medium', 'low'].includes(prop.value)
-  ) {
-    diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID, carrier));
-  } else if (
-    entry.valueContract === 'effort-estimate-hours'
-    && parseCanonicalEffortEstimate(prop.value) === null
-  ) {
-    diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID, carrier));
-  } else if (
-    entry.valueContract === 'custom-tag'
-    && (prop.value.length === 0 || prop.value.trim() !== prop.value)
-  ) {
-    diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID, carrier));
-  } else if (entry.valueContract === 'protection-need-level') {
-    if (prop.value !== 'normal' && prop.value !== 'hoch') {
-      diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID, carrier));
-    } else if (prop.remarks === undefined || prop.remarks.trim().length === 0) {
-      diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.REMARKS_REQUIRED, carrier));
-    }
-  } else if (entry.valueContract === 'catalog-key') {
-    if (
-      prop.group === undefined
-      || !isCatalogKey(prop.value)
-      || prop.value !== prop.group
-    ) {
-      diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.CATALOG_KEY_INVALID, carrier));
-    }
-  } else if (entry.valueContract === 'catalog-commit') {
-    if (prop.group === undefined) {
-      diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.GROUP_INVALID, carrier));
-    }
-    if (!isLowerHexSha(prop.value)) {
-      diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.CATALOG_COMMIT_INVALID, carrier));
-    }
-  }
-
-  return diagnostics;
+function validateCatalogKeyValue(
+  prop: RawOscalProp,
+  carrier: ProjectPropCarrier,
+): OscalDiagnostic[] {
+  return prop.group === undefined
+    || !isCatalogKey(prop.value)
+    || prop.value !== prop.group
+    ? [diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.CATALOG_KEY_INVALID, carrier)]
+    : [];
 }
 
 function isLowerHexSha(value: string): boolean {
   if (value.length !== 40) return false;
-  for (let index = 0; index < value.length; index += 1) {
-    const character = value[index];
+  for (const character of value) {
     const isDigit = character >= '0' && character <= '9';
     const isLowerHexLetter = character >= 'a' && character <= 'f';
     if (!isDigit && !isLowerHexLetter) return false;
@@ -326,44 +305,118 @@ function isLowerHexSha(value: string): boolean {
   return true;
 }
 
+function validateCatalogCommitValue(
+  prop: RawOscalProp,
+  carrier: ProjectPropCarrier,
+): OscalDiagnostic[] {
+  const diagnostics: OscalDiagnostic[] = [];
+  if (prop.group === undefined) {
+    diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.GROUP_INVALID, carrier));
+  }
+  if (!isLowerHexSha(prop.value)) {
+    diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.CATALOG_COMMIT_INVALID, carrier));
+  }
+  return diagnostics;
+}
+
+function validateProjectPropValue(
+  prop: RawOscalProp,
+  valueContract: ProjectPropRegistryEntry['valueContract'],
+  carrier: ProjectPropCarrier,
+): OscalDiagnostic[] {
+  switch (valueContract) {
+    case 'implementation-priority':
+      return ['high', 'medium', 'low'].includes(prop.value)
+        ? []
+        : invalidProjectPropValue(carrier);
+    case 'effort-estimate-hours':
+      return parseCanonicalEffortEstimate(prop.value) === null
+        ? invalidProjectPropValue(carrier)
+        : [];
+    case 'custom-tag':
+      return prop.value.length === 0 || prop.value.trim() !== prop.value
+        ? invalidProjectPropValue(carrier)
+        : [];
+    case 'protection-need-level':
+      return validateProtectionNeedValue(prop, carrier);
+    case 'catalog-key':
+      return validateCatalogKeyValue(prop, carrier);
+    case 'catalog-commit':
+      return validateCatalogCommitValue(prop, carrier);
+  }
+}
+
+function validateProjectPropCarrier(
+  name: ProjectPropName,
+  carrier: ProjectPropCarrier,
+): OscalDiagnostic[] {
+  const entry = PROJECT_PROP_REGISTRY[name];
+  return entry.carriers.includes(carrier)
+    ? []
+    : [diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.CARRIER_INVALID, carrier)];
+}
+
+function validateKnownProjectProp(
+  prop: RawOscalProp,
+  name: ProjectPropName,
+  carrier: ProjectPropCarrier,
+): OscalDiagnostic[] {
+  return [
+    ...validateProjectPropCarrier(name, carrier),
+    ...validateProjectPropValue(prop, PROJECT_PROP_REGISTRY[name].valueContract, carrier),
+  ];
+}
+
 interface CatalogPairGroup {
   readonly keys: RawOscalProp[];
   readonly commits: RawOscalProp[];
+}
+
+interface CatalogPairCollection {
+  readonly groups: Map<unknown, CatalogPairGroup>;
+  readonly keyGroups: unknown[];
+  readonly commitGroups: unknown[];
+}
+
+function getCatalogPairGroup(
+  groups: Map<unknown, CatalogPairGroup>,
+  groupName: unknown,
+): CatalogPairGroup {
+  const existing = groups.get(groupName);
+  if (existing) return existing;
+  const created = { keys: [], commits: [] };
+  groups.set(groupName, created);
+  return created;
+}
+
+function collectCatalogPairProp(
+  collection: CatalogPairCollection,
+  prop: RawOscalProp,
+): void {
+  if (prop.name === 'assessed-against-catalog-key') {
+    getCatalogPairGroup(collection.groups, prop.group).keys.push(prop);
+    collection.keyGroups.push(prop.group);
+  } else if (prop.name === 'assessed-against-catalog-commit') {
+    getCatalogPairGroup(collection.groups, prop.group).commits.push(prop);
+    collection.commitGroups.push(prop.group);
+  }
 }
 
 function validateCatalogPairs(
   props: readonly RawOscalProp[],
   carrier: ProjectPropCarrier,
 ): OscalDiagnostic[] {
-  const groups = new Map<string | undefined, CatalogPairGroup>();
-  let keyGroup: string | undefined;
-  let commitGroup: string | undefined;
-  let totalKeys = 0;
-  let totalCommits = 0;
-
+  const collection: CatalogPairCollection = {
+    groups: new Map(),
+    keyGroups: [],
+    commitGroups: [],
+  };
   for (const prop of props) {
-    const isKey = prop.name === 'assessed-against-catalog-key';
-    const isCommit = prop.name === 'assessed-against-catalog-commit';
-    if (!isKey && !isCommit) continue;
-
-    let group = groups.get(prop.group);
-    if (!group) {
-      group = { keys: [], commits: [] };
-      groups.set(prop.group, group);
-    }
-    if (isKey) {
-      group.keys.push(prop);
-      keyGroup = prop.group;
-      totalKeys += 1;
-    } else {
-      group.commits.push(prop);
-      commitGroup = prop.group;
-      totalCommits += 1;
-    }
+    collectCatalogPairProp(collection, prop);
   }
 
   const diagnostics: OscalDiagnostic[] = [];
-  for (const group of groups.values()) {
+  for (const group of collection.groups.values()) {
     if (group.keys.length === 0 || group.commits.length === 0) {
       diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.CATALOG_PAIR_INCOMPLETE, carrier));
     }
@@ -372,10 +425,107 @@ function validateCatalogPairs(
     }
   }
 
-  if (totalKeys === 1 && totalCommits === 1 && keyGroup !== commitGroup) {
+  if (
+    collection.keyGroups.length === 1
+    && collection.commitGroups.length === 1
+    && collection.keyGroups[0] !== collection.commitGroups[0]
+  ) {
     diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.CATALOG_GROUP_MISMATCH, carrier));
   }
 
+  return diagnostics;
+}
+
+interface ProjectPropReadAccumulator {
+  readonly projectProps: RawOscalProp[];
+  readonly foreignProps: RawOscalProp[];
+  readonly diagnostics: OscalDiagnostic[];
+  readonly counts: Map<ProjectPropName, number>;
+  readonly customTags: Set<string>;
+}
+
+function hasValidRuntimeValueFields(
+  prop: RawOscalProp,
+  carrier: ProjectPropCarrier,
+  diagnostics: OscalDiagnostic[],
+): boolean {
+  const runtimeProp = prop as unknown as Readonly<Record<string, unknown>>;
+  const valid = typeof runtimeProp.value === 'string'
+    && (runtimeProp.remarks === undefined || typeof runtimeProp.remarks === 'string');
+  if (!valid) {
+    diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID, carrier));
+  }
+  return valid;
+}
+
+function collectCustomTag(
+  prop: RawOscalProp,
+  accumulator: ProjectPropReadAccumulator,
+  carrier: ProjectPropCarrier,
+): void {
+  if (prop.name !== 'custom-tag' || prop.value.length === 0 || prop.value.trim() !== prop.value) {
+    return;
+  }
+  const normalizedTag = prop.value.toLowerCase();
+  if (accumulator.customTags.has(normalizedTag)) {
+    accumulator.diagnostics.push(
+      diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.DUPLICATE_VALUE, carrier),
+    );
+  } else {
+    accumulator.customTags.add(normalizedTag);
+  }
+}
+
+function collectProjectProp(
+  prop: RawOscalProp,
+  carrier: ProjectPropCarrier,
+  accumulator: ProjectPropReadAccumulator,
+): void {
+  const runtimeProp = prop as unknown as Readonly<Record<string, unknown>>;
+  if (runtimeProp.ns !== PROJECT_PROPS_NAMESPACE) {
+    accumulator.foreignProps.push(prop);
+    return;
+  }
+  if (typeof runtimeProp.name !== 'string' || !isOscalToken(runtimeProp.name)) {
+    accumulator.diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.NAME_INVALID, carrier));
+    return;
+  }
+
+  accumulator.diagnostics.push(...validateProjectPropGroup(prop, carrier));
+  if (!isProjectPropName(runtimeProp.name)) {
+    accumulator.diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.UNKNOWN, carrier));
+    return;
+  }
+
+  const name = runtimeProp.name;
+  accumulator.projectProps.push(prop);
+  accumulator.counts.set(name, (accumulator.counts.get(name) ?? 0) + 1);
+  accumulator.diagnostics.push(...validateProjectPropCarrier(name, carrier));
+  if (!hasValidRuntimeValueFields(prop, carrier, accumulator.diagnostics)) return;
+
+  accumulator.diagnostics.push(
+    ...validateProjectPropValue(prop, PROJECT_PROP_REGISTRY[name].valueContract, carrier),
+  );
+  collectCustomTag(prop, accumulator, carrier);
+}
+
+function validateProjectPropCardinalities(
+  counts: ReadonlyMap<ProjectPropName, number>,
+  carrier: ProjectPropCarrier,
+): OscalDiagnostic[] {
+  const diagnostics: OscalDiagnostic[] = [];
+  for (const name of PROJECT_PROP_NAMES) {
+    if (
+      name === 'assessed-against-catalog-key'
+      || name === 'assessed-against-catalog-commit'
+    ) {
+      continue;
+    }
+    const maximum = PROJECT_PROP_REGISTRY[name].cardinality.maximum;
+    if (maximum !== null && (counts.get(name) ?? 0) > maximum) {
+      diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.CARDINALITY_INVALID, carrier));
+    }
+  }
   return diagnostics;
 }
 
@@ -394,64 +544,30 @@ export function readProjectProps(
     });
   }
 
-  const projectProps: RawOscalProp[] = [];
-  const foreignProps: RawOscalProp[] = [];
-  const diagnostics: OscalDiagnostic[] = [];
-  const counts = new Map<ProjectPropName, number>();
-  const customTags = new Set<string>();
+  const accumulator: ProjectPropReadAccumulator = {
+    projectProps: [],
+    foreignProps: [],
+    diagnostics: [],
+    counts: new Map(),
+    customTags: new Set(),
+  };
 
   for (const prop of preservedProps) {
-    if (prop.ns !== PROJECT_PROPS_NAMESPACE) {
-      foreignProps.push(prop);
-      continue;
-    }
-    if (!isOscalToken(prop.name)) {
-      diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.NAME_INVALID, carrier));
-      continue;
-    }
-    diagnostics.push(...validateProjectPropGroup(prop, carrier));
-    if (!isProjectPropName(prop.name)) {
-      diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.UNKNOWN, carrier));
-      continue;
-    }
-
-    projectProps.push(prop);
-    counts.set(prop.name, (counts.get(prop.name) ?? 0) + 1);
-    diagnostics.push(...validateKnownProjectProp(prop, prop.name, carrier));
-
-    if (prop.name === 'custom-tag' && prop.value.length > 0 && prop.value.trim() === prop.value) {
-      const normalizedTag = prop.value.toLowerCase();
-      if (customTags.has(normalizedTag)) {
-        diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.DUPLICATE_VALUE, carrier));
-      } else {
-        customTags.add(normalizedTag);
-      }
-    }
+    collectProjectProp(prop, carrier, accumulator);
   }
 
-  for (const name of PROJECT_PROP_NAMES) {
-    if (
-      name === 'assessed-against-catalog-key'
-      || name === 'assessed-against-catalog-commit'
-    ) {
-      continue;
-    }
-    const maximum = PROJECT_PROP_REGISTRY[name].cardinality.maximum;
-    if (maximum !== null && (counts.get(name) ?? 0) > maximum) {
-      diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.CARDINALITY_INVALID, carrier));
-    }
-  }
+  accumulator.diagnostics.push(...validateProjectPropCardinalities(accumulator.counts, carrier));
 
   if (carrier === 'metadata') {
-    diagnostics.push(...validateCatalogPairs(projectProps, carrier));
+    accumulator.diagnostics.push(...validateCatalogPairs(accumulator.projectProps, carrier));
   }
 
   return Object.freeze({
     preservedProps,
-    projectProps: Object.freeze(projectProps),
-    foreignProps: Object.freeze(foreignProps),
-    diagnostics: Object.freeze(diagnostics),
-    writeAllowed: diagnostics.length === 0,
+    projectProps: Object.freeze(accumulator.projectProps),
+    foreignProps: Object.freeze(accumulator.foreignProps),
+    diagnostics: Object.freeze(accumulator.diagnostics),
+    writeAllowed: accumulator.diagnostics.length === 0,
   });
 }
 
@@ -551,16 +667,16 @@ export function validatePlanningMeasureProjectProps(
   const poamItemResult = readProjectProps(input.poamItemProps, 'poam-item');
   const remediationResult = readProjectProps(input.remediationProps, 'remediation');
   const diagnostics = [...poamItemResult.diagnostics, ...remediationResult.diagnostics];
-  const planningNames: readonly ProjectPropName[] = [
+  const planningNames = new Set<ProjectPropName>([
     'implementation-priority',
     'effort-estimate-hours',
-  ];
+  ]);
 
   const hasPoamPlanningProp = poamItemResult.projectProps.some((prop) =>
-    planningNames.includes(prop.name as ProjectPropName),
+    planningNames.has(prop.name as ProjectPropName),
   );
   const hasRemediationPlanningProp = remediationResult.projectProps.some((prop) =>
-    planningNames.includes(prop.name as ProjectPropName),
+    planningNames.has(prop.name as ProjectPropName),
   );
   const hasCarrierConflict = hasPoamPlanningProp && hasRemediationPlanningProp;
   if (hasCarrierConflict) {
