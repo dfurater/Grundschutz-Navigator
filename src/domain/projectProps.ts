@@ -533,6 +533,16 @@ function isRuntimeProjectPropObject(value: unknown): value is RawOscalProp {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function isRuntimeProjectPropCollection(value: unknown): value is readonly RawOscalProp[] {
+  if (!Array.isArray(value)) return false;
+  for (let index = 0; index < value.length; index += 1) {
+    if (!Object.hasOwn(value, index) || !isRuntimeProjectPropObject(value[index])) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function invalidProjectPropCollectionResult(
   carrier: ProjectPropCarrier,
 ): ProjectPropReadResult {
@@ -573,13 +583,10 @@ export function readProjectProps(
   if (!isProjectPropCarrier(carrier)) {
     return invalidProjectPropCarrierResult();
   }
-  if (props !== undefined && !Array.isArray(props)) {
+  if (props !== undefined && !isRuntimeProjectPropCollection(props)) {
     return invalidProjectPropCollectionResult(carrier);
   }
   const preservedProps = props ?? EMPTY_PROPS;
-  if (!preservedProps.every(isRuntimeProjectPropObject)) {
-    return invalidProjectPropCollectionResult(carrier);
-  }
   if (preservedProps.length === 0) {
     return Object.freeze({
       preservedProps,

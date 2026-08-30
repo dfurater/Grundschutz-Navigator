@@ -131,6 +131,18 @@ describe('projectProps read contract', () => {
     expect(result.diagnostics[0]?.path).toBe('/project-props');
   });
 
+  it('weist eine Sparse Collection am Reader-Boundary redigiert ab', () => {
+    const sparseProps: unknown[] = [];
+    sparseProps.length = 1;
+
+    const result = readProjectProps(sparseProps as never, 'metadata');
+
+    expect(result.writeAllowed).toBe(false);
+    expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toEqual([
+      PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID,
+    ]);
+  });
+
   it('sperrt unbekannte Projektnamen, ohne Name oder Wert zu diagnostizieren', () => {
     const marker = 'nicht-in-diagnose-ausgeben';
     const prop = Object.freeze({
