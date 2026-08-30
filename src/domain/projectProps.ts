@@ -209,6 +209,7 @@ const PROJECT_PROP_PATHS: Readonly<Record<ProjectPropCarrier, string>> = Object.
   'inventory-item': '/system-security-plan/system-implementation/inventory-items/*/props',
   'information-type': '/system-security-plan/system-characteristics/system-information/information-types/*/props',
 });
+const PROJECT_PROP_WRITE_PATH = '/project-props';
 
 const EMPTY_PROPS: readonly RawOscalProp[] = Object.freeze([]);
 const EMPTY_DIAGNOSTICS: readonly OscalDiagnostic[] = Object.freeze([]);
@@ -246,6 +247,10 @@ function diagnosticAtPath(
 
 function isProjectPropName(name: string): name is ProjectPropName {
   return Object.hasOwn(PROJECT_PROP_REGISTRY, name);
+}
+
+function isProjectPropCarrier(value: unknown): value is ProjectPropCarrier {
+  return PROJECT_PROP_CARRIERS.some((carrier) => carrier === value);
 }
 
 function validateProjectPropGroup(
@@ -450,36 +455,79 @@ export function readProjectProps(
   });
 }
 
-export function createProjectProp(input: {
+export interface ProjectPropCreationInput {
   readonly name: ProjectPropName;
   readonly value: string;
   readonly carrier: ProjectPropCarrier;
   readonly group?: string;
   readonly remarks?: string;
-}): ProjectPropCreationResult {
-  if (typeof input.name !== 'string' || !isOscalToken(input.name)) {
+}
+
+export function createProjectProp(input: ProjectPropCreationInput): ProjectPropCreationResult;
+export function createProjectProp(input: unknown): ProjectPropCreationResult {
+  if (typeof input !== 'object' || input === null) {
     return Object.freeze({
       ok: false,
-      diagnostic: diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.NAME_INVALID, input.carrier),
+      diagnostic: diagnosticAtPath(
+        PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID,
+        PROJECT_PROP_WRITE_PATH,
+      ),
     });
   }
-  if (!isProjectPropName(input.name)) {
+
+  const candidate = input as Readonly<Record<string, unknown>>;
+  if (!isProjectPropCarrier(candidate.carrier)) {
     return Object.freeze({
       ok: false,
-      diagnostic: diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.UNKNOWN, input.carrier),
+      diagnostic: diagnosticAtPath(
+        PROJECT_PROP_DIAGNOSTIC_CODES.CARRIER_INVALID,
+        PROJECT_PROP_WRITE_PATH,
+      ),
+    });
+  }
+  const carrier = candidate.carrier;
+
+  if (typeof candidate.name !== 'string' || !isOscalToken(candidate.name)) {
+    return Object.freeze({
+      ok: false,
+      diagnostic: diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.NAME_INVALID, carrier),
+    });
+  }
+  if (!isProjectPropName(candidate.name)) {
+    return Object.freeze({
+      ok: false,
+      diagnostic: diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.UNKNOWN, carrier),
+    });
+  }
+  if (typeof candidate.value !== 'string') {
+    return Object.freeze({
+      ok: false,
+      diagnostic: diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID, carrier),
+    });
+  }
+  if (candidate.group !== undefined && typeof candidate.group !== 'string') {
+    return Object.freeze({
+      ok: false,
+      diagnostic: diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.GROUP_INVALID, carrier),
+    });
+  }
+  if (candidate.remarks !== undefined && typeof candidate.remarks !== 'string') {
+    return Object.freeze({
+      ok: false,
+      diagnostic: diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID, carrier),
     });
   }
 
   const prop = Object.freeze({
-    name: input.name,
-    value: input.value,
+    name: candidate.name,
+    value: candidate.value,
     ns: PROJECT_PROPS_NAMESPACE,
-    ...(input.group === undefined ? {} : { group: input.group }),
-    ...(input.remarks === undefined ? {} : { remarks: input.remarks }),
+    ...(candidate.group === undefined ? {} : { group: candidate.group }),
+    ...(candidate.remarks === undefined ? {} : { remarks: candidate.remarks }),
   });
   const diagnostics = [
-    ...validateProjectPropGroup(prop, input.carrier),
-    ...validateKnownProjectProp(prop, input.name, input.carrier),
+    ...validateProjectPropGroup(prop, carrier),
+    ...validateKnownProjectProp(prop, candidate.name, carrier),
   ];
   if (diagnostics.length > 0) {
     return Object.freeze({ ok: false, diagnostic: diagnostics[0] });

@@ -317,6 +317,31 @@ describe('projectProps writer', () => {
     }
     expect(JSON.stringify(result.diagnostic)).not.toContain(marker);
   });
+
+  it.each([
+    ['fehlendes Eingabeobjekt', null, PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID],
+    ['ungültiger Träger', {
+      name: 'implementation-priority', value: 'high', carrier: null,
+    }, PROJECT_PROP_DIAGNOSTIC_CODES.CARRIER_INVALID],
+    ['nicht-stringförmiger Wert', {
+      name: 'effort-estimate-hours', value: null, carrier: 'poam-item',
+    }, PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID],
+    ['nicht-stringförmige Gruppe', {
+      name: 'implementation-priority', value: 'high', carrier: 'poam-item', group: null,
+    }, PROJECT_PROP_DIAGNOSTIC_CODES.GROUP_INVALID],
+    ['nicht-stringförmige Remarks', {
+      name: 'protection-need-level', value: 'hoch', carrier: 'system-component', remarks: null,
+    }, PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID],
+  ] as const)('weist %s am Writer-Boundary redigiert ab', (_label, input, code) => {
+    const result = createProjectProp(input as never);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.diagnostic.code).toBe(code);
+    expect(typeof result.diagnostic.path).toBe('string');
+    expect(result.diagnostic.path.length).toBeGreaterThan(0);
+    expect(JSON.stringify(result.diagnostic)).not.toContain('hoch');
+  });
 });
 
 describe('metadata catalog reference pairs', () => {
