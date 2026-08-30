@@ -104,6 +104,33 @@ describe('projectProps read contract', () => {
     expect(Object.isFrozen(first.preservedProps)).toBe(true);
   });
 
+  it.each([
+    ['null-Collection', null],
+    ['Objekt statt Collection', {}],
+    ['String statt Collection', 'secret'],
+    ['Collection mit null-Eintrag', [null]],
+    ['Collection mit Array-Eintrag', [[]]],
+  ])('weist eine %s am Reader-Boundary redigiert ab', (_label, props) => {
+    const result = readProjectProps(props as never, 'metadata');
+
+    expect(result.writeAllowed).toBe(false);
+    expect(result.preservedProps).toEqual([]);
+    expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toEqual([
+      PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID,
+    ]);
+    expect(JSON.stringify(result.diagnostics)).not.toContain('secret');
+  });
+
+  it('weist einen ungültigen Reader-Carrier am Laufzeit-Boundary redigiert ab', () => {
+    const result = readProjectProps([], null as never);
+
+    expect(result.writeAllowed).toBe(false);
+    expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toEqual([
+      PROJECT_PROP_DIAGNOSTIC_CODES.CARRIER_INVALID,
+    ]);
+    expect(result.diagnostics[0]?.path).toBe('/project-props');
+  });
+
   it('sperrt unbekannte Projektnamen, ohne Name oder Wert zu diagnostizieren', () => {
     const marker = 'nicht-in-diagnose-ausgeben';
     const prop = Object.freeze({

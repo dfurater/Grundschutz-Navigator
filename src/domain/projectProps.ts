@@ -214,7 +214,7 @@ const PROJECT_PROP_PATHS: Readonly<Record<ProjectPropCarrier, string>> = Object.
   'inventory-item': '/system-security-plan/system-implementation/inventory-items/*/props',
   'information-type': '/system-security-plan/system-characteristics/system-information/information-types/*/props',
 });
-const PROJECT_PROP_WRITE_PATH = '/project-props';
+const PROJECT_PROP_BOUNDARY_PATH = '/project-props';
 
 const EMPTY_PROPS: readonly RawOscalProp[] = Object.freeze([]);
 const EMPTY_DIAGNOSTICS: readonly OscalDiagnostic[] = Object.freeze([]);
@@ -529,11 +529,57 @@ function validateProjectPropCardinalities(
   return diagnostics;
 }
 
-export function readProjectProps(
-  props: readonly RawOscalProp[] | undefined,
+function isRuntimeProjectPropObject(value: unknown): value is RawOscalProp {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function invalidProjectPropCollectionResult(
   carrier: ProjectPropCarrier,
 ): ProjectPropReadResult {
+  return Object.freeze({
+    preservedProps: EMPTY_PROPS,
+    projectProps: EMPTY_PROPS,
+    foreignProps: EMPTY_PROPS,
+    diagnostics: Object.freeze([
+      diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID, carrier),
+    ]),
+    writeAllowed: false,
+  });
+}
+
+function invalidProjectPropCarrierResult(): ProjectPropReadResult {
+  return Object.freeze({
+    preservedProps: EMPTY_PROPS,
+    projectProps: EMPTY_PROPS,
+    foreignProps: EMPTY_PROPS,
+    diagnostics: Object.freeze([
+      diagnosticAtPath(
+        PROJECT_PROP_DIAGNOSTIC_CODES.CARRIER_INVALID,
+        PROJECT_PROP_BOUNDARY_PATH,
+      ),
+    ]),
+    writeAllowed: false,
+  });
+}
+
+export function readProjectProps(
+  props: unknown,
+  carrier: ProjectPropCarrier,
+): ProjectPropReadResult;
+export function readProjectProps(
+  props: unknown,
+  carrier: unknown,
+): ProjectPropReadResult {
+  if (!isProjectPropCarrier(carrier)) {
+    return invalidProjectPropCarrierResult();
+  }
+  if (props !== undefined && !Array.isArray(props)) {
+    return invalidProjectPropCollectionResult(carrier);
+  }
   const preservedProps = props ?? EMPTY_PROPS;
+  if (!preservedProps.every(isRuntimeProjectPropObject)) {
+    return invalidProjectPropCollectionResult(carrier);
+  }
   if (preservedProps.length === 0) {
     return Object.freeze({
       preservedProps,
@@ -586,7 +632,7 @@ export function createProjectProp(input: unknown): ProjectPropCreationResult {
       ok: false,
       diagnostic: diagnosticAtPath(
         PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID,
-        PROJECT_PROP_WRITE_PATH,
+        PROJECT_PROP_BOUNDARY_PATH,
       ),
     });
   }
@@ -597,7 +643,7 @@ export function createProjectProp(input: unknown): ProjectPropCreationResult {
       ok: false,
       diagnostic: diagnosticAtPath(
         PROJECT_PROP_DIAGNOSTIC_CODES.CARRIER_INVALID,
-        PROJECT_PROP_WRITE_PATH,
+        PROJECT_PROP_BOUNDARY_PATH,
       ),
     });
   }
