@@ -457,6 +457,19 @@ export function createProjectProp(input: {
   readonly group?: string;
   readonly remarks?: string;
 }): ProjectPropCreationResult {
+  if (!isOscalToken(input.name)) {
+    return Object.freeze({
+      ok: false,
+      diagnostic: diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.NAME_INVALID, input.carrier),
+    });
+  }
+  if (!isProjectPropName(input.name)) {
+    return Object.freeze({
+      ok: false,
+      diagnostic: diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.UNKNOWN, input.carrier),
+    });
+  }
+
   const prop = Object.freeze({
     name: input.name,
     value: input.value,
