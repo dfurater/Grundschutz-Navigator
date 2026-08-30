@@ -585,6 +585,14 @@ describe('sourceRegistry', () => {
       expect(() => validateSourceRegistry([makeOscalEntry({ artifactKey: 'catalog-test-' })])).toThrow(
         /grammar/i,
       );
+      expect(() =>
+        validateSourceRegistry([makeOscalEntry({ artifactKey: '1catalog-test' })]),
+      ).toThrow(/grammar/i);
+      expect(() =>
+        validateSourceRegistry([
+          makeOscalEntry({ catalogKey: '1catalog-test' as CatalogKey }),
+        ]),
+      ).toThrow(/grammar/i);
     });
 
     it('rejects unsafe upstream paths', () => {

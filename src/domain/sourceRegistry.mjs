@@ -27,7 +27,7 @@ import {
   isPinnedOscalVersion,
 } from './oscalVersionMatrix.mjs';
 
-const KEY_GRAMMAR = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+const KEY_GRAMMAR = /^[a-z](?:[a-z0-9-]*[a-z0-9])?$/;
 
 const OSCAL_ROOT_TYPES = Object.freeze([
   'catalog',

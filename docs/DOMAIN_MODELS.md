@@ -180,8 +180,11 @@ Die Raw Types befinden sich in `src/domain/models.ts` und entsprechen 1:1 der OS
 interface RawOscalProp {
   name: string;
   value: string;
+  uuid?: string;
   ns?: string;
   class?: string;
+  group?: string;
+  remarks?: string;
 }
 
 interface RawOscalLink {
@@ -272,6 +275,24 @@ interface RawOscalCatalog {
 Der Root-Envelope steht nicht mehr hier, sondern in
 `src/domain/oscalRootDocument.ts` — siehe
 [Root-Envelope und Root-Dispatch](#root-envelope-und-root-dispatch).
+
+## Projekteigene OSCAL-Properties
+
+`src/domain/projectProps.ts` ist die einzige Runtime-Registry für den
+Projektnamespace, die sechs bekannten Namen, ihre Träger, Kardinalitäten und
+Wertregeln. Der vollständige öffentliche Vertrag steht in
+[`PROJECT_PROPS.md`](PROJECT_PROPS.md).
+
+Der Lesepfad arbeitet auf `RawOscalProp` und mutiert weder die übergebene Liste
+noch einzelne Property-Objekte. Fremde Namespaces und unbekannte Namen bleiben
+im Quellgraphen erhalten. Nur der semantische Schreibpfad wird bei einem
+unbekannten Projektnamen oder einer Vertragsverletzung gesperrt; Diagnosen
+enthalten keine Property-Werte oder Freitexte.
+
+Für die Planungsproperties erhält der paarübergreifende Validator die bereits
+fachlich zugeordneten Props eines `poam-item` und einer `remediation`
+ausdrücklich. Er errät diese Zuordnung nicht aus `related-risks` und erlegt dem
+Dokument keine globale Wahl zwischen den beiden zulässigen Trägerarten auf.
 
 ## Root-Envelope und Root-Dispatch
 
