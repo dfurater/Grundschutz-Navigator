@@ -300,6 +300,7 @@ describe('projectProps writer', () => {
   it.each([
     ['1future', PROJECT_PROP_DIAGNOSTIC_CODES.NAME_INVALID],
     ['future-name', PROJECT_PROP_DIAGNOSTIC_CODES.UNKNOWN],
+    [null, PROJECT_PROP_DIAGNOSTIC_CODES.NAME_INVALID],
   ] as const)('weist den Laufzeitnamen %s im Writer redigiert ab', (name, code) => {
     const marker = 'nicht-ausgeben';
     const result = createProjectProp({
@@ -311,7 +312,9 @@ describe('projectProps writer', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.diagnostic.code).toBe(code);
-    expect(JSON.stringify(result.diagnostic)).not.toContain(name);
+    if (typeof name === 'string') {
+      expect(JSON.stringify(result.diagnostic)).not.toContain(name);
+    }
     expect(JSON.stringify(result.diagnostic)).not.toContain(marker);
   });
 });

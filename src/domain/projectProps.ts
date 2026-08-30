@@ -457,7 +457,7 @@ export function createProjectProp(input: {
   readonly group?: string;
   readonly remarks?: string;
 }): ProjectPropCreationResult {
-  if (!isOscalToken(input.name)) {
+  if (typeof input.name !== 'string' || !isOscalToken(input.name)) {
     return Object.freeze({
       ok: false,
       diagnostic: diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.NAME_INVALID, input.carrier),
