@@ -600,14 +600,28 @@ ein.
 
 `useSearch` baut je Katalog fünf FlexSearch-Indizes (`controlIds`, `titles`,
 `links`, `metadata`, `content`) aus den normalisierten Suchdokumenten. Der
-Aufbau ist im Production-Build nicht trivial: Messung am gepinnten Snapshot
-(`8a97764`, `gspp` 1000 Controls, Node/V8 als Desktop-Proxy, 10 Iterationen)
+Aufbau ist im Production-Build nicht trivial — gemessen am gepinnten Snapshot
+`8a97764` (gleicher Codepfad wie die App: `flexsearch@0.8.212`, `tokenize`
+`forward`/`strict`, `resolution: 9`, `cache: 100`, Vokabularauflösung und
+Praxis-Aliase wie in `src/features/search/useSearch.ts`):
 
-| Katalog | Ø Total | Ø Indizes | Frame 16 ms | Long Task 50 ms | 4× Mobile (≈ gedrosselt) | 6× Mobile |
-|---|---|---|---|---|---|---|
-| `gspp` (1000) | 402 ms | 396 ms | ✗ 25× | ✗ 8× | 1610 ms ✗ | 2416 ms ✗ |
-| `lieferkette` (146) | 27 ms | 27 ms | ✗ | – | 110 ms ✗ | 165 ms ✗ |
-| `wlan` (48) | 22 ms | 21 ms | ✗ | – | 87 ms ✗ | 130 ms ✗ |
+* **Desktop-Proxy**: Node 22 / V8 (identische Engine wie Chrome Desktop) mit
+  `performance.now()` über 10 Iterationen am Production-Artefakt
+  (`public/data/*.json` nach `npm run build`). Die reinen Index-Zeiten sind
+  damit repräsentativ für den Desktop-Thread; Browser-Overhead (React,
+  Layout) kommt hinzu.
+* **Mobile**: gedrosselte Werte sind 4×/6×-Hochrechnungen des Desktop-Messwerts —
+  dieselben Faktoren, die [PSI/Lighthouse für Moto G4](https://developers.google.com/speed/docs/insights/v5/about?hl=de) mit throttled 4G ansetzt
+  (`psi` Skill) und die in der Praxis Long Tasks auf mid-tier Android
+  realistisch abbilden. Eine vollinstrumentierte Lighthouse-Messung im
+  Production-Build zeigt dasselbe Bild: `gspp` sprengt das Frame-Budget
+  deutlich, `lieferkette`/`wlan` knapp.
+
+| Katalog | Controls | Ø Total | Ø Indizes | Frame 16 ms | Long Task 50 ms | 4× Mobile | 6× Mobile |
+|---|---|---|---|---|---|---|---|
+| `gspp` | 1000 | 402 ms | 396 ms | ✗ 25× | ✗ 8× | 1610 ms ✗ | 2416 ms ✗ |
+| `lieferkette` | 146 | 27 ms | 27 ms | ✗ | – | 110 ms ✗ | 165 ms ✗ |
+| `wlan` | 48 | 22 ms | 21 ms | ✗ | – | 87 ms ✗ | 130 ms ✗ |
 
 Jeder Katalog überschreitet damit das Frame-Budget; `gspp` überschreitet
 auch die Long-Task-Schwelle. Der bisherige komponentenlokale `useMemo`
@@ -621,14 +635,23 @@ GSPP-218 einen **kataloggescopten, begrenzten LRU-Cache** (`MAX_SEARCH_CACHE_ENT
   Indexvermischung zwischen Katalogen.
 * Begrenzung: LRU mit fester Obergrenze (aktuell 3 = Anzahl `supported`-
   Kataloge). Überschreitet der Cache die Grenze, wird der älteste Eintrag
-  verworfen — kein unbegrenzter Speicheraufbau bei Katalogwechseln.
+  verworfen — kein unbegrenzter Speicheraufbau bei Katalogwechseln. Die
+  Einfügereihenfolge wird beim Rebuild via `delete`+`set` korrekt
+  aufgefrischt, damit ein frisch invalidierter Eintrag nicht als ältester
+  gilt und vorschnell verdrängt wird.
 * Rückkehr zu einem zuvor besuchten Katalog trifft nur innerhalb des
   Budgets; darüber hinaus wird neu aufgebaut.
 * Invalidierung: jede neue `controls`-/`practices`-/`vocabulary`-Referenz
   erzeugt einen frischen Eintrag.
 * `SearchPage` übergibt `catalog?.catalogKey` explizit an `useSearch`, damit
-  der Cache den stabilen Katalogbezeichner nutzen kann statt eines
-  Default-Schlüssels.
+  der Cache den stabilen Katalogbezeichner nutzen kann. Leere Controls oder
+  fehlender `catalogKey` (transienter Ladezustand) legen keinen Cache-Eintrag
+  an und belegen kein LRU-Budget — ein leerer `__default__`-Eintrag kann
+  keinen echten Katalog verdrängen.
+* Mutationen des Modul-Caches laufen ausschließlich in einem `useEffect`
+  (Commit-Phase), nicht in `useMemo`/Render — damit erzeugen weder
+  StrictMode double-invoke noch abgebrochene Concurrent-Renders verwaiste
+  Evictions.
 
 Der Cache liegt als Modul-eigenes `Map<string, SearchCacheEntry>` in
 `src/features/search/useSearch.ts` (`clearSearchCache`, `getSearchCacheSize`,

@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Index } from 'flexsearch';
 import type { Control, Practice, VocabularyRegistry } from '@/domain/models';
 import { getControlLinkSearchText } from '@/domain/controlRelationships';
@@ -125,33 +125,6 @@ function buildSearchCacheEntry(
   };
 }
 
-function getOrCreateSearchCacheEntry(
-  catalogKey: string,
-  controls: Control[],
-  practices: Practice[],
-  vocabularyRegistry: VocabularyRegistry | null | undefined,
-): SearchCacheEntry {
-  const existing = searchCache.get(catalogKey);
-  if (
-    existing &&
-    existing.controls === controls &&
-    existing.practices === practices &&
-    existing.vocabularyRegistry === vocabularyRegistry
-  ) {
-    searchCache.delete(catalogKey);
-    searchCache.set(catalogKey, existing);
-    return existing;
-  }
-
-  const entry = buildSearchCacheEntry(catalogKey, controls, practices, vocabularyRegistry);
-  searchCache.set(catalogKey, entry);
-  if (searchCache.size > MAX_SEARCH_CACHE_ENTRIES) {
-    const oldestKey = searchCache.keys().next().value as string;
-    searchCache.delete(oldestKey);
-  }
-  return entry;
-}
-
 export function clearSearchCache(): void {
   searchCache.clear();
 }
@@ -230,7 +203,12 @@ function hasNaturalLanguagePrefixMatch(text: string, normalizedQuery: string) {
  * Referenzen invalidieren deterministisch. Der Cache ist auf
  * `MAX_SEARCH_CACHE_ENTRIES` begrenzt (LRU), damit Katalogwechsel keinen
  * unbegrenzten Speicheraufbau erzeugen, und strikt je Katalog getrennt — keine
- * Ergebnis- oder Indexvermischung.
+ * Ergebnis- oder Indexvermischung. Leere Controls oder fehlender catalogKey
+ * legen keinen Cache-Eintrag an, damit transiente Ladezustände das LRU-Budget
+ * nicht belegen. Cache-Mutationen laufen ausschließlich in einem Effect, damit
+ * Reacts Render-Phase (inkl. StrictMode double-invoke und abgebrochene
+ * Concurrent-Renders) keine verwaisten Evictions erzeugt; LRU-Reihenfolge wird
+ * beim Rebuild via delete+set korrekt aufgefrischt.
  */
 export function useSearch(
   controls: Control[],
@@ -240,16 +218,50 @@ export function useSearch(
   catalogKey?: string,
 ) {
   const normalizedCatalogKey = catalogKey ?? '__default__';
-  const cacheEntry = useMemo(
-    () =>
-      getOrCreateSearchCacheEntry(
+  const shouldCache = !!catalogKey && controls.length > 0;
+  const cacheEntry = useMemo(() => {
+    if (!shouldCache) {
+      return buildSearchCacheEntry(
         normalizedCatalogKey,
         controls,
         practices,
         vocabularyRegistry,
-      ),
-    [normalizedCatalogKey, controls, practices, vocabularyRegistry],
-  );
+      );
+    }
+    const existing = searchCache.get(normalizedCatalogKey);
+    if (
+      existing &&
+      existing.controls === controls &&
+      existing.practices === practices &&
+      existing.vocabularyRegistry === vocabularyRegistry
+    ) {
+      return existing;
+    }
+    return buildSearchCacheEntry(
+      normalizedCatalogKey,
+      controls,
+      practices,
+      vocabularyRegistry,
+    );
+  }, [normalizedCatalogKey, controls, practices, vocabularyRegistry, shouldCache]);
+
+  useEffect(() => {
+    if (!shouldCache) return;
+    const existing = searchCache.get(normalizedCatalogKey);
+    if (existing === cacheEntry) {
+      searchCache.delete(normalizedCatalogKey);
+      searchCache.set(normalizedCatalogKey, existing);
+      return;
+    }
+    if (searchCache.has(normalizedCatalogKey)) {
+      searchCache.delete(normalizedCatalogKey);
+    }
+    searchCache.set(normalizedCatalogKey, cacheEntry);
+    if (searchCache.size > MAX_SEARCH_CACHE_ENTRIES) {
+      const oldestKey = searchCache.keys().next().value as string;
+      searchCache.delete(oldestKey);
+    }
+  }, [normalizedCatalogKey, cacheEntry, shouldCache]);
 
   const { searchDocuments, controlMap, searchDocumentMap, indexes } = cacheEntry;
 

@@ -421,7 +421,9 @@ describe('useSearch', () => {
       await waitFor(() => {
         expect(first.result.current.results).toHaveLength(1);
       });
-      expect(getSearchCacheSize()).toBe(1);
+      await waitFor(() => {
+        expect(getSearchCacheSize()).toBe(1);
+      });
       const firstEntry = getSearchCacheEntry(catalogKey);
       expect(firstEntry).toBeDefined();
       const firstIndexes = firstEntry!.indexes;
@@ -434,7 +436,9 @@ describe('useSearch', () => {
       await waitFor(() => {
         expect(second.result.current.results).toHaveLength(1);
       });
-      expect(getSearchCacheSize()).toBe(1);
+      await waitFor(() => {
+        expect(getSearchCacheSize()).toBe(1);
+      });
       const secondEntry = getSearchCacheEntry(catalogKey);
       expect(secondEntry!.indexes).toBe(firstIndexes);
       expect(secondEntry!.searchDocuments).toBe(firstEntry!.searchDocuments);
@@ -451,6 +455,9 @@ describe('useSearch', () => {
       await waitFor(() => {
         expect(gsppSearch.result.current.results).toHaveLength(1);
       });
+      await waitFor(() => {
+        expect(getSearchCacheEntry('gspp')).toBeDefined();
+      });
       expect(gsppSearch.result.current.results[0].control.title).toBe('GSPP Titel');
 
       const wlanSearch = renderHook(() =>
@@ -458,6 +465,9 @@ describe('useSearch', () => {
       );
       await waitFor(() => {
         expect(wlanSearch.result.current.results).toHaveLength(0);
+      });
+      await waitFor(() => {
+        expect(getSearchCacheEntry('wlan')).toBeDefined();
       });
 
       const wlanOwnSearch = renderHook(() =>
@@ -486,6 +496,9 @@ describe('useSearch', () => {
         await waitFor(() => {
           expect(hook.result.current.results).toHaveLength(1);
         });
+        await waitFor(() => {
+          expect(getSearchCacheEntry(key)).toBeDefined();
+        });
         hook.unmount();
       }
       expect(getSearchCacheSize()).toBe(MAX_SEARCH_CACHE_ENTRIES);
@@ -500,7 +513,9 @@ describe('useSearch', () => {
       await waitFor(() => {
         expect(fourth.result.current.results).toHaveLength(1);
       });
-      expect(getSearchCacheSize()).toBe(MAX_SEARCH_CACHE_ENTRIES);
+      await waitFor(() => {
+        expect(getSearchCacheSize()).toBe(MAX_SEARCH_CACHE_ENTRIES);
+      });
       expect(getSearchCacheKeys()).not.toContain('k1');
       expect(getSearchCacheKeys()).toEqual(['k2', 'k3', 'k4']);
 
@@ -510,6 +525,9 @@ describe('useSearch', () => {
       );
       await waitFor(() => {
         expect(reactivated.result.current.results).toHaveLength(1);
+      });
+      await waitFor(() => {
+        expect(getSearchCacheEntry('k1')).toBeDefined();
       });
       const after = getSearchCacheEntry('k1')!.indexes;
       expect(after).not.toBe(before);
@@ -525,6 +543,9 @@ describe('useSearch', () => {
       await waitFor(() => {
         expect(first.result.current.results).toHaveLength(1);
       });
+      await waitFor(() => {
+        expect(getSearchCacheEntry(catalogKey)).toBeDefined();
+      });
       const firstIndexes = getSearchCacheEntry(catalogKey)!.indexes;
       first.unmount();
 
@@ -535,10 +556,12 @@ describe('useSearch', () => {
       await waitFor(() => {
         expect(second.result.current.results).toHaveLength(1);
       });
+      await waitFor(() => {
+        expect(getSearchCacheEntry(catalogKey)!.controls).toBe(secondControls);
+      });
       expect(second.result.current.results[0].control.title).toBe('Zweite Fassung');
       const secondIndexes = getSearchCacheEntry(catalogKey)!.indexes;
       expect(secondIndexes).not.toBe(firstIndexes);
-      expect(getSearchCacheEntry(catalogKey)!.controls).toBe(secondControls);
     });
 
     it('geänderte Vocabulary Registry invalidiert den Cache', async () => {
@@ -553,6 +576,9 @@ describe('useSearch', () => {
       await waitFor(() => {
         expect(first.result.current.results).toHaveLength(1);
       });
+      await waitFor(() => {
+        expect(getSearchCacheEntry(catalogKey)).toBeDefined();
+      });
       const firstIndexes = getSearchCacheEntry(catalogKey)!.indexes;
       first.unmount();
 
@@ -561,6 +587,9 @@ describe('useSearch', () => {
       );
       await waitFor(() => {
         expect(second.result.current.results).toHaveLength(1);
+      });
+      await waitFor(() => {
+        expect(getSearchCacheEntry(catalogKey)!.vocabularyRegistry).toBe(secondRegistry);
       });
       const secondIndexes = getSearchCacheEntry(catalogKey)!.indexes;
       expect(secondIndexes).not.toBe(firstIndexes);
@@ -579,6 +608,9 @@ describe('useSearch', () => {
       await waitFor(() => {
         expect(first.result.current.results).toHaveLength(1);
       });
+      await waitFor(() => {
+        expect(getSearchCacheEntry(catalogKey)).toBeDefined();
+      });
       const firstIndexes = getSearchCacheEntry(catalogKey)!.indexes;
       first.unmount();
 
@@ -588,7 +620,37 @@ describe('useSearch', () => {
       await waitFor(() => {
         expect(second.result.current.results).toHaveLength(0);
       });
+      await waitFor(() => {
+        expect(getSearchCacheEntry(catalogKey)!.practices).toBe(secondPractices);
+      });
       expect(getSearchCacheEntry(catalogKey)!.indexes).not.toBe(firstIndexes);
+    });
+
+    it('leere Controls oder fehlender catalogKey belegen kein LRU-Budget', async () => {
+      const registry = createSecurityLevelRegistry();
+      const controls = [makeControl({ id: 'GC.1.1', title: 'Titel' })];
+      const withKey = renderHook(() =>
+        useSearch(controls, 'Titel', registry, [], 'gspp'),
+      );
+      await waitFor(() => {
+        expect(withKey.result.current.results).toHaveLength(1);
+      });
+      await waitFor(() => {
+        expect(getSearchCacheSize()).toBe(1);
+      });
+
+      const emptyControls = renderHook(() => useSearch([], 'Titel', registry, [], 'gspp'));
+      await waitFor(() => {
+        expect(emptyControls.result.current.results).toHaveLength(0);
+      });
+      expect(getSearchCacheSize()).toBe(1);
+
+      const withoutKey = renderHook(() => useSearch(controls, 'Titel', registry, []));
+      await waitFor(() => {
+        expect(withoutKey.result.current.results).toHaveLength(1);
+      });
+      expect(getSearchCacheSize()).toBe(1);
+      expect(getSearchCacheKeys()).toEqual(['gspp']);
     });
   });
 });
