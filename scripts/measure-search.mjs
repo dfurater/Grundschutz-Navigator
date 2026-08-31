@@ -39,60 +39,58 @@ function countControls(groups) {
   return c;
 }
 
+function collectDocs(catalog, docs, numericIdRef) {
+  function walkGroups(groups) {
+    for (const g of groups) {
+      for (const c of g.controls ?? []) {
+        docs.push({
+          numericId: numericIdRef.value++,
+          controlIdText: c.id ?? '',
+          titleText: c.title ?? '',
+          linkText: (c.links ?? []).map((l) => l.href ?? '').join(' '),
+          metadataText: (c.props ?? []).map((p) => `${p.name} ${p.value}`).join(' '),
+          contentText: (c.parts ?? []).map((p) => p.prose ?? '').join(' '),
+        });
+        if (c.controls) {
+          for (const sub of c.controls) {
+            docs.push({
+              numericId: numericIdRef.value++,
+              controlIdText: sub.id ?? '',
+              titleText: sub.title ?? '',
+              linkText: (sub.links ?? []).map((l) => l.href ?? '').join(' '),
+              metadataText: (sub.props ?? []).map((p) => `${p.name} ${p.value}`).join(' '),
+              contentText: (sub.parts ?? []).map((p) => p.prose ?? '').join(' '),
+            });
+          }
+        }
+      }
+      if (g.groups) walkGroups(g.groups);
+    }
+  }
+  if (catalog.groups) walkGroups(catalog.groups);
+  for (const c of catalog.controls ?? []) {
+    docs.push({
+      numericId: numericIdRef.value++,
+      controlIdText: c.id ?? '',
+      titleText: c.title ?? '',
+      linkText: (c.links ?? []).map((l) => l.href ?? '').join(' '),
+      metadataText: (c.props ?? []).map((p) => `${p.name} ${p.value}`).join(' '),
+      contentText: (c.parts ?? []).map((p) => p.prose ?? '').join(' '),
+    });
+  }
+}
+
 function measureCatalog({ catalogKey, path: relPath }) {
   const absPath = resolve(root, relPath);
   const raw = JSON.parse(readFileSync(absPath, 'utf-8'));
   const catalog = raw.catalog;
-  const controlsCount = countControls(catalog.groups ?? []);
-  const totalWithRoot = controlsCount + (catalog.controls ?? []).length;
-  // Schätzung: Gesamt-Controls inkl. verschachtelter Enhancements – parseCatalog zählt 1000 für gspp.
-  // Für Messung nutzen wir die dokumentierten Parse-Zahlen aus ARCHITECTURE.md (1000/146/48),
-  // hier gemessen als Gruppen-Recursion ohne Enhancements.
   const iterations = config.iterations ?? 10;
   const times = [];
   for (let i = 0; i < iterations; i++) {
     const t0 = performance.now();
-    // Simuliere Suchdokumente: Titel + ID + Links + Metadata + Content (vereinfachte Texte)
     const docs = [];
-    let numericId = 0;
-    function walkGroups(groups) {
-      for (const g of groups) {
-        for (const c of g.controls ?? []) {
-          docs.push({
-            numericId: numericId++,
-            controlIdText: c.id ?? '',
-            titleText: c.title ?? '',
-            linkText: (c.links ?? []).map((l) => l.href ?? '').join(' '),
-            metadataText: (c.props ?? []).map((p) => `${p.name} ${p.value}`).join(' '),
-            contentText: (c.parts ?? []).map((p) => p.prose ?? '').join(' '),
-          });
-          if (c.controls) {
-            for (const sub of c.controls) {
-              docs.push({
-                numericId: numericId++,
-                controlIdText: sub.id ?? '',
-                titleText: sub.title ?? '',
-                linkText: (sub.links ?? []).map((l) => l.href ?? '').join(' '),
-                metadataText: (sub.props ?? []).map((p) => `${p.name} ${p.value}`).join(' '),
-                contentText: (sub.parts ?? []).map((p) => p.prose ?? '').join(' '),
-              });
-            }
-          }
-        }
-        if (g.groups) walkGroups(g.groups);
-      }
-    }
-    if (catalog.groups) walkGroups(catalog.groups);
-    for (const c of catalog.controls ?? []) {
-      docs.push({
-        numericId: numericId++,
-        controlIdText: c.id ?? '',
-        titleText: c.title ?? '',
-        linkText: (c.links ?? []).map((l) => l.href ?? '').join(' '),
-        metadataText: (c.props ?? []).map((p) => `${p.name} ${p.value}`).join(' '),
-        contentText: (c.parts ?? []).map((p) => p.prose ?? '').join(' '),
-      });
-    }
+    const numericIdRef = { value: 0 };
+    collectDocs(catalog, docs, numericIdRef);
     const t1 = performance.now();
     const indexes = createIndexes();
     for (const d of docs) {
