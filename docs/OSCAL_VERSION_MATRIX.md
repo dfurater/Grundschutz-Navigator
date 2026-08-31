@@ -301,7 +301,7 @@ liest jedes Dokument gegen die Version, die es selbst deklariert.
 
 ## Kompatibilitätstest
 
-`src/domain/sourceRegistry.test.ts` prüft alle **16** registrierten
+`src/domain/sourceRegistry.test.ts` prüft alle **15** registrierten
 OSCAL-Artefakte gegen die Matrix: vollständige Abdeckung, exakte
 Versionsübereinstimmung mit einem unabhängig ausgeschriebenen Orakel, ein
 auflösbarer Schema-Pin pro Artefakt und die Beschränkung auf genau die vier

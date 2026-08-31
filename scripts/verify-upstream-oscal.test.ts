@@ -293,6 +293,21 @@ describe('manifestgestützter OSCAL-Korpus', () => {
     ]);
   });
 
+  it('meldet im realen Manifest kein gesperrtes Artefakt als aus dem Upstream-Tree entfernt (ADR-7)', () => {
+    // Ergänzt die vorstehende Prüfung: Die drei gesperrten Artefakte sind
+    // dort als in `oscalArtifacts` enthalten bestätigt — hier wird explizit
+    // gegen die echte, getrackte upstream-manifest.json geprüft, dass
+    // `selectManifestOscalArtifacts` (mit Default-Registry) daneben keinen
+    // vierten, bisher unbemerkten Fall eines aus dem Baum entfernten
+    // gesperrten Artefakts meldet. Bewusst gegen die reale Datei statt nur
+    // gegen ein synthetisches Manifest (siehe ADR-7-Nachtrag-Block unten):
+    // Ein künftig aus dem BSI-Tree entferntes, noch gesperrtes Artefakt
+    // müsste hier auffallen, statt nur im synthetischen Fixture abgedeckt zu
+    // sein.
+    const selection = selectManifestOscalArtifacts(manifest);
+
+    expect(selection.missingBlockedArtifacts).toEqual([]);
+  });
 });
 
 describe('ADR-7-Nachtrag: gesperrtes Artefakt vollständig aus dem Upstream-Tree entfernt', () => {

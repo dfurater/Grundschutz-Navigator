@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { readdir, readFile } from 'node:fs/promises';
+import { promisify } from 'node:util';
 import * as ts from 'typescript';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -22,6 +23,8 @@ import {
   ENTRY_CATALOG,
 } from '../src/domain/sourceRegistry.mjs';
 import { buildUpstreamManifest } from './upstream-artifacts.mjs';
+
+const execFileAsync = promisify(execFile);
 
 const OLD_SHA = '1'.repeat(40);
 const NEW_SHA = '2'.repeat(40);
@@ -66,6 +69,13 @@ function gitBlobSha(contents: Buffer) {
     .digest('hex');
 }
 
+// Liest artifactKey-Literale aus den Objektliteralen VOR dem `.map()`-Aufruf,
+// nicht dessen Rückgabewert — setzt voraus, dass der `.map()`-Callback in
+// sourceRegistry.mjs (aktuell `(entry) => Object.freeze(entry)`) artifactKey
+// unverändert durchreicht. Würde der Callback artifactKey künftig ableiten
+// oder überschreiben, veraltet diese Extraktion, ohne dass der Grund aus dem
+// Fehlerbild ersichtlich wäre — nur der Vergleich mit loadSourceRegistryAtRef
+// (echter Import) würde als Diff auffallen.
 function artifactKeysFromSourceRegistrySource(source: string, sourceName: string) {
   const sourceFile = ts.createSourceFile(
     sourceName,
@@ -118,10 +128,12 @@ function artifactKeysFromSourceRegistrySource(source: string, sourceName: string
     .sort();
 }
 
-function artifactKeysFromSourceRegistryAtRef(ref: string) {
-  const source = execFileSync('git', ['show', `${ref}:src/domain/sourceRegistry.mjs`], {
-    encoding: 'utf8',
-  });
+async function artifactKeysFromSourceRegistryAtRef(ref: string) {
+  const { stdout: source } = await execFileAsync(
+    'git',
+    ['show', `${ref}:src/domain/sourceRegistry.mjs`],
+    { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 },
+  );
 
   return artifactKeysFromSourceRegistrySource(source, `sourceRegistry@${ref}.mjs`);
 }
@@ -382,7 +394,9 @@ describe('validateCatalogSyncManifest v2', () => {
 
     expect(validateCatalogSyncManifest(manifest)).toBe(manifest);
     expect(computeManifestSignature(manifest)).toBe(manifest.signatureSha256);
-    expect(manifest.files.filter((file) => file.rootType !== 'vocabulary')).toHaveLength(19);
+    expect(manifest.files.filter((file) => file.rootType !== 'vocabulary')).toHaveLength(
+      SOURCE_REGISTRY.filter((entry) => entry.kind === 'oscal').length,
+    );
   });
 
   it('rejects schema additions and a manipulated signature', () => {
@@ -1416,7 +1430,7 @@ export const SOURCE_REGISTRY = Object.freeze(
     // Import im Kindprozess führt validateSourceRegistry mit aus.
     expect(Array.isArray(loaded)).toBe(true);
     expect(loaded.map((entry) => entry.artifactKey).sort()).toEqual(
-      artifactKeysFromSourceRegistryAtRef('HEAD'),
+      await artifactKeysFromSourceRegistryAtRef('HEAD'),
     );
 
     // Kern der Ablage ausserhalb des Quellbaums: Selbst im Erfolgsfall darf
