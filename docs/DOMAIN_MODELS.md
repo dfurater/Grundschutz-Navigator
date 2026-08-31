@@ -703,8 +703,8 @@ ein Befund.
 ### Bewusst **nicht** unterstützt
 
 * **Keine Auflösung der Ressourcenreferenzen gegen die Gegenseite.** Alle sechs
-  `href` des Bestands sind relative Dateinamen, und außer
-  `ISO27001-AnnexA-catalog.json` ist keiner im Quellregister vertreten. Nach
+  `href` des Bestands sind relative Dateinamen, und keiner ist im Quellregister
+  vertreten. Nach
   [GSPP-286](https://linear.app/grundschutz-plus-plus/issue/GSPP-286) werden
   relative Referenzen **nie** aufgelöst: kein Verzeichniskontext, keine
   Pfadnormalisierung, keine Traversal-Sonderbehandlung.

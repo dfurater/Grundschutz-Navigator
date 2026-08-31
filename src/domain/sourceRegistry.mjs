@@ -104,17 +104,6 @@ export const SOURCE_REGISTRY = Object.freeze(
       title: 'Anwenderkatalog WLAN',
     },
     {
-      artifactKey: 'catalog-iso27001-annex-a',
-      kind: 'oscal',
-      oscalVersion: '1.1.3',
-      expectedRootType: 'catalog',
-      catalogKey: 'iso27001-annex-a',
-      upstreamPath: 'control_layer/ISO27001/ISO27001-AnnexA-catalog.json',
-      lifecycle: 'blocked-by-upstream',
-      upstreamIssue: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/69',
-      title: 'ISO/IEC 27001 Annex A Referenzkatalog',
-    },
-    {
       artifactKey: 'catalog-mindeststandard-tls',
       kind: 'oscal',
       oscalVersion: '1.1.3',

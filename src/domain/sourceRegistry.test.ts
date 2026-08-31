@@ -36,7 +36,6 @@ const EXPECTED_CATALOG_KEYS = [
   'gspp',
   'lieferkette',
   'wlan',
-  'iso27001-annex-a',
   'mindeststandard-tls',
 ] as const satisfies readonly CatalogKey[];
 
@@ -189,10 +188,6 @@ describe('sourceRegistry', () => {
         .sort((left, right) => left.artifactKey.localeCompare(right.artifactKey)),
     ).toEqual([
       {
-        artifactKey: 'catalog-iso27001-annex-a',
-        upstreamIssue: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/69',
-      },
-      {
         artifactKey: 'component-ga-lotse-grundmodul',
         upstreamIssue: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/70',
       },
@@ -331,6 +326,7 @@ describe('sourceRegistry', () => {
 
   it('narrows catalog keys with isCatalogKey', () => {
     expect(isCatalogKey('gspp')).toBe(true);
+    expect(isCatalogKey('iso27001-annex-a')).toBe(false);
     expect(isCatalogKey('GSPP')).toBe(false);
     expect(isCatalogKey('grundschutzpp')).toBe(false);
   });
@@ -354,7 +350,6 @@ describe('sourceRegistry', () => {
      */
     const DECLARED_UPSTREAM_VERSIONS: Record<string, string> = {
       'catalog-gspp': '1.1.3',
-      'catalog-iso27001-annex-a': '1.1.3',
       'catalog-lieferkette': '1.1.3',
       'catalog-mindeststandard-tls': '1.1.3',
       'catalog-source-gspp-kernel-g0': '1.1.3',

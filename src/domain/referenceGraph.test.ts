@@ -296,8 +296,8 @@ describe('Nicht bewertbare Ziele', () => {
       ...(withTargetCatalog
         ? [
           catalogDocument({
-            artifactKey: 'catalog-iso27001-annex-a',
-            catalogKey: 'iso27001-annex-a',
+            artifactKey: 'catalog-mindeststandard-tls',
+            catalogKey: 'mindeststandard-tls',
             controls: [{ id: 'A.5.1' }],
             uuid: isoCatalogUuid,
           }),
@@ -366,7 +366,7 @@ describe('Nicht bewertbare Ziele', () => {
   it('lässt ein nicht übergebenes gesperrtes Artefakt weder Knoten noch Abbruch erzeugen', () => {
     const graph = itgsLikeGraph(false);
     expect(graph.artifacts.map((artifact) => artifact.artifactKey)).toEqual(['mapping-iso']);
-    expect(graph.nodes.some((node) => node.documentKey === 'catalog-iso27001-annex-a')).toBe(false);
+    expect(graph.nodes.some((node) => node.documentKey === 'catalog-mindeststandard-tls')).toBe(false);
   });
 });
 

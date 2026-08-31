@@ -301,7 +301,7 @@ liest jedes Dokument gegen die Version, die es selbst deklariert.
 
 ## Kompatibilitätstest
 
-`src/domain/sourceRegistry.test.ts` prüft alle **16** registrierten
+`src/domain/sourceRegistry.test.ts` prüft alle **19** registrierten
 OSCAL-Artefakte gegen die Matrix: vollständige Abdeckung, exakte
 Versionsübereinstimmung mit einem unabhängig ausgeschriebenen Orakel, ein
 auflösbarer Schema-Pin pro Artefakt und die Beschränkung auf genau die vier
@@ -319,7 +319,6 @@ Git-Blob-SHA und SHA-256 jedes Dokuments wurden dabei gegen
 | Artefakt | Root-Typ | `oscal-version` |
 | --- | --- | --- |
 | `catalog-gspp` | `catalog` | 1.1.3 |
-| `catalog-iso27001-annex-a` | `catalog` | 1.1.3 |
 | `catalog-lieferkette` | `catalog` | 1.1.3 |
 | `catalog-mindeststandard-tls` | `catalog` | 1.1.3 |
 | `catalog-wlan` | `catalog` | 1.1.3 |

@@ -29,7 +29,7 @@ vi.mock('@/domain/sourceRegistry', async (importOriginal) => {
       { catalogKey: 'gspp', title: 'Grundschutz++ Anwenderkatalog', entryCatalog: true },
       { catalogKey: 'lieferkette', title: 'Anwenderkatalog Lieferkettensicherheit' },
       { catalogKey: 'wlan', title: 'Anwenderkatalog WLAN' },
-      { catalogKey: 'iso27001-annex-a', title: 'ISO/IEC 27001 Annex A Referenzkatalog' },
+      { catalogKey: 'mindeststandard-tls', title: 'Mindeststandard TLS (Entwurf)' },
     ],
   };
 });
@@ -83,7 +83,7 @@ describe('CatalogSwitcher', () => {
     // Katalog ohne eigene Icon-Zuordnung fällt auf das generische Icon zurück,
     // statt die Zeile auszulassen oder abzustürzen.
     expect(
-      screen.getByRole('menuitem', { name: /ISO\/IEC 27001 Annex A Referenzkatalog/ }),
+      screen.getByRole('menuitem', { name: /Mindeststandard TLS \(Entwurf\)/ }),
     ).toBeInTheDocument();
   });
 
