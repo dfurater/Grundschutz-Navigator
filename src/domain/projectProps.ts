@@ -616,6 +616,13 @@ function collectProjectProp(
   accumulator: ProjectPropReadAccumulator,
 ): void {
   const runtimeProp = prop as unknown as Readonly<Record<string, unknown>>;
+  if (runtimeProp.ns !== undefined && typeof runtimeProp.ns !== 'string') {
+    accumulator.diagnostics.push(diagnostic(
+      PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID,
+      carrier,
+    ));
+    return;
+  }
   if (runtimeProp.ns !== PROJECT_PROPS_NAMESPACE) {
     accumulator.foreignProps.push(prop);
     return;

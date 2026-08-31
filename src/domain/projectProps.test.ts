@@ -272,6 +272,9 @@ describe('projectProps read contract', () => {
   });
 
   it.each([
+    ['nicht-stringförmiger Namespace', {
+      name: 'implementation-priority', ns: null, value: 'high',
+    }, 'poam-item', PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID],
     ['nicht-stringförmiger Name', {
       name: null, ns: PROJECT_PROPS_NAMESPACE, value: 'high',
     }, 'poam-item', PROJECT_PROP_DIAGNOSTIC_CODES.NAME_INVALID],
