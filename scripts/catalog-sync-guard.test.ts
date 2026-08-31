@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { readdir, readFile } from 'node:fs/promises';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -62,6 +63,22 @@ function gitBlobSha(contents: Buffer) {
     .update(`blob ${contents.length}\0`)
     .update(contents)
     .digest('hex');
+}
+
+function artifactKeysFromSourceRegistryAtRef(ref: string) {
+  const source = execFileSync('git', ['show', `${ref}:src/domain/sourceRegistry.mjs`], {
+    encoding: 'utf8',
+  });
+  const registryStart = source.indexOf('export const SOURCE_REGISTRY = Object.freeze(');
+  const registryEnd = source.indexOf('  ].map((entry) => Object.freeze(entry)),\n);', registryStart);
+  if (registryStart === -1 || registryEnd === -1) {
+    throw new Error(`SOURCE_REGISTRY block could not be located at ${ref}`);
+  }
+  const registrySource = source.slice(registryStart, registryEnd);
+
+  return [...registrySource.matchAll(/^\s*artifactKey: '([^']+)',$/gm)]
+    .map((match) => match[1])
+    .sort();
 }
 
 function contentSha256(contents: Buffer) {
@@ -1339,12 +1356,9 @@ describe('OSCAL-Versionsmigration (GSPP-376)', () => {
     // Der Vorstand ist ein vollwertiges, selbstvalidiertes Register: Der
     // Import im Kindprozess führt validateSourceRegistry mit aus.
     expect(Array.isArray(loaded)).toBe(true);
-    expect(loaded).toContainEqual(expect.objectContaining({
-      artifactKey: ENTRY_CATALOG.artifactKey,
-      upstreamPath: ENTRY_CATALOG.upstreamPath,
-    }));
-    expect(loaded.every((entry) => typeof entry.artifactKey === 'string')).toBe(true);
-    expect(new Set(loaded.map((entry) => entry.artifactKey)).size).toBe(loaded.length);
+    expect(loaded.map((entry) => entry.artifactKey).sort()).toEqual(
+      artifactKeysFromSourceRegistryAtRef('HEAD'),
+    );
 
     // Kern der Ablage ausserhalb des Quellbaums: Selbst im Erfolgsfall darf
     // in src/domain kein temporäres, importierbares Modul auftauchen.
