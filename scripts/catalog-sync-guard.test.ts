@@ -102,7 +102,7 @@ function artifactKeysFromSourceRegistrySource(source: string, sourceName: string
     const keyProperty = element.properties.find(
       (property) =>
         ts.isPropertyAssignment(property)
-        && ts.isIdentifier(property.name)
+        && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name))
         && property.name.text === 'artifactKey',
     );
     if (
@@ -1398,7 +1398,7 @@ describe('OSCAL-Versionsmigration (GSPP-376)', () => {
 export const SOURCE_REGISTRY = Object.freeze(
   [
     {
-      artifactKey: "catalog-double-quoted", // zulässiger Kommentar
+      "artifactKey": "catalog-double-quoted", // zulässiger Kommentar
     },
   ].map((entry) => Object.freeze(entry)),
 );
