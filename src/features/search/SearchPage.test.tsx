@@ -145,6 +145,7 @@ describe('SearchPage', () => {
       'alias',
       null,
       state.catalog!.practices,
+      'gspp',
     );
   });
 

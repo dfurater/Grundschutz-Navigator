@@ -277,7 +277,7 @@ CatalogContext (Einstiegskatalog eager, weitere bedarfsgerecht)
         ▼
 Feature-Komponenten und Hooks
 • useFilteredControls()      → gefilterte Steuerungen
-• useSearch()                → FlexSearch-Volltextsuche
+• useSearch()                → FlexSearch-Volltextsuche mit kataloggescoptem LRU-Cache (GSPP-218, `MAX_SEARCH_CACHE_ENTRIES = 3`)
 • resolveControlVocabularies() → Vokabular-Auflösung
 ```
 
@@ -595,6 +595,46 @@ Mobile in Suchrelevanzreihenfolge), Auswahl heißt `grundschutz-auswahl.csv`,
 der Gesamtkatalogexport bleibt `grundschutz-gesamtkatalog.csv`. Der
 Suchbegriff selbst fließt nie in Dateiname, Log oder zusätzlichen Speicher
 ein.
+
+### Suchindex-Cache (GSPP-218)
+
+`useSearch` baut je Katalog fünf FlexSearch-Indizes (`controlIds`, `titles`,
+`links`, `metadata`, `content`) aus den normalisierten Suchdokumenten. Der
+Aufbau ist im Production-Build nicht trivial: Messung am gepinnten Snapshot
+(`8a97764`, `gspp` 1000 Controls, Node/V8 als Desktop-Proxy, 10 Iterationen)
+
+| Katalog | Ø Total | Ø Indizes | Frame 16 ms | Long Task 50 ms | 4× Mobile (≈ gedrosselt) | 6× Mobile |
+|---|---|---|---|---|---|---|
+| `gspp` (1000) | 402 ms | 396 ms | ✗ 25× | ✗ 8× | 1610 ms ✗ | 2416 ms ✗ |
+| `lieferkette` (146) | 27 ms | 27 ms | ✗ | – | 110 ms ✗ | 165 ms ✗ |
+| `wlan` (48) | 22 ms | 21 ms | ✗ | – | 87 ms ✗ | 130 ms ✗ |
+
+Jeder Katalog überschreitet damit das Frame-Budget; `gspp` überschreitet
+auch die Long-Task-Schwelle. Der bisherige komponentenlokale `useMemo`
+verwarf die Indizes beim Unmount der `SearchPage` (Detail → Zurück) und
+baute sie für unveränderte Eingaben neu. Deshalb hält `useSearch` seit
+GSPP-218 einen **kataloggescopten, begrenzten LRU-Cache** (`MAX_SEARCH_CACHE_ENTRIES = 3`):
+
+* Schlüssel: stabiler `catalogKey` (aus `sourceRegistry.GRU-239`) plus
+  Objektidentität von `controls`, `practices` und `vocabularyRegistry`.
+  Neue Referenzen invalidieren deterministisch; keine Ergebnis- oder
+  Indexvermischung zwischen Katalogen.
+* Begrenzung: LRU mit fester Obergrenze (aktuell 3 = Anzahl `supported`-
+  Kataloge). Überschreitet der Cache die Grenze, wird der älteste Eintrag
+  verworfen — kein unbegrenzter Speicheraufbau bei Katalogwechseln.
+* Rückkehr zu einem zuvor besuchten Katalog trifft nur innerhalb des
+  Budgets; darüber hinaus wird neu aufgebaut.
+* Invalidierung: jede neue `controls`-/`practices`-/`vocabulary`-Referenz
+  erzeugt einen frischen Eintrag.
+* `SearchPage` übergibt `catalog?.catalogKey` explizit an `useSearch`, damit
+  der Cache den stabilen Katalogbezeichner nutzen kann statt eines
+  Default-Schlüssels.
+
+Der Cache liegt als Modul-eigenes `Map<string, SearchCacheEntry>` in
+`src/features/search/useSearch.ts` (`clearSearchCache`, `getSearchCacheSize`,
+`getSearchCacheKeys`, `getSearchCacheEntry` für Tests) und ist strikt
+UI-seitig — kein zusätzlicher Speicher im `CatalogContext` und kein
+Persistenz- oder Netzwerkzugriff.
 
 ## Filter-System
 

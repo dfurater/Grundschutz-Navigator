@@ -1,5 +1,5 @@
 import { renderHook, waitFor } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import type {
   Control,
   Practice,
@@ -8,7 +8,14 @@ import type {
 } from '@/domain/models';
 import { buildVocabularyRegistry } from '@/domain/vocabulary';
 import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
-import { useSearch } from './useSearch';
+import {
+  clearSearchCache,
+  getSearchCacheEntry,
+  getSearchCacheKeys,
+  getSearchCacheSize,
+  MAX_SEARCH_CACHE_ENTRIES,
+  useSearch,
+} from './useSearch';
 
 function makeControl(overrides: Partial<Control> = {}): Control {
   return {
@@ -67,6 +74,10 @@ function createSecurityLevelRegistry(): VocabularyRegistry {
 }
 
 describe('useSearch', () => {
+  beforeEach(() => {
+    clearSearchCache();
+  });
+
   it('finds controls by result_specification / präzisierung', async () => {
     const controls = [
       makeControl({
@@ -395,5 +406,189 @@ describe('useSearch', () => {
     });
 
     expect(result.current.totalResults).toBe(75);
+  });
+
+  describe('GSPP-218 kataloggescopten Cache', () => {
+    it('zweiter Mount desselben Katalogs mit identischen Eingaben baut keine neuen Indizes', async () => {
+      const controls = [makeControl({ id: 'GC.1.1', title: 'Cache Treffer' })];
+      const registry = createSecurityLevelRegistry();
+      const practices: Practice[] = [];
+      const catalogKey = 'gspp';
+
+      const first = renderHook(() =>
+        useSearch(controls, 'Cache', registry, practices, catalogKey),
+      );
+      await waitFor(() => {
+        expect(first.result.current.results).toHaveLength(1);
+      });
+      expect(getSearchCacheSize()).toBe(1);
+      const firstEntry = getSearchCacheEntry(catalogKey);
+      expect(firstEntry).toBeDefined();
+      const firstIndexes = firstEntry!.indexes;
+
+      first.unmount();
+
+      const second = renderHook(() =>
+        useSearch(controls, 'Cache', registry, practices, catalogKey),
+      );
+      await waitFor(() => {
+        expect(second.result.current.results).toHaveLength(1);
+      });
+      expect(getSearchCacheSize()).toBe(1);
+      const secondEntry = getSearchCacheEntry(catalogKey);
+      expect(secondEntry!.indexes).toBe(firstIndexes);
+      expect(secondEntry!.searchDocuments).toBe(firstEntry!.searchDocuments);
+    });
+
+    it('Wechsel zwischen Katalogen vermischt weder Indexdaten noch Suchergebnisse', async () => {
+      const gsppControls = [makeControl({ id: 'GC.1.1', title: 'GSPP Titel' })];
+      const wlanControls = [makeControl({ id: 'GC.1.1', title: 'WLAN Titel' })];
+      const registry = createSecurityLevelRegistry();
+
+      const gsppSearch = renderHook(() =>
+        useSearch(gsppControls, 'GSPP', registry, [], 'gspp'),
+      );
+      await waitFor(() => {
+        expect(gsppSearch.result.current.results).toHaveLength(1);
+      });
+      expect(gsppSearch.result.current.results[0].control.title).toBe('GSPP Titel');
+
+      const wlanSearch = renderHook(() =>
+        useSearch(wlanControls, 'GSPP', registry, [], 'wlan'),
+      );
+      await waitFor(() => {
+        expect(wlanSearch.result.current.results).toHaveLength(0);
+      });
+
+      const wlanOwnSearch = renderHook(() =>
+        useSearch(wlanControls, 'WLAN', registry, [], 'wlan'),
+      );
+      await waitFor(() => {
+        expect(wlanOwnSearch.result.current.results).toHaveLength(1);
+      });
+      expect(wlanOwnSearch.result.current.results[0].control.title).toBe('WLAN Titel');
+
+      expect(getSearchCacheKeys()).toEqual(expect.arrayContaining(['gspp', 'wlan']));
+      expect(getSearchCacheEntry('gspp')!.indexes).not.toBe(getSearchCacheEntry('wlan')!.indexes);
+    });
+
+    it('Rückkehr zu einem zuvor besuchten Katalog nutzt den Cache nur innerhalb des Speicherbudgets (LRU)', async () => {
+      const makeControlsForKey = (key: string) => [
+        makeControl({ id: `${key}.1.1`, title: `Titel ${key}` }),
+      ];
+      const registry = createSecurityLevelRegistry();
+      const keys = ['k1', 'k2', 'k3', 'k4'] as const;
+
+      for (const key of keys.slice(0, MAX_SEARCH_CACHE_ENTRIES)) {
+        const hook = renderHook(() =>
+          useSearch(makeControlsForKey(key), `Titel ${key}`, registry, [], key),
+        );
+        await waitFor(() => {
+          expect(hook.result.current.results).toHaveLength(1);
+        });
+        hook.unmount();
+      }
+      expect(getSearchCacheSize()).toBe(MAX_SEARCH_CACHE_ENTRIES);
+      expect(getSearchCacheKeys()).toEqual(['k1', 'k2', 'k3']);
+
+      const before = getSearchCacheEntry('k1')!.indexes;
+      expect(before).toBeDefined();
+
+      const fourth = renderHook(() =>
+        useSearch(makeControlsForKey('k4'), 'Titel k4', registry, [], 'k4'),
+      );
+      await waitFor(() => {
+        expect(fourth.result.current.results).toHaveLength(1);
+      });
+      expect(getSearchCacheSize()).toBe(MAX_SEARCH_CACHE_ENTRIES);
+      expect(getSearchCacheKeys()).not.toContain('k1');
+      expect(getSearchCacheKeys()).toEqual(['k2', 'k3', 'k4']);
+
+      const reactivatedControls = makeControlsForKey('k1');
+      const reactivated = renderHook(() =>
+        useSearch(reactivatedControls, 'Titel k1', registry, [], 'k1'),
+      );
+      await waitFor(() => {
+        expect(reactivated.result.current.results).toHaveLength(1);
+      });
+      const after = getSearchCacheEntry('k1')!.indexes;
+      expect(after).not.toBe(before);
+    });
+
+    it('geänderte Controls invalidieren den Cache', async () => {
+      const registry = createSecurityLevelRegistry();
+      const catalogKey = 'gspp';
+      const firstControls = [makeControl({ id: 'GC.1.1', title: 'Erste Fassung' })];
+      const first = renderHook(() =>
+        useSearch(firstControls, 'Erste', registry, [], catalogKey),
+      );
+      await waitFor(() => {
+        expect(first.result.current.results).toHaveLength(1);
+      });
+      const firstIndexes = getSearchCacheEntry(catalogKey)!.indexes;
+      first.unmount();
+
+      const secondControls = [makeControl({ id: 'GC.1.1', title: 'Zweite Fassung' })];
+      const second = renderHook(() =>
+        useSearch(secondControls, 'Zweite', registry, [], catalogKey),
+      );
+      await waitFor(() => {
+        expect(second.result.current.results).toHaveLength(1);
+      });
+      expect(second.result.current.results[0].control.title).toBe('Zweite Fassung');
+      const secondIndexes = getSearchCacheEntry(catalogKey)!.indexes;
+      expect(secondIndexes).not.toBe(firstIndexes);
+      expect(getSearchCacheEntry(catalogKey)!.controls).toBe(secondControls);
+    });
+
+    it('geänderte Vocabulary Registry invalidiert den Cache', async () => {
+      const controls = [makeControl({ id: 'GC.3.1', securityLevel: 'erhöht', securityLevelProp: { name: 'sec_level', value: 'erhöht', ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_level.csv' } })];
+      const firstRegistry = createSecurityLevelRegistry();
+      const secondRegistry = createSecurityLevelRegistry();
+      const catalogKey = 'gspp';
+
+      const first = renderHook(() =>
+        useSearch(controls, 'Sicherheitsstufe', firstRegistry, [], catalogKey),
+      );
+      await waitFor(() => {
+        expect(first.result.current.results).toHaveLength(1);
+      });
+      const firstIndexes = getSearchCacheEntry(catalogKey)!.indexes;
+      first.unmount();
+
+      const second = renderHook(() =>
+        useSearch(controls, 'Sicherheitsstufe', secondRegistry, [], catalogKey),
+      );
+      await waitFor(() => {
+        expect(second.result.current.results).toHaveLength(1);
+      });
+      const secondIndexes = getSearchCacheEntry(catalogKey)!.indexes;
+      expect(secondIndexes).not.toBe(firstIndexes);
+    });
+
+    it('geänderte Practices invalidieren den Cache', async () => {
+      const controls = [makeControl({ id: 'GC.1.1', practiceId: 'GC' })];
+      const registry = createTestVocabularyRegistry();
+      const firstPractices: Practice[] = [{ id: 'GC', title: 'Gov', label: 'GC', altIdentifier: 'uuid-practice-1', topics: [], controlCount: 1 }];
+      const secondPractices: Practice[] = [{ id: 'GC', title: 'Gov', label: 'GC', altIdentifier: 'uuid-2', topics: [], controlCount: 1 }];
+      const catalogKey = 'gspp';
+
+      const first = renderHook(() =>
+        useSearch(controls, 'Corporate', registry, firstPractices, catalogKey),
+      );
+      await waitFor(() => {
+        expect(first.result.current.results).toHaveLength(1);
+      });
+      const firstIndexes = getSearchCacheEntry(catalogKey)!.indexes;
+      first.unmount();
+
+      const second = renderHook(() =>
+        useSearch(controls, 'Corporate', registry, secondPractices, catalogKey),
+      );
+      await waitFor(() => {
+        expect(second.result.current.results).toHaveLength(0);
+      });
+      expect(getSearchCacheEntry(catalogKey)!.indexes).not.toBe(firstIndexes);
+    });
   });
 });
