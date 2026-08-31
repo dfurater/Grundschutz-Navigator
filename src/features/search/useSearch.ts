@@ -230,10 +230,9 @@ export function useSearch(
     }
     const existing = searchCache.get(normalizedCatalogKey);
     if (
-      existing &&
-      existing.controls === controls &&
-      existing.practices === practices &&
-      existing.vocabularyRegistry === vocabularyRegistry
+      existing?.controls === controls &&
+      existing?.practices === practices &&
+      existing?.vocabularyRegistry === vocabularyRegistry
     ) {
       return existing;
     }

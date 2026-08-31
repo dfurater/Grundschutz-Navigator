@@ -601,21 +601,24 @@ ein.
 `useSearch` baut je Katalog fünf FlexSearch-Indizes (`controlIds`, `titles`,
 `links`, `metadata`, `content`) aus den normalisierten Suchdokumenten. Der
 Aufbau ist im Production-Build nicht trivial — gemessen am gepinnten Snapshot
-`8a97764` (gleicher Codepfad wie die App: `flexsearch@0.8.212`, `tokenize`
-`forward`/`strict`, `resolution: 9`, `cache: 100`, Vokabularauflösung und
-Praxis-Aliase wie in `src/features/search/useSearch.ts`):
+`8a97764` mit `npm run build` und demselben FlexSearch-Codepfad wie die App
+(`flexsearch@0.8.212`, `tokenize` `forward`/`strict`, `resolution: 9`,
+`cache: 100`):
 
-* **Desktop-Proxy**: Node 22 / V8 (identische Engine wie Chrome Desktop) mit
-  `performance.now()` über 10 Iterationen am Production-Artefakt
-  (`public/data/*.json` nach `npm run build`). Die reinen Index-Zeiten sind
-  damit repräsentativ für den Desktop-Thread; Browser-Overhead (React,
-  Layout) kommt hinzu.
+* **Runner**: `scripts/measure-search.mjs` (Konfiguration
+  `scripts/measure-search.config.json`, Aufruf `npm run measure-search`)
+  misst `performance.now()` über 10 Iterationen am Production-Artefakt
+  (`public/data/*.json` nach `npm run build`) und schreibt
+  `docs/SEARCH_MEASUREMENT.json`. Der Runner nutzt Node 22/V8 — identische
+  Engine wie Chrome Desktop — und ist damit ein repräsentativer Desktop-Proxy;
+  Browser-Overhead (React, Layout) kommt hinzu.
 * **Mobile**: gedrosselte Werte sind 4×/6×-Hochrechnungen des Desktop-Messwerts —
   dieselben Faktoren, die [PSI/Lighthouse für Moto G4](https://developers.google.com/speed/docs/insights/v5/about?hl=de) mit throttled 4G ansetzt
-  (`psi` Skill) und die in der Praxis Long Tasks auf mid-tier Android
-  realistisch abbilden. Eine vollinstrumentierte Lighthouse-Messung im
-  Production-Build zeigt dasselbe Bild: `gspp` sprengt das Frame-Budget
-  deutlich, `lieferkette`/`wlan` knapp.
+  (`psi` Skill). Eine vollinstrumentierte Lighthouse-Messung im
+  Production-Build zeigt dasselbe Bild: `gspp` sprengt das Budget deutlich.
+
+Vollständige App-Messung (inkl. Vokabularauflösung und Praxis-Aliasen, wie in
+`src/features/search/useSearch.ts`, gemessen mit `npx tsx tmp-measure-search.mjs`):
 
 | Katalog | Controls | Ø Total | Ø Indizes | Frame 16 ms | Long Task 50 ms | 4× Mobile | 6× Mobile |
 |---|---|---|---|---|---|---|---|
@@ -623,8 +626,18 @@ Praxis-Aliase wie in `src/features/search/useSearch.ts`):
 | `lieferkette` | 146 | 27 ms | 27 ms | ✗ | – | 110 ms ✗ | 165 ms ✗ |
 | `wlan` | 48 | 22 ms | 21 ms | ✗ | – | 87 ms ✗ | 130 ms ✗ |
 
-Jeder Katalog überschreitet damit das Frame-Budget; `gspp` überschreitet
-auch die Long-Task-Schwelle. Der bisherige komponentenlokale `useMemo`
+Runner als untere Schranke (`docs/SEARCH_MEASUREMENT.json`, 10 Iterationen,
+vereinfachte Metadaten ohne Vokabular, gleiche FlexSearch-Optionen):
+
+| Katalog | Controls | Ø Total | Ø Indizes | Frame 16 ms | Long Task 50 ms | 4× Mobile | 6× Mobile |
+|---|---|---|---|---|---|---|---|
+| `gspp` | 979 | 66 ms | 66 ms | ✗ | ✗ | 266 ms ✗ | 399 ms ✗ |
+| `lieferkette` | 140 | 9 ms | 9 ms | ✓ | – | 36 ms ✗ | 55 ms ✗ |
+| `wlan` | 48 | 3 ms | 3 ms | ✓ | – | 11 ms | 17 ms ✗ |
+
+Selbst die untere Schranke überschreitet für `gspp` Frame **und** Long Task
+auf Desktop, für `lieferkette`/`wlan` spätestens gedrosselt. Der bisherige
+komponentenlokale `useMemo`
 verwarf die Indizes beim Unmount der `SearchPage` (Detail → Zurück) und
 baute sie für unveränderte Eingaben neu. Deshalb hält `useSearch` seit
 GSPP-218 einen **kataloggescopten, begrenzten LRU-Cache** (`MAX_SEARCH_CACHE_ENTRIES = 3`):
