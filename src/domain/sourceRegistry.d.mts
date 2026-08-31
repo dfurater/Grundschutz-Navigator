@@ -84,6 +84,7 @@ export declare function validateCatalogLineages(
   lineages?: readonly CatalogLineage[],
   entries?: readonly SourceRegistryEntry[],
 ): void;
+export declare function hasRegistryKeyGrammar(value: unknown): value is string;
 export declare function isSafeRepoPath(path: string): boolean;
 export declare function isPathWithinMonitoredRoot(path: string): boolean;
 export declare function listArtifacts(filter?: {

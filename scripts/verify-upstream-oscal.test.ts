@@ -443,6 +443,13 @@ describe('Sperrsemantik und Werkzeugfehler', () => {
     ).toBe('GO_OSCAL_VALIDATION_RESULT_UNAVAILABLE artifact=mapping-itgs2023-zu-gspp');
   });
 
+  it('redigiert Artefaktschlüssel außerhalb derselben NCName-kompatiblen Grammatik', () => {
+    expect(formatVerificationFailure({
+      code: 'GO_OSCAL_VALIDATION_RESULT_UNAVAILABLE',
+      artifactKey: '1catalog-fixture',
+    })).toBe('GO_OSCAL_VALIDATION_RESULT_UNAVAILABLE');
+  });
+
   it('begrenzt jede go-oscal-Ausführung und redigiert einen Timeout', async () => {
     const execFileImpl = vi.fn(async () => {
       const timeoutError = Object.assign(new Error('private/path/to/untrusted-input.json'), {

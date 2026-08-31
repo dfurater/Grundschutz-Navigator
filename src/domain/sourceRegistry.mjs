@@ -27,7 +27,12 @@ import {
   isPinnedOscalVersion,
 } from './oscalVersionMatrix.mjs';
 
-const KEY_GRAMMAR = /^[a-z](?:[a-z0-9-]*[a-z0-9])?$/;
+const REGISTRY_KEY_GRAMMAR = /^[a-z](?:[a-z0-9-]*[a-z0-9])?$/;
+
+/** Gemeinsame NCName-kompatible Grammatik für artifactKey und catalogKey. */
+export function hasRegistryKeyGrammar(value) {
+  return typeof value === 'string' && REGISTRY_KEY_GRAMMAR.test(value);
+}
 
 const OSCAL_ROOT_TYPES = Object.freeze([
   'catalog',
@@ -368,7 +373,7 @@ function assertMatrixCompatibleVersion(entry) {
 }
 
 function assertArtifactKeyIsValid(entry, artifactKeys) {
-  if (!KEY_GRAMMAR.test(entry.artifactKey ?? '')) {
+  if (!hasRegistryKeyGrammar(entry.artifactKey)) {
     throw new Error(`artifactKey violates the key grammar: ${entry.artifactKey}`);
   }
   if (artifactKeys.has(entry.artifactKey)) {
@@ -418,7 +423,7 @@ function assertCatalogKeyUsageIsValid(entry, catalogKeys) {
     }
     return;
   }
-  if (!KEY_GRAMMAR.test(entry.catalogKey)) {
+  if (!hasRegistryKeyGrammar(entry.catalogKey)) {
     throw new Error(`catalogKey violates the key grammar: ${entry.catalogKey}`);
   }
   if (catalogKeys.has(entry.catalogKey)) {
@@ -714,7 +719,7 @@ function assertSupportedCatalogEntry(entry) {
     entry?.kind !== 'oscal' ||
     entry.expectedRootType !== 'catalog' ||
     entry.lifecycle !== 'supported' ||
-    !KEY_GRAMMAR.test(entry.catalogKey ?? '')
+    !hasRegistryKeyGrammar(entry.catalogKey)
   ) {
     throw new Error(
       `Not a supported catalog registry entry: ${entry?.artifactKey ?? '<unknown>'}`,

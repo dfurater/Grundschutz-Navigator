@@ -8,7 +8,10 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { validateManifestV2Shape } from './upstream-artifacts.mjs';
-import { listOscalArtifacts } from '../src/domain/sourceRegistry.mjs';
+import {
+  hasRegistryKeyGrammar,
+  listOscalArtifacts,
+} from '../src/domain/sourceRegistry.mjs';
 import { OFFICIAL_BSI_REPO, readBodyWithLimit } from './security-guards.mjs';
 
 /**
@@ -254,18 +257,17 @@ const MAX_REDIRECT_HOPS = 5;
 const TRANSIENT_RETRY_DELAYS_MS = Object.freeze([1000, 3000]);
 export const GO_OSCAL_EXECUTION_TIMEOUT_MS = 60_000;
 const execFileAsync = promisify(execFile);
-const SAFE_ARTIFACT_KEY = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
 function createVerificationToolError(code, artifactKey) {
   const toolError = new Error(code);
   toolError.code = code;
-  if (SAFE_ARTIFACT_KEY.test(artifactKey ?? '')) toolError.artifactKey = artifactKey;
+  if (hasRegistryKeyGrammar(artifactKey)) toolError.artifactKey = artifactKey;
   return toolError;
 }
 
 export function formatVerificationFailure(error) {
   const code = typeof error?.code === 'string' ? error.code : 'GO_OSCAL_VERIFICATION_FAILED';
-  return SAFE_ARTIFACT_KEY.test(error?.artifactKey ?? '')
+  return hasRegistryKeyGrammar(error?.artifactKey)
     ? `${code} artifact=${error.artifactKey}`
     : code;
 }

@@ -3,6 +3,7 @@ import {
   createOscalDiagnostic,
   type OscalDiagnostic,
 } from '@/domain/oscalDiagnostics';
+import { enforceClass2ObjectGraphInvariants } from '@/domain/oscalObjectGraph';
 import { isCatalogKey } from '@/domain/sourceRegistry';
 
 export const PROJECT_PROPS_NAMESPACE =
@@ -31,11 +32,24 @@ export const PROJECT_PROP_CARRIERS = Object.freeze([
 
 export type ProjectPropCarrier = (typeof PROJECT_PROP_CARRIERS)[number];
 
+export interface ProjectPropDocumentation {
+  readonly valueSpace: string;
+  readonly validation: string;
+  readonly introducedBy: Readonly<{
+    identifier: `GSPP-${number}`;
+    url: `https://linear.app/grundschutz-plus-plus/issue/GSPP-${number}`;
+  }>;
+}
+
 export interface ProjectPropRegistryEntry {
   readonly name: ProjectPropName;
   readonly meaning: string;
   readonly carriers: readonly ProjectPropCarrier[];
-  readonly cardinality: Readonly<{ minimum: 0; maximum: 1 | null }>;
+  readonly cardinality: Readonly<{
+    minimum: 0;
+    maximum: 1 | null;
+    scope: 'carrier' | 'group';
+  }>;
   readonly valueContract:
     | 'implementation-priority'
     | 'effort-estimate-hours'
@@ -44,70 +58,118 @@ export interface ProjectPropRegistryEntry {
     | 'catalog-key'
     | 'catalog-commit';
   readonly canonicalization: 'identity' | 'decimal-comma-to-point';
+  readonly documentation: Readonly<ProjectPropDocumentation>;
 }
 
-function registryEntry(
-  name: ProjectPropName,
-  carriers: readonly ProjectPropCarrier[],
-  maximum: 1 | null,
-  meaning: string,
-  valueContract: ProjectPropRegistryEntry['valueContract'],
-  canonicalization: ProjectPropRegistryEntry['canonicalization'] = 'identity',
-): Readonly<ProjectPropRegistryEntry> {
+function registryEntry(entry: ProjectPropRegistryEntry): Readonly<ProjectPropRegistryEntry> {
   return Object.freeze({
-    name,
-    meaning,
-    carriers: Object.freeze([...carriers]),
-    cardinality: Object.freeze({ minimum: 0 as const, maximum }),
-    valueContract,
-    canonicalization,
+    ...entry,
+    carriers: Object.freeze([...entry.carriers]),
+    cardinality: Object.freeze({ ...entry.cardinality }),
+    documentation: Object.freeze({
+      ...entry.documentation,
+      introducedBy: Object.freeze({ ...entry.documentation.introducedBy }),
+    }),
   });
 }
 
 export const PROJECT_PROP_REGISTRY = Object.freeze({
-  'implementation-priority': registryEntry(
-    'implementation-priority',
-    ['poam-item', 'remediation'],
-    1,
-    'Fachliche Priorität einer Umsetzungsmaßnahme',
-    'implementation-priority',
-  ),
-  'effort-estimate-hours': registryEntry(
-    'effort-estimate-hours',
-    ['poam-item', 'remediation'],
-    1,
-    'Optionale Aufwandsschätzung in Stunden',
-    'effort-estimate-hours',
-    'decimal-comma-to-point',
-  ),
-  'custom-tag': registryEntry(
-    'custom-tag',
-    ['implemented-requirement'],
-    null,
-    'Lokales Schlagwort einer implementierten Anforderung',
-    'custom-tag',
-  ),
-  'protection-need-level': registryEntry(
-    'protection-need-level',
-    ['system-component', 'inventory-item', 'information-type'],
-    1,
-    'Projektbezogener Schutzbedarf eines Zielobjekts',
-    'protection-need-level',
-  ),
-  'assessed-against-catalog-key': registryEntry(
-    'assessed-against-catalog-key',
-    ['metadata'],
-    1,
-    'Stabiler Katalogschlüssel einer Bewertung',
-    'catalog-key',
-  ),
-  'assessed-against-catalog-commit': registryEntry(
-    'assessed-against-catalog-commit',
-    ['metadata'],
-    1,
-    'Exakter Katalogstand einer Bewertung',
-    'catalog-commit',
-  ),
+  'implementation-priority': registryEntry({
+    name: 'implementation-priority',
+    carriers: ['poam-item', 'remediation'],
+    cardinality: { minimum: 0, maximum: 1, scope: 'carrier' },
+    meaning: 'Fachliche Priorität einer Umsetzungsmaßnahme',
+    valueContract: 'implementation-priority',
+    canonicalization: 'identity',
+    documentation: {
+      valueSpace: '`high`, `medium`, `low`',
+      validation: 'Exakter Token; keine Aliaswerte',
+      introducedBy: {
+        identifier: 'GSPP-356',
+        url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-356',
+      },
+    },
+  }),
+  'effort-estimate-hours': registryEntry({
+    name: 'effort-estimate-hours',
+    carriers: ['poam-item', 'remediation'],
+    cardinality: { minimum: 0, maximum: 1, scope: 'carrier' },
+    meaning: 'Optionale Aufwandsschätzung in Stunden',
+    valueContract: 'effort-estimate-hours',
+    canonicalization: 'decimal-comma-to-point',
+    documentation: {
+      valueSpace: 'Positive, endliche kanonische Dezimalzahl mit höchstens zwei Nachkommastellen',
+      validation: 'Dezimalpunkt, keine Einheit, kein Vorzeichen, keine Exponentialschreibweise; UI-Komma wird vor dem Schreiben normalisiert',
+      introducedBy: {
+        identifier: 'GSPP-356',
+        url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-356',
+      },
+    },
+  }),
+  'custom-tag': registryEntry({
+    name: 'custom-tag',
+    carriers: ['implemented-requirement'],
+    cardinality: { minimum: 0, maximum: null, scope: 'carrier' },
+    meaning: 'Lokales Schlagwort einer implementierten Anforderung',
+    valueContract: 'custom-tag',
+    canonicalization: 'identity',
+    documentation: {
+      valueSpace: 'Getrimmter, nichtleerer Klasse-2-Text',
+      validation: 'NFC-normalisiert und case-insensitiv je Träger eindeutig; Wert wird nicht umgedeutet oder extern ergänzt',
+      introducedBy: {
+        identifier: 'GSPP-312',
+        url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-312',
+      },
+    },
+  }),
+  'protection-need-level': registryEntry({
+    name: 'protection-need-level',
+    carriers: ['system-component', 'inventory-item', 'information-type'],
+    cardinality: { minimum: 0, maximum: 1, scope: 'carrier' },
+    meaning: 'Projektbezogener Schutzbedarf eines Zielobjekts',
+    valueContract: 'protection-need-level',
+    canonicalization: 'identity',
+    documentation: {
+      valueSpace: '`normal`, `hoch`',
+      validation: 'Nichtleere `remarks` sind Pflicht; keine Ableitung aus OSCAL-CIA-Werten',
+      introducedBy: {
+        identifier: 'GSPP-355',
+        url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-355',
+      },
+    },
+  }),
+  'assessed-against-catalog-key': registryEntry({
+    name: 'assessed-against-catalog-key',
+    carriers: ['metadata'],
+    cardinality: { minimum: 0, maximum: 1, scope: 'group' },
+    meaning: 'Stabiler Katalogschlüssel einer Bewertung',
+    valueContract: 'catalog-key',
+    canonicalization: 'identity',
+    documentation: {
+      valueSpace: 'Registrierter `catalogKey`',
+      validation: '`group` ist NCName-konform und exakt gleich dem Property-Wert',
+      introducedBy: {
+        identifier: 'GSPP-361',
+        url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-361',
+      },
+    },
+  }),
+  'assessed-against-catalog-commit': registryEntry({
+    name: 'assessed-against-catalog-commit',
+    carriers: ['metadata'],
+    cardinality: { minimum: 0, maximum: 1, scope: 'group' },
+    meaning: 'Exakter Katalogstand einer Bewertung',
+    valueContract: 'catalog-commit',
+    canonicalization: 'identity',
+    documentation: {
+      valueSpace: 'Vollständiger Git-Commit-SHA',
+      validation: 'Genau 40 kleingeschriebene Hex-Zeichen; Partner-Key mit identischer `group` ist Pflicht',
+      introducedBy: {
+        identifier: 'GSPP-361',
+        url: 'https://linear.app/grundschutz-plus-plus/issue/GSPP-361',
+      },
+    },
+  }),
 } satisfies Record<ProjectPropName, Readonly<ProjectPropRegistryEntry>>);
 
 const UNICODE_LETTER = /^\p{L}$/u;
@@ -163,13 +225,13 @@ export function parseCanonicalEffortEstimate(value: string): string | null {
   if (!isCanonicalEffortInteger(integer)) return null;
 
   if (decimalPosition === -1) {
-    return value.startsWith('0') ? null : value;
+    return value.startsWith('0') || !Number.isFinite(Number(value)) ? null : value;
   }
 
   const fraction = value.slice(decimalPosition + 1);
   if (!isCanonicalEffortFraction(fraction)) return null;
 
-  return value;
+  return Number.isFinite(Number(value)) ? value : null;
 }
 
 export function normalizeEffortEstimateInput(value: string): string | null {
@@ -205,24 +267,95 @@ export type ProjectPropDiagnosticCode =
 
 const PROJECT_PROP_VALIDATOR = Object.freeze({ name: 'gspp-project-props', version: '1' });
 
-const PROJECT_PROP_PATHS: Readonly<Record<ProjectPropCarrier, string>> = Object.freeze({
+const PROJECT_PROP_BOUNDARY_PATHS: Readonly<Record<ProjectPropCarrier, string>> = Object.freeze({
   metadata: '/metadata/props',
-  'poam-item': '/plan-of-action-and-milestones/poam-items/*/props',
-  remediation: '/plan-of-action-and-milestones/risks/*/remediations/*/props',
-  'implemented-requirement': '/system-security-plan/control-implementation/implemented-requirements/*/props',
-  'system-component': '/system-security-plan/system-implementation/components/*/props',
-  'inventory-item': '/system-security-plan/system-implementation/inventory-items/*/props',
-  'information-type': '/system-security-plan/system-characteristics/system-information/information-types/*/props',
+  'poam-item': '/project-props/poam-item',
+  remediation: '/project-props/remediation',
+  'implemented-requirement': '/project-props/implemented-requirement',
+  'system-component': '/project-props/system-component',
+  'inventory-item': '/project-props/inventory-item',
+  'information-type': '/project-props/information-type',
 });
 const PROJECT_PROP_BOUNDARY_PATH = '/project-props';
+
+export type ProjectPropLocation =
+  | Readonly<{ carrier: 'metadata' }>
+  | Readonly<{ carrier: 'poam-item'; poamItemIndex: number }>
+  | Readonly<{ carrier: 'remediation'; riskIndex: number; remediationIndex: number }>
+  | Readonly<{
+    carrier: 'implemented-requirement';
+    implementedRequirementIndex: number;
+  }>
+  | Readonly<{ carrier: 'system-component'; componentIndex: number }>
+  | Readonly<{ carrier: 'inventory-item'; inventoryItemIndex: number }>
+  | Readonly<{ carrier: 'information-type'; informationTypeIndex: number }>;
+
+type ProjectPropDiagnosticContext = ProjectPropCarrier | ProjectPropLocation;
+
+function isStructuralIndex(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
+}
+
+function isProjectPropLocation(value: unknown): value is ProjectPropLocation {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const candidate = value as Readonly<Record<string, unknown>>;
+  switch (candidate.carrier) {
+    case 'metadata':
+      return true;
+    case 'poam-item':
+      return isStructuralIndex(candidate.poamItemIndex);
+    case 'remediation':
+      return isStructuralIndex(candidate.riskIndex)
+        && isStructuralIndex(candidate.remediationIndex);
+    case 'implemented-requirement':
+      return isStructuralIndex(candidate.implementedRequirementIndex);
+    case 'system-component':
+      return isStructuralIndex(candidate.componentIndex);
+    case 'inventory-item':
+      return isStructuralIndex(candidate.inventoryItemIndex);
+    case 'information-type':
+      return isStructuralIndex(candidate.informationTypeIndex);
+    default:
+      return false;
+  }
+}
+
+function projectPropCarrier(context: ProjectPropDiagnosticContext): ProjectPropCarrier {
+  return typeof context === 'string' ? context : context.carrier;
+}
+
+function projectPropPath(context: ProjectPropDiagnosticContext): string {
+  if (typeof context === 'string') return PROJECT_PROP_BOUNDARY_PATHS[context];
+  switch (context.carrier) {
+    case 'metadata':
+      return '/metadata/props';
+    case 'poam-item':
+      return `/plan-of-action-and-milestones/poam-items/${context.poamItemIndex}/props`;
+    case 'remediation':
+      return `/plan-of-action-and-milestones/risks/${context.riskIndex}/remediations/${context.remediationIndex}/props`;
+    case 'implemented-requirement':
+      return `/system-security-plan/control-implementation/implemented-requirements/${context.implementedRequirementIndex}/props`;
+    case 'system-component':
+      return `/system-security-plan/system-implementation/components/${context.componentIndex}/props`;
+    case 'inventory-item':
+      return `/system-security-plan/system-implementation/inventory-items/${context.inventoryItemIndex}/props`;
+    case 'information-type':
+      return `/system-security-plan/system-characteristics/system-information/information-types/${context.informationTypeIndex}/props`;
+  }
+}
 
 const EMPTY_PROPS: readonly RawOscalProp[] = Object.freeze([]);
 const EMPTY_DIAGNOSTICS: readonly OscalDiagnostic[] = Object.freeze([]);
 
 export interface ProjectPropReadResult {
-  readonly preservedProps: readonly RawOscalProp[];
+  /** Exakte Eingabe für No-op-Export und Backup, unabhängig von der Schreibfreigabe. */
+  readonly preservedProps: unknown;
+  /** Zeigt separat, ob `preservedProps` eine strukturell gültige Props-Liste ist. */
+  readonly collectionValid: boolean;
   readonly projectProps: readonly RawOscalProp[];
   readonly foreignProps: readonly RawOscalProp[];
+  readonly unknownProjectProps: readonly RawOscalProp[];
+  readonly carrier: ProjectPropCarrier | null;
   readonly diagnostics: readonly OscalDiagnostic[];
   readonly writeAllowed: boolean;
 }
@@ -233,9 +366,9 @@ export type ProjectPropCreationResult =
 
 function diagnostic(
   code: ProjectPropDiagnosticCode,
-  carrier: ProjectPropCarrier,
+  context: ProjectPropDiagnosticContext,
 ): OscalDiagnostic {
-  return diagnosticAtPath(code, PROJECT_PROP_PATHS[carrier]);
+  return diagnosticAtPath(code, projectPropPath(context));
 }
 
 function diagnosticAtPath(
@@ -272,6 +405,12 @@ function invalidProjectPropValue(carrier: ProjectPropCarrier): OscalDiagnostic[]
   return [diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID, carrier)];
 }
 
+const IMPLEMENTATION_PRIORITY_VALUES = Object.freeze(['high', 'medium', 'low'] as const);
+
+function isCanonicalCustomTag(value: string): boolean {
+  return value.length > 0 && value.trim() === value;
+}
+
 function validateProtectionNeedValue(
   prop: RawOscalProp,
   carrier: ProjectPropCarrier,
@@ -296,13 +435,7 @@ function validateCatalogKeyValue(
 }
 
 function isLowerHexSha(value: string): boolean {
-  if (value.length !== 40) return false;
-  for (const character of value) {
-    const isDigit = character >= '0' && character <= '9';
-    const isLowerHexLetter = character >= 'a' && character <= 'f';
-    if (!isDigit && !isLowerHexLetter) return false;
-  }
-  return true;
+  return /^[0-9a-f]{40}$/.test(value);
 }
 
 function validateCatalogCommitValue(
@@ -326,7 +459,9 @@ function validateProjectPropValue(
 ): OscalDiagnostic[] {
   switch (valueContract) {
     case 'implementation-priority':
-      return ['high', 'medium', 'low'].includes(prop.value)
+      return IMPLEMENTATION_PRIORITY_VALUES.includes(
+        prop.value as (typeof IMPLEMENTATION_PRIORITY_VALUES)[number],
+      )
         ? []
         : invalidProjectPropValue(carrier);
     case 'effort-estimate-hours':
@@ -334,7 +469,7 @@ function validateProjectPropValue(
         ? invalidProjectPropValue(carrier)
         : [];
     case 'custom-tag':
-      return prop.value.length === 0 || prop.value.trim() !== prop.value
+      return !isCanonicalCustomTag(prop.value)
         ? invalidProjectPropValue(carrier)
         : [];
     case 'protection-need-level':
@@ -374,8 +509,6 @@ interface CatalogPairGroup {
 
 interface CatalogPairCollection {
   readonly groups: Map<unknown, CatalogPairGroup>;
-  readonly keyGroups: unknown[];
-  readonly commitGroups: unknown[];
 }
 
 function getCatalogPairGroup(
@@ -395,10 +528,8 @@ function collectCatalogPairProp(
 ): void {
   if (prop.name === 'assessed-against-catalog-key') {
     getCatalogPairGroup(collection.groups, prop.group).keys.push(prop);
-    collection.keyGroups.push(prop.group);
   } else if (prop.name === 'assessed-against-catalog-commit') {
     getCatalogPairGroup(collection.groups, prop.group).commits.push(prop);
-    collection.commitGroups.push(prop.group);
   }
 }
 
@@ -408,29 +539,32 @@ function validateCatalogPairs(
 ): OscalDiagnostic[] {
   const collection: CatalogPairCollection = {
     groups: new Map(),
-    keyGroups: [],
-    commitGroups: [],
   };
   for (const prop of props) {
     collectCatalogPairProp(collection, prop);
   }
 
   const diagnostics: OscalDiagnostic[] = [];
+  const keyOnlyGroups: unknown[] = [];
+  const commitOnlyGroups: unknown[] = [];
   for (const group of collection.groups.values()) {
-    if (group.keys.length === 0 || group.commits.length === 0) {
-      diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.CATALOG_PAIR_INCOMPLETE, carrier));
-    }
+    if (group.keys.length > 0 && group.commits.length === 0) keyOnlyGroups.push(group);
+    if (group.commits.length > 0 && group.keys.length === 0) commitOnlyGroups.push(group);
     if (group.keys.length > 1 || group.commits.length > 1) {
       diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.CATALOG_PAIR_DUPLICATE, carrier));
     }
   }
 
-  if (
-    collection.keyGroups.length === 1
-    && collection.commitGroups.length === 1
-    && collection.keyGroups[0] !== collection.commitGroups[0]
-  ) {
+  if (keyOnlyGroups.length > 0 && commitOnlyGroups.length > 0) {
     diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.CATALOG_GROUP_MISMATCH, carrier));
+  } else {
+    const incompletePairCount = keyOnlyGroups.length + commitOnlyGroups.length;
+    for (let index = 0; index < incompletePairCount; index += 1) {
+      diagnostics.push(diagnostic(
+        PROJECT_PROP_DIAGNOSTIC_CODES.CATALOG_PAIR_INCOMPLETE,
+        carrier,
+      ));
+    }
   }
 
   return diagnostics;
@@ -439,8 +573,8 @@ function validateCatalogPairs(
 interface ProjectPropReadAccumulator {
   readonly projectProps: RawOscalProp[];
   readonly foreignProps: RawOscalProp[];
+  readonly unknownProjectProps: RawOscalProp[];
   readonly diagnostics: OscalDiagnostic[];
-  readonly counts: Map<ProjectPropName, number>;
   readonly customTags: Set<string>;
 }
 
@@ -463,10 +597,10 @@ function collectCustomTag(
   accumulator: ProjectPropReadAccumulator,
   carrier: ProjectPropCarrier,
 ): void {
-  if (prop.name !== 'custom-tag' || prop.value.length === 0 || prop.value.trim() !== prop.value) {
+  if (prop.name !== 'custom-tag' || !isCanonicalCustomTag(prop.value)) {
     return;
   }
-  const normalizedTag = prop.value.toLowerCase();
+  const normalizedTag = prop.value.normalize('NFC').toLowerCase();
   if (accumulator.customTags.has(normalizedTag)) {
     accumulator.diagnostics.push(
       diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.DUPLICATE_VALUE, carrier),
@@ -493,13 +627,13 @@ function collectProjectProp(
 
   accumulator.diagnostics.push(...validateProjectPropGroup(prop, carrier));
   if (!isProjectPropName(runtimeProp.name)) {
+    accumulator.unknownProjectProps.push(prop);
     accumulator.diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.UNKNOWN, carrier));
     return;
   }
 
   const name = runtimeProp.name;
   accumulator.projectProps.push(prop);
-  accumulator.counts.set(name, (accumulator.counts.get(name) ?? 0) + 1);
   accumulator.diagnostics.push(...validateProjectPropCarrier(name, carrier));
   if (!hasValidRuntimeValueFields(prop, carrier, accumulator.diagnostics)) return;
 
@@ -510,23 +644,38 @@ function collectProjectProp(
 }
 
 function validateProjectPropCardinalities(
-  counts: ReadonlyMap<ProjectPropName, number>,
+  props: readonly RawOscalProp[],
   carrier: ProjectPropCarrier,
 ): OscalDiagnostic[] {
-  const diagnostics: OscalDiagnostic[] = [];
-  for (const name of PROJECT_PROP_NAMES) {
-    if (
-      name === 'assessed-against-catalog-key'
-      || name === 'assessed-against-catalog-commit'
-    ) {
+  const carrierCounts = new Map<ProjectPropName, number>();
+  const groupCounts = new Map<ProjectPropName, Map<unknown, number>>();
+  const invalidNames = new Set<ProjectPropName>();
+
+  for (const prop of props) {
+    if (!isProjectPropName(prop.name)) continue;
+    const { maximum, scope } = PROJECT_PROP_REGISTRY[prop.name].cardinality;
+    if (maximum === null) continue;
+
+    if (scope === 'carrier') {
+      const count = (carrierCounts.get(prop.name) ?? 0) + 1;
+      carrierCounts.set(prop.name, count);
+      if (count > maximum) invalidNames.add(prop.name);
       continue;
     }
-    const maximum = PROJECT_PROP_REGISTRY[name].cardinality.maximum;
-    if (maximum !== null && (counts.get(name) ?? 0) > maximum) {
-      diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.CARDINALITY_INVALID, carrier));
+
+    let countsByGroup = groupCounts.get(prop.name);
+    if (countsByGroup === undefined) {
+      countsByGroup = new Map<unknown, number>();
+      groupCounts.set(prop.name, countsByGroup);
     }
+    const count = (countsByGroup.get(prop.group) ?? 0) + 1;
+    countsByGroup.set(prop.group, count);
+    if (count > maximum) invalidNames.add(prop.name);
   }
-  return diagnostics;
+
+  return PROJECT_PROP_NAMES
+    .filter((name) => invalidNames.has(name))
+    .map(() => diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.CARDINALITY_INVALID, carrier));
 }
 
 function isRuntimeProjectPropObject(value: unknown): value is RawOscalProp {
@@ -544,24 +693,35 @@ function isRuntimeProjectPropCollection(value: unknown): value is readonly RawOs
 }
 
 function invalidProjectPropCollectionResult(
-  carrier: ProjectPropCarrier,
+  props: unknown,
+  context: ProjectPropDiagnosticContext,
+  boundaryDiagnostic = diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID, context),
 ): ProjectPropReadResult {
   return Object.freeze({
-    preservedProps: EMPTY_PROPS,
+    preservedProps: props,
+    collectionValid: false,
     projectProps: EMPTY_PROPS,
     foreignProps: EMPTY_PROPS,
-    diagnostics: Object.freeze([
-      diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID, carrier),
-    ]),
+    unknownProjectProps: EMPTY_PROPS,
+    carrier: projectPropCarrier(context),
+    diagnostics: Object.freeze([boundaryDiagnostic]),
     writeAllowed: false,
   });
 }
 
-function invalidProjectPropCarrierResult(): ProjectPropReadResult {
+function invalidProjectPropCarrierResult(props: unknown): ProjectPropReadResult {
+  const collectionValid = props === undefined || (
+    enforceClass2ObjectGraphInvariants(props) === null
+    && isRuntimeProjectPropCollection(props)
+  );
+
   return Object.freeze({
-    preservedProps: EMPTY_PROPS,
+    preservedProps: props,
+    collectionValid,
     projectProps: EMPTY_PROPS,
     foreignProps: EMPTY_PROPS,
+    unknownProjectProps: EMPTY_PROPS,
+    carrier: null,
     diagnostics: Object.freeze([
       diagnosticAtPath(
         PROJECT_PROP_DIAGNOSTIC_CODES.CARRIER_INVALID,
@@ -574,24 +734,34 @@ function invalidProjectPropCarrierResult(): ProjectPropReadResult {
 
 export function readProjectProps(
   props: unknown,
-  carrier: ProjectPropCarrier,
+  context: ProjectPropDiagnosticContext,
 ): ProjectPropReadResult;
 export function readProjectProps(
   props: unknown,
-  carrier: unknown,
+  context: unknown,
 ): ProjectPropReadResult {
-  if (!isProjectPropCarrier(carrier)) {
-    return invalidProjectPropCarrierResult();
+  if (!isProjectPropCarrier(context) && !isProjectPropLocation(context)) {
+    return invalidProjectPropCarrierResult(props);
+  }
+  const carrier = projectPropCarrier(context);
+  if (props !== undefined) {
+    const graphDiagnostic = enforceClass2ObjectGraphInvariants(props);
+    if (graphDiagnostic !== null) {
+      return invalidProjectPropCollectionResult(props, context, graphDiagnostic);
+    }
   }
   if (props !== undefined && !isRuntimeProjectPropCollection(props)) {
-    return invalidProjectPropCollectionResult(carrier);
+    return invalidProjectPropCollectionResult(props, context);
   }
   const preservedProps = props ?? EMPTY_PROPS;
   if (preservedProps.length === 0) {
     return Object.freeze({
       preservedProps,
+      collectionValid: true,
       projectProps: EMPTY_PROPS,
       foreignProps: EMPTY_PROPS,
+      unknownProjectProps: EMPTY_PROPS,
+      carrier,
       diagnostics: EMPTY_DIAGNOSTICS,
       writeAllowed: true,
     });
@@ -600,8 +770,8 @@ export function readProjectProps(
   const accumulator: ProjectPropReadAccumulator = {
     projectProps: [],
     foreignProps: [],
+    unknownProjectProps: [],
     diagnostics: [],
-    counts: new Map(),
     customTags: new Set(),
   };
 
@@ -609,18 +779,28 @@ export function readProjectProps(
     collectProjectProp(prop, carrier, accumulator);
   }
 
-  accumulator.diagnostics.push(...validateProjectPropCardinalities(accumulator.counts, carrier));
+  accumulator.diagnostics.push(...validateProjectPropCardinalities(
+    accumulator.projectProps,
+    carrier,
+  ));
 
   if (carrier === 'metadata') {
     accumulator.diagnostics.push(...validateCatalogPairs(accumulator.projectProps, carrier));
   }
 
+  const scopedDiagnostics = accumulator.diagnostics.map(({ code }) =>
+    diagnosticAtPath(code as ProjectPropDiagnosticCode, projectPropPath(context)),
+  );
+
   return Object.freeze({
     preservedProps,
+    collectionValid: true,
     projectProps: Object.freeze(accumulator.projectProps),
     foreignProps: Object.freeze(accumulator.foreignProps),
-    diagnostics: Object.freeze(accumulator.diagnostics),
-    writeAllowed: accumulator.diagnostics.length === 0,
+    unknownProjectProps: Object.freeze(accumulator.unknownProjectProps),
+    carrier,
+    diagnostics: Object.freeze(scopedDiagnostics),
+    writeAllowed: scopedDiagnostics.length === 0,
   });
 }
 
@@ -634,6 +814,13 @@ export interface ProjectPropCreationInput {
 
 export function createProjectProp(input: ProjectPropCreationInput): ProjectPropCreationResult;
 export function createProjectProp(input: unknown): ProjectPropCreationResult {
+  return createSingleProjectProp(input, false);
+}
+
+function createSingleProjectProp(
+  input: unknown,
+  allowCatalogReferencePart: boolean,
+): ProjectPropCreationResult {
   if (typeof input !== 'object' || input === null) {
     return Object.freeze({
       ok: false,
@@ -668,6 +855,21 @@ export function createProjectProp(input: unknown): ProjectPropCreationResult {
       diagnostic: diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.UNKNOWN, carrier),
     });
   }
+  if (
+    !allowCatalogReferencePart
+    && (
+      candidate.name === 'assessed-against-catalog-key'
+      || candidate.name === 'assessed-against-catalog-commit'
+    )
+  ) {
+    return Object.freeze({
+      ok: false,
+      diagnostic: diagnostic(
+        PROJECT_PROP_DIAGNOSTIC_CODES.CATALOG_PAIR_INCOMPLETE,
+        carrier,
+      ),
+    });
+  }
   if (typeof candidate.value !== 'string') {
     return Object.freeze({
       ok: false,
@@ -687,13 +889,13 @@ export function createProjectProp(input: unknown): ProjectPropCreationResult {
     });
   }
 
-  const prop = Object.freeze({
+  const prop = {
     name: candidate.name,
     value: candidate.value,
     ns: PROJECT_PROPS_NAMESPACE,
     ...(candidate.group === undefined ? {} : { group: candidate.group }),
     ...(candidate.remarks === undefined ? {} : { remarks: candidate.remarks }),
-  });
+  };
   const diagnostics = [
     ...validateProjectPropGroup(prop, carrier),
     ...validateKnownProjectProp(prop, candidate.name, carrier),
@@ -704,9 +906,69 @@ export function createProjectProp(input: unknown): ProjectPropCreationResult {
   return Object.freeze({ ok: true, prop });
 }
 
+export interface CatalogReferenceProjectPropsInput {
+  readonly catalogKey: string;
+  readonly commit: string;
+}
+
+export type CatalogReferenceProjectPropsCreationResult =
+  | {
+    readonly ok: true;
+    readonly props: readonly [Readonly<RawOscalProp>, Readonly<RawOscalProp>];
+  }
+  | { readonly ok: false; readonly diagnostic: OscalDiagnostic };
+
+export function createCatalogReferenceProjectProps(
+  input: CatalogReferenceProjectPropsInput,
+): CatalogReferenceProjectPropsCreationResult;
+export function createCatalogReferenceProjectProps(
+  input: unknown,
+): CatalogReferenceProjectPropsCreationResult {
+  if (typeof input !== 'object' || input === null) {
+    return Object.freeze({
+      ok: false,
+      diagnostic: diagnosticAtPath(
+        PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID,
+        PROJECT_PROP_BOUNDARY_PATH,
+      ),
+    });
+  }
+  const candidate = input as Readonly<Record<string, unknown>>;
+  if (typeof candidate.catalogKey !== 'string' || typeof candidate.commit !== 'string') {
+    return Object.freeze({
+      ok: false,
+      diagnostic: diagnostic(
+        PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID,
+        'metadata',
+      ),
+    });
+  }
+
+  const keyResult = createSingleProjectProp({
+    name: 'assessed-against-catalog-key',
+    value: candidate.catalogKey,
+    carrier: 'metadata',
+    group: candidate.catalogKey,
+  }, true);
+  if (!keyResult.ok) return keyResult;
+
+  const commitResult = createSingleProjectProp({
+    name: 'assessed-against-catalog-commit',
+    value: candidate.commit,
+    carrier: 'metadata',
+    group: candidate.catalogKey,
+  }, true);
+  if (!commitResult.ok) return commitResult;
+
+  return Object.freeze({
+    ok: true,
+    props: [keyResult.prop, commitResult.prop] as const,
+  });
+}
+
 export interface PlanningMeasureProjectPropsInput {
-  readonly poamItemProps?: readonly RawOscalProp[];
-  readonly remediationProps?: readonly RawOscalProp[];
+  readonly poamItemResult?: ProjectPropReadResult;
+  readonly remediationResult?: ProjectPropReadResult;
 }
 
 export interface ProjectPropValidationResult {
@@ -714,23 +976,37 @@ export interface ProjectPropValidationResult {
   readonly writeAllowed: boolean;
 }
 
+const PLANNING_PROP_NAMES = Object.freeze([
+  'implementation-priority',
+  'effort-estimate-hours',
+] as const);
+
+function isPlanningProjectProp(prop: RawOscalProp): boolean {
+  return PLANNING_PROP_NAMES.includes(prop.name as (typeof PLANNING_PROP_NAMES)[number]);
+}
+
 export function validatePlanningMeasureProjectProps(
   input: PlanningMeasureProjectPropsInput,
 ): ProjectPropValidationResult {
-  const poamItemResult = readProjectProps(input.poamItemProps, 'poam-item');
-  const remediationResult = readProjectProps(input.remediationProps, 'remediation');
-  const diagnostics = [...poamItemResult.diagnostics, ...remediationResult.diagnostics];
-  const planningNames = new Set<ProjectPropName>([
-    'implementation-priority',
-    'effort-estimate-hours',
-  ]);
+  const { poamItemResult, remediationResult } = input;
+  const carrierDiagnostics = [
+    ...(poamItemResult !== undefined && poamItemResult.carrier !== 'poam-item'
+      ? [diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.CARRIER_INVALID, 'poam-item')]
+      : EMPTY_DIAGNOSTICS),
+    ...(remediationResult !== undefined && remediationResult.carrier !== 'remediation'
+      ? [diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.CARRIER_INVALID, 'remediation')]
+      : EMPTY_DIAGNOSTICS),
+  ];
+  const diagnostics = [
+    ...carrierDiagnostics,
+    ...(poamItemResult?.diagnostics ?? EMPTY_DIAGNOSTICS),
+    ...(remediationResult?.diagnostics ?? EMPTY_DIAGNOSTICS),
+  ];
 
-  const hasPoamPlanningProp = poamItemResult.projectProps.some((prop) =>
-    planningNames.has(prop.name as ProjectPropName),
-  );
-  const hasRemediationPlanningProp = remediationResult.projectProps.some((prop) =>
-    planningNames.has(prop.name as ProjectPropName),
-  );
+  const hasPoamPlanningProp = poamItemResult?.projectProps.some(isPlanningProjectProp) ?? false;
+  const hasRemediationPlanningProp = remediationResult?.projectProps.some(
+    isPlanningProjectProp,
+  ) ?? false;
   const hasCarrierConflict = hasPoamPlanningProp && hasRemediationPlanningProp;
   if (hasCarrierConflict) {
     diagnostics.push(diagnosticAtPath(

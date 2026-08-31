@@ -4,6 +4,7 @@ import {
   PROJECT_PROP_DIAGNOSTIC_CODES,
   PROJECT_PROP_NAMES,
   PROJECT_PROP_REGISTRY,
+  createCatalogReferenceProjectProps,
   createProjectProp,
   isOscalToken,
   normalizeEffortEstimateInput,
@@ -32,13 +33,23 @@ describe('projectProps registry', () => {
       expect(Object.isFrozen(entry)).toBe(true);
       expect(Object.isFrozen(entry.carriers)).toBe(true);
       expect(Object.isFrozen(entry.cardinality)).toBe(true);
+      expect(Object.isFrozen(entry.documentation)).toBe(true);
+      expect(Object.isFrozen(entry.documentation.introducedBy)).toBe(true);
       expect(entry.meaning.length).toBeGreaterThan(0);
       expect(entry.valueContract.length).toBeGreaterThan(0);
       expect(entry.canonicalization).toMatch(/^(identity|decimal-comma-to-point)$/);
-      expect('introducedBy' in entry).toBe(false);
+      expect(entry.documentation.valueSpace.length).toBeGreaterThan(0);
+      expect(entry.documentation.validation.length).toBeGreaterThan(0);
+      expect(entry.documentation.introducedBy.identifier).toMatch(/^GSPP-\d+$/);
     }
     expect(PROJECT_PROP_REGISTRY['effort-estimate-hours'].canonicalization)
       .toBe('decimal-comma-to-point');
+    expect(PROJECT_PROP_REGISTRY['implementation-priority'].cardinality.scope)
+      .toBe('carrier');
+    expect(PROJECT_PROP_REGISTRY['assessed-against-catalog-key'].cardinality)
+      .toEqual({ minimum: 0, maximum: 1, scope: 'group' });
+    expect(PROJECT_PROP_REGISTRY['assessed-against-catalog-commit'].cardinality)
+      .toEqual({ minimum: 0, maximum: 1, scope: 'group' });
   });
 });
 
@@ -73,16 +84,32 @@ describe('effort-estimate-hours', () => {
     expect(normalizeEffortEstimateInput('1,234')).toBeNull();
     expect(parseCanonicalEffortEstimate('1,5')).toBeNull();
   });
+
+  it('weist Dezimalwerte außerhalb des endlichen Zahlenraums ab', () => {
+    const oversizedValue = '9'.repeat(400);
+
+    expect(parseCanonicalEffortEstimate(oversizedValue)).toBeNull();
+    expect(readProjectProps([{
+      name: 'effort-estimate-hours',
+      ns: PROJECT_PROPS_NAMESPACE,
+      value: oversizedValue,
+    }], 'poam-item').writeAllowed).toBe(false);
+    expect(createProjectProp({
+      name: 'effort-estimate-hours',
+      carrier: 'poam-item',
+      value: oversizedValue,
+    }).ok).toBe(false);
+  });
 });
 
 describe('projectProps read contract', () => {
   it('interpretiert fremde Namespaces nicht und erhält Liste und Property referenzidentisch', () => {
-    const foreignProp = Object.freeze({
+    const foreignProp = {
       name: 'future-name',
       ns: 'https://example.invalid/ns',
       value: 'vertraulicher-marker',
-    });
-    const props = Object.freeze([foreignProp]);
+    };
+    const props = [foreignProp];
 
     const result = readProjectProps(props, 'metadata');
 
@@ -114,7 +141,8 @@ describe('projectProps read contract', () => {
     const result = readProjectProps(props as never, 'metadata');
 
     expect(result.writeAllowed).toBe(false);
-    expect(result.preservedProps).toEqual([]);
+    expect(result).toMatchObject({ collectionValid: false });
+    expect(result.preservedProps).toBe(props);
     expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toEqual([
       PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID,
     ]);
@@ -125,10 +153,21 @@ describe('projectProps read contract', () => {
     const result = readProjectProps([], null as never);
 
     expect(result.writeAllowed).toBe(false);
+    expect(result.collectionValid).toBe(true);
     expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toEqual([
       PROJECT_PROP_DIAGNOSTIC_CODES.CARRIER_INVALID,
     ]);
     expect(result.diagnostics[0]?.path).toBe('/project-props');
+  });
+
+  it('bewertet bei ungültigem Carrier eine strukturell defekte Collection weiterhin separat', () => {
+    const result = readProjectProps(null, null as never);
+
+    expect(result.writeAllowed).toBe(false);
+    expect(result.collectionValid).toBe(false);
+    expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toEqual([
+      PROJECT_PROP_DIAGNOSTIC_CODES.CARRIER_INVALID,
+    ]);
   });
 
   it('weist eine Sparse Collection am Reader-Boundary redigiert ab', () => {
@@ -139,22 +178,25 @@ describe('projectProps read contract', () => {
 
     expect(result.writeAllowed).toBe(false);
     expect(result.diagnostics.map((diagnostic) => diagnostic.code)).toEqual([
-      PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID,
+      'OSCAL_OBJECT_ARRAY_SHAPE_REJECTED',
     ]);
   });
 
   it('sperrt unbekannte Projektnamen, ohne Name oder Wert zu diagnostizieren', () => {
     const marker = 'nicht-in-diagnose-ausgeben';
-    const prop = Object.freeze({
+    const prop = {
       name: marker,
       ns: PROJECT_PROPS_NAMESPACE,
       value: marker,
-    });
+    };
 
-    const result = readProjectProps(Object.freeze([prop]), 'metadata');
+    const props = [prop];
+    const result = readProjectProps(props, 'metadata');
 
-    expect(result.preservedProps[0]).toBe(prop);
+    expect(result.preservedProps).toBe(props);
+    expect(result).toMatchObject({ collectionValid: true });
     expect(result.projectProps).toEqual([]);
+    expect(result).toMatchObject({ unknownProjectProps: [prop] });
     expect(result.writeAllowed).toBe(false);
     expect(result.diagnostics[0].code).toBe(PROJECT_PROP_DIAGNOSTIC_CODES.UNKNOWN);
     expect(JSON.stringify(result.diagnostics)).not.toContain(marker);
@@ -259,7 +301,12 @@ describe('projectProps read contract', () => {
     ['protection-need-level', 'mittel', 'system-component', 'Begründung'],
   ] as const)('weist den ungültigen Wert für %s ab', (name, value, carrier, remarks) => {
     const result = readProjectProps([
-      { name, value, ns: PROJECT_PROPS_NAMESPACE, remarks },
+      {
+        name,
+        value,
+        ns: PROJECT_PROPS_NAMESPACE,
+        ...(remarks === undefined ? {} : { remarks }),
+      },
     ], carrier);
 
     expect(result.diagnostics[0]?.code).toBe(PROJECT_PROP_DIAGNOSTIC_CODES.VALUE_INVALID);
@@ -308,6 +355,54 @@ describe('projectProps read contract', () => {
       PROJECT_PROP_DIAGNOSTIC_CODES.DUPLICATE_VALUE,
     );
   });
+
+  it('verlangt auch für Unicode-äquivalente custom-tags Eindeutigkeit', () => {
+    const result = readProjectProps([
+      { name: 'custom-tag', value: 'caf\u00e9', ns: PROJECT_PROPS_NAMESPACE },
+      { name: 'custom-tag', value: 'cafe\u0301', ns: PROJECT_PROPS_NAMESPACE },
+    ], 'implemented-requirement');
+
+    expect(result.diagnostics.map(({ code }) => code)).toContain(
+      PROJECT_PROP_DIAGNOSTIC_CODES.DUPLICATE_VALUE,
+    );
+  });
+
+  it.each([
+    [{ carrier: 'metadata' }, '/metadata/props'],
+    [{ carrier: 'poam-item', poamItemIndex: 2 }, '/plan-of-action-and-milestones/poam-items/2/props'],
+    [{ carrier: 'remediation', riskIndex: 1, remediationIndex: 3 }, '/plan-of-action-and-milestones/risks/1/remediations/3/props'],
+    [{ carrier: 'implemented-requirement', implementedRequirementIndex: 4 }, '/system-security-plan/control-implementation/implemented-requirements/4/props'],
+    [{ carrier: 'system-component', componentIndex: 5 }, '/system-security-plan/system-implementation/components/5/props'],
+    [{ carrier: 'inventory-item', inventoryItemIndex: 6 }, '/system-security-plan/system-implementation/inventory-items/6/props'],
+    [{ carrier: 'information-type', informationTypeIndex: 7 }, '/system-security-plan/system-characteristics/system-information/information-types/7/props'],
+  ] as const)('erzeugt für %o einen strukturellen JSON Pointer', (location, expectedPath) => {
+    const result = readProjectProps([{
+      name: 'future-name',
+      ns: PROJECT_PROPS_NAMESPACE,
+      value: 'redacted',
+    }], location);
+
+    expect(result.diagnostics[0]?.path).toBe(expectedPath);
+    expect(result.diagnostics[0]?.signature.endsWith(`|${expectedPath}`)).toBe(true);
+    expect(result.diagnostics[0]?.path).not.toContain('*');
+  });
+
+  it('verwendet die gemeinsame Klasse-2-Objektgrenze', () => {
+    class ProjectPropLike {
+      name = 'custom-tag';
+      ns = PROJECT_PROPS_NAMESPACE;
+      value = 'intern';
+    }
+
+    const props = [new ProjectPropLike()];
+    const result = readProjectProps(props, 'implemented-requirement');
+
+    expect(result.preservedProps).toBe(props);
+    expect(result.diagnostics.map(({ code }) => code)).toEqual([
+      'OSCAL_OBJECT_PROTOTYPE_REJECTED',
+    ]);
+    expect(result.writeAllowed).toBe(false);
+  });
 });
 
 describe('projectProps writer', () => {
@@ -316,9 +411,7 @@ describe('projectProps writer', () => {
     [{ name: 'effort-estimate-hours', value: '1.5', carrier: 'remediation' }],
     [{ name: 'custom-tag', value: 'intern', carrier: 'implemented-requirement' }],
     [{ name: 'protection-need-level', value: 'normal', carrier: 'inventory-item', remarks: 'Begründung' }],
-    [{ name: 'assessed-against-catalog-key', value: 'gspp', carrier: 'metadata', group: 'gspp' }],
-    [{ name: 'assessed-against-catalog-commit', value: '0123456789abcdef0123456789abcdef01234567', carrier: 'metadata', group: 'gspp' }],
-  ] as const)('erzeugt ein gültiges, eingefrorenes %s', (input) => {
+  ] as const)('erzeugt ein gültiges OSCAL-kompatibles %s', (input) => {
     const result = createProjectProp(input);
 
     expect(result.ok).toBe(true);
@@ -328,7 +421,20 @@ describe('projectProps writer', () => {
       value: input.value,
       ns: PROJECT_PROPS_NAMESPACE,
     });
-    expect(Object.isFrozen(result.prop)).toBe(true);
+    expect(readProjectProps([result.prop], input.carrier).writeAllowed).toBe(true);
+  });
+
+  it.each([
+    ['assessed-against-catalog-key', 'gspp'],
+    ['assessed-against-catalog-commit', '0123456789abcdef0123456789abcdef01234567'],
+  ] as const)('verweigert die unpaarige Erzeugung von %s', (name, value) => {
+    const result = createProjectProp({ name, value, carrier: 'metadata', group: 'gspp' });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.diagnostic.code).toBe(
+      PROJECT_PROP_DIAGNOSTIC_CODES.CATALOG_PAIR_INCOMPLETE,
+    );
   });
 
   it('gibt bei ungültiger Eingabe nur eine redigierte Diagnose zurück', () => {
@@ -428,6 +534,29 @@ describe('metadata catalog reference pairs', () => {
     };
   }
 
+  it('erzeugt das Katalogreferenzpaar ausschließlich atomar', () => {
+    const result = createCatalogReferenceProjectProps({
+      catalogKey: 'gspp',
+      commit: validSha,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.props).toEqual([catalogKey('gspp'), catalogCommit('gspp')]);
+    expect(readProjectProps(result.props, 'metadata').writeAllowed).toBe(true);
+  });
+
+  it.each([
+    [{ catalogKey: 'unbekannt', commit: validSha }, PROJECT_PROP_DIAGNOSTIC_CODES.CATALOG_KEY_INVALID],
+    [{ catalogKey: 'gspp', commit: 'ABC' }, PROJECT_PROP_DIAGNOSTIC_CODES.CATALOG_COMMIT_INVALID],
+  ] as const)('weist ein ungültiges atomisches Katalogreferenzpaar ab', (input, code) => {
+    const result = createCatalogReferenceProjectProps(input);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.diagnostic.code).toBe(code);
+  });
+
   it('akzeptiert die vollständige Abwesenheit und ein vollständiges Paar', () => {
     expect(readProjectProps(undefined, 'metadata').writeAllowed).toBe(true);
     expect(readProjectProps([catalogKey('gspp'), catalogCommit('gspp')], 'metadata'))
@@ -443,6 +572,30 @@ describe('metadata catalog reference pairs', () => {
     ], 'metadata');
 
     expect(result.writeAllowed).toBe(true);
+  });
+
+  it('prüft viele verschiedene Gruppen ohne quadratisches Laufzeitverhalten', () => {
+    const props = Array.from({ length: 30_000 }, (_, index) =>
+      catalogCommit(`gruppe-${index}`));
+
+    const result = readProjectProps(props, 'metadata');
+
+    expect(result.writeAllowed).toBe(false);
+    expect(result.diagnostics.some(({ code }) =>
+      code === PROJECT_PROP_DIAGNOSTIC_CODES.CARDINALITY_INVALID)).toBe(false);
+  }, 2_000);
+
+  it('benennt abweichende Gruppen auch neben einem vollständigen Paar als Gruppenfehler', () => {
+    const result = readProjectProps([
+      catalogKey('gspp'),
+      catalogCommit('gspp'),
+      catalogKey('wlan'),
+      catalogCommit('lieferkette'),
+    ], 'metadata');
+
+    expect(result.diagnostics.map(({ code }) => code)).toContain(
+      PROJECT_PROP_DIAGNOSTIC_CODES.CATALOG_GROUP_MISMATCH,
+    );
   });
 
   it.each([
@@ -475,14 +628,30 @@ describe('metadata catalog reference pairs', () => {
 });
 
 describe('explicit planning measure context', () => {
+  function poamItemResult(props: readonly RawOscalProp[]) {
+    return readProjectProps(props, { carrier: 'poam-item', poamItemIndex: 0 });
+  }
+
+  function remediationResult(props: readonly RawOscalProp[]) {
+    return readProjectProps(props, {
+      carrier: 'remediation',
+      riskIndex: 0,
+      remediationIndex: 0,
+    });
+  }
+
   it.each([
     [[{ name: 'implementation-priority', value: 'high' }]],
     [[{ name: 'effort-estimate-hours', value: '1.5' }]],
   ] as const)('akzeptiert Planungsprops auf genau einem expliziten Träger', (plainProps) => {
     const props = plainProps.map((prop) => ({ ...prop, ns: PROJECT_PROPS_NAMESPACE }));
 
-    expect(validatePlanningMeasureProjectProps({ poamItemProps: props }).writeAllowed).toBe(true);
-    expect(validatePlanningMeasureProjectProps({ remediationProps: props }).writeAllowed).toBe(true);
+    expect(validatePlanningMeasureProjectProps({
+      poamItemResult: poamItemResult(props),
+    }).writeAllowed).toBe(true);
+    expect(validatePlanningMeasureProjectProps({
+      remediationResult: remediationResult(props),
+    }).writeAllowed).toBe(true);
   });
 
   it('sperrt dieselbe explizit zugeordnete Maßnahme bei beiden Trägern', () => {
@@ -493,8 +662,8 @@ describe('explicit planning measure context', () => {
     } as const;
 
     const result = validatePlanningMeasureProjectProps({
-      poamItemProps: [prop],
-      remediationProps: [prop],
+      poamItemResult: poamItemResult([prop]),
+      remediationResult: remediationResult([prop]),
     });
 
     expect(result.writeAllowed).toBe(false);
@@ -506,16 +675,16 @@ describe('explicit planning measure context', () => {
 
   it('sperrt auch verschiedene Planungsprops derselben Maßnahme auf beiden Trägern', () => {
     const result = validatePlanningMeasureProjectProps({
-      poamItemProps: [{
+      poamItemResult: poamItemResult([{
         name: 'implementation-priority',
         ns: PROJECT_PROPS_NAMESPACE,
         value: 'high',
-      }],
-      remediationProps: [{
+      }]),
+      remediationResult: remediationResult([{
         name: 'effort-estimate-hours',
         ns: PROJECT_PROPS_NAMESPACE,
         value: '1.5',
-      }],
+      }]),
     });
 
     expect(result.diagnostics.at(-1)?.code).toBe(
@@ -530,6 +699,19 @@ describe('explicit planning measure context', () => {
       value: 'high',
     } as const;
 
-    expect(validatePlanningMeasureProjectProps({ poamItemProps: [prop] }).diagnostics).toEqual([]);
+    expect(validatePlanningMeasureProjectProps({
+      poamItemResult: poamItemResult([prop]),
+    }).diagnostics).toEqual([]);
+  });
+
+  it('weist ein Reader-Ergebnis des falschen Trägers fail-closed ab', () => {
+    const result = validatePlanningMeasureProjectProps({
+      poamItemResult: readProjectProps(undefined, 'metadata'),
+    });
+
+    expect(result.writeAllowed).toBe(false);
+    expect(result.diagnostics.map(({ code }) => code)).toContain(
+      PROJECT_PROP_DIAGNOSTIC_CODES.CARRIER_INVALID,
+    );
   });
 });
