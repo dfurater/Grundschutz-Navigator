@@ -23,7 +23,8 @@
     "verify-upstream-oscal": "node scripts/verify-upstream-oscal.mjs",
     "verify-oscal-schemas": "node scripts/verify-oscal-schemas.mjs",
     "sync-oscal-schemas": "node scripts/sync-oscal-schemas.mjs --write",
-    "measure-search": "node scripts/measure-search.mjs"
+    "measure-search": "node scripts/measure-search.mjs",
+    "measure-search:browser": "node scripts/measure-search-browser.mjs"
   },
   "engines": {
     "node": ">=22.22.0"

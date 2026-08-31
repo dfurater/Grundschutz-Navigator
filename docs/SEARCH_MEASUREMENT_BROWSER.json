@@ -1,0 +1,56 @@
+{
+  "generatedAt": "2026-08-31T19:44:41.273Z",
+  "runner": "scripts/measure-search-browser.mjs",
+  "config": "playwright.chromium + CDP Emulation.setCPUThrottlingRate",
+  "throttling": {
+    "desktop": 1,
+    "mobile4x": 4
+  },
+  "desktop": [
+    {
+      "catalogKey": "gspp",
+      "controls": 979,
+      "throttlingRate": 1,
+      "totalMs": 13.7,
+      "indexesMs": 13.6
+    },
+    {
+      "catalogKey": "lieferkette",
+      "controls": 140,
+      "throttlingRate": 1,
+      "totalMs": 1,
+      "indexesMs": 1
+    },
+    {
+      "catalogKey": "wlan",
+      "controls": 48,
+      "throttlingRate": 1,
+      "totalMs": 0.3,
+      "indexesMs": 0.3
+    }
+  ],
+  "mobile4x": [
+    {
+      "catalogKey": "gspp",
+      "controls": 979,
+      "throttlingRate": 4,
+      "totalMs": 36.9,
+      "indexesMs": 36
+    },
+    {
+      "catalogKey": "lieferkette",
+      "controls": 140,
+      "throttlingRate": 4,
+      "totalMs": 3.5,
+      "indexesMs": 3.5
+    },
+    {
+      "catalogKey": "wlan",
+      "controls": 48,
+      "throttlingRate": 4,
+      "totalMs": 0.9,
+      "indexesMs": 0.9
+    }
+  ],
+  "notes": "Browser-Runner misst FlexSearch-Index-Aufbau im Chromium mit CPU-Throttling 4× (PSI Moto G4). Desktop 1× und Mobile 4× werden separat gemessen, nicht nur berechnet."
+}

@@ -605,19 +605,26 @@ Aufbau ist im Production-Build nicht trivial — gemessen am gepinnten Snapshot
 (`flexsearch@0.8.212`, `tokenize` `forward`/`strict`, `resolution: 9`,
 `cache: 100`):
 
-* **Runner**: `scripts/measure-search.mjs` (Konfiguration
+* **Runner (Desktop-Proxy)**: `scripts/measure-search.mjs` (Konfiguration
   `scripts/measure-search.config.json`, Aufruf `npm run measure-search`)
   misst `performance.now()` über 10 Iterationen am Production-Artefakt
   (`public/data/*.json` nach `npm run build`) und schreibt
   `docs/SEARCH_MEASUREMENT.json`. Der Runner nutzt Node 22/V8 — identische
   Engine wie Chrome Desktop — und ist damit ein repräsentativer Desktop-Proxy;
   Browser-Overhead (React, Layout) kommt hinzu.
-* **Mobile**: gedrosselte Werte sind **als 4×/6×-Schätzung gekennzeichnet** —
+* **Runner (Browser, gedrosselt)**: `scripts/measure-search-browser.mjs`
+  (Aufruf `npm run measure-search:browser`, Playwright Chromium +
+  `CDP Emulation.setCPUThrottlingRate` 4× wie PSI Moto G4) misst denselben
+  FlexSearch-Aufbau **im Browser** mit echter CPU-Drosselung und schreibt
+  `docs/SEARCH_MEASUREMENT_BROWSER.json` (Desktop 1× und Mobile 4× separat
+  gemessen, nicht nur berechnet).
+* **Mobile**: gedrosselte Node-Werte sind **als 4×/6×-Schätzung gekennzeichnet** —
   dieselben Faktoren, die [PSI/Lighthouse für Moto G4](https://developers.google.com/speed/docs/insights/v5/about?hl=de) mit throttled 4G ansetzt
-  (`psi` Skill). Es liegt **kein** vollinstrumentierter Lighthouse-Lauf mit
-  Mobile-Emulation vor; die Schätzung belegt jedoch bereits die Überschreitung
-  für `gspp` (und gedrosselt für alle Kataloge) und reicht für die
-  Cache-Entscheidung.
+  (`psi` Skill). Der Browser-Runner liefert zusätzlich eine **echte**
+  gedrosselte Messung (z. B. `gspp` 13.7 ms Desktop → 36.9 ms bei 4×) und
+  bestätigt die Überschreitung; ein vollinstrumentierter Lighthouse-LHCI-Lauf
+  mit Netzwerk-Throttling liegt nicht vor, ist für die Cache-Entscheidung
+  jedoch nicht erforderlich.
 
 Vollständige App-Messung (inkl. Vokabularauflösung und Praxis-Aliasen, wie in
 `src/features/search/useSearch.ts`, gemessen mit `npx tsx tmp-measure-search.mjs`):
