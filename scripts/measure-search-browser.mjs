@@ -2,7 +2,7 @@
 // Browser-Runner für GSPP-218: misst FlexSearch-Index-Aufbau im Chromium mit CPU-Throttling
 // Nutzt Playwright + CDP Emulation.setCPUThrottlingRate (4× wie PSI Moto G4).
 // Schreibt docs/SEARCH_MEASUREMENT_BROWSER.json
-import { writeFileSync, readFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
