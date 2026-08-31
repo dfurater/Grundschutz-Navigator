@@ -40,8 +40,8 @@ const DEFAULT_VERSION = MAPPING_PINNED_VERSIONS.at(-1)!;
 /**
  * Die sechs am Bestand erhobenen Ressourcen-`href`.
  *
- * Alle sind relative Dateinamen, und außer `ISO27001-AnnexA-catalog.json` ist
- * keiner im Quellregister vertreten. Genau so bleiben sie: nicht normalisiert,
+ * Alle sind relative Dateinamen, und keiner ist im Quellregister vertreten.
+ * Genau so bleiben sie: nicht normalisiert,
  * nicht aufgelöst und nicht als Traversal-Angriff etikettiert (GSPP-286).
  */
 export const MAPPING_RESOURCE_HREFS = Object.freeze({

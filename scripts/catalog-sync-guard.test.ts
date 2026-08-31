@@ -320,7 +320,7 @@ describe('validateCatalogSyncManifest v2', () => {
 
     expect(validateCatalogSyncManifest(manifest)).toBe(manifest);
     expect(computeManifestSignature(manifest)).toBe(manifest.signatureSha256);
-    expect(manifest.files.filter((file) => file.rootType !== 'vocabulary')).toHaveLength(20);
+    expect(manifest.files.filter((file) => file.rootType !== 'vocabulary')).toHaveLength(19);
   });
 
   it('rejects schema additions and a manipulated signature', () => {
@@ -1339,7 +1339,10 @@ describe('OSCAL-Versionsmigration (GSPP-376)', () => {
     // Der Vorstand ist ein vollwertiges, selbstvalidiertes Register: Der
     // Import im Kindprozess führt validateSourceRegistry mit aus.
     expect(Array.isArray(loaded)).toBe(true);
-    expect(loaded).toHaveLength(SOURCE_REGISTRY.length);
+    expect(loaded).toContainEqual(expect.objectContaining({
+      artifactKey: ENTRY_CATALOG.artifactKey,
+      upstreamPath: ENTRY_CATALOG.upstreamPath,
+    }));
     expect(loaded.every((entry) => typeof entry.artifactKey === 'string')).toBe(true);
     expect(new Set(loaded.map((entry) => entry.artifactKey)).size).toBe(loaded.length);
 

@@ -16,7 +16,6 @@ export type CatalogKey =
   | 'gspp'
   | 'lieferkette'
   | 'wlan'
-  | 'iso27001-annex-a'
   | 'mindeststandard-tls';
 
 export interface OscalArtifactEntry {

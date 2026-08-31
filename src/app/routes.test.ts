@@ -21,7 +21,7 @@ describe('routes (Navigationsvertrag ADR-1)', () => {
 
   it('builds catalog urls', () => {
     expect(buildCatalogUrl('gspp')).toBe('/katalog/gspp');
-    expect(buildCatalogUrl('iso27001-annex-a')).toBe('/katalog/iso27001-annex-a');
+    expect(buildCatalogUrl('mindeststandard-tls')).toBe('/katalog/mindeststandard-tls');
   });
 
   it('builds group urls with encoding', () => {

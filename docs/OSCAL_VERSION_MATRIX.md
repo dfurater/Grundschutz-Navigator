@@ -319,7 +319,6 @@ Git-Blob-SHA und SHA-256 jedes Dokuments wurden dabei gegen
 | Artefakt | Root-Typ | `oscal-version` |
 | --- | --- | --- |
 | `catalog-gspp` | `catalog` | 1.1.3 |
-| `catalog-iso27001-annex-a` | `catalog` | 1.1.3 |
 | `catalog-lieferkette` | `catalog` | 1.1.3 |
 | `catalog-mindeststandard-tls` | `catalog` | 1.1.3 |
 | `catalog-wlan` | `catalog` | 1.1.3 |
