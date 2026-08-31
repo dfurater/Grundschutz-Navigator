@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { readdir, readFile } from 'node:fs/promises';
+import * as ts from 'typescript';
 import { describe, expect, it, vi } from 'vitest';
 import {
   computeManifestSignature,
@@ -65,20 +66,64 @@ function gitBlobSha(contents: Buffer) {
     .digest('hex');
 }
 
+function artifactKeysFromSourceRegistrySource(source: string, sourceName: string) {
+  const sourceFile = ts.createSourceFile(
+    sourceName,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS,
+  );
+  const registryDeclaration = sourceFile.statements
+    .filter(ts.isVariableStatement)
+    .flatMap((statement) => statement.declarationList.declarations)
+    .find((declaration) =>
+      ts.isIdentifier(declaration.name) && declaration.name.text === 'SOURCE_REGISTRY',
+    );
+  const frozenRegistry = registryDeclaration?.initializer;
+  if (!frozenRegistry || !ts.isCallExpression(frozenRegistry)) {
+    throw new Error(`SOURCE_REGISTRY declaration could not be located in ${sourceName}`);
+  }
+  const mappedRegistry = frozenRegistry.arguments[0];
+  if (!mappedRegistry || !ts.isCallExpression(mappedRegistry)) {
+    throw new Error(`SOURCE_REGISTRY array could not be located in ${sourceName}`);
+  }
+  const arrayExpression = ts.isPropertyAccessExpression(mappedRegistry.expression)
+    ? mappedRegistry.expression.expression
+    : undefined;
+  if (!arrayExpression || !ts.isArrayLiteralExpression(arrayExpression)) {
+    throw new Error(`SOURCE_REGISTRY array could not be read in ${sourceName}`);
+  }
+
+  return arrayExpression.elements.map((element) => {
+    if (!ts.isObjectLiteralExpression(element)) {
+      throw new Error(`SOURCE_REGISTRY contains a non-object entry in ${sourceName}`);
+    }
+    const keyProperty = element.properties.find(
+      (property) =>
+        ts.isPropertyAssignment(property)
+        && ts.isIdentifier(property.name)
+        && property.name.text === 'artifactKey',
+    );
+    if (
+      !keyProperty
+      || !ts.isPropertyAssignment(keyProperty)
+      || (!ts.isStringLiteral(keyProperty.initializer)
+        && !ts.isNoSubstitutionTemplateLiteral(keyProperty.initializer))
+    ) {
+      throw new Error(`SOURCE_REGISTRY entry has no static artifactKey in ${sourceName}`);
+    }
+    return keyProperty.initializer.text;
+  })
+    .sort();
+}
+
 function artifactKeysFromSourceRegistryAtRef(ref: string) {
   const source = execFileSync('git', ['show', `${ref}:src/domain/sourceRegistry.mjs`], {
     encoding: 'utf8',
   });
-  const registryStart = source.indexOf('export const SOURCE_REGISTRY = Object.freeze(');
-  const registryEnd = source.indexOf('  ].map((entry) => Object.freeze(entry)),\n);', registryStart);
-  if (registryStart === -1 || registryEnd === -1) {
-    throw new Error(`SOURCE_REGISTRY block could not be located at ${ref}`);
-  }
-  const registrySource = source.slice(registryStart, registryEnd);
 
-  return [...registrySource.matchAll(/^\s*artifactKey: '([^']+)',$/gm)]
-    .map((match) => match[1])
-    .sort();
+  return artifactKeysFromSourceRegistrySource(source, `sourceRegistry@${ref}.mjs`);
 }
 
 function contentSha256(contents: Buffer) {
@@ -1346,6 +1391,20 @@ describe('OSCAL-Versionsmigration (GSPP-376)', () => {
     expect(requested.some((url) => url.includes('/compare/'))).toBe(true);
     expect(requested.some((url) => url.includes('/git/trees/'))).toBe(true);
     expect(requested.some((url) => url.includes('/git/blobs/'))).toBe(true);
+  });
+
+  it('liest Registry-Schlüssel strukturell trotz abweichender Literalschreibweise', () => {
+    const source = `
+export const SOURCE_REGISTRY = Object.freeze(
+  [
+    {
+      artifactKey: "catalog-double-quoted", // zulässiger Kommentar
+    },
+  ].map((entry) => Object.freeze(entry)),
+);
+`;
+    expect(artifactKeysFromSourceRegistrySource(source, 'fixture-sourceRegistry.mjs'))
+      .toEqual(['catalog-double-quoted']);
   });
 
   it('lädt den Registervorstand aus einem git-Ref, ohne den Quellbaum zu berühren', async () => {
