@@ -612,10 +612,12 @@ Aufbau ist im Production-Build nicht trivial — gemessen am gepinnten Snapshot
   `docs/SEARCH_MEASUREMENT.json`. Der Runner nutzt Node 22/V8 — identische
   Engine wie Chrome Desktop — und ist damit ein repräsentativer Desktop-Proxy;
   Browser-Overhead (React, Layout) kommt hinzu.
-* **Mobile**: gedrosselte Werte sind 4×/6×-Hochrechnungen des Desktop-Messwerts —
+* **Mobile**: gedrosselte Werte sind **als 4×/6×-Schätzung gekennzeichnet** —
   dieselben Faktoren, die [PSI/Lighthouse für Moto G4](https://developers.google.com/speed/docs/insights/v5/about?hl=de) mit throttled 4G ansetzt
-  (`psi` Skill). Eine vollinstrumentierte Lighthouse-Messung im
-  Production-Build zeigt dasselbe Bild: `gspp` sprengt das Budget deutlich.
+  (`psi` Skill). Es liegt **kein** vollinstrumentierter Lighthouse-Lauf mit
+  Mobile-Emulation vor; die Schätzung belegt jedoch bereits die Überschreitung
+  für `gspp` (und gedrosselt für alle Kataloge) und reicht für die
+  Cache-Entscheidung.
 
 Vollständige App-Messung (inkl. Vokabularauflösung und Praxis-Aliasen, wie in
 `src/features/search/useSearch.ts`, gemessen mit `npx tsx tmp-measure-search.mjs`):
