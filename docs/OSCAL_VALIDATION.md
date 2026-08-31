@@ -811,6 +811,30 @@ werden. `artifact.key`, `artifact.rootType` und `artifact.oscalVersion` sind
 `null`, solange sie nicht aus einer geschlossenen Menge belegt sind — sie
 werden nie aus dem Dokument geraten.
 
+### Projekt-Props-Diagnosen
+
+Der Projekt-Props-Vertrag verwendet `stage: domain` und den Validatorpin
+`gspp-project-props@1`. Dokumentgebundene Aufrufe liefern strukturelle
+RFC-6901-Pfade mit den tatsächlichen Arrayindizes. Es gibt in diesen Pfaden
+keine Wildcard-Literale; unbekannte Namen, Gruppen und Werte bleiben redigiert.
+
+| Code | Bedeutung |
+| --- | --- |
+| `OSCAL_PROJECT_PROP_UNKNOWN` | Der Projekt-Namespace enthält einen nicht registrierten Namen; Schreiben ist gesperrt, die Quelle bleibt erhalten |
+| `OSCAL_PROJECT_PROP_NAME_INVALID` | `name` verletzt die OSCAL-Token-/NCName-Regel oder ist kein String |
+| `OSCAL_PROJECT_PROP_GROUP_INVALID` | Eine vorhandene `group` verletzt die OSCAL-Token-/NCName-Regel oder ist kein String |
+| `OSCAL_PROJECT_PROP_CARRIER_INVALID` | Das Property oder der Reader-Aufruf verwendet einen nicht registrierten Träger |
+| `OSCAL_PROJECT_PROP_CARDINALITY_INVALID` | Das registrierte Maximum ist in seinem Registry-Scope (`carrier` oder `group`) überschritten |
+| `OSCAL_PROJECT_PROP_VALUE_INVALID` | Der Wert oder eine Collection-Grenze verletzt den registrierten Vertrag |
+| `OSCAL_PROJECT_PROP_REMARKS_REQUIRED` | Ein Schutzbedarfswert besitzt keine nichtleere Begründung |
+| `OSCAL_PROJECT_PROP_DUPLICATE_VALUE` | Ein `custom-tag` ist nach NFC-Normalisierung und Kleinschreibung doppelt |
+| `OSCAL_PROJECT_PROP_MEASURE_CARRIER_CONFLICT` | Dieselbe Maßnahme trägt Planungs-Props zugleich am `poam-item` und an der zugeordneten `remediation` |
+| `OSCAL_PROJECT_PROP_CATALOG_PAIR_INCOMPLETE` | Ein Katalogreferenzpartner fehlt oder eine Paarhälfte soll einzeln erzeugt werden |
+| `OSCAL_PROJECT_PROP_CATALOG_PAIR_DUPLICATE` | Key oder Commit kommt in derselben `group` mehrfach vor |
+| `OSCAL_PROJECT_PROP_CATALOG_GROUP_MISMATCH` | Key und Commit stehen in voneinander abweichenden Gruppen |
+| `OSCAL_PROJECT_PROP_CATALOG_KEY_INVALID` | Key ist unbekannt oder stimmt nicht exakt mit `group` überein |
+| `OSCAL_PROJECT_PROP_CATALOG_COMMIT_INVALID` | Commit ist kein vollständiger kleingeschriebener 40-stelliger Hex-SHA |
+
 ### Redaction
 
 Diagnosen werden aus einer Positivliste konstruiert, nicht aus rohen

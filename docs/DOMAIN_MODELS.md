@@ -180,8 +180,11 @@ Die Raw Types befinden sich in `src/domain/models.ts` und entsprechen 1:1 der OS
 interface RawOscalProp {
   name: string;
   value: string;
+  uuid?: string;
   ns?: string;
   class?: string;
+  group?: string;
+  remarks?: string;
 }
 
 interface RawOscalLink {
@@ -272,6 +275,38 @@ interface RawOscalCatalog {
 Der Root-Envelope steht nicht mehr hier, sondern in
 `src/domain/oscalRootDocument.ts` — siehe
 [Root-Envelope und Root-Dispatch](#root-envelope-und-root-dispatch).
+
+## Projekteigene OSCAL-Properties
+
+`src/domain/projectProps.ts` ist die einzige Runtime-Registry für den
+Projektnamespace, die sechs bekannten Namen, ihre Träger, Kardinalitäten und
+Wertregeln. Der vollständige öffentliche Vertrag steht in
+[`PROJECT_PROPS.md`](PROJECT_PROPS.md).
+
+Der Lesepfad arbeitet auf `RawOscalProp` und mutiert weder die übergebene Liste
+noch einzelne Property-Objekte. Fremde Namespaces und unbekannte Namen bleiben
+im Quellgraphen erhalten. Nur der semantische Schreibpfad wird bei einem
+unbekannten Projektnamen oder einer Vertragsverletzung gesperrt; Diagnosen
+enthalten keine Property-Werte oder Freitexte.
+
+`preservedProps` ist die einzige vollständige und geordnete Quelle für Export
+und Backup und bleibt selbst bei einer ungültigen Collection referenzidentisch
+zur Eingabe. `projectProps`, `foreignProps` und `unknownProjectProps` sind
+getrennte semantische Sichten, aus denen der Quellgraph nicht rekonstruiert
+wird. `collectionValid` kennzeichnet ausschließlich die strukturelle
+Listenform; `writeAllowed` umfasst zusätzlich alle semantischen Diagnosen. Vor
+der Auswertung gilt dieselbe positive Klasse-2-Objektdefinition wie am
+Import-Boundary. Dokumentgebundene Aufrufe tragen eine typisierte Position mit
+echten Arrayindizes; Diagnosen erhalten dadurch RFC-6901-Pfade ohne
+Wildcard-Literale.
+
+Für die Planungsproperties erhält der paarübergreifende Validator die bereits
+geprüften Reader-Ergebnisse eines `poam-item` und einer `remediation`
+ausdrücklich. Er liest die Rohlisten nicht erneut, errät diese Zuordnung nicht
+aus `related-risks` und erlegt dem Dokument keine globale Wahl zwischen den
+beiden zulässigen Trägerarten auf. Katalog-Key und Commit entstehen im Writer
+nur als atomares Paar; die generische Einzel-Property-API verweigert beide
+Paarhälften.
 
 ## Root-Envelope und Root-Dispatch
 

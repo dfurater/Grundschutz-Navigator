@@ -187,6 +187,13 @@ const REGISTERED_FIXTURE = [
 ];
 
 describe('upstream snapshot tree delta', () => {
+  it('verwendet für registrierte Pfade dieselbe NCName-kompatible Schlüsselgrammatik', () => {
+    expect(() => materializeRegisteredPathMap([{
+      ...REGISTERED_FIXTURE[0],
+      artifactKey: '1catalog-gspp',
+    }])).toThrow(/key grammar/i);
+  });
+
   it('reports all 17 official layer-structure paths and classifications', () => {
     const baseTree = tree(
       MODIFIED_FIXTURE.map((entry) => blob(entry.path, entry.baseSha)),

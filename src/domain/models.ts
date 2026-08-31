@@ -21,8 +21,11 @@ import type { CatalogLineageProjection } from '@/domain/catalogLineage';
 export interface RawOscalProp {
   name: string;
   value: string;
+  uuid?: string;
   ns?: string;
   class?: string;
+  group?: string;
+  remarks?: string;
 }
 
 export interface RawOscalLink {

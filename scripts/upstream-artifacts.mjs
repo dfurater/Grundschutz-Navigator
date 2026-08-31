@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
+import { hasRegistryKeyGrammar } from '../src/domain/sourceRegistry.mjs';
 
 export const UPSTREAM_MANIFEST_SCHEMA_VERSION = 2;
 
 const GIT_SHA_PATTERN = /^[0-9a-f]{40}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
-const ARTIFACT_KEY_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 const ARTIFACT_LIFECYCLES = new Set([
   'supported',
   'preview',
@@ -133,7 +133,7 @@ function normalizeManifestFile(file, label) {
   assertObject(file, label);
 
   const artifactKey = assertNonEmptyString(file.artifactKey, `${label}.artifactKey`);
-  if (!ARTIFACT_KEY_PATTERN.test(artifactKey)) {
+  if (!hasRegistryKeyGrammar(artifactKey)) {
     throw new Error(`${label}.artifactKey violates the key grammar`);
   }
 
@@ -280,7 +280,7 @@ export function materializeRegisteredPathMap(entries) {
       entry.artifactKey,
       `Registered path entry ${index}.artifactKey`,
     );
-    if (!ARTIFACT_KEY_PATTERN.test(artifactKey)) {
+    if (!hasRegistryKeyGrammar(artifactKey)) {
       throw new Error(`Registered path entry ${index}.artifactKey violates the key grammar`);
     }
     const rootType = assertNonEmptyString(
@@ -314,7 +314,7 @@ function validateRegisteredPathMap(registeredPaths) {
       entry.artifactKey,
       `Registered path map entry ${repoPath}.artifactKey`,
     );
-    if (!ARTIFACT_KEY_PATTERN.test(artifactKey)) {
+    if (!hasRegistryKeyGrammar(artifactKey)) {
       throw new Error(`Registered path map entry ${repoPath}.artifactKey violates the key grammar`);
     }
     assertNonEmptyString(entry.rootType, `Registered path map entry ${repoPath}.rootType`);
