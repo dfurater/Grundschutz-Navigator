@@ -54,6 +54,27 @@ interface SearchCacheEntry {
 
 const searchCache = new Map<string, SearchCacheEntry>();
 
+/**
+ * Ein Eintrag ist nur dann noch gültig, wenn er aus genau diesen Objekten gebaut
+ * wurde. Bewusst die Referenzen und nicht die Array-Längen: ein gleich großes
+ * Ersatz-Array trägt anderen Inhalt und muss den Index neu aufbauen.
+ */
+function isFreshCacheEntry(
+  entry: SearchCacheEntry | undefined,
+  controls: Control[],
+  practices: Practice[],
+  vocabularyRegistry: VocabularyRegistry | null | undefined,
+): entry is SearchCacheEntry {
+  if (entry === undefined) {
+    return false;
+  }
+  return (
+    entry.controls === controls &&
+    entry.practices === practices &&
+    entry.vocabularyRegistry === vocabularyRegistry
+  );
+}
+
 function createSearchDocuments(
   controls: Control[],
   practicesById: Map<string | undefined, Practice>,
@@ -252,12 +273,7 @@ export function useSearch(
       );
     }
     const existing = searchCache.get(normalizedCatalogKey);
-    if (
-      existing &&
-      existing.controls === controls &&
-      existing.practices === practices &&
-      existing.vocabularyRegistry === vocabularyRegistry
-    ) {
+    if (isFreshCacheEntry(existing, controls, practices, vocabularyRegistry)) {
       return existing;
     }
     return buildSearchCacheEntry(
