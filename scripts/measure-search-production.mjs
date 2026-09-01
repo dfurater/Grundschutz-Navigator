@@ -14,6 +14,30 @@ const PREVIEW_PORT = 4173;
 const PREVIEW_URL = `http://127.0.0.1:${PREVIEW_PORT}`;
 const QUERY = 'ISMS';
 const ITERATIONS = 5;
+// Korrespondiert mit SEARCH_INDEX_BUILD_MEASURE in src/features/search/useSearch.ts.
+// Jeder FlexSearch-Indexaufbau hinterlässt genau einen User-Timing-Eintrag; bleibt
+// die Liste nach einer Navigation leer, hat der Suchindex-Cache getroffen.
+const INDEX_BUILD_MEASURE = 'gspp:search-index-build';
+
+/** Verwirft die Index-Build-Einträge der vorherigen Phase. */
+function resetIndexBuildMeasures(page) {
+  return page.evaluate((name) => {
+    performance.clearMeasures(name);
+  }, INDEX_BUILD_MEASURE);
+}
+
+/**
+ * Summe der Index-Build-Zeiten seit dem letzten Reset, oder `null`, wenn in dieser
+ * Phase kein Index gebaut wurde (Cache-Treffer).
+ */
+function readIndexBuildMs(page) {
+  return page.evaluate((name) => {
+    const entries = performance.getEntriesByName(name, 'measure');
+    if (entries.length === 0) return null;
+    const total = entries.reduce((sum, entry) => sum + entry.duration, 0);
+    return Number(total.toFixed(2));
+  }, INDEX_BUILD_MEASURE);
+}
 
 function checkPreconditions() {
   const required = [
@@ -79,8 +103,8 @@ async function measureOnce(page, baseUrl, query) {
   // Cold: direkt /suche?q=... – Zeit inkl. Navigation + Bootstrap
   await page.evaluate(() => {
     window.__longTasks = [];
-    window.__searchIndexBuildMs = null;
   });
+  await resetIndexBuildMeasures(page);
   const coldStart = performance.now();
   await page.goto(`${baseUrl}/suche?q=${encodeURIComponent(query)}`, { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => window.__waitForSearchResults());
@@ -91,10 +115,7 @@ async function measureOnce(page, baseUrl, query) {
     window.__longTasks = [];
     return copy;
   });
-  const coldIndexBuildMs = await page.evaluate(() => {
-    const v = window.__searchIndexBuildMs;
-    return typeof v === 'number' ? Number(v.toFixed(2)) : null;
-  });
+  const coldIndexBuildMs = await readIndexBuildMs(page);
 
   // Warm: Ergebnis öffnen → goBack – Zeit inkl. Navigation
   const hasDesktop = await page.locator('[data-testid="search-results-desktop"]').count() > 0;
@@ -106,8 +127,8 @@ async function measureOnce(page, baseUrl, query) {
   await page.waitForURL(/\/katalog\/.*\/kontrolle\//, { timeout: 30000 });
   await page.evaluate(() => {
     window.__longTasks = [];
-    window.__searchIndexBuildMs = null;
   });
+  await resetIndexBuildMeasures(page);
   const warmStart = performance.now();
   await page.goBack({ waitUntil: 'domcontentloaded' });
   await page.evaluate(() => window.__waitForSearchResults());
@@ -118,16 +139,13 @@ async function measureOnce(page, baseUrl, query) {
     window.__longTasks = [];
     return copy;
   });
-  const warmIndexBuildMs = await page.evaluate(() => {
-    const v = window.__searchIndexBuildMs;
-    return typeof v === 'number' ? Number(v.toFixed(2)) : null;
-  });
+  const warmIndexBuildMs = await readIndexBuildMs(page);
 
   // Zweite kalte Messung nach Reload als Kontrolle
   await page.evaluate(() => {
     window.__longTasks = [];
-    window.__searchIndexBuildMs = null;
   });
+  await resetIndexBuildMeasures(page);
   const cold2Start = performance.now();
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.evaluate(() => window.__waitForSearchResults());
@@ -138,10 +156,7 @@ async function measureOnce(page, baseUrl, query) {
     window.__longTasks = [];
     return copy;
   });
-  const cold2IndexBuildMs = await page.evaluate(() => {
-    const v = window.__searchIndexBuildMs;
-    return typeof v === 'number' ? Number(v.toFixed(2)) : null;
-  });
+  const cold2IndexBuildMs = await readIndexBuildMs(page);
 
   return {
     coldMs: Number(coldDuration.toFixed(2)),
@@ -238,14 +253,21 @@ async function runWithThrottling(throttlingRate, port) {
   const coldMedians = median(results.map((r) => r.coldMs));
   const warmMedians = median(results.map((r) => r.warmMs));
   const cold2Medians = median(results.map((r) => r.cold2Ms));
-  const coldIndexBuildMedians = median(results.map((r) => r.coldIndexBuildMs ?? 0));
+  // Fehlende Werte bedeuten "kein Indexaufbau" und dürfen den Median nicht als 0 verfälschen.
+  const coldIndexBuilds = results.map((r) => r.coldIndexBuildMs).filter((v) => v !== null);
+  const warmIndexBuilds = results.map((r) => r.warmIndexBuildMs).filter((v) => v !== null);
   return {
     throttlingRate,
     iterations: ITERATIONS,
     runs: results,
     summary: {
       medianColdMs: Number(coldMedians.toFixed(2)),
-      medianIndexBuildMs: Number(coldIndexBuildMedians.toFixed(2)),
+      medianIndexBuildMs:
+        coldIndexBuilds.length > 0 ? Number(median(coldIndexBuilds).toFixed(2)) : null,
+      // null belegt: die Warm-Navigation baute in keinem Lauf einen Index neu.
+      medianWarmIndexBuildMs:
+        warmIndexBuilds.length > 0 ? Number(median(warmIndexBuilds).toFixed(2)) : null,
+      warmIndexBuildRuns: warmIndexBuilds.length,
       medianWarmMs: Number(warmMedians.toFixed(2)),
       medianCold2Ms: Number(cold2Medians.toFixed(2)),
       minColdMs: Math.min(...results.map((r) => r.coldMs)),

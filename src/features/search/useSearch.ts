@@ -94,6 +94,26 @@ function createSearchDocuments(
   });
 }
 
+/**
+ * Name des User-Timing-Eintrags, den jeder Indexaufbau hinterlässt.
+ * `scripts/measure-search-production.mjs` liest ihn aus, um die reine
+ * Index-Build-Zeit getrennt von Navigation, Bootstrap und Rendering
+ * auszuweisen. Bleibt die Liste nach einer Navigation leer, hat der Cache
+ * getroffen und es wurde kein Index neu gebaut.
+ */
+export const SEARCH_INDEX_BUILD_MEASURE = 'gspp:search-index-build';
+
+function recordIndexBuildDuration(startedAt: number, finishedAt: number) {
+  if (typeof performance === 'undefined' || typeof performance.measure !== 'function') {
+    return;
+  }
+  try {
+    performance.measure(SEARCH_INDEX_BUILD_MEASURE, { start: startedAt, end: finishedAt });
+  } catch {
+    // Reine Messinstrumentierung: ein fehlgeschlagener Eintrag darf die Suche nie stören.
+  }
+}
+
 function buildSearchCacheEntry(
   catalogKey: string,
   controls: Control[],
@@ -114,9 +134,7 @@ function buildSearchCacheEntry(
     indexes.content.add(document.numericId, document.contentText);
   });
   const t1 = typeof performance !== 'undefined' ? performance.now() : 0;
-  if (typeof window !== 'undefined') {
-    (window as unknown as Record<string, unknown>).__searchIndexBuildMs = t1 - t0;
-  }
+  recordIndexBuildDuration(t0, t1);
 
   return {
     catalogKey,
@@ -236,8 +254,8 @@ export function useSearch(
     const existing = searchCache.get(normalizedCatalogKey);
     if (
       existing &&
-      existing.controls.length === controls.length &&
-      existing.practices.length === practices.length &&
+      existing.controls === controls &&
+      existing.practices === practices &&
       existing.vocabularyRegistry === vocabularyRegistry
     ) {
       return existing;
@@ -249,19 +267,6 @@ export function useSearch(
       vocabularyRegistry,
     );
   }, [normalizedCatalogKey, controls, practices, vocabularyRegistry, shouldCache]);
-
-  if (shouldCache && typeof window !== 'undefined') {
-    const cached = searchCache.get(normalizedCatalogKey);
-    if (
-      cached &&
-      cached.controls.length === controls.length &&
-      cached.practices.length === practices.length &&
-      cached.vocabularyRegistry === vocabularyRegistry &&
-      cached === cacheEntry
-    ) {
-      (window as unknown as Record<string, unknown>).__searchIndexBuildMs = 0;
-    }
-  }
 
   useEffect(() => {
     if (!shouldCache) return;

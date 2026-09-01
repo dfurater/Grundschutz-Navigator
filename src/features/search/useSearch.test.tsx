@@ -14,6 +14,7 @@ import {
   getSearchCacheKeys,
   getSearchCacheSize,
   MAX_SEARCH_CACHE_ENTRIES,
+  SEARCH_INDEX_BUILD_MEASURE,
   useSearch,
 } from './useSearch';
 
@@ -549,10 +550,9 @@ describe('useSearch', () => {
       const firstIndexes = getSearchCacheEntry(catalogKey)!.indexes;
       first.unmount();
 
-      const secondControls = [
-        makeControl({ id: 'GC.1.1', title: 'Zweite Fassung' }),
-        makeControl({ id: 'GC.1.2', title: 'Zusatz' }),
-      ];
+      // Gleich langes Ersatz-Array: ein Vergleich über die Array-Länge statt der
+      // Referenz würde hier den alten Index weiterverwenden.
+      const secondControls = [makeControl({ id: 'GC.1.1', title: 'Zweite Fassung' })];
       const second = renderHook(() =>
         useSearch(secondControls, 'Zweite', registry, [], catalogKey),
       );
@@ -564,6 +564,15 @@ describe('useSearch', () => {
       });
       const secondIndexes = getSearchCacheEntry(catalogKey)!.indexes;
       expect(secondIndexes).not.toBe(firstIndexes);
+      second.unmount();
+
+      // Gegenprobe: der ersetzte Titel liefert keine Treffer mehr.
+      const stale = renderHook(() =>
+        useSearch(secondControls, 'Erste', registry, [], catalogKey),
+      );
+      await waitFor(() => {
+        expect(stale.result.current.results).toHaveLength(0);
+      });
     });
 
     it('geänderte Vocabulary Registry invalidiert den Cache', async () => {
@@ -601,9 +610,9 @@ describe('useSearch', () => {
       const controls = [makeControl({ id: 'GC.1.1', practiceId: 'GC' })];
       const registry = createTestVocabularyRegistry();
       const firstPractices: Practice[] = [{ id: 'GC', title: 'Gov', label: 'GC', altIdentifier: 'uuid-practice-1', topics: [], controlCount: 1 }];
+      // Gleich lang wie firstPractices, damit der Test die Referenzprüfung belegt.
       const secondPractices: Practice[] = [
         { id: 'GC', title: 'Gov', label: 'GC', altIdentifier: 'uuid-2', topics: [], controlCount: 1 },
-        { id: 'GC2', title: 'Gov2', label: 'GC2', altIdentifier: 'uuid-3', topics: [], controlCount: 1 },
       ];
       const catalogKey = 'gspp';
 
@@ -629,6 +638,38 @@ describe('useSearch', () => {
         expect(getSearchCacheEntry(catalogKey)!.practices).toBe(secondPractices);
       });
       expect(getSearchCacheEntry(catalogKey)!.indexes).not.toBe(firstIndexes);
+    });
+
+    it('hinterlässt je Indexaufbau genau einen User-Timing-Eintrag und bei einem Cache-Treffer keinen', async () => {
+      // Sichert den Vertrag zu scripts/measure-search-production.mjs ab: der Runner
+      // leitet aus diesen Einträgen ab, ob überhaupt ein Index gebaut wurde.
+      const controls = [makeControl({ id: 'GC.1.1', title: 'Messvertrag' })];
+      const registry = createSecurityLevelRegistry();
+      const practices: Practice[] = [];
+      performance.clearMeasures(SEARCH_INDEX_BUILD_MEASURE);
+
+      const first = renderHook(() =>
+        useSearch(controls, 'Messvertrag', registry, practices, 'gspp'),
+      );
+      await waitFor(() => {
+        expect(first.result.current.results).toHaveLength(1);
+      });
+      await waitFor(() => {
+        expect(getSearchCacheEntry('gspp')).toBeDefined();
+      });
+      expect(
+        performance.getEntriesByName(SEARCH_INDEX_BUILD_MEASURE, 'measure').length,
+      ).toBeGreaterThan(0);
+      first.unmount();
+
+      performance.clearMeasures(SEARCH_INDEX_BUILD_MEASURE);
+      const second = renderHook(() =>
+        useSearch(controls, 'Messvertrag', registry, practices, 'gspp'),
+      );
+      await waitFor(() => {
+        expect(second.result.current.results).toHaveLength(1);
+      });
+      expect(performance.getEntriesByName(SEARCH_INDEX_BUILD_MEASURE, 'measure')).toHaveLength(0);
     });
 
     it('leere Controls oder fehlender catalogKey belegen kein LRU-Budget', async () => {
