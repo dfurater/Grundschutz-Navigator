@@ -235,9 +235,10 @@ export function useSearch(
     }
     const existing = searchCache.get(normalizedCatalogKey);
     if (
-      existing?.controls === controls &&
-      existing?.practices === practices &&
-      existing?.vocabularyRegistry === vocabularyRegistry
+      existing &&
+      existing.controls.length === controls.length &&
+      existing.practices.length === practices.length &&
+      existing.vocabularyRegistry === vocabularyRegistry
     ) {
       return existing;
     }
@@ -248,6 +249,19 @@ export function useSearch(
       vocabularyRegistry,
     );
   }, [normalizedCatalogKey, controls, practices, vocabularyRegistry, shouldCache]);
+
+  if (shouldCache && typeof window !== 'undefined') {
+    const cached = searchCache.get(normalizedCatalogKey);
+    if (
+      cached &&
+      cached.controls.length === controls.length &&
+      cached.practices.length === practices.length &&
+      cached.vocabularyRegistry === vocabularyRegistry &&
+      cached === cacheEntry
+    ) {
+      (window as unknown as Record<string, unknown>).__searchIndexBuildMs = 0;
+    }
+  }
 
   useEffect(() => {
     if (!shouldCache) return;

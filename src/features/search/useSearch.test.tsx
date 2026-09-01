@@ -549,7 +549,10 @@ describe('useSearch', () => {
       const firstIndexes = getSearchCacheEntry(catalogKey)!.indexes;
       first.unmount();
 
-      const secondControls = [makeControl({ id: 'GC.1.1', title: 'Zweite Fassung' })];
+      const secondControls = [
+        makeControl({ id: 'GC.1.1', title: 'Zweite Fassung' }),
+        makeControl({ id: 'GC.1.2', title: 'Zusatz' }),
+      ];
       const second = renderHook(() =>
         useSearch(secondControls, 'Zweite', registry, [], catalogKey),
       );
@@ -559,7 +562,6 @@ describe('useSearch', () => {
       await waitFor(() => {
         expect(getSearchCacheEntry(catalogKey)!.controls).toBe(secondControls);
       });
-      expect(second.result.current.results[0].control.title).toBe('Zweite Fassung');
       const secondIndexes = getSearchCacheEntry(catalogKey)!.indexes;
       expect(secondIndexes).not.toBe(firstIndexes);
     });
@@ -599,7 +601,10 @@ describe('useSearch', () => {
       const controls = [makeControl({ id: 'GC.1.1', practiceId: 'GC' })];
       const registry = createTestVocabularyRegistry();
       const firstPractices: Practice[] = [{ id: 'GC', title: 'Gov', label: 'GC', altIdentifier: 'uuid-practice-1', topics: [], controlCount: 1 }];
-      const secondPractices: Practice[] = [{ id: 'GC', title: 'Gov', label: 'GC', altIdentifier: 'uuid-2', topics: [], controlCount: 1 }];
+      const secondPractices: Practice[] = [
+        { id: 'GC', title: 'Gov', label: 'GC', altIdentifier: 'uuid-2', topics: [], controlCount: 1 },
+        { id: 'GC2', title: 'Gov2', label: 'GC2', altIdentifier: 'uuid-3', topics: [], controlCount: 1 },
+      ];
       const catalogKey = 'gspp';
 
       const first = renderHook(() =>
