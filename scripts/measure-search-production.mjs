@@ -48,12 +48,12 @@ function median(values) {
 
 async function buildLocal() {
   console.log('Baue Production-Build (npm run build:local)...');
-  execSync('npm run build:local', { cwd: root, stdio: 'inherit' });
+  execSync('npm run build:local', { cwd: root, stdio: 'inherit' }); // NOSONAR - PATH is from fixed npm script, not user input
 }
 
 function startPreview(port) {
   console.log(`Starte vite preview auf Port ${port}...`);
-  const child = spawn('npx', ['vite', 'preview', '--port', String(port), '--host', '127.0.0.1'], {
+  const child = spawn('npx', ['vite', 'preview', '--port', String(port), '--host', '127.0.0.1'], { // NOSONAR - fixed preview command, PATH from trusted npx
     cwd: root,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -77,42 +77,10 @@ async function waitForPreview(port, timeoutMs = 15000) {
 
 async function measureOnce(page, baseUrl, query) {
   // Cold: direkt /suche?q=...
-  const coldStart = Date.now();
   await page.goto(`${baseUrl}/suche?q=${encodeURIComponent(query)}`, { waitUntil: 'domcontentloaded' });
   const coldTime = await page.evaluate(async () => {
     const start = performance.now();
-    // Warte auf Ergebnisliste (Desktop oder Mobile)
-    const selector = '[data-testid="search-results-desktop"], [data-testid="search-results-mobile"]';
-    await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Timeout waiting for search results (cold)')), 10000);
-      const observer = new MutationObserver(() => {
-        if (document.querySelector(selector)) {
-          clearTimeout(timeout);
-          observer.disconnect();
-          resolve();
-        }
-      });
-      observer.observe(document.body, { childList: true, subtree: true });
-      if (document.querySelector(selector)) {
-        clearTimeout(timeout);
-        observer.disconnect();
-        resolve();
-      }
-    });
-    // Zusätzlich warten bis mindestens eine Zeile sichtbar
-    const rowSelector = '[data-testid="search-results-desktop"] [role="row"], [data-testid="search-results-mobile"] [role="button"]';
-    await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Timeout waiting for result rows (cold)')), 10000);
-      const check = () => {
-        if (document.querySelector(rowSelector)) {
-          clearTimeout(timeout);
-          resolve();
-        } else {
-          requestAnimationFrame(check);
-        }
-      };
-      check();
-    });
+    await window.__waitForSearchResults();
     return performance.now() - start;
   });
   const coldDuration = coldTime;
@@ -133,40 +101,10 @@ async function measureOnce(page, baseUrl, query) {
   // Warte auf Detailseite: URL enthält /katalog/ und /kontrolle/
   await page.waitForURL(/\/katalog\/.*\/kontrolle\//, { timeout: 10000 });
   // goBack
-  const warmStart = Date.now();
   await page.goBack({ waitUntil: 'domcontentloaded' });
   const warmTime = await page.evaluate(async () => {
     const start = performance.now();
-    const selector = '[data-testid="search-results-desktop"], [data-testid="search-results-mobile"]';
-    await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Timeout waiting for search results (warm)')), 10000);
-      const observer = new MutationObserver(() => {
-        if (document.querySelector(selector)) {
-          clearTimeout(timeout);
-          observer.disconnect();
-          resolve();
-        }
-      });
-      observer.observe(document.body, { childList: true, subtree: true });
-      if (document.querySelector(selector)) {
-        clearTimeout(timeout);
-        observer.disconnect();
-        resolve();
-      }
-    });
-    const rowSelector = '[data-testid="search-results-desktop"] [role="row"], [data-testid="search-results-mobile"] [role="button"]';
-    await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Timeout waiting for result rows (warm)')), 10000);
-      const check = () => {
-        if (document.querySelector(rowSelector)) {
-          clearTimeout(timeout);
-          resolve();
-        } else {
-          requestAnimationFrame(check);
-        }
-      };
-      check();
-    });
+    await window.__waitForSearchResults();
     return performance.now() - start;
   });
   const warmLongTasks = await page.evaluate(() => {
@@ -180,36 +118,7 @@ async function measureOnce(page, baseUrl, query) {
   await page.reload({ waitUntil: 'domcontentloaded' });
   const cold2Time = await page.evaluate(async () => {
     const start = performance.now();
-    const selector = '[data-testid="search-results-desktop"], [data-testid="search-results-mobile"]';
-    await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Timeout waiting for search results (cold2)')), 10000);
-      const observer = new MutationObserver(() => {
-        if (document.querySelector(selector)) {
-          clearTimeout(timeout);
-          observer.disconnect();
-          resolve();
-        }
-      });
-      observer.observe(document.body, { childList: true, subtree: true });
-      if (document.querySelector(selector)) {
-        clearTimeout(timeout);
-        observer.disconnect();
-        resolve();
-      }
-    });
-    const rowSelector = '[data-testid="search-results-desktop"] [role="row"], [data-testid="search-results-mobile"] [role="button"]';
-    await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('Timeout waiting for result rows (cold2)')), 10000);
-      const check = () => {
-        if (document.querySelector(rowSelector)) {
-          clearTimeout(timeout);
-          resolve();
-        } else {
-          requestAnimationFrame(check);
-        }
-      };
-      check();
-    });
+    await window.__waitForSearchResults();
     return performance.now() - start;
   });
   const cold2LongTasks = await page.evaluate(() => {
@@ -251,6 +160,39 @@ async function runWithThrottling(throttlingRate, port) {
     } catch {
       // longtask nicht in allen Kontexten verfügbar
     }
+    // Helper für Messung: wartet auf Ergebnisliste und Zeilen
+    window.__waitForSearchResults = async () => {
+      const selector = '[data-testid="search-results-desktop"], [data-testid="search-results-mobile"]';
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Timeout waiting for search results')), 10000);
+        const observer = new MutationObserver(() => {
+          if (document.querySelector(selector)) {
+            clearTimeout(timeout);
+            observer.disconnect();
+            resolve();
+          }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+        if (document.querySelector(selector)) {
+          clearTimeout(timeout);
+          observer.disconnect();
+          resolve();
+        }
+      });
+      const rowSelector = '[data-testid="search-results-desktop"] [role="row"], [data-testid="search-results-mobile"] [role="button"]';
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Timeout waiting for result rows')), 10000);
+        const check = () => {
+          if (document.querySelector(rowSelector)) {
+            clearTimeout(timeout);
+            resolve();
+          } else {
+            requestAnimationFrame(check);
+          }
+        };
+        check();
+      });
+    };
   });
   if (throttlingRate > 1) {
     const client = await page.context().newCDPSession(page);
@@ -329,7 +271,9 @@ async function main() {
   }
 }
 
-main().catch((err) => {
+try {
+  await main();
+} catch (err) {
   console.error(err);
   process.exit(1);
-});
+}
