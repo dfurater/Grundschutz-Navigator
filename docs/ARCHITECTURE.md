@@ -600,53 +600,41 @@ ein.
 
 `useSearch` baut je Katalog fünf FlexSearch-Indizes (`controlIds`, `titles`,
 `links`, `metadata`, `content`) aus den normalisierten Suchdokumenten. Der
-Aufbau ist im Production-Build nicht trivial — gemessen am gepinnten Snapshot
-`8a97764` mit `npm run build` und demselben FlexSearch-Codepfad wie die App
-(`flexsearch@0.8.212`, `tokenize` `forward`/`strict`, `resolution: 9`,
-`cache: 100`):
+Aufbau ist im Production-Build nicht trivial – gemessen im Production-Build
+(`npm run build:local` mit `BUILD_BASE=/`, `vite preview` auf explizitem Port)
+für Katalog `gspp` (~979 Controls, Snapshot `8a97764`) mit
+`scripts/measure-search-production.mjs` (`npm run measure-search`):
 
-* **Runner (Desktop-Proxy)**: `scripts/measure-search.mjs` (Konfiguration
-  `scripts/measure-search.config.json`, Aufruf `npm run measure-search`)
-  misst `performance.now()` über 10 Iterationen am Production-Artefakt
-  (`public/data/*.json` nach `npm run build`) und schreibt
-  `docs/SEARCH_MEASUREMENT.json`. Der Runner nutzt Node 22/V8 — identische
-  Engine wie Chrome Desktop — und ist damit ein repräsentativer Desktop-Proxy;
-  Browser-Overhead (React, Layout) kommt hinzu.
-* **Runner (Browser, gedrosselt)**: `scripts/measure-search-browser.mjs`
-  (Aufruf `npm run measure-search:browser`, Playwright Chromium +
-  `CDP Emulation.setCPUThrottlingRate` 4× wie PSI Moto G4) misst denselben
-  FlexSearch-Aufbau **im Browser** mit echter CPU-Drosselung und schreibt
-  `docs/SEARCH_MEASUREMENT_BROWSER.json` (Desktop 1× und Mobile 4× separat
-  gemessen, nicht nur berechnet).
-* **Mobile**: gedrosselte Node-Werte sind **als 4×/6×-Schätzung gekennzeichnet** —
-  dieselben Faktoren, die [PSI/Lighthouse für Moto G4](https://developers.google.com/speed/docs/insights/v5/about?hl=de) mit throttled 4G ansetzt
-  (`psi` Skill). Der Browser-Runner liefert zusätzlich eine **echte**
-  gedrosselte Messung (z. B. `gspp` 13.7 ms Desktop → 36.9 ms bei 4×) und
-  bestätigt die Überschreitung; ein vollinstrumentierter Lighthouse-LHCI-Lauf
-  mit Netzwerk-Throttling liegt nicht vor, ist für die Cache-Entscheidung
-  jedoch nicht erforderlich.
+* **Vorbedingung** im Runner geprüft: `public/data/*.json` vorhanden, sonst
+  Abbruch mit Hinweis `npm run fetch-catalog`.
+* **Long Tasks** via `PerformanceObserver` (`longtask`), **vor** App-Bootstrap
+  mit `page.addInitScript()` registriert, Ergebnisse in `window` gesammelt und
+  per `page.evaluate()` ausgelesen (Dauer + Startzeit, keine Attribution).
+* **Ablauf je Iteration**: `/suche?q=ISMS` direkt ansteuern (Query-Parameter
+  `q`, `AppShell.tsx:149`), Zeit bis Ergebnisliste (`[data-testid="search-results-desktop"]`
+  / Mobile) messen – **kalt** (ohne Cache). Dann erste Ergebniszeile
+  anklicken (`/katalog/:catalogKey/kontrolle/:altIdentifier`), `page.goBack()`,
+  erneut Zeit bis Ergebnisliste messen – **warm** (Cache). Danach Reload und
+  erneut kalt als Kontrolle. A/B-Vergleich ohne Code-Patch, gleicher Build.
+* **Läufe**: je 5 Iterationen ungedrosselt (Desktop) und mit
+  `Emulation.setCPUThrottlingRate 4×` (gedrosselt Mobile, gleiche CDP-Methode
+  wie bisheriger Browser-Runner, wie PSI Moto G4), Median und Streuung, nicht
+  nur Einzelwert. Chromium `151.0.7922.34` (Playwright 1.62.1).
 
-Vollständige App-Messung (inkl. Vokabularauflösung und Praxis-Aliasen, wie in
-`src/features/search/useSearch.ts`, gemessen mit `npx tsx tmp-measure-search.mjs`):
+Ergebnis (`docs/SEARCH_MEASUREMENT.json`, Snapshot `8a97764`, Chromium
+`151.0.7922.34`, `q=ISMS`):
 
-| Katalog | Controls | Ø Total | Ø Indizes | Frame 16 ms | Long Task 50 ms | 4× Mobile | 6× Mobile |
-|---|---|---|---|---|---|---|---|
-| `gspp` | 1000 | 402 ms | 396 ms | ✗ 25× | ✗ 8× | 1610 ms ✗ | 2416 ms ✗ |
-| `lieferkette` | 146 | 27 ms | 27 ms | ✗ | – | 110 ms ✗ | 165 ms ✗ |
-| `wlan` | 48 | 22 ms | 21 ms | ✗ | – | 87 ms ✗ | 130 ms ✗ |
+| Profil | Kalt (Median) | Warm (Median) | Long Tasks kalt | Long Tasks warm |
+|---|---|---|---|---|
+| Desktop 1× | **288.6 ms** (min 286.1, max 333.2) | **0.1 ms** (0–0.1) | 1× `≈260 ms` (`self`) | – |
+| Mobile 4× | **≈1246 ms** (min 1244, max 1324) | **0.1 ms** | 1–2× `≈1150 ms` (`self`) | – |
 
-Runner als untere Schranke (`docs/SEARCH_MEASUREMENT.json`, 10 Iterationen,
-vereinfachte Metadaten ohne Vokabular, gleiche FlexSearch-Optionen):
+Kalt sprengt Frame-Budget (16 ms) und Long-Task-Schwelle (50 ms) deutlich,
+warm liegt bei **≈0 ms ohne Long Tasks** – der Cache eliminiert den
+Rebuild. Zweite kalte Messung nach Reload (`≈288 ms`) bestätigt die
+Reproduzierbarkeit. Reproduktion: `npm run fetch-catalog && npm run build:local && npm run measure-search`.
 
-| Katalog | Controls | Ø Total | Ø Indizes | Frame 16 ms | Long Task 50 ms | 4× Mobile | 6× Mobile |
-|---|---|---|---|---|---|---|---|
-| `gspp` | 979 | 66 ms | 66 ms | ✗ | ✗ | 266 ms ✗ | 399 ms ✗ |
-| `lieferkette` | 140 | 9 ms | 9 ms | ✓ | – | 36 ms ✗ | 55 ms ✗ |
-| `wlan` | 48 | 3 ms | 3 ms | ✓ | – | 11 ms | 17 ms ✗ |
-
-Selbst die untere Schranke überschreitet für `gspp` Frame **und** Long Task
-auf Desktop, für `lieferkette`/`wlan` spätestens gedrosselt. Der bisherige
-komponentenlokale `useMemo`
+Der bisherige komponentenlokale `useMemo`
 verwarf die Indizes beim Unmount der `SearchPage` (Detail → Zurück) und
 baute sie für unveränderte Eingaben neu. Deshalb hält `useSearch` seit
 GSPP-218 einen **kataloggescopten, begrenzten LRU-Cache** (`MAX_SEARCH_CACHE_ENTRIES = 3`):
