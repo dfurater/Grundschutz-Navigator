@@ -76,14 +76,12 @@ async function waitForPreview(port, timeoutMs = 15000) {
 }
 
 async function measureOnce(page, baseUrl, query) {
-  // Cold: direkt /suche?q=...
+  // Cold: direkt /suche?q=... – Zeit inkl. Navigation + Bootstrap
+  await page.evaluate(() => { window.__longTasks = []; });
+  const coldStart = performance.now();
   await page.goto(`${baseUrl}/suche?q=${encodeURIComponent(query)}`, { waitUntil: 'domcontentloaded' });
-  const coldTime = await page.evaluate(async () => {
-    const start = performance.now();
-    await window.__waitForSearchResults();
-    return performance.now() - start;
-  });
-  const coldDuration = coldTime;
+  await page.evaluate(() => window.__waitForSearchResults());
+  const coldDuration = performance.now() - coldStart;
   const coldLongTasks = await page.evaluate(() => {
     const tasks = window.__longTasks ?? [];
     const copy = [...tasks];
@@ -91,22 +89,18 @@ async function measureOnce(page, baseUrl, query) {
     return copy;
   });
 
-  // Warm: Ergebnis öffnen → goBack
-  // Klick auf erste Zeile in Desktop-Liste, fallback Mobile
+  // Warm: Ergebnis öffnen → goBack – Zeit inkl. Navigation
   const hasDesktop = await page.locator('[data-testid="search-results-desktop"]').count() > 0;
   const rowLocator = hasDesktop
     ? page.locator('[data-testid="search-results-desktop"] [role="row"]').nth(1)
     : page.locator('[data-testid="search-results-mobile"] [role="button"]').first();
   await rowLocator.click({ timeout: 10000 });
-  // Warte auf Detailseite: URL enthält /katalog/ und /kontrolle/
   await page.waitForURL(/\/katalog\/.*\/kontrolle\//, { timeout: 10000 });
-  // goBack
+  await page.evaluate(() => { window.__longTasks = []; });
+  const warmStart = performance.now();
   await page.goBack({ waitUntil: 'domcontentloaded' });
-  const warmTime = await page.evaluate(async () => {
-    const start = performance.now();
-    await window.__waitForSearchResults();
-    return performance.now() - start;
-  });
+  await page.evaluate(() => window.__waitForSearchResults());
+  const warmDuration = performance.now() - warmStart;
   const warmLongTasks = await page.evaluate(() => {
     const tasks = window.__longTasks ?? [];
     const copy = [...tasks];
@@ -115,12 +109,11 @@ async function measureOnce(page, baseUrl, query) {
   });
 
   // Zweite kalte Messung nach Reload als Kontrolle
+  await page.evaluate(() => { window.__longTasks = []; });
+  const cold2Start = performance.now();
   await page.reload({ waitUntil: 'domcontentloaded' });
-  const cold2Time = await page.evaluate(async () => {
-    const start = performance.now();
-    await window.__waitForSearchResults();
-    return performance.now() - start;
-  });
+  await page.evaluate(() => window.__waitForSearchResults());
+  const cold2Duration = performance.now() - cold2Start;
   const cold2LongTasks = await page.evaluate(() => {
     const tasks = window.__longTasks ?? [];
     const copy = [...tasks];
@@ -131,9 +124,9 @@ async function measureOnce(page, baseUrl, query) {
   return {
     coldMs: Number(coldDuration.toFixed(2)),
     coldLongTasks,
-    warmMs: Number(warmTime.toFixed(2)),
+    warmMs: Number(warmDuration.toFixed(2)),
     warmLongTasks,
-    cold2Ms: Number(cold2Time.toFixed(2)),
+    cold2Ms: Number(cold2Duration.toFixed(2)),
     cold2LongTasks,
   };
 }

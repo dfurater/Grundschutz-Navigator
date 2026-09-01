@@ -622,17 +622,19 @@ für Katalog `gspp` (~979 Controls, Snapshot `8a97764`) mit
   nur Einzelwert. Chromium `151.0.7922.34` (Playwright 1.62.1).
 
 Ergebnis (`docs/SEARCH_MEASUREMENT.json`, Snapshot `8a97764`, Chromium
-`151.0.7922.34`, `q=ISMS`):
+`151.0.7922.34`, `q=ISMS`, 5 Iterationen):
 
 | Profil | Kalt (Median) | Warm (Median) | Long Tasks kalt | Long Tasks warm |
 |---|---|---|---|---|
-| Desktop 1× | **288.6 ms** (min 286.1, max 333.2) | **0.1 ms** (0–0.1) | 1× `≈260 ms` (`self`) | – |
-| Mobile 4× | **≈1246 ms** (min 1244, max 1324) | **0.1 ms** | 1–2× `≈1150 ms` (`self`) | – |
+| Desktop 1× | **335.27 ms** (min 332.64, max 472.84) | **1.09 ms** (1.06–7.27) | 1× `≈265 ms` (`self`) | – |
+| Mobile 4× | **1319.07 ms** (min 1304, max 1532.87) | **41.10 ms** (4.36–65.97) | 1–2× `≈1150 ms` (`self`) | – |
 
-Kalt sprengt Frame-Budget (16 ms) und Long-Task-Schwelle (50 ms) deutlich,
-warm liegt bei **≈0 ms ohne Long Tasks** – der Cache eliminiert den
-Rebuild. Zweite kalte Messung nach Reload (`≈288 ms`) bestätigt die
-Reproduzierbarkeit. Reproduktion: `npm run fetch-catalog && npm run build:local && npm run measure-search`.
+Kalt sprengt Frame-Budget (16 ms) und Long-Task-Schwelle (50 ms) deutlich
+(inkl. Navigation + Bootstrap, gemessen ab `goto`/`goBack` bis sichtbare
+Ergebniszeilen), warm liegt bei **≈1–41 ms ohne Long Tasks** – der Cache
+eliminiert den Rebuild. Zweite kalte Messung nach Reload (`≈315 ms`
+Desktop, `≈1300 ms` Mobile) bestätigt die Reproduzierbarkeit. Reproduktion:
+`npm run fetch-catalog && npm run build:local && npm run measure-search`.
 
 Der bisherige komponentenlokale `useMemo`
 verwarf die Indizes beim Unmount der `SearchPage` (Detail → Zurück) und
