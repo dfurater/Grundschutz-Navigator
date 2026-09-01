@@ -627,6 +627,13 @@ Production-Build erzeugt (`npm run build:local` mit `BUILD_BASE=/`), ihn über
   `Emulation.setCPUThrottlingRate 4×` (Mobile, dieselbe Drosselung, die PSI für
   Moto G4 ansetzt), ausgewertet über Median und Streuung statt Einzelwert.
   Chromium `151.0.7922.34` (Playwright 1.62.1).
+* **Gerätekonfiguration**: das Mobile-Profil nutzt den Playwright-Deskriptor
+  `devices['Pixel 7']`. Der Runner liest die **tatsächlich wirksamen**
+  Parameter erst auf der geladenen Seite aus und schreibt sie ins Artefakt
+  (`412×839`, DPR `2.625`, Touch aktiv). Auf `about:blank`
+  greift `width=device-width` noch nicht, dort meldet derselbe Kontext ein
+  irreführendes Layout-Viewport — die Tabelle unten gibt deshalb ausschließlich
+  die protokollierten Werte wieder, nicht die des Geräte-Deskriptors.
 
 Ergebnis für Katalog `gspp` (~979 Controls) bei `q=ISMS`, Snapshot
 `8a97764` – die Tabelle gibt `docs/SEARCH_MEASUREMENT.json` wieder
@@ -634,20 +641,20 @@ Ergebnis für Katalog `gspp` (~979 Controls) bei `q=ISMS`, Snapshot
 
 | Profil | Kalt (Median) | Index-Build kalt (Median) | Warm (Median) | Long Tasks kalt | Long Tasks warm |
 |---|---|---|---|---|---|
-| Desktop 1× (1280×720) | **346.34 ms** (342.84–423.79) | **275.7 ms** | **1.12 ms** (1.08–6.25) | 1× 276–284 ms | keine |
-| Mobile 4× (Pixel 7, 390×844, DPR 3, touch) | **1383.07 ms** (1236.03–1528.01) | **1221.7 ms** | **15.57 ms** (14.67–35.3) | 1–3× 1106–1277 ms | keine |
+| Desktop 1× (1280×720, DPR 1) | **343.86 ms** (328.88–437.98) | **281.1 ms** | **1.24 ms** (1.08–11.3) | 1× 271–310 ms | keine |
+| Mobile 4× (Pixel 7, 412×839, DPR 2.625, Touch) | **1223.48 ms** (1153.49–1512.23) | **1074.3 ms** | **16.35 ms** (13.63–35.08) | 1–3× 1020–1208 ms | keine |
 
 Kalt sprengt das Frame-Budget (16 ms) und die Long-Task-Schwelle (50 ms)
-deutlich; der Indexaufbau allein trägt davon **275.7 ms** (Desktop)
-beziehungsweise **1221.7 ms** (Mobile 4×). Warm bleibt bei
-**1.12 ms** beziehungsweise **15.57 ms**, ohne einen einzigen Long Task.
+deutlich; der Indexaufbau allein trägt davon **281.1 ms** (Desktop)
+beziehungsweise **1074.3 ms** (Mobile 4×). Warm bleibt bei
+**1.24 ms** beziehungsweise **16.35 ms**, ohne einen einzigen Long Task.
 
 Entscheidend für das Akzeptanzkriterium ist nicht die Warmzeit allein, sondern
 `medianWarmIndexBuildMs: null` bei `warmIndexBuildRuns: 0` in beiden Profilen:
 In keinem der 5 Läufe je Profil entstand beim Zurücknavigieren ein
 User-Timing-Eintrag. Der zweite Mount baut also nachweislich keine Indizes neu,
 statt sie nur schneller zu bauen. Die zweite kalte Messung nach Reload
-(322.57 ms Desktop, 1398.23 ms Mobile) bestätigt die
+(323.51 ms Desktop, 1222.92 ms Mobile) bestätigt die
 Reproduzierbarkeit der Kaltwerte. Reproduktion:
 `npm run fetch-catalog && npm run measure-search`.
 
@@ -657,11 +664,12 @@ baute sie für unveränderte Eingaben neu. Deshalb hält `useSearch` seit
 GSPP-218 einen **kataloggescopten, begrenzten LRU-Cache** (`MAX_SEARCH_CACHE_ENTRIES = 3`):
 
 * Schlüssel: stabiler `catalogKey` (aus `sourceRegistry.GRU-239`) plus
-  Objektidentität von `controls`, `practices` und `vocabularyRegistry`. Der
-  Treffer prüft diese drei Referenzen, ausdrücklich **nicht** die Array-Länge:
-  ein gleich großes Ersatz-Array trägt anderen Inhalt und muss den Index neu
-  aufbauen. Neue Referenzen invalidieren damit deterministisch; keine Ergebnis-
-  oder Indexvermischung zwischen Katalogen.
+  Objektidentität von `controls`, `practices` und `vocabularyRegistry`. Die
+  Frischeprüfung (`isFreshCacheEntry`) vergleicht diese drei Referenzen,
+  ausdrücklich **nicht** die Array-Länge: ein gleich großes Ersatz-Array trägt
+  anderen Inhalt und muss den Index neu aufbauen. Neue Referenzen invalidieren
+  damit deterministisch; keine Ergebnis- oder Indexvermischung zwischen
+  Katalogen.
 * Begrenzung: LRU mit fester Obergrenze (aktuell 3 = Anzahl `supported`-
   Kataloge). Überschreitet der Cache die Grenze, wird der älteste Eintrag
   verworfen — kein unbegrenzter Speicheraufbau bei Katalogwechseln. Die

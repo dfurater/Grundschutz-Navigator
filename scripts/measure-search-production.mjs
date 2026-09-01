@@ -18,6 +18,7 @@ const ITERATIONS = 5;
 // Jeder FlexSearch-Indexaufbau hinterlässt genau einen User-Timing-Eintrag; bleibt
 // die Liste nach einer Navigation leer, hat der Suchindex-Cache getroffen.
 const INDEX_BUILD_MEASURE = 'gspp:search-index-build';
+const MOBILE_DEVICE = 'Pixel 7';
 
 /** Verwirft die Index-Build-Einträge der vorherigen Phase. */
 function resetIndexBuildMeasures(page) {
@@ -174,14 +175,8 @@ async function measureOnce(page, baseUrl, query) {
 async function runWithThrottling(throttlingRate, port) {
   const browser = await chromium.launch();
   const isMobile = throttlingRate > 1;
-  const context = await browser.newContext(
-    isMobile
-      ? {
-          ...devices['Pixel 7'],
-          // Stelle sicher, dass die Throttling-Rate separat via CDP gesetzt wird, nicht via Lighthouse
-        }
-      : {},
-  );
+  // Die Throttling-Rate wird bewusst separat per CDP gesetzt, nicht über den Geräte-Deskriptor.
+  const context = await browser.newContext(isMobile ? { ...devices[MOBILE_DEVICE] } : {});
   const page = await context.newPage();
   // Long-Task Observer vor App-Bootstrap registrieren
   await page.addInitScript(() => {
@@ -240,12 +235,25 @@ async function runWithThrottling(throttlingRate, port) {
     await client.send('Emulation.setCPUThrottlingRate', { rate: throttlingRate });
   }
   const results = [];
+  let viewport = null;
   for (let i = 0; i < ITERATIONS; i++) {
     console.log(`Lauf ${i + 1}/${ITERATIONS} mit Drosselung ${throttlingRate}×...`);
     // Leere Long-Tasks vor jedem Lauf
     await page.evaluate(() => { window.__longTasks = []; });
     const res = await measureOnce(page, `http://127.0.0.1:${port}`, QUERY);
     results.push(res);
+    if (viewport === null) {
+      // Erst nach der ersten Navigation auslesen: `width=device-width` wirkt nur auf
+      // einer Seite mit Viewport-Meta-Tag, auf about:blank liefert der mobile Kontext
+      // ein irreführendes Layout-Viewport. Protokolliert, damit die Dokumentation die
+      // tatsächlich wirksamen Parameter wiedergibt statt der Werte des Deskriptors.
+      viewport = await page.evaluate(() => ({
+        width: window.innerWidth,
+        height: window.innerHeight,
+        devicePixelRatio: window.devicePixelRatio,
+        touch: 'ontouchstart' in window || navigator.maxTouchPoints > 0,
+      }));
+    }
     // Kurze Pause zwischen Iterationen
     await delay(300);
   }
@@ -259,6 +267,8 @@ async function runWithThrottling(throttlingRate, port) {
   return {
     throttlingRate,
     iterations: ITERATIONS,
+    device: isMobile ? MOBILE_DEVICE : null,
+    viewport,
     runs: results,
     summary: {
       medianColdMs: Number(coldMedians.toFixed(2)),
