@@ -6,7 +6,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
-import { chromium } from 'playwright';
+import { chromium, devices } from 'playwright';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -88,14 +88,19 @@ async function measureOnce(page, baseUrl, query) {
     window.__longTasks = [];
     return copy;
   });
+  const coldIndexBuildMs = await page.evaluate(() => {
+    const v = window.__searchIndexBuildMs;
+    return typeof v === 'number' ? Number(v.toFixed(2)) : null;
+  });
 
   // Warm: Ergebnis öffnen → goBack – Zeit inkl. Navigation
   const hasDesktop = await page.locator('[data-testid="search-results-desktop"]').count() > 0;
   const rowLocator = hasDesktop
     ? page.locator('[data-testid="search-results-desktop"] [role="row"]').nth(1)
-    : page.locator('[data-testid="search-results-mobile"] [role="button"]').first();
-  await rowLocator.click({ timeout: 10000 });
-  await page.waitForURL(/\/katalog\/.*\/kontrolle\//, { timeout: 10000 });
+    : page.locator('[data-testid="search-results-mobile"] button').first();
+  await rowLocator.click({ timeout: 30000 });
+  // Warte auf Detailseite: URL enthält /katalog/ und /kontrolle/
+  await page.waitForURL(/\/katalog\/.*\/kontrolle\//, { timeout: 30000 });
   await page.evaluate(() => { window.__longTasks = []; });
   const warmStart = performance.now();
   await page.goBack({ waitUntil: 'domcontentloaded' });
@@ -106,6 +111,10 @@ async function measureOnce(page, baseUrl, query) {
     const copy = [...tasks];
     window.__longTasks = [];
     return copy;
+  });
+  const warmIndexBuildMs = await page.evaluate(() => {
+    const v = window.__searchIndexBuildMs;
+    return typeof v === 'number' ? Number(v.toFixed(2)) : null;
   });
 
   // Zweite kalte Messung nach Reload als Kontrolle
@@ -120,20 +129,35 @@ async function measureOnce(page, baseUrl, query) {
     window.__longTasks = [];
     return copy;
   });
+  const cold2IndexBuildMs = await page.evaluate(() => {
+    const v = window.__searchIndexBuildMs;
+    return typeof v === 'number' ? Number(v.toFixed(2)) : null;
+  });
 
   return {
     coldMs: Number(coldDuration.toFixed(2)),
+    coldIndexBuildMs,
     coldLongTasks,
     warmMs: Number(warmDuration.toFixed(2)),
+    warmIndexBuildMs,
     warmLongTasks,
     cold2Ms: Number(cold2Duration.toFixed(2)),
+    cold2IndexBuildMs,
     cold2LongTasks,
   };
 }
 
 async function runWithThrottling(throttlingRate, port) {
   const browser = await chromium.launch();
-  const context = await browser.newContext();
+  const isMobile = throttlingRate > 1;
+  const context = await browser.newContext(
+    isMobile
+      ? {
+          ...devices['Pixel 7'],
+          // Stelle sicher, dass die Throttling-Rate separat via CDP gesetzt wird, nicht via Lighthouse
+        }
+      : {},
+  );
   const page = await context.newPage();
   // Long-Task Observer vor App-Bootstrap registrieren
   await page.addInitScript(() => {
@@ -157,7 +181,7 @@ async function runWithThrottling(throttlingRate, port) {
     window.__waitForSearchResults = async () => {
       const selector = '[data-testid="search-results-desktop"], [data-testid="search-results-mobile"]';
       await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Timeout waiting for search results')), 10000);
+        const timeout = setTimeout(() => reject(new Error('Timeout waiting for search results')), 30000);
         const observer = new MutationObserver(() => {
           if (document.querySelector(selector)) {
             clearTimeout(timeout);
@@ -172,9 +196,9 @@ async function runWithThrottling(throttlingRate, port) {
           resolve();
         }
       });
-      const rowSelector = '[data-testid="search-results-desktop"] [role="row"], [data-testid="search-results-mobile"] [role="button"]';
+      const rowSelector = '[data-testid="search-results-desktop"] [role="row"], [data-testid="search-results-mobile"] button';
       await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Timeout waiting for result rows')), 10000);
+        const timeout = setTimeout(() => reject(new Error('Timeout waiting for result rows')), 30000);
         const check = () => {
           if (document.querySelector(rowSelector)) {
             clearTimeout(timeout);
@@ -205,12 +229,14 @@ async function runWithThrottling(throttlingRate, port) {
   const coldMedians = median(results.map((r) => r.coldMs));
   const warmMedians = median(results.map((r) => r.warmMs));
   const cold2Medians = median(results.map((r) => r.cold2Ms));
+  const coldIndexBuildMedians = median(results.map((r) => r.coldIndexBuildMs ?? 0));
   return {
     throttlingRate,
     iterations: ITERATIONS,
     runs: results,
     summary: {
       medianColdMs: Number(coldMedians.toFixed(2)),
+      medianIndexBuildMs: Number(coldIndexBuildMedians.toFixed(2)),
       medianWarmMs: Number(warmMedians.toFixed(2)),
       medianCold2Ms: Number(cold2Medians.toFixed(2)),
       minColdMs: Math.min(...results.map((r) => r.coldMs)),

@@ -622,19 +622,21 @@ für Katalog `gspp` (~979 Controls, Snapshot `8a97764`) mit
   nur Einzelwert. Chromium `151.0.7922.34` (Playwright 1.62.1).
 
 Ergebnis (`docs/SEARCH_MEASUREMENT.json`, Snapshot `8a97764`, Chromium
-`151.0.7922.34`, `q=ISMS`, 5 Iterationen):
+`151.0.7922.34`, `q=ISMS`, 5 Iterationen, Pixel 7 für Mobile):
 
-| Profil | Kalt (Median) | Warm (Median) | Long Tasks kalt | Long Tasks warm |
-|---|---|---|---|---|
-| Desktop 1× | **335.27 ms** (min 332.64, max 472.84) | **1.09 ms** (1.06–7.27) | 1× `≈265 ms` (`self`) | – |
-| Mobile 4× | **1319.07 ms** (min 1304, max 1532.87) | **41.10 ms** (4.36–65.97) | 1–2× `≈1150 ms` (`self`) | – |
+| Profil | Kalt (Median) | Index-Build (Median) | Warm (Median) | Long Tasks kalt | Long Tasks warm |
+|---|---|---|---|---|---|
+| Desktop 1× (1280×720) | **336.33 ms** (332.64–388.12) | **268.10 ms** | **1.11 ms** (1.06–6.05) | 1× `≈268 ms` (`self`) | – |
+| Mobile 4× (Pixel 7, 390×844, DPR 3, touch) | **1339.23 ms** (1317.16–1503.85) | **1182 ms** | **29.81 ms** (7.7–31.6) | 1–2× `≈1150 ms` (`self`) | – |
 
 Kalt sprengt Frame-Budget (16 ms) und Long-Task-Schwelle (50 ms) deutlich
-(inkl. Navigation + Bootstrap, gemessen ab `goto`/`goBack` bis sichtbare
-Ergebniszeilen), warm liegt bei **≈1–41 ms ohne Long Tasks** – der Cache
-eliminiert den Rebuild. Zweite kalte Messung nach Reload (`≈315 ms`
-Desktop, `≈1300 ms` Mobile) bestätigt die Reproduzierbarkeit. Reproduktion:
-`npm run fetch-catalog && npm run build:local && npm run measure-search`.
+(inkl. Navigation + Bootstrap + Index-Build, gemessen ab `goto`/`goBack` bis
+sichtbare Ergebniszeilen; Index-Build separat in `coldIndexBuildMs`
+dokumentiert), warm liegt bei **≈1–30 ms ohne Long Tasks** – der Cache
+eliminiert den Rebuild. Zweite kalte Messung nach Reload (`≈312 ms`
+Desktop, `≈1334 ms` Mobile) bestätigt die Reproduzierbarkeit. Reproduktion:
+`npm run fetch-catalog && npm run build:local && npm run measure-search`
+(5 Iterationen, `page.addInitScript` für Long Tasks, `Pixel 7` für Mobile).
 
 Der bisherige komponentenlokale `useMemo`
 verwarf die Indizes beim Unmount der `SearchPage` (Detail → Zurück) und

@@ -100,6 +100,7 @@ function buildSearchCacheEntry(
   practices: Practice[],
   vocabularyRegistry: VocabularyRegistry | null | undefined,
 ): SearchCacheEntry {
+  const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
   const practicesById = new Map(practices.map((practice) => [practice.id, practice]));
   const searchDocuments = createSearchDocuments(controls, practicesById, vocabularyRegistry);
   const controlMap = new Map(searchDocuments.map((document) => [document.numericId, document.control]));
@@ -112,6 +113,10 @@ function buildSearchCacheEntry(
     indexes.metadata.add(document.numericId, document.metadataText);
     indexes.content.add(document.numericId, document.contentText);
   });
+  const t1 = typeof performance !== 'undefined' ? performance.now() : 0;
+  if (typeof window !== 'undefined') {
+    (window as unknown as Record<string, unknown>).__searchIndexBuildMs = t1 - t0;
+  }
 
   return {
     catalogKey,
