@@ -608,8 +608,11 @@ Production-Build erzeugt (`npm run build:local` mit `BUILD_BASE=/`), ihn über
 * **Vorbedingung** im Runner geprüft: `public/data/*.json` vorhanden, sonst
   Abbruch mit Hinweis `npm run fetch-catalog`.
 * **Long Tasks** via `PerformanceObserver` (`longtask`), **vor** App-Bootstrap
-  mit `page.addInitScript()` registriert, Ergebnisse in `window` gesammelt und
-  per `page.evaluate()` ausgelesen (Dauer + Startzeit, keine Attribution).
+  mit `page.addInitScript()` registriert. Vor jedem Auslesen läuft eine
+  Beruhigungsphase von `LONG_TASK_SETTLE_MS`, gefolgt von `takeRecords()`: ein
+  Long Task des abschließenden Renderings wird erst nach seinem Ende
+  beobachtbar und asynchron zugestellt, ein sofortiges Auslesen würde ihn
+  verlieren und fälschlich „keine Long Tasks" ausweisen.
 * **Index-Build-Zeit** getrennt von Navigation und Rendering: jeder Aufbau
   hinterlässt einen User-Timing-Eintrag `gspp:search-index-build`
   (`SEARCH_INDEX_BUILD_MEASURE` in `src/features/search/useSearch.ts`). Der
@@ -622,7 +625,8 @@ Production-Build erzeugt (`npm run build:local` mit `BUILD_BASE=/`), ihn über
   anklicken (`/katalog/:catalogKey/kontrolle/:altIdentifier`), `page.goBack()`,
   erneut Zeit bis Ergebnisliste messen – **warm** (Cache). Danach Reload und
   erneut kalt als Kontrolle. Gemessen wird ab `goto`/`goBack`/`reload` bis zu
-  sichtbaren Ergebniszeilen, also inklusive Navigation und App-Bootstrap.
+  sichtbaren Ergebniszeilen, also inklusive Navigation und App-Bootstrap; die
+  Beruhigungsphase liegt außerhalb dieser Zeitnahme.
 * **Läufe**: je 5 Iterationen ungedrosselt (Desktop) und mit
   `Emulation.setCPUThrottlingRate 4×` (Mobile, dieselbe Drosselung, die PSI für
   Moto G4 ansetzt), ausgewertet über Median und Streuung statt Einzelwert.
@@ -630,31 +634,31 @@ Production-Build erzeugt (`npm run build:local` mit `BUILD_BASE=/`), ihn über
 * **Gerätekonfiguration**: das Mobile-Profil nutzt den Playwright-Deskriptor
   `devices['Pixel 7']`. Der Runner liest die **tatsächlich wirksamen**
   Parameter erst auf der geladenen Seite aus und schreibt sie ins Artefakt
-  (`412×839`, DPR `2.625`, Touch aktiv). Auf `about:blank`
+  (412×839, DPR 2.625, Touch aktiv). Auf `about:blank`
   greift `width=device-width` noch nicht, dort meldet derselbe Kontext ein
   irreführendes Layout-Viewport — die Tabelle unten gibt deshalb ausschließlich
   die protokollierten Werte wieder, nicht die des Geräte-Deskriptors.
 
 Ergebnis für Katalog `gspp` (~979 Controls) bei `q=ISMS`, Snapshot
-`8a97764` – die Tabelle gibt `docs/SEARCH_MEASUREMENT.json` wieder
-(Dezimalpunkt wie im Artefakt, Zeiten in Millisekunden):
+`8a97764` – die Tabelle wird aus `docs/SEARCH_MEASUREMENT.json`
+erzeugt (Dezimalpunkt wie im Artefakt, Zeiten in Millisekunden):
 
 | Profil | Kalt (Median) | Index-Build kalt (Median) | Warm (Median) | Long Tasks kalt | Long Tasks warm |
 |---|---|---|---|---|---|
-| Desktop 1× (1280×720, DPR 1) | **343.86 ms** (328.88–437.98) | **281.1 ms** | **1.24 ms** (1.08–11.3) | 1× 271–310 ms | keine |
-| Mobile 4× (Pixel 7, 412×839, DPR 2.625, Touch) | **1223.48 ms** (1153.49–1512.23) | **1074.3 ms** | **16.35 ms** (13.63–35.08) | 1–3× 1020–1208 ms | keine |
+| Desktop 1× (1280×720, DPR 1) | **312.86 ms** (311.06–406.18) | **246.6 ms** | **2.19 ms** (1.52–7.26) | 1× 247–272 ms | keine |
+| Mobile 4× (Pixel 7, 412×839, DPR 2.625, Touch) | **1156.31 ms** (1136.28–1341.83) | **1009.4 ms** | **25.96 ms** (12.77–33.72) | 1–3× 52–1081 ms | keine |
 
 Kalt sprengt das Frame-Budget (16 ms) und die Long-Task-Schwelle (50 ms)
-deutlich; der Indexaufbau allein trägt davon **281.1 ms** (Desktop)
-beziehungsweise **1074.3 ms** (Mobile 4×). Warm bleibt bei
-**1.24 ms** beziehungsweise **16.35 ms**, ohne einen einzigen Long Task.
+deutlich; der Indexaufbau allein trägt davon **246.6 ms** (Desktop)
+beziehungsweise **1009.4 ms** (Mobile 4×). Warm bleibt bei
+**2.19 ms** beziehungsweise **25.96 ms**, ohne einen einzigen Long Task.
 
 Entscheidend für das Akzeptanzkriterium ist nicht die Warmzeit allein, sondern
 `medianWarmIndexBuildMs: null` bei `warmIndexBuildRuns: 0` in beiden Profilen:
 In keinem der 5 Läufe je Profil entstand beim Zurücknavigieren ein
 User-Timing-Eintrag. Der zweite Mount baut also nachweislich keine Indizes neu,
 statt sie nur schneller zu bauen. Die zweite kalte Messung nach Reload
-(323.51 ms Desktop, 1222.92 ms Mobile) bestätigt die
+(317.37 ms Desktop, 1149.93 ms Mobile) bestätigt die
 Reproduzierbarkeit der Kaltwerte. Reproduktion:
 `npm run fetch-catalog && npm run measure-search`.
 

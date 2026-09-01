@@ -100,6 +100,20 @@ async function waitForPreview(port, timeoutMs = 15000) {
   throw new Error(`Preview auf Port ${port} nicht erreichbar nach ${timeoutMs}ms`);
 }
 
+/** Beruhigungsphase in Millisekunden, bevor Long Tasks ausgelesen werden. */
+const LONG_TASK_SETTLE_MS = 250;
+
+/** Wartet auf die Zustellung des Observers und leert den Puffer für die nächste Phase. */
+async function readLongTasks(page) {
+  await page.evaluate((quietMs) => window.__settleLongTasks(quietMs), LONG_TASK_SETTLE_MS);
+  return page.evaluate(() => {
+    const tasks = window.__longTasks ?? [];
+    const copy = [...tasks];
+    window.__longTasks = [];
+    return copy;
+  });
+}
+
 async function measureOnce(page, baseUrl, query) {
   // Cold: direkt /suche?q=... – Zeit inkl. Navigation + Bootstrap
   await page.evaluate(() => {
@@ -110,12 +124,7 @@ async function measureOnce(page, baseUrl, query) {
   await page.goto(`${baseUrl}/suche?q=${encodeURIComponent(query)}`, { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => window.__waitForSearchResults());
   const coldDuration = performance.now() - coldStart;
-  const coldLongTasks = await page.evaluate(() => {
-    const tasks = window.__longTasks ?? [];
-    const copy = [...tasks];
-    window.__longTasks = [];
-    return copy;
-  });
+  const coldLongTasks = await readLongTasks(page);
   const coldIndexBuildMs = await readIndexBuildMs(page);
 
   // Warm: Ergebnis öffnen → goBack – Zeit inkl. Navigation
@@ -134,12 +143,7 @@ async function measureOnce(page, baseUrl, query) {
   await page.goBack({ waitUntil: 'domcontentloaded' });
   await page.evaluate(() => window.__waitForSearchResults());
   const warmDuration = performance.now() - warmStart;
-  const warmLongTasks = await page.evaluate(() => {
-    const tasks = window.__longTasks ?? [];
-    const copy = [...tasks];
-    window.__longTasks = [];
-    return copy;
-  });
+  const warmLongTasks = await readLongTasks(page);
   const warmIndexBuildMs = await readIndexBuildMs(page);
 
   // Zweite kalte Messung nach Reload als Kontrolle
@@ -151,12 +155,7 @@ async function measureOnce(page, baseUrl, query) {
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.evaluate(() => window.__waitForSearchResults());
   const cold2Duration = performance.now() - cold2Start;
-  const cold2LongTasks = await page.evaluate(() => {
-    const tasks = window.__longTasks ?? [];
-    const copy = [...tasks];
-    window.__longTasks = [];
-    return copy;
-  });
+  const cold2LongTasks = await readLongTasks(page);
   const cold2IndexBuildMs = await readIndexBuildMs(page);
 
   return {
@@ -181,21 +180,40 @@ async function runWithThrottling(throttlingRate, port) {
   // Long-Task Observer vor App-Bootstrap registrieren
   await page.addInitScript(() => {
     window.__longTasks = [];
+    const record = (entry) => {
+      window.__longTasks.push({
+        duration: Number(entry.duration.toFixed(2)),
+        startTime: Number(entry.startTime.toFixed(2)),
+        name: entry.name,
+        entryType: entry.entryType,
+      });
+    };
+    let longTaskObserver = null;
     try {
-      const observer = new PerformanceObserver((list) => {
+      longTaskObserver = new PerformanceObserver((list) => {
         for (const entry of list.getEntries()) {
-          window.__longTasks.push({
-            duration: Number(entry.duration.toFixed(2)),
-            startTime: Number(entry.startTime.toFixed(2)),
-            name: entry.name,
-            entryType: entry.entryType,
-          });
+          record(entry);
         }
       });
-      observer.observe({ entryTypes: ['longtask'] });
+      longTaskObserver.observe({ entryTypes: ['longtask'] });
     } catch {
       // longtask nicht in allen Kontexten verfügbar
     }
+    /*
+     * Schließt die Zustell-Lücke des Observers. Ein Long Task, der beim
+     * abschließenden Rendern entsteht, ist erst nach seinem Ende beobachtbar und
+     * wird zudem asynchron zugestellt — ein sofortiges Auslesen nach den
+     * sichtbaren Ergebniszeilen würde ihn verlieren und fälschlich „keine Long
+     * Tasks" ausweisen. Die Beruhigungsphase gibt ihm Zeit, takeRecords() holt
+     * anschließend alles ab, was beobachtet, aber noch nicht zugestellt wurde.
+     */
+    window.__settleLongTasks = async (quietMs) => {
+      await new Promise((resolve) => setTimeout(resolve, quietMs));
+      if (longTaskObserver === null) return;
+      for (const entry of longTaskObserver.takeRecords()) {
+        record(entry);
+      }
+    };
     // Helper für Messung: wartet auf Ergebnisliste und Zeilen
     window.__waitForSearchResults = async () => {
       const selector = '[data-testid="search-results-desktop"], [data-testid="search-results-mobile"]';

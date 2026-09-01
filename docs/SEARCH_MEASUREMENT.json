@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-01T18:24:56.552Z",
+  "generatedAt": "2026-09-01T18:37:18.477Z",
   "snapshotCommitSha": "8a97764ff4f23c2b7945c64344eecbf5a2053db2",
   "chromiumVersion": "151.0.7922.34",
   "previewPort": 4173,
@@ -23,125 +23,125 @@
     },
     "runs": [
       {
-        "coldMs": 437.98,
-        "coldIndexBuildMs": 303.9,
+        "coldMs": 406.18,
+        "coldIndexBuildMs": 266.8,
         "coldLongTasks": [
           {
-            "duration": 310,
-            "startTime": 125.5,
+            "duration": 272,
+            "startTime": 131.9,
             "name": "self",
             "entryType": "longtask"
           }
         ],
-        "warmMs": 11.3,
+        "warmMs": 7.26,
         "warmIndexBuildMs": null,
         "warmLongTasks": [],
-        "cold2Ms": 320.07,
-        "cold2IndexBuildMs": 272.5,
+        "cold2Ms": 317.37,
+        "cold2IndexBuildMs": 246.1,
         "cold2LongTasks": [
           {
-            "duration": 275,
-            "startTime": 43.1,
+            "duration": 249,
+            "startTime": 66,
             "name": "self",
             "entryType": "longtask"
           }
         ]
       },
       {
-        "coldMs": 353.08,
-        "coldIndexBuildMs": 281.1,
+        "coldMs": 315.7,
+        "coldIndexBuildMs": 247,
         "coldLongTasks": [
           {
-            "duration": 284,
-            "startTime": 66.9,
+            "duration": 249,
+            "startTime": 63.8,
             "name": "self",
             "entryType": "longtask"
           }
         ],
-        "warmMs": 1.36,
+        "warmMs": 2.19,
         "warmIndexBuildMs": null,
         "warmLongTasks": [],
-        "cold2Ms": 325.35,
-        "cold2IndexBuildMs": 276.8,
+        "cold2Ms": 317.32,
+        "cold2IndexBuildMs": 249.8,
         "cold2LongTasks": [
           {
-            "duration": 280,
-            "startTime": 44.1,
+            "duration": 252,
+            "startTime": 62.1,
             "name": "self",
             "entryType": "longtask"
           }
         ]
       },
       {
-        "coldMs": 343.86,
-        "coldIndexBuildMs": 284.2,
+        "coldMs": 312.86,
+        "coldIndexBuildMs": 245,
         "coldLongTasks": [
           {
-            "duration": 287,
-            "startTime": 55,
+            "duration": 248,
+            "startTime": 62,
             "name": "self",
             "entryType": "longtask"
           }
         ],
-        "warmMs": 1.2,
+        "warmMs": 1.52,
         "warmIndexBuildMs": null,
         "warmLongTasks": [],
-        "cold2Ms": 325.49,
-        "cold2IndexBuildMs": 278.7,
+        "cold2Ms": 324.32,
+        "cold2IndexBuildMs": 256.4,
         "cold2LongTasks": [
           {
-            "duration": 282,
-            "startTime": 41.9,
+            "duration": 259,
+            "startTime": 62.8,
             "name": "self",
             "entryType": "longtask"
           }
         ]
       },
       {
-        "coldMs": 341,
-        "coldIndexBuildMs": 273.1,
+        "coldMs": 311.43,
+        "coldIndexBuildMs": 244.7,
         "coldLongTasks": [
           {
-            "duration": 276,
-            "startTime": 62.7,
+            "duration": 247,
+            "startTime": 61.2,
             "name": "self",
             "entryType": "longtask"
           }
         ],
-        "warmMs": 1.24,
+        "warmMs": 1.97,
         "warmIndexBuildMs": null,
         "warmLongTasks": [],
-        "cold2Ms": 318.3,
-        "cold2IndexBuildMs": 273.3,
+        "cold2Ms": 299.46,
+        "cold2IndexBuildMs": 249,
         "cold2LongTasks": [
           {
-            "duration": 276,
-            "startTime": 40.7,
+            "duration": 251,
+            "startTime": 46.6,
             "name": "self",
             "entryType": "longtask"
           }
         ]
       },
       {
-        "coldMs": 328.88,
-        "coldIndexBuildMs": 267.9,
+        "coldMs": 311.06,
+        "coldIndexBuildMs": 246.6,
         "coldLongTasks": [
           {
-            "duration": 271,
-            "startTime": 56.6,
+            "duration": 249,
+            "startTime": 60.1,
             "name": "self",
             "entryType": "longtask"
           }
         ],
-        "warmMs": 1.08,
+        "warmMs": 6.53,
         "warmIndexBuildMs": null,
         "warmLongTasks": [],
-        "cold2Ms": 323.51,
-        "cold2IndexBuildMs": 279.7,
+        "cold2Ms": 323.24,
+        "cold2IndexBuildMs": 256.7,
         "cold2LongTasks": [
           {
-            "duration": 282,
-            "startTime": 39.8,
+            "duration": 259,
+            "startTime": 61.5,
             "name": "self",
             "entryType": "longtask"
           }
@@ -149,16 +149,16 @@
       }
     ],
     "summary": {
-      "medianColdMs": 343.86,
-      "medianIndexBuildMs": 281.1,
+      "medianColdMs": 312.86,
+      "medianIndexBuildMs": 246.6,
       "medianWarmIndexBuildMs": null,
       "warmIndexBuildRuns": 0,
-      "medianWarmMs": 1.24,
-      "medianCold2Ms": 323.51,
-      "minColdMs": 328.88,
-      "maxColdMs": 437.98,
-      "minWarmMs": 1.08,
-      "maxWarmMs": 11.3
+      "medianWarmMs": 2.19,
+      "medianCold2Ms": 317.37,
+      "minColdMs": 311.06,
+      "maxColdMs": 406.18,
+      "minWarmMs": 1.52,
+      "maxWarmMs": 7.26
     }
   },
   "mobile4x": {
@@ -173,137 +173,137 @@
     },
     "runs": [
       {
-        "coldMs": 1512.23,
-        "coldIndexBuildMs": 1193,
+        "coldMs": 1341.83,
+        "coldIndexBuildMs": 1064.2,
         "coldLongTasks": [
           {
-            "duration": 73,
-            "startTime": 82.1,
+            "duration": 61,
+            "startTime": 69.9,
             "name": "self",
             "entryType": "longtask"
           },
           {
-            "duration": 57,
-            "startTime": 241.1,
+            "duration": 52,
+            "startTime": 203.6,
             "name": "self",
             "entryType": "longtask"
           },
           {
-            "duration": 1208,
-            "startTime": 302.4,
+            "duration": 1081,
+            "startTime": 259.3,
             "name": "self",
             "entryType": "longtask"
           }
         ],
-        "warmMs": 35.08,
+        "warmMs": 30.67,
         "warmIndexBuildMs": null,
         "warmLongTasks": [],
-        "cold2Ms": 1250.2,
-        "cold2IndexBuildMs": 1088.5,
+        "cold2Ms": 1173.57,
+        "cold2IndexBuildMs": 1009.2,
         "cold2LongTasks": [
           {
-            "duration": 1099,
-            "startTime": 149.9,
+            "duration": 1019,
+            "startTime": 153,
             "name": "self",
             "entryType": "longtask"
           }
         ]
       },
       {
-        "coldMs": 1223.48,
-        "coldIndexBuildMs": 1074.3,
+        "coldMs": 1156.31,
+        "coldIndexBuildMs": 1013.6,
         "coldLongTasks": [
           {
-            "duration": 1085,
-            "startTime": 137.1,
+            "duration": 1024,
+            "startTime": 131.4,
             "name": "self",
             "entryType": "longtask"
           }
         ],
-        "warmMs": 16.35,
+        "warmMs": 14.72,
         "warmIndexBuildMs": null,
         "warmLongTasks": [],
-        "cold2Ms": 1183.08,
-        "cold2IndexBuildMs": 1042.5,
+        "cold2Ms": 1149.93,
+        "cold2IndexBuildMs": 1009.5,
         "cold2LongTasks": [
           {
-            "duration": 1053,
-            "startTime": 128.9,
+            "duration": 1021,
+            "startTime": 127.9,
             "name": "self",
             "entryType": "longtask"
           }
         ]
       },
       {
-        "coldMs": 1153.49,
-        "coldIndexBuildMs": 1010.3,
+        "coldMs": 1148.39,
+        "coldIndexBuildMs": 1009.4,
         "coldLongTasks": [
           {
-            "duration": 1020,
-            "startTime": 131.7,
+            "duration": 1019,
+            "startTime": 127.6,
             "name": "self",
             "entryType": "longtask"
           }
         ],
-        "warmMs": 33.78,
+        "warmMs": 33.72,
         "warmIndexBuildMs": null,
         "warmLongTasks": [],
-        "cold2Ms": 1133.14,
-        "cold2IndexBuildMs": 998.5,
+        "cold2Ms": 1140.79,
+        "cold2IndexBuildMs": 1003.1,
         "cold2LongTasks": [
           {
-            "duration": 1008,
-            "startTime": 123.6,
+            "duration": 1015,
+            "startTime": 125.1,
             "name": "self",
             "entryType": "longtask"
           }
         ]
       },
       {
-        "coldMs": 1171.85,
-        "coldIndexBuildMs": 1017.7,
+        "coldMs": 1168.06,
+        "coldIndexBuildMs": 1008.1,
         "coldLongTasks": [
           {
-            "duration": 1027,
-            "startTime": 143.3,
+            "duration": 1019,
+            "startTime": 148.2,
             "name": "self",
             "entryType": "longtask"
           }
         ],
-        "warmMs": 13.63,
+        "warmMs": 12.77,
         "warmIndexBuildMs": null,
         "warmLongTasks": [],
-        "cold2Ms": 1309.81,
-        "cold2IndexBuildMs": 1170.5,
+        "cold2Ms": 1147.94,
+        "cold2IndexBuildMs": 1012.9,
         "cold2LongTasks": [
           {
-            "duration": 1181,
-            "startTime": 127.2,
+            "duration": 1022,
+            "startTime": 124.4,
             "name": "self",
             "entryType": "longtask"
           }
         ]
       },
       {
-        "coldMs": 1241.2,
-        "coldIndexBuildMs": 1091.1,
+        "coldMs": 1136.28,
+        "coldIndexBuildMs": 1000.3,
         "coldLongTasks": [
           {
-            "duration": 1101,
-            "startTime": 139.1,
+            "duration": 1010,
+            "startTime": 124.7,
             "name": "self",
             "entryType": "longtask"
           }
         ],
-        "warmMs": 14.37,
+        "warmMs": 25.96,
         "warmIndexBuildMs": null,
         "warmLongTasks": [],
-        "cold2Ms": 1222.92,
-        "cold2IndexBuildMs": 1073.7,
+        "cold2Ms": 1170.09,
+        "cold2IndexBuildMs": 1011,
         "cold2LongTasks": [
           {
-            "duration": 1084,
-            "startTime": 138.1,
+            "duration": 1021,
+            "startTime": 147.6,
             "name": "self",
             "entryType": "longtask"
           }
@@ -311,16 +311,16 @@
       }
     ],
     "summary": {
-      "medianColdMs": 1223.48,
-      "medianIndexBuildMs": 1074.3,
+      "medianColdMs": 1156.31,
+      "medianIndexBuildMs": 1009.4,
       "medianWarmIndexBuildMs": null,
       "warmIndexBuildRuns": 0,
-      "medianWarmMs": 16.35,
-      "medianCold2Ms": 1222.92,
-      "minColdMs": 1153.49,
-      "maxColdMs": 1512.23,
-      "minWarmMs": 13.63,
-      "maxWarmMs": 35.08
+      "medianWarmMs": 25.96,
+      "medianCold2Ms": 1149.93,
+      "minColdMs": 1136.28,
+      "maxColdMs": 1341.83,
+      "minWarmMs": 12.77,
+      "maxWarmMs": 33.72
     }
   },
   "notes": "Kalt = /suche?q= direkt, Zeit bis Ergebnisliste sichtbar. Warm = Detail öffnen → goBack, Zeit bis Ergebnisliste erneut sichtbar (Cache). Cold2 = Reload + erneut kalt als Kontrolle. Long Tasks via PerformanceObserver (longtask) vor Bootstrap."
