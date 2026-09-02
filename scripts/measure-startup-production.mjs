@@ -99,8 +99,12 @@ async function waitForPreview(port, timeoutMs = 15_000) {
   throw new Error(`Preview auf Port ${port} nicht erreichbar nach ${timeoutMs}ms`);
 }
 
-async function installLongTaskObserver(page) {
-  await page.addInitScript(() => {
+async function installLongTaskObserver(page, forceMainThreadFallback) {
+  await page.addInitScript((forceFallback) => {
+    if (forceFallback) {
+      Object.defineProperty(window, 'Worker', { configurable: true, value: undefined });
+    }
+
     window.__gsppStartupLongTasks = [];
     window.__gsppStartupLongTaskObserver = null;
     try {
@@ -133,7 +137,7 @@ async function installLongTaskObserver(page) {
         tasks: [...window.__gsppStartupLongTasks],
       };
     };
-  });
+  }, forceMainThreadFallback);
 }
 
 async function readStartupRun(page, baseUrl) {
@@ -167,7 +171,7 @@ async function readStartupRun(page, baseUrl) {
   return { ...phases, longTasks: longTaskResult.tasks, longTaskSupported: longTaskResult.supported };
 }
 
-async function runProfile(throttlingRate) {
+async function runProfile(throttlingRate, { parserRunsOnMainThread }) {
   const browser = await chromium.launch();
   const isMobile = throttlingRate > 1;
   const runs = [];
@@ -178,7 +182,7 @@ async function runProfile(throttlingRate) {
       const context = await browser.newContext(isMobile ? { ...devices[MOBILE_DEVICE] } : {});
       const page = await context.newPage();
       try {
-        await installLongTaskObserver(page);
+        await installLongTaskObserver(page, parserRunsOnMainThread);
         if (throttlingRate > 1) {
           const client = await page.context().newCDPSession(page);
           await client.send('Emulation.setCPUThrottlingRate', { rate: throttlingRate });
@@ -204,10 +208,18 @@ async function runProfile(throttlingRate) {
 
   return {
     throttlingRate,
+    parserRunsOnMainThread,
     device: isMobile ? MOBILE_DEVICE : null,
     viewport,
     runs,
-    summary: summarizeStartupRuns(runs, { parserRunsOnMainThread: false }),
+    summary: summarizeStartupRuns(runs, { parserRunsOnMainThread }),
+  };
+}
+
+async function runMeasurementMode(parserRunsOnMainThread) {
+  return {
+    desktop: await runProfile(1, { parserRunsOnMainThread }),
+    mobile4x: await runProfile(4, { parserRunsOnMainThread }),
   };
 }
 
@@ -220,7 +232,11 @@ function getSnapshotSha() {
   }
 }
 
-function buildOutput({ chromiumVersion, desktop, mobile4x }) {
+function buildOutput({ chromiumVersion, mainThreadFallback, moduleWorker }) {
+  const workerRecommended =
+    mainThreadFallback.desktop.summary.workerRecommended === true ||
+    mainThreadFallback.mobile4x.summary.workerRecommended === true;
+
   return {
     generatedAt: new Date().toISOString(),
     snapshotCommitSha: getSnapshotSha(),
@@ -229,14 +245,16 @@ function buildOutput({ chromiumVersion, desktop, mobile4x }) {
     iterations: ITERATIONS,
     profiles: { desktop: 1, mobile4x: 4 },
     measures: CATALOG_LOAD_MEASURES,
-    desktop,
-    mobile4x,
+    mainThreadFallback,
+    moduleWorker,
     decision: {
       workerActive: true,
-      workerRecommended: null,
-      basis: 'Der Worker ist bereits aktiv. Dieser Lauf prüft ausschließlich, ob nach der Auslagerung noch Main-Thread-Long-Tasks auftreten.',
+      workerRecommended,
+      basis: workerRecommended
+        ? 'Ein Parse-Long-Task im erzwungenen Main-Thread-Fallback begründet die Auslagerung; der Modul-Worker-Lauf belegt anschließend den Wegfall von Main-Thread-Long-Tasks.'
+        : 'Der erzwungene Main-Thread-Fallback zeigte keinen Parse-Long-Task; der Modul-Worker bleibt als gemessener Produktionspfad dokumentiert.',
     },
-    notes: 'Jeder Lauf verwendet einen frischen Browser-Kontext. Long Tasks werden vor dem App-Bootstrap beobachtet und erst nach einer Zustellbarriere mit takeRecords ausgelesen. Worker-Dauern dienen der Phasentrennung, sind aber nicht direkt mit CDP-gedrosselten Main-Thread-Dauern vergleichbar.',
+    notes: 'Jeder Lauf verwendet einen frischen Browser-Kontext. Der Main-Thread-Fallback wird ausschließlich in der Messseite durch eine vor dem Bootstrap gesetzte fehlende Worker-API erzwungen; der ausgelieferte Produktionspfad bleibt unverändert. Long Tasks werden vor dem App-Bootstrap beobachtet und erst nach einer Zustellbarriere mit takeRecords ausgelesen. Worker-Dauern dienen der Phasentrennung, sind aber nicht direkt mit CDP-gedrosselten Main-Thread-Dauern vergleichbar. Browser-Paint-Timing ist kein Messpunkt; reactRender misst ausschließlich den React-Commit.',
   };
 }
 
@@ -250,9 +268,11 @@ async function main() {
     const chromiumVersion = versionBrowser.version();
     await versionBrowser.close();
 
-    const desktop = await runProfile(1);
-    const mobile4x = await runProfile(4);
-    const output = buildOutput({ chromiumVersion, desktop, mobile4x });
+    console.log('Messe den erzwungenen Main-Thread-Fallback...');
+    const mainThreadFallback = await runMeasurementMode(true);
+    console.log('Messe den Modul-Worker-Produktionspfad...');
+    const moduleWorker = await runMeasurementMode(false);
+    const output = buildOutput({ chromiumVersion, mainThreadFallback, moduleWorker });
     const outputPath = resolve(root, 'docs/STARTUP_MEASUREMENT.json');
     writeFileSync(outputPath, `${JSON.stringify(output, null, 2)}\n`, 'utf-8');
     console.log(`Wrote ${outputPath}`);
