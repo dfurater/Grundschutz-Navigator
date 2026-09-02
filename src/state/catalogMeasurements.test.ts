@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import * as catalogMeasurements from './catalogMeasurements';
 import {
   recordCatalogDuration,
   measureCatalogAsyncPhase,
@@ -15,6 +16,13 @@ function makeUserTiming(values: readonly number[]): UserTiming {
 }
 
 describe('measureCatalogPhase', () => {
+  it('exports the React-commit measurement hook for the catalog provider', () => {
+    expect(catalogMeasurements).toHaveProperty(
+      'useCatalogReactRenderMeasurement',
+      expect.any(Function),
+    );
+  });
+
   it('records the operation duration with the supplied User-Timing name', () => {
     const timing = makeUserTiming([12, 19]);
 

@@ -15,7 +15,6 @@ import {
   createContext,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useReducer,
   useRef,
@@ -42,9 +41,8 @@ import {
   type SupportedCatalogDescriptor,
 } from '@/state/catalogArtifacts';
 import {
-  CATALOG_LOAD_MEASURES,
   catalogMeasurementNow,
-  recordCatalogPhase,
+  useCatalogReactRenderMeasurement,
 } from '@/state/catalogMeasurements';
 
 import {
@@ -125,14 +123,8 @@ export function CatalogProvider({
     createInitialState,
   );
 
-  /**
-   * Bereits angestoßene Nachlade-Vorgänge. Ohne diese Merkliste würde ein
-   * erneuter Effektlauf (React StrictMode, Re-Render) denselben Katalog ein
-   * zweites Mal anfordern — der Test über die Zahl ausgelöster Fetches misst
-   * genau das.
-   */
+  // Verhindert doppelte Nachlade-Requests bei StrictMode-Effektläufen und Re-Renders.
   const requestedKeysRef = useRef<Set<CatalogKey>>(new Set());
-  const entryRenderStartedAtRef = useRef<number | null>(null);
   useEffect(() => {
     requestedKeysRef.current = new Set();
   }, [descriptorByKey]);
@@ -141,16 +133,10 @@ export function CatalogProvider({
   const entryMetadataUrl = entryDescriptor.metadataUrl;
   const entryCatalogKey = entryDescriptor.catalogKey;
 
-  // Läuft nach dem DOM-Commit des erfolgreichen Einstiegskatalogs. Der Start
-  // wird direkt vor dem Reducer-Dispatch gesetzt; damit misst der Eintrag nur
-  // Reacts Zustandsübernahme und Rendern, nicht Netzwerk oder OSCAL-Parsing.
-  useLayoutEffect(() => {
-    const entryState = state.catalogs.get(entryCatalogKey);
-    if (entryState?.loading !== false || entryState.catalogDocument === null) return;
-
-    recordCatalogPhase(CATALOG_LOAD_MEASURES.reactRender, entryRenderStartedAtRef.current);
-    entryRenderStartedAtRef.current = null;
-  }, [entryCatalogKey, state.catalogs]);
+  const entryState = state.catalogs.get(entryCatalogKey);
+  const entryRenderStartedAtRef = useCatalogReactRenderMeasurement(
+    entryState?.loading === false && entryState.catalogDocument !== null,
+  );
 
   // Einstiegskatalog und Vokabulare: der einzige eager Ladepfad.
   useEffect(() => {
@@ -258,6 +244,7 @@ export function CatalogProvider({
     entryCatalogKey,
     entryDataUrl,
     entryMetadataUrl,
+    entryRenderStartedAtRef,
     vocabulariesUrl,
     upstreamSourcesMetadataUrl,
   ]);

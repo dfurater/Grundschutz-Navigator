@@ -6,6 +6,8 @@
 // OSCAL- oder Netzwerkfehler verdecken.
 // =============================================================================
 
+import { useLayoutEffect, useRef, type MutableRefObject } from 'react';
+
 export const CATALOG_LOAD_MEASURES = {
   download: 'gspp:catalog-download',
   jsonParse: 'gspp:catalog-json-parse',
@@ -85,6 +87,26 @@ export function recordCatalogPhase(
   timing: UserTiming | null = getUserTiming(),
 ): void {
   recordDuration(name, startedAt, timing);
+}
+
+/**
+ * Misst den React-Commit des erfolgreichen Einstiegskatalogs. Der Provider
+ * setzt den Rückgabe-Ref direkt vor seinem Erfolgs-Dispatch; dieser Effekt
+ * läuft danach im Layout-Commit, nicht während Netzwerk oder OSCAL-Parsing.
+ */
+export function useCatalogReactRenderMeasurement(
+  entryCatalogIsVisible: boolean,
+): MutableRefObject<number | null> {
+  const startedAtRef = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    if (!entryCatalogIsVisible) return;
+
+    recordCatalogPhase(CATALOG_LOAD_MEASURES.reactRender, startedAtRef.current);
+    startedAtRef.current = null;
+  }, [entryCatalogIsVisible]);
+
+  return startedAtRef;
 }
 
 /** Übernimmt die im Worker gemessene Dauer in die Main-Thread-Timeline. */
