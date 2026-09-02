@@ -4,7 +4,7 @@
 import { spawn, execSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium, devices } from 'playwright';
 
@@ -93,39 +93,58 @@ function startPreview(port) {
   return { child, output: () => output };
 }
 
-/** Wartet auf das tatsächliche Prozessende (nicht nur auf Signalversand), begrenzt durch timeoutMs. */
-function waitForExit(child, timeoutMs) {
-  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true);
-  return new Promise((resolvePromise) => {
-    const timer = setTimeout(() => resolvePromise(false), timeoutMs);
-    child.once('exit', () => {
-      clearTimeout(timer);
-      resolvePromise(true);
-    });
-  });
+/**
+ * Prüft per Signal 0, ob noch mindestens ein Prozess der Gruppe `pgid` existiert.
+ * Signal 0 sendet nichts, sondern testet nur die Zustellbarkeit (POSIX).
+ */
+function isGroupAlive(pgid) {
+  try {
+    process.kill(-pgid, 0);
+    return true;
+  } catch (err) {
+    return err.code !== 'ESRCH';
+  }
 }
 
 /**
- * Beendet die gesamte Prozessgruppe des Preview-Servers. `child.killed` zeigt nur an,
- * dass ein Signal gesendet wurde, nicht dass der Prozess beendet ist — deshalb wird
- * hier auf das `exit`-Event gewartet statt auf dieses Flag. Fällt auf `child.kill()`
- * zurück, falls die Gruppen-Signalisierung (Windows, kein eigener pid-Besitz) fehlschlägt.
+ * Pollt, bis die gesamte Prozessgruppe `pgid` verschwunden ist, oder gibt nach
+ * timeoutMs auf. Prüft die Gruppe direkt statt auf das `exit`-Event eines einzelnen
+ * Kindprozesses zu warten: der unmittelbare Kindprozess (`npx`) kann sich beenden,
+ * während ein von ihm gestarteter, in derselben Gruppe laufender Enkelprozess
+ * (der eigentliche vite-Server) SIGTERM ignoriert und weiterläuft — ein
+ * `exit`-Event auf dem npx-Handle allein sagt darüber nichts aus.
  */
-async function stopPreview(child) {
+async function waitForGroupExit(pgid, timeoutMs, pollMs = 100) {
+  const start = Date.now();
+  while (isGroupAlive(pgid)) {
+    if (Date.now() - start >= timeoutMs) return false;
+    await delay(pollMs);
+  }
+  return true;
+}
+
+/**
+ * Beendet die gesamte Prozessgruppe des Preview-Servers und wartet auf ihr
+ * tatsächliches Verschwinden (siehe `waitForGroupExit`). Fällt auf `child.kill()`
+ * zurück, falls die Gruppen-Signalisierung fehlschlägt (Windows, kein eigener
+ * pid-Besitz).
+ */
+async function stopPreview(child, { termTimeoutMs = 3000, killTimeoutMs = 2000 } = {}) {
   console.log('Beende Preview-Server...');
+  const pgid = child.pid;
   const signalGroup = (signal) => {
     try {
-      process.kill(-child.pid, signal);
+      process.kill(-pgid, signal);
     } catch {
       child.kill(signal);
     }
   };
   signalGroup('SIGTERM');
-  if (await waitForExit(child, 3000)) return;
-  console.warn('Preview-Server reagierte nicht auf SIGTERM, sende SIGKILL...');
+  if (await waitForGroupExit(pgid, termTimeoutMs)) return;
+  console.warn('Preview-Prozessgruppe reagierte nicht vollständig auf SIGTERM, sende SIGKILL...');
   signalGroup('SIGKILL');
-  if (!(await waitForExit(child, 2000))) {
-    console.warn('Preview-Server blieb nach SIGKILL unbeendet.');
+  if (!(await waitForGroupExit(pgid, killTimeoutMs))) {
+    console.warn('Preview-Prozessgruppe blieb nach SIGKILL unbeendet.');
   }
 }
 
@@ -387,9 +406,16 @@ async function main() {
   }
 }
 
-try {
-  await main();
-} catch (err) {
-  console.error(err);
-  process.exit(1);
+const isMain =
+  process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isMain) {
+  try {
+    await main();
+  } catch (err) {
+    console.error(err);
+    process.exit(1);
+  }
 }
+
+export { isGroupAlive, waitForGroupExit, stopPreview };
