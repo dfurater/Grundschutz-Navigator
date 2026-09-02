@@ -9,13 +9,14 @@ YAML und XML sind nicht unterstützt.
 
 Dieses Dokument legt den verbindlichen Zielzustand für den künftigen
 OSCAL-Import- und -Prüfpfad fest. Die Schutzkette ist **nicht** vollständig in
-den bestehenden Klasse-1-Katalog-Ladepfad integriert. Der aktuelle Katalog-Loader in
-[`CatalogContext.tsx`](../src/state/CatalogContext.tsx) ruft
-`fetchCatalogWithBuffer` auf; dessen Implementierung in
-[`integrity.ts`](../src/domain/integrity.ts) dekodiert mit einem nicht-fatalen
-`TextDecoder`. `CatalogContext` übergibt den zurückgegebenen Text anschließend
-unmittelbar `JSON.parse`. Dieser Klasse-1-Pfad besitzt weiterhin kein Byte-Limit,
-keinen Duplicate-Member-Scanner und keine OSCAL-Schema-Prüfung.
+den bestehenden Klasse-1-Katalog-Ladepfad integriert. Der aktuelle
+Klasse-1-Katalog-Loader lädt in
+[`catalogArtifacts.ts`](../src/state/catalogArtifacts.ts) zunächst nur den
+`ArrayBuffer` über `fetchCatalogBuffer`, prüft dessen Hash und überträgt ihn
+anschließend an den Modul-Worker `catalogParser.worker.ts`. Dort dekodiert ein
+nicht-fataler `TextDecoder` und läuft `JSON.parse` mit dem bestehenden
+Root-Dispatch und der Domain-Projektion. Dieser Klasse-1-Pfad besitzt weiterhin
+kein Byte-Limit, keinen Duplicate-Member-Scanner und keine OSCAL-Schema-Prüfung.
 
 **Stufe 1 ist seit [GSPP-289](https://linear.app/grundschutz-plus-plus/issue/GSPP-289)
 für den einzigen Klasse-2-Einstieg umgesetzt.**

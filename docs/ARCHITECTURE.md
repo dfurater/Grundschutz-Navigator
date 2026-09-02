@@ -253,26 +253,26 @@ Profile Resolution (deterministisch, GSPP-291 Commit B)
         │
         ▼
 CatalogContext (Einstiegskatalog eager, weitere bedarfsgerecht)
-        │
-        ▼
-CatalogContext (Einstiegskatalog eager, weitere bedarfsgerecht)
-• fetchCatalogWithBuffer()   → ArrayBuffer (Katalog + Vokabulare parallel)
-• parseCatalogDocument()     → CatalogDocument { source, context, view }
-                               source = unveränderter Quellgraph (ADR-2)
-                               view   = kataloggescopter, angereicherter Catalog
-• catalogReferenceProjection.ts → ruft referenceResolution.ts gegen source
-                               + expliziten Kontext auf (ohne Netzwerk-,
-                               Datei- oder Pfadauflösung) und ergänzt vor
-                               Veröffentlichung die View: Control.links enthält
-                               nur aufgelöste, kataloggescopte Ziele; der
-                               Quellbaum wird dafür nur einmal indiziert
+├─ Katalog: loadCatalogArtifacts()
+│  • fetchCatalogBuffer()    → ArrayBuffer
+│  • verifyArtifactIntegrity() → VerificationResult
+│  • parseCatalogInWorker()  → CatalogDocument { source, context, view }
+│                               source = unveränderter Quellgraph (ADR-2)
+│                               view   = kataloggescopter, angereicherter Catalog
+│  • catalogReferenceProjection.ts → ruft referenceResolution.ts gegen source
+│                               + expliziten Kontext auf (ohne Netzwerk-,
+│                               Datei- oder Pfadauflösung) und ergänzt vor
+│                               Veröffentlichung die View: Control.links enthält
+│                               nur aufgelöste, kataloggescopte Ziele; der
+│                               Quellbaum wird dafür nur einmal indiziert
+└─ Vokabulare: fetchCatalogWithBuffer() → { buffer, text }
+   • buildVocabularyRegistry()
+   • fetchVocabularyProvenance() + verifyArtifactIntegrity()
 • Referenzauflösung trennt Fragmentziele nach dem tatsächlichen Dokumentgraphen:
                                control/@id → kataloginterne Navigation,
                                back-matter.resource/@uuid → Ressourcenmetadaten;
                                resource.rlinks bleiben externe Metadaten und
                                werden niemals automatisch geladen
-• verifyArtifactIntegrity()  → VerificationResult (Katalog + Vokabulare)
-• buildVocabularyRegistry()
         │
         ▼
 Feature-Komponenten und Hooks
@@ -380,6 +380,56 @@ Projektionen des **aktiven** Katalogs — unveränderte Zugriffsform:
 - `vocabularyVerification` — Vocabulary Integritätsprüfung
 - `loading` — Ladezustand
 - `error` — Fehlermeldung
+
+### Startup-Parsing im Modul-Worker
+
+Der Katalog-Ladepfad misst Download, JSON-Parsing, Domain-Projektion und
+React-Commit mit User Timing (`gspp:catalog-*`). Nach der Hashprüfung überträgt
+`catalogArtifacts.ts` den nicht mehr benötigten `ArrayBuffer` ohne Kopie an
+`catalogParser.worker.ts`. Dort dekodiert und parst der Worker den Katalog,
+führt Root-Dispatch und Link-Projektion aus und gibt das strukturklonbare
+`CatalogDocument` zurück. Nachrichten tragen Request-ID und den expliziten
+`CatalogDocumentContext`; eine fremde Antwort oder ein anderer `catalogKey`
+kann keinen Katalogzustand vervollständigen. Parse- und Root-Type-Fehler bleiben
+als verständlicher Ladefehler am betroffenen Katalog sichtbar. Nur ohne
+`Worker`-API (heute ein Test- bzw. nicht unterstützter Laufzeitpfad) bleibt der
+gleiche, fehlertreue Parser als Fallback im Main Thread. Kann ein vorhandener
+Worker nicht starten oder fehlschlägt er, bleibt dies ein sichtbarer
+Katalog-Ladefehler; nach dem Transfer gibt es bewusst keinen stillen
+Main-Thread-Fallback. Im erzwungenen Fallback entstehen JSON- und
+Domain-User-Timing-Ranges während ihrer tatsächlichen Ausführung; nur sie
+werden gegen Main-Thread-Long-Tasks klassifiziert. Zurückgemeldete
+Worker-Dauern sind dagegen reine Phasenmetriken und klassifizieren keinen
+Main-Thread-Long-Task.
+
+[`npm run measure-startup`](../package.json) erzeugt nach
+`npm run fetch-catalog` einen Production-Build, misst fünf frische Starts auf
+Desktop 1× sowie Pixel 7 mit 4× CPU-Drosselung und schreibt Rohwerte für den
+erzwungenen Main-Thread-Fallback **und** den Modul-Worker nach
+[`STARTUP_MEASUREMENT.json`](./STARTUP_MEASUREMENT.json). Long Tasks werden vor
+dem Bootstrap beobachtet und nach einer Zustellbarriere ausgelesen; Browser
+Paint Timing liefert zusätzlich `first-paint` und `first-contentful-paint` je
+Lauf.
+
+<!-- startup-measurement:table:start -->
+| Profil | Vor Worker: JSON / Domain / React (Median) | Vor Worker: FP / FCP (Median) | Vor Worker: Parse-Long-Tasks | Nach Worker: FP / FCP (Median) | Nach Worker: Main-Thread-Long-Tasks |
+|---|---:|---:|---:|---:|---:|
+| Desktop 1× | 4,9 / 4,7 / 2,0 ms | 12 / 60 ms | 0/5 | 12 / 56 ms | 0/5 |
+| Pixel 7, 4× CPU | 21,0 / 22,8 / 11,8 ms | 28 / 136 ms | 5/5, 65–69 ms | 28 / 144 ms | 0/5 |
+<!-- startup-measurement:table:end -->
+
+Die Worker-Auslagerung ist damit durch die Long-Task-Schwelle begründet. Der
+Runner aktualisiert Tabelle und Artefakt in einem Lauf. Die im Nachher-Artefakt
+ausgewiesenen Worker-Phasendauern trennen die Arbeit auf, sind aber nicht
+direkt mit CDP-gedrosselten Main-Thread-Zeiten vergleichbar und dürfen daher
+keinen Main-Thread-Long-Task als Parsearbeit klassifizieren. Roh erfasste
+Main-Thread-Long-Tasks des Worker-Laufs bleiben in der Tabelle und im Artefakt
+sichtbar.
+`reactRender` misst den React-Commit; `first-paint` und
+`first-contentful-paint` werden unabhängig davon als Browser-Paint-Timing
+erfasst. Bei fünf frischen Läufen sind die FCP-Werte ein Vergleichssnapshot,
+aber kein Stabilitäts- oder Gleichheitsnachweis; die Worker-Entscheidung stützt
+sich auf die reproduzierbaren Parse-Long-Tasks und die separate FP-Messung.
 
 ## Anwenderkataloge sind fachlich getrennt
 

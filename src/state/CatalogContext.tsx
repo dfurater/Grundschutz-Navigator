@@ -40,6 +40,10 @@ import {
   toCatalogErrorMessage,
   type SupportedCatalogDescriptor,
 } from '@/state/catalogArtifacts';
+import {
+  catalogMeasurementNow,
+  useCatalogReactRenderMeasurement,
+} from '@/state/catalogMeasurements';
 
 import {
   catalogReducer,
@@ -119,12 +123,7 @@ export function CatalogProvider({
     createInitialState,
   );
 
-  /**
-   * Bereits angestoßene Nachlade-Vorgänge. Ohne diese Merkliste würde ein
-   * erneuter Effektlauf (React StrictMode, Re-Render) denselben Katalog ein
-   * zweites Mal anfordern — der Test über die Zahl ausgelöster Fetches misst
-   * genau das.
-   */
+  // Verhindert doppelte Nachlade-Requests bei StrictMode-Effektläufen und Re-Renders.
   const requestedKeysRef = useRef<Set<CatalogKey>>(new Set());
   useEffect(() => {
     requestedKeysRef.current = new Set();
@@ -133,6 +132,11 @@ export function CatalogProvider({
   const entryDataUrl = entryDescriptor.dataUrl;
   const entryMetadataUrl = entryDescriptor.metadataUrl;
   const entryCatalogKey = entryDescriptor.catalogKey;
+
+  const entryState = state.catalogs.get(entryCatalogKey);
+  const entryRenderStartedAtRef = useCatalogReactRenderMeasurement(
+    entryState?.loading === false && entryState.catalogDocument !== null,
+  );
 
   // Einstiegskatalog und Vokabulare: der einzige eager Ladepfad.
   useEffect(() => {
@@ -214,6 +218,7 @@ export function CatalogProvider({
           vocabularyProvenance,
           vocabularyVerification,
         });
+        entryRenderStartedAtRef.current = catalogMeasurementNow();
         dispatch({
           type: 'CATALOG_LOAD_SUCCESS',
           catalogKey: entryCatalogKey,
@@ -239,6 +244,7 @@ export function CatalogProvider({
     entryCatalogKey,
     entryDataUrl,
     entryMetadataUrl,
+    entryRenderStartedAtRef,
     vocabulariesUrl,
     upstreamSourcesMetadataUrl,
   ]);
