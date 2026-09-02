@@ -29,6 +29,8 @@ describe('Startup-Produktionsmessung', () => {
         jsonParse: phase(100, 8),
         domainParse: phase(108, 12),
         reactRender: phase(120, 4),
+        firstPaint: phase(25, 0),
+        firstContentfulPaint: phase(35, 0),
         longTasks: [{ startTime: 125, duration: 80 }],
       },
       {
@@ -36,6 +38,8 @@ describe('Startup-Produktionsmessung', () => {
         jsonParse: phase(100, 9),
         domainParse: phase(109, 13),
         reactRender: phase(122, 5),
+        firstPaint: phase(30, 0),
+        firstContentfulPaint: phase(40, 0),
         longTasks: [{ startTime: 105, duration: 60 }],
       },
       {
@@ -43,6 +47,8 @@ describe('Startup-Produktionsmessung', () => {
         jsonParse: phase(100, 10),
         domainParse: phase(110, 14),
         reactRender: phase(124, 6),
+        firstPaint: phase(35, 0),
+        firstContentfulPaint: phase(45, 0),
         longTasks: [],
       },
     ]);
@@ -52,6 +58,8 @@ describe('Startup-Produktionsmessung', () => {
       medianJsonParseMs: 9,
       medianDomainParseMs: 13,
       medianReactRenderMs: 5,
+      medianFirstPaintMs: 30,
+      medianFirstContentfulPaintMs: 40,
       parseLongTaskRuns: 1,
       workerRecommended: true,
     });
@@ -65,6 +73,8 @@ describe('Startup-Produktionsmessung', () => {
           jsonParse: phase(100, 5),
           domainParse: phase(100, 5),
           reactRender: phase(110, 3),
+          firstPaint: phase(30, 0),
+          firstContentfulPaint: phase(40, 0),
           longTasks: [{ startTime: 120, duration: 55 }],
         },
       ],

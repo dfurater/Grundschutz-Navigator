@@ -400,19 +400,22 @@ fehlertreue Parser als Fallback im Main Thread.
 Desktop 1× sowie Pixel 7 mit 4× CPU-Drosselung und schreibt Rohwerte für den
 erzwungenen Main-Thread-Fallback **und** den Modul-Worker nach
 [`STARTUP_MEASUREMENT.json`](./STARTUP_MEASUREMENT.json). Long Tasks werden vor
-dem Bootstrap beobachtet und nach einer Zustellbarriere ausgelesen.
+dem Bootstrap beobachtet und nach einer Zustellbarriere ausgelesen; Browser
+Paint Timing liefert zusätzlich `first-paint` und `first-contentful-paint` je
+Lauf.
 
-| Profil | Vor Worker: JSON / Domain / React (Median) | Vor Worker: Parse-Long-Tasks | Nach Worker: Main-Thread-Long-Tasks |
-|---|---:|---:|---:|
-| Desktop 1× | 5,2 / 4,9 / 2,0 ms | 0/5 | 0/5 |
-| Pixel 7, 4× CPU | 20,1 / 22,6 / 9,5 ms | 5/5, 62–70 ms | 0/5 |
+| Profil | Vor Worker: JSON / Domain / React (Median) | Vor Worker: FP / FCP (Median) | Vor Worker: Parse-Long-Tasks | Nach Worker: FP / FCP (Median) | Nach Worker: Main-Thread-Long-Tasks |
+|---|---:|---:|---:|---:|---:|
+| Desktop 1× | 5,1 / 4,9 / 2,0 ms | 12 / 60 ms | 0/5 | 12 / 60 ms | 0/5 |
+| Pixel 7, 4× CPU | 20,0 / 22,8 / 9,8 ms | 28 / 140 ms | 5/5, 59–80 ms | 28 / 144 ms | 0/5 |
 
 Die Worker-Auslagerung ist damit durch die Long-Task-Schwelle begründet. Die
 im Nachher-Artefakt ausgewiesenen Worker-Phasendauern trennen die Arbeit auf,
 sind aber nicht direkt mit CDP-gedrosselten Main-Thread-Zeiten vergleichbar;
-der relevante Nachweis ist das Ausbleiben von Main-Thread-Long-Tasks. Der
-Messpunkt `reactRender` misst den React-Commit, **kein** Browser-Paint-Timing;
-dieses ist weder Teil der Aussage noch des Vergleichs.
+der relevante Nachweis ist das Ausbleiben von Main-Thread-Long-Tasks.
+`reactRender` misst den React-Commit; `first-paint` und
+`first-contentful-paint` werden unabhängig davon als Browser-Paint-Timing
+erfasst und zwischen Fallback und Worker verglichen.
 
 ## Anwenderkataloge sind fachlich getrennt
 

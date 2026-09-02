@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Production-Messung des Katalog-Startpfads (GSPP-194).
-// Misst Download, JSON- und Domain-Parsing, React-Commit sowie überlappende
-// Long Tasks getrennt. Ein Worker wird nur bei einem Parse-Long-Task empfohlen.
+// Misst Download, JSON- und Domain-Parsing, React-Commit, Browser-Paint sowie
+// überlappende Long Tasks getrennt. Ein Worker wird nur bei einem Parse-Long-Task empfohlen.
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -23,6 +23,10 @@ const CATALOG_LOAD_MEASURES = {
   jsonParse: 'gspp:catalog-json-parse',
   domainParse: 'gspp:catalog-domain-parse',
   reactRender: 'gspp:catalog-react-render',
+};
+const BROWSER_PAINT_MEASURES = {
+  firstPaint: 'first-paint',
+  firstContentfulPaint: 'first-contentful-paint',
 };
 
 function median(values) {
@@ -61,6 +65,10 @@ function summarizeStartupRuns(runs, { parserRunsOnMainThread = true } = {}) {
     medianJsonParseMs: round(median(runs.map((run) => run.jsonParse.duration))),
     medianDomainParseMs: round(median(runs.map((run) => run.domainParse.duration))),
     medianReactRenderMs: round(median(runs.map((run) => run.reactRender.duration))),
+    medianFirstPaintMs: round(median(runs.map((run) => run.firstPaint.startTime))),
+    medianFirstContentfulPaintMs: round(
+      median(runs.map((run) => run.firstContentfulPaint.startTime)),
+    ),
     mainThreadLongTaskRuns,
     parseLongTaskRuns,
     parseLongTasks,
@@ -148,7 +156,7 @@ async function readStartupRun(page, baseUrl) {
     { timeout: 30_000 },
   );
 
-  const [phases, longTaskResult] = await Promise.all([
+  const [phases, paints, longTaskResult] = await Promise.all([
     page.evaluate((measureNames) => Object.fromEntries(
       Object.entries(measureNames).map(([key, name]) => {
         const entry = performance.getEntriesByName(name, 'measure').at(-1);
@@ -158,6 +166,15 @@ async function readStartupRun(page, baseUrl) {
         }];
       }),
     ), CATALOG_LOAD_MEASURES),
+    page.evaluate((paintNames) => Object.fromEntries(
+      Object.entries(paintNames).map(([key, name]) => {
+        const entry = performance.getEntriesByName(name, 'paint').at(-1);
+        return [key, entry === undefined ? null : {
+          startTime: Number(entry.startTime.toFixed(2)),
+          duration: Number(entry.duration.toFixed(2)),
+        }];
+      }),
+    ), BROWSER_PAINT_MEASURES),
     page.evaluate((quietMs) => window.__gsppReadStartupLongTasks(quietMs), LONG_TASK_SETTLE_MS),
   ]);
 
@@ -168,7 +185,19 @@ async function readStartupRun(page, baseUrl) {
     throw new Error(`Startup-Messpunkte fehlen: ${missing.join(', ')}`);
   }
 
-  return { ...phases, longTasks: longTaskResult.tasks, longTaskSupported: longTaskResult.supported };
+  const missingPaints = Object.entries(paints)
+    .filter(([, paint]) => paint === null)
+    .map(([name]) => name);
+  if (missingPaints.length > 0) {
+    throw new Error(`Browser-Paint-Messpunkte fehlen: ${missingPaints.join(', ')}`);
+  }
+
+  return {
+    ...phases,
+    ...paints,
+    longTasks: longTaskResult.tasks,
+    longTaskSupported: longTaskResult.supported,
+  };
 }
 
 async function runProfile(throttlingRate, { parserRunsOnMainThread }) {
@@ -245,6 +274,7 @@ function buildOutput({ chromiumVersion, mainThreadFallback, moduleWorker }) {
     iterations: ITERATIONS,
     profiles: { desktop: 1, mobile4x: 4 },
     measures: CATALOG_LOAD_MEASURES,
+    browserPaintMeasures: BROWSER_PAINT_MEASURES,
     mainThreadFallback,
     moduleWorker,
     decision: {
@@ -254,7 +284,7 @@ function buildOutput({ chromiumVersion, mainThreadFallback, moduleWorker }) {
         ? 'Ein Parse-Long-Task im erzwungenen Main-Thread-Fallback begründet die Auslagerung; der Modul-Worker-Lauf belegt anschließend den Wegfall von Main-Thread-Long-Tasks.'
         : 'Der erzwungene Main-Thread-Fallback zeigte keinen Parse-Long-Task; der Modul-Worker bleibt als gemessener Produktionspfad dokumentiert.',
     },
-    notes: 'Jeder Lauf verwendet einen frischen Browser-Kontext. Der Main-Thread-Fallback wird ausschließlich in der Messseite durch eine vor dem Bootstrap gesetzte fehlende Worker-API erzwungen; der ausgelieferte Produktionspfad bleibt unverändert. Long Tasks werden vor dem App-Bootstrap beobachtet und erst nach einer Zustellbarriere mit takeRecords ausgelesen. Worker-Dauern dienen der Phasentrennung, sind aber nicht direkt mit CDP-gedrosselten Main-Thread-Dauern vergleichbar. Browser-Paint-Timing ist kein Messpunkt; reactRender misst ausschließlich den React-Commit.',
+    notes: 'Jeder Lauf verwendet einen frischen Browser-Kontext. Der Main-Thread-Fallback wird ausschließlich in der Messseite durch eine vor dem Bootstrap gesetzte fehlende Worker-API erzwungen; der ausgelieferte Produktionspfad bleibt unverändert. Long Tasks werden vor dem App-Bootstrap beobachtet und erst nach einer Zustellbarriere mit takeRecords ausgelesen. Worker-Dauern dienen der Phasentrennung, sind aber nicht direkt mit CDP-gedrosselten Main-Thread-Dauern vergleichbar. firstPaint und firstContentfulPaint stammen aus Browser Paint Timing; reactRender misst davon getrennt ausschließlich den React-Commit.',
   };
 }
 

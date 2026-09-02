@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-02T15:00:28.269Z",
+  "generatedAt": "2026-09-02T15:13:38.215Z",
   "snapshotCommitSha": "8a97764ff4f23c2b7945c64344eecbf5a2053db2",
   "chromiumVersion": "151.0.7922.34",
   "previewUrl": "http://127.0.0.1:4174",
@@ -13,6 +13,10 @@
     "jsonParse": "gspp:catalog-json-parse",
     "domainParse": "gspp:catalog-domain-parse",
     "reactRender": "gspp:catalog-react-render"
+  },
+  "browserPaintMeasures": {
+    "firstPaint": "first-paint",
+    "firstContentfulPaint": "first-contentful-paint"
   },
   "mainThreadFallback": {
     "desktop": {
@@ -28,110 +32,152 @@
       "runs": [
         {
           "download": {
-            "startTime": 84.4,
-            "duration": 37.5
+            "startTime": 79.4,
+            "duration": 38.5
           },
           "jsonParse": {
-            "startTime": 136.9,
-            "duration": 5.5
+            "startTime": 133.9,
+            "duration": 5.1
           },
           "domainParse": {
-            "startTime": 135.8,
-            "duration": 6.6
+            "startTime": 132.1,
+            "duration": 6.9
           },
           "reactRender": {
-            "startTime": 145.4,
-            "duration": 2.4
+            "startTime": 142.1,
+            "duration": 2.3
+          },
+          "firstPaint": {
+            "startTime": 28,
+            "duration": 0
+          },
+          "firstContentfulPaint": {
+            "startTime": 88,
+            "duration": 0
           },
           "longTasks": [],
           "longTaskSupported": true
         },
         {
           "download": {
-            "startTime": 53.8,
-            "duration": 37
+            "startTime": 54.5,
+            "duration": 37.2
           },
           "jsonParse": {
-            "startTime": 100.8,
-            "duration": 4.7
+            "startTime": 102.4,
+            "duration": 6.7
           },
           "domainParse": {
-            "startTime": 100.6,
+            "startTime": 104.2,
             "duration": 4.9
           },
           "reactRender": {
-            "startTime": 108.1,
-            "duration": 1.9
+            "startTime": 111.8,
+            "duration": 2
+          },
+          "firstPaint": {
+            "startTime": 12,
+            "duration": 0
+          },
+          "firstContentfulPaint": {
+            "startTime": 56,
+            "duration": 0
           },
           "longTasks": [],
           "longTaskSupported": true
         },
         {
           "download": {
-            "startTime": 54.3,
-            "duration": 36.4
+            "startTime": 54.6,
+            "duration": 37.5
+          },
+          "jsonParse": {
+            "startTime": 102.5,
+            "duration": 5.1
+          },
+          "domainParse": {
+            "startTime": 102.8,
+            "duration": 4.8
+          },
+          "reactRender": {
+            "startTime": 110.2,
+            "duration": 1.9
+          },
+          "firstPaint": {
+            "startTime": 12,
+            "duration": 0
+          },
+          "firstContentfulPaint": {
+            "startTime": 60,
+            "duration": 0
+          },
+          "longTasks": [],
+          "longTaskSupported": true
+        },
+        {
+          "download": {
+            "startTime": 52.3,
+            "duration": 38.2
           },
           "jsonParse": {
             "startTime": 100.9,
-            "duration": 5.2
+            "duration": 4.9
           },
           "domainParse": {
-            "startTime": 101.3,
-            "duration": 4.8
+            "startTime": 101.1,
+            "duration": 4.7
           },
           "reactRender": {
-            "startTime": 108.8,
-            "duration": 1.9
+            "startTime": 108.5,
+            "duration": 1.8
+          },
+          "firstPaint": {
+            "startTime": 12,
+            "duration": 0
+          },
+          "firstContentfulPaint": {
+            "startTime": 60,
+            "duration": 0
           },
           "longTasks": [],
           "longTaskSupported": true
         },
         {
           "download": {
-            "startTime": 52,
-            "duration": 36.9
+            "startTime": 38.5,
+            "duration": 40.8
           },
           "jsonParse": {
-            "startTime": 98.9,
-            "duration": 4.8
+            "startTime": 91.7,
+            "duration": 5.1
           },
           "domainParse": {
-            "startTime": 98.9,
-            "duration": 4.8
+            "startTime": 91.2,
+            "duration": 5.7
           },
           "reactRender": {
-            "startTime": 106.6,
-            "duration": 2
+            "startTime": 99.6,
+            "duration": 2.2
           },
-          "longTasks": [],
-          "longTaskSupported": true
-        },
-        {
-          "download": {
-            "startTime": 39.3,
-            "duration": 37
+          "firstPaint": {
+            "startTime": 12,
+            "duration": 0
           },
-          "jsonParse": {
-            "startTime": 87.6,
-            "duration": 5.2
-          },
-          "domainParse": {
-            "startTime": 87,
-            "duration": 5.8
-          },
-          "reactRender": {
-            "startTime": 95.5,
-            "duration": 2
+          "firstContentfulPaint": {
+            "startTime": 64,
+            "duration": 0
           },
           "longTasks": [],
           "longTaskSupported": true
         }
       ],
       "summary": {
-        "medianDownloadMs": 37,
-        "medianJsonParseMs": 5.2,
+        "medianDownloadMs": 38.2,
+        "medianJsonParseMs": 5.1,
         "medianDomainParseMs": 4.9,
         "medianReactRenderMs": 2,
+        "medianFirstPaintMs": 12,
+        "medianFirstContentfulPaintMs": 60,
         "mainThreadLongTaskRuns": 0,
         "parseLongTaskRuns": 0,
         "parseLongTasks": [],
@@ -151,49 +197,32 @@
       "runs": [
         {
           "download": {
-            "startTime": 146,
-            "duration": 53.4
+            "startTime": 133.7,
+            "duration": 54.2
           },
           "jsonParse": {
-            "startTime": 244.4,
-            "duration": 20.3
+            "startTime": 236.7,
+            "duration": 20.7
           },
           "domainParse": {
-            "startTime": 242.6,
-            "duration": 22.1
+            "startTime": 234.6,
+            "duration": 22.8
           },
           "reactRender": {
-            "startTime": 273.4,
-            "duration": 9.5
+            "startTime": 265.5,
+            "duration": 12.4
+          },
+          "firstPaint": {
+            "startTime": 28,
+            "duration": 0
+          },
+          "firstContentfulPaint": {
+            "startTime": 136,
+            "duration": 0
           },
           "longTasks": [
             {
-              "startTime": 203.4,
-              "duration": 65
-            }
-          ],
-          "longTaskSupported": true
-        },
-        {
-          "download": {
-            "startTime": 104,
-            "duration": 80.2
-          },
-          "jsonParse": {
-            "startTime": 232.6,
-            "duration": 20.3
-          },
-          "domainParse": {
-            "startTime": 225.9,
-            "duration": 27
-          },
-          "reactRender": {
-            "startTime": 263,
-            "duration": 8.4
-          },
-          "longTasks": [
-            {
-              "startTime": 187.4,
+              "startTime": 191.4,
               "duration": 69
             }
           ],
@@ -201,107 +230,166 @@
         },
         {
           "download": {
-            "startTime": 135.7,
-            "duration": 51.2
+            "startTime": 142.5,
+            "duration": 52.3
           },
           "jsonParse": {
-            "startTime": 228.1,
-            "duration": 18.9
+            "startTime": 251.7,
+            "duration": 18.3
           },
           "domainParse": {
-            "startTime": 226.1,
-            "duration": 20.9
+            "startTime": 238.4,
+            "duration": 31.6
           },
           "reactRender": {
-            "startTime": 255.6,
-            "duration": 8.8
+            "startTime": 278.3,
+            "duration": 14.3
+          },
+          "firstPaint": {
+            "startTime": 32,
+            "duration": 0
+          },
+          "firstContentfulPaint": {
+            "startTime": 144,
+            "duration": 0
           },
           "longTasks": [
             {
-              "startTime": 188.8,
+              "startTime": 200.8,
+              "duration": 73
+            }
+          ],
+          "longTaskSupported": true
+        },
+        {
+          "download": {
+            "startTime": 134.6,
+            "duration": 47.6
+          },
+          "jsonParse": {
+            "startTime": 219.4,
+            "duration": 20
+          },
+          "domainParse": {
+            "startTime": 221.1,
+            "duration": 18.3
+          },
+          "reactRender": {
+            "startTime": 247.3,
+            "duration": 7.8
+          },
+          "firstPaint": {
+            "startTime": 28,
+            "duration": 0
+          },
+          "firstContentfulPaint": {
+            "startTime": 136,
+            "duration": 0
+          },
+          "longTasks": [
+            {
+              "startTime": 184.2,
+              "duration": 59
+            }
+          ],
+          "longTaskSupported": true
+        },
+        {
+          "download": {
+            "startTime": 134.7,
+            "duration": 53.5
+          },
+          "jsonParse": {
+            "startTime": 241.6,
+            "duration": 23.3
+          },
+          "domainParse": {
+            "startTime": 238.4,
+            "duration": 26.5
+          },
+          "reactRender": {
+            "startTime": 275.8,
+            "duration": 9.8
+          },
+          "firstPaint": {
+            "startTime": 28,
+            "duration": 0
+          },
+          "firstContentfulPaint": {
+            "startTime": 140,
+            "duration": 0
+          },
+          "longTasks": [
+            {
+              "startTime": 191.6,
+              "duration": 80
+            }
+          ],
+          "longTaskSupported": true
+        },
+        {
+          "download": {
+            "startTime": 146.4,
+            "duration": 52.7
+          },
+          "jsonParse": {
+            "startTime": 239.4,
+            "duration": 19.5
+          },
+          "domainParse": {
+            "startTime": 239.2,
+            "duration": 19.7
+          },
+          "reactRender": {
+            "startTime": 266.9,
+            "duration": 7.6
+          },
+          "firstPaint": {
+            "startTime": 28,
+            "duration": 0
+          },
+          "firstContentfulPaint": {
+            "startTime": 148,
+            "duration": 0
+          },
+          "longTasks": [
+            {
+              "startTime": 200.7,
               "duration": 62
-            }
-          ],
-          "longTaskSupported": true
-        },
-        {
-          "download": {
-            "startTime": 132.7,
-            "duration": 49.6
-          },
-          "jsonParse": {
-            "startTime": 236.6,
-            "duration": 17.3
-          },
-          "domainParse": {
-            "startTime": 223,
-            "duration": 30.9
-          },
-          "reactRender": {
-            "startTime": 263.9,
-            "duration": 12.5
-          },
-          "longTasks": [
-            {
-              "startTime": 188.2,
-              "duration": 70
-            }
-          ],
-          "longTaskSupported": true
-        },
-        {
-          "download": {
-            "startTime": 135.7,
-            "duration": 48.9
-          },
-          "jsonParse": {
-            "startTime": 228.6,
-            "duration": 20.1
-          },
-          "domainParse": {
-            "startTime": 226.1,
-            "duration": 22.6
-          },
-          "reactRender": {
-            "startTime": 256.6,
-            "duration": 11.6
-          },
-          "longTasks": [
-            {
-              "startTime": 186.7,
-              "duration": 65
             }
           ],
           "longTaskSupported": true
         }
       ],
       "summary": {
-        "medianDownloadMs": 51.2,
-        "medianJsonParseMs": 20.1,
-        "medianDomainParseMs": 22.6,
-        "medianReactRenderMs": 9.5,
+        "medianDownloadMs": 52.7,
+        "medianJsonParseMs": 20,
+        "medianDomainParseMs": 22.8,
+        "medianReactRenderMs": 9.8,
+        "medianFirstPaintMs": 28,
+        "medianFirstContentfulPaintMs": 140,
         "mainThreadLongTaskRuns": 5,
         "parseLongTaskRuns": 5,
         "parseLongTasks": [
           {
-            "startTime": 203.4,
-            "duration": 65
-          },
-          {
-            "startTime": 187.4,
+            "startTime": 191.4,
             "duration": 69
           },
           {
-            "startTime": 188.8,
+            "startTime": 200.8,
+            "duration": 73
+          },
+          {
+            "startTime": 184.2,
+            "duration": 59
+          },
+          {
+            "startTime": 191.6,
+            "duration": 80
+          },
+          {
+            "startTime": 200.7,
             "duration": 62
-          },
-          {
-            "startTime": 188.2,
-            "duration": 70
-          },
-          {
-            "startTime": 186.7,
-            "duration": 65
           }
         ],
         "workerRecommended": true
@@ -322,110 +410,152 @@
       "runs": [
         {
           "download": {
-            "startTime": 51.1,
-            "duration": 37.8
+            "startTime": 35.7,
+            "duration": 36.9
           },
           "jsonParse": {
-            "startTime": 125.6,
-            "duration": 4.8
-          },
-          "domainParse": {
-            "startTime": 125.3,
-            "duration": 5.1
-          },
-          "reactRender": {
-            "startTime": 133.4,
-            "duration": 2.2
-          },
-          "longTasks": [],
-          "longTaskSupported": true
-        },
-        {
-          "download": {
-            "startTime": 37.2,
-            "duration": 37.7
-          },
-          "jsonParse": {
-            "startTime": 103.1,
+            "startTime": 107.7,
             "duration": 4.7
           },
           "domainParse": {
-            "startTime": 103.3,
-            "duration": 4.6
+            "startTime": 107.9,
+            "duration": 4.5
           },
           "reactRender": {
-            "startTime": 110.6,
-            "duration": 2.2
-          },
-          "longTasks": [],
-          "longTaskSupported": true
-        },
-        {
-          "download": {
-            "startTime": 51.8,
-            "duration": 36.6
-          },
-          "jsonParse": {
-            "startTime": 116,
-            "duration": 4.8
-          },
-          "domainParse": {
-            "startTime": 116,
-            "duration": 4.8
-          },
-          "reactRender": {
-            "startTime": 123.4,
+            "startTime": 115.2,
             "duration": 2
           },
+          "firstPaint": {
+            "startTime": 28,
+            "duration": 0
+          },
+          "firstContentfulPaint": {
+            "startTime": 60,
+            "duration": 0
+          },
           "longTasks": [],
           "longTaskSupported": true
         },
         {
           "download": {
-            "startTime": 51.6,
+            "startTime": 54.6,
             "duration": 35.5
           },
           "jsonParse": {
-            "startTime": 114.1,
-            "duration": 4.9
+            "startTime": 117.1,
+            "duration": 4.7
           },
           "domainParse": {
-            "startTime": 114.4,
+            "startTime": 117.2,
             "duration": 4.6
           },
           "reactRender": {
-            "startTime": 121.5,
+            "startTime": 124.2,
             "duration": 2.1
+          },
+          "firstPaint": {
+            "startTime": 12,
+            "duration": 0
+          },
+          "firstContentfulPaint": {
+            "startTime": 56,
+            "duration": 0
           },
           "longTasks": [],
           "longTaskSupported": true
         },
         {
           "download": {
-            "startTime": 37.8,
-            "duration": 39.2
+            "startTime": 52.9,
+            "duration": 37.6
           },
           "jsonParse": {
-            "startTime": 103.9,
+            "startTime": 118,
             "duration": 4.8
           },
           "domainParse": {
-            "startTime": 104,
-            "duration": 4.7
+            "startTime": 118.2,
+            "duration": 4.6
           },
           "reactRender": {
-            "startTime": 111.1,
+            "startTime": 125.4,
+            "duration": 2.1
+          },
+          "firstPaint": {
+            "startTime": 12,
+            "duration": 0
+          },
+          "firstContentfulPaint": {
+            "startTime": 60,
+            "duration": 0
+          },
+          "longTasks": [],
+          "longTaskSupported": true
+        },
+        {
+          "download": {
+            "startTime": 52.6,
+            "duration": 36.6
+          },
+          "jsonParse": {
+            "startTime": 117.3,
+            "duration": 5
+          },
+          "domainParse": {
+            "startTime": 117.5,
+            "duration": 4.8
+          },
+          "reactRender": {
+            "startTime": 124.9,
             "duration": 2
+          },
+          "firstPaint": {
+            "startTime": 12,
+            "duration": 0
+          },
+          "firstContentfulPaint": {
+            "startTime": 60,
+            "duration": 0
+          },
+          "longTasks": [],
+          "longTaskSupported": true
+        },
+        {
+          "download": {
+            "startTime": 38.1,
+            "duration": 40.2
+          },
+          "jsonParse": {
+            "startTime": 108.2,
+            "duration": 5.1
+          },
+          "domainParse": {
+            "startTime": 108.6,
+            "duration": 4.8
+          },
+          "reactRender": {
+            "startTime": 116.1,
+            "duration": 2.1
+          },
+          "firstPaint": {
+            "startTime": 12,
+            "duration": 0
+          },
+          "firstContentfulPaint": {
+            "startTime": 64,
+            "duration": 0
           },
           "longTasks": [],
           "longTaskSupported": true
         }
       ],
       "summary": {
-        "medianDownloadMs": 37.7,
+        "medianDownloadMs": 36.9,
         "medianJsonParseMs": 4.8,
-        "medianDomainParseMs": 4.7,
+        "medianDomainParseMs": 4.6,
         "medianReactRenderMs": 2.1,
+        "medianFirstPaintMs": 12,
+        "medianFirstContentfulPaintMs": 60,
         "mainThreadLongTaskRuns": 0,
         "parseLongTaskRuns": 0,
         "parseLongTasks": [],
@@ -445,110 +575,152 @@
       "runs": [
         {
           "download": {
-            "startTime": 142.6,
-            "duration": 51.6
-          },
-          "jsonParse": {
-            "startTime": 257.6,
-            "duration": 5.2
-          },
-          "domainParse": {
-            "startTime": 257.7,
-            "duration": 5.1
-          },
-          "reactRender": {
-            "startTime": 269.4,
-            "duration": 9.3
-          },
-          "longTasks": [],
-          "longTaskSupported": true
-        },
-        {
-          "download": {
-            "startTime": 135.1,
-            "duration": 49.9
-          },
-          "jsonParse": {
-            "startTime": 248.1,
-            "duration": 5.1
-          },
-          "domainParse": {
-            "startTime": 248.5,
-            "duration": 4.7
-          },
-          "reactRender": {
-            "startTime": 261.7,
-            "duration": 10.6
-          },
-          "longTasks": [],
-          "longTaskSupported": true
-        },
-        {
-          "download": {
-            "startTime": 133.2,
-            "duration": 49.3
-          },
-          "jsonParse": {
-            "startTime": 248.8,
-            "duration": 4.8
-          },
-          "domainParse": {
-            "startTime": 248.8,
-            "duration": 4.8
-          },
-          "reactRender": {
-            "startTime": 261.9,
-            "duration": 10.8
-          },
-          "longTasks": [],
-          "longTaskSupported": true
-        },
-        {
-          "download": {
-            "startTime": 133.9,
-            "duration": 48.4
-          },
-          "jsonParse": {
-            "startTime": 242,
-            "duration": 5
-          },
-          "domainParse": {
-            "startTime": 242.2,
-            "duration": 4.8
-          },
-          "reactRender": {
-            "startTime": 253.9,
-            "duration": 7.5
-          },
-          "longTasks": [],
-          "longTaskSupported": true
-        },
-        {
-          "download": {
-            "startTime": 141.7,
+            "startTime": 134.2,
             "duration": 49.6
           },
           "jsonParse": {
-            "startTime": 256.2,
-            "duration": 5.1
+            "startTime": 252.4,
+            "duration": 4.9
           },
           "domainParse": {
-            "startTime": 256,
-            "duration": 5.4
+            "startTime": 252.3,
+            "duration": 5
           },
           "reactRender": {
-            "startTime": 270.6,
-            "duration": 11.3
+            "startTime": 266.7,
+            "duration": 10.2
+          },
+          "firstPaint": {
+            "startTime": 32,
+            "duration": 0
+          },
+          "firstContentfulPaint": {
+            "startTime": 136,
+            "duration": 0
+          },
+          "longTasks": [],
+          "longTaskSupported": true
+        },
+        {
+          "download": {
+            "startTime": 103.3,
+            "duration": 77.6
+          },
+          "jsonParse": {
+            "startTime": 246.4,
+            "duration": 4.9
+          },
+          "domainParse": {
+            "startTime": 246.3,
+            "duration": 5
+          },
+          "reactRender": {
+            "startTime": 260,
+            "duration": 9.7
+          },
+          "firstPaint": {
+            "startTime": 28,
+            "duration": 0
+          },
+          "firstContentfulPaint": {
+            "startTime": 144,
+            "duration": 0
+          },
+          "longTasks": [],
+          "longTaskSupported": true
+        },
+        {
+          "download": {
+            "startTime": 103.4,
+            "duration": 80.1
+          },
+          "jsonParse": {
+            "startTime": 250.1,
+            "duration": 5
+          },
+          "domainParse": {
+            "startTime": 250.6,
+            "duration": 4.7
+          },
+          "reactRender": {
+            "startTime": 262.8,
+            "duration": 10.6
+          },
+          "firstPaint": {
+            "startTime": 28,
+            "duration": 0
+          },
+          "firstContentfulPaint": {
+            "startTime": 144,
+            "duration": 0
+          },
+          "longTasks": [],
+          "longTaskSupported": true
+        },
+        {
+          "download": {
+            "startTime": 142.7,
+            "duration": 52.7
+          },
+          "jsonParse": {
+            "startTime": 267,
+            "duration": 4.8
+          },
+          "domainParse": {
+            "startTime": 266.5,
+            "duration": 5.3
+          },
+          "reactRender": {
+            "startTime": 280.6,
+            "duration": 11.9
+          },
+          "firstPaint": {
+            "startTime": 28,
+            "duration": 0
+          },
+          "firstContentfulPaint": {
+            "startTime": 148,
+            "duration": 0
+          },
+          "longTasks": [],
+          "longTaskSupported": true
+        },
+        {
+          "download": {
+            "startTime": 102.4,
+            "duration": 78.7
+          },
+          "jsonParse": {
+            "startTime": 249.2,
+            "duration": 5
+          },
+          "domainParse": {
+            "startTime": 249.4,
+            "duration": 4.8
+          },
+          "reactRender": {
+            "startTime": 262.7,
+            "duration": 10
+          },
+          "firstPaint": {
+            "startTime": 24,
+            "duration": 0
+          },
+          "firstContentfulPaint": {
+            "startTime": 144,
+            "duration": 0
           },
           "longTasks": [],
           "longTaskSupported": true
         }
       ],
       "summary": {
-        "medianDownloadMs": 49.6,
-        "medianJsonParseMs": 5.1,
-        "medianDomainParseMs": 4.8,
-        "medianReactRenderMs": 10.6,
+        "medianDownloadMs": 77.6,
+        "medianJsonParseMs": 4.9,
+        "medianDomainParseMs": 5,
+        "medianReactRenderMs": 10.2,
+        "medianFirstPaintMs": 28,
+        "medianFirstContentfulPaintMs": 144,
         "mainThreadLongTaskRuns": 0,
         "parseLongTaskRuns": 0,
         "parseLongTasks": [],
@@ -561,5 +733,5 @@
     "workerRecommended": true,
     "basis": "Ein Parse-Long-Task im erzwungenen Main-Thread-Fallback begründet die Auslagerung; der Modul-Worker-Lauf belegt anschließend den Wegfall von Main-Thread-Long-Tasks."
   },
-  "notes": "Jeder Lauf verwendet einen frischen Browser-Kontext. Der Main-Thread-Fallback wird ausschließlich in der Messseite durch eine vor dem Bootstrap gesetzte fehlende Worker-API erzwungen; der ausgelieferte Produktionspfad bleibt unverändert. Long Tasks werden vor dem App-Bootstrap beobachtet und erst nach einer Zustellbarriere mit takeRecords ausgelesen. Worker-Dauern dienen der Phasentrennung, sind aber nicht direkt mit CDP-gedrosselten Main-Thread-Dauern vergleichbar. Browser-Paint-Timing ist kein Messpunkt; reactRender misst ausschließlich den React-Commit."
+  "notes": "Jeder Lauf verwendet einen frischen Browser-Kontext. Der Main-Thread-Fallback wird ausschließlich in der Messseite durch eine vor dem Bootstrap gesetzte fehlende Worker-API erzwungen; der ausgelieferte Produktionspfad bleibt unverändert. Long Tasks werden vor dem App-Bootstrap beobachtet und erst nach einer Zustellbarriere mit takeRecords ausgelesen. Worker-Dauern dienen der Phasentrennung, sind aber nicht direkt mit CDP-gedrosselten Main-Thread-Dauern vergleichbar. firstPaint und firstContentfulPaint stammen aus Browser Paint Timing; reactRender misst davon getrennt ausschließlich den React-Commit."
 }
