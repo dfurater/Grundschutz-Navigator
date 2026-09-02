@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseCatalogInWorker } from './catalogParseWorker';
-import type { CatalogParseResult } from './catalogParsing';
-import { CATALOG_LOAD_MEASURES } from './catalogMeasurements';
+import { parseCatalogBuffer, type CatalogParseResult } from './catalogParsing';
+import type { CatalogKey } from '@/domain/sourceRegistry';
 import { createStartupCatalogSource } from '@/test/fixtures/startupCatalog';
 
 type WorkerListener = (event: Event) => void;
@@ -43,18 +43,39 @@ function installWorker(worker: FakeWorker): void {
   });
 }
 
+/** Erzeugt genau das, was der echte Worker zurückgibt — kein Attrappenobjekt. */
+function createWorkerResult(catalogKey: CatalogKey, uuid: string): CatalogParseResult {
+  const bytes = new TextEncoder().encode(JSON.stringify(createStartupCatalogSource(uuid)));
+  return parseCatalogBuffer(
+    bytes.buffer,
+    { catalogKey, trustClass: 'class-1-verified-public' },
+    { execution: 'worker' },
+  );
+}
+
+function withReplacedView(result: CatalogParseResult, view: unknown): CatalogParseResult {
+  return {
+    ...result,
+    catalogDocument: { ...result.catalogDocument, view },
+  } as unknown as CatalogParseResult;
+}
+
+function respondWith(result: CatalogParseResult): FakeWorker {
+  return new FakeWorker((fakeWorker, message) => {
+    const request = message as { requestId: number };
+    fakeWorker.emitMessage({ type: 'parsed', requestId: request.requestId, result });
+  });
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
 describe('parseCatalogInWorker', () => {
-  it('records actual, non-overlapping parse intervals in the forced main-thread fallback', async () => {
+  it('parst ohne Worker-API im Main Thread weiter', async () => {
     vi.stubGlobal('Worker', undefined);
-    const measure = vi.spyOn(performance, 'measure').mockImplementation(
-      () => ({}) as PerformanceMeasure,
-    );
     const buffer = new TextEncoder().encode(
-      JSON.stringify(createStartupCatalogSource('catalog-fallback-timing')),
+      JSON.stringify(createStartupCatalogSource('catalog-fallback')),
     ).buffer;
 
     const result = await parseCatalogInWorker(buffer, {
@@ -62,30 +83,12 @@ describe('parseCatalogInWorker', () => {
       trustClass: 'class-1-verified-public',
     });
 
-    const jsonParse = measure.mock.calls.find(
-      ([name]) => name === CATALOG_LOAD_MEASURES.jsonParse,
-    )?.[1] as PerformanceMeasureOptions | undefined;
-    const domainParse = measure.mock.calls.find(
-      ([name]) => name === CATALOG_LOAD_MEASURES.domainParse,
-    )?.[1] as PerformanceMeasureOptions | undefined;
-
-    expect(jsonParse).toMatchObject({ start: expect.any(Number), end: expect.any(Number) });
-    expect(domainParse).toMatchObject({ start: expect.any(Number), end: expect.any(Number) });
-    expect(jsonParse?.end).toBeLessThanOrEqual(domainParse?.start as number);
     expect(result.execution).toBe('main-thread');
+    expect(result.catalogDocument.view.controlsById.get('G.1')?.title).toBe('Kontrolle');
   });
 
   it('accepts only the matching, catalog-scoped parse response', async () => {
-    const expected = {
-      catalogDocument: {
-        context: {
-          catalogKey: 'wlan',
-          trustClass: 'class-1-verified-public',
-        },
-      },
-      timings: { jsonParseMs: 10, domainParseMs: 20 },
-      execution: 'worker',
-    } as unknown as CatalogParseResult;
+    const expected = createWorkerResult('wlan', 'catalog-worker-match');
     const worker = new FakeWorker((fakeWorker, message) => {
       const request = message as { requestId: number };
       fakeWorker.emitMessage({ type: 'parsed', requestId: request.requestId + 1, result: expected });
@@ -112,21 +115,7 @@ describe('parseCatalogInWorker', () => {
   });
 
   it('rejects a response that carries another catalog context', async () => {
-    const foreignResult = {
-      catalogDocument: {
-        context: {
-          catalogKey: 'wlan',
-          trustClass: 'class-1-verified-public',
-        },
-      },
-      timings: { jsonParseMs: 10, domainParseMs: 20 },
-      execution: 'worker',
-    } as unknown as CatalogParseResult;
-    const worker = new FakeWorker((fakeWorker, message) => {
-      const request = message as { requestId: number };
-      fakeWorker.emitMessage({ type: 'parsed', requestId: request.requestId, result: foreignResult });
-    });
-    installWorker(worker);
+    installWorker(respondWith(createWorkerResult('wlan', 'catalog-worker-foreign')));
 
     await expect(
       parseCatalogInWorker(new TextEncoder().encode('{"catalog":{}}').buffer, {
@@ -134,5 +123,32 @@ describe('parseCatalogInWorker', () => {
         trustClass: 'class-1-verified-public',
       }),
     ).rejects.toThrow('Katalog konnte nicht im Hintergrund verarbeitet werden.');
+  });
+
+  it('weist eine unvollständige Worker-Antwort zum richtigen Katalog ab', async () => {
+    const complete = createWorkerResult('gspp', 'catalog-worker-incomplete');
+    const incompleteResponses: CatalogParseResult[] = [
+      // Projektion fehlt vollständig — der Katalogzustand wäre nicht befüllbar.
+      withReplacedView(complete, undefined),
+      // Projektion vorhanden, aber ihre Indizes decken die Kontrollen nicht ab.
+      withReplacedView(complete, { ...complete.catalogDocument.view, controlsById: new Map() }),
+      withReplacedView(complete, {
+        ...complete.catalogDocument.view,
+        controlsByAltIdentifier: new Map(),
+      }),
+      // Fremde Antwortform ohne die tragenden Felder der Projektion.
+      withReplacedView(complete, { catalogKey: 'gspp' }),
+    ];
+
+    for (const response of incompleteResponses) {
+      installWorker(respondWith(response));
+
+      await expect(
+        parseCatalogInWorker(new TextEncoder().encode('{"catalog":{}}').buffer, {
+          catalogKey: 'gspp',
+          trustClass: 'class-1-verified-public',
+        }),
+      ).rejects.toThrow('Katalog konnte nicht im Hintergrund verarbeitet werden.');
+    }
   });
 });

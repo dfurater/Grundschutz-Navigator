@@ -115,33 +115,12 @@ function createSearchDocuments(
   });
 }
 
-/**
- * Name des User-Timing-Eintrags, den jeder Indexaufbau hinterlässt.
- * `scripts/measure-search-production.mjs` liest ihn aus, um die reine
- * Index-Build-Zeit getrennt von Navigation, Bootstrap und Rendering
- * auszuweisen. Bleibt die Liste nach einer Navigation leer, hat der Cache
- * getroffen und es wurde kein Index neu gebaut.
- */
-export const SEARCH_INDEX_BUILD_MEASURE = 'gspp:search-index-build';
-
-function recordIndexBuildDuration(startedAt: number, finishedAt: number) {
-  if (typeof performance === 'undefined' || typeof performance.measure !== 'function') {
-    return;
-  }
-  try {
-    performance.measure(SEARCH_INDEX_BUILD_MEASURE, { start: startedAt, end: finishedAt });
-  } catch {
-    // Reine Messinstrumentierung: ein fehlgeschlagener Eintrag darf die Suche nie stören.
-  }
-}
-
 function buildSearchCacheEntry(
   catalogKey: string,
   controls: Control[],
   practices: Practice[],
   vocabularyRegistry: VocabularyRegistry | null | undefined,
 ): SearchCacheEntry {
-  const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
   const practicesById = new Map(practices.map((practice) => [practice.id, practice]));
   const searchDocuments = createSearchDocuments(controls, practicesById, vocabularyRegistry);
   const controlMap = new Map(searchDocuments.map((document) => [document.numericId, document.control]));
@@ -154,8 +133,6 @@ function buildSearchCacheEntry(
     indexes.metadata.add(document.numericId, document.metadataText);
     indexes.content.add(document.numericId, document.contentText);
   });
-  const t1 = typeof performance !== 'undefined' ? performance.now() : 0;
-  recordIndexBuildDuration(t0, t1);
 
   return {
     catalogKey,

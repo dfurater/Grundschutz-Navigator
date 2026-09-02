@@ -5,7 +5,7 @@ import { createStartupCatalogSource } from '@/test/fixtures/startupCatalog';
 const source = createStartupCatalogSource('catalog-worker-fixture');
 
 describe('parseCatalogBuffer', () => {
-  it('parses an isolated catalog source and reports both parse-phase durations', () => {
+  it('parses an isolated catalog source in its explicit document context', () => {
     const bytes = new TextEncoder().encode(JSON.stringify(source));
 
     const result = parseCatalogBuffer(bytes.buffer, {
@@ -18,8 +18,7 @@ describe('parseCatalogBuffer', () => {
       trustClass: 'class-1-verified-public',
     });
     expect(result.catalogDocument.view.controlsById.get('G.1')?.title).toBe('Kontrolle');
-    expect(result.timings.jsonParseMs).toBeGreaterThanOrEqual(0);
-    expect(result.timings.domainParseMs).toBeGreaterThanOrEqual(0);
+    expect(result.execution).toBe('main-thread');
   });
 
   it('does not hide a root-type error from the caller', () => {

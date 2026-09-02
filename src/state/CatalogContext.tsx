@@ -40,10 +40,6 @@ import {
   toCatalogErrorMessage,
   type SupportedCatalogDescriptor,
 } from '@/state/catalogArtifacts';
-import {
-  catalogMeasurementNow,
-  useCatalogReactRenderMeasurement,
-} from '@/state/catalogMeasurements';
 
 import {
   catalogReducer,
@@ -133,11 +129,6 @@ export function CatalogProvider({
   const entryMetadataUrl = entryDescriptor.metadataUrl;
   const entryCatalogKey = entryDescriptor.catalogKey;
 
-  const entryState = state.catalogs.get(entryCatalogKey);
-  const entryRenderStartedAtRef = useCatalogReactRenderMeasurement(
-    entryState?.loading === false && entryState.catalogDocument !== null,
-  );
-
   // Einstiegskatalog und Vokabulare: der einzige eager Ladepfad.
   useEffect(() => {
     let cancelled = false;
@@ -218,7 +209,6 @@ export function CatalogProvider({
           vocabularyProvenance,
           vocabularyVerification,
         });
-        entryRenderStartedAtRef.current = catalogMeasurementNow();
         dispatch({
           type: 'CATALOG_LOAD_SUCCESS',
           catalogKey: entryCatalogKey,
@@ -244,7 +234,6 @@ export function CatalogProvider({
     entryCatalogKey,
     entryDataUrl,
     entryMetadataUrl,
-    entryRenderStartedAtRef,
     vocabulariesUrl,
     upstreamSourcesMetadataUrl,
   ]);
