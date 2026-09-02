@@ -130,11 +130,16 @@ describe('parseCatalogInWorker', () => {
     const incompleteResponses: CatalogParseResult[] = [
       // Projektion fehlt vollständig — der Katalogzustand wäre nicht befüllbar.
       withReplacedView(complete, undefined),
-      // Projektion vorhanden, aber ihre Indizes decken die Kontrollen nicht ab.
-      withReplacedView(complete, { ...complete.catalogDocument.view, controlsById: new Map() }),
+      // Projektion vorhanden, aber der vom Parser vollständig gefüllte
+      // alt-identifier-Index deckt die Kontrollen nicht ab.
       withReplacedView(complete, {
         ...complete.catalogDocument.view,
         controlsByAltIdentifier: new Map(),
+      }),
+      // Index durch ein fremdes Objekt ersetzt.
+      withReplacedView(complete, {
+        ...complete.catalogDocument.view,
+        controlsById: Object.fromEntries(complete.catalogDocument.view.controlsById),
       }),
       // Fremde Antwortform ohne die tragenden Felder der Projektion.
       withReplacedView(complete, { catalogKey: 'gspp' }),

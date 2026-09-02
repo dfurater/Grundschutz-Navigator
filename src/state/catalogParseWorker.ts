@@ -57,9 +57,12 @@ function matchesRequestedCatalog(
     Array.isArray(view.practices) &&
     view.controlsById instanceof Map &&
     view.controlsByAltIdentifier instanceof Map &&
-    // Beide Indizes decken jede Kontrolle ab (siehe `Catalog`); eine
-    // unvollständige Antwort verletzt diese Zusage.
-    view.controlsById.size === view.controls.length &&
+    // Der Parser erzwingt für jede Kontrolle einen eindeutigen
+    // `alt-identifier` (fail-closed, `oscalAdapter.ts`), dieser Index deckt
+    // den Katalog also vollständig ab. Für `controlsById` gilt das nicht:
+    // Doppelte `id` sind dort nicht ausgeschlossen, eine Größengleichheit
+    // wäre keine Zusage des Parsers, sondern eine Annahme über die Daten —
+    // und würde einen solchen Katalog nur auf dem Worker-Pfad abweisen.
     view.controlsByAltIdentifier.size === view.controls.length
   );
 }

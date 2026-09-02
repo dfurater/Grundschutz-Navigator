@@ -390,9 +390,10 @@ führt Root-Dispatch und Link-Projektion aus und gibt das strukturklonbare
 `CatalogDocument` zurück. Nachrichten tragen Request-ID und den expliziten
 `CatalogDocumentContext`; angenommen wird eine Antwort nur, wenn Request-ID,
 `catalogKey` und Vertrauensklasse zur Anfrage passen **und** die zurückgegebene
-Projektion vollständig ist — `controlsById` und `controlsByAltIdentifier` decken
-jede Kontrolle ab. Eine fremde, abgeschnittene oder unvollständig
-strukturgeklonte Antwort kann damit keinen Katalogzustand vervollständigen. Parse- und Root-Type-Fehler bleiben
+Projektion vollständig ist — geprüft am `alt-identifier`-Index, den der Parser
+fail-closed für jede Kontrolle füllt. Eine fremde, abgeschnittene oder
+unvollständig strukturgeklonte Antwort kann damit keinen Katalogzustand
+vervollständigen. Parse- und Root-Type-Fehler bleiben
 als verständlicher Ladefehler am betroffenen Katalog sichtbar. Nur ohne
 `Worker`-API (heute ein Test- bzw. nicht unterstützter Laufzeitpfad) bleibt der
 gleiche, fehlertreue Parser als Fallback im Main Thread. Kann ein vorhandener
