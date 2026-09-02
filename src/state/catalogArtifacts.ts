@@ -23,11 +23,6 @@ import {
   fetchProvenance,
   verifyArtifactIntegrity,
 } from '@/domain/integrity';
-import {
-  CATALOG_LOAD_MEASURES,
-  measureCatalogAsyncPhase,
-  recordCatalogDuration,
-} from '@/state/catalogMeasurements';
 import { parseCatalogInWorker } from '@/state/catalogParseWorker';
 
 /**
@@ -76,10 +71,7 @@ export async function loadCatalogArtifacts(
   descriptor: SupportedCatalogDescriptor,
   isCancelled: () => boolean = () => false,
 ): Promise<LoadedCatalogArtifacts | null> {
-  const buffer = await measureCatalogAsyncPhase(
-    CATALOG_LOAD_MEASURES.download,
-    () => fetchCatalogBuffer(descriptor.dataUrl),
-  );
+  const buffer = await fetchCatalogBuffer(descriptor.dataUrl);
   if (isCancelled()) return null;
 
   let provenance: CatalogProvenance | null = null;
@@ -100,19 +92,13 @@ export async function loadCatalogArtifacts(
 
   if (isCancelled()) return null;
 
-  const { catalogDocument, timings, execution } = await parseCatalogInWorker(buffer, {
-      catalogKey: descriptor.catalogKey,
-      trustClass:
-        verification?.valid === true
-          ? 'class-1-verified-public'
-          : 'class-1-unverified-public',
-    });
-  // Der Fallback zeichnet echte Parse-Grenzen bereits in der laufenden Aufgabe
-  // auf. Nur Worker-Dauern werden beim Eintreffen als reine Phasenmetrik ergänzt.
-  if (execution === 'worker') {
-    recordCatalogDuration(CATALOG_LOAD_MEASURES.jsonParse, timings.jsonParseMs);
-    recordCatalogDuration(CATALOG_LOAD_MEASURES.domainParse, timings.domainParseMs);
-  }
+  const { catalogDocument } = await parseCatalogInWorker(buffer, {
+    catalogKey: descriptor.catalogKey,
+    trustClass:
+      verification?.valid === true
+        ? 'class-1-verified-public'
+        : 'class-1-unverified-public',
+  });
 
   return { catalogDocument, provenance, verification };
 }

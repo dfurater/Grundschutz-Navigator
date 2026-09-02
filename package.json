@@ -22,9 +22,7 @@
     "fetch-catalog": "node scripts/fetch-catalog.mjs",
     "verify-upstream-oscal": "node scripts/verify-upstream-oscal.mjs",
     "verify-oscal-schemas": "node scripts/verify-oscal-schemas.mjs",
-    "sync-oscal-schemas": "node scripts/sync-oscal-schemas.mjs --write",
-    "measure-search": "node scripts/measure-search-production.mjs",
-    "measure-startup": "node scripts/measure-startup-production.mjs"
+    "sync-oscal-schemas": "node scripts/sync-oscal-schemas.mjs --write"
   },
   "engines": {
     "node": ">=22.22.0"

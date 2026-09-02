@@ -383,53 +383,30 @@ Projektionen des **aktiven** Katalogs — unveränderte Zugriffsform:
 
 ### Startup-Parsing im Modul-Worker
 
-Der Katalog-Ladepfad misst Download, JSON-Parsing, Domain-Projektion und
-React-Commit mit User Timing (`gspp:catalog-*`). Nach der Hashprüfung überträgt
+Nach der Hashprüfung überträgt
 `catalogArtifacts.ts` den nicht mehr benötigten `ArrayBuffer` ohne Kopie an
 `catalogParser.worker.ts`. Dort dekodiert und parst der Worker den Katalog,
 führt Root-Dispatch und Link-Projektion aus und gibt das strukturklonbare
 `CatalogDocument` zurück. Nachrichten tragen Request-ID und den expliziten
-`CatalogDocumentContext`; eine fremde Antwort oder ein anderer `catalogKey`
-kann keinen Katalogzustand vervollständigen. Parse- und Root-Type-Fehler bleiben
+`CatalogDocumentContext`; angenommen wird eine Antwort nur, wenn Request-ID,
+`catalogKey` und Vertrauensklasse zur Anfrage passen **und** die zurückgegebene
+Projektion vollständig ist — geprüft am `alt-identifier`-Index, den der Parser
+fail-closed für jede Kontrolle füllt. Eine fremde, abgeschnittene oder
+unvollständig strukturgeklonte Antwort kann damit keinen Katalogzustand
+vervollständigen. Parse- und Root-Type-Fehler bleiben
 als verständlicher Ladefehler am betroffenen Katalog sichtbar. Nur ohne
 `Worker`-API (heute ein Test- bzw. nicht unterstützter Laufzeitpfad) bleibt der
 gleiche, fehlertreue Parser als Fallback im Main Thread. Kann ein vorhandener
 Worker nicht starten oder fehlschlägt er, bleibt dies ein sichtbarer
 Katalog-Ladefehler; nach dem Transfer gibt es bewusst keinen stillen
-Main-Thread-Fallback. Im erzwungenen Fallback entstehen JSON- und
-Domain-User-Timing-Ranges während ihrer tatsächlichen Ausführung; nur sie
-werden gegen Main-Thread-Long-Tasks klassifiziert. Zurückgemeldete
-Worker-Dauern sind dagegen reine Phasenmetriken und klassifizieren keinen
-Main-Thread-Long-Task.
+Main-Thread-Fallback.
 
-[`npm run measure-startup`](../package.json) erzeugt nach
-`npm run fetch-catalog` einen Production-Build, misst fünf frische Starts auf
-Desktop 1× sowie Pixel 7 mit 4× CPU-Drosselung und schreibt Rohwerte für den
-erzwungenen Main-Thread-Fallback **und** den Modul-Worker nach
-[`STARTUP_MEASUREMENT.json`](./STARTUP_MEASUREMENT.json). Long Tasks werden vor
-dem Bootstrap beobachtet und nach einer Zustellbarriere ausgelesen; Browser
-Paint Timing liefert zusätzlich `first-paint` und `first-contentful-paint` je
-Lauf.
-
-<!-- startup-measurement:table:start -->
-| Profil | Vor Worker: JSON / Domain / React (Median) | Vor Worker: FP / FCP (Median) | Vor Worker: Parse-Long-Tasks | Nach Worker: FP / FCP (Median) | Nach Worker: Main-Thread-Long-Tasks |
-|---|---:|---:|---:|---:|---:|
-| Desktop 1× | 4,9 / 4,7 / 2,0 ms | 12 / 60 ms | 0/5 | 12 / 56 ms | 0/5 |
-| Pixel 7, 4× CPU | 21,0 / 22,8 / 11,8 ms | 28 / 136 ms | 5/5, 65–69 ms | 28 / 144 ms | 0/5 |
-<!-- startup-measurement:table:end -->
-
-Die Worker-Auslagerung ist damit durch die Long-Task-Schwelle begründet. Der
-Runner aktualisiert Tabelle und Artefakt in einem Lauf. Die im Nachher-Artefakt
-ausgewiesenen Worker-Phasendauern trennen die Arbeit auf, sind aber nicht
-direkt mit CDP-gedrosselten Main-Thread-Zeiten vergleichbar und dürfen daher
-keinen Main-Thread-Long-Task als Parsearbeit klassifizieren. Roh erfasste
-Main-Thread-Long-Tasks des Worker-Laufs bleiben in der Tabelle und im Artefakt
-sichtbar.
-`reactRender` misst den React-Commit; `first-paint` und
-`first-contentful-paint` werden unabhängig davon als Browser-Paint-Timing
-erfasst. Bei fünf frischen Läufen sind die FCP-Werte ein Vergleichssnapshot,
-aber kein Stabilitäts- oder Gleichheitsnachweis; die Worker-Entscheidung stützt
-sich auf die reproduzierbaren Parse-Long-Tasks und die separate FP-Messung.
+Die Auslagerung ist nicht auf Verdacht erfolgt: Auf einem CPU-gedrosselten
+Mobilprofil erzeugte das Parsing im Main Thread reproduzierbar Long Tasks, im
+Modul-Worker keine mehr. Die Messwerte und die Methodik dahinter hält
+[ADR-12](https://linear.app/grundschutz-plus-plus/issue/ADR-12) fest; im
+Repository werden sie bewusst nicht gepflegt, weil sie einen bestimmten
+Katalog-Snapshot und eine bestimmte Browserversion beschreiben.
 
 ## Anwenderkataloge sind fachlich getrennt
 
@@ -650,68 +627,11 @@ ein.
 
 `useSearch` baut je Katalog fünf FlexSearch-Indizes (`controlIds`, `titles`,
 `links`, `metadata`, `content`) aus den normalisierten Suchdokumenten. Der
-Aufbau ist im Production-Build nicht trivial – gemessen mit
-`scripts/measure-search-production.mjs` (`npm run measure-search`), das den
-Production-Build erzeugt (`npm run build:local` mit `BUILD_BASE=/`), ihn über
-`vite preview` ausliefert und mit Playwright/Chromium fährt:
-
-* **Vorbedingung** im Runner geprüft: `public/data/*.json` vorhanden, sonst
-  Abbruch mit Hinweis `npm run fetch-catalog`.
-* **Long Tasks** via `PerformanceObserver` (`longtask`), **vor** App-Bootstrap
-  mit `page.addInitScript()` registriert. Vor jedem Auslesen läuft eine
-  Beruhigungsphase von `LONG_TASK_SETTLE_MS`, gefolgt von `takeRecords()`: ein
-  Long Task des abschließenden Renderings wird erst nach seinem Ende
-  beobachtbar und asynchron zugestellt, ein sofortiges Auslesen würde ihn
-  verlieren und fälschlich „keine Long Tasks" ausweisen.
-* **Index-Build-Zeit** getrennt von Navigation und Rendering: jeder Aufbau
-  hinterlässt einen User-Timing-Eintrag `gspp:search-index-build`
-  (`SEARCH_INDEX_BUILD_MEASURE` in `src/features/search/useSearch.ts`). Der
-  Runner verwirft die Einträge vor jeder Phase und summiert danach, was neu
-  entstanden ist. **Bleibt die Liste leer, wurde kein Index gebaut** – im
-  Artefakt als `null` festgehalten, nicht als `0 ms`.
-* **Ablauf je Iteration**: `/suche?q=ISMS` direkt ansteuern (Query-Parameter
-  `q`, `AppShell.tsx:149`), Zeit bis Ergebnisliste (`[data-testid="search-results-desktop"]`
-  / Mobile) messen – **kalt** (ohne Cache). Dann erste Ergebniszeile
-  anklicken (`/katalog/:catalogKey/kontrolle/:altIdentifier`), `page.goBack()`,
-  erneut Zeit bis Ergebnisliste messen – **warm** (Cache). Danach Reload und
-  erneut kalt als Kontrolle. Gemessen wird ab `goto`/`goBack`/`reload` bis zu
-  sichtbaren Ergebniszeilen, also inklusive Navigation und App-Bootstrap; die
-  Beruhigungsphase liegt außerhalb dieser Zeitnahme.
-* **Läufe**: je 5 Iterationen ungedrosselt (Desktop) und mit
-  `Emulation.setCPUThrottlingRate 4×` (Mobile, dieselbe Drosselung, die PSI für
-  Moto G4 ansetzt), ausgewertet über Median und Streuung statt Einzelwert.
-  Chromium `151.0.7922.34` (Playwright 1.62.1).
-* **Gerätekonfiguration**: das Mobile-Profil nutzt den Playwright-Deskriptor
-  `devices['Pixel 7']`. Der Runner liest die **tatsächlich wirksamen**
-  Parameter erst auf der geladenen Seite aus und schreibt sie ins Artefakt
-  (412×839, DPR 2.625, Touch aktiv). Auf `about:blank`
-  greift `width=device-width` noch nicht, dort meldet derselbe Kontext ein
-  irreführendes Layout-Viewport — die Tabelle unten gibt deshalb ausschließlich
-  die protokollierten Werte wieder, nicht die des Geräte-Deskriptors.
-
-Ergebnis für Katalog `gspp` (~979 Controls) bei `q=ISMS`, Snapshot
-`8a97764` – die Tabelle unten ist manuell aus `docs/SEARCH_MEASUREMENT.json`
-übertragen, es existiert kein automatischer Generator oder Konsistenzcheck
-gegen dieses Artefakt (Dezimalpunkt wie im Artefakt, Zeiten in Millisekunden):
-
-| Profil | Kalt (Median) | Index-Build kalt (Median) | Warm (Median) | Long Tasks kalt | Long Tasks warm |
-|---|---|---|---|---|---|
-| Desktop 1× (1280×720, DPR 1) | **312.86 ms** (311.06–406.18) | **246.6 ms** | **2.19 ms** (1.52–7.26) | 1× 247–272 ms | keine |
-| Mobile 4× (Pixel 7, 412×839, DPR 2.625, Touch) | **1156.31 ms** (1136.28–1341.83) | **1009.4 ms** | **25.96 ms** (12.77–33.72) | 1–3× 52–1081 ms | keine |
-
-Kalt sprengt das Frame-Budget (16 ms) und die Long-Task-Schwelle (50 ms)
-deutlich; der Indexaufbau allein trägt davon **246.6 ms** (Desktop)
-beziehungsweise **1009.4 ms** (Mobile 4×). Warm bleibt bei
-**2.19 ms** beziehungsweise **25.96 ms**, ohne einen einzigen Long Task.
-
-Entscheidend für das Akzeptanzkriterium ist nicht die Warmzeit allein, sondern
-`medianWarmIndexBuildMs: null` bei `warmIndexBuildRuns: 0` in beiden Profilen:
-In keinem der 5 Läufe je Profil entstand beim Zurücknavigieren ein
-User-Timing-Eintrag. Der zweite Mount baut also nachweislich keine Indizes neu,
-statt sie nur schneller zu bauen. Die zweite kalte Messung nach Reload
-(317.37 ms Desktop, 1149.93 ms Mobile) bestätigt die
-Reproduzierbarkeit der Kaltwerte. Reproduktion:
-`npm run fetch-catalog && npm run measure-search`.
+Aufbau ist im Production-Build teuer genug, um das Frame-Budget zu sprengen und
+einen Long Task auszulösen — auf einem CPU-gedrosselten Mobilprofil deutlich.
+Belegt ist das gegen den Production-Build;
+[ADR-12](https://linear.app/grundschutz-plus-plus/issue/ADR-12) hält die
+Messwerte und die Methodik fest, das Repository pflegt sie bewusst nicht.
 
 Der bisherige komponentenlokale `useMemo`
 verwarf die Indizes beim Unmount der `SearchPage` (Detail → Zurück) und

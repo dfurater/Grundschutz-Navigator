@@ -14,7 +14,6 @@ import {
   getSearchCacheKeys,
   getSearchCacheSize,
   MAX_SEARCH_CACHE_ENTRIES,
-  SEARCH_INDEX_BUILD_MEASURE,
   useSearch,
 } from './useSearch';
 
@@ -638,38 +637,6 @@ describe('useSearch', () => {
         expect(getSearchCacheEntry(catalogKey)!.practices).toBe(secondPractices);
       });
       expect(getSearchCacheEntry(catalogKey)!.indexes).not.toBe(firstIndexes);
-    });
-
-    it('hinterlässt je Indexaufbau genau einen User-Timing-Eintrag und bei einem Cache-Treffer keinen', async () => {
-      // Sichert den Vertrag zu scripts/measure-search-production.mjs ab: der Runner
-      // leitet aus diesen Einträgen ab, ob überhaupt ein Index gebaut wurde.
-      const controls = [makeControl({ id: 'GC.1.1', title: 'Messvertrag' })];
-      const registry = createSecurityLevelRegistry();
-      const practices: Practice[] = [];
-      performance.clearMeasures(SEARCH_INDEX_BUILD_MEASURE);
-
-      const first = renderHook(() =>
-        useSearch(controls, 'Messvertrag', registry, practices, 'gspp'),
-      );
-      await waitFor(() => {
-        expect(first.result.current.results).toHaveLength(1);
-      });
-      await waitFor(() => {
-        expect(getSearchCacheEntry('gspp')).toBeDefined();
-      });
-      expect(
-        performance.getEntriesByName(SEARCH_INDEX_BUILD_MEASURE, 'measure').length,
-      ).toBeGreaterThan(0);
-      first.unmount();
-
-      performance.clearMeasures(SEARCH_INDEX_BUILD_MEASURE);
-      const second = renderHook(() =>
-        useSearch(controls, 'Messvertrag', registry, practices, 'gspp'),
-      );
-      await waitFor(() => {
-        expect(second.result.current.results).toHaveLength(1);
-      });
-      expect(performance.getEntriesByName(SEARCH_INDEX_BUILD_MEASURE, 'measure')).toHaveLength(0);
     });
 
     it('leere Controls oder fehlender catalogKey belegen kein LRU-Budget', async () => {

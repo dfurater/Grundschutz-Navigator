@@ -3,15 +3,7 @@
 // =============================================================================
 
 import type { CatalogDocumentContext } from '@/domain/models';
-import {
-  parseCatalogBuffer,
-  type CatalogParsePhase,
-  type CatalogParseResult,
-} from '@/state/catalogParsing';
-import {
-  CATALOG_LOAD_MEASURES,
-  recordCatalogPhaseRange,
-} from '@/state/catalogMeasurements';
+import { parseCatalogBuffer, type CatalogParseResult } from '@/state/catalogParsing';
 
 export interface CatalogParseWorkerRequest {
   readonly type: 'parse-catalog';
@@ -39,6 +31,14 @@ function workerFailure(): Error {
   return new Error('Katalog konnte nicht im Hintergrund verarbeitet werden.');
 }
 
+/**
+ * Prüft die Worker-Antwort gegen den angeforderten Katalog **und** gegen die
+ * fachlich tragenden Felder des Parseergebnisses. Geprüft wird damit nicht nur,
+ * ob eine Antwort zum richtigen Katalog gehört, sondern auch, ob sie ein
+ * vollständiges Parseergebnis ist: Eine fremde, abgeschnittene oder nur
+ * teilweise strukturgeklonte Antwort kann keinen Katalogzustand
+ * vervollständigen.
+ */
 function matchesRequestedCatalog(
   value: unknown,
   context: CatalogDocumentContext,
@@ -47,24 +47,23 @@ function matchesRequestedCatalog(
 
   const result = value as Partial<CatalogParseResult>;
   const documentContext = result.catalogDocument?.context;
+  const view = result.catalogDocument?.view;
   return (
     documentContext?.catalogKey === context.catalogKey &&
     documentContext.trustClass === context.trustClass &&
     result.execution === 'worker' &&
-    Number.isFinite(result.timings?.jsonParseMs) &&
-    Number.isFinite(result.timings?.domainParseMs)
-  );
-}
-
-function recordFallbackPhase(
-  phase: CatalogParsePhase,
-  startedAt: number,
-  endedAt: number,
-): void {
-  recordCatalogPhaseRange(
-    phase === 'json' ? CATALOG_LOAD_MEASURES.jsonParse : CATALOG_LOAD_MEASURES.domainParse,
-    startedAt,
-    endedAt,
+    view?.catalogKey === context.catalogKey &&
+    Array.isArray(view.controls) &&
+    Array.isArray(view.practices) &&
+    view.controlsById instanceof Map &&
+    view.controlsByAltIdentifier instanceof Map &&
+    // Der Parser erzwingt für jede Kontrolle einen eindeutigen
+    // `alt-identifier` (fail-closed, `oscalAdapter.ts`), dieser Index deckt
+    // den Katalog also vollständig ab. Für `controlsById` gilt das nicht:
+    // Doppelte `id` sind dort nicht ausgeschlossen, eine Größengleichheit
+    // wäre keine Zusage des Parsers, sondern eine Annahme über die Daten —
+    // und würde einen solchen Katalog nur auf dem Worker-Pfad abweisen.
+    view.controlsByAltIdentifier.size === view.controls.length
   );
 }
 
@@ -80,10 +79,7 @@ export function parseCatalogInWorker(
 ): Promise<CatalogParseResult> {
   if (typeof Worker === 'undefined') {
     return Promise.resolve().then(() =>
-      parseCatalogBuffer(buffer, context, {
-        execution: 'main-thread',
-        onPhaseComplete: recordFallbackPhase,
-      }),
+      parseCatalogBuffer(buffer, context, { execution: 'main-thread' }),
     );
   }
 
