@@ -640,8 +640,9 @@ Production-Build erzeugt (`npm run build:local` mit `BUILD_BASE=/`), ihn über
   die protokollierten Werte wieder, nicht die des Geräte-Deskriptors.
 
 Ergebnis für Katalog `gspp` (~979 Controls) bei `q=ISMS`, Snapshot
-`8a97764` – die Tabelle wird aus `docs/SEARCH_MEASUREMENT.json`
-erzeugt (Dezimalpunkt wie im Artefakt, Zeiten in Millisekunden):
+`8a97764` – die Tabelle unten ist manuell aus `docs/SEARCH_MEASUREMENT.json`
+übertragen, es existiert kein automatischer Generator oder Konsistenzcheck
+gegen dieses Artefakt (Dezimalpunkt wie im Artefakt, Zeiten in Millisekunden):
 
 | Profil | Kalt (Median) | Index-Build kalt (Median) | Warm (Median) | Long Tasks kalt | Long Tasks warm |
 |---|---|---|---|---|---|
