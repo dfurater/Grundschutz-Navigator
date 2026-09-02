@@ -7,6 +7,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium, devices } from 'playwright';
+import { ENTRY_CATALOG_KEY, listCatalogArtifactFileNames } from '../src/domain/sourceRegistry.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -40,13 +41,40 @@ function readIndexBuildMs(page) {
   }, INDEX_BUILD_MEASURE);
 }
 
+/**
+ * Ausgelieferte Katalogartefakte, die der Messlauf braucht — abgeleitet aus dem
+ * Quellregister (`src/domain/sourceRegistry.mjs`), statt als eigene, unabhängig
+ * von ihm pflegbare Liste geführt zu werden (Greptile-Befund, GSPP-218).
+ */
+function requiredCatalogArtifactPaths() {
+  return listCatalogArtifactFileNames().map((fileName) => `public/data/${fileName}`);
+}
+
+/**
+ * Baut das Ergebnisartefakt. `catalogKey` kommt aus dem Quellregister
+ * (`ENTRY_CATALOG_KEY`), weil `/suche?q=…` ohne Katalogpräfix implizit den
+ * Einstiegskatalog misst — nicht als fest codierter Katalogname, der bei einer
+ * Umbenennung im Register stillschweigend falsch bliebe (Greptile-Befund, GSPP-218).
+ */
+function buildMeasurementOutput({ snapshotSha, chromiumVersion, desktop, mobile }) {
+  return {
+    generatedAt: new Date().toISOString(),
+    snapshotCommitSha: snapshotSha,
+    chromiumVersion,
+    previewPort: PREVIEW_PORT,
+    previewUrl: PREVIEW_URL,
+    query: QUERY,
+    catalogKey: ENTRY_CATALOG_KEY,
+    iterations: ITERATIONS,
+    throttling: { desktop: 1, mobile4x: 4 },
+    desktop,
+    mobile4x: mobile,
+    notes: 'Kalt = /suche?q= direkt, Zeit bis Ergebnisliste sichtbar. Warm = Detail öffnen → goBack, Zeit bis Ergebnisliste erneut sichtbar (Cache). Cold2 = Reload + erneut kalt als Kontrolle. Long Tasks via PerformanceObserver (longtask) vor Bootstrap.',
+  };
+}
+
 function checkPreconditions() {
-  const required = [
-    'public/data/catalog.json',
-    'public/data/catalog-lieferkette.json',
-    'public/data/catalog-wlan.json',
-    'public/data/catalog-metadata.json',
-  ];
+  const required = requiredCatalogArtifactPaths();
   const missing = required.filter((p) => !existsSync(resolve(root, p)));
   if (missing.length > 0) {
     console.error('Vorbedingung nicht erfüllt: public/data fehlt.');
@@ -383,20 +411,7 @@ async function main() {
     const mobile = await runWithThrottling(4, PREVIEW_PORT);
 
     const snapshotSha = getSnapshotSha();
-    const output = {
-      generatedAt: new Date().toISOString(),
-      snapshotCommitSha: snapshotSha,
-      chromiumVersion,
-      previewPort: PREVIEW_PORT,
-      previewUrl: PREVIEW_URL,
-      query: QUERY,
-      catalogKey: 'gspp',
-      iterations: ITERATIONS,
-      throttling: { desktop: 1, mobile4x: 4 },
-      desktop,
-      mobile4x: mobile,
-      notes: 'Kalt = /suche?q= direkt, Zeit bis Ergebnisliste sichtbar. Warm = Detail öffnen → goBack, Zeit bis Ergebnisliste erneut sichtbar (Cache). Cold2 = Reload + erneut kalt als Kontrolle. Long Tasks via PerformanceObserver (longtask) vor Bootstrap.',
-    };
+    const output = buildMeasurementOutput({ snapshotSha, chromiumVersion, desktop, mobile });
     const outPath = resolve(root, 'docs/SEARCH_MEASUREMENT.json');
     writeFileSync(outPath, JSON.stringify(output, null, 2) + '\n', 'utf-8');
     console.log(`Wrote ${outPath}`);
@@ -418,4 +433,4 @@ if (isMain) {
   }
 }
 
-export { isGroupAlive, waitForGroupExit, stopPreview };
+export { isGroupAlive, waitForGroupExit, stopPreview, requiredCatalogArtifactPaths, buildMeasurementOutput };
