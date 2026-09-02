@@ -28,6 +28,8 @@ const BROWSER_PAINT_MEASURES = {
   firstPaint: 'first-paint',
   firstContentfulPaint: 'first-contentful-paint',
 };
+const ARCHITECTURE_MEASUREMENT_TABLE_START = '<!-- startup-measurement:table:start -->';
+const ARCHITECTURE_MEASUREMENT_TABLE_END = '<!-- startup-measurement:table:end -->';
 
 function median(values) {
   const sorted = [...values].sort((left, right) => left - right);
@@ -52,12 +54,16 @@ function taskOverlapsParse(task, run) {
 
 /** Verdichtet fünf Startläufe eines Profils und trifft die Worker-Entscheidung. */
 function summarizeStartupRuns(runs, { parserRunsOnMainThread = true } = {}) {
-  const parseLongTasks = runs.flatMap((run) =>
-    run.longTasks.filter((task) => taskOverlapsParse(task, run)),
-  );
-  const parseLongTaskRuns = runs.filter((run) =>
-    run.longTasks.some((task) => taskOverlapsParse(task, run)),
-  ).length;
+  // Worker-Dauern werden erst beim Eintreffen der Antwort in die Main-Thread-
+  // User-Timing-Timeline eingetragen. Sie haben daher keinen kausalen
+  // Zeitbereich auf dem Main Thread und dürfen keinen Long Task als Parsearbeit
+  // klassifizieren. Die rohen Main-Thread-Long-Tasks bleiben separat sichtbar.
+  const parseLongTasks = parserRunsOnMainThread
+    ? runs.flatMap((run) => run.longTasks.filter((task) => taskOverlapsParse(task, run)))
+    : [];
+  const parseLongTaskRuns = parserRunsOnMainThread
+    ? runs.filter((run) => run.longTasks.some((task) => taskOverlapsParse(task, run))).length
+    : null;
   const mainThreadLongTaskRuns = runs.filter((run) => run.longTasks.length > 0).length;
 
   return {
@@ -74,6 +80,82 @@ function summarizeStartupRuns(runs, { parserRunsOnMainThread = true } = {}) {
     parseLongTasks,
     workerRecommended: parserRunsOnMainThread ? parseLongTaskRuns > 0 : null,
   };
+}
+
+function formatFixedMilliseconds(value) {
+  return `${value.toLocaleString('de-DE', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })} ms`;
+}
+
+function formatCompactMilliseconds(value) {
+  return `${value.toLocaleString('de-DE', {
+    maximumFractionDigits: 1,
+  })} ms`;
+}
+
+function formatFallbackParseLongTasks(summary) {
+  if (summary.parseLongTaskRuns === 0) return `0/${ITERATIONS}`;
+
+  const durations = summary.parseLongTasks.map((task) => task.duration);
+  return `${summary.parseLongTaskRuns}/${ITERATIONS}, ${formatCompactMilliseconds(Math.min(...durations)).replace(' ms', '')}–${formatCompactMilliseconds(Math.max(...durations))}`;
+}
+
+function formatParserPhases(summary) {
+  return [
+    formatFixedMilliseconds(summary.medianJsonParseMs).replace(' ms', ''),
+    formatFixedMilliseconds(summary.medianDomainParseMs).replace(' ms', ''),
+    formatFixedMilliseconds(summary.medianReactRenderMs),
+  ].join(' / ');
+}
+
+function formatPaints(summary) {
+  return [
+    formatCompactMilliseconds(summary.medianFirstPaintMs).replace(' ms', ''),
+    formatCompactMilliseconds(summary.medianFirstContentfulPaintMs),
+  ].join(' / ');
+}
+
+/** Rendert die Architektur-Tabelle ausschließlich aus dem gerade erzeugten Artefakt. */
+function renderStartupMeasurementTable(output) {
+  const profiles = [
+    { label: 'Desktop 1×', key: 'desktop' },
+    { label: 'Pixel 7, 4× CPU', key: 'mobile4x' },
+  ];
+  const rows = profiles
+    .filter(({ key }) => output.mainThreadFallback[key] && output.moduleWorker[key])
+    .map(({ label, key }) => {
+      const fallback = output.mainThreadFallback[key].summary;
+      const worker = output.moduleWorker[key].summary;
+      return [
+        `| ${label}`,
+        formatParserPhases(fallback),
+        formatPaints(fallback),
+        formatFallbackParseLongTasks(fallback),
+        formatPaints(worker),
+        `${worker.mainThreadLongTaskRuns}/${ITERATIONS} |`,
+      ].join(' | ');
+    });
+
+  return [
+    '| Profil | Vor Worker: JSON / Domain / React (Median) | Vor Worker: FP / FCP (Median) | Vor Worker: Parse-Long-Tasks | Nach Worker: FP / FCP (Median) | Nach Worker: Main-Thread-Long-Tasks |',
+    '|---|---:|---:|---:|---:|---:|',
+    ...rows,
+  ].join('\n');
+}
+
+function updateArchitectureMeasurementTable(output) {
+  const path = resolve(root, 'docs/ARCHITECTURE.md');
+  const architecture = readFileSync(path, 'utf-8');
+  const start = architecture.indexOf(ARCHITECTURE_MEASUREMENT_TABLE_START);
+  const end = architecture.indexOf(ARCHITECTURE_MEASUREMENT_TABLE_END);
+  if (start === -1 || end === -1 || end < start) {
+    throw new Error('Startup-Messtabelle in docs/ARCHITECTURE.md nicht gefunden.');
+  }
+
+  const updated = `${architecture.slice(0, start + ARCHITECTURE_MEASUREMENT_TABLE_START.length)}\n${renderStartupMeasurementTable(output)}\n${architecture.slice(end)}`;
+  writeFileSync(path, updated, 'utf-8');
 }
 
 function assertCatalogArtifactsPresent() {
@@ -281,7 +363,7 @@ function buildOutput({ chromiumVersion, mainThreadFallback, moduleWorker }) {
       workerActive: true,
       workerRecommended,
       basis: workerRecommended
-        ? 'Ein Parse-Long-Task im erzwungenen Main-Thread-Fallback begründet die Auslagerung; der Modul-Worker-Lauf belegt anschließend den Wegfall von Main-Thread-Long-Tasks.'
+        ? 'Ein Parse-Long-Task im erzwungenen Main-Thread-Fallback begründet die Auslagerung. Main-Thread-Long-Tasks des Modul-Worker-Laufs werden separat erfasst; zurückgemeldete Worker-Dauern klassifizieren sie nicht als Parsearbeit.'
         : 'Der erzwungene Main-Thread-Fallback zeigte keinen Parse-Long-Task; der Modul-Worker bleibt als gemessener Produktionspfad dokumentiert.',
     },
     notes: 'Jeder Lauf verwendet einen frischen Browser-Kontext. Der Main-Thread-Fallback wird ausschließlich in der Messseite durch eine vor dem Bootstrap gesetzte fehlende Worker-API erzwungen; der ausgelieferte Produktionspfad bleibt unverändert. Long Tasks werden vor dem App-Bootstrap beobachtet und erst nach einer Zustellbarriere mit takeRecords ausgelesen. Worker-Dauern dienen der Phasentrennung, sind aber nicht direkt mit CDP-gedrosselten Main-Thread-Dauern vergleichbar. firstPaint und firstContentfulPaint stammen aus Browser Paint Timing; reactRender misst davon getrennt ausschließlich den React-Commit.',
@@ -305,6 +387,7 @@ async function main() {
     const output = buildOutput({ chromiumVersion, mainThreadFallback, moduleWorker });
     const outputPath = resolve(root, 'docs/STARTUP_MEASUREMENT.json');
     writeFileSync(outputPath, `${JSON.stringify(output, null, 2)}\n`, 'utf-8');
+    updateArchitectureMeasurementTable(output);
     console.log(`Wrote ${outputPath}`);
     console.log(JSON.stringify(output, null, 2));
   } finally {
@@ -322,4 +405,4 @@ if (isMain) {
   }
 }
 
-export { summarizeStartupRuns, taskOverlapsParse };
+export { renderStartupMeasurementTable, summarizeStartupRuns, taskOverlapsParse };

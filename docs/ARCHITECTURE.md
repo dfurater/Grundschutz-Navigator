@@ -404,15 +404,20 @@ dem Bootstrap beobachtet und nach einer Zustellbarriere ausgelesen; Browser
 Paint Timing liefert zusätzlich `first-paint` und `first-contentful-paint` je
 Lauf.
 
+<!-- startup-measurement:table:start -->
 | Profil | Vor Worker: JSON / Domain / React (Median) | Vor Worker: FP / FCP (Median) | Vor Worker: Parse-Long-Tasks | Nach Worker: FP / FCP (Median) | Nach Worker: Main-Thread-Long-Tasks |
 |---|---:|---:|---:|---:|---:|
-| Desktop 1× | 5,1 / 4,9 / 2,0 ms | 12 / 60 ms | 0/5 | 12 / 60 ms | 0/5 |
-| Pixel 7, 4× CPU | 20,0 / 22,8 / 9,8 ms | 28 / 140 ms | 5/5, 59–80 ms | 28 / 144 ms | 0/5 |
+| Desktop 1× | 5,0 / 4,8 / 2,0 ms | 12 / 60 ms | 0/5 | 12 / 60 ms | 0/5 |
+| Pixel 7, 4× CPU | 21,3 / 23,6 / 10,1 ms | 32 / 144 ms | 5/5, 65–68 ms | 28 / 144 ms | 0/5 |
+<!-- startup-measurement:table:end -->
 
-Die Worker-Auslagerung ist damit durch die Long-Task-Schwelle begründet. Die
-im Nachher-Artefakt ausgewiesenen Worker-Phasendauern trennen die Arbeit auf,
-sind aber nicht direkt mit CDP-gedrosselten Main-Thread-Zeiten vergleichbar;
-der relevante Nachweis ist das Ausbleiben von Main-Thread-Long-Tasks.
+Die Worker-Auslagerung ist damit durch die Long-Task-Schwelle begründet. Der
+Runner aktualisiert Tabelle und Artefakt in einem Lauf. Die im Nachher-Artefakt
+ausgewiesenen Worker-Phasendauern trennen die Arbeit auf, sind aber nicht
+direkt mit CDP-gedrosselten Main-Thread-Zeiten vergleichbar und dürfen daher
+keinen Main-Thread-Long-Task als Parsearbeit klassifizieren. Roh erfasste
+Main-Thread-Long-Tasks des Worker-Laufs bleiben in der Tabelle und im Artefakt
+sichtbar.
 `reactRender` misst den React-Commit; `first-paint` und
 `first-contentful-paint` werden unabhängig davon als Browser-Paint-Timing
 erfasst und zwischen Fallback und Worker verglichen.

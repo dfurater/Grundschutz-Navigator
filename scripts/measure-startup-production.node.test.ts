@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import {
+  renderStartupMeasurementTable,
   summarizeStartupRuns,
   taskOverlapsParse,
 } from './measure-startup-production.mjs';
@@ -83,7 +84,37 @@ describe('Startup-Produktionsmessung', () => {
 
     expect(summary).toMatchObject({
       mainThreadLongTaskRuns: 1,
+      parseLongTaskRuns: null,
+      parseLongTasks: [],
       workerRecommended: null,
     });
+  });
+
+  it('renders the architecture table from the same fallback and worker summaries', () => {
+    const summary = {
+      medianJsonParseMs: 20,
+      medianDomainParseMs: 22.8,
+      medianReactRenderMs: 9.8,
+      medianFirstPaintMs: 28,
+      medianFirstContentfulPaintMs: 140,
+      parseLongTaskRuns: 5,
+      parseLongTasks: [{ duration: 59 }, { duration: 80 }],
+      mainThreadLongTaskRuns: 5,
+    };
+
+    expect(renderStartupMeasurementTable({
+      mainThreadFallback: { mobile4x: { summary } },
+      moduleWorker: {
+        mobile4x: {
+          summary: {
+            ...summary,
+            medianFirstContentfulPaintMs: 144,
+            mainThreadLongTaskRuns: 0,
+            parseLongTaskRuns: null,
+            parseLongTasks: [],
+          },
+        },
+      },
+    })).toContain('| Pixel 7, 4× CPU | 20,0 / 22,8 / 9,8 ms | 28 / 140 ms | 5/5, 59–80 ms | 28 / 144 ms | 0/5 |');
   });
 });
