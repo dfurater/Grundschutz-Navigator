@@ -396,7 +396,11 @@ als verständlicher Ladefehler am betroffenen Katalog sichtbar. Nur ohne
 gleiche, fehlertreue Parser als Fallback im Main Thread. Kann ein vorhandener
 Worker nicht starten oder fehlschlägt er, bleibt dies ein sichtbarer
 Katalog-Ladefehler; nach dem Transfer gibt es bewusst keinen stillen
-Main-Thread-Fallback.
+Main-Thread-Fallback. Im erzwungenen Fallback entstehen JSON- und
+Domain-User-Timing-Ranges während ihrer tatsächlichen Ausführung; nur sie
+werden gegen Main-Thread-Long-Tasks klassifiziert. Zurückgemeldete
+Worker-Dauern sind dagegen reine Phasenmetriken und klassifizieren keinen
+Main-Thread-Long-Task.
 
 [`npm run measure-startup`](../package.json) erzeugt nach
 `npm run fetch-catalog` einen Production-Build, misst fünf frische Starts auf
@@ -410,8 +414,8 @@ Lauf.
 <!-- startup-measurement:table:start -->
 | Profil | Vor Worker: JSON / Domain / React (Median) | Vor Worker: FP / FCP (Median) | Vor Worker: Parse-Long-Tasks | Nach Worker: FP / FCP (Median) | Nach Worker: Main-Thread-Long-Tasks |
 |---|---:|---:|---:|---:|---:|
-| Desktop 1× | 5,0 / 4,8 / 2,0 ms | 12 / 60 ms | 0/5 | 12 / 60 ms | 0/5 |
-| Pixel 7, 4× CPU | 21,3 / 23,6 / 10,1 ms | 32 / 144 ms | 5/5, 65–68 ms | 28 / 144 ms | 0/5 |
+| Desktop 1× | 4,9 / 4,7 / 2,0 ms | 12 / 60 ms | 0/5 | 12 / 56 ms | 0/5 |
+| Pixel 7, 4× CPU | 21,0 / 22,8 / 11,8 ms | 28 / 136 ms | 5/5, 65–69 ms | 28 / 144 ms | 0/5 |
 <!-- startup-measurement:table:end -->
 
 Die Worker-Auslagerung ist damit durch die Long-Task-Schwelle begründet. Der

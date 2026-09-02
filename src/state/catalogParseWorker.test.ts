@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseCatalogInWorker } from './catalogParseWorker';
 import type { CatalogParseResult } from './catalogParsing';
+import { CATALOG_LOAD_MEASURES } from './catalogMeasurements';
+import { createStartupCatalogSource } from '@/test/fixtures/startupCatalog';
 
 type WorkerListener = (event: Event) => void;
 
@@ -46,6 +48,33 @@ afterEach(() => {
 });
 
 describe('parseCatalogInWorker', () => {
+  it('records actual, non-overlapping parse intervals in the forced main-thread fallback', async () => {
+    vi.stubGlobal('Worker', undefined);
+    const measure = vi.spyOn(performance, 'measure').mockImplementation(
+      () => ({}) as PerformanceMeasure,
+    );
+    const buffer = new TextEncoder().encode(
+      JSON.stringify(createStartupCatalogSource('catalog-fallback-timing')),
+    ).buffer;
+
+    const result = await parseCatalogInWorker(buffer, {
+      catalogKey: 'gspp',
+      trustClass: 'class-1-verified-public',
+    });
+
+    const jsonParse = measure.mock.calls.find(
+      ([name]) => name === CATALOG_LOAD_MEASURES.jsonParse,
+    )?.[1] as PerformanceMeasureOptions | undefined;
+    const domainParse = measure.mock.calls.find(
+      ([name]) => name === CATALOG_LOAD_MEASURES.domainParse,
+    )?.[1] as PerformanceMeasureOptions | undefined;
+
+    expect(jsonParse).toMatchObject({ start: expect.any(Number), end: expect.any(Number) });
+    expect(domainParse).toMatchObject({ start: expect.any(Number), end: expect.any(Number) });
+    expect(jsonParse?.end).toBeLessThanOrEqual(domainParse?.start as number);
+    expect(result.execution).toBe('main-thread');
+  });
+
   it('accepts only the matching, catalog-scoped parse response', async () => {
     const expected = {
       catalogDocument: {
@@ -55,6 +84,7 @@ describe('parseCatalogInWorker', () => {
         },
       },
       timings: { jsonParseMs: 10, domainParseMs: 20 },
+      execution: 'worker',
     } as unknown as CatalogParseResult;
     const worker = new FakeWorker((fakeWorker, message) => {
       const request = message as { requestId: number };
@@ -90,6 +120,7 @@ describe('parseCatalogInWorker', () => {
         },
       },
       timings: { jsonParseMs: 10, domainParseMs: 20 },
+      execution: 'worker',
     } as unknown as CatalogParseResult;
     const worker = new FakeWorker((fakeWorker, message) => {
       const request = message as { requestId: number };

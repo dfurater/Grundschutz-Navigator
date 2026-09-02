@@ -100,15 +100,19 @@ export async function loadCatalogArtifacts(
 
   if (isCancelled()) return null;
 
-  const { catalogDocument, timings } = await parseCatalogInWorker(buffer, {
+  const { catalogDocument, timings, execution } = await parseCatalogInWorker(buffer, {
       catalogKey: descriptor.catalogKey,
       trustClass:
         verification?.valid === true
           ? 'class-1-verified-public'
           : 'class-1-unverified-public',
     });
-  recordCatalogDuration(CATALOG_LOAD_MEASURES.jsonParse, timings.jsonParseMs);
-  recordCatalogDuration(CATALOG_LOAD_MEASURES.domainParse, timings.domainParseMs);
+  // Der Fallback zeichnet echte Parse-Grenzen bereits in der laufenden Aufgabe
+  // auf. Nur Worker-Dauern werden beim Eintreffen als reine Phasenmetrik ergänzt.
+  if (execution === 'worker') {
+    recordCatalogDuration(CATALOG_LOAD_MEASURES.jsonParse, timings.jsonParseMs);
+    recordCatalogDuration(CATALOG_LOAD_MEASURES.domainParse, timings.domainParseMs);
+  }
 
   return { catalogDocument, provenance, verification };
 }

@@ -24,7 +24,7 @@ self.addEventListener('message', (event: MessageEvent<CatalogParseWorkerRequest>
     response = {
       type: 'parsed',
       requestId: request.requestId,
-      result: parseCatalogBuffer(request.buffer, request.context),
+      result: parseCatalogBuffer(request.buffer, request.context, { execution: 'worker' }),
     };
   } catch (error) {
     response = {

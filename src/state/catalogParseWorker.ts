@@ -5,8 +5,13 @@
 import type { CatalogDocumentContext } from '@/domain/models';
 import {
   parseCatalogBuffer,
+  type CatalogParsePhase,
   type CatalogParseResult,
 } from '@/state/catalogParsing';
+import {
+  CATALOG_LOAD_MEASURES,
+  recordCatalogPhaseRange,
+} from '@/state/catalogMeasurements';
 
 export interface CatalogParseWorkerRequest {
   readonly type: 'parse-catalog';
@@ -45,8 +50,21 @@ function matchesRequestedCatalog(
   return (
     documentContext?.catalogKey === context.catalogKey &&
     documentContext.trustClass === context.trustClass &&
+    result.execution === 'worker' &&
     Number.isFinite(result.timings?.jsonParseMs) &&
     Number.isFinite(result.timings?.domainParseMs)
+  );
+}
+
+function recordFallbackPhase(
+  phase: CatalogParsePhase,
+  startedAt: number,
+  endedAt: number,
+): void {
+  recordCatalogPhaseRange(
+    phase === 'json' ? CATALOG_LOAD_MEASURES.jsonParse : CATALOG_LOAD_MEASURES.domainParse,
+    startedAt,
+    endedAt,
   );
 }
 
@@ -61,7 +79,12 @@ export function parseCatalogInWorker(
   context: CatalogDocumentContext,
 ): Promise<CatalogParseResult> {
   if (typeof Worker === 'undefined') {
-    return Promise.resolve().then(() => parseCatalogBuffer(buffer, context));
+    return Promise.resolve().then(() =>
+      parseCatalogBuffer(buffer, context, {
+        execution: 'main-thread',
+        onPhaseComplete: recordFallbackPhase,
+      }),
+    );
   }
 
   return new Promise((resolve, reject) => {

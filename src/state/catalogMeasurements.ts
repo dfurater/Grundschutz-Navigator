@@ -89,6 +89,22 @@ export function recordCatalogPhase(
   recordDuration(name, startedAt, timing);
 }
 
+/** Zeichnet eine Phase mit ihren während der Ausführung erfassten Grenzen auf. */
+export function recordCatalogPhaseRange(
+  name: string,
+  startedAt: number,
+  endedAt: number,
+  timing: UserTiming | null = getUserTiming(),
+): void {
+  if (timing === null || !Number.isFinite(startedAt) || !Number.isFinite(endedAt)) return;
+
+  try {
+    timing.measure(name, { start: startedAt, end: endedAt });
+  } catch {
+    // Reine Instrumentierung: die Produktfunktion bleibt unabhängig davon.
+  }
+}
+
 /**
  * Misst den React-Commit des erfolgreichen Einstiegskatalogs. Der Provider
  * setzt den Rückgabe-Ref direkt vor seinem Erfolgs-Dispatch; dieser Effekt
