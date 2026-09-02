@@ -29,6 +29,8 @@ export interface CatalogParseResult {
   readonly execution: CatalogParserExecution;
 }
 
+const MAIN_THREAD_PARSE_OPTIONS: CatalogParseOptions = { execution: 'main-thread' };
+
 function now(): number {
   return typeof performance === 'undefined' ? Date.now() : performance.now();
 }
@@ -41,7 +43,7 @@ function now(): number {
 export function parseCatalogBuffer(
   buffer: ArrayBuffer,
   context: CatalogDocumentContext,
-  options: CatalogParseOptions = { execution: 'main-thread' },
+  options: CatalogParseOptions = MAIN_THREAD_PARSE_OPTIONS,
 ): CatalogParseResult {
   const text = new TextDecoder('utf-8').decode(buffer);
   const jsonStartedAt = now();
