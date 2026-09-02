@@ -105,13 +105,13 @@ export async function fetchJsonDocument<T>(
  * Load a catalog file as an ArrayBuffer for integrity verification.
  *
  * @param catalogUrl - URL of the catalog.json file
- * @returns Object containing the raw ArrayBuffer and the decoded text
+ * @returns Raw ArrayBuffer, which callers can transfer without a copy
  * @throws Error if the catalog cannot be loaded
  */
-export async function fetchCatalogWithBuffer(
+export async function fetchCatalogBuffer(
   catalogUrl: string,
   timeoutMs = ARTIFACT_FETCH_TIMEOUT_MS,
-): Promise<{ buffer: ArrayBuffer; text: string }> {
+): Promise<ArrayBuffer> {
   const controller = new AbortController();
   const timer = setTimeout(
     () => controller.abort(new Error(`Timed out loading catalog after ${timeoutMs}ms`)),
@@ -125,10 +125,21 @@ export async function fetchCatalogWithBuffer(
       );
     }
     const buffer = await response.arrayBuffer();
-    const decoder = new TextDecoder('utf-8');
-    const text = decoder.decode(buffer);
-    return { buffer, text };
+    return buffer;
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Lädt Bytes und dekodiert sie für Aufrufer, die den Text direkt brauchen
+ * (heute: die Vokabular-Registry). Der Katalogpfad verwendet dagegen
+ * `fetchCatalogBuffer()` und dekodiert erst im Parser-Worker.
+ */
+export async function fetchCatalogWithBuffer(
+  catalogUrl: string,
+  timeoutMs = ARTIFACT_FETCH_TIMEOUT_MS,
+): Promise<{ buffer: ArrayBuffer; text: string }> {
+  const buffer = await fetchCatalogBuffer(catalogUrl, timeoutMs);
+  return { buffer, text: new TextDecoder('utf-8').decode(buffer) };
 }

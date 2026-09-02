@@ -433,4 +433,11 @@ if (isMain) {
   }
 }
 
-export { isGroupAlive, waitForGroupExit, stopPreview, requiredCatalogArtifactPaths, buildMeasurementOutput };
+export {
+  isGroupAlive,
+  waitForGroupExit,
+  stopPreview,
+  startPreview,
+  requiredCatalogArtifactPaths,
+  buildMeasurementOutput,
+};

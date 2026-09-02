@@ -259,10 +259,10 @@ export async function fetchJsonDocument<T>(
 ### Katalog mit Buffer laden
 
 ```typescript
-export async function fetchCatalogWithBuffer(
+export async function fetchCatalogBuffer(
   catalogUrl: string,
   timeoutMs = ARTIFACT_FETCH_TIMEOUT_MS,
-): Promise<{ buffer: ArrayBuffer; text: string }> {
+): Promise<ArrayBuffer> {
   const controller = new AbortController();
   const timer = setTimeout(
     () => controller.abort(new Error(`Timed out loading catalog after ${timeoutMs}ms`)),
@@ -275,10 +275,7 @@ export async function fetchCatalogWithBuffer(
         `Failed to load catalog: ${response.status} ${response.statusText}`,
       );
     }
-    const buffer = await response.arrayBuffer();
-    const decoder = new TextDecoder('utf-8');
-    const text = decoder.decode(buffer);
-    return { buffer, text };
+    return await response.arrayBuffer();
   } finally {
     clearTimeout(timer);
   }
@@ -292,7 +289,7 @@ export async function fetchCatalogWithBuffer(
 1. `catalog.json` (der Einstiegskatalog) und `vocabularies.json` werden **parallel** als ArrayBuffer geladen (Startlatenz). Fehlt `catalog.json`, ist das ein harter Ladefehler; fehlt nur `vocabularies.json`, läuft die App ohne Vokabular-Registry weiter.
 2. Die Vokabular-Registry wird gebaut (`buildVocabularyRegistry`).
 3. Für den Katalog wird `catalog-metadata.json` geladen und `verifyArtifactIntegrity` ausgeführt; für die Vokabulare analog `upstream-sources-metadata.json` (siehe [Vocabulary Integrity](#vocabulary-integrity)).
-3a. Erst danach wird der Katalog als verlustfreies Dokument geparst (`parseCatalogDocument`, siehe [DOMAIN_MODELS.md](./DOMAIN_MODELS.md#verlustfreies-dokumentmodell)). Die Reihenfolge ist bewusst: Die Vertrauensklasse `class-1-verified-public` schließt die bestandene Hashprüfung ein und darf deshalb nicht vergeben werden, bevor sie gelaufen ist. Ohne Metadaten oder bei abweichendem Hash trägt das Dokument `class-1-unverified-public`.
+3a. Erst danach wird der Katalogbuffer ohne Kopie an den Modul-Worker übertragen. Dieser dekodiert und baut das verlustfreie Dokument (`parseCatalogDocument`, siehe [DOMAIN_MODELS.md](./DOMAIN_MODELS.md#verlustfreies-dokumentmodell)); die Antwort trägt denselben expliziten Katalogkontext zurück. Die Reihenfolge ist bewusst: Die Vertrauensklasse `class-1-verified-public` schließt die bestandene Hashprüfung ein und darf deshalb nicht vergeben werden, bevor sie gelaufen ist. Ohne Metadaten oder bei abweichendem Hash trägt das Dokument `class-1-unverified-public`.
 4. Fehlen zu einem vorhandenen Datenartefakt nur die Metadaten, bleibt das Artefakt nutzbar. Provenance und Verifikation bleiben `null`, die App protokolliert eine Warnung in der Konsole und überspringt die Prüfung.
 5. Ein `cancelled`-Flag verhindert State-Updates nach Unmount.
 6. Alle Start-Fetches (`catalog.json`, `vocabularies.json`, `catalog-metadata.json`, `upstream-sources-metadata.json`) sind einzeln auf [`ARTIFACT_FETCH_TIMEOUT_MS`](#zeitlimit-je-artefakt-fetch) begrenzt. Läuft ein optionales Artefakt (Vokabulare oder eine der beiden Provenance-Dateien) ins Zeitlimit, greift derselbe `error`- bzw. `catch`-Zweig wie bei einem 404 — die App startet mit dem betroffenen Feld auf `null`. Läuft `catalog.json` selbst ins Zeitlimit, führt der äußere `catch` zu einem Fehlerzustand mit Meldung statt zu einem dauerhaft hängenden Ladezustand.

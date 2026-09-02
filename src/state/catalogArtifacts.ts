@@ -12,8 +12,6 @@ import type {
   CatalogProvenance,
   VerificationResult,
 } from '@/domain/models';
-import { parseCatalogDocument } from '@/adapters/oscalDocument';
-import { projectResolvedControlLinks } from '@/domain/catalogReferenceProjection';
 import {
   SUPPORTED_CATALOGS,
   catalogDataFileName,
@@ -21,10 +19,16 @@ import {
   type CatalogKey,
 } from '@/domain/sourceRegistry';
 import {
-  fetchCatalogWithBuffer,
+  fetchCatalogBuffer,
   fetchProvenance,
   verifyArtifactIntegrity,
 } from '@/domain/integrity';
+import {
+  CATALOG_LOAD_MEASURES,
+  measureCatalogAsyncPhase,
+  recordCatalogDuration,
+} from '@/state/catalogMeasurements';
+import { parseCatalogInWorker } from '@/state/catalogParseWorker';
 
 /**
  * Ein ausgelieferter Katalog mit seinen beiden Artefakt-URLs. Die Dateinamen
@@ -72,7 +76,10 @@ export async function loadCatalogArtifacts(
   descriptor: SupportedCatalogDescriptor,
   isCancelled: () => boolean = () => false,
 ): Promise<LoadedCatalogArtifacts | null> {
-  const { buffer, text } = await fetchCatalogWithBuffer(descriptor.dataUrl);
+  const buffer = await measureCatalogAsyncPhase(
+    CATALOG_LOAD_MEASURES.download,
+    () => fetchCatalogBuffer(descriptor.dataUrl),
+  );
   if (isCancelled()) return null;
 
   let provenance: CatalogProvenance | null = null;
@@ -93,15 +100,15 @@ export async function loadCatalogArtifacts(
 
   if (isCancelled()) return null;
 
-  const catalogDocument = projectResolvedControlLinks(
-    parseCatalogDocument(JSON.parse(text), {
+  const { catalogDocument, timings } = await parseCatalogInWorker(buffer, {
       catalogKey: descriptor.catalogKey,
       trustClass:
         verification?.valid === true
           ? 'class-1-verified-public'
           : 'class-1-unverified-public',
-    }),
-  );
+    });
+  recordCatalogDuration(CATALOG_LOAD_MEASURES.jsonParse, timings.jsonParseMs);
+  recordCatalogDuration(CATALOG_LOAD_MEASURES.domainParse, timings.domainParseMs);
 
   return { catalogDocument, provenance, verification };
 }

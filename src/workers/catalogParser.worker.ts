@@ -1,0 +1,32 @@
+import { parseCatalogBuffer } from '@/state/catalogParsing';
+import type {
+  CatalogParseWorkerRequest,
+  CatalogParseWorkerResponse,
+} from '@/state/catalogParseWorker';
+
+function readableParseError(error: unknown): string {
+  return error instanceof Error && error.message
+    ? error.message
+    : 'Katalog konnte nicht verarbeitet werden.';
+}
+
+self.addEventListener('message', (event: MessageEvent<CatalogParseWorkerRequest>) => {
+  const request = event.data;
+  if (request?.type !== 'parse-catalog') return;
+
+  let response: CatalogParseWorkerResponse;
+  try {
+    response = {
+      type: 'parsed',
+      requestId: request.requestId,
+      result: parseCatalogBuffer(request.buffer, request.context),
+    };
+  } catch (error) {
+    response = {
+      type: 'parse-error',
+      requestId: request.requestId,
+      message: readableParseError(error),
+    };
+  }
+  self.postMessage(response);
+});

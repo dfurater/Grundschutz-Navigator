@@ -381,6 +381,36 @@ Projektionen des **aktiven** Katalogs — unveränderte Zugriffsform:
 - `loading` — Ladezustand
 - `error` — Fehlermeldung
 
+### Startup-Parsing im Modul-Worker
+
+Der Katalog-Ladepfad misst Download, JSON-Parsing, Domain-Projektion und
+React-Commit mit User Timing (`gspp:catalog-*`). Nach der Hashprüfung überträgt
+`catalogArtifacts.ts` den nicht mehr benötigten `ArrayBuffer` ohne Kopie an
+`catalogParser.worker.ts`. Dort dekodiert und parst der Worker den Katalog,
+führt Root-Dispatch und Link-Projektion aus und gibt das strukturklonbare
+`CatalogDocument` zurück. Nachrichten tragen Request-ID und den expliziten
+`CatalogDocumentContext`; eine fremde Antwort oder ein anderer `catalogKey`
+kann keinen Katalogzustand vervollständigen. Parse- und Root-Type-Fehler bleiben
+als verständlicher Ladefehler am betroffenen Katalog sichtbar. Nur ohne
+`Worker`-API (z. B. im Test oder in einem alten Browser) bleibt der gleiche,
+fehlertreue Parser als Fallback im Main Thread.
+
+[`npm run measure-startup`](../package.json) erzeugt nach
+`npm run fetch-catalog` einen Production-Build, misst fünf frische Starts auf
+Desktop 1× sowie Pixel 7 mit 4× CPU-Drosselung und schreibt die Rohwerte nach
+[`STARTUP_MEASUREMENT.json`](./STARTUP_MEASUREMENT.json). Long Tasks werden vor
+dem Bootstrap beobachtet und nach einer Zustellbarriere ausgelesen.
+
+| Profil | Vor Worker: JSON / Domain / React (Median) | Vor Worker: Parse-Long-Tasks | Nach Worker: Main-Thread-Long-Tasks |
+|---|---:|---:|---:|
+| Desktop 1× | 4,8 / 5,0 / 2,3 ms | 0/5 | 0/5 |
+| Pixel 7, 4× CPU | 20,0 / 21,4 / 8,6 ms | 4/5, 54–60 ms | 0/5 |
+
+Die Worker-Auslagerung ist damit durch die Long-Task-Schwelle begründet. Die
+im Nachher-Artefakt ausgewiesenen Worker-Phasendauern trennen die Arbeit auf,
+sind aber nicht direkt mit CDP-gedrosselten Main-Thread-Zeiten vergleichbar;
+der relevante Nachweis ist das Ausbleiben von Main-Thread-Long-Tasks.
+
 ## Anwenderkataloge sind fachlich getrennt
 
 Die App liefert mehrere BSI-Anwenderkataloge aus. Jeder ist ein **eigenständiges

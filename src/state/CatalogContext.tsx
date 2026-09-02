@@ -15,6 +15,7 @@ import {
   createContext,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useReducer,
   useRef,
@@ -40,6 +41,11 @@ import {
   toCatalogErrorMessage,
   type SupportedCatalogDescriptor,
 } from '@/state/catalogArtifacts';
+import {
+  CATALOG_LOAD_MEASURES,
+  catalogMeasurementNow,
+  recordCatalogPhase,
+} from '@/state/catalogMeasurements';
 
 import {
   catalogReducer,
@@ -126,6 +132,7 @@ export function CatalogProvider({
    * genau das.
    */
   const requestedKeysRef = useRef<Set<CatalogKey>>(new Set());
+  const entryRenderStartedAtRef = useRef<number | null>(null);
   useEffect(() => {
     requestedKeysRef.current = new Set();
   }, [descriptorByKey]);
@@ -133,6 +140,17 @@ export function CatalogProvider({
   const entryDataUrl = entryDescriptor.dataUrl;
   const entryMetadataUrl = entryDescriptor.metadataUrl;
   const entryCatalogKey = entryDescriptor.catalogKey;
+
+  // Läuft nach dem DOM-Commit des erfolgreichen Einstiegskatalogs. Der Start
+  // wird direkt vor dem Reducer-Dispatch gesetzt; damit misst der Eintrag nur
+  // Reacts Zustandsübernahme und Rendern, nicht Netzwerk oder OSCAL-Parsing.
+  useLayoutEffect(() => {
+    const entryState = state.catalogs.get(entryCatalogKey);
+    if (entryState?.loading !== false || entryState.catalogDocument === null) return;
+
+    recordCatalogPhase(CATALOG_LOAD_MEASURES.reactRender, entryRenderStartedAtRef.current);
+    entryRenderStartedAtRef.current = null;
+  }, [entryCatalogKey, state.catalogs]);
 
   // Einstiegskatalog und Vokabulare: der einzige eager Ladepfad.
   useEffect(() => {
@@ -214,6 +232,7 @@ export function CatalogProvider({
           vocabularyProvenance,
           vocabularyVerification,
         });
+        entryRenderStartedAtRef.current = catalogMeasurementNow();
         dispatch({
           type: 'CATALOG_LOAD_SUCCESS',
           catalogKey: entryCatalogKey,

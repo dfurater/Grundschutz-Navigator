@@ -4,6 +4,7 @@ import {
   verifyArtifactIntegrity,
   fetchJsonDocument,
   fetchProvenance,
+  fetchCatalogBuffer,
   fetchCatalogWithBuffer,
   ARTIFACT_FETCH_TIMEOUT_MS,
 } from './integrity';
@@ -487,6 +488,18 @@ describe('fetchCatalogWithBuffer', () => {
 
     await vi.advanceTimersByTimeAsync(ARTIFACT_FETCH_TIMEOUT_MS);
     await assertion;
+  });
+});
+
+describe('fetchCatalogBuffer', () => {
+  it('returns the verified transport bytes without decoding them on the caller thread', async () => {
+    const content = '{"catalog":"worker"}';
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(content, { status: 200 }));
+
+    const buffer = await fetchCatalogBuffer('/data/catalog.json');
+
+    expect(buffer).toBeInstanceOf(ArrayBuffer);
+    expect(new TextDecoder().decode(buffer)).toBe(content);
   });
 });
 
