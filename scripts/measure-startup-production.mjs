@@ -81,7 +81,8 @@ function assertCatalogArtifactsPresent() {
 
 function buildProductionBundle() {
   console.log('Baue Production-Build (npm run build:local)...');
-  execFileSync('npm', ['run', 'build:local'], { cwd: root, stdio: 'inherit' });
+  const npmCli = resolve(dirname(process.execPath), '../lib/node_modules/npm/bin/npm-cli.js');
+  execFileSync(process.execPath, [npmCli, 'run', 'build:local'], { cwd: root, stdio: 'inherit' });
 }
 
 async function waitForPreview(port, timeoutMs = 15_000) {
@@ -263,10 +264,12 @@ async function main() {
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
-  main().catch((error) => {
+  try {
+    await main();
+  } catch (error) {
     console.error(error);
     process.exitCode = 1;
-  });
+  }
 }
 
 export { summarizeStartupRuns, taskOverlapsParse };

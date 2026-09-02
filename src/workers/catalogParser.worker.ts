@@ -11,6 +11,11 @@ function readableParseError(error: unknown): string {
 }
 
 self.addEventListener('message', (event: MessageEvent<CatalogParseWorkerRequest>) => {
+  // Dedicated-Worker-Nachrichten stammen ausschließlich vom erzeugenden
+  // Dokument. Chromium liefert dafür in einigen Ausführungskontexten einen
+  // leeren Origin; jeder explizite fremde Origin bleibt ausgeschlossen.
+  if (event.origin !== '' && event.origin !== self.location.origin) return;
+
   const request = event.data;
   if (request?.type !== 'parse-catalog') return;
 

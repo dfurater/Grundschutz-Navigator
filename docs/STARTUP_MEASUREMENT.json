@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-02T14:48:09.004Z",
+  "generatedAt": "2026-09-02T14:57:27.506Z",
   "snapshotCommitSha": "8a97764ff4f23c2b7945c64344eecbf5a2053db2",
   "chromiumVersion": "151.0.7922.34",
   "previewUrl": "http://127.0.0.1:4174",
@@ -26,19 +26,19 @@
     "runs": [
       {
         "download": {
-          "startTime": 78.5,
-          "duration": 39.5
+          "startTime": 78.1,
+          "duration": 39
         },
         "jsonParse": {
-          "startTime": 155.8,
-          "duration": 5.3
+          "startTime": 154.7,
+          "duration": 5.4
         },
         "domainParse": {
-          "startTime": 155.3,
+          "startTime": 154.4,
           "duration": 5.8
         },
         "reactRender": {
-          "startTime": 163.9,
+          "startTime": 163.3,
           "duration": 2.3
         },
         "longTasks": [],
@@ -46,59 +46,19 @@
       },
       {
         "download": {
-          "startTime": 53.9,
-          "duration": 38
+          "startTime": 39,
+          "duration": 46.1
         },
         "jsonParse": {
-          "startTime": 121.1,
-          "duration": 4.7
+          "startTime": 112.8,
+          "duration": 5.2
         },
         "domainParse": {
-          "startTime": 121.1,
-          "duration": 4.7
+          "startTime": 113,
+          "duration": 5
         },
         "reactRender": {
-          "startTime": 128.7,
-          "duration": 1.9
-        },
-        "longTasks": [],
-        "longTaskSupported": true
-      },
-      {
-        "download": {
-          "startTime": 52.7,
-          "duration": 37.2
-        },
-        "jsonParse": {
-          "startTime": 118.5,
-          "duration": 4.7
-        },
-        "domainParse": {
-          "startTime": 118.5,
-          "duration": 4.7
-        },
-        "reactRender": {
-          "startTime": 125.9,
-          "duration": 2.2
-        },
-        "longTasks": [],
-        "longTaskSupported": true
-      },
-      {
-        "download": {
-          "startTime": 51.8,
-          "duration": 37.5
-        },
-        "jsonParse": {
-          "startTime": 118.1,
-          "duration": 4.7
-        },
-        "domainParse": {
-          "startTime": 117.7,
-          "duration": 5.1
-        },
-        "reactRender": {
-          "startTime": 125.4,
+          "startTime": 120.5,
           "duration": 2.1
         },
         "longTasks": [],
@@ -106,30 +66,70 @@
       },
       {
         "download": {
-          "startTime": 53.2,
-          "duration": 37.2
+          "startTime": 54.5,
+          "duration": 36.5
         },
         "jsonParse": {
           "startTime": 118.5,
-          "duration": 5.1
+          "duration": 4.5
         },
         "domainParse": {
-          "startTime": 118.7,
-          "duration": 4.9
+          "startTime": 118.2,
+          "duration": 4.8
         },
         "reactRender": {
-          "startTime": 126.1,
+          "startTime": 125.5,
           "duration": 2
+        },
+        "longTasks": [],
+        "longTaskSupported": true
+      },
+      {
+        "download": {
+          "startTime": 52,
+          "duration": 36.7
+        },
+        "jsonParse": {
+          "startTime": 115.5,
+          "duration": 4.7
+        },
+        "domainParse": {
+          "startTime": 115.7,
+          "duration": 4.5
+        },
+        "reactRender": {
+          "startTime": 122.5,
+          "duration": 2
+        },
+        "longTasks": [],
+        "longTaskSupported": true
+      },
+      {
+        "download": {
+          "startTime": 53.1,
+          "duration": 36.4
+        },
+        "jsonParse": {
+          "startTime": 116.2,
+          "duration": 4.8
+        },
+        "domainParse": {
+          "startTime": 116.8,
+          "duration": 4.3
+        },
+        "reactRender": {
+          "startTime": 123.5,
+          "duration": 1.9
         },
         "longTasks": [],
         "longTaskSupported": true
       }
     ],
     "summary": {
-      "medianDownloadMs": 37.5,
-      "medianJsonParseMs": 4.7,
-      "medianDomainParseMs": 4.9,
-      "medianReactRenderMs": 2.1,
+      "medianDownloadMs": 36.7,
+      "medianJsonParseMs": 4.8,
+      "medianDomainParseMs": 4.8,
+      "medianReactRenderMs": 2,
       "mainThreadLongTaskRuns": 0,
       "parseLongTaskRuns": 0,
       "parseLongTasks": [],
@@ -148,20 +148,80 @@
     "runs": [
       {
         "download": {
-          "startTime": 106.7,
-          "duration": 76.2
+          "startTime": 134.4,
+          "duration": 50.3
         },
         "jsonParse": {
-          "startTime": 248,
+          "startTime": 244.2,
+          "duration": 5
+        },
+        "domainParse": {
+          "startTime": 244.6,
+          "duration": 4.7
+        },
+        "reactRender": {
+          "startTime": 256.7,
+          "duration": 7.6
+        },
+        "longTasks": [],
+        "longTaskSupported": true
+      },
+      {
+        "download": {
+          "startTime": 142.8,
+          "duration": 50
+        },
+        "jsonParse": {
+          "startTime": 268.6,
+          "duration": 5.1
+        },
+        "domainParse": {
+          "startTime": 268.3,
+          "duration": 5.4
+        },
+        "reactRender": {
+          "startTime": 281.9,
+          "duration": 17.2
+        },
+        "longTasks": [],
+        "longTaskSupported": true
+      },
+      {
+        "download": {
+          "startTime": 136.3,
+          "duration": 49.9
+        },
+        "jsonParse": {
+          "startTime": 250.3,
           "duration": 4.9
         },
         "domainParse": {
-          "startTime": 248.1,
-          "duration": 4.9
+          "startTime": 250.5,
+          "duration": 4.7
         },
         "reactRender": {
-          "startTime": 261.7,
-          "duration": 10
+          "startTime": 262.4,
+          "duration": 10.4
+        },
+        "longTasks": [],
+        "longTaskSupported": true
+      },
+      {
+        "download": {
+          "startTime": 103.6,
+          "duration": 80.4
+        },
+        "jsonParse": {
+          "startTime": 248.8,
+          "duration": 5.1
+        },
+        "domainParse": {
+          "startTime": 249.1,
+          "duration": 4.8
+        },
+        "reactRender": {
+          "startTime": 262.2,
+          "duration": 10.5
         },
         "longTasks": [],
         "longTaskSupported": true
@@ -169,89 +229,29 @@
       {
         "download": {
           "startTime": 105.5,
-          "duration": 80
+          "duration": 76.9
         },
         "jsonParse": {
-          "startTime": 252.3,
+          "startTime": 248.5,
           "duration": 4.9
         },
         "domainParse": {
-          "startTime": 252.4,
-          "duration": 4.8
-        },
-        "reactRender": {
-          "startTime": 264.6,
-          "duration": 10.3
-        },
-        "longTasks": [],
-        "longTaskSupported": true
-      },
-      {
-        "download": {
-          "startTime": 134.7,
-          "duration": 49.4
-        },
-        "jsonParse": {
-          "startTime": 247.5,
-          "duration": 5
-        },
-        "domainParse": {
-          "startTime": 247.8,
+          "startTime": 248.8,
           "duration": 4.7
         },
         "reactRender": {
-          "startTime": 259.9,
-          "duration": 10.2
-        },
-        "longTasks": [],
-        "longTaskSupported": true
-      },
-      {
-        "download": {
-          "startTime": 111.8,
-          "duration": 82.3
-        },
-        "jsonParse": {
-          "startTime": 256.5,
-          "duration": 4.8
-        },
-        "domainParse": {
-          "startTime": 256,
-          "duration": 5.3
-        },
-        "reactRender": {
-          "startTime": 270,
-          "duration": 9.4
-        },
-        "longTasks": [],
-        "longTaskSupported": true
-      },
-      {
-        "download": {
-          "startTime": 103,
-          "duration": 85
-        },
-        "jsonParse": {
-          "startTime": 256.5,
-          "duration": 4.9
-        },
-        "domainParse": {
-          "startTime": 256.8,
-          "duration": 4.7
-        },
-        "reactRender": {
-          "startTime": 269.5,
-          "duration": 10.7
+          "startTime": 261.1,
+          "duration": 10.5
         },
         "longTasks": [],
         "longTaskSupported": true
       }
     ],
     "summary": {
-      "medianDownloadMs": 80,
-      "medianJsonParseMs": 4.9,
-      "medianDomainParseMs": 4.8,
-      "medianReactRenderMs": 10.2,
+      "medianDownloadMs": 50.3,
+      "medianJsonParseMs": 5,
+      "medianDomainParseMs": 4.7,
+      "medianReactRenderMs": 10.5,
       "mainThreadLongTaskRuns": 0,
       "parseLongTaskRuns": 0,
       "parseLongTasks": [],
