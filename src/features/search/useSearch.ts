@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Index } from 'flexsearch';
 import type { Control, Practice, VocabularyRegistry } from '@/domain/models';
 import { getControlLinkSearchText } from '@/domain/controlRelationships';
@@ -11,6 +11,8 @@ import { resolvePracticeVocabulary } from '@/domain/taxonomyVocabulary';
 export interface SearchResult {
   control: Control;
 }
+
+export const MAX_SEARCH_CACHE_ENTRIES = 3;
 
 const NATURAL_LANGUAGE_PREFIX_MIN_LENGTH = 6;
 const NATURAL_LANGUAGE_METADATA_PREFIX_WEIGHT = 0.75;
@@ -37,6 +39,150 @@ interface SearchDocument {
   normalizedControlId: string;
   normalizedTitle: string;
   normalizedLinkTargets: string[];
+}
+
+interface SearchCacheEntry {
+  catalogKey: string;
+  controls: Control[];
+  practices: Practice[];
+  vocabularyRegistry: VocabularyRegistry | null | undefined;
+  searchDocuments: SearchDocument[];
+  controlMap: Map<number, Control>;
+  searchDocumentMap: Map<number, SearchDocument>;
+  indexes: SearchIndexes;
+}
+
+const searchCache = new Map<string, SearchCacheEntry>();
+
+/**
+ * Ein Eintrag ist nur dann noch gültig, wenn er aus genau diesen Objekten gebaut
+ * wurde. Bewusst die Referenzen und nicht die Array-Längen: ein gleich großes
+ * Ersatz-Array trägt anderen Inhalt und muss den Index neu aufbauen.
+ */
+function isFreshCacheEntry(
+  entry: SearchCacheEntry | undefined,
+  controls: Control[],
+  practices: Practice[],
+  vocabularyRegistry: VocabularyRegistry | null | undefined,
+): entry is SearchCacheEntry {
+  if (entry === undefined) {
+    return false;
+  }
+  return (
+    entry.controls === controls &&
+    entry.practices === practices &&
+    entry.vocabularyRegistry === vocabularyRegistry
+  );
+}
+
+function createSearchDocuments(
+  controls: Control[],
+  practicesById: Map<string | undefined, Practice>,
+  vocabularyRegistry: VocabularyRegistry | null | undefined,
+): SearchDocument[] {
+  return controls.map<SearchDocument>((control, numericId) => {
+    const resolved = resolveControlVocabularies(vocabularyRegistry, control);
+    const vocabularyTexts = collectControlVocabularySearchTexts(resolved);
+    const practiceVocabulary = resolvePracticeVocabulary(
+      vocabularyRegistry,
+      practicesById.get(control.practiceId),
+    );
+
+    return {
+      control,
+      numericId,
+      controlIdText: control.id,
+      titleText: control.title,
+      linkText: getControlLinkSearchText(control.links),
+      metadataText: [
+        control.tags.join(' '),
+        control.taxonomy.flatMap((prop) => [prop.name, prop.value]).join(' '),
+        control.modalverb ?? '',
+        control.statementProps.ergebnis ?? '',
+        control.statementProps.praezisierung ?? '',
+        control.statementProps.handlungsworte ?? '',
+        control.statementProps.dokumentation ?? '',
+        control.statementProps.zielobjektKategorien.join(' '),
+        control.threats.join(' '),
+        practiceVocabulary?.entry.columns['auch bekannt als'] ?? '',
+        ...vocabularyTexts,
+      ].join(' '),
+      contentText: [control.statement, control.guidance].join(' '),
+      normalizedControlId: normalizeSearchValue(control.id),
+      normalizedTitle: normalizeSearchValue(control.title),
+      normalizedLinkTargets: control.links.map((link) => normalizeSearchValue(link.targetId)),
+    };
+  });
+}
+
+/**
+ * Name des User-Timing-Eintrags, den jeder Indexaufbau hinterlässt.
+ * `scripts/measure-search-production.mjs` liest ihn aus, um die reine
+ * Index-Build-Zeit getrennt von Navigation, Bootstrap und Rendering
+ * auszuweisen. Bleibt die Liste nach einer Navigation leer, hat der Cache
+ * getroffen und es wurde kein Index neu gebaut.
+ */
+export const SEARCH_INDEX_BUILD_MEASURE = 'gspp:search-index-build';
+
+function recordIndexBuildDuration(startedAt: number, finishedAt: number) {
+  if (typeof performance === 'undefined' || typeof performance.measure !== 'function') {
+    return;
+  }
+  try {
+    performance.measure(SEARCH_INDEX_BUILD_MEASURE, { start: startedAt, end: finishedAt });
+  } catch {
+    // Reine Messinstrumentierung: ein fehlgeschlagener Eintrag darf die Suche nie stören.
+  }
+}
+
+function buildSearchCacheEntry(
+  catalogKey: string,
+  controls: Control[],
+  practices: Practice[],
+  vocabularyRegistry: VocabularyRegistry | null | undefined,
+): SearchCacheEntry {
+  const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
+  const practicesById = new Map(practices.map((practice) => [practice.id, practice]));
+  const searchDocuments = createSearchDocuments(controls, practicesById, vocabularyRegistry);
+  const controlMap = new Map(searchDocuments.map((document) => [document.numericId, document.control]));
+  const searchDocumentMap = new Map(searchDocuments.map((document) => [document.numericId, document]));
+  const indexes = createSearchIndexes();
+  searchDocuments.forEach((document) => {
+    indexes.controlIds.add(document.numericId, document.controlIdText);
+    indexes.titles.add(document.numericId, document.titleText);
+    indexes.links.add(document.numericId, document.linkText);
+    indexes.metadata.add(document.numericId, document.metadataText);
+    indexes.content.add(document.numericId, document.contentText);
+  });
+  const t1 = typeof performance !== 'undefined' ? performance.now() : 0;
+  recordIndexBuildDuration(t0, t1);
+
+  return {
+    catalogKey,
+    controls,
+    practices,
+    vocabularyRegistry,
+    searchDocuments,
+    controlMap,
+    searchDocumentMap,
+    indexes,
+  };
+}
+
+export function clearSearchCache(): void {
+  searchCache.clear();
+}
+
+export function getSearchCacheSize(): number {
+  return searchCache.size;
+}
+
+export function getSearchCacheKeys(): string[] {
+  return [...searchCache.keys()];
+}
+
+export function getSearchCacheEntry(catalogKey: string): SearchCacheEntry | undefined {
+  return searchCache.get(catalogKey);
 }
 
 function createForwardIndex() {
@@ -93,79 +239,70 @@ function hasNaturalLanguagePrefixMatch(text: string, normalizedQuery: string) {
  * Uses dedicated indexes for ids, titles, relationships, and natural-language
  * content so modal verbs like "MUSS" do not degrade into arbitrary prefix
  * matches such as "Muster" or "Museen".
+ *
+ * Indizes werden kataloggescopt gecacht (GSPP-218): Zweiter Mount desselben
+ * Katalogs mit identischen Controls-/Vocabulary-Referenzen baut keine neuen
+ * FlexSearch-Indizes. Der Schlüssel umfasst den stabilen `catalogKey` sowie
+ * die Objektidentität von Controls, Practices und Vocabulary Registry; neue
+ * Referenzen invalidieren deterministisch. Der Cache ist auf
+ * `MAX_SEARCH_CACHE_ENTRIES` begrenzt (LRU), damit Katalogwechsel keinen
+ * unbegrenzten Speicheraufbau erzeugen, und strikt je Katalog getrennt — keine
+ * Ergebnis- oder Indexvermischung. Leere Controls oder fehlender catalogKey
+ * legen keinen Cache-Eintrag an, damit transiente Ladezustände das LRU-Budget
+ * nicht belegen. Cache-Mutationen laufen ausschließlich in einem Effect, damit
+ * Reacts Render-Phase (inkl. StrictMode double-invoke und abgebrochene
+ * Concurrent-Renders) keine verwaisten Evictions erzeugt; LRU-Reihenfolge wird
+ * beim Rebuild via delete+set korrekt aufgefrischt.
  */
 export function useSearch(
   controls: Control[],
   query: string,
   vocabularyRegistry?: VocabularyRegistry | null,
   practices: Practice[] = EMPTY_PRACTICES,
+  catalogKey?: string,
 ) {
-  const practicesById = useMemo(
-    () => new Map(practices.map((practice) => [practice.id, practice])),
-    [practices],
-  );
-  const searchDocuments = useMemo(() => {
-    return controls.map<SearchDocument>((control, numericId) => {
-      const resolved = resolveControlVocabularies(vocabularyRegistry, control);
-      const vocabularyTexts = collectControlVocabularySearchTexts(resolved);
-      const practiceVocabulary = resolvePracticeVocabulary(
+  const normalizedCatalogKey = catalogKey ?? '__default__';
+  const shouldCache = !!catalogKey && controls.length > 0;
+  const cacheEntry = useMemo(() => {
+    if (!shouldCache) {
+      return buildSearchCacheEntry(
+        normalizedCatalogKey,
+        controls,
+        practices,
         vocabularyRegistry,
-        practicesById.get(control.practiceId),
       );
-
-      return {
-        control,
-        numericId,
-        controlIdText: control.id,
-        titleText: control.title,
-        linkText: getControlLinkSearchText(control.links),
-        metadataText: [
-          control.tags.join(' '),
-          control.taxonomy.flatMap((prop) => [prop.name, prop.value]).join(' '),
-          control.modalverb ?? '',
-          control.statementProps.ergebnis ?? '',
-          control.statementProps.praezisierung ?? '',
-          control.statementProps.handlungsworte ?? '',
-          control.statementProps.dokumentation ?? '',
-          control.statementProps.zielobjektKategorien.join(' '),
-          control.threats.join(' '),
-          practiceVocabulary?.entry.columns['auch bekannt als'] ?? '',
-          ...vocabularyTexts,
-        ].join(' '),
-        contentText: [control.statement, control.guidance].join(' '),
-        normalizedControlId: normalizeSearchValue(control.id),
-        normalizedTitle: normalizeSearchValue(control.title),
-        normalizedLinkTargets: control.links.map((link) =>
-          normalizeSearchValue(link.targetId),
-        ),
-      };
-    });
-  }, [controls, practicesById, vocabularyRegistry]);
-
-  const controlMap = useMemo(() => {
-    return new Map(
-      searchDocuments.map((document) => [document.numericId, document.control]),
+    }
+    const existing = searchCache.get(normalizedCatalogKey);
+    if (isFreshCacheEntry(existing, controls, practices, vocabularyRegistry)) {
+      return existing;
+    }
+    return buildSearchCacheEntry(
+      normalizedCatalogKey,
+      controls,
+      practices,
+      vocabularyRegistry,
     );
-  }, [searchDocuments]);
+  }, [normalizedCatalogKey, controls, practices, vocabularyRegistry, shouldCache]);
 
-  const searchDocumentMap = useMemo(() => {
-    return new Map(
-      searchDocuments.map((document) => [document.numericId, document]),
-    );
-  }, [searchDocuments]);
+  useEffect(() => {
+    if (!shouldCache) return;
+    const existing = searchCache.get(normalizedCatalogKey);
+    if (existing === cacheEntry) {
+      searchCache.delete(normalizedCatalogKey);
+      searchCache.set(normalizedCatalogKey, existing);
+      return;
+    }
+    if (searchCache.has(normalizedCatalogKey)) {
+      searchCache.delete(normalizedCatalogKey);
+    }
+    searchCache.set(normalizedCatalogKey, cacheEntry);
+    if (searchCache.size > MAX_SEARCH_CACHE_ENTRIES) {
+      const oldestKey = searchCache.keys().next().value as string;
+      searchCache.delete(oldestKey);
+    }
+  }, [normalizedCatalogKey, cacheEntry, shouldCache]);
 
-  const indexes = useMemo(() => {
-    const nextIndexes = createSearchIndexes();
-    searchDocuments.forEach((document) => {
-      nextIndexes.controlIds.add(document.numericId, document.controlIdText);
-      nextIndexes.titles.add(document.numericId, document.titleText);
-      nextIndexes.links.add(document.numericId, document.linkText);
-      nextIndexes.metadata.add(document.numericId, document.metadataText);
-      nextIndexes.content.add(document.numericId, document.contentText);
-    });
-
-    return nextIndexes;
-  }, [searchDocuments]);
+  const { searchDocuments, controlMap, searchDocumentMap, indexes } = cacheEntry;
 
   const results = useMemo(() => {
     if (!query.trim() || controls.length === 0) {

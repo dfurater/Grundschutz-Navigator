@@ -60,6 +60,7 @@ export function SearchPage() {
     query,
     vocabularyRegistry,
     catalog?.practices ?? [],
+    catalog?.catalogKey,
   );
   const [resultsUiState, setResultsUiState] = useState<ResultsUiState>(() =>
     createResultsUiState(query),

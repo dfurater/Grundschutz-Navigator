@@ -277,7 +277,7 @@ CatalogContext (Einstiegskatalog eager, weitere bedarfsgerecht)
         ▼
 Feature-Komponenten und Hooks
 • useFilteredControls()      → gefilterte Steuerungen
-• useSearch()                → FlexSearch-Volltextsuche
+• useSearch()                → FlexSearch-Volltextsuche mit kataloggescoptem LRU-Cache (GSPP-218, `MAX_SEARCH_CACHE_ENTRIES = 3`)
 • resolveControlVocabularies() → Vokabular-Auflösung
 ```
 
@@ -595,6 +595,109 @@ Mobile in Suchrelevanzreihenfolge), Auswahl heißt `grundschutz-auswahl.csv`,
 der Gesamtkatalogexport bleibt `grundschutz-gesamtkatalog.csv`. Der
 Suchbegriff selbst fließt nie in Dateiname, Log oder zusätzlichen Speicher
 ein.
+
+### Suchindex-Cache (GSPP-218)
+
+`useSearch` baut je Katalog fünf FlexSearch-Indizes (`controlIds`, `titles`,
+`links`, `metadata`, `content`) aus den normalisierten Suchdokumenten. Der
+Aufbau ist im Production-Build nicht trivial – gemessen mit
+`scripts/measure-search-production.mjs` (`npm run measure-search`), das den
+Production-Build erzeugt (`npm run build:local` mit `BUILD_BASE=/`), ihn über
+`vite preview` ausliefert und mit Playwright/Chromium fährt:
+
+* **Vorbedingung** im Runner geprüft: `public/data/*.json` vorhanden, sonst
+  Abbruch mit Hinweis `npm run fetch-catalog`.
+* **Long Tasks** via `PerformanceObserver` (`longtask`), **vor** App-Bootstrap
+  mit `page.addInitScript()` registriert. Vor jedem Auslesen läuft eine
+  Beruhigungsphase von `LONG_TASK_SETTLE_MS`, gefolgt von `takeRecords()`: ein
+  Long Task des abschließenden Renderings wird erst nach seinem Ende
+  beobachtbar und asynchron zugestellt, ein sofortiges Auslesen würde ihn
+  verlieren und fälschlich „keine Long Tasks" ausweisen.
+* **Index-Build-Zeit** getrennt von Navigation und Rendering: jeder Aufbau
+  hinterlässt einen User-Timing-Eintrag `gspp:search-index-build`
+  (`SEARCH_INDEX_BUILD_MEASURE` in `src/features/search/useSearch.ts`). Der
+  Runner verwirft die Einträge vor jeder Phase und summiert danach, was neu
+  entstanden ist. **Bleibt die Liste leer, wurde kein Index gebaut** – im
+  Artefakt als `null` festgehalten, nicht als `0 ms`.
+* **Ablauf je Iteration**: `/suche?q=ISMS` direkt ansteuern (Query-Parameter
+  `q`, `AppShell.tsx:149`), Zeit bis Ergebnisliste (`[data-testid="search-results-desktop"]`
+  / Mobile) messen – **kalt** (ohne Cache). Dann erste Ergebniszeile
+  anklicken (`/katalog/:catalogKey/kontrolle/:altIdentifier`), `page.goBack()`,
+  erneut Zeit bis Ergebnisliste messen – **warm** (Cache). Danach Reload und
+  erneut kalt als Kontrolle. Gemessen wird ab `goto`/`goBack`/`reload` bis zu
+  sichtbaren Ergebniszeilen, also inklusive Navigation und App-Bootstrap; die
+  Beruhigungsphase liegt außerhalb dieser Zeitnahme.
+* **Läufe**: je 5 Iterationen ungedrosselt (Desktop) und mit
+  `Emulation.setCPUThrottlingRate 4×` (Mobile, dieselbe Drosselung, die PSI für
+  Moto G4 ansetzt), ausgewertet über Median und Streuung statt Einzelwert.
+  Chromium `151.0.7922.34` (Playwright 1.62.1).
+* **Gerätekonfiguration**: das Mobile-Profil nutzt den Playwright-Deskriptor
+  `devices['Pixel 7']`. Der Runner liest die **tatsächlich wirksamen**
+  Parameter erst auf der geladenen Seite aus und schreibt sie ins Artefakt
+  (412×839, DPR 2.625, Touch aktiv). Auf `about:blank`
+  greift `width=device-width` noch nicht, dort meldet derselbe Kontext ein
+  irreführendes Layout-Viewport — die Tabelle unten gibt deshalb ausschließlich
+  die protokollierten Werte wieder, nicht die des Geräte-Deskriptors.
+
+Ergebnis für Katalog `gspp` (~979 Controls) bei `q=ISMS`, Snapshot
+`8a97764` – die Tabelle unten ist manuell aus `docs/SEARCH_MEASUREMENT.json`
+übertragen, es existiert kein automatischer Generator oder Konsistenzcheck
+gegen dieses Artefakt (Dezimalpunkt wie im Artefakt, Zeiten in Millisekunden):
+
+| Profil | Kalt (Median) | Index-Build kalt (Median) | Warm (Median) | Long Tasks kalt | Long Tasks warm |
+|---|---|---|---|---|---|
+| Desktop 1× (1280×720, DPR 1) | **312.86 ms** (311.06–406.18) | **246.6 ms** | **2.19 ms** (1.52–7.26) | 1× 247–272 ms | keine |
+| Mobile 4× (Pixel 7, 412×839, DPR 2.625, Touch) | **1156.31 ms** (1136.28–1341.83) | **1009.4 ms** | **25.96 ms** (12.77–33.72) | 1–3× 52–1081 ms | keine |
+
+Kalt sprengt das Frame-Budget (16 ms) und die Long-Task-Schwelle (50 ms)
+deutlich; der Indexaufbau allein trägt davon **246.6 ms** (Desktop)
+beziehungsweise **1009.4 ms** (Mobile 4×). Warm bleibt bei
+**2.19 ms** beziehungsweise **25.96 ms**, ohne einen einzigen Long Task.
+
+Entscheidend für das Akzeptanzkriterium ist nicht die Warmzeit allein, sondern
+`medianWarmIndexBuildMs: null` bei `warmIndexBuildRuns: 0` in beiden Profilen:
+In keinem der 5 Läufe je Profil entstand beim Zurücknavigieren ein
+User-Timing-Eintrag. Der zweite Mount baut also nachweislich keine Indizes neu,
+statt sie nur schneller zu bauen. Die zweite kalte Messung nach Reload
+(317.37 ms Desktop, 1149.93 ms Mobile) bestätigt die
+Reproduzierbarkeit der Kaltwerte. Reproduktion:
+`npm run fetch-catalog && npm run measure-search`.
+
+Der bisherige komponentenlokale `useMemo`
+verwarf die Indizes beim Unmount der `SearchPage` (Detail → Zurück) und
+baute sie für unveränderte Eingaben neu. Deshalb hält `useSearch` seit
+GSPP-218 einen **kataloggescopten, begrenzten LRU-Cache** (`MAX_SEARCH_CACHE_ENTRIES = 3`):
+
+* Schlüssel: stabiler `catalogKey` (aus `sourceRegistry.GRU-239`) plus
+  Objektidentität von `controls`, `practices` und `vocabularyRegistry`. Die
+  Frischeprüfung (`isFreshCacheEntry`) vergleicht diese drei Referenzen,
+  ausdrücklich **nicht** die Array-Länge: ein gleich großes Ersatz-Array trägt
+  anderen Inhalt und muss den Index neu aufbauen. Neue Referenzen invalidieren
+  damit deterministisch; keine Ergebnis- oder Indexvermischung zwischen
+  Katalogen.
+* Begrenzung: LRU mit fester Obergrenze (aktuell 3 = Anzahl `supported`-
+  Kataloge). Überschreitet der Cache die Grenze, wird der älteste Eintrag
+  verworfen — kein unbegrenzter Speicheraufbau bei Katalogwechseln. Die
+  Einfügereihenfolge wird beim Rebuild via `delete`+`set` korrekt
+  aufgefrischt, damit ein frisch invalidierter Eintrag nicht als ältester
+  gilt und vorschnell verdrängt wird.
+* Rückkehr zu einem zuvor besuchten Katalog trifft nur innerhalb des
+  Budgets; darüber hinaus wird neu aufgebaut.
+* `SearchPage` übergibt `catalog?.catalogKey` explizit an `useSearch`, damit
+  der Cache den stabilen Katalogbezeichner nutzen kann. Leere Controls oder
+  fehlender `catalogKey` (transienter Ladezustand) legen keinen Cache-Eintrag
+  an und belegen kein LRU-Budget — ein leerer `__default__`-Eintrag kann
+  keinen echten Katalog verdrängen.
+* Mutationen des Modul-Caches laufen ausschließlich in einem `useEffect`
+  (Commit-Phase), nicht in `useMemo`/Render — damit erzeugen weder
+  StrictMode double-invoke noch abgebrochene Concurrent-Renders verwaiste
+  Evictions.
+
+Der Cache liegt als Modul-eigenes `Map<string, SearchCacheEntry>` in
+`src/features/search/useSearch.ts` (`clearSearchCache`, `getSearchCacheSize`,
+`getSearchCacheKeys`, `getSearchCacheEntry` für Tests) und ist strikt
+UI-seitig — kein zusätzlicher Speicher im `CatalogContext` und kein
+Persistenz- oder Netzwerkzugriff.
 
 ## Filter-System
 
