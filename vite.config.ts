@@ -200,6 +200,7 @@ export default defineConfig(({ command }) => ({
     // Korpus-Cache; im Default-Lauf hätte er die Daten nie garantiert.
     exclude: [
       ...configDefaults.exclude,
+      '**/.worktrees/**',
       'src/test/browser/**/*.browser.test.ts',
       'scripts/profileResolutionCorpus.test.ts',
     ],
