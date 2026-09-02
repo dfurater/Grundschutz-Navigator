@@ -78,14 +78,55 @@ async function buildLocal() {
 
 function startPreview(port) {
   console.log(`Starte vite preview auf Port ${port}...`);
+  // detached: true, damit `npx` und der von ihm gestartete vite-Serverprozess
+  // dieselbe Prozessgruppe teilen — nur so lässt sich der ganze Baum beenden,
+  // statt nur den npx-Wrapper zu treffen und den Server verwaist weiterlaufen
+  // zu lassen.
   const child = spawn('npx', ['vite', 'preview', '--port', String(port), '--host', '127.0.0.1'], { // NOSONAR - fixed preview command, PATH from trusted npx
     cwd: root,
     stdio: ['ignore', 'pipe', 'pipe'],
+    detached: true,
   });
   let output = '';
   child.stdout.on('data', (d) => { output += d.toString(); });
   child.stderr.on('data', (d) => { output += d.toString(); });
   return { child, output: () => output };
+}
+
+/** Wartet auf das tatsächliche Prozessende (nicht nur auf Signalversand), begrenzt durch timeoutMs. */
+function waitForExit(child, timeoutMs) {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(true);
+  return new Promise((resolvePromise) => {
+    const timer = setTimeout(() => resolvePromise(false), timeoutMs);
+    child.once('exit', () => {
+      clearTimeout(timer);
+      resolvePromise(true);
+    });
+  });
+}
+
+/**
+ * Beendet die gesamte Prozessgruppe des Preview-Servers. `child.killed` zeigt nur an,
+ * dass ein Signal gesendet wurde, nicht dass der Prozess beendet ist — deshalb wird
+ * hier auf das `exit`-Event gewartet statt auf dieses Flag. Fällt auf `child.kill()`
+ * zurück, falls die Gruppen-Signalisierung (Windows, kein eigener pid-Besitz) fehlschlägt.
+ */
+async function stopPreview(child) {
+  console.log('Beende Preview-Server...');
+  const signalGroup = (signal) => {
+    try {
+      process.kill(-child.pid, signal);
+    } catch {
+      child.kill(signal);
+    }
+  };
+  signalGroup('SIGTERM');
+  if (await waitForExit(child, 3000)) return;
+  console.warn('Preview-Server reagierte nicht auf SIGTERM, sende SIGKILL...');
+  signalGroup('SIGKILL');
+  if (!(await waitForExit(child, 2000))) {
+    console.warn('Preview-Server blieb nach SIGKILL unbeendet.');
+  }
 }
 
 async function waitForPreview(port, timeoutMs = 15000) {
@@ -342,10 +383,7 @@ async function main() {
     console.log(`Wrote ${outPath}`);
     console.log(JSON.stringify(output, null, 2));
   } finally {
-    console.log('Beende Preview-Server...');
-    preview.child.kill('SIGTERM');
-    await delay(1000);
-    if (!preview.child.killed) preview.child.kill('SIGKILL');
+    await stopPreview(preview.child);
   }
 }
 
