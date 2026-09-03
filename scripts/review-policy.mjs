@@ -508,11 +508,26 @@ export function renderGitarAdapter() {
 }
 
 /**
- * Verzeichnis der Gitar-Reviewregeln. Alles darin wird von Gitar gelesen —
- * eine zusätzliche, von Hand angelegte Datei wäre eine Regel an der
- * Autorenquelle vorbei und wird deshalb als Drift gewertet.
+ * Verzeichnis der Gitar-Reviewregeln — der Ablageort des erzeugten Adapters.
  */
 export const GITAR_REVIEW_DIRECTORY = '.gitar/review';
+
+/**
+ * Alle Anweisungsflächen, die Gitar aus dem Repository liest und die
+ * `.gitignore` hier **nicht** ausschließt. Jede Datei darin wirkt auf den
+ * Review; eine, die nicht aus der Autorenquelle stammt, ist eine Reviewregel an
+ * ihr vorbei — genau die Umgehung, die dieser Guard verhindern soll.
+ *
+ * Gitar liest laut Hersteller zusätzlich `AGENTS.md`, `CLAUDE.md` und
+ * `.claude/skills/`. Die stehen hier nicht, weil `.gitignore` sie ausschließt:
+ * Sie können in diesem Repository gar nicht committet werden und damit auch
+ * nicht in den PR-Head geraten. Wird eine davon je aus `.gitignore` genommen,
+ * gehört sie in diese Liste.
+ */
+export const GITAR_INSTRUCTION_DIRECTORIES = ['.gitar', '.cursor', '.github/skills'];
+
+/** Einzelne Anweisungsdateien ohne Verzeichnis. */
+export const GITAR_INSTRUCTION_FILES = ['.cursorrules'];
 
 /** Die erzeugten Dateien, relativ zur Repository-Wurzel. */
 export const REVIEW_POLICY_TARGETS = [
@@ -529,12 +544,11 @@ export function renderReviewPolicy(policy = {}) {
   }));
 }
 
-/** Dateien unter `.gitar/review/`, die zu keinem Ziel gehören. */
-async function listUnexpectedGitarFiles(repoRoot, expected) {
-  const directory = path.join(repoRoot, GITAR_REVIEW_DIRECTORY);
+/** Alle Dateien unterhalb eines Verzeichnisses, relativ zur Repository-Wurzel. */
+async function listFilesBelow(repoRoot, directory) {
   let entries;
   try {
-    entries = await readdir(directory, { withFileTypes: true, recursive: true });
+    entries = await readdir(path.join(repoRoot, directory), { withFileTypes: true, recursive: true });
   } catch (error) {
     if (error?.code === 'ENOENT') return [];
     throw error;
@@ -542,9 +556,32 @@ async function listUnexpectedGitarFiles(repoRoot, expected) {
 
   return entries
     .filter((entry) => entry.isFile())
-    .map((entry) => path.relative(repoRoot, path.join(entry.parentPath, entry.name)))
-    .filter((relative) => !expected.has(relative))
-    .sort();
+    .map((entry) => path.relative(repoRoot, path.join(entry.parentPath, entry.name)));
+}
+
+/**
+ * Dateien auf einer Gitar-Anweisungsfläche, die zu keinem erzeugten Ziel
+ * gehören. Der Scan deckt bewusst den ganzen Baum ab, nicht nur den Ablageort
+ * des Adapters: Eine Datei unter `.gitar/skills/` oder eine `.cursorrules`
+ * würde von Gitar genauso angewendet, ohne je aus der Autorenquelle zu stammen.
+ */
+async function listUnmanagedInstructionFiles(repoRoot, expected) {
+  const found = [];
+
+  for (const directory of GITAR_INSTRUCTION_DIRECTORIES) {
+    found.push(...(await listFilesBelow(repoRoot, directory)));
+  }
+
+  for (const file of GITAR_INSTRUCTION_FILES) {
+    try {
+      await readFile(path.join(repoRoot, file));
+      found.push(file);
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+  }
+
+  return found.filter((relative) => !expected.has(relative)).sort();
 }
 
 /**
@@ -575,7 +612,7 @@ export async function checkReviewPolicy({ repoRoot = REPO_ROOT, policy = {} } = 
   }
 
   const expected = new Set(rendered.map((target) => target.path));
-  for (const unexpected of await listUnexpectedGitarFiles(repoRoot, expected)) {
+  for (const unexpected of await listUnmanagedInstructionFiles(repoRoot, expected)) {
     problems.push(`nicht aus der Autorenquelle erzeugt: ${unexpected}`);
   }
 

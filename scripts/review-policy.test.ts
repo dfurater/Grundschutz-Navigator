@@ -5,6 +5,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
+  GITAR_INSTRUCTION_DIRECTORIES,
+  GITAR_INSTRUCTION_FILES,
   GITAR_REVIEW_DIRECTORY,
   REPO_ROOT,
   REVIEW_POLICY_TARGETS,
@@ -87,6 +89,21 @@ describe('review-policy Autorenquelle', () => {
     const rule = globalRules[0];
     expect(() => assertPolicyIsWellFormed({ global: [{ ...rule, body: `${rule.key}: ${rule.body}` }] }))
       .toThrow(/Greptile-Importpräfix/);
+  });
+
+  it('weist einen ungültigen Regelschlüssel zurück', () => {
+    expect(() => assertPolicyIsWellFormed({ global: [{ ...globalRules[0], key: 'G0_Sprache' }] }))
+      .toThrow(/Ungültiger Regelschlüssel: G0_Sprache/);
+  });
+
+  it('weist eine Regel ohne Text zurück', () => {
+    expect(() => assertPolicyIsWellFormed({ global: [{ ...globalRules[0], body: '   \n  ' }] }))
+      .toThrow(/Regel ohne Text: G1-sprache/);
+  });
+
+  it('weist einen doppelten Datei-Kontext zurück', () => {
+    expect(() => assertPolicyIsWellFormed({ files: [fileContexts[0], fileContexts[0]] }))
+      .toThrow(/Doppelter Datei-Kontext: docs\/ARCHITECTURE\.md/);
   });
 });
 
@@ -181,6 +198,65 @@ describe('review-policy Drift-Check', () => {
 
     await expect(checkReviewPolicy({ repoRoot: root }))
       .rejects.toThrow(/nicht aus der Autorenquelle erzeugt: \.gitar\/review\/extra\/schatten\.md/);
+  });
+
+  /**
+   * Gitar liest nicht nur `.gitar/review/`, sondern den ganzen `.gitar`-Baum,
+   * `.cursorrules`, `.cursor/rules/*` und `.github/skills/`. Eine Datei dort
+   * wirkt genauso auf den Review — ein Guard, der nur den Adapterordner prüft,
+   * ließe die Umgehung offen, die er verhindern soll.
+   */
+  it.each([
+    ['.gitar/skills/umgehung.md'],
+    ['.gitar/rules/umgehung.md'],
+    ['.gitar/direkt.md'],
+    ['.cursor/rules/umgehung.md'],
+    ['.github/skills/umgehung.md'],
+    ['.cursorrules'],
+  ])('schlägt bei einer Anweisungsdatei unter %s fehl', async (relative) => {
+    const root = await createGeneratedFixtureRoot();
+    const absolute = path.join(root, relative);
+    await mkdir(path.dirname(absolute), { recursive: true });
+    await writeFile(absolute, '# Schattenregel\n', 'utf8');
+
+    await expect(checkReviewPolicy({ repoRoot: root }))
+      .rejects.toThrow(`nicht aus der Autorenquelle erzeugt: ${relative}`);
+  });
+
+  it('deckt jede in der Autorenquelle geführte Anweisungsfläche ab', () => {
+    expect(GITAR_INSTRUCTION_DIRECTORIES).toEqual(['.gitar', '.cursor', '.github/skills']);
+    expect(GITAR_INSTRUCTION_FILES).toEqual(['.cursorrules']);
+    expect(GITAR_INSTRUCTION_DIRECTORIES.some((directory) => GITAR_REVIEW_DIRECTORY.startsWith(`${directory}/`)))
+      .toBe(true);
+  });
+
+  /**
+   * Eine fehlende Anweisungsfläche ist kein Fehler — sie enthält dann nichts,
+   * was am Guard vorbei wirken könnte. Gemeldet wird allein die fehlende
+   * Zieldatei.
+   */
+  it('behandelt fehlende Anweisungsflächen als leer', async () => {
+    const root = await createGeneratedFixtureRoot();
+    await rm(path.join(root, '.gitar'), { recursive: true });
+
+    await expect(checkReviewPolicy({ repoRoot: root }))
+      .rejects.toThrow(/fehlt: \.gitar\/review\/invarianten\.md/);
+    await expect(checkReviewPolicy({ repoRoot: root }))
+      .rejects.not.toThrow(/nicht aus der Autorenquelle erzeugt/);
+  });
+
+  /**
+   * Ein Lesefehler, der kein ENOENT ist, wird durchgereicht statt als „fehlt"
+   * gedeutet: Ein unlesbares Ziel ist ein anderer Zustand als ein fehlendes
+   * und darf nicht in dieselbe Meldung fallen.
+   */
+  it('reicht einen Lesefehler durch, der kein ENOENT ist', async () => {
+    const root = await createGeneratedFixtureRoot();
+    const document = path.join(root, 'docs/REVIEW_INVARIANTS.md');
+    await rm(document);
+    await mkdir(document);
+
+    await expect(checkReviewPolicy({ repoRoot: root })).rejects.toThrow(/EISDIR|EPERM|illegal operation/i);
   });
 
   it('stellt den geprüften Stand mit writeReviewPolicy wieder her', async () => {
