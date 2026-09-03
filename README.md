@@ -59,18 +59,26 @@ IT-Sicherheitsbeauftragte, Berater:innen, Auditor:innen, Studierende und alle, d
 ```bash
 git clone https://github.com/dfurater/Grundschutz-Navigator.git
 cd Grundschutz-Navigator
-npm ci
-cp .env.local.example .env.local   # Impressum-Platzhalter, für lokale Dev optional
-npm run fetch-catalog              # BSI-Daten nach public/data/
+npm run setup                      # npm ci, Schema-Verifikation, Katalog-Fetch, Frische-Check
 npm run dev                        # http://localhost:5173
 ```
 
-`.env.local` wird **nicht** eingecheckt und enthält Impressum-Felder nach § 5 DDG.
+`npm run setup` stellt aus einem frischen Checkout eine grüne Testbasis
+her: `npm ci --ignore-scripts`, die offline Schema-Verifikation, den
+Katalog-Fetch gegen die in `upstream-manifest.json` gepinnte
+Snapshot-SHA und eine erneute Frische-Prüfung. Bereits aktuelle
+Katalogdaten überspringt der Lauf; `npm run setup -- --force` erzwingt
+den Fetch erneut. Optional `cp .env.local.example .env.local` für die
+Impressum-Platzhalter — ohne sie zeigt die App im lokalen Dev-Server
+einen Hinweis, `npm run test` und `npm run build` laufen davon
+unberührt. `.env.local` wird **nicht** eingecheckt und enthält
+Impressum-Felder nach § 5 DDG.
 
 ### Weitere Skripte
 
 | Befehl | Zweck |
 |---|---|
+| `npm run setup` | frisches Checkout bootstrappen: `npm ci --ignore-scripts`, Schema-Verifikation, gepinnter Katalog-Fetch, Frische-Check (`--force` erzwingt den Fetch erneut) |
 | `npm run dev` | Dev-Server mit HMR |
 | `npm run build` | Production-Build (GitHub-Pages-Base `/Grundschutz-Navigator/`) |
 | `npm run build:local` | Production-Build ohne Pages-Präfix (`BUILD_BASE=/`) |
