@@ -544,6 +544,17 @@ export function renderReviewPolicy(policy = {}) {
   }));
 }
 
+/**
+ * Ordnet zwei Pfade über ihre Codepoints. Explizit statt über die
+ * Standardsortierung oder localeCompare: Die Meldung eines Guards muss über
+ * Plattformen und Locales hinweg gleich lauten, sonst lässt sich ein
+ * CI-Fehlschlag nicht mit einem lokalen Lauf vergleichen.
+ */
+function compareRelativePaths(left, right) {
+  if (left < right) return -1;
+  return left > right ? 1 : 0;
+}
+
 /** Alle Dateien unterhalb eines Verzeichnisses, relativ zur Repository-Wurzel. */
 async function listFilesBelow(repoRoot, directory) {
   let entries;
@@ -581,11 +592,7 @@ async function listUnmanagedInstructionFiles(repoRoot, expected) {
     }
   }
 
-  // Explizite Vergleichsfunktion statt der Standardsortierung: Die Meldung
-  // eines Guards muss über Plattformen und Locales hinweg reproduzierbar sein.
-  return found
-    .filter((relative) => !expected.has(relative))
-    .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+  return found.filter((relative) => !expected.has(relative)).sort(compareRelativePaths);
 }
 
 /**
