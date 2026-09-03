@@ -583,19 +583,23 @@ async function listFilesBelow(repoRoot, directory) {
 }
 
 /**
- * Dateien auf einer Gitar-Anweisungsfläche, die zu keinem erzeugten Ziel
- * gehören. Der Scan deckt bewusst den ganzen Baum ab, nicht nur den Ablageort
- * des Adapters: Eine Datei unter `.gitar/skills/` oder eine `.cursorrules`
- * würde von Gitar genauso angewendet, ohne je aus der Autorenquelle zu stammen.
+ * Liest die im Git-Index geführten Pfade einer Pfadmenge.
+ *
+ * Fail-closed und ohne Ausnahme: Jeder Fehlschlag — kein Git-Repository, kein
+ * `git` im PATH, ein defekter Index, ein Zugriffsfehler — wird zum Fehler und
+ * nicht zu einem leeren Ergebnis. Ein nicht beantwortbares „ist diese Datei
+ * versioniert" ist kein „nein". Ein Guard, der eine gescheiterte Abfrage als
+ * bestanden verbucht, prüft genau dann nicht mehr, wenn er gebraucht wird.
  */
 export async function listTrackedFilesWithGit(repoRoot, pathspecs) {
   try {
     const { stdout } = await execFileAsync('git', ['ls-files', '-z', '--', ...pathspecs], { cwd: repoRoot });
     return stdout.split('\0').filter(Boolean);
-  } catch {
-    // Kein Git-Repository oder kein git im PATH. Dann gibt es keinen Index, in
-    // dem eine erzwungen versionierte Datei stehen könnte.
-    return null;
+  } catch (error) {
+    const detail = String(error?.stderr || error?.message || error).trim().split('\n')[0];
+    throw new ReviewPolicyError(
+      `Git-Index nicht lesbar, ausgeschlossene Anweisungsflächen bleiben ungeprüft: ${detail}`,
+    );
   }
 }
 
@@ -605,9 +609,15 @@ export async function listTrackedFilesWithGit(repoRoot, pathspecs) {
  */
 async function listForceTrackedInstructionFiles(repoRoot, listTrackedFiles) {
   const tracked = await listTrackedFiles(repoRoot, GITIGNORED_INSTRUCTION_SURFACES);
-  return tracked === null ? [] : [...tracked].sort(compareRelativePaths);
+  return [...tracked].sort(compareRelativePaths);
 }
 
+/**
+ * Dateien auf einer Gitar-Anweisungsfläche, die zu keinem erzeugten Ziel
+ * gehören. Der Scan deckt bewusst den ganzen Baum ab, nicht nur den Ablageort
+ * des Adapters: Eine Datei unter `.gitar/skills/` oder eine `.cursorrules`
+ * würde von Gitar genauso angewendet, ohne je aus der Autorenquelle zu stammen.
+ */
 async function listUnmanagedInstructionFiles(repoRoot, expected) {
   const found = [];
 
@@ -636,6 +646,9 @@ async function listUnmanagedInstructionFiles(repoRoot, expected) {
 export async function checkReviewPolicy({
   repoRoot = REPO_ROOT,
   policy = {},
+  // Voreinstellung ist der echte Git-Index. Ein Aufrufer ohne Repository — etwa
+  // eine Testfixture — muss ausdrücklich einen eigenen Leser übergeben; still
+  // durchwinken kann der Guard nicht.
   listTrackedFiles = listTrackedFilesWithGit,
 } = {}) {
   const rendered = renderReviewPolicy(policy);
