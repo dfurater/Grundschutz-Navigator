@@ -39,9 +39,13 @@
  * gehört dorthin, nicht in die Autorenquelle.
  */
 
+import { execFile } from 'node:child_process';
 import { readFile, readdir, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const execFileAsync = promisify(execFile);
 
 /** Repository-Wurzel, unabhängig vom Arbeitsverzeichnis des Aufrufers. */
 export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -513,21 +517,29 @@ export function renderGitarAdapter() {
 export const GITAR_REVIEW_DIRECTORY = '.gitar/review';
 
 /**
- * Alle Anweisungsflächen, die Gitar aus dem Repository liest und die
- * `.gitignore` hier **nicht** ausschließt. Jede Datei darin wirkt auf den
- * Review; eine, die nicht aus der Autorenquelle stammt, ist eine Reviewregel an
- * ihr vorbei — genau die Umgehung, die dieser Guard verhindern soll.
- *
- * Gitar liest laut Hersteller zusätzlich `AGENTS.md`, `CLAUDE.md` und
- * `.claude/skills/`. Die stehen hier nicht, weil `.gitignore` sie ausschließt:
- * Sie können in diesem Repository gar nicht committet werden und damit auch
- * nicht in den PR-Head geraten. Wird eine davon je aus `.gitignore` genommen,
- * gehört sie in diese Liste.
+ * Anweisungsflächen, die Gitar aus dem Repository liest und die `.gitignore`
+ * hier **nicht** ausschließt. Jede Datei darin wirkt auf den Review; eine, die
+ * nicht aus der Autorenquelle stammt, ist eine Reviewregel an ihr vorbei —
+ * genau die Umgehung, die dieser Guard verhindern soll. Geprüft wird das
+ * Dateisystem: Was hier liegt, gehört entweder zur Autorenquelle oder ist Drift.
  */
 export const GITAR_INSTRUCTION_DIRECTORIES = ['.gitar', '.cursor', '.github/skills'];
 
 /** Einzelne Anweisungsdateien ohne Verzeichnis. */
 export const GITAR_INSTRUCTION_FILES = ['.cursorrules'];
+
+/**
+ * Anweisungsflächen, die Gitar ebenfalls liest, die `.gitignore` hier aber
+ * ausschließt. Sie liegen in jedem Arbeitsbaum als lokale Agentendateien und
+ * dürfen dort liegen — ein Dateisystemscan würde sie deshalb dauerhaft falsch
+ * melden.
+ *
+ * `.gitignore` verhindert allerdings kein `git add -f`: Eine dieser Dateien
+ * lässt sich erzwungen versionieren und wäre dann im PR-Head, wo Gitar sie
+ * liest. Für diese Flächen ist die Frage deshalb nicht „liegt sie da", sondern
+ * „ist sie versioniert" — geprüft gegen den Git-Index, nicht gegen die Platte.
+ */
+export const GITIGNORED_INSTRUCTION_SURFACES = ['AGENTS.md', 'CLAUDE.md', '.claude/skills'];
 
 /** Die erzeugten Dateien, relativ zur Repository-Wurzel. */
 export const REVIEW_POLICY_TARGETS = [
@@ -576,6 +588,26 @@ async function listFilesBelow(repoRoot, directory) {
  * des Adapters: Eine Datei unter `.gitar/skills/` oder eine `.cursorrules`
  * würde von Gitar genauso angewendet, ohne je aus der Autorenquelle zu stammen.
  */
+export async function listTrackedFilesWithGit(repoRoot, pathspecs) {
+  try {
+    const { stdout } = await execFileAsync('git', ['ls-files', '-z', '--', ...pathspecs], { cwd: repoRoot });
+    return stdout.split('\0').filter(Boolean);
+  } catch {
+    // Kein Git-Repository oder kein git im PATH. Dann gibt es keinen Index, in
+    // dem eine erzwungen versionierte Datei stehen könnte.
+    return null;
+  }
+}
+
+/**
+ * Ausgeschlossene Anweisungsflächen, die trotzdem im Git-Index stehen — also
+ * mit `git add -f` an `.gitignore` vorbei versioniert wurden.
+ */
+async function listForceTrackedInstructionFiles(repoRoot, listTrackedFiles) {
+  const tracked = await listTrackedFiles(repoRoot, GITIGNORED_INSTRUCTION_SURFACES);
+  return tracked === null ? [] : [...tracked].sort(compareRelativePaths);
+}
+
 async function listUnmanagedInstructionFiles(repoRoot, expected) {
   const found = [];
 
@@ -601,7 +633,11 @@ async function listUnmanagedInstructionFiles(repoRoot, expected) {
  * Fail-closed: fehlende Datei, abweichender Inhalt und überzählige Datei unter
  * `.gitar/review/` sind je ein Fehler, kein Hinweis.
  */
-export async function checkReviewPolicy({ repoRoot = REPO_ROOT, policy = {} } = {}) {
+export async function checkReviewPolicy({
+  repoRoot = REPO_ROOT,
+  policy = {},
+  listTrackedFiles = listTrackedFilesWithGit,
+} = {}) {
   const rendered = renderReviewPolicy(policy);
   const problems = [];
 
@@ -625,6 +661,10 @@ export async function checkReviewPolicy({ repoRoot = REPO_ROOT, policy = {} } = 
   const expected = new Set(rendered.map((target) => target.path));
   for (const unexpected of await listUnmanagedInstructionFiles(repoRoot, expected)) {
     problems.push(`nicht aus der Autorenquelle erzeugt: ${unexpected}`);
+  }
+
+  for (const tracked of await listForceTrackedInstructionFiles(repoRoot, listTrackedFiles)) {
+    problems.push(`von .gitignore ausgeschlossen, aber versioniert: ${tracked}`);
   }
 
   if (problems.length > 0) {

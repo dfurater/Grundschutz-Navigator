@@ -1,13 +1,16 @@
 // @vitest-environment node
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { execFile } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   GITAR_INSTRUCTION_DIRECTORIES,
   GITAR_INSTRUCTION_FILES,
   GITAR_REVIEW_DIRECTORY,
+  GITIGNORED_INSTRUCTION_SURFACES,
   REPO_ROOT,
   REVIEW_POLICY_TARGETS,
   ReviewPolicyError,
@@ -21,6 +24,7 @@ import {
   writeReviewPolicy,
 } from './review-policy.mjs';
 
+const execFileAsync = promisify(execFile);
 const temporaryRoots: string[] = [];
 
 /**
@@ -292,5 +296,58 @@ describe('review-policy Drift-Check', () => {
 
     await writeReviewPolicy({ repoRoot: root });
     await expect(checkReviewPolicy({ repoRoot: root })).resolves.toHaveLength(2);
+  });
+});
+
+/**
+ * `AGENTS.md`, `CLAUDE.md` und `.claude/skills/` sind in diesem Repository
+ * gitignored, liegen aber in jedem Arbeitsbaum — ein Dateisystemscan würde sie
+ * dauerhaft falsch melden. `.gitignore` verhindert jedoch kein `git add -f`:
+ * Erzwungen versioniert landen sie im PR-Head, wo Gitar sie liest. Für diese
+ * Flächen zählt deshalb der Git-Index, nicht die Platte.
+ */
+describe('review-policy Guard gegen erzwungen versionierte Anweisungsflächen', () => {
+  it('führt genau die von .gitignore ausgeschlossenen Gitar-Flächen', () => {
+    expect(GITIGNORED_INSTRUCTION_SURFACES).toEqual(['AGENTS.md', 'CLAUDE.md', '.claude/skills']);
+  });
+
+  it('meldet eine erzwungen versionierte Anweisungsdatei als Drift', async () => {
+    const root = await createGeneratedFixtureRoot();
+
+    await expect(checkReviewPolicy({ repoRoot: root, listTrackedFiles: async () => ['CLAUDE.md', 'AGENTS.md'] }))
+      .rejects.toThrow(/von \.gitignore ausgeschlossen, aber versioniert: AGENTS\.md/);
+    await expect(checkReviewPolicy({ repoRoot: root, listTrackedFiles: async () => ['.claude/skills/x.md'] }))
+      .rejects.toThrow(/von \.gitignore ausgeschlossen, aber versioniert: \.claude\/skills\/x\.md/);
+  });
+
+  it('meldet nichts, wenn kein Git-Index vorliegt', async () => {
+    const root = await createGeneratedFixtureRoot();
+
+    await expect(checkReviewPolicy({ repoRoot: root, listTrackedFiles: async () => null }))
+      .resolves.toHaveLength(2);
+  });
+
+  /**
+   * Der Ende-zu-Ende-Nachweis mit echtem Git: genau der Ablauf, mit dem sich
+   * die Prüfung umgehen ließ — Datei in .gitignore, trotzdem `git add -f`.
+   */
+  it('erkennt ein echtes `git add -f` an .gitignore vorbei', async () => {
+    const root = await createGeneratedFixtureRoot();
+    const git = (...args: string[]) => execFileAsync('git', args, { cwd: root });
+
+    await git('init', '--quiet');
+    await writeFile(path.join(root, '.gitignore'), 'AGENTS.md\n', 'utf8');
+    await writeFile(path.join(root, 'AGENTS.md'), '# Lokale Agentendatei\n', 'utf8');
+
+    await expect(checkReviewPolicy({ repoRoot: root })).resolves.toHaveLength(2);
+
+    await git('add', '-f', 'AGENTS.md');
+
+    await expect(checkReviewPolicy({ repoRoot: root }))
+      .rejects.toThrow(/von \.gitignore ausgeschlossen, aber versioniert: AGENTS\.md/);
+  }, 30_000);
+
+  it('bestätigt, dass in diesem Repository keine dieser Flächen versioniert ist', async () => {
+    await expect(checkReviewPolicy({ repoRoot: REPO_ROOT })).resolves.toHaveLength(2);
   });
 });
