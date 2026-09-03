@@ -28,7 +28,12 @@ async function withValidManifest(rootDir: string) {
   return manifest.snapshotCommitSha as string;
 }
 
-type RecordedCall = { step: 'install' | 'verify' | 'fetch' | 'unknown'; args: string[]; env: NodeJS.ProcessEnv };
+type RecordedCall = {
+  step: 'install' | 'verify' | 'fetch' | 'unknown';
+  command: string;
+  args: string[];
+  env: NodeJS.ProcessEnv;
+};
 
 function classifyCall(args: string[]): RecordedCall['step'] {
   if (args.includes('ci')) return 'install';
@@ -41,7 +46,7 @@ function createStubRun(exitCodes: Partial<Record<RecordedCall['step'], number>> 
   const calls: RecordedCall[] = [];
   const run = vi.fn(async (command: string, args: string[], options: { env?: NodeJS.ProcessEnv } = {}) => {
     const step = classifyCall(args);
-    calls.push({ step, args, env: options.env ?? {} });
+    calls.push({ step, command, args, env: options.env ?? {} });
     return exitCodes[step] ?? 0;
   });
   return { run, calls };
@@ -112,6 +117,18 @@ describe('scripts/bootstrap.mjs — runBootstrap', () => {
     expect(result.fetchSkipped).toBe(false);
     const fetchCall = calls.find((call) => call.step === 'fetch');
     expect(fetchCall?.env.BSI_SNAPSHOT_SHA).toBe(pinnedSha);
+  });
+
+  it('übergibt die aus rootDir abgeleiteten Pfade an die Freshness-Prüfung statt gegen REPO_ROOT aufzulösen', async () => {
+    const { run } = createStubRun();
+    const freshness = createSequenceFreshness([freshResult()]);
+
+    await runBootstrap({ rootDir: scratchRoot, env: {}, run, log: () => {}, freshness });
+
+    expect(freshness).toHaveBeenCalledWith({
+      manifestPath: join(scratchRoot, 'upstream-manifest.json'),
+      metadataPath: join(scratchRoot, 'public', 'data', 'upstream-sources-metadata.json'),
+    });
   });
 
   it('lässt ein bereits gesetztes BSI_SNAPSHOT_SHA unangetastet', async () => {
@@ -300,6 +317,41 @@ describe('scripts/bootstrap.mjs — runBootstrap', () => {
     ).rejects.toThrow(BootstrapError);
 
     expect(calls.map((call) => call.step)).toEqual(['install', 'verify', 'fetch']);
+  });
+
+  it('startet npm über npm_execpath und process.execPath, wenn gesetzt (regulärer npm-run-Aufruf)', async () => {
+    const { run, calls } = createStubRun();
+    const freshness = createSequenceFreshness([freshResult()]);
+    const npmExecPath = '/irgendwo/npm-cli.js';
+
+    await runBootstrap({
+      rootDir: scratchRoot,
+      env: { npm_execpath: npmExecPath },
+      run,
+      log: () => {},
+      freshness,
+    });
+
+    const installCall = calls.find((call) => call.step === 'install');
+    expect(installCall?.command).toBe(process.execPath);
+    expect(installCall?.args).toEqual([npmExecPath, 'ci', '--ignore-scripts']);
+  });
+
+  it('fällt ohne npm_execpath auf den npm-Befehl zurück', async () => {
+    const { run, calls } = createStubRun();
+    const freshness = createSequenceFreshness([freshResult()]);
+
+    await runBootstrap({
+      rootDir: scratchRoot,
+      env: {},
+      run,
+      log: () => {},
+      freshness,
+    });
+
+    const installCall = calls.find((call) => call.step === 'install');
+    expect(installCall?.command).toBe(process.platform === 'win32' ? 'npm.cmd' : 'npm');
+    expect(installCall?.args).toEqual(['ci', '--ignore-scripts']);
   });
 });
 

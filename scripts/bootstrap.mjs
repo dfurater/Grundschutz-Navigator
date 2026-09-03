@@ -94,13 +94,74 @@ export function parseArgs(argv) {
 }
 
 /**
+ * Lädt den BSI-Katalog gegen die im Manifest gepinnte Snapshot-SHA und prüft
+ * die Frische danach erneut. Eigene Funktion aus zwei Gründen: Schritt 4+5
+ * sind der einzige Ast mit Netzzugriff und eigener Fehlersemantik (Manifest
+ * lesen, Pin bestimmen, Fetch starten, Nachprüfung) und drücken so die
+ * kognitive Komplexität von `runBootstrap` unter die Projektschwelle;
+ * ausserdem ist dies der natürliche Ort für den `rootDir`-Fix — `manifestPath`
+ * kommt unverändert vom Aufrufer statt erneut aus `rootDir` abgeleitet zu
+ * werden, damit Freshness-Check und Pin-Auflösung denselben Pfad ansehen.
+ */
+async function ensureCatalogFetched({ rootDir, env, run, log, freshness, manifestPath, metadataPath }) {
+  log('[4/7] Lade BSI-Katalog ...');
+  // Pin auf die eingecheckte Snapshot-SHA (siehe Kopfkommentar): ohne ihn
+  // würde fetch-catalog.mjs ungepinnt vom BSI-Default-Branch-HEAD laden.
+  const resolvedManifestPath = resolveTrackedManifestPath(manifestPath, { repoRoot: rootDir });
+  let manifest;
+  try {
+    manifest = await readTrackedManifest(resolvedManifestPath);
+  } catch (error) {
+    throw new BootstrapError(
+      `Eingecheckte upstream-manifest.json ist ungültig: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (!manifest) {
+    throw new BootstrapError(
+      'Eingecheckte upstream-manifest.json fehlt. Ohne gepinnte Snapshot-SHA würde ' +
+      'fetch-catalog.mjs ungepinnt vom BSI-Default-Branch-HEAD laden — Repository-Zustand wiederherstellen.',
+    );
+  }
+
+  const pinnedSha = manifest.snapshotCommitSha;
+  // Ein bereits gesetztes BSI_SNAPSHOT_SHA (z. B. von CI oder einem Nutzer
+  // gesetzt) hat Vorrang und bleibt unangetastet.
+  const fetchEnv = {
+    ...env,
+    BSI_SNAPSHOT_SHA: env.BSI_SNAPSHOT_SHA || pinnedSha,
+  };
+  log(`  Gepinnte Snapshot-SHA (aus upstream-manifest.json): ${pinnedSha}`);
+  if (env.BSI_SNAPSHOT_SHA) {
+    log(`  Vorgesetztes BSI_SNAPSHOT_SHA bleibt unangetastet: ${env.BSI_SNAPSHOT_SHA}`);
+  }
+
+  const fetchExitCode = await run(
+    process.execPath,
+    [join(rootDir, 'scripts', 'fetch-catalog.mjs')],
+    { cwd: rootDir, env: fetchEnv },
+  );
+  if (fetchExitCode !== 0) {
+    throw new BootstrapError(`Katalog-Fetch fehlgeschlagen (Exit ${fetchExitCode}).`);
+  }
+
+  log('[5/7] Prüfe Katalog-Frischestand erneut ...');
+  const postFetchFreshness = await freshness({ manifestPath, metadataPath });
+  if (postFetchFreshness.state !== 'fresh') {
+    throw new BootstrapError(formatCatalogFreshnessMessage(postFetchFreshness));
+  }
+  log(`  ${formatCatalogFreshnessMessage(postFetchFreshness)}`);
+}
+
+/**
  * @param {object} [options]
  * @param {string} [options.rootDir] Projektwurzel; Default deckt den realen Lauf ab.
  * @param {boolean} [options.force] Fetch auch bei bereits frischem Katalog erzwingen.
  * @param {NodeJS.ProcessEnv} [options.env] Umgebung für Kindprozesse (durchgereicht, u. a. GH_TOKEN/GITHUB_TOKEN).
  * @param {typeof defaultRun} [options.run] Injizierbarer Prozessrunner (Tests ersetzen ihn, statt echte Kindprozesse zu starten).
  * @param {(message: string) => void} [options.log] Injizierbarer Logger.
- * @param {typeof checkCatalogFreshness} [options.freshness] Injizierbare Freshness-Prüfung.
+ * @param {typeof checkCatalogFreshness} [options.freshness] Injizierbare Freshness-Prüfung; erhält
+ *   `{ manifestPath, metadataPath }` aus `rootDir` — ohne diese Weitergabe würde sie fest gegen
+ *   `REPO_ROOT` (`process.cwd()`) statt gegen das übergebene `rootDir` prüfen.
  */
 export async function runBootstrap({
   rootDir = REPO_ROOT,
@@ -110,6 +171,9 @@ export async function runBootstrap({
   log = console.log,
   freshness = checkCatalogFreshness,
 } = {}) {
+  const manifestPath = join(rootDir, 'upstream-manifest.json');
+  const metadataPath = join(rootDir, 'public', 'data', 'upstream-sources-metadata.json');
+
   log('[1/7] npm ci --ignore-scripts ...');
   const npmInvocation = resolveNpmInvocation(env);
   const installExitCode = await run(
@@ -132,61 +196,14 @@ export async function runBootstrap({
   }
 
   log('[3/7] Prüfe lokalen Katalog-Frischestand ...');
-  const initialFreshness = await freshness();
+  const initialFreshness = await freshness({ manifestPath, metadataPath });
   const needsFetch = force || initialFreshness.state !== 'fresh';
 
   if (!needsFetch) {
     log(`  ${formatCatalogFreshnessMessage(initialFreshness)}`);
     log('  Katalog bereits aktuell, Fetch übersprungen (--force erzwingt ihn).');
   } else {
-    log('[4/7] Lade BSI-Katalog ...');
-    // Pin auf die eingecheckte Snapshot-SHA (siehe Kopfkommentar): ohne ihn
-    // würde fetch-catalog.mjs ungepinnt vom BSI-Default-Branch-HEAD laden.
-    const manifestPath = resolveTrackedManifestPath(join(rootDir, 'upstream-manifest.json'), {
-      repoRoot: rootDir,
-    });
-    let manifest;
-    try {
-      manifest = await readTrackedManifest(manifestPath);
-    } catch (error) {
-      throw new BootstrapError(
-        `Eingecheckte upstream-manifest.json ist ungültig: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-    if (!manifest) {
-      throw new BootstrapError(
-        'Eingecheckte upstream-manifest.json fehlt. Ohne gepinnte Snapshot-SHA würde ' +
-        'fetch-catalog.mjs ungepinnt vom BSI-Default-Branch-HEAD laden — Repository-Zustand wiederherstellen.',
-      );
-    }
-
-    const pinnedSha = manifest.snapshotCommitSha;
-    // Ein bereits gesetztes BSI_SNAPSHOT_SHA (z. B. von CI oder einem Nutzer
-    // gesetzt) hat Vorrang und bleibt unangetastet.
-    const fetchEnv = {
-      ...env,
-      BSI_SNAPSHOT_SHA: env.BSI_SNAPSHOT_SHA || pinnedSha,
-    };
-    log(`  Gepinnte Snapshot-SHA (aus upstream-manifest.json): ${pinnedSha}`);
-    if (env.BSI_SNAPSHOT_SHA) {
-      log(`  Vorgesetztes BSI_SNAPSHOT_SHA bleibt unangetastet: ${env.BSI_SNAPSHOT_SHA}`);
-    }
-
-    const fetchExitCode = await run(
-      process.execPath,
-      [join(rootDir, 'scripts', 'fetch-catalog.mjs')],
-      { cwd: rootDir, env: fetchEnv },
-    );
-    if (fetchExitCode !== 0) {
-      throw new BootstrapError(`Katalog-Fetch fehlgeschlagen (Exit ${fetchExitCode}).`);
-    }
-
-    log('[5/7] Prüfe Katalog-Frischestand erneut ...');
-    const postFetchFreshness = await freshness();
-    if (postFetchFreshness.state !== 'fresh') {
-      throw new BootstrapError(formatCatalogFreshnessMessage(postFetchFreshness));
-    }
-    log(`  ${formatCatalogFreshnessMessage(postFetchFreshness)}`);
+    await ensureCatalogFetched({ rootDir, env, run, log, freshness, manifestPath, metadataPath });
   }
 
   log('[6/7] Prüfe lokale Umgebungsvariablen ...');
