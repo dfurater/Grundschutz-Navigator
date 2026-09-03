@@ -1,63 +1,63 @@
 {
   "schemaVersion": 2,
   "repository": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek",
-  "snapshotCommitSha": "8a97764ff4f23c2b7945c64344eecbf5a2053db2",
+  "snapshotCommitSha": "9c820fd8b125b386bee3e07656549253e9131153",
   "files": [
     {
       "artifactKey": "catalog-gspp",
       "rootType": "catalog",
       "lifecycle": "supported",
       "path": "control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json",
-      "gitBlobSha": "3878e6d72d30d455ab7abbf26331034e22e8a574",
-      "contentSha256": "7c3c5172806d60b219bd210f7b51a8b492c5d18dd603c95039a8ed2d35a41146"
+      "gitBlobSha": "add3ba4df8b9480ebd750aa5d259c11df2440cb6",
+      "contentSha256": "826ad9323eda74dd7519618584bcd4cfd1deac9eab2e6ca8a87beba9fbad2b89"
     },
     {
       "artifactKey": "catalog-source-gspp-kernel-g0",
       "rootType": "catalog",
       "lifecycle": "preview",
       "path": "control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json",
-      "gitBlobSha": "0222a8eb2ae95d7ebfe51100066e714f4d411e14",
-      "contentSha256": "fbfe55f021103ad845686364f1d412e2a48e0146c1a609bdfdd0220296d651df"
+      "gitBlobSha": "cd7cc1ef8dffd52102ac11336f4f78f6a779cb66",
+      "contentSha256": "d2c6e448ba6f0a4cb61a9aba895e2721940ae5d38cbba8aba34162bd98b67d22"
     },
     {
       "artifactKey": "catalog-source-lieferkette-kernel",
       "rootType": "catalog",
       "lifecycle": "preview",
       "path": "control_layer/Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-catalog.json",
-      "gitBlobSha": "a70041f481029eaa39923eaef6230d0af33fc3da",
-      "contentSha256": "dcf7f94cb33a32e672fc6b50d5ee1b87551b0e42f42c781cb9a2799f1b368d90"
+      "gitBlobSha": "a7bb98d2252c0bf33af246f4ab47b3dd18b8fb78",
+      "contentSha256": "f8ce42c9e78e207c6233a67dc0ac2e44110d907da481cf3e70ff28c6ed1fd98b"
     },
     {
       "artifactKey": "catalog-source-gspp-methodik",
       "rootType": "catalog",
       "lifecycle": "preview",
       "path": "control_layer/Grundschutz++/sources/catalogs/Methodik-Grundschutz++/BSI-Methodik-Grundschutz++-catalog.json",
-      "gitBlobSha": "a2bbae570efa0c535b8374d35df0fe46fbaa1cf1",
-      "contentSha256": "a2881b2a0015b0e01c4584603b1574c4b665521518f8679a42a78e09a77d5406"
+      "gitBlobSha": "cc201e78843aaa3fba78ac994ab673a4e9695698",
+      "contentSha256": "4211117ef25e1cf9fde103b47b08292f31062d516b8fb071a4e6c8d25d588b8f"
     },
     {
       "artifactKey": "profile-gspp",
       "rootType": "profile",
       "lifecycle": "preview",
       "path": "control_layer/Grundschutz++/sources/profiles/Grundschutz++-profile.json",
-      "gitBlobSha": "7aa505346fb968fbedadbb2800f7b620b4b7c904",
-      "contentSha256": "6b854bca05ea2dd061e93cbdc6c1c40c26135863875d89164585326f2aaf6a96"
+      "gitBlobSha": "f0e99393e05e1ac9c3089d0a336b09a8d15b9908",
+      "contentSha256": "a8e092fffc20cd4508744bb0d16389faa2d4ed8f047c6a2bbd850aa4033d4af0"
     },
     {
       "artifactKey": "catalog-lieferkette",
       "rootType": "catalog",
       "lifecycle": "supported",
       "path": "control_layer/Lieferkettensicherheit/Lieferkettensicherheit-resolved_catalog.json",
-      "gitBlobSha": "1f98c96de816aa174427b2036779d7f565d41fae",
-      "contentSha256": "ce503670d98cd59bdb22ee8c2569285891c5c2e6bc4b875ce9d3ec4ba19904e1"
+      "gitBlobSha": "4965e39d15a26084d6f7b26f5e3be7b9b53f758d",
+      "contentSha256": "8b8f73d3f802a0f1a35af3d31abf22c49baa2bc96c97cc3e0e509c0a61e0bd4e"
     },
     {
       "artifactKey": "profile-lieferkette",
       "rootType": "profile",
       "lifecycle": "preview",
       "path": "control_layer/Lieferkettensicherheit/sources/profiles/Lieferkettensicherheit-profile.json",
-      "gitBlobSha": "a397508f200a88ba69a120ec00865a450709be1f",
-      "contentSha256": "484b327c3e2eabaf79f656b76ac5f75d7d47c1b8e33e0bb1b6f18380a314aabf"
+      "gitBlobSha": "4dc7a6504dba42136e8af2ce3a64f5c4e518abde",
+      "contentSha256": "c899929992daa4445d6d7384c64d58b373112a6602aab8e668eba185b8975167"
     },
     {
       "artifactKey": "mapping-iso27001-annex-a-zu-gspp",
@@ -96,16 +96,16 @@
       "rootType": "catalog",
       "lifecycle": "supported",
       "path": "control_layer/WLAN/WLAN-resolved_catalog.json",
-      "gitBlobSha": "785bbd42a9160b96f3185ff447a8b7bfaade2b86",
-      "contentSha256": "da8f959d18d0751db01532a1f7730c12f182aeb0abe1c45bdea2f21fa4091c69"
+      "gitBlobSha": "9dc8932d52b6baf2cb6b80315b403c43ffa1717c",
+      "contentSha256": "5589b42753b81bb6ccb63ebbb56c94c011ccdab5dacd425cc0c1d4a572b44597"
     },
     {
       "artifactKey": "profile-wlan",
       "rootType": "profile",
       "lifecycle": "preview",
       "path": "control_layer/WLAN/sources/profiles/WLAN-profile.json",
-      "gitBlobSha": "20d76c2c521bfaa893510acec7bf61c77f5d625f",
-      "contentSha256": "ed4fee918185588e47d8087c54efaa78c23c66d04657694b7fd411eef1dc9c71"
+      "gitBlobSha": "446bd7a05653d957ea96787971fe709ec2eaa5a0",
+      "contentSha256": "ba055c348db41d97146c84734070a9e0b932d77fde10a70033012c2656c79d40"
     },
     {
       "artifactKey": "namespaces-bsi",
@@ -260,5 +260,5 @@
       "contentSha256": "08c7ab6bb442a87eba4e407d272fecd179bc61c47c2419843d7f4cfcd4077235"
     }
   ],
-  "signatureSha256": "5d14431e1ffb02ad18b2e5bfff823233ca0bdf179e4c7a34b64246b8cbf44f42"
+  "signatureSha256": "719ee8f30f8079b8c0b4ff2df9679dc4e9499f12168d4f3047d156db897526e6"
 }
