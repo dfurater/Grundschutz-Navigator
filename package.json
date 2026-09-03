@@ -5,6 +5,7 @@
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "scripts": {
+    "setup": "node scripts/bootstrap.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "build:local": "BUILD_BASE=/ npm run build",
