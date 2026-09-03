@@ -367,12 +367,37 @@ export const allRules = [...globalRules, ...scopedRules];
  * Dokumentation hinweg. Er wird in Reviewkommentaren zitiert und darf sich
  * deshalb nicht ändern, wenn nur der Text geschärft wird.
  */
-const RULE_KEY_PATTERN = /^[GR][1-9][0-9]*-[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const RULE_KEY_PATTERN = /^[GR][1-9]\d*-[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export class ReviewPolicyError extends Error {
   constructor(message) {
     super(message);
     this.name = 'ReviewPolicyError';
+  }
+}
+
+/** Wirft mit der übergebenen Meldung, sobald die Bedingung zutrifft. */
+function reject(condition, message) {
+  if (condition) throw new ReviewPolicyError(message);
+}
+
+/** Regelschlüssel und Regeltext einer einzelnen Regel. */
+function assertRuleIsWellFormed(rule) {
+  reject(!RULE_KEY_PATTERN.test(rule.key), `Ungültiger Regelschlüssel: ${rule.key}`);
+  reject(rule.body.trim().length === 0, `Regel ohne Text: ${rule.key}`);
+  reject(
+    rule.body.startsWith(`${rule.key}: `),
+    `Regeltext trägt den Greptile-Importpräfix: ${rule.key}. ` +
+    'Der Präfix gehört in .claude/greptile/contexts.mjs, nicht in die Autorenquelle.',
+  );
+}
+
+/** Der Schlüssel bzw. Pfad identifiziert einen Eintrag; zweimal vergeben verdeckt einen davon. */
+function assertIdentifiersAreUnique(values, label) {
+  const seen = new Set();
+  for (const value of values) {
+    reject(seen.has(value), `${label}: ${value}`);
+    seen.add(value);
   }
 }
 
@@ -382,45 +407,17 @@ export class ReviewPolicyError extends Error {
  * würde sonst als still fehlerhafte Regel in beide Adapter wandern.
  */
 export function assertPolicyIsWellFormed({ global = globalRules, scoped = scopedRules, files = fileContexts } = {}) {
-  const seen = new Set();
-  for (const rule of [...global, ...scoped]) {
-    if (!RULE_KEY_PATTERN.test(rule.key)) {
-      throw new ReviewPolicyError(`Ungültiger Regelschlüssel: ${rule.key}`);
-    }
-    if (seen.has(rule.key)) {
-      throw new ReviewPolicyError(`Doppelter Regelschlüssel: ${rule.key}`);
-    }
-    seen.add(rule.key);
-    if (rule.body.trim().length === 0) {
-      throw new ReviewPolicyError(`Regel ohne Text: ${rule.key}`);
-    }
-    if (rule.body.startsWith(`${rule.key}: `)) {
-      throw new ReviewPolicyError(
-        `Regeltext trägt den Greptile-Importpräfix: ${rule.key}. ` +
-        'Der Präfix gehört in .claude/greptile/contexts.mjs, nicht in die Autorenquelle.',
-      );
-    }
-  }
+  for (const rule of [...global, ...scoped]) assertRuleIsWellFormed(rule);
+  assertIdentifiersAreUnique([...global, ...scoped].map((rule) => rule.key), 'Doppelter Regelschlüssel');
 
   for (const rule of global) {
-    if (rule.scopes.length > 0) {
-      throw new ReviewPolicyError(`Globale Regel mit Datei-Scope: ${rule.key}`);
-    }
+    reject(rule.scopes.length > 0, `Globale Regel mit Datei-Scope: ${rule.key}`);
   }
-
   for (const rule of scoped) {
-    if (rule.scopes.length === 0) {
-      throw new ReviewPolicyError(`Gescopte Regel ohne Datei-Scope: ${rule.key}`);
-    }
+    reject(rule.scopes.length === 0, `Gescopte Regel ohne Datei-Scope: ${rule.key}`);
   }
 
-  const seenPaths = new Set();
-  for (const context of files) {
-    if (seenPaths.has(context.path)) {
-      throw new ReviewPolicyError(`Doppelter Datei-Kontext: ${context.path}`);
-    }
-    seenPaths.add(context.path);
-  }
+  assertIdentifiersAreUnique(files.map((context) => context.path), 'Doppelter Datei-Kontext');
 }
 
 /** Kopfzeile jeder erzeugten Datei — sie sagt, wo bearbeitet wird. */
