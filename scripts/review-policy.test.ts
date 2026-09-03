@@ -223,6 +223,32 @@ describe('review-policy Drift-Check', () => {
       .rejects.toThrow(`nicht aus der Autorenquelle erzeugt: ${relative}`);
   });
 
+  /**
+   * Die Meldung eines Guards muss über Plattformen und Locales hinweg gleich
+   * lauten, sonst lässt sich ein CI-Fehlschlag nicht mit einem lokalen Lauf
+   * vergleichen.
+   */
+  it('meldet mehrere Fremddateien in stabiler Reihenfolge', async () => {
+    const root = await createGeneratedFixtureRoot();
+    for (const relative of ['.cursorrules', '.gitar/rules/b.md', '.gitar/rules/a.md', '.github/skills/c.md']) {
+      const absolute = path.join(root, relative);
+      await mkdir(path.dirname(absolute), { recursive: true });
+      await writeFile(absolute, '# Schattenregel\n', 'utf8');
+    }
+
+    const message = await checkReviewPolicy({ repoRoot: root }).then(
+      () => '',
+      (error: Error) => error.message,
+    );
+
+    expect(message.match(/nicht aus der Autorenquelle erzeugt: (\S+)/g)).toEqual([
+      'nicht aus der Autorenquelle erzeugt: .cursorrules',
+      'nicht aus der Autorenquelle erzeugt: .gitar/rules/a.md',
+      'nicht aus der Autorenquelle erzeugt: .gitar/rules/b.md',
+      'nicht aus der Autorenquelle erzeugt: .github/skills/c.md',
+    ]);
+  });
+
   it('deckt jede in der Autorenquelle geführte Anweisungsfläche ab', () => {
     expect(GITAR_INSTRUCTION_DIRECTORIES).toEqual(['.gitar', '.cursor', '.github/skills']);
     expect(GITAR_INSTRUCTION_FILES).toEqual(['.cursorrules']);

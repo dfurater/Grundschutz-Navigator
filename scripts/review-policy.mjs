@@ -581,7 +581,11 @@ async function listUnmanagedInstructionFiles(repoRoot, expected) {
     }
   }
 
-  return found.filter((relative) => !expected.has(relative)).sort();
+  // Explizite Vergleichsfunktion statt der Standardsortierung: Die Meldung
+  // eines Guards muss über Plattformen und Locales hinweg reproduzierbar sein.
+  return found
+    .filter((relative) => !expected.has(relative))
+    .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
 }
 
 /**
