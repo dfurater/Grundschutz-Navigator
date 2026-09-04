@@ -138,6 +138,32 @@ function createSearchDocuments(
  * Controls, die den zugehörigen Wert führen. Themen-UUIDs sind über Praktiken
  * hinweg wiederverwendet; ihre Mengen vereinigen sich deshalb absichtlich.
  */
+function pushGrouped(target: Map<string, number[]>, key: string | undefined, numericId: number) {
+  if (!key) {
+    return;
+  }
+
+  const existing = target.get(key);
+  if (existing) {
+    existing.push(numericId);
+    return;
+  }
+  target.set(key, [numericId]);
+}
+
+/** Gruppiert die Controls nach Gruppen- und Praktik-Zugehörigkeit. */
+function groupNumericIds(searchDocuments: SearchDocument[]) {
+  const byGroupId = new Map<string, number[]>();
+  const byPracticeId = new Map<string, number[]>();
+
+  for (const { control, numericId } of searchDocuments) {
+    pushGrouped(byGroupId, control.groupId, numericId);
+    pushGrouped(byPracticeId, control.practiceId, numericId);
+  }
+
+  return { byGroupId, byPracticeId };
+}
+
 function buildIdentifierIndex(
   searchDocuments: SearchDocument[],
   practices: Practice[],
@@ -145,7 +171,7 @@ function buildIdentifierIndex(
   const identifierIndex = new Map<string, Set<number>>();
   const controlIdentifiers = new Map<string, number>();
 
-  const add = (rawIdentifier: string | undefined, numericId: number) => {
+  const add = (rawIdentifier: string | undefined, numericIds: Iterable<number>) => {
     const identifier = normalizeIdentifier(rawIdentifier);
     if (!identifier) {
       return;
@@ -153,56 +179,35 @@ function buildIdentifierIndex(
 
     const existing = identifierIndex.get(identifier);
     if (existing) {
-      existing.add(numericId);
+      for (const numericId of numericIds) {
+        existing.add(numericId);
+      }
       return;
     }
-    identifierIndex.set(identifier, new Set([numericId]));
+    identifierIndex.set(identifier, new Set(numericIds));
   };
 
-  const numericIdsByGroupId = new Map<string, number[]>();
-  const numericIdsByPracticeId = new Map<string, number[]>();
+  const { byGroupId, byPracticeId } = groupNumericIds(searchDocuments);
 
   for (const document of searchDocuments) {
     const { control, numericId } = document;
 
-    if (control.groupId) {
-      const group = numericIdsByGroupId.get(control.groupId);
-      if (group) {
-        group.push(numericId);
-      } else {
-        numericIdsByGroupId.set(control.groupId, [numericId]);
-      }
-    }
-
-    if (control.practiceId) {
-      const practice = numericIdsByPracticeId.get(control.practiceId);
-      if (practice) {
-        practice.push(numericId);
-      } else {
-        numericIdsByPracticeId.set(control.practiceId, [numericId]);
-      }
-    }
-
-    add(control.altIdentifier, numericId);
+    add(control.altIdentifier, [numericId]);
     const controlIdentifier = normalizeIdentifier(control.altIdentifier);
     if (controlIdentifier) {
       controlIdentifiers.set(controlIdentifier, numericId);
     }
 
     for (const identifier of document.vocabularyIdentifiers) {
-      add(identifier, numericId);
+      add(identifier, [numericId]);
     }
   }
 
   for (const practice of practices) {
-    for (const numericId of numericIdsByPracticeId.get(practice.id ?? '') ?? []) {
-      add(practice.altIdentifier, numericId);
-    }
+    add(practice.altIdentifier, byPracticeId.get(practice.id ?? '') ?? []);
 
     for (const topic of practice.topics) {
-      for (const numericId of numericIdsByGroupId.get(topic.id ?? '') ?? []) {
-        add(topic.altIdentifier, numericId);
-      }
+      add(topic.altIdentifier, byGroupId.get(topic.id ?? '') ?? []);
     }
   }
 
@@ -415,13 +420,14 @@ export function useSearch(
       }
 
       const exactControlId = controlIdentifiers.get(identifier);
-      const orderedIds = [...matches].sort((left, right) => left - right);
 
-      return orderedIds
+      return [...matches]
         .sort((left, right) => {
+          // Ein Control-`alt-identifier`-Treffer steht vorn, der Rest folgt in
+          // Katalogreihenfolge.
           if (left === exactControlId) return -1;
           if (right === exactControlId) return 1;
-          return 0;
+          return left - right;
         })
         .flatMap((numericId) => {
           const control = controlMap.get(numericId);
