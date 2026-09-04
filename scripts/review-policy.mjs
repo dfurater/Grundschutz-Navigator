@@ -27,15 +27,18 @@
  *
  * Aus der Autorenquelle wird deterministisch erzeugt:
  *
- *   - `docs/REVIEW_INVARIANTS.md`   menschenlesbar, versioniert, reviewbar
+ *   - `docs/REVIEW_INVARIANTS.md`    menschenlesbar, versioniert, reviewbar
  *   - `.gitar/review/invarianten.md` dünner Adapter, bindet die Doku per
  *                                    `@`-Include ein
+ *   - `.greptile/config.json`        Greptile-Regeln, `id`/`rule`/`scope` aus
+ *                                    derselben Tabelle
+ *   - `.greptile/files.json`         Greptile-Datei-Kontexte aus derselben
+ *                                    Tabelle
  *
- * Der Greptile-Zweig (`.greptile/`) folgt im blockierten Folgeslice GSPP-383;
- * bis dahin bleibt der bestehende Dashboard-Importzyklus über
- * `.claude/greptile/contexts.mjs` aktiv. Jene Datei ist gitignored und bezieht
- * ihre Texte seit GSPP-374 von hier — die Abhängigkeit läuft ausschließlich von
- * der gitignorierten zur versionierten Seite, nie umgekehrt.
+ * Der Greptile-Zweig (`.greptile/`) ist seit GSPP-383 Teil dieser
+ * Autorenquelle. Es gibt keinen Dashboard-Importzyklus mehr und keine
+ * Abhängigkeit von `.claude/greptile/contexts.mjs` — beide erzeugten Dateien
+ * entstehen ausschließlich aus `scripts/review-policy.rules.mjs`.
  *
  * Aufruf:
  *
@@ -47,7 +50,7 @@
  */
 
 import { execFile } from 'node:child_process';
-import { readFile, readdir, mkdir, writeFile } from 'node:fs/promises';
+import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -96,8 +99,9 @@ function assertRuleIsWellFormed(rule) {
   reject(rule.body.trim().length === 0, `Regel ohne Text: ${rule.key}`);
   reject(
     rule.body.startsWith(`${rule.key}: `),
-    `Regeltext trägt den Greptile-Importpräfix: ${rule.key}. ` +
-    'Der Präfix gehört in .claude/greptile/contexts.mjs, nicht in die Autorenquelle.',
+    `Regeltext trägt den Regelschlüssel als Präfix: ${rule.key}. ` +
+    'Der Schlüssel steht bereits in id (Greptile) bzw. der Überschrift (Dokumentation); ' +
+    'ein Präfix im Text würde ihn doppeln.',
   );
 }
 
@@ -219,21 +223,112 @@ export function renderGitarAdapter() {
 }
 
 /**
+ * Greptile-Regeln. Greptile kennt kein `@`-Include und keine Markdown-Datei
+ * als Regelquelle — die Wirkungsfläche ist ausschließlich `.greptile/config.json`
+ * mit einem Array `rules`, je Eintrag `id`/`rule`/optional `scope`. `id` trägt
+ * den Regelschlüssel, deshalb bleibt `rule` präfixfrei (keine `<key>: `-Krücke
+ * mehr, siehe `assertRuleIsWellFormed`). `scope` wird nur bei nicht leerem
+ * `scopes`-Array gesetzt — ein leeres Array in der Datei könnte „passt auf
+ * nichts" statt „global" bedeuten, deshalb wird das Feld bei globalen Regeln
+ * ganz weggelassen, nicht auf `[]` gesetzt.
+ *
+ * Bewusst nicht gesetzt: `severity`, `enabled`, `disabledRules`, `instructions`
+ * und jede Review-Einstellung (Auto-Review, Auto-Approve, Status-Checks, …).
+ * `config.json` trägt auf oberster Ebene ausschließlich den Schlüssel `rules`.
+ * Diese Einstellungen bleiben Dashboard-Fläche: Anders als bei den Regeltexten
+ * ist für sie herstellerseitig nicht dokumentiert, ob ein hier fehlendes Feld
+ * den bestehenden Dashboard-Wert unangetastet lässt oder auf einen Greptile-
+ * eigenen Default zurückfällt — und für „Use Status Checks" hängt an genau
+ * dieser Unklarheit der Pflicht-Check `Greptile Review` im Branch-Ruleset.
+ * Ein zu weit gefasstes `config.json` könnte diesen Check stumm abschwächen
+ * oder zum Verschwinden bringen; das Risiko ist in GSPP-383 durch einen
+ * Wegwerf-Probe-PR vor dem eigentlichen Merge geprüft worden.
+ *
+ * Kein Generierungs-Banner: JSON kennt keine Kommentare, und ein `_generated`-
+ * Feld wäre selbst ein reviewsteuerndes Feld ohne Deckung in der
+ * Autorenquelle — der Drift-Guard erzwingt „nicht von Hand bearbeiten" bereits
+ * strukturell.
+ */
+export function renderGreptileConfig({ global = globalRules, scoped = scopedRules } = {}) {
+  const rules = [...global, ...scoped].map((rule) => {
+    const entry = { id: rule.key, rule: rule.body };
+    if (rule.scopes.length > 0) entry.scope = rule.scopes;
+    return entry;
+  });
+  return JSON.stringify({ rules }, null, 2) + '\n';
+}
+
+/**
+ * Greptile-Datei-Kontexte. `.greptile/files.json` mit einem Array `files`, je
+ * Eintrag `path`/`description`/optional `scope` (nur bei nicht leerem
+ * `scopes`). Die 8 Datei-Kontexte hatten vor GSPP-383 keine Dashboard-
+ * Entsprechung — der `type`-Enum von Greptiles Custom-Context-API kennt keinen
+ * Dateiverweis, und die Dashboard-Ansicht *Custom rules* führte am 2026-09-04
+ * ausschließlich Einträge vom Typ `Rule`. `.greptile/files.json` ist damit
+ * keine Migration eines bestehenden Zustands, sondern die erste Stelle, an der
+ * diese Kontexte für Greptile überhaupt wirksam werden können.
+ */
+export function renderGreptileFiles({ files = fileContexts } = {}) {
+  const entries = files.map((context) => {
+    const entry = { path: context.path, description: context.description };
+    if (context.scopes.length > 0) entry.scope = context.scopes;
+    return entry;
+  });
+  return JSON.stringify({ files: entries }, null, 2) + '\n';
+}
+
+/**
  * Verzeichnis der Gitar-Reviewregeln — der Ablageort des erzeugten Adapters.
  */
 export const GITAR_REVIEW_DIRECTORY = '.gitar/review';
 
 /**
- * Anweisungsflächen, die Gitar aus dem Repository liest und die `.gitignore`
- * hier **nicht** ausschließt. Jede Datei darin wirkt auf den Review; eine, die
- * nicht aus der Autorenquelle stammt, ist eine Reviewregel an ihr vorbei —
- * genau die Umgehung, die dieser Guard verhindern soll. Geprüft wird das
- * Dateisystem: Was hier liegt, gehört entweder zur Autorenquelle oder ist Drift.
+ * Verzeichnisnamen, die Gitar oder Greptile als Anweisungsfläche lesen — an
+ * **jeder** Verzeichnistiefe. Jede Datei darin wirkt auf den jeweiligen
+ * Review; eine, die nicht aus der Autorenquelle stammt, ist eine Reviewregel
+ * an ihr vorbei — genau die Umgehung, die dieser Guard verhindern soll.
+ *
+ * Die Tiefenunabhängigkeit ist keine Vorsichtsmaßnahme, sondern von Greptile
+ * dokumentiertes Verhalten: `.greptile/` darf laut Hersteller in *jedem*
+ * Verzeichnis liegen, die Ebenen kaskadieren, und eine Kindkonfiguration
+ * schaltet über `disabledRules` geerbte Regeln der Wurzel ab. Ein
+ * `src/.greptile/config.json` könnte damit die Regeln aushebeln, nach denen
+ * der PR bewertet wird, der es mitbringt. Ein auf die Wurzel beschränkter
+ * Scan hätte das durchgelassen (Codex-Review auf 32b35d8).
  */
-export const GITAR_INSTRUCTION_DIRECTORIES = ['.gitar', '.cursor', '.github/skills'];
+export const REVIEW_INSTRUCTION_DIRECTORY_NAMES = ['.gitar', '.greptile', '.cursor'];
 
-/** Einzelne Anweisungsdateien ohne Verzeichnis. */
-export const GITAR_INSTRUCTION_FILES = ['.cursorrules'];
+/**
+ * Anweisungsflächen, die nur im Repositoriumswurzelverzeichnis gelesen werden.
+ * `.github/skills` ist an die Wurzel gebunden, weil GitHub das Verzeichnis nur
+ * dort auswertet; ein `src/.github/skills/` ist keine Anweisungsfläche.
+ */
+export const REVIEW_INSTRUCTION_ROOT_DIRECTORIES = ['.github/skills'];
+
+/**
+ * Einzelne Anweisungsdateien ohne Verzeichnis, ebenfalls an jeder Tiefe.
+ *
+ * `greptile.json` ist Greptiles Wurzelkonfiguration und steht in seiner
+ * Wirkungsreihenfolge zwischen Dashboard und `.greptile/`. Sie trägt keine
+ * Regeln, wohl aber jede Review-Einstellung — und `.greptile/config.json`
+ * setzt bewusst keine davon. Fehlte sie hier, ließe sich am Guard vorbei
+ * genau das tun, was dieser Slice ausschließt: eine Reviewsteuerung in den
+ * PR-Head legen, ohne dass sie aus der Autorenquelle stammt.
+ */
+export const REVIEW_INSTRUCTION_FILE_NAMES = ['.cursorrules', 'greptile.json'];
+
+/**
+ * Liegt dieser Pfad auf einer Anweisungsfläche? Geprüft wird jeder
+ * Pfadbestandteil, nicht nur der erste — sonst bliebe jede verschachtelte
+ * Fläche unentdeckt.
+ */
+export function isReviewInstructionPath(relative) {
+  const segments = relative.split('/');
+  const directories = segments.slice(0, -1);
+  if (directories.some((segment) => REVIEW_INSTRUCTION_DIRECTORY_NAMES.includes(segment))) return true;
+  if (REVIEW_INSTRUCTION_ROOT_DIRECTORIES.some((root) => relative.startsWith(`${root}/`))) return true;
+  return REVIEW_INSTRUCTION_FILE_NAMES.includes(segments[segments.length - 1]);
+}
 
 /**
  * Anweisungsflächen, die Gitar ebenfalls liest, die `.gitignore` hier aber
@@ -252,6 +347,8 @@ export const GITIGNORED_INSTRUCTION_SURFACES = ['AGENTS.md', 'CLAUDE.md', '.clau
 export const REVIEW_POLICY_TARGETS = [
   { path: 'docs/REVIEW_INVARIANTS.md', render: renderInvariantsDocument },
   { path: `${GITAR_REVIEW_DIRECTORY}/invarianten.md`, render: renderGitarAdapter },
+  { path: '.greptile/config.json', render: renderGreptileConfig },
+  { path: '.greptile/files.json', render: renderGreptileFiles },
 ];
 
 /** Soll-Inhalt aller Ziele. Rein funktional, ohne Zeitstempel — zweimal aufgerufen identisch. */
@@ -274,23 +371,8 @@ function compareRelativePaths(left, right) {
   return left > right ? 1 : 0;
 }
 
-/** Alle Dateien unterhalb eines Verzeichnisses, relativ zur Repository-Wurzel. */
-async function listFilesBelow(repoRoot, directory) {
-  let entries;
-  try {
-    entries = await readdir(path.join(repoRoot, directory), { withFileTypes: true, recursive: true });
-  } catch (error) {
-    if (error?.code === 'ENOENT') return [];
-    throw error;
-  }
-
-  return entries
-    .filter((entry) => entry.isFile())
-    .map((entry) => path.relative(repoRoot, path.join(entry.parentPath, entry.name)));
-}
-
 /**
- * Liest die im Git-Index geführten Pfade einer Pfadmenge.
+ * Ruft `git ls-files` und gibt die ausgegebenen Pfade zurück.
  *
  * Fail-closed und ohne Ausnahme: Jeder Fehlschlag — kein Git-Repository, kein
  * `git` im PATH, ein defekter Index, ein Zugriffsfehler — wird zum Fehler und
@@ -298,16 +380,39 @@ async function listFilesBelow(repoRoot, directory) {
  * versioniert" ist kein „nein". Ein Guard, der eine gescheiterte Abfrage als
  * bestanden verbucht, prüft genau dann nicht mehr, wenn er gebraucht wird.
  */
-export async function listTrackedFilesWithGit(repoRoot, pathspecs) {
+async function runGitLsFiles(repoRoot, args, failureSubject) {
   try {
-    const { stdout } = await execFileAsync('git', ['ls-files', '-z', '--', ...pathspecs], { cwd: repoRoot });
+    const { stdout } = await execFileAsync('git', ['ls-files', '-z', ...args], { cwd: repoRoot });
     return stdout.split('\0').filter(Boolean);
   } catch (error) {
     const detail = String(error?.stderr || error?.message || error).trim().split('\n')[0];
-    throw new ReviewPolicyError(
-      `Git-Index nicht lesbar, ausgeschlossene Anweisungsflächen bleiben ungeprüft: ${detail}`,
-    );
+    throw new ReviewPolicyError(`Git-Index nicht lesbar, ${failureSubject}: ${detail}`);
   }
+}
+
+/** Liest die im Git-Index geführten Pfade einer Pfadmenge. */
+export async function listTrackedFilesWithGit(repoRoot, pathspecs) {
+  return runGitLsFiles(repoRoot, ['--', ...pathspecs], 'ausgeschlossene Anweisungsflächen bleiben ungeprüft');
+}
+
+/**
+ * Alle Pfade, die im PR-Head landen können: versionierte Dateien plus
+ * unversionierte, die `.gitignore` nicht ausschließt.
+ *
+ * Warum Git und kein Dateisystemlauf: Was ein Reviewer liest, ist der PR-Head,
+ * und genau den zählt diese Menge auf — auf jeder Verzeichnistiefe und ohne
+ * Ausnahmeliste. Ein Baumlauf müsste `node_modules/`, `dist/` und lokale
+ * Arbeitsbäume von Hand ausnehmen; jede solche Ausnahme wäre wieder eine
+ * Stelle, an der eine Anweisungsfläche unbemerkt liegen kann. Umgekehrt bleibt
+ * eine erzwungen versionierte Datei sichtbar, weil `--cached` sie unabhängig
+ * von `.gitignore` führt.
+ */
+export async function listHeadCandidateFilesWithGit(repoRoot) {
+  return runGitLsFiles(
+    repoRoot,
+    ['--cached', '--others', '--exclude-standard'],
+    'Anweisungsflächen bleiben ungeprüft',
+  );
 }
 
 /**
@@ -320,28 +425,18 @@ async function listForceTrackedInstructionFiles(repoRoot, listTrackedFiles) {
 }
 
 /**
- * Dateien auf einer Gitar-Anweisungsfläche, die zu keinem erzeugten Ziel
- * gehören. Der Scan deckt bewusst den ganzen Baum ab, nicht nur den Ablageort
- * des Adapters: Eine Datei unter `.gitar/skills/` oder eine `.cursorrules`
- * würde von Gitar genauso angewendet, ohne je aus der Autorenquelle zu stammen.
+ * Dateien auf einer Gitar- oder Greptile-Anweisungsfläche, die zu keinem
+ * erzeugten Ziel gehören. Der Scan deckt bewusst den ganzen Baum ab, nicht nur
+ * die Ablageorte der Adapter: Eine Datei unter `.gitar/skills/`, ein
+ * handgeschriebenes `.greptile/rules.md`, eine `.cursorrules` oder ein
+ * verschachteltes `src/.greptile/config.json` würde vom jeweiligen Bot genauso
+ * angewendet, ohne je aus der Autorenquelle zu stammen.
  */
-async function listUnmanagedInstructionFiles(repoRoot, expected) {
-  const found = [];
-
-  for (const directory of GITAR_INSTRUCTION_DIRECTORIES) {
-    found.push(...(await listFilesBelow(repoRoot, directory)));
-  }
-
-  for (const file of GITAR_INSTRUCTION_FILES) {
-    try {
-      await readFile(path.join(repoRoot, file));
-      found.push(file);
-    } catch (error) {
-      if (error?.code !== 'ENOENT') throw error;
-    }
-  }
-
-  return found.filter((relative) => !expected.has(relative)).sort(compareRelativePaths);
+async function listUnmanagedInstructionFiles(repoRoot, expected, listCandidateFiles) {
+  const candidates = await listCandidateFiles(repoRoot);
+  return candidates
+    .filter((relative) => isReviewInstructionPath(relative) && !expected.has(relative))
+    .sort(compareRelativePaths);
 }
 
 /**
@@ -357,6 +452,9 @@ export async function checkReviewPolicy({
   // eine Testfixture — muss ausdrücklich einen eigenen Leser übergeben; still
   // durchwinken kann der Guard nicht.
   listTrackedFiles = listTrackedFilesWithGit,
+  // Dieselbe Zusage für die Anweisungsflächen: Wer kein Git hat, bekommt hier
+  // keinen stillen Freifahrtschein.
+  listCandidateFiles = listHeadCandidateFilesWithGit,
 } = {}) {
   const rendered = renderReviewPolicy(policy);
   const problems = [];
@@ -379,7 +477,7 @@ export async function checkReviewPolicy({
   }
 
   const expected = new Set(rendered.map((target) => target.path));
-  for (const unexpected of await listUnmanagedInstructionFiles(repoRoot, expected)) {
+  for (const unexpected of await listUnmanagedInstructionFiles(repoRoot, expected, listCandidateFiles)) {
     problems.push(`nicht aus der Autorenquelle erzeugt: ${unexpected}`);
   }
 

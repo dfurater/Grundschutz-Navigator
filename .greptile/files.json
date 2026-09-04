@@ -1,0 +1,66 @@
+{
+  "files": [
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "description": "Schichten, Datenfluss von BSI-Upstream bis UI, Verzeichnisverantwortung"
+    },
+    {
+      "path": "docs/OSCAL_VERSION_MATRIX.md",
+      "description": "Verbindliche Root-Typ-mal-Version-Matrix, Schema-Pins, Migrationspolitik",
+      "scope": [
+        "src/domain/**",
+        "src/adapters/**",
+        "scripts/**"
+      ]
+    },
+    {
+      "path": "docs/OSCAL_VALIDATION.md",
+      "description": "Validierungsvertrag: womit und wo geprüft wird",
+      "scope": [
+        "src/domain/**",
+        "src/adapters/**",
+        "scripts/**"
+      ]
+    },
+    {
+      "path": "docs/INTEGRITY.md",
+      "description": "SHA-256-Verifikation, Provenance, Manifest v2, SLSA",
+      "scope": [
+        "src/domain/integrity.ts",
+        "src/state/**",
+        "scripts/**",
+        ".github/workflows/**"
+      ]
+    },
+    {
+      "path": "docs/DOMAIN_MODELS.md",
+      "description": "Rohe OSCAL-Typen gegen angereicherte Domänentypen",
+      "scope": [
+        "src/domain/**",
+        "src/adapters/**",
+        "src/features/**"
+      ]
+    },
+    {
+      "path": "docs/FILTERING.md",
+      "description": "Filterlogik und URL-Parameter-Synchronisation",
+      "scope": [
+        "src/hooks/**",
+        "src/features/**"
+      ]
+    },
+    {
+      "path": "docs/VOCABULARY.md",
+      "description": "BSI-Vokabulare, Namespaces, Taxonomie-Abdeckung",
+      "scope": [
+        "src/domain/vocabulary*.ts",
+        "src/features/vocabular*/**",
+        "scripts/**"
+      ]
+    },
+    {
+      "path": "README.md",
+      "description": "Projektzweck, Setup, Kommandos"
+    }
+  ]
+}

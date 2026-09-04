@@ -7,11 +7,12 @@ import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  GITAR_INSTRUCTION_DIRECTORIES,
-  GITAR_INSTRUCTION_FILES,
   GITAR_REVIEW_DIRECTORY,
   GITIGNORED_INSTRUCTION_SURFACES,
   REPO_ROOT,
+  REVIEW_INSTRUCTION_DIRECTORY_NAMES,
+  REVIEW_INSTRUCTION_FILE_NAMES,
+  REVIEW_INSTRUCTION_ROOT_DIRECTORIES,
   REVIEW_POLICY_TARGETS,
   ReviewPolicyError,
   allRules,
@@ -19,6 +20,7 @@ import {
   checkReviewPolicy,
   fileContexts,
   globalRules,
+  isReviewInstructionPath,
   renderReviewPolicy,
   scopedRules,
   writeReviewPolicy,
@@ -31,11 +33,18 @@ const temporaryRoots: string[] = [];
  * Baut einen Repo-Abzug, der ausschließlich die erzeugten Dateien enthält.
  * Die Bytes stammen aus dem Generator selbst — damit prüfen die
  * Drift-Testfälle den echten Vergleichspfad und nicht einen nachgebauten.
+ *
+ * Das Fixture ist ein echtes Git-Repository, weil der Guard die
+ * Anweisungsflächen über `git ls-files` aufzählt. Es gibt für diese Prüfung
+ * damit keinen Injektionspunkt, an dem ein Test sie versehentlich stillstellt;
+ * `git: false` liefert bewusst ein Verzeichnis ohne Repository für die Fälle,
+ * die genau diesen Fehlschlag prüfen.
  */
-async function createGeneratedFixtureRoot(): Promise<string> {
+async function createGeneratedFixtureRoot({ git = true }: { git?: boolean } = {}): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), 'gspp-review-policy-'));
   temporaryRoots.push(root);
   await writeReviewPolicy({ repoRoot: root });
+  if (git) await execFileAsync('git', ['init', '--quiet'], { cwd: root });
   return root;
 }
 
@@ -47,6 +56,13 @@ async function createGeneratedFixtureRoot(): Promise<string> {
  */
 const checkFixture = (root: string, overrides: Record<string, unknown> = {}) =>
   checkReviewPolicy({ repoRoot: root, listTrackedFiles: async () => [], ...overrides });
+
+/** Legt eine Datei samt Elternverzeichnissen im Fixture an. */
+async function writeFixtureFile(root: string, relative: string, content: string): Promise<void> {
+  const absolute = path.join(root, relative);
+  await mkdir(path.dirname(absolute), { recursive: true });
+  await writeFile(absolute, content, 'utf8');
+}
 
 afterEach(async () => {
   await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -138,10 +154,10 @@ describe('review-policy Autorenquelle', () => {
    * Wandert er in die Autorenquelle, stünde er doppelt in jedem erzeugten
    * Dokument — und der Importpfad würde ihn beim Vergleich nur einmal strippen.
    */
-  it('weist einen Regeltext mit Greptile-Importpräfix zurück', () => {
+  it('weist einen Regeltext mit dem Regelschlüssel als Präfix zurück', () => {
     const rule = globalRules[0];
     expect(() => assertPolicyIsWellFormed({ global: [{ ...rule, body: `${rule.key}: ${rule.body}` }] }))
-      .toThrow(/Greptile-Importpräfix/);
+      .toThrow(/Regeltext trägt den Regelschlüssel als Präfix/);
   });
 
   it('weist einen ungültigen Regelschlüssel zurück', () => {
@@ -161,10 +177,12 @@ describe('review-policy Autorenquelle', () => {
 });
 
 describe('review-policy Erzeugung', () => {
-  it('erzeugt genau die beiden Zielpfade', () => {
+  it('erzeugt genau die vier Zielpfade', () => {
     expect(REVIEW_POLICY_TARGETS.map((target) => target.path)).toEqual([
       'docs/REVIEW_INVARIANTS.md',
       '.gitar/review/invarianten.md',
+      '.greptile/config.json',
+      '.greptile/files.json',
     ]);
   });
 
@@ -200,9 +218,111 @@ describe('review-policy Erzeugung', () => {
   });
 });
 
+/**
+ * Greptile kennt kein `@`-Include und keine Markdown-Datei als Regelquelle —
+ * die Wirkungsfläche ist ausschließlich `.greptile/config.json` (Regeln) und
+ * `.greptile/files.json` (Datei-Kontexte), beide strukturiertes JSON aus
+ * derselben Autorenquelle wie die Gitar-Seite.
+ */
+describe('review-policy Greptile-Adapter', () => {
+  it('erzeugt gültiges JSON für config.json und files.json', async () => {
+    const root = await createGeneratedFixtureRoot();
+
+    const config = JSON.parse(await readFile(path.join(root, '.greptile/config.json'), 'utf8'));
+    const files = JSON.parse(await readFile(path.join(root, '.greptile/files.json'), 'utf8'));
+
+    expect(Array.isArray(config.rules)).toBe(true);
+    expect(Array.isArray(files.files)).toBe(true);
+  });
+
+  it('führt in config.json genau allRules.length Einträge, je Schlüssel genau einen mit id und rule aus der Autorenquelle', () => {
+    const config = JSON.parse(renderReviewPolicy()[2].content);
+
+    expect(config.rules).toHaveLength(allRules.length);
+    for (const rule of allRules) {
+      const matches = config.rules.filter((entry: { id: string }) => entry.id === rule.key);
+      expect(matches).toHaveLength(1);
+      expect(matches[0].rule).toBe(rule.body);
+    }
+  });
+
+  it('setzt scope nur bei gescopten Regeln, exakt gleich rule.scopes', () => {
+    const config = JSON.parse(renderReviewPolicy()[2].content) as {
+      rules: Array<{ id: string; scope?: string[] }>;
+    };
+    const byId = new Map(config.rules.map((entry) => [entry.id, entry]));
+
+    for (const rule of globalRules) {
+      expect(byId.get(rule.key)).not.toHaveProperty('scope');
+    }
+    for (const rule of scopedRules) {
+      expect(byId.get(rule.key)?.scope).toEqual(rule.scopes);
+    }
+  });
+
+  it('trägt keinen Regeltext mit dem `<key>: `-Präfix', () => {
+    const config = JSON.parse(renderReviewPolicy()[2].content) as { rules: Array<{ id: string; rule: string }> };
+
+    for (const entry of config.rules) {
+      expect(entry.rule.startsWith(`${entry.id}: `)).toBe(false);
+    }
+  });
+
+  it('trägt in config.json auf oberster Ebene ausschließlich den Schlüssel rules', () => {
+    const config = JSON.parse(renderReviewPolicy()[2].content);
+
+    expect(Object.keys(config)).toEqual(['rules']);
+  });
+
+  it('bildet in files.json alle fileContexts mit path und description ab, scope nur bei nicht leerem scopes', () => {
+    const files = JSON.parse(renderReviewPolicy()[3].content) as {
+      files: Array<{ path: string; description: string; scope?: string[] }>;
+    };
+
+    expect(files.files).toHaveLength(fileContexts.length);
+    for (const context of fileContexts) {
+      const entry = files.files.find((candidate) => candidate.path === context.path);
+      expect(entry?.description).toBe(context.description);
+      if (context.scopes.length > 0) {
+        expect(entry?.scope).toEqual(context.scopes);
+      } else {
+        expect(entry).not.toHaveProperty('scope');
+      }
+    }
+  });
+
+  it('rendert config.json und files.json deterministisch — zwei Läufe liefern identische Bytes', () => {
+    const first = renderReviewPolicy();
+    const second = renderReviewPolicy();
+
+    expect(first[2].content).toBe(second[2].content);
+    expect(first[3].content).toBe(second[3].content);
+  });
+
+  it('schlägt bei einer von Hand veränderten config.json fehl', async () => {
+    const root = await createGeneratedFixtureRoot();
+    const configPath = path.join(root, '.greptile/config.json');
+    const config = JSON.parse(await readFile(configPath, 'utf8'));
+    config.rules.push({ id: 'P0-fremd', rule: 'Nicht aus der Autorenquelle.' });
+    await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+
+    await expect(checkFixture(root)).rejects.toThrow(ReviewPolicyError);
+    await expect(checkFixture(root))
+      .rejects.toThrow(/weicht von der Autorenquelle ab: \.greptile\/config\.json/);
+  });
+
+  it('schlägt bei einer zusätzlichen .greptile/rules.md fehl', async () => {
+    const root = await createGeneratedFixtureRoot();
+    await writeFile(path.join(root, '.greptile/rules.md'), '# Schattenregel\n', 'utf8');
+
+    await expect(checkFixture(root))
+      .rejects.toThrow(/nicht aus der Autorenquelle erzeugt: \.greptile\/rules\.md/);
+  });
+});
+
 describe('review-policy Drift-Check', () => {
   it('bestätigt den eingecheckten Stand des Repositoriums', async () => {
-    await expect(checkReviewPolicy({ repoRoot: REPO_ROOT })).resolves.toHaveLength(2);
+    await expect(checkReviewPolicy({ repoRoot: REPO_ROOT })).resolves.toHaveLength(4);
   });
 
   it('schlägt bei einer von Hand veränderten Adapterdatei fehl', async () => {
@@ -246,8 +366,7 @@ describe('review-policy Drift-Check', () => {
 
   it('erkennt eine zusätzliche Regeldatei auch in einem Unterverzeichnis', async () => {
     const root = await createGeneratedFixtureRoot();
-    await mkdir(path.join(root, GITAR_REVIEW_DIRECTORY, 'extra'), { recursive: true });
-    await writeFile(path.join(root, GITAR_REVIEW_DIRECTORY, 'extra/schatten.md'), '# Schattenregel\n', 'utf8');
+    await writeFixtureFile(root, `${GITAR_REVIEW_DIRECTORY}/extra/schatten.md`, '# Schattenregel\n');
 
     await expect(checkFixture(root))
       .rejects.toThrow(/nicht aus der Autorenquelle erzeugt: \.gitar\/review\/extra\/schatten\.md/);
@@ -255,9 +374,14 @@ describe('review-policy Drift-Check', () => {
 
   /**
    * Gitar liest nicht nur `.gitar/review/`, sondern den ganzen `.gitar`-Baum,
-   * `.cursorrules`, `.cursor/rules/*` und `.github/skills/`. Eine Datei dort
-   * wirkt genauso auf den Review — ein Guard, der nur den Adapterordner prüft,
-   * ließe die Umgehung offen, die er verhindern soll.
+   * `.cursorrules`, `.cursor/rules/*` und `.github/skills/`. Greptile liest
+   * `.greptile/` laut Hersteller zusätzlich in *jedem* Verzeichnis: Die Ebenen
+   * kaskadieren, und eine Kindkonfiguration schaltet über `disabledRules`
+   * geerbte Regeln der Wurzel ab. Eine Datei auf einer dieser Flächen wirkt
+   * auf den Review, gleich wie tief sie liegt und was in ihr steht — ein
+   * Guard, der nur den Adapterordner oder nur die Wurzel prüft, ließe genau
+   * die Umgehung offen, die er verhindern soll (Codex-Reviews auf b171e50
+   * und 32b35d8).
    */
   it.each([
     ['.gitar/skills/umgehung.md'],
@@ -266,11 +390,17 @@ describe('review-policy Drift-Check', () => {
     ['.cursor/rules/umgehung.md'],
     ['.github/skills/umgehung.md'],
     ['.cursorrules'],
+    ['greptile.json'],
+    ['src/.greptile/config.json'],
+    ['src/.greptile/rules.md'],
+    ['packages/api/.greptile/config.json'],
+    ['src/domain/.gitar/review/umgehung.md'],
+    ['src/.cursor/rules/umgehung.md'],
+    ['src/.cursorrules'],
+    ['packages/api/greptile.json'],
   ])('schlägt bei einer Anweisungsdatei unter %s fehl', async (relative) => {
     const root = await createGeneratedFixtureRoot();
-    const absolute = path.join(root, relative);
-    await mkdir(path.dirname(absolute), { recursive: true });
-    await writeFile(absolute, '# Schattenregel\n', 'utf8');
+    await writeFixtureFile(root, relative, '{"disabledRules":["R1-integritaet"]}\n');
 
     await expect(checkFixture(root))
       .rejects.toThrow(`nicht aus der Autorenquelle erzeugt: ${relative}`);
@@ -284,9 +414,7 @@ describe('review-policy Drift-Check', () => {
   it('meldet mehrere Fremddateien in stabiler Reihenfolge', async () => {
     const root = await createGeneratedFixtureRoot();
     for (const relative of ['.cursorrules', '.gitar/rules/b.md', '.gitar/rules/a.md', '.github/skills/c.md']) {
-      const absolute = path.join(root, relative);
-      await mkdir(path.dirname(absolute), { recursive: true });
-      await writeFile(absolute, '# Schattenregel\n', 'utf8');
+      await writeFixtureFile(root, relative, '# Schattenregel\n');
     }
 
     const message = await checkFixture(root).then(
@@ -303,10 +431,53 @@ describe('review-policy Drift-Check', () => {
   });
 
   it('deckt jede in der Autorenquelle geführte Anweisungsfläche ab', () => {
-    expect(GITAR_INSTRUCTION_DIRECTORIES).toEqual(['.gitar', '.cursor', '.github/skills']);
-    expect(GITAR_INSTRUCTION_FILES).toEqual(['.cursorrules']);
-    expect(GITAR_INSTRUCTION_DIRECTORIES.some((directory) => GITAR_REVIEW_DIRECTORY.startsWith(`${directory}/`)))
-      .toBe(true);
+    expect(REVIEW_INSTRUCTION_DIRECTORY_NAMES).toEqual(['.gitar', '.greptile', '.cursor']);
+    expect(REVIEW_INSTRUCTION_ROOT_DIRECTORIES).toEqual(['.github/skills']);
+    expect(REVIEW_INSTRUCTION_FILE_NAMES).toEqual(['.cursorrules', 'greptile.json']);
+    expect(REVIEW_INSTRUCTION_DIRECTORY_NAMES.includes(GITAR_REVIEW_DIRECTORY.split('/')[0])).toBe(true);
+  });
+
+  /**
+   * `.github/skills` bleibt an die Wurzel gebunden, weil GitHub das
+   * Verzeichnis nur dort auswertet. Ein gleichnamiges Verzeichnis tiefer im
+   * Baum ist keine Anweisungsfläche und darf den Guard nicht auslösen — ein
+   * Guard, der auch Unbeteiligtes meldet, wird umgangen statt befolgt.
+   */
+  it('meldet ein verschachteltes .github/skills nicht', async () => {
+    const root = await createGeneratedFixtureRoot();
+    await writeFixtureFile(root, 'src/.github/skills/harmlos.md', '# Kein Reviewkontext\n');
+
+    await expect(checkFixture(root)).resolves.toHaveLength(4);
+  });
+
+  /**
+   * Der Scan zählt auf, was im PR-Head landen kann, statt die Platte
+   * abzulaufen. Beide Richtungen dieser Zusage müssen belegt sein: Eine
+   * ausgeschlossene Datei erreicht keinen Reviewer und ist keine Drift — sie
+   * erzwungen zu versionieren macht sie dagegen sofort wieder zu einer.
+   */
+  it('meldet eine ausgeschlossene Anweisungsdatei erst, wenn sie erzwungen versioniert ist', async () => {
+    const root = await createGeneratedFixtureRoot();
+    await writeFile(path.join(root, '.gitignore'), '.greptile/lokal.md\n', 'utf8');
+    await writeFile(path.join(root, '.greptile/lokal.md'), '# Nur lokal\n', 'utf8');
+
+    await expect(checkFixture(root)).resolves.toHaveLength(4);
+
+    await execFileAsync('git', ['add', '-f', '.greptile/lokal.md'], { cwd: root });
+
+    await expect(checkFixture(root))
+      .rejects.toThrow(/nicht aus der Autorenquelle erzeugt: \.greptile\/lokal\.md/);
+  }, 30_000);
+
+  it('entscheidet über die Anweisungsfläche anhand jedes Pfadbestandteils', () => {
+    expect(isReviewInstructionPath('.greptile/config.json')).toBe(true);
+    expect(isReviewInstructionPath('src/.greptile/config.json')).toBe(true);
+    expect(isReviewInstructionPath('a/b/c/.gitar/x.md')).toBe(true);
+    expect(isReviewInstructionPath('src/nested/greptile.json')).toBe(true);
+    expect(isReviewInstructionPath('.github/skills/x.md')).toBe(true);
+    expect(isReviewInstructionPath('src/.github/skills/x.md')).toBe(false);
+    expect(isReviewInstructionPath('src/greptile.ts')).toBe(false);
+    expect(isReviewInstructionPath('docs/greptile/notiz.md')).toBe(false);
   });
 
   /**
@@ -344,7 +515,7 @@ describe('review-policy Drift-Check', () => {
     await expect(checkFixture(root)).rejects.toThrow(ReviewPolicyError);
 
     await writeReviewPolicy({ repoRoot: root });
-    await expect(checkFixture(root)).resolves.toHaveLength(2);
+    await expect(checkFixture(root)).resolves.toHaveLength(4);
   });
 });
 
@@ -384,7 +555,7 @@ describe('review-policy Guard gegen erzwungen versionierte Anweisungsflächen', 
   });
 
   it('schlägt ohne Git-Repository fehl statt still zu bestehen', async () => {
-    const root = await createGeneratedFixtureRoot();
+    const root = await createGeneratedFixtureRoot({ git: false });
 
     await expect(checkReviewPolicy({ repoRoot: root }))
       .rejects.toThrow(/Git-Index nicht lesbar/);
@@ -417,7 +588,7 @@ describe('review-policy Guard gegen erzwungen versionierte Anweisungsflächen', 
     await writeFile(path.join(root, '.gitignore'), 'AGENTS.md\n', 'utf8');
     await writeFile(path.join(root, 'AGENTS.md'), '# Lokale Agentendatei\n', 'utf8');
 
-    await expect(checkReviewPolicy({ repoRoot: root })).resolves.toHaveLength(2);
+    await expect(checkReviewPolicy({ repoRoot: root })).resolves.toHaveLength(4);
 
     await git('add', '-f', 'AGENTS.md');
 
@@ -426,6 +597,6 @@ describe('review-policy Guard gegen erzwungen versionierte Anweisungsflächen', 
   }, 30_000);
 
   it('bestätigt, dass in diesem Repository keine dieser Flächen versioniert ist', async () => {
-    await expect(checkReviewPolicy({ repoRoot: REPO_ROOT })).resolves.toHaveLength(2);
+    await expect(checkReviewPolicy({ repoRoot: REPO_ROOT })).resolves.toHaveLength(4);
   });
 });
