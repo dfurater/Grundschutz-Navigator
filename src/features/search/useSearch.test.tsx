@@ -7,7 +7,10 @@ import type {
   VocabularyRegistryData,
 } from '@/domain/models';
 import { buildVocabularyRegistry } from '@/domain/vocabulary';
-import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
+import {
+  VOCABULARY_IDENTIFIERS,
+  createTestVocabularyRegistry,
+} from '@/test/fixtures/vocabulary';
 import {
   clearSearchCache,
   getSearchCacheEntry,
@@ -216,7 +219,7 @@ describe('useSearch', () => {
       id: 'GC',
       title: 'Governance und Compliance',
       label: 'GC',
-      altIdentifier: 'uuid-practice-1',
+      altIdentifier: VOCABULARY_IDENTIFIERS.practiceGC,
       topics: [],
       controlCount: 1,
     };
@@ -608,7 +611,7 @@ describe('useSearch', () => {
     it('geänderte Practices invalidieren den Cache', async () => {
       const controls = [makeControl({ id: 'GC.1.1', practiceId: 'GC' })];
       const registry = createTestVocabularyRegistry();
-      const firstPractices: Practice[] = [{ id: 'GC', title: 'Gov', label: 'GC', altIdentifier: 'uuid-practice-1', topics: [], controlCount: 1 }];
+      const firstPractices: Practice[] = [{ id: 'GC', title: 'Gov', label: 'GC', altIdentifier: VOCABULARY_IDENTIFIERS.practiceGC, topics: [], controlCount: 1 }];
       // Gleich lang wie firstPractices, damit der Test die Referenzprüfung belegt.
       const secondPractices: Practice[] = [
         { id: 'GC', title: 'Gov', label: 'GC', altIdentifier: 'uuid-2', topics: [], controlCount: 1 },

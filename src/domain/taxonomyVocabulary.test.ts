@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { Topic } from './models';
 import { resolveTopicVocabulary } from './taxonomyVocabulary';
-import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
+import {
+  VOCABULARY_IDENTIFIERS,
+  createTestVocabularyRegistry,
+} from '@/test/fixtures/vocabulary';
 
 describe('taxonomy vocabulary', () => {
   it('joins shared topic definitions only by altIdentifier UUID', () => {
@@ -9,7 +12,7 @@ describe('taxonomy vocabulary', () => {
       id: 'GC.2',
       title: 'Organisation',
       label: '2',
-      altIdentifier: 'uuid-topic-1',
+      altIdentifier: VOCABULARY_IDENTIFIERS.topicOrganisation,
       practiceId: 'GC',
       controlCount: 0,
       controlIds: [],

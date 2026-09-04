@@ -278,6 +278,37 @@ function inferDefinitionColumn(headers) {
   return headers.find((header) => normalizeHeader(header).startsWith('definition'));
 }
 
+/**
+ * Kennungsspalten werden am Header erkannt: Der Spaltenname endet ohne Rücksicht
+ * auf Groß- und Kleinschreibung auf `uuid`. Keine je Namespace gepflegte Liste,
+ * damit ein neuer Upstream-Header nicht stillschweigend im Volltextindex landet.
+ *
+ * Wert- und Definitionsspalte sind ausgenommen: Ein Namespace, dessen suchbarer
+ * Kern zufällig auf `uuid` endet, verlöre sonst seine Auffindbarkeit.
+ *
+ * Die Rolle unterscheidet sich am Präfix. Eine Spalte, die nur `uuid` heißt,
+ * trägt die Identität der Zeile; ein vorangestellter Name wie `ChildOf`
+ * benennt eine Beziehung auf die Kennung einer anderen Zeile.
+ */
+function inferIdentifierColumns(headers, valueColumn, definitionColumn) {
+  const candidates = headers.filter((header) => {
+    if (header === valueColumn || header === definitionColumn) {
+      return false;
+    }
+
+    return normalizeHeader(header).endsWith('uuid');
+  });
+
+  return {
+    identifierColumns: candidates.filter(
+      (header) => normalizeHeader(header) === 'uuid',
+    ),
+    identifierReferenceColumns: candidates.filter(
+      (header) => normalizeHeader(header) !== 'uuid',
+    ),
+  };
+}
+
 export function parseVocabularyCsv(text) {
   const rows = parseCsv(text);
   if (rows.length === 0) {
@@ -326,10 +357,18 @@ export function parseVocabularyCsv(text) {
     });
   }
 
+  const { identifierColumns, identifierReferenceColumns } = inferIdentifierColumns(
+    columnOrder,
+    valueColumn,
+    definitionColumn,
+  );
+
   return {
     columnOrder,
     valueColumn,
     definitionColumn,
+    identifierColumns,
+    identifierReferenceColumns,
     entries,
   };
 }
@@ -356,6 +395,8 @@ export function buildVocabularyNamespaceData({
     columnOrder: parsed.columnOrder,
     valueColumn: parsed.valueColumn,
     definitionColumn: parsed.definitionColumn,
+    identifierColumns: parsed.identifierColumns,
+    identifierReferenceColumns: parsed.identifierReferenceColumns,
     entries: parsed.entries,
   };
 }

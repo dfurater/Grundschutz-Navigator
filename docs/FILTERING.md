@@ -35,6 +35,46 @@ Mehrfachwerte werden kommasepariert in einem Parameter kodiert (z.B. `mv=MUSS,SO
 Die Volltextsuche ist davon getrennt und läuft ausschließlich über `/suche?q=…`.
 Ein `q`-Parameter auf einer Katalogroute ist kein Katalogfilter und wird ignoriert.
 
+## Kennungssuche
+
+Eine Suchanfrage, die exakt dem in OSCAL 1.1.3 gepinnten `UUIDDatatype` (UUID
+v4/v5) entspricht, wird nicht als Volltext behandelt, sondern über einen
+eigenen Kennungsindex aufgelöst. Der Index liegt im kataloggescopten
+Suchcache und erbt damit Katalogtrennung und Invalidierung der Volltextindizes.
+
+| Eingabe | Treffer |
+| --- | --- |
+| Control-`alt-identifier` | genau dieses Control, an erster Stelle |
+| Praktik-Kennung | alle Controls dieser Praktik |
+| Themen-Kennung | alle Controls aller Gruppen mit dieser Kennung |
+| Vokabular-Kennung (Gefährdung, Zielobjektkategorie, Handlungswort, Modalverb, …) | alle Controls, die den zugehörigen Wert führen |
+| Dokumentkennungen (`catalog.uuid`, `document-id`, `parties.uuid`, `resources.uuid`) | keine Treffer |
+| Kennung aus einem anderen Katalog | keine Treffer |
+
+Ein `ChildOfUUID`-Wert verweist auf einen anderen Vokabular-Eintrag. Die
+Controls des verweisenden Eintrags werden der Elternkennung deshalb nicht
+zugeschlagen; aufgelöst wird ausschließlich über die eigene Kennung eines
+Eintrags.
+
+Eine unvollständige oder syntaktisch abweichende Kennung liefert kein Ergebnis
+und fällt nicht auf die Volltextsuche zurück. Als Kennung gilt eine Eingabe
+dafür bereits an ihrer Form, und zwar über zwei Anker: Sie beginnt mit acht
+Hexziffern und einem Bindestrich, gefolgt von beliebigen Zeichen ohne Leerraum
+— oder sie füllt das Segmentraster 8-4-4-4-12 vollständig aus. Der erste Anker
+deckt jede Verfälschung hinter einem korrekt getippten Kopfblock ab, der zweite
+die Fälle, in denen schon der Kopfblock verfälscht ist. Geprüft wird
+ausschließlich die Form, nie der Zeichenvorrat: Ob ein Zeichen durch eine
+Ziffer, einen Buchstaben, einen Unterstrich oder ein Sonderzeichen ersetzt
+wurde, ändert nichts daran, dass eine Kennung gemeint war. Leerraum grenzt ab,
+weil er aus der Eingabe eine Wortfolge macht. Ein Fachbegriff wie `Taxonomy-L4`
+erfüllt keinen der beiden Anker und wird weiterhin über den Volltext gesucht. Kennungsspalten sind aus dem
+Volltextindex ausgenommen — FlexSearch zerlegt sie an den Bindestrichen, und
+Einträge mit gemeinsamen Teiltokens würden sich sonst gegenseitig treffen.
+Welche Spalten das sind, entscheidet das Build-Skript am CSV-Header
+(Spaltenname endet ohne Rücksicht auf Groß-/Kleinschreibung auf `uuid`, Wert-
+und Definitionsspalte ausgenommen) und schreibt es als `identifierColumns`
+beziehungsweise `identifierReferenceColumns` in `vocabularies.json`.
+
 Die WLAN-Props `Taxonomy-L1` bis `Taxonomy-L4` sind keine zusätzliche
 Filterdimension. Ihre exakten Namen und Werte fließen in den Volltextindex ein;
 dadurch bleiben sie über `/suche?q=…` auffindbar, ohne aus dem derzeitigen

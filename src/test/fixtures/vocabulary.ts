@@ -4,7 +4,30 @@ import type {
   VocabularyRegistryData,
 } from '@/domain/models';
 import { buildVocabularyRegistry } from '@/domain/vocabulary';
-import { createTaxonomyVocabularyNamespaces } from './taxonomyVocabulary';
+import {
+  createTaxonomyVocabularyNamespaces,
+  TAXONOMY_IDENTIFIERS,
+} from './taxonomyVocabulary';
+
+/**
+ * Kennungen der Vokabular-Fixture. Die drei Gefährdungen teilen sich bewusst
+ * vier der fünf Bindestrich-Teiltokens: Genau diese Nachbarschaft hatte in
+ * GSPP-274 im Volltextindex zu gegenseitigen Treffern geführt.
+ */
+export const VOCABULARY_IDENTIFIERS = {
+  ...TAXONOMY_IDENTIFIERS,
+  modalverbMuss: '5a2b3c4d-1e2f-4a3b-8c4d-5e6f7a8b9c01',
+  modalverbSollte: '6b3c4d5e-2f3a-4b4c-9d5e-6f7a8b9c0d12',
+  actionWordVerankern: '7c4d5e6f-3a4b-4c5d-8e6f-7a8b9c0d1e23',
+  actionWordUmsetzen: '8d5e6f7a-4b5c-4d6e-9f7a-8b9c0d1e2f34',
+  threatG018: 'aa11bb22-cc33-4d44-8e55-ff6600112233',
+  threatG019: 'aa11bb22-cc33-4d44-8e55-ff6600112244',
+  threatG020: 'aa11bb22-cc33-4d44-8e55-ff6600112255',
+  targetObjectServer: '1f8a6a1e-9c2b-4d3a-9f11-0b7c5d2e4a60',
+  targetObjectDateiserver: '2c9b7b2f-8d3c-4e4b-8a22-1c8d6e3f5b71',
+  targetObjectOrphanParent: '3d0c8c30-7e4d-4f5c-9b33-2d9e7f4a6c82',
+  targetObjectOrphan: '4e1d9d41-6f5e-4a6d-8c44-3eaf805b7d93',
+} as const;
 
 function createNamespace({
   namespace,
@@ -14,6 +37,8 @@ function createNamespace({
   valueColumn = 'Begriff',
   definitionColumn = 'Definition',
   extraColumns = [],
+  identifierColumns = [],
+  identifierReferenceColumns = [],
   entries,
 }: {
   namespace: string;
@@ -23,6 +48,8 @@ function createNamespace({
   valueColumn?: string;
   definitionColumn?: string;
   extraColumns?: string[];
+  identifierColumns?: string[];
+  identifierReferenceColumns?: string[];
   entries: VocabularyEntry[];
 }): VocabularyNamespaceData {
   return {
@@ -37,6 +64,8 @@ function createNamespace({
     columnOrder: [valueColumn, definitionColumn, ...extraColumns],
     valueColumn,
     definitionColumn,
+    identifierColumns,
+    identifierReferenceColumns,
     entries,
   };
 }
@@ -58,6 +87,8 @@ export function createTestVocabularyRegistry() {
         path: 'namespaces/modal_verbs.csv',
         fileName: 'modal_verbs.csv',
         routeId: 'modal-verbs',
+        extraColumns: ['UUID'],
+        identifierColumns: ['UUID'],
         entries: [
           {
             value: 'MUSS',
@@ -65,6 +96,7 @@ export function createTestVocabularyRegistry() {
             columns: {
               Begriff: 'MUSS',
               Definition: 'Modalverb definiert verbindliche Anforderungen.',
+              UUID: VOCABULARY_IDENTIFIERS.modalverbMuss,
             },
           },
           {
@@ -73,6 +105,7 @@ export function createTestVocabularyRegistry() {
             columns: {
               Begriff: 'SOLLTE',
               Definition: 'Modalverb markiert eine starke Empfehlung.',
+              UUID: VOCABULARY_IDENTIFIERS.modalverbSollte,
             },
           },
         ],
@@ -190,6 +223,8 @@ export function createTestVocabularyRegistry() {
         path: 'namespaces/action_words.csv',
         fileName: 'action_words.csv',
         routeId: 'action-words',
+        extraColumns: ['UUID'],
+        identifierColumns: ['UUID'],
         entries: [
           {
             value: 'verankern',
@@ -197,6 +232,7 @@ export function createTestVocabularyRegistry() {
             columns: {
               Begriff: 'verankern',
               Definition: 'Handlungswort für organisatorische Verankerung.',
+              UUID: VOCABULARY_IDENTIFIERS.actionWordVerankern,
             },
           },
           {
@@ -205,6 +241,7 @@ export function createTestVocabularyRegistry() {
             columns: {
               Begriff: 'umsetzen',
               Definition: 'Handlungswort für konkrete Umsetzung.',
+              UUID: VOCABULARY_IDENTIFIERS.actionWordUmsetzen,
             },
           },
         ],
@@ -232,7 +269,9 @@ export function createTestVocabularyRegistry() {
         path: 'namespaces/target_object_categories.csv',
         fileName: 'target_object_categories.csv',
         routeId: 'target-object-categories',
-        extraColumns: ['Objektklasse'],
+        extraColumns: ['Objektklasse', 'ChildOfUUID', 'UUID'],
+        identifierColumns: ['UUID'],
+        identifierReferenceColumns: ['ChildOfUUID'],
         entries: [
           {
             value: 'Server',
@@ -241,6 +280,33 @@ export function createTestVocabularyRegistry() {
               Begriff: 'Server',
               Definition: 'Server sind Zielobjekte mit zentralen IT-Diensten.',
               Objektklasse: 'IT-System',
+              ChildOfUUID: '',
+              UUID: VOCABULARY_IDENTIFIERS.targetObjectServer,
+            },
+          },
+          // Kind mit eigener Kennung und Verweis auf "Server": belegt, dass die
+          // Elternkennung nur die Controls des Elterneintrags liefert.
+          {
+            value: 'Dateiserver',
+            definition: 'Dateiserver sind eine Unterkategorie der Server.',
+            columns: {
+              Begriff: 'Dateiserver',
+              Definition: 'Dateiserver sind eine Unterkategorie der Server.',
+              Objektklasse: 'IT-System',
+              ChildOfUUID: VOCABULARY_IDENTIFIERS.targetObjectServer,
+              UUID: VOCABULARY_IDENTIFIERS.targetObjectDateiserver,
+            },
+          },
+          // Verweis ins Leere: die Zeile darf in der Karte nicht erscheinen.
+          {
+            value: 'Verwaiste Kategorie',
+            definition: 'Kategorie mit unauflösbarem Elternverweis.',
+            columns: {
+              Begriff: 'Verwaiste Kategorie',
+              Definition: 'Kategorie mit unauflösbarem Elternverweis.',
+              Objektklasse: 'IT-System',
+              ChildOfUUID: VOCABULARY_IDENTIFIERS.targetObjectOrphanParent,
+              UUID: VOCABULARY_IDENTIFIERS.targetObjectOrphan,
             },
           },
         ],
@@ -280,6 +346,7 @@ export function createTestVocabularyRegistry() {
         // Wie im echten Artefakt: die ID ist der Lookup-Wert, `Begriff` trägt den Namen.
         valueColumn: 'ID',
         extraColumns: ['Begriff', 'uuid'],
+        identifierColumns: ['uuid'],
         entries: [
           {
             value: 'G 0.18',
@@ -288,7 +355,7 @@ export function createTestVocabularyRegistry() {
               ID: 'G 0.18',
               Begriff: 'Fehlplanung oder fehlende Anpassung',
               Definition: 'Fehlplanung oder fehlende Anpassung von Prozessen.',
-              uuid: 'uuid-threat-g-0-18',
+              uuid: VOCABULARY_IDENTIFIERS.threatG018,
             },
           },
           {
@@ -298,7 +365,7 @@ export function createTestVocabularyRegistry() {
               ID: 'G 0.19',
               Begriff: 'Offenlegung schützenswerter Informationen',
               Definition: 'Offenlegung schützenswerter Informationen.',
-              uuid: 'uuid-threat-g-0-19',
+              uuid: VOCABULARY_IDENTIFIERS.threatG019,
             },
           },
           {
@@ -307,7 +374,7 @@ export function createTestVocabularyRegistry() {
             columns: {
               ID: 'G 0.20',
               Definition: 'Gefährdung ohne hinterlegten Begriff.',
-              uuid: 'uuid-threat-g-0-20',
+              uuid: VOCABULARY_IDENTIFIERS.threatG020,
             },
           },
         ],
