@@ -195,9 +195,9 @@ bestehende Klasse-1-Loader bleibt davon getrennt. Sie stehen in
 
 | Grenze | Wert | Kostenbasierte Begründung |
 | --- | --- | --- |
-| Bytes vor Dekodierung | 10 MiB | Ein Dokument, das nur diese Grenze ausschöpft, kostet 11,71 MiB Tab-Speicher und 0,39 s Rechenzeit — gut ein Sechstel des Speicherbudgets. Bytes für sich sind billig; teuer wird erst, was in ihnen steht. |
-| Verschachtelungstiefe | 64 | Rekursionstiefe ist für sich kostenlos; die Grenze schützt den Stapel, nicht das Budget. Ihr Kostenfall ist erst die Kombination mit der Knotengrenze. |
-| Knoten | 1 000 000 | Bindende Grenze. Ein Dokument darauf kostet 49,49 MiB Tab-Speicher — das 17,3-Fache seiner eigenen 2,86 MiB. Sie allein hält den Speicherabdruck im Budget. |
+| Bytes vor Dekodierung | 10 MiB | Ein Dokument, das nur diese Grenze ausschöpft, kostet 12,95 MiB Speicher und 0,39 s Rechenzeit — gut ein Fünftel des Speicherbudgets. Bytes für sich sind billig; teuer wird erst, was in ihnen steht. |
+| Verschachtelungstiefe | 64 | Rekursionstiefe ist für sich kostenlos; die Grenze schützt den Stapel, nicht das Budget. Ihr Fixture trägt die teuersten Messwerte, aber wegen seiner Containerzahl, nicht wegen seiner Tiefe. |
+| Knoten | 1 000 000 | Bindende Grenze. Das teuerste Dokument darauf kostet 51,38 MiB Speicher — das Achtzehnfache seiner eigenen 2,86 MiB. Sie allein hält den Speicherabdruck im Budget. |
 | Summe dekodierter Base64-Größen | 4 MiB | Auf 10 MiB war die Grenze arithmetisch unerreichbar und damit wirkungslos; siehe „Die Base64-Grenze war tot“ unten. |
 
 #### Warum die Kopfraumrechnung als Begründung nicht genügt
@@ -237,11 +237,18 @@ Das Skript hängt bewusst an keinem Anwendungspfad und ist weder in
 `npm run build`/`test`/`dev` noch in einem CI-Gate eingebunden — dieselbe
 Trennung wie [`sync-oscal-schemas.mjs`](../scripts/sync-oscal-schemas.mjs).
 Es startet einen temporären Vite-Dev-Server, lädt einen Chromium über
-Playwright und ruft darin die **produktiven** Einheiten der Prüfkette auf.
+Playwright und ruft darin die **produktiven** Einheiten der Prüfkette auf,
+einschließlich der Glob-Übersetzung aus
+[`profileResolutionSelection.ts`](../src/domain/profileResolutionSelection.ts).
+Die reine Berichtslogik liegt in
+[`measureClass2BudgetReport.mjs`](../scripts/measureClass2BudgetReport.mjs) und
+ist dort kolokiert getestet.
+
 Die Dokumente erzeugt
 [`class2WorstCaseFixtures.mjs`](../scripts/class2WorstCaseFixtures.mjs)
-deterministisch; dass jedes von ihnen exakt auf seiner Grenze liegt und eine
-Einheit darüber abgewiesen wird, hält
+deterministisch. Dass jedes von ihnen exakt auf seiner Grenze liegt, eine
+Einheit darüber abgewiesen wird und die Kette so weit durchläuft, wie es die
+Tabelle behauptet, hält
 [`class2WorstCaseFixtures.test.ts`](../scripts/class2WorstCaseFixtures.test.ts)
 fest.
 
@@ -260,23 +267,44 @@ an der Taktrate.
 
 Zeiten sind Mediane aus drei Läufen, Speicherwerte deren Maximum.
 
-| Fixture | Grenze | Dokument | Kette 1× | Kette 4× | Ende-zu-Ende (Worker) | Tab-Speicher |
-| --- | --- | --- | --- | --- | --- | --- |
-| `byte-bound` | `maxBytes` | 10,00 MiB | 0,10 s | 0,39 s | 0,13 s | 11,71 MiB |
-| `node-bound` | `maxNodes` | 2,86 MiB | 0,86 s | 3,63 s | 0,89 s | **49,49 MiB** |
-| `depth-bound` | `maxDepth` | 2,86 MiB | 0,84 s | 3,74 s | 0,90 s | 33,40 MiB |
-| `base64-bound` | `maxDecodedBase64Bytes` | 5,33 MiB | 0,08 s | 0,38 s | 0,13 s | 10,68 MiB |
-| `combined-bound` | alle drei zugleich | 10,00 MiB | 1,03 s | **4,41 s** | 1,03 s | 47,67 MiB |
+| Fixture | Grenze | Dokument | Kette 1× | Kette 4× | Ende-zu-Ende | Gehalten | Identitätsmenge | Spitze | Schemastufe |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `byte-bound` | `maxBytes` | 10,00 MiB | 0,10 s | 0,39 s | 0,15 s | 2,95 MiB | 0,00 MiB | 12,95 MiB | ja |
+| `node-bound` | `maxNodes` | 6,68 MiB | 0,60 s | 2,42 s | 0,98 s | 17,61 MiB | 5,00 MiB | 29,28 MiB | ja |
+| `depth-bound` | `maxDepth` | 2,86 MiB | 0,84 s | **3,28 s** | 0,86 s | 38,52 MiB | 10,00 MiB | **51,38 MiB** | nein |
+| `base64-bound` | `maxDecodedBase64Bytes` | 5,33 MiB | 0,16 s | 0,48 s | 0,15 s | 5,36 MiB | 0,00 MiB | 10,69 MiB | ja |
+| `combined-bound` | `maxNodes` + `maxBytes` | 10,00 MiB | 0,67 s | 2,65 s | 0,98 s | 12,88 MiB | 5,00 MiB | 27,88 MiB | ja |
 
 „Kette“ ist Stufe 1 plus objektorientierte Kette, direkt im Tab gemessen —
-also genau die Arbeit, die im Produktivpfad der Worker leistet. „Tab-Speicher“
-ist der zusätzliche JS-Heap über der Basislinie plus der Eingabepuffer.
+also genau die Arbeit, die im Produktivpfad der Worker leistet.
+„Ende-zu-Ende“ ist derselbe Vorgang über den produktiven Einstieg
+[`importClass2OscalDocument`](../src/adapters/oscalImportGate.ts) mitsamt
+Worker-Start und Nachrichtenübergabe.
 
-Drei Messgrenzen, die das Protokoll mitführen muss:
+Die vier als schemafähig ausgewiesenen Fixtures sind gültige
+OSCAL-Katalogwurzeln nach dem gepinnten Schema 1.1.3 und werden von der Kette
+**angenommen** — ihre Werte schließen Schema-Chunk, Ajv-Kompilierung und
+Ajv-Lauf ein. Ein Dokument, das schon im Root-Dispatch scheitert, käme dort
+nie an und würde die teuerste Stufe unterschlagen.
 
-- `Runtime.getHeapUsage` liefert nur den V8-JS-Heap. Backing Stores von
-  `ArrayBuffer`/`Uint8Array` liegen als externer Speicher daneben; die
-  Eingabebytes sind deshalb arithmetisch zugeschlagen, nicht gemessen.
+##### Woraus sich die Speicherspitze zusammensetzt
+
+Drei Posten, die einzeln erhoben werden, weil keine einzelne Messung sie alle
+sieht:
+
+| Posten | Erhebung |
+| --- | --- |
+| Gehalten | `Runtime.getHeapUsage` nach erzwungener Sammlung: das Parse-Produkt und das Herkunftsregister, also alles, was den Lauf überdauert. |
+| Identitätsmenge | Die `Set`-Identitätsmenge, die `enforceClass2ObjectGraphInvariants` über jeden besuchten Container führt. Sie ist nach der Rückkehr der Funktion unerreichbar; die erzwungene Sammlung räumt sie ab, bevor eine Messung sie sehen könnte. Der Lauf baut sie deshalb über denselben Containerbestand ein zweites Mal auf, hält sie fest und misst sie — dieselbe Datenstruktur, dieselben Elemente, dieselbe Anzahl. |
+| Eingabepuffer | Die Dokumentbytes. Ihr `ArrayBuffer`-Backing-Store liegt als externer Speicher neben dem V8-JS-Heap und erscheint in `Runtime.getHeapUsage` nicht; er wird arithmetisch zugeschlagen. |
+
+Ohne den zweiten Posten läge die ausgewiesene Spitze des ungünstigsten Falls
+bei 41,38 statt 51,38 MiB — die Zahl, die das Budget begründen soll, wäre um
+ein Fünftel zu klein.
+
+Zwei weitere Messgrenzen bleiben bestehen und sind hier ausgewiesen, nicht
+behoben:
+
 - Der Heap eines dedizierten Workers erscheint nicht im Hauptkontext. Die
   Kette wird darum zusätzlich direkt im Tab ausgeführt — dieselben Einheiten,
   dieselbe Datenstruktur, deshalb dieselbe Größenordnung.
@@ -286,32 +314,53 @@ Drei Messgrenzen, die das Protokoll mitführen muss:
 
 #### Ergebnis der Nachvalidierung
 
-Alle Budgetposten werden im ungünstigsten Fall eingehalten: 49,49 MiB gegen
-64 MiB Speicherbudget, 4,41 s gegen 5 s sichtbare Wartezeit, und die
-UI-Blockierzeit fällt architektonisch weg, weil die Kette im Worker läuft.
+Alle Budgetposten werden im ungünstigsten Fall eingehalten: 51,38 MiB gegen
+64 MiB Speicherbudget (80 % ausgeschöpft), 3,28 s gegen 5 s sichtbare
+Wartezeit, und die UI-Blockierzeit fällt architektonisch weg, weil die Kette
+im Worker läuft.
 
 - **`maxBytes` 10 MiB — bestätigt.** Ein Dokument, das nur diese Grenze
-  ausschöpft, kostet 11,71 MiB und 0,39 s. Der Wert
-  stimmt weiterhin zufällig mit `MAX_CATALOG_ARTIFACT_BYTES` in
+  ausschöpft, kostet 12,95 MiB und 0,39 s. Der Wert stimmt weiterhin zufällig
+  mit `MAX_CATALOG_ARTIFACT_BYTES` in
   [`fetch-catalog.mjs`](../scripts/fetch-catalog.mjs) überein; diese
   Übereinstimmung ist **keine** Begründung mehr. Die eine Konstante sichert
   einen Build-Zeit-Abruf aus vertrauter, versionsgepinnter Quelle, die andere
   die Laufzeitverarbeitung eines potenziell feindlichen lokalen Dokuments.
   Die beiden dürfen sich unabhängig voneinander bewegen.
-- **`maxDepth` 64 — bestätigt.** Tiefe ist für sich kein Kostentreiber. Bei
-  gleicher Knotenzahl kostet `depth-bound` dieselbe Rechenzeit wie
-  `node-bound` (3,74 s zu 3,63 s, im Rauschen) und deutlich weniger Speicher
-  (33,40 MiB zu 49,49 MiB). Die Grenze bleibt als Stapelschutz gültig, trägt
-  aber nichts zum Budget bei.
-- **`maxNodes` 1 000 000 — bestätigt, und die einzige bindende Grenze.** Sie
-  deckelt die Zahl gleichzeitig gehaltener Containeridentitäten: Die
+- **`maxNodes` 1 000 000 — bestätigt, und die bindende Grenze.** Sie deckelt
+  die Zahl gleichzeitig gehaltener Containeridentitäten: Die
   Strukturinvariante führt jeden Container in einer `Set`-Identitätsmenge,
-  Stufe 1 zusätzlich in einem `WeakSet`. Daraus entsteht die gemessene
-  Verstärkung von 2,86 MiB Dokument auf 49,49 MiB Speicher — Faktor 17,3.
-  Der Abdruck wächst linear in der Containerzahl, weil genau diese beiden
-  Mengen ihn tragen; linear hochgerechnet — nicht gemessen — risse der
-  ungünstigste Fall bei 2 000 000 Knoten das 64-MiB-Budget.
+  Stufe 1 zusätzlich in einem `WeakSet`. Das teuerste Dokument der Messung
+  wiegt 2,86 MiB und belegt 51,38 MiB — Faktor 18. Der Abdruck wächst linear
+  in der Containerzahl, weil genau diese beiden Mengen ihn tragen; linear
+  hochgerechnet — nicht gemessen — risse der ungünstigste Fall bei
+  2 000 000 Knoten das 64-MiB-Budget.
+- **`maxDepth` 64 — bestätigt.** Rekursionstiefe ist für sich kein
+  Kostentreiber; die Grenze schützt den Stapel. Dass das `depth-bound`-Fixture
+  trotzdem die teuersten Werte trägt, liegt nicht an seiner Tiefe, sondern an
+  seiner Containerzahl — siehe unten.
 - **`maxDecodedBase64Bytes` 10 MiB → 4 MiB — korrigiert.** Begründung unten.
+
+##### Warum das teuerste Dokument kein gültiger Katalog ist
+
+Der Speicher-Worst-Case ist `depth-bound` — eine Kette aus leeren Objekten.
+Das leere Objekt ist der billigste Container, den JSON erzeugen kann, weshalb
+dieses Dokument bei ausgeschöpfter Knotengrenze doppelt so viele Container
+trägt wie ein schemagültiger Katalog: Dessen billigste Gruppe braucht neben
+dem Container noch einen Titelstring und verbraucht damit zwei Knoten statt
+einem.
+
+Ein Angreifer ist an die Schemagültigkeit nicht gebunden. Die Ablehnung im
+Root-Dispatch erfolgt **erst**, nachdem Stufe 1 und die Objektkette diesen
+Speicher bereits belegt haben. Das Budget muss deshalb diesen Fall tragen und
+nicht den des gültigen Katalogs — auch wenn der gültige Katalog die längere
+Rechenzeit hätte, sobald Ajv hinzukommt.
+
+Umgekehrt gilt: Eine Tiefe von exakt 64 ist mit einem schemagültigen Katalog
+gar nicht konstruierbar. Gruppenobjekte liegen dort ausschließlich auf geraden
+Tiefen und ihre Blätter deshalb ausschließlich auf ungeraden; erreichbar wäre
+nur 63. Das `depth-bound`-Fixture hat deshalb Vorrang vor der
+Schemafähigkeit — es belegt, dass die Tiefengrenze bindet.
 
 #### Die Base64-Grenze war tot
 
@@ -335,7 +384,7 @@ Der neue Wert 4 MiB ist doppelt hergeleitet:
 - **Kosten.** Eine dekodierte Nutzlast von 4 MiB verlangt 5,33 MiB kodierten
   Text im Dokument und lässt damit immer noch mehr Byteraum für das eigentliche
   OSCAL-Dokument übrig, als die Nutzlast selbst belegt. Bei 5 MiB kippt dieses
-  Verhältnis. Gemessen kostet das Fixture auf der neuen Grenze 10,68 MiB — mit
+  Verhältnis. Gemessen kostet das Fixture auf der neuen Grenze 10,69 MiB — mit
   einer künftigen Dekodierung träte die dekodierte Nutzlast hinzu und bliebe
   mit rund 15 MiB weit im Budget.
 
@@ -363,10 +412,10 @@ Control-ID:
 
 | Sterne | Musterlänge | Laufzeit 1× | Laufzeit 4× |
 | --- | --- | --- | --- |
-| 6 | 13 Byte | 14 ms | 57 ms |
-| 8 | 17 Byte | 0,34 s | 1,33 s |
-| 10 | 21 Byte | 4,26 s | 16,80 s |
-| 12 | 25 Byte | 32,44 s | nicht gemessen |
+| 6 | 13 Byte | 14 ms | 55 ms |
+| 8 | 17 Byte | 0,33 s | 1,27 s |
+| 10 | 21 Byte | 4,17 s | 16,29 s |
+| 12 | 25 Byte | 32,01 s | nicht gemessen |
 
 Die Reihe bricht ab, sobald ein Wert das Budget reißt; der 12-Sterne-Fall
 wurde im gedrosselten Lauf deshalb nicht mehr ausgeführt.
@@ -377,9 +426,9 @@ Byte-, Knoten- und Tiefengrenze nicht wirksam beschränkt, und ein Muster
 dieser Größe verbraucht davon nichts Nennenswertes. Die Grenzen sind für
 diesen Kostenpfad schlicht nicht zuständig.
 
-Der Messlauf bildet die Übersetzungsregel aus `globToRegExp` nach, statt sie
-aufzurufen — die Funktion ist modulprivat. Die Regel steht an beiden Stellen
-zeichengleich; weicht eine davon ab, wird das Protokoll unwahr.
+Der Messlauf ruft `globToRegExp` selbst auf, statt die Übersetzung
+nachzubilden. Die Funktion ist dafür exportiert: Eine zweite Fassung im
+Messwerkzeug würde unbemerkt driften und das Protokoll unwahr machen.
 
 Erreichbar ist der Pfad heute nicht: `resolveProfile` in
 [`profileResolutionEngine.ts`](../src/domain/profileResolutionEngine.ts) hat

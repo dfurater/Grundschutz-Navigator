@@ -245,8 +245,16 @@ export function indexCatalogControls(document: unknown): CatalogControlIndex {
   return state;
 }
 
-/** Glob-Muster nach NIST-Draft (`*` beliebig, `?` genau ein Zeichen); ohne Muster trifft nichts. */
-function globToRegExp(pattern: string | undefined): RegExp | null {
+/**
+ * Glob-Muster nach NIST-Draft (`*` beliebig, `?` genau ein Zeichen); ohne
+ * Muster trifft nichts.
+ *
+ * Exportiert, damit das Kostenmesswerkzeug aus GSPP-382
+ * (`scripts/measure-class2-budget.mjs`) genau diese Übersetzung misst statt
+ * einer nachgebauten Kopie. Eine zweite Fassung würde unbemerkt driften und
+ * das Messprotokoll unwahr machen.
+ */
+export function globToRegExp(pattern: string | undefined): RegExp | null {
   if (pattern === undefined || pattern.length === 0) return null;
   const escaped = pattern
     .replace(/[.+^${}()|[\]\\]/g, String.raw`\$&`)
