@@ -188,11 +188,13 @@ describe('parseClass2OscalInput', () => {
     expect(atob).not.toHaveBeenCalled();
   });
 
-  it('akzeptiert genau 10 MiB Base64-Nutzlast ohne Dekodierung', () => {
+  it('akzeptiert eine Nutzlast genau auf der Base64-Grenze ohne Dekodierung', () => {
     const atob = vi.fn();
     vi.stubGlobal('atob', atob);
-    // Die Byte-Obergrenze des Eingangs liegt unter der Base64-Darstellung.
-    // Deshalb wird die exakte Grenze dieser separaten Stufe direkt geprüft.
+    // Geprüft wird hier die Stufe für sich, auf einem bereits geparsten Wert.
+    // Dass dieselbe Grenze auch über den echten Byte-Eintrittspunkt erreichbar
+    // ist und dort auslöst, hält `class2ImportLimits.invariants.test.ts` fest
+    // (GSPP-382).
     const encoded = `${'A'.repeat(Math.floor(CLASS_2_IMPORT_LIMITS.maxDecodedBase64Bytes / 3) * 4)}AA==`;
     const source = {
       catalog: {
