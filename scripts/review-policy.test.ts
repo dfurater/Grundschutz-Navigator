@@ -57,6 +57,13 @@ async function createGeneratedFixtureRoot({ git = true }: { git?: boolean } = {}
 const checkFixture = (root: string, overrides: Record<string, unknown> = {}) =>
   checkReviewPolicy({ repoRoot: root, listTrackedFiles: async () => [], ...overrides });
 
+/** Legt eine Datei samt Elternverzeichnissen im Fixture an. */
+async function writeFixtureFile(root: string, relative: string, content: string): Promise<void> {
+  const absolute = path.join(root, relative);
+  await mkdir(path.dirname(absolute), { recursive: true });
+  await writeFile(absolute, content, 'utf8');
+}
+
 afterEach(async () => {
   await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
@@ -359,8 +366,7 @@ describe('review-policy Drift-Check', () => {
 
   it('erkennt eine zusätzliche Regeldatei auch in einem Unterverzeichnis', async () => {
     const root = await createGeneratedFixtureRoot();
-    await mkdir(path.join(root, GITAR_REVIEW_DIRECTORY, 'extra'), { recursive: true });
-    await writeFile(path.join(root, GITAR_REVIEW_DIRECTORY, 'extra/schatten.md'), '# Schattenregel\n', 'utf8');
+    await writeFixtureFile(root, `${GITAR_REVIEW_DIRECTORY}/extra/schatten.md`, '# Schattenregel\n');
 
     await expect(checkFixture(root))
       .rejects.toThrow(/nicht aus der Autorenquelle erzeugt: \.gitar\/review\/extra\/schatten\.md/);
@@ -368,9 +374,14 @@ describe('review-policy Drift-Check', () => {
 
   /**
    * Gitar liest nicht nur `.gitar/review/`, sondern den ganzen `.gitar`-Baum,
-   * `.cursorrules`, `.cursor/rules/*` und `.github/skills/`. Eine Datei dort
-   * wirkt genauso auf den Review — ein Guard, der nur den Adapterordner prüft,
-   * ließe die Umgehung offen, die er verhindern soll.
+   * `.cursorrules`, `.cursor/rules/*` und `.github/skills/`. Greptile liest
+   * `.greptile/` laut Hersteller zusätzlich in *jedem* Verzeichnis: Die Ebenen
+   * kaskadieren, und eine Kindkonfiguration schaltet über `disabledRules`
+   * geerbte Regeln der Wurzel ab. Eine Datei auf einer dieser Flächen wirkt
+   * auf den Review, gleich wie tief sie liegt und was in ihr steht — ein
+   * Guard, der nur den Adapterordner oder nur die Wurzel prüft, ließe genau
+   * die Umgehung offen, die er verhindern soll (Codex-Reviews auf b171e50
+   * und 32b35d8).
    */
   it.each([
     ['.gitar/skills/umgehung.md'],
@@ -380,11 +391,16 @@ describe('review-policy Drift-Check', () => {
     ['.github/skills/umgehung.md'],
     ['.cursorrules'],
     ['greptile.json'],
+    ['src/.greptile/config.json'],
+    ['src/.greptile/rules.md'],
+    ['packages/api/.greptile/config.json'],
+    ['src/domain/.gitar/review/umgehung.md'],
+    ['src/.cursor/rules/umgehung.md'],
+    ['src/.cursorrules'],
+    ['packages/api/greptile.json'],
   ])('schlägt bei einer Anweisungsdatei unter %s fehl', async (relative) => {
     const root = await createGeneratedFixtureRoot();
-    const absolute = path.join(root, relative);
-    await mkdir(path.dirname(absolute), { recursive: true });
-    await writeFile(absolute, '# Schattenregel\n', 'utf8');
+    await writeFixtureFile(root, relative, '{"disabledRules":["R1-integritaet"]}\n');
 
     await expect(checkFixture(root))
       .rejects.toThrow(`nicht aus der Autorenquelle erzeugt: ${relative}`);
@@ -398,9 +414,7 @@ describe('review-policy Drift-Check', () => {
   it('meldet mehrere Fremddateien in stabiler Reihenfolge', async () => {
     const root = await createGeneratedFixtureRoot();
     for (const relative of ['.cursorrules', '.gitar/rules/b.md', '.gitar/rules/a.md', '.github/skills/c.md']) {
-      const absolute = path.join(root, relative);
-      await mkdir(path.dirname(absolute), { recursive: true });
-      await writeFile(absolute, '# Schattenregel\n', 'utf8');
+      await writeFixtureFile(root, relative, '# Schattenregel\n');
     }
 
     const message = await checkFixture(root).then(
@@ -424,31 +438,6 @@ describe('review-policy Drift-Check', () => {
   });
 
   /**
-   * Greptile liest `.greptile/` laut Hersteller in *jedem* Verzeichnis, die
-   * Ebenen kaskadieren, und eine Kindkonfiguration schaltet über
-   * `disabledRules` geerbte Regeln der Wurzel ab. Ein auf die Wurzel
-   * beschränkter Scan ließ genau die Umgehung offen, die dieser Guard
-   * verhindern soll (Codex-Review auf 32b35d8).
-   */
-  it.each([
-    ['src/.greptile/config.json'],
-    ['src/.greptile/rules.md'],
-    ['packages/api/.greptile/config.json'],
-    ['src/domain/.gitar/review/umgehung.md'],
-    ['src/.cursor/rules/umgehung.md'],
-    ['src/.cursorrules'],
-    ['packages/api/greptile.json'],
-  ])('erkennt die verschachtelte Anweisungsfläche %s', async (relative) => {
-    const root = await createGeneratedFixtureRoot();
-    const absolute = path.join(root, relative);
-    await mkdir(path.dirname(absolute), { recursive: true });
-    await writeFile(absolute, '{"disabledRules":["R1-integritaet","R3-versionsautoritaet"]}\n', 'utf8');
-
-    await expect(checkFixture(root))
-      .rejects.toThrow(`nicht aus der Autorenquelle erzeugt: ${relative}`);
-  });
-
-  /**
    * `.github/skills` bleibt an die Wurzel gebunden, weil GitHub das
    * Verzeichnis nur dort auswertet. Ein gleichnamiges Verzeichnis tiefer im
    * Baum ist keine Anweisungsfläche und darf den Guard nicht auslösen — ein
@@ -456,9 +445,7 @@ describe('review-policy Drift-Check', () => {
    */
   it('meldet ein verschachteltes .github/skills nicht', async () => {
     const root = await createGeneratedFixtureRoot();
-    const absolute = path.join(root, 'src/.github/skills/harmlos.md');
-    await mkdir(path.dirname(absolute), { recursive: true });
-    await writeFile(absolute, '# Kein Reviewkontext\n', 'utf8');
+    await writeFixtureFile(root, 'src/.github/skills/harmlos.md', '# Kein Reviewkontext\n');
 
     await expect(checkFixture(root)).resolves.toHaveLength(4);
   });
