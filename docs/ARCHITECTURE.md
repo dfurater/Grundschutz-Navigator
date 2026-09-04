@@ -598,6 +598,7 @@ Filterkontext. Reihenfolge, Überschriften, ARIA-Ziele sowie die
 werden durch Integrationstests abgesichert. Der Render-Callback für
 Vokabelkarten nimmt optional `hiddenColumns` entgegen, damit eine Sektion
 Spalten ausblenden kann, deren Wert sie bereits selbst sichtbar macht.
+Kennungsspalten gehören seit GSPP-380 nicht mehr dazu.
 
 ## Suchseiten-Grenzen
 

@@ -247,12 +247,13 @@ der Artefaktausgabe ab; `practices.csv` ist dabei verpflichtend. Die
 Laufzeitauflösung behält die Duplikatprüfung als zusätzliche
 Integritätssicherung bei.
 
-Im ControlDetail-Breadcrumb werden Definition, `Schwerpunkt` und
-`auch bekannt als` aus dem aufgelösten Eintrag angeboten. Die technischen
-Spalten `UUID` und `Nummerierung` bleiben dort verborgen, sind aber zusammen mit
-allen anderen Originalspalten weiterhin auf `/vokabular` einsehbar. Nur der
-Aliastext wird zusätzlich in den FlexSearch-Metadatenindex der zugehörigen
-Kontrollen übernommen.
+Im ControlDetail-Breadcrumb werden Definition, `Schwerpunkt`,
+`auch bekannt als` und die Kennung `UUID` aus dem aufgelösten Eintrag
+angeboten; verborgen bleibt dort nur `Nummerierung` (GSPP-380). Alle
+Originalspalten sind zusätzlich auf `/vokabular` einsehbar. Nur der Aliastext
+wird in den FlexSearch-Metadatenindex der zugehörigen Kontrollen übernommen —
+Kennungsspalten sind davon ausgenommen und werden stattdessen exakt aufgelöst
+(siehe [FILTERING.md](FILTERING.md)).
 
 `resolveTopicVocabulary()` verwendet denselben strikten UUID-Join für
 `Topic.altIdentifier` und `topics.csv`. Mehrere Katalog-Untergruppen dürfen
@@ -394,7 +395,9 @@ Für Namespaces mit eigener `Begriff`-Spalte neben der ID (`basethreats.csv`) ge
 | Vokabular-Listenansicht (`/vokabular/:namespaceId`) | `G 0.1 Feuer` — ID zuerst | Die ID ist dort Sortier- und Nachschlageschlüssel |
 | Control-Detailansicht (`ControlSecurityContext`) | `Feuer (G 0.1)` — Begriff zuerst | Dort zählt die inhaltliche Aussage; aus der ID allein ist die Gefährdung nicht erkennbar |
 
-Die Divergenz ist gewollt und wird nicht angeglichen. In der Control-Detailansicht blendet die aufgeklappte Vokabelkarte die dort redundante Spalte `Begriff` sowie die technische Spalte `uuid` über `hiddenColumns` aus; die Vokabularseiten zeigen weiterhin alle Originalspalten. Dasselbe kontextbezogene Muster gilt für das Praktik-Vokabular im Breadcrumb: `Begriff` wird nur ausgeblendet, wenn der Wert exakt dem angezeigten Praktik-Namen entspricht.
+Die Divergenz ist gewollt und wird nicht angeglichen. In der Control-Detailansicht blendet die aufgeklappte Vokabelkarte über `hiddenColumns` nur noch die dort redundante Spalte `Begriff` aus; die Kennung des Eintrags wird seit GSPP-380 an jeder Renderstelle gezeigt. Dasselbe kontextbezogene Muster gilt für das Praktik-Vokabular im Breadcrumb: `Begriff` wird nur ausgeblendet, wenn der Wert exakt dem angezeigten Praktik-Namen entspricht.
+
+Verweisspalten sind davon ausgenommen. Ein `ChildOfUUID`-Wert erscheint nicht als Kennung, sondern als verlinkter Begriff des Eintrags, dessen eigene Kennung dem Verweis entspricht; lässt sich der Verweis nicht auflösen, entfällt die Zeile.
 
 ## Siehe auch
 

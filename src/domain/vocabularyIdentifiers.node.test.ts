@@ -20,11 +20,46 @@ const vocabulariesPath =
   process.env.GSPP_VOCABULARIES_PATH ?? 'public/data/vocabularies.json';
 const vocabulariesAvailable = existsSync(vocabulariesPath);
 
+/**
+ * Gemessener Bestand am Upstream-Snapshot `9c820fd8b125`.
+ *
+ * Die Regelprüfung unten vergleicht Soll und Ist innerhalb desselben
+ * Artefakts. Das deckt einen Fehler in der Ableitung auf, aber nicht den Fall,
+ * dass Upstream eine Kennungsspalte entfernt oder umbenennt — dann wandern
+ * beide Seiten gemeinsam. Diese Zahlen sind die Gegenprobe dazu: Sie werden
+ * bei einer echten Spaltenänderung rot und sind dann bewusst nachzuziehen,
+ * statt still mitzuwandern.
+ */
+const EXPECTED_NAMESPACE_COUNT = 13;
+const EXPECTED_IDENTIFIER_COLUMN_COUNT = 9;
+const EXPECTED_NAMESPACES_WITH_IDENTIFIERS = 7;
+const EXPECTED_REFERENCE_COLUMN_COUNT = 2;
+
 function loadRegistryData(): VocabularyRegistryData {
   return JSON.parse(readFileSync(vocabulariesPath, 'utf8'));
 }
 
 describe.skipIf(!vocabulariesAvailable)('Kennungsspalten im realen Vokabularartefakt', () => {
+  it('hält den gemessenen Bestand an Kennungsspalten', () => {
+    const data = loadRegistryData();
+    const withIdentifiers = data.namespaces.filter(
+      (namespace) => getIdentifierColumns(namespace).length > 0,
+    );
+    const columnCount = withIdentifiers.reduce(
+      (total, namespace) => total + getIdentifierColumns(namespace).length,
+      0,
+    );
+    const referenceCount = data.namespaces.reduce(
+      (total, namespace) => total + (namespace.identifierReferenceColumns?.length ?? 0),
+      0,
+    );
+
+    expect(data.namespaces).toHaveLength(EXPECTED_NAMESPACE_COUNT);
+    expect(withIdentifiers).toHaveLength(EXPECTED_NAMESPACES_WITH_IDENTIFIERS);
+    expect(columnCount).toBe(EXPECTED_IDENTIFIER_COLUMN_COUNT);
+    expect(referenceCount).toBe(EXPECTED_REFERENCE_COLUMN_COUNT);
+  });
+
   it('markiert jede Spalte, deren Name auf uuid endet — und nur diese', () => {
     const data = loadRegistryData();
 

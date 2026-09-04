@@ -8,7 +8,7 @@ import {
   normalizeIdentifier,
   resolveControlVocabularies,
 } from '@/domain/vocabulary';
-import { isIdentifierQuery } from '@/domain/identifierQuery';
+import { classifyQuery } from '@/domain/identifierQuery';
 import { resolvePracticeVocabulary } from '@/domain/taxonomyVocabulary';
 
 export interface SearchResult {
@@ -159,13 +159,11 @@ function buildIdentifierIndex(
     identifierIndex.set(identifier, new Set([numericId]));
   };
 
-  const numericIdsByControlId = new Map<string, number>();
   const numericIdsByGroupId = new Map<string, number[]>();
   const numericIdsByPracticeId = new Map<string, number[]>();
 
   for (const document of searchDocuments) {
     const { control, numericId } = document;
-    numericIdsByControlId.set(control.id, numericId);
 
     if (control.groupId) {
       const group = numericIdsByGroupId.get(control.groupId);
@@ -399,8 +397,16 @@ export function useSearch(
     // Kennungsanfragen laufen ausschließlich über die exakte Auflösung. Ein
     // Rückfall auf die Volltextsuche würde das Teiltoken-Verhalten aus
     // GSPP-274 durch die Hintertür zurückholen, deshalb bleibt eine
-    // unbekannte Kennung ohne Treffer statt ohne Antwort.
-    if (isIdentifierQuery(query)) {
+    // unbekannte Kennung ohne Treffer statt ohne Antwort. Das gilt auch für
+    // eine unvollständige Kennung: Sie ist als Kennung gemeint und darf nicht
+    // als Textfragment auf Titel oder Fließtext treffen.
+    const queryKind = classifyQuery(query);
+
+    if (queryKind === 'malformed-identifier') {
+      return [];
+    }
+
+    if (queryKind === 'identifier') {
       const identifier = normalizeIdentifier(query);
       const matches = identifierIndex.get(identifier);
 

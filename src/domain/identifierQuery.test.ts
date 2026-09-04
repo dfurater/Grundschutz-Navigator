@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isIdentifierQuery } from './identifierQuery';
+import { classifyQuery, isIdentifierQuery } from './identifierQuery';
 
 describe('isIdentifierQuery', () => {
   it('accepts UUID v4 and v5 in any case', () => {
@@ -29,5 +29,33 @@ describe('isIdentifierQuery', () => {
     // Gültige Kennung mit Zusatztext
     expect(isIdentifierQuery('uuid 9bb16672-4394-4ce9-bd14-12a080233f7a')).toBe(false);
     expect(isIdentifierQuery('')).toBe(false);
+  });
+});
+
+describe('classifyQuery', () => {
+  it('erkennt eine wohlgeformte Kennung', () => {
+    expect(classifyQuery('9bb16672-4394-4ce9-bd14-12a080233f7a')).toBe('identifier');
+  });
+
+  it('erkennt ein Kennungsfragment als solches statt als Text', () => {
+    // Ohne diese Einordnung liefe das Fragment in die Volltextsuche und träfe
+    // jede Control, in deren Text es vorkommt.
+    expect(classifyQuery('9bb16672-4394-4ce9-bd14-12a080233f7')).toBe('malformed-identifier');
+    expect(classifyQuery('9bb16672-4394')).toBe('malformed-identifier');
+    expect(classifyQuery('9bb16672-')).toBe('malformed-identifier');
+    // Falsche Version bzw. Variante: als Kennung gemeint, aber nicht wohlgeformt.
+    expect(classifyQuery('9bb16672-4394-3ce9-bd14-12a080233f7a')).toBe('malformed-identifier');
+    expect(classifyQuery('9bb16672-4394-4ce9-cd14-12a080233f7a')).toBe('malformed-identifier');
+  });
+
+  it('lässt fachliche Suchbegriffe unangetastet', () => {
+    expect(classifyQuery('Passwort')).toBe('text');
+    expect(classifyQuery('GC.1.1')).toBe('text');
+    expect(classifyQuery('ad-hoc')).toBe('text');
+    // Hexzeichen ohne das Grundraster bleiben Text.
+    expect(classifyQuery('cafe-babe')).toBe('text');
+    expect(classifyQuery('9bb16672')).toBe('text');
+    expect(classifyQuery('9bb16672 4394')).toBe('text');
+    expect(classifyQuery('')).toBe('text');
   });
 });

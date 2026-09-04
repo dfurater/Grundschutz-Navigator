@@ -289,14 +289,21 @@ describe('useSearch — Kennungsauflösung', () => {
   });
 
   it('never falls back to full-text search for a malformed identifier', async () => {
+    const fragment = '9bb16672-4394-4ce9-bd14-12a080233f7';
     const controls = [
       makeControl({ id: 'GC.1.1', altIdentifier: '9bb16672-4394-4ce9-bd14-12a080233f7a' }),
+      // Das Fragment steht im Titel und im Fließtext einer anderen Control.
+      // Ohne die Einordnung als Kennungsanfrage würde die Volltextsuche genau
+      // diese Control liefern statt der geforderten null Treffer.
+      makeControl({
+        id: 'TEXT.1',
+        title: `Referenzliste ${fragment}`,
+        statement: `Der Eintrag ${fragment} ist zu prüfen.`,
+      }),
     ];
 
-    // Ein Präfix ist keine Kennung — und darf auch nicht als Volltexttoken
-    // treffen, sonst kehrt das Teiltokenverhalten aus GSPP-274 zurück.
-    await expectMatches(controls, '9bb16672-4394-4ce9-bd14-12a080233f7', []);
-    await expectMatches(controls, '9bb16672', []);
+    await expectMatches(controls, fragment, []);
+    await expectMatches(controls, '9bb16672-4394', []);
   });
 
   it('GSPP-274: keeps identifiers sharing hyphen sub-tokens apart', async () => {
