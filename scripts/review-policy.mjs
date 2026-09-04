@@ -27,15 +27,18 @@
  *
  * Aus der Autorenquelle wird deterministisch erzeugt:
  *
- *   - `docs/REVIEW_INVARIANTS.md`   menschenlesbar, versioniert, reviewbar
+ *   - `docs/REVIEW_INVARIANTS.md`    menschenlesbar, versioniert, reviewbar
  *   - `.gitar/review/invarianten.md` dünner Adapter, bindet die Doku per
  *                                    `@`-Include ein
+ *   - `.greptile/config.json`        Greptile-Regeln, `id`/`rule`/`scope` aus
+ *                                    derselben Tabelle
+ *   - `.greptile/files.json`         Greptile-Datei-Kontexte aus derselben
+ *                                    Tabelle
  *
- * Der Greptile-Zweig (`.greptile/`) folgt im blockierten Folgeslice GSPP-383;
- * bis dahin bleibt der bestehende Dashboard-Importzyklus über
- * `.claude/greptile/contexts.mjs` aktiv. Jene Datei ist gitignored und bezieht
- * ihre Texte seit GSPP-374 von hier — die Abhängigkeit läuft ausschließlich von
- * der gitignorierten zur versionierten Seite, nie umgekehrt.
+ * Der Greptile-Zweig (`.greptile/`) ist seit GSPP-383 Teil dieser
+ * Autorenquelle. Es gibt keinen Dashboard-Importzyklus mehr und keine
+ * Abhängigkeit von `.claude/greptile/contexts.mjs` — beide erzeugten Dateien
+ * entstehen ausschließlich aus `scripts/review-policy.rules.mjs`.
  *
  * Aufruf:
  *
@@ -96,8 +99,9 @@ function assertRuleIsWellFormed(rule) {
   reject(rule.body.trim().length === 0, `Regel ohne Text: ${rule.key}`);
   reject(
     rule.body.startsWith(`${rule.key}: `),
-    `Regeltext trägt den Greptile-Importpräfix: ${rule.key}. ` +
-    'Der Präfix gehört in .claude/greptile/contexts.mjs, nicht in die Autorenquelle.',
+    `Regeltext trägt den Regelschlüssel als Präfix: ${rule.key}. ` +
+    'Der Schlüssel steht bereits in id (Greptile) bzw. der Überschrift (Dokumentation); ' +
+    'ein Präfix im Text würde ihn doppeln.',
   );
 }
 
@@ -219,21 +223,87 @@ export function renderGitarAdapter() {
 }
 
 /**
+ * Greptile-Regeln. Greptile kennt kein `@`-Include und keine Markdown-Datei
+ * als Regelquelle — die Wirkungsfläche ist ausschließlich `.greptile/config.json`
+ * mit einem Array `rules`, je Eintrag `id`/`rule`/optional `scope`. `id` trägt
+ * den Regelschlüssel, deshalb bleibt `rule` präfixfrei (keine `<key>: `-Krücke
+ * mehr, siehe `assertRuleIsWellFormed`). `scope` wird nur bei nicht leerem
+ * `scopes`-Array gesetzt — ein leeres Array in der Datei könnte „passt auf
+ * nichts" statt „global" bedeuten, deshalb wird das Feld bei globalen Regeln
+ * ganz weggelassen, nicht auf `[]` gesetzt.
+ *
+ * Bewusst nicht gesetzt: `severity`, `enabled`, `disabledRules`, `instructions`
+ * und jede Review-Einstellung (Auto-Review, Auto-Approve, Status-Checks, …).
+ * `config.json` trägt auf oberster Ebene ausschließlich den Schlüssel `rules`.
+ * Diese Einstellungen bleiben Dashboard-Fläche: Anders als bei den Regeltexten
+ * ist für sie herstellerseitig nicht dokumentiert, ob ein hier fehlendes Feld
+ * den bestehenden Dashboard-Wert unangetastet lässt oder auf einen Greptile-
+ * eigenen Default zurückfällt — und für „Use Status Checks" hängt an genau
+ * dieser Unklarheit der Pflicht-Check `Greptile Review` im Branch-Ruleset.
+ * Ein zu weit gefasstes `config.json` könnte diesen Check stumm abschwächen
+ * oder zum Verschwinden bringen; das Risiko ist in GSPP-383 durch einen
+ * Wegwerf-Probe-PR vor dem eigentlichen Merge geprüft worden.
+ *
+ * Kein Generierungs-Banner: JSON kennt keine Kommentare, und ein `_generated`-
+ * Feld wäre selbst ein reviewsteuerndes Feld ohne Deckung in der
+ * Autorenquelle — der Drift-Guard erzwingt „nicht von Hand bearbeiten" bereits
+ * strukturell.
+ */
+export function renderGreptileConfig({ global = globalRules, scoped = scopedRules } = {}) {
+  const rules = [...global, ...scoped].map((rule) => {
+    const entry = { id: rule.key, rule: rule.body };
+    if (rule.scopes.length > 0) entry.scope = rule.scopes;
+    return entry;
+  });
+  return JSON.stringify({ rules }, null, 2) + '\n';
+}
+
+/**
+ * Greptile-Datei-Kontexte. `.greptile/files.json` mit einem Array `files`, je
+ * Eintrag `path`/`description`/optional `scope` (nur bei nicht leerem
+ * `scopes`). Die 8 Datei-Kontexte hatten vor GSPP-383 keine Dashboard-
+ * Entsprechung — der `type`-Enum von Greptiles Custom-Context-API kennt keinen
+ * Dateiverweis, und die Dashboard-Ansicht *Custom rules* führte am 2026-09-04
+ * ausschließlich Einträge vom Typ `Rule`. `.greptile/files.json` ist damit
+ * keine Migration eines bestehenden Zustands, sondern die erste Stelle, an der
+ * diese Kontexte für Greptile überhaupt wirksam werden können.
+ */
+export function renderGreptileFiles({ files = fileContexts } = {}) {
+  const entries = files.map((context) => {
+    const entry = { path: context.path, description: context.description };
+    if (context.scopes.length > 0) entry.scope = context.scopes;
+    return entry;
+  });
+  return JSON.stringify({ files: entries }, null, 2) + '\n';
+}
+
+/**
  * Verzeichnis der Gitar-Reviewregeln — der Ablageort des erzeugten Adapters.
  */
 export const GITAR_REVIEW_DIRECTORY = '.gitar/review';
 
 /**
- * Anweisungsflächen, die Gitar aus dem Repository liest und die `.gitignore`
- * hier **nicht** ausschließt. Jede Datei darin wirkt auf den Review; eine, die
- * nicht aus der Autorenquelle stammt, ist eine Reviewregel an ihr vorbei —
- * genau die Umgehung, die dieser Guard verhindern soll. Geprüft wird das
- * Dateisystem: Was hier liegt, gehört entweder zur Autorenquelle oder ist Drift.
+ * Anweisungsflächen, die Gitar oder Greptile aus dem Repository lesen und die
+ * `.gitignore` hier **nicht** ausschließt. Jede Datei darin wirkt auf den
+ * jeweiligen Review; eine, die nicht aus der Autorenquelle stammt, ist eine
+ * Reviewregel an ihr vorbei — genau die Umgehung, die dieser Guard verhindern
+ * soll. Geprüft wird das Dateisystem: Was hier liegt, gehört entweder zur
+ * Autorenquelle oder ist Drift.
+ *
+ * `.greptile` kam mit GSPP-383 hinzu, als Greptiles Regeln und Datei-Kontexte
+ * vom Dashboard auf `.greptile/config.json` und `.greptile/files.json`
+ * umgezogen sind — ein handgeschriebenes `.greptile/rules.md` oder eine
+ * zusätzliche Datei irgendwo im Baum ist damit Drift.
+ *
+ * Bekannte Grenze: Der Scan deckt nur das Wurzelverzeichnis `.greptile/` ab,
+ * kein verschachteltes `packages/.greptile/`. Das ist hinnehmbar — das
+ * Repository hat keine Unterprojekte, und ein neues Verzeichnis dieser Art
+ * wäre im PR-Diff sichtbar.
  */
-export const GITAR_INSTRUCTION_DIRECTORIES = ['.gitar', '.cursor', '.github/skills'];
+export const REVIEW_INSTRUCTION_DIRECTORIES = ['.gitar', '.greptile', '.cursor', '.github/skills'];
 
 /** Einzelne Anweisungsdateien ohne Verzeichnis. */
-export const GITAR_INSTRUCTION_FILES = ['.cursorrules'];
+export const REVIEW_INSTRUCTION_FILES = ['.cursorrules'];
 
 /**
  * Anweisungsflächen, die Gitar ebenfalls liest, die `.gitignore` hier aber
@@ -252,6 +322,8 @@ export const GITIGNORED_INSTRUCTION_SURFACES = ['AGENTS.md', 'CLAUDE.md', '.clau
 export const REVIEW_POLICY_TARGETS = [
   { path: 'docs/REVIEW_INVARIANTS.md', render: renderInvariantsDocument },
   { path: `${GITAR_REVIEW_DIRECTORY}/invarianten.md`, render: renderGitarAdapter },
+  { path: '.greptile/config.json', render: renderGreptileConfig },
+  { path: '.greptile/files.json', render: renderGreptileFiles },
 ];
 
 /** Soll-Inhalt aller Ziele. Rein funktional, ohne Zeitstempel — zweimal aufgerufen identisch. */
@@ -320,19 +392,20 @@ async function listForceTrackedInstructionFiles(repoRoot, listTrackedFiles) {
 }
 
 /**
- * Dateien auf einer Gitar-Anweisungsfläche, die zu keinem erzeugten Ziel
- * gehören. Der Scan deckt bewusst den ganzen Baum ab, nicht nur den Ablageort
- * des Adapters: Eine Datei unter `.gitar/skills/` oder eine `.cursorrules`
- * würde von Gitar genauso angewendet, ohne je aus der Autorenquelle zu stammen.
+ * Dateien auf einer Gitar- oder Greptile-Anweisungsfläche, die zu keinem
+ * erzeugten Ziel gehören. Der Scan deckt bewusst den ganzen Baum ab, nicht nur
+ * die Ablageorte der Adapter: Eine Datei unter `.gitar/skills/`, ein
+ * handgeschriebenes `.greptile/rules.md` oder eine `.cursorrules` würde vom
+ * jeweiligen Bot genauso angewendet, ohne je aus der Autorenquelle zu stammen.
  */
 async function listUnmanagedInstructionFiles(repoRoot, expected) {
   const found = [];
 
-  for (const directory of GITAR_INSTRUCTION_DIRECTORIES) {
+  for (const directory of REVIEW_INSTRUCTION_DIRECTORIES) {
     found.push(...(await listFilesBelow(repoRoot, directory)));
   }
 
-  for (const file of GITAR_INSTRUCTION_FILES) {
+  for (const file of REVIEW_INSTRUCTION_FILES) {
     try {
       await readFile(path.join(repoRoot, file));
       found.push(file);

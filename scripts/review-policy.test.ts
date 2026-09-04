@@ -7,11 +7,11 @@ import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
-  GITAR_INSTRUCTION_DIRECTORIES,
-  GITAR_INSTRUCTION_FILES,
   GITAR_REVIEW_DIRECTORY,
   GITIGNORED_INSTRUCTION_SURFACES,
   REPO_ROOT,
+  REVIEW_INSTRUCTION_DIRECTORIES,
+  REVIEW_INSTRUCTION_FILES,
   REVIEW_POLICY_TARGETS,
   ReviewPolicyError,
   allRules,
@@ -138,10 +138,10 @@ describe('review-policy Autorenquelle', () => {
    * Wandert er in die Autorenquelle, stünde er doppelt in jedem erzeugten
    * Dokument — und der Importpfad würde ihn beim Vergleich nur einmal strippen.
    */
-  it('weist einen Regeltext mit Greptile-Importpräfix zurück', () => {
+  it('weist einen Regeltext mit dem Regelschlüssel als Präfix zurück', () => {
     const rule = globalRules[0];
     expect(() => assertPolicyIsWellFormed({ global: [{ ...rule, body: `${rule.key}: ${rule.body}` }] }))
-      .toThrow(/Greptile-Importpräfix/);
+      .toThrow(/Regeltext trägt den Regelschlüssel als Präfix/);
   });
 
   it('weist einen ungültigen Regelschlüssel zurück', () => {
@@ -161,10 +161,12 @@ describe('review-policy Autorenquelle', () => {
 });
 
 describe('review-policy Erzeugung', () => {
-  it('erzeugt genau die beiden Zielpfade', () => {
+  it('erzeugt genau die vier Zielpfade', () => {
     expect(REVIEW_POLICY_TARGETS.map((target) => target.path)).toEqual([
       'docs/REVIEW_INVARIANTS.md',
       '.gitar/review/invarianten.md',
+      '.greptile/config.json',
+      '.greptile/files.json',
     ]);
   });
 
@@ -200,9 +202,111 @@ describe('review-policy Erzeugung', () => {
   });
 });
 
+/**
+ * Greptile kennt kein `@`-Include und keine Markdown-Datei als Regelquelle —
+ * die Wirkungsfläche ist ausschließlich `.greptile/config.json` (Regeln) und
+ * `.greptile/files.json` (Datei-Kontexte), beide strukturiertes JSON aus
+ * derselben Autorenquelle wie die Gitar-Seite.
+ */
+describe('review-policy Greptile-Adapter', () => {
+  it('erzeugt gültiges JSON für config.json und files.json', async () => {
+    const root = await createGeneratedFixtureRoot();
+
+    const config = JSON.parse(await readFile(path.join(root, '.greptile/config.json'), 'utf8'));
+    const files = JSON.parse(await readFile(path.join(root, '.greptile/files.json'), 'utf8'));
+
+    expect(Array.isArray(config.rules)).toBe(true);
+    expect(Array.isArray(files.files)).toBe(true);
+  });
+
+  it('führt in config.json genau allRules.length Einträge, je Schlüssel genau einen mit id und rule aus der Autorenquelle', () => {
+    const config = JSON.parse(renderReviewPolicy()[2].content);
+
+    expect(config.rules).toHaveLength(allRules.length);
+    for (const rule of allRules) {
+      const matches = config.rules.filter((entry: { id: string }) => entry.id === rule.key);
+      expect(matches).toHaveLength(1);
+      expect(matches[0].rule).toBe(rule.body);
+    }
+  });
+
+  it('setzt scope nur bei gescopten Regeln, exakt gleich rule.scopes', () => {
+    const config = JSON.parse(renderReviewPolicy()[2].content) as {
+      rules: Array<{ id: string; scope?: string[] }>;
+    };
+    const byId = new Map(config.rules.map((entry) => [entry.id, entry]));
+
+    for (const rule of globalRules) {
+      expect(byId.get(rule.key)).not.toHaveProperty('scope');
+    }
+    for (const rule of scopedRules) {
+      expect(byId.get(rule.key)?.scope).toEqual(rule.scopes);
+    }
+  });
+
+  it('trägt keinen Regeltext mit dem `<key>: `-Präfix', () => {
+    const config = JSON.parse(renderReviewPolicy()[2].content) as { rules: Array<{ id: string; rule: string }> };
+
+    for (const entry of config.rules) {
+      expect(entry.rule.startsWith(`${entry.id}: `)).toBe(false);
+    }
+  });
+
+  it('trägt in config.json auf oberster Ebene ausschließlich den Schlüssel rules', () => {
+    const config = JSON.parse(renderReviewPolicy()[2].content);
+
+    expect(Object.keys(config)).toEqual(['rules']);
+  });
+
+  it('bildet in files.json alle fileContexts mit path und description ab, scope nur bei nicht leerem scopes', () => {
+    const files = JSON.parse(renderReviewPolicy()[3].content) as {
+      files: Array<{ path: string; description: string; scope?: string[] }>;
+    };
+
+    expect(files.files).toHaveLength(fileContexts.length);
+    for (const context of fileContexts) {
+      const entry = files.files.find((candidate) => candidate.path === context.path);
+      expect(entry?.description).toBe(context.description);
+      if (context.scopes.length > 0) {
+        expect(entry?.scope).toEqual(context.scopes);
+      } else {
+        expect(entry).not.toHaveProperty('scope');
+      }
+    }
+  });
+
+  it('rendert config.json und files.json deterministisch — zwei Läufe liefern identische Bytes', () => {
+    const first = renderReviewPolicy();
+    const second = renderReviewPolicy();
+
+    expect(first[2].content).toBe(second[2].content);
+    expect(first[3].content).toBe(second[3].content);
+  });
+
+  it('schlägt bei einer von Hand veränderten config.json fehl', async () => {
+    const root = await createGeneratedFixtureRoot();
+    const configPath = path.join(root, '.greptile/config.json');
+    const config = JSON.parse(await readFile(configPath, 'utf8'));
+    config.rules.push({ id: 'P0-fremd', rule: 'Nicht aus der Autorenquelle.' });
+    await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, 'utf8');
+
+    await expect(checkFixture(root)).rejects.toThrow(ReviewPolicyError);
+    await expect(checkFixture(root))
+      .rejects.toThrow(/weicht von der Autorenquelle ab: \.greptile\/config\.json/);
+  });
+
+  it('schlägt bei einer zusätzlichen .greptile/rules.md fehl', async () => {
+    const root = await createGeneratedFixtureRoot();
+    await writeFile(path.join(root, '.greptile/rules.md'), '# Schattenregel\n', 'utf8');
+
+    await expect(checkFixture(root))
+      .rejects.toThrow(/nicht aus der Autorenquelle erzeugt: \.greptile\/rules\.md/);
+  });
+});
+
 describe('review-policy Drift-Check', () => {
   it('bestätigt den eingecheckten Stand des Repositoriums', async () => {
-    await expect(checkReviewPolicy({ repoRoot: REPO_ROOT })).resolves.toHaveLength(2);
+    await expect(checkReviewPolicy({ repoRoot: REPO_ROOT })).resolves.toHaveLength(4);
   });
 
   it('schlägt bei einer von Hand veränderten Adapterdatei fehl', async () => {
@@ -303,9 +407,9 @@ describe('review-policy Drift-Check', () => {
   });
 
   it('deckt jede in der Autorenquelle geführte Anweisungsfläche ab', () => {
-    expect(GITAR_INSTRUCTION_DIRECTORIES).toEqual(['.gitar', '.cursor', '.github/skills']);
-    expect(GITAR_INSTRUCTION_FILES).toEqual(['.cursorrules']);
-    expect(GITAR_INSTRUCTION_DIRECTORIES.some((directory) => GITAR_REVIEW_DIRECTORY.startsWith(`${directory}/`)))
+    expect(REVIEW_INSTRUCTION_DIRECTORIES).toEqual(['.gitar', '.greptile', '.cursor', '.github/skills']);
+    expect(REVIEW_INSTRUCTION_FILES).toEqual(['.cursorrules']);
+    expect(REVIEW_INSTRUCTION_DIRECTORIES.some((directory) => GITAR_REVIEW_DIRECTORY.startsWith(`${directory}/`)))
       .toBe(true);
   });
 
@@ -344,7 +448,7 @@ describe('review-policy Drift-Check', () => {
     await expect(checkFixture(root)).rejects.toThrow(ReviewPolicyError);
 
     await writeReviewPolicy({ repoRoot: root });
-    await expect(checkFixture(root)).resolves.toHaveLength(2);
+    await expect(checkFixture(root)).resolves.toHaveLength(4);
   });
 });
 
@@ -417,7 +521,7 @@ describe('review-policy Guard gegen erzwungen versionierte Anweisungsflächen', 
     await writeFile(path.join(root, '.gitignore'), 'AGENTS.md\n', 'utf8');
     await writeFile(path.join(root, 'AGENTS.md'), '# Lokale Agentendatei\n', 'utf8');
 
-    await expect(checkReviewPolicy({ repoRoot: root })).resolves.toHaveLength(2);
+    await expect(checkReviewPolicy({ repoRoot: root })).resolves.toHaveLength(4);
 
     await git('add', '-f', 'AGENTS.md');
 
@@ -426,6 +530,6 @@ describe('review-policy Guard gegen erzwungen versionierte Anweisungsflächen', 
   }, 30_000);
 
   it('bestätigt, dass in diesem Repository keine dieser Flächen versioniert ist', async () => {
-    await expect(checkReviewPolicy({ repoRoot: REPO_ROOT })).resolves.toHaveLength(2);
+    await expect(checkReviewPolicy({ repoRoot: REPO_ROOT })).resolves.toHaveLength(4);
   });
 });
