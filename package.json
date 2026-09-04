@@ -20,6 +20,8 @@
     "test:browser": "vitest run --config vitest.browser.config.ts",
     "test:browser:egress-negative": "node scripts/verify-browser-egress.mjs",
     "lint": "eslint .",
+    "review-policy": "node scripts/review-policy.mjs --write",
+    "review-policy:check": "node scripts/review-policy.mjs --check",
     "fetch-catalog": "node scripts/fetch-catalog.mjs",
     "verify-upstream-oscal": "node scripts/verify-upstream-oscal.mjs",
     "verify-oscal-schemas": "node scripts/verify-oscal-schemas.mjs",

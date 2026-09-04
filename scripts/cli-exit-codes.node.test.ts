@@ -17,6 +17,7 @@ const execFileAsync = promisify(execFile);
  *   - check-deploy-idempotency: fail-open (Exit 0 — deployen statt abbrechen)
  *   - verify-oscal-schemas:     fail-closed (Exit 0 bei Erfolg, Exit 1 bei Befund)
  *   - verify-catalog-deploy:    fail-closed (Exit 1 bei Verifikationsversagen)
+ *   - review-policy:            fail-closed (Exit 1 bei Drift, Exit 2 bei falscher Option)
  *
  * `sync-oscal-schemas` und `sync-upstream-manifest` sind bewusst nicht darunter:
  * Ihre CLI-Pfade rufen ohne Netzzugriff nichts Sinnvolles auf (sie holen immer die
@@ -102,5 +103,22 @@ describe('CLI-Exit-Code-Verträge der S7785-umgebauten Skripte', () => {
     });
     expect(result.code).toBe(1);
     expect(result.stderr).toContain('merge commit SHA must be a full 40-character SHA');
+  }, 60_000);
+
+  /**
+   * Der Drift-Check löst die Repository-Wurzel aus `import.meta.url`, nicht aus
+   * dem Arbeitsverzeichnis. Sonst liefe der CI-Schritt je nach Aufrufort gegen
+   * ein leeres Verzeichnis und meldete „alles in Ordnung“, weil er nichts findet.
+   */
+  it('review-policy prüft unabhängig vom Arbeitsverzeichnis mit Exit 0', async () => {
+    const result = await runScript('review-policy.mjs', { args: ['--check'], cwd: scratchRoot });
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('deckungsgleich');
+  }, 60_000);
+
+  it('review-policy weist eine unbekannte Option mit Exit 2 zurück, ohne zu schreiben', async () => {
+    const result = await runScript('review-policy.mjs', { args: ['--force'] });
+    expect(result.code).toBe(2);
+    expect(result.stderr).toContain('Unbekannte Option');
   }, 60_000);
 });
