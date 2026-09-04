@@ -306,7 +306,7 @@ describe('useSearch — Kennungsauflösung', () => {
     await expectMatches(controls, '9bb16672-4394', []);
   });
 
-  it('never falls back to full-text search for an invalid character in a UUID', async () => {
+  it('never falls back to full-text search for a broken identifier', async () => {
     // Vollständiges Segmentraster mit einem Nicht-Hex-Zeichen. Ohne
     // Formerkennung liefe die Eingabe als gewöhnlicher Suchbegriff in Titel
     // und Fließtext.
@@ -314,6 +314,9 @@ describe('useSearch — Kennungsauflösung', () => {
       '9bb16672-4394-4ce9-bd14-12a080233g7a',
       '9bb1667g-4394-4ce9-bd14-12a080233f7a',
       '9bb16672-4394-4cg9-bd14-12a080233f7a',
+      // Verrutschte Segmentlängen hinter gültigem Kopfblock.
+      '9bb16672-43945-4ce9-bd14-12a080233f7a',
+      '9bb16672-4394-4ce9-bd14-12a080233f7ab',
     ];
 
     for (const invalid of cases) {

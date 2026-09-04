@@ -13,10 +13,35 @@ const UUID_PATTERN =
 /** Segmentlängen einer UUID: 8-4-4-4-12. */
 const UUID_SEGMENT_LENGTHS = [8, 4, 4, 4, 12] as const;
 
-/** Ein vollständig hexadezimaler Achterblock — der Kopf jeder Kennung. */
-const HEX_HEAD_SEGMENT = /^[0-9A-Fa-f]{8}$/;
+/**
+ * Kopfblock-Anker: acht Hexziffern, ein Bindestrich, danach nur noch
+ * alphanumerische Zeichen und Bindestriche. Wer eine Kennung tippt oder
+ * einfügt, trifft den Kopfblock; was danach schiefgeht — ein Zeichen zu viel,
+ * ein falsches Zeichen, ein abgeschnittenes Ende — ändert nichts daran, dass
+ * eine Kennung gemeint war.
+ */
+const IDENTIFIER_HEAD_PATTERN = /^[0-9A-Fa-f]{8}-[0-9A-Za-z-]*$/;
+
+const ALPHANUMERIC_SEGMENT = /^[0-9A-Za-z]+$/;
 
 export type QueryKind = 'identifier' | 'malformed-identifier' | 'text';
+
+/**
+ * Raster-Anker: das vollständige Fünf-Segment-Muster 8-4-4-4-12. Er fängt die
+ * Fälle ab, in denen schon der Kopfblock verfälscht ist und der Kopfblock-Anker
+ * deshalb nicht greift.
+ */
+function matchesFullSegmentGrid(segments: string[]): boolean {
+  if (segments.length !== UUID_SEGMENT_LENGTHS.length) {
+    return false;
+  }
+
+  return segments.every(
+    (segment, index) =>
+      segment.length === UUID_SEGMENT_LENGTHS[index] &&
+      ALPHANUMERIC_SEGMENT.test(segment),
+  );
+}
 
 /**
  * Erkennt, ob eine Eingabe als Kennung *gemeint* ist — unabhängig davon, ob
@@ -24,40 +49,22 @@ export type QueryKind = 'identifier' | 'malformed-identifier' | 'text';
  * syntaktisch abweichende Kennung in die Volltextsuche und träfe dort jede
  * Control, in deren Text sie vorkommt, statt der geforderten null Treffer.
  *
- * Geprüft wird zuerst das Segmentraster 8-4-4-4-12. Das letzte Segment darf
- * kürzer sein, damit ein abgeschnittenes Präfix erkannt wird.
+ * Einer der beiden Anker muss greifen. Beide sind nötig und keiner reicht
+ * allein: Ohne den Kopfblock-Anker bliebe jede Kennung mit verrutschter
+ * Segmentlänge Text, und ohne den Raster-Anker jede, deren Kopfblock selbst
+ * verfälscht ist.
  *
- * Das Raster allein genügt nicht: `Taxonomy-L4` erfüllt es zufällig, ist aber
- * ein fachlicher Suchbegriff. Deshalb muss zusätzlich einer von zwei Ankern
- * greifen — ein vollständig hexadezimaler Kopfblock (jemand tippt oder kopiert
- * eine Kennung) oder das vollständige Fünf-Segment-Raster (eine Kennung, in
- * der ein Zeichen verfälscht ist). Ein Fachbegriff erfüllt weder das eine noch
- * das andere.
+ * Greift keiner, ist die Eingabe nicht von einem Suchbegriff zu unterscheiden
+ * — `Taxonomy-L4` etwa trifft das Segmentraster zufällig, trägt aber weder
+ * einen hexadezimalen Kopfblock noch fünf Segmente und wird deshalb weiterhin
+ * über den Volltext gesucht.
  */
 function hasIdentifierShape(query: string): boolean {
-  const segments = query.split('-');
-
-  if (segments.length < 2 || segments.length > UUID_SEGMENT_LENGTHS.length) {
-    return false;
+  if (IDENTIFIER_HEAD_PATTERN.test(query)) {
+    return true;
   }
 
-  const matchesSegmentLengths = segments.every((segment, index) => {
-    const expectedLength = UUID_SEGMENT_LENGTHS[index];
-    const isLastSegment = index === segments.length - 1;
-
-    return isLastSegment
-      ? segment.length <= expectedLength
-      : segment.length === expectedLength;
-  });
-
-  if (!matchesSegmentLengths) {
-    return false;
-  }
-
-  return (
-    HEX_HEAD_SEGMENT.test(segments[0]) ||
-    segments.length === UUID_SEGMENT_LENGTHS.length
-  );
+  return matchesFullSegmentGrid(query.split('-'));
 }
 
 /**

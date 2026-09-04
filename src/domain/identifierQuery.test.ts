@@ -57,11 +57,17 @@ describe('classifyQuery', () => {
     ['9bb16672-4394-3ce9-bd14-12a080233f7a', 'malformed-identifier', 'Version 3 statt 4/5'],
     ['9bb16672-4394-4ce9-cd14-12a080233f7a', 'malformed-identifier', 'unzulässige Variante'],
 
-    // Rasterverletzungen sind keine Kennungsform.
+    // Verrutschte Segmente hinter einem gültigen Kopfblock: immer noch eine
+    // Kennung, nur eine kaputte.
+    ['9bb16672-43945-4ce9-bd14-12a080233f7a', 'malformed-identifier', 'zweites Segment zu lang'],
+    ['9bb16672-4394-4ce9-bd14-12a080233f7a-extra', 'malformed-identifier', 'ein Segment zu viel'],
+    ['9bb16672-4394-4ce9-bd14-12a080233f7ab', 'malformed-identifier', 'letztes Segment zu lang'],
+    ['9bb16672-4394-4ce9-12a080233f7a', 'malformed-identifier', 'ein Segment zu wenig'],
+
+    // Ohne beide Anker ist die Eingabe nicht von einem Suchbegriff zu
+    // unterscheiden — hier fehlt der Kopfblock ein Zeichen und das Raster
+    // stimmt dadurch auch nicht.
     ['9bb1667-4394-4ce9-bd14-12a080233f7a', 'text', 'Kopfblock zu kurz'],
-    ['9bb16672-43945-4ce9-bd14-12a080233f7a', 'text', 'zweites Segment zu lang'],
-    ['9bb16672-4394-4ce9-bd14-12a080233f7a-extra', 'text', 'ein Segment zu viel'],
-    ['9bb16672-4394-4ce9-bd14-12a080233f7ab', 'text', 'letztes Segment zu lang'],
 
     // Fachbegriffe, auch wenn sie das Raster zufällig treffen: "Taxonomy" hat
     // acht Zeichen, ist aber kein Hex-Kopfblock, und zwei Segmente sind nicht
