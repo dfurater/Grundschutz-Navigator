@@ -133,3 +133,5 @@ Dieses Projekt ist ein inoffizielles Community-Werkzeug. Es ersetzt weder eine o
 
 - **App-Code:** [GNU Affero General Public License v3.0 (or later)](LICENSE) — © 2026 Deniz Furater. Starkes Copyleft: Wer den Code weitergibt **oder als Netzwerkdienst anbietet**, muss den vollständigen Quellcode inkl. eigener Änderungen unter der AGPL verfügbar machen. Drittkomponenten behalten ihre eigenen Lizenzen (siehe `NOTICE` und die „Lizenzen"-Seite der App).
 - **Katalogdaten:** [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.de) — Urheber: [`BSI-Bund/Stand-der-Technik-Bibliothek`](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek). Bei Weitergabe der Daten sind Namensnennung und Weitergabe unter gleichen Bedingungen zu beachten. Die Katalogdaten sind nicht Teil dieses Repositorys und fallen nicht unter die AGPL des App-Codes.
+
+<!-- GSPP-383 Wegwerf-Probe-PR: trivialer Diff für den Greptile-Wirksamkeitsnachweis, wird nicht gemergt. -->
