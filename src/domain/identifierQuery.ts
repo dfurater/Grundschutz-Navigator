@@ -14,22 +14,26 @@ const UUID_PATTERN =
 const UUID_SEGMENT_LENGTHS = [8, 4, 4, 4, 12] as const;
 
 /**
- * Kopfblock-Anker: acht Hexziffern, ein Bindestrich, danach nur noch
- * alphanumerische Zeichen und Bindestriche. Wer eine Kennung tippt oder
- * einfügt, trifft den Kopfblock; was danach schiefgeht — ein Zeichen zu viel,
- * ein falsches Zeichen, ein abgeschnittenes Ende — ändert nichts daran, dass
- * eine Kennung gemeint war.
+ * Kopfblock-Anker: acht Hexziffern, ein Bindestrich, danach beliebige Zeichen
+ * ohne Leerraum.
+ *
+ * Bewusst ohne Zeichenvorrat: Wer eine Kennung tippt oder einfügt, trifft den
+ * Kopfblock, und was dahinter schiefgeht — ein falsches Zeichen, ein Zeichen
+ * zu viel, ein abgeschnittenes Ende — ändert nichts an der Absicht. Eine
+ * Prüfung auf zulässige Zeichen hätte je nach gewähltem Vorrat immer eine
+ * Lücke: erst fielen Nicht-Hex-Zeichen durch, dann Unterstriche und
+ * Satzzeichen. Leerraum grenzt ab, weil er aus der Eingabe eine Wortfolge
+ * macht.
  */
-const IDENTIFIER_HEAD_PATTERN = /^[0-9A-Fa-f]{8}-[0-9A-Za-z-]*$/;
-
-const ALPHANUMERIC_SEGMENT = /^[0-9A-Za-z]+$/;
+const IDENTIFIER_HEAD_PATTERN = /^[0-9A-Fa-f]{8}-\S*$/;
 
 export type QueryKind = 'identifier' | 'malformed-identifier' | 'text';
 
 /**
  * Raster-Anker: das vollständige Fünf-Segment-Muster 8-4-4-4-12. Er fängt die
  * Fälle ab, in denen schon der Kopfblock verfälscht ist und der Kopfblock-Anker
- * deshalb nicht greift.
+ * deshalb nicht greift. Auch hier zählt allein die Form; nur Leerraum schließt
+ * ein Segment aus.
  */
 function matchesFullSegmentGrid(segments: string[]): boolean {
   if (segments.length !== UUID_SEGMENT_LENGTHS.length) {
@@ -38,8 +42,7 @@ function matchesFullSegmentGrid(segments: string[]): boolean {
 
   return segments.every(
     (segment, index) =>
-      segment.length === UUID_SEGMENT_LENGTHS[index] &&
-      ALPHANUMERIC_SEGMENT.test(segment),
+      segment.length === UUID_SEGMENT_LENGTHS[index] && !/\s/.test(segment),
   );
 }
 

@@ -47,6 +47,17 @@ describe('classifyQuery', () => {
     ['9bb16672-4394-4ce9-bg14-12a080233f7a', 'malformed-identifier', 'Fremdzeichen im 4. Segment'],
     ['9bb16672-4394-4ce9-bd14-12a080233g7a', 'malformed-identifier', 'Fremdzeichen im 5. Segment'],
 
+    // Ersatzzeichen außerhalb des Alphanumerischen — dieselbe Fehlerklasse,
+    // nur mit anderem Zeichen. Die Einordnung darf nicht am Zeichenvorrat
+    // hängen, sonst bleibt bei jeder Erweiterung eine Lücke.
+    ['9bb16672-4394-4ce9-bd14-12a080233_7a', 'malformed-identifier', 'Unterstrich im letzten Segment'],
+    ['9bb16672-4394-4ce9-bd14-12a080233.7a', 'malformed-identifier', 'Punkt im letzten Segment'],
+    ['9bb16672-4394-4ce9-bd14-12a080233ü7a', 'malformed-identifier', 'Umlaut im letzten Segment'],
+    ['9bb16672-43_4-4ce9-bd14-12a080233f7a', 'malformed-identifier', 'Unterstrich im zweiten Segment'],
+    ['9bb1667_-4394-4ce9-bd14-12a080233f7a', 'malformed-identifier', 'Unterstrich im Kopfblock'],
+    ['9bb1667ü-4394-4ce9-bd14-12a080233f7a', 'malformed-identifier', 'Umlaut im Kopfblock'],
+    ['9bb16672-4394-4ce9-bd14-12a0802✓37a', 'malformed-identifier', 'Nicht-ASCII-Symbol'],
+
     // Abgeschnitten: als Kennung gemeint, aber unvollständig.
     ['9bb16672-4394-4ce9-bd14-12a080233f7', 'malformed-identifier', 'letztes Segment angebrochen'],
     ['9bb16672-4394', 'malformed-identifier', 'nach dem zweiten Segment abgeschnitten'],

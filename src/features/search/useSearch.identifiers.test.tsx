@@ -317,6 +317,12 @@ describe('useSearch — Kennungsauflösung', () => {
       // Verrutschte Segmentlängen hinter gültigem Kopfblock.
       '9bb16672-43945-4ce9-bd14-12a080233f7a',
       '9bb16672-4394-4ce9-bd14-12a080233f7ab',
+      // Ersatzzeichen außerhalb des Alphanumerischen, im Kopfblock und
+      // dahinter: dieselbe Fehlerklasse, nur mit anderem Zeichen.
+      '9bb16672-4394-4ce9-bd14-12a080233_7a',
+      '9bb16672-4394-4ce9-bd14-12a080233.7a',
+      '9bb16672-4394-4ce9-bd14-12a080233ü7a',
+      '9bb1667_-4394-4ce9-bd14-12a080233f7a',
     ];
 
     for (const invalid of cases) {

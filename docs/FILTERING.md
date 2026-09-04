@@ -59,12 +59,15 @@ Eintrags.
 Eine unvollständige oder syntaktisch abweichende Kennung liefert kein Ergebnis
 und fällt nicht auf die Volltextsuche zurück. Als Kennung gilt eine Eingabe
 dafür bereits an ihrer Form, und zwar über zwei Anker: Sie beginnt mit acht
-Hexziffern und einem Bindestrich, gefolgt von alphanumerischen Zeichen und
-Bindestrichen — oder sie füllt das Segmentraster 8-4-4-4-12 vollständig aus.
-Der erste Anker deckt jede Verfälschung hinter einem korrekt getippten
-Kopfblock ab, der zweite die Fälle, in denen schon der Kopfblock verfälscht
-ist. Ein Fachbegriff wie `Taxonomy-L4` erfüllt keinen von beiden und wird
-weiterhin über den Volltext gesucht. Kennungsspalten sind aus dem
+Hexziffern und einem Bindestrich, gefolgt von beliebigen Zeichen ohne Leerraum
+— oder sie füllt das Segmentraster 8-4-4-4-12 vollständig aus. Der erste Anker
+deckt jede Verfälschung hinter einem korrekt getippten Kopfblock ab, der zweite
+die Fälle, in denen schon der Kopfblock verfälscht ist. Geprüft wird
+ausschließlich die Form, nie der Zeichenvorrat: Ob ein Zeichen durch eine
+Ziffer, einen Buchstaben, einen Unterstrich oder ein Sonderzeichen ersetzt
+wurde, ändert nichts daran, dass eine Kennung gemeint war. Leerraum grenzt ab,
+weil er aus der Eingabe eine Wortfolge macht. Ein Fachbegriff wie `Taxonomy-L4`
+erfüllt keinen der beiden Anker und wird weiterhin über den Volltext gesucht. Kennungsspalten sind aus dem
 Volltextindex ausgenommen — FlexSearch zerlegt sie an den Bindestrichen, und
 Einträge mit gemeinsamen Teiltokens würden sich sonst gegenseitig treffen.
 Welche Spalten das sind, entscheidet das Build-Skript am CSV-Header
