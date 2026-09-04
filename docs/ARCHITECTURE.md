@@ -811,10 +811,27 @@ Den Registerstand am PR-Base-SHA lädt `loadSourceRegistryAtRef`. Die Modulkette
 
 Bei fehlender oder abweichender vom Preflight geprüfter Policy, einem API-Fehler, unerwartetem Diff oder fehlendem `autoMergeRequest` bricht der Workflow ab. Der Preflight prüft die Bindung der Ruleset-Conditions an `main` fail-closed mit. Der BSI-Upstream bleibt als Datenquelle grundsätzlich vertraut; eine fachliche Two-Source-Verifikation ist nicht Teil dieser Merge-Lane.
 
+## Versionierte Review-Policy
+
+Gitar und Greptile prüfen dieses Repository parallel. Gitar liest seine Anweisungen aus `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, `.cursor/rules/*`, `.gitar/**`, `.claude/skills/` und `.github/skills/` — und `.gitignore` schließt hier jede einzelne dieser Quellen aus. Bis GSPP-374 lagen die Reviewregeln deshalb vollständig außerhalb des versionierten Repositoriums, und Gitar hat ohne jede repo-seitige Anweisung gereviewt. Seitdem gilt: Regeln sind versioniert, haben genau eine Autorenquelle, und alles Weitere wird daraus deterministisch erzeugt.
+
+Die Autorenquelle besteht aus zwei Dateien mit klarer Aufgabenteilung. `scripts/review-policy.rules.mjs` trägt die Regeltabelle als reine Daten — Regel-ID, Scope und Regeltext. `scripts/review-policy.mjs` trägt Generator, Drift-Guard und CLI und ist der einzige Einstiegspunkt für Verbraucher; es re-exportiert die Tabelle. Erzeugt werden `docs/REVIEW_INVARIANTS.md` (menschenlesbar, reviewbar) und `.gitar/review/invarianten.md` (dünner Adapter, der die Dokumentation per `@`-Include einbindet). `npm run review-policy` erzeugt neu, `npm run review-policy:check` schlägt bei jeder manuellen Abweichung fehl und läuft als Pflichtschritt im CI-Job `validate`.
+
+Der Guard prüft mehr als Byte-Gleichheit der erzeugten Dateien. Er stellt außerdem sicher, dass keine Anweisungsfläche an der Autorenquelle vorbei existiert: Dateien unter den von Gitar gelesenen Verzeichnissen, die nicht aus dem Generator stammen, sind Drift. Weil `.gitignore` ein `git add -f` nicht verhindert, deckt er neben dem Dateisystem auch den Git-Index ab — eine erzwungen versionierte `AGENTS.md` oder `.claude/skills/`-Datei würde von Gitar angewendet, ohne je aus der Autorenquelle zu stammen. Ist der Index nicht lesbar, schlägt der Guard fehl; eine unbeantwortbare Frage ist hier kein „nein".
+
+### `.sonarcloud.properties`
+
+SonarQube Cloud analysiert dieses Repository per Automatic Analysis; `.sonarcloud.properties` ist der dafür vorgesehene Konfigurationsweg. Die Datei enthält genau eine Einstellung: `sonar.cpd.exclusions=scripts/review-policy.rules.mjs`.
+
+Der Grund ist eine Eigenschaft der Copy-Paste-Erkennung, nicht ein Wartbarkeitsproblem. CPD misst wiederholte Token-Folgen und normalisiert dabei Literale; 26 strukturgleiche Tabelleneinträge aus Schlüssel, Scope-Liste und Regeltext werden dadurch zwangsläufig als Duplikat gemeldet, ohne dass Verhalten kopiert wäre. Gemessen an `466d50c` lagen alle vier gemeldeten Duplikatsgruppen vollständig innerhalb der Regeltabelle. Weil `sonar.cpd.exclusions` ausschließlich dateiweit greift und keine Block- oder Zeilengranularität kennt, hätte eine Ausnahme auf einer gemischten Datei auch Generator, Drift-Guard und CLI von der Duplikatsprüfung befreit — daher der Schnitt in zwei Dateien. Ausgenommen ist allein die Duplikatsmessung auf der Datentabelle; keine Schwelle des Quality Gates wird gesenkt.
+
+Die Datei wirkt aus dem PR-Head heraus. Ein PR könnte sich damit selbst eine Gate-Ausnahme erteilen, weshalb sie in `AGENTS.md` zu den Review-Policy-Pfaden zählt: Wer sie anfasst, braucht ein Agenten-Cross-Review.
+
 ## Siehe auch
 
 - [DOMAIN_MODELS.md](./DOMAIN_MODELS.md) — Domänenmodelle
 - [FILTERING.md](./FILTERING.md) — Filter-System
 - [INTEGRITY.md](./INTEGRITY.md) — Integritätsprüfung
 - [PERSISTENCE.md](./PERSISTENCE.md) — Persistenzvertrag für lokale Arbeitsbereiche
+- [REVIEW_INVARIANTS.md](./REVIEW_INVARIANTS.md) — erzeugte Review-Invarianten (nicht von Hand bearbeiten)
 - [VOCABULARY.md](./VOCABULARY.md) — Vokabular-System

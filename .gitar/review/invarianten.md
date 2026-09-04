@@ -1,8 +1,9 @@
 <!--
   GENERIERT — nicht von Hand bearbeiten.
-  Autorenquelle: scripts/review-policy.mjs
-  Neu erzeugen:  npm run review-policy
-  Drift prüfen:  npm run review-policy:check
+  Regeltexte:   scripts/review-policy.rules.mjs
+  Generator:    scripts/review-policy.mjs
+  Neu erzeugen: npm run review-policy
+  Drift prüfen: npm run review-policy:check
 -->
 
 # Review-Invarianten (Gitar)

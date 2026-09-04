@@ -1,8 +1,9 @@
 <!--
   GENERIERT — nicht von Hand bearbeiten.
-  Autorenquelle: scripts/review-policy.mjs
-  Neu erzeugen:  npm run review-policy
-  Drift prüfen:  npm run review-policy:check
+  Regeltexte:   scripts/review-policy.rules.mjs
+  Generator:    scripts/review-policy.mjs
+  Neu erzeugen: npm run review-policy
+  Drift prüfen: npm run review-policy:check
 -->
 
 # Review-Invarianten
@@ -10,9 +11,10 @@
 Der verbindliche Reviewvertrag dieses Repositoriums. Er gilt gleichrangig für
 Gitar, für Greptile und für jeden Agenten-Cross-Review.
 
-Diese Datei wird aus `scripts/review-policy.mjs` erzeugt. Änderungen gehören
-dorthin; `npm run review-policy:check` läuft im CI-Job `validate` und schlägt
-bei jeder manuellen Abweichung fehl.
+Diese Datei wird von `scripts/review-policy.mjs` erzeugt; die Regeltexte selbst
+stehen in `scripts/review-policy.rules.mjs`. Änderungen gehören dorthin;
+`npm run review-policy:check` läuft im CI-Job `validate` und schlägt bei jeder
+manuellen Abweichung fehl.
 
 ## Globale Regeln
 

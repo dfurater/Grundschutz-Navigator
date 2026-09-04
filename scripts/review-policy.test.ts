@@ -52,6 +52,46 @@ afterEach(async () => {
   await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
+/**
+ * Die Trennung von Regeltabelle und Logik existiert, damit die dateiweite
+ * CPD-Ausnahme in `.sonarcloud.properties` ausschließlich Daten erfasst. Fällt
+ * die Tabelle in die Logikdatei zurück oder wandert die Ausnahme mit, verliert
+ * der Generator still seine Duplikatsprüfung. Diese Zusagen halten den Schnitt.
+ */
+describe('review-policy Schnitt zwischen Regeltabelle und Logik', () => {
+  const RULES_MODULE = 'scripts/review-policy.rules.mjs';
+  const LOGIC_MODULE = 'scripts/review-policy.mjs';
+
+  const readRepoFile = (relativePath: string) =>
+    readFile(path.join(REPO_ROOT, relativePath), 'utf8');
+
+  it('führt die Regeltabelle ausschließlich in der Datendatei', async () => {
+    const [rules, logic] = await Promise.all([readRepoFile(RULES_MODULE), readRepoFile(LOGIC_MODULE)]);
+
+    for (const declaration of ['globalRules', 'scopedRules', 'fileContexts']) {
+      expect(rules).toContain(`export const ${declaration} = [`);
+      expect(logic).not.toContain(`export const ${declaration} = [`);
+    }
+  });
+
+  it('hält jeden Regeltext aus der Logikdatei heraus', async () => {
+    const logic = await readRepoFile(LOGIC_MODULE);
+
+    for (const rule of allRules) {
+      expect(logic).not.toContain(rule.body);
+    }
+  });
+
+  it('richtet die CPD-Ausnahme genau auf die Datendatei', async () => {
+    const properties = await readRepoFile('.sonarcloud.properties');
+    const setting = properties
+      .split('\n')
+      .find((line) => line.startsWith('sonar.cpd.exclusions='));
+
+    expect(setting).toBe(`sonar.cpd.exclusions=${RULES_MODULE}`);
+  });
+});
+
 describe('review-policy Autorenquelle', () => {
   it('führt 6 globale Regeln, 20 gescopte Regeln und 8 Datei-Kontexte', () => {
     expect(globalRules).toHaveLength(6);

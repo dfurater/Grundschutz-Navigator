@@ -72,10 +72,11 @@ jobs:
       - name: Verify pinned OSCAL schemas
         run: npm run verify-oscal-schemas
 
-      # Reviewregeln sind seit GSPP-374 versioniert: scripts/review-policy.mjs ist
-      # die Autorenquelle, docs/REVIEW_INVARIANTS.md und .gitar/review/ sind daraus
-      # erzeugt. Der Check ist netzfrei und schlägt bei jeder manuellen Abweichung
-      # sowie bei jeder Regeldatei fehl, die an der Autorenquelle vorbei entstanden ist.
+      # Reviewregeln sind seit GSPP-374 versioniert: scripts/review-policy.rules.mjs
+      # trägt die Regeltexte, scripts/review-policy.mjs den Generator;
+      # docs/REVIEW_INVARIANTS.md und .gitar/review/ sind daraus erzeugt. Der Check
+      # ist netzfrei und schlägt bei jeder manuellen Abweichung sowie bei jeder
+      # Regeldatei fehl, die an der Autorenquelle vorbei entstanden ist.
       - name: Verify generated review policy
         run: npm run review-policy:check
 
