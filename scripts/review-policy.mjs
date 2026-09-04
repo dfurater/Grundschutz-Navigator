@@ -302,8 +302,17 @@ export const GITAR_REVIEW_DIRECTORY = '.gitar/review';
  */
 export const REVIEW_INSTRUCTION_DIRECTORIES = ['.gitar', '.greptile', '.cursor', '.github/skills'];
 
-/** Einzelne Anweisungsdateien ohne Verzeichnis. */
-export const REVIEW_INSTRUCTION_FILES = ['.cursorrules'];
+/**
+ * Einzelne Anweisungsdateien ohne Verzeichnis.
+ *
+ * `greptile.json` ist Greptiles Wurzelkonfiguration und steht in seiner
+ * Wirkungsreihenfolge zwischen Dashboard und `.greptile/`. Sie trägt keine
+ * Regeln, wohl aber jede Review-Einstellung — und `.greptile/config.json`
+ * setzt bewusst keine davon. Fehlte sie hier, ließe sich am Guard vorbei
+ * genau das tun, was dieser Slice ausschließt: eine Reviewsteuerung in den
+ * PR-Head legen, ohne dass sie aus der Autorenquelle stammt.
+ */
+export const REVIEW_INSTRUCTION_FILES = ['.cursorrules', 'greptile.json'];
 
 /**
  * Anweisungsflächen, die Gitar ebenfalls liest, die `.gitignore` hier aber

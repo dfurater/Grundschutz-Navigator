@@ -370,6 +370,7 @@ describe('review-policy Drift-Check', () => {
     ['.cursor/rules/umgehung.md'],
     ['.github/skills/umgehung.md'],
     ['.cursorrules'],
+    ['greptile.json'],
   ])('schlägt bei einer Anweisungsdatei unter %s fehl', async (relative) => {
     const root = await createGeneratedFixtureRoot();
     const absolute = path.join(root, relative);
@@ -408,7 +409,7 @@ describe('review-policy Drift-Check', () => {
 
   it('deckt jede in der Autorenquelle geführte Anweisungsfläche ab', () => {
     expect(REVIEW_INSTRUCTION_DIRECTORIES).toEqual(['.gitar', '.greptile', '.cursor', '.github/skills']);
-    expect(REVIEW_INSTRUCTION_FILES).toEqual(['.cursorrules']);
+    expect(REVIEW_INSTRUCTION_FILES).toEqual(['.cursorrules', 'greptile.json']);
     expect(REVIEW_INSTRUCTION_DIRECTORIES.some((directory) => GITAR_REVIEW_DIRECTORY.startsWith(`${directory}/`)))
       .toBe(true);
   });
