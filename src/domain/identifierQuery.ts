@@ -10,22 +10,55 @@
 const UUID_PATTERN =
   /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[45][0-9A-Fa-f]{3}-[89ABab][0-9A-Fa-f]{3}-[0-9A-Fa-f]{12}$/;
 
-/**
- * Das Grundraster einer Kennung: acht Hexziffern, ein Bindestrich, danach nur
- * noch Hexziffern und Bindestriche.
- *
- * Es entscheidet, ob eine Eingabe überhaupt als Kennung *gemeint* ist. Ohne
- * diese Unterscheidung liefe eine unvollständige oder syntaktisch abweichende
- * Kennung in die Volltextsuche und träfe dort jede Control, in deren Text das
- * Fragment vorkommt — statt der geforderten null Treffer.
- *
- * Das Raster ist bewusst eng: Ein achtstelliger Hexblock mit folgendem
- * Bindestrich ist als fachlicher Suchbegriff nicht zu erwarten, während jedes
- * Präfix einer echten Kennung ihn erfüllt.
- */
-const IDENTIFIER_SHAPE_PATTERN = /^[0-9A-Fa-f]{8}-[0-9A-Fa-f-]*$/;
+/** Segmentlängen einer UUID: 8-4-4-4-12. */
+const UUID_SEGMENT_LENGTHS = [8, 4, 4, 4, 12] as const;
+
+/** Ein vollständig hexadezimaler Achterblock — der Kopf jeder Kennung. */
+const HEX_HEAD_SEGMENT = /^[0-9A-Fa-f]{8}$/;
 
 export type QueryKind = 'identifier' | 'malformed-identifier' | 'text';
+
+/**
+ * Erkennt, ob eine Eingabe als Kennung *gemeint* ist — unabhängig davon, ob
+ * sie gültig ist. Ohne diese Unterscheidung liefe eine unvollständige oder
+ * syntaktisch abweichende Kennung in die Volltextsuche und träfe dort jede
+ * Control, in deren Text sie vorkommt, statt der geforderten null Treffer.
+ *
+ * Geprüft wird zuerst das Segmentraster 8-4-4-4-12. Das letzte Segment darf
+ * kürzer sein, damit ein abgeschnittenes Präfix erkannt wird.
+ *
+ * Das Raster allein genügt nicht: `Taxonomy-L4` erfüllt es zufällig, ist aber
+ * ein fachlicher Suchbegriff. Deshalb muss zusätzlich einer von zwei Ankern
+ * greifen — ein vollständig hexadezimaler Kopfblock (jemand tippt oder kopiert
+ * eine Kennung) oder das vollständige Fünf-Segment-Raster (eine Kennung, in
+ * der ein Zeichen verfälscht ist). Ein Fachbegriff erfüllt weder das eine noch
+ * das andere.
+ */
+function hasIdentifierShape(query: string): boolean {
+  const segments = query.split('-');
+
+  if (segments.length < 2 || segments.length > UUID_SEGMENT_LENGTHS.length) {
+    return false;
+  }
+
+  const matchesSegmentLengths = segments.every((segment, index) => {
+    const expectedLength = UUID_SEGMENT_LENGTHS[index];
+    const isLastSegment = index === segments.length - 1;
+
+    return isLastSegment
+      ? segment.length <= expectedLength
+      : segment.length === expectedLength;
+  });
+
+  if (!matchesSegmentLengths) {
+    return false;
+  }
+
+  return (
+    HEX_HEAD_SEGMENT.test(segments[0]) ||
+    segments.length === UUID_SEGMENT_LENGTHS.length
+  );
+}
 
 /**
  * Ordnet eine Suchanfrage einem der drei Auswertungspfade zu.
@@ -42,7 +75,7 @@ export function classifyQuery(query: string): QueryKind {
     return 'identifier';
   }
 
-  return IDENTIFIER_SHAPE_PATTERN.test(trimmed) ? 'malformed-identifier' : 'text';
+  return hasIdentifierShape(trimmed) ? 'malformed-identifier' : 'text';
 }
 
 /**

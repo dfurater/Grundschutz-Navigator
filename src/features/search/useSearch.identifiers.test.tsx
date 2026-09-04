@@ -306,6 +306,30 @@ describe('useSearch — Kennungsauflösung', () => {
     await expectMatches(controls, '9bb16672-4394', []);
   });
 
+  it('never falls back to full-text search for an invalid character in a UUID', async () => {
+    // Vollständiges Segmentraster mit einem Nicht-Hex-Zeichen. Ohne
+    // Formerkennung liefe die Eingabe als gewöhnlicher Suchbegriff in Titel
+    // und Fließtext.
+    const cases = [
+      '9bb16672-4394-4ce9-bd14-12a080233g7a',
+      '9bb1667g-4394-4ce9-bd14-12a080233f7a',
+      '9bb16672-4394-4cg9-bd14-12a080233f7a',
+    ];
+
+    for (const invalid of cases) {
+      const controls = [
+        makeControl({ id: 'GC.1.1', altIdentifier: '9bb16672-4394-4ce9-bd14-12a080233f7a' }),
+        makeControl({
+          id: 'TEXT.1',
+          title: `Referenzliste ${invalid}`,
+          statement: `Der Eintrag ${invalid} ist zu prüfen.`,
+        }),
+      ];
+
+      await expectMatches(controls, invalid, []);
+    }
+  });
+
   it('GSPP-274: keeps identifiers sharing hyphen sub-tokens apart', async () => {
     // Die drei Gefährdungskennungen der Fixture unterscheiden sich nur im
     // letzten Oktett — genau die Konstellation, die 81 themenfremde Treffer

@@ -57,7 +57,13 @@ zugeschlagen; aufgelöst wird ausschließlich über die eigene Kennung eines
 Eintrags.
 
 Eine unvollständige oder syntaktisch abweichende Kennung liefert kein Ergebnis
-und fällt nicht auf die Volltextsuche zurück. Kennungsspalten sind aus dem
+und fällt nicht auf die Volltextsuche zurück. Als Kennung gilt eine Eingabe
+dafür bereits an ihrer Form: Sie muss sich an den Bindestrichen in Segmente
+nach dem Raster 8-4-4-4-12 zerlegen lassen — das letzte darf angebrochen sein —
+und zusätzlich entweder einen vollständig hexadezimalen Kopfblock tragen oder
+alle fünf Segmente ausfüllen. Damit gilt auch eine Kennung mit einem falschen
+Zeichen als Kennungsanfrage, während ein Fachbegriff wie `Taxonomy-L4`, der das
+Raster zufällig erfüllt, weiterhin über den Volltext gesucht wird. Kennungsspalten sind aus dem
 Volltextindex ausgenommen — FlexSearch zerlegt sie an den Bindestrichen, und
 Einträge mit gemeinsamen Teiltokens würden sich sonst gegenseitig treffen.
 Welche Spalten das sind, entscheidet das Build-Skript am CSV-Header
