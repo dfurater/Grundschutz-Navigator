@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { QueryKind } from './identifierQuery';
 import { classifyQuery, isIdentifierQuery } from './identifierQuery';
 
 describe('isIdentifierQuery', () => {
@@ -33,57 +34,55 @@ describe('isIdentifierQuery', () => {
 });
 
 describe('classifyQuery', () => {
-  it('erkennt eine wohlgeformte Kennung', () => {
-    expect(classifyQuery('9bb16672-4394-4ce9-bd14-12a080233f7a')).toBe('identifier');
+  // Tabellengetrieben, damit jeder Fall seine Begründung trägt und die
+  // Aufzählung nicht zu wiederholten Assertion-Zeilen wird.
+  const cases: ReadonlyArray<[string, QueryKind, string]> = [
+    ['9bb16672-4394-4ce9-bd14-12a080233f7a', 'identifier', 'wohlgeformte Kennung'],
+
+    // Vollständiges Raster mit einem ungültigen Zeichen — je Segment einmal,
+    // damit die Formerkennung nicht nur am Kopfblock hängt.
+    ['9bb1667g-4394-4ce9-bd14-12a080233f7a', 'malformed-identifier', 'Fremdzeichen im 1. Segment'],
+    ['9bb16672-43g4-4ce9-bd14-12a080233f7a', 'malformed-identifier', 'Fremdzeichen im 2. Segment'],
+    ['9bb16672-4394-4cg9-bd14-12a080233f7a', 'malformed-identifier', 'Fremdzeichen im 3. Segment'],
+    ['9bb16672-4394-4ce9-bg14-12a080233f7a', 'malformed-identifier', 'Fremdzeichen im 4. Segment'],
+    ['9bb16672-4394-4ce9-bd14-12a080233g7a', 'malformed-identifier', 'Fremdzeichen im 5. Segment'],
+
+    // Abgeschnitten: als Kennung gemeint, aber unvollständig.
+    ['9bb16672-4394-4ce9-bd14-12a080233f7', 'malformed-identifier', 'letztes Segment angebrochen'],
+    ['9bb16672-4394', 'malformed-identifier', 'nach dem zweiten Segment abgeschnitten'],
+    ['9bb16672-', 'malformed-identifier', 'nur der Kopfblock'],
+    ['9bb16672-4394-4cg9', 'malformed-identifier', 'Fragment mit Fremdzeichen'],
+
+    // Vollständig, aber außerhalb des gepinnten v4/v5-Vertrags.
+    ['9bb16672-4394-3ce9-bd14-12a080233f7a', 'malformed-identifier', 'Version 3 statt 4/5'],
+    ['9bb16672-4394-4ce9-cd14-12a080233f7a', 'malformed-identifier', 'unzulässige Variante'],
+
+    // Rasterverletzungen sind keine Kennungsform.
+    ['9bb1667-4394-4ce9-bd14-12a080233f7a', 'text', 'Kopfblock zu kurz'],
+    ['9bb16672-43945-4ce9-bd14-12a080233f7a', 'text', 'zweites Segment zu lang'],
+    ['9bb16672-4394-4ce9-bd14-12a080233f7a-extra', 'text', 'ein Segment zu viel'],
+    ['9bb16672-4394-4ce9-bd14-12a080233f7ab', 'text', 'letztes Segment zu lang'],
+
+    // Fachbegriffe, auch wenn sie das Raster zufällig treffen: "Taxonomy" hat
+    // acht Zeichen, ist aber kein Hex-Kopfblock, und zwei Segmente sind nicht
+    // das volle Raster.
+    ['Taxonomy-L4', 'text', 'WLAN-Taxonomie-Prop'],
+    ['Struktur-Ebene', 'text', 'zusammengesetzter Begriff'],
+    ['ad-hoc', 'text', 'kurzer Bindestrichbegriff'],
+    ['cafe-babe', 'text', 'Hexzeichen ohne Raster'],
+    ['Passwort', 'text', 'einzelnes Wort'],
+    ['GC.1.1', 'text', 'Control-ID'],
+    ['9bb16672', 'text', 'Kopfblock ohne Bindestrich'],
+    ['9bb16672 4394', 'text', 'Leerzeichen statt Bindestrich'],
+    ['', 'text', 'leere Eingabe'],
+  ];
+
+  it.each(cases)('ordnet %j als %s ein (%s)', (query, expected) => {
+    expect(classifyQuery(query)).toBe(expected);
   });
 
-  it('erkennt eine UUID-förmige Eingabe mit ungültigen Zeichen als Kennung', () => {
-    // Vollständiges Segmentraster, aber Nicht-Hex-Zeichen: als Kennung
-    // gemeint, also null Treffer statt Volltextsuche. Jedes Segment einzeln
-    // geprüft, damit die Formerkennung nicht nur am ersten Block hängt.
-    expect(classifyQuery('9bb16672-4394-4ce9-bd14-12a080233g7a')).toBe('malformed-identifier');
-    expect(classifyQuery('9bb1667g-4394-4ce9-bd14-12a080233f7a')).toBe('malformed-identifier');
-    expect(classifyQuery('9bb16672-43g4-4ce9-bd14-12a080233f7a')).toBe('malformed-identifier');
-    expect(classifyQuery('9bb16672-4394-4cg9-bd14-12a080233f7a')).toBe('malformed-identifier');
-    expect(classifyQuery('9bb16672-4394-4ce9-bg14-12a080233f7a')).toBe('malformed-identifier');
-    // Auch ein Fragment mit ungültigem Zeichen bleibt Kennungsanfrage.
-    expect(classifyQuery('9bb16672-4394-4cg9')).toBe('malformed-identifier');
-  });
-
-  it('erkennt ein Kennungsfragment als solches statt als Text', () => {
-    // Ohne diese Einordnung liefe das Fragment in die Volltextsuche und träfe
-    // jede Control, in deren Text es vorkommt.
-    expect(classifyQuery('9bb16672-4394-4ce9-bd14-12a080233f7')).toBe('malformed-identifier');
-    expect(classifyQuery('9bb16672-4394')).toBe('malformed-identifier');
-    expect(classifyQuery('9bb16672-')).toBe('malformed-identifier');
-    // Falsche Version bzw. Variante: als Kennung gemeint, aber nicht wohlgeformt.
-    expect(classifyQuery('9bb16672-4394-3ce9-bd14-12a080233f7a')).toBe('malformed-identifier');
-    expect(classifyQuery('9bb16672-4394-4ce9-cd14-12a080233f7a')).toBe('malformed-identifier');
-  });
-
-  it('lässt Eingaben außerhalb des UUID-Rasters als Text durch', () => {
-    // Falsche Segmentlängen oder zu viele Segmente sind keine Kennungsform.
-    expect(classifyQuery('9bb1667-4394-4ce9-bd14-12a080233f7a')).toBe('text');
-    expect(classifyQuery('9bb16672-43945-4ce9-bd14-12a080233f7a')).toBe('text');
-    expect(classifyQuery('9bb16672-4394-4ce9-bd14-12a080233f7a-extra')).toBe('text');
-    // Ein zu langes letztes Segment ist kein angebrochenes Präfix.
-    expect(classifyQuery('9bb16672-4394-4ce9-bd14-12a080233f7ab')).toBe('text');
-    // Fachbegriffe, die das Raster zufällig erfüllen, brauchen einen der
-    // beiden Anker — Taxonomy-L4 hat weder einen Hex-Kopfblock noch das volle
-    // Fünf-Segment-Raster.
-    expect(classifyQuery('Taxonomy-L4')).toBe('text');
-    expect(classifyQuery('Struktur-Ebene')).toBe('text');
-  });
-
-  it('lässt fachliche Suchbegriffe unangetastet', () => {
-    expect(classifyQuery('Passwort')).toBe('text');
-    expect(classifyQuery('GC.1.1')).toBe('text');
-    expect(classifyQuery('ad-hoc')).toBe('text');
-    expect(classifyQuery('Taxonomy-L1')).toBe('text');
-    // Hexzeichen ohne das Grundraster bleiben Text.
-    expect(classifyQuery('cafe-babe')).toBe('text');
-    expect(classifyQuery('9bb16672')).toBe('text');
-    expect(classifyQuery('9bb16672 4394')).toBe('text');
-    expect(classifyQuery('')).toBe('text');
+  it('ignoriert Randabstand bei der Einordnung', () => {
+    expect(classifyQuery('  9bb16672-4394-4ce9-bd14-12a080233f7a  ')).toBe('identifier');
+    expect(classifyQuery('  9bb16672-4394  ')).toBe('malformed-identifier');
   });
 });

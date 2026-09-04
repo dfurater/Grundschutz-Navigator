@@ -167,6 +167,40 @@ function makeCatalogStateWithControlSource(
   return state;
 }
 
+/**
+ * Rendert die Detailansicht mit einer Praktik, die per UUID an das Vokabular
+ * gejoint ist. Beide Breadcrumb-Tests unterscheiden sich nur im Praktik-Titel.
+ */
+function renderWithJoinedPractice(practiceTitle: string) {
+  const user = userEvent.setup();
+  const state = makeCatalogState();
+  state.catalog!.practices = [{
+    id: 'GC',
+    title: practiceTitle,
+    label: 'GC',
+    altIdentifier: VOCABULARY_IDENTIFIERS.practiceGC,
+    topics: [{
+      id: 'GC.2',
+      title: 'Organisation',
+      label: '2',
+      altIdentifier: VOCABULARY_IDENTIFIERS.topicOrganisation,
+      practiceId: 'GC',
+      controlCount: 1,
+      controlIds: ['GC.2.2'],
+    }],
+    controlCount: 1,
+  }];
+  mockedUseCatalog.mockReturnValue(state);
+
+  render(
+    <MemoryRouter>
+      <ControlDetail control={makeControl()} onClose={vi.fn()} />
+    </MemoryRouter>,
+  );
+
+  return user;
+}
+
 describe('ControlDetail', () => {
   beforeEach(() => {
     mockedUseCatalog.mockReset();
@@ -238,31 +272,7 @@ describe('ControlDetail', () => {
   });
 
   it('shows the practice identifier in the breadcrumb card and keeps curated fields hidden', async () => {
-    const user = userEvent.setup();
-    const state = makeCatalogState();
-    state.catalog!.practices = [{
-      id: 'GC',
-      title: 'Governance und Compliance',
-      label: 'GC',
-      altIdentifier: VOCABULARY_IDENTIFIERS.practiceGC,
-      topics: [{
-        id: 'GC.2',
-        title: 'Organisation',
-        label: '2',
-        altIdentifier: VOCABULARY_IDENTIFIERS.topicOrganisation,
-        practiceId: 'GC',
-        controlCount: 1,
-        controlIds: ['GC.2.2'],
-      }],
-      controlCount: 1,
-    }];
-    mockedUseCatalog.mockReturnValue(state);
-
-    render(
-      <MemoryRouter>
-        <ControlDetail control={makeControl()} onClose={vi.fn()} />
-      </MemoryRouter>,
-    );
+    const user = renderWithJoinedPractice('Governance und Compliance');
 
     const practice = screen.getByRole('button', {
       name: 'Praktik: Governance und Compliance',
@@ -299,31 +309,7 @@ describe('ControlDetail', () => {
   });
 
   it('keeps the practice term visible when it differs from the breadcrumb name', async () => {
-    const user = userEvent.setup();
-    const state = makeCatalogState();
-    state.catalog!.practices = [{
-      id: 'GC',
-      title: 'Governance & Compliance (Katalogtitel)',
-      label: 'GC',
-      altIdentifier: VOCABULARY_IDENTIFIERS.practiceGC,
-      topics: [{
-        id: 'GC.2',
-        title: 'Organisation',
-        label: '2',
-        altIdentifier: VOCABULARY_IDENTIFIERS.topicOrganisation,
-        practiceId: 'GC',
-        controlCount: 1,
-        controlIds: ['GC.2.2'],
-      }],
-      controlCount: 1,
-    }];
-    mockedUseCatalog.mockReturnValue(state);
-
-    render(
-      <MemoryRouter>
-        <ControlDetail control={makeControl()} onClose={vi.fn()} />
-      </MemoryRouter>,
-    );
+    const user = renderWithJoinedPractice('Governance & Compliance (Katalogtitel)');
 
     await user.click(screen.getByRole('button', {
       name: 'Praktik: Governance & Compliance (Katalogtitel)',
