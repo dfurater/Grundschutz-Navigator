@@ -10,8 +10,9 @@ import {
   GITAR_REVIEW_DIRECTORY,
   GITIGNORED_INSTRUCTION_SURFACES,
   REPO_ROOT,
-  REVIEW_INSTRUCTION_DIRECTORIES,
-  REVIEW_INSTRUCTION_FILES,
+  REVIEW_INSTRUCTION_DIRECTORY_NAMES,
+  REVIEW_INSTRUCTION_FILE_NAMES,
+  REVIEW_INSTRUCTION_ROOT_DIRECTORIES,
   REVIEW_POLICY_TARGETS,
   ReviewPolicyError,
   allRules,
@@ -19,6 +20,7 @@ import {
   checkReviewPolicy,
   fileContexts,
   globalRules,
+  isReviewInstructionPath,
   renderReviewPolicy,
   scopedRules,
   writeReviewPolicy,
@@ -31,11 +33,18 @@ const temporaryRoots: string[] = [];
  * Baut einen Repo-Abzug, der ausschließlich die erzeugten Dateien enthält.
  * Die Bytes stammen aus dem Generator selbst — damit prüfen die
  * Drift-Testfälle den echten Vergleichspfad und nicht einen nachgebauten.
+ *
+ * Das Fixture ist ein echtes Git-Repository, weil der Guard die
+ * Anweisungsflächen über `git ls-files` aufzählt. Es gibt für diese Prüfung
+ * damit keinen Injektionspunkt, an dem ein Test sie versehentlich stillstellt;
+ * `git: false` liefert bewusst ein Verzeichnis ohne Repository für die Fälle,
+ * die genau diesen Fehlschlag prüfen.
  */
-async function createGeneratedFixtureRoot(): Promise<string> {
+async function createGeneratedFixtureRoot({ git = true }: { git?: boolean } = {}): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), 'gspp-review-policy-'));
   temporaryRoots.push(root);
   await writeReviewPolicy({ repoRoot: root });
+  if (git) await execFileAsync('git', ['init', '--quiet'], { cwd: root });
   return root;
 }
 
@@ -408,10 +417,80 @@ describe('review-policy Drift-Check', () => {
   });
 
   it('deckt jede in der Autorenquelle geführte Anweisungsfläche ab', () => {
-    expect(REVIEW_INSTRUCTION_DIRECTORIES).toEqual(['.gitar', '.greptile', '.cursor', '.github/skills']);
-    expect(REVIEW_INSTRUCTION_FILES).toEqual(['.cursorrules', 'greptile.json']);
-    expect(REVIEW_INSTRUCTION_DIRECTORIES.some((directory) => GITAR_REVIEW_DIRECTORY.startsWith(`${directory}/`)))
-      .toBe(true);
+    expect(REVIEW_INSTRUCTION_DIRECTORY_NAMES).toEqual(['.gitar', '.greptile', '.cursor']);
+    expect(REVIEW_INSTRUCTION_ROOT_DIRECTORIES).toEqual(['.github/skills']);
+    expect(REVIEW_INSTRUCTION_FILE_NAMES).toEqual(['.cursorrules', 'greptile.json']);
+    expect(REVIEW_INSTRUCTION_DIRECTORY_NAMES.includes(GITAR_REVIEW_DIRECTORY.split('/')[0])).toBe(true);
+  });
+
+  /**
+   * Greptile liest `.greptile/` laut Hersteller in *jedem* Verzeichnis, die
+   * Ebenen kaskadieren, und eine Kindkonfiguration schaltet über
+   * `disabledRules` geerbte Regeln der Wurzel ab. Ein auf die Wurzel
+   * beschränkter Scan ließ genau die Umgehung offen, die dieser Guard
+   * verhindern soll (Codex-Review auf 32b35d8).
+   */
+  it.each([
+    ['src/.greptile/config.json'],
+    ['src/.greptile/rules.md'],
+    ['packages/api/.greptile/config.json'],
+    ['src/domain/.gitar/review/umgehung.md'],
+    ['src/.cursor/rules/umgehung.md'],
+    ['src/.cursorrules'],
+    ['packages/api/greptile.json'],
+  ])('erkennt die verschachtelte Anweisungsfläche %s', async (relative) => {
+    const root = await createGeneratedFixtureRoot();
+    const absolute = path.join(root, relative);
+    await mkdir(path.dirname(absolute), { recursive: true });
+    await writeFile(absolute, '{"disabledRules":["R1-integritaet","R3-versionsautoritaet"]}\n', 'utf8');
+
+    await expect(checkFixture(root))
+      .rejects.toThrow(`nicht aus der Autorenquelle erzeugt: ${relative}`);
+  });
+
+  /**
+   * `.github/skills` bleibt an die Wurzel gebunden, weil GitHub das
+   * Verzeichnis nur dort auswertet. Ein gleichnamiges Verzeichnis tiefer im
+   * Baum ist keine Anweisungsfläche und darf den Guard nicht auslösen — ein
+   * Guard, der auch Unbeteiligtes meldet, wird umgangen statt befolgt.
+   */
+  it('meldet ein verschachteltes .github/skills nicht', async () => {
+    const root = await createGeneratedFixtureRoot();
+    const absolute = path.join(root, 'src/.github/skills/harmlos.md');
+    await mkdir(path.dirname(absolute), { recursive: true });
+    await writeFile(absolute, '# Kein Reviewkontext\n', 'utf8');
+
+    await expect(checkFixture(root)).resolves.toHaveLength(4);
+  });
+
+  /**
+   * Der Scan zählt auf, was im PR-Head landen kann, statt die Platte
+   * abzulaufen. Beide Richtungen dieser Zusage müssen belegt sein: Eine
+   * ausgeschlossene Datei erreicht keinen Reviewer und ist keine Drift — sie
+   * erzwungen zu versionieren macht sie dagegen sofort wieder zu einer.
+   */
+  it('meldet eine ausgeschlossene Anweisungsdatei erst, wenn sie erzwungen versioniert ist', async () => {
+    const root = await createGeneratedFixtureRoot();
+    await writeFile(path.join(root, '.gitignore'), '.greptile/lokal.md\n', 'utf8');
+    await writeFile(path.join(root, '.greptile/lokal.md'), '# Nur lokal\n', 'utf8');
+
+    await expect(checkFixture(root)).resolves.toHaveLength(4);
+
+    await execFileAsync('git', ['add', '-f', '.greptile/lokal.md'], { cwd: root });
+
+    await expect(checkFixture(root))
+      .rejects.toThrow(/nicht aus der Autorenquelle erzeugt: \.greptile\/lokal\.md/);
+  }, 30_000);
+
+  it('entscheidet über die Anweisungsfläche anhand jedes Pfadbestandteils', () => {
+    expect(isReviewInstructionPath('.greptile/config.json')).toBe(true);
+    expect(isReviewInstructionPath('src/.greptile/config.json')).toBe(true);
+    expect(isReviewInstructionPath('a/b/c/.gitar/x.md')).toBe(true);
+    expect(isReviewInstructionPath('src/nested/greptile.json')).toBe(true);
+    expect(isReviewInstructionPath('.github/skills/x.md')).toBe(true);
+    expect(isReviewInstructionPath('src/.github/skills/x.md')).toBe(false);
+    expect(isReviewInstructionPath('src/greptile.ts')).toBe(false);
+    expect(isReviewInstructionPath('docs/greptile/notiz.md')).toBe(false);
   });
 
   /**
@@ -489,7 +568,7 @@ describe('review-policy Guard gegen erzwungen versionierte Anweisungsflächen', 
   });
 
   it('schlägt ohne Git-Repository fehl statt still zu bestehen', async () => {
-    const root = await createGeneratedFixtureRoot();
+    const root = await createGeneratedFixtureRoot({ git: false });
 
     await expect(checkReviewPolicy({ repoRoot: root }))
       .rejects.toThrow(/Git-Index nicht lesbar/);
