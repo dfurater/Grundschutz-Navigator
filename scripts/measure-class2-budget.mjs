@@ -145,7 +145,11 @@ async function measureInBrowser(browser, origin, options) {
         throw error;
       });
       await page.goto(`${origin}${HARNESS_PATH}`, { waitUntil: 'load' });
-      await page.waitForFunction(() => globalThis.__gspp382 !== undefined);
+      // Auf die Existenz der Eigenschaft prüfen, nicht auf ihren Wert: Der
+      // Harnisch setzt sie erst am Ende seines Moduls, und ein
+      // Wertvergleich gegen `undefined` auf einem untypisierten Global ist
+      // nicht eindeutig lesbar.
+      await page.waitForFunction(() => '__gspp382' in globalThis);
 
       const environment = await page.evaluate(() => globalThis.__gspp382.environment());
       if (throttleRate !== 1) {
