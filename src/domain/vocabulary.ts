@@ -44,6 +44,38 @@ export interface ResolvedControlVocabularies {
   };
 }
 
+/** Kennungen werden ausschließlich kleingeschrieben verglichen. */
+export function normalizeIdentifier(value: string | undefined): string {
+  return value?.trim().toLowerCase() ?? '';
+}
+
+/** Alle Spalten, die eine Kennung tragen — eigene wie verweisende. */
+export function getIdentifierColumns(
+  namespace: Pick<VocabularyNamespaceData, 'identifierColumns' | 'identifierReferenceColumns'>,
+): string[] {
+  return [
+    ...(namespace.identifierColumns ?? []),
+    ...(namespace.identifierReferenceColumns ?? []),
+  ];
+}
+
+/**
+ * Löst eine Verweisspalte auf den Eintrag auf, dessen eigene Kennung dem
+ * Verweis entspricht. Zeigt der Verweis ins Leere, gibt es keinen Eintrag —
+ * eine Kennung ohne Ziel ist für Lesende wertlos.
+ */
+export function resolveIdentifierReference(
+  namespace: VocabularyNamespace,
+  reference: string | undefined,
+): VocabularyEntry | null {
+  const identifier = normalizeIdentifier(reference);
+  if (!identifier) {
+    return null;
+  }
+
+  return namespace.entriesByIdentifier.get(identifier) ?? null;
+}
+
 function createEntriesByValue(entries: VocabularyEntry[]) {
   const entriesByValue = new Map<string, VocabularyEntry>();
 
@@ -57,12 +89,47 @@ function createEntriesByValue(entries: VocabularyEntry[]) {
   return entriesByValue;
 }
 
+/**
+ * Indiziert die Einträge unter ihrer eigenen Kennung. Verweisspalten wie
+ * `ChildOfUUID` bleiben bewusst außen vor: Sie benennen einen anderen Eintrag,
+ * und ein Eintrag unter fremder Kennung würde dessen Treffermenge verfälschen.
+ *
+ * Kollidieren zwei Einträge auf derselben Kennung, gewinnt der erste und der
+ * zweite bleibt unindiziert — fail-closed, weil eine Kennung sonst zwei
+ * verschiedene Bedeutungen bekäme.
+ */
+function createEntriesByIdentifier(
+  entries: VocabularyEntry[],
+  identifierColumns: string[] | undefined,
+) {
+  const entriesByIdentifier = new Map<string, VocabularyEntry>();
+
+  if (!identifierColumns?.length) {
+    return entriesByIdentifier;
+  }
+
+  for (const entry of entries) {
+    for (const column of identifierColumns) {
+      const identifier = normalizeIdentifier(entry.columns[column]);
+      if (identifier && !entriesByIdentifier.has(identifier)) {
+        entriesByIdentifier.set(identifier, entry);
+      }
+    }
+  }
+
+  return entriesByIdentifier;
+}
+
 function createRuntimeNamespace(
   namespaceData: VocabularyNamespaceData,
 ): VocabularyNamespace {
   return {
     ...namespaceData,
     entriesByValue: createEntriesByValue(namespaceData.entries),
+    entriesByIdentifier: createEntriesByIdentifier(
+      namespaceData.entries,
+      namespaceData.identifierColumns,
+    ),
   };
 }
 
@@ -270,8 +337,14 @@ export function collectVocabularySearchTexts(
       continue;
     }
 
-    for (const value of Object.values(resolution.entry.columns)) {
-      if (value) {
+    const identifierColumns = new Set(getIdentifierColumns(resolution.namespace));
+
+    for (const [column, value] of Object.entries(resolution.entry.columns)) {
+      // Kennungen gehören nicht in den Volltextindex: FlexSearch zerlegt sie an
+      // den Bindestrichen, und Einträge mit gemeinsamen Teiltokens matchen sich
+      // dann gegenseitig (GSPP-274). Aufgelöst werden sie über den exakten
+      // Kennungsindex der Suche.
+      if (value && !identifierColumns.has(column)) {
         values.add(value);
       }
     }
@@ -280,10 +353,14 @@ export function collectVocabularySearchTexts(
   return [...values];
 }
 
-export function collectControlVocabularySearchTexts(
+/**
+ * Alle Vokabular-Auflösungen eines Controls in einer Liste. Einzige Quelle
+ * dieser Aufzählung, damit Volltexttexte und Kennungen nie auseinanderlaufen.
+ */
+export function listControlVocabularyResolutions(
   resolved: ResolvedControlVocabularies,
-): string[] {
-  return collectVocabularySearchTexts([
+): Array<VocabularyResolution | null> {
+  return [
     resolved.modalverb,
     resolved.securityLevel,
     resolved.effortLevel,
@@ -302,5 +379,37 @@ export function collectControlVocabularySearchTexts(
     resolved.statement.handlungsworte,
     resolved.statement.dokumentation,
     ...resolved.statement.zielobjektKategorien,
-  ]);
+  ];
+}
+
+export function collectControlVocabularySearchTexts(
+  resolved: ResolvedControlVocabularies,
+): string[] {
+  return collectVocabularySearchTexts(listControlVocabularyResolutions(resolved));
+}
+
+/**
+ * Sammelt die eigenen Kennungen der aufgelösten Vokabular-Einträge eines
+ * Controls. Verweisspalten bleiben außen vor — eine `ChildOfUUID` benennt den
+ * Elterneintrag, dessen Controls eine andere Menge sind.
+ */
+export function collectControlVocabularyIdentifiers(
+  resolved: ResolvedControlVocabularies,
+): string[] {
+  const identifiers = new Set<string>();
+
+  for (const resolution of listControlVocabularyResolutions(resolved)) {
+    if (!resolution) {
+      continue;
+    }
+
+    for (const column of resolution.namespace.identifierColumns ?? []) {
+      const identifier = normalizeIdentifier(resolution.entry.columns[column]);
+      if (identifier) {
+        identifiers.add(identifier);
+      }
+    }
+  }
+
+  return [...identifiers];
 }

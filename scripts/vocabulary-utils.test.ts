@@ -8,6 +8,7 @@ import {
   extractReferencedNamespaceUrls,
   materializeVocabularyCollectionMembers,
   parseCsv,
+  parseVocabularyCsv,
   sha256Hex,
 } from './vocabulary-utils.mjs';
 
@@ -144,5 +145,43 @@ describe('deterministische Sortierung', () => {
       referencedNamespaceUrls: [],
       repository,
     })).toThrow(TypeError);
+  });
+});
+
+describe('parseVocabularyCsv — Kennungsspalten', () => {
+  it('erkennt eigene Kennung und Verweis am Header-Suffix', () => {
+    const parsed = parseVocabularyCsv(
+      'Begriff,Definition,ChildOfUUID,UUID\nServer,Zentrale IT-Dienste,,uuid-a\n',
+    );
+
+    expect(parsed.identifierColumns).toEqual(['UUID']);
+    expect(parsed.identifierReferenceColumns).toEqual(['ChildOfUUID']);
+  });
+
+  it('erkennt die Kleinschreibung genauso', () => {
+    const parsed = parseVocabularyCsv('ID,Definition,uuid\nG 0.1,Gefährdung,uuid-a\n');
+
+    expect(parsed.identifierColumns).toEqual(['uuid']);
+    expect(parsed.identifierReferenceColumns).toEqual([]);
+  });
+
+  it('markiert Wert- und Definitionsspalte nie als Kennung', () => {
+    // Ohne diese Ausnahme verlöre ein Namespace seinen suchbaren Kern, sobald
+    // ein Upstream-Header zufällig auf "uuid" endet.
+    const parsed = parseVocabularyCsv('UUID,DefinitionUUID,Kategorie\nabc,Beschreibung,IT\n');
+
+    expect(parsed.valueColumn).toBe('UUID');
+    expect(parsed.definitionColumn).toBe('DefinitionUUID');
+    expect(parsed.identifierColumns).toEqual([]);
+    expect(parsed.identifierReferenceColumns).toEqual([]);
+  });
+
+  it('lässt Spalten unberührt, deren Name nicht auf uuid endet', () => {
+    const parsed = parseVocabularyCsv(
+      'Begriff,Definition,Identifier,uuid-intern\nA,B,xyz,abc\n',
+    );
+
+    expect(parsed.identifierColumns).toEqual([]);
+    expect(parsed.identifierReferenceColumns).toEqual([]);
   });
 });

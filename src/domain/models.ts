@@ -465,6 +465,18 @@ export interface VocabularyNamespaceData {
   valueColumn: string;
   /** Optional header that contains the authoritative definition */
   definitionColumn?: string;
+  /**
+   * Header, die die eigene Kennung einer Zeile tragen (Spaltenname exakt
+   * `uuid`, Groß-/Kleinschreibung egal). Vom Build-Skript aus den CSV-Headern
+   * abgeleitet; fehlt das Feld in einem älteren Artefakt, gilt es als leer.
+   */
+  identifierColumns?: string[];
+  /**
+   * Header, die auf die Kennung einer anderen Zeile verweisen (z. B.
+   * `ChildOfUUID`). Sie identifizieren den eigenen Eintrag nicht und dürfen
+   * seine Controls deshalb nicht unter diesem Wert auffindbar machen.
+   */
+  identifierReferenceColumns?: string[];
   entries: VocabularyEntry[];
 }
 
@@ -478,6 +490,8 @@ export interface VocabularyRegistryData {
 /** Runtime namespace model with exact lookup index */
 export interface VocabularyNamespace extends VocabularyNamespaceData {
   entriesByValue: Map<string, VocabularyEntry>;
+  /** Eigene Kennung (kleingeschrieben) → Eintrag; Verweisspalten bleiben außen vor */
+  entriesByIdentifier: Map<string, VocabularyEntry>;
 }
 
 /** Runtime registry used by the app */

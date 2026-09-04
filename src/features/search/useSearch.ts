@@ -3,9 +3,12 @@ import { Index } from 'flexsearch';
 import type { Control, Practice, VocabularyRegistry } from '@/domain/models';
 import { getControlLinkSearchText } from '@/domain/controlRelationships';
 import {
+  collectControlVocabularyIdentifiers,
   collectControlVocabularySearchTexts,
+  normalizeIdentifier,
   resolveControlVocabularies,
 } from '@/domain/vocabulary';
+import { isIdentifierQuery } from '@/domain/identifierQuery';
 import { resolvePracticeVocabulary } from '@/domain/taxonomyVocabulary';
 
 export interface SearchResult {
@@ -36,6 +39,8 @@ interface SearchDocument {
   linkText: string;
   metadataText: string;
   contentText: string;
+  /** Eigene Kennungen der aufgelösten Vokabular-Einträge dieses Controls */
+  vocabularyIdentifiers: string[];
   normalizedControlId: string;
   normalizedTitle: string;
   normalizedLinkTargets: string[];
@@ -50,6 +55,14 @@ interface SearchCacheEntry {
   controlMap: Map<number, Control>;
   searchDocumentMap: Map<number, SearchDocument>;
   indexes: SearchIndexes;
+  /**
+   * Kennung (kleingeschrieben) → Controls, die sie trägt. Liegt bewusst im
+   * kataloggescopten Cache-Eintrag, damit die Auflösung denselben Katalogscope
+   * und dieselbe LRU-Invalidierung erbt wie die Volltextindizes (GSPP-218).
+   */
+  identifierIndex: Map<string, Set<number>>;
+  /** Kennungen, die genau ein Control bezeichnen (Control-`alt-identifier`) */
+  controlIdentifiers: Map<string, number>;
 }
 
 const searchCache = new Map<string, SearchCacheEntry>();
@@ -108,11 +121,94 @@ function createSearchDocuments(
         ...vocabularyTexts,
       ].join(' '),
       contentText: [control.statement, control.guidance].join(' '),
+      vocabularyIdentifiers: collectControlVocabularyIdentifiers(resolved),
       normalizedControlId: normalizeSearchValue(control.id),
       normalizedTitle: normalizeSearchValue(control.title),
       normalizedLinkTargets: control.links.map((link) => normalizeSearchValue(link.targetId)),
     };
   });
+}
+
+/**
+ * Baut die exakte Kennungsauflösung auf.
+ *
+ * Die Mengen entstehen aus den Strukturen, die eine Kennung tatsächlich trägt:
+ * der `alt-identifier` eines Controls bezeichnet genau dieses Control, der
+ * einer Gruppe alle Controls dieser Gruppe, und eine Vokabular-Kennung alle
+ * Controls, die den zugehörigen Wert führen. Themen-UUIDs sind über Praktiken
+ * hinweg wiederverwendet; ihre Mengen vereinigen sich deshalb absichtlich.
+ */
+function buildIdentifierIndex(
+  searchDocuments: SearchDocument[],
+  practices: Practice[],
+) {
+  const identifierIndex = new Map<string, Set<number>>();
+  const controlIdentifiers = new Map<string, number>();
+
+  const add = (rawIdentifier: string | undefined, numericId: number) => {
+    const identifier = normalizeIdentifier(rawIdentifier);
+    if (!identifier) {
+      return;
+    }
+
+    const existing = identifierIndex.get(identifier);
+    if (existing) {
+      existing.add(numericId);
+      return;
+    }
+    identifierIndex.set(identifier, new Set([numericId]));
+  };
+
+  const numericIdsByControlId = new Map<string, number>();
+  const numericIdsByGroupId = new Map<string, number[]>();
+  const numericIdsByPracticeId = new Map<string, number[]>();
+
+  for (const document of searchDocuments) {
+    const { control, numericId } = document;
+    numericIdsByControlId.set(control.id, numericId);
+
+    if (control.groupId) {
+      const group = numericIdsByGroupId.get(control.groupId);
+      if (group) {
+        group.push(numericId);
+      } else {
+        numericIdsByGroupId.set(control.groupId, [numericId]);
+      }
+    }
+
+    if (control.practiceId) {
+      const practice = numericIdsByPracticeId.get(control.practiceId);
+      if (practice) {
+        practice.push(numericId);
+      } else {
+        numericIdsByPracticeId.set(control.practiceId, [numericId]);
+      }
+    }
+
+    add(control.altIdentifier, numericId);
+    const controlIdentifier = normalizeIdentifier(control.altIdentifier);
+    if (controlIdentifier) {
+      controlIdentifiers.set(controlIdentifier, numericId);
+    }
+
+    for (const identifier of document.vocabularyIdentifiers) {
+      add(identifier, numericId);
+    }
+  }
+
+  for (const practice of practices) {
+    for (const numericId of numericIdsByPracticeId.get(practice.id ?? '') ?? []) {
+      add(practice.altIdentifier, numericId);
+    }
+
+    for (const topic of practice.topics) {
+      for (const numericId of numericIdsByGroupId.get(topic.id ?? '') ?? []) {
+        add(topic.altIdentifier, numericId);
+      }
+    }
+  }
+
+  return { identifierIndex, controlIdentifiers };
 }
 
 function buildSearchCacheEntry(
@@ -134,6 +230,11 @@ function buildSearchCacheEntry(
     indexes.content.add(document.numericId, document.contentText);
   });
 
+  const { identifierIndex, controlIdentifiers } = buildIdentifierIndex(
+    searchDocuments,
+    practices,
+  );
+
   return {
     catalogKey,
     controls,
@@ -143,6 +244,8 @@ function buildSearchCacheEntry(
     controlMap,
     searchDocumentMap,
     indexes,
+    identifierIndex,
+    controlIdentifiers,
   };
 }
 
@@ -279,11 +382,45 @@ export function useSearch(
     }
   }, [normalizedCatalogKey, cacheEntry, shouldCache]);
 
-  const { searchDocuments, controlMap, searchDocumentMap, indexes } = cacheEntry;
+  const {
+    searchDocuments,
+    controlMap,
+    searchDocumentMap,
+    indexes,
+    identifierIndex,
+    controlIdentifiers,
+  } = cacheEntry;
 
   const results = useMemo(() => {
     if (!query.trim() || controls.length === 0) {
       return [];
+    }
+
+    // Kennungsanfragen laufen ausschließlich über die exakte Auflösung. Ein
+    // Rückfall auf die Volltextsuche würde das Teiltoken-Verhalten aus
+    // GSPP-274 durch die Hintertür zurückholen, deshalb bleibt eine
+    // unbekannte Kennung ohne Treffer statt ohne Antwort.
+    if (isIdentifierQuery(query)) {
+      const identifier = normalizeIdentifier(query);
+      const matches = identifierIndex.get(identifier);
+
+      if (!matches) {
+        return [];
+      }
+
+      const exactControlId = controlIdentifiers.get(identifier);
+      const orderedIds = [...matches].sort((left, right) => left - right);
+
+      return orderedIds
+        .sort((left, right) => {
+          if (left === exactControlId) return -1;
+          if (right === exactControlId) return 1;
+          return 0;
+        })
+        .flatMap((numericId) => {
+          const control = controlMap.get(numericId);
+          return control ? [{ control }] : [];
+        });
     }
 
     const candidateLimit = controls.length;
@@ -402,7 +539,16 @@ export function useSearch(
     );
 
     return orderedMatches;
-  }, [controls.length, query, controlMap, indexes, searchDocumentMap, searchDocuments]);
+  }, [
+    controls.length,
+    query,
+    controlMap,
+    indexes,
+    searchDocumentMap,
+    searchDocuments,
+    identifierIndex,
+    controlIdentifiers,
+  ]);
 
   return { results, totalResults: results.length };
 }

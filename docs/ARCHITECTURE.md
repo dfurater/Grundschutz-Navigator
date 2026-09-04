@@ -278,6 +278,7 @@ CatalogContext (Einstiegskatalog eager, weitere bedarfsgerecht)
 Feature-Komponenten und Hooks
 • useFilteredControls()      → gefilterte Steuerungen
 • useSearch()                → FlexSearch-Volltextsuche mit kataloggescoptem LRU-Cache (GSPP-218, `MAX_SEARCH_CACHE_ENTRIES = 3`)
+                               plus exakter Kennungsindex im selben Cache-Eintrag (GSPP-380, siehe docs/FILTERING.md)
 • resolveControlVocabularies() → Vokabular-Auflösung
 ```
 

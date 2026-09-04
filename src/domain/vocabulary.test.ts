@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   buildVocabularySourceUrl,
   buildVocabularyRegistry,
+  collectControlVocabularyIdentifiers,
   collectControlVocabularySearchTexts,
   getVocabularyNamespaceByRouteId,
+  normalizeIdentifier,
+  resolveIdentifierReference,
   resolvePropVocabularyEntry,
   resolveVocabularyEntries,
   resolveVocabularyEntry,
@@ -13,7 +16,10 @@ import {
 } from './vocabulary';
 import type { Control, Practice, VocabularyRegistryData } from './models';
 import { resolvePracticeVocabulary } from './taxonomyVocabulary';
-import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
+import {
+  VOCABULARY_IDENTIFIERS,
+  createTestVocabularyRegistry,
+} from '@/test/fixtures/vocabulary';
 
 const namespaceUrl =
   'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_level.csv';
@@ -238,7 +244,7 @@ describe('vocabulary runtime', () => {
       id: 'GC',
       title: 'Governance und Compliance',
       label: 'GC',
-      altIdentifier: 'uuid-practice-1',
+      altIdentifier: VOCABULARY_IDENTIFIERS.practiceGC,
       topics: [],
       controlCount: 0,
     };
@@ -264,10 +270,10 @@ describe('vocabulary runtime', () => {
     practicesNamespace!.entries.push({
       value: 'DUP',
       definition: 'Uneindeutiger Eintrag.',
-      columns: { UUID: 'uuid-practice-1' },
+      columns: { UUID: VOCABULARY_IDENTIFIERS.practiceGC },
     });
     expect(() => resolvePracticeVocabulary(registry, practice)).toThrow(
-      'Duplicate vocabulary value "uuid-practice-1"',
+      `Duplicate vocabulary value "${VOCABULARY_IDENTIFIERS.practiceGC}"`,
     );
   });
 
@@ -279,5 +285,117 @@ describe('vocabulary runtime', () => {
     ).toBe(
       'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/blob/snapshot-123/documentation/namespaces/security_level.csv',
     );
+  });
+});
+
+function makeControl(): Control {
+  return {
+    id: 'GC.1.1',
+    title: 'Testkontrolle',
+    groupId: 'GC.1',
+    practiceId: 'GC',
+    tags: [],
+    taxonomy: [],
+    threats: [],
+    statement: '',
+    statementRaw: '',
+    guidance: '',
+    statementProps: { zielobjektKategorien: [] },
+    links: [],
+    params: {},
+  };
+}
+
+describe('Kennungen im Vokabular', () => {
+  it('hält Kennungsspalten aus dem Volltextindex heraus', () => {
+    const registry = createTestVocabularyRegistry();
+    const control: Control = {
+      ...makeControl(),
+      threats: ['G 0.18'],
+      threatsProp: {
+        name: 'threats',
+        value: 'G 0.18',
+        ns: 'https://example.com/namespaces/basethreats.csv',
+      },
+      statementProps: {
+        zielobjektKategorien: ['Dateiserver'],
+        zielobjektKategorienProp: {
+          name: 'target_object_categories',
+          value: 'Dateiserver',
+          ns: 'https://example.com/namespaces/target_object_categories.csv',
+        },
+      },
+    };
+
+    const texts = collectControlVocabularySearchTexts(
+      resolveControlVocabularies(registry, control),
+    );
+
+    // Weder die eigene Kennung noch der Elternverweis dürfen als Volltext
+    // indiziert werden (GSPP-274).
+    expect(texts).not.toContain(VOCABULARY_IDENTIFIERS.threatG018);
+    expect(texts).not.toContain(VOCABULARY_IDENTIFIERS.targetObjectDateiserver);
+    expect(texts).not.toContain(VOCABULARY_IDENTIFIERS.targetObjectServer);
+    // Die fachlichen Spalten bleiben auffindbar.
+    expect(texts).toContain('Fehlplanung oder fehlende Anpassung');
+    expect(texts).toContain('IT-System');
+  });
+
+  it('sammelt nur die eigenen Kennungen eines Controls, nicht die Elternverweise', () => {
+    const registry = createTestVocabularyRegistry();
+    const control: Control = {
+      ...makeControl(),
+      statementProps: {
+        zielobjektKategorien: ['Dateiserver'],
+        zielobjektKategorienProp: {
+          name: 'target_object_categories',
+          value: 'Dateiserver',
+          ns: 'https://example.com/namespaces/target_object_categories.csv',
+        },
+      },
+    };
+
+    const identifiers = collectControlVocabularyIdentifiers(
+      resolveControlVocabularies(registry, control),
+    );
+
+    expect(identifiers).toContain(VOCABULARY_IDENTIFIERS.targetObjectDateiserver);
+    expect(identifiers).not.toContain(VOCABULARY_IDENTIFIERS.targetObjectServer);
+  });
+
+  it('löst einen Verweis auf den Eintrag mit dieser eigenen Kennung auf', () => {
+    const registry = createTestVocabularyRegistry();
+    const namespace = registry.namespacesByUrl.get(
+      'https://example.com/namespaces/target_object_categories.csv',
+    )!;
+
+    expect(
+      resolveIdentifierReference(namespace, VOCABULARY_IDENTIFIERS.targetObjectServer)?.value,
+    ).toBe('Server');
+    // Groß-/Kleinschreibung ist für den Vergleich egal.
+    expect(
+      resolveIdentifierReference(
+        namespace,
+        VOCABULARY_IDENTIFIERS.targetObjectServer.toUpperCase(),
+      )?.value,
+    ).toBe('Server');
+    // Verweis ins Leere und leerer Wert liefern keinen Eintrag.
+    expect(
+      resolveIdentifierReference(namespace, VOCABULARY_IDENTIFIERS.targetObjectOrphanParent),
+    ).toBeNull();
+    expect(resolveIdentifierReference(namespace, '')).toBeNull();
+    expect(resolveIdentifierReference(namespace, undefined)).toBeNull();
+  });
+
+  it('normalisiert Kennungen auf Kleinschreibung ohne Randabstand', () => {
+    expect(normalizeIdentifier('  AB-CD  ')).toBe('ab-cd');
+    expect(normalizeIdentifier(undefined)).toBe('');
+  });
+
+  it('indiziert einen Namespace ohne Kennungsspalten leer', () => {
+    const registry = buildVocabularyRegistry(makeRegistryData());
+    const namespace = registry.namespacesByUrl.get(namespaceUrl)!;
+
+    expect(namespace.entriesByIdentifier.size).toBe(0);
   });
 });

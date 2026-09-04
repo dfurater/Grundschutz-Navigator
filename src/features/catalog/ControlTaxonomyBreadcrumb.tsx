@@ -63,8 +63,8 @@ export function ControlTaxonomyBreadcrumb({
   // exakter Übereinstimmung ist die Metadatenzeile redundant (GSPP-301).
   const practiceHiddenColumns =
     practiceVocabulary?.entry.columns['Begriff'] === practiceName
-      ? ['UUID', 'Nummerierung', 'Begriff']
-      : ['UUID', 'Nummerierung'];
+      ? ['Nummerierung', 'Begriff']
+      : ['Nummerierung'];
 
   return (
     <div className="mb-1">
@@ -119,10 +119,7 @@ export function ControlTaxonomyBreadcrumb({
           hidden={!topicActive || undefined}
         >
           {topicActive && (
-            <VocabularyEntryCard
-              resolution={topicVocabulary}
-              hiddenColumns={['UUID']}
-            />
+            <VocabularyEntryCard resolution={topicVocabulary} />
           )}
         </div>
       )}

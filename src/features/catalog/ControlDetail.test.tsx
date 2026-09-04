@@ -5,7 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Catalog, CatalogState, Control, ControlLink } from '@/domain/models';
 import type { IncomingControlLink } from '@/domain/controlRelationships';
 import { useCatalog } from '@/hooks/useCatalog';
-import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
+import {
+  createTestVocabularyRegistry,
+  VOCABULARY_IDENTIFIERS,
+} from '@/test/fixtures/vocabulary';
 import { ControlDetail, getControlDetailUrl } from './ControlDetail';
 import { catalogCollectionDefaults } from '@/test/catalogState';
 
@@ -234,19 +237,19 @@ describe('ControlDetail', () => {
     expect(screen.getByText('Server sind Zielobjekte mit zentralen IT-Diensten.')).toBeInTheDocument();
   });
 
-  it('shows UUID-joined practice metadata in the breadcrumb without technical fields', async () => {
+  it('shows the practice identifier in the breadcrumb card and keeps curated fields hidden', async () => {
     const user = userEvent.setup();
     const state = makeCatalogState();
     state.catalog!.practices = [{
       id: 'GC',
       title: 'Governance und Compliance',
       label: 'GC',
-      altIdentifier: 'uuid-practice-1',
+      altIdentifier: VOCABULARY_IDENTIFIERS.practiceGC,
       topics: [{
         id: 'GC.2',
         title: 'Organisation',
         label: '2',
-        altIdentifier: 'uuid-topic-1',
+        altIdentifier: VOCABULARY_IDENTIFIERS.topicOrganisation,
         practiceId: 'GC',
         controlCount: 1,
         controlIds: ['GC.2.2'],
@@ -272,7 +275,11 @@ describe('ControlDetail', () => {
     expect(screen.getByText('Offizielle Praktik-Definition.')).toBeInTheDocument();
     expect(screen.getByText('Methodik')).toBeInTheDocument();
     expect(screen.getByText('Corporate Governance')).toBeInTheDocument();
-    expect(screen.queryByText('uuid-practice-1')).not.toBeInTheDocument();
+    // GSPP-380: Die Kennung gehört zum Eintrag und wird gezeigt; kuratiert
+    // ausgeblendet bleibt nur die Nummerierung.
+    expect(within(practiceCard).getByText('UUID').tagName).toBe('DT');
+    expect(within(practiceCard).getByText(VOCABULARY_IDENTIFIERS.practiceGC))
+      .toBeInTheDocument();
     expect(screen.queryByText('Nummerierung')).not.toBeInTheDocument();
     // GSPP-301: Der offizielle Begriff steht bereits im Breadcrumb.
     expect(within(practiceCard).queryByText('Begriff')).not.toBeInTheDocument();
@@ -286,7 +293,9 @@ describe('ControlDetail', () => {
     expect(screen.getByText('Offizielle Themen-Definition.')).toBeInTheDocument();
     expect(practice).toHaveAttribute('aria-expanded', 'false');
     expect(topic).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.queryByText('uuid-topic-1')).not.toBeInTheDocument();
+    const topicCard = document.getElementById('vocab-card-topic')!;
+    expect(within(topicCard).getByText(VOCABULARY_IDENTIFIERS.topicOrganisation))
+      .toBeInTheDocument();
   });
 
   it('keeps the practice term visible when it differs from the breadcrumb name', async () => {
@@ -296,12 +305,12 @@ describe('ControlDetail', () => {
       id: 'GC',
       title: 'Governance & Compliance (Katalogtitel)',
       label: 'GC',
-      altIdentifier: 'uuid-practice-1',
+      altIdentifier: VOCABULARY_IDENTIFIERS.practiceGC,
       topics: [{
         id: 'GC.2',
         title: 'Organisation',
         label: '2',
-        altIdentifier: 'uuid-topic-1',
+        altIdentifier: VOCABULARY_IDENTIFIERS.topicOrganisation,
         practiceId: 'GC',
         controlCount: 1,
         controlIds: ['GC.2.2'],
@@ -323,11 +332,12 @@ describe('ControlDetail', () => {
     const practiceCard = document.getElementById('vocab-card-practice')!;
     expect(within(practiceCard).getByText('Begriff').tagName).toBe('DT');
     expect(within(practiceCard).getByText('Governance und Compliance')).toBeInTheDocument();
-    expect(within(practiceCard).queryByText('uuid-practice-1')).not.toBeInTheDocument();
+    expect(within(practiceCard).getByText(VOCABULARY_IDENTIFIERS.practiceGC))
+      .toBeInTheDocument();
     expect(within(practiceCard).queryByText('Nummerierung')).not.toBeInTheDocument();
   });
 
-  it('hides the redundant term and technical uuid inside an expanded threat card', async () => {
+  it('hides the redundant term but shows the identifier inside an expanded threat card', async () => {
     const user = userEvent.setup();
     const control = makeControl({
       threats: ['G 0.18'],
@@ -352,8 +362,9 @@ describe('ControlDetail', () => {
     expect(within(threatCard).getByText('Fehlplanung oder fehlende Anpassung von Prozessen.'))
       .toBeInTheDocument();
     expect(within(threatCard).queryByText('Begriff')).not.toBeInTheDocument();
-    expect(within(threatCard).queryByText('uuid')).not.toBeInTheDocument();
-    expect(within(threatCard).queryByText('uuid-threat-g-0-18')).not.toBeInTheDocument();
+    expect(within(threatCard).getByText('uuid').tagName).toBe('DT');
+    expect(within(threatCard).getByText(VOCABULARY_IDENTIFIERS.threatG018))
+      .toBeInTheDocument();
     expect(within(threatCard).getByRole('link', { name: 'Zu den Vokabularen →' }))
       .toHaveAttribute('href', '/vokabular/basethreats?wert=G%200.18');
   });
@@ -382,7 +393,8 @@ describe('ControlDetail', () => {
     const threatCard = document.getElementById('vocab-card-threat-G-0-20-0')!;
     expect(within(threatCard).getByText('Gefährdung ohne hinterlegten Begriff.'))
       .toBeInTheDocument();
-    expect(within(threatCard).queryByText('uuid')).not.toBeInTheDocument();
+    expect(within(threatCard).getByText(VOCABULARY_IDENTIFIERS.threatG020))
+      .toBeInTheDocument();
   });
 
   it('shows a diagnostic for a catalog topic without an official CSV definition', () => {
@@ -391,7 +403,7 @@ describe('ControlDetail', () => {
       id: 'GC',
       title: 'Governance und Compliance',
       label: 'GC',
-      altIdentifier: 'uuid-practice-1',
+      altIdentifier: VOCABULARY_IDENTIFIERS.practiceGC,
       topics: [{
         id: 'GC.2',
         title: 'Organisation',

@@ -35,6 +35,36 @@ Mehrfachwerte werden kommasepariert in einem Parameter kodiert (z.B. `mv=MUSS,SO
 Die Volltextsuche ist davon getrennt und läuft ausschließlich über `/suche?q=…`.
 Ein `q`-Parameter auf einer Katalogroute ist kein Katalogfilter und wird ignoriert.
 
+## Kennungssuche
+
+Eine Suchanfrage, die exakt dem in OSCAL 1.1.3 gepinnten `UUIDDatatype` (UUID
+v4/v5) entspricht, wird nicht als Volltext behandelt, sondern über einen
+eigenen Kennungsindex aufgelöst. Der Index liegt im kataloggescopten
+Suchcache und erbt damit Katalogtrennung und Invalidierung der Volltextindizes.
+
+| Eingabe | Treffer |
+| --- | --- |
+| Control-`alt-identifier` | genau dieses Control, an erster Stelle |
+| Praktik-Kennung | alle Controls dieser Praktik |
+| Themen-Kennung | alle Controls aller Gruppen mit dieser Kennung |
+| Vokabular-Kennung (Gefährdung, Zielobjektkategorie, Handlungswort, Modalverb, …) | alle Controls, die den zugehörigen Wert führen |
+| Dokumentkennungen (`catalog.uuid`, `document-id`, `parties.uuid`, `resources.uuid`) | keine Treffer |
+| Kennung aus einem anderen Katalog | keine Treffer |
+
+Ein `ChildOfUUID`-Wert verweist auf einen anderen Vokabular-Eintrag. Die
+Controls des verweisenden Eintrags werden der Elternkennung deshalb nicht
+zugeschlagen; aufgelöst wird ausschließlich über die eigene Kennung eines
+Eintrags.
+
+Eine unvollständige oder syntaktisch abweichende Kennung liefert kein Ergebnis
+und fällt nicht auf die Volltextsuche zurück. Kennungsspalten sind aus dem
+Volltextindex ausgenommen — FlexSearch zerlegt sie an den Bindestrichen, und
+Einträge mit gemeinsamen Teiltokens würden sich sonst gegenseitig treffen.
+Welche Spalten das sind, entscheidet das Build-Skript am CSV-Header
+(Spaltenname endet ohne Rücksicht auf Groß-/Kleinschreibung auf `uuid`, Wert-
+und Definitionsspalte ausgenommen) und schreibt es als `identifierColumns`
+beziehungsweise `identifierReferenceColumns` in `vocabularies.json`.
+
 Die WLAN-Props `Taxonomy-L1` bis `Taxonomy-L4` sind keine zusätzliche
 Filterdimension. Ihre exakten Namen und Werte fließen in den Volltextindex ein;
 dadurch bleiben sie über `/suche?q=…` auffindbar, ohne aus dem derzeitigen

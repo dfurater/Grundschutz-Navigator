@@ -178,7 +178,7 @@ export function ControlSecurityContext({
                       hidden={!active || undefined}
                     >
                       {active && renderVocabularyCard(resolution, {
-                        hiddenColumns: showsTerm ? ['Begriff', 'uuid'] : ['uuid'],
+                        hiddenColumns: showsTerm ? ['Begriff'] : [],
                       })}
                     </div>
                   </div>

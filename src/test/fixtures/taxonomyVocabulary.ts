@@ -1,5 +1,12 @@
 import type { VocabularyNamespaceData } from '@/domain/models';
 
+/** Kennungen der Taxonomie-Fixture; Tests referenzieren sie statt Literalen. */
+export const TAXONOMY_IDENTIFIERS = {
+  practiceGC: '9e6f7a8b-5c6d-4e7f-8a8b-9c0d1e2f3a45',
+  topicOrganisation: '0f7a8b9c-6d7e-4f8a-9b9c-0d1e2f3a4b56',
+  topicOrphan: '1a8b9c0d-7e8f-4a9b-8c0d-1e2f3a4b5c67',
+} as const;
+
 export function createTaxonomyVocabularyNamespaces(): VocabularyNamespaceData[] {
   return [{
     source: {
@@ -22,6 +29,8 @@ export function createTaxonomyVocabularyNamespaces(): VocabularyNamespaceData[] 
     ],
     valueColumn: 'Kürzel',
     definitionColumn: 'Definition',
+    identifierColumns: ['UUID'],
+    identifierReferenceColumns: [],
     entries: [{
       value: 'GC',
       definition: 'Offizielle Praktik-Definition.',
@@ -29,7 +38,7 @@ export function createTaxonomyVocabularyNamespaces(): VocabularyNamespaceData[] 
         Kürzel: 'GC',
         Begriff: 'Governance und Compliance',
         Definition: 'Offizielle Praktik-Definition.',
-        UUID: 'uuid-practice-1',
+        UUID: TAXONOMY_IDENTIFIERS.practiceGC,
         Schwerpunkt: 'Methodik',
         Nummerierung: '1',
         'auch bekannt als': 'Corporate Governance',
@@ -48,13 +57,15 @@ export function createTaxonomyVocabularyNamespaces(): VocabularyNamespaceData[] 
     columnOrder: ['Begriff', 'Definition', 'UUID'],
     valueColumn: 'Begriff',
     definitionColumn: 'Definition',
+    identifierColumns: ['UUID'],
+    identifierReferenceColumns: [],
     entries: [{
       value: 'Organisation',
       definition: 'Offizielle Themen-Definition.',
       columns: {
         Begriff: 'Organisation',
         Definition: 'Offizielle Themen-Definition.',
-        UUID: 'uuid-topic-1',
+        UUID: TAXONOMY_IDENTIFIERS.topicOrganisation,
       },
     }, {
       value: 'Verwaistes Thema',
@@ -62,7 +73,7 @@ export function createTaxonomyVocabularyNamespaces(): VocabularyNamespaceData[] 
       columns: {
         Begriff: 'Verwaistes Thema',
         Definition: 'Bleibt im Vokabular auffindbar.',
-        UUID: 'uuid-topic-orphan',
+        UUID: TAXONOMY_IDENTIFIERS.topicOrphan,
       },
     }],
   }];
