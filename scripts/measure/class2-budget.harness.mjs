@@ -268,26 +268,6 @@ const harness = {
   },
 
   /**
-   * Gibt Parse-Produkt und Live-Bestand frei, behält aber die Eingabebytes.
-   *
-   * Die anschließende Ende-zu-Ende-Messung soll den Main-Thread-Anteil des
-   * PRODUKTIVEN Wegs zeigen — Pufferkopie und die strukturierte
-   * Deserialisierung der Worker-Antwort. Bliebe der Bestand der direkt im Tab
-   * gelaufenen Kette daneben liegen, wäre er darin nicht zu trennen.
-   */
-  releaseChain() {
-    held = {
-      bytes: held.bytes,
-      parsed: null,
-      processed: null,
-      live: null,
-      widestRecord: null,
-      result: null,
-    };
-    return true;
-  },
-
-  /**
    * Produktiver Einstieg mit Worker — gemessen werden ZWEI verschiedene Dinge.
    *
    * `ms` ist die sichtbare Wartezeit, die den 30-s-Timeout verbraucht. Sie
