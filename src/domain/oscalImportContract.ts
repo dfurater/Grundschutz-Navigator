@@ -1,11 +1,14 @@
 import { createOscalDiagnostic, type OscalDiagnostic } from '@/domain/oscalDiagnostics';
+import { CLASS_2_IMPORT_LIMITS } from './class2ImportLimits.mjs';
 
-export const CLASS_2_IMPORT_LIMITS = Object.freeze({
-  maxBytes: 10 * 1024 * 1024,
-  maxDepth: 64,
-  maxNodes: 1_000_000,
-  maxDecodedBase64Bytes: 10 * 1024 * 1024,
-});
+/**
+ * Die Grenzwerte selbst stehen in `class2ImportLimits.mjs` — reines ESM, damit
+ * der Messapparat aus GSPP-382 sie in einer nackten Node-Laufzeit ohne
+ * Aliasauflösung und ohne TypeScript aus derselben Quelle lesen kann. Hier nur
+ * die Weiterreichung: Verbraucher im Anwendungspfad importieren die Grenzen
+ * weiterhin über den Importvertrag.
+ */
+export { CLASS_2_IMPORT_LIMITS };
 
 export const CLASS_2_IMPORT_VALIDATOR = Object.freeze({
   name: 'gspp-class-2-import',

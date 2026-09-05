@@ -245,8 +245,25 @@ export function indexCatalogControls(document: unknown): CatalogControlIndex {
   return state;
 }
 
-/** Glob-Muster nach NIST-Draft (`*` beliebig, `?` genau ein Zeichen); ohne Muster trifft nichts. */
-function globToRegExp(pattern: string | undefined): RegExp | null {
+/**
+ * Übersetzt das `pattern` eines `matching`-Selektors in einen regulären
+ * Ausdruck; ohne Muster trifft nichts.
+ *
+ * Das gepinnte Schema 1.1.3 beschreibt den Wert ausschließlich als
+ * „a glob expression matching the IDs of one or more controls to be selected"
+ * (`oscal-profile-oscal-profile:matching` in
+ * `schemas/oscal/v1.1.3/oscal_profile_schema.json`). Welche Platzhalter es
+ * gibt und was sie bedeuten, legt es nicht fest. Die hier gewählte Auslegung —
+ * `*` beliebig viele Zeichen, `?` genau eines — ist deshalb eine Annahme
+ * dieser Implementierung und keine gegen `usnistgov/OSCAL` belegte
+ * Normaussage. Offen: gegen welchen Tag oder Commit sie sich belegen lässt.
+ *
+ * Exportiert, damit das Kostenmesswerkzeug aus GSPP-382
+ * (`scripts/measure-class2-budget.mjs`) genau diese Übersetzung misst statt
+ * einer nachgebauten Kopie. Eine zweite Fassung würde unbemerkt driften und
+ * das Messprotokoll unwahr machen.
+ */
+export function globToRegExp(pattern: string | undefined): RegExp | null {
   if (pattern === undefined || pattern.length === 0) return null;
   const escaped = pattern
     .replace(/[.+^${}()|[\]\\]/g, String.raw`\$&`)

@@ -175,7 +175,7 @@ keine Messwerte existieren und keine der für `catalog-gspp` ermittelten Größe
 übertragbar ist.
 
 - Je Dokument gilt die Obergrenze der Eingangsgrenze aus
-  `src/domain/oscalImportContract.ts` (`maxBytes` 10 MiB, `maxDepth` 64,
+  `src/domain/class2ImportLimits.mjs` (`maxBytes` 10 MiB, `maxDepth` 64,
   `maxNodes` 1 000 000). Der Speicher senkt sie nicht und hebt sie nicht an.
 - Die Zahl gleichzeitig **gehaltener** `source`-Graphen im Arbeitsspeicher ist
   begrenzt; nicht angezeigte Dokumente werden aus dem Speicher entlassen und bei
