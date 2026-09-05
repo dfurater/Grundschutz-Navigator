@@ -12,6 +12,61 @@
 const MIB = 1024 * 1024;
 
 /**
+ * Das in `docs/OSCAL_VALIDATION.md` festgelegte UI-Budget. Es steht hier, weil
+ * der Bericht das Urteil „gehalten/gerissen“ selbst fällt, statt es dem Leser
+ * der Zahlenkolonne zu überlassen. Es ist zugleich die Schwelle, ab der die
+ * Plattform einen Task als `longtask` meldet — die Messung kann das Budget
+ * deshalb nicht knapp verfehlen, ohne es zu sehen.
+ */
+export const UI_BLOCKING_BUDGET_MS = 50;
+
+/**
+ * Speicherbudget aus `docs/OSCAL_VALIDATION.md`.
+ *
+ * Am 2026-09-05 von 64 auf 128 MiB angehoben, nachdem der Codex-Befund zu
+ * 36d9c79 den echten Speicher-Worst-Case sichtbar gemacht hat: `heap-bound`
+ * kostet 89,14 MiB und riss die alte Zahl. Die Anhebung folgt einer Messung,
+ * nicht einer neuen Erkenntnis über verfügbaren Speicher — das steht so auch
+ * in der Dokumentation. 96 MiB wären der knappste Wert gewesen, der den
+ * Messwert noch trägt; ein zu 93 % ausgeschöpftes Budget kann aber keine
+ * künftige Grenzwertänderung mehr leiten, sondern zeichnet nur den Ist-Stand
+ * nach.
+ */
+export const MEMORY_BUDGET_BYTES = 128 * MIB;
+
+/**
+ * Der größte gemessene Stützpunkt, der BEIDE Budgetposten hält.
+ *
+ * Bewusst keine Interpolation zwischen zwei Stützpunkten: Ein hergeleiteter
+ * Grenzwert darf nur auf einer Zahl stehen, die auch wirklich gemessen wurde.
+ * Genau die fehlende Messung war der Kern des Codex-Befunds zu 36d9c79. Liegt
+ * kein Stützpunkt im Budget, ist die Rückgabe `null` — dann trägt die Messreihe
+ * die Aussage nicht, und der Bericht behauptet auch keine.
+ *
+ * @param {object[]} rows Zeilen der Skalierungsreihe eines Laufs.
+ */
+export function deriveNodeLimit(rows) {
+  const holding = rows.filter(
+    (row) => row.heap.peakBytes <= MEMORY_BUDGET_BYTES
+      && row.endToEnd.blockingMs <= UI_BLOCKING_BUDGET_MS,
+  );
+  if (holding.length === 0) return null;
+  // Über ALLE Fixtures hinweg: Der Grenzwert muss den ungünstigsten von ihnen
+  // tragen, nicht den freundlichsten.
+  const byFixture = new Map();
+  for (const row of rows) {
+    const held = row.heap.peakBytes <= MEMORY_BUDGET_BYTES
+      && row.endToEnd.blockingMs <= UI_BLOCKING_BUDGET_MS;
+    if (!held) continue;
+    byFixture.set(row.id, Math.max(byFixture.get(row.id) ?? 0, row.totalNodes));
+  }
+  const measured = new Set(rows.map((row) => row.id));
+  // Ein Fixture, das an KEINEM Stützpunkt hält, deckelt die Aussage auf null.
+  if (byFixture.size !== measured.size) return null;
+  return Math.min(...byFixture.values());
+}
+
+/**
  * Drosselungsfaktoren aus der Kommandozeile. Ein Faktor unter 1 wäre eine
  * Beschleunigung, die es nicht gibt, und ein nicht lesbarer Wert würde die
  * Messreihe stillschweigend mit `NaN` durchlaufen.
@@ -32,8 +87,23 @@ export function parseThrottleRates(value) {
  *
  * @param {string[]} argv Argumente ohne Node- und Skriptpfad.
  */
+export function parseNodeCounts(value) {
+  const counts = value.split(',').map((count) => Number.parseInt(count, 10));
+  if (counts.length === 0 || counts.some((count) => !Number.isInteger(count) || count < 4)) {
+    throw new RangeError('--scale erwartet kommagetrennte Knotenzahlen >= 4');
+  }
+  // Gerade Zahlen, weil `heap-bound` aus Knotenpaaren besteht; eine ungerade
+  // Vorgabe würde dort werfen, statt einen Messpunkt zu liefern.
+  if (counts.some((count) => count % 2 !== 0)) {
+    throw new RangeError('--scale erwartet gerade Knotenzahlen');
+  }
+  return counts;
+}
+
 export function parseArguments(argv) {
-  const options = { throttleRates: [1, 4], repeat: 3, jsonPath: null };
+  const options = {
+    throttleRates: [1, 4], repeat: 3, jsonPath: null, scaleNodes: null, skipGlob: false,
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
     if (flag === '--throttle') {
@@ -42,6 +112,10 @@ export function parseArguments(argv) {
       options.repeat = Number.parseInt(argv[++index] ?? '', 10);
     } else if (flag === '--json') {
       options.jsonPath = argv[++index] ?? null;
+    } else if (flag === '--scale') {
+      options.scaleNodes = parseNodeCounts(argv[++index] ?? '');
+    } else if (flag === '--skip-glob') {
+      options.skipGlob = true;
     } else {
       throw new Error(`Unbekanntes Argument: ${flag}`);
     }
@@ -88,7 +162,16 @@ export function summarizeSamples(samples) {
     samples: samples.length,
     stage1: { ...first.stage1, ms: median(pick((entry) => entry.stage1.ms)) },
     objectChain: { ...first.objectChain, ms: median(pick((entry) => entry.objectChain.ms)) },
-    endToEnd: { ...first.endToEnd, ms: median(pick((entry) => entry.endToEnd.ms)) },
+    // Wartezeit als Median gegen Ausreißer, Blockierzeit als MAXIMUM: Für die
+    // Bedienbarkeit zählt der schlechteste beobachtete Lauf, nicht der
+    // typische. Ein Budget, das nur im Median hält, hält nicht.
+    endToEnd: {
+      ...first.endToEnd,
+      ms: median(pick((entry) => entry.endToEnd.ms)),
+      submitMs: Math.max(...pick((entry) => entry.endToEnd.submitMs)),
+      blockingMs: Math.max(...pick((entry) => entry.endToEnd.blockingMs)),
+      longestTaskMs: Math.max(...pick((entry) => entry.endToEnd.longestTaskMs)),
+    },
     heap: {
       retainedBytes: Math.max(...pick((entry) => entry.heap.retainedBytes)),
       identitySetBytes: Math.max(...pick((entry) => entry.heap.identitySetBytes)),
@@ -147,6 +230,14 @@ export function renderReport(report) {
   ];
 
   for (const run of report.runs) {
+    // Ohne belegten Messweg gibt es keinen Bericht. Ein Lauf, dessen
+    // Long-Task-Instrumentierung nicht nachweislich meldet, würde sonst
+    // lauter Nullen als eingehaltenes UI-Budget ausweisen — genau die
+    // Verwechslung, die der erste Messlauf dieser Auflage produziert hat.
+    if (run.observability === undefined || run.observability === null) {
+      throw new Error('Messlauf ohne belegte Long-Task-Beobachtbarkeit');
+    }
+
     lines.push(
       '',
       `## CPU-Drosselung ${run.throttleRate}x — ${run.environment.userAgent}`,
@@ -166,6 +257,54 @@ export function renderReport(report) {
         + `| ${formatMiB(fixture.heap.peakBytes)} `
         + `| ${fixture.reachesSchemaStage ? 'ja' : 'nein'} `
         + `| ${fixture.objectChain.code ?? 'angenommen'} |`,
+      );
+    }
+
+    lines.push(
+      '',
+      '### Main-Thread-Blockierzeit (Budget 50 ms)',
+      '',
+      `Messweg geprüft: ${run.observability.probeMs} ms absichtliche Blockade wurden als `
+      + `${formatMs(run.observability.observedMs)} gemeldet.`,
+      '',
+      '| Fixture | Wartezeit | Hinweg synchron | Längster Long Task | Blockierzeit gesamt | Budget |',
+      '| --- | --- | --- | --- | --- | --- |',
+    );
+    for (const fixture of run.fixtures) {
+      lines.push(
+        `| ${fixture.id} | ${formatMs(fixture.endToEnd.ms)} `
+        + `| ${formatMs(fixture.endToEnd.submitMs)} `
+        + `| ${formatMs(fixture.endToEnd.longestTaskMs)} `
+        + `| ${formatMs(fixture.endToEnd.blockingMs)} `
+        + `| ${fixture.endToEnd.blockingMs <= UI_BLOCKING_BUDGET_MS ? 'gehalten' : 'GERISSEN'} |`,
+      );
+    }
+
+    if (run.scale !== null && run.scale !== undefined) {
+      lines.push(
+        '',
+        '### Grenzwertherleitung: Kosten über der Knotenzahl',
+        '',
+        '| Fixture | Knoten | Dokument | Spitze | Speicherbudget | Blockierzeit | UI-Budget |',
+        '| --- | --- | --- | --- | --- | --- | --- |',
+      );
+      for (const row of run.scale) {
+        lines.push(
+          `| ${row.id} | ${row.totalNodes.toLocaleString('de-DE')} `
+          + `| ${formatMiB(row.bytes)} | ${formatMiB(row.heap.peakBytes)} `
+          + `| ${row.heap.peakBytes <= MEMORY_BUDGET_BYTES ? 'gehalten' : 'GERISSEN'} `
+          + `| ${formatMs(row.endToEnd.blockingMs)} `
+          + `| ${row.endToEnd.blockingMs <= UI_BLOCKING_BUDGET_MS ? 'gehalten' : 'GERISSEN'} |`,
+        );
+      }
+      const derived = deriveNodeLimit(run.scale);
+      lines.push(
+        '',
+        derived === null
+          ? 'Kein gemessener Stützpunkt hält beide Budgetposten für jedes Fixture. '
+            + 'Die Reihe trägt keinen hergeleiteten Grenzwert.'
+          : `Größte gemessene Knotenzahl, die beide Budgetposten für jedes Fixture hält: `
+            + `**${derived.toLocaleString('de-DE')}**.`,
       );
     }
 

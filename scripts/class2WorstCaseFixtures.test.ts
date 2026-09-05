@@ -22,6 +22,7 @@ import {
   buildCombinedBoundDocumentText,
   buildDepthBoundDocumentText,
   buildGlobPatternWorstCase,
+  buildHeapBoundDocumentText,
   buildNodeBoundDocumentText,
   decodedBase64BytesForLength,
   encodedBase64ForDecodedBytes,
@@ -76,6 +77,7 @@ describe('Worst-Case-Fixtures der Klasse-2-Grenzen', () => {
       'byte-bound',
       'node-bound',
       'depth-bound',
+      'heap-bound',
       'base64-bound',
       'combined-bound',
     ]);
@@ -154,6 +156,56 @@ describe('Worst-Case-Fixtures der Klasse-2-Grenzen', () => {
       stage: 'invariante',
       code: 'OSCAL_RESOURCE_NODE_LIMIT_EXCEEDED',
     });
+  });
+
+  it('schöpft mit dem Heap-Fixture Knoten- und Bytegrenze zugleich aus', { timeout: 60_000 }, () => {
+    const nodes = CLASS_2_LIMITS_UNDER_TEST.maxNodes;
+    const bytes = CLASS_2_LIMITS_UNDER_TEST.maxBytes;
+
+    expect(toBytes(buildHeapBoundDocumentText(nodes, bytes)).byteLength).toBe(bytes);
+    // Wurzelarray: Stufe 1 und Invariante nehmen es an, erst der Dispatch
+    // weist es ab — nachdem der Speicher belegt ist. Genau darin liegt der
+    // Angriff, den dieses Fixture abbildet.
+    expect(verdictFor(buildHeapBoundDocumentText(nodes, bytes))).toEqual({
+      stage: 'dispatch',
+      code: 'OSCAL_DOCUMENT_NOT_OBJECT',
+    });
+    expect(verdictFor(buildHeapBoundDocumentText(nodes + 2, bytes))).toEqual({
+      stage: 'invariante',
+      code: 'OSCAL_RESOURCE_NODE_LIMIT_EXCEEDED',
+    });
+  });
+
+  it('variiert im Heap-Fixture die Objektform mit der Containerzahl', { timeout: 60_000 }, () => {
+    // Die Lücke, die der Codex-Befund zu 36d9c79 aufgedeckt hat, war nicht die
+    // Containerzahl, sondern die Formgleichheit: V8 teilt die verborgene
+    // Klasse unter formgleichen Objekten, sodass eine Million identischer
+    // leerer Objekte eine einzige Formbeschreibung kostet. Die Zahl
+    // VERSCHIEDENER Schlüsselsignaturen ist der beobachtbare Stellvertreter
+    // dafür. Dieser Test hält fest, dass der Satz beide Enden der Achse
+    // abdeckt — sonst misst er den Speicher wieder nur im günstigsten Fall.
+    const signatures = (text: string): Set<string> => {
+      const seen = new Set<string>();
+      (function walk(value: unknown): void {
+        if (value === null || typeof value !== 'object') return;
+        if (Array.isArray(value)) {
+          for (const element of value) walk(element);
+          return;
+        }
+        const keys = Object.keys(value as Record<string, unknown>);
+        seen.add(keys.join('\u0000'));
+        for (const key of keys) walk((value as Record<string, unknown>)[key]);
+      })(JSON.parse(text));
+      return seen;
+    };
+
+    const nodes = CLASS_2_LIMITS_UNDER_TEST.maxNodes;
+    // Untere Ecke: lauter identische leere Objekte, genau eine Form.
+    expect(signatures(buildDepthBoundDocumentText(CLASS_2_LIMITS_UNDER_TEST.maxDepth, nodes)).size)
+      .toBe(1);
+    // Obere Ecke: eine eigene Form je äußerem Container, plus die leere Form
+    // der inneren Container.
+    expect(signatures(buildHeapBoundDocumentText(nodes)).size).toBe(nodes / 2);
   });
 
   it('belegt, dass die Base64-Grenze unter der Bytegrenze überhaupt erreichbar ist', () => {

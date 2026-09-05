@@ -18,8 +18,17 @@
 // Root-Dispatch, BEVOR der Schema-Chunk geladen und Ajv ausgeführt wird — die
 // gemessenen Kosten ließen damit die teuerste Stufe der Kette aus. Die
 // Fixtures sind deshalb jetzt gültige OSCAL-Katalogwurzeln nach dem gepinnten
-// Schema 1.1.3 und durchlaufen die Kette vollständig. Einzige Ausnahme ist
-// `depth-bound`, mit Begründung an Ort und Stelle.
+// Schema 1.1.3 und durchlaufen die Kette vollständig. Ausnahmen sind
+// `depth-bound` und `heap-bound`, jeweils mit Begründung an Ort und Stelle.
+//
+// Dritte Auflage nach Codex-Befund zu 36d9c79: Der Satz enthielt keine Form,
+// die die SCHLÜSSEL variiert. Das war die entscheidende Lücke, denn der
+// Heap-Treiber ist nicht die Containerzahl, sondern die Zahl verschiedener
+// verborgener Klassen: Container gleicher Form teilen sich in V8 eine einzige
+// Beschreibung, Container mit je eigenem Schlüssel erzwingen je eine eigene.
+// Der bis dahin als Speicher-Worst-Case geführte `depth-bound` besteht aus
+// lauter identischen leeren Objekten und ist damit der GÜNSTIGSTE Fall dieser
+// Achse, nicht der teuerste. `heap-bound` schließt die Lücke.
 // =============================================================================
 
 /**
@@ -63,6 +72,12 @@ export const CATALOG_WRAPPER_NODES = 8;
 
 /** Bytelänge der Hülle; die Fixtures rechnen ihre Nutzlast daran aus. */
 export const CATALOG_WRAPPER_BYTES = CATALOG_HEAD.length + CATALOG_TAIL.length;
+
+/**
+ * Feste Bytes um die Mitglieder von `heap-bound` herum: die beiden Klammern
+ * des Wurzelarrays, das Komma vor dem Füller und dessen beide Anführungszeichen.
+ */
+const MEMBER_OVERHEAD_BYTES = 4;
 
 /**
  * Setzt einen Katalog aus der festen Hülle und genau einem Mitglied zusammen.
@@ -161,15 +176,15 @@ export function buildNodeBoundDocumentText(totalNodes = CLASS_2_LIMITS_UNDER_TES
  * Root-Dispatch abgewiesen — seine Messwerte decken deshalb Stufe 1 und die
  * Objektkette bis zum Dispatch ab, nicht die Schemastufe.
  *
- * Es ist zugleich der Speicher-Worst-Case des gesamten Satzes: Das leere
- * Objekt ist der billigste Container, den JSON erzeugen kann, weshalb dieses
- * Dokument bei ausgeschöpfter Knotengrenze die höchste Containerzahl trägt —
- * und damit die größte Identitätsmenge in der Strukturinvariante. Ein
- * schemagültiger Katalog kommt dort nicht hin, weil seine billigste Gruppe
- * neben dem Container noch einen Titelstring braucht und deshalb nur halb so
- * viele Container in dieselbe Knotenzahl passen. Ein Angreifer ist an die
- * Schemagültigkeit aber nicht gebunden: Die Ablehnung im Dispatch erfolgt
- * ERST, nachdem dieser Speicher bereits belegt wurde.
+ * Es trägt bei ausgeschöpfter Knotengrenze die höchste CONTAINERZAHL des
+ * Satzes und damit die größte Identitätsmenge in der Strukturinvariante. Das
+ * macht es NICHT zum Speicher-Worst-Case: Die zweite Auflage hat genau das
+ * behauptet, und der Codex-Befund zu 36d9c79 hat es widerlegt. Lauter
+ * identische leere Objekte teilen sich in V8 eine einzige verborgene Klasse,
+ * weshalb der Container hier so billig ist wie er überhaupt werden kann. Wer
+ * stattdessen jedem Container einen eigenen Schlüssel gibt, zahlt eine
+ * verborgene Klasse pro Container und liegt um ein Vielfaches darüber — siehe
+ * `heap-bound`. Dieses Fixture belegt die Tiefengrenze, sonst nichts.
  *
  * @param {number} depth Zieltiefe.
  * @param {number} totalNodes Zielzahl der Knoten.
@@ -217,6 +232,62 @@ export function buildCombinedBoundDocumentText(
   if (fillerBytes < 0) throw new RangeError('totalBytes trägt die Struktur nicht');
 
   return wrapCatalog(`${head}${'A'.repeat(fillerBytes)}${tail}`);
+}
+
+/**
+ * Speicher-Worst-Case: Knoten- UND Bytegrenze exakt, und jeder Container trägt
+ * eine eigene verborgene Klasse.
+ *
+ * Der Codex-Befund zu 36d9c79 hat die Annahme widerlegt, die Containerzahl
+ * allein treibe den Heap. Sie tut es nicht. V8 beschreibt die Form eines
+ * Objekts in einer verborgenen Klasse (Map plus Deskriptorfeld), die sich alle
+ * formgleichen Objekte TEILEN. Eine Million identischer leerer Objekte kostet
+ * deshalb eine einzige solche Beschreibung; eine halbe Million Objekte mit je
+ * eigenem Schlüsselnamen kostet eine halbe Million davon, dazu je einen
+ * internalisierten Schlüsselstring. Die Kosten pro Container liegen damit um
+ * ein Mehrfaches höher, obwohl es weniger Container sind.
+ *
+ * Konstruktion, die beide Achsen zugleich ausreizt: Jedes Paar aus äußerem
+ * Objekt mit eindeutigem Schlüssel und innerem leeren Objekt belegt zwei
+ * Knoten und liefert zwei Container — einen mit eigener verborgener Klasse,
+ * einen geschenkten. Der Knotenrahmen ist damit voll ausgeschöpft, während die
+ * Zahl verschiedener Formen ihr Maximum erreicht. Der Schlüsselname wird so
+ * weit gestreckt, wie die Bytegrenze es zulässt, und der verbleibende Byteraum
+ * liegt als ein einziger langer String am Ende — er kostet einen Knoten und
+ * belastet den Heap mit seinem vollen Inhalt.
+ *
+ * Wie `depth-bound` ist das ein reines Angriffsdokument ohne Schemagültigkeit:
+ * Ein OSCAL-Katalog kennt keine freien Schlüsselnamen. Das ändert an der
+ * Kostenrechnung nichts, denn die Ablehnung im Root-Dispatch erfolgt ERST,
+ * nachdem Stufe 1 den Graphen aufgebaut und die Strukturinvariante ihre
+ * Identitätsmenge über ihn gelegt hat.
+ *
+ * @param {number} totalNodes Zielzahl der Knoten; muss gerade sein.
+ * @param {number} totalBytes Zielgröße in Bytes.
+ */
+export function buildHeapBoundDocumentText(
+  totalNodes = CLASS_2_LIMITS_UNDER_TEST.maxNodes,
+  totalBytes = CLASS_2_LIMITS_UNDER_TEST.maxBytes,
+) {
+  // Wurzelarray, `pairs` Paare zu je zwei Knoten, Füllerstring.
+  if (totalNodes % 2 !== 0) throw new RangeError('totalNodes muss gerade sein');
+  const pairs = (totalNodes - 2) / 2;
+  if (pairs < 1) throw new RangeError('totalNodes trägt kein Paar');
+
+  // Alle Schlüssel gleich lang, damit die Bytelänge geschlossen ausrechenbar
+  // bleibt; die laufende Nummer wird links mit Nullen aufgefüllt.
+  const digits = String(pairs - 1).length;
+  // Ein Paar kostet `{"<key>":{}}` plus Trennzeichen, also keyLength + 8 Bytes.
+  const keyLength = Math.floor((totalBytes - MEMBER_OVERHEAD_BYTES) / pairs) - 8;
+  if (keyLength < digits) throw new RangeError('totalBytes trägt die Schlüssel nicht');
+
+  const prefix = 'k'.repeat(keyLength - digits);
+  const members = Array.from(
+    { length: pairs },
+    (_, index) => `{"${prefix}${String(index).padStart(digits, '0')}":{}}`,
+  );
+  const fillerBytes = totalBytes - pairs * (keyLength + 8) - MEMBER_OVERHEAD_BYTES;
+  return `[${members.join(',')},"${'A'.repeat(fillerBytes)}"]`;
 }
 
 const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -344,6 +415,7 @@ export const CLASS_2_WORST_CASE_FIXTURES = Object.freeze([
     reachesSchemaStage: true,
     label: 'Knotengrenze 1 000 000, maximale Containerzahl',
     build: () => buildNodeBoundDocumentText(),
+    buildScaled: (totalNodes) => buildNodeBoundDocumentText(totalNodes),
   }),
   Object.freeze({
     id: 'depth-bound',
@@ -351,6 +423,17 @@ export const CLASS_2_WORST_CASE_FIXTURES = Object.freeze([
     reachesSchemaStage: false,
     label: 'Tiefengrenze 64 und maximale Containerzahl (ohne Schemastufe)',
     build: () => buildDepthBoundDocumentText(),
+  }),
+  Object.freeze({
+    id: 'heap-bound',
+    limit: 'maxNodes + maxBytes',
+    reachesSchemaStage: false,
+    label: 'Eigene verborgene Klasse je Container (ohne Schemastufe)',
+    build: () => buildHeapBoundDocumentText(),
+    // Die Bytegrenze bleibt beim Skalieren ausgeschöpft: Ein Angreifer gibt
+    // sie nicht auf, nur weil die Knotengrenze sinkt — die Schlüssel werden
+    // dann eben länger.
+    buildScaled: (totalNodes) => buildHeapBoundDocumentText(totalNodes),
   }),
   Object.freeze({
     id: 'base64-bound',
@@ -365,5 +448,6 @@ export const CLASS_2_WORST_CASE_FIXTURES = Object.freeze([
     reachesSchemaStage: true,
     label: 'Knoten- und Bytegrenze gleichzeitig ausgeschöpft',
     build: () => buildCombinedBoundDocumentText(),
+    buildScaled: (totalNodes) => buildCombinedBoundDocumentText(totalNodes),
   }),
 ]);

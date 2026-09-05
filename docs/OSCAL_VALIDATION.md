@@ -195,10 +195,15 @@ bestehende Klasse-1-Loader bleibt davon getrennt. Sie stehen in
 
 | Grenze | Wert | Kostenbasierte Begründung |
 | --- | --- | --- |
-| Bytes vor Dekodierung | 10 MiB | Ein Dokument, das nur diese Grenze ausschöpft, kostet 12,95 MiB Speicher und 0,39 s Rechenzeit — gut ein Fünftel des Speicherbudgets. Bytes für sich sind billig; teuer wird erst, was in ihnen steht. |
-| Verschachtelungstiefe | 64 | Rekursionstiefe ist für sich kostenlos; die Grenze schützt den Stapel, nicht das Budget. Ihr Fixture trägt die teuersten Messwerte, aber wegen seiner Containerzahl, nicht wegen seiner Tiefe. |
-| Knoten | 1 000 000 | Bindende Grenze. Das teuerste Dokument darauf kostet 51,38 MiB Speicher — das Achtzehnfache seiner eigenen 2,86 MiB. Sie allein hält den Speicherabdruck im Budget. |
+| Bytes vor Dekodierung | 10 MiB | Ein Dokument, das nur diese Grenze ausschöpft, kostet 12,94 MiB Speicher und 0,40 s Rechenzeit. Bytes für sich sind billig; teuer wird erst, was in ihnen steht — und wie verschieden es ist. |
+| Verschachtelungstiefe | 64 | Rekursionstiefe ist für sich kostenlos; die Grenze schützt den Stapel, nicht das Budget. |
+| Knoten | 1 000 000 | Bindende Grenze für den Speicher. Das teuerste Dokument darauf kostet 89,16 MiB — das Neunfache seiner eigenen 10 MiB. Der Speicherabdruck wächst mit ihr, gemessen über fünf Stützpunkte. |
 | Summe dekodierter Base64-Größen | 4 MiB | Auf 10 MiB war die Grenze arithmetisch unerreichbar und damit wirkungslos; siehe „Die Base64-Grenze war tot“ unten. |
+
+Die Knotengrenze ist am 2026-09-05 **nicht** gesenkt worden, obwohl der
+gemessene Speicher-Worst-Case das damalige 64-MiB-Budget riss. Stattdessen ist
+das Budget angehoben worden; die Begründung dieser Richtungsentscheidung steht
+unter „Ressourcenbudget des Klasse-2-Pfads“.
 
 #### Warum die Kopfraumrechnung als Begründung nicht genügt
 
@@ -220,9 +225,34 @@ Verbindlich für jede Änderung dieser Grenzwerte:
 
 | Budgetposten | Wert | Begründung |
 | --- | --- | --- |
-| Zusätzlicher Speicher im Tab je Import | **≤ 64 MiB** | Ein Renderer-Prozess auf Bürohardware verfügt über einen Old-Space im Bereich mehrerer hundert MiB bis GiB. 64 MiB ist ein kleiner, aber spürbarer Anteil davon und lässt neben dem bereits geladenen Klasse-1-Katalog und dem Suchindex Luft für die übrige Anwendung. Ein einzelnes lokal geöffnetes Dokument darf mehr nicht beanspruchen. |
-| Blockierzeit des UI-Threads | **≤ 50 ms** | Der produktive Einstieg [`importClass2OscalDocument`](../src/adapters/oscalImportGate.ts) führt die gesamte Kette in einem Modul-Worker aus. Auf dem UI-Thread verbleiben nur die Pufferkopie und `postMessage`. Alles darüber wäre ein Architekturbruch, keine Grenzwertfrage. |
+| Zusätzlicher Speicher im Tab je Import | **≤ 128 MiB** | Ein Renderer-Prozess auf Bürohardware verfügt über einen Old-Space im Bereich mehrerer hundert MiB bis GiB. 128 MiB ist ein spürbarer, aber tragbarer Anteil davon und lässt neben dem geladenen Klasse-1-Katalog und dem Suchindex Luft für die übrige Anwendung. Am 2026-09-05 von 64 MiB angehoben; die Herleitung steht unten. |
+| Blockierzeit des UI-Threads | **≤ 50 ms** | Oberhalb von 50 ms nimmt der Nutzer die Oberfläche als hängend wahr; es ist zugleich die Schwelle, ab der die Plattform einen Task als Long Task meldet, sodass eine Verletzung messbar ist. **Dieser Posten wird derzeit nicht eingehalten** — Befund und Weiterbehandlung stehen unter „Ergebnis der Nachvalidierung“. |
 | Sichtbare Wartezeit bis zum Ergebnis | **≤ 5 s** | Der Nutzer wartet auf Annahme oder Diagnose. Fünf Sekunden bleiben als bewusste Wartezeit erklärbar; darüber wirkt die Anwendung defekt. Hart gedeckelt ist die Wartezeit ohnehin durch `CLASS_2_IMPORT_WORKER_TIMEOUT_MS` (30 s). |
+
+##### Warum das Speicherbudget angehoben und nicht die Knotengrenze gesenkt wurde
+
+Der ursprüngliche Fixturesatz enthielt keine Form, die die **Schlüssel**
+variiert, und unterschätzte den zulässigen Speicherbedarf deshalb erheblich.
+V8 beschreibt die Form eines Objekts in einer verborgenen Klasse, die sich
+alle formgleichen Objekte teilen: Eine Million identischer leerer Objekte
+kostet eine einzige solche Beschreibung. Das damals als Speicher-Worst-Case
+geführte `depth-bound` besteht genau daraus und ist damit der **günstigste**
+Fall dieser Achse, nicht der teuerste. Das neue `heap-bound` gibt jedem
+Container einen eigenen Schlüssel und kostet 89,16 MiB statt 51,38 MiB.
+
+Damit stand eine Richtungsentscheidung an: die Knotengrenze auf einen
+gemessenen Stützpunkt senken, der 64 MiB hält (500 000), oder das Budget
+anheben. Der Projektowner hat sich am 2026-09-05 für die Anhebung entschieden.
+Der Grund ist nicht neue Erkenntnis über verfügbaren Speicher, sondern die
+Abwägung gegen die legitime Nutzung: Der reale BSI-Katalog trägt 70 851
+Knoten, und eine Grenze soll den Angriffsfall deckeln, ohne wachsende echte
+Dokumente auszusperren.
+
+Der Wert 128 MiB und nicht 96 MiB: 96 MiB wäre die knappste Zahl gewesen, die
+den Messwert von 89,16 MiB noch trägt. Ein zu 93 % ausgeschöpftes Budget kann
+aber keine künftige Grenzwertänderung mehr leiten — es zeichnet nur den
+Ist-Stand nach. Bei 128 MiB sind 70 % ausgeschöpft. Die Anhebung folgt einer
+Messung; das ist eine bewusste Lockerung und keine Bestätigung.
 
 #### Messprotokoll
 
@@ -230,8 +260,13 @@ Reproduzierbar über das Wartungswerkzeug
 [`measure-class2-budget.mjs`](../scripts/measure-class2-budget.mjs):
 
 ```bash
-node scripts/measure-class2-budget.mjs --throttle 1,4 --repeat 3
+node scripts/measure-class2-budget.mjs --throttle 1,4 --repeat 3 \
+  --scale 62500,125000,250000,500000,1000000
 ```
+
+`--scale` misst die knotenskalierbaren Fixtures zusätzlich an mehreren
+Knotenzahlen; daraus entsteht die Herleitungstabelle weiter unten. Ohne die
+Option misst der Lauf nur die Grenzwerte selbst.
 
 Das Skript hängt bewusst an keinem Anwendungspfad und ist weder in
 `npm run build`/`test`/`dev` noch in einem CI-Gate eingebunden — dieselbe
@@ -254,7 +289,7 @@ fest.
 
 **Messbasis, namentlich:** Apple MacBook Pro (Mac16,8), Apple M4 Pro,
 14 Kerne, 24 GB RAM, macOS 26.6.2 (25G83); Chromium 151.0.7922.34 headless
-über Playwright 1.62.1. Erhoben am 2026-09-04.
+über Playwright 1.62.1. Erhoben am 2026-09-05.
 
 Die Owner-Entscheidung vom 2026-09-02 nennt als Messbasis ein
 *durchschnittliches* Desktop-/Laptop-Gerät. Das obige Gerät liegt darüber.
@@ -265,15 +300,17 @@ einem zweiten Gerät; die Zeitwerte der 4×-Spalte sind entsprechend zu lesen.
 Speicherwerte sind davon unberührt — sie hängen an der Datenstruktur, nicht
 an der Taktrate.
 
-Zeiten sind Mediane aus drei Läufen, Speicherwerte deren Maximum.
+Zeiten sind Mediane aus drei Läufen, Speicherwerte deren Maximum. Erhoben am
+2026-09-05.
 
 | Fixture | Grenze | Dokument | Kette 1× | Kette 4× | Ende-zu-Ende | Gehalten | Identitätsmenge | Spitze | Schemastufe |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `byte-bound` | `maxBytes` | 10,00 MiB | 0,10 s | 0,39 s | 0,15 s | 2,95 MiB | 0,00 MiB | 12,95 MiB | ja |
-| `node-bound` | `maxNodes` | 6,68 MiB | 0,60 s | 2,42 s | 0,98 s | 17,61 MiB | 5,00 MiB | 29,28 MiB | ja |
-| `depth-bound` | `maxDepth` | 2,86 MiB | 0,84 s | **3,28 s** | 0,86 s | 38,52 MiB | 10,00 MiB | **51,38 MiB** | nein |
-| `base64-bound` | `maxDecodedBase64Bytes` | 5,33 MiB | 0,16 s | 0,48 s | 0,15 s | 5,36 MiB | 0,00 MiB | 10,69 MiB | ja |
-| `combined-bound` | `maxNodes` + `maxBytes` | 10,00 MiB | 0,67 s | 2,65 s | 0,98 s | 12,88 MiB | 5,00 MiB | 27,88 MiB | ja |
+| `byte-bound` | `maxBytes` | 10,00 MiB | 0,10 s | 0,42 s | 0,15 s | 2,94 MiB | 0,00 MiB | 12,94 MiB | ja |
+| `node-bound` | `maxNodes` | 6,68 MiB | 0,60 s | 2,37 s | 0,99 s | 17,61 MiB | 5,00 MiB | 29,28 MiB | ja |
+| `depth-bound` | `maxDepth` | 2,86 MiB | 0,83 s | 3,29 s | 0,88 s | 38,52 MiB | 10,00 MiB | 51,38 MiB | nein |
+| `heap-bound` | `maxNodes` + `maxBytes` | 10,00 MiB | 1,02 s | **4,11 s** | 1,06 s | 69,16 MiB | 10,00 MiB | **89,16 MiB** | nein |
+| `base64-bound` | `maxDecodedBase64Bytes` | 5,33 MiB | 0,12 s | 0,48 s | 0,16 s | 5,35 MiB | 0,00 MiB | 10,68 MiB | ja |
+| `combined-bound` | `maxNodes` + `maxBytes` | 10,00 MiB | 0,67 s | 2,59 s | 1,00 s | 12,87 MiB | 5,00 MiB | 27,87 MiB | ja |
 
 „Kette“ ist Stufe 1 plus objektorientierte Kette, direkt im Tab gemessen —
 also genau die Arbeit, die im Produktivpfad der Worker leistet.
@@ -287,6 +324,64 @@ OSCAL-Katalogwurzeln nach dem gepinnten Schema 1.1.3 und werden von der Kette
 Ajv-Lauf ein. Ein Dokument, das schon im Root-Dispatch scheitert, käme dort
 nie an und würde die teuerste Stufe unterschlagen.
 
+##### Blockierzeit des Main Threads
+
+Die Wartezeit sagt nichts darüber, ob die Oberfläche in dieser Zeit bedienbar
+bleibt: Der Worker rechnet nebenläufig, der Main Thread wartet. Gemessen wird
+die Blockierzeit deshalb getrennt, über die Long-Task-Einträge der Plattform,
+die das Importintervall überlappen. Deren Schwelle ist mit 50 ms genau das
+Budget — ein leerer Eintragssatz ist der Nachweis der Einhaltung.
+
+| Fixture | Ergebnis | Blockierzeit 1× | Blockierzeit 4× | Budget |
+| --- | --- | --- | --- | --- |
+| `byte-bound` | angenommen | 0 ms | 0 ms | gehalten |
+| `depth-bound` | abgewiesen | 0 ms | 0 ms | gehalten |
+| `heap-bound` | abgewiesen | 0 ms | 0 ms | gehalten |
+| `base64-bound` | angenommen | 0 ms | 0 ms | gehalten |
+| `node-bound` | angenommen | 74 ms | **310 ms** | **gerissen** |
+| `combined-bound` | angenommen | 62 ms | **239 ms** | **gerissen** |
+
+Der synchrone Hinweg — Pufferkopie, Worker-Erzeugung, ausgehendes
+`postMessage` — kostet in allen Fällen unter 5 ms. Die Blockade liegt auf dem
+**Rückweg**; ihre Herleitung steht unter „Der Rückweg des Workers blockiert“.
+
+**Der Messweg wird vor jeder Messreihe selbst geprüft.** Eine Blockierzeit von
+null ist sonst zweideutig: freier Main Thread oder blinde Instrumentierung.
+Der erste Lauf dieser Auflage meldete für jedes Fixture null, weil der Import
+im Auswertungstask des Messtreibers lief und die Long-Task-API diesen Task
+nicht attribuiert — die Zahlen sahen aus wie ein eingehaltenes Budget und
+waren keins. `assertLongTaskObservability` blockiert deshalb absichtlich
+120 ms in einem regulären Task und verlangt dafür einen Eintrag; bleibt er
+aus, bricht der Lauf ab, statt ein Budget zu behaupten. Der Bericht verweigert
+sich ohne diesen Beleg.
+
+##### Grenzwertherleitung: Kosten über der Knotenzahl
+
+Ein einzelner Messpunkt auf der heutigen Grenze sagt nicht, welche Grenze das
+Budget halten würde. Die Reihe misst deshalb an fünf Stützpunkten, jeder mit
+eigenem Dokument und ausgeschöpfter Bytegrenze — keine Hochrechnung.
+
+| Knoten | `heap-bound` Spitze | `node-bound` Blockierzeit 4× | `combined-bound` Blockierzeit 4× |
+| --- | --- | --- | --- |
+| 62 500 | 24,36 MiB | 0 ms | 0 ms |
+| 125 000 | 28,72 MiB | 0 ms | 0 ms |
+| 250 000 | 37,41 MiB | 61 ms | 66 ms |
+| 500 000 | 55,29 MiB | 142 ms | 142 ms |
+| 1 000 000 | 89,14 MiB | 345 ms | 280 ms |
+
+Der Speicher wächst linear in der Knotenzahl über einem Sockel von rund
+20 MiB, den die ausgeschöpfte Bytegrenze trägt. Die Blockierzeit wächst
+ebenfalls linear — und zwar in der Knotenzahl des **angenommenen** Ergebnisses,
+nicht in der Dokumentgröße: `node-bound` (6,68 MiB) und `combined-bound`
+(10,00 MiB) liegen bei gleicher Knotenzahl gleichauf.
+
+Daraus folgt für die beiden Budgetposten Verschiedenes. Das Speicherbudget von
+128 MiB trägt die volle Million. Das UI-Budget wäre über die Knotengrenze
+allein nur bei 125 000 zu halten — dem größten gemessenen Stützpunkt unter
+50 ms bei 4×. Bei 70 851 Knoten des realen Katalogs bliebe Faktor 1,76
+Kopfraum; das ist als Grenze für legitime Dokumente nicht tragbar, weshalb der
+Befund als Architekturfrage weiterläuft statt als Grenzwertfrage.
+
 ##### Woraus sich die Speicherspitze zusammensetzt
 
 Drei Posten, die einzeln erhoben werden, weil keine einzelne Messung sie alle
@@ -299,8 +394,7 @@ sieht:
 | Eingabepuffer | Die Dokumentbytes. Ihr `ArrayBuffer`-Backing-Store liegt als externer Speicher neben dem V8-JS-Heap und erscheint in `Runtime.getHeapUsage` nicht; er wird arithmetisch zugeschlagen. |
 
 Ohne den zweiten Posten läge die ausgewiesene Spitze des ungünstigsten Falls
-bei 41,38 statt 51,38 MiB — die Zahl, die das Budget begründen soll, wäre um
-ein Fünftel zu klein.
+um 10 MiB zu niedrig — die Zahl, die das Budget begründen soll, wäre zu klein.
 
 Zwei weitere Messgrenzen bleiben bestehen und sind hier ausgewiesen, nicht
 behoben:
@@ -310,57 +404,94 @@ behoben:
   dieselbe Datenstruktur, deshalb dieselbe Größenordnung.
 - `Emulation.setCPUThrottlingRate` wirkt auf den Seiten-Thread, nicht auf
   dedizierte Worker. Die Ende-zu-Ende-Spalte ist daher in beiden Läufen
-  ungedrosselt und nicht auf Bürohardware übertragbar.
+  weitgehend ungedrosselt und nicht auf Bürohardware übertragbar. Die
+  Blockierzeit ist davon nicht betroffen: Sie entsteht im Seiten-Thread und
+  wird von der Drosselung erfasst — sichtbar daran, dass sie zwischen 1× und
+  4× um etwa den Faktor 4 steigt.
 
 #### Ergebnis der Nachvalidierung
 
-Alle Budgetposten werden im ungünstigsten Fall eingehalten: 51,38 MiB gegen
-64 MiB Speicherbudget (80 % ausgeschöpft), 3,28 s gegen 5 s sichtbare
-Wartezeit, und die UI-Blockierzeit fällt architektonisch weg, weil die Kette
-im Worker läuft.
+Zwei von drei Budgetposten werden im ungünstigsten Fall eingehalten: 89,16 MiB
+gegen 128 MiB Speicherbudget (70 % ausgeschöpft) und 1,06 s gegen 5 s sichtbare
+Wartezeit. **Der Posten „Blockierzeit des UI-Threads“ wird nicht eingehalten**
+— gemessen bis 310 ms gegen 50 ms.
+
+Diese Fassung ist die zweite Nachvalidierung. Die erste, vom 2026-09-04, hat
+beide Verstöße nicht gesehen, weil ihr Fixturesatz die Schlüsselformen nicht
+variierte und ihr Harnisch die Blockierzeit gar nicht erhob; beide Lücken hat
+das Cross-Review aufgedeckt.
 
 - **`maxBytes` 10 MiB — bestätigt.** Ein Dokument, das nur diese Grenze
-  ausschöpft, kostet 12,95 MiB und 0,39 s. Der Wert stimmt weiterhin zufällig
+  ausschöpft, kostet 12,94 MiB und 0,42 s. Der Wert stimmt weiterhin zufällig
   mit `MAX_CATALOG_ARTIFACT_BYTES` in
   [`fetch-catalog.mjs`](../scripts/fetch-catalog.mjs) überein; diese
-  Übereinstimmung ist **keine** Begründung mehr. Die eine Konstante sichert
-  einen Build-Zeit-Abruf aus vertrauter, versionsgepinnter Quelle, die andere
-  die Laufzeitverarbeitung eines potenziell feindlichen lokalen Dokuments.
-  Die beiden dürfen sich unabhängig voneinander bewegen.
-- **`maxNodes` 1 000 000 — bestätigt, und die bindende Grenze.** Sie deckelt
-  die Zahl gleichzeitig gehaltener Containeridentitäten: Die
-  Strukturinvariante führt jeden Container in einer `Set`-Identitätsmenge,
-  Stufe 1 zusätzlich in einem `WeakSet`. Das teuerste Dokument der Messung
-  wiegt 2,86 MiB und belegt 51,38 MiB — Faktor 18. Der Abdruck wächst linear
-  in der Containerzahl, weil genau diese beiden Mengen ihn tragen; linear
-  hochgerechnet — nicht gemessen — risse der ungünstigste Fall bei
-  2 000 000 Knoten das 64-MiB-Budget.
+  Übereinstimmung ist **keine** Begründung. Die eine Konstante sichert einen
+  Build-Zeit-Abruf aus vertrauter, versionsgepinnter Quelle, die andere die
+  Laufzeitverarbeitung eines potenziell feindlichen lokalen Dokuments. Die
+  beiden dürfen sich unabhängig voneinander bewegen.
+- **`maxNodes` 1 000 000 — gehalten, gegen ein angehobenes Budget.** Sie ist
+  die bindende Grenze für den Speicher: Das teuerste Dokument darauf kostet
+  89,16 MiB. Gegen das ursprüngliche 64-MiB-Budget war das ein Verstoß; der
+  Projektowner hat am 2026-09-05 entschieden, das Budget auf 128 MiB
+  anzuheben, statt die Grenze zu senken. Die Herleitung steht über fünf
+  gemessenen Stützpunkten, nicht über einer Hochrechnung.
 - **`maxDepth` 64 — bestätigt.** Rekursionstiefe ist für sich kein
-  Kostentreiber; die Grenze schützt den Stapel. Dass das `depth-bound`-Fixture
-  trotzdem die teuersten Werte trägt, liegt nicht an seiner Tiefe, sondern an
-  seiner Containerzahl — siehe unten.
+  Kostentreiber; die Grenze schützt den Stapel.
 - **`maxDecodedBase64Bytes` 10 MiB → 4 MiB — korrigiert.** Begründung unten.
+
+##### Der Rückweg des Workers blockiert
+
+Die ursprüngliche Begründung des UI-Budgets war eine Architekturannahme: Die
+Kette laufe im Worker, auf dem UI-Thread verblieben nur Pufferkopie und
+`postMessage`. Die Annahme lässt den Rückweg aus. Der Worker antwortet in
+[`oscalImport.worker.ts`](../src/workers/oscalImport.worker.ts) mit
+`self.postMessage(response)` und schickt den vollständigen Ergebnisgraphen
+mit; dessen strukturierte Deserialisierung läuft im Main Thread, vor dem
+`message`-Handler in
+[`oscalImportGate.ts`](../src/adapters/oscalImportGate.ts).
+
+Die Messung trennt Ursache und Nebenwirkung eindeutig: `heap-bound` ist das
+teuerste Dokument des Satzes und blockiert bei **keiner** Knotenzahl, weil es
+abgewiesen wird und nur eine Diagnose zurückwandert. Blockiert wird
+ausschließlich bei angenommenen Dokumenten, proportional zur Knotenzahl des
+zurückgegebenen Graphen.
+
+Über die Knotengrenze allein wäre das Budget nur bei 125 000 zu halten — zu
+eng für legitime Dokumente neben einem realen Katalog mit 70 851 Knoten. Der
+Befund wird deshalb als Frage des Ergebnistransports weitergeführt:
+[GSPP-386](https://linear.app/grundschutz-plus-plus/issue/GSPP-386). Bis zu
+dessen Abschluss ist dieser Budgetposten offen und darf nicht als eingehalten
+zitiert werden.
 
 ##### Warum das teuerste Dokument kein gültiger Katalog ist
 
-Der Speicher-Worst-Case ist `depth-bound` — eine Kette aus leeren Objekten.
-Das leere Objekt ist der billigste Container, den JSON erzeugen kann, weshalb
-dieses Dokument bei ausgeschöpfter Knotengrenze doppelt so viele Container
-trägt wie ein schemagültiger Katalog: Dessen billigste Gruppe braucht neben
-dem Container noch einen Titelstring und verbraucht damit zwei Knoten statt
-einem.
+Der Speicher-Worst-Case ist `heap-bound`: eine halbe Million Objekte mit je
+eigenem Schlüsselnamen, deren Werte leere Objekte sind. Nicht die
+Containerzahl treibt hier den Heap, sondern die Zahl **verschiedener Formen**.
+V8 beschreibt die Form eines Objekts in einer verborgenen Klasse, die sich
+alle formgleichen Objekte teilen; wer jedem Container einen eigenen Schlüssel
+gibt, erzwingt eine eigene Beschreibung pro Container und zahlt dazu einen
+internalisierten Schlüsselstring.
 
-Ein Angreifer ist an die Schemagültigkeit nicht gebunden. Die Ablehnung im
-Root-Dispatch erfolgt **erst**, nachdem Stufe 1 und die Objektkette diesen
-Speicher bereits belegt haben. Das Budget muss deshalb diesen Fall tragen und
-nicht den des gültigen Katalogs — auch wenn der gültige Katalog die längere
-Rechenzeit hätte, sobald Ajv hinzukommt.
+Der Unterschied ist groß genug, um eine Nachvalidierung zu entwerten: Das
+Fixture `depth-bound` trägt mit einer Million leerer Objekte die **höchste**
+Containerzahl des Satzes und kostet trotzdem nur 51,38 MiB. `heap-bound` trägt
+weniger Container und kostet 89,16 MiB. Die erste Fassung dieses Abschnitts
+hat `depth-bound` als Speicher-Worst-Case geführt und damit den günstigsten
+Fall dieser Achse für den teuersten gehalten.
+
+Ein Angreifer ist an die Schemagültigkeit nicht gebunden — ein OSCAL-Katalog
+kennt keine freien Schlüsselnamen, ein Angriffsdokument schon. Die Ablehnung
+im Root-Dispatch erfolgt **erst**, nachdem Stufe 1 den Graphen aufgebaut und
+die Strukturinvariante ihre Identitätsmenge über ihn gelegt hat. Das Budget
+muss deshalb diesen Fall tragen und nicht den des gültigen Katalogs — auch
+wenn der gültige Katalog die längere Rechenzeit hätte, sobald Ajv hinzukommt.
 
 Umgekehrt gilt: Eine Tiefe von exakt 64 ist mit einem schemagültigen Katalog
 gar nicht konstruierbar. Gruppenobjekte liegen dort ausschließlich auf geraden
 Tiefen und ihre Blätter deshalb ausschließlich auf ungeraden; erreichbar wäre
 nur 63. Das `depth-bound`-Fixture hat deshalb Vorrang vor der
-Schemafähigkeit — es belegt, dass die Tiefengrenze bindet.
+Schemafähigkeit — es belegt, dass die Tiefengrenze bindet, und sonst nichts.
 
 #### Die Base64-Grenze war tot
 
@@ -412,10 +543,10 @@ Control-ID:
 
 | Sterne | Musterlänge | Laufzeit 1× | Laufzeit 4× |
 | --- | --- | --- | --- |
-| 6 | 13 Byte | 14 ms | 55 ms |
-| 8 | 17 Byte | 0,33 s | 1,27 s |
-| 10 | 21 Byte | 4,17 s | 16,29 s |
-| 12 | 25 Byte | 32,01 s | nicht gemessen |
+| 6 | 13 Byte | 15 ms | 58 ms |
+| 8 | 17 Byte | 0,34 s | 1,34 s |
+| 10 | 21 Byte | 4,23 s | 17,07 s |
+| 12 | 25 Byte | 31,82 s | nicht gemessen |
 
 Die Reihe bricht ab, sobald ein Wert das Budget reißt; der 12-Sterne-Fall
 wurde im gedrosselten Lauf deshalb nicht mehr ausgeführt.

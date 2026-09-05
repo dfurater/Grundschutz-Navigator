@@ -15,6 +15,12 @@
 // gesteuerten Chromium.
 //
 //   node scripts/measure-class2-budget.mjs [--throttle 1,4] [--repeat 3] [--json <pfad>]
+//                                          [--scale 125000,250000,500000,1000000] [--skip-glob]
+//
+// `--scale` misst die knotenskalierbaren Fixtures zusätzlich an mehreren
+// Knotenzahlen. Daraus wird `maxNodes` gegen das Budget hergeleitet, statt von
+// einem einzelnen Messpunkt aus hochgerechnet zu werden. `--skip-glob` lässt
+// die Glob-Reihe aus, deren größte Muster allein Minuten kosten.
 //
 // Die reine Logik (Argumente, Verdichtung, Berichtsformat) liegt in
 // `measureClass2BudgetReport.mjs` und ist dort kolokiert getestet; diese Datei
@@ -53,10 +59,14 @@ const GLOB_STAR_COUNTS = [4, 6, 8, 10, 12];
 const GLOB_SUBJECT_LENGTH = 40;
 const GLOB_BUDGET_MS = 10_000;
 
+/** Fixtures, deren Kosten an der Knotenzahl hängen und die deshalb skaliert messbar sind. */
+const SCALABLE_FIXTURES = ['node-bound', 'heap-bound', 'combined-bound'];
+
 const FIXTURE_ORDER = [
   'byte-bound',
   'node-bound',
   'depth-bound',
+  'heap-bound',
   'base64-bound',
   'combined-bound',
 ];
@@ -74,7 +84,7 @@ class HeapProbe {
   }
 }
 
-async function measureFixture(page, heap, fixtureId) {
+async function measureFixture(page, heap, fixtureId, totalNodes = null) {
   const call = (method, ...args) =>
     page.evaluate(
       ([name, parameters]) => globalThis.__gspp382[name](...parameters),
@@ -82,7 +92,9 @@ async function measureFixture(page, heap, fixtureId) {
     );
 
   const baseline = await heap.usedBytes();
-  const prepared = await call('prepare', fixtureId);
+  const prepared = totalNodes === null
+    ? await call('prepare', fixtureId)
+    : await call('prepareScaled', fixtureId, totalNodes);
 
   const stage1 = await call('stage1');
   const objectChain = await call('objectChain');
@@ -110,12 +122,30 @@ async function measureFixture(page, heap, fixtureId) {
   };
 }
 
-async function measureFixtureRepeatedly(page, heap, fixtureId, repeat) {
+async function measureFixtureRepeatedly(page, heap, fixtureId, repeat, totalNodes = null) {
   const samples = [];
   for (let attempt = 0; attempt < repeat; attempt += 1) {
-    samples.push(await measureFixture(page, heap, fixtureId));
+    samples.push(await measureFixture(page, heap, fixtureId, totalNodes));
   }
-  return summarizeSamples(samples);
+  const summary = summarizeSamples(samples);
+  return totalNodes === null ? summary : { ...summary, totalNodes };
+}
+
+/**
+ * Misst die knotenskalierbaren Fixtures an mehreren Knotenzahlen.
+ *
+ * Das ist die Grundlage, auf der `maxNodes` gegen das Budget HERGELEITET wird
+ * statt hochgerechnet: Jeder Stützpunkt ist eine eigene Messung mit eigenem
+ * Dokument, und die Bytegrenze bleibt dabei ausgeschöpft.
+ */
+async function measureScale(page, heap, nodeCounts, repeat) {
+  const rows = [];
+  for (const fixtureId of SCALABLE_FIXTURES) {
+    for (const totalNodes of nodeCounts) {
+      rows.push(await measureFixtureRepeatedly(page, heap, fixtureId, repeat, totalNodes));
+    }
+  }
+  return rows;
 }
 
 async function measureGlob(page) {
@@ -156,6 +186,15 @@ async function measureInBrowser(browser, origin, options) {
         await session.send('Emulation.setCPUThrottlingRate', { rate: throttleRate });
       }
 
+      // Vor der ersten Messung, NACH dem Setzen der Drosselung: Meldet die
+      // Long-Task-Instrumentierung in diesem Kontext überhaupt etwas? Ohne
+      // diese Probe ist jede später gemessene Blockierzeit von null
+      // zweideutig — freier Main Thread oder blinde Messung. Wirft die Probe,
+      // bricht der Lauf ab, statt ein eingehaltenes UI-Budget zu behaupten.
+      const observability = await page.evaluate(
+        () => globalThis.__gspp382.assertLongTaskObservability(),
+      );
+
       const heap = new HeapProbe(session);
       const fixtures = [];
       for (const fixtureId of FIXTURE_ORDER) {
@@ -166,8 +205,12 @@ async function measureInBrowser(browser, origin, options) {
         throttleRate,
         repeat: options.repeat,
         environment,
+        observability,
         fixtures,
-        glob: await measureGlob(page),
+        scale: options.scaleNodes === null
+          ? null
+          : await measureScale(page, heap, options.scaleNodes, options.repeat),
+        glob: options.skipGlob ? [] : await measureGlob(page),
       });
     } finally {
       await context.close();
