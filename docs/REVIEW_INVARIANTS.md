@@ -122,7 +122,7 @@ Tailwind CSS v4 läuft ausschließlich über das Vite-Plugin @tailwindcss/vite. 
 
 **Scope:** `src/**/*.ts`, `src/**/*.tsx`
 
-Projektinterne Imports nutzen den Alias @/. Melde relative Importpfade, die das eigene Verzeichnis verlassen.
+Projektinterne Imports in src/**/*.ts und src/**/*.tsx nutzen den Alias @/. Melde dort relative Importpfade, die das eigene Verzeichnis verlassen. Außerhalb von src/ gilt die Regel nicht: Node-Wartungs- und Build-Skripte unter scripts/ laufen ohne Vite und ohne tsconfig-Aliasauflösung, @/ ist dort nicht auflösbar. Sie binden gemeinsame Fakten deshalb über einen relativen Pfad auf ein reines .mjs-Modul ein — etwa ../src/domain/sourceRegistry.mjs, ../src/domain/oscalVersionMatrix.mjs oder ../src/domain/class2ImportLimits.mjs. Das ist der vorgesehene Weg und kein Befund.
 
 ### R13-deutsche-oberflaeche
 
