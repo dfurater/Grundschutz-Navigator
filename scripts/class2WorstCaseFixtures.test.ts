@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CLASS_2_LIMITS_UNDER_TEST,
   CLASS_2_WORST_CASE_FIXTURES,
+  assertScalableNodeCounts,
   buildBase64BoundDocumentText,
   buildBase64CeilingDocumentText,
   buildByteBoundDocumentText,
@@ -243,6 +244,28 @@ describe('Worst-Case-Fixtures der Klasse-2-Grenzen', () => {
       expect(Math.floor(encoded.length / 4) * 3 - padding).toBe(decodedBytes);
     },
   );
+
+  it('nennt für jedes skalierbare Fixture die wirklich kleinste baubare Knotenzahl', () => {
+    // `minScaledNodes` ist eine Behauptung über den Builder daneben. Läuft sie
+    // von ihm weg, weist die Prüfung entweder gültige Stützpunkte ab oder
+    // lässt einen durch, der den Messlauf nach dem Browserstart abbrechen
+    // lässt. Der Test bindet beide Seiten aneinander: auf dem Minimum baut es,
+    // eine Einheit darunter nicht.
+    for (const fixture of CLASS_2_WORST_CASE_FIXTURES) {
+      if (fixture.buildScaled === undefined) continue;
+
+      expect(() => fixture.buildScaled!(fixture.minScaledNodes!)).not.toThrow();
+      expect(() => fixture.buildScaled!(fixture.minScaledNodes! - 2)).toThrow(RangeError);
+    }
+  });
+
+  it('weist Stützpunkte zurück, die nicht jedes skalierbare Fixture trägt', () => {
+    // Genau die Werte aus dem Greptile-Befund zu e786a39: Beide passieren die
+    // syntaktische Prüfung und scheiterten früher erst im laufenden Browser.
+    expect(() => assertScalableNodeCounts([4])).toThrow(/node-bound/);
+    expect(() => assertScalableNodeCounts([12])).toThrow(/combined-bound/);
+    expect(assertScalableNodeCounts([14, 62_500])).toEqual([14, 62_500]);
+  });
 
   it('erzeugt ein Glob-Muster, das an der produktiven Übersetzung scheitert', () => {
     const { pattern, subject } = buildGlobPatternWorstCase(3, 12);

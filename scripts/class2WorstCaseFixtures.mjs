@@ -74,8 +74,10 @@ export const CATALOG_WRAPPER_NODES = 8;
 export const CATALOG_WRAPPER_BYTES = CATALOG_HEAD.length + CATALOG_TAIL.length;
 
 /**
- * Feste Bytes um die Mitglieder von `heap-bound` herum: die beiden Klammern
- * des Wurzelarrays, das Komma vor dem Füller und dessen beide Anführungszeichen.
+ * Feste Bytes um die Mitglieder von `heap-bound` herum: die beiden Klammern des
+ * Wurzelarrays und die beiden Anführungszeichen des Füllers. Das Komma vor dem
+ * Füller gehört nicht dazu — `pairs * (keyLength + 8)` schlägt jedem Paar
+ * bereits ein Trennzeichen zu und deckt damit alle Kommata ab, auch das letzte.
  */
 const MEMBER_OVERHEAD_BYTES = 4;
 
@@ -397,6 +399,37 @@ export function buildGlobPatternWorstCase(stars, subjectLength) {
 }
 
 /**
+ * Weist Stützpunkte zurück, aus denen nicht jedes skalierbare Fixture gebaut
+ * werden kann.
+ *
+ * Der Messlauf führt jeden angenommenen Wert für SÄMTLICHE skalierbaren
+ * Fixtures aus. Ein Wert, den nur eines von ihnen trägt, beendet den Lauf
+ * deshalb mitten in der Reihe mit einem Konstruktionsfehler, nachdem Vite und
+ * Chromium bereits gestartet sind — statt eines Berichts bleibt ein Abbruch
+ * (Greptile-Befund zu e786a39). Die Prüfung gehört deshalb vor den
+ * Serverstart und hierher zu den Fixtures, deren Konstruktion die Anforderung
+ * überhaupt erst stellt.
+ *
+ * @param {number[]} nodeCounts Gewünschte Stützpunkte.
+ */
+export function assertScalableNodeCounts(nodeCounts) {
+  const scalable = CLASS_2_WORST_CASE_FIXTURES.filter(
+    (fixture) => fixture.buildScaled !== undefined,
+  );
+  for (const count of nodeCounts) {
+    for (const fixture of scalable) {
+      if (count < fixture.minScaledNodes) {
+        throw new RangeError(
+          `Stützpunkt ${count} trägt das Fixture ${fixture.id} nicht `
+          + `(mindestens ${fixture.minScaledNodes} Knoten)`,
+        );
+      }
+    }
+  }
+  return nodeCounts;
+}
+
+/**
  * Registrierte Fixtures in Messreihenfolge. Jeder Eintrag benennt die Grenze,
  * auf der er exakt liegt, damit das Messprotokoll die Zuordnung nicht raten
  * muss, und ob er die Kette vollständig bis zur Schemastufe durchläuft.
@@ -415,6 +448,9 @@ export const CLASS_2_WORST_CASE_FIXTURES = Object.freeze([
     reachesSchemaStage: true,
     label: 'Knotengrenze 1 000 000, maximale Containerzahl',
     build: () => buildNodeBoundDocumentText(),
+    // Kleinste Knotenzahl, aus der dieses Fixture überhaupt baubar ist:
+    // Hülle, `groups`-Array und eine Minimalgruppe.
+    minScaledNodes: 12,
     buildScaled: (totalNodes) => buildNodeBoundDocumentText(totalNodes),
   }),
   Object.freeze({
@@ -433,6 +469,9 @@ export const CLASS_2_WORST_CASE_FIXTURES = Object.freeze([
     // Die Bytegrenze bleibt beim Skalieren ausgeschöpft: Ein Angreifer gibt
     // sie nicht auf, nur weil die Knotengrenze sinkt — die Schlüssel werden
     // dann eben länger.
+    // Kleinste Knotenzahl, aus der dieses Fixture überhaupt baubar ist:
+    // Wurzelarray, ein Knotenpaar und der Füllerstring.
+    minScaledNodes: 4,
     buildScaled: (totalNodes) => buildHeapBoundDocumentText(totalNodes),
   }),
   Object.freeze({
@@ -448,6 +487,9 @@ export const CLASS_2_WORST_CASE_FIXTURES = Object.freeze([
     reachesSchemaStage: true,
     label: 'Knoten- und Bytegrenze gleichzeitig ausgeschöpft',
     build: () => buildCombinedBoundDocumentText(),
+    // Kleinste Knotenzahl, aus der dieses Fixture überhaupt baubar ist:
+    // wie `node-bound`, zusätzlich die Füllergruppe.
+    minScaledNodes: 14,
     buildScaled: (totalNodes) => buildCombinedBoundDocumentText(totalNodes),
   }),
 ]);

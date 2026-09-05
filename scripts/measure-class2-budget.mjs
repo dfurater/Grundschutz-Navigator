@@ -50,6 +50,7 @@ import {
   renderReport,
   summarizeSamples,
 } from './measureClass2BudgetReport.mjs';
+import { assertScalableNodeCounts } from './class2WorstCaseFixtures.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const HARNESS_PATH = '/scripts/measure/class2-budget.html';
@@ -221,6 +222,11 @@ async function measureInBrowser(browser, origin, options) {
 
 async function run() {
   const options = parseArguments(process.argv.slice(2));
+  // VOR dem Serverstart: Ein Stützpunkt, den nicht jedes skalierbare Fixture
+  // trägt, würde den Lauf sonst erst nach dem Start von Vite und Chromium
+  // abbrechen — ohne Bericht und mit einem Konstruktionsfehler statt einer
+  // lesbaren Meldung.
+  if (options.scaleNodes !== null) assertScalableNodeCounts(options.scaleNodes);
 
   const server = await createServer({
     configFile: false,
