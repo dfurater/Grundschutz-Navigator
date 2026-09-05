@@ -27,16 +27,36 @@
 // hält nur die Orchestrierung, die ohne Browser nicht prüfbar ist.
 //
 // Zeit: `performance.now()` in der Seite um genau den gemessenen Schritt.
-// Speicher: CDP `HeapProfiler.collectGarbage` + `Runtime.getHeapUsage`.
+// Speicher: `performance.measureUserAgentSpecificMemory()` in der Seite. Diese
+// Messung erfasst den gesamten Agenten — JS-Heap, externe Blink-Strings und
+// `ArrayBuffer`-Backing-Stores — und verlangt dafür eine cross-origin
+// isolierte Seite; der temporäre Messserver setzt COOP/COEP entsprechend. Sie
+// kostet je Aufruf rund zehn Sekunden, weshalb der Speicher je Fixture einmal
+// und nicht je Wiederholung erhoben wird. Ein Lauf mit `--scale` dauert
+// dadurch Minuten bis Dutzende von Minuten; das ist für ein Wartungswerkzeug
+// der richtige Tausch gegen eine Zahl, die stimmt.
 //
-// Zwei Messgrenzen, die die Spitzenbildung bestimmen:
-//   1. `Runtime.getHeapUsage` liefert den V8-JS-Heap. Backing Stores von
-//      `ArrayBuffer`/`Uint8Array` liegen als externer Speicher daneben; die
-//      Eingabebytes werden deshalb arithmetisch zugeschlagen.
-//   2. Die erzwungene Sammlung vor jeder Messung räumt die Identitätsmenge der
-//      Strukturinvariante ab, sobald deren Lauf zurückgekehrt ist. Sie wird
-//      darum in einem eigenen Schritt noch einmal aufgebaut, festgehalten und
-//      separat gemessen — sonst fehlte der transiente Teil der Spitze.
+// DIE SPEICHERSPITZE WIRD AUS DREI GEMESSENEN POSTEN GEBILDET, weil im Tab
+// zwei Isolate an demselben Import arbeiten und ein Puffer doppelt liegt:
+//
+//   1. `chainPeak` — der größere der beiden Höchststände der Prüfkette
+//      (Parse-Stufe und Objektkette; ihre Bestände unterscheiden sich, siehe
+//      Harnisch). Produktiv ist das der Bestand des Worker-Isolats; dessen
+//      Speicher wird von der Messung im Hauptkontext nicht ausgewiesen,
+//      weshalb der Harnisch dieselben Einheiten über dasselbe Dokument
+//      zusätzlich direkt im Tab ausführt.
+//   2. `mainThread` — was der PRODUKTIVE Weg im Hauptkontext hinterlässt, im
+//      Wesentlichen der aus der Worker-Antwort strukturiert deserialisierte
+//      Ergebnisgraph. Gemessen um `importClass2OscalDocument` herum, gegen
+//      eine eigene Basislinie mit bereits gehaltenen Eingabebytes.
+//   3. Die Eingabebytes EIN ZWEITES MAL: `copyForTransfer` in
+//      `src/adapters/oscalImportGate.ts` legt für die Übergabe eine
+//      vollständige Kopie an, die an den Worker übergeht, während der Aufrufer
+//      sein Original behält. Posten 1 enthält davon nur eine.
+//
+// Posten 1 und 2 bestehen gleichzeitig: Der Worker wird erst nach Eintreffen
+// der Antwort beendet, sein Bestand lebt also noch, während der Hauptkontext
+// den Klon aufbaut.
 // =============================================================================
 
 import { createServer } from 'vite';
@@ -61,75 +81,162 @@ const GLOB_SUBJECT_LENGTH = 40;
 const GLOB_BUDGET_MS = 10_000;
 
 /** Fixtures, deren Kosten an der Knotenzahl hängen und die deshalb skaliert messbar sind. */
-const SCALABLE_FIXTURES = ['node-bound', 'heap-bound', 'combined-bound'];
+const SCALABLE_FIXTURES = ['node-bound', 'heap-bound', 'record-bound', 'combined-bound'];
 
 const FIXTURE_ORDER = [
   'byte-bound',
   'node-bound',
   'depth-bound',
   'heap-bound',
+  'record-bound',
   'base64-bound',
   'combined-bound',
 ];
 
-class HeapProbe {
-  constructor(session) {
-    this.session = session;
+/**
+ * Cross-Origin-Isolation für den temporären Messserver.
+ *
+ * `performance.measureUserAgentSpecificMemory()` steht nur einer isolierten
+ * Seite zur Verfügung. Der Server lebt allein für die Dauer des Messlaufs und
+ * liefert ausschließlich Repository-Dateien aus; die Anwendung selbst ist von
+ * dieser Einstellung nicht berührt.
+ */
+const crossOriginIsolation = {
+  name: 'gspp382-cross-origin-isolation',
+  configureServer(server) {
+    server.middlewares.use((_request, response, next) => {
+      response.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+      response.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+      next();
+    });
+  },
+};
+
+/**
+ * Speichersonde samt Abdruckregister.
+ *
+ * Das Register lebt über alle Drosselungsläufe hinweg, weil der Speicherbedarf
+ * an der Datenstruktur hängt und nicht an der Taktrate: Ein zweiter Lauf mit
+ * `Emulation.setCPUThrottlingRate` misst dieselben Bytes noch einmal und
+ * kostet dafür bei rund zehn Sekunden je Messung Dutzende Minuten. Erhoben
+ * wird deshalb einmal; welcher Lauf das war, weist der Bericht aus.
+ */
+class MemoryProbe {
+  constructor() {
+    this.page = null;
+    this.throttleRate = null;
+    this.measuredAtThrottleRate = null;
+    this.footprints = new Map();
   }
 
-  /** Erzwungene Sammlung, dann Momentaufnahme — ohne sie misst man Müll mit. */
+  attach(page, throttleRate) {
+    this.page = page;
+    this.throttleRate = throttleRate;
+  }
+
+  /** Speicherstand des Agenten; die Messung sammelt vorher selbst ein. */
   async usedBytes() {
-    await this.session.send('HeapProfiler.collectGarbage');
-    const usage = await this.session.send('Runtime.getHeapUsage');
-    return usage.usedSize;
+    return this.page.evaluate(() => globalThis.__gspp382.usedBytes());
+  }
+
+  async footprintFor(fixtureId, totalNodes) {
+    const key = `${fixtureId}:${totalNodes ?? 'grenze'}`;
+    const known = this.footprints.get(key);
+    if (known !== undefined) return known;
+
+    const footprint = await measureMemory(this.page, this, fixtureId, totalNodes);
+    this.measuredAtThrottleRate ??= this.throttleRate;
+    this.footprints.set(key, footprint);
+    return footprint;
   }
 }
 
-async function measureFixture(page, heap, fixtureId, totalNodes = null) {
-  const call = (method, ...args) =>
+/** Ruft eine Harnischmethode in der Seite auf. */
+function harnessCall(page) {
+  return (method, ...args) =>
     page.evaluate(
       ([name, parameters]) => globalThis.__gspp382[name](...parameters),
       [method, args],
     );
+}
 
-  const baseline = await heap.usedBytes();
+/**
+ * Ein Zeitdurchlauf eines Fixtures — ohne Speichersonden.
+ *
+ * Zeit und Speicher werden getrennt erhoben, weil sie verschieden teuer sind:
+ * Ein Zeitdurchlauf kostet Sekundenbruchteile bis Sekunden und wird mehrfach
+ * wiederholt, damit der Median JIT- und GC-Ausreißer verliert. Eine
+ * Speichermessung kostet rund zehn Sekunden und ist ihrerseits deterministisch
+ * — sie hängt an der Datenstruktur, nicht am Lauf.
+ */
+async function measureTiming(page, fixtureId, totalNodes = null) {
+  const call = harnessCall(page);
   const prepared = totalNodes === null
     ? await call('prepare', fixtureId)
     : await call('prepareScaled', fixtureId, totalNodes);
 
   const stage1 = await call('stage1');
   const objectChain = await call('objectChain');
-  const afterChain = await heap.usedBytes();
-
-  // Der transiente Anteil: dieselbe Identitätsmenge noch einmal, diesmal
-  // festgehalten, damit die Sammlung sie nicht vor der Messung abräumt.
-  const identity = await call('identitySetCost');
-  const afterIdentitySet = await heap.usedBytes();
-
   const endToEnd = await call('endToEnd');
   await call('release');
 
+  return { ...prepared, stage1, objectChain, endToEnd };
+}
+
+/**
+ * Der Speicherabdruck eines Fixtures, einmal erhoben.
+ *
+ * Zwei Durchläufe mit getrennten Basislinien: erst die Prüfkette direkt im
+ * Tab mit ihren beiden festgehaltenen Höchstständen, dann der produktive Weg
+ * mit Worker. Der zweite braucht eine eigene Basislinie, weil sonst der
+ * Bestand des ersten nicht vom Ergebnisklon zu trennen wäre.
+ */
+async function measureMemory(page, memory, fixtureId, totalNodes = null) {
+  const call = harnessCall(page);
+  const prepare = () => (totalNodes === null
+    ? call('prepare', fixtureId)
+    : call('prepareScaled', fixtureId, totalNodes));
+
+  const baseline = await memory.usedBytes();
+  const prepared = await prepare();
+  await call('stage1');
+  await call('objectChain');
+
+  // Die beiden Höchststände der Kette nacheinander, jeder festgehalten. Was
+  // sie enthalten und warum sie sich unterscheiden, steht im Harnisch.
+  const stage1Live = await call('holdStage1Peak');
+  const stage1PeakBytes = await memory.usedBytes();
+  const chainLive = await call('holdChainPeak');
+  const chainPeakBytes = await memory.usedBytes();
+
+  await call('release');
+  await prepare();
+  const workerBaseline = await memory.usedBytes();
+  await call('endToEnd');
+  const afterEndToEnd = await memory.usedBytes();
+  await call('release');
+
   return {
-    ...prepared,
-    stage1,
-    objectChain,
-    endToEnd,
-    containers: identity.containers,
+    live: { ...stage1Live, ...chainLive },
     heap: composeHeapFootprint({
-      retainedBytes: afterChain - baseline,
-      identitySetBytes: afterIdentitySet - afterChain,
+      stage1PeakBytes: stage1PeakBytes - baseline,
+      chainPeakBytes: chainPeakBytes - baseline,
+      mainThreadBytes: afterEndToEnd - workerBaseline,
       inputBytes: prepared.bytes,
     }),
   };
 }
 
-async function measureFixtureRepeatedly(page, heap, fixtureId, repeat, totalNodes = null) {
+async function measureFixtureRepeatedly(page, memory, fixtureId, repeat, totalNodes = null) {
   const samples = [];
   for (let attempt = 0; attempt < repeat; attempt += 1) {
-    samples.push(await measureFixture(page, heap, fixtureId, totalNodes));
+    samples.push(await measureTiming(page, fixtureId, totalNodes));
   }
   const summary = summarizeSamples(samples);
-  return totalNodes === null ? summary : { ...summary, totalNodes };
+  const footprint = await memory.footprintFor(fixtureId, totalNodes);
+  return totalNodes === null
+    ? { ...summary, ...footprint }
+    : { ...summary, ...footprint, totalNodes };
 }
 
 /**
@@ -139,11 +246,11 @@ async function measureFixtureRepeatedly(page, heap, fixtureId, repeat, totalNode
  * statt hochgerechnet: Jeder Stützpunkt ist eine eigene Messung mit eigenem
  * Dokument, und die Bytegrenze bleibt dabei ausgeschöpft.
  */
-async function measureScale(page, heap, nodeCounts, repeat) {
+async function measureScale(page, memory, nodeCounts, repeat) {
   const rows = [];
   for (const fixtureId of SCALABLE_FIXTURES) {
     for (const totalNodes of nodeCounts) {
-      rows.push(await measureFixtureRepeatedly(page, heap, fixtureId, repeat, totalNodes));
+      rows.push(await measureFixtureRepeatedly(page, memory, fixtureId, repeat, totalNodes));
     }
   }
   return rows;
@@ -164,13 +271,12 @@ async function measureGlob(page) {
 
 async function measureInBrowser(browser, origin, options) {
   const runs = [];
+  const memory = new MemoryProbe();
   for (const throttleRate of options.throttleRates) {
     const context = await browser.newContext();
     try {
       const page = await context.newPage();
       const session = await context.newCDPSession(page);
-      await session.send('Runtime.enable');
-      await session.send('HeapProfiler.enable');
 
       page.on('pageerror', (error) => {
         throw error;
@@ -196,10 +302,21 @@ async function measureInBrowser(browser, origin, options) {
         () => globalThis.__gspp382.assertLongTaskObservability(),
       );
 
-      const heap = new HeapProbe(session);
+      // Vor der ersten Speichermessung: Sieht dieser Messweg überhaupt, was er
+      // sehen soll? Der Vorgänger sah Puffer und externe Strings nicht.
+      const memoryObservability = await page.evaluate(
+        () => globalThis.__gspp382.assertMemoryObservability(),
+      );
+
+      // Schema-Chunk laden und Ajv kompilieren, bevor die erste Basislinie
+      // steht: Dieser einmalige Modulaufbau gehört zu keinem Dokument und
+      // würde sonst dem ersten Fixture zugeschlagen.
+      await page.evaluate(() => globalThis.__gspp382.warmUp());
+
+      memory.attach(page, throttleRate);
       const fixtures = [];
       for (const fixtureId of FIXTURE_ORDER) {
-        fixtures.push(await measureFixtureRepeatedly(page, heap, fixtureId, options.repeat));
+        fixtures.push(await measureFixtureRepeatedly(page, memory, fixtureId, options.repeat));
       }
 
       runs.push({
@@ -207,10 +324,12 @@ async function measureInBrowser(browser, origin, options) {
         repeat: options.repeat,
         environment,
         observability,
+        memoryObservability,
+        memoryThrottleRate: memory.measuredAtThrottleRate ?? throttleRate,
         fixtures,
         scale: options.scaleNodes === null
           ? null
-          : await measureScale(page, heap, options.scaleNodes, options.repeat),
+          : await measureScale(page, memory, options.scaleNodes, options.repeat),
         glob: options.skipGlob ? [] : await measureGlob(page),
       });
     } finally {
@@ -231,8 +350,23 @@ async function run() {
   const server = await createServer({
     configFile: false,
     root: REPO_ROOT,
+    plugins: [crossOriginIsolation],
     resolve: { alias: { '@': resolve(REPO_ROOT, 'src') } },
-    server: { port: 0, strictPort: false },
+    server: {
+      port: 0,
+      strictPort: false,
+      // KEIN HMR und kein Dateiwächter. Der Messlauf dauert Minuten bis
+      // Dutzende von Minuten, und in dieser Zeit darf die Seite unter keinen
+      // Umständen neu geladen werden: Ein Reload zerstört den
+      // Ausführungskontext samt festgehaltenem Bestand, und der Lauf endet
+      // ohne Bericht. Der Server liest den gesamten Repository-Baum, also auch
+      // fremde Git-Worktrees unter `.worktrees/`; eine Änderung dort — eine
+      // parallele Agentensitzung genügt — hat einen vollständigen Messlauf
+      // dieser Auflage bereits abgebrochen. Der Server lebt ohnehin nur für
+      // die Dauer des Laufs und liefert einen unveränderlichen Stand aus.
+      hmr: false,
+      watch: { ignored: ['**/.worktrees/**', '**/node_modules/**', '**/dist/**'] },
+    },
     // Keine App-Plugins: der Harnisch importiert reine Domänenmodule und
     // braucht weder React noch Tailwind noch Katalogdaten. Ajv liegt als CJS
     // vor und muss vom Dep-Optimizer vorgebündelt werden, sonst scheitert der

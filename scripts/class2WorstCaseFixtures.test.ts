@@ -25,6 +25,7 @@ import {
   buildGlobPatternWorstCase,
   buildHeapBoundDocumentText,
   buildNodeBoundDocumentText,
+  buildRecordBoundDocumentText,
   decodedBase64BytesForLength,
   encodedBase64ForDecodedBytes,
   toBytes,
@@ -79,6 +80,7 @@ describe('Worst-Case-Fixtures der Klasse-2-Grenzen', () => {
       'node-bound',
       'depth-bound',
       'heap-bound',
+      'record-bound',
       'base64-bound',
       'combined-bound',
     ]);
@@ -175,6 +177,61 @@ describe('Worst-Case-Fixtures der Klasse-2-Grenzen', () => {
       stage: 'invariante',
       code: 'OSCAL_RESOURCE_NODE_LIMIT_EXCEEDED',
     });
+  });
+
+  it('schöpft mit dem Record-Fixture Byte- und Knotengrenze in EINEM Container aus', { timeout: 120_000 }, () => {
+    // Die Lücke aus dem Codex-Befund zu 84ca1f6: Die kurzlebigen Allokationen
+    // der Prüfkette — `Object.entries(record)` in `visitRecord`, die
+    // `Reflect.ownKeys`-Arrays in Formprüfung, Knotenuntergrenze und
+    // Bytebuchhaltung — wachsen mit der BREITE eines Containers, nicht mit der
+    // Knotenzahl. Ein Satz aus schmalen Containern sieht davon nichts.
+    const nodes = CLASS_2_LIMITS_UNDER_TEST.maxNodes;
+    const bytes = CLASS_2_LIMITS_UNDER_TEST.maxBytes;
+    const text = buildRecordBoundDocumentText(nodes, bytes);
+
+    expect(toBytes(text).byteLength).toBe(bytes);
+    // Alle Knoten bis auf die Wurzel hängen an EINEM Container; die Schlüssel
+    // sind paarweise verschieden, sonst würde die Duplicate-Member-Prüfung in
+    // Stufe 1 abweisen und die Breite käme nie zustande.
+    const members = Object.keys(JSON.parse(text) as Record<string, unknown>);
+    expect(members.length).toBe(nodes - 1);
+    expect(new Set(members).size).toBe(nodes - 1);
+
+    // Auf der Grenze läuft es durch Stufe 1 und die Invariante und wird erst im
+    // Root-Dispatch abgewiesen — nachdem der Speicher belegt ist.
+    expect(verdictFor(text)).toEqual({
+      stage: 'dispatch',
+      code: 'OSCAL_ROOT_KEY_AMBIGUOUS',
+    });
+    expect(verdictFor(buildRecordBoundDocumentText(nodes + 1, bytes))).toEqual({
+      stage: 'invariante',
+      code: 'OSCAL_RESOURCE_NODE_LIMIT_EXCEEDED',
+    });
+  });
+
+  it('deckt mit dem Satz beide Enden der Breitenachse ab', () => {
+    // Schmalster und breitester RECORD des Satzes. `Object.entries` und die
+    // `Reflect.ownKeys`-Arrays der Formprüfung entstehen nur an Records, nicht
+    // an Arrays — Arrays laufen in `visitArray` über `for…of` ohne Paar-Array.
+    // Fällt einer der beiden Pole weg, misst der Lauf die transienten Kosten
+    // wieder nur an einem Ende.
+    const widestRecord = (text: string): number => {
+      let maximum = 0;
+      (function walk(value: unknown): void {
+        if (value === null || typeof value !== 'object') return;
+        if (Array.isArray(value)) {
+          for (const element of value) walk(element);
+          return;
+        }
+        const keys = Object.keys(value as Record<string, unknown>);
+        maximum = Math.max(maximum, keys.length);
+        for (const key of keys) walk((value as Record<string, unknown>)[key]);
+      })(JSON.parse(text));
+      return maximum;
+    };
+
+    expect(widestRecord(buildHeapBoundDocumentText(1_000))).toBe(1);
+    expect(widestRecord(buildRecordBoundDocumentText(1_000))).toBe(999);
   });
 
   it('variiert im Heap-Fixture die Objektform mit der Containerzahl', { timeout: 60_000 }, () => {

@@ -10,6 +10,28 @@
 // zerlegt, weil die Heap-Messung zwischen den Schritten über CDP aus dem
 // Node-Prozess erfolgt und das Zwischenergebnis dafür referenziert bleiben
 // muss.
+//
+// WARUM DIE SPITZE GEHALTEN UND NICHT ABGETASTET WIRD
+//
+// Eine Momentaufnahme des Heaps mitten in der Prüfkette gibt es nicht: Jede
+// CDP-Antwort — `Runtime.getHeapUsage` eingeschlossen — wird vom Inspektor des
+// betroffenen Isolats bedient und liegt in dessen Warteschlange, solange dort
+// synchroner JavaScript-Code läuft. Die Kette ist von ihrem Eintritt bis zu
+// ihrer Rückkehr genau das. Aus derselben Warteschlange heraus lässt sich der
+// Verlauf des Speichers während des Laufs nicht abtasten, und für das
+// Worker-Isolat gilt dasselbe.
+//
+// Der Harnisch baut deshalb den gleichzeitig lebenden Bestand JEDER der beiden
+// Stufen nacheinander auf, hält ihn fest und lässt messen. Jeder Posten ist
+// dabei keine nachgebildete Schätzung, sondern dieselbe Datenstruktur, die die
+// produktive Kette anlegt, über denselben Graphen. Was die beiden Bestände
+// decken, steht bei `holdStage1Peak` und `holdChainPeak` an Ort und Stelle.
+//
+// Gemessen wird mit `performance.measureUserAgentSpecificMemory()`, nicht mit
+// CDP `Runtime.getHeapUsage`: Letzteres deckt allein den V8-JS-Heap und ließ
+// Puffer-Backing-Stores und externe Blink-Strings — zusammen zweistellige
+// MiB-Beträge — vollständig aus. `assertMemoryObservability` belegt vor jeder
+// Messreihe, dass der gewählte Weg sie sieht.
 // =============================================================================
 
 import { parseClass2OscalInput } from '@/domain/oscalImportProcessing';
@@ -20,6 +42,7 @@ import { walkOwnContainers } from '@/domain/oscalObjectWalk';
 import {
   CLASS_2_WORST_CASE_FIXTURES,
   buildGlobPatternWorstCase,
+  buildNodeBoundDocumentText,
   toBytes,
 } from '../class2WorstCaseFixtures.mjs';
 
@@ -46,7 +69,7 @@ const harness = {
 
     const build = await timed(() => fixture.build());
     const bytes = toBytes(build.value);
-    held = { bytes, parsed: null, processed: null, identitySet: null };
+    held = { bytes, parsed: null, processed: null, live: null, widestRecord: null, result: null };
     return {
       id: fixture.id,
       limit: fixture.limit,
@@ -78,7 +101,7 @@ const harness = {
 
     const build = await timed(() => fixture.buildScaled(totalNodes));
     const bytes = toBytes(build.value);
-    held = { bytes, parsed: null, processed: null, identitySet: null };
+    held = { bytes, parsed: null, processed: null, live: null, widestRecord: null, result: null };
     return {
       id: fixture.id,
       limit: fixture.limit,
@@ -114,29 +137,154 @@ const harness = {
   },
 
   /**
-   * Der transiente Anteil der Speicherspitze, den eine Messung NACH dem Lauf
-   * nicht mehr sehen kann.
+   * Der gleichzeitig lebende Bestand der PARSE-Stufe, festgehalten für eine
+   * Messung.
    *
-   * `enforceClass2ObjectGraphInvariants` hält während seines Durchlaufs eine
-   * `Set`-Identitätsmenge über jeden besuchten Container. Sobald die Funktion
-   * zurückkehrt, ist diese Menge unerreichbar und die erzwungene Sammlung vor
-   * der Heap-Messung räumt sie ab — die eigentliche Spitze bliebe unsichtbar
-   * (Greptile-Befund zu 6643714).
+   * Die zweite Auflage erhob nur, was den Lauf überdauert, plus die
+   * Identitätsmenge. Der Codex-Befund zu 84ca1f6 hat gezeigt, dass damit genau
+   * die kurzlebigen Strukturen fehlen. Die Kette hat zwei verschiedene
+   * Höchststände, und keiner von beiden ist die Summe aller Strukturen:
    *
-   * Dieser Schritt baut deshalb dieselbe Menge über denselben Containerbestand
-   * noch einmal auf und hält sie fest, damit der Node-Prozess sie messen kann.
-   * Er misst kein Modell, sondern exakt die Datenstruktur, die die Invariante
-   * anlegt: gleicher Typ, gleiche Elemente, gleiche Anzahl.
+   *   PARSE-STUFE (`parseClass2OscalInput`) hält gleichzeitig die
+   *   Eingabebytes, die dekodierte Zeichenkette (die lokale `text` lebt über
+   *   `JSON.parse` UND die anschließende Registrierung hinweg), das
+   *   Parse-Produkt sowie `visited` und `pending` des Registrierungsdurchlaufs.
+   *
+   *   OBJEKTKETTE (`processClass2OscalValue`) hält die Eingabebytes, das
+   *   Parse-Produkt, die Identitätsmenge und den Arbeitsvorrat des
+   *   Herkunftsdurchlaufs sowie das `Object.entries`-Paar-Array des gerade
+   *   besuchten Records — aber KEINE Zeichenkette mehr: Stufe 1 ist
+   *   zurückgekehrt, `text` ist unerreichbar.
+   *
+   * Jeder Posten ist keine nachgebildete Schätzung, sondern dieselbe
+   * Datenstruktur über denselben Graphen:
+   *
+   *   - `text` — `new TextDecoder('utf-8', { fatal: true }).decode(bytes)`,
+   *     dieselbe Zeile wie in Stufe 1.
+   *   - `containers` — die Identitätsmenge als `Set` über jeden Container,
+   *     aufgebaut über den produktiven `walkOwnContainers`. Sowohl `visited`
+   *     im Durchlauf-Helper als auch `seenContainers` in der
+   *     Strukturinvariante sind genau das; nie mehr als eine davon lebt.
+   *   - `pending` — der Arbeitsvorrat von `walkOwnContainers`. Seine
+   *     Obergrenze ist die Zahl aller Kind-Slots, und genau so lang wird das
+   *     Array hier.
+   *   - `entries` — das Paar-Array aus `Object.entries(record)`, das
+   *     `visitRecord` für den gerade besuchten Record über dessen ganze
+   *     Mitgliederschleife hält. Genommen wird der BREITESTE Record des
+   *     Graphen. Dieselbe Breite tragen auch die `Reflect.ownKeys`-Arrays in
+   *     Formprüfung, Knotenuntergrenze und Bytebuchhaltung.
    */
-  identitySetCost() {
-    if (!held.parsed?.ok) return { containers: 0 };
+  holdStage1Peak() {
+    if (!held.parsed?.ok) {
+      return { containers: 0, childSlots: 0, widestRecordMembers: 0, textLength: 0 };
+    }
+
+    const root = held.parsed.source;
     const containers = new Set();
-    walkOwnContainers(held.parsed.source, (container) => {
+    let childSlots = 0;
+    let widestRecord = null;
+    let widestRecordMembers = -1;
+    walkOwnContainers(root, (container) => {
       containers.add(container);
+      const keys = Reflect.ownKeys(container);
+      childSlots += keys.length;
+      if (!Array.isArray(container) && keys.length > widestRecordMembers) {
+        widestRecordMembers = keys.length;
+        widestRecord = container;
+      }
       return true;
     });
-    held.identitySet = containers;
-    return { containers: containers.size };
+
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(held.bytes);
+    held.widestRecord = widestRecord;
+    held.live = { text, containers, pending: new Array(childSlots).fill(root), entries: null };
+    return {
+      containers: containers.size,
+      childSlots,
+      widestRecordMembers: Math.max(widestRecordMembers, 0),
+      textLength: text.length,
+    };
+  },
+
+  /**
+   * Vom Höchststand der Parse-Stufe zu dem der Objektkette: Die Zeichenkette
+   * fällt weg, das Paar-Array des breitesten Records kommt hinzu.
+   */
+  holdChainPeak() {
+    if (held.live === null) return { entries: 0 };
+    held.live.text = null;
+    held.live.entries = held.widestRecord === null ? [] : Object.entries(held.widestRecord);
+    return { entries: held.live.entries.length };
+  },
+
+  /**
+   * Selbstprüfung des Speichermesswegs, vor jeder Messreihe.
+   *
+   * Der Vorgänger dieses Harnischs maß über CDP `Runtime.getHeapUsage`. Diese
+   * Zahl deckt den V8-JS-Heap und NUR ihn: Der `ArrayBuffer`-Backing-Store
+   * eines `Uint8Array` liegt daneben, und das Ergebnis von
+   * `TextDecoder.decode` ist in Blink ein externer String, dessen Inhalt
+   * ebenfalls nicht darin erscheint. Beides sind zweistellige MiB-Beträge im
+   * Tab, die der alten Messung vollständig entgingen — sie hätte ein
+   * gehaltenes Budget ausweisen können, das nicht gehalten wird.
+   *
+   * `performance.measureUserAgentSpecificMemory()` erfasst beides. Diese Probe
+   * belegt es für den konkreten Lauf, statt es zu behaupten: Sie hält einen
+   * beschriebenen Puffer bekannter Größe und verlangt, dass die Messung ihn
+   * sieht. Bleibt er aus, bricht der Lauf ab.
+   *
+   * @param {number} probeBytes Größe des Prüfpuffers.
+   */
+  async assertMemoryObservability(probeBytes = 16 * 1024 * 1024) {
+    if (globalThis.crossOriginIsolated !== true) {
+      throw new Error('Seite ist nicht cross-origin-isoliert; Speichermessung nicht verfügbar');
+    }
+    if (typeof performance.measureUserAgentSpecificMemory !== 'function') {
+      throw new Error('performance.measureUserAgentSpecificMemory() fehlt in diesem Browser');
+    }
+
+    const before = (await performance.measureUserAgentSpecificMemory()).bytes;
+    // Beschrieben, nicht nur reserviert: Ein nur angeforderter Puffer könnte
+    // vom Betriebssystem noch gar nicht hinterlegt sein.
+    const probe = new Uint8Array(probeBytes);
+    probe.fill(0x41);
+    globalThis.__gspp382Probe = probe;
+    const after = (await performance.measureUserAgentSpecificMemory()).bytes;
+    globalThis.__gspp382Probe = null;
+
+    const observedBytes = after - before;
+    if (observedBytes < probeBytes * 0.9) {
+      throw new Error(
+        `Speichermessung meldet zu wenig: ${probeBytes} Bytes Prüfpuffer ergaben `
+        + `${observedBytes} Bytes. Speicherwerte dieses Laufs wären wertlos.`,
+      );
+    }
+    return { probeBytes, observedBytes };
+  },
+
+  /** Speicherstand des gesamten Agenten: JS-Heap, externe Strings, Puffer. */
+  async usedBytes() {
+    return (await performance.measureUserAgentSpecificMemory()).bytes;
+  },
+
+  /**
+   * Gibt Parse-Produkt und Live-Bestand frei, behält aber die Eingabebytes.
+   *
+   * Die anschließende Ende-zu-Ende-Messung soll den Main-Thread-Anteil des
+   * PRODUKTIVEN Wegs zeigen — Pufferkopie und die strukturierte
+   * Deserialisierung der Worker-Antwort. Bliebe der Bestand der direkt im Tab
+   * gelaufenen Kette daneben liegen, wäre er darin nicht zu trennen.
+   */
+  releaseChain() {
+    held = {
+      bytes: held.bytes,
+      parsed: null,
+      processed: null,
+      live: null,
+      widestRecord: null,
+      result: null,
+    };
+    return true;
   },
 
   /**
@@ -242,6 +390,12 @@ const harness = {
       })
       .map((entry) => entry.ms);
 
+    // Das Ergebnis bleibt referenziert: Es ist der im Main Thread
+    // deserialisierte Ergebnisgraph, und genau der ist der Main-Thread-Anteil
+    // der Speicherspitze, den die zweite Auflage gar nicht erhoben hat. Der
+    // Node-Prozess misst ihn unmittelbar nach der Rückkehr.
+    held.result = value;
+
     return {
       ms: finishedAt - startedAt,
       submitMs,
@@ -296,6 +450,24 @@ const harness = {
       );
     }
     return { probeMs, observedMs: longest };
+  },
+
+  /**
+   * Einmaliges Aufwärmen vor der ersten Messung.
+   *
+   * Die Schemastufe lädt ihren Chunk nach und Ajv kompiliert den Validator
+   * beim ersten Lauf; beides bleibt danach im Modulspeicher liegen. Ohne
+   * Aufwärmen fiele dieser einmalige Aufbau in die Basislinie des ERSTEN
+   * Fixtures und höbe dessen ausgewiesenen Speicher um einen Betrag an, der
+   * mit dem Dokument nichts zu tun hat.
+   */
+  async warmUp() {
+    const bytes = toBytes(buildNodeBoundDocumentText(12));
+    const parsed = parseClass2OscalInput(bytes);
+    if (!parsed.ok) throw new Error('Aufwärmdokument scheitert in Stufe 1');
+    const processed = await processClass2OscalValue(parsed.source, CONTEXT);
+    if (!processed.ok) throw new Error('Aufwärmdokument scheitert in der Objektkette');
+    return true;
   },
 
   /** Referenzen freigeben, damit die anschließende Heap-Basislinie wieder greift. */

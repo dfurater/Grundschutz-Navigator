@@ -292,6 +292,88 @@ export function buildHeapBoundDocumentText(
   return `[${members.join(',')},"${'A'.repeat(fillerBytes)}"]`;
 }
 
+/**
+ * Schlüsselalphabet der breiten Objektform. 64 Zeichen, allesamt ohne
+ * JSON-Escape und ohne Ziffer an erster Stelle relevant — die Kodierung ist
+ * reine Eindeutigkeit, keine lesbare Nummer. Zur Basis 64 statt zur Basis 10,
+ * weil die Schlüssellänge hier der bindende Bytefaktor ist: Eine Million
+ * verschiedene Schlüssel brauchen so vier Zeichen statt sechs, und erst damit
+ * passt die volle Knotenzahl überhaupt in die Bytegrenze.
+ */
+const KEY_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_$';
+
+/** Kleinste Zeichenbreite, in der `count` verschiedene Schlüssel darstellbar sind. */
+function keyIndexWidth(count) {
+  let width = 1;
+  while (KEY_ALPHABET.length ** width < count) width += 1;
+  return width;
+}
+
+/** Feste Breite, damit alle Schlüssel gleich lang und die Bytelänge geschlossen sind. */
+function encodeKeyIndex(index, width) {
+  let encoded = '';
+  let rest = index;
+  for (let position = 0; position < width; position += 1) {
+    encoded = KEY_ALPHABET[rest % KEY_ALPHABET.length] + encoded;
+    rest = Math.floor(rest / KEY_ALPHABET.length);
+  }
+  return encoded;
+}
+
+/**
+ * Transienter Speicher-Worst-Case: EIN Objekt mit maximal vielen Mitgliedern.
+ *
+ * Der Codex-Befund zu 84ca1f6 hat gezeigt, dass die Messung bis dahin nur den
+ * Bestand nach dem Lauf plus die Identitätsmenge kannte und die kurzlebigen
+ * Allokationen der Prüfkette ausließ — namentlich die Schlüsselarrays und das
+ * Paar-Array aus `Object.entries(record)`. Deren Größe hängt nicht an der
+ * Knotenzahl, sondern an der BREITE des einzelnen Containers, und genau diese
+ * Achse hatte im Satz keine Form.
+ *
+ * `visitRecord` in [`oscalObjectGraph.ts`] legt für den gerade besuchten
+ * Record ein `Object.entries`-Paar-Array an, das über die gesamte
+ * Mitgliederschleife lebt — bei einem Record mit einer Million Mitgliedern ist
+ * das eine Million Zwei-Element-Arrays gleichzeitig. `isObjectFormAllowed`,
+ * `objectChildNodeFloorDelta` und `serializedObjectBytes` legen für denselben
+ * Record je ein `Reflect.ownKeys`-Array derselben Länge an. Ein Satz aus
+ * schmalen Containern sieht davon nichts.
+ *
+ * Konstruktion: Wurzelobjekt mit `totalNodes - 1` Mitgliedern, jedes ein
+ * eindeutiger Schlüssel auf einer Zahl. Die Bytegrenze bleibt ausgeschöpft —
+ * die Schlüssel werden so lang, wie der verbleibende Byteraum es zulässt, der
+ * unteilbare Rest hängt am letzten Schlüssel. Wie `heap-bound` ist das ein
+ * reines Angriffsdokument: Ein Wurzelobjekt mit freien Schlüsselnamen
+ * scheitert im Root-Dispatch, aber erst nachdem Stufe 1 und die
+ * Strukturinvariante ihre Arbeit samt Speicher geleistet haben.
+ *
+ * @param {number} totalNodes Zielzahl der Knoten; Wurzel plus je ein Mitglied.
+ * @param {number} totalBytes Zielgröße in Bytes.
+ */
+export function buildRecordBoundDocumentText(
+  totalNodes = CLASS_2_LIMITS_UNDER_TEST.maxNodes,
+  totalBytes = CLASS_2_LIMITS_UNDER_TEST.maxBytes,
+) {
+  const members = totalNodes - 1;
+  if (members < 1) throw new RangeError('totalNodes trägt kein Mitglied');
+
+  // Geschweifte Klammern plus je ein Trennkomma zwischen zwei Mitgliedern.
+  const structureBytes = 2 + (members - 1);
+  // Ein Mitglied kostet `"<key>":0`, also keyLength + 4 Bytes.
+  const width = keyIndexWidth(members);
+  const keyLength = Math.floor((totalBytes - structureBytes) / members) - 4;
+  if (keyLength < width) throw new RangeError('totalBytes trägt die Schlüssel nicht');
+
+  // Der unteilbare Rest verlängert den LETZTEN Schlüssel: Er wird dadurch
+  // länger als alle anderen und kann mit keinem von ihnen kollidieren.
+  const fillerBytes = totalBytes - structureBytes - members * (keyLength + 4);
+  const prefix = 'k'.repeat(keyLength - width);
+  const parts = Array.from({ length: members }, (_, index) => {
+    const padding = index === members - 1 ? 'k'.repeat(fillerBytes) : '';
+    return `"${prefix}${padding}${encodeKeyIndex(index, width)}":0`;
+  });
+  return `{${parts.join(',')}}`;
+}
+
 const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
 const BASE64_HEAD =
@@ -473,6 +555,17 @@ export const CLASS_2_WORST_CASE_FIXTURES = Object.freeze([
     // Wurzelarray, ein Knotenpaar und der Füllerstring.
     minScaledNodes: 4,
     buildScaled: (totalNodes) => buildHeapBoundDocumentText(totalNodes),
+  }),
+  Object.freeze({
+    id: 'record-bound',
+    limit: 'maxBytes',
+    reachesSchemaStage: false,
+    label: 'Ein Container maximaler Breite (ohne Schemastufe)',
+    build: () => buildRecordBoundDocumentText(),
+    // Kleinste Knotenzahl, aus der dieses Fixture baubar ist: Wurzelobjekt und
+    // ein Mitglied.
+    minScaledNodes: 2,
+    buildScaled: (totalNodes) => buildRecordBoundDocumentText(totalNodes),
   }),
   Object.freeze({
     id: 'base64-bound',

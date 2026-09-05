@@ -35,35 +35,62 @@ export const UI_BLOCKING_BUDGET_MS = 50;
 export const MEMORY_BUDGET_BYTES = 128 * MIB;
 
 /**
- * Der größte gemessene Stützpunkt, der BEIDE Budgetposten hält.
+ * Der größte gemessene Stützpunkt, der BEIDE Budgetposten für JEDES Fixture
+ * hält — und unterhalb dessen kein gemessener Stützpunkt reißt.
  *
  * Bewusst keine Interpolation zwischen zwei Stützpunkten: Ein hergeleiteter
  * Grenzwert darf nur auf einer Zahl stehen, die auch wirklich gemessen wurde.
- * Genau die fehlende Messung war der Kern des Codex-Befunds zu 36d9c79. Liegt
- * kein Stützpunkt im Budget, ist die Rückgabe `null` — dann trägt die Messreihe
- * die Aussage nicht, und der Bericht behauptet auch keine.
+ *
+ * Die Auswertung läuft über die KNOTENZAHL, nicht über die Fixtures. Die
+ * erste Fassung bildete das Minimum der je Fixture größten bestandenen
+ * Knotenzahl; das ist nicht dieselbe Frage. Sie kann eine Knotenzahl nennen,
+ * an der ein anderes Fixture gemessen wurde und riss — der Codex-Befund zu
+ * 84ca1f6 hat das mit einer nichtmonotonen Reihe vorgeführt. Browsermessungen
+ * sind nicht monoton, und ein Grenzwert, der auf einem gerissenen Messpunkt
+ * steht, ist falsch, nicht bloß ungenau.
+ *
+ * Zwei Bedingungen je Stützpunkt, beide fail-closed:
+ *
+ *   1. VOLLSTÄNDIG gemessen — jedes Fixture, das irgendwo in der Reihe
+ *      auftaucht, muss auch hier eine Zeile haben. Eine fehlende Zeile ist
+ *      keine bestandene.
+ *   2. Von der kleinsten Knotenzahl an lückenlos gehalten. Reißt ein
+ *      Stützpunkt, endet die Aussage dort; ein größerer, der zufällig wieder
+ *      hält, hebt ihn nicht auf.
+ *
+ * Trägt schon der kleinste Stützpunkt nicht, ist die Rückgabe `null` — dann
+ * begründet die Messreihe keinen Grenzwert, und der Bericht behauptet auch
+ * keinen.
  *
  * @param {object[]} rows Zeilen der Skalierungsreihe eines Laufs.
  */
 export function deriveNodeLimit(rows) {
-  const holding = rows.filter(
-    (row) => row.heap.peakBytes <= MEMORY_BUDGET_BYTES
-      && row.endToEnd.blockingMs <= UI_BLOCKING_BUDGET_MS,
-  );
-  if (holding.length === 0) return null;
-  // Über ALLE Fixtures hinweg: Der Grenzwert muss den ungünstigsten von ihnen
-  // tragen, nicht den freundlichsten.
-  const byFixture = new Map();
+  if (rows.length === 0) return null;
+
+  const requiredFixtures = new Set(rows.map((row) => row.id));
+  const byNodeCount = new Map();
   for (const row of rows) {
-    const held = row.heap.peakBytes <= MEMORY_BUDGET_BYTES
-      && row.endToEnd.blockingMs <= UI_BLOCKING_BUDGET_MS;
-    if (!held) continue;
-    byFixture.set(row.id, Math.max(byFixture.get(row.id) ?? 0, row.totalNodes));
+    let point = byNodeCount.get(row.totalNodes);
+    if (point === undefined) {
+      point = { measured: new Set(), holds: true };
+      byNodeCount.set(row.totalNodes, point);
+    }
+    point.measured.add(row.id);
+    if (
+      row.heap.peakBytes > MEMORY_BUDGET_BYTES
+      || row.endToEnd.blockingMs > UI_BLOCKING_BUDGET_MS
+    ) {
+      point.holds = false;
+    }
   }
-  const measured = new Set(rows.map((row) => row.id));
-  // Ein Fixture, das an KEINEM Stützpunkt hält, deckelt die Aussage auf null.
-  if (byFixture.size !== measured.size) return null;
-  return Math.min(...byFixture.values());
+
+  let derived = null;
+  for (const totalNodes of [...byNodeCount.keys()].sort((left, right) => left - right)) {
+    const point = byNodeCount.get(totalNodes);
+    if (point.measured.size !== requiredFixtures.size || !point.holds) break;
+    derived = totalNodes;
+  }
+  return derived;
 }
 
 /**
@@ -142,9 +169,12 @@ export function median(values) {
 }
 
 /**
- * Verdichtet die Wiederholungen eines Fixtures: Zeiten als Median gegen JIT-
- * und GC-Ausreißer, Speicher als Maximum, weil das Budget den ungünstigsten
- * beobachteten Abdruck tragen muss.
+ * Verdichtet die Wiederholungen eines Fixtures.
+ *
+ * Ausschließlich Zeiten: Der Speicherabdruck wird getrennt und nur einmal
+ * erhoben, weil eine Speichermessung rund zehn Sekunden kostet und ihrerseits
+ * deterministisch ist — sie hängt an der Datenstruktur, nicht am Lauf. Der
+ * Aufrufer legt ihn neben das Ergebnis dieser Verdichtung.
  *
  * @param {object[]} samples Einzelmessungen desselben Fixtures.
  */
@@ -172,32 +202,46 @@ export function summarizeSamples(samples) {
       blockingMs: Math.max(...pick((entry) => entry.endToEnd.blockingMs)),
       longestTaskMs: Math.max(...pick((entry) => entry.endToEnd.longestTaskMs)),
     },
-    heap: {
-      retainedBytes: Math.max(...pick((entry) => entry.heap.retainedBytes)),
-      identitySetBytes: Math.max(...pick((entry) => entry.heap.identitySetBytes)),
-      peakBytes: Math.max(...pick((entry) => entry.heap.peakBytes)),
-    },
   };
 }
 
 /**
  * Speicherabdruck einer Einzelmessung.
  *
- * `retained` ist der JS-Heap, der nach erzwungener Sammlung übrig bleibt:
- * Parse-Produkt und Herkunftsregister. `identitySet` ist die transiente
- * Identitätsmenge der Strukturinvariante, die nach ihrem Lauf unerreichbar
- * wird und deshalb separat gemessen werden muss. `input` sind die Eingabebytes
- * — ein `ArrayBuffer`-Backing-Store, der als externer Speicher NICHT im
- * V8-JS-Heap erscheint und darum arithmetisch zugeschlagen wird.
+ * `stage1Peak` und `chainPeak` sind die beiden Höchststände der Prüfkette;
+ * ihre Bestände unterscheiden sich, weshalb der größere von beiden zählt und
+ * nicht ihre Summe. Produktiv ist das der Bestand des Worker-Isolats, gemessen
+ * an denselben Einheiten über dasselbe Dokument im Tab.
  *
- * @param {{retainedBytes: number, identitySetBytes: number, inputBytes: number}} parts
+ * `mainThread` ist, was der produktive Weg im Hauptkontext hinterlässt — im
+ * Wesentlichen der aus der Worker-Antwort deserialisierte Ergebnisgraph.
+ * Er kommt HINZU, weil beides gleichzeitig besteht: Der Worker wird erst nach
+ * Eintreffen der Antwort beendet.
+ *
+ * `input` kommt EIN weiteres Mal hinzu. Die Kettenmessung hält die
+ * Eingabebytes bereits einmal; im Produktivpfad liegen sie doppelt, weil
+ * `copyForTransfer` in `src/adapters/oscalImportGate.ts` für die Übergabe an
+ * den Worker eine vollständige Kopie anlegt, während der Aufrufer sein
+ * Original behält.
+ *
+ * @param {{stage1PeakBytes: number, chainPeakBytes: number,
+ *          mainThreadBytes: number, inputBytes: number}} parts
  */
 export function composeHeapFootprint(parts) {
+  // Ein abgewiesenes Dokument schickt nur eine Diagnose zurück; der
+  // Main-Thread-Anteil ist dann näherungsweise null und kann durch
+  // Messrauschen knapp negativ ausfallen. Ein negativer Posten darf die Spitze
+  // nicht kleiner rechnen, als sie ohne ihn wäre.
+  const mainThreadBytes = Math.max(parts.mainThreadBytes, 0);
   return {
-    retainedBytes: parts.retainedBytes,
-    identitySetBytes: parts.identitySetBytes,
+    stage1PeakBytes: parts.stage1PeakBytes,
+    chainPeakBytes: parts.chainPeakBytes,
+    mainThreadBytes,
     inputBytes: parts.inputBytes,
-    peakBytes: parts.retainedBytes + parts.identitySetBytes + parts.inputBytes,
+    peakBytes:
+      Math.max(parts.stage1PeakBytes, parts.chainPeakBytes)
+      + mainThreadBytes
+      + parts.inputBytes,
   };
 }
 
@@ -223,16 +267,18 @@ function verdict(value, budget) {
 /** Kosten je Fixture an seiner Grenze. */
 function renderFixtureTable(run) {
   return [
-    '| Fixture | Grenze | Dokument | Stufe 1 | Objektkette | Ende-zu-Ende | Gehalten '
-    + '| Identitätsmenge | Spitze | Schemastufe | Ergebnis |',
-    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+    '| Fixture | Grenze | Dokument | Stufe 1 | Objektkette | Ende-zu-Ende '
+    + '| Bestand Parse | Bestand Kette | Main Thread | Spitze | Budget | Schemastufe | Ergebnis |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
     ...run.fixtures.map((fixture) =>
       `| ${fixture.id} | ${fixture.limit} | ${formatMiB(fixture.bytes)} `
       + `| ${formatMs(fixture.stage1.ms)} | ${formatMs(fixture.objectChain.ms)} `
       + `| ${formatMs(fixture.endToEnd.ms)} `
-      + `| ${formatMiB(fixture.heap.retainedBytes)} `
-      + `| ${formatMiB(fixture.heap.identitySetBytes)} `
+      + `| ${formatMiB(fixture.heap.stage1PeakBytes)} `
+      + `| ${formatMiB(fixture.heap.chainPeakBytes)} `
+      + `| ${formatMiB(fixture.heap.mainThreadBytes)} `
       + `| ${formatMiB(fixture.heap.peakBytes)} `
+      + `| ${verdict(fixture.heap.peakBytes, MEMORY_BUDGET_BYTES)} `
       + `| ${fixture.reachesSchemaStage ? 'ja' : 'nein'} `
       + `| ${fixture.objectChain.code ?? 'angenommen'} |`),
   ];
@@ -302,6 +348,12 @@ function renderRun(run) {
   if (run.observability === undefined || run.observability === null) {
     throw new Error('Messlauf ohne belegte Long-Task-Beobachtbarkeit');
   }
+  // Dasselbe für den Speicherweg: Der Vorgänger dieser Messung sah
+  // Puffer-Backing-Stores und externe Blink-Strings nicht und hätte damit ein
+  // gehaltenes Speicherbudget ausweisen können, das nicht gehalten wird.
+  if (run.memoryObservability === undefined || run.memoryObservability === null) {
+    throw new Error('Messlauf ohne belegte Speicher-Beobachtbarkeit');
+  }
 
   const hasScale = run.scale !== null && run.scale !== undefined;
   return [
@@ -310,6 +362,11 @@ function renderRun(run) {
     `Wiederholungen je Fixture: ${run.repeat} (Zeiten als Median, Speicher als Maximum)`,
     '',
     ...renderFixtureTable(run),
+    '',
+    `Speichermessweg geprüft: ${formatMiB(run.memoryObservability.probeBytes)} Prüfpuffer `
+    + `wurden als ${formatMiB(run.memoryObservability.observedBytes)} gemeldet. `
+    + `Speicherwerte erhoben bei CPU-Drosselung ${run.memoryThrottleRate}x — sie hängen an `
+    + 'der Datenstruktur, nicht an der Taktrate, und werden deshalb einmal erhoben.',
     '',
     ...renderBlockingTable(run),
     ...(hasScale ? ['', ...renderScaleTable(run)] : []),

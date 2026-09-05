@@ -31,9 +31,21 @@ function sample(overrides: Record<string, unknown> = {}) {
     stage1: { ms: 10, ok: true, code: null },
     objectChain: { ms: 20, ok: true, code: null },
     endToEnd: { ms: 30, submitMs: 2, blockingMs: 0, longestTaskMs: 0, ok: true, code: null },
-    heap: { retainedBytes: 100, identitySetBytes: 50, inputBytes: 1_000, peakBytes: 1_150 },
     ...overrides,
   };
+}
+
+/**
+ * Eine Fixture-Zeile, wie der Messlauf sie zusammensetzt: verdichtete Zeiten
+ * plus der getrennt erhobene Speicherabdruck.
+ */
+function fixtureRow(
+  overrides: Record<string, unknown> = {},
+  heap: Record<string, number> = {
+    stage1PeakBytes: 100, chainPeakBytes: 80, mainThreadBytes: 50, inputBytes: 1_000, peakBytes: 1_150,
+  },
+) {
+  return { ...summarizeSamples([sample(overrides)]), heap, live: {} };
 }
 
 describe('parseArguments', () => {
@@ -100,34 +112,60 @@ describe('median', () => {
 });
 
 describe('composeHeapFootprint', () => {
-  it('summiert Gehaltenes, Identitätsmenge und Eingabepuffer zur Spitze', () => {
-    // Der Eingabepuffer liegt als externer Speicher neben dem JS-Heap und
-    // erscheint in `Runtime.getHeapUsage` nicht; die Identitätsmenge ist nach
-    // dem Lauf der Invariante unerreichbar. Beides muss zugeschlagen werden,
-    // sonst unterschätzt die Spitze den tatsächlichen Abdruck.
+  it('nimmt den größeren Kettenhöchststand, nicht die Summe beider', () => {
+    // Parse-Stufe und Objektkette halten VERSCHIEDENE Bestände: die eine die
+    // dekodierte Zeichenkette, die andere das Paar-Array des breitesten
+    // Records. Sie bestehen nacheinander, nicht gleichzeitig — eine Summe
+    // würde die Spitze erfinden.
     expect(composeHeapFootprint({
-      retainedBytes: 10,
-      identitySetBytes: 20,
+      stage1PeakBytes: 10,
+      chainPeakBytes: 40,
+      mainThreadBytes: 20,
       inputBytes: 30,
     })).toEqual({
-      retainedBytes: 10,
-      identitySetBytes: 20,
+      stage1PeakBytes: 10,
+      chainPeakBytes: 40,
+      mainThreadBytes: 20,
       inputBytes: 30,
-      peakBytes: 60,
+      peakBytes: 90,
     });
+  });
+
+  it('lässt einen negativen Main-Thread-Anteil die Spitze nicht kleinrechnen', () => {
+    // Ein abgewiesenes Dokument schickt nur eine Diagnose zurück; der
+    // gemessene Anteil liegt dann um null und kann knapp negativ ausfallen.
+    expect(composeHeapFootprint({
+      stage1PeakBytes: 100, chainPeakBytes: 0, mainThreadBytes: -7, inputBytes: 5,
+    })).toMatchObject({ mainThreadBytes: 0, peakBytes: 105 });
+  });
+
+  it('schlägt den Main-Thread-Anteil und einen zweiten Eingabepuffer zu', () => {
+    // Der Main-Thread-Anteil kommt HINZU statt zu konkurrieren: Der Worker
+    // wird erst nach Eintreffen der Antwort beendet, sein Bestand lebt also
+    // noch, während der Hauptkontext den Ergebnisklon aufbaut. Und die
+    // Eingabebytes liegen doppelt, weil `copyForTransfer` eine vollständige
+    // Kopie für die Übergabe anlegt — die Kettenmessung hält davon nur eine.
+    expect(composeHeapFootprint({
+      stage1PeakBytes: 100,
+      chainPeakBytes: 0,
+      mainThreadBytes: 7,
+      inputBytes: 5,
+    }).peakBytes).toBe(112);
   });
 });
 
 describe('summarizeSamples', () => {
-  it('nimmt Zeiten als Median und Speicher als Maximum', () => {
+  it('nimmt Zeiten als Median und trägt keinen Speicher', () => {
     const summary = summarizeSamples([
-      sample({ stage1: { ms: 10, ok: true, code: null }, heap: { retainedBytes: 1, identitySetBytes: 1, inputBytes: 0, peakBytes: 2 } }),
-      sample({ stage1: { ms: 90, ok: true, code: null }, heap: { retainedBytes: 5, identitySetBytes: 3, inputBytes: 0, peakBytes: 8 } }),
-      sample({ stage1: { ms: 20, ok: true, code: null }, heap: { retainedBytes: 2, identitySetBytes: 2, inputBytes: 0, peakBytes: 4 } }),
+      sample({ stage1: { ms: 10, ok: true, code: null } }),
+      sample({ stage1: { ms: 90, ok: true, code: null } }),
+      sample({ stage1: { ms: 20, ok: true, code: null } }),
     ]);
 
     expect(summary.stage1.ms).toBe(20);
-    expect(summary.heap).toEqual({ retainedBytes: 5, identitySetBytes: 3, peakBytes: 8 });
+    // Der Speicher wird getrennt und nur einmal erhoben — eine Verdichtung
+    // über Wiederholungen gibt es für ihn nicht.
+    expect(summary).not.toHaveProperty('heap');
     expect(summary.samples).toBe(3);
   });
 
@@ -171,10 +209,11 @@ describe('parseNodeCounts', () => {
 
 describe('Budgetkonstanten', () => {
   it('hält das Speicherbudget über dem gemessenen Worst Case', () => {
-    // 89,14 MiB kostet `heap-bound` an der heutigen Knotengrenze. Ein Budget
-    // auf oder unter diesem Wert wäre kein Budget, sondern eine Nacherzählung
-    // der Messung.
-    expect(MEMORY_BUDGET_BYTES).toBeGreaterThan(90 * 1024 * 1024);
+    // 112,93 MiB kostet `heap-bound` an der heutigen Knotengrenze, gemessen
+    // mit einem Messweg, der Puffer und externe Strings einschließt. Ein
+    // Budget auf oder unter diesem Wert wäre kein Budget, sondern eine
+    // Nacherzählung der Messung.
+    expect(MEMORY_BUDGET_BYTES).toBeGreaterThan(113 * 1024 * 1024);
   });
 
   it('hält das UI-Budget auf der Long-Task-Schwelle', () => {
@@ -188,7 +227,7 @@ describe('deriveNodeLimit', () => {
   const row = (id: string, totalNodes: number, peakBytes: number, blockingMs: number) => ({
     id,
     totalNodes,
-    heap: { retainedBytes: 0, identitySetBytes: 0, peakBytes },
+    heap: { stage1PeakBytes: 0, chainPeakBytes: 0, mainThreadBytes: 0, peakBytes },
     endToEnd: { ms: 0, submitMs: 0, blockingMs, longestTaskMs: blockingMs, ok: true, code: null },
   });
 
@@ -209,23 +248,54 @@ describe('deriveNodeLimit', () => {
     ])).toBe(125_000);
   });
 
-  it('richtet sich nach dem ungünstigsten Fixture, nicht nach dem freundlichsten', () => {
+  it('verlangt an jedem Stützpunkt jedes Fixture der Reihe', () => {
+    // Regression zum Codex-Befund zu 84ca1f6: Die erste Fassung bildete das
+    // Minimum der je Fixture größten bestandenen Knotenzahl und nannte damit
+    // 125 000, obwohl `node-bound` dort überhaupt nicht gemessen war. Eine
+    // fehlende Zeile ist keine bestandene.
     expect(deriveNodeLimit([
       row('node-bound', 500_000, 1_000, 10),
       row('heap-bound', 500_000, MEMORY_BUDGET_BYTES + 1, 10),
       row('heap-bound', 125_000, 1_000, 10),
-    ])).toBe(125_000);
+    ])).toBeNull();
   });
 
-  it('gibt null zurück, wenn ein Fixture an keinem Stützpunkt hält', () => {
+  it('nennt keinen Stützpunkt, an dem ein Fixture das Budget reißt', () => {
+    // Die Zahlen des Codex-Befunds zu 84ca1f6, unverändert: Der Speicher hält
+    // überall, aber `combined-bound` reißt bei 125 000 das UI-Budget, während
+    // `node-bound` erst bei 250 000 reißt. Das Minimum der je Fixture größten
+    // bestandenen Knotenzahl ergab 125 000 — einen Stützpunkt, an dem gemessen
+    // wurde, dass er nicht hält. Es gibt hier keinen gemeinsamen Stützpunkt.
+    expect(deriveNodeLimit([
+      row('node-bound', 125_000, 1_000, 0),
+      row('node-bound', 250_000, 1_000, 61),
+      row('combined-bound', 125_000, 1_000, 65),
+      row('combined-bound', 250_000, 1_000, 49),
+      row('heap-bound', 125_000, 1_000, 0),
+      row('heap-bound', 250_000, 1_000, 0),
+    ])).toBeNull();
+  });
+
+  it('lässt einen gerissenen Stützpunkt von einem größeren nicht aufheben', () => {
+    // Browsermessungen sind nicht monoton. Hält 125 000 nicht, ist 250 000
+    // kein tragfähiger Grenzwert, auch wenn dort zufällig alles hält: Ein
+    // Grenzwert deckt alles unter sich mit ab.
+    expect(deriveNodeLimit([
+      row('node-bound', 62_500, 1_000, 0),
+      row('node-bound', 125_000, 1_000, UI_BLOCKING_BUDGET_MS + 1),
+      row('node-bound', 250_000, 1_000, 0),
+    ])).toBe(62_500);
+  });
+
+  it('gibt null zurück, wenn schon der kleinste Stützpunkt nicht hält', () => {
     // Fail-closed: Trägt die Messreihe keine Aussage, darf der Bericht auch
-    // keine treffen — eine stillschweigend weggelassene Zeile hätte sonst
-    // einen zu hohen Grenzwert begründet.
+    // keine treffen.
     expect(deriveNodeLimit([
       row('node-bound', 125_000, 1_000, 10),
       row('heap-bound', 125_000, MEMORY_BUDGET_BYTES + 1, 10),
     ])).toBeNull();
     expect(deriveNodeLimit([row('heap-bound', 125_000, 1_000, 999)])).toBeNull();
+    expect(deriveNodeLimit([])).toBeNull();
   });
 });
 
@@ -250,7 +320,9 @@ describe('renderReport', () => {
         repeat: 3,
         environment: { userAgent: 'HeadlessChrome' },
         observability: { probeMs: 120, observedMs: 121 },
-        fixtures: [summarizeSamples([sample()])],
+        memoryObservability: { probeBytes: 16_777_216, observedBytes: 16_800_000 },
+        memoryThrottleRate: 1,
+        fixtures: [fixtureRow()],
         glob: [{ stars: 6, patternBytes: 13, subjectLength: 40, ms: 14 }],
       }],
     });
@@ -272,9 +344,11 @@ describe('renderReport', () => {
         repeat: 1,
         environment: { userAgent: 'HeadlessChrome' },
         observability: { probeMs: 120, observedMs: 121 },
-        fixtures: [summarizeSamples([sample({
+        memoryObservability: { probeBytes: 16_777_216, observedBytes: 16_800_000 },
+        memoryThrottleRate: 1,
+        fixtures: [fixtureRow({
           endToEnd: { ms: 1_000, submitMs: 3, blockingMs, longestTaskMs: blockingMs, ok: true, code: null },
-        })])],
+        })],
         glob: [],
       }],
     });
@@ -296,10 +370,52 @@ describe('renderReport', () => {
         throttleRate: 1,
         repeat: 1,
         environment: { userAgent: 'HeadlessChrome' },
-        fixtures: [summarizeSamples([sample()])],
+        fixtures: [fixtureRow()],
         glob: [],
       }],
     })).toThrow(/Long-Task-Beobachtbarkeit/);
+  });
+
+  it('verweigert den Bericht, wenn der Speichermessweg nicht belegt ist', () => {
+    // Derselbe Grund wie beim Long-Task-Beleg, nur für die andere Achse: Der
+    // Vorgänger dieser Messung las `Runtime.getHeapUsage` und sah damit weder
+    // `ArrayBuffer`-Backing-Stores noch externe Blink-Strings — zweistellige
+    // MiB-Beträge im Tab. Ein Bericht ohne Beleg für den Messweg dürfte daraus
+    // nie ein eingehaltenes Speicherbudget machen.
+    expect(() => renderReport({
+      generatedAt: '2026-09-05T00:00:00.000Z',
+      browserVersion: '151.0.0.0',
+      runs: [{
+        throttleRate: 1,
+        repeat: 1,
+        environment: { userAgent: 'HeadlessChrome' },
+        observability: { probeMs: 120, observedMs: 121 },
+        fixtures: [fixtureRow()],
+        glob: [],
+      }],
+    })).toThrow(/Speicher-Beobachtbarkeit/);
+  });
+
+  it('fällt auch über dem Speicherbudget ein Urteil', () => {
+    const render = (peakBytes: number) => renderReport({
+      generatedAt: '2026-09-05T00:00:00.000Z',
+      browserVersion: '151.0.0.0',
+      runs: [{
+        throttleRate: 1,
+        repeat: 1,
+        environment: { userAgent: 'HeadlessChrome' },
+        observability: { probeMs: 120, observedMs: 121 },
+        memoryObservability: { probeBytes: 16_777_216, observedBytes: 16_800_000 },
+        memoryThrottleRate: 1,
+        fixtures: [fixtureRow({}, {
+          stage1PeakBytes: peakBytes, chainPeakBytes: 0, mainThreadBytes: 0, inputBytes: 0, peakBytes,
+        })],
+        glob: [],
+      }],
+    });
+
+    expect(render(MEMORY_BUDGET_BYTES)).toContain('| gehalten |');
+    expect(render(MEMORY_BUDGET_BYTES + 1)).toContain('| GERISSEN |');
   });
 
   it('urteilt fail-closed, wenn eine Messreihe keine Blockierzeit trägt', () => {
@@ -315,7 +431,9 @@ describe('renderReport', () => {
         repeat: 1,
         environment: { userAgent: 'HeadlessChrome' },
         observability: { probeMs: 120, observedMs: 121 },
-        fixtures: [summarizeSamples([sample({ endToEnd: { ms: 30, ok: true, code: null } })])],
+        memoryObservability: { probeBytes: 16_777_216, observedBytes: 16_800_000 },
+        memoryThrottleRate: 1,
+        fixtures: [fixtureRow({ endToEnd: { ms: 30, ok: true, code: null } })],
         glob: [],
       }],
     });
