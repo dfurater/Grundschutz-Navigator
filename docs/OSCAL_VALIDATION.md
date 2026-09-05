@@ -189,9 +189,14 @@ Netzwerk- noch Dateizugriffe aus. Fehlende `rlink.hashes` ergeben
 ### Klasse-2-Grenzwerte
 
 Die Grenzen begrenzen ausschließlich den lokalen Klasse-2-Einstieg; der
-bestehende Klasse-1-Loader bleibt davon getrennt. Sie stehen in
-[`oscalImportContract.ts`](../src/domain/oscalImportContract.ts) als
-`CLASS_2_IMPORT_LIMITS`.
+bestehende Klasse-1-Loader bleibt davon getrennt. Sie stehen als
+`CLASS_2_IMPORT_LIMITS` in
+[`class2ImportLimits.mjs`](../src/domain/class2ImportLimits.mjs) und haben dort
+genau einen Ort:
+[`oscalImportContract.ts`](../src/domain/oscalImportContract.ts) reicht sie an
+den Anwendungspfad weiter, der Messapparat unten liest dieselbe Datei. Reines
+ESM, weil er sie in einer nackten Node-Laufzeit ohne Aliasauflösung und ohne
+TypeScript braucht — dasselbe Muster wie `oscalVersionMatrix.mjs`.
 
 | Grenze | Wert | Kostenbasierte Begründung |
 | --- | --- | --- |

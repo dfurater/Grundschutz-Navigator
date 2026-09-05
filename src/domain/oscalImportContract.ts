@@ -1,27 +1,14 @@
 import { createOscalDiagnostic, type OscalDiagnostic } from '@/domain/oscalDiagnostics';
+import { CLASS_2_IMPORT_LIMITS } from './class2ImportLimits.mjs';
 
 /**
- * Ressourcengrenzen des Klasse-2-Eingangspfads.
- *
- * Herleitung, Messprotokoll und Budget: `docs/OSCAL_VALIDATION.md`, Abschnitt
- * „Klasse-2-Grenzwerte". Die Werte sind kostenbasiert belegt (GSPP-382) — sie
- * folgen dem gemessenen Ressourcenabdruck eines Dokuments EXAKT AN DER GRENZE,
- * nicht dem Kopfraum über dem realen BSI-Katalog.
+ * Die Grenzwerte selbst stehen in `class2ImportLimits.mjs` — reines ESM, damit
+ * der Messapparat aus GSPP-382 sie in einer nackten Node-Laufzeit ohne
+ * Aliasauflösung und ohne TypeScript aus derselben Quelle lesen kann. Hier nur
+ * die Weiterreichung: Verbraucher im Anwendungspfad importieren die Grenzen
+ * weiterhin über den Importvertrag.
  */
-export const CLASS_2_IMPORT_LIMITS = Object.freeze({
-  maxBytes: 10 * 1024 * 1024,
-  maxDepth: 64,
-  maxNodes: 1_000_000,
-  /**
-   * Die Grenze muss unter der Byte-Obergrenze ERREICHBAR bleiben: Ein
-   * base64-Wert steht als Text im Dokument, seine dekodierte Größe ist also
-   * höchstens drei Viertel von `maxBytes`. Ein auf `maxBytes` gesetzter Wert
-   * konnte deshalb nie auslösen und war keine Kontrolle, sondern toter Code
-   * (GSPP-382). `class2ImportLimits.invariants.test.ts` hält die
-   * Erreichbarkeit dauerhaft fest.
-   */
-  maxDecodedBase64Bytes: 4 * 1024 * 1024,
-});
+export { CLASS_2_IMPORT_LIMITS };
 
 export const CLASS_2_IMPORT_VALIDATOR = Object.freeze({
   name: 'gspp-class-2-import',

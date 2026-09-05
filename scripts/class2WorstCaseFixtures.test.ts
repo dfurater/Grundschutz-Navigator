@@ -14,7 +14,6 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-  CLASS_2_LIMITS_UNDER_TEST,
   CLASS_2_WORST_CASE_FIXTURES,
   assertScalableNodeCounts,
   buildBase64BoundDocumentText,
@@ -68,12 +67,6 @@ function readBase64Value(text: string): string {
 }
 
 describe('Worst-Case-Fixtures der Klasse-2-Grenzen', () => {
-  it('führt dieselben Grenzwerte wie der produktive Vertrag', () => {
-    // Driften die beiden auseinander, misst der Messlauf an der falschen
-    // Grenze und das Protokoll in docs/OSCAL_VALIDATION.md wird unwahr.
-    expect(CLASS_2_LIMITS_UNDER_TEST).toEqual(CLASS_2_IMPORT_LIMITS);
-  });
-
   it('registriert für jede durchgesetzte Grenze ein Fixture', () => {
     expect(CLASS_2_WORST_CASE_FIXTURES.map((fixture) => fixture.id)).toEqual([
       'byte-bound',
@@ -105,9 +98,14 @@ describe('Worst-Case-Fixtures der Klasse-2-Grenzen', () => {
   }, 60_000);
 
   it('trifft die Bytegrenze exakt', () => {
-    const limit = CLASS_2_LIMITS_UNDER_TEST.maxBytes;
+    const limit = CLASS_2_IMPORT_LIMITS.maxBytes;
 
-    expect(toBytes(buildByteBoundDocumentText(limit)).byteLength).toBe(limit);
+    // OHNE Argument gebaut: Der Bauer muss die produktive Grenze selbst
+    // treffen. Die Fixtures lesen sie aus derselben Quelle wie der
+    // Importvertrag; käme dort je wieder eine eigene Wertetabelle hinein,
+    // misst der Messlauf an einer Grenze, die die Anwendung nicht zieht, und
+    // das Protokoll in docs/OSCAL_VALIDATION.md wird unwahr.
+    expect(toBytes(buildByteBoundDocumentText()).byteLength).toBe(limit);
     expect(verdictFor(buildByteBoundDocumentText(limit + 1))).toEqual({
       stage: 'stufe-1',
       code: 'OSCAL_BYTE_LIMIT_EXCEEDED',
@@ -119,9 +117,10 @@ describe('Worst-Case-Fixtures der Klasse-2-Grenzen', () => {
   // Dokumente in Vollgröße und braucht neben den übrigen parallelen
   // Testdateien mehr als die voreingestellten fünf Sekunden.
   it('trifft die Knotengrenze exakt und kippt eine Einheit darüber', { timeout: 60_000 }, () => {
-    const limit = CLASS_2_LIMITS_UNDER_TEST.maxNodes;
+    const limit = CLASS_2_IMPORT_LIMITS.maxNodes;
 
-    expect(verdictFor(buildNodeBoundDocumentText(limit))).toEqual({
+    // Ebenfalls ohne Argument, aus demselben Grund wie bei der Bytegrenze.
+    expect(verdictFor(buildNodeBoundDocumentText())).toEqual({
       stage: 'dispatch-ok',
       code: 'catalog',
     });
@@ -132,7 +131,7 @@ describe('Worst-Case-Fixtures der Klasse-2-Grenzen', () => {
   });
 
   it('trifft die Tiefengrenze exakt', () => {
-    const depth = CLASS_2_LIMITS_UNDER_TEST.maxDepth;
+    const depth = CLASS_2_IMPORT_LIMITS.maxDepth;
 
     // Auf der Grenze passiert das Dokument Stufe 1 und die Invariante; erst
     // der Root-Dispatch weist es ab, weil ein Wurzelarray kein OSCAL-Root ist.
@@ -147,8 +146,8 @@ describe('Worst-Case-Fixtures der Klasse-2-Grenzen', () => {
   });
 
   it('schöpft mit dem Kombinationsfixture Knoten- und Bytegrenze zugleich aus', { timeout: 60_000 }, () => {
-    const nodes = CLASS_2_LIMITS_UNDER_TEST.maxNodes;
-    const bytes = CLASS_2_LIMITS_UNDER_TEST.maxBytes;
+    const nodes = CLASS_2_IMPORT_LIMITS.maxNodes;
+    const bytes = CLASS_2_IMPORT_LIMITS.maxBytes;
 
     expect(toBytes(buildCombinedBoundDocumentText(nodes, bytes)).byteLength).toBe(bytes);
     expect(verdictFor(buildCombinedBoundDocumentText(nodes, bytes))).toEqual({
@@ -162,8 +161,8 @@ describe('Worst-Case-Fixtures der Klasse-2-Grenzen', () => {
   });
 
   it('schöpft mit dem Heap-Fixture Knoten- und Bytegrenze zugleich aus', { timeout: 60_000 }, () => {
-    const nodes = CLASS_2_LIMITS_UNDER_TEST.maxNodes;
-    const bytes = CLASS_2_LIMITS_UNDER_TEST.maxBytes;
+    const nodes = CLASS_2_IMPORT_LIMITS.maxNodes;
+    const bytes = CLASS_2_IMPORT_LIMITS.maxBytes;
 
     expect(toBytes(buildHeapBoundDocumentText(nodes, bytes)).byteLength).toBe(bytes);
     // Wurzelarray: Stufe 1 und Invariante nehmen es an, erst der Dispatch
@@ -185,8 +184,8 @@ describe('Worst-Case-Fixtures der Klasse-2-Grenzen', () => {
     // `Reflect.ownKeys`-Arrays in Formprüfung, Knotenuntergrenze und
     // Bytebuchhaltung — wachsen mit der BREITE eines Containers, nicht mit der
     // Knotenzahl. Ein Satz aus schmalen Containern sieht davon nichts.
-    const nodes = CLASS_2_LIMITS_UNDER_TEST.maxNodes;
-    const bytes = CLASS_2_LIMITS_UNDER_TEST.maxBytes;
+    const nodes = CLASS_2_IMPORT_LIMITS.maxNodes;
+    const bytes = CLASS_2_IMPORT_LIMITS.maxBytes;
     const text = buildRecordBoundDocumentText(nodes, bytes);
 
     expect(toBytes(text).byteLength).toBe(bytes);
@@ -257,9 +256,9 @@ describe('Worst-Case-Fixtures der Klasse-2-Grenzen', () => {
       return seen;
     };
 
-    const nodes = CLASS_2_LIMITS_UNDER_TEST.maxNodes;
+    const nodes = CLASS_2_IMPORT_LIMITS.maxNodes;
     // Untere Ecke: lauter identische leere Objekte, genau eine Form.
-    expect(signatures(buildDepthBoundDocumentText(CLASS_2_LIMITS_UNDER_TEST.maxDepth, nodes)).size)
+    expect(signatures(buildDepthBoundDocumentText(CLASS_2_IMPORT_LIMITS.maxDepth, nodes)).size)
       .toBe(1);
     // Obere Ecke: eine eigene Form je äußerem Container, plus die leere Form
     // der inneren Container.
@@ -273,7 +272,7 @@ describe('Worst-Case-Fixtures der Klasse-2-Grenzen', () => {
     const encoded = readBase64Value(buildBase64CeilingDocumentText());
     const reachableCeiling = decodedBase64BytesForLength(encoded.length);
 
-    expect(reachableCeiling).toBeLessThan(CLASS_2_LIMITS_UNDER_TEST.maxBytes);
+    expect(reachableCeiling).toBeLessThan(CLASS_2_IMPORT_LIMITS.maxBytes);
     expect(CLASS_2_IMPORT_LIMITS.maxDecodedBase64Bytes).toBeLessThan(reachableCeiling);
   });
 
@@ -282,10 +281,10 @@ describe('Worst-Case-Fixtures der Klasse-2-Grenzen', () => {
     const padding = encoded.endsWith('==') ? 2 : encoded.endsWith('=') ? 1 : 0;
 
     expect(Math.floor(encoded.length / 4) * 3 - padding).toBe(
-      CLASS_2_LIMITS_UNDER_TEST.maxDecodedBase64Bytes,
+      CLASS_2_IMPORT_LIMITS.maxDecodedBase64Bytes,
     );
     expect(verdictFor(buildBase64BoundDocumentText(
-      CLASS_2_LIMITS_UNDER_TEST.maxDecodedBase64Bytes + 1,
+      CLASS_2_IMPORT_LIMITS.maxDecodedBase64Bytes + 1,
     ))).toEqual({
       stage: 'invariante',
       code: 'OSCAL_RESOURCE_BASE64_LIMIT_EXCEEDED',

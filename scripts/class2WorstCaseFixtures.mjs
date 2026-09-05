@@ -31,21 +31,9 @@
 // Achse, nicht der teuerste. `heap-bound` schließt die Lücke.
 // =============================================================================
 
-/**
- * Grenzwerte, gegen die die Fixtures konstruiert werden.
- *
- * Bewusst eine eigene Kopie und kein Import aus `@/domain/oscalImportContract`:
- * Diese Datei muss in einer nackten Node-Laufzeit ohne Aliasauflösung und
- * ohne TypeScript ladbar bleiben, damit die Fixtures unabhängig vom Bundler
- * reproduzierbar sind. Gegen das Auseinanderlaufen steht der Drifttest in
- * `class2WorstCaseFixtures.test.ts`, der beide Tabellen vergleicht.
- */
-export const CLASS_2_LIMITS_UNDER_TEST = Object.freeze({
-  maxBytes: 10 * 1024 * 1024,
-  maxDepth: 64,
-  maxNodes: 1_000_000,
-  maxDecodedBase64Bytes: 4 * 1024 * 1024,
-});
+// Die Grenzen kommen aus der einzigen Quelle der Wahrheit — reines ESM mit
+// relativem Spezifizierer, damit der Import in beiden Laufzeiten trägt.
+import { CLASS_2_IMPORT_LIMITS } from '../src/domain/class2ImportLimits.mjs';
 
 const encoder = new TextEncoder();
 
@@ -133,7 +121,7 @@ function serializeGroups(nodeBudget, extraMembers = []) {
  *
  * @param {number} totalBytes Zielgröße des Dokuments in Bytes.
  */
-export function buildByteBoundDocumentText(totalBytes = CLASS_2_LIMITS_UNDER_TEST.maxBytes) {
+export function buildByteBoundDocumentText(totalBytes = CLASS_2_IMPORT_LIMITS.maxBytes) {
   const head = '"groups":[{"title":"';
   const tail = '"}]';
   const payloadBytes = totalBytes - CATALOG_WRAPPER_BYTES - head.length - tail.length;
@@ -159,7 +147,7 @@ export function buildByteBoundDocumentText(totalBytes = CLASS_2_LIMITS_UNDER_TES
  *
  * @param {number} totalNodes Zielzahl der Knoten in der Knotensemantik der Prüfkette.
  */
-export function buildNodeBoundDocumentText(totalNodes = CLASS_2_LIMITS_UNDER_TEST.maxNodes) {
+export function buildNodeBoundDocumentText(totalNodes = CLASS_2_IMPORT_LIMITS.maxNodes) {
   // Hülle plus das `groups`-Array selbst.
   const nodeBudget = totalNodes - CATALOG_WRAPPER_NODES - 1;
   return wrapCatalog(serializeGroups(nodeBudget));
@@ -192,8 +180,8 @@ export function buildNodeBoundDocumentText(totalNodes = CLASS_2_LIMITS_UNDER_TES
  * @param {number} totalNodes Zielzahl der Knoten.
  */
 export function buildDepthBoundDocumentText(
-  depth = CLASS_2_LIMITS_UNDER_TEST.maxDepth,
-  totalNodes = CLASS_2_LIMITS_UNDER_TEST.maxNodes,
+  depth = CLASS_2_IMPORT_LIMITS.maxDepth,
+  totalNodes = CLASS_2_IMPORT_LIMITS.maxNodes,
 ) {
   // Arrays auf den Tiefen 1..depth-1, die Nutzlastcontainer auf Tiefe `depth`.
   const chainLength = depth - 1;
@@ -219,8 +207,8 @@ export function buildDepthBoundDocumentText(
  * @param {number} totalBytes Zielgröße in Bytes.
  */
 export function buildCombinedBoundDocumentText(
-  totalNodes = CLASS_2_LIMITS_UNDER_TEST.maxNodes,
-  totalBytes = CLASS_2_LIMITS_UNDER_TEST.maxBytes,
+  totalNodes = CLASS_2_IMPORT_LIMITS.maxNodes,
+  totalBytes = CLASS_2_IMPORT_LIMITS.maxBytes,
 ) {
   // Hülle, `groups`-Array und die Füllergruppe (Objekt plus Titelstring).
   const nodeBudget = totalNodes - CATALOG_WRAPPER_NODES - 1 - 2;
@@ -268,8 +256,8 @@ export function buildCombinedBoundDocumentText(
  * @param {number} totalBytes Zielgröße in Bytes.
  */
 export function buildHeapBoundDocumentText(
-  totalNodes = CLASS_2_LIMITS_UNDER_TEST.maxNodes,
-  totalBytes = CLASS_2_LIMITS_UNDER_TEST.maxBytes,
+  totalNodes = CLASS_2_IMPORT_LIMITS.maxNodes,
+  totalBytes = CLASS_2_IMPORT_LIMITS.maxBytes,
 ) {
   // Wurzelarray, `pairs` Paare zu je zwei Knoten, Füllerstring.
   if (totalNodes % 2 !== 0) throw new RangeError('totalNodes muss gerade sein');
@@ -350,8 +338,8 @@ function encodeKeyIndex(index, width) {
  * @param {number} totalBytes Zielgröße in Bytes.
  */
 export function buildRecordBoundDocumentText(
-  totalNodes = CLASS_2_LIMITS_UNDER_TEST.maxNodes,
-  totalBytes = CLASS_2_LIMITS_UNDER_TEST.maxBytes,
+  totalNodes = CLASS_2_IMPORT_LIMITS.maxNodes,
+  totalBytes = CLASS_2_IMPORT_LIMITS.maxBytes,
 ) {
   const members = totalNodes - 1;
   if (members < 1) throw new RangeError('totalNodes trägt kein Mitglied');
@@ -418,7 +406,7 @@ export function encodedBase64ForDecodedBytes(decodedBytes) {
  * @param {number} decodedBytes Ziel der dekodierten Summe in Bytes.
  */
 export function buildBase64BoundDocumentText(
-  decodedBytes = CLASS_2_LIMITS_UNDER_TEST.maxDecodedBase64Bytes,
+  decodedBytes = CLASS_2_IMPORT_LIMITS.maxDecodedBase64Bytes,
 ) {
   return wrapCatalog(
     `${BASE64_HEAD}${encodedBase64ForDecodedBytes(decodedBytes)}${BASE64_TAIL}`,
@@ -435,7 +423,7 @@ export function buildBase64BoundDocumentText(
  *
  * @param {number} totalBytes Zielgröße des Dokuments in Bytes.
  */
-export function buildBase64CeilingDocumentText(totalBytes = CLASS_2_LIMITS_UNDER_TEST.maxBytes) {
+export function buildBase64CeilingDocumentText(totalBytes = CLASS_2_IMPORT_LIMITS.maxBytes) {
   const available =
     totalBytes - CATALOG_WRAPPER_BYTES - BASE64_HEAD.length - BASE64_TAIL.length;
   if (available < 0) throw new RangeError('totalBytes zu klein für die Hülle');
