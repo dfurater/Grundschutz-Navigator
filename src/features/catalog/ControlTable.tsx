@@ -190,7 +190,7 @@ const ControlTableRow = memo(function ControlTableRow({
       onFocus={() => onFocus(index)}
     >
       {showSelection && (
-        <td className="px-3 py-2.5" onClick={(event) => event.stopPropagation()}>
+        <td className="px-3 py-2.5 align-middle" onClick={(event) => event.stopPropagation()}>
           <input
             type="checkbox"
             checked={isChecked}
@@ -199,7 +199,7 @@ const ControlTableRow = memo(function ControlTableRow({
               onToggleSelection(control.id);
             }}
             onClick={(event) => event.stopPropagation()}
-            className="w-4 h-4 rounded border-[var(--color-border-strong)] cursor-pointer accent-slate-800"
+            className="block w-4 h-4 rounded border-[var(--color-border-strong)] cursor-pointer accent-slate-800"
             aria-label={`${control.id} auswählen`}
           />
         </td>
@@ -361,13 +361,13 @@ export function ControlTable(props: ControlTableProps) {
         <thead className="sticky top-0 bg-[var(--color-surface-subtle)] z-10">
           <tr className="border-b border-[var(--color-border-default)]">
             {showSelection && (
-              <th className="w-10 px-3 py-2">
+              <th className="w-10 px-3 py-2 align-middle">
                 <input
                   type="checkbox"
                   checked={allChecked}
                   ref={(el) => { if (el) el.indeterminate = someChecked; }}
                   onChange={handleToggleAll}
-                  className="w-4 h-4 rounded border-[var(--color-border-strong)] text-primary-main cursor-pointer accent-slate-800"
+                  className="block w-4 h-4 rounded border-[var(--color-border-strong)] text-primary-main cursor-pointer accent-slate-800"
                   aria-label="Alle auswählen"
                 />
               </th>
