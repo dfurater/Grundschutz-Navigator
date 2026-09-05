@@ -215,6 +215,109 @@ export function formatMiB(value) {
   return `${(value / MIB).toFixed(2)} MiB`;
 }
 
+/** Urteil eines Budgetpostens; ein nicht erhobener Wert gilt als gerissen. */
+function verdict(value, budget) {
+  return value <= budget ? 'gehalten' : 'GERISSEN';
+}
+
+/** Kosten je Fixture an seiner Grenze. */
+function renderFixtureTable(run) {
+  return [
+    '| Fixture | Grenze | Dokument | Stufe 1 | Objektkette | Ende-zu-Ende | Gehalten '
+    + '| Identitätsmenge | Spitze | Schemastufe | Ergebnis |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+    ...run.fixtures.map((fixture) =>
+      `| ${fixture.id} | ${fixture.limit} | ${formatMiB(fixture.bytes)} `
+      + `| ${formatMs(fixture.stage1.ms)} | ${formatMs(fixture.objectChain.ms)} `
+      + `| ${formatMs(fixture.endToEnd.ms)} `
+      + `| ${formatMiB(fixture.heap.retainedBytes)} `
+      + `| ${formatMiB(fixture.heap.identitySetBytes)} `
+      + `| ${formatMiB(fixture.heap.peakBytes)} `
+      + `| ${fixture.reachesSchemaStage ? 'ja' : 'nein'} `
+      + `| ${fixture.objectChain.code ?? 'angenommen'} |`),
+  ];
+}
+
+/**
+ * Blockierzeit des Main Threads, mitsamt dem Beleg, dass der Messweg in diesem
+ * Lauf überhaupt etwas melden konnte.
+ */
+function renderBlockingTable(run) {
+  return [
+    '### Main-Thread-Blockierzeit (Budget 50 ms)',
+    '',
+    `Messweg geprüft: ${run.observability.probeMs} ms absichtliche Blockade wurden als `
+    + `${formatMs(run.observability.observedMs)} gemeldet.`,
+    '',
+    '| Fixture | Wartezeit | Hinweg synchron | Längster Long Task | Blockierzeit gesamt | Budget |',
+    '| --- | --- | --- | --- | --- | --- |',
+    ...run.fixtures.map((fixture) =>
+      `| ${fixture.id} | ${formatMs(fixture.endToEnd.ms)} `
+      + `| ${formatMs(fixture.endToEnd.submitMs)} `
+      + `| ${formatMs(fixture.endToEnd.longestTaskMs)} `
+      + `| ${formatMs(fixture.endToEnd.blockingMs)} `
+      + `| ${verdict(fixture.endToEnd.blockingMs, UI_BLOCKING_BUDGET_MS)} |`),
+  ];
+}
+
+/** Kosten über der Knotenzahl und der daraus hergeleitete Grenzwert. */
+function renderScaleTable(run) {
+  const derived = deriveNodeLimit(run.scale);
+  return [
+    '### Grenzwertherleitung: Kosten über der Knotenzahl',
+    '',
+    '| Fixture | Knoten | Dokument | Spitze | Speicherbudget | Blockierzeit | UI-Budget |',
+    '| --- | --- | --- | --- | --- | --- | --- |',
+    ...run.scale.map((row) =>
+      `| ${row.id} | ${row.totalNodes.toLocaleString('de-DE')} `
+      + `| ${formatMiB(row.bytes)} | ${formatMiB(row.heap.peakBytes)} `
+      + `| ${verdict(row.heap.peakBytes, MEMORY_BUDGET_BYTES)} `
+      + `| ${formatMs(row.endToEnd.blockingMs)} `
+      + `| ${verdict(row.endToEnd.blockingMs, UI_BLOCKING_BUDGET_MS)} |`),
+    '',
+    derived === null
+      ? 'Kein gemessener Stützpunkt hält beide Budgetposten für jedes Fixture. '
+        + 'Die Reihe trägt keinen hergeleiteten Grenzwert.'
+      : 'Größte gemessene Knotenzahl, die beide Budgetposten für jedes Fixture hält: '
+        + `**${derived.toLocaleString('de-DE')}**.`,
+  ];
+}
+
+/** Laufzeit der Glob-Übersetzung über der Zahl der Sterne. */
+function renderGlobTable(run) {
+  return [
+    '| Glob-Sterne | Musterbytes | Subjektlänge | Laufzeit |',
+    '| --- | --- | --- | --- |',
+    ...run.glob.map((row) =>
+      `| ${row.stars} | ${row.patternBytes} | ${row.subjectLength} | ${formatMs(row.ms)} |`),
+  ];
+}
+
+/** Ein Drosselungslauf mit allen seinen Tabellen. */
+function renderRun(run) {
+  // Ohne belegten Messweg gibt es keinen Bericht. Ein Lauf, dessen
+  // Long-Task-Instrumentierung nicht nachweislich meldet, würde sonst lauter
+  // Nullen als eingehaltenes UI-Budget ausweisen — genau die Verwechslung,
+  // die der erste Messlauf dieser Auflage produziert hat.
+  if (run.observability === undefined || run.observability === null) {
+    throw new Error('Messlauf ohne belegte Long-Task-Beobachtbarkeit');
+  }
+
+  const hasScale = run.scale !== null && run.scale !== undefined;
+  return [
+    '',
+    `## CPU-Drosselung ${run.throttleRate}x — ${run.environment.userAgent}`,
+    `Wiederholungen je Fixture: ${run.repeat} (Zeiten als Median, Speicher als Maximum)`,
+    '',
+    ...renderFixtureTable(run),
+    '',
+    ...renderBlockingTable(run),
+    ...(hasScale ? ['', ...renderScaleTable(run)] : []),
+    '',
+    ...renderGlobTable(run),
+  ];
+}
+
 /**
  * Rendert den Bericht als Markdown, damit er unverändert in
  * `docs/OSCAL_VALIDATION.md` übernommen werden kann.
@@ -222,99 +325,12 @@ export function formatMiB(value) {
  * @param {object} report Ergebnis eines Messlaufs.
  */
 export function renderReport(report) {
-  const lines = [
+  return [
     '',
     'Klasse-2-Kostenmessung (GSPP-382)',
     `Erhoben: ${report.generatedAt}`,
     `Chromium: ${report.browserVersion}`,
-  ];
-
-  for (const run of report.runs) {
-    // Ohne belegten Messweg gibt es keinen Bericht. Ein Lauf, dessen
-    // Long-Task-Instrumentierung nicht nachweislich meldet, würde sonst
-    // lauter Nullen als eingehaltenes UI-Budget ausweisen — genau die
-    // Verwechslung, die der erste Messlauf dieser Auflage produziert hat.
-    if (run.observability === undefined || run.observability === null) {
-      throw new Error('Messlauf ohne belegte Long-Task-Beobachtbarkeit');
-    }
-
-    lines.push(
-      '',
-      `## CPU-Drosselung ${run.throttleRate}x — ${run.environment.userAgent}`,
-      `Wiederholungen je Fixture: ${run.repeat} (Zeiten als Median, Speicher als Maximum)`,
-      '',
-      '| Fixture | Grenze | Dokument | Stufe 1 | Objektkette | Ende-zu-Ende | Gehalten '
-      + '| Identitätsmenge | Spitze | Schemastufe | Ergebnis |',
-      '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
-    );
-    for (const fixture of run.fixtures) {
-      lines.push(
-        `| ${fixture.id} | ${fixture.limit} | ${formatMiB(fixture.bytes)} `
-        + `| ${formatMs(fixture.stage1.ms)} | ${formatMs(fixture.objectChain.ms)} `
-        + `| ${formatMs(fixture.endToEnd.ms)} `
-        + `| ${formatMiB(fixture.heap.retainedBytes)} `
-        + `| ${formatMiB(fixture.heap.identitySetBytes)} `
-        + `| ${formatMiB(fixture.heap.peakBytes)} `
-        + `| ${fixture.reachesSchemaStage ? 'ja' : 'nein'} `
-        + `| ${fixture.objectChain.code ?? 'angenommen'} |`,
-      );
-    }
-
-    lines.push(
-      '',
-      '### Main-Thread-Blockierzeit (Budget 50 ms)',
-      '',
-      `Messweg geprüft: ${run.observability.probeMs} ms absichtliche Blockade wurden als `
-      + `${formatMs(run.observability.observedMs)} gemeldet.`,
-      '',
-      '| Fixture | Wartezeit | Hinweg synchron | Längster Long Task | Blockierzeit gesamt | Budget |',
-      '| --- | --- | --- | --- | --- | --- |',
-    );
-    for (const fixture of run.fixtures) {
-      lines.push(
-        `| ${fixture.id} | ${formatMs(fixture.endToEnd.ms)} `
-        + `| ${formatMs(fixture.endToEnd.submitMs)} `
-        + `| ${formatMs(fixture.endToEnd.longestTaskMs)} `
-        + `| ${formatMs(fixture.endToEnd.blockingMs)} `
-        + `| ${fixture.endToEnd.blockingMs <= UI_BLOCKING_BUDGET_MS ? 'gehalten' : 'GERISSEN'} |`,
-      );
-    }
-
-    if (run.scale !== null && run.scale !== undefined) {
-      lines.push(
-        '',
-        '### Grenzwertherleitung: Kosten über der Knotenzahl',
-        '',
-        '| Fixture | Knoten | Dokument | Spitze | Speicherbudget | Blockierzeit | UI-Budget |',
-        '| --- | --- | --- | --- | --- | --- | --- |',
-      );
-      for (const row of run.scale) {
-        lines.push(
-          `| ${row.id} | ${row.totalNodes.toLocaleString('de-DE')} `
-          + `| ${formatMiB(row.bytes)} | ${formatMiB(row.heap.peakBytes)} `
-          + `| ${row.heap.peakBytes <= MEMORY_BUDGET_BYTES ? 'gehalten' : 'GERISSEN'} `
-          + `| ${formatMs(row.endToEnd.blockingMs)} `
-          + `| ${row.endToEnd.blockingMs <= UI_BLOCKING_BUDGET_MS ? 'gehalten' : 'GERISSEN'} |`,
-        );
-      }
-      const derived = deriveNodeLimit(run.scale);
-      lines.push(
-        '',
-        derived === null
-          ? 'Kein gemessener Stützpunkt hält beide Budgetposten für jedes Fixture. '
-            + 'Die Reihe trägt keinen hergeleiteten Grenzwert.'
-          : `Größte gemessene Knotenzahl, die beide Budgetposten für jedes Fixture hält: `
-            + `**${derived.toLocaleString('de-DE')}**.`,
-      );
-    }
-
-    lines.push('', '| Glob-Sterne | Musterbytes | Subjektlänge | Laufzeit |', '| --- | --- | --- | --- |');
-    for (const row of run.glob) {
-      lines.push(
-        `| ${row.stars} | ${row.patternBytes} | ${row.subjectLength} | ${formatMs(row.ms)} |`,
-      );
-    }
-  }
-  lines.push('');
-  return lines.join('\n');
+    ...report.runs.flatMap((run) => renderRun(run)),
+    '',
+  ].join('\n');
 }
