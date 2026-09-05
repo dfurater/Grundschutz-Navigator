@@ -240,7 +240,7 @@ const harness = {
       throw new Error('Seite ist nicht cross-origin-isoliert; Speichermessung nicht verfügbar');
     }
     if (typeof performance.measureUserAgentSpecificMemory !== 'function') {
-      throw new Error('performance.measureUserAgentSpecificMemory() fehlt in diesem Browser');
+      throw new TypeError('performance.measureUserAgentSpecificMemory() fehlt in diesem Browser');
     }
 
     const before = (await performance.measureUserAgentSpecificMemory()).bytes;

@@ -122,12 +122,14 @@ const crossOriginIsolation = {
  * wird deshalb einmal; welcher Lauf das war, weist der Bericht aus.
  */
 class MemoryProbe {
-  constructor() {
-    this.page = null;
-    this.throttleRate = null;
-    this.measuredAtThrottleRate = null;
-    this.footprints = new Map();
-  }
+  page = null;
+
+  throttleRate = null;
+
+  /** Drosselung des Laufs, der die Abdrücke tatsächlich erhoben hat. */
+  measuredAtThrottleRate = null;
+
+  footprints = new Map();
 
   attach(page, throttleRate) {
     this.page = page;

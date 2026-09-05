@@ -194,7 +194,7 @@ describe('Worst-Case-Fixtures der Klasse-2-Grenzen', () => {
     // sind paarweise verschieden, sonst würde die Duplicate-Member-Prüfung in
     // Stufe 1 abweisen und die Breite käme nie zustande.
     const members = Object.keys(JSON.parse(text) as Record<string, unknown>);
-    expect(members.length).toBe(nodes - 1);
+    expect(members).toHaveLength(nodes - 1);
     expect(new Set(members).size).toBe(nodes - 1);
 
     // Auf der Grenze läuft es durch Stufe 1 und die Invariante und wird erst im
