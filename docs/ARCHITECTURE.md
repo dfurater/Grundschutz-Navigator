@@ -26,17 +26,22 @@ Damit bleibt sie schnell und alle bestehenden Tests laufen unverändert weiter.
 
 `npm run test:browser` startet die getrennte Vitest-Browser-Lane aus
 `vitest.browser.config.ts` mit dem Playwright-Provider und Chromium. Sie
-verwendet einen gemeinsamen Test-iframe (`browser.isolate: false`), weil
-Vitest 4.1 den absoluten Dateipfad als Query-Parameter des isolierten iframes
-verwendet; ein lokaler Projektpfad mit `+` würde dabei in Leerzeichen
-dekodiert und den Ready-Handshake blockieren. Jeder Test bereinigt seine
+verwendet einen gemeinsamen Test-iframe (`isolate: false` auf `test`-Ebene;
+unter Vitest 4 hieß die Option `browser.isolate`). Eingeführt wurde die
+Einstellung, weil Vitest 4.1 den absoluten Dateipfad als Query-Parameter des
+isolierten iframes verwendete und ein lokaler Projektpfad mit `+` dabei in
+Leerzeichen dekodiert wurde, was den Ready-Handshake blockierte. Unter Vitest 5
+trägt dieser Grund nicht mehr: Die Lane läuft im Pfad `Grundschutz++ Navigator`
+auch mit `isolate: true` grün (gemessen 2026-09-07, 14 Tests). Der gemeinsame
+Frame bleibt dennoch gesetzt, weil der Egress-Guard auf ihm aufbaut — siehe die
+CSP-Begründung weiter unten. Jeder Test bereinigt seine
 eigene IndexedDB-Datenbank, und der Egress-Guard setzt seinen Zustand vor jedem
 Test zurück.
 
 | Abhängigkeit | Exakte Version | Lizenz | Zweck |
 | --- | --- | --- | --- |
-| `vitest` + `@vitest/coverage-v8` | `4.1.10` | MIT | Kompatible Test- und Coverage-Basis für beide Vitest-Lanes |
-| `@vitest/browser-playwright` | `4.1.10` | MIT | Playwright-Provider für das Vitest-Browser-Projekt |
+| `vitest` + `@vitest/coverage-v8` | `5.0.0` | MIT | Kompatible Test- und Coverage-Basis für beide Vitest-Lanes |
+| `@vitest/browser-playwright` | `5.0.0` | MIT | Playwright-Provider für das Vitest-Browser-Projekt |
 | `playwright` | `1.62.1` | Apache-2.0 | Startet das gepinnte Chromium in CI und lokal |
 
 Die exakte `playwright`-Version `1.62.1` liefert laut ihrem mitinstallierten
@@ -62,7 +67,7 @@ nur den lokalen WebSocket-Host, verhindert fremde Verbindungen vor dem
 Netzwerkzugriff und erfasst die dadurch ausgelöste Browser-Verletzung mit
 eigenem Zähler. `context.routeWebSocket()` ist hier bewusst keine zweite
 Durchsetzungsschicht: Der Handler läuft im gemeinsamen Vitest-Testframe mit
-`browser.isolate: false` nicht verlässlich. Der HTTP-Zähler wird erst beim
+`isolate: false` nicht verlässlich. Der HTTP-Zähler wird erst beim
 zugehörigen `ERR_BLOCKED_BY_CLIENT`-Ereignis erhöht; der WebSocket-Zähler erst
 bei der CSP-Verletzung erhöht, während der Chromium-Referenztest den daraus
 resultierenden geschlossenen Browser-WebSocket prüft. Bereits vorhandene oder

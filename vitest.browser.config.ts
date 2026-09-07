@@ -26,11 +26,11 @@ export default defineConfig({
     include: ['src/test/browser/**/*.browser.test.ts'],
     setupFiles: ['./src/test/browser/browserSetup.ts'],
     globals: true,
+    isolate: false,
     browser: {
       enabled: true,
       headless: true,
       ui: false,
-      isolate: false,
       provider: playwright({
         launchOptions: {
           channel: 'chromium',
