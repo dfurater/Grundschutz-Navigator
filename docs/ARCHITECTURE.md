@@ -38,6 +38,14 @@ CSP-Begründung weiter unten. Jeder Test bereinigt seine
 eigene IndexedDB-Datenbank, und der Egress-Guard setzt seinen Zustand vor jedem
 Test zurück.
 
+`optimizeDeps.include` führt `ajv` ausdrücklich auf. Die Schemaprüfung
+importiert das Paket erst zur Laufzeit; ohne den Eintrag entdeckt Vite es
+mitten im Lauf, optimiert es neu und lädt den Testframe neu. Unter Vitest 5
+verliert die gerade importierte Datei dabei ihren Suite-Kontext und scheitert
+mit „Vitest failed to find the current suite". Der Fehler tritt nur bei kaltem
+Optimizer-Cache und passender Zeitlage auf, weshalb er sich in CI zeigte und
+lokal nicht — die Vorab-Optimierung nimmt dem Reload den Anlass.
+
 | Abhängigkeit | Exakte Version | Lizenz | Zweck |
 | --- | --- | --- | --- |
 | `vitest` + `@vitest/coverage-v8` | `5.0.0` | MIT | Kompatible Test- und Coverage-Basis für beide Vitest-Lanes |

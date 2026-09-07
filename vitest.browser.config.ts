@@ -21,6 +21,18 @@ export default defineConfig({
       '@': resolve(__dirname, './src'),
     },
   },
+  /*
+   * `ajv` wird von der Schemaprüfung erst zur Laufzeit importiert. Ohne diesen
+   * Eintrag entdeckt Vite die Abhängigkeit mitten im Lauf, optimiert sie neu
+   * und lädt den Testframe neu; unter Vitest 5 verliert die gerade importierte
+   * Datei dabei ihren Suite-Kontext und scheitert mit „Vitest failed to find
+   * the current suite" (reproduziert in CI an
+   * `egressOracle.negative.browser.test.ts`). Vorab-Optimierung nimmt dem
+   * Reload den Anlass.
+   */
+  optimizeDeps: {
+    include: ['ajv'],
+  },
   test: {
     name: 'browser-chromium',
     include: ['src/test/browser/**/*.browser.test.ts'],
