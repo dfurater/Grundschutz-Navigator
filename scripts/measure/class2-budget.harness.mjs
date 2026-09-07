@@ -34,10 +34,14 @@
 // Messreihe, dass der gewählte Weg sie sieht.
 // =============================================================================
 
+import { CLASS_2_IMPORT_LIMITS } from '@/domain/oscalImportContract';
 import { parseClass2OscalInput } from '@/domain/oscalImportProcessing';
 import { processClass2OscalValue } from '@/domain/oscalObjectPipeline';
 import { globToRegExp } from '@/domain/profileResolutionSelection';
 import { importClass2OscalDocument } from '@/adapters/oscalImportGate';
+import { encodeOscalSource, OscalSourceDecoder, TRANSPORT_MAX_OPERATIONS, TRANSPORT_MAX_CODE_UNITS } from '@/domain/oscalImportTransport';
+import { EXPECTED_CODES } from '../measureClass2Timing.mjs';
+import { CLASS_2_TRANSPORT_FIXTURES } from '../class2TransportFixtures.mjs';
 import { walkOwnContainers } from '@/domain/oscalObjectWalk';
 import {
   CLASS_2_WORST_CASE_FIXTURES,
@@ -45,6 +49,8 @@ import {
   buildNodeBoundDocumentText,
   toBytes,
 } from '../class2WorstCaseFixtures.mjs';
+
+const FIXTURES = [...CLASS_2_WORST_CASE_FIXTURES, ...CLASS_2_TRANSPORT_FIXTURES];
 
 const CONTEXT = { trustClass: 'class-2-local-user' };
 
@@ -62,9 +68,19 @@ async function timed(run) {
 }
 
 const harness = {
+  /** Timing input is built in Node, outside this realm and the measured interval. */
+  async prepareBytes(metadata) {
+    const response = await fetch('/__class2_fixture.bin', { cache: 'no-store' });
+    if (!response.ok) throw new Error('Fixturebytes fehlen');
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if (bytes.byteLength !== metadata.bytes) throw new Error('Fixture-Bytelänge stimmt nicht');
+    held = { bytes, parsed: null, processed: null, live: null, widestRecord: null, result: null };
+    return metadata;
+  },
+
   /** Fixture-Bytes erzeugen und für die folgenden Schritte festhalten. */
   async prepare(fixtureId) {
-    const fixture = CLASS_2_WORST_CASE_FIXTURES.find((entry) => entry.id === fixtureId);
+    const fixture = FIXTURES.find((entry) => entry.id === fixtureId);
     if (fixture === undefined) throw new Error(`Unbekanntes Fixture: ${fixtureId}`);
 
     const build = await timed(() => fixture.build());
@@ -72,6 +88,7 @@ const harness = {
     held = { bytes, parsed: null, processed: null, live: null, widestRecord: null, result: null };
     return {
       id: fixture.id,
+      expectedCode: EXPECTED_CODES[fixture.id] ?? null,
       limit: fixture.limit,
       label: fixture.label,
       reachesSchemaStage: fixture.reachesSchemaStage,
@@ -93,7 +110,7 @@ const harness = {
    * @param {number} totalNodes Knotenzahl dieses Messpunkts.
    */
   async prepareScaled(fixtureId, totalNodes) {
-    const fixture = CLASS_2_WORST_CASE_FIXTURES.find((entry) => entry.id === fixtureId);
+    const fixture = FIXTURES.find((entry) => entry.id === fixtureId);
     if (fixture === undefined) throw new Error(`Unbekanntes Fixture: ${fixtureId}`);
     if (fixture.buildScaled === undefined) {
       throw new Error(`Fixture ${fixtureId} ist nicht knotenskalierbar`);
@@ -104,6 +121,7 @@ const harness = {
     held = { bytes, parsed: null, processed: null, live: null, widestRecord: null, result: null };
     return {
       id: fixture.id,
+      expectedCode: EXPECTED_CODES[fixture.id] ?? null,
       limit: fixture.limit,
       label: fixture.label,
       reachesSchemaStage: fixture.reachesSchemaStage,
@@ -218,6 +236,51 @@ const harness = {
   },
 
   /**
+   * Conservative simultaneous transport inventory, NOT a sampled heap peak.
+   * Hold source and the complete production-decoded graph (bounds the partial
+   * graph), every record's traversal keys (bounds the active encoder path),
+   * two maximal fragment envelopes for the two realms, and two UTF-16 buffers
+   * for the longest string/key (pending rope and flattening allocation).
+   * External buffers are included by the verified agent memory measurement.
+   * Validation worklists are released: validation finishes before transport.
+   */
+  holdTransportInventory() {
+    held.live = null;
+    held.widestRecord = null;
+    if (!held.processed?.ok) return { transported: false };
+    const source = held.parsed.source;
+    const keys = [];
+    let longestText = 0;
+    walkOwnContainers(source, (container) => {
+      if (!Array.isArray(container)) keys.push(Object.keys(container));
+      for (const key of Object.keys(container)) {
+        longestText = Math.max(longestText, key.length);
+        if (typeof container[key] === 'string') longestText = Math.max(longestText, container[key].length);
+      }
+      return true;
+    });
+    const decoder = new OscalSourceDecoder();
+    for (const operations of encodeOscalSource(source)) decoder.accept(structuredClone(operations));
+    const decoded = decoder.finish();
+    // Maximal 3-slot operation arrays plus an independent full UTF-16 payload
+    // deliberately overcount the bounded fragment, even for primitive trees.
+    const fragment = () => ({
+      operations: Array.from({ length: TRANSPORT_MAX_OPERATIONS }, () => ['string', '', false]),
+      payload: new Uint16Array(TRANSPORT_MAX_CODE_UNITS).fill(0x100),
+    });
+    held.live = {
+      decoded, keys,
+      encoderStack: Array.from({ length: CLASS_2_IMPORT_LIMITS.maxDepth + 1 }, () => ({ value: source, keys, index: 0 })),
+      decoderStack: Array.from({ length: CLASS_2_IMPORT_LIMITS.maxDepth + 1 }, () => ({ value: decoded, key: '' })),
+      workerFragment: fragment(), mainFragment: fragment(),
+      pendingText: new Uint16Array(longestText).fill(0x100),
+      flattenedText: new Uint16Array(longestText).fill(0x100),
+    };
+    return { transported: true, traversalKeyArrays: keys.length, longestText,
+      fragmentOperations: TRANSPORT_MAX_OPERATIONS, fragmentCodeUnits: TRANSPORT_MAX_CODE_UNITS };
+  },
+
+  /**
    * Selbstprüfung des Speichermesswegs, vor jeder Messreihe.
    *
    * Der Vorgänger dieses Harnischs maß über CDP `Runtime.getHeapUsage`. Diese
@@ -279,11 +342,11 @@ const harness = {
    * diese Zahl nicht erhoben und die Einhaltung des 50-ms-Budgets stattdessen
    * aus einer Architekturannahme abgeleitet hat — der Worker rechne ja
    * ausgelagert, im Main Thread blieben nur Pufferkopie und ausgehendes
-   * `postMessage`. Die Annahme lässt den RÜCKWEG aus: Der Worker antwortet mit
-   * `self.postMessage(response)` und schickt den vollständigen Ergebnisgraphen
-   * mit. Dessen strukturierte Deserialisierung läuft im Main Thread, vor dem
-   * `message`-Handler, und ist bei einem Dokument an der Knotengrenze alles
-   * andere als umsonst.
+   * `postMessage`. Vor GSPP-386 antwortete der Worker mit dem vollständigen
+   * Ergebnisgraphen; dessen strukturierte Deserialisierung blockierte den
+   * Main Thread bereits vor dem `message`-Handler. Seit GSPP-386 umfasst die
+   * Messung den quittierten Fragmenttransport und den inkrementellen Aufbau
+   * bis zur vollständigen Nutzbarkeit des Ergebnisses.
    *
    * Gemessen wird ohne jede Instrumentierung im Anwendungscode, auf zwei
    * unabhängigen Wegen:
@@ -447,6 +510,9 @@ const harness = {
     if (!parsed.ok) throw new Error('Aufwärmdokument scheitert in Stufe 1');
     const processed = await processClass2OscalValue(parsed.source, CONTEXT);
     if (!processed.ok) throw new Error('Aufwärmdokument scheitert in der Objektkette');
+    const decoder = new OscalSourceDecoder();
+    for (const fragment of encodeOscalSource(parsed.source)) decoder.accept(structuredClone(fragment));
+    decoder.finish();
     return true;
   },
 
