@@ -20,6 +20,9 @@ const MIB = 1024 * 1024;
  */
 export const UI_BLOCKING_BUDGET_MS = 50;
 
+/** Sichtbare Wartezeit laut docs/OSCAL_VALIDATION.md, für jede Wiederholung. */
+export const IMPORT_WAIT_BUDGET_MS = 5_000;
+
 /**
  * Speicherbudget aus `docs/OSCAL_VALIDATION.md`.
  *
@@ -202,7 +205,8 @@ function validSample(sample) {
 function uiBudgetHolds(end) {
   return end.valid === true && Array.isArray(end.longTasks) && end.longTasks.length === 0
     && finiteNonnegative(end.blockingMs) && end.blockingMs <= UI_BLOCKING_BUDGET_MS
-    && finiteNonnegative(end.submitMs) && end.submitMs <= UI_BLOCKING_BUDGET_MS;
+    && finiteNonnegative(end.submitMs) && end.submitMs <= UI_BLOCKING_BUDGET_MS
+    && finiteNonnegative(end.maxMs) && end.maxMs <= IMPORT_WAIT_BUDGET_MS;
 }
 
 export function summarizeSamples(samples) {
@@ -221,7 +225,7 @@ export function summarizeSamples(samples) {
     repetitions: samples,
     stage1: { ...first.stage1, ms: median(pick((entry) => entry.stage1.ms)) },
     objectChain: { ...first.objectChain, ms: median(pick((entry) => entry.objectChain.ms)) },
-    // Wartezeit als Median gegen Ausreißer, Blockierzeit als MAXIMUM: Für die
+    // Wartezeit als Median und Maximum, Blockierzeit als MAXIMUM: Für die
     // Bedienbarkeit zählt der schlechteste beobachtete Lauf, nicht der
     // typische. Ein Budget, das nur im Median hält, hält nicht.
     endToEnd: {
@@ -231,6 +235,7 @@ export function summarizeSamples(samples) {
       code: samples.find((entry) => !entry.endToEnd.ok)?.endToEnd.code ?? null,
       longTasks: samples.flatMap((entry) => entry.endToEnd.longTasks ?? []),
       ms: median(pick((entry) => entry.endToEnd.ms)),
+      maxMs: Math.max(...pick((entry) => entry.endToEnd.ms)),
       submitMs: Math.max(...pick((entry) => entry.endToEnd.submitMs)),
       blockingMs: Math.max(...pick((entry) => entry.endToEnd.blockingMs)),
       longestTaskMs: Math.max(...pick((entry) => entry.endToEnd.longestTaskMs)),
@@ -336,16 +341,16 @@ function renderFixtureTable(run) {
  */
 function renderBlockingTable(run) {
   return [
-    '### Main-Thread-Blockierzeit (Budget 50 ms)',
+    '### UI-Budgets: Blockierzeit 50 ms, Wartezeit 5 s',
     '',
     `Messweg geprüft: ${run.observability.probeMs} ms absichtliche Blockade wurden als `
     + `${formatMs(run.observability.observedMs)} gemeldet.`,
     '',
-    '| Fixture | Wartezeit | Hinweg synchron | Längster Long Task | Blockierzeit gesamt | Budget |',
-    '| --- | --- | --- | --- | --- | --- |',
+    '| Fixture | Wartezeit Median | Wartezeit Maximum | Hinweg synchron | Längster Long Task | Blockierzeit gesamt | Budget |',
+    '| --- | --- | --- | --- | --- | --- | --- |',
     ...run.fixtures.map((fixture) =>
       `| ${fixture.id} | ${formatMs(fixture.endToEnd.ms)} `
-      + `| ${formatMs(fixture.endToEnd.submitMs)} `
+      + `| ${formatMs(fixture.endToEnd.maxMs ?? Number.NaN)} | ${formatMs(fixture.endToEnd.submitMs)} `
       + `| ${formatMs(fixture.endToEnd.longestTaskMs)} `
       + `| ${formatMs(fixture.endToEnd.blockingMs)} `
       + `| ${uiBudgetHolds(fixture.endToEnd) ? 'gehalten' : 'GERISSEN'} |`),
@@ -411,7 +416,7 @@ function renderRun(run) {
   return [
     '',
     `## CPU-Drosselung ${run.throttleRate}x — ${run.environment.userAgent}`,
-    `Wiederholungen je Fixture: ${run.repeat} (Wartezeiten als Median, Blockierzeit als Maximum)`,
+    `Wiederholungen je Fixture: ${run.repeat} (Wartezeiten als Median und Maximum, Budgeturteil über alle Wiederholungen)`,
     '',
     ...renderFixtureTable(run),
     '',

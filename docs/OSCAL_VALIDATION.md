@@ -676,11 +676,25 @@ enthalten jede Wiederholung, Pflichtmessfelder, Proben und beide Fingerprints.
 | `key-bound` | 248.0 ms | 287.3 ms | 30.01 MiB | OSCAL_SCHEMA_ADDITIONAL_PROPERTY |
 | `valid-depth-bound` | 49.0 ms | 55.6 ms | 0.16 MiB | angenommen |
 
+Die Bot-Nachprüfung ergänzte anschließend die explizite Fünf-Sekunden-Prüfung
+im Bericht: Neben dem Median wird der Höchstwert aller Einzelwiederholungen
+geführt; ein langsamer Einzelimport darf weder das UI-Urteil noch die
+Knotengrenzherleitung bestehen. Die unveränderten 66 Rohmessungen wurden mit
+dieser strengeren Berichtslogik erneut ausgewertet und bestanden vollständig.
+Die Rohdaten bleiben das Original des oben bezeichneten Messstands; der
+Fingerprint bezeichnet diesen Stand einschließlich seiner damaligen Tests und
+Berichtslogik. Der Produkttransport und die Messwerterhebung sind gegenüber
+Implementierungscommit `3980b1ad887afe9242be4ba088b49295b25d0bf6` unverändert.
+Zusätzlich prüfen direkte kolokierte Tests beide Browserkontexte, binäre
+Routen mit und ohne Eingabe, Fehler-Cleanup, `prepareBytes` und den gehaltenen
+Transportbestand. Diese Ergänzungen benötigen keine neue Browsermessung,
+da sie die Datenerhebung und den gemessenen Importpfad nicht verändern.
+
 Prüfstand vom 2026-09-07 (Node 22.22.3):
 
 | Prüfung | Ergebnis |
 | --- | --- |
-| `npm run test:coverage` | 164 Dateien, 2 390 Tests bestanden, 21 übersprungen; Statements 90,87 %, Branches 83,42 %, Functions 94,29 %, Lines 93,59 %. Keine Schwelle verändert. |
+| `npm run test:coverage` | 166 Dateien, 2 403 Tests bestanden, 21 übersprungen; Statements 90,87 %, Branches 83,42 %, Functions 94,29 %, Lines 93,59 %. Keine Schwelle verändert. |
 | `npm run test:browser` | 20 Tests bestanden, ein bestehender Test übersprungen; echter Chromium mit Modul-Worker und Egress-Orakel. |
 | `npm run test:profile-resolution` | 16 Tests in drei Dateien bestanden. |
 | `npm run lint` | Keine Fehler; 64 bestehende Dateilängenwarnungen. |

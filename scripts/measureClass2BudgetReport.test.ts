@@ -234,7 +234,7 @@ describe('deriveNodeLimit', () => {
     id,
     totalNodes,
     heap: { stage1PeakBytes: 0, chainPeakBytes: 0, mainThreadBytes: 0, inputBytes: 0, transportInventoryBytes: 0, peakBytes },
-    endToEnd: { valid: true, longTasks: [], ms: 0, submitMs: 0, blockingMs, longestTaskMs: blockingMs, ok: true, code: null },
+    endToEnd: { valid: true, longTasks: [], ms: 0, maxMs: 0, submitMs: 0, blockingMs, longestTaskMs: blockingMs, ok: true, code: null },
   });
 
   it('nimmt den größten Stützpunkt, der beide Budgetposten hält', () => {
@@ -554,4 +554,46 @@ it('invalidates missing stage timings and missing transport inventory', () => {
   const heap = report.runs[0].fixtures[0].heap;
   delete heap.transportInventoryBytes;
   expect(renderReport(report)).toContain('GERISSEN');
+});
+
+
+describe('Wartezeitbudget', () => {
+  function timedRow(times: number[]) {
+    return {
+      ...fixtureRow(), totalNodes: 1_000,
+      ...summarizeSamples(times.map((ms) => sample({
+        endToEnd: { ...sample().endToEnd, ms },
+      }))),
+    };
+  }
+
+  it.each([[5_000, 1_000], [5_001, null], [8_000, null]])(
+    'prüft %i ms gegen die Grenze einschließlich Gleichheit', (ms, expected) => {
+      expect(deriveNodeLimit([timedRow([ms as number])])).toBe(expected);
+    },
+  );
+
+  it('verlangt einen endlichen nichtnegativen Wartezeithöchstwert', () => {
+    for (const maxMs of [undefined, Number.NaN, Infinity, -1]) {
+      const row = timedRow([20]);
+      row.endToEnd.maxMs = maxMs;
+      expect(deriveNodeLimit([row])).toBeNull();
+    }
+  });
+
+  it('verwirft einen langsamen Einzelimport auch bei schnellem Median', () => {
+    const row = timedRow([20, 8_000, 30]);
+    expect(row.endToEnd.ms).toBe(30);
+    expect(deriveNodeLimit([row])).toBeNull();
+    const markdown = renderReport({
+      generatedAt: 'test', browserVersion: 'test', runs: [{
+        throttleRate: 1, repeat: 3, environment: { userAgent: 'test' },
+        observability: { probeMs: 120, observedMs: 120 },
+        memoryObservability: { probeBytes: 100, observedBytes: 100 },
+        fixtures: [row], glob: [],
+      }],
+    });
+    expect(markdown).toContain('| GERISSEN |');
+    expect(markdown).toContain('8.00 s');
+  });
 });
