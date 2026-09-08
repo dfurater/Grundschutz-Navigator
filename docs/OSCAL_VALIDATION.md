@@ -232,7 +232,7 @@ Verbindlich für jede Änderung dieser Grenzwerte:
 | Budgetposten | Wert | Begründung |
 | --- | --- | --- |
 | Zusätzlicher Speicher im Tab je Import | **≤ 128 MiB** | Ein Renderer-Prozess auf Bürohardware verfügt über einen Old-Space im Bereich mehrerer hundert MiB bis GiB. 128 MiB ist ein spürbarer, aber tragbarer Anteil davon und lässt neben dem geladenen Klasse-1-Katalog und dem Suchindex Luft für die übrige Anwendung. Am 2026-09-05 von 64 MiB angehoben; die Herleitung steht unten. **Gemessener ungünstigster Fall: 112,75 MiB, also 88 % ausgeschöpft.** |
-| Blockierzeit des UI-Threads | **≤ 50 ms** | Oberhalb von 50 ms nimmt der Nutzer die Oberfläche als hängend wahr; es ist zugleich die Schwelle, ab der die Plattform einen Task als Long Task meldet, sodass eine Verletzung messbar ist. **Dieser Posten wird derzeit nicht eingehalten** — Befund und Weiterbehandlung stehen unter „Ergebnis der Nachvalidierung“. |
+| Blockierzeit des UI-Threads | **≤ 50 ms** | Oberhalb von 50 ms nimmt der Nutzer die Oberfläche als hängend wahr; es ist zugleich die Schwelle, ab der die Plattform einen Task als Long Task meldet, sodass eine Verletzung messbar ist. Der frühere Rücktransport verletzte dieses Budget; der vollständige GSPP-386-Nachweis unten hält es in allen 66 Wiederholungen. |
 | Sichtbare Wartezeit bis zum Ergebnis | **≤ 5 s** | Der Nutzer wartet auf Annahme oder Diagnose. Fünf Sekunden bleiben als bewusste Wartezeit erklärbar; darüber wirkt die Anwendung defekt. Hart gedeckelt ist die Wartezeit ohnehin durch `CLASS_2_IMPORT_WORKER_TIMEOUT_MS` (30 s). |
 
 ##### Warum das Speicherbudget angehoben und nicht die Knotengrenze gesenkt wurde
@@ -515,7 +515,7 @@ Drei Messgrenzen bleiben bestehen und sind hier ausgewiesen, nicht behoben:
   wird von der Drosselung erfasst — sichtbar daran, dass sie zwischen 1× und
   4× um etwa den Faktor 4 steigt.
 
-#### Ergebnis der Nachvalidierung
+#### Historisches Ergebnis der Nachvalidierung (GSPP-382)
 
 Zwei von drei Budgetposten werden im ungünstigsten Fall eingehalten:
 112,75 MiB gegen 128 MiB Speicherbudget (88 % ausgeschöpft) und 2,14 s gegen
@@ -546,14 +546,14 @@ Speicherposten aus. Aufgedeckt hat beides das Cross-Review.
   Kostentreiber; die Grenze schützt den Stapel.
 - **`maxDecodedBase64Bytes` 10 MiB → 4 MiB — korrigiert.** Begründung unten.
 
-##### Der Rückweg des Workers blockiert
+##### Historischer Befund: Der Rückweg des Workers blockiert
 
 Die ursprüngliche Begründung des UI-Budgets war eine Architekturannahme: Die
 Kette laufe im Worker, auf dem UI-Thread verblieben nur Pufferkopie und
-`postMessage`. Die Annahme lässt den Rückweg aus. Der Worker antwortet in
+`postMessage`. Die Annahme ließ den Rückweg aus. Vor GSPP-386 antwortete der Worker in
 [`oscalImport.worker.ts`](../src/workers/oscalImport.worker.ts) mit
-`self.postMessage(response)` und schickt den vollständigen Ergebnisgraphen
-mit; dessen strukturierte Deserialisierung läuft im Main Thread, vor dem
+`self.postMessage(response)` und schickte den vollständigen Ergebnisgraphen
+mit; dessen strukturierte Deserialisierung lief im Main Thread, vor dem
 `message`-Handler in
 [`oscalImportGate.ts`](../src/adapters/oscalImportGate.ts).
 
@@ -566,9 +566,145 @@ Dokumenten, proportional zur Knotenzahl des zurückgegebenen Graphen.
 Über die Knotengrenze allein wäre das Budget nur bei 250 000 zu halten — zu
 eng für legitime Dokumente neben einem realen Katalog mit 70 851 Knoten. Der
 Befund wird deshalb als Frage des Ergebnistransports weitergeführt:
-[GSPP-386](https://linear.app/grundschutz-plus-plus/issue/GSPP-386). Bis zu
-dessen Abschluss ist dieser Budgetposten offen und darf nicht als eingehalten
-zitiert werden.
+[GSPP-386](https://linear.app/grundschutz-plus-plus/issue/GSPP-386). Der folgende
+Nachweis bewertet den dort geänderten Transport; die obigen Zahlen dokumentieren
+den früheren Stand.
+
+##### Quittierter Ergebnistransport (GSPP-386)
+
+`importClass2OscalDocument(bytes, context)` liefert weiterhin erst den vollständigen
+validierten `source`-Baum mit Aufrufkontext, Root-Typ und OSCAL-Version zurück.
+Die Byte-, Struktur-, Ressourcen-, Root- und Schemaprüfungen laufen unverändert
+vor jeder erfolgreichen Datenübertragung im Worker. Eine fachliche Ablehnung
+behält ihre vollständige redigierte Diagnose.
+
+Der Worker traversiert das Ergebnis iterativ und erzeugt dabei flache Operationen
+für Containeranfang, Schlüssel, primitive Werte und Containerende. Pro Fragment
+gelten höchstens 256 Operationen und 32 768 UTF-16-Codeeinheiten. Lange Schlüssel
+und Strings werden mit expliziten Fortsetzungen übertragen; dabei bleiben auch
+ungepaarte Surrogate erhalten. Eine vollständige Operationsliste entsteht nicht.
+Nach einem Fragment wartet der Worker auf dessen Sequenzquittung. Der Adapter
+sendet sie erst nach vollständiger Verarbeitung dieses Fragments; so kann immer
+nur ein unquittiertes Fragment unterwegs sein.
+
+Der Decoder setzt Container direkt in den endgültigen Baum ein und verwendet
+für Objekte eigene Datenproperties ohne Setterwirkung. Der Abschluss benötigt
+weder eine Kopie noch einen weiteren Baumdurchlauf oder Main-Thread-JSON-Parsing.
+Rahmenform, Sequenz, Fragmentgrenzen, Zielcontainer, Fortsetzungen und vollständiger
+Abschluss werden geprüft. Ein Protokoll- oder Workerfehler führt zu
+`OSCAL_IMPORT_WORKER_FAILURE`. Der absolute Timeout von 30 Sekunden wird durch
+Quittungen nicht verlängert. Erfolg und Fehler teilen einen Abschlussweg, der
+Worker, Listener, Timer sowie Transportzustand und Teilresultate freigibt.
+Parallele Importe besitzen getrennte Worker und Decoder.
+Der Transport bleibt innerhalb des Browsers; er ergänzt weder Persistenz noch
+externe Übertragungsziele. Das bestehende Browser-Egress-Orakel bleibt Teil
+der echten Browsertests.
+
+Die Transporttests prüfen zusätzlich zum produktiven Schemaweg unbekannte Felder,
+Arrayreihenfolge, leere Container, `-0`, Unicode, lange Schlüssel und Strings sowie
+Tiefe und Breite. Unbekannte schemawidrige Felder werden dadurch nicht zulässig:
+Das neue `key-bound`-Grenzfixture bleibt eine erwartete Schemaablehnung.
+`string-bound` und `unicode-bound` sind dagegen gültige Dokumente an der
+10-MiB-Bytegrenze; `valid-depth-bound` nutzt die tiefste hier konstruierte gültige
+Kataloggruppenstruktur mit 63 Ebenen unter der Grenze von 64.
+
+Der Messharnisch ergänzt einen gleichzeitig gehaltenen Transportbestand:
+Quellbaum, vollständiger Decoderbaum als Obergrenze des Teilbaums, alle
+Record-Schlüsselarrays als Obergrenze des aktiven Traversierungsstapels,
+begrenzte Stacks und Fragmente beider Seiten sowie zwei UTF-16-Puffer für den
+längsten Schlüssel oder String. Die Puffermessung erfasst auch externe
+`ArrayBuffer`-Bestände. Ausgewiesen wird das Maximum aus diesem Bestand und
+dem bisherigen Prüfkettenbestand plus Ergebnis, jeweils zuzüglich der beim
+Aufrufer verbleibenden Eingabe. Das ist ein konservativ gehaltener Bestand,
+keine zeitliche Abtastung des tatsächlichen Worker-Peaks. Die oben benannten
+Grenzen der Messung in einem anderen Isolat und transienter Ajv-Allokationen
+bleiben bestehen.
+
+Der erste vollständige Lauf auf dem Fragmenttransport (2026-09-06,
+Quellfingerprint `04b9b3045957a9ded82b59509f37353208304ac8dbc1e11a322ab860c948eabf`)
+beobachtete bei `record-bound` in einer 4×-Wiederholung einen Long Task von
+109 ms und bestand damit den Nachweis nicht. Die Ergebnisdiagnosen blieben
+korrekt; der höchste Speicherwert lag bei 113,04 MiB. Der einzelne Task ließ
+sich in den anschließenden gezielten Traces nicht reproduzieren; seine Ursache
+wird deshalb nicht nachträglich als bewiesen dargestellt.
+
+Die Untersuchung zeigte eine davon unabhängige Messkontamination: Die direkte
+Parse-/Prüfkettenmessung und der Workerimport benutzten dasselbe Main-Thread-Isolat.
+Während des Imports blieb dort der zusätzlich geparste Baum referenziert;
+auch der browserseitige Fixturebau erzeugte große temporäre Bestände. Der
+korrigierte Harnisch trennt deshalb die Ende-zu-Ende-Zeitmessung in einen eigenen
+Browserkontext ab und lädt außerhalb des Messintervalls fertige binäre
+Fixturebytes. Die Beobachtbarkeitsprobe läuft in diesem Kontext nach Einstellung
+der Drosselung. Alle Wiederholungen bleiben erhalten; natürliche GC und sämtliche
+Import-Tasks werden weiterhin mitgemessen. Es gibt weder einen GC-Filter noch
+erzwungene GC vor dem Import oder Auswahl bestandener Einzelwiederholungen.
+
+Der vollständige Nachweis vom **2026-09-07, 13:56 UTC** bestand mit
+`node scripts/measure-class2-budget.mjs --throttle 1,4 --repeat 3`.
+Alle elf Grenzfixtures behielten in allen 66 Einzelwiederholungen ihr erwartetes
+Ergebnis; es gab keinen Import-Long-Task. Das Messintervall umfasst Eingabekopie,
+Workerstart, Validierung, Rücktransport und vollständige Ergebnisnutzbarkeit.
+Die längste einzelne Wartezeit betrug 2 647,74 ms, der höchste Speicherwert
+112,74 MiB bei `heap-bound`. Die Grenzen bleiben bei einer Million Knoten,
+128 MiB Speicher und 50 ms UI-Blockierzeit.
+
+Messumgebung: Apple M4 Pro (Mac16,8), 14 Kerne, 24 GiB RAM,
+macOS 26.6.2 (25G83), Node 22.22.3, Playwright 1.62.1,
+Chromium 151.0.7922.34. Die CPU-Drosselung betrifft den Main Thread;
+sie simuliert keine langsamere Worker-CPU. Die 120-ms-Beobachtbarkeitsprobe
+meldete bei beiden Drosselungen 120 ms; der 16-MiB-Speicherprüfpuffer wurde
+als 15,98 MiB erfasst. Speicherwerte wurden einmal bei 1× erhoben.
+
+Gemessen wurde der noch uncommittete Implementierungsbaum auf Basiscommit
+`db46aff5fdf35b1569053ddca4d2d9f303362b66`. Der SHA-256-Fingerprint über
+396 Quell-, Test-, Skript- und Konfigurationsdateien war vor und nach dem Lauf
+identisch: `aa036672596ab3aacc9e06db2d4a3fe025e416070586f9cb35a703f895cec7dc`.
+Die [vollständigen Messdaten](measurements/gspp386-worker-transport.json)
+enthalten jede Wiederholung, Pflichtmessfelder, Proben und beide Fingerprints.
+
+| Fixture | E2E-Median 1× | E2E-Median 4× | Speicher | Ergebnis |
+| --- | --- | --- | --- | --- |
+| `byte-bound` | 158.3 ms | 177.3 ms | 33.36 MiB | angenommen |
+| `node-bound` | 1202.3 ms | 2612.6 ms | 54.14 MiB | angenommen |
+| `depth-bound` | 875.4 ms | 1001.8 ms | 53.11 MiB | OSCAL_DOCUMENT_NOT_OBJECT |
+| `heap-bound` | 989.0 ms | 1265.7 ms | 112.74 MiB | OSCAL_DOCUMENT_NOT_OBJECT |
+| `record-bound` | 1920.4 ms | 2382.2 ms | 101.67 MiB | OSCAL_ROOT_KEY_AMBIGUOUS |
+| `base64-bound` | 153.6 ms | 192.9 ms | 37.51 MiB | angenommen |
+| `combined-bound` | 1120.3 ms | 2640.9 ms | 80.76 MiB | angenommen |
+| `string-bound` | 242.6 ms | 291.3 ms | 80.12 MiB | angenommen |
+| `unicode-bound` | 191.8 ms | 228.5 ms | 46.14 MiB | angenommen |
+| `key-bound` | 248.0 ms | 287.3 ms | 30.01 MiB | OSCAL_SCHEMA_ADDITIONAL_PROPERTY |
+| `valid-depth-bound` | 49.0 ms | 55.6 ms | 0.16 MiB | angenommen |
+
+Die Bot-Nachprüfung ergänzte anschließend die explizite Fünf-Sekunden-Prüfung
+im Bericht: Neben dem Median wird der Höchstwert aller Einzelwiederholungen
+geführt; ein langsamer Einzelimport darf weder das UI-Urteil noch die
+Knotengrenzherleitung bestehen. Die unveränderten 66 Rohmessungen wurden mit
+dieser strengeren Berichtslogik erneut ausgewertet und bestanden vollständig.
+Die 66 Wiederholungen und beide Fingerprints bleiben die Originale des oben
+bezeichneten Messstands. Die 22 verdichteten `endToEnd`-Blöcke wurden am
+2026-09-08 mit der neueren Berichtslogik deterministisch aus diesen
+Wiederholungen abgeleitet; der Regressionstest bindet sie an die jeweiligen
+Einzelwerte. Der Fingerprint bezeichnet den Messstand einschließlich seiner
+damaligen Tests und Berichtslogik, nicht diese spätere Ableitung. Der
+Produkttransport und die Messwerterhebung sind gegenüber Implementierungscommit
+`3980b1ad887afe9242be4ba088b49295b25d0bf6` unverändert.
+Zusätzlich prüfen direkte kolokierte Tests beide Browserkontexte, binäre
+Routen mit und ohne Eingabe, Fehler-Cleanup, `prepareBytes` und den gehaltenen
+Transportbestand. Diese Ergänzungen benötigen keine neue Browsermessung,
+da sie die Datenerhebung und den gemessenen Importpfad nicht verändern.
+
+Prüfstand vom 2026-09-07 (Node 22.22.3):
+
+| Prüfung | Ergebnis |
+| --- | --- |
+| `npm run test:coverage` | 166 Dateien, 2 403 Tests bestanden, 21 übersprungen; Statements 90,87 %, Branches 83,42 %, Functions 94,29 %, Lines 93,59 %. Keine Schwelle verändert. |
+| `npm run test:browser` | 20 Tests bestanden, ein bestehender Test übersprungen; echter Chromium mit Modul-Worker und Egress-Orakel. |
+| `npm run test:profile-resolution` | 16 Tests in drei Dateien bestanden. |
+| `npm run lint` | Keine Fehler; 64 bestehende Dateilängenwarnungen. |
+| `npm run build` | TypeScript und Vite-Build bestanden; bestehende Chunkgrößenwarnung. |
+| `npm run verify-oscal-schemas` | Alle 30 gepinnten Schemas verifiziert. |
+| `npm run review-policy:check` | 26 Regeln und acht Dateikontexte deckungsgleich mit den vier generierten Dateien. |
 
 ##### Warum das teuerste Dokument kein gültiger Katalog ist
 

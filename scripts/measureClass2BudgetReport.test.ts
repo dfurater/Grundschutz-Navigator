@@ -5,6 +5,8 @@
 // macht das Protokoll unwahr, ohne dass ein Messlauf davon etwas merkt.
 // =============================================================================
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   composeHeapFootprint,
@@ -13,7 +15,7 @@ import {
   median,
   parseArguments,
   parseThrottleRates,
-  renderReport,
+  renderReport as renderRawReport,
   summarizeSamples,
   deriveNodeLimit,
   parseNodeCounts,
@@ -21,16 +23,22 @@ import {
   UI_BLOCKING_BUDGET_MS,
 } from './measureClass2BudgetReport.mjs';
 
+const source = { commit: 'a'.repeat(40), sha256: 'b'.repeat(64), files: 1 };
+function renderReport(report: Record<string, unknown>) {
+  return renderRawReport({ sourceBefore: source, sourceAfter: source, ...report });
+}
+
 function sample(overrides: Record<string, unknown> = {}) {
   return {
     id: 'node-bound',
+    expectedCode: null,
     limit: 'maxNodes',
     label: 'Knotengrenze',
     reachesSchemaStage: true,
     bytes: 1_000,
     stage1: { ms: 10, ok: true, code: null },
     objectChain: { ms: 20, ok: true, code: null },
-    endToEnd: { ms: 30, submitMs: 2, blockingMs: 0, longestTaskMs: 0, ok: true, code: null },
+    endToEnd: { longTasks: [], ms: 30, submitMs: 2, blockingMs: 0, longestTaskMs: 0, ok: true, code: null },
     ...overrides,
   };
 }
@@ -42,7 +50,7 @@ function sample(overrides: Record<string, unknown> = {}) {
 function fixtureRow(
   overrides: Record<string, unknown> = {},
   heap: Record<string, number> = {
-    stage1PeakBytes: 100, chainPeakBytes: 80, mainThreadBytes: 50, inputBytes: 1_000, peakBytes: 1_150,
+    stage1PeakBytes: 100, chainPeakBytes: 80, mainThreadBytes: 50, inputBytes: 1_000, transportInventoryBytes: 0, peakBytes: 1_150,
   },
 ) {
   return { ...summarizeSamples([sample(overrides)]), heap, live: {} };
@@ -227,8 +235,8 @@ describe('deriveNodeLimit', () => {
   const row = (id: string, totalNodes: number, peakBytes: number, blockingMs: number) => ({
     id,
     totalNodes,
-    heap: { stage1PeakBytes: 0, chainPeakBytes: 0, mainThreadBytes: 0, peakBytes },
-    endToEnd: { ms: 0, submitMs: 0, blockingMs, longestTaskMs: blockingMs, ok: true, code: null },
+    heap: { stage1PeakBytes: 0, chainPeakBytes: 0, mainThreadBytes: 0, inputBytes: 0, transportInventoryBytes: 0, peakBytes },
+    endToEnd: { valid: true, longTasks: [], ms: 0, maxMs: 0, submitMs: 0, blockingMs, longestTaskMs: blockingMs, ok: true, code: null },
   });
 
   it('nimmt den größten Stützpunkt, der beide Budgetposten hält', () => {
@@ -408,7 +416,7 @@ describe('renderReport', () => {
         memoryObservability: { probeBytes: 16_777_216, observedBytes: 16_800_000 },
         memoryThrottleRate: 1,
         fixtures: [fixtureRow({}, {
-          stage1PeakBytes: peakBytes, chainPeakBytes: 0, mainThreadBytes: 0, inputBytes: 0, peakBytes,
+          stage1PeakBytes: peakBytes, chainPeakBytes: 0, mainThreadBytes: 0, inputBytes: 0, transportInventoryBytes: 0, peakBytes,
         })],
         glob: [],
       }],
@@ -439,5 +447,202 @@ describe('renderReport', () => {
     });
 
     expect(markdown).toContain('| GERISSEN |');
+  });
+});
+
+
+describe('GSPP-386 transport evidence', () => {
+  it('rendert das eingecheckte Messartefakt mit vollständigen Wartezeithöchstwerten', () => {
+    const report = JSON.parse(readFileSync(
+      resolve(process.cwd(), 'docs/measurements/gspp386-worker-transport.json'),
+      'utf8',
+    ));
+
+    for (const run of report.runs) {
+      for (const fixture of run.fixtures) {
+        expect(fixture.endToEnd).toEqual(summarizeSamples(fixture.repetitions).endToEnd);
+      }
+    }
+
+    const markdown = renderRawReport(report);
+
+    expect(markdown).not.toContain('NaN ms');
+    expect(markdown).not.toContain('GERISSEN');
+    expect(markdown).toContain('2.65 s');
+  });
+
+  it('keeps every repetition and fails a later unexpected rejection', () => {
+    const first = sample();
+    const failed = sample({ endToEnd: { ...first.endToEnd, ok: false, code: 'OSCAL_IMPORT_WORKER_FAILURE' } });
+    const summary = summarizeSamples([first, failed]);
+    expect(summary.endToEnd.valid).toBe(false);
+    expect(summary.endToEnd.ok).toBe(false);
+    expect(summary.repetitions).toHaveLength(2);
+  });
+
+  it('does not treat missing long tasks or timings as a passing run', () => {
+    const entry = sample();
+    for (const field of ['longTasks', 'submitMs', 'ms', 'blockingMs', 'longestTaskMs']) {
+      const endToEnd: Record<string, unknown> = { ...entry.endToEnd };
+      delete endToEnd[field];
+      expect(summarizeSamples([sample({ endToEnd })]).endToEnd.valid).toBe(false);
+    }
+  });
+
+  it('includes the transport inventory plus the caller input', () => {
+    expect(composeHeapFootprint({
+      stage1PeakBytes: 10, chainPeakBytes: 20, mainThreadBytes: 5,
+      inputBytes: 10, transportInventoryBytes: 100,
+    }).peakBytes).toBe(110);
+  });
+});
+
+
+describe('GSPP-386 measurement validation', () => {
+  it('accepts an expected domain rejection but not an unrelated failure', () => {
+    const entry = sample({
+      expectedCode: 'OSCAL_SCHEMA_INVALID',
+      objectChain: { ms: 1, ok: false, code: 'OSCAL_SCHEMA_INVALID' },
+      endToEnd: { ms: 2, submitMs: 1, blockingMs: 0, longestTaskMs: 0,
+        longTasks: [], ok: false, code: 'OSCAL_SCHEMA_INVALID' },
+    });
+    expect(summarizeSamples([entry]).endToEnd.valid).toBe(true);
+    expect(summarizeSamples([sample({
+      ...entry, endToEnd: { ...entry.endToEnd, code: 'OSCAL_IMPORT_WORKER_FAILURE' },
+    })]).endToEnd.valid).toBe(false);
+  });
+
+  it('rejects a task list inconsistent with its summary or a nonfinite time', () => {
+    const entry = sample();
+    for (const changed of [{ longTasks: [90] }, { ms: NaN }, { submitMs: -1 }]) {
+      expect(summarizeSamples([sample({
+        endToEnd: { ...entry.endToEnd, ...changed },
+      })]).endToEnd.valid).toBe(false);
+    }
+  });
+
+  it('does not derive a limit from absent memory or invalid timing evidence', () => {
+    const row = { ...fixtureRow(), totalNodes: 1_000 };
+    expect(deriveNodeLimit([{ ...row, heap: { peakBytes: NaN } }])).toBeNull();
+    expect(deriveNodeLimit([{ ...row, endToEnd: { ...row.endToEnd, valid: false } }])).toBeNull();
+  });
+
+  it('rejects present but unproven observability records', () => {
+    const run = {
+      throttleRate: 1, repeat: 1, environment: { userAgent: 'test' },
+      fixtures: [fixtureRow()], glob: [],
+      observability: { probeMs: 120, observedMs: 121 },
+      memoryObservability: { probeBytes: 16_777_216, observedBytes: 16_800_000 },
+    };
+    const render = (override: Record<string, unknown>) => renderReport({
+      generatedAt: 'test', browserVersion: 'test', runs: [{ ...run, ...override }],
+    });
+    expect(() => render({ observability: {} })).toThrow(/Long-Task-Beobachtbarkeit/);
+    expect(() => render({ observability: { probeMs: 120, observedMs: 0 } })).toThrow(/Long-Task-Beobachtbarkeit/);
+    expect(() => render({ memoryObservability: {} })).toThrow(/Speicher-Beobachtbarkeit/);
+    expect(() => render({ memoryObservability: { probeBytes: 100, observedBytes: 1 } })).toThrow(/Speicher-Beobachtbarkeit/);
+  });
+});
+
+
+it('rejects a matching direct and worker rejection when the fixture should pass', () => {
+  expect(summarizeSamples([sample({
+    objectChain: { ms: 1, ok: false, code: 'OSCAL_SCHEMA_ADDITIONAL_PROPERTY' },
+    endToEnd: { ms: 2, submitMs: 1, blockingMs: 0, longestTaskMs: 0,
+      longTasks: [], ok: false, code: 'OSCAL_SCHEMA_ADDITIONAL_PROPERTY' },
+  })]).endToEnd.valid).toBe(false);
+});
+
+
+it('refuses a passing report for missing or changed source fingerprints', () => {
+  const report = { generatedAt: 'test', browserVersion: 'test', runs: [] };
+  expect(() => renderRawReport(report)).toThrow(/Quellfingerprint/);
+  expect(() => renderReport({ ...report, sourceAfter: { ...source, sha256: 'c'.repeat(64) } })).toThrow(/Quellfingerprint/);
+  expect(() => renderReport({ ...report, sourceBefore: {}, sourceAfter: {} })).toThrow(/Quellfingerprint/);
+});
+
+
+it('invalidates missing stage timings and missing transport inventory', () => {
+  expect(summarizeSamples([sample({ stage1: { ok: true, code: null } })]).endToEnd.valid).toBe(false);
+  const report = {
+    generatedAt: 'test', browserVersion: 'test', runs: [{
+      throttleRate: 1, repeat: 1, environment: { userAgent: 'test' },
+      observability: { probeMs: 120, observedMs: 121 },
+      memoryObservability: { probeBytes: 100, observedBytes: 100 },
+      fixtures: [fixtureRow()], glob: [],
+    }],
+  };
+  const heap = report.runs[0].fixtures[0].heap;
+  delete heap.transportInventoryBytes;
+  expect(renderReport(report)).toContain('GERISSEN');
+});
+
+
+describe('Wartezeitbudget', () => {
+  function timedRow(times: number[]) {
+    return {
+      ...fixtureRow(), totalNodes: 1_000,
+      ...summarizeSamples(times.map((ms) => sample({
+        endToEnd: { ...sample().endToEnd, ms },
+      }))),
+    };
+  }
+
+  it.each([[5_000, 1_000], [5_001, null], [8_000, null]])(
+    'prüft %i ms gegen die Grenze einschließlich Gleichheit', (ms, expected) => {
+      expect(deriveNodeLimit([timedRow([ms as number])])).toBe(expected);
+    },
+  );
+
+  it('verlangt einen endlichen nichtnegativen Wartezeithöchstwert', () => {
+    for (const maxMs of [undefined, Number.NaN, Infinity, -1]) {
+      const row = timedRow([20]);
+      row.endToEnd.maxMs = maxMs;
+      expect(deriveNodeLimit([row])).toBeNull();
+    }
+  });
+
+  it('verweigert einen Bericht ohne erhobenen Wartezeithöchstwert', () => {
+    const row = timedRow([20]);
+    delete row.endToEnd.maxMs;
+
+    expect(() => renderReport({
+      generatedAt: 'test', browserVersion: 'test', runs: [{
+        throttleRate: 1, repeat: 1, environment: { userAgent: 'test' },
+        observability: { probeMs: 120, observedMs: 120 },
+        memoryObservability: { probeBytes: 100, observedBytes: 100 },
+        fixtures: [row], glob: [],
+      }],
+    })).toThrow(/Wartezeithöchstwert/);
+  });
+
+  it('verweigert auch eine Skalierungsreihe ohne erhobenen Wartezeithöchstwert', () => {
+    const scaleRow = timedRow([20]);
+    delete scaleRow.endToEnd.maxMs;
+
+    expect(() => renderReport({
+      generatedAt: 'test', browserVersion: 'test', runs: [{
+        throttleRate: 1, repeat: 1, environment: { userAgent: 'test' },
+        observability: { probeMs: 120, observedMs: 120 },
+        memoryObservability: { probeBytes: 100, observedBytes: 100 },
+        fixtures: [timedRow([20])], scale: [scaleRow], glob: [],
+      }],
+    })).toThrow(/Wartezeithöchstwert/);
+  });
+
+  it('verwirft einen langsamen Einzelimport auch bei schnellem Median', () => {
+    const row = timedRow([20, 8_000, 30]);
+    expect(row.endToEnd.ms).toBe(30);
+    expect(deriveNodeLimit([row])).toBeNull();
+    const markdown = renderReport({
+      generatedAt: 'test', browserVersion: 'test', runs: [{
+        throttleRate: 1, repeat: 3, environment: { userAgent: 'test' },
+        observability: { probeMs: 120, observedMs: 120 },
+        memoryObservability: { probeBytes: 100, observedBytes: 100 },
+        fixtures: [row], glob: [],
+      }],
+    });
+    expect(markdown).toContain('| GERISSEN |');
+    expect(markdown).toContain('8.00 s');
   });
 });

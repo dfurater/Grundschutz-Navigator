@@ -20,6 +20,9 @@ const MIB = 1024 * 1024;
  */
 export const UI_BLOCKING_BUDGET_MS = 50;
 
+/** Sichtbare Wartezeit laut docs/OSCAL_VALIDATION.md, für jede Wiederholung. */
+export const IMPORT_WAIT_BUDGET_MS = 5_000;
+
 /**
  * Speicherbudget aus `docs/OSCAL_VALIDATION.md`.
  *
@@ -66,6 +69,9 @@ export const MEMORY_BUDGET_BYTES = 128 * MIB;
  */
 export function deriveNodeLimit(rows) {
   if (rows.length === 0) return null;
+  // Ein fehlender Wartezeithöchstwert ist kein gerissenes Budget, sondern eine
+  // unvollständige Messreihe. Sie darf deshalb keinen Grenzwert herleiten.
+  if (rows.some((row) => !finiteNonnegative(row.endToEnd?.maxMs))) return null;
 
   const requiredFixtures = new Set(rows.map((row) => row.id));
   const byNodeCount = new Map();
@@ -77,8 +83,8 @@ export function deriveNodeLimit(rows) {
     }
     point.measured.add(row.id);
     if (
-      row.heap.peakBytes > MEMORY_BUDGET_BYTES
-      || row.endToEnd.blockingMs > UI_BLOCKING_BUDGET_MS
+      memoryVerdict(row.heap) !== 'gehalten'
+      || !uiBudgetHolds(row.endToEnd)
     ) {
       point.holds = false;
     }
@@ -178,6 +184,34 @@ export function median(values) {
  *
  * @param {object[]} samples Einzelmessungen desselben Fixtures.
  */
+function finiteNonnegative(value) {
+  return Number.isFinite(value) && value >= 0;
+}
+
+function validSample(sample) {
+  const end = sample.endToEnd;
+  const expected = sample.stage1.ok ? sample.objectChain : sample.stage1;
+  return finiteNonnegative(sample.stage1.ms) && finiteNonnegative(sample.objectChain.ms)
+    && finiteNonnegative(sample.bytes)
+    && ['ms', 'submitMs', 'blockingMs', 'longestTaskMs'].every((key) => finiteNonnegative(end[key]))
+    && Array.isArray(end.longTasks)
+    && end.longTasks.every(finiteNonnegative)
+    && end.blockingMs === end.longTasks.reduce((sum, ms) => sum + ms, 0)
+    && end.longestTaskMs === Math.max(0, ...end.longTasks)
+    && typeof expected.ok === 'boolean'
+    && end.ok === expected.ok && end.code === expected.code
+    && Object.hasOwn(sample, 'expectedCode')
+    && end.code === sample.expectedCode && end.ok === (sample.expectedCode === null)
+    && !['OSCAL_IMPORT_WORKER_FAILURE', 'OSCAL_IMPORT_WORKER_TIMEOUT'].includes(end.code);
+}
+
+function uiBudgetHolds(end) {
+  return end.valid === true && Array.isArray(end.longTasks) && end.longTasks.length === 0
+    && finiteNonnegative(end.blockingMs) && end.blockingMs <= UI_BLOCKING_BUDGET_MS
+    && finiteNonnegative(end.submitMs) && end.submitMs <= UI_BLOCKING_BUDGET_MS
+    && finiteNonnegative(end.maxMs) && end.maxMs <= IMPORT_WAIT_BUDGET_MS;
+}
+
 export function summarizeSamples(samples) {
   if (samples.length === 0) throw new RangeError('summarizeSamples erwartet Messwerte');
 
@@ -185,19 +219,26 @@ export function summarizeSamples(samples) {
   const pick = (select) => samples.map((sample) => select(sample));
   return {
     id: first.id,
+    expectedCode: first.expectedCode,
     limit: first.limit,
     label: first.label,
     reachesSchemaStage: first.reachesSchemaStage,
     bytes: first.bytes,
     samples: samples.length,
+    repetitions: samples,
     stage1: { ...first.stage1, ms: median(pick((entry) => entry.stage1.ms)) },
     objectChain: { ...first.objectChain, ms: median(pick((entry) => entry.objectChain.ms)) },
-    // Wartezeit als Median gegen Ausreißer, Blockierzeit als MAXIMUM: Für die
+    // Wartezeit als Median und Maximum, Blockierzeit als MAXIMUM: Für die
     // Bedienbarkeit zählt der schlechteste beobachtete Lauf, nicht der
     // typische. Ein Budget, das nur im Median hält, hält nicht.
     endToEnd: {
       ...first.endToEnd,
+      valid: samples.every(validSample),
+      ok: samples.every((entry) => entry.endToEnd.ok),
+      code: samples.find((entry) => !entry.endToEnd.ok)?.endToEnd.code ?? null,
+      longTasks: samples.flatMap((entry) => entry.endToEnd.longTasks ?? []),
       ms: median(pick((entry) => entry.endToEnd.ms)),
+      maxMs: Math.max(...pick((entry) => entry.endToEnd.ms)),
       submitMs: Math.max(...pick((entry) => entry.endToEnd.submitMs)),
       blockingMs: Math.max(...pick((entry) => entry.endToEnd.blockingMs)),
       longestTaskMs: Math.max(...pick((entry) => entry.endToEnd.longestTaskMs)),
@@ -225,7 +266,7 @@ export function summarizeSamples(samples) {
  * Original behält.
  *
  * @param {{stage1PeakBytes: number, chainPeakBytes: number,
- *          mainThreadBytes: number, inputBytes: number}} parts
+ *          mainThreadBytes: number, inputBytes: number, transportInventoryBytes?: number}} parts
  */
 export function composeHeapFootprint(parts) {
   // Ein abgewiesenes Dokument schickt nur eine Diagnose zurück; der
@@ -238,10 +279,12 @@ export function composeHeapFootprint(parts) {
     chainPeakBytes: parts.chainPeakBytes,
     mainThreadBytes,
     inputBytes: parts.inputBytes,
-    peakBytes:
+    ...(parts.transportInventoryBytes === undefined ? {} : { transportInventoryBytes: parts.transportInventoryBytes }),
+    peakBytes: Math.max(
+      parts.transportInventoryBytes ?? 0,
       Math.max(parts.stage1PeakBytes, parts.chainPeakBytes)
-      + mainThreadBytes
-      + parts.inputBytes,
+      + mainThreadBytes,
+    ) + parts.inputBytes,
   };
 }
 
@@ -261,15 +304,25 @@ export function formatMiB(value) {
 
 /** Urteil eines Budgetpostens; ein nicht erhobener Wert gilt als gerissen. */
 function verdict(value, budget) {
-  return value <= budget ? 'gehalten' : 'GERISSEN';
+  return finiteNonnegative(value) && value <= budget ? 'gehalten' : 'GERISSEN';
+}
+
+function memoryVerdict(heap) {
+  const fields = ['stage1PeakBytes', 'chainPeakBytes', 'mainThreadBytes', 'inputBytes', 'transportInventoryBytes', 'peakBytes'];
+  return fields.every((field) => finiteNonnegative(heap[field]))
+    ? verdict(heap.peakBytes, MEMORY_BUDGET_BYTES) : 'GERISSEN';
+}
+
+function resultLabel(endToEnd) {
+  return endToEnd.valid ? (endToEnd.code ?? 'angenommen') : `UNVOLLSTÄNDIG: ${endToEnd.code ?? 'Messfelder'}`;
 }
 
 /** Kosten je Fixture an seiner Grenze. */
 function renderFixtureTable(run) {
   return [
     '| Fixture | Grenze | Dokument | Stufe 1 | Objektkette | Ende-zu-Ende '
-    + '| Bestand Parse | Bestand Kette | Main Thread | Spitze | Budget | Schemastufe | Ergebnis |',
-    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
+    + '| Bestand Parse | Bestand Kette | Main Thread | Transportbestand | Spitze | Budget | Schemastufe | Ergebnis |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |',
     ...run.fixtures.map((fixture) =>
       `| ${fixture.id} | ${fixture.limit} | ${formatMiB(fixture.bytes)} `
       + `| ${formatMs(fixture.stage1.ms)} | ${formatMs(fixture.objectChain.ms)} `
@@ -277,32 +330,30 @@ function renderFixtureTable(run) {
       + `| ${formatMiB(fixture.heap.stage1PeakBytes)} `
       + `| ${formatMiB(fixture.heap.chainPeakBytes)} `
       + `| ${formatMiB(fixture.heap.mainThreadBytes)} `
+      + `| ${formatMiB(fixture.heap.transportInventoryBytes ?? Number.NaN)} `
       + `| ${formatMiB(fixture.heap.peakBytes)} `
-      + `| ${verdict(fixture.heap.peakBytes, MEMORY_BUDGET_BYTES)} `
+      + `| ${memoryVerdict(fixture.heap)} `
       + `| ${fixture.reachesSchemaStage ? 'ja' : 'nein'} `
-      + `| ${fixture.objectChain.code ?? 'angenommen'} |`),
+      + `| ${resultLabel(fixture.endToEnd)} |`),
   ];
 }
 
-/**
- * Blockierzeit des Main Threads, mitsamt dem Beleg, dass der Messweg in diesem
- * Lauf überhaupt etwas melden konnte.
- */
+/** Blockierzeit des Main Threads mitsamt dem belegten Messweg. */
 function renderBlockingTable(run) {
   return [
-    '### Main-Thread-Blockierzeit (Budget 50 ms)',
+    '### UI-Budgets: Blockierzeit 50 ms, Wartezeit 5 s',
     '',
     `Messweg geprüft: ${run.observability.probeMs} ms absichtliche Blockade wurden als `
     + `${formatMs(run.observability.observedMs)} gemeldet.`,
     '',
-    '| Fixture | Wartezeit | Hinweg synchron | Längster Long Task | Blockierzeit gesamt | Budget |',
-    '| --- | --- | --- | --- | --- | --- |',
+    '| Fixture | Wartezeit Median | Wartezeit Maximum | Hinweg synchron | Längster Long Task | Blockierzeit gesamt | Budget |',
+    '| --- | --- | --- | --- | --- | --- | --- |',
     ...run.fixtures.map((fixture) =>
       `| ${fixture.id} | ${formatMs(fixture.endToEnd.ms)} `
-      + `| ${formatMs(fixture.endToEnd.submitMs)} `
+      + `| ${formatMs(fixture.endToEnd.maxMs)} | ${formatMs(fixture.endToEnd.submitMs)} `
       + `| ${formatMs(fixture.endToEnd.longestTaskMs)} `
       + `| ${formatMs(fixture.endToEnd.blockingMs)} `
-      + `| ${verdict(fixture.endToEnd.blockingMs, UI_BLOCKING_BUDGET_MS)} |`),
+      + `| ${uiBudgetHolds(fixture.endToEnd) ? 'gehalten' : 'GERISSEN'} |`),
   ];
 }
 
@@ -317,9 +368,9 @@ function renderScaleTable(run) {
     ...run.scale.map((row) =>
       `| ${row.id} | ${row.totalNodes.toLocaleString('de-DE')} `
       + `| ${formatMiB(row.bytes)} | ${formatMiB(row.heap.peakBytes)} `
-      + `| ${verdict(row.heap.peakBytes, MEMORY_BUDGET_BYTES)} `
+      + `| ${memoryVerdict(row.heap)} `
       + `| ${formatMs(row.endToEnd.blockingMs)} `
-      + `| ${verdict(row.endToEnd.blockingMs, UI_BLOCKING_BUDGET_MS)} |`),
+      + `| ${uiBudgetHolds(row.endToEnd) ? 'gehalten' : 'GERISSEN'} |`),
     '',
     derived === null
       ? 'Kein gemessener Stützpunkt hält beide Budgetposten für jedes Fixture. '
@@ -345,28 +396,48 @@ function renderRun(run) {
   // Long-Task-Instrumentierung nicht nachweislich meldet, würde sonst lauter
   // Nullen als eingehaltenes UI-Budget ausweisen — genau die Verwechslung,
   // die der erste Messlauf dieser Auflage produziert hat.
-  if (run.observability === undefined || run.observability === null) {
+  if (!finiteNonnegative(run.observability?.probeMs)
+    || run.observability.probeMs < UI_BLOCKING_BUDGET_MS
+    || !finiteNonnegative(run.observability.observedMs)
+    || run.observability.observedMs < run.observability.probeMs * 0.5) {
     throw new Error('Messlauf ohne belegte Long-Task-Beobachtbarkeit');
   }
   // Dasselbe für den Speicherweg: Der Vorgänger dieser Messung sah
   // Puffer-Backing-Stores und externe Blink-Strings nicht und hätte damit ein
   // gehaltenes Speicherbudget ausweisen können, das nicht gehalten wird.
-  if (run.memoryObservability === undefined || run.memoryObservability === null) {
+  if (!finiteNonnegative(run.memoryObservability?.probeBytes)
+    || run.memoryObservability.probeBytes === 0
+    || !finiteNonnegative(run.memoryObservability.observedBytes)
+    || run.memoryObservability.observedBytes < run.memoryObservability.probeBytes * 0.9) {
     throw new Error('Messlauf ohne belegte Speicher-Beobachtbarkeit');
+  }
+
+  const timingRows = [...run.fixtures, ...(run.scale ?? [])];
+  for (const row of timingRows) {
+    if (!finiteNonnegative(row.endToEnd?.maxMs)) {
+      throw new Error(`Fixture ${row.id} ohne erhobenen Wartezeithöchstwert`);
+    }
   }
 
   const hasScale = run.scale !== null && run.scale !== undefined;
   return [
     '',
     `## CPU-Drosselung ${run.throttleRate}x — ${run.environment.userAgent}`,
-    `Wiederholungen je Fixture: ${run.repeat} (Zeiten als Median, Speicher als Maximum)`,
+    `Wiederholungen je Fixture: ${run.repeat} (Wartezeiten als Median und Maximum, Budgeturteil über alle Wiederholungen)`,
     '',
     ...renderFixtureTable(run),
     '',
     `Speichermessweg geprüft: ${formatMiB(run.memoryObservability.probeBytes)} Prüfpuffer `
     + `wurden als ${formatMiB(run.memoryObservability.observedBytes)} gemeldet. `
     + `Speicherwerte erhoben bei CPU-Drosselung ${run.memoryThrottleRate}x — sie hängen an `
-    + 'der Datenstruktur, nicht an der Taktrate, und werden deshalb einmal erhoben.',
+    + 'der Datenstruktur, nicht an der Taktrate, und werden deshalb einmal erhoben. '
+    + 'Transportbestand ist ein konservativer gleichzeitig gehaltener Bestand, keine abgetastete Spitze; '
+    + 'er enthält Quellbaum, vollständigen Decoderbaum, alle Record-Schlüsselarrays, begrenzte '
+    + 'Stack- und Fragmentbestände beider Seiten sowie Fortsetzungs- und Flatteningpuffer. '
+    + 'Die ausgewiesene Spitze ist das Maximum aus diesem Bestand plus Originaleingabe '
+    + 'und dem bisherigen Kettenbestand plus Ergebnis und Originaleingabe. '
+    + 'Die Inventarmessung läuft in einem Realm: getrennte Worker-/Main-Realm-Maps und '
+    + 'engine-interne temporäre Allokationen werden damit nicht als tatsächliche Laufzeitspitze gemessen.',
     '',
     ...renderBlockingTable(run),
     ...(hasScale ? ['', ...renderScaleTable(run)] : []),
@@ -382,11 +453,21 @@ function renderRun(run) {
  * @param {object} report Ergebnis eines Messlaufs.
  */
 export function renderReport(report) {
+  const before = report.sourceBefore;
+  const after = report.sourceAfter;
+  if (!before || !after || !/^[a-f0-9]{64}$/.test(before.sha256)
+    || !/^[a-f0-9]{40}$/.test(before.commit)
+    || !Number.isInteger(before.files) || before.files < 1
+    || before.sha256 !== after.sha256 || before.commit !== after.commit || before.files !== after.files) {
+    throw new Error('Fehlender oder geänderter Quellfingerprint: Messlauf belegt keinen stabilen Stand');
+  }
   return [
     '',
     'Klasse-2-Kostenmessung (GSPP-382)',
     `Erhoben: ${report.generatedAt}`,
     `Chromium: ${report.browserVersion}`,
+    `Commit: ${before.commit}; Quellfingerprint SHA-256: ${before.sha256} (${before.files} Dateien).`,
+    'Quellfingerprint vor und nach der Messung identisch.',
     ...report.runs.flatMap((run) => renderRun(run)),
     '',
   ].join('\n');

@@ -1,0 +1,3132 @@
+{
+  "generatedAt": "2026-09-07T13:56:26.882Z",
+  "origin": "http://localhost:50410",
+  "browserVersion": "151.0.7922.34",
+  "runs": [
+    {
+      "throttleRate": 1,
+      "repeat": 3,
+      "environment": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.0.0 Safari/537.36",
+        "hardwareConcurrency": 14,
+        "deviceMemory": 16
+      },
+      "timingIsolation": "separate-browser-context-node-built-binary-input",
+      "observability": {
+        "probeMs": 120,
+        "observedMs": 120
+      },
+      "memoryObservability": {
+        "probeBytes": 16777216,
+        "observedBytes": 16760963
+      },
+      "memoryThrottleRate": 1,
+      "fixtures": [
+        {
+          "id": "byte-bound",
+          "expectedCode": null,
+          "limit": "maxBytes",
+          "label": "Bytegrenze 10 MiB, ausschließlich \\uXXXX-Escapes",
+          "reachesSchemaStage": true,
+          "bytes": 10485760,
+          "samples": 3,
+          "repetitions": [
+            {
+              "id": "byte-bound",
+              "expectedCode": null,
+              "label": "Bytegrenze 10 MiB, ausschließlich \\uXXXX-Escapes",
+              "limit": "maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 2.3387499999989814,
+              "stage1": {
+                "ms": 108.24500000011176,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 8.91499999910593,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 184.24000000022352,
+                "submitMs": 2.605000000447035,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "byte-bound",
+              "expectedCode": null,
+              "label": "Bytegrenze 10 MiB, ausschließlich \\uXXXX-Escapes",
+              "limit": "maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 1.2794170000015583,
+              "stage1": {
+                "ms": 96.40000000037253,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 7.120000000111759,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 158.27500000037253,
+                "submitMs": 1.0099999997764826,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "byte-bound",
+              "expectedCode": null,
+              "label": "Bytegrenze 10 MiB, ausschließlich \\uXXXX-Escapes",
+              "limit": "maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 1.7822080000005371,
+              "stage1": {
+                "ms": 171.83499999996275,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 3.4100000001490116,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 157.34999999962747,
+                "submitMs": 1.0949999997392297,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            }
+          ],
+          "stage1": {
+            "ms": 108.24500000011176,
+            "ok": true,
+            "code": null
+          },
+          "objectChain": {
+            "ms": 7.120000000111759,
+            "ok": true,
+            "code": null
+          },
+          "endToEnd": {
+            "ms": 158.27500000037253,
+            "submitMs": 2.605000000447035,
+            "longTasks": [],
+            "blockingMs": 0,
+            "longestTaskMs": 0,
+            "ok": true,
+            "code": null,
+            "valid": true,
+            "maxMs": 184.24000000022352
+          },
+          "live": {
+            "containers": 5,
+            "childSlots": 11,
+            "widestRecordMembers": 4,
+            "textLength": 10485760,
+            "entries": 4,
+            "transport": {
+              "transported": true,
+              "traversalKeyArrays": 4,
+              "longestText": 1747598,
+              "fragmentOperations": 256,
+              "fragmentCodeUnits": 32768
+            }
+          },
+          "heap": {
+            "stage1PeakBytes": 22720146,
+            "chainPeakBytes": 12087333,
+            "mainThreadBytes": 1772630,
+            "inputBytes": 10485760,
+            "transportInventoryBytes": 20978477,
+            "peakBytes": 34978536
+          }
+        },
+        {
+          "id": "node-bound",
+          "expectedCode": null,
+          "limit": "maxNodes",
+          "label": "Knotengrenze 1 000 000, maximale Containerzahl",
+          "reachesSchemaStage": true,
+          "bytes": 7000121,
+          "samples": 3,
+          "repetitions": [
+            {
+              "id": "node-bound",
+              "expectedCode": null,
+              "label": "Knotengrenze 1 000 000, maximale Containerzahl",
+              "limit": "maxNodes",
+              "reachesSchemaStage": true,
+              "bytes": 7000121,
+              "buildMs": 30.54520799999591,
+              "stage1": {
+                "ms": 236.67999999970198,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 427.00499999988824,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 1202.2949999999255,
+                "submitMs": 0.7099999999627471,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "node-bound",
+              "expectedCode": null,
+              "label": "Knotengrenze 1 000 000, maximale Containerzahl",
+              "limit": "maxNodes",
+              "reachesSchemaStage": true,
+              "bytes": 7000121,
+              "buildMs": 18.040792000014335,
+              "stage1": {
+                "ms": 248.75999999977648,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 470.0900000007823,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 1174.0299999993294,
+                "submitMs": 0.7350000003352761,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "node-bound",
+              "expectedCode": null,
+              "label": "Knotengrenze 1 000 000, maximale Containerzahl",
+              "limit": "maxNodes",
+              "reachesSchemaStage": true,
+              "bytes": 7000121,
+              "buildMs": 15.520916000008583,
+              "stage1": {
+                "ms": 331.0100000007078,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 442.2599999997765,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 1223.8849999997765,
+                "submitMs": 0.5449999999254942,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            }
+          ],
+          "stage1": {
+            "ms": 248.75999999977648,
+            "ok": true,
+            "code": null
+          },
+          "objectChain": {
+            "ms": 442.2599999997765,
+            "ok": true,
+            "code": null
+          },
+          "endToEnd": {
+            "ms": 1202.2949999999255,
+            "submitMs": 0.7350000003352761,
+            "longTasks": [],
+            "blockingMs": 0,
+            "longestTaskMs": 0,
+            "ok": true,
+            "code": null,
+            "valid": true,
+            "maxMs": 1223.8849999997765
+          },
+          "live": {
+            "containers": 499999,
+            "childSlots": 1000000,
+            "widestRecordMembers": 4,
+            "textLength": 7000121,
+            "entries": 4,
+            "transport": {
+              "transported": true,
+              "traversalKeyArrays": 499998,
+              "longestText": 36,
+              "fragmentOperations": 256,
+              "fragmentCodeUnits": 32768
+            }
+          },
+          "heap": {
+            "stage1PeakBytes": 33233414,
+            "chainPeakBytes": 26235293,
+            "mainThreadBytes": 16316869,
+            "inputBytes": 7000121,
+            "transportInventoryBytes": 49770286,
+            "peakBytes": 56770407
+          }
+        },
+        {
+          "id": "depth-bound",
+          "expectedCode": "OSCAL_DOCUMENT_NOT_OBJECT",
+          "limit": "maxDepth",
+          "label": "Tiefengrenze 64 und maximale Containerzahl (ohne Schemastufe)",
+          "reachesSchemaStage": false,
+          "bytes": 2999936,
+          "samples": 3,
+          "repetitions": [
+            {
+              "id": "depth-bound",
+              "expectedCode": "OSCAL_DOCUMENT_NOT_OBJECT",
+              "label": "Tiefengrenze 64 und maximale Containerzahl (ohne Schemastufe)",
+              "limit": "maxDepth",
+              "reachesSchemaStage": false,
+              "bytes": 2999936,
+              "buildMs": 48.06287500000326,
+              "stage1": {
+                "ms": 292.43500000052154,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 579.5500000007451,
+                "ok": false,
+                "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+              },
+              "endToEnd": {
+                "ms": 880.7900000000373,
+                "submitMs": 0.5849999999627471,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": false,
+                "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+              }
+            },
+            {
+              "id": "depth-bound",
+              "expectedCode": "OSCAL_DOCUMENT_NOT_OBJECT",
+              "label": "Tiefengrenze 64 und maximale Containerzahl (ohne Schemastufe)",
+              "limit": "maxDepth",
+              "reachesSchemaStage": false,
+              "bytes": 2999936,
+              "buildMs": 26.67141700000502,
+              "stage1": {
+                "ms": 327.87999999988824,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 641.8300000000745,
+                "ok": false,
+                "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+              },
+              "endToEnd": {
+                "ms": 854.5949999997392,
+                "submitMs": 0.5700000002980232,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": false,
+                "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+              }
+            },
+            {
+              "id": "depth-bound",
+              "expectedCode": "OSCAL_DOCUMENT_NOT_OBJECT",
+              "label": "Tiefengrenze 64 und maximale Containerzahl (ohne Schemastufe)",
+              "limit": "maxDepth",
+              "reachesSchemaStage": false,
+              "bytes": 2999936,
+              "buildMs": 27.151582999998936,
+              "stage1": {
+                "ms": 481.45999999996275,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 597.1500000003725,
+                "ok": false,
+                "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+              },
+              "endToEnd": {
+                "ms": 875.375,
+                "submitMs": 0.28499999921768904,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": false,
+                "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+              }
+            }
+          ],
+          "stage1": {
+            "ms": 327.87999999988824,
+            "ok": true,
+            "code": null
+          },
+          "objectChain": {
+            "ms": 597.1500000003725,
+            "ok": false,
+            "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+          },
+          "endToEnd": {
+            "ms": 875.375,
+            "submitMs": 0.5849999999627471,
+            "longTasks": [],
+            "blockingMs": 0,
+            "longestTaskMs": 0,
+            "ok": false,
+            "code": "OSCAL_DOCUMENT_NOT_OBJECT",
+            "valid": true,
+            "maxMs": 880.7900000000373
+          },
+          "live": {
+            "containers": 1000000,
+            "childSlots": 1000062,
+            "widestRecordMembers": 0,
+            "textLength": 2999936,
+            "entries": 0,
+            "transport": {
+              "transported": false
+            }
+          },
+          "heap": {
+            "stage1PeakBytes": 52675639,
+            "chainPeakBytes": 49492808,
+            "mainThreadBytes": 19372,
+            "inputBytes": 2999936,
+            "transportInventoryBytes": 35002036,
+            "peakBytes": 55694947
+          }
+        },
+        {
+          "id": "heap-bound",
+          "expectedCode": "OSCAL_DOCUMENT_NOT_OBJECT",
+          "limit": "maxNodes + maxBytes",
+          "label": "Eigene verborgene Klasse je Container (ohne Schemastufe)",
+          "reachesSchemaStage": false,
+          "bytes": 10485760,
+          "samples": 3,
+          "repetitions": [
+            {
+              "id": "heap-bound",
+              "expectedCode": "OSCAL_DOCUMENT_NOT_OBJECT",
+              "label": "Eigene verborgene Klasse je Container (ohne Schemastufe)",
+              "limit": "maxNodes + maxBytes",
+              "reachesSchemaStage": false,
+              "bytes": 10485760,
+              "buildMs": 109.89729200000875,
+              "stage1": {
+                "ms": 514.0950000006706,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 528.9250000007451,
+                "ok": false,
+                "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+              },
+              "endToEnd": {
+                "ms": 988.9500000001863,
+                "submitMs": 0.6400000005960464,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": false,
+                "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+              }
+            },
+            {
+              "id": "heap-bound",
+              "expectedCode": "OSCAL_DOCUMENT_NOT_OBJECT",
+              "label": "Eigene verborgene Klasse je Container (ohne Schemastufe)",
+              "limit": "maxNodes + maxBytes",
+              "reachesSchemaStage": false,
+              "bytes": 10485760,
+              "buildMs": 42.850457999971695,
+              "stage1": {
+                "ms": 465.9650000007823,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 597.890000000596,
+                "ok": false,
+                "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+              },
+              "endToEnd": {
+                "ms": 983.4300000006333,
+                "submitMs": 0.8349999999627471,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": false,
+                "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+              }
+            },
+            {
+              "id": "heap-bound",
+              "expectedCode": "OSCAL_DOCUMENT_NOT_OBJECT",
+              "label": "Eigene verborgene Klasse je Container (ohne Schemastufe)",
+              "limit": "maxNodes + maxBytes",
+              "reachesSchemaStage": false,
+              "bytes": 10485760,
+              "buildMs": 42.75166699994588,
+              "stage1": {
+                "ms": 693.2400000002235,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 540.9799999995157,
+                "ok": false,
+                "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+              },
+              "endToEnd": {
+                "ms": 1007.1349999997765,
+                "submitMs": 0.6200000001117587,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": false,
+                "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+              }
+            }
+          ],
+          "stage1": {
+            "ms": 514.0950000006706,
+            "ok": true,
+            "code": null
+          },
+          "objectChain": {
+            "ms": 540.9799999995157,
+            "ok": false,
+            "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+          },
+          "endToEnd": {
+            "ms": 988.9500000001863,
+            "submitMs": 0.8349999999627471,
+            "longTasks": [],
+            "blockingMs": 0,
+            "longestTaskMs": 0,
+            "ok": false,
+            "code": "OSCAL_DOCUMENT_NOT_OBJECT",
+            "valid": true,
+            "maxMs": 1007.1349999997765
+          },
+          "live": {
+            "containers": 999999,
+            "childSlots": 1000000,
+            "widestRecordMembers": 1,
+            "textLength": 10485760,
+            "entries": 1,
+            "transport": {
+              "transported": false
+            }
+          },
+          "heap": {
+            "stage1PeakBytes": 107730844,
+            "chainPeakBytes": 97218592,
+            "mainThreadBytes": 0,
+            "inputBytes": 10485760,
+            "transportInventoryBytes": 82732176,
+            "peakBytes": 118216604
+          }
+        },
+        {
+          "id": "record-bound",
+          "expectedCode": "OSCAL_ROOT_KEY_AMBIGUOUS",
+          "limit": "maxBytes",
+          "label": "Ein Container maximaler Breite (ohne Schemastufe)",
+          "reachesSchemaStage": false,
+          "bytes": 10485760,
+          "samples": 3,
+          "repetitions": [
+            {
+              "id": "record-bound",
+              "expectedCode": "OSCAL_ROOT_KEY_AMBIGUOUS",
+              "label": "Ein Container maximaler Breite (ohne Schemastufe)",
+              "limit": "maxBytes",
+              "reachesSchemaStage": false,
+              "bytes": 10485760,
+              "buildMs": 141.45425000000978,
+              "stage1": {
+                "ms": 683.140000000596,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 1266.285000000149,
+                "ok": false,
+                "code": "OSCAL_ROOT_KEY_AMBIGUOUS"
+              },
+              "endToEnd": {
+                "ms": 1913.2050000000745,
+                "submitMs": 1.1349999997764826,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": false,
+                "code": "OSCAL_ROOT_KEY_AMBIGUOUS"
+              }
+            },
+            {
+              "id": "record-bound",
+              "expectedCode": "OSCAL_ROOT_KEY_AMBIGUOUS",
+              "label": "Ein Container maximaler Breite (ohne Schemastufe)",
+              "limit": "maxBytes",
+              "reachesSchemaStage": false,
+              "bytes": 10485760,
+              "buildMs": 108.31008299998939,
+              "stage1": {
+                "ms": 663.3849999997765,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 1318.1299999998882,
+                "ok": false,
+                "code": "OSCAL_ROOT_KEY_AMBIGUOUS"
+              },
+              "endToEnd": {
+                "ms": 1926.6849999995902,
+                "submitMs": 0.9250000007450581,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": false,
+                "code": "OSCAL_ROOT_KEY_AMBIGUOUS"
+              }
+            },
+            {
+              "id": "record-bound",
+              "expectedCode": "OSCAL_ROOT_KEY_AMBIGUOUS",
+              "label": "Ein Container maximaler Breite (ohne Schemastufe)",
+              "limit": "maxBytes",
+              "reachesSchemaStage": false,
+              "bytes": 10485760,
+              "buildMs": 102.56175000005169,
+              "stage1": {
+                "ms": 644.7400000002235,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 1299.5750000001863,
+                "ok": false,
+                "code": "OSCAL_ROOT_KEY_AMBIGUOUS"
+              },
+              "endToEnd": {
+                "ms": 1920.4199999999255,
+                "submitMs": 1.7999999998137355,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": false,
+                "code": "OSCAL_ROOT_KEY_AMBIGUOUS"
+              }
+            }
+          ],
+          "stage1": {
+            "ms": 663.3849999997765,
+            "ok": true,
+            "code": null
+          },
+          "objectChain": {
+            "ms": 1299.5750000001863,
+            "ok": false,
+            "code": "OSCAL_ROOT_KEY_AMBIGUOUS"
+          },
+          "endToEnd": {
+            "ms": 1920.4199999999255,
+            "submitMs": 1.7999999998137355,
+            "longTasks": [],
+            "blockingMs": 0,
+            "longestTaskMs": 0,
+            "ok": false,
+            "code": "OSCAL_ROOT_KEY_AMBIGUOUS",
+            "valid": true,
+            "maxMs": 1926.6849999995902
+          },
+          "live": {
+            "containers": 1,
+            "childSlots": 999999,
+            "widestRecordMembers": 999999,
+            "textLength": 10485760,
+            "entries": 999999,
+            "transport": {
+              "transported": false
+            }
+          },
+          "heap": {
+            "stage1PeakBytes": 70641989,
+            "chainPeakBytes": 96127240,
+            "mainThreadBytes": 0,
+            "inputBytes": 10485760,
+            "transportInventoryBytes": 56126392,
+            "peakBytes": 106613000
+          }
+        },
+        {
+          "id": "base64-bound",
+          "expectedCode": null,
+          "limit": "maxDecodedBase64Bytes",
+          "label": "Dekodierte Base64-Summe exakt auf der Grenze",
+          "reachesSchemaStage": true,
+          "bytes": 5592676,
+          "samples": 3,
+          "repetitions": [
+            {
+              "id": "base64-bound",
+              "expectedCode": null,
+              "label": "Dekodierte Base64-Summe exakt auf der Grenze",
+              "limit": "maxDecodedBase64Bytes",
+              "reachesSchemaStage": true,
+              "bytes": 5592676,
+              "buildMs": 4.878167000017129,
+              "stage1": {
+                "ms": 69.74500000011176,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 14.044999999925494,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 162.14499999955297,
+                "submitMs": 0.40499999932944775,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "base64-bound",
+              "expectedCode": null,
+              "label": "Dekodierte Base64-Summe exakt auf der Grenze",
+              "limit": "maxDecodedBase64Bytes",
+              "reachesSchemaStage": true,
+              "bytes": 5592676,
+              "buildMs": 1.2762499999953434,
+              "stage1": {
+                "ms": 70.06500000040978,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 14.980000000447035,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 153.6000000005588,
+                "submitMs": 0.375,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "base64-bound",
+              "expectedCode": null,
+              "label": "Dekodierte Base64-Summe exakt auf der Grenze",
+              "limit": "maxDecodedBase64Bytes",
+              "reachesSchemaStage": true,
+              "bytes": 5592676,
+              "buildMs": 1.5197500000940636,
+              "stage1": {
+                "ms": 88.54999999981374,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 14.90500000026077,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 151.410000000149,
+                "submitMs": 0.3700000001117587,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            }
+          ],
+          "stage1": {
+            "ms": 70.06500000040978,
+            "ok": true,
+            "code": null
+          },
+          "objectChain": {
+            "ms": 14.90500000026077,
+            "ok": true,
+            "code": null
+          },
+          "endToEnd": {
+            "ms": 153.6000000005588,
+            "submitMs": 0.40499999932944775,
+            "longTasks": [],
+            "blockingMs": 0,
+            "longestTaskMs": 0,
+            "ok": true,
+            "code": null,
+            "valid": true,
+            "maxMs": 162.14499999955297
+          },
+          "live": {
+            "containers": 7,
+            "childSlots": 14,
+            "widestRecordMembers": 4,
+            "textLength": 5592676,
+            "entries": 4,
+            "transport": {
+              "transported": true,
+              "traversalKeyArrays": 6,
+              "longestText": 5592408,
+              "fragmentOperations": 256,
+              "fragmentCodeUnits": 32768
+            }
+          },
+          "heap": {
+            "stage1PeakBytes": 11225604,
+            "chainPeakBytes": 5630824,
+            "mainThreadBytes": 6464,
+            "inputBytes": 5592676,
+            "transportInventoryBytes": 33736660,
+            "peakBytes": 39329336
+          }
+        },
+        {
+          "id": "combined-bound",
+          "expectedCode": null,
+          "limit": "maxNodes + maxBytes",
+          "label": "Knoten- und Bytegrenze gleichzeitig ausgeschöpft",
+          "reachesSchemaStage": true,
+          "bytes": 10485760,
+          "samples": 3,
+          "repetitions": [
+            {
+              "id": "combined-bound",
+              "expectedCode": null,
+              "label": "Knoten- und Bytegrenze gleichzeitig ausgeschöpft",
+              "limit": "maxNodes + maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 25.880875000031665,
+              "stage1": {
+                "ms": 267.7649999996647,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 394.65000000037253,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 1139.5849999999627,
+                "submitMs": 0.8599999994039536,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "combined-bound",
+              "expectedCode": null,
+              "label": "Knoten- und Bytegrenze gleichzeitig ausgeschöpft",
+              "limit": "maxNodes + maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 16.56462499999907,
+              "stage1": {
+                "ms": 252.75999999977648,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 377.445000000298,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 1120.2949999999255,
+                "submitMs": 0.5949999997392297,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "combined-bound",
+              "expectedCode": null,
+              "label": "Knoten- und Bytegrenze gleichzeitig ausgeschöpft",
+              "limit": "maxNodes + maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 16.139166999957524,
+              "stage1": {
+                "ms": 260.0800000000745,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 380.76999999955297,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 1116.105000000447,
+                "submitMs": 0.6699999999254942,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            }
+          ],
+          "stage1": {
+            "ms": 260.0800000000745,
+            "ok": true,
+            "code": null
+          },
+          "objectChain": {
+            "ms": 380.76999999955297,
+            "ok": true,
+            "code": null
+          },
+          "endToEnd": {
+            "ms": 1120.2949999999255,
+            "submitMs": 0.8599999994039536,
+            "longTasks": [],
+            "blockingMs": 0,
+            "longestTaskMs": 0,
+            "ok": true,
+            "code": null,
+            "valid": true,
+            "maxMs": 1139.5849999999627
+          },
+          "live": {
+            "containers": 499999,
+            "childSlots": 1000000,
+            "widestRecordMembers": 4,
+            "textLength": 10485760,
+            "entries": 4,
+            "transport": {
+              "transported": true,
+              "traversalKeyArrays": 499998,
+              "longestText": 3485640,
+              "fragmentOperations": 256,
+              "fragmentCodeUnits": 32768
+            }
+          },
+          "heap": {
+            "stage1PeakBytes": 43743172,
+            "chainPeakBytes": 33259572,
+            "mainThreadBytes": 19823148,
+            "inputBytes": 10485760,
+            "transportInventoryBytes": 74198188,
+            "peakBytes": 84683948
+          }
+        },
+        {
+          "id": "string-bound",
+          "expectedCode": null,
+          "limit": "maxBytes",
+          "label": "Ein ASCII-String nahe der Bytegrenze",
+          "reachesSchemaStage": true,
+          "bytes": 10485760,
+          "samples": 3,
+          "repetitions": [
+            {
+              "id": "string-bound",
+              "expectedCode": null,
+              "label": "Ein ASCII-String nahe der Bytegrenze",
+              "limit": "maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 37.906166000058874,
+              "stage1": {
+                "ms": 206.72499999962747,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 21.565000000409782,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 254.44500000029802,
+                "submitMs": 1.184999999590218,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "string-bound",
+              "expectedCode": null,
+              "label": "Ein ASCII-String nahe der Bytegrenze",
+              "limit": "maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 19.39112499996554,
+              "stage1": {
+                "ms": 158.29999999981374,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 20.40000000037253,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 242.57499999925494,
+                "submitMs": 0.7549999998882413,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "string-bound",
+              "expectedCode": null,
+              "label": "Ein ASCII-String nahe der Bytegrenze",
+              "limit": "maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 20.08545899996534,
+              "stage1": {
+                "ms": 196.8549999995157,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 19.110000000335276,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 241.97499999962747,
+                "submitMs": 0.6600000001490116,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            }
+          ],
+          "stage1": {
+            "ms": 196.8549999995157,
+            "ok": true,
+            "code": null
+          },
+          "objectChain": {
+            "ms": 20.40000000037253,
+            "ok": true,
+            "code": null
+          },
+          "endToEnd": {
+            "ms": 242.57499999925494,
+            "submitMs": 1.184999999590218,
+            "longTasks": [],
+            "blockingMs": 0,
+            "longestTaskMs": 0,
+            "ok": true,
+            "code": null,
+            "valid": true,
+            "maxMs": 254.44500000029802
+          },
+          "live": {
+            "containers": 5,
+            "childSlots": 11,
+            "widestRecordMembers": 4,
+            "textLength": 10485760,
+            "entries": 4,
+            "transport": {
+              "transported": true,
+              "traversalKeyArrays": 4,
+              "longestText": 10485568,
+              "fragmentOperations": 256,
+              "fragmentCodeUnits": 32768
+            }
+          },
+          "heap": {
+            "stage1PeakBytes": 31415762,
+            "chainPeakBytes": 20936740,
+            "mainThreadBytes": 10498604,
+            "inputBytes": 10485760,
+            "transportInventoryBytes": 73523592,
+            "peakBytes": 84009352
+          }
+        },
+        {
+          "id": "unicode-bound",
+          "expectedCode": null,
+          "limit": "maxBytes",
+          "label": "Unicode mit Paaren und einzelnen Surrogaten",
+          "reachesSchemaStage": true,
+          "bytes": 10485760,
+          "samples": 3,
+          "repetitions": [
+            {
+              "id": "unicode-bound",
+              "expectedCode": null,
+              "label": "Unicode mit Paaren und einzelnen Surrogaten",
+              "limit": "maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 55.880250000045635,
+              "stage1": {
+                "ms": 115.83999999985099,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 13.5,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 234.464999999851,
+                "submitMs": 0.8049999997019768,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "unicode-bound",
+              "expectedCode": null,
+              "label": "Unicode mit Paaren und einzelnen Surrogaten",
+              "limit": "maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 38.13812500005588,
+              "stage1": {
+                "ms": 211.464999999851,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 13.970000000670552,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 191.75999999977648,
+                "submitMs": 0.6050000004470348,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "unicode-bound",
+              "expectedCode": null,
+              "label": "Unicode mit Paaren und einzelnen Surrogaten",
+              "limit": "maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 38.99708300002385,
+              "stage1": {
+                "ms": 118.16000000014901,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 13.575000000186265,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 188.875,
+                "submitMs": 0.5849999999627471,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            }
+          ],
+          "stage1": {
+            "ms": 118.16000000014901,
+            "ok": true,
+            "code": null
+          },
+          "objectChain": {
+            "ms": 13.575000000186265,
+            "ok": true,
+            "code": null
+          },
+          "endToEnd": {
+            "ms": 191.75999999977648,
+            "submitMs": 0.8049999997019768,
+            "longTasks": [],
+            "blockingMs": 0,
+            "longestTaskMs": 0,
+            "ok": true,
+            "code": null,
+            "valid": true,
+            "maxMs": 234.464999999851
+          },
+          "live": {
+            "containers": 5,
+            "childSlots": 11,
+            "widestRecordMembers": 4,
+            "textLength": 7259432,
+            "entries": 4,
+            "transport": {
+              "transported": true,
+              "traversalKeyArrays": 4,
+              "longestText": 3226330,
+              "fragmentOperations": 256,
+              "fragmentCodeUnits": 32768
+            }
+          },
+          "heap": {
+            "stage1PeakBytes": 31449040,
+            "chainPeakBytes": 16929096,
+            "mainThreadBytes": 6450797,
+            "inputBytes": 10485760,
+            "transportInventoryBytes": 36420381,
+            "peakBytes": 48385597
+          }
+        },
+        {
+          "id": "key-bound",
+          "expectedCode": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY",
+          "limit": "maxBytes",
+          "label": "Langer unbekannter Schlüssel, erwartete Schemaablehnung",
+          "reachesSchemaStage": true,
+          "bytes": 10485760,
+          "samples": 3,
+          "repetitions": [
+            {
+              "id": "key-bound",
+              "expectedCode": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY",
+              "label": "Langer unbekannter Schlüssel, erwartete Schemaablehnung",
+              "limit": "maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 43.694499999983236,
+              "stage1": {
+                "ms": 166.04999999981374,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 21.434999999590218,
+                "ok": false,
+                "code": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY"
+              },
+              "endToEnd": {
+                "ms": 256.33499999996275,
+                "submitMs": 0.8599999994039536,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": false,
+                "code": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY"
+              }
+            },
+            {
+              "id": "key-bound",
+              "expectedCode": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY",
+              "label": "Langer unbekannter Schlüssel, erwartete Schemaablehnung",
+              "limit": "maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 20.347375000012107,
+              "stage1": {
+                "ms": 216.62000000011176,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 23.03500000014901,
+                "ok": false,
+                "code": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY"
+              },
+              "endToEnd": {
+                "ms": 248,
+                "submitMs": 0.6699999999254942,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": false,
+                "code": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY"
+              }
+            },
+            {
+              "id": "key-bound",
+              "expectedCode": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY",
+              "label": "Langer unbekannter Schlüssel, erwartete Schemaablehnung",
+              "limit": "maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 20.570334000047296,
+              "stage1": {
+                "ms": 200.785000000149,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 21.679999999701977,
+                "ok": false,
+                "code": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY"
+              },
+              "endToEnd": {
+                "ms": 246.67499999981374,
+                "submitMs": 0.9249999998137355,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": false,
+                "code": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY"
+              }
+            }
+          ],
+          "stage1": {
+            "ms": 200.785000000149,
+            "ok": true,
+            "code": null
+          },
+          "objectChain": {
+            "ms": 21.679999999701977,
+            "ok": false,
+            "code": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY"
+          },
+          "endToEnd": {
+            "ms": 248,
+            "submitMs": 0.9249999998137355,
+            "longTasks": [],
+            "blockingMs": 0,
+            "longestTaskMs": 0,
+            "ok": false,
+            "code": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY",
+            "valid": true,
+            "maxMs": 256.33499999996275
+          },
+          "live": {
+            "containers": 5,
+            "childSlots": 13,
+            "widestRecordMembers": 4,
+            "textLength": 10485760,
+            "entries": 4,
+            "transport": {
+              "transported": false
+            }
+          },
+          "heap": {
+            "stage1PeakBytes": 20981212,
+            "chainPeakBytes": 10489728,
+            "mainThreadBytes": 0,
+            "inputBytes": 10485760,
+            "transportInventoryBytes": 10484408,
+            "peakBytes": 31466972
+          }
+        },
+        {
+          "id": "valid-depth-bound",
+          "expectedCode": null,
+          "limit": "maxDepth - 1",
+          "label": "Tiefer schemagültiger Katalog",
+          "reachesSchemaStage": true,
+          "bytes": 1038,
+          "samples": 3,
+          "repetitions": [
+            {
+              "id": "valid-depth-bound",
+              "expectedCode": null,
+              "label": "Tiefer schemagültiger Katalog",
+              "limit": "maxDepth - 1",
+              "reachesSchemaStage": true,
+              "bytes": 1038,
+              "buildMs": 0.29283399996347725,
+              "stage1": {
+                "ms": 2.4100000001490116,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 0.10999999940395355,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 72.73500000033528,
+                "submitMs": 0.18999999947845936,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "valid-depth-bound",
+              "expectedCode": null,
+              "label": "Tiefer schemagültiger Katalog",
+              "limit": "maxDepth - 1",
+              "reachesSchemaStage": true,
+              "bytes": 1038,
+              "buildMs": 0.040250000078231096,
+              "stage1": {
+                "ms": 0.09999999962747097,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 0.08999999985098839,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 49.02000000048429,
+                "submitMs": 0.07000000029802322,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "valid-depth-bound",
+              "expectedCode": null,
+              "label": "Tiefer schemagültiger Katalog",
+              "limit": "maxDepth - 1",
+              "reachesSchemaStage": true,
+              "bytes": 1038,
+              "buildMs": 0.02679200004786253,
+              "stage1": {
+                "ms": 0.09000000078231096,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 0.09000000078231096,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 47.15499999932945,
+                "submitMs": 0.05999999959021807,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            }
+          ],
+          "stage1": {
+            "ms": 0.09999999962747097,
+            "ok": true,
+            "code": null
+          },
+          "objectChain": {
+            "ms": 0.09000000078231096,
+            "ok": true,
+            "code": null
+          },
+          "endToEnd": {
+            "ms": 49.02000000048429,
+            "submitMs": 0.18999999947845936,
+            "longTasks": [],
+            "blockingMs": 0,
+            "longestTaskMs": 0,
+            "ok": true,
+            "code": null,
+            "valid": true,
+            "maxMs": 72.73500000033528
+          },
+          "live": {
+            "containers": 63,
+            "childSlots": 127,
+            "widestRecordMembers": 4,
+            "textLength": 1038,
+            "entries": 4,
+            "transport": {
+              "transported": true,
+              "traversalKeyArrays": 33,
+              "longestText": 36,
+              "fragmentOperations": 256,
+              "fragmentCodeUnits": 32768
+            }
+          },
+          "heap": {
+            "stage1PeakBytes": 19355,
+            "chainPeakBytes": 18437,
+            "mainThreadBytes": 0,
+            "inputBytes": 1038,
+            "transportInventoryBytes": 161723,
+            "peakBytes": 162761
+          }
+        }
+      ],
+      "scale": null,
+      "glob": [
+        {
+          "stars": 4,
+          "ms": 0.75,
+          "patternBytes": 9,
+          "subjectLength": 40,
+          "matched": false
+        },
+        {
+          "stars": 6,
+          "ms": 24.860000000335276,
+          "patternBytes": 13,
+          "subjectLength": 40,
+          "matched": false
+        },
+        {
+          "stars": 8,
+          "ms": 339.85500000044703,
+          "patternBytes": 17,
+          "subjectLength": 40,
+          "matched": false
+        },
+        {
+          "stars": 10,
+          "ms": 4221.479999999516,
+          "patternBytes": 21,
+          "subjectLength": 40,
+          "matched": false
+        },
+        {
+          "stars": 12,
+          "ms": 32531.729999999516,
+          "patternBytes": 25,
+          "subjectLength": 40,
+          "matched": false
+        }
+      ]
+    },
+    {
+      "throttleRate": 4,
+      "repeat": 3,
+      "environment": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.0.0 Safari/537.36",
+        "hardwareConcurrency": 14,
+        "deviceMemory": 16
+      },
+      "timingIsolation": "separate-browser-context-node-built-binary-input",
+      "observability": {
+        "probeMs": 120,
+        "observedMs": 120
+      },
+      "memoryObservability": {
+        "probeBytes": 16777216,
+        "observedBytes": 16759359
+      },
+      "memoryThrottleRate": 1,
+      "fixtures": [
+        {
+          "id": "byte-bound",
+          "expectedCode": null,
+          "limit": "maxBytes",
+          "label": "Bytegrenze 10 MiB, ausschließlich \\uXXXX-Escapes",
+          "reachesSchemaStage": true,
+          "bytes": 10485760,
+          "samples": 3,
+          "repetitions": [
+            {
+              "id": "byte-bound",
+              "expectedCode": null,
+              "label": "Bytegrenze 10 MiB, ausschließlich \\uXXXX-Escapes",
+              "limit": "maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 2.2630829999689013,
+              "stage1": {
+                "ms": 449.15500000026077,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 38.28000000026077,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 187.04999999981374,
+                "submitMs": 3.625,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "byte-bound",
+              "expectedCode": null,
+              "label": "Bytegrenze 10 MiB, ausschließlich \\uXXXX-Escapes",
+              "limit": "maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 1.5781660000793636,
+              "stage1": {
+                "ms": 412.15000000037253,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 30.66000000014901,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 177.29999999981374,
+                "submitMs": 5.1099999994039536,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "byte-bound",
+              "expectedCode": null,
+              "label": "Bytegrenze 10 MiB, ausschließlich \\uXXXX-Escapes",
+              "limit": "maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 1.4713749999646097,
+              "stage1": {
+                "ms": 676.660000000149,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 15.410000000149012,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 176.9799999995157,
+                "submitMs": 4.610000000335276,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            }
+          ],
+          "stage1": {
+            "ms": 449.15500000026077,
+            "ok": true,
+            "code": null
+          },
+          "objectChain": {
+            "ms": 30.66000000014901,
+            "ok": true,
+            "code": null
+          },
+          "endToEnd": {
+            "ms": 177.29999999981374,
+            "submitMs": 5.1099999994039536,
+            "longTasks": [],
+            "blockingMs": 0,
+            "longestTaskMs": 0,
+            "ok": true,
+            "code": null,
+            "valid": true,
+            "maxMs": 187.04999999981374
+          },
+          "live": {
+            "containers": 5,
+            "childSlots": 11,
+            "widestRecordMembers": 4,
+            "textLength": 10485760,
+            "entries": 4,
+            "transport": {
+              "transported": true,
+              "traversalKeyArrays": 4,
+              "longestText": 1747598,
+              "fragmentOperations": 256,
+              "fragmentCodeUnits": 32768
+            }
+          },
+          "heap": {
+            "stage1PeakBytes": 22720146,
+            "chainPeakBytes": 12087333,
+            "mainThreadBytes": 1772630,
+            "inputBytes": 10485760,
+            "transportInventoryBytes": 20978477,
+            "peakBytes": 34978536
+          }
+        },
+        {
+          "id": "node-bound",
+          "expectedCode": null,
+          "limit": "maxNodes",
+          "label": "Knotengrenze 1 000 000, maximale Containerzahl",
+          "reachesSchemaStage": true,
+          "bytes": 7000121,
+          "samples": 3,
+          "repetitions": [
+            {
+              "id": "node-bound",
+              "expectedCode": null,
+              "label": "Knotengrenze 1 000 000, maximale Containerzahl",
+              "limit": "maxNodes",
+              "reachesSchemaStage": true,
+              "bytes": 7000121,
+              "buildMs": 17.199083999963477,
+              "stage1": {
+                "ms": 1054.4249999998137,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 2031.4900000002235,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 2646.7150000007823,
+                "submitMs": 3.2250000005587935,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "node-bound",
+              "expectedCode": null,
+              "label": "Knotengrenze 1 000 000, maximale Containerzahl",
+              "limit": "maxNodes",
+              "reachesSchemaStage": true,
+              "bytes": 7000121,
+              "buildMs": 17.200834000017494,
+              "stage1": {
+                "ms": 1172.1800000006333,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 2167.5949999997392,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 2612.6450000004843,
+                "submitMs": 1.7949999999254942,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "node-bound",
+              "expectedCode": null,
+              "label": "Knotengrenze 1 000 000, maximale Containerzahl",
+              "limit": "maxNodes",
+              "reachesSchemaStage": true,
+              "bytes": 7000121,
+              "buildMs": 16.26908400002867,
+              "stage1": {
+                "ms": 1460.7450000001118,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 2023.4799999995157,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 2609.3349999999627,
+                "submitMs": 1.8949999995529652,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            }
+          ],
+          "stage1": {
+            "ms": 1172.1800000006333,
+            "ok": true,
+            "code": null
+          },
+          "objectChain": {
+            "ms": 2031.4900000002235,
+            "ok": true,
+            "code": null
+          },
+          "endToEnd": {
+            "ms": 2612.6450000004843,
+            "submitMs": 3.2250000005587935,
+            "longTasks": [],
+            "blockingMs": 0,
+            "longestTaskMs": 0,
+            "ok": true,
+            "code": null,
+            "valid": true,
+            "maxMs": 2646.7150000007823
+          },
+          "live": {
+            "containers": 499999,
+            "childSlots": 1000000,
+            "widestRecordMembers": 4,
+            "textLength": 7000121,
+            "entries": 4,
+            "transport": {
+              "transported": true,
+              "traversalKeyArrays": 499998,
+              "longestText": 36,
+              "fragmentOperations": 256,
+              "fragmentCodeUnits": 32768
+            }
+          },
+          "heap": {
+            "stage1PeakBytes": 33233414,
+            "chainPeakBytes": 26235293,
+            "mainThreadBytes": 16316869,
+            "inputBytes": 7000121,
+            "transportInventoryBytes": 49770286,
+            "peakBytes": 56770407
+          }
+        },
+        {
+          "id": "depth-bound",
+          "expectedCode": "OSCAL_DOCUMENT_NOT_OBJECT",
+          "limit": "maxDepth",
+          "label": "Tiefengrenze 64 und maximale Containerzahl (ohne Schemastufe)",
+          "reachesSchemaStage": false,
+          "bytes": 2999936,
+          "samples": 3,
+          "repetitions": [
+            {
+              "id": "depth-bound",
+              "expectedCode": "OSCAL_DOCUMENT_NOT_OBJECT",
+              "label": "Tiefengrenze 64 und maximale Containerzahl (ohne Schemastufe)",
+              "limit": "maxDepth",
+              "reachesSchemaStage": false,
+              "bytes": 2999936,
+              "buildMs": 28.194582999916747,
+              "stage1": {
+                "ms": 1436.75,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 3465.8050000006333,
+                "ok": false,
+                "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+              },
+              "endToEnd": {
+                "ms": 997.6049999995157,
+                "submitMs": 1.2199999997392297,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": false,
+                "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+              }
+            },
+            {
+              "id": "depth-bound",
+              "expectedCode": "OSCAL_DOCUMENT_NOT_OBJECT",
+              "label": "Tiefengrenze 64 und maximale Containerzahl (ohne Schemastufe)",
+              "limit": "maxDepth",
+              "reachesSchemaStage": false,
+              "bytes": 2999936,
+              "buildMs": 29.237750000087544,
+              "stage1": {
+                "ms": 1592.7749999994412,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 3606.9199999999255,
+                "ok": false,
+                "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+              },
+              "endToEnd": {
+                "ms": 1001.75,
+                "submitMs": 1.449999999254942,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": false,
+                "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+              }
+            },
+            {
+              "id": "depth-bound",
+              "expectedCode": "OSCAL_DOCUMENT_NOT_OBJECT",
+              "label": "Tiefengrenze 64 und maximale Containerzahl (ohne Schemastufe)",
+              "limit": "maxDepth",
+              "reachesSchemaStage": false,
+              "bytes": 2999936,
+              "buildMs": 29.43058399995789,
+              "stage1": {
+                "ms": 2609.489999999292,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 3616.480000000447,
+                "ok": false,
+                "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+              },
+              "endToEnd": {
+                "ms": 1007.9199999999255,
+                "submitMs": 1.5899999998509884,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": false,
+                "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+              }
+            }
+          ],
+          "stage1": {
+            "ms": 1592.7749999994412,
+            "ok": true,
+            "code": null
+          },
+          "objectChain": {
+            "ms": 3606.9199999999255,
+            "ok": false,
+            "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+          },
+          "endToEnd": {
+            "ms": 1001.75,
+            "submitMs": 1.5899999998509884,
+            "longTasks": [],
+            "blockingMs": 0,
+            "longestTaskMs": 0,
+            "ok": false,
+            "code": "OSCAL_DOCUMENT_NOT_OBJECT",
+            "valid": true,
+            "maxMs": 1007.9199999999255
+          },
+          "live": {
+            "containers": 1000000,
+            "childSlots": 1000062,
+            "widestRecordMembers": 0,
+            "textLength": 2999936,
+            "entries": 0,
+            "transport": {
+              "transported": false
+            }
+          },
+          "heap": {
+            "stage1PeakBytes": 52675639,
+            "chainPeakBytes": 49492808,
+            "mainThreadBytes": 19372,
+            "inputBytes": 2999936,
+            "transportInventoryBytes": 35002036,
+            "peakBytes": 55694947
+          }
+        },
+        {
+          "id": "heap-bound",
+          "expectedCode": "OSCAL_DOCUMENT_NOT_OBJECT",
+          "limit": "maxNodes + maxBytes",
+          "label": "Eigene verborgene Klasse je Container (ohne Schemastufe)",
+          "reachesSchemaStage": false,
+          "bytes": 10485760,
+          "samples": 3,
+          "repetitions": [
+            {
+              "id": "heap-bound",
+              "expectedCode": "OSCAL_DOCUMENT_NOT_OBJECT",
+              "label": "Eigene verborgene Klasse je Container (ohne Schemastufe)",
+              "limit": "maxNodes + maxBytes",
+              "reachesSchemaStage": false,
+              "bytes": 10485760,
+              "buildMs": 89.7750000001397,
+              "stage1": {
+                "ms": 2694.9599999999627,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 3391.6100000003353,
+                "ok": false,
+                "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+              },
+              "endToEnd": {
+                "ms": 1254.679999999702,
+                "submitMs": 6.944999999366701,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": false,
+                "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+              }
+            },
+            {
+              "id": "heap-bound",
+              "expectedCode": "OSCAL_DOCUMENT_NOT_OBJECT",
+              "label": "Eigene verborgene Klasse je Container (ohne Schemastufe)",
+              "limit": "maxNodes + maxBytes",
+              "reachesSchemaStage": false,
+              "bytes": 10485760,
+              "buildMs": 104.17362499982119,
+              "stage1": {
+                "ms": 2620.8600000003353,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 3376.5849999999627,
+                "ok": false,
+                "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+              },
+              "endToEnd": {
+                "ms": 1280.035000000149,
+                "submitMs": 6.035000000149012,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": false,
+                "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+              }
+            },
+            {
+              "id": "heap-bound",
+              "expectedCode": "OSCAL_DOCUMENT_NOT_OBJECT",
+              "label": "Eigene verborgene Klasse je Container (ohne Schemastufe)",
+              "limit": "maxNodes + maxBytes",
+              "reachesSchemaStage": false,
+              "bytes": 10485760,
+              "buildMs": 106.43058299995027,
+              "stage1": {
+                "ms": 4776.370000000112,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 3281.0099999997765,
+                "ok": false,
+                "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+              },
+              "endToEnd": {
+                "ms": 1265.6849999995902,
+                "submitMs": 4.849999999627471,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": false,
+                "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+              }
+            }
+          ],
+          "stage1": {
+            "ms": 2694.9599999999627,
+            "ok": true,
+            "code": null
+          },
+          "objectChain": {
+            "ms": 3376.5849999999627,
+            "ok": false,
+            "code": "OSCAL_DOCUMENT_NOT_OBJECT"
+          },
+          "endToEnd": {
+            "ms": 1265.6849999995902,
+            "submitMs": 6.944999999366701,
+            "longTasks": [],
+            "blockingMs": 0,
+            "longestTaskMs": 0,
+            "ok": false,
+            "code": "OSCAL_DOCUMENT_NOT_OBJECT",
+            "valid": true,
+            "maxMs": 1280.035000000149
+          },
+          "live": {
+            "containers": 999999,
+            "childSlots": 1000000,
+            "widestRecordMembers": 1,
+            "textLength": 10485760,
+            "entries": 1,
+            "transport": {
+              "transported": false
+            }
+          },
+          "heap": {
+            "stage1PeakBytes": 107730844,
+            "chainPeakBytes": 97218592,
+            "mainThreadBytes": 0,
+            "inputBytes": 10485760,
+            "transportInventoryBytes": 82732176,
+            "peakBytes": 118216604
+          }
+        },
+        {
+          "id": "record-bound",
+          "expectedCode": "OSCAL_ROOT_KEY_AMBIGUOUS",
+          "limit": "maxBytes",
+          "label": "Ein Container maximaler Breite (ohne Schemastufe)",
+          "reachesSchemaStage": false,
+          "bytes": 10485760,
+          "samples": 3,
+          "repetitions": [
+            {
+              "id": "record-bound",
+              "expectedCode": "OSCAL_ROOT_KEY_AMBIGUOUS",
+              "label": "Ein Container maximaler Breite (ohne Schemastufe)",
+              "limit": "maxBytes",
+              "reachesSchemaStage": false,
+              "bytes": 10485760,
+              "buildMs": 125.64770800014958,
+              "stage1": {
+                "ms": 3976.2649999996647,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 6864.6850000005215,
+                "ok": false,
+                "code": "OSCAL_ROOT_KEY_AMBIGUOUS"
+              },
+              "endToEnd": {
+                "ms": 2375.7050000000745,
+                "submitMs": 6.21999999973923,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": false,
+                "code": "OSCAL_ROOT_KEY_AMBIGUOUS"
+              }
+            },
+            {
+              "id": "record-bound",
+              "expectedCode": "OSCAL_ROOT_KEY_AMBIGUOUS",
+              "label": "Ein Container maximaler Breite (ohne Schemastufe)",
+              "limit": "maxBytes",
+              "reachesSchemaStage": false,
+              "bytes": 10485760,
+              "buildMs": 130.24870799994096,
+              "stage1": {
+                "ms": 3990.4050000002608,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 6855.30999999959,
+                "ok": false,
+                "code": "OSCAL_ROOT_KEY_AMBIGUOUS"
+              },
+              "endToEnd": {
+                "ms": 2411.0449999999255,
+                "submitMs": 5.5249999994412065,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": false,
+                "code": "OSCAL_ROOT_KEY_AMBIGUOUS"
+              }
+            },
+            {
+              "id": "record-bound",
+              "expectedCode": "OSCAL_ROOT_KEY_AMBIGUOUS",
+              "label": "Ein Container maximaler Breite (ohne Schemastufe)",
+              "limit": "maxBytes",
+              "reachesSchemaStage": false,
+              "bytes": 10485760,
+              "buildMs": 135.65829200018197,
+              "stage1": {
+                "ms": 4126.604999999516,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 7055.1150000002235,
+                "ok": false,
+                "code": "OSCAL_ROOT_KEY_AMBIGUOUS"
+              },
+              "endToEnd": {
+                "ms": 2382.2099999999627,
+                "submitMs": 6.554999999701977,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": false,
+                "code": "OSCAL_ROOT_KEY_AMBIGUOUS"
+              }
+            }
+          ],
+          "stage1": {
+            "ms": 3990.4050000002608,
+            "ok": true,
+            "code": null
+          },
+          "objectChain": {
+            "ms": 6864.6850000005215,
+            "ok": false,
+            "code": "OSCAL_ROOT_KEY_AMBIGUOUS"
+          },
+          "endToEnd": {
+            "ms": 2382.2099999999627,
+            "submitMs": 6.554999999701977,
+            "longTasks": [],
+            "blockingMs": 0,
+            "longestTaskMs": 0,
+            "ok": false,
+            "code": "OSCAL_ROOT_KEY_AMBIGUOUS",
+            "valid": true,
+            "maxMs": 2411.0449999999255
+          },
+          "live": {
+            "containers": 1,
+            "childSlots": 999999,
+            "widestRecordMembers": 999999,
+            "textLength": 10485760,
+            "entries": 999999,
+            "transport": {
+              "transported": false
+            }
+          },
+          "heap": {
+            "stage1PeakBytes": 70641989,
+            "chainPeakBytes": 96127240,
+            "mainThreadBytes": 0,
+            "inputBytes": 10485760,
+            "transportInventoryBytes": 56126392,
+            "peakBytes": 106613000
+          }
+        },
+        {
+          "id": "base64-bound",
+          "expectedCode": null,
+          "limit": "maxDecodedBase64Bytes",
+          "label": "Dekodierte Base64-Summe exakt auf der Grenze",
+          "reachesSchemaStage": true,
+          "bytes": 5592676,
+          "samples": 3,
+          "repetitions": [
+            {
+              "id": "base64-bound",
+              "expectedCode": null,
+              "label": "Dekodierte Base64-Summe exakt auf der Grenze",
+              "limit": "maxDecodedBase64Bytes",
+              "reachesSchemaStage": true,
+              "bytes": 5592676,
+              "buildMs": 1.8233330000657588,
+              "stage1": {
+                "ms": 398,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 69.58499999996275,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 198.9199999999255,
+                "submitMs": 2.684999999590218,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "base64-bound",
+              "expectedCode": null,
+              "label": "Dekodierte Base64-Summe exakt auf der Grenze",
+              "limit": "maxDecodedBase64Bytes",
+              "reachesSchemaStage": true,
+              "bytes": 5592676,
+              "buildMs": 1.434457999886945,
+              "stage1": {
+                "ms": 256.09500000067055,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 64.62999999988824,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 192.91500000003725,
+                "submitMs": 2.2700000004842877,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "base64-bound",
+              "expectedCode": null,
+              "label": "Dekodierte Base64-Summe exakt auf der Grenze",
+              "limit": "maxDecodedBase64Bytes",
+              "reachesSchemaStage": true,
+              "bytes": 5592676,
+              "buildMs": 1.6306659998372197,
+              "stage1": {
+                "ms": 347.78000000026077,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 68.13499999977648,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 186.67999999970198,
+                "submitMs": 1.9799999995157123,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            }
+          ],
+          "stage1": {
+            "ms": 347.78000000026077,
+            "ok": true,
+            "code": null
+          },
+          "objectChain": {
+            "ms": 68.13499999977648,
+            "ok": true,
+            "code": null
+          },
+          "endToEnd": {
+            "ms": 192.91500000003725,
+            "submitMs": 2.684999999590218,
+            "longTasks": [],
+            "blockingMs": 0,
+            "longestTaskMs": 0,
+            "ok": true,
+            "code": null,
+            "valid": true,
+            "maxMs": 198.9199999999255
+          },
+          "live": {
+            "containers": 7,
+            "childSlots": 14,
+            "widestRecordMembers": 4,
+            "textLength": 5592676,
+            "entries": 4,
+            "transport": {
+              "transported": true,
+              "traversalKeyArrays": 6,
+              "longestText": 5592408,
+              "fragmentOperations": 256,
+              "fragmentCodeUnits": 32768
+            }
+          },
+          "heap": {
+            "stage1PeakBytes": 11225604,
+            "chainPeakBytes": 5630824,
+            "mainThreadBytes": 6464,
+            "inputBytes": 5592676,
+            "transportInventoryBytes": 33736660,
+            "peakBytes": 39329336
+          }
+        },
+        {
+          "id": "combined-bound",
+          "expectedCode": null,
+          "limit": "maxNodes + maxBytes",
+          "label": "Knoten- und Bytegrenze gleichzeitig ausgeschöpft",
+          "reachesSchemaStage": true,
+          "bytes": 10485760,
+          "samples": 3,
+          "repetitions": [
+            {
+              "id": "combined-bound",
+              "expectedCode": null,
+              "label": "Knoten- und Bytegrenze gleichzeitig ausgeschöpft",
+              "limit": "maxNodes + maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 19.60983299999498,
+              "stage1": {
+                "ms": 1291.035000000149,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 1954.445000000298,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 2647.739999999292,
+                "submitMs": 4.855000000447035,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "combined-bound",
+              "expectedCode": null,
+              "label": "Knoten- und Bytegrenze gleichzeitig ausgeschöpft",
+              "limit": "maxNodes + maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 18.51870800019242,
+              "stage1": {
+                "ms": 1234.4199999999255,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 2117.7000000001863,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 2640.8549999995157,
+                "submitMs": 6.03000000026077,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "combined-bound",
+              "expectedCode": null,
+              "label": "Knoten- und Bytegrenze gleichzeitig ausgeschöpft",
+              "limit": "maxNodes + maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 19.402625000104308,
+              "stage1": {
+                "ms": 1826.6800000006333,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 2048.8199999993667,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 2601.8950000004843,
+                "submitMs": 5.884999999776483,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            }
+          ],
+          "stage1": {
+            "ms": 1291.035000000149,
+            "ok": true,
+            "code": null
+          },
+          "objectChain": {
+            "ms": 2048.8199999993667,
+            "ok": true,
+            "code": null
+          },
+          "endToEnd": {
+            "ms": 2640.8549999995157,
+            "submitMs": 6.03000000026077,
+            "longTasks": [],
+            "blockingMs": 0,
+            "longestTaskMs": 0,
+            "ok": true,
+            "code": null,
+            "valid": true,
+            "maxMs": 2647.739999999292
+          },
+          "live": {
+            "containers": 499999,
+            "childSlots": 1000000,
+            "widestRecordMembers": 4,
+            "textLength": 10485760,
+            "entries": 4,
+            "transport": {
+              "transported": true,
+              "traversalKeyArrays": 499998,
+              "longestText": 3485640,
+              "fragmentOperations": 256,
+              "fragmentCodeUnits": 32768
+            }
+          },
+          "heap": {
+            "stage1PeakBytes": 43743172,
+            "chainPeakBytes": 33259572,
+            "mainThreadBytes": 19823148,
+            "inputBytes": 10485760,
+            "transportInventoryBytes": 74198188,
+            "peakBytes": 84683948
+          }
+        },
+        {
+          "id": "string-bound",
+          "expectedCode": null,
+          "limit": "maxBytes",
+          "label": "Ein ASCII-String nahe der Bytegrenze",
+          "reachesSchemaStage": true,
+          "bytes": 10485760,
+          "samples": 3,
+          "repetitions": [
+            {
+              "id": "string-bound",
+              "expectedCode": null,
+              "label": "Ein ASCII-String nahe der Bytegrenze",
+              "limit": "maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 23.79641700000502,
+              "stage1": {
+                "ms": 739.2700000004843,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 92.5800000000745,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 298.3299999991432,
+                "submitMs": 5.320000000298023,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "string-bound",
+              "expectedCode": null,
+              "label": "Ein ASCII-String nahe der Bytegrenze",
+              "limit": "maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 23.164875000016764,
+              "stage1": {
+                "ms": 682.3600000003353,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 92.98000000044703,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 290.0249999994412,
+                "submitMs": 5.105000000447035,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "string-bound",
+              "expectedCode": null,
+              "label": "Ein ASCII-String nahe der Bytegrenze",
+              "limit": "maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 22.646375000011176,
+              "stage1": {
+                "ms": 652.265000000596,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 91.56500000040978,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 291.304999999702,
+                "submitMs": 5.415000000037253,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            }
+          ],
+          "stage1": {
+            "ms": 682.3600000003353,
+            "ok": true,
+            "code": null
+          },
+          "objectChain": {
+            "ms": 92.5800000000745,
+            "ok": true,
+            "code": null
+          },
+          "endToEnd": {
+            "ms": 291.304999999702,
+            "submitMs": 5.415000000037253,
+            "longTasks": [],
+            "blockingMs": 0,
+            "longestTaskMs": 0,
+            "ok": true,
+            "code": null,
+            "valid": true,
+            "maxMs": 298.3299999991432
+          },
+          "live": {
+            "containers": 5,
+            "childSlots": 11,
+            "widestRecordMembers": 4,
+            "textLength": 10485760,
+            "entries": 4,
+            "transport": {
+              "transported": true,
+              "traversalKeyArrays": 4,
+              "longestText": 10485568,
+              "fragmentOperations": 256,
+              "fragmentCodeUnits": 32768
+            }
+          },
+          "heap": {
+            "stage1PeakBytes": 31415762,
+            "chainPeakBytes": 20936740,
+            "mainThreadBytes": 10498604,
+            "inputBytes": 10485760,
+            "transportInventoryBytes": 73523592,
+            "peakBytes": 84009352
+          }
+        },
+        {
+          "id": "unicode-bound",
+          "expectedCode": null,
+          "limit": "maxBytes",
+          "label": "Unicode mit Paaren und einzelnen Surrogaten",
+          "reachesSchemaStage": true,
+          "bytes": 10485760,
+          "samples": 3,
+          "repetitions": [
+            {
+              "id": "unicode-bound",
+              "expectedCode": null,
+              "label": "Unicode mit Paaren und einzelnen Surrogaten",
+              "limit": "maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 44.78495800006203,
+              "stage1": {
+                "ms": 638.7099999999627,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 62.21499999985099,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 228.47499999962747,
+                "submitMs": 4.989999999292195,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "unicode-bound",
+              "expectedCode": null,
+              "label": "Unicode mit Paaren und einzelnen Surrogaten",
+              "limit": "maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 43.89079199987464,
+              "stage1": {
+                "ms": 506.32499999925494,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 63.394999999552965,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 238.089999999851,
+                "submitMs": 5.134999999776483,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "unicode-bound",
+              "expectedCode": null,
+              "label": "Unicode mit Paaren und einzelnen Surrogaten",
+              "limit": "maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 44.25387499993667,
+              "stage1": {
+                "ms": 750.6650000000373,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 42.489999999292195,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 228.13499999977648,
+                "submitMs": 6.0249999994412065,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            }
+          ],
+          "stage1": {
+            "ms": 638.7099999999627,
+            "ok": true,
+            "code": null
+          },
+          "objectChain": {
+            "ms": 62.21499999985099,
+            "ok": true,
+            "code": null
+          },
+          "endToEnd": {
+            "ms": 228.47499999962747,
+            "submitMs": 6.0249999994412065,
+            "longTasks": [],
+            "blockingMs": 0,
+            "longestTaskMs": 0,
+            "ok": true,
+            "code": null,
+            "valid": true,
+            "maxMs": 238.089999999851
+          },
+          "live": {
+            "containers": 5,
+            "childSlots": 11,
+            "widestRecordMembers": 4,
+            "textLength": 7259432,
+            "entries": 4,
+            "transport": {
+              "transported": true,
+              "traversalKeyArrays": 4,
+              "longestText": 3226330,
+              "fragmentOperations": 256,
+              "fragmentCodeUnits": 32768
+            }
+          },
+          "heap": {
+            "stage1PeakBytes": 31449040,
+            "chainPeakBytes": 16929096,
+            "mainThreadBytes": 6450797,
+            "inputBytes": 10485760,
+            "transportInventoryBytes": 36420381,
+            "peakBytes": 48385597
+          }
+        },
+        {
+          "id": "key-bound",
+          "expectedCode": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY",
+          "limit": "maxBytes",
+          "label": "Langer unbekannter Schlüssel, erwartete Schemaablehnung",
+          "reachesSchemaStage": true,
+          "bytes": 10485760,
+          "samples": 3,
+          "repetitions": [
+            {
+              "id": "key-bound",
+              "expectedCode": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY",
+              "label": "Langer unbekannter Schlüssel, erwartete Schemaablehnung",
+              "limit": "maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 24.843125000130385,
+              "stage1": {
+                "ms": 1304.660000000149,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 97.96499999985099,
+                "ok": false,
+                "code": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY"
+              },
+              "endToEnd": {
+                "ms": 287.339999999851,
+                "submitMs": 6.120000000111759,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": false,
+                "code": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY"
+              }
+            },
+            {
+              "id": "key-bound",
+              "expectedCode": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY",
+              "label": "Langer unbekannter Schlüssel, erwartete Schemaablehnung",
+              "limit": "maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 25.198542000027373,
+              "stage1": {
+                "ms": 695.6550000002608,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 96.62999999988824,
+                "ok": false,
+                "code": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY"
+              },
+              "endToEnd": {
+                "ms": 283.12999999988824,
+                "submitMs": 5.58500000089407,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": false,
+                "code": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY"
+              }
+            },
+            {
+              "id": "key-bound",
+              "expectedCode": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY",
+              "label": "Langer unbekannter Schlüssel, erwartete Schemaablehnung",
+              "limit": "maxBytes",
+              "reachesSchemaStage": true,
+              "bytes": 10485760,
+              "buildMs": 24.565874999854714,
+              "stage1": {
+                "ms": 743.2999999998137,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 97.78000000026077,
+                "ok": false,
+                "code": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY"
+              },
+              "endToEnd": {
+                "ms": 288.51500000059605,
+                "submitMs": 7.055000000633299,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": false,
+                "code": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY"
+              }
+            }
+          ],
+          "stage1": {
+            "ms": 743.2999999998137,
+            "ok": true,
+            "code": null
+          },
+          "objectChain": {
+            "ms": 97.78000000026077,
+            "ok": false,
+            "code": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY"
+          },
+          "endToEnd": {
+            "ms": 287.339999999851,
+            "submitMs": 7.055000000633299,
+            "longTasks": [],
+            "blockingMs": 0,
+            "longestTaskMs": 0,
+            "ok": false,
+            "code": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY",
+            "valid": true,
+            "maxMs": 288.51500000059605
+          },
+          "live": {
+            "containers": 5,
+            "childSlots": 13,
+            "widestRecordMembers": 4,
+            "textLength": 10485760,
+            "entries": 4,
+            "transport": {
+              "transported": false
+            }
+          },
+          "heap": {
+            "stage1PeakBytes": 20981212,
+            "chainPeakBytes": 10489728,
+            "mainThreadBytes": 0,
+            "inputBytes": 10485760,
+            "transportInventoryBytes": 10484408,
+            "peakBytes": 31466972
+          }
+        },
+        {
+          "id": "valid-depth-bound",
+          "expectedCode": null,
+          "limit": "maxDepth - 1",
+          "label": "Tiefer schemagültiger Katalog",
+          "reachesSchemaStage": true,
+          "bytes": 1038,
+          "samples": 3,
+          "repetitions": [
+            {
+              "id": "valid-depth-bound",
+              "expectedCode": null,
+              "label": "Tiefer schemagültiger Katalog",
+              "limit": "maxDepth - 1",
+              "reachesSchemaStage": true,
+              "bytes": 1038,
+              "buildMs": 0.04508400009945035,
+              "stage1": {
+                "ms": 0.4500000001862645,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 0.26500000059604645,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 55.61500000022352,
+                "submitMs": 0.20000000018626451,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "valid-depth-bound",
+              "expectedCode": null,
+              "label": "Tiefer schemagültiger Katalog",
+              "limit": "maxDepth - 1",
+              "reachesSchemaStage": true,
+              "bytes": 1038,
+              "buildMs": 0.02529100002720952,
+              "stage1": {
+                "ms": 0.5800000000745058,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 0.0849999999627471,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 55.580000000074506,
+                "submitMs": 0.06500000040978193,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            },
+            {
+              "id": "valid-depth-bound",
+              "expectedCode": null,
+              "label": "Tiefer schemagültiger Katalog",
+              "limit": "maxDepth - 1",
+              "reachesSchemaStage": true,
+              "bytes": 1038,
+              "buildMs": 0.026291999965906143,
+              "stage1": {
+                "ms": 0.0800000000745058,
+                "ok": true,
+                "code": null
+              },
+              "objectChain": {
+                "ms": 0.4249999998137355,
+                "ok": true,
+                "code": null
+              },
+              "endToEnd": {
+                "ms": 53.81000000052154,
+                "submitMs": 0.24499999918043613,
+                "longTasks": [],
+                "blockingMs": 0,
+                "longestTaskMs": 0,
+                "ok": true,
+                "code": null
+              }
+            }
+          ],
+          "stage1": {
+            "ms": 0.4500000001862645,
+            "ok": true,
+            "code": null
+          },
+          "objectChain": {
+            "ms": 0.26500000059604645,
+            "ok": true,
+            "code": null
+          },
+          "endToEnd": {
+            "ms": 55.580000000074506,
+            "submitMs": 0.24499999918043613,
+            "longTasks": [],
+            "blockingMs": 0,
+            "longestTaskMs": 0,
+            "ok": true,
+            "code": null,
+            "valid": true,
+            "maxMs": 55.61500000022352
+          },
+          "live": {
+            "containers": 63,
+            "childSlots": 127,
+            "widestRecordMembers": 4,
+            "textLength": 1038,
+            "entries": 4,
+            "transport": {
+              "transported": true,
+              "traversalKeyArrays": 33,
+              "longestText": 36,
+              "fragmentOperations": 256,
+              "fragmentCodeUnits": 32768
+            }
+          },
+          "heap": {
+            "stage1PeakBytes": 19355,
+            "chainPeakBytes": 18437,
+            "mainThreadBytes": 0,
+            "inputBytes": 1038,
+            "transportInventoryBytes": 161723,
+            "peakBytes": 162761
+          }
+        }
+      ],
+      "scale": null,
+      "glob": [
+        {
+          "stars": 4,
+          "ms": 1.5949999997392297,
+          "patternBytes": 9,
+          "subjectLength": 40,
+          "matched": false
+        },
+        {
+          "stars": 6,
+          "ms": 62.19000000040978,
+          "patternBytes": 13,
+          "subjectLength": 40,
+          "matched": false
+        },
+        {
+          "stars": 8,
+          "ms": 1407.4799999995157,
+          "patternBytes": 17,
+          "subjectLength": 40,
+          "matched": false
+        },
+        {
+          "stars": 10,
+          "ms": 18085.18499999959,
+          "patternBytes": 21,
+          "subjectLength": 40,
+          "matched": false
+        }
+      ]
+    }
+  ],
+  "sourceBefore": {
+    "commit": "db46aff5fdf35b1569053ddca4d2d9f303362b66",
+    "sha256": "aa036672596ab3aacc9e06db2d4a3fe025e416070586f9cb35a703f895cec7dc",
+    "files": 396
+  },
+  "sourceAfter": {
+    "commit": "db46aff5fdf35b1569053ddca4d2d9f303362b66",
+    "sha256": "aa036672596ab3aacc9e06db2d4a3fe025e416070586f9cb35a703f895cec7dc",
+    "files": 396
+  }
+}

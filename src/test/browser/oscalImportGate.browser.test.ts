@@ -3,6 +3,8 @@ import { commands } from 'vitest/browser';
 import { importClass2OscalDocument } from '@/adapters/oscalImportGate';
 import { CLASS_2_IMPORT_LIMITS } from '@/domain/oscalImportProcessing';
 import { buildSchemaId } from '@/domain/oscalVersionMatrix';
+import { CLASS_2_IMPORT_WORKER_TIMEOUT_MS } from '@/domain/oscalImportContract';
+import { OscalSourceDecoder } from '@/domain/oscalImportTransport';
 import {
   makeSchemaInvalidOscalDocument,
   makeSchemaLeakProbeDocument,
@@ -135,4 +137,93 @@ test('lässt einen unbekannten Property-Namen weder in Diagnose noch in die Kons
   expect(consoleError).not.toHaveBeenCalled();
   expect(consoleLog).not.toHaveBeenCalled();
   expect(consoleWarn).not.toHaveBeenCalled();
+});
+
+test('übernimmt fragmentierte Unicode-Werte vollständig und hält parallele Importe getrennt', async () => {
+  const first = makeSchemaValidOscalDocument('catalog', '1.1.3');
+  const second = makeSchemaValidOscalDocument('catalog', '1.2.2');
+  const title = 'A'.repeat(32_767) + '😀\ud800漢'.repeat(20_000);
+  (first.catalog as { metadata: { title: string } }).metadata.title = title;
+  const contexts = [
+    { trustClass: 'class-2-local-user', documentId: 'first' },
+    { trustClass: 'class-2-local-user', documentId: 'second' },
+  ] as const;
+  const results = await Promise.all([
+    importClass2OscalDocument(encode(first), contexts[0]),
+    importClass2OscalDocument(encode(second), contexts[1]),
+  ]);
+  expect(results[0]).toEqual({ ok: true, document: {
+    source: first, context: contexts[0], rootType: 'catalog', oscalVersion: '1.1.3',
+  } });
+  expect(results[1]).toEqual({ ok: true, document: {
+    source: second, context: contexts[1], rootType: 'catalog', oscalVersion: '1.2.2',
+  } });
+});
+
+test('der echte Worker wartet nach jedem Datenfragment auf dessen Quittung', async () => {
+  const worker = new Worker(new URL('../../workers/oscalImport.worker.ts', import.meta.url), { type: 'module' });
+  const source = makeSchemaValidOscalDocument('catalog', '1.1.3');
+  (source.catalog as { metadata: { title: string } }).metadata.title = 'A'.repeat(100_000);
+  const decoder = new OscalSourceDecoder();
+  const frames: { type: string; sequence?: number; operations?: unknown }[] = [];
+  let releaseFirst: (() => void) | undefined;
+  const firstChunk = new Promise<void>((resolve) => { releaseFirst = resolve; });
+  let sequence = 0;
+  let paused = true;
+  const done = new Promise<void>((resolve, reject) => {
+    worker.addEventListener('error', reject);
+    worker.addEventListener('message', (event) => {
+      const frame = event.data;
+      frames.push(frame);
+      if (frame.type === 'chunk') {
+        try {
+          expect(frame.sequence).toBe(sequence++);
+          decoder.accept(frame.operations);
+          if (paused) releaseFirst!();
+          else worker.postMessage({ type: 'ack', sequence: frame.sequence });
+        } catch (error) { reject(error); }
+      } else if (frame.type === 'done') resolve();
+      else if (frame.type !== 'start') reject(new Error('Unexpected worker frame'));
+    });
+  });
+  try {
+    const bytes = encode(source).buffer;
+    worker.postMessage({ type: 'import', bytes, context: { trustClass: 'class-2-local-user' } }, [bytes]);
+    await firstChunk;
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(frames.map((frame) => frame.type)).toEqual(['start', 'chunk']);
+    paused = false;
+    worker.postMessage({ type: 'ack', sequence: 0 });
+    await done;
+    expect(sequence).toBeGreaterThan(1);
+    expect(decoder.finish()).toEqual(source);
+  } finally { worker.terminate(); decoder.dispose(); }
+});
+
+test.each(['error', 'messageerror', 'protocol'])('räumt einen echten Worker nach %s auf', async (failure) => {
+  const original = Worker.prototype.postMessage;
+  const terminate = vi.spyOn(Worker.prototype, 'terminate');
+  const post = vi.spyOn(Worker.prototype, 'postMessage').mockImplementation(function (this: Worker, message, transfer) {
+    original.call(this, message, Array.isArray(transfer) ? { transfer } : transfer);
+    queueMicrotask(() => this.dispatchEvent(failure === 'protocol'
+      ? new MessageEvent('message', { data: { type: 'chunk', sequence: 0, operations: [] } })
+      : new Event(failure)));
+  });
+  try {
+    expect(await importClass2OscalDocument(encode(makeSchemaValidOscalDocument('catalog', '1.1.3')), {
+      trustClass: 'class-2-local-user',
+    })).toMatchObject({ ok: false, diagnostic: { code: 'OSCAL_IMPORT_WORKER_FAILURE' } });
+    expect(terminate).toHaveBeenCalledTimes(1);
+  } finally { post.mockRestore(); terminate.mockRestore(); }
+});
+
+test('beendet einen echten Worker beim absoluten Timeout', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  const terminate = vi.spyOn(Worker.prototype, 'terminate');
+  try {
+    const pending = importClass2OscalDocument(new Uint8Array(), { trustClass: 'class-2-local-user' });
+    vi.advanceTimersByTime(CLASS_2_IMPORT_WORKER_TIMEOUT_MS);
+    expect(await pending).toMatchObject({ ok: false, diagnostic: { code: 'OSCAL_IMPORT_WORKER_FAILURE' } });
+    expect(terminate).toHaveBeenCalledTimes(1);
+  } finally { vi.useRealTimers(); terminate.mockRestore(); }
 });
