@@ -846,7 +846,10 @@ function orderedInsertIds(
     return 0;
   };
   if (directive.order === 'ascending') return [...ids].sort(compare);
-  if (directive.order === 'descending') return [...ids].sort((left, right) => compare(right, left));
+  // Absteigend ist aufsteigend + Umdrehen: Die Schlüssel sind eindeutig
+  // (Set), daher ist das identisch zum gespiegelten Komparator — ohne
+  // vertauschte Parameternamen (SonarQube S2234).
+  if (directive.order === 'descending') return [...ids].sort(compare).reverse();
   return declaredThenPoolOrder(ids, directive.selection, budget);
 }
 
