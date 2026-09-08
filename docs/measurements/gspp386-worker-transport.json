@@ -134,7 +134,8 @@
             "longestTaskMs": 0,
             "ok": true,
             "code": null,
-            "valid": true
+            "valid": true,
+            "maxMs": 184.24000000022352
           },
           "live": {
             "containers": 5,
@@ -271,7 +272,8 @@
             "longestTaskMs": 0,
             "ok": true,
             "code": null,
-            "valid": true
+            "valid": true,
+            "maxMs": 1223.8849999997765
           },
           "live": {
             "containers": 499999,
@@ -408,7 +410,8 @@
             "longestTaskMs": 0,
             "ok": false,
             "code": "OSCAL_DOCUMENT_NOT_OBJECT",
-            "valid": true
+            "valid": true,
+            "maxMs": 880.7900000000373
           },
           "live": {
             "containers": 1000000,
@@ -541,7 +544,8 @@
             "longestTaskMs": 0,
             "ok": false,
             "code": "OSCAL_DOCUMENT_NOT_OBJECT",
-            "valid": true
+            "valid": true,
+            "maxMs": 1007.1349999997765
           },
           "live": {
             "containers": 999999,
@@ -674,7 +678,8 @@
             "longestTaskMs": 0,
             "ok": false,
             "code": "OSCAL_ROOT_KEY_AMBIGUOUS",
-            "valid": true
+            "valid": true,
+            "maxMs": 1926.6849999995902
           },
           "live": {
             "containers": 1,
@@ -807,7 +812,8 @@
             "longestTaskMs": 0,
             "ok": true,
             "code": null,
-            "valid": true
+            "valid": true,
+            "maxMs": 162.14499999955297
           },
           "live": {
             "containers": 7,
@@ -944,7 +950,8 @@
             "longestTaskMs": 0,
             "ok": true,
             "code": null,
-            "valid": true
+            "valid": true,
+            "maxMs": 1139.5849999999627
           },
           "live": {
             "containers": 499999,
@@ -1081,7 +1088,8 @@
             "longestTaskMs": 0,
             "ok": true,
             "code": null,
-            "valid": true
+            "valid": true,
+            "maxMs": 254.44500000029802
           },
           "live": {
             "containers": 5,
@@ -1218,7 +1226,8 @@
             "longestTaskMs": 0,
             "ok": true,
             "code": null,
-            "valid": true
+            "valid": true,
+            "maxMs": 234.464999999851
           },
           "live": {
             "containers": 5,
@@ -1355,7 +1364,8 @@
             "longestTaskMs": 0,
             "ok": false,
             "code": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY",
-            "valid": true
+            "valid": true,
+            "maxMs": 256.33499999996275
           },
           "live": {
             "containers": 5,
@@ -1488,7 +1498,8 @@
             "longestTaskMs": 0,
             "ok": true,
             "code": null,
-            "valid": true
+            "valid": true,
+            "maxMs": 72.73500000033528
           },
           "live": {
             "containers": 63,
@@ -1684,7 +1695,8 @@
             "longestTaskMs": 0,
             "ok": true,
             "code": null,
-            "valid": true
+            "valid": true,
+            "maxMs": 187.04999999981374
           },
           "live": {
             "containers": 5,
@@ -1821,7 +1833,8 @@
             "longestTaskMs": 0,
             "ok": true,
             "code": null,
-            "valid": true
+            "valid": true,
+            "maxMs": 2646.7150000007823
           },
           "live": {
             "containers": 499999,
@@ -1958,7 +1971,8 @@
             "longestTaskMs": 0,
             "ok": false,
             "code": "OSCAL_DOCUMENT_NOT_OBJECT",
-            "valid": true
+            "valid": true,
+            "maxMs": 1007.9199999999255
           },
           "live": {
             "containers": 1000000,
@@ -2091,7 +2105,8 @@
             "longestTaskMs": 0,
             "ok": false,
             "code": "OSCAL_DOCUMENT_NOT_OBJECT",
-            "valid": true
+            "valid": true,
+            "maxMs": 1280.035000000149
           },
           "live": {
             "containers": 999999,
@@ -2224,7 +2239,8 @@
             "longestTaskMs": 0,
             "ok": false,
             "code": "OSCAL_ROOT_KEY_AMBIGUOUS",
-            "valid": true
+            "valid": true,
+            "maxMs": 2411.0449999999255
           },
           "live": {
             "containers": 1,
@@ -2357,7 +2373,8 @@
             "longestTaskMs": 0,
             "ok": true,
             "code": null,
-            "valid": true
+            "valid": true,
+            "maxMs": 198.9199999999255
           },
           "live": {
             "containers": 7,
@@ -2494,7 +2511,8 @@
             "longestTaskMs": 0,
             "ok": true,
             "code": null,
-            "valid": true
+            "valid": true,
+            "maxMs": 2647.739999999292
           },
           "live": {
             "containers": 499999,
@@ -2631,7 +2649,8 @@
             "longestTaskMs": 0,
             "ok": true,
             "code": null,
-            "valid": true
+            "valid": true,
+            "maxMs": 298.3299999991432
           },
           "live": {
             "containers": 5,
@@ -2768,7 +2787,8 @@
             "longestTaskMs": 0,
             "ok": true,
             "code": null,
-            "valid": true
+            "valid": true,
+            "maxMs": 238.089999999851
           },
           "live": {
             "containers": 5,
@@ -2905,7 +2925,8 @@
             "longestTaskMs": 0,
             "ok": false,
             "code": "OSCAL_SCHEMA_ADDITIONAL_PROPERTY",
-            "valid": true
+            "valid": true,
+            "maxMs": 288.51500000059605
           },
           "live": {
             "containers": 5,
@@ -3038,7 +3059,8 @@
             "longestTaskMs": 0,
             "ok": true,
             "code": null,
-            "valid": true
+            "valid": true,
+            "maxMs": 55.61500000022352
           },
           "live": {
             "containers": 63,

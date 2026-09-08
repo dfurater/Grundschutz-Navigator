@@ -5,6 +5,8 @@
 // macht das Protokoll unwahr, ohne dass ein Messlauf davon etwas merkt.
 // =============================================================================
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   composeHeapFootprint,
@@ -450,6 +452,25 @@ describe('renderReport', () => {
 
 
 describe('GSPP-386 transport evidence', () => {
+  it('rendert das eingecheckte Messartefakt mit vollständigen Wartezeithöchstwerten', () => {
+    const report = JSON.parse(readFileSync(
+      resolve(process.cwd(), 'docs/measurements/gspp386-worker-transport.json'),
+      'utf8',
+    ));
+
+    for (const run of report.runs) {
+      for (const fixture of run.fixtures) {
+        expect(fixture.endToEnd).toEqual(summarizeSamples(fixture.repetitions).endToEnd);
+      }
+    }
+
+    const markdown = renderRawReport(report);
+
+    expect(markdown).not.toContain('NaN ms');
+    expect(markdown).not.toContain('GERISSEN');
+    expect(markdown).toContain('2.65 s');
+  });
+
   it('keeps every repetition and fails a later unexpected rejection', () => {
     const first = sample();
     const failed = sample({ endToEnd: { ...first.endToEnd, ok: false, code: 'OSCAL_IMPORT_WORKER_FAILURE' } });
@@ -579,6 +600,20 @@ describe('Wartezeitbudget', () => {
       row.endToEnd.maxMs = maxMs;
       expect(deriveNodeLimit([row])).toBeNull();
     }
+  });
+
+  it('verweigert einen Bericht ohne erhobenen Wartezeithöchstwert', () => {
+    const row = timedRow([20]);
+    delete row.endToEnd.maxMs;
+
+    expect(() => renderReport({
+      generatedAt: 'test', browserVersion: 'test', runs: [{
+        throttleRate: 1, repeat: 1, environment: { userAgent: 'test' },
+        observability: { probeMs: 120, observedMs: 120 },
+        memoryObservability: { probeBytes: 100, observedBytes: 100 },
+        fixtures: [row], glob: [],
+      }],
+    })).toThrow(/Wartezeithöchstwert/);
   });
 
   it('verwirft einen langsamen Einzelimport auch bei schnellem Median', () => {

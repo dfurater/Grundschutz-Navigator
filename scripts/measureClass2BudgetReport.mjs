@@ -340,6 +340,11 @@ function renderFixtureTable(run) {
  * Lauf überhaupt etwas melden konnte.
  */
 function renderBlockingTable(run) {
+  for (const fixture of run.fixtures) {
+    if (!finiteNonnegative(fixture.endToEnd?.maxMs)) {
+      throw new Error(`Fixture ${fixture.id} ohne erhobenen Wartezeithöchstwert`);
+    }
+  }
   return [
     '### UI-Budgets: Blockierzeit 50 ms, Wartezeit 5 s',
     '',
@@ -350,7 +355,7 @@ function renderBlockingTable(run) {
     '| --- | --- | --- | --- | --- | --- | --- |',
     ...run.fixtures.map((fixture) =>
       `| ${fixture.id} | ${formatMs(fixture.endToEnd.ms)} `
-      + `| ${formatMs(fixture.endToEnd.maxMs ?? Number.NaN)} | ${formatMs(fixture.endToEnd.submitMs)} `
+      + `| ${formatMs(fixture.endToEnd.maxMs)} | ${formatMs(fixture.endToEnd.submitMs)} `
       + `| ${formatMs(fixture.endToEnd.longestTaskMs)} `
       + `| ${formatMs(fixture.endToEnd.blockingMs)} `
       + `| ${uiBudgetHolds(fixture.endToEnd) ? 'gehalten' : 'GERISSEN'} |`),
