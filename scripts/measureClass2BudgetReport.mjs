@@ -69,6 +69,9 @@ export const MEMORY_BUDGET_BYTES = 128 * MIB;
  */
 export function deriveNodeLimit(rows) {
   if (rows.length === 0) return null;
+  // Ein fehlender Wartezeithöchstwert ist kein gerissenes Budget, sondern eine
+  // unvollständige Messreihe. Sie darf deshalb keinen Grenzwert herleiten.
+  if (rows.some((row) => !finiteNonnegative(row.endToEnd?.maxMs))) return null;
 
   const requiredFixtures = new Set(rows.map((row) => row.id));
   const byNodeCount = new Map();
@@ -335,16 +338,8 @@ function renderFixtureTable(run) {
   ];
 }
 
-/**
- * Blockierzeit des Main Threads, mitsamt dem Beleg, dass der Messweg in diesem
- * Lauf überhaupt etwas melden konnte.
- */
+/** Blockierzeit des Main Threads mitsamt dem belegten Messweg. */
 function renderBlockingTable(run) {
-  for (const fixture of run.fixtures) {
-    if (!finiteNonnegative(fixture.endToEnd?.maxMs)) {
-      throw new Error(`Fixture ${fixture.id} ohne erhobenen Wartezeithöchstwert`);
-    }
-  }
   return [
     '### UI-Budgets: Blockierzeit 50 ms, Wartezeit 5 s',
     '',
@@ -415,6 +410,13 @@ function renderRun(run) {
     || !finiteNonnegative(run.memoryObservability.observedBytes)
     || run.memoryObservability.observedBytes < run.memoryObservability.probeBytes * 0.9) {
     throw new Error('Messlauf ohne belegte Speicher-Beobachtbarkeit');
+  }
+
+  const timingRows = [...run.fixtures, ...(run.scale ?? [])];
+  for (const row of timingRows) {
+    if (!finiteNonnegative(row.endToEnd?.maxMs)) {
+      throw new Error(`Fixture ${row.id} ohne erhobenen Wartezeithöchstwert`);
+    }
   }
 
   const hasScale = run.scale !== null && run.scale !== undefined;

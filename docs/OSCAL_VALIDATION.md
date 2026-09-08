@@ -659,7 +659,7 @@ Gemessen wurde der noch uncommittete Implementierungsbaum auf Basiscommit
 `db46aff5fdf35b1569053ddca4d2d9f303362b66`. Der SHA-256-Fingerprint über
 396 Quell-, Test-, Skript- und Konfigurationsdateien war vor und nach dem Lauf
 identisch: `aa036672596ab3aacc9e06db2d4a3fe025e416070586f9cb35a703f895cec7dc`.
-Die [vollständigen Rohdaten](measurements/gspp386-worker-transport.json)
+Die [vollständigen Messdaten](measurements/gspp386-worker-transport.json)
 enthalten jede Wiederholung, Pflichtmessfelder, Proben und beide Fingerprints.
 
 | Fixture | E2E-Median 1× | E2E-Median 4× | Speicher | Ergebnis |
@@ -681,10 +681,14 @@ im Bericht: Neben dem Median wird der Höchstwert aller Einzelwiederholungen
 geführt; ein langsamer Einzelimport darf weder das UI-Urteil noch die
 Knotengrenzherleitung bestehen. Die unveränderten 66 Rohmessungen wurden mit
 dieser strengeren Berichtslogik erneut ausgewertet und bestanden vollständig.
-Die Rohdaten bleiben das Original des oben bezeichneten Messstands; der
-Fingerprint bezeichnet diesen Stand einschließlich seiner damaligen Tests und
-Berichtslogik. Der Produkttransport und die Messwerterhebung sind gegenüber
-Implementierungscommit `3980b1ad887afe9242be4ba088b49295b25d0bf6` unverändert.
+Die 66 Wiederholungen und beide Fingerprints bleiben die Originale des oben
+bezeichneten Messstands. Die 22 verdichteten `endToEnd`-Blöcke wurden am
+2026-09-08 mit der neueren Berichtslogik deterministisch aus diesen
+Wiederholungen abgeleitet; der Regressionstest bindet sie an die jeweiligen
+Einzelwerte. Der Fingerprint bezeichnet den Messstand einschließlich seiner
+damaligen Tests und Berichtslogik, nicht diese spätere Ableitung. Der
+Produkttransport und die Messwerterhebung sind gegenüber Implementierungscommit
+`3980b1ad887afe9242be4ba088b49295b25d0bf6` unverändert.
 Zusätzlich prüfen direkte kolokierte Tests beide Browserkontexte, binäre
 Routen mit und ohne Eingabe, Fehler-Cleanup, `prepareBytes` und den gehaltenen
 Transportbestand. Diese Ergänzungen benötigen keine neue Browsermessung,

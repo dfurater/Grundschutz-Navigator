@@ -616,6 +616,20 @@ describe('Wartezeitbudget', () => {
     })).toThrow(/Wartezeithöchstwert/);
   });
 
+  it('verweigert auch eine Skalierungsreihe ohne erhobenen Wartezeithöchstwert', () => {
+    const scaleRow = timedRow([20]);
+    delete scaleRow.endToEnd.maxMs;
+
+    expect(() => renderReport({
+      generatedAt: 'test', browserVersion: 'test', runs: [{
+        throttleRate: 1, repeat: 1, environment: { userAgent: 'test' },
+        observability: { probeMs: 120, observedMs: 120 },
+        memoryObservability: { probeBytes: 100, observedBytes: 100 },
+        fixtures: [timedRow([20])], scale: [scaleRow], glob: [],
+      }],
+    })).toThrow(/Wartezeithöchstwert/);
+  });
+
   it('verwirft einen langsamen Einzelimport auch bei schnellem Median', () => {
     const row = timedRow([20, 8_000, 30]);
     expect(row.endToEnd.ms).toBe(30);
