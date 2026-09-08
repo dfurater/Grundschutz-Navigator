@@ -358,6 +358,28 @@ describe('custom-Struktur', () => {
     expect(result.controls.map((c) => c['id'])).toEqual(['a-1']);
   });
 
+  it('wiederholte with-ids ordnen jede ID genau einmal nach Deklaration', () => {
+    // Greptile-Befund zu 21dd0b3: Viele wiederholte gültige IDs erzeugten
+    // quadratische Vergleichsarbeit in der Zugehörigkeitsprüfung; die
+    // Set-basierte Prüfung hält die deklarierte Reihenfolge bei und gibt
+    // jede ID genau einmal aus.
+    const combined = applyCombine([inclusion('doc-a', 'a-1', 'b-1', 'c-1')], 'use-first', budget());
+    const repeated = Array.from({ length: 600 }, (_, index) => ['b-1', 'a-1', 'b-1'][index % 3]);
+    const directive: ProfileInsertControls = {
+      selection: {
+        kind: 'include-controls',
+        includeControls: [withIdsSelector([...repeated, 'zz-9'])],
+      },
+      excludeControls: [],
+      path: '/profile/merge/custom/insert-controls',
+    };
+    const result = buildCustomGroups({ rawGroups: [], typedGroups: [], insertControls: [directive] }, combined, budget());
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.controls.map((c) => c['id'])).toEqual(['b-1', 'a-1']);
+  });
+
   it('exclude-controls der Anweisung schlagen die Inklusion', () => {
     const combined = applyCombine([inclusion('doc-a', 'a-1', 'b-1')], 'use-first', budget());
     const directive: ProfileInsertControls = {
