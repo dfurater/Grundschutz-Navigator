@@ -27,8 +27,8 @@
  * „Sichtbare Wartezeit bis zum Ergebnis" (5 s) noch hält — erhoben am
  * 2026-09-08 in Chromium 151 bei vierfacher CPU-Drosselung als Näherung an
  * Bürohardware, dieselbe Messbasis wie die Ressourcengrenzen aus GSPP-382.
- * Er kostet dort 3,78 s und schöpft den Posten zu 76 % aus; der nächste
- * gemessene Stützpunkt (268 404 128) kostet 7,06 s und reißt ihn.
+ * Er kostet dort 3,75 s und schöpft den Posten zu 75 % aus; der nächste
+ * gemessene Stützpunkt (268 404 128) kostet 6,84 s und reißt ihn.
  *
  * Keine Interpolation, keine Hochrechnung: Der Wert steht auf einer Zahl, die
  * wirklich gemessen wurde. Messartefakt und Protokoll:

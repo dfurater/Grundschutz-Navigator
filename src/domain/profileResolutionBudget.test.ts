@@ -127,7 +127,9 @@ describe('Ausgabebudget', () => {
     budget.admitNode(2);
     budget.admitNode(3);
 
-    expect(Object.keys(budget).sort()).toEqual(['admitBase64', 'admitNode', 'spendWork', 'usage']);
+    expect(Object.keys(budget).sort()).toEqual([
+      'admitBase64', 'admitNode', 'admitWorkingNode', 'spendWork', 'usage',
+    ]);
     rejectionOf(() => budget.admitNode(2));
   });
 });
@@ -147,12 +149,51 @@ describe('Budgetinstanz', () => {
     const budget = createProfileResolutionBudget();
 
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE, WORK_UNIT_LIMIT);
-    rejectionOf(() => budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE));
+    expect(budget.usage().workUnits).toBe(WORK_UNIT_LIMIT);
+
+    const diagnostic = rejectionOf(() =>
+      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE),
+    );
+    expect(diagnostic.params).toEqual({
+      category: 'import-edge',
+      limit: WORK_UNIT_LIMIT,
+      observed: WORK_UNIT_LIMIT + 1,
+    });
   });
 
   it('gibt eine eingefrorene Momentaufnahme heraus', () => {
     const usage = createProfileResolutionBudget().usage();
     expect(Object.isFrozen(usage)).toBe(true);
     expect(usage).toEqual({ workUnits: 0, nodes: 0, maxDepth: 0, decodedBase64Bytes: 0 });
+  });
+});
+
+describe('Zwischenzustand', () => {
+  it('zählt Merge- und Modify-Kopien gegen dieselbe Knotengrenze', () => {
+    // ADR-8 nennt den „Zwischen- ODER Ergebnisgraphen". Ein Lauf kann
+    // Millionen Zwischenkopien allokieren und dabei null Ausgabeknoten
+    // erzeugt haben; die Grenze muss beides erfassen (Greptile-Befund zu
+    // 21dd0b3).
+    const budget = createProfileResolutionBudget({ maxNodes: 3 });
+
+    budget.admitWorkingNode();
+    budget.admitWorkingNode();
+    expect(budget.usage().nodes).toBe(2);
+
+    // Ausgabe und Zwischenzustand teilen den Zähler.
+    budget.admitNode(1);
+    expect(budget.usage().nodes).toBe(3);
+    rejectionOf(() => budget.admitWorkingNode());
+  });
+
+  it('lässt die Ausgabetiefe unberührt', () => {
+    // Ein Merge-Zwischenobjekt hat keine Ausgabetiefe; `maxDepth` muss
+    // weiterhin die Tiefe des EMITTIERTEN Graphen nennen.
+    const budget = createProfileResolutionBudget();
+    budget.admitNode(7);
+    budget.admitWorkingNode();
+
+    expect(budget.usage().maxDepth).toBe(7);
+    expect(budget.usage().nodes).toBe(2);
   });
 });

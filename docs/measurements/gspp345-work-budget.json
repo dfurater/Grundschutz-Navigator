@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-09-08T19:43:04.355Z",
-  "origin": "http://localhost:56905",
+  "generatedAt": "2026-09-08T20:16:30.697Z",
+  "origin": "http://localhost:57945",
   "browserVersion": "151.0.7922.34",
   "runs": [
     {
@@ -18,7 +18,7 @@
       },
       "memoryObservability": {
         "probeBytes": 16777216,
-        "observedBytes": 16759543
+        "observedBytes": 16762787
       },
       "memoryThrottleRate": 1,
       "fixtures": [],
@@ -26,7 +26,7 @@
       "glob": [
         {
           "stars": 4,
-          "ms": 0.04999999701976776,
+          "ms": 0.05499999225139618,
           "patternBytes": 9,
           "subjectLength": 40,
           "matched": false,
@@ -42,7 +42,7 @@
         },
         {
           "stars": 8,
-          "ms": 0.005000010132789612,
+          "ms": 0.009999990463256836,
           "patternBytes": 17,
           "subjectLength": 40,
           "matched": false,
@@ -50,7 +50,7 @@
         },
         {
           "stars": 10,
-          "ms": 0.01000000536441803,
+          "ms": 0,
           "patternBytes": 21,
           "subjectLength": 40,
           "matched": false,
@@ -58,7 +58,7 @@
         },
         {
           "stars": 12,
-          "ms": 0.005000010132789612,
+          "ms": 0.01000000536441803,
           "patternBytes": 25,
           "subjectLength": 40,
           "matched": false,
@@ -70,65 +70,65 @@
           "targetWorkUnits": 67108864,
           "ok": true,
           "code": null,
-          "ms": 412.3349999934435,
+          "ms": 420.2900000065565,
           "label": "3972 Ausschlussselektoren über 2000 Control-IDs",
           "workUnits": 67109108,
           "nodes": 16,
           "maxDepth": 6,
-          "medianMs": 412.1850000023842,
-          "maxMs": 412.3349999934435,
+          "medianMs": 420.04500000178814,
+          "maxMs": 420.2900000065565,
           "samples": 3
         },
         {
           "targetWorkUnits": 134217728,
           "ok": true,
           "code": null,
-          "ms": 829.5949999988079,
+          "ms": 830.8849999904633,
           "label": "7945 Ausschlussselektoren über 2000 Control-IDs",
           "workUnits": 134213078,
           "nodes": 16,
           "maxDepth": 6,
-          "medianMs": 876.375,
-          "maxMs": 889.4050000011921,
+          "medianMs": 885.1650000065565,
+          "maxMs": 892.3699999898672,
           "samples": 3
         },
         {
           "targetWorkUnits": 268435456,
           "ok": true,
           "code": null,
-          "ms": 1655.594999998808,
+          "ms": 1660.5600000023842,
           "label": "15890 Ausschlussselektoren über 2000 Control-IDs",
           "workUnits": 268404128,
           "nodes": 16,
           "maxDepth": 6,
-          "medianMs": 1655.594999998808,
-          "maxMs": 1657.1749999970198,
+          "medianMs": 1660.5600000023842,
+          "maxMs": 1673.7599999904633,
           "samples": 3
         },
         {
           "targetWorkUnits": 536870912,
           "ok": true,
           "code": null,
-          "ms": 3322.9900000095367,
+          "ms": 3387.4650000035763,
           "label": "31781 Ausschlussselektoren über 2000 Control-IDs",
           "workUnits": 536803118,
           "nodes": 16,
           "maxDepth": 6,
-          "medianMs": 3308.0100000053644,
-          "maxMs": 3322.9900000095367,
+          "medianMs": 3373.4599999934435,
+          "maxMs": 3387.4650000035763,
           "samples": 3
         },
         {
           "targetWorkUnits": 1073741824,
           "ok": true,
           "code": null,
-          "ms": 6603.5400000065565,
+          "ms": 6750.629999995232,
           "label": "63562 Ausschlussselektoren über 2000 Control-IDs",
           "workUnits": 1073584208,
           "nodes": 16,
           "maxDepth": 6,
-          "medianMs": 6603.5400000065565,
-          "maxMs": 6605.5,
+          "medianMs": 6755.2750000059605,
+          "maxMs": 6757.524999991059,
           "samples": 3
         }
       ],
@@ -149,7 +149,7 @@
       },
       "memoryObservability": {
         "probeBytes": 16777216,
-        "observedBytes": 16774226
+        "observedBytes": 16774162
       },
       "memoryThrottleRate": 4,
       "fixtures": [],
@@ -157,7 +157,7 @@
       "glob": [
         {
           "stars": 4,
-          "ms": 0.040000006556510925,
+          "ms": 0.18000000715255737,
           "patternBytes": 9,
           "subjectLength": 40,
           "matched": false,
@@ -173,7 +173,7 @@
         },
         {
           "stars": 8,
-          "ms": 0.004999995231628418,
+          "ms": 0.01000000536441803,
           "patternBytes": 17,
           "subjectLength": 40,
           "matched": false,
@@ -181,7 +181,7 @@
         },
         {
           "stars": 10,
-          "ms": 0.01000000536441803,
+          "ms": 0,
           "patternBytes": 21,
           "subjectLength": 40,
           "matched": false,
@@ -189,7 +189,7 @@
         },
         {
           "stars": 12,
-          "ms": 0.01000000536441803,
+          "ms": 0.004999995231628418,
           "patternBytes": 25,
           "subjectLength": 40,
           "matched": false,
@@ -201,39 +201,39 @@
           "targetWorkUnits": 67108864,
           "ok": true,
           "code": null,
-          "ms": 1716.5499999970198,
+          "ms": 1734.75,
           "label": "3972 Ausschlussselektoren über 2000 Control-IDs",
           "workUnits": 67109108,
           "nodes": 16,
           "maxDepth": 6,
-          "medianMs": 1716.5499999970198,
-          "maxMs": 1731.6749999970198,
+          "medianMs": 1734.75,
+          "maxMs": 1835.3999999910593,
           "samples": 3
         },
         {
           "targetWorkUnits": 134217728,
           "ok": true,
           "code": null,
-          "ms": 3491.125,
+          "ms": 3465.7699999958277,
           "label": "7945 Ausschlussselektoren über 2000 Control-IDs",
           "workUnits": 134213078,
           "nodes": 16,
           "maxDepth": 6,
-          "medianMs": 3735.125,
-          "maxMs": 3775.454999998212,
+          "medianMs": 3724.8700000047684,
+          "maxMs": 3752.8500000089407,
           "samples": 3
         },
         {
           "targetWorkUnits": 268435456,
           "ok": true,
           "code": null,
-          "ms": 7063.609999999404,
+          "ms": 6831.855000004172,
           "label": "15890 Ausschlussselektoren über 2000 Control-IDs",
           "workUnits": 268404128,
           "nodes": 16,
           "maxDepth": 6,
-          "medianMs": 7058.229999989271,
-          "maxMs": 7063.609999999404,
+          "medianMs": 6831.855000004172,
+          "maxMs": 6843.780000001192,
           "samples": 3
         }
       ],
@@ -241,13 +241,13 @@
     }
   ],
   "sourceBefore": {
-    "commit": "33662495f60a59da223f64aa8f64215129c513a6",
-    "sha256": "f7d8748928538e571564c442f78c646d14fb90999e38144851130e138d09d3fd",
+    "commit": "21dd0b3bfcaed3c1d3e47564591627f1a87a58b0",
+    "sha256": "dcba82cdb98e8c157d9894c356b80fe144f1b2646fbcb7e59e06ecfcce5a0ff2",
     "files": 404
   },
   "sourceAfter": {
-    "commit": "33662495f60a59da223f64aa8f64215129c513a6",
-    "sha256": "f7d8748928538e571564c442f78c646d14fb90999e38144851130e138d09d3fd",
+    "commit": "21dd0b3bfcaed3c1d3e47564591627f1a87a58b0",
+    "sha256": "dcba82cdb98e8c157d9894c356b80fe144f1b2646fbcb7e59e06ecfcce5a0ff2",
     "files": 404
   }
 }

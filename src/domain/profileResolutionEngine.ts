@@ -456,6 +456,21 @@ const OUTPUT_BODY_DEPTH = 2;
 const OUTPUT_BODY_MEMBER_DEPTH = 3;
 
 /**
+ * Bucht eine `back-matter`-base64-Nutzlast, sobald das Pfadfenster sie
+ * ausweist. Die Nutzlast wird NIE dekodiert; gezählt wird arithmetisch aus der
+ * kodierten Länge, exakt wie in der Postcondition.
+ */
+function accountBase64Payload(
+  member: unknown,
+  memberWindow: PathWindow | 'base64-payload',
+  budget: ProfileResolutionBudget,
+): void {
+  if (memberWindow !== 'base64-payload' || !isJsonObject(member)) return;
+  const encoded = ownDataValue(member, 'value');
+  if (typeof encoded === 'string') budget.admitBase64(encoded);
+}
+
+/**
  * Emissionskopie eines geprüften Werts in den Builder-Graphen. Liest nur
  * über Data-Property-Deskriptoren (Accessor-Slots erscheinen als abwesend),
  * erhält Schlüsselordnung und Arrayindizes und nimmt keine fremden Container
@@ -504,12 +519,7 @@ function emitValue(
     const member = ownDataValue(value, key);
     if (member === undefined) continue;
     const memberWindow = windowForKey(window, key);
-    if (memberWindow === 'base64-payload' && isJsonObject(member)) {
-      // Die Nutzlast wird NIE dekodiert; gezählt wird arithmetisch aus der
-      // kodierten Länge, exakt wie in der Postcondition.
-      const encoded = ownDataValue(member, 'value');
-      if (typeof encoded === 'string') budget.admitBase64(encoded);
-    }
+    accountBase64Payload(member, memberWindow, budget);
     graph.setObjectMember(
       handle,
       key,

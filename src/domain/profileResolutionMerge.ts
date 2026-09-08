@@ -199,6 +199,7 @@ export function applyCombine(
 
 /** Entfernt verschachtelte Kinder (controls, groups) für echte Flachdarstellung. */
 export function stripNestedChildren(node: JsonObject, budget: ProfileResolutionBudget): JsonObject {
+  budget.admitWorkingNode();
   const copy: JsonObject = {};
   for (const key of Reflect.ownKeys(node)) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
@@ -452,6 +453,7 @@ export type CustomAssemblyResult =
  * dieselbe Semantik wie in der Selektionsphase.
  */
 function copyOwnDataMembers(node: JsonObject, budget: ProfileResolutionBudget): JsonObject {
+  budget.admitWorkingNode();
   const copy: JsonObject = {};
   for (const key of Reflect.ownKeys(node)) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
@@ -810,18 +812,35 @@ function orderedInsertIds(
   if (directive.order === 'ascending') return [...ids].sort(counted(ascending));
   if (directive.order === 'descending') return [...ids].sort(counted(descending));
 
+  // Mengenbasierte Zugehörigkeit statt `Array.prototype.includes`: Die
+  // Array-Suche war linear in der Zahl der bereits deklarierten IDs und lief
+  // innerhalb einer Schleife über alle `with-ids`. Eine Eingabe mit vielen
+  // WIEDERHOLTEN gültigen IDs erzeugte damit quadratische Vergleichsarbeit,
+  // von der das Budget nur den äußeren Durchlauf sah — gemessen 82 Millionen
+  // Vergleiche bei 2 000 IDs und 40 000 Wiederholungen, ohne die
+  // Arbeitsgrenze zu erreichen (Greptile-Befund zu 21dd0b3). Das `Set` macht
+  // die Prüfung konstant und schließt die Lücke an der Wurzel, statt die
+  // überproportionale Arbeit bloß zu verbuchen.
   const declared: string[] = [];
+  const declaredIds = new Set<string>();
   if (directive.selection.kind === 'include-controls') {
     for (const selector of directive.selection.includeControls) {
       budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
       for (const id of selector.withIds) {
         budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
-        if (ids.has(id) && !declared.includes(id)) declared.push(id);
+        if (ids.has(id) && !declaredIds.has(id)) {
+          declared.push(id);
+          declaredIds.add(id);
+        }
       }
     }
   }
   if (declared.length === ids.size) return declared;
-  const rest = [...ids].filter((id) => !declared.includes(id));
+  const rest: string[] = [];
+  for (const id of ids) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
+    if (!declaredIds.has(id)) rest.push(id);
+  }
   return [...declared, ...rest];
 }
 

@@ -77,6 +77,7 @@ const CANONICAL_CONTROL_KEYS = [
 
 /** Ordnet die Schlüssel eines Knotens in kanonischer OSCAL-Reihenfolge. */
 export function canonicalizeControlKeys(node: JsonObject, budget: ProfileResolutionBudget): JsonObject {
+  budget.admitWorkingNode();
   const result: JsonObject = {};
   for (const key of CANONICAL_CONTROL_KEYS) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
@@ -100,6 +101,7 @@ function readStringMember(node: JsonObject, key: string): string | undefined {
 }
 
 function copyOwnDataMembers(node: JsonObject, budget: ProfileResolutionBudget): JsonObject {
+  budget.admitWorkingNode();
   const copy: JsonObject = {};
   for (const key of Reflect.ownKeys(node)) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
@@ -172,6 +174,7 @@ function applySingleSetParameter(
     if (readStringMember(param, 'id') !== directiveParamId) return param;
 
     changed = true;
+    budget.admitWorkingNode();
     const target: JsonObject = {};
     for (const key of Reflect.ownKeys(param)) {
       budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
@@ -326,6 +329,7 @@ function applyExplicitAddition(
     addition, budget
   );
   if (updatedParts.inserted) {
+    budget.admitWorkingNode();
     const copyExp: JsonObject = {};
     for (const key of Reflect.ownKeys(control)) {
       budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
@@ -362,6 +366,7 @@ function insertAtPart(
   // starting: innerhalb des Ziel-Parts am Anfang einfügen.
   const inner = filterAsIsInnerParts(parts[index]!, budget);
   const merged = [...additions, ...inner];
+  budget.admitWorkingNode();
   const copyStart: JsonObject = {};
   for (const key of Reflect.ownKeys(parts[index]!)) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
@@ -475,6 +480,7 @@ function applyRemovals(
   removal: NonNullable<AlterationDirective['removes']>[number],
   budget: ProfileResolutionBudget,
 ): JsonObject {
+  budget.admitWorkingNode();
   const result: JsonObject = {};
   for (const key of Reflect.ownKeys(control)) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);

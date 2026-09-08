@@ -373,15 +373,17 @@ Zähler und keine Wiederverwendung über Läufe. Die öffentliche Signatur träg
 weder einen Grenzwert- noch einen Disable-Parameter: Ein gleichnamiger Wert im
 Steuerdokument bleibt gewöhnlicher Dokumentinhalt.
 
-**Zwei Achsen.** Das Arbeitsbudget zählt deterministische Schritte, keine
+**Zwei Achsen.** Das Ausgabebudget zählt **kumulativ erzeugte** Knoten —
+emittierte Ausgabeknoten und die Container des Zwischenzustands, den Merge und
+Modify vor der Emission anlegen —, die größte je begonnene Tiefe und die
+kumulative arithmetisch bestimmte `base64`-Größe. Entfernen senkt keinen
+Zähler, ein Add/Remove-Zyklus kann das Budget also nicht umgehen. Das
+Arbeitsbudget zählt deterministische Schritte, keine
 Uhrzeit — Wall-Clock-Zeit ist hardware-, scheduler- und testabhängig und vor
 einer Operation nicht prüfbar. Der geschlossene Satz der sechs Kategorien
 (`import-edge`, `selector-compare`, `glob-state`, `merge-step`,
 `alter-target-lookup`, `alter-candidate`) deckt jede potenziell wachsende
-Operation in Selektion, Merge, Modify und Emission ab. Das Ausgabebudget zählt
-**kumulativ erzeugte** Knoten, die größte je begonnene Tiefe und die kumulative
-arithmetisch bestimmte `base64`-Größe; Entfernen senkt keinen Zähler, ein
-Add/Remove-Zyklus kann das Budget also nicht umgehen.
+Operation in Selektion, Merge, Modify und Emission ab.
 
 **Unveränderliche Produktionsgrenzen.** Die Arbeitsgrenze steht als
 `WORK_UNIT_LIMIT` in

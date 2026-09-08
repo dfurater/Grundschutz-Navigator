@@ -889,15 +889,15 @@ liegt unter
 
 | Stützpunkt (4× Drosselung) | gemessene Arbeitseinheiten | Wartezeit Maximum | Urteil |
 | --- | --- | --- | --- |
-| 67 108 864 | 67 109 108 | 1,73 s | gehalten |
-| 134 217 728 | **134 213 078** | **3,78 s** | **gehalten** |
-| 268 435 456 | 268 404 128 | 7,06 s | GERISSEN |
+| 67 108 864 | 67 109 108 | 1,84 s | gehalten |
+| 134 217 728 | **134 213 078** | **3,75 s** | **gehalten** |
+| 268 435 456 | 268 404 128 | 6,84 s | GERISSEN |
 
 Maßgeblich ist der Lauf bei vierfacher CPU-Drosselung als Näherung an
 Bürohardware; ungedrosselt hält dieselbe Reihe bis 536 803 118 Einheiten
-(3,32 s) und reißt erst bei 1 073 584 208 (6,61 s). Der Grenzwert nimmt den
+(3,39 s) und reißt erst bei 1 073 584 208 (6,76 s). Der Grenzwert nimmt den
 größten Stützpunkt, der bei 4× hält, und schöpft den Budgetposten „Sichtbare
-Wartezeit bis zum Ergebnis" damit zu 76 % aus. Keine Interpolation zwischen
+Wartezeit bis zum Ergebnis" damit zu 75 % aus. Keine Interpolation zwischen
 Stützpunkten: Der Wert steht auf einer Zahl, die wirklich gemessen wurde.
 
 **Was ein Wiederholungslauf zeigt und was nicht.** Der Herleitungslauf oben
@@ -919,9 +919,9 @@ belegt, über den Angriffsfall nichts sagt.
 
 | Profil | Arbeitseinheiten | erzeugte Knoten | maximale Tiefe | dekodierte base64-Bytes |
 | --- | --- | --- | --- | --- |
-| `profile-gspp` | 206 592 | 70 865 | 19 | 0 |
-| `profile-lieferkette` | 31 091 | 8 292 | 17 | 0 |
-| `profile-wlan` | 33 793 | 5 195 | 13 | 0 |
+| `profile-gspp` | 206 592 | 73 237 | 19 | 0 |
+| `profile-lieferkette` | 31 091 | 8 468 | 17 | 0 |
+| `profile-wlan` | 33 793 | 6 029 | 13 | 0 |
 
 Das teuerste Profil liegt bei rund einem Sechshundertfünfzigstel der Grenze.
 
@@ -943,6 +943,17 @@ dieselbe Grenze: Das Budget importiert `CLASS_2_IMPORT_LIMITS` und die
 Beide zählen mit derselben Semantik — Wurzel ist Tiefe 1, jeder primitive und
 jeder Containerwert ist ein Knoten, Property-Namen zählen nicht, `base64` wird
 arithmetisch aus der kodierten Länge bestimmt und nie dekodiert.
+
+**Der Knotenzähler erfasst auch den Zwischenzustand.** ADR-8 nennt
+ausdrücklich den „Zwischen- **oder** Ergebnisgraphen": Merge und Modify legen
+je Control eine bereinigte Kopie an, bevor die Emission den ersten Ausgabeknoten
+anmeldet. Zählte das Budget nur die Emission, könnte ein Lauf sehr viele solcher
+Kopien allokieren und dabei null verbuchte Knoten haben — belegt an einem Lauf
+mit 100 000 Controls, der alle 100 000 Zwischenkopien vor dem ersten
+Ausgabeknoten erzeugte. `admitWorkingNode()` bucht deshalb jeden neu angelegten
+Objektcontainer des Zwischenzustands gegen dieselbe Knotengrenze, ohne die
+Ausgabetiefe zu berühren. In der Korpustabelle oben ist das der Grund, warum die
+Knotenzahlen leicht über der Größe der fertigen Kataloge liegen.
 
 Die laufenden Zähler dürfen die fertigen Werte **übersteigen** — sie zählen
 kumulativ über alle Zwischenergebnisse eines Plans und schreiben Entferntes

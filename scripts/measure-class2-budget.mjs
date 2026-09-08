@@ -285,33 +285,43 @@ async function measureScale(pages, memory, nodeCounts, repeat) {
  * misst. Genau so ist die Regel gemeint: Der Grenzwert steht auf einer
  * gemessenen Zahl, nicht auf einer hochgerechneten.
  */
-async function measureProfileResolution(page, repeat) {
-  const rows = [];
-  for (const target of workUnitSupportPoints(WORK_UNIT_LIMIT)) {
-    const samples = [];
-    let row = null;
-    for (let attempt = 0; attempt < repeat; attempt += 1) {
-      row = await page.evaluate(
-        (value) => globalThis.__gspp382.profileResolution(value),
-        target,
-      );
-      if (!row.ok) break;
-      samples.push(row.ms);
-    }
-    if (row !== null && !row.ok) {
-      rows.push({ ...row, samples: samples.length });
-      break;
-    }
+/** Ein Stützpunkt über `repeat` Wiederholungen; Abbruch endet die Reihe. */
+async function measureSupportPoint(page, target, repeat) {
+  const samples = [];
+  for (let attempt = 0; attempt < repeat; attempt += 1) {
+    const row = await page.evaluate(
+      (value) => globalThis.__gspp382.profileResolution(value),
+      target,
+    );
+    if (row.ok !== true) return { ...row, samples: samples.length };
+    samples.push(row.ms);
     // Median UND Maximum: Das Urteil fällt über das Maximum aller
     // Wiederholungen, nicht über den Median — eine Reihe, die im Mittel hält
     // und in einem Lauf reißt, hält das Budget nicht.
-    const maxMs = Math.max(...samples);
-    rows.push({ ...row, medianMs: median(samples), maxMs, samples: samples.length });
-    // Reißt ein Stützpunkt die sichtbare Wartezeit, können größere nur
-    // schlechter sein. Die Reihe endet hier — das spart nicht nur Laufzeit,
-    // es hält auch die Aussage sauber: `deriveWorkUnitLimit` wertet ohnehin
-    // nur bis zur ersten Reißstelle aus.
-    if (maxMs > VISIBLE_WAIT_BUDGET_MS) break;
+    if (attempt + 1 === repeat) {
+      return {
+        ...row,
+        medianMs: median(samples),
+        maxMs: Math.max(...samples),
+        samples: samples.length,
+      };
+    }
+  }
+  // Unerreichbar: `parseArguments` weist `repeat < 1` bereits zurück.
+  throw new RangeError('--repeat erwartet eine positive ganze Zahl');
+}
+
+async function measureProfileResolution(page, repeat) {
+  const rows = [];
+  for (const target of workUnitSupportPoints(WORK_UNIT_LIMIT)) {
+    const row = await measureSupportPoint(page, target, repeat);
+    rows.push(row);
+    // Ein abgebrochener Stützpunkt liefert keine Wartezeit, und reißt einer
+    // die sichtbare Wartezeit, können größere nur schlechter sein. Die Reihe
+    // endet hier — das spart nicht nur Laufzeit, es hält auch die Aussage
+    // sauber: `deriveWorkUnitLimit` wertet ohnehin nur bis zur ersten
+    // Reißstelle aus.
+    if (row.ok !== true || row.maxMs > VISIBLE_WAIT_BUDGET_MS) break;
   }
   return rows;
 }

@@ -47,12 +47,14 @@ function catalogDoc(controls: unknown[], extra: Record<string, unknown> = {}): R
 function profileDoc(spec: {
   imports: Record<string, unknown>[];
   backMatter?: Record<string, unknown>;
+  merge?: Record<string, unknown>;
 }): Record<string, unknown> {
   return {
     profile: {
       uuid: TOP_UUID,
       metadata: { title: 'Budgetprofil', version: '1.0.0', 'oscal-version': VERSION },
       imports: spec.imports,
+      ...(spec.merge !== undefined && { merge: spec.merge }),
       ...(spec.backMatter !== undefined && { 'back-matter': spec.backMatter }),
     },
   };
@@ -96,9 +98,11 @@ describe('Arbeitsbudget am öffentlichen Resolver', () => {
   // Grenze gäbe es nur über eine Naht, die der Produktionsresolver nicht hat.
   it('bricht bei kleiner Ausgabe ab, wenn die Arbeit die Grenze reißt', { timeout: 60_000 }, async () => {
     // Der Katalog ist klein und die AUSGABE leer — jede Control wird wieder
-    // ausgeschlossen. Teuer ist allein die Arbeit: 600 Ausschlussselektoren
-    // laufen über 1200 Control-IDs. Damit belegt der Test das Arbeitsbudget
-    // unabhängig von jeder Ausgabegrenze.
+    // ausgeschlossen. Teuer ist allein die Arbeit: EXCLUDE_COUNT (8500)
+    // Ausschlussselektoren laufen über CONTROL_COUNT (2000) Control-IDs.
+    // Damit belegt der Test das Arbeitsbudget unabhängig von jeder
+    // Ausgabegrenze. Die Zahlen stehen bewusst nur an den Konstanten, damit
+    // Kommentar und Aufbau nicht auseinanderlaufen können.
     const controls = Array.from({ length: CONTROL_COUNT }, (_, index) => ({
       id: `ac-${index}`,
       title: `Control ${index}`,
@@ -381,6 +385,46 @@ describe('Verhältnis zur abschließenden Postcondition', () => {
     // Und beide bleiben unter den Grenzen, die die Postcondition prüft.
     expect(finished.maxDepth).toBeLessThanOrEqual(CLASS_2_IMPORT_LIMITS.maxDepth);
     expect(finished.nodes).toBeLessThanOrEqual(CLASS_2_IMPORT_LIMITS.maxNodes);
+  });
+
+  it('zählt die Zwischenkopien der Merge-Phase mit', async () => {
+    // Der `flat`-Merge legt je Control eine bereinigte Zwischenkopie an,
+    // BEVOR die Emission den ersten Ausgabeknoten anmeldet. Zählte das Budget
+    // nur die Emission, könnte ein Lauf beliebig viele solcher Kopien
+    // allokieren und dabei null verbuchte Knoten haben — ADR-8 nennt aber
+    // ausdrücklich den „Zwischen- ODER Ergebnisgraphen" (Greptile-Befund zu
+    // 21dd0b3). Der Nachweis: Der laufende Zähler liegt ECHT über dem
+    // fertigen Graphen, und die Differenz wächst mit der Zahl der Controls.
+    const resolveWithControls = async (count: number) => {
+      const controls = Array.from({ length: count }, (_, index) => ({
+        id: `ac-${index}`,
+        title: `Control ${index}`,
+      }));
+      const outcome = await resolveWorld({
+        documents: {
+          'catalog-src': catalogDoc(controls),
+          'profile-top': profileDoc({
+            imports: [{ href: './src.json', 'include-all': {} }],
+            merge: { flat: {} },
+          }),
+        },
+        edges: EDGE_TO_SOURCE,
+      });
+      if (!outcome.ok) throw new Error(`unerwartete Ablehnung: ${outcome.diagnostic.code}`);
+      return {
+        counted: outcome.output.budgetUsage.nodes,
+        finished: measureFinishedGraph(outcome.output.tree).nodes,
+      };
+    };
+
+    const small = await resolveWithControls(10);
+    const large = await resolveWithControls(60);
+
+    expect(small.counted).toBeGreaterThan(small.finished);
+    expect(large.counted).toBeGreaterThan(large.finished);
+    // Je Control genau eine Zwischenkopie: Der Überhang wächst um 50, wenn
+    // 50 Controls hinzukommen.
+    expect(large.counted - large.finished).toBe(small.counted - small.finished + 50);
   });
 
   it('lässt die Postcondition unabhängig ablehnen', async () => {

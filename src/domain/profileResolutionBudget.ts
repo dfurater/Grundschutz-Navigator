@@ -87,6 +87,16 @@ const OUTPUT_PATH = '/catalog';
 /** Welche der drei Ausgabegrenzen gerissen wurde — strukturell, nicht inhaltlich. */
 type OutputDimension = 'nodes' | 'depth' | 'base64';
 
+function rejectOutput(dimension: OutputDimension, limit: number, observed: number): never {
+  throw new ProfileResolutionBudgetExceeded(
+    budgetDiagnostic(
+      PROFILE_RESOLUTION_BUDGET_DIAGNOSTIC_CODES.OUTPUT_BUDGET_EXCEEDED,
+      OUTPUT_PATH,
+      { dimension, limit, observed },
+    ),
+  );
+}
+
 /**
  * Abbruchsignal des Budgets. Trägt die fertige, redigierte Diagnose; die
  * Fehlermeldung selbst ist konstant und enthält keinen Dokumentbezug.
@@ -105,7 +115,14 @@ export class ProfileResolutionBudgetExceeded extends Error {
 export interface ProfileResolutionBudgetUsage {
   /** Verbrauchte Arbeitseinheiten über alle Kategorien. */
   readonly workUnits: number;
-  /** Kumulativ ERZEUGTE Ausgabeknoten; Entfernen senkt diesen Wert nie. */
+  /**
+   * Kumulativ ERZEUGTE Knoten: emittierte Ausgabeknoten UND die Container des
+   * Zwischenzustands, den Merge und Modify vor der Emission anlegen. Beides
+   * zählt, weil ADR-8 ausdrücklich den „Zwischen- ODER Ergebnisgraphen" meint
+   * — ein Lauf kann Millionen Zwischenkopien allokieren und dabei null
+   * Ausgabeknoten erzeugt haben (Greptile-Befund zu 21dd0b3). Entfernen senkt
+   * diesen Wert nie.
+   */
   readonly nodes: number;
   /** Größte jemals begonnene Ausgabetiefe (Wurzel = 1). */
   readonly maxDepth: number;
@@ -118,6 +135,11 @@ export interface ProfileResolutionBudget {
   spendWork(category: ProfileResolutionWorkUnit, count?: number): void;
   /** Lässt genau einen Ausgabeknoten der Tiefe `depth` zu. Wirft bei Erschöpfung. */
   admitNode(depth: number): void;
+  /**
+   * Lässt einen Container des ZWISCHENZUSTANDS zu — eine Kopie, die Merge oder
+   * Modify anlegt, bevor überhaupt emittiert wird. Wirft bei Erschöpfung.
+   */
+  admitWorkingNode(): void;
   /** Übernimmt einen kodierten base64-Wert in die Ausgabe. Wirft bei Erschöpfung. */
   admitBase64(encoded: string): void;
   /** Momentaufnahme der Zähler. Rein lesend — es gibt keinen Weg zurück. */
@@ -170,16 +192,6 @@ export function createProfileResolutionBudget(
   let maxDepth = 0;
   let decodedBase64Bytes = 0;
 
-  function rejectOutput(dimension: OutputDimension, limit: number, observed: number): never {
-    throw new ProfileResolutionBudgetExceeded(
-      budgetDiagnostic(
-        PROFILE_RESOLUTION_BUDGET_DIAGNOSTIC_CODES.OUTPUT_BUDGET_EXCEEDED,
-        OUTPUT_PATH,
-        { dimension, limit, observed },
-      ),
-    );
-  }
-
   return {
     spendWork(category, count = 1) {
       // Vor der Operation, nicht danach: Eine Prüfung im Nachhinein hätte die
@@ -203,6 +215,14 @@ export function createProfileResolutionBudget(
       if (depth > depthLimit) rejectOutput('depth', depthLimit, depth);
       nodes += 1;
       if (depth > maxDepth) maxDepth = depth;
+    },
+
+    admitWorkingNode() {
+      // Derselbe Zähler wie die Emission, aber ohne Tiefe: Ein Merge-Zwischen-
+      // objekt hat keine Ausgabetiefe, und `maxDepth` soll weiter die Tiefe
+      // des AUSGEGEBENEN Graphen nennen.
+      if (nodes + 1 > nodeLimit) rejectOutput('nodes', nodeLimit, nodes + 1);
+      nodes += 1;
     },
 
     admitBase64(encoded) {

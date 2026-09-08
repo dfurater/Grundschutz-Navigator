@@ -347,7 +347,19 @@ describe('Worst-Case-Fixtures der Klasse-2-Grenzen', () => {
     const { pattern, subject } = buildGlobPatternWorstCase(12, 40);
     const budget = createProfileResolutionBudget();
 
-    expect(matchGlob(pattern, subject, budget)).toBe(false);
+    const started = performance.now();
+    const matched = matchGlob(pattern, subject, budget);
+    const elapsedMs = performance.now() - started;
+
+    expect(matched).toBe(false);
     expect(budget.usage().workUnits).toBeLessThanOrEqual(pattern.length * subject.length);
+    // Zusätzlich eine Wanduhrschranke, bewusst SEHR locker gesetzt. Die
+    // eigentliche Garantie ist algorithmisch und steht in der Zeile darüber;
+    // eine enge Zeitschwelle wäre in CI hardware- und lastabhängig und würde
+    // flackern. Sie schließt aber die Lücke, die ein Zähler allein offenlässt:
+    // eine Regression, bei der jeder einzelne Zustand teuer wird, hielte die
+    // Arbeitsgrenze ein und liefe trotzdem in die Sekunden. Der behobene Fall
+    // kostete 31,82 s; 250 ms erkennen jeden Rückfall dieser Größenordnung.
+    expect(elapsedMs).toBeLessThan(250);
   });
 });
