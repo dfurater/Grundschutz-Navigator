@@ -779,6 +779,49 @@ function attachNestedGroups(
 }
 
 /**
+ * Reihenfolge ohne `order`-Direktive: zuerst die in `with-ids` deklarierten
+ * IDs in Deklarationsreihenfolge, danach der Rest in Pool-Reihenfolge.
+ *
+ * Mengenbasierte Zugehörigkeit statt `Array.prototype.includes`: Die
+ * Array-Suche war linear in der Zahl der bereits deklarierten IDs und lief
+ * innerhalb einer Schleife über alle `with-ids`. Eine Eingabe mit vielen
+ * WIEDERHOLTEN gültigen IDs erzeugte damit quadratische Vergleichsarbeit, von
+ * der das Budget nur den äußeren Durchlauf sah — gemessen 82 Millionen
+ * Vergleiche bei 2 000 IDs und 40 000 Wiederholungen, ohne die Arbeitsgrenze
+ * zu erreichen (Greptile-Befund zu 21dd0b3). Das `Set` macht die Prüfung
+ * konstant und schließt die Lücke an der Wurzel, statt die überproportionale
+ * Arbeit bloß zu verbuchen.
+ */
+function declaredThenPoolOrder(
+  ids: ReadonlySet<string>,
+  selection: ProfileInsertControls['selection'],
+  budget: ProfileResolutionBudget,
+): readonly string[] {
+  const declared: string[] = [];
+  const declaredIds = new Set<string>();
+  if (selection.kind === 'include-controls') {
+    for (const selector of selection.includeControls) {
+      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
+      for (const id of selector.withIds) {
+        budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
+        if (ids.has(id) && !declaredIds.has(id)) {
+          declared.push(id);
+          declaredIds.add(id);
+        }
+      }
+    }
+  }
+  if (declared.length === ids.size) return declared;
+
+  const rest: string[] = [];
+  for (const id of ids) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
+    if (!declaredIds.has(id)) rest.push(id);
+  }
+  return [...declared, ...rest];
+}
+
+/**
  * Wendet die order-Richtlinie auf die selektierten IDs an. Aufsteigend/
  * absteigend sortiert nach UTF-16-Codepunkten. Ohne order (`keep`) gilt:
  * Eine with-ids-Deklaration ordnet nach ihrer eigenen Liste (Orakelbefund
@@ -794,54 +837,17 @@ function orderedInsertIds(
   directive: ProfileInsertControls,
   budget: ProfileResolutionBudget,
 ): readonly string[] {
-  const ascending = (left: string, right: string): number => {
+  // Eigene Komparatoren nach UTF-16-Codepunkten statt `localeCompare`: Der
+  // Orakelvergleich verlangt Byte-Identität.
+  const compare = (left: string, right: string): number => {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
     if (left < right) return -1;
     if (left > right) return 1;
     return 0;
   };
-  const descending = (left: string, right: string): number => {
-    if (left > right) return -1;
-    if (left < right) return 1;
-    return 0;
-  };
-  const counted = (comparator: (left: string, right: string) => number) =>
-    (left: string, right: string): number => {
-      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
-      return comparator(left, right);
-    };
-  if (directive.order === 'ascending') return [...ids].sort(counted(ascending));
-  if (directive.order === 'descending') return [...ids].sort(counted(descending));
-
-  // Mengenbasierte Zugehörigkeit statt `Array.prototype.includes`: Die
-  // Array-Suche war linear in der Zahl der bereits deklarierten IDs und lief
-  // innerhalb einer Schleife über alle `with-ids`. Eine Eingabe mit vielen
-  // WIEDERHOLTEN gültigen IDs erzeugte damit quadratische Vergleichsarbeit,
-  // von der das Budget nur den äußeren Durchlauf sah — gemessen 82 Millionen
-  // Vergleiche bei 2 000 IDs und 40 000 Wiederholungen, ohne die
-  // Arbeitsgrenze zu erreichen (Greptile-Befund zu 21dd0b3). Das `Set` macht
-  // die Prüfung konstant und schließt die Lücke an der Wurzel, statt die
-  // überproportionale Arbeit bloß zu verbuchen.
-  const declared: string[] = [];
-  const declaredIds = new Set<string>();
-  if (directive.selection.kind === 'include-controls') {
-    for (const selector of directive.selection.includeControls) {
-      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
-      for (const id of selector.withIds) {
-        budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
-        if (ids.has(id) && !declaredIds.has(id)) {
-          declared.push(id);
-          declaredIds.add(id);
-        }
-      }
-    }
-  }
-  if (declared.length === ids.size) return declared;
-  const rest: string[] = [];
-  for (const id of ids) {
-    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
-    if (!declaredIds.has(id)) rest.push(id);
-  }
-  return [...declared, ...rest];
+  if (directive.order === 'ascending') return [...ids].sort(compare);
+  if (directive.order === 'descending') return [...ids].sort((left, right) => compare(right, left));
+  return declaredThenPoolOrder(ids, directive.selection, budget);
 }
 
 function nestedCustomGroups(group: unknown, budget: ProfileResolutionBudget): readonly JsonObject[] {

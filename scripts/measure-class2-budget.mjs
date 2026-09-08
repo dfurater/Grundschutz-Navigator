@@ -339,6 +339,22 @@ async function measureGlob(page) {
   return rows;
 }
 
+/**
+ * Die vollständige Fixture-Reihe — oder eine leere, wenn `--skip-fixtures`
+ * gesetzt ist. Die Reihe kostet rund fünfzig Minuten, weil jede
+ * Speichermessung zehn Sekunden braucht; wer nur eine Nebenachse (Glob,
+ * Arbeitsgrenze) nachzieht, soll dafür nicht die ganze Reihe erneut fahren
+ * müssen. Der Bericht weist die leere Reihe als solche aus.
+ */
+async function measureFixtureSeries(pages, memory, options) {
+  if (options.skipFixtures) return [];
+  const fixtures = [];
+  for (const fixtureId of FIXTURE_ORDER) {
+    fixtures.push(await measureFixtureRepeatedly(pages, memory, fixtureId, options.repeat));
+  }
+  return fixtures;
+}
+
 async function measureInBrowser(browser, origin, options) {
   const runs = [];
   const memory = new MemoryProbe();
@@ -401,17 +417,7 @@ async function measureInBrowser(browser, origin, options) {
       await page.evaluate(() => globalThis.__gspp382.warmUp());
 
       memory.attach(page, throttleRate);
-      // `--skip-fixtures` misst NUR die Nebenachsen (Glob, Arbeitsgrenze).
-      // Die Fixture-Reihe kostet rund fünfzig Minuten, weil jede
-      // Speichermessung zehn Sekunden braucht; wer eine der Nebenachsen
-      // nachzieht, soll dafür nicht die ganze Reihe erneut fahren müssen.
-      // Der Bericht weist die leere Reihe als solche aus.
-      const fixtures = [];
-      if (!options.skipFixtures) {
-        for (const fixtureId of FIXTURE_ORDER) {
-          fixtures.push(await measureFixtureRepeatedly(pages, memory, fixtureId, options.repeat));
-        }
-      }
+      const fixtures = await measureFixtureSeries(pages, memory, options);
 
       if (workerErrors.length) throw workerErrors[0];
       runs.push({
