@@ -205,6 +205,15 @@ TypeScript braucht — dasselbe Muster wie `oscalVersionMatrix.mjs`.
 | Knoten | 1 000 000 | Bindende Grenze für den Speicher. Das teuerste Dokument darauf kostet 112,75 MiB — das Elffache seiner eigenen 10 MiB. Der Speicherabdruck wächst mit ihr, gemessen über fünf Stützpunkte. |
 | Summe dekodierter Base64-Größen | 4 MiB | Auf 10 MiB war die Grenze arithmetisch unerreichbar und damit wirkungslos; siehe „Die Base64-Grenze war tot“ unten. |
 
+Diese vier Werte begrenzen **Größe**. Sie begrenzen keine Arbeit: Ein
+Dokument von wenigen Kilobyte kann den Resolver minutenlang beschäftigen, ohne
+eine von ihnen zu berühren. Die fünfte Klasse-2-Grenze ist deshalb
+`WORK_UNIT_LIMIT` in
+[`profileResolutionBudgetLimits.mjs`](../src/domain/profileResolutionBudgetLimits.mjs);
+sie steht in einem eigenen Modul, weil sie nur für den Ableitungsweg gilt und
+nicht für den Byte-Eingang. Herleitung unter „`WORK_UNIT_LIMIT`:
+kostenbasiert hergeleitet“.
+
 Alle vier Grenzen halten das Speicherbudget. Der Abstand ist allerdings enger,
 als die vorige Fassung dieses Abschnitts ausgewiesen hat: nicht weil sich eine
 Grenze geändert hätte, sondern weil der damalige Messweg zwei zweistellige
@@ -790,73 +799,176 @@ Die Anwendung dekodiert `base64` heute an keiner Stelle. Die Grenze wirkt
 vorsorglich für den ersten Verbraucher; ihr Kostenmodell ist dessen
 Heap-Allokation.
 
-#### Nicht durch diese Grenzen gedeckt: `matching.pattern`
+#### Behoben: `matching.pattern` ist kein Kostenpfad mehr
 
-`globToRegExp` in
+**Befund (GSPP-382, 2026-09-04).** `globToRegExp` in
 [`profileResolutionSelection.ts`](../src/domain/profileResolutionSelection.ts)
-übersetzt ein Glob-Muster durch Ersetzen von `*` nach `.*` und verankert das
-Ergebnis mit `^`/`$`. Verschachtelte, überlappende `.*`-Quantoren entstehen
-dabei ungebremst. Scheitert das Muster, muss die Regex-Engine alle
-Aufteilungen des Subjekts durchprobieren; der Aufwand wächst exponentiell in
-der Zahl der Sterne.
-
-Gemessen auf derselben Messbasis, Muster `(*a)ⁿ!` gegen eine 40 Zeichen lange
+übersetzte ein Glob-Muster durch Ersetzen von `*` nach `.*` und verankerte das
+Ergebnis mit `^`/`$`. Verschachtelte, überlappende `.*`-Quantoren entstanden
+dabei ungebremst; scheiterte das Muster, musste die Regex-Engine alle
+Aufteilungen des Subjekts durchprobieren, und der Aufwand wuchs exponentiell in
+der Zahl der Sterne. Gemessen, Muster `(*a)ⁿ!` gegen eine 40 Zeichen lange
 Control-ID:
 
-| Sterne | Musterlänge | Laufzeit 1× | Laufzeit 4× |
+| Sterne | Musterlänge | vorher 1× | vorher 4× | nachher 1× | nachher 4× |
+| --- | --- | --- | --- | --- | --- |
+| 4 | 9 Byte | — | — | 0,06 ms | 0,04 ms |
+| 6 | 13 Byte | 15 ms | 58 ms | 0,02 ms | 0,00 ms |
+| 8 | 17 Byte | 0,34 s | 1,34 s | 0,01 ms | 0,01 ms |
+| 10 | 21 Byte | 4,23 s | 17,07 s | 0,01 ms | 0,00 ms |
+| 12 | 25 Byte | 31,82 s | nicht gemessen | 0,01 ms | 0,01 ms |
+
+Die frühere Reihe brach ab, sobald ein Wert das Budget riss; der
+12-Sterne-Fall wurde im gedrosselten Lauf deshalb nicht mehr ausgeführt. Keine
+der Ressourcengrenzen griff: Musterlänge und Subjektlänge werden von Byte-,
+Knoten- und Tiefengrenze nicht wirksam beschränkt, und ein Muster dieser Größe
+verbraucht davon nichts Nennenswertes. Ein Arbeitsbudget nach Art von
+[GSPP-345](https://linear.app/grundschutz-plus-plus/issue/GSPP-345) hätte für
+sich allein ebenfalls nicht geholfen: Das Backtracking lief innerhalb **eines**
+Aufrufs ab, den keine Zähleinheit unterbrechen kann.
+
+**Behebung (GSPP-385, aufgenommen in
+[GSPP-345](https://linear.app/grundschutz-plus-plus/issue/GSPP-345)).** Der
+reguläre Ausdruck ist ersetzt durch `matchGlob` — einen iterativen
+Zwei-Zeiger-Abgleich mit genau einem Rücksprungpunkt je Stern. Er hat keinen
+exponentiellen Fall, ist durch Muster × Subjekt beschränkt und bucht **jeden
+besuchten Zustand** als Arbeitseinheit der Kategorie `glob-state`. Damit ist
+der Abgleich von außen abbrechbar, was die RegExp-Fassung prinzipiell nicht
+sein konnte. Die Messreihe oben zeigt alle Sternzahlen bei 0,0 ms und
+gleichbleibend 80 Arbeitseinheiten — die Kosten hängen an der Subjektlänge,
+nicht mehr an der Sternzahl.
+
+Die Semantik bleibt: `*` trifft beliebig viele Zeichen einschließlich keiner,
+`?` genau eines, der Abgleich ist vollständig verankert. Eine einzige
+Abweichung ist bewusst in Kauf genommen und hier ausgewiesen: `.` traf in einem
+regulären Ausdruck ohne `s`-Flag keinen Zeilenumbruch, `*` und `?` konnten eine
+Control-ID mit `\n` also nie treffen; der Zeichenvergleich behandelt jedes
+Zeichen gleich. Das ist die naheliegendere Glob-Auslegung. Für den BSI-Korpus
+ist die Änderung wirkungslos — der Korpuslauf vergleicht alle drei aufgelösten
+Kataloge byte-nah gegen die BSI-Referenz und die vier SP-800-53-Baselines gegen
+die NIST-Referenz, und beide Orakel sind unverändert grün.
+
+Der Messlauf ruft `matchGlob` selbst auf, statt den Abgleich nachzubilden. Die
+Funktion ist dafür exportiert: Eine zweite Fassung im Messwerkzeug würde
+unbemerkt driften und das Protokoll unwahr machen.
+
+#### `WORK_UNIT_LIMIT`: kostenbasiert hergeleitet
+
+Die Arbeitsgrenze der Profile Resolution steht als `WORK_UNIT_LIMIT` in
+[`profileResolutionBudgetLimits.mjs`](../src/domain/profileResolutionBudgetLimits.mjs)
+und beträgt **134 213 078 Arbeitseinheiten**. Sie ist eine Klasse-2-Grenze wie
+die vier oben und folgt derselben Herleitungsregel: Ein Grenzwert wird gegen
+die Kosten seines eigenen ungünstigsten Falls begründet, nicht gegen ein
+Vielfaches der Korpusgröße.
+
+**Warum Bytes die Arbeit nicht begrenzen.** Ein Profil besteht im ungünstigsten
+Fall aus nichts als Ausschlussselektoren. Jeder von ihnen läuft über jede
+Control-ID des importierten Katalogs; die Arbeit ist das **Produkt** aus beiden
+Zahlen, während die Bytegrenze nur ihre Summe deckelt. Gemessen: Ein Profil von
+**1,7 KB** über einem Katalog von 78 KB verbraucht bereits über eine Million
+Arbeitseinheiten. An der 10-MiB-Bytegrenze sind es Milliarden — Minuten an
+Rechenzeit für ein Dokument, das Byte-, Knoten- und Tiefengrenze mühelos
+einhält. Genau diese Lücke schließt die Arbeitsgrenze; die Ausgabegrenzen
+können sie nicht schließen, weil die Ausgabe in diesem Fall **leer** ist.
+
+**Messprotokoll.**
+
+```bash
+node scripts/measure-class2-budget.mjs --throttle 1,4 --repeat 3 --skip-fixtures
+```
+
+Der Lauf fährt ein Worst-Case-Profil
+([`profileResolutionWorstCaseFixtures.mjs`](../scripts/profileResolutionWorstCaseFixtures.mjs))
+über eine Leiter von Stützpunkten und misst je Stützpunkt die Wartezeit eines
+vollständigen `resolveProfile`-Laufs einschließlich der abschließenden Objekt-
+und Schemakette — also das, was ein Anwender tatsächlich wartet. Beurteilt wird
+das **Maximum** aller Wiederholungen, nicht der Median: Eine Reihe, die im
+Mittel hält und in einem Lauf reißt, hält das Budget nicht. Das Messartefakt
+liegt unter
+[`docs/measurements/gspp345-work-budget.json`](./measurements/gspp345-work-budget.json).
+
+| Stützpunkt (4× Drosselung) | gemessene Arbeitseinheiten | Wartezeit Maximum | Urteil |
 | --- | --- | --- | --- |
-| 6 | 13 Byte | 15 ms | 58 ms |
-| 8 | 17 Byte | 0,34 s | 1,34 s |
-| 10 | 21 Byte | 4,23 s | 17,07 s |
-| 12 | 25 Byte | 31,82 s | nicht gemessen |
+| 67 108 864 | 67 109 108 | 1,73 s | gehalten |
+| 134 217 728 | **134 213 078** | **3,78 s** | **gehalten** |
+| 268 435 456 | 268 404 128 | 7,06 s | GERISSEN |
 
-Die Reihe bricht ab, sobald ein Wert das Budget reißt; der 12-Sterne-Fall
-wurde im gedrosselten Lauf deshalb nicht mehr ausgeführt.
+Maßgeblich ist der Lauf bei vierfacher CPU-Drosselung als Näherung an
+Bürohardware; ungedrosselt hält dieselbe Reihe bis 536 803 118 Einheiten
+(3,32 s) und reißt erst bei 1 073 584 208 (6,61 s). Der Grenzwert nimmt den
+größten Stützpunkt, der bei 4× hält, und schöpft den Budgetposten „Sichtbare
+Wartezeit bis zum Ergebnis" damit zu 76 % aus. Keine Interpolation zwischen
+Stützpunkten: Der Wert steht auf einer Zahl, die wirklich gemessen wurde.
 
-Ein Dokument von wenigen hundert Byte reißt damit jedes Budget. Keine der
-drei Ressourcengrenzen greift: Musterlänge und Subjektlänge werden von
-Byte-, Knoten- und Tiefengrenze nicht wirksam beschränkt, und ein Muster
-dieser Größe verbraucht davon nichts Nennenswertes. Die Grenzen sind für
-diesen Kostenpfad schlicht nicht zuständig.
+**Was ein Wiederholungslauf zeigt und was nicht.** Der Herleitungslauf oben
+wurde mit einem bewusst hoch angesetzten Kandidaten (2³¹) gefahren, weil sich
+oberhalb des einkompilierten Grenzwerts nicht messen lässt — dort bricht der
+Resolver ab, und ein Abbruch liefert keine Wartezeit. Ein Wiederholungslauf
+gegen den committeten Wert bestätigt deshalb nur, dass alle Stützpunkte bis zur
+Grenze halten; er kann die Obergrenze nicht erneut suchen. Eine **Anhebung** der
+Grenze setzt voraus, dass ein Mensch den Kandidaten erhöht und neu misst. Der
+Bericht weist beide Zahlen nebeneinander aus — den aus der Reihe getragenen
+Wert und den einkompilierten —, damit eine Abweichung nicht unbemerkt bleibt.
 
-Der Messlauf ruft `globToRegExp` selbst auf, statt die Übersetzung
-nachzubilden. Die Funktion ist dafür exportiert: Eine zweite Fassung im
-Messwerkzeug würde unbemerkt driften und das Protokoll unwahr machen.
+**Kopfraum über der legitimen Nutzung.** Der Korpuslauf
+[`profileResolutionCorpus.test.ts`](../scripts/profileResolutionCorpus.test.ts)
+löst die drei registrierten BSI-Profile auf und protokolliert die vier
+laufenden Zähler. Er ist **Nachweis, nicht Begründung** — die Reihenfolge ist
+wichtig, weil eine Grenze, die nur den Kopfraum über der legitimen Nutzung
+belegt, über den Angriffsfall nichts sagt.
 
-Erreichbar ist der Pfad heute nicht: `resolveProfile` in
-[`profileResolutionEngine.ts`](../src/domain/profileResolutionEngine.ts) hat
-außerhalb von Tests keinen Aufrufer. Der Befund ist damit kein offener
-Produktivbefund, aber eine Vorbedingung für jeden Schritt, der die
-Profilauflösung an Klasse-2-Eingaben anschließt. Er wird in
-[GSPP-385](https://linear.app/grundschutz-plus-plus/issue/GSPP-385) geführt.
+| Profil | Arbeitseinheiten | erzeugte Knoten | maximale Tiefe | dekodierte base64-Bytes |
+| --- | --- | --- | --- | --- |
+| `profile-gspp` | 206 592 | 70 865 | 19 | 0 |
+| `profile-lieferkette` | 31 091 | 8 292 | 17 | 0 |
+| `profile-wlan` | 33 793 | 5 195 | 13 | 0 |
 
-#### `WORK_UNIT_LIMIT`: zum Prüfzeitpunkt nicht vorhanden
+Das teuerste Profil liegt bei rund einem Sechshundertfünfzigstel der Grenze.
 
-Die Nachvalidierung sollte auch die Arbeitsgrenze aus
-[GSPP-345](https://linear.app/grundschutz-plus-plus/issue/GSPP-345) erfassen,
-falls diese zum Umsetzungsbeginn bereits existiert. Am 2026-09-04 wurde
-geprüft: `src/domain/profileResolutionBudget.ts` existiert nicht, und
-`WORK_UNIT_LIMIT` kommt im Repository nicht vor.
-[GSPP-345](https://linear.app/grundschutz-plus-plus/issue/GSPP-345) stand zu
-diesem Zeitpunkt in `Todo` und wird von diesem Issue blockiert. Das Kriterium
-ist damit **N/A**.
+#### Laufendes Budget und abschließende Postcondition
 
-Für die Umsetzung von
-[GSPP-345](https://linear.app/grundschutz-plus-plus/issue/GSPP-345) gilt die
-Herleitungsregel dieses Abschnitts unverändert: Ein Grenzwert wird gegen die
-Kosten seines eigenen ungünstigsten Falls begründet, nicht gegen ein
-Vielfaches der Korpusgröße. Die dort vorgesehene Formel
-`nextPowerOfTwo(max(65_536, 16 × maxWorkUnitsDerDreiBsiProfile))` ist eine
-Korpusrechnung und trägt als Begründung nicht.
+Beide bestehen nebeneinander und prüfen dasselbe mit verschiedener Reichweite.
 
-Ajv wurde als Validator gegenüber `@hyperjump/json-schema` 1.17.7
-ausgewählt. Beide Kandidaten trafen die Schema-Orakel, aber Hyperjump startete
-in einem echten ESM-Web-Worker nicht unverändert: Eine transitive
-Browserkomponente greift auf `document.location` zu, das im Worker nicht
-existiert. Ein Kompatibilitäts-Shim wird nicht Teil der Produktarchitektur. Der
-vollständige Auswahlnachweis ist in
-[GSPP-282](https://linear.app/grundschutz-plus-plus/issue/GSPP-282)
-nachvollziehbar; der temporäre Harnisch gehört nicht in das Repository.
+| | laufendes Budget | Postcondition |
+| --- | --- | --- |
+| Ort | [`profileResolutionBudget.ts`](../src/domain/profileResolutionBudget.ts) | [`oscalObjectGraph.ts`](../src/domain/oscalObjectGraph.ts) |
+| Zeitpunkt | **vor** jeder Operation und Allokation | nach dem fertigen Ergebnis |
+| Umfang | kumulativ über den **ganzen** Auflösungslauf | ein Zwischen- oder Endergebnis |
+| Arbeitsachse | ja (`WORK_UNIT_LIMIT`) | nein |
+| Ausgabeachse | Knoten, Tiefe, base64 aus `CLASS_2_IMPORT_LIMITS` | dieselben Werte |
+
+Die Ausgabegrenzen sind **dieselben Konstanten**, nicht zwei Zahlen für
+dieselbe Grenze: Das Budget importiert `CLASS_2_IMPORT_LIMITS` und die
+`base64`-Arithmetik (`decodedBase64ByteLength`) aus der Postcondition-Seite.
+Beide zählen mit derselben Semantik — Wurzel ist Tiefe 1, jeder primitive und
+jeder Containerwert ist ein Knoten, Property-Namen zählen nicht, `base64` wird
+arithmetisch aus der kodierten Länge bestimmt und nie dekodiert.
+
+Die laufenden Zähler dürfen die fertigen Werte **übersteigen** — sie zählen
+kumulativ über alle Zwischenergebnisse eines Plans und schreiben Entferntes
+nicht gut. Verboten ist allein die andere Richtung: Ein Zähler unter dem
+fertigen Wert hieße, dass die Grenze umgangen werden kann. Ein Regressionstest
+hält das fest, indem er den fertigen Graphen unabhängig nachmisst.
+
+Aus derselben Anforderung folgt eine Korrektur an der Emission: Sie zählte
+`groups`, `controls` und `back-matter` bisher relativ ab Tiefe 0, obwohl diese
+Mitglieder absolut auf Tiefe 3 liegen (Wurzel 1 → `catalog` 2 → Mitglied 3).
+Die frühere Schranke lag damit zwei Ebenen unter der Wahrheit. Die Emission
+rechnet jetzt in absoluten Tiefen.
+
+#### Vertrauensklasse des Steuerdokuments und des Ergebnisses
+
+Der Ergebnisvertrag nennt beide getrennt. `trustClass` ist unveränderlich
+`class-2-local-user` — ein lokal abgeleitetes Dokument ist nach
+[ADR-8](https://linear.app/grundschutz-plus-plus/issue/ADR-8) nie
+verifiziert-öffentlich, auch wenn jede Eingabe Klasse 1 war.
+`controllingTrustClass` ist die Klasse des **steuernden** Profils.
+
+Sie steuert **keinen Grenzwert**; das Budget läuft in jedem Lauf identisch und
+ist nicht abschaltbar. Sie sagt, **was** das Budget in diesem Lauf ist: bei
+ausschließlich Klasse-1-gesteuerten Eingaben ein Reliability-Hardstop, der
+nicht als Abwehr gegen unvertrauenswürdige Eingaben ausgegeben wird; bei einem
+lokalen Klasse-2-Steuerdokument dieselbe Mechanik als Sicherheitskontrolle.
 
 ### Die Schema-Direktive `$schema`
 

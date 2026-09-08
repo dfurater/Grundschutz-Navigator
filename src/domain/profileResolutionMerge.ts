@@ -36,6 +36,10 @@ import {
   PROFILE_RESOLUTION_STAGE,
   PROFILE_RESOLUTION_VALIDATOR,
 } from './profileResolutionImportGraph';
+import {
+  PROFILE_RESOLUTION_WORK_UNITS,
+  type ProfileResolutionBudget,
+} from './profileResolutionBudget';
 import type {
   ProfileControlMatcher,
   ProfileControlSelector,
@@ -94,10 +98,10 @@ export type CombinedControls = {
   readonly sourceIdsByDefinition: ReadonlyMap<JsonObject, ReadonlySet<string>>;
 };
 
-function controlsFromInclusion(inclusion: unknown): readonly unknown[] {
+function controlsFromInclusion(inclusion: unknown, budget: ProfileResolutionBudget): readonly unknown[] {
   if (!isJsonObject(inclusion)) return [];
   const controls = ownDataValue(inclusion, 'controls');
-  return Array.isArray(controls) ? ownArrayDataElements(controls) : [];
+  return Array.isArray(controls) ? ownArrayDataElements(controls, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP) : [];
 }
 
 function registerCombinedControl(
@@ -106,7 +110,9 @@ function registerCombinedControl(
   definitions: Map<string, JsonObject[]>,
   order: JsonObject[],
   clashes: Set<string>,
+  budget: ProfileResolutionBudget,
 ): void {
+  budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
   const id = readIdOrEmpty(node);
   if (id.length === 0) return;
   const bucket = definitions.get(id);
@@ -130,14 +136,16 @@ function registerCombinedControl(
 export function applyCombine(
   inclusions: readonly ControlInclusion[],
   method: CombineMethod,
+  budget: ProfileResolutionBudget,
 ): CombinedControls {
   const definitions = new Map<string, JsonObject[]>();
   const order: JsonObject[] = [];
   const clashes = new Set<string>();
   const sourceIdsByDefinition = new Map<JsonObject, ReadonlySet<string>>();
 
-  for (const inclusion of ownArrayDataElements(inclusions)) {
-    const nodesInInclusion = controlsFromInclusion(inclusion).filter(isJsonObject);
+  for (const inclusion of ownArrayDataElements(inclusions, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP)) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
+    const nodesInInclusion = controlsFromInclusion(inclusion, budget).filter(isJsonObject);
     // Leere IDs ausfiltern: `readIdOrEmpty` liefert '' für ID-lose Knoten, und
     // eine Prune-Menge mit '' würde jedes ID-lose verschachtelte Kind als
     // "selektiert" behandeln und stehen lassen.
@@ -145,6 +153,7 @@ export function applyCombine(
       .map(readIdOrEmpty)
       .filter((id) => id.length > 0);
     for (const node of nodesInInclusion) {
+      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
       // `keep` erhält jedes Importvorkommen — auch wenn zwei Inklusionen wegen
       // desselben href dasselbe Rohobjekt wiederverwenden. Nur in diesem
       // Kollisionsfall gibt eine flache, deskriptorbasierte Kopie dem späteren
@@ -153,9 +162,9 @@ export function applyCombine(
       // Projektionspfade kopieren den verschachtelten Baum ohnehin und
       // verändern diese Werte nie.
       const definition = method === 'keep' && sourceIdsByDefinition.has(node)
-        ? copyOwnDataMembers(node)
+        ? copyOwnDataMembers(node, budget)
         : node;
-      registerCombinedControl(definition, method, definitions, order, clashes);
+      registerCombinedControl(definition, method, definitions, order, clashes, budget);
       // Bei use-first gewinnt die erste Registrierung — dieselbe Regel, nach
       // der auch `registerCombinedControl` die Definition wählt.
       //
@@ -189,9 +198,10 @@ export function applyCombine(
 }
 
 /** Entfernt verschachtelte Kinder (controls, groups) für echte Flachdarstellung. */
-export function stripNestedChildren(node: JsonObject): JsonObject {
+export function stripNestedChildren(node: JsonObject, budget: ProfileResolutionBudget): JsonObject {
   const copy: JsonObject = {};
   for (const key of Reflect.ownKeys(node)) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
     if (typeof key !== 'string') continue;
     if (key === 'controls' || key === 'groups') continue;
     const value = ownDataValue(node, key);
@@ -201,13 +211,13 @@ export function stripNestedChildren(node: JsonObject): JsonObject {
 }
 
 /** Flache Ausgabe: kombinierte Controls direkt unter catalog. */
-export function buildFlatControls(combined: CombinedControls): JsonObject {
+export function buildFlatControls(combined: CombinedControls, budget: ProfileResolutionBudget): JsonObject {
   const orderValue = ownDataValue(combined as unknown as object, 'order');
   return {
     controls: Array.isArray(orderValue)
-      ? ownArrayDataElements(orderValue)
+      ? ownArrayDataElements(orderValue, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP)
         .filter((node): node is JsonObject => isJsonObject(node))
-        .map(stripNestedChildren)
+        .map((node) => stripNestedChildren(node, budget))
       : [],
   };
 }
@@ -222,21 +232,23 @@ function filterNestedIncluded(
   control: JsonObject,
   includedIds: ReadonlySet<string>,
   path: ReadonlySet<object>,
+  budget: ProfileResolutionBudget,
 ): JsonObject {
   const childPath = new Set(path);
   childPath.add(control);
-  const copy = copyOwnDataMembers(control);
+  const copy = copyOwnDataMembers(control, budget);
   const ordered: JsonObject[] = [];
   // Nur setzen, wenn es gefilterte Kinder gibt — keine leeren controls:[]
   // in Blättern injizieren (Gitar-Hinweis zu bce6b68).
   const children = safeArrayMember(control, 'controls') ?? [];
-  for (const child of ownArrayDataElements(children)) {
+  for (const child of ownArrayDataElements(children, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP)) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
     if (!isJsonObject(child)) continue;
     if (childPath.has(child)) continue;
     if (includedIds.has(readIdOrEmpty(child))) {
-      ordered.push(filterNestedIncluded(child, includedIds, childPath));
+      ordered.push(filterNestedIncluded(child, includedIds, childPath, budget));
     } else {
-      ordered.push(...promotedControls(child, includedIds, childPath));
+      ordered.push(...promotedControls(child, includedIds, childPath, budget));
     }
   }
   delete copy['controls'];
@@ -257,6 +269,7 @@ function promotedControls(
   control: JsonObject,
   includedIds: ReadonlySet<string>,
   path: ReadonlySet<object>,
+  budget: ProfileResolutionBudget,
 ): JsonObject[] {
   if (path.has(control)) return [];
   const childPath = new Set(path);
@@ -264,13 +277,14 @@ function promotedControls(
   const kept: JsonObject[] = [];
   const children = safeArrayMember(control, 'controls');
   if (children === undefined) return kept;
-  for (const child of ownArrayDataElements(children)) {
+  for (const child of ownArrayDataElements(children, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP)) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
     if (!isJsonObject(child)) continue;
     if (childPath.has(child)) continue;
     if (includedIds.has(readIdOrEmpty(child))) {
-      kept.push(filterNestedIncluded(child, includedIds, childPath));
+      kept.push(filterNestedIncluded(child, includedIds, childPath, budget));
     } else {
-      kept.push(...promotedControls(child, includedIds, childPath));
+      kept.push(...promotedControls(child, includedIds, childPath, budget));
     }
   }
   return kept;
@@ -279,28 +293,32 @@ function pushHierarchyChildren(
   node: JsonObject,
   depth: number,
   stack: Array<{ node: JsonObject; depth: number }>,
+  budget: ProfileResolutionBudget,
 ): void {
   for (const listKey of ['groups', 'controls'] as const) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
     const nested = safeArrayMember(node, listKey);
     if (nested === undefined) continue;
-    for (const child of ownArrayDataElements(nested)) {
+    for (const child of ownArrayDataElements(nested, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP)) {
+      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
       if (isJsonObject(child)) stack.push({ node: child, depth: depth + 1 });
     }
   }
 }
 
 /** Misst die maximale Schachtelungstiefe (groups + controls) iterativ. */
-function measureGroupsDepth(containerNode: JsonObject): number {
+function measureGroupsDepth(containerNode: JsonObject, budget: ProfileResolutionBudget): number {
   let maxDepth = 0;
   const stack: Array<{ node: JsonObject; depth: number }> = [{ node: containerNode, depth: 0 }];
   const visited = new Set<object>();
   while (stack.length > 0) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
     const { node, depth } = stack.pop()!;
     if (visited.has(node)) continue;
     visited.add(node);
     maxDepth = Math.max(maxDepth, depth);
     if (depth > CLASS_2_IMPORT_LIMITS.maxDepth) return depth;
-    pushHierarchyChildren(node, depth, stack);
+    pushHierarchyChildren(node, depth, stack, budget);
   }
   return maxDepth;
 }
@@ -314,14 +332,15 @@ function measureGroupsDepth(containerNode: JsonObject): number {
 export function buildAsIsGroups(
   containerNode: JsonObject,
   includedIds: ReadonlySet<string>,
+  budget: ProfileResolutionBudget,
 ): JsonObject {
   // Tiefenbegrenzung am exportierten Rand: Eine 12.000-Ebenen-Kette kann die
   // Klasse-2-Kette nicht passieren (maxDepth 64); statt RangeError wird
   // kontrolliert leer zurückgegeben.
-  if (measureGroupsDepth(containerNode) > CLASS_2_IMPORT_LIMITS.maxDepth) {
+  if (measureGroupsDepth(containerNode, budget) > CLASS_2_IMPORT_LIMITS.maxDepth) {
     return { groups: [], controls: [] };
   }
-  return filterContainerForAsIs(containerNode, includedIds, new Set<object>());
+  return filterContainerForAsIs(containerNode, includedIds, new Set<object>(), budget);
 }
 
 /** Direkte Controls eines Containers einreihen (inkludierte + Up-Level). */
@@ -329,16 +348,18 @@ function collectDirectControls(
   containerNode: JsonObject,
   includedIds: ReadonlySet<string>,
   controls: JsonObject[],
+  budget: ProfileResolutionBudget,
 ): void {
   const children = safeArrayMember(containerNode, 'controls');
   if (children === undefined) return;
   const rootPath = new Set<object>();
-  for (const child of ownArrayDataElements(children)) {
+  for (const child of ownArrayDataElements(children, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP)) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
     if (!isJsonObject(child)) continue;
     if (includedIds.has(readIdOrEmpty(child))) {
-      controls.push(filterNestedIncluded(child, includedIds, rootPath));
+      controls.push(filterNestedIncluded(child, includedIds, rootPath, budget));
     } else {
-      controls.push(...promotedControls(child, includedIds, rootPath));
+      controls.push(...promotedControls(child, includedIds, rootPath, budget));
     }
   }
 }
@@ -349,12 +370,14 @@ function collectNestedGroups(
   includedIds: ReadonlySet<string>,
   visited: Set<object>,
   groups: JsonObject[],
+  budget: ProfileResolutionBudget,
 ): void {
   const nestedGroups = safeArrayMember(containerNode, 'groups');
   if (nestedGroups === undefined) return;
-  for (const group of ownArrayDataElements(nestedGroups)) {
+  for (const group of ownArrayDataElements(nestedGroups, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP)) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
     if (!isJsonObject(group)) continue;
-    const filteredGroup = filterContainerForAsIs(group, includedIds, visited);
+    const filteredGroup = filterContainerForAsIs(group, includedIds, visited, budget);
     const groupControls =
       (filteredGroup['controls'] as readonly unknown[] | undefined) ?? [];
     const groupSubGroups =
@@ -364,7 +387,7 @@ function collectNestedGroups(
       // leere Gruppen-/Controls-Mitglieder erscheinen im resolved Dokument
       // nicht (Orakelvertrag gegen die BSI-resolved_catalogs).
       // Deskriptorbasiert, um Getter nicht auszuführen.
-      const merged = copyOwnDataMembers(group);
+      const merged = copyOwnDataMembers(group, budget);
       delete merged['controls'];
       delete merged['groups'];
       if (groupControls.length > 0) merged['controls'] = groupControls;
@@ -379,14 +402,15 @@ function filterContainerForAsIs(
   containerNode: JsonObject,
   includedIds: ReadonlySet<string>,
   visited: Set<object>,
+  budget: ProfileResolutionBudget,
 ): JsonObject {
   if (visited.has(containerNode)) return { groups: [], controls: [] };
   visited.add(containerNode);
 
   const groups: JsonObject[] = [];
   const controls: JsonObject[] = [];
-  collectDirectControls(containerNode, includedIds, controls);
-  collectNestedGroups(containerNode, includedIds, visited, groups);
+  collectDirectControls(containerNode, includedIds, controls, budget);
+  collectNestedGroups(containerNode, includedIds, visited, groups, budget);
 
   return { groups, controls };
 }
@@ -427,9 +451,10 @@ export type CustomAssemblyResult =
  * Accessor-Slots erscheinen als abwesend und werden nie ausgeführt —
  * dieselbe Semantik wie in der Selektionsphase.
  */
-function copyOwnDataMembers(node: JsonObject): JsonObject {
+function copyOwnDataMembers(node: JsonObject, budget: ProfileResolutionBudget): JsonObject {
   const copy: JsonObject = {};
   for (const key of Reflect.ownKeys(node)) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
     if (typeof key !== 'string') continue;
     const value = ownDataValue(node, key);
     if (value !== undefined) copy[key] = value;
@@ -449,8 +474,8 @@ function copyOwnDataMembers(node: JsonObject): JsonObject {
  * diese Konvention auch über die custom-Zusammenbauung fort — der
  * Orakelvergleich nagelt das Verhalten fest.
  */
-function copyCustomGroup(group: JsonObject): JsonObject {
-  const copy = copyOwnDataMembers(group);
+function copyCustomGroup(group: JsonObject, budget: ProfileResolutionBudget): JsonObject {
+  const copy = copyOwnDataMembers(group, budget);
   delete copy['insert-controls'];
 
   if (!('props' in copy)) {
@@ -478,28 +503,33 @@ function byPartId(left: unknown, right: unknown): number {
   return 0;
 }
 
-function measureControlDepth(control: JsonObject): number {
+function measureControlDepth(control: JsonObject, budget: ProfileResolutionBudget): number {
   let maxDepth = 0;
   const stack: Array<{ node: JsonObject; depth: number }> = [{ node: control, depth: 1 }];
   const visited = new Set<object>();
   while (stack.length > 0) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
     const { node, depth } = stack.pop()!;
     if (visited.has(node)) continue;
     visited.add(node);
     maxDepth = Math.max(maxDepth, depth);
     if (depth > CLASS_2_IMPORT_LIMITS.maxDepth) return depth;
     const children = safeArrayMember(node, 'controls') ?? [];
-    for (const child of ownArrayDataElements(children)) {
+    for (const child of ownArrayDataElements(children, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP)) {
+      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
       if (isJsonObject(child)) stack.push({ node: child, depth: depth + 1 });
     }
   }
   return maxDepth;
 }
 
-function copyWithSortedParts(control: JsonObject, label: string): JsonObject {
-  const copy = copyWithLabel(control, label);
+function copyWithSortedParts(control: JsonObject, label: string, budget: ProfileResolutionBudget): JsonObject {
+  const copy = copyWithLabel(control, label, budget);
   const parts = safeArrayMember(control, 'parts');
-  if (parts !== undefined) copy['parts'] = ownArrayDataElements(parts).sort(byPartId);
+  if (parts !== undefined) copy['parts'] = ownArrayDataElements(parts, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP).sort((left, right) => {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
+    return byPartId(left, right);
+  });
   return copy;
 }
 
@@ -511,11 +541,12 @@ function createLabeledChild(
   frame: LabelStackFrame,
   visited: Set<object>,
   stack: LabelStackFrame[],
+  budget: ProfileResolutionBudget,
 ): unknown {
   if (!isJsonObject(child) || visited.has(child)) return child;
   visited.add(child);
   const childLabel = `${frame.label}.${index + 1}`;
-  const childCopy = copyWithSortedParts(child, childLabel);
+  const childCopy = copyWithSortedParts(child, childLabel, budget);
   stack.push({ original: child, copy: childCopy, label: childLabel });
   return childCopy;
 }
@@ -530,35 +561,37 @@ function createLabeledChild(
 function withPositionalLabels(
   control: JsonObject,
   label: string,
+  budget: ProfileResolutionBudget,
 ): JsonObject {
   // Tiefenmessung: Eine 12.000-Ebenen-Kette kann die Klasse-2-Kette nicht
   // passieren (maxDepth 64); statt RangeError wird die Beschriftung nur
   // für die erreichbare Tiefe vergeben und tiefere Ebenen bleiben unverändert.
   // Iterative Beschriftung mit explizitem Stack, um tiefe Hierarchien ohne
   // Call-Stack-Überlauf zu verarbeiten.
-  const rootCopy = copyWithSortedParts(control, label);
-  if (measureControlDepth(control) > CLASS_2_IMPORT_LIMITS.maxDepth) {
+  const rootCopy = copyWithSortedParts(control, label, budget);
+  if (measureControlDepth(control, budget) > CLASS_2_IMPORT_LIMITS.maxDepth) {
     // Zu tief für vollständige Beschriftung — nur die Wurzel wird beschriftet.
     return rootCopy;
   }
   const stack: LabelStackFrame[] = [{ original: control, copy: rootCopy, label }];
   const visited = new Set<object>([control]);
   while (stack.length > 0) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
     const frame = stack.pop()!;
     const children = safeArrayMember(frame.original, 'controls');
     if (children === undefined) continue;
-    frame.copy['controls'] = ownArrayDataElements(children).map((child, index) =>
-      createLabeledChild(child, index, frame, visited, stack));
+    frame.copy['controls'] = ownArrayDataElements(children, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP).map((child, index) =>
+      createLabeledChild(child, index, frame, visited, stack, budget));
   }
   return rootCopy;
 }
 
-function copyWithLabel(control: JsonObject, label: string): JsonObject {
+function copyWithLabel(control: JsonObject, label: string, budget: ProfileResolutionBudget): JsonObject {
   const sourcePropsValue = ownDataValue(control, 'props');
   const sourceProps = Array.isArray(sourcePropsValue)
-    ? ownArrayDataElements(sourcePropsValue)
+    ? ownArrayDataElements(sourcePropsValue, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP)
     : [];
-  const copy = copyOwnDataMembers(control);
+  const copy = copyOwnDataMembers(control, budget);
   copy['props'] = [{ name: 'label', value: label }, ...sourceProps];
   return copy;
 }
@@ -573,14 +606,18 @@ function assembleGroupControls(
   directives: readonly ProfileInsertControls[],
   context: AssemblyContext,
   groupDefinitions: Set<object>,
+  budget: ProfileResolutionBudget,
 ): { readonly ok: true; readonly placed: readonly JsonObject[] } | { readonly ok: false; readonly diagnostic: OscalDiagnostic } {
   const placed: JsonObject[] = [];
-  const selection = resolvePlacementSelections(directives, context.poolIndex);
+  const selection = resolvePlacementSelections(directives, context.poolIndex, budget);
   if (!selection.ok) return selection;
 
   for (const resolved of selection.directives) {
-    for (const id of orderedInsertIds(resolved.ids, resolved.directive)) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
+    for (const id of orderedInsertIds(resolved.ids, resolved.directive, budget)) {
+      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
       for (const definition of context.combined.controls.get(id) ?? []) {
+        budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
         if (groupDefinitions.has(definition)) continue;
         groupDefinitions.add(definition);
         // Gegen die Selektion DERSELBEN Inklusion prunen, bevor die Definition
@@ -590,10 +627,10 @@ function assembleGroupControls(
         placed.push(withPositionalLabels(
           filterNestedIncluded(
             definition,
-            selectionScopeFor(definition, context, selection.ids),
-            new Set<object>(),
+            selectionScopeFor(definition, context, selection.ids, budget),
+            new Set<object>(), budget
           ),
-          `${groupId}.${placed.length + 1}`,
+          `${groupId}.${placed.length + 1}`, budget
         ));
       }
     }
@@ -628,18 +665,23 @@ type PlacementSelectionResult =
 function resolvePlacementSelections(
   directives: readonly ProfileInsertControls[],
   poolIndex: ReturnType<typeof indexCatalogControls>,
+  budget: ProfileResolutionBudget,
 ): PlacementSelectionResult {
   const resolved: ResolvedPlacementDirective[] = [];
   const ids = new Set<string>();
 
   for (const directive of directives) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
     const outcome = resolveSelectionIds(poolIndex, {
       selection: directive.selection,
       excludeControls: directive.excludeControls,
-    });
+    }, budget);
     if (!outcome.ok) return outcome;
     resolved.push({ directive, ids: outcome.ids });
-    for (const id of outcome.ids) ids.add(id);
+    for (const id of outcome.ids) {
+      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
+      ids.add(id);
+    }
   }
 
   return { ok: true, directives: resolved, ids };
@@ -660,14 +702,16 @@ function assembleGroups(
   rawGroups: readonly JsonObject[],
   typedGroups: readonly unknown[],
   context: AssemblyContext,
+  budget: ProfileResolutionBudget,
 ): GroupAssemblyResult {
   const assembled: JsonObject[] = [];
 
   for (let index = 0; index < rawGroups.length; index += 1) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
     const assembledGroup = assembleSingleGroup(
       rawGroups[index]!,
       typedGroups[index],
-      context,
+      context, budget
     );
     if (!assembledGroup.ok) return assembledGroup;
     assembled.push(assembledGroup.group);
@@ -680,9 +724,10 @@ function assembleSingleGroup(
   raw: JsonObject,
   typed: unknown,
   context: AssemblyContext,
+  budget: ProfileResolutionBudget,
 ): { readonly ok: true; readonly group: JsonObject } | { readonly ok: false; readonly diagnostic: OscalDiagnostic } {
-  const copy = copyCustomGroup(raw);
-  const projected = projectAssemblyGroup(typed);
+  const copy = copyCustomGroup(raw, budget);
+  const projected = projectAssemblyGroup(typed, budget);
 
   // Die Projektion liest dasselbe Array in derselben Ordnung; bei einer
   // Abweichung (sollte unmöglich sein) bleibt die Gruppe ohne Direktiven.
@@ -691,7 +736,7 @@ function assembleSingleGroup(
       projected.id,
       projected.insertControls,
       context,
-      new Set<object>(),
+      new Set<object>(), budget
     );
     if (!placed.ok) return placed;
     if (placed.placed.length > 0) {
@@ -699,7 +744,7 @@ function assembleSingleGroup(
     }
   }
 
-  const nestedFailure = attachNestedGroups(copy, raw, projected, context);
+  const nestedFailure = attachNestedGroups(copy, raw, projected, context, budget);
   if (nestedFailure !== null) return nestedFailure;
   return { ok: true, group: copy };
 }
@@ -713,14 +758,15 @@ function attachNestedGroups(
   raw: JsonObject,
   typed: ProjectedAssemblyGroup,
   context: AssemblyContext,
+  budget: ProfileResolutionBudget,
 ): { readonly ok: false; readonly diagnostic: OscalDiagnostic } | null {
   const nestedRawValue = ownDataValue(raw, 'groups');
   if (!Array.isArray(nestedRawValue)) return null;
 
-  const nestedRaw = ownArrayDataElements(nestedRawValue).filter(
+  const nestedRaw = ownArrayDataElements(nestedRawValue, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP).filter(
     (child): child is JsonObject => isJsonObject(child),
   );
-  const nestedResult = assembleGroups(nestedRaw, typed.groups, context);
+  const nestedResult = assembleGroups(nestedRaw, typed.groups, context, budget);
   if (!nestedResult.ok) return nestedResult;
   if (nestedResult.groups.length > 0 || nestedRaw.length > 0) {
     copy['groups'] = nestedResult.groups;
@@ -744,6 +790,7 @@ function attachNestedGroups(
 function orderedInsertIds(
   ids: ReadonlySet<string>,
   directive: ProfileInsertControls,
+  budget: ProfileResolutionBudget,
 ): readonly string[] {
   const ascending = (left: string, right: string): number => {
     if (left < right) return -1;
@@ -755,13 +802,20 @@ function orderedInsertIds(
     if (left < right) return 1;
     return 0;
   };
-  if (directive.order === 'ascending') return [...ids].sort(ascending);
-  if (directive.order === 'descending') return [...ids].sort(descending);
+  const counted = (comparator: (left: string, right: string) => number) =>
+    (left: string, right: string): number => {
+      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
+      return comparator(left, right);
+    };
+  if (directive.order === 'ascending') return [...ids].sort(counted(ascending));
+  if (directive.order === 'descending') return [...ids].sort(counted(descending));
 
   const declared: string[] = [];
   if (directive.selection.kind === 'include-controls') {
     for (const selector of directive.selection.includeControls) {
+      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
       for (const id of selector.withIds) {
+        budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
         if (ids.has(id) && !declared.includes(id)) declared.push(id);
       }
     }
@@ -771,47 +825,49 @@ function orderedInsertIds(
   return [...declared, ...rest];
 }
 
-function nestedCustomGroups(group: unknown): readonly JsonObject[] {
+function nestedCustomGroups(group: unknown, budget: ProfileResolutionBudget): readonly JsonObject[] {
   if (!isJsonObject(group)) return [];
   const nested = ownDataValue(group, 'groups');
   if (!Array.isArray(nested)) return [];
-  return ownArrayDataElements(nested).filter(
+  return ownArrayDataElements(nested, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP).filter(
     (child): child is JsonObject => isJsonObject(child),
   );
 }
 
 /** Misst die maximale Schachtelungstiefe von Custom-Gruppen iterativ. */
-function measureCustomGroupsDepth(rawGroups: readonly JsonObject[]): number {
+function measureCustomGroupsDepth(rawGroups: readonly JsonObject[], budget: ProfileResolutionBudget): number {
   let maxDepth = 0;
   const stack: Array<{ groups: readonly JsonObject[]; depth: number }> = [
     { groups: rawGroups, depth: 1 },
   ];
   const visited = new Set<object>();
   while (stack.length > 0) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
     const { groups, depth } = stack.pop()!;
     if (visited.has(groups as object)) continue;
     visited.add(groups as object);
     maxDepth = Math.max(maxDepth, depth);
     if (depth > CLASS_2_IMPORT_LIMITS.maxDepth) return depth;
-    for (const group of ownArrayDataElements(groups)) {
-      const nested = nestedCustomGroups(group);
+    for (const group of ownArrayDataElements(groups, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP)) {
+      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
+      const nested = nestedCustomGroups(group, budget);
       if (nested.length > 0) stack.push({ groups: nested, depth: depth + 1 });
     }
   }
   return maxDepth;
 }
 
-function jsonObjectArrayMember(node: object, key: string): readonly JsonObject[] {
+function jsonObjectArrayMember(node: object, key: string, budget: ProfileResolutionBudget): readonly JsonObject[] {
   const value = ownDataValue(node, key);
   if (!Array.isArray(value)) return [];
-  return ownArrayDataElements(value).filter(
+  return ownArrayDataElements(value, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP).filter(
     (entry): entry is JsonObject => isJsonObject(entry),
   );
 }
 
-function arrayMember<T>(node: object, key: string): readonly T[] {
+function arrayMember<T>(node: object, key: string, budget: ProfileResolutionBudget): readonly T[] {
   const value = ownDataValue(node, key);
-  return Array.isArray(value) ? ownArrayDataElements(value) as T[] : [];
+  return Array.isArray(value) ? ownArrayDataElements(value, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP) as T[] : [];
 }
 
 function projectMatcher(value: unknown): ProfileControlMatcher {
@@ -824,7 +880,7 @@ function projectMatcher(value: unknown): ProfileControlMatcher {
   };
 }
 
-function projectSelector(value: unknown): ProfileControlSelector {
+function projectSelector(value: unknown, budget: ProfileResolutionBudget): ProfileControlSelector {
   if (!isJsonObject(value)) {
     return { withIds: [], matching: [], path: '/' };
   }
@@ -835,10 +891,10 @@ function projectSelector(value: unknown): ProfileControlSelector {
   return {
     ...(typeof withChildControls === 'string' && { withChildControls }),
     withIds: Array.isArray(withIds)
-      ? ownArrayDataElements(withIds).filter((id): id is string => typeof id === 'string')
+      ? ownArrayDataElements(withIds, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP).filter((id): id is string => typeof id === 'string')
       : [],
     matching: Array.isArray(matching)
-      ? ownArrayDataElements(matching).map(projectMatcher)
+      ? ownArrayDataElements(matching, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP).map((value) => projectMatcher(value))
       : [],
     path: typeof path === 'string' ? path : '/',
   };
@@ -856,7 +912,7 @@ function invalidSelection(): ProfileSelection {
   };
 }
 
-function projectSelection(value: unknown): ProfileSelection {
+function projectSelection(value: unknown, budget: ProfileResolutionBudget): ProfileSelection {
   if (!isJsonObject(value)) return invalidSelection();
   const kind = ownDataValue(value, 'kind');
   if (kind === 'include-all') return { kind };
@@ -865,12 +921,12 @@ function projectSelection(value: unknown): ProfileSelection {
   return {
     kind,
     includeControls: Array.isArray(includeControls)
-      ? ownArrayDataElements(includeControls).map(projectSelector)
+      ? ownArrayDataElements(includeControls, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP).map((value) => projectSelector(value, budget))
       : [],
   };
 }
 
-function projectInsertControls(value: unknown): ProfileInsertControls {
+function projectInsertControls(value: unknown, budget: ProfileResolutionBudget): ProfileInsertControls {
   if (!isJsonObject(value)) {
     return {
       selection: invalidSelection(),
@@ -883,9 +939,9 @@ function projectInsertControls(value: unknown): ProfileInsertControls {
   const path = ownDataValue(value, 'path');
   return {
     ...(typeof order === 'string' && { order }),
-    selection: projectSelection(ownDataValue(value, 'selection')),
+    selection: projectSelection(ownDataValue(value, 'selection'), budget),
     excludeControls: Array.isArray(excludeControls)
-      ? ownArrayDataElements(excludeControls).map(projectSelector)
+      ? ownArrayDataElements(excludeControls, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP).map((value) => projectSelector(value, budget))
       : [],
     path: typeof path === 'string' ? path : '/',
   };
@@ -897,7 +953,7 @@ interface ProjectedAssemblyGroup {
   readonly groups: readonly unknown[];
 }
 
-function projectAssemblyGroup(value: unknown): ProjectedAssemblyGroup {
+function projectAssemblyGroup(value: unknown, budget: ProfileResolutionBudget): ProjectedAssemblyGroup {
   if (!isJsonObject(value)) return { insertControls: [], groups: [] };
   const id = ownDataValue(value, 'id');
   const insertControls = ownDataValue(value, 'insertControls');
@@ -905,19 +961,19 @@ function projectAssemblyGroup(value: unknown): ProjectedAssemblyGroup {
   return {
     ...(typeof id === 'string' && { id }),
     insertControls: Array.isArray(insertControls)
-      ? ownArrayDataElements(insertControls).map(projectInsertControls)
+      ? ownArrayDataElements(insertControls, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP).map((value) => projectInsertControls(value, budget))
       : [],
-    groups: Array.isArray(groups) ? ownArrayDataElements(groups) : [],
+    groups: Array.isArray(groups) ? ownArrayDataElements(groups, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP) : [],
   };
 }
 
-function sanitizeCombinedControls(combined: CombinedControls): CombinedControls {
+function sanitizeCombinedControls(combined: CombinedControls, budget: ProfileResolutionBudget): CombinedControls {
   const controls = ownDataValue(combined as unknown as object, 'controls');
   const sourceIds = ownDataValue(combined as unknown as object, 'sourceIdsByDefinition');
   return {
-    order: jsonObjectArrayMember(combined as unknown as object, 'order'),
+    order: jsonObjectArrayMember(combined as unknown as object, 'order', budget),
     controls: controls instanceof Map ? controls : new Map(),
-    clashes: arrayMember<unknown>(combined as unknown as object, 'clashes').filter(
+    clashes: arrayMember<unknown>(combined as unknown as object, 'clashes', budget).filter(
       (clash): clash is string => typeof clash === 'string',
     ),
     // Fehlt die Zuordnung, bleibt sie leer: Das prunt jede verschachtelte
@@ -932,15 +988,17 @@ function hasEmittedAncestor(
   index: ReturnType<typeof indexCatalogControls>,
   combined: CombinedControls,
   emittedDefinitions: ReadonlySet<object>,
+  budget: ProfileResolutionBudget,
 ): boolean {
   const visited = new Set<string>();
   let ancestorId = index.parentOf.get(id);
   while (ancestorId !== undefined && !visited.has(ancestorId)) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
     visited.add(ancestorId);
     const definitions = combined.controls.get(ancestorId);
     if (
       Array.isArray(definitions) &&
-      ownArrayDataElements(definitions).some(
+      ownArrayDataElements(definitions, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP).some(
         (definition) => isJsonObject(definition) && emittedDefinitions.has(definition),
       )
     ) {
@@ -981,11 +1039,15 @@ function selectionScopeFor(
   definition: JsonObject,
   context: AssemblyContext,
   placementIds: ReadonlySet<string>,
+  budget: ProfileResolutionBudget,
 ): ReadonlySet<string> {
   const fromInclusion = context.combined.sourceIdsByDefinition.get(definition);
   if (fromInclusion === undefined) return placementIds;
   const scope = new Set(fromInclusion);
-  for (const id of placementIds) scope.add(id);
+  for (const id of placementIds) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
+    scope.add(id);
+  }
   return scope;
 }
 
@@ -993,12 +1055,13 @@ function definitionsForInsertion(
   id: string,
   context: AssemblyContext,
   emittedDefinitions: ReadonlySet<object>,
+  budget: ProfileResolutionBudget,
 ): readonly JsonObject[] {
   const direct = context.combined.controls.get(id);
-  if (Array.isArray(direct)) return ownArrayDataElements(direct).filter(
+  if (Array.isArray(direct)) return ownArrayDataElements(direct, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP).filter(
     (definition): definition is JsonObject => isJsonObject(definition),
   );
-  if (hasEmittedAncestor(id, context.poolIndex, context.combined, emittedDefinitions)) return [];
+  if (hasEmittedAncestor(id, context.poolIndex, context.combined, emittedDefinitions, budget)) return [];
   const nested = context.poolIndex.byId.get(id);
   return nested === undefined ? [] : [nested];
 }
@@ -1023,10 +1086,12 @@ function isDescendantId(
   candidateId: string,
   ancestorId: string,
   index: ReturnType<typeof indexCatalogControls>,
+  budget: ProfileResolutionBudget,
 ): boolean {
   const visited = new Set<string>();
   let parentId = index.parentOf.get(candidateId);
   while (parentId !== undefined && !visited.has(parentId)) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
     if (parentId === ancestorId) return true;
     visited.add(parentId);
     parentId = index.parentOf.get(parentId);
@@ -1038,12 +1103,14 @@ function removeEarlierNestedDescendants(
   ancestorId: string,
   context: AssemblyContext,
   state: RootControlEmissionState,
+  budget: ProfileResolutionBudget,
 ): void {
   for (let index = state.controls.length - 1; index >= 0; index -= 1) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
     const emitted = state.controls[index]!;
     const definition = state.originalByEmitted.get(emitted) ?? emitted;
     if (!state.nestedOnlyDefinitions.has(definition)) continue;
-    if (!isDescendantId(readIdOrEmpty(definition), ancestorId, context.poolIndex)) continue;
+    if (!isDescendantId(readIdOrEmpty(definition), ancestorId, context.poolIndex, budget)) continue;
     state.controls.splice(index, 1);
     state.originalByEmitted.delete(emitted);
     state.emittedDefinitions.delete(definition);
@@ -1056,18 +1123,20 @@ function emitRootControlId(
   placementIds: ReadonlySet<string>,
   context: AssemblyContext,
   state: RootControlEmissionState,
+  budget: ProfileResolutionBudget,
 ): void {
   const hasDirectDefinitions = context.combined.controls.has(id);
-  removeEarlierNestedDescendants(id, context, state);
-  const definitions = definitionsForInsertion(id, context, state.emittedDefinitions);
-  for (const definition of ownArrayDataElements(definitions)) {
+  removeEarlierNestedDescendants(id, context, state, budget);
+  const definitions = definitionsForInsertion(id, context, state.emittedDefinitions, budget);
+  for (const definition of ownArrayDataElements(definitions, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP)) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
     if (!isJsonObject(definition) || state.emittedDefinitions.has(definition)) continue;
     state.emittedDefinitions.add(definition);
     if (!hasDirectDefinitions) state.nestedOnlyDefinitions.add(definition);
     const emitted = filterNestedIncluded(
       definition,
-      selectionScopeFor(definition, context, placementIds),
-      new Set<object>(),
+      selectionScopeFor(definition, context, placementIds, budget),
+      new Set<object>(), budget
     );
     state.originalByEmitted.set(emitted, definition);
     state.controls.push(emitted);
@@ -1081,8 +1150,9 @@ type RootControlsResult =
 function collectRootControls(
   directives: readonly ProfileInsertControls[],
   context: AssemblyContext,
+  budget: ProfileResolutionBudget,
 ): RootControlsResult {
-  const selection = resolvePlacementSelections(directives, context.poolIndex);
+  const selection = resolvePlacementSelections(directives, context.poolIndex, budget);
   if (!selection.ok) return selection;
   const state: RootControlEmissionState = {
     controls: [],
@@ -1091,8 +1161,10 @@ function collectRootControls(
     nestedOnlyDefinitions: new Set<object>(),
   };
   for (const resolved of selection.directives) {
-    for (const id of orderedInsertIds(resolved.ids, resolved.directive)) {
-      emitRootControlId(id, selection.ids, context, state);
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
+    for (const id of orderedInsertIds(resolved.ids, resolved.directive, budget)) {
+      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
+      emitRootControlId(id, selection.ids, context, state, budget);
     }
   }
   return { ok: true, controls: state.controls };
@@ -1108,17 +1180,18 @@ function collectRootControls(
 export function buildCustomGroups(
   request: CustomAssemblyRequest,
   combined: CombinedControls,
+  budget: ProfileResolutionBudget,
 ): CustomAssemblyResult {
   const requestObject = request as unknown as object;
-  const rawGroups = jsonObjectArrayMember(requestObject, 'rawGroups');
-  const typedGroups = arrayMember<unknown>(requestObject, 'typedGroups');
-  const insertControls = arrayMember<unknown>(requestObject, 'insertControls')
-    .map(projectInsertControls);
-  const safeCombined = sanitizeCombinedControls(combined);
+  const rawGroups = jsonObjectArrayMember(requestObject, 'rawGroups', budget);
+  const typedGroups = arrayMember<unknown>(requestObject, 'typedGroups', budget);
+  const insertControls = arrayMember<unknown>(requestObject, 'insertControls', budget)
+    .map((value) => projectInsertControls(value, budget));
+  const safeCombined = sanitizeCombinedControls(combined, budget);
   // Tiefenbegrenzung am exportierten Rand: Eine 12.000-Ebenen-Kette kann die
   // Klasse-2-Kette nicht passieren (maxDepth 64); statt RangeError wird
   // kontrolliert mit Diagnose abgebrochen.
-  if (measureCustomGroupsDepth(rawGroups) > CLASS_2_IMPORT_LIMITS.maxDepth) {
+  if (measureCustomGroupsDepth(rawGroups, budget) > CLASS_2_IMPORT_LIMITS.maxDepth) {
     return {
       ok: false,
       diagnostic: createOscalDiagnostic({
@@ -1135,15 +1208,15 @@ export function buildCustomGroups(
   // nicht. Verschachtelte Kind-Controls eines Pool-Knotens registriert
   // derselbe Tiefendurchlauf, sodass with-child-controls echte Struktur
   // sieht.
-  const poolIndex = indexCatalogControls({ pool: { controls: safeCombined.order } });
+  const poolIndex = indexCatalogControls({ pool: { controls: safeCombined.order } }, budget);
   const context: AssemblyContext = {
     poolIndex,
     combined: safeCombined,
   };
 
-  const groupsResult = assembleGroups(rawGroups, typedGroups, context);
+  const groupsResult = assembleGroups(rawGroups, typedGroups, context, budget);
   if (!groupsResult.ok) return groupsResult;
-  const controlsResult = collectRootControls(insertControls, context);
+  const controlsResult = collectRootControls(insertControls, context, budget);
   if (!controlsResult.ok) return controlsResult;
   return { ok: true, groups: groupsResult.groups, controls: controlsResult.controls };
 }

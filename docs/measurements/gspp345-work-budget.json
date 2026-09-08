@@ -1,0 +1,253 @@
+{
+  "generatedAt": "2026-09-08T19:43:04.355Z",
+  "origin": "http://localhost:56905",
+  "browserVersion": "151.0.7922.34",
+  "runs": [
+    {
+      "throttleRate": 1,
+      "repeat": 3,
+      "environment": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.0.0 Safari/537.36",
+        "hardwareConcurrency": 14,
+        "deviceMemory": 16
+      },
+      "timingIsolation": "separate-browser-context-node-built-binary-input",
+      "observability": {
+        "probeMs": 120,
+        "observedMs": 120
+      },
+      "memoryObservability": {
+        "probeBytes": 16777216,
+        "observedBytes": 16759543
+      },
+      "memoryThrottleRate": 1,
+      "fixtures": [],
+      "scale": null,
+      "glob": [
+        {
+          "stars": 4,
+          "ms": 0.04999999701976776,
+          "patternBytes": 9,
+          "subjectLength": 40,
+          "matched": false,
+          "workUnits": 80
+        },
+        {
+          "stars": 6,
+          "ms": 0.01000000536441803,
+          "patternBytes": 13,
+          "subjectLength": 40,
+          "matched": false,
+          "workUnits": 80
+        },
+        {
+          "stars": 8,
+          "ms": 0.005000010132789612,
+          "patternBytes": 17,
+          "subjectLength": 40,
+          "matched": false,
+          "workUnits": 80
+        },
+        {
+          "stars": 10,
+          "ms": 0.01000000536441803,
+          "patternBytes": 21,
+          "subjectLength": 40,
+          "matched": false,
+          "workUnits": 80
+        },
+        {
+          "stars": 12,
+          "ms": 0.005000010132789612,
+          "patternBytes": 25,
+          "subjectLength": 40,
+          "matched": false,
+          "workUnits": 80
+        }
+      ],
+      "profileResolution": [
+        {
+          "targetWorkUnits": 67108864,
+          "ok": true,
+          "code": null,
+          "ms": 412.3349999934435,
+          "label": "3972 Ausschlussselektoren über 2000 Control-IDs",
+          "workUnits": 67109108,
+          "nodes": 16,
+          "maxDepth": 6,
+          "medianMs": 412.1850000023842,
+          "maxMs": 412.3349999934435,
+          "samples": 3
+        },
+        {
+          "targetWorkUnits": 134217728,
+          "ok": true,
+          "code": null,
+          "ms": 829.5949999988079,
+          "label": "7945 Ausschlussselektoren über 2000 Control-IDs",
+          "workUnits": 134213078,
+          "nodes": 16,
+          "maxDepth": 6,
+          "medianMs": 876.375,
+          "maxMs": 889.4050000011921,
+          "samples": 3
+        },
+        {
+          "targetWorkUnits": 268435456,
+          "ok": true,
+          "code": null,
+          "ms": 1655.594999998808,
+          "label": "15890 Ausschlussselektoren über 2000 Control-IDs",
+          "workUnits": 268404128,
+          "nodes": 16,
+          "maxDepth": 6,
+          "medianMs": 1655.594999998808,
+          "maxMs": 1657.1749999970198,
+          "samples": 3
+        },
+        {
+          "targetWorkUnits": 536870912,
+          "ok": true,
+          "code": null,
+          "ms": 3322.9900000095367,
+          "label": "31781 Ausschlussselektoren über 2000 Control-IDs",
+          "workUnits": 536803118,
+          "nodes": 16,
+          "maxDepth": 6,
+          "medianMs": 3308.0100000053644,
+          "maxMs": 3322.9900000095367,
+          "samples": 3
+        },
+        {
+          "targetWorkUnits": 1073741824,
+          "ok": true,
+          "code": null,
+          "ms": 6603.5400000065565,
+          "label": "63562 Ausschlussselektoren über 2000 Control-IDs",
+          "workUnits": 1073584208,
+          "nodes": 16,
+          "maxDepth": 6,
+          "medianMs": 6603.5400000065565,
+          "maxMs": 6605.5,
+          "samples": 3
+        }
+      ],
+      "workUnitLimit": 2147483648
+    },
+    {
+      "throttleRate": 4,
+      "repeat": 3,
+      "environment": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.0.0 Safari/537.36",
+        "hardwareConcurrency": 14,
+        "deviceMemory": 16
+      },
+      "timingIsolation": "separate-browser-context-node-built-binary-input",
+      "observability": {
+        "probeMs": 120,
+        "observedMs": 120
+      },
+      "memoryObservability": {
+        "probeBytes": 16777216,
+        "observedBytes": 16774226
+      },
+      "memoryThrottleRate": 4,
+      "fixtures": [],
+      "scale": null,
+      "glob": [
+        {
+          "stars": 4,
+          "ms": 0.040000006556510925,
+          "patternBytes": 9,
+          "subjectLength": 40,
+          "matched": false,
+          "workUnits": 80
+        },
+        {
+          "stars": 6,
+          "ms": 0.004999995231628418,
+          "patternBytes": 13,
+          "subjectLength": 40,
+          "matched": false,
+          "workUnits": 80
+        },
+        {
+          "stars": 8,
+          "ms": 0.004999995231628418,
+          "patternBytes": 17,
+          "subjectLength": 40,
+          "matched": false,
+          "workUnits": 80
+        },
+        {
+          "stars": 10,
+          "ms": 0.01000000536441803,
+          "patternBytes": 21,
+          "subjectLength": 40,
+          "matched": false,
+          "workUnits": 80
+        },
+        {
+          "stars": 12,
+          "ms": 0.01000000536441803,
+          "patternBytes": 25,
+          "subjectLength": 40,
+          "matched": false,
+          "workUnits": 80
+        }
+      ],
+      "profileResolution": [
+        {
+          "targetWorkUnits": 67108864,
+          "ok": true,
+          "code": null,
+          "ms": 1716.5499999970198,
+          "label": "3972 Ausschlussselektoren über 2000 Control-IDs",
+          "workUnits": 67109108,
+          "nodes": 16,
+          "maxDepth": 6,
+          "medianMs": 1716.5499999970198,
+          "maxMs": 1731.6749999970198,
+          "samples": 3
+        },
+        {
+          "targetWorkUnits": 134217728,
+          "ok": true,
+          "code": null,
+          "ms": 3491.125,
+          "label": "7945 Ausschlussselektoren über 2000 Control-IDs",
+          "workUnits": 134213078,
+          "nodes": 16,
+          "maxDepth": 6,
+          "medianMs": 3735.125,
+          "maxMs": 3775.454999998212,
+          "samples": 3
+        },
+        {
+          "targetWorkUnits": 268435456,
+          "ok": true,
+          "code": null,
+          "ms": 7063.609999999404,
+          "label": "15890 Ausschlussselektoren über 2000 Control-IDs",
+          "workUnits": 268404128,
+          "nodes": 16,
+          "maxDepth": 6,
+          "medianMs": 7058.229999989271,
+          "maxMs": 7063.609999999404,
+          "samples": 3
+        }
+      ],
+      "workUnitLimit": 2147483648
+    }
+  ],
+  "sourceBefore": {
+    "commit": "33662495f60a59da223f64aa8f64215129c513a6",
+    "sha256": "f7d8748928538e571564c442f78c646d14fb90999e38144851130e138d09d3fd",
+    "files": 404
+  },
+  "sourceAfter": {
+    "commit": "33662495f60a59da223f64aa8f64215129c513a6",
+    "sha256": "f7d8748928538e571564c442f78c646d14fb90999e38144851130e138d09d3fd",
+    "files": 404
+  }
+}

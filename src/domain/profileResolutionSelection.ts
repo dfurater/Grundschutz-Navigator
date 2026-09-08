@@ -24,6 +24,11 @@ import {
   PROFILE_RESOLUTION_STAGE,
   PROFILE_RESOLUTION_VALIDATOR,
 } from './profileResolutionImportGraph';
+import {
+  PROFILE_RESOLUTION_WORK_UNITS,
+  type ProfileResolutionBudget,
+  type ProfileResolutionWorkUnit,
+} from './profileResolutionBudget';
 
 /** Stabile Codes der Selektionsphase. */
 export const PROFILE_RESOLUTION_SELECTION_DIAGNOSTIC_CODES = Object.freeze({
@@ -119,7 +124,21 @@ type IndexTask =
  * Schlüssel wie "4294967295" erscheinen nicht in der Serialisierung
  * (Greptile-Befund zu bce6b68).
  */
-export function ownArrayDataElements(array: readonly unknown[]): unknown[] {
+export function ownArrayDataElements(
+  array: readonly unknown[],
+  budget: ProfileResolutionBudget,
+  category: ProfileResolutionWorkUnit,
+): unknown[] {
+  // DER Engpass jeder Array-Traversierung der vier Profile-Resolution-Module:
+  // Selektion, Merge, Modify und Engine lesen Arrayelemente ausschließlich
+  // hier. Ein Aufschlag von `length` VOR dem Lesen bucht damit jede
+  // Elementberührung dieser Module an genau einer Stelle, statt sie an
+  // siebenunddreißig Aufrufstellen einzeln nachzupflegen — und lässt keine
+  // Schleife durchrutschen, die jemand später ergänzt. Vorab statt je Element
+  // ist die fail-closed Richtung: Ein Array, das die Grenze reißt, wird gar
+  // nicht erst durchlaufen. Die Kategorie kommt vom Aufrufer, weil ein
+  // gemeinsamer Leser nicht wissen kann, in welcher Phase er steht.
+  budget.spendWork(category, array.length);
   const maxExclusive = 2 ** 32 - 1;
   const indices = Reflect.ownKeys(array)
     .filter((key): key is string => {
@@ -141,17 +160,17 @@ export function ownArrayDataElements(array: readonly unknown[]): unknown[] {
 }
 
 /** Gruppenebenen als Container-Aufgaben in Dokumentreihenfolge. */
-function pushGroupTasks(value: readonly unknown[], childTasks: IndexTask[]): void {
+function pushGroupTasks(value: readonly unknown[], childTasks: IndexTask[], budget: ProfileResolutionBudget): void {
   // Deskriptorbasiert wie bei controls — Accessoren werden nie ausgeführt
   // (Greptile-Befunde zu 49d0984/0034765).
-  for (const group of ownArrayDataElements(value)) {
+  for (const group of ownArrayDataElements(value, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE)) {
     if (isPlainObjectBody(group)) childTasks.push({ kind: 'container', node: group });
   }
 }
 
 /** Controls als Control-Aufgaben in Dokumentreihenfolge. */
-function pushControlTasks(value: readonly unknown[], childTasks: IndexTask[]): void {
-  for (const node of ownArrayDataElements(value)) {
+function pushControlTasks(value: readonly unknown[], childTasks: IndexTask[], budget: ProfileResolutionBudget): void {
+  for (const node of ownArrayDataElements(value, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE)) {
     if (isJsonObject(node)) childTasks.push({ kind: 'control', node, parent: null });
   }
 }
@@ -160,14 +179,15 @@ function pushControlTasks(value: readonly unknown[], childTasks: IndexTask[]): v
 function collectContainerChildTasks(
   container: JsonObject,
   childTasks: IndexTask[],
+  budget: ProfileResolutionBudget,
 ): void {
   // Dokumentreihenfolge der Schlüssel ist bedeutungstragend.
   for (const key of Reflect.ownKeys(container)) {
     if (typeof key !== 'string') continue;
     const value = ownDataValue(container, key);
     if (!Array.isArray(value)) continue;
-    if (key === 'groups') pushGroupTasks(value, childTasks);
-    else if (key === 'controls') pushControlTasks(value, childTasks);
+    if (key === 'groups') pushGroupTasks(value, childTasks, budget);
+    else if (key === 'controls') pushControlTasks(value, childTasks, budget);
   }
 }
 
@@ -176,10 +196,11 @@ function collectControlChildTasks(
   control: JsonObject,
   parentControlId: string,
   childTasks: IndexTask[],
+  budget: ProfileResolutionBudget,
 ): void {
   const children = ownDataValue(control, 'controls');
   if (!Array.isArray(children)) return;
-  for (const child of ownArrayDataElements(children)) {
+  for (const child of ownArrayDataElements(children, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE)) {
     if (isJsonObject(child)) childTasks.push({ kind: 'control', node: child, parent: parentControlId });
   }
 }
@@ -191,10 +212,17 @@ function collectControlChildTasks(
  * tiefe Hierarchien erschöpfen den Aufrufstapel nicht (Greptile-Befund zu
  * 0034765).
  */
-function indexCatalogBody(body: JsonObject, state: IndexState): void {
+function indexCatalogBody(
+  body: JsonObject,
+  state: IndexState,
+  budget: ProfileResolutionBudget,
+): void {
   const stack: IndexTask[] = [{ kind: 'container', node: body }];
 
   while (stack.length > 0) {
+    // Der Index ist der Besuch des importierten Dokuments; er wächst mit
+    // dessen Breite und Tiefe und wird deshalb je Knoten abgerechnet.
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
     const task = stack.pop()!;
     const childTasks: IndexTask[] = [];
 
@@ -203,14 +231,14 @@ function indexCatalogBody(body: JsonObject, state: IndexState): void {
       // besucht (Greptile-Befund zu fe06afb).
       if (state.seenContainers.has(task.node)) continue;
       state.seenContainers.add(task.node);
-      collectContainerChildTasks(task.node, childTasks);
+      collectContainerChildTasks(task.node, childTasks, budget);
     } else {
       const id = readControlId(task.node);
       // Bereits registrierte Controls erhalten keine Kindaufgaben mehr —
       // Selbstreferenzen enden kontrolliert statt endlos zu planen.
       if (id === null || state.byId.has(id)) continue;
       registerControl(task.node, task.parent, state);
-      collectControlChildTasks(task.node, id, childTasks);
+      collectControlChildTasks(task.node, id, childTasks, budget);
     }
 
     // Umgekehrt pushen, damit der Stapel die Originalordnung liefert.
@@ -221,7 +249,10 @@ function indexCatalogBody(body: JsonObject, state: IndexState): void {
 }
 
 /** Indexiert alle Controls eines importierten Katalogdokuments. */
-export function indexCatalogControls(document: unknown): CatalogControlIndex {
+export function indexCatalogControls(
+  document: unknown,
+  budget: ProfileResolutionBudget,
+): CatalogControlIndex {
   const state: IndexState = {
     order: [],
     byId: new Map(),
@@ -241,35 +272,80 @@ export function indexCatalogControls(document: unknown): CatalogControlIndex {
   if (bodyKeys.length !== 1) return state;
 
   const body = ownDataValue(document, bodyKeys[0]!) as JsonObject;
-  indexCatalogBody(body, state);
+  indexCatalogBody(body, state, budget);
   return state;
 }
 
 /**
- * Übersetzt das `pattern` eines `matching`-Selektors in einen regulären
- * Ausdruck; ohne Muster trifft nichts.
+ * Prüft ein `matching`-Muster gegen eine Control-ID — linear, budgetiert und
+ * ohne regulären Ausdruck.
  *
  * Das gepinnte Schema 1.1.3 beschreibt den Wert ausschließlich als
  * „a glob expression matching the IDs of one or more controls to be selected"
  * (`oscal-profile-oscal-profile:matching` in
  * `schemas/oscal/v1.1.3/oscal_profile_schema.json`). Welche Platzhalter es
  * gibt und was sie bedeuten, legt es nicht fest. Die hier gewählte Auslegung —
- * `*` beliebig viele Zeichen, `?` genau eines — ist deshalb eine Annahme
- * dieser Implementierung und keine gegen `usnistgov/OSCAL` belegte
- * Normaussage. Offen: gegen welchen Tag oder Commit sie sich belegen lässt.
+ * `*` beliebig viele Zeichen, `?` genau eines, vollständig verankert — ist
+ * deshalb eine Annahme dieser Implementierung und keine gegen
+ * `usnistgov/OSCAL` belegte Normaussage. Offen: gegen welchen Tag oder Commit
+ * sie sich belegen lässt.
  *
- * Exportiert, damit das Kostenmesswerkzeug aus GSPP-382
- * (`scripts/measure-class2-budget.mjs`) genau diese Übersetzung misst statt
- * einer nachgebauten Kopie. Eine zweite Fassung würde unbemerkt driften und
- * das Messprotokoll unwahr machen.
+ * WARUM KEIN REGULÄRER AUSDRUCK (GSPP-385, aufgenommen in GSPP-345): Die
+ * frühere Fassung `globToRegExp` übersetzte `*` nach `.*` und verankerte das
+ * Ergebnis. Für mehrere Sterne entstanden dabei verschachtelte, überlappende
+ * Quantoren; scheiterte der Abgleich, probierte die Engine alle Aufteilungen
+ * des Subjekts durch. Gemessen (GSPP-382, `docs/OSCAL_VALIDATION.md`): 12
+ * Sterne gegen eine 40 Zeichen lange ID kosteten 31,82 s bei einem Dokument
+ * von wenigen hundert Byte. Keine Ressourcengrenze griff, und ein
+ * Arbeitsbudget hätte auch nicht geholfen — das Backtracking lief innerhalb
+ * EINES Aufrufs ab, den keine Zähleinheit unterbrechen kann. Der Zwei-Zeiger-
+ * Abgleich hier hat keinen exponentiellen Fall und bucht jeden besuchten
+ * Zustand einzeln, ist also von außen abbrechbar.
+ *
+ * SEMANTISCHE ABWEICHUNG zur RegExp-Fassung, bewusst und einzige: `.` traf in
+ * einem regulären Ausdruck ohne `s`-Flag keinen Zeilenumbruch, `*` und `?`
+ * konnten eine ID mit `\n` also nie treffen. Der Zeichenvergleich hier
+ * behandelt jedes Zeichen gleich. Das ist die naheliegendere Glob-Auslegung;
+ * für den BSI-Korpus ist die Änderung wirkungslos, weil dort keine Control-ID
+ * einen Zeilenumbruch trägt — der Korpuslauf belegt das als Orakel.
  */
-export function globToRegExp(pattern: string | undefined): RegExp | null {
-  if (pattern === undefined || pattern.length === 0) return null;
-  const escaped = pattern
-    .replace(/[.+^${}()|[\]\\]/g, String.raw`\$&`)
-    .replaceAll('*', '.*')
-    .replaceAll('?', '.');
-  return new RegExp(`^${escaped}$`);
+export function matchGlob(
+  pattern: string,
+  subject: string,
+  budget: ProfileResolutionBudget,
+): boolean {
+  let patternIndex = 0;
+  let subjectIndex = 0;
+  // Position des zuletzt gesehenen `*` und die Subjektstelle, ab der es
+  // erneut verlängert wird. Genau ein Rücksprungpunkt genügt, weil ein
+  // späterer Stern jeden früheren ablöst.
+  let starPattern = -1;
+  let starSubject = -1;
+
+  while (subjectIndex < subject.length) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.GLOB_STATE);
+    const patternChar = patternIndex < pattern.length ? pattern[patternIndex] : undefined;
+    if (patternChar === '?' || (patternChar !== undefined && patternChar === subject[subjectIndex])) {
+      patternIndex += 1;
+      subjectIndex += 1;
+    } else if (patternChar === '*') {
+      starPattern = patternIndex;
+      starSubject = subjectIndex;
+      patternIndex += 1;
+    } else if (starPattern !== -1) {
+      starSubject += 1;
+      patternIndex = starPattern + 1;
+      subjectIndex = starSubject;
+    } else {
+      return false;
+    }
+  }
+
+  while (patternIndex < pattern.length && pattern[patternIndex] === '*') {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.GLOB_STATE);
+    patternIndex += 1;
+  }
+  return patternIndex === pattern.length;
 }
 
 type MatchOutcome =
@@ -281,12 +357,15 @@ function addPatternMatches(
   index: CatalogControlIndex,
   matchers: readonly ProfileControlSelector['matching'][number][],
   matched: Set<string>,
+  budget: ProfileResolutionBudget,
 ): void {
   for (const matcher of matchers) {
-    const regexp = globToRegExp(matcher.pattern);
-    if (regexp === null) continue;
+    // Ein fehlendes oder leeres Muster trifft nichts — unverändert zur
+    // RegExp-Fassung, die dafür `null` lieferte.
+    const pattern = matcher.pattern;
+    if (pattern === undefined || pattern.length === 0) continue;
     for (const id of index.order) {
-      if (regexp.test(id)) matched.add(id);
+      if (matchGlob(pattern, id, budget)) matched.add(id);
     }
   }
 }
@@ -296,8 +375,10 @@ function addWithIdsMatches(
   index: CatalogControlIndex,
   withIds: readonly string[],
   matched: Set<string>,
+  budget: ProfileResolutionBudget,
 ): void {
   for (const id of withIds) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.SELECTOR_COMPARE);
     if (index.byId.has(id)) matched.add(id);
   }
 }
@@ -311,6 +392,7 @@ function applyWithChildPolicy(
   index: CatalogControlIndex,
   matched: ReadonlySet<string>,
   withChild: string | undefined,
+  budget: ProfileResolutionBudget,
 ): MatchOutcome {
   if (withChild === undefined || withChild === 'no') return { matched };
   if (withChild !== 'yes') {
@@ -320,28 +402,31 @@ function applyWithChildPolicy(
       ).diagnostic,
     };
   }
-  return { matched: expandWithDescendants(index, matched) };
+  return { matched: expandWithDescendants(index, matched, budget) };
 }
 
 function selectorMatches(
   index: CatalogControlIndex,
   selector: ProfileControlSelector,
+  budget: ProfileResolutionBudget,
 ): MatchOutcome {
   const matched = new Set<string>();
-  addWithIdsMatches(index, selector.withIds, matched);
-  addPatternMatches(index, selector.matching, matched);
-  return applyWithChildPolicy(index, matched, selector.withChildControls);
+  addWithIdsMatches(index, selector.withIds, matched, budget);
+  addPatternMatches(index, selector.matching, matched, budget);
+  return applyWithChildPolicy(index, matched, selector.withChildControls, budget);
 }
 
 function expandWithDescendants(
   index: CatalogControlIndex,
   ids: ReadonlySet<string>,
+  budget: ProfileResolutionBudget,
 ): Set<string> {
   const expanded = new Set(ids);
   const stack = [...ids];
   while (stack.length > 0) {
     const id = stack.pop()!;
     for (const child of index.childrenOf.get(id) ?? []) {
+      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.SELECTOR_COMPARE);
       if (!expanded.has(child)) {
         expanded.add(child);
         stack.push(child);
@@ -355,8 +440,9 @@ function applySelector(
   index: CatalogControlIndex,
   selector: ProfileControlSelector,
   included: Set<string>,
+  budget: ProfileResolutionBudget,
 ): OscalDiagnostic | null {
-  const outcome = selectorMatches(index, selector);
+  const outcome = selectorMatches(index, selector, budget);
   if ('diagnostic' in outcome) return outcome.diagnostic;
 
   // Bewusst KEINE automatische Vorfahren-Inklusion: Der BSI-Realkorpus
@@ -375,13 +461,17 @@ function applyInclusions(
   index: CatalogControlIndex,
   selection: ProfileSelection & { readonly kind: 'include-all' | 'include-controls' },
   included: Set<string>,
+  budget: ProfileResolutionBudget,
 ): OscalDiagnostic | null {
   if (selection.kind === 'include-all') {
-    for (const id of index.order) included.add(id);
+    for (const id of index.order) {
+      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.SELECTOR_COMPARE);
+      included.add(id);
+    }
     return null;
   }
   for (const selector of selection.includeControls) {
-    const failure = applySelector(index, selector, included);
+    const failure = applySelector(index, selector, included, budget);
     if (failure !== null) return failure;
   }
   return null;
@@ -391,17 +481,21 @@ function applyExcludes(
   index: CatalogControlIndex,
   included: Set<string>,
   excludeControls: readonly ProfileControlSelector[],
+  budget: ProfileResolutionBudget,
 ): OscalDiagnostic | null {
   for (const selector of excludeControls) {
-    const excluded = selectorMatches(index, selector);
+    const excluded = selectorMatches(index, selector, budget);
     if ('diagnostic' in excluded) return excluded.diagnostic;
     // Mit with-child-controls: yes entfällt der ganze Zweig; sonst nur der
     // Selbsttreffer — dieselbe Mechanik wie bei der Inklusion.
     const targets =
       selector.withChildControls === 'yes'
-        ? expandWithDescendants(index, excluded.matched)
+        ? expandWithDescendants(index, excluded.matched, budget)
         : excluded.matched;
-    for (const id of targets) included.delete(id);
+    for (const id of targets) {
+      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.SELECTOR_COMPARE);
+      included.delete(id);
+    }
   }
   return null;
 }
@@ -424,6 +518,7 @@ export interface ImportSelectionRequest {
 export function resolveSelectionIds(
   index: CatalogControlIndex,
   request: ImportSelectionRequest,
+  budget: ProfileResolutionBudget,
 ): SelectionOutcome {
   const { selection, excludeControls } = request;
   if (selection.kind !== 'include-all' && selection.kind !== 'include-controls') {
@@ -431,14 +526,15 @@ export function resolveSelectionIds(
   }
 
   const included = new Set<string>();
-  const inclusionFailure = applyInclusions(index, selection, included);
+  const inclusionFailure = applyInclusions(index, selection, included, budget);
   if (inclusionFailure !== null) return { ok: false, diagnostic: inclusionFailure };
-  const exclusionFailure = applyExcludes(index, included, excludeControls);
+  const exclusionFailure = applyExcludes(index, included, excludeControls, budget);
   if (exclusionFailure !== null) return { ok: false, diagnostic: exclusionFailure };
 
   // Ergebnis in Originalordnung des Dokuments.
   const ordered = new Set<string>();
   for (const id of index.order) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.SELECTOR_COMPARE);
     if (included.has(id)) ordered.add(id);
   }
   return { ok: true, ids: ordered };

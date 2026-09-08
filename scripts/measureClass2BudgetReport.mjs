@@ -38,6 +38,16 @@ export const IMPORT_WAIT_BUDGET_MS = 5_000;
 export const MEMORY_BUDGET_BYTES = 128 * MIB;
 
 /**
+ * Der Budgetposten „Sichtbare Wartezeit bis zum Ergebnis" aus
+ * `docs/OSCAL_VALIDATION.md`, Abschnitt „Ressourcenbudget des
+ * Klasse-2-Pfads". Er wird hier nicht neu erfunden, sondern übernommen: Die
+ * Arbeitsgrenze der Profile Resolution begrenzt dieselbe Wartezeit wie die
+ * Ressourcengrenzen des Eingangspfads, und zwei verschiedene Zahlen für
+ * denselben Posten wären Willkür.
+ */
+export const VISIBLE_WAIT_BUDGET_MS = 5_000;
+
+/**
  * Der größte gemessene Stützpunkt, der BEIDE Budgetposten für JEDES Fixture
  * hält — und unterhalb dessen kein gemessener Stützpunkt reißt.
  *
@@ -136,6 +146,7 @@ export function parseNodeCounts(value) {
 export function parseArguments(argv) {
   const options = {
     throttleRates: [1, 4], repeat: 3, jsonPath: null, scaleNodes: null, skipGlob: false,
+    skipProfileResolution: false, skipFixtures: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
@@ -149,6 +160,10 @@ export function parseArguments(argv) {
       options.scaleNodes = parseNodeCounts(argv[++index] ?? '');
     } else if (flag === '--skip-glob') {
       options.skipGlob = true;
+    } else if (flag === '--skip-profile-resolution') {
+      options.skipProfileResolution = true;
+    } else if (flag === '--skip-fixtures') {
+      options.skipFixtures = true;
     } else {
       throw new Error(`Unbekanntes Argument: ${flag}`);
     }
@@ -380,6 +395,66 @@ function renderScaleTable(run) {
   ];
 }
 
+/**
+ * Der größte gemessene Stützpunkt der Arbeitsreihe, der die sichtbare
+ * Wartezeit hält — und unterhalb dessen kein gemessener Stützpunkt reißt.
+ *
+ * Dieselbe Regel wie `deriveNodeLimit`, aus demselben Grund: keine
+ * Interpolation, keine Hochrechnung, lückenlose Haltung von unten. Reißt
+ * schon der kleinste Stützpunkt, ist die Rückgabe `null` — dann trägt die
+ * Reihe keinen Grenzwert.
+ *
+ * Ein Stützpunkt ohne erhobene Laufzeit ist kein bestandener, sondern ein
+ * fehlender: Ein abgebrochener Lauf (`ok: false`) liefert keine Wartezeit und
+ * beendet die Aussage an dieser Stelle.
+ *
+ * @param {object[]} rows Zeilen der Arbeitsreihe eines Laufs.
+ */
+export function deriveWorkUnitLimit(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  let held = null;
+  for (const row of [...rows].sort((left, right) => left.targetWorkUnits - right.targetWorkUnits)) {
+    if (row.ok !== true) break;
+    if (!finiteNonnegative(row.maxMs) || !finiteNonnegative(row.workUnits)) break;
+    if (row.maxMs > VISIBLE_WAIT_BUDGET_MS) break;
+    held = row.workUnits;
+  }
+  return held;
+}
+
+/** Arbeitsreihe der Profile Resolution über den Stützpunkten. */
+function renderProfileResolutionTable(run) {
+  // Der einkompilierte Grenzwert kommt als MESSDATUM aus dem Lauf, nicht als
+  // Import: Dieses Modul bleibt frei von Abhängigkeiten, und das Artefakt
+  // sagt selbst, gegen welchen Kandidaten gemessen wurde.
+  if (!finiteNonnegative(run.workUnitLimit) || run.workUnitLimit === 0) {
+    throw new Error('Arbeitsreihe ohne ausgewiesenen Grenzwertkandidaten');
+  }
+  const derived = deriveWorkUnitLimit(run.profileResolution);
+  return [
+    '| Stützpunkt | gemessene Arbeitseinheiten | erzeugte Knoten | Wartezeit Median | Wartezeit Max | Urteil |',
+    '| --- | --- | --- | --- | --- | --- |',
+    ...run.profileResolution.map((row) => {
+      if (row.ok !== true) {
+        return `| ${row.targetWorkUnits.toLocaleString('de-DE')} | — | — | — | — | ABGEBROCHEN (${row.code}) |`;
+      }
+      if (!finiteNonnegative(row.maxMs)) {
+        throw new Error(`Arbeitsstützpunkt ${row.targetWorkUnits} ohne erhobenen Wartezeithöchstwert`);
+      }
+      const verdict = row.maxMs <= VISIBLE_WAIT_BUDGET_MS ? 'gehalten' : 'GERISSEN';
+      return `| ${row.targetWorkUnits.toLocaleString('de-DE')} `
+        + `| ${row.workUnits.toLocaleString('de-DE')} | ${row.nodes.toLocaleString('de-DE')} `
+        + `| ${formatMs(row.medianMs)} | ${formatMs(row.maxMs)} | ${verdict} |`;
+    }),
+    '',
+    derived === null
+      ? 'Kein Stützpunkt hält die sichtbare Wartezeit — die Reihe begründet KEINEN Grenzwert.'
+      : `Getragener Grenzwert aus dieser Reihe: ${derived.toLocaleString('de-DE')} Arbeitseinheiten `
+        + `(Budget sichtbare Wartezeit ${formatMs(VISIBLE_WAIT_BUDGET_MS)}). `
+        + `Einkompiliert ist ${run.workUnitLimit.toLocaleString('de-DE')}.`,
+  ];
+}
+
 /** Laufzeit der Glob-Übersetzung über der Zahl der Sterne. */
 function renderGlobTable(run) {
   return [
@@ -443,6 +518,10 @@ function renderRun(run) {
     ...(hasScale ? ['', ...renderScaleTable(run)] : []),
     '',
     ...renderGlobTable(run),
+    '',
+    ...(Array.isArray(run.profileResolution) && run.profileResolution.length > 0
+      ? renderProfileResolutionTable(run)
+      : []),
   ];
 }
 

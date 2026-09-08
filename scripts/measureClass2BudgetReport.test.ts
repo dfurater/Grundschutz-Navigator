@@ -18,6 +18,7 @@ import {
   renderReport as renderRawReport,
   summarizeSamples,
   deriveNodeLimit,
+  deriveWorkUnitLimit,
   parseNodeCounts,
   MEMORY_BUDGET_BYTES,
   UI_BLOCKING_BUDGET_MS,
@@ -60,19 +61,22 @@ describe('parseArguments', () => {
   it('setzt die Voreinstellungen ohne Argumente', () => {
     expect(parseArguments([])).toEqual({
       throttleRates: [1, 4], repeat: 3, jsonPath: null, scaleNodes: null, skipGlob: false,
+      skipProfileResolution: false, skipFixtures: false,
     });
   });
 
   it('liest Drosselung, Wiederholungen und Ausgabepfad', () => {
     expect(parseArguments([
       '--throttle', '1,2,4', '--repeat', '5', '--json', 'out.json',
-      '--scale', '125000,250000', '--skip-glob',
+      '--scale', '125000,250000', '--skip-glob', '--skip-profile-resolution', '--skip-fixtures',
     ])).toEqual({
       throttleRates: [1, 2, 4],
       repeat: 5,
       jsonPath: 'out.json',
       scaleNodes: [125_000, 250_000],
       skipGlob: true,
+      skipProfileResolution: true,
+      skipFixtures: true,
     });
   });
 
@@ -644,5 +648,62 @@ describe('Wartezeitbudget', () => {
     });
     expect(markdown).toContain('| GERISSEN |');
     expect(markdown).toContain('8.00 s');
+  });
+});
+
+describe('deriveWorkUnitLimit', () => {
+  const row = (target: number, workUnits: number, maxMs: number) => ({
+    targetWorkUnits: target, ok: true, workUnits, nodes: 8, medianMs: maxMs, maxMs,
+  });
+
+  it('nennt den größten Stützpunkt, der die sichtbare Wartezeit hält', () => {
+    expect(deriveWorkUnitLimit([
+      row(1_000, 990, 100),
+      row(2_000, 1_980, 900),
+      row(4_000, 3_960, 4_800),
+    ])).toBe(3_960);
+  });
+
+  it('gibt die GEMESSENE Zahl zurück, nicht den Stützpunkt', () => {
+    // Das Fixture trifft seinen Zielwert nie exakt. Ein Grenzwert, der auf dem
+    // Ziel statt auf der Messung stünde, wäre eine Behauptung.
+    expect(deriveWorkUnitLimit([row(1_000, 843, 50)])).toBe(843);
+  });
+
+  it('endet an der ersten Reißstelle und lässt sich von einem späteren Halten nicht aufheben', () => {
+    // Browsermessungen sind nicht monoton. Ein größerer Stützpunkt, der
+    // zufällig wieder hält, hebt einen kleineren gerissenen nicht auf.
+    expect(deriveWorkUnitLimit([
+      row(1_000, 990, 100),
+      row(2_000, 1_980, 6_000),
+      row(4_000, 3_960, 200),
+    ])).toBe(990);
+  });
+
+  it('trägt keinen Grenzwert, wenn schon der kleinste Stützpunkt reißt', () => {
+    expect(deriveWorkUnitLimit([row(1_000, 990, 5_001)])).toBeNull();
+  });
+
+  it('behandelt einen abgebrochenen Stützpunkt als fehlend, nicht als bestanden', () => {
+    expect(deriveWorkUnitLimit([
+      row(1_000, 990, 100),
+      { targetWorkUnits: 2_000, ok: false, code: 'OSCAL_RESOLUTION_WORK_BUDGET_EXCEEDED' },
+      row(4_000, 3_960, 100),
+    ])).toBe(990);
+  });
+
+  it('behandelt einen Stützpunkt ohne erhobene Wartezeit als fehlend', () => {
+    // Derselbe Fehler, den GSPP-386 an `maxMs` gefunden hat: Ein fehlender
+    // Wert darf nicht als NaN in einen Vergleich laufen und dort als
+    // „gehalten" erscheinen.
+    expect(deriveWorkUnitLimit([
+      row(1_000, 990, 100),
+      { targetWorkUnits: 2_000, ok: true, workUnits: 1_980, nodes: 8, medianMs: 10 },
+    ])).toBe(990);
+  });
+
+  it('trägt keinen Grenzwert ohne Reihe', () => {
+    expect(deriveWorkUnitLimit([])).toBeNull();
+    expect(deriveWorkUnitLimit(undefined as never)).toBeNull();
   });
 });

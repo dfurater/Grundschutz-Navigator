@@ -1,11 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { parseClass2OscalInput } from './oscalImportProcessing';
+import { createProfileResolutionBudget } from './profileResolutionBudget';
 import {
   indexCatalogControls,
   PROFILE_RESOLUTION_SELECTION_DIAGNOSTIC_CODES,
   resolveSelectionIds,
   type ImportSelectionRequest,
 } from './profileResolutionSelection';
+
+/**
+ * Frische Budgetinstanz mit PRODUKTIONSGRENZEN. Die Selektionstests prüfen
+ * Semantik, nicht Erschöpfung; sie dürfen deshalb keine Testgrenzen setzen,
+ * sonst würde ein zu klein geratener Wert hier stillschweigend als Semantik-
+ * fehler erscheinen. Erschöpfung prüft `profileResolutionBudget.test.ts`.
+ */
+const budget = () => createProfileResolutionBudget();
 
 function control(id: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
   return { id, class: 'SP800-53', title: id.toUpperCase(), ...extra };
@@ -53,17 +62,17 @@ function idsOf(
   index: ReturnType<typeof indexCatalogControls>,
   request: ImportSelectionRequest,
 ): string[] {
-  const result = resolveSelectionIds(index, request);
+  const result = resolveSelectionIds(index, request, budget());
   if (!result.ok) throw new Error(`unerwartete Ablehnung: ${result.diagnostic.code}`);
   return [...result.ids].sort();
 }
 
 describe('Selektion Phase 1 — Inklusion', () => {
   it('include-all wählt jede Control inklusive verschachtelter, in Originalordnung', () => {
-    const index = indexCatalogControls(baseCatalog);
+    const index = indexCatalogControls(baseCatalog, budget());
     const result = resolveSelectionIds(
       index,
-      { selection: { kind: 'include-all' }, excludeControls: [] },
+      { selection: { kind: 'include-all' }, excludeControls: [] }, budget()
     );
     if (!result.ok) throw new Error(`unerwartete Ablehnung: ${result.diagnostic.code}`);
 
@@ -79,7 +88,7 @@ describe('Selektion Phase 1 — Inklusion', () => {
   });
 
   it('with-ids trifft genau die genannten Controls', () => {
-    const index = indexCatalogControls(baseCatalog);
+    const index = indexCatalogControls(baseCatalog, budget());
     expect(
       idsOf(index, {
         selection: {
@@ -92,7 +101,7 @@ describe('Selektion Phase 1 — Inklusion', () => {
   });
 
   it('with-child-controls yes zieht alle Nachfahren, no nur den Selbsttreffer', () => {
-    const index = indexCatalogControls(baseCatalog);
+    const index = indexCatalogControls(baseCatalog, budget());
     const request = (yes: string): ImportSelectionRequest => ({
       selection: {
         kind: 'include-controls',
@@ -109,7 +118,7 @@ describe('Selektion Phase 1 — Inklusion', () => {
     // Orakelbefund BSI-Korpus (GSPP-291): Gezogene Ahnen würden als leere
     // Schalen materialisieren; die Auflösung zieht sie deshalb bewusst
     // nicht nach.
-    const index = indexCatalogControls(baseCatalog);
+    const index = indexCatalogControls(baseCatalog, budget());
     expect(
       idsOf(index, {
         selection: {
@@ -122,7 +131,7 @@ describe('Selektion Phase 1 — Inklusion', () => {
   });
 
   it('matching wertet Glob-Muster gegen die Control-ID aus', () => {
-    const index = indexCatalogControls(baseCatalog);
+    const index = indexCatalogControls(baseCatalog, budget());
     expect(
       idsOf(index, {
         selection: {
@@ -135,7 +144,7 @@ describe('Selektion Phase 1 — Inklusion', () => {
   });
 
   it('ein leeres Matching-Muster trifft nichts', () => {
-    const index = indexCatalogControls(baseCatalog);
+    const index = indexCatalogControls(baseCatalog, budget());
     expect(
       idsOf(index, {
         selection: {
@@ -150,7 +159,7 @@ describe('Selektion Phase 1 — Inklusion', () => {
 
 describe('Selektion Phase 1 — Exclusion und Kumulation', () => {
   it('Ausschluss gewinnt unabhängig von der Inklusionsspezifität', () => {
-    const index = indexCatalogControls(baseCatalog);
+    const index = indexCatalogControls(baseCatalog, budget());
     const result = resolveSelectionIds(index, {
       selection: {
         kind: 'include-controls',
@@ -159,14 +168,14 @@ describe('Selektion Phase 1 — Exclusion und Kumulation', () => {
         ],
       },
       excludeControls: [{ withIds: [], matching: [{ pattern: 'ac-*' }], path: '/x' }],
-    });
+    }, budget());
     if (!result.ok) throw new Error(`unerwartete Ablehnung: ${result.diagnostic.code}`);
 
     expect([...result.ids]).toEqual([]);
   });
 
   it('mehrere Inklusionen sind kumulativ, Duplikate bleiben einmalig', () => {
-    const index = indexCatalogControls(baseCatalog);
+    const index = indexCatalogControls(baseCatalog, budget());
     const selection = {
       kind: 'include-controls' as const,
       includeControls: [
@@ -180,13 +189,13 @@ describe('Selektion Phase 1 — Exclusion und Kumulation', () => {
   });
 
   it('mit-child-controls yes im Ausschluss entfernt den ganzen Zweig', () => {
-    const index = indexCatalogControls(baseCatalog);
+    const index = indexCatalogControls(baseCatalog, budget());
     const result = resolveSelectionIds(index, {
       selection: { kind: 'include-all' },
       excludeControls: [
         { withIds: ['ac-2'], matching: [], withChildControls: 'yes', path: '/x' },
       ],
-    });
+    }, budget());
     if (!result.ok) throw new Error(`unerwartete Ablehnung: ${result.diagnostic.code}`);
 
     expect(result.ids).toContain('ac-1');
@@ -206,8 +215,8 @@ describe('Selektion Phase 1 — Fail-closed', () => {
       configurable: true,
     });
 
-    expect(() => indexCatalogControls(hostile)).not.toThrow();
-    const index = indexCatalogControls(hostile);
+    expect(() => indexCatalogControls(hostile, budget())).not.toThrow();
+    const index = indexCatalogControls(hostile, budget());
     expect(index.order).toEqual([]);
   });
 
@@ -217,7 +226,7 @@ describe('Selektion Phase 1 — Fail-closed', () => {
       sibling: [control('zz-0')],
     };
 
-    const index = indexCatalogControls(malformed);
+    const index = indexCatalogControls(malformed, budget());
 
     // Arrays zählen nicht als Body-Kandidaten: Das einzige Objekt-Body
     // (`catalog`) wird eindeutig erkannt und indexiert, statt in einen
@@ -244,8 +253,8 @@ describe('Selektion Phase 1 — Fail-closed', () => {
     }
     const deepCatalog = catalog({ metadata: {}, groups: [wrapped] });
 
-    expect(() => indexCatalogControls(deepCatalog)).not.toThrow();
-    const index = indexCatalogControls(deepCatalog);
+    expect(() => indexCatalogControls(deepCatalog, budget())).not.toThrow();
+    const index = indexCatalogControls(deepCatalog, budget());
     expect(index.byId.has('deep-leaf')).toBe(true);
   });
 
@@ -260,7 +269,7 @@ describe('Selektion Phase 1 — Fail-closed', () => {
     });
     const hostile = catalog({ metadata: {}, controls });
 
-    const index = indexCatalogControls(hostile);
+    const index = indexCatalogControls(hostile, budget());
 
     // Der Accessor erscheint als abwesender Slot; nichts wird ausgeführt.
     expect(index.order).toEqual([]);
@@ -279,7 +288,7 @@ describe('Selektion Phase 1 — Fail-closed', () => {
     controls.push(control('real'));
     const hostile = catalog({ metadata: {}, controls });
 
-    const index = indexCatalogControls(hostile);
+    const index = indexCatalogControls(hostile, budget());
 
     expect(index.order).toEqual(['real']);
   });
@@ -295,8 +304,8 @@ describe('Selektion Phase 1 — Fail-closed', () => {
     });
     const hostile = catalog({ metadata: {}, groups });
 
-    expect(() => indexCatalogControls(hostile)).not.toThrow();
-    expect(indexCatalogControls(hostile).order).toEqual([]);
+    expect(() => indexCatalogControls(hostile, budget())).not.toThrow();
+    expect(indexCatalogControls(hostile, budget()).order).toEqual([]);
   });
 
   it('terminiert bei einer zyklischen Control-Selbstreferenz und trägt die Control einmal', async () => {
@@ -314,7 +323,7 @@ describe('Selektion Phase 1 — Fail-closed', () => {
     );
     controlNode['controls'] = [controlNode];
 
-    const index = indexCatalogControls(input.source);
+    const index = indexCatalogControls(input.source, budget());
 
     expect(index.order).toEqual(['a']);
   });
@@ -330,23 +339,23 @@ describe('Selektion Phase 1 — Fail-closed', () => {
     );
     groupNode['groups'] = [groupNode];
 
-    const index = indexCatalogControls(input.source);
+    const index = indexCatalogControls(input.source, budget());
 
     expect(index.order).toEqual([]);
   });
 
   it('ambiguous und none liefern eine strukturelle Ablehnung', () => {
-    const index = indexCatalogControls(baseCatalog);
+    const index = indexCatalogControls(baseCatalog, budget());
     const diagnostic = { code: 'X', stage: 'domain' } as never;
 
     const ambiguous = resolveSelectionIds(index, {
       selection: { kind: 'ambiguous', includeControls: [], diagnostic },
       excludeControls: [],
-    });
+    }, budget());
     const none = resolveSelectionIds(index, {
       selection: { kind: 'none', diagnostic },
       excludeControls: [],
-    });
+    }, budget());
 
     expect(ambiguous.ok).toBe(false);
     expect(none.ok).toBe(false);
@@ -358,14 +367,14 @@ describe('Selektion Phase 1 — Fail-closed', () => {
   });
 
   it('unbekannte with-child-controls-Werte werden fail-closed abgelehnt', () => {
-    const index = indexCatalogControls(baseCatalog);
+    const index = indexCatalogControls(baseCatalog, budget());
     const result = resolveSelectionIds(index, {
       selection: {
         kind: 'include-controls',
         includeControls: [{ withIds: ['ac-1'], matching: [], withChildControls: 'complete', path: '/imports/0' }],
       },
       excludeControls: [],
-    });
+    }, budget());
 
     expect(result.ok).toBe(false);
     if (!result.ok) {

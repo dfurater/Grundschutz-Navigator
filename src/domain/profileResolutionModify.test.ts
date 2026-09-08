@@ -4,6 +4,15 @@ import {
   applyAlteration,
   canonicalizeControlKeys,
 } from './profileResolutionModify';
+import { createProfileResolutionBudget } from './profileResolutionBudget';
+
+/**
+ * Frische Budgetinstanz mit PRODUKTIONSGRENZEN. Diese Tests prüfen Semantik,
+ * nicht Erschöpfung; eine Testgrenze hier würde einen zu klein geratenen Wert
+ * als Semantikfehler erscheinen lassen. Erschöpfung prüft
+ * `profileResolutionBudget.test.ts`.
+ */
+const budget = () => createProfileResolutionBudget();
 
 function baseControl(): Record<string, unknown> {
   return {
@@ -51,7 +60,7 @@ describe('set-parameter', () => {
       path: '/modify/safe',
     });
 
-    expect(() => applySetParametersToControl(control, directives)).not.toThrow();
+    expect(() => applySetParametersToControl(control, directives, budget())).not.toThrow();
   });
 
   it('ersetzt Skalarfelder und reichert props/links an', () => {
@@ -65,7 +74,7 @@ describe('set-parameter', () => {
         links: [{ href: '#neu', rel: 'reference' }],
         path: '/modify/sp0',
       },
-    ]);
+    ], budget());
 
     const params = result['params'] as Record<string, unknown>[];
     expect(params[0]!['label']).toBe('NEU');
@@ -82,7 +91,7 @@ describe('set-parameter', () => {
     const control = baseControl();
     const result = applySetParametersToControl(control, [
       { paramId: 'unbekannt', values: [], props: [], links: [], path: '/modify/sp1' },
-    ]);
+    ], budget());
 
     expect(result['params'] as unknown[]).toHaveLength(1);
     expect(
@@ -95,7 +104,7 @@ describe('set-parameter', () => {
     const result = applySetParametersToControl(control, [
       { paramId: 'ac-1_prm_1', label: 'ERSTE', values: [], props: [], links: [], path: '/a' },
       { paramId: 'ac-1_prm_1', label: 'ZWEITE', values: [], props: [], links: [], path: '/b' },
-    ]);
+    ], budget());
 
     const params = result['params'] as Record<string, unknown>[];
     expect(params[0]!['label']).toBe('ZWEITE');
@@ -118,7 +127,7 @@ describe('alter — implizite Bindung', () => {
         },
       ],
       removes: undefined,
-    });
+    }, budget());
 
     // Kanonische Schlüsselordnung: title, params, props, link(s), parts.
     // starting stellt die neuen Elemente an den Anfang ihrer Kategorie.
@@ -136,7 +145,7 @@ describe('alter — implizite Bindung', () => {
       controlId: 'ac-1',
       adds: [{ position: 'ending', props: [{ name: 'zuletzt', value: '1' }] }],
       removes: undefined,
-    });
+    }, budget());
     const propsEnding = withEnding['props'] as Record<string, unknown>[];
     expect(propsEnding.map((p) => p['name']).at(-1)).toBe('zuletzt');
 
@@ -144,7 +153,7 @@ describe('alter — implizite Bindung', () => {
       controlId: 'ac-1',
       adds: [{ position: 'before', props: [{ name: 'zuerst', value: '1' }] }],
       removes: undefined,
-    });
+    }, budget());
     const propsBefore = withBefore['props'] as Record<string, unknown>[];
     expect(propsBefore.map((p) => p['name'])[0]).toBe('zuerst');
   });
@@ -160,7 +169,7 @@ describe('alter — removes', () => {
         { byName: 'status' },
         { byId: 'ac-1_stmt' },
       ],
-    });
+    }, budget());
 
     expect(result['props']).toEqual([]);
     expect(result['parts']).toEqual([]);
@@ -182,7 +191,7 @@ describe('alter — removes', () => {
 
     expect(() => applyAlteration(
       baseControl(),
-      alteration as Parameters<typeof applyAlteration>[1],
+      alteration as Parameters<typeof applyAlteration>[1], budget()
     )).not.toThrow();
 
     const addsAccessor = { controlId: 'ac-1', removes: [] } as Record<string, unknown>;
@@ -195,7 +204,7 @@ describe('alter — removes', () => {
     });
     expect(() => applyAlteration(
       baseControl(),
-      addsAccessor as Parameters<typeof applyAlteration>[1],
+      addsAccessor as Parameters<typeof applyAlteration>[1], budget()
     )).not.toThrow();
 
     const removal = {} as Record<string, unknown>;
@@ -217,7 +226,7 @@ describe('alter — removes', () => {
 
     expect(() => applyAlteration(
       { ...baseControl(), props: [member] },
-      { controlId: 'ac-1', adds: [], removes: [removal] } as Parameters<typeof applyAlteration>[1],
+      { controlId: 'ac-1', adds: [], removes: [removal] } as Parameters<typeof applyAlteration>[1], budget()
     )).not.toThrow();
   });
 });
@@ -233,7 +242,7 @@ describe('kanonische Schlüsselordnung', () => {
       props: [],
       params: [],
     };
-    const ordered = canonicalizeControlKeys(scrambled);
+    const ordered = canonicalizeControlKeys(scrambled, budget());
 
     expect(Object.keys(ordered)).toEqual([
       'id',

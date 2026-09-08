@@ -31,7 +31,8 @@ import {
 } from './class2WorstCaseFixtures.mjs';
 import { dispatchOscalDocument } from '@/adapters/oscalRootDispatch';
 import { CLASS_2_IMPORT_LIMITS } from '@/domain/oscalImportContract';
-import { globToRegExp } from '@/domain/profileResolutionSelection';
+import { matchGlob } from '@/domain/profileResolutionSelection';
+import { createProfileResolutionBudget } from '@/domain/profileResolutionBudget';
 import { enforceClass2ObjectGraphInvariants } from '@/domain/oscalObjectGraph';
 import { parseClass2OscalInput } from '@/domain/oscalImportProcessing';
 
@@ -323,15 +324,30 @@ describe('Worst-Case-Fixtures der Klasse-2-Grenzen', () => {
     expect(assertScalableNodeCounts([14, 62_500])).toEqual([14, 62_500]);
   });
 
-  it('erzeugt ein Glob-Muster, das an der produktiven Übersetzung scheitert', () => {
+  it('erzeugt ein Glob-Muster, das am produktiven Abgleich vollständig scheitert', () => {
     const { pattern, subject } = buildGlobPatternWorstCase(3, 12);
 
     expect(pattern).toBe('*a*a*a!');
     expect(subject).toBe('a'.repeat(12));
-    // Gegen die PRODUKTIVE Übersetzung geprüft, nicht gegen eine Kopie: Das
-    // abschließende `!` kommt im Subjekt nicht vor, die Regex-Engine muss also
-    // alle Aufteilungen durchprobieren, bevor sie aufgibt. Genau dieser
-    // vollständige Fehlschlag ist der gemessene Worst Case.
-    expect(globToRegExp(pattern)!.test(subject)).toBe(false);
+    // Gegen den PRODUKTIVEN Abgleich geprüft, nicht gegen eine Kopie: Das
+    // abschließende `!` kommt im Subjekt nicht vor, der Abgleich schlägt also
+    // vollständig fehl. Das war der gemessene Worst Case der RegExp-Fassung
+    // (GSPP-382) und bleibt der Worst Case des linearen Matchers — nur ohne
+    // exponentiellen Fall (GSPP-385, aufgenommen in GSPP-345).
+    expect(matchGlob(pattern, subject, createProfileResolutionBudget())).toBe(false);
+  });
+
+  it('hält den früheren ReDoS-Fall des Musters in linearer Arbeit', () => {
+    // Zwölf Sterne gegen eine 40 Zeichen lange ID kosteten in der
+    // RegExp-Fassung 31,82 s (docs/OSCAL_VALIDATION.md, GSPP-382). Der
+    // lineare Abgleich ist durch Muster × Subjekt beschränkt; die Schranke
+    // wird hier an der VERBRAUCHTEN ARBEIT belegt, nicht an einer Uhrzeit —
+    // eine Wandzeitschwelle wäre hardware- und scheduler-abhängig und in CI
+    // nicht reproduzierbar.
+    const { pattern, subject } = buildGlobPatternWorstCase(12, 40);
+    const budget = createProfileResolutionBudget();
+
+    expect(matchGlob(pattern, subject, budget)).toBe(false);
+    expect(budget.usage().workUnits).toBeLessThanOrEqual(pattern.length * subject.length);
   });
 });

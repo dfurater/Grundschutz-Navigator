@@ -16,6 +16,7 @@
 //
 //   node scripts/measure-class2-budget.mjs [--throttle 1,4] [--repeat 3] [--json <pfad>]
 //                                          [--scale 125000,250000,500000,1000000] [--skip-glob]
+//                                          [--skip-profile-resolution] [--skip-fixtures]
 //
 // `--scale` misst die knotenskalierbaren Fixtures zusätzlich an mehreren
 // Knotenzahlen. Daraus wird `maxNodes` gegen das Budget hergeleitet, statt von
@@ -54,11 +55,15 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   composeHeapFootprint,
+  median,
+  VISIBLE_WAIT_BUDGET_MS,
   parseArguments,
   renderReport,
   summarizeSamples,
 } from './measureClass2BudgetReport.mjs';
 import { buildTimingInput, measureIsolatedTiming } from './measureClass2Timing.mjs';
+import { workUnitSupportPoints } from './profileResolutionWorstCaseFixtures.mjs';
+import { WORK_UNIT_LIMIT } from '../src/domain/profileResolutionBudgetLimits.mjs';
 import { CLASS_2_TRANSPORT_FIXTURES } from './class2TransportFixtures.mjs';
 import { assertScalableNodeCounts } from './class2WorstCaseFixtures.mjs';
 
@@ -269,6 +274,48 @@ async function measureScale(pages, memory, nodeCounts, repeat) {
   return rows;
 }
 
+/**
+ * Arbeitsgrenze der Profile Resolution (GSPP-345).
+ *
+ * Die Stützpunkte reichen bis zum EINKOMPILIERTEN `WORK_UNIT_LIMIT` und nicht
+ * darüber: Jenseits davon bricht der Resolver ab, und ein Abbruch liefert
+ * keine Laufzeit. Die Messung kann den Kandidaten deshalb bestätigen oder nach
+ * unten korrigieren, aber nicht anheben — eine Anhebung setzt voraus, dass ein
+ * Mensch den Kandidaten in `profileResolutionBudgetLimits.mjs` erhöht und neu
+ * misst. Genau so ist die Regel gemeint: Der Grenzwert steht auf einer
+ * gemessenen Zahl, nicht auf einer hochgerechneten.
+ */
+async function measureProfileResolution(page, repeat) {
+  const rows = [];
+  for (const target of workUnitSupportPoints(WORK_UNIT_LIMIT)) {
+    const samples = [];
+    let row = null;
+    for (let attempt = 0; attempt < repeat; attempt += 1) {
+      row = await page.evaluate(
+        (value) => globalThis.__gspp382.profileResolution(value),
+        target,
+      );
+      if (!row.ok) break;
+      samples.push(row.ms);
+    }
+    if (row !== null && !row.ok) {
+      rows.push({ ...row, samples: samples.length });
+      break;
+    }
+    // Median UND Maximum: Das Urteil fällt über das Maximum aller
+    // Wiederholungen, nicht über den Median — eine Reihe, die im Mittel hält
+    // und in einem Lauf reißt, hält das Budget nicht.
+    const maxMs = Math.max(...samples);
+    rows.push({ ...row, medianMs: median(samples), maxMs, samples: samples.length });
+    // Reißt ein Stützpunkt die sichtbare Wartezeit, können größere nur
+    // schlechter sein. Die Reihe endet hier — das spart nicht nur Laufzeit,
+    // es hält auch die Aussage sauber: `deriveWorkUnitLimit` wertet ohnehin
+    // nur bis zur ersten Reißstelle aus.
+    if (maxMs > VISIBLE_WAIT_BUDGET_MS) break;
+  }
+  return rows;
+}
+
 async function measureGlob(page) {
   const rows = [];
   for (const stars of GLOB_STAR_COUNTS) {
@@ -344,9 +391,16 @@ async function measureInBrowser(browser, origin, options) {
       await page.evaluate(() => globalThis.__gspp382.warmUp());
 
       memory.attach(page, throttleRate);
+      // `--skip-fixtures` misst NUR die Nebenachsen (Glob, Arbeitsgrenze).
+      // Die Fixture-Reihe kostet rund fünfzig Minuten, weil jede
+      // Speichermessung zehn Sekunden braucht; wer eine der Nebenachsen
+      // nachzieht, soll dafür nicht die ganze Reihe erneut fahren müssen.
+      // Der Bericht weist die leere Reihe als solche aus.
       const fixtures = [];
-      for (const fixtureId of FIXTURE_ORDER) {
-        fixtures.push(await measureFixtureRepeatedly(pages, memory, fixtureId, options.repeat));
+      if (!options.skipFixtures) {
+        for (const fixtureId of FIXTURE_ORDER) {
+          fixtures.push(await measureFixtureRepeatedly(pages, memory, fixtureId, options.repeat));
+        }
       }
 
       if (workerErrors.length) throw workerErrors[0];
@@ -363,6 +417,10 @@ async function measureInBrowser(browser, origin, options) {
           ? null
           : await measureScale(pages, memory, options.scaleNodes, options.repeat),
         glob: options.skipGlob ? [] : await measureGlob(page),
+        profileResolution: options.skipProfileResolution
+          ? []
+          : await measureProfileResolution(page, options.repeat),
+        workUnitLimit: WORK_UNIT_LIMIT,
       });
     } finally {
       try {
