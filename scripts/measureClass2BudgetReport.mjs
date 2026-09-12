@@ -468,44 +468,59 @@ export function deriveWorkUnitLimit(series) {
   return limit;
 }
 
+/** Anteil der Kategorie an der Arbeit EINES Stützpunkts, als Prozentzelle. */
+function shareCell(row, category) {
+  const share = row.workUnitsByCategory?.[category];
+  if (!finiteNonnegative(share)) return '—';
+  const percent = ((share / row.workUnits) * 100).toFixed(1);
+  return `${percent} %`;
+}
+
+/** Eine Zeile der Stützpunkttabelle einer Kategoriereihe. */
+function renderSupportPointRow(row, category) {
+  const target = row.targetWorkUnits.toLocaleString('de-DE');
+  if (row.code === 'FIXTURE_DOKUMENTGRENZE') {
+    return `| ${target} | — | — | — | — | — | NICHT ERREICHBAR (Dokumentgrenze) |`;
+  }
+  if (row.ok !== true) {
+    return `| ${target} | — | — | — | — | — | ABGEBROCHEN (${row.code}) |`;
+  }
+  if (!finiteNonnegative(row.maxMs)) {
+    throw new Error(`Arbeitsstützpunkt ${row.targetWorkUnits} ohne erhobenen Wartezeithöchstwert`);
+  }
+  const verdict = row.maxMs <= VISIBLE_WAIT_BUDGET_MS ? 'gehalten' : 'GERISSEN';
+  return `| ${target} | ${row.workUnits.toLocaleString('de-DE')} `
+    + `| ${shareCell(row, category)} | ${row.nodes.toLocaleString('de-DE')} `
+    + `| ${formatMs(row.medianMs)} | ${formatMs(row.maxMs)} | ${verdict} |`;
+}
+
+/** Das Urteil unter einer Kategoriereihe — gedeckelt, tragend oder nicht tragend. */
+function renderSeriesVerdict(entry) {
+  if (seriesIsDocumentCapped(entry.rows)) {
+    const capRow = entry.rows.find((row) => row.code === 'FIXTURE_DOKUMENTGRENZE');
+    const ceiling = (capRow?.reachableWorkUnits ?? 0).toLocaleString('de-DE');
+    return 'Diese Kategorie erreicht die Arbeitsgrenze NICHT: Ihr ungünstigstes Steuerdokument '
+      + `schöpft Byte- und Knotengrenze aus und kommt dabei auf höchstens ${ceiling} `
+      + 'Arbeitseinheiten. Sie schränkt den Grenzwert deshalb nicht ein.';
+  }
+  const derived = deriveSeriesWorkUnitLimit(entry.rows);
+  if (derived === null) {
+    return 'Kein Stützpunkt hält die sichtbare Wartezeit — die Reihe begründet KEINEN Grenzwert.';
+  }
+  return `Getragener Grenzwert aus dieser Reihe: ${derived.toLocaleString('de-DE')} Arbeitseinheiten.`;
+}
+
 /** Eine Kategoriereihe der Profile Resolution über den Stützpunkten. */
 function renderProfileResolutionSeries(entry) {
-  const derived = deriveSeriesWorkUnitLimit(entry.rows);
-  const capped = seriesIsDocumentCapped(entry.rows);
   return [
     '',
     `**Kategorie \`${entry.category}\`**`,
     '',
     '| Stützpunkt | gemessene Arbeitseinheiten | Anteil der Kategorie | erzeugte Knoten | Wartezeit Median | Wartezeit Max | Urteil |',
     '| --- | --- | --- | --- | --- | --- | --- |',
-    ...entry.rows.map((row) => {
-      if (row.code === 'FIXTURE_DOKUMENTGRENZE') {
-        return `| ${row.targetWorkUnits.toLocaleString('de-DE')} | — | — | — | — | — `
-          + '| NICHT ERREICHBAR (Dokumentgrenze) |';
-      }
-      if (row.ok !== true) {
-        return `| ${row.targetWorkUnits.toLocaleString('de-DE')} | — | — | — | — | — | ABGEBROCHEN (${row.code}) |`;
-      }
-      if (!finiteNonnegative(row.maxMs)) {
-        throw new Error(`Arbeitsstützpunkt ${row.targetWorkUnits} ohne erhobenen Wartezeithöchstwert`);
-      }
-      const share = row.workUnitsByCategory?.[entry.category];
-      const verdict = row.maxMs <= VISIBLE_WAIT_BUDGET_MS ? 'gehalten' : 'GERISSEN';
-      return `| ${row.targetWorkUnits.toLocaleString('de-DE')} `
-        + `| ${row.workUnits.toLocaleString('de-DE')} `
-        + `| ${finiteNonnegative(share) ? `${((share / row.workUnits) * 100).toFixed(1)} %` : '—'} `
-        + `| ${row.nodes.toLocaleString('de-DE')} `
-        + `| ${formatMs(row.medianMs)} | ${formatMs(row.maxMs)} | ${verdict} |`;
-    }),
+    ...entry.rows.map((row) => renderSupportPointRow(row, entry.category)),
     '',
-    capped
-      ? 'Diese Kategorie erreicht die Arbeitsgrenze NICHT: Ihr ungünstigstes Steuerdokument '
-        + `schöpft Byte- und Knotengrenze aus und kommt dabei auf höchstens ${
-          (entry.rows.find((row) => row.code === 'FIXTURE_DOKUMENTGRENZE')?.reachableWorkUnits ?? 0)
-            .toLocaleString('de-DE')} Arbeitseinheiten. Sie schränkt den Grenzwert deshalb nicht ein.`
-      : derived === null
-        ? 'Kein Stützpunkt hält die sichtbare Wartezeit — die Reihe begründet KEINEN Grenzwert.'
-        : `Getragener Grenzwert aus dieser Reihe: ${derived.toLocaleString('de-DE')} Arbeitseinheiten.`,
+    renderSeriesVerdict(entry),
   ];
 }
 

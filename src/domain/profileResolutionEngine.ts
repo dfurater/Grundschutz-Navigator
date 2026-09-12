@@ -591,6 +591,27 @@ function selectedControlNodes(
 }
 
 /** Phase 1 — Selektion je Import gegen sein Quelldokument. */
+/**
+ * Kantenindex EINMAL je Profil, nicht je Import.
+ *
+ * Ein lineares `find` über die Kantenliste kostete bei N Importen auf N
+ * Kanten N² Vergleiche, und zwar unbudgetiert — dieselbe Bauart wie die
+ * quadratische ID-Suche, die dieses Issue bereits einmal beseitigt hat. Der
+ * Aufbau kostet eine Arbeitseinheit je Kante und ist damit gedeckt.
+ */
+function indexEdgesByHref(
+  input: SingleProfileInput,
+  budget: ProfileResolutionBudget,
+): ReadonlyMap<string, ProfileResolutionEdge> {
+  const byHref = new Map<string, ProfileResolutionEdge>();
+  for (const candidate of input.edgesByArtifactKey.get(input.artifactKey) ?? []) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
+    // Erste Kante je href gewinnt — dieselbe Auswahl, die `find` traf.
+    if (!byHref.has(candidate.href)) byHref.set(candidate.href, candidate);
+  }
+  return byHref;
+}
+
 function collectPhaseOne(
   input: SingleProfileInput,
   budget: ProfileResolutionBudget,
@@ -599,18 +620,7 @@ function collectPhaseOne(
   const inclusions: ControlInclusion[] = [];
   const consumedResourceUuids = new Set<string>();
 
-  // Kantenindex EINMAL je Profil, nicht je Import: Ein lineares `find` über
-  // die Kantenliste kostete bei N Importen auf N Kanten N² Vergleiche, und
-  // zwar unbudgetiert — dieselbe Bauart wie die quadratische ID-Suche, die
-  // dieses Issue bereits einmal beseitigt hat. Der Aufbau kostet eine
-  // Arbeitseinheit je Kante und ist damit gedeckt.
-  const edges = input.edgesByArtifactKey.get(input.artifactKey) ?? [];
-  const edgeByHref = new Map<string, (typeof edges)[number]>();
-  for (const candidate of edges) {
-    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
-    // Erste Kante je href gewinnt — dieselbe Auswahl, die `find` traf.
-    if (!edgeByHref.has(candidate.href)) edgeByHref.set(candidate.href, candidate);
-  }
+  const edgeByHref = indexEdgesByHref(input, budget);
 
   for (const profileImport of input.document.view.imports) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
