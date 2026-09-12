@@ -267,9 +267,12 @@ function buildAlterCandidateWorstCase(repetitions) {
  * benannten Kategorie an der Gesamtarbeit des Laufs — er belegt, dass die
  * Reihe die Kategorie wirklich treibt, die sie behauptet. Der Anteil hängt an
  * der Wiederholungszahl: Die Grundlast fällt je Lauf einmal an und verdünnt
- * sich, je weiter die Reihe getrieben wird. Die Werte hier stehen bei hundert
- * Wiederholungen; `docs/OSCAL_VALIDATION.md` weist die Anteile am größten
- * gehaltenen Stützpunkt aus, wo sie deshalb höher liegen.
+ * sich, je weiter die Reihe getrieben wird. Die Werte hier stehen am HÖHEREN
+ * der beiden Kalibrierpunkte einer Kategorie — 300 Wiederholungen, für
+ * `glob-state` 15, weil dort schon hundert Selektoren die Grenze rissen
+ * (`CALIBRATION_REPETITIONS` in `measure-class2-budget.mjs`).
+ * `docs/OSCAL_VALIDATION.md` weist die Anteile dagegen am größten gehaltenen
+ * Stützpunkt aus, wo sie deshalb höher liegen.
  *
  * Eine Abweichung der Rate ist unkritisch: Der Bericht weist für jeden
  * Stützpunkt die WIRKLICH verbrauchten Einheiten aus, und der Grenzwert steht
