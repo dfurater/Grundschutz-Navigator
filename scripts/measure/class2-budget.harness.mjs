@@ -37,7 +37,15 @@
 import { CLASS_2_IMPORT_LIMITS } from '@/domain/oscalImportContract';
 import { parseClass2OscalInput } from '@/domain/oscalImportProcessing';
 import { processClass2OscalValue } from '@/domain/oscalObjectPipeline';
-import { globToRegExp } from '@/domain/profileResolutionSelection';
+import { matchGlob } from '@/domain/profileResolutionSelection';
+import { resolveProfile } from '@/domain/profileResolutionEngine';
+import { buildProfileResolutionPlan } from '@/domain/profileResolutionImportGraph';
+import { parseProfileDocument } from '@/adapters/oscalProfileDocument';
+import {
+  buildWorkUnitCalibration,
+  buildWorkUnitWorstCase,
+} from '../profileResolutionWorstCaseFixtures.mjs';
+import { createProfileResolutionBudget } from '@/domain/profileResolutionBudget';
 import { importClass2OscalDocument } from '@/adapters/oscalImportGate';
 import { encodeOscalSource, OscalSourceDecoder, TRANSPORT_MAX_OPERATIONS, TRANSPORT_MAX_CODE_UNITS } from '@/domain/oscalImportTransport';
 import { EXPECTED_CODES } from '../measureClass2Timing.mjs';
@@ -523,16 +531,53 @@ const harness = {
   },
 
   /**
-   * Glob-Worst-Case gegen die produktive Übersetzung aus
-   * `src/domain/profileResolutionSelection.ts`. Der Ausdruck wird dort gebaut,
-   * nicht hier nachgebildet.
+   * Glob-Worst-Case gegen den PRODUKTIVEN Abgleich aus
+   * `src/domain/profileResolutionSelection.ts`. Der Abgleich läuft dort, nicht
+   * hier nachgebildet — eine zweite Fassung würde unbemerkt driften und das
+   * Messprotokoll unwahr machen.
+   *
+   * Seit GSPP-345/GSPP-385 ist das kein regulärer Ausdruck mehr, sondern ein
+   * linearer Zwei-Zeiger-Abgleich. Gemessen wird zusätzlich, wie viele
+   * Arbeitseinheiten er verbraucht: Die Zahl belegt, dass der Abgleich
+   * überhaupt budgetiert ist, und geht in die Herleitung von
+   * `WORK_UNIT_LIMIT` ein.
    */
   glob(stars, subjectLength) {
     const { pattern, subject } = buildGlobPatternWorstCase(stars, subjectLength);
-    const regexp = globToRegExp(pattern);
+    const budget = createProfileResolutionBudget();
     const start = nowMs();
-    const matched = regexp.test(subject);
-    return { ms: nowMs() - start, patternBytes: pattern.length, subjectLength, matched };
+    const matched = matchGlob(pattern, subject, budget);
+    const ms = nowMs() - start;
+    return {
+      ms,
+      patternBytes: pattern.length,
+      subjectLength,
+      matched,
+      workUnits: budget.usage().workUnits,
+    };
+  },
+
+  /**
+   * Arbeitsgrenze der Profile Resolution (GSPP-345): Laufzeit EINES
+   * Auflösungslaufs, der den Stützpunkt an Arbeitseinheiten verbraucht.
+   *
+   * Gemessen wird der produktive `resolveProfile`, nicht eine Nachbildung —
+   * inklusive der abschließenden Objekt- und Schemakette, weil genau das die
+   * Wartezeit ist, die ein Anwender sieht. Der Rückgabewert nennt die
+   * TATSÄCHLICH verbrauchten Arbeitseinheiten aus dem Budget, nicht das Ziel
+   * des Fixtures: Der Grenzwert darf nur auf einer gemessenen Zahl stehen.
+   */
+  async profileResolution(category, targetWorkUnits) {
+    return runResolutionFixture(buildWorkUnitWorstCase(category, targetWorkUnits));
+  },
+
+  /**
+   * Kalibrierpfad: derselbe Lauf mit EXPLIZITER Wiederholungszahl. Er erhebt
+   * die Rate, mit der `buildWorkUnitWorstCase` einen Stützpunkt ansteuert —
+   * die Rate gehört gemessen, nicht geschätzt.
+   */
+  async profileResolutionCalibration(category, repetitions) {
+    return runResolutionFixture(buildWorkUnitCalibration(category, repetitions));
   },
 
   /** Umgebungsangaben für das Messprotokoll. */
@@ -544,5 +589,96 @@ const harness = {
     };
   },
 };
+
+/**
+ * Laufzeit EINES Auflösungslaufs über die gegebene Worst-Case-Welt.
+ *
+ * Gemessen wird der produktive `resolveProfile`, nicht eine Nachbildung —
+ * inklusive der abschließenden Objekt- und Schemakette, weil genau das die
+ * Wartezeit ist, die ein Anwender sieht. Der Rückgabewert nennt die
+ * TATSÄCHLICH verbrauchten Arbeitseinheiten aus dem Budget samt ihrer
+ * Aufteilung auf die Kategorien, nicht das Ziel des Fixtures: Der Grenzwert
+ * darf nur auf einer gemessenen Zahl stehen, und die Reihe muss belegen, dass
+ * sie die behauptete Kategorie wirklich treibt.
+ */
+async function runResolutionFixture(fixture) {
+  const targetWorkUnits = fixture.targetWorkUnits;
+  if (fixture.capped === true) {
+    // Der Stützpunkt liegt jenseits dessen, was ein Steuerdokument dieser
+    // Kategorie durch Byte- und Knotengrenze tragen kann. Das ist kein
+    // gehaltener Stützpunkt und kein Abbruch des Resolvers, sondern ein
+    // Stützpunkt, den es nicht gibt.
+    return {
+      targetWorkUnits,
+      ok: false,
+      code: 'FIXTURE_DOKUMENTGRENZE',
+      ms: null,
+      id: fixture.id,
+      repetitions: fixture.repetitions,
+      reachableWorkUnits: fixture.reachableWorkUnits,
+      workUnits: null,
+    };
+  }
+  const documents = new Map(Object.entries(fixture.documents));
+  const edgesByArtifactKey = new Map(Object.entries(fixture.edges));
+  const plan = buildProfileResolutionPlan({
+    topProfileArtifactKey: fixture.topProfileArtifactKey,
+    documents,
+    edgesByArtifactKey,
+  });
+  if (!plan.ok) {
+    return {
+      targetWorkUnits,
+      ok: false,
+      code: plan.diagnostic.code,
+      ms: null,
+      id: fixture.id,
+      repetitions: fixture.repetitions,
+      workUnits: null,
+    };
+  }
+  const profileViews = new Map(
+    plan.order
+      .filter((key) => key.startsWith('profile'))
+      .map((key) => [
+        key,
+        parseProfileDocument(documents.get(key), { trustClass: 'class-2-local-user' }),
+      ]),
+  );
+
+  const start = nowMs();
+  const outcome = await resolveProfile({ plan, edgesByArtifactKey, profileViews });
+  const ms = nowMs() - start;
+
+  if (!outcome.ok) {
+    return {
+      targetWorkUnits,
+      ok: false,
+      code: outcome.diagnostic.code,
+      observed: outcome.diagnostic.params.observed ?? null,
+      ms,
+      id: fixture.id,
+      repetitions: fixture.repetitions,
+      workUnits: null,
+    };
+  }
+  return {
+    targetWorkUnits,
+    ok: true,
+    code: null,
+    ms,
+    id: fixture.id,
+    label: fixture.label,
+    repetitions: fixture.repetitions,
+    // Größe des STEUERDOKUMENTS: Sie entscheidet, wie weit eine Kategorie
+    // überhaupt getrieben werden kann — ein Angreifer muss das Profil durch
+    // dieselbe Klasse-2-Bytegrenze schicken wie jede andere Eingabe.
+    profileBytes: JSON.stringify(fixture.documents[fixture.topProfileArtifactKey]).length,
+    workUnits: outcome.output.budgetUsage.workUnits,
+    workUnitsByCategory: outcome.output.budgetUsage.workUnitsByCategory,
+    nodes: outcome.output.budgetUsage.nodes,
+    maxDepth: outcome.output.budgetUsage.maxDepth,
+  };
+}
 
 globalThis.__gspp382 = harness;

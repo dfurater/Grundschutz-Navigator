@@ -18,10 +18,18 @@ import {
   renderReport as renderRawReport,
   summarizeSamples,
   deriveNodeLimit,
+  deriveSeriesWorkUnitLimit,
+  deriveWorkUnitLimit,
+  evaluateWorkUnitSeries,
+  assertWorkLimitRun,
+  seriesIsDocumentCapped,
   parseNodeCounts,
   MEMORY_BUDGET_BYTES,
   UI_BLOCKING_BUDGET_MS,
 } from './measureClass2BudgetReport.mjs';
+import { WORK_UNIT_LIMIT } from '../src/domain/profileResolutionBudgetLimits.mjs';
+import { WORK_UNIT_CATEGORIES } from './profileResolutionWorstCaseFixtures.mjs';
+import { workLimitProvenance } from './measureWorkLimitProvenance.mjs';
 
 const source = { commit: 'a'.repeat(40), sha256: 'b'.repeat(64), files: 1 };
 function renderReport(report: Record<string, unknown>) {
@@ -60,19 +68,56 @@ describe('parseArguments', () => {
   it('setzt die Voreinstellungen ohne Argumente', () => {
     expect(parseArguments([])).toEqual({
       throttleRates: [1, 4], repeat: 3, jsonPath: null, scaleNodes: null, skipGlob: false,
+      skipProfileResolution: false, skipFixtures: false, calibrate: false,
+      searchWorkLimit: false, printSourceFingerprint: false,
     });
   });
 
   it('liest Drosselung, Wiederholungen und Ausgabepfad', () => {
     expect(parseArguments([
       '--throttle', '1,2,4', '--repeat', '5', '--json', 'out.json',
-      '--scale', '125000,250000', '--skip-glob',
+      '--scale', '125000,250000', '--skip-glob', '--skip-profile-resolution', '--skip-fixtures',
     ])).toEqual({
       throttleRates: [1, 2, 4],
       repeat: 5,
       jsonPath: 'out.json',
       scaleNodes: [125_000, 250_000],
       skipGlob: true,
+      skipProfileResolution: true,
+      skipFixtures: true,
+      calibrate: false,
+      searchWorkLimit: false,
+      printSourceFingerprint: false,
+    });
+  });
+
+  it('erklärt mit --search-work-limit den Lauf als Herleitung', () => {
+    // Ohne dieses Flag ist jeder Lauf eine BESTÄTIGUNG und bricht ab, sobald
+    // eine Reihe unterhalb des einkompilierten Werts reißt. Ein Herleitungslauf
+    // sucht den Riss gerade — er muss sich deshalb ausdrücklich als solcher
+    // erklären, statt dass der Bericht beide Fälle stillschweigend vermischt.
+    expect(parseArguments(['--search-work-limit']).searchWorkLimit).toBe(true);
+  });
+
+  it('druckt mit --print-source-fingerprint nur den Quellfingerprint', () => {
+    expect(parseArguments(['--print-source-fingerprint']).printSourceFingerprint).toBe(true);
+  });
+
+  it('schaltet mit --calibrate jede Messreihe ab', () => {
+    // Ein Kalibrierlauf erhebt allein die Raten der Fixtures. Liefe er
+    // zusätzlich die Stützpunkte, wären seine Zahlen an Fixtures gemessen,
+    // die er gerade erst neu vermisst.
+    expect(parseArguments(['--calibrate'])).toEqual({
+      throttleRates: [1],
+      repeat: 3,
+      jsonPath: null,
+      scaleNodes: null,
+      skipGlob: true,
+      skipProfileResolution: true,
+      skipFixtures: true,
+      calibrate: true,
+      searchWorkLimit: false,
+      printSourceFingerprint: false,
     });
   });
 
@@ -644,5 +689,330 @@ describe('Wartezeitbudget', () => {
     });
     expect(markdown).toContain('| GERISSEN |');
     expect(markdown).toContain('8.00 s');
+  });
+});
+
+describe('deriveSeriesWorkUnitLimit', () => {
+  const row = (target: number, workUnits: number, maxMs: number) => ({
+    targetWorkUnits: target, ok: true, workUnits, nodes: 8, medianMs: maxMs, maxMs,
+  });
+
+  it('nennt den größten Stützpunkt, der die sichtbare Wartezeit hält', () => {
+    expect(deriveSeriesWorkUnitLimit([
+      row(1_000, 990, 100),
+      row(2_000, 1_980, 900),
+      row(4_000, 3_960, 4_800),
+    ])).toBe(3_960);
+  });
+
+  it('gibt die GEMESSENE Zahl zurück, nicht den Stützpunkt', () => {
+    // Das Fixture trifft seinen Zielwert nie exakt. Ein Grenzwert, der auf dem
+    // Ziel statt auf der Messung stünde, wäre eine Behauptung.
+    expect(deriveSeriesWorkUnitLimit([row(1_000, 843, 50)])).toBe(843);
+  });
+
+  it('endet an der ersten Reißstelle und lässt sich von einem späteren Halten nicht aufheben', () => {
+    // Browsermessungen sind nicht monoton. Ein größerer Stützpunkt, der
+    // zufällig wieder hält, hebt einen kleineren gerissenen nicht auf.
+    expect(deriveSeriesWorkUnitLimit([
+      row(1_000, 990, 100),
+      row(2_000, 1_980, 6_000),
+      row(4_000, 3_960, 200),
+    ])).toBe(990);
+  });
+
+  it('trägt keinen Grenzwert, wenn schon der kleinste Stützpunkt reißt', () => {
+    expect(deriveSeriesWorkUnitLimit([row(1_000, 990, 5_001)])).toBeNull();
+  });
+
+  it('behandelt einen abgebrochenen Stützpunkt als fehlend, nicht als bestanden', () => {
+    expect(deriveSeriesWorkUnitLimit([
+      row(1_000, 990, 100),
+      { targetWorkUnits: 2_000, ok: false, code: 'OSCAL_RESOLUTION_WORK_BUDGET_EXCEEDED' },
+      row(4_000, 3_960, 100),
+    ])).toBe(990);
+  });
+
+  it('behandelt einen Stützpunkt ohne erhobene Wartezeit als fehlend', () => {
+    // Derselbe Fehler, den GSPP-386 an `maxMs` gefunden hat: Ein fehlender
+    // Wert darf nicht als NaN in einen Vergleich laufen und dort als
+    // „gehalten" erscheinen.
+    expect(deriveSeriesWorkUnitLimit([
+      row(1_000, 990, 100),
+      { targetWorkUnits: 2_000, ok: true, workUnits: 1_980, nodes: 8, medianMs: 10 },
+    ])).toBe(990);
+  });
+
+  it('trägt keinen Grenzwert ohne Reihe', () => {
+    expect(deriveSeriesWorkUnitLimit([])).toBeNull();
+    expect(deriveSeriesWorkUnitLimit(undefined as never)).toBeNull();
+  });
+});
+
+describe('deriveWorkUnitLimit über alle Kategoriereihen', () => {
+  const row = (target: number, workUnits: number, maxMs: number) => ({
+    targetWorkUnits: target, ok: true, workUnits, nodes: 8, medianMs: maxMs, maxMs,
+  });
+
+  it('nimmt das Minimum der Reihen — die langsamste Kategorie entscheidet', () => {
+    // Alle Kategorien verbrauchen denselben Zähler, kosten aber je Einheit
+    // unterschiedlich viel Zeit. Ein Grenzwert auf der schnellsten Reihe
+    // bräche das Zeitbudget, sobald ein Dokument die langsamste treibt.
+    expect(deriveWorkUnitLimit([
+      { category: 'selector-compare', rows: [row(1_000, 990, 100), row(2_000, 1_980, 900)] },
+      { category: 'merge-step', rows: [row(1_000, 990, 100), row(2_000, 1_980, 6_000)] },
+    ])).toBe(990);
+  });
+
+  it('übergeht eine durch die Dokumentgrenze gedeckelte Reihe', () => {
+    // Eine Kategorie, deren ungünstigstes Steuerdokument die Arbeitsgrenze
+    // gar nicht erreichen kann, schränkt sie auch nicht ein. Ohne diese
+    // Ausnahme senkte ihr niedriger Deckel den Grenzwert für alle anderen.
+    expect(deriveWorkUnitLimit([
+      { category: 'selector-compare', rows: [row(1_000, 990, 100), row(2_000, 1_980, 900)] },
+      {
+        category: 'alter-target-lookup',
+        rows: [
+          row(1_000, 990, 20),
+          { targetWorkUnits: 2_000, ok: false, code: 'FIXTURE_DOKUMENTGRENZE', reachableWorkUnits: 1_100 },
+        ],
+      },
+    ])).toBe(1_980);
+  });
+
+  it('trägt keinen Grenzwert, wenn eine nicht gedeckelte Reihe keinen trägt', () => {
+    expect(deriveWorkUnitLimit([
+      { category: 'selector-compare', rows: [row(1_000, 990, 100)] },
+      { category: 'merge-step', rows: [row(1_000, 990, 5_001)] },
+    ])).toBeNull();
+  });
+
+  it('trägt keinen Grenzwert ohne Reihen', () => {
+    expect(deriveWorkUnitLimit([])).toBeNull();
+    expect(deriveWorkUnitLimit(undefined as never)).toBeNull();
+  });
+});
+
+describe('seriesIsDocumentCapped', () => {
+  it('erkennt eine terminale Deckelung mit Erreichbarkeitszahl', () => {
+    expect(seriesIsDocumentCapped([
+      { targetWorkUnits: 1_000, ok: false, code: 'FIXTURE_DOKUMENTGRENZE', reachableWorkUnits: 700 },
+    ])).toBe(true);
+    expect(seriesIsDocumentCapped([{ code: 'OSCAL_RESOLUTION_WORK_BUDGET_EXCEEDED' }])).toBe(false);
+    expect(seriesIsDocumentCapped([])).toBe(false);
+    expect(seriesIsDocumentCapped(undefined as never)).toBe(false);
+  });
+
+  it('erkennt eine Deckelzeile OHNE Erreichbarkeitszahl nicht als Deckelung', () => {
+    // Ein Deckel ohne Zahl belegt keine Obergrenze. Ihn trotzdem als
+    // Deckelung zu führen, nähme die Kategorie aus der Herleitung, ohne dass
+    // irgendetwas ihre Unschädlichkeit belegt.
+    expect(seriesIsDocumentCapped([
+      { targetWorkUnits: 1_000, ok: false, code: 'FIXTURE_DOKUMENTGRENZE' },
+    ])).toBe(false);
+  });
+});
+
+
+describe('evaluateWorkUnitSeries — warum eine Reihe endet', () => {
+  const row = (target: number, workUnits: number, maxMs: number) => ({
+    targetWorkUnits: target, ok: true, workUnits, nodes: 8, medianMs: maxMs, maxMs,
+  });
+  const cap = (target: number, reachableWorkUnits: number | undefined = undefined) => ({
+    targetWorkUnits: target, ok: false, code: 'FIXTURE_DOKUMENTGRENZE', reachableWorkUnits,
+  });
+
+  it('trennt einen Zeitriss von einer Deckelung', () => {
+    expect(evaluateWorkUnitSeries([row(1_000, 990, 100), row(2_000, 1_980, 6_000)]))
+      .toEqual({ held: 990, capped: false, ceiling: null, breach: 'time' });
+    expect(evaluateWorkUnitSeries([row(1_000, 990, 100), cap(2_000, 1_500)]))
+      .toEqual({ held: 990, capped: true, ceiling: 1_500, breach: 'none' });
+  });
+
+  it('wertet einen Riss UNTERHALB einer späteren Deckelzeile zuerst aus', () => {
+    // Der Riss liegt im erreichbaren Bereich; die Kategorie ist nicht
+    // gedeckelt, sondern langsam. Die Reihenfolge ist die ganze Aussage.
+    expect(evaluateWorkUnitSeries([row(1_000, 995, 6_000), cap(2_000, 1_500)]))
+      .toEqual({ held: null, capped: false, ceiling: null, breach: 'time' });
+  });
+
+  it('verwirft eine nichtterminale Deckelzeile', () => {
+    expect(evaluateWorkUnitSeries([cap(1_000, 700), row(2_000, 1_980, 100)]))
+      .toEqual({ held: null, capped: false, ceiling: null, breach: 'broken-cap' });
+  });
+
+  it('verwirft eine Deckelzeile ohne endliche Erreichbarkeitszahl', () => {
+    expect(evaluateWorkUnitSeries([row(1_000, 990, 100), cap(2_000)]))
+      .toEqual({ held: 990, capped: false, ceiling: null, breach: 'broken-cap' });
+  });
+
+  it('meldet eine vollständig gehaltene Reihe ohne Riss', () => {
+    expect(evaluateWorkUnitSeries([row(1_000, 990, 100), row(2_000, 1_980, 200)]))
+      .toEqual({ held: 1_980, capped: false, ceiling: null, breach: 'none' });
+  });
+});
+
+describe('deriveWorkUnitLimit — Deckelung hebt keinen Riss auf', () => {
+  const row = (target: number, workUnits: number, maxMs: number) => ({
+    targetWorkUnits: target, ok: true, workUnits, nodes: 8, medianMs: maxMs, maxMs,
+  });
+  const cap = (target: number, reachableWorkUnits: number | undefined = undefined) => ({
+    targetWorkUnits: target, ok: false, code: 'FIXTURE_DOKUMENTGRENZE', reachableWorkUnits,
+  });
+
+  it('trägt keinen Grenzwert, wenn eine Reihe VOR ihrer Deckelung reißt', () => {
+    // Der Befund zu 10338f3: Die Vorgängerfassung prüfte die Deckelung zuerst
+    // und nahm die gerissene Kategorie vollständig aus der Herleitung. Sie gab
+    // damit einen Grenzwert aus der anderen Reihe frei, obwohl eine
+    // erreichbare Last die sichtbare Wartezeit bereits riss — fail-open.
+    expect(deriveWorkUnitLimit([
+      { category: 'selector-compare', rows: [row(1_000, 990, 100)] },
+      { category: 'merge-step', rows: [row(1_000, 995, 6_000), cap(2_000, 1_500)] },
+    ])).toBeNull();
+  });
+
+  it('nimmt eine gedeckelte Reihe nur aus, wenn ihr Deckel UNTER dem Grenzwert liegt', () => {
+    expect(deriveWorkUnitLimit([
+      { category: 'selector-compare', rows: [row(1_000, 990, 100)] },
+      { category: 'alter-target-lookup', rows: [row(500, 480, 100), cap(1_000, 700)] },
+    ])).toBe(990);
+  });
+
+  it('lässt eine gedeckelte Reihe mit Deckel ÜBER dem Grenzwert eingehen', () => {
+    // Zwischen ihrem letzten gemessenen Stützpunkt (480) und ihrem Deckel
+    // (5 000) ist nichts gemessen. Ungemessene Strecke trägt keinen Grenzwert.
+    expect(deriveWorkUnitLimit([
+      { category: 'selector-compare', rows: [row(1_000, 990, 100)] },
+      { category: 'alter-target-lookup', rows: [row(500, 480, 100), cap(1_000, 5_000)] },
+    ])).toBe(480);
+  });
+
+  it('trägt keinen Grenzwert bei nichtterminaler Deckelzeile', () => {
+    expect(deriveWorkUnitLimit([
+      { category: 'selector-compare', rows: [row(1_000, 990, 100)] },
+      { category: 'merge-step', rows: [cap(500, 400), row(1_000, 980, 100)] },
+    ])).toBeNull();
+  });
+
+  it('trägt keinen Grenzwert, wenn ALLE Reihen gedeckelt sind', () => {
+    // Ohne eine einzige gemessene Zeitaussage steht kein Grenzwert auf einer
+    // Messung — auch dann nicht, wenn jede Reihe für sich harmlos aussieht.
+    expect(deriveWorkUnitLimit([
+      { category: 'alter-target-lookup', rows: [row(500, 480, 100), cap(1_000, 700)] },
+    ])).toBeNull();
+  });
+});
+
+describe('assertWorkLimitRun — Herleitung und Bestätigung', () => {
+  const row = (target: number, workUnits: number, maxMs: number) => ({
+    targetWorkUnits: target, ok: true, workUnits, nodes: 8, medianMs: maxMs, maxMs,
+  });
+  const holding = [
+    { category: 'selector-compare', rows: [row(1_000, 990, 100), row(2_000, 1_980, 200)] },
+    { category: 'merge-step', rows: [row(1_000, 985, 300), row(2_000, 1_970, 900)] },
+  ];
+  const breaking = [
+    { category: 'selector-compare', rows: [row(1_000, 990, 100), row(2_000, 1_980, 200)] },
+    { category: 'merge-step', rows: [row(1_000, 985, 300), row(2_000, 1_970, 6_000)] },
+  ];
+
+  it('gibt im Herleitungslauf das Minimum zurück, auch weit unter dem Kandidaten', () => {
+    expect(assertWorkLimitRun({
+      workUnitLimit: 2_000, workUnitLimitRole: 'search', profileResolution: breaking,
+    })).toBe(985);
+  });
+
+  it('besteht den Bestätigungslauf, wenn keine Reihe unterhalb reißt', () => {
+    expect(assertWorkLimitRun({
+      workUnitLimit: 2_000, workUnitLimitRole: 'confirm', profileResolution: holding,
+    })).toBe(1_970);
+  });
+
+  it('bricht den Bestätigungslauf ab, sobald eine Reihe unterhalb reißt', () => {
+    // Kein erfolgreicher Bericht mit zwei widersprüchlichen Zahlen: Reißt eine
+    // Kategorie unter dem gelieferten Wert, ist der Wert widerlegt.
+    expect(() => assertWorkLimitRun({
+      workUnitLimit: 2_000, workUnitLimitRole: 'confirm', profileResolution: breaking,
+    })).toThrow(/reißt unterhalb/);
+  });
+
+  it('behandelt einen Lauf ohne ausgewiesene Rolle als Bestätigung', () => {
+    expect(() => assertWorkLimitRun({
+      workUnitLimit: 2_000, profileResolution: breaking,
+    })).toThrow(/reißt unterhalb/);
+  });
+
+  it('weist eine unbekannte Rolle zurück', () => {
+    expect(() => assertWorkLimitRun({
+      workUnitLimit: 2_000, workUnitLimitRole: 'irgendwas', profileResolution: holding,
+    })).toThrow(/unbekannter Rolle/);
+  });
+
+  it('weist einen hergeleiteten Wert über dem Kandidaten als defekte Messung zurück', () => {
+    expect(() => assertWorkLimitRun({
+      workUnitLimit: 500, workUnitLimitRole: 'search', profileResolution: holding,
+    })).toThrow(/über dem Kandidaten/);
+  });
+
+  it('weist einen Lauf ohne Grenzwertkandidaten zurück', () => {
+    expect(() => assertWorkLimitRun({ workUnitLimit: 0, profileResolution: holding }))
+      .toThrow(/ohne ausgewiesenen Grenzwertkandidaten/);
+  });
+});
+
+describe('GSPP-345 — der einkompilierte Grenzwert ist an das Messartefakt gebunden', () => {
+  const artifact = JSON.parse(readFileSync(
+    resolve(process.cwd(), 'docs/measurements/gspp345-work-budget.json'),
+    'utf8',
+  )) as {
+    runs: { throttleRate: number; workUnitLimit: number; workUnitLimitRole?: string;
+      profileResolution: { category: string; rows: Record<string, unknown>[] }[] }[];
+  };
+  const runs = artifact.runs.filter((run) => run.profileResolution?.length > 0);
+
+  it('führt Arbeitsreihen für jede der sechs Work-Unit-Kategorien', () => {
+    expect(runs.length).toBeGreaterThan(0);
+    for (const run of runs) {
+      expect(run.profileResolution.map((entry) => entry.category).sort())
+        .toEqual([...WORK_UNIT_CATEGORIES].sort());
+    }
+  });
+
+  it('leitet den einkompilierten WORK_UNIT_LIMIT exakt aus dem Artefakt her', () => {
+    // DER RIEGEL gegen einen Wert, den die Messung nicht trägt: Maßgeblich ist
+    // das Minimum über alle Drosselungsläufe — die stärkste Drosselung ist die
+    // ungünstigste Hardware, und ein Grenzwert, der nur auf der schnellsten
+    // Maschine hält, schützt niemanden. Zieht jemand die Konstante hoch, ohne
+    // neu zu messen, schlägt dieser Test fehl.
+    const derivedPerRun = runs.map((run) => deriveWorkUnitLimit(run.profileResolution));
+    expect(derivedPerRun).not.toContain(null);
+    expect(Math.min(...(derivedPerRun as number[]))).toBe(WORK_UNIT_LIMIT);
+  });
+
+  it('ist ein Herleitungslauf, dessen Kandidat ECHT über dem gelieferten Wert liegt', () => {
+    // Ohne diese Bedingung wäre die Messung zirkulär: Ein Lauf misst nur bis
+    // zu seinem eigenen Kandidaten, weil der Resolver darüber abbricht. Ein
+    // Artefakt, dessen Kandidat gleich dem gelieferten Wert ist, kann den Wert
+    // deshalb nicht belegen — es bestätigt nur, dass unterhalb nichts reißt.
+    for (const run of runs) {
+      expect(run.workUnitLimitRole).toBe('search');
+      expect(run.workUnitLimit).toBeGreaterThan(WORK_UNIT_LIMIT);
+    }
+  });
+
+  it('ist am AKTUELLEN Messweg erhoben', () => {
+    // Ohne diese Prüfung altert das Artefakt still: Wird der Auflösungspfad
+    // langsamer, bleibt der einkompilierte Wert stehen und nichts wird rot.
+    // Geprüft wird die enge Hülle des gemessenen Laufs, nicht der ganze Baum —
+    // sonst erzwänge jede unbeteiligte Änderung einen Browsermesslauf.
+    const provenance = workLimitProvenance();
+    expect(artifact.sourceBefore.workLimitProvenance.sha256).toBe(provenance.sha256);
+    expect(artifact.sourceAfter.workLimitProvenance.sha256).toBe(provenance.sha256);
+  });
+
+  it('rendert das Artefakt ohne widersprüchliche Zahlen', () => {
+    const markdown = renderRawReport(artifact);
+    expect(markdown).toContain('Zu übernehmen ist der fail-closed über alle Kategorien getragene Wert');
+    expect(markdown).toContain(WORK_UNIT_LIMIT.toLocaleString('de-DE'));
   });
 });

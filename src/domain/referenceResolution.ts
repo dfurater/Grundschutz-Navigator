@@ -309,6 +309,27 @@ function getHrefFragment(href: string): string | null {
   return fragmentIndex >= 0 ? href.slice(fragmentIndex + 1) : null;
 }
 
+/**
+ * Zeigt ein `href` allein auf ein Fragment DIESES Dokuments?
+ *
+ * Die Formentscheidung über ein `href` fällt ausschließlich hier, nicht bei den
+ * Aufrufern: Ein zweiter Vergleich anderswo läuft still auseinander, sobald
+ * sich die Form ändert. `resolveOscalReference` nimmt denselben Weg für seine
+ * eigene Verzweigung.
+ *
+ * Bewusst NICHT dasselbe wie „trägt ein Fragment": `../katalog.json#uuid` trägt
+ * eines, zeigt aber auf ein anderes Dokument.
+ */
+export function isLocalFragmentHref(href: string): boolean {
+  return href.startsWith('#');
+}
+
+/** Das Fragment eines rein lokalen `href`, kleingeschrieben — oder `null`. */
+export function localFragmentUuid(href: string): string | null {
+  if (!isLocalFragmentHref(href)) return null;
+  return href.slice(1).toLowerCase();
+}
+
 function resolveExplicitDocumentReference(
   input: OscalReferenceInput,
   document: ReferenceDocument,
@@ -488,7 +509,7 @@ function resolveOscalReferenceInternal(
     );
   }
 
-  if (input.href.startsWith('#')) {
+  if (isLocalFragmentHref(input.href)) {
     return resolveFragmentReference(input, context, resolveResourceLinks);
   }
 

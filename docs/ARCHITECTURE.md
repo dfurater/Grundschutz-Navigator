@@ -253,6 +253,8 @@ Profile Resolution (deterministisch, GSPP-291 Commit B)
 • Ergebnis ausschließlich über `createOscalDerivedGraph()` (kontrollierter
   Builder, kein Fremdobjekt, __proto__ als Data-Property, opakes
   DerivedJsonTree-Handle, Vertrauensklasse class-2-local-user)
+• laufendes Arbeits- und Ausgabebudget (GSPP-345): eine Budgetinstanz je
+  Auflösungslauf, monotone Zähler, Prüfung VOR Operation und Allokation
 • jedes Zwischen- und Endergebnis durchläuft fail-closed dieselbe Objekt-,
   Root-, Versions- und Schema-Pipeline wie lokale Klasse-2-Dokumente
 • Back-matter: referenzierte Quellressourcen in Import-/Quellreihenfolge,
@@ -355,6 +357,71 @@ Versionsführung, Referenzbindung, Migration, Export und Löschung sind dort
 verbindlich beschrieben.
 
 Der separate Sync-Pfad (`scripts/sync-upstream-manifest.mjs` mit `scripts/upstream-artifacts.mjs`) vergleicht die vollständigen normalisierten Trees des bisherigen und des neuen Snapshots. Erst dort entstehen die Status `added`, `modified` und `removed`; neue nicht registrierte Pfade werden als `unclassified` gemeldet, ohne ihren Blob zu fetchen oder sie auszuliefern. Weil `snapshotCommitSha` Bestandteil der Manifest-Signatur ist, löst auch ein neuer Snapshot, dessen einziges Delta eine unregistrierte Datei ist, diesen Vergleich aus.
+
+### Laufendes Budget der Profile Resolution
+
+Die abschließende Objektprüfung ist eine Postcondition: Sie sieht das fertige
+Ergebnis. Sie kann damit weder die bereits verbrauchte Arbeit noch den bereits
+aufgebauten Zwischenzustand zurückholen. [ADR-8](https://linear.app/grundschutz-plus-plus/issue/ADR-8)
+verlangt deshalb für eine von einem lokalen Klasse-2-Dokument gesteuerte
+Ableitung zusätzlich ein **laufendes** Budget. Umgesetzt in
+[`profileResolutionBudget.ts`](../src/domain/profileResolutionBudget.ts).
+
+**Eigentum.** `resolveProfile()` erzeugt genau eine Budgetinstanz je Lauf und
+reicht sie nach unten durch. Es gibt keinen Modulzustand, keinen globalen
+Zähler und keine Wiederverwendung über Läufe. Die öffentliche Signatur trägt
+weder einen Grenzwert- noch einen Disable-Parameter: Ein gleichnamiger Wert im
+Steuerdokument bleibt gewöhnlicher Dokumentinhalt.
+
+**Zwei Achsen.** Das Ausgabebudget zählt **kumulativ erzeugte** Knoten —
+emittierte Ausgabeknoten und die Container des Zwischenzustands, den Merge und
+Modify vor der Emission anlegen —, die größte je begonnene Tiefe und die
+kumulative arithmetisch bestimmte `base64`-Größe. Container heißt dabei Objekt
+**und** Liste: Die ergänzte `parts`-Liste einer Addition und die gefilterte
+Liste einer Entfernung sind eigene Knoten und werden vor ihrer Allokation
+gebucht. Nicht gebucht werden die kurzlebigen Lesekopien der Traversierung —
+sie stehen auf der Arbeitsachse, wo derselbe Aufruf die Elementzahl vorab
+bucht. Entfernen senkt keinen Zähler, ein Add/Remove-Zyklus kann das Budget
+also nicht umgehen. Das Arbeitsbudget zählt deterministische Schritte, keine
+Uhrzeit — Wall-Clock-Zeit ist hardware-, scheduler- und testabhängig und vor
+einer Operation nicht prüfbar. Der geschlossene Satz der sechs Kategorien
+(`import-edge`, `selector-compare`, `glob-state`, `merge-step`,
+`alter-target-lookup`, `alter-candidate`) deckt jede potenziell wachsende
+Operation in Selektion, Merge, Modify und Emission ab. Die Grenze gilt über die
+**Summe** aller Kategorien; `usage().workUnitsByCategory` schlüsselt sie
+zusätzlich auf, rein beobachtend — der Messapparat belegt damit, dass sein
+Worst-Case-Profil je Kategorie die Kategorie wirklich treibt, die es behauptet.
+
+**Unveränderliche Produktionsgrenzen.** Die Arbeitsgrenze steht als
+`WORK_UNIT_LIMIT` in
+[`profileResolutionBudgetLimits.mjs`](../src/domain/profileResolutionBudgetLimits.mjs).
+Die Ausgabegrenzen sind **dieselben** Werte, die die Postcondition prüft, und
+kommen unverändert aus `CLASS_2_IMPORT_LIMITS` — eine zweite Zahl für dieselbe
+Grenze hieße, dass laufendes Budget und Postcondition auseinanderlaufen können.
+Der Wert der Arbeitsgrenze ist nicht frei wählbar: Ein Test leitet ihn bei jedem
+Lauf aus dem committeten Messartefakt neu her und verlangt Gleichheit, sodass
+eine Anhebung ohne neue Messung rot wird. Zahlen, Herleitung und Messprotokoll:
+[OSCAL-Validierungsvertrag](./OSCAL_VALIDATION.md#work_unit_limit-kostenbasiert-hergeleitet-je-kategorie-gemessen).
+
+**Abbruchfluss.** Die Zählmethoden werfen. Der Wurf ist eine Entscheidung, kein
+Nebeneffekt: Die Arbeitseinheiten fallen in vier Modulen und rund zwanzig
+Funktionen an, von denen die meisten keinen Diagnosekanal führen; ein
+durchgereichter Rückgabewert hätte an jeder dieser Stellen die Möglichkeit
+eröffnet, die Ablehnung zu übersehen und doch ein Teilergebnis zu liefern. Der
+Wurf verlässt den Lauf an **genau einer** Fangstelle in `resolveProfile()`.
+Dort wird ein Budgetabbruch zu seiner bereits redigierten Diagnose und jede
+andere Ausnahme zu einem redigierten Projektfehler ohne Rohtext und ohne
+Stapel. In beiden Fällen verlässt weder ein Teilergebnis noch ein
+Builder-Handle den Lauf.
+
+**Zwei Vertrauensklassen, getrennt geführt.** Der Ergebnisvertrag nennt beide:
+`trustClass` ist unveränderlich `class-2-local-user` — ein lokal abgeleitetes
+Dokument ist nach [ADR-8](https://linear.app/grundschutz-plus-plus/issue/ADR-8)
+nie verifiziert-öffentlich —, `controllingTrustClass` ist die Klasse des
+**steuernden** Profils. Sie steuert keinen Grenzwert; das Budget läuft in jedem
+Lauf identisch. Sie sagt, **was** das Budget in diesem Lauf ist: bei
+ausschließlich Klasse-1-Eingaben ein Reliability-Hardstop, bei einem lokalen
+Klasse-2-Steuerdokument die Sicherheitskontrolle.
 
 ## Zustandsverwaltung
 

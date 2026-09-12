@@ -11,6 +11,15 @@ import {
   buildFlatControls,
   type ControlInclusion,
 } from './profileResolutionMerge';
+import { createProfileResolutionBudget } from './profileResolutionBudget';
+
+/**
+ * Frische Budgetinstanz mit PRODUKTIONSGRENZEN. Diese Tests prüfen Semantik,
+ * nicht Erschöpfung; eine Testgrenze hier würde einen zu klein geratenen Wert
+ * als Semantikfehler erscheinen lassen. Erschöpfung prüft
+ * `profileResolutionBudget.test.ts`.
+ */
+const budget = () => createProfileResolutionBudget();
 
 function includeAllDirective(order?: string): ProfileInsertControls {
   return {
@@ -60,8 +69,8 @@ describe('combine', () => {
     });
     controls.push(accessorId);
 
-    expect(() => applyCombine([{ documentKey: 'doc-a', controls }], 'use-first')).not.toThrow();
-    expect(applyCombine([{ documentKey: 'doc-a', controls }], 'use-first').order).toEqual([]);
+    expect(() => applyCombine([{ documentKey: 'doc-a', controls }], 'use-first', budget())).not.toThrow();
+    expect(applyCombine([{ documentKey: 'doc-a', controls }], 'use-first', budget()).order).toEqual([]);
   });
 
   it('use-first behält die erste Definition und verwirft spätere Kollisionen', () => {
@@ -72,7 +81,7 @@ describe('combine', () => {
         { documentKey: 'doc-a', controls: [first] },
         { documentKey: 'doc-b', controls: [second] },
       ],
-      'use-first',
+      'use-first', budget()
     );
 
     expect([...result.clashes].sort()).toEqual([]);
@@ -86,7 +95,7 @@ describe('combine', () => {
         inclusion('doc-a', 'ac-1'),
         inclusion('doc-b', 'ac-1'),
       ],
-      'keep',
+      'keep', budget()
     );
 
     expect(result.clashes).toEqual(['ac-1']);
@@ -96,7 +105,7 @@ describe('combine', () => {
   });
 
   it('ohne Kollision bleiben alle Controls in Erscheinungsreihenfolge', () => {
-    const result = applyCombine([inclusion('doc-a', 'b-1', 'a-1')], 'use-first');
+    const result = applyCombine([inclusion('doc-a', 'b-1', 'a-1')], 'use-first', budget());
 
     expect(result.order.map((n) => n['id'])).toEqual(['b-1', 'a-1']);
     expect(result.clashes).toEqual([]);
@@ -105,8 +114,8 @@ describe('combine', () => {
 
 describe('flat-Struktur', () => {
   it('gibt die kombinierten Controls flach aus', () => {
-    const combined = applyCombine([inclusion('doc-a', 'ac-1', 'bc-1')], 'use-first');
-    const body = buildFlatControls(combined);
+    const combined = applyCombine([inclusion('doc-a', 'ac-1', 'bc-1')], 'use-first', budget());
+    const body = buildFlatControls(combined, budget());
 
     const controls = body['controls'] as Record<string, unknown>[];
     expect(controls.map((c) => c['id'])).toEqual(['ac-1', 'bc-1']);
@@ -121,10 +130,10 @@ describe('flat-Struktur', () => {
         throw new Error('title getter must not run');
       },
     });
-    const combined = applyCombine([{ documentKey: 'doc-a', controls: [source] }], 'use-first');
+    const combined = applyCombine([{ documentKey: 'doc-a', controls: [source] }], 'use-first', budget());
 
-    expect(() => buildFlatControls(combined)).not.toThrow();
-    expect((buildFlatControls(combined)['controls'] as Record<string, unknown>[])[0]).toEqual({
+    expect(() => buildFlatControls(combined, budget())).not.toThrow();
+    expect((buildFlatControls(combined, budget())['controls'] as Record<string, unknown>[])[0]).toEqual({
       id: 'ac-1',
       class: 'SP800-53',
     });
@@ -144,7 +153,7 @@ describe('as-is-Struktur', () => {
   it('hält Gruppen mit inkludierten Controls samt Non-Control-Kindern, wirft Ausgeschlossene', () => {
     const body = buildAsIsGroups(
       { groups: [sourceGroup], controls: [] },
-      new Set(['ac-1']),
+      new Set(['ac-1']), budget()
     );
 
     const groups = body['groups'] as Record<string, unknown>[];
@@ -172,7 +181,7 @@ describe('as-is-Struktur', () => {
 
     const body = buildAsIsGroups(
       { groups: [parentWithHiddenChild], controls: [] },
-      new Set(['x-keep.1']),
+      new Set(['x-keep.1']), budget()
     );
 
     // Die Gruppe hält die inkludierte (hochgelevelte) Enkel-Control und
@@ -197,7 +206,7 @@ describe('as-is-Struktur', () => {
           control('direct-after'),
         ],
       },
-      new Set(['direct-before', 'promoted-child', 'direct-after']),
+      new Set(['direct-before', 'promoted-child', 'direct-after']), budget()
     );
 
     const controls = body['controls'] as Record<string, unknown>[];
@@ -220,7 +229,7 @@ describe('as-is-Struktur', () => {
 
     expect(() => buildAsIsGroups(
       { groups: [], controls: [selected] },
-      new Set(['ac-1']),
+      new Set(['ac-1']), budget()
     )).not.toThrow();
   });
 
@@ -230,7 +239,7 @@ describe('as-is-Struktur', () => {
 
     const body = buildAsIsGroups(
       { groups: [], controls: [selected] },
-      new Set(['cycle-1']),
+      new Set(['cycle-1']), budget()
     );
 
     expect(body).toEqual({
@@ -245,7 +254,7 @@ describe('as-is-Struktur', () => {
 
     expect(buildAsIsGroups(
       { groups: [], controls: [excluded] },
-      new Set(['nicht-vorhanden']),
+      new Set(['nicht-vorhanden']), budget()
     )).toEqual({ groups: [], controls: [] });
   });
 });
@@ -263,10 +272,10 @@ describe('custom-Struktur', () => {
   }
 
   it('include-all ohne order erhält die Pool-Erscheinungsreihenfolge', () => {
-    const combined = applyCombine([inclusion('doc-a', 'b-1', 'a-1')], 'use-first');
+    const combined = applyCombine([inclusion('doc-a', 'b-1', 'a-1')], 'use-first', budget());
     const result = buildCustomGroups(
       { rawGroups: [], typedGroups: [], insertControls: [includeAllDirective()] },
-      combined,
+      combined, budget()
     );
 
     expect(result.ok).toBe(true);
@@ -279,10 +288,10 @@ describe('custom-Struktur', () => {
     ['ascending', ['a-1', 'b-1', 'c-1']],
     ['descending', ['c-1', 'b-1', 'a-1']],
   ] as const)('order=%s sortiert nach Control-ID', (order, expected) => {
-    const combined = applyCombine([inclusion('doc-a', 'b-1', 'c-1', 'a-1')], 'use-first');
+    const combined = applyCombine([inclusion('doc-a', 'b-1', 'c-1', 'a-1')], 'use-first', budget());
     const result = buildCustomGroups(
       { rawGroups: [], typedGroups: [], insertControls: [includeAllDirective(order)] },
-      combined,
+      combined, budget()
     );
 
     expect(result.ok).toBe(true);
@@ -303,8 +312,8 @@ describe('custom-Struktur', () => {
         },
       ],
     });
-    const combined = applyCombine([inclusion('doc-a', 'a-1')], 'use-first');
-    const result = buildCustomGroups({ rawGroups: [group], typedGroups: [], insertControls: [] }, combined);
+    const combined = applyCombine([inclusion('doc-a', 'a-1')], 'use-first', budget());
+    const result = buildCustomGroups({ rawGroups: [group], typedGroups: [], insertControls: [] }, combined, budget());
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -333,7 +342,7 @@ describe('custom-Struktur', () => {
   });
 
   it('with-ids trifft nur im Pool vorhandene IDs; Ungetroffenes bleibt außen', () => {
-    const combined = applyCombine([inclusion('doc-a', 'a-1', 'b-1')], 'use-first');
+    const combined = applyCombine([inclusion('doc-a', 'a-1', 'b-1')], 'use-first', budget());
     const directive: ProfileInsertControls = {
       selection: {
         kind: 'include-controls',
@@ -342,21 +351,43 @@ describe('custom-Struktur', () => {
       excludeControls: [],
       path: '/profile/merge/custom/insert-controls',
     };
-    const result = buildCustomGroups({ rawGroups: [], typedGroups: [], insertControls: [directive] }, combined);
+    const result = buildCustomGroups({ rawGroups: [], typedGroups: [], insertControls: [directive] }, combined, budget());
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.controls.map((c) => c['id'])).toEqual(['a-1']);
   });
 
+  it('wiederholte with-ids ordnen jede ID genau einmal nach Deklaration', () => {
+    // Greptile-Befund zu 21dd0b3: Viele wiederholte gültige IDs erzeugten
+    // quadratische Vergleichsarbeit in der Zugehörigkeitsprüfung; die
+    // Set-basierte Prüfung hält die deklarierte Reihenfolge bei und gibt
+    // jede ID genau einmal aus.
+    const combined = applyCombine([inclusion('doc-a', 'a-1', 'b-1', 'c-1')], 'use-first', budget());
+    const repeated = Array.from({ length: 600 }, (_, index) => ['b-1', 'a-1', 'b-1'][index % 3]);
+    const directive: ProfileInsertControls = {
+      selection: {
+        kind: 'include-controls',
+        includeControls: [withIdsSelector([...repeated, 'zz-9'])],
+      },
+      excludeControls: [],
+      path: '/profile/merge/custom/insert-controls',
+    };
+    const result = buildCustomGroups({ rawGroups: [], typedGroups: [], insertControls: [directive] }, combined, budget());
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.controls.map((c) => c['id'])).toEqual(['b-1', 'a-1']);
+  });
+
   it('exclude-controls der Anweisung schlagen die Inklusion', () => {
-    const combined = applyCombine([inclusion('doc-a', 'a-1', 'b-1')], 'use-first');
+    const combined = applyCombine([inclusion('doc-a', 'a-1', 'b-1')], 'use-first', budget());
     const directive: ProfileInsertControls = {
       selection: { kind: 'include-all' },
       excludeControls: [withIdsSelector(['b-1'])],
       path: '/profile/merge/custom/insert-controls',
     };
-    const result = buildCustomGroups({ rawGroups: [], typedGroups: [], insertControls: [directive] }, combined);
+    const result = buildCustomGroups({ rawGroups: [], typedGroups: [], insertControls: [directive] }, combined, budget());
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -366,7 +397,7 @@ describe('custom-Struktur', () => {
   it('with-child-controls: yes zieht Nachfahren aus der Pool-Struktur nach', () => {
     const parent = control('p-1', { controls: [control('p-1.1')] });
     const child = control('p-1.1');
-    const combined = applyCombine([{ documentKey: 'doc-a', controls: [parent, child] }], 'use-first');
+    const combined = applyCombine([{ documentKey: 'doc-a', controls: [parent, child] }], 'use-first', budget());
     const directive: ProfileInsertControls = {
       selection: {
         kind: 'include-controls',
@@ -375,7 +406,7 @@ describe('custom-Struktur', () => {
       excludeControls: [],
       path: '/profile/merge/custom/insert-controls',
     };
-    const result = buildCustomGroups({ rawGroups: [], typedGroups: [], insertControls: [directive] }, combined);
+    const result = buildCustomGroups({ rawGroups: [], typedGroups: [], insertControls: [directive] }, combined, budget());
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -387,7 +418,7 @@ describe('custom-Struktur', () => {
     // es nicht einzeln selektiert); die Erweiterung auf p-1.1 darf den
     // Inhalt deshalb nicht ein zweites Mal ausgeben.
     const parent = control('q-1', { controls: [control('q-1.1')] });
-    const combined = applyCombine([{ documentKey: 'doc-a', controls: [parent] }], 'use-first');
+    const combined = applyCombine([{ documentKey: 'doc-a', controls: [parent] }], 'use-first', budget());
     const directive: ProfileInsertControls = {
       selection: {
         kind: 'include-controls',
@@ -396,7 +427,7 @@ describe('custom-Struktur', () => {
       excludeControls: [],
       path: '/profile/merge/custom/insert-controls',
     };
-    const result = buildCustomGroups({ rawGroups: [], typedGroups: [], insertControls: [directive] }, combined);
+    const result = buildCustomGroups({ rawGroups: [], typedGroups: [], insertControls: [directive] }, combined, budget());
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -407,7 +438,7 @@ describe('custom-Struktur', () => {
   it('gibt eine direkt selektierte, nur verschachtelt vorhandene Control eigenständig aus', () => {
     const child = control('q-2.1');
     const parent = control('q-2', { controls: [child] });
-    const combined = applyCombine([{ documentKey: 'doc-a', controls: [parent] }], 'use-first');
+    const combined = applyCombine([{ documentKey: 'doc-a', controls: [parent] }], 'use-first', budget());
     const directive: ProfileInsertControls = {
       selection: {
         kind: 'include-controls',
@@ -419,7 +450,7 @@ describe('custom-Struktur', () => {
 
     const result = buildCustomGroups(
       { rawGroups: [], typedGroups: [], insertControls: [directive] },
-      combined,
+      combined, budget()
     );
 
     expect(result.ok).toBe(true);
@@ -430,7 +461,7 @@ describe('custom-Struktur', () => {
   it('ersetzt ein zuerst einzeln ausgegebenes Nested-only-Kind durch den späteren Vorfahren', () => {
     const child = control('q-3.1');
     const parent = control('q-3', { controls: [child] });
-    const combined = applyCombine([{ documentKey: 'doc-a', controls: [parent] }], 'use-first');
+    const combined = applyCombine([{ documentKey: 'doc-a', controls: [parent] }], 'use-first', budget());
     const childDirective: ProfileInsertControls = {
       selection: {
         kind: 'include-controls',
@@ -454,7 +485,7 @@ describe('custom-Struktur', () => {
         typedGroups: [],
         insertControls: [childDirective, parentDirective],
       },
-      combined,
+      combined, budget()
     );
 
     expect(result.ok).toBe(true);
@@ -471,7 +502,7 @@ describe('custom-Struktur', () => {
       const leaf = control('q-4.1.1');
       const middle = control('q-4.1', { controls: [leaf] });
       const parent = control('q-4', { controls: [middle] });
-      const combined = applyCombine([{ documentKey: 'doc-a', controls: [parent] }], 'use-first');
+      const combined = applyCombine([{ documentKey: 'doc-a', controls: [parent] }], 'use-first', budget());
       const directives = selectedIds.map((id, index): ProfileInsertControls => ({
         selection: {
           kind: 'include-controls',
@@ -483,7 +514,7 @@ describe('custom-Struktur', () => {
 
       const result = buildCustomGroups(
         { rawGroups: [], typedGroups: [], insertControls: directives },
-        combined,
+        combined, budget()
       );
 
       expect(result.ok).toBe(true);
@@ -493,7 +524,7 @@ describe('custom-Struktur', () => {
   );
 
   it('mehrere Anweisungen wirken kumulativ ohne Doppel-Ausgabe derselben Definition', () => {
-    const combined = applyCombine([inclusion('doc-a', 'a-1', 'b-1')], 'use-first');
+    const combined = applyCombine([inclusion('doc-a', 'a-1', 'b-1')], 'use-first', budget());
     const first: ProfileInsertControls = {
       selection: {
         kind: 'include-controls',
@@ -505,7 +536,7 @@ describe('custom-Struktur', () => {
     const second: ProfileInsertControls = includeAllDirective();
     const result = buildCustomGroups(
       { rawGroups: [], typedGroups: [], insertControls: [first, second] },
-      combined,
+      combined, budget()
     );
 
     expect(result.ok).toBe(true);
@@ -514,10 +545,10 @@ describe('custom-Struktur', () => {
   });
 
   it('combine=keep gibt alle Definitionen einer kollidierenden ID hintereinander aus', () => {
-    const combined = applyCombine([inclusion('doc-a', 'ac-1'), inclusion('doc-b', 'ac-1')], 'keep');
+    const combined = applyCombine([inclusion('doc-a', 'ac-1'), inclusion('doc-b', 'ac-1')], 'keep', budget());
     const result = buildCustomGroups(
       { rawGroups: [], typedGroups: [], insertControls: [includeAllDirective()] },
-      combined,
+      combined, budget()
     );
 
     expect(result.ok).toBe(true);
@@ -526,7 +557,7 @@ describe('custom-Struktur', () => {
   });
 
   it('ein invalider with-child-controls-Wert scheitert fail-closed mit stabiler Diagnose', () => {
-    const combined = applyCombine([inclusion('doc-a', 'a-1')], 'use-first');
+    const combined = applyCombine([inclusion('doc-a', 'a-1')], 'use-first', budget());
     const directive: ProfileInsertControls = {
       selection: {
         kind: 'include-controls',
@@ -535,7 +566,7 @@ describe('custom-Struktur', () => {
       excludeControls: [],
       path: '/profile/merge/custom/insert-controls',
     };
-    const result = buildCustomGroups({ rawGroups: [], typedGroups: [], insertControls: [directive] }, combined);
+    const result = buildCustomGroups({ rawGroups: [], typedGroups: [], insertControls: [directive] }, combined, budget());
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -557,10 +588,10 @@ describe('custom-Struktur', () => {
         return Reflect.get(target, key);
       },
     });
-    const combined = applyCombine([{ documentKey: 'doc-a', controls: [pooled] }], 'use-first');
+    const combined = applyCombine([{ documentKey: 'doc-a', controls: [pooled] }], 'use-first', budget());
     const result = buildCustomGroups(
       { rawGroups: [group], typedGroups: [], insertControls: [includeAllDirective()] },
-      combined,
+      combined, budget()
     );
 
     expect(result.ok).toBe(true);
@@ -571,7 +602,7 @@ describe('custom-Struktur', () => {
   });
 
   it('führt Accessoren in projizierten Custom-Gruppen nicht aus', () => {
-    const combined = applyCombine([inclusion('doc-a', 'a-1')], 'use-first');
+    const combined = applyCombine([inclusion('doc-a', 'a-1')], 'use-first', budget());
     const idAccessorGroup = {} as Record<string, unknown>;
     Object.defineProperty(idAccessorGroup, 'id', {
       enumerable: true,
@@ -596,13 +627,13 @@ describe('custom-Struktur', () => {
           typedGroups: [typedGroup as unknown as ProfileGroup],
           insertControls: [],
         },
-        combined,
+        combined, budget()
       )).not.toThrow();
     }
   });
 
   it('führt Accessoren in Root-insert-controls nicht aus', () => {
-    const combined = applyCombine([inclusion('doc-a', 'a-1')], 'use-first');
+    const combined = applyCombine([inclusion('doc-a', 'a-1')], 'use-first', budget());
     const selectionAccessor = { excludeControls: [] } as Record<string, unknown>;
     Object.defineProperty(selectionAccessor, 'selection', {
       enumerable: true,
@@ -626,7 +657,7 @@ describe('custom-Struktur', () => {
         typedGroups: [],
         insertControls: [selectionAccessor as unknown as ProfileInsertControls],
       },
-      combined,
+      combined, budget()
     );
     expect(invalidSelection.ok).toBe(false);
     if (!invalidSelection.ok) {
@@ -638,7 +669,7 @@ describe('custom-Struktur', () => {
         typedGroups: [],
         insertControls: [excludeAccessor as unknown as ProfileInsertControls],
       },
-      combined,
+      combined, budget()
     );
     expect(excluded.ok).toBe(true);
     if (!excluded.ok) return;
@@ -662,11 +693,11 @@ describe('custom-Struktur: Pruning nicht selektierter Nachfahren (GSPP-377)', ()
   ): string[] {
     const combined = applyCombine(
       [{ documentKey: 'doc-a', controls: inclusionControls }],
-      'use-first',
+      'use-first', budget()
     );
     const result = buildCustomGroups(
       { rawGroups: [], typedGroups: [], insertControls: [withIdsDirective(selectedIds)] },
-      combined,
+      combined, budget()
     );
 
     expect(result.ok).toBe(true);
@@ -681,7 +712,7 @@ describe('custom-Struktur: Pruning nicht selektierter Nachfahren (GSPP-377)', ()
     groupIds: string[][],
   ): { root: unknown[]; groups: unknown[][] } {
     const parent = control('a-1', { controls: [control('a-1-1'), control('a-1-2')] });
-    const combined = applyCombine([{ documentKey: 'doc-a', controls: [parent] }], 'use-first');
+    const combined = applyCombine([{ documentKey: 'doc-a', controls: [parent] }], 'use-first', budget());
     const result = buildCustomGroups(
       {
         rawGroups: groupIds.map((_, index) => ({
@@ -696,7 +727,7 @@ describe('custom-Struktur: Pruning nicht selektierter Nachfahren (GSPP-377)', ()
         })),
         insertControls: rootIds.length > 0 ? [withIdsDirective(rootIds)] : [],
       },
-      combined,
+      combined, budget()
     );
 
     expect(result.ok).toBe(true);
@@ -747,13 +778,13 @@ describe('custom-Struktur: Pruning nicht selektierter Nachfahren (GSPP-377)', ()
         { documentKey: 'doc-a', controls: [parent, control('a-1-1')] },
         { documentKey: 'doc-a', controls: [parent, control('a-1-2')] },
       ],
-      'use-first',
+      'use-first', budget()
     );
 
     // Nur das Elternteil per Direktive, damit allein die Inklusionsbindung wirkt.
     const result = buildCustomGroups(
       { rawGroups: [], typedGroups: [], insertControls: [withIdsDirective(['a-1'])] },
-      combined,
+      combined, budget()
     );
 
     expect(result.ok).toBe(true);
@@ -773,12 +804,12 @@ describe('custom-Struktur: Pruning nicht selektierter Nachfahren (GSPP-377)', ()
         { documentKey: 'doc-a', controls: [parent, control('a-1-1')] },
         { documentKey: 'doc-a', controls: [parent, control('a-1-2')] },
       ],
-      'use-first',
+      'use-first', budget()
     );
 
     const result = buildCustomGroups(
       { rawGroups: [], typedGroups: [], insertControls: [withIdsDirective(['a-1', 'a-1-2'])] },
-      combined,
+      combined, budget()
     );
 
     expect(result.ok).toBe(true);
@@ -799,7 +830,7 @@ describe('custom-Struktur: Pruning nicht selektierter Nachfahren (GSPP-377)', ()
           { documentKey: 'doc-a', controls: [parent, firstChild] },
           { documentKey: 'doc-a', controls: [parent, secondChild] },
         ],
-        'keep',
+        'keep', budget()
       );
       const inGroup = placement === 'Custom-Gruppe';
       const result = buildCustomGroups(
@@ -813,7 +844,7 @@ describe('custom-Struktur: Pruning nicht selektierter Nachfahren (GSPP-377)', ()
           }] : [],
           insertControls: inGroup ? [] : [withIdsDirective(['a-1'])],
         },
-        combined,
+        combined, budget()
       );
 
       expect(result.ok).toBe(true);
@@ -841,12 +872,12 @@ describe('custom-Struktur: Pruning nicht selektierter Nachfahren (GSPP-377)', ()
         { documentKey: 'doc-a', controls: [fromA] },
         { documentKey: 'doc-b', controls: [fromB, control('child')] },
       ],
-      'keep',
+      'keep', budget()
     );
 
     const result = buildCustomGroups(
       { rawGroups: [], typedGroups: [], insertControls: [withIdsDirective(['shared'])] },
-      combined,
+      combined, budget()
     );
 
     expect(result.ok).toBe(true);
@@ -900,7 +931,7 @@ describe('custom-Struktur: Pruning nicht selektierter Nachfahren (GSPP-377)', ()
     const parent = control('a-1', { controls: [control('a-1-1'), control('a-1-2')] });
     const combined = applyCombine(
       [{ documentKey: 'doc-a', controls: [parent, control('a-1-1')] }],
-      'use-first',
+      'use-first', budget()
     );
 
     const result = buildCustomGroups(
@@ -918,7 +949,7 @@ describe('custom-Struktur: Pruning nicht selektierter Nachfahren (GSPP-377)', ()
         }],
         insertControls: [],
       },
-      combined,
+      combined, budget()
     );
 
     expect(result.ok).toBe(true);

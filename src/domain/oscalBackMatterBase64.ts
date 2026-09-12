@@ -36,7 +36,14 @@ function countBase64Padding(encoded: string): number {
   return 0;
 }
 
-function decodedBase64ByteLength(encoded: string): number {
+/**
+ * Dekodierte Größe eines base64-Werts, rein arithmetisch aus der kodierten
+ * Länge. Exportiert, damit das laufende Ausgabebudget der Profile Resolution
+ * (GSPP-345) exakt diese Arithmetik benutzt statt einer zweiten Fassung: Zwei
+ * Rechnungen für dieselbe Grenze könnten auseinanderlaufen, und dann würde
+ * das laufende Budget die Postcondition unterschätzen.
+ */
+export function decodedBase64ByteLength(encoded: string): number {
   return Math.max(0, Math.floor(encoded.length / 4) * 3 - countBase64Padding(encoded));
 }
 

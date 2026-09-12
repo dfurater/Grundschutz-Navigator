@@ -43,6 +43,14 @@ import {
   type ProfileResolutionPlan,
 } from './profileResolutionImportGraph';
 import {
+  createProfileResolutionBudget,
+  PROFILE_RESOLUTION_WORK_UNITS,
+  ProfileResolutionBudgetExceeded,
+  type ProfileResolutionBudget,
+  type ProfileResolutionBudgetUsage,
+} from './profileResolutionBudget';
+import type { TrustClass } from './oscalDocumentContext';
+import {
   applyCombine,
   buildAsIsGroups,
   buildCustomGroups,
@@ -70,7 +78,12 @@ import {
 } from './oscalDerivedGraph';
 import { processClass2OscalValue } from './oscalObjectPipeline';
 import { walkOwnContainers } from './oscalObjectWalk';
-import { CLASS_2_IMPORT_LIMITS } from './oscalImportContract';
+import { localFragmentUuid } from './referenceResolution';
+import {
+  windowForElement,
+  windowForKey,
+  type PathWindow,
+} from './oscalBackMatterBase64';
 import {
   deriveUuidV5,
   PROFILE_RESOLUTION_NAMESPACE_UUID,
@@ -88,6 +101,8 @@ export const PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES = Object.freeze({
   TOP_PROFILE_UUID_MISSING: 'PROFILE_RESOLUTION_TOP_PROFILE_UUID_MISSING',
   /** Ein aufzulösendes Zwischenprofil trägt keine verwertbare Dokument-UUID. */
   PROFILE_UUID_MISSING: 'PROFILE_RESOLUTION_PROFILE_UUID_MISSING',
+  /** Unerwartete interne Ausnahme — redigiert, ohne Rohtext oder Stapel. */
+  INTERNAL_ERROR: 'PROFILE_RESOLUTION_INTERNAL_ERROR',
   /** Das steuernde Profil wurde nicht als Profilprojektion bereitgestellt. */
   TOP_PROFILE_UNRESOLVED: 'PROFILE_RESOLUTION_TOP_PROFILE_UNRESOLVED',
   /** Ein importiertes Profilziel war bei der Auswertung noch nicht aufgelöst. */
@@ -111,8 +126,23 @@ export interface ProfileResolutionRequest {
 export interface ResolvedCatalogOutput {
   /** Registriertes Wurzelhandle des Builder-Graphen (Dokument mit Root `catalog`). */
   readonly tree: DerivedJsonTree;
+  /**
+   * Vertrauensklasse des ERGEBNISSES. Unveränderlich `class-2-local-user`,
+   * auch wenn jede Eingabe Klasse 1 war — ein lokal abgeleitetes Dokument ist
+   * nach ADR-8 nie verifiziert-öffentlich.
+   */
   readonly trustClass: 'class-2-local-user';
+  /**
+   * Vertrauensklasse des STEUERNDEN Profils, ausdrücklich getrennt von der
+   * des Ergebnisses. Sie steuert keinen Grenzwert — das Budget läuft in jedem
+   * Lauf identisch —, sondern sagt, WAS das Budget in diesem Lauf ist: bei
+   * Klasse 1 ein Reliability-Hardstop, bei `class-2-local-user` die
+   * Sicherheitskontrolle gegen ein unvertrauenswürdiges Steuerdokument.
+   */
+  readonly controllingTrustClass: TrustClass;
   readonly oscalVersion: string;
+  /** Die vier Budgetzähler des Laufs — Messbasis für Korpuslauf und Protokoll. */
+  readonly budgetUsage: ProfileResolutionBudgetUsage;
   readonly topProfileArtifactKey: string;
 }
 
@@ -147,7 +177,7 @@ function reject(
 function withResolvedCatalogArtifact(
   diagnostic: OscalDiagnostic,
   artifactKey: string,
-  oscalVersion: string,
+  oscalVersion: string
 ): OscalDiagnostic {
   return createOscalDiagnostic({
     code: diagnostic.code,
@@ -162,7 +192,7 @@ function withResolvedCatalogArtifact(
 /** Ordnet eine durchgereichte Phasendiagnose ihrem Profilpfad zu. */
 function withCurrentProfileArtifact(
   diagnostic: OscalDiagnostic,
-  input: SingleProfileInput,
+  input: SingleProfileInput
 ): OscalDiagnostic {
   return createOscalDiagnostic({
     code: diagnostic.code,
@@ -192,7 +222,7 @@ function readRootBody(document: unknown): JsonObject {
  * rein deskriptorbasiert, damit die exakte Kopie unbekannte Mitglieder
  * erhält, die die getypte Projektion nicht kennt.
  */
-function readRawCustomGroups(source: unknown): readonly JsonObject[] {
+function readRawCustomGroups(source: unknown, budget: ProfileResolutionBudget): readonly JsonObject[] {
   const body = readRootBody(source);
   const merge = ownDataValue(body, 'merge');
   if (!isJsonObject(merge)) return [];
@@ -200,7 +230,7 @@ function readRawCustomGroups(source: unknown): readonly JsonObject[] {
   if (!isJsonObject(custom)) return [];
   const groups = ownDataValue(custom, 'groups');
   if (!Array.isArray(groups)) return [];
-  return ownArrayDataElements(groups).filter((group): group is JsonObject =>
+  return ownArrayDataElements(groups, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).filter((group): group is JsonObject =>
     isJsonObject(group),
   );
 }
@@ -264,23 +294,26 @@ function projectMembers(
   source: JsonObject,
   stringPairs: readonly MemberPair[],
   listPairs: readonly MemberPair[],
+  budget: ProfileResolutionBudget,
 ): Record<string, unknown> {
   const projected: Record<string, unknown> = {};
   for (const [rawKey, directiveKey] of stringPairs) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
     const value = ownDataValue(source, rawKey);
     if (typeof value === 'string') projected[directiveKey] = value;
   }
   for (const [rawKey, directiveKey] of listPairs) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
     const value = ownDataValue(source, rawKey);
     if (Array.isArray(value)) projected[directiveKey] = value;
   }
   return projected;
 }
 
-function objectEntriesOf(node: JsonObject, key: string): JsonObject[] {
+function objectEntriesOf(node: JsonObject, key: string, budget: ProfileResolutionBudget): JsonObject[] {
   const value = ownDataValue(node, key);
   if (!Array.isArray(value)) return [];
-  return ownArrayDataElements(value).filter((entry): entry is JsonObject =>
+  return ownArrayDataElements(value, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).filter((entry): entry is JsonObject =>
     isJsonObject(entry),
   );
 }
@@ -292,18 +325,18 @@ function objectEntriesOf(node: JsonObject, key: string): JsonObject[] {
  * Sammelfelder, die als Phantom-Mitglieder im Ergebnisdokument enden
  * würden.
  */
-function toAlterationDirective(alterNode: JsonObject): AlterationDirective {
+function toAlterationDirective(alterNode: JsonObject, budget: ProfileResolutionBudget): AlterationDirective {
   const controlId = optionalString(alterNode, 'control-id');
   return {
     ...(controlId !== undefined && { controlId }),
-    adds: objectEntriesOf(alterNode, 'adds').map(
-      (entry) => projectMembers(entry, ALTERATION_STRING_MEMBERS, ALTERATION_LIST_MEMBERS) as NonNullable<AlterationDirective['adds']>[number],
+    adds: objectEntriesOf(alterNode, 'adds', budget).map(
+      (entry) => projectMembers(entry, ALTERATION_STRING_MEMBERS, ALTERATION_LIST_MEMBERS, budget) as NonNullable<AlterationDirective['adds']>[number],
     ),
     // Das Schema kennt ausschließlich `removes` (Plural); ein Singular-Key
     // existiert nicht — Stille hier würde Remove-Anweisungen verlieren
     // (Orakelbefund WLAN: alter verschiebt ASST.2.2_gdn per removes+adds).
-    removes: objectEntriesOf(alterNode, 'removes').map(
-      (entry) => projectMembers(entry, REMOVAL_STRING_MEMBERS, []) as NonNullable<AlterationDirective['removes']>[number],
+    removes: objectEntriesOf(alterNode, 'removes', budget).map(
+      (entry) => projectMembers(entry, REMOVAL_STRING_MEMBERS, [], budget) as NonNullable<AlterationDirective['removes']>[number],
     ),
   };
 }
@@ -311,11 +344,11 @@ function toAlterationDirective(alterNode: JsonObject): AlterationDirective {
 /**
  * Liest die Raw-`alter`-Knoten aus dem Quelldokument in Quellreihenfolge.
  */
-function readRawAlters(source: unknown): readonly JsonObject[] {
+function readRawAlters(source: unknown, budget: ProfileResolutionBudget): readonly JsonObject[] {
   const body = readRootBody(source);
   const modify = ownDataValue(body, 'modify');
   if (!isJsonObject(modify)) return [];
-  return objectEntriesOf(modify, 'alters');
+  return objectEntriesOf(modify, 'alters', budget);
 }
 
 type ControlTransform = (control: JsonObject) => JsonObject;
@@ -328,10 +361,11 @@ function identity(control: JsonObject): JsonObject {
  * Flache Kopie über Data-Property-Deskriptoren mit Ausschlussliste —
  * Accessor-Slots erscheinen als abwesend, Schlüsselordnung bleibt erhalten.
  */
-function copyOwnDataMembersSkipping(node: JsonObject, skipKeys: readonly string[]): JsonObject {
+function copyOwnDataMembersSkipping(node: JsonObject, skipKeys: readonly string[], budget: ProfileResolutionBudget): JsonObject {
   const skip = new Set(skipKeys);
   const copy: JsonObject = {};
   for (const key of Reflect.ownKeys(node)) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
     if (typeof key === 'string' && !skip.has(key)) {
       const value = ownDataValue(node, key);
       if (value !== undefined) copy[key] = value;
@@ -343,6 +377,7 @@ function copyOwnDataMembersSkipping(node: JsonObject, skipKeys: readonly string[
 function createControlTransform(
   setParameters: readonly ProfileSetParameter[],
   altersByControlId: ReadonlyMap<string, readonly AlterationDirective[]>,
+  budget: ProfileResolutionBudget,
 ): ControlTransform {
   if (setParameters.length === 0 && altersByControlId.size === 0) return identity;
 
@@ -352,13 +387,20 @@ function createControlTransform(
   };
 
   const applyShallow = (control: JsonObject): JsonObject => {
-    let transformed = applySetParametersToControl(control, setParameters);
+    let transformed = applySetParametersToControl(control, setParameters, budget);
     const id = controlIdOf(transformed);
     if (id === null) return transformed;
+    // Die Suche des `alter`-Zielcontrols — die eigene Kategorie des
+    // geschlossenen Satzes. Sie fällt je betrachteter Control an, auch wenn
+    // keine Alteration auf sie zeigt, und sie gehört unter `/profile/modify`:
+    // Vorher lief beides unter `import-edge` und hätte einen Abbruch der
+    // Modify-Phase als Importproblem ausgewiesen.
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_TARGET_LOOKUP);
     const alterations = altersByControlId.get(id);
     if (alterations === undefined) return transformed;
     for (const alteration of alterations) {
-      transformed = applyAlteration(transformed, alteration);
+      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_TARGET_LOOKUP);
+      transformed = applyAlteration(transformed, alteration, budget);
     }
     return transformed;
   };
@@ -370,7 +412,9 @@ function createControlTransform(
     const transformed = applyShallow(control);
     const children = ownDataValue(transformed, 'controls');
     if (Array.isArray(children)) {
-      transformed['controls'] = ownArrayDataElements(children).map((child) =>
+      // Die transformierte Kinderliste ersetzt das controls-Mitglied.
+      budget.admitWorkingNode();
+      transformed['controls'] = ownArrayDataElements(children, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).map((child) =>
         isJsonObject(child) ? applyDeep(child) : child,
       );
     }
@@ -385,19 +429,23 @@ function createControlTransform(
  * in-place umgeschrieben werden — die Eingabedokumente bleiben unangetastet.
  * Der Stack trägt die Verschachtelungstiefe (keine Rekursion).
  */
-function applyTransformToGroups(groups: readonly JsonObject[], transform: ControlTransform): void {
+function applyTransformToGroups(groups: readonly JsonObject[], transform: ControlTransform, budget: ProfileResolutionBudget): void {
   const stack: JsonObject[] = [...groups];
   while (stack.length > 0) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
     const group = stack.pop()!;
     const controls = ownDataValue(group, 'controls');
     if (Array.isArray(controls)) {
-      group['controls'] = ownArrayDataElements(controls).map((child) =>
+      // Dasselbe auf der Gruppenebene.
+      budget.admitWorkingNode();
+      group['controls'] = ownArrayDataElements(controls, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).map((child) =>
         isJsonObject(child) ? transform(child) : child,
       );
     }
     const nested = ownDataValue(group, 'groups');
     if (Array.isArray(nested)) {
-      for (const child of ownArrayDataElements(nested)) {
+      for (const child of ownArrayDataElements(nested, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE)) {
+        budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
         if (isJsonObject(child)) stack.push(child);
       }
     }
@@ -405,15 +453,54 @@ function applyTransformToGroups(groups: readonly JsonObject[], transform: Contro
 }
 
 /**
+ * Absolute Tiefen des Ausgabedokuments, gezählt wie `walkObjectGraph` in
+ * `oscalObjectGraph.ts`: Die Dokumentwurzel ist Tiefe 1, der `catalog`-Körper
+ * Tiefe 2, seine Mitglieder Tiefe 3.
+ *
+ * Diese Konstanten ersetzen die frühere RELATIVE Zählung, die `groups`,
+ * `controls` und `back-matter` mit `depth = 0` emittierte. Sie lag zwei
+ * Ebenen unter der Wahrheit, und das laufende Budget hätte den fertigen
+ * Graphen damit unterschätzt — genau die Richtung, die ADR-8 ausschließt.
+ */
+const OUTPUT_ROOT_DEPTH = 1;
+const OUTPUT_BODY_DEPTH = 2;
+const OUTPUT_BODY_MEMBER_DEPTH = 3;
+
+/**
+ * Bucht eine `back-matter`-base64-Nutzlast, sobald das Pfadfenster sie
+ * ausweist. Die Nutzlast wird NIE dekodiert; gezählt wird arithmetisch aus der
+ * kodierten Länge, exakt wie in der Postcondition.
+ */
+function accountBase64Payload(
+  member: unknown,
+  memberWindow: PathWindow | 'base64-payload',
+  budget: ProfileResolutionBudget,
+): void {
+  if (memberWindow !== 'base64-payload' || !isJsonObject(member)) return;
+  const encoded = ownDataValue(member, 'value');
+  if (typeof encoded === 'string') budget.admitBase64(encoded);
+}
+
+/**
  * Emissionskopie eines geprüften Werts in den Builder-Graphen. Liest nur
  * über Data-Property-Deskriptoren (Accessor-Slots erscheinen als abwesend),
  * erhält Schlüsselordnung und Arrayindizes und nimmt keine fremden Container
- * an. Die Rekursionstiefe ist durch die Entry-Scanner-Grenze gedeckt.
+ * an.
+ *
+ * Jeder Knoten wird VOR seiner Allokation beim Budget angemeldet: Reicht das
+ * Ausgabebudget nicht, entsteht der Knoten `limit + 1` gar nicht erst. Das
+ * Pfadfenster trägt dieselbe Adjazenz `back-matter → resources → <Index> →
+ * base64` wie die Postcondition, damit die kumulative dekodierte base64-Größe
+ * mit derselben Arithmetik und ohne zweite Fassung zählt.
  */
-function emitValue(graph: ReturnType<typeof createOscalDerivedGraph>, value: unknown, depth: number): DerivedGraphValue {
-  if (depth > CLASS_2_IMPORT_LIMITS.maxDepth) {
-    throw new TypeError('Emissionstiefe überschreitet die geprüfte Dokumenttiefe');
-  }
+function emitValue(
+  graph: ReturnType<typeof createOscalDerivedGraph>,
+  value: unknown,
+  depth: number,
+  budget: ProfileResolutionBudget,
+  window: PathWindow = 'none',
+): DerivedGraphValue {
+  budget.admitNode(depth);
   if (
     value === null ||
     typeof value === 'string' ||
@@ -428,18 +515,27 @@ function emitValue(graph: ReturnType<typeof createOscalDerivedGraph>, value: unk
 
   if (Array.isArray(value)) {
     const handle = graph.array();
-    for (const element of ownArrayDataElements(value)) {
-      graph.pushArrayItem(handle, emitValue(graph, element, depth + 1));
+    const elementWindow = windowForElement(window);
+    for (const element of ownArrayDataElements(value, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE)) {
+      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
+      graph.pushArrayItem(handle, emitValue(graph, element, depth + 1, budget, elementWindow));
     }
     return handle;
   }
 
   const handle = graph.object();
   for (const key of Reflect.ownKeys(value)) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
     if (typeof key !== 'string') continue;
     const member = ownDataValue(value, key);
     if (member === undefined) continue;
-    graph.setObjectMember(handle, key, emitValue(graph, member, depth + 1));
+    const memberWindow = windowForKey(window, key);
+    accountBase64Payload(member, memberWindow, budget);
+    graph.setObjectMember(
+      handle,
+      key,
+      emitValue(graph, member, depth + 1, budget, memberWindow === 'base64-payload' ? 'none' : memberWindow),
+    );
   }
   return handle;
 }
@@ -468,7 +564,7 @@ function currentProfileArtifact(input: SingleProfileInput): {
 /** Übernimmt Kontext nur aus der geschlossenen, bereits geprüften Plan-Map. */
 function plannedArtifact(
   plan: Extract<ProfileResolutionPlan, { ok: true }>,
-  artifactKey: string,
+  artifactKey: string
 ): { readonly key: string; readonly rootType: 'catalog' | 'profile'; readonly oscalVersion: string } | undefined {
   const rootType = plan.rootTypesByArtifactKey.get(artifactKey);
   if (rootType === undefined) return undefined;
@@ -482,9 +578,13 @@ type PhaseOutcome<T> =
 function selectedControlNodes(
   index: ReturnType<typeof indexCatalogControls>,
   ids: ReadonlySet<string>,
+  budget: ProfileResolutionBudget,
 ): JsonObject[] {
+  // Trägt die selektierten Quellknoten als Inklusion weiter.
+  budget.admitWorkingNode();
   const controls: JsonObject[] = [];
   for (const id of ids) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
     const node = index.byId.get(id);
     if (node !== undefined) controls.push(node);
   }
@@ -492,30 +592,53 @@ function selectedControlNodes(
 }
 
 /** Phase 1 — Selektion je Import gegen sein Quelldokument. */
+/**
+ * Kantenindex EINMAL je Profil, nicht je Import.
+ *
+ * Ein lineares `find` über die Kantenliste kostete bei N Importen auf N
+ * Kanten N² Vergleiche, und zwar unbudgetiert — dieselbe Bauart wie die
+ * quadratische ID-Suche, die dieses Issue bereits einmal beseitigt hat. Der
+ * Aufbau kostet eine Arbeitseinheit je Kante und ist damit gedeckt.
+ */
+function indexEdgesByHref(
+  input: SingleProfileInput,
+  budget: ProfileResolutionBudget,
+): ReadonlyMap<string, ProfileResolutionEdge> {
+  const byHref = new Map<string, ProfileResolutionEdge>();
+  for (const candidate of input.edgesByArtifactKey.get(input.artifactKey) ?? []) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
+    // Erste Kante je href gewinnt — dieselbe Auswahl, die `find` traf.
+    if (!byHref.has(candidate.href)) byHref.set(candidate.href, candidate);
+  }
+  return byHref;
+}
+
 function collectPhaseOne(
   input: SingleProfileInput,
+  budget: ProfileResolutionBudget,
 ): PhaseOutcome<{ records: SelectionRecord[]; inclusions: ControlInclusion[]; consumedResourceUuids: Set<string> }> {
   const records: SelectionRecord[] = [];
   const inclusions: ControlInclusion[] = [];
   const consumedResourceUuids = new Set<string>();
 
+  const edgeByHref = indexEdgesByHref(input, budget);
+
   for (const profileImport of input.document.view.imports) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
     const href = profileImport.href;
     if (href === undefined) {
       return reject(
         PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.IMPORT_UNMAPPED,
         profileImport.path,
-        currentProfileArtifact(input),
+        currentProfileArtifact(input)
       );
     }
-    const edge = (input.edgesByArtifactKey.get(input.artifactKey) ?? []).find(
-      (candidate) => candidate.href === href,
-    );
+    const edge = edgeByHref.get(href);
     if (edge === undefined) {
       return reject(
         PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.IMPORT_UNMAPPED,
         profileImport.path,
-        currentProfileArtifact(input),
+        currentProfileArtifact(input)
       );
     }
 
@@ -528,7 +651,7 @@ function collectPhaseOne(
       return reject(
         PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.IMPORT_PROFILE_UNRESOLVED,
         profileImport.path,
-        currentProfileArtifact(input),
+        currentProfileArtifact(input)
       );
     }
     const sourceDocument = resolvedSource ?? plannedSource;
@@ -536,15 +659,15 @@ function collectPhaseOne(
       return reject(
         PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.IMPORT_UNMAPPED,
         profileImport.path,
-        currentProfileArtifact(input),
+        currentProfileArtifact(input)
       );
     }
 
-    const index = indexCatalogControls(sourceDocument);
+    const index = indexCatalogControls(sourceDocument, budget);
     const outcome = resolveSelectionIds(index, {
       selection: profileImport.selection,
       excludeControls: profileImport.excludeControls,
-    });
+    }, budget);
     if (!outcome.ok) {
       return {
         ok: false,
@@ -552,30 +675,36 @@ function collectPhaseOne(
       };
     }
 
-    const controls = selectedControlNodes(index, outcome.ids);
+    const controls = selectedControlNodes(index, outcome.ids, budget);
     records.push({ artifactKey: edge.artifactKey, ids: outcome.ids, sourceDocument });
-    if (href.startsWith('#')) {
-      consumedResourceUuids.add(href.slice(1).toLowerCase());
-    }
+    // Die Formentscheidung über ein `href` fällt in `referenceResolution.ts`,
+    // nicht hier (Greptile-Befund zu 88a568e).
+    const consumedUuid = localFragmentUuid(href);
+    if (consumedUuid !== null) consumedResourceUuids.add(consumedUuid);
     inclusions.push({ documentKey: edge.artifactKey, controls });
   }
   return { ok: true, value: { records, inclusions, consumedResourceUuids } };
 }
 
 /** Führt die as-is-Filterung je Quelldokument in Importreihenfolge zusammen. */
-function collectAsIsOutput(records: readonly SelectionRecord[]): {
+function collectAsIsOutput(records: readonly SelectionRecord[], budget: ProfileResolutionBudget): {
   groups: JsonObject[];
   controls: JsonObject[];
 } {
+  // Beide Listen tragen die as-is-Ausgabe bis zur Emission.
+  budget.admitWorkingNode();
   const groups: JsonObject[] = [];
+  budget.admitWorkingNode();
   const controls: JsonObject[] = [];
   const append = (candidates: readonly unknown[], target: JsonObject[]): void => {
     for (const candidate of candidates) {
+      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
       if (isJsonObject(candidate)) target.push(candidate);
     }
   };
   for (const record of records) {
-    const filtered = buildAsIsGroups(readRootBody(record.sourceDocument), record.ids);
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
+    const filtered = buildAsIsGroups(readRootBody(record.sourceDocument), record.ids, budget);
     const filteredGroups = ownDataValue(filtered, 'groups');
     const filteredControls = ownDataValue(filtered, 'controls');
     if (Array.isArray(filteredGroups)) append(filteredGroups, groups);
@@ -589,6 +718,7 @@ function buildStructuredOutput(
   input: SingleProfileInput,
   records: readonly SelectionRecord[],
   inclusions: readonly ControlInclusion[],
+  budget: ProfileResolutionBudget,
 ): PhaseOutcome<{ groups: JsonObject[]; controls: JsonObject[] }> {
   const merge = input.document.view.merge;
   const declaredMethod = merge?.combine?.method ?? 'use-first';
@@ -596,32 +726,35 @@ function buildStructuredOutput(
     return reject(
       PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.COMBINE_METHOD_INVALID,
       merge?.path ?? '/',
-      currentProfileArtifact(input),
+      currentProfileArtifact(input)
     );
   }
-  const combined = applyCombine(inclusions, declaredMethod);
+  const combined = applyCombine(inclusions, declaredMethod, budget);
 
   // Fehlende Merge-Direktive bedeutet as-is (Projektentscheidung, siehe
   // Modulkopf).
   if (merge === null) {
-    return { ok: true, value: collectAsIsOutput(records) };
+    return { ok: true, value: collectAsIsOutput(records, budget) };
   }
 
   switch (merge.structure.kind) {
     case 'flat': {
-      const flatControls = combined.order.map(stripNestedChildren);
+      // Die flache Control-Liste und die leere Gruppenliste daneben.
+      budget.admitWorkingNode();
+      const flatControls = combined.order.map((node) => stripNestedChildren(node, budget));
+      budget.admitWorkingNode();
       return { ok: true, value: { groups: [], controls: flatControls } };
     }
     case 'as-is':
-      return { ok: true, value: collectAsIsOutput(records) };
+      return { ok: true, value: collectAsIsOutput(records, budget) };
     case 'custom': {
       const assembly = buildCustomGroups(
         {
-          rawGroups: readRawCustomGroups(input.document.source),
+          rawGroups: readRawCustomGroups(input.document.source, budget),
           typedGroups: merge.structure.custom.groups,
           insertControls: merge.structure.custom.insertControls,
         },
-        combined,
+        combined, budget
       );
       if (!assembly.ok) {
         return {
@@ -629,6 +762,9 @@ function buildStructuredOutput(
           diagnostic: withCurrentProfileArtifact(assembly.diagnostic, input),
         };
       }
+      // Gruppen- und Control-Liste der custom-Zusammenbauung.
+      budget.admitWorkingNode();
+      budget.admitWorkingNode();
       return {
         ok: true,
         value: { groups: [...assembly.groups], controls: [...assembly.controls] },
@@ -638,23 +774,24 @@ function buildStructuredOutput(
       return reject(
         PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.MERGE_STRUCTURE_UNRESOLVED,
         merge.path,
-        currentProfileArtifact(input),
+        currentProfileArtifact(input)
       );
   }
 }
 
 /** Phase 3 — Modify-Direktiven als Transformation über alle platzierten Controls. */
-function collectModifyTransform(document: ProfileDocument): ControlTransform {
-  const setParameters = (document.view.modify?.setParameters ?? []).map(toSetParameterDirective);
+function collectModifyTransform(document: ProfileDocument, budget: ProfileResolutionBudget): ControlTransform {
+  const setParameters = (document.view.modify?.setParameters ?? []).map((parameter) => toSetParameterDirective(parameter));
   const altersByControlId = new Map<string, AlterationDirective[]>();
-  for (const alterNode of readRawAlters(document.source)) {
-    const directive = toAlterationDirective(alterNode);
+  for (const alterNode of readRawAlters(document.source, budget)) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
+    const directive = toAlterationDirective(alterNode, budget);
     if (directive.controlId === undefined) continue;
     const bucket = altersByControlId.get(directive.controlId) ?? [];
     bucket.push(directive);
     altersByControlId.set(directive.controlId, bucket);
   }
-  return createControlTransform(setParameters, altersByControlId);
+  return createControlTransform(setParameters, altersByControlId, budget);
 }
 
 /**
@@ -668,6 +805,7 @@ function emitMetadataHandle(
   sourceMetadata: JsonObject,
   oscalVersion: string,
   topUuid: string,
+  budget: ProfileResolutionBudget,
 ): DerivedObjectHandle {
   const inheritedMetadata = copyOwnDataMembersSkipping(sourceMetadata, [
     'uuid',
@@ -675,21 +813,33 @@ function emitMetadataHandle(
     'oscal-version',
     'props',
     'links',
-  ]);
-  const metadataHandle = emitValue(graph, inheritedMetadata, 0) as DerivedObjectHandle;
+  ], budget);
+  const metadataHandle = emitValue(graph, inheritedMetadata, OUTPUT_BODY_MEMBER_DEPTH, budget) as DerivedObjectHandle;
+  const metadataMemberDepth = OUTPUT_BODY_MEMBER_DEPTH + 1;
+  budget.admitNode(metadataMemberDepth);
   graph.setObjectMember(metadataHandle, 'last-modified', PROFILE_RESOLUTION_TIMESTAMP);
+  budget.admitNode(metadataMemberDepth);
   graph.setObjectMember(metadataHandle, 'oscal-version', oscalVersion);
+  // Einträge der Trägerlisten liegen auf 5, ihre Mitglieder auf 6.
+  const carrierEntryDepth = metadataMemberDepth + 1;
+  const carrierMemberDepth = carrierEntryDepth + 1;
 
-  const propsHandle = emitCarrierEntries(graph, ownDataValue(sourceMetadata, 'props'));
+  const propsHandle = emitCarrierEntries(graph, ownDataValue(sourceMetadata, 'props'), budget);
+  budget.admitNode(carrierEntryDepth);
   const toolProp = graph.object();
+  budget.admitNode(carrierMemberDepth);
   graph.setObjectMember(toolProp, 'name', 'resolution-tool');
+  budget.admitNode(carrierMemberDepth);
   graph.setObjectMember(toolProp, 'value', `${PROFILE_RESOLUTION_VALIDATOR.name}@${PROFILE_RESOLUTION_VALIDATOR.version}`);
   graph.pushArrayItem(propsHandle, toolProp);
   graph.setObjectMember(metadataHandle, 'props', propsHandle);
 
-  const linksHandle = emitCarrierEntries(graph, ownDataValue(sourceMetadata, 'links'));
+  const linksHandle = emitCarrierEntries(graph, ownDataValue(sourceMetadata, 'links'), budget);
+  budget.admitNode(carrierEntryDepth);
   const sourceLink = graph.object();
+  budget.admitNode(carrierMemberDepth);
   graph.setObjectMember(sourceLink, 'rel', 'source-profile');
+  budget.admitNode(carrierMemberDepth);
   graph.setObjectMember(sourceLink, 'href', `urn:uuid:${topUuid}`);
   graph.pushArrayItem(linksHandle, sourceLink);
   graph.setObjectMember(metadataHandle, 'links', linksHandle);
@@ -701,11 +851,18 @@ function emitMetadataHandle(
 function emitCarrierEntries(
   graph: ReturnType<typeof createOscalDerivedGraph>,
   inherited: unknown,
+  budget: ProfileResolutionBudget,
 ): ReturnType<typeof graph.array> {
+  // props/links hängen an `metadata` (Tiefe 3), die Trägerliste liegt also
+  // auf 4 und ihre Einträge auf 5.
+  const carrierDepth = OUTPUT_BODY_MEMBER_DEPTH + 1;
+  const carrierEntryDepth = carrierDepth + 1;
+  budget.admitNode(carrierDepth);
   const handle = graph.array();
   if (Array.isArray(inherited)) {
-    for (const entry of ownArrayDataElements(inherited)) {
-      if (isJsonObject(entry)) graph.pushArrayItem(handle, emitValue(graph, entry, 1));
+    for (const entry of ownArrayDataElements(inherited, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE)) {
+      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
+      if (isJsonObject(entry)) graph.pushArrayItem(handle, emitValue(graph, entry, carrierEntryDepth, budget));
     }
   }
   return handle;
@@ -718,18 +875,25 @@ function emitCarrierEntries(
 function filteredBackMatter(
   sourceBody: JsonObject,
   consumedResourceUuids: ReadonlySet<string>,
+  budget: ProfileResolutionBudget,
 ): JsonObject | null {
   const backMatter = ownDataValue(sourceBody, 'back-matter');
   if (!isJsonObject(backMatter)) return null;
 
   const resources = ownDataValue(backMatter, 'resources');
-  if (!Array.isArray(resources)) return { ...backMatter };
+  if (!Array.isArray(resources)) {
+    budget.admitWorkingNode();
+    return { ...backMatter };
+  }
 
-  const kept = ownArrayDataElements(resources).filter((entry) => {
+  // Gefilterte Ressourcenliste und der sie tragende back-matter-Knoten.
+  budget.admitWorkingNode();
+  const kept = ownArrayDataElements(resources, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).filter((entry) => {
     if (!isJsonObject(entry)) return true;
     const uuid = ownDataValue(entry, 'uuid');
     return !(typeof uuid === 'string' && consumedResourceUuids.has(uuid.toLowerCase()));
   });
+  budget.admitWorkingNode();
   const filtered: JsonObject = { ...backMatter, resources: kept };
   if (kept.length === 0) delete filtered['resources'];
   return filtered;
@@ -738,14 +902,16 @@ function filteredBackMatter(
 const RESOURCE_FRAGMENT_PATTERN = /#([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})/gi;
 
 /** Sammelt UUID-Fragmente aus allen Stringwerten ohne Accessors auszuführen. */
-function collectReferencedResourceUuids(values: readonly unknown[]): Set<string> {
+function collectReferencedResourceUuids(values: readonly unknown[], budget: ProfileResolutionBudget): Set<string> {
   const referenced = new Set<string>();
   walkOwnContainers(values, (container) => {
     for (const key of Reflect.ownKeys(container)) {
+      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
       const descriptor = Object.getOwnPropertyDescriptor(container, key);
       if (descriptor === undefined || !('value' in descriptor)) continue;
       if (typeof descriptor.value !== 'string') continue;
       for (const match of descriptor.value.matchAll(RESOURCE_FRAGMENT_PATTERN)) {
+        budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
         referenced.add(match[1]!.toLowerCase());
       }
     }
@@ -758,15 +924,20 @@ function collectReferencedResourceUuids(values: readonly unknown[]): Set<string>
 function referencedSourceResources(
   records: readonly SelectionRecord[],
   referencedUuids: ReadonlySet<string>,
+  budget: ProfileResolutionBudget,
 ): JsonObject[] {
+  // Sammelliste der übernommenen Quellressourcen.
+  budget.admitWorkingNode();
   const resources: JsonObject[] = [];
   for (const record of records) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
     const sourceBody = readRootBody(record.sourceDocument);
     const backMatter = ownDataValue(sourceBody, 'back-matter');
     if (!isJsonObject(backMatter)) continue;
     const sourceResources = ownDataValue(backMatter, 'resources');
     if (!Array.isArray(sourceResources)) continue;
-    for (const resource of ownArrayDataElements(sourceResources)) {
+    for (const resource of ownArrayDataElements(sourceResources, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE)) {
+      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
       if (!isJsonObject(resource)) continue;
       const uuid = ownDataValue(resource, 'uuid');
       if (typeof uuid === 'string' && referencedUuids.has(uuid.toLowerCase())) {
@@ -781,28 +952,34 @@ function referencedSourceResources(
 function referencedSourceResourcesAtFixpoint(
   records: readonly SelectionRecord[],
   initialReferencedUuids: ReadonlySet<string>,
+  budget: ProfileResolutionBudget,
 ): JsonObject[] {
   const referencedUuids = new Set(initialReferencedUuids);
-  let resources = referencedSourceResources(records, referencedUuids);
+  let resources = referencedSourceResources(records, referencedUuids, budget);
 
   while (true) {
-    const discoveredUuids = collectReferencedResourceUuids(resources);
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
+    const discoveredUuids = collectReferencedResourceUuids(resources, budget);
     let changed = false;
     for (const uuid of discoveredUuids) {
+      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
       if (referencedUuids.has(uuid)) continue;
       referencedUuids.add(uuid);
       changed = true;
     }
     if (!changed) return resources;
-    resources = referencedSourceResources(records, referencedUuids);
+    resources = referencedSourceResources(records, referencedUuids, budget);
   }
 }
 
 /** Entfernt UUID-Duplikate case-insensitiv; die erste Quelle gewinnt stabil. */
-function uniqueResources(resources: readonly JsonObject[]): JsonObject[] {
+function uniqueResources(resources: readonly JsonObject[], budget: ProfileResolutionBudget): JsonObject[] {
   const seenUuids = new Set<string>();
+  // Wird als `resources`-Mitglied des Ergebnis-back-matter übernommen.
+  budget.admitWorkingNode();
   const unique: JsonObject[] = [];
   for (const resource of resources) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
     const uuid = ownDataValue(resource, 'uuid');
     if (typeof uuid === 'string') {
       const normalizedUuid = uuid.toLowerCase();
@@ -819,19 +996,22 @@ function mergedBackMatter(
   profileBackMatter: JsonObject | null,
   records: readonly SelectionRecord[],
   referencedUuids: ReadonlySet<string>,
+  budget: ProfileResolutionBudget,
 ): JsonObject | null {
   const profileResources = isJsonObject(profileBackMatter)
     ? ownDataValue(profileBackMatter, 'resources')
     : undefined;
+  // Zusammengeführte Ressourcenliste vor der Deduplizierung.
+  budget.admitWorkingNode();
   const resources = uniqueResources([
-    ...referencedSourceResourcesAtFixpoint(records, referencedUuids),
+    ...referencedSourceResourcesAtFixpoint(records, referencedUuids, budget),
     ...(Array.isArray(profileResources)
-      ? ownArrayDataElements(profileResources).filter(isJsonObject)
+      ? ownArrayDataElements(profileResources, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).filter(isJsonObject)
       : []),
-  ]);
+  ], budget);
   const merged = profileBackMatter === null
     ? {}
-    : copyOwnDataMembersSkipping(profileBackMatter, ['resources']);
+    : copyOwnDataMembersSkipping(profileBackMatter, ['resources'], budget);
   if (resources.length > 0) merged['resources'] = resources;
   return Object.keys(merged).length > 0 ? merged : null;
 }
@@ -853,7 +1033,7 @@ interface ResolvedCatalogEmission {
  * referenzierte Quellressourcen werden davor in stabiler Import- und
  * Quellreihenfolge ergänzt. Die Dokument-UUID steht an `catalog.uuid`.
  */
-function emitResolvedCatalog(input: ResolvedCatalogEmission): DerivedJsonTree {
+function emitResolvedCatalog(input: ResolvedCatalogEmission, budget: ProfileResolutionBudget): DerivedJsonTree {
   const {
     plan,
     document,
@@ -873,50 +1053,55 @@ function emitResolvedCatalog(input: ResolvedCatalogEmission): DerivedJsonTree {
     graph,
     sourceMetadata,
     plan.oscalVersion,
-    topUuid,
+    topUuid, budget
   );
 
+  budget.admitNode(OUTPUT_BODY_DEPTH);
   const bodyHandle = graph.object();
+  budget.admitNode(OUTPUT_BODY_MEMBER_DEPTH);
   graph.setObjectMember(bodyHandle, 'uuid', derivedUuid);
   graph.setObjectMember(bodyHandle, 'metadata', metadataHandle);
   if (groups.length > 0) {
-    graph.setObjectMember(bodyHandle, 'groups', emitValue(graph, groups, 0));
+    graph.setObjectMember(bodyHandle, 'groups', emitValue(graph, groups, OUTPUT_BODY_MEMBER_DEPTH, budget));
   }
   if (controls.length > 0) {
-    graph.setObjectMember(bodyHandle, 'controls', emitValue(graph, controls, 0));
+    graph.setObjectMember(bodyHandle, 'controls', emitValue(graph, controls, OUTPUT_BODY_MEMBER_DEPTH, budget));
   }
-  const profileBackMatter = filteredBackMatter(sourceBody, consumedResourceUuids);
+  const profileBackMatter = filteredBackMatter(sourceBody, consumedResourceUuids, budget);
   const referencedUuids = collectReferencedResourceUuids([
     sourceMetadata,
     groups,
     controls,
     profileBackMatter,
-  ]);
+  ], budget);
   const backMatter = mergedBackMatter(
     profileBackMatter,
     records,
-    referencedUuids,
+    referencedUuids, budget
   );
   if (backMatter !== null) {
-    graph.setObjectMember(bodyHandle, 'back-matter', emitValue(graph, backMatter, 0));
+    graph.setObjectMember(bodyHandle, 'back-matter', emitValue(graph, backMatter, OUTPUT_BODY_MEMBER_DEPTH, budget, 'after-back-matter-key'));
   }
 
+  budget.admitNode(OUTPUT_ROOT_DEPTH);
   const rootHandle = graph.object();
   graph.setObjectMember(rootHandle, 'catalog', bodyHandle);
   return graph.finishRoot(rootHandle);
 }
 
-function resolveSingleProfile(input: SingleProfileInput): { readonly ok: true; readonly tree: DerivedJsonTree } | { readonly ok: false; readonly diagnostic: OscalDiagnostic } {
-  const phaseOne = collectPhaseOne(input);
+function resolveSingleProfile(input: SingleProfileInput, budget: ProfileResolutionBudget): { readonly ok: true; readonly tree: DerivedJsonTree } | { readonly ok: false; readonly diagnostic: OscalDiagnostic } {
+  const phaseOne = collectPhaseOne(input, budget);
   if (!phaseOne.ok) return phaseOne;
 
-  const structured = buildStructuredOutput(input, phaseOne.value.records, phaseOne.value.inclusions);
+  const structured = buildStructuredOutput(input, phaseOne.value.records, phaseOne.value.inclusions, budget);
   if (!structured.ok) return structured;
 
-  const transform = collectModifyTransform(input.document);
+  const transform = collectModifyTransform(input.document, budget);
   const groups = structured.value.groups;
+  // Transformierte Control-Liste des Ergebnisgraphen.
+  budget.admitWorkingNode();
   const controls = structured.value.controls.map(transform);
-  applyTransformToGroups(groups, transform);
+  applyTransformToGroups(groups, transform, budget);
 
   // Interne Fragment-Links werden bewusst NICHT beschnitten: Das
   // unabhängige NIST-Orakel behält Verweise auf nicht aufgelöste Ziele
@@ -934,7 +1119,7 @@ function resolveSingleProfile(input: SingleProfileInput): { readonly ok: true; r
         ? PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.TOP_PROFILE_UUID_MISSING
         : PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.PROFILE_UUID_MISSING,
       '/uuid',
-      currentProfileArtifact(input),
+      currentProfileArtifact(input)
     );
   }
   const derivedUuid = deriveUuidV5(PROFILE_RESOLUTION_NAMESPACE_UUID, profileUuid);
@@ -950,13 +1135,25 @@ function resolveSingleProfile(input: SingleProfileInput): { readonly ok: true; r
       controls,
       records: phaseOne.value.records,
       consumedResourceUuids: phaseOne.value.consumedResourceUuids,
-    }),
+    }, budget),
   };
 }
 
 /**
  * Löst den gesamten Postorder-Plan vorwärts auf: Jedes importierte Profil
  * steht vor allen Importeuren und ist deshalb beim Zugriff bereits fertig.
+ *
+ * BUDGET: Der Lauf besitzt genau eine Budgetinstanz. Sie entsteht hier, wird
+ * nach unten gereicht und nie über Läufe hinweg wiederverwendet. Die
+ * öffentliche Signatur trägt bewusst KEINEN Grenzwert- und keinen
+ * Disable-Parameter — ein gleichnamiger Wert im Steuerdokument bleibt
+ * gewöhnlicher Dokumentinhalt und erreicht das Budget nicht.
+ *
+ * FANGSTELLE: Das `try` hier ist die einzige im ganzen Auflösungsweg. Ein
+ * Budgetabbruch verlässt die Tiefe als `ProfileResolutionBudgetExceeded` und
+ * wird hier zu seiner bereits redigierten Diagnose; jede andere Ausnahme wird
+ * auf einen redigierten Projektfehler abgebildet. In beiden Fällen verlässt
+ * weder ein Teilergebnis noch ein Builder-Handle diese Funktion.
  */
 export async function resolveProfile(
   request: ProfileResolutionRequest,
@@ -964,50 +1161,65 @@ export async function resolveProfile(
   const plan = request.plan;
   if (!plan.ok) return { ok: false, diagnostic: plan.diagnostic };
 
-  const resolvedByArtifact = new Map<string, unknown>();
-  for (const artifactKey of plan.order) {
-    const document = request.profileViews.get(artifactKey);
-    if (document === undefined) continue;
+  const budget = createProfileResolutionBudget();
 
-    const outcome = resolveSingleProfile({
-      artifactKey,
-      document,
-      plan,
-      edgesByArtifactKey: request.edgesByArtifactKey,
-      resolvedByArtifact,
-    });
-    if (!outcome.ok) return outcome;
-    const validated = await processClass2OscalValue(outcome.tree, {
-      trustClass: 'class-2-local-user',
-    });
-    if (!validated.ok) {
-      return {
-        ok: false,
-        diagnostic: withResolvedCatalogArtifact(
-          validated.diagnostic,
-          artifactKey,
-          plan.oscalVersion,
-        ),
-      };
+  try {
+    const resolvedByArtifact = new Map<string, unknown>();
+    for (const artifactKey of plan.order) {
+      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
+      const document = request.profileViews.get(artifactKey);
+      if (document === undefined) continue;
+
+      const outcome = resolveSingleProfile({
+        artifactKey,
+        document,
+        plan,
+        edgesByArtifactKey: request.edgesByArtifactKey,
+        resolvedByArtifact,
+      }, budget);
+      if (!outcome.ok) return outcome;
+      const validated = await processClass2OscalValue(outcome.tree, {
+        trustClass: 'class-2-local-user',
+      });
+      if (!validated.ok) {
+        return {
+          ok: false,
+          diagnostic: withResolvedCatalogArtifact(
+            validated.diagnostic,
+            artifactKey,
+            plan.oscalVersion,
+          ),
+        };
+      }
+      resolvedByArtifact.set(artifactKey, outcome.tree);
     }
-    resolvedByArtifact.set(artifactKey, outcome.tree);
-  }
 
-  const topLevel = plan.topProfileArtifactKey;
-  if (!resolvedByArtifact.has(topLevel)) {
-    return reject(
-      PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.TOP_PROFILE_UNRESOLVED,
-      '/',
-      plannedArtifact(plan, topLevel),
-    );
+    const topLevel = plan.topProfileArtifactKey;
+    const topDocument = request.profileViews.get(topLevel);
+    if (!resolvedByArtifact.has(topLevel) || topDocument === undefined) {
+      return reject(
+        PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.TOP_PROFILE_UNRESOLVED,
+        '/',
+        plannedArtifact(plan, topLevel),
+      );
+    }
+    return {
+      ok: true,
+      output: {
+        tree: resolvedByArtifact.get(topLevel)! as DerivedJsonTree,
+        trustClass: 'class-2-local-user',
+        controllingTrustClass: topDocument.context.trustClass,
+        oscalVersion: plan.oscalVersion,
+        budgetUsage: budget.usage(),
+        topProfileArtifactKey: topLevel,
+      },
+    };
+  } catch (error) {
+    if (error instanceof ProfileResolutionBudgetExceeded) {
+      return { ok: false, diagnostic: error.diagnostic };
+    }
+    // Rohtext und Stapel der Ausnahme werden NICHT übernommen: Sie könnten
+    // Dokumentfragmente tragen. Übrig bleibt der stabile Code.
+    return reject(PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.INTERNAL_ERROR, '/');
   }
-  return {
-    ok: true,
-    output: {
-      tree: resolvedByArtifact.get(topLevel)! as DerivedJsonTree,
-      trustClass: 'class-2-local-user',
-      oscalVersion: plan.oscalVersion,
-      topProfileArtifactKey: topLevel,
-    },
-  };
 }

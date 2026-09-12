@@ -32,6 +32,19 @@ import {
   reconcileBsiKnownDifferences,
   stripVolatileFields,
 } from './profileResolutionCorpusOracle';
+import { CLASS_2_IMPORT_LIMITS } from '@/domain/oscalImportContract';
+import {
+  WORK_UNIT_LIMIT,
+  type ProfileResolutionBudgetUsage,
+} from '@/domain/profileResolutionBudget';
+
+/**
+ * Die Kennzahlen je Profil, gesammelt über die drei Tests. Der abschließende
+ * Test gibt sie als Tabelle aus: `docs/OSCAL_VALIDATION.md` führt dieselben
+ * Zahlen, und ohne eine Stelle, die sie reproduzierbar erzeugt, wäre die
+ * Dokumentation eine Behauptung ohne Quelle.
+ */
+const corpusUsage = new Map<string, ProfileResolutionBudgetUsage>();
 
 const CORPUS_DIRECTORY = resolve(process.cwd(), '.cache/upstream-corpus');
 const TRACKED_MANIFEST_PATH = resolve(process.cwd(), 'upstream-manifest.json');
@@ -170,6 +183,24 @@ describe('verpflichtende Auflösung aller drei BSI-Profile', () => {
       const firstSerialized = JSON.stringify(firstRun.output.tree);
       expect(firstSerialized).toBe(JSON.stringify(secondRun.output.tree));
       expect(firstRun.output.trustClass).toBe('class-2-local-user');
+      // Die Vertrauensklasse des STEUERNDEN Profils ist die der Eingabe und
+      // bleibt von der Ergebnisklasse getrennt (GSPP-345).
+      expect(firstRun.output.controllingTrustClass).toBe('class-1-verified-public');
+
+      // KOPFRAUM-NACHWEIS (GSPP-345): Die vier laufenden Zähler dieses
+      // Profils. Sie begründen den Grenzwert NICHT — das tut die
+      // kostenbasierte Messreihe in `docs/OSCAL_VALIDATION.md` — sondern
+      // belegen, dass die legitime Nutzung unter beiden Grenzen bleibt.
+      // Determinismus schließt ein, dass beide Läufe dieselbe Arbeit kosten.
+      const usage = firstRun.output.budgetUsage;
+      expect(usage).toEqual(secondRun.output.budgetUsage);
+      expect(usage.workUnits).toBeLessThanOrEqual(WORK_UNIT_LIMIT);
+      expect(usage.nodes).toBeLessThanOrEqual(CLASS_2_IMPORT_LIMITS.maxNodes);
+      expect(usage.maxDepth).toBeLessThanOrEqual(CLASS_2_IMPORT_LIMITS.maxDepth);
+      expect(usage.decodedBase64Bytes).toBeLessThanOrEqual(
+        CLASS_2_IMPORT_LIMITS.maxDecodedBase64Bytes,
+      );
+      corpusUsage.set(lineage.profileArtifactKey, usage);
 
       // Ergebnisvertrag: Root-Key catalog, Version des steuernden Profils.
       const tree = firstRun.output.tree as Record<string, unknown>;
@@ -239,4 +270,22 @@ describe('verpflichtende Auflösung aller drei BSI-Profile', () => {
       }
     });
   }
+});
+
+describe('Kopfraum der drei BSI-Profile', () => {
+  it('gibt die vier Budgetkennzahlen als Protokolltabelle aus', () => {
+    requireCorpus();
+    expect(corpusUsage.size).toBe(CATALOG_LINEAGES.length);
+
+    const rows = [...corpusUsage.entries()].map(([key, usage]) =>
+      `| \`${key}\` | ${usage.workUnits.toLocaleString('de-DE')} `
+      + `| ${usage.nodes.toLocaleString('de-DE')} | ${usage.maxDepth} `
+      + `| ${usage.decodedBase64Bytes.toLocaleString('de-DE')} |`,
+    );
+    process.stdout.write(
+      '\n| Profil | Arbeitseinheiten | erzeugte Knoten | maximale Tiefe | dekodierte base64-Bytes |\n'
+      + '| --- | --- | --- | --- | --- |\n'
+      + `${rows.join('\n')}\n\n`,
+    );
+  });
 });

@@ -445,15 +445,22 @@ export function decodedBase64BytesForLength(encodedLength) {
 }
 
 /**
- * Worst Case für das Glob-Matching in `globToRegExp`
+ * Worst Case für das Glob-Matching in `matchGlob`
  * (`src/domain/profileResolutionSelection.ts`).
  *
- * `*` wird unbesehen zu `.*` und der Ausdruck mit `^`/`$` verankert. Eine Kette
- * aus `*a` erzeugt damit verschachtelte, überlappende `.*`-Quantoren; scheitert
- * das Muster am Ende, muss die Regex-Engine alle Aufteilungen des Eingabetextes
- * auf die Quantoren durchprobieren — der Aufwand wächst exponentiell in der
- * Zahl der Sterne, nicht linear in der Musterlänge. Weder Musterlänge noch
- * Zielstringlänge werden von den drei Klasse-2-Grenzen wirksam beschränkt.
+ * HISTORIE: Bis GSPP-345 übersetzte `globToRegExp` jedes `*` unbesehen nach
+ * `.*` und verankerte den Ausdruck. Eine Kette aus `*a` erzeugte damit
+ * verschachtelte, überlappende Quantoren; scheiterte das Muster am Ende,
+ * probierte die Regex-Engine alle Aufteilungen des Eingabetextes durch — der
+ * Aufwand wuchs exponentiell in der Zahl der Sterne. Weder Musterlänge noch
+ * Zielstringlänge werden von den Klasse-2-Grenzen wirksam beschränkt, ein
+ * Dokument von wenigen hundert Byte riss also jedes Zeitbudget (GSPP-382,
+ * geführt als GSPP-385).
+ *
+ * Seit GSPP-345 läuft der Abgleich linear in Muster × Subjekt und bucht jeden
+ * besuchten Zustand als Arbeitseinheit. Das Fixture bleibt bestehen: Es ist
+ * weiterhin der teuerste Fall des Abgleichs und belegt im Messprotokoll, dass
+ * der exponentielle Fall verschwunden ist.
  *
  * Das Muster endet auf `!`, das im Subjekt nicht vorkommt, und erzwingt damit
  * den vollständigen Fehlschlag.
