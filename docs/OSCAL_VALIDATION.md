@@ -901,7 +901,11 @@ und der Grenzwert ist das **Minimum** über alle Reihen.
 
 ```bash
 node scripts/measure-class2-budget.mjs --calibrate          # Raten der Fixtures erheben
-node scripts/measure-class2-budget.mjs --throttle 1,4 --repeat 3 --skip-fixtures
+# Herleitung: WORK_UNIT_LIMIT vorher auf einen Kandidaten ÜBER dem erwarteten
+# Wert setzen (hier 134 213 078), danach auf das Ergebnis des Laufs.
+node scripts/measure-class2-budget.mjs --throttle 1,4 --repeat 3 --skip-fixtures \
+  --search-work-limit --json docs/measurements/gspp345-work-budget.json
+node scripts/measure-class2-budget.mjs --print-source-fingerprint   # gehört das Artefakt zu diesem Stand?
 ```
 
 Der Lauf fährt je Kategorie eine Leiter von Stützpunkten und misst je
@@ -919,16 +923,16 @@ Der Anteil unten ist am größten gehaltenen Stützpunkt gemessen.
 
 | Kategorie | Anteil der Kategorie | größter gehaltener Stützpunkt (4×) | Wartezeit | erster gerissener Stützpunkt | Wartezeit |
 | --- | --- | --- | --- | --- | --- |
-| `import-edge` | 66,65 % | 16 774 778 | 3,41 s | 33 549 536 | 6,85 s |
-| `selector-compare` | 99,99 % | 33 553 207 | 3,21 s | 67 104 387 | 6,44 s |
-| `glob-state` | 99,95 % | 66 672 025 | 3,39 s | 133 776 025 | 6,42 s |
-| **`merge-step`** | **70,00 %** | **16 763 456** | **2,61 s** | **33 546 920** | **5,21 s** |
-| `alter-target-lookup` | 7,67 % | 4 194 153 | 1,04 s | nicht erreichbar | — |
-| `alter-candidate` | 99,69 % | 16 774 687 | 3,66 s | 33 551 443 | 7,27 s |
+| `import-edge` | 66,65 % | 16 774 778 | 3,50 s | 33 549 536 | 6,90 s |
+| `selector-compare` | 99,99 % | 33 553 207 | 3,45 s | 67 104 387 | 6,67 s |
+| `glob-state` | 99,95 % | 66 672 025 | 3,35 s | 133 776 025 | 6,47 s |
+| **`merge-step`** | **70,00 %** | **16 763 456** | **2,62 s** | **33 546 920** | **5,26 s** |
+| `alter-target-lookup` | 7,67 % | 4 194 153 | 1,02 s | nicht erreichbar | — |
+| `alter-candidate` | 99,69 % | 16 774 687 | 3,92 s | 33 551 443 | 7,47 s |
 
 Maßgeblich ist der Lauf bei vierfacher CPU-Drosselung als Näherung an
 Bürohardware; ungedrosselt hält dieselbe langsamste Reihe bis 67 093 820
-Einheiten (2,57 s) und reißt erst bei 134 207 648 (5,13 s). Der Grenzwert nimmt
+Einheiten (2,56 s) und reißt erst bei 134 207 648 (5,35 s). Der Grenzwert nimmt
 den größten Stützpunkt, den die LANGSAMSTE Reihe bei 4× noch hält, und schöpft
 den Budgetposten „Sichtbare Wartezeit bis zum Ergebnis" damit zu 52 % aus.
 Keine Interpolation zwischen Stützpunkten: Der Wert steht auf einer Zahl, die
@@ -956,16 +960,53 @@ nicht trägt, ist kein gehaltener Stützpunkt. Die Deckelrechnung prüft
 indem sie das Dokument an der maximalen Wiederholungszahl wirklich baut und
 gegen Byte- und Knotengrenze misst.
 
-**Was ein Wiederholungslauf zeigt und was nicht.** Der Herleitungslauf oben
-wurde gegen den damals einkompilierten Kandidaten (134 213 078) gefahren, weil
-sich oberhalb des einkompilierten Grenzwerts nicht messen lässt — dort bricht
-der Resolver ab, und ein Abbruch liefert keine Wartezeit. Ein
-Wiederholungslauf gegen den jetzt committeten Wert bestätigt deshalb nur, dass
-alle Stützpunkte bis zur Grenze halten; er kann die Obergrenze nicht erneut
-suchen. Eine **Anhebung** der Grenze setzt voraus, dass ein Mensch den
-Kandidaten erhöht und neu misst. Der Bericht weist beide Zahlen nebeneinander
-aus — den aus den Reihen getragenen Wert und den einkompilierten —, damit eine
-Abweichung nicht unbemerkt bleibt.
+**Eine Deckelung nimmt eine Kategorie nur dann aus der Herleitung, wenn sie
+wirklich deckelt.** Drei Bedingungen, alle drei notwendig: Die Deckelzeile ist
+**terminal** (kein gemessener Stützpunkt liegt dahinter), sie trägt eine
+**endliche Erreichbarkeitszahl**, und diese Zahl liegt **unter** dem
+schließlich gewählten Grenzwert. Vor allem aber wird die Reihe von unten nach
+oben gelesen: Reißt ein Stützpunkt **vor** dem Deckel die sichtbare Wartezeit,
+endet die Aussage dort, und die Kategorie ist nicht gedeckelt, sondern langsam
+— ihr Riss liegt im erreichbaren Bereich. Die Vorgängerfassung prüfte die
+Deckelung zuerst und nahm eine gerissene Kategorie deshalb vollständig aus der
+Herleitung; sie konnte damit einen Grenzwert freigeben, den eine erreichbare
+Last bereits riss. Liegt der Deckel **über** dem Grenzwert, geht die Reihe mit
+ihrem gemessenen Wert in das Minimum ein wie jede andere: Zwischen ihrem
+letzten gemessenen Stützpunkt und ihrem Deckel ist nichts gemessen, und
+ungemessene Strecke trägt keinen Grenzwert.
+
+**Herleitung und Bestätigung sind zwei verschiedene Läufe.** Ein Lauf misst
+nur bis zu seinem **eigenen** Kandidaten — jenseits davon bricht der Resolver
+ab, und ein Abbruch liefert keine Wartezeit. Daraus folgt beides:
+
+- **Herleitung** (`--search-work-limit`): Der einkompilierte Wert ist bewusst
+  über den erwarteten Grenzwert gesetzt, damit die Reihen bis zu ihrem Riss
+  gemessen werden können. Nur dieser Lauf **findet** einen Wert. Ein Riss ist
+  hier das gesuchte Ergebnis, kein Fehler.
+- **Bestätigung** (Vorgabe): Der einkompilierte Wert ist der gelieferte.
+  Gefragt wird nicht, ob die Reihen den Kandidaten exakt treffen — das können
+  sie nicht, weil eine Fixture nur in ganzen Wiederholungen wächst und ihren
+  Stützpunkt von unten annähert. Gefragt wird, ob unterhalb des gelieferten
+  Werts irgendetwas **reißt**. Reißt eine Reihe, bricht der Lauf ab, statt
+  einen erfolgreichen Bericht mit zwei widersprüchlichen Zahlen auszugeben.
+
+Der einkompilierte Wert ist an das committete Artefakt **gebunden**:
+[`measureClass2BudgetReport.test.ts`](../scripts/measureClass2BudgetReport.test.ts)
+leitet ihn bei jedem Testlauf aus dem Artefakt neu her und verlangt Gleichheit,
+verlangt die sechs Kategoriereihen und verlangt, dass der Kandidat des
+Artefakts **echt über** dem gelieferten Wert liegt — sonst wäre der Beleg
+zirkulär. Eine **Anhebung** der Grenze setzt weiterhin voraus, dass ein Mensch
+den Kandidaten erhöht und neu misst.
+
+**Warum der Quellfingerprint eine Datei auslässt.** Aus derselben Notwendigkeit
+heraus muss sich `profileResolutionBudgetLimits.mjs` zwischen Mess- und
+Lieferstand unterscheiden. Läge sie im Fingerprint, könnte kein Artefakt je zum
+gelieferten Stand passen, und die Frage „gehört dieses Artefakt zu diesem
+Head?" wäre gar nicht erst stellbar. Sie ist deshalb ausgenommen, das Artefakt
+weist die Ausnahme unter `excludes` aus, und der Kandidat jedes Laufs steht als
+`workUnitLimit` daneben. `--print-source-fingerprint` druckt den Fingerprint des
+aktuellen Baums ohne Messlauf; er muss mit `sourceBefore.sha256` des Artefakts
+übereinstimmen.
 
 **Kopfraum über der legitimen Nutzung.** Der Korpuslauf
 [`profileResolutionCorpus.test.ts`](../scripts/profileResolutionCorpus.test.ts)

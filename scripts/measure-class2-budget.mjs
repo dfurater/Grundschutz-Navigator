@@ -73,12 +73,33 @@ import { assertScalableNodeCounts } from './class2WorstCaseFixtures.mjs';
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const HARNESS_PATH = '/scripts/measure/class2-budget.html';
 
+/**
+ * Die EINE Datei, die zwischen Messstand und Lieferstand verschieden sein
+ * MUSS und deshalb nicht in den Quellfingerprint gehört.
+ *
+ * Ein Lauf misst nur bis zu seinem eigenen Kandidaten — jenseits davon bricht
+ * der Resolver ab, und ein Abbruch liefert keine Wartezeit. Die Herleitung
+ * braucht deshalb einen Kandidaten ÜBER dem Ergebnis, und der Lieferstand
+ * trägt danach das Ergebnis. Läge diese Datei im Fingerprint, könnte kein
+ * Artefakt je zum gelieferten Stand passen, und die Prüfung „gehört das
+ * Artefakt zu diesem Head?" wäre gar nicht erst stellbar.
+ *
+ * Verschwiegen wird dabei nichts: Der Kandidat jedes Laufs steht als
+ * `workUnitLimit` im Artefakt, und `assertWorkLimitRun` verlangt, dass er
+ * echt über dem hergeleiteten Wert liegt.
+ */
+const SOURCE_FINGERPRINT_EXCLUDES = Object.freeze([
+  'src/domain/profileResolutionBudgetLimits.mjs',
+]);
+
 /** Actual measured sources, including untracked implementation files. */
 function sourceRevision() {
   const paths = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard',
     '--', 'src', 'scripts', 'package.json', 'package-lock.json', 'vite.config.ts',
     'tsconfig.json', 'tsconfig.app.json', 'tsconfig.node.json'], { cwd: REPO_ROOT, encoding: 'utf8' })
-    .split('\0').filter(Boolean).sort();
+    .split('\0').filter(Boolean)
+    .filter((path) => !SOURCE_FINGERPRINT_EXCLUDES.includes(path))
+    .sort();
   const hash = createHash('sha256');
   for (const path of paths) {
     hash.update(path).update('\0').update(readFileSync(resolve(REPO_ROOT, path))).update('\0');
@@ -87,6 +108,7 @@ function sourceRevision() {
     commit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf8' }).trim(),
     sha256: hash.digest('hex'),
     files: paths.length,
+    excludes: [...SOURCE_FINGERPRINT_EXCLUDES],
   };
 }
 
@@ -498,6 +520,7 @@ async function measureInBrowser(browser, origin, options) {
           : await measureProfileResolution(page, options.repeat),
         calibration: options.calibrate ? await measureCalibration(page) : null,
         workUnitLimit: WORK_UNIT_LIMIT,
+        workUnitLimitRole: options.searchWorkLimit ? 'search' : 'confirm',
       });
     } finally {
       try {
@@ -540,6 +563,13 @@ function renderCalibration(report) {
 async function run() {
   const options = parseArguments(process.argv.slice(2));
   const sourceBefore = sourceRevision();
+  // Ohne Server und ohne Browser: Der Fingerprint allein beantwortet die
+  // Frage, ob ein committetes Artefakt zum aktuellen Stand gehört. Ohne
+  // diesen Weg müsste ein Prüfer die Dateiliste von Hand nachbauen.
+  if (options.printSourceFingerprint) {
+    process.stdout.write(`${JSON.stringify(sourceBefore, null, 2)}\n`);
+    return;
+  }
   // VOR dem Serverstart: Ein Stützpunkt, den nicht jedes skalierbare Fixture
   // trägt, würde den Lauf sonst erst nach dem Start von Vite und Chromium
   // abbrechen — ohne Bericht und mit einem Konstruktionsfehler statt einer

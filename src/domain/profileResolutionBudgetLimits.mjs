@@ -35,8 +35,8 @@
  * allein am Selektorpfad gemessen; die `merge-step`-Reihe braucht für
  * dieselbe Einheitenzahl das Achtfache an Zeit und riss den Posten deutlich.
  * Der Wert hier ist das fail-closed Minimum über die Reihen: `merge-step`
- * hält 16 763 456 Einheiten in 2,61 s, der nächste gemessene Stützpunkt
- * (33 546 920) kostet 5,21 s und reißt.
+ * hält 16 763 456 Einheiten in 2,62 s, der nächste gemessene Stützpunkt
+ * (33 546 920) kostet 5,26 s und reißt.
  *
  * `alter-target-lookup` geht nicht in das Minimum ein: Ihr ungünstigstes
  * Steuerdokument erreicht bei voll ausgeschöpfter Byte- und Knotengrenze
@@ -46,6 +46,13 @@
  * Keine Interpolation, keine Hochrechnung: Der Wert steht auf einer Zahl, die
  * wirklich gemessen wurde. Messartefakt und Protokoll:
  * `docs/measurements/gspp345-work-budget.json` und `docs/OSCAL_VALIDATION.md`.
+ *
+ * DIESE ZAHL IST NICHT FREI WÄHLBAR. `measureClass2BudgetReport.test.ts`
+ * leitet sie bei jedem Testlauf aus dem committeten Artefakt neu her und
+ * verlangt Gleichheit; zusätzlich muss der Kandidat des Artefakts echt über
+ * ihr liegen, weil ein Lauf nur bis zu seinem eigenen Kandidaten misst und ein
+ * Artefakt mit gleichem Kandidaten den Wert deshalb nicht belegen könnte. Wer
+ * hier eine Zahl ändert, ohne neu zu messen, macht den Testlauf rot.
  *
  * WOGEGEN die Grenze schützt: Bytes begrenzen Arbeit nicht. Ein Profil an der
  * 10-MiB-Bytegrenze, das nur aus Ausschlussselektoren oder aus Importen

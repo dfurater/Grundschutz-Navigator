@@ -398,7 +398,10 @@ Worst-Case-Profil je Kategorie die Kategorie wirklich treibt, die es behauptet.
 Die Ausgabegrenzen sind **dieselben** Werte, die die Postcondition prüft, und
 kommen unverändert aus `CLASS_2_IMPORT_LIMITS` — eine zweite Zahl für dieselbe
 Grenze hieße, dass laufendes Budget und Postcondition auseinanderlaufen können.
-Zahlen, Herleitung und Messprotokoll: [OSCAL-Validierungsvertrag](./OSCAL_VALIDATION.md#work_unit_limit-kostenbasiert-hergeleitet-je-kategorie-gemessen).
+Der Wert der Arbeitsgrenze ist nicht frei wählbar: Ein Test leitet ihn bei jedem
+Lauf aus dem committeten Messartefakt neu her und verlangt Gleichheit, sodass
+eine Anhebung ohne neue Messung rot wird. Zahlen, Herleitung und Messprotokoll:
+[OSCAL-Validierungsvertrag](./OSCAL_VALIDATION.md#work_unit_limit-kostenbasiert-hergeleitet-je-kategorie-gemessen).
 
 **Abbruchfluss.** Die Zählmethoden werfen. Der Wurf ist eine Entscheidung, kein
 Nebeneffekt: Die Arbeitseinheiten fallen in vier Modulen und rund zwanzig

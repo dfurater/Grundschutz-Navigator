@@ -147,6 +147,7 @@ export function parseArguments(argv) {
   const options = {
     throttleRates: [1, 4], repeat: 3, jsonPath: null, scaleNodes: null, skipGlob: false,
     skipProfileResolution: false, skipFixtures: false, calibrate: false,
+    searchWorkLimit: false, printSourceFingerprint: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
@@ -164,6 +165,18 @@ export function parseArguments(argv) {
       options.skipProfileResolution = true;
     } else if (flag === '--skip-fixtures') {
       options.skipFixtures = true;
+    } else if (flag === '--search-work-limit') {
+      // Erklärt den Lauf als HERLEITUNG der Arbeitsgrenze: Der einkompilierte
+      // Wert ist bewusst über den erwarteten Grenzwert gesetzt, damit die
+      // Reihen bis zu ihrem Riss gemessen werden können. Ohne dieses Flag ist
+      // jeder Lauf eine Bestätigung und bricht ab, sobald eine Reihe
+      // unterhalb des einkompilierten Werts reißt.
+      options.searchWorkLimit = true;
+    } else if (flag === '--print-source-fingerprint') {
+      // Druckt den Quellfingerprint des aktuellen Baums und beendet, ohne zu
+      // messen: der Einzeiler, mit dem sich ein committetes Artefakt gegen den
+      // Lieferstand prüfen lässt.
+      options.printSourceFingerprint = true;
     } else if (flag === '--calibrate') {
       // Erhebt allein die Raten der Worst-Case-Fixtures und misst keine
       // Stützpunkte. Ein Kalibrierlauf ist kein Messlauf: Sein Ergebnis wandert
@@ -406,43 +419,93 @@ function renderScaleTable(run) {
 }
 
 /**
+ * Auswertung EINER Kategoriereihe: Wie weit trägt sie, und WARUM hört sie auf?
+ *
+ * Dieselbe Regel wie `deriveNodeLimit`, aus demselben Grund: keine
+ * Interpolation, keine Hochrechnung, lückenlose Haltung von unten. Die Reihe
+ * wird aufsteigend über den Stützpunkten gelesen und endet beim ersten
+ * Stützpunkt, der nicht mehr trägt.
+ *
+ * Der GRUND des Endes gehört zum Ergebnis, weil er zwei verschiedene Aussagen
+ * trennt, die früher beide als „Reihe zu Ende" durchgingen:
+ *
+ *   - `time`/`incomplete` — die Reihe REISST. Der Stützpunkt ist erreichbar
+ *     und hält die sichtbare Wartezeit nicht (oder liefert gar keine). Alles
+ *     darüber ist unbelegt, die Kategorie schränkt den Grenzwert ein.
+ *   - `document-cap` — die Reihe ist GEDECKELT. Das ungünstigste
+ *     Steuerdokument dieser Kategorie trägt den Stützpunkt gar nicht mehr; er
+ *     existiert nicht, statt zu reißen.
+ *
+ * Eine Deckelung zählt nur, wenn sie TERMINAL ist (kein weiterer Stützpunkt
+ * dahinter) und einen endlichen Erreichbarkeitswert trägt. Alles andere ist
+ * eine kaputte Reihe und wird fail-closed wie ein Riss behandelt: Eine
+ * Deckelzeile mitten in der Reihe kann die Stützpunkte hinter sich nicht
+ * erklären, und ein Deckel ohne Zahl belegt keine Obergrenze.
+ *
+ * Entscheidend ist die REIHENFOLGE: Ein Riss UNTERHALB einer späteren
+ * Deckelzeile beendet die Reihe vor dem Deckel. Er liegt damit im
+ * erreichbaren Bereich, und die Kategorie ist nicht gedeckelt, sondern
+ * langsam. Die Vorgängerfassung prüfte die Deckelung zuerst und hat eine
+ * gerissene Kategorie deshalb vollständig aus der Herleitung genommen —
+ * fail-open (Codex-Befund zu 10338f3).
+ *
+ * @param {object[]} rows Zeilen einer Kategoriereihe.
+ * @returns {{held: number|null, capped: boolean, ceiling: number|null,
+ *   breach: 'none'|'time'|'incomplete'|'broken-cap'}}
+ */
+export function evaluateWorkUnitSeries(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return { held: null, capped: false, ceiling: null, breach: 'incomplete' };
+  }
+  const ordered = [...rows].sort((left, right) => left.targetWorkUnits - right.targetWorkUnits);
+  let held = null;
+  for (let index = 0; index < ordered.length; index += 1) {
+    const row = ordered[index];
+    if (row.code === 'FIXTURE_DOKUMENTGRENZE') {
+      const terminal = index === ordered.length - 1;
+      if (!terminal || !finiteNonnegative(row.reachableWorkUnits)) {
+        return { held, capped: false, ceiling: null, breach: 'broken-cap' };
+      }
+      return { held, capped: true, ceiling: row.reachableWorkUnits, breach: 'none' };
+    }
+    if (row.ok !== true) return { held, capped: false, ceiling: null, breach: 'incomplete' };
+    if (!finiteNonnegative(row.maxMs) || !finiteNonnegative(row.workUnits)) {
+      return { held, capped: false, ceiling: null, breach: 'incomplete' };
+    }
+    if (row.maxMs > VISIBLE_WAIT_BUDGET_MS) {
+      return { held, capped: false, ceiling: null, breach: 'time' };
+    }
+    held = row.workUnits;
+  }
+  return { held, capped: false, ceiling: null, breach: 'none' };
+}
+
+/**
  * Der größte gemessene Stützpunkt der Arbeitsreihe, der die sichtbare
  * Wartezeit hält — und unterhalb dessen kein gemessener Stützpunkt reißt.
  *
- * Dieselbe Regel wie `deriveNodeLimit`, aus demselben Grund: keine
- * Interpolation, keine Hochrechnung, lückenlose Haltung von unten. Reißt
- * schon der kleinste Stützpunkt, ist die Rückgabe `null` — dann trägt die
- * Reihe keinen Grenzwert.
- *
  * Ein Stützpunkt ohne erhobene Laufzeit ist kein bestandener, sondern ein
  * fehlender: Ein abgebrochener Lauf (`ok: false`) liefert keine Wartezeit und
- * beendet die Aussage an dieser Stelle.
+ * beendet die Aussage an dieser Stelle. Reißt schon der kleinste Stützpunkt,
+ * ist die Rückgabe `null` — dann trägt die Reihe keinen Grenzwert.
  *
  * @param {object[]} rows Zeilen der Arbeitsreihe eines Laufs.
  */
 export function deriveSeriesWorkUnitLimit(rows) {
-  if (!Array.isArray(rows) || rows.length === 0) return null;
-  let held = null;
-  for (const row of [...rows].sort((left, right) => left.targetWorkUnits - right.targetWorkUnits)) {
-    if (row.ok !== true) break;
-    if (!finiteNonnegative(row.maxMs) || !finiteNonnegative(row.workUnits)) break;
-    if (row.maxMs > VISIBLE_WAIT_BUDGET_MS) break;
-    held = row.workUnits;
-  }
-  return held;
+  return evaluateWorkUnitSeries(rows).held;
 }
 
 /**
  * Eine Reihe ist GEDECKELT, wenn ihr letzter Stützpunkt nicht an der Zeit
  * scheiterte, sondern daran, dass das Steuerdokument ihn nicht mehr tragen
- * kann. Eine solche Kategorie erreicht die Arbeitsgrenze nie und schränkt sie
- * deshalb auch nicht ein — sie ist bereits durch die Dokumentgrenzen gedeckt.
- * Ihr eigener Deckel gehört trotzdem in den Bericht.
+ * kann. Eine solche Kategorie kann die Arbeitsgrenze nur dann nicht
+ * einschränken, wenn ihr Deckel unter dem Grenzwert liegt — die Entscheidung
+ * darüber fällt in `deriveWorkUnitLimit`, weil sie den Grenzwert kennt.
  *
  * @param {object[]} rows Zeilen einer Kategoriereihe.
  */
 export function seriesIsDocumentCapped(rows) {
-  return Array.isArray(rows) && rows.some((row) => row.code === 'FIXTURE_DOKUMENTGRENZE');
+  return evaluateWorkUnitSeries(rows).capped;
 }
 
 /**
@@ -454,16 +517,39 @@ export function seriesIsDocumentCapped(rows) {
  * unterschiedlich viel Zeit; ein Grenzwert auf der Rate der schnellsten
  * Kategorie bricht das Zeitbudget, sobald ein Dokument die langsamste treibt.
  *
+ * Eine gedeckelte Reihe wird NICHT vorab ausgenommen, sondern erst, wenn ihr
+ * Deckel nachweislich unter dem gewählten Grenzwert liegt. Nur dann ist die
+ * Aussage „diese Kategorie erreicht die Grenze nie" wirklich belegt. Liegt
+ * ihr Deckel darüber, geht sie mit ihrem gemessenen Wert ins Minimum ein wie
+ * jede andere Reihe: Zwischen ihrem letzten gemessenen Stützpunkt und ihrem
+ * Deckel ist nichts gemessen, und ungemessene Strecke trägt keinen Grenzwert.
+ * Weil das Minimum dabei sinken kann, wird bis zum Festpunkt iteriert.
+ *
  * @param {object[]} series Kategoriereihen eines Laufs.
  */
 export function deriveWorkUnitLimit(series) {
   if (!Array.isArray(series) || series.length === 0) return null;
+  const evaluated = series.map((entry) => evaluateWorkUnitSeries(entry.rows));
   let limit = null;
-  for (const entry of series) {
-    if (seriesIsDocumentCapped(entry.rows)) continue;
-    const held = deriveSeriesWorkUnitLimit(entry.rows);
-    if (held === null) return null;
-    limit = limit === null ? held : Math.min(limit, held);
+  for (const entry of evaluated) {
+    if (entry.capped) continue;
+    if (entry.held === null) return null;
+    limit = limit === null ? entry.held : Math.min(limit, entry.held);
+  }
+  // Ausschließlich gedeckelte Reihen belegen keinen Grenzwert: Es gibt dann
+  // keine gemessene Zeitaussage, auf der eine Grenze stehen könnte.
+  if (limit === null) return null;
+  for (let round = 0; round < evaluated.length; round += 1) {
+    let lowered = false;
+    for (const entry of evaluated) {
+      if (!entry.capped || entry.ceiling <= limit) continue;
+      if (entry.held === null) return null;
+      if (entry.held < limit) {
+        limit = entry.held;
+        lowered = true;
+      }
+    }
+    if (!lowered) break;
   }
   return limit;
 }
@@ -495,23 +581,33 @@ function renderSupportPointRow(row, category) {
 }
 
 /** Das Urteil unter einer Kategoriereihe — gedeckelt, tragend oder nicht tragend. */
-function renderSeriesVerdict(entry) {
-  if (seriesIsDocumentCapped(entry.rows)) {
-    const capRow = entry.rows.find((row) => row.code === 'FIXTURE_DOKUMENTGRENZE');
-    const ceiling = (capRow?.reachableWorkUnits ?? 0).toLocaleString('de-DE');
+function renderSeriesVerdict(entry, limit) {
+  const evaluated = evaluateWorkUnitSeries(entry.rows);
+  if (evaluated.capped && limit !== null && evaluated.ceiling <= limit) {
     return 'Diese Kategorie erreicht die Arbeitsgrenze NICHT: Ihr ungünstigstes Steuerdokument '
-      + `schöpft Byte- und Knotengrenze aus und kommt dabei auf höchstens ${ceiling} `
+      + `schöpft Byte- und Knotengrenze aus und kommt dabei auf höchstens ${evaluated.ceiling.toLocaleString('de-DE')} `
       + 'Arbeitseinheiten. Sie schränkt den Grenzwert deshalb nicht ein.';
   }
-  const derived = deriveSeriesWorkUnitLimit(entry.rows);
-  if (derived === null) {
+  if (evaluated.capped) {
+    return 'Diese Kategorie ist durch die Dokumentgrenzen gedeckelt, ihr Deckel von '
+      + `${evaluated.ceiling.toLocaleString('de-DE')} Arbeitseinheiten liegt aber ÜBER dem `
+      + 'Grenzwert. Zwischen ihrem letzten gemessenen Stützpunkt und dem Deckel ist nichts '
+      + 'gemessen; die Reihe geht deshalb mit ihrem gemessenen Wert in das Minimum ein: '
+      + `${evaluated.held === null ? 'kein gehaltener Stützpunkt' : `${evaluated.held.toLocaleString('de-DE')} Arbeitseinheiten`}.`;
+  }
+  if (evaluated.breach === 'broken-cap') {
+    return 'Diese Reihe führt eine Dokumentgrenze, die nicht terminal ist oder keine '
+      + 'Erreichbarkeitszahl trägt. Sie belegt damit keine Obergrenze und wird wie ein Riss '
+      + 'behandelt.';
+  }
+  if (evaluated.held === null) {
     return 'Kein Stützpunkt hält die sichtbare Wartezeit — die Reihe begründet KEINEN Grenzwert.';
   }
-  return `Getragener Grenzwert aus dieser Reihe: ${derived.toLocaleString('de-DE')} Arbeitseinheiten.`;
+  return `Getragener Grenzwert aus dieser Reihe: ${evaluated.held.toLocaleString('de-DE')} Arbeitseinheiten.`;
 }
 
 /** Eine Kategoriereihe der Profile Resolution über den Stützpunkten. */
-function renderProfileResolutionSeries(entry) {
+function renderProfileResolutionSeries(entry, limit) {
   return [
     '',
     `**Kategorie \`${entry.category}\`**`,
@@ -520,8 +616,69 @@ function renderProfileResolutionSeries(entry) {
     '| --- | --- | --- | --- | --- | --- | --- |',
     ...entry.rows.map((row) => renderSupportPointRow(row, entry.category)),
     '',
-    renderSeriesVerdict(entry),
+    renderSeriesVerdict(entry, limit),
   ];
+}
+
+/**
+ * Die beiden Rollen, die ein Arbeitsgrenzenlauf haben kann. Sie stellen
+ * verschiedene Fragen und werden deshalb verschieden streng geprüft.
+ *
+ * `search` — HERLEITUNG. Der einkompilierte Wert ist bewusst über den
+ * erwarteten Grenzwert gesetzt, damit die Stützpunkte überhaupt bis dorthin
+ * reichen, wo die Reihen reißen. Ohne diesen Lauf gibt es keinen Grenzwert:
+ * Jenseits des einkompilierten Werts bricht der Resolver ab, ein Lauf kann
+ * also nie einen Stützpunkt ÜBER seinem eigenen Kandidaten messen. Ein Riss
+ * ist hier das gesuchte Ergebnis, kein Fehler.
+ *
+ * `confirm` — BESTÄTIGUNG (Vorgabe). Der einkompilierte Wert ist der
+ * gelieferte. Gefragt wird nicht, ob die Reihen den Kandidaten exakt treffen —
+ * das können sie nicht, weil eine Fixture nur in ganzen Wiederholungen wächst
+ * und ihren Stützpunkt deshalb von unten annähert. Gefragt wird, ob unterhalb
+ * des gelieferten Werts irgendetwas REISST. Reißt eine Reihe, ist der
+ * gelieferte Wert widerlegt und der Lauf bricht ab.
+ */
+export const WORK_LIMIT_ROLES = Object.freeze(['search', 'confirm']);
+
+/**
+ * Prüft einen Arbeitsgrenzenlauf fail-closed und liefert den hergeleiteten
+ * Wert. Wirft, statt einen erfolgreichen Bericht mit zwei widersprüchlichen
+ * Zahlen auszugeben (Codex-Befund zu 10338f3).
+ *
+ * @param {object} run Ein Drosselungslauf.
+ */
+export function assertWorkLimitRun(run) {
+  if (!finiteNonnegative(run.workUnitLimit) || run.workUnitLimit === 0) {
+    throw new Error('Arbeitsreihe ohne ausgewiesenen Grenzwertkandidaten');
+  }
+  const role = run.workUnitLimitRole ?? 'confirm';
+  if (!WORK_LIMIT_ROLES.includes(role)) {
+    throw new Error(`Arbeitsreihe mit unbekannter Rolle: ${role}`);
+  }
+  const derived = deriveWorkUnitLimit(run.profileResolution);
+  if (derived !== null && derived > run.workUnitLimit) {
+    // Unmöglich: Kein Stützpunkt kann mehr Arbeit verbrauchen, als der
+    // Kandidat zulässt. Träte das auf, wäre die Messung selbst defekt.
+    throw new Error(
+      `Hergeleiteter Grenzwert ${derived} liegt über dem Kandidaten ${run.workUnitLimit}`,
+    );
+  }
+  if (role === 'search') return derived;
+  if (derived === null) {
+    throw new Error(
+      `Bestätigungslauf trägt den einkompilierten Grenzwert ${run.workUnitLimit} nicht: `
+      + 'mindestens eine Kategoriereihe hält an keinem Stützpunkt',
+    );
+  }
+  for (const entry of run.profileResolution) {
+    const evaluated = evaluateWorkUnitSeries(entry.rows);
+    if (evaluated.breach === 'none') continue;
+    throw new Error(
+      `Bestätigungslauf trägt den einkompilierten Grenzwert ${run.workUnitLimit} nicht: `
+      + `Kategorie ${entry.category} reißt unterhalb (${evaluated.breach})`,
+    );
+  }
+  return derived;
 }
 
 /** Alle Kategoriereihen der Profile Resolution samt fail-closed Gesamturteil. */
@@ -529,19 +686,22 @@ function renderProfileResolutionTable(run) {
   // Der einkompilierte Grenzwert kommt als MESSDATUM aus dem Lauf, nicht als
   // Import: Dieses Modul bleibt frei von Abhängigkeiten, und das Artefakt
   // sagt selbst, gegen welchen Kandidaten gemessen wurde.
-  if (!finiteNonnegative(run.workUnitLimit) || run.workUnitLimit === 0) {
-    throw new Error('Arbeitsreihe ohne ausgewiesenen Grenzwertkandidaten');
-  }
-  const derived = deriveWorkUnitLimit(run.profileResolution);
+  const derived = assertWorkLimitRun(run);
+  const role = run.workUnitLimitRole ?? 'confirm';
+  const closing = role === 'search'
+    ? `Herleitungslauf: Der Kandidat ${run.workUnitLimit.toLocaleString('de-DE')} ist bewusst `
+      + 'über den erwarteten Grenzwert gesetzt, damit die Reihen bis zu ihrem Riss gemessen '
+      + `werden können. Zu übernehmen ist der fail-closed über alle Kategorien getragene Wert `
+      + `**${derived.toLocaleString('de-DE')}** Arbeitseinheiten `
+      + `(Budget sichtbare Wartezeit ${formatMs(VISIBLE_WAIT_BUDGET_MS)}).`
+    : `Bestätigungslauf: Keine Kategoriereihe reißt unterhalb des einkompilierten Grenzwerts `
+      + `${run.workUnitLimit.toLocaleString('de-DE')}. Größter in diesem Lauf gemessener `
+      + `gemeinsamer Stützpunkt: ${derived.toLocaleString('de-DE')} Arbeitseinheiten `
+      + `(Budget sichtbare Wartezeit ${formatMs(VISIBLE_WAIT_BUDGET_MS)}).`;
   return [
-    ...run.profileResolution.flatMap(renderProfileResolutionSeries),
+    ...run.profileResolution.flatMap((entry) => renderProfileResolutionSeries(entry, derived)),
     '',
-    derived === null
-      ? 'Mindestens eine Kategoriereihe hält die sichtbare Wartezeit an keinem Stützpunkt — '
-        + 'die Messung begründet KEINEN Grenzwert.'
-      : `Fail-closed über alle Kategorien getragener Grenzwert: ${derived.toLocaleString('de-DE')} `
-        + `Arbeitseinheiten (Budget sichtbare Wartezeit ${formatMs(VISIBLE_WAIT_BUDGET_MS)}). `
-        + `Einkompiliert ist ${run.workUnitLimit.toLocaleString('de-DE')}.`,
+    closing,
   ];
 }
 
