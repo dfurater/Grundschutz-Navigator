@@ -143,6 +143,46 @@ export function parseNodeCounts(value) {
   return counts;
 }
 
+/**
+ * Flaggen ohne Wert. Als Tabelle statt als Zweigkette: Eine Kette wächst mit
+ * jeder Flagge und trägt die Bedeutung im Kontrollfluss statt im Namen.
+ */
+const SWITCH_FLAGS = Object.freeze({
+  '--skip-glob': 'skipGlob',
+  '--skip-profile-resolution': 'skipProfileResolution',
+  '--skip-fixtures': 'skipFixtures',
+  // Erklärt den Lauf als HERLEITUNG der Arbeitsgrenze: Der einkompilierte Wert
+  // ist bewusst über den erwarteten Grenzwert gesetzt, damit die Reihen bis zu
+  // ihrem Riss gemessen werden können. Ohne dieses Flag ist jeder Lauf eine
+  // Bestätigung und bricht ab, sobald eine Reihe unterhalb reißt.
+  '--search-work-limit': 'searchWorkLimit',
+  // Druckt den Quellfingerprint des aktuellen Baums und beendet, ohne zu
+  // messen: der Einzeiler, mit dem sich ein committetes Artefakt gegen den
+  // Lieferstand prüfen lässt.
+  '--print-source-fingerprint': 'printSourceFingerprint',
+});
+
+/** Flaggen mit genau einem Wert, jeweils samt ihrer Deutung. */
+const VALUE_FLAGS = Object.freeze({
+  '--throttle': ['throttleRates', (value) => parseThrottleRates(value ?? '')],
+  '--repeat': ['repeat', (value) => Number.parseInt(value ?? '', 10)],
+  '--json': ['jsonPath', (value) => value ?? null],
+  '--scale': ['scaleNodes', (value) => parseNodeCounts(value ?? '')],
+});
+
+/**
+ * Ein Kalibrierlauf erhebt allein die Raten der Worst-Case-Fixtures. Liefe er
+ * zusätzlich die Stützpunkte, wären seine Zahlen an Fixtures gemessen, die er
+ * gerade erst neu vermisst.
+ */
+const CALIBRATION_OPTIONS = Object.freeze({
+  calibrate: true,
+  skipFixtures: true,
+  skipGlob: true,
+  skipProfileResolution: true,
+  throttleRates: [1],
+});
+
 export function parseArguments(argv) {
   const options = {
     throttleRates: [1, 4], repeat: 3, jsonPath: null, scaleNodes: null, skipGlob: false,
@@ -151,42 +191,14 @@ export function parseArguments(argv) {
   };
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
-    if (flag === '--throttle') {
-      options.throttleRates = parseThrottleRates(argv[++index] ?? '');
-    } else if (flag === '--repeat') {
-      options.repeat = Number.parseInt(argv[++index] ?? '', 10);
-    } else if (flag === '--json') {
-      options.jsonPath = argv[++index] ?? null;
-    } else if (flag === '--scale') {
-      options.scaleNodes = parseNodeCounts(argv[++index] ?? '');
-    } else if (flag === '--skip-glob') {
-      options.skipGlob = true;
-    } else if (flag === '--skip-profile-resolution') {
-      options.skipProfileResolution = true;
-    } else if (flag === '--skip-fixtures') {
-      options.skipFixtures = true;
-    } else if (flag === '--search-work-limit') {
-      // Erklärt den Lauf als HERLEITUNG der Arbeitsgrenze: Der einkompilierte
-      // Wert ist bewusst über den erwarteten Grenzwert gesetzt, damit die
-      // Reihen bis zu ihrem Riss gemessen werden können. Ohne dieses Flag ist
-      // jeder Lauf eine Bestätigung und bricht ab, sobald eine Reihe
-      // unterhalb des einkompilierten Werts reißt.
-      options.searchWorkLimit = true;
-    } else if (flag === '--print-source-fingerprint') {
-      // Druckt den Quellfingerprint des aktuellen Baums und beendet, ohne zu
-      // messen: der Einzeiler, mit dem sich ein committetes Artefakt gegen den
-      // Lieferstand prüfen lässt.
-      options.printSourceFingerprint = true;
+    const valueFlag = VALUE_FLAGS[flag];
+    if (valueFlag !== undefined) {
+      const [key, read] = valueFlag;
+      options[key] = read(argv[++index]);
+    } else if (SWITCH_FLAGS[flag] !== undefined) {
+      options[SWITCH_FLAGS[flag]] = true;
     } else if (flag === '--calibrate') {
-      // Erhebt allein die Raten der Worst-Case-Fixtures und misst keine
-      // Stützpunkte. Ein Kalibrierlauf ist kein Messlauf: Sein Ergebnis wandert
-      // von Hand in die Fixture-Datei, damit der nächste Messlauf seine
-      // Stützpunkte überhaupt treffen kann.
-      options.calibrate = true;
-      options.skipFixtures = true;
-      options.skipGlob = true;
-      options.skipProfileResolution = true;
-      options.throttleRates = [1];
+      Object.assign(options, CALIBRATION_OPTIONS);
     } else {
       throw new Error(`Unbekanntes Argument: ${flag}`);
     }
@@ -459,8 +471,7 @@ export function evaluateWorkUnitSeries(rows) {
   }
   const ordered = [...rows].sort((left, right) => left.targetWorkUnits - right.targetWorkUnits);
   let held = null;
-  for (let index = 0; index < ordered.length; index += 1) {
-    const row = ordered[index];
+  for (const [index, row] of ordered.entries()) {
     if (row.code === 'FIXTURE_DOKUMENTGRENZE') {
       const terminal = index === ordered.length - 1;
       if (!terminal || !finiteNonnegative(row.reachableWorkUnits)) {
@@ -527,29 +538,46 @@ export function seriesIsDocumentCapped(rows) {
  *
  * @param {object[]} series Kategoriereihen eines Laufs.
  */
-export function deriveWorkUnitLimit(series) {
-  if (!Array.isArray(series) || series.length === 0) return null;
-  const evaluated = series.map((entry) => evaluateWorkUnitSeries(entry.rows));
+function limitFromUncappedSeries(evaluated) {
   let limit = null;
   for (const entry of evaluated) {
     if (entry.capped) continue;
+    // Eine Reihe, die keinen Stützpunkt hält, beendet die Aussage für alle.
     if (entry.held === null) return null;
     limit = limit === null ? entry.held : Math.min(limit, entry.held);
   }
-  // Ausschließlich gedeckelte Reihen belegen keinen Grenzwert: Es gibt dann
-  // keine gemessene Zeitaussage, auf der eine Grenze stehen könnte.
+  // `null` auch dann, wenn ALLE Reihen gedeckelt sind: Ohne eine einzige
+  // gemessene Zeitaussage steht kein Grenzwert auf einer Messung.
+  return limit;
+}
+
+/**
+ * Eine Senkungsrunde: Jede gedeckelte Reihe, deren Deckel ÜBER dem Grenzwert
+ * liegt, geht mit ihrem gemessenen Wert ein. `null` bedeutet, dass eine solche
+ * Reihe gar nichts hält und die Herleitung damit endet.
+ */
+function lowerByReachableCaps(evaluated, limit) {
+  let lowered = limit;
+  for (const entry of evaluated) {
+    if (!entry.capped || entry.ceiling <= lowered) continue;
+    if (entry.held === null) return null;
+    if (entry.held < lowered) lowered = entry.held;
+  }
+  return lowered;
+}
+
+export function deriveWorkUnitLimit(series) {
+  if (!Array.isArray(series) || series.length === 0) return null;
+  const evaluated = series.map((entry) => evaluateWorkUnitSeries(entry.rows));
+  let limit = limitFromUncappedSeries(evaluated);
   if (limit === null) return null;
+  // Bis zum Festpunkt: Senkt eine Deckelreihe das Minimum, kann dadurch der
+  // Deckel einer weiteren Reihe über den Grenzwert rutschen.
   for (let round = 0; round < evaluated.length; round += 1) {
-    let lowered = false;
-    for (const entry of evaluated) {
-      if (!entry.capped || entry.ceiling <= limit) continue;
-      if (entry.held === null) return null;
-      if (entry.held < limit) {
-        limit = entry.held;
-        lowered = true;
-      }
-    }
-    if (!lowered) break;
+    const lowered = lowerByReachableCaps(evaluated, limit);
+    if (lowered === null) return null;
+    if (lowered === limit) break;
+    limit = lowered;
   }
   return limit;
 }
@@ -589,11 +617,13 @@ function renderSeriesVerdict(entry, limit) {
       + 'Arbeitseinheiten. Sie schränkt den Grenzwert deshalb nicht ein.';
   }
   if (evaluated.capped) {
+    const heldCell = evaluated.held === null
+      ? 'kein gehaltener Stützpunkt'
+      : `${evaluated.held.toLocaleString('de-DE')} Arbeitseinheiten`;
     return 'Diese Kategorie ist durch die Dokumentgrenzen gedeckelt, ihr Deckel von '
       + `${evaluated.ceiling.toLocaleString('de-DE')} Arbeitseinheiten liegt aber ÜBER dem `
       + 'Grenzwert. Zwischen ihrem letzten gemessenen Stützpunkt und dem Deckel ist nichts '
-      + 'gemessen; die Reihe geht deshalb mit ihrem gemessenen Wert in das Minimum ein: '
-      + `${evaluated.held === null ? 'kein gehaltener Stützpunkt' : `${evaluated.held.toLocaleString('de-DE')} Arbeitseinheiten`}.`;
+      + `gemessen; die Reihe geht deshalb mit ihrem gemessenen Wert in das Minimum ein: ${heldCell}.`;
   }
   if (evaluated.breach === 'broken-cap') {
     return 'Diese Reihe führt eine Dokumentgrenze, die nicht terminal ist oder keine '

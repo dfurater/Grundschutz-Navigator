@@ -78,6 +78,7 @@ import {
 } from './oscalDerivedGraph';
 import { processClass2OscalValue } from './oscalObjectPipeline';
 import { walkOwnContainers } from './oscalObjectWalk';
+import { localFragmentUuid } from './referenceResolution';
 import {
   windowForElement,
   windowForKey,
@@ -676,9 +677,10 @@ function collectPhaseOne(
 
     const controls = selectedControlNodes(index, outcome.ids, budget);
     records.push({ artifactKey: edge.artifactKey, ids: outcome.ids, sourceDocument });
-    if (href.startsWith('#')) {
-      consumedResourceUuids.add(href.slice(1).toLowerCase());
-    }
+    // Die Formentscheidung über ein `href` fällt in `referenceResolution.ts`,
+    // nicht hier (Greptile-Befund zu 88a568e).
+    const consumedUuid = localFragmentUuid(href);
+    if (consumedUuid !== null) consumedResourceUuids.add(consumedUuid);
     inclusions.push({ documentKey: edge.artifactKey, controls });
   }
   return { ok: true, value: { records, inclusions, consumedResourceUuids } };

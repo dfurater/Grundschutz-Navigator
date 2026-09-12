@@ -25,6 +25,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isBuiltin } from 'node:module';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -45,8 +46,17 @@ export const WORK_LIMIT_ENTRY_POINTS = Object.freeze([
   'src/domain/profileResolutionBudget.ts',
   'src/adapters/oscalProfileDocument.ts',
   'scripts/profileResolutionWorstCaseFixtures.mjs',
-  'scripts/measureClass2BudgetReport.mjs',
 ]);
+
+/**
+ * Die AUSWERTUNG (`measureClass2BudgetReport.mjs`) steht bewusst nicht in der
+ * Hülle. Sie läuft im Browser nie mit und erzeugt keine Rohdaten; sie leitet
+ * aus ihnen den Wert ab. Und sie ist bereits schärfer gebunden als durch einen
+ * Fingerprint: Der Bindungstest leitet den Grenzwert bei JEDEM Testlauf mit der
+ * aktuellen Auswertung aus dem Artefakt neu her. Eine Änderung an ihr wird also
+ * sofort geprüft — ohne einen Browsermesslauf zu erzwingen, der an denselben
+ * Rohdaten nichts ändern würde.
+ */
 
 /**
  * Die EINE Datei, die zwischen Messstand und Lieferstand verschieden sein
@@ -72,23 +82,38 @@ export const PROVENANCE_EXCLUDED_PATHS = Object.freeze([
 const RESOLUTION_SUFFIXES = Object.freeze(['', '.ts', '.mjs', '.mts', '.tsx', '.js', '/index.ts', '/index.mjs']);
 
 /**
- * Alle projektinternen Importspezifizierer einer Datei.
+ * Alle Importspezifizierer einer Datei.
  *
  * Bewusst eine Textsuche und kein Parser: Sie darf keine Datei ÜBERSEHEN,
- * Mehrtreffer sind unschädlich. Erfasst werden statische `import`/`export
- * from`-Formen und dynamische `import(...)`-Aufrufe mit festem Literal.
+ * Mehrtreffer sind unschädlich. Die Muster setzen direkt am Schlüsselwort an
+ * und tragen kein `[\s\S]*?` — eine Suche, die den ganzen Dateikopf
+ * überspringen darf, backtrackt superlinear. Ausgerechnet hier wäre das
+ * unpassend: Dieser Slice hat dieselbe Bauart aus dem Glob-Pfad entfernt.
+ * Die `from`-Form deckt mehrzeilige Importlisten mit ab, weil sie am `from`
+ * ansetzt und nicht am `import`.
  */
+const IMPORT_PATTERNS = Object.freeze([
+  /\bfrom\s*['"]([^'"\n]+)['"]/g,
+  /\bimport\s*['"]([^'"\n]+)['"]/g,
+  /\bimport\s*\(\s*['"]([^'"\n]+)['"]/g,
+]);
+
 function importSpecifiers(source) {
   const found = new Set();
-  const patterns = [
-    /(?:^|\n)\s*(?:import|export)[\s\S]*?from\s*['"]([^'"]+)['"]/g,
-    /(?:^|\n)\s*import\s*['"]([^'"]+)['"]/g,
-    /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
-  ];
-  for (const pattern of patterns) {
+  for (const pattern of IMPORT_PATTERNS) {
     for (const match of source.matchAll(pattern)) found.add(match[1]);
   }
   return [...found];
+}
+
+/**
+ * Sortierung über UTF-16-Code-Units, ausdrücklich nicht `localeCompare`:
+ * Der Fingerprint hängt an der Reihenfolge, und eine locale-abhängige
+ * Sortierung machte ihn von der Umgebung des Messrechners abhängig.
+ */
+function byCodeUnit(left, right) {
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
 }
 
 /** Löst einen Spezifizierer zu einem repo-relativen Pfad auf, oder zu `null`. */
@@ -113,12 +138,13 @@ function resolveSpecifier(specifier, fromPath) {
 }
 
 /**
- * Die transitive Hülle der Einstiegspunkte: jede projektinterne Datei, die der
+ * Die transitive Hülle der Einstiegspunkte: jede Datei und jedes Paket, die der
  * gemessene Auflösungslauf ausführt. Sortiert, damit der Fingerprint nicht an
  * der Besuchsreihenfolge hängt.
  */
 export function collectWorkLimitSources(entryPoints = WORK_LIMIT_ENTRY_POINTS) {
   const seen = new Set();
+  const packages = new Set();
   const queue = [...entryPoints];
   while (queue.length > 0) {
     const path = queue.pop();
@@ -131,21 +157,81 @@ export function collectWorkLimitSources(entryPoints = WORK_LIMIT_ENTRY_POINTS) {
     const source = readFileSync(absolute, 'utf8');
     for (const specifier of importSpecifiers(source)) {
       const target = resolveSpecifier(specifier, path);
-      if (target !== null && !seen.has(target)) queue.push(target);
+      if (target !== null) {
+        if (!seen.has(target)) queue.push(target);
+      } else if (isExternalSpecifier(specifier)) {
+        packages.add(packageNameOf(specifier));
+      }
     }
   }
-  return [...seen].filter((path) => !PROVENANCE_EXCLUDED_PATHS.includes(path)).sort();
+  return {
+    paths: [...seen].filter((path) => !PROVENANCE_EXCLUDED_PATHS.includes(path)).sort(byCodeUnit),
+    packages: [...packages].sort(byCodeUnit),
+  };
+}
+
+/** Ein Spezifizierer, der aus `node_modules` kommt — kein Pfad, kein Builtin. */
+function isExternalSpecifier(specifier) {
+  if (specifier.startsWith('.') || specifier.startsWith('@/') || specifier.startsWith('/')) return false;
+  if (isBuiltin(specifier)) return false;
+  // Ein Treffer aus Fließtext oder einem Beispiel ist kein Paket. Paketnamen
+  // sind eng definiert; alles andere fliegt hier fail-closed heraus, statt als
+  // fehlender Lockfile-Eintrag den ganzen Lauf abzubrechen.
+  return /^(?:@[a-z0-9][\w.-]*\/)?[a-z0-9][\w.-]*(?:\/[\w.-]+)*$/.test(specifier);
+}
+
+/** `ajv/dist/2020` → `ajv`, `@scope/paket/unterpfad` → `@scope/paket`. */
+function packageNameOf(specifier) {
+  const parts = specifier.split('/');
+  return specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
 }
 
 /**
- * Fingerprint des Messwegs. Gleiche Zahl bedeutet: Der Code, an dem die
- * Arbeitsgrenze gemessen wurde, ist unverändert — die Messung gilt noch.
+ * Die aufgelösten Versionen der externen Pakete des Messwegs, transitiv über
+ * das Lockfile.
+ *
+ * Dateien allein decken den gemessenen Lauf nicht ab: Er führt vor dem Ergebnis
+ * die Schemaprüfung mit Ajv aus. Würde Ajv langsamer, bliebe ein Fingerprint
+ * über reine Repository-Dateien unverändert und ein altes Arbeitslimit weiter
+ * als belegt stehen (Greptile-Befund zu 88a568e).
+ *
+ * Fail-closed: Ein Paket ohne Lockfile-Eintrag bricht ab, statt still aus dem
+ * Fingerprint zu fallen.
+ */
+function resolvePackageVersions(names) {
+  const lock = JSON.parse(readFileSync(resolve(REPO_ROOT, 'package-lock.json'), 'utf8'));
+  const entries = lock.packages ?? {};
+  const versions = new Map();
+  const queue = [...names];
+  while (queue.length > 0) {
+    const name = queue.pop();
+    if (versions.has(name)) continue;
+    const entry = entries[`node_modules/${name}`];
+    if (entry === undefined || typeof entry.version !== 'string') {
+      throw new Error(`Laufzeitpaket des Messwegs fehlt im Lockfile: ${name}`);
+    }
+    versions.set(name, entry.version);
+    for (const dependency of Object.keys(entry.dependencies ?? {})) {
+      if (!versions.has(dependency)) queue.push(dependency);
+    }
+  }
+  return [...versions.entries()]
+    .map(([name, version]) => `${name}@${version}`)
+    .sort(byCodeUnit);
+}
+
+/**
+ * Fingerprint des Messwegs. Gleiche Zahl bedeutet: Der Code UND die Laufzeit,
+ * an denen die Arbeitsgrenze gemessen wurde, sind unverändert — die Messung
+ * gilt noch.
  */
 export function workLimitProvenance() {
-  const paths = collectWorkLimitSources();
+  const { paths, packages } = collectWorkLimitSources();
+  const runtime = resolvePackageVersions(packages);
   const hash = createHash('sha256');
   for (const path of paths) {
     hash.update(path).update('\0').update(readFileSync(resolve(REPO_ROOT, path))).update('\0');
   }
-  return { sha256: hash.digest('hex'), files: paths.length, paths };
+  for (const entry of runtime) hash.update(entry).update('\0');
+  return { sha256: hash.digest('hex'), files: paths.length, paths, runtime };
 }

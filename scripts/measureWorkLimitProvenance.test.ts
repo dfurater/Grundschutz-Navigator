@@ -13,7 +13,7 @@ import {
 } from './measureWorkLimitProvenance.mjs';
 
 describe('collectWorkLimitSources', () => {
-  const sources = collectWorkLimitSources();
+  const { paths: sources, packages } = collectWorkLimitSources();
 
   it('erfasst den gesamten Auflösungspfad, nicht nur die Einstiegspunkte', () => {
     // Die Hülle wird aus den ECHTEN Importen berechnet. Diese Module tauchen in
@@ -40,10 +40,19 @@ describe('collectWorkLimitSources', () => {
     for (const path of PROVENANCE_EXCLUDED_PATHS) expect(sources).not.toContain(path);
   });
 
-  it('nimmt keine externen Abhängigkeiten auf', () => {
-    for (const path of sources) {
-      expect(path.startsWith('node_modules/')).toBe(false);
-    }
+  it('trennt externe Pakete von Repository-Dateien', () => {
+    for (const path of sources) expect(path.startsWith('node_modules/')).toBe(false);
+    // Der gemessene Lauf führt vor dem Ergebnis die Schemaprüfung aus. Würde
+    // diese Bibliothek langsamer, müsste das Gate das sehen.
+    expect(packages).toContain('ajv');
+  });
+
+  it('lässt die Auswertung außen vor — sie ist schärfer gebunden als durch einen Hash', () => {
+    // Der Bindungstest leitet den Grenzwert bei jedem Lauf mit der AKTUELLEN
+    // Auswertung aus dem Artefakt neu her. Sie zusätzlich zu fingerprinten
+    // erzwänge einen Browsermesslauf für eine Änderung, die an den Rohdaten
+    // nichts ändert.
+    expect(sources).not.toContain('scripts/measureClass2BudgetReport.mjs');
   });
 
   it('ist sortiert und doppelfrei, damit der Fingerprint nicht an der Reihenfolge hängt', () => {
@@ -64,5 +73,13 @@ describe('workLimitProvenance', () => {
     expect(first.sha256).toBe(second.sha256);
     expect(first.files).toBe(first.paths.length);
     expect(first.files).toBeGreaterThan(WORK_LIMIT_ENTRY_POINTS.length);
+  });
+
+  it('nennt die aufgelösten Laufzeitversionen, nicht nur die Paketnamen', () => {
+    const runtime = workLimitProvenance().runtime;
+    expect(runtime.some((entry) => /^ajv@\d+\.\d+\.\d+/.test(entry))).toBe(true);
+    // Transitiv: Ajv bringt eigene Abhängigkeiten mit, und auch deren Laufzeit
+    // läuft im gemessenen Pfad mit.
+    expect(runtime.length).toBeGreaterThan(1);
   });
 });

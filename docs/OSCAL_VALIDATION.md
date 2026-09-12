@@ -923,16 +923,16 @@ Der Anteil unten ist am größten gehaltenen Stützpunkt gemessen.
 
 | Kategorie | Anteil der Kategorie | größter gehaltener Stützpunkt (4×) | Wartezeit | erster gerissener Stützpunkt | Wartezeit |
 | --- | --- | --- | --- | --- | --- |
-| `import-edge` | 66,65 % | 16 774 778 | 3,33 s | 33 549 536 | 6,65 s |
-| `selector-compare` | 99,99 % | 33 553 207 | 3,27 s | 67 104 387 | 6,48 s |
-| `glob-state` | 99,95 % | 66 672 025 | 3,36 s | 133 776 025 | 6,57 s |
-| **`merge-step`** | **70,00 %** | **16 763 456** | **2,66 s** | **33 546 920** | **5,31 s** |
-| `alter-target-lookup` | 7,67 % | 4 194 153 | 1,02 s | nicht erreichbar | — |
-| `alter-candidate` | 99,69 % | 16 774 687 | 3,73 s | 33 551 443 | 7,46 s |
+| `import-edge` | 66,65 % | 16 774 778 | 3,26 s | 33 549 536 | 6,53 s |
+| `selector-compare` | 99,99 % | 33 553 207 | 3,20 s | 67 104 387 | 6,40 s |
+| `glob-state` | 99,95 % | 66 672 025 | 3,34 s | 133 776 025 | 6,51 s |
+| **`merge-step`** | **70,00 %** | **16 763 456** | **2,63 s** | **33 546 920** | **5,26 s** |
+| `alter-target-lookup` | 7,67 % | 4 194 153 | 1,00 s | nicht erreichbar | — |
+| `alter-candidate` | 99,69 % | 16 774 687 | 3,70 s | 33 551 443 | 7,39 s |
 
 Maßgeblich ist der Lauf bei vierfacher CPU-Drosselung als Näherung an
 Bürohardware; ungedrosselt hält dieselbe langsamste Reihe bis 67 093 820
-Einheiten (2,56 s) und reißt erst bei 134 207 648 (5,10 s). Der Grenzwert nimmt
+Einheiten (2,55 s) und reißt erst bei 134 207 648 (5,10 s). Der Grenzwert nimmt
 den größten Stützpunkt, den die LANGSAMSTE Reihe bei 4× noch hält, und schöpft
 den Budgetposten „Sichtbare Wartezeit bis zum Ergebnis" damit zu 53 % aus.
 Keine Interpolation zwischen Stützpunkten: Der Wert steht auf einer Zahl, die
@@ -1008,13 +1008,25 @@ wird rot.
   gemessen". Er bleibt **Protokoll**. Als Gate wäre er unbrauchbar: Jede
   Änderung an einer beliebigen UI-Komponente erzwänge einen Browsermesslauf.
 - Die **Messwegprovenienz** (`sourceBefore.workLimitProvenance.sha256`) deckt
-  genau die Dateien ab, die der gemessene Auflösungslauf ausführt. Sie ist die
+  genau das ab, was der gemessene Auflösungslauf ausführt. Sie ist die
   **Testbedingung**. Ihre Hülle ist keine gepflegte Liste, sondern aus den
   echten Importen berechnet
   ([`measureWorkLimitProvenance.mjs`](../scripts/measureWorkLimitProvenance.mjs)):
-  ab den Einstiegspunkten des Messharnisches transitiv über alle
-  projektinternen Importe. Eine handgeschriebene Liste wäre bei jedem neuen
-  Modul des Auflösungspfads still zu eng geworden.
+  ab den Einstiegspunkten des Messharnisches transitiv über alle Importe. Eine
+  handgeschriebene Liste wäre bei jedem neuen Modul des Auflösungspfads still
+  zu eng geworden. Sie umfasst **beides** — Repository-Dateien und die
+  aufgelösten Versionen der externen Laufzeit (`runtime`, transitiv aus dem
+  Lockfile). Dateien allein genügen nicht: Der gemessene Lauf führt vor dem
+  Ergebnis die Schemaprüfung mit Ajv aus, und würde die langsamer, bliebe ein
+  Fingerprint über reine Repository-Dateien unverändert.
+
+Die **Auswertung** (`measureClass2BudgetReport.mjs`) steht bewusst in keiner
+der beiden Hüllen. Sie läuft im Browser nie mit und erzeugt keine Rohdaten; sie
+leitet aus ihnen den Wert ab. Und sie ist schärfer gebunden als durch einen
+Fingerprint: Der Bindungstest leitet den Grenzwert bei jedem Testlauf mit der
+aktuellen Auswertung aus dem Artefakt neu her. Eine Änderung an ihr wird also
+sofort geprüft, ohne einen Browsermesslauf zu erzwingen, der an denselben
+Rohdaten nichts ändern würde.
 
 Beide lassen `profileResolutionBudgetLimits.mjs` aus — genau diese Datei muss
 sich zwischen Mess- und Lieferstand unterscheiden, sonst wäre die Frage „gehört
