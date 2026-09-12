@@ -35,8 +35,8 @@
  * allein am Selektorpfad gemessen; die `merge-step`-Reihe braucht für
  * dieselbe Einheitenzahl das Achtfache an Zeit und riss den Posten deutlich.
  * Der Wert hier ist das fail-closed Minimum über die Reihen: `merge-step`
- * hält 16 763 456 Einheiten in 2,68 s, der nächste gemessene Stützpunkt
- * (33 546 920) kostet 5,31 s und reißt.
+ * hält 16 763 456 Einheiten in 2,61 s, der nächste gemessene Stützpunkt
+ * (33 546 920) kostet 5,21 s und reißt.
  *
  * `alter-target-lookup` geht nicht in das Minimum ein: Ihr ungünstigstes
  * Steuerdokument erreicht bei voll ausgeschöpfter Byte- und Knotengrenze

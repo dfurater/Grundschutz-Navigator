@@ -915,14 +915,16 @@ es weist je Stützpunkt zusätzlich den Anteil der benannten Kategorie an der
 Gesamtarbeit aus, damit jede Reihe belegt, dass sie die Kategorie wirklich
 treibt, die sie behauptet.
 
+Der Anteil unten ist am größten gehaltenen Stützpunkt gemessen.
+
 | Kategorie | Anteil der Kategorie | größter gehaltener Stützpunkt (4×) | Wartezeit | erster gerissener Stützpunkt | Wartezeit |
 | --- | --- | --- | --- | --- | --- |
-| `import-edge` | 66,7 % | 16 774 778 | 3,41 s | 33 549 536 | 6,85 s |
-| `selector-compare` | 100,0 % | 33 553 207 | 3,21 s | 67 104 387 | 6,44 s |
-| `glob-state` | 100,0 % | 66 672 025 | 3,39 s | 133 776 025 | 6,42 s |
-| **`merge-step`** | **70,0 %** | **16 763 456** | **2,61 s** | **33 546 920** | **5,21 s** |
-| `alter-target-lookup` | 7,7 % | 4 194 153 | 1,04 s | nicht erreichbar | — |
-| `alter-candidate` | 99,7 % | 16 774 687 | 3,66 s | 33 551 443 | 7,27 s |
+| `import-edge` | 66,65 % | 16 774 778 | 3,41 s | 33 549 536 | 6,85 s |
+| `selector-compare` | 99,99 % | 33 553 207 | 3,21 s | 67 104 387 | 6,44 s |
+| `glob-state` | 99,95 % | 66 672 025 | 3,39 s | 133 776 025 | 6,42 s |
+| **`merge-step`** | **70,00 %** | **16 763 456** | **2,61 s** | **33 546 920** | **5,21 s** |
+| `alter-target-lookup` | 7,67 % | 4 194 153 | 1,04 s | nicht erreichbar | — |
+| `alter-candidate` | 99,69 % | 16 774 687 | 3,66 s | 33 551 443 | 7,27 s |
 
 Maßgeblich ist der Lauf bei vierfacher CPU-Drosselung als Näherung an
 Bürohardware; ungedrosselt hält dieselbe langsamste Reihe bis 67 093 820
@@ -933,7 +935,7 @@ Keine Interpolation zwischen Stützpunkten: Der Wert steht auf einer Zahl, die
 wirklich gemessen wurde.
 
 **Zwei Kategorien treiben ihren Zähler nicht allein.** `import-edge` und
-`merge-step` erreichen 66,7 beziehungsweise 70,0 Prozent Anteil. Der Rest
+`merge-step` erreichen 66,65 beziehungsweise 70,00 Prozent Anteil. Der Rest
 entfällt in beiden Fällen auf die Selektion, die je Import unvermeidlich
 mitläuft — ein Import ohne Auswahlschritt existiert nicht. Die Reihen messen
 damit die Kosten eines Laufs, den ihre Kategorie dominiert, und das ist die
