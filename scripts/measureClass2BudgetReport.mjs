@@ -573,7 +573,13 @@ export function deriveWorkUnitLimit(series) {
   if (limit === null) return null;
   // Bis zum Festpunkt: Senkt eine Deckelreihe das Minimum, kann dadurch der
   // Deckel einer weiteren Reihe über den Grenzwert rutschen.
-  for (let round = 0; round < evaluated.length; round += 1) {
+  //
+  // Die Rundenschranke ist keine Vorsichtsmaßnahme, sondern eine Schranke, die
+  // gilt: Jede Runde senkt den Grenzwert ECHT — sonst bricht sie ab —, und es
+  // gibt höchstens so viele verschiedene gemessene Werte wie Reihen.
+  let remainingRounds = evaluated.length;
+  while (remainingRounds > 0) {
+    remainingRounds -= 1;
     const lowered = lowerByReachableCaps(evaluated, limit);
     if (lowered === null) return null;
     if (lowered === limit) break;
