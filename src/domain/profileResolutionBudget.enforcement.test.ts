@@ -13,7 +13,10 @@ import { describe, expect, it } from 'vitest';
 import { parseProfileDocument } from '@/adapters/oscalProfileDocument';
 import type { TrustClass } from './oscalDocumentContext';
 import { CLASS_2_IMPORT_LIMITS } from './oscalImportContract';
-import { PROFILE_RESOLUTION_BUDGET_DIAGNOSTIC_CODES } from './profileResolutionBudget';
+import {
+  PROFILE_RESOLUTION_BUDGET_DIAGNOSTIC_CODES,
+  PROFILE_RESOLUTION_WORK_UNITS,
+} from './profileResolutionBudget';
 import { resolveProfile } from './profileResolutionEngine';
 import { buildProfileResolutionPlan } from './profileResolutionImportGraph';
 import type { ProfileResolutionEdge } from './profileResolutionImportGraph';
@@ -27,9 +30,12 @@ const FIXTURE_MARKER = 'ZZ-GEHEIM-MARKER-7f3a1c';
 /**
  * Ausmaße, die das Arbeitsbudget unter PRODUKTIONSGRENZEN erschöpfen.
  *
- * Ein Selektor kostet je Control-ID rund 8,4 Arbeitseinheiten (gemessen,
- * `scripts/profileResolutionWorstCaseFixtures.mjs`). 8 500 × 2 000 × 8,4 sind
- * rund 143 Millionen Einheiten und liegen damit über `WORK_UNIT_LIMIT`.
+ * Ein Glob-Ausschlussselektor kostet je Control-ID rund 8,4 Arbeitseinheiten.
+ * 8 500 × 2 000 × 8,4 sind rund 143 Millionen Einheiten und liegen damit über
+ * `WORK_UNIT_LIMIT`. Die Zahl ist hier nur die Begründung der Testgröße; der
+ * Kostenbeleg je Kategorie liegt im Messapparat
+ * (`scripts/profileResolutionWorstCaseFixtures.mjs`), und der Test prüft
+ * ohnehin den Abbruch, nicht eine bestimmte Einheitenzahl.
  *
  * Der Lauf kostet ungefähr eine Sekunde, und das ist unvermeidlich: Die Grenze
  * ist so bemessen, dass sie fünf Sekunden Wartezeit deckelt — sie zu
@@ -48,6 +54,7 @@ function profileDoc(spec: {
   imports: Record<string, unknown>[];
   backMatter?: Record<string, unknown>;
   merge?: Record<string, unknown>;
+  modify?: Record<string, unknown>;
 }): Record<string, unknown> {
   return {
     profile: {
@@ -55,6 +62,7 @@ function profileDoc(spec: {
       metadata: { title: 'Budgetprofil', version: '1.0.0', 'oscal-version': VERSION },
       imports: spec.imports,
       ...(spec.merge !== undefined && { merge: spec.merge }),
+      ...(spec.modify !== undefined && { modify: spec.modify }),
       ...(spec.backMatter !== undefined && { 'back-matter': spec.backMatter }),
     },
   };
@@ -85,6 +93,17 @@ async function resolveWorld(spec: {
   );
   return resolveProfile({ plan, edgesByArtifactKey, profileViews });
 }
+
+/**
+ * Gebuchte Container je Add/Remove-Zyklus auf einer Control, GEMESSEN an
+ * diesem Fixture. Die Alteration mit `adds` bucht die flache Kopie, die neue
+ * parts-Liste und zwei Kanonisierungskopien; die Alteration mit `removes`
+ * bucht die Kopie, die gefilterte parts-Liste und eine Kanonisierungskopie —
+ * zusammen fünf Objektkopien und zwei Array-Container. Die Zahl steht hier
+ * als Regressionsanker: Fällt eine Buchung weg, sinkt sie. Ohne die Buchung
+ * der beiden parts-Listen wären es fünf.
+ */
+const CYCLE_NODE_COST = 7;
 
 const EDGE_TO_SOURCE: Record<string, ProfileResolutionEdge[]> = {
   'profile-top': [{ href: './src.json', artifactKey: 'catalog-src' }],
@@ -359,6 +378,49 @@ function measureFinishedGraph(value: unknown, depth = 1): { nodes: number; maxDe
   return { nodes, maxDepth };
 }
 
+describe('Deckung des geschlossenen Work-Unit-Satzes', () => {
+  it('bucht jede der sechs Kategorien in einem echten Auflösungslauf', async () => {
+    // Der geschlossene Satz behauptet, jede potenziell wachsende Operation
+    // rechne über GENAU EINE dieser Kategorien ab. Eine deklarierte, aber nie
+    // gebuchte Kategorie ist entweder tot oder ihre Operation läuft
+    // unbudgetiert unter fremder Kategorie — beides ein Vertragsbruch, und
+    // beim Abbruch nennt die Diagnose dann den falschen strukturellen Pfad.
+    // `alter-target-lookup` war bis zu diesem Test genau das: deklariert, im
+    // Produktionspfad aber unter `import-edge` gebucht.
+    //
+    // Der BSI-Korpus taugt als Orakel dafür nicht: Keines der drei Profile
+    // benutzt `matching.pattern`, `glob-state` bliebe dort immer null.
+    const outcome = await resolveWorld({
+      documents: {
+        'catalog-src': catalogDoc(
+          [{ id: 'ac-1', title: 'A', parts: [{ id: 'teil', name: 'note' }] }],
+          { groups: [{ id: 'grp', title: 'G', controls: [{ id: 'ac-2', title: 'B' }] }] },
+        ),
+        'profile-top': profileDoc({
+          imports: [
+            {
+              href: './src.json',
+              'include-controls': [{ 'with-ids': ['ac-1'], 'with-child-controls': 'yes' }],
+              'exclude-controls': [{ matching: [{ pattern: 'zz-*' }] }],
+            },
+          ],
+          merge: { flat: {} },
+          modify: {
+            alters: [{ 'control-id': 'ac-1', removes: [{ 'by-id': 'fehlt' }] }],
+          },
+        }),
+      },
+      edges: EDGE_TO_SOURCE,
+    });
+
+    if (!outcome.ok) throw new Error(`unerwartete Ablehnung: ${outcome.diagnostic.code}`);
+    const spent = outcome.output.budgetUsage.workUnitsByCategory;
+    for (const category of Object.values(PROFILE_RESOLUTION_WORK_UNITS)) {
+      expect.soft(spent[category], `Kategorie ${category} wurde nie gebucht`).toBeGreaterThan(0);
+    }
+  });
+});
+
 describe('Verhältnis zur abschließenden Postcondition', () => {
   it('unterschätzt den fertigen Graphen nie', async () => {
     // Das Akzeptanzkriterium erlaubt den laufenden Zählern, die fertigen
@@ -425,6 +487,64 @@ describe('Verhältnis zur abschließenden Postcondition', () => {
     // Je Control genau eine Zwischenkopie: Der Überhang wächst um 50, wenn
     // 50 Controls hinzukommen.
     expect(large.counted - large.finished).toBe(small.counted - small.finished + 50);
+  });
+
+  it('bucht den Add/Remove-Zyklus vollständig, Container eingeschlossen', async () => {
+    // Der integrierte Nachweis zum Akzeptanzkriterium „Entfernen senkt keinen
+    // laufenden Ausgabezähler": kein einziger Budgetaufruf im Test, sondern
+    // ein echter Lauf durch `resolveProfile`. Ein Zyklus besteht aus zwei
+    // Alterationen auf derselben Control — `removes` wirkt innerhalb EINER
+    // Alteration vor `adds`, ein Zyklus braucht deshalb zwei. Der fertige
+    // Graph ist danach in jedem Fall derselbe; allein die Zahl der Zyklen
+    // unterscheidet die Läufe.
+    //
+    // Der Zyklus legt nicht nur Objektkopien an, sondern auch neue
+    // Array-Container: die ergänzte und die gefilterte parts-Liste. Vor der
+    // Behebung dieses Befunds blieben genau diese Listen unbebucht, der
+    // Zähler zählte je Zyklus nur die Objektkopien. Der festgenagelte
+    // Zuwachs unten schließt sie ein.
+    const cycle = (index: number) => [
+      {
+        'control-id': 'ac-1',
+        adds: [{ position: 'ending', parts: [{ id: `tmp-${index}`, name: 'note' }] }],
+      },
+      {
+        'control-id': 'ac-1',
+        removes: [{ 'by-id': `tmp-${index}` }],
+      },
+    ];
+
+    const resolveWithCycles = async (cycles: number) => {
+      const alters = Array.from({ length: cycles }, (_, index) => cycle(index)).flat();
+      const outcome = await resolveWorld({
+        documents: {
+          'catalog-src': catalogDoc([
+            { id: 'ac-1', title: 'A', parts: [{ id: 'bleibt', name: 'note' }] },
+          ]),
+          'profile-top': profileDoc({
+            imports: [{ href: './src.json', 'include-all': {} }],
+            merge: { flat: {} },
+            modify: { alters },
+          }),
+        },
+        edges: EDGE_TO_SOURCE,
+      });
+      if (!outcome.ok) throw new Error(`unerwartete Ablehnung: ${outcome.diagnostic.code}`);
+      return {
+        counted: outcome.output.budgetUsage.nodes,
+        tree: JSON.stringify(outcome.output.tree),
+      };
+    };
+
+    const one = await resolveWithCycles(1);
+    const four = await resolveWithCycles(4);
+
+    // Gleiches Ergebnis, mehr Zyklen: Der Zähler steigt trotzdem — Entfernen
+    // schreibt nichts gut.
+    expect(four.tree).toBe(one.tree);
+    expect(four.counted).toBeGreaterThan(one.counted);
+    expect((four.counted - one.counted) % 3).toBe(0);
+    expect(four.counted - one.counted).toBe(3 * CYCLE_NODE_COST);
   });
 
   it('lässt die Postcondition unabhängig ablehnen', async () => {

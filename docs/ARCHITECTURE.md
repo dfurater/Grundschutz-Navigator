@@ -376,14 +376,21 @@ Steuerdokument bleibt gewöhnlicher Dokumentinhalt.
 **Zwei Achsen.** Das Ausgabebudget zählt **kumulativ erzeugte** Knoten —
 emittierte Ausgabeknoten und die Container des Zwischenzustands, den Merge und
 Modify vor der Emission anlegen —, die größte je begonnene Tiefe und die
-kumulative arithmetisch bestimmte `base64`-Größe. Entfernen senkt keinen
-Zähler, ein Add/Remove-Zyklus kann das Budget also nicht umgehen. Das
-Arbeitsbudget zählt deterministische Schritte, keine
+kumulative arithmetisch bestimmte `base64`-Größe. Container heißt dabei Objekt
+**und** Liste: Die ergänzte `parts`-Liste einer Addition und die gefilterte
+Liste einer Entfernung sind eigene Knoten und werden vor ihrer Allokation
+gebucht. Nicht gebucht werden die kurzlebigen Lesekopien der Traversierung —
+sie stehen auf der Arbeitsachse, wo derselbe Aufruf die Elementzahl vorab
+bucht. Entfernen senkt keinen Zähler, ein Add/Remove-Zyklus kann das Budget
+also nicht umgehen. Das Arbeitsbudget zählt deterministische Schritte, keine
 Uhrzeit — Wall-Clock-Zeit ist hardware-, scheduler- und testabhängig und vor
 einer Operation nicht prüfbar. Der geschlossene Satz der sechs Kategorien
 (`import-edge`, `selector-compare`, `glob-state`, `merge-step`,
 `alter-target-lookup`, `alter-candidate`) deckt jede potenziell wachsende
-Operation in Selektion, Merge, Modify und Emission ab.
+Operation in Selektion, Merge, Modify und Emission ab. Die Grenze gilt über die
+**Summe** aller Kategorien; `usage().workUnitsByCategory` schlüsselt sie
+zusätzlich auf, rein beobachtend — der Messapparat belegt damit, dass sein
+Worst-Case-Profil je Kategorie die Kategorie wirklich treibt, die es behauptet.
 
 **Unveränderliche Produktionsgrenzen.** Die Arbeitsgrenze steht als
 `WORK_UNIT_LIMIT` in
@@ -391,7 +398,7 @@ Operation in Selektion, Merge, Modify und Emission ab.
 Die Ausgabegrenzen sind **dieselben** Werte, die die Postcondition prüft, und
 kommen unverändert aus `CLASS_2_IMPORT_LIMITS` — eine zweite Zahl für dieselbe
 Grenze hieße, dass laufendes Budget und Postcondition auseinanderlaufen können.
-Zahlen, Herleitung und Messprotokoll: [OSCAL-Validierungsvertrag](./OSCAL_VALIDATION.md#work_unit_limit).
+Zahlen, Herleitung und Messprotokoll: [OSCAL-Validierungsvertrag](./OSCAL_VALIDATION.md#work_unit_limit-kostenbasiert-hergeleitet-je-kategorie-gemessen).
 
 **Abbruchfluss.** Die Zählmethoden werfen. Der Wurf ist eine Entscheidung, kein
 Nebeneffekt: Die Arbeitseinheiten fallen in vier Modulen und rund zwanzig

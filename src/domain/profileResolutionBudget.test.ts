@@ -164,7 +164,43 @@ describe('Budgetinstanz', () => {
   it('gibt eine eingefrorene Momentaufnahme heraus', () => {
     const usage = createProfileResolutionBudget().usage();
     expect(Object.isFrozen(usage)).toBe(true);
-    expect(usage).toEqual({ workUnits: 0, nodes: 0, maxDepth: 0, decodedBase64Bytes: 0 });
+    expect(Object.isFrozen(usage.workUnitsByCategory)).toBe(true);
+    expect(usage).toEqual({
+      workUnits: 0,
+      workUnitsByCategory: {
+        'import-edge': 0,
+        'selector-compare': 0,
+        'glob-state': 0,
+        'merge-step': 0,
+        'alter-target-lookup': 0,
+        'alter-candidate': 0,
+      },
+      nodes: 0,
+      maxDepth: 0,
+      decodedBase64Bytes: 0,
+    });
+  });
+
+  it('schlüsselt die Arbeit nach Kategorie auf, ohne je Kategorie zu begrenzen', () => {
+    // Die Aufschlüsselung ist reine Beobachtung für den Messapparat: Die
+    // Grenze gilt über die Summe, deshalb reißt sie hier, obwohl keine
+    // einzelne Kategorie den Grenzwert allein erreicht.
+    const budget = createProfileResolutionBudget({ workUnits: 5 });
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP, 3);
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.GLOB_STATE, 2);
+
+    const usage = budget.usage();
+    expect(usage.workUnits).toBe(5);
+    expect(usage.workUnitsByCategory['merge-step']).toBe(3);
+    expect(usage.workUnitsByCategory['glob-state']).toBe(2);
+    expect(usage.workUnitsByCategory['import-edge']).toBe(0);
+
+    const diagnostic = rejectionOf(() =>
+      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE),
+    );
+    expect(diagnostic.params['category']).toBe('import-edge');
+    // Die abgewiesene Einheit wird auch in der Aufschlüsselung nicht gebucht.
+    expect(budget.usage().workUnitsByCategory['import-edge']).toBe(0);
   });
 });
 

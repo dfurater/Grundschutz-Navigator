@@ -146,7 +146,7 @@ export function parseNodeCounts(value) {
 export function parseArguments(argv) {
   const options = {
     throttleRates: [1, 4], repeat: 3, jsonPath: null, scaleNodes: null, skipGlob: false,
-    skipProfileResolution: false, skipFixtures: false,
+    skipProfileResolution: false, skipFixtures: false, calibrate: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const flag = argv[index];
@@ -164,6 +164,16 @@ export function parseArguments(argv) {
       options.skipProfileResolution = true;
     } else if (flag === '--skip-fixtures') {
       options.skipFixtures = true;
+    } else if (flag === '--calibrate') {
+      // Erhebt allein die Raten der Worst-Case-Fixtures und misst keine
+      // Stützpunkte. Ein Kalibrierlauf ist kein Messlauf: Sein Ergebnis wandert
+      // von Hand in die Fixture-Datei, damit der nächste Messlauf seine
+      // Stützpunkte überhaupt treffen kann.
+      options.calibrate = true;
+      options.skipFixtures = true;
+      options.skipGlob = true;
+      options.skipProfileResolution = true;
+      options.throttleRates = [1];
     } else {
       throw new Error(`Unbekanntes Argument: ${flag}`);
     }
@@ -410,7 +420,7 @@ function renderScaleTable(run) {
  *
  * @param {object[]} rows Zeilen der Arbeitsreihe eines Laufs.
  */
-export function deriveWorkUnitLimit(rows) {
+export function deriveSeriesWorkUnitLimit(rows) {
   if (!Array.isArray(rows) || rows.length === 0) return null;
   let held = null;
   for (const row of [...rows].sort((left, right) => left.targetWorkUnits - right.targetWorkUnits)) {
@@ -422,7 +432,84 @@ export function deriveWorkUnitLimit(rows) {
   return held;
 }
 
-/** Arbeitsreihe der Profile Resolution über den Stützpunkten. */
+/**
+ * Eine Reihe ist GEDECKELT, wenn ihr letzter Stützpunkt nicht an der Zeit
+ * scheiterte, sondern daran, dass das Steuerdokument ihn nicht mehr tragen
+ * kann. Eine solche Kategorie erreicht die Arbeitsgrenze nie und schränkt sie
+ * deshalb auch nicht ein — sie ist bereits durch die Dokumentgrenzen gedeckt.
+ * Ihr eigener Deckel gehört trotzdem in den Bericht.
+ *
+ * @param {object[]} rows Zeilen einer Kategoriereihe.
+ */
+export function seriesIsDocumentCapped(rows) {
+  return Array.isArray(rows) && rows.some((row) => row.code === 'FIXTURE_DOKUMENTGRENZE');
+}
+
+/**
+ * Der fail-closed über ALLE Kategoriereihen getragene Grenzwert: das Minimum
+ * der Reihen, die ihre Kategorie überhaupt bis an die Grenze treiben können.
+ *
+ * Eine einzige Reihe genügt hier nicht. Alle sechs Kategorien verbrauchen
+ * denselben Zähler, aber eine Arbeitseinheit kostet je nach Kategorie
+ * unterschiedlich viel Zeit; ein Grenzwert auf der Rate der schnellsten
+ * Kategorie bricht das Zeitbudget, sobald ein Dokument die langsamste treibt.
+ *
+ * @param {object[]} series Kategoriereihen eines Laufs.
+ */
+export function deriveWorkUnitLimit(series) {
+  if (!Array.isArray(series) || series.length === 0) return null;
+  let limit = null;
+  for (const entry of series) {
+    if (seriesIsDocumentCapped(entry.rows)) continue;
+    const held = deriveSeriesWorkUnitLimit(entry.rows);
+    if (held === null) return null;
+    limit = limit === null ? held : Math.min(limit, held);
+  }
+  return limit;
+}
+
+/** Eine Kategoriereihe der Profile Resolution über den Stützpunkten. */
+function renderProfileResolutionSeries(entry) {
+  const derived = deriveSeriesWorkUnitLimit(entry.rows);
+  const capped = seriesIsDocumentCapped(entry.rows);
+  return [
+    '',
+    `**Kategorie \`${entry.category}\`**`,
+    '',
+    '| Stützpunkt | gemessene Arbeitseinheiten | Anteil der Kategorie | erzeugte Knoten | Wartezeit Median | Wartezeit Max | Urteil |',
+    '| --- | --- | --- | --- | --- | --- | --- |',
+    ...entry.rows.map((row) => {
+      if (row.code === 'FIXTURE_DOKUMENTGRENZE') {
+        return `| ${row.targetWorkUnits.toLocaleString('de-DE')} | — | — | — | — | — `
+          + '| NICHT ERREICHBAR (Dokumentgrenze) |';
+      }
+      if (row.ok !== true) {
+        return `| ${row.targetWorkUnits.toLocaleString('de-DE')} | — | — | — | — | — | ABGEBROCHEN (${row.code}) |`;
+      }
+      if (!finiteNonnegative(row.maxMs)) {
+        throw new Error(`Arbeitsstützpunkt ${row.targetWorkUnits} ohne erhobenen Wartezeithöchstwert`);
+      }
+      const share = row.workUnitsByCategory?.[entry.category];
+      const verdict = row.maxMs <= VISIBLE_WAIT_BUDGET_MS ? 'gehalten' : 'GERISSEN';
+      return `| ${row.targetWorkUnits.toLocaleString('de-DE')} `
+        + `| ${row.workUnits.toLocaleString('de-DE')} `
+        + `| ${finiteNonnegative(share) ? `${((share / row.workUnits) * 100).toFixed(1)} %` : '—'} `
+        + `| ${row.nodes.toLocaleString('de-DE')} `
+        + `| ${formatMs(row.medianMs)} | ${formatMs(row.maxMs)} | ${verdict} |`;
+    }),
+    '',
+    capped
+      ? 'Diese Kategorie erreicht die Arbeitsgrenze NICHT: Ihr ungünstigstes Steuerdokument '
+        + `schöpft Byte- und Knotengrenze aus und kommt dabei auf höchstens ${
+          (entry.rows.find((row) => row.code === 'FIXTURE_DOKUMENTGRENZE')?.reachableWorkUnits ?? 0)
+            .toLocaleString('de-DE')} Arbeitseinheiten. Sie schränkt den Grenzwert deshalb nicht ein.`
+      : derived === null
+        ? 'Kein Stützpunkt hält die sichtbare Wartezeit — die Reihe begründet KEINEN Grenzwert.'
+        : `Getragener Grenzwert aus dieser Reihe: ${derived.toLocaleString('de-DE')} Arbeitseinheiten.`,
+  ];
+}
+
+/** Alle Kategoriereihen der Profile Resolution samt fail-closed Gesamturteil. */
 function renderProfileResolutionTable(run) {
   // Der einkompilierte Grenzwert kommt als MESSDATUM aus dem Lauf, nicht als
   // Import: Dieses Modul bleibt frei von Abhängigkeiten, und das Artefakt
@@ -432,25 +519,13 @@ function renderProfileResolutionTable(run) {
   }
   const derived = deriveWorkUnitLimit(run.profileResolution);
   return [
-    '| Stützpunkt | gemessene Arbeitseinheiten | erzeugte Knoten | Wartezeit Median | Wartezeit Max | Urteil |',
-    '| --- | --- | --- | --- | --- | --- |',
-    ...run.profileResolution.map((row) => {
-      if (row.ok !== true) {
-        return `| ${row.targetWorkUnits.toLocaleString('de-DE')} | — | — | — | — | ABGEBROCHEN (${row.code}) |`;
-      }
-      if (!finiteNonnegative(row.maxMs)) {
-        throw new Error(`Arbeitsstützpunkt ${row.targetWorkUnits} ohne erhobenen Wartezeithöchstwert`);
-      }
-      const verdict = row.maxMs <= VISIBLE_WAIT_BUDGET_MS ? 'gehalten' : 'GERISSEN';
-      return `| ${row.targetWorkUnits.toLocaleString('de-DE')} `
-        + `| ${row.workUnits.toLocaleString('de-DE')} | ${row.nodes.toLocaleString('de-DE')} `
-        + `| ${formatMs(row.medianMs)} | ${formatMs(row.maxMs)} | ${verdict} |`;
-    }),
+    ...run.profileResolution.flatMap(renderProfileResolutionSeries),
     '',
     derived === null
-      ? 'Kein Stützpunkt hält die sichtbare Wartezeit — die Reihe begründet KEINEN Grenzwert.'
-      : `Getragener Grenzwert aus dieser Reihe: ${derived.toLocaleString('de-DE')} Arbeitseinheiten `
-        + `(Budget sichtbare Wartezeit ${formatMs(VISIBLE_WAIT_BUDGET_MS)}). `
+      ? 'Mindestens eine Kategoriereihe hält die sichtbare Wartezeit an keinem Stützpunkt — '
+        + 'die Messung begründet KEINEN Grenzwert.'
+      : `Fail-closed über alle Kategorien getragener Grenzwert: ${derived.toLocaleString('de-DE')} `
+        + `Arbeitseinheiten (Budget sichtbare Wartezeit ${formatMs(VISIBLE_WAIT_BUDGET_MS)}). `
         + `Einkompiliert ist ${run.workUnitLimit.toLocaleString('de-DE')}.`,
   ];
 }

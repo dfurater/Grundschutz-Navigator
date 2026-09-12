@@ -212,7 +212,7 @@ eine von ihnen zu berühren. Die fünfte Klasse-2-Grenze ist deshalb
 [`profileResolutionBudgetLimits.mjs`](../src/domain/profileResolutionBudgetLimits.mjs);
 sie steht in einem eigenen Modul, weil sie nur für den Ableitungsweg gilt und
 nicht für den Byte-Eingang. Herleitung unter „`WORK_UNIT_LIMIT`:
-kostenbasiert hergeleitet“.
+kostenbasiert hergeleitet, je Kategorie gemessen“.
 
 Alle vier Grenzen halten das Speicherbudget. Der Abstand ist allerdings enger,
 als die vorige Fassung dieses Abschnitts ausgewiesen hat: nicht weil sich eine
@@ -812,11 +812,21 @@ Control-ID:
 
 | Sterne | Musterlänge | vorher 1× | vorher 4× | nachher 1× | nachher 4× |
 | --- | --- | --- | --- | --- | --- |
-| 4 | 9 Byte | — | — | 0,05 ms | 0,18 ms |
-| 6 | 13 Byte | 15 ms | 58 ms | 0,01 ms | 0,00 ms |
-| 8 | 17 Byte | 0,34 s | 1,34 s | 0,01 ms | 0,01 ms |
-| 10 | 21 Byte | 4,23 s | 17,07 s | 0,00 ms | 0,00 ms |
-| 12 | 25 Byte | 31,82 s | nicht gemessen | 0,01 ms | 0,00 ms |
+| 4 | 9 Byte | 0,75 ms | 1,59 ms | 0,06 ms | 0,56 ms |
+| 6 | 13 Byte | 24,86 ms | 62,19 ms | 0,01 ms | 0,00 ms |
+| 8 | 17 Byte | 0,34 s | 1,41 s | 0,01 ms | 0,00 ms |
+| 10 | 21 Byte | 4,22 s | 18,09 s | 0,01 ms | 0,01 ms |
+| 12 | 25 Byte | 32,53 s | nicht gemessen | 0,00 ms | 0,01 ms |
+
+Beide Spaltenpaare stehen auf committeten Artefakten: die „vorher"-Spalten auf
+dem `glob`-Block in
+[`docs/measurements/gspp386-worker-transport.json`](./measurements/gspp386-worker-transport.json),
+der die RegExp-Fassung misst, die „nachher"-Spalten auf
+[`docs/measurements/gspp345-work-budget.json`](./measurements/gspp345-work-budget.json).
+Eine frühere Fassung dieser Tabelle trug an drei Stützpunkten Zahlen aus einem
+nicht committeten Lauf (15 ms, 17,07 s, 31,82 s) und ließ die 4-Sterne-Zeile
+als „nicht gemessen" offen, obwohl das Artefakt sie führt; die Werte oben sind
+gegen das Artefakt begradigt.
 
 Die frühere Reihe brach ab, sobald ein Wert das Budget riss; der
 12-Sterne-Fall wurde im gedrosselten Lauf deshalb nicht mehr ausgeführt. Keine
@@ -836,8 +846,9 @@ besuchten Zustand** als Arbeitseinheit der Kategorie `glob-state`. Damit ist
 der Abgleich von außen abbrechbar, was die RegExp-Fassung prinzipiell nicht
 sein konnte. Die „nachher"-Spalten stammen aus
 [`docs/measurements/gspp345-work-budget.json`](./measurements/gspp345-work-budget.json);
-sie bleiben für jede Sternzahl unter 0,2 ms bei gleichbleibend 80
-Arbeitseinheiten, und der höchste Wert steht beim NIEDRIGSTEN Sternenzähler.
+sie bleiben für jede Sternzahl unter einer Millisekunde bei gleichbleibend 80
+Arbeitseinheiten, und der höchste Wert steht beim NIEDRIGSTEN Sternenzähler —
+er ist Aufwärmkosten des ersten Aufrufs, nicht Musterkomplexität.
 Die Kosten hängen an der Subjektlänge, nicht mehr an der Sternzahl.
 
 Die Semantik bleibt: `*` trifft beliebig viele Zeichen einschließlich keiner,
@@ -854,63 +865,105 @@ Der Messlauf ruft `matchGlob` selbst auf, statt den Abgleich nachzubilden. Die
 Funktion ist dafür exportiert: Eine zweite Fassung im Messwerkzeug würde
 unbemerkt driften und das Protokoll unwahr machen.
 
-#### `WORK_UNIT_LIMIT`: kostenbasiert hergeleitet
+#### `WORK_UNIT_LIMIT`: kostenbasiert hergeleitet, je Kategorie gemessen
 
 Die Arbeitsgrenze der Profile Resolution steht als `WORK_UNIT_LIMIT` in
 [`profileResolutionBudgetLimits.mjs`](../src/domain/profileResolutionBudgetLimits.mjs)
-und beträgt **134 213 078 Arbeitseinheiten**. Sie ist eine Klasse-2-Grenze wie
+und beträgt **16 763 456 Arbeitseinheiten**. Sie ist eine Klasse-2-Grenze wie
 die vier oben und folgt derselben Herleitungsregel: Ein Grenzwert wird gegen
 die Kosten seines eigenen ungünstigsten Falls begründet, nicht gegen ein
 Vielfaches der Korpusgröße.
 
 **Warum Bytes die Arbeit nicht begrenzen.** Ein Profil besteht im ungünstigsten
-Fall aus nichts als Ausschlussselektoren. Jeder von ihnen läuft über jede
-Control-ID des importierten Katalogs; die Arbeit ist das **Produkt** aus beiden
-Zahlen, während die Bytegrenze nur ihre Summe deckelt. Gemessen: Ein Profil von
+Fall aus nichts als Ausschlussselektoren oder aus nichts als Importen. Jeder
+Selektor läuft über jede Control-ID des importierten Katalogs, jeder Import
+indiziert den Katalog erneut; die Arbeit ist das **Produkt** aus beiden Zahlen,
+während die Bytegrenze nur ihre Summe deckelt. Gemessen: Ein Profil von
 **1,7 KB** über einem Katalog von 78 KB verbraucht bereits über eine Million
-Arbeitseinheiten. An der 10-MiB-Bytegrenze sind es Milliarden — Minuten an
-Rechenzeit für ein Dokument, das Byte-, Knoten- und Tiefengrenze mühelos
-einhält. Genau diese Lücke schließt die Arbeitsgrenze; die Ausgabegrenzen
-können sie nicht schließen, weil die Ausgabe in diesem Fall **leer** ist.
+Arbeitseinheiten. An der 10-MiB-Bytegrenze sind es Hunderte Millionen bis
+Milliarden — Minuten an Rechenzeit für ein Dokument, das Byte-, Knoten- und
+Tiefengrenze mühelos einhält. Genau diese Lücke schließt die Arbeitsgrenze; die
+Ausgabegrenzen können sie nicht schließen, weil die Ausgabe in diesen Fällen
+**leer oder winzig** ist.
+
+**Eine Reihe je Kategorie, nicht eine Reihe für alle.** Alle sechs
+Work-Unit-Kategorien verbrauchen denselben Zähler, aber eine Arbeitseinheit
+kostet je nach Kategorie unterschiedlich viel Zeit. Die erste Fassung dieser
+Herleitung maß allein den Selektorpfad und trug **134 213 078** ein. Die
+`merge-step`-Reihe braucht für dieselbe Einheitenzahl rund das Achtfache an
+Zeit und reißt den Budgetposten deutlich; der auf dem Selektorpfad gemessene
+Wert trug für sie nie. Jede Kategorie hat deshalb ein eigenes, ausgabekleines
+Worst-Case-Profil in
+[`profileResolutionWorstCaseFixtures.mjs`](../scripts/profileResolutionWorstCaseFixtures.mjs),
+und der Grenzwert ist das **Minimum** über alle Reihen.
 
 **Messprotokoll.**
 
 ```bash
+node scripts/measure-class2-budget.mjs --calibrate          # Raten der Fixtures erheben
 node scripts/measure-class2-budget.mjs --throttle 1,4 --repeat 3 --skip-fixtures
 ```
 
-Der Lauf fährt ein Worst-Case-Profil
-([`profileResolutionWorstCaseFixtures.mjs`](../scripts/profileResolutionWorstCaseFixtures.mjs))
-über eine Leiter von Stützpunkten und misst je Stützpunkt die Wartezeit eines
-vollständigen `resolveProfile`-Laufs einschließlich der abschließenden Objekt-
-und Schemakette — also das, was ein Anwender tatsächlich wartet. Beurteilt wird
-das **Maximum** aller Wiederholungen, nicht der Median: Eine Reihe, die im
-Mittel hält und in einem Lauf reißt, hält das Budget nicht. Das Messartefakt
-liegt unter
-[`docs/measurements/gspp345-work-budget.json`](./measurements/gspp345-work-budget.json).
+Der Lauf fährt je Kategorie eine Leiter von Stützpunkten und misst je
+Stützpunkt die Wartezeit eines vollständigen `resolveProfile`-Laufs
+einschließlich der abschließenden Objekt- und Schemakette — also das, was ein
+Anwender tatsächlich wartet. Beurteilt wird das **Maximum** aller
+Wiederholungen, nicht der Median: Eine Reihe, die im Mittel hält und in einem
+Lauf reißt, hält das Budget nicht. Das Messartefakt liegt unter
+[`docs/measurements/gspp345-work-budget.json`](./measurements/gspp345-work-budget.json);
+es weist je Stützpunkt zusätzlich den Anteil der benannten Kategorie an der
+Gesamtarbeit aus, damit jede Reihe belegt, dass sie die Kategorie wirklich
+treibt, die sie behauptet.
 
-| Stützpunkt (4× Drosselung) | gemessene Arbeitseinheiten | Wartezeit Maximum | Urteil |
-| --- | --- | --- | --- |
-| 67 108 864 | 67 109 108 | 1,84 s | gehalten |
-| 134 217 728 | **134 213 078** | **3,75 s** | **gehalten** |
-| 268 435 456 | 268 404 128 | 6,84 s | GERISSEN |
+| Kategorie | Anteil der Kategorie | größter gehaltener Stützpunkt (4×) | Wartezeit | erster gerissener Stützpunkt | Wartezeit |
+| --- | --- | --- | --- | --- | --- |
+| `import-edge` | 66,7 % | 16 774 778 | 3,41 s | 33 549 536 | 6,85 s |
+| `selector-compare` | 100,0 % | 33 553 207 | 3,21 s | 67 104 387 | 6,44 s |
+| `glob-state` | 100,0 % | 66 672 025 | 3,39 s | 133 776 025 | 6,42 s |
+| **`merge-step`** | **70,0 %** | **16 763 456** | **2,61 s** | **33 546 920** | **5,21 s** |
+| `alter-target-lookup` | 7,7 % | 4 194 153 | 1,04 s | nicht erreichbar | — |
+| `alter-candidate` | 99,7 % | 16 774 687 | 3,66 s | 33 551 443 | 7,27 s |
 
 Maßgeblich ist der Lauf bei vierfacher CPU-Drosselung als Näherung an
-Bürohardware; ungedrosselt hält dieselbe Reihe bis 536 803 118 Einheiten
-(3,39 s) und reißt erst bei 1 073 584 208 (6,76 s). Der Grenzwert nimmt den
-größten Stützpunkt, der bei 4× hält, und schöpft den Budgetposten „Sichtbare
-Wartezeit bis zum Ergebnis" damit zu 75 % aus. Keine Interpolation zwischen
-Stützpunkten: Der Wert steht auf einer Zahl, die wirklich gemessen wurde.
+Bürohardware; ungedrosselt hält dieselbe langsamste Reihe bis 67 093 820
+Einheiten (2,57 s) und reißt erst bei 134 207 648 (5,13 s). Der Grenzwert nimmt
+den größten Stützpunkt, den die LANGSAMSTE Reihe bei 4× noch hält, und schöpft
+den Budgetposten „Sichtbare Wartezeit bis zum Ergebnis" damit zu 52 % aus.
+Keine Interpolation zwischen Stützpunkten: Der Wert steht auf einer Zahl, die
+wirklich gemessen wurde.
+
+**Zwei Kategorien treiben ihren Zähler nicht allein.** `import-edge` und
+`merge-step` erreichen 66,7 beziehungsweise 70,0 Prozent Anteil. Der Rest
+entfällt in beiden Fällen auf die Selektion, die je Import unvermeidlich
+mitläuft — ein Import ohne Auswahlschritt existiert nicht. Die Reihen messen
+damit die Kosten eines Laufs, den ihre Kategorie dominiert, und das ist die
+Aussage, die der Grenzwert braucht: nicht die Kosten einer isolierten
+Arbeitseinheit, sondern die eines Laufs, der sie zu Millionen anhäuft.
+
+**`alter-target-lookup` ist durch die Dokumentgrenzen gedeckelt.** Die
+Zielsuche fällt je betrachteter Control einmal an und je auf sie zeigender
+Alteration ein weiteres Mal. Beide Zahlen sind nach oben gedeckelt — die
+Controls durch die Knotengrenze, die Alterationen durch die Byte- und
+Knotengrenze des Steuerdokuments. Ein Steuerdokument, das beide Grenzen
+ausschöpft, erreicht **6 232 007** Arbeitseinheiten; die Kategorie kann die
+Arbeitsgrenze also nie treiben und geht deshalb nicht in das Minimum ein. Der
+Messapparat meldet diese Stützpunkte als `NICHT ERREICHBAR (Dokumentgrenze)`
+statt sie stillschweigend kleiner zu bauen — ein Stützpunkt, den das Dokument
+nicht trägt, ist kein gehaltener Stützpunkt. Die Deckelrechnung prüft
+[`profileResolutionWorstCaseFixtures.test.ts`](../scripts/profileResolutionWorstCaseFixtures.test.ts),
+indem sie das Dokument an der maximalen Wiederholungszahl wirklich baut und
+gegen Byte- und Knotengrenze misst.
 
 **Was ein Wiederholungslauf zeigt und was nicht.** Der Herleitungslauf oben
-wurde mit einem bewusst hoch angesetzten Kandidaten (2³¹) gefahren, weil sich
-oberhalb des einkompilierten Grenzwerts nicht messen lässt — dort bricht der
-Resolver ab, und ein Abbruch liefert keine Wartezeit. Ein Wiederholungslauf
-gegen den committeten Wert bestätigt deshalb nur, dass alle Stützpunkte bis zur
-Grenze halten; er kann die Obergrenze nicht erneut suchen. Eine **Anhebung** der
-Grenze setzt voraus, dass ein Mensch den Kandidaten erhöht und neu misst. Der
-Bericht weist beide Zahlen nebeneinander aus — den aus der Reihe getragenen
-Wert und den einkompilierten —, damit eine Abweichung nicht unbemerkt bleibt.
+wurde gegen den damals einkompilierten Kandidaten (134 213 078) gefahren, weil
+sich oberhalb des einkompilierten Grenzwerts nicht messen lässt — dort bricht
+der Resolver ab, und ein Abbruch liefert keine Wartezeit. Ein
+Wiederholungslauf gegen den jetzt committeten Wert bestätigt deshalb nur, dass
+alle Stützpunkte bis zur Grenze halten; er kann die Obergrenze nicht erneut
+suchen. Eine **Anhebung** der Grenze setzt voraus, dass ein Mensch den
+Kandidaten erhöht und neu misst. Der Bericht weist beide Zahlen nebeneinander
+aus — den aus den Reihen getragenen Wert und den einkompilierten —, damit eine
+Abweichung nicht unbemerkt bleibt.
 
 **Kopfraum über der legitimen Nutzung.** Der Korpuslauf
 [`profileResolutionCorpus.test.ts`](../scripts/profileResolutionCorpus.test.ts)
@@ -921,11 +974,11 @@ belegt, über den Angriffsfall nichts sagt.
 
 | Profil | Arbeitseinheiten | erzeugte Knoten | maximale Tiefe | dekodierte base64-Bytes |
 | --- | --- | --- | --- | --- |
-| `profile-gspp` | 206 592 | 73 237 | 19 | 0 |
-| `profile-lieferkette` | 31 091 | 8 468 | 17 | 0 |
-| `profile-wlan` | 33 793 | 6 029 | 13 | 0 |
+| `profile-gspp` | 207 595 | 76 842 | 19 | 0 |
+| `profile-lieferkette` | 31 092 | 8 884 | 17 | 0 |
+| `profile-wlan` | 33 842 | 6 812 | 13 | 0 |
 
-Das teuerste Profil liegt bei rund einem Sechshundertfünfzigstel der Grenze.
+Das teuerste Profil liegt bei rund einem Achtzigstel der Arbeitsgrenze.
 
 #### Laufendes Budget und abschließende Postcondition
 
@@ -953,9 +1006,33 @@ anmeldet. Zählte das Budget nur die Emission, könnte ein Lauf sehr viele solch
 Kopien allokieren und dabei null verbuchte Knoten haben — belegt an einem Lauf
 mit 100 000 Controls, der alle 100 000 Zwischenkopien vor dem ersten
 Ausgabeknoten erzeugte. `admitWorkingNode()` bucht deshalb jeden neu angelegten
-Objektcontainer des Zwischenzustands gegen dieselbe Knotengrenze, ohne die
+Container des Zwischenzustands gegen dieselbe Knotengrenze, ohne die
 Ausgabetiefe zu berühren. In der Korpustabelle oben ist das der Grund, warum die
 Knotenzahlen leicht über der Größe der fertigen Kataloge liegen.
+
+**Container heißt Objekt UND Liste.** Die erste Fassung buchte nur neue
+Objektkopien. Damit entkamen genau die Listen, die Modify und Merge beim
+Ergänzen und Entfernen anlegen: die ergänzte `parts`-Liste einer Addition, die
+gefilterte Liste einer Entfernung, die zusammengesetzten `controls`- und
+`groups`-Listen der Merge-Phase. Ein Add/Remove-Zyklus kostete dadurch fünf
+statt sieben Knoten, obwohl je Zyklus zwei zusätzliche Listen im
+Zwischenzustand standen; die Buchung lag unter der wirklich erzeugten
+Ausgabe, und das ist die einzige verbotene Richtung. Der Regressionstest
+„bucht den Add/Remove-Zyklus vollständig" in
+[`profileResolutionBudget.enforcement.test.ts`](../src/domain/profileResolutionBudget.enforcement.test.ts)
+nagelt den Zuwachs an einem echten `resolveProfile`-Lauf fest, ohne einen
+einzigen Budgetaufruf im Test.
+
+**Die Grenze verläuft am Zwischengraphen, nicht an jeder Allokation.**
+Gebucht wird jeder Container, der im Zwischen- oder Ergebnisgraphen **stehen
+bleibt**. Nicht gebucht werden die kurzlebigen Lesekopien, die
+`ownArrayDataElements` je Traversierung anlegt und sofort wieder freigibt:
+Sie stehen auf der ARBEITSACHSE, wo derselbe Aufruf bereits `length`
+Arbeitseinheiten vorab bucht. Diese Trennung ist nicht kosmetisch. Der
+Knotenzähler ist kumulativ und kennt kein Zurück; würde er jede Lesekopie
+mitzählen, erschöpfte ein Dokument mit vielen billigen Traversierungen die
+Knotengrenze, ohne je nennenswerten Speicher zu halten — eine Ablehnung, die
+über den tatsächlichen Ressourcenverbrauch nichts aussagt.
 
 Die laufenden Zähler dürfen die fertigen Werte **übersteigen** — sie zählen
 kumulativ über alle Zwischenergebnisse eines Plans und schreiben Entferntes

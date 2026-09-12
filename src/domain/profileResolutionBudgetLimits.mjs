@@ -15,37 +15,50 @@
  *
  * Herleitung und Messprotokoll: `docs/OSCAL_VALIDATION.md`, Abschnitt
  * „`WORK_UNIT_LIMIT`". Der Wert ist kostenbasiert belegt — er folgt dem
- * gemessenen Zeitaufwand des ungünstigsten Falls, den die Grenze noch
- * zulässt, NICHT einem Vielfachen der BSI-Korpusgröße. Das Messartefakt liegt
+ * gemessenen Zeitaufwand des ungünstigsten Falls JEDER Work-Unit-Kategorie,
+ * NICHT einem Vielfachen der BSI-Korpusgröße. Das Messartefakt liegt
  * unter `docs/measurements/gspp345-work-budget.json`.
  */
 
 /**
  * KOSTENBASIERT HERGELEITET, nicht aus der Korpusgröße abgeleitet.
  *
- * Der Wert ist der größte GEMESSENE Stützpunkt, der den Budgetposten
- * „Sichtbare Wartezeit bis zum Ergebnis" (5 s) noch hält — erhoben am
- * 2026-09-08 in Chromium 151 bei vierfacher CPU-Drosselung als Näherung an
- * Bürohardware, dieselbe Messbasis wie die Ressourcengrenzen aus GSPP-382.
- * Er kostet dort 3,75 s und schöpft den Posten zu 75 % aus; der nächste
- * gemessene Stützpunkt (268 404 128) kostet 6,84 s und reißt ihn.
+ * Der Wert ist der größte GEMESSENE Stützpunkt, den ALLE SECHS
+ * Work-Unit-Kategorien halten — erhoben am 2026-09-12 in Chromium 151 bei
+ * vierfacher CPU-Drosselung als Näherung an Bürohardware, dieselbe Messbasis
+ * wie die Ressourcengrenzen aus GSPP-382. Maßgeblich ist der Budgetposten
+ * „Sichtbare Wartezeit bis zum Ergebnis" (5 s).
+ *
+ * WARUM SECHS REIHEN UND NICHT EINE. Alle Kategorien verbrauchen denselben
+ * Zähler, aber eine Arbeitseinheit kostet je nach Kategorie unterschiedlich
+ * viel Zeit. Die Vorgängerfassung dieses Werts stand auf 134 213 078 und war
+ * allein am Selektorpfad gemessen; die `merge-step`-Reihe braucht für
+ * dieselbe Einheitenzahl das Achtfache an Zeit und riss den Posten deutlich.
+ * Der Wert hier ist das fail-closed Minimum über die Reihen: `merge-step`
+ * hält 16 763 456 Einheiten in 2,68 s, der nächste gemessene Stützpunkt
+ * (33 546 920) kostet 5,31 s und reißt.
+ *
+ * `alter-target-lookup` geht nicht in das Minimum ein: Ihr ungünstigstes
+ * Steuerdokument erreicht bei voll ausgeschöpfter Byte- und Knotengrenze
+ * höchstens 6 232 007 Arbeitseinheiten und kann die Arbeitsgrenze deshalb nie
+ * treiben — sie ist bereits durch die Dokumentgrenzen gedeckt.
  *
  * Keine Interpolation, keine Hochrechnung: Der Wert steht auf einer Zahl, die
  * wirklich gemessen wurde. Messartefakt und Protokoll:
  * `docs/measurements/gspp345-work-budget.json` und `docs/OSCAL_VALIDATION.md`.
  *
  * WOGEGEN die Grenze schützt: Bytes begrenzen Arbeit nicht. Ein Profil an der
- * 10-MiB-Bytegrenze, das nur aus Ausschlussselektoren besteht, kauft
- * Milliarden von Arbeitseinheiten — bei der gemessenen Rate Minuten an
- * Rechenzeit für ein Dokument, das Byte-, Knoten- und Tiefengrenze mühelos
- * einhält. Genau diese Lücke schließt der Wert.
+ * 10-MiB-Bytegrenze, das nur aus Ausschlussselektoren oder aus Importen
+ * besteht, kauft Hunderte Millionen bis Milliarden Arbeitseinheiten — bei den
+ * gemessenen Raten Minuten an Rechenzeit für ein Dokument, das Byte-, Knoten-
+ * und Tiefengrenze mühelos einhält. Genau diese Lücke schließt der Wert.
  *
  * WOGEGEN sie NICHT wirkt: Die legitime Nutzung liegt weit darunter. Das
- * teuerste der drei registrierten BSI-Profile kostet 206 592 Arbeitseinheiten,
- * rund ein Sechshundertfünfzigstel dieser Grenze (Korpuslauf
+ * teuerste der drei registrierten BSI-Profile kostet 207 595 Arbeitseinheiten,
+ * rund ein Achtzigstel dieser Grenze (Korpuslauf
  * `scripts/profileResolutionCorpus.test.ts`). Der Kopfraum ist Nachweis, nicht
  * Begründung — die Reihenfolge ist wichtig, weil eine Grenze, die nur den
  * Kopfraum über der legitimen Nutzung belegt, über den Angriffsfall nichts
  * sagt.
  */
-export const WORK_UNIT_LIMIT = 134_213_078;
+export const WORK_UNIT_LIMIT = 16_763_456;

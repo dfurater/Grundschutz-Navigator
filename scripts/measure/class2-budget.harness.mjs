@@ -41,7 +41,10 @@ import { matchGlob } from '@/domain/profileResolutionSelection';
 import { resolveProfile } from '@/domain/profileResolutionEngine';
 import { buildProfileResolutionPlan } from '@/domain/profileResolutionImportGraph';
 import { parseProfileDocument } from '@/adapters/oscalProfileDocument';
-import { buildWorkUnitWorstCase } from '../profileResolutionWorstCaseFixtures.mjs';
+import {
+  buildWorkUnitCalibration,
+  buildWorkUnitWorstCase,
+} from '../profileResolutionWorstCaseFixtures.mjs';
 import { createProfileResolutionBudget } from '@/domain/profileResolutionBudget';
 import { importClass2OscalDocument } from '@/adapters/oscalImportGate';
 import { encodeOscalSource, OscalSourceDecoder, TRANSPORT_MAX_OPERATIONS, TRANSPORT_MAX_CODE_UNITS } from '@/domain/oscalImportTransport';
@@ -564,51 +567,17 @@ const harness = {
    * TATSÄCHLICH verbrauchten Arbeitseinheiten aus dem Budget, nicht das Ziel
    * des Fixtures: Der Grenzwert darf nur auf einer gemessenen Zahl stehen.
    */
-  async profileResolution(targetWorkUnits) {
-    const fixture = buildWorkUnitWorstCase(targetWorkUnits);
-    const documents = new Map(Object.entries(fixture.documents));
-    const edgesByArtifactKey = new Map(Object.entries(fixture.edges));
-    const plan = buildProfileResolutionPlan({
-      topProfileArtifactKey: fixture.topProfileArtifactKey,
-      documents,
-      edgesByArtifactKey,
-    });
-    if (!plan.ok) {
-      return { targetWorkUnits, ok: false, code: plan.diagnostic.code, ms: null, workUnits: null };
-    }
-    const profileViews = new Map(
-      plan.order
-        .filter((key) => key.startsWith('profile'))
-        .map((key) => [
-          key,
-          parseProfileDocument(documents.get(key), { trustClass: 'class-2-local-user' }),
-        ]),
-    );
+  async profileResolution(category, targetWorkUnits) {
+    return runResolutionFixture(buildWorkUnitWorstCase(category, targetWorkUnits));
+  },
 
-    const start = nowMs();
-    const outcome = await resolveProfile({ plan, edgesByArtifactKey, profileViews });
-    const ms = nowMs() - start;
-
-    if (!outcome.ok) {
-      return {
-        targetWorkUnits,
-        ok: false,
-        code: outcome.diagnostic.code,
-        observed: outcome.diagnostic.params.observed ?? null,
-        ms,
-        workUnits: null,
-      };
-    }
-    return {
-      targetWorkUnits,
-      ok: true,
-      code: null,
-      ms,
-      label: fixture.label,
-      workUnits: outcome.output.budgetUsage.workUnits,
-      nodes: outcome.output.budgetUsage.nodes,
-      maxDepth: outcome.output.budgetUsage.maxDepth,
-    };
+  /**
+   * Kalibrierpfad: derselbe Lauf mit EXPLIZITER Wiederholungszahl. Er erhebt
+   * die Rate, mit der `buildWorkUnitWorstCase` einen Stützpunkt ansteuert —
+   * die Rate gehört gemessen, nicht geschätzt.
+   */
+  async profileResolutionCalibration(category, repetitions) {
+    return runResolutionFixture(buildWorkUnitCalibration(category, repetitions));
   },
 
   /** Umgebungsangaben für das Messprotokoll. */
@@ -620,5 +589,96 @@ const harness = {
     };
   },
 };
+
+/**
+ * Laufzeit EINES Auflösungslaufs über die gegebene Worst-Case-Welt.
+ *
+ * Gemessen wird der produktive `resolveProfile`, nicht eine Nachbildung —
+ * inklusive der abschließenden Objekt- und Schemakette, weil genau das die
+ * Wartezeit ist, die ein Anwender sieht. Der Rückgabewert nennt die
+ * TATSÄCHLICH verbrauchten Arbeitseinheiten aus dem Budget samt ihrer
+ * Aufteilung auf die Kategorien, nicht das Ziel des Fixtures: Der Grenzwert
+ * darf nur auf einer gemessenen Zahl stehen, und die Reihe muss belegen, dass
+ * sie die behauptete Kategorie wirklich treibt.
+ */
+async function runResolutionFixture(fixture) {
+  const targetWorkUnits = fixture.targetWorkUnits;
+  if (fixture.capped === true) {
+    // Der Stützpunkt liegt jenseits dessen, was ein Steuerdokument dieser
+    // Kategorie durch Byte- und Knotengrenze tragen kann. Das ist kein
+    // gehaltener Stützpunkt und kein Abbruch des Resolvers, sondern ein
+    // Stützpunkt, den es nicht gibt.
+    return {
+      targetWorkUnits,
+      ok: false,
+      code: 'FIXTURE_DOKUMENTGRENZE',
+      ms: null,
+      id: fixture.id,
+      repetitions: fixture.repetitions,
+      reachableWorkUnits: fixture.reachableWorkUnits,
+      workUnits: null,
+    };
+  }
+  const documents = new Map(Object.entries(fixture.documents));
+  const edgesByArtifactKey = new Map(Object.entries(fixture.edges));
+  const plan = buildProfileResolutionPlan({
+    topProfileArtifactKey: fixture.topProfileArtifactKey,
+    documents,
+    edgesByArtifactKey,
+  });
+  if (!plan.ok) {
+    return {
+      targetWorkUnits,
+      ok: false,
+      code: plan.diagnostic.code,
+      ms: null,
+      id: fixture.id,
+      repetitions: fixture.repetitions,
+      workUnits: null,
+    };
+  }
+  const profileViews = new Map(
+    plan.order
+      .filter((key) => key.startsWith('profile'))
+      .map((key) => [
+        key,
+        parseProfileDocument(documents.get(key), { trustClass: 'class-2-local-user' }),
+      ]),
+  );
+
+  const start = nowMs();
+  const outcome = await resolveProfile({ plan, edgesByArtifactKey, profileViews });
+  const ms = nowMs() - start;
+
+  if (!outcome.ok) {
+    return {
+      targetWorkUnits,
+      ok: false,
+      code: outcome.diagnostic.code,
+      observed: outcome.diagnostic.params.observed ?? null,
+      ms,
+      id: fixture.id,
+      repetitions: fixture.repetitions,
+      workUnits: null,
+    };
+  }
+  return {
+    targetWorkUnits,
+    ok: true,
+    code: null,
+    ms,
+    id: fixture.id,
+    label: fixture.label,
+    repetitions: fixture.repetitions,
+    // Größe des STEUERDOKUMENTS: Sie entscheidet, wie weit eine Kategorie
+    // überhaupt getrieben werden kann — ein Angreifer muss das Profil durch
+    // dieselbe Klasse-2-Bytegrenze schicken wie jede andere Eingabe.
+    profileBytes: JSON.stringify(fixture.documents[fixture.topProfileArtifactKey]).length,
+    workUnits: outcome.output.budgetUsage.workUnits,
+    workUnitsByCategory: outcome.output.budgetUsage.workUnitsByCategory,
+    nodes: outcome.output.budgetUsage.nodes,
+    maxDepth: outcome.output.budgetUsage.maxDepth,
+  };
+}
 
 globalThis.__gspp382 = harness;

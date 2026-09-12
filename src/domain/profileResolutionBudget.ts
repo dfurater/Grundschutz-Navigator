@@ -111,10 +111,24 @@ export class ProfileResolutionBudgetExceeded extends Error {
   }
 }
 
-/** Die vier Messwerte eines Laufs, für Korpuslauf und Messapparat. */
+/** Verbrauchte Arbeit je Kategorie des geschlossenen Satzes. */
+export type ProfileResolutionWorkBreakdown = Readonly<
+  Record<ProfileResolutionWorkUnit, number>
+>;
+
+/** Die Messwerte eines Laufs, für Korpuslauf und Messapparat. */
 export interface ProfileResolutionBudgetUsage {
   /** Verbrauchte Arbeitseinheiten über alle Kategorien. */
   readonly workUnits: number;
+  /**
+   * Dieselbe Summe, aufgeschlüsselt nach Kategorie. Rein beobachtend: Die
+   * Grenze gilt über die SUMME, nicht je Kategorie — eine Arbeitseinheit
+   * kostet unabhängig davon, in welcher Phase sie anfällt. Die
+   * Aufschlüsselung existiert für den Messapparat, der je Kategorie ein
+   * ungünstigstes Profil fährt und belegen muss, dass dieses Profil die
+   * behauptete Kategorie wirklich treibt.
+   */
+  readonly workUnitsByCategory: ProfileResolutionWorkBreakdown;
   /**
    * Kumulativ ERZEUGTE Knoten: emittierte Ausgabeknoten UND die Container des
    * Zwischenzustands, den Merge und Modify vor der Emission anlegen. Beides
@@ -188,6 +202,14 @@ export function createProfileResolutionBudget(
     testLimits.maxDecodedBase64Bytes ?? CLASS_2_IMPORT_LIMITS.maxDecodedBase64Bytes;
 
   let workUnits = 0;
+  const workUnitsByCategory: Record<ProfileResolutionWorkUnit, number> = {
+    'import-edge': 0,
+    'selector-compare': 0,
+    'glob-state': 0,
+    'merge-step': 0,
+    'alter-target-lookup': 0,
+    'alter-candidate': 0,
+  };
   let nodes = 0;
   let maxDepth = 0;
   let decodedBase64Bytes = 0;
@@ -206,6 +228,7 @@ export function createProfileResolutionBudget(
         );
       }
       workUnits += count;
+      workUnitsByCategory[category] += count;
     },
 
     admitNode(depth) {
@@ -232,7 +255,13 @@ export function createProfileResolutionBudget(
     },
 
     usage() {
-      return Object.freeze({ workUnits, nodes, maxDepth, decodedBase64Bytes });
+      return Object.freeze({
+        workUnits,
+        workUnitsByCategory: Object.freeze({ ...workUnitsByCategory }),
+        nodes,
+        maxDepth,
+        decodedBase64Bytes,
+      });
     },
   };
 }

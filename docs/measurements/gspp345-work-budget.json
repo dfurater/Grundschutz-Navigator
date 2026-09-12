@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-09-08T20:16:30.697Z",
-  "origin": "http://localhost:57945",
+  "generatedAt": "2026-09-12T10:45:51.611Z",
+  "origin": "http://localhost:51025",
   "browserVersion": "151.0.7922.34",
   "runs": [
     {
@@ -18,7 +18,7 @@
       },
       "memoryObservability": {
         "probeBytes": 16777216,
-        "observedBytes": 16762787
+        "observedBytes": 16774058
       },
       "memoryThrottleRate": 1,
       "fixtures": [],
@@ -26,7 +26,7 @@
       "glob": [
         {
           "stars": 4,
-          "ms": 0.05499999225139618,
+          "ms": 0.06000000238418579,
           "patternBytes": 9,
           "subjectLength": 40,
           "matched": false,
@@ -34,7 +34,7 @@
         },
         {
           "stars": 6,
-          "ms": 0.01000000536441803,
+          "ms": 0.009999990463256836,
           "patternBytes": 13,
           "subjectLength": 40,
           "matched": false,
@@ -42,7 +42,7 @@
         },
         {
           "stars": 8,
-          "ms": 0.009999990463256836,
+          "ms": 0.005000025033950806,
           "patternBytes": 17,
           "subjectLength": 40,
           "matched": false,
@@ -50,7 +50,7 @@
         },
         {
           "stars": 10,
-          "ms": 0,
+          "ms": 0.009999990463256836,
           "patternBytes": 21,
           "subjectLength": 40,
           "matched": false,
@@ -58,7 +58,7 @@
         },
         {
           "stars": 12,
-          "ms": 0.01000000536441803,
+          "ms": 0,
           "patternBytes": 25,
           "subjectLength": 40,
           "matched": false,
@@ -67,72 +67,793 @@
       ],
       "profileResolution": [
         {
-          "targetWorkUnits": 67108864,
-          "ok": true,
-          "code": null,
-          "ms": 420.2900000065565,
-          "label": "3972 Ausschlussselektoren über 2000 Control-IDs",
-          "workUnits": 67109108,
-          "nodes": 16,
-          "maxDepth": 6,
-          "medianMs": 420.04500000178814,
-          "maxMs": 420.2900000065565,
-          "samples": 3
+          "category": "import-edge",
+          "rows": [
+            {
+              "targetWorkUnits": 4194158,
+              "ok": true,
+              "code": null,
+              "ms": 200.90000000596046,
+              "id": "import-edge",
+              "label": "698 Importe über 2000 Control-IDs, Auswahl leer",
+              "repetitions": 698,
+              "profileBytes": 53916,
+              "workUnits": 4192208,
+              "workUnitsByCategory": {
+                "import-edge": 2794114,
+                "selector-compare": 1396698,
+                "glob-state": 0,
+                "merge-step": 1396,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 722,
+              "maxDepth": 6,
+              "medianMs": 200.90000000596046,
+              "maxMs": 201.31999999284744,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 8388317,
+              "ok": true,
+              "code": null,
+              "ms": 396.2800000011921,
+              "id": "import-edge",
+              "label": "1396 Importe über 2000 Control-IDs, Auswahl leer",
+              "repetitions": 1396,
+              "profileBytes": 107662,
+              "workUnits": 8384396,
+              "workUnitsByCategory": {
+                "import-edge": 5588208,
+                "selector-compare": 2793396,
+                "glob-state": 0,
+                "merge-step": 2792,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 1420,
+              "maxDepth": 6,
+              "medianMs": 396.2800000011921,
+              "maxMs": 397.1200000047684,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 16776634,
+              "ok": true,
+              "code": null,
+              "ms": 793.8449999988079,
+              "id": "import-edge",
+              "label": "2793 Importe über 2000 Control-IDs, Auswahl leer",
+              "repetitions": 2793,
+              "profileBytes": 215231,
+              "workUnits": 16774778,
+              "workUnitsByCategory": {
+                "import-edge": 11180399,
+                "selector-compare": 5588793,
+                "glob-state": 0,
+                "merge-step": 5586,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 2817,
+              "maxDepth": 6,
+              "medianMs": 792.7950000166893,
+              "maxMs": 793.8449999988079,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 33553269,
+              "ok": true,
+              "code": null,
+              "ms": 1586.324999988079,
+              "id": "import-edge",
+              "label": "5586 Importe über 2000 Control-IDs, Auswahl leer",
+              "repetitions": 5586,
+              "profileBytes": 430292,
+              "workUnits": 33549536,
+              "workUnitsByCategory": {
+                "import-edge": 22360778,
+                "selector-compare": 11177586,
+                "glob-state": 0,
+                "merge-step": 11172,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 5610,
+              "maxDepth": 6,
+              "medianMs": 1586.324999988079,
+              "maxMs": 1587.2700000107288,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 67106539,
+              "ok": true,
+              "code": null,
+              "ms": 3174.265000015497,
+              "id": "import-edge",
+              "label": "11173 Importe über 2000 Control-IDs, Auswahl leer",
+              "repetitions": 11173,
+              "profileBytes": 860491,
+              "workUnits": 67105058,
+              "workUnitsByCategory": {
+                "import-edge": 44725539,
+                "selector-compare": 22357173,
+                "glob-state": 0,
+                "merge-step": 22346,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 11197,
+              "maxDepth": 6,
+              "medianMs": 3164.4299999773502,
+              "maxMs": 3174.265000015497,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 134213078,
+              "ok": true,
+              "code": null,
+              "ms": 6341.330000013113,
+              "id": "import-edge",
+              "label": "22346 Importe über 2000 Control-IDs, Auswahl leer",
+              "repetitions": 22346,
+              "profileBytes": 1720812,
+              "workUnits": 134210096,
+              "workUnitsByCategory": {
+                "import-edge": 89451058,
+                "selector-compare": 44714346,
+                "glob-state": 0,
+                "merge-step": 44692,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 22370,
+              "maxDepth": 6,
+              "medianMs": 6341.635000020266,
+              "maxMs": 6360.130000025034,
+              "samples": 3
+            }
+          ]
         },
         {
-          "targetWorkUnits": 134217728,
-          "ok": true,
-          "code": null,
-          "ms": 830.8849999904633,
-          "label": "7945 Ausschlussselektoren über 2000 Control-IDs",
-          "workUnits": 134213078,
-          "nodes": 16,
-          "maxDepth": 6,
-          "medianMs": 885.1650000065565,
-          "maxMs": 892.3699999898672,
-          "samples": 3
+          "category": "selector-compare",
+          "rows": [
+            {
+              "targetWorkUnits": 4194158,
+              "ok": true,
+              "code": null,
+              "ms": 99.125,
+              "id": "selector-compare",
+              "label": "697 Ausschlussselektoren über 2000 Nachfahren",
+              "repetitions": 697,
+              "profileBytes": 37868,
+              "workUnits": 4191423,
+              "workUnitsByCategory": {
+                "import-edge": 4025,
+                "selector-compare": 4187396,
+                "glob-state": 0,
+                "merge-step": 2,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 25,
+              "maxDepth": 6,
+              "medianMs": 99.125,
+              "maxMs": 100.125,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 8388317,
+              "ok": true,
+              "code": null,
+              "ms": 194.2650000154972,
+              "id": "selector-compare",
+              "label": "1396 Ausschlussselektoren über 2000 Nachfahren",
+              "repetitions": 1396,
+              "profileBytes": 75614,
+              "workUnits": 8386821,
+              "workUnitsByCategory": {
+                "import-edge": 4025,
+                "selector-compare": 8382794,
+                "glob-state": 0,
+                "merge-step": 2,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 25,
+              "maxDepth": 6,
+              "medianMs": 194.97499999403954,
+              "maxMs": 195.44499999284744,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 16776634,
+              "ok": true,
+              "code": null,
+              "ms": 388.14999997615814,
+              "id": "selector-compare",
+              "label": "2793 Ausschlussselektoren über 2000 Nachfahren",
+              "repetitions": 2793,
+              "profileBytes": 151052,
+              "workUnits": 16771615,
+              "workUnitsByCategory": {
+                "import-edge": 4025,
+                "selector-compare": 16767588,
+                "glob-state": 0,
+                "merge-step": 2,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 25,
+              "maxDepth": 6,
+              "medianMs": 388.2950000166893,
+              "maxMs": 388.31999999284744,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 33553269,
+              "ok": true,
+              "code": null,
+              "ms": 777.5600000023842,
+              "id": "selector-compare",
+              "label": "5589 Ausschlussselektoren über 2000 Nachfahren",
+              "repetitions": 5589,
+              "profileBytes": 302036,
+              "workUnits": 33553207,
+              "workUnitsByCategory": {
+                "import-edge": 4025,
+                "selector-compare": 33549180,
+                "glob-state": 0,
+                "merge-step": 2,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 25,
+              "maxDepth": 6,
+              "medianMs": 775.6299999952316,
+              "maxMs": 777.5600000023842,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 67106539,
+              "ok": true,
+              "code": null,
+              "ms": 1550.7950000166893,
+              "id": "selector-compare",
+              "label": "11179 Ausschlussselektoren über 2000 Nachfahren",
+              "repetitions": 11179,
+              "profileBytes": 603896,
+              "workUnits": 67104387,
+              "workUnitsByCategory": {
+                "import-edge": 4025,
+                "selector-compare": 67100360,
+                "glob-state": 0,
+                "merge-step": 2,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 25,
+              "maxDepth": 6,
+              "medianMs": 1550.7950000166893,
+              "maxMs": 1554.6149999797344,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 134213078,
+              "ok": true,
+              "code": null,
+              "ms": 3099.780000001192,
+              "id": "selector-compare",
+              "label": "22360 Ausschlussselektoren über 2000 Nachfahren",
+              "repetitions": 22360,
+              "profileBytes": 1207670,
+              "workUnits": 134212749,
+              "workUnitsByCategory": {
+                "import-edge": 4025,
+                "selector-compare": 134208722,
+                "glob-state": 0,
+                "merge-step": 2,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 25,
+              "maxDepth": 6,
+              "medianMs": 3105.580000013113,
+              "maxMs": 3108.5699999928474,
+              "samples": 3
+            }
+          ]
         },
         {
-          "targetWorkUnits": 268435456,
-          "ok": true,
-          "code": null,
-          "ms": 1660.5600000023842,
-          "label": "15890 Ausschlussselektoren über 2000 Control-IDs",
-          "workUnits": 268404128,
-          "nodes": 16,
-          "maxDepth": 6,
-          "medianMs": 1660.5600000023842,
-          "maxMs": 1673.7599999904633,
-          "samples": 3
+          "category": "glob-state",
+          "rows": [
+            {
+              "targetWorkUnits": 4194158,
+              "ok": true,
+              "code": null,
+              "ms": 95.86500000953674,
+              "id": "glob-state",
+              "label": "8 Glob-Selektoren über 2000 IDs à 120 Zeichen",
+              "repetitions": 8,
+              "profileBytes": 574,
+              "workUnits": 3762025,
+              "workUnitsByCategory": {
+                "import-edge": 20023,
+                "selector-compare": 4000,
+                "glob-state": 3728000,
+                "merge-step": 10002,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 8026,
+              "maxDepth": 6,
+              "medianMs": 95.86500000953674,
+              "maxMs": 101.77500000596046,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 8388317,
+              "ok": true,
+              "code": null,
+              "ms": 142.69499999284744,
+              "id": "glob-state",
+              "label": "17 Glob-Selektoren über 2000 IDs à 120 Zeichen",
+              "repetitions": 17,
+              "profileBytes": 961,
+              "workUnits": 7956025,
+              "workUnitsByCategory": {
+                "import-edge": 20023,
+                "selector-compare": 4000,
+                "glob-state": 7922000,
+                "merge-step": 10002,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 8026,
+              "maxDepth": 6,
+              "medianMs": 142.0949999988079,
+              "maxMs": 142.69499999284744,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 16776634,
+              "ok": true,
+              "code": null,
+              "ms": 247.82499998807907,
+              "id": "glob-state",
+              "label": "35 Glob-Selektoren über 2000 IDs à 120 Zeichen",
+              "repetitions": 35,
+              "profileBytes": 1735,
+              "workUnits": 16344025,
+              "workUnitsByCategory": {
+                "import-edge": 20023,
+                "selector-compare": 4000,
+                "glob-state": 16310000,
+                "merge-step": 10002,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 8026,
+              "maxDepth": 6,
+              "medianMs": 240.52500000596046,
+              "maxMs": 247.82499998807907,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 33553269,
+              "ok": true,
+              "code": null,
+              "ms": 432.72499999403954,
+              "id": "glob-state",
+              "label": "71 Glob-Selektoren über 2000 IDs à 120 Zeichen",
+              "repetitions": 71,
+              "profileBytes": 3283,
+              "workUnits": 33120025,
+              "workUnitsByCategory": {
+                "import-edge": 20023,
+                "selector-compare": 4000,
+                "glob-state": 33086000,
+                "merge-step": 10002,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 8026,
+              "maxDepth": 6,
+              "medianMs": 438.94500002264977,
+              "maxMs": 445.4050000011921,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 67106539,
+              "ok": true,
+              "code": null,
+              "ms": 880.3649999797344,
+              "id": "glob-state",
+              "label": "143 Glob-Selektoren über 2000 IDs à 120 Zeichen",
+              "repetitions": 143,
+              "profileBytes": 6379,
+              "workUnits": 66672025,
+              "workUnitsByCategory": {
+                "import-edge": 20023,
+                "selector-compare": 4000,
+                "glob-state": 66638000,
+                "merge-step": 10002,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 8026,
+              "maxDepth": 6,
+              "medianMs": 827.8100000023842,
+              "maxMs": 880.3649999797344,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 134213078,
+              "ok": true,
+              "code": null,
+              "ms": 1642.75,
+              "id": "glob-state",
+              "label": "287 Glob-Selektoren über 2000 IDs à 120 Zeichen",
+              "repetitions": 287,
+              "profileBytes": 12571,
+              "workUnits": 133776025,
+              "workUnitsByCategory": {
+                "import-edge": 20023,
+                "selector-compare": 4000,
+                "glob-state": 133742000,
+                "merge-step": 10002,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 8026,
+              "maxDepth": 6,
+              "medianMs": 1635.4000000059605,
+              "maxMs": 1642.75,
+              "samples": 3
+            }
+          ]
         },
         {
-          "targetWorkUnits": 536870912,
-          "ok": true,
-          "code": null,
-          "ms": 3387.4650000035763,
-          "label": "31781 Ausschlussselektoren über 2000 Control-IDs",
-          "workUnits": 536803118,
-          "nodes": 16,
-          "maxDepth": 6,
-          "medianMs": 3373.4599999934435,
-          "maxMs": 3387.4650000035763,
-          "samples": 3
+          "category": "merge-step",
+          "rows": [
+            {
+              "targetWorkUnits": 4194158,
+              "ok": true,
+              "code": null,
+              "ms": 159.42500001192093,
+              "id": "merge-step",
+              "label": "209 as-is-Importe über 2000 Controls in Gruppen",
+              "repetitions": 209,
+              "profileBytes": 16243,
+              "workUnits": 4185872,
+              "workUnitsByCategory": {
+                "import-edge": 837692,
+                "selector-compare": 418209,
+                "glob-state": 0,
+                "merge-step": 2929971,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 1487,
+              "maxDepth": 6,
+              "medianMs": 162.20500001311302,
+              "maxMs": 164.1050000190735,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 8388317,
+              "ok": true,
+              "code": null,
+              "ms": 320.8599999845028,
+              "id": "merge-step",
+              "label": "418 as-is-Importe über 2000 Controls in Gruppen",
+              "repetitions": 418,
+              "profileBytes": 32336,
+              "workUnits": 8371724,
+              "workUnitsByCategory": {
+                "import-edge": 1675364,
+                "selector-compare": 836418,
+                "glob-state": 0,
+                "merge-step": 5859942,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 2950,
+              "maxDepth": 6,
+              "medianMs": 318.8600000143051,
+              "maxMs": 320.8599999845028,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 16776634,
+              "ok": true,
+              "code": null,
+              "ms": 640.9200000166893,
+              "id": "merge-step",
+              "label": "837 as-is-Importe über 2000 Controls in Gruppen",
+              "repetitions": 837,
+              "profileBytes": 64599,
+              "workUnits": 16763456,
+              "workUnitsByCategory": {
+                "import-edge": 3354716,
+                "selector-compare": 1674837,
+                "glob-state": 0,
+                "merge-step": 11733903,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 5883,
+              "maxDepth": 6,
+              "medianMs": 639.3700000047684,
+              "maxMs": 640.9200000166893,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 33553269,
+              "ok": true,
+              "code": null,
+              "ms": 1284.8250000178814,
+              "id": "merge-step",
+              "label": "1675 as-is-Importe über 2000 Controls in Gruppen",
+              "repetitions": 1675,
+              "profileBytes": 129125,
+              "workUnits": 33546920,
+              "workUnitsByCategory": {
+                "import-edge": 6713420,
+                "selector-compare": 3351675,
+                "glob-state": 0,
+                "merge-step": 23481825,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 11749,
+              "maxDepth": 6,
+              "medianMs": 1284.8250000178814,
+              "maxMs": 1289.655000001192,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 67106539,
+              "ok": true,
+              "code": null,
+              "ms": 2567.234999984503,
+              "id": "merge-step",
+              "label": "3350 as-is-Importe über 2000 Controls in Gruppen",
+              "repetitions": 3350,
+              "profileBytes": 258100,
+              "workUnits": 67093820,
+              "workUnitsByCategory": {
+                "import-edge": 13426820,
+                "selector-compare": 6703350,
+                "glob-state": 0,
+                "merge-step": 46963650,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 23474,
+              "maxDepth": 6,
+              "medianMs": 2574.1800000071526,
+              "maxMs": 2574.5100000202656,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 134213078,
+              "ok": true,
+              "code": null,
+              "ms": 5126.620000004768,
+              "id": "merge-step",
+              "label": "6701 as-is-Importe über 2000 Controls in Gruppen",
+              "repetitions": 6701,
+              "profileBytes": 516127,
+              "workUnits": 134207648,
+              "workUnitsByCategory": {
+                "import-edge": 26857628,
+                "selector-compare": 13408701,
+                "glob-state": 0,
+                "merge-step": 93941319,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 46931,
+              "maxDepth": 6,
+              "medianMs": 5123.890000015497,
+              "maxMs": 5126.620000004768,
+              "samples": 3
+            }
+          ]
         },
         {
-          "targetWorkUnits": 1073741824,
-          "ok": true,
-          "code": null,
-          "ms": 6750.629999995232,
-          "label": "63562 Ausschlussselektoren über 2000 Control-IDs",
-          "workUnits": 1073584208,
-          "nodes": 16,
-          "maxDepth": 6,
-          "medianMs": 6755.2750000059605,
-          "maxMs": 6757.524999991059,
-          "samples": 3
+          "category": "alter-target-lookup",
+          "rows": [
+            {
+              "targetWorkUnits": 4194158,
+              "ok": true,
+              "code": null,
+              "ms": 241.88999998569489,
+              "id": "alter-target-lookup",
+              "label": "319856 Alterationen auf einer Control, 2000 Zielsuchen",
+              "repetitions": 319856,
+              "profileBytes": 7037063,
+              "workUnits": 4194153,
+              "workUnitsByCategory": {
+                "import-edge": 659735,
+                "selector-compare": 4000,
+                "glob-state": 0,
+                "merge-step": 10002,
+                "alter-target-lookup": 321856,
+                "alter-candidate": 3198560
+              },
+              "nodes": 327882,
+              "maxDepth": 6,
+              "medianMs": 241.88999998569489,
+              "maxMs": 244.7999999821186,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 8388317,
+              "ok": false,
+              "code": "FIXTURE_DOKUMENTGRENZE",
+              "ms": null,
+              "id": "alter-target-lookup",
+              "repetitions": 476614,
+              "reachableWorkUnits": 6232007,
+              "workUnits": null,
+              "samples": 0
+            }
+          ]
+        },
+        {
+          "category": "alter-candidate",
+          "rows": [
+            {
+              "targetWorkUnits": 4194158,
+              "ok": true,
+              "code": null,
+              "ms": 229.22999998927116,
+              "id": "alter-candidate",
+              "label": "1037 Alterationen über 2000 parts-Kandidaten",
+              "repetitions": 1037,
+              "profileBytes": 65562,
+              "workUnits": 4192120,
+              "workUnitsByCategory": {
+                "import-edge": 22332,
+                "selector-compare": 2,
+                "glob-state": 0,
+                "merge-step": 8,
+                "alter-target-lookup": 1038,
+                "alter-candidate": 4168740
+              },
+              "nodes": 9142,
+              "maxDepth": 7,
+              "medianMs": 232.0799999833107,
+              "maxMs": 232.10499998927116,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 8388317,
+              "ok": true,
+              "code": null,
+              "ms": 449.74499997496605,
+              "id": "alter-candidate",
+              "label": "2078 Alterationen über 2000 parts-Kandidaten",
+              "repetitions": 2078,
+              "profileBytes": 131145,
+              "workUnits": 8386309,
+              "workUnitsByCategory": {
+                "import-edge": 30660,
+                "selector-compare": 2,
+                "glob-state": 0,
+                "merge-step": 8,
+                "alter-target-lookup": 2079,
+                "alter-candidate": 8353560
+              },
+              "nodes": 12265,
+              "maxDepth": 7,
+              "medianMs": 456.19499999284744,
+              "maxMs": 456.9650000035763,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 16776634,
+              "ok": true,
+              "code": null,
+              "ms": 893.0649999976158,
+              "id": "alter-candidate",
+              "label": "4160 Alterationen über 2000 parts-Kandidaten",
+              "repetitions": 4160,
+              "profileBytes": 262311,
+              "workUnits": 16774687,
+              "workUnitsByCategory": {
+                "import-edge": 47316,
+                "selector-compare": 2,
+                "glob-state": 0,
+                "merge-step": 8,
+                "alter-target-lookup": 4161,
+                "alter-candidate": 16723200
+              },
+              "nodes": 18511,
+              "maxDepth": 7,
+              "medianMs": 893.0649999976158,
+              "maxMs": 893.8650000095367,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 33553269,
+              "ok": true,
+              "code": null,
+              "ms": 1776.8849999904633,
+              "id": "alter-candidate",
+              "label": "8324 Alterationen über 2000 parts-Kandidaten",
+              "repetitions": 8324,
+              "profileBytes": 524643,
+              "workUnits": 33551443,
+              "workUnitsByCategory": {
+                "import-edge": 80628,
+                "selector-compare": 2,
+                "glob-state": 0,
+                "merge-step": 8,
+                "alter-target-lookup": 8325,
+                "alter-candidate": 33462480
+              },
+              "nodes": 31003,
+              "maxDepth": 7,
+              "medianMs": 1776.8849999904633,
+              "maxMs": 1779.4599999785423,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 67106539,
+              "ok": true,
+              "code": null,
+              "ms": 3562.199999988079,
+              "id": "alter-candidate",
+              "label": "16652 Alterationen über 2000 parts-Kandidaten",
+              "repetitions": 16652,
+              "profileBytes": 1049307,
+              "workUnits": 67104955,
+              "workUnitsByCategory": {
+                "import-edge": 147252,
+                "selector-compare": 2,
+                "glob-state": 0,
+                "merge-step": 8,
+                "alter-target-lookup": 16653,
+                "alter-candidate": 66941040
+              },
+              "nodes": 55987,
+              "maxDepth": 7,
+              "medianMs": 3555.449999988079,
+              "maxMs": 3562.199999988079,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 134213078,
+              "ok": true,
+              "code": null,
+              "ms": 7096.3550000190735,
+              "id": "alter-candidate",
+              "label": "33308 Alterationen über 2000 parts-Kandidaten",
+              "repetitions": 33308,
+              "profileBytes": 2098635,
+              "workUnits": 134211979,
+              "workUnitsByCategory": {
+                "import-edge": 280500,
+                "selector-compare": 2,
+                "glob-state": 0,
+                "merge-step": 8,
+                "alter-target-lookup": 33309,
+                "alter-candidate": 133898160
+              },
+              "nodes": 105955,
+              "maxDepth": 7,
+              "medianMs": 7097.080000013113,
+              "maxMs": 7104.159999996424,
+              "samples": 3
+            }
+          ]
         }
       ],
-      "workUnitLimit": 2147483648
+      "calibration": null,
+      "workUnitLimit": 134213078
     },
     {
       "throttleRate": 4,
@@ -149,7 +870,7 @@
       },
       "memoryObservability": {
         "probeBytes": 16777216,
-        "observedBytes": 16774162
+        "observedBytes": 16774178
       },
       "memoryThrottleRate": 4,
       "fixtures": [],
@@ -157,7 +878,7 @@
       "glob": [
         {
           "stars": 4,
-          "ms": 0.18000000715255737,
+          "ms": 0.5550000071525574,
           "patternBytes": 9,
           "subjectLength": 40,
           "matched": false,
@@ -173,7 +894,7 @@
         },
         {
           "stars": 8,
-          "ms": 0.01000000536441803,
+          "ms": 0.004999995231628418,
           "patternBytes": 17,
           "subjectLength": 40,
           "matched": false,
@@ -181,7 +902,7 @@
         },
         {
           "stars": 10,
-          "ms": 0,
+          "ms": 0.009999990463256836,
           "patternBytes": 21,
           "subjectLength": 40,
           "matched": false,
@@ -189,7 +910,7 @@
         },
         {
           "stars": 12,
-          "ms": 0.004999995231628418,
+          "ms": 0.005000025033950806,
           "patternBytes": 25,
           "subjectLength": 40,
           "matched": false,
@@ -198,56 +919,635 @@
       ],
       "profileResolution": [
         {
-          "targetWorkUnits": 67108864,
-          "ok": true,
-          "code": null,
-          "ms": 1734.75,
-          "label": "3972 Ausschlussselektoren über 2000 Control-IDs",
-          "workUnits": 67109108,
-          "nodes": 16,
-          "maxDepth": 6,
-          "medianMs": 1734.75,
-          "maxMs": 1835.3999999910593,
-          "samples": 3
+          "category": "import-edge",
+          "rows": [
+            {
+              "targetWorkUnits": 4194158,
+              "ok": true,
+              "code": null,
+              "ms": 815.0649999976158,
+              "id": "import-edge",
+              "label": "698 Importe über 2000 Control-IDs, Auswahl leer",
+              "repetitions": 698,
+              "profileBytes": 53916,
+              "workUnits": 4192208,
+              "workUnitsByCategory": {
+                "import-edge": 2794114,
+                "selector-compare": 1396698,
+                "glob-state": 0,
+                "merge-step": 1396,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 722,
+              "maxDepth": 6,
+              "medianMs": 846.1500000059605,
+              "maxMs": 863.1949999928474,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 8388317,
+              "ok": true,
+              "code": null,
+              "ms": 1699.1749999821186,
+              "id": "import-edge",
+              "label": "1396 Importe über 2000 Control-IDs, Auswahl leer",
+              "repetitions": 1396,
+              "profileBytes": 107662,
+              "workUnits": 8384396,
+              "workUnitsByCategory": {
+                "import-edge": 5588208,
+                "selector-compare": 2793396,
+                "glob-state": 0,
+                "merge-step": 2792,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 1420,
+              "maxDepth": 6,
+              "medianMs": 1699.1749999821186,
+              "maxMs": 1718.2599999904633,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 16776634,
+              "ok": true,
+              "code": null,
+              "ms": 3412.8499999940395,
+              "id": "import-edge",
+              "label": "2793 Importe über 2000 Control-IDs, Auswahl leer",
+              "repetitions": 2793,
+              "profileBytes": 215231,
+              "workUnits": 16774778,
+              "workUnitsByCategory": {
+                "import-edge": 11180399,
+                "selector-compare": 5588793,
+                "glob-state": 0,
+                "merge-step": 5586,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 2817,
+              "maxDepth": 6,
+              "medianMs": 3391.780000001192,
+              "maxMs": 3412.8499999940395,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 33553269,
+              "ok": true,
+              "code": null,
+              "ms": 6849.129999995232,
+              "id": "import-edge",
+              "label": "5586 Importe über 2000 Control-IDs, Auswahl leer",
+              "repetitions": 5586,
+              "profileBytes": 430292,
+              "workUnits": 33549536,
+              "workUnitsByCategory": {
+                "import-edge": 22360778,
+                "selector-compare": 11177586,
+                "glob-state": 0,
+                "merge-step": 11172,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 5610,
+              "maxDepth": 6,
+              "medianMs": 6800.840000003576,
+              "maxMs": 6849.129999995232,
+              "samples": 3
+            }
+          ]
         },
         {
-          "targetWorkUnits": 134217728,
-          "ok": true,
-          "code": null,
-          "ms": 3465.7699999958277,
-          "label": "7945 Ausschlussselektoren über 2000 Control-IDs",
-          "workUnits": 134213078,
-          "nodes": 16,
-          "maxDepth": 6,
-          "medianMs": 3724.8700000047684,
-          "maxMs": 3752.8500000089407,
-          "samples": 3
+          "category": "selector-compare",
+          "rows": [
+            {
+              "targetWorkUnits": 4194158,
+              "ok": true,
+              "code": null,
+              "ms": 428.0349999964237,
+              "id": "selector-compare",
+              "label": "697 Ausschlussselektoren über 2000 Nachfahren",
+              "repetitions": 697,
+              "profileBytes": 37868,
+              "workUnits": 4191423,
+              "workUnitsByCategory": {
+                "import-edge": 4025,
+                "selector-compare": 4187396,
+                "glob-state": 0,
+                "merge-step": 2,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 25,
+              "maxDepth": 6,
+              "medianMs": 431.94999998807907,
+              "maxMs": 432.09999999403954,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 8388317,
+              "ok": true,
+              "code": null,
+              "ms": 835.7999999821186,
+              "id": "selector-compare",
+              "label": "1396 Ausschlussselektoren über 2000 Nachfahren",
+              "repetitions": 1396,
+              "profileBytes": 75614,
+              "workUnits": 8386821,
+              "workUnitsByCategory": {
+                "import-edge": 4025,
+                "selector-compare": 8382794,
+                "glob-state": 0,
+                "merge-step": 2,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 25,
+              "maxDepth": 6,
+              "medianMs": 835.7999999821186,
+              "maxMs": 859.1749999821186,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 16776634,
+              "ok": true,
+              "code": null,
+              "ms": 1653.0699999928474,
+              "id": "selector-compare",
+              "label": "2793 Ausschlussselektoren über 2000 Nachfahren",
+              "repetitions": 2793,
+              "profileBytes": 151052,
+              "workUnits": 16771615,
+              "workUnitsByCategory": {
+                "import-edge": 4025,
+                "selector-compare": 16767588,
+                "glob-state": 0,
+                "merge-step": 2,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 25,
+              "maxDepth": 6,
+              "medianMs": 1653.0699999928474,
+              "maxMs": 1671.7849999964237,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 33553269,
+              "ok": true,
+              "code": null,
+              "ms": 3188.7049999833107,
+              "id": "selector-compare",
+              "label": "5589 Ausschlussselektoren über 2000 Nachfahren",
+              "repetitions": 5589,
+              "profileBytes": 302036,
+              "workUnits": 33553207,
+              "workUnitsByCategory": {
+                "import-edge": 4025,
+                "selector-compare": 33549180,
+                "glob-state": 0,
+                "merge-step": 2,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 25,
+              "maxDepth": 6,
+              "medianMs": 3201.8499999940395,
+              "maxMs": 3206.6650000214577,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 67106539,
+              "ok": true,
+              "code": null,
+              "ms": 6330.685000002384,
+              "id": "selector-compare",
+              "label": "11179 Ausschlussselektoren über 2000 Nachfahren",
+              "repetitions": 11179,
+              "profileBytes": 603896,
+              "workUnits": 67104387,
+              "workUnitsByCategory": {
+                "import-edge": 4025,
+                "selector-compare": 67100360,
+                "glob-state": 0,
+                "merge-step": 2,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 25,
+              "maxDepth": 6,
+              "medianMs": 6330.685000002384,
+              "maxMs": 6441.1500000059605,
+              "samples": 3
+            }
+          ]
         },
         {
-          "targetWorkUnits": 268435456,
-          "ok": true,
-          "code": null,
-          "ms": 6831.855000004172,
-          "label": "15890 Ausschlussselektoren über 2000 Control-IDs",
-          "workUnits": 268404128,
-          "nodes": 16,
-          "maxDepth": 6,
-          "medianMs": 6831.855000004172,
-          "maxMs": 6843.780000001192,
-          "samples": 3
+          "category": "glob-state",
+          "rows": [
+            {
+              "targetWorkUnits": 4194158,
+              "ok": true,
+              "code": null,
+              "ms": 377.2900000214577,
+              "id": "glob-state",
+              "label": "8 Glob-Selektoren über 2000 IDs à 120 Zeichen",
+              "repetitions": 8,
+              "profileBytes": 574,
+              "workUnits": 3762025,
+              "workUnitsByCategory": {
+                "import-edge": 20023,
+                "selector-compare": 4000,
+                "glob-state": 3728000,
+                "merge-step": 10002,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 8026,
+              "maxDepth": 6,
+              "medianMs": 372.4500000178814,
+              "maxMs": 377.2900000214577,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 8388317,
+              "ok": true,
+              "code": null,
+              "ms": 555.3650000095367,
+              "id": "glob-state",
+              "label": "17 Glob-Selektoren über 2000 IDs à 120 Zeichen",
+              "repetitions": 17,
+              "profileBytes": 961,
+              "workUnits": 7956025,
+              "workUnitsByCategory": {
+                "import-edge": 20023,
+                "selector-compare": 4000,
+                "glob-state": 7922000,
+                "merge-step": 10002,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 8026,
+              "maxDepth": 6,
+              "medianMs": 555.3650000095367,
+              "maxMs": 583.5200000107288,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 16776634,
+              "ok": true,
+              "code": null,
+              "ms": 985.205000013113,
+              "id": "glob-state",
+              "label": "35 Glob-Selektoren über 2000 IDs à 120 Zeichen",
+              "repetitions": 35,
+              "profileBytes": 1735,
+              "workUnits": 16344025,
+              "workUnitsByCategory": {
+                "import-edge": 20023,
+                "selector-compare": 4000,
+                "glob-state": 16310000,
+                "merge-step": 10002,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 8026,
+              "maxDepth": 6,
+              "medianMs": 956.660000026226,
+              "maxMs": 985.205000013113,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 33553269,
+              "ok": true,
+              "code": null,
+              "ms": 1741.7849999964237,
+              "id": "glob-state",
+              "label": "71 Glob-Selektoren über 2000 IDs à 120 Zeichen",
+              "repetitions": 71,
+              "profileBytes": 3283,
+              "workUnits": 33120025,
+              "workUnitsByCategory": {
+                "import-edge": 20023,
+                "selector-compare": 4000,
+                "glob-state": 33086000,
+                "merge-step": 10002,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 8026,
+              "maxDepth": 6,
+              "medianMs": 1750.0699999928474,
+              "maxMs": 1765.1949999928474,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 67106539,
+              "ok": true,
+              "code": null,
+              "ms": 3278.6449999809265,
+              "id": "glob-state",
+              "label": "143 Glob-Selektoren über 2000 IDs à 120 Zeichen",
+              "repetitions": 143,
+              "profileBytes": 6379,
+              "workUnits": 66672025,
+              "workUnitsByCategory": {
+                "import-edge": 20023,
+                "selector-compare": 4000,
+                "glob-state": 66638000,
+                "merge-step": 10002,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 8026,
+              "maxDepth": 6,
+              "medianMs": 3382.844999998808,
+              "maxMs": 3387.675000011921,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 134213078,
+              "ok": true,
+              "code": null,
+              "ms": 6367.539999991655,
+              "id": "glob-state",
+              "label": "287 Glob-Selektoren über 2000 IDs à 120 Zeichen",
+              "repetitions": 287,
+              "profileBytes": 12571,
+              "workUnits": 133776025,
+              "workUnitsByCategory": {
+                "import-edge": 20023,
+                "selector-compare": 4000,
+                "glob-state": 133742000,
+                "merge-step": 10002,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 8026,
+              "maxDepth": 6,
+              "medianMs": 6376.389999985695,
+              "maxMs": 6424.210000008345,
+              "samples": 3
+            }
+          ]
+        },
+        {
+          "category": "merge-step",
+          "rows": [
+            {
+              "targetWorkUnits": 4194158,
+              "ok": true,
+              "code": null,
+              "ms": 652.8849999904633,
+              "id": "merge-step",
+              "label": "209 as-is-Importe über 2000 Controls in Gruppen",
+              "repetitions": 209,
+              "profileBytes": 16243,
+              "workUnits": 4185872,
+              "workUnitsByCategory": {
+                "import-edge": 837692,
+                "selector-compare": 418209,
+                "glob-state": 0,
+                "merge-step": 2929971,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 1487,
+              "maxDepth": 6,
+              "medianMs": 659.4600000083447,
+              "maxMs": 670.2599999904633,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 8388317,
+              "ok": true,
+              "code": null,
+              "ms": 1302.8299999833107,
+              "id": "merge-step",
+              "label": "418 as-is-Importe über 2000 Controls in Gruppen",
+              "repetitions": 418,
+              "profileBytes": 32336,
+              "workUnits": 8371724,
+              "workUnitsByCategory": {
+                "import-edge": 1675364,
+                "selector-compare": 836418,
+                "glob-state": 0,
+                "merge-step": 5859942,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 2950,
+              "maxDepth": 6,
+              "medianMs": 1302.6150000095367,
+              "maxMs": 1302.8299999833107,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 16776634,
+              "ok": true,
+              "code": null,
+              "ms": 2602.2900000214577,
+              "id": "merge-step",
+              "label": "837 as-is-Importe über 2000 Controls in Gruppen",
+              "repetitions": 837,
+              "profileBytes": 64599,
+              "workUnits": 16763456,
+              "workUnitsByCategory": {
+                "import-edge": 3354716,
+                "selector-compare": 1674837,
+                "glob-state": 0,
+                "merge-step": 11733903,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 5883,
+              "maxDepth": 6,
+              "medianMs": 2602.2900000214577,
+              "maxMs": 2606.0999999940395,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 33553269,
+              "ok": true,
+              "code": null,
+              "ms": 5191.7750000059605,
+              "id": "merge-step",
+              "label": "1675 as-is-Importe über 2000 Controls in Gruppen",
+              "repetitions": 1675,
+              "profileBytes": 129125,
+              "workUnits": 33546920,
+              "workUnitsByCategory": {
+                "import-edge": 6713420,
+                "selector-compare": 3351675,
+                "glob-state": 0,
+                "merge-step": 23481825,
+                "alter-target-lookup": 0,
+                "alter-candidate": 0
+              },
+              "nodes": 11749,
+              "maxDepth": 6,
+              "medianMs": 5191.7750000059605,
+              "maxMs": 5207.574999988079,
+              "samples": 3
+            }
+          ]
+        },
+        {
+          "category": "alter-target-lookup",
+          "rows": [
+            {
+              "targetWorkUnits": 4194158,
+              "ok": true,
+              "code": null,
+              "ms": 936.5850000083447,
+              "id": "alter-target-lookup",
+              "label": "319856 Alterationen auf einer Control, 2000 Zielsuchen",
+              "repetitions": 319856,
+              "profileBytes": 7037063,
+              "workUnits": 4194153,
+              "workUnitsByCategory": {
+                "import-edge": 659735,
+                "selector-compare": 4000,
+                "glob-state": 0,
+                "merge-step": 10002,
+                "alter-target-lookup": 321856,
+                "alter-candidate": 3198560
+              },
+              "nodes": 327882,
+              "maxDepth": 6,
+              "medianMs": 936.5850000083447,
+              "maxMs": 1035.7849999964237,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 8388317,
+              "ok": false,
+              "code": "FIXTURE_DOKUMENTGRENZE",
+              "ms": null,
+              "id": "alter-target-lookup",
+              "repetitions": 476614,
+              "reachableWorkUnits": 6232007,
+              "workUnits": null,
+              "samples": 0
+            }
+          ]
+        },
+        {
+          "category": "alter-candidate",
+          "rows": [
+            {
+              "targetWorkUnits": 4194158,
+              "ok": true,
+              "code": null,
+              "ms": 945.3350000083447,
+              "id": "alter-candidate",
+              "label": "1037 Alterationen über 2000 parts-Kandidaten",
+              "repetitions": 1037,
+              "profileBytes": 65562,
+              "workUnits": 4192120,
+              "workUnitsByCategory": {
+                "import-edge": 22332,
+                "selector-compare": 2,
+                "glob-state": 0,
+                "merge-step": 8,
+                "alter-target-lookup": 1038,
+                "alter-candidate": 4168740
+              },
+              "nodes": 9142,
+              "maxDepth": 7,
+              "medianMs": 945.3350000083447,
+              "maxMs": 956.9850000143051,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 8388317,
+              "ok": true,
+              "code": null,
+              "ms": 1823.0049999952316,
+              "id": "alter-candidate",
+              "label": "2078 Alterationen über 2000 parts-Kandidaten",
+              "repetitions": 2078,
+              "profileBytes": 131145,
+              "workUnits": 8386309,
+              "workUnitsByCategory": {
+                "import-edge": 30660,
+                "selector-compare": 2,
+                "glob-state": 0,
+                "merge-step": 8,
+                "alter-target-lookup": 2079,
+                "alter-candidate": 8353560
+              },
+              "nodes": 12265,
+              "maxDepth": 7,
+              "medianMs": 1847.7450000047684,
+              "maxMs": 1852.1349999904633,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 16776634,
+              "ok": true,
+              "code": null,
+              "ms": 3631.4950000047684,
+              "id": "alter-candidate",
+              "label": "4160 Alterationen über 2000 parts-Kandidaten",
+              "repetitions": 4160,
+              "profileBytes": 262311,
+              "workUnits": 16774687,
+              "workUnitsByCategory": {
+                "import-edge": 47316,
+                "selector-compare": 2,
+                "glob-state": 0,
+                "merge-step": 8,
+                "alter-target-lookup": 4161,
+                "alter-candidate": 16723200
+              },
+              "nodes": 18511,
+              "maxDepth": 7,
+              "medianMs": 3651.979999989271,
+              "maxMs": 3663.3700000047684,
+              "samples": 3
+            },
+            {
+              "targetWorkUnits": 33553269,
+              "ok": true,
+              "code": null,
+              "ms": 7243.590000003576,
+              "id": "alter-candidate",
+              "label": "8324 Alterationen über 2000 parts-Kandidaten",
+              "repetitions": 8324,
+              "profileBytes": 524643,
+              "workUnits": 33551443,
+              "workUnitsByCategory": {
+                "import-edge": 80628,
+                "selector-compare": 2,
+                "glob-state": 0,
+                "merge-step": 8,
+                "alter-target-lookup": 8325,
+                "alter-candidate": 33462480
+              },
+              "nodes": 31003,
+              "maxDepth": 7,
+              "medianMs": 7243.590000003576,
+              "maxMs": 7266.25,
+              "samples": 3
+            }
+          ]
         }
       ],
-      "workUnitLimit": 2147483648
+      "calibration": null,
+      "workUnitLimit": 134213078
     }
   ],
   "sourceBefore": {
-    "commit": "21dd0b3bfcaed3c1d3e47564591627f1a87a58b0",
-    "sha256": "dcba82cdb98e8c157d9894c356b80fe144f1b2646fbcb7e59e06ecfcce5a0ff2",
-    "files": 404
+    "commit": "9473e73d33700c64a86e011665822b6fddbfdcde",
+    "sha256": "35115c19e466919ccf617250c3d2ceeb5adbc2c71cf6dfac8edee3b65bbd67f4",
+    "files": 405
   },
   "sourceAfter": {
-    "commit": "21dd0b3bfcaed3c1d3e47564591627f1a87a58b0",
-    "sha256": "dcba82cdb98e8c157d9894c356b80fe144f1b2646fbcb7e59e06ecfcce5a0ff2",
-    "files": 404
+    "commit": "9473e73d33700c64a86e011665822b6fddbfdcde",
+    "sha256": "35115c19e466919ccf617250c3d2ceeb5adbc2c71cf6dfac8edee3b65bbd67f4",
+    "files": 405
   }
 }

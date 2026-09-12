@@ -184,11 +184,16 @@ export function applyCombine(
     }
   }
 
+  // Die Reihenfolgeliste des kombinierten Zwischenstands bleibt bis zur
+  // Emission stehen.
+  budget.admitWorkingNode();
   const finalOrder =
     method === 'use-first'
       ? [...definitions.values()].map((defs) => defs[0]!)
       : [...order];
 
+  // Ebenso die Kollisionsliste.
+  budget.admitWorkingNode();
   return {
     controls: definitions,
     order: finalOrder,
@@ -214,6 +219,8 @@ export function stripNestedChildren(node: JsonObject, budget: ProfileResolutionB
 /** Flache Ausgabe: kombinierte Controls direkt unter catalog. */
 export function buildFlatControls(combined: CombinedControls, budget: ProfileResolutionBudget): JsonObject {
   const orderValue = ownDataValue(combined as unknown as object, 'order');
+  // Die flache controls-Liste ist ein Container des Ergebnisgraphen.
+  budget.admitWorkingNode();
   return {
     controls: Array.isArray(orderValue)
       ? ownArrayDataElements(orderValue, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP)
@@ -238,6 +245,9 @@ function filterNestedIncluded(
   const childPath = new Set(path);
   childPath.add(control);
   const copy = copyOwnDataMembers(control, budget);
+  // Wird unten als `controls`-Mitglied gesetzt und bleibt damit im
+  // Zwischengraphen stehen.
+  budget.admitWorkingNode();
   const ordered: JsonObject[] = [];
   // Nur setzen, wenn es gefilterte Kinder gibt — keine leeren controls:[]
   // in Blättern injizieren (Gitar-Hinweis zu bce6b68).
@@ -408,7 +418,11 @@ function filterContainerForAsIs(
   if (visited.has(containerNode)) return { groups: [], controls: [] };
   visited.add(containerNode);
 
+  // Beide Listen werden vom Aufrufer als `controls`- beziehungsweise
+  // `groups`-Mitglied übernommen und stehen dann im Zwischengraphen.
+  budget.admitWorkingNode();
   const groups: JsonObject[] = [];
+  budget.admitWorkingNode();
   const controls: JsonObject[] = [];
   collectDirectControls(containerNode, includedIds, controls, budget);
   collectNestedGroups(containerNode, includedIds, visited, groups, budget);
@@ -483,6 +497,9 @@ function copyCustomGroup(group: JsonObject, budget: ProfileResolutionBudget): Js
   if (!('props' in copy)) {
     const groupId = ownDataValue(group, 'id');
     if (typeof groupId === 'string' && groupId.length > 0) {
+      // Zwei neue Container: die props-Liste und der Label-Träger darin.
+      budget.admitWorkingNode();
+      budget.admitWorkingNode();
       copy['props'] = [{ name: 'label', value: groupId }];
     }
   }
@@ -528,10 +545,14 @@ function measureControlDepth(control: JsonObject, budget: ProfileResolutionBudge
 function copyWithSortedParts(control: JsonObject, label: string, budget: ProfileResolutionBudget): JsonObject {
   const copy = copyWithLabel(control, label, budget);
   const parts = safeArrayMember(control, 'parts');
-  if (parts !== undefined) copy['parts'] = ownArrayDataElements(parts, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP).sort((left, right) => {
-    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
-    return byPartId(left, right);
-  });
+  if (parts !== undefined) {
+    // Die sortierte Liste ersetzt das parts-Mitglied und bleibt stehen.
+    budget.admitWorkingNode();
+    copy['parts'] = ownArrayDataElements(parts, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP).sort((left, right) => {
+      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
+      return byPartId(left, right);
+    });
+  }
   return copy;
 }
 
@@ -582,6 +603,8 @@ function withPositionalLabels(
     const frame = stack.pop()!;
     const children = safeArrayMember(frame.original, 'controls');
     if (children === undefined) continue;
+    // Die beschriftete Kinderliste ersetzt das controls-Mitglied der Kopie.
+    budget.admitWorkingNode();
     frame.copy['controls'] = ownArrayDataElements(children, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP).map((child, index) =>
       createLabeledChild(child, index, frame, visited, stack, budget));
   }
@@ -594,6 +617,9 @@ function copyWithLabel(control: JsonObject, label: string, budget: ProfileResolu
     ? ownArrayDataElements(sourcePropsValue, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP)
     : [];
   const copy = copyOwnDataMembers(control, budget);
+  // Zwei neue Container: die props-Liste und der Label-Träger darin.
+  budget.admitWorkingNode();
+  budget.admitWorkingNode();
   copy['props'] = [{ name: 'label', value: label }, ...sourceProps];
   return copy;
 }
@@ -610,6 +636,8 @@ function assembleGroupControls(
   groupDefinitions: Set<object>,
   budget: ProfileResolutionBudget,
 ): { readonly ok: true; readonly placed: readonly JsonObject[] } | { readonly ok: false; readonly diagnostic: OscalDiagnostic } {
+  // Wird als `controls`-Mitglied der Gruppe übernommen.
+  budget.admitWorkingNode();
   const placed: JsonObject[] = [];
   const selection = resolvePlacementSelections(directives, context.poolIndex, budget);
   if (!selection.ok) return selection;
@@ -706,6 +734,8 @@ function assembleGroups(
   context: AssemblyContext,
   budget: ProfileResolutionBudget,
 ): GroupAssemblyResult {
+  // Wird als `groups`-Mitglied übernommen.
+  budget.admitWorkingNode();
   const assembled: JsonObject[] = [];
 
   for (let index = 0; index < rawGroups.length; index += 1) {

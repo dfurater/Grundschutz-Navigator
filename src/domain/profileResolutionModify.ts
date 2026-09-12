@@ -169,6 +169,9 @@ function applySingleSetParameter(
 ): readonly unknown[] {
   let changed = false;
   const directiveParamId = readStringMember(directive as unknown as JsonObject, 'paramId');
+  // Bei einem Treffer ersetzt diese Liste die params-Liste der Control und
+  // steht danach im Zwischengraphen — also ein Container vor der Allokation.
+  budget.admitWorkingNode();
   const next = ownArrayDataElements(params, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE).map((param) => {
     if (!isJsonObject(param)) return param;
     if (readStringMember(param, 'id') !== directiveParamId) return param;
@@ -198,6 +201,7 @@ function applySingleSetParameter(
       const additions = ownDataValue(directive as unknown as JsonObject, field);
       if (!Array.isArray(additions)) continue;
       const existing = safeArrayMember(target, field) ?? [];
+      budget.admitWorkingNode();
       target[field] = [
         ...ownArrayDataElements(existing, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE),
         ...ownArrayDataElements(additions, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE),
@@ -287,6 +291,7 @@ function applyImplicitAddition(
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
     const existing = safeArrayMember(result, listKey) ?? [];
     const existingElements = ownArrayDataElements(existing, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
+    budget.admitWorkingNode();
     result[listKey] = startLike
       ? [...additions, ...existingElements]
       : [...existingElements, ...additions];
@@ -357,14 +362,19 @@ function insertAtPart(
   const position = typeof positionValue === 'string' ? positionValue : 'ending';
   const additions = collectAdditionLists(addition, budget);
 
+  // Jeder der drei Zweige legt genau eine neue parts-Liste an, die als
+  // Mitglied im Zwischengraphen stehen bleibt.
   if (position === 'before') {
+    budget.admitWorkingNode();
     return { inserted: true, value: [...parts.slice(0, index), ...additions, ...parts.slice(index)] };
   }
   if (position === 'after' || position === 'ending') {
+    budget.admitWorkingNode();
     return { inserted: true, value: [...parts.slice(0, index + 1), ...additions, ...parts.slice(index + 1)] };
   }
   // starting: innerhalb des Ziel-Parts am Anfang einfügen.
   const inner = filterAsIsInnerParts(parts[index]!, budget);
+  budget.admitWorkingNode();
   const merged = [...additions, ...inner];
   budget.admitWorkingNode();
   const copyStart: JsonObject = {};
@@ -420,6 +430,9 @@ function insertIntoPartsTree(
     return { inserted: false, value: partsValue };
   }
 
+  // Diese Liste wird in beiden Ausgängen als neuer parts-Wert zurückgegeben
+  // und steht damit im Zwischengraphen.
+  budget.admitWorkingNode();
   const parts = ownArrayDataElements(partsValue, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE).filter(
     (part): part is JsonObject => isJsonObject(part),
   );
@@ -493,6 +506,9 @@ function applyRemovals(
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
     const members = safeArrayMember(control, listKey);
     if (members === undefined) continue;
+    // Die gefilterte Liste ersetzt die bisherige und bleibt stehen; Entfernen
+    // schreibt nichts gut, deshalb kostet auch ein reiner `removes`-Lauf.
+    budget.admitWorkingNode();
     result[listKey] = ownArrayDataElements(members, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE).filter((member) => {
       if (!isJsonObject(member)) return true;
       return !removalMatches(member, removal, listKey, budget);

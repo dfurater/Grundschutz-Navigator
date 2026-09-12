@@ -18,7 +18,9 @@ import {
   renderReport as renderRawReport,
   summarizeSamples,
   deriveNodeLimit,
+  deriveSeriesWorkUnitLimit,
   deriveWorkUnitLimit,
+  seriesIsDocumentCapped,
   parseNodeCounts,
   MEMORY_BUDGET_BYTES,
   UI_BLOCKING_BUDGET_MS,
@@ -61,7 +63,7 @@ describe('parseArguments', () => {
   it('setzt die Voreinstellungen ohne Argumente', () => {
     expect(parseArguments([])).toEqual({
       throttleRates: [1, 4], repeat: 3, jsonPath: null, scaleNodes: null, skipGlob: false,
-      skipProfileResolution: false, skipFixtures: false,
+      skipProfileResolution: false, skipFixtures: false, calibrate: false,
     });
   });
 
@@ -77,6 +79,23 @@ describe('parseArguments', () => {
       skipGlob: true,
       skipProfileResolution: true,
       skipFixtures: true,
+      calibrate: false,
+    });
+  });
+
+  it('schaltet mit --calibrate jede Messreihe ab', () => {
+    // Ein Kalibrierlauf erhebt allein die Raten der Fixtures. Liefe er
+    // zusätzlich die Stützpunkte, wären seine Zahlen an Fixtures gemessen,
+    // die er gerade erst neu vermisst.
+    expect(parseArguments(['--calibrate'])).toEqual({
+      throttleRates: [1],
+      repeat: 3,
+      jsonPath: null,
+      scaleNodes: null,
+      skipGlob: true,
+      skipProfileResolution: true,
+      skipFixtures: true,
+      calibrate: true,
     });
   });
 
@@ -651,13 +670,13 @@ describe('Wartezeitbudget', () => {
   });
 });
 
-describe('deriveWorkUnitLimit', () => {
+describe('deriveSeriesWorkUnitLimit', () => {
   const row = (target: number, workUnits: number, maxMs: number) => ({
     targetWorkUnits: target, ok: true, workUnits, nodes: 8, medianMs: maxMs, maxMs,
   });
 
   it('nennt den größten Stützpunkt, der die sichtbare Wartezeit hält', () => {
-    expect(deriveWorkUnitLimit([
+    expect(deriveSeriesWorkUnitLimit([
       row(1_000, 990, 100),
       row(2_000, 1_980, 900),
       row(4_000, 3_960, 4_800),
@@ -667,13 +686,13 @@ describe('deriveWorkUnitLimit', () => {
   it('gibt die GEMESSENE Zahl zurück, nicht den Stützpunkt', () => {
     // Das Fixture trifft seinen Zielwert nie exakt. Ein Grenzwert, der auf dem
     // Ziel statt auf der Messung stünde, wäre eine Behauptung.
-    expect(deriveWorkUnitLimit([row(1_000, 843, 50)])).toBe(843);
+    expect(deriveSeriesWorkUnitLimit([row(1_000, 843, 50)])).toBe(843);
   });
 
   it('endet an der ersten Reißstelle und lässt sich von einem späteren Halten nicht aufheben', () => {
     // Browsermessungen sind nicht monoton. Ein größerer Stützpunkt, der
     // zufällig wieder hält, hebt einen kleineren gerissenen nicht auf.
-    expect(deriveWorkUnitLimit([
+    expect(deriveSeriesWorkUnitLimit([
       row(1_000, 990, 100),
       row(2_000, 1_980, 6_000),
       row(4_000, 3_960, 200),
@@ -681,11 +700,11 @@ describe('deriveWorkUnitLimit', () => {
   });
 
   it('trägt keinen Grenzwert, wenn schon der kleinste Stützpunkt reißt', () => {
-    expect(deriveWorkUnitLimit([row(1_000, 990, 5_001)])).toBeNull();
+    expect(deriveSeriesWorkUnitLimit([row(1_000, 990, 5_001)])).toBeNull();
   });
 
   it('behandelt einen abgebrochenen Stützpunkt als fehlend, nicht als bestanden', () => {
-    expect(deriveWorkUnitLimit([
+    expect(deriveSeriesWorkUnitLimit([
       row(1_000, 990, 100),
       { targetWorkUnits: 2_000, ok: false, code: 'OSCAL_RESOLUTION_WORK_BUDGET_EXCEEDED' },
       row(4_000, 3_960, 100),
@@ -696,14 +715,67 @@ describe('deriveWorkUnitLimit', () => {
     // Derselbe Fehler, den GSPP-386 an `maxMs` gefunden hat: Ein fehlender
     // Wert darf nicht als NaN in einen Vergleich laufen und dort als
     // „gehalten" erscheinen.
-    expect(deriveWorkUnitLimit([
+    expect(deriveSeriesWorkUnitLimit([
       row(1_000, 990, 100),
       { targetWorkUnits: 2_000, ok: true, workUnits: 1_980, nodes: 8, medianMs: 10 },
     ])).toBe(990);
   });
 
   it('trägt keinen Grenzwert ohne Reihe', () => {
+    expect(deriveSeriesWorkUnitLimit([])).toBeNull();
+    expect(deriveSeriesWorkUnitLimit(undefined as never)).toBeNull();
+  });
+});
+
+describe('deriveWorkUnitLimit über alle Kategoriereihen', () => {
+  const row = (target: number, workUnits: number, maxMs: number) => ({
+    targetWorkUnits: target, ok: true, workUnits, nodes: 8, medianMs: maxMs, maxMs,
+  });
+
+  it('nimmt das Minimum der Reihen — die langsamste Kategorie entscheidet', () => {
+    // Alle Kategorien verbrauchen denselben Zähler, kosten aber je Einheit
+    // unterschiedlich viel Zeit. Ein Grenzwert auf der schnellsten Reihe
+    // bräche das Zeitbudget, sobald ein Dokument die langsamste treibt.
+    expect(deriveWorkUnitLimit([
+      { category: 'selector-compare', rows: [row(1_000, 990, 100), row(2_000, 1_980, 900)] },
+      { category: 'merge-step', rows: [row(1_000, 990, 100), row(2_000, 1_980, 6_000)] },
+    ])).toBe(990);
+  });
+
+  it('übergeht eine durch die Dokumentgrenze gedeckelte Reihe', () => {
+    // Eine Kategorie, deren ungünstigstes Steuerdokument die Arbeitsgrenze
+    // gar nicht erreichen kann, schränkt sie auch nicht ein. Ohne diese
+    // Ausnahme senkte ihr niedriger Deckel den Grenzwert für alle anderen.
+    expect(deriveWorkUnitLimit([
+      { category: 'selector-compare', rows: [row(1_000, 990, 100), row(2_000, 1_980, 900)] },
+      {
+        category: 'alter-target-lookup',
+        rows: [
+          row(1_000, 990, 20),
+          { targetWorkUnits: 2_000, ok: false, code: 'FIXTURE_DOKUMENTGRENZE', reachableWorkUnits: 1_100 },
+        ],
+      },
+    ])).toBe(1_980);
+  });
+
+  it('trägt keinen Grenzwert, wenn eine nicht gedeckelte Reihe keinen trägt', () => {
+    expect(deriveWorkUnitLimit([
+      { category: 'selector-compare', rows: [row(1_000, 990, 100)] },
+      { category: 'merge-step', rows: [row(1_000, 990, 5_001)] },
+    ])).toBeNull();
+  });
+
+  it('trägt keinen Grenzwert ohne Reihen', () => {
     expect(deriveWorkUnitLimit([])).toBeNull();
     expect(deriveWorkUnitLimit(undefined as never)).toBeNull();
+  });
+});
+
+describe('seriesIsDocumentCapped', () => {
+  it('erkennt die Deckelung an der Dokumentgrenze', () => {
+    expect(seriesIsDocumentCapped([{ code: 'FIXTURE_DOKUMENTGRENZE' }])).toBe(true);
+    expect(seriesIsDocumentCapped([{ code: 'OSCAL_RESOLUTION_WORK_BUDGET_EXCEEDED' }])).toBe(false);
+    expect(seriesIsDocumentCapped([])).toBe(false);
+    expect(seriesIsDocumentCapped(undefined as never)).toBe(false);
   });
 });

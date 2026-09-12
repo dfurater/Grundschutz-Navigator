@@ -389,10 +389,16 @@ function createControlTransform(
     let transformed = applySetParametersToControl(control, setParameters, budget);
     const id = controlIdOf(transformed);
     if (id === null) return transformed;
+    // Die Suche des `alter`-Zielcontrols — die eigene Kategorie des
+    // geschlossenen Satzes. Sie fällt je betrachteter Control an, auch wenn
+    // keine Alteration auf sie zeigt, und sie gehört unter `/profile/modify`:
+    // Vorher lief beides unter `import-edge` und hätte einen Abbruch der
+    // Modify-Phase als Importproblem ausgewiesen.
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_TARGET_LOOKUP);
     const alterations = altersByControlId.get(id);
     if (alterations === undefined) return transformed;
     for (const alteration of alterations) {
-      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
+      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_TARGET_LOOKUP);
       transformed = applyAlteration(transformed, alteration, budget);
     }
     return transformed;
@@ -405,6 +411,8 @@ function createControlTransform(
     const transformed = applyShallow(control);
     const children = ownDataValue(transformed, 'controls');
     if (Array.isArray(children)) {
+      // Die transformierte Kinderliste ersetzt das controls-Mitglied.
+      budget.admitWorkingNode();
       transformed['controls'] = ownArrayDataElements(children, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).map((child) =>
         isJsonObject(child) ? applyDeep(child) : child,
       );
@@ -427,6 +435,8 @@ function applyTransformToGroups(groups: readonly JsonObject[], transform: Contro
     const group = stack.pop()!;
     const controls = ownDataValue(group, 'controls');
     if (Array.isArray(controls)) {
+      // Dasselbe auf der Gruppenebene.
+      budget.admitWorkingNode();
       group['controls'] = ownArrayDataElements(controls, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).map((child) =>
         isJsonObject(child) ? transform(child) : child,
       );
@@ -569,6 +579,8 @@ function selectedControlNodes(
   ids: ReadonlySet<string>,
   budget: ProfileResolutionBudget,
 ): JsonObject[] {
+  // Trägt die selektierten Quellknoten als Inklusion weiter.
+  budget.admitWorkingNode();
   const controls: JsonObject[] = [];
   for (const id of ids) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
@@ -587,6 +599,19 @@ function collectPhaseOne(
   const inclusions: ControlInclusion[] = [];
   const consumedResourceUuids = new Set<string>();
 
+  // Kantenindex EINMAL je Profil, nicht je Import: Ein lineares `find` über
+  // die Kantenliste kostete bei N Importen auf N Kanten N² Vergleiche, und
+  // zwar unbudgetiert — dieselbe Bauart wie die quadratische ID-Suche, die
+  // dieses Issue bereits einmal beseitigt hat. Der Aufbau kostet eine
+  // Arbeitseinheit je Kante und ist damit gedeckt.
+  const edges = input.edgesByArtifactKey.get(input.artifactKey) ?? [];
+  const edgeByHref = new Map<string, (typeof edges)[number]>();
+  for (const candidate of edges) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
+    // Erste Kante je href gewinnt — dieselbe Auswahl, die `find` traf.
+    if (!edgeByHref.has(candidate.href)) edgeByHref.set(candidate.href, candidate);
+  }
+
   for (const profileImport of input.document.view.imports) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
     const href = profileImport.href;
@@ -597,9 +622,7 @@ function collectPhaseOne(
         currentProfileArtifact(input)
       );
     }
-    const edge = (input.edgesByArtifactKey.get(input.artifactKey) ?? []).find(
-      (candidate) => candidate.href === href,
-    );
+    const edge = edgeByHref.get(href);
     if (edge === undefined) {
       return reject(
         PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.IMPORT_UNMAPPED,
@@ -656,7 +679,10 @@ function collectAsIsOutput(records: readonly SelectionRecord[], budget: ProfileR
   groups: JsonObject[];
   controls: JsonObject[];
 } {
+  // Beide Listen tragen die as-is-Ausgabe bis zur Emission.
+  budget.admitWorkingNode();
   const groups: JsonObject[] = [];
+  budget.admitWorkingNode();
   const controls: JsonObject[] = [];
   const append = (candidates: readonly unknown[], target: JsonObject[]): void => {
     for (const candidate of candidates) {
@@ -701,7 +727,10 @@ function buildStructuredOutput(
 
   switch (merge.structure.kind) {
     case 'flat': {
+      // Die flache Control-Liste und die leere Gruppenliste daneben.
+      budget.admitWorkingNode();
       const flatControls = combined.order.map((node) => stripNestedChildren(node, budget));
+      budget.admitWorkingNode();
       return { ok: true, value: { groups: [], controls: flatControls } };
     }
     case 'as-is':
@@ -721,6 +750,9 @@ function buildStructuredOutput(
           diagnostic: withCurrentProfileArtifact(assembly.diagnostic, input),
         };
       }
+      // Gruppen- und Control-Liste der custom-Zusammenbauung.
+      budget.admitWorkingNode();
+      budget.admitWorkingNode();
       return {
         ok: true,
         value: { groups: [...assembly.groups], controls: [...assembly.controls] },
@@ -837,13 +869,19 @@ function filteredBackMatter(
   if (!isJsonObject(backMatter)) return null;
 
   const resources = ownDataValue(backMatter, 'resources');
-  if (!Array.isArray(resources)) return { ...backMatter };
+  if (!Array.isArray(resources)) {
+    budget.admitWorkingNode();
+    return { ...backMatter };
+  }
 
+  // Gefilterte Ressourcenliste und der sie tragende back-matter-Knoten.
+  budget.admitWorkingNode();
   const kept = ownArrayDataElements(resources, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).filter((entry) => {
     if (!isJsonObject(entry)) return true;
     const uuid = ownDataValue(entry, 'uuid');
     return !(typeof uuid === 'string' && consumedResourceUuids.has(uuid.toLowerCase()));
   });
+  budget.admitWorkingNode();
   const filtered: JsonObject = { ...backMatter, resources: kept };
   if (kept.length === 0) delete filtered['resources'];
   return filtered;
@@ -876,6 +914,8 @@ function referencedSourceResources(
   referencedUuids: ReadonlySet<string>,
   budget: ProfileResolutionBudget,
 ): JsonObject[] {
+  // Sammelliste der übernommenen Quellressourcen.
+  budget.admitWorkingNode();
   const resources: JsonObject[] = [];
   for (const record of records) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
@@ -923,6 +963,8 @@ function referencedSourceResourcesAtFixpoint(
 /** Entfernt UUID-Duplikate case-insensitiv; die erste Quelle gewinnt stabil. */
 function uniqueResources(resources: readonly JsonObject[], budget: ProfileResolutionBudget): JsonObject[] {
   const seenUuids = new Set<string>();
+  // Wird als `resources`-Mitglied des Ergebnis-back-matter übernommen.
+  budget.admitWorkingNode();
   const unique: JsonObject[] = [];
   for (const resource of resources) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
@@ -947,6 +989,8 @@ function mergedBackMatter(
   const profileResources = isJsonObject(profileBackMatter)
     ? ownDataValue(profileBackMatter, 'resources')
     : undefined;
+  // Zusammengeführte Ressourcenliste vor der Deduplizierung.
+  budget.admitWorkingNode();
   const resources = uniqueResources([
     ...referencedSourceResourcesAtFixpoint(records, referencedUuids, budget),
     ...(Array.isArray(profileResources)
@@ -1042,6 +1086,8 @@ function resolveSingleProfile(input: SingleProfileInput, budget: ProfileResoluti
 
   const transform = collectModifyTransform(input.document, budget);
   const groups = structured.value.groups;
+  // Transformierte Control-Liste des Ergebnisgraphen.
+  budget.admitWorkingNode();
   const controls = structured.value.controls.map(transform);
   applyTransformToGroups(groups, transform, budget);
 

@@ -62,7 +62,10 @@ import {
   summarizeSamples,
 } from './measureClass2BudgetReport.mjs';
 import { buildTimingInput, measureIsolatedTiming } from './measureClass2Timing.mjs';
-import { workUnitSupportPoints } from './profileResolutionWorstCaseFixtures.mjs';
+import {
+  WORK_UNIT_CATEGORIES,
+  workUnitSupportPoints,
+} from './profileResolutionWorstCaseFixtures.mjs';
 import { WORK_UNIT_LIMIT } from '../src/domain/profileResolutionBudgetLimits.mjs';
 import { CLASS_2_TRANSPORT_FIXTURES } from './class2TransportFixtures.mjs';
 import { assertScalableNodeCounts } from './class2WorstCaseFixtures.mjs';
@@ -286,12 +289,12 @@ async function measureScale(pages, memory, nodeCounts, repeat) {
  * gemessenen Zahl, nicht auf einer hochgerechneten.
  */
 /** Ein Stützpunkt über `repeat` Wiederholungen; Abbruch endet die Reihe. */
-async function measureSupportPoint(page, target, repeat) {
+async function measureSupportPoint(page, category, target, repeat) {
   const samples = [];
   for (let attempt = 0; attempt < repeat; attempt += 1) {
     const row = await page.evaluate(
-      (value) => globalThis.__gspp382.profileResolution(value),
-      target,
+      ([name, value]) => globalThis.__gspp382.profileResolution(name, value),
+      [category, target],
     );
     if (row.ok !== true) return { ...row, samples: samples.length };
     samples.push(row.ms);
@@ -312,16 +315,73 @@ async function measureSupportPoint(page, target, repeat) {
 }
 
 async function measureProfileResolution(page, repeat) {
+  // Eine Reihe JE KATEGORIE des geschlossenen Work-Unit-Satzes. Eine einzige
+  // Reihe trüge den Grenzwert nur für ihre eigene Kategorie: Alle Kategorien
+  // verbrauchen denselben Zähler, aber nicht dieselbe Zeit je Einheit.
+  const series = [];
+  for (const category of WORK_UNIT_CATEGORIES) {
+    const rows = [];
+    for (const target of workUnitSupportPoints(WORK_UNIT_LIMIT)) {
+      const row = await measureSupportPoint(page, category, target, repeat);
+      rows.push(row);
+      // Ein abgebrochener Stützpunkt liefert keine Wartezeit, und reißt einer
+      // die sichtbare Wartezeit, können größere nur schlechter sein. Die Reihe
+      // endet hier — das spart nicht nur Laufzeit, es hält auch die Aussage
+      // sauber: `deriveWorkUnitLimit` wertet ohnehin nur bis zur ersten
+      // Reißstelle aus.
+      if (row.ok !== true || row.maxMs > VISIBLE_WAIT_BUDGET_MS) break;
+    }
+    series.push({ category, rows });
+  }
+  return series;
+}
+
+/**
+ * Kalibrierlauf: zwei Wiederholungszahlen je Kategorie ergeben Rate und
+ * Grundlast als Geradengleichung. Das Ergebnis wandert von Hand nach
+ * `profileResolutionWorstCaseFixtures.mjs` — die Datei muss ohne Messapparat
+ * ladbar bleiben, und ein selbstschreibender Kalibrierpfad verschleierte, wann
+ * eine Rate zuletzt wirklich erhoben wurde.
+ */
+const CALIBRATION_REPETITIONS = Object.freeze({
+  'import-edge': [100, 300],
+  'selector-compare': [100, 300],
+  // Ein einziger Glob-Selektor kostet sechsstellig viele Zustände; hundert
+  // Wiederholungen rissen die Grenze bereits im Kalibrierlauf.
+  'glob-state': [5, 15],
+  'merge-step': [100, 300],
+  'alter-target-lookup': [100, 300],
+  'alter-candidate': [100, 300],
+});
+
+async function measureCalibration(page) {
   const rows = [];
-  for (const target of workUnitSupportPoints(WORK_UNIT_LIMIT)) {
-    const row = await measureSupportPoint(page, target, repeat);
-    rows.push(row);
-    // Ein abgebrochener Stützpunkt liefert keine Wartezeit, und reißt einer
-    // die sichtbare Wartezeit, können größere nur schlechter sein. Die Reihe
-    // endet hier — das spart nicht nur Laufzeit, es hält auch die Aussage
-    // sauber: `deriveWorkUnitLimit` wertet ohnehin nur bis zur ersten
-    // Reißstelle aus.
-    if (row.ok !== true || row.maxMs > VISIBLE_WAIT_BUDGET_MS) break;
+  for (const category of WORK_UNIT_CATEGORIES) {
+    const points = [];
+    for (const repetitions of CALIBRATION_REPETITIONS[category]) {
+      points.push(await page.evaluate(
+        ([name, count]) => globalThis.__gspp382.profileResolutionCalibration(name, count),
+        [category, repetitions],
+      ));
+    }
+    const [low, high] = points;
+    if (low.ok !== true || high.ok !== true) {
+      rows.push({ category, ok: false, code: low.ok !== true ? low.code : high.code });
+      continue;
+    }
+    const span = high.repetitions - low.repetitions;
+    const unitsPerRepetition = (high.workUnits - low.workUnits) / span;
+    const bytesPerRepetition = (high.profileBytes - low.profileBytes) / span;
+    rows.push({
+      category,
+      ok: true,
+      unitsPerRepetition,
+      baseUnits: Math.round(low.workUnits - low.repetitions * unitsPerRepetition),
+      bytesPerRepetition,
+      baseBytes: Math.round(low.profileBytes - low.repetitions * bytesPerRepetition),
+      shareOfCategory: high.workUnitsByCategory[category] / high.workUnits,
+      nodes: high.nodes,
+    });
   }
   return rows;
 }
@@ -436,6 +496,7 @@ async function measureInBrowser(browser, origin, options) {
         profileResolution: options.skipProfileResolution
           ? []
           : await measureProfileResolution(page, options.repeat),
+        calibration: options.calibrate ? await measureCalibration(page) : null,
         workUnitLimit: WORK_UNIT_LIMIT,
       });
     } finally {
@@ -447,6 +508,33 @@ async function measureInBrowser(browser, origin, options) {
     }
   }
   return runs;
+}
+
+/**
+ * Kalibrierbericht: die Zahlen, die von Hand nach
+ * `profileResolutionWorstCaseFixtures.mjs` wandern.
+ */
+function renderCalibration(report) {
+  const rows = report.runs[0]?.calibration ?? [];
+  const lines = [
+    '',
+    '## Kalibrierung der Worst-Case-Fixtures',
+    '',
+    '| Kategorie | Einheiten/Wiederholung | Grundlast | Bytes/Wiederholung | Grundbytes | Anteil der Kategorie |',
+    '| --- | --- | --- | --- | --- | --- |',
+  ];
+  for (const row of rows) {
+    if (row.ok !== true) {
+      lines.push(`| \`${row.category}\` | ABGEBROCHEN (${row.code}) | — | — | — | — |`);
+      continue;
+    }
+    lines.push(
+      `| \`${row.category}\` | ${row.unitsPerRepetition.toFixed(1)} | ${row.baseUnits} `
+      + `| ${row.bytesPerRepetition.toFixed(1)} | ${row.baseBytes} `
+      + `| ${(row.shareOfCategory * 100).toFixed(1)} % |`,
+    );
+  }
+  return `${lines.join('\n')}\n`;
 }
 
 async function run() {
@@ -512,6 +600,10 @@ async function run() {
 
   if (options.jsonPath !== null) {
     writeFileSync(resolve(REPO_ROOT, options.jsonPath), `${JSON.stringify(report, null, 2)}\n`);
+  }
+  if (options.calibrate) {
+    process.stdout.write(renderCalibration(report));
+    return;
   }
   // Preserve raw evidence even when rendering rejects a changing source tree.
   process.stdout.write(renderReport(report));
