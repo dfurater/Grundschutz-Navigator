@@ -69,28 +69,13 @@ import {
 import { WORK_UNIT_LIMIT } from '../src/domain/profileResolutionBudgetLimits.mjs';
 import { CLASS_2_TRANSPORT_FIXTURES } from './class2TransportFixtures.mjs';
 import { assertScalableNodeCounts } from './class2WorstCaseFixtures.mjs';
+import {
+  PROVENANCE_EXCLUDED_PATHS,
+  workLimitProvenance,
+} from './measureWorkLimitProvenance.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const HARNESS_PATH = '/scripts/measure/class2-budget.html';
-
-/**
- * Die EINE Datei, die zwischen Messstand und Lieferstand verschieden sein
- * MUSS und deshalb nicht in den Quellfingerprint gehört.
- *
- * Ein Lauf misst nur bis zu seinem eigenen Kandidaten — jenseits davon bricht
- * der Resolver ab, und ein Abbruch liefert keine Wartezeit. Die Herleitung
- * braucht deshalb einen Kandidaten ÜBER dem Ergebnis, und der Lieferstand
- * trägt danach das Ergebnis. Läge diese Datei im Fingerprint, könnte kein
- * Artefakt je zum gelieferten Stand passen, und die Prüfung „gehört das
- * Artefakt zu diesem Head?" wäre gar nicht erst stellbar.
- *
- * Verschwiegen wird dabei nichts: Der Kandidat jedes Laufs steht als
- * `workUnitLimit` im Artefakt, und `assertWorkLimitRun` verlangt, dass er
- * echt über dem hergeleiteten Wert liegt.
- */
-const SOURCE_FINGERPRINT_EXCLUDES = Object.freeze([
-  'src/domain/profileResolutionBudgetLimits.mjs',
-]);
 
 /** Actual measured sources, including untracked implementation files. */
 function sourceRevision() {
@@ -98,7 +83,7 @@ function sourceRevision() {
     '--', 'src', 'scripts', 'package.json', 'package-lock.json', 'vite.config.ts',
     'tsconfig.json', 'tsconfig.app.json', 'tsconfig.node.json'], { cwd: REPO_ROOT, encoding: 'utf8' })
     .split('\0').filter(Boolean)
-    .filter((path) => !SOURCE_FINGERPRINT_EXCLUDES.includes(path))
+    .filter((path) => !PROVENANCE_EXCLUDED_PATHS.includes(path))
     .sort();
   const hash = createHash('sha256');
   for (const path of paths) {
@@ -108,7 +93,12 @@ function sourceRevision() {
     commit: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: REPO_ROOT, encoding: 'utf8' }).trim(),
     sha256: hash.digest('hex'),
     files: paths.length,
-    excludes: [...SOURCE_FINGERPRINT_EXCLUDES],
+    excludes: [...PROVENANCE_EXCLUDED_PATHS],
+    // Der ENGE Fingerprint: allein die Dateien, die der gemessene
+    // Auflösungslauf ausführt. Er ist die Testbedingung, weil eine Messung
+    // genau dann gilt, wenn dieser Code unverändert ist — der breite
+    // Fingerprint darüber bleibt Protokoll, nicht Gate.
+    workLimitProvenance: workLimitProvenance(),
   };
 }
 

@@ -923,18 +923,18 @@ Der Anteil unten ist am größten gehaltenen Stützpunkt gemessen.
 
 | Kategorie | Anteil der Kategorie | größter gehaltener Stützpunkt (4×) | Wartezeit | erster gerissener Stützpunkt | Wartezeit |
 | --- | --- | --- | --- | --- | --- |
-| `import-edge` | 66,65 % | 16 774 778 | 3,50 s | 33 549 536 | 6,90 s |
-| `selector-compare` | 99,99 % | 33 553 207 | 3,45 s | 67 104 387 | 6,67 s |
-| `glob-state` | 99,95 % | 66 672 025 | 3,35 s | 133 776 025 | 6,47 s |
-| **`merge-step`** | **70,00 %** | **16 763 456** | **2,62 s** | **33 546 920** | **5,26 s** |
+| `import-edge` | 66,65 % | 16 774 778 | 3,33 s | 33 549 536 | 6,65 s |
+| `selector-compare` | 99,99 % | 33 553 207 | 3,27 s | 67 104 387 | 6,48 s |
+| `glob-state` | 99,95 % | 66 672 025 | 3,36 s | 133 776 025 | 6,57 s |
+| **`merge-step`** | **70,00 %** | **16 763 456** | **2,66 s** | **33 546 920** | **5,31 s** |
 | `alter-target-lookup` | 7,67 % | 4 194 153 | 1,02 s | nicht erreichbar | — |
-| `alter-candidate` | 99,69 % | 16 774 687 | 3,92 s | 33 551 443 | 7,47 s |
+| `alter-candidate` | 99,69 % | 16 774 687 | 3,73 s | 33 551 443 | 7,46 s |
 
 Maßgeblich ist der Lauf bei vierfacher CPU-Drosselung als Näherung an
 Bürohardware; ungedrosselt hält dieselbe langsamste Reihe bis 67 093 820
-Einheiten (2,56 s) und reißt erst bei 134 207 648 (5,35 s). Der Grenzwert nimmt
+Einheiten (2,56 s) und reißt erst bei 134 207 648 (5,10 s). Der Grenzwert nimmt
 den größten Stützpunkt, den die LANGSAMSTE Reihe bei 4× noch hält, und schöpft
-den Budgetposten „Sichtbare Wartezeit bis zum Ergebnis" damit zu 52 % aus.
+den Budgetposten „Sichtbare Wartezeit bis zum Ergebnis" damit zu 53 % aus.
 Keine Interpolation zwischen Stützpunkten: Der Wert steht auf einer Zahl, die
 wirklich gemessen wurde.
 
@@ -998,15 +998,30 @@ Artefakts **echt über** dem gelieferten Wert liegt — sonst wäre der Beleg
 zirkulär. Eine **Anhebung** der Grenze setzt weiterhin voraus, dass ein Mensch
 den Kandidaten erhöht und neu misst.
 
-**Warum der Quellfingerprint eine Datei auslässt.** Aus derselben Notwendigkeit
-heraus muss sich `profileResolutionBudgetLimits.mjs` zwischen Mess- und
-Lieferstand unterscheiden. Läge sie im Fingerprint, könnte kein Artefakt je zum
-gelieferten Stand passen, und die Frage „gehört dieses Artefakt zu diesem
-Head?" wäre gar nicht erst stellbar. Sie ist deshalb ausgenommen, das Artefakt
-weist die Ausnahme unter `excludes` aus, und der Kandidat jedes Laufs steht als
-`workUnitLimit` daneben. `--print-source-fingerprint` druckt den Fingerprint des
-aktuellen Baums ohne Messlauf; er muss mit `sourceBefore.sha256` des Artefakts
-übereinstimmen.
+**Zwei Fingerprints, zwei Aufgaben.** Eine Messung gilt nur für den Code, an
+dem sie erhoben wurde. Ohne Prüfung altert ein Artefakt still: Wird der
+Auflösungspfad langsamer, bleibt der einkompilierte Wert stehen, und nichts
+wird rot.
+
+- Der **breite** Quellfingerprint (`sourceBefore.sha256`) deckt `src`,
+  `scripts` und die Build-Konfiguration ab und belegt „dieser Baum wurde
+  gemessen". Er bleibt **Protokoll**. Als Gate wäre er unbrauchbar: Jede
+  Änderung an einer beliebigen UI-Komponente erzwänge einen Browsermesslauf.
+- Die **Messwegprovenienz** (`sourceBefore.workLimitProvenance.sha256`) deckt
+  genau die Dateien ab, die der gemessene Auflösungslauf ausführt. Sie ist die
+  **Testbedingung**. Ihre Hülle ist keine gepflegte Liste, sondern aus den
+  echten Importen berechnet
+  ([`measureWorkLimitProvenance.mjs`](../scripts/measureWorkLimitProvenance.mjs)):
+  ab den Einstiegspunkten des Messharnisches transitiv über alle
+  projektinternen Importe. Eine handgeschriebene Liste wäre bei jedem neuen
+  Modul des Auflösungspfads still zu eng geworden.
+
+Beide lassen `profileResolutionBudgetLimits.mjs` aus — genau diese Datei muss
+sich zwischen Mess- und Lieferstand unterscheiden, sonst wäre die Frage „gehört
+dieses Artefakt zu diesem Head?" gar nicht erst stellbar. Das Artefakt weist
+die Ausnahme unter `excludes` aus, und der Kandidat jedes Laufs steht als
+`workUnitLimit` daneben. `--print-source-fingerprint` druckt beide Fingerprints
+des aktuellen Baums ohne Messlauf.
 
 **Kopfraum über der legitimen Nutzung.** Der Korpuslauf
 [`profileResolutionCorpus.test.ts`](../scripts/profileResolutionCorpus.test.ts)

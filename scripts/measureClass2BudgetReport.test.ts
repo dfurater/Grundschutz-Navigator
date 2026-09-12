@@ -29,6 +29,7 @@ import {
 } from './measureClass2BudgetReport.mjs';
 import { WORK_UNIT_LIMIT } from '../src/domain/profileResolutionBudgetLimits.mjs';
 import { WORK_UNIT_CATEGORIES } from './profileResolutionWorstCaseFixtures.mjs';
+import { workLimitProvenance } from './measureWorkLimitProvenance.mjs';
 
 const source = { commit: 'a'.repeat(40), sha256: 'b'.repeat(64), files: 1 };
 function renderReport(report: Record<string, unknown>) {
@@ -997,6 +998,16 @@ describe('GSPP-345 — der einkompilierte Grenzwert ist an das Messartefakt gebu
       expect(run.workUnitLimitRole).toBe('search');
       expect(run.workUnitLimit).toBeGreaterThan(WORK_UNIT_LIMIT);
     }
+  });
+
+  it('ist am AKTUELLEN Messweg erhoben', () => {
+    // Ohne diese Prüfung altert das Artefakt still: Wird der Auflösungspfad
+    // langsamer, bleibt der einkompilierte Wert stehen und nichts wird rot.
+    // Geprüft wird die enge Hülle des gemessenen Laufs, nicht der ganze Baum —
+    // sonst erzwänge jede unbeteiligte Änderung einen Browsermesslauf.
+    const provenance = workLimitProvenance();
+    expect(artifact.sourceBefore.workLimitProvenance.sha256).toBe(provenance.sha256);
+    expect(artifact.sourceAfter.workLimitProvenance.sha256).toBe(provenance.sha256);
   });
 
   it('rendert das Artefakt ohne widersprüchliche Zahlen', () => {

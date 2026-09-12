@@ -24,8 +24,33 @@
  */
 
 import { CLASS_2_IMPORT_LIMITS } from '../src/domain/class2ImportLimits.mjs';
+import { SOURCE_REGISTRY } from '../src/domain/sourceRegistry.mjs';
 
-const VERSION = '1.1.3';
+/**
+ * Die OSCAL-Version der Worst-Case-Steuerdokumente — aus der Registry, nicht
+ * als eigene Zahl. Ein Angreifer schickt sein Profil durch dieselbe
+ * Eingangsprüfung wie die registrierten Profile; misst der Messapparat gegen
+ * eine andere Version, misst er einen Pfad, den es nicht gibt. Als eigene
+ * Konstante hätte die Zahl eine Versionsumstellung still überlebt und den
+ * Messapparat gegen abgelehnte Dokumente laufen lassen (Greptile-Befund zu
+ * 26e1c4e).
+ *
+ * Fail-closed bei Uneinigkeit: Führen die registrierten Profile mehr als eine
+ * Version, gibt es keine „die" Version, und die Auswahl wäre wieder eine
+ * eigene Entscheidung des Messapparats.
+ */
+const VERSION = (() => {
+  const versions = [...new Set(SOURCE_REGISTRY
+    .filter((entry) => entry.expectedRootType === 'profile')
+    .map((entry) => entry.oscalVersion))];
+  if (versions.length !== 1) {
+    throw new Error(
+      `Registrierte Profile führen ${versions.length} OSCAL-Versionen (${versions.join(', ')}); `
+      + 'der Messapparat kann daraus keine eine Version ableiten',
+    );
+  }
+  return versions[0];
+})();
 const TOP_UUID = '11111111-1111-5111-8111-111111111111';
 const TOP_KEY = 'profile-top';
 const SOURCE_KEY = 'catalog-src';
