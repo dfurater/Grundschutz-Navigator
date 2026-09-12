@@ -13,7 +13,6 @@ import { describe, expect, it } from 'vitest';
 import { CLASS_2_IMPORT_LIMITS } from '@/domain/oscalImportContract';
 import { PROFILE_RESOLUTION_WORK_UNITS } from '@/domain/profileResolutionBudget';
 import {
-  DOCUMENT_LIMITS,
   WORK_UNIT_CATEGORIES,
   buildWorkUnitCalibration,
   buildWorkUnitWorstCase,
@@ -54,21 +53,13 @@ describe('Deckung des geschlossenen Work-Unit-Satzes', () => {
 });
 
 describe('Dokumentgrenzen der Fixtures', () => {
-  it('übernimmt die Klasse-2-Grenzen unverändert', () => {
-    // Die Fixture-Datei muss im Browser-Tab ohne Aliasauflösung ladbar
-    // bleiben und dupliziert die Werte deshalb. Diese Erwartung ist der
-    // Grund, warum die Duplikation nicht auseinanderlaufen kann.
-    expect(DOCUMENT_LIMITS.maxBytes).toBe(CLASS_2_IMPORT_LIMITS.maxBytes);
-    expect(DOCUMENT_LIMITS.maxNodes).toBe(CLASS_2_IMPORT_LIMITS.maxNodes);
-  });
-
   it.each([...WORK_UNIT_CATEGORIES])(
     'hält das Steuerdokument von %s auch bei maximaler Wiederholungszahl innerhalb der Grenzen',
     (category: string) => {
       const fixture = buildWorkUnitCalibration(category, maxRepetitions(category));
       const profile = fixture.documents[fixture.topProfileArtifactKey];
-      expect(JSON.stringify(profile).length).toBeLessThanOrEqual(DOCUMENT_LIMITS.maxBytes);
-      expect(countNodes(profile)).toBeLessThanOrEqual(DOCUMENT_LIMITS.maxNodes);
+      expect(JSON.stringify(profile).length).toBeLessThanOrEqual(CLASS_2_IMPORT_LIMITS.maxBytes);
+      expect(countNodes(profile)).toBeLessThanOrEqual(CLASS_2_IMPORT_LIMITS.maxNodes);
     },
     60_000,
   );

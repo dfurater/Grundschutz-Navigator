@@ -23,6 +23,8 @@
  * abgeleitet — die langsamste Reihe entscheidet.
  */
 
+import { CLASS_2_IMPORT_LIMITS } from '../src/domain/class2ImportLimits.mjs';
+
 const VERSION = '1.1.3';
 const TOP_UUID = '11111111-1111-5111-8111-111111111111';
 const TOP_KEY = 'profile-top';
@@ -291,12 +293,12 @@ const CALIBRATION = Object.freeze({
  * Grenzen, durch die das STEUERDOKUMENT selbst passen muss. Sie sind der
  * Grund, warum nicht jede Kategorie beliebig weit getrieben werden kann: Ein
  * Angreifer schickt sein Profil durch dieselbe Klasse-2-Eingangsprüfung wie
- * jede andere Eingabe. Absichtlich hier dupliziert statt importiert — die
- * Datei muss im Browser-Tab ohne Aliasauflösung ladbar bleiben; die
- * Übereinstimmung mit `CLASS_2_IMPORT_LIMITS` prüft
- * `profileResolutionWorstCaseFixtures.test.mjs`.
+ * jede andere Eingabe — also gelten hier dieselben Zahlen und nicht eine
+ * zweite Fassung davon. Der relative Import auf das reine `.mjs`-Modul ist
+ * derselbe Weg, den `class2WorstCaseFixtures.mjs` geht: Er trägt in Node und
+ * im Browser-Tab, ohne Aliasauflösung.
  */
-export const DOCUMENT_LIMITS = Object.freeze({ maxBytes: 10 * 1024 * 1024, maxNodes: 1_000_000 });
+const DOCUMENT_LIMITS = CLASS_2_IMPORT_LIMITS;
 
 /** Grundknoten eines Steuerdokuments ohne Wiederholungen, großzügig geschätzt. */
 const BASE_NODES = 40;
