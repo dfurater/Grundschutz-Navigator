@@ -812,11 +812,11 @@ Control-ID:
 
 | Sterne | Musterlänge | vorher 1× | vorher 4× | nachher 1× | nachher 4× |
 | --- | --- | --- | --- | --- | --- |
-| 4 | 9 Byte | — | — | 0,06 ms | 0,04 ms |
-| 6 | 13 Byte | 15 ms | 58 ms | 0,02 ms | 0,00 ms |
+| 4 | 9 Byte | — | — | 0,05 ms | 0,18 ms |
+| 6 | 13 Byte | 15 ms | 58 ms | 0,01 ms | 0,00 ms |
 | 8 | 17 Byte | 0,34 s | 1,34 s | 0,01 ms | 0,01 ms |
-| 10 | 21 Byte | 4,23 s | 17,07 s | 0,01 ms | 0,00 ms |
-| 12 | 25 Byte | 31,82 s | nicht gemessen | 0,01 ms | 0,01 ms |
+| 10 | 21 Byte | 4,23 s | 17,07 s | 0,00 ms | 0,00 ms |
+| 12 | 25 Byte | 31,82 s | nicht gemessen | 0,01 ms | 0,00 ms |
 
 Die frühere Reihe brach ab, sobald ein Wert das Budget riss; der
 12-Sterne-Fall wurde im gedrosselten Lauf deshalb nicht mehr ausgeführt. Keine
@@ -834,9 +834,11 @@ Zwei-Zeiger-Abgleich mit genau einem Rücksprungpunkt je Stern. Er hat keinen
 exponentiellen Fall, ist durch Muster × Subjekt beschränkt und bucht **jeden
 besuchten Zustand** als Arbeitseinheit der Kategorie `glob-state`. Damit ist
 der Abgleich von außen abbrechbar, was die RegExp-Fassung prinzipiell nicht
-sein konnte. Die Messreihe oben zeigt alle Sternzahlen bei 0,0 ms und
-gleichbleibend 80 Arbeitseinheiten — die Kosten hängen an der Subjektlänge,
-nicht mehr an der Sternzahl.
+sein konnte. Die „nachher"-Spalten stammen aus
+[`docs/measurements/gspp345-work-budget.json`](./measurements/gspp345-work-budget.json);
+sie bleiben für jede Sternzahl unter 0,2 ms bei gleichbleibend 80
+Arbeitseinheiten, und der höchste Wert steht beim NIEDRIGSTEN Sternenzähler.
+Die Kosten hängen an der Subjektlänge, nicht mehr an der Sternzahl.
 
 Die Semantik bleibt: `*` trifft beliebig viele Zeichen einschließlich keiner,
 `?` genau eines, der Abgleich ist vollständig verankert. Eine einzige

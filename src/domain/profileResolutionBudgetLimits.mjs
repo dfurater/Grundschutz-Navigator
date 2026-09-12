@@ -3,7 +3,7 @@
  *
  * Einzige Quelle der Wahrheit dieses Werts, aus demselben Grund wie
  * `class2ImportLimits.mjs`: Der Messapparat
- * (`scripts/measure-profile-resolution-budget.mjs`) braucht ihn in einer
+ * (`scripts/measure-class2-budget.mjs`) braucht ihn in einer
  * nackten Node-Laufzeit ohne Aliasauflösung und ohne TypeScript. Der
  * Anwendungspfad liest ihn über `profileResolutionBudget.ts` weiter.
  *
