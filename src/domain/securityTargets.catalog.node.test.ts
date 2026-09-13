@@ -346,6 +346,36 @@ describe('OSCAL-Normbeleg gegen die gepinnten Schemata', () => {
     }
   });
 
+  it('begründet die ns-gescopte Zuordnung aus der Schemabeschreibung von ns', () => {
+    // Trägt die Regel, dass gleichnamige Props aus verschiedenen Namensräumen
+    // verschiedene Eigenschaften sind — die Aussage steht wörtlich im Schema.
+    const schema = JSON.parse(
+      readFileSync(`${schemaDir}/oscal_catalog_schema.json`, 'utf8'),
+    );
+    const property = schema.definitions['oscal-catalog-oscal-metadata:property'];
+
+    expect(property.properties.ns.description).toContain(
+      'associate distinct semantics with the same name',
+    );
+  });
+
+  it('definiert keinen Identitätsschlüssel für Properties', () => {
+    // Der Gegenbeleg: Dass ein gesetztes `class` oder `group` eine Property zu
+    // einer anderen macht, steht NICHT im Schema. Der Ausschluss im Adapter ist
+    // deshalb als Projektentscheidung gekennzeichnet, nicht als OSCAL-Vorgabe.
+    const schema = JSON.parse(
+      readFileSync(`${schemaDir}/oscal_catalog_schema.json`, 'utf8'),
+    );
+    const property = schema.definitions['oscal-catalog-oscal-metadata:property'];
+
+    for (const feld of ['class', 'group']) {
+      expect(property.properties).toHaveProperty(feld);
+      expect(property.required).not.toContain(feld);
+    }
+    // Kein Schlüsselbegriff, der die Felder zur Identität erklären würde.
+    expect(JSON.stringify(property).toLowerCase()).not.toContain('identity');
+  });
+
   it('führt props auf control als optional — Abwesenheit ist zulässig', () => {
     // Die Grundlage der Unterscheidung „ohne Angabe" gegenüber der Bewertung 0.
     const schema = JSON.parse(

@@ -83,15 +83,24 @@ function getTaxonomyProps(props: RawOscalProp[] | undefined): PropValue[] {
  * `remarks` als optionale Unterscheider — belegt im gepinnten
  * `schemas/oscal/v1.1.3/oscal_catalog_schema.json`, wo
  * `oscal-catalog-oscal-metadata:property` genau `["name", "value"]` als
- * `required` führt. Zwei gleichnamige Props aus verschiedenen Namensräumen
- * sind damit verschiedene Eigenschaften, die nicht zusammengeführt werden
- * dürfen. Ein `confidentiality`-Prop ohne oder mit fremdem `ns` ist deshalb
- * keine Schutzziel-Relevanz und wird nicht übernommen (fail-closed).
+ * `required` führt. Dass zwei gleichnamige Props aus verschiedenen
+ * Namensräumen verschiedene Eigenschaften sind, sagt dasselbe Schema
+ * ausdrücklich in der Beschreibung von `ns`: „A namespace qualifying the
+ * property's name. This allows different organizations to associate distinct
+ * semantics with the same name." Ein `confidentiality`-Prop ohne oder mit
+ * fremdem `ns` ist deshalb keine Schutzziel-Relevanz und wird nicht übernommen
+ * (fail-closed).
  *
- * Gleiches gilt für ein gesetztes `class` oder `group`: beide gehören zur
- * Identität der Eigenschaft und kennzeichnen eine spezialisierte Variante, die
- * hier nicht als kanonische Relevanz durchgeht. Im ausgelieferten Katalog
- * tragen alle vier Schutzziel-Props weder `class` noch `group`.
+ * Ein gesetztes `class` oder `group` schließt hier ebenfalls aus. Das ist eine
+ * **Projektentscheidung, keine OSCAL-Vorgabe**: Das Schema belegt nur, dass
+ * beide Felder optional vorhanden sein dürfen, und definiert keinen
+ * Identitätsschlüssel für Properties. Die Entscheidung ist fail-closed
+ * begründet — ein `class` oder `group` kennzeichnet eine Spezialisierung,
+ * deren Bedeutung dieses Projekt nicht kennt, und eine unbekannte
+ * Spezialisierung als kanonische Relevanz zu führen hieße, ihr eine Bedeutung
+ * zu geben, die im Dokument nicht steht. Im ausgelieferten Katalog tragen alle
+ * vier Schutzziel-Props weder `class` noch `group`; die Regel greift dort also
+ * nicht und ist reine Vorsorge.
  *
  * Der vollständige Normbeleg zu `prop.value` steht bei der Skala in
  * `domain/securityTargets.ts`; geprüft wird er in
