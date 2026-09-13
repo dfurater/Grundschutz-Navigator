@@ -98,12 +98,82 @@ const IMPORT_PATTERNS = Object.freeze([
   /\bimport\s*\(\s*['"]([^'"\n]+)['"]/g,
 ]);
 
+/**
+ * Eine Kante, die NUR einen Typ transportiert (GSPP-394).
+ *
+ * TypeScript löscht `import type` und `export type` beim Kompilieren. Ihr Ziel
+ * existiert zur Laufzeit nicht, läuft im gemessenen Auflösungspfad nicht mit
+ * und kann seine Dauer nicht beeinflussen. Es gehört damit unter dieselbe
+ * Begründung, mit der die übrigen Harnisch-Importe oben ausgeschlossen sind:
+ * Es erzwänge bei jeder Änderung eine Neumessung der Arbeitsgrenze, die nichts
+ * belegt. Diese Präzisierung setzt die erklärte Absicht des Moduls durch, statt
+ * sie zu ändern.
+ *
+ * `export type` gehört dazu, weil das `from`-Muster am Schlüsselwort `from`
+ * ansetzt und Re-Exporte deshalb mit erfasst. Beide Formen liegen in der Hülle
+ * nebeneinander: `models.ts` re-exportiert Typen aus `oscalDocumentContext.ts`,
+ * `catalogLineage.ts` dagegen Werte aus `catalogLineage.mjs`.
+ *
+ * Bewusst ohne `[\s\S]*?` wie die Muster oben. Der Zwischenteil ist entweder
+ * eine geklammerte Liste, die an ihrer eigenen schließenden Klammer endet
+ * (`[^{}]*` — auch über Zeilen hinweg), ein Stern-Re-Export oder ein einzelner
+ * Bezeichner. Keine dieser Formen darf über die Importanweisung hinauslaufen.
+ */
+const TYPE_ONLY_PATTERN =
+  /\b(?:import|export)\s+type\s+(?:\{[^{}]*\}|\*(?:\s+as\s+[A-Za-z_$][\w$]*)?|[A-Za-z_$][\w$]*)\s*from\s*['"]([^'"\n]+)['"]/g;
+
+/**
+ * Die Importspezifizierer einer Datei, denen die Hülle folgt: alle bis auf die,
+ * die AUSSCHLIESSLICH über Typkanten erreicht werden.
+ *
+ * Bewusst eine Textsuche und kein Parser: Sie darf keine Datei ÜBERSEHEN,
+ * Mehrtreffer sind unschädlich. Die Muster setzen direkt am Schlüsselwort an
+ * und tragen kein `[\s\S]*?` — eine Suche, die den ganzen Dateikopf
+ * überspringen darf, backtrackt superlinear. Ausgerechnet hier wäre das
+ * unpassend: Dieser Slice hat dieselbe Bauart aus dem Glob-Pfad entfernt.
+ * Die `from`-Form deckt mehrzeilige Importlisten mit ab, weil sie am `from`
+ * ansetzt und nicht am `import`.
+ *
+ * Der Typkanten-Ausschluss ist fail-closed und zählt statt zu raten: Ein Ziel
+ * fällt nur weg, wenn JEDES seiner `from`-Vorkommen in dieser Datei von
+ * `TYPE_ONLY_PATTERN` erfasst ist. Ein einziges Vorkommen, das die Erkennung
+ * nicht zweifelsfrei einordnet, hält die Kante — die Mischform
+ * `import { type X, y } from …` ebenso wie ein Import, den nur ein Mensch als
+ * Typimport liest. Ein seitenwirksames `import '…'` und ein dynamisches
+ * `import('…')` können gar keine Typangabe tragen und bleiben deshalb immer
+ * Wertkanten, auch wenn dieselbe Datei dasselbe Ziel anderswo als Typ importiert.
+ */
 function importSpecifiers(source) {
-  const found = new Set();
-  for (const pattern of IMPORT_PATTERNS) {
-    for (const match of source.matchAll(pattern)) found.add(match[1]);
+  const fromOccurrences = new Map();
+  for (const match of source.matchAll(IMPORT_PATTERNS[0])) {
+    fromOccurrences.set(match[1], (fromOccurrences.get(match[1]) ?? 0) + 1);
+  }
+
+  const valueForms = new Set();
+  for (const pattern of [IMPORT_PATTERNS[1], IMPORT_PATTERNS[2]]) {
+    for (const match of source.matchAll(pattern)) valueForms.add(match[1]);
+  }
+
+  const typeOccurrences = new Map();
+  for (const match of source.matchAll(TYPE_ONLY_PATTERN)) {
+    typeOccurrences.set(match[1], (typeOccurrences.get(match[1]) ?? 0) + 1);
+  }
+
+  const found = new Set([...fromOccurrences.keys(), ...valueForms]);
+  for (const specifier of found) {
+    if (valueForms.has(specifier)) continue;
+    if (typeOccurrences.get(specifier) === fromOccurrences.get(specifier)) found.delete(specifier);
   }
   return [...found];
+}
+
+/**
+ * Die Spezifizierer, denen `collectWorkLimitSources` aus einer Quelle folgt.
+ * Exportiert, damit die Typkanten-Erkennung an Positiv- und Negativfällen
+ * prüfbar ist, ohne dafür Dateien auf die Platte zu legen.
+ */
+export function runtimeImportSpecifiers(source) {
+  return importSpecifiers(source).sort(byCodeUnit);
 }
 
 /**

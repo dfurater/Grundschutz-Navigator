@@ -1020,6 +1020,36 @@ wird rot.
   Ergebnis die Schemaprüfung mit Ajv aus, und würde die langsamer, bliebe ein
   Fingerprint über reine Repository-Dateien unverändert.
 
+**Die Hülle folgt keiner Kante, die ausschließlich einen Typ transportiert.**
+TypeScript löscht `import type` und `export type` beim Kompilieren: Ihre Ziele
+existieren zur Laufzeit nicht, laufen im gemessenen Auflösungspfad nicht mit und
+können seine Dauer nicht beeinflussen. Sie fallen damit unter dieselbe
+Begründung, mit der die übrigen Harnisch-Importe ausgeschlossen sind — sie
+erzwängen bei jeder Änderung eine Neumessung, die nichts belegt. Die Erkennung
+ist **fail-closed**: Ein Ziel entfällt nur, wenn *jedes* seiner Vorkommen in der
+Datei zweifelsfrei als reine Typkante erkennbar ist. Die Mischform
+`import { type X, y }`, ein seitenwirksames `import '…'`, ein dynamisches
+`import('…')` und jede Schreibweise, die die Textsuche nicht sicher einordnet,
+halten die Kante. `export type` gehört dazu, weil das Muster am Schlüsselwort
+`from` ansetzt und Re-Exporte mit erfasst; `export * from` bleibt eine Wertkante.
+
+Diese Präzisierung hat die Hülle am 2026-09-13 von 69 auf 62 Dateien verengt
+([GSPP-394](https://linear.app/grundschutz-plus-plus/issue/GSPP-394)). Der
+Fingerprint im Artefakt wurde dabei **begründet neu gestempelt statt neu
+gemessen**: Der gemessene Pfad ist unverändert, weil ausschließlich Dateien
+entfallen sind, die zur Laufzeit gar nicht existieren, und eine Neumessung
+erhöbe nur Messzahlen einer anderen Maschine. Der Nachweis steht im Artefakt
+selbst unter `workLimitProvenanceRestamp` — mit dem Vorzustand, der
+unveränderten `runtime` und der Typkante, die jede der sieben entfallenen
+Dateien bis dahin in der Hülle gehalten hat. Fünf von ihnen exportieren
+ausschließlich Typen und erzeugen gar keinen Laufzeitcode; die beiden
+`catalogLineage`-Dateien tragen zwar Laufzeitcode, hängen im gemessenen Pfad
+aber allein an der entfallenen Typkante aus `models.ts` und werden dort nie
+geladen. `WORK_UNIT_LIMIT` ist davon
+unberührt und bleibt über den Herleitungstest an das Artefakt gebunden. Ein
+späterer echter Messlauf schreibt das Artefakt neu und lässt das Feld damit
+folgerichtig entfallen.
+
 Die **Auswertung** (`measureClass2BudgetReport.mjs`) steht bewusst in keiner
 der beiden Hüllen. Sie läuft im Browser nie mit und erzeugt keine Rohdaten; sie
 leitet aus ihnen den Wert ab. Und sie ist schärfer gebunden als durch einen
