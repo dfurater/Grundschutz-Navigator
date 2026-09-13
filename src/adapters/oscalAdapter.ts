@@ -83,9 +83,13 @@ function getTaxonomyProps(props: RawOscalProp[] | undefined): PropValue[] {
  * Ansichtsmodell nicht; das gilt projektweit für jeden Prop und ist keine
  * Eigenheit der Schutzziele. Die Verlustfreiheit des Dokuments hängt nicht
  * daran: Sie wird über den No-op-Round-trip auf dem Rohdokument geführt
- * (ADR-2, `docs/OSCAL_ROUND_TRIP.md`), nicht über `Control`. Im ausgelieferten
- * Katalog trägt ohnehin kein Prop eines dieser vier Felder; für fremde
- * Kataloge ist die Lücke als GSPP-392 erfasst.
+ * (ADR-2, `docs/OSCAL_ROUND_TRIP.md`), nicht über `Control`.
+ *
+ * Am Snapshot gemessen trägt kein Prop eines Controls eines dieser vier Felder
+ * — die Projektion verliert hier also nichts. Auf Gruppenebene sieht das
+ * anders aus: Dort tragen 20 `label`-Props die Beschreibungsprosa der
+ * Praktiken als `remarks`, und die geht tatsächlich verloren (GSPP-393). Die
+ * Modelllücke selbst ist als GSPP-392 erfasst.
  *
  * Die Zuordnung läuft über `name` **und** `ns`: `property` verlangt in OSCAL
  * nur `name` und `value` und führt `ns`, `class`, `group`, `uuid` und
