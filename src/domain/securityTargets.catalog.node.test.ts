@@ -303,3 +303,75 @@ describe.skipIf(!corpusAvailable)('Schutzziel-Facetten am ausgelieferten Katalog
     expect([...werteImBestand].sort()).toEqual([...SECURITY_TARGET_RELEVANCE_ORDER]);
   });
 });
+
+// =============================================================================
+// Normbeleg — die beiden OSCAL-Aussagen dieses Slices gegen die gepinnten
+// Schemata (R17). Sie stehen im Kopfkommentar von `securityTargets.ts` und in
+// `docs/FILTERING.md`; hier werden sie geprüft statt behauptet. Ändert NIST
+// eine der Definitionen, schlägt dieser Test an und die Doku ist nachweislich
+// überholt.
+// =============================================================================
+
+describe('OSCAL-Normbeleg gegen die gepinnten Schemata', () => {
+  const schemaDir = 'schemas/oscal/v1.1.3';
+
+  it('führt prop.value als StringDatatype ohne Enum, Zahlentyp und Ordnung', () => {
+    const schema = JSON.parse(
+      readFileSync(`${schemaDir}/oscal_catalog_schema.json`, 'utf8'),
+    );
+    const property = schema.definitions['oscal-catalog-oscal-metadata:property'];
+
+    expect(property.properties.value.$ref).toBe('#/definitions/StringDatatype');
+
+    const stringDatatype = schema.definitions.StringDatatype;
+    expect(stringDatatype.type).toBe('string');
+    expect(stringDatatype.enum).toBeUndefined();
+    // Ein nicht leerer String ohne Randwhitespace — mehr sagt OSCAL nicht zu.
+    expect(stringDatatype.pattern).toBe('^\\S(.*\\S)?$');
+  });
+
+  it('verlangt bei property nur name und value und führt ns, class, group als optional', () => {
+    // Trägt die Zuordnung über `name` UND `ns` im Adapter: Wären `ns`, `class`
+    // und `group` nicht Teil der Eigenschaft, dürfte der Adapter sie nicht zum
+    // Unterscheidungsmerkmal machen.
+    const schema = JSON.parse(
+      readFileSync(`${schemaDir}/oscal_catalog_schema.json`, 'utf8'),
+    );
+    const property = schema.definitions['oscal-catalog-oscal-metadata:property'];
+
+    expect(property.required).toEqual(['name', 'value']);
+    for (const optional of ['ns', 'class', 'group', 'uuid', 'remarks']) {
+      expect(property.properties).toHaveProperty(optional);
+      expect(property.required).not.toContain(optional);
+    }
+  });
+
+  it('führt props auf control als optional — Abwesenheit ist zulässig', () => {
+    // Die Grundlage der Unterscheidung „ohne Angabe" gegenüber der Bewertung 0.
+    const schema = JSON.parse(
+      readFileSync(`${schemaDir}/oscal_catalog_schema.json`, 'utf8'),
+    );
+    const control = schema.definitions['oscal-catalog-oscal-catalog:control'];
+
+    expect(control.required).toEqual(['id', 'title']);
+    expect(control.properties).toHaveProperty('props');
+    expect(control.required).not.toContain('props');
+  });
+
+  it('kennt implementation-status ausschließlich unter by-component im SSP', () => {
+    const schema = JSON.parse(
+      readFileSync(`${schemaDir}/oscal_ssp_schema.json`, 'utf8'),
+    );
+
+    const traeger = Object.entries(schema.definitions)
+      .filter(([, definition]) =>
+        Object.hasOwn(
+          (definition as { properties?: Record<string, unknown> }).properties ?? {},
+          'implementation-status',
+        ),
+      )
+      .map(([key]) => key);
+
+    expect(traeger).toEqual(['oscal-ssp-oscal-ssp:by-component']);
+  });
+});

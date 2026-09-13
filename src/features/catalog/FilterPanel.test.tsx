@@ -1,11 +1,14 @@
 import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CatalogState } from '@/domain/models';
 import { emptyFilters, type FacetCounts } from '@/hooks/useFilteredControls';
 import { useCatalog } from '@/hooks/useCatalog';
 import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
+import {
+  filterPanelEmptyFacetCounts as emptyFacetCounts,
+  filterPanelFacetCounts as facetCounts,
+  makeFilterPanelCatalogState,
+} from '@/test/fixtures/filterPanel';
 import { FilterPanel } from './FilterPanel';
-import { catalogCollectionDefaults } from '@/test/catalogState';
 
 vi.mock('@/hooks/useCatalog', () => ({
   useCatalog: vi.fn(),
@@ -14,67 +17,8 @@ vi.mock('@/hooks/useCatalog', () => ({
 const mockedUseCatalog = vi.mocked(useCatalog);
 const vocabularyRegistry = createTestVocabularyRegistry();
 
-const facetCounts: FacetCounts = {
-  securityLevels: {
-    'normal-SdT': 2,
-    erhöht: 1,
-  },
-  effortLevels: {
-    '0': 0,
-    '1': 0,
-    '2': 0,
-    '3': 1,
-    '4': 1,
-    '5': 0,
-  },
-  modalverben: {
-    MUSS: 2,
-    SOLLTE: 1,
-    KANN: 0,
-  },
-  tags: {},
-  zielobjektKategorien: {},
-  handlungsworte: {},
-  dokumentationstypen: {},
-  linkRelationen: {},
-  securityTargets: {
-    confidentiality: { min1: 2, min2: 1, unrated: 1 },
-    integrity: { min1: 1, min2: 0, unrated: 2 },
-    availability: {},
-    authenticity: {},
-  },
-};
-
-const emptyFacetCounts: FacetCounts = {
-  securityLevels: {},
-  effortLevels: {},
-  modalverben: {},
-  tags: {},
-  zielobjektKategorien: {},
-  handlungsworte: {},
-  dokumentationstypen: {},
-  linkRelationen: {},
-  securityTargets: {
-    confidentiality: {},
-    integrity: {},
-    availability: {},
-    authenticity: {},
-  },
-};
-
-function makeCatalogState(): CatalogState {
-  return {
-    ...catalogCollectionDefaults(),
-    catalogDocument: null,
-    catalog: null,
-    provenance: null,
-    verification: null,
-    vocabularyRegistry,
-    vocabularyProvenance: null,
-    vocabularyVerification: null,
-    loading: false,
-    error: null,
-  };
+function makeCatalogState() {
+  return makeFilterPanelCatalogState(vocabularyRegistry);
 }
 
 describe('FilterPanel', () => {

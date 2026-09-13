@@ -64,17 +64,29 @@ erhalten, und die Detailansicht zeigt ihn unverändert.
 Drei Punkte sind dabei normativ bindend:
 
 **Die Skala ist eine Projektentscheidung, keine OSCAL-Vorgabe.** OSCAL
-definiert für `prop.value` keinen Wertebereich — `value` ist ein
-`StringDatatype` ohne Enum, Zahlentyp oder Ordnung. Dass `0`, `1` und `2` die
-gültigen Werte sind und `2` mehr Relevanz bedeutet als `1`, stammt aus dem über
-`prop.ns` referenzierten BSI-Vokabular `security_targets_levels.csv`. Skala und
-Ordnung stehen deshalb an genau einer Stelle
-(`SECURITY_TARGET_RELEVANCE_ORDER`) und werden über einen Lookup ausgewertet,
-nicht über `parseInt`: Ein schema-valider Fremdwert wie `'3'` gehört nicht zur
-Skala und landet in `unknown` statt in einer Stufe.
+definiert für `prop.value` keinen Wertebereich. Beleg im gepinnten Bestand:
+`schemas/oscal/v1.1.3/oscal_catalog_schema.json` führt unter der Definition
+`oscal-catalog-oscal-metadata:property` das Feld `value` als `$ref` auf
+`StringDatatype`, und `StringDatatype` ist dort
+`{"type": "string", "pattern": "^\\S(.*\\S)?$"}` — ein nicht leerer String
+ohne Randwhitespace, ohne Enum, ohne Zahlentyp und ohne Ordnung. Die Schemata
+sind SHA-256-gepinnt und offline prüfbar (`npm run verify-oscal-schemas`); sie
+stammen aus dem NIST-Release
+[v1.1.3](https://github.com/usnistgov/OSCAL/releases/tag/v1.1.3), der
+Versionsbezug steht in `src/domain/oscalVersionMatrix.mjs`.
 
-**Ein fehlendes `prop` ist nicht der Wert `0`.** Abwesenheit bedeutet „keine
-Aussage", `0` bedeutet „ausgewertet, nicht relevant". Beides wird getrennt
+Dass `0`, `1` und `2` die gültigen Werte sind und `2` mehr Relevanz bedeutet als
+`1`, stammt aus dem über `prop.ns` referenzierten BSI-Vokabular
+`security_targets_levels.csv`. Skala und Ordnung stehen deshalb an genau einer
+Stelle (`SECURITY_TARGET_RELEVANCE_ORDER`) und werden über einen Lookup
+ausgewertet, nicht über `parseInt`: Ein schema-valider Fremdwert wie `'3'` gehört
+nicht zur Skala und landet in `unknown` statt in einer Stufe.
+
+**Ein fehlendes `prop` ist nicht der Wert `0`.** `props` ist auf `control`
+optional — im gepinnten `schemas/oscal/v1.1.3/oscal_catalog_schema.json` führt
+`oscal-catalog-oscal-catalog:control` nur `["id", "title"]` als `required`.
+Abwesenheit bedeutet „keine Aussage", `0` bedeutet „ausgewertet, nicht
+relevant". Beides wird getrennt
 geführt: Die Stufe `0` trifft ausschließlich Controls **mit** `prop` und dem
 Wert `0`; ein Control ohne `prop` ist über keine Stufe erreichbar. Im
 ausgelieferten Katalog betrifft das je nach Schutzziel 99 bis 100 Controls.
@@ -82,7 +94,13 @@ ausgelieferten Katalog betrifft das je nach Schutzziel 99 bis 100 Controls.
 **Die Facette trifft keine Compliance-Aussage.** Eine Schutzziel-Relevanz
 beschreibt, worauf ein Control einzahlt — nicht, ob es umgesetzt oder wirksam
 ist. Umsetzungsstatus existiert in OSCAL ausschließlich im SSP auf
-`by-component`. Die Trefferzahlen sind deshalb keine Abdeckung: Sie zählen je
+`by-component`; im gepinnten
+`schemas/oscal/v1.1.3/oscal_ssp_schema.json` trägt genau eine Definition das
+Feld `implementation-status`, nämlich `oscal-ssp-oscal-ssp:by-component`.
+
+Alle drei Belege werden in `src/domain/securityTargets.catalog.node.test.ts`
+gegen die gepinnten Schemata geprüft statt nur behauptet; ändert NIST eine der
+Definitionen, schlägt der Test an. Die Trefferzahlen sind deshalb keine Abdeckung: Sie zählen je
 Dimension die **bewerteten** Anforderungen auf, und ihre Summe liegt unter der
 Gesamtzahl, weil die unbewerteten in keine Stufe fallen.
 

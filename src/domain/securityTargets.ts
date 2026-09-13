@@ -2,12 +2,19 @@
  * Schutzziel-Relevanz (CIA + Authentizität) — Skala, Ordnung, Klassifikation
  * und Facettenauswahl. Ausführliche Herleitung: `docs/FILTERING.md`.
  *
- * OSCAL definiert für `prop.value` keinen Wertebereich: `value` ist ein
- * `StringDatatype` ohne Enum, ohne Zahlentyp und **ohne Ordnung**. Die Skala
- * `'0' | '1' | '2'` stammt ausschließlich aus dem BSI-Vokabular, auf das die
- * Props über ihren `ns` verweisen. Diese Datei ist die **einzige** Stelle, an
- * der Skala und Ordnung ausgesprochen werden (GSPP-226), damit eine spätere
- * Vokabularänderung genau einen Ort hat.
+ * OSCAL definiert für `prop.value` keinen Wertebereich. Beleg im gepinnten
+ * Bestand: `schemas/oscal/v1.1.3/oscal_catalog_schema.json` führt unter
+ * `oscal-catalog-oscal-metadata:property` das Feld `value` als `$ref` auf
+ * `StringDatatype`, und `StringDatatype` ist dort `{"type": "string",
+ * "pattern": "^\\S(.*\\S)?$"}` — ohne Enum, ohne Zahlentyp und **ohne
+ * Ordnung**. Die Schemata sind SHA-256-gepinnt und offline prüfbar
+ * (`npm run verify-oscal-schemas`), Herkunft NIST-Release v1.1.3; der
+ * Versionsbezug steht in `src/domain/oscalVersionMatrix.mjs`.
+ *
+ * Die Skala `'0' | '1' | '2'` stammt deshalb ausschließlich aus dem
+ * BSI-Vokabular, auf das die Props über ihren `ns` verweisen. Diese Datei ist
+ * die **einzige** Stelle, an der Skala und Ordnung ausgesprochen werden
+ * (GSPP-226), damit eine spätere Vokabularänderung genau einen Ort hat.
  *
  * Zwei Unterscheidungen sind normativ bindend und dürfen nicht eingeebnet
  * werden:
@@ -20,8 +27,11 @@
  *    Vergleich über `parseInt` ist deshalb unzulässig.
  *
  * Eine Schutzziel-Relevanz beschreibt, worauf ein Control einzahlt — nicht, ob
- * es umgesetzt oder wirksam ist. Aus einer Facettenauswahl darf an keiner
- * Stelle eine Abdeckungs- oder Compliance-Aussage werden.
+ * es umgesetzt oder wirksam ist. Umsetzungsstatus existiert in OSCAL nur im
+ * SSP: Im gepinnten `schemas/oscal/v1.1.3/oscal_ssp_schema.json` trägt genau
+ * eine Definition das Feld `implementation-status`, nämlich
+ * `oscal-ssp-oscal-ssp:by-component`. Aus einer Facettenauswahl darf deshalb an
+ * keiner Stelle eine Abdeckungs- oder Compliance-Aussage werden.
  */
 
 import type { Control, PropValue, SecurityTargetRelevance } from './models';
