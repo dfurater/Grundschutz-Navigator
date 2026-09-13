@@ -142,9 +142,19 @@ describe('runtimeImportSpecifiers', () => {
     // Datei ÜBERSEHEN. Wo die Erkennung unsicher ist, bleibt die Kante stehen
     // und kostet höchstens einen zu breiten Fingerprint — der umgekehrte
     // Fehler machte das Gate still wertlos.
-    expect(runtimeImportSpecifiers("import type{A}from'./a';")).toEqual(['./a']);
+    expect(runtimeImportSpecifiers("import /* c */ type { A } from './a';")).toEqual(['./a']);
     expect(runtimeImportSpecifiers("import type { A: { B } } from './a';")).toEqual(['./a']);
     expect(runtimeImportSpecifiers("const type = 1; import { a } from './a';")).toEqual(['./a']);
+    // `typeA` ist ein Bezeichner dieses Namens, kein Typimport — vor einem
+    // Bezeichner trägt erst das Trennzeichen die Grenze.
+    expect(runtimeImportSpecifiers("import typeA from './a';")).toEqual(['./a']);
+  });
+
+  it('erkennt die kompakte Schreibweise, wo die Grenze ohne Leerraum eindeutig ist', () => {
+    // `{` und `*` können kein Bezeichnerzeichen sein. Diese Formen sind
+    // zweifelsfrei Typkanten, auch ohne Leerraum nach `type`.
+    expect(runtimeImportSpecifiers("import type{A}from'./a';")).toEqual([]);
+    expect(runtimeImportSpecifiers("export type*from'./a';")).toEqual([]);
   });
 
   it('hält gewöhnliche Wertkanten unverändert', () => {

@@ -114,13 +114,29 @@ const IMPORT_PATTERNS = Object.freeze([
  * nebeneinander: `models.ts` re-exportiert Typen aus `oscalDocumentContext.ts`,
  * `catalogLineage.ts` dagegen Werte aus `catalogLineage.mjs`.
  *
- * Bewusst ohne `[\s\S]*?` wie die Muster oben. Der Zwischenteil ist entweder
- * eine geklammerte Liste, die an ihrer eigenen schließenden Klammer endet
- * (`[^{}]*` — auch über Zeilen hinweg), ein Stern-Re-Export oder ein einzelner
- * Bezeichner. Keine dieser Formen darf über die Importanweisung hinauslaufen.
+ * Bewusst ohne `[\s\S]*?` wie die Muster oben. Jeder Zwischenteil endet an
+ * seiner eigenen Grenze: die geklammerte Liste an ihrer schließenden Klammer
+ * (`[^{}]*` — auch über Zeilen hinweg), der Stern-Re-Export und der einzelne
+ * Bezeichner am folgenden `from`. Keine dieser Formen darf über die
+ * Importanweisung hinauslaufen.
+ *
+ * Je Form ein eigenes, flaches Muster statt einer verschachtelten Alternation:
+ * Die zusammengesetzte Variante trug eine Komplexität von 31 gegenüber den 20
+ * erlaubten (SonarQube `javascript:S5843`) und war ohne Gewinn schwerer zu
+ * lesen. Die Formen schließen einander aus, überlappende Treffer wären hier
+ * aber ohnehin unschädlich: Zugeordnet wird über die Endposition, nicht gezählt.
+ *
+ * Trennzeichen nach `type` nur, wo es die Grenze trägt: Vor `{` und `*` ist sie
+ * ohne Leerraum eindeutig, weil beide kein Bezeichnerzeichen sind. Vor einem
+ * Bezeichner ist sie es nicht — `typeA` wäre ein Bezeichner dieses Namens und
+ * kein Typimport, deshalb steht dort `\s+`.
  */
-const TYPE_ONLY_PATTERN =
-  /\b(?:import|export)\s+type\s+(?:\{[^{}]*\}|\*(?:\s+as\s+[A-Za-z_$][\w$]*)?|[A-Za-z_$][\w$]*)\s*from\s*['"]([^'"\n]+)['"]/g;
+const TYPE_ONLY_PATTERNS = Object.freeze([
+  /\b(?:import|export)\s+type\s*\{[^{}]*\}\s*from\s*['"][^'"\n]+['"]/g,
+  /\b(?:import|export)\s+type\s*\*\s+as\s+[A-Za-z_$][\w$]*\s+from\s*['"][^'"\n]+['"]/g,
+  /\b(?:import|export)\s+type\s*\*\s*from\s*['"][^'"\n]+['"]/g,
+  /\b(?:import|export)\s+type\s+[A-Za-z_$][\w$]*\s+from\s*['"][^'"\n]+['"]/g,
+]);
 
 /**
  * Die Importspezifizierer einer Datei, denen die Hülle folgt: alle bis auf die,
@@ -134,35 +150,28 @@ const TYPE_ONLY_PATTERN =
  * Die `from`-Form deckt mehrzeilige Importlisten mit ab, weil sie am `from`
  * ansetzt und nicht am `import`.
  *
- * Der Typkanten-Ausschluss ist fail-closed und zählt statt zu raten: Ein Ziel
- * fällt nur weg, wenn JEDES seiner `from`-Vorkommen in dieser Datei von
- * `TYPE_ONLY_PATTERN` erfasst ist. Ein einziges Vorkommen, das die Erkennung
- * nicht zweifelsfrei einordnet, hält die Kante — die Mischform
+ * Der Typkanten-Ausschluss ist fail-closed und ordnet je VORKOMMEN zu, nicht je
+ * Ziel: Ein `from`-Treffer entfällt nur, wenn genau er von einer der reinen
+ * Typformen abgedeckt ist. Beide Muster enden am selben `'…'`, die Endposition
+ * ist deshalb der Schlüssel. Ein zweiter Import desselben Ziels, der einen Wert
+ * einführt, hält die Kante damit von selbst — und jede Schreibweise, die die
+ * Erkennung nicht zweifelsfrei einordnet, ebenso: die Mischform
  * `import { type X, y } from …` ebenso wie ein Import, den nur ein Mensch als
  * Typimport liest. Ein seitenwirksames `import '…'` und ein dynamisches
- * `import('…')` können gar keine Typangabe tragen und bleiben deshalb immer
- * Wertkanten, auch wenn dieselbe Datei dasselbe Ziel anderswo als Typ importiert.
+ * `import('…')` können gar keine Typangabe tragen und sind immer Wertkanten.
  */
 function importSpecifiers(source) {
-  const fromOccurrences = new Map();
+  const typeOnlyEnds = new Set();
+  for (const pattern of TYPE_ONLY_PATTERNS) {
+    for (const match of source.matchAll(pattern)) typeOnlyEnds.add(match.index + match[0].length);
+  }
+
+  const found = new Set();
   for (const match of source.matchAll(IMPORT_PATTERNS[0])) {
-    fromOccurrences.set(match[1], (fromOccurrences.get(match[1]) ?? 0) + 1);
+    if (!typeOnlyEnds.has(match.index + match[0].length)) found.add(match[1]);
   }
-
-  const valueForms = new Set();
   for (const pattern of [IMPORT_PATTERNS[1], IMPORT_PATTERNS[2]]) {
-    for (const match of source.matchAll(pattern)) valueForms.add(match[1]);
-  }
-
-  const typeOccurrences = new Map();
-  for (const match of source.matchAll(TYPE_ONLY_PATTERN)) {
-    typeOccurrences.set(match[1], (typeOccurrences.get(match[1]) ?? 0) + 1);
-  }
-
-  const found = new Set([...fromOccurrences.keys(), ...valueForms]);
-  for (const specifier of found) {
-    if (valueForms.has(specifier)) continue;
-    if (typeOccurrences.get(specifier) === fromOccurrences.get(specifier)) found.delete(specifier);
+    for (const match of source.matchAll(pattern)) found.add(match[1]);
   }
   return [...found];
 }
