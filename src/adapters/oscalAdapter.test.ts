@@ -670,6 +670,49 @@ describe('parseControl', () => {
     expect(control.availability).toBe('1');
   });
 
+  it('projiziert einen Schutzziel-prop auf name, value und ns — wie jeden prop', () => {
+    // Festgehalten, damit die Modellgrenze sichtbar bleibt: `PropValue` trägt
+    // keine `uuid` und keine `remarks`, und das gilt projektweit, nicht nur
+    // hier. Die Verlustfreiheit des Dokuments hängt nicht daran — sie läuft
+    // über den No-op-Round-trip auf dem Rohdokument (ADR-2).
+    const control = parseControl(makeControl({
+      props: [
+        {
+          name: 'confidentiality',
+          value: '2',
+          ns: SECURITY_TARGETS_NAMESPACE_URL,
+          uuid: '11111111-1111-4111-8111-111111111111',
+          remarks: 'Anmerkung aus dem Quelldokument',
+        },
+      ],
+    }), 'GC.1', 'GC');
+
+    expect(control.confidentialityProp).toEqual({
+      name: 'confidentiality',
+      value: '2',
+      ns: SECURITY_TARGETS_NAMESPACE_URL,
+    });
+
+    // Derselbe Zuschnitt bei einem prop, den dieser PR nicht anfasst.
+    const referenz = parseControl(makeControl({
+      props: [
+        {
+          name: 'sec_level',
+          value: 'erhöht',
+          ns: 'https://example.com/ns/sicherheitsniveau.csv',
+          uuid: '22222222-2222-4222-8222-222222222222',
+          remarks: 'Auch hier',
+        },
+      ],
+    }), 'GC.1', 'GC');
+
+    expect(referenz.securityLevelProp).toEqual({
+      name: 'sec_level',
+      value: 'erhöht',
+      ns: 'https://example.com/ns/sicherheitsniveau.csv',
+    });
+  });
+
   it('ignores a canonical security target prop that carries a class or group', () => {
     const withClass = parseControl(makeControl({
       props: [

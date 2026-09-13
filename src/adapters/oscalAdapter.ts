@@ -76,7 +76,16 @@ function getTaxonomyProps(props: RawOscalProp[] | undefined): PropValue[] {
 }
 
 /**
- * Schutzziel-Relevanz-Prop mit erhaltener Provenienz.
+ * Schutzziel-Relevanz-Prop mit unveränderter Namensraum-Provenienz.
+ *
+ * `PropValue` führt `name`, `value` und `ns` — nicht die vollständige
+ * OSCAL-Property. `uuid`, `class`, `group` und `remarks` erreichen das
+ * Ansichtsmodell nicht; das gilt projektweit für jeden Prop und ist keine
+ * Eigenheit der Schutzziele. Die Verlustfreiheit des Dokuments hängt nicht
+ * daran: Sie wird über den No-op-Round-trip auf dem Rohdokument geführt
+ * (ADR-2, `docs/OSCAL_ROUND_TRIP.md`), nicht über `Control`. Im ausgelieferten
+ * Katalog trägt ohnehin kein Prop eines dieser vier Felder; für fremde
+ * Kataloge ist die Lücke als GSPP-392 erfasst.
  *
  * Die Zuordnung läuft über `name` **und** `ns`: `property` verlangt in OSCAL
  * nur `name` und `value` und führt `ns`, `class`, `group`, `uuid` und
