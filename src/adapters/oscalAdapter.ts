@@ -25,7 +25,7 @@ import type {
   SecurityTargetRelevance,
 } from '@/domain/models';
 import type { CatalogKey } from '@/domain/sourceRegistry';
-import { SECURITY_TARGET_LEVELS_NAMESPACE_URL } from '@/domain/vocabularyNamespaces';
+import { SECURITY_TARGETS_NAMESPACE_URL } from '@/domain/vocabularyNamespaces';
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -75,14 +75,40 @@ function getTaxonomyProps(props: RawOscalProp[] | undefined): PropValue[] {
   ));
 }
 
+/**
+ * Schutzziel-Relevanz-Prop mit erhaltener Provenienz.
+ *
+ * Die Zuordnung läuft über `name` **und** `ns`: `property` verlangt in OSCAL
+ * nur `name` und `value`, und zwei gleichnamige Props aus verschiedenen
+ * Namensräumen sind verschiedene Eigenschaften, die nicht zusammengeführt
+ * werden dürfen. Ein `confidentiality`-Prop ohne oder mit fremdem `ns` ist
+ * deshalb keine Schutzziel-Relevanz und wird nicht übernommen (fail-closed).
+ *
+ * Gleiches gilt für ein gesetztes `class` oder `group`: beide gehören zur
+ * Identität der Eigenschaft und kennzeichnen eine spezialisierte Variante, die
+ * hier nicht als kanonische Relevanz durchgeht. Im ausgelieferten Katalog
+ * tragen alle vier Schutzziel-Props weder `class` noch `group`.
+ *
+ * Der vorgefundene `ns` bleibt unverändert erhalten. Bis GSPP-226 hat diese
+ * Funktion ihn durch den Namensraum von `security_targets_levels.csv` ersetzt,
+ * damit die Wertebedeutung generisch über `prop.ns` auflösbar war. Das hat eine
+ * Herkunft behauptet, die im Dokument nicht steht; die Levels-Auflösung nennt
+ * ihren Namensraum seitdem selbst (`resolveSecurityTargetLevel` in
+ * `domain/vocabulary.ts`).
+ */
 function getSecurityTargetRelevanceProp(
   props: RawOscalProp[] | undefined,
   name: string,
 ): PropValue | undefined {
-  const prop = getPropWithMetadata(props, name);
-  return prop
-    ? { ...prop, ns: SECURITY_TARGET_LEVELS_NAMESPACE_URL }
-    : undefined;
+  const prop = props?.find(
+    (candidate) =>
+      candidate.name === name &&
+      candidate.ns === SECURITY_TARGETS_NAMESPACE_URL &&
+      candidate.class === undefined &&
+      candidate.group === undefined,
+  );
+
+  return prop ? { name: prop.name, value: prop.value, ns: prop.ns } : undefined;
 }
 
 /**

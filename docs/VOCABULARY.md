@@ -231,7 +231,9 @@ export interface ResolvedControlVocabularies {
 }
 ```
 
-Besonderheit Schutzziele: Die Control-Props tragen als Wert die Relevanz (`0`–`2`), das Vokabular `security_targets.csv` ist aber nach Schutzziel-Namen indiziert. Der Adapter setzt deshalb für die vier Relevanz-Props den kanonischen synthetischen Namespace von `security_targets_levels.csv`. `securityTargetLevels` löst die Prop anschließend generisch über diesen Namespace auf.
+Besonderheit Schutzziele: Die Control-Props tragen als Wert die Relevanz (`0`–`2`), das über ihren `ns` referenzierte Vokabular `security_targets.csv` ist aber nach Schutzziel-Namen indiziert. Bis GSPP-226 hat der Adapter deshalb den vorgefundenen `ns` der vier Relevanz-Props durch den Namespace von `security_targets_levels.csv` ersetzt, damit `securityTargetLevels` generisch über `prop.ns` auflösen konnte. Das hat eine Herkunft behauptet, die im Dokument nicht steht. Seitdem gilt: Der Adapter erhält den vorgefundenen `ns` unverändert, und `resolveSecurityTargetLevel()` benennt `security_targets_levels.csv` selbst — symmetrisch zu `resolveSecurityTarget()`, das den Targets-Namespace schon immer explizit genannt hat.
+
+Die Zuordnung der vier Relevanz-Props läuft seitdem über `name` **und** `ns`: Ein gleichnamiges `prop` ohne oder mit fremdem `ns` ist in OSCAL eine andere Eigenschaft und wird nicht als Schutzziel-Relevanz übernommen. Ein gesetztes `class` oder `group` schließt ebenfalls aus, weil beide zur Identität der Eigenschaft gehören. Der Bestand trägt auf diesen Props weder `class` noch `group`.
 
 Die Typdefinitionen bleiben davon getrennt: `securityTargets` verwendet feste Lookup-Werte (`'Vertraulichkeit (Confidentiality)'`, `'Integrität (Integrity)'`, `'Verfügbarkeit (Availability)'`, `'Authentizität (Authenticity)'`) gegen den kanonischen Namespace von `security_targets.csv`. Die Detailansicht bietet für Typ und Relevanz zwei unabhängige Definitionen an. Ein unbekannter Wert oder eine fehlende Registry wird nicht ausgeblendet, sondern mit dem Rohwert und einer sichtbaren Diagnose dargestellt.
 

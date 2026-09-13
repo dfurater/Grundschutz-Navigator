@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { SECURITY_TARGET_RELEVANCE_ORDER } from '@/domain/securityTargets';
 import { Badge } from './Badge';
 import type { BadgeVariant } from './Badge';
 
@@ -72,8 +73,15 @@ const EFFORT_DOT_VARS = [
   'var(--color-effort-dot-5)',
 ];
 
-/** Höchste Relevanzstufe eines Schutzziels laut `security_targets_levels.csv`. */
-export const RELEVANCE_SCALE_MAX = 2;
+/**
+ * Höchste Relevanzstufe eines Schutzziels.
+ *
+ * Abgeleitet aus der gekapselten Ordnung statt erneut ausgeschrieben: Die Skala
+ * ist eine Projektentscheidung auf Basis des BSI-Vokabulars und hat genau eine
+ * Quelle (`domain/securityTargets.ts`, GSPP-226). Eine zweite hartkodierte 2
+ * würde bei einer Vokabularänderung stillschweigend auseinanderlaufen.
+ */
+export const RELEVANCE_SCALE_MAX = SECURITY_TARGET_RELEVANCE_ORDER.length - 1;
 
 export interface RelevanceScaleProps {
   readonly value: number;

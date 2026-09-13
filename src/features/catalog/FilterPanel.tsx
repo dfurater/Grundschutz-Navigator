@@ -2,6 +2,7 @@ import { FilterSection } from '@/components/FilterSection';
 import { CheckboxLabel } from '@/components/CheckboxLabel';
 import { IconFilter, IconChevronRight } from '@/components/icons';
 import type { ControlFilters, FacetCounts } from '@/hooks/useFilteredControls';
+import { SecurityTargetFilterSections } from './SecurityTargetFilterSections';
 import type { Modalverb, LinkRelation } from '@/domain/models';
 import { useCatalog } from '@/hooks/useCatalog';
 import {
@@ -40,8 +41,15 @@ function toggleArrayItem<T>(arr: T[], item: T): T[] {
   return arr.includes(item) ? arr.filter((x) => x !== item) : [...arr, item];
 }
 
+/**
+ * Facetten mit flacher Wertezählung. Die Schutzziele fallen heraus, weil sie
+ * je Dimension eine eigene Zählung tragen und über `resolveSecurityTargetCounts`
+ * laufen.
+ */
+type FlatFacetDimension = Exclude<keyof FacetCounts, 'securityTargets'>;
+
 /** Returns true if the given filter dimension has an active selection. */
-function hasDimensionFilter(filters: ControlFilters, dimension: keyof FacetCounts): boolean {
+function hasDimensionFilter(filters: ControlFilters, dimension: FlatFacetDimension): boolean {
   switch (dimension) {
     case 'modalverben': return filters.modalverben.length > 0;
     case 'securityLevels': return filters.securityLevels.length > 0;
@@ -56,7 +64,7 @@ function hasDimensionFilter(filters: ControlFilters, dimension: keyof FacetCount
 
 function resolveDimensionCounts(
   filters: ControlFilters,
-  dimension: keyof FacetCounts,
+  dimension: FlatFacetDimension,
   facetCounts: FacetCounts,
   filteredFacetCounts: FacetCounts,
 ): Record<string, number> {
@@ -71,7 +79,7 @@ function resolveDimensionCounts(
  */
 function visibleEntries(
   filters: ControlFilters,
-  dimension: keyof FacetCounts,
+  dimension: FlatFacetDimension,
   sortedEntries: [string, number][],
   selectedValues: readonly string[],
   filteredCounts: Record<string, number>,
@@ -286,6 +294,13 @@ export function FilterPanel({
             );
           })}
         </FilterSection>
+
+        <SecurityTargetFilterSections
+          filters={filters}
+          facetCounts={facetCounts}
+          filteredFacetCounts={filteredFacetCounts}
+          onFiltersChange={onFiltersChange}
+        />
 
         {/* Zielobjekt-Kategorien */}
         {showZielobjekte && (

@@ -8,7 +8,10 @@ import type {
   VocabularyRegistry,
   VocabularyRegistryData,
 } from './models';
-import { SECURITY_TARGETS_NAMESPACE_URL } from './vocabularyNamespaces';
+import {
+  SECURITY_TARGET_LEVELS_NAMESPACE_URL,
+  SECURITY_TARGETS_NAMESPACE_URL,
+} from './vocabularyNamespaces';
 
 export interface VocabularyResolution {
   namespace: VocabularyNamespace;
@@ -269,6 +272,36 @@ function resolveSecurityTarget(registry: VocabularyRegistry | null | undefined, 
   return prop ? resolveVocabularyEntry(registry, SECURITY_TARGETS_NAMESPACE_URL, value) : null;
 }
 
+/**
+ * Wertebedeutung einer Schutzziel-Relevanz (`0`–`2`).
+ *
+ * Der Namensraum wird hier explizit genannt, weil die Props im Katalog auf
+ * `security_targets.csv` verweisen — dort stehen die Schutzziel-Namen, die
+ * Bedeutung der Stufen steht in `security_targets_levels.csv`. Bis GSPP-226 hat
+ * der Adapter dafür den `ns` der Props überschrieben; jetzt bleibt die
+ * Provenienz unangetastet und die Auflösung benennt ihre Quelle selbst —
+ * symmetrisch zu `resolveSecurityTarget` darüber.
+ */
+function resolveSecurityTargetLevel(
+  registry: VocabularyRegistry | null | undefined,
+  prop: PropValue | undefined,
+): VocabularyResolution | null {
+  // Nur ein prop aus dem BSI-Schutzzielnamensraum bekommt die BSI-Stufen-
+  // definition. Ohne diese Bindung würde ein gleichnamiges prop aus fremdem
+  // Namensraum stillschweigend eine Bedeutung zugeschrieben bekommen, die sein
+  // Vokabular nicht deckt — dieselbe Normalisierung, die der Adapter seit
+  // GSPP-226 unterlässt.
+  if (prop?.ns !== SECURITY_TARGETS_NAMESPACE_URL) {
+    return null;
+  }
+
+  return resolveVocabularyEntry(
+    registry,
+    SECURITY_TARGET_LEVELS_NAMESPACE_URL,
+    prop.value,
+  );
+}
+
 export function resolveControlVocabularies(registry: VocabularyRegistry | null | undefined, control: Control): ResolvedControlVocabularies {
   return {
     modalverb: resolveVocabularyProp(registry, control.modalverbProp),
@@ -298,10 +331,10 @@ export function resolveControlVocabularies(registry: VocabularyRegistry | null |
       ),
     },
     securityTargetLevels: {
-      confidentiality: resolveVocabularyProp(registry, control.confidentialityProp),
-      integrity: resolveVocabularyProp(registry, control.integrityProp),
-      availability: resolveVocabularyProp(registry, control.availabilityProp),
-      authenticity: resolveVocabularyProp(registry, control.authenticityProp),
+      confidentiality: resolveSecurityTargetLevel(registry, control.confidentialityProp),
+      integrity: resolveSecurityTargetLevel(registry, control.integrityProp),
+      availability: resolveSecurityTargetLevel(registry, control.availabilityProp),
+      authenticity: resolveSecurityTargetLevel(registry, control.authenticityProp),
     },
     threats: resolveVocabularyValues(registry, control.threatsProp?.ns, control.threats),
     statement: {

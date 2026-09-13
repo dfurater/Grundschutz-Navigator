@@ -37,6 +37,12 @@ const facetCounts: FacetCounts = {
   handlungsworte: {},
   dokumentationstypen: {},
   linkRelationen: {},
+  securityTargets: {
+    confidentiality: { min1: 2, min2: 1, unrated: 1 },
+    integrity: { min1: 1, min2: 0, unrated: 2 },
+    availability: {},
+    authenticity: {},
+  },
 };
 
 const emptyFacetCounts: FacetCounts = {
@@ -48,6 +54,12 @@ const emptyFacetCounts: FacetCounts = {
   handlungsworte: {},
   dokumentationstypen: {},
   linkRelationen: {},
+  securityTargets: {
+    confidentiality: {},
+    integrity: {},
+    availability: {},
+    authenticity: {},
+  },
 };
 
 function makeCatalogState(): CatalogState {

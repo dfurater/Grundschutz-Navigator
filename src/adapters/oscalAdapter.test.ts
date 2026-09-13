@@ -17,6 +17,7 @@ import {
   toSecurityTargetRelevance,
   toModalverb,
 } from './oscalAdapter';
+import { SECURITY_TARGETS_NAMESPACE_URL } from '@/domain/vocabularyNamespaces';
 import { parseCatalogDocument } from './oscalDocument';
 import { projectResolvedControlLinks } from '@/domain/catalogReferenceProjection';
 import type {
@@ -62,22 +63,22 @@ function makeControl(overrides: Partial<RawOscalControl> = {}): RawOscalControl 
       },
       {
         name: 'confidentiality',
-        ns: 'https://example.com/namespaces/security_targets.csv',
+        ns: SECURITY_TARGETS_NAMESPACE_URL,
         value: '2',
       },
       {
         name: 'integrity',
-        ns: 'https://example.com/namespaces/security_targets.csv',
+        ns: SECURITY_TARGETS_NAMESPACE_URL,
         value: '1',
       },
       {
         name: 'availability',
-        ns: 'https://example.com/namespaces/security_targets.csv',
+        ns: SECURITY_TARGETS_NAMESPACE_URL,
         value: '1',
       },
       {
         name: 'authenticity',
-        ns: 'https://example.com/namespaces/security_targets.csv',
+        ns: SECURITY_TARGETS_NAMESPACE_URL,
         value: '0',
       },
       {
@@ -530,7 +531,7 @@ describe('parseControl', () => {
     expect(control.confidentialityProp).toEqual({
       name: 'confidentiality',
       value: '2',
-      ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets_levels.csv',
+      ns: SECURITY_TARGETS_NAMESPACE_URL,
     });
     expect(control.threatsProp).toEqual({
       name: 'threats',
@@ -610,7 +611,7 @@ describe('parseControl', () => {
   it('keeps invalid security target values as raw props without typing them', () => {
     const control = parseControl(makeControl({
       props: [
-        { name: 'confidentiality', value: '3', ns: 'https://example.com/namespaces/security_targets.csv' },
+        { name: 'confidentiality', value: '3', ns: SECURITY_TARGETS_NAMESPACE_URL },
       ],
     }), 'GC.1', 'GC');
 
@@ -618,9 +619,81 @@ describe('parseControl', () => {
     expect(control.confidentialityProp).toEqual({
       name: 'confidentiality',
       value: '3',
-      ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets_levels.csv',
+      ns: SECURITY_TARGETS_NAMESPACE_URL,
     });
     expect(control.threats).toEqual([]);
+  });
+
+  it('ignores a same-named security target prop from a foreign namespace', () => {
+    const control = parseControl(makeControl({
+      props: [
+        {
+          name: 'confidentiality',
+          value: '2',
+          ns: 'https://example.com/namespaces/security_targets.csv',
+        },
+      ],
+    }), 'GC.1', 'GC');
+
+    expect(control.confidentialityProp).toBeUndefined();
+    expect(control.confidentiality).toBeUndefined();
+  });
+
+  it('ignores a security target prop without a namespace', () => {
+    const control = parseControl(makeControl({
+      props: [{ name: 'integrity', value: '1' }],
+    }), 'GC.1', 'GC');
+
+    expect(control.integrityProp).toBeUndefined();
+    expect(control.integrity).toBeUndefined();
+  });
+
+  it('keeps two same-named props from different namespaces apart', () => {
+    const control = parseControl(makeControl({
+      props: [
+        {
+          name: 'availability',
+          value: '2',
+          ns: 'https://example.com/namespaces/security_targets.csv',
+        },
+        { name: 'availability', value: '1', ns: SECURITY_TARGETS_NAMESPACE_URL },
+      ],
+    }), 'GC.1', 'GC');
+
+    // Der fremde Prop steht vorne und gewinnt einen reinen Namensvergleich;
+    // maßgeblich ist der kanonische Namensraum, nicht die Dokumentreihenfolge.
+    expect(control.availabilityProp).toEqual({
+      name: 'availability',
+      value: '1',
+      ns: SECURITY_TARGETS_NAMESPACE_URL,
+    });
+    expect(control.availability).toBe('1');
+  });
+
+  it('ignores a canonical security target prop that carries a class or group', () => {
+    const withClass = parseControl(makeControl({
+      props: [
+        {
+          name: 'confidentiality',
+          value: '2',
+          ns: SECURITY_TARGETS_NAMESPACE_URL,
+          class: 'draft',
+        },
+      ],
+    }), 'GC.1', 'GC');
+    const withGroup = parseControl(makeControl({
+      props: [
+        {
+          name: 'integrity',
+          value: '2',
+          ns: SECURITY_TARGETS_NAMESPACE_URL,
+          group: 'proposed',
+        },
+      ],
+    }), 'GC.1', 'GC');
+
+    expect(withClass.confidentialityProp).toBeUndefined();
+    expect(withGroup.integrityProp).toBeUndefined();
   });
 
   it('extracts altIdentifier', () => {

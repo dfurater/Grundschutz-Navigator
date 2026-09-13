@@ -7,6 +7,18 @@ import type {
   LinkRelation,
 } from '@/domain/models';
 import { toFilterableLinkRelation } from '@/domain/controlRelationships';
+import {
+  countSecurityTargetFacets,
+  emptySecurityTargetCounts,
+  emptySecurityTargetFilters,
+  hasSecurityTargetSelection,
+  passesAllSecurityTargetFilters,
+  type SecurityTargetDimension,
+  type SecurityTargetFilters,
+} from '@/domain/securityTargets';
+
+export type { SecurityTargetFilters } from '@/domain/securityTargets';
+export { emptySecurityTargetFilters } from '@/domain/securityTargets';
 
 /* ------------------------------------------------------------------ */
 /*  Filter State                                                       */
@@ -33,6 +45,15 @@ export interface ControlFilters {
   dokumentationstypen: string[];
   /** Filter by link relation values */
   linkRelationen: LinkRelation[];
+  /**
+   * Schutzziel-Facetten je Dimension (CIA + Authentizität).
+   *
+   * Jede Dimension ist eine eigene Facette: ODER innerhalb einer Dimension,
+   * UND über die vier Dimensionen — konsistent mit allen übrigen Facetten.
+   * Die Werte sind exakte Stufen; Skala und Ordnung dahinter liegen gekapselt
+   * in `domain/securityTargets.ts` (GSPP-226).
+   */
+  securityTargets: SecurityTargetFilters;
 }
 
 export const emptyFilters: ControlFilters = {
@@ -46,6 +67,7 @@ export const emptyFilters: ControlFilters = {
   handlungsworte: [],
   dokumentationstypen: [],
   linkRelationen: [],
+  securityTargets: emptySecurityTargetFilters(),
 };
 
 export type SortField = 'id' | 'title' | 'modalverb' | 'securityLevel' | 'effortLevel';
@@ -117,6 +139,7 @@ function matchesFilter(
     return false;
   }
   if (!passesLinkRelationFilter(control, filters.linkRelationen)) return false;
+  if (!passesAllSecurityTargetFilters(control, filters.securityTargets)) return false;
   return true;
 }
 
@@ -165,6 +188,14 @@ export interface FacetCounts {
   handlungsworte: Record<string, number>;
   dokumentationstypen: Record<string, number>;
   linkRelationen: Record<string, number>;
+  /**
+   * Treffer je Schutzziel-Dimension und Facettenwert.
+   *
+   * Eine Anforderung zählt je Dimension in höchstens einen Wert: Ohne Angabe
+   * und außerhalb der Skala zählt sie in keinen. Die Summe einer Dimension
+   * liegt deshalb unter der Gesamtzahl und ist keine Abdeckungsaussage.
+   */
+  securityTargets: Record<SecurityTargetDimension, Record<string, number>>;
 }
 
 function incrementCount(map: Record<string, number>, key: string | undefined): void {
@@ -183,6 +214,7 @@ function computeFacetCounts(controls: Control[]): FacetCounts {
     handlungsworte: {},
     dokumentationstypen: {},
     linkRelationen: {},
+    securityTargets: emptySecurityTargetCounts(),
   };
 
   for (const c of controls) {
@@ -205,6 +237,7 @@ function computeFacetCounts(controls: Control[]): FacetCounts {
     for (const relation of relations) {
       incrementCount(counts.linkRelationen, relation);
     }
+    countSecurityTargetFacets(c, counts.securityTargets);
   }
 
   return counts;
@@ -245,7 +278,8 @@ export function useFilteredControls(
       filters.zielobjektKategorien.length > 0 ||
       filters.handlungsworte.length > 0 ||
       filters.dokumentationstypen.length > 0 ||
-      filters.linkRelationen.length > 0,
+      filters.linkRelationen.length > 0 ||
+      hasSecurityTargetSelection(filters.securityTargets),
     [filters],
   );
 

@@ -197,13 +197,13 @@ describe('vocabulary runtime', () => {
       confidentialityProp: {
         name: 'confidentiality',
         value: '2',
-        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets_levels.csv',
+        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets.csv',
       },
       integrity: '1',
       integrityProp: {
         name: 'integrity',
         value: '1',
-        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets_levels.csv',
+        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets.csv',
       },
       threats: ['G 0.18', 'G 0.99'],
       threatsProp: {
