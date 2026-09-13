@@ -277,10 +277,10 @@ function resolveSecurityTarget(registry: VocabularyRegistry | null | undefined, 
  *
  * Der Namensraum wird hier explizit genannt, weil die Props im Katalog auf
  * `security_targets.csv` verweisen — dort stehen die Schutzziel-Namen, die
- * Bedeutung der Stufen steht in `security_targets_levels.csv`. Bis GSPP-226 hat
- * der Adapter dafür den `ns` der Props überschrieben; jetzt bleibt die
- * Provenienz unangetastet und die Auflösung benennt ihre Quelle selbst —
- * symmetrisch zu `resolveSecurityTarget` darüber.
+ * Bedeutung der Stufen steht in `security_targets_levels.csv`. Über `prop.ns`
+ * ist sie damit nicht auflösbar; die Auflösung benennt ihre Quelle deshalb
+ * selbst, symmetrisch zu `resolveSecurityTarget` darüber, und der vorgefundene
+ * `ns` der Props bleibt unangetastet.
  */
 function resolveSecurityTargetLevel(
   registry: VocabularyRegistry | null | undefined,
@@ -289,8 +289,8 @@ function resolveSecurityTargetLevel(
   // Nur ein prop aus dem BSI-Schutzzielnamensraum bekommt die BSI-Stufen-
   // definition. Ohne diese Bindung würde ein gleichnamiges prop aus fremdem
   // Namensraum stillschweigend eine Bedeutung zugeschrieben bekommen, die sein
-  // Vokabular nicht deckt — dieselbe Normalisierung, die der Adapter seit
-  // GSPP-226 unterlässt.
+  // Vokabular nicht deckt — dieselbe Normalisierung, die der Adapter ebenfalls
+  // unterlässt.
   if (prop?.ns !== SECURITY_TARGETS_NAMESPACE_URL) {
     return null;
   }

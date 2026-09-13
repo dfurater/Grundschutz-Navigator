@@ -76,8 +76,13 @@ stammen aus dem NIST-Release
 Versionsbezug steht in `src/domain/oscalVersionMatrix.mjs`.
 
 Dass `0`, `1` und `2` die gültigen Werte sind und `2` mehr Relevanz bedeutet als
-`1`, stammt aus dem über `prop.ns` referenzierten BSI-Vokabular
-`security_targets_levels.csv`. Skala und Ordnung stehen deshalb an genau einer
+`1`, stammt aus dem BSI-Vokabular `security_targets_levels.csv`. Über `prop.ns`
+ist diese Datei **nicht** erreichbar: Der `ns` der vier Schutzziel-Props zeigt
+auf `security_targets.csv`, das nach Schutzziel-Namen indiziert ist und die
+Stufen nicht kennt. Die beiden Stellen, die die Stufenbedeutung brauchen, wählen
+die Datei deshalb selbst aus (`resolveSecurityTargetLevel` in
+`src/domain/vocabulary.ts`, `getSecurityTargetFilterTooltip` in
+`src/features/vocabulary/display.ts`). Skala und Ordnung stehen an genau einer
 Stelle (`SECURITY_TARGET_RELEVANCE_ORDER`) und werden über einen Lookup
 ausgewertet, nicht über `parseInt`: Ein schema-valider Fremdwert wie `'3'` gehört
 nicht zur Skala und landet in `unknown` statt in einer Stufe.

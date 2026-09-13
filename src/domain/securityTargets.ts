@@ -12,9 +12,14 @@
  * Versionsbezug steht in `src/domain/oscalVersionMatrix.mjs`.
  *
  * Die Skala `'0' | '1' | '2'` stammt deshalb ausschließlich aus dem
- * BSI-Vokabular, auf das die Props über ihren `ns` verweisen. Diese Datei ist
- * die **einzige** Stelle, an der Skala und Ordnung ausgesprochen werden
- * (GSPP-226), damit eine spätere Vokabularänderung genau einen Ort hat.
+ * BSI-Vokabular `security_targets_levels.csv`. Das ist **nicht** das über
+ * `prop.ns` referenzierte Vokabular: Der `ns` der vier Schutzziel-Props zeigt
+ * auf `security_targets.csv`, das nach Schutzziel-Namen indiziert ist und die
+ * Werte `0`–`2` nicht kennt. Die Stufendatei ist über `prop.ns` nicht
+ * erreichbar und wird deshalb explizit ausgewählt (`resolveSecurityTargetLevel`
+ * in `domain/vocabulary.ts`). Diese Datei hier ist die **einzige** Stelle, an
+ * der Skala und Ordnung ausgesprochen werden (GSPP-226), damit eine spätere
+ * Vokabularänderung genau einen Ort hat.
  *
  * Zwei Unterscheidungen sind normativ bindend und dürfen nicht eingeebnet
  * werden:
@@ -96,10 +101,13 @@ export const SECURITY_TARGET_DIMENSIONS: readonly SecurityTargetDimensionMeta[] 
  * Die Relevanzskala in aufsteigender Ordnung.
  *
  * **Diese Reihenfolge ist eine Projektentscheidung, keine OSCAL-Vorgabe.** Sie
- * folgt dem über `prop.ns` referenzierten BSI-Vokabular
- * `security_targets_levels.csv`, in dem `'0'` „nicht relevant", `'1'`
- * „relevant" und `'2'` „hoch relevant" bedeutet. OSCAL selbst kennt für
- * `prop.value` weder Wertebereich noch Ordnung.
+ * folgt dem BSI-Vokabular `security_targets_levels.csv`, dessen Definitionen
+ * eine aufsteigende Wirkung beschreiben: `'0'` „wirkt nicht oder
+ * vernachlässigbar gering", `'1'` „wirkt auf dieses Schutzziel hin", `'2'`
+ * „wirkt in besonderem Maße". Bezeichnungen vergibt das Vokabular dazu nicht,
+ * und über `prop.ns` ist es nicht erreichbar — der `ns` der Props zeigt auf
+ * `security_targets.csv`. OSCAL selbst kennt für `prop.value` weder
+ * Wertebereich noch Ordnung.
  *
  * Der Index in dieser Liste ist der Rang. Ein Wert, der hier nicht vorkommt,
  * hat keinen Rang und nimmt an keinem Größenvergleich teil.

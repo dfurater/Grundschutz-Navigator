@@ -119,12 +119,12 @@ function getTaxonomyProps(props: RawOscalProp[] | undefined): PropValue[] {
  * `domain/securityTargets.ts`; geprüft wird er in
  * `domain/securityTargets.catalog.node.test.ts`.
  *
- * Der vorgefundene `ns` bleibt unverändert erhalten. Bis GSPP-226 hat diese
- * Funktion ihn durch den Namensraum von `security_targets_levels.csv` ersetzt,
- * damit die Wertebedeutung generisch über `prop.ns` auflösbar war. Das hat eine
- * Herkunft behauptet, die im Dokument nicht steht; die Levels-Auflösung nennt
- * ihren Namensraum seitdem selbst (`resolveSecurityTargetLevel` in
- * `domain/vocabulary.ts`).
+ * Der vorgefundene `ns` bleibt unverändert erhalten; er zeigt auf
+ * `security_targets.csv`. Ihn durch den Namensraum von
+ * `security_targets_levels.csv` zu ersetzen, damit die Wertebedeutung generisch
+ * über `prop.ns` auflösbar wäre, würde eine Herkunft behaupten, die im Dokument
+ * nicht steht. Die Levels-Auflösung nennt ihren Namensraum stattdessen selbst
+ * (`resolveSecurityTargetLevel` in `domain/vocabulary.ts`).
  */
 function getSecurityTargetRelevanceProp(
   props: RawOscalProp[] | undefined,

@@ -661,7 +661,7 @@ describe('parseControl', () => {
     }), 'GC.1', 'GC');
 
     // Der fremde Prop steht vorne und gewinnt einen reinen Namensvergleich;
-    // maßgeblich ist der kanonische Namensraum, nicht die Dokumentreihenfolge.
+    // maßgeblich ist der BSI-Schutzzielnamensraum, nicht die Dokumentreihenfolge.
     expect(control.availabilityProp).toEqual({
       name: 'availability',
       value: '1',

@@ -10,7 +10,7 @@ export interface CheckboxLabelProps {
    * Zugänglicher Name, wenn der sichtbare `label` allein nicht eindeutig ist.
    *
    * Nötig, sobald mehrere Facetten dieselben Optionsnamen tragen — die vier
-   * Schutzziele bieten alle „Relevant (1 oder höher)" an, und ohne die
+   * Schutzziele bieten alle die Stufen `0`, `1` und `2` an, und ohne die
    * Dimension im Namen wäre per Screenreader nicht unterscheidbar, welches
    * Schutzziel gemeint ist. Die Facettenüberschrift ist mit der Checkbox nicht
    * programmatisch verbunden und trägt diese Zuordnung nicht.

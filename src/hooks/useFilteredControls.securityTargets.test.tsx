@@ -30,7 +30,7 @@ function makeControl(overrides: Partial<Control> = {}): Control {
   };
 }
 
-/** Schutzziel-Prop mit kanonischer Provenienz, so wie der Adapter ihn liefert. */
+/** Schutzziel-Prop mit der Provenienz des Katalogs, so wie der Adapter ihn liefert. */
 function targetProp(name: string, value: string): PropValue {
   return { name, value, ns: SECURITY_TARGETS_NAMESPACE_URL };
 }
