@@ -63,6 +63,36 @@ export class GreptileNudgeError extends Error {
   }
 }
 
+/** `owner/repo` in der von GitHub zugelassenen Zeichenmenge. */
+const REPOSITORY_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
+
+/** Vollständiger, kleingeschriebener Commit-SHA. */
+const SHA_PATTERN = /^[0-9a-f]{40}$/;
+
+const UNTRUSTED_TEXT_LIMIT = 80;
+
+/*
+ * Jeder in eine Meldung übernommene Wert stammt aus dem Ereignis und ist damit
+ * von außen beeinflussbar. Ein Zeilenumbruch darin ließe eine gefälschte
+ * Logzeile entstehen, die wie eine eigene Meldung des Guards aussieht; ein
+ * überlanger Wert ersetzte die Meldung. Steuer- und Formatzeichen werden
+ * deshalb zu Leerzeichen, und die Länge ist begrenzt.
+ */
+export function forMessage(value) {
+  if (typeof value !== 'string') {
+    return 'unbekannt';
+  }
+
+  const collapsed = value.replaceAll(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, ' ').replaceAll(/\s+/gu, ' ').trim();
+  if (collapsed.length === 0) {
+    return 'unbekannt';
+  }
+
+  return collapsed.length > UNTRUSTED_TEXT_LIMIT
+    ? `${collapsed.slice(0, UNTRUSTED_TEXT_LIMIT)}…`
+    : collapsed;
+}
+
 /**
  * Entscheidet ohne Seiteneffekt, ob erwähnt wird.
  *
@@ -81,12 +111,12 @@ export function decideNudge({ event, headSha, checkRuns, comments }) {
   }
 
   if (issue.state !== 'open') {
-    return { nudge: false, reason: `Der Pull Request ist nicht offen (state=${issue.state ?? 'unbekannt'}).` };
+    return { nudge: false, reason: `Der Pull Request ist nicht offen (state=${forMessage(issue.state)}).` };
   }
 
   const author = event?.comment?.user?.login;
   if (author !== GREPTILE_APP_LOGIN) {
-    return { nudge: false, reason: `Der Kommentar stammt von ${author ?? 'unbekannt'}, nicht von ${GREPTILE_APP_LOGIN}.` };
+    return { nudge: false, reason: `Der Kommentar stammt von ${forMessage(author)}, nicht von ${GREPTILE_APP_LOGIN}.` };
   }
 
   /*
@@ -96,15 +126,15 @@ export function decideNudge({ event, headSha, checkRuns, comments }) {
    * besser wird.
    */
   if (checkRuns.some((run) => run?.name === GREPTILE_CHECK_NAME)) {
-    return { nudge: false, reason: `Auf ${headSha} existiert bereits ein Check-Run namens ${GREPTILE_CHECK_NAME}.` };
+    return { nudge: false, reason: `Auf ${forMessage(headSha)} existiert bereits ein Check-Run namens ${GREPTILE_CHECK_NAME}.` };
   }
 
   const marker = nudgeMarker(headSha);
   if (comments.some((comment) => typeof comment?.body === 'string' && comment.body.includes(marker))) {
-    return { nudge: false, reason: `Für ${headSha} wurde bereits erwähnt.` };
+    return { nudge: false, reason: `Für ${forMessage(headSha)} wurde bereits erwähnt.` };
   }
 
-  return { nudge: true, reason: `Auf ${headSha} fehlt der Check-Run ${GREPTILE_CHECK_NAME}.` };
+  return { nudge: true, reason: `Auf ${forMessage(headSha)} fehlt der Check-Run ${GREPTILE_CHECK_NAME}.` };
 }
 
 async function fetchGitHubJson(url, { fetchImpl, token, label }) {
@@ -162,9 +192,19 @@ async function postComment(url, body, { fetchImpl, token }) {
  * @returns {Promise<{ nudge: boolean, reason: string }>}
  */
 export async function runNudge({ event, repository, token, fetchImpl = fetch }) {
+  /*
+   * Ereignis und Umgebung liefern die Bausteine jeder URL. Sie werden deshalb
+   * gegen ihre erlaubte Form geprüft, bevor sie in einen Endpunkt eingesetzt
+   * werden — sonst trüge ein manipulierter Wert die Anfrage auf einen anderen
+   * Pfad oder eine andere Herkunft.
+   */
   const issueNumber = event?.issue?.number;
-  if (!Number.isInteger(issueNumber)) {
-    throw new GreptileNudgeError('Das Ereignis trägt keine Issue-Nummer.');
+  if (!Number.isInteger(issueNumber) || issueNumber <= 0) {
+    throw new GreptileNudgeError('Das Ereignis trägt keine gültige Issue-Nummer.');
+  }
+
+  if (typeof repository !== 'string' || !REPOSITORY_PATTERN.test(repository)) {
+    throw new GreptileNudgeError('GITHUB_REPOSITORY hat nicht die Form owner/repo.');
   }
 
   const apiBase = `https://api.github.com/repos/${repository}`;
@@ -182,8 +222,8 @@ export async function runNudge({ event, repository, token, fetchImpl = fetch }) 
   });
 
   const headSha = pullRequest?.head?.sha;
-  if (typeof headSha !== 'string' || headSha.length === 0) {
-    throw new GreptileNudgeError(`Pull Request #${issueNumber} liefert keinen Head-SHA.`);
+  if (typeof headSha !== 'string' || !SHA_PATTERN.test(headSha)) {
+    throw new GreptileNudgeError(`Pull Request #${issueNumber} liefert keinen gültigen Head-SHA.`);
   }
 
   const checks = await fetchGitHubJson(`${apiBase}/commits/${headSha}/check-runs?per_page=100`, {
@@ -257,7 +297,13 @@ async function main() {
     token,
   });
 
-  console.log(decision.nudge ? `Erwähnung gesetzt: ${decision.reason}` : `Keine Erwähnung: ${decision.reason}`);
+  /*
+   * Die Begründung ist bereits feldweise entschärft; der zweite Durchlauf
+   * hier hält die Zusicherung auch dann, wenn später ein Zweig hinzukommt,
+   * der einen Ereigniswert ungefiltert übernimmt.
+   */
+  const reason = forMessage(decision.reason);
+  console.log(decision.nudge ? `Erwähnung gesetzt: ${reason}` : `Keine Erwähnung: ${reason}`);
 }
 
 const isDirectExecution = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;

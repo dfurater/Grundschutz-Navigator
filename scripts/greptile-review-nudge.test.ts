@@ -8,6 +8,7 @@ import {
   GreptileNudgeError,
   NUDGE_MENTION,
   decideNudge,
+  forMessage,
   nudgeBody,
   nudgeMarker,
   readEvent,
@@ -118,6 +119,45 @@ describe('decideNudge', () => {
   });
 });
 
+/*
+ * Werte aus dem Ereignis erreichen die Ausgabe. Ein Zeilenumbruch darin ließe
+ * eine gefälschte Logzeile entstehen, ein überlanger Wert ersetzte die Meldung.
+ */
+describe('forMessage', () => {
+  it('lässt einen harmlosen Wert unverändert', () => {
+    expect(forMessage('greptile-apps[bot]')).toBe('greptile-apps[bot]');
+  });
+
+  it.each([
+    ['a\nERROR: gefälscht', 'a ERROR: gefälscht'],
+    ['a\r\nb', 'a b'],
+    ['a\u0000b', 'a b'],
+    ['a\u2028b', 'a b'],
+    ['a\u200bb', 'a b'],
+  ])('ersetzt Steuer- und Formatzeichen (%j)', (input, expected) => {
+    expect(forMessage(input)).toBe(expected);
+  });
+
+  it('begrenzt die Länge', () => {
+    const long = 'x'.repeat(200);
+
+    expect(forMessage(long)).toBe(`${'x'.repeat(80)}…`);
+  });
+
+  it.each([undefined, null, 42, {}, '', '   '])('ersetzt einen unbrauchbaren Wert durch "unbekannt" (%s)', (value) => {
+    expect(forMessage(value)).toBe('unbekannt');
+  });
+
+  it('entschärft einen Autorennamen, der eine Logzeile vortäuscht', () => {
+    const event = greptileEvent({ comment: { user: { login: 'böse\nErwähnung gesetzt: alles gut' } } });
+
+    const decision = decisionFor({ event });
+
+    expect(decision.nudge).toBe(false);
+    expect(decision.reason).not.toContain('\n');
+  });
+});
+
 describe('nudgeBody', () => {
   it('trägt die Erwähnung und den head-gebundenen Marker', () => {
     const body = nudgeBody(HEAD_SHA);
@@ -214,12 +254,37 @@ describe('runNudge', () => {
       .rejects.toThrow(GreptileNudgeError);
   });
 
-  it('meldet ein Ereignis ohne Issue-Nummer als Fehler', async () => {
+  it.each([undefined, 0, -3, 1.5, '232'])('meldet eine ungültige Issue-Nummer als Fehler (%s)', async (number) => {
     const { fetchImpl } = stubFetch({});
 
-    await expect(runNudge({ event: { issue: {} }, repository: REPOSITORY, token: 'x', fetchImpl }))
-      .rejects.toThrow('keine Issue-Nummer');
+    await expect(runNudge({ event: { issue: { number } }, repository: REPOSITORY, token: 'x', fetchImpl }))
+      .rejects.toThrow('keine gültige Issue-Nummer');
   });
+
+  /*
+   * Ereignis und Umgebung liefern die Bausteine jeder URL. Ein Wert, der die
+   * erlaubte Form verlässt, muss die Anfrage verhindern statt sie auf einen
+   * anderen Pfad oder eine andere Herkunft zu tragen.
+   */
+  it.each(['../../evil', 'owner', 'owner/repo/extra', 'owner/re po', 'https://evil.test/a/b', ''])(
+    'weist ein GITHUB_REPOSITORY ausserhalb von owner/repo ab (%s)',
+    async (repository) => {
+      const { fetchImpl } = stubFetch({});
+
+      await expect(runNudge({ event: greptileEvent(), repository, token: 'x', fetchImpl }))
+        .rejects.toThrow('owner/repo');
+    },
+  );
+
+  it.each(['', 'nicht-hex', HEAD_SHA.toUpperCase(), HEAD_SHA.slice(0, 39), `${HEAD_SHA}0`])(
+    'weist einen Head-SHA ausserhalb der Vollform ab (%s)',
+    async (sha) => {
+      const { fetchImpl } = stubFetch({ '/pulls/232': jsonResponse({ head: { sha } }) });
+
+      await expect(runNudge({ event: greptileEvent(), repository: REPOSITORY, token: 'x', fetchImpl }))
+        .rejects.toThrow('keinen gültigen Head-SHA');
+    },
+  );
 
   it('meldet eine fehlgeschlagene Antwort mit ihrem Status', async () => {
     const { fetchImpl } = stubFetch({ '/pulls/232': jsonResponse(null, false, 404) });
