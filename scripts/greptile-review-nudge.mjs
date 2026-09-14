@@ -28,7 +28,10 @@
  *
  * Fail-closed in Richtung Ruhe: Ist eine Bedingung nicht belegbar, wird nicht
  * erwähnt. Eine ausgebliebene Erwähnung kostet einen manuellen Kommentar, eine
- * fälschliche kostet einen Reviewlauf auf fremdem Anlass.
+ * fälschliche kostet einen Reviewlauf auf fremdem Anlass. Deshalb bricht der
+ * Guard bei einer unerwartet geformten Antwort ab, statt sie als leere Liste
+ * zu lesen — aus einer leeren Liste folgte sonst die Abwesenheit von Check-Run
+ * und Marker und damit eine Erwähnung auf unbekanntem Zustand.
  */
 
 import { readFileSync } from 'node:fs';
@@ -164,6 +167,20 @@ async function fetchGitHubJson(url, { fetchImpl, token, label }) {
   }
 }
 
+/*
+ * Ein HTTP 200 mit unerwartetem Textkörper ist ein unbekannter Zustand, keine
+ * leere Liste. Würde er zu einer leeren Liste, läse der Guard daraus die
+ * Abwesenheit von Check-Run und Marker und erwähnte — genau das Gegenteil der
+ * Fail-closed-Zusage. Er bricht deshalb ab.
+ */
+function expectArray(value, label) {
+  if (!Array.isArray(value)) {
+    throw new GreptileNudgeError(`${label} hat nicht die erwartete Listenform.`);
+  }
+
+  return value;
+}
+
 async function postComment(url, body, { fetchImpl, token }) {
   let response;
   try {
@@ -250,8 +267,8 @@ export async function runNudge({ event, repository, token, fetchImpl = fetch }) 
   const decision = decideNudge({
     event,
     headSha,
-    checkRuns: Array.isArray(checks?.check_runs) ? checks.check_runs : [],
-    comments: Array.isArray(comments) ? comments : [],
+    checkRuns: expectArray(checks?.check_runs, 'Die Check-Run-Antwort'),
+    comments: expectArray(comments, 'Die Kommentarantwort'),
   });
 
   if (decision.nudge) {

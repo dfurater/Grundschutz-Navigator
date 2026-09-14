@@ -247,6 +247,42 @@ describe('runNudge', () => {
     expect(read?.url).toContain('direction=desc');
   });
 
+  /*
+   * Ein HTTP 200 mit unerwartetem Textkörper ist ein unbekannter Zustand. Als
+   * leere Liste gelesen ergäbe er "kein Check-Run, kein Marker" und damit eine
+   * Erwähnung — das Gegenteil der Fail-closed-Zusage.
+   */
+  it.each([
+    ['Check-Run-Antwort', { check_runs: null }],
+    ['Check-Run-Antwort ohne Feld', {}],
+    ['Check-Run-Antwort als Objekt', { check_runs: { 0: { name: 'validate' } } }],
+  ])('bricht bei unerwartet geformter %s ab, statt zu erwähnen', async (_label, payload) => {
+    const { fetchImpl, calls } = stubFetch({
+      '/pulls/232': PULL_REQUEST_OK,
+      '/check-runs': jsonResponse(payload),
+      '/issues/232/comments': jsonResponse([]),
+    });
+
+    await expect(runNudge({ event: greptileEvent(), repository: REPOSITORY, token: 'x', fetchImpl }))
+      .rejects.toThrow('Check-Run-Antwort hat nicht die erwartete Listenform');
+    expect(calls.some((call) => call.init?.method === 'POST')).toBe(false);
+  });
+
+  it.each([null, { comments: [] }, 'kein JSON-Array'])(
+    'bricht bei unerwartet geformter Kommentarantwort ab, statt zu erwähnen (%j)',
+    async (payload) => {
+      const { fetchImpl, calls } = stubFetch({
+        '/pulls/232': PULL_REQUEST_OK,
+        '/check-runs': jsonResponse({ check_runs: [] }),
+        '/issues/232/comments': jsonResponse(payload),
+      });
+
+      await expect(runNudge({ event: greptileEvent(), repository: REPOSITORY, token: 'x', fetchImpl }))
+        .rejects.toThrow('Kommentarantwort hat nicht die erwartete Listenform');
+      expect(calls.some((call) => call.init?.method === 'POST')).toBe(false);
+    },
+  );
+
   it('meldet einen fehlenden Head-SHA als Fehler', async () => {
     const { fetchImpl } = stubFetch({ '/pulls/232': jsonResponse({ head: {} }) });
 
