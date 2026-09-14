@@ -264,6 +264,17 @@ export const scopedRules = [
     body:
       `Stufe 5 ist der Referenzgraph in src/domain/referenceGraph*.ts auf Basis von src/domain/referenceResolution.ts. Verbindlich: Die Formentscheidung ueber einen href faellt ausschliesslich in referenceResolution.ts — ein Fragmentvergleich (startsWith('#')), ein Protokollvergleich, eine URL-Normalisierung oder eine Pfadaufloesung ausserhalb dieses Moduls ist ein blockierender Befund. Relative und externe Ziele werden nie aufgeloest, auch nicht ueber Dateinamen, Titelaehnlichkeit oder Fremd-Namespace-props (etwa catalog_uuid); eine solche Heuristik ist ein blockierender Befund. Dokumentuebergreifende Aufloesbarkeit entsteht nur durch eine ausdrueckliche Bindung des Aufrufers; der CI-Lauf uebergibt keine. Ein Knoten traegt immer Dokumentidentitaet plus lokale ID — eine kontextlose ID-Aufloesung oder ein Ausweichen auf einen anderen geladenen Katalog ist ein blockierender Befund, weil control/@id nur lokal eindeutig ist. Die vier Zustaende resolved, unresolvable, not-evaluable und die fachliche Aussage no-relationship bleiben getrennt; ein relatives oder externes Ziel darf nie als Referenzfehler gezaehlt werden, und no-relationship erzeugt nie eine Kante. Alle Befunde entstehen ueber createOscalDiagnostic mit stage 'reference'; ein zweites Diagnosemodell, eine eigene Severity-Skala oder ein href-, ID- oder sonstiger Dokumentwert in einer Diagnose oder CI-Ausgabe ist ein blockierender Befund. Die CI-Politik bleibt fail-closed fuer supported-Artefakte; preview, draft und blocked-by-upstream duerfen sichtbar, aber nicht blockierend sein und nie als abschliessend bewertet erscheinen. Allowlist-Eintraege binden an Diagnosesignatur UND Snapshot-Commit und laufen bei Aenderung von Snapshot oder Pfad aus; eine Aufweichung dieser Bindung ist ein blockierender Befund. erasableSyntaxOnly muss in tsconfig.app.json und tsconfig.node.json gesetzt bleiben und der Aliashook in scripts/oscal-domain-bridge.mjs auf src/ beschraenkt: Ohne beides bricht die CI-Lane oder laedt Code ausserhalb des Quellbaums.`,
   },
+  {
+    key: 'R21-dokumentierte-versionen',
+    scopes: [
+      'docs/ARCHITECTURE.md',
+      'scripts/verify-documented-versions.mjs',
+      '.github/workflows/ci.yml',
+      'package.json',
+    ],
+    body:
+      `Die in docs/ARCHITECTURE.md zugesagten Versionsangaben — die Abhängigkeitstabelle mit der Kopfzeile "Abhängigkeit | Exakte Version | Lizenz | Zweck" und der Absatz zur Chromium-Herkunft — werden von scripts/verify-documented-versions.mjs gegen package.json und node_modules/playwright-core/browsers.json geprüft; der Schritt läuft als npm run verify-documented-versions im CI-Job validate. Melde als blockierenden Befund, wenn ein Diff diesen Schritt entfernt, seinen Fehlschlag folgenlos macht oder eine geprüfte Angabe ersatzlos aus der Dokumentation streicht. Der Guard ist fail-closed und schlägt auch fehl, wenn eine Angabe nicht mehr auffindbar ist; eine Umformulierung, die das auslöst, ist kein Befund, solange die Angabe im selben Diff wieder prüfbar wird.`,
+  },
 ];
 
 /** Dokumente, die beim Review der genannten Pfade als Kontext gelten. @type {FileContext[]} */

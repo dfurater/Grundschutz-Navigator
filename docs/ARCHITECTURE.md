@@ -58,6 +58,16 @@ Die exakte `playwright`-Version `1.62.1` liefert laut ihrem mitinstallierten
 `./node_modules/.bin/playwright install chromium`; es gibt keinen
 `latest`-Tag oder unversionierten Browser-Download.
 
+Dass die Tabelle oben und der Absatz zur Chromium-Herkunft nach einem
+Versions-Bump noch stimmen, prüft `npm run verify-documented-versions` als
+Pflichtschritt im CI-Job `validate`. Der Guard vergleicht beide Stellen gegen
+`package.json` und `node_modules/playwright-core/browsers.json` und schlägt
+bei jeder Abweichung fehl — ebenso, wenn eine der Angaben gar nicht mehr
+auffindbar ist, damit eine Umformulierung die Prüfung nicht stillschweigend
+leerlaufen lässt. Er ist netzfrei und ergänzt den PR-Dokumentationsvertrag aus
+`scripts/pr-documentation-contract.mjs`, der nur bei Änderungen unter `src/`
+greift und Dependency-PRs deshalb nicht erfasst (GSPP-399).
+
 Der Referenztest in `src/test/browser/indexedDb.browser.test.ts` legt eine
 IndexedDB-Datenbank an, schreibt und liest einen Datensatz, löscht die
 Datenbank und prüft anschließend ihre Abwesenheit über

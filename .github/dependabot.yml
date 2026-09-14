@@ -12,8 +12,6 @@ updates:
       time: "06:00"
       timezone: "Europe/Berlin"
     open-pull-requests-limit: 5
-    reviewers:
-      - "dfurater"
     commit-message:
       prefix: "chore(deps)"
       include: "scope"
@@ -54,8 +52,6 @@ updates:
       time: "06:00"
       timezone: "Europe/Berlin"
     open-pull-requests-limit: 3
-    reviewers:
-      - "dfurater"
     commit-message:
       prefix: "chore(actions)"
       include: "scope"
