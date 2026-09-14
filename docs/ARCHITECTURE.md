@@ -50,11 +50,11 @@ lokal nicht — die Vorab-Optimierung nimmt dem Reload den Anlass.
 | --- | --- | --- | --- |
 | `vitest` + `@vitest/coverage-v8` | `5.0.0` | MIT | Kompatible Test- und Coverage-Basis für beide Vitest-Lanes |
 | `@vitest/browser-playwright` | `5.0.0` | MIT | Playwright-Provider für das Vitest-Browser-Projekt |
-| `playwright` | `1.62.1` | Apache-2.0 | Startet das gepinnte Chromium in CI und lokal |
+| `playwright` | `1.63.0` | Apache-2.0 | Startet das gepinnte Chromium in CI und lokal |
 
-Die exakte `playwright`-Version `1.62.1` liefert laut ihrem mitinstallierten
-`browsers.json` Chromium-Revision `1234` als Chrome for Testing
-`151.0.7922.34`. Der CI-Schritt verwendet ausschließlich den lokalen Befehl
+Die exakte `playwright`-Version `1.63.0` liefert laut ihrem mitinstallierten
+`browsers.json` Chromium-Revision `1243` als Chrome for Testing
+`153.0.8010.12`. Der CI-Schritt verwendet ausschließlich den lokalen Befehl
 `./node_modules/.bin/playwright install chromium`; es gibt keinen
 `latest`-Tag oder unversionierten Browser-Download.
 
