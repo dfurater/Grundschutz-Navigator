@@ -109,14 +109,14 @@ describe('review-policy Schnitt zwischen Regeltabelle und Logik', () => {
 });
 
 describe('review-policy Autorenquelle', () => {
-  it('führt 6 globale Regeln, 21 gescopte Regeln und 8 Datei-Kontexte', () => {
+  it('führt 6 globale Regeln, 22 gescopte Regeln und 8 Datei-Kontexte', () => {
     expect(globalRules).toHaveLength(6);
-    expect(scopedRules).toHaveLength(21);
+    expect(scopedRules).toHaveLength(22);
     expect(fileContexts).toHaveLength(8);
-    expect(allRules).toHaveLength(27);
+    expect(allRules).toHaveLength(28);
   });
 
-  it('trägt die stabilen Schlüssel G1-sprache bis G6-pruefgrenzen und R1-integritaet bis R21-dokumentierte-versionen', () => {
+  it('trägt die stabilen Schlüssel G1-sprache bis G6-pruefgrenzen und R1-integritaet bis R22-greptile-check-run', () => {
     expect(globalRules.map((rule) => rule.key)).toEqual([
       'G1-sprache',
       'G2-anwendungskontext',
@@ -126,8 +126,8 @@ describe('review-policy Autorenquelle', () => {
       'G6-pruefgrenzen',
     ]);
     expect(scopedRules[0].key).toBe('R1-integritaet');
-    expect(scopedRules.at(-1)?.key).toBe('R21-dokumentierte-versionen');
-    expect(new Set(allRules.map((rule) => rule.key)).size).toBe(27);
+    expect(scopedRules.at(-1)?.key).toBe('R22-greptile-check-run');
+    expect(new Set(allRules.map((rule) => rule.key)).size).toBe(28);
   });
 
   it('ist wohlgeformt', () => {
