@@ -25,6 +25,7 @@
     "fetch-catalog": "node scripts/fetch-catalog.mjs",
     "verify-upstream-oscal": "node scripts/verify-upstream-oscal.mjs",
     "verify-oscal-schemas": "node scripts/verify-oscal-schemas.mjs",
+    "verify-documented-versions": "node scripts/verify-documented-versions.mjs",
     "sync-oscal-schemas": "node scripts/sync-oscal-schemas.mjs --write"
   },
   "engines": {
