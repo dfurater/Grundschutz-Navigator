@@ -1,0 +1,66 @@
+# Stellt den ausgefallenen `Greptile Review`-Check-Run her (GSPP-401).
+#
+# Greptile wendet anbieterseitige Ignore-Patterns bereits vor der Auslösung an.
+# Bleibt danach keine Datei übrig — der Regelfall bei einem Pull Request, der
+# nur `package-lock.json` ändert — legt es keinen Check-Run an und postet
+# stattdessen einen Statuskommentar. Weil `Greptile Review` auf `develop` und
+# `main` required ist, steht der Pull Request damit dauerhaft auf `BLOCKED`,
+# obwohl kein einziger Check rot ist.
+#
+# Eine Erwähnung überstimmt den Skip und führt zu einem echten, vollständigen
+# Review derselben Datei. Dieser Workflow setzt sie, wenn und nur wenn der
+# Check-Run auf dem Head tatsächlich fehlt.
+#
+# Sicherheitslage: `issue_comment` läuft im Kontext des Basis-Repositoriums mit
+# schreibfähigem Token. Getragen wird das von zwei Eigenschaften. Erstens
+# filtert die Bedingung unten auf `greptile-apps[bot]` als Kommentarautor —
+# eine Kennung, die niemand von außen annehmen kann. Zweitens checkt der
+# Workflow bei diesem Ereignis den Default-Branch aus, nie den PR-Head; es wird
+# also zu keinem Zeitpunkt fremder Code ausgeführt. Ein
+# `pull_request_target`-Workflow ist deshalb weder nötig noch vorgesehen.
+#
+# `issue_comment` feuert nur, wenn diese Datei auf dem Default-Branch liegt.
+# Der Guard ist im einführenden Pull Request selbst daher nicht lauffähig.
+
+name: Greptile Review Nudge
+
+on:
+  issue_comment:
+    types: [created, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  # Bewusst nicht `Greptile Review` benannt: Dieser Job darf den required
+  # status check niemals überschreiben, sondern nur seine Entstehung auslösen.
+  greptile-review-nudge:
+    if: github.event.issue.pull_request && github.event.comment.user.login == 'greptile-apps[bot]'
+    runs-on: ubuntu-latest
+
+    # Job-Berechtigungen setzen jede nicht genannte Fähigkeit auf `none`.
+    # `issues: write` trägt den Kommentar — ein Kommentar an einem Pull Request
+    # läuft über den Issue-Endpunkt; `checks: read` liest die Check-Runs des
+    # Heads; `pull-requests: read` liest den Head-SHA.
+    permissions:
+      contents: read
+      checks: read
+      issues: write
+      pull-requests: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      # Ohne `npm ci`: Der Guard kommt mit Node-Bordmitteln aus.
+      - name: Force a Greptile review when the required check is missing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/greptile-review-nudge.mjs
