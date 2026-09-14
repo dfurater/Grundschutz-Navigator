@@ -54,9 +54,9 @@ function buildClaimPattern(sentence) {
     .map((word) =>
       word === VERSION_PLACEHOLDER
         ? '`([^`]+)`'
-        : word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+        : word.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`),
     )
-    .join('\\s+');
+    .join(String.raw`\s+`);
 
   return new RegExp(source, 'd');
 }
@@ -113,8 +113,27 @@ export function parseDependencyClaims(documentation) {
     const packages = extractBacktickValues(cells[0] ?? '');
     const versions = extractBacktickValues(cells[1] ?? '');
 
-    if (packages.length === 0 || versions.length !== 1) {
-      continue;
+    /*
+     * Jede Zeile der Tabelle ist eine Zusage, keine Prosa — eine, die sich
+     * nicht auswerten lässt, ist deshalb ein Fehler und kein Grund zum
+     * Weitergehen. Würde hier übersprungen, verlöre genau das Paket seine
+     * Prüfung, dessen Zeile umformatiert wurde: Ein entfernter Backtick um
+     * die Version oder um den Paketnamen genügte, und der nächste Pin-Bump
+     * liefe unbemerkt durch. Für vitest, @vitest/coverage-v8 und
+     * @vitest/browser-playwright gäbe es dann keine zweite Prüfstelle.
+     */
+    if (packages.length === 0) {
+      throw new DocumentedVersionError(
+        `${DOCUMENTATION_PATH}:${index + 1}: Die Tabellenzeile nennt kein in Backticks `
+        + 'gesetztes Paket und ist damit nicht auswertbar.',
+      );
+    }
+
+    if (versions.length !== 1) {
+      throw new DocumentedVersionError(
+        `${DOCUMENTATION_PATH}:${index + 1}: Die Tabellenzeile nennt `
+        + `${packages.join(', ')}, aber keine eindeutige, in Backticks gesetzte Version.`,
+      );
     }
 
     claims.push({ line: index + 1, packages, version: versions[0] });
@@ -136,10 +155,11 @@ export function parseDependencyClaims(documentation) {
 export function parseBrowserClaim(documentation) {
   const match = buildClaimPattern(BROWSER_CLAIM_SENTENCE).exec(documentation);
   if (match === null) {
+    const expectedForm = BROWSER_CLAIM_SENTENCE.replaceAll(VERSION_PLACEHOLDER, '`<Wert>`');
+
     throw new DocumentedVersionError(
       `${DOCUMENTATION_PATH}: Der Absatz zur Chromium-Herkunft ist nicht mehr auffindbar. `
-      + 'Erwartet wird die Satzform: '
-      + `"${BROWSER_CLAIM_SENTENCE.replaceAll(VERSION_PLACEHOLDER, '`<Wert>`')}".`,
+      + `Erwartet wird die Satzform: "${expectedForm}".`,
     );
   }
 
@@ -273,13 +293,17 @@ export function formatDrift(drift) {
     .join('\n');
 }
 
-function readJsonFile(path, hint) {
-  let raw;
+function readTextFile(path, hint) {
   try {
-    raw = readFileSync(path, 'utf8');
+    return readFileSync(path, 'utf8');
   } catch {
-    throw new DocumentedVersionError(`${path} ist nicht lesbar.${hint ? ` ${hint}` : ''}`);
+    const suffix = hint ? ` ${hint}` : '';
+    throw new DocumentedVersionError(`${path} ist nicht lesbar.${suffix}`);
   }
+}
+
+function readJsonFile(path, hint) {
+  const raw = readTextFile(path, hint);
 
   try {
     return JSON.parse(raw);
@@ -292,7 +316,7 @@ function readJsonFile(path, hint) {
 
 export function readRepositoryState() {
   return {
-    documentation: readFileSync(DOCUMENTATION_PATH, 'utf8'),
+    documentation: readTextFile(DOCUMENTATION_PATH),
     packageManifest: readJsonFile(PACKAGE_MANIFEST_PATH),
     /*
      * Über den Dateipfad, nicht über die Modulauflösung: `playwright-core`

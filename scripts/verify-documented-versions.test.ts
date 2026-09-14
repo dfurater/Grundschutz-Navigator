@@ -67,6 +67,25 @@ describe('parseDependencyClaims', () => {
       /enthält keine auswertbare Zeile/,
     );
   });
+
+  it('schlägt fehl, wenn eine Paketzeile keine eindeutige Version mehr nennt', () => {
+    const withRange = DOCUMENTATION.replace('| `5.0.0` |', '| `5.0.0`–`5.1.0` |');
+
+    expect(() => parseDependencyClaims(withRange)).toThrow(
+      /:5: Die Tabellenzeile nennt vitest, @vitest\/coverage-v8, aber keine eindeutige/,
+    );
+  });
+
+  it('schlägt fehl, wenn einer Paketzeile die Backticks um den Paketnamen fehlen', () => {
+    const withoutBackticks = DOCUMENTATION.replace(
+      '| `playwright` | `1.62.1` |',
+      '| playwright | `1.62.1` |',
+    );
+
+    expect(() => parseDependencyClaims(withoutBackticks)).toThrow(
+      /:6: Die Tabellenzeile nennt kein in Backticks gesetztes Paket/,
+    );
+  });
 });
 
 describe('parseBrowserClaim', () => {
@@ -142,6 +161,34 @@ describe('collectVersionDrift', () => {
         source: 'package.json → devDependencies',
       },
     ]);
+  });
+
+  it('löst ein Paket auch aus dependencies statt devDependencies auf', () => {
+    const drift = driftFor({
+      packageManifest: {
+        dependencies: { playwright: '1.62.1' },
+        devDependencies: { vitest: '5.0.0', '@vitest/coverage-v8': '5.0.0' },
+      },
+    });
+
+    expect(drift).toEqual([]);
+  });
+
+  it('nennt dependencies als Quelle, wenn das Paket dort abweicht', () => {
+    const drift = driftFor({
+      packageManifest: {
+        dependencies: { playwright: '1.63.0' },
+        devDependencies: { vitest: '5.0.0', '@vitest/coverage-v8': '5.0.0' },
+      },
+    });
+
+    expect(drift).toContainEqual({
+      line: 6,
+      subject: 'playwright',
+      documented: '1.62.1',
+      measured: '1.63.0',
+      source: 'package.json → dependencies',
+    });
   });
 
   it('meldet ein dokumentiertes Paket, das im Manifest fehlt', () => {
