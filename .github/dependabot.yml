@@ -2,9 +2,10 @@ version: 2
 
 updates:
   # Bundle routine npm updates, but leave major upgrades as separate PRs.
+  # Exception: the vitest family below, which only resolves as a single PR.
   - package-ecosystem: "npm"
     directory: "/"
-    target-branch: "main"
+    target-branch: "develop"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -28,6 +29,18 @@ updates:
         update-types:
           - "minor"
           - "patch"
+      # vitest, @vitest/coverage-v8 und @vitest/browser-playwright binden
+      # einander mit exakten Peer-Pins. Getrennte Major-PRs sind deshalb
+      # einzeln nicht auflösbar und scheitern in `validate` bereits an
+      # `npm ci` (GSPP-389, gemessen an den drei Vitest-5-PRs #217/#218/#219).
+      # Die Gruppe trägt bewusst keinen `update-types`-Filter und gilt damit
+      # auch für `major`. Sie steht hinter den beiden Gruppen oben, weil
+      # Dependabot ein Paket der ersten passenden Gruppe zuordnet: `minor` und
+      # `patch` der vitest-Pakete bleiben so bei `npm-development`.
+      vitest-family:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
 
   # Workflow-Referenzen sind auf Commit-SHAs gepinnt. Dependabot erzeugt für
   # SHA-gepinnte Actions keine Security-Alerts mehr, deshalb ist das
@@ -35,7 +48,7 @@ updates:
   # Action-Versionen und läuft täglich statt wöchentlich (GSPP-333).
   - package-ecosystem: "github-actions"
     directory: "/"
-    target-branch: "main"
+    target-branch: "develop"
     schedule:
       interval: "daily"
       time: "06:00"
