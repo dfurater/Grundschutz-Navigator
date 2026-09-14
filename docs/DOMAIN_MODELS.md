@@ -975,6 +975,8 @@ Relevanz einer Steuerung für ein Schutzziel (Vertraulichkeit, Integrität, Verf
 type SecurityTargetRelevance = '0' | '1' | '2';
 ```
 
+An den Schutzzielen hängen zwei getrennte BSI-Vokabulare. Der `ns` der vier `*Prop`-Felder zeigt auf `security_targets.csv`; dort steht, was Vertraulichkeit, Integrität, Verfügbarkeit und Authentizität bedeuten — das Vokabular ist nach Schutzziel-Namen indiziert und kennt die Werte `0`–`2` nicht. Deren Bedeutung steht in der separaten Datei `security_targets_levels.csv`, die über `prop.ns` nicht erreichbar ist; `resolveSecurityTargetLevel()` in `src/domain/vocabulary.ts` wählt sie deshalb selbst aus.
+
 ### Modalverb
 
 ```typescript
@@ -1026,13 +1028,13 @@ interface Control {
 
   // Schutzziele (CIA + Authentizität), Relevanz 0–2
   confidentiality?: SecurityTargetRelevance;
-  confidentialityProp?: PropValue;  // ns → security_targets_levels.csv
+  confidentialityProp?: PropValue;  // ns → security_targets.csv
   integrity?: SecurityTargetRelevance;
-  integrityProp?: PropValue;        // ns → security_targets_levels.csv
+  integrityProp?: PropValue;        // ns → security_targets.csv
   availability?: SecurityTargetRelevance;
-  availabilityProp?: PropValue;     // ns → security_targets_levels.csv
+  availabilityProp?: PropValue;     // ns → security_targets.csv
   authenticity?: SecurityTargetRelevance;
-  authenticityProp?: PropValue;     // ns → security_targets_levels.csv
+  authenticityProp?: PropValue;     // ns → security_targets.csv
 
   // Elementare Gefährdungen (z.B. "G 0.14"), aus kommaseparierter Prop geparst
   threats: string[];

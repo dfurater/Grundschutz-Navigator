@@ -37,7 +37,7 @@ const resolvedControl = makeControl({
   confidentialityProp: {
     name: 'confidentiality',
     value: '2',
-    ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets_levels.csv',
+    ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets.csv',
   },
   threats: ['G 0.18', 'Unbekannte Gefährdung'],
   threatsProp: {
@@ -74,18 +74,18 @@ const resolutions = resolveControlVocabularies(
   resolvedControl,
 );
 
-const SECURITY_TARGET_LEVELS_NS =
-  'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets_levels.csv';
+const SECURITY_TARGETS_NS =
+  'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets.csv';
 
 const allTargetsControl = makeControl({
   confidentiality: '2',
-  confidentialityProp: { name: 'confidentiality', value: '2', ns: SECURITY_TARGET_LEVELS_NS },
+  confidentialityProp: { name: 'confidentiality', value: '2', ns: SECURITY_TARGETS_NS },
   integrity: '1',
-  integrityProp: { name: 'integrity', value: '1', ns: SECURITY_TARGET_LEVELS_NS },
+  integrityProp: { name: 'integrity', value: '1', ns: SECURITY_TARGETS_NS },
   availability: '1',
-  availabilityProp: { name: 'availability', value: '1', ns: SECURITY_TARGET_LEVELS_NS },
+  availabilityProp: { name: 'availability', value: '1', ns: SECURITY_TARGETS_NS },
   authenticity: '0',
-  authenticityProp: { name: 'authenticity', value: '0', ns: SECURITY_TARGET_LEVELS_NS },
+  authenticityProp: { name: 'authenticity', value: '0', ns: SECURITY_TARGETS_NS },
   threats: ['G 0.18'],
   threatsProp: {
     name: 'threats',

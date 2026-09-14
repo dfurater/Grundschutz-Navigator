@@ -3,11 +3,18 @@ import { useSearchParams } from 'react-router';
 import type { SecurityLevel, EffortLevel, Modalverb, LinkRelation } from '@/domain/models';
 import {
   emptyFilters,
+  emptySecurityTargetFilters,
   type ControlFilters,
+  type SecurityTargetFilters,
   type SortConfig,
   type SortField,
   type SortDirection,
 } from '@/hooks/useFilteredControls';
+import {
+  SECURITY_TARGET_DIMENSIONS,
+  isSecurityTargetFilterValue,
+  type SecurityTargetDimension,
+} from '@/domain/securityTargets';
 
 /* ------------------------------------------------------------------ */
 /*  Param Keys                                                         */
@@ -24,6 +31,22 @@ const P = {
   lr: 'lr',
   sort: 'sort',
 } as const;
+
+/**
+ * Ein eigener Parameter je Schutzziel — die vier Dimensionen sind vier
+ * Facetten, keine gemeinsame. Die Kürzel sind eindeutig gehalten, weil
+ * `availability` und `authenticity` denselben Anfangsbuchstaben teilen.
+ *
+ * Der Filterzustand betrifft ausschließlich Klasse-1-Daten aus dem
+ * verifizierten BSI-Bestand. Der URL-Sync ist hier deshalb richtig und
+ * erwünscht — er ist ausdrücklich **kein** Muster für Klasse-2-Ansichten.
+ */
+const SECURITY_TARGET_PARAMS: Record<SecurityTargetDimension, string> = {
+  confidentiality: 'stc',
+  integrity: 'sti',
+  availability: 'stav',
+  authenticity: 'stau',
+};
 
 const DEFAULT_SORT: SortConfig = [{ field: 'id', direction: 'asc' }];
 
@@ -50,6 +73,24 @@ function splitParam(params: URLSearchParams, key: string): string[] {
 /*  Deserializers                                                      */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Liest die vier Schutzziel-Facetten aus der URL.
+ *
+ * Unbekannte Werte werden verworfen, Duplikate entfernt: Ein Facettenwert
+ * beschreibt den Zustand einer Checkbox und kann nicht mehrfach gewählt sein.
+ */
+function deserializeSecurityTargets(params: URLSearchParams): SecurityTargetFilters {
+  const result = emptySecurityTargetFilters();
+
+  for (const { dimension } of SECURITY_TARGET_DIMENSIONS) {
+    const values = splitParam(params, SECURITY_TARGET_PARAMS[dimension])
+      .filter(isSecurityTargetFilterValue);
+    result[dimension] = [...new Set(values)];
+  }
+
+  return result;
+}
+
 function deserializeFilters(params: URLSearchParams): ControlFilters {
   return {
     ...emptyFilters,
@@ -61,6 +102,7 @@ function deserializeFilters(params: URLSearchParams): ControlFilters {
     handlungsworte: splitParam(params, P.hw),
     dokumentationstypen: splitParam(params, P.dt),
     linkRelationen: splitParam(params, P.lr).filter((v) => VALID_LINK_RELATION.has(v)) as LinkRelation[],
+    securityTargets: deserializeSecurityTargets(params),
   };
 }
 
@@ -112,6 +154,14 @@ function serializeAll(filters: ControlFilters, sort: SortConfig): URLSearchParam
   setOrDelete(params, P.hw, filters.handlungsworte);
   setOrDelete(params, P.dt, filters.dokumentationstypen);
   setOrDelete(params, P.lr, filters.linkRelationen);
+
+  for (const { dimension } of SECURITY_TARGET_DIMENSIONS) {
+    setOrDelete(
+      params,
+      SECURITY_TARGET_PARAMS[dimension],
+      filters.securityTargets[dimension],
+    );
+  }
 
   if (!isDefaultSort(sort)) {
     params.set(P.sort, sort.map((e) => `${e.field}:${e.direction}`).join(','));

@@ -23,6 +23,10 @@ Practice- und Topic-Auswahl laufen nicht über Query-Parameter, sondern über di
 | Handlungswort | `hw` | Handlungswörter | Mehrfachauswahl |
 | Dokumentationstyp | `dt` | Dokumentationstypen | Mehrfachauswahl |
 | Link-Beziehung | `lr` | `related`, `required` | Mehrfachauswahl |
+| Schutzziel Vertraulichkeit | `stc` | `0`, `1`, `2` | Mehrfachauswahl |
+| Schutzziel Integrität | `sti` | `0`, `1`, `2` | Mehrfachauswahl |
+| Schutzziel Verfügbarkeit | `stav` | `0`, `1`, `2` | Mehrfachauswahl |
+| Schutzziel Authentizität | `stau` | `0`, `1`, `2` | Mehrfachauswahl |
 | Sortierung | `sort` | `<feld>:<richtung>[,…]` | Einzelwert |
 
 Der Linkfilter ist eine enge Kompatibilitätsprojektion für die beiden bereits
@@ -30,6 +34,84 @@ vorhandenen Projektwerte `related` und `required`. Andere offene OSCAL-Tokens,
 der dokumentierte Wert `reference` und ein fehlendes `rel` werden nicht darauf
 umgedeutet. Sie bleiben in Detailansicht, Suche und allgemeiner Linkspalte des
 Exports nachvollziehbar, erzeugen aber keine zusätzliche Filtersemantik.
+
+### Schutzziel-Facetten (CIA + Authentizität)
+
+Die vier Schutzziele sind vier eigenständige Facetten, nicht eine gemeinsame:
+ODER innerhalb einer Dimension, UND über die Dimensionen — dieselbe Konvention
+wie bei allen übrigen Facetten. Die gesamte Logik liegt in
+`src/domain/securityTargets.ts`.
+
+Auswählbar sind **genau die drei Stufen der BSI-Skala**, und sie sind exakt,
+keine Schwellen: Wer `1` wählt, sieht genau die Anforderungen der Stufe `1` —
+`2` ist darin nicht enthalten. Mehrere Stufen zusammen ergeben die gewünschte
+Obermenge über das ODER innerhalb der Facette (`stc=1,2`).
+
+Die Beschriftungen zeigen den Katalogwert, keine app-eigene Stufenbezeichnung —
+dieselbe Regel wie bei Sicherheitsniveau und Aufwandsstufe. Das Vokabular
+`security_targets_levels.csv` kennt zu `0`–`2` keine Bezeichnung, sondern nur
+eine Definition; die steht wörtlich im Tooltip
+(`getSecurityTargetFilterTooltip` in `src/features/vocabulary/display.ts`).
+
+**Unbewertete Anforderungen und skalenfremde Werte sind keine Auswahl.** Eine
+Facette ist ein Weg zu den Anforderungen, die ein Schutzziel betreffen; über sie
+zu denen zu navigieren, die es nicht betreffen, hat keinen Nutzen. Beide
+Zustände fallen bei aktiver Facette heraus. Ausblenden heißt dabei nicht
+einebnen: `classifySecurityTarget` führt sie weiter als eigene Zustände
+(`unrated`, `unknown`), der Rohwert bleibt in der `PropValue`-Provenienz
+erhalten, und die Detailansicht zeigt ihn unverändert.
+
+Drei Punkte sind dabei normativ bindend:
+
+**Die Skala ist eine Projektentscheidung, keine OSCAL-Vorgabe.** OSCAL
+definiert für `prop.value` keinen Wertebereich. Beleg im gepinnten Bestand:
+`schemas/oscal/v1.1.3/oscal_catalog_schema.json` führt unter der Definition
+`oscal-catalog-oscal-metadata:property` das Feld `value` als `$ref` auf
+`StringDatatype`, und `StringDatatype` ist dort
+`{"type": "string", "pattern": "^\\S(.*\\S)?$"}` — ein nicht leerer String
+ohne Randwhitespace, ohne Enum, ohne Zahlentyp und ohne Ordnung. Die Schemata
+sind SHA-256-gepinnt und offline prüfbar (`npm run verify-oscal-schemas`); sie
+stammen aus dem NIST-Release
+[v1.1.3](https://github.com/usnistgov/OSCAL/releases/tag/v1.1.3), der
+Versionsbezug steht in `src/domain/oscalVersionMatrix.mjs`.
+
+Dass `0`, `1` und `2` die gültigen Werte sind und `2` mehr Relevanz bedeutet als
+`1`, stammt aus dem BSI-Vokabular `security_targets_levels.csv`. Über `prop.ns`
+ist diese Datei **nicht** erreichbar: Der `ns` der vier Schutzziel-Props zeigt
+auf `security_targets.csv`, das nach Schutzziel-Namen indiziert ist und die
+Stufen nicht kennt. Die beiden Stellen, die die Stufenbedeutung brauchen, wählen
+die Datei deshalb selbst aus (`resolveSecurityTargetLevel` in
+`src/domain/vocabulary.ts`, `getSecurityTargetFilterTooltip` in
+`src/features/vocabulary/display.ts`). Skala und Ordnung stehen an genau einer
+Stelle (`SECURITY_TARGET_RELEVANCE_ORDER`) und werden über einen Lookup
+ausgewertet, nicht über `parseInt`: Ein schema-valider Fremdwert wie `'3'` gehört
+nicht zur Skala und landet in `unknown` statt in einer Stufe.
+
+**Ein fehlendes `prop` ist nicht der Wert `0`.** `props` ist auf `control`
+optional — im gepinnten `schemas/oscal/v1.1.3/oscal_catalog_schema.json` führt
+`oscal-catalog-oscal-catalog:control` nur `["id", "title"]` als `required`.
+Abwesenheit bedeutet „keine Aussage", `0` bedeutet „ausgewertet, nicht
+relevant". Beides wird getrennt
+geführt: Die Stufe `0` trifft ausschließlich Controls **mit** `prop` und dem
+Wert `0`; ein Control ohne `prop` ist über keine Stufe erreichbar. Im
+ausgelieferten Katalog betrifft das je nach Schutzziel 99 bis 100 Controls.
+
+**Die Facette trifft keine Compliance-Aussage.** Eine Schutzziel-Relevanz
+beschreibt, worauf ein Control einzahlt — nicht, ob es umgesetzt oder wirksam
+ist. Umsetzungsstatus existiert in OSCAL ausschließlich im SSP auf
+`by-component`; im gepinnten
+`schemas/oscal/v1.1.3/oscal_ssp_schema.json` trägt genau eine Definition das
+Feld `implementation-status`, nämlich `oscal-ssp-oscal-ssp:by-component`.
+
+Alle drei Belege werden in `src/domain/securityTargets.catalog.node.test.ts`
+gegen die gepinnten Schemata geprüft statt nur behauptet; ändert NIST eine der
+Definitionen, schlägt der Test an. Die Trefferzahlen sind deshalb keine Abdeckung: Sie zählen je
+Dimension die **bewerteten** Anforderungen auf, und ihre Summe liegt unter der
+Gesamtzahl, weil die unbewerteten in keine Stufe fallen.
+
+Der Filterzustand betrifft ausschließlich Klasse-1-Daten aus dem verifizierten
+BSI-Bestand. Der URL-Sync ist hier richtig und erwünscht — er ist ausdrücklich
+**kein** Muster für Klasse-2-Ansichten.
 
 Mehrfachwerte werden kommasepariert in einem Parameter kodiert (z.B. `mv=MUSS,SOLLTE`).
 Die Volltextsuche ist davon getrennt und läuft ausschließlich über `/suche?q=…`.
@@ -98,6 +180,8 @@ export interface ControlFilters {
   handlungsworte: string[];
   dokumentationstypen: string[];
   linkRelationen: LinkRelation[];
+  /** Auswahl je Schutzziel — vier eigenständige Facetten */
+  securityTargets: Record<SecurityTargetDimension, SecurityTargetFilterValue[]>;
 }
 
 export const emptyFilters: ControlFilters = {
@@ -111,6 +195,7 @@ export const emptyFilters: ControlFilters = {
   handlungsworte: [],
   dokumentationstypen: [],
   linkRelationen: [],
+  securityTargets: emptySecurityTargetFilters(),
 };
 ```
 
@@ -149,6 +234,8 @@ function matchesFilter(
 Beispiel:
 - `sl=normal-SdT,erhöht` → Normal ODER Erhöht
 - `sl=normal-SdT&mv=MUSS` → Normal UND MUSS
+- `stc=1&sti=2` → Vertraulichkeit genau 1 UND Integrität genau 2
+- `stc=1,2` → Vertraulichkeit 1 ODER 2
 
 ## URL-Parameter-Sync
 
@@ -200,8 +287,14 @@ export interface FacetCounts {
   handlungsworte: Record<string, number>;
   dokumentationstypen: Record<string, number>;
   linkRelationen: Record<string, number>;
+  /** Treffer je Schutzziel-Dimension und Facettenwert */
+  securityTargets: Record<SecurityTargetDimension, Record<string, number>>;
 }
 ```
+
+Die Schutzziel-Zähler folgen derselben Einfrier-Regel wie die übrigen
+Dimensionen. Eine Anforderung zählt je Dimension in höchstens einen Wert: Ohne
+Angabe und außerhalb der Skala zählt sie in keinen.
 
 ### Two-Sets-Ansatz
 

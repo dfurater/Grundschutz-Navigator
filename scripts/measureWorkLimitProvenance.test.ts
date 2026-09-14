@@ -9,6 +9,7 @@ import {
   WORK_LIMIT_ENTRY_POINTS,
   PROVENANCE_EXCLUDED_PATHS,
   collectWorkLimitSources,
+  runtimeImportSpecifiers,
   workLimitProvenance,
 } from './measureWorkLimitProvenance.mjs';
 
@@ -62,6 +63,105 @@ describe('collectWorkLimitSources', () => {
   it('bricht bei einem fehlenden Einstiegspunkt ab, statt eine leere Hülle zu liefern', () => {
     expect(() => collectWorkLimitSources(['src/domain/gibtEsNicht.ts']))
       .toThrow(/Einstiegspunkt des Messwegs fehlt/);
+  });
+
+  it('folgt keiner Kante, die ausschließlich einen Typ transportiert', () => {
+    // `src/domain/models.ts` wird aus dem Auflösungspfad ZEHNMAL erreicht, und
+    // jedes Mal über ein `import type`. TypeScript löscht diese Importe beim
+    // Kompilieren: Die Datei läuft im gemessenen Lauf gar nicht mit und kann
+    // seine Dauer nicht beeinflussen. Läge sie trotzdem in der Hülle, erzwänge
+    // schon eine geänderte Kommentarzeile einen Browsermesslauf, der nichts
+    // belegt — genau die Begründung, mit der oben auch die übrigen
+    // Harnisch-Importe ausgeschlossen sind.
+    expect(sources).not.toContain('src/domain/models.ts');
+    // Kaskade: Die einzige Kante nach `catalogLineage.ts` ist ein `import type`
+    // aus `models.ts`. Fällt die Quelle, fällt auch das Ziel — und mit ihm die
+    // `.mjs`, die nur von dort re-exportiert wird.
+    expect(sources).not.toContain('src/domain/catalogLineage.ts');
+    expect(sources).not.toContain('src/domain/catalogLineage.mjs');
+  });
+
+  it('hält jede Datei, zu der mindestens eine Wertkante führt', () => {
+    // Der Gegentest zur Verengung: `oscalProfileAdapter.ts` trägt sowohl
+    // `export type * from '@/domain/profileModel'` als auch zwei
+    // `export { … } from '@/domain/profileModel'`. Ein Ausschluss, der nur die
+    // Typform sieht und die Wertform derselben Datei übergeht, nähme dem Gate
+    // echten Laufzeitcode.
+    expect(sources).toContain('src/domain/profileModel.ts');
+    // `oscalRootDocument.ts` zeigt die Gegenrichtung: Sie verliert ihre eigenen
+    // Typkanten, bleibt aber selbst drin, weil sie über eine Wertkante
+    // erreicht wird.
+    expect(sources).toContain('src/domain/oscalRootDocument.ts');
+  });
+});
+
+describe('runtimeImportSpecifiers', () => {
+  // Die Hülle folgt genau diesen Spezifizierern. Getestet wird hier die
+  // Erkennung selbst, an Quelltext statt an Dateien auf der Platte — sonst
+  // prüfte der Test nur den heutigen Zustand des Repositoriums mit.
+
+  it('lässt eine reine Typkante aus, in jeder ihrer Schreibweisen', () => {
+    expect(runtimeImportSpecifiers("import type { A } from './a';")).toEqual([]);
+    expect(runtimeImportSpecifiers("import type A from './a';")).toEqual([]);
+    expect(runtimeImportSpecifiers("export type { A } from './a';")).toEqual([]);
+    expect(runtimeImportSpecifiers("export type * from './a';")).toEqual([]);
+    expect(runtimeImportSpecifiers("export type * as A from './a';")).toEqual([]);
+  });
+
+  it('lässt eine mehrzeilige Typkante aus', () => {
+    // Die `from`-Form deckt mehrzeilige Listen ab, weil sie am `from` ansetzt.
+    // Die Typerkennung muss dasselbe können, sonst bliebe ausgerechnet der
+    // häufigste Fall langer Typimporte unerkannt.
+    const source = ['import type {', '  A,', '  B,', "} from './a';"].join('\n');
+    expect(runtimeImportSpecifiers(source)).toEqual([]);
+  });
+
+  it('hält die Mischform, die neben Typen auch einen Wert einführt', () => {
+    expect(runtimeImportSpecifiers("import { type A, b } from './a';")).toEqual(['./a']);
+    expect(runtimeImportSpecifiers("export { type A, b } from './a';")).toEqual(['./a']);
+  });
+
+  it('hält ein Ziel, das dieselbe Datei anderswo als Wert importiert', () => {
+    // Zwei getrennte Anweisungen auf dasselbe Ziel: Die eine trägt nur Typen,
+    // die andere einen Wert. Gezählt wird deshalb je Vorkommen, nicht je Ziel.
+    const source = ["import type { A } from './a';", "import { b } from './a';"].join('\n');
+    expect(runtimeImportSpecifiers(source)).toEqual(['./a']);
+  });
+
+  it('hält ein seitenwirksames und ein dynamisches Import desselben Ziels', () => {
+    // Beide Formen können gar keine Typangabe tragen — sie laufen immer mit,
+    // auch wenn dasselbe Ziel daneben als Typ importiert wird.
+    expect(runtimeImportSpecifiers("import type { A } from './a';\nimport './a';"))
+      .toEqual(['./a']);
+    expect(runtimeImportSpecifiers("import type { A } from './a';\nawait import('./a');"))
+      .toEqual(['./a']);
+  });
+
+  it('hält eine Kante, die es nicht zweifelsfrei als Typkante einordnen kann', () => {
+    // FAIL-CLOSED. Die Textsuche ist ausdrücklich kein Parser: Sie darf keine
+    // Datei ÜBERSEHEN. Wo die Erkennung unsicher ist, bleibt die Kante stehen
+    // und kostet höchstens einen zu breiten Fingerprint — der umgekehrte
+    // Fehler machte das Gate still wertlos.
+    expect(runtimeImportSpecifiers("import /* c */ type { A } from './a';")).toEqual(['./a']);
+    expect(runtimeImportSpecifiers("import type { A: { B } } from './a';")).toEqual(['./a']);
+    expect(runtimeImportSpecifiers("const type = 1; import { a } from './a';")).toEqual(['./a']);
+    // `typeA` ist ein Bezeichner dieses Namens, kein Typimport — vor einem
+    // Bezeichner trägt erst das Trennzeichen die Grenze.
+    expect(runtimeImportSpecifiers("import typeA from './a';")).toEqual(['./a']);
+  });
+
+  it('erkennt die kompakte Schreibweise, wo die Grenze ohne Leerraum eindeutig ist', () => {
+    // `{` und `*` können kein Bezeichnerzeichen sein. Diese Formen sind
+    // zweifelsfrei Typkanten, auch ohne Leerraum nach `type`.
+    expect(runtimeImportSpecifiers("import type{A}from'./a';")).toEqual([]);
+    expect(runtimeImportSpecifiers("export type*from'./a';")).toEqual([]);
+  });
+
+  it('hält gewöhnliche Wertkanten unverändert', () => {
+    expect(runtimeImportSpecifiers("import { a } from './a';")).toEqual(['./a']);
+    expect(runtimeImportSpecifiers("import a from './a';")).toEqual(['./a']);
+    expect(runtimeImportSpecifiers("export * from './a';")).toEqual(['./a']);
+    expect(runtimeImportSpecifiers("export { a } from './a';")).toEqual(['./a']);
   });
 });
 

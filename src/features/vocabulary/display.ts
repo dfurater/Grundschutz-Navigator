@@ -9,6 +9,7 @@ import {
   resolvePropVocabularyEntry,
   resolveVocabularyEntry,
 } from '@/domain/vocabulary';
+import type { SecurityTargetFilterValue } from '@/domain/securityTargets';
 
 export const OFFICIAL_SECURITY_LEVELS: SecurityLevel[] = [
   'normal-SdT',
@@ -70,4 +71,39 @@ export function getOfficialEffortLevelTooltip(
 ): string | undefined {
   const namespace = getNamespaceByFileName(registry, 'effort_level.csv');
   return resolveVocabularyEntry(registry, namespace?.source.namespace, value)?.entry.definition;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Schutzziel-Facetten                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Beschriftung eines Schutzziel-Facettenwerts.
+ *
+ * Die Relevanzstufen tragen im BSI-Vokabular `security_targets_levels.csv`
+ * **keine** Bezeichnung, nur die Werte `0`–`2` mit einer Definition. Deshalb
+ * steht hier der Katalogwert und keine app-eigene Umschreibung — dieselbe
+ * Regel wie bei Sicherheitsniveau und Aufwandsstufe. Die Bedeutung trägt der
+ * Tooltip aus dem Vokabular.
+ */
+export function getSecurityTargetFilterLabel(
+  filterValue: SecurityTargetFilterValue,
+): string {
+  return filterValue;
+}
+
+/**
+ * Erläuterung eines Schutzziel-Facettenwerts für `title`: wörtlich die
+ * Definition der Stufe aus dem BSI-Vokabular.
+ */
+export function getSecurityTargetFilterTooltip(
+  registry: VocabularyRegistry | null,
+  filterValue: SecurityTargetFilterValue,
+): string | undefined {
+  const namespace = getNamespaceByFileName(registry, 'security_targets_levels.csv');
+  return resolveVocabularyEntry(
+    registry,
+    namespace?.source.namespace,
+    filterValue,
+  )?.entry.definition;
 }

@@ -6,6 +6,16 @@ export interface CheckboxLabelProps {
   readonly checked: boolean;
   readonly onChange: (checked: boolean) => void;
   readonly title?: string;
+  /**
+   * Zugänglicher Name, wenn der sichtbare `label` allein nicht eindeutig ist.
+   *
+   * Nötig, sobald mehrere Facetten dieselben Optionsnamen tragen — die vier
+   * Schutzziele bieten alle die Stufen `0`, `1` und `2` an, und ohne die
+   * Dimension im Namen wäre per Screenreader nicht unterscheidbar, welches
+   * Schutzziel gemeint ist. Die Facettenüberschrift ist mit der Checkbox nicht
+   * programmatisch verbunden und trägt diese Zuordnung nicht.
+   */
+  readonly ariaLabel?: string;
 }
 
 export function CheckboxLabel({
@@ -14,6 +24,7 @@ export function CheckboxLabel({
   checked,
   onChange,
   title,
+  ariaLabel,
 }: CheckboxLabelProps) {
   return (
     <label
@@ -24,6 +35,7 @@ export function CheckboxLabel({
         <input
           type="checkbox"
           className="peer sr-only"
+          aria-label={ariaLabel}
           checked={checked}
           onChange={(e) => onChange(e.target.checked)}
         />
