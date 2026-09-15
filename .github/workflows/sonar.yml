@@ -37,29 +37,47 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # Fail closed mit sprechender Meldung, und bewusst vor jedem teuren Schritt:
-      # Dependabot-Laeufe sehen die Actions-Secrets nicht, sondern nur
-      # Dependabot-Secrets. Ohne diesen Guard liefe erst der gesamte Testlauf,
-      # bevor der Scanner mit einem Authentifizierungsfehler abbricht.
+      # Bewusst vor jedem teuren Schritt: Ohne diesen Guard liefe erst der
+      # gesamte Testlauf, bevor der Scanner mit einem Authentifizierungsfehler
+      # abbricht.
+      #
+      # Zwei Faelle ohne Token, die auseinandergehalten werden muessen. Bei
+      # Beitraegen aus einem Fork stellt GitHub Repository-Secrets grundsaetzlich
+      # nicht bereit — das ist kein Konfigurationsfehler, und ein harter
+      # Fehlschlag wuerde jeden externen Beitrag blockieren. Die Analyse wird
+      # dort sichtbar uebersprungen und holt den Stand nach dem Merge auf
+      # develop nach. Fehlt das Token dagegen im eigenen Repository, ist die
+      # Konfiguration defekt und der Lauf schlaegt fehl; bei Dependabot-Laeufen
+      # ist die Ursache in aller Regel ein fehlendes Dependabot-Secret.
       - name: Analyse-Token pruefen
+        id: token
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_CI }}
+          IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: |
-          if [ -z "${SONAR_TOKEN}" ]; then
+          if [ -n "${SONAR_TOKEN}" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          elif [ "${IS_FORK}" = "true" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Fork-Beitrag: GitHub stellt Repository-Secrets hier nicht bereit. Die SonarQube-Analyse wird uebersprungen; der Stand wird nach dem Merge auf develop gemessen."
+          else
             echo "::error::Secret SONAR_CI ist in diesem Lauf nicht verfuegbar. Bei Dependabot-Laeufen muss das Token zusaetzlich unter Settings > Secrets and variables > Dependabot hinterlegt sein."
             exit 1
           fi
 
       - name: Setup Node.js
+        if: steps.token.outputs.available == 'true'
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
 
       - name: Install dependencies
+        if: steps.token.outputs.available == 'true'
         run: npm ci --ignore-scripts
 
       - name: Read pinned snapshot SHA from manifest
+        if: steps.token.outputs.available == 'true'
         id: manifest
         run: |
           sha=$(jq -r '.snapshotCommitSha' upstream-manifest.json)
@@ -68,6 +86,7 @@ jobs:
       # Der Testlauf prueft ueber `globalSetup` die Frische der Katalogdaten und
       # schlaegt ohne sie fehl. Gepinnt auf denselben Snapshot wie in ci.yml.
       - name: Fetch BSI catalog from pinned snapshot
+        if: steps.token.outputs.available == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BSI_SNAPSHOT_SHA: ${{ steps.manifest.outputs.sha }}
@@ -76,9 +95,11 @@ jobs:
       # Erzeugt coverage/lcov.info fuer die Abdeckungsmessung in SonarQube und
       # erzwingt dabei die in vite.config.ts gepinnten Schwellen.
       - name: Run tests with coverage
+        if: steps.token.outputs.available == 'true'
         run: npm run test:coverage
 
       - name: SonarQube Scan
+        if: steps.token.outputs.available == 'true'
         uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_CI }}
