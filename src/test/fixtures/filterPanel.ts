@@ -1,7 +1,7 @@
 // =============================================================================
 // Testhilfe: gemeinsame Vorbelegung der FilterPanel-Tests (GSPP-226)
 //
-// `FilterPanel.test.tsx` und `SecurityTargetFilterSections.test.tsx` rendern
+// `FilterPanel.test.tsx` und `SecurityTargetFilterSection.test.tsx` rendern
 // beide das Panel und brauchen dieselben Facettenzähler und denselben
 // Katalogzustand. Die Vorbelegung liegt hier statt doppelt in beiden Dateien —
 // eine Kopie hätte die Zähler auseinanderlaufen lassen, sobald eine Dimension
@@ -39,11 +39,13 @@ export const filterPanelFacetCounts: FacetCounts = {
   handlungsworte: {},
   dokumentationstypen: {},
   linkRelationen: {},
+  // Die Stufe `0` steht bewusst mit drin: Sie ist keine Auswahl der Facette und
+  // darf weder als Option erscheinen noch in die Zahl der Elternzeile zählen.
   securityTargets: {
     confidentiality: { '0': 1, '1': 2, '2': 1 },
     integrity: { '1': 1, '2': 0 },
-    availability: {},
-    authenticity: {},
+    availability: { '2': 4 },
+    authenticity: { '1': 1, '2': 1 },
   },
 };
 

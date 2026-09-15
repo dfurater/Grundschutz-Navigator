@@ -193,7 +193,8 @@ export function classifySecurityTarget(
 /* ------------------------------------------------------------------ */
 
 /**
- * Auswählbare Werte einer Schutzziel-Facette: genau die drei Stufen der Skala.
+ * Auswählbare Werte einer Schutzziel-Facette: die beiden Stufen, die ein
+ * Schutzziel betreffen.
  *
  * Die Stufen sind **exakt**, keine Schwellen: Wer `1` wählt, sieht genau die
  * Anforderungen der Stufe `1` — `2` ist darin nicht enthalten. Das folgt der
@@ -201,22 +202,32 @@ export function classifySecurityTarget(
  * mehrere Stufen sehen will, wählt sie zusammen aus; das ODER innerhalb der
  * Facette leistet das.
  *
- * **Unbewertete Anforderungen und skalenfremde Werte sind keine Auswahl.** Eine
- * Facette ist ein Weg zu den Anforderungen, die ein Schutzziel betreffen; über
- * sie zu denen zu navigieren, die es nicht betreffen, hat keinen Nutzen. Beide
- * Zustände fallen bei aktiver Facette heraus — das ist die in GSPP-226 offen
- * gelassene Entscheidung „bei aktivem Filter ausblenden".
+ * **Die Stufe `0`, unbewertete Anforderungen und skalenfremde Werte sind keine
+ * Auswahl.** Eine Facette ist ein Weg zu den Anforderungen, die ein Schutzziel
+ * betreffen; über sie zu denen zu navigieren, die es nicht betreffen, hat
+ * keinen Nutzen. Alle drei Zustände fallen bei aktiver Facette heraus — für
+ * `unrated` und `unknown` ist das die in GSPP-226 offen gelassene Entscheidung
+ * „bei aktivem Filter ausblenden", für `0` dieselbe Begründung angewandt auf
+ * die ausgewertete Nichtrelevanz (GSPP-400). Im ausgelieferten Katalog führt
+ * `0` bei Authentizität zu 609 von 1000 Anforderungen — ein Schnitt, der nichts
+ * über das Schutzziel aussagt.
  *
- * Ausblenden heißt nicht einebnen: `classifySecurityTarget` führt `unrated` und
- * `unknown` weiter als eigene Zustände, der Rohwert bleibt in der
- * `PropValue`-Provenienz erhalten, und die Stufe `0` trifft ausschließlich
- * Anforderungen, die tatsächlich mit `0` bewertet sind — nie solche ohne
- * Angabe.
+ * Diese Liste ist deshalb **nicht** mit `SECURITY_TARGET_RELEVANCE_ORDER`
+ * identisch: Die Ordnung bleibt dreistellig, weil sie die Skala des Vokabulars
+ * abbildet und die Detailansicht die Stufe `0` weiterhin anzeigt
+ * (`RELEVANCE_SCALE_MAX` in `components/StatusMeta.tsx`). Verengt ist allein die
+ * Auswahlmenge der Facette.
+ *
+ * Nicht auswählbar heißt nicht eingeebnet: `classifySecurityTarget` führt
+ * `rated` mit dem Wert `0`, `unrated` und `unknown` weiter als eigene Zustände,
+ * und der Rohwert bleibt in der `PropValue`-Provenienz erhalten.
  */
-export type SecurityTargetFilterValue = SecurityTargetRelevance;
+export type SecurityTargetFilterValue = Exclude<SecurityTargetRelevance, '0'>;
 
-export const SECURITY_TARGET_FILTER_VALUES: readonly SecurityTargetFilterValue[] =
-  SECURITY_TARGET_RELEVANCE_ORDER;
+export const SECURITY_TARGET_FILTER_VALUES: readonly SecurityTargetFilterValue[] = [
+  '1',
+  '2',
+] as const;
 
 const VALID_FILTER_VALUES: ReadonlySet<string> = new Set(
   SECURITY_TARGET_FILTER_VALUES,
@@ -330,6 +341,53 @@ export function hasSecurityTargetSelection(selection: SecurityTargetFilters): bo
   return SECURITY_TARGET_DIMENSIONS.some(
     ({ dimension }) => selection[dimension].length > 0,
   );
+}
+
+/**
+ * Trefferzahl einer Dimension über beide auswählbare Stufen.
+ *
+ * Die Summe zählt jede Anforderung höchstens einmal: Das Domänenmodell hält je
+ * Dimension genau ein Prop-Feld, `classifySecurityTarget` liefert daraus genau
+ * eine Klassifikation, und `securityTargetFacetKeys` daraus höchstens einen
+ * Schlüssel. Eine Anforderung kann deshalb nicht in beide Stufen zählen.
+ *
+ * Nicht mitgezählt werden Anforderungen ohne Angabe, mit skalenfremdem Wert und
+ * mit der Stufe `0` — die Summe ist die Zahl der Anforderungen, die das
+ * Schutzziel betreffen, und keine Abdeckungsaussage.
+ */
+export function sumSecurityTargetCounts(counts: Record<string, number>): number {
+  return SECURITY_TARGET_FILTER_VALUES.reduce(
+    (summe, filterValue) => summe + (counts[filterValue] ?? 0),
+    0,
+  );
+}
+
+/**
+ * Auswahlzustand einer Dimension in der zweistufigen Facette.
+ *
+ * - `none` — keine Stufe gewählt, die Dimension filtert nicht
+ * - `partial` — genau eine Stufe gewählt; die Elternzeile trägt den dritten
+ *   Kontrollzustand (`HTMLInputElement.indeterminate`)
+ * - `all` — beide Stufen gewählt
+ */
+export type SecurityTargetSelectionState = 'none' | 'partial' | 'all';
+
+/**
+ * Leitet den Auswahlzustand aus der gewählten Stufenmenge ab.
+ *
+ * Gezählt werden nur bekannte Stufen: Ein Wert außerhalb von
+ * `SECURITY_TARGET_FILTER_VALUES` darf die Elternzeile weder füllen noch in den
+ * dritten Zustand zwingen.
+ */
+export function securityTargetSelectionState(
+  selected: readonly SecurityTargetFilterValue[],
+): SecurityTargetSelectionState {
+  const gewaehlt = SECURITY_TARGET_FILTER_VALUES.filter((filterValue) =>
+    selected.includes(filterValue),
+  ).length;
+
+  if (gewaehlt === 0) return 'none';
+  return gewaehlt === SECURITY_TARGET_FILTER_VALUES.length ? 'all' : 'partial';
 }
 
 /** Zählt ein Control in die Facetten aller vier Dimensionen. */
