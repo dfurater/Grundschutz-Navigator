@@ -22,7 +22,7 @@
  * Der Schnitt folgt einer Messung, nicht einem Geschmack: SonarQubes
  * Copy-Paste-Erkennung meldet strukturgleiche Tabelleneinträge zwangsläufig als
  * Duplikat, und `sonar.cpd.exclusions` greift nur dateiweit. Getrennt deckt die
- * Ausnahme in `.sonarcloud.properties` genau die Tabelle ab, während die Logik
+ * Ausnahme in `sonar-project.properties` genau die Tabelle ab, während die Logik
  * hier vollständig geprüft bleibt.
  *
  * Aus der Autorenquelle wird deterministisch erzeugt:
@@ -66,7 +66,7 @@ export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url
 /** @typedef {import('./review-policy.rules.mjs').FileContext} FileContext */
 
 // Die Regeltabelle steht in einer eigenen Datei, damit die dateiweite
-// CPD-Ausnahme in `.sonarcloud.properties` ausschließlich Daten erfasst und die
+// CPD-Ausnahme in `sonar-project.properties` ausschließlich Daten erfasst und die
 // Logik dieser Datei unter voller Duplikatsprüfung bleibt. Der Re-Export hält
 // `scripts/review-policy.mjs` als einzigen Einstiegspunkt für alle Verbraucher.
 export { globalRules, scopedRules, fileContexts };

@@ -70,7 +70,7 @@ afterEach(async () => {
 
 /**
  * Die Trennung von Regeltabelle und Logik existiert, damit die dateiweite
- * CPD-Ausnahme in `.sonarcloud.properties` ausschließlich Daten erfasst. Fällt
+ * CPD-Ausnahme in `sonar-project.properties` ausschließlich Daten erfasst. Fällt
  * die Tabelle in die Logikdatei zurück oder wandert die Ausnahme mit, verliert
  * der Generator still seine Duplikatsprüfung. Diese Zusagen halten den Schnitt.
  */
@@ -99,7 +99,7 @@ describe('review-policy Schnitt zwischen Regeltabelle und Logik', () => {
   });
 
   it('richtet die CPD-Ausnahme genau auf die Datendatei', async () => {
-    const properties = await readRepoFile('.sonarcloud.properties');
+    const properties = await readRepoFile('sonar-project.properties');
     const setting = properties
       .split('\n')
       .find((line) => line.startsWith('sonar.cpd.exclusions='));

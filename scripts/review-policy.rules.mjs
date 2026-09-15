@@ -10,7 +10,7 @@
  * zwangsläufig als Duplikat gemeldet, ohne dass Verhalten kopiert wäre. Weil
  * `sonar.cpd.exclusions` nur dateiweit greift, hätte eine Ausnahme auf einer
  * gemischten Datei auch die Logik von der Duplikatsprüfung befreit. Getrennt
- * deckt die Ausnahme in `.sonarcloud.properties` genau die Tabelle ab, und die
+ * deckt die Ausnahme in `sonar-project.properties` genau die Tabelle ab, und die
  * Logik bleibt vollständig geprüft.
  *
  * Regeltexte werden hier **ohne** den `<key>: `-Präfix geführt. Der Präfix ist
