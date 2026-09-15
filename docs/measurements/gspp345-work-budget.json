@@ -1550,8 +1550,8 @@
       "src/domain/profileResolutionBudgetLimits.mjs"
     ],
     "workLimitProvenance": {
-      "sha256": "a215a8e7ce1973cf5d755e665b1050f08c5de7cf12f227e770df63b89b0346e8",
-      "files": 69,
+      "sha256": "b2fda430f5546110df712b4246c51c5a84c927cf61397c1521757e44022fac8f",
+      "files": 62,
       "paths": [
         "schemas/oscal/v1.1.2/oscal_assessment-plan_schema.json",
         "schemas/oscal/v1.1.2/oscal_assessment-results_schema.json",
@@ -1588,24 +1588,17 @@
         "src/adapters/oscalProfileDocument.ts",
         "src/adapters/oscalProfileReaders.ts",
         "src/adapters/oscalRootDispatch.ts",
-        "src/domain/catalogLineage.mjs",
-        "src/domain/catalogLineage.ts",
         "src/domain/class2ImportLimits.mjs",
         "src/domain/controlRef.ts",
-        "src/domain/models.ts",
         "src/domain/oscalBackMatterBase64.ts",
-        "src/domain/oscalComponentDefinition.ts",
         "src/domain/oscalDerivedGraph.ts",
         "src/domain/oscalDiagnostics.ts",
-        "src/domain/oscalDocumentContext.ts",
         "src/domain/oscalImportContract.ts",
         "src/domain/oscalImportProcessing.ts",
-        "src/domain/oscalMapping.ts",
         "src/domain/oscalObjectGraph.ts",
         "src/domain/oscalObjectPipeline.ts",
         "src/domain/oscalObjectProvenance.ts",
         "src/domain/oscalObjectWalk.ts",
-        "src/domain/oscalProfile.ts",
         "src/domain/oscalRootDocument.ts",
         "src/domain/oscalSchemaBundle.ts",
         "src/domain/oscalSchemaValidation.ts",
@@ -1640,8 +1633,8 @@
       "src/domain/profileResolutionBudgetLimits.mjs"
     ],
     "workLimitProvenance": {
-      "sha256": "a215a8e7ce1973cf5d755e665b1050f08c5de7cf12f227e770df63b89b0346e8",
-      "files": 69,
+      "sha256": "b2fda430f5546110df712b4246c51c5a84c927cf61397c1521757e44022fac8f",
+      "files": 62,
       "paths": [
         "schemas/oscal/v1.1.2/oscal_assessment-plan_schema.json",
         "schemas/oscal/v1.1.2/oscal_assessment-results_schema.json",
@@ -1678,24 +1671,17 @@
         "src/adapters/oscalProfileDocument.ts",
         "src/adapters/oscalProfileReaders.ts",
         "src/adapters/oscalRootDispatch.ts",
-        "src/domain/catalogLineage.mjs",
-        "src/domain/catalogLineage.ts",
         "src/domain/class2ImportLimits.mjs",
         "src/domain/controlRef.ts",
-        "src/domain/models.ts",
         "src/domain/oscalBackMatterBase64.ts",
-        "src/domain/oscalComponentDefinition.ts",
         "src/domain/oscalDerivedGraph.ts",
         "src/domain/oscalDiagnostics.ts",
-        "src/domain/oscalDocumentContext.ts",
         "src/domain/oscalImportContract.ts",
         "src/domain/oscalImportProcessing.ts",
-        "src/domain/oscalMapping.ts",
         "src/domain/oscalObjectGraph.ts",
         "src/domain/oscalObjectPipeline.ts",
         "src/domain/oscalObjectProvenance.ts",
         "src/domain/oscalObjectWalk.ts",
-        "src/domain/oscalProfile.ts",
         "src/domain/oscalRootDocument.ts",
         "src/domain/oscalSchemaBundle.ts",
         "src/domain/oscalSchemaValidation.ts",
@@ -1721,5 +1707,32 @@
         "require-from-string@2.0.2"
       ]
     }
+  },
+  "workLimitProvenanceRestamp": {
+    "issue": "GSPP-394",
+    "date": "2026-09-13",
+    "entscheidung": "Begründetes Neustempeln statt Neumessung.",
+    "begruendung": "Der Sammler der Messwegprovenienz folgt seit GSPP-394 keiner Kante mehr, die ausschließlich einen Typ transportiert. TypeScript löscht import type und export type beim Kompilieren: Die Ziele solcher Kanten existieren zur Laufzeit nicht, laufen im gemessenen Auflösungslauf nicht mit und können seine Dauer nicht beeinflussen. Der gemessene Pfad ist damit unverändert, und eine Neumessung erhöbe nur Messzahlen einer anderen Maschine, ohne an den Rohdaten etwas zu belegen. Der Nachweis ist an diesem Artefakt selbst führbar: paths trägt die Hülle, und für jede entfallene Datei ist unten die Typkante benannt, die sie bis dahin gehalten hat.",
+    "vorher": {
+      "sha256": "a215a8e7ce1973cf5d755e665b1050f08c5de7cf12f227e770df63b89b0346e8",
+      "files": 69
+    },
+    "nachher": {
+      "sha256": "b2fda430f5546110df712b4246c51c5a84c927cf61397c1521757e44022fac8f",
+      "files": 62
+    },
+    "entfalleneDateien": {
+      "src/domain/models.ts": "zehn eingehende Kanten, alle import type; die Datei exportiert ausschließlich Typen und erzeugt beim Kompilieren keinen Laufzeitcode",
+      "src/domain/oscalDocumentContext.ts": "zwei Kanten: import type aus dem Einstiegspunkt profileResolutionEngine.ts, export type aus models.ts; reines Typmodul ohne Laufzeitcode",
+      "src/domain/oscalComponentDefinition.ts": "eine Kante, import type aus oscalRootDocument.ts; reines Typmodul ohne Laufzeitcode",
+      "src/domain/oscalMapping.ts": "eine Kante, import type aus oscalRootDocument.ts; reines Typmodul ohne Laufzeitcode",
+      "src/domain/oscalProfile.ts": "eine Kante, import type aus oscalRootDocument.ts; reines Typmodul ohne Laufzeitcode",
+      "src/domain/catalogLineage.ts": "eine Kante, import type aus models.ts. Diese Datei trägt Laufzeitcode (export * from catalogLineage.mjs), ist im gemessenen Pfad aber nur über die entfallene Typkante erreichbar und wird dort deshalb nie geladen.",
+      "src/domain/catalogLineage.mjs": "im gemessenen Pfad ausschließlich über catalogLineage.ts erreichbar, die ihrerseits nur an einer Typkante hing. Die Datei trägt Laufzeitcode, wird auf diesem Pfad aber nie geladen; ihre übrigen Aufrufer (fetch-catalog.mjs, AboutPage.tsx) liegen außerhalb des Messwegs."
+    },
+    "hinzugekommeneDateien": [],
+    "runtimeUnveraendert": true,
+    "workUnitLimitUnveraendert": true,
+    "laufzeitcodeGeprueft": "Fünf der sieben Dateien exportieren ausschließlich Typen und erzeugen gar keinen Laufzeitcode. Die beiden catalogLineage-Dateien tragen Laufzeitcode, hängen im gemessenen Pfad aber allein an der entfallenen Typkante aus models.ts."
   }
 }

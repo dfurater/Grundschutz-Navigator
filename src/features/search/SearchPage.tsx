@@ -189,7 +189,6 @@ export function SearchPage() {
               value={inputValue}
               onChange={(e) => handleInputChange(e.target.value)}
               placeholder="Suche…"
-              autoFocus
               className="block w-full rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] py-2 pl-9 pr-3 text-sm text-[var(--color-text-primary)] shadow-[var(--shadow-sm)] placeholder:text-[var(--color-text-muted)] focus-visible:outline-none focus-visible:border-[var(--color-focus-ring)] focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--color-surface-base)]"
               aria-label="Suchbegriff eingeben"
             />

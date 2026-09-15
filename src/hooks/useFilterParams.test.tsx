@@ -72,3 +72,118 @@ describe('useFilterParams', () => {
     });
   });
 });
+
+describe('useFilterParams — Schutzziel-Facetten', () => {
+  it('liest alle vier Dimensionen aus eigenen Parametern', () => {
+    const { result } = renderHook(() => useFilterParams(), {
+      wrapper: routerWrapper(
+        '/katalog?stc=1&sti=2&stav=1&stau=2',
+      ),
+    });
+
+    expect(result.current.filters.securityTargets).toEqual({
+      confidentiality: ['1'],
+      integrity: ['2'],
+      availability: ['1'],
+      authenticity: ['2'],
+    });
+  });
+
+  it('verwirft ungültige Werte und behält die gültigen derselben Dimension', () => {
+    const { result } = renderHook(() => useFilterParams(), {
+      wrapper: routerWrapper('/katalog?stc=1,unrated,3,-1,unknown,,2'),
+    });
+
+    expect(result.current.filters.securityTargets.confidentiality).toEqual([
+      '1',
+      '2',
+    ]);
+  });
+
+  it('verwirft die Stufe 0 und entwertet die übrigen Werte desselben Parameters nicht', () => {
+    // Die Stufe gehört zur Skala, ist aber keine Auswahl der Facette: Ein
+    // geteilter Link aus einem früheren Stand darf nicht den ganzen Parameter
+    // verlieren.
+    const { result } = renderHook(() => useFilterParams(), {
+      wrapper: routerWrapper('/katalog?stc=0,2&sti=0'),
+    });
+
+    expect(result.current.filters.securityTargets.confidentiality).toEqual(['2']);
+    expect(result.current.filters.securityTargets.integrity).toEqual([]);
+  });
+
+  it('entfernt Duplikate — ein Facettenwert ist der Zustand einer Checkbox', () => {
+    const { result } = renderHook(() => useFilterParams(), {
+      wrapper: routerWrapper('/katalog?sti=1,1,2,1'),
+    });
+
+    expect(result.current.filters.securityTargets.integrity).toEqual(['1', '2']);
+  });
+
+  it('lässt eine Dimension ohne Parameter leer', () => {
+    const { result } = renderHook(() => useFilterParams(), {
+      wrapper: routerWrapper('/katalog?stc=1'),
+    });
+
+    expect(result.current.filters.securityTargets.integrity).toEqual([]);
+    expect(result.current.filters.securityTargets.availability).toEqual([]);
+    expect(result.current.filters.securityTargets.authenticity).toEqual([]);
+  });
+
+  it('schreibt eine Auswahl zurück in die URL und bleibt damit teilbar', async () => {
+    const { result } = renderHook(() => useFilterParams(), {
+      wrapper: routerWrapper('/katalog'),
+    });
+
+    act(() => {
+      result.current.setFilters((current) => ({
+        ...current,
+        securityTargets: {
+          ...current.securityTargets,
+          confidentiality: ['1', '2'],
+          authenticity: ['2'],
+        },
+      }));
+    });
+
+    await waitFor(() => {
+      expect(result.current.searchString).toBe(
+        'stc=1%2C2&stau=2',
+      );
+    });
+  });
+
+  it('entfernt den Parameter, sobald die Auswahl einer Dimension leer ist', async () => {
+    const { result } = renderHook(() => useFilterParams(), {
+      wrapper: routerWrapper('/katalog?stc=1&sti=2'),
+    });
+
+    act(() => {
+      result.current.setFilters((current) => ({
+        ...current,
+        securityTargets: { ...current.securityTargets, confidentiality: [] },
+      }));
+    });
+
+    await waitFor(() => {
+      expect(result.current.searchString).toBe('sti=2');
+    });
+  });
+
+  it('übersteht eine Rundreise durch Serialisierung und Deserialisierung', async () => {
+    const { result } = renderHook(() => useFilterParams(), {
+      wrapper: routerWrapper('/katalog?stc=2&stav=1&mv=MUSS'),
+    });
+
+    const before = result.current.filters.securityTargets;
+
+    act(() => {
+      result.current.setFilters((current) => ({ ...current }));
+    });
+
+    await waitFor(() => {
+      expect(result.current.filters.securityTargets).toEqual(before);
+    });
+    expect(result.current.filters.modalverben).toEqual(['MUSS']);
+  });
+});

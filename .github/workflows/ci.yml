@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, develop]
     types: [opened, reopened, synchronize, edited]
   workflow_dispatch:
 
@@ -79,6 +79,15 @@ jobs:
       # Regeldatei fehl, die an der Autorenquelle vorbei entstanden ist.
       - name: Verify generated review policy
         run: npm run review-policy:check
+
+      # Dependency-PRs fallen aus dem PR-Dokumentationsvertrag heraus, weil
+      # dessen Trigger an Änderungen unter src/ hängt. Dieser Guard prüft die
+      # in docs/ARCHITECTURE.md zugesagten Versionen stattdessen maschinell
+      # gegen package.json und die mitinstallierte browsers.json (GSPP-399).
+      # Netzfrei und fail-closed: auch eine nicht mehr auffindbare Angabe
+      # lässt ihn fehlschlagen.
+      - name: Verify documented versions against installed state
+        run: npm run verify-documented-versions
 
       - name: Read pinned snapshot SHA from manifest
         id: manifest

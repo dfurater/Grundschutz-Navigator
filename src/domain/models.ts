@@ -199,21 +199,31 @@ export interface Control {
   /** Ordered WLAN taxonomy props (`Taxonomy-L1` through `Taxonomy-L4`) */
   taxonomy: PropValue[];
 
+  /*
+   * An den vier Schutzzielen hängen ZWEI getrennte BSI-Vokabulare. Der `ns` der
+   * Props zeigt auf `security_targets.csv` — das Vokabular der Schutzziel-NAMEN,
+   * das die Werte `0`–`2` nicht kennt. Ihre Bedeutung steht in der separaten
+   * `security_targets_levels.csv`, die über `prop.ns` nicht erreichbar ist und
+   * von `resolveSecurityTargetLevel` selbst ausgewählt wird. Der Adapter erhält
+   * den vorgefundenen `ns` deshalb unverändert und vergibt keinen eigenen: Ihn
+   * auf die Stufendatei umzuschreiben, behauptete eine Herkunft, die im Dokument
+   * nicht steht.
+   */
   /** Relevanz für das Schutzziel Vertraulichkeit (0–2) */
   confidentiality?: SecurityTargetRelevance;
-  /** Structured confidentiality prop with the canonical relevance vocabulary namespace */
+  /** Structured confidentiality prop; `ns` stays the source namespace as found */
   confidentialityProp?: PropValue;
   /** Relevanz für das Schutzziel Integrität (0–2) */
   integrity?: SecurityTargetRelevance;
-  /** Structured integrity prop with the canonical relevance vocabulary namespace */
+  /** Structured integrity prop; `ns` stays the source namespace as found */
   integrityProp?: PropValue;
   /** Relevanz für das Schutzziel Verfügbarkeit (0–2) */
   availability?: SecurityTargetRelevance;
-  /** Structured availability prop with the canonical relevance vocabulary namespace */
+  /** Structured availability prop; `ns` stays the source namespace as found */
   availabilityProp?: PropValue;
   /** Relevanz für das Schutzziel Authentizität (0–2) */
   authenticity?: SecurityTargetRelevance;
-  /** Structured authenticity prop with the canonical relevance vocabulary namespace */
+  /** Structured authenticity prop; `ns` stays the source namespace as found */
   authenticityProp?: PropValue;
 
   /** Elementare Gefährdungen, aus der kommaseparierten OSCAL-Prop geparst */

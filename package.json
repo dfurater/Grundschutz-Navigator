@@ -25,6 +25,7 @@
     "fetch-catalog": "node scripts/fetch-catalog.mjs",
     "verify-upstream-oscal": "node scripts/verify-upstream-oscal.mjs",
     "verify-oscal-schemas": "node scripts/verify-oscal-schemas.mjs",
+    "verify-documented-versions": "node scripts/verify-documented-versions.mjs",
     "sync-oscal-schemas": "node scripts/sync-oscal-schemas.mjs --write"
   },
   "engines": {
@@ -52,7 +53,7 @@
     "eslint": "^10.2.1",
     "eslint-plugin-react-hooks": "^7.1.1",
     "jsdom": "^30.0.1",
-    "playwright": "1.62.1",
+    "playwright": "1.63.0",
     "tailwindcss": "^4.1.7",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.58.0",

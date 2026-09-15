@@ -50,13 +50,23 @@ lokal nicht — die Vorab-Optimierung nimmt dem Reload den Anlass.
 | --- | --- | --- | --- |
 | `vitest` + `@vitest/coverage-v8` | `5.0.0` | MIT | Kompatible Test- und Coverage-Basis für beide Vitest-Lanes |
 | `@vitest/browser-playwright` | `5.0.0` | MIT | Playwright-Provider für das Vitest-Browser-Projekt |
-| `playwright` | `1.62.1` | Apache-2.0 | Startet das gepinnte Chromium in CI und lokal |
+| `playwright` | `1.63.0` | Apache-2.0 | Startet das gepinnte Chromium in CI und lokal |
 
-Die exakte `playwright`-Version `1.62.1` liefert laut ihrem mitinstallierten
-`browsers.json` Chromium-Revision `1234` als Chrome for Testing
-`151.0.7922.34`. Der CI-Schritt verwendet ausschließlich den lokalen Befehl
+Die exakte `playwright`-Version `1.63.0` liefert laut ihrem mitinstallierten
+`browsers.json` Chromium-Revision `1243` als Chrome for Testing
+`153.0.8010.12`. Der CI-Schritt verwendet ausschließlich den lokalen Befehl
 `./node_modules/.bin/playwright install chromium`; es gibt keinen
 `latest`-Tag oder unversionierten Browser-Download.
+
+Dass die Tabelle oben und der Absatz zur Chromium-Herkunft nach einem
+Versions-Bump noch stimmen, prüft `npm run verify-documented-versions` als
+Pflichtschritt im CI-Job `validate`. Der Guard vergleicht beide Stellen gegen
+`package.json` und `node_modules/playwright-core/browsers.json` und schlägt
+bei jeder Abweichung fehl — ebenso, wenn eine der Angaben gar nicht mehr
+auffindbar ist, damit eine Umformulierung die Prüfung nicht stillschweigend
+leerlaufen lässt. Er ist netzfrei und ergänzt den PR-Dokumentationsvertrag aus
+`scripts/pr-documentation-contract.mjs`, der nur bei Änderungen unter `src/`
+greift und Dependency-PRs deshalb nicht erfasst (GSPP-399).
 
 Der Referenztest in `src/test/browser/indexedDb.browser.test.ts` legt eine
 IndexedDB-Datenbank an, schreibt und liest einen Datensatz, löscht die
@@ -917,6 +927,20 @@ Von Greptiles zwei Regelformaten nutzt der Adapter das strukturierte `config.jso
 
 Eine Fallstricknotiz für spätere Änderungen: Greptiles `strictness` ist invers zu seiner eigenen Beschriftung. Das Feld ist als `1 | 2 | 3` mit `1` = ausführlich und `3` = nur Kritisches definiert, die Oberfläche zeigt Low/Medium/High mit Low = „comment on all issues". Die eingestellte Stufe Low entspricht also `strictness: 1`. Der Adapter setzt das Feld nicht; wer es je setzt, darf die Skala nicht aus der Beschriftung ableiten.
 
+### Erzwungene Auslösung bei leerem Reviewumfang
+
+Greptile wendet anbieterseitige Ignore-Patterns bereits vor der Auslösung an. Bleibt danach keine Datei übrig, legt es weder Review-Lauf noch Merge-Request-Datensatz an und postet stattdessen einen Statuskommentar mit dem Marker `<!-- greptile-status -->`. Weil `Greptile Review` auf `develop` und `main` Pflicht-Check ist, steht ein so übersprungener Pull Request dauerhaft auf `mergeStateStatus: BLOCKED`, obwohl kein einziger Check rot ist. Betroffen ist die Klasse der Diffs, die ausschließlich `package-lock.json` ändern — der Normalfall der Dependabot-npm-Lane, sowohl bei reinen Transitiv-Updates als auch bei Direktabhängigkeiten, deren neue Version die bestehende Bereichsangabe schon erfüllt und `package.json` deshalb unberührt lässt.
+
+Der Ort der wirksamen Ignore-Patterns liegt außerhalb dieses Projekts. Im Repository stehen sie nicht, in den Greptile-Organisationseinstellungen gibt es keine Fläche dafür, und die Konfigurationsreferenz kennt zu `ignorePatterns` kein Gegenstück, das eine anbieterseitige Voreinstellung wieder aufheben könnte: Die drei `include*`-Felder wirken auf Labels, Autoren und Zielbranches, keines auf Dateipfade. Auch `statusCheck` trägt nicht, weil der Schalter einen Review-Lauf voraussetzt — und genau der fehlt.
+
+`.github/workflows/greptile-review-nudge.yml` schließt die Lücke über den einzigen Hebel, der bleibt. Gemessen am 2026-09-14 an [#232](https://github.com/dfurater/Grundschutz-Navigator/pull/232) überstimmt eine Erwähnung den Skip: Greptile legt binnen Sekunden den fehlenden Merge-Request-Datensatz an, startet den Review auf demselben Head und erzeugt den Check-Run — und reviewt dabei genau die Datei, die es zuvor als nicht reviewbar geführt hatte. Der Filter greift also in der Auslösestufe, nicht in der Reviewstufe. Der Workflow stellt damit echte Reviewabdeckung her, statt sie vorzutäuschen; ein selbstgebauter Check gleichen Namens täte das Gegenteil und ist deshalb ausgeschlossen, ebenso wie das Streichen von `Greptile Review` aus den Pflicht-Checks, das das Gate für alle Pull Requests senken würde.
+
+Ausgelöst wird über `issue_comment`, gefiltert auf Kommentare an Pull Requests und auf `greptile-apps[bot]` als Autor. Die Bedingung für die Erwähnung ist nicht Greptiles englischer Statustext, sondern der Zustand, der den Merge tatsächlich blockiert: Auf dem frisch gelesenen Head-SHA fehlt ein Check-Run namens `Greptile Review`. Jeder Status zählt dabei als vorhanden — ein laufender Review braucht keine zweite Auslösung, ein fehlgeschlagener ist ein echter Befund. Ein unsichtbarer Marker mit dem Head-SHA im eigenen Kommentar begrenzt die Erwähnung auf eine je Head; der Kommentarabruf sortiert deshalb absteigend, damit dieser Marker auch bei mehr als hundert Kommentaren auf der ersten Seite liegt. Der Marker allein trägt das nicht: Zwei nahezu gleichzeitig eintreffende Kommentarereignisse läsen beide den Zustand, bevor einer den Nudge postet. Eine `concurrency`-Gruppe je Pull Request serialisiert die Läufe, mit `cancel-in-progress: false`, damit der zweite Lauf startet und den inzwischen gesetzten Marker vorfindet, statt verworfen zu werden.
+
+Drei Eigenschaften tragen die Sicherheitslage. `issue_comment` läuft im Kontext des Basis-Repositoriums mit schreibfähigem Token, doch der Autorenfilter verlangt eine Kennung, die niemand von außen annehmen kann, und bei diesem Ereignis checkt der Workflow den Default-Branch aus, nie den PR-Head — fremder Code läuft zu keinem Zeitpunkt. Ein `pull_request_target`-Workflow ist deshalb nicht nötig. Die Job-Berechtigungen sind auf `contents`, `checks` und `pull-requests` lesend plus `issues` schreibend beschränkt; der Kommentar läuft über den Issue-Endpunkt, weil GitHub PR-Kommentare dort führt. Eine Rückkopplung scheidet aus, weil Ereignisse aus `GITHUB_TOKEN` keinen neuen Workflow-Lauf erzeugen — und der anschließende Reviewkommentar von Greptile löst den Workflow zwar aus, findet dann aber den Check-Run vor.
+
+Eine Eigenheit bleibt: `issue_comment` feuert nur von der Fassung auf dem Default-Branch. Der Guard ist im einführenden Pull Request selbst nicht lauffähig; sein Nachweis entsteht am ersten übersprungenen Pull Request nach dem Merge. Die Entscheidungslogik ist über `scripts/greptile-review-nudge.test.ts` kolokiert abgedeckt, der Netzweg über injiziertes `fetchImpl`.
+
 ### `sonar-project.properties`
 
 SonarQube Cloud analysiert dieses Repository per CI-Analyse: `.github/workflows/sonar.yml` startet den Scanner bei jedem Push nach `main` und `develop` sowie für jeden Pull Request, dessen Zielbranch einer dieser beiden ist, und `sonar-project.properties` trägt die Analyseparameter.
@@ -925,7 +949,7 @@ Vorher lief die Automatic Analysis. Sie misst ausschließlich den GitHub-Default
 
 Die Analyseparameter umfassen Projektschlüssel und Organisation, den lcov-Pfad für die Testabdeckung (`coverage/lcov.info`, erzeugt durch `npm run test:coverage`; der lcov-Reporter ist dafür in `vite.config.ts` ergänzt) sowie eine Duplikatsausnahme: `sonar.cpd.exclusions=scripts/review-policy.rules.mjs`.
 
-Der Grund ist eine Eigenschaft der Copy-Paste-Erkennung, nicht ein Wartbarkeitsproblem. CPD misst wiederholte Token-Folgen und normalisiert dabei Literale; 26 strukturgleiche Tabelleneinträge aus Schlüssel, Scope-Liste und Regeltext werden dadurch zwangsläufig als Duplikat gemeldet, ohne dass Verhalten kopiert wäre. Gemessen an `466d50c` lagen alle vier gemeldeten Duplikatsgruppen vollständig innerhalb der Regeltabelle. Weil `sonar.cpd.exclusions` ausschließlich dateiweit greift und keine Block- oder Zeilengranularität kennt, hätte eine Ausnahme auf einer gemischten Datei auch Generator, Drift-Guard und CLI von der Duplikatsprüfung befreit — daher der Schnitt in zwei Dateien. Ausgenommen ist allein die Duplikatsmessung auf der Datentabelle; keine Schwelle des Quality Gates wird gesenkt.
+Der Grund ist eine Eigenschaft der Copy-Paste-Erkennung, nicht ein Wartbarkeitsproblem. CPD misst wiederholte Token-Folgen und normalisiert dabei Literale; die strukturgleichen Tabelleneinträge aus Schlüssel, Scope-Liste und Regeltext werden dadurch zwangsläufig als Duplikat gemeldet, ohne dass Verhalten kopiert wäre. Gemessen an `466d50c` lagen alle vier gemeldeten Duplikatsgruppen vollständig innerhalb der Regeltabelle. Weil `sonar.cpd.exclusions` ausschließlich dateiweit greift und keine Block- oder Zeilengranularität kennt, hätte eine Ausnahme auf einer gemischten Datei auch Generator, Drift-Guard und CLI von der Duplikatsprüfung befreit — daher der Schnitt in zwei Dateien. Ausgenommen ist allein die Duplikatsmessung auf der Datentabelle; keine Schwelle des Quality Gates wird gesenkt.
 
 Die Datei wirkt aus dem PR-Head heraus. Ein PR könnte sich damit selbst eine Gate-Ausnahme erteilen, weshalb sie in `AGENTS.md` zu den Review-Policy-Pfaden zählt: Wer sie anfasst, braucht ein Agenten-Cross-Review. Dasselbe gilt für `.github/workflows/sonar.yml`, weil auch der Workflow aus dem PR-Head heraus bestimmt, was überhaupt gemessen wird.
 

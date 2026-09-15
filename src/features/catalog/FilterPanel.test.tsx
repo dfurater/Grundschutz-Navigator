@@ -1,11 +1,14 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CatalogState } from '@/domain/models';
 import { emptyFilters, type FacetCounts } from '@/hooks/useFilteredControls';
 import { useCatalog } from '@/hooks/useCatalog';
 import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
+import {
+  filterPanelEmptyFacetCounts as emptyFacetCounts,
+  filterPanelFacetCounts as facetCounts,
+  makeFilterPanelCatalogState,
+} from '@/test/fixtures/filterPanel';
 import { FilterPanel } from './FilterPanel';
-import { catalogCollectionDefaults } from '@/test/catalogState';
 
 vi.mock('@/hooks/useCatalog', () => ({
   useCatalog: vi.fn(),
@@ -14,55 +17,17 @@ vi.mock('@/hooks/useCatalog', () => ({
 const mockedUseCatalog = vi.mocked(useCatalog);
 const vocabularyRegistry = createTestVocabularyRegistry();
 
-const facetCounts: FacetCounts = {
-  securityLevels: {
-    'normal-SdT': 2,
-    erhöht: 1,
-  },
-  effortLevels: {
-    '0': 0,
-    '1': 0,
-    '2': 0,
-    '3': 1,
-    '4': 1,
-    '5': 0,
-  },
-  modalverben: {
-    MUSS: 2,
-    SOLLTE: 1,
-    KANN: 0,
-  },
-  tags: {},
-  zielobjektKategorien: {},
-  handlungsworte: {},
-  dokumentationstypen: {},
-  linkRelationen: {},
-};
+function makeCatalogState() {
+  return makeFilterPanelCatalogState(vocabularyRegistry);
+}
 
-const emptyFacetCounts: FacetCounts = {
-  securityLevels: {},
-  effortLevels: {},
-  modalverben: {},
-  tags: {},
-  zielobjektKategorien: {},
-  handlungsworte: {},
-  dokumentationstypen: {},
-  linkRelationen: {},
-};
-
-function makeCatalogState(): CatalogState {
-  return {
-    ...catalogCollectionDefaults(),
-    catalogDocument: null,
-    catalog: null,
-    provenance: null,
-    verification: null,
-    vocabularyRegistry,
-    vocabularyProvenance: null,
-    vocabularyVerification: null,
-    loading: false,
-    error: null,
-  };
+/**
+ * Sucht innerhalb einer Facettensektion. Eine Trefferzahl ist derselbe Text wie
+ * die Beschriftung einer Aufwandsstufe — im ganzen Panel gesucht, trifft `3`
+ * beides.
+ */
+function inSektion(titel: string) {
+  return within(screen.getByRole('button', { name: new RegExp(`^${titel}`) }).parentElement!);
 }
 
 describe('FilterPanel', () => {
@@ -85,11 +50,12 @@ describe('FilterPanel', () => {
       />,
     );
 
+    const aufwandsstufen = inSektion('Aufwandsstufen');
     const securityLevelLabel = screen.getByText('normal-SdT').closest('label');
-    const effortLevelLabel = screen.getByText('3').closest('label');
+    const effortLevelLabel = aufwandsstufen.getByText('3').closest('label');
 
     expect(screen.getByText('normal-SdT')).toBeInTheDocument();
-    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(aufwandsstufen.getByText('3')).toBeInTheDocument();
     expect(screen.queryByText('Normal (SdT)')).not.toBeInTheDocument();
     expect(screen.queryByText('Stufe 3 — Hoch')).not.toBeInTheDocument();
     expect(securityLevelLabel).toHaveAttribute(

@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -120,5 +120,43 @@ describe('CLI-Exit-Code-Verträge der S7785-umgebauten Skripte', () => {
     const result = await runScript('review-policy.mjs', { args: ['--force'] });
     expect(result.code).toBe(2);
     expect(result.stderr).toContain('Unbekannte Option');
+  }, 60_000);
+
+  it('verify-documented-versions bestätigt den Repository-Stand mit Exit 0', async () => {
+    const result = await runScript('verify-documented-versions.mjs');
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('decken sich mit dem installierten Stand');
+  }, 60_000);
+
+  it('verify-documented-versions schlägt mit Exit 1 fehl, wenn die Dokumentation fehlt', async () => {
+    const result = await runScript('verify-documented-versions.mjs', { cwd: scratchRoot });
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('docs/ARCHITECTURE.md ist nicht lesbar.');
+  }, 60_000);
+
+  /**
+   * Ein unlesbares Manifest darf nie als „keine Abweichung“ durchgehen. Der Fall
+   * ist über die CLI geprüft, weil erst sie die Dateien wirklich liest; die
+   * Vergleichslogik bekommt in `verify-documented-versions.test.ts` bereits
+   * geparste Objekte übergeben und sieht diesen Zweig nie.
+   */
+  it('verify-documented-versions schlägt mit Exit 1 fehl, wenn package.json kein gültiges JSON ist', async () => {
+    const brokenManifestRoot = await mkdtemp(resolve(tmpdir(), 'navigator-broken-manifest-'));
+    const repositoryRoot = resolve(import.meta.dirname, '..');
+
+    await mkdir(resolve(brokenManifestRoot, 'docs'), { recursive: true });
+    await copyFile(
+      resolve(repositoryRoot, 'docs/ARCHITECTURE.md'),
+      resolve(brokenManifestRoot, 'docs/ARCHITECTURE.md'),
+    );
+    await writeFile(resolve(brokenManifestRoot, 'package.json'), '{ "devDependencies": ');
+
+    try {
+      const result = await runScript('verify-documented-versions.mjs', { cwd: brokenManifestRoot });
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain('package.json ist kein gültiges JSON');
+    } finally {
+      await rm(brokenManifestRoot, { recursive: true, force: true });
+    }
   }, 60_000);
 });

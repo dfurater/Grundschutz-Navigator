@@ -25,7 +25,7 @@ import type {
   SecurityTargetRelevance,
 } from '@/domain/models';
 import type { CatalogKey } from '@/domain/sourceRegistry';
-import { SECURITY_TARGET_LEVELS_NAMESPACE_URL } from '@/domain/vocabularyNamespaces';
+import { SECURITY_TARGETS_NAMESPACE_URL } from '@/domain/vocabularyNamespaces';
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -75,14 +75,70 @@ function getTaxonomyProps(props: RawOscalProp[] | undefined): PropValue[] {
   ));
 }
 
+/**
+ * Schutzziel-Relevanz-Prop mit unveränderter Namensraum-Provenienz.
+ *
+ * `PropValue` führt `name`, `value` und `ns` — nicht die vollständige
+ * OSCAL-Property. `uuid`, `class`, `group` und `remarks` erreichen das
+ * Ansichtsmodell nicht; das gilt projektweit für jeden Prop und ist keine
+ * Eigenheit der Schutzziele. Die Verlustfreiheit des Dokuments hängt nicht
+ * daran: Sie wird über den No-op-Round-trip auf dem Rohdokument geführt
+ * (ADR-2, `docs/OSCAL_ROUND_TRIP.md`), nicht über `Control`.
+ *
+ * Am Snapshot gemessen trägt kein Prop eines Controls eines dieser vier Felder
+ * — die Projektion verliert hier also nichts. Auf Gruppenebene sieht das
+ * anders aus: Dort tragen 20 `label`-Props die Beschreibungsprosa der
+ * Praktiken als `remarks`, und die geht tatsächlich verloren (GSPP-393). Die
+ * Modelllücke selbst ist als GSPP-392 erfasst.
+ *
+ * Die Zuordnung läuft über `name` **und** `ns`: `property` verlangt in OSCAL
+ * nur `name` und `value` und führt `ns`, `class`, `group`, `uuid` und
+ * `remarks` als optionale Unterscheider — belegt im gepinnten
+ * `schemas/oscal/v1.1.3/oscal_catalog_schema.json`, wo
+ * `oscal-catalog-oscal-metadata:property` genau `["name", "value"]` als
+ * `required` führt. Dass zwei gleichnamige Props aus verschiedenen
+ * Namensräumen verschiedene Eigenschaften sind, sagt dasselbe Schema
+ * ausdrücklich in der Beschreibung von `ns`: „A namespace qualifying the
+ * property's name. This allows different organizations to associate distinct
+ * semantics with the same name." Ein `confidentiality`-Prop ohne oder mit
+ * fremdem `ns` ist deshalb keine Schutzziel-Relevanz und wird nicht übernommen
+ * (fail-closed).
+ *
+ * Ein gesetztes `class` oder `group` schließt hier ebenfalls aus. Das ist eine
+ * **Projektentscheidung, keine OSCAL-Vorgabe**: Das Schema belegt nur, dass
+ * beide Felder optional vorhanden sein dürfen, und definiert keinen
+ * Identitätsschlüssel für Properties. Die Entscheidung ist fail-closed
+ * begründet — ein `class` oder `group` kennzeichnet eine Spezialisierung,
+ * deren Bedeutung dieses Projekt nicht kennt, und eine unbekannte
+ * Spezialisierung als kanonische Relevanz zu führen hieße, ihr eine Bedeutung
+ * zu geben, die im Dokument nicht steht. Im ausgelieferten Katalog tragen alle
+ * vier Schutzziel-Props weder `class` noch `group`; die Regel greift dort also
+ * nicht und ist reine Vorsorge.
+ *
+ * Der vollständige Normbeleg zu `prop.value` steht bei der Skala in
+ * `domain/securityTargets.ts`; geprüft wird er in
+ * `domain/securityTargets.catalog.node.test.ts`.
+ *
+ * Der vorgefundene `ns` bleibt unverändert erhalten; er zeigt auf
+ * `security_targets.csv`. Ihn durch den Namensraum von
+ * `security_targets_levels.csv` zu ersetzen, damit die Wertebedeutung generisch
+ * über `prop.ns` auflösbar wäre, würde eine Herkunft behaupten, die im Dokument
+ * nicht steht. Die Levels-Auflösung nennt ihren Namensraum stattdessen selbst
+ * (`resolveSecurityTargetLevel` in `domain/vocabulary.ts`).
+ */
 function getSecurityTargetRelevanceProp(
   props: RawOscalProp[] | undefined,
   name: string,
 ): PropValue | undefined {
-  const prop = getPropWithMetadata(props, name);
-  return prop
-    ? { ...prop, ns: SECURITY_TARGET_LEVELS_NAMESPACE_URL }
-    : undefined;
+  const prop = props?.find(
+    (candidate) =>
+      candidate.name === name &&
+      candidate.ns === SECURITY_TARGETS_NAMESPACE_URL &&
+      candidate.class === undefined &&
+      candidate.group === undefined,
+  );
+
+  return prop ? { name: prop.name, value: prop.value, ns: prop.ns } : undefined;
 }
 
 /**
