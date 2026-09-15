@@ -70,7 +70,7 @@ afterEach(async () => {
 
 /**
  * Die Trennung von Regeltabelle und Logik existiert, damit die dateiweite
- * CPD-Ausnahme in `.sonarcloud.properties` ausschließlich Daten erfasst. Fällt
+ * CPD-Ausnahme in `sonar-project.properties` ausschließlich Daten erfasst. Fällt
  * die Tabelle in die Logikdatei zurück oder wandert die Ausnahme mit, verliert
  * der Generator still seine Duplikatsprüfung. Diese Zusagen halten den Schnitt.
  */
@@ -99,7 +99,7 @@ describe('review-policy Schnitt zwischen Regeltabelle und Logik', () => {
   });
 
   it('richtet die CPD-Ausnahme genau auf die Datendatei', async () => {
-    const properties = await readRepoFile('.sonarcloud.properties');
+    const properties = await readRepoFile('sonar-project.properties');
     const setting = properties
       .split('\n')
       .find((line) => line.startsWith('sonar.cpd.exclusions='));
@@ -109,14 +109,14 @@ describe('review-policy Schnitt zwischen Regeltabelle und Logik', () => {
 });
 
 describe('review-policy Autorenquelle', () => {
-  it('führt 6 globale Regeln, 20 gescopte Regeln und 8 Datei-Kontexte', () => {
+  it('führt 6 globale Regeln, 21 gescopte Regeln und 8 Datei-Kontexte', () => {
     expect(globalRules).toHaveLength(6);
-    expect(scopedRules).toHaveLength(20);
+    expect(scopedRules).toHaveLength(21);
     expect(fileContexts).toHaveLength(8);
-    expect(allRules).toHaveLength(26);
+    expect(allRules).toHaveLength(27);
   });
 
-  it('trägt die stabilen Schlüssel G1-sprache bis G6-pruefgrenzen und R1-integritaet bis R20-stufe-5-referenzgraph', () => {
+  it('trägt die stabilen Schlüssel G1-sprache bis G6-pruefgrenzen und R1-integritaet bis R23-sonar-analysekonfiguration', () => {
     expect(globalRules.map((rule) => rule.key)).toEqual([
       'G1-sprache',
       'G2-anwendungskontext',
@@ -126,8 +126,8 @@ describe('review-policy Autorenquelle', () => {
       'G6-pruefgrenzen',
     ]);
     expect(scopedRules[0].key).toBe('R1-integritaet');
-    expect(scopedRules.at(-1)?.key).toBe('R20-stufe-5-referenzgraph');
-    expect(new Set(allRules.map((rule) => rule.key)).size).toBe(26);
+    expect(scopedRules.at(-1)?.key).toBe('R23-sonar-analysekonfiguration');
+    expect(new Set(allRules.map((rule) => rule.key)).size).toBe(27);
   });
 
   it('ist wohlgeformt', () => {
