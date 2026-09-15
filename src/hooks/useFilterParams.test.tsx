@@ -77,14 +77,14 @@ describe('useFilterParams — Schutzziel-Facetten', () => {
   it('liest alle vier Dimensionen aus eigenen Parametern', () => {
     const { result } = renderHook(() => useFilterParams(), {
       wrapper: routerWrapper(
-        '/katalog?stc=1&sti=2&stav=0&stau=2',
+        '/katalog?stc=1&sti=2&stav=1&stau=2',
       ),
     });
 
     expect(result.current.filters.securityTargets).toEqual({
       confidentiality: ['1'],
       integrity: ['2'],
-      availability: ['0'],
+      availability: ['1'],
       authenticity: ['2'],
     });
   });
@@ -100,12 +100,24 @@ describe('useFilterParams — Schutzziel-Facetten', () => {
     ]);
   });
 
-  it('entfernt Duplikate — ein Facettenwert ist der Zustand einer Checkbox', () => {
+  it('verwirft die Stufe 0 und entwertet die übrigen Werte desselben Parameters nicht', () => {
+    // Die Stufe gehört zur Skala, ist aber keine Auswahl der Facette: Ein
+    // geteilter Link aus einem früheren Stand darf nicht den ganzen Parameter
+    // verlieren.
     const { result } = renderHook(() => useFilterParams(), {
-      wrapper: routerWrapper('/katalog?sti=1,1,0,1'),
+      wrapper: routerWrapper('/katalog?stc=0,2&sti=0'),
     });
 
-    expect(result.current.filters.securityTargets.integrity).toEqual(['1', '0']);
+    expect(result.current.filters.securityTargets.confidentiality).toEqual(['2']);
+    expect(result.current.filters.securityTargets.integrity).toEqual([]);
+  });
+
+  it('entfernt Duplikate — ein Facettenwert ist der Zustand einer Checkbox', () => {
+    const { result } = renderHook(() => useFilterParams(), {
+      wrapper: routerWrapper('/katalog?sti=1,1,2,1'),
+    });
+
+    expect(result.current.filters.securityTargets.integrity).toEqual(['1', '2']);
   });
 
   it('lässt eine Dimension ohne Parameter leer', () => {
@@ -128,7 +140,7 @@ describe('useFilterParams — Schutzziel-Facetten', () => {
         ...current,
         securityTargets: {
           ...current.securityTargets,
-          confidentiality: ['1', '0'],
+          confidentiality: ['1', '2'],
           authenticity: ['2'],
         },
       }));
@@ -136,7 +148,7 @@ describe('useFilterParams — Schutzziel-Facetten', () => {
 
     await waitFor(() => {
       expect(result.current.searchString).toBe(
-        'stc=1%2C0&stau=2',
+        'stc=1%2C2&stau=2',
       );
     });
   });
@@ -160,7 +172,7 @@ describe('useFilterParams — Schutzziel-Facetten', () => {
 
   it('übersteht eine Rundreise durch Serialisierung und Deserialisierung', async () => {
     const { result } = renderHook(() => useFilterParams(), {
-      wrapper: routerWrapper('/katalog?stc=2&stav=0&mv=MUSS'),
+      wrapper: routerWrapper('/katalog?stc=2&stav=1&mv=MUSS'),
     });
 
     const before = result.current.filters.securityTargets;

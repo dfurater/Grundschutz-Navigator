@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyFilters, type FacetCounts } from '@/hooks/useFilteredControls';
 import { useCatalog } from '@/hooks/useCatalog';
@@ -21,6 +21,15 @@ function makeCatalogState() {
   return makeFilterPanelCatalogState(vocabularyRegistry);
 }
 
+/**
+ * Sucht innerhalb einer Facettensektion. Eine Trefferzahl ist derselbe Text wie
+ * die Beschriftung einer Aufwandsstufe — im ganzen Panel gesucht, trifft `3`
+ * beides.
+ */
+function inSektion(titel: string) {
+  return within(screen.getByRole('button', { name: new RegExp(`^${titel}`) }).parentElement!);
+}
+
 describe('FilterPanel', () => {
   beforeEach(() => {
     mockedUseCatalog.mockReset();
@@ -41,11 +50,12 @@ describe('FilterPanel', () => {
       />,
     );
 
+    const aufwandsstufen = inSektion('Aufwandsstufen');
     const securityLevelLabel = screen.getByText('normal-SdT').closest('label');
-    const effortLevelLabel = screen.getByText('3').closest('label');
+    const effortLevelLabel = aufwandsstufen.getByText('3').closest('label');
 
     expect(screen.getByText('normal-SdT')).toBeInTheDocument();
-    expect(screen.getByText('3')).toBeInTheDocument();
+    expect(aufwandsstufen.getByText('3')).toBeInTheDocument();
     expect(screen.queryByText('Normal (SdT)')).not.toBeInTheDocument();
     expect(screen.queryByText('Stufe 3 — Hoch')).not.toBeInTheDocument();
     expect(securityLevelLabel).toHaveAttribute(

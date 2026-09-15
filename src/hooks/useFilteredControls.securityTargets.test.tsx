@@ -2,9 +2,11 @@ import { renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { Control, PropValue } from '@/domain/models';
 import { SECURITY_TARGETS_NAMESPACE_URL } from '@/domain/vocabularyNamespaces';
-import type {
-  SecurityTargetDimension,
-  SecurityTargetFilterValue,
+import {
+  SECURITY_TARGET_FILTER_VALUES,
+  sumSecurityTargetCounts,
+  type SecurityTargetDimension,
+  type SecurityTargetFilterValue,
 } from '@/domain/securityTargets';
 import { emptyFilters, useFilteredControls, type ControlFilters } from './useFilteredControls';
 
@@ -85,28 +87,26 @@ describe('Schutzziel-Facetten', () => {
   });
 
   it.each(['confidentiality', 'integrity', 'availability', 'authenticity'] as const)(
-    'behandelt ein Control ohne prop niemals wie die Bewertung 0 — %s',
+    'holt über keine Stufe ein Control ohne prop oder mit der Bewertung 0 — %s',
     (dimension) => {
       const ohneProp = withSecurityTarget('OHNE.1', dimension, undefined);
       const mitNull = withSecurityTarget('NULL.1', dimension, '0');
+      const controls = [ohneProp, mitNull];
 
-      // Die Stufe 0 trifft ausschließlich das bewertete Control.
-      const nullwert = renderHook(() =>
-        useFilteredControls(
-          [ohneProp, mitNull],
-          securityTargetFilters({ [dimension]: ['0'] }),
-        ),
-      );
-      expect(nullwert.result.current.filtered.map((c) => c.id)).toEqual(['NULL.1']);
+      for (const stufe of SECURITY_TARGET_FILTER_VALUES) {
+        const { result } = renderHook(() =>
+          useFilteredControls(controls, securityTargetFilters({ [dimension]: [stufe] })),
+        );
+        expect(result.current.filtered).toHaveLength(0);
+      }
 
-      // Und keine andere Stufe holt eines von beiden zurück.
-      const stufe1 = renderHook(() =>
-        useFilteredControls(
-          [ohneProp, mitNull],
-          securityTargetFilters({ [dimension]: ['1'] }),
-        ),
-      );
-      expect(stufe1.result.current.filtered).toHaveLength(0);
+      // Die beiden bleiben trotzdem unterscheidbar: Der Rohwert steht am
+      // Control, und ohne Auswahl sind beide sichtbar.
+      expect(mitNull[`${dimension}Prop`]?.value).toBe('0');
+      expect(ohneProp[`${dimension}Prop`]).toBeUndefined();
+
+      const ungefiltert = renderHook(() => useFilteredControls(controls, emptyFilters));
+      expect(ungefiltert.result.current.filtered).toHaveLength(2);
     },
   );
 
@@ -135,13 +135,15 @@ describe('Schutzziel-Facetten', () => {
       withSecurityTarget('A.1', 'availability', '2'),
       withSecurityTarget('A.2', 'availability', undefined),
       withSecurityTarget('A.3', 'availability', '0'),
+      withSecurityTarget('A.4', 'availability', '1'),
     ];
 
     const { result } = renderHook(() =>
-      useFilteredControls(controls, securityTargetFilters({ availability: ['0', '2'] })),
+      useFilteredControls(controls, securityTargetFilters({ availability: ['1', '2'] })),
     );
 
-    expect(result.current.filtered.map((c) => c.id)).toEqual(['A.1', 'A.3']);
+    // Beide Stufen zusammen — das ist genau die Menge hinter der Elternzeile.
+    expect(result.current.filtered.map((c) => c.id)).toEqual(['A.1', 'A.4']);
   });
 
   it('blendet unbewertete Anforderungen bei aktiver Facette aus', () => {
@@ -186,7 +188,7 @@ describe('Schutzziel-Facetten', () => {
     expect(result.current.hasActiveFilters).toBe(true);
   });
 
-  it('zählt nur bewertete Anforderungen und trennt unbewertet vom Nullwert', () => {
+  it('zählt nur die Anforderungen, die das Schutzziel betreffen', () => {
     const controls = [
       withSecurityTarget('C.0', 'confidentiality', '0'),
       withSecurityTarget('C.1', 'confidentiality', '1'),
@@ -198,13 +200,12 @@ describe('Schutzziel-Facetten', () => {
     const { result } = renderHook(() => useFilteredControls(controls, emptyFilters));
     const counts = result.current.facetCounts.securityTargets.confidentiality;
 
-    // Die Stufe 0 zählt genau ein Control — nicht das ohne Angabe.
-    expect(counts).toEqual({ '0': 1, '1': 1, '2': 1 });
+    // Nur die beiden auswählbaren Stufen tragen einen Zähler: die Stufe 0, das
+    // unbewertete und das skalenfremde Control zählen in keinen.
+    expect(counts).toEqual({ '1': 1, '2': 1 });
 
-    // Die Summe ist die Zahl der bewerteten Anforderungen, nicht die Gesamtzahl:
-    // das unbewertete und das skalenfremde Control zählen in keine Stufe.
-    const summe = Object.values(counts).reduce((a, b) => a + b, 0);
-    expect(summe).toBe(controls.length - 2);
+    // Die Zahl der Elternzeile ist genau diese Summe — nicht die Gesamtzahl.
+    expect(sumSecurityTargetCounts(counts)).toBe(2);
   });
 
   it('führt gleichlautende Control-ids aus zwei Katalogen getrennt', () => {

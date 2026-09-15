@@ -23,10 +23,12 @@ import { parseControl } from '@/adapters/oscalAdapter';
 import { SECURITY_TARGETS_NAMESPACE_URL } from '@/domain/vocabularyNamespaces';
 import {
   SECURITY_TARGET_DIMENSIONS,
+  SECURITY_TARGET_FILTER_VALUES,
   SECURITY_TARGET_RELEVANCE_ORDER,
   classifySecurityTarget,
   matchesSecurityTargetFilterValue,
   securityTargetFacetKeys,
+  sumSecurityTargetCounts,
 } from '@/domain/securityTargets';
 
 const catalogPath = process.env.GSPP_CATALOG_CORPUS_PATH ?? 'public/data/catalog.json';
@@ -191,12 +193,13 @@ describe.skipIf(!corpusAvailable)('Schutzziel-Facetten am ausgelieferten Katalog
     (dimension) => {
       const meta = SECURITY_TARGET_DIMENSIONS.find((e) => e.dimension === dimension)!;
 
-      const skala = SECURITY_TARGET_RELEVANCE_ORDER as readonly string[];
+      const auswaehlbar = SECURITY_TARGET_FILTER_VALUES as readonly string[];
       const erwartet: Record<string, number> = {};
       for (const control of corpus!.rawControls) {
         const value = rawPropsNamed(control, meta.propName)[0]?.value;
-        // Ohne Angabe und außerhalb der Skala zählen in keine Stufe.
-        if (value === undefined || !skala.includes(value)) continue;
+        // Ohne Angabe, außerhalb der Skala und mit der Stufe 0 zählt eine
+        // Anforderung in keine Facette.
+        if (value === undefined || !auswaehlbar.includes(value)) continue;
         erwartet[value] = (erwartet[value] ?? 0) + 1;
       }
 
@@ -211,14 +214,20 @@ describe.skipIf(!corpusAvailable)('Schutzziel-Facetten am ausgelieferten Katalog
 
       expect(gezaehlt).toEqual(erwartet);
 
-      // Die Summe ist die Zahl der bewerteten Anforderungen, nicht die
-      // Gesamtzahl — die unbewerteten fehlen bewusst und sind keine Stufe 0.
-      const summe = Object.values(gezaehlt).reduce((a, b) => a + b, 0);
+      // Die Summe ist die Zahl der Anforderungen, die das Schutzziel betreffen
+      // — sie trägt die Trefferzahl der Elternzeile und liegt unter der Zahl
+      // der bewerteten, weil die Stufe 0 nicht mitzählt.
+      const summe = sumSecurityTargetCounts(gezaehlt);
+      const betreffend = corpus!.rawControls.filter((control) => {
+        const value = rawPropsNamed(control, meta.propName)[0]?.value;
+        return value !== undefined && auswaehlbar.includes(value);
+      }).length;
       const bewertet = corpus!.rawControls.filter(
         (control) => rawPropsNamed(control, meta.propName).length > 0,
       ).length;
 
-      expect(summe).toBe(bewertet);
+      expect(summe).toBe(betreffend);
+      expect(summe).toBeLessThan(bewertet);
       expect(summe).toBeLessThan(corpus!.controls.length);
     },
   );
@@ -248,19 +257,27 @@ describe.skipIf(!corpusAvailable)('Schutzziel-Facetten am ausgelieferten Katalog
   );
 
   it.each(SECURITY_TARGET_DIMENSIONS.map((entry) => entry.dimension))(
-    'holt mit der Stufe 0 keine Anforderung ohne Angabe zurück — %s',
+    'holt über keine Stufe eine Anforderung ohne Angabe oder mit der Stufe 0 zurück — %s',
     (dimension) => {
       const meta = SECURITY_TARGET_DIMENSIONS.find((e) => e.dimension === dimension)!;
 
-      const trefferStufe0 = corpus!.controls.filter((control, index) => {
-        const trifft = matchesSecurityTargetFilterValue(
-          classifySecurityTarget(control, dimension),
-          '0',
-        );
-        return trifft && rawPropsNamed(corpus!.rawControls[index], meta.propName).length === 0;
+      const nichtBetroffen = corpus!.rawControls.filter((control) => {
+        const value = rawPropsNamed(control, meta.propName)[0]?.value;
+        return value === undefined || value === '0';
       });
 
-      expect(trefferStufe0).toHaveLength(0);
+      // Der Bestand trägt beide Fälle — ohne sie prüfte der Test nichts.
+      expect(nichtBetroffen.length).toBeGreaterThan(0);
+
+      const treffer = corpus!.controls.filter((control, index) => {
+        const value = rawPropsNamed(corpus!.rawControls[index], meta.propName)[0]?.value;
+        if (value !== undefined && value !== '0') return false;
+        return SECURITY_TARGET_FILTER_VALUES.some((stufe) =>
+          matchesSecurityTargetFilterValue(classifySecurityTarget(control, dimension), stufe),
+        );
+      });
+
+      expect(treffer).toHaveLength(0);
     },
   );
 

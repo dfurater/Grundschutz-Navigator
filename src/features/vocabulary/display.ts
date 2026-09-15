@@ -81,15 +81,19 @@ export function getOfficialEffortLevelTooltip(
  * Beschriftung eines Schutzziel-Facettenwerts.
  *
  * Die Relevanzstufen tragen im BSI-Vokabular `security_targets_levels.csv`
- * **keine** Bezeichnung, nur die Werte `0`–`2` mit einer Definition. Deshalb
- * steht hier der Katalogwert und keine app-eigene Umschreibung — dieselbe
- * Regel wie bei Sicherheitsniveau und Aufwandsstufe. Die Bedeutung trägt der
- * Tooltip aus dem Vokabular.
+ * **keine** Bezeichnung, nur die Werte `0`–`2` mit einer Definition. Der
+ * Katalogwert bleibt deshalb sichtbar und wird nicht durch eine app-eigene
+ * Umschreibung wie „hoch relevant" ersetzt — dieselbe Regel wie bei
+ * Sicherheitsniveau und Aufwandsstufe. Das vorangestellte Wort benennt allein
+ * die Skala, zu der der Wert gehört: In der Sektion `Schutzziele` steht die
+ * Zeile eines Werts unter dem Namen eines Schutzziels, und eine nackte `1`
+ * wäre dort nicht als Relevanzstufe zu erkennen. Die Bedeutung der Stufe trägt
+ * die Legende der Sektion und der Tooltip aus dem Vokabular.
  */
 export function getSecurityTargetFilterLabel(
   filterValue: SecurityTargetFilterValue,
 ): string {
-  return filterValue;
+  return `Stufe ${filterValue}`;
 }
 
 /**

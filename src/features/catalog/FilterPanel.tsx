@@ -2,7 +2,7 @@ import { FilterSection } from '@/components/FilterSection';
 import { CheckboxLabel } from '@/components/CheckboxLabel';
 import { IconFilter, IconChevronRight } from '@/components/icons';
 import type { ControlFilters, FacetCounts } from '@/hooks/useFilteredControls';
-import { SecurityTargetFilterSections } from './SecurityTargetFilterSections';
+import { SecurityTargetFilterSection } from './SecurityTargetFilterSection';
 import type { Modalverb, LinkRelation } from '@/domain/models';
 import { useCatalog } from '@/hooks/useCatalog';
 import {
@@ -295,7 +295,7 @@ export function FilterPanel({
           })}
         </FilterSection>
 
-        <SecurityTargetFilterSections
+        <SecurityTargetFilterSection
           filters={filters}
           facetCounts={facetCounts}
           filteredFacetCounts={filteredFacetCounts}

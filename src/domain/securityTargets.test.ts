@@ -12,6 +12,8 @@ import {
   matchesSecurityTargetFilterValue,
   passesSecurityTargetFilter,
   securityTargetFacetKeys,
+  securityTargetSelectionState,
+  sumSecurityTargetCounts,
   type SecurityTargetDimension,
 } from './securityTargets';
 
@@ -113,7 +115,6 @@ describe('classifySecurityTarget', () => {
 
 describe('Exakte Stufenauswahl', () => {
   it.each([
-    ['0', ['0']],
     ['1', ['1']],
     ['2', ['2']],
   ] as const)('trifft mit der Stufe %s ausschließlich diese Stufe', (gewaehlt, treffer) => {
@@ -143,7 +144,7 @@ describe('Exakte Stufenauswahl', () => {
       'confidentiality',
     );
 
-    for (const stufe of ['0', '1', '2'] as const) {
+    for (const stufe of SECURITY_TARGET_FILTER_VALUES) {
       expect(matchesSecurityTargetFilterValue(classification, stufe)).toBe(false);
     }
     // Der Zustand bleibt unterscheidbar, auch wenn er nicht auswählbar ist.
@@ -152,20 +153,31 @@ describe('Exakte Stufenauswahl', () => {
   });
 
   it.each(SECURITY_TARGET_DIMENSIONS.map((entry) => entry.dimension))(
-    'holt mit der Stufe 0 niemals ein Control ohne Angabe — %s',
+    'macht ein mit 0 bewertetes Control über keine Auswahl erreichbar — %s',
     (dimension) => {
-      const ohneProp = classifySecurityTarget(makeControl(dimension, undefined), dimension);
-      const mitNull = classifySecurityTarget(makeControl(dimension, '0'), dimension);
+      const mitNull = makeControl(dimension, '0');
 
-      expect(matchesSecurityTargetFilterValue(ohneProp, '0')).toBe(false);
-      expect(matchesSecurityTargetFilterValue(mitNull, '0')).toBe(true);
+      for (const stufe of SECURITY_TARGET_FILTER_VALUES) {
+        expect(passesSecurityTargetFilter(mitNull, dimension, [stufe])).toBe(false);
+      }
+
+      // Nicht auswählbar heißt nicht eingeebnet: Die Klassifikation führt den
+      // Wert weiter und hält ihn von der Abwesenheit getrennt.
+      expect(classifySecurityTarget(mitNull, dimension)).toEqual({
+        state: 'rated',
+        value: '0',
+        rank: 0,
+      });
+      expect(classifySecurityTarget(makeControl(dimension, undefined), dimension)).toEqual({
+        state: 'unrated',
+      });
     },
   );
 
   it('blendet unbewertete Controls bei jeder aktiven Auswahl aus', () => {
     const ohneProp = makeControl('confidentiality', undefined);
 
-    for (const stufe of ['0', '1', '2'] as const) {
+    for (const stufe of SECURITY_TARGET_FILTER_VALUES) {
       expect(
         passesSecurityTargetFilter(ohneProp, 'confidentiality', [stufe]),
       ).toBe(false);
@@ -176,7 +188,7 @@ describe('Exakte Stufenauswahl', () => {
 });
 
 describe('securityTargetFacetKeys', () => {
-  it.each(['0', '1', '2'] as const)(
+  it.each(SECURITY_TARGET_FILTER_VALUES)(
     'zählt die Stufe %s in genau ihre eigene Facette',
     (value) => {
       const keys = securityTargetFacetKeys(
@@ -185,6 +197,17 @@ describe('securityTargetFacetKeys', () => {
       expect(keys).toEqual([value]);
     },
   );
+
+  it('zählt die Stufe 0 in keine Facette, weil sie keine Auswahl ist', () => {
+    const classification = classifySecurityTarget(
+      makeControl('confidentiality', '0'),
+      'confidentiality',
+    );
+
+    expect(securityTargetFacetKeys(classification)).toEqual([]);
+    // Die Anforderung bleibt trotzdem als bewertet geführt.
+    expect(classification.state).toBe('rated');
+  });
 
   it('zählt weder Abwesenheit noch unbekannten Wert in eine Stufe', () => {
     expect(
@@ -199,12 +222,12 @@ describe('securityTargetFacetKeys', () => {
     ).toEqual([]);
   });
 
-  it('ordnet eine bewertete Anforderung genau einer Stufe zu', () => {
+  it('ordnet eine bewertete Anforderung höchstens einer Stufe zu', () => {
     for (const value of ['0', '1', '2']) {
       const keys = securityTargetFacetKeys(
         classifySecurityTarget(makeControl('availability', value), 'availability'),
       );
-      expect(keys).toEqual([value]);
+      expect(keys).toEqual(isSecurityTargetFilterValue(value) ? [value] : []);
     }
   });
 });
@@ -242,10 +265,27 @@ describe('passesSecurityTargetFilter', () => {
 });
 
 describe('Facettenwerte', () => {
-  it('erkennt genau die vier definierten Werte', () => {
+  it('führt genau die beiden Stufen, die ein Schutzziel betreffen', () => {
+    expect(SECURITY_TARGET_FILTER_VALUES).toEqual(['1', '2']);
+
     for (const value of SECURITY_TARGET_FILTER_VALUES) {
       expect(isSecurityTargetFilterValue(value)).toBe(true);
     }
+  });
+
+  it('lässt die Skala der Ordnung dreistellig, obwohl die Auswahl enger ist', () => {
+    // Die Ordnung bildet das Vokabular ab und speist die Relevanzskala der
+    // Detailansicht (`RELEVANCE_SCALE_MAX`). Verengt ist allein die Auswahl.
+    expect(SECURITY_TARGET_RELEVANCE_ORDER).toEqual(['0', '1', '2']);
+    expect(SECURITY_TARGET_FILTER_VALUES.length).toBeLessThan(
+      SECURITY_TARGET_RELEVANCE_ORDER.length,
+    );
+  });
+
+  it('verwirft die Stufe 0 als Auswahl, obwohl sie zur Skala gehört', () => {
+    // Eine Facette führt zu den Anforderungen, die ein Schutzziel betreffen.
+    expect(getSecurityTargetRelevanceRank('0')).toBe(0);
+    expect(isSecurityTargetFilterValue('0')).toBe(false);
   });
 
   it.each(['min1', '3', '-1', 'unrated', 'unknown', '', ' 1'])(
@@ -277,5 +317,66 @@ describe('Facettenwerte', () => {
         expect(text).not.toContain(wort);
       }
     }
+  });
+});
+
+describe('sumSecurityTargetCounts', () => {
+  it('summiert die beiden auswählbaren Stufen', () => {
+    expect(sumSecurityTargetCounts({ '1': 559, '2': 311 })).toBe(870);
+  });
+
+  it('lässt eine fehlende Stufe als 0 zählen', () => {
+    expect(sumSecurityTargetCounts({ '1': 7 })).toBe(7);
+    expect(sumSecurityTargetCounts({})).toBe(0);
+  });
+
+  it('zählt keinen Wert mit, der keine Auswahl ist', () => {
+    // Die Zahl der Elternzeile ist die Menge der Anforderungen, die das
+    // Schutzziel betreffen — nicht die Menge aller bewerteten.
+    expect(sumSecurityTargetCounts({ '0': 609, '1': 265, '2': 26 })).toBe(291);
+  });
+
+  it('zählt jede Anforderung höchstens einmal, weil eine Dimension ein prop trägt', () => {
+    const counts: Record<string, number> = {};
+    const controls = [
+      makeControl('confidentiality', '1'),
+      makeControl('confidentiality', '2'),
+      makeControl('confidentiality', '0'),
+      makeControl('confidentiality', undefined),
+      makeControl('confidentiality', 'hoch'),
+    ];
+
+    for (const control of controls) {
+      for (const key of securityTargetFacetKeys(
+        classifySecurityTarget(control, 'confidentiality'),
+      )) {
+        counts[key] = (counts[key] ?? 0) + 1;
+      }
+    }
+
+    expect(sumSecurityTargetCounts(counts)).toBe(2);
+    expect(sumSecurityTargetCounts(counts)).toBeLessThanOrEqual(controls.length);
+  });
+});
+
+describe('securityTargetSelectionState', () => {
+  it('meldet eine leere Auswahl als none', () => {
+    expect(securityTargetSelectionState([])).toBe('none');
+  });
+
+  it.each(SECURITY_TARGET_FILTER_VALUES)(
+    'meldet die einzelne Stufe %s als partial',
+    (stufe) => {
+      expect(securityTargetSelectionState([stufe])).toBe('partial');
+    },
+  );
+
+  it('meldet beide Stufen als all — unabhängig von der Reihenfolge', () => {
+    expect(securityTargetSelectionState(['1', '2'])).toBe('all');
+    expect(securityTargetSelectionState(['2', '1'])).toBe('all');
+  });
+
+  it('zählt einen doppelten Wert nicht als zweite Stufe', () => {
+    expect(securityTargetSelectionState(['1', '1'])).toBe('partial');
   });
 });
