@@ -31,6 +31,16 @@ on:
 permissions:
   contents: read
 
+# Zwei nahezu gleichzeitig eintreffende Kommentarereignisse desselben Pull
+# Requests sähen beide den fehlenden Check-Run und den fehlenden Marker und
+# posteten denselben Nudge doppelt. Die Gruppe serialisiert sie je Pull
+# Request; `cancel-in-progress` bleibt aus, damit der zweite Lauf tatsächlich
+# startet und den inzwischen gesetzten Marker vorfindet, statt verworfen zu
+# werden.
+concurrency:
+  group: greptile-review-nudge-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
 jobs:
   # Bewusst nicht `Greptile Review` benannt: Dieser Job darf den required
   # status check niemals überschreiben, sondern nur seine Entstehung auslösen.
