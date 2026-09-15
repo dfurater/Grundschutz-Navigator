@@ -3,17 +3,16 @@
 import { pathToFileURL } from 'node:url';
 
 export const CATALOG_SYNC_REPOSITORY = 'dfurater/Grundschutz-Navigator';
-export const CATALOG_SYNC_RULESET_ID = 15503378;
+export const CATALOG_SYNC_RULESET_ID = 23067488;
 export const GITHUB_ACTIONS_INTEGRATION_ID = 15368;
 export const REQUIRED_CHECKS = ['validate', 'catalog-sync-guard'];
 export const CATALOG_SYNC_PROTECTED_BRANCH = 'main';
 
 // A branch ruleset without a ref scope is `active` but applies to no branch at all.
-// Only these three include patterns are recognised as covering the protected branch;
+// Only these two include patterns are recognised as covering the protected branch;
 // fnmatch globs are rejected on purpose so that any scope drift fails the preflight
 // instead of silently widening or narrowing enforcement.
 export const ACCEPTED_REF_INCLUDES = Object.freeze([
-  '~DEFAULT_BRANCH',
   '~ALL',
   `refs/heads/${CATALOG_SYNC_PROTECTED_BRANCH}`,
 ]);
@@ -48,13 +47,6 @@ function collectRepositoryMergeErrors(repository, expectedRepository) {
   if (repository?.delete_branch_on_merge !== true) {
     errors.push('automatic branch deletion must be enabled');
   }
-  // The whole sync lane is hard-wired to `main` (workflow triggers, compare bases,
-  // fallback dispatch). `~DEFAULT_BRANCH` in the ruleset only protects `main` while
-  // `main` actually is the default branch, so pin it here rather than assume it.
-  if (repository?.default_branch !== CATALOG_SYNC_PROTECTED_BRANCH) {
-    errors.push(`repository default branch must be ${CATALOG_SYNC_PROTECTED_BRANCH}`);
-  }
-
   return errors;
 }
 
