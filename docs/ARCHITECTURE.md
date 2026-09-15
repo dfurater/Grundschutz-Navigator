@@ -917,13 +917,17 @@ Von Greptiles zwei Regelformaten nutzt der Adapter das strukturierte `config.jso
 
 Eine Fallstricknotiz für spätere Änderungen: Greptiles `strictness` ist invers zu seiner eigenen Beschriftung. Das Feld ist als `1 | 2 | 3` mit `1` = ausführlich und `3` = nur Kritisches definiert, die Oberfläche zeigt Low/Medium/High mit Low = „comment on all issues". Die eingestellte Stufe Low entspricht also `strictness: 1`. Der Adapter setzt das Feld nicht; wer es je setzt, darf die Skala nicht aus der Beschriftung ableiten.
 
-### `.sonarcloud.properties`
+### `sonar-project.properties`
 
-SonarQube Cloud analysiert dieses Repository per Automatic Analysis; `.sonarcloud.properties` ist der dafür vorgesehene Konfigurationsweg. Die Datei enthält genau eine Einstellung: `sonar.cpd.exclusions=scripts/review-policy.rules.mjs`.
+SonarQube Cloud analysiert dieses Repository per CI-Analyse: `.github/workflows/sonar.yml` startet den Scanner bei jedem Push nach `main` und `develop` sowie für jeden Pull Request, dessen Zielbranch einer dieser beiden ist, und `sonar-project.properties` trägt die Analyseparameter.
+
+Vorher lief die Automatic Analysis. Sie misst ausschließlich den GitHub-Default-Branch, und der ist seit dem Release-Branch-Modell `develop` — `main` als Freigabelinie blieb dadurch unanalysiert, obwohl genau dieser Stand auf GitHub Pages ausgeliefert wird. Branch-Analyse ist laut Hersteller nur mit CI-Analyse zu haben, und beide Verfahren schließen einander aus. Seither führt SonarQube Cloud zwei langlebige Branches: `develop` als Hauptbranch und Integrationslinie, `main` als Freigabelinie.
+
+Die Analyseparameter umfassen Projektschlüssel und Organisation, den lcov-Pfad für die Testabdeckung (`coverage/lcov.info`, erzeugt durch `npm run test:coverage`; der lcov-Reporter ist dafür in `vite.config.ts` ergänzt) sowie eine Duplikatsausnahme: `sonar.cpd.exclusions=scripts/review-policy.rules.mjs`.
 
 Der Grund ist eine Eigenschaft der Copy-Paste-Erkennung, nicht ein Wartbarkeitsproblem. CPD misst wiederholte Token-Folgen und normalisiert dabei Literale; 26 strukturgleiche Tabelleneinträge aus Schlüssel, Scope-Liste und Regeltext werden dadurch zwangsläufig als Duplikat gemeldet, ohne dass Verhalten kopiert wäre. Gemessen an `466d50c` lagen alle vier gemeldeten Duplikatsgruppen vollständig innerhalb der Regeltabelle. Weil `sonar.cpd.exclusions` ausschließlich dateiweit greift und keine Block- oder Zeilengranularität kennt, hätte eine Ausnahme auf einer gemischten Datei auch Generator, Drift-Guard und CLI von der Duplikatsprüfung befreit — daher der Schnitt in zwei Dateien. Ausgenommen ist allein die Duplikatsmessung auf der Datentabelle; keine Schwelle des Quality Gates wird gesenkt.
 
-Die Datei wirkt aus dem PR-Head heraus. Ein PR könnte sich damit selbst eine Gate-Ausnahme erteilen, weshalb sie in `AGENTS.md` zu den Review-Policy-Pfaden zählt: Wer sie anfasst, braucht ein Agenten-Cross-Review.
+Die Datei wirkt aus dem PR-Head heraus. Ein PR könnte sich damit selbst eine Gate-Ausnahme erteilen, weshalb sie in `AGENTS.md` zu den Review-Policy-Pfaden zählt: Wer sie anfasst, braucht ein Agenten-Cross-Review. Dasselbe gilt für `.github/workflows/sonar.yml`, weil auch der Workflow aus dem PR-Head heraus bestimmt, was überhaupt gemessen wird.
 
 ## Siehe auch
 

@@ -208,6 +208,11 @@ export default defineConfig(({ command }) => ({
     css: true,
     coverage: {
       provider: 'v8',
+      // Vitest-Default plus `lcov`: SonarQube Cloud liest die Testabdeckung
+      // ausschliesslich aus coverage/lcov.info (GSPP-404). Die uebrigen vier
+      // Reporter bleiben unveraendert, damit Konsolenausgabe, HTML-Report,
+      // clover.xml und coverage-final.json erhalten bleiben.
+      reporter: ['text', 'html', 'clover', 'json', 'lcov'],
       include: ['src/**/*.{ts,tsx}'],
       exclude: [
         'src/**/*.test.*',
