@@ -15,7 +15,7 @@ test('legt den Egress-Guard ohne ausgeführte Durchsetzung an', async () => {
 });
 
 test('schließt einen fremden WebSocket vor dem Netzwerkzugriff', async () => {
-  const url = deriveCrossOriginUrl(window.location.href, '/egress-websocket');
+  const url = deriveCrossOriginUrl(globalThis.location.href, '/egress-websocket');
   url.protocol = 'ws:';
   const socket = new WebSocket(url.href);
 

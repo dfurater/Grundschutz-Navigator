@@ -1,5 +1,6 @@
 import js from '@eslint/js';
 import reactHooks from 'eslint-plugin-react-hooks';
+import eslintPluginUnicorn from 'eslint-plugin-unicorn';
 import tseslint from 'typescript-eslint';
 
 const UI_FILES = [
@@ -42,9 +43,11 @@ export default tseslint.config(
     plugins: {
       'react-hooks': reactHooks,
       'oscal-security': oscalSecurity,
+      unicorn: eslintPluginUnicorn,
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
+      'unicorn/prefer-global-this': 'error',
     },
   },
   {

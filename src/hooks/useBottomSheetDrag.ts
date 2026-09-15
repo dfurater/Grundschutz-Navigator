@@ -88,7 +88,7 @@ export function useBottomSheetDrag({
         }
         // Erst nach der kurzen Abschluss-Animation entlassen, damit das Sheet
         // sichtbar aus dem Viewport fährt, bevor die UI es entfernt.
-        dismissTimer = window.setTimeout(onDismiss, 200);
+        dismissTimer = globalThis.window.setTimeout(onDismiss, 200);
       } else {
         snapBack();
       }
@@ -120,7 +120,7 @@ export function useBottomSheetDrag({
       // darf onDismiss nicht mehr feuern, sonst würde eine bereits entfernte
       // Sheet-UI nachträglich geschlossen. Ein abgelaufener Timer verträgt
       // das clearTimeout ebenfalls.
-      if (dismissTimer !== undefined) window.clearTimeout(dismissTimer);
+      if (dismissTimer !== undefined) globalThis.clearTimeout(dismissTimer);
     };
   }, [active, backdropRef, dismissThresholdPx, dismissVelocity, handleRef, onDismiss, sheetRef]);
 }
