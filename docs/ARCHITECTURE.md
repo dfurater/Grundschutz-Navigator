@@ -943,7 +943,7 @@ Eine Eigenheit bleibt: `issue_comment` feuert nur von der Fassung auf dem Defaul
 
 ### `sonar-project.properties`
 
-SonarQube Cloud analysiert dieses Repository per CI-Analyse: `.github/workflows/sonar.yml` startet den Scanner bei jedem Push nach `main` und `develop` sowie für jeden Pull Request, und `sonar-project.properties` trägt die Analyseparameter.
+SonarQube Cloud analysiert dieses Repository per CI-Analyse: `.github/workflows/sonar.yml` startet den Scanner bei jedem Push nach `main` und `develop` sowie für jeden Pull Request, dessen Zielbranch einer dieser beiden ist, und `sonar-project.properties` trägt die Analyseparameter.
 
 Vorher lief die Automatic Analysis. Sie misst ausschließlich den GitHub-Default-Branch, und der ist seit dem Release-Branch-Modell `develop` — `main` als Freigabelinie blieb dadurch unanalysiert, obwohl genau dieser Stand auf GitHub Pages ausgeliefert wird. Branch-Analyse ist laut Hersteller nur mit CI-Analyse zu haben, und beide Verfahren schließen einander aus. Seither führt SonarQube Cloud zwei langlebige Branches: `develop` als Hauptbranch und Integrationslinie, `main` als Freigabelinie.
 
