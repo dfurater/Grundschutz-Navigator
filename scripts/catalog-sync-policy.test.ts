@@ -13,7 +13,7 @@ function makeRepository() {
     full_name: CATALOG_SYNC_REPOSITORY,
     allow_auto_merge: true,
     delete_branch_on_merge: true,
-    default_branch: CATALOG_SYNC_PROTECTED_BRANCH,
+    default_branch: 'develop',
   };
 }
 
@@ -26,7 +26,12 @@ function makeRuleset() {
     enforcement: 'active',
     updated_at: '2026-07-19T14:00:00Z',
     bypass_actors: [],
-    conditions: { ref_name: { include: ['~DEFAULT_BRANCH'], exclude: [] } },
+    conditions: {
+      ref_name: {
+        include: [`refs/heads/${CATALOG_SYNC_PROTECTED_BRANCH}`],
+        exclude: [],
+      },
+    },
     rules: [
       { type: 'deletion' },
       { type: 'non_fast_forward' },
@@ -61,12 +66,15 @@ function makeRuleset() {
 }
 
 describe('validateCatalogSyncPolicy', () => {
+  it('pins the explicit main-release ruleset', () => {
+    expect(CATALOG_SYNC_RULESET_ID).toBe(23067488);
+  });
+
   it('accepts the exact auto-merge, required-check, and CodeQL policy', () => {
     expect(validateCatalogSyncPolicy(makeRepository(), makeRuleset())).toBe(true);
   });
 
   it.each([
-    ['~DEFAULT_BRANCH'],
     ['~ALL'],
     [`refs/heads/${CATALOG_SYNC_PROTECTED_BRANCH}`],
   ])('accepts %s as an effective ref scope', (pattern) => {
@@ -92,7 +100,12 @@ describe('validateCatalogSyncPolicy', () => {
   });
 
   it('rejects an include list that does not cover main, including fnmatch globs', () => {
-    for (const include of [['refs/heads/release/*'], ['refs/heads/*'], ['~ALL_BRANCHES']]) {
+    for (const include of [
+      ['~DEFAULT_BRANCH'],
+      ['refs/heads/release/*'],
+      ['refs/heads/*'],
+      ['~ALL_BRANCHES'],
+    ]) {
       const ruleset = makeRuleset();
       ruleset.conditions.ref_name.include = include;
       expect(() => validateCatalogSyncPolicy(makeRepository(), ruleset)).toThrow(
@@ -114,13 +127,6 @@ describe('validateCatalogSyncPolicy', () => {
     delete ruleset.conditions.ref_name.exclude;
     expect(() => validateCatalogSyncPolicy(makeRepository(), ruleset)).toThrow(
       'conditions.ref_name.exclude must be an explicit array',
-    );
-  });
-
-  it('rejects a repository whose default branch is not main', () => {
-    const repository = { ...makeRepository(), default_branch: 'develop' };
-    expect(() => validateCatalogSyncPolicy(repository, makeRuleset())).toThrow(
-      'repository default branch must be main',
     );
   });
 

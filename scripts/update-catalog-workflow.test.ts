@@ -29,6 +29,20 @@ describe('catalog update workflow schedule', () => {
     );
   });
 
+  it('checks out main independently of the triggering ref', () => {
+    const workflow = readFileSync(WORKFLOW_PATH, 'utf8');
+
+    expect(workflow).toContain(
+      [
+        '      - name: Checkout',
+        '        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1',
+        '        with:',
+        '          ref: main',
+        '          persist-credentials: false',
+      ].join('\n'),
+    );
+  });
+
   it('publishes the semantic control identity summary in the sync pull request', () => {
     const workflow = readFileSync(WORKFLOW_PATH, 'utf8');
 
