@@ -1,4 +1,5 @@
 import js from '@eslint/js';
+import { defineConfig } from 'eslint/config';
 import reactHooks from 'eslint-plugin-react-hooks';
 import eslintPluginUnicorn from 'eslint-plugin-unicorn';
 import tseslint from 'typescript-eslint';
@@ -35,7 +36,7 @@ const oscalSecurity = {
   },
 };
 
-export default tseslint.config(
+export default defineConfig(
   { ignores: ['dist', 'coverage', '.worktrees'] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],

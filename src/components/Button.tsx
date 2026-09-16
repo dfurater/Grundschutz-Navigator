@@ -40,7 +40,7 @@ export function Button({
   // versehentlichen Formular-Submit wird (Aufrufstellen geprueft: keine in <form>).
   type = 'button',
   ...props
-}: ButtonProps) {
+}: Readonly<ButtonProps>) {
   const iconSize = size === 'sm' ? 'w-3.5 h-3.5' : 'w-4 h-4';
 
   return (

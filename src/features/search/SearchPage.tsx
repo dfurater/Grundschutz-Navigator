@@ -161,7 +161,7 @@ export function SearchPage() {
   );
   const hasHiddenResults = displayedResultCount < totalResults;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = (e: React.SubmitEvent<HTMLFormElement>) => {
     e.preventDefault();
     const trimmed = inputValue.trim();
     if (trimmed) {
