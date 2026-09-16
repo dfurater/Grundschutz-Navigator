@@ -175,8 +175,8 @@ describe('useDragToResize', () => {
   });
 
   it('ends the active session on window blur, idempotently', () => {
-    const addEventListener = vi.spyOn(window, 'addEventListener');
-    const removeEventListener = vi.spyOn(window, 'removeEventListener');
+    const addEventListener = vi.spyOn(globalThis, 'addEventListener');
+    const removeEventListener = vi.spyOn(globalThis, 'removeEventListener');
     const { result } = renderHook(() => useDragToResize({
       axis: 'x',
       edge: 'end',
@@ -194,14 +194,14 @@ describe('useDragToResize', () => {
     )?.[1];
 
     act(() => {
-      window.dispatchEvent(new Event('blur'));
+      globalThis.dispatchEvent(new Event('blur'));
     });
     expect(result.current.isResizing).toBe(false);
     expect(document.body).not.toHaveClass('is-resizing');
 
     // Idempotent: Ein zweites blur ohne aktive Sitzung bleibt wirkungslos.
     act(() => {
-      window.dispatchEvent(new Event('blur'));
+      globalThis.dispatchEvent(new Event('blur'));
     });
 
     fireEvent.mouseMove(document, { clientX: 200 });
@@ -214,8 +214,8 @@ describe('useDragToResize', () => {
   it('removes document and window listeners and the body class when unmounted mid-drag', () => {
     const addEventListener = vi.spyOn(document, 'addEventListener');
     const removeEventListener = vi.spyOn(document, 'removeEventListener');
-    const addWindowEventListener = vi.spyOn(window, 'addEventListener');
-    const removeWindowEventListener = vi.spyOn(window, 'removeEventListener');
+    const addWindowEventListener = vi.spyOn(globalThis, 'addEventListener');
+    const removeWindowEventListener = vi.spyOn(globalThis, 'removeEventListener');
     const { result, unmount } = renderHook(() => useDragToResize({
       axis: 'x',
       edge: 'end',

@@ -325,7 +325,7 @@ describe('AboutPage', () => {
 
     render(<AboutPage />);
 
-    const expectedAppCatalogUrl = `${window.location.origin}/data/catalog.json`;
+    const expectedAppCatalogUrl = `${globalThis.location.origin}/data/catalog.json`;
     const expectedUpstreamCatalogUrl =
       'https://raw.githubusercontent.com/BSI-Bund/Stand-der-Technik-Bibliothek/abcdef1234567890abcdef1234567890abcdef12/control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json';
 

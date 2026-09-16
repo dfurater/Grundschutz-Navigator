@@ -20,7 +20,7 @@ export function useGlobalEventListener<
   useLayoutEffect(() => {
     if (!enabled) return;
 
-    const eventTarget: EventTarget = target === 'window' ? window : document;
+    const eventTarget: EventTarget = target === 'window' ? globalThis : document;
     const handleEvent = (event: Event) => {
       onEvent(event as GlobalEventMap<Target>[EventName]);
     };

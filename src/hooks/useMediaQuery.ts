@@ -4,11 +4,11 @@ function subscribeToMediaQuery(
   query: string,
   onStoreChange: () => void,
 ) {
-  if (typeof window === 'undefined') {
+  if (globalThis.window === undefined) {
     return () => {};
   }
 
-  const mediaQuery = window.matchMedia(query);
+  const mediaQuery = globalThis.matchMedia(query);
   const handleChange = () => onStoreChange();
 
   // addEventListener('change') ist seit 2019 in allen unterstützten Browsern
@@ -19,7 +19,7 @@ function subscribeToMediaQuery(
 }
 
 function getMediaQuerySnapshot(query: string) {
-  return typeof window !== 'undefined' && window.matchMedia(query).matches;
+  return globalThis.window !== undefined && globalThis.matchMedia(query).matches;
 }
 
 export function useMediaQuery(query: string): boolean {

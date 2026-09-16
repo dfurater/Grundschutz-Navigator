@@ -98,7 +98,7 @@ describe('importClass2OscalDocument', () => {
       },
     });
     expect(JSON.stringify(result)).not.toContain(secret);
-    expect(window.location.href).not.toContain(secret);
+    expect(globalThis.location.href).not.toContain(secret);
     expect(consoleError).not.toHaveBeenCalled();
     expect(consoleLog).not.toHaveBeenCalled();
     expect(consoleWarn).not.toHaveBeenCalled();

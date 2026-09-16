@@ -32,26 +32,26 @@ function next(): void {
   const fragment = stream.next();
   if (fragment.done) {
     stream = undefined;
-    self.postMessage({ type: 'done', sequence });
+    globalThis.postMessage({ type: 'done', sequence });
   } else {
     awaitingAck = true;
-    self.postMessage({ type: 'chunk', sequence, operations: fragment.value });
+    globalThis.postMessage({ type: 'chunk', sequence, operations: fragment.value });
   }
 }
 
-self.addEventListener('message', (event: MessageEvent) => {
+globalThis.addEventListener('message', (event: MessageEvent) => {
   const request = event.data;
   if (failed) return;
   if (request?.type === 'ack' && Object.keys(request).length === 2 && awaitingAck && request.sequence === sequence) {
     awaitingAck = false;
     sequence++;
-    try { next(); } catch { self.postMessage({ type: 'failure' }); }
+    try { next(); } catch { globalThis.postMessage({ type: 'failure' }); }
     return;
   }
   if (started || request?.type !== 'import' || !(request.bytes instanceof ArrayBuffer)) {
     failed = true;
     stream = undefined;
-    self.postMessage({ type: 'failure' });
+    globalThis.postMessage({ type: 'failure' });
     return;
   }
   started = true;
@@ -60,11 +60,11 @@ self.addEventListener('message', (event: MessageEvent) => {
     .then((result: Class2OscalImportResult) => {
       if (failed) return;
       if (!result.ok) {
-        self.postMessage({ type: 'rejected', diagnostic: result.diagnostic });
+        globalThis.postMessage({ type: 'rejected', diagnostic: result.diagnostic });
         return;
       }
       stream = encodeOscalSource(result.document.source);
-      self.postMessage({ type: 'start', rootType: result.document.rootType, oscalVersion: result.document.oscalVersion });
+      globalThis.postMessage({ type: 'start', rootType: result.document.rootType, oscalVersion: result.document.oscalVersion });
       next();
-    }).catch(() => self.postMessage({ type: 'failure' }));
+    }).catch(() => globalThis.postMessage({ type: 'failure' }));
 });

@@ -6,7 +6,8 @@ afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); process.mockReset();
 async function setup(source: unknown) {
   let receive: (event: { data: unknown }) => void = () => { };
   const postMessage = vi.fn();
-  vi.stubGlobal('self', { addEventListener: (_: string, listener: typeof receive) => { receive = listener; }, postMessage });
+  vi.stubGlobal('addEventListener', (_: string, listener: typeof receive) => { receive = listener; });
+  vi.stubGlobal('postMessage', postMessage);
   process.mockResolvedValue({ ok: true, document: { source, rootType: 'catalog', oscalVersion: '1.1.3' } });
   await import('@/workers/oscalImport.worker');
   const send = (data: unknown) => receive({ data });

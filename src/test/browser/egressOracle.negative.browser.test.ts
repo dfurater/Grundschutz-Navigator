@@ -13,7 +13,7 @@ test.skipIf(!negativeCase)(
       throw new Error('GSPP339_NEGATIVE_EGRESS_CASE_MISSING');
     }
     const url = deriveCrossOriginUrl(
-      window.location.href,
+      globalThis.location.href,
       `/egress-proof/${negativeCase.id}`,
     );
 

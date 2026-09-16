@@ -8,8 +8,8 @@ describe('useGlobalEventListener', () => {
   });
 
   it('keeps one subscription while dispatching to the latest listener', () => {
-    const addEventListener = vi.spyOn(window, 'addEventListener');
-    const removeEventListener = vi.spyOn(window, 'removeEventListener');
+    const addEventListener = vi.spyOn(globalThis, 'addEventListener');
+    const removeEventListener = vi.spyOn(globalThis, 'removeEventListener');
     const firstListener = vi.fn();
     const latestListener = vi.fn();
 
@@ -27,13 +27,13 @@ describe('useGlobalEventListener', () => {
     expect(resizeSubscriptions()).toHaveLength(1);
 
     act(() => {
-      window.dispatchEvent(new Event('resize'));
+      globalThis.dispatchEvent(new Event('resize'));
     });
     expect(firstListener).toHaveBeenCalledTimes(1);
 
     rerender({ listener: latestListener });
     act(() => {
-      window.dispatchEvent(new Event('resize'));
+      globalThis.dispatchEvent(new Event('resize'));
     });
 
     expect(resizeSubscriptions()).toHaveLength(1);
