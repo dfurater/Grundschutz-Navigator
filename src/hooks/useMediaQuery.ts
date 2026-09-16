@@ -4,7 +4,7 @@ function subscribeToMediaQuery(
   query: string,
   onStoreChange: () => void,
 ) {
-  if (typeof globalThis.window === 'undefined') {
+  if (globalThis.window === undefined) {
     return () => {};
   }
 
@@ -19,7 +19,7 @@ function subscribeToMediaQuery(
 }
 
 function getMediaQuerySnapshot(query: string) {
-  return typeof globalThis.window !== 'undefined' && globalThis.matchMedia(query).matches;
+  return globalThis.window !== undefined && globalThis.matchMedia(query).matches;
 }
 
 export function useMediaQuery(query: string): boolean {
