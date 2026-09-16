@@ -71,6 +71,7 @@ import { CLASS_2_TRANSPORT_FIXTURES } from './class2TransportFixtures.mjs';
 import { assertScalableNodeCounts } from './class2WorstCaseFixtures.mjs';
 import {
   PROVENANCE_EXCLUDED_PATHS,
+  byCodeUnit,
   workLimitProvenance,
 } from './measureWorkLimitProvenance.mjs';
 
@@ -84,7 +85,7 @@ function sourceRevision() {
     'tsconfig.json', 'tsconfig.app.json', 'tsconfig.node.json'], { cwd: REPO_ROOT, encoding: 'utf8' })
     .split('\0').filter(Boolean)
     .filter((path) => !PROVENANCE_EXCLUDED_PATHS.includes(path))
-    .sort();
+    .sort(byCodeUnit);
   const hash = createHash('sha256');
   for (const path of paths) {
     hash.update(path).update('\0').update(readFileSync(resolve(REPO_ROOT, path))).update('\0');
