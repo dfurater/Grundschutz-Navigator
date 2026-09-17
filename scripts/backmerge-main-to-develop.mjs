@@ -314,59 +314,75 @@ export async function manifestOriginatesFromSource(git, { sourceRef = SOURCE_REF
  * und darf deshalb auch nichts durchwinken. Erst danach wird gefragt, ob der
  * markierte Stand Vorfahr von `develop` geworden ist.
  */
+/**
+ * Stufe eins für eine einzelne Marke: Sie muss einen bekannten Commit
+ * bezeichnen, der von der PR-Spitze aus erreichbar ist. Liefert den Grund der
+ * Ungültigkeit oder `null`, wenn die Marke trägt.
+ */
+async function findMarkerDefect(git, { marker, prTipRef }) {
+  const markerKnown = await gitSucceeds(git, ['rev-parse', '--verify', '--quiet', `${marker}^{commit}`]);
+  if (!markerKnown) {
+    return `Der markierte Commit ${marker} existiert im Repository nicht.`;
+  }
+
+  const reachableFromTip = await gitSucceeds(git, ['merge-base', '--is-ancestor', marker, prTipRef]);
+  if (!reachableFromTip) {
+    return `Der markierte Commit ${marker} ist von der PR-Spitze nicht erreichbar.`;
+  }
+
+  return null;
+}
+
+/** Beide Stufen für einen einzelnen Pull Request. */
+async function inspectCompletedImport(git, { pullRequest, integrationRef }) {
+  const invalid = [];
+  const missing = [];
+
+  const markers = parseSourceMarkers(pullRequest.body);
+  if (markers.length === 0) {
+    invalid.push({
+      number: pullRequest.number,
+      reason: 'Der PR-Body trägt keine Quellmarke `<!-- backmerge-source: <sha> -->`.',
+    });
+    return { invalid, missing };
+  }
+
+  const prTipRef = `refs/backmerge-pr/${pullRequest.number}`;
+  const tipAvailable = await gitSucceeds(git, ['rev-parse', '--verify', '--quiet', `${prTipRef}^{commit}`]);
+  if (!tipAvailable) {
+    invalid.push({
+      number: pullRequest.number,
+      reason: `Die PR-Spitze ist nicht abrufbar (${prTipRef}); die Marke ist damit nicht überprüfbar.`,
+    });
+    return { invalid, missing };
+  }
+
+  for (const marker of markers) {
+    const defect = await findMarkerDefect(git, { marker, prTipRef });
+    if (defect) {
+      invalid.push({ number: pullRequest.number, reason: defect });
+      continue;
+    }
+
+    const ancestorOfIntegration = await gitSucceeds(git, [
+      'merge-base', '--is-ancestor', marker, integrationRef,
+    ]);
+    if (!ancestorOfIntegration) {
+      missing.push({ number: pullRequest.number, sha: marker });
+    }
+  }
+
+  return { invalid, missing };
+}
+
 export async function checkCompletedImportAncestry(git, { pullRequests, integrationRef = INTEGRATION_REF }) {
   const invalid = [];
   const missing = [];
 
   for (const pullRequest of pullRequests) {
-    const markers = parseSourceMarkers(pullRequest.body);
-    if (markers.length === 0) {
-      invalid.push({
-        number: pullRequest.number,
-        reason: 'Der PR-Body trägt keine Quellmarke `<!-- backmerge-source: <sha> -->`.',
-      });
-      continue;
-    }
-
-    const prTipRef = `refs/backmerge-pr/${pullRequest.number}`;
-    const tipAvailable = await gitSucceeds(git, ['rev-parse', '--verify', '--quiet', `${prTipRef}^{commit}`]);
-    if (!tipAvailable) {
-      invalid.push({
-        number: pullRequest.number,
-        reason: `Die PR-Spitze ist nicht abrufbar (${prTipRef}); die Marke ist damit nicht überprüfbar.`,
-      });
-      continue;
-    }
-
-    for (const marker of markers) {
-      const markerKnown = await gitSucceeds(git, ['rev-parse', '--verify', '--quiet', `${marker}^{commit}`]);
-      if (!markerKnown) {
-        invalid.push({
-          number: pullRequest.number,
-          reason: `Der markierte Commit ${marker} existiert im Repository nicht.`,
-        });
-        continue;
-      }
-
-      const reachableFromTip = await gitSucceeds(git, ['merge-base', '--is-ancestor', marker, prTipRef]);
-      if (!reachableFromTip) {
-        invalid.push({
-          number: pullRequest.number,
-          reason: `Der markierte Commit ${marker} ist von der PR-Spitze nicht erreichbar.`,
-        });
-        continue;
-      }
-
-      const ancestorOfIntegration = await gitSucceeds(git, [
-        'merge-base',
-        '--is-ancestor',
-        marker,
-        integrationRef,
-      ]);
-      if (!ancestorOfIntegration) {
-        missing.push({ number: pullRequest.number, sha: marker });
-      }
-    }
+    const result = await inspectCompletedImport(git, { pullRequest, integrationRef });
+    invalid.push(...result.invalid);
+    missing.push(...result.missing);
   }
 
   return { invalid, missing };
@@ -743,25 +759,12 @@ async function pushImportBranch(git, branch) {
   await git(pushArgs);
 }
 
-export async function runBackmerge({
-  cwd = process.cwd(),
-  git = createGitRunner({ cwd }),
-  github = createGitHubClient({ repository: process.env.GITHUB_REPOSITORY }),
-  logger = console,
-} = {}) {
-  // Explizite Refspecs: Ein `git fetch origin main develop` aktualisiert nur
-  // FETCH_HEAD, nicht die Remote-Tracking-Refs, gegen die hier gerechnet wird.
-  await git([
-    'fetch', '--no-tags', 'origin',
-    '+refs/heads/main:refs/remotes/origin/main',
-    `+refs/heads/${CATALOG_IMPORT_BASE_REF}:refs/remotes/origin/${CATALOG_IMPORT_BASE_REF}`,
-  ]);
-
-  const sourceSha = await gitText(git, ['rev-parse', SOURCE_REF]);
-  const integrationSha = await gitText(git, ['rev-parse', INTEGRATION_REF]);
-  logger.log(`Quellstand ${SOURCE_REF}=${sourceSha}, Integrationsstand ${INTEGRATION_REF}=${integrationSha}.`);
-
-  // Erste Handlung: Ancestry vor dem Leerlauftest.
+/**
+ * Phase eins: der Ancestry-Befundstand abgeschlossener Übernahmen. Eine
+ * ungültige Marke beendet den Lauf hier; eine fehlende meldet sich als
+ * Reparaturbedarf zurück.
+ */
+async function resolveAncestryState(git, { github, logger }) {
   const mergedPullRequests = await github.listMergedPullRequests(BACKMERGE_BRANCH);
   await fetchPullRequestTips(git, mergedPullRequests);
   const { invalid, missing } = await checkCompletedImportAncestry(git, {
@@ -775,27 +778,22 @@ export async function runBackmerge({
     );
   }
 
-  const repairRequired = missing.length > 0;
-  if (repairRequired) {
+  if (missing.length > 0) {
     logger.error(
       'Fehlende Ancestry abgeschlossener Übernahmen:\n'
       + missing.map((entry) => `- Pull Request #${entry.number}, Quellstand ${entry.sha}`).join('\n'),
     );
   }
 
-  // Die Reparatur ist der ALLEINIGE Gegenstand ihres Laufs. Sie mit einer
-  // Inhaltsübernahme zu bündeln erzeugt einen Pull Request, den kein
-  // Guard-Vertrag trägt: Ein Reparatur-Merge plus Manifestbewegung läuft unter
-  // dem neutralen Branchnamen, erfüllt damit weder den Ein-Datei-Importvertrag
-  // (der `chore/catalog-import-to-develop` verlangt) noch den regulären
-  // Sync-Branchvertrag — und fällt auf den Sync-Pfad zurück, der ihn ablehnt.
-  // Der nächste Katalog-Sync käme dann nicht mehr nach `develop`. Getrennt
-  // bleibt jeder Pull Request vertragsfähig; der Inhalt folgt im Lauf nach dem
-  // Merge der Reparatur, den der `push`-Trigger auf `develop` sofort auslöst.
-  if (repairRequired) {
-    return runAncestryRepair(git, { github, logger, missing, sourceSha, integrationSha });
-  }
+  return { missing, repairRequired: missing.length > 0 };
+}
 
+/**
+ * Phase zwei: was `main` seit der gemeinsamen Basis bewegt hat, welcher Klasse
+ * das entspricht, und ob die Vorbedingung dieser Klasse hält. Ein Konflikt und
+ * eine verletzte M1-Vorbedingung beenden den Lauf hier — ohne Pull Request.
+ */
+async function determineImportPlan(git, { logger, sourceSha, integrationSha }) {
   const mergeBase = await gitText(git, ['merge-base', SOURCE_REF, INTEGRATION_REF]);
   const diffOutput = await gitText(git, [
     'diff', '--name-status', '--no-renames', mergeBase, SOURCE_REF, '--',
@@ -804,9 +802,9 @@ export async function runBackmerge({
 
   const sourceManifest = await readManifestAtRef(git, SOURCE_REF);
   const integrationManifest = await readManifestAtRef(git, INTEGRATION_REF);
+  const sourceSnapshot = sourceManifest?.snapshotCommitSha;
   const snapshotAdvances =
-    sourceManifest?.snapshotCommitSha !== undefined
-    && sourceManifest.snapshotCommitSha !== integrationManifest?.snapshotCommitSha;
+    sourceSnapshot !== undefined && sourceSnapshot !== integrationManifest?.snapshotCommitSha;
 
   const { klasse, reason } = classifyBackmerge({ changedPaths, snapshotAdvances });
   logger.log(`Klasse ${klasse}: ${reason}`);
@@ -819,51 +817,26 @@ export async function runBackmerge({
     );
   }
 
-  if (klasse === 'idle') {
-    logger.log('Kein Übernahmebedarf und intakte Ancestry — Lauf endet ohne Pull Request.');
-    return { created: false, klasse, repairRequired: false };
-  }
-
-  if (klasse === 'M1') {
-    const originates = await manifestOriginatesFromSource(git);
-    if (!originates) {
-      throw new BackmergeError(
-        `Die M1-Vorbedingung ist verletzt: Das Manifest auf \`${INTEGRATION_REF}\` kommt an `
-        + `keinem von \`${SOURCE_REF}\` erreichbaren Commit vor. Der Stand stammt damit nicht `
-        + 'nachweislich aus der Freigabelinie und wird nicht wholesale ersetzt. Es entsteht '
-        + 'kein Pull Request.',
-      );
-    }
-  }
-
-  const branch = selectBranch({ klasse, repairRequired: false });
-  const { mergePending } = await buildImport(git, { klasse, branch, cwd });
-
-  const resultTree = await gitText(git, ['write-tree']);
-  const integrationTree = await gitText(git, ['rev-parse', `${INTEGRATION_REF}^{tree}`]);
-
-  // Der Leerlauftest vergleicht das ERGEBNIS der Übernahme mit develops Baum,
-  // nicht die Bäume von main und develop: Letztere unterscheiden sich schon
-  // durch normale Entwicklungsarbeit, während das Ergebnis genau dann develops
-  // Baum ergibt, wenn nichts zu übernehmen ist.
-  if (resultTree === integrationTree) {
-    if (mergePending) await git(['merge', '--abort'], { allowFailure: true });
-    logger.log(
-      'Die berechnete Übernahme ändert den `develop`-Baum nicht — Lauf endet ohne Pull Request.',
+  if (klasse === 'M1' && !await manifestOriginatesFromSource(git)) {
+    throw new BackmergeError(
+      `Die M1-Vorbedingung ist verletzt: Das Manifest auf \`${INTEGRATION_REF}\` kommt an `
+      + `keinem von \`${SOURCE_REF}\` erreichbaren Commit vor. Der Stand stammt damit nicht `
+      + 'nachweislich aus der Freigabelinie und wird nicht wholesale ersetzt. Es entsteht '
+      + 'kein Pull Request.',
     );
-    return { created: false, klasse, repairRequired: false };
   }
 
-  if (mergePending) {
-    await git(['commit', '--no-edit']);
-  } else if (klasse === 'M1') {
-    await git([
-      'commit',
-      '-m',
-      `chore(sync): BSI-Manifest aus ${SOURCE_REF} nach ${CATALOG_IMPORT_BASE_REF} übernehmen`,
-    ]);
-  }
+  return { klasse, reason, changedPaths };
+}
 
+/**
+ * Phase drei: den berechneten Stand als Pull Request stellen. Für M2 wird
+ * vorher geprüft, ob der resultierende Zielzustand einen Migrationsvertrag
+ * erfüllt — sonst entsteht kein Pull Request, statt einen roten zu stellen.
+ */
+async function publishImportPullRequest(git, {
+  github, logger, cwd, branch, klasse, reason, changedPaths, sourceSha, integrationSha,
+}) {
   const mergeMethod = klasse === 'M1' ? 'Squash' : 'Merge-Commit';
   const title =
     klasse === 'M1'
@@ -903,12 +876,98 @@ export async function runBackmerge({
   if (existing) {
     await github.updatePullRequest({ number: existing, title, body });
     logger.log(`Übernahme-Pull-Request #${existing} aktualisiert.`);
-  } else {
-    const url = await github.createPullRequest({ head: branch, title, body });
-    logger.log(`Übernahme-Pull-Request erstellt: ${url}`);
+    return;
   }
 
+  const url = await github.createPullRequest({ head: branch, title, body });
+  logger.log(`Übernahme-Pull-Request erstellt: ${url}`);
+}
+
+export async function runBackmerge({
+  cwd = process.cwd(),
+  git = createGitRunner({ cwd }),
+  github = createGitHubClient({ repository: process.env.GITHUB_REPOSITORY }),
+  logger = console,
+} = {}) {
+  // Explizite Refspecs: Ein `git fetch origin main develop` aktualisiert nur
+  // FETCH_HEAD, nicht die Remote-Tracking-Refs, gegen die hier gerechnet wird.
+  await git([
+    'fetch', '--no-tags', 'origin',
+    '+refs/heads/main:refs/remotes/origin/main',
+    `+refs/heads/${CATALOG_IMPORT_BASE_REF}:refs/remotes/origin/${CATALOG_IMPORT_BASE_REF}`,
+  ]);
+
+  const sourceSha = await gitText(git, ['rev-parse', SOURCE_REF]);
+  const integrationSha = await gitText(git, ['rev-parse', INTEGRATION_REF]);
+  logger.log(`Quellstand ${SOURCE_REF}=${sourceSha}, Integrationsstand ${INTEGRATION_REF}=${integrationSha}.`);
+
+  // Erste Handlung: Ancestry vor dem Leerlauftest. Nach einem Squash liegt der
+  // Inhalt vollständig vor, und der Leerlauftest würde den Lauf sonst
+  // erfolgreich beenden, während die Ancestry fehlt.
+  const { missing, repairRequired } = await resolveAncestryState(git, { github, logger });
+
+  // Die Reparatur ist der ALLEINIGE Gegenstand ihres Laufs. Sie mit einer
+  // Inhaltsübernahme zu bündeln erzeugt einen Pull Request, den kein
+  // Guard-Vertrag trägt: Ein Reparatur-Merge plus Manifestbewegung läuft unter
+  // dem neutralen Branchnamen, erfüllt damit weder den Ein-Datei-Importvertrag
+  // (der `chore/catalog-import-to-develop` verlangt) noch den regulären
+  // Sync-Branchvertrag — und fällt auf den Sync-Pfad zurück, der ihn ablehnt.
+  // Der nächste Katalog-Sync käme dann nicht mehr nach `develop`. Getrennt
+  // bleibt jeder Pull Request vertragsfähig; der Inhalt folgt im Lauf nach dem
+  // Merge der Reparatur, den der `push`-Trigger auf `develop` sofort auslöst.
+  if (repairRequired) {
+    return runAncestryRepair(git, { github, logger, missing, sourceSha, integrationSha });
+  }
+
+  const { klasse, reason, changedPaths } = await determineImportPlan(git, {
+    logger, sourceSha, integrationSha,
+  });
+
+  if (klasse === 'idle') {
+    logger.log('Kein Übernahmebedarf und intakte Ancestry — Lauf endet ohne Pull Request.');
+    return { created: false, klasse, repairRequired: false };
+  }
+
+  const branch = selectBranch({ klasse, repairRequired: false });
+  const { mergePending } = await buildImport(git, { klasse, branch, cwd });
+
+  const resultTree = await gitText(git, ['write-tree']);
+  const integrationTree = await gitText(git, ['rev-parse', `${INTEGRATION_REF}^{tree}`]);
+
+  // Der Leerlauftest vergleicht das ERGEBNIS der Übernahme mit develops Baum,
+  // nicht die Bäume von main und develop: Letztere unterscheiden sich schon
+  // durch normale Entwicklungsarbeit, während das Ergebnis genau dann develops
+  // Baum ergibt, wenn nichts zu übernehmen ist.
+  if (resultTree === integrationTree) {
+    if (mergePending) await git(['merge', '--abort'], { allowFailure: true });
+    logger.log(
+      'Die berechnete Übernahme ändert den `develop`-Baum nicht — Lauf endet ohne Pull Request.',
+    );
+    return { created: false, klasse, repairRequired: false };
+  }
+
+  await commitImport(git, { klasse, mergePending });
+
+  await publishImportPullRequest(git, {
+    github, logger, cwd, branch, klasse, reason, changedPaths, sourceSha, integrationSha,
+  });
+
   return { created: true, klasse, repairRequired: false };
+}
+
+/** M1 schreibt einen eigenen Commit; die Merge-Klassen schließen den Merge ab. */
+async function commitImport(git, { klasse, mergePending }) {
+  if (mergePending) {
+    await git(['commit', '--no-edit']);
+    return;
+  }
+  if (klasse === 'M1') {
+    await git([
+      'commit',
+      '-m',
+      `chore(sync): BSI-Manifest aus ${SOURCE_REF} nach ${CATALOG_IMPORT_BASE_REF} übernehmen`,
+    ]);
+  }
 }
 
 const isDirectExecution = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
