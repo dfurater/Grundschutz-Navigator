@@ -39,15 +39,53 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # Der Übernahme-Vertrag vergleicht das Manifest am PR-Head gegen das
+      # Manifest an `origin/main`. Der Fetch ist explizit, statt sich auf das
+      # Ref-Set des Checkouts zu verlassen: Fehlt `origin/main`, liefert das
+      # Prädikat fail-closed `false` und die PR fällt auf den regulären
+      # Sync-Pfad zurück — der Vertrag würde also stillschweigend nie greifen.
+      - name: Fetch main for the catalog import provenance check
+        if: github.event_name == 'pull_request'
+        run: git fetch --no-tags origin main:refs/remotes/origin/main
+
       - name: Validate catalog sync PR contract
         if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: node scripts/catalog-sync-guard.mjs
+
+      # Die Baumgleichheit eines Release-PRs mit dem freigegebenen
+      # `develop`-Stand gilt sonst nur im Augenblick seiner Entstehung. Bewegt
+      # sich `main` danach, verlangt die Strict-Policy eine Aktualisierung des
+      # Heads — und ein konfliktfreier „Update branch" trägt mains neuen Inhalt
+      # hinein, ohne dass etwas den Baum erneut prüft. Der Pull Request ließe
+      # sich dann mit einem anderen Stand mergen, als sein Protokoll benennt.
+      #
+      # Die Prüfung sitzt in diesem Job statt in einem eigenen, weil nur so ihr
+      # Fehlschlag den Merge verhindert: `catalog-sync-guard` ist in beiden
+      # Rulesets Pflichtcheck, ein neuer Jobname wäre es nicht. Ein eigener Job
+      # ließe sich auch nicht nachträglich erzwingen, ohne die Catalog-Sync-Lane
+      # zu brechen — deren PRs zweigen von `main` ab und führen diese
+      # Workflow-Fassung nicht, der geforderte Check bliebe dort also
+      # unbeantwortet und der Auto-Merge stünde still. Ein Release-PR trägt
+      # dagegen den Baum von `develop` und damit diese Fassung im Head.
+      - name: Fetch develop for the release provenance check
+        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/')
+        run: git fetch --no-tags origin develop:refs/remotes/origin/develop
+
+      - name: Verify the release PR against its approval marker
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/release-prepare.mjs --verify-pull-request
 
   validate:
     runs-on: ubuntu-latest
