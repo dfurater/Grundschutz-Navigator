@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import {
   WORK_LIMIT_ENTRY_POINTS,
   PROVENANCE_EXCLUDED_PATHS,
+  byCodeUnit,
   collectWorkLimitSources,
   runtimeImportSpecifiers,
   workLimitProvenance,
@@ -162,6 +163,46 @@ describe('runtimeImportSpecifiers', () => {
     expect(runtimeImportSpecifiers("import a from './a';")).toEqual(['./a']);
     expect(runtimeImportSpecifiers("export * from './a';")).toEqual(['./a']);
     expect(runtimeImportSpecifiers("export { a } from './a';")).toEqual(['./a']);
+  });
+});
+
+describe('byCodeUnit', () => {
+  // Genau der Fall, an dem die beiden Ordnungen im echten Baum auseinanderlaufen:
+  // `I` steht als Code-Unit vor `i`, in jeder Locale-Kollation aber dahinter.
+  const paths = [
+    'src/components/Input.tsx',
+    'src/components/icons.test.tsx',
+    'src/components/Badge.tsx',
+  ];
+
+  // Der Comparator wird direkt aufgerufen, nicht nur über `.sort()` gereicht.
+  // `Array.prototype.sort(undefined)` fällt auf die Default-Vergleichsfunktion
+  // zurück, und die ist für Strings ihrerseits Code-Unit-Ordnung: Ein Test, der
+  // nur sortiert, bliebe grün, wenn der Export wieder verschwände, und pinnte
+  // damit nichts.
+  it('ist eine echte Vergleichsfunktion und kein weggefallener Export', () => {
+    expect(typeof byCodeUnit).toBe('function');
+    expect(byCodeUnit('src/components/Input.tsx', 'src/components/icons.test.tsx')).toBeLessThan(0);
+    expect(byCodeUnit('src/components/icons.test.tsx', 'src/components/Input.tsx')).toBeGreaterThan(0);
+    expect(byCodeUnit('src/components/Input.tsx', 'src/components/Input.tsx')).toBe(0);
+  });
+
+  it('ordnet über UTF-16-Code-Units, nicht über die Kollation einer Locale', () => {
+    expect([...paths].sort(byCodeUnit)).toEqual([
+      'src/components/Badge.tsx',
+      'src/components/Input.tsx',
+      'src/components/icons.test.tsx',
+    ]);
+  });
+
+  it('weicht an dieser Eingabe nachweislich von `localeCompare` ab', () => {
+    // Die Locale ist gepinnt, damit der Nachweis nicht an der Umgebung des
+    // Testläufers hängt. Der Test hält damit fest, was der Kommentar an der
+    // Definition bisher nur behauptet: Ein Umbau auf `localeCompare` — etwa
+    // auf Zuruf einer Werkzeugmeldung — ändert die Reihenfolge und damit
+    // jeden Fingerprint, der auf ihr steht.
+    expect([...paths].sort((left, right) => left.localeCompare(right, 'en')))
+      .not.toEqual([...paths].sort(byCodeUnit));
   });
 });
 

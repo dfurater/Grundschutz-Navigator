@@ -43,7 +43,7 @@ function deleteDatabase(name: string): Promise<void> {
 
     const clearBlockedTimeout = () => {
       if (blockedTimeout !== undefined) {
-        window.clearTimeout(blockedTimeout);
+        globalThis.clearTimeout(blockedTimeout);
         blockedTimeout = undefined;
       }
     };
@@ -53,7 +53,7 @@ function deleteDatabase(name: string): Promise<void> {
       reject(request.error ?? new Error('IndexedDB-Datenbank konnte nicht gelöscht werden.'));
     };
     request.onblocked = () => {
-      blockedTimeout ??= window.setTimeout(() => {
+      blockedTimeout ??= globalThis.window.setTimeout(() => {
         reject(new Error('IndexedDB-Datenbanklöschung blieb länger als zwei Sekunden blockiert.'));
       }, BLOCKED_DATABASE_TIMEOUT_MS);
     };
@@ -105,7 +105,7 @@ test('wartet beim Löschen auf eine offene IndexedDB-Verbindung', async () => {
   );
 
   try {
-    await new Promise<void>((resolve) => window.setTimeout(resolve, 50));
+    await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 50));
     blockingConnection.close();
 
     await expect(deletionResult).resolves.toBe('deleted');

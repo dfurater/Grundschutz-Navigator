@@ -59,7 +59,7 @@ export function getControlDetailUrl(
     baseUrl?: string;
   } = {},
 ) {
-  const origin = options.origin ?? window.location.origin;
+  const origin = options.origin ?? globalThis.location.origin;
   const baseUrl = options.baseUrl ?? import.meta.env.BASE_URL;
   const normalizedBaseUrl = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
   const relativeControlUrl = buildControlUrlForControl(catalogKey, control).slice(1);

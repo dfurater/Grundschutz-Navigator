@@ -210,8 +210,8 @@ describe('useGuidanceOverflow', () => {
     vi.stubGlobal('ResizeObserver', undefined);
     let scrollHeight = 120;
     mockElementHeights(scrollHeight, 120);
-    const addEventListener = vi.spyOn(window, 'addEventListener');
-    const removeEventListener = vi.spyOn(window, 'removeEventListener');
+    const addEventListener = vi.spyOn(globalThis, 'addEventListener');
+    const removeEventListener = vi.spyOn(globalThis, 'removeEventListener');
 
     const view = render(<GuidanceHarness scopeId="gspp:TOP.1.1" enabled />);
     expect(addEventListener).toHaveBeenCalledWith('resize', expect.any(Function));
@@ -220,7 +220,7 @@ describe('useGuidanceOverflow', () => {
     scrollHeight = 122;
     vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get')
       .mockReturnValue(scrollHeight);
-    fireEvent.resize(window);
+    fireEvent.resize(globalThis.window);
     expect(screen.getByTestId('has-overflow')).toHaveTextContent('true');
 
     fireEvent.click(screen.getByRole('button', { name: 'Umschalten' }));
@@ -233,8 +233,8 @@ describe('useGuidanceOverflow', () => {
   it('cleans up and replaces the window fallback when the scope changes', () => {
     vi.stubGlobal('ResizeObserver', undefined);
     mockElementHeights(120, 120);
-    const addEventListener = vi.spyOn(window, 'addEventListener');
-    const removeEventListener = vi.spyOn(window, 'removeEventListener');
+    const addEventListener = vi.spyOn(globalThis, 'addEventListener');
+    const removeEventListener = vi.spyOn(globalThis, 'removeEventListener');
 
     const view = render(<GuidanceHarness scopeId="gspp:TOP.1.1" enabled />);
     const resizeSubscriptions = () => addEventListener.mock.calls.filter(
