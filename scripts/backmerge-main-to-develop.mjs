@@ -304,6 +304,54 @@ export async function manifestOriginatesFromSource(git, { sourceRef = SOURCE_REF
 }
 
 /**
+ * Ein Eintrag aus `git cat-file --batch-check`: die Blob-Identität des Pfades
+ * oder `missing`, wenn er an dieser Seite nicht existiert. Beides sind
+ * vergleichbare Aussagen — zwei fehlende Pfade sind inhaltsgleich, ein
+ * fehlender gegen einen vorhandenen nicht. Ein unerwarteter Objekttyp liefert
+ * `null` und lässt den Aufrufer fail-closed auf die reguläre Klassifikation
+ * zurückfallen.
+ */
+function readCatFileIdentity(line) {
+  if (line.endsWith(' missing')) return 'missing';
+  const [objectName, objectType] = line.split(' ');
+  return objectType === 'blob' && SHA_PATTERN.test(objectName) ? objectName : null;
+}
+
+/**
+ * Beantwortet, ob jeder von `main` bewegte Pfad auf `develop` bereits
+ * byte-identisch vorliegt — die Übernahme also nichts mehr zu tragen hätte.
+ *
+ * Die Frage ist nötig, weil Pfadmenge und Inhaltsstand verschiedene
+ * Bezugsgrößen haben: Die Menge kommt aus dem Diff der Merge-Basis gegen
+ * `main`, der Inhalt aus den aktuellen Spitzen beider Linien. Nach einem
+ * erlaubten M1-Squash bleibt die Merge-Basis zurück, während `develop` den
+ * neuen Manifeststand bereits trägt. Die Pfadmenge enthält das Manifest dann
+ * weiter, obwohl beide Blobs identisch sind — und die Klassifikation meldete
+ * einen Konflikt („bewegt, ohne dass sich snapshotCommitSha ändert"), bevor der
+ * Ergebnisbaum-Leerlauftest den Fall je erreichte. Diese Prüfung stellt
+ * denselben Leerlauf fest, nur an der Pfadmenge und vor jeder Vertragsfrage.
+ */
+export async function sourceChangesAlreadyOnIntegration(git, {
+  paths, sourceRef = SOURCE_REF, integrationRef = INTEGRATION_REF,
+}) {
+  if (paths.length === 0) return false;
+
+  const requests = paths.flatMap((path) => [`${sourceRef}:${path}`, `${integrationRef}:${path}`]);
+  const { stdout } = await git(['cat-file', '--batch-check=%(objectname) %(objecttype)'], {
+    input: `${requests.join('\n')}\n`,
+  });
+
+  const identities = stdout.split('\n').filter((line) => line.length > 0).map(readCatFileIdentity);
+  if (identities.length !== requests.length) return false;
+
+  return paths.every((_path, index) => {
+    const onSource = identities[2 * index];
+    const onIntegration = identities[2 * index + 1];
+    return onSource !== null && onSource === onIntegration;
+  });
+}
+
+/**
  * Prüft die Ancestry abgeschlossener M2- und M3-Übernahmen. Das ist die erste
  * Handlung jedes Laufs, vor dem Leerlauftest: Nach einem Squash liegt der
  * Inhalt vollständig vor, und der Leerlauftest würde den Lauf sonst erfolgreich
@@ -388,7 +436,21 @@ export async function checkCompletedImportAncestry(git, { pullRequests, integrat
   return { invalid, missing };
 }
 
-function formatDocumentationSection({ changedPaths }) {
+/** Begründung der automatisch erzeugten Übernahme-Pull-Requests. */
+export const BACKMERGE_NO_DOCUMENTATION_IMPACT_REASON =
+  'Diese Übernahme trägt ausschließlich Inhalte nach `develop`, die auf der '
+  + 'Freigabelinie bereits geprüft und dokumentiert wurden; die zugehörige '
+  + 'Dokumentation wurde im ursprünglichen Pull Request geführt und ändert sich hier nicht.';
+
+/**
+ * Baut den maschinenlesbaren Dokumentationsvertrag, den
+ * `scripts/pr-documentation-contract.mjs` an jedem Pull Request mit Änderungen
+ * unter `src/` verlangt. Beide automatisch erzeugten Lanes — Übernahme und
+ * Release-Vorbereitung — tragen Produktcode und fielen ohne ihn am Pflichtcheck
+ * durch; sie teilen sich deshalb diesen Bau und unterscheiden sich allein in der
+ * Begründung, die zum jeweiligen Vorgang gehört.
+ */
+export function formatDocumentationSection({ changedPaths, noImpactReason }) {
   const documentationFiles = changedPaths
     .filter((path) => path === 'README.md' || path.startsWith('docs/'))
     .sort(compareStringsByCodeUnit);
@@ -407,10 +469,6 @@ function formatDocumentationSection({ changedPaths }) {
     ].join('\n');
   }
 
-  const reason =
-    'Diese Übernahme trägt ausschließlich Inhalte nach `develop`, die auf der '
-    + 'Freigabelinie bereits geprüft und dokumentiert wurden; die zugehörige '
-    + 'Dokumentation wurde im ursprünglichen Pull Request geführt und ändert sich hier nicht.';
   return [
     CONTRACT_START,
     '## Dokumentationsauswirkung',
@@ -418,7 +476,7 @@ function formatDocumentationSection({ changedPaths }) {
     '- [ ] **Dokumentation aktualisiert**',
     `  Betroffene Dateien: ${FILES_START} \`docs/DATEI.md\` oder \`README.md\` ${FILES_END}`,
     '- [x] **Keine Dokumentationsauswirkung**',
-    `  Begründung: ${REASON_START} ${reason} ${REASON_END}`,
+    `  Begründung: ${REASON_START} ${noImpactReason} ${REASON_END}`,
     CONTRACT_END,
   ].join('\n');
 }
@@ -499,7 +557,10 @@ export function buildPullRequestBody({
     + 'ohne Pull Request ab, wenn kein Vertrag greift. Die inhaltliche Prüfung des '
     + 'Manifests gegen die BSI-API führt `catalog-sync-guard` an diesem Pull Request aus.',
     '',
-    formatDocumentationSection({ changedPaths: paths }),
+    formatDocumentationSection({
+      changedPaths: paths,
+      noImpactReason: BACKMERGE_NO_DOCUMENTATION_IMPACT_REASON,
+    }),
     '',
     ...markerShas.map((sha) => formatSourceMarker(sha)),
   );
@@ -799,6 +860,19 @@ async function determineImportPlan(git, { logger, sourceSha, integrationSha }) {
     'diff', '--name-status', '--no-renames', mergeBase, SOURCE_REF, '--',
   ]);
   const changedPaths = parseNameStatusDiff(diffOutput).map((entry) => entry.path);
+
+  // Vor jeder Vertragsfrage: Liegt der bewegte Inhalt auf `develop` bereits
+  // vollständig vor, ist nichts zu übernehmen — unabhängig davon, welcher
+  // Klasse die Pfadmenge entspräche. Das ist der reguläre Zustand nach einem
+  // erlaubten M1-Squash, dessen zurückgebliebene Merge-Basis die Pfadmenge
+  // weiterführt, während beide Blobs längst identisch sind.
+  if (await sourceChangesAlreadyOnIntegration(git, { paths: changedPaths })) {
+    const reason =
+      `Alle von \`${SOURCE_REF}\` bewegten Pfade liegen auf \`${INTEGRATION_REF}\` bereits `
+      + 'byte-identisch vor.';
+    logger.log(`Klasse idle: ${reason}`);
+    return { klasse: 'idle', reason, changedPaths };
+  }
 
   const sourceManifest = await readManifestAtRef(git, SOURCE_REF);
   const integrationManifest = await readManifestAtRef(git, INTEGRATION_REF);

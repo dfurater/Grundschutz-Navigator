@@ -30,7 +30,11 @@
  */
 
 import { pathToFileURL } from 'node:url';
-import { createGitHubClient, createGitRunner } from './backmerge-main-to-develop.mjs';
+import {
+  createGitHubClient,
+  createGitRunner,
+  formatDocumentationSection,
+} from './backmerge-main-to-develop.mjs';
 
 export const RELEASE_BASE_REF = 'main';
 export const RELEASE_SOURCE_REF = 'origin/main';
@@ -84,6 +88,25 @@ async function gitSucceeds(git, args) {
   return code === 0;
 }
 
+/**
+ * Die Pfadmenge des Release-Pull-Requests, gerechnet wie
+ * `scripts/pr-documentation-contract.mjs` sie am Pull Request rechnet:
+ * Drei-Punkt-Diff gegen die Base, ohne Rename-Auflösung, mit demselben
+ * Statusfilter. Beide Seiten müssen dieselbe Menge sehen — sonst deklarierte der
+ * erzeugte Body etwas anderes, als der Pflichtcheck prüft.
+ *
+ * Am Vorbereitungshead fallen Zwei- und Drei-Punkt-Diff zusammen, weil
+ * `origin/main` nachweislich Vorfahr ist; die Drei-Punkt-Form bleibt trotzdem
+ * die geschriebene Form, damit die Übereinstimmung mit dem Prüfer sichtbar ist.
+ */
+export async function collectReleaseChangedPaths(git, { headSha, baseRef = RELEASE_SOURCE_REF }) {
+  const { stdout } = await git([
+    'diff', '--name-only', '--no-renames', '--diff-filter=ACMRD', '-z',
+    `${baseRef}...${headSha}`, '--',
+  ]);
+  return stdout.split('\0').filter(Boolean);
+}
+
 export function releaseBranchName(releaseSha) {
   if (!SHA_PATTERN.test(releaseSha)) {
     throw new ReleasePrepareError(
@@ -93,7 +116,33 @@ export function releaseBranchName(releaseSha) {
   return `release/${releaseSha.slice(0, 12)}`;
 }
 
-export function buildReleasePullRequestBody({ releaseSha, releaseBranch, sourceSha }) {
+/**
+ * Begründung für den Fall, dass die Freigabe keine Dokumentationsdatei bewegt.
+ *
+ * Der Vorbereitungsbranch schreibt keine eigene Änderung: Er trägt genau die
+ * Stände, die auf `develop` bereits einzeln geprüft wurden, und jeder von ihnen
+ * hat seinen Dokumentationsvertrag dort erfüllt. Die Freigabe trifft darüber
+ * keine neue Aussage.
+ */
+export const RELEASE_NO_DOCUMENTATION_IMPACT_REASON =
+  'Diese Freigabe trägt ausschließlich Stände nach `main`, deren '
+  + 'Dokumentationswirkung im jeweiligen Pull Request auf `develop` bereits '
+  + 'entschieden und geprüft wurde; der Vorbereitungsbranch selbst schreibt keine '
+  + 'eigene Änderung.';
+
+/**
+ * `changedPaths` ist der Drei-Punkt-Diff des Vorbereitungsheads gegen
+ * `main` — dieselbe Bezugsgröße, die `scripts/pr-documentation-contract.mjs` am
+ * Pull Request rechnet. Ohne den daraus gebauten Vertragsblock fiele jeder
+ * Release mit Produktänderung am Pflichtcheck `documentation-contract` durch,
+ * denn ein Release trägt regelmäßig Änderungen unter `src/`.
+ */
+export function buildReleasePullRequestBody({
+  releaseSha,
+  releaseBranch,
+  sourceSha,
+  changedPaths,
+}) {
   return [
     '## Zusammenfassung',
     '',
@@ -114,6 +163,11 @@ export function buildReleasePullRequestBody({ releaseSha, releaseBranch, sourceS
     'des Heads, und der resultierende Baum entspricht exakt dem Baum des freigegebenen',
     '`develop`-Stands. Die zweite Bedingung belegt zugleich, dass die Inhalts-Übernahme',
     '`main` → `develop` vollständig gelaufen ist.',
+    '',
+    formatDocumentationSection({
+      changedPaths,
+      noImpactReason: RELEASE_NO_DOCUMENTATION_IMPACT_REASON,
+    }),
     '',
     '## Freigabe-Protokoll',
     '',
@@ -259,6 +313,8 @@ export async function runReleasePrepare({
     );
   }
 
+  const changedPaths = await collectReleaseChangedPaths(git, { headSha });
+
   const remoteHead = await gitText(git, [
     'ls-remote', '--heads', 'origin', `refs/heads/${releaseBranch}`,
   ]);
@@ -269,7 +325,7 @@ export async function runReleasePrepare({
   await git(pushArgs);
 
   const title = `chore(release): ${releaseSha.slice(0, 12)} nach ${RELEASE_BASE_REF} freigeben`;
-  const body = buildReleasePullRequestBody({ releaseSha, releaseBranch, sourceSha });
+  const body = buildReleasePullRequestBody({ releaseSha, releaseBranch, sourceSha, changedPaths });
 
   const existing = await github.findOpenPullRequest(releaseBranch, RELEASE_BASE_REF);
   if (existing) {

@@ -718,6 +718,47 @@ describe('runBackmerge', () => {
     expect(JSON.parse(manifestOnDevelop).snapshotCommitSha).toBe('b'.repeat(40));
   });
 
+  it('endet nach einem regulären M1-Squash ohne Konfliktbefund', async () => {
+    // Codex-Cross-Review an Pull Request #248: Pfadmenge und Inhaltsstand haben
+    // verschiedene Bezugsgrößen. Der erlaubte Squash lässt die Merge-Basis
+    // zurückfallen, die Pfadmenge führt das Manifest deshalb weiter — während
+    // beide Manifest-Blobs längst identisch sind. `classifyBackmerge` meldete
+    // dafür „bewegt, ohne dass sich snapshotCommitSha ändert", bevor der
+    // Ergebnisbaum-Leerlauftest den Fall je erreichte, und der vom
+    // `push develop`-Trigger ausgelöste Folgelauf wurde rot.
+    const fixture = await createFixture();
+    await seedBothLines(fixture, 'a'.repeat(40));
+
+    await fixture.run('switch', '--quiet', 'main');
+    await fixture.writeManifest('b'.repeat(40));
+    await fixture.commit('chore(ci): Sync B');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+
+    const ersterLauf = await runBackmerge({
+      cwd: fixture.work, git: fixture.git, github: createGitHubStub(), logger: silentLogger,
+    });
+    expect(ersterLauf).toMatchObject({ created: true, klasse: 'M1' });
+
+    // Der M1-PR wird gesquasht gemergt — ausdrücklich zulässig für diese Klasse.
+    await fixture.run('switch', '--quiet', 'develop');
+    await fixture.run('merge', '--quiet', '--squash', `origin/${CATALOG_IMPORT_BRANCH}`);
+    await fixture.commit('chore(sync): Manifest übernehmen (squashed)');
+    await fixture.run('push', '--quiet', 'origin', 'develop');
+
+    const github = createGitHubStub();
+    const zweiterLauf = await runBackmerge({
+      cwd: fixture.work, git: fixture.git, github, logger: silentLogger,
+    });
+
+    expect(zweiterLauf).toMatchObject({ created: false, klasse: 'idle' });
+    expect(github.createPullRequest).not.toHaveBeenCalled();
+
+    // Der Inhalt liegt vollständig vor: beide Linien tragen dasselbe Manifest.
+    const aufDevelop = await fixture.run('show', `origin/develop:${TRACKED_MANIFEST_PATH}`);
+    const aufMain = await fixture.run('show', `origin/main:${TRACKED_MANIFEST_PATH}`);
+    expect(aufDevelop).toBe(aufMain);
+  });
+
   it('mergt nicht und löscht keine Branches', async () => {
     const fixture = await createFixture();
     await seedBothLines(fixture, 'a'.repeat(40));
@@ -829,5 +870,104 @@ describe('runBackmerge, Klasse M2', () => {
       cwd: fixture.work, git: fixture.git, github, logger: silentLogger,
     })).rejects.toThrow(/keinen der drei Registry-Migrationsverträge/);
     expect(github.createPullRequest).not.toHaveBeenCalled();
+  });
+
+  /** Zwei Kataloge, damit beide Linien unabhängig voneinander einen bewegen können. */
+  function manifestWithTwoCatalogs(lifecycleA: string, lifecycleB: string) {
+    return `${JSON.stringify({
+      schemaVersion: 2,
+      snapshotCommitSha: 'a'.repeat(40),
+      files: [
+        {
+          artifactKey: 'katalog-a',
+          rootType: 'catalog',
+          lifecycle: lifecycleA,
+          path: 'catalog/a.json',
+          gitBlobSha: '1'.repeat(40),
+          contentSha256: '2'.repeat(64),
+        },
+        {
+          artifactKey: 'katalog-b',
+          rootType: 'catalog',
+          lifecycle: lifecycleB,
+          path: 'catalog/b.json',
+          gitBlobSha: '3'.repeat(40),
+          contentSha256: '4'.repeat(64),
+        },
+      ],
+    }, null, 2)}\n`;
+  }
+
+  /**
+   * Die Einträge stehen mehrzeilig, damit die beiden Lifecycle-Zeilen genügend
+   * unveränderten Kontext zwischen sich haben — sonst meldete schon der
+   * Textmerge einen Konflikt, und der Test prüfte nicht mehr die Bezugsgröße,
+   * sondern die Formatierung.
+   */
+  function registryModule(lifecycleA: string, lifecycleB: string) {
+    return [
+      'export const SOURCE_REGISTRY = [',
+      '  {',
+      "    artifactKey: 'katalog-a',",
+      `    lifecycle: '${lifecycleA}',`,
+      '  },',
+      '  {',
+      "    artifactKey: 'katalog-b',",
+      `    lifecycle: '${lifecycleB}',`,
+      '  },',
+      '];',
+      '',
+    ].join('\n');
+  }
+
+  async function writeRegistryModule(fixture: Fixture, lifecycleA: string, lifecycleB: string) {
+    await execFileAsync('mkdir', ['-p', join(fixture.work, 'src/domain')]);
+    await writeFile(join(fixture.work, REGISTRY_PATH), registryModule(lifecycleA, lifecycleB), 'utf8');
+  }
+
+  it('nimmt eine unabhängige Lifecycle-Änderung auf develop nicht zurück', async () => {
+    // Der Fall aus den Akzeptanzkriterien: Ein greifendes Migrationsprädikat
+    // beweist nur, dass der Zielzustand ein zulässiger Übergang ist — nicht,
+    // dass er die Änderung aus `main` trägt. Eine vollständige Kopie des
+    // `main`-Stands setzte hier beide Kataloge auf `supported`, und der
+    // Lifecycle-Vertrag akzeptierte das, obwohl develops eigene Änderung
+    // verschwunden wäre. M2 rechnet deshalb als Drei-Wege-Merge gegen die
+    // gemeinsame Basis.
+    const fixture = await createFixture();
+    await writeFile(join(fixture.work, TRACKED_MANIFEST_PATH), manifestWithTwoCatalogs('preview', 'supported'), 'utf8');
+    await writeRegistryModule(fixture, 'preview', 'supported');
+    await fixture.commit('chore: Ausgangsstand mit zwei Katalogen');
+    await fixture.run('branch', 'develop');
+    await fixture.run('push', '--quiet', 'origin', 'main', 'develop');
+
+    // main promotet Katalog A.
+    await writeFile(join(fixture.work, TRACKED_MANIFEST_PATH), manifestWithTwoCatalogs('supported', 'supported'), 'utf8');
+    await writeRegistryModule(fixture, 'supported', 'supported');
+    await fixture.commit('chore: Katalog A promoten');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+
+    // develop setzt unabhängig davon Katalog B zurück.
+    await fixture.run('switch', '--quiet', 'develop');
+    await writeFile(join(fixture.work, TRACKED_MANIFEST_PATH), manifestWithTwoCatalogs('preview', 'preview'), 'utf8');
+    await writeRegistryModule(fixture, 'preview', 'preview');
+    await fixture.commit('chore: Katalog B zurücksetzen');
+    await fixture.run('push', '--quiet', 'origin', 'develop');
+
+    const github = createGitHubStub();
+    const result = await runBackmerge({
+      cwd: fixture.work, git: fixture.git, github, logger: silentLogger,
+    });
+    expect(result).toMatchObject({ created: true, klasse: 'M2' });
+
+    // Beide Änderungen liegen vor: mains Promotion von A und develops
+    // Rücknahme von B. Eine wholesale-Kopie hätte B auf `supported` gesetzt.
+    const manifestOnBranch = JSON.parse(
+      await fixture.run('show', `origin/${BACKMERGE_BRANCH}:${TRACKED_MANIFEST_PATH}`),
+    ) as { files: { artifactKey: string; lifecycle: string }[] };
+    expect(Object.fromEntries(manifestOnBranch.files.map((file) => [file.artifactKey, file.lifecycle])))
+      .toEqual({ 'katalog-a': 'supported', 'katalog-b': 'preview' });
+
+    const registryOnBranch = await fixture.run('show', `origin/${BACKMERGE_BRANCH}:${REGISTRY_PATH}`);
+    expect(registryOnBranch.trim()).toBe(registryModule('supported', 'preview').trim());
   });
 });

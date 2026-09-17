@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { vi } from 'vitest';
 import { createGitRunner } from './backmerge-main-to-develop.mjs';
@@ -114,7 +114,11 @@ export async function commitOnLine(
   { path, contents, message }: { path: string; contents: string; message: string },
 ) {
   await fixture.run('switch', '--quiet', line);
-  await writeFile(join(fixture.work, path), contents, 'utf8');
+  const target = join(fixture.work, path);
+  // Pfade in Unterverzeichnissen sind der Regelfall, sobald ein Test echten
+  // Produktcode nachstellt (`src/…`) — `writeFile` legt sie nicht selbst an.
+  await mkdir(dirname(target), { recursive: true });
+  await writeFile(target, contents, 'utf8');
   const sha = await fixture.commit(message);
   await fixture.run('push', '--quiet', 'origin', line);
   return sha;

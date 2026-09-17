@@ -1,6 +1,13 @@
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import {
+  getChangedFiles,
+  validateDocumentationContract,
+} from './pr-documentation-contract.mjs';
+import { REQUIRED_CHECKS } from './catalog-sync-policy.mjs';
 import {
   RELEASE_BASE_REF,
   ReleasePrepareError,
@@ -35,9 +42,9 @@ async function createFixture(): Promise<BranchLineFixture> {
  * `develop` und der daraus vorbereitete Pull Request. Gibt beides zurück, damit
  * die Tests nur noch ihre eigene Abweichung aufbauen müssen.
  */
-async function prepareApprovedRelease(fixture: BranchLineFixture) {
+async function prepareApprovedRelease(fixture: BranchLineFixture, path = 'feature.txt') {
   const releaseSha = await commitOnLine(fixture, 'develop', {
-    path: 'feature.txt',
+    path,
     contents: 'freigegebene Arbeit\n',
     message: 'feat: freigegebene Arbeit',
   });
@@ -67,11 +74,24 @@ describe('buildReleasePullRequestBody', () => {
       releaseSha: 'a'.repeat(40),
       releaseBranch: `release/${'a'.repeat(12)}`,
       sourceSha: 'b'.repeat(40),
+      changedPaths: [],
     });
 
     expect(body).toContain('**Erforderliche Merge-Methode:** Merge-Commit');
     expect(body).toContain('M9-Referenzablauf grün');
     expect(body).toContain('Milestone-Exit erfüllt');
+  });
+
+  it('deklariert die im Release bewegten Dokumentationsdateien', () => {
+    const body = buildReleasePullRequestBody({
+      releaseSha: 'a'.repeat(40),
+      releaseBranch: `release/${'a'.repeat(12)}`,
+      sourceSha: 'b'.repeat(40),
+      changedPaths: ['src/app/Main.tsx', 'docs/ARCHITECTURE.md', 'README.md'],
+    });
+
+    expect(body).toContain('- [x] **Dokumentation aktualisiert**');
+    expect(body).toContain('`README.md`, `docs/ARCHITECTURE.md`');
   });
 });
 
@@ -193,6 +213,64 @@ describe('runReleasePrepare', () => {
   });
 });
 
+describe('Dokumentationsvertrag des erzeugten Release-PRs', () => {
+  // Codex-Cross-Review an Pull Request #248: Der erzeugte Body trug ein
+  // Freigabe-Protokoll, aber keinen maschinenlesbaren Dokumentationsabschnitt.
+  // `documentation-contract` ist im main-Ruleset Pflichtcheck und greift bei
+  // jeder Änderung unter `src/` — ein Release mit Produktänderung wäre damit
+  // nicht mergefähig gewesen. Geprüft wird deshalb nicht der Text des Bodys,
+  // sondern der erzeugte Body gegen den tatsächlichen Drei-Punkt-Diff, durch
+  // denselben Validator, der am Pull Request läuft.
+
+  /** Der Diff, den der Pflichtcheck am Pull Request sieht — aus der Fixture. */
+  async function changedFilesOfReleasePullRequest(
+    fixture: BranchLineFixture,
+    releaseBranch: string,
+  ) {
+    return getChangedFiles({
+      baseSha: await fixture.run('rev-parse', 'origin/main'),
+      headSha: await fixture.run('rev-parse', `origin/${releaseBranch}`),
+      execFile: (file: string, args: string[], options: { encoding: string }) =>
+        execFileSync(file, ['-C', fixture.work, ...args], options),
+    });
+  }
+
+  it('besteht den Pflichtcheck für ein Release mit Produktänderung ohne Dokumentation', async () => {
+    const fixture = await createFixture();
+    const { result, call } = await prepareApprovedRelease(fixture, 'src/feature.ts');
+    const changedFiles = await changedFilesOfReleasePullRequest(fixture, result.releaseBranch);
+
+    expect(changedFiles).toContain('src/feature.ts');
+    expect(validateDocumentationContract({ changedFiles, pullRequestBody: call.body }))
+      .toEqual({ status: 'valid', documentationImpact: 'none' });
+  });
+
+  it('deklariert die tatsächlich bewegte Dokumentationsdatei', async () => {
+    const fixture = await createFixture();
+    await commitOnLine(fixture, 'develop', {
+      path: 'src/feature.ts',
+      contents: 'export const feature = true;\n',
+      message: 'feat: Produktänderung',
+    });
+    const releaseSha = await commitOnLine(fixture, 'develop', {
+      path: 'docs/ARCHITECTURE.md',
+      contents: '# Architektur\n',
+      message: 'docs: Architektur nachführen',
+    });
+
+    const github = createGitHubStub();
+    const run = await runReleasePrepare({
+      cwd: fixture.work, git: fixture.git, github, releaseRef: releaseSha, logger: silentLogger,
+    });
+    const [[call]] = github.createPullRequest.mock.calls as [[{ body: string }]];
+    const changedFiles = await changedFilesOfReleasePullRequest(fixture, run.releaseBranch);
+
+    expect(validateDocumentationContract({ changedFiles, pullRequestBody: call.body }))
+      .toEqual({ status: 'valid', documentationImpact: 'updated' });
+    expect(call.body).toContain('`docs/ARCHITECTURE.md`');
+  });
+});
+
 describe('Freigabe-SHA als Pflichteingabe', () => {
   // Greptile-Befund an Pull Request #248: Die Eingabe wurde per `rev-parse`
   // aufgelöst, bevor irgendetwas ihre Form prüfte. `develop` war damit eine
@@ -238,6 +316,61 @@ describe('Freigabe-SHA als Pflichteingabe', () => {
     const headTree = await fixture.run('rev-parse', `origin/${result.releaseBranch}^{tree}`);
     expect(headTree).toBe(await fixture.run('rev-parse', `${approvedSha}^{tree}`));
     expect(headTree).not.toBe(await fixture.run('rev-parse', `${laterSha}^{tree}`));
+  });
+});
+
+
+/**
+ * Zerlegt den `jobs:`-Block eines Workflows in seine Jobs. Bewusst ohne
+ * YAML-Parser: `yaml` liegt nur transitiv im Baum und wäre als Testabhängigkeit
+ * nicht deklariert. Jobnamen sind die Schlüssel auf genau zwei Leerzeichen
+ * Einrückung.
+ */
+function splitWorkflowJobs(workflow: string): Record<string, string> {
+  const lines = workflow.split('\n');
+  const jobs: Record<string, string> = {};
+  let current = '';
+
+  for (const line of lines.slice(lines.indexOf('jobs:') + 1)) {
+    const header = /^ {2}([A-Za-z0-9_-]+):\s*$/.exec(line);
+    if (header) {
+      current = header[1];
+      jobs[current] = '';
+      continue;
+    }
+    if (current) jobs[current] += `${line}\n`;
+  }
+
+  return jobs;
+}
+
+describe('Verankerung der Baumprüfung im Pflichtcheck', () => {
+  // Codex-Cross-Review an Pull Request #248: Die erneute Prüfung lief in einem
+  // eigenen Job, der in keinem Ruleset als Required Status Check geführt wurde
+  // — ihr Fehlschlag verhinderte damit keinen Merge. Ein eigener Jobname ließe
+  // sich auch nicht nachträglich erzwingen, ohne die Catalog-Sync-Lane
+  // stillzulegen: Deren Pull Requests zweigen von `main` ab und führen diese
+  // Workflow-Fassung nicht.
+  const workflow = readFileSync(resolve(process.cwd(), '.github/workflows/ci.yml'), 'utf8');
+  const jobs = splitWorkflowJobs(workflow);
+
+  it('führt die Prüfung in einem Job aus, den die Policy als Pflichtcheck führt', () => {
+    const owner = Object.entries(jobs).find(
+      ([, body]) => body.includes('node scripts/release-prepare.mjs --verify-pull-request'),
+    );
+
+    expect(owner).toBeDefined();
+    expect(REQUIRED_CHECKS).toContain(owner?.[0]);
+  });
+
+  it('hält den develop-Fetch aus dem Pfad der Catalog-Sync-Lane heraus', () => {
+    const [ownerBody] = Object.entries(jobs)
+      .filter(([, body]) => body.includes('release-prepare.mjs --verify-pull-request'))
+      .map(([, body]) => body);
+
+    expect(ownerBody).toMatch(
+      /if: github\.event_name == 'pull_request' && startsWith\(github\.head_ref, 'release\/'\)\n\s+run: git fetch --no-tags origin develop/,
+    );
   });
 });
 
