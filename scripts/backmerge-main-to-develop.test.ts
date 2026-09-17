@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { writeFile } from 'node:fs/promises';
+import { chmod, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -649,6 +649,39 @@ describe('runBackmerge', () => {
     // beim Merge mit, ein Squash ließe sie zurückfallen.
     const parents = await fixture.run('rev-list', '--parents', '-n', '1', `origin/${BACKMERGE_BRANCH}`);
     expect(parents.split(' ')).toHaveLength(3);
+  });
+
+  it('übernimmt eine reine Modusänderung als M3 statt sie als Leerlauf zu verwerfen', async () => {
+    // Codex-Cross-Review an Pull Request #248: Der vorgezogene Leerlauftest
+    // verglich die Blob-Identitäten beider Linien, und ein Blob trägt den
+    // Dateimodus nicht. Ein Hotfix, der ein Skript ausführbar macht, ließ den
+    // Lauf deshalb als `idle` enden — das Ausführungsrecht erreichte `develop`
+    // nie, und die spätere Release-Vorbereitung scheiterte an der
+    // Baumungleichheit.
+    const fixture = await createFixture();
+    const script = join(fixture.work, 'run.sh');
+    await writeFile(script, '#!/bin/sh\necho hallo\n', 'utf8');
+    await seedBothLines(fixture, 'a'.repeat(40));
+
+    await fixture.run('switch', '--quiet', 'main');
+    await chmod(script, 0o755);
+    await fixture.commit('fix: run.sh ausführbar machen');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+
+    // Die Voraussetzung des Befunds: Der Blob ist auf beiden Linien derselbe,
+    // allein der Tree-Eintrag unterscheidet sich.
+    const blobAufDevelop = await fixture.run('rev-parse', 'origin/develop:run.sh');
+    const blobAufMain = await fixture.run('rev-parse', 'origin/main:run.sh');
+    expect(blobAufMain).toBe(blobAufDevelop);
+
+    const github = createGitHubStub();
+    const result = await runBackmerge({
+      cwd: fixture.work, git: fixture.git, github, logger: silentLogger,
+    });
+
+    expect(result).toMatchObject({ created: true, klasse: 'M3' });
+    const aufDemBranch = await fixture.run('ls-tree', `origin/${BACKMERGE_BRANCH}`, '--', 'run.sh');
+    expect(aufDemBranch).toMatch(/^100755 blob /);
   });
 
   it('bricht mit Konfliktbefund ab, wenn die Ausgangszustände auseinandergelaufen sind', async () => {

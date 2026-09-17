@@ -304,51 +304,38 @@ export async function manifestOriginatesFromSource(git, { sourceRef = SOURCE_REF
 }
 
 /**
- * Ein Eintrag aus `git cat-file --batch-check`: die Blob-Identität des Pfades
- * oder `missing`, wenn er an dieser Seite nicht existiert. Beides sind
- * vergleichbare Aussagen — zwei fehlende Pfade sind inhaltsgleich, ein
- * fehlender gegen einen vorhandenen nicht. Ein unerwarteter Objekttyp liefert
- * `null` und lässt den Aufrufer fail-closed auf die reguläre Klassifikation
- * zurückfallen.
- */
-function readCatFileIdentity(line) {
-  if (line.endsWith(' missing')) return 'missing';
-  const [objectName, objectType] = line.split(' ');
-  return objectType === 'blob' && SHA_PATTERN.test(objectName) ? objectName : null;
-}
-
-/**
  * Beantwortet, ob jeder von `main` bewegte Pfad auf `develop` bereits
- * byte-identisch vorliegt — die Übernahme also nichts mehr zu tragen hätte.
+ * unverändert vorliegt — die Übernahme also nichts mehr zu tragen hätte.
  *
  * Die Frage ist nötig, weil Pfadmenge und Inhaltsstand verschiedene
  * Bezugsgrößen haben: Die Menge kommt aus dem Diff der Merge-Basis gegen
  * `main`, der Inhalt aus den aktuellen Spitzen beider Linien. Nach einem
  * erlaubten M1-Squash bleibt die Merge-Basis zurück, während `develop` den
  * neuen Manifeststand bereits trägt. Die Pfadmenge enthält das Manifest dann
- * weiter, obwohl beide Blobs identisch sind — und die Klassifikation meldete
+ * weiter, obwohl beide Stände identisch sind — und die Klassifikation meldete
  * einen Konflikt („bewegt, ohne dass sich snapshotCommitSha ändert"), bevor der
  * Ergebnisbaum-Leerlauftest den Fall je erreichte. Diese Prüfung stellt
  * denselben Leerlauf fest, nur an der Pfadmenge und vor jeder Vertragsfrage.
+ *
+ * Verglichen wird der vollständige Tree-Eintrag, nicht die Blob-Identität: Ein
+ * Blob trägt den Dateimodus nicht. Setzt ein Hotfix auf `main` ein Skript von
+ * `100644` auf `100755`, bleibt seine Blob-ID gleich; reguläre Datei und
+ * Symlink können sich eine Blob-ID sogar teilen. Ein Blob-Vergleich beendete
+ * den Lauf hier als `idle`, und das Ausführungsrecht erreichte `develop` nie.
+ * `git diff` vergleicht Modus, Objekttyp und Inhalt in einem Aufruf; jeder
+ * Ausgang außer „kein Unterschied" — auch ein Fehler — fällt fail-closed auf
+ * die reguläre Klassifikation zurück. Die Pfade gehen als `:(literal)`, damit
+ * ein Name mit Glob-Zeichen nicht als Muster gelesen wird.
  */
 export async function sourceChangesAlreadyOnIntegration(git, {
   paths, sourceRef = SOURCE_REF, integrationRef = INTEGRATION_REF,
 }) {
   if (paths.length === 0) return false;
 
-  const requests = paths.flatMap((path) => [`${sourceRef}:${path}`, `${integrationRef}:${path}`]);
-  const { stdout } = await git(['cat-file', '--batch-check=%(objectname) %(objecttype)'], {
-    input: `${requests.join('\n')}\n`,
-  });
-
-  const identities = stdout.split('\n').filter((line) => line.length > 0).map(readCatFileIdentity);
-  if (identities.length !== requests.length) return false;
-
-  return paths.every((_path, index) => {
-    const onSource = identities[2 * index];
-    const onIntegration = identities[2 * index + 1];
-    return onSource !== null && onSource === onIntegration;
-  });
+  return gitSucceeds(git, [
+    'diff', '--quiet', '--no-renames', integrationRef, sourceRef, '--',
+    ...paths.map((path) => `:(literal)${path}`),
+  ]);
 }
 
 /**
