@@ -16,6 +16,7 @@ import {
   manifestOriginatesFromSource,
   parseSourceMarkers,
   runBackmerge,
+  runProcess,
   selectBranch,
 } from './backmerge-main-to-develop.mjs';
 import { CATALOG_IMPORT_BRANCH, TRACKED_MANIFEST_PATH } from './catalog-sync-guard.mjs';
@@ -107,6 +108,37 @@ function createGitHubStub(overrides: Record<string, unknown> = {}) {
 }
 
 const silentLogger = { log: () => {}, error: () => {} };
+
+describe('runProcess', () => {
+  it('erzeugt kein unbehandeltes EPIPE gegen ein Kommando, das stdin nie liest', async () => {
+    // Regression: Die erste Fassung öffnete immer eine stdin-Pipe und schrieb
+    // darauf, auch für `git rev-parse` und Verwandte. Endete das Kind vor dem
+    // Write, blieb ein Stream-`error` ohne Listener zurück und ließ einen
+    // Testlauf mit bestandenen Tests scheitern — sieben solcher Ereignisse in
+    // den CI-Jobs `validate` und `SonarQube Scan` von Pull Request #248, ohne
+    // dass lokal je eines auftrat. Ein großer Puffer erzwingt das Rennen:
+    // Der Write wird fragmentiert, das Kind ist vorher fertig.
+    const bigInput = 'x'.repeat(8 * 1024 * 1024);
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      await expect(runProcess('git', ['--version'], { input: bigInput })).resolves
+        .toMatchObject({ code: 0 });
+    }
+
+    // Ohne `input` entsteht gar keine stdin-Pipe, das Rennen existiert nicht.
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      await expect(runProcess('git', ['--version'])).resolves.toMatchObject({ code: 0 });
+    }
+  });
+
+  it('meldet einen Fehlschlag mit Exit-Code und stderr, sofern nicht zugelassen', async () => {
+    await expect(runProcess('git', ['rev-parse', '--verify', 'kein-solches-ref'])).rejects
+      .toThrow(/failed with exit code/);
+    await expect(runProcess('git', ['rev-parse', '--verify', 'kein-solches-ref'], {
+      allowFailure: true,
+    })).resolves.toMatchObject({ code: 128 });
+  });
+});
 
 describe('classifyBackmerge', () => {
   it('erkennt den reinen Manifest-Sync als M1', () => {
@@ -565,6 +597,75 @@ describe('runBackmerge', () => {
     await expect(fixture.run(
       'merge-base', '--is-ancestor', sourceSha, `origin/${BACKMERGE_BRANCH}`,
     )).resolves.toBe('');
+  });
+
+  it('blockiert den Manifest-Import nicht, wenn zugleich eine Ancestry-Reparatur ansteht', async () => {
+    // Greptile-Befund an Pull Request #248: Wurden Reparatur und Inhaltsübernahme
+    // in einen Pull Request gebündelt, trug dieser den Manifestpfad unter dem
+    // neutralen Branchnamen. Er erfüllte damit weder den Ein-Datei-Importvertrag
+    // noch den Sync-Branchvertrag und wurde vom Guard abgelehnt — der nächste
+    // Katalog-Sync kam nicht mehr nach `develop`. Die Reparatur ist deshalb der
+    // alleinige Gegenstand ihres Laufs.
+    const fixture = await createFixture();
+    await seedBothLines(fixture, 'a'.repeat(40));
+
+    await fixture.run('switch', '--quiet', 'main');
+    await writeFile(join(fixture.work, 'hotfix.txt'), 'Hotfix\n', 'utf8');
+    const repairSha = await fixture.commit('fix: Hotfix auf main');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+
+    // Der Hotfix wird gesquasht übernommen — die Ancestry fehlt danach.
+    await fixture.run('switch', '--quiet', 'develop');
+    await fixture.run('merge', '--quiet', '--squash', repairSha);
+    await fixture.commit('chore(sync): Übernahme (squashed)');
+    await fixture.run('push', '--quiet', 'origin', 'develop');
+    await execFileAsync('git', ['-C', fixture.origin, 'update-ref', 'refs/pull/5/head', repairSha]);
+
+    // Gleichzeitig steht ein neuer reiner Manifest-Sync auf main an.
+    await fixture.run('switch', '--quiet', 'main');
+    await fixture.writeManifest('b'.repeat(40));
+    await fixture.commit('chore(ci): Sync B');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+
+    const github = createGitHubStub({
+      listMergedPullRequests: vi.fn(async () => [
+        { number: 5, body: formatSourceMarker(repairSha) },
+      ]),
+    });
+
+    await expect(runBackmerge({
+      cwd: fixture.work, git: fixture.git, github, logger: silentLogger,
+    })).rejects.toThrow(/Ancestry abgeschlossener Übernahmen/);
+
+    // Der Reparatur-PR trägt KEINEN Manifestpfad — sein Diff ist leer, er ist
+    // für den Guard kein Kandidat.
+    const repairDiff = await fixture.run(
+      'diff', '--name-only', 'origin/develop', `origin/${BACKMERGE_BRANCH}`,
+    );
+    expect(repairDiff).toBe('');
+
+    // Nach seinem Merge übernimmt der Folgelauf das Manifest als sauberes M1
+    // mit genau einer Datei — die Bedingung des vierten Guard-Vertrags.
+    await fixture.run('switch', '--quiet', 'develop');
+    await fixture.run('merge', '--quiet', '--no-ff', '-m', 'Merge Reparatur', `origin/${BACKMERGE_BRANCH}`);
+    await fixture.run('push', '--quiet', 'origin', 'develop');
+
+    const followUp = createGitHubStub({
+      listMergedPullRequests: vi.fn(async () => [
+        { number: 5, body: formatSourceMarker(repairSha) },
+      ]),
+    });
+    const result = await runBackmerge({
+      cwd: fixture.work, git: fixture.git, github: followUp, logger: silentLogger,
+    });
+
+    expect(result).toMatchObject({ created: true, klasse: 'M1' });
+    const [[call]] = followUp.createPullRequest.mock.calls as [[{ head: string }]];
+    expect(call.head).toBe(CATALOG_IMPORT_BRANCH);
+    const importDiff = await fixture.run(
+      'diff', '--name-only', 'origin/develop', `origin/${CATALOG_IMPORT_BRANCH}`,
+    );
+    expect(importDiff).toBe(TRACKED_MANIFEST_PATH);
   });
 
   it('bricht ohne Pull Request ab, wenn ein PR keine überprüfbare Quellmarke trägt', async () => {

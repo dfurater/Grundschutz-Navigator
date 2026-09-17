@@ -59,6 +59,35 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: node scripts/catalog-sync-guard.mjs
 
+  # Die Baumgleichheit eines Release-PRs mit dem freigegebenen `develop`-Stand
+  # gilt sonst nur im Augenblick seiner Entstehung. Bewegt sich `main` danach,
+  # verlangt die Strict-Policy eine Aktualisierung des Heads — und ein
+  # konfliktfreier „Update branch" trägt mains neuen Inhalt hinein, ohne dass
+  # etwas den Baum erneut prüft. Der Pull Request ließe sich dann mit einem
+  # anderen Stand mergen, als sein Protokoll benennt. Dieser Job rechnet die
+  # Bedingung bei jedem `synchronize`-Ereignis nach.
+  release-tree-guard:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout full PR history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch develop for the release provenance check
+        run: git fetch --no-tags origin develop:refs/remotes/origin/develop
+
+      - name: Verify the release PR against its approval marker
+        env:
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/release-prepare.mjs --verify-pull-request
+
   validate:
     runs-on: ubuntu-latest
 

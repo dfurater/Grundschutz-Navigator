@@ -116,10 +116,22 @@ function compareStringsByCodeUnit(left, right) {
  * Prozessaufruf mit stdin-Unterstützung. `git cat-file --batch-check` liest
  * seine Anfragen ausschließlich von stdin, weshalb `execFile` hier nicht
  * genügt.
+ *
+ * Ohne `input` bekommt das Kind gar keine stdin-Pipe. Ein Schreibversuch auf
+ * einen Prozess, der stdin nie liest — `git rev-parse`, `git diff`, jeder
+ * gewöhnliche Aufruf hier — erzeugt sonst ein `EPIPE`, sobald das Kind vor dem
+ * Write endet. Das Rennen entscheidet sich je nach Plattform und Auslastung
+ * unterschiedlich: lokal blieb es folgenlos, im CI-Lauf trafen sieben dieser
+ * Ereignisse ein und ließen einen Testlauf mit bestandenen Tests scheitern,
+ * weil ein Stream-`error` ohne Listener unbehandelt bleibt. Mit `input` bleibt
+ * genau ein Listener nötig: `EPIPE` bedeutet dort, dass das Kind die Eingabe
+ * nicht mehr braucht; jeder andere Fehler wird durchgereicht.
  */
 export async function runProcess(command, args, { input, encoding = 'utf8', allowFailure = false } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(command, args, {
+      stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+    });
     const stdoutChunks = [];
     const stderrChunks = [];
     child.stdout.on('data', (chunk) => stdoutChunks.push(chunk));
@@ -143,7 +155,12 @@ export async function runProcess(command, args, { input, encoding = 'utf8', allo
       }
       resolve(result);
     });
-    child.stdin.end(input ?? '');
+    if (input !== undefined) {
+      child.stdin.on('error', (error) => {
+        if (error.code !== 'EPIPE') reject(error);
+      });
+      child.stdin.end(input);
+    }
   });
 }
 
@@ -444,8 +461,8 @@ export function buildPullRequestBody({
     '',
     ...(paths.length > 0
       ? paths.map((path) => `- \`${path}\``)
-      : ['Keine — der Inhalt liegt auf `develop` bereits vollständig vor. Dieser Pull '
-        + 'Request stellt ausschließlich die Ancestry wieder her.']),
+      : ['Keine. Dieser Pull Request ändert keine Datei und verbindet ausschließlich '
+        + 'Historie; eine anstehende Inhaltsübernahme folgt im Lauf nach seinem Merge.']),
     '',
     '## Validierung',
     '',
@@ -540,23 +557,8 @@ export async function migrationContractHolds(git, { integrationRef, resultRef, c
  * Ergebnis der Klasse. Gibt den resultierenden Tree zurück, ohne zu committen —
  * der Leerlauftest entscheidet danach, ob überhaupt ein Commit entsteht.
  */
-async function buildImport(git, { klasse, branch, repairSources, cwd }) {
+async function buildImport(git, { klasse, branch, cwd }) {
   await git(['switch', '--force-create', branch, INTEGRATION_REF]);
-
-  for (const entry of repairSources) {
-    const merge = await git(
-      ['merge', '--no-ff', '-m', `chore(sync): Ancestry von #${entry.number} wiederherstellen`, entry.sha],
-      { allowFailure: true },
-    );
-    if (merge.code !== 0) {
-      await git(['merge', '--abort'], { allowFailure: true });
-      throw new BackmergeError(
-        `Der Wiederherstellungs-Merge für Pull Request #${entry.number} (${entry.sha}) `
-        + `kollidiert mit \`develop\` und wurde abgebrochen. Nichts wurde überschrieben; `
-        + `die Auflösung ist Handarbeit.\n${merge.stdout}${merge.stderr}`,
-      );
-    }
-  }
 
   if (klasse === 'M1') {
     // Wholesale, byteweise: Das Manifest ist eine kanonisch erzeugte Datei mit
@@ -648,6 +650,87 @@ async function fetchPullRequestTips(git, pullRequests) {
   await git(['fetch', '--no-tags', 'origin', ...refspecs], { allowFailure: true });
 }
 
+/**
+ * Stellt die Ancestry gesquashter Übernahmen wieder her — und sonst nichts.
+ *
+ * Der Pull Request trägt keine Inhaltsänderung: Der Inhalt liegt auf `develop`
+ * bereits vollständig vor, es fehlt allein die Historienverbindung. Weil sein
+ * Drei-Punkt-Diff damit leer ist, ist er für den `catalog-sync-guard` kein
+ * Kandidat und passiert ihn ohne Netzzugriff. Genau das geht verloren, sobald
+ * man eine Inhaltsübernahme mit hineinnimmt.
+ */
+async function runAncestryRepair(git, { github, logger, missing, sourceSha, integrationSha }) {
+  await git(['switch', '--force-create', BACKMERGE_BRANCH, INTEGRATION_REF]);
+
+  for (const entry of missing) {
+    const merge = await git(
+      ['merge', '--no-ff', '-m', `chore(sync): Ancestry von #${entry.number} wiederherstellen`, entry.sha],
+      { allowFailure: true },
+    );
+    if (merge.code !== 0) {
+      await git(['merge', '--abort'], { allowFailure: true });
+      throw new BackmergeError(
+        `Der Wiederherstellungs-Merge für Pull Request #${entry.number} (${entry.sha}) `
+        + 'kollidiert mit `develop` und wurde abgebrochen. Nichts wurde überschrieben; '
+        + `die Auflösung ist Handarbeit.\n${merge.stdout}${merge.stderr}`,
+      );
+    }
+  }
+
+  const resultTree = await gitText(git, ['rev-parse', 'HEAD^{tree}']);
+  const integrationTree = await gitText(git, ['rev-parse', `${INTEGRATION_REF}^{tree}`]);
+  if (resultTree !== integrationTree) {
+    throw new BackmergeError(
+      'Der Wiederherstellungs-Merge verändert den `develop`-Baum, obwohl er nur Historie '
+      + `verbinden soll (${resultTree} statt ${integrationTree}). Es entsteht kein Pull Request.`,
+    );
+  }
+
+  await pushImportBranch(git, BACKMERGE_BRANCH);
+
+  const title = `chore(sync): Ancestry abgeschlossener Übernahmen wiederherstellen`;
+  const body = buildPullRequestBody({
+    klasse: 'Reparatur',
+    reason:
+      'Abgeschlossene Übernahmen wurden gesquasht; ihr Inhalt liegt auf `develop` vollständig '
+      + 'vor, ihre Historie nicht. Dieser Pull Request verbindet sie und ändert keine Datei.',
+    sourceSha,
+    changedPaths: [],
+    repairSources: missing,
+    mergeMethod: 'Merge-Commit',
+  });
+
+  const existing = await github.findOpenPullRequest(BACKMERGE_BRANCH);
+  if (existing) {
+    await github.updatePullRequest({ number: existing, title, body });
+    logger.log(`Wiederherstellender Pull Request #${existing} aktualisiert.`);
+  } else {
+    const url = await github.createPullRequest({ head: BACKMERGE_BRANCH, title, body });
+    logger.log(`Wiederherstellender Pull Request erstellt: ${url}`);
+  }
+
+  throw new BackmergeError(
+    'Der wiederherstellende Pull Request steht. Der Lauf endet trotzdem mit einem Fehler, weil '
+    + 'die Ancestry abgeschlossener Übernahmen bis zu seinem Merge verletzt bleibt. Die '
+    + 'Inhaltsübernahme folgt im Lauf nach diesem Merge.\n'
+    + `Zustand ${SOURCE_REF}=${sourceSha}, Zustand ${INTEGRATION_REF}=${integrationSha}.`,
+  );
+}
+
+/**
+ * `--force-with-lease` gegen den zuvor gelesenen Remote-Stand: Der Branch wird
+ * bei jedem Lauf neu aus `develop` aufgebaut, darf dabei aber keinen fremden
+ * Push überschreiben, der zwischen Lesen und Schreiben landete.
+ */
+async function pushImportBranch(git, branch) {
+  const remoteHead = await gitText(git, ['ls-remote', '--heads', 'origin', `refs/heads/${branch}`]);
+  const remoteSha = remoteHead.split('\n')[0]?.split('\t')[0] ?? '';
+  const pushArgs = SHA_PATTERN.test(remoteSha)
+    ? ['push', `--force-with-lease=refs/heads/${branch}:${remoteSha}`, 'origin', `HEAD:refs/heads/${branch}`]
+    : ['push', 'origin', `HEAD:refs/heads/${branch}`];
+  await git(pushArgs);
+}
+
 export async function runBackmerge({
   cwd = process.cwd(),
   git = createGitRunner({ cwd }),
@@ -688,6 +771,19 @@ export async function runBackmerge({
     );
   }
 
+  // Die Reparatur ist der ALLEINIGE Gegenstand ihres Laufs. Sie mit einer
+  // Inhaltsübernahme zu bündeln erzeugt einen Pull Request, den kein
+  // Guard-Vertrag trägt: Ein Reparatur-Merge plus Manifestbewegung läuft unter
+  // dem neutralen Branchnamen, erfüllt damit weder den Ein-Datei-Importvertrag
+  // (der `chore/catalog-import-to-develop` verlangt) noch den regulären
+  // Sync-Branchvertrag — und fällt auf den Sync-Pfad zurück, der ihn ablehnt.
+  // Der nächste Katalog-Sync käme dann nicht mehr nach `develop`. Getrennt
+  // bleibt jeder Pull Request vertragsfähig; der Inhalt folgt im Lauf nach dem
+  // Merge der Reparatur, den der `push`-Trigger auf `develop` sofort auslöst.
+  if (repairRequired) {
+    return runAncestryRepair(git, { github, logger, missing, sourceSha, integrationSha });
+  }
+
   const mergeBase = await gitText(git, ['merge-base', SOURCE_REF, INTEGRATION_REF]);
   const diffOutput = await gitText(git, [
     'diff', '--name-status', '--no-renames', mergeBase, SOURCE_REF, '--',
@@ -711,12 +807,12 @@ export async function runBackmerge({
     );
   }
 
-  if (klasse === 'idle' && !repairRequired) {
+  if (klasse === 'idle') {
     logger.log('Kein Übernahmebedarf und intakte Ancestry — Lauf endet ohne Pull Request.');
-    return { created: false, klasse, repairRequired };
+    return { created: false, klasse, repairRequired: false };
   }
 
-  if (klasse === 'M1' && !repairRequired) {
+  if (klasse === 'M1') {
     const originates = await manifestOriginatesFromSource(git);
     if (!originates) {
       throw new BackmergeError(
@@ -728,21 +824,8 @@ export async function runBackmerge({
     }
   }
 
-  // Nur ein Merge-Commit stellt eine fehlende Ancestry wieder her. Steht die
-  // Reparatur an, verlässt der Lauf deshalb auch für eine reine
-  // Manifestbewegung den Squash-fähigen M1-Pfad.
-  const effectiveKlasse = repairRequired && klasse !== 'M2' ? 'M3' : klasse;
-  const effectiveReason = repairRequired
-    ? `${reason} Der Lauf stellt zusätzlich die Ancestry abgeschlossener Übernahmen wieder her `
-      + 'und läuft deshalb über einen Merge-Commit.'
-    : reason;
-  const branch = selectBranch({ klasse: effectiveKlasse, repairRequired });
-  const { mergePending } = await buildImport(git, {
-    klasse: effectiveKlasse,
-    branch,
-    repairSources: repairRequired ? missing : [],
-    cwd,
-  });
+  const branch = selectBranch({ klasse, repairRequired: false });
+  const { mergePending } = await buildImport(git, { klasse, branch, cwd });
 
   const resultTree = await gitText(git, ['write-tree']);
   const integrationTree = await gitText(git, ['rev-parse', `${INTEGRATION_REF}^{tree}`]);
@@ -751,17 +834,17 @@ export async function runBackmerge({
   // nicht die Bäume von main und develop: Letztere unterscheiden sich schon
   // durch normale Entwicklungsarbeit, während das Ergebnis genau dann develops
   // Baum ergibt, wenn nichts zu übernehmen ist.
-  if (!repairRequired && resultTree === integrationTree) {
+  if (resultTree === integrationTree) {
     if (mergePending) await git(['merge', '--abort'], { allowFailure: true });
     logger.log(
       'Die berechnete Übernahme ändert den `develop`-Baum nicht — Lauf endet ohne Pull Request.',
     );
-    return { created: false, klasse: effectiveKlasse, repairRequired };
+    return { created: false, klasse, repairRequired: false };
   }
 
   if (mergePending) {
     await git(['commit', '--no-edit']);
-  } else if (effectiveKlasse === 'M1') {
+  } else if (klasse === 'M1') {
     await git([
       'commit',
       '-m',
@@ -769,13 +852,13 @@ export async function runBackmerge({
     ]);
   }
 
-  const mergeMethod = effectiveKlasse === 'M1' ? 'Squash' : 'Merge-Commit';
+  const mergeMethod = klasse === 'M1' ? 'Squash' : 'Merge-Commit';
   const title =
-    effectiveKlasse === 'M1'
+    klasse === 'M1'
       ? `chore(sync): BSI-Manifest nach ${CATALOG_IMPORT_BASE_REF} übernehmen`
-      : `chore(sync): Inhalt von main nach ${CATALOG_IMPORT_BASE_REF} übernehmen (${effectiveKlasse})`;
+      : `chore(sync): Inhalt von main nach ${CATALOG_IMPORT_BASE_REF} übernehmen (${klasse})`;
 
-  if (effectiveKlasse === 'M2') {
+  if (klasse === 'M2') {
     const head = await gitText(git, ['rev-parse', 'HEAD']);
     const { holds, contract } = await migrationContractHolds(git, {
       integrationRef: INTEGRATION_REF,
@@ -793,22 +876,13 @@ export async function runBackmerge({
     logger.log(`Migrationsvertrag ${contract} greift gegen den Zielzustand.`);
   }
 
-  // `--force-with-lease` gegen den zuvor gelesenen Remote-Stand: Der Branch
-  // wird bei jedem Lauf neu aus `develop` aufgebaut, darf dabei aber keinen
-  // fremden Push überschreiben, der zwischen Lesen und Schreiben landete.
-  const remoteHead = await gitText(git, ['ls-remote', '--heads', 'origin', `refs/heads/${branch}`]);
-  const remoteSha = remoteHead.split('\n')[0]?.split('\t')[0] ?? '';
-  const pushArgs = SHA_PATTERN.test(remoteSha)
-    ? ['push', `--force-with-lease=refs/heads/${branch}:${remoteSha}`, 'origin', `HEAD:refs/heads/${branch}`]
-    : ['push', 'origin', `HEAD:refs/heads/${branch}`];
-  await git(pushArgs);
+  await pushImportBranch(git, branch);
 
   const body = buildPullRequestBody({
-    klasse: effectiveKlasse,
-    reason: effectiveReason,
+    klasse,
+    reason,
     sourceSha,
     changedPaths,
-    repairSources: repairRequired ? missing : [],
     mergeMethod,
   });
 
@@ -821,14 +895,7 @@ export async function runBackmerge({
     logger.log(`Übernahme-Pull-Request erstellt: ${url}`);
   }
 
-  if (repairRequired) {
-    throw new BackmergeError(
-      'Der wiederherstellende Pull Request steht. Der Lauf endet trotzdem mit einem Fehler, '
-      + 'weil die Ancestry abgeschlossener Übernahmen bis zu seinem Merge verletzt bleibt.',
-    );
-  }
-
-  return { created: true, klasse: effectiveKlasse, repairRequired };
+  return { created: true, klasse, repairRequired: false };
 }
 
 const isDirectExecution = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;

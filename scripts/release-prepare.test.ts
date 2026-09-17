@@ -9,8 +9,11 @@ import {
   RELEASE_BASE_REF,
   ReleasePrepareError,
   buildReleasePullRequestBody,
+  formatReleaseMarker,
+  parseReleaseMarkers,
   releaseBranchName,
   runReleasePrepare,
+  verifyReleasePullRequest,
 } from './release-prepare.mjs';
 
 const execFileAsync = promisify(execFile);
@@ -114,7 +117,7 @@ describe('runReleasePrepare', () => {
 
     const github = createGitHubStub();
     const result = await runReleasePrepare({
-      cwd: fixture.work, git: fixture.git, github, logger: silentLogger,
+      cwd: fixture.work, git: fixture.git, github, releaseRef: releaseSha, logger: silentLogger,
     });
 
     expect(github.createPullRequest).toHaveBeenCalledTimes(1);
@@ -144,12 +147,12 @@ describe('runReleasePrepare', () => {
 
     await fixture.run('switch', '--quiet', 'develop');
     await writeFile(join(fixture.work, 'feature.txt'), 'freigegebene Arbeit\n', 'utf8');
-    await fixture.commit('feat: freigegebene Arbeit');
+    const releaseSha = await fixture.commit('feat: freigegebene Arbeit');
     await fixture.run('push', '--quiet', 'origin', 'develop');
 
     const github = createGitHubStub();
     await expect(runReleasePrepare({
-      cwd: fixture.work, git: fixture.git, github, logger: silentLogger,
+      cwd: fixture.work, git: fixture.git, github, releaseRef: releaseSha, logger: silentLogger,
     })).rejects.toThrow(/Baum des Vorbereitungsheads entspricht nicht/);
     expect(github.createPullRequest).not.toHaveBeenCalled();
   });
@@ -162,8 +165,9 @@ describe('runReleasePrepare', () => {
     await fixture.commit('chore(ci): Katalog-Sync auf main');
     await fixture.run('push', '--quiet', 'origin', 'main');
 
+    const releaseSha = await fixture.run('rev-parse', 'origin/develop');
     await expect(runReleasePrepare({
-      cwd: fixture.work, git: fixture.git, github: createGitHubStub(), logger: silentLogger,
+      cwd: fixture.work, git: fixture.git, github: createGitHubStub(), releaseRef: releaseSha, logger: silentLogger,
     })).rejects.toThrow(/Inhalts-Übernahme `main` → `develop` ist noch nicht vollständig gelaufen/);
   });
 
@@ -179,11 +183,12 @@ describe('runReleasePrepare', () => {
     await fixture.run('switch', '--quiet', 'develop');
     await writeFile(join(fixture.work, 'upstream-manifest.json'), '{"snapshotCommitSha":"neu"}\n', 'utf8');
     await fixture.commit('chore(sync): Manifest aus main übernehmen');
+    const releaseSha = await fixture.run('rev-parse', 'HEAD');
     await fixture.run('push', '--quiet', 'origin', 'develop');
 
     const github = createGitHubStub();
     const result = await runReleasePrepare({
-      cwd: fixture.work, git: fixture.git, github, logger: silentLogger,
+      cwd: fixture.work, git: fixture.git, github, releaseRef: releaseSha, logger: silentLogger,
     });
     expect(github.createPullRequest).toHaveBeenCalledTimes(1);
 
@@ -215,16 +220,189 @@ describe('runReleasePrepare', () => {
     await fixture.run('switch', '--quiet', 'develop');
     await writeFile(join(fixture.work, 'feature.txt'), 'freigegebene Arbeit\n', 'utf8');
     await fixture.commit('feat: freigegebene Arbeit');
+    const releaseSha = await fixture.run('rev-parse', 'HEAD');
     await fixture.run('push', '--quiet', 'origin', 'develop');
 
     const mainBefore = await fixture.run('rev-parse', 'origin/main');
     const developBefore = await fixture.run('rev-parse', 'origin/develop');
 
     await runReleasePrepare({
-      cwd: fixture.work, git: fixture.git, github: createGitHubStub(), logger: silentLogger,
+      cwd: fixture.work, git: fixture.git, github: createGitHubStub(), releaseRef: releaseSha, logger: silentLogger,
     });
 
     await expect(fixture.run('rev-parse', 'origin/main')).resolves.toBe(mainBefore);
     await expect(fixture.run('rev-parse', 'origin/develop')).resolves.toBe(developBefore);
+  });
+});
+
+describe('Freigabe-SHA als Pflichteingabe', () => {
+  // Greptile-Befund an Pull Request #248: Die Eingabe wurde per `rev-parse`
+  // aufgelöst, bevor irgendetwas ihre Form prüfte. `develop` war damit eine
+  // gültige Eingabe und übernahm den jeweils aktuellen Branch-Head — auch einen
+  // Stand, der nach der Freigabeentscheidung hinzukam.
+  it.each(['', 'develop', 'origin/develop', 'HEAD', 'abc123', 'A'.repeat(40)])(
+    'lehnt die Referenz %j ab, bevor irgendein Branch entsteht',
+    async (releaseRef) => {
+      const fixture = await createFixture();
+      const github = createGitHubStub();
+
+      await expect(runReleasePrepare({
+        cwd: fixture.work, git: fixture.git, github, releaseRef, logger: silentLogger,
+      })).rejects.toThrow(/40-stelligen Kleinbuchstaben-SHA/);
+      expect(github.createPullRequest).not.toHaveBeenCalled();
+
+      // Kein Vorbereitungsbranch ist entstanden.
+      const branches = await fixture.run('branch', '--list');
+      expect(branches).not.toContain('release/');
+    },
+  );
+
+  it('akzeptiert den ausdrücklich freigegebenen Commit auch bei weitergelaufenem develop', async () => {
+    const fixture = await createFixture();
+
+    await fixture.run('switch', '--quiet', 'develop');
+    await writeFile(join(fixture.work, 'freigegeben.txt'), 'freigegeben\n', 'utf8');
+    const approvedSha = await fixture.commit('feat: freigegebener Stand');
+    await fixture.run('push', '--quiet', 'origin', 'develop');
+
+    // develop läuft nach der Freigabeentscheidung weiter.
+    await writeFile(join(fixture.work, 'danach.txt'), 'nach der Freigabe\n', 'utf8');
+    const laterSha = await fixture.commit('feat: nach der Freigabe');
+    await fixture.run('push', '--quiet', 'origin', 'develop');
+
+    const github = createGitHubStub();
+    const result = await runReleasePrepare({
+      cwd: fixture.work, git: fixture.git, github, releaseRef: approvedSha, logger: silentLogger,
+    });
+
+    expect(result.releaseSha).toBe(approvedSha);
+    // Der Vorbereitungsbranch trägt den freigegebenen Baum, nicht den neueren.
+    const headTree = await fixture.run('rev-parse', `origin/${result.releaseBranch}^{tree}`);
+    expect(headTree).toBe(await fixture.run('rev-parse', `${approvedSha}^{tree}`));
+    expect(headTree).not.toBe(await fixture.run('rev-parse', `${laterSha}^{tree}`));
+  });
+});
+
+describe('verifyReleasePullRequest', () => {
+  it('ist für einen PR ausserhalb des Release-Namensraums nicht einschlägig', async () => {
+    const fixture = await createFixture();
+
+    await expect(verifyReleasePullRequest({
+      baseRef: 'develop',
+      branch: 'release/abcdefabcdef',
+      headSha: await fixture.run('rev-parse', 'HEAD'),
+      body: '',
+      git: fixture.git,
+    })).resolves.toEqual({ checked: false });
+
+    await expect(verifyReleasePullRequest({
+      baseRef: 'main',
+      branch: 'chore/catalog-sync-abcdefabcdef',
+      headSha: await fixture.run('rev-parse', 'HEAD'),
+      body: '',
+      git: fixture.git,
+    })).resolves.toEqual({ checked: false });
+  });
+
+  it('bestätigt einen unveränderten Release-PR gegen seine Freigabemarke', async () => {
+    const fixture = await createFixture();
+
+    await fixture.run('switch', '--quiet', 'develop');
+    await writeFile(join(fixture.work, 'feature.txt'), 'freigegebene Arbeit\n', 'utf8');
+    const releaseSha = await fixture.commit('feat: freigegebene Arbeit');
+    await fixture.run('push', '--quiet', 'origin', 'develop');
+
+    const github = createGitHubStub();
+    const result = await runReleasePrepare({
+      cwd: fixture.work, git: fixture.git, github, releaseRef: releaseSha, logger: silentLogger,
+    });
+    const [[call]] = github.createPullRequest.mock.calls as [[{ body: string }]];
+
+    // Die Marke steht im erzeugten Body und ist eindeutig.
+    expect(parseReleaseMarkers(call.body)).toEqual([releaseSha]);
+
+    await expect(verifyReleasePullRequest({
+      baseRef: 'main',
+      branch: result.releaseBranch,
+      headSha: await fixture.run('rev-parse', `origin/${result.releaseBranch}`),
+      body: call.body,
+      git: fixture.git,
+    })).resolves.toMatchObject({ checked: true, releaseSha });
+  });
+
+  it('schlägt an, wenn ein Branch-Update mains neuen Inhalt in den Head trägt', async () => {
+    // Greptile-Befund an Pull Request #248: Die Baumgleichheit galt nur im
+    // Augenblick der Entstehung. Bewegt sich `main` danach, verlangt die
+    // Strict-Policy eine Aktualisierung — und ein konfliktfreier „Update
+    // branch" trägt mains neuen Inhalt hinein, ohne erneute Prüfung.
+    const fixture = await createFixture();
+
+    await fixture.run('switch', '--quiet', 'develop');
+    await writeFile(join(fixture.work, 'feature.txt'), 'freigegebene Arbeit\n', 'utf8');
+    const releaseSha = await fixture.commit('feat: freigegebene Arbeit');
+    await fixture.run('push', '--quiet', 'origin', 'develop');
+
+    const github = createGitHubStub();
+    const result = await runReleasePrepare({
+      cwd: fixture.work, git: fixture.git, github, releaseRef: releaseSha, logger: silentLogger,
+    });
+    const [[call]] = github.createPullRequest.mock.calls as [[{ body: string }]];
+
+    // main schreitet fort; der Release-Branch wird konfliktfrei aktualisiert.
+    await fixture.run('switch', '--quiet', 'main');
+    await writeFile(join(fixture.work, 'nachtrag.txt'), 'nach der Vorbereitung\n', 'utf8');
+    await fixture.commit('chore(ci): Katalog-Sync nach der Vorbereitung');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+    await fixture.run('switch', '--quiet', result.releaseBranch);
+    await fixture.run('merge', '--quiet', '--no-ff', '-m', 'Update branch', 'main');
+    const updatedHead = await fixture.run('rev-parse', 'HEAD');
+
+    // Die Strict-Policy ist jetzt erfüllt — der Baum aber nicht mehr der
+    // freigegebene. Genau diese Lücke schliesst die Marke.
+    await expect(fixture.run('merge-base', '--is-ancestor', 'main', updatedHead))
+      .resolves.toBe('');
+    await expect(verifyReleasePullRequest({
+      baseRef: 'main',
+      branch: result.releaseBranch,
+      headSha: updatedHead,
+      body: call.body,
+      git: fixture.git,
+    })).rejects.toThrow(/entspricht nicht dem Baum des freigegebenen Stands/);
+  });
+
+  it('behandelt eine fehlende oder mehrdeutige Marke als Fehler, nicht als Bestehen', async () => {
+    const fixture = await createFixture();
+    const headSha = await fixture.run('rev-parse', 'HEAD');
+    const other = 'e'.repeat(40);
+
+    for (const body of [
+      '',
+      'Kein Marker hier.',
+      `${formatReleaseMarker(headSha)}\n${formatReleaseMarker(other)}`,
+    ]) {
+      await expect(verifyReleasePullRequest({
+        baseRef: 'main',
+        branch: 'release/abcdefabcdef',
+        headSha,
+        body,
+        git: fixture.git,
+      })).rejects.toThrow(/genau eine Freigabemarke/);
+    }
+  });
+
+  it('lehnt eine Marke ab, die nicht auf der Integrationslinie liegt', async () => {
+    const fixture = await createFixture();
+
+    await fixture.run('switch', '--quiet', '--create', 'seitenlinie', 'main');
+    await writeFile(join(fixture.work, 'fremd.txt'), 'fremd\n', 'utf8');
+    const fremderSha = await fixture.commit('chore: fremder Stand');
+
+    await expect(verifyReleasePullRequest({
+      baseRef: 'main',
+      branch: 'release/abcdefabcdef',
+      headSha: fremderSha,
+      body: formatReleaseMarker(fremderSha),
+      git: fixture.git,
+    })).rejects.toThrow(/liegt nicht auf/);
   });
 });

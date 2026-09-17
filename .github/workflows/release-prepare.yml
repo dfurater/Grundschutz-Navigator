@@ -12,9 +12,10 @@ on:
     inputs:
       develop_sha:
         description: >-
-          Freigegebener develop-Commit (40-stelliger SHA). Leer lässt den
-          aktuellen origin/develop-Head verwenden.
-        required: false
+          Freigegebener develop-Commit, als 40-stelliger Kleinbuchstaben-SHA.
+          Ein Branchname wird abgelehnt: Er übernähme den jeweils aktuellen
+          Head statt des Stands, über den die Freigabe entschieden wurde.
+        required: true
         type: string
 
 permissions:

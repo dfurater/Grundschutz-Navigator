@@ -38,6 +38,35 @@ export const RELEASE_INTEGRATION_REF = 'origin/develop';
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 
+/** Namensraum der Vorbereitungsbranches — Auslöser der Baumprüfung am PR. */
+export const RELEASE_BRANCH_PREFIX = 'release/';
+
+/**
+ * Die Freigabemarke ordnet dem Release-PR den freigegebenen `develop`-Commit
+ * zu. Sie ist nötig, weil die Baumgleichheit sonst nur einmal — im
+ * Vorbereitungslauf — gälte: Bewegt sich `main` danach, verlangt die
+ * Strict-Policy eine Aktualisierung des Heads, und ein konfliktfreier
+ * „Update branch" trägt mains neuen Inhalt in den Head, ohne dass irgendetwas
+ * den Baum erneut gegen den freigegebenen Stand prüft. Der Pull Request ließe
+ * sich dann mit einem anderen Stand mergen, als er beschreibt. Mit der Marke
+ * prüft `verifyReleasePullRequest` bei jedem `synchronize`-Ereignis nach.
+ */
+const RELEASE_MARKER_PATTERN = /<!--\s*release-source:\s*([0-9a-f]{40})\s*-->/g;
+
+export function formatReleaseMarker(sha) {
+  if (!SHA_PATTERN.test(sha)) {
+    throw new ReleasePrepareError(
+      `Die Freigabemarke verlangt einen 40-stelligen Kleinbuchstaben-SHA: ${sha}`,
+    );
+  }
+  return `<!-- release-source: ${sha} -->`;
+}
+
+export function parseReleaseMarkers(body) {
+  if (typeof body !== 'string') return [];
+  return [...body.matchAll(RELEASE_MARKER_PATTERN)].map((match) => match[1]);
+}
+
 export class ReleasePrepareError extends Error {
   constructor(message) {
     super(message);
@@ -94,16 +123,84 @@ export function buildReleasePullRequestBody({ releaseSha, releaseBranch, sourceS
     '- [ ] Gates grün (Bot-Kette, SonarQube, lint/test/build)',
     '- [ ] At-risk-Lücken in den Release-Notizen benannt',
     '- [ ] Doku-Wirkung konsistent zum Release-Stand',
+    '',
+    formatReleaseMarker(releaseSha),
   ].join('\n');
+}
+
+/**
+ * Prüft einen Release-Pull-Request gegen seine Freigabemarke — bei jedem
+ * Ereignis, das seinen Head bewegt, nicht nur bei seiner Entstehung.
+ *
+ * Fail-closed in jeder Richtung: Eine fehlende, mehrdeutige oder nicht auf der
+ * Integrationslinie liegende Marke ist ein Fehler, kein Bestehen. Der Baum des
+ * Heads muss exakt dem Baum des markierten Commits entsprechen.
+ */
+export async function verifyReleasePullRequest({
+  baseRef,
+  branch,
+  headSha,
+  body,
+  git,
+}) {
+  if (baseRef !== RELEASE_BASE_REF || !branch.startsWith(RELEASE_BRANCH_PREFIX)) {
+    return { checked: false };
+  }
+
+  const markers = parseReleaseMarkers(body);
+  if (markers.length !== 1) {
+    throw new ReleasePrepareError(
+      `Ein Release-Pull-Request braucht genau eine Freigabemarke \`<!-- release-source: <sha> -->\` `
+      + `im Body; gefunden: ${markers.length}. Ohne sie ist nicht überprüfbar, welchen Stand `
+      + 'dieser Pull Request freigibt.',
+    );
+  }
+  const [releaseSha] = markers;
+
+  const onIntegrationLine = await gitSucceeds(git, [
+    'merge-base', '--is-ancestor', releaseSha, RELEASE_INTEGRATION_REF,
+  ]);
+  if (!onIntegrationLine) {
+    throw new ReleasePrepareError(
+      `Der markierte Freigabestand ${releaseSha} liegt nicht auf \`${RELEASE_INTEGRATION_REF}\`.`,
+    );
+  }
+
+  const headTree = await gitText(git, ['rev-parse', `${headSha}^{tree}`]);
+  const releaseTree = await gitText(git, ['rev-parse', `${releaseSha}^{tree}`]);
+  if (headTree !== releaseTree) {
+    throw new ReleasePrepareError(
+      `Der Baum des Pull-Request-Heads entspricht nicht dem Baum des freigegebenen Stands `
+      + `${releaseSha} (${headTree} statt ${releaseTree}). Der Head trägt damit anderen Inhalt `
+      + 'als die Freigabe benennt — typischerweise, weil `main` seither fortgeschritten ist und '
+      + 'der Branch aktualisiert wurde. Die Vorbereitung ist gegen den neuen Stand zu wiederholen.',
+    );
+  }
+
+  return { checked: true, releaseSha };
 }
 
 export async function runReleasePrepare({
   cwd = process.cwd(),
   git = createGitRunner({ cwd }),
   github = createGitHubClient({ repository: process.env.GITHUB_REPOSITORY }),
-  releaseRef = process.env.RELEASE_DEVELOP_SHA || RELEASE_INTEGRATION_REF,
+  releaseRef = process.env.RELEASE_DEVELOP_SHA ?? '',
   logger = console,
 } = {}) {
+  // Eine Freigabe ist eine Entscheidung über einen konkreten Commit, kein
+  // Verweis auf eine bewegliche Linie. Ein Branchname wie `develop` würde den
+  // jeweils aktuellen Head übernehmen — auch den, der nach der Freigabe
+  // hinzukam. Ein leerer Wert ist deshalb kein stiller Default auf den
+  // Integrationshead, sondern ein Abbruch: Der Operator benennt den Stand.
+  if (!SHA_PATTERN.test(releaseRef)) {
+    throw new ReleasePrepareError(
+      'Die Freigabe verlangt den 40-stelligen Kleinbuchstaben-SHA des freigegebenen '
+      + `\`develop\`-Commits. Ein Branchname oder eine andere Referenz wird nicht akzeptiert, `
+      + 'weil sie den jeweils aktuellen Head übernähme statt des freigegebenen Stands. '
+      + `Erhalten: ${releaseRef === '' ? '(leer)' : releaseRef}`,
+    );
+  }
+
   await git([
     'fetch', '--no-tags', 'origin',
     '+refs/heads/main:refs/remotes/origin/main',
@@ -191,11 +288,31 @@ export async function runReleasePrepare({
   return { pullRequest: url, releaseSha, releaseBranch };
 }
 
+async function runCli() {
+  if (process.argv[2] === '--verify-pull-request') {
+    const result = await verifyReleasePullRequest({
+      baseRef: process.env.PR_BASE_REF ?? '',
+      branch: process.env.PR_HEAD_REF ?? '',
+      headSha: process.env.PR_HEAD_SHA ?? '',
+      body: process.env.PR_BODY ?? '',
+      git: createGitRunner(),
+    });
+    console.log(
+      result.checked
+        ? `Release-Pull-Request geprüft: Baum entspricht dem freigegebenen Stand ${result.releaseSha}.`
+        : 'Kein Release-Pull-Request; Baumprüfung nicht einschlägig.',
+    );
+    return;
+  }
+
+  await runReleasePrepare();
+}
+
 const isDirectExecution = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isDirectExecution) {
   try {
-    await runReleasePrepare();
+    await runCli();
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);
     process.exitCode = 1;
