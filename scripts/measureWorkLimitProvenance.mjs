@@ -189,8 +189,12 @@ export function runtimeImportSpecifiers(source) {
  * Sortierung über UTF-16-Code-Units, ausdrücklich nicht `localeCompare`:
  * Der Fingerprint hängt an der Reihenfolge, und eine locale-abhängige
  * Sortierung machte ihn von der Umgebung des Messrechners abhängig.
+ *
+ * Exportiert, weil `sourceRevision()` in `measure-class2-budget.mjs` dieselbe
+ * Ordnung braucht: Beide Provenance-Fingerprints des Repositoriums stehen auf
+ * einer Sortiersemantik aus einer Quelle, mitsamt dieser Begründung.
  */
-function byCodeUnit(left, right) {
+export function byCodeUnit(left, right) {
   if (left === right) return 0;
   return left < right ? -1 : 1;
 }
