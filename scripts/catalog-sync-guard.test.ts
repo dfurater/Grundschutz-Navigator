@@ -1,11 +1,14 @@
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { readdir, readFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
 import * as ts from 'typescript';
 import { describe, expect, it, vi } from 'vitest';
 import {
   computeManifestSignature,
+  getPullRequestDiffEntries,
   guardCatalogSyncPullRequest,
   isRegistryPreviewArtifactExpansion,
   isRegistryLifecycleOnlyMigration,
@@ -1482,5 +1485,81 @@ export const SOURCE_REGISTRY = Object.freeze(
       fetchImpl,
     })).rejects.toThrow(/Catalog sync branch must match/);
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+function getAllowedTempRoot() {
+  return process.env.RUNNER_TEMP ?? tmpdir();
+}
+
+describe('getPullRequestDiffEntries', () => {
+  it('pinnt die git-Argumentliste auf den Drei-Punkt-Diff gegen die Merge-Basis', async () => {
+    const baseSha = 'a'.repeat(40);
+    const headSha = 'b'.repeat(40);
+    const execFile = vi.fn(async () => ({ stdout: 'M\tupstream-manifest.json\n' }));
+
+    await expect(getPullRequestDiffEntries({ baseSha, headSha, execFile }))
+      .resolves.toEqual([{ status: 'M', path: 'upstream-manifest.json' }]);
+    expect(execFile).toHaveBeenCalledWith(
+      'git',
+      ['diff', '--name-status', '--no-renames', `${baseSha}...${headSha}`, '--'],
+      { encoding: 'utf8', maxBuffer: 1024 * 1024 },
+    );
+  });
+
+  it('weist unvollständige SHAs ab, bevor git aufgerufen wird', async () => {
+    const execFile = vi.fn();
+
+    await expect(getPullRequestDiffEntries({
+      baseSha: 'abc123',
+      headSha: 'b'.repeat(40),
+      execFile,
+    })).rejects.toThrow('PR_BASE_SHA and PR_HEAD_SHA must be lowercase 40-character SHAs');
+    expect(execFile).not.toHaveBeenCalled();
+  });
+
+  it('meldet den vom Head geänderten Pfad und nicht den allein von der Base bewegten', async () => {
+    const repository = await mkdtemp(join(getAllowedTempRoot(), 'catalog-sync-guard-diff-'));
+    const runGit = async (...args: string[]) =>
+      (await execFileAsync('git', args, { cwd: repository, encoding: 'utf8' })).stdout.trim();
+
+    try {
+      await runGit('init', '--quiet', '--initial-branch=main');
+      await runGit('config', 'user.email', 'guard-test@example.invalid');
+      await runGit('config', 'user.name', 'Guard Test');
+      await runGit('config', 'commit.gpgsign', 'false');
+
+      await writeFile(join(repository, 'shared.txt'), 'Merge-Basis\n');
+      await runGit('add', 'shared.txt');
+      await runGit('commit', '--quiet', '--message', 'Merge-Basis');
+
+      // Die Base läuft nach der Merge-Basis weiter; der Head kennt diesen Pfad nie.
+      await writeFile(join(repository, 'base-only.txt'), 'allein auf der Base\n');
+      await runGit('add', 'base-only.txt');
+      await runGit('commit', '--quiet', '--message', 'Base bewegt sich weiter');
+      const baseSha = await runGit('rev-parse', 'HEAD');
+
+      await runGit('switch', '--quiet', '--detach', 'HEAD~1');
+      await writeFile(join(repository, 'upstream-manifest.json'), '{}\n');
+      await runGit('add', 'upstream-manifest.json');
+      await runGit('commit', '--quiet', '--message', 'Head ändert das Manifest');
+      const headSha = await runGit('rev-parse', 'HEAD');
+
+      const execFile = (
+        command: string,
+        args: readonly string[],
+        options: { encoding: BufferEncoding; maxBuffer: number },
+      ) => execFileAsync(command, [...args], { ...options, cwd: repository });
+
+      await expect(getPullRequestDiffEntries({ baseSha, headSha, execFile }))
+        .resolves.toEqual([{ status: 'A', path: 'upstream-manifest.json' }]);
+
+      // Gegenprobe: Die bisherige Zwei-Punkt-Rechnung meldete an derselben
+      // Vorlage zusätzlich den Pfad, den allein die Base bewegt hat.
+      await expect(runGit('diff', '--name-status', '--no-renames', baseSha, headSha))
+        .resolves.toContain('base-only.txt');
+    } finally {
+      await rm(repository, { recursive: true, force: true });
+    }
   });
 });

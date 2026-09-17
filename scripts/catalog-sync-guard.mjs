@@ -161,6 +161,46 @@ export function parseNameStatusDiff(diffOutput) {
     });
 }
 
+/**
+ * Berechnet den PR-Diff als Drei-Punkt-Diff gegen die Merge-Basis
+ * (`<base>...<head>`) — dieselbe Bezugsgröße, die GitHub für „Files changed"
+ * verwendet und die die Schwesterprüfung `getChangedFiles`
+ * (`scripts/pr-documentation-contract.mjs`) bereits nutzt. Ein Zwei-Punkt-Diff
+ * meldete jeden Pfad, an dem sich die beiden Bäume unterscheiden, also auch
+ * Pfade, die allein die Base bewegt hat; der Guard bewertete dadurch Dateien,
+ * die der Head nie angefasst hat. Der Vertrag verliert dabei nichts: Beide
+ * Rulesets tragen `strict_required_status_checks_policy: true`, sodass die
+ * Base-Spitze zum Merge-Zeitpunkt Vorfahr des Heads und damit selbst die
+ * Merge-Basis ist — dort sind beide Rechnungen deckungsgleich.
+ *
+ * Die Bezugsgröße von `previousManifest` (`git show <baseSha>:…`) und
+ * `loadSourceRegistryAtRef(baseSha)` in `runCli()` bleibt absichtlich der
+ * Base-SHA. Der Diff beantwortet, was der Head geändert hat; die beiden
+ * anderen Eingaben beantworten für `verifySnapshotProgress`, ob der neue
+ * Snapshot dem voraus ist, was auf der Base bereits liegt — dafür ist die
+ * Base-Spitze die strengere und damit richtige Bezugsgröße.
+ *
+ * Die SHA-Prüfung liegt hier, weil dies der erste git-Aufruf mit beiden SHAs
+ * ist; `runCli()` verlässt sich darauf auch für die nachgelagerten
+ * Base-Lesezugriffe.
+ */
+export async function getPullRequestDiffEntries({
+  baseSha,
+  headSha,
+  execFile = execFileAsync,
+}) {
+  if (!SHA_PATTERN.test(baseSha) || !SHA_PATTERN.test(headSha)) {
+    throw new Error('PR_BASE_SHA and PR_HEAD_SHA must be lowercase 40-character SHAs');
+  }
+
+  const { stdout } = await execFile(
+    'git',
+    ['diff', '--name-status', '--no-renames', `${baseSha}...${headSha}`, '--'],
+    { encoding: 'utf8', maxBuffer: 1024 * 1024 },
+  );
+  return parseNameStatusDiff(stdout);
+}
+
 export function isCatalogSyncCandidate({ branch, title, diffEntries }) {
   return (
     branch.startsWith('chore/catalog-sync-') ||
@@ -919,16 +959,7 @@ async function runCli() {
   const title = process.env.PR_TITLE ?? '';
   const baseSha = process.env.PR_BASE_SHA ?? '';
   const headSha = process.env.PR_HEAD_SHA ?? '';
-  if (!SHA_PATTERN.test(baseSha) || !SHA_PATTERN.test(headSha)) {
-    throw new Error('PR_BASE_SHA and PR_HEAD_SHA must be lowercase 40-character SHAs');
-  }
-
-  const { stdout: diffOutput } = await execFileAsync(
-    'git',
-    ['diff', '--name-status', '--no-renames', baseSha, headSha],
-    { encoding: 'utf8', maxBuffer: 1024 * 1024 },
-  );
-  const diffEntries = parseNameStatusDiff(diffOutput);
+  const diffEntries = await getPullRequestDiffEntries({ baseSha, headSha });
 
   if (!isCatalogSyncCandidate({ branch, title, diffEntries })) {
     console.log('Normal PR: catalog sync guard passed without network access.');
