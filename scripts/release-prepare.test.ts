@@ -1,10 +1,6 @@
-import { execFile } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createGitRunner } from './backmerge-main-to-develop.mjs';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   RELEASE_BASE_REF,
   ReleasePrepareError,
@@ -15,72 +11,45 @@ import {
   runReleasePrepare,
   verifyReleasePullRequest,
 } from './release-prepare.mjs';
+import {
+  type BranchLineFixture,
+  commitOnLine,
+  createBranchLineFixture,
+  createFixtureRegistry,
+  createGitHubStub,
+  seedBothLines,
+  silentLogger,
+} from './branchLineFixtures.js';
 
-const execFileAsync = promisify(execFile);
+const fixtures = createFixtureRegistry();
+afterEach(fixtures.cleanup);
 
-function getAllowedTempRoot() {
-  return process.env.RUNNER_TEMP ?? tmpdir();
+async function createFixture(): Promise<BranchLineFixture> {
+  const fixture = await createBranchLineFixture(fixtures);
+  await seedBothLines(fixture);
+  return fixture;
 }
 
-const temporaryRoots: string[] = [];
+/**
+ * Der Ausgangspunkt fast jeder Release-Prüfung: ein freigegebener Stand auf
+ * `develop` und der daraus vorbereitete Pull Request. Gibt beides zurück, damit
+ * die Tests nur noch ihre eigene Abweichung aufbauen müssen.
+ */
+async function prepareApprovedRelease(fixture: BranchLineFixture) {
+  const releaseSha = await commitOnLine(fixture, 'develop', {
+    path: 'feature.txt',
+    contents: 'freigegebene Arbeit\n',
+    message: 'feat: freigegebene Arbeit',
+  });
 
-afterEach(async () => {
-  while (temporaryRoots.length > 0) {
-    const root = temporaryRoots.pop();
-    if (root) await rm(root, { recursive: true, force: true });
-  }
-});
+  const github = createGitHubStub();
+  const result = await runReleasePrepare({
+    cwd: fixture.work, git: fixture.git, github, releaseRef: releaseSha, logger: silentLogger,
+  });
+  const [[call]] = github.createPullRequest.mock.calls as [[{ base: string; head: string; body: string }]];
 
-interface Fixture {
-  work: string;
-  origin: string;
-  git: ReturnType<typeof createGitRunner>;
-  run: (...args: string[]) => Promise<string>;
-  commit: (message: string) => Promise<string>;
+  return { releaseSha, github, result, call };
 }
-
-async function createFixture(): Promise<Fixture> {
-  const root = await mkdtemp(join(getAllowedTempRoot(), 'release-prepare-'));
-  temporaryRoots.push(root);
-  const origin = join(root, 'origin.git');
-  const work = join(root, 'work');
-
-  await execFileAsync('git', ['init', '--quiet', '--bare', '--initial-branch=main', origin]);
-  await execFileAsync('git', ['init', '--quiet', '--initial-branch=main', work]);
-
-  const run = async (...args: string[]) =>
-    (await execFileAsync('git', ['-C', work, ...args], { encoding: 'utf8' })).stdout.trim();
-
-  await run('config', 'user.email', 'release-test@example.invalid');
-  await run('config', 'user.name', 'Release Test');
-  await run('config', 'commit.gpgsign', 'false');
-  await run('remote', 'add', 'origin', origin);
-
-  const commit = async (message: string) => {
-    await run('add', '--all');
-    await run('commit', '--quiet', '--allow-empty', '--message', message);
-    return run('rev-parse', 'HEAD');
-  };
-
-  await writeFile(join(work, 'README.md'), '# Fixture\n', 'utf8');
-  await commit('chore: Ausgangsstand');
-  await run('branch', 'develop');
-  await run('push', '--quiet', 'origin', 'main', 'develop');
-
-  return { work, origin, git: createGitRunner({ cwd: work }), run, commit };
-}
-
-function createGitHubStub(overrides: Record<string, unknown> = {}) {
-  return {
-    listMergedPullRequests: vi.fn(async () => []),
-    findOpenPullRequest: vi.fn(async () => null as number | null),
-    createPullRequest: vi.fn(async () => 'https://example.invalid/pull/1'),
-    updatePullRequest: vi.fn(async ({ number }: { number: number }) => number),
-    ...overrides,
-  };
-}
-
-const silentLogger = { log: () => {}, error: () => {} };
 
 describe('releaseBranchName', () => {
   it('leitet den kurzlebigen Branchnamen aus dem freigegebenen Stand ab', () => {
@@ -109,19 +78,9 @@ describe('buildReleasePullRequestBody', () => {
 describe('runReleasePrepare', () => {
   it('stellt einen PR, dessen Head origin/main als Vorfahr hat und develops Baum trägt', async () => {
     const fixture = await createFixture();
-
-    await fixture.run('switch', '--quiet', 'develop');
-    await writeFile(join(fixture.work, 'feature.txt'), 'freigegebene Arbeit\n', 'utf8');
-    const releaseSha = await fixture.commit('feat: freigegebene Arbeit');
-    await fixture.run('push', '--quiet', 'origin', 'develop');
-
-    const github = createGitHubStub();
-    const result = await runReleasePrepare({
-      cwd: fixture.work, git: fixture.git, github, releaseRef: releaseSha, logger: silentLogger,
-    });
+    const { releaseSha, github, result, call } = await prepareApprovedRelease(fixture);
 
     expect(github.createPullRequest).toHaveBeenCalledTimes(1);
-    const [[call]] = github.createPullRequest.mock.calls as [[{ base: string; head: string }]];
     expect(call.base).toBe(RELEASE_BASE_REF);
     expect(call.head).toBe(result.releaseBranch);
 
@@ -216,12 +175,11 @@ describe('runReleasePrepare', () => {
 
   it('mergt nicht und löscht keine Branches', async () => {
     const fixture = await createFixture();
-
-    await fixture.run('switch', '--quiet', 'develop');
-    await writeFile(join(fixture.work, 'feature.txt'), 'freigegebene Arbeit\n', 'utf8');
-    await fixture.commit('feat: freigegebene Arbeit');
-    const releaseSha = await fixture.run('rev-parse', 'HEAD');
-    await fixture.run('push', '--quiet', 'origin', 'develop');
+    const releaseSha = await commitOnLine(fixture, 'develop', {
+      path: 'feature.txt',
+      contents: 'freigegebene Arbeit\n',
+      message: 'feat: freigegebene Arbeit',
+    });
 
     const mainBefore = await fixture.run('rev-parse', 'origin/main');
     const developBefore = await fixture.run('rev-parse', 'origin/develop');
@@ -306,17 +264,7 @@ describe('verifyReleasePullRequest', () => {
 
   it('bestätigt einen unveränderten Release-PR gegen seine Freigabemarke', async () => {
     const fixture = await createFixture();
-
-    await fixture.run('switch', '--quiet', 'develop');
-    await writeFile(join(fixture.work, 'feature.txt'), 'freigegebene Arbeit\n', 'utf8');
-    const releaseSha = await fixture.commit('feat: freigegebene Arbeit');
-    await fixture.run('push', '--quiet', 'origin', 'develop');
-
-    const github = createGitHubStub();
-    const result = await runReleasePrepare({
-      cwd: fixture.work, git: fixture.git, github, releaseRef: releaseSha, logger: silentLogger,
-    });
-    const [[call]] = github.createPullRequest.mock.calls as [[{ body: string }]];
+    const { releaseSha, result, call } = await prepareApprovedRelease(fixture);
 
     // Die Marke steht im erzeugten Body und ist eindeutig.
     expect(parseReleaseMarkers(call.body)).toEqual([releaseSha]);
@@ -336,17 +284,7 @@ describe('verifyReleasePullRequest', () => {
     // Strict-Policy eine Aktualisierung — und ein konfliktfreier „Update
     // branch" trägt mains neuen Inhalt hinein, ohne erneute Prüfung.
     const fixture = await createFixture();
-
-    await fixture.run('switch', '--quiet', 'develop');
-    await writeFile(join(fixture.work, 'feature.txt'), 'freigegebene Arbeit\n', 'utf8');
-    const releaseSha = await fixture.commit('feat: freigegebene Arbeit');
-    await fixture.run('push', '--quiet', 'origin', 'develop');
-
-    const github = createGitHubStub();
-    const result = await runReleasePrepare({
-      cwd: fixture.work, git: fixture.git, github, releaseRef: releaseSha, logger: silentLogger,
-    });
-    const [[call]] = github.createPullRequest.mock.calls as [[{ body: string }]];
+    const { result, call } = await prepareApprovedRelease(fixture);
 
     // main schreitet fort; der Release-Branch wird konfliktfrei aktualisiert.
     await fixture.run('switch', '--quiet', 'main');

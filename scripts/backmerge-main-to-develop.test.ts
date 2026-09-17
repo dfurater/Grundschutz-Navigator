@@ -1,6 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -11,7 +10,6 @@ import {
   checkCompletedImportAncestry,
   classifyBackmerge,
   collectManifestBlobsOnSource,
-  createGitRunner,
   formatSourceMarker,
   manifestOriginatesFromSource,
   parseSourceMarkers,
@@ -21,93 +19,23 @@ import {
 } from './backmerge-main-to-develop.mjs';
 import { CATALOG_IMPORT_BRANCH, TRACKED_MANIFEST_PATH } from './catalog-sync-guard.mjs';
 import { validateDocumentationContract } from './pr-documentation-contract.mjs';
+import {
+  type BranchLineFixture,
+  createBranchLineFixture,
+  createFixtureRegistry,
+  createGitHubStub,
+  seedBothLines,
+  silentLogger,
+} from './branchLineFixtures.js';
 
 const execFileAsync = promisify(execFile);
 const REGISTRY_PATH = 'src/domain/sourceRegistry.mjs';
 
-function getAllowedTempRoot() {
-  return process.env.RUNNER_TEMP ?? tmpdir();
-}
+const fixtures = createFixtureRegistry();
+afterEach(fixtures.cleanup);
 
-const temporaryRoots: string[] = [];
-
-afterEach(async () => {
-  while (temporaryRoots.length > 0) {
-    const root = temporaryRoots.pop();
-    if (root) await rm(root, { recursive: true, force: true });
-  }
-});
-
-interface Fixture {
-  root: string;
-  work: string;
-  origin: string;
-  git: ReturnType<typeof createGitRunner>;
-  run: (...args: string[]) => Promise<string>;
-  commit: (message: string) => Promise<string>;
-  writeManifest: (snapshotCommitSha: string) => Promise<void>;
-}
-
-/**
- * Zwei echte Repositories: ein bare `origin` und ein Arbeitsbaum. Die Lane
- * rechnet gegen Remote-Tracking-Refs, pusht und liest `ls-remote`; ein
- * gemocktes git würde genau die Eigenschaften nicht prüfen, auf die es hier
- * ankommt.
- */
-async function createFixture(): Promise<Fixture> {
-  const root = await mkdtemp(join(getAllowedTempRoot(), 'backmerge-'));
-  temporaryRoots.push(root);
-  const origin = join(root, 'origin.git');
-  const work = join(root, 'work');
-
-  await execFileAsync('git', ['init', '--quiet', '--bare', '--initial-branch=main', origin]);
-  await execFileAsync('git', ['init', '--quiet', '--initial-branch=main', work]);
-
-  const run = async (...args: string[]) =>
-    (await execFileAsync('git', ['-C', work, ...args], { encoding: 'utf8' })).stdout.trim();
-
-  await run('config', 'user.email', 'backmerge-test@example.invalid');
-  await run('config', 'user.name', 'Backmerge Test');
-  await run('config', 'commit.gpgsign', 'false');
-  await run('remote', 'add', 'origin', origin);
-
-  const commit = async (message: string) => {
-    await run('add', '--all');
-    await run('commit', '--quiet', '--allow-empty', '--message', message);
-    return run('rev-parse', 'HEAD');
-  };
-
-  const writeManifest = async (snapshotCommitSha: string) => {
-    await writeFile(
-      join(work, TRACKED_MANIFEST_PATH),
-      `${JSON.stringify({ schemaVersion: 2, snapshotCommitSha, files: [] }, null, 2)}\n`,
-      'utf8',
-    );
-  };
-
-  return { root, work, origin, git: createGitRunner({ cwd: work }), run, commit, writeManifest };
-}
-
-/** Gemeinsamer Ausgangsstand: `main` und `develop` auf demselben Commit. */
-async function seedBothLines(fixture: Fixture, snapshotCommitSha: string) {
-  await fixture.writeManifest(snapshotCommitSha);
-  await writeFile(join(fixture.work, 'README.md'), '# Fixture\n', 'utf8');
-  await fixture.commit('chore: Ausgangsstand');
-  await fixture.run('branch', 'develop');
-  await fixture.run('push', '--quiet', 'origin', 'main', 'develop');
-}
-
-function createGitHubStub(overrides: Record<string, unknown> = {}) {
-  return {
-    listMergedPullRequests: vi.fn(async () => [] as { number: number; body: string }[]),
-    findOpenPullRequest: vi.fn(async () => null as number | null),
-    createPullRequest: vi.fn(async () => 'https://example.invalid/pull/1'),
-    updatePullRequest: vi.fn(async ({ number }: { number: number }) => number),
-    ...overrides,
-  };
-}
-
-const silentLogger = { log: () => {}, error: () => {} };
+type Fixture = BranchLineFixture;
+const createFixture = () => createBranchLineFixture(fixtures);
 
 describe('runProcess', () => {
   it('erzeugt kein unbehandeltes EPIPE gegen ein Kommando, das stdin nie liest', async () => {
@@ -233,6 +161,7 @@ describe('buildPullRequestBody', () => {
       reason: 'Inhalt ohne Manifestpfad.',
       sourceSha,
       changedPaths: ['src/app/App.tsx'],
+      markerShas: [sourceSha],
       mergeMethod: 'Merge-Commit',
     });
 
@@ -247,6 +176,7 @@ describe('buildPullRequestBody', () => {
       reason: 'Inhalt ohne Manifestpfad.',
       sourceSha,
       changedPaths,
+      markerShas: [sourceSha],
       mergeMethod: 'Merge-Commit',
     });
 
@@ -261,6 +191,7 @@ describe('buildPullRequestBody', () => {
       reason: 'Inhalt ohne Manifestpfad.',
       sourceSha,
       changedPaths,
+      markerShas: [sourceSha],
       mergeMethod: 'Merge-Commit',
     });
 
@@ -268,19 +199,24 @@ describe('buildPullRequestBody', () => {
       .toMatchObject({ documentationImpact: 'updated' });
   });
 
-  it('nennt jede wiederherzustellende Übernahme mit eigener Marke', () => {
+  it('markiert ausschliesslich die übergebenen Quellstände, nicht den Anzeige-Quellstand', () => {
+    // Ein Reparatur-PR bindet nur die fehlenden Quellstände ein. Markierte er
+    // zusätzlich den aktuellen `main`-Head, wäre dessen Marke von der PR-Spitze
+    // unerreichbar und der Folgelauf verwürfe sie als ungültig.
     const repaired = 'd'.repeat(40);
     const body = buildPullRequestBody({
-      klasse: 'M3',
-      reason: 'Inhalt ohne Manifestpfad.',
+      klasse: 'Reparatur',
+      reason: 'Historie verbinden.',
       sourceSha,
-      changedPaths: ['src/app/App.tsx'],
+      changedPaths: [],
+      markerShas: [repaired],
       repairSources: [{ number: 42, sha: repaired }],
       mergeMethod: 'Merge-Commit',
     });
 
     expect(body).toContain('Pull Request #42');
-    expect(parseSourceMarkers(body)).toEqual([sourceSha, repaired]);
+    expect(parseSourceMarkers(body)).toEqual([repaired]);
+    expect(parseSourceMarkers(body)).not.toContain(sourceSha);
   });
 });
 
@@ -646,13 +582,21 @@ describe('runBackmerge', () => {
 
     // Nach seinem Merge übernimmt der Folgelauf das Manifest als sauberes M1
     // mit genau einer Datei — die Bedingung des vierten Guard-Vertrags.
+    const repairBody = (github.createPullRequest.mock.calls as [[{ body: string }]])[0][0].body;
     await fixture.run('switch', '--quiet', 'develop');
     await fixture.run('merge', '--quiet', '--no-ff', '-m', 'Merge Reparatur', `origin/${BACKMERGE_BRANCH}`);
+    const repairTip = await fixture.run('rev-parse', `origin/${BACKMERGE_BRANCH}`);
     await fixture.run('push', '--quiet', 'origin', 'develop');
+    await execFileAsync('git', ['-C', fixture.origin, 'update-ref', 'refs/pull/6/head', repairTip]);
 
+    // Der Folgelauf sieht BEIDE gemergten Übernahmen — auch den Reparatur-PR
+    // selbst, genau wie `gh pr list --state merged` ihn zurückgibt. Markierte
+    // dessen Body den `main`-Head, wäre die Marke von seiner Spitze aus
+    // unerreichbar und der Lauf bräche ab, statt das Manifest zu übernehmen.
     const followUp = createGitHubStub({
       listMergedPullRequests: vi.fn(async () => [
         { number: 5, body: formatSourceMarker(repairSha) },
+        { number: 6, body: repairBody },
       ]),
     });
     const result = await runBackmerge({

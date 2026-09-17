@@ -407,11 +407,24 @@ function formatDocumentationSection({ changedPaths }) {
   ].join('\n');
 }
 
+/**
+ * `markerShas` ist die Menge der Commits, die dieser Pull Request als
+ * Quellstände markiert — und damit die Menge, die von seiner Spitze erreichbar
+ * sein muss. Sie wird ausdrücklich übergeben und nicht aus `sourceSha`
+ * abgeleitet: Ein Reparatur-PR bindet nur die fehlenden Quellstände ein, nicht
+ * den aktuellen `main`-Head. Markierte man dort trotzdem den `main`-Head, wäre
+ * die Marke von der PR-Spitze aus unerreichbar, der Folgelauf verwürfe sie als
+ * ungültig und käme nie zur Inhaltsübernahme — die Lane bliebe stehen.
+ *
+ * `sourceSha` bleibt daneben die reine Anzeigeinformation: der `main`-Stand,
+ * gegen den der Lauf gerechnet hat.
+ */
 export function buildPullRequestBody({
   klasse,
   reason,
   sourceSha,
   changedPaths,
+  markerShas,
   repairSources = [],
   mergeMethod,
 }) {
@@ -472,12 +485,8 @@ export function buildPullRequestBody({
     '',
     formatDocumentationSection({ changedPaths: paths }),
     '',
-    formatSourceMarker(sourceSha),
+    ...markerShas.map((sha) => formatSourceMarker(sha)),
   );
-
-  if (repairSources.length > 0) {
-    lines.push(...repairSources.map((entry) => formatSourceMarker(entry.sha)));
-  }
 
   return lines.join('\n');
 }
@@ -696,6 +705,9 @@ async function runAncestryRepair(git, { github, logger, missing, sourceSha, inte
       + 'vor, ihre Historie nicht. Dieser Pull Request verbindet sie und ändert keine Datei.',
     sourceSha,
     changedPaths: [],
+    // Ausschließlich die eingebundenen Quellstände — nicht der `main`-Head,
+    // den dieser Branch bewusst nicht mergt.
+    markerShas: missing.map((entry) => entry.sha),
     repairSources: missing,
     mergeMethod: 'Merge-Commit',
   });
@@ -883,6 +895,7 @@ export async function runBackmerge({
     reason,
     sourceSha,
     changedPaths,
+    markerShas: [sourceSha],
     mergeMethod,
   });
 
