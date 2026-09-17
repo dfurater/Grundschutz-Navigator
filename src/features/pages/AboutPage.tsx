@@ -137,7 +137,7 @@ function buildAppCatalogUrl(
   baseUrl = import.meta.env.BASE_URL,
 ): string {
   const fileName = catalogDataFileName(resolveCatalogRegistryEntry(catalogKey));
-  return new URL(`data/${fileName}`, new URL(baseUrl, window.location.origin)).toString();
+  return new URL(`data/${fileName}`, new URL(baseUrl, globalThis.location.origin)).toString();
 }
 
 function buildVerifyCommand(appUrl: string, upstreamUrl: string): string {

@@ -73,7 +73,7 @@ function monitorWebSocketGuardNavigations(page: Page): void {
 
 async function installWebSocketEgressGuard(frame: Frame, allowedHost: string): Promise<void> {
   await frame.evaluate(({ allowedHost: allowedWebSocketHost, stateKey }) => {
-    const windowWithGuard = window as typeof window & Record<string, WebSocketGuardState | undefined>;
+    const windowWithGuard = globalThis as typeof globalThis & Record<string, WebSocketGuardState | undefined>;
     if (windowWithGuard[stateKey]) {
       return;
     }
@@ -106,7 +106,7 @@ async function installWebSocketEgressGuard(frame: Frame, allowedHost: string): P
 
 async function getWebSocketEgressGuardState(frame: Frame): Promise<WebSocketGuardState> {
   return frame.evaluate((stateKey) => {
-    const state = (window as typeof window & Record<string, WebSocketGuardState | undefined>)[stateKey];
+    const state = (globalThis as typeof globalThis & Record<string, WebSocketGuardState | undefined>)[stateKey];
     if (!state) {
       throw new Error('Browser-Egress-WebSocket-Guard wurde nicht installiert.');
     }
@@ -116,7 +116,7 @@ async function getWebSocketEgressGuardState(frame: Frame): Promise<WebSocketGuar
 
 async function resetWebSocketEgressGuard(frame: Frame): Promise<void> {
   await frame.evaluate((stateKey) => {
-    const state = (window as typeof window & Record<string, WebSocketGuardState | undefined>)[stateKey];
+    const state = (globalThis as typeof globalThis & Record<string, WebSocketGuardState | undefined>)[stateKey];
     if (!state) {
       throw new Error('Browser-Egress-WebSocket-Guard wurde nicht installiert.');
     }

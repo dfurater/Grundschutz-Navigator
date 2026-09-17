@@ -1,0 +1,1006 @@
+import { execFile } from 'node:child_process';
+import { chmod, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { promisify } from 'node:util';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  BACKMERGE_BRANCH,
+  BackmergeError,
+  buildPullRequestBody,
+  checkCompletedImportAncestry,
+  classifyBackmerge,
+  collectManifestBlobsOnSource,
+  formatSourceMarker,
+  manifestOriginatesFromSource,
+  parseSourceMarkers,
+  runBackmerge,
+  runProcess,
+  selectBranch,
+} from './backmerge-main-to-develop.mjs';
+import { CATALOG_IMPORT_BRANCH, TRACKED_MANIFEST_PATH } from './catalog-sync-guard.mjs';
+import { validateDocumentationContract } from './pr-documentation-contract.mjs';
+import {
+  type BranchLineFixture,
+  createBranchLineFixture,
+  createFixtureRegistry,
+  createGitHubStub,
+  seedBothLines,
+  silentLogger,
+} from './branchLineFixtures.js';
+
+const execFileAsync = promisify(execFile);
+const REGISTRY_PATH = 'src/domain/sourceRegistry.mjs';
+
+const fixtures = createFixtureRegistry();
+afterEach(fixtures.cleanup);
+
+type Fixture = BranchLineFixture;
+const createFixture = () => createBranchLineFixture(fixtures);
+
+describe('runProcess', () => {
+  it('erzeugt kein unbehandeltes EPIPE gegen ein Kommando, das stdin nie liest', async () => {
+    // Regression: Die erste Fassung öffnete immer eine stdin-Pipe und schrieb
+    // darauf, auch für `git rev-parse` und Verwandte. Endete das Kind vor dem
+    // Write, blieb ein Stream-`error` ohne Listener zurück und ließ einen
+    // Testlauf mit bestandenen Tests scheitern — sieben solcher Ereignisse in
+    // den CI-Jobs `validate` und `SonarQube Scan` von Pull Request #248, ohne
+    // dass lokal je eines auftrat. Ein großer Puffer erzwingt das Rennen:
+    // Der Write wird fragmentiert, das Kind ist vorher fertig.
+    const bigInput = 'x'.repeat(8 * 1024 * 1024);
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      await expect(runProcess('git', ['--version'], { input: bigInput })).resolves
+        .toMatchObject({ code: 0 });
+    }
+
+    // Ohne `input` entsteht gar keine stdin-Pipe, das Rennen existiert nicht.
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      await expect(runProcess('git', ['--version'])).resolves.toMatchObject({ code: 0 });
+    }
+  });
+
+  it('meldet einen Fehlschlag mit Exit-Code und stderr, sofern nicht zugelassen', async () => {
+    await expect(runProcess('git', ['rev-parse', '--verify', 'kein-solches-ref'])).rejects
+      .toThrow(/failed with exit code/);
+    await expect(runProcess('git', ['rev-parse', '--verify', 'kein-solches-ref'], {
+      allowFailure: true,
+    })).resolves.toMatchObject({ code: 128 });
+  });
+});
+
+describe('classifyBackmerge', () => {
+  it('erkennt den reinen Manifest-Sync als M1', () => {
+    expect(classifyBackmerge({
+      changedPaths: [TRACKED_MANIFEST_PATH],
+      snapshotAdvances: true,
+    })).toMatchObject({ klasse: 'M1' });
+  });
+
+  it('erkennt Manifest und Quellregister gemeinsam als M2', () => {
+    expect(classifyBackmerge({
+      changedPaths: [TRACKED_MANIFEST_PATH, REGISTRY_PATH, 'docs/ARCHITECTURE.md'],
+      snapshotAdvances: true,
+    })).toMatchObject({ klasse: 'M2' });
+  });
+
+  it('erkennt Inhalt ohne Manifestpfad als M3', () => {
+    expect(classifyBackmerge({
+      changedPaths: ['src/app/App.tsx', 'docs/ARCHITECTURE.md'],
+      snapshotAdvances: false,
+    })).toMatchObject({ klasse: 'M3' });
+  });
+
+  it('meldet Leerlauf, wenn die Quelle seit der Basis nichts bewegt hat', () => {
+    expect(classifyBackmerge({ changedPaths: [], snapshotAdvances: false }))
+      .toMatchObject({ klasse: 'idle' });
+  });
+
+  it('meldet einen Konflikt, wenn das Manifest ohne Quellregister von anderem Inhalt begleitet wird', () => {
+    // Diese Kombination passiert weder den vierten Vertrag (genau eine Datei)
+    // noch einen Migrationsvertrag (verlangt das Quellregister im Diff).
+    const result = classifyBackmerge({
+      changedPaths: [TRACKED_MANIFEST_PATH, 'scripts/fetch-catalog.mjs'],
+      snapshotAdvances: true,
+    });
+    expect(result.klasse).toBe('conflict');
+    expect(result.reason).toContain('scripts/fetch-catalog.mjs');
+  });
+
+  it('meldet einen Konflikt, wenn sich das Manifest ohne Snapshotwechsel bewegt', () => {
+    const result = classifyBackmerge({
+      changedPaths: [TRACKED_MANIFEST_PATH],
+      snapshotAdvances: false,
+    });
+    expect(result.klasse).toBe('conflict');
+    expect(result.reason).toContain('snapshotCommitSha');
+  });
+});
+
+describe('Quellmarke', () => {
+  it('erzeugt und liest die Marke verlustfrei', () => {
+    const sha = 'a'.repeat(40);
+    expect(parseSourceMarkers(`Text\n${formatSourceMarker(sha)}\nmehr`)).toEqual([sha]);
+  });
+
+  it('liest mehrere Marken und ignoriert Fremdtext', () => {
+    const first = 'a'.repeat(40);
+    const second = 'b'.repeat(40);
+    const body = `${formatSourceMarker(first)}\nirgendetwas\n${formatSourceMarker(second)}`;
+    expect(parseSourceMarkers(body)).toEqual([first, second]);
+  });
+
+  it('liefert für einen Body ohne Marke eine leere Liste', () => {
+    expect(parseSourceMarkers('kein Marker hier')).toEqual([]);
+    expect(parseSourceMarkers(undefined as unknown as string)).toEqual([]);
+  });
+
+  it('weist eine Marke ohne vollständigen SHA ab', () => {
+    expect(() => formatSourceMarker('abc123')).toThrow(BackmergeError);
+    expect(parseSourceMarkers('<!-- backmerge-source: abc123 -->')).toEqual([]);
+  });
+});
+
+describe('selectBranch', () => {
+  it('nutzt für M1 den Import-Namensraum und sonst den neutralen Namen', () => {
+    expect(selectBranch({ klasse: 'M1', repairRequired: false })).toBe(CATALOG_IMPORT_BRANCH);
+    expect(selectBranch({ klasse: 'M2', repairRequired: false })).toBe(BACKMERGE_BRANCH);
+    expect(selectBranch({ klasse: 'M3', repairRequired: false })).toBe(BACKMERGE_BRANCH);
+  });
+
+  it('verlässt den Squash-fähigen Namensraum, sobald eine Reparatur ansteht', () => {
+    expect(selectBranch({ klasse: 'M1', repairRequired: true })).toBe(BACKMERGE_BRANCH);
+  });
+});
+
+describe('buildPullRequestBody', () => {
+  const sourceSha = 'c'.repeat(40);
+
+  it('trägt die Quellmarke und die verlangte Merge-Methode', () => {
+    const body = buildPullRequestBody({
+      klasse: 'M3',
+      reason: 'Inhalt ohne Manifestpfad.',
+      sourceSha,
+      changedPaths: ['src/app/App.tsx'],
+      markerShas: [sourceSha],
+      mergeMethod: 'Merge-Commit',
+    });
+
+    expect(parseSourceMarkers(body)).toEqual([sourceSha]);
+    expect(body).toContain('**Erforderliche Merge-Methode:** Merge-Commit');
+  });
+
+  it('erfüllt den Dokumentationsvertrag mit „Keine Dokumentationsauswirkung"', () => {
+    const changedPaths = ['src/app/App.tsx'];
+    const body = buildPullRequestBody({
+      klasse: 'M3',
+      reason: 'Inhalt ohne Manifestpfad.',
+      sourceSha,
+      changedPaths,
+      markerShas: [sourceSha],
+      mergeMethod: 'Merge-Commit',
+    });
+
+    expect(validateDocumentationContract({ changedFiles: changedPaths, pullRequestBody: body }))
+      .toMatchObject({ documentationImpact: 'none' });
+  });
+
+  it('erfüllt den Dokumentationsvertrag mit den übernommenen Dokumentationsdateien', () => {
+    const changedPaths = ['src/app/App.tsx', 'docs/ARCHITECTURE.md'];
+    const body = buildPullRequestBody({
+      klasse: 'M3',
+      reason: 'Inhalt ohne Manifestpfad.',
+      sourceSha,
+      changedPaths,
+      markerShas: [sourceSha],
+      mergeMethod: 'Merge-Commit',
+    });
+
+    expect(validateDocumentationContract({ changedFiles: changedPaths, pullRequestBody: body }))
+      .toMatchObject({ documentationImpact: 'updated' });
+  });
+
+  it('markiert ausschliesslich die übergebenen Quellstände, nicht den Anzeige-Quellstand', () => {
+    // Ein Reparatur-PR bindet nur die fehlenden Quellstände ein. Markierte er
+    // zusätzlich den aktuellen `main`-Head, wäre dessen Marke von der PR-Spitze
+    // unerreichbar und der Folgelauf verwürfe sie als ungültig.
+    const repaired = 'd'.repeat(40);
+    const body = buildPullRequestBody({
+      klasse: 'Reparatur',
+      reason: 'Historie verbinden.',
+      sourceSha,
+      changedPaths: [],
+      markerShas: [repaired],
+      repairSources: [{ number: 42, sha: repaired }],
+      mergeMethod: 'Merge-Commit',
+    });
+
+    expect(body).toContain('Pull Request #42');
+    expect(parseSourceMarkers(body)).toEqual([repaired]);
+    expect(parseSourceMarkers(body)).not.toContain(sourceSha);
+  });
+});
+
+describe('M1-Vorbedingung', () => {
+  it('erkennt einen aus der Freigabelinie stammenden Manifeststand über mehrere Schritte', async () => {
+    const fixture = await createFixture();
+    await seedBothLines(fixture, 'a'.repeat(40));
+
+    // main läuft über zwei Sync-Schritte weiter, develop bleibt auf A.
+    await fixture.writeManifest('b'.repeat(40));
+    await fixture.commit('chore(ci): Sync B');
+    await fixture.writeManifest('c'.repeat(40));
+    await fixture.commit('chore(ci): Sync C');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+    await fixture.run('fetch', '--quiet', 'origin');
+
+    await expect(manifestOriginatesFromSource(fixture.git)).resolves.toBe(true);
+
+    // Die Aufzählung deckt jeden je getragenen Stand ab, nicht nur die Spitze.
+    const blobs = await collectManifestBlobsOnSource(fixture.git);
+    expect(blobs.size).toBe(3);
+  });
+
+  it('schlägt an, wenn develops Manifest an keinem erreichbaren Commit vorkommt', async () => {
+    const fixture = await createFixture();
+    await seedBothLines(fixture, 'a'.repeat(40));
+
+    // develop bewegt das Manifest eigenständig — der Stand stammt nicht aus main.
+    await fixture.run('switch', '--quiet', 'develop');
+    await fixture.writeManifest('f'.repeat(40));
+    await fixture.commit('chore: eigenständiger Manifeststand auf develop');
+    await fixture.run('push', '--quiet', 'origin', 'develop');
+
+    await fixture.run('switch', '--quiet', 'main');
+    await fixture.writeManifest('b'.repeat(40));
+    await fixture.commit('chore(ci): Sync B');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+    await fixture.run('fetch', '--quiet', 'origin');
+
+    await expect(manifestOriginatesFromSource(fixture.git)).resolves.toBe(false);
+  });
+});
+
+describe('Ancestry abgeschlossener Übernahmen', () => {
+  it('bestätigt eine als Merge-Commit gemergte Übernahme', async () => {
+    const fixture = await createFixture();
+    await seedBothLines(fixture, 'a'.repeat(40));
+
+    await fixture.run('switch', '--quiet', 'main');
+    await writeFile(join(fixture.work, 'hotfix.txt'), 'Hotfix\n', 'utf8');
+    const sourceSha = await fixture.commit('fix: Hotfix auf main');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+
+    // Übernahme als Merge-Commit: der Quellstand wird Vorfahr von develop.
+    await fixture.run('switch', '--quiet', 'develop');
+    await fixture.run('merge', '--quiet', '--no-ff', '-m', 'chore(sync): Übernahme', sourceSha);
+    const tipSha = await fixture.run('rev-parse', 'HEAD');
+    await fixture.run('push', '--quiet', 'origin', 'develop');
+    await execFileAsync('git', ['-C', fixture.origin, 'update-ref', 'refs/pull/7/head', tipSha]);
+    await fixture.git(['fetch', '--no-tags', 'origin', '+refs/pull/7/head:refs/backmerge-pr/7']);
+    await fixture.run('fetch', '--quiet', 'origin');
+
+    const result = await checkCompletedImportAncestry(fixture.git, {
+      pullRequests: [{ number: 7, body: formatSourceMarker(sourceSha) }],
+    });
+    expect(result).toEqual({ invalid: [], missing: [] });
+  });
+
+  it('erkennt einen gesquashten Übernahme-PR an der fehlenden Ancestry', async () => {
+    const fixture = await createFixture();
+    await seedBothLines(fixture, 'a'.repeat(40));
+
+    await fixture.run('switch', '--quiet', 'main');
+    await writeFile(join(fixture.work, 'hotfix.txt'), 'Hotfix\n', 'utf8');
+    const sourceSha = await fixture.commit('fix: Hotfix auf main');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+
+    // Der Branch entsteht wie im Lauf, wird danach aber durch einen Merge des
+    // neueren develop aktualisiert — und erst dann gesquasht. Die Marke im
+    // PR-Body überlebt beides; der zweite Elternteil des Heads täte es nicht.
+    await fixture.run('switch', '--quiet', '--create', 'chore/import', 'develop');
+    await fixture.run('merge', '--quiet', '--no-ff', '-m', 'chore(sync): Übernahme', sourceSha);
+    await fixture.run('switch', '--quiet', 'develop');
+    await writeFile(join(fixture.work, 'weiter.txt'), 'develop läuft weiter\n', 'utf8');
+    await fixture.commit('chore: develop läuft weiter');
+    await fixture.run('switch', '--quiet', 'chore/import');
+    await fixture.run('merge', '--quiet', '--no-ff', '-m', 'Update branch', 'develop');
+    const tipSha = await fixture.run('rev-parse', 'HEAD');
+    await fixture.run('push', '--quiet', 'origin', 'chore/import');
+
+    // Squash-Merge: der Inhalt landet vollständig, die Historie nicht.
+    await fixture.run('switch', '--quiet', 'develop');
+    await fixture.run('merge', '--quiet', '--squash', 'chore/import');
+    await fixture.commit('chore(sync): Übernahme (squashed)');
+    await fixture.run('push', '--quiet', 'origin', 'develop');
+    await execFileAsync('git', ['-C', fixture.origin, 'update-ref', 'refs/pull/7/head', tipSha]);
+    await fixture.git(['fetch', '--no-tags', 'origin', '+refs/pull/7/head:refs/backmerge-pr/7']);
+    await fixture.run('fetch', '--quiet', 'origin');
+
+    const result = await checkCompletedImportAncestry(fixture.git, {
+      pullRequests: [{ number: 7, body: formatSourceMarker(sourceSha) }],
+    });
+    expect(result.invalid).toEqual([]);
+    expect(result.missing).toEqual([{ number: 7, sha: sourceSha }]);
+  });
+
+  it('behandelt einen PR ohne Quellmarke als ungültig statt als bestanden', async () => {
+    const fixture = await createFixture();
+    await seedBothLines(fixture, 'a'.repeat(40));
+    await fixture.run('fetch', '--quiet', 'origin');
+
+    const result = await checkCompletedImportAncestry(fixture.git, {
+      pullRequests: [{ number: 9, body: 'Ein Body ganz ohne Marke.' }],
+    });
+    expect(result.missing).toEqual([]);
+    expect(result.invalid).toHaveLength(1);
+    expect(result.invalid[0]).toMatchObject({ number: 9 });
+    expect(result.invalid[0].reason).toContain('keine Quellmarke');
+  });
+
+  it('behandelt eine von der PR-Spitze nicht erreichbare Marke als ungültig', async () => {
+    const fixture = await createFixture();
+    await seedBothLines(fixture, 'a'.repeat(40));
+
+    // Ein Commit, den es gibt, der aber auf keinem Übernahme-Branch liegt.
+    await fixture.run('switch', '--quiet', '--create', 'seitenlinie', 'main');
+    await writeFile(join(fixture.work, 'fremd.txt'), 'fremd\n', 'utf8');
+    const fremderSha = await fixture.commit('chore: fremder Commit');
+
+    const tipSha = await fixture.run('rev-parse', 'develop');
+    await execFileAsync('git', ['-C', fixture.origin, 'update-ref', 'refs/pull/8/head', tipSha]);
+    await fixture.git(['fetch', '--no-tags', 'origin', '+refs/pull/8/head:refs/backmerge-pr/8']);
+    await fixture.run('fetch', '--quiet', 'origin');
+
+    const result = await checkCompletedImportAncestry(fixture.git, {
+      pullRequests: [{ number: 8, body: formatSourceMarker(fremderSha) }],
+    });
+    expect(result.missing).toEqual([]);
+    expect(result.invalid[0].reason).toContain('nicht erreichbar');
+  });
+});
+
+describe('runBackmerge', () => {
+  it('endet ohne Pull Request, wenn die Übernahme den develop-Baum nicht ändert', async () => {
+    const fixture = await createFixture();
+    await seedBothLines(fixture, 'a'.repeat(40));
+
+    // develop läuft eigenständig weiter: Die Bäume von main und develop weichen
+    // ab, obwohl es nichts zu übernehmen gibt. Ein Baumvergleich zwischen den
+    // Linien würde hier fälschlich einen Pull Request erzeugen.
+    await fixture.run('switch', '--quiet', 'develop');
+    await writeFile(join(fixture.work, 'feature.txt'), 'nur auf develop\n', 'utf8');
+    await fixture.commit('feat: Arbeit auf develop');
+    await fixture.run('push', '--quiet', 'origin', 'develop');
+
+    const github = createGitHubStub();
+    const result = await runBackmerge({
+      cwd: fixture.work, git: fixture.git, github, logger: silentLogger,
+    });
+
+    expect(result).toMatchObject({ created: false, klasse: 'idle' });
+    expect(github.createPullRequest).not.toHaveBeenCalled();
+    const treesDiffer = await fixture.run('rev-parse', 'origin/main^{tree}')
+      !== await fixture.run('rev-parse', 'origin/develop^{tree}');
+    expect(treesDiffer).toBe(true);
+  });
+
+  it('erzeugt für einen reinen Manifest-Sync genau einen Übernahme-PR', async () => {
+    const fixture = await createFixture();
+    await seedBothLines(fixture, 'a'.repeat(40));
+
+    await fixture.run('switch', '--quiet', 'main');
+    await fixture.writeManifest('b'.repeat(40));
+    await fixture.commit('chore(ci): Sync B');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+
+    const github = createGitHubStub();
+    const result = await runBackmerge({
+      cwd: fixture.work, git: fixture.git, github, logger: silentLogger,
+    });
+
+    expect(result).toMatchObject({ created: true, klasse: 'M1' });
+    expect(github.createPullRequest).toHaveBeenCalledTimes(1);
+    const [[call]] = github.createPullRequest.mock.calls as [[{ head: string; body: string }]];
+    expect(call.head).toBe(CATALOG_IMPORT_BRANCH);
+
+    // Genau eine geänderte Datei gegenüber develop — die Bedingung, an der der
+    // vierte Guard-Vertrag hängt.
+    const changed = await fixture.run(
+      'diff', '--name-only', 'origin/develop', `origin/${CATALOG_IMPORT_BRANCH}`,
+    );
+    expect(changed).toBe(TRACKED_MANIFEST_PATH);
+  });
+
+  it('übernimmt bei einem offenen PR und weitergelaufenem main den Sprung statt des Einzelschritts', async () => {
+    const fixture = await createFixture();
+    await seedBothLines(fixture, 'a'.repeat(40));
+
+    await fixture.run('switch', '--quiet', 'main');
+    await fixture.writeManifest('b'.repeat(40));
+    await fixture.commit('chore(ci): Sync B');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+
+    const github = createGitHubStub();
+    await runBackmerge({ cwd: fixture.work, git: fixture.git, github, logger: silentLogger });
+
+    // main läuft auf C weiter, während der PR für B offen bleibt.
+    await fixture.run('switch', '--quiet', 'main');
+    await fixture.writeManifest('c'.repeat(40));
+    await fixture.commit('chore(ci): Sync C');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+
+    github.findOpenPullRequest.mockResolvedValue(11);
+    await runBackmerge({ cwd: fixture.work, git: fixture.git, github, logger: silentLogger });
+
+    expect(github.updatePullRequest).toHaveBeenCalledTimes(1);
+    // Der aktualisierte Branch trägt Cs Manifest, nicht Bs.
+    const manifestOnBranch = await fixture.run(
+      'show', `origin/${CATALOG_IMPORT_BRANCH}:${TRACKED_MANIFEST_PATH}`,
+    );
+    expect(JSON.parse(manifestOnBranch).snapshotCommitSha).toBe('c'.repeat(40));
+    // Und der Branch bleibt bei genau einem Commit über develop: ein Sprung,
+    // keine Kette von Einzelschritten.
+    const commitCount = await fixture.run(
+      'rev-list', '--count', `origin/develop..origin/${CATALOG_IMPORT_BRANCH}`,
+    );
+    expect(commitCount).toBe('1');
+  });
+
+  it('stellt ohne erfüllte M1-Vorbedingung keinen Pull Request', async () => {
+    const fixture = await createFixture();
+    await seedBothLines(fixture, 'a'.repeat(40));
+
+    await fixture.run('switch', '--quiet', 'develop');
+    await fixture.writeManifest('f'.repeat(40));
+    await fixture.commit('chore: eigenständiger Manifeststand auf develop');
+    await fixture.run('push', '--quiet', 'origin', 'develop');
+
+    await fixture.run('switch', '--quiet', 'main');
+    await fixture.writeManifest('b'.repeat(40));
+    await fixture.commit('chore(ci): Sync B');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+
+    const github = createGitHubStub();
+    await expect(runBackmerge({
+      cwd: fixture.work, git: fixture.git, github, logger: silentLogger,
+    })).rejects.toThrow(/M1-Vorbedingung ist verletzt/);
+    expect(github.createPullRequest).not.toHaveBeenCalled();
+  });
+
+  it('erhält eine unabhängige Änderung auf develop bei der Manifest-Übernahme nicht zurück', async () => {
+    // Negativtest zum Erhalt unabhängiger Änderungen: main bewegt das Manifest,
+    // develop bewegt unabhängig eine andere Datei. Nach der Übernahme muss
+    // develops eigene Änderung erhalten bleiben.
+    const fixture = await createFixture();
+    await seedBothLines(fixture, 'a'.repeat(40));
+
+    await fixture.run('switch', '--quiet', 'develop');
+    await writeFile(join(fixture.work, 'lifecycle.txt'), 'preview\n', 'utf8');
+    await fixture.commit('chore: develop setzt lifecycle auf preview');
+    await fixture.run('push', '--quiet', 'origin', 'develop');
+
+    await fixture.run('switch', '--quiet', 'main');
+    await fixture.writeManifest('b'.repeat(40));
+    await fixture.commit('chore(ci): Sync B');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+
+    await runBackmerge({
+      cwd: fixture.work, git: fixture.git, github: createGitHubStub(), logger: silentLogger,
+    });
+
+    const onBranch = await fixture.run(
+      'show', `origin/${CATALOG_IMPORT_BRANCH}:lifecycle.txt`,
+    );
+    expect(onBranch).toBe('preview');
+  });
+
+  it('meldet die fehlende Ancestry und stellt trotz vollständigen Inhalts einen Reparatur-PR', async () => {
+    const fixture = await createFixture();
+    await seedBothLines(fixture, 'a'.repeat(40));
+
+    await fixture.run('switch', '--quiet', 'main');
+    await writeFile(join(fixture.work, 'hotfix.txt'), 'Hotfix\n', 'utf8');
+    const sourceSha = await fixture.commit('fix: Hotfix auf main');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+
+    // Gesquashte Übernahme: Der Inhalt liegt auf develop vollständig vor.
+    await fixture.run('switch', '--quiet', 'develop');
+    await fixture.run('merge', '--quiet', '--squash', sourceSha);
+    await fixture.commit('chore(sync): Übernahme (squashed)');
+    await fixture.run('push', '--quiet', 'origin', 'develop');
+    await execFileAsync('git', ['-C', fixture.origin, 'update-ref', 'refs/pull/5/head', sourceSha]);
+
+    const github = createGitHubStub({
+      listMergedPullRequests: vi.fn(async () => [
+        { number: 5, body: formatSourceMarker(sourceSha) },
+      ]),
+    });
+
+    // Der Lauf endet mit einem Fehler — aber erst, nachdem der Pull Request steht.
+    await expect(runBackmerge({
+      cwd: fixture.work, git: fixture.git, github, logger: silentLogger,
+    })).rejects.toThrow(/Ancestry abgeschlossener Übernahmen/);
+
+    expect(github.createPullRequest).toHaveBeenCalledTimes(1);
+    const [[call]] = github.createPullRequest.mock.calls as [[{ head: string; body: string }]];
+    expect(call.head).toBe(BACKMERGE_BRANCH);
+    expect(parseSourceMarkers(call.body)).toContain(sourceSha);
+
+    // Der Reparaturbranch stellt die Ancestry her, ohne den Baum zu verändern.
+    const branchTree = await fixture.run('rev-parse', `origin/${BACKMERGE_BRANCH}^{tree}`);
+    const developTree = await fixture.run('rev-parse', 'origin/develop^{tree}');
+    expect(branchTree).toBe(developTree);
+    await expect(fixture.run(
+      'merge-base', '--is-ancestor', sourceSha, `origin/${BACKMERGE_BRANCH}`,
+    )).resolves.toBe('');
+  });
+
+  it('blockiert den Manifest-Import nicht, wenn zugleich eine Ancestry-Reparatur ansteht', async () => {
+    // Greptile-Befund an Pull Request #248: Wurden Reparatur und Inhaltsübernahme
+    // in einen Pull Request gebündelt, trug dieser den Manifestpfad unter dem
+    // neutralen Branchnamen. Er erfüllte damit weder den Ein-Datei-Importvertrag
+    // noch den Sync-Branchvertrag und wurde vom Guard abgelehnt — der nächste
+    // Katalog-Sync kam nicht mehr nach `develop`. Die Reparatur ist deshalb der
+    // alleinige Gegenstand ihres Laufs.
+    const fixture = await createFixture();
+    await seedBothLines(fixture, 'a'.repeat(40));
+
+    await fixture.run('switch', '--quiet', 'main');
+    await writeFile(join(fixture.work, 'hotfix.txt'), 'Hotfix\n', 'utf8');
+    const repairSha = await fixture.commit('fix: Hotfix auf main');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+
+    // Der Hotfix wird gesquasht übernommen — die Ancestry fehlt danach.
+    await fixture.run('switch', '--quiet', 'develop');
+    await fixture.run('merge', '--quiet', '--squash', repairSha);
+    await fixture.commit('chore(sync): Übernahme (squashed)');
+    await fixture.run('push', '--quiet', 'origin', 'develop');
+    await execFileAsync('git', ['-C', fixture.origin, 'update-ref', 'refs/pull/5/head', repairSha]);
+
+    // Gleichzeitig steht ein neuer reiner Manifest-Sync auf main an.
+    await fixture.run('switch', '--quiet', 'main');
+    await fixture.writeManifest('b'.repeat(40));
+    await fixture.commit('chore(ci): Sync B');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+
+    const github = createGitHubStub({
+      listMergedPullRequests: vi.fn(async () => [
+        { number: 5, body: formatSourceMarker(repairSha) },
+      ]),
+    });
+
+    await expect(runBackmerge({
+      cwd: fixture.work, git: fixture.git, github, logger: silentLogger,
+    })).rejects.toThrow(/Ancestry abgeschlossener Übernahmen/);
+
+    // Der Reparatur-PR trägt KEINEN Manifestpfad — sein Diff ist leer, er ist
+    // für den Guard kein Kandidat.
+    const repairDiff = await fixture.run(
+      'diff', '--name-only', 'origin/develop', `origin/${BACKMERGE_BRANCH}`,
+    );
+    expect(repairDiff).toBe('');
+
+    // Nach seinem Merge übernimmt der Folgelauf das Manifest als sauberes M1
+    // mit genau einer Datei — die Bedingung des vierten Guard-Vertrags.
+    const repairBody = (github.createPullRequest.mock.calls as [[{ body: string }]])[0][0].body;
+    await fixture.run('switch', '--quiet', 'develop');
+    await fixture.run('merge', '--quiet', '--no-ff', '-m', 'Merge Reparatur', `origin/${BACKMERGE_BRANCH}`);
+    const repairTip = await fixture.run('rev-parse', `origin/${BACKMERGE_BRANCH}`);
+    await fixture.run('push', '--quiet', 'origin', 'develop');
+    await execFileAsync('git', ['-C', fixture.origin, 'update-ref', 'refs/pull/6/head', repairTip]);
+
+    // Der Folgelauf sieht BEIDE gemergten Übernahmen — auch den Reparatur-PR
+    // selbst, genau wie `gh pr list --state merged` ihn zurückgibt. Markierte
+    // dessen Body den `main`-Head, wäre die Marke von seiner Spitze aus
+    // unerreichbar und der Lauf bräche ab, statt das Manifest zu übernehmen.
+    const followUp = createGitHubStub({
+      listMergedPullRequests: vi.fn(async () => [
+        { number: 5, body: formatSourceMarker(repairSha) },
+        { number: 6, body: repairBody },
+      ]),
+    });
+    const result = await runBackmerge({
+      cwd: fixture.work, git: fixture.git, github: followUp, logger: silentLogger,
+    });
+
+    expect(result).toMatchObject({ created: true, klasse: 'M1' });
+    const [[call]] = followUp.createPullRequest.mock.calls as [[{ head: string }]];
+    expect(call.head).toBe(CATALOG_IMPORT_BRANCH);
+    const importDiff = await fixture.run(
+      'diff', '--name-only', 'origin/develop', `origin/${CATALOG_IMPORT_BRANCH}`,
+    );
+    expect(importDiff).toBe(TRACKED_MANIFEST_PATH);
+  });
+
+  it('bricht ohne Pull Request ab, wenn ein PR keine überprüfbare Quellmarke trägt', async () => {
+    const fixture = await createFixture();
+    await seedBothLines(fixture, 'a'.repeat(40));
+
+    const github = createGitHubStub({
+      listMergedPullRequests: vi.fn(async () => [{ number: 3, body: 'ohne Marke' }]),
+    });
+
+    await expect(runBackmerge({
+      cwd: fixture.work, git: fixture.git, github, logger: silentLogger,
+    })).rejects.toThrow(/keine überprüfbare Quellmarke/);
+    expect(github.createPullRequest).not.toHaveBeenCalled();
+  });
+
+  it('erzeugt für Inhalt ohne Manifestpfad einen M3-Merge-Commit-PR', async () => {
+    const fixture = await createFixture();
+    await seedBothLines(fixture, 'a'.repeat(40));
+
+    await fixture.run('switch', '--quiet', 'main');
+    await writeFile(join(fixture.work, 'hotfix.txt'), 'Hotfix\n', 'utf8');
+    await fixture.commit('fix: Hotfix auf main');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+
+    const github = createGitHubStub();
+    const result = await runBackmerge({
+      cwd: fixture.work, git: fixture.git, github, logger: silentLogger,
+    });
+
+    expect(result).toMatchObject({ created: true, klasse: 'M3' });
+    const [[call]] = github.createPullRequest.mock.calls as [[{ head: string; body: string }]];
+    expect(call.head).toBe(BACKMERGE_BRANCH);
+    expect(call.body).toContain('**Erforderliche Merge-Methode:** Merge-Commit');
+
+    // Der Branch trägt einen echten Merge-Commit: Die gemeinsame Basis wandert
+    // beim Merge mit, ein Squash ließe sie zurückfallen.
+    const parents = await fixture.run('rev-list', '--parents', '-n', '1', `origin/${BACKMERGE_BRANCH}`);
+    expect(parents.split(' ')).toHaveLength(3);
+  });
+
+  it('übernimmt eine reine Modusänderung als M3 statt sie als Leerlauf zu verwerfen', async () => {
+    // Codex-Cross-Review an Pull Request #248: Der vorgezogene Leerlauftest
+    // verglich die Blob-Identitäten beider Linien, und ein Blob trägt den
+    // Dateimodus nicht. Ein Hotfix, der ein Skript ausführbar macht, ließ den
+    // Lauf deshalb als `idle` enden — das Ausführungsrecht erreichte `develop`
+    // nie, und die spätere Release-Vorbereitung scheiterte an der
+    // Baumungleichheit.
+    const fixture = await createFixture();
+    const script = join(fixture.work, 'run.sh');
+    await writeFile(script, '#!/bin/sh\necho hallo\n', 'utf8');
+    await seedBothLines(fixture, 'a'.repeat(40));
+
+    await fixture.run('switch', '--quiet', 'main');
+    await chmod(script, 0o755);
+    await fixture.commit('fix: run.sh ausführbar machen');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+
+    // Die Voraussetzung des Befunds: Der Blob ist auf beiden Linien derselbe,
+    // allein der Tree-Eintrag unterscheidet sich.
+    const blobAufDevelop = await fixture.run('rev-parse', 'origin/develop:run.sh');
+    const blobAufMain = await fixture.run('rev-parse', 'origin/main:run.sh');
+    expect(blobAufMain).toBe(blobAufDevelop);
+
+    const github = createGitHubStub();
+    const result = await runBackmerge({
+      cwd: fixture.work, git: fixture.git, github, logger: silentLogger,
+    });
+
+    expect(result).toMatchObject({ created: true, klasse: 'M3' });
+    const aufDemBranch = await fixture.run('ls-tree', `origin/${BACKMERGE_BRANCH}`, '--', 'run.sh');
+    expect(aufDemBranch).toMatch(/^100755 blob /);
+  });
+
+  it('bricht mit Konfliktbefund ab, wenn die Ausgangszustände auseinandergelaufen sind', async () => {
+    const fixture = await createFixture();
+    await seedBothLines(fixture, 'a'.repeat(40));
+
+    await fixture.run('switch', '--quiet', 'develop');
+    await writeFile(join(fixture.work, 'hotfix.txt'), 'develops Fassung\n', 'utf8');
+    await fixture.commit('fix: develops Fassung');
+    await fixture.run('push', '--quiet', 'origin', 'develop');
+
+    await fixture.run('switch', '--quiet', 'main');
+    await writeFile(join(fixture.work, 'hotfix.txt'), 'mains Fassung\n', 'utf8');
+    await fixture.commit('fix: mains Fassung');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+
+    const github = createGitHubStub();
+    await expect(runBackmerge({
+      cwd: fixture.work, git: fixture.git, github, logger: silentLogger,
+    })).rejects.toThrow(/auseinandergelaufen/);
+    expect(github.createPullRequest).not.toHaveBeenCalled();
+
+    // Nichts wurde überschrieben: develop trägt weiterhin seine Fassung.
+    await expect(fixture.run('show', 'origin/develop:hotfix.txt'))
+      .resolves.toBe("develops Fassung");
+  });
+
+  it('kollidiert nach einem M1-Squash an der veralteten gemeinsamen Basis, ohne etwas zu überschreiben', async () => {
+    // Betriebsgrenze M1-Squash vor M2: Der Squash schreibt die gemeinsame Basis
+    // nicht fort. Der Manifestpfad dort veraltet, während develop den neuen
+    // Inhalt bereits trägt — der nächste Merge rechnet gegen den alten Stand.
+    const fixture = await createFixture();
+    await seedBothLines(fixture, 'a'.repeat(40));
+
+    await fixture.run('switch', '--quiet', 'main');
+    await fixture.writeManifest('b'.repeat(40));
+    await fixture.commit('chore(ci): Sync B');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+
+    await runBackmerge({
+      cwd: fixture.work, git: fixture.git, github: createGitHubStub(), logger: silentLogger,
+    });
+
+    // Der M1-PR wird gesquasht gemergt.
+    await fixture.run('switch', '--quiet', 'develop');
+    await fixture.run('merge', '--quiet', '--squash', `origin/${CATALOG_IMPORT_BRANCH}`);
+    await fixture.commit('chore(sync): Manifest übernehmen (squashed)');
+    await fixture.run('push', '--quiet', 'origin', 'develop');
+
+    // Danach bewegt main Manifest und Quellregister gemeinsam.
+    await fixture.run('switch', '--quiet', 'main');
+    await fixture.writeManifest('c'.repeat(40));
+    await fixture.run('rm', '--quiet', '--cached', '--ignore-unmatch', REGISTRY_PATH);
+    await execFileAsync('mkdir', ['-p', join(fixture.work, 'src/domain')]);
+    await writeFile(join(fixture.work, REGISTRY_PATH), 'export const SOURCE_REGISTRY = [];\n', 'utf8');
+    await fixture.commit('chore(ci): Sync C mit Registeränderung');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+
+    const github = createGitHubStub();
+    await expect(runBackmerge({
+      cwd: fixture.work, git: fixture.git, github, logger: silentLogger,
+    })).rejects.toThrow(/auseinandergelaufen/);
+    expect(github.createPullRequest).not.toHaveBeenCalled();
+
+    // Nichts überschrieben: develop trägt weiterhin Bs Manifest.
+    const manifestOnDevelop = await fixture.run('show', `origin/develop:${TRACKED_MANIFEST_PATH}`);
+    expect(JSON.parse(manifestOnDevelop).snapshotCommitSha).toBe('b'.repeat(40));
+  });
+
+  it('endet nach einem regulären M1-Squash ohne Konfliktbefund', async () => {
+    // Codex-Cross-Review an Pull Request #248: Pfadmenge und Inhaltsstand haben
+    // verschiedene Bezugsgrößen. Der erlaubte Squash lässt die Merge-Basis
+    // zurückfallen, die Pfadmenge führt das Manifest deshalb weiter — während
+    // beide Manifest-Blobs längst identisch sind. `classifyBackmerge` meldete
+    // dafür „bewegt, ohne dass sich snapshotCommitSha ändert", bevor der
+    // Ergebnisbaum-Leerlauftest den Fall je erreichte, und der vom
+    // `push develop`-Trigger ausgelöste Folgelauf wurde rot.
+    const fixture = await createFixture();
+    await seedBothLines(fixture, 'a'.repeat(40));
+
+    await fixture.run('switch', '--quiet', 'main');
+    await fixture.writeManifest('b'.repeat(40));
+    await fixture.commit('chore(ci): Sync B');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+
+    const ersterLauf = await runBackmerge({
+      cwd: fixture.work, git: fixture.git, github: createGitHubStub(), logger: silentLogger,
+    });
+    expect(ersterLauf).toMatchObject({ created: true, klasse: 'M1' });
+
+    // Der M1-PR wird gesquasht gemergt — ausdrücklich zulässig für diese Klasse.
+    await fixture.run('switch', '--quiet', 'develop');
+    await fixture.run('merge', '--quiet', '--squash', `origin/${CATALOG_IMPORT_BRANCH}`);
+    await fixture.commit('chore(sync): Manifest übernehmen (squashed)');
+    await fixture.run('push', '--quiet', 'origin', 'develop');
+
+    const github = createGitHubStub();
+    const zweiterLauf = await runBackmerge({
+      cwd: fixture.work, git: fixture.git, github, logger: silentLogger,
+    });
+
+    expect(zweiterLauf).toMatchObject({ created: false, klasse: 'idle' });
+    expect(github.createPullRequest).not.toHaveBeenCalled();
+
+    // Der Inhalt liegt vollständig vor: beide Linien tragen dasselbe Manifest.
+    const aufDevelop = await fixture.run('show', `origin/develop:${TRACKED_MANIFEST_PATH}`);
+    const aufMain = await fixture.run('show', `origin/main:${TRACKED_MANIFEST_PATH}`);
+    expect(aufDevelop).toBe(aufMain);
+  });
+
+  it('mergt nicht und löscht keine Branches', async () => {
+    const fixture = await createFixture();
+    await seedBothLines(fixture, 'a'.repeat(40));
+
+    const developBefore = await fixture.run('rev-parse', 'origin/develop');
+    const mainBefore = await fixture.run('rev-parse', 'origin/main');
+
+    await fixture.run('switch', '--quiet', 'main');
+    await writeFile(join(fixture.work, 'hotfix.txt'), 'Hotfix\n', 'utf8');
+    await fixture.commit('fix: Hotfix auf main');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+    const mainAfterPush = await fixture.run('rev-parse', 'origin/main');
+
+    await runBackmerge({
+      cwd: fixture.work, git: fixture.git, github: createGitHubStub(), logger: silentLogger,
+    });
+
+    // develop unverändert, main nur durch den Test selbst bewegt.
+    await expect(fixture.run('rev-parse', 'origin/develop')).resolves.toBe(developBefore);
+    await expect(fixture.run('rev-parse', 'origin/main')).resolves.toBe(mainAfterPush);
+    expect(mainBefore).not.toBe(mainAfterPush);
+  });
+});
+
+describe('runBackmerge, Klasse M2', () => {
+  /**
+   * Manifest mit vollständigen Dateieinträgen. Der Lifecycle-Vertrag vergleicht
+   * Snapshot, Pfadmenge und jeden Content-Pin — ein reduziertes Manifest würde
+   * ihn nicht greifen lassen.
+   */
+  function manifestWithLifecycle(lifecycle: string) {
+    return `${JSON.stringify({
+      schemaVersion: 2,
+      snapshotCommitSha: 'a'.repeat(40),
+      files: [{
+        artifactKey: 'entry-catalog',
+        rootType: 'catalog',
+        lifecycle,
+        path: 'catalog/entry.json',
+        gitBlobSha: '1'.repeat(40),
+        contentSha256: '2'.repeat(64),
+      }],
+    }, null, 2)}\n`;
+  }
+
+  async function seedRegistryLine(fixture: Fixture, lifecycle: string) {
+    await execFileAsync('mkdir', ['-p', join(fixture.work, 'src/domain')]);
+    await writeFile(
+      join(fixture.work, REGISTRY_PATH),
+      `export const SOURCE_REGISTRY = [{ lifecycle: '${lifecycle}' }];\n`,
+      'utf8',
+    );
+  }
+
+  it('stellt einen M2-PR, wenn der Zielzustand einen Migrationsvertrag erfüllt', async () => {
+    const fixture = await createFixture();
+    await writeFile(join(fixture.work, TRACKED_MANIFEST_PATH), manifestWithLifecycle('preview'), 'utf8');
+    await seedRegistryLine(fixture, 'preview');
+    await fixture.commit('chore: Ausgangsstand');
+    await fixture.run('branch', 'develop');
+    await fixture.run('push', '--quiet', 'origin', 'main', 'develop');
+
+    // main promotet den Lifecycle: derselbe Snapshot, unveränderte Pins,
+    // Manifest und Quellregister gemeinsam bewegt.
+    await writeFile(join(fixture.work, TRACKED_MANIFEST_PATH), manifestWithLifecycle('supported'), 'utf8');
+    await seedRegistryLine(fixture, 'supported');
+    await fixture.commit('chore: Lifecycle-Promotion');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+
+    const github = createGitHubStub();
+    const result = await runBackmerge({
+      cwd: fixture.work, git: fixture.git, github, logger: silentLogger,
+    });
+
+    expect(result).toMatchObject({ created: true, klasse: 'M2' });
+    const [[call]] = github.createPullRequest.mock.calls as [[{ head: string; body: string }]];
+    expect(call.head).toBe(BACKMERGE_BRANCH);
+  });
+
+  it('stellt keinen PR, wenn der Zielzustand keinen Migrationsvertrag erfüllt', async () => {
+    const fixture = await createFixture();
+    await writeFile(join(fixture.work, TRACKED_MANIFEST_PATH), manifestWithLifecycle('preview'), 'utf8');
+    await seedRegistryLine(fixture, 'preview');
+    await fixture.commit('chore: Ausgangsstand');
+    await fixture.run('branch', 'develop');
+    await fixture.run('push', '--quiet', 'origin', 'main', 'develop');
+
+    // Neue Bytes UND ein bewegter Snapshot: weder Lifecycle-Wechsel noch
+    // Preview-Erweiterung, und das Quellregister im Fixture trägt keine
+    // ladbare Modulkette für die Versionsmigration.
+    await writeFile(join(fixture.work, TRACKED_MANIFEST_PATH), `${JSON.stringify({
+      schemaVersion: 2,
+      snapshotCommitSha: 'b'.repeat(40),
+      files: [{
+        artifactKey: 'entry-catalog',
+        rootType: 'catalog',
+        lifecycle: 'supported',
+        path: 'catalog/entry.json',
+        gitBlobSha: '9'.repeat(40),
+        contentSha256: '8'.repeat(64),
+      }],
+    }, null, 2)}\n`, 'utf8');
+    await seedRegistryLine(fixture, 'supported');
+    await fixture.commit('chore: Snapshot und Register gemeinsam bewegt');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+
+    const github = createGitHubStub();
+    await expect(runBackmerge({
+      cwd: fixture.work, git: fixture.git, github, logger: silentLogger,
+    })).rejects.toThrow(/keinen der drei Registry-Migrationsverträge/);
+    expect(github.createPullRequest).not.toHaveBeenCalled();
+  });
+
+  /** Zwei Kataloge, damit beide Linien unabhängig voneinander einen bewegen können. */
+  function manifestWithTwoCatalogs(lifecycleA: string, lifecycleB: string) {
+    return `${JSON.stringify({
+      schemaVersion: 2,
+      snapshotCommitSha: 'a'.repeat(40),
+      files: [
+        {
+          artifactKey: 'katalog-a',
+          rootType: 'catalog',
+          lifecycle: lifecycleA,
+          path: 'catalog/a.json',
+          gitBlobSha: '1'.repeat(40),
+          contentSha256: '2'.repeat(64),
+        },
+        {
+          artifactKey: 'katalog-b',
+          rootType: 'catalog',
+          lifecycle: lifecycleB,
+          path: 'catalog/b.json',
+          gitBlobSha: '3'.repeat(40),
+          contentSha256: '4'.repeat(64),
+        },
+      ],
+    }, null, 2)}\n`;
+  }
+
+  /**
+   * Die Einträge stehen mehrzeilig, damit die beiden Lifecycle-Zeilen genügend
+   * unveränderten Kontext zwischen sich haben — sonst meldete schon der
+   * Textmerge einen Konflikt, und der Test prüfte nicht mehr die Bezugsgröße,
+   * sondern die Formatierung.
+   */
+  function registryModule(lifecycleA: string, lifecycleB: string) {
+    return [
+      'export const SOURCE_REGISTRY = [',
+      '  {',
+      "    artifactKey: 'katalog-a',",
+      `    lifecycle: '${lifecycleA}',`,
+      '  },',
+      '  {',
+      "    artifactKey: 'katalog-b',",
+      `    lifecycle: '${lifecycleB}',`,
+      '  },',
+      '];',
+      '',
+    ].join('\n');
+  }
+
+  async function writeRegistryModule(fixture: Fixture, lifecycleA: string, lifecycleB: string) {
+    await execFileAsync('mkdir', ['-p', join(fixture.work, 'src/domain')]);
+    await writeFile(join(fixture.work, REGISTRY_PATH), registryModule(lifecycleA, lifecycleB), 'utf8');
+  }
+
+  it('nimmt eine unabhängige Lifecycle-Änderung auf develop nicht zurück', async () => {
+    // Der Fall aus den Akzeptanzkriterien: Ein greifendes Migrationsprädikat
+    // beweist nur, dass der Zielzustand ein zulässiger Übergang ist — nicht,
+    // dass er die Änderung aus `main` trägt. Eine vollständige Kopie des
+    // `main`-Stands setzte hier beide Kataloge auf `supported`, und der
+    // Lifecycle-Vertrag akzeptierte das, obwohl develops eigene Änderung
+    // verschwunden wäre. M2 rechnet deshalb als Drei-Wege-Merge gegen die
+    // gemeinsame Basis.
+    const fixture = await createFixture();
+    await writeFile(join(fixture.work, TRACKED_MANIFEST_PATH), manifestWithTwoCatalogs('preview', 'supported'), 'utf8');
+    await writeRegistryModule(fixture, 'preview', 'supported');
+    await fixture.commit('chore: Ausgangsstand mit zwei Katalogen');
+    await fixture.run('branch', 'develop');
+    await fixture.run('push', '--quiet', 'origin', 'main', 'develop');
+
+    // main promotet Katalog A.
+    await writeFile(join(fixture.work, TRACKED_MANIFEST_PATH), manifestWithTwoCatalogs('supported', 'supported'), 'utf8');
+    await writeRegistryModule(fixture, 'supported', 'supported');
+    await fixture.commit('chore: Katalog A promoten');
+    await fixture.run('push', '--quiet', 'origin', 'main');
+
+    // develop setzt unabhängig davon Katalog B zurück.
+    await fixture.run('switch', '--quiet', 'develop');
+    await writeFile(join(fixture.work, TRACKED_MANIFEST_PATH), manifestWithTwoCatalogs('preview', 'preview'), 'utf8');
+    await writeRegistryModule(fixture, 'preview', 'preview');
+    await fixture.commit('chore: Katalog B zurücksetzen');
+    await fixture.run('push', '--quiet', 'origin', 'develop');
+
+    const github = createGitHubStub();
+    const result = await runBackmerge({
+      cwd: fixture.work, git: fixture.git, github, logger: silentLogger,
+    });
+    expect(result).toMatchObject({ created: true, klasse: 'M2' });
+
+    // Beide Änderungen liegen vor: mains Promotion von A und develops
+    // Rücknahme von B. Eine wholesale-Kopie hätte B auf `supported` gesetzt.
+    const manifestOnBranch = JSON.parse(
+      await fixture.run('show', `origin/${BACKMERGE_BRANCH}:${TRACKED_MANIFEST_PATH}`),
+    ) as { files: { artifactKey: string; lifecycle: string }[] };
+    expect(Object.fromEntries(manifestOnBranch.files.map((file) => [file.artifactKey, file.lifecycle])))
+      .toEqual({ 'katalog-a': 'supported', 'katalog-b': 'preview' });
+
+    const registryOnBranch = await fixture.run('show', `origin/${BACKMERGE_BRANCH}:${REGISTRY_PATH}`);
+    expect(registryOnBranch.trim()).toBe(registryModule('supported', 'preview').trim());
+  });
+});

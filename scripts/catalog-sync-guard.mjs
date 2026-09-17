@@ -47,6 +47,19 @@ const execFileAsync = promisify(execFile);
 export const TRACKED_MANIFEST_PATH = 'upstream-manifest.json';
 export const SYNC_BRANCH_PATTERN = /^chore\/catalog-sync-([0-9a-f]{12})$/;
 export const SYNC_TITLE_PREFIX = 'chore(ci): BSI-Katalog-Sync ';
+/**
+ * Namensraum der Manifest-Übernahme von der Freigabe- auf die
+ * Integrationslinie (Klasse M1 der Übernahme-Lane). Der Name ist stabil und
+ * trägt keinen Snapshot-Suffix: Die Übernahme zweigt von `develop` ab und
+ * springt immer auf `main`s aktuellen Stand, statt Einzelschritte
+ * nachzuvollziehen — ein aus dem Snapshot abgeleiteter Name müsste bei jedem
+ * weitergelaufenen `main` den Branch wechseln.
+ */
+export const CATALOG_IMPORT_BRANCH = 'chore/catalog-import-to-develop';
+/** Einzige zulässige Base der Übernahme. */
+export const CATALOG_IMPORT_BASE_REF = 'develop';
+/** Einzige zulässige Herkunft des übernommenen Manifests. */
+export const CATALOG_IMPORT_SOURCE_REF = 'origin/main';
 const REGISTRY_LIFECYCLE_MIGRATION_PATH = 'src/domain/sourceRegistry.mjs';
 /** Die im Quellregister deklarierten Lifecycles — einzige zulässige Werte. */
 const REGISTRY_LIFECYCLES = new Set([
@@ -159,6 +172,46 @@ export function parseNameStatusDiff(diffOutput) {
         path: line.slice(separatorIndex + 1),
       };
     });
+}
+
+/**
+ * Berechnet den PR-Diff als Drei-Punkt-Diff gegen die Merge-Basis
+ * (`<base>...<head>`) — dieselbe Bezugsgröße, die GitHub für „Files changed"
+ * verwendet und die die Schwesterprüfung `getChangedFiles`
+ * (`scripts/pr-documentation-contract.mjs`) bereits nutzt. Ein Zwei-Punkt-Diff
+ * meldete jeden Pfad, an dem sich die beiden Bäume unterscheiden, also auch
+ * Pfade, die allein die Base bewegt hat; der Guard bewertete dadurch Dateien,
+ * die der Head nie angefasst hat. Der Vertrag verliert dabei nichts: Beide
+ * Rulesets tragen `strict_required_status_checks_policy: true`, sodass die
+ * Base-Spitze zum Merge-Zeitpunkt Vorfahr des Heads und damit selbst die
+ * Merge-Basis ist — dort sind beide Rechnungen deckungsgleich.
+ *
+ * Die Bezugsgröße von `previousManifest` (`git show <baseSha>:…`) und
+ * `loadSourceRegistryAtRef(baseSha)` in `runCli()` bleibt absichtlich der
+ * Base-SHA. Der Diff beantwortet, was der Head geändert hat; die beiden
+ * anderen Eingaben beantworten für `verifySnapshotProgress`, ob der neue
+ * Snapshot dem voraus ist, was auf der Base bereits liegt — dafür ist die
+ * Base-Spitze die strengere und damit richtige Bezugsgröße.
+ *
+ * Die SHA-Prüfung liegt hier, weil dies der erste git-Aufruf mit beiden SHAs
+ * ist; `runCli()` verlässt sich darauf auch für die nachgelagerten
+ * Base-Lesezugriffe.
+ */
+export async function getPullRequestDiffEntries({
+  baseSha,
+  headSha,
+  execFile = execFileAsync,
+}) {
+  if (!SHA_PATTERN.test(baseSha) || !SHA_PATTERN.test(headSha)) {
+    throw new Error('PR_BASE_SHA and PR_HEAD_SHA must be lowercase 40-character SHAs');
+  }
+
+  const { stdout } = await execFile(
+    'git',
+    ['diff', '--name-status', '--no-renames', `${baseSha}...${headSha}`, '--'],
+    { encoding: 'utf8', maxBuffer: 1024 * 1024 },
+  );
+  return parseNameStatusDiff(stdout);
 }
 
 export function isCatalogSyncCandidate({ branch, title, diffEntries }) {
@@ -502,6 +555,59 @@ export function isRegistryOscalVersionMigration({
   return registryChangesOnlyOscalVersions(previousSourceRegistry, nextSourceRegistry);
 }
 
+/**
+ * Die Manifest-Übernahme von der Freigabe- auf die Integrationslinie.
+ *
+ * Seit dem Release-Branch-Modell nimmt `main` Katalog-Syncs autonom auf,
+ * während `develop` die Integrationslinie ist. Der Inhalt muss `develop`
+ * erreichen, ohne dass die Lane auf `main` etwas von `develop` erwartet. Die
+ * Übernahme-PR zweigt deshalb von `develop` ab und trägt ausschließlich das
+ * aus `main` kopierte Manifest.
+ *
+ * Anders als bei den drei Registry-Ausnahmen stammt die Sicherheit hier weder
+ * aus „keine neuen Bytes" noch aus einer Diff-Positivliste, sondern aus der
+ * **Herkunft**: Das Manifest am PR-Head muss byte-identisch mit dem Manifest
+ * am aktuellen `origin/main` sein. Damit kann dieser Zweig nichts durchlassen,
+ * was nicht bereits die vollständige Sync-Lane auf `main` passiert hat —
+ * Preflight, Guard, CodeQL und Auto-Merge-Gate. Trotzdem wird die Beweislast
+ * nicht gesenkt: `validateCatalogSyncManifest`, `verifySnapshotProgress` und
+ * `verifySnapshotFiles` laufen im Anschluss unverkürzt gegen die echte
+ * BSI-API.
+ *
+ * Jede nicht erfüllte Bedingung und jeder Fehler der Herkunftsprüfung lässt
+ * das Prädikat `false` liefern; die PR fällt dann fail-closed auf den
+ * regulären Sync-Pfad zurück und wird dort abgelehnt. Ein nicht auflösbares
+ * `origin/main` ist damit kein „vielleicht", sondern ein Nein.
+ */
+export async function isCatalogImportToDevelop({
+  baseRef,
+  branch,
+  diffEntries,
+  headManifestBytes,
+  execFile = execFileAsync,
+}) {
+  if (baseRef !== CATALOG_IMPORT_BASE_REF) return false;
+  if (branch !== CATALOG_IMPORT_BRANCH) return false;
+  if (!Array.isArray(diffEntries) || diffEntries.length !== 1) return false;
+  const [entry] = diffEntries;
+  if (entry.status !== 'M' || entry.path !== TRACKED_MANIFEST_PATH) return false;
+  if (!Buffer.isBuffer(headManifestBytes)) return false;
+
+  let sourceManifestBytes;
+  try {
+    ({ stdout: sourceManifestBytes } = await execFile(
+      'git',
+      ['show', `${CATALOG_IMPORT_SOURCE_REF}:${TRACKED_MANIFEST_PATH}`],
+      { encoding: 'buffer', maxBuffer: 4 * 1024 * 1024 },
+    ));
+  } catch {
+    return false;
+  }
+  if (!Buffer.isBuffer(sourceManifestBytes)) return false;
+
+  return Buffer.compare(headManifestBytes, sourceManifestBytes) === 0;
+}
+
 export function validateCatalogSyncPullRequest({ branch, title, diffEntries }) {
   const match = SYNC_BRANCH_PATTERN.exec(branch);
   if (!match) {
@@ -772,12 +878,15 @@ export async function verifySnapshotFiles(manifest, {
 }
 
 export async function guardCatalogSyncPullRequest({
+  baseRef,
   branch,
   title,
   diffEntries,
+  headManifestBytes,
   previousManifest,
   nextManifest,
   previousSourceRegistry,
+  execFile = execFileAsync,
   fetchImpl = fetch,
   token,
 }) {
@@ -822,6 +931,33 @@ export async function guardCatalogSyncPullRequest({
     return {
       catalogSync: false,
       registryOscalVersionMigration: true,
+      snapshotCommitSha: nextManifest.snapshotCommitSha,
+    };
+  }
+
+  if (await isCatalogImportToDevelop({
+    baseRef,
+    branch,
+    diffEntries,
+    headManifestBytes,
+    execFile,
+  })) {
+    validateManifestV2Shape(previousManifest);
+    if (previousManifest.repository !== OFFICIAL_BSI_REPOSITORY_URL) {
+      throw new Error(`Previous manifest repository must be ${OFFICIAL_BSI_REPOSITORY_URL}`);
+    }
+    validateCatalogSyncManifest(nextManifest);
+    // Ungekürzt: Die Herkunft aus `main` begründet, dass dieser Zweig greifen
+    // darf, nicht dass weniger geprüft werden muss.
+    await verifySnapshotProgress(
+      previousManifest.snapshotCommitSha,
+      nextManifest.snapshotCommitSha,
+      { fetchImpl, token },
+    );
+    await verifySnapshotFiles(nextManifest, { fetchImpl, token });
+    return {
+      catalogSync: false,
+      catalogImportToDevelop: true,
       snapshotCommitSha: nextManifest.snapshotCommitSha,
     };
   }
@@ -876,15 +1012,20 @@ async function readJson(filePath) {
  * Skripts zum Abbruch bringt — reproduziert beim Testlauf, der Fehlbericht
  * zeigt irreführend auf die Shebang-Zeile (`Invalid Character '!'` an
  * `catalog-sync-guard.mjs:1:68`). Der Kindprozess wird von Vite nie geparst.
+ *
+ * `cwd` benennt das Repository, aus dem gelesen wird. Ohne Angabe ist das das
+ * Arbeitsverzeichnis des Prozesses — der CI-Fall. Die Übernahme-Lane setzt es,
+ * weil sie den Registerstand zweier Refs gegeneinander auswertet und dabei
+ * auch gegen ein anderes Repository laufen können muss.
  */
-export async function loadSourceRegistryAtRef(baseSha) {
+export async function loadSourceRegistryAtRef(baseSha, { cwd } = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'gspp-source-registry-'));
   try {
     for (const modulePath of REGISTRY_MODULE_CHAIN) {
       const { stdout } = await execFileAsync(
         'git',
         ['show', `${baseSha}:${modulePath}`],
-        { encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 },
+        { cwd, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 },
       );
       await writeFile(join(directory, basename(modulePath)), stdout, 'utf8');
     }
@@ -915,20 +1056,12 @@ async function runCli() {
     return;
   }
 
+  const baseRef = process.env.PR_BASE_REF ?? '';
   const branch = process.env.PR_HEAD_REF ?? '';
   const title = process.env.PR_TITLE ?? '';
   const baseSha = process.env.PR_BASE_SHA ?? '';
   const headSha = process.env.PR_HEAD_SHA ?? '';
-  if (!SHA_PATTERN.test(baseSha) || !SHA_PATTERN.test(headSha)) {
-    throw new Error('PR_BASE_SHA and PR_HEAD_SHA must be lowercase 40-character SHAs');
-  }
-
-  const { stdout: diffOutput } = await execFileAsync(
-    'git',
-    ['diff', '--name-status', '--no-renames', baseSha, headSha],
-    { encoding: 'utf8', maxBuffer: 1024 * 1024 },
-  );
-  const diffEntries = parseNameStatusDiff(diffOutput);
+  const diffEntries = await getPullRequestDiffEntries({ baseSha, headSha });
 
   if (!isCatalogSyncCandidate({ branch, title, diffEntries })) {
     console.log('Normal PR: catalog sync guard passed without network access.');
@@ -946,7 +1079,11 @@ async function runCli() {
     { encoding: 'utf8', maxBuffer: 1024 * 1024 },
   );
   const previousManifest = JSON.parse(previousManifestText);
-  const nextManifest = await readJson(TRACKED_MANIFEST_PATH);
+  // Bytes und geparster Stand stammen aus einem einzigen Lesevorgang: Der
+  // Herkunftsvergleich der Übernahme darf nicht gegen einen anderen
+  // Dateizustand laufen als die anschließende Inhaltsprüfung.
+  const nextManifestBytes = await readFile(TRACKED_MANIFEST_PATH);
+  const nextManifest = JSON.parse(nextManifestBytes.toString('utf8'));
   // Nur laden, wenn die PR das Register überhaupt anfasst — sonst kostet der
   // Kettenimport jede gewöhnliche Manifest-PR unnötig Zeit.
   const previousSourceRegistry = diffEntries.some(
@@ -955,9 +1092,11 @@ async function runCli() {
     ? await loadSourceRegistryAtRef(baseSha)
     : undefined;
   const result = await guardCatalogSyncPullRequest({
+    baseRef,
     branch,
     title,
     diffEntries,
+    headManifestBytes: nextManifestBytes,
     previousManifest,
     nextManifest,
     previousSourceRegistry,
@@ -975,6 +1114,12 @@ async function runCli() {
   if (result.registryOscalVersionMigration) {
     console.log(
       `Registry-OSCAL-Versionsmigration vollständig gegen Snapshot ${result.snapshotCommitSha} geprüft.`,
+    );
+    return;
+  }
+  if (result.catalogImportToDevelop) {
+    console.log(
+      `Manifest-Übernahme aus ${CATALOG_IMPORT_SOURCE_REF} vollständig gegen Snapshot ${result.snapshotCommitSha} geprüft.`,
     );
     return;
   }

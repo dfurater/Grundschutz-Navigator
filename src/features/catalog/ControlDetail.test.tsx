@@ -1744,7 +1744,7 @@ describe('ControlDetail', () => {
       .not.toBeInTheDocument();
 
     scrollHeight = 240;
-    fireEvent.resize(window);
+    fireEvent.resize(globalThis.window);
 
     expect(screen.getByRole('button', { name: 'Mehr anzeigen' }))
       .toBeInTheDocument();
