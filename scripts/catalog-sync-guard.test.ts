@@ -7,8 +7,12 @@ import { promisify } from 'node:util';
 import * as ts from 'typescript';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  CATALOG_IMPORT_BASE_REF,
+  CATALOG_IMPORT_BRANCH,
+  CATALOG_IMPORT_SOURCE_REF,
   computeManifestSignature,
   getPullRequestDiffEntries,
+  isCatalogImportToDevelop,
   guardCatalogSyncPullRequest,
   isRegistryPreviewArtifactExpansion,
   isRegistryLifecycleOnlyMigration,
@@ -1561,5 +1565,178 @@ describe('getPullRequestDiffEntries', () => {
     } finally {
       await rm(repository, { recursive: true, force: true });
     }
+  });
+});
+
+describe('Manifest-Übernahme main → develop (GSPP-407)', () => {
+  const importDiff = [{ status: 'M', path: 'upstream-manifest.json' }];
+  const manifestBytes = Buffer.from('{"snapshotCommitSha":"aaa"}\n', 'utf8');
+
+  function execFileReturning(bytes: Buffer) {
+    return vi.fn(async () => ({ stdout: bytes }));
+  }
+
+  it('greift, wenn Base, Branchname, Diffform und Herkunft zusammen erfüllt sind', async () => {
+    const execFile = execFileReturning(manifestBytes);
+
+    await expect(isCatalogImportToDevelop({
+      baseRef: CATALOG_IMPORT_BASE_REF,
+      branch: CATALOG_IMPORT_BRANCH,
+      diffEntries: importDiff,
+      headManifestBytes: manifestBytes,
+      execFile,
+    })).resolves.toBe(true);
+
+    // Die Herkunft wird gegen origin/main gelesen, nicht gegen die PR-Base.
+    expect(execFile).toHaveBeenCalledWith(
+      'git',
+      ['show', `${CATALOG_IMPORT_SOURCE_REF}:upstream-manifest.json`],
+      { encoding: 'buffer', maxBuffer: 4 * 1024 * 1024 },
+    );
+  });
+
+  it('greift nicht, wenn die PR nicht nach develop zeigt (Negativfall 1)', async () => {
+    const execFile = execFileReturning(manifestBytes);
+
+    await expect(isCatalogImportToDevelop({
+      baseRef: 'main',
+      branch: CATALOG_IMPORT_BRANCH,
+      diffEntries: importDiff,
+      headManifestBytes: manifestBytes,
+      execFile,
+    })).resolves.toBe(false);
+    expect(execFile).not.toHaveBeenCalled();
+  });
+
+  it('greift nicht unter einem abweichenden Branchnamen (Negativfall 2)', async () => {
+    const execFile = execFileReturning(manifestBytes);
+
+    for (const branch of ['chore/catalog-import-to-develop-2', 'chore/catalog-sync-abcdef123456', 'feature/x']) {
+      await expect(isCatalogImportToDevelop({
+        baseRef: CATALOG_IMPORT_BASE_REF,
+        branch,
+        diffEntries: importDiff,
+        headManifestBytes: manifestBytes,
+        execFile,
+      })).resolves.toBe(false);
+    }
+    expect(execFile).not.toHaveBeenCalled();
+  });
+
+  it('greift nicht bei abweichender Diffform (Negativfall 3)', async () => {
+    const execFile = execFileReturning(manifestBytes);
+    const rejected = [
+      [],
+      [{ status: 'A', path: 'upstream-manifest.json' }],
+      [{ status: 'M', path: 'src/domain/sourceRegistry.mjs' }],
+      [
+        { status: 'M', path: 'upstream-manifest.json' },
+        { status: 'M', path: 'docs/ARCHITECTURE.md' },
+      ],
+    ];
+
+    for (const diffEntries of rejected) {
+      await expect(isCatalogImportToDevelop({
+        baseRef: CATALOG_IMPORT_BASE_REF,
+        branch: CATALOG_IMPORT_BRANCH,
+        diffEntries,
+        headManifestBytes: manifestBytes,
+        execFile,
+      })).resolves.toBe(false);
+    }
+    expect(execFile).not.toHaveBeenCalled();
+  });
+
+  it('greift nicht, wenn das Manifest nicht byte-identisch mit origin/main ist (Negativfall 4)', async () => {
+    // Semantisch gleichwertig, byteweise verschieden: Der Vertrag verlangt die
+    // Bytes, weil die Manifest-Signatur an ihnen hängt.
+    const execFile = execFileReturning(Buffer.from('{"snapshotCommitSha":"aaa"} \n', 'utf8'));
+
+    await expect(isCatalogImportToDevelop({
+      baseRef: CATALOG_IMPORT_BASE_REF,
+      branch: CATALOG_IMPORT_BRANCH,
+      diffEntries: importDiff,
+      headManifestBytes: manifestBytes,
+      execFile,
+    })).resolves.toBe(false);
+  });
+
+  it('greift nicht, wenn die Herkunftsprüfung fehlschlägt (Negativfall 5)', async () => {
+    // Ein nicht auflösbares origin/main ist kein „vielleicht": fail-closed.
+    const execFile = vi.fn(async () => {
+      throw new Error("fatal: invalid object name 'origin/main'");
+    });
+
+    await expect(isCatalogImportToDevelop({
+      baseRef: CATALOG_IMPORT_BASE_REF,
+      branch: CATALOG_IMPORT_BRANCH,
+      diffEntries: importDiff,
+      headManifestBytes: manifestBytes,
+      execFile,
+    })).resolves.toBe(false);
+  });
+
+  it('fällt ohne Manifest-Bytes fail-closed zurück', async () => {
+    const execFile = execFileReturning(manifestBytes);
+
+    await expect(isCatalogImportToDevelop({
+      baseRef: CATALOG_IMPORT_BASE_REF,
+      branch: CATALOG_IMPORT_BRANCH,
+      diffEntries: importDiff,
+      headManifestBytes: undefined,
+      execFile,
+    })).resolves.toBe(false);
+    expect(execFile).not.toHaveBeenCalled();
+  });
+
+  it('führt für die Übernahme beide Netzprüfungen ungekürzt aus', async () => {
+    const previous = makeFixture({ snapshotCommitSha: OLD_SHA });
+    const next = makeFixture({ snapshotCommitSha: NEW_SHA });
+    const nextBytes = Buffer.from(JSON.stringify(next.manifest), 'utf8');
+    const execFile = vi.fn(async () => ({ stdout: nextBytes }));
+    const fetchImpl = makeGitHubFetch(next, { compareStatus: 'ahead' });
+
+    const result = await guardCatalogSyncPullRequest({
+      baseRef: CATALOG_IMPORT_BASE_REF,
+      branch: CATALOG_IMPORT_BRANCH,
+      title: 'chore(sync): BSI-Manifest nach develop übernehmen',
+      diffEntries: importDiff,
+      headManifestBytes: nextBytes,
+      previousManifest: previous.manifest,
+      nextManifest: next.manifest,
+      execFile,
+      fetchImpl,
+    });
+
+    expect(result).toMatchObject({ catalogImportToDevelop: true, snapshotCommitSha: NEW_SHA });
+    // Beide Prüfungen laufen: Snapshotfortschritt per Compare-API und die
+    // vollständige Tree-/Blob-Verifikation gegen die BSI-API.
+    const requested = fetchImpl.mock.calls.map((call: unknown[]) => String(call[0]));
+    expect(requested.some((url) => url.includes(`/compare/${OLD_SHA}...${NEW_SHA}`))).toBe(true);
+    expect(requested.some((url) => url.includes(`/git/trees/${NEW_SHA}`))).toBe(true);
+  });
+
+  it('lehnt eine nicht herkunftsgedeckte Manifest-PR auf dem regulären Pfad ab', async () => {
+    const previous = makeFixture({ snapshotCommitSha: OLD_SHA });
+    const next = makeFixture({ snapshotCommitSha: NEW_SHA });
+    const nextBytes = Buffer.from(JSON.stringify(next.manifest), 'utf8');
+    // origin/main trägt ein anderes Manifest: Der Vertrag greift nicht, und die
+    // PR fällt auf den autonomen Sync-Pfad zurück, dessen Branchvertrag sie
+    // nicht erfüllt.
+    const execFile = vi.fn(async () => ({ stdout: Buffer.from('{}', 'utf8') }));
+    const fetchImpl = vi.fn();
+
+    await expect(guardCatalogSyncPullRequest({
+      baseRef: CATALOG_IMPORT_BASE_REF,
+      branch: CATALOG_IMPORT_BRANCH,
+      title: 'chore(sync): BSI-Manifest nach develop übernehmen',
+      diffEntries: importDiff,
+      headManifestBytes: nextBytes,
+      previousManifest: previous.manifest,
+      nextManifest: next.manifest,
+      execFile,
+      fetchImpl,
+    })).rejects.toThrow(/Catalog sync branch must match/);
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });

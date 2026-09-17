@@ -39,10 +39,20 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # Der Übernahme-Vertrag vergleicht das Manifest am PR-Head gegen das
+      # Manifest an `origin/main`. Der Fetch ist explizit, statt sich auf das
+      # Ref-Set des Checkouts zu verlassen: Fehlt `origin/main`, liefert das
+      # Prädikat fail-closed `false` und die PR fällt auf den regulären
+      # Sync-Pfad zurück — der Vertrag würde also stillschweigend nie greifen.
+      - name: Fetch main for the catalog import provenance check
+        if: github.event_name == 'pull_request'
+        run: git fetch --no-tags origin main:refs/remotes/origin/main
+
       - name: Validate catalog sync PR contract
         if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
