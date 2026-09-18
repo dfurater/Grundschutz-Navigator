@@ -124,7 +124,7 @@ export async function readBodyWithLimit(response, {
 
 export function resolveOptionalSnapshotSha(configuredValue = process.env.BSI_SNAPSHOT_SHA) {
   if (typeof configuredValue !== 'string') {
-    throw new Error('BSI_SNAPSHOT_SHA must be set to "latest" or a 40-character hexadecimal commit SHA');
+    throw new TypeError('BSI_SNAPSHOT_SHA must be set to "latest" or a 40-character hexadecimal commit SHA');
   }
 
   const normalized = configuredValue.trim();

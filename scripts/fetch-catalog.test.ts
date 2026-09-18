@@ -528,6 +528,7 @@ describe('fetch-catalog', () => {
   it('accepts only full hexadecimal snapshot SHAs', () => {
     expect(resolveOptionalSnapshotSha('a'.repeat(40))).toBe('a'.repeat(40));
     expect(resolveOptionalSnapshotSha('latest')).toBe('');
+    expect(() => resolveOptionalSnapshotSha(undefined)).toThrow(TypeError);
     expect(() => resolveOptionalSnapshotSha(undefined)).toThrow(
       'BSI_SNAPSHOT_SHA must be set to "latest" or a 40-character hexadecimal commit SHA',
     );
