@@ -241,4 +241,7 @@ jobs:
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
 
       - name: Audit workflows with zizmor
-        run: uvx "zizmor@1.30.1" --offline --persona pedantic .
+        # --no-build: Nur fertige Wheels von PyPI, nie Setup-Skripte bauen
+        # (Sonar githubactions:S8541). Fehlt das Wheel, bricht der Schritt
+        # fail-closed ab statt zu bauen.
+        run: uvx --no-build "zizmor@1.30.1" --offline --persona pedantic .
