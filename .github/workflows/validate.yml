@@ -216,3 +216,29 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_CI }}
+
+  # GSPP-418: zizmor als Dauerprüfung der Workflow-Härtung. PR-only analog
+  # zum sonarqube-Job oben: Ein workflow_dispatch-Lauf vermäße einen
+  # Dispatch-Ref als Branch — eine Messklasse, die es nie gab (vgl. GSPP-416).
+  # Offline und ohne Secrets: deterministisch, entspricht der lokalen Messung
+  # `uvx zizmor@1.30.1 --offline --persona pedantic .`. Persona pedantic,
+  # weil regular das excessive-permissions-high nicht meldet (gemessen
+  # 2026-09-19); auditor folgt als Owner-Follow-up nach GSPP-418.
+  zizmor:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      - name: Audit workflows with zizmor
+        run: uvx "zizmor@1.30.1" --offline --persona pedantic .

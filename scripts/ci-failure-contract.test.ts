@@ -112,7 +112,8 @@ describe('CI failure visibility contract', () => {
       }
     }
 
-    expect(jobCount).toBe(12);
+    // GSPP-418 fügt den zizmor-Job in validate.yml hinzu: 12 + 1.
+    expect(jobCount).toBe(13);
   });
 
   // Der Token-Guard war bis GSPP-416 der fuenfte Eintrag. Er ist seither kein
