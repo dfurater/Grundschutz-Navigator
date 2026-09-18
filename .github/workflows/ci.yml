@@ -13,6 +13,7 @@ jobs:
   documentation-contract:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout full PR history
@@ -30,6 +31,7 @@ jobs:
 
   catalog-sync-guard:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout full PR history
@@ -89,6 +91,7 @@ jobs:
 
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -130,7 +133,15 @@ jobs:
       - name: Read pinned snapshot SHA from manifest
         id: manifest
         run: |
-          sha=$(jq -r '.snapshotCommitSha' upstream-manifest.json)
+          set -euo pipefail
+          if ! sha="$(jq -er '.snapshotCommitSha | strings' upstream-manifest.json)"; then
+            echo "upstream-manifest.json ist nicht lesbar oder enthält keine snapshotCommitSha." >&2
+            exit 1
+          fi
+          if [[ ! "$sha" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "upstream-manifest.json enthält keine gültige 40-stellige snapshotCommitSha." >&2
+            exit 1
+          fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       - name: Fetch BSI catalog from pinned snapshot

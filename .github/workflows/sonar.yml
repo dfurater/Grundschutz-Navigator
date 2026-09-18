@@ -26,6 +26,7 @@ jobs:
   sonarqube:
     name: SonarQube Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       # Vollstaendige Historie: Die PR-Analyse braucht den Quellbranch ausgecheckt
@@ -55,6 +56,7 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_CI }}
           IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: |
+          set -euo pipefail
           if [ -n "${SONAR_TOKEN}" ]; then
             echo "available=true" >> "$GITHUB_OUTPUT"
           elif [ "${IS_FORK}" = "true" ]; then
@@ -80,7 +82,15 @@ jobs:
         if: steps.token.outputs.available == 'true'
         id: manifest
         run: |
-          sha=$(jq -r '.snapshotCommitSha' upstream-manifest.json)
+          set -euo pipefail
+          if ! sha="$(jq -er '.snapshotCommitSha | strings' upstream-manifest.json)"; then
+            echo "upstream-manifest.json ist nicht lesbar oder enthält keine snapshotCommitSha." >&2
+            exit 1
+          fi
+          if [[ ! "$sha" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "upstream-manifest.json enthält keine gültige 40-stellige snapshotCommitSha." >&2
+            exit 1
+          fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       # Der Testlauf prueft ueber `globalSetup` die Frische der Katalogdaten und

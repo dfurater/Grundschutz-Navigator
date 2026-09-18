@@ -88,7 +88,7 @@ Impressum-Felder nach § 5 DDG.
 | `npm run test:watch` | Vitest (Watch-Mode) |
 | `npm run test:coverage` | Vitest mit V8-Coverage |
 | `npm run lint` | ESLint |
-| `npm run fetch-catalog` | registrierte BSI-Artefakte validieren und unterstützte Daten nach `public/data/` ausliefern |
+| `npm run fetch-catalog` | registrierte BSI-Artefakte für die mit `BSI_SNAPSHOT_SHA` gewählte vollständige Commit-SHA oder ausdrücklich `latest` validieren und unterstützte Daten nach `public/data/` ausliefern |
 
 Die Coverage-Thresholds in `vite.config.ts` sind anhand der gemessenen
 Repository-Coverage kalibriert (gemessen 2026-08-24: Lines 92,67 %, Branches

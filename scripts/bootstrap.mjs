@@ -6,14 +6,12 @@
  * `npm run test` scheitert in einem frischen Arbeitsverzeichnis am
  * Freshness-Gate (`globalSetup` in vite.config.ts, siehe
  * scripts/check-catalog-freshness.mjs): Ohne vorherigen Katalog-Fetch fehlen
- * die lokalen Katalog-Metadaten. Ein blosses `npm run fetch-catalog` reicht
- * dafür nicht — `resolveSnapshot()` in fetch-catalog.mjs löst ohne gesetztes
- * `BSI_SNAPSHOT_SHA` den HEAD des BSI-Default-Branch auf, während das
- * Freshness-Gate gegen die im Repository eingecheckte `upstream-manifest.json`
- * prüft. Ist der BSI-Upstream seit dem letzten Sync-PR weitergelaufen, bleibt
- * das Gate rot. Dieses Script pinnt deshalb dieselbe Snapshot-SHA wie der
- * `jq`-Schritt in .github/workflows/ci.yml — nur über das bereits vorhandene
- * `readTrackedManifest` statt eines externen Tools.
+ * die lokalen Katalog-Metadaten. Ein direktes `npm run fetch-catalog` ohne
+ * `BSI_SNAPSHOT_SHA` wird fail-closed abgelehnt. Dieses Script liest deshalb
+ * dieselbe gepinnte Snapshot-SHA wie der `jq`-Schritt in
+ * .github/workflows/ci.yml aus der eingecheckten `upstream-manifest.json` —
+ * nur über das bereits vorhandene `readTrackedManifest` statt eines externen
+ * Tools.
  *
  * Ablauf (spiegelt die `validate`-Lane aus ci.yml):
  *   1. npm ci --ignore-scripts   — Parität zum in
@@ -105,8 +103,8 @@ export function parseArgs(argv) {
  */
 async function ensureCatalogFetched({ rootDir, env, run, log, freshness, manifestPath, metadataPath }) {
   log('[4/7] Lade BSI-Katalog ...');
-  // Pin auf die eingecheckte Snapshot-SHA (siehe Kopfkommentar): ohne ihn
-  // würde fetch-catalog.mjs ungepinnt vom BSI-Default-Branch-HEAD laden.
+  // Pin auf die eingecheckte Snapshot-SHA (siehe Kopfkommentar): ohne eine
+  // ausdrückliche Auswahl lehnt fetch-catalog.mjs den Abruf ab.
   const resolvedManifestPath = resolveTrackedManifestPath(manifestPath, { repoRoot: rootDir });
   let manifest;
   try {
@@ -118,8 +116,8 @@ async function ensureCatalogFetched({ rootDir, env, run, log, freshness, manifes
   }
   if (!manifest) {
     throw new BootstrapError(
-      'Eingecheckte upstream-manifest.json fehlt. Ohne gepinnte Snapshot-SHA würde ' +
-      'fetch-catalog.mjs ungepinnt vom BSI-Default-Branch-HEAD laden — Repository-Zustand wiederherstellen.',
+      'Eingecheckte upstream-manifest.json fehlt. Ohne gepinnte Snapshot-SHA kann ' +
+      'fetch-catalog.mjs den Abruf nicht starten — Repository-Zustand wiederherstellen.',
     );
   }
 
