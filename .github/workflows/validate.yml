@@ -1,0 +1,141 @@
+name: Validate
+
+# Trägt den Job `validate` seit GSPP-415. Er liest weder Titel noch Body des
+# Pull Requests und hat bei einer reinen Metadaten-Änderung nichts zu prüfen;
+# `ci.yml` löste ihn dennoch bei jedem `edited`-Ereignis vollständig aus — mit
+# Schema-Verifikation, Katalog-Fetch, go-oscal-Lauf, Lint, Tests,
+# Chromium-Download, Browser-Tests und Build.
+#
+# Die Entkopplung geschieht über eine eigene Ereignisliste ohne `edited` und
+# nicht über ein Job-`if` im bestehenden Workflow. Ein per `if` übersprungener
+# Job meldet den Status `Success` und erzeugt dabei einen neuen Check-Run unter
+# demselben Namen. Da GitHub je Kontext den jüngsten Check-Run wertet, ersetzte
+# eine bloße Body-Bearbeitung ein fehlgeschlagenes `validate` auf unverändertem
+# Head durch einen Erfolg — der Pflichtcheck ließe sich so umgehen. Ohne
+# abonniertes `edited` entsteht überhaupt kein Lauf und damit kein neuer
+# Check-Run; das reale Ergebnis des letzten Code-Laufs bleibt stehen.
+#
+# Der Jobname bleibt `validate`, weil beide Rulesets (`develop`,
+# `main-release`) ihn namentlich als Required Status Check fordern. Der
+# Kontextname eines Actions-Checks ist der Jobname, nicht die Workflow-Datei;
+# die Verschiebung ist für die Rulesets deshalb folgenlos.
+#
+# `edited` deckt neben Titel und Body auch den Wechsel des Base-Branches ab.
+# Auch dieser löst hier keinen Lauf aus, und das ist richtig: Die Schritte
+# dieses Jobs prüfen allein den Head-Stand und kennen den Base nicht. Die
+# base-abhängigen Prüfungen liegen in `documentation-contract` und
+# `catalog-sync-guard`, die in `ci.yml` verbleiben und auf `edited` weiter
+# urteilen.
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, reopened, synchronize]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Ein überholter Lauf trifft eine Aussage über einen Head-Stand, den ein
+# Folge-Push bereits ersetzt hat; er wird deshalb abgebrochen. Wie in `ci.yml`
+# gilt das nur für Pull-Request-Läufe, und ein wartender Lauf kann von einem
+# neueren derselben Gruppe verdrängt werden.
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      # Trägt die Integritätszusage der gebündelten Stufe-3-Schemas. Läuft
+      # bewusst vor jedem Netzschritt und ohne selbst einen auszuführen; der
+      # Netzpfad bleibt allein `npm run sync-oscal-schemas` und ist kein
+      # CI-Schritt.
+      - name: Verify pinned OSCAL schemas
+        run: npm run verify-oscal-schemas
+
+      # Reviewregeln sind seit GSPP-374 versioniert: scripts/review-policy.rules.mjs
+      # trägt die Regeltexte, scripts/review-policy.mjs den Generator;
+      # docs/REVIEW_INVARIANTS.md und .gitar/review/ sind daraus erzeugt. Der Check
+      # ist netzfrei und schlägt bei jeder manuellen Abweichung sowie bei jeder
+      # Regeldatei fehl, die an der Autorenquelle vorbei entstanden ist.
+      - name: Verify generated review policy
+        run: npm run review-policy:check
+
+      # Dependency-PRs fallen aus dem PR-Dokumentationsvertrag heraus, weil
+      # dessen Trigger an Änderungen unter src/ hängt. Dieser Guard prüft die
+      # in docs/ARCHITECTURE.md zugesagten Versionen stattdessen maschinell
+      # gegen package.json und die mitinstallierte browsers.json (GSPP-399).
+      # Netzfrei und fail-closed: auch eine nicht mehr auffindbare Angabe
+      # lässt ihn fehlschlagen.
+      - name: Verify documented versions against installed state
+        run: npm run verify-documented-versions
+
+      - name: Read pinned snapshot SHA from manifest
+        id: manifest
+        run: |
+          set -euo pipefail
+          if ! sha="$(jq -er '.snapshotCommitSha | strings' upstream-manifest.json)"; then
+            echo "upstream-manifest.json ist nicht lesbar oder enthält keine snapshotCommitSha." >&2
+            exit 1
+          fi
+          if [[ ! "$sha" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "upstream-manifest.json enthält keine gültige 40-stellige snapshotCommitSha." >&2
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch BSI catalog from pinned snapshot
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BSI_SNAPSHOT_SHA: ${{ steps.manifest.outputs.sha }}
+        run: npm run fetch-catalog
+
+      - name: Resolve all BSI profiles deterministically (mandatory build-time corpus)
+        run: npm run test:profile-resolution
+
+      - name: Verify upstream OSCAL schemas with go-oscal
+        env:
+          GO_OSCAL_SBOM_OUTPUT: ${{ runner.temp }}/sbom_go-oscal_v0.7.1_Linux_amd64.sbom
+        run: npm run verify-upstream-oscal
+
+      - name: Archive go-oscal SBOM
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: go-oscal-v0.7.1-sbom-linux-amd64
+          path: ${{ runner.temp }}/sbom_go-oscal_v0.7.1_Linux_amd64.sbom
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Run tests
+        run: npm run test
+
+      - name: Install pinned Chromium for browser tests
+        run: ./node_modules/.bin/playwright install chromium
+
+      - name: Run Chromium browser tests
+        run: npm run test:browser
+
+      - name: Verify browser egress oracle
+        run: npm run test:browser:egress-negative
+
+      - name: Build application
+        run: npm run build

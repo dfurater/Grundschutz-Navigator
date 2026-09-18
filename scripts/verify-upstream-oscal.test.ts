@@ -230,7 +230,7 @@ describe('SBOM-Ausgabe', () => {
 
 describe('CI-Integration', () => {
   it('führt den Korpuslauf nach dem Katalogabruf aus und archiviert seine SBOM', () => {
-    const workflow = readFileSync(resolve(process.cwd(), '.github/workflows/ci.yml'), 'utf8');
+    const workflow = readFileSync(resolve(process.cwd(), '.github/workflows/validate.yml'), 'utf8');
     const packageJson = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8'));
     const gitignore = readFileSync(resolve(process.cwd(), '.gitignore'), 'utf8');
 

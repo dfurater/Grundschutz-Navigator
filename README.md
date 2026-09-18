@@ -3,6 +3,7 @@
 Inoffizielles Werkzeug zum Durchsuchen, Filtern und Exportieren des offiziellen Grundschutz++-Anwenderkatalogs des BSI. Kein Angebot des BSI.
 
 [![CI](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/ci.yml/badge.svg)](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/ci.yml)
+[![Validate](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/validate.yml/badge.svg)](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/validate.yml)
 [![Deploy](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/deploy.yml/badge.svg)](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/deploy.yml)
 [![Katalogdaten: CC BY-SA 4.0](https://img.shields.io/badge/Katalogdaten-CC%20BY--SA%204.0-blue)](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek)
 [![App-Code: AGPL v3](https://img.shields.io/badge/App--Code-AGPL%20v3-green)](LICENSE)

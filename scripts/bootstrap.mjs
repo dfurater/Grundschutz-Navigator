@@ -9,11 +9,11 @@
  * die lokalen Katalog-Metadaten. Ein direktes `npm run fetch-catalog` ohne
  * `BSI_SNAPSHOT_SHA` wird fail-closed abgelehnt. Dieses Script liest deshalb
  * dieselbe gepinnte Snapshot-SHA wie der `jq`-Schritt in
- * .github/workflows/ci.yml aus der eingecheckten `upstream-manifest.json` —
+ * .github/workflows/validate.yml aus der eingecheckten `upstream-manifest.json` —
  * nur über das bereits vorhandene `readTrackedManifest` statt eines externen
  * Tools.
  *
- * Ablauf (spiegelt die `validate`-Lane aus ci.yml):
+ * Ablauf (spiegelt die `validate`-Lane aus validate.yml):
  *   1. npm ci --ignore-scripts   — Parität zum in
  *      scripts/ci-supply-chain-hardening.test.ts gepinnten CI-Vertrag
  *   2. verify-oscal-schemas.mjs  — offline, bewusst vor jedem Netzschritt

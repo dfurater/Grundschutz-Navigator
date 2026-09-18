@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -25,12 +25,33 @@ function jobScopes(workflowContent: string): Map<string, string> {
 }
 
 describe('CI supply-chain hardening', () => {
-  it.each(['ci.yml', 'deploy.yml', 'update-catalog.yml'])(
+  it.each(['validate.yml', 'deploy.yml', 'update-catalog.yml'])(
     'installs dependencies without lifecycle scripts in %s',
     (name) => {
       expect(workflow(name)).toContain('run: npm ci --ignore-scripts');
     },
   );
+
+  // Die Liste oben benennt die Workflows, die heute installieren. Wandert ein
+  // Job in eine andere Datei — wie `validate` in GSPP-415 —, verlöre sie
+  // stillschweigend ihren Gegenstand. Diese Prüfung hängt deshalb nicht an
+  // Dateinamen, sondern am Vorkommen selbst: Wo `npm ci` steht, steht
+  // `--ignore-scripts`.
+  it('never installs with lifecycle scripts in any workflow', () => {
+    const directory = resolve(process.cwd(), '.github/workflows');
+
+    for (const name of readdirSync(directory).filter((file) => file.endsWith('.yml'))) {
+      for (const line of workflow(name).split('\n')) {
+        // Kommentarzeilen sprechen über `npm ci`, ohne es auszuführen. Ein
+        // Inline-`#` hinter einem echten Aufruf bleibt absichtlich Teil der
+        // geprüften Zeile: Der Test fällt dann fail-closed aus.
+        if (line.trimStart().startsWith('#')) continue;
+        if (!line.includes('npm ci')) continue;
+
+        expect(line, `${name}: ${line.trim()}`).toContain('npm ci --ignore-scripts');
+      }
+    }
+  });
 
   it('uses the installed, lockfile-pinned Vitest binary for the deploy coverage run', () => {
     const deploy = workflow('deploy.yml');

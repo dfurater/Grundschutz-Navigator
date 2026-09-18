@@ -226,7 +226,7 @@ export const scopedRules = [
       'scripts/verify-upstream-oscal.test.ts',
       'src/domain/sourceRegistry.mjs',
       'upstream-manifest.json',
-      '.github/workflows/ci.yml',
+      '.github/workflows/validate.yml',
       'docs/OSCAL_VALIDATION.md',
     ],
     body:
@@ -244,7 +244,7 @@ export const scopedRules = [
       'schemas/**',
       '.gitattributes',
       'vite.config.ts',
-      '.github/workflows/ci.yml',
+      '.github/workflows/validate.yml',
     ],
     body:
       `Stufe 3 validiert im Modul-Worker mit ajv 8.20.0 gegen die eingecheckten NIST-Schemas unter schemas/oscal/. Verbindlich: Die Zelle kommt ausschließlich aus dem Schema-Pin der Stufe 2, nie aus Dokumentinhalt, und es gibt keinen Fallback auf eine Nachbarversion. src/domain/oscalSchemaBundle.ts führt je Zelle ein ausgeschriebenes import()-Literal; ein aus Daten oder Template zusammengesetzter Importpfad ist ein blockierender Befund. Zum Laufzeitbezug gilt die Grenze genau so: Ein Schema-, Validator- oder Constraint-Bezug von einer FREMDEN Origin zur Laufzeit ist ein blockierender Befund — insbesondere github.com (Release-Asset) und csrc.nist.gov (die $id der Schemas). Der lazy import() des ausgewählten Schema-Chunks von DERSELBEN Origin ist dagegen der vorgesehene Weg und kein Befund; er ist die Voraussetzung dafür, dass nicht alle 30 Schemas im Worker liegen. Eine Dokumentations- oder Kommentaraussage, die jeden Laufzeit-Netzbezug ausschließt statt nur den fremd-originbezogenen, ist ihrerseits ein Befund. validateFormats bleibt false, allErrors bleibt false, unicodeRegExp wird nicht gesetzt — ein Abschalten von unicodeRegExp lässt jedes OSCAL-Dokument am TokenDatatype-Muster scheitern und ist ein blockierender Befund. Ajvs message und params dürfen keine Diagnose erreichen; übernommen werden nur der Keyword-abgeleitete projekteigene Code und der redigierte instancePath, unbekannte Segmente werden zum Platzhalter. Ein nicht in der Keyword-Positivliste geführter Befund wird OSCAL_VALIDATOR_OUTPUT_UNRECOGNIZED, eine nicht ladbare oder nicht kompilierbare Zelle OSCAL_SCHEMA_UNAVAILABLE; Stufe 3 darf nie übersprungen oder als bestanden ausgewiesen werden. npm run verify-oscal-schemas ist das netzfreie CI-Gate über SHA-256, $id, draft-07 und die Abwesenheit ungepinnter Dateien unter schemas/oscal/; ein fetch in scripts/verify-oscal-schemas.mjs, ein Entfernen dieses CI-Schritts, ein Entfernen von worker.format: 'es' aus vite.config.ts oder ein Aufweichen von .gitattributes (schemas/oscal/** -text) ist jeweils ein blockierender Befund. Eine Laufzeit-Hashprüfung der gebündelten Schemas wird nicht verlangt: Der Bundler transformiert die Bytes, ein mitgeliefertes Soll würde sich selbst bestätigen.`,
@@ -269,11 +269,11 @@ export const scopedRules = [
     scopes: [
       'docs/ARCHITECTURE.md',
       'scripts/verify-documented-versions.mjs',
-      '.github/workflows/ci.yml',
+      '.github/workflows/validate.yml',
       'package.json',
     ],
     body:
-      `Die in docs/ARCHITECTURE.md zugesagten Versionsangaben — die Abhängigkeitstabelle mit der Kopfzeile "Abhängigkeit | Exakte Version | Lizenz | Zweck" und der Absatz zur Chromium-Herkunft — werden von scripts/verify-documented-versions.mjs gegen package.json und node_modules/playwright-core/browsers.json geprüft; der Schritt läuft als npm run verify-documented-versions im CI-Job validate. Melde als blockierenden Befund, wenn ein Diff diesen Schritt entfernt, seinen Fehlschlag folgenlos macht oder eine geprüfte Angabe ersatzlos aus der Dokumentation streicht. Der Guard ist fail-closed und schlägt auch fehl, wenn eine Angabe nicht mehr auffindbar ist; eine Umformulierung, die das auslöst, ist kein Befund, solange die Angabe im selben Diff wieder prüfbar wird.`,
+      `Die in docs/ARCHITECTURE.md zugesagten Versionsangaben — die Abhängigkeitstabelle mit der Kopfzeile "Abhängigkeit | Exakte Version | Lizenz | Zweck" und der Absatz zur Chromium-Herkunft — werden von scripts/verify-documented-versions.mjs gegen package.json und node_modules/playwright-core/browsers.json geprüft; der Schritt läuft als npm run verify-documented-versions im Job validate (.github/workflows/validate.yml). Melde als blockierenden Befund, wenn ein Diff diesen Schritt entfernt, seinen Fehlschlag folgenlos macht oder eine geprüfte Angabe ersatzlos aus der Dokumentation streicht. Der Guard ist fail-closed und schlägt auch fehl, wenn eine Angabe nicht mehr auffindbar ist; eine Umformulierung, die das auslöst, ist kein Befund, solange die Angabe im selben Diff wieder prüfbar wird.`,
   },
   {
     key: 'R22-greptile-check-run',
