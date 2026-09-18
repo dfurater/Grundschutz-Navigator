@@ -4,16 +4,20 @@ name: SonarQube
 # GitHub-Default-Branch messen konnte — seit dem Release-Branch-Modell also
 # ausschliesslich `develop`, waehrend `main` als Freigabelinie unanalysiert blieb.
 #
-# Bewusst ein eigener Workflow: ci.yml startet nur ueber `pull_request` und
+# Diese Datei traegt seit GSPP-416 allein den Push-Pfad und damit die Messung
+# der beiden langlebigen Branches. Die Pull-Request-Analyse liegt im Job
+# `sonarqube` in `validate.yml`: Sie braucht den Coverage-Report aus `validate`,
+# und nur ein Job desselben Workflows kann ihn uebernehmen. Ein Pull Request
+# erzeugt damit genau einen vollstaendigen Suite-Lauf statt zweier.
+#
+# Bewusst ein eigener Workflow: `validate.yml` startet ueber `pull_request` und
 # `workflow_dispatch`. Ein dort ergaenzter Push-Ausloeser wuerde saemtliche Jobs
-# jener Datei bei jedem Push mitlaufen lassen.
+# jener Datei — Schema-Verifikation, go-oscal-Lauf, Browser-Tests, Build — bei
+# jedem Push auf `main` und `develop` mitlaufen lassen.
 
 on:
   push:
     branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
-    types: [opened, reopened, synchronize]
 
 permissions:
   contents: read
@@ -40,32 +44,21 @@ jobs:
 
       # Bewusst vor jedem teuren Schritt: Ohne diesen Guard liefe erst der
       # gesamte Testlauf, bevor der Scanner mit einem Authentifizierungsfehler
-      # abbricht.
+      # abbricht. Die Fallunterscheidung steht seit GSPP-416 in
+      # scripts/sonar-token-guard.mjs, weil der Guard hier und im Job
+      # `sonarqube` in `validate.yml` gebraucht wird; die Begruendung beider
+      # Faelle traegt das Skript.
       #
-      # Zwei Faelle ohne Token, die auseinandergehalten werden muessen. Bei
-      # Beitraegen aus einem Fork stellt GitHub Repository-Secrets grundsaetzlich
-      # nicht bereit — das ist kein Konfigurationsfehler, und ein harter
-      # Fehlschlag wuerde jeden externen Beitrag blockieren. Die Analyse wird
-      # dort sichtbar uebersprungen und holt den Stand nach dem Merge auf
-      # develop nach. Fehlt das Token dagegen im eigenen Repository, ist die
-      # Konfiguration defekt und der Lauf schlaegt fehl; bei Dependabot-Laeufen
-      # ist die Ursache in aller Regel ein fehlendes Dependabot-Secret.
+      # `IS_FORK` bleibt hier ungesetzt: Ein Push auf `main` oder `develop`
+      # dieses Repositoriums kommt aus keinem Fork. Der Guard ist fail-closed
+      # und wertet jeden anderen Wert als `true` als eigenes Repository — ein
+      # fehlendes Token laesst den Lauf also scheitern. Die Fork-Ausnahme gilt
+      # allein dem Pull-Request-Pfad in `validate.yml`.
       - name: Analyse-Token pruefen
         id: token
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_CI }}
-          IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
-        run: |
-          set -euo pipefail
-          if [ -n "${SONAR_TOKEN}" ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          elif [ "${IS_FORK}" = "true" ]; then
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Fork-Beitrag: GitHub stellt Repository-Secrets hier nicht bereit. Die SonarQube-Analyse wird uebersprungen; der Stand wird nach dem Merge auf develop gemessen."
-          else
-            echo "::error::Secret SONAR_CI ist in diesem Lauf nicht verfuegbar. Bei Dependabot-Laeufen muss das Token zusaetzlich unter Settings > Secrets and variables > Dependabot hinterlegt sein."
-            exit 1
-          fi
+        run: node scripts/sonar-token-guard.mjs
 
       - name: Setup Node.js
         if: steps.token.outputs.available == 'true'

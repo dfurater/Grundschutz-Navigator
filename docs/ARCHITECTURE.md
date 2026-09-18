@@ -211,7 +211,8 @@ upstream-manifest.json            # Gepinnter Upstream-Snapshot (Manifest v2)
 .github/workflows/
   ├── deploy.yml                  # GitHub Pages Deployment
   ├── ci.yml                      # PR-Metadatenverträge (documentation-contract, catalog-sync-guard)
-  ├── validate.yml                # Vollständige Verifikations- und Build-Lane (validate)
+  ├── validate.yml                # Vollständige Verifikations- und Build-Lane (validate, sonarqube)
+  ├── sonar.yml                   # SonarQube-Analyse des Push-Pfads auf main und develop
   ├── update-catalog.yml          # Automatischer Katalog-Sync
   └── verify-catalog-merge.yml    # Post-Merge-Prüfung und Deploy-Fallback
 ```
@@ -844,7 +845,7 @@ Die Impressum-Werte kommen lokal aus `.env.local` (nicht committet, siehe `.env.
 
 ## CI-Pipeline
 
-Die Pull-Request-Prüfung liegt in zwei Workflows, die sich durch ihre Ereignisliste unterscheiden. `.github/workflows/ci.yml` führt `documentation-contract` und `catalog-sync-guard`; beide urteilen über die Pull-Request-Metadaten — der eine wertet den Body gegen den Dokumentationsvertrag aus, der andere liest Titel und Body für Sync-Vertrag und Release-Marke. Seine Ereignisliste führt deshalb `edited` mit, damit eine Titel- oder Body-Bearbeitung neu beurteilt wird. `.github/workflows/validate.yml` führt `validate`: Schema-Verifikation, Katalog-Fetch, Profilauflösung, go-oscal-Lauf, Lint, Tests, Browser-Tests und Build. Dieser Job liest weder Titel noch Body, und seine Ereignisliste führt `edited` nicht.
+Die Pull-Request-Prüfung liegt in zwei Workflows, die sich durch ihre Ereignisliste unterscheiden. `.github/workflows/ci.yml` führt `documentation-contract` und `catalog-sync-guard`; beide urteilen über die Pull-Request-Metadaten — der eine wertet den Body gegen den Dokumentationsvertrag aus, der andere liest Titel und Body für Sync-Vertrag und Release-Marke. Seine Ereignisliste führt deshalb `edited` mit, damit eine Titel- oder Body-Bearbeitung neu beurteilt wird. `.github/workflows/validate.yml` führt `validate`: Schema-Verifikation, Katalog-Fetch, Profilauflösung, go-oscal-Lauf, Lint, Tests mit Coverage, Browser-Tests und Build. Dieser Job liest weder Titel noch Body, und seine Ereignisliste führt `edited` nicht. Dieselbe Datei führt seit [GSPP-416](https://linear.app/grundschutz-plus-plus/issue/GSPP-416) den nachgelagerten Job `sonarqube`; die Begründung steht unter [`sonar-project.properties`](#sonar-projectproperties).
 
 Die Trennung ist der Grund für die zweite Datei. Ein Job-`if` im gemeinsamen Workflow hätte denselben Lauf gespart, aber eine Lücke geöffnet: Ein per `if` übersprungener Job meldet laut GitHub-Dokumentation den Status `Success` und erzeugt dabei einen neuen Check-Run unter demselben Namen. Da GitHub je Kontext den jüngsten Check-Run wertet, ersetzte eine bloße Body-Bearbeitung ein fehlgeschlagenes `validate` auf unverändertem Head durch einen Erfolg — der Pflichtcheck ließe sich so umgehen. Ohne abonniertes `edited` entsteht dagegen überhaupt kein Lauf und damit kein neuer Check-Run; das reale Ergebnis des letzten Code-Laufs bleibt stehen. Das Gegenstück dazu ist die bekannte Falle, einen *erforderlichen* Workflow über Pfad- oder Branch-Filter innerhalb eines abonnierten Ereignisses zu unterdrücken: Dort bliebe der Check auf `Pending` und blockierte den Merge. Hier wird kein Filter gesetzt, sondern das Ereignis gar nicht erst abonniert.
 
@@ -870,9 +871,11 @@ Das Deployment erfolgt automatisch via GitHub Actions bei Push auf `main` (`.git
 Jeder Workflow, der Abhängigkeiten installiert, verwendet `npm ci --ignore-scripts`.
 Damit bleibt das Lockfile die einzige Installationsquelle, ohne dass Lifecycle-Skripte
 von transitiven Abhängigkeiten während des CI-Setups ausgeführt werden. Der
-Coverage-Lauf des Deploy-Workflows ruft Vitest mit
-`npm exec --no -- vitest run --coverage` aus der lokalen, durch `package-lock.json`
-festgelegten Installation auf. `--no` unterbindet einen Registry-Fallback.
+Coverage-Lauf des Deploy-Workflows ruft Vitest über `npm run test:coverage` und
+damit über denselben `package.json`-Eintrag auf wie jeder andere Coverage-Lauf
+des Repositoriums; Vitest stammt dabei aus der lokalen, durch
+`package-lock.json` festgelegten Installation. Kein Workflow ruft ein Binary
+über `npx` oder `npm exec` auf, die beide auf die Registry zurückfallen können.
 
 Die Standardberechtigung des Deploy-Workflows beschränkt sich auf
 `contents: read`. Schreibrechte für GitHub Pages, OIDC, Attestations und
@@ -987,15 +990,19 @@ Eine Eigenheit bleibt: `issue_comment` feuert nur von der Fassung auf dem Defaul
 
 ### `sonar-project.properties`
 
-SonarQube Cloud analysiert dieses Repository per CI-Analyse: `.github/workflows/sonar.yml` startet den Scanner bei jedem Push nach `main` und `develop` sowie für jeden Pull Request, dessen Zielbranch einer dieser beiden ist, und `sonar-project.properties` trägt die Analyseparameter.
+SonarQube Cloud analysiert dieses Repository per CI-Analyse; `sonar-project.properties` trägt die Analyseparameter. Der Scanner läuft auf zwei Wegen. `.github/workflows/sonar.yml` startet ihn bei jedem Push nach `main` und `develop` und misst damit beide langlebigen Branches; der Coverage-Report entsteht dort im selben Job. Für Pull Requests gegen `main` oder `develop` liegt er seit [GSPP-416](https://linear.app/grundschutz-plus-plus/issue/GSPP-416) als Job `sonarqube` in `.github/workflows/validate.yml`: Er hängt über `needs: validate` am Pflichtcheck und lädt dessen `coverage/lcov.info` als Artefakt herunter, statt die Suite ein zweites Mal zu rechnen. Ein Pull-Request-Push erzeugt dadurch genau einen vollständigen jsdom-Suite-Lauf statt zweier. Der Required Status Check heißt `SonarCloud Code Analysis` und wird von der SonarQubeCloud-App gesetzt, nicht vom Namen des Jobs; beide Rulesets bleiben von der Verschiebung unberührt.
 
 Vorher lief die Automatic Analysis. Sie misst ausschließlich den GitHub-Default-Branch, und der ist seit dem Release-Branch-Modell `develop` — `main` als Freigabelinie blieb dadurch unanalysiert, obwohl genau dieser Stand auf GitHub Pages ausgeliefert wird. Branch-Analyse ist laut Hersteller nur mit CI-Analyse zu haben, und beide Verfahren schließen einander aus. Seither führt SonarQube Cloud zwei langlebige Branches: `develop` als Hauptbranch und Integrationslinie, `main` als Freigabelinie.
+
+Weil der Coverage-Lauf damit im Pflichtcheck `validate` liegt, greifen dort auch die in `vite.config.ts` gepinnten Vitest-Schwellen: Eine Unterschreitung färbt `validate` rot, statt den Scanner-Schritt ausfallen zu lassen und `SonarCloud Code Analysis` als pending stehen zu lassen. Die beiden Abdeckungsmaße bleiben getrennt und unverändert in Kraft — Vitest misst die Gesamtabdeckung, das Quality Gate misst mit `new_coverage >= 80` den neuen Code.
+
+Ob die Analyse überhaupt läuft, entscheidet in beiden Workflows `scripts/sonar-token-guard.mjs`. Fehlt das Secret `SONAR_CI` bei einem Fork-Beitrag, überspringt der Guard die Analyse mit einer sichtbaren Notice — GitHub stellt Repository-Secrets dort grundsätzlich nicht bereit, und ein harter Fehlschlag würde jeden externen Beitrag blockieren. Fehlt es im eigenen Repository, ist die Konfiguration defekt und der Lauf schlägt fehl.
 
 Die Analyseparameter umfassen Projektschlüssel und Organisation, den lcov-Pfad für die Testabdeckung (`coverage/lcov.info`, erzeugt durch `npm run test:coverage`; der lcov-Reporter ist dafür in `vite.config.ts` ergänzt) sowie eine Duplikatsausnahme: `sonar.cpd.exclusions=scripts/review-policy.rules.mjs`.
 
 Der Grund ist eine Eigenschaft der Copy-Paste-Erkennung, nicht ein Wartbarkeitsproblem. CPD misst wiederholte Token-Folgen und normalisiert dabei Literale; die strukturgleichen Tabelleneinträge aus Schlüssel, Scope-Liste und Regeltext werden dadurch zwangsläufig als Duplikat gemeldet, ohne dass Verhalten kopiert wäre. Gemessen an `466d50c` lagen alle vier gemeldeten Duplikatsgruppen vollständig innerhalb der Regeltabelle. Weil `sonar.cpd.exclusions` ausschließlich dateiweit greift und keine Block- oder Zeilengranularität kennt, hätte eine Ausnahme auf einer gemischten Datei auch Generator, Drift-Guard und CLI von der Duplikatsprüfung befreit — daher der Schnitt in zwei Dateien. Ausgenommen ist allein die Duplikatsmessung auf der Datentabelle; keine Schwelle des Quality Gates wird gesenkt.
 
-Die Datei wirkt aus dem PR-Head heraus. Ein PR könnte sich damit selbst eine Gate-Ausnahme erteilen, weshalb sie in `AGENTS.md` zu den Review-Policy-Pfaden zählt: Wer sie anfasst, braucht ein Agenten-Cross-Review. Dasselbe gilt für `.github/workflows/sonar.yml`, weil auch der Workflow aus dem PR-Head heraus bestimmt, was überhaupt gemessen wird.
+Die Datei wirkt aus dem PR-Head heraus. Ein PR könnte sich damit selbst eine Gate-Ausnahme erteilen, weshalb sie in `AGENTS.md` zu den Review-Policy-Pfaden zählt: Wer sie anfasst, braucht ein Agenten-Cross-Review. Dasselbe gilt für `.github/workflows/sonar.yml`, `.github/workflows/validate.yml` und `scripts/sonar-token-guard.mjs`, weil auch sie aus dem PR-Head heraus bestimmen, was überhaupt gemessen wird.
 
 ## Siehe auch
 

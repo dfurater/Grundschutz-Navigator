@@ -106,8 +106,16 @@ jobs:
       - name: Resolve all BSI profiles deterministically (mandatory build-time corpus)
         run: npm run test:profile-resolution
 
+      # Schreibweise wie in package.json. Der Lauf bleibt im Deploy: Die
+      # Catalog-Sync-Auto-Merge-Lane deployt einen Katalogstand, den vorher kein
+      # anderer Lauf gemessen hat, weil `upstream-manifest.json` und damit die
+      # gefetchten Daten dort gerade wechseln. Eine Bedingung, die den Lauf auf
+      # diese Lane einschraenkt, muesste die Lane aus dem Ereignis erkennen —
+      # ein Push auf `main` traegt diese Herkunft nicht, der Guard fiele also
+      # fail-open aus. `--coverage` bleibt erhalten und setzt die Schwellen aus
+      # vite.config.ts auch hier durch.
       - name: Run tests with coverage
-        run: npm exec --no -- vitest run --coverage
+        run: npm run test:coverage
 
       - name: Build application
         env:
