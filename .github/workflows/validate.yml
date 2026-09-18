@@ -41,7 +41,7 @@ permissions:
 # gilt das nur für Pull-Request-Läufe, und ein wartender Lauf kann von einem
 # neueren derselben Gruppe verdrängt werden.
 concurrency:
-  group: validate-${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:

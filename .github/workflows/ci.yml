@@ -23,7 +23,7 @@ permissions:
 # dagegen von einem neueren derselben Gruppe verdrängt werden, weil GitHub
 # je Gruppe nur einen Lauf in der Warteschlange hält.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
