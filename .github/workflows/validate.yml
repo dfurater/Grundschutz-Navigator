@@ -185,10 +185,14 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # Der Guard bekommt nur das Ergebnis des Vergleichs, nie den Tokenwert:
+      # Das Skript stammt wie diese Workflow-Datei aus dem PR-Head und ist
+      # damit vom Beitragenden bestimmbar. Der geheime Wert erreicht allein den
+      # gepinnten Scanner-Schritt weiter unten, der kein Repository-Code ist.
       - name: Analyse-Token pruefen
         id: token
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_CI }}
+          SONAR_TOKEN_AVAILABLE: ${{ secrets.SONAR_CI != '' }}
           IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
         run: node scripts/sonar-token-guard.mjs
 

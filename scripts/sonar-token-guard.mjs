@@ -3,6 +3,14 @@
 /*
  * Entscheidet, ob die SonarQube-Analyse in diesem Lauf ausgeführt werden kann.
  *
+ * Der Guard sieht den Tokenwert bewusst nie, sondern nur das Ergebnis des
+ * Vergleichs `secrets.SONAR_CI != ''` als `SONAR_TOKEN_AVAILABLE`. Bei einem
+ * Pull Request aus diesem Repository stammt dieses Skript wie die
+ * Workflow-Datei selbst aus dem PR-Head; ein Beitragender koennte es also
+ * aendern. Mit dem Token in der Prozessumgebung liesse es sich damit
+ * auslesen — ohne ihn bleibt der geheime Wert allein beim gepinnten
+ * Scanner-Schritt, der kein Repository-Code ist.
+ *
  * Läuft bewusst vor jedem teuren Schritt: Ohne diesen Guard liefe erst der
  * gesamte Testlauf, bevor der Scanner mit einem Authentifizierungsfehler
  * abbricht.
@@ -40,16 +48,17 @@ export class SonarTokenGuardError extends Error {
 }
 
 /**
- * @param {{ sonarToken?: string, isFork?: string }} input
+ * @param {{ tokenAvailable?: string, isFork?: string }} input
  * @returns {{ available: boolean, notice?: string }}
  */
-export function resolveAnalysisAvailability({ sonarToken, isFork }) {
-  if (sonarToken) {
+export function resolveAnalysisAvailability({ tokenAvailable, isFork }) {
+  if (tokenAvailable === 'true') {
     return { available: true };
   }
 
   // Nur die ausdrückliche Zeichenkette `true` gilt als Fork-Lauf. Jeder andere
   // Wert — auch ein leerer oder fehlender — führt in den harten Fehlschlag.
+  // Dieselbe fail-closed Auswertung gilt oben für die Tokenmeldung.
   if (isFork === 'true') {
     return { available: false, notice: FORK_SKIP_MESSAGE };
   }
@@ -66,7 +75,7 @@ function main() {
   }
 
   const result = resolveAnalysisAvailability({
-    sonarToken: process.env.SONAR_TOKEN,
+    tokenAvailable: process.env.SONAR_TOKEN_AVAILABLE,
     isFork: process.env.IS_FORK,
   });
 

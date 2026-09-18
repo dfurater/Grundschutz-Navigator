@@ -57,7 +57,7 @@ jobs:
       - name: Analyse-Token pruefen
         id: token
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_CI }}
+          SONAR_TOKEN_AVAILABLE: ${{ secrets.SONAR_CI != '' }}
         run: node scripts/sonar-token-guard.mjs
 
       - name: Setup Node.js

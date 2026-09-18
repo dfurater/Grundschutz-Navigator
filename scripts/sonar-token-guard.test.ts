@@ -43,14 +43,14 @@ afterEach(async () => {
 });
 
 describe('resolveAnalysisAvailability', () => {
-  it('enables the analysis whenever a token is present', () => {
-    expect(resolveAnalysisAvailability({ sonarToken: 'token', isFork: 'true' })).toEqual({
+  it('enables the analysis whenever the token is reported as available', () => {
+    expect(resolveAnalysisAvailability({ tokenAvailable: 'true', isFork: 'true' })).toEqual({
       available: true,
     });
   });
 
   it('skips the analysis for a fork contribution without a token', () => {
-    expect(resolveAnalysisAvailability({ sonarToken: '', isFork: 'true' })).toEqual({
+    expect(resolveAnalysisAvailability({ tokenAvailable: 'false', isFork: 'true' })).toEqual({
       available: false,
       notice: FORK_SKIP_MESSAGE,
     });
@@ -61,16 +61,28 @@ describe('resolveAnalysisAvailability', () => {
   it.each([undefined, '', 'false', 'TRUE', 'yes'])(
     'fails without a token when IS_FORK is %j',
     (isFork) => {
-      expect(() => resolveAnalysisAvailability({ sonarToken: undefined, isFork })).toThrow(
+      expect(() => resolveAnalysisAvailability({ tokenAvailable: 'false', isFork })).toThrow(
         SonarTokenGuardError,
       );
+    },
+  );
+
+  // Fail-closed auch auf der Tokenseite: Nur die ausdrückliche Zeichenkette
+  // `true` schaltet die Analyse frei.
+  it.each([undefined, '', 'false', 'TRUE', 'yes'])(
+    'treats %j as no available token',
+    (tokenAvailable) => {
+      expect(resolveAnalysisAvailability({ tokenAvailable, isFork: 'true' })).toEqual({
+        available: false,
+        notice: FORK_SKIP_MESSAGE,
+      });
     },
   );
 });
 
 describe('sonar-token-guard CLI', () => {
   it('writes available=true and emits no annotation when the token is present', async () => {
-    const result = await run({ SONAR_TOKEN: 'token', IS_FORK: 'false' });
+    const result = await run({ SONAR_TOKEN_AVAILABLE: 'true', IS_FORK: 'false' });
 
     expect(result.status).toBe(0);
     expect(await readFile(result.githubOutput, 'utf8')).toBe('available=true\n');
@@ -78,7 +90,7 @@ describe('sonar-token-guard CLI', () => {
   });
 
   it('writes available=false and reports the skip visibly for a fork run', async () => {
-    const result = await run({ SONAR_TOKEN: '', IS_FORK: 'true' });
+    const result = await run({ SONAR_TOKEN_AVAILABLE: 'false', IS_FORK: 'true' });
 
     expect(result.status).toBe(0);
     expect(await readFile(result.githubOutput, 'utf8')).toBe('available=false\n');
@@ -86,7 +98,7 @@ describe('sonar-token-guard CLI', () => {
   });
 
   it('fails without writing an output when the token is missing outside a fork', async () => {
-    const result = await run({ SONAR_TOKEN: '', IS_FORK: 'false' });
+    const result = await run({ SONAR_TOKEN_AVAILABLE: 'false', IS_FORK: 'false' });
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain(`::error::${MISSING_TOKEN_MESSAGE}`);
@@ -94,7 +106,7 @@ describe('sonar-token-guard CLI', () => {
   });
 
   it('fails when GITHUB_OUTPUT is not set', async () => {
-    const result = await run({ SONAR_TOKEN: 'token' }, { withGithubOutput: false });
+    const result = await run({ SONAR_TOKEN_AVAILABLE: 'true' }, { withGithubOutput: false });
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('GITHUB_OUTPUT ist nicht gesetzt');
