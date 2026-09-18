@@ -171,6 +171,14 @@ jobs:
   sonarqube:
     name: SonarQube Scan
     needs: validate
+    # Nur Pull Requests. `workflow_dispatch` loest in dieser Datei den Job
+    # `validate` aus, und ohne diese Bedingung liefe der Scanner mit: Er wuerde
+    # den Ref des Dispatch als Branch analysieren und damit eine Messung
+    # erzeugen, die es vor GSPP-416 nicht gab — die Branchanalyse gehoert
+    # allein dem Push-Pfad in `sonar.yml`. Die Bedingung nimmt keiner
+    # Pull-Request-Klasse die Analyse; sie haelt den manuellen Lauf von einer
+    # Klasse fern, die SonarQube nie gemessen hat.
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 

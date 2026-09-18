@@ -33,9 +33,10 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      # Vollstaendige Historie: Die PR-Analyse braucht den Quellbranch ausgecheckt
-      # und den Zielbranch im lokalen Repository, sonst kann SonarQube den neuen
-      # Code nicht bestimmen.
+      # Vollstaendige Historie: Der Scanner liest die Git-Blame-Daten des
+      # Arbeitsbaums, um Befunde einem Autor und einem Datum zuzuordnen und
+      # daraus die New-Code-Periode des langlebigen Branches zu bestimmen. Ein
+      # flacher Klon liefert sie nicht.
       - name: Checkout full history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
