@@ -127,8 +127,25 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Run tests
-        run: npm run test
+      # Seit GSPP-416 der einzige vollstaendige jsdom-Suite-Lauf eines
+      # Pull Requests. `--coverage` setzt dabei die in vite.config.ts gepinnten
+      # Schwellen im Pflichtcheck durch: Eine Unterschreitung faerbt `validate`
+      # rot, statt erst den nachgelagerten Scanner-Job ausfallen zu lassen und
+      # den Required Check `SonarCloud Code Analysis` als pending stehen zu
+      # lassen.
+      - name: Run tests with coverage
+        run: npm run test:coverage
+
+      # Der Report wandert als Artefakt in den Job `sonarqube`, statt dort ein
+      # zweites Mal berechnet zu werden. Die Pfade in lcov.info sind relativ zur
+      # Repository-Wurzel und damit im Zieljob unveraendert aufloesbar.
+      - name: Archive coverage report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Install pinned Chromium for browser tests
         run: ./node_modules/.bin/playwright install chromium
@@ -141,3 +158,61 @@ jobs:
 
       - name: Build application
         run: npm run build
+
+  # Der Scanner liegt seit GSPP-416 in dieser Datei statt in `sonar.yml`, weil
+  # nur ein Job desselben Workflows den Coverage-Report aus `validate`
+  # uebernehmen kann. `sonar.yml` behaelt den Push-Pfad fuer `main` und
+  # `develop` und misst dort weiter beide langlebigen Branches.
+  #
+  # Der Required Status Check heisst `SonarCloud Code Analysis` und wird von der
+  # SonarQubeCloud-App gesetzt, nicht vom Namen dieses Jobs; die Verschiebung
+  # laesst beide Rulesets unberuehrt. Faellt `validate`, laeuft dieser Job nicht
+  # — der Pull Request ist dann bereits durch den roten Pflichtcheck blockiert.
+  sonarqube:
+    name: SonarQube Scan
+    needs: validate
+    # Nur Pull Requests. `workflow_dispatch` loest in dieser Datei den Job
+    # `validate` aus, und ohne diese Bedingung liefe der Scanner mit: Er wuerde
+    # den Ref des Dispatch als Branch analysieren und damit eine Messung
+    # erzeugen, die es vor GSPP-416 nicht gab — die Branchanalyse gehoert
+    # allein dem Push-Pfad in `sonar.yml`. Die Bedingung nimmt keiner
+    # Pull-Request-Klasse die Analyse; sie haelt den manuellen Lauf von einer
+    # Klasse fern, die SonarQube nie gemessen hat.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      # Vollstaendige Historie: Die PR-Analyse braucht den Quellbranch
+      # ausgecheckt und den Zielbranch im lokalen Repository, sonst kann
+      # SonarQube den neuen Code nicht bestimmen. Der Checkout steht vor dem
+      # Guard, weil dieser als Skript aus dem Arbeitsbaum laeuft.
+      - name: Checkout full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Der Guard bekommt nur das Ergebnis des Vergleichs, nie den Tokenwert:
+      # Das Skript stammt wie diese Workflow-Datei aus dem PR-Head und ist
+      # damit vom Beitragenden bestimmbar. Der geheime Wert erreicht allein den
+      # gepinnten Scanner-Schritt weiter unten, der kein Repository-Code ist.
+      - name: Analyse-Token pruefen
+        id: token
+        env:
+          SONAR_TOKEN_AVAILABLE: ${{ secrets.SONAR_CI != '' }}
+          IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: node scripts/sonar-token-guard.mjs
+
+      - name: Download coverage report
+        if: steps.token.outputs.available == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: coverage-lcov
+          path: coverage
+
+      - name: SonarQube Scan
+        if: steps.token.outputs.available == 'true'
+        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_CI }}

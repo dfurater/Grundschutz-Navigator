@@ -80,11 +80,29 @@ describe('CI supply-chain hardening', () => {
     }
   });
 
-  it('uses the installed, lockfile-pinned Vitest binary for the deploy coverage run', () => {
+  // Seit GSPP-416 ruft der Deploy denselben package.json-Eintrag auf wie jeder
+  // andere Coverage-Lauf, statt Vitest in zweiter Schreibweise zu starten. Die
+  // Zusicherung bleibt dieselbe: Der Lauf kommt aus der durch package-lock.json
+  // festgelegten Installation und nicht aus der Registry.
+  it('runs the deploy coverage suite through the lockfile-pinned npm script', () => {
     const deploy = workflow('deploy.yml');
 
-    expect(deploy).toContain('run: npm exec --no -- vitest run --coverage');
-    expect(deploy).not.toContain('npx vitest run --coverage');
+    expect(deploy).toContain('run: npm run test:coverage');
+  });
+
+  // `npx` und `npm exec` fallen ohne `--no` auf die Registry zurueck und holen
+  // ein Paket, das im Lockfile nicht steht. Die Pruefung haengt am Vorkommen
+  // statt an einer Dateiliste, damit sie einen neuen Workflow miterfasst.
+  it('never resolves a binary outside the lockfile in any workflow', () => {
+    const directory = resolve(process.cwd(), '.github/workflows');
+
+    for (const name of readdirSync(directory).filter((file) => file.endsWith('.yml'))) {
+      for (const line of workflow(name).split('\n')) {
+        if (line.trimStart().startsWith('#')) continue;
+
+        expect(line, `${name}: ${line.trim()}`).not.toMatch(/\b(?:npx|npm exec)\b/);
+      }
+    }
   });
 
   it('grants deploy privileges only to the job that needs them', () => {

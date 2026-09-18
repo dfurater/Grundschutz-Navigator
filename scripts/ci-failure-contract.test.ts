@@ -112,13 +112,15 @@ describe('CI failure visibility contract', () => {
       }
     }
 
-    expect(jobCount).toBe(11);
+    expect(jobCount).toBe(12);
   });
 
-  it('enables fail-fast shell handling in all five multiline target steps', async () => {
+  // Der Token-Guard war bis GSPP-416 der fuenfte Eintrag. Er ist seither kein
+  // Shell-Block mehr, sondern scripts/sonar-token-guard.mjs; sein
+  // Fehlverhalten deckt scripts/sonar-token-guard.test.ts ab.
+  it('enables fail-fast shell handling in all four multiline target steps', async () => {
     const targets = [
       ['validate.yml', 'Read pinned snapshot SHA from manifest'],
-      ['sonar.yml', 'Analyse-Token pruefen'],
       ['sonar.yml', 'Read pinned snapshot SHA from manifest'],
       ['deploy.yml', 'Read pinned snapshot SHA from manifest'],
       ['verify-catalog-merge.yml', 'Dispatch verified fallback deploy'],
