@@ -841,6 +841,14 @@ Die Impressum-Werte kommen lokal aus `.env.local` (nicht committet, siehe `.env.
 
 `import.meta.env.BASE_URL` ist keine setzbare Umgebungsvariable, sondern eine von Vite aus der `base`-Konfiguration generierte Konstante; der projektseitige Override läuft über `BUILD_BASE`.
 
+## CI-Pipeline
+
+`.github/workflows/ci.yml` läuft auf `pull_request` gegen `main` und `develop` sowie auf `workflow_dispatch`. Die Ereignisliste führt `edited` mit, weil zwei der drei Jobs aus den Pull-Request-Metadaten lesen: `documentation-contract` wertet den Body gegen den Dokumentationsvertrag aus, `catalog-sync-guard` liest Titel und Body für Sync-Vertrag und Release-Marke. Beide müssen daher auch bei einer reinen Titel- oder Body-Bearbeitung erneut urteilen.
+
+Der Job `validate` liest weder Titel noch Body. Er trägt deshalb `if: github.event.action != 'edited'` und wird bei einer Metadaten-Bearbeitung übersprungen, statt Schema-Verifikation, Katalog-Fetch, go-oscal-Lauf, Lint, Tests, Browser-Tests und Build ein weiteres Mal gegen einen unveränderten Head auszuführen. Der Jobname bleibt dabei unverändert, weil beide Rulesets (`develop`, `main-release`) `validate`, `catalog-sync-guard` und `documentation-contract` namentlich als Required Status Check fordern. Ein per Job-`if` übersprungener Job meldet laut GitHub-Dokumentation den Status `Success` und erfüllt den Pflichtcheck weiter; das gilt ausdrücklich nicht für einen Workflow, den ein Pfad-, Branch- oder Commit-Message-Filter gar nicht erst startet — dessen Checks blieben auf `Pending` stehen und blockierten den Merge. Die Bedingung sitzt deshalb am Job und nicht am Workflow.
+
+Eine `concurrency`-Gruppe serialisiert je Pull Request und bricht überholte Läufe ab, wie `sonar.yml` es bereits tut. Sie trennt zusätzlich nach Ereignisart: Metadaten-Läufe (`edited`) und Code-Läufe (`opened`, `reopened`, `synchronize`) liegen in verschiedenen Gruppen. Lägen sie in derselben, könnte eine bloße Body-Bearbeitung einen laufenden Code-Lauf abbrechen und dessen `validate`-Ergebnis durch das übersprungene — und damit als Erfolg gewertete — Ergebnis des Metadaten-Laufs ersetzen. Der Pflichtcheck stünde dann grün, ohne je gegen diesen Head gelaufen zu sein. `cancel-in-progress` gilt nur für Pull-Request-Läufe; ein manueller `workflow_dispatch` wird nicht verworfen.
+
 ## Deployment
 
 Das Deployment erfolgt automatisch via GitHub Actions bei Push auf `main` (`.github/workflows/deploy.yml`):

@@ -9,6 +9,18 @@ on:
 permissions:
   contents: read
 
+# Serialisiert je Pull Request und bricht überholte Läufe ab, wie es
+# `sonar.yml` bereits tut. Die Gruppe trennt zusätzlich nach Ereignisart:
+# Ein `edited`-Lauf überspringt `validate` (siehe dort), ein `synchronize`-Lauf
+# führt ihn aus. Lagen beide in derselben Gruppe, könnte eine bloße
+# Body-Bearbeitung einen laufenden Code-Lauf abbrechen und dessen
+# `validate`-Ergebnis durch das übersprungene — und damit als Erfolg
+# gewertete — Ergebnis des Metadaten-Laufs ersetzen. Der Pflichtcheck wäre
+# grün, ohne dass er je gegen diesen Head gelaufen ist.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event.action == 'edited' && 'metadata' || 'code' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   documentation-contract:
     if: github.event_name == 'pull_request'
@@ -89,7 +101,17 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: node scripts/release-prepare.mjs --verify-pull-request
 
+  # `validate` liest weder PR-Titel noch -Body und hat deshalb bei einer reinen
+  # Metadaten-Änderung nichts zu prüfen. Der `edited`-Auslöser bleibt für
+  # `documentation-contract` und `catalog-sync-guard` nötig, die beide aus
+  # Titel bzw. Body lesen; dieser Job wird dabei übersprungen. Ein per
+  # Job-`if` übersprungener Job meldet laut GitHub-Dokumentation den Status
+  # `Success` und erfüllt damit den Pflichtcheck weiter — anders als ein
+  # Workflow, der über Pfad- oder Branch-Filter gar nicht erst startet und
+  # den Check auf `Pending` stehen ließe. Der Jobname bleibt unverändert,
+  # weil beide Rulesets (`develop`, `main-release`) ihn namentlich fordern.
   validate:
+    if: github.event.action != 'edited'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
