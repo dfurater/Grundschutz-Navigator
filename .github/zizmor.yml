@@ -1,0 +1,32 @@
+# GSPP-418: pedantic-Gate. Ignoriert wird ausschließlich gemessenes
+# Rauschen (info/help/medium) — kein high. Auditor-Follow-up (Owner legt das
+# Issue nach GSPP-418 an) hebt secrets-outside-env auf Pflicht.
+rules:
+  # 10x info, alle 7 Workflow-Dateien ohne sonar.yml (dessen Job hat name:).
+  # Kein Sicherheitsgewinn: 9-Job-Umbenennung wäre Scope-Creep.
+  anonymous-definition:
+    ignore:
+      - backmerge-main-to-develop.yml
+      - ci.yml
+      - deploy.yml
+      - greptile-review-nudge.yml
+      - release-prepare.yml
+      - update-catalog.yml
+      - validate.yml
+      - verify-catalog-merge.yml
+  # 4x help. Bestehende deutsche Begründungskommentare
+  # (greptile-review-nudge.yml, deploy.yml) bleiben, neue werden nicht erzwungen.
+  undocumented-permissions:
+    ignore:
+      - deploy.yml
+      - greptile-review-nudge.yml
+      - verify-catalog-merge.yml
+  # 1x help auf verify-catalog-merge (pull_request: closed ist terminal —
+  # kein wartender Lauf wird überholt, kein Sicherheitsgewinn durch Gruppe).
+  concurrency-limits:
+    ignore:
+      - verify-catalog-merge.yml
+  # 2x medium auf dependabot.yml. Eigene Lane, nicht GSPP-418.
+  dependabot-cooldown:
+    ignore:
+      - dependabot.yml
