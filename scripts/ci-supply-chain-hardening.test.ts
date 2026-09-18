@@ -53,6 +53,33 @@ describe('CI supply-chain hardening', () => {
     }
   });
 
+  // Kein Workflow dieses Repositoriums pusht über die Checkout-Credentials; das
+  // Token erreicht die Schritte, die es brauchen, als ausdrückliche Env-Variable.
+  // Ein Checkout ohne `persist-credentials: false` ließe es dagegen in der
+  // Git-Konfiguration des Arbeitsbaums zurück, wo jeder nachgelagerte Schritt
+  // darauf zugreift — in `validate` sind das Kommandos aus dem Pull Request.
+  // Auch diese Prüfung hängt am Vorkommen statt an einer Dateiliste.
+  it('removes checkout credentials in every workflow', () => {
+    const directory = resolve(process.cwd(), '.github/workflows');
+    const marker = 'uses: actions/checkout@';
+
+    for (const name of readdirSync(directory).filter((file) => file.endsWith('.yml'))) {
+      const content = workflow(name);
+
+      for (let index = content.indexOf(marker); index >= 0; index = content.indexOf(marker, index + 1)) {
+        // Der Schritt reicht bis zum nächsten `- name:` derselben Liste; was
+        // danach steht, gehört einem anderen Schritt und zählt nicht.
+        const rest = content.slice(index);
+        const end = rest.indexOf('\n      - name:');
+        const step = end < 0 ? rest : rest.slice(0, end);
+
+        expect(step, `${name}: Checkout ohne persist-credentials`).toContain(
+          'persist-credentials: false',
+        );
+      }
+    }
+  });
+
   it('uses the installed, lockfile-pinned Vitest binary for the deploy coverage run', () => {
     const deploy = workflow('deploy.yml');
 
