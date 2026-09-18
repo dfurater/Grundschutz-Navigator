@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: sonar-${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -94,7 +94,7 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       # Der Testlauf prueft ueber `globalSetup` die Frische der Katalogdaten und
-      # schlaegt ohne sie fehl. Gepinnt auf denselben Snapshot wie in ci.yml.
+      # schlaegt ohne sie fehl. Gepinnt auf denselben Snapshot wie in validate.yml.
       - name: Fetch BSI catalog from pinned snapshot
         if: steps.token.outputs.available == 'true'
         env:

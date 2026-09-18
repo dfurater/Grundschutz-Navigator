@@ -210,7 +210,8 @@ upstream-manifest.json            # Gepinnter Upstream-Snapshot (Manifest v2)
 
 .github/workflows/
   ├── deploy.yml                  # GitHub Pages Deployment
-  ├── ci.yml                      # CI Pipeline
+  ├── ci.yml                      # PR-Metadatenverträge (documentation-contract, catalog-sync-guard)
+  ├── validate.yml                # Vollständige Verifikations- und Build-Lane (validate)
   ├── update-catalog.yml          # Automatischer Katalog-Sync
   └── verify-catalog-merge.yml    # Post-Merge-Prüfung und Deploy-Fallback
 ```
@@ -840,6 +841,18 @@ Konfiguriert in `tsconfig.app.json` (`compilerOptions.paths`) und `vite.config.t
 Die Impressum-Werte kommen lokal aus `.env.local` (nicht committet, siehe `.env.local.example`) und in CI aus GitHub Actions Secrets.
 
 `import.meta.env.BASE_URL` ist keine setzbare Umgebungsvariable, sondern eine von Vite aus der `base`-Konfiguration generierte Konstante; der projektseitige Override läuft über `BUILD_BASE`.
+
+## CI-Pipeline
+
+Die Pull-Request-Prüfung liegt in zwei Workflows, die sich durch ihre Ereignisliste unterscheiden. `.github/workflows/ci.yml` führt `documentation-contract` und `catalog-sync-guard`; beide urteilen über die Pull-Request-Metadaten — der eine wertet den Body gegen den Dokumentationsvertrag aus, der andere liest Titel und Body für Sync-Vertrag und Release-Marke. Seine Ereignisliste führt deshalb `edited` mit, damit eine Titel- oder Body-Bearbeitung neu beurteilt wird. `.github/workflows/validate.yml` führt `validate`: Schema-Verifikation, Katalog-Fetch, Profilauflösung, go-oscal-Lauf, Lint, Tests, Browser-Tests und Build. Dieser Job liest weder Titel noch Body, und seine Ereignisliste führt `edited` nicht.
+
+Die Trennung ist der Grund für die zweite Datei. Ein Job-`if` im gemeinsamen Workflow hätte denselben Lauf gespart, aber eine Lücke geöffnet: Ein per `if` übersprungener Job meldet laut GitHub-Dokumentation den Status `Success` und erzeugt dabei einen neuen Check-Run unter demselben Namen. Da GitHub je Kontext den jüngsten Check-Run wertet, ersetzte eine bloße Body-Bearbeitung ein fehlgeschlagenes `validate` auf unverändertem Head durch einen Erfolg — der Pflichtcheck ließe sich so umgehen. Ohne abonniertes `edited` entsteht dagegen überhaupt kein Lauf und damit kein neuer Check-Run; das reale Ergebnis des letzten Code-Laufs bleibt stehen. Das Gegenstück dazu ist die bekannte Falle, einen *erforderlichen* Workflow über Pfad- oder Branch-Filter innerhalb eines abonnierten Ereignisses zu unterdrücken: Dort bliebe der Check auf `Pending` und blockierte den Merge. Hier wird kein Filter gesetzt, sondern das Ereignis gar nicht erst abonniert.
+
+`edited` deckt neben Titel und Body auch den Wechsel des Base-Branches ab. Auch er löst `validate.yml` nicht aus, und das ist richtig: Die Schritte dieses Jobs prüfen allein den Head-Stand und kennen den Base nicht. Die base-abhängigen Prüfungen liegen in `documentation-contract` und `catalog-sync-guard` und laufen weiter.
+
+Die Jobnamen `validate`, `catalog-sync-guard` und `documentation-contract` bleiben unverändert, weil beide Rulesets (`develop`, `main-release`) sie namentlich als Required Status Check fordern. Der Kontextname eines Actions-Checks ist der Jobname, nicht die Workflow-Datei; die Verschiebung ist für die Rulesets deshalb folgenlos.
+
+Beide Workflows tragen eine `concurrency`-Gruppe je `github.ref`, wie `sonar.yml` es bereits tut, und brechen überholte Läufe ab: Ein überholter Lauf trifft eine Aussage über einen Stand, den ein Folge-Push oder eine spätere Bearbeitung bereits ersetzt hat. `cancel-in-progress` gilt nur für Pull-Request-Läufe; ein laufender manueller `workflow_dispatch` wird nicht abgebrochen. Ein noch wartender Lauf kann dagegen von einem neueren derselben Gruppe verdrängt werden, weil GitHub je Gruppe nur einen Lauf in der Warteschlange hält — das gilt für jede Concurrency-Gruppe und ist unabhängig von `cancel-in-progress`.
 
 ## Deployment
 

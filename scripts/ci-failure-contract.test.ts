@@ -12,10 +12,11 @@ const WORKFLOW_NAMES = [
   'release-prepare.yml',
   'sonar.yml',
   'update-catalog.yml',
+  'validate.yml',
   'verify-catalog-merge.yml',
 ] as const;
 
-const MANIFEST_WORKFLOWS = ['ci.yml', 'sonar.yml', 'deploy.yml'] as const;
+const MANIFEST_WORKFLOWS = ['validate.yml', 'sonar.yml', 'deploy.yml'] as const;
 const INVALID_MANIFEST_CASES = [
   {
     name: 'missing file',
@@ -98,7 +99,7 @@ afterEach(async () => {
 });
 
 describe('CI failure visibility contract', () => {
-  it('limits every job in all eight workflows to 20 minutes', async () => {
+  it('limits every job in all nine workflows to 20 minutes', async () => {
     let jobCount = 0;
 
     for (const name of WORKFLOW_NAMES) {
@@ -116,7 +117,7 @@ describe('CI failure visibility contract', () => {
 
   it('enables fail-fast shell handling in all five multiline target steps', async () => {
     const targets = [
-      ['ci.yml', 'Read pinned snapshot SHA from manifest'],
+      ['validate.yml', 'Read pinned snapshot SHA from manifest'],
       ['sonar.yml', 'Analyse-Token pruefen'],
       ['sonar.yml', 'Read pinned snapshot SHA from manifest'],
       ['deploy.yml', 'Read pinned snapshot SHA from manifest'],
