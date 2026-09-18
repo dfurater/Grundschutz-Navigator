@@ -124,16 +124,16 @@ export async function readBodyWithLimit(response, {
 
 export function resolveOptionalSnapshotSha(configuredValue = process.env.BSI_SNAPSHOT_SHA) {
   if (typeof configuredValue !== 'string') {
-    return '';
+    throw new Error('BSI_SNAPSHOT_SHA must be set to "latest" or a 40-character hexadecimal commit SHA');
   }
 
   const normalized = configuredValue.trim();
-  if (normalized.length === 0) {
+  if (normalized === 'latest') {
     return '';
   }
 
   if (!/^[0-9a-f]{40}$/i.test(normalized)) {
-    throw new Error('BSI_SNAPSHOT_SHA must be a 40-character hexadecimal commit SHA');
+    throw new Error('BSI_SNAPSHOT_SHA must be set to "latest" or a 40-character hexadecimal commit SHA');
   }
 
   return normalized.toLowerCase();

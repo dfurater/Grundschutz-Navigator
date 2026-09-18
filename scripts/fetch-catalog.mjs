@@ -51,8 +51,6 @@ const REPO = OFFICIAL_BSI_REPO;
 const OUTPUT_DIR = DEFAULT_ARTIFACTS_DIR;
 const TOKEN = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN ?? '';
 
-const PINNED_SHA = resolveOptionalSnapshotSha();
-
 const VOCABULARIES_FILE_NAME = 'vocabularies.json';
 const UPSTREAM_SOURCES_METADATA_FILE_NAME = 'upstream-sources-metadata.json';
 const GENERATED_ARTIFACT_FILE_NAMES = Object.freeze([
@@ -192,22 +190,23 @@ async function fetchGitHubJson(pathname, retryDelaysMs = DEFAULT_RETRY_DELAYS_MS
   return response.json();
 }
 
-async function resolveSnapshot(logger = console, retryDelaysMs = DEFAULT_RETRY_DELAYS_MS) {
-  if (PINNED_SHA) {
+async function resolveSnapshot(snapshotSelection, logger = console, retryDelaysMs = DEFAULT_RETRY_DELAYS_MS) {
+  const pinnedSha = resolveOptionalSnapshotSha(snapshotSelection);
+  if (pinnedSha) {
     try {
-      const commitInfo = await fetchGitHubJson(`/repos/${REPO}/commits/${PINNED_SHA}`, retryDelaysMs);
+      const commitInfo = await fetchGitHubJson(`/repos/${REPO}/commits/${pinnedSha}`, retryDelaysMs);
       return {
         defaultBranch: 'pinned',
-        snapshotCommitSha: PINNED_SHA,
+        snapshotCommitSha: pinnedSha,
         snapshotCommitDate: commitInfo?.commit?.committer?.date ?? 'unknown',
       };
     } catch (error) {
       logger.warn(
-        `Warnung: Konnte Commit-Metadaten für gepinnten SHA ${PINNED_SHA} nicht laden. ${error instanceof Error ? error.message : String(error)}`,
+        `Warnung: Konnte Commit-Metadaten für gepinnten SHA ${pinnedSha} nicht laden. ${error instanceof Error ? error.message : String(error)}`,
       );
       return {
         defaultBranch: 'pinned',
-        snapshotCommitSha: PINNED_SHA,
+        snapshotCommitSha: pinnedSha,
         snapshotCommitDate: 'unknown',
       };
     }
@@ -601,6 +600,7 @@ function materializeRegistryFiles({ registryEntries, treeFiles, namespaceRefs })
 async function buildFetchArtifacts(logger = console, {
   retryDelaysMs = DEFAULT_RETRY_DELAYS_MS,
   registryEntries = SOURCE_REGISTRY,
+  snapshotSelection,
   treeResponse: providedTreeResponse,
 } = {}) {
   // Mehrere ausgelieferte Kataloge sind seit GSPP-284 der Regelfall. Die Lane
@@ -615,7 +615,7 @@ async function buildFetchArtifacts(logger = console, {
   logger.log(`Repository: ${REPO}`);
   logger.log(`Kataloge:   ${supportedCatalogs.map((entry) => entry.upstreamPath).join(', ')}`);
 
-  const snapshot = await resolveSnapshot(logger, retryDelaysMs);
+  const snapshot = await resolveSnapshot(snapshotSelection, logger, retryDelaysMs);
   const fetchRef = assertAllowedGitHubRef(snapshot.snapshotCommitSha, 'Snapshot commit SHA');
 
   logger.log(`[1/5] Lade vollständigen BSI-Tree für Snapshot ${fetchRef} ...`);
@@ -968,7 +968,9 @@ if (isDirectExecution) {
   };
 
   try {
-    const payload = await buildFetchArtifacts(stderrLogger);
+    const payload = await buildFetchArtifacts(stderrLogger, {
+      snapshotSelection: process.env.BSI_SNAPSHOT_SHA,
+    });
     await writeArtifacts(payload);
     if (payload.corpusCache) {
       await writeCorpusCache(payload.corpusCache);

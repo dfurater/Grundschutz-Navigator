@@ -20,6 +20,7 @@ concurrency:
 jobs:
   check-and-sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       CATALOG_SYNC_RULESET_UPDATED_AT: ${{ vars.CATALOG_SYNC_RULESET_UPDATED_AT }}
 
@@ -70,6 +71,7 @@ jobs:
       - name: Fetch BSI catalog and official vocabularies
         env:
           GH_TOKEN: ${{ github.token }}
+          BSI_SNAPSHOT_SHA: latest
         run: npm run fetch-catalog
 
       - name: Compare with tracked upstream manifest
