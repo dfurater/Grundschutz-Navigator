@@ -68,6 +68,9 @@ describe('releaseBranchName', () => {
   });
 });
 
+/** Eine Task-Liste in jeder Form, die GitHub als Kästchen rendert. */
+const ERFUELLUNGSLISTE = /^[ \t]*[-*+][ \t]+\[[ xX]\]/m;
+
 describe('buildReleasePullRequestBody', () => {
   it('nennt Merge-Commit als Methode und beschreibt die Lieferung, ohne etwas zu fordern', () => {
     const body = buildReleasePullRequestBody({
@@ -84,12 +87,17 @@ describe('buildReleasePullRequestBody', () => {
     expect(body).toContain('### Für Nutzer sichtbar');
     expect(body).toContain('### Infrastruktur');
 
-    // Keine Erfüllungsliste: ausserhalb des Vertragsblocks kein Kästchen.
+    // Keine Erfüllungsliste: ausserhalb des Vertragsblocks kein Kästchen — in
+    // jeder Task-List-Form, die GitHub rendert, sonst genügte ein anderes
+    // Listenzeichen, um die Liste an dieser Sicherung vorbei einzuführen.
     const ausserhalbDesVertrags = body.replace(
       /<!-- documentation-contract:start -->[\s\S]*<!-- documentation-contract:end -->/,
       '',
     );
-    expect(ausserhalbDesVertrags).not.toMatch(/^- \[[ xX]\]/m);
+    expect(ausserhalbDesVertrags).not.toMatch(ERFUELLUNGSLISTE);
+    for (const kasten of ['- [ ] a', '* [ ] a', '+ [x] a', '  - [ ] a']) {
+      expect(kasten).toMatch(ERFUELLUNGSLISTE);
+    }
     expect(body).not.toContain('## Freigabe-Protokoll');
     expect(body).not.toContain('vollständigen Freigabe-Protokoll');
   });
