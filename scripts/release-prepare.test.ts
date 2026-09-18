@@ -69,7 +69,7 @@ describe('releaseBranchName', () => {
 });
 
 describe('buildReleasePullRequestBody', () => {
-  it('nennt Merge-Commit als erforderliche Merge-Methode und trägt das Freigabe-Protokoll', () => {
+  it('nennt Merge-Commit als Methode und beschreibt die Lieferung, ohne etwas zu fordern', () => {
     const body = buildReleasePullRequestBody({
       releaseSha: 'a'.repeat(40),
       releaseBranch: `release/${'a'.repeat(12)}`,
@@ -78,8 +78,20 @@ describe('buildReleasePullRequestBody', () => {
     });
 
     expect(body).toContain('**Erforderliche Merge-Methode:** Merge-Commit');
-    expect(body).toContain('M9-Referenzablauf grün');
-    expect(body).toContain('Milestone-Exit erfüllt');
+
+    // Der Ausfüllhinweis steht als HTML-Kommentar, ist im PR also unsichtbar.
+    expect(body).toMatch(/## Lieferung\n\n<!--\n[\s\S]+?\n-->/);
+    expect(body).toContain('### Für Nutzer sichtbar');
+    expect(body).toContain('### Infrastruktur');
+
+    // Keine Erfüllungsliste: ausserhalb des Vertragsblocks kein Kästchen.
+    const ausserhalbDesVertrags = body.replace(
+      /<!-- documentation-contract:start -->[\s\S]*<!-- documentation-contract:end -->/,
+      '',
+    );
+    expect(ausserhalbDesVertrags).not.toMatch(/^- \[[ xX]\]/m);
+    expect(body).not.toContain('## Freigabe-Protokoll');
+    expect(body).not.toContain('vollständigen Freigabe-Protokoll');
   });
 
   it('deklariert die im Release bewegten Dokumentationsdateien', () => {
@@ -214,8 +226,8 @@ describe('runReleasePrepare', () => {
 });
 
 describe('Dokumentationsvertrag des erzeugten Release-PRs', () => {
-  // Codex-Cross-Review an Pull Request #248: Der erzeugte Body trug ein
-  // Freigabe-Protokoll, aber keinen maschinenlesbaren Dokumentationsabschnitt.
+  // Codex-Cross-Review an Pull Request #248: Der erzeugte Body trug keinen
+  // maschinenlesbaren Dokumentationsabschnitt.
   // `documentation-contract` ist im main-Ruleset Pflichtcheck und greift bei
   // jeder Änderung unter `src/` — ein Release mit Produktänderung wäre damit
   // nicht mergefähig gewesen. Geprüft wird deshalb nicht der Text des Bodys,
