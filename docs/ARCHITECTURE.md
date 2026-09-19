@@ -895,11 +895,6 @@ selbst; der Digest-Pin verkleinert das Fenster auf den Registry-Digest,
 beseitigt die Klasse nicht. Die Abweichung vom reinen SHA-Action-Modell
 (Container-Digest statt Action-Code allein) ist damit dokumentiert statt
 stillschweigend.
-Restrisiko: Ein manipuliertes Image meldet „No findings" und schaltet die
-Prüfung still ab — zizmor prüft sich hier selbst; der Digest-Pin verkleinert
-das Fenster auf Action-Repo und Registry-Digest, beseitigt die Klasse nicht.
-Die Abweichung vom reinen SHA-Action-Modell (Container-Digest statt
-Action-Code allein) ist damit dokumentiert statt stillschweigend.
 
 Die Standardberechtigung des Deploy-Workflows beschränkt sich auf
 `contents: read`. Schreibrechte für GitHub Pages, OIDC, Attestations und
