@@ -2,11 +2,10 @@ import { relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { listDefinitionFiles, readDefinitions } from './workflowDefinitions.mjs';
 
-// Referenzen auf Actions im selben Repository tragen keinen Commit-SHA und
-// bleiben ausgenommen. Zulässig sind beide Formen: das arbeitsbereichsrelative
-// `./` und die self-repository-Syntax `$/`, die seit GSPP-419 verwendet wird
-// und auf das Repository im gerade ausgeführten Commit auflöst.
-const LOCAL_REFERENCE = /^[.$]\//;
+// Self-repository-Referenzen tragen keinen externen Commit-SHA. Nur `$/`
+// löst die Action aber gegen den Commit auf, der den Workflow ausführt; `./`
+// könnte dagegen eine im Arbeitsbereich zur Laufzeit veränderte Action laden.
+const SELF_REPOSITORY_REFERENCE = /^\$\/[^@\s]+$/;
 
 // Ein Pre-Release- oder Build-Bezeichner nach SemVer: alphanumerisch und
 // Bindestrich, mit mindestens einem alphanumerischen Zeichen. Damit fallen
@@ -50,7 +49,7 @@ function collectActionReferences(): ActionReference[] {
 
 function findUnpinnedReferences(references: ActionReference[]): string[] {
   return references
-    .filter(({ value }) => !LOCAL_REFERENCE.test(value) && !PINNED_REFERENCE.test(value))
+    .filter(({ value }) => !SELF_REPOSITORY_REFERENCE.test(value) && !PINNED_REFERENCE.test(value))
     .map(({ file, line, value }) => `${file}:${line} ${value}`);
 }
 
@@ -73,7 +72,7 @@ describe('workflow action pinning', () => {
     expect(references.some((reference) => reference.file.startsWith('.github/actions/'))).toBe(true);
   });
 
-  it('pins every action to a full-length commit SHA with a version comment', () => {
+  it('pins every external action to a full-length commit SHA with a version comment', () => {
     expect(findUnpinnedReferences(references)).toEqual([]);
   });
 });
@@ -89,9 +88,10 @@ describe('workflow action pinning rule', () => {
     expect(check('actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2-beta.1')).toEqual([]);
   });
 
-  it('exempts actions referenced from within this repository', () => {
-    expect(check('./.github/actions/setup')).toEqual([]);
+  it('exempts only self-repository actions resolved from the running commit', () => {
     expect(check('$/.github/actions/setup')).toEqual([]);
+    expect(check('./.github/actions/setup')).toEqual(['ci.yml:1 ./.github/actions/setup']);
+    expect(check('$/.github/actions/setup@v1')).toEqual(['ci.yml:1 $/.github/actions/setup@v1']);
   });
 
   it('rejects a tag pin', () => {
