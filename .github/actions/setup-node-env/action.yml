@@ -3,14 +3,21 @@ description: >-
   Node-Laufzeit aus .nvmrc und Installation aus dem Lockfile. Gemeinsame Fassung
   der Setup-Schicht, die zuvor in sechs Workflows wortgleich stand (GSPP-419).
 
-# Der Checkout bleibt bewusst außerhalb dieser Action. Eine Action aus diesem
-# Repository wird relativ zu $GITHUB_WORKSPACE aufgelöst und setzt den Checkout
-# damit voraus; sie könnte ihn gar nicht selbst mitbringen. Er unterscheidet
-# sich zwischen den Aufrufern ohnehin — `ref`, `fetch-depth` und der Zweck des
-# Klons weichen von Job zu Job ab, und eine Kapselung, die das verdeckte, wäre
-# schlechter als die Wiederholung.
+# Der Checkout bleibt bewusst außerhalb dieser Action, weil die Aufrufer sich
+# darin unterscheiden: `ref`, `fetch-depth` und der Zweck des Klons weichen von
+# Job zu Job ab, und eine Kapselung, die das verdeckte, wäre schlechter als die
+# Wiederholung. Ein Checkout muss trotzdem vorausgegangen sein — `npm ci` und
+# `.nvmrc` lesen beide aus $GITHUB_WORKSPACE.
 #
-# `node-version-file` löst ebenfalls gegen $GITHUB_WORKSPACE auf (verifiziert
+# Die Aufrufer referenzieren diese Action über die self-repository-Syntax `$/`
+# (GitHub, allgemein verfügbar seit 2026-07-30) statt über das
+# arbeitsbereichsrelative `./`. `$/` löst auf das Repository im gerade
+# ausgeführten Commit auf und hängt damit nicht am Zustand des Dateisystems zur
+# Laufzeit; `./` könnte eine Action laden, die ein vorheriger Schritt erst
+# hineinkopiert hat. Der zizmor-Audit `self-repository` im Pflichtcheck
+# `validate` erzwingt das.
+#
+# `node-version-file` löst dagegen gegen $GITHUB_WORKSPACE auf (verifiziert
 # gegen actions/setup-node@8207627, src/main.ts), nicht gegen das Verzeichnis
 # dieser Action. `.nvmrc` im Wurzelverzeichnis ist damit von hier aus lesbar und
 # bleibt die einzige Stelle, an der die Node-Version steht;

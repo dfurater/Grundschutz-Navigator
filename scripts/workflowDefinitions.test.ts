@@ -42,7 +42,7 @@ const WORKFLOW = [
   '          set -euo pipefail',
   '          echo "sha=abc" >> "$GITHUB_OUTPUT"',
   '',
-  '      - uses: ./.github/actions/setup-node-env',
+  '      - uses: $/.github/actions/setup-node-env',
   '',
 ].join('\n');
 
@@ -138,7 +138,7 @@ describe('stepRange', () => {
   it('gibt für einen Schritt ohne Folgeblock eine einzelne Zeile zurück', () => {
     const lines = WORKFLOW.split('\n');
 
-    expect(stepText(lines, 14).trim()).toBe('- uses: ./.github/actions/setup-node-env');
+    expect(stepText(lines, 14).trim()).toBe('- uses: $/.github/actions/setup-node-env');
   });
 
   it('verlässt den Block bei flacherer Einrückung', () => {

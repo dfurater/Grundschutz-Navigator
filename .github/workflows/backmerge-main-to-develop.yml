@@ -37,7 +37,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node.js and install dependencies
-        uses: ./.github/actions/setup-node-env
+        uses: $/.github/actions/setup-node-env
 
       # Dieselbe repository-beschränkte GitHub App wie die Catalog-Sync-Lane.
       # Ihr Installation-Token erzeugt Workflow-Läufe auf dem gestellten Pull

@@ -5,9 +5,11 @@ description: >-
   validate.yml, deploy.yml und sonar.yml wortgleich stehenden Schrittfolge
   (GSPP-419).
 
-# Setzt eine bereits abgeschlossene Installation voraus: `npm run fetch-catalog`
-# läuft aus node_modules. Aufrufer rufen deshalb zuerst
-# ./.github/actions/setup-node-env auf.
+# Setzt einen Checkout und eine abgeschlossene Installation voraus:
+# `upstream-manifest.json` liegt im Arbeitsbereich, `npm run fetch-catalog` läuft
+# aus node_modules. Aufrufer rufen deshalb zuerst $/.github/actions/setup-node-env
+# auf. Die Referenz nutzt die self-repository-Syntax `$/`; die Begründung steht
+# dort.
 #
 # Nicht Gegenstand dieser Action ist der Fetch in update-catalog.yml. Der fordert
 # mit `BSI_SNAPSHOT_SHA: latest` ausdrücklich den neuesten Upstream-Stand an —

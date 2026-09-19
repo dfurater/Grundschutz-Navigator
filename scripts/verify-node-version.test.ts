@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   NodeVersionError,
   assertNvmrcSatisfiesEngines,
+  assertRuntimeSatisfiesEngines,
   findVersionSourceViolations,
   parseEnginesNode,
   parseNvmrc,
@@ -118,6 +119,34 @@ describe('assertNvmrcSatisfiesEngines', () => {
   });
 });
 
+describe('assertRuntimeSatisfiesEngines', () => {
+  const engines = parseEnginesNode('>=22.22.0');
+
+  it.each(['v22.22.0', 'v22.22.3', 'v22.23.0', 'v23.0.0'])('akzeptiert %s', (version) => {
+    expect(() => assertRuntimeSatisfiesEngines(version, engines)).not.toThrow();
+  });
+
+  // Genau die Lücke, die ein reiner Dateivergleich offenlässt: `.nvmrc` mit
+  // bloßem Major bleibt vereinbar, während die aufgelöste Version die Schranke
+  // unterschreitet (Greptile-P2 auf PR #257).
+  it.each(['v22.21.9', 'v22.0.0', 'v21.99.99'])('verwirft %s', (version) => {
+    expect(() => assertRuntimeSatisfiesEngines(version, engines)).toThrow(/unterschreitet/);
+  });
+
+  it('akzeptiert die Angabe auch ohne v-Präfix', () => {
+    expect(() => assertRuntimeSatisfiesEngines('22.22.0', engines)).not.toThrow();
+  });
+
+  it.each([undefined, '', 'unbekannt', 'v22'])(
+    'verwirft die nicht interpretierbare Angabe %j',
+    (version) => {
+      expect(() => assertRuntimeSatisfiesEngines(version as string, engines)).toThrow(
+        /nicht interpretierbar/,
+      );
+    },
+  );
+});
+
 describe('findVersionSourceViolations', () => {
   it('meldet nichts, wenn jedes Setup .nvmrc liest', async () => {
     const root = await makeRepository({ '.github/workflows/ci.yml': CLEAN_WORKFLOW });
@@ -180,7 +209,7 @@ describe('findVersionSourceViolations', () => {
         '      - name: Setup Node.js',
         `        uses: ${SETUP_NODE_SHA}`,
         '      - name: Andere Action',
-        '        uses: ./.github/actions/setup-node-env',
+        '        uses: $/.github/actions/setup-node-env',
         '        with:',
         '          node-version-file: .nvmrc',
         '',
@@ -223,7 +252,11 @@ describe('findVersionSourceViolations', () => {
 
 describe('verifyNodeVersion', () => {
   it('besteht gegen dieses Repository', () => {
-    expect(verifyNodeVersion()).toEqual({ nvmrc: '22', engines: '>=22.22.0' });
+    expect(verifyNodeVersion()).toEqual({
+      nvmrc: '22',
+      engines: '>=22.22.0',
+      runtime: process.version,
+    });
   });
 
   it('meldet eine Abweichung zwischen .nvmrc und engines.node', async () => {

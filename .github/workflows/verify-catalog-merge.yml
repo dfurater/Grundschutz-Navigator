@@ -69,7 +69,7 @@ jobs:
           esac
 
           # Kein `jq -er … | strings` und keine Formprüfung wie in
-          # ./.github/actions/fetch-pinned-catalog: Die Zeile darüber hat das
+          # $/.github/actions/fetch-pinned-catalog: Die Zeile darüber hat das
           # Manifest bereits vollständig validiert — validateManifestV2Shape in
           # scripts/upstream-artifacts.mjs verlangt für snapshotCommitSha eine
           # kleingeschriebene 40-stellige Git-SHA. Ein zweiter Formtest prüfte

@@ -65,7 +65,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # Bewusst nicht ./.github/actions/setup-node-env: Diese Fassung
+      # Bewusst nicht $/.github/actions/setup-node-env: Diese Fassung
       # installiert nicht, und die gemeinsame Action tut beides. Mit ihr legte
       # der Job eine npm-Cache-Datei an, die er nie füllt, und andere Jobs
       # stellten sie später leer wieder her. Die Node-Version bleibt trotzdem

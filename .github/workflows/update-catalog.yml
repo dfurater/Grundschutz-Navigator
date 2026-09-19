@@ -32,7 +32,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node.js and install dependencies
-        uses: ./.github/actions/setup-node-env
+        uses: $/.github/actions/setup-node-env
 
       - name: Verify repository merge policy
         env:
@@ -62,7 +62,7 @@ jobs:
           fi
           echo "GitHub App token has repository access."
 
-      # Bewusst nicht ./.github/actions/fetch-pinned-catalog: Dieser Lauf fordert
+      # Bewusst nicht $/.github/actions/fetch-pinned-catalog: Dieser Lauf fordert
       # mit `latest` ausdrücklich den neuesten Upstream-Stand an, weil er den Pin
       # gerade erst fortschreibt. Die Action liest den Pin dagegen aus
       # upstream-manifest.json; beides hinter einem Schalter zu vereinen, würde

@@ -20,7 +20,7 @@ const WORKFLOW_NAMES = [
 /*
  * Bis GSPP-419 stand der manifestlesende Block wortgleich in validate.yml,
  * sonar.yml und deploy.yml, und diese Datei führte ihn dreimal gegen dieselben
- * sechs Fehlerfälle aus. Seither trägt ihn ./.github/actions/fetch-pinned-catalog
+ * sechs Fehlerfälle aus. Seither trägt ihn $/.github/actions/fetch-pinned-catalog
  * einmal; die Verhaltensprüfung läuft entsprechend einmal gegen die gemeinsame
  * Quelle. Damit die Zusammenführung nicht stillschweigend zurückfällt, prüft
  * `keeps the manifest block in exactly one place` zusätzlich, dass keine
@@ -143,7 +143,7 @@ describe('CI failure visibility contract', () => {
 
   it('reaches the shared action from every job that builds against the pinned snapshot', async () => {
     for (const name of ['validate.yml', 'sonar.yml', 'deploy.yml'] as const) {
-      expect(await workflow(name), name).toContain('uses: ./.github/actions/fetch-pinned-catalog');
+      expect(await workflow(name), name).toContain('uses: $/.github/actions/fetch-pinned-catalog');
     }
   });
 

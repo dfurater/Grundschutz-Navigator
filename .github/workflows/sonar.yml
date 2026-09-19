@@ -63,7 +63,7 @@ jobs:
 
       - name: Setup Node.js and install dependencies
         if: steps.token.outputs.available == 'true'
-        uses: ./.github/actions/setup-node-env
+        uses: $/.github/actions/setup-node-env
 
       # Der Testlauf prueft ueber `globalSetup` die Frische der Katalogdaten und
       # schlaegt ohne sie fehl. Gepinnt auf denselben Snapshot wie in
@@ -71,7 +71,7 @@ jobs:
       # derselben Action statt aus drei wortgleichen Kopien.
       - name: Read the pinned snapshot and fetch the BSI catalog
         if: steps.token.outputs.available == 'true'
-        uses: ./.github/actions/fetch-pinned-catalog
+        uses: $/.github/actions/fetch-pinned-catalog
         with:
           github-token: ${{ github.token }}
 

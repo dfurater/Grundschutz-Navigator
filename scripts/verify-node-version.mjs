@@ -10,10 +10,21 @@
  * Blöcke darum herum.
  *
  * Seither ist `.nvmrc` die einzige Quelle, und jedes Setup liest sie über
- * `node-version-file`. Dieser Guard sichert beide Hälften der Zusage:
+ * `node-version-file`. Dieser Guard sichert drei Teile der Zusage:
  *
  *   1. `.nvmrc` und `engines.node` sind miteinander vereinbar.
- *   2. Kein Workflow und keine Action bringt die Version als Literal zurück.
+ *   2. Die tatsächlich laufende Node-Version erfüllt `engines.node`.
+ *   3. Kein Workflow und keine Action bringt die Version als Literal zurück.
+ *
+ * Punkt 2 schließt die Lücke, die Punkt 1 allein offenlässt (Greptile-P2 auf
+ * PR #257): Eine `.nvmrc` mit bloßem Major wie `22` benennt keine konkrete
+ * Version, sondern die jeweils neueste Veröffentlichung dieser Zeile. Wird
+ * `engines.node` auf eine Mindestversion innerhalb von Node 22 angehoben, die
+ * es noch nicht gibt, bliebe ein reiner Dateivergleich grün, während
+ * `setup-node` etwas Kleineres auflöst. Der Guard läuft im Job `validate`
+ * hinter dem Setup-Schritt und kann deshalb das Ergebnis selbst prüfen, statt
+ * es vorherzusagen — netzfrei und ohne Annahme darüber, was die
+ * Versionsauflösung liefern wird.
  *
  * Netzfrei und fail-closed: Eine unlesbare `.nvmrc`, eine nicht interpretierbare
  * `engines.node`-Angabe und ein unerwartetes Setup-Format lassen ihn ebenso
@@ -126,6 +137,35 @@ export function assertNvmrcSatisfiesEngines(nvmrc, engines) {
 }
 
 /**
+ * Prüft, ob die tatsächlich laufende Node-Version die untere Schranke aus
+ * `engines.node` erfüllt.
+ *
+ * Im Job `validate` ist das die Version, die `setup-node` aus `.nvmrc`
+ * aufgelöst hat — die Prüfung misst damit das Ergebnis der Auflösung statt es
+ * vorherzusagen. Lokal ist es die Version des Aufrufers; ein Fehlschlag dort
+ * ist ebenso richtig, weil `engines.node` für jede Umgebung gilt.
+ */
+export function assertRuntimeSatisfiesEngines(runtimeVersion, engines) {
+  const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(runtimeVersion ?? '');
+  if (!match) {
+    throw new NodeVersionError(
+      `Die laufende Node-Version ist nicht interpretierbar: ${JSON.stringify(runtimeVersion)}`,
+    );
+  }
+
+  const running = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const minimum = [engines.major, engines.minor, engines.patch];
+  for (const [index, value] of running.entries()) {
+    if (value > minimum[index]) return;
+    if (value < minimum[index]) {
+      throw new NodeVersionError(
+        `Die laufende Node-Version ${runtimeVersion} unterschreitet ${PACKAGE_MANIFEST_PATH} engines.node (${engines.value}).`,
+      );
+    }
+  }
+}
+
+/**
  * Meldet jede Stelle, die die Node-Version erneut als Literal führt, und jeden
  * `actions/setup-node`-Schritt, der `.nvmrc` nicht liest.
  *
@@ -166,12 +206,13 @@ export function findVersionSourceViolations(files, root = process.cwd()) {
   return violations;
 }
 
-export function verifyNodeVersion(root = process.cwd()) {
+export function verifyNodeVersion(root = process.cwd(), runtimeVersion = process.version) {
   const nvmrc = parseNvmrc(readFileSync(resolve(root, NVMRC_PATH), 'utf8'));
   const manifest = JSON.parse(readFileSync(resolve(root, PACKAGE_MANIFEST_PATH), 'utf8'));
   const engines = parseEnginesNode(manifest.engines?.node);
 
   assertNvmrcSatisfiesEngines(nvmrc, engines);
+  assertRuntimeSatisfiesEngines(runtimeVersion, engines);
 
   const violations = findVersionSourceViolations(listDefinitionFiles(root), root);
   if (violations.length > 0) {
@@ -180,14 +221,14 @@ export function verifyNodeVersion(root = process.cwd()) {
     );
   }
 
-  return { nvmrc: nvmrc.value, engines: engines.value };
+  return { nvmrc: nvmrc.value, engines: engines.value, runtime: runtimeVersion };
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const { nvmrc, engines } = verifyNodeVersion();
+    const { nvmrc, engines, runtime } = verifyNodeVersion();
     console.log(
-      `Node-Version einquellig: ${NVMRC_PATH} führt ${nvmrc} und erfüllt ${PACKAGE_MANIFEST_PATH} engines.node ${engines}.`,
+      `Node-Version einquellig: ${NVMRC_PATH} führt ${nvmrc}, die laufende Version ${runtime} erfüllt ${PACKAGE_MANIFEST_PATH} engines.node ${engines}.`,
     );
   } catch (error) {
     console.error(error instanceof NodeVersionError ? error.message : error);

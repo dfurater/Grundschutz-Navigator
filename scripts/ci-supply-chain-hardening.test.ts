@@ -49,7 +49,7 @@ describe('CI supply-chain hardening', () => {
     'backmerge-main-to-develop.yml',
     'release-prepare.yml',
   ])('installs through the shared setup action in %s', (name) => {
-    expect(workflow(name)).toContain('uses: ./.github/actions/setup-node-env');
+    expect(workflow(name)).toContain('uses: $/.github/actions/setup-node-env');
   });
 
   // Die Listen oben benennen die Stellen, die heute installieren. Wandert ein

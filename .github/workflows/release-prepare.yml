@@ -39,7 +39,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node.js and install dependencies
-        uses: ./.github/actions/setup-node-env
+        uses: $/.github/actions/setup-node-env
 
       - name: Create repository-scoped GitHub App token
         id: app-token

@@ -1,18 +1,12 @@
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
-
-const WORKFLOW_DIR = resolve(process.cwd(), '.github/workflows');
-
-// Seit GSPP-419 stehen Setup-Schritte in Composite Actions unter
-// .github/actions/. Sie führen dieselben fremden Actions aus wie ein Workflow;
-// bliebe der Guard auf .github/workflows/ beschränkt, verlöre jede dorthin
-// verschobene Referenz ihren Pin, ohne dass etwas es meldete.
-const ACTION_DIR = resolve(process.cwd(), '.github/actions');
+import { listDefinitionFiles, readDefinitions } from './workflowDefinitions.mjs';
 
 // Referenzen auf Actions im selben Repository tragen keinen Commit-SHA und
-// bleiben deshalb ausgenommen.
-const LOCAL_REFERENCE = /^\.\//;
+// bleiben ausgenommen. Zulässig sind beide Formen: das arbeitsbereichsrelative
+// `./` und die self-repository-Syntax `$/`, die seit GSPP-419 verwendet wird
+// und auf das Repository im gerade ausgeführten Commit auflöst.
+const LOCAL_REFERENCE = /^[.$]\//;
 
 // Ein Pre-Release- oder Build-Bezeichner nach SemVer: alphanumerisch und
 // Bindestrich, mit mindestens einem alphanumerischen Zeichen. Damit fallen
@@ -40,39 +34,17 @@ interface ActionReference {
   value: string;
 }
 
-function listDefinitionFiles(): string[] {
-  const files = readdirSync(WORKFLOW_DIR)
-    .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
-    .sort()
-    .map((name) => resolve(WORKFLOW_DIR, name));
-
-  const walk = (directory: string) => {
-    for (const entry of readdirSync(directory).sort()) {
-      const path = join(directory, entry);
-      if (statSync(path).isDirectory()) walk(path);
-      else if (entry === 'action.yml' || entry === 'action.yaml') files.push(path);
-    }
-  };
-  try {
-    walk(ACTION_DIR);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-  }
-
-  return files;
-}
-
-function collectActionReferences(files: string[]): ActionReference[] {
-  return files.flatMap((file) =>
-    readFileSync(file, 'utf8')
+// Die Sammlung der zu prüfenden Definitionen liegt seit GSPP-419 in
+// scripts/workflowDefinitions.mjs. Sie erfasst Workflows und Composite Actions
+// aus einer Quelle — ohne sie müsste jeder Guard jede Verschiebung einzeln
+// nachziehen, und ein vergessener prüfte stillschweigend weniger.
+function collectActionReferences(): ActionReference[] {
+  return readDefinitions().flatMap(({ label, content }) =>
+    content
       .split('\n')
-      .map((line, index) => ({
-        file: relative(process.cwd(), file),
-        line: index + 1,
-        match: USES_LINE.exec(line),
-      }))
+      .map((line, index) => ({ label, line: index + 1, match: USES_LINE.exec(line) }))
       .filter((entry) => entry.match !== null)
-      .map((entry) => ({ file: entry.file, line: entry.line, value: entry.match![1] })),
+      .map((entry) => ({ file: entry.label, line: entry.line, value: entry.match![1] })),
   );
 }
 
@@ -83,8 +55,8 @@ function findUnpinnedReferences(references: ActionReference[]): string[] {
 }
 
 describe('workflow action pinning', () => {
-  const definitionFiles = listDefinitionFiles();
-  const references = collectActionReferences(definitionFiles);
+  const definitionFiles = listDefinitionFiles().map((file) => relative(process.cwd(), file));
+  const references = collectActionReferences();
 
   it('finds workflows and action references to check', () => {
     // Ohne diese Zusicherung würde der Guard auch bei einem leeren oder falsch
@@ -97,7 +69,7 @@ describe('workflow action pinning', () => {
   // oder wandert eine Action wieder heraus, ohne dass die Liste es merkt,
   // prüfte der Guard dort stillschweigend nichts mehr.
   it('covers the composite actions alongside the workflows', () => {
-    expect(definitionFiles.filter((file) => file.startsWith(ACTION_DIR))).not.toHaveLength(0);
+    expect(definitionFiles.filter((file) => file.startsWith('.github/actions/'))).not.toHaveLength(0);
     expect(references.some((reference) => reference.file.startsWith('.github/actions/'))).toBe(true);
   });
 
@@ -119,6 +91,7 @@ describe('workflow action pinning rule', () => {
 
   it('exempts actions referenced from within this repository', () => {
     expect(check('./.github/actions/setup')).toEqual([]);
+    expect(check('$/.github/actions/setup')).toEqual([]);
   });
 
   it('rejects a tag pin', () => {

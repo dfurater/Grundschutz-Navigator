@@ -56,7 +56,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node.js and install dependencies
-        uses: ./.github/actions/setup-node-env
+        uses: $/.github/actions/setup-node-env
 
       # Hält die Node-Version an genau einer Stelle: `.nvmrc` speist jedes
       # Setup, und dieser Guard prüft sie gegen `engines.node` in package.json
@@ -90,7 +90,7 @@ jobs:
         run: npm run verify-documented-versions
 
       - name: Read the pinned snapshot and fetch the BSI catalog
-        uses: ./.github/actions/fetch-pinned-catalog
+        uses: $/.github/actions/fetch-pinned-catalog
         with:
           github-token: ${{ github.token }}
 
