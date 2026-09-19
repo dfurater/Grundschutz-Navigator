@@ -845,7 +845,7 @@ Die Impressum-Werte kommen lokal aus `.env.local` (nicht committet, siehe `.env.
 
 ## CI-Pipeline
 
-Die Pull-Request-Prüfung liegt in zwei Workflows, die sich durch ihre Ereignisliste unterscheiden. `.github/workflows/ci.yml` führt `documentation-contract` und `catalog-sync-guard`; beide urteilen über die Pull-Request-Metadaten — der eine wertet den Body gegen den Dokumentationsvertrag aus, der andere liest Titel und Body für Sync-Vertrag und Release-Marke. Seine Ereignisliste führt deshalb `edited` mit, damit eine Titel- oder Body-Bearbeitung neu beurteilt wird. `.github/workflows/validate.yml` führt `validate`: Schema-Verifikation, Katalog-Fetch, Profilauflösung, go-oscal-Lauf, Lint, Tests mit Coverage, Browser-Tests, Build und — seit [GSPP-418](https://linear.app/grundschutz-plus-plus/issue/GSPP-418) als letzte Schritte desselben Jobs — den zizmor-Audit (`uvx zizmor@1.30.1 --offline --persona pedantic .`, Config `.github/zizmor.yml`). Dieser Job liest weder Titel noch Body, und seine Ereignisliste führt `edited` nicht. Dieselbe Datei führt seit [GSPP-416](https://linear.app/grundschutz-plus-plus/issue/GSPP-416) den nachgelagerten Job `sonarqube`; die Begründung steht unter [`sonar-project.properties`](#sonar-projectproperties).
+Die Pull-Request-Prüfung liegt in zwei Workflows, die sich durch ihre Ereignisliste unterscheiden. `.github/workflows/ci.yml` führt `documentation-contract` und `catalog-sync-guard`; beide urteilen über die Pull-Request-Metadaten — der eine wertet den Body gegen den Dokumentationsvertrag aus, der andere liest Titel und Body für Sync-Vertrag und Release-Marke. Seine Ereignisliste führt deshalb `edited` mit, damit eine Titel- oder Body-Bearbeitung neu beurteilt wird. `.github/workflows/validate.yml` führt `validate`: Schema-Verifikation, Katalog-Fetch, Profilauflösung, go-oscal-Lauf, Lint, Tests mit Coverage, Browser-Tests, Build und — seit [GSPP-418](https://linear.app/grundschutz-plus-plus/issue/GSPP-418) als letzte Schritte desselben Jobs — den zizmor-Audit (offizielle Action per SHA gepinnt, Persona pedantic, Config `.github/zizmor.yml`). Dieser Job liest weder Titel noch Body, und seine Ereignisliste führt `edited` nicht. Dieselbe Datei führt seit [GSPP-416](https://linear.app/grundschutz-plus-plus/issue/GSPP-416) den nachgelagerten Job `sonarqube`; die Begründung steht unter [`sonar-project.properties`](#sonar-projectproperties).
 
 Die Trennung ist der Grund für die zweite Datei. Ein Job-`if` im gemeinsamen Workflow hätte denselben Lauf gespart, aber eine Lücke geöffnet: Ein per `if` übersprungener Job meldet laut GitHub-Dokumentation den Status `Success` und erzeugt dabei einen neuen Check-Run unter demselben Namen. Da GitHub je Kontext den jüngsten Check-Run wertet, ersetzte eine bloße Body-Bearbeitung ein fehlgeschlagenes `validate` auf unverändertem Head durch einen Erfolg — der Pflichtcheck ließe sich so umgehen. Ohne abonniertes `edited` entsteht dagegen überhaupt kein Lauf und damit kein neuer Check-Run; das reale Ergebnis des letzten Code-Laufs bleibt stehen. Das Gegenstück dazu ist die bekannte Falle, einen *erforderlichen* Workflow über Pfad- oder Branch-Filter innerhalb eines abonnierten Ereignisses zu unterdrücken: Dort bliebe der Check auf `Pending` und blockierte den Merge. Hier wird kein Filter gesetzt, sondern das Ereignis gar nicht erst abonniert.
 
@@ -876,15 +876,25 @@ damit über denselben `package.json`-Eintrag auf wie jeder andere Coverage-Lauf
 des Repositoriums; Vitest stammt dabei aus der lokalen, durch
 `package-lock.json` festgelegten Installation. Kein Workflow ruft ein Binary
 über `npx` oder `npm exec` auf, die beide auf die Registry zurückfallen können.
-Einzige Ausnahme ist der zizmor-Audit im Job `validate` ([GSPP-418](https://linear.app/grundschutz-plus-plus/issue/GSPP-418)):
-`uvx --no-build "zizmor@1.30.1"` bezieht das Wheel versionsgepinnt von PyPI,
-ohne Hash. Alle Actions bleiben per SHA gepinnt (erzwungen über
-`scripts/workflow-action-pinning.test.ts`); das Wheel ist die einzige
-Registry-Abhängigkeit ohne Hash. Mitigations: exakter Versionspin, `--no-build`
-(nie Setup-Skripte bauen, fail-closed ohne Wheel), `--offline` ohne Secrets und
-der SHA-gepinnte Installer `astral-sh/setup-uv`. Restrisiko: Ein manipuliertes
-Wheel meldet „No findings" und schaltet die Prüfung still ab — zizmor prüft
-sich hier selbst. Die Abweichung ist damit dokumentiert statt stillschweigend.
+Der zizmor-Audit im Job `validate` ([GSPP-418](https://linear.app/grundschutz-plus-plus/issue/GSPP-418))
+bezieht sein Binary weder so noch als Hash-loses PyPI-Wheel: Er nutzt die
+offizielle Action `zizmorcore/zizmor-action`, per Commit-SHA gepinnt
+(`cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4`, erzwungen über
+`scripts/workflow-action-pinning.test.ts`). Die Action zieht das Binary als
+Digest-gepinnten Container
+(`ghcr.io/zizmorcore/zizmor:1.30.1@sha256:a2eb396d886c053073405c7a980f2139ba2248ec172243cfa3841e57196e8101`
+aus der `support/versions`-Tabelle des gepinnten Action-Stands) — ein
+kompromittiertes Wheel meldet „No findings" nicht mehr über PyPI. Alle Actions
+bleiben damit per SHA gepinnt, ohne Registry-Abhängigkeit ohne Hash.
+Mitigations: exakter Action-SHA plus Image-Digest, `advanced-security: false`
+(Plain-Output mit Exit non-zero bei Befunden — SARIF exitt immer 0 und taugt
+nicht als Blockiergate), `online-audits: false` ohne Secrets (`token: ''`, der
+Container bekommt kein Credential) und Read-only-Mount des Workspaces.
+Restrisiko: Ein manipuliertes Image meldet „No findings" und schaltet die
+Prüfung still ab — zizmor prüft sich hier selbst; der Digest-Pin verkleinert
+das Fenster auf Action-Repo und Registry-Digest, beseitigt die Klasse nicht.
+Die Abweichung vom reinen SHA-Action-Modell (Container-Digest statt
+Action-Code allein) ist damit dokumentiert statt stillschweigend.
 
 Die Standardberechtigung des Deploy-Workflows beschränkt sich auf
 `contents: read`. Schreibrechte für GitHub Pages, OIDC, Attestations und
