@@ -72,6 +72,14 @@ const REGISTRY_LIFECYCLES = new Set([
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 
 /**
+ * Per-Request-Abbruchfrist für GitHub-API-Aufrufe (GSPP-430). Deutlich unter
+ * dem 10-min-Job-Limit von `catalog-sync-guard`: Ein hängender API-Call
+ * scheitert damit kontrolliert fail-closed, statt bis zum Job-Timeout zu
+ * hängen.
+ */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
  * Registrierte OSCAL-Artefakte nach Schlüssel — Grundlage der
  * Versionskreuzprüfung beim Blob-Verify (GSPP-283).
  */
@@ -628,7 +636,7 @@ export function validateCatalogSyncPullRequest({ branch, title, diffEntries }) {
   }
 }
 
-async function fetchGitHubJson(url, { fetchImpl, token, label }) {
+async function fetchGitHubJson(url, { fetchImpl, token, label, requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS }) {
   const headers = {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
@@ -639,7 +647,7 @@ async function fetchGitHubJson(url, { fetchImpl, token, label }) {
 
   let response;
   try {
-    response = await fetchImpl(url, { headers });
+    response = await fetchImpl(url, { headers, signal: AbortSignal.timeout(requestTimeoutMs) });
   } catch (error) {
     throw new Error(`${label} failed: ${error instanceof Error ? error.message : 'network error'}`);
   }
@@ -658,6 +666,7 @@ async function fetchGitHubJson(url, { fetchImpl, token, label }) {
 export async function verifySnapshotProgress(previousSha, nextSha, {
   fetchImpl = fetch,
   token,
+  requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
 } = {}) {
   if (!SHA_PATTERN.test(previousSha) || !SHA_PATTERN.test(nextSha)) {
     throw new Error('Snapshot comparison requires two lowercase 40-character SHAs');
@@ -668,12 +677,14 @@ export async function verifySnapshotProgress(previousSha, nextSha, {
     fetchImpl,
     token,
     label: 'New BSI snapshot lookup',
+    requestTimeoutMs,
   });
 
   const comparison = await fetchGitHubJson(`${apiBase}/compare/${previousSha}...${nextSha}`, {
     fetchImpl,
     token,
     label: 'BSI snapshot comparison',
+    requestTimeoutMs,
   });
 
   if (comparison.status !== 'ahead') {
@@ -703,11 +714,12 @@ function compareStringsByCodeUnit(left, right) {
 export async function verifySnapshotFiles(manifest, {
   fetchImpl = fetch,
   token,
+  requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
 } = {}) {
   const apiBase = `https://api.github.com/repos/${OFFICIAL_BSI_REPO}`;
   const tree = await fetchGitHubJson(
     `${apiBase}/git/trees/${manifest.snapshotCommitSha}?recursive=1`,
-    { fetchImpl, token, label: 'BSI snapshot tree lookup' },
+    { fetchImpl, token, label: 'BSI snapshot tree lookup', requestTimeoutMs },
   );
   const normalizedTree = normalizeGitTree(tree, { monitoredRoots: MONITORED_UPSTREAM_ROOTS });
   const blobShaByPath = new Map(normalizedTree.map((entry) => [entry.path, entry.gitBlobSha]));
@@ -738,7 +750,7 @@ export async function verifySnapshotFiles(manifest, {
         repository: manifest.repository,
         gitBlobSha: file.gitBlobSha,
       }),
-      { fetchImpl, token, label: `BSI artifact blob lookup (${file.path})` },
+      { fetchImpl, token, label: `BSI artifact blob lookup (${file.path})`, requestTimeoutMs },
     );
     if (
       blob?.sha !== file.gitBlobSha ||
@@ -889,6 +901,7 @@ export async function guardCatalogSyncPullRequest({
   execFile = execFileAsync,
   fetchImpl = fetch,
   token,
+  requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
 }) {
   if (isRegistryLifecycleOnlyMigration({ diffEntries, previousManifest, nextManifest })) {
     validateManifestV2Shape(previousManifest);
@@ -905,7 +918,7 @@ export async function guardCatalogSyncPullRequest({
       throw new Error(`Previous manifest repository must be ${OFFICIAL_BSI_REPOSITORY_URL}`);
     }
     validateCatalogSyncManifest(nextManifest);
-    await verifySnapshotFiles(nextManifest, { fetchImpl, token });
+    await verifySnapshotFiles(nextManifest, { fetchImpl, token, requestTimeoutMs });
     return { catalogSync: false, registryPreviewArtifactExpansion: true };
   }
 
@@ -925,9 +938,9 @@ export async function guardCatalogSyncPullRequest({
     await verifySnapshotProgress(
       previousManifest.snapshotCommitSha,
       nextManifest.snapshotCommitSha,
-      { fetchImpl, token },
+      { fetchImpl, token, requestTimeoutMs },
     );
-    await verifySnapshotFiles(nextManifest, { fetchImpl, token });
+    await verifySnapshotFiles(nextManifest, { fetchImpl, token, requestTimeoutMs });
     return {
       catalogSync: false,
       registryOscalVersionMigration: true,
@@ -952,9 +965,9 @@ export async function guardCatalogSyncPullRequest({
     await verifySnapshotProgress(
       previousManifest.snapshotCommitSha,
       nextManifest.snapshotCommitSha,
-      { fetchImpl, token },
+      { fetchImpl, token, requestTimeoutMs },
     );
-    await verifySnapshotFiles(nextManifest, { fetchImpl, token });
+    await verifySnapshotFiles(nextManifest, { fetchImpl, token, requestTimeoutMs });
     return {
       catalogSync: false,
       catalogImportToDevelop: true,
@@ -979,9 +992,9 @@ export async function guardCatalogSyncPullRequest({
   await verifySnapshotProgress(
     previousManifest.snapshotCommitSha,
     nextManifest.snapshotCommitSha,
-    { fetchImpl, token },
+    { fetchImpl, token, requestTimeoutMs },
   );
-  await verifySnapshotFiles(nextManifest, { fetchImpl, token });
+  await verifySnapshotFiles(nextManifest, { fetchImpl, token, requestTimeoutMs });
 
   return {
     catalogSync: true,

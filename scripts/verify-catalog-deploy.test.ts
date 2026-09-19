@@ -1,7 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  DEFAULT_DISCOVERY_ATTEMPTS,
+  DEFAULT_DISCOVERY_DELAY_MS,
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  DEFAULT_TERMINAL_ATTEMPTS,
+  DEFAULT_TERMINAL_DELAY_MS,
+  DEFAULT_VERIFICATION_BUDGET_MS,
   DEPLOY_CONFIRMED,
   FALLBACK_REQUIRED,
+  VERIFY_JOB_TIMEOUT_MS,
+  VERIFY_SETUP_RESERVE_MS,
+  awaitDeploySuccess,
   findPushDeployRun,
   verifyCatalogDeploy,
 } from './verify-catalog-deploy.mjs';
@@ -97,6 +106,52 @@ describe('findPushDeployRun', () => {
     await expect(findPushDeployRun(REPOSITORY, MERGE_SHA, { fetchImpl })).rejects.toThrow(
       'deploy run lookup failed with HTTP 503',
     );
+  });
+
+  // GSPP-430: Ein hängender API-Call darf nicht bis zum Job-Timeout offen
+  // bleiben. Der Mock löst nie auf und scheitert nur über das Abort-Signal —
+  // ohne Per-Request-Frist hinge dieser Test bis zum Vitest-Timeout.
+  it('aborts a hanging lookup instead of waiting for the job timeout', async () => {
+    const hanging = vi.fn(
+      (_url: string, init?: { signal?: AbortSignal }) =>
+        new Promise((_, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted by timeout')));
+        }),
+    );
+    await expect(
+      findPushDeployRun(REPOSITORY, MERGE_SHA, { fetchImpl: hanging, requestTimeoutMs: 10 }),
+    ).rejects.toThrow('deploy run lookup failed');
+    expect(hanging.mock.calls[0][1]).toMatchObject({ signal: expect.any(AbortSignal) });
+  });
+
+  // Sonar jssecurity:S8476/S7044: Unsanitized `repository` darf keinen
+  // Request-Pfad oder Host bestimmen — fail-closed vor jedem Fetch.
+  it('rejects a repository outside the owner/repo form without fetching', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ workflow_runs: [] }));
+    await expect(
+      findPushDeployRun('https://evil.example/x', MERGE_SHA, { fetchImpl }),
+    ).rejects.toThrow('owner/repo');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('rejects a traversal repository without fetching', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ workflow_runs: [] }));
+    await expect(findPushDeployRun('../evil', MERGE_SHA, { fetchImpl })).rejects.toThrow(
+      'owner/repo',
+    );
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-integer run id without fetching', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(makeRun()));
+    await expect(
+      awaitDeploySuccess(REPOSITORY, makeRun({ id: '1;drop' }), {
+        fetchImpl,
+        sleep: async () => {},
+        log: () => {},
+      }),
+    ).rejects.toThrow('positive integer');
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
 
@@ -213,5 +268,73 @@ describe('verifyCatalogDeploy — no push deploy', () => {
     await expect(
       verifyCatalogDeploy(options(fetchImpl, { discoveryAttempts: 1 })),
     ).rejects.toThrow('completed with conclusion failure');
+  });
+});
+
+describe('verifyCatalogDeploy — absolute verification budget (GSPP-423)', () => {
+  it('fits the absolute budget plus setup reserve into the 30-minute job timeout', () => {
+    expect(VERIFY_JOB_TIMEOUT_MS).toBe(30 * 60 * 1000);
+    expect(DEFAULT_VERIFICATION_BUDGET_MS + VERIFY_SETUP_RESERVE_MS).toBe(VERIFY_JOB_TIMEOUT_MS);
+    // Sleep-Anteile allein (60×15 s + 6×10 s ≈ 16 min) müssen in das absolute
+    // Budget passen; Request-Fristen kommen obenauf und werden per Deadline
+    // gekappt statt per Job-Kill.
+    const sleepOnlyMs =
+      DEFAULT_TERMINAL_ATTEMPTS * DEFAULT_TERMINAL_DELAY_MS +
+      DEFAULT_DISCOVERY_ATTEMPTS * DEFAULT_DISCOVERY_DELAY_MS;
+    expect(sleepOnlyMs).toBeLessThanOrEqual(DEFAULT_VERIFICATION_BUDGET_MS);
+  });
+
+  it('documents why the deadline exists: sleeps plus hanging requests exceed the job', () => {
+    const worstCaseMs =
+      (DEFAULT_DISCOVERY_ATTEMPTS + DEFAULT_TERMINAL_ATTEMPTS + 2) *
+        DEFAULT_REQUEST_TIMEOUT_MS +
+      (DEFAULT_DISCOVERY_ATTEMPTS - 1) * DEFAULT_DISCOVERY_DELAY_MS +
+      (DEFAULT_TERMINAL_ATTEMPTS - 1) * DEFAULT_TERMINAL_DELAY_MS;
+    // 59 Folgezyklen × (15 s + 30 s) ≈ 44,25 min Terminalphase allein —
+    // ohne Deadline würde der 30-min-Job den Guard hart abbrechen.
+    expect(worstCaseMs).toBeGreaterThan(VERIFY_JOB_TIMEOUT_MS);
+  });
+
+  it('fails closed within the absolute budget instead of overrunning the job', async () => {
+    let virtualNow = 0;
+    const now = () => virtualNow;
+    const sleep = async (ms: number) => {
+      virtualNow += ms;
+    };
+    const pending = makeRun({ status: 'in_progress', conclusion: null });
+    const fetchImpl = vi.fn(async (url: string) => {
+      virtualNow += 5_000;
+      if (String(url).includes('/actions/workflows/')) {
+        return jsonResponse({ workflow_runs: [pending] });
+      }
+      if (String(url).includes('/actions/runs/')) {
+        return jsonResponse(pending);
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const verificationBudgetMs = 30_000;
+    await expect(
+      verifyCatalogDeploy({
+        repository: REPOSITORY,
+        mergeCommitSha: MERGE_SHA,
+        snapshotSha: SNAPSHOT_SHA,
+        signature: SIGNATURE,
+        fetchImpl,
+        token: 'opaque-test-token',
+        sleep,
+        now,
+        verificationBudgetMs,
+        discoveryAttempts: 6,
+        discoveryDelayMs: 10_000,
+        terminalAttempts: 60,
+        terminalDelayMs: 15_000,
+        requestTimeoutMs: 30_000,
+        log: () => {},
+      }),
+    ).rejects.toThrow('verification budget');
+    // Deterministisch begrenzt: virtuelle Uhr bleibt im Budget plus höchstens
+    // einer gekappten Request-Latenz — weit unter den 44,25 min ohne Deadline.
+    expect(virtualNow).toBeLessThanOrEqual(verificationBudgetMs + 5_000);
+    expect(fetchImpl.mock.calls.length).toBeLessThan(60);
   });
 });

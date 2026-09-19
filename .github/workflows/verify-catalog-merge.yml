@@ -15,7 +15,7 @@ jobs:
       startsWith(github.event.pull_request.head.ref, 'chore/catalog-sync-') &&
       startsWith(github.event.pull_request.title, 'chore(ci): BSI-Katalog-Sync ')
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
       pull-requests: read

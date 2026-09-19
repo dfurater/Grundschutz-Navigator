@@ -30,7 +30,7 @@ jobs:
   documentation-contract:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
 
     steps:
       - name: Checkout full PR history
@@ -48,7 +48,9 @@ jobs:
 
   catalog-sync-guard:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # 10-min-Limit trägt den Guard, weil scripts/catalog-sync-guard.mjs jeden
+    # GitHub-API-Request per AbortSignal auf 30s begrenzt (fail-closed).
+    timeout-minutes: 10
 
     steps:
       - name: Checkout full PR history
