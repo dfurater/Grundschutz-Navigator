@@ -47,6 +47,7 @@ jobs:
   greptile-review-nudge:
     if: github.event.issue.pull_request && github.event.comment.user.login == 'greptile-apps[bot]'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     # Job-Berechtigungen setzen jede nicht genannte Fähigkeit auf `none`.
     # `issues: write` trägt den Kommentar — ein Kommentar an einem Pull Request
@@ -64,10 +65,15 @@ jobs:
         with:
           persist-credentials: false
 
+      # Bewusst nicht $/.github/actions/setup-node-env: Diese Fassung
+      # installiert nicht, und die gemeinsame Action tut beides. Mit ihr legte
+      # der Job eine npm-Cache-Datei an, die er nie füllt, und andere Jobs
+      # stellten sie später leer wieder her. Die Node-Version bleibt trotzdem
+      # einquellig — `.nvmrc` speist auch hier (GSPP-419).
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version-file: .nvmrc
 
       # Ohne `npm ci`: Der Guard kommt mit Node-Bordmitteln aus.
       - name: Force a Greptile review when the required check is missing

@@ -1,12 +1,11 @@
-import { readFileSync, readdirSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { listDefinitionFiles, readDefinitions } from './workflowDefinitions.mjs';
 
-const WORKFLOW_DIR = resolve(process.cwd(), '.github/workflows');
-
-// Referenzen auf Actions im selben Repository tragen keinen Commit-SHA und
-// bleiben deshalb ausgenommen.
-const LOCAL_REFERENCE = /^\.\//;
+// Self-repository-Referenzen tragen keinen externen Commit-SHA. Nur `$/`
+// löst die Action aber gegen den Commit auf, der den Workflow ausführt; `./`
+// könnte dagegen eine im Arbeitsbereich zur Laufzeit veränderte Action laden.
+const SELF_REPOSITORY_REFERENCE = /^\$\/[^@\s]+$/;
 
 // Ein Pre-Release- oder Build-Bezeichner nach SemVer: alphanumerisch und
 // Bindestrich, mit mindestens einem alphanumerischen Zeichen. Damit fallen
@@ -34,40 +33,46 @@ interface ActionReference {
   value: string;
 }
 
-function listWorkflowFiles(): string[] {
-  return readdirSync(WORKFLOW_DIR)
-    .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
-    .sort();
-}
-
-function collectActionReferences(files: string[]): ActionReference[] {
-  return files.flatMap((file) =>
-    readFileSync(resolve(WORKFLOW_DIR, file), 'utf8')
+// Die Sammlung der zu prüfenden Definitionen liegt seit GSPP-419 in
+// scripts/workflowDefinitions.mjs. Sie erfasst Workflows und Composite Actions
+// aus einer Quelle — ohne sie müsste jeder Guard jede Verschiebung einzeln
+// nachziehen, und ein vergessener prüfte stillschweigend weniger.
+function collectActionReferences(): ActionReference[] {
+  return readDefinitions().flatMap(({ label, content }) =>
+    content
       .split('\n')
-      .map((line, index) => ({ file, line: index + 1, match: USES_LINE.exec(line) }))
+      .map((line, index) => ({ label, line: index + 1, match: USES_LINE.exec(line) }))
       .filter((entry) => entry.match !== null)
-      .map((entry) => ({ file: entry.file, line: entry.line, value: entry.match![1] })),
+      .map((entry) => ({ file: entry.label, line: entry.line, value: entry.match![1] })),
   );
 }
 
 function findUnpinnedReferences(references: ActionReference[]): string[] {
   return references
-    .filter(({ value }) => !LOCAL_REFERENCE.test(value) && !PINNED_REFERENCE.test(value))
+    .filter(({ value }) => !SELF_REPOSITORY_REFERENCE.test(value) && !PINNED_REFERENCE.test(value))
     .map(({ file, line, value }) => `${file}:${line} ${value}`);
 }
 
 describe('workflow action pinning', () => {
-  const workflowFiles = listWorkflowFiles();
-  const references = collectActionReferences(workflowFiles);
+  const definitionFiles = listDefinitionFiles().map((file) => relative(process.cwd(), file));
+  const references = collectActionReferences();
 
   it('finds workflows and action references to check', () => {
     // Ohne diese Zusicherung würde der Guard auch bei einem leeren oder falsch
     // aufgelösten Verzeichnis bestehen.
-    expect(workflowFiles.length).toBeGreaterThan(0);
+    expect(definitionFiles.length).toBeGreaterThan(0);
     expect(references.length).toBeGreaterThan(0);
   });
 
-  it('pins every action to a full-length commit SHA with a version comment', () => {
+  // Fail-closed gegen die Erweiterung selbst: Löst .github/actions/ nicht auf
+  // oder wandert eine Action wieder heraus, ohne dass die Liste es merkt,
+  // prüfte der Guard dort stillschweigend nichts mehr.
+  it('covers the composite actions alongside the workflows', () => {
+    expect(definitionFiles.filter((file) => file.startsWith('.github/actions/'))).not.toHaveLength(0);
+    expect(references.some((reference) => reference.file.startsWith('.github/actions/'))).toBe(true);
+  });
+
+  it('pins every external action to a full-length commit SHA with a version comment', () => {
     expect(findUnpinnedReferences(references)).toEqual([]);
   });
 });
@@ -83,8 +88,10 @@ describe('workflow action pinning rule', () => {
     expect(check('actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2-beta.1')).toEqual([]);
   });
 
-  it('exempts actions referenced from within this repository', () => {
-    expect(check('./.github/actions/setup')).toEqual([]);
+  it('exempts only self-repository actions resolved from the running commit', () => {
+    expect(check('$/.github/actions/setup')).toEqual([]);
+    expect(check('./.github/actions/setup')).toEqual(['ci.yml:1 ./.github/actions/setup']);
+    expect(check('$/.github/actions/setup@v1')).toEqual(['ci.yml:1 $/.github/actions/setup@v1']);
   });
 
   it('rejects a tag pin', () => {
