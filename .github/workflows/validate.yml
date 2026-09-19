@@ -89,6 +89,13 @@ jobs:
       - name: Verify documented versions against installed state
         run: npm run verify-documented-versions
 
+      # Fail-fast seit GSPP-424: Lint läuft vor dem ersten Netzschritt
+      # (`fetch-pinned-catalog`). Jeder Lint-Fehler kostete zuvor erst
+      # Katalog-Fetch, Binary-Download und Korpuslauf. Netzfrei wie die
+      # übrigen Guards dieser Stufe.
+      - name: Lint
+        run: npm run lint
+
       - name: Read the pinned snapshot and fetch the BSI catalog
         uses: $/.github/actions/fetch-pinned-catalog
         with:
@@ -110,9 +117,6 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      - name: Lint
-        run: npm run lint
-
       # Seit GSPP-416 der einzige vollstaendige jsdom-Suite-Lauf eines
       # Pull Requests. `--coverage` setzt dabei die in vite.config.ts gepinnten
       # Schwellen im Pflichtcheck durch: Eine Unterschreitung faerbt `validate`
@@ -132,6 +136,21 @@ jobs:
           path: coverage/lcov.info
           if-no-files-found: error
           retention-days: 7
+
+      # Seit GSPP-424 gecacht: `playwright 1.63.0` liefert Chromium-Revision
+      # 1243 nach `~/.cache/ms-playwright` (GitHub-`ubuntu`-Defaultpfad). Der
+      # Lockfile-Hash ist der korrekte Cache-Schlüssel, weil die Revision an
+      # den gepinnten `playwright`-Pin in `package-lock.json` gebunden ist; ein
+      # unverändertes Lockfile trifft den Cache und erspart den erneuten
+      # Browser-Download. `playwright install chromium` bleibt idempotent und
+      # lädt nur bei Cache-Miss nach.
+      - name: Restore Playwright browser cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
 
       - name: Install pinned Chromium for browser tests
         run: ./node_modules/.bin/playwright install chromium
