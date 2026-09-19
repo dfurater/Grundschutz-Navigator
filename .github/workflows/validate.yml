@@ -1,0 +1,237 @@
+name: Validate
+
+# Trägt den Job `validate` seit GSPP-415. Er liest weder Titel noch Body des
+# Pull Requests und hat bei einer reinen Metadaten-Änderung nichts zu prüfen;
+# `ci.yml` löste ihn dennoch bei jedem `edited`-Ereignis vollständig aus — mit
+# Schema-Verifikation, Katalog-Fetch, go-oscal-Lauf, Lint, Tests,
+# Chromium-Download, Browser-Tests und Build.
+#
+# Die Entkopplung geschieht über eine eigene Ereignisliste ohne `edited` und
+# nicht über ein Job-`if` im bestehenden Workflow. Ein per `if` übersprungener
+# Job meldet den Status `Success` und erzeugt dabei einen neuen Check-Run unter
+# demselben Namen. Da GitHub je Kontext den jüngsten Check-Run wertet, ersetzte
+# eine bloße Body-Bearbeitung ein fehlgeschlagenes `validate` auf unverändertem
+# Head durch einen Erfolg — der Pflichtcheck ließe sich so umgehen. Ohne
+# abonniertes `edited` entsteht überhaupt kein Lauf und damit kein neuer
+# Check-Run; das reale Ergebnis des letzten Code-Laufs bleibt stehen.
+#
+# Der Jobname bleibt `validate`, weil beide Rulesets (`develop`,
+# `main-release`) ihn namentlich als Required Status Check fordern. Der
+# Kontextname eines Actions-Checks ist der Jobname, nicht die Workflow-Datei;
+# die Verschiebung ist für die Rulesets deshalb folgenlos.
+#
+# `edited` deckt neben Titel und Body auch den Wechsel des Base-Branches ab.
+# Auch dieser löst hier keinen Lauf aus, und das ist richtig: Die Schritte
+# dieses Jobs prüfen allein den Head-Stand und kennen den Base nicht. Die
+# base-abhängigen Prüfungen liegen in `documentation-contract` und
+# `catalog-sync-guard`, die in `ci.yml` verbleiben und auf `edited` weiter
+# urteilen.
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, reopened, synchronize]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Ein überholter Lauf trifft eine Aussage über einen Head-Stand, den ein
+# Folge-Push bereits ersetzt hat; er wird deshalb abgebrochen. Wie in `ci.yml`
+# gilt das nur für Pull-Request-Läufe, und ein wartender Lauf kann von einem
+# neueren derselben Gruppe verdrängt werden.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js and install dependencies
+        uses: $/.github/actions/setup-node-env
+
+      # Hält die Node-Version an genau einer Stelle: `.nvmrc` speist jedes
+      # Setup, und dieser Guard prüft sie gegen `engines.node` in package.json
+      # und verbietet ein erneutes Literal in Workflows und Actions (GSPP-419).
+      # Netzfrei und fail-closed wie die übrigen Guards dieses Jobs.
+      - name: Verify the single Node version source
+        run: npm run verify-node-version
+
+      # Trägt die Integritätszusage der gebündelten Stufe-3-Schemas. Läuft
+      # bewusst vor jedem Netzschritt und ohne selbst einen auszuführen; der
+      # Netzpfad bleibt allein `npm run sync-oscal-schemas` und ist kein
+      # CI-Schritt.
+      - name: Verify pinned OSCAL schemas
+        run: npm run verify-oscal-schemas
+
+      # Reviewregeln sind seit GSPP-374 versioniert: scripts/review-policy.rules.mjs
+      # trägt die Regeltexte, scripts/review-policy.mjs den Generator;
+      # docs/REVIEW_INVARIANTS.md und .gitar/review/ sind daraus erzeugt. Der Check
+      # ist netzfrei und schlägt bei jeder manuellen Abweichung sowie bei jeder
+      # Regeldatei fehl, die an der Autorenquelle vorbei entstanden ist.
+      - name: Verify generated review policy
+        run: npm run review-policy:check
+
+      # Dependency-PRs fallen aus dem PR-Dokumentationsvertrag heraus, weil
+      # dessen Trigger an Änderungen unter src/ hängt. Dieser Guard prüft die
+      # in docs/ARCHITECTURE.md zugesagten Versionen stattdessen maschinell
+      # gegen package.json und die mitinstallierte browsers.json (GSPP-399).
+      # Netzfrei und fail-closed: auch eine nicht mehr auffindbare Angabe
+      # lässt ihn fehlschlagen.
+      - name: Verify documented versions against installed state
+        run: npm run verify-documented-versions
+
+      - name: Read the pinned snapshot and fetch the BSI catalog
+        uses: $/.github/actions/fetch-pinned-catalog
+        with:
+          github-token: ${{ github.token }}
+
+      - name: Resolve all BSI profiles deterministically (mandatory build-time corpus)
+        run: npm run test:profile-resolution
+
+      - name: Verify upstream OSCAL schemas with go-oscal
+        env:
+          GO_OSCAL_SBOM_OUTPUT: ${{ runner.temp }}/sbom_go-oscal_v0.7.1_Linux_amd64.sbom
+        run: npm run verify-upstream-oscal
+
+      - name: Archive go-oscal SBOM
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: go-oscal-v0.7.1-sbom-linux-amd64
+          path: ${{ runner.temp }}/sbom_go-oscal_v0.7.1_Linux_amd64.sbom
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Lint
+        run: npm run lint
+
+      # Seit GSPP-416 der einzige vollstaendige jsdom-Suite-Lauf eines
+      # Pull Requests. `--coverage` setzt dabei die in vite.config.ts gepinnten
+      # Schwellen im Pflichtcheck durch: Eine Unterschreitung faerbt `validate`
+      # rot, statt erst den nachgelagerten Scanner-Job ausfallen zu lassen und
+      # den Required Check `SonarCloud Code Analysis` als pending stehen zu
+      # lassen.
+      - name: Run tests with coverage
+        run: npm run test:coverage
+
+      # Der Report wandert als Artefakt in den Job `sonarqube`, statt dort ein
+      # zweites Mal berechnet zu werden. Die Pfade in lcov.info sind relativ zur
+      # Repository-Wurzel und damit im Zieljob unveraendert aufloesbar.
+      - name: Archive coverage report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Install pinned Chromium for browser tests
+        run: ./node_modules/.bin/playwright install chromium
+
+      - name: Run Chromium browser tests
+        run: npm run test:browser
+
+      - name: Verify browser egress oracle
+        run: npm run test:browser:egress-negative
+
+      - name: Build application
+        run: npm run build
+
+      # GSPP-418: zizmor als Pflichtanteil des Required Checks `validate`.
+      # Kein eigener Job: Ein neuer Jobname wäre ein neuer Check-Kontext, der in
+      # keinem Ruleset steht und damit keinen Merge blockierte (Claude-Review zu
+      # GSPP-418, Befund 2); er ließe sich auch nicht nachträglich erzwingen,
+      # ohne die Catalog-Sync-Lane stillzulegen — deren PRs zweigen von `main`
+      # ab und führen diese Workflow-Fassung nicht (vgl. `ci.yml`,
+      # release-tree-guard). Als Schritte dieses Jobs lässt ein roter Audit
+      # `validate` fehlschlagen, der in beiden Rulesets Pflichtcheck ist.
+      # Bezugsweg (Befund 7, Greptile-P2 auf PR #256): Image direkt per Digest,
+      # ohne Action-Wrapper — der Wrapper übergibt nur `--no-online-audits`
+      # (schwächer als `--offline`) und reicht immer GH_TOKEN durch. Hier läuft
+      # das Digest-gepinnte Image
+      # (ghcr.io/zizmorcore/zizmor:1.30.1@sha256:a2eb396d886c053073405c7a980f2139ba2248ec172243cfa3841e57196e8101,
+      # vgl. support/versions der Action) mit `--offline`, `--network none`,
+      # ohne Token und mit Read-only-Mount: kein Netz, kein Credential, kein
+      # Installer. Persona auditor (nicht pedantic): Die Regel
+      # `secrets-outside-env` feuert unter pedantic nie — verifiziert
+      # 2026-09-19 per Injektionstest (TEST_SECRET blieb unter pedantic grün,
+      # schlägt unter auditor mit Zeilen-Config an). Der Auditor-Delta
+      # gegenüber pedantic sind exakt die 7 Stellen in `.github/zizmor.yml`;
+      # mit den Zeilen-Ignores ist auditor grün und meldet jedes neue Secret.
+      # Plain-Output (kein SARIF — SARIF exitt immer 0 und taugt nicht als
+      # Blockiergate): Befunde lassen `validate` fehlschlagen, Pflichtcheck.
+      - name: Audit workflows with zizmor
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/zizmorcore/zizmor:1.30.1@sha256:a2eb396d886c053073405c7a980f2139ba2248ec172243cfa3841e57196e8101"
+          docker pull "$IMAGE"
+          docker run --rm --network none \
+            --volume "${GITHUB_WORKSPACE}:/workspace:ro" \
+            --workdir /workspace \
+            "$IMAGE" --offline --persona auditor --config .github/zizmor.yml .
+
+  # Der Scanner liegt seit GSPP-416 in dieser Datei statt in `sonar.yml`, weil
+  # nur ein Job desselben Workflows den Coverage-Report aus `validate`
+  # uebernehmen kann. `sonar.yml` behaelt den Push-Pfad fuer `main` und
+  # `develop` und misst dort weiter beide langlebigen Branches.
+  #
+  # Der Required Status Check heisst `SonarCloud Code Analysis` und wird von der
+  # SonarQubeCloud-App gesetzt, nicht vom Namen dieses Jobs; die Verschiebung
+  # laesst beide Rulesets unberuehrt. Faellt `validate`, laeuft dieser Job nicht
+  # — der Pull Request ist dann bereits durch den roten Pflichtcheck blockiert.
+  sonarqube:
+    name: SonarQube Scan
+    needs: validate
+    # Nur Pull Requests. `workflow_dispatch` loest in dieser Datei den Job
+    # `validate` aus, und ohne diese Bedingung liefe der Scanner mit: Er wuerde
+    # den Ref des Dispatch als Branch analysieren und damit eine Messung
+    # erzeugen, die es vor GSPP-416 nicht gab — die Branchanalyse gehoert
+    # allein dem Push-Pfad in `sonar.yml`. Die Bedingung nimmt keiner
+    # Pull-Request-Klasse die Analyse; sie haelt den manuellen Lauf von einer
+    # Klasse fern, die SonarQube nie gemessen hat.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      # Vollstaendige Historie: Die PR-Analyse braucht den Quellbranch
+      # ausgecheckt und den Zielbranch im lokalen Repository, sonst kann
+      # SonarQube den neuen Code nicht bestimmen. Der Checkout steht vor dem
+      # Guard, weil dieser als Skript aus dem Arbeitsbaum laeuft.
+      - name: Checkout full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Der Guard bekommt nur das Ergebnis des Vergleichs, nie den Tokenwert:
+      # Das Skript stammt wie diese Workflow-Datei aus dem PR-Head und ist
+      # damit vom Beitragenden bestimmbar. Der geheime Wert erreicht allein den
+      # gepinnten Scanner-Schritt weiter unten, der kein Repository-Code ist.
+      - name: Analyse-Token pruefen
+        id: token
+        env:
+          SONAR_TOKEN_AVAILABLE: ${{ secrets.SONAR_CI != '' }}
+          IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
+        run: node scripts/sonar-token-guard.mjs
+
+      - name: Download coverage report
+        if: steps.token.outputs.available == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: coverage-lcov
+          path: coverage
+
+      - name: SonarQube Scan
+        if: steps.token.outputs.available == 'true'
+        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_CI }}

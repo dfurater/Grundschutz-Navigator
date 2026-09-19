@@ -1,0 +1,70 @@
+# GSPP-418: auditor-Gate als Pflichtanteil des Required Checks `validate`
+# (Schritte im `validate`-Job, kein eigener Job — ein neuer Jobname wäre ein
+# neuer Check-Kontext außerhalb beider Rulesets und blockierte keinen Merge).
+# Ignoriert wird ausschließlich gemessenes Rauschen (info/help/medium) —
+# kein high. Das einzige high (excessive-permissions) ist behoben, nicht
+# stummgeschaltet. Persona auditor (nicht pedantic): `secrets-outside-env`
+# feuert unter pedantic nie — verifiziert 2026-09-19 per Injektionstest
+# (TEST_SECRET blieb unter pedantic grün, schlägt unter auditor mit
+# Zeilen-Config an). Der Auditor-Delta gegenüber pedantic sind exakt die 7
+# Stellen unten, keine weiteren Auditor-only-Regeln.
+rules:
+  # 10x info über 8 Workflow-Dateien (alle außer sonar.yml, dessen Job einen
+  # name: trägt). Kein Sicherheitsgewinn: Job-Umbenennung wäre Scope-Creep.
+  anonymous-definition:
+    ignore:
+      - backmerge-main-to-develop.yml
+      - ci.yml
+      - deploy.yml
+      - greptile-review-nudge.yml
+      - release-prepare.yml
+      - update-catalog.yml
+      - validate.yml
+      - verify-catalog-merge.yml
+  # 4x help (deploy.yml 2x, greptile-review-nudge.yml 1x,
+  # verify-catalog-merge.yml 1x). Bestehende deutsche Begründungskommentare
+  # bleiben, neue werden nicht erzwungen.
+  undocumented-permissions:
+    ignore:
+      - deploy.yml
+      - greptile-review-nudge.yml
+      - verify-catalog-merge.yml
+  # 1x help auf verify-catalog-merge (pull_request: closed ist terminal —
+  # kein wartender Lauf wird überholt, kein Sicherheitsgewinn durch Gruppe).
+  concurrency-limits:
+    ignore:
+      - verify-catalog-merge.yml
+  # 2x medium auf dependabot.yml. Eigene Lane, nicht GSPP-418.
+  dependabot-cooldown:
+    ignore:
+      - dependabot.yml
+  # 7x medium secrets-outside-env an exakt diesen Zeilen (jeweils die
+  # begründete Secret-Verwendung; Stand d238d53-Nachfolger, auditor Persona):
+  # backmerge/release-prepare/update-catalog je 1x App-Private-Key;
+  # sonar.yml 2x und validate.yml 2x SONAR_CI — die zwei in validate.yml
+  # stammen aus GSPP-416, die fünf übrigen aus der Issue-Beschreibung.
+  # Bewusst kein Environment: Ein Environment ohne Branch-Schutzregel
+  # verschiebt nur die Angabe, ohne den Zugriff zu verengen (vgl. Issue).
+  # Der App-Private-Key ist repo-beschränkt und kurzlebig
+  # (contents+pull-requests write), SONAR_CI erreicht nie Repository-Code —
+  # nur der Verfügbarkeits-Guard und der SHA-gepinnte Scanner-Schritt.
+  # Zeilennummern zuletzt nachgezogen in GSPP-419: Die Zusammenführung der
+  # Setup-Schichten in .github/actions/ verkürzte fünf der sechs betroffenen
+  # Dateien. scripts/zizmor-config.test.ts hält die Anker seither an echten
+  # Fundstellen fest, damit die Drift nicht erst im Docker-Schritt auffällt.
+  # Zeilengenau statt dateiweit (Greptile-P1 auf PR #256, T-Rex-verifiziert):
+  # Eine NEUE Secret-Referenz auf einer anderen Zeile feuert unter der
+  # Gate-Persona auditor wieder — mit dateiweiten Einträgen blieb sie stumm.
+  # Gegenverifiziert 2026-09-19 per Injektionstest (TEST_SECRET in validate.yml:
+  # auditor meldet warning[secrets-outside-env] auf der neuen Zeile, die 7
+  # begründeten Stellen bleiben ignoriert). Pflege: Verschiebt sich eine Zeile,
+  # wird der Audit rot (fail-closed) — Zeilennummer nachziehen.
+  secrets-outside-env:
+    ignore:
+      - backmerge-main-to-develop.yml:51:28
+      - release-prepare.yml:49:28
+      - sonar.yml:61:38
+      - sonar.yml:88:28
+      - update-catalog.yml:47:28
+      - validate.yml:222:38
+      - validate.yml:237:28

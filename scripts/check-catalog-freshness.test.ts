@@ -162,7 +162,7 @@ describe('catalog freshness', () => {
 
     expect(message).toContain(`erwartet ${EXPECTED_SHA.slice(0, 12)}`);
     expect(message).toContain(`gefunden ${FOUND_SHA.slice(0, 12)}`);
-    expect(message).toContain('npm run fetch-catalog');
+    expect(message).toContain('npm run setup');
     expect(message).not.toContain('control_layer');
     await expect(assertCatalogFreshness(paths)).rejects.toThrow(message);
   });
@@ -177,7 +177,7 @@ describe('catalog freshness', () => {
       config: { logger: { warn } },
     } as never)).resolves.toBeUndefined();
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('npm run fetch-catalog'),
+      expect.stringContaining('npm run setup'),
     );
   });
 });

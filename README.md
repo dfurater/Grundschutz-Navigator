@@ -3,6 +3,7 @@
 Inoffizielles Werkzeug zum Durchsuchen, Filtern und Exportieren des offiziellen Grundschutz++-Anwenderkatalogs des BSI. Kein Angebot des BSI.
 
 [![CI](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/ci.yml/badge.svg)](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/ci.yml)
+[![Validate](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/validate.yml/badge.svg)](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/validate.yml)
 [![Deploy](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/deploy.yml/badge.svg)](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/deploy.yml)
 [![Katalogdaten: CC BY-SA 4.0](https://img.shields.io/badge/Katalogdaten-CC%20BY--SA%204.0-blue)](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek)
 [![App-Code: AGPL v3](https://img.shields.io/badge/App--Code-AGPL%20v3-green)](LICENSE)
@@ -88,7 +89,7 @@ Impressum-Felder nach § 5 DDG.
 | `npm run test:watch` | Vitest (Watch-Mode) |
 | `npm run test:coverage` | Vitest mit V8-Coverage |
 | `npm run lint` | ESLint |
-| `npm run fetch-catalog` | registrierte BSI-Artefakte validieren und unterstützte Daten nach `public/data/` ausliefern |
+| `npm run fetch-catalog` | registrierte BSI-Artefakte für die mit `BSI_SNAPSHOT_SHA` gewählte vollständige Commit-SHA oder ausdrücklich `latest` validieren und unterstützte Daten nach `public/data/` ausliefern |
 
 Die Coverage-Thresholds in `vite.config.ts` sind anhand der gemessenen
 Repository-Coverage kalibriert (gemessen 2026-08-24: Lines 92,67 %, Branches

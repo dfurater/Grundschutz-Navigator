@@ -131,11 +131,14 @@ export const RELEASE_NO_DOCUMENTATION_IMPACT_REASON =
   + 'eigene Änderung.';
 
 /**
+ * Der Body stellt keine Bedingungen: Er beschreibt die Lieferung, statt eine
+ * Erfüllungsliste vorzugeben, deren offene Punkte zu begründen wären. Die
+ * Freigabe ist der Merge. Vorgegeben ist allein das Gerüst `## Lieferung`.
+ *
  * `changedPaths` ist der Drei-Punkt-Diff des Vorbereitungsheads gegen
  * `main` — dieselbe Bezugsgröße, die `scripts/pr-documentation-contract.mjs` am
  * Pull Request rechnet. Ohne den daraus gebauten Vertragsblock fiele jeder
- * Release mit Produktänderung am Pflichtcheck `documentation-contract` durch,
- * denn ein Release trägt regelmäßig Änderungen unter `src/`.
+ * Release mit Produktänderung am Pflichtcheck `documentation-contract` durch.
  */
 export function buildReleasePullRequestBody({
   releaseSha,
@@ -154,8 +157,19 @@ export function buildReleasePullRequestBody({
     '',
     '**Erforderliche Merge-Methode:** Merge-Commit',
     '',
-    'Jeder Merge auf `main` deployt automatisch auf GitHub Pages. Der Merge erfolgt erst',
-    'nach dem vollständigen Freigabe-Protokoll (Milestone-Exit plus M9-Referenzablauf).',
+    'Jeder Merge auf `main` deployt automatisch auf GitHub Pages.',
+    '',
+    '## Lieferung',
+    '',
+    '<!--',
+    'Was dieses Release ausliefert: zuerst, was Nutzer davon merken, darunter die',
+    'Infrastrukturarbeit. Weitere Abschnitte schreibt, wer sie braucht — etwa zum',
+    'Produktstand oder zu bekannten Lücken. Die Form ist frei.',
+    '-->',
+    '',
+    '### Für Nutzer sichtbar',
+    '',
+    '### Infrastruktur',
     '',
     '## Validierung',
     '',
@@ -168,15 +182,6 @@ export function buildReleasePullRequestBody({
       changedPaths,
       noImpactReason: RELEASE_NO_DOCUMENTATION_IMPACT_REASON,
     }),
-    '',
-    '## Freigabe-Protokoll',
-    '',
-    '- [ ] Milestone-Exit erfüllt',
-    '- [ ] M9-Referenzablauf grün',
-    '- [ ] Lokale Abnahme durchgeführt',
-    '- [ ] Gates grün (Bot-Kette, SonarQube, lint/test/build)',
-    '- [ ] At-risk-Lücken in den Release-Notizen benannt',
-    '- [ ] Doku-Wirkung konsistent zum Release-Stand',
     '',
     formatReleaseMarker(releaseSha),
   ].join('\n');
