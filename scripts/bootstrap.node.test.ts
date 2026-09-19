@@ -149,6 +149,23 @@ describe('scripts/bootstrap.mjs — runBootstrap', () => {
     expect(fetchCall?.env.BSI_SNAPSHOT_SHA).toBe(preset);
   });
 
+  it('lehnt BSI_SNAPSHOT_SHA=latest im Setup-Pfad ab, statt den Manifest-Pin zu überschreiben', async () => {
+    await withValidManifest(scratchRoot);
+    const { run, calls } = createStubRun();
+    const freshness = createSequenceFreshness([missingResult()]);
+
+    await expect(
+      runBootstrap({
+        rootDir: scratchRoot,
+        env: { BSI_SNAPSHOT_SHA: 'latest' },
+        run,
+        log: () => {},
+        freshness,
+      }),
+    ).rejects.toThrow(BootstrapError);
+    expect(calls.some((call) => call.step === 'fetch')).toBe(false);
+  });
+
   it('bricht ab, wenn die eingecheckte upstream-manifest.json fehlt', async () => {
     const { run, calls } = createStubRun();
     const freshness = createSequenceFreshness([missingResult()]);
