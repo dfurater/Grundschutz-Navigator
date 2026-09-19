@@ -53,6 +53,8 @@ function repoApiBase(repository) {
 
 /** Einzige zulässige API-Herkunft (jssecurity:S8476-Allowlist, String-Präfix). */
 const ALLOWED_API_BASE = 'https://api.github.com/repos/';
+/** Zulässige API-Herkünfte (jssecurity:S8476-Allowlist, dokumentiertes Idiom). */
+const ALLOWED_API_ORIGINS = ['https://api.github.com'];
 
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -64,13 +66,13 @@ async function fetchGitHubJson(url, { fetchImpl, token, label, requestTimeoutMs 
   if (typeof url !== 'string' || !url.startsWith(ALLOWED_API_BASE)) {
     throw new Error(`${label} refused: non-allowlisted host`);
   }
-  let parsed;
+  let requestOrigin;
   try {
-    parsed = new URL(url);
+    requestOrigin = new URL(url).origin;
   } catch {
     throw new Error(`${label} refused: invalid URL`);
   }
-  if (parsed.protocol !== 'https:' || parsed.hostname !== 'api.github.com' || !parsed.pathname.startsWith('/repos/')) {
+  if (!ALLOWED_API_ORIGINS.includes(requestOrigin)) {
     throw new Error(`${label} refused: non-allowlisted host`);
   }
   const headers = {
