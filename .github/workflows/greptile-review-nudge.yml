@@ -47,7 +47,7 @@ jobs:
   greptile-review-nudge:
     if: github.event.issue.pull_request && github.event.comment.user.login == 'greptile-apps[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
 
     # Job-Berechtigungen setzen jede nicht genannte Fähigkeit auf `none`.
     # `issues: write` trägt den Kommentar — ein Kommentar an einem Pull Request

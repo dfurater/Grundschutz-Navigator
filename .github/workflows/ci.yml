@@ -30,7 +30,7 @@ jobs:
   documentation-contract:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
 
     steps:
       - name: Checkout full PR history
@@ -48,7 +48,7 @@ jobs:
 
   catalog-sync-guard:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
 
     steps:
       - name: Checkout full PR history
