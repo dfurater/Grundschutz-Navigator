@@ -48,6 +48,8 @@ jobs:
 
   catalog-sync-guard:
     runs-on: ubuntu-latest
+    # 10-min-Limit trägt den Guard, weil scripts/catalog-sync-guard.mjs jeden
+    # GitHub-API-Request per AbortSignal auf 30s begrenzt (fail-closed).
     timeout-minutes: 10
 
     steps:

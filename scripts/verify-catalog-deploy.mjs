@@ -25,9 +25,46 @@ export const DEFAULT_TERMINAL_DELAY_MS = 15_000;
 // hängen.
 export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
+/** `owner/repo` in der von GitHub zugelassenen Zeichenmenge (vgl. greptile-review-nudge). */
+const REPOSITORY_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
+
+function assertValidRepository(repository) {
+  if (typeof repository !== 'string' || !REPOSITORY_PATTERN.test(repository)) {
+    throw new Error('repository must have the form owner/repo');
+  }
+  // `..` bestünde die Zeichenklasse, trüge aber eine Traversierung in den Pfad.
+  const [owner, repo] = repository.split('/');
+  if (owner === '.' || owner === '..' || repo === '.' || repo === '..') {
+    throw new Error('repository must have the form owner/repo');
+  }
+}
+
+function assertValidRunId(runId) {
+  if (!Number.isInteger(runId) || runId <= 0) {
+    throw new Error('deploy run id must be a positive integer');
+  }
+}
+
+function repoApiBase(repository) {
+  assertValidRepository(repository);
+  const [owner, repo] = repository.split('/');
+  return `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
+}
+
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function fetchGitHubJson(url, { fetchImpl, token, label, requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS }) {
+  // Allowlist gegen Client-Side Request Forgery (jssecurity:S8476): Nur die
+  // GitHub-API-Herkunft ist zulässig — kein aus Eingaben gebauter Host.
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`${label} refused: invalid URL`);
+  }
+  if (parsed.protocol !== 'https:' || parsed.hostname !== 'api.github.com' || !parsed.pathname.startsWith('/repos/')) {
+    throw new Error(`${label} refused: non-allowlisted host`);
+  }
   const headers = {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
@@ -60,9 +97,10 @@ export async function findPushDeployRun(repository, commitSha, { fetchImpl = fet
   if (!/^[0-9a-f]{40}$/.test(commitSha ?? '')) {
     throw new Error('merge commit SHA must be a full 40-character SHA');
   }
+  assertValidRepository(repository);
 
-  const url = `https://api.github.com/repos/${repository}/actions/workflows/${DEPLOY_WORKFLOW_FILE}/runs`
-    + `?event=push&head_sha=${commitSha}&per_page=1`;
+  const url = `${repoApiBase(repository)}/actions/workflows/${encodeURIComponent(DEPLOY_WORKFLOW_FILE)}/runs`
+    + `?event=push&head_sha=${encodeURIComponent(commitSha)}&per_page=1`;
   const payload = await fetchGitHubJson(url, { fetchImpl, token, label: 'deploy run lookup', requestTimeoutMs });
   const run = Array.isArray(payload?.workflow_runs) ? payload.workflow_runs[0] : undefined;
   if (!run) {
@@ -77,8 +115,10 @@ export async function findPushDeployRun(repository, commitSha, { fetchImpl = fet
 }
 
 async function readRun(repository, runId, { fetchImpl, token, requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS }) {
+  assertValidRepository(repository);
+  assertValidRunId(runId);
   return fetchGitHubJson(
-    `https://api.github.com/repos/${repository}/actions/runs/${runId}`,
+    `${repoApiBase(repository)}/actions/runs/${encodeURIComponent(String(runId))}`,
     { fetchImpl, token, label: `deploy run ${runId} status lookup`, requestTimeoutMs },
   );
 }
@@ -97,6 +137,8 @@ export async function awaitDeploySuccess(repository, run, {
   requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
   log = console.log,
 } = {}) {
+  assertValidRepository(repository);
+  assertValidRunId(run?.id);
   let current = run;
 
   for (let attempt = 1; attempt <= terminalAttempts; attempt += 1) {
@@ -123,8 +165,12 @@ export async function awaitDeploySuccess(repository, run, {
 }
 
 async function verifyMergeCommitOnMain(repository, commitSha, { fetchImpl, token, requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS }) {
+  assertValidRepository(repository);
+  if (!/^[0-9a-f]{40}$/.test(commitSha ?? '')) {
+    throw new Error('merge commit SHA must be a full 40-character SHA');
+  }
   const comparison = await fetchGitHubJson(
-    `https://api.github.com/repos/${repository}/compare/${PROTECTED_BRANCH}...${commitSha}`,
+    `${repoApiBase(repository)}/compare/${encodeURIComponent(PROTECTED_BRANCH)}...${encodeURIComponent(commitSha)}`,
     { fetchImpl, token, label: 'merge commit compare', requestTimeoutMs },
   );
   if (comparison?.status !== 'identical' && comparison?.status !== 'behind') {
@@ -136,8 +182,9 @@ async function verifyMergeCommitOnMain(repository, commitSha, { fetchImpl, token
 }
 
 async function verifyManifestOnMain(repository, { snapshotSha, signature }, { fetchImpl, token, requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS }) {
+  assertValidRepository(repository);
   const contents = await fetchGitHubJson(
-    `https://api.github.com/repos/${repository}/contents/${MANIFEST_PATH}?ref=${PROTECTED_BRANCH}`,
+    `${repoApiBase(repository)}/contents/${encodeURIComponent(MANIFEST_PATH)}?ref=${encodeURIComponent(PROTECTED_BRANCH)}`,
     { fetchImpl, token, label: 'manifest lookup', requestTimeoutMs },
   );
   if (contents?.encoding !== 'base64' || typeof contents.content !== 'string') {
@@ -178,6 +225,10 @@ export async function verifyCatalogDeploy({
   requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
   log = console.log,
 }) {
+  assertValidRepository(repository);
+  if (!/^[0-9a-f]{40}$/.test(mergeCommitSha ?? '')) {
+    throw new Error('merge commit SHA must be a full 40-character SHA');
+  }
   for (let attempt = 1; attempt <= discoveryAttempts; attempt += 1) {
     const run = await findPushDeployRun(repository, mergeCommitSha, { fetchImpl, token, requestTimeoutMs });
     if (run) {

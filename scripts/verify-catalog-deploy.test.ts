@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   DEPLOY_CONFIRMED,
   FALLBACK_REQUIRED,
+  awaitDeploySuccess,
   findPushDeployRun,
   verifyCatalogDeploy,
 } from './verify-catalog-deploy.mjs';
@@ -113,6 +114,36 @@ describe('findPushDeployRun', () => {
       findPushDeployRun(REPOSITORY, MERGE_SHA, { fetchImpl: hanging, requestTimeoutMs: 10 }),
     ).rejects.toThrow('deploy run lookup failed');
     expect(hanging.mock.calls[0][1]).toMatchObject({ signal: expect.any(AbortSignal) });
+  });
+
+  // Sonar jssecurity:S8476/S7044: Unsanitized `repository` darf keinen
+  // Request-Pfad oder Host bestimmen — fail-closed vor jedem Fetch.
+  it('rejects a repository outside the owner/repo form without fetching', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ workflow_runs: [] }));
+    await expect(
+      findPushDeployRun('https://evil.example/x', MERGE_SHA, { fetchImpl }),
+    ).rejects.toThrow('owner/repo');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('rejects a traversal repository without fetching', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ workflow_runs: [] }));
+    await expect(findPushDeployRun('../evil', MERGE_SHA, { fetchImpl })).rejects.toThrow(
+      'owner/repo',
+    );
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-integer run id without fetching', async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse(makeRun()));
+    await expect(
+      awaitDeploySuccess(REPOSITORY, makeRun({ id: '1;drop' }), {
+        fetchImpl,
+        sleep: async () => {},
+        log: () => {},
+      }),
+    ).rejects.toThrow('positive integer');
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });
 
