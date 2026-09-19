@@ -19,9 +19,15 @@ export const DEFAULT_DISCOVERY_DELAY_MS = 10_000;
 export const DEFAULT_TERMINAL_ATTEMPTS = 60;
 export const DEFAULT_TERMINAL_DELAY_MS = 15_000;
 
+// Per-Request-Abbruchfrist für GitHub-API-Aufrufe (GSPP-430). Deutlich unter
+// dem 30-min-Job-Limit von `verify-catalog-merge`: Ein hängender API-Call
+// scheitert damit kontrolliert fail-closed, statt bis zum Job-Timeout zu
+// hängen.
+export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function fetchGitHubJson(url, { fetchImpl, token, label }) {
+async function fetchGitHubJson(url, { fetchImpl, token, label, requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS }) {
   const headers = {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
@@ -32,7 +38,7 @@ async function fetchGitHubJson(url, { fetchImpl, token, label }) {
 
   let response;
   try {
-    response = await fetchImpl(url, { headers });
+    response = await fetchImpl(url, { headers, signal: AbortSignal.timeout(requestTimeoutMs) });
   } catch (error) {
     throw new Error(`${label} failed: ${error instanceof Error ? error.message : 'network error'}`);
   }
@@ -50,14 +56,14 @@ async function fetchGitHubJson(url, { fetchImpl, token, label }) {
  * Looks up the push-triggered deploy run for an exact commit SHA. The GitHub API
  * matches `head_sha` only against full SHAs, never abbreviated ones.
  */
-export async function findPushDeployRun(repository, commitSha, { fetchImpl = fetch, token } = {}) {
+export async function findPushDeployRun(repository, commitSha, { fetchImpl = fetch, token, requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS } = {}) {
   if (!/^[0-9a-f]{40}$/.test(commitSha ?? '')) {
     throw new Error('merge commit SHA must be a full 40-character SHA');
   }
 
   const url = `https://api.github.com/repos/${repository}/actions/workflows/${DEPLOY_WORKFLOW_FILE}/runs`
     + `?event=push&head_sha=${commitSha}&per_page=1`;
-  const payload = await fetchGitHubJson(url, { fetchImpl, token, label: 'deploy run lookup' });
+  const payload = await fetchGitHubJson(url, { fetchImpl, token, label: 'deploy run lookup', requestTimeoutMs });
   const run = Array.isArray(payload?.workflow_runs) ? payload.workflow_runs[0] : undefined;
   if (!run) {
     return undefined;
@@ -70,10 +76,10 @@ export async function findPushDeployRun(repository, commitSha, { fetchImpl = fet
   return run;
 }
 
-async function readRun(repository, runId, { fetchImpl, token }) {
+async function readRun(repository, runId, { fetchImpl, token, requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS }) {
   return fetchGitHubJson(
     `https://api.github.com/repos/${repository}/actions/runs/${runId}`,
-    { fetchImpl, token, label: `deploy run ${runId} status lookup` },
+    { fetchImpl, token, label: `deploy run ${runId} status lookup`, requestTimeoutMs },
   );
 }
 
@@ -88,6 +94,7 @@ export async function awaitDeploySuccess(repository, run, {
   sleep = defaultSleep,
   terminalAttempts = DEFAULT_TERMINAL_ATTEMPTS,
   terminalDelayMs = DEFAULT_TERMINAL_DELAY_MS,
+  requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
   log = console.log,
 } = {}) {
   let current = run;
@@ -106,7 +113,7 @@ export async function awaitDeploySuccess(repository, run, {
       break;
     }
     await sleep(terminalDelayMs);
-    current = await readRun(repository, current.id, { fetchImpl, token });
+    current = await readRun(repository, current.id, { fetchImpl, token, requestTimeoutMs });
   }
 
   throw new Error(
@@ -115,10 +122,10 @@ export async function awaitDeploySuccess(repository, run, {
   );
 }
 
-async function verifyMergeCommitOnMain(repository, commitSha, { fetchImpl, token }) {
+async function verifyMergeCommitOnMain(repository, commitSha, { fetchImpl, token, requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS }) {
   const comparison = await fetchGitHubJson(
     `https://api.github.com/repos/${repository}/compare/${PROTECTED_BRANCH}...${commitSha}`,
-    { fetchImpl, token, label: 'merge commit compare' },
+    { fetchImpl, token, label: 'merge commit compare', requestTimeoutMs },
   );
   if (comparison?.status !== 'identical' && comparison?.status !== 'behind') {
     throw new Error(
@@ -128,10 +135,10 @@ async function verifyMergeCommitOnMain(repository, commitSha, { fetchImpl, token
   }
 }
 
-async function verifyManifestOnMain(repository, { snapshotSha, signature }, { fetchImpl, token }) {
+async function verifyManifestOnMain(repository, { snapshotSha, signature }, { fetchImpl, token, requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS }) {
   const contents = await fetchGitHubJson(
     `https://api.github.com/repos/${repository}/contents/${MANIFEST_PATH}?ref=${PROTECTED_BRANCH}`,
-    { fetchImpl, token, label: 'manifest lookup' },
+    { fetchImpl, token, label: 'manifest lookup', requestTimeoutMs },
   );
   if (contents?.encoding !== 'base64' || typeof contents.content !== 'string') {
     throw new Error('manifest lookup did not return base64 content; refusing fallback dispatch');
@@ -168,10 +175,11 @@ export async function verifyCatalogDeploy({
   discoveryDelayMs = DEFAULT_DISCOVERY_DELAY_MS,
   terminalAttempts = DEFAULT_TERMINAL_ATTEMPTS,
   terminalDelayMs = DEFAULT_TERMINAL_DELAY_MS,
+  requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
   log = console.log,
 }) {
   for (let attempt = 1; attempt <= discoveryAttempts; attempt += 1) {
-    const run = await findPushDeployRun(repository, mergeCommitSha, { fetchImpl, token });
+    const run = await findPushDeployRun(repository, mergeCommitSha, { fetchImpl, token, requestTimeoutMs });
     if (run) {
       log(`Push deploy found: ${run.html_url} (${run.status}/${run.conclusion ?? 'pending'})`);
       await awaitDeploySuccess(repository, run, {
@@ -180,6 +188,7 @@ export async function verifyCatalogDeploy({
         sleep,
         terminalAttempts,
         terminalDelayMs,
+        requestTimeoutMs,
         log,
       });
       return DEPLOY_CONFIRMED;
@@ -189,13 +198,13 @@ export async function verifyCatalogDeploy({
     }
   }
 
-  await verifyMergeCommitOnMain(repository, mergeCommitSha, { fetchImpl, token });
-  await verifyManifestOnMain(repository, { snapshotSha, signature }, { fetchImpl, token });
+  await verifyMergeCommitOnMain(repository, mergeCommitSha, { fetchImpl, token, requestTimeoutMs });
+  await verifyManifestOnMain(repository, { snapshotSha, signature }, { fetchImpl, token, requestTimeoutMs });
 
   // The push run can still register while the re-verification above is in
   // flight. Dispatching then would deploy the same commit a second time, so
   // look once more immediately before authorizing the fallback.
-  const lateRun = await findPushDeployRun(repository, mergeCommitSha, { fetchImpl, token });
+  const lateRun = await findPushDeployRun(repository, mergeCommitSha, { fetchImpl, token, requestTimeoutMs });
   if (lateRun) {
     log(`Push deploy registered late: ${lateRun.html_url}`);
     await awaitDeploySuccess(repository, lateRun, {
@@ -204,6 +213,7 @@ export async function verifyCatalogDeploy({
       sleep,
       terminalAttempts,
       terminalDelayMs,
+      requestTimeoutMs,
       log,
     });
     return DEPLOY_CONFIRMED;

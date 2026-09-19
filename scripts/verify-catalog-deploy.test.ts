@@ -98,6 +98,22 @@ describe('findPushDeployRun', () => {
       'deploy run lookup failed with HTTP 503',
     );
   });
+
+  // GSPP-430: Ein hängender API-Call darf nicht bis zum Job-Timeout offen
+  // bleiben. Der Mock löst nie auf und scheitert nur über das Abort-Signal —
+  // ohne Per-Request-Frist hinge dieser Test bis zum Vitest-Timeout.
+  it('aborts a hanging lookup instead of waiting for the job timeout', async () => {
+    const hanging = vi.fn(
+      (_url: string, init?: { signal?: AbortSignal }) =>
+        new Promise((_, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted by timeout')));
+        }),
+    );
+    await expect(
+      findPushDeployRun(REPOSITORY, MERGE_SHA, { fetchImpl: hanging, requestTimeoutMs: 10 }),
+    ).rejects.toThrow('deploy run lookup failed');
+    expect(hanging.mock.calls[0][1]).toMatchObject({ signal: expect.any(AbortSignal) });
+  });
 });
 
 describe('verifyCatalogDeploy — push deploy exists', () => {
