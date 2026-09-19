@@ -33,7 +33,7 @@ import {
   formatCatalogFreshnessMessage,
 } from './check-catalog-freshness.mjs';
 import { readTrackedManifest } from './sync-upstream-manifest.mjs';
-import { REPO_ROOT, resolveTrackedManifestPath } from './security-guards.mjs';
+import { REPO_ROOT, isLatestSnapshotSelector, resolveTrackedManifestPath } from './security-guards.mjs';
 
 export class BootstrapError extends Error {
   constructor(message) {
@@ -127,7 +127,7 @@ async function ensureCatalogFetched({ rootDir, env, run, log, freshness, manifes
   // beweglichen Upstream-Stand. Der lokale Setup-Pfad hier muss dagegen immer
   // gegen die eingecheckte Manifest-SHA prüfen, sonst weicht der Fetch vom
   // Pin ab und die anschließende Freshness-Prüfung schlägt fehl.
-  if (env.BSI_SNAPSHOT_SHA === 'latest') {
+  if (isLatestSnapshotSelector(env.BSI_SNAPSHOT_SHA)) {
     throw new BootstrapError(
       "BSI_SNAPSHOT_SHA=latest ist nur in der Catalog-Sync-Lane zulässig. " +
       'npm run setup prüft immer gegen die eingecheckte upstream-manifest.json — Umgebungsvariable entfernen oder eine konkrete Commit-SHA setzen.',

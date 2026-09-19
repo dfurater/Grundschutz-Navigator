@@ -154,10 +154,33 @@ describe('scripts/bootstrap.mjs — runBootstrap', () => {
     const { run, calls } = createStubRun();
     const freshness = createSequenceFreshness([missingResult()]);
 
+    let caught: unknown;
+    try {
+      await runBootstrap({
+        rootDir: scratchRoot,
+        env: { BSI_SNAPSHOT_SHA: 'latest' },
+        run,
+        log: () => {},
+        freshness,
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(BootstrapError);
+    expect((caught as Error).message).toMatch(/BSI_SNAPSHOT_SHA=latest ist nur in der Catalog-Sync-Lane zulässig/);
+    expect(calls.some((call) => call.step === 'fetch')).toBe(false);
+  });
+
+  it('lehnt BSI_SNAPSHOT_SHA=latest auch mit umschließendem Whitespace ab', async () => {
+    await withValidManifest(scratchRoot);
+    const { run, calls } = createStubRun();
+    const freshness = createSequenceFreshness([missingResult()]);
+
     await expect(
       runBootstrap({
         rootDir: scratchRoot,
-        env: { BSI_SNAPSHOT_SHA: 'latest' },
+        env: { BSI_SNAPSHOT_SHA: ' latest\n' },
         run,
         log: () => {},
         freshness,
