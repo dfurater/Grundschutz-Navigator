@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
+import { namedStep, readDefinitions, runScript } from './workflowDefinitions.mjs';
 
 const WORKFLOW_NAMES = [
   'backmerge-main-to-develop.yml',
@@ -16,7 +17,18 @@ const WORKFLOW_NAMES = [
   'verify-catalog-merge.yml',
 ] as const;
 
-const MANIFEST_WORKFLOWS = ['validate.yml', 'sonar.yml', 'deploy.yml'] as const;
+/*
+ * Bis GSPP-419 stand der manifestlesende Block wortgleich in validate.yml,
+ * sonar.yml und deploy.yml, und diese Datei führte ihn dreimal gegen dieselben
+ * sechs Fehlerfälle aus. Seither trägt ihn ./.github/actions/fetch-pinned-catalog
+ * einmal; die Verhaltensprüfung läuft entsprechend einmal gegen die gemeinsame
+ * Quelle. Damit die Zusammenführung nicht stillschweigend zurückfällt, prüft
+ * `keeps the manifest block in exactly one place` zusätzlich, dass keine
+ * Workflow-Datei wieder eine eigene Kopie führt.
+ */
+const MANIFEST_ACTION = '.github/actions/fetch-pinned-catalog/action.yml';
+const MANIFEST_STEP = 'Read pinned snapshot SHA from manifest';
+
 const INVALID_MANIFEST_CASES = [
   {
     name: 'missing file',
@@ -49,13 +61,15 @@ const INVALID_MANIFEST_CASES = [
     error: 'upstream-manifest.json enthält keine gültige 40-stellige snapshotCommitSha.',
   },
 ] as const;
-const MANIFEST_FAILURE_CASES = MANIFEST_WORKFLOWS.flatMap((workflowName) =>
-  INVALID_MANIFEST_CASES.map((testCase) => ({ workflowName, ...testCase })),
-);
+
 const temporaryDirectories = new Set<string>();
 
 async function workflow(name: string): Promise<string> {
   return readFile(resolve(process.cwd(), '.github/workflows', name), 'utf8');
+}
+
+async function definition(path: string): Promise<string> {
+  return readFile(resolve(process.cwd(), path), 'utf8');
 }
 
 function jobScopes(workflowContent: string): Map<string, string> {
@@ -68,27 +82,6 @@ function jobScopes(workflowContent: string): Map<string, string> {
       jobs.slice(header.index, headers[index + 1]?.index ?? jobs.length),
     ]),
   );
-}
-
-function namedStep(workflowContent: string, name: string): string {
-  const marker = `      - name: ${name}\n`;
-  const start = workflowContent.indexOf(marker);
-  if (start < 0) throw new Error(`Workflow step not found: ${name}`);
-
-  const next = workflowContent.indexOf('\n      - name:', start + marker.length);
-  return workflowContent.slice(start, next < 0 ? workflowContent.length : next);
-}
-
-function runScript(step: string): string {
-  const marker = '        run: |\n';
-  const start = step.indexOf(marker);
-  if (start < 0) throw new Error('Multiline run block not found');
-
-  return step
-    .slice(start + marker.length)
-    .split('\n')
-    .map((line) => line.replace(/^\x20{10}/, ''))
-    .join('\n');
 }
 
 afterEach(async () => {
@@ -114,40 +107,56 @@ describe('CI failure visibility contract', () => {
 
     // GSPP-418 bettet zizmor als Schritte in den `validate`-Job ein (kein
     // eigener Job — ein neuer Jobname wäre ein neuer Check-Kontext außerhalb
-    // beider Rulesets): 12 Jobs wie vor GSPP-418.
+    // beider Rulesets): 12 Jobs wie vor GSPP-418. GSPP-419 verschiebt Schritte
+    // in Composite Actions, ohne einen Job anzulegen oder aufzulösen.
     expect(jobCount).toBe(12);
   });
 
   // Der Token-Guard war bis GSPP-416 der fuenfte Eintrag. Er ist seither kein
   // Shell-Block mehr, sondern scripts/sonar-token-guard.mjs; sein
-  // Fehlverhalten deckt scripts/sonar-token-guard.test.ts ab.
-  it('enables fail-fast shell handling in all four multiline target steps', async () => {
+  // Fehlverhalten deckt scripts/sonar-token-guard.test.ts ab. Seit GSPP-419
+  // tragen die drei manifestlesenden Vorkommen eine gemeinsame Quelle, sodass
+  // zwei mehrzeilige Ziele bleiben.
+  it('enables fail-fast shell handling in both multiline target steps', async () => {
     const targets = [
-      ['validate.yml', 'Read pinned snapshot SHA from manifest'],
-      ['sonar.yml', 'Read pinned snapshot SHA from manifest'],
-      ['deploy.yml', 'Read pinned snapshot SHA from manifest'],
-      ['verify-catalog-merge.yml', 'Dispatch verified fallback deploy'],
+      [MANIFEST_ACTION, MANIFEST_STEP],
+      ['.github/workflows/verify-catalog-merge.yml', 'Dispatch verified fallback deploy'],
     ] as const;
 
-    for (const [name, stepName] of targets) {
-      expect(runScript(namedStep(await workflow(name), stepName)), `${name}:${stepName}`).toMatch(
+    for (const [path, stepName] of targets) {
+      expect(runScript(namedStep(await definition(path), stepName)), `${path}:${stepName}`).toMatch(
         /^set -euo pipefail$/m,
       );
     }
   });
 
-  it.each(MANIFEST_FAILURE_CASES)(
-    'fails the manifest-reading step in $workflowName for $name',
-    async ({ workflowName, contents, error }) => {
+  // Fail-closed gegen einen Rückfall in die Duplikation: Wer den Block in einen
+  // Workflow zurückkopiert, entzieht ihn der oben geprüften Fassung, ohne dass
+  // ein anderer Test es meldete.
+  it('keeps the manifest block in exactly one place', () => {
+    const carriers = readDefinitions()
+      .filter(({ content }) => content.includes("jq -er '.snapshotCommitSha | strings'"))
+      .map(({ label }) => label);
+
+    expect(carriers).toEqual([MANIFEST_ACTION]);
+  });
+
+  it('reaches the shared action from every job that builds against the pinned snapshot', async () => {
+    for (const name of ['validate.yml', 'sonar.yml', 'deploy.yml'] as const) {
+      expect(await workflow(name), name).toContain('uses: ./.github/actions/fetch-pinned-catalog');
+    }
+  });
+
+  it.each(INVALID_MANIFEST_CASES)(
+    'fails the shared manifest-reading step for $name',
+    async ({ contents, error }) => {
       const directory = await mkdtemp(resolve(tmpdir(), 'gspp-manifest-step-'));
       temporaryDirectories.add(directory);
       if (contents !== undefined) {
         await writeFile(resolve(directory, 'upstream-manifest.json'), contents, 'utf8');
       }
       const githubOutput = resolve(directory, 'github-output.txt');
-      const script = runScript(
-        namedStep(await workflow(workflowName), 'Read pinned snapshot SHA from manifest'),
-      );
+      const script = runScript(namedStep(await definition(MANIFEST_ACTION), MANIFEST_STEP));
 
       const result = spawnSync('bash', ['-c', script], {
         cwd: directory,
@@ -160,4 +169,42 @@ describe('CI failure visibility contract', () => {
       await expect(readFile(githubOutput, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
     },
   );
+
+  // `required: true` ist bei einer Composite Action nur Dokumentation. Ohne
+  // diesen Guard liefe der Fetch mit leerem GH_TOKEN unauthentifiziert weiter
+  // und schlüge erst am API-Ratenlimit fehl. Der Erfolgspfad ist hier nicht
+  // prüfbar — er führt einen Netzabruf aus.
+  it('refuses the catalog fetch without a token', async () => {
+    const step = namedStep(await definition(MANIFEST_ACTION), 'Fetch BSI catalog from pinned snapshot');
+
+    const result = spawnSync('bash', ['-c', runScript(step)], {
+      encoding: 'utf8',
+      env: { ...process.env, GH_TOKEN: '' },
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('fetch-pinned-catalog wurde ohne github-token aufgerufen.');
+  });
+
+  it('writes the snapshot SHA to the step output on a valid manifest', async () => {
+    const directory = await mkdtemp(resolve(tmpdir(), 'gspp-manifest-step-'));
+    temporaryDirectories.add(directory);
+    const sha = 'a'.repeat(40);
+    await writeFile(
+      resolve(directory, 'upstream-manifest.json'),
+      `{"snapshotCommitSha": "${sha}"}\n`,
+      'utf8',
+    );
+    const githubOutput = resolve(directory, 'github-output.txt');
+    const script = runScript(namedStep(await definition(MANIFEST_ACTION), MANIFEST_STEP));
+
+    const result = spawnSync('bash', ['-c', script], {
+      cwd: directory,
+      encoding: 'utf8',
+      env: { ...process.env, GITHUB_OUTPUT: githubOutput },
+    });
+
+    expect(result.status).toBe(0);
+    await expect(readFile(githubOutput, 'utf8')).resolves.toBe(`sha=${sha}\n`);
+  });
 });

@@ -204,7 +204,9 @@ scripts/              # Build-Skripte
   ├── catalog-sync-policy.mjs     # Prüfung der Repository-Policy
   ├── sync-upstream-manifest.mjs  # Manifest-Sync für update-catalog.yml
   ├── verify-catalog-deploy.mjs   # Post-Merge-Deploy bestätigen oder Fallback freigeben
-  └── check-deploy-idempotency.mjs # Redundanten Fallback-Deploy desselben Commits verhindern
+  ├── check-deploy-idempotency.mjs # Redundanten Fallback-Deploy desselben Commits verhindern
+  ├── verify-node-version.mjs     # .nvmrc gegen engines.node und gegen Versionsliterale prüfen
+  └── workflowDefinitions.mjs     # Gemeinsame Sammlung der Workflow- und Action-Definitionen
 
 upstream-manifest.json            # Gepinnter Upstream-Snapshot (Manifest v2)
 
@@ -215,6 +217,12 @@ upstream-manifest.json            # Gepinnter Upstream-Snapshot (Manifest v2)
   ├── sonar.yml                   # SonarQube-Analyse des Push-Pfads auf main und develop
   ├── update-catalog.yml          # Automatischer Katalog-Sync
   └── verify-catalog-merge.yml    # Post-Merge-Prüfung und Deploy-Fallback
+
+.github/actions/
+  ├── setup-node-env/             # Node aus .nvmrc plus npm ci --ignore-scripts
+  └── fetch-pinned-catalog/       # Gepinnte Snapshot-SHA lesen und Katalog holen
+
+.nvmrc                            # Einzige Quelle der Node-Version (gegen engines.node geprüft)
 ```
 
 ## Datenfluss
@@ -831,7 +839,6 @@ Konfiguriert in `tsconfig.app.json` (`compilerOptions.paths`) und `vite.config.t
 | `VITE_IMPRESSUM_STRASSE` | App (Build) | Impressum: Straße |
 | `VITE_IMPRESSUM_PLZ_ORT` | App (Build) | Impressum: PLZ und Ort |
 | `VITE_IMPRESSUM_EMAIL` | App (Build) | Impressum: E-Mail |
-| `VITE_IMPRESSUM_TELEFON` | App (Build) | Impressum: Telefon |
 | `BUILD_BASE` | Build | Überschreibt die GitHub-Pages-Base (`vite.config.ts`) |
 | `BSI_SNAPSHOT_SHA` | fetch-catalog | Vollständige Commit-SHA für einen festgelegten BSI-Datenstand; ausschließlich der Catalog-Sync fordert mit `latest` ausdrücklich den neuesten Stand an. Fehlende oder leere Werte sind ungültig. |
 | `GH_TOKEN` / `GITHUB_TOKEN` | fetch-catalog | Token für die GitHub-API (optional lokal, gesetzt in CI) |
@@ -845,7 +852,7 @@ Die Impressum-Werte kommen lokal aus `.env.local` (nicht committet, siehe `.env.
 
 ## CI-Pipeline
 
-Die Pull-Request-Prüfung liegt in zwei Workflows, die sich durch ihre Ereignisliste unterscheiden. `.github/workflows/ci.yml` führt `documentation-contract` und `catalog-sync-guard`; beide urteilen über die Pull-Request-Metadaten — der eine wertet den Body gegen den Dokumentationsvertrag aus, der andere liest Titel und Body für Sync-Vertrag und Release-Marke. Seine Ereignisliste führt deshalb `edited` mit, damit eine Titel- oder Body-Bearbeitung neu beurteilt wird. `.github/workflows/validate.yml` führt `validate`: Schema-Verifikation, Katalog-Fetch, Profilauflösung, go-oscal-Lauf, Lint, Tests mit Coverage, Browser-Tests, Build und — seit [GSPP-418](https://linear.app/grundschutz-plus-plus/issue/GSPP-418) als letzte Schritte desselben Jobs — den zizmor-Audit (Image direkt per Digest gepinnt, `--offline`, Persona auditor, Config `.github/zizmor.yml`). Dieser Job liest weder Titel noch Body, und seine Ereignisliste führt `edited` nicht. Dieselbe Datei führt seit [GSPP-416](https://linear.app/grundschutz-plus-plus/issue/GSPP-416) den nachgelagerten Job `sonarqube`; die Begründung steht unter [`sonar-project.properties`](#sonar-projectproperties).
+Die Pull-Request-Prüfung liegt in zwei Workflows, die sich durch ihre Ereignisliste unterscheiden. `.github/workflows/ci.yml` führt `documentation-contract` und `catalog-sync-guard`; beide urteilen über die Pull-Request-Metadaten — der eine wertet den Body gegen den Dokumentationsvertrag aus, der andere liest Titel und Body für Sync-Vertrag und Release-Marke. Seine Ereignisliste führt deshalb `edited` mit, damit eine Titel- oder Body-Bearbeitung neu beurteilt wird. `.github/workflows/validate.yml` führt `validate`: Schema-Verifikation, Node-Versionsquelle, Katalog-Fetch, Profilauflösung, go-oscal-Lauf, Lint, Tests mit Coverage, Browser-Tests, Build und — seit [GSPP-418](https://linear.app/grundschutz-plus-plus/issue/GSPP-418) als letzte Schritte desselben Jobs — den zizmor-Audit (Image direkt per Digest gepinnt, `--offline`, Persona auditor, Config `.github/zizmor.yml`). Dieser Job liest weder Titel noch Body, und seine Ereignisliste führt `edited` nicht. Dieselbe Datei führt seit [GSPP-416](https://linear.app/grundschutz-plus-plus/issue/GSPP-416) den nachgelagerten Job `sonarqube`; die Begründung steht unter [`sonar-project.properties`](#sonar-projectproperties).
 
 Die Trennung ist der Grund für die zweite Datei. Ein Job-`if` im gemeinsamen Workflow hätte denselben Lauf gespart, aber eine Lücke geöffnet: Ein per `if` übersprungener Job meldet laut GitHub-Dokumentation den Status `Success` und erzeugt dabei einen neuen Check-Run unter demselben Namen. Da GitHub je Kontext den jüngsten Check-Run wertet, ersetzte eine bloße Body-Bearbeitung ein fehlgeschlagenes `validate` auf unverändertem Head durch einen Erfolg — der Pflichtcheck ließe sich so umgehen. Ohne abonniertes `edited` entsteht dagegen überhaupt kein Lauf und damit kein neuer Check-Run; das reale Ergebnis des letzten Code-Laufs bleibt stehen. Das Gegenstück dazu ist die bekannte Falle, einen *erforderlichen* Workflow über Pfad- oder Branch-Filter innerhalb eines abonnierten Ereignisses zu unterdrücken: Dort bliebe der Check auf `Pending` und blockierte den Merge. Hier wird kein Filter gesetzt, sondern das Ereignis gar nicht erst abonniert.
 
@@ -866,9 +873,21 @@ Das Deployment erfolgt automatisch via GitHub Actions bei Push auf `main` (`.git
 5. SLSA-Provenance wird generiert (`actions/attest` über `dist/**`)
 6. Deployment auf GitHub Pages
 
+### Gemeinsame Setup-Schicht
+
+Setup und Installation stehen seit [GSPP-419](https://linear.app/grundschutz-plus-plus/issue/GSPP-419) in Composite Actions unter `.github/actions/`, nicht mehr als wortgleiche Blöcke in sechs Workflows. `setup-node-env` richtet Node ein und installiert; `fetch-pinned-catalog` liest die gepinnte Snapshot-SHA aus `upstream-manifest.json` und holt den Katalog von genau diesem Stand. Die drei Jobs, die gegen den Pin bauen — `validate`, `build-and-deploy` und der Push-Pfad in `sonar.yml` — rufen beide auf.
+
+Der Checkout bleibt bewusst außerhalb. Eine Action aus diesem Repository wird relativ zu `$GITHUB_WORKSPACE` aufgelöst und setzt den Checkout damit voraus; sie könnte ihn gar nicht selbst mitbringen. Er unterscheidet sich zwischen den Aufrufern ohnehin: `ref`, `fetch-depth` und der Zweck des Klons weichen von Job zu Job ab. Zwei Aufrufer bleiben aus benanntem Grund bei einer eigenen Fassung: `greptile-review-nudge` installiert nicht und legte mit der gemeinsamen Action eine npm-Cache-Datei an, die es nie füllt; `update-catalog` fordert mit `BSI_SNAPSHOT_SHA: latest` ausdrücklich den neuesten Upstream-Stand an, weil es den Pin gerade fortschreibt statt ihn zu lesen.
+
+Die Node-Version steht ausschließlich in `.nvmrc`. Jedes Setup liest sie über `node-version-file`, das `actions/setup-node` gegen `$GITHUB_WORKSPACE` auflöst und das deshalb auch aus einer Composite Action heraus greift. `scripts/verify-node-version.mjs` hält beide Hälften der Zusage: Die Angabe in `.nvmrc` ist mit `engines.node` aus `package.json` vereinbar, und kein Workflow und keine Action bringt die Version als Literal zurück. Der Guard ist netzfrei und fail-closed, läuft als `npm run verify-node-version` im Job `validate` und schlägt auch dann fehl, wenn er seinen Gegenstand nicht mehr findet.
+
+`scripts/workflowDefinitions.mjs` trägt die gemeinsame Sammlung aus Workflow- und Action-Definitionen. Die Guards, die am Vorkommen statt an einer Dateiliste hängen — Action-Pinning, `npm ci --ignore-scripts`, `persist-credentials: false`, kein `npx`/`npm exec` —, lesen ihr Prüfgut daraus. Ohne diese eine Quelle müssten vier Stellen jede Verschiebung gleichzeitig nachziehen, und eine vergessene Stelle prüfte stillschweigend weniger, statt fehlzuschlagen.
+
 ### Ausführungsumgebung und Berechtigungen
 
-Jeder Workflow, der Abhängigkeiten installiert, verwendet `npm ci --ignore-scripts`.
+Wo Abhängigkeiten installiert werden, geschieht es mit `npm ci --ignore-scripts` —
+seit [GSPP-419](https://linear.app/grundschutz-plus-plus/issue/GSPP-419) an genau
+einer Stelle, in `.github/actions/setup-node-env`.
 Damit bleibt das Lockfile die einzige Installationsquelle, ohne dass Lifecycle-Skripte
 von transitiven Abhängigkeiten während des CI-Setups ausgeführt werden. Der
 Coverage-Lauf des Deploy-Workflows ruft Vitest über `npm run test:coverage` und
@@ -886,7 +905,9 @@ und reicht immer ein Token durch. Der Schritt nutzt `docker pull` plus
 `docker run --network none` mit `--offline`, ohne Token und mit
 Read-only-Mount: kein Netz, kein Credential, kein Installer. Alle Actions
 bleiben per SHA gepinnt (erzwungen über
-`scripts/workflow-action-pinning.test.ts`); der Digest ist der Pin des
+`scripts/workflow-action-pinning.test.ts`, das seit
+[GSPP-419](https://linear.app/grundschutz-plus-plus/issue/GSPP-419) auch die
+Composite Actions unter `.github/actions/` erfasst); der Digest ist der Pin des
 Binaries. Mitigations: Image-Digest statt Registry-Vertrauen, `--offline` mit
 Netzsperre, Plain-Output mit Exit non-zero bei Befunden (SARIF exitt immer 0
 und taugt nicht als Blockiergate). Restrisiko: Ein manipuliertes Image meldet

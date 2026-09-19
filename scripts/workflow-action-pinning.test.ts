@@ -1,8 +1,14 @@
-import { readFileSync, readdirSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, relative, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const WORKFLOW_DIR = resolve(process.cwd(), '.github/workflows');
+
+// Seit GSPP-419 stehen Setup-Schritte in Composite Actions unter
+// .github/actions/. Sie führen dieselben fremden Actions aus wie ein Workflow;
+// bliebe der Guard auf .github/workflows/ beschränkt, verlöre jede dorthin
+// verschobene Referenz ihren Pin, ohne dass etwas es meldete.
+const ACTION_DIR = resolve(process.cwd(), '.github/actions');
 
 // Referenzen auf Actions im selben Repository tragen keinen Commit-SHA und
 // bleiben deshalb ausgenommen.
@@ -34,17 +40,37 @@ interface ActionReference {
   value: string;
 }
 
-function listWorkflowFiles(): string[] {
-  return readdirSync(WORKFLOW_DIR)
+function listDefinitionFiles(): string[] {
+  const files = readdirSync(WORKFLOW_DIR)
     .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
-    .sort();
+    .sort()
+    .map((name) => resolve(WORKFLOW_DIR, name));
+
+  const walk = (directory: string) => {
+    for (const entry of readdirSync(directory).sort()) {
+      const path = join(directory, entry);
+      if (statSync(path).isDirectory()) walk(path);
+      else if (entry === 'action.yml' || entry === 'action.yaml') files.push(path);
+    }
+  };
+  try {
+    walk(ACTION_DIR);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+
+  return files;
 }
 
 function collectActionReferences(files: string[]): ActionReference[] {
   return files.flatMap((file) =>
-    readFileSync(resolve(WORKFLOW_DIR, file), 'utf8')
+    readFileSync(file, 'utf8')
       .split('\n')
-      .map((line, index) => ({ file, line: index + 1, match: USES_LINE.exec(line) }))
+      .map((line, index) => ({
+        file: relative(process.cwd(), file),
+        line: index + 1,
+        match: USES_LINE.exec(line),
+      }))
       .filter((entry) => entry.match !== null)
       .map((entry) => ({ file: entry.file, line: entry.line, value: entry.match![1] })),
   );
@@ -57,14 +83,22 @@ function findUnpinnedReferences(references: ActionReference[]): string[] {
 }
 
 describe('workflow action pinning', () => {
-  const workflowFiles = listWorkflowFiles();
-  const references = collectActionReferences(workflowFiles);
+  const definitionFiles = listDefinitionFiles();
+  const references = collectActionReferences(definitionFiles);
 
   it('finds workflows and action references to check', () => {
     // Ohne diese Zusicherung würde der Guard auch bei einem leeren oder falsch
     // aufgelösten Verzeichnis bestehen.
-    expect(workflowFiles.length).toBeGreaterThan(0);
+    expect(definitionFiles.length).toBeGreaterThan(0);
     expect(references.length).toBeGreaterThan(0);
+  });
+
+  // Fail-closed gegen die Erweiterung selbst: Löst .github/actions/ nicht auf
+  // oder wandert eine Action wieder heraus, ohne dass die Liste es merkt,
+  // prüfte der Guard dort stillschweigend nichts mehr.
+  it('covers the composite actions alongside the workflows', () => {
+    expect(definitionFiles.filter((file) => file.startsWith(ACTION_DIR))).not.toHaveLength(0);
+    expect(references.some((reference) => reference.file.startsWith('.github/actions/'))).toBe(true);
   });
 
   it('pins every action to a full-length commit SHA with a version comment', () => {

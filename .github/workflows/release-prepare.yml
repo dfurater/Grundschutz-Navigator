@@ -38,14 +38,8 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
+      - name: Setup Node.js and install dependencies
+        uses: ./.github/actions/setup-node-env
 
       - name: Create repository-scoped GitHub App token
         id: app-token

@@ -61,40 +61,19 @@ jobs:
           SONAR_TOKEN_AVAILABLE: ${{ secrets.SONAR_CI != '' }}
         run: node scripts/sonar-token-guard.mjs
 
-      - name: Setup Node.js
+      - name: Setup Node.js and install dependencies
         if: steps.token.outputs.available == 'true'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        if: steps.token.outputs.available == 'true'
-        run: npm ci --ignore-scripts
-
-      - name: Read pinned snapshot SHA from manifest
-        if: steps.token.outputs.available == 'true'
-        id: manifest
-        run: |
-          set -euo pipefail
-          if ! sha="$(jq -er '.snapshotCommitSha | strings' upstream-manifest.json)"; then
-            echo "upstream-manifest.json ist nicht lesbar oder enthält keine snapshotCommitSha." >&2
-            exit 1
-          fi
-          if [[ ! "$sha" =~ ^[0-9a-fA-F]{40}$ ]]; then
-            echo "upstream-manifest.json enthält keine gültige 40-stellige snapshotCommitSha." >&2
-            exit 1
-          fi
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+        uses: ./.github/actions/setup-node-env
 
       # Der Testlauf prueft ueber `globalSetup` die Frische der Katalogdaten und
-      # schlaegt ohne sie fehl. Gepinnt auf denselben Snapshot wie in validate.yml.
-      - name: Fetch BSI catalog from pinned snapshot
+      # schlaegt ohne sie fehl. Gepinnt auf denselben Snapshot wie in
+      # validate.yml und deploy.yml: Seit GSPP-419 lesen alle drei ihn aus
+      # derselben Action statt aus drei wortgleichen Kopien.
+      - name: Read the pinned snapshot and fetch the BSI catalog
         if: steps.token.outputs.available == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BSI_SNAPSHOT_SHA: ${{ steps.manifest.outputs.sha }}
-        run: npm run fetch-catalog
+        uses: ./.github/actions/fetch-pinned-catalog
+        with:
+          github-token: ${{ github.token }}
 
       # Erzeugt coverage/lcov.info fuer die Abdeckungsmessung in SonarQube und
       # erzwingt dabei die in vite.config.ts gepinnten Schwellen.
