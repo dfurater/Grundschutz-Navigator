@@ -138,7 +138,7 @@ export const scopedRules = [
     key: 'R8-actions-pinning',
     scopes: ['.github/workflows/**', '.github/actions/**'],
     body:
-      `Jede GitHub Action wird auf einen vollständigen 40-stelligen Commit-SHA gepinnt, mit der Version als nachgestelltem Kommentar. Tag- oder Branch-Referenzen sind ein blockierender Befund. Workflow-Berechtigungen bleiben minimal, und Checkout-Schritte ohne Push-Bedarf setzen persist-credentials: false.`,
+      `Jede fremde GitHub Action wird auf einen vollständigen 40-stelligen Commit-SHA gepinnt, mit der Version als nachgestelltem Kommentar. Tag- oder Branch-Referenzen sind ein blockierender Befund. Self-Repository-Referenzen der Form $/ lösen dagegen auf den unveränderlichen Commit auf, der den Workflow ausführt, und tragen deshalb keinen externen Ref; lokale Composite Actions verwenden ausschließlich diese Form, nie die arbeitsbereichsrelative Form ./. Workflow-Berechtigungen bleiben minimal, und Checkout-Schritte ohne Push-Bedarf setzen persist-credentials: false.`,
   },
   {
     key: 'R9-vite-env-oeffentlich',
