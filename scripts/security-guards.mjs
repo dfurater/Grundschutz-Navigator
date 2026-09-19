@@ -122,18 +122,30 @@ export async function readBodyWithLimit(response, {
   return Buffer.concat(chunks);
 }
 
+/**
+ * Einzige Normalisierung für den `latest`-Selektor: `resolveOptionalSnapshotSha`
+ * (Catalog-Sync-Lane) und der Bootstrap-Guard in bootstrap.mjs (nur die
+ * Catalog-Sync-Lane darf `latest` verwenden) müssen exakt denselben Wert als
+ * `latest` erkennen — sonst rutscht ein umschlossener Wert wie `' latest '`
+ * (Whitespace, Zeilenumbruch) am strengeren Guard vorbei und wird hier
+ * trotzdem als `latest` interpretiert.
+ */
+export function isLatestSnapshotSelector(value) {
+  return typeof value === 'string' && value.trim() === 'latest';
+}
+
 export function resolveOptionalSnapshotSha(configuredValue = process.env.BSI_SNAPSHOT_SHA) {
   if (typeof configuredValue !== 'string') {
+    throw new TypeError('BSI_SNAPSHOT_SHA must be set to "latest" or a 40-character hexadecimal commit SHA');
+  }
+
+  if (isLatestSnapshotSelector(configuredValue)) {
     return '';
   }
 
   const normalized = configuredValue.trim();
-  if (normalized.length === 0) {
-    return '';
-  }
-
   if (!/^[0-9a-f]{40}$/i.test(normalized)) {
-    throw new Error('BSI_SNAPSHOT_SHA must be a 40-character hexadecimal commit SHA');
+    throw new Error('BSI_SNAPSHOT_SHA must be set to "latest" or a 40-character hexadecimal commit SHA');
   }
 
   return normalized.toLowerCase();

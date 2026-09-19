@@ -7,8 +7,6 @@ on:
 
 permissions:
   contents: read
-  actions: write
-  pull-requests: read
 
 jobs:
   verify-catalog-merge:
@@ -17,6 +15,11 @@ jobs:
       startsWith(github.event.pull_request.head.ref, 'chore/catalog-sync-') &&
       startsWith(github.event.pull_request.title, 'chore(ci): BSI-Katalog-Sync ')
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: write
 
     steps:
       - name: Checkout verified merge commit
@@ -65,6 +68,12 @@ jobs:
               ;;
           esac
 
+          # Kein `jq -er … | strings` und keine Formprüfung wie in
+          # $/.github/actions/fetch-pinned-catalog: Die Zeile darüber hat das
+          # Manifest bereits vollständig validiert — validateManifestV2Shape in
+          # scripts/upstream-artifacts.mjs verlangt für snapshotCommitSha eine
+          # kleingeschriebene 40-stellige Git-SHA. Ein zweiter Formtest prüfte
+          # hier nur, was schon feststeht.
           node scripts/catalog-sync-guard.mjs --validate-manifest upstream-manifest.json
           SNAPSHOT_SHA="$(jq -r '.snapshotCommitSha' upstream-manifest.json)"
           SIGNATURE="$(jq -r '.signatureSha256' upstream-manifest.json)"
@@ -88,6 +97,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           gh workflow run deploy.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref main \

@@ -1,5 +1,10 @@
 name: CI
 
+# Diese Datei führt ausschließlich die Jobs, die aus Titel oder Body des
+# Pull Requests lesen und deshalb auch auf `edited` urteilen müssen. Der Job
+# `validate` liegt seit GSPP-415 in `validate.yml`; die Begründung der
+# Trennung steht dort.
+
 on:
   pull_request:
     branches: [main, develop]
@@ -9,10 +14,23 @@ on:
 permissions:
   contents: read
 
+# Beide Jobs dieser Datei urteilen ausschließlich über die
+# Pull-Request-Metadaten und lesen sie bei jedem Lauf frisch aus dem
+# Ereignis. Ein überholter Lauf trägt deshalb keine Aussage, die erhalten
+# bleiben müsste, und wird abgebrochen — wie es `sonar.yml` bereits tut.
+# `cancel-in-progress` greift nur für Pull-Request-Läufe; ein laufender
+# `workflow_dispatch` wird nicht abgebrochen. Ein noch wartender Lauf kann
+# dagegen von einem neueren derselben Gruppe verdrängt werden, weil GitHub
+# je Gruppe nur einen Lauf in der Warteschlange hält.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   documentation-contract:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout full PR history
@@ -30,6 +48,7 @@ jobs:
 
   catalog-sync-guard:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout full PR history
@@ -86,89 +105,3 @@ jobs:
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: node scripts/release-prepare.mjs --verify-pull-request
-
-  validate:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
-
-      # Trägt die Integritätszusage der gebündelten Stufe-3-Schemas. Läuft
-      # bewusst vor jedem Netzschritt und ohne selbst einen auszuführen; der
-      # Netzpfad bleibt allein `npm run sync-oscal-schemas` und ist kein
-      # CI-Schritt.
-      - name: Verify pinned OSCAL schemas
-        run: npm run verify-oscal-schemas
-
-      # Reviewregeln sind seit GSPP-374 versioniert: scripts/review-policy.rules.mjs
-      # trägt die Regeltexte, scripts/review-policy.mjs den Generator;
-      # docs/REVIEW_INVARIANTS.md und .gitar/review/ sind daraus erzeugt. Der Check
-      # ist netzfrei und schlägt bei jeder manuellen Abweichung sowie bei jeder
-      # Regeldatei fehl, die an der Autorenquelle vorbei entstanden ist.
-      - name: Verify generated review policy
-        run: npm run review-policy:check
-
-      # Dependency-PRs fallen aus dem PR-Dokumentationsvertrag heraus, weil
-      # dessen Trigger an Änderungen unter src/ hängt. Dieser Guard prüft die
-      # in docs/ARCHITECTURE.md zugesagten Versionen stattdessen maschinell
-      # gegen package.json und die mitinstallierte browsers.json (GSPP-399).
-      # Netzfrei und fail-closed: auch eine nicht mehr auffindbare Angabe
-      # lässt ihn fehlschlagen.
-      - name: Verify documented versions against installed state
-        run: npm run verify-documented-versions
-
-      - name: Read pinned snapshot SHA from manifest
-        id: manifest
-        run: |
-          sha=$(jq -r '.snapshotCommitSha' upstream-manifest.json)
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
-      - name: Fetch BSI catalog from pinned snapshot
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BSI_SNAPSHOT_SHA: ${{ steps.manifest.outputs.sha }}
-        run: npm run fetch-catalog
-
-      - name: Resolve all BSI profiles deterministically (mandatory build-time corpus)
-        run: npm run test:profile-resolution
-
-      - name: Verify upstream OSCAL schemas with go-oscal
-        env:
-          GO_OSCAL_SBOM_OUTPUT: ${{ runner.temp }}/sbom_go-oscal_v0.7.1_Linux_amd64.sbom
-        run: npm run verify-upstream-oscal
-
-      - name: Archive go-oscal SBOM
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: go-oscal-v0.7.1-sbom-linux-amd64
-          path: ${{ runner.temp }}/sbom_go-oscal_v0.7.1_Linux_amd64.sbom
-          if-no-files-found: error
-          retention-days: 90
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Run tests
-        run: npm run test
-
-      - name: Install pinned Chromium for browser tests
-        run: ./node_modules/.bin/playwright install chromium
-
-      - name: Run Chromium browser tests
-        run: npm run test:browser
-
-      - name: Verify browser egress oracle
-        run: npm run test:browser:egress-negative
-
-      - name: Build application
-        run: npm run build

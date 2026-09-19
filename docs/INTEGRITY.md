@@ -68,7 +68,7 @@ Bei genau einem ausgelieferten Katalog ist die Ausgabemenge damit weiterhin `cat
 `fetch-catalog.mjs` führt den eigentlichen Abruf durch:
 
 1. **Quellregister als Vertrag**: `src/domain/sourceRegistry.mjs` ist die einzige Ingestion-Quelle für Artefaktschlüssel, Pfade, erwartete OSCAL-Root-Typen, Katalogschlüssel und Lifecycle. `scripts/security-guards.mjs` leitet daraus die Allowlist ab und begrenzt zusätzlich Repository, Hosts, Pfade und Refs.
-2. **Snapshot-Pinning**: Ist `BSI_SNAPSHOT_SHA` gesetzt (in CI aus `upstream-manifest.json` gelesen), wird exakt dieser Commit abgerufen statt `main`.
+2. **Snapshot-Pinning**: `BSI_SNAPSHOT_SHA` muss entweder die vollständige Commit-SHA des festgelegten BSI-Datenstands oder ausdrücklich `latest` enthalten. CI, Sonar, Deployment und lokales Setup lesen die SHA aus `upstream-manifest.json`; ausschließlich der Catalog-Sync verwendet `latest`, um einen neuen BSI-Datenstand zu erkennen. Fehlende, leere und andere Werte werden abgelehnt.
 3. **Vollständiger Tree vor Blob-Abruf**: Der rekursive GitHub-Tree der überwachten Wurzeln muss vollständig und darf weder Symlinks noch andere nicht reguläre Dateien enthalten. Erst danach werden registrierte Pfade materialisiert.
 4. **Lifecycle-getrennte Verarbeitung**: `preview`- und `draft`-Artefakte werden transient auf Pfad, Blob, Inhalt und Root-Typ geprüft. Nur `supported`-Artefakte werden als App-Daten ausgeliefert; die Namespace-Collection materialisiert alle regulären `.csv`-Dateien direkt aus ihrem registrierten Verzeichnis. `ns`-Referenzen der unterstützten Kataloge werden separat als zulässige fachliche Auflösungsquellen validiert. Eine Lifecycle-Promotion ändert auch den kanonischen Manifest-v2-Payload und seine `signatureSha256`; Registry und Manifest mit abweichendem Lifecycle werden fail-closed abgelehnt.
 5. **Katalog-Lineage**: Die drei Grundschutz++-Quellkataloge und das Profil sind `preview`-Artefakte. Nach ihrer eigenen Versions- und Root-Typ-Prüfung folgt `catalogLineage.mjs` ausschließlich die belegte Dreifachkante `profile.import.href` (Fragment) → genau eine `back-matter.resource` → exakter `rlinks.href`-String → expliziter Registry-Eintrag. Fehlende konfigurierte Importe sowie fehlende oder mehrdeutige Ressourcen bleiben benannte, nicht vollständige Zustände. Relative Pfade werden dabei weder normalisiert noch über Netzwerk, Dateisystem oder den generischen Referenzresolver aufgelöst. Nur die serialisierte Projektion steht im Sidecar; die Quellkatalog-Bytes werden nicht ausgeliefert.
@@ -95,7 +95,7 @@ getrennt von einem fehlenden beziehungsweise ungültigen eingecheckten Manifest
 gemeldet. Für lokale Drift oder fehlende lokale Daten lautet die Reparatur:
 
 ```bash
-npm run fetch-catalog
+npm run setup
 ```
 
 CI liest `snapshotCommitSha` aus dem eingecheckten Manifest und setzt ihn als

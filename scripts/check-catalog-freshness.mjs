@@ -13,7 +13,7 @@ import {
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 const SHORT_SHA_LENGTH = 12;
-const FETCH_REMEDIATION = 'Führe `npm run fetch-catalog` aus.';
+const FETCH_REMEDIATION = 'Führe `npm run setup` aus.';
 
 function isMissingFileError(error) {
   return Boolean(

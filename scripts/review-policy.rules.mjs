@@ -138,7 +138,7 @@ export const scopedRules = [
     key: 'R8-actions-pinning',
     scopes: ['.github/workflows/**', '.github/actions/**'],
     body:
-      `Jede GitHub Action wird auf einen vollständigen 40-stelligen Commit-SHA gepinnt, mit der Version als nachgestelltem Kommentar. Tag- oder Branch-Referenzen sind ein blockierender Befund. Workflow-Berechtigungen bleiben minimal, und Checkout-Schritte ohne Push-Bedarf setzen persist-credentials: false.`,
+      `Jede fremde GitHub Action wird auf einen vollständigen 40-stelligen Commit-SHA gepinnt, mit der Version als nachgestelltem Kommentar. Tag- oder Branch-Referenzen sind ein blockierender Befund. Self-Repository-Referenzen der Form $/ lösen dagegen auf den unveränderlichen Commit auf, der den Workflow ausführt, und tragen deshalb keinen externen Ref; lokale Composite Actions verwenden ausschließlich diese Form, nie die arbeitsbereichsrelative Form ./. Workflow-Berechtigungen bleiben minimal, und Checkout-Schritte ohne Push-Bedarf setzen persist-credentials: false.`,
   },
   {
     key: 'R9-vite-env-oeffentlich',
@@ -226,7 +226,7 @@ export const scopedRules = [
       'scripts/verify-upstream-oscal.test.ts',
       'src/domain/sourceRegistry.mjs',
       'upstream-manifest.json',
-      '.github/workflows/ci.yml',
+      '.github/workflows/validate.yml',
       'docs/OSCAL_VALIDATION.md',
     ],
     body:
@@ -244,7 +244,7 @@ export const scopedRules = [
       'schemas/**',
       '.gitattributes',
       'vite.config.ts',
-      '.github/workflows/ci.yml',
+      '.github/workflows/validate.yml',
     ],
     body:
       `Stufe 3 validiert im Modul-Worker mit ajv 8.20.0 gegen die eingecheckten NIST-Schemas unter schemas/oscal/. Verbindlich: Die Zelle kommt ausschließlich aus dem Schema-Pin der Stufe 2, nie aus Dokumentinhalt, und es gibt keinen Fallback auf eine Nachbarversion. src/domain/oscalSchemaBundle.ts führt je Zelle ein ausgeschriebenes import()-Literal; ein aus Daten oder Template zusammengesetzter Importpfad ist ein blockierender Befund. Zum Laufzeitbezug gilt die Grenze genau so: Ein Schema-, Validator- oder Constraint-Bezug von einer FREMDEN Origin zur Laufzeit ist ein blockierender Befund — insbesondere github.com (Release-Asset) und csrc.nist.gov (die $id der Schemas). Der lazy import() des ausgewählten Schema-Chunks von DERSELBEN Origin ist dagegen der vorgesehene Weg und kein Befund; er ist die Voraussetzung dafür, dass nicht alle 30 Schemas im Worker liegen. Eine Dokumentations- oder Kommentaraussage, die jeden Laufzeit-Netzbezug ausschließt statt nur den fremd-originbezogenen, ist ihrerseits ein Befund. validateFormats bleibt false, allErrors bleibt false, unicodeRegExp wird nicht gesetzt — ein Abschalten von unicodeRegExp lässt jedes OSCAL-Dokument am TokenDatatype-Muster scheitern und ist ein blockierender Befund. Ajvs message und params dürfen keine Diagnose erreichen; übernommen werden nur der Keyword-abgeleitete projekteigene Code und der redigierte instancePath, unbekannte Segmente werden zum Platzhalter. Ein nicht in der Keyword-Positivliste geführter Befund wird OSCAL_VALIDATOR_OUTPUT_UNRECOGNIZED, eine nicht ladbare oder nicht kompilierbare Zelle OSCAL_SCHEMA_UNAVAILABLE; Stufe 3 darf nie übersprungen oder als bestanden ausgewiesen werden. npm run verify-oscal-schemas ist das netzfreie CI-Gate über SHA-256, $id, draft-07 und die Abwesenheit ungepinnter Dateien unter schemas/oscal/; ein fetch in scripts/verify-oscal-schemas.mjs, ein Entfernen dieses CI-Schritts, ein Entfernen von worker.format: 'es' aus vite.config.ts oder ein Aufweichen von .gitattributes (schemas/oscal/** -text) ist jeweils ein blockierender Befund. Eine Laufzeit-Hashprüfung der gebündelten Schemas wird nicht verlangt: Der Bundler transformiert die Bytes, ein mitgeliefertes Soll würde sich selbst bestätigen.`,
@@ -269,11 +269,11 @@ export const scopedRules = [
     scopes: [
       'docs/ARCHITECTURE.md',
       'scripts/verify-documented-versions.mjs',
-      '.github/workflows/ci.yml',
+      '.github/workflows/validate.yml',
       'package.json',
     ],
     body:
-      `Die in docs/ARCHITECTURE.md zugesagten Versionsangaben — die Abhängigkeitstabelle mit der Kopfzeile "Abhängigkeit | Exakte Version | Lizenz | Zweck" und der Absatz zur Chromium-Herkunft — werden von scripts/verify-documented-versions.mjs gegen package.json und node_modules/playwright-core/browsers.json geprüft; der Schritt läuft als npm run verify-documented-versions im CI-Job validate. Melde als blockierenden Befund, wenn ein Diff diesen Schritt entfernt, seinen Fehlschlag folgenlos macht oder eine geprüfte Angabe ersatzlos aus der Dokumentation streicht. Der Guard ist fail-closed und schlägt auch fehl, wenn eine Angabe nicht mehr auffindbar ist; eine Umformulierung, die das auslöst, ist kein Befund, solange die Angabe im selben Diff wieder prüfbar wird.`,
+      `Die in docs/ARCHITECTURE.md zugesagten Versionsangaben — die Abhängigkeitstabelle mit der Kopfzeile "Abhängigkeit | Exakte Version | Lizenz | Zweck" und der Absatz zur Chromium-Herkunft — werden von scripts/verify-documented-versions.mjs gegen package.json und node_modules/playwright-core/browsers.json geprüft; der Schritt läuft als npm run verify-documented-versions im Job validate (.github/workflows/validate.yml). Melde als blockierenden Befund, wenn ein Diff diesen Schritt entfernt, seinen Fehlschlag folgenlos macht oder eine geprüfte Angabe ersatzlos aus der Dokumentation streicht. Der Guard ist fail-closed und schlägt auch fehl, wenn eine Angabe nicht mehr auffindbar ist; eine Umformulierung, die das auslöst, ist kein Befund, solange die Angabe im selben Diff wieder prüfbar wird.`,
   },
   {
     key: 'R22-greptile-check-run',
@@ -287,9 +287,14 @@ export const scopedRules = [
   },
   {
     key: 'R23-sonar-analysekonfiguration',
-    scopes: ['sonar-project.properties', '.github/workflows/sonar.yml'],
+    scopes: [
+      'sonar-project.properties',
+      '.github/workflows/sonar.yml',
+      '.github/workflows/validate.yml',
+      'scripts/sonar-token-guard.mjs',
+    ],
     body:
-      `sonar-project.properties und .github/workflows/sonar.yml bestimmen aus dem PR-Head heraus, was SonarQube ueberhaupt misst — ein Pull Request kann sich darueber selbst eine Gate-Ausnahme erteilen. Beide Pfade brauchen deshalb ein Agenten-Cross-Review; ein Bot-Approval allein begruendet hier keine Merge-Faehigkeit. Verbindlich: sonar.coverage.exclusions bildet den Messbereich von vite.config.ts ab und geht nicht darueber hinaus — ein Muster, das von Vitest gemessene Quellen ausschliesst, ist ein blockierender Befund, weil es Zeilen aus dem new_coverage-Gate nimmt, fuer die die Coverage-Schwellen weiter gelten. Jede Aufweitung von sonar.cpd.exclusions oder sonar.coverage.exclusions nennt im Diff ihren Grund und bleibt so eng wie technisch moeglich. Ein Diff, der die Ausloeser des Workflows einengt, die Analyse fuer eine Branch- oder Pull-Request-Klasse ueberspringt oder den Scanner-Schritt entfernt, ist ein blockierender Befund; das Ueberspringen mangels Secret bei Fork-Beitraegen ist die einzige zulaessige Ausnahme und muss im Lauf sichtbar gemeldet werden.`,
+      `sonar-project.properties, .github/workflows/sonar.yml, .github/workflows/validate.yml und scripts/sonar-token-guard.mjs bestimmen aus dem PR-Head heraus, was SonarQube ueberhaupt misst — ein Pull Request kann sich darueber selbst eine Gate-Ausnahme erteilen. Alle vier Pfade brauchen deshalb ein Agenten-Cross-Review; ein Bot-Approval allein begruendet hier keine Merge-Faehigkeit. Die Analyse liegt seit GSPP-416 auf zwei Wegen: validate.yml traegt den Job sonarqube fuer Pull Requests, der den Coverage-Report des Jobs validate als Artefakt uebernimmt, sonar.yml den Push-Pfad fuer main und develop mit eigenem Coverage-Lauf. Verbindlich: sonar.coverage.exclusions bildet den Messbereich von vite.config.ts ab und geht nicht darueber hinaus — ein Muster, das von Vitest gemessene Quellen ausschliesst, ist ein blockierender Befund, weil es Zeilen aus dem new_coverage-Gate nimmt, fuer die die Coverage-Schwellen weiter gelten. Jede Aufweitung von sonar.cpd.exclusions oder sonar.coverage.exclusions nennt im Diff ihren Grund und bleibt so eng wie technisch moeglich. Blockierender Befund ist jeder Diff, der die Ausloeser eines der beiden Workflows einengt, die Analyse fuer eine Branch- oder Pull-Request-Klasse ueberspringt, den Scanner-Schritt entfernt, oder die Kette aus Coverage-Lauf, Artefakt-Upload in validate und Download im Job sonarqube unterbricht — ohne diesen Report misst SonarQube den neuen Code als vollstaendig ungedeckt. Ebenso blockierend: den Coverage-Lauf in validate auf npm run test ohne Schwellen zurueckzustellen. Das Ueberspringen mangels Secret bei Fork-Beitraegen ist die einzige zulaessige Ausnahme, bleibt an scripts/sonar-token-guard.mjs gebunden und muss im Lauf sichtbar gemeldet werden. Der Guard erhaelt ausschliesslich das Ergebnis des Vergleichs secrets.SONAR_CI != '' als SONAR_TOKEN_AVAILABLE, nie den Tokenwert: Er stammt bei einem Pull Request wie die Workflow-Datei aus dem PR-Head und ist damit vom Beitragenden bestimmbar. Ein Diff, der SONAR_TOKEN in die Umgebung eines Schritts legt, der Code aus dem Repository ausfuehrt, ist ein blockierender Befund; das Secret gehoert allein in den gepinnten Scanner-Schritt.`,
   }
 ];
 

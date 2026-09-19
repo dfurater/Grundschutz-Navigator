@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  buildFetchArtifacts,
+  buildFetchArtifacts as buildConfiguredFetchArtifacts,
   serializeJsonArtifact,
   validateCatalogControlIdentities,
   validateFetchedCatalogArtifact,
@@ -78,6 +78,11 @@ const temporaryOutputDirectories = new Set<string>();
 
 /** Die vom echten Grundschutz++-Katalog deklarierte Modellversion (GSPP-283). */
 const CATALOG_OSCAL_VERSION = '1.1.3';
+
+const buildFetchArtifacts = (
+  logger: Parameters<typeof buildConfiguredFetchArtifacts>[0],
+  options: Parameters<typeof buildConfiguredFetchArtifacts>[1] = {},
+) => buildConfiguredFetchArtifacts(logger, { snapshotSelection: 'latest', ...options });
 
 /**
  * Minimaler OSCAL-Rumpf für ein Testartefakt. `metadata.oscal-version` ist
@@ -522,9 +527,16 @@ describe('fetch-catalog', () => {
 
   it('accepts only full hexadecimal snapshot SHAs', () => {
     expect(resolveOptionalSnapshotSha('a'.repeat(40))).toBe('a'.repeat(40));
-    expect(resolveOptionalSnapshotSha(undefined)).toBe('');
+    expect(resolveOptionalSnapshotSha('latest')).toBe('');
+    expect(() => resolveOptionalSnapshotSha(undefined)).toThrow(TypeError);
+    expect(() => resolveOptionalSnapshotSha(undefined)).toThrow(
+      'BSI_SNAPSHOT_SHA must be set to "latest" or a 40-character hexadecimal commit SHA',
+    );
+    expect(() => resolveOptionalSnapshotSha('   ')).toThrow(
+      'BSI_SNAPSHOT_SHA must be set to "latest" or a 40-character hexadecimal commit SHA',
+    );
     expect(() => resolveOptionalSnapshotSha('main')).toThrow(
-      'BSI_SNAPSHOT_SHA must be a 40-character hexadecimal commit SHA',
+      'BSI_SNAPSHOT_SHA must be set to "latest" or a 40-character hexadecimal commit SHA',
     );
   });
 

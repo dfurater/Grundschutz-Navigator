@@ -44,6 +44,7 @@ public/data/
 
 # Interne Dokumente (Produktvision, Pläne, Specs, Audits — nicht im öffentlichen Repo)
 /docs/internal/
+/docs/superpowers/
 
 # Claude local settings (machine-specific paths)
 AGENTS.md
