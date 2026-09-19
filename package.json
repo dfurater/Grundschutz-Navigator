@@ -26,6 +26,7 @@
     "verify-upstream-oscal": "node scripts/verify-upstream-oscal.mjs",
     "verify-oscal-schemas": "node scripts/verify-oscal-schemas.mjs",
     "verify-documented-versions": "node scripts/verify-documented-versions.mjs",
+    "verify-node-version": "node scripts/verify-node-version.mjs",
     "sync-oscal-schemas": "node scripts/sync-oscal-schemas.mjs --write"
   },
   "engines": {

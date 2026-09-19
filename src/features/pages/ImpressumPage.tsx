@@ -3,7 +3,6 @@ export function ImpressumPage() {
   const strasse = import.meta.env.VITE_IMPRESSUM_STRASSE;
   const plzOrt = import.meta.env.VITE_IMPRESSUM_PLZ_ORT;
   const email = import.meta.env.VITE_IMPRESSUM_EMAIL;
-  const telefon = import.meta.env.VITE_IMPRESSUM_TELEFON;
 
   const hasData = name && strasse && plzOrt && email;
 
@@ -40,7 +39,6 @@ export function ImpressumPage() {
                   {email}
                 </a>
               </p>
-              {telefon && <p>Telefon: {telefon}</p>}
             </div>
           </section>
         </>

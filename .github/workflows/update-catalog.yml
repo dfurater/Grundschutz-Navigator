@@ -20,6 +20,7 @@ concurrency:
 jobs:
   check-and-sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       CATALOG_SYNC_RULESET_UPDATED_AT: ${{ vars.CATALOG_SYNC_RULESET_UPDATED_AT }}
 
@@ -30,14 +31,8 @@ jobs:
           ref: main
           persist-credentials: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
+      - name: Setup Node.js and install dependencies
+        uses: $/.github/actions/setup-node-env
 
       - name: Verify repository merge policy
         env:
@@ -67,9 +62,15 @@ jobs:
           fi
           echo "GitHub App token has repository access."
 
+      # Bewusst nicht $/.github/actions/fetch-pinned-catalog: Dieser Lauf fordert
+      # mit `latest` ausdrücklich den neuesten Upstream-Stand an, weil er den Pin
+      # gerade erst fortschreibt. Die Action liest den Pin dagegen aus
+      # upstream-manifest.json; beides hinter einem Schalter zu vereinen, würde
+      # den Unterschied zwischen „gepinnt bauen" und „Pin erneuern" verdecken.
       - name: Fetch BSI catalog and official vocabularies
         env:
           GH_TOKEN: ${{ github.token }}
+          BSI_SNAPSHOT_SHA: latest
         run: npm run fetch-catalog
 
       - name: Compare with tracked upstream manifest
@@ -87,7 +88,7 @@ jobs:
             exit 1
           fi
 
-          DELIMITER="gha_delimiter_$(date +%s)_$$"
+          DELIMITER="gha_delimiter_$(openssl rand -hex 32)"
           {
             printf 'changed=%s\n' "$(printf '%s' "$SYNC_JSON" | jq -r '.changed')"
             printf 'local_signature=%s\n' "$(printf '%s' "$SYNC_JSON" | jq -r '.local_signature')"
@@ -203,7 +204,7 @@ jobs:
               "$SNAPSHOT_SHA" "$SNAPSHOT_SHA"
             printf '**Manifest-Signatur:** `%s`\n' "$REMOTE_SIGNATURE"
             echo ""
-            echo "Auto-Merge wird erst nach Validate, Catalog-Sync-Guard und CodeQL aktiviert."
+            echo "Auto-Merge ist aktiviert; GitHub führt den Merge aus, sobald die Schutzregeln des Zielbranches erfüllt sind."
           } > "$RUNNER_TEMP/catalog-sync-pr-body.md"
 
           if [ -n "$EXISTING_PR_NUMBER" ]; then

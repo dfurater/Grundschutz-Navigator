@@ -1980,7 +1980,7 @@ werden.
 - **Bauzeitlauf:** Verpflichtend nach `npm run fetch-catalog`, schreibt
   verifizierte Rohbytes nach `.cache/upstream-corpus/` (gitignoriert,
   10 Dokumente), kein zweiter Fetch, keine Env-Variablen-Pfade, kein
-  Überspringen. Workflows `ci.yml`/`deploy.yml` führen
+  Überspringen. Workflows `validate.yml`/`deploy.yml` führen
   `npm run test:profile-resolution` (eigene Vitest-Lane
   `scripts/vitest.corpus.config.ts`) direkt nach dem Fetch aus.
 
