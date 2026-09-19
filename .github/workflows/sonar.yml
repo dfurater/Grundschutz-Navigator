@@ -4,33 +4,39 @@ name: SonarQube
 # GitHub-Default-Branch messen konnte — seit dem Release-Branch-Modell also
 # ausschliesslich `develop`, waehrend `main` als Freigabelinie unanalysiert blieb.
 #
-# Bewusst ein eigener Workflow: ci.yml startet nur ueber `pull_request` und
+# Diese Datei traegt seit GSPP-416 allein den Push-Pfad und damit die Messung
+# der beiden langlebigen Branches. Die Pull-Request-Analyse liegt im Job
+# `sonarqube` in `validate.yml`: Sie braucht den Coverage-Report aus `validate`,
+# und nur ein Job desselben Workflows kann ihn uebernehmen. Ein Pull Request
+# erzeugt damit genau einen vollstaendigen Suite-Lauf statt zweier.
+#
+# Bewusst ein eigener Workflow: `validate.yml` startet ueber `pull_request` und
 # `workflow_dispatch`. Ein dort ergaenzter Push-Ausloeser wuerde saemtliche Jobs
-# jener Datei bei jedem Push mitlaufen lassen.
+# jener Datei — Schema-Verifikation, go-oscal-Lauf, Browser-Tests, Build — bei
+# jedem Push auf `main` und `develop` mitlaufen lassen.
 
 on:
   push:
     branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
-    types: [opened, reopened, synchronize]
 
 permissions:
   contents: read
 
 concurrency:
-  group: sonar-${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   sonarqube:
     name: SonarQube Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
-      # Vollstaendige Historie: Die PR-Analyse braucht den Quellbranch ausgecheckt
-      # und den Zielbranch im lokalen Repository, sonst kann SonarQube den neuen
-      # Code nicht bestimmen.
+      # Vollstaendige Historie: Der Scanner liest die Git-Blame-Daten des
+      # Arbeitsbaums, um Befunde einem Autor und einem Datum zuzuordnen und
+      # daraus die New-Code-Periode des langlebigen Branches zu bestimmen. Ein
+      # flacher Klon liefert sie nicht.
       - name: Checkout full history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -39,58 +45,35 @@ jobs:
 
       # Bewusst vor jedem teuren Schritt: Ohne diesen Guard liefe erst der
       # gesamte Testlauf, bevor der Scanner mit einem Authentifizierungsfehler
-      # abbricht.
+      # abbricht. Die Fallunterscheidung steht seit GSPP-416 in
+      # scripts/sonar-token-guard.mjs, weil der Guard hier und im Job
+      # `sonarqube` in `validate.yml` gebraucht wird; die Begruendung beider
+      # Faelle traegt das Skript.
       #
-      # Zwei Faelle ohne Token, die auseinandergehalten werden muessen. Bei
-      # Beitraegen aus einem Fork stellt GitHub Repository-Secrets grundsaetzlich
-      # nicht bereit — das ist kein Konfigurationsfehler, und ein harter
-      # Fehlschlag wuerde jeden externen Beitrag blockieren. Die Analyse wird
-      # dort sichtbar uebersprungen und holt den Stand nach dem Merge auf
-      # develop nach. Fehlt das Token dagegen im eigenen Repository, ist die
-      # Konfiguration defekt und der Lauf schlaegt fehl; bei Dependabot-Laeufen
-      # ist die Ursache in aller Regel ein fehlendes Dependabot-Secret.
+      # `IS_FORK` bleibt hier ungesetzt: Ein Push auf `main` oder `develop`
+      # dieses Repositoriums kommt aus keinem Fork. Der Guard ist fail-closed
+      # und wertet jeden anderen Wert als `true` als eigenes Repository — ein
+      # fehlendes Token laesst den Lauf also scheitern. Die Fork-Ausnahme gilt
+      # allein dem Pull-Request-Pfad in `validate.yml`.
       - name: Analyse-Token pruefen
         id: token
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_CI }}
-          IS_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
-        run: |
-          if [ -n "${SONAR_TOKEN}" ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          elif [ "${IS_FORK}" = "true" ]; then
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Fork-Beitrag: GitHub stellt Repository-Secrets hier nicht bereit. Die SonarQube-Analyse wird uebersprungen; der Stand wird nach dem Merge auf develop gemessen."
-          else
-            echo "::error::Secret SONAR_CI ist in diesem Lauf nicht verfuegbar. Bei Dependabot-Laeufen muss das Token zusaetzlich unter Settings > Secrets and variables > Dependabot hinterlegt sein."
-            exit 1
-          fi
+          SONAR_TOKEN_AVAILABLE: ${{ secrets.SONAR_CI != '' }}
+        run: node scripts/sonar-token-guard.mjs
 
-      - name: Setup Node.js
+      - name: Setup Node.js and install dependencies
         if: steps.token.outputs.available == 'true'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        if: steps.token.outputs.available == 'true'
-        run: npm ci --ignore-scripts
-
-      - name: Read pinned snapshot SHA from manifest
-        if: steps.token.outputs.available == 'true'
-        id: manifest
-        run: |
-          sha=$(jq -r '.snapshotCommitSha' upstream-manifest.json)
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+        uses: $/.github/actions/setup-node-env
 
       # Der Testlauf prueft ueber `globalSetup` die Frische der Katalogdaten und
-      # schlaegt ohne sie fehl. Gepinnt auf denselben Snapshot wie in ci.yml.
-      - name: Fetch BSI catalog from pinned snapshot
+      # schlaegt ohne sie fehl. Gepinnt auf denselben Snapshot wie in
+      # validate.yml und deploy.yml: Seit GSPP-419 lesen alle drei ihn aus
+      # derselben Action statt aus drei wortgleichen Kopien.
+      - name: Read the pinned snapshot and fetch the BSI catalog
         if: steps.token.outputs.available == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BSI_SNAPSHOT_SHA: ${{ steps.manifest.outputs.sha }}
-        run: npm run fetch-catalog
+        uses: $/.github/actions/fetch-pinned-catalog
+        with:
+          github-token: ${{ github.token }}
 
       # Erzeugt coverage/lcov.info fuer die Abdeckungsmessung in SonarQube und
       # erzwingt dabei die in vite.config.ts gepinnten Schwellen.

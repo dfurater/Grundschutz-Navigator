@@ -1,0 +1,43 @@
+name: Setup Node environment
+description: >-
+  Node-Laufzeit aus .nvmrc und Installation aus dem Lockfile. Gemeinsame Fassung
+  der Setup-Schicht, die zuvor in sechs Workflows wortgleich stand (GSPP-419).
+
+# Der Checkout bleibt bewusst außerhalb dieser Action, weil die Aufrufer sich
+# darin unterscheiden: `ref`, `fetch-depth` und der Zweck des Klons weichen von
+# Job zu Job ab, und eine Kapselung, die das verdeckte, wäre schlechter als die
+# Wiederholung. Ein Checkout muss trotzdem vorausgegangen sein — `npm ci` und
+# `.nvmrc` lesen beide aus $GITHUB_WORKSPACE.
+#
+# Die Aufrufer referenzieren diese Action über die self-repository-Syntax `$/`
+# (GitHub, allgemein verfügbar seit 2026-07-30) statt über das
+# arbeitsbereichsrelative `./`. `$/` löst auf das Repository im gerade
+# ausgeführten Commit auf und hängt damit nicht am Zustand des Dateisystems zur
+# Laufzeit; `./` könnte eine Action laden, die ein vorheriger Schritt erst
+# hineinkopiert hat. Der zizmor-Audit `self-repository` im Pflichtcheck
+# `validate` erzwingt das.
+#
+# `node-version-file` löst dagegen gegen $GITHUB_WORKSPACE auf (verifiziert
+# gegen actions/setup-node@8207627, src/main.ts), nicht gegen das Verzeichnis
+# dieser Action. `.nvmrc` im Wurzelverzeichnis ist damit von hier aus lesbar und
+# bleibt die einzige Stelle, an der die Node-Version steht;
+# scripts/verify-node-version.mjs prüft sie gegen `engines.node` in package.json
+# und verbietet ein erneutes Literal in Workflows und Actions.
+#
+# `npm ci --ignore-scripts` bleibt die einzige Installationsform: Das Lockfile
+# ist die einzige Quelle, und Lifecycle-Skripte transitiver Abhängigkeiten
+# laufen im CI-Setup nicht. `scripts/ci-supply-chain-hardening.test.ts` erzwingt
+# das für Workflows und Actions gleichermaßen.
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version-file: .nvmrc
+        cache: npm
+
+    - name: Install dependencies
+      shell: bash
+      run: npm ci --ignore-scripts

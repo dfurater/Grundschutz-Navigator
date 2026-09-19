@@ -204,15 +204,25 @@ scripts/              # Build-Skripte
   ├── catalog-sync-policy.mjs     # Prüfung der Repository-Policy
   ├── sync-upstream-manifest.mjs  # Manifest-Sync für update-catalog.yml
   ├── verify-catalog-deploy.mjs   # Post-Merge-Deploy bestätigen oder Fallback freigeben
-  └── check-deploy-idempotency.mjs # Redundanten Fallback-Deploy desselben Commits verhindern
+  ├── check-deploy-idempotency.mjs # Redundanten Fallback-Deploy desselben Commits verhindern
+  ├── verify-node-version.mjs     # .nvmrc gegen engines.node und gegen Versionsliterale prüfen
+  └── workflowDefinitions.mjs     # Gemeinsame Sammlung der Workflow- und Action-Definitionen
 
 upstream-manifest.json            # Gepinnter Upstream-Snapshot (Manifest v2)
 
 .github/workflows/
   ├── deploy.yml                  # GitHub Pages Deployment
-  ├── ci.yml                      # CI Pipeline
+  ├── ci.yml                      # PR-Metadatenverträge (documentation-contract, catalog-sync-guard)
+  ├── validate.yml                # Vollständige Verifikations- und Build-Lane (validate, sonarqube)
+  ├── sonar.yml                   # SonarQube-Analyse des Push-Pfads auf main und develop
   ├── update-catalog.yml          # Automatischer Katalog-Sync
   └── verify-catalog-merge.yml    # Post-Merge-Prüfung und Deploy-Fallback
+
+.github/actions/
+  ├── setup-node-env/             # Node aus .nvmrc plus npm ci --ignore-scripts
+  └── fetch-pinned-catalog/       # Gepinnte Snapshot-SHA lesen und Katalog holen
+
+.nvmrc                            # Einzige Quelle der Node-Version (gegen engines.node geprüft)
 ```
 
 ## Datenfluss
@@ -829,9 +839,8 @@ Konfiguriert in `tsconfig.app.json` (`compilerOptions.paths`) und `vite.config.t
 | `VITE_IMPRESSUM_STRASSE` | App (Build) | Impressum: Straße |
 | `VITE_IMPRESSUM_PLZ_ORT` | App (Build) | Impressum: PLZ und Ort |
 | `VITE_IMPRESSUM_EMAIL` | App (Build) | Impressum: E-Mail |
-| `VITE_IMPRESSUM_TELEFON` | App (Build) | Impressum: Telefon |
 | `BUILD_BASE` | Build | Überschreibt die GitHub-Pages-Base (`vite.config.ts`) |
-| `BSI_SNAPSHOT_SHA` | fetch-catalog | Pinnt den Upstream-Abruf auf einen Commit |
+| `BSI_SNAPSHOT_SHA` | fetch-catalog | Vollständige Commit-SHA für einen festgelegten BSI-Datenstand; ausschließlich der Catalog-Sync fordert mit `latest` ausdrücklich den neuesten Stand an. Fehlende oder leere Werte sind ungültig. |
 | `GH_TOKEN` / `GITHUB_TOKEN` | fetch-catalog | Token für die GitHub-API (optional lokal, gesetzt in CI) |
 | `CATALOG_SYNC_APP_CLIENT_ID` | Catalog-Sync | Repository-Variable mit der Client-ID der dedizierten GitHub App |
 | `CATALOG_SYNC_APP_PRIVATE_KEY` | Catalog-Sync | Actions-Secret mit dem Private Key der dedizierten GitHub App |
@@ -840,6 +849,18 @@ Konfiguriert in `tsconfig.app.json` (`compilerOptions.paths`) und `vite.config.t
 Die Impressum-Werte kommen lokal aus `.env.local` (nicht committet, siehe `.env.local.example`) und in CI aus GitHub Actions Secrets.
 
 `import.meta.env.BASE_URL` ist keine setzbare Umgebungsvariable, sondern eine von Vite aus der `base`-Konfiguration generierte Konstante; der projektseitige Override läuft über `BUILD_BASE`.
+
+## CI-Pipeline
+
+Die Pull-Request-Prüfung liegt in zwei Workflows, die sich durch ihre Ereignisliste unterscheiden. `.github/workflows/ci.yml` führt `documentation-contract` und `catalog-sync-guard`; beide urteilen über die Pull-Request-Metadaten — der eine wertet den Body gegen den Dokumentationsvertrag aus, der andere liest Titel und Body für Sync-Vertrag und Release-Marke. Seine Ereignisliste führt deshalb `edited` mit, damit eine Titel- oder Body-Bearbeitung neu beurteilt wird. `.github/workflows/validate.yml` führt `validate`: Schema-Verifikation, Node-Versionsquelle, Katalog-Fetch, Profilauflösung, go-oscal-Lauf, Lint, Tests mit Coverage, Browser-Tests, Build und — seit [GSPP-418](https://linear.app/grundschutz-plus-plus/issue/GSPP-418) als letzte Schritte desselben Jobs — den zizmor-Audit (Image direkt per Digest gepinnt, `--offline`, Persona auditor, Config `.github/zizmor.yml`). Dieser Job liest weder Titel noch Body, und seine Ereignisliste führt `edited` nicht. Dieselbe Datei führt seit [GSPP-416](https://linear.app/grundschutz-plus-plus/issue/GSPP-416) den nachgelagerten Job `sonarqube`; die Begründung steht unter [`sonar-project.properties`](#sonar-projectproperties).
+
+Die Trennung ist der Grund für die zweite Datei. Ein Job-`if` im gemeinsamen Workflow hätte denselben Lauf gespart, aber eine Lücke geöffnet: Ein per `if` übersprungener Job meldet laut GitHub-Dokumentation den Status `Success` und erzeugt dabei einen neuen Check-Run unter demselben Namen. Da GitHub je Kontext den jüngsten Check-Run wertet, ersetzte eine bloße Body-Bearbeitung ein fehlgeschlagenes `validate` auf unverändertem Head durch einen Erfolg — der Pflichtcheck ließe sich so umgehen. Ohne abonniertes `edited` entsteht dagegen überhaupt kein Lauf und damit kein neuer Check-Run; das reale Ergebnis des letzten Code-Laufs bleibt stehen. Das Gegenstück dazu ist die bekannte Falle, einen *erforderlichen* Workflow über Pfad- oder Branch-Filter innerhalb eines abonnierten Ereignisses zu unterdrücken: Dort bliebe der Check auf `Pending` und blockierte den Merge. Hier wird kein Filter gesetzt, sondern das Ereignis gar nicht erst abonniert.
+
+`edited` deckt neben Titel und Body auch den Wechsel des Base-Branches ab. Auch er löst `validate.yml` nicht aus, und das ist richtig: Die Schritte dieses Jobs prüfen allein den Head-Stand und kennen den Base nicht. Die base-abhängigen Prüfungen liegen in `documentation-contract` und `catalog-sync-guard` und laufen weiter.
+
+Die Jobnamen `validate`, `catalog-sync-guard` und `documentation-contract` bleiben unverändert, weil beide Rulesets (`develop`, `main-release`) sie namentlich als Required Status Check fordern. Der Kontextname eines Actions-Checks ist der Jobname, nicht die Workflow-Datei; die Verschiebung ist für die Rulesets deshalb folgenlos. Der zizmor-Audit läuft bewusst als Schritte im Job `validate` statt als eigener Job: Ein neuer Jobname wäre ein neuer Check-Kontext außerhalb beider Rulesets und blockierte keinen Merge; er ließe sich auch nicht nachträglich erzwingen, ohne die Catalog-Sync-Lane stillzulegen (vgl. `ci.yml`, release-tree-guard). Als Schritte lässt ein roter Audit `validate` fehlschlagen, der Pflichtcheck ist.
+
+Beide Workflows tragen eine `concurrency`-Gruppe je `github.ref`, wie `sonar.yml` es bereits tut, und brechen überholte Läufe ab: Ein überholter Lauf trifft eine Aussage über einen Stand, den ein Folge-Push oder eine spätere Bearbeitung bereits ersetzt hat. `cancel-in-progress` gilt nur für Pull-Request-Läufe; ein laufender manueller `workflow_dispatch` wird nicht abgebrochen. Ein noch wartender Lauf kann dagegen von einem neueren derselben Gruppe verdrängt werden, weil GitHub je Gruppe nur einen Lauf in der Warteschlange hält — das gilt für jede Concurrency-Gruppe und ist unabhängig von `cancel-in-progress`.
 
 ## Deployment
 
@@ -852,14 +873,51 @@ Das Deployment erfolgt automatisch via GitHub Actions bei Push auf `main` (`.git
 5. SLSA-Provenance wird generiert (`actions/attest` über `dist/**`)
 6. Deployment auf GitHub Pages
 
+### Gemeinsame Setup-Schicht
+
+Setup und Installation stehen seit [GSPP-419](https://linear.app/grundschutz-plus-plus/issue/GSPP-419) in Composite Actions unter `.github/actions/`, nicht mehr als wortgleiche Blöcke in sechs Workflows. `setup-node-env` richtet Node ein und installiert; `fetch-pinned-catalog` liest die gepinnte Snapshot-SHA aus `upstream-manifest.json` und holt den Katalog von genau diesem Stand. Die drei Jobs, die gegen den Pin bauen — `validate`, `build-and-deploy` und der Push-Pfad in `sonar.yml` — rufen beide auf.
+
+Die Aufrufer referenzieren beide Actions über die self-repository-Syntax `$/` statt über das arbeitsbereichsrelative `./`. `$/` löst auf das Repository im gerade ausgeführten Commit auf und hängt damit nicht am Zustand des Dateisystems zur Laufzeit; `./` könnte eine Action laden, die ein vorheriger Schritt erst hineinkopiert hat. Der zizmor-Audit `self-repository` im Pflichtcheck `validate` erzwingt diese Form.
+
+Der Checkout bleibt bewusst außerhalb der Actions, weil die Aufrufer sich darin unterscheiden: `ref`, `fetch-depth` und der Zweck des Klons weichen von Job zu Job ab, und eine Kapselung, die das verdeckte, wäre schlechter als die Wiederholung. Vorausgegangen sein muss er trotzdem — `npm ci`, `.nvmrc` und `upstream-manifest.json` lesen alle aus `$GITHUB_WORKSPACE`. Zwei Aufrufer bleiben aus benanntem Grund bei einer eigenen Fassung: `greptile-review-nudge` installiert nicht und legte mit der gemeinsamen Action eine npm-Cache-Datei an, die es nie füllt; `update-catalog` fordert mit `BSI_SNAPSHOT_SHA: latest` ausdrücklich den neuesten Upstream-Stand an, weil es den Pin gerade fortschreibt statt ihn zu lesen.
+
+Die Node-Version steht ausschließlich in `.nvmrc`. Jedes Setup liest sie über `node-version-file`, das `actions/setup-node` gegen `$GITHUB_WORKSPACE` auflöst und das deshalb auch aus einer Composite Action heraus greift. `scripts/verify-node-version.mjs` hält drei Teile der Zusage: Die Angabe in `.nvmrc` ist mit `engines.node` aus `package.json` vereinbar, die tatsächlich laufende Node-Version erfüllt `engines.node`, und kein Workflow und keine Action bringt die Version als Literal zurück. Der mittlere Teil schließt die Lücke, die ein reiner Dateivergleich offenlässt: Eine `.nvmrc` mit bloßem Major benennt keine konkrete Version, sondern die jeweils neueste Veröffentlichung dieser Zeile — wird `engines.node` auf eine Mindestversion innerhalb derselben Zeile angehoben, die es noch nicht gibt, bliebe der Dateivergleich grün, während `setup-node` etwas Kleineres auflöst. Der Guard läuft hinter dem Setup-Schritt und misst deshalb das Ergebnis der Auflösung, statt es vorherzusagen. Er ist netzfrei und fail-closed, läuft als `npm run verify-node-version` im Job `validate` und schlägt auch dann fehl, wenn er seinen Gegenstand nicht mehr findet.
+
+`scripts/workflowDefinitions.mjs` trägt die gemeinsame Sammlung aus Workflow- und Action-Definitionen. Die Guards, die am Vorkommen statt an einer Dateiliste hängen — Action-Pinning, `npm ci --ignore-scripts`, `persist-credentials: false`, kein `npx`/`npm exec` —, lesen ihr Prüfgut daraus. Ohne diese eine Quelle müssten vier Stellen jede Verschiebung gleichzeitig nachziehen, und eine vergessene Stelle prüfte stillschweigend weniger, statt fehlzuschlagen.
+
 ### Ausführungsumgebung und Berechtigungen
 
-Jeder Workflow, der Abhängigkeiten installiert, verwendet `npm ci --ignore-scripts`.
+Wo Abhängigkeiten installiert werden, geschieht es mit `npm ci --ignore-scripts` —
+seit [GSPP-419](https://linear.app/grundschutz-plus-plus/issue/GSPP-419) an genau
+einer Stelle, in `.github/actions/setup-node-env`.
 Damit bleibt das Lockfile die einzige Installationsquelle, ohne dass Lifecycle-Skripte
 von transitiven Abhängigkeiten während des CI-Setups ausgeführt werden. Der
-Coverage-Lauf des Deploy-Workflows ruft Vitest mit
-`npm exec --no -- vitest run --coverage` aus der lokalen, durch `package-lock.json`
-festgelegten Installation auf. `--no` unterbindet einen Registry-Fallback.
+Coverage-Lauf des Deploy-Workflows ruft Vitest über `npm run test:coverage` und
+damit über denselben `package.json`-Eintrag auf wie jeder andere Coverage-Lauf
+des Repositoriums; Vitest stammt dabei aus der lokalen, durch
+`package-lock.json` festgelegten Installation. Kein Workflow ruft ein Binary
+über `npx` oder `npm exec` auf, die beide auf die Registry zurückfallen können.
+Der zizmor-Audit im Job `validate` ([GSPP-418](https://linear.app/grundschutz-plus-plus/issue/GSPP-418))
+bezieht sein Binary weder über `npx`/`npm exec` noch als Hash-loses PyPI-Wheel
+noch über einen Action-Wrapper: Er lässt das Image direkt per Digest laufen
+(`ghcr.io/zizmorcore/zizmor:1.30.1@sha256:a2eb396d886c053073405c7a980f2139ba2248ec172243cfa3841e57196e8101`
+aus der `support/versions`-Tabelle der Action) — ein Action-Wrapper übergibt
+nur `--no-online-audits` (schwächer als `--offline`, Greptile-P2 auf PR #256)
+und reicht immer ein Token durch. Der Schritt nutzt `docker pull` plus
+`docker run --network none` mit `--offline`, ohne Token und mit
+Read-only-Mount: kein Netz, kein Credential, kein Installer. Alle Actions
+bleiben per SHA gepinnt (erzwungen über
+`scripts/workflow-action-pinning.test.ts`, das seit
+[GSPP-419](https://linear.app/grundschutz-plus-plus/issue/GSPP-419) auch die
+Composite Actions unter `.github/actions/` erfasst); der Digest ist der Pin des
+Binaries. Mitigations: Image-Digest statt Registry-Vertrauen, `--offline` mit
+Netzsperre, Plain-Output mit Exit non-zero bei Befunden (SARIF exitt immer 0
+und taugt nicht als Blockiergate). Restrisiko: Ein manipuliertes Image meldet
+„No findings" und schaltet die Prüfung still ab — zizmor prüft sich hier
+selbst; der Digest-Pin verkleinert das Fenster auf den Registry-Digest,
+beseitigt die Klasse nicht. Die Abweichung vom reinen SHA-Action-Modell
+(Container-Digest statt Action-Code allein) ist damit dokumentiert statt
+stillschweigend.
 
 Die Standardberechtigung des Deploy-Workflows beschränkt sich auf
 `contents: read`. Schreibrechte für GitHub Pages, OIDC, Attestations und
@@ -932,7 +990,7 @@ Die Release-Vorbereitung erzeugt einen kurzlebigen Branch `release/<sha12>` aus 
 
 Zwei Bedingungen gelten vor dem PR: `git merge-base --is-ancestor origin/main <head>` erfüllt die Strict-Policy per Konstruktion, und der resultierende Baum entspricht exakt dem Baum des freigegebenen `develop`-SHA. Die zweite ist die wirksame Absicherung — sie ist genau dann erfüllt, wenn die Übernahme-Lane vorher gelaufen ist. Trägt `main` noch Inhalt, den `develop` nicht hat, weichen die Bäume ab und die Freigabe stoppt, statt unbemerkt etwas anderes auszuliefern. Damit löst sich auch die Sperre, die ein Catalog-Sync sonst auf der Freigabelinie erzeugte: Nach gelaufener Übernahme trägt der Release-PR den Manifestpfad nicht mehr im Drei-Punkt-Diff gegen `main`, und der `catalog-sync-guard` greift dort nicht.
 
-Diese Baumgleichheit gilt allerdings nur für den Augenblick der Vorbereitung. Bewegt sich `main` danach, verlangt die Strict-Policy eine Aktualisierung des Heads — und ein konfliktfreier „Update branch" trägt mains neuen Inhalt hinein, ohne dass der Vorbereitungslauf davon erführe. Der Pull Request ließe sich dann mit einem anderen Stand mergen, als sein Freigabe-Protokoll benennt. Deshalb trägt sein Body die Marke `<!-- release-source: <sha> -->`, und der Job `catalog-sync-guard` rechnet die Bedingung über einen eigenen Schritt (`scripts/release-prepare.mjs --verify-pull-request`) bei jedem `synchronize`-Ereignis nach: genau eine Marke, der markierte Stand auf `origin/develop`, und der Baum des Heads gleich dem des markierten Commits. Fehlende oder mehrdeutige Marke ist ein Fehler, kein Bestehen. Die Prüfung greift an Base `main` plus Branchpräfix `release/`; ein von Hand unter anderem Namen gestellter Pull Request nach `main` liegt außerhalb ihres Zuschnitts, weil das Modell dafür keinen Ablauf vorsieht. Sie sitzt in diesem Job statt in einem eigenen, weil nur so ihr Fehlschlag den Merge verhindert: `catalog-sync-guard` ist in beiden Rulesets Required Status Check, ein neuer Jobname wäre es nicht und ließe sich auch nicht nachträglich erzwingen, ohne die Catalog-Sync-Lane stillzulegen — deren Pull Requests zweigen von `main` ab und führen die Workflow-Fassung aus `develop` nicht, ein dort geforderter Check bliebe also unbeantwortet. Ein Release-PR trägt dagegen den Baum von `develop` und damit die Prüfung im eigenen Head. Der `git fetch` von `origin/develop` hängt am Branchpräfix und liegt deshalb nicht im Pfad der Sync-Lane.
+Diese Baumgleichheit gilt allerdings nur für den Augenblick der Vorbereitung. Bewegt sich `main` danach, verlangt die Strict-Policy eine Aktualisierung des Heads — und ein konfliktfreier „Update branch" trägt mains neuen Inhalt hinein, ohne dass der Vorbereitungslauf davon erführe. Der Pull Request ließe sich dann mit einem anderen Stand mergen, als sein Body benennt. Deshalb trägt sein Body die Marke `<!-- release-source: <sha> -->`, und der Job `catalog-sync-guard` rechnet die Bedingung über einen eigenen Schritt (`scripts/release-prepare.mjs --verify-pull-request`) bei jedem `synchronize`-Ereignis nach: genau eine Marke, der markierte Stand auf `origin/develop`, und der Baum des Heads gleich dem des markierten Commits. Fehlende oder mehrdeutige Marke ist ein Fehler, kein Bestehen. Die Prüfung greift an Base `main` plus Branchpräfix `release/`; ein von Hand unter anderem Namen gestellter Pull Request nach `main` liegt außerhalb ihres Zuschnitts, weil das Modell dafür keinen Ablauf vorsieht. Sie sitzt in diesem Job statt in einem eigenen, weil nur so ihr Fehlschlag den Merge verhindert: `catalog-sync-guard` ist in beiden Rulesets Required Status Check, ein neuer Jobname wäre es nicht und ließe sich auch nicht nachträglich erzwingen, ohne die Catalog-Sync-Lane stillzulegen — deren Pull Requests zweigen von `main` ab und führen die Workflow-Fassung aus `develop` nicht, ein dort geforderter Check bliebe also unbeantwortet. Ein Release-PR trägt dagegen den Baum von `develop` und damit die Prüfung im eigenen Head. Der `git fetch` von `origin/develop` hängt am Branchpräfix und liegt deshalb nicht im Pfad der Sync-Lane.
 
 ## Versionierte Review-Policy
 
@@ -974,15 +1032,19 @@ Eine Eigenheit bleibt: `issue_comment` feuert nur von der Fassung auf dem Defaul
 
 ### `sonar-project.properties`
 
-SonarQube Cloud analysiert dieses Repository per CI-Analyse: `.github/workflows/sonar.yml` startet den Scanner bei jedem Push nach `main` und `develop` sowie für jeden Pull Request, dessen Zielbranch einer dieser beiden ist, und `sonar-project.properties` trägt die Analyseparameter.
+SonarQube Cloud analysiert dieses Repository per CI-Analyse; `sonar-project.properties` trägt die Analyseparameter. Der Scanner läuft auf zwei Wegen. `.github/workflows/sonar.yml` startet ihn bei jedem Push nach `main` und `develop` und misst damit beide langlebigen Branches; der Coverage-Report entsteht dort im selben Job. Für Pull Requests gegen `main` oder `develop` liegt er seit [GSPP-416](https://linear.app/grundschutz-plus-plus/issue/GSPP-416) als Job `sonarqube` in `.github/workflows/validate.yml`: Er hängt über `needs: validate` am Pflichtcheck und lädt dessen `coverage/lcov.info` als Artefakt herunter, statt die Suite ein zweites Mal zu rechnen. Ein Pull-Request-Push erzeugt dadurch genau einen vollständigen jsdom-Suite-Lauf statt zweier. Der Required Status Check heißt `SonarCloud Code Analysis` und wird von der SonarQubeCloud-App gesetzt, nicht vom Namen des Jobs; beide Rulesets bleiben von der Verschiebung unberührt.
 
 Vorher lief die Automatic Analysis. Sie misst ausschließlich den GitHub-Default-Branch, und der ist seit dem Release-Branch-Modell `develop` — `main` als Freigabelinie blieb dadurch unanalysiert, obwohl genau dieser Stand auf GitHub Pages ausgeliefert wird. Branch-Analyse ist laut Hersteller nur mit CI-Analyse zu haben, und beide Verfahren schließen einander aus. Seither führt SonarQube Cloud zwei langlebige Branches: `develop` als Hauptbranch und Integrationslinie, `main` als Freigabelinie.
+
+Weil der Coverage-Lauf damit im Pflichtcheck `validate` liegt, greifen dort auch die in `vite.config.ts` gepinnten Vitest-Schwellen: Eine Unterschreitung färbt `validate` rot, statt den Scanner-Schritt ausfallen zu lassen und `SonarCloud Code Analysis` als pending stehen zu lassen. Die beiden Abdeckungsmaße bleiben getrennt und unverändert in Kraft — Vitest misst die Gesamtabdeckung, das Quality Gate misst mit `new_coverage >= 80` den neuen Code.
+
+Ob die Analyse überhaupt läuft, entscheidet in beiden Workflows `scripts/sonar-token-guard.mjs`. Der Guard erhält dabei nur das Ergebnis des Vergleichs `secrets.SONAR_CI != ''`, nie den Tokenwert selbst: Bei einem Pull Request stammt er wie die Workflow-Datei aus dem PR-Head und ist damit vom Beitragenden bestimmbar. Das Secret erreicht ausschließlich den gepinnten Scanner-Schritt, der kein Repository-Code ist. Fehlt das Secret `SONAR_CI` bei einem Fork-Beitrag, überspringt der Guard die Analyse mit einer sichtbaren Notice — GitHub stellt Repository-Secrets dort grundsätzlich nicht bereit, und ein harter Fehlschlag würde jeden externen Beitrag blockieren. Fehlt es im eigenen Repository, ist die Konfiguration defekt und der Lauf schlägt fehl.
 
 Die Analyseparameter umfassen Projektschlüssel und Organisation, den lcov-Pfad für die Testabdeckung (`coverage/lcov.info`, erzeugt durch `npm run test:coverage`; der lcov-Reporter ist dafür in `vite.config.ts` ergänzt) sowie eine Duplikatsausnahme: `sonar.cpd.exclusions=scripts/review-policy.rules.mjs`.
 
 Der Grund ist eine Eigenschaft der Copy-Paste-Erkennung, nicht ein Wartbarkeitsproblem. CPD misst wiederholte Token-Folgen und normalisiert dabei Literale; die strukturgleichen Tabelleneinträge aus Schlüssel, Scope-Liste und Regeltext werden dadurch zwangsläufig als Duplikat gemeldet, ohne dass Verhalten kopiert wäre. Gemessen an `466d50c` lagen alle vier gemeldeten Duplikatsgruppen vollständig innerhalb der Regeltabelle. Weil `sonar.cpd.exclusions` ausschließlich dateiweit greift und keine Block- oder Zeilengranularität kennt, hätte eine Ausnahme auf einer gemischten Datei auch Generator, Drift-Guard und CLI von der Duplikatsprüfung befreit — daher der Schnitt in zwei Dateien. Ausgenommen ist allein die Duplikatsmessung auf der Datentabelle; keine Schwelle des Quality Gates wird gesenkt.
 
-Die Datei wirkt aus dem PR-Head heraus. Ein PR könnte sich damit selbst eine Gate-Ausnahme erteilen, weshalb sie in `AGENTS.md` zu den Review-Policy-Pfaden zählt: Wer sie anfasst, braucht ein Agenten-Cross-Review. Dasselbe gilt für `.github/workflows/sonar.yml`, weil auch der Workflow aus dem PR-Head heraus bestimmt, was überhaupt gemessen wird.
+Die Datei wirkt aus dem PR-Head heraus. Ein PR könnte sich damit selbst eine Gate-Ausnahme erteilen, weshalb sie in `AGENTS.md` zu den Review-Policy-Pfaden zählt: Wer sie anfasst, braucht ein Agenten-Cross-Review. Dasselbe gilt für `.github/workflows/sonar.yml`, `.github/workflows/validate.yml` und `scripts/sonar-token-guard.mjs`, weil auch sie aus dem PR-Head heraus bestimmen, was überhaupt gemessen wird.
 
 ## Siehe auch
 

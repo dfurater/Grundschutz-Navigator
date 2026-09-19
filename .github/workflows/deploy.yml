@@ -31,6 +31,7 @@ jobs:
   idempotency_guard:
     if: github.event.inputs.dispatch_source == 'catalog-sync-fallback'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
       actions: read
@@ -56,6 +57,7 @@ jobs:
     # never a required one.
     if: ${{ !cancelled() && needs.idempotency_guard.outputs.skip_deploy != 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
       pages: write
@@ -69,33 +71,30 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
-          cache: npm
+          persist-credentials: false
 
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
+      - name: Setup Node.js and install dependencies
+        uses: $/.github/actions/setup-node-env
 
-      - name: Read pinned snapshot SHA from manifest
-        id: manifest
-        run: |
-          sha=$(jq -r '.snapshotCommitSha' upstream-manifest.json)
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
-      - name: Fetch BSI catalog and official vocabularies
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BSI_SNAPSHOT_SHA: ${{ steps.manifest.outputs.sha }}
-        run: npm run fetch-catalog
+      - name: Read the pinned snapshot and fetch the BSI catalog
+        uses: $/.github/actions/fetch-pinned-catalog
+        with:
+          github-token: ${{ github.token }}
 
       - name: Resolve all BSI profiles deterministically (mandatory build-time corpus)
         run: npm run test:profile-resolution
 
+      # Schreibweise wie in package.json. Der Lauf bleibt im Deploy: Die
+      # Catalog-Sync-Auto-Merge-Lane deployt einen Katalogstand, den vorher kein
+      # anderer Lauf gemessen hat, weil `upstream-manifest.json` und damit die
+      # gefetchten Daten dort gerade wechseln. Eine Bedingung, die den Lauf auf
+      # diese Lane einschraenkt, muesste die Lane aus dem Ereignis erkennen —
+      # ein Push auf `main` traegt diese Herkunft nicht, der Guard fiele also
+      # fail-open aus. `--coverage` bleibt erhalten und setzt die Schwellen aus
+      # vite.config.ts auch hier durch.
       - name: Run tests with coverage
-        run: npm exec --no -- vitest run --coverage
+        run: npm run test:coverage
 
       - name: Build application
         env:
@@ -103,7 +102,6 @@ jobs:
           VITE_IMPRESSUM_STRASSE: ${{ secrets.VITE_IMPRESSUM_STRASSE }}
           VITE_IMPRESSUM_PLZ_ORT: ${{ secrets.VITE_IMPRESSUM_PLZ_ORT }}
           VITE_IMPRESSUM_EMAIL: ${{ secrets.VITE_IMPRESSUM_EMAIL }}
-          VITE_IMPRESSUM_TELEFON: ${{ secrets.VITE_IMPRESSUM_TELEFON }}
         run: npm run build
 
       - name: Generate SLSA Provenance
