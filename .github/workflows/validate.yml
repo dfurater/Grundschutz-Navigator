@@ -175,19 +175,27 @@ jobs:
       # Plain-Output mit Exit non-zero bei Befunden (SARIF exitt immer 0 und
       # taugt nicht als Blockiergate), `online-audits: false` macht den Lauf
       # deterministisch (entspricht der lokalen Messung `--offline`). Persona
-      # pedantic, weil regular das excessive-permissions-high nicht meldet
-      # (gemessen 2026-09-19 gegen a6ede34). `token: ''`: Der Container bekommt
-      # kein Credential (action.sh reicht GH_TOKEN sonst immer durch); wiese die
-      # Action ein leeres Token zurück, würde `validate` fail-closed rot.
+      # auditor (nicht pedantic): Die Regel `secrets-outside-env` feuert unter
+      # pedantic nie — verifiziert 2026-09-19: injiziertes TEST_SECRET blieb
+      # unter pedantic grün (auch mit zeilengenauen Ignores), unter auditor mit
+      # Zeilen-Config schlägt es an. Der Auditor-Delta gegenüber pedantic sind
+      # exakt diese 7 Stellen (gemessen, keine weiteren Auditor-only-Regeln);
+      # mit den Zeilen-Ignores unten ist auditor heute grün und meldet jedes
+      # neue Secret (Greptile-P1 auf PR #256).
+      # nicht-leeren Token (leerer `token: ''` bricht fail-closed mit Exit 2 ab:
+      # „GitHub token cannot be empty", belegt im CI-Lauf auf d238d53) — es läuft
+      # deshalb der Default `${{ github.token }}` mit dem Workflow-Scope
+      # `contents: read`. Das ist die einzige Credential im Gate, kurzlebig und
+      # minimal; `secrets.*` steht in keiner Datei des Schritts, der Audit bleibt
+      # ohne Secret-Referenz.
       - name: Audit workflows with zizmor
         uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
         with:
           advanced-security: false
           online-audits: false
-          persona: pedantic
+          persona: auditor
           version: v1.30.1
           config: .github/zizmor.yml
-          token: ''
 
   # Der Scanner liegt seit GSPP-416 in dieser Datei statt in `sonar.yml`, weil
   # nur ein Job desselben Workflows den Coverage-Report aus `validate`
