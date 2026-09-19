@@ -845,13 +845,13 @@ Die Impressum-Werte kommen lokal aus `.env.local` (nicht committet, siehe `.env.
 
 ## CI-Pipeline
 
-Die Pull-Request-Prüfung liegt in zwei Workflows, die sich durch ihre Ereignisliste unterscheiden. `.github/workflows/ci.yml` führt `documentation-contract` und `catalog-sync-guard`; beide urteilen über die Pull-Request-Metadaten — der eine wertet den Body gegen den Dokumentationsvertrag aus, der andere liest Titel und Body für Sync-Vertrag und Release-Marke. Seine Ereignisliste führt deshalb `edited` mit, damit eine Titel- oder Body-Bearbeitung neu beurteilt wird. `.github/workflows/validate.yml` führt `validate`: Schema-Verifikation, Katalog-Fetch, Profilauflösung, go-oscal-Lauf, Lint, Tests mit Coverage, Browser-Tests und Build. Dieser Job liest weder Titel noch Body, und seine Ereignisliste führt `edited` nicht. Dieselbe Datei führt seit [GSPP-416](https://linear.app/grundschutz-plus-plus/issue/GSPP-416) den nachgelagerten Job `sonarqube`; die Begründung steht unter [`sonar-project.properties`](#sonar-projectproperties).
+Die Pull-Request-Prüfung liegt in zwei Workflows, die sich durch ihre Ereignisliste unterscheiden. `.github/workflows/ci.yml` führt `documentation-contract` und `catalog-sync-guard`; beide urteilen über die Pull-Request-Metadaten — der eine wertet den Body gegen den Dokumentationsvertrag aus, der andere liest Titel und Body für Sync-Vertrag und Release-Marke. Seine Ereignisliste führt deshalb `edited` mit, damit eine Titel- oder Body-Bearbeitung neu beurteilt wird. `.github/workflows/validate.yml` führt `validate`: Schema-Verifikation, Katalog-Fetch, Profilauflösung, go-oscal-Lauf, Lint, Tests mit Coverage, Browser-Tests, Build und — seit [GSPP-418](https://linear.app/grundschutz-plus-plus/issue/GSPP-418) als letzte Schritte desselben Jobs — den zizmor-Audit (`uvx zizmor@1.30.1 --offline --persona pedantic .`, Config `.github/zizmor.yml`). Dieser Job liest weder Titel noch Body, und seine Ereignisliste führt `edited` nicht. Dieselbe Datei führt seit [GSPP-416](https://linear.app/grundschutz-plus-plus/issue/GSPP-416) den nachgelagerten Job `sonarqube`; die Begründung steht unter [`sonar-project.properties`](#sonar-projectproperties).
 
 Die Trennung ist der Grund für die zweite Datei. Ein Job-`if` im gemeinsamen Workflow hätte denselben Lauf gespart, aber eine Lücke geöffnet: Ein per `if` übersprungener Job meldet laut GitHub-Dokumentation den Status `Success` und erzeugt dabei einen neuen Check-Run unter demselben Namen. Da GitHub je Kontext den jüngsten Check-Run wertet, ersetzte eine bloße Body-Bearbeitung ein fehlgeschlagenes `validate` auf unverändertem Head durch einen Erfolg — der Pflichtcheck ließe sich so umgehen. Ohne abonniertes `edited` entsteht dagegen überhaupt kein Lauf und damit kein neuer Check-Run; das reale Ergebnis des letzten Code-Laufs bleibt stehen. Das Gegenstück dazu ist die bekannte Falle, einen *erforderlichen* Workflow über Pfad- oder Branch-Filter innerhalb eines abonnierten Ereignisses zu unterdrücken: Dort bliebe der Check auf `Pending` und blockierte den Merge. Hier wird kein Filter gesetzt, sondern das Ereignis gar nicht erst abonniert.
 
 `edited` deckt neben Titel und Body auch den Wechsel des Base-Branches ab. Auch er löst `validate.yml` nicht aus, und das ist richtig: Die Schritte dieses Jobs prüfen allein den Head-Stand und kennen den Base nicht. Die base-abhängigen Prüfungen liegen in `documentation-contract` und `catalog-sync-guard` und laufen weiter.
 
-Die Jobnamen `validate`, `catalog-sync-guard` und `documentation-contract` bleiben unverändert, weil beide Rulesets (`develop`, `main-release`) sie namentlich als Required Status Check fordern. Der Kontextname eines Actions-Checks ist der Jobname, nicht die Workflow-Datei; die Verschiebung ist für die Rulesets deshalb folgenlos.
+Die Jobnamen `validate`, `catalog-sync-guard` und `documentation-contract` bleiben unverändert, weil beide Rulesets (`develop`, `main-release`) sie namentlich als Required Status Check fordern. Der Kontextname eines Actions-Checks ist der Jobname, nicht die Workflow-Datei; die Verschiebung ist für die Rulesets deshalb folgenlos. Der zizmor-Audit läuft bewusst als Schritte im Job `validate` statt als eigener Job: Ein neuer Jobname wäre ein neuer Check-Kontext außerhalb beider Rulesets und blockierte keinen Merge; er ließe sich auch nicht nachträglich erzwingen, ohne die Catalog-Sync-Lane stillzulegen (vgl. `ci.yml`, release-tree-guard). Als Schritte lässt ein roter Audit `validate` fehlschlagen, der Pflichtcheck ist.
 
 Beide Workflows tragen eine `concurrency`-Gruppe je `github.ref`, wie `sonar.yml` es bereits tut, und brechen überholte Läufe ab: Ein überholter Lauf trifft eine Aussage über einen Stand, den ein Folge-Push oder eine spätere Bearbeitung bereits ersetzt hat. `cancel-in-progress` gilt nur für Pull-Request-Läufe; ein laufender manueller `workflow_dispatch` wird nicht abgebrochen. Ein noch wartender Lauf kann dagegen von einem neueren derselben Gruppe verdrängt werden, weil GitHub je Gruppe nur einen Lauf in der Warteschlange hält — das gilt für jede Concurrency-Gruppe und ist unabhängig von `cancel-in-progress`.
 
@@ -876,6 +876,15 @@ damit über denselben `package.json`-Eintrag auf wie jeder andere Coverage-Lauf
 des Repositoriums; Vitest stammt dabei aus der lokalen, durch
 `package-lock.json` festgelegten Installation. Kein Workflow ruft ein Binary
 über `npx` oder `npm exec` auf, die beide auf die Registry zurückfallen können.
+Einzige Ausnahme ist der zizmor-Audit im Job `validate` ([GSPP-418](https://linear.app/grundschutz-plus-plus/issue/GSPP-418)):
+`uvx --no-build "zizmor@1.30.1"` bezieht das Wheel versionsgepinnt von PyPI,
+ohne Hash. Alle Actions bleiben per SHA gepinnt (erzwungen über
+`scripts/workflow-action-pinning.test.ts`); das Wheel ist die einzige
+Registry-Abhängigkeit ohne Hash. Mitigations: exakter Versionspin, `--no-build`
+(nie Setup-Skripte bauen, fail-closed ohne Wheel), `--offline` ohne Secrets und
+der SHA-gepinnte Installer `astral-sh/setup-uv`. Restrisiko: Ein manipuliertes
+Wheel meldet „No findings" und schaltet die Prüfung still ab — zizmor prüft
+sich hier selbst. Die Abweichung ist damit dokumentiert statt stillschweigend.
 
 Die Standardberechtigung des Deploy-Workflows beschränkt sich auf
 `contents: read`. Schreibrechte für GitHub Pages, OIDC, Attestations und

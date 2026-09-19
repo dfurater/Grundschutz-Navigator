@@ -1,9 +1,12 @@
-# GSPP-418: pedantic-Gate. Ignoriert wird ausschließlich gemessenes
-# Rauschen (info/help/medium) — kein high. Auditor-Follow-up (Owner legt das
-# Issue nach GSPP-418 an) hebt secrets-outside-env auf Pflicht.
+# GSPP-418: pedantic-Gate als Pflichtanteil des Required Checks `validate`
+# (Schritte im `validate`-Job, kein eigener Job — ein neuer Jobname wäre ein
+# neuer Check-Kontext außerhalb beider Rulesets und blockierte keinen Merge).
+# Ignoriert wird ausschließlich gemessenes Rauschen (info/help/medium) —
+# kein high. Das einzige high (excessive-permissions) ist behoben, nicht
+# stummgeschaltet.
 rules:
-  # 10x info, alle 7 Workflow-Dateien ohne sonar.yml (dessen Job hat name:).
-  # Kein Sicherheitsgewinn: 9-Job-Umbenennung wäre Scope-Creep.
+  # 10x info über 8 Workflow-Dateien (alle außer sonar.yml, dessen Job einen
+  # name: trägt). Kein Sicherheitsgewinn: Job-Umbenennung wäre Scope-Creep.
   anonymous-definition:
     ignore:
       - backmerge-main-to-develop.yml
@@ -14,8 +17,9 @@ rules:
       - update-catalog.yml
       - validate.yml
       - verify-catalog-merge.yml
-  # 4x help. Bestehende deutsche Begründungskommentare
-  # (greptile-review-nudge.yml, deploy.yml) bleiben, neue werden nicht erzwungen.
+  # 4x help (deploy.yml 2x, greptile-review-nudge.yml 1x,
+  # verify-catalog-merge.yml 1x). Bestehende deutsche Begründungskommentare
+  # bleiben, neue werden nicht erzwungen.
   undocumented-permissions:
     ignore:
       - deploy.yml
@@ -30,3 +34,22 @@ rules:
   dependabot-cooldown:
     ignore:
       - dependabot.yml
+  # 7x medium secrets-outside-env in 5 Dateien (backmerge, release-prepare,
+  # update-catalog je 1x App-Private-Key; sonar.yml 2x und validate.yml 2x
+  # SONAR_CI — die zwei in validate.yml stammen aus GSPP-416, die fünf übrigen
+  # aus der Issue-Beschreibung). Bewusst kein Environment: Ein Environment ohne
+  # Branch-Schutzregel verschiebt nur die Angabe, ohne den Zugriff zu verengen
+  # (vgl. Issue). Der App-Private-Key ist repo-beschränkt und kurzlebig
+  # (contents+pull-requests write), SONAR_CI erreicht nie Repository-Code —
+  # nur der Verfügbarkeits-Guard und der SHA-gepinnte Scanner-Schritt. Deshalb
+  # gezielt file-weit ignoriert; neue Stellen außerhalb dieser Dateien fallen
+  # weiter auf. Unter pedantic feuert die Regel nie — der Eintrag dokumentiert
+  # die Entscheidung an der Fundstelle statt sie einer Persona-Wahl zu
+  # überlassen (Befund 3 aus dem Claude-Review zu GSPP-418).
+  secrets-outside-env:
+    ignore:
+      - backmerge-main-to-develop.yml
+      - release-prepare.yml
+      - sonar.yml
+      - update-catalog.yml
+      - validate.yml
