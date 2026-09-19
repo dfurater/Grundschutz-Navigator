@@ -151,6 +151,34 @@ async function readRun(repository, runId, { fetchImpl, token, requestTimeoutMs =
   );
 }
 
+async function pollRunWithinBudget(repository, runId, {
+  fetchImpl,
+  token,
+  sleep,
+  terminalDelayMs,
+  requestTimeoutMs,
+  deadline,
+  now,
+  verificationBudgetMs,
+  attempt,
+  terminalAttempts,
+}) {
+  const remaining = deadline - now();
+  if (remaining <= 0) {
+    throw verificationBudgetError(verificationBudgetMs, `terminal wait, attempt ${attempt}/${terminalAttempts}`);
+  }
+  await sleep(Math.min(terminalDelayMs, remaining));
+  const remainingAfterSleep = deadline - now();
+  if (remainingAfterSleep <= 0) {
+    throw verificationBudgetError(verificationBudgetMs, `terminal wait, attempt ${attempt}/${terminalAttempts}`);
+  }
+  return readRun(repository, runId, {
+    fetchImpl,
+    token,
+    requestTimeoutMs: Math.min(requestTimeoutMs, remainingAfterSleep),
+  });
+}
+
 /**
  * Waits for the deploy run to reach a terminal state and asserts that it
  * succeeded. Existence alone is not a confirmation — the run is usually seconds
@@ -189,19 +217,17 @@ export async function awaitDeploySuccess(repository, run, {
       break;
     }
     if (deadline !== undefined) {
-      const remaining = deadline - now();
-      if (remaining <= 0) {
-        throw verificationBudgetError(verificationBudgetMs, `terminal wait, attempt ${attempt}/${terminalAttempts}`);
-      }
-      await sleep(Math.min(terminalDelayMs, remaining));
-      const remainingAfterSleep = deadline - now();
-      if (remainingAfterSleep <= 0) {
-        throw verificationBudgetError(verificationBudgetMs, `terminal wait, attempt ${attempt}/${terminalAttempts}`);
-      }
-      current = await readRun(repository, current.id, {
+      current = await pollRunWithinBudget(repository, current.id, {
         fetchImpl,
         token,
-        requestTimeoutMs: Math.min(requestTimeoutMs, remainingAfterSleep),
+        sleep,
+        terminalDelayMs,
+        requestTimeoutMs,
+        deadline,
+        now,
+        verificationBudgetMs,
+        attempt,
+        terminalAttempts,
       });
     } else {
       await sleep(terminalDelayMs);
