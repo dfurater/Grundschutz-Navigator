@@ -39,7 +39,7 @@ export function listDefinitionFiles(root = process.cwd()) {
   const workflowDir = resolve(root, WORKFLOW_DIR);
   const files = readdirSync(workflowDir)
     .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
-    .sort()
+    .sort((a, b) => a.localeCompare(b))
     .map((name) => join(workflowDir, name));
 
   if (files.length === 0) {
@@ -47,7 +47,7 @@ export function listDefinitionFiles(root = process.cwd()) {
   }
 
   const walk = (directory) => {
-    for (const entry of readdirSync(directory).sort()) {
+    for (const entry of readdirSync(directory).sort((a, b) => a.localeCompare(b))) {
       const path = join(directory, entry);
       if (statSync(path).isDirectory()) walk(path);
       else if (entry === 'action.yml' || entry === 'action.yaml') files.push(path);
