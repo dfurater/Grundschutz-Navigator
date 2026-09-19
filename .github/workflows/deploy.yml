@@ -74,34 +74,13 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - name: Setup Node.js and install dependencies
+        uses: $/.github/actions/setup-node-env
+
+      - name: Read the pinned snapshot and fetch the BSI catalog
+        uses: $/.github/actions/fetch-pinned-catalog
         with:
-          node-version: 22
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
-
-      - name: Read pinned snapshot SHA from manifest
-        id: manifest
-        run: |
-          set -euo pipefail
-          if ! sha="$(jq -er '.snapshotCommitSha | strings' upstream-manifest.json)"; then
-            echo "upstream-manifest.json ist nicht lesbar oder enthält keine snapshotCommitSha." >&2
-            exit 1
-          fi
-          if [[ ! "$sha" =~ ^[0-9a-fA-F]{40}$ ]]; then
-            echo "upstream-manifest.json enthält keine gültige 40-stellige snapshotCommitSha." >&2
-            exit 1
-          fi
-          echo "sha=$sha" >> "$GITHUB_OUTPUT"
-
-      - name: Fetch BSI catalog and official vocabularies
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BSI_SNAPSHOT_SHA: ${{ steps.manifest.outputs.sha }}
-        run: npm run fetch-catalog
+          github-token: ${{ github.token }}
 
       - name: Resolve all BSI profiles deterministically (mandatory build-time corpus)
         run: npm run test:profile-resolution
@@ -123,7 +102,6 @@ jobs:
           VITE_IMPRESSUM_STRASSE: ${{ secrets.VITE_IMPRESSUM_STRASSE }}
           VITE_IMPRESSUM_PLZ_ORT: ${{ secrets.VITE_IMPRESSUM_PLZ_ORT }}
           VITE_IMPRESSUM_EMAIL: ${{ secrets.VITE_IMPRESSUM_EMAIL }}
-          VITE_IMPRESSUM_TELEFON: ${{ secrets.VITE_IMPRESSUM_TELEFON }}
         run: npm run build
 
       - name: Generate SLSA Provenance

@@ -1,0 +1,74 @@
+name: Fetch the pinned BSI catalog
+description: >-
+  Liest die gepinnte Snapshot-SHA aus upstream-manifest.json und holt den
+  BSI-Katalog von genau diesem Stand. Gemeinsame Fassung der zuvor in
+  validate.yml, deploy.yml und sonar.yml wortgleich stehenden Schrittfolge
+  (GSPP-419).
+
+# Setzt einen Checkout und eine abgeschlossene Installation voraus:
+# `upstream-manifest.json` liegt im Arbeitsbereich, `npm run fetch-catalog` läuft
+# aus node_modules. Aufrufer rufen deshalb zuerst $/.github/actions/setup-node-env
+# auf. Die Referenz nutzt die self-repository-Syntax `$/`; die Begründung steht
+# dort.
+#
+# Nicht Gegenstand dieser Action ist der Fetch in update-catalog.yml. Der fordert
+# mit `BSI_SNAPSHOT_SHA: latest` ausdrücklich den neuesten Upstream-Stand an —
+# er liest das Manifest nicht, sondern schreibt es fort. Beides in eine Action zu
+# ziehen hieße, den Unterschied zwischen „gepinnt bauen" und „Pin erneuern"
+# hinter einem Schalter zu verstecken.
+
+# Die Aufrufer reichen das Token aus dem github-Kontext, nicht aus dem
+# secrets-Kontext. Laut GitHub-Dokumentation sind beide funktional gleichwertig
+# (contexts-Referenz zu github.token). Nur die Secret-Schreibweise erzeugte an
+# der `with:`-Zeile des Aufrufers einen neuen `secrets-outside-env`-Befund unter
+# der Gate-Persona auditor und damit eine weitere zeilengenaue Ignore-Zeile in
+# .github/zizmor.yml — für ein Token, das ohnehin jedem Schritt des Jobs
+# offensteht.
+
+inputs:
+  github-token:
+    description: >-
+      Token für die GitHub-API des Katalog-Fetch. Erreicht ausschließlich
+      `npm run fetch-catalog` als GH_TOKEN.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # Fail-closed in beide Richtungen: Ein unlesbares Manifest, ein fehlender
+    # oder nicht-stringwertiger Eintrag und eine formwidrige SHA brechen den Lauf
+    # ab, statt einen leeren Pin an den Fetch weiterzureichen.
+    # `scripts/ci-failure-contract.test.ts` führt diesen Block gegen alle sechs
+    # Fehlerfälle real aus.
+    - name: Read pinned snapshot SHA from manifest
+      id: manifest
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! sha="$(jq -er '.snapshotCommitSha | strings' upstream-manifest.json)"; then
+          echo "upstream-manifest.json ist nicht lesbar oder enthält keine snapshotCommitSha." >&2
+          exit 1
+        fi
+        if [[ ! "$sha" =~ ^[0-9a-fA-F]{40}$ ]]; then
+          echo "upstream-manifest.json enthält keine gültige 40-stellige snapshotCommitSha." >&2
+          exit 1
+        fi
+        echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+    # `required: true` ist bei einer Composite Action nur Dokumentation; GitHub
+    # erzwingt es nicht. Ohne Prüfung liefe der Fetch mit leerem GH_TOKEN
+    # unauthentifiziert weiter (scripts/fetch-catalog.mjs:52 fällt auf '' zurück)
+    # und schlüge erst am API-Ratenlimit fehl — mit einer Meldung, die die
+    # Ursache nicht nennt.
+    - name: Fetch BSI catalog from pinned snapshot
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        BSI_SNAPSHOT_SHA: ${{ steps.manifest.outputs.sha }}
+      run: |
+        set -euo pipefail
+        if [ -z "${GH_TOKEN:-}" ]; then
+          echo "fetch-pinned-catalog wurde ohne github-token aufgerufen." >&2
+          exit 1
+        fi
+        npm run fetch-catalog

@@ -48,6 +48,10 @@ rules:
   # Der App-Private-Key ist repo-beschränkt und kurzlebig
   # (contents+pull-requests write), SONAR_CI erreicht nie Repository-Code —
   # nur der Verfügbarkeits-Guard und der SHA-gepinnte Scanner-Schritt.
+  # Zeilennummern zuletzt nachgezogen in GSPP-419: Die Zusammenführung der
+  # Setup-Schichten in .github/actions/ verkürzte fünf der sechs betroffenen
+  # Dateien. scripts/zizmor-config.test.ts hält die Anker seither an echten
+  # Fundstellen fest, damit die Drift nicht erst im Docker-Schritt auffällt.
   # Zeilengenau statt dateiweit (Greptile-P1 auf PR #256, T-Rex-verifiziert):
   # Eine NEUE Secret-Referenz auf einer anderen Zeile feuert unter der
   # Gate-Persona auditor wieder — mit dateiweiten Einträgen blieb sie stumm.
@@ -57,10 +61,10 @@ rules:
   # wird der Audit rot (fail-closed) — Zeilennummer nachziehen.
   secrets-outside-env:
     ignore:
-      - backmerge-main-to-develop.yml:57:28
-      - release-prepare.yml:55:28
+      - backmerge-main-to-develop.yml:51:28
+      - release-prepare.yml:49:28
       - sonar.yml:61:38
-      - sonar.yml:109:28
-      - update-catalog.yml:53:28
-      - validate.yml:236:38
-      - validate.yml:251:28
+      - sonar.yml:88:28
+      - update-catalog.yml:47:28
+      - validate.yml:222:38
+      - validate.yml:237:28
