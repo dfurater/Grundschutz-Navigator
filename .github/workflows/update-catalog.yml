@@ -89,7 +89,7 @@ jobs:
             exit 1
           fi
 
-          DELIMITER="gha_delimiter_$(date +%s)_$$"
+          DELIMITER="gha_delimiter_$(openssl rand -hex 32)"
           {
             printf 'changed=%s\n' "$(printf '%s' "$SYNC_JSON" | jq -r '.changed')"
             printf 'local_signature=%s\n' "$(printf '%s' "$SYNC_JSON" | jq -r '.local_signature')"

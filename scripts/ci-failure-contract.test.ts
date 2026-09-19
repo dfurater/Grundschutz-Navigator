@@ -112,6 +112,9 @@ describe('CI failure visibility contract', () => {
       }
     }
 
+    // GSPP-418 bettet zizmor als Schritte in den `validate`-Job ein (kein
+    // eigener Job — ein neuer Jobname wäre ein neuer Check-Kontext außerhalb
+    // beider Rulesets): 12 Jobs wie vor GSPP-418.
     expect(jobCount).toBe(12);
   });
 
