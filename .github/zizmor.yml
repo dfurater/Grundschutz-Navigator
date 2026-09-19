@@ -62,5 +62,5 @@ rules:
       - sonar.yml:61:38
       - sonar.yml:109:28
       - update-catalog.yml:53:28
-      - validate.yml:241:38
-      - validate.yml:256:28
+      - validate.yml:236:38
+      - validate.yml:251:28

@@ -167,35 +167,30 @@ jobs:
       # ab und führen diese Workflow-Fassung nicht (vgl. `ci.yml`,
       # release-tree-guard). Als Schritte dieses Jobs lässt ein roter Audit
       # `validate` fehlschlagen, der in beiden Rulesets Pflichtcheck ist.
-      # Bezugsweg (Befund 7): offizielle Action per SHA gepinnt — das Binary
-      # läuft als Digest-gepinnter Container
+      # Bezugsweg (Befund 7, Greptile-P2 auf PR #256): Image direkt per Digest,
+      # ohne Action-Wrapper — der Wrapper übergibt nur `--no-online-audits`
+      # (schwächer als `--offline`) und reicht immer GH_TOKEN durch. Hier läuft
+      # das Digest-gepinnte Image
       # (ghcr.io/zizmorcore/zizmor:1.30.1@sha256:a2eb396d886c053073405c7a980f2139ba2248ec172243cfa3841e57196e8101,
-      # vgl. support/versions im gepinnten Action-Stand), kein Hash-loses
-      # PyPI-Wheel und kein uv-Installer. `advanced-security: false` liefert
-      # Plain-Output mit Exit non-zero bei Befunden (SARIF exitt immer 0 und
-      # taugt nicht als Blockiergate), `online-audits: false` macht den Lauf
-      # deterministisch (entspricht der lokalen Messung `--offline`). Persona
-      # auditor (nicht pedantic): Die Regel `secrets-outside-env` feuert unter
-      # pedantic nie — verifiziert 2026-09-19: injiziertes TEST_SECRET blieb
-      # unter pedantic grün (auch mit zeilengenauen Ignores), unter auditor mit
-      # Zeilen-Config schlägt es an. Der Auditor-Delta gegenüber pedantic sind
-      # exakt diese 7 Stellen (gemessen, keine weiteren Auditor-only-Regeln);
-      # mit den Zeilen-Ignores unten ist auditor heute grün und meldet jedes
-      # neue Secret (Greptile-P1 auf PR #256).
-      # nicht-leeren Token (leerer `token: ''` bricht fail-closed mit Exit 2 ab:
-      # „GitHub token cannot be empty", belegt im CI-Lauf auf d238d53) — es läuft
-      # deshalb der Default `${{ github.token }}` mit dem Workflow-Scope
-      # `contents: read`. Das ist die einzige Credential im Gate, kurzlebig und
-      # minimal; `secrets.*` steht in keiner Datei des Schritts, der Audit bleibt
-      # ohne Secret-Referenz.
+      # vgl. support/versions der Action) mit `--offline`, `--network none`,
+      # ohne Token und mit Read-only-Mount: kein Netz, kein Credential, kein
+      # Installer. Persona auditor (nicht pedantic): Die Regel
+      # `secrets-outside-env` feuert unter pedantic nie — verifiziert
+      # 2026-09-19 per Injektionstest (TEST_SECRET blieb unter pedantic grün,
+      # schlägt unter auditor mit Zeilen-Config an). Der Auditor-Delta
+      # gegenüber pedantic sind exakt die 7 Stellen in `.github/zizmor.yml`;
+      # mit den Zeilen-Ignores ist auditor grün und meldet jedes neue Secret.
+      # Plain-Output (kein SARIF — SARIF exitt immer 0 und taugt nicht als
+      # Blockiergate): Befunde lassen `validate` fehlschlagen, Pflichtcheck.
       - name: Audit workflows with zizmor
-        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
-        with:
-          advanced-security: false
-          online-audits: false
-          persona: auditor
-          version: v1.30.1
-          config: .github/zizmor.yml
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/zizmorcore/zizmor:1.30.1@sha256:a2eb396d886c053073405c7a980f2139ba2248ec172243cfa3841e57196e8101"
+          docker pull "$IMAGE"
+          docker run --rm --network none \
+            --volume "${GITHUB_WORKSPACE}:/workspace:ro" \
+            --workdir /workspace \
+            "$IMAGE" --offline --persona auditor --config .github/zizmor.yml .
 
   # Der Scanner liegt seit GSPP-416 in dieser Datei statt in `sonar.yml`, weil
   # nur ein Job desselben Workflows den Coverage-Report aus `validate`
