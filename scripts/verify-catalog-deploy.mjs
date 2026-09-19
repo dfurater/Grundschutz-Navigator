@@ -25,6 +25,18 @@ export const DEFAULT_TERMINAL_DELAY_MS = 15_000;
 // hängen.
 export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
+// Absolutes Verifikationsbudget (GSPP-423, Codex-Review auf PR #268): Die
+// Summe aus Polling-Sleeps und Per-Request-Fristen kann den Job-Timeout
+// übersteigen — 59 Folgezyklen × (15 s Sleep + 30 s Request) ≈ 44,25 min
+// allein in der Terminalphase. Das Budget bindet Polling und Request-Frist
+// an eine gemeinsame Frist, damit der Guard kontrolliert fail-closed über
+// sein eigenes Budgetende meldet, statt vom 30-min-Job hart abgebrochen zu
+// werden. 25 min Budget + 5 min Reserve für Checkout, Verify und Dispatch
+// = 30 min Job-Timeout in `.github/workflows/verify-catalog-merge.yml:18`.
+export const DEFAULT_VERIFICATION_BUDGET_MS = 25 * 60 * 1000;
+export const VERIFY_JOB_TIMEOUT_MS = 30 * 60 * 1000;
+export const VERIFY_SETUP_RESERVE_MS = VERIFY_JOB_TIMEOUT_MS - DEFAULT_VERIFICATION_BUDGET_MS;
+
 /** `owner/repo` in der von GitHub zugelassenen Zeichenmenge (vgl. greptile-review-nudge). */
 const REPOSITORY_PATTERN = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
 
@@ -56,6 +68,19 @@ const ALLOWED_API_ORIGINS = new Set(['https://api.github.com']);
 const GITHUB_API_URL_PATTERN = /^https:\/\/api\.github\.com\/repos\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+\//;
 
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function verificationBudgetError(verificationBudgetMs, context) {
+  return new Error(
+    `catalog verification did not complete within the verification budget `
+    + `(${verificationBudgetMs}ms, ${context})`,
+  );
+}
+
+function assertVerificationBudgetMs(value) {
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error('verification budget must be a positive integer');
+  }
+}
 
 async function fetchGitHubJson(url, { fetchImpl, token, label, requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS }) {
   // Allowlist (jssecurity:S8476): nur api.github.com/repos/owner/repo/… ist zulässig.
@@ -138,10 +163,16 @@ export async function awaitDeploySuccess(repository, run, {
   terminalAttempts = DEFAULT_TERMINAL_ATTEMPTS,
   terminalDelayMs = DEFAULT_TERMINAL_DELAY_MS,
   requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+  deadline,
+  now = Date.now,
+  verificationBudgetMs = DEFAULT_VERIFICATION_BUDGET_MS,
   log = console.log,
 } = {}) {
   assertValidRepository(repository);
   assertValidRunId(run?.id);
+  if (deadline !== undefined) {
+    assertVerificationBudgetMs(verificationBudgetMs);
+  }
   let current = run;
 
   for (let attempt = 1; attempt <= terminalAttempts; attempt += 1) {
@@ -157,8 +188,25 @@ export async function awaitDeploySuccess(repository, run, {
     if (attempt === terminalAttempts) {
       break;
     }
-    await sleep(terminalDelayMs);
-    current = await readRun(repository, current.id, { fetchImpl, token, requestTimeoutMs });
+    if (deadline !== undefined) {
+      const remaining = deadline - now();
+      if (remaining <= 0) {
+        throw verificationBudgetError(verificationBudgetMs, `terminal wait, attempt ${attempt}/${terminalAttempts}`);
+      }
+      await sleep(Math.min(terminalDelayMs, remaining));
+      const remainingAfterSleep = deadline - now();
+      if (remainingAfterSleep <= 0) {
+        throw verificationBudgetError(verificationBudgetMs, `terminal wait, attempt ${attempt}/${terminalAttempts}`);
+      }
+      current = await readRun(repository, current.id, {
+        fetchImpl,
+        token,
+        requestTimeoutMs: Math.min(requestTimeoutMs, remainingAfterSleep),
+      });
+    } else {
+      await sleep(terminalDelayMs);
+      current = await readRun(repository, current.id, { fetchImpl, token, requestTimeoutMs });
+    }
   }
 
   throw new Error(
@@ -226,50 +274,80 @@ export async function verifyCatalogDeploy({
   terminalAttempts = DEFAULT_TERMINAL_ATTEMPTS,
   terminalDelayMs = DEFAULT_TERMINAL_DELAY_MS,
   requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
+  verificationBudgetMs = DEFAULT_VERIFICATION_BUDGET_MS,
+  now = Date.now,
   log = console.log,
 }) {
   assertValidRepository(repository);
   if (!/^[0-9a-f]{40}$/.test(mergeCommitSha ?? '')) {
     throw new Error('merge commit SHA must be a full 40-character SHA');
   }
+  assertVerificationBudgetMs(verificationBudgetMs);
+  const deadline = now() + verificationBudgetMs;
+  const cappedRequestTimeout = (context) => {
+    const remaining = deadline - now();
+    if (remaining <= 0) {
+      throw verificationBudgetError(verificationBudgetMs, context);
+    }
+    return Math.min(requestTimeoutMs, remaining);
+  };
+  const cappedSleep = async (delayMs, context) => {
+    const remaining = deadline - now();
+    if (remaining <= 0) {
+      throw verificationBudgetError(verificationBudgetMs, context);
+    }
+    await sleep(Math.min(delayMs, remaining));
+  };
+  const awaitTerminal = (run) => awaitDeploySuccess(repository, run, {
+    fetchImpl,
+    token,
+    sleep,
+    terminalAttempts,
+    terminalDelayMs,
+    requestTimeoutMs,
+    deadline,
+    now,
+    verificationBudgetMs,
+    log,
+  });
   for (let attempt = 1; attempt <= discoveryAttempts; attempt += 1) {
-    const run = await findPushDeployRun(repository, mergeCommitSha, { fetchImpl, token, requestTimeoutMs });
+    const run = await findPushDeployRun(repository, mergeCommitSha, {
+      fetchImpl,
+      token,
+      requestTimeoutMs: cappedRequestTimeout(`discovery ${attempt}/${discoveryAttempts}`),
+    });
     if (run) {
       log(`Push deploy found: ${run.html_url} (${run.status}/${run.conclusion ?? 'pending'})`);
-      await awaitDeploySuccess(repository, run, {
-        fetchImpl,
-        token,
-        sleep,
-        terminalAttempts,
-        terminalDelayMs,
-        requestTimeoutMs,
-        log,
-      });
+      await awaitTerminal(run);
       return DEPLOY_CONFIRMED;
     }
     if (attempt < discoveryAttempts) {
-      await sleep(discoveryDelayMs);
+      await cappedSleep(discoveryDelayMs, `discovery ${attempt}/${discoveryAttempts}`);
     }
   }
 
-  await verifyMergeCommitOnMain(repository, mergeCommitSha, { fetchImpl, token, requestTimeoutMs });
-  await verifyManifestOnMain(repository, { snapshotSha, signature }, { fetchImpl, token, requestTimeoutMs });
+  await verifyMergeCommitOnMain(repository, mergeCommitSha, {
+    fetchImpl,
+    token,
+    requestTimeoutMs: cappedRequestTimeout('merge commit re-verification'),
+  });
+  await verifyManifestOnMain(repository, { snapshotSha, signature }, {
+    fetchImpl,
+    token,
+    requestTimeoutMs: cappedRequestTimeout('manifest re-verification'),
+  });
 
   // The push run can still register while the re-verification above is in
   // flight. Dispatching then would deploy the same commit a second time, so
   // look once more immediately before authorizing the fallback.
-  const lateRun = await findPushDeployRun(repository, mergeCommitSha, { fetchImpl, token, requestTimeoutMs });
+  const lateRun = await findPushDeployRun(repository, mergeCommitSha, {
+    fetchImpl,
+    token,
+    requestTimeoutMs: cappedRequestTimeout('late deploy lookup'),
+  });
   if (lateRun) {
     log(`Push deploy registered late: ${lateRun.html_url}`);
-    await awaitDeploySuccess(repository, lateRun, {
-      fetchImpl,
-      token,
-      sleep,
-      terminalAttempts,
-      terminalDelayMs,
-      requestTimeoutMs,
-      log,
-    });
+    await awaitTerminal(lateRun);
     return DEPLOY_CONFIRMED;
   }
 

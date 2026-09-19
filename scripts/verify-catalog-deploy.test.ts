@@ -1,7 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  DEFAULT_DISCOVERY_ATTEMPTS,
+  DEFAULT_DISCOVERY_DELAY_MS,
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  DEFAULT_TERMINAL_ATTEMPTS,
+  DEFAULT_TERMINAL_DELAY_MS,
+  DEFAULT_VERIFICATION_BUDGET_MS,
   DEPLOY_CONFIRMED,
   FALLBACK_REQUIRED,
+  VERIFY_JOB_TIMEOUT_MS,
+  VERIFY_SETUP_RESERVE_MS,
   awaitDeploySuccess,
   findPushDeployRun,
   verifyCatalogDeploy,
@@ -260,5 +268,73 @@ describe('verifyCatalogDeploy — no push deploy', () => {
     await expect(
       verifyCatalogDeploy(options(fetchImpl, { discoveryAttempts: 1 })),
     ).rejects.toThrow('completed with conclusion failure');
+  });
+});
+
+describe('verifyCatalogDeploy — absolute verification budget (GSPP-423)', () => {
+  it('fits the absolute budget plus setup reserve into the 30-minute job timeout', () => {
+    expect(VERIFY_JOB_TIMEOUT_MS).toBe(30 * 60 * 1000);
+    expect(DEFAULT_VERIFICATION_BUDGET_MS + VERIFY_SETUP_RESERVE_MS).toBe(VERIFY_JOB_TIMEOUT_MS);
+    // Sleep-Anteile allein (60×15 s + 6×10 s ≈ 16 min) müssen in das absolute
+    // Budget passen; Request-Fristen kommen obenauf und werden per Deadline
+    // gekappt statt per Job-Kill.
+    const sleepOnlyMs =
+      DEFAULT_TERMINAL_ATTEMPTS * DEFAULT_TERMINAL_DELAY_MS +
+      DEFAULT_DISCOVERY_ATTEMPTS * DEFAULT_DISCOVERY_DELAY_MS;
+    expect(sleepOnlyMs).toBeLessThanOrEqual(DEFAULT_VERIFICATION_BUDGET_MS);
+  });
+
+  it('documents why the deadline exists: sleeps plus hanging requests exceed the job', () => {
+    const worstCaseMs =
+      (DEFAULT_DISCOVERY_ATTEMPTS + DEFAULT_TERMINAL_ATTEMPTS + 2) *
+        DEFAULT_REQUEST_TIMEOUT_MS +
+      (DEFAULT_DISCOVERY_ATTEMPTS - 1) * DEFAULT_DISCOVERY_DELAY_MS +
+      (DEFAULT_TERMINAL_ATTEMPTS - 1) * DEFAULT_TERMINAL_DELAY_MS;
+    // 59 Folgezyklen × (15 s + 30 s) ≈ 44,25 min Terminalphase allein —
+    // ohne Deadline würde der 30-min-Job den Guard hart abbrechen.
+    expect(worstCaseMs).toBeGreaterThan(VERIFY_JOB_TIMEOUT_MS);
+  });
+
+  it('fails closed within the absolute budget instead of overrunning the job', async () => {
+    let virtualNow = 0;
+    const now = () => virtualNow;
+    const sleep = async (ms: number) => {
+      virtualNow += ms;
+    };
+    const pending = makeRun({ status: 'in_progress', conclusion: null });
+    const fetchImpl = vi.fn(async (url: string) => {
+      virtualNow += 5_000;
+      if (String(url).includes('/actions/workflows/')) {
+        return jsonResponse({ workflow_runs: [pending] });
+      }
+      if (String(url).includes('/actions/runs/')) {
+        return jsonResponse(pending);
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const verificationBudgetMs = 30_000;
+    await expect(
+      verifyCatalogDeploy({
+        repository: REPOSITORY,
+        mergeCommitSha: MERGE_SHA,
+        snapshotSha: SNAPSHOT_SHA,
+        signature: SIGNATURE,
+        fetchImpl,
+        token: 'opaque-test-token',
+        sleep,
+        now,
+        verificationBudgetMs,
+        discoveryAttempts: 6,
+        discoveryDelayMs: 10_000,
+        terminalAttempts: 60,
+        terminalDelayMs: 15_000,
+        requestTimeoutMs: 30_000,
+        log: () => {},
+      }),
+    ).rejects.toThrow('verification budget');
+    // Deterministisch begrenzt: virtuelle Uhr bleibt im Budget plus höchstens
+    // einer gekappten Request-Latenz — weit unter den 44,25 min ohne Deadline.
+    expect(virtualNow).toBeLessThanOrEqual(verificationBudgetMs + 5_000);
+    expect(fetchImpl.mock.calls.length).toBeLessThan(60);
   });
 });

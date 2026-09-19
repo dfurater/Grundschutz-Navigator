@@ -97,8 +97,10 @@ describe('CI failure visibility contract', () => {
   // 10 min für `npm ci` + kurze Node-Skripte ohne Build/Browser, 20 min für
   // Suite/Build/Scan bzw. Netz-Varianz beim Upstream-Fetch (bewusst nicht
   // verschärft ohne Laufzeitmessung), 30 min für `verify-catalog-merge`
-  // (16-min-Budget aus scripts/verify-catalog-deploy.mjs plus Puffer für
-  // Checkout, Verify und Dispatch).
+  // (25-min-Absolutbudget aus scripts/verify-catalog-deploy.mjs —
+  // DEFAULT_VERIFICATION_BUDGET_MS bindet Polling-Sleeps und 30-s-Requests an
+  // eine gemeinsame Deadline — plus 5 min Reserve für Checkout, Verify und
+  // Dispatch; Sleep-Anteile allein ≈ 16 min).
   it('enforces the staggered job timeouts across all nine workflows', async () => {
     const expectedTimeouts: Record<string, Record<string, number>> = {
       'backmerge-main-to-develop.yml': { backmerge: 10 },
