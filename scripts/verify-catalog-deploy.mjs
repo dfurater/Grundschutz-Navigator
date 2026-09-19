@@ -51,11 +51,19 @@ function repoApiBase(repository) {
   return `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
 }
 
+/** Einzige zulässige API-Herkunft (jssecurity:S8476-Allowlist, String-Präfix). */
+const ALLOWED_API_BASE = 'https://api.github.com/repos/';
+
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function fetchGitHubJson(url, { fetchImpl, token, label, requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS }) {
   // Allowlist gegen Client-Side Request Forgery (jssecurity:S8476): Nur die
-  // GitHub-API-Herkunft ist zulässig — kein aus Eingaben gebauter Host.
+  // GitHub-API-Herkunft ist zulässig — kein aus Eingaben gebauter Host. Der
+  // rohe Präfix-Check steht bewusst vor dem URL-Parse, damit die Allowlist
+  // direkt an der übergebenen Zeichenkette hängt.
+  if (typeof url !== 'string' || !url.startsWith(ALLOWED_API_BASE)) {
+    throw new Error(`${label} refused: non-allowlisted host`);
+  }
   let parsed;
   try {
     parsed = new URL(url);
