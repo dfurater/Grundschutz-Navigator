@@ -58,33 +58,6 @@ jobs:
       - name: Setup Node.js and install dependencies
         uses: $/.github/actions/setup-node-env
 
-      # Scope-Entscheider für Step-Skips (GSPP-427, Codex-Empfehlung): Genau
-      # ein früher Step schreibt genau einen Wert nach `GITHUB_OUTPUT` —
-      # `full`, `docs_only` oder `manifest_only`. Kein Workflow-`paths`-Filter
-      # (GSPP-415-Eigenschaft: ein per `if` übersprungener Job meldete
-      # `Success` mit neuem Check-Run und verdeckte das reale Ergebnis), kein
-      # neuer Job (neuer Jobname wäre ein neuer Check-Kontext außerhalb beider
-      # Rulesets) und keine Drittanbieter-Changed-Files-Action. Base-Fetch und
-      # Diff laufen innerhalb des Entscheiders (`scripts/ci-scope.mjs`): Jeder
-      # Fetch-/Diff-Fehler setzt fail-closed `scope=full` statt den Job vor dem
-      # verlangten Volllauf abzubrechen. Der Checkout bleibt flach
-      # (Merge-Commit ohne Historie); Base- wie Head-Commit werden samt
-      # Historie gezielt geholt, weil der Drei-Punkt-Diff sonst keine
-      # Merge-Basis findet und stets auf `full` zurückfiele. Leere SHAs (etwa
-      # `workflow_dispatch`) fallen ebenfalls auf `full` zurück.
-      #
-      # Skip-Matrix: Profilauflösung, go-oscal und Build laufen bei
-      # `scope != 'docs_only'`; Browser-Cache, Chromium-Installation,
-      # Browser-Tests und Egress-Nachweis laufen nur bei `scope == 'full'`;
-      # Fetch, Coverage, Lint, Schema-, Policy-, Versions- und zizmor-Gates
-      # laufen immer.
-      - name: Determine CI scope for step skips
-        id: scope
-        env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: node scripts/ci-scope.mjs
-
       # Hält die Node-Version an genau einer Stelle: `.nvmrc` speist jedes
       # Setup, und dieser Guard prüft sie gegen `engines.node` in package.json
       # und verbietet ein erneutes Literal in Workflows und Actions (GSPP-419).
@@ -122,6 +95,38 @@ jobs:
       # übrigen Guards dieser Stufe.
       - name: Lint
         run: npm run lint
+
+      # Scope-Entscheider für Step-Skips (GSPP-427, Codex-Empfehlung): Genau
+      # ein Step direkt hinter Lint schreibt genau einen Wert nach
+      # `GITHUB_OUTPUT` — `full`, `docs_only` oder `manifest_only`. Der
+      # Entscheider steht hinter Lint, weil er selbst Netz ausführt (Base-
+      # und Head-Fetch via `git fetch`): Vor Lint zöge jeder Lint-Fehler erst
+      # ins Netz, bevor er fail-fast abbricht — der durch GSPP-424 beseitigte
+      # Ablauf. Kein Workflow-`paths`-Filter (GSPP-415-Eigenschaft: ein per
+      # `if` übersprungener Job meldete `Success` mit neuem Check-Run und
+      # verdeckte das reale Ergebnis), kein neuer Job (neuer Jobname wäre ein
+      # neuer Check-Kontext außerhalb beider Rulesets) und keine
+      # Drittanbieter-Changed-Files-Action. Base-Fetch und Diff laufen
+      # innerhalb des Entscheiders (`scripts/ci-scope.mjs`): Jeder
+      # Fetch-/Diff-Fehler setzt fail-closed `scope=full` statt den Job vor dem
+      # verlangten Volllauf abzubrechen. Der Checkout bleibt flach
+      # (Merge-Commit ohne Historie); Base- wie Head-Commit werden samt
+      # Historie gezielt geholt, weil der Drei-Punkt-Diff sonst keine
+      # Merge-Basis findet und stets auf `full` zurückfiele. Leere SHAs (etwa
+      # `workflow_dispatch`) fallen ebenfalls auf `full` zurück.
+      #
+      # Skip-Matrix: Profilauflösung, go-oscal und Build laufen bei
+      # `scope != 'docs_only'`; Browser-Cache, Chromium-Installation,
+      # Browser-Tests und Egress-Nachweis laufen nur bei `scope == 'full'`;
+      # Fetch, Coverage, Lint, Schema-, Policy-, Versions- und zizmor-Gates
+      # laufen immer. Alle Konsumenten des Scope-Werts liegen später, daher
+      # ändert die Position hinter Lint nichts an der Scope-Semantik.
+      - name: Determine CI scope for step skips
+        id: scope
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/ci-scope.mjs
 
       - name: Read the pinned snapshot and fetch the BSI catalog
         uses: $/.github/actions/fetch-pinned-catalog

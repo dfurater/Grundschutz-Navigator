@@ -169,6 +169,17 @@ describe('ci-scope CLI', () => {
 describe('validate lane scope wiring', () => {
   const workflow = () => readFileSync(VALIDATE_WORKFLOW_PATH, 'utf8');
 
+  const validateStepNames = () => {
+    const content = workflow();
+    const validateStart = content.indexOf('\n  validate:\n');
+    const sonarqubeStart = content.indexOf('\n  sonarqube:\n');
+    const scope = content.slice(
+      validateStart,
+      sonarqubeStart > validateStart ? sonarqubeStart : undefined,
+    );
+    return [...scope.matchAll(/^ {6}- name: (.+)$/gm)].map((match) => match[1]);
+  };
+
   it('decides the scope once in an early step with the PR SHAs', () => {
     expect(workflow()).toContain('id: scope');
     expect(workflow()).toContain('run: node scripts/ci-scope.mjs');
@@ -219,5 +230,36 @@ describe('validate lane scope wiring', () => {
     const triggers = workflow().slice(triggerStart, triggerEnd);
 
     expect(triggers).not.toContain('paths');
+  });
+
+  // Codex-Review zu GSPP-427 (P1): Der Entscheider führt zweimal `git fetch`
+  // aus und ist damit der erste Netzschritt — vor Lint zöge jeder Lint-Fehler
+  // erst ins Netz, bevor er fail-fast abbricht (GSPP-424-Regression). Er steht
+  // deshalb direkt hinter Lint; alle seine Konsumenten liegen später, daher
+  // bleibt die Scope-Semantik unverändert.
+  it('runs the scope decider directly behind Lint and before every consumer', () => {
+    const steps = validateStepNames();
+    const lintIndex = steps.indexOf('Lint');
+    const scopeIndex = steps.indexOf('Determine CI scope for step skips');
+    const fetchIndex = steps.indexOf('Read the pinned snapshot and fetch the BSI catalog');
+
+    expect(lintIndex, 'Lint step').toBeGreaterThan(-1);
+    expect(scopeIndex, 'scope step').toBeGreaterThan(-1);
+    expect(fetchIndex, 'fetch step').toBeGreaterThan(-1);
+    expect(scopeIndex, 'scope directly behind Lint (GSPP-424 fail-fast)').toBe(lintIndex + 1);
+    expect(fetchIndex, 'fetch after scope').toBeGreaterThan(scopeIndex);
+
+    for (const step of [
+      'Resolve all BSI profiles deterministically (mandatory build-time corpus)',
+      'Verify upstream OSCAL schemas with go-oscal',
+      'Archive go-oscal SBOM',
+      'Restore Playwright browser cache',
+      'Install pinned Chromium for browser tests',
+      'Run Chromium browser tests',
+      'Verify browser egress oracle',
+      'Build application',
+    ]) {
+      expect(steps.indexOf(step), `${step} after scope`).toBeGreaterThan(scopeIndex);
+    }
   });
 });

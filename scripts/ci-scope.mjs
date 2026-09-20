@@ -3,8 +3,10 @@
 /*
  * Scope-Entscheider für Step-Skips im Job `validate` (GSPP-427).
  *
- * Genau ein früher Step schreibt genau einen Wert nach `GITHUB_OUTPUT`:
- * `full`, `docs_only` oder `manifest_only`. Danach bleiben die Bedingungen
+ * Genau ein Step direkt hinter Lint schreibt genau einen Wert nach `GITHUB_OUTPUT`:
+ * `full`, `docs_only` oder `manifest_only`. Die Position hinter Lint ist
+ * Fail-fast-Vorgabe (GSPP-424): Der Entscheider führt selbst `git fetch` aus
+ * und ist damit Netz — vor Lint zöge jeder Lint-Fehler erst ins Netz. Danach bleiben die Bedingungen
  * klein und überprüfbar (Codex-Empfehlung zu GSPP-427):
  *
  * - Profilauflösung, go-oscal und Build: `scope != 'docs_only'`

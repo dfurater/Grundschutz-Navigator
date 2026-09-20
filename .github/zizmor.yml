@@ -64,7 +64,8 @@ rules:
   # wird der Audit rot (fail-closed) — Zeilennummer nachziehen. Zuletzt in
   # GSPP-426 um +11 (Retention-Kommentar + Versionsquellen-Kommentar in
   # validate.yml) und in GSPP-427 um +36 (Scope-Entscheider plus Step-`if`s
-  # in validate.yml) sowie +5 (Build-Kommentar und -Bedingung aus Greptile-P1).
+  # in validate.yml) sowie +5 (Build-Kommentar und -Bedingung aus Greptile-P1)
+  # und +5 (Scope-Step direkt hinter Lint aus Codex-P1: Fail-fast GSPP-424).
   secrets-outside-env:
     ignore:
       - backmerge-main-to-develop.yml:51:28
@@ -72,5 +73,5 @@ rules:
       - sonar.yml:61:38
       - sonar.yml:88:28
       - update-catalog.yml:47:28
-      - validate.yml:293:38
-      - validate.yml:308:28
+      - validate.yml:298:38
+      - validate.yml:313:28
