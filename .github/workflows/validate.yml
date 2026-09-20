@@ -115,7 +115,11 @@ jobs:
           name: go-oscal-v0.7.1-sbom-linux-amd64
           path: ${{ runner.temp }}/sbom_go-oscal_v0.7.1_Linux_amd64.sbom
           if-no-files-found: error
-          retention-days: 90
+          # Kurzfristige CI-/PR-Analyse-Evidenz, keine SBOM des veröffentlichten
+          # Produkts (GSPP-426): 14 Tage genügen; 30 oder 90 Tage bräuchten eine
+          # konkrete Monats- bzw. Audit-/Forensik-Anforderung, die nicht besteht.
+          # Coverage bleibt bei 7 Tagen.
+          retention-days: 14
 
       # Seit GSPP-416 der einzige vollstaendige jsdom-Suite-Lauf eines
       # Pull Requests. `--coverage` setzt dabei die in vite.config.ts gepinnten
@@ -187,6 +191,13 @@ jobs:
       # mit den Zeilen-Ignores ist auditor grün und meldet jedes neue Secret.
       # Plain-Output (kein SARIF — SARIF exitt immer 0 und taugt nicht als
       # Blockiergate): Befunde lassen `validate` fehlschlagen, Pflichtcheck.
+      # Versionsquelle ist `.github/zizmor.version` (nur der Tag; Guard in
+      # `scripts/zizmor-config.test.ts` fordert ihn in der `IMAGE`-Zeile plus
+      # Digest-Format). Dependabot pflegt keine Container-URLs — nur `uses:` in
+      # Repository-Syntax — und sieht `run:`-Blöcke ohnehin nicht: Tag- und
+      # Digest-Erneuerung laufen als manueller PR (Version anheben, Digest per
+      # `docker pull` + `docker images --digests` bestimmen, `IMAGE`-Zeile
+      # nachziehen).
       - name: Audit workflows with zizmor
         run: |
           set -euo pipefail
