@@ -1,27 +1,19 @@
 # Domänenmodelle — Grundschutz++ Navigator
 
-Beschreibung der Zwei-Schichten-Architektur der Datentypen.
+Zwei-Schichten-Architektur der Datentypen (`src/domain/models.ts`):
 
 ## Überblick
-
-Die Anwendung verwendet ein **Zwei-Schichten-Modell** für die Datentypen:
 
 1. **Raw OSCAL Types** — Spiegelt die JSON-Struktur des BSI Katalogs
 2. **Enriched Domain Types** — Flach, typsicher, UI-bereit
 
-Diese Trennung ermöglicht:
-- Isolierung der externen Datenstruktur
-- Typsichere interne Verarbeitung
-- Einfache Aktualisierung bei OSCAL-Updates
-
-Beide Schichten sind **Compile-Zeit-Konstrukte**. Zur Laufzeit filtern sie
-nichts: Der Quellgraph bleibt vollständig erhalten und wird vom
-Dokumentmodell neben dem angereicherten Katalog geführt — siehe
-[Verlustfreies Dokumentmodell](#verlustfreies-dokumentmodell).
+Zur Laufzeit filtern beide Schichten nichts: Der Quellgraph bleibt vollständig
+erhalten und wird vom Dokumentmodell neben dem angereicherten Katalog geführt —
+siehe [Verlustfreies Dokumentmodell](#verlustfreies-dokumentmodell).
 
 ## Verlustfreies Dokumentmodell
 
-Der Katalogpfad folgt dem verbindlichen Vertrag aus
+Der Katalogpfad folgt
 [ADR-2](https://linear.app/grundschutz-plus-plus/issue/ADR-2): **Das
 Originaldokument ist die Wahrheit, das Domänenmodell eine Projektion darauf.**
 
@@ -48,34 +40,26 @@ weiterexportiert.
 
 Einstiegspunkt ist `parseCatalogDocument()` in
 `src/adapters/oscalDocument.ts`. Es führt das Dokument über den
-[Root-Dispatch](#root-envelope-und-root-dispatch): Dass hier ein Katalog
-vorliegt, wird geprüft und nicht angenommen. `parseCatalog()` bleibt die reine
-Ableitungsfunktion und bekommt nur noch den **Katalogkörper**.
+[Root-Dispatch](#root-envelope-und-root-dispatch) und gibt `parseCatalog()` nur
+den **Katalogkörper**.
 
 ### Vertrauensklasse ist ein Ergebnis, keine Herkunftsangabe
 
-Klasse 1 ist nach [ADR-2](https://linear.app/grundschutz-plus-plus/issue/ADR-2)
-§10 über drei Eigenschaften definiert:
-Quellregister-Herkunft, Manifest-v2-Provenienz **und bestandene
-Laufzeit-Hashprüfung**. Ein Dokument darf sich deshalb erst dann
-`class-1-verified-public` nennen, wenn diese Prüfung tatsächlich gelaufen und
-erfolgreich war.
+Klasse 1 verlangt nach [ADR-2](https://linear.app/grundschutz-plus-plus/issue/ADR-2)
+§10 drei Eigenschaften: Quellregister-Herkunft, Manifest-v2-Provenienz **und
+bestandene Laufzeit-Hashprüfung**. Erst dann gilt
+`class-1-verified-public`.
 
-`CatalogProvider` baut das Dokument aus diesem Grund **nach** der
-Integritätsprüfung, nicht davor. Fehlen die Metadaten oder weicht der Hash ab,
-bleibt das Dokument nutzbar, trägt aber `class-1-unverified-public`. Ein
-Konsument, der sich auf die Klasse verlässt, akzeptiert damit keinen
-ungeprüften Katalog als geprüft.
+`CatalogProvider` baut das Dokument **nach** der Integritätsprüfung. Fehlen die
+Metadaten oder weicht der Hash ab, bleibt das Dokument nutzbar, trägt aber
+`class-1-unverified-public`.
 
-Die Verifikationsdetails selbst bleiben unverändert in
-`CatalogState.verification`; die Klasse dupliziert sie nicht, sondern fasst
+Die Verifikationsdetails stehen in `CatalogState.verification`; die Klasse fasst
 nur ihr Ergebnis für die Dokumentebene zusammen.
 
 ### Warum
 
-Ohne erhaltenen Quellgraphen ist jeder spätere Export zwangsläufig
-verlustbehaftet — und zwar nicht nur für unbekannte Felder, sondern belegbar
-auch für reguläre OSCAL-Strukturen, die das Domänenmodell nicht abbildet:
+Reguläre OSCAL-Strukturen ohne Entsprechung im Domänenmodell:
 
 | Struktur | Warum verlustkritisch |
 | --- | --- |
@@ -89,63 +73,58 @@ auch für reguläre OSCAL-Strukturen, die das Domänenmodell nicht abbildet:
 ### Reichweite des Begriffs
 
 „Verlustfrei" heißt **strukturell und semantisch verlustfrei innerhalb des
-JSON-Informationsmodells**, nicht byteidentisch zur Quelldatei. Bewahrt wird
-das Ergebnis von `JSON.parse`: alle Schlüssel, Werte, Verschachtelungen,
-Array-Reihenfolgen und die Einfügereihenfolge nicht-numerischer Schlüssel.
-Nicht bewahrt werden Formatierung, Einrückung und Zeilenenden.
+JSON-Informationsmodells**: Bewahrt wird das Ergebnis von `JSON.parse` (alle
+Schlüssel, Werte, Verschachtelungen, Array-Reihenfolgen, Einfügereihenfolge
+nicht-numerischer Schlüssel). Formatierung, Einrückung und Zeilenenden werden
+nicht bewahrt.
 
-`source` ist bewusst als `unknown` typisiert: `JSON.parse` liefert keine
-geprüfte Struktur, und der Vertrag filtert den Quellgraphen ausdrücklich nicht
-nach bekannten Feldern. Unbekannte Felder bleiben ausschließlich in `source`
-— sie werden nie ins `view` gehoben, nie gerendert und nie interpretiert, aber
-auch nie entfernt.
+`source` ist als `unknown` typisiert: `JSON.parse` liefert keine geprüfte
+Struktur, und der Vertrag filtert den Quellgraphen nicht nach bekannten
+Feldern. Unbekannte Felder bleiben ausschließlich in `source` — sie werden nie
+ins `view` gehoben, nie gerendert und nie interpretiert, aber auch nie
+entfernt.
 
 ### Referenzauflösung auf dem Quellgraphen
 
 [`referenceResolution.ts`](../src/domain/referenceResolution.ts) verarbeitet
-`link`, `back-matter`, `resource`, `rlink`, `citation` und `base64` deshalb
-direkt aus `CatalogDocument.source` mit dem expliziten Dokument- und
-Katalogkontext. Das `view` kann weder `resource-fragment` noch `media-type`,
-`citation` oder `base64` verlustfrei tragen und ist keine Eingabe dieser
-Schicht.
+`link`, `back-matter`, `resource`, `rlink`, `citation` und `base64` direkt aus
+`CatalogDocument.source` mit explizitem Dokument- und Katalogkontext. Das `view`
+trägt weder `resource-fragment` noch `media-type`, `citation` oder `base64` und
+ist keine Eingabe dieser Schicht.
 
-Der Klassifikator löst nur dokumentinterne Fragmente und ausschließlich
-explizit bereitgestellte Cross-Dokument-Ziele auf. Relative Ziele erhalten
-keinen Verzeichniskontext; externe Ziele werden ausschließlich für `https:`
-als externe Navigation ausgewiesen. Alle anderen Protokolle bleiben Text. Die
-Schicht führt weder Netzwerk- noch Dateizugriffe aus, dekodiert keine
-`base64`-Nutzlast und führt diese auch nicht im Ergebnisobjekt. Ein fehlender
-`rlink`-Hash wird als fehlender Integritätsnachweis angezeigt; vorhandene
-Upstream-Hashes sind keine Projekt-SHA-256-Verifikation.
+Der Klassifikator löst nur dokumentinterne Fragmente und explizit
+bereitgestellte Cross-Dokument-Ziele auf. Relative Ziele erhalten keinen
+Verzeichniskontext; externe Ziele werden ausschließlich für `https:` als
+externe Navigation ausgewiesen, alle anderen Protokolle bleiben Text. Die
+Schicht führt weder Netzwerk- noch Dateizugriffe aus und dekodiert keine
+`base64`-Nutzlast. Ein fehlender `rlink`-Hash wird als fehlender
+Integritätsnachweis angezeigt; vorhandene Upstream-Hashes sind keine
+Projekt-SHA-256-Verifikation.
 
-Die abgeleitete `Control.links`-Projektion enthält ausschließlich damit
-aufgelöste, kataloggescopte Control-Ziele. Ressourcen, externe und nicht
-auflösbare Referenzen bleiben im Quellgraphen und werden nicht als Control-Link
-in Suche, Export oder Beziehungsansicht fehlinterpretiert.
+Die abgeleitete `Control.links`-Projektion enthält ausschließlich aufgelöste,
+kataloggescopte Control-Ziele. Ressourcen, externe und nicht auflösbare
+Referenzen bleiben im Quellgraphen.
 [`catalogReferenceProjection.ts`](../src/domain/catalogReferenceProjection.ts)
-wendet diese schlanke Projektion im `CatalogContext` genau einmal an, bevor die
-View veröffentlicht wird; der reine Adapter bleibt frei von Referenzklassifikation.
+wendet diese Projektion im `CatalogContext` genau einmal an, bevor die View
+veröffentlicht wird; der Adapter klassifiziert keine Referenzen.
 
-Ein `rlink` klassifiziert sein Ziel nur flach; er expandiert die Zielressource
-nicht erneut. Selbstreferenzen und Zyklen zwischen Ressourcen bleiben damit
-sichtbar, ohne die Darstellung durch Rekursion zu blockieren.
+Ein `rlink` klassifiziert sein Ziel nur flach und expandiert die Zielressource
+nicht erneut. Selbstreferenzen und Zyklen zwischen Ressourcen bleiben sichtbar,
+ohne die Darstellung durch Rekursion zu blockieren.
 
 ### Speicherstrategie: String-Sharing
 
-Der Quellgraph kostet zusätzlichen Heap, aber weit weniger als die Dateigröße
-vermuten lässt. Grund ist das **String-Sharing**: Das Domänenmodell übernimmt
-Titel, Prosa und Prop-Werte per Referenz auf dieselben Quellstrings, statt sie
-zu kopieren — in `src/adapters/oscalAdapter.ts` unter anderem
-`title: raw.title`, `statementRaw` und `value: prop.value`.
+Der Quellgraph kostet zusätzlichen Heap. Das Domänenmodell übernimmt Titel,
+Prosa und Prop-Werte per Referenz auf dieselben Quellstrings, statt sie zu
+kopieren — in `src/adapters/oscalAdapter.ts` unter anderem `title: raw.title`,
+`statementRaw` und `value: prop.value`.
 
-Geteilt werden dabei ausschließlich **Strings** — sie sind unveränderlich, ihr
-Teilen ist folgenlos. Objekte und Arrays werden nie geteilt: Der Adapter kopiert
-auch `responsible-parties/party-uuids` und `rlinks/hashes` samt der einzelnen
-Hash-Objekte, weil eine Mutation am Domänenmodell sonst auf den Quellgraphen
-durchschlüge. `src/adapters/oscalDocument.test.ts` prüft die Trennung generisch
-über Objektidentitäten, nicht an einzelnen Beispielpfaden.
+Geteilt werden ausschließlich **Strings** (unveränderlich). Objekte und Arrays
+werden kopiert — auch `responsible-parties/party-uuids` und `rlinks/hashes`
+samt der einzelnen Hash-Objekte, weil eine Mutation am Domänenmodell sonst auf
+den Quellgraphen durchschlüge. `src/adapters/oscalDocument.test.ts` prüft die
+Trennung generisch über Objektidentitäten.
 
-Damit trägt der Quellgraph im Wesentlichen nur seine Container-Hüllen bei.
 Gemessen am Grundschutz++-Katalog (~21.300 Container): rund **1,9 MB
 zusätzlich, etwa 91 Byte je Container** unter Node 22.
 
@@ -164,11 +143,10 @@ zusätzlich, etwa 91 Byte je Container** unter Node 22.
 | Zählregeln A und B als Strukturorakel | `src/test/oscalStructure.ts` |
 
 Der reale Katalog wird nie committet, sondern bei jedem Build frisch von BSI
-geholt. Deshalb prüfen die Tests gegen ihn ausschließlich **Erhaltung**
-(Vergleich Original ↔ `source`), nie feste Inhaltszahlen. Die inhaltlich
-festgenagelten Strukturprüfungen laufen gegen das eingefrorene Fixture, das
-alle verlustkritischen Strukturen trägt — auch die, die der reale Katalog
-derzeit nicht enthält.
+geholt. Tests gegen ihn prüfen ausschließlich **Erhaltung** (Vergleich Original
+↔ `source`), nie feste Inhaltszahlen. Die festgenagelten Strukturprüfungen
+laufen gegen das eingefrorene Fixture, das alle verlustkritischen Strukturen
+trägt — auch die, die der reale Katalog derzeit nicht enthält.
 
 ## Raw OSCAL Types
 
@@ -279,43 +257,37 @@ Der Root-Envelope steht nicht mehr hier, sondern in
 ## Projekteigene OSCAL-Properties
 
 `src/domain/projectProps.ts` ist die einzige Runtime-Registry für den
-Projektnamespace, die sechs bekannten Namen, ihre Träger, Kardinalitäten und
-Wertregeln. Der vollständige öffentliche Vertrag steht in
-[`PROJECT_PROPS.md`](PROJECT_PROPS.md).
+Projektnamespace (sechs bekannte Namen, Träger, Kardinalitäten, Wertregeln).
+Der öffentliche Vertrag steht in [`PROJECT_PROPS.md`](PROJECT_PROPS.md).
 
-Der Lesepfad arbeitet auf `RawOscalProp` und mutiert weder die übergebene Liste
-noch einzelne Property-Objekte. Fremde Namespaces und unbekannte Namen bleiben
-im Quellgraphen erhalten. Nur der semantische Schreibpfad wird bei einem
-unbekannten Projektnamen oder einer Vertragsverletzung gesperrt; Diagnosen
-enthalten keine Property-Werte oder Freitexte.
+Der Lesepfad arbeitet auf `RawOscalProp` und mutiert weder Liste noch einzelne
+Property-Objekte. Fremde Namespaces und unbekannte Namen bleiben im
+Quellgraphen. Nur der semantische Schreibpfad wird bei unbekanntem Projektnamen
+oder Vertragsverletzung gesperrt; Diagnosen enthalten keine Property-Werte oder
+Freitexte.
 
 `preservedProps` ist die einzige vollständige und geordnete Quelle für Export
-und Backup und bleibt selbst bei einer ungültigen Collection referenzidentisch
-zur Eingabe. `projectProps`, `foreignProps` und `unknownProjectProps` sind
+und Backup und bleibt selbst bei ungültiger Collection referenzidentisch zur
+Eingabe. `projectProps`, `foreignProps` und `unknownProjectProps` sind
 getrennte semantische Sichten, aus denen der Quellgraph nicht rekonstruiert
-wird. `collectionValid` kennzeichnet ausschließlich die strukturelle
-Listenform; `writeAllowed` umfasst zusätzlich alle semantischen Diagnosen. Vor
-der Auswertung gilt dieselbe positive Klasse-2-Objektdefinition wie am
-Import-Boundary. Dokumentgebundene Aufrufe tragen eine typisierte Position mit
-echten Arrayindizes; Diagnosen erhalten dadurch RFC-6901-Pfade ohne
+wird. `collectionValid` kennzeichnet die strukturelle Listenform;
+`writeAllowed` umfasst zusätzlich alle semantischen Diagnosen.
+Dokumentgebundene Aufrufe tragen eine typisierte Position mit echten
+Arrayindizes; Diagnosen erhalten dadurch RFC-6901-Pfade ohne
 Wildcard-Literale.
 
-Für die Planungsproperties erhält der paarübergreifende Validator die bereits
-geprüften Reader-Ergebnisse eines `poam-item` und einer `remediation`
-ausdrücklich. Er liest die Rohlisten nicht erneut, errät diese Zuordnung nicht
-aus `related-risks` und erlegt dem Dokument keine globale Wahl zwischen den
-beiden zulässigen Trägerarten auf. Katalog-Key und Commit entstehen im Writer
-nur als atomares Paar; die generische Einzel-Property-API verweigert beide
-Paarhälften.
+Der paarübergreifende Validator für die Planungsproperties erhält die bereits
+geprüften Reader-Ergebnisse eines `poam-item` und einer `remediation`. Er liest
+die Rohlisten nicht erneut und erlegt dem Dokument keine globale Wahl zwischen
+den beiden zulässigen Trägerarten auf. Katalog-Key und Commit entstehen im
+Writer nur als atomares Paar; die generische Einzel-Property-API verweigert
+beide Paarhälften.
 
 ## Root-Envelope und Root-Dispatch
 
-Bis
-[GSPP-285](https://linear.app/grundschutz-plus-plus/issue/GSPP-285)
-war die Typebene auf einen Root verdrahtet (`RawOscalDocument { catalog }`),
-und der Adapter deutete zur Laufzeit jedes Dokument ohne `catalog`-Key
-stillschweigend als Katalog. Beides ist ersetzt: Der Envelope kennt alle acht
-OSCAL-Root-Keys, und genau **eine** Stelle bestimmt den Root-Typ.
+Der Envelope kennt alle acht OSCAL-Root-Keys, und genau **eine** Stelle
+bestimmt den Root-Typ (`dispatchOscalDocument()` in
+`src/adapters/oscalRootDispatch.ts`).
 
 ### Envelope-Typen
 
@@ -330,7 +302,8 @@ type RawOscalRootBodyFor<K extends OscalRootKey> =
   K extends 'catalog' ? RawOscalCatalog
     : K extends 'component-definition' ? RawOscalComponentDefinition
       : K extends 'profile' ? RawOscalProfile
-        : RawOscalRootBody;
+        : K extends 'mapping-collection' ? RawOscalMappingCollection
+          : RawOscalRootBody;
 
 /** Genau ein Root-Key plus die zulässige Schema-Direktive. */
 type RawOscalDocumentFor<K extends OscalRootKey> =
@@ -352,8 +325,8 @@ Top-Level-`properties` sind exakt `["$schema", "<root-key>"]`.
 
 `dispatchOscalDocument()` in `src/adapters/oscalRootDispatch.ts` implementiert
 Stufe 2 des [Validierungsvertrags](OSCAL_VALIDATION.md). Er ist fail-closed:
-im Zweifel ablehnen, nie „bestmöglich“ interpretieren. Die Prüfreihenfolge ist
-festgelegt, damit ein Dokument die inhaltlich engste Diagnose erhält.
+im Zweifel ablehnen. Die Prüfreihenfolge ist festgelegt, damit ein Dokument
+die inhaltlich engste Diagnose erhält.
 
 | Reihenfolge | Fall | Code |
 | --- | --- | --- |
@@ -366,18 +339,16 @@ festgelegt, damit ein Dokument die inhaltlich engste Diagnose erhält.
 | 7 | Root bekannt, aber kein Adapter registriert | `OSCAL_ROOT_TYPE_UNSUPPORTED` |
 
 Die Codes aus Schritt 6 gehören der Versionsmatrix und werden unverändert
-durchgereicht; der Dispatch enthält weder eine eigene Versionskonstante noch
-eine Kopie der Matrixlogik. Schritt 4 und 7 sind bewusst unterscheidbar:
-„kenne ich nicht“ ist etwas anderes als „kenne ich, kann ich aber noch nicht
-verarbeiten“.
+durchgereicht; der Dispatch enthält weder eigene Versionskonstante noch Kopie
+der Matrixlogik. Schritt 4 und 7 sind unterscheidbar: „kenne ich nicht" ist
+etwas anderes als „kenne ich, kann ich aber noch nicht verarbeiten".
 
-`$schema` ist zulässig und zählt nicht als zweiter Root. Es ist aber niemals
+`$schema` ist zulässig und zählt nicht als zweiter Root. Es ist niemals
 Versionsautorität — allein `metadata.oscal-version` wählt die Matrixzelle,
 `$schema` wird nur als Kreuzprobe ausgewertet.
 
 Nicht Aufgabe des Dispatch: Stufe-1-Prüfungen wie Größenlimit oder doppelte
-Member-Namen ([GSPP-289](https://linear.app/grundschutz-plus-plus/issue/GSPP-289)
-— auf einem `JSON.parse`-Ergebnis grundsätzlich nicht mehr erkennbar) und die
+Member-Namen (auf einem `JSON.parse`-Ergebnis nicht mehr erkennbar) und die
 Schema-Validierung selbst. Der Dispatch **wählt** den Schema-Pin aus,
 **wendet** ihn nicht an.
 
@@ -410,21 +381,20 @@ Root-Keys wird nur ihre Anzahl genannt.
 ### Adapter-Registrierung: ein neues Modell erschließen
 
 Die Registrierung steht in `src/adapters/oscalRootAdapters.ts`. Ein neues
-Root-Modell erfordert genau zwei Schritte und keine Änderung an bestehenden
-Adaptern:
+Root-Modell erfordert zwei Schritte:
 
 1. Modelladapter als eigene Datei unter `src/adapters/` anlegen, mit eigenem
    Testvertrag. Er bekommt den **Root-Körper** und den Kontext — nicht das
    Gesamtdokument und keine Zuständigkeit für die Root-Bestimmung. Braucht das
    Modell eine Identität, die nicht im Dokument steht, löst er sie aus Kontext
-   oder Quellregister auf und bricht sonst ab; ein Default würde sie erfinden.
+   oder Quellregister auf und bricht sonst ab.
 2. Einen Eintrag in `OSCAL_ROOT_ADAPTERS` ergänzen und, falls der Körper
    modelliert wird, den Zweig in `RawOscalRootBodyFor` erweitern.
 
 Modulgrenzen: Geteilt werden Envelope, Root-Erkennung, Versionsbindung und
 Diagnosevertrag. Parsing und Read-Model-Ableitung bleiben je Root-Typ in
-fokussierten Modulen — ein zentraler Universaladapter entsteht ausdrücklich
-nicht, und `models.ts` wächst dafür nicht zu einer monolithischen Modellschicht.
+eigenen Modulen; `models.ts` wächst nicht zu einer monolithischen
+Modellschicht.
 
 | Root-Key | Layer | Adapter | Status |
 | --- | --- | --- | --- |
@@ -439,9 +409,6 @@ nicht, und `models.ts` wächst dafür nicht zu einer monolithischen Modellschich
 
 ## Profile (Control Layer)
 
-Eingeführt mit
-[GSPP-240](https://linear.app/grundschutz-plus-plus/issue/GSPP-240).
-
 | Datei | Rolle |
 | --- | --- |
 | `src/domain/oscalProfile.ts` | Raw-Typen, über `PinnedOscalVersion` parametrisiert |
@@ -455,15 +422,12 @@ Eingeführt mit
 Ein Profile importiert einen Catalog **oder ein weiteres Profile** und
 beschreibt, welche Controls daraus ausgewählt, wie sie gruppiert und wie sie
 geändert werden sollen. Erst die Profile Resolution macht daraus einen Catalog.
-NIST formuliert das Profile deshalb als Pflichteinstieg in die oberen Layer:
-Ein SSP importiert genau ein Profile, keinen Catalog.
 
 Dieser Slice liest die Anweisung und führt sie **nicht** aus. Kein Feld der
-Projektion kann ein aufgelöstes Control-Set ausdrücken; `Profile`,
-`ProfileMerge` und `ProfileModify` tragen stattdessen den eingefrorenen Marker
+Projektion drückt ein aufgelöstes Control-Set aus; `Profile`,
+`ProfileMerge` und `ProfileModify` tragen den eingefrorenen Marker
 `PROFILE_RESOLUTION_STATE` mit `status: "not-resolved"` und dem Grund
-`profile-resolution-out-of-scope`. Die Auflösung selbst ist
-[GSPP-291](https://linear.app/grundschutz-plus-plus/issue/GSPP-291).
+`profile-resolution-out-of-scope`.
 
 ### Unterstützte Semantik
 
@@ -502,16 +466,13 @@ Projektion kann ein aufgelöstes Control-Set ausdrücken; `Profile`,
 
 Im BSI-Bestand ist **jedes** `import.href` ein dokumentinternes
 `#uuid`-Fragment auf eine `back-matter`-Ressource. Der relative Pfad liegt eine
-Kante weiter, in `back-matter.resources[].rlinks[].href`, und zeigt mit
-`../`-Segmenten auf Quellkataloge, die das Quellregister nicht führt.
+Kante weiter, in `back-matter.resources[].rlinks[].href`.
 
-Die Referenz wird deshalb als `kind: 'resource'` aufgelöst — die Ressource ist
-da —, während ihr `rlink` das Ergebnis `relative` behält. „Aufgelöst, aber ohne
-auflösbares Ziel“ ist der zutreffende Zustand, nicht ein Fehler.
+Die Referenz wird als `kind: 'resource'` aufgelöst, während ihr `rlink` das
+Ergebnis `relative` behält.
 
-Nach [GSPP-286](https://linear.app/grundschutz-plus-plus/issue/GSPP-286) gibt es
-clientseitig keinen Verzeichniskontext: `../catalogs/…`, `foo.json` und
-`../../etc/passwd` erhalten **dasselbe** Ergebnis `relative`. Es gibt keine
+Clientseitig gibt es keinen Verzeichniskontext: `../catalogs/…`, `foo.json`
+und `../../etc/passwd` erhalten **dasselbe** Ergebnis `relative`. Es gibt keine
 Pfadnormalisierung und keine Traversal-Sonderbehandlung, und der Adapter
 verzweigt nirgends selbst auf die Form eines `href`
 (`oscalProfileAdapter.boundaries.node.test.ts`).
@@ -519,8 +480,8 @@ verzweigt nirgends selbst auf die Form eines `href`
 ### Versionsdrift ist beim Profile strukturell
 
 Alle drei registrierten Profile deklarieren `1.1.3`. Eine
-Profile-Versionskonstante gäbe es trotzdem nicht — und beim Profile ist das
-nicht nur Prinzip, sondern am vendorierten Schema messbar:
+Profile-Versionskonstante gibt es nicht; die vendorierten Schemas unterscheiden
+sich messbar:
 
 | Konstrukt | 1.1.2 / 1.1.3 | 1.2.1 / 1.2.2 |
 | --- | --- | --- |
@@ -532,8 +493,8 @@ nicht nur Prinzip, sondern am vendorierten Schema messbar:
 
 **Derselbe** `import` mit beiden Selektionsformen ist unter 1.1.3 schemavalide
 und ab 1.2.1 ein Befund; ein `import` ohne `href` genau umgekehrt. Die
-Feldprädikate in `src/domain/oscalProfile.ts` bilden das ab und hängen über
-`oscalProfile.versionDrift.test.ts` am Schema, nicht am Gedächtnis.
+Feldprädikate in `src/domain/oscalProfile.ts` hängen über
+`oscalProfile.versionDrift.test.ts` am Schema.
 
 ### Modellinterne Diagnosen
 
@@ -551,29 +512,27 @@ nie; verworfen wird ausschließlich vorher, im Root-Dispatch.
 | `OSCAL_PROFILE_ALTER_CONTROL_ID_MISSING` | `alter` ohne `control-id` |
 | `OSCAL_PROFILE_STRUCTURE_UNEXPECTED` | Knoten hat nicht die erwartete Form, etwa Objekt statt Array |
 
-Die vier mit `AMBIGUOUS`/`MISSING` benannten Befunde sind **Modell**aussagen,
-keine Schemaaussagen: Ob derselbe Knoten schemawidrig ist, hängt an der
-deklarierten Version und entscheidet Stufe 3. Der Knoten bleibt in beiden Fällen
-verlustfrei in der Projektion — ein mehrdeutiger `import` behält seine
-Selektoren, ein `alter` ohne `control-id` bleibt in `alters` stehen und fehlt
-nur in der Gruppierung.
+Die vier mit `AMBIGUOUS`/`MISSING` benannten Befunde sind **Modell**aussagen:
+Ob derselbe Knoten schemawidrig ist, hängt an der deklarierten Version und
+entscheidet Stufe 3. Der Knoten bleibt in beiden Fällen verlustfrei in der
+Projektion — ein mehrdeutiger `import` behält seine Selektoren, ein `alter`
+ohne `control-id` bleibt in `alters` stehen und fehlt nur in der Gruppierung.
 
 ### Mehrfache `alter`-Einträge auf derselben `control-id`
 
 Das WLAN-Profil trägt am Snapshot 290 `alters` über 58 eindeutige `control-id`,
-bis zu fünf Einträge je Control. Ihre Wirkung entsteht erst aus allen zusammen.
-`ProfileModify.alters` ist deshalb eine Liste in Quellreihenfolge, und
-`altersByControlId` bildet auf **Listen** ab; ein `Map.set()` je `control-id`
-verlöre dort den Großteil der Anweisungen.
+bis zu fünf Einträge je Control. `ProfileModify.alters` ist eine Liste in
+Quellreihenfolge, und `altersByControlId` bildet auf **Listen** ab; ein
+`Map.set()` je `control-id` verlöre dort den Großteil der Anweisungen.
 
 ### Testkorpus
 
 Die drei realen Profile liegen nicht im Repository: `npm run fetch-catalog`
 materialisiert ausschließlich `supported`-Artefakte, und alle drei sind
-`preview`. Verbindlich ist deshalb der eingefrorene Fixture-Korpus in
+`preview`. Verbindlich ist der eingefrorene Fixture-Korpus in
 `src/test/fixtures/profiles.ts` mit den am Snapshot
 `80694713a7a430d12eb2099893de23ad8bb6f780` gemessenen Strukturen. Die im
-BSI-Bestand nicht vorkommenden, normativ aber vorhandenen Fälle — `matching`,
+BSI-Bestand nicht vorkommenden, normativ vorhandenen Fälle — `matching`,
 `merge: flat`, `combine`, `insert-controls.order`, die Positionen `before`,
 `after` und `ending`, `exclude-controls`, `import` ohne `href` — stehen als
 ergänzende synthetische Fixtures daneben.
@@ -581,13 +540,9 @@ ergänzende synthetische Fixtures daneben.
 Der Realkorpus ist optional: `oscalProfileDocument.node.test.ts` läuft nur, wenn
 `GSPP_PROFILE_CORPUS_PATH` auf ein lokal geholtes Verzeichnis zeigt, und wird
 sonst übersprungen. Er prüft Erhaltung und die Byte-Identität gegen
-`contentSha256` aus `upstream-manifest.json`, nie feste Inhaltszahlen — das
-WLAN-Profil hat seine `alters`-Zahl upstream schon einmal gewechselt.
+`contentSha256` aus `upstream-manifest.json`, nie feste Inhaltszahlen.
 
 ## Mapping Collections (Control Layer)
-
-Eingeführt mit
-[GSPP-245](https://linear.app/grundschutz-plus-plus/issue/GSPP-245).
 
 | Datei | Rolle |
 | --- | --- |
@@ -603,17 +558,14 @@ Eine Mapping Collection beschreibt Beziehungen zwischen Controls oder
 Control-Statements **zweier autoritativer Quellen**. Sie ist kein Bestandteil
 der Import-Kette Catalog → Profile → SSP: Kein anderes OSCAL-Modell importiert
 sie. Sie benennt ihre beiden Seiten über `source-resource` und
-`target-resource` und setzt voraus, dass die dort referenzierten Kataloge
-vorliegen — was im BSI-Bestand für **keine** der sechs Referenzen zutrifft.
+`target-resource`.
 
 Der Navigator liest diese Beziehungen und macht sie navigierbar. Aus einem
-Mapping folgt keine Compliance-, Audit- oder Zertifizierungsaussage, und kein
-Feld des Domänenmodells behauptet etwas anderes.
+Mapping folgt keine Compliance-, Audit- oder Zertifizierungsaussage.
 
 ### Die Lücke ist eine Aussage, kein fehlender Eintrag
 
-Das ist die fachlich kritische Unterscheidung des Modells und der Grund für
-`MappingCoverageState`:
+Grund für `MappingCoverageState`:
 
 | Zustand | Bedeutung | Grundlage |
 | --- | --- | --- |
@@ -623,24 +575,22 @@ Das ist die fachlich kritische Unterscheidung des Modells und der Grund für
 
 Einen vierten Zustand „nicht abgedeckt" gibt es nicht. Abgefragt wird die
 Abdeckung über `coverageForSourceIdRef(mapping, idRef)` und
-`coverageForTargetIdRef(…)`; sie existieren, damit an keiner Aufrufstelle ein
-`map.get(id) ?? 'nicht-abgedeckt'` entstehen kann. Ein Eintrag mit **unbekanntem**
-Beziehungstyp zählt bewusst nicht als Abdeckung: Was niemand deuten kann, darf
-keine behaupten.
+`coverageForTargetIdRef(…)`; ein `map.get(id) ?? 'nicht-abgedeckt'` an der
+Aufrufstelle entfällt damit. Ein Eintrag mit **unbekanntem** Beziehungstyp
+zählt nicht als Abdeckung.
 
 Die Lücke hat **zwei** Ausdrucksformen, und beide gehen in die Abfrage ein: der
 `map` mit `no-relationship` und die Gap-Summary der jeweiligen Seite, die nach
 Schema „all controls that were not mapped at all" aufzählt. Aus ihr zählen
 ausschließlich die namentlich genannten `with-ids` (`sourceGapIdRefs`,
 `targetGapIdRefs`); ein `matching`-Muster bleibt erhalten, verändert aber keine
-Abdeckungsaussage, weil dieser Slice nirgends einen Glob auswertet. Führt ein
-Dokument dieselbe ID zugleich als abgebildet und als ungemappt, widerspricht es
-sich — dann gewinnt die konkrete Beziehung, die Quelle und Ziel benennt.
+Abdeckungsaussage, weil dieser Slice keinen Glob auswertet. Führt ein
+Dokument dieselbe ID zugleich als abgebildet und als ungemappt, gewinnt die
+konkrete Beziehung.
 
 Die Indizes `mapsBySourceIdRef` und `mapsByTargetIdRef` hängen am einzelnen
-Mapping Set, nicht an der Sammlung. Erst das Set benennt die Ressource, in der
-eine ID etwas bedeutet; ein sammlungsweiter Index würde zwei Quellkataloge mit
-gleichlautenden IDs einebnen.
+Mapping Set, nicht an der Sammlung: Zwei Sets können verschiedene
+Quellkataloge mit gleichlautenden IDs haben.
 
 ### Das vollständige Beziehungsvokabular
 
@@ -653,15 +603,12 @@ gleichlautenden IDs einebnen.
 | `intersects-with` | teilweise Überschneidung | symmetrisch |
 | `no-relationship` | ausdrücklich keine Beziehung | symmetrisch |
 
-Keiner dieser Werte wird zu einem generischen `related` zusammengefasst. Fünf
-sind am Bestand belegt; `no-relationship` kommt in keinem der beiden
-BSI-Artefakte vor und ist deshalb über ein synthetisches Fixture abgedeckt.
+Keiner dieser Werte wird zu einem generischen `related` zusammengefasst.
 
 ### Feldweise unterschiedliche Prüftiefe
 
-Das JSON-Schema prüft weniger, als das Modell festlegt — und zwar
-unterschiedlich viel je Feld. Genau deshalb bringt dieser Adapter als einziger
-eine eigene Vokabularprüfung mit:
+Das JSON-Schema prüft je Feld unterschiedlich viel. Dieser Adapter bringt als
+einziger eine eigene Vokabularprüfung mit:
 
 | Feld | JSON-Schema | Wer prüft |
 | --- | --- | --- |
@@ -674,12 +621,11 @@ eine eigene Vokabularprüfung mit:
 Der Grund steht im Metaschema: Die `allowed-values` von `relationship` tragen
 das Ziel `.[has-oscal-namespace('…')]` und werden deshalb nicht in das
 JSON-Schema übernommen. Ein erfundenes `relationship: "maps-to"` ist damit
-schemavalide — und ohne die eigene Prüfung wäre die Gap-Semantik ungesichert.
+schemavalide.
 
 Dieselbe Namensraumbindung wird im Modell **positiv** abgebildet: Ein `ns`, der
 einen fremden Namensraum benennt, hebt die Vokabularbindung auf. Der Wert wird
-dann als `extension` geführt statt als Befund — eigene Beziehungs- und
-Ressourcentypen sind dort ausdrücklich vorgesehen. Fehlt `ns`, gilt laut
+dann als `extension` geführt statt als Befund. Fehlt `ns`, gilt laut
 Metaschema der OSCAL-Namensraum, und das Vokabular bindet. Bei
 `mapping-resource-reference/type` ist der Adapter damit **strenger** als
 `allow-other="yes"`: Ein unbekannter Typ ohne fremden `ns` ist hier fail-closed
@@ -703,18 +649,13 @@ ein Befund.
 ### Bewusst **nicht** unterstützt
 
 * **Keine Auflösung der Ressourcenreferenzen gegen die Gegenseite.** Alle sechs
-  `href` des Bestands sind relative Dateinamen, und keiner ist im Quellregister
-  vertreten. Nach
-  [GSPP-286](https://linear.app/grundschutz-plus-plus/issue/GSPP-286) werden
-  relative Referenzen **nie** aufgelöst: kein Verzeichniskontext, keine
-  Pfadnormalisierung, keine Traversal-Sonderbehandlung.
+  `href` des Bestands sind relative Dateinamen. Relative Referenzen werden
+  **nie** aufgelöst: kein Verzeichniskontext, keine Pfadnormalisierung, keine
+  Traversal-Sonderbehandlung.
 * **Keine Deutung einer `id-ref` ohne Ressourcenkontext.** Jedes Item trägt den
   Marker `MAPPING_ID_REF_UNRESOLVED`; je Mapping-Seite benennt eine Diagnose den
-  Grund. Eine `id-ref` gegen einen beliebigen geladenen Katalog aufzulösen wäre
-  geraten, nicht ermittelt.
-* **Keine Crosswalk-UI** — das sind
-  [GSPP-246](https://linear.app/grundschutz-plus-plus/issue/GSPP-246) und
-  [GSPP-247](https://linear.app/grundschutz-plus-plus/issue/GSPP-247).
+  Grund.
+* **Keine Crosswalk-UI.**
 * **Kein Erzeugen und kein Bearbeiten** von Mappings; rein lesend.
 * **Keine Umkehrnavigation als Modelloperation.** Die Umkehrbarkeit der
   Beziehungstypen ist oben dokumentiert, wird aber nicht automatisch als
@@ -723,23 +664,21 @@ ein Befund.
   `status`, `confidence-score` und `coverage` sind gestuft: Die `provenance`
   setzt sie global, `mapping` und `map` überschreiben sie lokal. Alle Ebenen
   bleiben getrennt erhalten; das Modell rechnet daraus **keinen** effektiven
-  Wert aus. `provenance.method` ist deshalb die globale Angabe, nicht die
-  wirksame — der einzige abgeleitete Wert dieses Modells ist die Abdeckung.
+  Wert aus. Der einzige abgeleitete Wert dieses Modells ist die Abdeckung.
 
 ### Keine Versionsdrift — gemessen, nicht angenommen
 
-`mapping-collection` existiert erst ab OSCAL 1.2.0; gepinnt sind damit genau
+`mapping-collection` existiert erst ab OSCAL 1.2.0; gepinnt sind genau
 zwei Zellen. Deren vendorierte Schemas sind bis auf ihre `$id`
-**definitionsgleich** — es gibt keine Partition, die ein Feldprädikat
-beschreiben könnte, und die Raw-Typen sind deshalb als einzige der drei
+**definitionsgleich** — die Raw-Typen sind als einzige der drei
 erschlossenen Modelle nicht über `PinnedOscalVersion` parametrisiert.
 
-Das ist eine Aussage über Dateien und hängt an
-`oscalMapping.versionDrift.test.ts`: Er vergleicht alle Definitionen beider
-gepinnter Schemas, prüft die Modellexistenz gegen `isImpossibleCombination()`
-und misst die Prüftiefe je Feld. Eine Mapping-Versionskonstante gibt es
-trotzdem nicht — die beiden BSI-Artefakte deklarieren **verschiedene**
-Versionen (1.2.2 und 1.2.1), und jedes wird gegen seine eigene geprüft.
+Das hängt an `oscalMapping.versionDrift.test.ts`: Er vergleicht alle
+Definitionen beider gepinnter Schemas, prüft die Modellexistenz gegen
+`isImpossibleCombination()` und misst die Prüftiefe je Feld. Eine
+Mapping-Versionskonstante gibt es nicht — die beiden BSI-Artefakte deklarieren
+**verschiedene** Versionen (1.2.2 und 1.2.1), und jedes wird gegen seine eigene
+geprüft.
 
 ### Modellinterne Diagnosen
 
@@ -768,30 +707,25 @@ nie; verworfen wird ausschließlich vorher, im Root-Dispatch.
 | `OSCAL_MAPPING_UUID_DUPLICATE` | dieselbe `uuid` an mehr als einer Stelle; der Befund hängt am **zweiten** Fundort |
 | `OSCAL_MAPPING_STRUCTURE_UNEXPECTED` | Knoten hat nicht die erwartete Form, etwa Objekt statt Array |
 
-`ID_REF_CONTEXT_UNRESOLVED` entsteht **je Mapping-Seite**, nicht je `id-ref`:
-Bei 1185 Einträgen wäre dieselbe Aussage sonst 2370-mal dieselbe Aussage. Der
-Zustand jeder einzelnen `id-ref` steht am Item.
+`ID_REF_CONTEXT_UNRESOLVED` entsteht **je Mapping-Seite**, nicht je `id-ref`.
+Der Zustand jeder einzelnen `id-ref` steht am Item.
 
 ### ADR-7 am realen Bestand
 
 `mapping-iso27001-annex-a-zu-gspp` steht im Quellregister auf
 `lifecycle: 'blocked-by-upstream'` und ist gegen sein gepinntes Schema
 **invalide**: `provenance` trägt mit `qa-reviewed` und `qa-note` zwei Felder,
-die `additionalProperties: false` verletzt — genau zwei Befunde, sonst ist das
-Dokument valide.
+die `additionalProperties: false` verletzt.
 
 Der Adapter parst es trotzdem verlustfrei und diagnostiziert die Verletzung
 ([ADR-7](https://linear.app/grundschutz-plus-plus/issue/ADR-7)); die Sperrung
-betrifft die Auslieferung, nicht das Parsen. Fachlich ist der Fall der reale
-Beleg für die Verlustfreiheitsregel: Ein Adapter, der `provenance` auf die
-bekannten Felder projiziert, verlöre beide Felder stillschweigend — und die
-Qualitätsaussage des Mappings mit ihnen.
+betrifft die Auslieferung, nicht das Parsen.
 
 ### Testkorpus
 
 Die beiden realen Mappings liegen nicht im Repository: `npm run fetch-catalog`
 materialisiert ausschließlich `supported`-Artefakte, und die beiden sind
-`preview` beziehungsweise `blocked-by-upstream`. Verbindlich ist deshalb der
+`preview` beziehungsweise `blocked-by-upstream`. Verbindlich ist der
 eingefrorene Fixture-Korpus in `src/test/fixtures/mappings.ts` mit den am
 Snapshot `80694713a7a430d12eb2099893de23ad8bb6f780` gemessenen Strukturen: 2
 Mapping Sets je Artefakt, 96 beziehungsweise 1185 `maps`, die gemessene
@@ -813,8 +747,7 @@ sonst übersprungen. Er prüft Erhaltung und die Byte-Identität gegen
 
 ## Component Definitions (Implementation Layer)
 
-Das zweite erschlossene Root-Modell, eingeführt mit
-[GSPP-248](https://linear.app/grundschutz-plus-plus/issue/GSPP-248).
+Das zweite erschlossene Root-Modell.
 
 | Datei | Rolle |
 | --- | --- |
@@ -827,40 +760,32 @@ Das zweite erschlossene Root-Modell, eingeführt mit
 ### Implementierungsbehauptung ≠ nachgewiesene Compliance
 
 Eine `implemented-requirement` dokumentiert, dass eine Komponente eine
-Kontrolle **nach Aussage der Definition** umsetzt. Sie ist kein automatisch
-geprüfter Compliance-, Audit- oder Zertifizierungsstatus, und kein Feld des
-Domänenmodells behauptet etwas anderes. Der Navigator liest diese Aussagen und
-macht sie navigierbar — er bewertet sie nicht.
+Kontrolle **nach Aussage der Definition** umsetzt. Sie ist kein geprüfter
+Compliance-, Audit- oder Zertifizierungsstatus. Der Navigator liest diese
+Aussagen und macht sie navigierbar — er bewertet sie nicht.
 
-Der fachliche Nutzen dieses Slices ist deshalb Navigierbarkeit („welche
-Kontrollen adressiert Komponente X", „welche Komponenten adressieren Kontrolle
-Y") und die Vorbereitung des Implementation Layers. Nach NIST sind Component
-Definitions dafür gedacht, dass ihre Inhalte in einen SSP übernommen werden;
-eine Import-Kante SSP → Component Definition gibt es dabei **nicht** — der SSP
-importiert ausschließlich ein Profile (`import-profile`, required). Die
-Übernahme ist eine Werkzeugfunktion, keine Dokumentreferenz.
+Der fachliche Nutzen ist Navigierbarkeit („welche Kontrollen adressiert
+Komponente X", „welche Komponenten adressieren Kontrolle Y"). Nach NIST sind
+Component Definitions dafür gedacht, dass ihre Inhalte in einen SSP übernommen
+werden; eine Import-Kante SSP → Component Definition gibt es dabei **nicht** —
+der SSP importiert ausschließlich ein Profile (`import-profile`, required).
 
 ### Versionsspreizung im Bestand
 
 Die sechs registrierten BSI-Definitionen deklarieren **zwei** verschiedene
-OSCAL-Versionen. Eine einheitliche Modellversionsannahme wäre am Bestand
-belegbar falsch, und es gibt deshalb keine Component-Definition-Versionskonstante
-im Code: Die Zelle wählt allein `metadata.oscal-version` über den Root-Dispatch.
+OSCAL-Versionen. Es gibt keine
+Component-Definition-Versionskonstante: Die Zelle wählt allein
+`metadata.oscal-version` über den Root-Dispatch.
 
 | Deklarierte Version | Artefakte |
 | --- | --- |
 | 1.1.2 | `component-ga-lotse-grundmodul`, `component-lieferkette`, `component-passwortrichtlinie` |
 | 1.2.2 | `component-aws-security-hub`, `component-keycloak`, `component-netzarchitektur` |
 
-Die Spreizung war bis zum BSI-Snapshot `8a97764` dreifach: `component-aws-security-hub`
-deklarierte dort `1.1.3` und wechselte mit dem Rolling-Publish vom 2026-08-27 auf
-`1.2.2`. Dass die Zelle je Dokument gewählt wird statt global, bleibt damit
-unverändert belegt — die Spreizung selbst ist nur schmaler geworden.
-
 Zwischen den vier gepinnten Schemas unterscheiden sich drei parserrelevante
 Felder. Sie sind als Feldprädikate in `oscalComponentDefinition.ts` abgebildet
 und hängen über `oscalComponentDefinition.versionDrift.test.ts` am vendorierten
-Schema, statt am Gedächtnis:
+Schema:
 
 | Feld | Unterschied |
 | --- | --- |
@@ -876,45 +801,40 @@ Dasselbe Feld ist je nach deklarierter Version gültig oder schemawidrig.
 
 ### Zwei Muster für `control-implementation.source`
 
-`source` ist Pflichtfeld und die Kante des Implementation Layers hinunter in den
-Control Layer. Sie hängt an **jeder** Implementierung, nicht am Dokument — im
-Bestand kommen zwei Muster vor:
+`source` ist Pflichtfeld und die Kante des Implementation Layers in den
+Control Layer. Sie hängt an **jeder** Implementierung. Im Bestand kommen zwei
+Muster vor:
 
 | Muster | Vorkommen | Klassifikation |
 | --- | --- | --- |
 | `#uuid` auf eine back-matter-Ressource desselben Dokuments | Keycloak, Lieferkette, Netzarchitektur, Passwortrichtlinie | `resource` |
 | absolute HTTPS-URL | AWS Security Hub | `external`, wird nie aufgelöst |
 
-Die AWS-URL zeigt zusätzlich auf den Branch `main` statt auf einen gepinnten
-Commit und ist damit nicht versionsstabil. Klassifiziert wird sie — wie jede
-Referenz — ausschließlich über `src/domain/referenceResolution.ts`
-([GSPP-286](https://linear.app/grundschutz-plus-plus/issue/GSPP-286)); der
-Adapter verzweigt an keiner Stelle selbst auf die Form eines `href` und lädt
-nichts nach.
+Die AWS-URL zeigt auf den Branch `main` statt auf einen gepinnten
+Commit und ist damit nicht versionsstabil. Klassifiziert wird sie ausschließlich
+über `src/domain/referenceResolution.ts`; der Adapter verzweigt an keiner
+Stelle selbst auf die Form eines `href` und lädt nichts nach.
 
 **Ein Dokument kann mehrere Quellen führen.** `component-netzarchitektur` trägt
 zwei verschiedene `#uuid`-Quellen. `ComponentDefinition.implementationsBySource`
-hält sie deshalb getrennt; ein Adapter, der eine Definition auf genau eine
-Quelle reduziert, läge dort still falsch.
+hält sie getrennt.
 
-Daraus folgt die Behandlung von `implemented-requirement.control-id`: Sie ist
-eine Control-ID **im Kontext ihrer** `source` und nie global. Aufgelöst wird sie
-nur, wenn der Aufrufer über `catalogsBySource` einen Zielkatalog zu genau diesem
-`source`-Wert bereitstellt. Ohne diese Bindung bleibt sie `unresolved` mit einer
-Diagnose — die 17 `control-id`-Referenzen der AWS-Definition zeigen auf einen
-nicht registrierten Kernel-G0-Katalog und bleiben deshalb dauerhaft in diesem
-Zustand, ohne dass die Definition verworfen wird.
+`implemented-requirement.control-id` ist eine Control-ID **im Kontext ihrer**
+`source`. Aufgelöst wird sie nur, wenn der Aufrufer über `catalogsBySource`
+einen Zielkatalog zu genau diesem `source`-Wert bereitstellt. Ohne diese
+Bindung bleibt sie `unresolved` mit einer Diagnose — die 17 `control-id`-
+Referenzen der AWS-Definition zeigen auf einen nicht registrierten
+Kernel-G0-Katalog und bleiben in diesem Zustand, ohne dass die Definition
+verworfen wird.
 
 ### Verlustfreiheit gilt auch für schemawidrige Dokumente
 
-Nach ADR-2 ist der unveränderte `source` die Wahrheit und `view` die Projektion.
-Der Adapter repariert deshalb nichts: `component-lieferkette` schreibt an drei
+Der Adapter repariert nichts: `component-lieferkette` schreibt an drei
 Stellen `implemented-requirement.links` als **Einzelobjekt** statt als Array
 ([BSI #71](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/71)).
-Das Objekt bleibt im Quellgraphen unverändert stehen und wird nicht in ein Array
-normalisiert; die Verletzung erscheint als Diagnose — aus Stufe 3 als
-Schemabefund und aus dem Adapter als struktureller Befund mit exaktem JSON
-Pointer.
+Das Objekt bleibt im Quellgraphen unverändert stehen; die Verletzung erscheint
+als Diagnose — aus Stufe 3 als Schemabefund und aus dem Adapter als
+struktureller Befund mit exaktem JSON Pointer.
 
 Beide nach ADR-7 gesperrten Definitionen werden vollständig geparst: Die
 Sperrung betrifft die **Auslieferung**, nicht das Parsen.
@@ -932,15 +852,14 @@ nie; verworfen wird ausschließlich vorher, im Root-Dispatch.
 | `OSCAL_COMPONENT_CONTROL_REFERENCE_UNRESOLVED` | `control-id` im Kontext ihrer `source` nicht auflösbar |
 | `OSCAL_COMPONENT_STRUCTURE_UNEXPECTED` | Knoten hat nicht die erwartete Form, etwa Objekt statt Array |
 
-Die Leser diagnostizieren dabei ausdrücklich einen **vorhandenen** Wert der
-falschen Form, statt ihn still zu `[]` zu machen — sonst verschwände genau der
-Lieferketten-Befund aus der Projektion.
+Die Leser diagnostizieren einen **vorhandenen** Wert der falschen Form, statt
+ihn still zu `[]` zu machen.
 
 ### Testkorpus
 
 Die sechs realen Definitionen liegen nicht im Repository: `npm run fetch-catalog`
 materialisiert ausschließlich `supported`-Artefakte, und alle sechs sind
-`preview` oder `blocked-by-upstream`. Verbindlich ist deshalb der eingefrorene
+`preview` oder `blocked-by-upstream`. Verbindlich ist der eingefrorene
 Fixture-Korpus in `src/test/fixtures/componentDefinitions.ts` mit den am
 Snapshot `80694713a7a430d12eb2099893de23ad8bb6f780` gemessenen Strukturzahlen —
 in Summe 35 Components, 10 Capabilities, 35 Control-Implementations und 307
@@ -988,11 +907,26 @@ type Modalverb = 'MUSS' | 'SOLLTE' | 'KANN';
 ```typescript
 type LinkRelation = 'related' | 'required';
 
+/** Klassifikation des vorgefundenen `rel`-Werts. */
+type LinkRelationStatus = 'documented' | 'custom' | 'missing';
+
 interface ControlLink {
   targetId: string;
-  relation: LinkRelation;
+  href: string;
+  rel?: string;
+  relStatus: LinkRelationStatus;
+  resourceFragment?: string;
 }
 ```
+
+`rel` ist der unveränderte OSCAL-`rel`-Wert; `relStatus` klassifiziert ihn
+(`classifyCatalogLinkRelation` in `src/domain/referenceResolution.ts`):
+`reference` → `documented`, fehlendes `rel` → `missing`, jeder andere Wert →
+`custom`. Filterbar sind nur `required` und `related`
+(`toFilterableLinkRelation` in `src/domain/controlRelationships.ts`).
+`Control.links` enthält ausschließlich aufgelöste, kataloggescopte
+Control-Ziele; der Adapter setzt `links: []`, die Projektion in
+`catalogReferenceProjection.ts` füllt sie vor Veröffentlichung.
 
 ### PropValue
 
@@ -1025,6 +959,9 @@ interface Control {
 
   tags: string[];
   tagsProp?: PropValue;
+
+  // Geordnete WLAN-Taxonomie-Props (Taxonomy-L1 bis Taxonomy-L4)
+  taxonomy: PropValue[];
 
   // Schutzziele (CIA + Authentizität), Relevanz 0–2
   confidentiality?: SecurityTargetRelevance;
@@ -1067,38 +1004,33 @@ Die `*Prop`-Felder behalten den OSCAL-Namespace (`ns`) der Quell-Prop und ermög
 ### Optionale Gruppen-Identifikatoren
 
 `group.id` ist in OSCAL 1.1.3 optional — `group` verlangt ausschließlich
-`title`. Das Domänenmodell bildet das ab, statt eine Pflicht zu behaupten, die
-das Metaschema nicht kennt ([GSPP-242](https://linear.app/grundschutz-plus-plus/issue/GSPP-242)):
-`Topic.id`, `Practice.id`, `Control.groupId` und `Control.practiceId` sind
-optional.
+`title`. `Topic.id`, `Practice.id`, `Control.groupId` und `Control.practiceId`
+sind deshalb optional.
 
 Eine Gruppe ohne `id` ist **nicht referenzierbar**. Sie bleibt vollständig
-sichtbar — Titel, Label, Untergruppen und Controls gehen nicht verloren —,
-erzeugt aber weder Route noch Anker, und ein aktiver Gruppen- oder
+sichtbar, erzeugt aber weder Route noch Anker, und ein aktiver Gruppen- oder
 Praktik-Filter trifft sie nie. Es wird kein Ersatzbezeichner erfunden; `label`
 fällt auf die `id` und danach auf den `title` zurück. Die Controls einer
 solchen Gruppe bleiben über ihren kanonischen `altIdentifier` adressierbar.
 
-Zwei Fallstricke, die daraus folgen und im Code ausdrücklich abgefangen sind:
-ein Lookup der Form `practice.id === control.practiceId` würde bei beidseitiger
-Abwesenheit über `undefined === undefined` eine **falsche** Zuordnung erzeugen
+Zwei Fehlerbedingungen fängt der Code ausdrücklich ab: ein Lookup der Form
+`practice.id === control.practiceId` erzeugte bei beidseitiger Abwesenheit über
+`undefined === undefined` eine **falsche** Zuordnung
 (`src/features/catalog/ControlDetail.tsx`), und ein React-`key` aus der
 Gruppen-`id` wäre bei mehreren id-losen Geschwistern nicht eindeutig
 (`src/components/TreeNav.tsx`).
 
 Im ausgelieferten Bestand tritt der Fall derzeit nicht auf: alle 30 Gruppen des
 Lieferkettenkatalogs und alle Gruppen des Grundschutz++-Katalogs tragen eine
-`id`. Die Abdeckung liegt deshalb in synthetischen Fixtures
+`id`. Die Abdeckung liegt in synthetischen Fixtures
 (`src/adapters/oscalDocument.catalogEdgeCases.test.ts`).
 
-Dieselbe Abwesenheit trifft **Controls am Katalog-Root**: `catalog.controls`
-steht im Schema gleichberechtigt neben `groups`, und solche Controls gehören zu
-keiner Gruppe. `parseCatalog` projiziert sie mit `groupId: undefined` und
+**Controls am Katalog-Root**: `catalog.controls` steht im Schema
+gleichberechtigt neben `groups`; solche Controls gehören zu keiner Gruppe.
+`parseCatalog` projiziert sie mit `groupId: undefined` und
 `practiceId: undefined` in `catalog.controls`, `controlsById` und
 `controlsByAltIdentifier`; die Referenzauflösung besucht sie über denselben
-Zweig, damit ihre `links` nicht verlorengehen. Der Empty State greift nur, wenn
-`groups` **und** `controls` fehlen — andernfalls wäre ein schema-valider
-Katalog stillschweigend leer statt vollständig projiziert.
+Zweig. Der Empty State greift nur, wenn `groups` **und** `controls` fehlen.
 
 ### Topic (Thema)
 
@@ -1155,15 +1087,31 @@ Das OSCAL-Catalog-Metaschema legt die Eindeutigkeit der Identitäten unterschied
 | `group/@id` | `instance` | eindeutig innerhalb des Dokuments |
 | `control/@id` | `local` | **nur lokal eindeutig — keine katalogübergreifende Garantie** |
 
-Zwei Kataloge mit derselben `control/@id` sind damit der Normalfall, nicht die Ausnahme. Eine Control-ID ist ohne Katalogkontext bedeutungslos; Routen, Zustand, Suchtreffer und Referenzen führen deshalb ausnahmslos den `catalogKey` mit. Die einzige global eindeutige OSCAL-Identität ist die Dokument-UUID des Katalogs, und sie ist der Anker der Provenienz.
+Zwei Kataloge mit derselben `control/@id` sind der Normalfall. Eine Control-ID
+ist ohne Katalogkontext bedeutungslos; Routen, Zustand, Suchtreffer und
+Referenzen führen ausnahmslos den `catalogKey` mit. Die einzige global
+eindeutige OSCAL-Identität ist die Dokument-UUID des Katalogs; sie ist der
+Anker der Provenienz.
 
-`catalogKey` selbst ist **kein OSCAL-Begriff**, sondern ein Projektkonstrukt: ein stabiler Registerschlüssel für Routing und Zustand ([ADR-1](https://linear.app/grundschutz-plus-plus/issue/ADR-1)). Er ersetzt die Dokument-UUID nicht, sondern adressiert das registrierte Artefakt.
+`catalogKey` selbst ist **kein OSCAL-Begriff**, sondern ein stabiler
+Registerschlüssel für Routing und Zustand
+([ADR-1](https://linear.app/grundschutz-plus-plus/issue/ADR-1)). Er ersetzt die
+Dokument-UUID nicht.
 
 #### Mehrere Kataloge gleichzeitig
 
-Seit [GSPP-284](https://linear.app/grundschutz-plus-plus/issue/GSPP-284) hält der Ladepfad eine Katalogsammlung statt genau eines Katalogs (`CatalogState.catalogs`, siehe [ARCHITECTURE.md](./ARCHITECTURE.md#catalogcontext-srcstatecatalogcontexttsx)). Jeder Katalog trägt sein eigenes `controlsById`, sein eigenes `controlsByAltIdentifier` und seine eigene Vertrauensklasse — identische Control-IDs zweier Kataloge können deshalb weder in Routen noch im Zustand noch in der Suche kollidieren. `resolveControlRef(catalogsByKey, ref)` löst strikt innerhalb des adressierten Katalogs auf.
+Der Ladepfad hält eine Katalogsammlung (`CatalogState.catalogs`, siehe
+[ARCHITECTURE.md](./ARCHITECTURE.md#catalogcontext-srcstatecatalogcontexttsx)).
+Jeder Katalog trägt sein eigenes `controlsById`, sein eigenes
+`controlsByAltIdentifier` und seine eigene Vertrauensklasse — identische
+Control-IDs zweier Kataloge kollidieren weder in Routen noch im Zustand noch in
+der Suche. `resolveControlRef(catalogsByKey, ref)` löst strikt innerhalb des
+adressierten Katalogs auf.
 
-Die deklarierte `metadata.oscal-version` bleibt dabei eine Eigenschaft **jedes einzelnen** Katalogs. Kataloge unterschiedlicher OSCAL-Versionen dürfen gleichzeitig geladen sein; der Ladepfad trifft bewusst keine gemeinsame Versionsannahme ([GSPP-283](https://linear.app/grundschutz-plus-plus/issue/GSPP-283)).
+Die deklarierte `metadata.oscal-version` ist eine Eigenschaft **jedes
+einzelnen** Katalogs. Kataloge unterschiedlicher OSCAL-Versionen dürfen
+gleichzeitig geladen sein; der Ladepfad trifft keine gemeinsame
+Versionsannahme.
 
 ### ControlRef (interne Referenzidentität)
 
@@ -1174,7 +1122,9 @@ interface ControlRef {
 }
 ```
 
-`ControlRef` modelliert die kataloggescopte interne OSCAL-Referenzidentität und steht für katalogübergreifende Auflösung bereit. Der aktuelle aktive Katalog hält Parent-/Child- und Link-Ziele weiterhin als kataloginterne String-IDs. URLs verwenden bewusst nicht `controlId`, sondern `catalogKey + altIdentifier`.
+`ControlRef` modelliert die kataloggescopte interne OSCAL-Referenzidentität.
+Parent-/Child- und Link-Ziele bleiben kataloginterne String-IDs. URLs verwenden
+nicht `controlId`, sondern `catalogKey + altIdentifier`.
 
 ## Transformation (oscalAdapter)
 
@@ -1196,17 +1146,18 @@ export function parseCatalog(
 
   const catalog = raw as RawOscalCatalog;
 
-  if (!catalog?.uuid || !catalog.metadata || !catalog.groups) {
+  if (!catalog?.uuid || !catalog.metadata) {
     throw new Error(
-      'Invalid OSCAL catalog: missing uuid, metadata, or groups',
+      'Invalid OSCAL catalog: missing uuid or metadata',
     );
   }
 
-  // ... parsePractice() je Gruppe, beide Control-Indizes, parseBackMatter()
+  // ... Root-Controls ohne Gruppe, parsePractice() je Gruppe, beide
+  // Control-Indizes, parseBackMatter()
 }
 ```
 
-Der `catalogKey` stammt aus dem Quellregister und ist **Pflicht**: Die Katalogidentität nach [ADR-1](https://linear.app/grundschutz-plus-plus/issue/ADR-1) steht nicht im Dokument, und ein Default würde sie erfinden — ein WLAN-Katalog käme sonst als `gspp` heraus, sobald ein Aufrufer sie vergisst.
+Der `catalogKey` stammt aus dem Quellregister und ist **Pflicht**: Die Katalogidentität nach [ADR-1](https://linear.app/grundschutz-plus-plus/issue/ADR-1) steht nicht im Dokument, und ein Default würde sie erfinden.
 
 Der Katalogadapter löst sie über `resolveCatalogKey()` auf und bricht in zwei Fällen ab, statt sich auf einen Wert zu einigen:
 
@@ -1223,9 +1174,7 @@ Die vierte Zeile ist dieselbe Regel, die der Dispatch für den Root-Typ mit `OSC
 Beim Aufbau von `controlsByAltIdentifier` failt `parseCatalog` geschlossen, wenn ein Control keinen Alt-Identifier besitzt oder derselbe Wert innerhalb des Katalogs mehrfach vorkommt.
 
 Der Envelope wird hier **nicht** ausgepackt: Welcher Root-Typ vorliegt,
-entscheidet allein der [Root-Dispatch](#root-envelope-und-root-dispatch). Der
-frühere Fallback `doc.catalog ? doc.catalog : doc` deutete jedes Dokument ohne
-`catalog`-Key als Katalog und ist ersatzlos entfallen.
+entscheidet allein der [Root-Dispatch](#root-envelope-und-root-dispatch).
 
 ### Rekursives Steuerungs-Parsing
 
@@ -1262,7 +1211,7 @@ export function resolveParams(
     },
   );
   // Strip remaining {{ content }} choice brackets (BSI notation, not OSCAL params)
-  return resolved.replace(/\{\{([^}]*)\}\}/g, '$1');
+  return resolved.replace(/{{([^{}]+)}}/g, '$1');
 }
 ```
 
@@ -1318,6 +1267,7 @@ export interface OscalSchemaPin {
   readonly oscalVersion: PinnedOscalVersion;
   readonly schemaFileName: string;   // Asset-Name im NIST-Release
   readonly releaseTag: string;       // Herkunft, z. B. `v1.2.2`
+  readonly releaseUrl: string;
   readonly schemaId: string;         // Selbstnachweis des Schemas
   readonly vendorPath: string;       // reservierter Ablageort im Repo
   readonly sha256: string;
@@ -1339,7 +1289,7 @@ Details, Hash-Pins und Migrationspolitik:
 
 ## Upstream-Manifest Types
 
-Das Update-Contract mit dem BSI-Repository (Basis für `update-catalog.yml` und das Snapshot-Pinning):
+Update-Contract mit dem BSI-Repository:
 
 ```typescript
 interface UpstreamManifestFile {
@@ -1373,23 +1323,41 @@ Siehe [VOCABULARY.md](./VOCABULARY.md) für die Vocabulary-Typen.
 ## State Types
 
 ```typescript
+interface LoadedCatalogState {
+  readonly catalogKey: CatalogKey;
+  readonly catalogDocument: CatalogDocument | null;  // source + context + view
+  readonly catalog: Catalog | null;                  // === catalogDocument.view
+  readonly provenance: CatalogProvenance | null;
+  readonly verification: VerificationResult | null;
+  readonly loading: boolean;
+  readonly error: string | null;
+}
+
 interface CatalogState {
-  catalogDocument: CatalogDocument | null;  // source + context + view
-  catalog: Catalog | null;                  // === catalogDocument.view
+  catalogs: ReadonlyMap<CatalogKey, LoadedCatalogState>;
+  entryCatalogKey: CatalogKey;
+  activeCatalogKey: CatalogKey;
+  selectCatalog: (catalogKey: CatalogKey) => void;
+
+  // Projektionen des aktiven Katalogs
+  catalogDocument: CatalogDocument | null;
+  catalog: Catalog | null;
   provenance: CatalogProvenance | null;
   verification: VerificationResult | null;
+  loading: boolean;
+  error: string | null;
+
   vocabularyRegistry: VocabularyRegistry | null;
   vocabularyProvenance: VocabularyProvenance | null;
   vocabularyVerification: VerificationResult | null;
-  loading: boolean;
-  error: string | null;
 }
 ```
 
-`catalog` wird im Reducer immer aus `catalogDocument.view` gesetzt; beide
-Felder können deshalb nicht auseinanderlaufen. Komponenten lesen weiterhin
-`catalog`. Wer Zugriff auf Felder braucht, die das Domänenmodell nicht
-abbildet, geht über `catalogDocument.source`.
+Jeder Katalog trägt Provenienz, Verifikationsergebnis und Fehlerzustand
+isoliert; `selectCatalog` ignoriert nicht ausgelieferte Schlüssel (fail-closed
+beim zuletzt gültigen Katalog). `catalog` ist `catalogDocument.view` des
+aktiven Katalogs. Wer Felder braucht, die das Domänenmodell nicht abbildet,
+geht über `catalogDocument.source`.
 
 ## Siehe auch
 

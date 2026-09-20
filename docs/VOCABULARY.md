@@ -1,10 +1,10 @@
 # Vokabular-System — Grundschutz++ Navigator
 
-Beschreibung der offiziellen BSI-Vokabular-Auflösung.
+Offizielle BSI-Vokabular-Auflösung: Anzeige der BSI-Definitionen für Werte im Katalog.
 
 ## Überblick
 
-Das Vokabular-System ermöglicht die Anzeige der **offiziellen BSI-Definitionen** für Werte im Katalog. Die Anwendung liefert alle 13 CSV-Dateien direkt aus `documentation/namespaces/` im gepinnten BSI-Snapshot aus. Katalogseitige `ns`-Referenzen bestimmen weiterhin, welche Vokabulare einzelne OSCAL-Props kontextuell auflösen; sie begrenzen nicht mehr die Auslieferungs-Membership.
+Die Anwendung liefert alle 13 CSV-Dateien aus `documentation/namespaces/` im gepinnten BSI-Snapshot aus. Welche Vokabulare einzelne OSCAL-Props auflösen, bestimmen die katalogseitigen `ns`-Referenzen (`resolveVocabularyProp` nutzt `prop.ns` + `prop.value`); die Auslieferungs-Membership leitet sich unabhängig davon aus dem registrierten Verzeichnis ab (`materializeVocabularyCollectionMembers` in `scripts/vocabulary-utils.mjs`).
 
 | Vokabular | Datei |
 |-----------|-------|
@@ -22,7 +22,7 @@ Das Vokabular-System ermöglicht die Anzeige der **offiziellen BSI-Definitionen*
 | Themen | `topics.csv` |
 | Zielobjekt-Kategorien | `target_object_categories.csv` |
 
-Die Anwendung lädt diese Vokabulare zur Build-Zeit von BSI. Die Collection ist im `sourceRegistry` als freigegebenes Verzeichnis mit dem Suffix `.csv` registriert. Materialisiert werden ausschließlich reguläre CSV-Dateien direkt in diesem Verzeichnis; Unterverzeichnisse, `.txt`, `readme.md` und andere Pfade bleiben ausgeschlossen. Jede ausgelieferte Datei wird einzeln per Git-Blob-SHA und Content-Hash an den gepinnten Snapshot gebunden.
+Die Anwendung lädt diese Vokabulare zur Build-Zeit von BSI (`scripts/fetch-catalog.mjs`). Die Collection ist im `sourceRegistry` (`src/domain/sourceRegistry.mjs`) als Vokabularsammlung mit dem Suffix `.csv` registriert. Materialisiert werden ausschließlich reguläre CSV-Dateien direkt in diesem Verzeichnis; Unterverzeichnisse, `.txt`, `readme.md` und andere Pfade bleiben ausgeschlossen (`matchesVocabularyCollection`, `scripts/security-guards.mjs`). Jede ausgelieferte Datei wird einzeln per Git-Blob-SHA und Content-Hash an den gepinnten Snapshot gebunden.
 
 ## Architektur
 
@@ -85,6 +85,8 @@ interface VocabularyNamespaceData {
   columnOrder: string[];            // Preserved column order
   valueColumn: string;              // Header for exact lookup
   definitionColumn?: string;        // Header with definition
+  identifierColumns?: string[];     // Headers carrying a row's own identifier
+  identifierReferenceColumns?: string[];  // Headers referencing another row's identifier
   entries: VocabularyEntry[];
 }
 ```
@@ -94,6 +96,7 @@ interface VocabularyNamespaceData {
 ```typescript
 interface VocabularyNamespace extends VocabularyNamespaceData {
   entriesByValue: Map<string, VocabularyEntry>;
+  entriesByIdentifier: Map<string, VocabularyEntry>;
 }
 ```
 
@@ -117,7 +120,7 @@ interface VocabularyRegistry {
 }
 ```
 
-### VocabularyResolution
+### VocabularyResolution (`src/domain/vocabulary.ts`)
 
 ```typescript
 interface VocabularyResolution {
@@ -189,7 +192,7 @@ export function resolveVocabularyValues(
 
 ### getVocabularyNamespaceByRouteId
 
-Lookup für die Routing-Ebene (`/vokabular/:namespaceId`):
+Lookup für die Routing-Ebene (`/vokabular/:namespaceId`, Route in `src/app/AppShell.tsx`):
 
 ```typescript
 export function getVocabularyNamespaceByRouteId(
@@ -231,63 +234,27 @@ export interface ResolvedControlVocabularies {
 }
 ```
 
-Besonderheit Schutzziele: Die Control-Props tragen als Wert die Relevanz (`0`–`2`), das über ihren `ns` referenzierte Vokabular `security_targets.csv` ist aber nach Schutzziel-Namen indiziert und kennt diese Werte nicht. Ihre Bedeutung steht in der separaten Datei `security_targets_levels.csv`, die über `prop.ns` nicht erreichbar ist. Der Adapter erhält den vorgefundenen `ns` deshalb unverändert und vergibt keinen eigenen; `resolveSecurityTargetLevel()` benennt `security_targets_levels.csv` selbst — symmetrisch zu `resolveSecurityTarget()`, das den Targets-Namespace ebenfalls explizit nennt. Den `ns` auf die Stufendatei umzuschreiben, damit `securityTargetLevels` generisch über `prop.ns` auflösen kann, würde eine Herkunft behaupten, die im Dokument nicht steht.
+Besonderheit Schutzziele: Die Control-Props tragen als Wert die Relevanz (`0`–`2`), das über ihren `ns` referenzierte Vokabular `security_targets.csv` ist aber nach Schutzziel-Namen indiziert und kennt diese Werte nicht. Ihre Bedeutung steht in der separaten Datei `security_targets_levels.csv`, die über `prop.ns` nicht erreichbar ist. Der Adapter erhält den vorgefundenen `ns` unverändert; `resolveSecurityTargetLevel()` benennt `security_targets_levels.csv` selbst — symmetrisch zu `resolveSecurityTarget()`, das den Targets-Namespace ebenfalls explizit nennt.
 
-Die Zuordnung der vier Relevanz-Props läuft über `name` **und** `ns`: Ein gleichnamiges `prop` ohne oder mit fremdem `ns` ist in OSCAL eine andere Eigenschaft und wird nicht als Schutzziel-Relevanz übernommen. Ein gesetztes `class` oder `group` schließt ebenfalls aus — das ist eine Projektentscheidung, keine OSCAL-Vorgabe: Das gepinnte Schema belegt nur, dass beide Felder optional vorhanden sein dürfen, und definiert keinen Identitätsschlüssel für Properties. Die Entscheidung ist fail-closed begründet, weil eine Spezialisierung unbekannter Bedeutung nicht als kanonische Relevanz durchgehen soll. Der Bestand trägt auf diesen Props weder `class` noch `group`; die Regel ist dort reine Vorsorge.
+Die Zuordnung der vier Relevanz-Props läuft über `name` und `ns`: Ein gleichnamiges `prop` ohne oder mit fremdem `ns` wird nicht als Schutzziel-Relevanz übernommen. Ein gesetztes `class` oder `group` schließt ebenfalls aus (`getSecurityTargetRelevanceProp` in `src/adapters/oscalAdapter.ts`). Das ist eine Projektentscheidung: Das gepinnte Schema führt beide Felder nur als optional und definiert keinen Identitätsschlüssel für Properties (geprüft in `src/domain/securityTargets.catalog.node.test.ts`).
 
-Die Typdefinitionen bleiben davon getrennt: `securityTargets` verwendet feste Lookup-Werte (`'Vertraulichkeit (Confidentiality)'`, `'Integrität (Integrity)'`, `'Verfügbarkeit (Availability)'`, `'Authentizität (Authenticity)'`) gegen den Namespace von `security_targets.csv`. Die Detailansicht bietet für Typ und Relevanz zwei unabhängige Definitionen an. Ein unbekannter Wert oder eine fehlende Registry wird nicht ausgeblendet, sondern mit dem Rohwert und einer sichtbaren Diagnose dargestellt.
+Die Typdefinitionen bleiben davon getrennt: `securityTargets` verwendet feste Lookup-Werte (`'Vertraulichkeit (Confidentiality)'`, `'Integrität (Integrity)'`, `'Verfügbarkeit (Availability)'`, `'Authentizität (Authenticity)'`) gegen den Namespace von `security_targets.csv`. Die Detailansicht (`src/features/catalog/ControlSecurityTargets.tsx`) bietet für Typ und Relevanz zwei unabhängige Definitionen an. Ein unbekannter Wert oder eine fehlende Registry wird nicht ausgeblendet, sondern mit dem Rohwert und einer sichtbaren Diagnose dargestellt (`Keine offizielle Definition für diese Relevanzstufe verfügbar.`).
 
 ### Taxonomie-Auflösung per UUID
 
-`resolvePracticeVocabulary()` in `src/domain/taxonomyVocabulary.ts` verbindet eine
-Katalog-Praktik ausschließlich über `Practice.altIdentifier` mit der Spalte
-`UUID` aus `practices.csv`. Titel, Kürzel und Nummerierung sind ausdrücklich
-keine Fallback-Schlüssel. Fehlt die UUID oder existiert kein exakter Treffer,
-liefert der Resolver `null`. Fetch und Catalog-Sync-Guard lehnen fehlende oder
-doppelte UUIDs sowie nicht zugeordnete Katalog-Praktiken oder CSV-Einträge vor
-der Artefaktausgabe ab; `practices.csv` ist dabei verpflichtend. Die
-Laufzeitauflösung behält die Duplikatprüfung als zusätzliche
-Integritätssicherung bei.
+`resolvePracticeVocabulary()` in `src/domain/taxonomyVocabulary.ts` verbindet eine Katalog-Praktik ausschließlich über `Practice.altIdentifier` mit der Spalte `UUID` aus `practices.csv`. Titel, Kürzel und Nummerierung sind keine Fallback-Schlüssel. Fehlt die UUID oder existiert kein exakter Treffer, liefert der Resolver `null`. Doppelte Treffer werfen statt aufzulösen. Fetch (`scripts/fetch-catalog.mjs`) und Catalog-Sync-Guard (`scripts/catalog-sync-guard.mjs`) lehnen fehlende oder doppelte UUIDs sowie nicht zugeordnete Katalog-Praktiken oder CSV-Einträge vor der Artefaktausgabe ab (`assertPracticeVocabularyIntegrity` / `assertTopicVocabularyCoverage` in `scripts/taxonomy-coverage.mjs`); `practices.csv` ist dabei verpflichtend.
 
-Im ControlDetail-Breadcrumb werden Definition, `Schwerpunkt`,
-`auch bekannt als` und die Kennung `UUID` aus dem aufgelösten Eintrag
-angeboten; verborgen bleibt dort nur `Nummerierung` (GSPP-380). Alle
-Originalspalten sind zusätzlich auf `/vokabular` einsehbar. Nur der Aliastext
-wird in den FlexSearch-Metadatenindex der zugehörigen Kontrollen übernommen —
-Kennungsspalten sind davon ausgenommen und werden stattdessen exakt aufgelöst
-(siehe [FILTERING.md](FILTERING.md)).
+Im ControlDetail-Breadcrumb (`src/features/catalog/ControlTaxonomyBreadcrumb.tsx`) werden Definition, `Schwerpunkt`, `auch bekannt als` und die Kennung `UUID` aus dem aufgelösten Eintrag angeboten; verborgen bleibt dort immer `Nummerierung`, und `Begriff` nur bei exakter Übereinstimmung mit dem angezeigten Praktik-Namen. Alle Originalspalten sind zusätzlich auf `/vokabular` einsehbar. Nur der Aliastext wird in den FlexSearch-Metadatenindex der zugehörigen Kontrollen übernommen (`auch bekannt als` in `src/features/search/useSearch.ts`) — Kennungsspalten sind davon ausgenommen und werden stattdessen exakt aufgelöst (siehe [FILTERING.md](FILTERING.md)).
 
-`resolveTopicVocabulary()` verwendet denselben strikten UUID-Join für
-`Topic.altIdentifier` und `topics.csv`. Mehrere Katalog-Untergruppen dürfen
-dieselbe fachliche Themen-UUID teilen und lösen dann auf denselben Eintrag auf.
-Fehlt die UUID oder der CSV-Treffer, bleibt das Thema im
-ControlDetail-Breadcrumb sichtbar und erhält den dezenten Hinweis
-„keine offizielle Definition“. Umgekehrt bleiben CSV-Einträge ohne
-Katalogtreffer vollständig auf `/vokabular` auffindbar; Definitionen werden
-nicht auf Übersichtsseiten dupliziert.
+`resolveTopicVocabulary()` verwendet denselben strikten UUID-Join für `Topic.altIdentifier` und `topics.csv`. Mehrere Katalog-Untergruppen dürfen dieselbe fachliche Themen-UUID teilen und lösen dann auf denselben Eintrag auf. Fehlt die UUID oder der CSV-Treffer, bleibt das Thema im ControlDetail-Breadcrumb sichtbar und erhält den Hinweis „keine offizielle Definition“. Umgekehrt bleiben CSV-Einträge ohne Katalogtreffer vollständig auf `/vokabular` auffindbar.
 
-Für den am 2026-08-13 im Manifest gepinnten BSI-Snapshot
-`80694713a7a430d12eb2099893de23ad8bb6f780` wurde die Deckung gemessen:
-140 Katalog-Untergruppen verwenden 120
-verschiedene UUIDs und lösen vollständig auf die 120 CSV-Einträge auf. Es gibt
-kein Katalogthema ohne Treffer und keinen verwaisten CSV-Eintrag.
-Die UI-Tests halten dennoch beide Abweichungsrichtungen für künftige Snapshots
-sichtbar. Fetch und Catalog-Sync-Guard behandeln solche Abweichungen zugleich
-für jeden Snapshot als Integritätsfehler. Die Zählwerte bleiben in der
-Provenienz sichtbar, blockieren aber keine konsistente Mengenänderung des BSI.
+Fetch und Catalog-Sync-Guard behandeln jede Abweichung — fehlende oder doppelte UUIDs, nicht zugeordnete Katalog- oder CSV-Seiten — für jeden Snapshot als Integritätsfehler. Beidseitig zugeordnetes Wachstum — neue Praktik oder neues Thema auf Katalog- und CSV-Seite zugleich — passiert Fetch und Catalog-Sync-Guard; nur nicht zuordenbare Seiten (fehlende oder doppelte UUIDs, Orphans jenseits der EXMP-Ausnahme) lassen den Guard fehlschlagen. Die gemessenen Zählwerte stehen unter `taxonomyCoverage` in `upstream-sources-metadata.json` als Provenienz des Fetch-Laufs.
 
-Für `practices.csv` gilt eine namentlich begrenzte Ausnahme: Das BSI liefert
-die Beispielpraktik „EXMP“ ohne zugehörige Katalog-Gruppe
-mit aus. Genau diese UUID ist in `TOLERATED_ORPHAN_PRACTICE_UUIDS` geduldet und
-wird separat als `toleratedOrphanCsvEntryCount` ausgewiesen; jede andere
-verwaiste CSV-Zeile lässt den Guard weiterhin hart fehlschlagen. Die gemessene
-Practice-Deckung wird unter `taxonomyCoverage.practices` in
-`upstream-sources-metadata.json` als Provenienz des Fetch-Laufs festgehalten.
+Für `practices.csv` gilt eine namentlich begrenzte Ausnahme: Das BSI liefert die Beispielpraktik „EXMP“ ohne zugehörige Katalog-Gruppe mit aus. Genau diese UUID ist in `TOLERATED_ORPHAN_PRACTICE_UUIDS` (`scripts/taxonomy-coverage.mjs`) geduldet und wird separat als `toleratedOrphanCsvEntryCount` ausgewiesen; jede andere verwaiste CSV-Zeile lässt den Guard weiterhin hart fehlschlagen. Die gemessene Practice-Deckung steht unter `taxonomyCoverage.practices` in `upstream-sources-metadata.json`.
 
 ### Such-Text-Sammlung
 
-Für die globale Volltextsuche unter `/suche` werden alle Spaltenwerte der
-aufgelösten Vokabular-Einträge eingesammelt:
+Für die globale Volltextsuche unter `/suche` werden alle Spaltenwerte der aufgelösten Vokabular-Einträge eingesammelt (Kennungsspalten ausgenommen, siehe [FILTERING.md](FILTERING.md)):
 
 ```typescript
 export function collectVocabularySearchTexts(
@@ -301,7 +268,7 @@ export function collectControlVocabularySearchTexts(
 
 ## PropValue Struktur
 
-Die PropValue-Typen enthalten die Namespace-Information für die Auflösung:
+Die PropValue-Typen enthalten die Namespace-Information für die Auflösung (`src/domain/models.ts`):
 
 ```typescript
 interface PropValue {
@@ -338,41 +305,17 @@ interface Control {
 
 ## URL-Aufbau
 
-Für die Quell-Links auf den exakten Upstream-Stand:
-
-```typescript
-export function buildVocabularySourceUrl(
-  source: Pick<VocabularyNamespaceSource, 'namespace' | 'repository' | 'path'>,
-  snapshotCommitSha: string | null | undefined,
-): string {
-  if (!source.repository || !source.path) {
-    return source.namespace;
-  }
-
-  const repositoryUrl = source.repository.replace(/\/+$/, '');
-  const encodedPath = encodeRepositoryPath(source.path);
-
-  if (!encodedPath) {
-    return source.namespace;
-  }
-
-  if (snapshotCommitSha) {
-    return `${repositoryUrl}/blob/${encodeURIComponent(snapshotCommitSha)}/${encodedPath}`;
-  }
-
-  return `${repositoryUrl}/tree/main/${encodedPath}`;
-}
-```
+Für die Quell-Links auf den exakten Upstream-Stand (`buildVocabularySourceUrl` in `src/domain/vocabulary.ts`): Ohne `repository` oder `path` sowie ohne kodierbaren Pfad wird der `namespace` zurückgegeben; mit Snapshot-SHA zeigt der Link auf `blob/<sha>/<pfad>`, ohne auf `tree/main/<pfad>`. Der Pfad wird segmentweise kodiert, angehängte Schrägstriche der Repository-URL werden entfernt.
 
 ## CatalogContext-Integration
 
-`vocabularies.json` wird parallel zum Katalog als ArrayBuffer geladen und die Registry per `buildVocabularyRegistry` gebaut. Der Ladepfad gleicht das Artefakt per SHA-256 gegen den Integrity-Block in `upstream-sources-metadata.json` ab; das Ergebnis (`vocabularyVerification`) wird auf der Seite `/about` angezeigt (Details in [INTEGRITY.md](./INTEGRITY.md)). Fehlt `vocabularies.json`, läuft die App ohne Registry weiter. Fehlen nur die Metadaten, bleibt die aus dem vorhandenen Artefakt gebaute Registry nutzbar; Provenance und Verifikation bleiben dann leer und es wird eine Warnung in der Konsole protokolliert.
+`vocabularies.json` wird parallel zum Katalog als ArrayBuffer geladen und die Registry per `buildVocabularyRegistry` gebaut (`src/state/CatalogContext.tsx`). Der Ladepfad gleicht das Artefakt per SHA-256 gegen den Integrity-Block in `upstream-sources-metadata.json` ab; das Ergebnis (`vocabularyVerification`) wird auf der Seite `/about` angezeigt (Details in [INTEGRITY.md](./INTEGRITY.md)). Fehlt `vocabularies.json`, läuft die App ohne Registry weiter. Fehlen nur die Metadaten, bleibt die aus dem vorhandenen Artefakt gebaute Registry nutzbar; Provenance und Verifikation bleiben dann leer und es wird eine Warnung in der Konsole protokolliert.
 
 ## Vocabulary-Seiten
 
 ### VocabularyOverviewPage (`/vokabular`)
 
-Übersicht aller Vokabulare mit:
+Übersicht aller Vokabulare (`src/features/vocabularies/VocabularyOverviewPage.tsx`) mit:
 
 - Liste aller Namespaces
 - Routen-Link zu jedem Namespace
@@ -380,7 +323,7 @@ export function buildVocabularySourceUrl(
 
 ### VocabularyNamespacePage (`/vokabular/:namespaceId`)
 
-Detailseite für einen Namespace:
+Detailseite für einen Namespace (`src/features/vocabularies/VocabularyNamespacePage.tsx`):
 
 - Alle Einträge als auswählbare Link-Liste
 - Listeneintrag zeigt `entry.value`; ist `valueColumn` nicht selbst `Begriff` (z. B. `basethreats.csv` mit `valueColumn: "ID"`), wird zusätzlich der Wert der Spalte `Begriff` mit Abstand angehängt (z. B. „G 0.1 Feuer"), sofern vorhanden und von `entry.value` verschieden
@@ -390,16 +333,16 @@ Detailseite für einen Namespace:
 
 ## Darstellungskonventionen im Vergleich
 
-Für Namespaces mit eigener `Begriff`-Spalte neben der ID (`basethreats.csv`) gelten bewusst zwei unterschiedliche Konventionen:
+Für Namespaces mit eigener `Begriff`-Spalte neben der ID (`basethreats.csv`) gelten zwei unterschiedliche Konventionen:
 
-| Ort | Darstellung | Begründung |
-|---|---|---|
-| Vokabular-Listenansicht (`/vokabular/:namespaceId`) | `G 0.1 Feuer` — ID zuerst | Die ID ist dort Sortier- und Nachschlageschlüssel |
-| Control-Detailansicht (`ControlSecurityContext`) | `Feuer (G 0.1)` — Begriff zuerst | Dort zählt die inhaltliche Aussage; aus der ID allein ist die Gefährdung nicht erkennbar |
+| Ort | Darstellung |
+|---|---|
+| Vokabular-Listenansicht (`/vokabular/:namespaceId`) | `G 0.1 Feuer` — ID zuerst, Sortier- und Nachschlageschlüssel |
+| Control-Detailansicht (`ControlSecurityContext`) | `Feuer (G 0.1)` — Begriff zuerst, inhaltliche Aussage |
 
-Die Divergenz ist gewollt und wird nicht angeglichen. In der Control-Detailansicht blendet die aufgeklappte Vokabelkarte über `hiddenColumns` nur noch die dort redundante Spalte `Begriff` aus; die Kennung des Eintrags wird seit GSPP-380 an jeder Renderstelle gezeigt. Dasselbe kontextbezogene Muster gilt für das Praktik-Vokabular im Breadcrumb: `Begriff` wird nur ausgeblendet, wenn der Wert exakt dem angezeigten Praktik-Namen entspricht.
+In der Control-Detailansicht blendet die aufgeklappte Vokabelkarte über `hiddenColumns` nur noch die dort redundante Spalte `Begriff` aus (`src/features/catalog/ControlSecurityContext.tsx`). Dasselbe kontextbezogene Muster gilt für das Praktik-Vokabular im Breadcrumb: `Begriff` wird nur ausgeblendet, wenn der Wert exakt dem angezeigten Praktik-Namen entspricht (`src/features/catalog/ControlTaxonomyBreadcrumb.tsx`).
 
-Verweisspalten sind davon ausgenommen. Ein `ChildOfUUID`-Wert erscheint nicht als Kennung, sondern als verlinkter Begriff des Eintrags, dessen eigene Kennung dem Verweis entspricht; lässt sich der Verweis nicht auflösen, entfällt die Zeile.
+Verweisspalten sind davon ausgenommen. Ein `ChildOfUUID`-Wert erscheint als Link auf den Eintrag, dessen eigene Kennung dem Verweis entspricht (Anzeigetext: dessen `entry.value`, Label `Übergeordneter Eintrag`); lässt sich der Verweis nicht auflösen, entfällt die Zeile (`src/features/vocabularies/VocabularyEntryCard.tsx`).
 
 ## Siehe auch
 
