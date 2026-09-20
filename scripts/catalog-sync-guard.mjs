@@ -187,7 +187,7 @@ export function parseNameStatusDiff(diffOutput) {
  * Berechnet den PR-Diff als Drei-Punkt-Diff gegen die Merge-Basis
  * (`<base>...<head>`) — dieselbe Bezugsgröße, die GitHub für „Files changed"
  * verwendet und die die Schwesterprüfung `getChangedFiles`
- * (`scripts/pr-documentation-contract.mjs`) bereits nutzt. Ein Zwei-Punkt-Diff
+ * (`scripts/git-changed-files.mjs`) bereits nutzt. Ein Zwei-Punkt-Diff
  * meldete jeden Pfad, an dem sich die beiden Bäume unterscheiden, also auch
  * Pfade, die allein die Base bewegt hat; der Guard bewertete dadurch Dateien,
  * die der Head nie angefasst hat. Der Vertrag verliert dabei nichts: Beide

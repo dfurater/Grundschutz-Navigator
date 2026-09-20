@@ -48,13 +48,13 @@ rules:
   # Der App-Private-Key ist repo-beschränkt und kurzlebig
   # (contents+pull-requests write), SONAR_CI erreicht nie Repository-Code —
   # nur der Verfügbarkeits-Guard und der SHA-gepinnte Scanner-Schritt.
-  # Zeilennummern zuletzt nachgezogen in GSPP-419 und GSPP-424: Die
-  # Zusammenführung der Setup-Schichten in .github/actions/ verkürzte fünf der
-  # sechs betroffenen Dateien; GSPP-424 verschiebt die validate-Anker um +19
-  # (Lint-Fail-fast vor den ersten Netzschritt, Playwright-Cache vor dem
-  # Chromium-Download). scripts/zizmor-config.test.ts hält die Anker seither
-  # an echten Fundstellen fest, damit die Drift nicht erst im Docker-Schritt
-  # auffällt.
+  # Zeilennummern zuletzt nachgezogen in GSPP-419, GSPP-424 und GSPP-427:
+  # Die Zusammenführung der Setup-Schichten in .github/actions/ verkürzte
+  # fünf der sechs betroffenen Dateien; GSPP-424 verschiebt die
+  # validate-Anker um +19 (Lint-Fail-fast vor den ersten Netzschritt,
+  # Playwright-Cache vor dem Chromium-Download). scripts/zizmor-config.test.ts
+  # hält die Anker seither an echten Fundstellen fest, damit die Drift nicht
+  # erst im Docker-Schritt auffällt.
   # Zeilengenau statt dateiweit (Greptile-P1 auf PR #256, T-Rex-verifiziert):
   # Eine NEUE Secret-Referenz auf einer anderen Zeile feuert unter der
   # Gate-Persona auditor wieder — mit dateiweiten Einträgen blieb sie stumm.
@@ -63,7 +63,9 @@ rules:
   # begründeten Stellen bleiben ignoriert). Pflege: Verschiebt sich eine Zeile,
   # wird der Audit rot (fail-closed) — Zeilennummer nachziehen. Zuletzt in
   # GSPP-426 um +11 (Retention-Kommentar + Versionsquellen-Kommentar in
-  # validate.yml).
+  # validate.yml) und in GSPP-427 um +36 (Scope-Entscheider plus Step-`if`s
+  # in validate.yml) sowie +5 (Build-Kommentar und -Bedingung aus Greptile-P1)
+  # und +5 (Scope-Step direkt hinter Lint aus Codex-P1: Fail-fast GSPP-424).
   secrets-outside-env:
     ignore:
       - backmerge-main-to-develop.yml:51:28
@@ -71,5 +73,5 @@ rules:
       - sonar.yml:61:38
       - sonar.yml:88:28
       - update-catalog.yml:47:28
-      - validate.yml:252:38
-      - validate.yml:267:28
+      - validate.yml:298:38
+      - validate.yml:313:28
