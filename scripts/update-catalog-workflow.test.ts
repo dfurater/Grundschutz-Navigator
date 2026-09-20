@@ -4,6 +4,10 @@ import { describe, expect, it } from 'vitest';
 
 const WORKFLOW_PATH = resolve(process.cwd(), '.github/workflows/update-catalog.yml');
 
+function hasPushTrigger(workflow: string): boolean {
+  return /^ {2}(?:push|['"]push['"])\s*:/m.test(workflow);
+}
+
 describe('catalog update workflow schedule', () => {
   it('runs twice on weekdays in Europe/Berlin away from the top of the hour', () => {
     const workflow = readFileSync(WORKFLOW_PATH, 'utf8');
@@ -23,11 +27,19 @@ describe('catalog update workflow schedule', () => {
     expect(workflow).not.toMatch(/^\s+- cron: ['"]0 /m);
   });
 
-  it('keeps workflow dispatch without a main push trigger', () => {
+  it('keeps workflow dispatch without a push trigger', () => {
     const workflow = readFileSync(WORKFLOW_PATH, 'utf8');
 
     expect(workflow).toContain('  workflow_dispatch:');
-    expect(workflow).not.toContain(['  push:', '    branches: [main]'].join('\n'));
+    expect(hasPushTrigger(workflow)).toBe(false);
+  });
+
+  it.each([
+    ['unquoted event key with a flow-style branch filter', '  push:\n    branches: [main]'],
+    ['quoted event key with a quoted flow-style branch filter', "  'push':\n    branches: ['main']"],
+    ['double-quoted event key with a block-style branch filter', '  "push":\n    branches:\n      - main'],
+  ])('recognizes a push trigger with %s', (_description, trigger) => {
+    expect(hasPushTrigger(trigger)).toBe(true);
   });
 
   it('checks out main independently of the triggering ref', () => {
