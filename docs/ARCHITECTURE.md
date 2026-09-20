@@ -481,7 +481,7 @@ Das Deployment erfolgt automatisch via GitHub Actions bei Push auf `main` (`.git
 2. Alle materialisierten Registry-Artefakte werden gegen den BSI-Snapshot validiert; nur `supported`-Daten werden ausgeliefert (`npm run fetch-catalog`)
 3. Tests laufen mit Coverage (`npm run test:coverage`)
 4. App wird gebaut mit Impressum-Secrets
-5. SLSA-Provenance wird generiert (Attestation über `dist/**`)
+5. CycloneDX-App-SBOM der produktiven npm-Abhängigkeiten wird lockfile-basiert erzeugt (`npm sbom --package-lock-only --omit=dev --sbom-format=cyclonedx --sbom-type=application` nach `$RUNNER_TEMP`; nicht unter `dist/`, keine Pages-Auslieferung) und SLSA-Provenance wird generiert — zwei getrennte Attestierungen über `dist/**`, weil `sbom-path` am Provenance-Schritt dessen Modus ersetzen würde
 6. Deployment auf GitHub Pages
 
 ### Gemeinsame Setup-Schicht

@@ -96,7 +96,7 @@ Single-Page-App: Der Adapter-Layer überführt Raw-OSCAL-Typen in Domain-Typen (
 
 ## Deployment
 
-Pushes nach `main` triggern den Deploy-Workflow: BSI-Katalog fetch → Tests mit Coverage → Build → [SLSA-Provenance-Attestation](https://slsa.dev/) → GitHub Pages.
+Pushes nach `main` triggern den Deploy-Workflow: BSI-Katalog fetch → Tests mit Coverage → Build → CycloneDX-App-SBOM und [SLSA-Provenance-Attestation](https://slsa.dev/) (zwei getrennte Attestierungen über `dist/**`; die SBOM-Datei selbst liegt unter `$RUNNER_TEMP` und wird nicht über Pages ausgeliefert) → GitHub Pages.
 
 ## Beitragen
 
