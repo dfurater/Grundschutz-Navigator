@@ -239,6 +239,7 @@ async function resolveSnapshot(snapshotSelection, logger = console, retryDelaysM
   } catch (error) {
     throw new Error(
       `Konnte Upstream-Snapshot nicht exakt über die GitHub API auflösen. Build abgebrochen, damit nicht ungepinnt von main geladen wird. ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     );
   }
 }

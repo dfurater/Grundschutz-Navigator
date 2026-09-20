@@ -205,7 +205,7 @@ async function fetchGitHubJson(path, token, fetchImpl = fetch) {
   try {
     response = await fetchImpl(`https://api.github.com/${path}`, { headers });
   } catch (error) {
-    throw new Error(`GitHub policy API request failed: ${error instanceof Error ? error.message : 'network error'}`);
+    throw new Error(`GitHub policy API request failed: ${error instanceof Error ? error.message : 'network error'}`, { cause: error });
   }
 
   if (!response.ok) {
@@ -251,7 +251,7 @@ async function fetchRepositoryMergeSettings(repository, token, fetchImpl = fetch
       body: JSON.stringify({ query, variables: { owner, name } }),
     });
   } catch (error) {
-    throw new Error(`GitHub policy GraphQL request failed: ${error instanceof Error ? error.message : 'network error'}`);
+    throw new Error(`GitHub policy GraphQL request failed: ${error instanceof Error ? error.message : 'network error'}`, { cause: error });
   }
 
   if (!response.ok) {

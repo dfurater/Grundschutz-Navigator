@@ -2,6 +2,7 @@
 
 import { pathToFileURL } from 'node:url';
 import { appendFile } from 'node:fs/promises';
+import { fetchGitHubJson as fetchSharedGitHubJson } from './githubApiFetch.mjs';
 
 export const DEPLOY_WORKFLOW_FILE = 'deploy.yml';
 export const PROTECTED_BRANCH = 'main';
@@ -93,28 +94,7 @@ async function fetchGitHubJson(url, { fetchImpl, token, label, requestTimeoutMs 
   if (!ALLOWED_API_ORIGINS.has(requestOrigin) || !GITHUB_API_URL_PATTERN.test(url)) {
     throw new Error(`${label} refused: non-allowlisted host`);
   }
-  const headers = {
-    Accept: 'application/vnd.github+json',
-    'X-GitHub-Api-Version': '2022-11-28',
-  };
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-
-  let response;
-  try {
-    response = await fetchImpl(url, { headers, signal: AbortSignal.timeout(requestTimeoutMs) });
-  } catch (error) {
-    throw new Error(`${label} failed: ${error instanceof Error ? error.message : 'network error'}`);
-  }
-  if (!response.ok) {
-    throw new Error(`${label} failed with HTTP ${response.status}`);
-  }
-  try {
-    return await response.json();
-  } catch {
-    throw new Error(`${label} returned invalid JSON`);
-  }
+  return fetchSharedGitHubJson(url, { fetchImpl, token, label, requestTimeoutMs });
 }
 
 /**

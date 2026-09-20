@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
+import { fetchGitHubJson } from './githubApiFetch.mjs';
 import {
   OFFICIAL_BSI_REPO,
   OFFICIAL_BSI_REPOSITORY_URL,
@@ -633,33 +634,6 @@ export function validateCatalogSyncPullRequest({ branch, title, diffEntries }) {
     diffEntries[0].path !== TRACKED_MANIFEST_PATH
   ) {
     throw new Error('Catalog sync PR must modify exactly upstream-manifest.json without add/delete/rename');
-  }
-}
-
-async function fetchGitHubJson(url, { fetchImpl, token, label, requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS }) {
-  const headers = {
-    Accept: 'application/vnd.github+json',
-    'X-GitHub-Api-Version': '2022-11-28',
-  };
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-
-  let response;
-  try {
-    response = await fetchImpl(url, { headers, signal: AbortSignal.timeout(requestTimeoutMs) });
-  } catch (error) {
-    throw new Error(`${label} failed: ${error instanceof Error ? error.message : 'network error'}`);
-  }
-
-  if (!response.ok) {
-    throw new Error(`${label} failed with HTTP ${response.status}`);
-  }
-
-  try {
-    return await response.json();
-  } catch {
-    throw new Error(`${label} returned invalid JSON`);
   }
 }
 
