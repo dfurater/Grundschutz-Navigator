@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
-import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import { getChangedFiles, validateGitSha } from './git-changed-files.mjs';
+
+export { getChangedFiles, validateGitSha };
 
 const CONTRACT_START = '<!-- documentation-contract:start -->';
 const CONTRACT_END = '<!-- documentation-contract:end -->';
@@ -125,33 +127,6 @@ export function validateDocumentationContract({ changedFiles, pullRequestBody })
 
   validateNoDocumentationImpact(section);
   return { status: 'valid', documentationImpact: 'none' };
-}
-
-export function validateGitSha(value, variableName) {
-  if (!/^[0-9a-f]{40}$/i.test(value ?? '')) {
-    throw new DocumentationContractError(`${variableName} muss ein vollständiger Git-SHA sein.`);
-  }
-  return value;
-}
-
-export function getChangedFiles({ baseSha, headSha, execFile = execFileSync }) {
-  const validatedBaseSha = validateGitSha(baseSha, 'PR_BASE_SHA');
-  const validatedHeadSha = validateGitSha(headSha, 'PR_HEAD_SHA');
-  const output = execFile(
-    'git',
-    [
-      'diff',
-      '--name-only',
-      '--no-renames',
-      '--diff-filter=ACMRD',
-      '-z',
-      `${validatedBaseSha}...${validatedHeadSha}`,
-      '--',
-    ],
-    { encoding: 'utf8' },
-  );
-
-  return output.split('\0').filter(Boolean);
 }
 
 function main() {
