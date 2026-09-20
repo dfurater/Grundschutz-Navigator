@@ -7,8 +7,9 @@
  * `full`, `docs_only` oder `manifest_only`. Danach bleiben die Bedingungen
  * klein und überprüfbar (Codex-Empfehlung zu GSPP-427):
  *
- * - Profilauflösung und go-oscal: `scope != 'docs_only'`
- * - Browser, Egress-Nachweis und Build: `scope == 'full'`
+ * - Profilauflösung, go-oscal und Build: `scope != 'docs_only'`
+ * - Browser-Cache, Chromium, Browser-Tests und Egress-Nachweis:
+ *   `scope == 'full'`
  * - Fetch, Coverage, Lint, Schema-, Policy-, Versions- und zizmor-Gates: immer
  *
  * Prädikate (entschieden, keine Implementierungsfrage mehr):
@@ -18,16 +19,20 @@
  *   Profilauflösung verifizieren Upstream-Bytes gegen Manifest + Register,
  *   von denen sich keines ändert.
  * - `manifest_only`: exakt `{upstream-manifest.json}` — der Pin wechselt,
- *   also messen Fetch, Profilauflösung und go-oscal gegen den neuen Pin.
+ *   also messen Fetch, Profilauflösung, go-oscal und Build gegen den neuen
+ *   Pin; nur Browser-Tests und Egress-Nachweis entfallen.
  * - sonst: `full` (Volllauf).
  *
- * Base-Fetch und Diff laufen innerhalb dieses Entscheiders: Schlüge einer
- * davon in einem separaten Step fehl, bräche der Job vor dem verlangten
+ * Base-/Head-Fetch und Diff laufen innerhalb dieses Entscheiders: Schlüge
+ * einer davon in einem separaten Step fehl, bräche der Job vor dem verlangten
  * Volllauf ab. Hier setzt der Entscheider stattdessen `scope=full` und läuft
  * weiter — fail-closed (Volllauf statt Skip) bei jedem Fetch-/Diff-Fehler.
- * Der `validate`-Checkout ist flach (Depth 1), deshalb ist der explizite
- * Base-Fetch Pflichtbestandteil: Nur der PR-Base-Commit wird gezielt geholt
- * (`git fetch --no-tags origin $BASE_SHA`, ohne Credentials wie in `ci.yml`).
+ * Der `validate`-Checkout ist flach (Depth 1, Merge-Commit ohne Historie),
+ * deshalb ist der explizite Fetch Pflichtbestandteil — und er holt Base- wie
+ * Head-Commit samt Historie: Ohne das Head-Objekt und ohne begehbare
+ * Vorfahren fände der Drei-Punkt-Diff keine Merge-Basis und fiele stets auf
+ * `full` zurück (Greptile-P2 auf PR #273, T-Rex-verifiziert). Beide Fetches
+ * laufen ohne Credentials wie in `ci.yml` (öffentlicher Lesegriff).
  */
 
 import { execFileSync } from 'node:child_process';
@@ -66,21 +71,24 @@ export function classifyChangedFiles(changedFiles) {
   return SCOPE_FULL;
 }
 
-export function fetchBaseCommit({ baseSha, execFile = execFileSync }) {
+export function fetchScopeCommits({ baseSha, headSha, execFile = execFileSync }) {
   const validatedBaseSha = validateGitSha(baseSha, 'PR_BASE_SHA');
-  execFile('git', ['fetch', '--no-tags', 'origin', validatedBaseSha], {
-    encoding: 'utf8',
-  });
+  const validatedHeadSha = validateGitSha(headSha, 'PR_HEAD_SHA');
+  for (const sha of [validatedBaseSha, validatedHeadSha]) {
+    execFile('git', ['fetch', '--no-tags', 'origin', sha], {
+      encoding: 'utf8',
+    });
+  }
 }
 
 export function determineScope({
   baseSha,
   headSha,
-  fetchFn = fetchBaseCommit,
+  fetchFn = fetchScopeCommits,
   diffFn = ({ baseSha: base, headSha: head }) => getChangedFiles({ baseSha: base, headSha: head }),
 } = {}) {
   try {
-    fetchFn({ baseSha });
+    fetchFn({ baseSha, headSha });
     const changedFiles = diffFn({ baseSha, headSha });
     return { scope: classifyChangedFiles(changedFiles), fallback: false };
   } catch (error) {

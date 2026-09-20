@@ -1,9 +1,7 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   SCOPE_DOCS_ONLY,
@@ -11,40 +9,14 @@ import {
   SCOPE_MANIFEST_ONLY,
   classifyChangedFiles,
   determineScope,
-  fetchBaseCommit,
+  fetchScopeCommits,
 } from './ci-scope.mjs';
+import { createGuardCliRunner } from './guard-cli-test-helper';
+import { namedStep } from './workflowDefinitions.mjs';
 
-const SCRIPT = resolve(process.cwd(), 'scripts/ci-scope.mjs');
 const VALIDATE_WORKFLOW_PATH = resolve(process.cwd(), '.github/workflows/validate.yml');
-const temporaryDirectories = new Set<string>();
 
-async function run(
-  env: Record<string, string>,
-  { withGithubOutput = true }: { withGithubOutput?: boolean } = {},
-) {
-  const directory = await mkdtemp(resolve(tmpdir(), 'gspp-ci-scope-'));
-  temporaryDirectories.add(directory);
-  const githubOutput = resolve(directory, 'github-output.txt');
-  const childEnv: NodeJS.ProcessEnv = { PATH: process.env.PATH, ...env };
-  if (withGithubOutput) {
-    childEnv.GITHUB_OUTPUT = githubOutput;
-  }
-
-  const result = spawnSync(process.execPath, [SCRIPT], {
-    cwd: directory,
-    encoding: 'utf8',
-    env: childEnv,
-  });
-
-  return { ...result, githubOutput };
-}
-
-afterEach(async () => {
-  await Promise.all(
-    [...temporaryDirectories].map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-  temporaryDirectories.clear();
-});
+const { run } = createGuardCliRunner('scripts/ci-scope.mjs', 'gspp-ci-scope-');
 
 describe('classifyChangedFiles', () => {
   it.each([
@@ -81,24 +53,39 @@ describe('classifyChangedFiles', () => {
   });
 });
 
-describe('fetchBaseCommit', () => {
-  it('fetches exactly the validated base commit without tags', () => {
+describe('fetchScopeCommits', () => {
+  // Der flache Checkout (Merge-Commit ohne Historie) enthält weder das
+  // Base- noch das Head-Objekt; ohne beide fände der Drei-Punkt-Diff keine
+  // Merge-Basis und fiele stets auf `full` zurück (Greptile-P2 auf PR #273).
+  it('fetches base and head commits with history and without tags', () => {
     const baseSha = 'a'.repeat(40);
+    const headSha = 'b'.repeat(40);
     const execFile = vi.fn();
 
-    fetchBaseCommit({ baseSha, execFile });
+    fetchScopeCommits({ baseSha, headSha, execFile });
 
-    expect(execFile).toHaveBeenCalledWith(
+    expect(execFile).toHaveBeenCalledTimes(2);
+    expect(execFile).toHaveBeenNthCalledWith(
+      1,
       'git',
       ['fetch', '--no-tags', 'origin', baseSha],
       { encoding: 'utf8' },
     );
+    expect(execFile).toHaveBeenNthCalledWith(
+      2,
+      'git',
+      ['fetch', '--no-tags', 'origin', headSha],
+      { encoding: 'utf8' },
+    );
   });
 
-  it('rejects an unsafe base SHA before reaching git', () => {
+  it('rejects an unsafe SHA before reaching git', () => {
     const execFile = vi.fn();
 
-    expect(() => fetchBaseCommit({ baseSha: 'abc123', execFile })).toThrow(/PR_BASE_SHA/);
+    expect(() => fetchScopeCommits({ baseSha: 'abc123', headSha: 'b'.repeat(40), execFile }))
+      .toThrow(/PR_BASE_SHA/);
+    expect(() => fetchScopeCommits({ baseSha: 'a'.repeat(40), headSha: 'xyz', execFile }))
+      .toThrow(/PR_HEAD_SHA/);
     expect(execFile).not.toHaveBeenCalled();
   });
 });
@@ -115,7 +102,7 @@ describe('determineScope', () => {
       scope: SCOPE_DOCS_ONLY,
       fallback: false,
     });
-    expect(fetchFn).toHaveBeenCalledWith({ baseSha });
+    expect(fetchFn).toHaveBeenCalledWith({ baseSha, headSha });
     expect(diffFn).toHaveBeenCalledWith({ baseSha, headSha });
   });
 
@@ -193,10 +180,33 @@ describe('validate lane scope wiring', () => {
     expect(workflow()).toContain("steps.scope.outputs.scope != 'docs_only'");
   });
 
-  it('keeps browser, egress and build on the full scope only', () => {
-    const occurrences = workflow().match(/steps\.scope\.outputs\.scope == 'full'/g) ?? [];
+  it('keeps browser cache, chromium, browser tests and egress on the full scope only', () => {
+    for (const step of [
+      'Restore Playwright browser cache',
+      'Install pinned Chromium for browser tests',
+      'Run Chromium browser tests',
+      'Verify browser egress oracle',
+    ]) {
+      expect(namedStep(workflow(), step), step).toContain(
+        "if: steps.scope.outputs.scope == 'full'",
+      );
+    }
+  });
 
-    expect(occurrences.length).toBeGreaterThanOrEqual(3);
+  // Greptile-P1 auf PR #273: Bei `manifest_only` wechselt der Pin, und erst
+  // der Build beweist, dass die neuen Bytes kompilieren und bündeln — nur
+  // Browser-Tests und Egress-Nachweis dürfen dort entfallen.
+  it('still builds, resolves profiles and verifies upstream on the manifest pin', () => {
+    for (const step of [
+      'Resolve all BSI profiles deterministically (mandatory build-time corpus)',
+      'Verify upstream OSCAL schemas with go-oscal',
+      'Archive go-oscal SBOM',
+      'Build application',
+    ]) {
+      expect(namedStep(workflow(), step), step).toContain(
+        "if: steps.scope.outputs.scope != 'docs_only'",
+      );
+    }
   });
 
   it('carries no workflow path filter that could suppress required runs', () => {

@@ -1,8 +1,5 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { afterEach, describe, expect, it } from 'vitest';
+import { readFile } from 'node:fs/promises';
+import { describe, expect, it } from 'vitest';
 
 import {
   FORK_SKIP_MESSAGE,
@@ -10,37 +7,12 @@ import {
   SonarTokenGuardError,
   resolveAnalysisAvailability,
 } from './sonar-token-guard.mjs';
+import { createGuardCliRunner } from './guard-cli-test-helper';
 
-const SCRIPT = resolve(process.cwd(), 'scripts/sonar-token-guard.mjs');
-const temporaryDirectories = new Set<string>();
-
-async function run(
-  env: Record<string, string>,
-  { withGithubOutput = true }: { withGithubOutput?: boolean } = {},
-) {
-  const directory = await mkdtemp(resolve(tmpdir(), 'gspp-sonar-token-guard-'));
-  temporaryDirectories.add(directory);
-  const githubOutput = resolve(directory, 'github-output.txt');
-  const childEnv: NodeJS.ProcessEnv = { PATH: process.env.PATH, ...env };
-  if (withGithubOutput) {
-    childEnv.GITHUB_OUTPUT = githubOutput;
-  }
-
-  const result = spawnSync(process.execPath, [SCRIPT], {
-    cwd: directory,
-    encoding: 'utf8',
-    env: childEnv,
-  });
-
-  return { ...result, githubOutput };
-}
-
-afterEach(async () => {
-  await Promise.all(
-    [...temporaryDirectories].map((directory) => rm(directory, { recursive: true, force: true })),
-  );
-  temporaryDirectories.clear();
-});
+const { run } = createGuardCliRunner(
+  'scripts/sonar-token-guard.mjs',
+  'gspp-sonar-token-guard-',
+);
 
 describe('resolveAnalysisAvailability', () => {
   it('enables the analysis whenever the token is reported as available', () => {

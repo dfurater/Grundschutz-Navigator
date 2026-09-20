@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import {
-  getChangedFiles,
-  validateDocumentationContract,
-  validateGitSha,
-} from './pr-documentation-contract.mjs';
+import { validateDocumentationContract } from './pr-documentation-contract.mjs';
+import { getChangedFiles, validateGitSha } from './git-changed-files.mjs';
 
 const TEMPLATE_BODY = `
 <!-- documentation-contract:start -->

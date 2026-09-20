@@ -1,9 +1,7 @@
 #!/usr/bin/env node
 
 import { pathToFileURL } from 'node:url';
-import { getChangedFiles, validateGitSha } from './git-changed-files.mjs';
-
-export { getChangedFiles, validateGitSha };
+import { getChangedFiles } from './git-changed-files.mjs';
 
 const CONTRACT_START = '<!-- documentation-contract:start -->';
 const CONTRACT_END = '<!-- documentation-contract:end -->';
