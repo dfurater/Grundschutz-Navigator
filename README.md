@@ -23,13 +23,13 @@ Die App läuft vollständig im Browser. Keine Anmeldung, keine Installation.
 
 ## Was kann die App?
 
-- **Kataloge browsen** — Hierarchische Navigation durch Praktiken, Themen und Kontrollen der ausgelieferten Grundschutz++-, Lieferketten- und WLAN-Kataloge in einem ergonomischen 3-Panel-Layout (Tree, Tabelle, Detail). Der app-weite Katalogwechsler hält die Dokumente über ihren `catalogKey` getrennt; Routen beginnen mit `/katalog/:catalogKey`.
-- **Volltextsuche** — Schnelle, relevanzbasierte Suche über alle Kontrollen einschließlich offizieller Praktik-Aliase: FlexSearch baut die Indizes vollständig im Browser auf, die UI zeigt Treffer schrittweise in 50er-Portionen. Route `/suche`.
-- **Vokabulare nachschlagen** — Alle 13 offiziellen BSI-Namespace-CSVs direkt aus dem freigegebenen Verzeichnis als eigenständige, provenance- und integritätsgesicherte Übersichten. Praktik- und Themen-Definitionen werden per UUID angebunden; Schutzziel-Typen und ihre Relevanzstufen `0`–`2` werden getrennt erklärt. Nicht auflösbare Werte bleiben sichtbar diagnostizierbar. Route `/vokabular`.
-- **Multi-Filter** — Kombinierbar: Sicherheitsniveau, Aufwandsstufe, Modalverb, Tags, Zielobjekt, Handlungswort, Dokumentationstyp, Link-Relation. Der gesamte Filterzustand wird in der URL gespiegelt und ist damit **teil- und bookmarkbar**.
-- **CSV-Export** — Gefilterte Katalogtabelle, Suchtreffer oder manuelle Auswahl als CSV exportieren (semikolon-getrennt, Excel-freundlich) — `/katalog` und `/suche` verwenden dasselbe Auswahl- und Exportmodell für Desktop und Mobile. WLAN-Taxonomiewerte und ihre optionalen Original-Namensräume werden je L1–L4 separat exportiert. Der enthaltene Alt-Identifier ist im aktuellen Katalog eindeutig, aber nicht garantiert versionsstabil.
-- **Integritätsprüfung** — Zur Laufzeit wird die SHA-256 der ausgelieferten Katalog- und Vokabular-Artefakte gegen beim Build gepinnte Werte verglichen. Details für beide Artefakte stehen unter `/about`; der Footer zeigt zusätzlich den Kurzstatus des Katalogs.
-- **Responsive** — Desktop mit verschiebbaren Panels, Mobile mit Drawer und Touch-Gesten.
+- **Kataloge browsen** — Grundschutz++-, Lieferketten- und WLAN-Katalog, getrennt über ihren `catalogKey`; Routen beginnen mit `/katalog/:catalogKey`.
+- **Volltextsuche** — Relevanzbasierte Suche über alle Kontrollen einschließlich Praktik-Aliase; Treffer erscheinen in 50er-Portionen. Route `/suche`.
+- **Vokabulare nachschlagen** — Die 13 BSI-Namespace-CSVs als eigenständige Übersichten; Praktik- und Themen-Definitionen sind per UUID angebunden, Schutzziel-Relevanzstufen `0`–`2` werden getrennt erklärt. Route `/vokabular`.
+- **Multi-Filter** — Sicherheitsniveau, Aufwandsstufe, Modalverb, Tags, Zielobjekt, Handlungswort, Dokumentationstyp, Link-Relation. Der Filterzustand steht in der URL und ist damit **teil- und bookmarkbar**.
+- **CSV-Export** — Gefilterte Tabelle, Suchtreffer oder manuelle Auswahl als semikolon-getrennte CSV; WLAN-Taxonomiewerte L1–L4 werden separat mit optionalem Original-Namensraum exportiert. Der Alt-Identifier ist im aktuellen Katalog eindeutig, aber nicht garantiert versionsstabil.
+- **Integritätsprüfung** — SHA-256 der ausgelieferten Katalog- und Vokabular-Artefakte wird zur Laufzeit gegen beim Build gepinnte Werte verglichen; Details stehen unter `/about`.
+- **Responsive** — Desktop- und Mobile-Layouts.
 
 ## Zielgruppe
 
@@ -37,23 +37,23 @@ IT-Sicherheitsbeauftragte, Berater:innen, Auditor:innen, Studierende und alle, d
 
 ## Datenquelle und Lizenz des Katalogs
 
-- **Quelle:** [`BSI-Bund/Stand-der-Technik-Bibliothek`](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek) (OSCAL 1.1.3)
+- **Quelle:** [`BSI-Bund/Stand-der-Technik-Bibliothek`](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek). Die ausgelieferten Kataloge deklarieren OSCAL 1.1.3; die gepinnte Versionsmatrix trägt 1.1.2, 1.1.3, 1.2.1 und 1.2.2. Versionsautorität ist `metadata.oscal-version`, nie `$schema`.
 - **Lizenz der Katalogdaten:** [Creative Commons BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.de)
 - **Datenhaltung:** Die Katalogdaten werden **beim Build** aus dem BSI-Repository geladen. Im App-Repository wird keine Kopie gehalten.
-- **Integrität:** Ein fixierter Upstream-Commit (`upstream-manifest.json`) plus SHA-256-Verify zur Laufzeit macht nachvollziehbar, welche Katalogversion angezeigt wird. Details: [`docs/INTEGRITY.md`](docs/INTEGRITY.md).
-- **Aktualität:** Ein täglicher Workflow um 06:00 UTC (zusätzlich bei Push auf `main` und manuell) vergleicht die registrierten BSI-Artefakte samt überwachten Verzeichnisbäumen. Bei Änderungen aktualisiert er das Manifest per Pull Request und fordert einen automatischen Squash-Merge mit Branch-Löschung an. Danach prüft der Workflow Manifest und Merge auf `main`, bestätigt den regulären Push-Deploy erst nach dessen erfolgreichem Abschluss und dispatcht nur bei seinem Ausbleiben einen erneut abgesicherten Fallback-Deploy.
+- **Integrität:** Fixierter Upstream-Commit (`upstream-manifest.json`) plus SHA-256-Verify zur Laufzeit. Details: [`docs/INTEGRITY.md`](docs/INTEGRITY.md).
+- **Aktualität:** Der Sync-Workflow läuft werktags 07:30 und 17:30 Uhr (Europe/Berlin) sowie bei Push auf `main` und manuell; bei einem Delta erstellt er einen Manifest-PR mit Auto-Squash und Branch-Löschung. Eine Post-Merge-Lane prüft danach den Stand auf `main` und dispatcht einen Fallback-Deploy nur nach erneuter Zustandsprüfung.
 
 ## Datenschutz
 
 - Kein Tracking, keine Analytics, keine Cookies.
-- Nach dem initialen Laden findet keine weitere Backend-Kommunikation statt. Alle Berechnungen (Filter, Suche, Export) laufen **clientseitig** im Browser.
+- Alle Berechnungen (Filter, Suche, Export) laufen **clientseitig** im Browser.
 
 ## Für Entwickler:innen — lokal starten
 
 ### Voraussetzungen
 
-- **Node.js 22.22.0 oder neuer** (Untergrenze von React Router 8, in `package.json` als `engines.node` deklariert)
-- Optional ein **GitHub Token** in `GH_TOKEN`, um beim Katalog-Fetch höhere API-Rate-Limits zu nutzen
+- **Node.js >= 22.22.0** (in `package.json` als `engines.node` deklariert)
+- Optional ein **GitHub Token** in `GH_TOKEN` für höhere API-Rate-Limits beim Katalog-Fetch
 
 ### Quickstart
 
@@ -64,56 +64,39 @@ npm run setup                      # npm ci, Schema-Verifikation, Katalog-Fetch,
 npm run dev                        # http://localhost:5173
 ```
 
-`npm run setup` stellt aus einem frischen Checkout eine grüne Testbasis
-her: `npm ci --ignore-scripts`, die offline Schema-Verifikation, den
-Katalog-Fetch gegen die in `upstream-manifest.json` gepinnte
-Snapshot-SHA und eine erneute Frische-Prüfung. Bereits aktuelle
-Katalogdaten überspringt der Lauf; `npm run setup -- --force` erzwingt
-den Fetch erneut. Optional `cp .env.local.example .env.local` für die
-Impressum-Platzhalter — ohne sie zeigt die App im lokalen Dev-Server
-einen Hinweis, `npm run test` und `npm run build` laufen davon
-unberührt. `.env.local` wird **nicht** eingecheckt und enthält
-Impressum-Felder nach § 5 DDG.
+`npm run setup` bootstrapt ein frisches Checkout (`npm ci --ignore-scripts`, offline Schema-Verifikation, Fetch gegen die gepinnte Snapshot-SHA, Frische-Check); aktuelle Daten werden übersprungen, `--force` erzwingt den Fetch. Optional `cp .env.local.example .env.local` für die Impressum-Platzhalter — ohne sie laufen `npm run test` und `npm run build` unberührt. `.env.local` wird **nicht** eingecheckt und enthält Impressum-Felder nach § 5 DDG.
 
 ### Weitere Skripte
 
 | Befehl | Zweck |
 |---|---|
-| `npm run setup` | frisches Checkout bootstrappen: `npm ci --ignore-scripts`, Schema-Verifikation, gepinnter Katalog-Fetch, Frische-Check (`--force` erzwingt den Fetch erneut) |
 | `npm run dev` | Dev-Server mit HMR |
 | `npm run build` | Production-Build (GitHub-Pages-Base `/Grundschutz-Navigator/`) |
 | `npm run build:local` | Production-Build ohne Pages-Präfix (`BUILD_BASE=/`) |
 | `npm run preview` | gebauten Bundle lokal servieren |
-| `npm run preview:local` | `build:local` + lokaler Preview |
 | `npm run test` | Vitest (Single-Run) |
 | `npm run test:watch` | Vitest (Watch-Mode) |
 | `npm run test:coverage` | Vitest mit V8-Coverage |
 | `npm run lint` | ESLint |
-| `npm run fetch-catalog` | registrierte BSI-Artefakte für die mit `BSI_SNAPSHOT_SHA` gewählte vollständige Commit-SHA oder ausdrücklich `latest` validieren und unterstützte Daten nach `public/data/` ausliefern |
+| `npm run fetch-catalog` | registrierte BSI-Artefakte validieren und unterstützte Daten nach `public/data/` ausliefern (erfordert `BSI_SNAPSHOT_SHA` oder Manifest-Pin) |
 
-Die Coverage-Thresholds in `vite.config.ts` sind anhand der gemessenen
-Repository-Coverage kalibriert (gemessen 2026-08-24: Lines 92,67 %, Branches
-82,71 %, Functions 93,04 %, Statements 90,57 %; Thresholds jeweils ca. 5
-Prozentpunkte darunter): Lines 87 %, Branches 77 %, Functions 88 %,
-Statements 85 %. Sie sollen nicht ohne neue Baseline-Messung gesenkt werden.
+Coverage-Gates in `vite.config.ts`: Lines 87 %, Branches 77 %, Functions 88 %, Statements 85 %. Sie werden nicht ohne neue Baseline-Messung gesenkt.
 
 ## Architektur (Kurzfassung)
 
-Single-Page-App mit **Zwei-Schichten-Datenmodell**: Raw-OSCAL-Typen werden im Adapter-Layer in angereicherte Domain-Typen überführt (`Control`, `Topic`, `Practice`, `Catalog`). Der unveränderte OSCAL-Quellgraph bleibt dabei erhalten — das Domänenmodell ist eine Projektion darauf, kein Ersatz, sodass auch nicht abgebildete Felder und Extensions nicht verloren gehen. Globaler Zustand via React Context; Filter werden bidirektional mit URL-Parametern synchronisiert und überleben Navigation. Die Katalog-Integrität wird per SHA-256 zur Laufzeit überprüft.
-
-Tiefe:
+Single-Page-App: Der Adapter-Layer überführt Raw-OSCAL-Typen in Domain-Typen (`Control`, `Topic`, `Practice`, `Catalog`). Globaler Zustand via React Context; Filter sind bidirektional mit URL-Parametern synchronisiert; die Katalog-Integrität wird per SHA-256 zur Laufzeit überprüft.
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Schichten, Daten­fluss, Kopplung
 - [`docs/DOMAIN_MODELS.md`](docs/DOMAIN_MODELS.md) — Typen, Anreicherung, OSCAL-Mapping
 - [`docs/INTEGRITY.md`](docs/INTEGRITY.md) — SHA-256-Pinning und Verify
-- [`docs/OSCAL_VALIDATION.md`](docs/OSCAL_VALIDATION.md) — Zielvertrag für die künftige fail-closed OSCAL-Prüf- und Lieferkette
-- [`docs/OSCAL_ROUND_TRIP.md`](docs/OSCAL_ROUND_TRIP.md) — No-op-Round-trip-Harnisch: Verlustfreiheit je OSCAL-Modell
+- [`docs/OSCAL_VALIDATION.md`](docs/OSCAL_VALIDATION.md) — fail-closed OSCAL-Prüf- und Lieferkette (Stufen 1–3 für Klasse 2 umgesetzt, unabhängiger CI-Schema-Korpuslauf)
+- [`docs/OSCAL_ROUND_TRIP.md`](docs/OSCAL_ROUND_TRIP.md) — No-op-Round-trip-Harnisch je OSCAL-Modell
 - [`docs/FILTERING.md`](docs/FILTERING.md) — Filter-Parameter, URL-Sync, Reihenfolge
 - [`docs/VOCABULARY.md`](docs/VOCABULARY.md) — Namespace-Modell für BSI-Vokabulare
 
 ## Deployment
 
-Pushes nach `main` triggern den Deploy-Workflow: registrierte BSI-Artefakte validieren und unterstützte Daten ziehen → Tests → Build → [SLSA-Provenance-Attestation](https://slsa.dev/) → GitHub Pages. Der Upstream-Sync vergleicht täglich um 06:00 UTC sowie bei Main-Push und manuell den vollständigen überwachten BSI-Baum, erstellt bei einem Delta einen Manifest-PR und fordert Auto-Squash mit Branch-Löschung an. Die Post-Merge-Lane prüft anschließend den Stand auf `main`, bestätigt den normalen Push-Deploy erst bei erfolgreichem Abschluss und dispatcht einen Fallback nur nach erneuter Zustandsprüfung.
+Pushes nach `main` triggern den Deploy-Workflow: BSI-Katalog fetch → Tests mit Coverage → Build → [SLSA-Provenance-Attestation](https://slsa.dev/) → GitHub Pages.
 
 ## Beitragen
 
@@ -124,13 +107,11 @@ npm run lint
 npm run test
 ```
 
-Tech-Hintergrund und Architektur-Entscheidungen findest du in [`docs/`](docs/).
-
 ## Haftungsausschluss
 
 Dieses Projekt ist ein inoffizielles Community-Werkzeug. Es ersetzt weder eine offizielle Quelle noch eine Rechts- oder Sicherheits­beratung. Für verbindliche Auskünfte nutze bitte die originalen Veröffentlichungen des BSI. Die Bereitstellung erfolgt ohne Gewähr auf Vollständigkeit oder Richtigkeit.
 
 ## Lizenz
 
-- **App-Code:** [GNU Affero General Public License v3.0 (or later)](LICENSE) — © 2026 Deniz Furater. Starkes Copyleft: Wer den Code weitergibt **oder als Netzwerkdienst anbietet**, muss den vollständigen Quellcode inkl. eigener Änderungen unter der AGPL verfügbar machen. Drittkomponenten behalten ihre eigenen Lizenzen (siehe `NOTICE` und die „Lizenzen"-Seite der App).
-- **Katalogdaten:** [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.de) — Urheber: [`BSI-Bund/Stand-der-Technik-Bibliothek`](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek). Bei Weitergabe der Daten sind Namensnennung und Weitergabe unter gleichen Bedingungen zu beachten. Die Katalogdaten sind nicht Teil dieses Repositorys und fallen nicht unter die AGPL des App-Codes.
+- **App-Code:** [GNU Affero General Public License v3.0 (or later)](LICENSE) — © 2026 Deniz Furater. Wer den Code weitergibt **oder als Netzwerkdienst anbietet**, muss den vollständigen Quellcode inkl. eigener Änderungen unter der AGPL verfügbar machen. Drittkomponenten behalten ihre eigenen Lizenzen (siehe `NOTICE` und die „Lizenzen"-Seite der App).
+- **Katalogdaten:** [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.de) — Urheber: [`BSI-Bund/Stand-der-Technik-Bibliothek`](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek). Die Katalogdaten sind nicht Teil dieses Repositorys und fallen nicht unter die AGPL des App-Codes.
