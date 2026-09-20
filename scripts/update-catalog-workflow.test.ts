@@ -10,6 +10,8 @@ describe('catalog update workflow schedule', () => {
 
     expect(workflow).toContain(
       [
+        '  # Main-Pushes enthalten keinen neuen Upstream-Stand. Policy-Drift wird',
+        '  # deshalb im nächsten regulären Werktagslauf erkannt.',
         '  schedule:',
         "    - cron: '30 7 * * 1-5'",
         "      timezone: 'Europe/Berlin'",
@@ -21,12 +23,11 @@ describe('catalog update workflow schedule', () => {
     expect(workflow).not.toMatch(/^\s+- cron: ['"]0 /m);
   });
 
-  it('keeps workflow dispatch and the main push trigger', () => {
+  it('keeps workflow dispatch without a main push trigger', () => {
     const workflow = readFileSync(WORKFLOW_PATH, 'utf8');
 
-    expect(workflow).toContain(
-      ['  workflow_dispatch:', '  push:', '    branches: [main]'].join('\n'),
-    );
+    expect(workflow).toContain('  workflow_dispatch:');
+    expect(workflow).not.toContain(['  push:', '    branches: [main]'].join('\n'));
   });
 
   it('checks out main independently of the triggering ref', () => {
