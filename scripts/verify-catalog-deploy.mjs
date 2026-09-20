@@ -105,7 +105,7 @@ async function fetchGitHubJson(url, { fetchImpl, token, label, requestTimeoutMs 
   try {
     response = await fetchImpl(url, { headers, signal: AbortSignal.timeout(requestTimeoutMs) });
   } catch (error) {
-    throw new Error(`${label} failed: ${error instanceof Error ? error.message : 'network error'}`);
+    throw new Error(`${label} failed: ${error instanceof Error ? error.message : 'network error'}`, { cause: error });
   }
   if (!response.ok) {
     throw new Error(`${label} failed with HTTP ${response.status}`);

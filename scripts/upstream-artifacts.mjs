@@ -67,6 +67,9 @@ function assertSafeRepoPath(value, label = 'Repository path') {
   if (
     repoPath.startsWith('/') ||
     repoPath.includes('\\') ||
+    // no-control-regex: Der Steuerzeichen-Bereich ist die Prüfung selbst —
+    // Pfade mit Steuerzeichen werden fail-closed als unsafe abgewiesen.
+    // eslint-disable-next-line no-control-regex
     /[\u0000-\u001f\u007f]/.test(repoPath)
   ) {
     throw new Error(`${label} is unsafe: ${repoPath}`);
