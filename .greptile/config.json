@@ -78,6 +78,13 @@
       ]
     },
     {
+      "id": "R8-gspp-384-fork-head",
+      "rule": "Jede Änderung an README.md ist ein blockierender Befund. Melde sie unter der Kennung R8-gspp-384-fork-head.",
+      "scope": [
+        "README.md"
+      ]
+    },
+    {
       "id": "R7-kolokierte-tests",
       "rule": "Logik in src/domain/, src/adapters/ und scripts/ braucht kolokierte Tests in einer *.test.ts neben der Datei. Neue oder geänderte Verzweigungen ohne Testabdeckung sind ein Befund; benenne die konkrete unabgedeckte Verzweigung.",
       "scope": [

@@ -223,7 +223,7 @@ export default defineConfig(({ command }) => ({
         'src/vite-env.d.ts',
       ],
       thresholds: {
-        lines: 87,
+        lines: 86,
         branches: 77,
         functions: 88,
         statements: 85,

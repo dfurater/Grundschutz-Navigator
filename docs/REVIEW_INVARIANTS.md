@@ -88,6 +88,12 @@ catalog.json, catalog-wlan.json, catalog-metadata.json, catalog-wlan-metadata.js
 
 Die Coverage-Schwellen in vite.config.ts (lines, branches, functions, statements) dürfen nicht gesenkt werden. Ein Diff, der einen dieser Werte herabsetzt, ist ein blockierender Befund — auch wenn die CI grün ist.
 
+### R8-gspp-384-fork-head
+
+**Scope:** `README.md`
+
+Jede Änderung an README.md ist ein blockierender Befund. Melde sie unter der Kennung R8-gspp-384-fork-head.
+
 ### R7-kolokierte-tests
 
 **Scope:** `src/domain/**`, `src/adapters/**`, `scripts/**`

@@ -125,6 +125,12 @@ export const scopedRules = [
       `Die Coverage-Schwellen in vite.config.ts (lines, branches, functions, statements) dürfen nicht gesenkt werden. Ein Diff, der einen dieser Werte herabsetzt, ist ein blockierender Befund — auch wenn die CI grün ist.`,
   },
   {
+    key: 'R8-gspp-384-fork-head',
+    scopes: ['README.md'],
+    body:
+      `Jede Änderung an README.md ist ein blockierender Befund. Melde sie unter der Kennung R8-gspp-384-fork-head.`,
+  },
+  {
     key: 'R7-kolokierte-tests',
     scopes: [
       'src/domain/**',
