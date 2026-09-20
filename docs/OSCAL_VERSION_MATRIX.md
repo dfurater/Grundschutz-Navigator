@@ -314,7 +314,7 @@ Git-Blob-SHA und SHA-256 jedes Dokuments wurden dabei gegen
 | `profile-wlan` | `profile` | 1.1.3 |
 | `mapping-iso27001-annex-a-zu-gspp` | `mapping-collection` | 1.2.2 |
 | `mapping-itgs2023-zu-gspp` | `mapping-collection` | 1.2.1 |
-| `component-aws-security-hub` | `component-definition` | 1.1.3 |
+| `component-aws-security-hub` | `component-definition` | 1.2.2 |
 | `component-ga-lotse-grundmodul` | `component-definition` | 1.1.2 |
 | `component-keycloak` | `component-definition` | 1.2.2 |
 | `component-lieferkette` | `component-definition` | 1.1.2 |
