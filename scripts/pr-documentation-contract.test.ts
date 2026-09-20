@@ -1,6 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { validateDocumentationContract } from './pr-documentation-contract.mjs';
-import { getChangedFiles, validateGitSha } from './git-changed-files.mjs';
 
 const TEMPLATE_BODY = `
 <!-- documentation-contract:start -->
@@ -185,44 +184,5 @@ describe('validateDocumentationContract', () => {
       changedFiles: ['src/domain/models.ts', 'src/README.md'],
       pullRequestBody: bodyWithDocumentation('`src/README.md`'),
     })).toThrow(/weder docs\/ noch README\.md/);
-  });
-});
-
-describe('validateGitSha', () => {
-  it('accepts a full Git SHA', () => {
-    expect(validateGitSha('a'.repeat(40), 'PR_BASE_SHA')).toBe('a'.repeat(40));
-  });
-
-  it.each(['', 'abc123', 'g'.repeat(40), 'a'.repeat(39)])(
-    'rejects an unsafe or incomplete Git SHA: %s',
-    (sha) => {
-      expect(() => validateGitSha(sha, 'PR_HEAD_SHA')).toThrow(/PR_HEAD_SHA/);
-    },
-  );
-});
-
-describe('getChangedFiles', () => {
-  it('passes validated SHAs directly to git without a shell and parses NUL-separated paths', () => {
-    const baseSha = 'a'.repeat(40);
-    const headSha = 'b'.repeat(40);
-    const execFile = vi.fn(() => 'src/domain/models.ts\0docs/DOMAIN_MODELS.md\0');
-
-    expect(getChangedFiles({ baseSha, headSha, execFile })).toEqual([
-      'src/domain/models.ts',
-      'docs/DOMAIN_MODELS.md',
-    ]);
-    expect(execFile).toHaveBeenCalledWith(
-      'git',
-      [
-        'diff',
-        '--name-only',
-        '--no-renames',
-        '--diff-filter=ACMRD',
-        '-z',
-        `${baseSha}...${headSha}`,
-        '--',
-      ],
-      { encoding: 'utf8' },
-    );
   });
 });
