@@ -1,15 +1,15 @@
 # Filter-System — Grundschutz++ Navigator
 
-Beschreibung des Multi-Facet-Filter-Systems und der URL-Parameter-Synchronisation.
+Multi-Facet-Filterung des Grundschutz-Katalogs mit URL-Parameter-Synchronisation.
 
 ## Überblick
 
-Das Filter-System ermöglicht das Filtern des Grundschutz-Katalogs nach mehreren Dimensionen gleichzeitig. Die Filter werden bidirektional mit URL-Suchparametern synchronisiert, sodass:
-- Filter-Zustand in der URL gespeichert wird
-- Filter per URL geteilt werden können
-- Browser-Navigation (vor/zurück) funktioniert
+Filter und Sortierung werden bidirektional mit URL-Suchparametern synchronisiert (`src/hooks/useFilterParams.ts` auf Basis von React Routers `useSearchParams`):
 
-Practice- und Topic-Auswahl laufen nicht über Query-Parameter, sondern über die kataloggescopte Route (`/katalog/:catalogKey/:groupId`). Control-Details verwenden die kanonische Route `/katalog/:catalogKey/kontrolle/:altIdentifier`. Der `CatalogBrowser` schränkt über die Gruppenauswahl die Eingabemenge des Hooks ein (`scopedControls`), bevor die Query-Parameter-Filter greifen. Die Felder `practiceIds`/`groupIds` in `ControlFilters` sind davon unabhängige Filterdimensionen des Hooks.
+- Filter-Zustand steht in der URL und ist per URL teilbar.
+- Die URL ist die einzige Quelle der Wahrheit: Filter und Sortierung werden bei jedem Render aus ihr abgeleitet.
+
+Practice- und Topic-Auswahl laufen nicht über Query-Parameter, sondern über die kataloggescopte Route (`/katalog/:catalogKey/:groupId`, Muster in `src/app/routes.ts`). Control-Details verwenden `/katalog/:catalogKey/kontrolle/:altIdentifier`. Der `CatalogBrowser` (`src/features/catalog/CatalogBrowser.tsx`) schränkt über die Gruppenauswahl die Eingabemenge des Hooks ein (`scopedControls`); erst darauf greifen die Query-Parameter-Filter. `practiceIds`/`groupIds` in `ControlFilters` sind unabhängige Filterdimensionen des Hooks (`src/hooks/useFilteredControls.ts`).
 
 ## Filter-Dimensionen
 
@@ -29,126 +29,41 @@ Practice- und Topic-Auswahl laufen nicht über Query-Parameter, sondern über di
 | Schutzziel Authentizität | `stau` | `1`, `2` | Mehrfachauswahl |
 | Sortierung | `sort` | `<feld>:<richtung>[,…]` | Einzelwert |
 
-Der Linkfilter ist eine enge Kompatibilitätsprojektion für die beiden bereits
-vorhandenen Projektwerte `related` und `required`. Andere offene OSCAL-Tokens,
-der dokumentierte Wert `reference` und ein fehlendes `rel` werden nicht darauf
-umgedeutet. Sie bleiben in Detailansicht, Suche und allgemeiner Linkspalte des
-Exports nachvollziehbar, erzeugen aber keine zusätzliche Filtersemantik.
+Der Linkfilter projiziert auf `related` und `required` (`toFilterableLinkRelation` in `src/domain/controlRelationships.ts`). Andere `rel`-Werte (`reference`, offene OSCAL-Tokens, fehlendes `rel`) werden nicht umgedeutet und erzeugen keine Filtersemantik; sie bleiben in Detailansicht, Suche und der allgemeinen Linkspalte des CSV-Exports (`links` in `src/features/export/csvExport.ts`) sichtbar.
 
 ### Schutzziel-Facetten (CIA + Authentizität)
 
-Die vier Schutzziele sind vier eigenständige Facetten, nicht eine gemeinsame:
-ODER innerhalb einer Dimension, UND über die Dimensionen — dieselbe Konvention
-wie bei allen übrigen Facetten. Die gesamte Logik liegt in
-`src/domain/securityTargets.ts`.
+Die vier Schutzziele sind vier eigenständige Facetten, nicht eine gemeinsame: ODER innerhalb einer Dimension, UND über die Dimensionen — dieselbe Konvention wie bei allen übrigen Facetten. Die gesamte Logik liegt in `src/domain/securityTargets.ts`.
 
-Im Filterpanel stehen die vier Dimensionen in **einer** Sektion `Schutzziele`
-(`src/features/catalog/SecurityTargetFilterSection.tsx`). Die Auswahl ist
-zweistufig: Die Zeile eines Schutzziels trägt die Trefferzahl über beide Stufen
-und wählt mit einem Haken beide; erst dann erscheinen die Stufen einzeln
-darunter und lassen sich abwählen. Ist genau eine Stufe gewählt, steht die
-Elternzeile im dritten Kontrollzustand (`HTMLInputElement.indeterminate`) —
-ohne ihn bedeutete ein gesetzter Haken wahlweise „beide Stufen" oder „eine
-Stufe". Je Dimension sind damit alle vier Zustände erreichbar: nichts gewählt,
-nur `1`, nur `2`, beide. Am URL-Parameter ändert das nichts; die Stufenzeilen
-sind genau die Werte, die dort kommasepariert stehen, und der Elternhaken ist
-die Abkürzung für beide.
+Im Filterpanel stehen die vier Dimensionen in einer Sektion `Schutzziele` (`src/features/catalog/SecurityTargetFilterSection.tsx`). Die Zeile eines Schutzziels trägt die Trefferzahl über beide Stufen und wählt mit einem Haken beide; erst dann erscheinen die Stufen einzeln darunter und lassen sich abwählen. Ist genau eine Stufe gewählt, steht die Elternzeile im dritten Kontrollzustand (`HTMLInputElement.indeterminate`). Am URL-Parameter ändert das nichts: Die Stufenzeilen sind genau die kommaseparierten Werte, der Elternhaken ist die Abkürzung für beide.
 
-Auswählbar sind **die beiden Stufen, die ein Schutzziel betreffen** (`1` und
-`2`), und sie sind exakt, keine Schwellen: Wer `1` wählt, sieht genau die
-Anforderungen der Stufe `1` — `2` ist darin nicht enthalten. Mehrere Stufen
-zusammen ergeben die gewünschte Obermenge über das ODER innerhalb der Facette
-(`stc=1,2`).
+Auswählbar sind die beiden Stufen, die ein Schutzziel betreffen (`1` und `2`), und sie sind exakt, keine Schwellen: `stc=1` trifft genau die Anforderungen der Stufe `1`; mehrere Stufen ergeben die Obermenge über das ODER (`stc=1,2`).
 
-Die Beschriftungen zeigen den Katalogwert, keine app-eigene Stufenbezeichnung —
-dieselbe Regel wie bei Sicherheitsniveau und Aufwandsstufe. Das Vokabular
-`security_targets_levels.csv` kennt zu `0`–`2` keine Bezeichnung, sondern nur
-eine Definition. Das vorangestellte Wort in `Stufe 1` und `Stufe 2` benennt
-allein die Skala, zu der der Wert gehört; die Definitionen stehen gekürzt in
-einer Legende über den Optionen und wörtlich im Tooltip
-(`getSecurityTargetFilterTooltip` in `src/features/vocabulary/display.ts`). Die
-Legende steht einmal je Sektion statt als Tooltip an jeder Stufenzeile, weil ein
-`title` auf Touch nicht erreichbar ist.
+Die Beschriftungen zeigen den Katalogwert, keine app-eigene Stufenbezeichnung (`Stufe 1`, `Stufe 2` in `getSecurityTargetFilterLabel`, `src/features/vocabulary/display.ts`): Das Vokabular `security_targets_levels.csv` kennt zu `0`–`2` keine Bezeichnung, nur eine Definition. Die Definitionen stehen gekürzt in einer Legende über den Optionen und wörtlich im Tooltip (`getSecurityTargetFilterTooltip`); die Legende steht einmal je Sektion, weil ein `title`-Tooltip auf Touch nicht erreichbar ist.
 
-**Die Stufe `0`, unbewertete Anforderungen und skalenfremde Werte sind keine
-Auswahl.** Eine Facette ist ein Weg zu den Anforderungen, die ein Schutzziel
-betreffen; über sie zu denen zu navigieren, die es nicht betreffen, hat keinen
-Nutzen — bei Authentizität führte die Stufe `0` zu 609 von 1000 Anforderungen.
-Alle drei Zustände fallen bei aktiver Facette heraus. Ausblenden heißt dabei
-nicht einebnen: `classifySecurityTarget` führt sie weiter als eigene Zustände
-(`rated` mit dem Wert `0`, `unrated`, `unknown`), der Rohwert bleibt in der
-`PropValue`-Provenienz erhalten, und die Detailansicht zeigt ihn unverändert.
+Die Stufe `0`, unbewertete Anforderungen und skalenfremde Werte sind keine Auswahl und fallen bei aktiver Facette heraus. Ausblenden heißt nicht einebnen: `classifySecurityTarget` führt sie weiter als eigene Zustände (`rated` mit dem Wert `0`, `unrated`, `unknown`), der Rohwert bleibt in der `PropValue`-Provenienz erhalten, und die Detailansicht zeigt ihn unverändert.
 
-Verengt ist allein die Auswahlmenge der Facette
-(`SECURITY_TARGET_FILTER_VALUES`). Die Ordnung `SECURITY_TARGET_RELEVANCE_ORDER`
-bleibt dreistellig, weil sie die Skala des Vokabulars abbildet und über
-`RELEVANCE_SCALE_MAX` die Relevanzskala der Detailansicht speist. Ein
-Schutzziel-Parameter mit dem Wert `0` wird beim Deserialisieren verworfen, ohne
-die übrigen Werte desselben Parameters zu entwerten: `stc=0,2` ergibt `['2']`.
+Verengt ist allein die Auswahlmenge der Facette (`SECURITY_TARGET_FILTER_VALUES`). Die Ordnung `SECURITY_TARGET_RELEVANCE_ORDER` bleibt dreistellig, weil sie die Skala des Vokabulars abbildet und über `RELEVANCE_SCALE_MAX` (`src/components/StatusMeta.tsx`) die Relevanzskala der Detailansicht speist. Ein Schutzziel-Parameter mit dem Wert `0` wird beim Deserialisieren verworfen, ohne die übrigen Werte desselben Parameters zu entwerten: `stc=0,2` ergibt `['2']` (`isSecurityTargetFilterValue` in `src/hooks/useFilterParams.ts`).
 
-Drei Punkte sind dabei normativ bindend:
+Drei Constraints sind dabei bindend:
 
-**Die Skala ist eine Projektentscheidung, keine OSCAL-Vorgabe.** OSCAL
-definiert für `prop.value` keinen Wertebereich. Beleg im gepinnten Bestand:
-`schemas/oscal/v1.1.3/oscal_catalog_schema.json` führt unter der Definition
-`oscal-catalog-oscal-metadata:property` das Feld `value` als `$ref` auf
-`StringDatatype`, und `StringDatatype` ist dort
-`{"type": "string", "pattern": "^\\S(.*\\S)?$"}` — ein nicht leerer String
-ohne Randwhitespace, ohne Enum, ohne Zahlentyp und ohne Ordnung. Die Schemata
-sind SHA-256-gepinnt und offline prüfbar (`npm run verify-oscal-schemas`); sie
-stammen aus dem NIST-Release
-[v1.1.3](https://github.com/usnistgov/OSCAL/releases/tag/v1.1.3), der
-Versionsbezug steht in `src/domain/oscalVersionMatrix.mjs`.
+**Die Skala ist eine Projektentscheidung, keine OSCAL-Vorgabe.** OSCAL definiert für `prop.value` keinen Wertebereich: `schemas/oscal/v1.1.3/oscal_catalog_schema.json` führt das Feld unter `oscal-catalog-oscal-metadata:property` als `$ref` auf `StringDatatype`, und `StringDatatype` ist dort ein nicht leerer String ohne Randwhitespace, ohne Enum, ohne Zahlentyp und ohne Ordnung. Die Schemata sind SHA-256-gepinnt und offline prüfbar (`npm run verify-oscal-schemas`); der Versionsbezug steht in `src/domain/oscalVersionMatrix.mjs`.
 
-Dass `0`, `1` und `2` die gültigen Werte sind und `2` mehr Relevanz bedeutet als
-`1`, stammt aus dem BSI-Vokabular `security_targets_levels.csv`. Über `prop.ns`
-ist diese Datei **nicht** erreichbar: Der `ns` der vier Schutzziel-Props zeigt
-auf `security_targets.csv`, das nach Schutzziel-Namen indiziert ist und die
-Stufen nicht kennt. Die beiden Stellen, die die Stufenbedeutung brauchen, wählen
-die Datei deshalb selbst aus (`resolveSecurityTargetLevel` in
-`src/domain/vocabulary.ts`, `getSecurityTargetFilterTooltip` in
-`src/features/vocabulary/display.ts`). Skala und Ordnung stehen an genau einer
-Stelle (`SECURITY_TARGET_RELEVANCE_ORDER`) und werden über einen Lookup
-ausgewertet, nicht über `parseInt`: Ein schema-valider Fremdwert wie `'3'` gehört
-nicht zur Skala und landet in `unknown` statt in einer Stufe.
+Dass `0`, `1` und `2` die gültigen Werte sind und `2` mehr Relevanz bedeutet als `1`, stammt aus dem BSI-Vokabular `security_targets_levels.csv`. Über `prop.ns` ist diese Datei nicht erreichbar: Der `ns` der vier Schutzziel-Props zeigt auf `security_targets.csv`, das nach Schutzziel-Namen indiziert ist und die Stufen nicht kennt. Die beiden Stellen, die die Stufenbedeutung brauchen, wählen die Datei selbst aus (`resolveSecurityTargetLevel` in `src/domain/vocabulary.ts`, `getSecurityTargetFilterTooltip` in `src/features/vocabulary/display.ts`). Skala und Ordnung stehen an genau einer Stelle (`SECURITY_TARGET_RELEVANCE_ORDER`) und werden über einen Lookup ausgewertet, nicht über `parseInt`: Ein schema-valider Fremdwert wie `'3'` landet in `unknown` statt in einer Stufe.
 
-**Ein fehlendes `prop` ist nicht der Wert `0`.** `props` ist auf `control`
-optional — im gepinnten `schemas/oscal/v1.1.3/oscal_catalog_schema.json` führt
-`oscal-catalog-oscal-catalog:control` nur `["id", "title"]` als `required`.
-Abwesenheit bedeutet „keine Aussage", `0` bedeutet „ausgewertet, nicht
-relevant". Beides bleibt getrennt geführt, obwohl beides über die Facette nicht
-erreichbar ist: `classifySecurityTarget` liefert für ein Control mit dem Wert
-`0` weiterhin `rated` samt Rang und für eines ohne `prop` `unrated`. Im
-ausgelieferten Katalog betrifft die Abwesenheit je nach Schutzziel 99 bis 100
-Controls.
+**Ein fehlendes `prop` ist nicht der Wert `0`.** `props` ist auf `control` optional — das gepinnte Schema führt für `oscal-catalog-oscal-catalog:control` nur `["id", "title"]` als `required`. Abwesenheit bedeutet „keine Aussage", `0` bedeutet „ausgewertet, nicht relevant". `classifySecurityTarget` liefert für ein Control mit dem Wert `0` weiterhin `rated` samt Rang und für eines ohne `prop` `unrated`.
 
-**Die Facette trifft keine Compliance-Aussage.** Eine Schutzziel-Relevanz
-beschreibt, worauf ein Control einzahlt — nicht, ob es umgesetzt oder wirksam
-ist. Umsetzungsstatus existiert in OSCAL ausschließlich im SSP auf
-`by-component`; im gepinnten
-`schemas/oscal/v1.1.3/oscal_ssp_schema.json` trägt genau eine Definition das
-Feld `implementation-status`, nämlich `oscal-ssp-oscal-ssp:by-component`.
+**Die Facette trifft keine Compliance-Aussage.** Eine Schutzziel-Relevanz beschreibt, worauf ein Control einzahlt — nicht, ob es umgesetzt oder wirksam ist. Umsetzungsstatus existiert in OSCAL ausschließlich im SSP auf `by-component`; im gepinnten `schemas/oscal/v1.1.3/oscal_ssp_schema.json` trägt genau eine Definition das Feld `implementation-status`, nämlich `oscal-ssp-oscal-ssp:by-component`.
 
-Alle drei Belege werden in `src/domain/securityTargets.catalog.node.test.ts`
-gegen die gepinnten Schemata geprüft statt nur behauptet; ändert NIST eine der
-Definitionen, schlägt der Test an. Die Trefferzahlen sind deshalb keine Abdeckung: Sie zählen je
-Dimension die **bewerteten** Anforderungen auf, und ihre Summe liegt unter der
-Gesamtzahl, weil die unbewerteten in keine Stufe fallen.
+Alle drei Belege werden in `src/domain/securityTargets.catalog.node.test.ts` gegen die gepinnten Schemata geprüft. Die Trefferzahlen sind deshalb keine Abdeckung: Sie zählen je Dimension die bewerteten Anforderungen auf, und ihre Summe liegt unter der Gesamtzahl, weil die unbewerteten in keine Stufe fallen.
 
-Der Filterzustand betrifft ausschließlich Klasse-1-Daten aus dem verifizierten
-BSI-Bestand. Der URL-Sync ist hier richtig und erwünscht — er ist ausdrücklich
-**kein** Muster für Klasse-2-Ansichten.
+Der Filterzustand betrifft ausschließlich Klasse-1-Daten aus dem verifizierten BSI-Bestand. Der URL-Sync ist hier richtig und erwünscht — er ist ausdrücklich kein Muster für Klasse-2-Ansichten (Kommentar in `src/hooks/useFilterParams.ts`).
 
-Mehrfachwerte werden kommasepariert in einem Parameter kodiert (z.B. `mv=MUSS,SOLLTE`).
-Die Volltextsuche ist davon getrennt und läuft ausschließlich über `/suche?q=…`.
-Ein `q`-Parameter auf einer Katalogroute ist kein Katalogfilter und wird ignoriert.
+Mehrfachwerte werden kommasepariert in einem Parameter kodiert (z.B. `mv=MUSS,SOLLTE`). Die Volltextsuche ist davon getrennt und läuft ausschließlich über `/suche?q=…`. Ein `q`-Parameter auf einer Katalogroute ist kein Katalogfilter und wird ignoriert (`useFilterParams` liest `q` nie).
 
 ## Kennungssuche
 
-Eine Suchanfrage, die exakt dem in OSCAL 1.1.3 gepinnten `UUIDDatatype` (UUID
-v4/v5) entspricht, wird nicht als Volltext behandelt, sondern über einen
-eigenen Kennungsindex aufgelöst. Der Index liegt im kataloggescopten
-Suchcache und erbt damit Katalogtrennung und Invalidierung der Volltextindizes.
+Eine Suchanfrage, die exakt dem in OSCAL 1.1.3 gepinnten `UUIDDatatype` (UUID v4/v5) entspricht, wird nicht als Volltext behandelt, sondern über einen eigenen Kennungsindex aufgelöst (`classifyQuery` in `src/domain/identifierQuery.ts`, Auflösung in `src/features/search/useSearch.ts`). Der Index liegt im kataloggescopten Suchcache und erbt damit Katalogtrennung und Invalidierung der Volltextindizes.
 
 | Eingabe | Treffer |
 | --- | --- |
@@ -159,36 +74,11 @@ Suchcache und erbt damit Katalogtrennung und Invalidierung der Volltextindizes.
 | Dokumentkennungen (`catalog.uuid`, `document-id`, `parties.uuid`, `resources.uuid`) | keine Treffer |
 | Kennung aus einem anderen Katalog | keine Treffer |
 
-Ein `ChildOfUUID`-Wert verweist auf einen anderen Vokabular-Eintrag. Die
-Controls des verweisenden Eintrags werden der Elternkennung deshalb nicht
-zugeschlagen; aufgelöst wird ausschließlich über die eigene Kennung eines
-Eintrags.
+Ein `ChildOfUUID`-Wert verweist auf einen anderen Vokabular-Eintrag. Die Controls des verweisenden Eintrags werden der Elternkennung nicht zugeschlagen; aufgelöst wird ausschließlich über die eigene Kennung eines Eintrags (`collectControlVocabularyIdentifiers` in `src/domain/vocabulary.ts` wertet nur `identifierColumns` aus, keine Verweisspalten).
 
-Eine unvollständige oder syntaktisch abweichende Kennung liefert kein Ergebnis
-und fällt nicht auf die Volltextsuche zurück. Als Kennung gilt eine Eingabe
-dafür bereits an ihrer Form, und zwar über zwei Anker: Sie beginnt mit acht
-Hexziffern und einem Bindestrich, gefolgt von beliebigen Zeichen ohne Leerraum
-— oder sie füllt das Segmentraster 8-4-4-4-12 vollständig aus. Der erste Anker
-deckt jede Verfälschung hinter einem korrekt getippten Kopfblock ab, der zweite
-die Fälle, in denen schon der Kopfblock verfälscht ist. Geprüft wird
-ausschließlich die Form, nie der Zeichenvorrat: Ob ein Zeichen durch eine
-Ziffer, einen Buchstaben, einen Unterstrich oder ein Sonderzeichen ersetzt
-wurde, ändert nichts daran, dass eine Kennung gemeint war. Leerraum grenzt ab,
-weil er aus der Eingabe eine Wortfolge macht. Ein Fachbegriff wie `Taxonomy-L4`
-erfüllt keinen der beiden Anker und wird weiterhin über den Volltext gesucht. Kennungsspalten sind aus dem
-Volltextindex ausgenommen — FlexSearch zerlegt sie an den Bindestrichen, und
-Einträge mit gemeinsamen Teiltokens würden sich sonst gegenseitig treffen.
-Welche Spalten das sind, entscheidet das Build-Skript am CSV-Header
-(Spaltenname endet ohne Rücksicht auf Groß-/Kleinschreibung auf `uuid`, Wert-
-und Definitionsspalte ausgenommen) und schreibt es als `identifierColumns`
-beziehungsweise `identifierReferenceColumns` in `vocabularies.json`.
+Eine unvollständige oder syntaktisch abweichende Kennung liefert kein Ergebnis und fällt nicht auf die Volltextsuche zurück. Als Kennung gilt eine Eingabe dafür bereits an ihrer Form, und zwar über zwei Anker: Sie beginnt mit acht Hexziffern und einem Bindestrich, gefolgt von beliebigen Zeichen ohne Leerraum — oder sie füllt das Segmentraster 8-4-4-4-12 vollständig aus. Geprüft wird ausschließlich die Form, nie der Zeichenvorrat; Leerraum grenzt ab, weil er aus der Eingabe eine Wortfolge macht. Ein Fachbegriff wie `Taxonomy-L4` erfüllt keinen der beiden Anker und wird weiterhin über den Volltext gesucht. Kennungsspalten sind aus dem Volltextindex ausgenommen — FlexSearch zerlegt sie an den Bindestrichen, und Einträge mit gemeinsamen Teiltokens würden sich sonst gegenseitig treffen. Welche Spalten das sind, entscheidet das Build-Skript am CSV-Header (Spaltenname endet ohne Rücksicht auf Groß-/Kleinschreibung auf `uuid`, Wert- und Definitionsspalte ausgenommen) und schreibt es als `identifierColumns` beziehungsweise `identifierReferenceColumns` in `vocabularies.json` (`inferIdentifierColumns` in `scripts/vocabulary-utils.mjs`).
 
-Die WLAN-Props `Taxonomy-L1` bis `Taxonomy-L4` sind keine zusätzliche
-Filterdimension. Ihre exakten Namen und Werte fließen in den Volltextindex ein;
-dadurch bleiben sie über `/suche?q=…` auffindbar, ohne aus dem derzeitigen
-Placeholder-Namensraum eine fachliche Facette abzuleiten. Der CSV-Export führt
-je Ebene eine Wert- und eine optionale Namespace-Spalte (`taxonomy_l1[_ns]`
-bis `taxonomy_l4[_ns]`).
+Die WLAN-Props `Taxonomy-L1` bis `Taxonomy-L4` sind keine zusätzliche Filterdimension (`ControlFilters` enthält sie nicht). Ihre exakten Namen und Werte fließen in den Volltextindex ein (`metadataText` in `src/features/search/useSearch.ts`) und bleiben dadurch über `/suche?q=…` auffindbar. Der CSV-Export führt je Ebene eine Wert- und eine optionale Namespace-Spalte (`taxonomy_l1[_ns]` bis `taxonomy_l4[_ns]`, `taxonomyCSVFields` in `src/features/export/csvExport.ts`).
 
 ## Filter-Zustand
 
@@ -285,7 +175,7 @@ function deserializeFilters(params: URLSearchParams): ControlFilters {
 
 ### Schreiben in URL (Serialisierung)
 
-Aktive Filter werden kommasepariert gesetzt, leere Dimensionen entfernt und sofort synchronisiert. Der Sync läuft über `setSearchParams(params, { replace: true })`, sodass Filter-Änderungen keine History-Einträge fluten.
+Aktive Filter werden kommasepariert gesetzt, leere Dimensionen entfernt und sofort synchronisiert. Der Sync läuft über `setSearchParams(params, { replace: true })`, sodass Filter-Änderungen keine History-Einträge erzeugen.
 
 ```typescript
 function setOrDelete(params: URLSearchParams, key: string, values: string[]) {
@@ -297,7 +187,7 @@ function setOrDelete(params: URLSearchParams, key: string, values: string[]) {
 }
 ```
 
-Die Default-Sortierung (`id:asc`) wird nicht in die URL geschrieben.
+Die Default-Sortierung (`id:asc`) wird nicht in die URL geschrieben (`isDefaultSort` in `src/hooks/useFilterParams.ts`).
 
 ## Facet-Zählung
 
@@ -318,21 +208,14 @@ export interface FacetCounts {
 }
 ```
 
-Die Schutzziel-Zähler folgen derselben Einfrier-Regel wie die übrigen
-Dimensionen, und zwar je Dimension. Eine Anforderung zählt je Dimension in
-höchstens einen Wert: Ohne Angabe, außerhalb der Skala und mit der Stufe `0`
-zählt sie in keinen. Die Zahl der Elternzeile ist die Summe über beide Stufen
-(`sumSecurityTargetCounts`); sie zählt jede Anforderung höchstens einmal, weil
-das Domänenmodell je Dimension genau ein Prop-Feld hält.
+Die Schutzziel-Zähler folgen derselben Einfrier-Regel wie die übrigen Dimensionen, und zwar je Dimension (`resolveCounts` in `src/features/catalog/SecurityTargetFilterSection.tsx`). Eine Anforderung zählt je Dimension in höchstens einen Wert: Ohne Angabe, außerhalb der Skala und mit der Stufe `0` zählt sie in keinen. Die Zahl der Elternzeile ist die Summe über beide Stufen (`sumSecurityTargetCounts`); sie zählt jede Anforderung höchstens einmal, weil das Domänenmodell je Dimension genau ein Prop-Feld hält.
 
 ### Two-Sets-Ansatz
 
-- **Facets vom Gesamtkatalog** (`facetCounts`): Ungefilterte Anzahl — friert die Zähler für aktive Dimensionen ein
-- **Facets vom gefilterten Set** (`filteredFacetCounts`): Gefilterte Anzahl — zeigt verfügbare Werte für inaktive Dimensionen
+- **Facets vom Gesamtkatalog** (`facetCounts`): Ungefilterte Anzahl — gilt für jede aktiv gefilterte Dimension
+- **Facets vom gefilterten Set** (`filteredFacetCounts`): Gefilterte Anzahl — gilt für jede inaktive Dimension
 
-Die Differenz wird verwendet, um:
-- Deaktivierte Facets anzuzeigen (keine Ergebnisse mehr)
-- "Keine Ergebnisse"-Zustand zu erkennen
+Daraus folgt das Sichtbarkeitsverhalten: Eine Sektion ohne Optionen und ohne Auswahl wird ausgeblendet; ein gewählter Wert ohne Treffer bleibt mit Zähler `0` sichtbar (`isSectionVisible` und `visibleEntries` in `src/features/catalog/FilterPanel.tsx`).
 
 ## Sortierung
 
@@ -380,8 +263,7 @@ function compareByField(a: Control, b: Control, field: SortField): number {
 
 ## useFilteredControls Hook
 
-Der Haupt-Hook kombiniert Facettenzählung, Filterung und Sortierung. Die globale
-Volltextsuche verwendet stattdessen den separaten Hook `useSearch`:
+Der Haupt-Hook kombiniert Facettenzählung, Filterung und Sortierung. Die globale Volltextsuche verwendet stattdessen den separaten Hook `useSearch` (`src/features/search/useSearch.ts`):
 
 ```typescript
 export function useFilteredControls(
@@ -406,11 +288,7 @@ export function useFilteredControls(
 
 ## FilterPanel-Komponente
 
-Die UI-Komponente in `src/features/catalog/FilterPanel.tsx` zeigt:
-- Aktive Filter als entfernbare Tags
-- Facet-Liste mit Checkboxen und Zählern
-- "Alle entfernen"-Schaltfläche
-- "Ergebnisse anzeigen"-Bestätigung für Mobile
+Die UI-Komponente in `src/features/catalog/FilterPanel.tsx` zeigt Facet-Sektionen mit Checkboxen und Zählern (`FilterSection`, `CheckboxLabel`), die Ergebnisanzahl (`N Kontrollen` bzw. `N von M Kontrollen`, `aria-live`) und — nur bei aktiven Filtern — die Schaltfläche `Zurücksetzen`. Mobil steckt dasselbe Panel in `src/features/catalog/CatalogMobileFilterSheet.tsx` (Bottom-Sheet, Auslöser `Filter anzeigen`); eine separate Bestätigung gibt es nicht, die Auswahl schreibt sofort in die URL.
 
 ## Siehe auch
 
