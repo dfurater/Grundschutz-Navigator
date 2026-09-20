@@ -61,7 +61,9 @@ rules:
   # Gegenverifiziert 2026-09-19 per Injektionstest (TEST_SECRET in validate.yml:
   # auditor meldet warning[secrets-outside-env] auf der neuen Zeile, die 7
   # begründeten Stellen bleiben ignoriert). Pflege: Verschiebt sich eine Zeile,
-  # wird der Audit rot (fail-closed) — Zeilennummer nachziehen.
+  # wird der Audit rot (fail-closed) — Zeilennummer nachziehen. Zuletzt in
+  # GSPP-426 um +11 (Retention-Kommentar + Versionsquellen-Kommentar in
+  # validate.yml).
   secrets-outside-env:
     ignore:
       - backmerge-main-to-develop.yml:51:28
@@ -69,5 +71,5 @@ rules:
       - sonar.yml:61:38
       - sonar.yml:88:28
       - update-catalog.yml:47:28
-      - validate.yml:241:38
-      - validate.yml:256:28
+      - validate.yml:252:38
+      - validate.yml:267:28
