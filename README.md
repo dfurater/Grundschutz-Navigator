@@ -41,7 +41,7 @@ IT-Sicherheitsbeauftragte, Berater:innen, Auditor:innen, Studierende und alle, d
 - **Lizenz der Katalogdaten:** [Creative Commons BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.de)
 - **Datenhaltung:** Die Katalogdaten werden **beim Build** aus dem BSI-Repository geladen. Im App-Repository wird keine Kopie gehalten.
 - **Integrität:** Fixierter Upstream-Commit (`upstream-manifest.json`) plus SHA-256-Verify zur Laufzeit. Details: [`docs/INTEGRITY.md`](docs/INTEGRITY.md).
-- **Aktualität:** Der Sync-Workflow läuft werktags 07:30 und 17:30 Uhr (Europe/Berlin) sowie bei Push auf `main` und manuell; bei einem Delta erstellt er einen Manifest-PR mit Auto-Squash und Branch-Löschung. Eine Post-Merge-Lane prüft danach den Stand auf `main` und dispatcht einen Fallback-Deploy nur nach erneuter Zustandsprüfung.
+- **Aktualität:** Der Sync-Workflow läuft werktags 07:30 und 17:30 Uhr (Europe/Berlin) sowie manuell; bei einem Delta erstellt er einen Manifest-PR mit Auto-Squash und Branch-Löschung. Eine Post-Merge-Lane prüft danach den Stand auf `main` und dispatcht einen Fallback-Deploy nur nach erneuter Zustandsprüfung.
 
 ## Datenschutz
 
