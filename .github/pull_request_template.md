@@ -1,10 +1,14 @@
 ## Zusammenfassung
 
-<!-- Was wurde geändert und warum? -->
+<!-- Warum ist die Änderung nötig und was ändert sich auf Verhaltensebene? -->
+
+## Reviewhinweise
+
+<!-- Bewusste Entscheidungen, verworfene Alternativen, Stellen für genaues Hinsehen sowie Risiko und Folgen (Breaking Change, Migration, Deploy-Effekt). -->
 
 ## Validierung
 
-<!-- Welche automatisierten und manuellen Prüfungen wurden durchgeführt? -->
+<!-- Nur was die CI nicht misst: manuelle Prüfung, Red/Green-Nachweis, bewusst nicht automatisierte Kontrolle. Keine Testzahlen, Coverage-Werte, Checkstände oder Commit-Referenzen — sie sind head-gebunden und veralten mit jedem Fix-Commit. -->
 
 <!-- documentation-contract:start -->
 ## Dokumentationsauswirkung
