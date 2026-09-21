@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { HeaderBar } from './HeaderBar';
 
 function renderHeaderWithEditableTarget(target: React.ReactNode) {
@@ -39,6 +39,19 @@ describe('HeaderBar', () => {
 
     expect(classNames).toContain('header-reference-theme');
     expect(classNames).not.toContain('focus:ring-');
+  });
+
+  it('reicht das Öffnen des Katalog-Switchers an den Shell-Aufrufer durch', () => {
+    const onCatalogSwitcherOpen = vi.fn();
+    render(
+      <MemoryRouter>
+        <HeaderBar onCatalogSwitcherOpen={onCatalogSwitcherOpen} />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Katalog wechseln' }));
+
+    expect(onCatalogSwitcherOpen).toHaveBeenCalledTimes(1);
   });
 
   it.each([

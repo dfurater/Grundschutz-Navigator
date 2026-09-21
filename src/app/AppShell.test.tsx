@@ -18,10 +18,22 @@ vi.mock('@/hooks/useMediaQuery', () => ({
 }));
 
 vi.mock('@/components/HeaderBar', () => ({
-  HeaderBar: ({ onMenuToggle }: { onMenuToggle: () => void; onSearch: (term: string) => void }) => (
-    <button type="button" onClick={onMenuToggle}>
-      Menu
-    </button>
+  HeaderBar: ({
+    onMenuToggle,
+    onCatalogSwitcherOpen,
+  }: {
+    onMenuToggle: () => void;
+    onSearch: (term: string) => void;
+    onCatalogSwitcherOpen: () => void;
+  }) => (
+    <>
+      <button type="button" onClick={onMenuToggle}>
+        Menu
+      </button>
+      <button type="button" onClick={onCatalogSwitcherOpen}>
+        Katalog wechseln
+      </button>
+    </>
   ),
 }));
 
@@ -266,6 +278,27 @@ describe('AppShell', () => {
       .not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Impressum' }))
       .not.toBeInTheDocument();
+  });
+
+  // Das Switcher-Menü sitzt im Stacking-Context des Headers und bliebe hinter
+  // dem Drawer. Statt eines z-index-Eingriffs weicht mobil der Drawer — über
+  // denselben State, den Backdrop, X-Schalter und Tree-Auswahl schon nutzen,
+  // und damit über die bestehende transform-Transition des `aside` (GSPP-440).
+  it('schließt den mobilen Drawer, sobald der Katalog-Switcher öffnet', () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={['/']}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    expect(container.querySelector('aside')?.className).not.toContain('-translate-x-full');
+    expect(screen.getByTestId('mobile-nav-backdrop')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Katalog wechseln' }));
+
+    expect(container.querySelector('aside')?.className).toContain('-translate-x-full');
+    expect(screen.queryByTestId('mobile-nav-backdrop')).not.toBeInTheDocument();
   });
 
   it('registers the canonical catalog-scoped control route', () => {

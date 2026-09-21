@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCatalog } from '@/hooks/useCatalog';
 import { CatalogSwitcher } from './CatalogSwitcher';
+import type { CatalogSwitcherProps } from './CatalogSwitcher';
 
 vi.mock('@/hooks/useCatalog', () => ({
   useCatalog: vi.fn(),
@@ -40,10 +41,10 @@ function catalogState(activeCatalogKey: string): ReturnType<typeof useCatalog> {
   return { activeCatalogKey } as ReturnType<typeof useCatalog>;
 }
 
-function renderSwitcher() {
+function renderSwitcher(props: CatalogSwitcherProps = {}) {
   return render(
     <MemoryRouter>
-      <CatalogSwitcher />
+      <CatalogSwitcher {...props} />
     </MemoryRouter>,
   );
 }
@@ -115,5 +116,28 @@ describe('CatalogSwitcher', () => {
     fireEvent.click(trigger);
     fireEvent.mouseDown(view.container);
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  });
+
+  // Der Aufrufer schließt über onOpen konkurrierende Overlays (GSPP-440). Ein
+  // Signal beim Schließen würde sie erneut anstoßen, deshalb feuert nur der
+  // Übergang geschlossen → offen.
+  it('meldet nur das Öffnen an den Aufrufer, nicht das Schließen', () => {
+    mockedUseCatalog.mockReturnValue(catalogState('gspp'));
+    const onOpen = vi.fn();
+    renderSwitcher({ onOpen });
+    const trigger = screen.getByRole('button', { name: 'Katalog wechseln' });
+
+    fireEvent.click(trigger);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getAllByRole('menuitem')[0]).toHaveFocus();
+
+    fireEvent.click(trigger);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(onOpen).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(trigger);
+    expect(onOpen).toHaveBeenCalledTimes(2);
   });
 });

@@ -26,7 +26,16 @@ const CATALOG_DESCRIPTIONS: Partial<Record<CatalogKey, string>> = {
   wlan: 'WLAN-Sicherheit, Taxonomie und externe Referenzen',
 };
 
-export function CatalogSwitcher() {
+export interface CatalogSwitcherProps {
+  /**
+   * Feuert beim Übergang geschlossen → offen. Das Menü sitzt im Stacking-Context
+   * des Headers und kann konkurrierende Overlays nicht überlagern; der Aufrufer
+   * schließt sie über diesen Callback (GSPP-440).
+   */
+  readonly onOpen?: () => void;
+}
+
+export function CatalogSwitcher({ onOpen }: CatalogSwitcherProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const firstItemRef = useRef<HTMLButtonElement>(null);
@@ -50,6 +59,12 @@ export function CatalogSwitcher() {
     SUPPORTED_CATALOGS[0];
   const ActiveIcon = CATALOG_ICONS[activeEntry.catalogKey] ?? IconLayers;
 
+  const handleToggle = () => {
+    const nextOpen = !open;
+    setOpen(nextOpen);
+    if (nextOpen) onOpen?.();
+  };
+
   const handleSelect = (catalogKey: CatalogKey) => {
     navigate(buildCatalogUrl(catalogKey));
     setOpen(false);
@@ -59,7 +74,7 @@ export function CatalogSwitcher() {
     <div className="justify-self-end relative" ref={containerRef}>
       <button
         type="button"
-        onClick={() => setOpen((current) => !current)}
+        onClick={handleToggle}
         className="flex items-center gap-2 rounded-md border border-[var(--header-surface-hover)] bg-[var(--header-surface)] px-2 py-1.5 text-[var(--header-text)] transition-colors hover:bg-[var(--header-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--header-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--header-bg)] sm:px-3"
         aria-haspopup="menu"
         aria-expanded={open}

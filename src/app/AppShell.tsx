@@ -167,6 +167,9 @@ export function AppShell() {
           setSideNavOpen((prev) => !prev);
           if (sidebarCollapsed) setSidebarCollapsed(false);
         }}
+        // Mobil ist immer nur ein Overlay offen: Das Switcher-Menü liegt im
+        // Stacking-Context des Headers und bliebe hinter dem Drawer (GSPP-440).
+        onCatalogSwitcherOpen={() => setSideNavOpen(false)}
       />
 
       <div className="flex-1 min-w-0 flex md:overflow-hidden relative">
@@ -174,6 +177,7 @@ export function AppShell() {
         {sideNavOpen && (
           <div
             className="fixed inset-0 bg-black/30 z-20 md:hidden"
+            data-testid="mobile-nav-backdrop"
             onClick={() => setSideNavOpen(false)}
             aria-hidden="true"
           />
