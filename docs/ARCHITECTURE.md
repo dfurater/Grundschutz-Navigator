@@ -24,15 +24,14 @@ Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application 
 
 `npm run test:browser` startet die getrennte Vitest-Browser-Lane aus `vitest.browser.config.ts` mit dem Playwright-Provider und Chromium. Sie verwendet einen gemeinsamen Test-iframe (`isolate: false`) und führt `ajv` in `optimizeDeps.include`, weil die Schemaprüfung das Paket erst zur Laufzeit importiert. Jeder Test bereinigt seine eigene IndexedDB-Datenbank, und der Egress-Guard setzt seinen Zustand vor jedem Test zurück.
 
-| Abhängigkeit | Exakte Version | Lizenz | Zweck |
+| Abhängigkeit | Pin | Lizenz | Zweck |
 | --- | --- | --- | --- |
-| `vitest` + `@vitest/coverage-v8` | `5.0.0` | MIT | Kompatible Test- und Coverage-Basis für beide Vitest-Lanes |
-| `@vitest/browser-playwright` | `5.0.0` | MIT | Playwright-Provider für das Vitest-Browser-Projekt |
-| `playwright` | `1.63.0` | Apache-2.0 | Startet das gepinnte Chromium in CI und lokal |
+| `vitest` + `@vitest/coverage-v8` + `@vitest/browser-playwright` | exakt, für alle drei identisch | MIT | Kompatible Test-, Coverage- und Provider-Basis für beide Vitest-Lanes |
+| `playwright` | exakt | Apache-2.0 | Startet das gepinnte Chromium in CI und lokal |
 
-Die exakte `playwright`-Version `1.63.0` liefert laut ihrem mitinstallierten `browsers.json` Chromium-Revision `1243` als Chrome for Testing `153.0.8010.12`. Der CI-Schritt installiert ausschließlich dieses Chromium aus der lokalen Installation; es gibt keinen unversionierten Browser-Download.
+Die Versionen stehen in `package.json`, `package-lock.json` bindet sie samt Integritätshashes. Chromium ist an den gepinnten `playwright`-Stand gebunden: Der CI-Schritt lädt ausschließlich die Revision, die das `browsers.json` der von `playwright` aufgelösten `playwright-core`-Installation nennt; einen unversionierten Browser-Download gibt es nicht.
 
-Ob Tabelle und Chromium-Herkunft nach einem Versions-Bump noch stimmen, prüft `npm run verify-documented-versions` als Pflichtschritt im CI-Job `validate`. Der Guard vergleicht beide Stellen gegen `package.json` und `node_modules/playwright-core/browsers.json` und schlägt bei jeder Abweichung fehl — ebenso, wenn eine Angabe nicht mehr auffindbar ist. Er ist netzfrei und ergänzt den PR-Dokumentationsvertrag aus `scripts/pr-documentation-contract.mjs`, der nur bei Änderungen unter `src/` greift und Dependency-PRs deshalb nicht erfasst.
+Ob der Vertrag nach einem Versions-Bump noch gilt, prüft `npm run verify-documented-versions` als Pflichtschritt im CI-Job `validate`. Der Guard verlangt exakte Pins in `package.json`, identische Pins für das Vitest-Trio, die zur `playwright`-Auflösung gehörende `playwright-core`-Version samt Chromium-Eintrag und einen Abschnitt ohne Versionsliteral. Er ist netzfrei und fail-closed: Eine nicht auffindbare Überschrift, Kopfzeile, Tabellenzeile oder Satzform lässt ihn ebenso fehlschlagen wie ein verletzter Vertragspunkt. Er ergänzt den PR-Dokumentationsvertrag aus `scripts/pr-documentation-contract.mjs`, der nur bei Änderungen unter `src/` greift und Dependency-PRs deshalb nicht erfasst.
 
 Der Referenztest in `src/test/browser/indexedDb.browser.test.ts` legt eine IndexedDB-Datenbank an, schreibt und liest einen Datensatz, löscht die Datenbank und prüft anschließend ihre Abwesenheit über `indexedDB.databases()`. Ein durch eine noch offene Verbindung blockiertes `deleteDatabase()` wartet bis zu zwei Sekunden auf deren Schließen und lehnt danach mit einem erklärenden Fehler ab.
 
