@@ -85,6 +85,7 @@ const SIDEBAR_MAX_WIDTH = 480;
 
 export function AppShell() {
   const [sideNavOpen, setSideNavOpen] = useState(false);
+  const [catalogSwitcherOpen, setCatalogSwitcherOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const {
     size: sidebarWidth,
@@ -161,11 +162,25 @@ export function AppShell() {
         Zum Hauptinhalt springen
       </a>
 
+      {/*
+        Drawer und Switcher-Menü schließen einander mobil aus. Das Menü liegt im
+        Stacking-Context des Headers und bliebe hinter dem Drawer, deshalb hält
+        die Shell beide Zustände und schaltet beim Öffnen des einen den anderen
+        ab. Der Ausschluss sitzt bewusst im gemeinsamen Zustand statt in
+        Ereignis-Heuristiken: Der Outside-`mousedown`-Handler des Switchers
+        erreicht die Tastaturaktivierung des Hamburgers nicht (GSPP-440).
+      */}
       <HeaderBar
         onSearch={handleSearch}
         onMenuToggle={() => {
           setSideNavOpen((prev) => !prev);
+          setCatalogSwitcherOpen(false);
           if (sidebarCollapsed) setSidebarCollapsed(false);
+        }}
+        catalogSwitcherOpen={catalogSwitcherOpen}
+        onCatalogSwitcherOpenChange={(open) => {
+          setCatalogSwitcherOpen(open);
+          if (open) setSideNavOpen(false);
         }}
       />
 
@@ -174,6 +189,7 @@ export function AppShell() {
         {sideNavOpen && (
           <div
             className="fixed inset-0 bg-black/30 z-20 md:hidden"
+            data-testid="mobile-nav-backdrop"
             onClick={() => setSideNavOpen(false)}
             aria-hidden="true"
           />
@@ -190,7 +206,7 @@ export function AppShell() {
             width: sidebarCollapsed ? 44 : sidebarWidth,
             transition: isSidebarResizing || prefersReducedMotion
               ? 'none'
-              : 'width var(--duration-normal) var(--easing-default), transform var(--duration-normal) var(--easing-default)',
+              : 'width var(--duration-normal) var(--easing-default), translate var(--duration-normal) var(--easing-default)',
           }}
         >
           {sidebarCollapsed ? (
