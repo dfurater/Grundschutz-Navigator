@@ -253,8 +253,8 @@ describe('findVersionSourceViolations', () => {
 describe('verifyNodeVersion', () => {
   it('besteht gegen dieses Repository', () => {
     expect(verifyNodeVersion()).toEqual({
-      nvmrc: '22.22.0',
-      engines: '>=22.22.0',
+      nvmrc: '22.22.2',
+      engines: '>=22.22.2',
       runtime: process.version,
     });
   });
