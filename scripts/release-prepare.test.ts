@@ -3,10 +3,8 @@ import { readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  getChangedFiles,
-  validateDocumentationContract,
-} from './pr-documentation-contract.mjs';
+import { validateDocumentationContract } from './pr-documentation-contract.mjs';
+import { getChangedFiles } from './git-changed-files.mjs';
 import { REQUIRED_CHECKS } from './catalog-sync-policy.mjs';
 import {
   RELEASE_BASE_REF,
@@ -389,7 +387,7 @@ describe('Verankerung der Baumprüfung im Pflichtcheck', () => {
       .map(([, body]) => body);
 
     expect(ownerBody).toMatch(
-      /if: github\.event_name == 'pull_request' && startsWith\(github\.head_ref, 'release\/'\)\n\s+run: git fetch --no-tags origin develop/,
+      /if: startsWith\(github\.head_ref, 'release\/'\)\n\s+run: git fetch --no-tags origin develop/,
     );
   });
 });

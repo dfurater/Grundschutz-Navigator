@@ -101,6 +101,9 @@ function normalizeDataQualityFindings(findings) {
   }
   return findings.map((finding, index) => {
     const value = typeof finding === 'string' ? finding : finding?.message;
+    // no-control-regex: Der Steuerzeichen-Bereich ist die Prüfung selbst —
+    // Validierungsmeldungen mit Steuerzeichen werden fail-closed abgewiesen.
+    // eslint-disable-next-line no-control-regex
     if (!isNonEmptyString(value) || /[\u0000-\u001f\u007f]/.test(value)) {
       throw new Error(`dataQualityFindings[${index}] must contain a safe message`);
     }
@@ -115,6 +118,9 @@ function formatDataQualityFindings(findings) {
 }
 
 function normalizeControlIdentitySummary(summary) {
+  // no-control-regex: Der Steuerzeichen-Bereich ist die Prüfung selbst —
+  // nur steuerzeichenfreier Text (ohne Tab/LF/CR) gilt als safe.
+  // eslint-disable-next-line no-control-regex
   if (!isNonEmptyString(summary) || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(summary)) {
     throw new Error('controlIdentitySummary must contain safe text');
   }
@@ -124,6 +130,9 @@ function normalizeControlIdentitySummary(summary) {
 function formatControlIdentityFailure(error) {
   const rawMessage = error instanceof Error ? error.message : 'unbekannter Fehler';
   const safeMessage = rawMessage
+    // no-control-regex: Die Bereinigung ersetzt gezielt Steuerzeichen durch
+    // Leerzeichen, bevor die Meldung ins Änderungsprotokoll übernommen wird.
+    // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u001f\u007f]/g, ' ')
     .slice(0, 240);
   return `- Control-Identitätsdelta nicht verfügbar: ${safeMessage}`;
@@ -169,7 +178,7 @@ async function fetchSnapshotTree(snapshotSha, { fetchImpl = fetch, token } = {})
   try {
     response = await fetchImpl(url, { headers });
   } catch (error) {
-    throw new Error(`BSI snapshot tree lookup failed: ${error instanceof Error ? error.message : 'network error'}`);
+    throw new Error(`BSI snapshot tree lookup failed: ${error instanceof Error ? error.message : 'network error'}`, { cause: error });
   }
   if (!response.ok) {
     throw new Error(`BSI snapshot tree lookup failed with HTTP ${response.status}`);

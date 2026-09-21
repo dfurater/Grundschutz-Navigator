@@ -1194,6 +1194,22 @@ describe('snapshot progression', () => {
     ).rejects.toThrow('offline');
   });
 
+  // GSPP-430: Ein hängender API-Call darf nicht bis zum Job-Timeout offen
+  // bleiben. Der Mock löst nie auf und scheitert nur über das Abort-Signal —
+  // ohne Per-Request-Frist hinge dieser Test bis zum Vitest-Timeout.
+  it('aborts a hanging snapshot lookup instead of waiting for the job timeout', async () => {
+    const hanging = vi.fn(
+      (_url: string, init?: { signal?: AbortSignal }) =>
+        new Promise((_, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted by timeout')));
+        }),
+    );
+    await expect(
+      verifySnapshotProgress(OLD_SHA, NEW_SHA, { fetchImpl: hanging, requestTimeoutMs: 10 }),
+    ).rejects.toThrow('New BSI snapshot lookup failed');
+    expect(hanging.mock.calls[0][1]).toMatchObject({ signal: expect.any(AbortSignal) });
+  });
+
   it('binds the branch suffix to the next manifest snapshot', async () => {
     const previous = makeFixture({ snapshotCommitSha: OLD_SHA });
     const next = makeFixture({ snapshotCommitSha: NEW_SHA });

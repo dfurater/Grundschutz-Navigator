@@ -1,86 +1,75 @@
 # OSCAL-Validierungsvertrag
 
-Dieser Vertrag gilt für OSCAL-JSON-Artefakte, die der Navigator künftig
-importiert, exportiert oder in der Build-Pipeline prüft. Er definiert die
-Prüfkette und ihre Lieferkette; er aktiviert noch keinen produktiven Import.
-YAML und XML sind nicht unterstützt.
+Dieser Vertrag legt die Prüfkette für OSCAL-JSON-Artefakte fest (Import,
+Export, Build-Pipeline). YAML und XML sind nicht unterstützt.
 
 ## Status: Stufe 1 bis 3 für Klasse 2 und unabhängiger CI-Schema-Korpuslauf umgesetzt
 
-Dieses Dokument legt den verbindlichen Zielzustand für den künftigen
-OSCAL-Import- und -Prüfpfad fest. Die Schutzkette ist **nicht** vollständig in
-den bestehenden Klasse-1-Katalog-Ladepfad integriert. Der aktuelle
-Klasse-1-Katalog-Loader lädt in
-[`catalogArtifacts.ts`](../src/state/catalogArtifacts.ts) zunächst nur den
-`ArrayBuffer` über `fetchCatalogBuffer`, prüft dessen Hash und überträgt ihn
-anschließend an den Modul-Worker `catalogParser.worker.ts`. Dort dekodiert ein
-nicht-fataler `TextDecoder` und läuft `JSON.parse` mit dem bestehenden
-Root-Dispatch und der Domain-Projektion. Dieser Klasse-1-Pfad besitzt weiterhin
-kein Byte-Limit, keinen Duplicate-Member-Scanner und keine OSCAL-Schema-Prüfung.
+Der Klasse-1-Katalog-Loader lädt in
+[`catalogArtifacts.ts`](../src/state/catalogArtifacts.ts) den `ArrayBuffer`
+über `fetchCatalogBuffer`, prüft dessen Hash und überträgt ihn an den
+Modul-Worker `catalogParser.worker.ts`. Dort dekodiert ein nicht-fataler
+`TextDecoder`, danach läuft `JSON.parse` mit Root-Dispatch und
+Domain-Projektion. Dieser Pfad besitzt kein Byte-Limit, keinen
+Duplicate-Member-Scanner und keine OSCAL-Schema-Prüfung.
 
-**Stufe 1 ist seit [GSPP-289](https://linear.app/grundschutz-plus-plus/issue/GSPP-289)
-für den einzigen Klasse-2-Einstieg umgesetzt.**
+**Stufe 1 (Klasse-2-Einstieg).**
 [`importClass2OscalDocument()`](../src/adapters/oscalImportGate.ts) überträgt
-`ArrayBuffer` oder `Uint8Array` nach einem 10-MiB-Bytelimit an einen Modul-Worker.
-Dort dekodiert die Pipeline mit fatalem UTF-8-Decoder, erkennt doppelte
-JSON-Member nach Escape-Auflösung und parst erst danach JSON. Seit
-[GSPP-291](https://linear.app/grundschutz-plus-plus/issue/GSPP-291) (ADR-8
-Festlegung 1) übergibt sie das unmittelbare Ergebnis ihres eigenen `JSON.parse`
-an die **gemeinsame objektorientierte Prüfkette**
+`ArrayBuffer` oder `Uint8Array` nach einem 10-MiB-Bytelimit an einen
+Modul-Worker. Dort dekodiert die Pipeline mit fatalem UTF-8-Decoder, erkennt
+doppelte JSON-Member nach Escape-Auflösung und parst erst danach JSON. Das
+unmittelbare Ergebnis des eigenen `JSON.parse` übergibt sie an die gemeinsame
+objektorientierte Prüfkette
 ([`oscalObjectPipeline.ts`](../src/domain/oscalObjectPipeline.ts)); dort laufen
 Ressourcenlimits (Tiefe 64, Knotenzahl 1 000 000, arithmetische Base64-Summe
-10 MiB), die Strukturinvariante, `dispatchOscalDocument()` und die Schemastufe
-in einer Einheit. Es gibt noch keine Import-UI, Persistenz oder
+4 MiB), die Strukturinvariante, `dispatchOscalDocument()` und die Schemastufe
+in einer Einheit. Es gibt keine Import-UI, keine Persistenz und keine
 Klasse-2-Anzeige.
 
-**Stufe 2 ist seit
-[GSPP-285](https://linear.app/grundschutz-plus-plus/issue/GSPP-285) umgesetzt
-und im Katalogpfad aktiv.** `dispatchOscalDocument()` in
-[`oscalRootDispatch.ts`](../src/adapters/oscalRootDispatch.ts) ist der exakte
-Root-Dispatcher dieses Vertrags; `parseCatalogDocument()` läuft über ihn, und
-die Katalog-Interpretation als Fallback existiert nicht mehr. Der Dispatcher
-wählt zugleich den Schema-Pin aus; **angewandt** wird er in Stufe 3.
+**Stufe 2.**
+`dispatchOscalDocument()` in
+[`oscalRootDispatch.ts`](../src/adapters/oscalRootDispatch.ts) ist der
+Root-Dispatcher dieses Vertrags; `parseCatalogDocument()` läuft über ihn, eine
+Katalog-Interpretation als Fallback gibt es nicht. Der Dispatcher wählt zugleich
+den Schema-Pin aus; **angewandt** wird er in Stufe 3.
 
-**Stufe 3 ist seit
-[GSPP-343](https://linear.app/grundschutz-plus-plus/issue/GSPP-343) im Browser
-aktiv.** `validateAgainstPinnedSchema()` in
+**Stufe 3 (Browser).**
+`validateAgainstPinnedSchema()` in
 [`oscalSchemaValidation.ts`](../src/domain/oscalSchemaValidation.ts) prüft das
 Dokument im Modul-Worker gegen das gepinnte NIST-Schema der von Stufe 2
-gewählten Zelle. Validator, Schemabytes, Hashprüfung und Implementierung wurden
-atomar aktiviert: `ajv` exakt 8.20.0 als direkte Abhängigkeit mit
-Lockfile-Eintrag, die 30 Schemadateien unter `schemas/oscal/`, das CI-Gate
-`npm run verify-oscal-schemas` und die Tests. Einzelheiten unten unter
+gewählten Zelle. Aktiviert sind atomar: `ajv` exakt 8.20.0 als direkte
+Abhängigkeit mit Lockfile-Eintrag, die 30 Schemadateien unter `schemas/oscal/`,
+das CI-Gate `npm run verify-oscal-schemas` und die Tests. Einzelheiten unter
 [Umgesetzte Stufe 3](#umgesetzte-stufe-3-ajv-konfiguration-schemazugriff-und-codes).
 
-**GSPP-336 führt zusätzlich die unabhängige CI-Schema-Stufe ein.**
+**Unabhängige CI-Schema-Stufe.**
 [`npm run verify-upstream-oscal`](../package.json) lädt ausschließlich
-`go-oscal` 0.7.1 aus der statisch gepinnten Release-Tabelle,
-verifiziert Release-Metadaten, API-Digest, `checksums.txt` und berechnete
-SHA-256-Werte und prüft den vollständigen im gepinnten
-`upstream-manifest.json` registrierten OSCAL-Korpus. Der Lauf verarbeitet die
-19 registrierten OSCAL-Artefakte über alle vier belegten Versionen und
-überspringt die 13 `vocabulary`-Dateien, weil sie kein OSCAL-Root-Modell
-tragen. Ein als `blocked-by-upstream` registrierter, im Snapshot fehlender
-Katalog wird dabei transparent als übersprungen gemeldet. Sein Ergebnis ist
-ein eigenständiges Schema-Orakel: Es aktiviert weder den Browser-Validator noch
+`go-oscal` 0.7.1 aus der statisch gepinnten Release-Tabelle, verifiziert
+Release-Metadaten, API-Digest, `checksums.txt` und berechnete SHA-256-Werte und
+prüft den vollständigen im gepinnten `upstream-manifest.json` registrierten
+OSCAL-Korpus: 19 registrierte OSCAL-Artefakte über alle vier belegten
+Versionen; die 13 `vocabulary`-Dateien tragen kein OSCAL-Root-Modell und werden
+übersprungen. Ein als `blocked-by-upstream` registrierter, im Snapshot
+fehlender Katalog wird als übersprungen gemeldet. Das Ergebnis ist ein
+eigenständiges Schema-Orakel: Es aktiviert weder den Browser-Validator noch
 behauptet es eine vollständige Validierung der Stufen 1, 2, 4 oder 5.
 
 Ein geworfener Transportfehler oder ein HTTP-5xx beim CI-Abruf wird pro
-einzelnem HTTP-Aufruf höchstens zweimal mit festen kurzen Delays wiederholt.
-Das gilt für Release-Metadaten, jeden erlaubten Redirect-Hop und gepinnte
-BSI-Blob-Abrufe. HTTP-4xx, Redirect-Verstöße, Größen- und Parsefehler sowie
-sämtliche API-, Checksum-, SHA-256- und Blob-Pin-Abweichungen bleiben dagegen
-sofort fail-closed. Die Wiederholung verbessert ausschließlich die
-Verfügbarkeit des bereits gepinnten Abrufs; sie ist keine Lieferkettenausnahme.
+einzelnem HTTP-Aufruf höchstens zweimal mit festen kurzen Delays wiederholt
+(Release-Metadaten, jeder erlaubte Redirect-Hop, gepinnte BSI-Blob-Abrufe).
+HTTP-4xx, Redirect-Verstöße, Größen- und Parsefehler sowie sämtliche API-,
+Checksum-, SHA-256- und Blob-Pin-Abweichungen sind sofort fail-closed. Die
+Wiederholung verbessert ausschließlich die Verfügbarkeit des bereits gepinnten
+Abrufs; sie ist keine Lieferkettenausnahme.
 
 Die bestehende Integritätsprüfung und `parseCatalog` ersetzen diese Gates
-nicht. Die App darf ausschließlich die für den Klasse-2-Einstieg tatsächlich
-ausgeführten Stufen 1 und 2 ausweisen, nie die vollständige Kette. Insbesondere
-ist der aktuelle Klasse-1-Katalog-Loader nicht durch diesen Vertrag abgesichert.
+nicht. Ausgewiesen werden dürfen ausschließlich die für den Klasse-2-Einstieg
+tatsächlich ausgeführten Stufen 1 und 2, nie die vollständige Kette. Der
+Klasse-1-Katalog-Loader ist durch diesen Vertrag nicht abgesichert.
 
-Die Validierung ist von der bestehenden
+Die Validierung ist von der
 [Integritätsprüfung](INTEGRITY.md) getrennt: SHA-256 schützt die Übereinstimmung
-eines ausgelieferten Artefakts mit seinen Build-Metadaten. Die hier beschriebene
+eines ausgelieferten Artefakts mit seinen Build-Metadaten; die hier beschriebene
 Kette prüft Syntax, Modellstruktur und fachliche Invarianten eines Dokuments.
 Keine der beiden Prüfungen ist allein ein Herkunfts-, Vertrauens- oder
 Compliance-Nachweis.
@@ -108,7 +97,7 @@ nur referenziert wird.
 
 | Stufe | Vorgeschriebener Zielzustand | Pinning und Fehlersemantik |
 | --- | --- | --- |
-| 1. Größenlimit und JSON-Syntax | **Für Klasse 2 umgesetzt:** Plattformfunktionen (`Uint8Array`, fataler UTF-8-Decoder), projekteigener Token-Scanner und danach `JSON.parse` im isolierten Modul-Worker | Das Bytelimit von 10 MiB greift vor Worker-Erzeugung, Kopie, Decoder, Scanner und Parser. Nach erfolgreicher fataler Dekodierung lehnt der Scanner doppelte Member auf jeder erlaubten Objekttiefe ab und begrenzt seinen eigenen Abstieg auf Tiefe 64; nur dann wird `JSON.parse` aufgerufen. Ein vom Scanner als ungültig bewerteter Text endet ebenfalls vor `JSON.parse` fail-closed. Stufe 1 endet mit dem unmittelbaren `JSON.parse`-Ergebnis; die iterative Grenzprüfung (Tiefe 64, Knotenzahl 1 000 000, Base64-Summe 10 MiB ohne Dekodierung) gehört seit [GSPP-291](https://linear.app/grundschutz-plus-plus/issue/GSPP-291) zur objektorientierten Kette (Stufe 2a). Der Adapter beendet einen antwortlosen Worker nach 30 Sekunden mit einer redigierten Fehlerdiagnose. Node-Tests verwenden dieselbe Worker-Logik; der Browsernachweis läuft in Chromium. |
+| 1. Größenlimit und JSON-Syntax | **Für Klasse 2 umgesetzt:** Plattformfunktionen (`Uint8Array`, fataler UTF-8-Decoder), projekteigener Token-Scanner und danach `JSON.parse` im isolierten Modul-Worker | Das Bytelimit von 10 MiB greift vor Worker-Erzeugung, Kopie, Decoder, Scanner und Parser. Nach erfolgreicher fataler Dekodierung lehnt der Scanner doppelte Member auf jeder erlaubten Objekttiefe ab und begrenzt seinen eigenen Abstieg auf Tiefe 64; nur dann wird `JSON.parse` aufgerufen. Ein vom Scanner als ungültig bewerteter Text endet ebenfalls vor `JSON.parse` fail-closed. Stufe 1 endet mit dem unmittelbaren `JSON.parse`-Ergebnis; die iterative Grenzprüfung (Tiefe 64, Knotenzahl 1 000 000, Base64-Summe 4 MiB ohne Dekodierung) gehört zur objektorientierten Kette (Stufe 2a). Der Adapter beendet einen antwortlosen Worker nach 30 Sekunden mit einer redigierten Fehlerdiagnose. Node-Tests verwenden dieselbe Worker-Logik; der Browsernachweis läuft in Chromium. |
 | 2a. Objektgraph-Invariante | **Für Klasse 2 umgesetzt:** gemeinsame objektorientierte Prüfkette in [`oscalObjectGraph.ts`](../src/domain/oscalObjectGraph.ts) und [`oscalObjectPipeline.ts`](../src/domain/oscalObjectPipeline.ts); setzt keine Bytes voraus | Zwei bewusst getrennte terminierende Durchläufe: Der erste prüft vor jeder Wertreflexion die Herkunft aller Container sowie serialisierte Byte- und Knotenuntergrenze. Erst danach prüft der zweite Strukturform, Tiefe, exakte Knotenzahl und eingebettete Base64-Summe mit einer Identitätsmenge über seinen ganzen Lauf (Zyklen und geteilte Containeridentität fail-closed). Positivdefinition: null, Boolean, String, Number außer NaN (±Infinity zulässig), Arrays exakt `Array.prototype` mit dichten Indizes plus `length`, Objekte exakt `Object.prototype`; keine Symbol-Schlüssel; nur voll schreibbare, aufzählbare, konfigurierbare Data-Properties. Kein Serialisieren, kein Klonen; keine Proxy-Erkennungsbehauptung — der Ausschluss entsteht durch den Herkunftsnachweis (unmittelbares `JSON.parse`-Ergebnis oder Builder-Handle). Diagnosen tragen stabile Codes auf der eigenen Stufe `object-structure` und nennen weder Werte noch Property-Namen. Details unter [Die gemeinsame objektorientierte Prüfkette](#die-gemeinsame-objektorientierte-prüfkette). |
 | 2. Root-Erkennung | **Umgesetzt:** `dispatchOscalDocument()` in [`oscalRootDispatch.ts`](../src/adapters/oscalRootDispatch.ts), projekteigen und ohne externes Werkzeug | Das Top-Level-Objekt muss genau einen der acht bekannten Root-Keys besitzen. Null, Arrays, mehrere Root-Keys und unbekannte Keys werden abgelehnt. Die optionale Schema-Direktive `$schema` ist die einzige zusätzlich zulässige Top-Level-Property; sie ist kein zweiter Root und **niemals** Versionsautorität. Eine Katalog-Interpretation als Fallback ist verboten. |
 | 3. JSON-Schema | **Für Klasse 2 umgesetzt:** `ajv` 8.20.0 im Modul-Worker, gegen die eingecheckten NIST-Schemas unter `schemas/oscal/`. **CI umgesetzt:** [`verify-upstream-oscal.mjs`](../scripts/verify-upstream-oscal.mjs) nutzt `go-oscal` 0.7.1 als unabhängiges Schema- und Upgrade-Orakel | Auswahl ausschließlich über den exakten Root×`oscal-version`-Schlüssel; kein Fallback auf eine Nachbarversion. Die Schemabytes kommen aus dem eigenen Bundle; der Chunk der ausgewählten Zelle wird zur Laufzeit von derselben Origin nachgeladen, nie von einer fremden. Ihre Integrität trägt der Bauzeitschritt `npm run verify-oscal-schemas`. Ist die Zelle nicht im Bundle oder lässt sich ihr Validator nicht bauen, endet der Import fail-closed mit `OSCAL_SCHEMA_UNAVAILABLE` — Stufe 3 wird weder übersprungen noch als bestanden ausgewiesen. Der CI-Korpuslauf bezieht Dokumente nur aus dem gepinnten BSI-Snapshot und führt weder Schema- noch Dokumentreferenz-Anfragen aus. Jedes nicht gesperrte Artefakt muss bestehen; ein gesperrtes Artefakt muss fehlschlagen. Fehlende oder nicht auswertbare Werkzeugergebnisse bleiben ein eigener fail-closed Werkzeugfehler. |
@@ -128,21 +117,20 @@ ohne eine zusätzliche Abhängigkeit einzuführen.
 
 ### Die gemeinsame objektorientierte Prüfkette
 
-Seit [GSPP-291](https://linear.app/grundschutz-plus-plus/issue/GSPP-291)
-(ADR-8 Festlegungen 1 und 3) verläuft der Schnitt der Prüfkette zwischen
-Stufe 1 und Stufe 2: **Stufe 1 gilt für jedes Dokument, das als Bytes in die
-Anwendung gelangt; alles, was auf dem geparsten Objekt arbeitet —
-Ressourcenlimits, Strukturinvariante, Stufe 2 und 3 — gilt für jedes Dokument
-unabhängig von seiner Entstehung** und läuft durch genau eine exportierte
-Einheit: [`processClass2OscalValue()`](../src/domain/oscalObjectPipeline.ts).
-Es gibt keine zweite Root-, Versions-, Limit- oder Referenzlogik.
+Der Schnitt der Prüfkette verläuft zwischen Stufe 1 und Stufe 2: **Stufe 1 gilt
+für jedes Dokument, das als Bytes in die Anwendung gelangt; alles, was auf dem
+geparsten Objekt arbeitet — Ressourcenlimits, Strukturinvariante, Stufe 2 und
+3 — gilt für jedes Dokument unabhängig von seiner Entstehung** und läuft durch
+genau eine exportierte Einheit:
+[`processClass2OscalValue()`](../src/domain/oscalObjectPipeline.ts). Es gibt
+keine zweite Root-, Versions-, Limit- oder Referenzlogik.
 
 Zwei Herkunftsnachweise berechtigen zum Eintritt in diese Einheit:
 
 | Weg | Herkunftsnachweis |
 | --- | --- |
 | Importweg (Bytes) | Das unmittelbare Ergebnis des eigenen `JSON.parse`-Aufrufs in [`parseClass2OscalInput()`](../src/domain/oscalImportProcessing.ts) — es gibt keinen öffentlichen Objekt-Eintrittspunkt, der ein beliebiges Ersatzobjekt als „geparst“ markieren könnte. |
-| Ableitungsweg (GSPP-291 Commit B) | Ein kontrollierter Builder erzeugt alle Container selbst und gibt nur ein über eine private `WeakMap` registriertes, opakes `DerivedJsonTree`-Handle aus; Rohobjekte und nachgebaute Handles scheitern vor jeder Reflexion. |
+| Ableitungsweg | Ein kontrollierter Builder erzeugt alle Container selbst und gibt nur ein über eine private `WeakMap` registriertes, opakes `DerivedJsonTree`-Handle aus; Rohobjekte und nachgebaute Handles scheitern vor jeder Reflexion. |
 
 Die Strukturinvariante ist eine **Positivdefinition** — zulässig ist nur, was
 hier steht; alles andere wird fail-closed abgelehnt:
@@ -205,34 +193,24 @@ TypeScript braucht — dasselbe Muster wie `oscalVersionMatrix.mjs`.
 | Knoten | 1 000 000 | Bindende Grenze für den Speicher. Das teuerste Dokument darauf kostet 112,75 MiB — das Elffache seiner eigenen 10 MiB. Der Speicherabdruck wächst mit ihr, gemessen über fünf Stützpunkte. |
 | Summe dekodierter Base64-Größen | 4 MiB | Auf 10 MiB war die Grenze arithmetisch unerreichbar und damit wirkungslos; siehe „Die Base64-Grenze war tot“ unten. |
 
-Diese vier Werte begrenzen **Größe**. Sie begrenzen keine Arbeit: Ein
-Dokument von wenigen Kilobyte kann den Resolver minutenlang beschäftigen, ohne
-eine von ihnen zu berühren. Die fünfte Klasse-2-Grenze ist deshalb
-`WORK_UNIT_LIMIT` in
+Diese vier Werte begrenzen **Größe**, keine Arbeit: Ein Dokument von wenigen
+Kilobyte kann den Resolver minutenlang beschäftigen, ohne eine von ihnen zu
+berühren. Die fünfte Klasse-2-Grenze ist deshalb `WORK_UNIT_LIMIT` in
 [`profileResolutionBudgetLimits.mjs`](../src/domain/profileResolutionBudgetLimits.mjs);
 sie steht in einem eigenen Modul, weil sie nur für den Ableitungsweg gilt und
 nicht für den Byte-Eingang. Herleitung unter „`WORK_UNIT_LIMIT`:
 kostenbasiert hergeleitet, je Kategorie gemessen“.
 
-Alle vier Grenzen halten das Speicherbudget. Der Abstand ist allerdings enger,
-als die vorige Fassung dieses Abschnitts ausgewiesen hat: nicht weil sich eine
-Grenze geändert hätte, sondern weil der damalige Messweg zwei zweistellige
-MiB-Posten überhaupt nicht sehen konnte. Die Herleitung steht unter „Warum die
-frühere Messung zu klein war“.
+Alle vier Grenzen halten das Speicherbudget: Gemessener ungünstigster Fall
+112,75 MiB gegen 128 MiB (88 % ausgeschöpft).
 
-#### Warum die Kopfraumrechnung als Begründung nicht genügt
+#### Maßstab der Grenzwerte
 
-Die Startwerte wurden am 2026-08-11 gegen `public/data/catalog.json` als
-größtes ausgeliefertes Artefakt gemessen — 5 399 453 Bytes, Tiefe 18,
-70 851 Knoten — und als Vielfaches davon gesetzt. Diese Rechnung beantwortet
-die Frage „passt die heutige legitime Nutzung hinein?“. Die Frage, die eine
-Sicherheitsgrenze beantworten muss, ist eine andere: **was kostet ein
-Angreifer mich im ungünstigsten Fall, den diese Grenze noch zulässt?** Der
-reale Katalog ist dafür kein Maßstab, weil er kein Angriffsfall ist.
-
-Die Kopfraumrechnung bleibt als nachgelagerte Plausibilitätsprobe gültig: Die
-Grenzen liegen über dem realen Bestand, legitime Dokumente scheitern also
-nicht. Sie begründet die Werte aber nicht mehr.
+Die Grenzwerte sind gegen die Kosten des ungünstigsten zulässigen Falls
+begründet (Angreiferkosten), nicht gegen ein Vielfaches des realen Katalogs.
+Der reale Bestand (`public/data/catalog.json`: 5 399 453 Bytes, Tiefe 18,
+70 851 Knoten) dient nur als nachgelagerte Plausibilitätsprobe: Die Grenzen
+liegen darüber, legitime Dokumente scheitern also nicht.
 
 #### Ressourcenbudget des Klasse-2-Pfads
 
@@ -240,47 +218,19 @@ Verbindlich für jede Änderung dieser Grenzwerte:
 
 | Budgetposten | Wert | Begründung |
 | --- | --- | --- |
-| Zusätzlicher Speicher im Tab je Import | **≤ 128 MiB** | Ein Renderer-Prozess auf Bürohardware verfügt über einen Old-Space im Bereich mehrerer hundert MiB bis GiB. 128 MiB ist ein spürbarer, aber tragbarer Anteil davon und lässt neben dem geladenen Klasse-1-Katalog und dem Suchindex Luft für die übrige Anwendung. Am 2026-09-05 von 64 MiB angehoben; die Herleitung steht unten. **Gemessener ungünstigster Fall: 112,75 MiB, also 88 % ausgeschöpft.** |
-| Blockierzeit des UI-Threads | **≤ 50 ms** | Oberhalb von 50 ms nimmt der Nutzer die Oberfläche als hängend wahr; es ist zugleich die Schwelle, ab der die Plattform einen Task als Long Task meldet, sodass eine Verletzung messbar ist. Der frühere Rücktransport verletzte dieses Budget; der vollständige GSPP-386-Nachweis unten hält es in allen 66 Wiederholungen. |
+| Zusätzlicher Speicher im Tab je Import | **≤ 128 MiB** | 128 MiB ist ein spürbarer, aber tragbarer Anteil des Old-Space eines Renderer-Prozesses auf Bürohardware und lässt neben dem geladenen Klasse-1-Katalog und dem Suchindex Luft für die übrige Anwendung. **Gemessener ungünstigster Fall: 112,75 MiB, also 88 % ausgeschöpft.** |
+| Blockierzeit des UI-Threads | **≤ 50 ms** | Oberhalb von 50 ms nimmt der Nutzer die Oberfläche als hängend wahr; es ist zugleich die Schwelle, ab der die Plattform einen Task als Long Task meldet, sodass eine Verletzung messbar ist. Der Nachweis unten hält das Budget in allen 66 Wiederholungen. |
 | Sichtbare Wartezeit bis zum Ergebnis | **≤ 5 s** | Der Nutzer wartet auf Annahme oder Diagnose. Fünf Sekunden bleiben als bewusste Wartezeit erklärbar; darüber wirkt die Anwendung defekt. Hart gedeckelt ist die Wartezeit ohnehin durch `CLASS_2_IMPORT_WORKER_TIMEOUT_MS` (30 s). |
 
-##### Warum das Speicherbudget angehoben und nicht die Knotengrenze gesenkt wurde
+##### Wahl des Speicherbudgets
 
-Der ursprüngliche Fixturesatz enthielt keine Form, die die **Schlüssel**
-variiert, und unterschätzte den zulässigen Speicherbedarf deshalb erheblich.
 V8 beschreibt die Form eines Objekts in einer verborgenen Klasse, die sich
 alle formgleichen Objekte teilen: Eine Million identischer leerer Objekte
-kostet eine einzige solche Beschreibung. Das damals als Speicher-Worst-Case
-geführte `depth-bound` besteht genau daraus und ist damit der **günstigste**
-Fall dieser Achse, nicht der teuerste. Das neue `heap-bound` gibt jedem
-Container einen eigenen Schlüssel und kostete damals gemessen 89,16 MiB statt
-51,38 MiB. Alle Zahlen dieses Abschnitts sind der Stand, auf dem die
-Entscheidung getroffen wurde; der Nachtrag unten korrigiert sie.
-
-Damit stand eine Richtungsentscheidung an: die Knotengrenze auf einen
-gemessenen Stützpunkt senken, der 64 MiB hält (500 000), oder das Budget
-anheben. Der Projektowner hat sich am 2026-09-05 für die Anhebung entschieden.
-Der Grund ist nicht neue Erkenntnis über verfügbaren Speicher, sondern die
-Abwägung gegen die legitime Nutzung: Der reale BSI-Katalog trägt 70 851
-Knoten, und eine Grenze soll den Angriffsfall deckeln, ohne wachsende echte
-Dokumente auszusperren.
-
-Der Wert 128 MiB und nicht 96 MiB: 96 MiB wäre die knappste Zahl gewesen, die
-den Messwert von 89,16 MiB noch trägt. Ein zu 93 % ausgeschöpftes Budget kann
-aber keine künftige Grenzwertänderung mehr leiten — es zeichnet nur den
-Ist-Stand nach. Die Anhebung folgt einer Messung; das ist eine bewusste
-Lockerung und keine Bestätigung.
-
-**Nachtrag vom selben Tag: Das Budget bleibt bei 128 MiB, der Kopfraum ist
-aber kleiner als bei der Entscheidung angenommen.** Die 89,16 MiB, gegen die
-128 MiB gewählt wurden, waren zu klein — nicht weil sich am Dokument etwas
-geändert hätte, sondern weil der damalige Messweg zwei zweistellige MiB-Posten
-gar nicht erfassen konnte. Derselbe Fall kostet vollständig gemessen
-112,75 MiB. Aus 70 % ausgeschöpftem Budget werden damit 88 %. Die Grenzwerte
-halten weiterhin; die Zahl, gegen die sie gehalten werden, ist unverändert.
-Was sich geändert hat, ist die Reserve, mit der eine künftige Änderung
-arbeiten kann — das steht hier, damit die nächste Entscheidung nicht von den
-70 % ausgeht.
+(`depth-bound`) kostet eine einzige solche Beschreibung und ist damit der
+**günstigste** Fall dieser Achse, nicht der teuerste. `heap-bound` gibt jedem
+Container einen eigenen Schlüssel und kostet vollständig gemessen 112,75 MiB.
+Das Budget von 128 MiB deckelt den Angriffsfall, ohne wachsende echte Dokumente
+auszusperren (realer BSI-Katalog: 70 851 Knoten).
 
 #### Messprotokoll
 
@@ -294,10 +244,8 @@ node scripts/measure-class2-budget.mjs --throttle 1,4 --repeat 3 --skip-glob \
 
 `--scale` misst die knotenskalierbaren Fixtures zusätzlich an mehreren
 Knotenzahlen; daraus entsteht die Herleitungstabelle weiter unten. Ohne die
-Option misst der Lauf nur die Grenzwerte selbst. **Der Lauf dauert in dieser
-Form rund fünfzig Minuten**, weil jede einzelne Speichermessung rund zehn
-Sekunden kostet — siehe unten. `--skip-glob` lässt die Glob-Reihe aus, deren
-größte Muster für sich Minuten kosten.
+Option misst der Lauf nur die Grenzwerte selbst. `--skip-glob` lässt die
+Glob-Reihe aus.
 
 Das Skript hängt bewusst an keinem Anwendungspfad und ist weder in
 `npm run build`/`test`/`dev` noch in einem CI-Gate eingebunden — dieselbe
@@ -311,11 +259,9 @@ Die reine Berichtslogik liegt in
 ist dort kolokiert getestet.
 
 Der Messserver läuft ohne HMR und ohne Dateiwächter über `.worktrees/`,
-`node_modules/` und `dist/`. Das ist keine Kosmetik: Der Server liest den
-gesamten Repository-Baum, und ein Reload der Messseite zerstört den
-Ausführungskontext samt festgehaltenem Bestand. Eine Änderung in einem fremden
-Git-Worktree — eine parallele Agentensitzung genügt — hat einen vollständigen
-Lauf dieser Auflage nach zehn Minuten ohne Bericht beendet.
+`node_modules/` und `dist/`: Der Server liest den gesamten Repository-Baum,
+und ein Reload der Messseite zerstört den Ausführungskontext samt
+festgehaltenem Bestand.
 
 Die Dokumente erzeugt
 [`class2WorstCaseFixtures.mjs`](../scripts/class2WorstCaseFixtures.mjs)
@@ -325,19 +271,15 @@ Tabelle behauptet, hält
 [`class2WorstCaseFixtures.test.ts`](../scripts/class2WorstCaseFixtures.test.ts)
 fest.
 
-**Messbasis, namentlich:** Apple MacBook Pro (Mac16,8), Apple M4 Pro,
-14 Kerne, 24 GB RAM, macOS 26.6.2 (25G83); Chromium 151.0.7922.34 headless
-über Playwright 1.62.1. Erhoben am 2026-09-05.
+**Messbasis:** Apple MacBook Pro (Mac16,8), Apple M4 Pro, 14 Kerne, 24 GB RAM,
+macOS 26.6.2 (25G83); Chromium 151.0.7922.34 headless über Playwright 1.62.1.
 
-Die Owner-Entscheidung vom 2026-09-02 nennt als Messbasis ein
-*durchschnittliches* Desktop-/Laptop-Gerät. Das obige Gerät liegt darüber.
-Der Lauf misst deshalb zusätzlich mit vierfacher CPU-Drosselung
+Der Lauf misst zusätzlich mit vierfacher CPU-Drosselung
 (`Emulation.setCPUThrottlingRate`) als benannte Näherung an gängige
 Bürohardware. Der Faktor 4 ist eine **gesetzte Annahme**, keine Messung an
 einem zweiten Gerät; die Zeitwerte der 4×-Spalte sind entsprechend zu lesen.
-Speicherwerte sind davon unberührt — sie hängen an der Datenstruktur, nicht
-an der Taktrate — und werden deshalb einmal im ungedrosselten Lauf erhoben und
-in den zweiten übernommen.
+Speicherwerte hängen an der Datenstruktur, nicht an der Taktrate, und werden
+einmal im ungedrosselten Lauf erhoben und in den zweiten übernommen.
 
 Zeiten sind Mediane aus drei Läufen, Blockierzeiten deren Maximum.
 
@@ -352,50 +294,37 @@ Zeiten sind Mediane aus drei Läufen, Blockierzeiten deren Maximum.
 | `combined-bound` | `maxNodes` + `maxBytes` | 10,00 MiB | 0,74 s | 3,35 s | 0,82 s | 41,65 MiB | 31,63 MiB | 18,58 MiB | 70,23 MiB | ja |
 
 „Kette“ ist Stufe 1 plus objektorientierte Kette, direkt im Tab gemessen —
-also genau die Arbeit, die im Produktivpfad der Worker leistet.
-„Ende-zu-Ende“ ist derselbe Vorgang über den produktiven Einstieg
+also die Arbeit, die im Produktivpfad der Worker leistet. „Ende-zu-Ende“ ist
+derselbe Vorgang über den produktiven Einstieg
 [`importClass2OscalDocument`](../src/adapters/oscalImportGate.ts) mitsamt
 Worker-Start und Nachrichtenübergabe. Was „Bestand Parse“, „Bestand Kette“ und
-„Main Thread“ genau enthalten und wie die Spitze daraus entsteht, steht unter
+„Main Thread“ enthalten und wie die Spitze daraus entsteht, steht unter
 „Woraus sich die Speicherspitze zusammensetzt“.
 
 Die vier als schemafähig ausgewiesenen Fixtures sind gültige
 OSCAL-Katalogwurzeln nach dem gepinnten Schema 1.1.3 und werden von der Kette
 **angenommen** — ihre Werte schließen Schema-Chunk, Ajv-Kompilierung und
-Ajv-Lauf ein. Ein Dokument, das schon im Root-Dispatch scheitert, käme dort
-nie an und würde die teuerste Stufe unterschlagen.
+Ajv-Lauf ein. Damit die teuerste Stufe in der Messung enthalten ist, erreicht
+jedes Fixture die Schemastufe oder weist aus, dass es sie nicht erreicht.
 
 ##### Blockierzeit des Main Threads
 
-Die Wartezeit sagt nichts darüber, ob die Oberfläche in dieser Zeit bedienbar
-bleibt: Der Worker rechnet nebenläufig, der Main Thread wartet. Gemessen wird
-die Blockierzeit deshalb getrennt, über die Long-Task-Einträge der Plattform,
-die das Importintervall überlappen. Deren Schwelle ist mit 50 ms genau das
-Budget — ein leerer Eintragssatz ist der Nachweis der Einhaltung.
-
-| Fixture | Ergebnis | Blockierzeit 1× | Blockierzeit 4× | Budget |
-| --- | --- | --- | --- | --- |
-| `byte-bound` | angenommen | 0 ms | 0 ms | gehalten |
-| `depth-bound` | abgewiesen | 0 ms | 0 ms | gehalten |
-| `heap-bound` | abgewiesen | 0 ms | 0 ms | gehalten |
-| `record-bound` | abgewiesen | 0 ms | 0 ms | gehalten |
-| `base64-bound` | angenommen | 0 ms | 0 ms | gehalten |
-| `node-bound` | angenommen | 60 ms | **210 ms** | **gerissen** |
-| `combined-bound` | angenommen | 58 ms | **226 ms** | **gerissen** |
+Der Worker rechnet nebenläufig, der Main Thread wartet. Die Blockierzeit wird
+getrennt gemessen, über die Long-Task-Einträge der Plattform, die das
+Importintervall überlappen. Deren Schwelle ist mit 50 ms genau das Budget — ein
+leerer Eintragssatz ist der Nachweis der Einhaltung.
 
 Der synchrone Hinweg — Pufferkopie, Worker-Erzeugung, ausgehendes
-`postMessage` — kostet in allen Fällen unter 4 ms. Die Blockade liegt auf dem
-**Rückweg**; ihre Herleitung steht unter „Der Rückweg des Workers blockiert“.
+`postMessage` — kostet in allen Fällen unter 4 ms. Die Blockade lag auf dem
+**Rückweg** (strukturierte Deserialisierung des vollständigen Ergebnisgraphen
+im Main Thread); die Herleitung steht unter „Der Rückweg des Workers
+blockiert“. Der Fragmenttransport unten beseitigt sie; der Nachweis hält das
+50-ms-Budget in allen 66 Wiederholungen.
 
-**Der Messweg wird vor jeder Messreihe selbst geprüft.** Eine Blockierzeit von
-null ist sonst zweideutig: freier Main Thread oder blinde Instrumentierung.
-Der erste Lauf dieser Auflage meldete für jedes Fixture null, weil der Import
-im Auswertungstask des Messtreibers lief und die Long-Task-API diesen Task
-nicht attribuiert — die Zahlen sahen aus wie ein eingehaltenes Budget und
-waren keins. `assertLongTaskObservability` blockiert deshalb absichtlich
-120 ms in einem regulären Task und verlangt dafür einen Eintrag; bleibt er
-aus, bricht der Lauf ab, statt ein Budget zu behaupten. Der Bericht verweigert
-sich ohne diesen Beleg.
+**Der Messweg belegt vor jeder Messreihe seine eigene Beobachtbarkeit:**
+`assertLongTaskObservability` blockiert absichtlich 120 ms in einem regulären
+Task und verlangt dafür einen Eintrag; bleibt er aus, bricht der Lauf ab,
+statt ein Budget zu behaupten.
 
 ##### Grenzwertherleitung: Kosten über der Knotenzahl
 
@@ -419,13 +348,11 @@ dekodierten Zeichenkette trägt. Die Blockierzeit wächst in der Knotenzahl des
 blockieren bei keiner Knotenzahl, weil sie abgewiesen werden und nur eine
 Diagnose zurückwandert.
 
-Daraus folgt für die beiden Budgetposten Verschiedenes. **Das Speicherbudget
-von 128 MiB trägt die volle Million** — 112,89 MiB im ungünstigsten Fall.
-Gedeckelt wird die Reihe allein vom UI-Budget: Der größte Stützpunkt, an dem
-jedes Fixture beide Posten hält, liegt bei 250 000 unter vierfacher Drosselung
-(ungedrosselt bei 500 000). Bei 70 851 Knoten des realen Katalogs bliebe damit
-Faktor 3,5 Kopfraum; das ist als Grenze für legitime Dokumente nicht tragbar,
-weshalb der Befund als Architekturfrage weiterläuft statt als Grenzwertfrage.
+**Das Speicherbudget von 128 MiB trägt die volle Million** — 112,89 MiB im
+ungünstigsten Fall. Gedeckelt wird die Reihe allein vom UI-Budget: Der größte
+Stützpunkt, an dem jedes Fixture beide Posten hält, liegt bei 250 000 unter
+vierfacher Drosselung (ungedrosselt bei 500 000). Bei 70 851 Knoten des realen
+Katalogs bliebe damit Faktor 3,5 Kopfraum.
 
 Die Herleitung selbst ist fail-closed und arbeitet über die Knotenzahl, nicht
 über die Fixtures: Ein Stützpunkt zählt nur, wenn dort **jedes** Fixture der
@@ -435,54 +362,37 @@ beendet die Aussage; ein größerer, der zufällig wieder hält, hebt ihn nicht
 auf. Browsermessungen sind nicht monoton, und ein Grenzwert, der auf einem
 gemessen gerissenen Stützpunkt steht, ist falsch und nicht bloß ungenau.
 
-##### Warum die frühere Messung zu klein war
+##### Erhoben über den gesamten Agenten-Speicher
 
-Die beiden vorigen Auflagen dieses Abschnitts lasen den Speicher über CDP
-`Runtime.getHeapUsage`. Diese Zahl deckt den V8-JS-Heap und nur ihn. Zwei
-Posten des Klasse-2-Pfads liegen daneben und fehlten dadurch **vollständig**:
+CDP `Runtime.getHeapUsage` deckt nur den V8-JS-Heap ab. Zwei Posten des
+Klasse-2-Pfads liegen daneben: der Backing-Store eines
+`ArrayBuffer`/`Uint8Array` (externer Speicher) und das Ergebnis von
+`TextDecoder.decode` (in Blink ein externer String). Erhoben wird deshalb über
+`performance.measureUserAgentSpecificMemory()`: Sie erfasst den gesamten
+Agenten einschließlich externer Strings und Puffer, verlangt dafür eine
+cross-origin isolierte Seite (der temporäre Messserver setzt COOP/COEP
+entsprechend) und kostet rund zehn Sekunden je Aufruf. Der Speicher wird darum
+einmal je Fixture erhoben und nicht je Wiederholung; der ungünstigste Fall lag
+über drei unabhängige Läufe bei 112,75 / 112,89 / 112,93 MiB.
 
-- Der Backing-Store eines `ArrayBuffer`/`Uint8Array` ist externer Speicher. Ein
-  festgehaltener 10-MiB-Puffer wurde als 0,00 MiB gemeldet. Die vorige Auflage
-  hat das erkannt und die Eingabebytes arithmetisch zugeschlagen — einfach,
-  aber nur einmal statt zweimal.
-- Das Ergebnis von `TextDecoder.decode` ist in Blink ein externer String; sein
-  Inhalt erscheint ebenso wenig im V8-Heap. Ein festgehaltener 10-MiB-Text
-  wurde als 0,00 MiB gemeldet, derselbe Text über `JSON.parse` erzeugt als
-  10,00 MiB. Genau diese Zeichenkette baut Stufe 1 aus den Eingabebytes auf
-  und hält sie über `JSON.parse` und die Registrierung des gesamten Baums
-  hinweg. Sie fehlte in jeder bisherigen Zahl.
-
-Erhoben wird deshalb jetzt über `performance.measureUserAgentSpecificMemory()`.
-Die Messung erfasst den gesamten Agenten einschließlich externer Strings und
-Puffer, verlangt dafür eine cross-origin isolierte Seite — der temporäre
-Messserver setzt COOP/COEP entsprechend — und kostet rund zehn Sekunden je
-Aufruf, weil sie auf die nächste Sammlung wartet und gegen Seitenkanalnutzung
-gedrosselt ist. Der Speicher wird darum einmal je Fixture erhoben und nicht je
-Wiederholung; er ist deterministisch, der ungünstigste Fall lag über drei
-unabhängige Läufe hinweg bei 112,75 / 112,89 / 112,93 MiB.
-
-**Auch dieser Messweg wird vor jeder Messreihe selbst geprüft.**
+**Auch dieser Messweg belegt vor jeder Messreihe seine Beobachtbarkeit:**
 `assertMemoryObservability` hält einen beschriebenen 16-MiB-Puffer fest und
-verlangt, dass die Messung ihn sieht; sie meldete 15,99 bzw. 16,00 MiB. Bleibt
-der Beleg aus, bricht der Lauf ab, und der Bericht verweigert sich — dieselbe
-fail-closed Konstruktion wie beim Long-Task-Beleg, aus demselben Grund: Ein
-blinder Messweg meldet keinen Fehler, sondern eine zu kleine Zahl.
+verlangt, dass die Messung ihn sieht (gemeldet 15,99 bzw. 16,00 MiB). Bleibt
+der Beleg aus, bricht der Lauf ab, und der Bericht verweigert sich.
 
 ##### Woraus sich die Speicherspitze zusammensetzt
 
-**Abtasten geht nicht.** Jede CDP-Antwort und jede Speichermessung wird vom
-Inspektor des betroffenen Isolats bedient und liegt in dessen Warteschlange,
-solange dort synchroner JavaScript-Code läuft. Die Prüfkette ist von ihrem
-Eintritt bis zu ihrer Rückkehr genau das; für das Worker-Isolat gilt dasselbe.
-Es gibt daher keinen Weg, den Speicherverlauf *während* eines Imports
-abzutasten.
+Den Speicherverlauf *während* eines Imports abzutasten ist nicht möglich: Jede
+CDP-Antwort und jede Speichermessung wird vom Inspektor des betroffenen Isolats
+bedient und liegt in dessen Warteschlange, solange dort synchroner
+JavaScript-Code läuft — und die Prüfkette ist von ihrem Eintritt bis zu ihrer
+Rückkehr genau das.
 
 Der Harnisch baut deshalb den gleichzeitig lebenden Bestand auf, hält ihn fest
-und lässt messen. Jeder Posten ist keine nachgebildete Schätzung, sondern
-dieselbe Datenstruktur über denselben Graphen, mit derselben
-Sprachkonstruktion wie im Produktivcode. Die Kette hat **zwei** Höchststände
-mit verschiedenem Bestand, und die Spitze ist der größere von beiden, nicht
-ihre Summe:
+und lässt messen. Jeder Posten ist dieselbe Datenstruktur über denselben
+Graphen, mit derselben Sprachkonstruktion wie im Produktivcode. Die Kette hat
+**zwei** Höchststände mit verschiedenem Bestand, und die Spitze ist der größere
+von beiden, nicht ihre Summe:
 
 | Höchststand | Gleichzeitig lebend |
 | --- | --- |
@@ -524,64 +434,45 @@ Drei Messgrenzen bleiben bestehen und sind hier ausgewiesen, nicht behoben:
   wird von der Drosselung erfasst — sichtbar daran, dass sie zwischen 1× und
   4× um etwa den Faktor 4 steigt.
 
-#### Historisches Ergebnis der Nachvalidierung (GSPP-382)
-
-Zwei von drei Budgetposten werden im ungünstigsten Fall eingehalten:
-112,75 MiB gegen 128 MiB Speicherbudget (88 % ausgeschöpft) und 2,14 s gegen
-5 s sichtbare Wartezeit. **Der Posten „Blockierzeit des UI-Threads“ wird nicht
-eingehalten** — gemessen bis 226 ms gegen 50 ms.
-
-Diese Fassung ist die dritte Nachvalidierung, und jede Auflage hat einen
-Fehler der vorigen im Messapparat aufgedeckt, nicht im Gegenstand: Die erste
-sah beide Verstöße nicht, weil ihr Fixturesatz die Schlüsselformen nicht
-variierte und ihr Harnisch die Blockierzeit gar nicht erhob. Die zweite maß
-die Blockierzeit, ließ aber die transienten Strukturen und zwei externe
-Speicherposten aus. Aufgedeckt hat beides das Cross-Review.
+#### Grenzwert-Befunde
 
 - **`maxBytes` 10 MiB — bestätigt.** Ein Dokument, das nur diese Grenze
-  ausschöpft, kostet 33,35 MiB und 0,63 s. Der Wert stimmt weiterhin zufällig
-  mit `MAX_CATALOG_ARTIFACT_BYTES` in
+  ausschöpft, kostet 33,35 MiB und 0,63 s. Der Wert stimmt zufällig mit
+  `MAX_CATALOG_ARTIFACT_BYTES` in
   [`fetch-catalog.mjs`](../scripts/fetch-catalog.mjs) überein; diese
   Übereinstimmung ist **keine** Begründung. Die eine Konstante sichert einen
   Build-Zeit-Abruf aus vertrauter, versionsgepinnter Quelle, die andere die
   Laufzeitverarbeitung eines potenziell feindlichen lokalen Dokuments. Die
   beiden dürfen sich unabhängig voneinander bewegen.
-- **`maxNodes` 1 000 000 — gehalten, mit deutlich weniger Reserve als
-  ausgewiesen.** Sie ist die bindende Grenze für den Speicher: Das teuerste
-  Dokument darauf kostet 112,75 MiB gegen 128 MiB. Die Herleitung steht über
-  fünf gemessenen Stützpunkten. Gedeckelt wird die Reihe nicht vom Speicher,
-  sondern vom UI-Budget.
+- **`maxNodes` 1 000 000 — gehalten.** Sie ist die bindende Grenze für den
+  Speicher: Das teuerste Dokument darauf kostet 112,75 MiB gegen 128 MiB. Die
+  Herleitung steht über fünf gemessenen Stützpunkten. Gedeckelt wird die Reihe
+  nicht vom Speicher, sondern vom UI-Budget.
 - **`maxDepth` 64 — bestätigt.** Rekursionstiefe ist für sich kein
   Kostentreiber; die Grenze schützt den Stapel.
-- **`maxDecodedBase64Bytes` 10 MiB → 4 MiB — korrigiert.** Begründung unten.
+- **`maxDecodedBase64Bytes` 4 MiB — korrigiert aus 10 MiB.** Begründung unten.
 
-##### Historischer Befund: Der Rückweg des Workers blockiert
+##### Befund: Der Rückweg des Workers blockierte
 
-Die ursprüngliche Begründung des UI-Budgets war eine Architekturannahme: Die
-Kette laufe im Worker, auf dem UI-Thread verblieben nur Pufferkopie und
-`postMessage`. Die Annahme ließ den Rückweg aus. Vor GSPP-386 antwortete der Worker in
-[`oscalImport.worker.ts`](../src/workers/oscalImport.worker.ts) mit
+Die Kette läuft im Worker; auf dem UI-Thread verblieben nach der
+Architekturannahme nur Pufferkopie und `postMessage`. Die Annahme ließ den
+Rückweg aus: Der Worker in
+[`oscalImport.worker.ts`](../src/workers/oscalImport.worker.ts) antwortete mit
 `self.postMessage(response)` und schickte den vollständigen Ergebnisgraphen
 mit; dessen strukturierte Deserialisierung lief im Main Thread, vor dem
 `message`-Handler in
 [`oscalImportGate.ts`](../src/adapters/oscalImportGate.ts).
 
-Die Messung trennt Ursache und Nebenwirkung eindeutig: `heap-bound` und
-`record-bound` sind mit je 10,00 MiB die größten Dokumente des Satzes und
-blockieren bei **keiner** Knotenzahl, weil sie abgewiesen werden und nur eine
-Diagnose zurückwandert. Blockiert wird ausschließlich bei angenommenen
-Dokumenten, proportional zur Knotenzahl des zurückgegebenen Graphen.
+Die Messung trennt Ursache und Nebenwirkung: `heap-bound` und `record-bound`
+sind mit je 10,00 MiB die größten Dokumente des Satzes und blockieren bei
+**keiner** Knotenzahl, weil sie abgewiesen werden und nur eine Diagnose
+zurückwandert. Blockiert wird ausschließlich bei angenommenen Dokumenten,
+proportional zur Knotenzahl des zurückgegebenen Graphen. Der folgende Nachweis
+bewertet den geänderten Transport mit Fragmenten und Quittungen.
 
-Über die Knotengrenze allein wäre das Budget nur bei 250 000 zu halten — zu
-eng für legitime Dokumente neben einem realen Katalog mit 70 851 Knoten. Der
-Befund wird deshalb als Frage des Ergebnistransports weitergeführt:
-[GSPP-386](https://linear.app/grundschutz-plus-plus/issue/GSPP-386). Der folgende
-Nachweis bewertet den dort geänderten Transport; die obigen Zahlen dokumentieren
-den früheren Stand.
+##### Quittierter Ergebnistransport
 
-##### Quittierter Ergebnistransport (GSPP-386)
-
-`importClass2OscalDocument(bytes, context)` liefert weiterhin erst den vollständigen
+`importClass2OscalDocument(bytes, context)` liefert erst den vollständigen
 validierten `source`-Baum mit Aufrufkontext, Root-Typ und OSCAL-Version zurück.
 Die Byte-, Struktur-, Ressourcen-, Root- und Schemaprüfungen laufen unverändert
 vor jeder erfolgreichen Datenübertragung im Worker. Eine fachliche Ablehnung
@@ -629,26 +520,7 @@ keine zeitliche Abtastung des tatsächlichen Worker-Peaks. Die oben benannten
 Grenzen der Messung in einem anderen Isolat und transienter Ajv-Allokationen
 bleiben bestehen.
 
-Der erste vollständige Lauf auf dem Fragmenttransport (2026-09-06,
-Quellfingerprint `04b9b3045957a9ded82b59509f37353208304ac8dbc1e11a322ab860c948eabf`)
-beobachtete bei `record-bound` in einer 4×-Wiederholung einen Long Task von
-109 ms und bestand damit den Nachweis nicht. Die Ergebnisdiagnosen blieben
-korrekt; der höchste Speicherwert lag bei 113,04 MiB. Der einzelne Task ließ
-sich in den anschließenden gezielten Traces nicht reproduzieren; seine Ursache
-wird deshalb nicht nachträglich als bewiesen dargestellt.
-
-Die Untersuchung zeigte eine davon unabhängige Messkontamination: Die direkte
-Parse-/Prüfkettenmessung und der Workerimport benutzten dasselbe Main-Thread-Isolat.
-Während des Imports blieb dort der zusätzlich geparste Baum referenziert;
-auch der browserseitige Fixturebau erzeugte große temporäre Bestände. Der
-korrigierte Harnisch trennt deshalb die Ende-zu-Ende-Zeitmessung in einen eigenen
-Browserkontext ab und lädt außerhalb des Messintervalls fertige binäre
-Fixturebytes. Die Beobachtbarkeitsprobe läuft in diesem Kontext nach Einstellung
-der Drosselung. Alle Wiederholungen bleiben erhalten; natürliche GC und sämtliche
-Import-Tasks werden weiterhin mitgemessen. Es gibt weder einen GC-Filter noch
-erzwungene GC vor dem Import oder Auswahl bestandener Einzelwiederholungen.
-
-Der vollständige Nachweis vom **2026-09-07, 13:56 UTC** bestand mit
+Der Nachweis bestand mit
 `node scripts/measure-class2-budget.mjs --throttle 1,4 --repeat 3`.
 Alle elf Grenzfixtures behielten in allen 66 Einzelwiederholungen ihr erwartetes
 Ergebnis; es gab keinen Import-Long-Task. Das Messintervall umfasst Eingabekopie,
@@ -664,10 +536,6 @@ sie simuliert keine langsamere Worker-CPU. Die 120-ms-Beobachtbarkeitsprobe
 meldete bei beiden Drosselungen 120 ms; der 16-MiB-Speicherprüfpuffer wurde
 als 15,98 MiB erfasst. Speicherwerte wurden einmal bei 1× erhoben.
 
-Gemessen wurde der noch uncommittete Implementierungsbaum auf Basiscommit
-`db46aff5fdf35b1569053ddca4d2d9f303362b66`. Der SHA-256-Fingerprint über
-396 Quell-, Test-, Skript- und Konfigurationsdateien war vor und nach dem Lauf
-identisch: `aa036672596ab3aacc9e06db2d4a3fe025e416070586f9cb35a703f895cec7dc`.
 Die [vollständigen Messdaten](measurements/gspp386-worker-transport.json)
 enthalten jede Wiederholung, Pflichtmessfelder, Proben und beide Fingerprints.
 
@@ -685,84 +553,46 @@ enthalten jede Wiederholung, Pflichtmessfelder, Proben und beide Fingerprints.
 | `key-bound` | 248.0 ms | 287.3 ms | 30.01 MiB | OSCAL_SCHEMA_ADDITIONAL_PROPERTY |
 | `valid-depth-bound` | 49.0 ms | 55.6 ms | 0.16 MiB | angenommen |
 
-Die Bot-Nachprüfung ergänzte anschließend die explizite Fünf-Sekunden-Prüfung
-im Bericht: Neben dem Median wird der Höchstwert aller Einzelwiederholungen
-geführt; ein langsamer Einzelimport darf weder das UI-Urteil noch die
-Knotengrenzherleitung bestehen. Die unveränderten 66 Rohmessungen wurden mit
-dieser strengeren Berichtslogik erneut ausgewertet und bestanden vollständig.
-Die 66 Wiederholungen und beide Fingerprints bleiben die Originale des oben
-bezeichneten Messstands. Die 22 verdichteten `endToEnd`-Blöcke wurden am
-2026-09-08 mit der neueren Berichtslogik deterministisch aus diesen
-Wiederholungen abgeleitet; der Regressionstest bindet sie an die jeweiligen
-Einzelwerte. Der Fingerprint bezeichnet den Messstand einschließlich seiner
-damaligen Tests und Berichtslogik, nicht diese spätere Ableitung. Der
-Produkttransport und die Messwerterhebung sind gegenüber Implementierungscommit
-`3980b1ad887afe9242be4ba088b49295b25d0bf6` unverändert.
-Zusätzlich prüfen direkte kolokierte Tests beide Browserkontexte, binäre
-Routen mit und ohne Eingabe, Fehler-Cleanup, `prepareBytes` und den gehaltenen
-Transportbestand. Diese Ergänzungen benötigen keine neue Browsermessung,
-da sie die Datenerhebung und den gemessenen Importpfad nicht verändern.
-
-Prüfstand vom 2026-09-07 (Node 22.22.3):
-
-| Prüfung | Ergebnis |
-| --- | --- |
-| `npm run test:coverage` | 166 Dateien, 2 403 Tests bestanden, 21 übersprungen; Statements 90,87 %, Branches 83,42 %, Functions 94,29 %, Lines 93,59 %. Keine Schwelle verändert. |
-| `npm run test:browser` | 20 Tests bestanden, ein bestehender Test übersprungen; echter Chromium mit Modul-Worker und Egress-Orakel. |
-| `npm run test:profile-resolution` | 16 Tests in drei Dateien bestanden. |
-| `npm run lint` | Keine Fehler; 64 bestehende Dateilängenwarnungen. |
-| `npm run build` | TypeScript und Vite-Build bestanden; bestehende Chunkgrößenwarnung. |
-| `npm run verify-oscal-schemas` | Alle 30 gepinnten Schemas verifiziert. |
-| `npm run review-policy:check` | 26 Regeln und acht Dateikontexte deckungsgleich mit den vier generierten Dateien. |
+Der Bericht führt neben dem Median den Höchstwert aller Einzelwiederholungen;
+ein langsamer Einzelimport darf weder das UI-Urteil noch die
+Knotengrenzherleitung bestehen. Die 66 Rohmessungen bestehen auch mit dieser
+strengeren Auswertung. Zusätzlich prüfen direkte kolokierte Tests beide
+Browserkontexte, binäre Routen mit und ohne Eingabe, Fehler-Cleanup,
+`prepareBytes` und den gehaltenen Transportbestand.
 
 ##### Warum das teuerste Dokument kein gültiger Katalog ist
 
 Der Speicher-Worst-Case ist `heap-bound`: eine halbe Million Objekte mit je
 eigenem Schlüsselnamen, deren Werte leere Objekte sind. Nicht die
-Containerzahl treibt hier den Heap, sondern die Zahl **verschiedener Formen**.
-V8 beschreibt die Form eines Objekts in einer verborgenen Klasse, die sich
-alle formgleichen Objekte teilen; wer jedem Container einen eigenen Schlüssel
-gibt, erzwingt eine eigene Beschreibung pro Container und zahlt dazu einen
-internalisierten Schlüsselstring.
-
-Der Unterschied ist groß genug, um eine Nachvalidierung zu entwerten: Das
-Fixture `depth-bound` trägt mit einer Million leerer Objekte die **höchste**
-Containerzahl des Satzes und kostet trotzdem nur 52,68 MiB. `heap-bound` trägt
-weniger Container und kostet 112,75 MiB. Die erste Fassung dieses Abschnitts
-hat `depth-bound` als Speicher-Worst-Case geführt und damit den günstigsten
-Fall dieser Achse für den teuersten gehalten.
+Containerzahl treibt hier den Heap, sondern die Zahl **verschiedener Formen**
+(verborgene Klassen, internalisierte Schlüsselstrings). `depth-bound` trägt mit
+einer Million leerer Objekte die **höchste** Containerzahl des Satzes und
+kostet trotzdem nur 52,68 MiB; `heap-bound` trägt weniger Container und kostet
+112,75 MiB.
 
 ##### Die zweite Achse: ein Container maximaler Breite
 
-`heap-bound` reizt die Zahl verschiedener Objektformen aus. Es sagt nichts
-über die zweite Achse, an der die Prüfkette Speicher belegt: die **Breite**
-eines einzelnen Containers. `visitRecord` legt für den gerade besuchten Record
-ein `Object.entries`-Paar-Array an und hält es über dessen ganze
-Mitgliederschleife; Formprüfung, Knotenuntergrenze und Bytebuchhaltung legen
-je ein `Reflect.ownKeys`-Array derselben Länge an. Bei einer Million schmaler
-Container ist davon nichts zu sehen — jedes dieser Arrays hat dort ein
-Element.
+`heap-bound` reizt die Zahl verschiedener Objektformen aus, sagt aber nichts
+über die **Breite** eines einzelnen Containers: `visitRecord` hält ein
+`Object.entries`-Paar-Array über die ganze Mitgliederschleife; Formprüfung,
+Knotenuntergrenze und Bytebuchhaltung legen je ein `Reflect.ownKeys`-Array
+derselben Länge an.
 
 `record-bound` schließt die Lücke: ein Wurzelobjekt mit 999 999 paarweise
 verschiedenen Schlüsseln, Byte- und Knotengrenze beide ausgeschöpft. Der
-Höchststand liegt hier nicht in der Parse-Stufe, sondern in der Objektkette —
-67,34 MiB gegen 91,64 MiB, als einziges Fixture des Satzes. Genau darin
-besteht der Nachweis, dass die Achse existiert und die Messung sie erfasst.
-Insgesamt bleibt es mit 101,64 MiB unter `heap-bound`; teuer ist es aus einem
-anderen Grund und an einer anderen Stelle.
+Höchststand liegt hier in der Objektkette (91,64 MiB gegen 67,34 MiB in der
+Parse-Stufe); insgesamt bleibt es mit 101,64 MiB unter `heap-bound`.
 
-Ein Angreifer ist an die Schemagültigkeit nicht gebunden — ein OSCAL-Katalog
-kennt keine freien Schlüsselnamen, ein Angriffsdokument schon. Die Ablehnung
-im Root-Dispatch erfolgt **erst**, nachdem Stufe 1 den Graphen aufgebaut und
-die Strukturinvariante ihre Identitätsmenge über ihn gelegt hat. Das Budget
-muss deshalb diesen Fall tragen und nicht den des gültigen Katalogs — auch
-wenn der gültige Katalog die längere Rechenzeit hätte, sobald Ajv hinzukommt.
+Ein Angreifer ist an die Schemagültigkeit nicht gebunden. Die Ablehnung im
+Root-Dispatch erfolgt **erst**, nachdem Stufe 1 den Graphen aufgebaut und die
+Strukturinvariante ihre Identitätsmenge über ihn gelegt hat. Das Budget muss
+deshalb diesen Fall tragen und nicht den des gültigen Katalogs.
 
-Umgekehrt gilt: Eine Tiefe von exakt 64 ist mit einem schemagültigen Katalog
-gar nicht konstruierbar. Gruppenobjekte liegen dort ausschließlich auf geraden
-Tiefen und ihre Blätter deshalb ausschließlich auf ungeraden; erreichbar wäre
-nur 63. Das `depth-bound`-Fixture hat deshalb Vorrang vor der
-Schemafähigkeit — es belegt, dass die Tiefengrenze bindet, und sonst nichts.
+Umgekehrt ist eine Tiefe von exakt 64 mit einem schemagültigen Katalog nicht
+konstruierbar: Gruppenobjekte liegen dort ausschließlich auf geraden Tiefen
+und ihre Blätter deshalb ausschließlich auf ungeraden; erreichbar wäre nur 63.
+Das `depth-bound`-Fixture belegt, dass die Tiefengrenze bindet, und sonst
+nichts.
 
 #### Die Base64-Grenze war tot
 
@@ -771,13 +601,7 @@ Ein `base64`-Wert steht als Text im Dokument und zählt vollständig gegen
 Polsterung, also höchstens drei Viertel der kodierten Länge. Selbst ein
 Dokument, das seine gesamten zugelassenen 10 MiB als base64-Text ausgibt,
 erreicht damit nur **7 864 278 Byte** dekodierte Summe. Eine auf 10 MiB
-gesetzte Grenze konnte deshalb durch **keine** Eingabe je auslösen: kein
-fail-closed Verhalten, sondern toter Code.
-
-Die Lücke war implizit bereits bekannt — der Bestandstest zur Grenze umging
-den Byte-Eintrittspunkt ausdrücklich mit der Begründung, die Byte-Obergrenze
-liege unter der nötigen Base64-Darstellung. Genau das ist der Defekt, nicht
-seine Umgehung.
+gesetzte Grenze konnte deshalb durch **keine** Eingabe je auslösen.
 
 Der neue Wert 4 MiB ist doppelt hergeleitet:
 
@@ -799,67 +623,28 @@ Die Anwendung dekodiert `base64` heute an keiner Stelle. Die Grenze wirkt
 vorsorglich für den ersten Verbraucher; ihr Kostenmodell ist dessen
 Heap-Allokation.
 
-#### Behoben: `matching.pattern` ist kein Kostenpfad mehr
+#### `matching.pattern`: iterativer Abgleich statt RegExp
 
-**Befund (GSPP-382, 2026-09-04).** `globToRegExp` in
+Der Abgleich von `matching`-Globs gegen Control-IDs läuft in
 [`profileResolutionSelection.ts`](../src/domain/profileResolutionSelection.ts)
-übersetzte ein Glob-Muster durch Ersetzen von `*` nach `.*` und verankerte das
-Ergebnis mit `^`/`$`. Verschachtelte, überlappende `.*`-Quantoren entstanden
-dabei ungebremst; scheiterte das Muster, musste die Regex-Engine alle
-Aufteilungen des Subjekts durchprobieren, und der Aufwand wuchs exponentiell in
-der Zahl der Sterne. Gemessen, Muster `(*a)ⁿ!` gegen eine 40 Zeichen lange
-Control-ID:
+über `matchGlob` — einen iterativen Zwei-Zeiger-Abgleich mit genau einem
+Rücksprungpunkt je Stern. Er hat keinen exponentiellen Fall, ist durch
+Muster × Subjekt beschränkt und bucht **jeden besuchten Zustand** als
+Arbeitseinheit der Kategorie `glob-state`. Damit ist der Abgleich von außen
+abbrechbar. Die Messwerte in
+[`docs/measurements/gspp345-work-budget.json`](./measurements/gspp345-work-budget.json)
+bleiben für jede Sternzahl unter einer Millisekunde; die Kosten hängen an der
+Subjektlänge, nicht mehr an der Sternzahl. Keine der Ressourcengrenzen (Byte-,
+Knoten-, Tiefengrenze) beschränkt Muster- oder Subjektlänge wirksam — ein
+Muster dieser Größe verbraucht davon nichts Nennenswertes.
 
-| Sterne | Musterlänge | vorher 1× | vorher 4× | nachher 1× | nachher 4× |
-| --- | --- | --- | --- | --- | --- |
-| 4 | 9 Byte | 0,75 ms | 1,59 ms | 0,06 ms | 0,56 ms |
-| 6 | 13 Byte | 24,86 ms | 62,19 ms | 0,01 ms | 0,00 ms |
-| 8 | 17 Byte | 0,34 s | 1,41 s | 0,01 ms | 0,00 ms |
-| 10 | 21 Byte | 4,22 s | 18,09 s | 0,01 ms | 0,01 ms |
-| 12 | 25 Byte | 32,53 s | nicht gemessen | 0,00 ms | 0,01 ms |
-
-Beide Spaltenpaare stehen auf committeten Artefakten: die „vorher"-Spalten auf
-dem `glob`-Block in
-[`docs/measurements/gspp386-worker-transport.json`](./measurements/gspp386-worker-transport.json),
-der die RegExp-Fassung misst, die „nachher"-Spalten auf
-[`docs/measurements/gspp345-work-budget.json`](./measurements/gspp345-work-budget.json).
-Eine frühere Fassung dieser Tabelle trug an drei Stützpunkten Zahlen aus einem
-nicht committeten Lauf (15 ms, 17,07 s, 31,82 s) und ließ die 4-Sterne-Zeile
-als „nicht gemessen" offen, obwohl das Artefakt sie führt; die Werte oben sind
-gegen das Artefakt begradigt.
-
-Die frühere Reihe brach ab, sobald ein Wert das Budget riss; der
-12-Sterne-Fall wurde im gedrosselten Lauf deshalb nicht mehr ausgeführt. Keine
-der Ressourcengrenzen griff: Musterlänge und Subjektlänge werden von Byte-,
-Knoten- und Tiefengrenze nicht wirksam beschränkt, und ein Muster dieser Größe
-verbraucht davon nichts Nennenswertes. Ein Arbeitsbudget nach Art von
-[GSPP-345](https://linear.app/grundschutz-plus-plus/issue/GSPP-345) hätte für
-sich allein ebenfalls nicht geholfen: Das Backtracking lief innerhalb **eines**
-Aufrufs ab, den keine Zähleinheit unterbrechen kann.
-
-**Behebung (GSPP-385, aufgenommen in
-[GSPP-345](https://linear.app/grundschutz-plus-plus/issue/GSPP-345)).** Der
-reguläre Ausdruck ist ersetzt durch `matchGlob` — einen iterativen
-Zwei-Zeiger-Abgleich mit genau einem Rücksprungpunkt je Stern. Er hat keinen
-exponentiellen Fall, ist durch Muster × Subjekt beschränkt und bucht **jeden
-besuchten Zustand** als Arbeitseinheit der Kategorie `glob-state`. Damit ist
-der Abgleich von außen abbrechbar, was die RegExp-Fassung prinzipiell nicht
-sein konnte. Die „nachher"-Spalten stammen aus
-[`docs/measurements/gspp345-work-budget.json`](./measurements/gspp345-work-budget.json);
-sie bleiben für jede Sternzahl unter einer Millisekunde bei gleichbleibend 80
-Arbeitseinheiten, und der höchste Wert steht beim NIEDRIGSTEN Sternenzähler —
-er ist Aufwärmkosten des ersten Aufrufs, nicht Musterkomplexität.
-Die Kosten hängen an der Subjektlänge, nicht mehr an der Sternzahl.
-
-Die Semantik bleibt: `*` trifft beliebig viele Zeichen einschließlich keiner,
-`?` genau eines, der Abgleich ist vollständig verankert. Eine einzige
-Abweichung ist bewusst in Kauf genommen und hier ausgewiesen: `.` traf in einem
-regulären Ausdruck ohne `s`-Flag keinen Zeilenumbruch, `*` und `?` konnten eine
-Control-ID mit `\n` also nie treffen; der Zeichenvergleich behandelt jedes
-Zeichen gleich. Das ist die naheliegendere Glob-Auslegung. Für den BSI-Korpus
-ist die Änderung wirkungslos — der Korpuslauf vergleicht alle drei aufgelösten
-Kataloge byte-nah gegen die BSI-Referenz und die vier SP-800-53-Baselines gegen
-die NIST-Referenz, und beide Orakel sind unverändert grün.
+Die Semantik: `*` trifft beliebig viele Zeichen einschließlich keiner, `?`
+genau eines, der Abgleich ist vollständig verankert. Eine Abweichung ist
+ausgewiesen: `.` traf in einem regulären Ausdruck ohne `s`-Flag keinen
+Zeilenumbruch; der Zeichenvergleich behandelt jedes Zeichen gleich. Für den
+BSI-Korpus ist die Änderung wirkungslos — der Korpuslauf vergleicht alle drei
+aufgelösten Kataloge byte-nah gegen die BSI-Referenz und die vier
+SP-800-53-Baselines gegen die NIST-Referenz, und beide Orakel sind grün.
 
 Der Messlauf ruft `matchGlob` selbst auf, statt den Abgleich nachzubilden. Die
 Funktion ist dafür exportiert: Eine zweite Fassung im Messwerkzeug würde
@@ -874,26 +659,20 @@ die vier oben und folgt derselben Herleitungsregel: Ein Grenzwert wird gegen
 die Kosten seines eigenen ungünstigsten Falls begründet, nicht gegen ein
 Vielfaches der Korpusgröße.
 
-**Warum Bytes die Arbeit nicht begrenzen.** Ein Profil besteht im ungünstigsten
-Fall aus nichts als Ausschlussselektoren oder aus nichts als Importen. Jeder
-Selektor läuft über jede Control-ID des importierten Katalogs, jeder Import
-indiziert den Katalog erneut; die Arbeit ist das **Produkt** aus beiden Zahlen,
-während die Bytegrenze nur ihre Summe deckelt. Gemessen: Ein Profil von
-**1,7 KB** über einem Katalog von 78 KB verbraucht bereits über eine Million
-Arbeitseinheiten. An der 10-MiB-Bytegrenze sind es Hunderte Millionen bis
-Milliarden — Minuten an Rechenzeit für ein Dokument, das Byte-, Knoten- und
-Tiefengrenze mühelos einhält. Genau diese Lücke schließt die Arbeitsgrenze; die
+**Warum Bytes die Arbeit nicht begrenzen.** Jeder Selektor läuft über jede
+Control-ID des importierten Katalogs, jeder Import indiziert den Katalog
+erneut; die Arbeit ist das **Produkt** aus beiden Zahlen, während die
+Bytegrenze nur ihre Summe deckelt. Gemessen: Ein Profil von **1,7 KB** über
+einem Katalog von 78 KB verbraucht bereits über eine Million
+Arbeitseinheiten. Genau diese Lücke schließt die Arbeitsgrenze; die
 Ausgabegrenzen können sie nicht schließen, weil die Ausgabe in diesen Fällen
 **leer oder winzig** ist.
 
 **Eine Reihe je Kategorie, nicht eine Reihe für alle.** Alle sechs
 Work-Unit-Kategorien verbrauchen denselben Zähler, aber eine Arbeitseinheit
-kostet je nach Kategorie unterschiedlich viel Zeit. Die erste Fassung dieser
-Herleitung maß allein den Selektorpfad und trug **134 213 078** ein. Die
-`merge-step`-Reihe braucht für dieselbe Einheitenzahl rund das Achtfache an
-Zeit und reißt den Budgetposten deutlich; der auf dem Selektorpfad gemessene
-Wert trug für sie nie. Jede Kategorie hat deshalb ein eigenes, ausgabekleines
-Worst-Case-Profil in
+kostet je nach Kategorie unterschiedlich viel Zeit (`merge-step` braucht für
+dieselbe Einheitenzahl rund das Achtfache der Selektorkategorie). Jede
+Kategorie hat deshalb ein eigenes, ausgabekleines Worst-Case-Profil in
 [`profileResolutionWorstCaseFixtures.mjs`](../scripts/profileResolutionWorstCaseFixtures.mjs),
 und der Grenzwert ist das **Minimum** über alle Reihen.
 
@@ -938,13 +717,10 @@ den Budgetposten „Sichtbare Wartezeit bis zum Ergebnis" damit zu 53 % aus.
 Keine Interpolation zwischen Stützpunkten: Der Wert steht auf einer Zahl, die
 wirklich gemessen wurde.
 
-**Zwei Kategorien treiben ihren Zähler nicht allein.** `import-edge` und
-`merge-step` erreichen 66,65 beziehungsweise 70,00 Prozent Anteil. Der Rest
-entfällt in beiden Fällen auf die Selektion, die je Import unvermeidlich
-mitläuft — ein Import ohne Auswahlschritt existiert nicht. Die Reihen messen
-damit die Kosten eines Laufs, den ihre Kategorie dominiert, und das ist die
-Aussage, die der Grenzwert braucht: nicht die Kosten einer isolierten
-Arbeitseinheit, sondern die eines Laufs, der sie zu Millionen anhäuft.
+**Zwei Kategorien treiben ihren Zähler nicht allein.** Bei `import-edge` und
+`merge-step` entfällt der Rest auf die Selektion, die je Import unvermeidlich
+mitläuft. Die Reihen messen die Kosten eines Laufs, den ihre Kategorie
+dominiert — nicht die Kosten einer isolierten Arbeitseinheit.
 
 **`alter-target-lookup` ist durch die Dokumentgrenzen gedeckelt.** Die
 Zielsuche fällt je betrachteter Control einmal an und je auf sie zeigender
@@ -964,16 +740,11 @@ gegen Byte- und Knotengrenze misst.
 wirklich deckelt.** Drei Bedingungen, alle drei notwendig: Die Deckelzeile ist
 **terminal** (kein gemessener Stützpunkt liegt dahinter), sie trägt eine
 **endliche Erreichbarkeitszahl**, und diese Zahl liegt **unter** dem
-schließlich gewählten Grenzwert. Vor allem aber wird die Reihe von unten nach
-oben gelesen: Reißt ein Stützpunkt **vor** dem Deckel die sichtbare Wartezeit,
-endet die Aussage dort, und die Kategorie ist nicht gedeckelt, sondern langsam
-— ihr Riss liegt im erreichbaren Bereich. Die Vorgängerfassung prüfte die
-Deckelung zuerst und nahm eine gerissene Kategorie deshalb vollständig aus der
-Herleitung; sie konnte damit einen Grenzwert freigeben, den eine erreichbare
-Last bereits riss. Liegt der Deckel **über** dem Grenzwert, geht die Reihe mit
-ihrem gemessenen Wert in das Minimum ein wie jede andere: Zwischen ihrem
-letzten gemessenen Stützpunkt und ihrem Deckel ist nichts gemessen, und
-ungemessene Strecke trägt keinen Grenzwert.
+schließlich gewählten Grenzwert. Die Reihe wird von unten nach oben gelesen:
+Reißt ein Stützpunkt **vor** dem Deckel die sichtbare Wartezeit, endet die
+Aussage dort. Liegt der Deckel **über** dem Grenzwert, geht die Reihe mit ihrem
+gemessenen Wert in das Minimum ein wie jede andere — ungemessene Strecke trägt
+keinen Grenzwert.
 
 **Herleitung und Bestätigung sind zwei verschiedene Läufe.** Ein Lauf misst
 nur bis zu seinem **eigenen** Kandidaten — jenseits davon bricht der Resolver
@@ -999,64 +770,35 @@ zirkulär. Eine **Anhebung** der Grenze setzt weiterhin voraus, dass ein Mensch
 den Kandidaten erhöht und neu misst.
 
 **Zwei Fingerprints, zwei Aufgaben.** Eine Messung gilt nur für den Code, an
-dem sie erhoben wurde. Ohne Prüfung altert ein Artefakt still: Wird der
-Auflösungspfad langsamer, bleibt der einkompilierte Wert stehen, und nichts
-wird rot.
+dem sie erhoben wurde.
 
 - Der **breite** Quellfingerprint (`sourceBefore.sha256`) deckt `src`,
   `scripts` und die Build-Konfiguration ab und belegt „dieser Baum wurde
-  gemessen". Er bleibt **Protokoll**. Als Gate wäre er unbrauchbar: Jede
-  Änderung an einer beliebigen UI-Komponente erzwänge einen Browsermesslauf.
+  gemessen". Er bleibt **Protokoll**: Als Gate erzwänge jede Änderung an einer
+  beliebigen UI-Komponente einen Browsermesslauf.
 - Die **Messwegprovenienz** (`sourceBefore.workLimitProvenance.sha256`) deckt
   genau das ab, was der gemessene Auflösungslauf ausführt. Sie ist die
-  **Testbedingung**. Ihre Hülle ist keine gepflegte Liste, sondern aus den
-  echten Importen berechnet
+  **Testbedingung**. Ihre Hülle ist aus den echten Importen berechnet
   ([`measureWorkLimitProvenance.mjs`](../scripts/measureWorkLimitProvenance.mjs)):
-  ab den Einstiegspunkten des Messharnisches transitiv über alle Importe. Eine
-  handgeschriebene Liste wäre bei jedem neuen Modul des Auflösungspfads still
-  zu eng geworden. Sie umfasst **beides** — Repository-Dateien und die
-  aufgelösten Versionen der externen Laufzeit (`runtime`, transitiv aus dem
-  Lockfile). Dateien allein genügen nicht: Der gemessene Lauf führt vor dem
-  Ergebnis die Schemaprüfung mit Ajv aus, und würde die langsamer, bliebe ein
-  Fingerprint über reine Repository-Dateien unverändert.
+  ab den Einstiegspunkten des Messharnisches transitiv über alle Importe. Sie
+  umfasst Repository-Dateien **und** die aufgelösten Versionen der externen
+  Laufzeit (`runtime`, transitiv aus dem Lockfile) — der gemessene Lauf führt
+  vor dem Ergebnis die Schemaprüfung mit Ajv aus.
 
 **Die Hülle folgt keiner Kante, die ausschließlich einen Typ transportiert.**
-TypeScript löscht `import type` und `export type` beim Kompilieren: Ihre Ziele
-existieren zur Laufzeit nicht, laufen im gemessenen Auflösungspfad nicht mit und
-können seine Dauer nicht beeinflussen. Sie fallen damit unter dieselbe
-Begründung, mit der die übrigen Harnisch-Importe ausgeschlossen sind — sie
-erzwängen bei jeder Änderung eine Neumessung, die nichts belegt. Die Erkennung
-ist **fail-closed**: Ein Ziel entfällt nur, wenn *jedes* seiner Vorkommen in der
-Datei zweifelsfrei als reine Typkante erkennbar ist. Die Mischform
-`import { type X, y }`, ein seitenwirksames `import '…'`, ein dynamisches
-`import('…')` und jede Schreibweise, die die Textsuche nicht sicher einordnet,
-halten die Kante. `export type` gehört dazu, weil das Muster am Schlüsselwort
-`from` ansetzt und Re-Exporte mit erfasst; `export * from` bleibt eine Wertkante.
-
-Diese Präzisierung hat die Hülle am 2026-09-13 von 69 auf 62 Dateien verengt
-([GSPP-394](https://linear.app/grundschutz-plus-plus/issue/GSPP-394)). Der
-Fingerprint im Artefakt wurde dabei **begründet neu gestempelt statt neu
-gemessen**: Der gemessene Pfad ist unverändert, weil ausschließlich Dateien
-entfallen sind, die zur Laufzeit gar nicht existieren, und eine Neumessung
-erhöbe nur Messzahlen einer anderen Maschine. Der Nachweis steht im Artefakt
-selbst unter `workLimitProvenanceRestamp` — mit dem Vorzustand, der
-unveränderten `runtime` und der Typkante, die jede der sieben entfallenen
-Dateien bis dahin in der Hülle gehalten hat. Fünf von ihnen exportieren
-ausschließlich Typen und erzeugen gar keinen Laufzeitcode; die beiden
-`catalogLineage`-Dateien tragen zwar Laufzeitcode, hängen im gemessenen Pfad
-aber allein an der entfallenen Typkante aus `models.ts` und werden dort nie
-geladen. `WORK_UNIT_LIMIT` ist davon
-unberührt und bleibt über den Herleitungstest an das Artefakt gebunden. Ein
-späterer echter Messlauf schreibt das Artefakt neu und lässt das Feld damit
-folgerichtig entfallen.
+`import type` / `export type` existieren zur Laufzeit nicht und können die
+gemessene Dauer nicht beeinflussen. Die Erkennung ist **fail-closed**: Ein Ziel
+entfällt nur, wenn *jedes* seiner Vorkommen in der Datei zweifelsfrei als reine
+Typkante erkennbar ist. Die Mischform `import { type X, y }`, ein
+seitenwirksames `import '…'`, ein dynamisches `import('…')` und jede
+Schreibweise, die die Textsuche nicht sicher einordnet, halten die Kante;
+`export * from` bleibt eine Wertkante.
 
 Die **Auswertung** (`measureClass2BudgetReport.mjs`) steht bewusst in keiner
-der beiden Hüllen. Sie läuft im Browser nie mit und erzeugt keine Rohdaten; sie
-leitet aus ihnen den Wert ab. Und sie ist schärfer gebunden als durch einen
-Fingerprint: Der Bindungstest leitet den Grenzwert bei jedem Testlauf mit der
-aktuellen Auswertung aus dem Artefakt neu her. Eine Änderung an ihr wird also
-sofort geprüft, ohne einen Browsermesslauf zu erzwingen, der an denselben
-Rohdaten nichts ändern würde.
+der beiden Hüllen: Sie läuft im Browser nie mit und erzeugt keine Rohdaten.
+Der Bindungstest leitet den Grenzwert bei jedem Testlauf mit der aktuellen
+Auswertung aus dem Artefakt neu her — eine Änderung an ihr wird sofort
+geprüft, ohne einen Browsermesslauf zu erzwingen.
 
 Beide lassen `profileResolutionBudgetLimits.mjs` aus — genau diese Datei muss
 sich zwischen Mess- und Lieferstand unterscheiden, sonst wäre die Frage „gehört
@@ -1099,40 +841,28 @@ Beide zählen mit derselben Semantik — Wurzel ist Tiefe 1, jeder primitive und
 jeder Containerwert ist ein Knoten, Property-Namen zählen nicht, `base64` wird
 arithmetisch aus der kodierten Länge bestimmt und nie dekodiert.
 
-**Der Knotenzähler erfasst auch den Zwischenzustand.** ADR-8 nennt
-ausdrücklich den „Zwischen- **oder** Ergebnisgraphen": Merge und Modify legen
-je Control eine bereinigte Kopie an, bevor die Emission den ersten Ausgabeknoten
-anmeldet. Zählte das Budget nur die Emission, könnte ein Lauf sehr viele solcher
-Kopien allokieren und dabei null verbuchte Knoten haben — belegt an einem Lauf
-mit 100 000 Controls, der alle 100 000 Zwischenkopien vor dem ersten
-Ausgabeknoten erzeugte. `admitWorkingNode()` bucht deshalb jeden neu angelegten
-Container des Zwischenzustands gegen dieselbe Knotengrenze, ohne die
-Ausgabetiefe zu berühren. In der Korpustabelle oben ist das der Grund, warum die
-Knotenzahlen leicht über der Größe der fertigen Kataloge liegen.
+**Der Knotenzähler erfasst auch den Zwischenzustand.** Merge und Modify legen
+je Control eine bereinigte Kopie an, bevor die Emission den ersten
+Ausgabeknoten anmeldet. `admitWorkingNode()` bucht deshalb jeden neu
+angelegten Container des Zwischenzustands gegen dieselbe Knotengrenze, ohne
+die Ausgabetiefe zu berühren. In der Korpustabelle oben ist das der Grund,
+warum die Knotenzahlen leicht über der Größe der fertigen Kataloge liegen.
 
-**Container heißt Objekt UND Liste.** Die erste Fassung buchte nur neue
-Objektkopien. Damit entkamen genau die Listen, die Modify und Merge beim
-Ergänzen und Entfernen anlegen: die ergänzte `parts`-Liste einer Addition, die
-gefilterte Liste einer Entfernung, die zusammengesetzten `controls`- und
-`groups`-Listen der Merge-Phase. Ein Add/Remove-Zyklus kostete dadurch fünf
-statt sieben Knoten, obwohl je Zyklus zwei zusätzliche Listen im
-Zwischenzustand standen; die Buchung lag unter der wirklich erzeugten
-Ausgabe, und das ist die einzige verbotene Richtung. Der Regressionstest
-„bucht den Add/Remove-Zyklus vollständig" in
+**Container heißt Objekt UND Liste.** Gebucht werden auch die Listen, die
+Modify und Merge beim Ergänzen und Entfernen anlegen (ergänzte `parts`-Liste,
+gefilterte Liste, zusammengesetzte `controls`- und `groups`-Listen): Ein
+Add/Remove-Zyklus kostet sieben Knoten. Der Regressionstest „bucht den
+Add/Remove-Zyklus vollständig" in
 [`profileResolutionBudget.enforcement.test.ts`](../src/domain/profileResolutionBudget.enforcement.test.ts)
-nagelt den Zuwachs an einem echten `resolveProfile`-Lauf fest, ohne einen
-einzigen Budgetaufruf im Test.
+hält den Zuwachs an einem echten `resolveProfile`-Lauf fest.
 
 **Die Grenze verläuft am Zwischengraphen, nicht an jeder Allokation.**
 Gebucht wird jeder Container, der im Zwischen- oder Ergebnisgraphen **stehen
 bleibt**. Nicht gebucht werden die kurzlebigen Lesekopien, die
 `ownArrayDataElements` je Traversierung anlegt und sofort wieder freigibt:
 Sie stehen auf der ARBEITSACHSE, wo derselbe Aufruf bereits `length`
-Arbeitseinheiten vorab bucht. Diese Trennung ist nicht kosmetisch. Der
-Knotenzähler ist kumulativ und kennt kein Zurück; würde er jede Lesekopie
-mitzählen, erschöpfte ein Dokument mit vielen billigen Traversierungen die
-Knotengrenze, ohne je nennenswerten Speicher zu halten — eine Ablehnung, die
-über den tatsächlichen Ressourcenverbrauch nichts aussagt.
+Arbeitseinheiten vorab bucht. Der Knotenzähler ist kumulativ und kennt kein
+Zurück.
 
 Die laufenden Zähler dürfen die fertigen Werte **übersteigen** — sie zählen
 kumulativ über alle Zwischenergebnisse eines Plans und schreiben Entferntes
@@ -1140,11 +870,8 @@ nicht gut. Verboten ist allein die andere Richtung: Ein Zähler unter dem
 fertigen Wert hieße, dass die Grenze umgangen werden kann. Ein Regressionstest
 hält das fest, indem er den fertigen Graphen unabhängig nachmisst.
 
-Aus derselben Anforderung folgt eine Korrektur an der Emission: Sie zählte
-`groups`, `controls` und `back-matter` bisher relativ ab Tiefe 0, obwohl diese
-Mitglieder absolut auf Tiefe 3 liegen (Wurzel 1 → `catalog` 2 → Mitglied 3).
-Die frühere Schranke lag damit zwei Ebenen unter der Wahrheit. Die Emission
-rechnet jetzt in absoluten Tiefen.
+Die Emission rechnet in absoluten Tiefen: `groups`, `controls` und
+`back-matter` liegen absolut auf Tiefe 3 (Wurzel 1 → `catalog` 2 → Mitglied 3).
 
 #### Vertrauensklasse des Steuerdokuments und des Ergebnisses
 
@@ -1219,7 +946,7 @@ scheinbare Versionsangabe verwandeln.
 
 #### „Schema-valide" ist eine Strukturaussage, keine Vertrauensaussage
 
-Das ist keine Vorsichtsformel, sondern am Modell belegt: OSCAL erzeugt für
+Am Modell belegt: OSCAL erzeugt für
 jedes Feld mit `allow-other="yes"` das Muster `anyOf: [<Datatype>, enum]`, und
 die Aufzählung bindet dann nicht. Betroffen sind unter anderem
 `implementation-status.state`, `risk.status`, `response.lifecycle`,
@@ -1357,15 +1084,14 @@ fremden Host. Zulässig und tatsächlich vorhanden ist allein der lazy Modulabru
 des Schema-Chunks **derselben Origin** — siehe
 [Schemazugriff](#schemazugriff-ein-lazy-chunk-derselben-origin-kein-externer-bezug).
 
-Ajv 8.20.0 ist seit
-[GSPP-343](https://linear.app/grundschutz-plus-plus/issue/GSPP-343) exakte
+Ajv 8.20.0 ist exakte
 direkte Abhängigkeit der App, mit `package-lock.json`-Eintrag samt
 SRI-Integrität. Lizenz MIT; Transitivabhängigkeiten sind `fast-deep-equal`,
 `fast-uri`, `json-schema-traverse` und `require-from-string`. Das ebenfalls
 vorhandene transitive `ajv` 6.15.0 stammt ausschließlich aus dem
 ESLint-Werkzeugpfad und ist ausdrücklich nicht der OSCAL-Validator dieses
 Vertrags. Validator, Paket-Lock, Schemabytes, Hashprüfung und Implementierung
-samt Tests wurden wie gefordert atomar eingeführt.
+samt Tests sind atomar eingeführt.
 
 | Artefakt | Verbindliche Herkunft und Pinning | Verifikation |
 | --- | --- | --- |
@@ -1442,10 +1168,6 @@ Kantendefinition ist so gefasst, dass `import-ssp` und `import-ap` ohne Umbau
 ergänzt werden können.
 
 ### Vier Zustände, nicht drei
-
-Die schärfste Anforderung an diese Stufe ist, vier Aussagen **nicht** zu
-vermischen. Werden sie vermischt, entsteht genau die falsche Abdeckungsaussage,
-die dieses Projekt ausschließt.
 
 | Zustand | Bedeutung | Diagnose |
 | --- | --- | --- |
@@ -1560,12 +1282,11 @@ löschbare TypeScript-Syntax würde die CI-Lane brechen.
 ### Gemessener Bestand
 
 `npm run verify-upstream-oscal` am Snapshot
-`9008ca0baecd958d175bbb994d6121865e266600`: Von 19 registrierten OSCAL-
-Artefakten wird eines als `blocked-by-upstream` aus dem Snapshot fehlend
+`9008ca0baecd958d175bbb994d6121865e266600`: Von 19 registrierten
+OSCAL-Artefakten wird eines als `blocked-by-upstream` aus dem Snapshot fehlend
 übersprungen. Zwei weitere gesperrte Artefakte scheitern erwartungsgemäß an
 Stufe 3. **12** Artefakte gehen in den Graphen ein; die vier profilbasierten
-Quellkataloge bleiben ohne App-`catalogKey` bewusst außerhalb des Graphen und
-liefern keine belastbaren Referenzaussagen.
+Quellkataloge bleiben ohne App-`catalogKey` außerhalb des Graphen.
 
 Ergebnis: 2742 Knoten, 344 aufgelöste Kanten, **0 Referenzfehler**, 2734 nicht
 bewertbare Kanten, keine `no-relationship`-Aussage, kein blockierender Befund.
@@ -1574,27 +1295,21 @@ bewertbare Kanten, keine `no-relationship`-Aussage, kein blockierender Befund.
   Verweise auf.
 * Die 2374 `mapping-item`-Verweise des ITGS-Mappings sind nicht bewertbar, weil
   sämtliche Ressourcen-`href` relative Dateinamen sind — ausdrücklich keine
-  Referenzfehler. Dasselbe gilt für die 96 `maps` des ISO-Mappings, sobald es
-  wieder in den Graphen eingeht.
+  Referenzfehler. Dasselbe gilt für die 96 `maps` des ISO-Mappings.
 * Die drei `control-implementation.source` der AWS-Component-Definition tragen
   denselben externen Wert auf einem beweglichen Branch und erzeugen je einen
   Befund `OSCAL_GRAPH_EXTERNAL_CONTEXT_UNPINNED`; die 17
-  `implemented-requirements` darunter bleiben nicht bewertbar und erzeugen
-  keinen einzigen Referenzfehler.
+  `implemented-requirements` darunter bleiben nicht bewertbar.
 * Die Profilimporte zeigen als `#uuid` auf eigene `back-matter`-Ressourcen. Sie
   lösen auf, eröffnen aber keinen Katalogkontext — die 195 `with-ids` darunter
-  sind deshalb nicht bewertbar.
+  sind nicht bewertbar.
 
 ## Prüftiefen-Landkarte
 
 Die Landkarte hält je Feldpfad fest, wo die Schemaprüfung endet und ab wo
-ausschließlich ein Metaschema-Constraint greift. Sie ist das Instrument, mit dem
-das Projekt eine ungeprüfte Konformitätsaussage vermeidet, solange die
-Constraint-Stufe nach dem obigen Negativbefund `not-checked` bleibt.
-
-Erfasst sind das Mapping-Modell und das Catalog-Modell. Die übrigen sechs
-Root-Modelle folgen mit ihrer jeweiligen Erschließung; ihr Fehlen ist eine
-bekannte Lücke und keine Aussage über ihre Prüftiefe.
+ausschließlich ein Metaschema-Constraint greift. Erfasst sind das
+Mapping-Modell und das Catalog-Modell; die übrigen sechs Root-Modelle folgen
+mit ihrer jeweiligen Erschließung.
 
 ### Reichweite der namespace-gebundenen Constraints
 
@@ -1660,11 +1375,11 @@ verschiedenen Definitionsebenen:
 | `metadata`-Assembly | `metadata` jedes Modells | `keywords` | `canonical`, `alternate`, `latest-version`, `predecessor-version`, `successor-version` |
 | `catalog`-Assembly | nur `catalog/metadata` | `resolution-tool`, `source-profile-uuid` | `source-profile`, `source-profile-uuid` |
 
-Die oberste Zeile ist leicht zu übersehen: Ihr Constraint ist auf der globalen
-`property`-Definition mit dem Target `.[has-oscal-namespace(...)]/@name`
-verankert und gilt deshalb für **jeden** `prop` im Dokument, auch für die in
-`catalog/metadata`. `catalog/metadata/props` referenziert genau diese globale
-Definition (`<assembly ref="property" group-as="props">`).
+Der Constraint der obersten Zeile ist auf der globalen `property`-Definition
+mit dem Target `.[has-oscal-namespace(...)]/@name` verankert und gilt deshalb
+für **jeden** `prop` im Dokument, auch für die in `catalog/metadata`.
+`catalog/metadata/props` referenziert genau diese globale Definition
+(`<assembly ref="property" group-as="props">`).
 
 Der Referenzvalidator wertet alle auf einen Knoten registrierten
 `allowed-values`-Constraints gemeinsam aus. In
@@ -1677,20 +1392,18 @@ bei der restriktivsten Offenheit.
 Der Metaschema-Default für `@allow-other` ist `no`, der für `@level` ist
 `ERROR`. Keiner der sechs Constraints setzt `@level`; die drei `prop`-Constraints
 setzen auch `@allow-other` nicht und sind damit geschlossen, die drei
-`link`-Constraints setzen es ausdrücklich auf `yes`. Der Default für
-`@extensible` taugt dagegen nicht als Begründung: Er ist in den
-NIST-Quellen widersprüchlich dokumentiert — die
-[Syntaxtabelle der Metaschema-Spezifikation](https://pages.nist.gov/metaschema/specification/syntax/constraints/)
-nennt `no`, was kein gültiger Wert der eigenen Werteliste
-`model`/`external`/`none` ist, das
+`link`-Constraints setzen es ausdrücklich auf `yes`. `@extensible` trägt die
+Vereinigung nicht: Die NIST-Quellen nennen dafür widersprüchliche Defaults —
+[Syntaxtabelle](https://pages.nist.gov/metaschema/specification/syntax/constraints/)
+`no`,
 [Metaschema-Modell](https://github.com/usnistgov/metaschema/blob/2673565db0d2dd937a8c2da013e3843b52c73d5c/schema/metaschema/metaschema-module-metaschema.xml#L1042)
-und das
-[zugehörige XSD](https://github.com/usnistgov/metaschema/blob/2673565db0d2dd937a8c2da013e3843b52c73d5c/schema/xml/metaschema.xsd#L902)
-nennen `external`, und die Referenzimplementierung nennt in
+und
+[XSD](https://github.com/usnistgov/metaschema/blob/2673565db0d2dd937a8c2da013e3843b52c73d5c/schema/xml/metaschema.xsd#L902)
+`external`,
 [`IAllowedValuesConstraint`](https://github.com/usnistgov/metaschema-java/blob/030d102dcbf51564edb5bb9dd98286d684e06250/core/src/main/java/gov/nist/secauto/metaschema/core/model/constraint/IAllowedValuesConstraint.java#L39-L41)
-je nach Branch `MODEL` oder `EXTERNAL`. Die Vereinigung hängt nicht daran: Die
-oben belegte Auswertungslogik ist in beiden Branches wortgleich, und
-`@extensible` wirkt dort nur als Erweiterungs-Scope, nicht als Wertebereich.
+je nach Branch `MODEL` oder `EXTERNAL`. Die oben belegte Auswertungslogik ist
+in beiden Branches wortgleich, und `@extensible` wirkt dort nur als
+Erweiterungs-Scope, nicht als Wertebereich.
 
 | JSON-Pfad | JSON-Schema | Zusätzlicher Metaschema-Constraint | Konsequenz |
 | --- | --- | --- | --- |
@@ -1748,20 +1461,16 @@ Parametern — an seiner Stelle steht der feste Platzhalter `*`.
 
 `stage` verwendet die stabilen Werte `resource-limit`, `json-syntax`,
 `root-dispatch`, `json-schema`, `oscal-constraint`, `reference` und `domain`.
-Der Artefaktkontext kann zusätzlich Lifecycle und Snapshot tragen. Die zentrale
-Referenzauflösung und die spätere Referenzprüfung aus
-[GSPP-251](https://linear.app/grundschutz-plus-plus/issue/GSPP-251)
-verwenden dieses Grundformat; es entsteht kein zweites Diagnosemodell. Nicht
-auflösbare Ziele liefern ausschließlich Code, Stufe und strukturellen JSON
-Pointer — nie den `href`-Wert.
+Der Artefaktkontext kann zusätzlich Lifecycle und Snapshot tragen. Es entsteht
+kein zweites Diagnosemodell. Nicht auflösbare Ziele liefern ausschließlich
+Code, Stufe und strukturellen JSON Pointer — nie den `href`-Wert.
 
 Das Format ist als Typ und Konstruktor in
 [`oscalDiagnostics.ts`](../src/domain/oscalDiagnostics.ts) verankert.
 `messageKey` und `signature` werden dort deterministisch aus Stufe, Code, Pfad
-und Validatorpin abgeleitet, damit sie nicht je Aufrufstelle neu erfunden
-werden. `artifact.key`, `artifact.rootType` und `artifact.oscalVersion` sind
-`null`, solange sie nicht aus einer geschlossenen Menge belegt sind — sie
-werden nie aus dem Dokument geraten.
+und Validatorpin abgeleitet. `artifact.key`, `artifact.rootType` und
+`artifact.oscalVersion` sind `null`, solange sie nicht aus einer geschlossenen
+Menge belegt sind — sie werden nie aus dem Dokument geraten.
 
 ### Projekt-Props-Diagnosen
 
@@ -1803,12 +1512,11 @@ Verboten sind insbesondere:
 - rohe doppelte Member-Namen und die zugehörigen Werte;
 - unvertrauenswürdiges Markup oder dessen HTML-Rendering.
 
-Beispiel: Ein roher Validatorbefund mit `failedValue: "<EVIDENZ>"`, lokalem
-Dateipfad und Stacktrace wird ausschließlich als Code, Stufe, sicherer
-Strukturpfad und Message-Key ausgegeben. Der Marker, Pfad und Stack erscheinen
-weder in Einzeldiagnose noch CI-Zusammenfassung. Kann ein Validatorbefund nicht
-sicher normalisiert werden, entsteht stattdessen
-`OSCAL_VALIDATOR_OUTPUT_UNRECOGNIZED` und das Gate schlägt fehl.
+Ein roher Validatorbefund mit Dokumentwert, lokalem Dateipfad und Stacktrace
+wird ausschließlich als Code, Stufe, sicherer Strukturpfad und Message-Key
+ausgegeben. Kann ein Validatorbefund nicht sicher normalisiert werden,
+entsteht stattdessen `OSCAL_VALIDATOR_OUTPUT_UNRECOGNIZED` und das Gate
+schlägt fehl.
 
 ## Bekannte BSI-Schemaabweichungen
 
@@ -1836,7 +1544,7 @@ unverzichtbares ausgeliefertes Artefakt wäre eine neue, ADR-pflichtige
 Produktentscheidung; sie darf weder durch eine Diagnosesignatur noch durch eine
 Änderung der Sperrsemantik dieses Korpuslaufs entstehen.
 
-**Tree-Abwesenheit (ADR-7-Nachtrag, 2026-08-18):** Verschwindet der
+**Tree-Abwesenheit:** Verschwindet der
 registrierte Pfad eines gesperrten Artefakts vollständig aus dem gepinnten
 BSI-Tree, statt nur schema-defekt zu bleiben, gilt das als dieselbe inverse
 Erwartung wie ein Schemafehlschlag. `fetch-catalog.mjs`, der Catalog-Sync-Guard
@@ -1869,9 +1577,9 @@ die Prüftiefendifferenz und die Reichweite der namespace-gebundenen Constraints
 
 ## Profile Resolution — Resolver-Vertrag, Phasen, Orakel
 
-**Status:** Seit GSPP-291 (Commit B) ist die deterministische Profile
-Resolution mit kontrolliertem Builder, verpflichtendem Bauzeitlauf und
-zweigeteiltem Referenznachweis umgesetzt. Die Ausgabe ist ein Dokument
+**Status:** Deterministische Profile Resolution mit kontrolliertem Builder,
+verpflichtendem Bauzeitlauf und zweigeteiltem Referenznachweis. Die Ausgabe ist
+ein Dokument
 mit Root-Key `catalog`, das vollständig über den kontrollierten Builder
 erschaffen wird; Rohobjekte fremder Herkunft gelangen nie in den
 Ergebnisgraphen.
@@ -1926,12 +1634,11 @@ Ergebnisgraphen.
   Verbrauch einer Importbindung wird case-insensitiv bestimmt.
 
 **Draft-Status:** Die NIST-Spezifikation
-(https://pages.nist.gov/OSCAL/learn/concepts/processing/profile-resolution/,
-Stand 2026-07-29) trägt den Hinweis „work in progress and is subject to
-change“ und wird nicht als endgültig normativ dargestellt. Sie bleibt
-dennoch verbindlicher Umsetzungsmaßstab, weil keine konkurrierende
-Norm existiert. Vollständige Konformität wird weder für hergeleitete
-Fixtures noch insgesamt behauptet.
+(https://pages.nist.gov/OSCAL/learn/concepts/processing/profile-resolution/)
+trägt den Hinweis „work in progress and is subject to change“. Sie bleibt
+verbindlicher Umsetzungsmaßstab, weil keine konkurrierende Norm existiert.
+Vollständige Konformität wird weder für hergeleitete Fixtures noch insgesamt
+behauptet.
 
 **Abdeckungsgrenzen:** Der BSI-Realkorpus (3 Profile am Snapshot 9008ca0)
 deckt `include-all`, `include-controls`, `as-is` und `set-parameters`
@@ -1968,8 +1675,7 @@ werden.
   (`metadata.last-modified`, Dokument-UUID am Körper,
   resolution-tool/source-profile) symmetrisch entfernt; zusätzlich
   feste BSI-Differenzregistry (`src/test/fixtures/bsiProfileResolutionDifferences.ts`,
-  snapshotgebunden und deshalb bei den Testdaten statt beim auswertenden
-  Skript) und symmetrische Normalisierung ausschließlich
+  snapshotgebunden) und symmetrische Normalisierung ausschließlich
   belegter NIST-XML-Whitespace-Artefakte in `prose`,
   `params[].select.choice[]` und `citation.text`.
 - **Übrige Semantik:** Kleine synthetische Fixtures, deren Erwartungs-

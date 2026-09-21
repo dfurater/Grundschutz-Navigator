@@ -104,10 +104,29 @@ jobs:
           VITE_IMPRESSUM_EMAIL: ${{ secrets.VITE_IMPRESSUM_EMAIL }}
         run: npm run build
 
+      # App-SBOM (GSPP-426): maschinenlesbare Zutatenliste der produktiven
+      # npm-Abhängigkeiten der ausgelieferten App — ergänzt den
+      # Herkunftsnachweis, ersetzt ihn nicht. Lockfile-basiert
+      # (`--package-lock-only`), ohne Dev-Abhängigkeiten, als CycloneDX-JSON.
+      # Die Datei liegt bewusst unter `$RUNNER_TEMP`, nicht unter `dist/`,
+      # damit sie nicht als Teil der GitHub-Pages-Auslieferung veröffentlicht
+      # wird.
+      - name: Generate App SBOM (CycloneDX)
+        run: npm sbom --package-lock-only --omit=dev --sbom-format=cyclonedx --sbom-type=application > "$RUNNER_TEMP/grundschutz-navigator.sbom.cyclonedx.json"
+
       - name: Generate SLSA Provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: 'dist/**'
+
+      # Eigener SBOM-Attestierungsschritt für dieselben `dist/**`: `sbom-path`
+      # am bestehenden Schritt würde dessen Provenance-Modus ersetzen, statt
+      # ihn zu ergänzen.
+      - name: Attest App SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: 'dist/**'
+          sbom-path: '${{ runner.temp }}/grundschutz-navigator.sbom.cyclonedx.json'
 
       - name: Setup Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0

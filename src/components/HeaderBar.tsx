@@ -9,6 +9,8 @@ import { IconSearch, IconShield, IconMenu } from './icons';
 export interface HeaderBarProps {
   readonly onSearch?: (term: string) => void;
   readonly onMenuToggle?: () => void;
+  readonly catalogSwitcherOpen?: boolean;
+  readonly onCatalogSwitcherOpenChange?: (open: boolean) => void;
   readonly className?: string;
 }
 
@@ -44,6 +46,8 @@ function isEditableTarget(target: EventTarget | null) {
 export function HeaderBar({
   onSearch,
   onMenuToggle,
+  catalogSwitcherOpen,
+  onCatalogSwitcherOpenChange,
   className = '',
 }: HeaderBarProps) {
   const [searchValue, setSearchValue] = useState('');
@@ -117,7 +121,7 @@ export function HeaderBar({
         </div>
       </div>
 
-      <CatalogSwitcher />
+      <CatalogSwitcher open={catalogSwitcherOpen} onOpenChange={onCatalogSwitcherOpenChange} />
     </header>
   );
 }
