@@ -18,10 +18,28 @@ vi.mock('@/hooks/useMediaQuery', () => ({
 }));
 
 vi.mock('@/components/HeaderBar', () => ({
-  HeaderBar: ({ onMenuToggle }: { onMenuToggle: () => void; onSearch: (term: string) => void }) => (
-    <button type="button" onClick={onMenuToggle}>
-      Menu
-    </button>
+  HeaderBar: ({
+    onMenuToggle,
+    catalogSwitcherOpen,
+    onCatalogSwitcherOpenChange,
+  }: {
+    onMenuToggle: () => void;
+    onSearch: (term: string) => void;
+    catalogSwitcherOpen: boolean;
+    onCatalogSwitcherOpenChange: (open: boolean) => void;
+  }) => (
+    <>
+      <button type="button" onClick={onMenuToggle}>
+        Menu
+      </button>
+      <button
+        type="button"
+        onClick={() => onCatalogSwitcherOpenChange(!catalogSwitcherOpen)}
+      >
+        Katalog wechseln
+      </button>
+      <output data-testid="catalog-switcher-open">{String(catalogSwitcherOpen)}</output>
+    </>
   ),
 }));
 
@@ -115,7 +133,7 @@ describe('AppShell', () => {
     mockedUseMediaQuery.mockReturnValue(false);
   });
 
-  it('disables sidebar transitions when reduced motion is preferred', () => {
+  it('überblendet die Drawer-Bewegung über translate und schaltet sie bei Reduced Motion ab', () => {
     const { container, rerender } = render(
       <MemoryRouter initialEntries={['/']}>
         <AppShell />
@@ -124,7 +142,7 @@ describe('AppShell', () => {
 
     const sidebar = container.querySelector('aside');
     expect(sidebar).toHaveStyle({
-      transition: 'width var(--duration-normal) var(--easing-default), transform var(--duration-normal) var(--easing-default)',
+      transition: 'width var(--duration-normal) var(--easing-default), translate var(--duration-normal) var(--easing-default)',
     });
 
     mockedUseMediaQuery.mockReturnValue(true);
@@ -266,6 +284,49 @@ describe('AppShell', () => {
       .not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Impressum' }))
       .not.toBeInTheDocument();
+  });
+
+  // Das Switcher-Menü sitzt im Stacking-Context des Headers und bliebe hinter
+  // dem Drawer. Statt eines z-index-Eingriffs weicht mobil der Drawer — über
+  // denselben State, den Backdrop, X-Schalter und Tree-Auswahl schon nutzen,
+  // und damit über die bestehende transform-Transition des `aside` (GSPP-440).
+  it('schließt den mobilen Drawer, sobald der Katalog-Switcher öffnet', () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={['/']}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    expect(container.querySelector('aside')?.className).not.toContain('-translate-x-full');
+    expect(screen.getByTestId('mobile-nav-backdrop')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Katalog wechseln' }));
+
+    expect(screen.getByTestId('catalog-switcher-open')).toHaveTextContent('true');
+    expect(container.querySelector('aside')?.className).toContain('-translate-x-full');
+    expect(screen.queryByTestId('mobile-nav-backdrop')).not.toBeInTheDocument();
+  });
+
+  // Gegenrichtung über denselben gemeinsamen Zustand. Der Hamburger löst bei
+  // Maus wie bei Tastatur denselben onClick-Pfad aus; der Outside-`mousedown`
+  // des Switchers erreicht die Tastaturaktivierung nicht und ließe beide
+  // Overlays offen (GSPP-440).
+  it('schließt das Katalog-Switcher-Menü, sobald der mobile Drawer öffnet', () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={['/']}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Katalog wechseln' }));
+    expect(screen.getByTestId('catalog-switcher-open')).toHaveTextContent('true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+
+    expect(screen.getByTestId('catalog-switcher-open')).toHaveTextContent('false');
+    expect(container.querySelector('aside')?.className).not.toContain('-translate-x-full');
+    expect(screen.getByTestId('mobile-nav-backdrop')).toBeInTheDocument();
   });
 
   it('registers the canonical catalog-scoped control route', () => {
