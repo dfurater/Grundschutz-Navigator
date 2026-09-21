@@ -56,20 +56,29 @@ const CHROMIUM_PARAGRAPH_SENTENCE =
 
 /*
  * Exakter Pin, positiv definiert: drei numerische Stellen, optional gefolgt
- * von Vorab- oder Build-Anhang. Jede andere Form ist damit ein Verstoß, ohne
+ * von genau einem Vorab-Anhang (`-…`) und genau einem Build-Anhang (`+…`) aus
+ * punktgetrennten Bezeichnern. Jede andere Form ist damit ein Verstoß, ohne
  * dass sie aufgezählt werden müsste — der Default ist fail-closed. Das Muster
  * kommt ohne `semver` aus, das keine direkte Abhängigkeit des Repositoriums
  * ist.
+ *
+ * Die Form ist bewusst linear geschrieben: An jeder Verzweigung entscheiden
+ * disjunkte Zeichenklassen (Ziffer gegen Punkt, Trennzeichen gegen
+ * Bezeichnerzeichen), sodass kein Backtracking überlappender Wiederholungen
+ * entsteht (CodeQL-Inefficient-RegExp, Sonar S5852). Dasselbe Muster erkennt
+ * unten Versionsliterale — Pin-Grammatik und Literal-Grammatik sind eine.
  */
-const EXACT_PIN_PATTERN = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)*$/;
+const EXACT_PIN_PATTERN =
+  /^\d+\.\d+\.\d+(?:-[\dA-Za-z]+(?:[.-][\dA-Za-z]+)*)?(?:\+[\dA-Za-z]+(?:[.-][\dA-Za-z]+)*)?$/;
 
 /*
- * Versionsliteral: ein in Backticks gesetztes Token, das mit einer Ziffer
- * beginnt und ausschließlich aus Ziffern und Punkten besteht. Zahlen ohne
+ * Versionsliteral: ein in Backticks gesetztes Token in Pin-Grammatik — also
+ * auch mit Vorab- oder Build-Anhang wie `5.0.0-beta.1`. Ein abgeschriebener
+ * Pin in erweiterter Form liefe sonst unbeanstandet durch. Zahlen ohne
  * Backticks (etwa Portnummern oder Coverage-Schwellen) sind keine Literale
  * und bleiben unberührt.
  */
-const VERSION_LITERAL_CONTENT_PATTERN = /^[0-9][0-9.]*$/;
+const VERSION_LITERAL_CONTENT_PATTERN = EXACT_PIN_PATTERN;
 
 const VITEST_TRIO = ['vitest', '@vitest/coverage-v8', '@vitest/browser-playwright'];
 const PLAYWRIGHT_PACKAGE = 'playwright';
@@ -168,18 +177,25 @@ export function parseSection(documentation) {
  * Liest die Pin-Tabelle als Zusagen: erste Zelle die Paketnamen (eine Zeile
  * darf mehrere nennen, die sich eine Pin-Eigenschaft teilen), zweite Zelle
  * die zugesagte Pin-Eigenschaft statt einer Zahl.
+ *
+ * Gesucht wird ausschließlich im abgegrenzten Abschnitt: Eine Tabelle, die
+ * aus dem Abschnitt heraus unter eine spätere Überschrift wandert, ist keine
+ * geprüfte Zusage mehr — der Guard schlägt dann fehl, statt sie am alten
+ * Fundort weiter zu prüfen.
  */
-export function parseDependencyClaims(documentation) {
-  const headerIndex = documentation.indexOf(DEPENDENCY_TABLE_HEADER);
+export function parseDependencyClaims(documentation, section = parseSection(documentation)) {
+  const sectionText = section.lines.join('\n');
+  const toDocumentLine = (sectionLine) => section.startLine + sectionLine - 1;
+  const headerIndex = sectionText.indexOf(DEPENDENCY_TABLE_HEADER);
   if (headerIndex === -1) {
     throw new ToolchainContractError(
       `${DOCUMENTATION_PATH}: Die Pin-Tabelle mit der Kopfzeile `
-      + `"${DEPENDENCY_TABLE_HEADER}" ist nicht mehr auffindbar.`,
+      + `"${DEPENDENCY_TABLE_HEADER}" ist im Abschnitt "${SECTION_HEADING}" nicht mehr auffindbar.`,
     );
   }
 
-  const lines = documentation.split('\n');
-  const headerLine = lineNumberAt(documentation, headerIndex);
+  const lines = sectionText.split('\n');
+  const headerLine = lineNumberAt(sectionText, headerIndex);
   const claims = [];
 
   // Kopfzeile und die darauf folgende Trennzeile überspringen.
@@ -201,24 +217,24 @@ export function parseDependencyClaims(documentation) {
      */
     if (packages.length === 0) {
       throw new ToolchainContractError(
-        `${DOCUMENTATION_PATH}:${index + 1}: Die Tabellenzeile nennt kein in Backticks `
+        `${DOCUMENTATION_PATH}:${toDocumentLine(index + 1)}: Die Tabellenzeile nennt kein in Backticks `
         + 'gesetztes Paket und ist damit nicht auswertbar.',
       );
     }
 
     if (pinProperty === '') {
       throw new ToolchainContractError(
-        `${DOCUMENTATION_PATH}:${index + 1}: Die Tabellenzeile nennt `
+        `${DOCUMENTATION_PATH}:${toDocumentLine(index + 1)}: Die Tabellenzeile nennt `
         + `${packages.join(', ')}, aber keine auswertbare Pin-Eigenschaft.`,
       );
     }
 
-    claims.push({ line: index + 1, packages, pinProperty });
+    claims.push({ line: toDocumentLine(index + 1), packages, pinProperty });
   }
 
   if (claims.length === 0) {
     throw new ToolchainContractError(
-      `${DOCUMENTATION_PATH}:${headerLine}: Die Pin-Tabelle enthält keine auswertbare Zeile.`,
+      `${DOCUMENTATION_PATH}:${toDocumentLine(headerLine)}: Die Pin-Tabelle enthält keine auswertbare Zeile.`,
     );
   }
 
@@ -245,9 +261,10 @@ export function assertExpectedTable(claims) {
       expected.packages.every((packageName) => claim.packages.includes(packageName));
 
     if (!packagesMatch || claim.pinProperty !== expected.pinProperty) {
+      const quotedPackages = expected.packages.map((packageName) => '`' + packageName + '`').join(' + ');
       throw new ToolchainContractError(
         `${DOCUMENTATION_PATH}:${claim.line}: Die Tabellenzeile weicht von der geprüften Form ab. `
-        + `Erwartet wird "| ${expected.packages.map((packageName) => `\`${packageName}\``).join(' + ')} | ${expected.pinProperty} | …".`,
+        + `Erwartet wird "| ${quotedPackages} | ${expected.pinProperty} | …".`,
       );
     }
   }
@@ -256,18 +273,21 @@ export function assertExpectedTable(claims) {
 /**
  * Fordert den Chromium-Absatz in seiner Satzform: Er belegt die Bindung der
  * Revision an die aufgelöste `playwright-core`-Installation, ohne eine Zahl
- * zu wiederholen.
+ * zu wiederholen. Geprüft wird im abgegrenzten Abschnitt — ein Absatz unter
+ * einer späteren Überschrift erfüllt die Zusage nicht.
  */
-export function assertChromiumParagraph(documentation) {
-  const match = buildClaimPattern(CHROMIUM_PARAGRAPH_SENTENCE).exec(documentation);
+export function assertChromiumParagraph(documentation, section = parseSection(documentation)) {
+  const sectionText = section.lines.join('\n');
+  const match = buildClaimPattern(CHROMIUM_PARAGRAPH_SENTENCE).exec(sectionText);
   if (match === null) {
     throw new ToolchainContractError(
-      `${DOCUMENTATION_PATH}: Der Absatz zur Chromium-Bindung ist nicht mehr auffindbar. `
+      `${DOCUMENTATION_PATH}: Der Absatz zur Chromium-Bindung ist im Abschnitt `
+      + `"${SECTION_HEADING}" nicht mehr auffindbar. `
       + `Erwartet wird die Satzform: "${CHROMIUM_PARAGRAPH_SENTENCE}" (Zeilenumbrüche an Wortgrenzen sind zulässig).`,
     );
   }
 
-  return { line: lineNumberAt(documentation, match.index) };
+  return { line: section.startLine + lineNumberAt(sectionText, match.index) - 1 };
 }
 
 /**
@@ -375,12 +395,22 @@ function resolvePlaywrightCore() {
  * stillschweigend leerlaufen zu lassen.
  */
 export function collectContractViolations({ documentation, packageManifest, playwrightCore }) {
-  const violations = [];
-
   const section = parseSection(documentation);
-  const claims = parseDependencyClaims(documentation);
+  const claims = parseDependencyClaims(documentation, section);
   assertExpectedTable(claims);
-  const chromiumParagraph = assertChromiumParagraph(documentation);
+  const chromiumParagraph = assertChromiumParagraph(documentation, section);
+
+  return [
+    ...checkExactPins(claims, packageManifest),
+    ...checkTrioIdentity(claims, packageManifest),
+    ...checkCoreVersion(chromiumParagraph.line, packageManifest, playwrightCore),
+    ...checkChromiumFields(chromiumParagraph.line, playwrightCore),
+    ...checkNoVersionLiterals(documentation, section),
+  ];
+}
+
+function checkExactPins(claims, packageManifest) {
+  const violations = [];
 
   for (const claim of claims) {
     for (const packageName of claim.packages) {
@@ -409,33 +439,51 @@ export function collectContractViolations({ documentation, packageManifest, play
     }
   }
 
+  return violations;
+}
+
+function checkTrioIdentity(claims, packageManifest) {
   const trioPins = VITEST_TRIO.map((packageName) => readPin(packageManifest, packageName)?.pin ?? null);
-  if (new Set(trioPins).size !== 1) {
-    violations.push({
+  if (new Set(trioPins).size === 1) {
+    return [];
+  }
+
+  return [
+    {
       line: claims[0].line,
       subject: 'Vitest-Trio',
       expected: 'identische Pins für alle drei',
       measured: VITEST_TRIO.map((packageName, index) => `${packageName} ${trioPins[index] ?? 'fehlt'}`).join(', '),
       source: `${PACKAGE_MANIFEST_PATH} → dependencies/devDependencies`,
-    });
+    },
+  ];
+}
+
+function checkCoreVersion(paragraphLine, packageManifest, playwrightCore) {
+  const playwrightPin = readPin(packageManifest, PLAYWRIGHT_PACKAGE);
+  if (playwrightPin === null || playwrightCore?.version === playwrightPin.pin) {
+    return [];
   }
 
-  const playwrightPin = readPin(packageManifest, PLAYWRIGHT_PACKAGE);
-  if (playwrightPin !== null && playwrightCore?.version !== playwrightPin.pin) {
-    violations.push({
-      line: chromiumParagraph.line,
+  return [
+    {
+      line: paragraphLine,
       subject: PLAYWRIGHT_CORE_PACKAGE,
       expected: playwrightPin.pin,
       measured: playwrightCore?.version ?? 'nicht auflösbar',
       source: `${playwrightCore?.packagePath ?? PLAYWRIGHT_CORE_PACKAGE} → version`,
-    });
-  }
+    },
+  ];
+}
 
+function checkChromiumFields(paragraphLine, playwrightCore) {
+  const violations = [];
   const chromium = findChromium(playwrightCore?.browsersManifest, playwrightCore?.manifestPath);
+
   for (const field of ['revision', 'browserVersion']) {
     if (typeof chromium[field] !== 'string' || chromium[field] === '') {
       violations.push({
-        line: chromiumParagraph.line,
+        line: paragraphLine,
         subject: `Chromium-${field}`,
         expected: 'belegter Eintrag',
         measured: 'fehlt',
@@ -444,17 +492,17 @@ export function collectContractViolations({ documentation, packageManifest, play
     }
   }
 
-  for (const literal of findVersionLiterals(documentation, section)) {
-    violations.push({
-      line: literal.line,
-      subject: `Versionsliteral \`${literal.value}\``,
-      expected: 'kein Versionsliteral',
-      measured: literal.value,
-      source: `${DOCUMENTATION_PATH} → Abschnitt "${SECTION_HEADING}"`,
-    });
-  }
-
   return violations;
+}
+
+function checkNoVersionLiterals(documentation, section) {
+  return findVersionLiterals(documentation, section).map((literal) => ({
+    line: literal.line,
+    subject: `Versionsliteral \`${literal.value}\``,
+    expected: 'kein Versionsliteral',
+    measured: literal.value,
+    source: `${DOCUMENTATION_PATH} → Abschnitt "${SECTION_HEADING}"`,
+  }));
 }
 
 export function formatViolations(violations) {

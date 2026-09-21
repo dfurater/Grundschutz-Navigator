@@ -106,6 +106,21 @@ describe('parseDependencyClaims', () => {
     );
   });
 
+  it('schlägt fehl, wenn die Tabelle aus dem Abschnitt gewandert ist', () => {
+    const tableBlock = `| Abhängigkeit | Pin | Lizenz | Zweck |
+| --- | --- | --- | --- |
+| \`vitest\` + \`@vitest/coverage-v8\` + \`@vitest/browser-playwright\` | exakt, für alle drei identisch | MIT | Testbasis |
+| \`playwright\` | exakt | Apache-2.0 | Startet Chromium |
+`;
+    const relocated = DOCUMENTATION.replace(tableBlock, '').replace(
+      '## Verzeichnisstruktur',
+      `## Verzeichnisstruktur\n\n${tableBlock.trimEnd()}`,
+    );
+
+    expect(() => parseDependencyClaims(relocated)).toThrow(/im Abschnitt/);
+    expect(() => violationsFor({ documentation: relocated })).toThrow(/im Abschnitt/);
+  });
+
   it('schlägt fehl, wenn einer Paketzeile die Backticks um den Paketnamen fehlen', () => {
     const withoutBackticks = DOCUMENTATION.replace(
       '| `playwright` | exakt |',
@@ -169,6 +184,22 @@ describe('assertChromiumParagraph', () => {
     );
 
     expect(assertChromiumParagraph(reflowed)).toEqual({ line: 10 });
+  });
+
+  it('schlägt fehl, wenn der Absatz aus dem Abschnitt gewandert ist', () => {
+    const paragraph = `Die Versionen stehen in \`package.json\`, \`package-lock.json\` bindet sie samt
+Integritätshashes. Chromium ist an den gepinnten \`playwright\`-Stand gebunden:
+Der CI-Schritt lädt ausschließlich die Revision, die das \`browsers.json\` der
+von \`playwright\` aufgelösten \`playwright-core\`-Installation nennt; einen
+unversionierten Browser-Download gibt es nicht.
+`;
+    const relocated = DOCUMENTATION.replace(paragraph, '').replace(
+      '## Verzeichnisstruktur',
+      `## Verzeichnisstruktur\n\n${paragraph.trimEnd()}`,
+    );
+
+    expect(() => assertChromiumParagraph(relocated)).toThrow(/im Abschnitt/);
+    expect(() => violationsFor({ documentation: relocated })).toThrow(/im Abschnitt/);
   });
 
   it('schlägt fehl, wenn der Absatz umformuliert wurde', () => {
@@ -240,6 +271,21 @@ describe('collectContractViolations', () => {
       measured: '>=1.0.0 <2.0.0',
       source: 'package.json → devDependencies',
     });
+  });
+
+  it('akzeptiert Vorab- und Build-Anhang als exakte Pins', () => {
+    expect(
+      violationsFor({
+        packageManifest: {
+          devDependencies: {
+            vitest: '5.0.1-beta.1',
+            '@vitest/coverage-v8': '5.0.1-beta.1',
+            '@vitest/browser-playwright': '5.0.1-beta.1',
+            playwright: '1.63.0',
+          },
+        },
+      }),
+    ).toEqual([]);
   });
 
   it('meldet ungleiche Trio-Pins', () => {
@@ -344,6 +390,21 @@ describe('collectContractViolations', () => {
       subject: 'Versionsliteral `5.0.1`',
       expected: 'kein Versionsliteral',
       measured: '5.0.1',
+      source: 'docs/ARCHITECTURE.md → Abschnitt "## Browser-Testlane"',
+    });
+  });
+
+  it('meldet ein Versionsliteral mit Vorab-Anhang im geprüften Abschnitt', () => {
+    const documentation = DOCUMENTATION.replace(
+      'Die Lane nutzt `vitest` mit jsdom.',
+      'Die Lane nutzt `vitest` mit jsdom in `5.0.1-beta.2`.',
+    );
+
+    expect(violationsFor({ documentation })).toContainEqual({
+      line: 3,
+      subject: 'Versionsliteral `5.0.1-beta.2`',
+      expected: 'kein Versionsliteral',
+      measured: '5.0.1-beta.2',
       source: 'docs/ARCHITECTURE.md → Abschnitt "## Browser-Testlane"',
     });
   });
