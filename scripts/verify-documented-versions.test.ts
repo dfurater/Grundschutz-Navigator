@@ -250,23 +250,17 @@ describe('findVersionLiterals', () => {
     expect(findVersionLiterals(DOCUMENTATION)).toEqual([]);
   });
 
-  it('meldet ein Versionsliteral im Abschnitt mit Zeile', () => {
-    const withLiteral = DOCUMENTATION.replace(
-      'Die Lane nutzt `vitest` mit jsdom.',
-      'Die Lane nutzt `vitest` mit jsdom in `5.0.1`.',
-    );
+  it.each(['5.0.1', '5.0.1-rc.1+build.2'])(
+    'meldet das Versionsliteral %s im Abschnitt mit Zeile',
+    (value) => {
+      const withLiteral = DOCUMENTATION.replace(
+        'Die Lane nutzt `vitest` mit jsdom.',
+        `Die Lane nutzt \`vitest\` mit jsdom in \`${value}\`.`,
+      );
 
-    expect(findVersionLiterals(withLiteral)).toEqual([{ line: 3, value: '5.0.1' }]);
-  });
-
-  it('meldet ein Versionsliteral mit kombiniertem Vorab- und Build-Anhang', () => {
-    const withLiteral = DOCUMENTATION.replace(
-      'Die Lane nutzt `vitest` mit jsdom.',
-      'Die Lane nutzt `vitest` mit jsdom in `5.0.1-rc.1+build.2`.',
-    );
-
-    expect(findVersionLiterals(withLiteral)).toEqual([{ line: 3, value: '5.0.1-rc.1+build.2' }]);
-  });
+      expect(findVersionLiterals(withLiteral)).toEqual([{ line: 3, value }]);
+    },
+  );
 
   it('meldet kein Literal außerhalb des Abschnitts', () => {
     const outsideOnly = '# Ohne Abschnitt\n\nDie Version `9.9.9` steht hier.\n';
@@ -418,55 +412,13 @@ describe('collectContractViolations', () => {
     });
   });
 
-  it('meldet ein Versionsliteral im geprüften Abschnitt', () => {
-    const documentation = DOCUMENTATION.replace(
-      'Die Lane nutzt `vitest` mit jsdom.',
-      'Die Lane nutzt `vitest` mit jsdom in `5.0.1`.',
-    );
-
-    expect(violationsFor({ documentation })).toContainEqual({
-      line: 3,
-      subject: 'Versionsliteral `5.0.1`',
-      expected: 'kein Versionsliteral',
-      measured: '5.0.1',
-      source: 'docs/ARCHITECTURE.md → Abschnitt "## Browser-Testlane"',
-    });
-  });
-
-  it('meldet ein Versionsliteral mit Vorab-Anhang im geprüften Abschnitt', () => {
-    const documentation = DOCUMENTATION.replace(
-      'Die Lane nutzt `vitest` mit jsdom.',
-      'Die Lane nutzt `vitest` mit jsdom in `5.0.1-beta.2`.',
-    );
-
-    expect(violationsFor({ documentation })).toContainEqual({
-      line: 3,
-      subject: 'Versionsliteral `5.0.1-beta.2`',
-      expected: 'kein Versionsliteral',
-      measured: '5.0.1-beta.2',
-      source: 'docs/ARCHITECTURE.md → Abschnitt "## Browser-Testlane"',
-    });
-  });
-
-  it('meldet ein Versionsliteral mit kombiniertem Vorab- und Build-Anhang im geprüften Abschnitt', () => {
-    const documentation = DOCUMENTATION.replace(
-      'Die Lane nutzt `vitest` mit jsdom.',
-      'Die Lane nutzt `vitest` mit jsdom in `5.0.1-rc.1+build.2`.',
-    );
-
-    expect(violationsFor({ documentation })).toContainEqual({
-      line: 3,
-      subject: 'Versionsliteral `5.0.1-rc.1+build.2`',
-      expected: 'kein Versionsliteral',
-      measured: '5.0.1-rc.1+build.2',
-      source: 'docs/ARCHITECTURE.md → Abschnitt "## Browser-Testlane"',
-    });
-  });
-
   it.each([
+    ['5.0.1', 'dreiteilige Version'],
+    ['5.0.1-beta.2', 'Version mit Vorab-Anhang'],
+    ['5.0.1-rc.1+build.2', 'Version mit kombiniertem Vorab- und Build-Anhang'],
     ['1243', 'einteilige Chromium-Revision'],
     ['153.0.8010.12', 'vierteilige Chrome-for-Testing-Version'],
-  ])('meldet die abgeschriebene %s %s im geprüften Abschnitt', (value) => {
+  ])('meldet das Versionsliteral %s (%s) im geprüften Abschnitt', (value) => {
     const documentation = DOCUMENTATION.replace(
       'Die Lane nutzt `vitest` mit jsdom.',
       `Die Lane nutzt \`vitest\` mit jsdom in \`${value}\`.`,
