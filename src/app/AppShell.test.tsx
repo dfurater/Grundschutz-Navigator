@@ -133,7 +133,7 @@ describe('AppShell', () => {
     mockedUseMediaQuery.mockReturnValue(false);
   });
 
-  it('disables sidebar transitions when reduced motion is preferred', () => {
+  it('überblendet die Drawer-Bewegung über translate und schaltet sie bei Reduced Motion ab', () => {
     const { container, rerender } = render(
       <MemoryRouter initialEntries={['/']}>
         <AppShell />
@@ -142,7 +142,7 @@ describe('AppShell', () => {
 
     const sidebar = container.querySelector('aside');
     expect(sidebar).toHaveStyle({
-      transition: 'width var(--duration-normal) var(--easing-default), transform var(--duration-normal) var(--easing-default)',
+      transition: 'width var(--duration-normal) var(--easing-default), translate var(--duration-normal) var(--easing-default)',
     });
 
     mockedUseMediaQuery.mockReturnValue(true);

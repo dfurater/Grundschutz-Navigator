@@ -206,7 +206,7 @@ export function AppShell() {
             width: sidebarCollapsed ? 44 : sidebarWidth,
             transition: isSidebarResizing || prefersReducedMotion
               ? 'none'
-              : 'width var(--duration-normal) var(--easing-default), transform var(--duration-normal) var(--easing-default)',
+              : 'width var(--duration-normal) var(--easing-default), translate var(--duration-normal) var(--easing-default)',
           }}
         >
           {sidebarCollapsed ? (
