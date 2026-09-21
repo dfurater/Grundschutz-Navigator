@@ -109,14 +109,14 @@ describe('review-policy Schnitt zwischen Regeltabelle und Logik', () => {
 });
 
 describe('review-policy Autorenquelle', () => {
-  it('führt 6 globale Regeln, 23 gescopte Regeln und 8 Datei-Kontexte', () => {
+  it('führt 6 globale Regeln, 24 gescopte Regeln und 8 Datei-Kontexte', () => {
     expect(globalRules).toHaveLength(6);
-    expect(scopedRules).toHaveLength(23);
+    expect(scopedRules).toHaveLength(24);
     expect(fileContexts).toHaveLength(8);
-    expect(allRules).toHaveLength(29);
+    expect(allRules).toHaveLength(30);
   });
 
-  it('trägt die stabilen Schlüssel G1-sprache bis G6-pruefgrenzen und R1-integritaet bis R23-sonar-analysekonfiguration', () => {
+  it('trägt die stabilen Schlüssel G1-sprache bis G6-pruefgrenzen und R1-integritaet bis R24-doku-ist-zustand', () => {
     expect(globalRules.map((rule) => rule.key)).toEqual([
       'G1-sprache',
       'G2-anwendungskontext',
@@ -126,8 +126,8 @@ describe('review-policy Autorenquelle', () => {
       'G6-pruefgrenzen',
     ]);
     expect(scopedRules[0].key).toBe('R1-integritaet');
-    expect(scopedRules.at(-1)?.key).toBe('R23-sonar-analysekonfiguration');
-    expect(new Set(allRules.map((rule) => rule.key)).size).toBe(29);
+    expect(scopedRules.at(-1)?.key).toBe('R24-doku-ist-zustand');
+    expect(new Set(allRules.map((rule) => rule.key)).size).toBe(30);
   });
 
   it('ist wohlgeformt', () => {

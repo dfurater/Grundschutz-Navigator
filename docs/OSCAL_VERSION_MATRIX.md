@@ -1,8 +1,8 @@
 # OSCAL-Versionsmatrix und Migrationspolitik
 
-Dieses Dokument legt verbindlich fest, welche Kombinationen aus OSCAL-Root-Typ
-und deklarierter Modellversion der Navigator kennt, welches NIST-Schema für
-jede Kombination gilt, woher dieses Schema stammt und wie ein Versionswechsel
+Dieses Dokument legt fest, welche Kombinationen aus OSCAL-Root-Typ und
+deklarierter Modellversion der Navigator kennt, welches NIST-Schema für jede
+Kombination gilt, woher dieses Schema stammt und wie ein Versionswechsel
 abgearbeitet wird.
 
 Es beschreibt **was gegen welches Schema** geprüft wird. **Womit und wo**
@@ -12,16 +12,14 @@ geprüft wird, steht im [Validierungsvertrag](OSCAL_VALIDATION.md).
 
 Die Matrix lebt als Daten in
 [`src/domain/oscalVersionMatrix.mjs`](../src/domain/oscalVersionMatrix.mjs),
-**nicht** in `sourceRegistry.mjs`. Begründung:
+**nicht** in `sourceRegistry.mjs`:
 
 - Die Matrix führt alle **acht** OSCAL-Root-Modelle, auch die vier noch nicht
-  registrierten. Das Quellregister ist bewusst auf tatsächlich existierende
-  BSI-Upstream-Pfade begrenzt; dort Zellen für Modelle zu führen, zu denen es
-  kein Artefakt gibt, würde seine Aussage verwässern.
-- Die beiden Register beantworten verschiedene Fragen. Das Quellregister sagt,
-  welche Artefakte es gibt und welche Version das konkrete BSI-Dokument
-  deklariert. Die Matrix sagt, welche Root×Version-Paare der Standard kennt und
-  welches Schema dafür gilt.
+  registrierten. Das Quellregister ist auf tatsächlich existierende
+  BSI-Upstream-Pfade begrenzt; Zellen ohne Artefakt gehören nicht dorthin.
+- Das Quellregister sagt, welche Artefakte es gibt und welche Version das
+  konkrete BSI-Dokument deklariert. Die Matrix sagt, welche
+  Root×Version-Paare der Standard kennt und welches Schema dafür gilt.
 
 Jeder Fakt hat damit genau einen Ort:
 
@@ -32,7 +30,7 @@ Jeder Fakt hat damit genau einen Ort:
 | Deklarierte `oscal-version` eines konkreten BSI-Artefakts | `sourceRegistry.mjs` |
 | Lifecycle eines Artefakts (`supported`/`preview`/`draft`/`blocked-by-upstream`) | `sourceRegistry.mjs` |
 
-Der Lifecycle wird bewusst **nicht** in die Matrix dupliziert: er ist eine
+Der Lifecycle wird **nicht** in die Matrix dupliziert: er ist eine
 Eigenschaft des Artefakts, nicht der Root×Version-Zelle. Die Verbindung
 stellt `getSchemaPinForArtifact()` her.
 
@@ -62,8 +60,7 @@ reproduzierbar.
 
 `mapping-collection` wurde mit OSCAL 1.2.0 eingeführt. In den Releases v1.1.2
 und v1.1.3 liefert `oscal_mapping_schema.json` HTTP 404. Ein
-`mapping-collection`-Dokument mit einer Version unter 1.2.0 ist deshalb nicht
-„schwer validierbar", sondern in sich widersprüchlich und wird mit einer
+`mapping-collection`-Dokument mit einer Version unter 1.2.0 wird mit der
 eigenen Diagnose (`OSCAL_ROOT_VERSION_IMPOSSIBLE`) abgelehnt — auch für
 Versionen, die das Projekt gar nicht pinnt.
 
@@ -74,16 +71,13 @@ Bezugsmuster:
 
 Ablageort im Repository: `schemas/oscal/v<VERSION>/<ASSET>`
 
-Seit [GSPP-343](https://linear.app/grundschutz-plus-plus/issue/GSPP-343) liegen
-alle 30 existierenden Zellen als Datei dort — zusammen 2 967 207 Bytes. Die
-beiden unmöglichen `mapping-collection`-Zellen haben bewusst **keine** Datei.
-Eingecheckt wurden sie gemeinsam mit Validator, Paket-Lock, Hashprüfung und
-Implementierung, wie der Validierungsvertrag es verlangt.
+Alle 30 existierenden Zellen liegen als Datei dort — zusammen 2 967 207
+Bytes. Die beiden unmöglichen `mapping-collection`-Zellen haben **keine**
+Datei.
 
 Die Artefakte stammen unverändert aus den offiziellen NIST-Releases und stehen
 unter **CC0 1.0 / Public Domain** mit erbetener Quellennennung
 ([`LICENSE.md` @ v1.2.2](https://github.com/usnistgov/OSCAL/blob/v1.2.2/LICENSE.md)).
-Quelle ist das OSCAL-Projekt von NIST, <https://github.com/usnistgov/OSCAL>.
 
 ### Zwei Kommandos, zwei Aufgaben
 
@@ -98,20 +92,20 @@ Hand; das ist als Test festgehalten. Der Wartungslauf
 über das Netz bezogen werden darf, und läuft nur auf ausdrückliche Anforderung.
 
 `.gitattributes` schließt für `schemas/oscal/**` die Zeilenenden-Normalisierung
-aus (`-text`). Ohne diese Zeile würde ein Clone mit `core.autocrlf=true` die
-Bytes verändern und die Hashprüfung auf genau dieser Maschine falsch-rot
-machen, bei unverändertem Repository-Inhalt.
+aus (`-text`). Ein Clone mit `core.autocrlf=true` würde sonst die Bytes
+verändern und die Hashprüfung auf genau dieser Maschine falsch-rot machen,
+bei unverändertem Repository-Inhalt.
 
-Die Bytes werden zur Laufzeit **nicht** erneut gehasht. Der Bundler
+Die Bytes werden zur Laufzeit **nicht** erneut gehasht: Der Bundler
 transformiert sie, und ein im selben Bundle mitgelieferter Sollwert würde sich
-selbst bestätigen; die Abgrenzung zur Laufzeitprüfung der
+selbst bestätigen. Die Abgrenzung zur Laufzeitprüfung der
 `public/data/`-Artefakte steht in [INTEGRITY.md](./INTEGRITY.md#überblick).
 
 ### Die `$id` ist nicht aus dem Dateinamen ableitbar
 
 NIST verwendet bei drei der acht Root-Typen im Asset-Namen einen anderen
-Bezeichner als in der `$id`. Eine abgeleitete Prüfung würde dort falsch
-fehlschlagen; die `$id` ist deshalb pro Root-Typ explizit gepinnt.
+Bezeichner als in der `$id`. Die `$id` ist deshalb pro Root-Typ explizit
+gepinnt.
 
 | Asset-Name | `$id`-Bezeichner |
 | --- | --- |
@@ -165,25 +159,24 @@ nicht; nur der Hash trennt sie.
 ## Bauzeitgarantie: kein Schemabezug von einer fremden Origin
 
 Kein Schema wird zur Laufzeit von einem fremden Host bezogen. Die Bytes stammen
-ausnahmslos aus den eingecheckten, gehashten Dateien unter `schemas/oscal/`;
+aus den eingecheckten, gehashten Dateien unter `schemas/oscal/`;
 `github.com` und `csrc.nist.gov` werden zur Laufzeit nie angefragt.
 
-Das ist **nicht** gleichbedeutend mit „kein Netzverkehr“: Der Worker lädt den
-Chunk der ausgewählten Zelle zur Laufzeit als Modul **derselben Origin** nach,
-damit nicht alle 30 Schemas in einer Datei liegen. Wo diese Grenze im Code und
-im Browserorakel verläuft, steht in
+Das bedeutet **nicht** „kein Netzverkehr“: Der Worker lädt den Chunk der
+ausgewählten Zelle zur Laufzeit als Modul **derselben Origin** nach, damit
+nicht alle 30 Schemas in einer Datei liegen. Wo diese Grenze im Code und im
+Browserorakel verläuft, steht in
 [OSCAL_VALIDATION.md](./OSCAL_VALIDATION.md#schemazugriff-ein-lazy-chunk-derselben-origin-kein-externer-bezug).
 
 Die Garantie ruht auf drei Stützen:
 
-1. Es gibt genau einen Ort, der ein Schema beziehen darf:
+1. Genau ein Ort darf ein Schema beziehen:
    [`scripts/sync-oscal-schemas.mjs`](../scripts/sync-oscal-schemas.mjs). Er
    ist nicht Teil von `npm run build`, `npm run dev` oder `npm run
    fetch-catalog` und läuft nur auf ausdrückliche Anforderung.
 2. Der Startpunkt muss eine HTTPS-URL auf
-   `github.com/usnistgov/OSCAL/releases/download/` ohne Query sein; ein
-   manipulierter Pin mit fremdem Host wird vor dem ersten Netzaufruf
-   abgewiesen.
+   `github.com/usnistgov/OSCAL/releases/download/` ohne Query sein; ein Pin
+   mit fremdem Host wird vor dem ersten Netzaufruf abgewiesen.
 3. Die Matrix selbst enthält keinen Ladepfad — `resolveSchemaBinding()` liefert
    nur Metadaten und greift nie auf das Netz zu.
 
@@ -203,11 +196,10 @@ strenge NIST-Release-Form und die GitHub-Asset-Hosts
 letztere dürfen die signierte Query tragen, aber keine Credentials. Die Kette
 ist auf fünf Sprünge begrenzt.
 
-Ein automatisches Folgen wäre nicht ausreichend: die Hash- und
-`$id`-Prüfung schützt den **Inhalt**, nicht die **Netzgrenze**. Ein Redirect
-von der freigegebenen Release-URL auf einen fremden Host bliebe sonst
-unbemerkt, solange die gelieferten Bytes ihre Pins treffen. Wechselt GitHub
-den Asset-Host, scheitert der Wartungslauf fail-closed und benennt den
+Die Hash- und `$id`-Prüfung schützt den **Inhalt**, nicht die **Netzgrenze**:
+Ein Redirect von der freigegebenen Release-URL auf einen fremden Host bliebe
+sonst unbemerkt, solange die gelieferten Bytes ihre Pins treffen. Wechselt
+GitHub den Asset-Host, scheitert der Wartungslauf fail-closed und benennt den
 unerwarteten Host, statt ihm still zu folgen.
 
 ## Verhalten bei Versionsabweichung
@@ -228,8 +220,7 @@ Dokument wird nie „bestmöglich" interpretiert.
 
 Die Prüfreihenfolge ist festgelegt: Root-Typ, dann Versionsform, dann
 Modellexistenz, erst dann der Pin. Ein `mapping-collection` mit Version 1.0.4
-erhält deshalb die inhaltlich stärkere Diagnose „Modell existierte noch nicht"
-statt der unspezifischen „Version nicht gepinnt".
+erhält deshalb „Modell existierte noch nicht" statt „Version nicht gepinnt".
 
 Diagnosen nennen Artefaktschlüssel, Root-Typ, erwartete und gefundene Version
 — niemals Dokumentinhalte.
@@ -237,21 +228,18 @@ Diagnosen nennen Artefaktschlüssel, Root-Typ, erwartete und gefundene Version
 ### `metadata.version` ist kein Versionsindikator
 
 `metadata.version` ist die Dokumentversion des Autors, `metadata.oscal-version`
-die Modellversion. Nur letztere steuert die Schemaauswahl. Der BSI-Bestand
-belegt, warum das wichtig ist: `metadata.version` trägt dort Zeitstempel
-(`2026-07-29T06:42:34.226285+00:00`), QA-Marker (`1.0.1-qa`) und freie
-Bezeichner (`gsmap-oscal-export-v1`). Keiner davon ist eine OSCAL-Version.
+die Modellversion. Nur letztere steuert die Schemaauswahl. Im Bestand trägt
+`metadata.version` Zeitstempel (`2026-09-10T07:17:45.558103+00:00` in
+`public/data/catalog.json`) — keiner davon ist eine OSCAL-Version.
 
 ### `$schema` ist zulässig, aber nie Autorität
 
-Siehe [Validierungsvertrag](OSCAL_VALIDATION.md#die-schema-direktive-schema).
-Kurz: NIST deklariert `$schema` in jedem Root-Schema ausdrücklich als erlaubte
-Property, sie ist aber optional und wertfrei. Allein `metadata.oscal-version`
-wählt aus; ein widersprüchliches `$schema` führt zur Ablehnung.
+NIST deklariert `$schema` in jedem Root-Schema als erlaubte, optionale und
+wertfreie Property. Allein `metadata.oscal-version` wählt aus; ein
+widersprüchliches `$schema` führt zur Ablehnung. Details im
+[Validierungsvertrag](OSCAL_VALIDATION.md#die-schema-direktive-schema).
 
 ## Migrationspolitik
-
-Beide Fälle sind getrennt zu behandeln.
 
 ### Fall A — NIST veröffentlicht ein neues Release
 
@@ -262,27 +250,24 @@ deklariert oder eine Produktentscheidung sie verlangt.
 Zwingende Schritte, alle in **einem** Änderungssatz:
 
 1. Für jeden der acht Root-Typen prüfen, ob das Release-Asset existiert. Ein
-   404 ist eine verbotene Zelle und wird als solche modelliert, nicht als
-   Lücke behandelt.
+   404 ist eine verbotene Zelle und wird als solche modelliert.
 2. `PINNED_OSCAL_VERSIONS` erweitern und für jede existierende Zelle
    Dateiname, `$id`-Bezeichner, SHA-256 und Größe eintragen.
-3. Die `$id` jedes neuen Assets gegen den erwarteten Bezeichner prüfen — NIST
-   hat den Slug in der Vergangenheit nicht immer aus dem Dateinamen abgeleitet.
+3. Die `$id` jedes neuen Assets gegen den erwarteten Bezeichner prüfen.
 4. `npm run verify-oscal-schemas` läuft grün.
 5. Positiv- und Negativorakel ergänzen; die Coverage-Invariante in
    `validateVersionMatrix()` erzwingt Vollständigkeit.
 6. Diese Datei und die Tabelle im Validierungsvertrag aktualisieren.
 
 Eine ältere Version wird erst entfernt, wenn kein registriertes Artefakt sie
-mehr deklariert. Die Matrix schrumpft nie schneller als der Bestand.
+mehr deklariert.
 
 ### Fall B — ein BSI-Artefakt wechselt seine Version
 
-Ein Versionswechsel im Upstream ist eine Bestandsänderung, keine
-Standardänderung. Er wird im Sync-Lauf **automatisch bemerkt**: sowohl
-`scripts/fetch-catalog.mjs` als auch `scripts/catalog-sync-guard.mjs`
-vergleichen die gelesene `metadata.oscal-version` gegen die Registry-Erwartung
-und brechen bei Abweichung ab.
+Ein Versionswechsel im Upstream wird im Sync-Lauf **automatisch bemerkt**:
+sowohl `scripts/fetch-catalog.mjs` als auch `scripts/catalog-sync-guard.mjs`
+vergleichen die gelesene `metadata.oscal-version` gegen die
+Registry-Erwartung und brechen bei Abweichung ab.
 
 Zwingende Schritte:
 
@@ -305,10 +290,8 @@ liest jedes Dokument gegen die Version, die es selbst deklariert.
 OSCAL-Artefakte gegen die Matrix: vollständige Abdeckung, exakte
 Versionsübereinstimmung mit einem unabhängig ausgeschriebenen Orakel, ein
 auflösbarer Schema-Pin pro Artefakt und die Beschränkung auf genau die vier
-gepinnten Versionen.
-
-Das Orakel ist bewusst ausgeschrieben und nicht aus der Registry abgeleitet,
-damit eine stille Änderung an der Registry auffällt.
+gepinnten Versionen. Das Orakel ist ausgeschrieben, nicht aus der Registry
+abgeleitet — eine stille Registry-Änderung fällt damit auf.
 
 ## Deklarierte Versionen im Bestand
 
@@ -322,25 +305,29 @@ Git-Blob-SHA und SHA-256 jedes Dokuments wurden dabei gegen
 | `catalog-lieferkette` | `catalog` | 1.1.3 |
 | `catalog-mindeststandard-tls` | `catalog` | 1.1.3 |
 | `catalog-wlan` | `catalog` | 1.1.3 |
+| `catalog-source-gspp-kernel-g0` | `catalog` | 1.1.3 |
+| `catalog-source-gspp-methodik` | `catalog` | 1.1.3 |
+| `catalog-source-risikomanagement` | `catalog` | 1.1.3 |
+| `catalog-source-lieferkette-kernel` | `catalog` | 1.1.3 |
 | `profile-gspp` | `profile` | 1.1.3 |
 | `profile-lieferkette` | `profile` | 1.1.3 |
 | `profile-wlan` | `profile` | 1.1.3 |
 | `mapping-iso27001-annex-a-zu-gspp` | `mapping-collection` | 1.2.2 |
 | `mapping-itgs2023-zu-gspp` | `mapping-collection` | 1.2.1 |
-| `component-aws-security-hub` | `component-definition` | 1.1.3 |
+| `component-aws-security-hub` | `component-definition` | 1.2.2 |
 | `component-ga-lotse-grundmodul` | `component-definition` | 1.1.2 |
 | `component-keycloak` | `component-definition` | 1.2.2 |
 | `component-lieferkette` | `component-definition` | 1.1.2 |
 | `component-netzarchitektur` | `component-definition` | 1.2.2 |
 | `component-passwortrichtlinie` | `component-definition` | 1.1.2 |
 
-Die Component Definitions allein spannen drei Versionen, die beiden Mapping
+Die Component Definitions stehen auf zwei Versionen, die beiden Mapping
 Collections liegen auf zwei verschiedenen. Ein einzelner „OSCAL-1.1.3-Raw-Typ"
 deckt den Bestand nachweislich nicht ab.
 
 ## Quellen
 
-Alle abgerufen 2026-08-01.
+Pins ermittelt und Release-Links abgerufen 2026-08-01.
 
 - [NIST OSCAL Releases](https://github.com/usnistgov/OSCAL/releases)
 - [OSCAL 1.2.2](https://github.com/usnistgov/OSCAL/releases/tag/v1.2.2) ·

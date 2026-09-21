@@ -47,7 +47,7 @@ jobs:
   greptile-review-nudge:
     if: github.event.issue.pull_request && github.event.comment.user.login == 'greptile-apps[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
 
     # Job-Berechtigungen setzen jede nicht genannte Fähigkeit auf `none`.
     # `issues: write` trägt den Kommentar — ein Kommentar an einem Pull Request
@@ -78,5 +78,5 @@ jobs:
       # Ohne `npm ci`: Der Guard kommt mit Node-Bordmitteln aus.
       - name: Force a Greptile review when the required check is missing
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: node scripts/greptile-review-nudge.mjs

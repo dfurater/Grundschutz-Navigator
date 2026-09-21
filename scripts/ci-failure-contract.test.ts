@@ -92,16 +92,69 @@ afterEach(async () => {
 });
 
 describe('CI failure visibility contract', () => {
-  it('limits every job in all nine workflows to 20 minutes', async () => {
+  it('runs the catalog-sync guard only for pull-request events', async () => {
+    const catalogSyncGuard = jobScopes(await workflow('ci.yml')).get('catalog-sync-guard');
+
+    expect(catalogSyncGuard).toMatch(/^\x20{4}if: github\.event_name == 'pull_request'$/m);
+  });
+
+  // Verankert an der Gruppe auf Dateiebene: Eine bloße Teilstring-Suche nach
+  // `cancel-in-progress: false` ließe sich von einem tiefer eingerückten
+  // Job-Block erfüllen, während die Gruppe auf Dateiebene wieder abbricht.
+  // Der Schalter schützt den laufenden Scan; dass GitHub je Gruppe nur einen
+  // wartenden Lauf hält, bleibt davon unberührt — deshalb nennt der Testname
+  // die laufende Analyse und nicht die wartende.
+  it('serialises Sonar branch scans instead of cancelling the running one', async () => {
+    const sonar = await workflow('sonar.yml');
+
+    expect(sonar).toMatch(/\nconcurrency:\n\x20{2}group: [^\n]+\n\x20{2}cancel-in-progress: false\n/);
+  });
+
+  it('uses the github context token for the Greptile review nudge', async () => {
+    const nudge = await workflow('greptile-review-nudge.yml');
+
+    expect(nudge).toContain('GH_TOKEN: ${{ github.token }}');
+    expect(nudge).not.toContain('GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}');
+  });
+
+  // GSPP-423 staffelt die Job-Timeouts nach Schrittinventar statt uniform 20:
+  // 5 min für den Sekunden-Job (ein API-Read, ein Kommentar-Write, Node-Guard),
+  // 10 min für `npm ci` + kurze Node-Skripte ohne Build/Browser, 20 min für
+  // Suite/Build/Scan bzw. Netz-Varianz beim Upstream-Fetch (bewusst nicht
+  // verschärft ohne Laufzeitmessung), 30 min für `verify-catalog-merge`
+  // (25-min-Absolutbudget aus scripts/verify-catalog-deploy.mjs —
+  // DEFAULT_VERIFICATION_BUDGET_MS bindet Polling-Sleeps und 30-s-Requests an
+  // eine gemeinsame Deadline — plus 5 min Reserve für Checkout, Verify und
+  // Dispatch; Sleep-Anteile allein ≈ 16 min).
+  it('enforces the staggered job timeouts across all nine workflows', async () => {
+    const expectedTimeouts: Record<string, Record<string, number>> = {
+      'backmerge-main-to-develop.yml': { backmerge: 10 },
+      'ci.yml': { 'documentation-contract': 10, 'catalog-sync-guard': 10 },
+      'deploy.yml': { idempotency_guard: 20, 'build-and-deploy': 20 },
+      'greptile-review-nudge.yml': { 'greptile-review-nudge': 5 },
+      'release-prepare.yml': { prepare: 10 },
+      'sonar.yml': { sonarqube: 20 },
+      'update-catalog.yml': { 'check-and-sync': 20 },
+      'validate.yml': { validate: 20, sonarqube: 20 },
+      'verify-catalog-merge.yml': { 'verify-catalog-merge': 30 },
+    };
     let jobCount = 0;
 
     for (const name of WORKFLOW_NAMES) {
       const scopes = jobScopes(await workflow(name));
+      const expectedJobs = expectedTimeouts[name];
       expect(scopes.size, `${name} must contain at least one job`).toBeGreaterThan(0);
+      // Fail-closed bei neuen oder entfernten Jobs: Der Schlüsselsatz muss
+      // exakt der Staffel-Map entsprechen, sonst meldet der Test statt
+      // stillschweigend ein uniformes Limit zu prüfen.
+      expect([...scopes.keys()].sort(), `${name} job set`).toEqual(Object.keys(expectedJobs).sort());
       jobCount += scopes.size;
 
       for (const [job, scope] of scopes) {
-        expect(scope, `${name}:${job}`).toMatch(/^\x20{4}timeout-minutes: 20$/m);
+        const limit = expectedJobs[job];
+        expect(scope, `${name}:${job}`).toMatch(
+          new RegExp(`^\\x20{4}timeout-minutes: ${limit}$`, 'm'),
+        );
       }
     }
 

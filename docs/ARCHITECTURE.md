@@ -20,117 +20,32 @@ Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application 
 
 ## Browser-Testlane
 
-Die Standard-Lane bleibt `npm run test`: Sie läuft vollständig in jsdom und
-schließt Dateien unter `src/test/browser/**/*.browser.test.ts` explizit aus.
-Damit bleibt sie schnell und alle bestehenden Tests laufen unverändert weiter.
+`npm run test` läuft vollständig in jsdom und schließt Dateien unter `src/test/browser/**/*.browser.test.ts` explizit aus (Ausschluss in `vite.config.ts`).
 
-`npm run test:browser` startet die getrennte Vitest-Browser-Lane aus
-`vitest.browser.config.ts` mit dem Playwright-Provider und Chromium. Sie
-verwendet einen gemeinsamen Test-iframe (`isolate: false` auf `test`-Ebene;
-unter Vitest 4 hieß die Option `browser.isolate`). Eingeführt wurde die
-Einstellung, weil Vitest 4.1 den absoluten Dateipfad als Query-Parameter des
-isolierten iframes verwendete und ein lokaler Projektpfad mit `+` dabei in
-Leerzeichen dekodiert wurde, was den Ready-Handshake blockierte. Unter Vitest 5
-trägt dieser Grund nicht mehr: Die Lane läuft im Pfad `Grundschutz++ Navigator`
-auch mit `isolate: true` grün (gemessen 2026-09-07, 14 Tests). Der gemeinsame
-Frame bleibt dennoch gesetzt, weil der Egress-Guard auf ihm aufbaut — siehe die
-CSP-Begründung weiter unten. Jeder Test bereinigt seine
-eigene IndexedDB-Datenbank, und der Egress-Guard setzt seinen Zustand vor jedem
-Test zurück.
+`npm run test:browser` startet die getrennte Vitest-Browser-Lane aus `vitest.browser.config.ts` mit dem Playwright-Provider und Chromium. Sie verwendet einen gemeinsamen Test-iframe (`isolate: false`) und führt `ajv` in `optimizeDeps.include`, weil die Schemaprüfung das Paket erst zur Laufzeit importiert. Jeder Test bereinigt seine eigene IndexedDB-Datenbank, und der Egress-Guard setzt seinen Zustand vor jedem Test zurück.
 
-`optimizeDeps.include` führt `ajv` ausdrücklich auf. Die Schemaprüfung
-importiert das Paket erst zur Laufzeit; ohne den Eintrag entdeckt Vite es
-mitten im Lauf, optimiert es neu und lädt den Testframe neu. Unter Vitest 5
-verliert die gerade importierte Datei dabei ihren Suite-Kontext und scheitert
-mit „Vitest failed to find the current suite". Der Fehler tritt nur bei kaltem
-Optimizer-Cache und passender Zeitlage auf, weshalb er sich in CI zeigte und
-lokal nicht — die Vorab-Optimierung nimmt dem Reload den Anlass.
-
-| Abhängigkeit | Exakte Version | Lizenz | Zweck |
+| Abhängigkeit | Pin | Lizenz | Zweck |
 | --- | --- | --- | --- |
-| `vitest` + `@vitest/coverage-v8` | `5.0.0` | MIT | Kompatible Test- und Coverage-Basis für beide Vitest-Lanes |
-| `@vitest/browser-playwright` | `5.0.0` | MIT | Playwright-Provider für das Vitest-Browser-Projekt |
-| `playwright` | `1.63.0` | Apache-2.0 | Startet das gepinnte Chromium in CI und lokal |
+| `vitest` + `@vitest/coverage-v8` + `@vitest/browser-playwright` | exakt, für alle drei identisch | MIT | Kompatible Test-, Coverage- und Provider-Basis für beide Vitest-Lanes |
+| `playwright` | exakt | Apache-2.0 | Startet das gepinnte Chromium in CI und lokal |
 
-Die exakte `playwright`-Version `1.63.0` liefert laut ihrem mitinstallierten
-`browsers.json` Chromium-Revision `1243` als Chrome for Testing
-`153.0.8010.12`. Der CI-Schritt verwendet ausschließlich den lokalen Befehl
-`./node_modules/.bin/playwright install chromium`; es gibt keinen
-`latest`-Tag oder unversionierten Browser-Download.
+Die Versionen stehen in `package.json`, `package-lock.json` bindet sie samt Integritätshashes. Chromium ist an den gepinnten `playwright`-Stand gebunden: Der CI-Schritt lädt ausschließlich die Revision, die das `browsers.json` der von `playwright` aufgelösten `playwright-core`-Installation nennt; einen unversionierten Browser-Download gibt es nicht.
 
-Dass die Tabelle oben und der Absatz zur Chromium-Herkunft nach einem
-Versions-Bump noch stimmen, prüft `npm run verify-documented-versions` als
-Pflichtschritt im CI-Job `validate`. Der Guard vergleicht beide Stellen gegen
-`package.json` und `node_modules/playwright-core/browsers.json` und schlägt
-bei jeder Abweichung fehl — ebenso, wenn eine der Angaben gar nicht mehr
-auffindbar ist, damit eine Umformulierung die Prüfung nicht stillschweigend
-leerlaufen lässt. Er ist netzfrei und ergänzt den PR-Dokumentationsvertrag aus
-`scripts/pr-documentation-contract.mjs`, der nur bei Änderungen unter `src/`
-greift und Dependency-PRs deshalb nicht erfasst (GSPP-399).
+Ob der Vertrag nach einem Versions-Bump noch gilt, prüft `npm run verify-documented-versions` als Pflichtschritt im CI-Job `validate`. Der Guard verlangt exakte Pins in `package.json`, identische Pins für das Vitest-Trio, die zur `playwright`-Auflösung gehörende `playwright-core`-Version samt Chromium-Eintrag und einen Abschnitt ohne Versionsliteral. Er ist netzfrei und fail-closed: Eine nicht auffindbare Überschrift, Kopfzeile, Tabellenzeile oder Satzform lässt ihn ebenso fehlschlagen wie ein verletzter Vertragspunkt. Er ergänzt den PR-Dokumentationsvertrag aus `scripts/pr-documentation-contract.mjs`, der nur bei Änderungen unter `src/` greift und Dependency-PRs deshalb nicht erfasst.
 
-Der Referenztest in `src/test/browser/indexedDb.browser.test.ts` legt eine
-IndexedDB-Datenbank an, schreibt und liest einen Datensatz, löscht die
-Datenbank und prüft anschließend ihre Abwesenheit über
-`indexedDB.databases()`. Ein durch eine noch offene Verbindung blockiertes
-`deleteDatabase()` wartet bis zu zwei Sekunden auf deren Schließen und lehnt
-danach mit einem erklärenden Fehler ab, statt den Hook unbefristet hängen zu
-lassen.
+Der Referenztest in `src/test/browser/indexedDb.browser.test.ts` legt eine IndexedDB-Datenbank an, schreibt und liest einen Datensatz, löscht die Datenbank und prüft anschließend ihre Abwesenheit über `indexedDB.databases()`. Ein durch eine noch offene Verbindung blockiertes `deleteDatabase()` wartet bis zu zwei Sekunden auf deren Schließen und lehnt danach mit einem erklärenden Fehler ab.
 
-`src/test/browser/browserEgressDecision.ts` entscheidet als reine Funktion
-über HTTP(S)- und Service-Worker-Ereignisse. Der Playwright-Guard in
-`browserEgressGuard.ts` nutzt sie dafür; fremde HTTP(S)-Requests werden vor
-Namens- oder Netzauflösung abgebrochen. Für WebSockets setzt der Guard im
-tatsächlich ausgeführten Vitest-Testframe eine `connect-src`-CSP: Sie erlaubt
-nur den lokalen WebSocket-Host, verhindert fremde Verbindungen vor dem
-Netzwerkzugriff und erfasst die dadurch ausgelöste Browser-Verletzung mit
-eigenem Zähler. `context.routeWebSocket()` ist hier bewusst keine zweite
-Durchsetzungsschicht: Der Handler läuft im gemeinsamen Vitest-Testframe mit
-`isolate: false` nicht verlässlich. Der HTTP-Zähler wird erst beim
-zugehörigen `ERR_BLOCKED_BY_CLIENT`-Ereignis erhöht; der WebSocket-Zähler erst
-bei der CSP-Verletzung erhöht, während der Chromium-Referenztest den daraus
-resultierenden geschlossenen Browser-WebSocket prüft. Bereits vorhandene oder
-neu registrierte Service Worker gelten ebenfalls als Verstoß.
+`src/test/browser/browserEgressDecision.ts` entscheidet als reine Funktion über HTTP(S)- und Service-Worker-Ereignisse. Der Playwright-Guard in `browserEgressGuard.ts` bricht fremde HTTP(S)-Requests vor Namens- oder Netzauflösung ab. Für WebSockets setzt der Guard im ausgeführten Vitest-Testframe eine `connect-src`-CSP, die nur den lokalen WebSocket-Host erlaubt und die ausgelöste Browser-Verletzung mit eigenem Zähler erfasst. Der HTTP-Zähler wird erst beim zugehörigen `ERR_BLOCKED_BY_CLIENT`-Ereignis erhöht, der WebSocket-Zähler erst bei der CSP-Verletzung. Bereits vorhandene oder neu registrierte Service Worker gelten ebenfalls als Verstoß.
 
-Der WebSocket-Zustand liegt absichtlich im `window` des aktuellen Testframes:
-Die Browser-Commands lesen ihn aus derselben Ausführungsumgebung aus, die die
-CSP tatsächlich durchsetzt. Navigiert ein Test diesen Frame, entfernt der
-Browser die CSP zusammen mit dem Dokument. Der Guard registriert diese
-Navigation deshalb Node-seitig als Verstoß und installiert die CSP nicht still
-im Ziel-Dokument neu; der anschließende `afterEach` schlägt mit dem
-Egress-Marker fehl.
+Der WebSocket-Zustand liegt im `window` des aktuellen Testframes, weil die Browser-Commands ihn aus derselben Ausführungsumgebung lesen, die die CSP durchsetzt. Navigiert ein Test diesen Frame, entfernt der Browser die CSP mit dem Dokument. Der Guard registriert diese Navigation Node-seitig als Verstoß und installiert die CSP nicht still im Ziel-Dokument neu; der anschließende `afterEach` schlägt mit dem Egress-Marker fehl.
 
-`npm run test:browser:egress-negative` startet zwei getrennte innere
-Browser-Läufe für absichtlich nicht abgewartete `fetch`- und
-`navigator.sendBeacon`-Requests. Beide Ziele werden aus `window.location` als
-Loopback-Origin mit abweichendem Port abgeleitet; bei Port 65535 wird auf 65534
-ausgewichen. Der Guard bricht sie vor jeder Namens- oder Netzauflösung ab. Die
-Testkörper werfen nicht selbst und warten die Requests nicht ab. Erst der immer
-aktive `afterEach` ruft `assertNoViolations` über den Browser-Command auf und
-erzeugt den Egress-Marker.
+`npm run test:browser:egress-negative` startet zwei getrennte innere Browser-Läufe für absichtlich nicht abgewartete `fetch`- und `navigator.sendBeacon`-Requests. Beide Ziele werden aus `window.location` als Loopback-Origin mit abweichendem Port abgeleitet; bei Port 65535 wird auf 65534 ausgewichen. Der Guard bricht sie vor jeder Namens- oder Netzauflösung ab. Die Testkörper werfen nicht selbst und warten die Requests nicht ab; erst der immer aktive `afterEach` ruft `assertNoViolations` über den Browser-Command auf und erzeugt den Egress-Marker.
 
-Jeder innere Lauf **muss** mit genau einem Marker, der zum ausgewählten Fall,
-zur erwarteten HTTP-Methode und zum erwarteten Loopback-Pfad passt,
-fehlschlagen. Das Wrapper-Skript wird nur dann grün, wenn Vitests JSON-Report
-exakt diesen einen fehlgeschlagenen Test enthält. Eine falsche Methode, mehrere
-Marker, ein zusätzlicher Verstoß, ein unerwartet grüner Lauf, weitere
-Testfehler, Timeouts oder Runner-Signale lassen auch den Wrapper scheitern. Die
-Nachweise führen damit die HTTP-Cross-Origin-Pfade aus, ohne zusätzliche
-produktive Fetch-Quellen einzuführen.
+Jeder innere Lauf **muss** mit genau einem Marker fehlschlagen, der zum ausgewählten Fall, zur erwarteten HTTP-Methode und zum erwarteten Loopback-Pfad passt. Das Wrapper-Skript wird nur dann grün, wenn Vitests JSON-Report exakt diesen einen fehlgeschlagenen Test enthält. Eine falsche Methode, mehrere Marker, ein zusätzlicher Verstoß, ein unerwartet grüner Lauf, weitere Testfehler, Timeouts oder Runner-Signale lassen auch den Wrapper scheitern.
 
-Die Hook-Grenze kann keine Browser-Aufgabe erfassen, die erst *nach* Ende des
-Tests einen Request startet. Dafür wäre eine veränderte Testlaufzeit-Architektur
-erforderlich, nicht ein zufallsabhängiger Timeout. Die konsumierenden
-[GSPP-289](https://linear.app/grundschutz-plus-plus/issue/GSPP-289) und
-[GSPP-340](https://linear.app/grundschutz-plus-plus/issue/GSPP-340) führen
-deshalb einen eigenen Akzeptanznachweis für bewusst nicht abgewartete
-Requests.
+Die Hook-Grenze erfasst keine Browser-Aufgabe, die erst *nach* Ende des Tests einen Request startet. Dafür ist eine veränderte Testlaufzeit-Architektur erforderlich, kein Timeout.
 
-Die Browser-Lane erzeugt keine Coverage-Ausgabe. Die verbindlichen
-V8-Coverage-Schwellen bleiben ausschließlich in der jsdom-Lane
-(`npm run test:coverage`) und unverändert bei Lines 57, Branches 55,
-Functions 56 und Statements 54. So senkt die zusätzliche Infrastruktur weder
-die Messlatte noch vermischt sie Browser-Referenztests mit der bestehenden
-Quellabdeckung.
+Die Browser-Lane erzeugt keine Coverage-Ausgabe. Die verbindlichen V8-Coverage-Schwellen bleiben ausschließlich in der jsdom-Lane (`npm run test:coverage`): Lines 87, Branches 77, Functions 88, Statements 85 (`vite.config.ts`).
 
 ## Verzeichnisstruktur
 
@@ -236,7 +151,7 @@ BSI GitHub Repository
         │
         ▼
 npm run fetch-catalog → scripts/fetch-catalog.mjs
-• Abruf über die GitHub-API (Retry mit Backoff bei transienten Fehlern)
+• Abruf über die GitHub-API mit Retry bei transienten Fehlern
 • Snapshot-Pinning: BSI_SNAPSHOT_SHA aus upstream-manifest.json
 • sourceRegistry: einzige Ingestion-Quelle für Pfad, Root-Typ, Lifecycle und
   erwartete oscal-version je Artefakt
@@ -245,14 +160,13 @@ npm run fetch-catalog → scripts/fetch-catalog.mjs
 • Security-Guards: nur erlaubtes Repo, erlaubte Hosts, Pfade und Refs
 • registrierte preview-/draft-Artefakte werden transient geprüft, nicht ausgeliefert
 • catalogLineage.mjs projiziert für registrierte Profile die belegte Kette
-  Import-Fragment → back-matter.resource → exakter rlinks.href → Registry-Artefakt;
-  keine Pfadnormalisierung, kein Netzwerk und keine Änderung des Referenzresolvers
+  Import-Fragment → back-matter.resource → exakter rlinks.href → Registry-Artefakt
 • jeder supported Katalog und die direkten Namespace-CSVs → JSON + Provenance
 • Manifest v2 bindet Registry-Metadaten, Git-Blob-SHA und Content-SHA-256
-• Korpus-Cache (gitignoriert): 10 Dokumente der Lineages (Profile + Quell- und
-  Anwenderkataloge) → `.cache/upstream-corpus/` + Begleitmanifest; kein zweiter
-  Fetch, keine Env-Pfade, kein Überspringen — der Harnisch scheitert hart
-  ohne Cache
+• Korpus-Cache (gitignoriert, `.cache/upstream-corpus/` + Begleitmanifest)
+  versorgt den Bauzeitlauf der Profile Resolution mit den Lineage-Dokumenten
+  (Profile sowie Quell- und Anwenderkataloge); die Korpus-Suite prüft die
+  Vollständigkeit hart gegen das Begleitmanifest
         │
         ▼
 public/data/  (Dateimenge aus dem Quellregister abgeleitet)
@@ -262,29 +176,20 @@ public/data/  (Dateimenge aus dem Quellregister abgeleitet)
 • catalog-<catalogKey>-metadata.json
 • vocabularies.json               (Offizielle BSI-Vokabulare)
 • upstream-sources-metadata.json  (Vokabular-Provenance + Manifest v2 + Lineage-Projektion)
-• .cache/upstream-corpus/         (verpflichtender Bauzeitlauf: 10 Lineage-Dokumente)
         │
         ▼
-Profile Resolution (deterministisch, GSPP-291 Commit B)
+Profile Resolution (deterministisch)
 • Plan: Importgraph (Zyklus/Versions/Root-Prüfungen) → DAG-sichere Postorder
 • Selektion je Import, danach Merge (combine use-first/keep, flat/as-is/custom
   mit insert-controls/order) und Modify (set-parameter, alters) in der
   Reihenfolge Import → Merge → Modify
-• Ergebnis ausschließlich über `createOscalDerivedGraph()` (kontrollierter
-  Builder, kein Fremdobjekt, __proto__ als Data-Property, opakes
-  DerivedJsonTree-Handle, Vertrauensklasse class-2-local-user)
-• laufendes Arbeits- und Ausgabebudget (GSPP-345): eine Budgetinstanz je
-  Auflösungslauf, monotone Zähler, Prüfung VOR Operation und Allokation
+• Ergebnis ausschließlich über `createOscalDerivedGraph()`; laufendes
+  Arbeits- und Ausgabebudget mit monotonen Zählern und Prüfung VOR Operation
+  und Allokation (siehe unten)
 • jedes Zwischen- und Endergebnis durchläuft fail-closed dieselbe Objekt-,
   Root-, Versions- und Schema-Pipeline wie lokale Klasse-2-Dokumente
-• Back-matter: referenzierte Quellressourcen in Import-/Quellreihenfolge,
-  danach unverbrauchte Profilressourcen und übrige Profilmitglieder;
-  UUID-Kollisionen werden case-insensitiv nach first occurrence aufgelöst
-• Orakel zweigeteilt: BSI (3× resolved_catalog, feste Registry aus 21 Link-
-  und einer Positionsabweichung) und NIST (4× Baselines v1.5.0, vollständiges
-  Back-matter und as-is-Reihenfolge; nur belegte XML-Whitespace-Artefakte
-  symmetrisch normalisiert) plus synthetische Fixtures mit
-  Draft-/XSpec-Quellenangaben
+• Orakel: BSI- und NIST-Referenzdokumente plus synthetische Fixtures
+  (`scripts/profileResolutionCorpusOracle.ts`, `profileResolutionNistOracle`-Tests)
         │
         ▼
 CatalogContext (Einstiegskatalog eager, weitere bedarfsgerecht)
@@ -292,156 +197,51 @@ CatalogContext (Einstiegskatalog eager, weitere bedarfsgerecht)
 │  • fetchCatalogBuffer()    → ArrayBuffer
 │  • verifyArtifactIntegrity() → VerificationResult
 │  • parseCatalogInWorker()  → CatalogDocument { source, context, view }
-│                               source = unveränderter Quellgraph (ADR-2)
+│                               source = unveränderter Quellgraph,
 │                               view   = kataloggescopter, angereicherter Catalog
-│  • catalogReferenceProjection.ts → ruft referenceResolution.ts gegen source
-│                               + expliziten Kontext auf (ohne Netzwerk-,
-│                               Datei- oder Pfadauflösung) und ergänzt vor
-│                               Veröffentlichung die View: Control.links enthält
-│                               nur aufgelöste, kataloggescopte Ziele; der
-│                               Quellbaum wird dafür nur einmal indiziert
+│  • catalogReferenceProjection.ts projiziert aufgelöste, kataloggescopte
+│    Ziele in Control.links der View; der Quellbaum wird dafür nur einmal
+│    indiziert. Der Resolver führt kein I/O aus.
 └─ Vokabulare: fetchCatalogWithBuffer() → { buffer, text }
    • buildVocabularyRegistry()
    • fetchVocabularyProvenance() + verifyArtifactIntegrity()
-• Referenzauflösung trennt Fragmentziele nach dem tatsächlichen Dokumentgraphen:
-                               control/@id → kataloginterne Navigation,
-                               back-matter.resource/@uuid → Ressourcenmetadaten;
-                               resource.rlinks bleiben externe Metadaten und
-                               werden niemals automatisch geladen
         │
         ▼
 Feature-Komponenten und Hooks
 • useFilteredControls()      → gefilterte Steuerungen
-• useSearch()                → FlexSearch-Volltextsuche mit kataloggescoptem LRU-Cache (GSPP-218, `MAX_SEARCH_CACHE_ENTRIES = 3`)
-                               plus exakter Kennungsindex im selben Cache-Eintrag (GSPP-380, siehe docs/FILTERING.md)
+• useSearch()                → FlexSearch-Volltextsuche mit kataloggescoptem LRU-Cache
+                               (`MAX_SEARCH_CACHE_ENTRIES = 3`) plus exaktem
+                               Kennungsindex im selben Cache-Eintrag (siehe docs/FILTERING.md)
 • resolveControlVocabularies() → Vokabular-Auflösung
 ```
 
 ### Klasse-2-OSCAL-Eingang
 
-Der bestehende Katalogfluss verarbeitet ausschließlich Build-Zeit-Artefakte
-aus dem Quellregister. Lokale Klasse-2-Dokumente benutzen ihn nicht.
-`src/adapters/oscalImportGate.ts` ist ihr einziger Anwendungseinstieg: Er
-kopiert `ArrayBuffer` oder `Uint8Array` nur für die Übertragung und startet
-`src/workers/oscalImport.worker.ts` als Modul-Worker. Der Main-Thread dekodiert,
-parst oder interpretiert die Bytes nicht.
+Lokale Klasse-2-Dokumente benutzen den Katalogfluss nicht. `src/adapters/oscalImportGate.ts` ist ihr einziger Anwendungseinstieg: Er kopiert `ArrayBuffer` oder `Uint8Array` nur für die Übertragung und startet `src/workers/oscalImport.worker.ts` als Modul-Worker. Der Main-Thread dekodiert, parst oder interpretiert die Bytes nicht.
 
-Nach der Größenkontrolle läuft im Worker die feste Reihenfolge aus dem
-[OSCAL-Validierungsvertrag](./OSCAL_VALIDATION.md): Bytelimit, fataler
-UTF-8-Decoder, Duplicate-Member-Scanner, `JSON.parse` — und ab dort die
-gemeinsame objektorientierte Prüfkette
-([`oscalObjectPipeline.ts`](../src/domain/oscalObjectPipeline.ts)): zuerst ein
-rein identitätsbasierter Herkunfts- und Serialisierungsbudget-Durchlauf vor
-jeder Wertreflexion, danach der terminierende Struktur-, Tiefen-, Knoten- und
-Base64-Durchlauf mit globaler Identitätsmenge,
-`dispatchOscalDocument()` und anschließend `validateAgainstPinnedSchema()`
-als Stufe 3. Der Byte-Eintrittspunkt `processClass2OscalBytes()` ruft
-ausschließlich diese Einheit auf; der Ableitungsweg der Profile Resolution
-([GSPP-291](https://linear.app/grundschutz-plus-plus/issue/GSPP-291)) teilt sie.
-Das Bytelimit greift bereits vor
-Worker-Erzeugung und Transferkopie; der Scanner begrenzt seinen Abstieg
-zusätzlich auf die zulässige Tiefe. Das Ergebnis ist entweder ein vollständiger
-Root-Envelope mit explizitem `class-2-local-user`-Kontext oder genau eine
-redigierte Diagnose. Der Worker führt keine Dateisystem-, Telemetrie- oder
-URL-Operation aus und bezieht nichts von einer fremden Origin; sein einziger
-Netzbezug ist der Modulabruf des Schema-Chunks derselben Origin, siehe den
-folgenden Absatz. Nach seiner Antwort beendet ihn der Adapter; bleibt eine
-Antwort aus, beendet der Adapter ihn nach 30 Sekunden fail-closed mit einer
-redigierten Worker-Diagnose.
+Nach der Größenkontrolle läuft im Worker die feste Reihenfolge aus dem [OSCAL-Validierungsvertrag](./OSCAL_VALIDATION.md): Bytelimit, fataler UTF-8-Decoder, Duplicate-Member-Scanner, `JSON.parse` — und ab dort die gemeinsame objektorientierte Prüfkette (`src/domain/oscalObjectPipeline.ts`) mit Stufen aus Herkunfts-, Struktur-, Tiefen-, Knoten- und Base64-Durchlauf sowie Stufe 3 als Schema-Validierung. Das Bytelimit greift bereits vor Worker-Erzeugung und Transferkopie. Das Ergebnis ist entweder ein vollständiger Root-Envelope mit explizitem `class-2-local-user`-Kontext oder genau eine redigierte Diagnose. Der Worker führt keine Dateisystem-, Telemetrie- oder URL-Operation aus; sein einziger Netzbezug ist der Modulabruf des Schema-Chunks derselben Origin (siehe unten). Nach seiner Antwort beendet ihn der Adapter; bleibt eine Antwort aus, beendet der Adapter ihn nach 30 Sekunden (`CLASS_2_IMPORT_WORKER_TIMEOUT_MS = 30_000`) fail-closed mit einer redigierten Worker-Diagnose.
 
-Stufe 3 prüft mit `ajv` 8.20.0 gegen das gepinnte NIST-Schema der von Stufe 2
-gewählten Matrixzelle. Die Schemabytes liegen eingecheckt unter
-`schemas/oscal/` und werden über `src/domain/oscalSchemaBundle.ts` je Zelle in
-einen eigenen Chunk gebaut. Zur Laufzeit lädt der Worker genau einen davon
-nach — den der ausgewählten Zelle, als Modul **derselben Origin** wie die
-Anwendung. Das ist kein externer Bezug: Weder das Release-Asset auf
-`github.com` noch die `$id`-Domain `csrc.nist.gov` wird angefragt, und ein
-Browsertest belegt das über das Egress-Orakel aus
-[GSPP-339](https://linear.app/grundschutz-plus-plus/issue/GSPP-339). Damit der
-Modul-Worker überhaupt code-splitten kann, baut Vite ihn über
-`worker.format: 'es'` als ES-Modul; andernfalls lägen alle 30 Schemas in einer
-einzigen Worker-Datei. `processClass2OscalBytes()` ist deshalb `async`,
-während der öffentliche Einstieg `importClass2OscalDocument()` unverändert ein
-`Promise` liefert.
+Stufe 3 prüft mit `ajv` 8.20.0 gegen das gepinnte NIST-Schema der von Stufe 2 gewählten Matrixzelle. Die Schemabytes liegen eingecheckt unter `schemas/oscal/` und werden über `src/domain/oscalSchemaBundle.ts` je Zelle in einen eigenen Chunk gebaut. Zur Laufzeit lädt der Worker genau einen davon nach — den der ausgewählten Zelle, als Modul **derselben Origin** wie die Anwendung. Weder das Release-Asset auf `github.com` noch die `$id`-Domain `csrc.nist.gov` wird angefragt; ein Browsertest prüft das über das Egress-Orakel. Vite baut den Modul-Worker über `worker.format: 'es'` als ES-Modul, damit nicht alle Schemas in einer Worker-Datei liegen.
 
-Dieser Einstieg liefert weder Dateiauswahl noch Persistenz, UI oder Renderer.
-Er ändert deshalb weder den Klasse-1-Katalogladepfad noch dessen
-Integritätskette.
+Dieser Einstieg liefert weder Dateiauswahl noch Persistenz, UI oder Renderer. Er ändert weder den Klasse-1-Katalogladepfad noch dessen Integritätskette.
 
-Wohin ein importiertes Klasse-2-Dokument gespeichert wird, sobald Persistenz
-entsteht, legt der [Persistenzvertrag](./PERSISTENCE.md) fest: eine eigene
-IndexedDB-Datenbank `gspp-workspace`, in der Klasse 1 **keinen** Store besitzt.
-Der Arbeitsbereich kann Klasse-1-Inhalte damit strukturell nicht aufnehmen; er
-hält allenfalls einen `artifactKey`-Verweis. Speicherschlüssel, Envelope,
-Versionsführung, Referenzbindung, Migration, Export und Löschung sind dort
-verbindlich beschrieben.
+Wohin ein importiertes Klasse-2-Dokument gespeichert wird, sobald Persistenz entsteht, legt der [Persistenzvertrag](./PERSISTENCE.md) fest: eine eigene IndexedDB-Datenbank `gspp-workspace`, in der Klasse 1 **keinen** Store besitzt. Der Arbeitsbereich hält allenfalls einen `artifactKey`-Verweis. Speicherschlüssel, Envelope, Versionsführung, Referenzbindung, Migration, Export und Löschung sind dort verbindlich beschrieben.
 
-Der separate Sync-Pfad (`scripts/sync-upstream-manifest.mjs` mit `scripts/upstream-artifacts.mjs`) vergleicht die vollständigen normalisierten Trees des bisherigen und des neuen Snapshots. Erst dort entstehen die Status `added`, `modified` und `removed`; neue nicht registrierte Pfade werden als `unclassified` gemeldet, ohne ihren Blob zu fetchen oder sie auszuliefern. Weil `snapshotCommitSha` Bestandteil der Manifest-Signatur ist, löst auch ein neuer Snapshot, dessen einziges Delta eine unregistrierte Datei ist, diesen Vergleich aus.
+Der separate Sync-Pfad (`scripts/sync-upstream-manifest.mjs` mit `scripts/upstream-artifacts.mjs`) vergleicht die vollständigen normalisierten Trees des bisherigen und des neuen Snapshots. Neue nicht registrierte Pfade werden als `unclassified` gemeldet, ohne ihren Blob zu fetchen oder sie auszuliefern.
 
 ### Laufendes Budget der Profile Resolution
 
-Die abschließende Objektprüfung ist eine Postcondition: Sie sieht das fertige
-Ergebnis. Sie kann damit weder die bereits verbrauchte Arbeit noch den bereits
-aufgebauten Zwischenzustand zurückholen. [ADR-8](https://linear.app/grundschutz-plus-plus/issue/ADR-8)
-verlangt deshalb für eine von einem lokalen Klasse-2-Dokument gesteuerte
-Ableitung zusätzlich ein **laufendes** Budget. Umgesetzt in
-[`profileResolutionBudget.ts`](../src/domain/profileResolutionBudget.ts).
+Die abschließende Objektprüfung sieht nur das fertige Ergebnis — weder verbrauchte Arbeit noch aufgebauten Zwischenzustand. Für eine von einem lokalen Klasse-2-Dokument gesteuerte Ableitung läuft deshalb zusätzlich ein Budget während der Ableitung. Umgesetzt in `src/domain/profileResolutionBudget.ts`.
 
-**Eigentum.** `resolveProfile()` erzeugt genau eine Budgetinstanz je Lauf und
-reicht sie nach unten durch. Es gibt keinen Modulzustand, keinen globalen
-Zähler und keine Wiederverwendung über Läufe. Die öffentliche Signatur trägt
-weder einen Grenzwert- noch einen Disable-Parameter: Ein gleichnamiger Wert im
-Steuerdokument bleibt gewöhnlicher Dokumentinhalt.
+**Eigentum.** Genau eine Budgetinstanz je Lauf, nach unten durchgereicht. Kein Modulzustand, kein globaler Zähler, keine Wiederverwendung über Läufe. Die öffentliche Signatur trägt weder einen Grenzwert- noch einen Disable-Parameter.
 
-**Zwei Achsen.** Das Ausgabebudget zählt **kumulativ erzeugte** Knoten —
-emittierte Ausgabeknoten und die Container des Zwischenzustands, den Merge und
-Modify vor der Emission anlegen —, die größte je begonnene Tiefe und die
-kumulative arithmetisch bestimmte `base64`-Größe. Container heißt dabei Objekt
-**und** Liste: Die ergänzte `parts`-Liste einer Addition und die gefilterte
-Liste einer Entfernung sind eigene Knoten und werden vor ihrer Allokation
-gebucht. Nicht gebucht werden die kurzlebigen Lesekopien der Traversierung —
-sie stehen auf der Arbeitsachse, wo derselbe Aufruf die Elementzahl vorab
-bucht. Entfernen senkt keinen Zähler, ein Add/Remove-Zyklus kann das Budget
-also nicht umgehen. Das Arbeitsbudget zählt deterministische Schritte, keine
-Uhrzeit — Wall-Clock-Zeit ist hardware-, scheduler- und testabhängig und vor
-einer Operation nicht prüfbar. Der geschlossene Satz der sechs Kategorien
-(`import-edge`, `selector-compare`, `glob-state`, `merge-step`,
-`alter-target-lookup`, `alter-candidate`) deckt jede potenziell wachsende
-Operation in Selektion, Merge, Modify und Emission ab. Die Grenze gilt über die
-**Summe** aller Kategorien; `usage().workUnitsByCategory` schlüsselt sie
-zusätzlich auf, rein beobachtend — der Messapparat belegt damit, dass sein
-Worst-Case-Profil je Kategorie die Kategorie wirklich treibt, die es behauptet.
+**Zwei Achsen.** Das Ausgabebudget zählt **kumulativ erzeugte** Knoten — emittierte Ausgabeknoten und die Container des Zwischenzustands, den Merge und Modify vor der Emission anlegen —, die größte je begonnene Tiefe und die kumulative `base64`-Größe. Container heißt Objekt **und** Liste. Nicht gebucht werden die kurzlebigen Lesekopien der Traversierung — sie stehen auf der Arbeitsachse, wo derselbe Aufruf die Elementzahl vorab bucht. Entfernen senkt keinen Zähler. Das Arbeitsbudget zählt deterministische Schritte, keine Wall-Clock-Zeit. Der geschlossene Satz der sechs Kategorien (`import-edge`, `selector-compare`, `glob-state`, `merge-step`, `alter-target-lookup`, `alter-candidate`) deckt jede potenziell wachsende Operation in Selektion, Merge, Modify und Emission ab. Die Grenze gilt über die **Summe** aller Kategorien; `usage().workUnitsByCategory` schlüsselt sie zusätzlich auf.
 
-**Unveränderliche Produktionsgrenzen.** Die Arbeitsgrenze steht als
-`WORK_UNIT_LIMIT` in
-[`profileResolutionBudgetLimits.mjs`](../src/domain/profileResolutionBudgetLimits.mjs).
-Die Ausgabegrenzen sind **dieselben** Werte, die die Postcondition prüft, und
-kommen unverändert aus `CLASS_2_IMPORT_LIMITS` — eine zweite Zahl für dieselbe
-Grenze hieße, dass laufendes Budget und Postcondition auseinanderlaufen können.
-Der Wert der Arbeitsgrenze ist nicht frei wählbar: Ein Test leitet ihn bei jedem
-Lauf aus dem committeten Messartefakt neu her und verlangt Gleichheit, sodass
-eine Anhebung ohne neue Messung rot wird. Zahlen, Herleitung und Messprotokoll:
-[OSCAL-Validierungsvertrag](./OSCAL_VALIDATION.md#work_unit_limit-kostenbasiert-hergeleitet-je-kategorie-gemessen).
+**Unveränderliche Produktionsgrenzen.** Die Arbeitsgrenze steht als `WORK_UNIT_LIMIT` in `src/domain/profileResolutionBudgetLimits.mjs`. Die Ausgabegrenzen sind dieselben Werte, die die Postcondition prüft, und kommen unverändert aus `CLASS_2_IMPORT_LIMITS`. Der Wert der Arbeitsgrenze wird bei jedem Lauf aus dem committeten Messartefakt hergeleitet; Zahlen, Herleitung und Messprotokoll stehen im [OSCAL-Validierungsvertrag](./OSCAL_VALIDATION.md).
 
-**Abbruchfluss.** Die Zählmethoden werfen. Der Wurf ist eine Entscheidung, kein
-Nebeneffekt: Die Arbeitseinheiten fallen in vier Modulen und rund zwanzig
-Funktionen an, von denen die meisten keinen Diagnosekanal führen; ein
-durchgereichter Rückgabewert hätte an jeder dieser Stellen die Möglichkeit
-eröffnet, die Ablehnung zu übersehen und doch ein Teilergebnis zu liefern. Der
-Wurf verlässt den Lauf an **genau einer** Fangstelle in `resolveProfile()`.
-Dort wird ein Budgetabbruch zu seiner bereits redigierten Diagnose und jede
-andere Ausnahme zu einem redigierten Projektfehler ohne Rohtext und ohne
-Stapel. In beiden Fällen verlässt weder ein Teilergebnis noch ein
-Builder-Handle den Lauf.
+**Abbruchfluss.** Die Zählmethoden werfen; der Wurf verlässt den Lauf an genau einer Fangstelle. Dort wird ein Budgetabbruch zu seiner bereits redigierten Diagnose und jede andere Ausnahme zu einem redigierten Projektfehler ohne Rohtext und ohne Stapel. Weder ein Teilergebnis noch ein Builder-Handle verlässt den Lauf.
 
-**Zwei Vertrauensklassen, getrennt geführt.** Der Ergebnisvertrag nennt beide:
-`trustClass` ist unveränderlich `class-2-local-user` — ein lokal abgeleitetes
-Dokument ist nach [ADR-8](https://linear.app/grundschutz-plus-plus/issue/ADR-8)
-nie verifiziert-öffentlich —, `controllingTrustClass` ist die Klasse des
-**steuernden** Profils. Sie steuert keinen Grenzwert; das Budget läuft in jedem
-Lauf identisch. Sie sagt, **was** das Budget in diesem Lauf ist: bei
-ausschließlich Klasse-1-Eingaben ein Reliability-Hardstop, bei einem lokalen
-Klasse-2-Steuerdokument die Sicherheitskontrolle.
+**Zwei Vertrauensklassen, getrennt geführt.** `trustClass` ist unveränderlich `class-2-local-user`, `controllingTrustClass` ist die Klasse des **steuernden** Profils. Sie steuert keinen Grenzwert; das Budget läuft in jedem Lauf identisch. Bei ausschließlich Klasse-1-Eingaben ist das Budget ein Reliability-Hardstop, bei einem lokalen Klasse-2-Steuerdokument die Sicherheitskontrolle.
 
 ## Zustandsverwaltung
 
@@ -449,31 +249,19 @@ Die Anwendung verwendet React Context für den globalen Zustand:
 
 ### CatalogContext (`src/state/CatalogContext.tsx`)
 
-Zentraler Provider, der eine **Katalogsammlung** hält
-([GSPP-284](https://linear.app/grundschutz-plus-plus/issue/GSPP-284)). Der
-Einstiegskatalog aus dem Quellregister wird beim Mounten geladen; jeder weitere
-ausgelieferte Katalog erst, wenn eine Route ihn auswählt. Der Initial-Load
-wächst dadurch nicht mit der Zahl ausgelieferter Kataloge.
+Zentraler Provider, der eine **Katalogsammlung** hält. Der Einstiegskatalog aus dem Quellregister wird beim Mounten geladen; jeder weitere ausgelieferte Katalog erst, wenn eine Route ihn auswählt.
 
 Sammlungsbezogene Felder:
 
-- `catalogs` — `ReadonlyMap<CatalogKey, LoadedCatalogState>` aller angeforderten
-  Kataloge. Jeder Eintrag trägt sein eigenes Dokument, seine eigene Provenance,
-  sein eigenes Verifikationsergebnis und seinen eigenen Fehlerzustand.
+- `catalogs` — `ReadonlyMap<CatalogKey, LoadedCatalogState>` aller angeforderten Kataloge. Jeder Eintrag trägt sein eigenes Dokument, seine eigene Provenance, sein eigenes Verifikationsergebnis und seinen eigenen Fehlerzustand.
 - `entryCatalogKey` — der ausgezeichnete Einstiegskatalog
 - `activeCatalogKey` — der aktuell ausgewählte Katalog
-- `selectCatalog(catalogKey)` — wählt einen ausgelieferten Katalog aus und stößt
-  ihn bei Bedarf an. `AppShell` ruft das aus dem Routen-`catalogKey` auf; ein
-  nicht ausgelieferter Schlüssel wird fail-closed ignoriert.
+- `selectCatalog(catalogKey)` — wählt einen ausgelieferten Katalog aus und stößt ihn bei Bedarf an. `AppShell` ruft das aus dem Routen-`catalogKey` auf.
 
-Projektionen des **aktiven** Katalogs — unveränderte Zugriffsform:
+Projektionen des **aktiven** Katalogs:
 
-- `catalogDocument` — Katalogdokument nach
-  [ADR-2](https://linear.app/grundschutz-plus-plus/issue/ADR-2): unveränderter Quellgraph
-  (`source`), expliziter Ableitungskontext (`context`) und die Projektion
-  (`view`). Siehe [DOMAIN_MODELS.md](./DOMAIN_MODELS.md#verlustfreies-dokumentmodell).
-- `catalog` — Angereicherter Katalog (Practices, Topics, Controls); identisch
-  mit `catalogDocument.view`
+- `catalogDocument` — Katalogdokument mit unverändertem Quellgraph (`source`), explizitem Ableitungskontext (`context`) und Projektion (`view`). Siehe [DOMAIN_MODELS.md](./DOMAIN_MODELS.md).
+- `catalog` — angereicherter Katalog (Practices, Topics, Controls); identisch mit `catalogDocument.view`
 - `provenance` — Provenance-Metadaten vom Build-Zeitpunkt
 - `verification` — Integritätsprüfungsergebnis
 - `vocabularyRegistry` — Registry der offiziellen BSI-Vokabulare
@@ -484,117 +272,35 @@ Projektionen des **aktiven** Katalogs — unveränderte Zugriffsform:
 
 ### Startup-Parsing im Modul-Worker
 
-Nach der Hashprüfung überträgt
-`catalogArtifacts.ts` den nicht mehr benötigten `ArrayBuffer` ohne Kopie an
-`catalogParser.worker.ts`. Dort dekodiert und parst der Worker den Katalog,
-führt Root-Dispatch und Link-Projektion aus und gibt das strukturklonbare
-`CatalogDocument` zurück. Nachrichten tragen Request-ID und den expliziten
-`CatalogDocumentContext`; angenommen wird eine Antwort nur, wenn Request-ID,
-`catalogKey` und Vertrauensklasse zur Anfrage passen **und** die zurückgegebene
-Projektion vollständig ist — geprüft am `alt-identifier`-Index, den der Parser
-fail-closed für jede Kontrolle füllt. Eine fremde, abgeschnittene oder
-unvollständig strukturgeklonte Antwort kann damit keinen Katalogzustand
-vervollständigen. Parse- und Root-Type-Fehler bleiben
-als verständlicher Ladefehler am betroffenen Katalog sichtbar. Nur ohne
-`Worker`-API (heute ein Test- bzw. nicht unterstützter Laufzeitpfad) bleibt der
-gleiche, fehlertreue Parser als Fallback im Main Thread. Kann ein vorhandener
-Worker nicht starten oder fehlschlägt er, bleibt dies ein sichtbarer
-Katalog-Ladefehler; nach dem Transfer gibt es bewusst keinen stillen
-Main-Thread-Fallback.
-
-Die Auslagerung ist nicht auf Verdacht erfolgt: Auf einem CPU-gedrosselten
-Mobilprofil erzeugte das Parsing im Main Thread reproduzierbar Long Tasks, im
-Modul-Worker keine mehr. Die Messwerte und die Methodik dahinter hält
-[ADR-12](https://linear.app/grundschutz-plus-plus/issue/ADR-12) fest; im
-Repository werden sie bewusst nicht gepflegt, weil sie einen bestimmten
-Katalog-Snapshot und eine bestimmte Browserversion beschreiben.
+Nach der Hashprüfung überträgt `catalogArtifacts.ts` den `ArrayBuffer` per Transfer (ohne Kopie) an den Parser-Worker. Dort dekodiert und parst der Worker den Katalog, führt Root-Dispatch und Link-Projektion aus und gibt das strukturklonbare `CatalogDocument` zurück. Angenommen wird eine Antwort nur, wenn Request-ID, `catalogKey` und Vertrauensklasse zur Anfrage passen. Parse- und Root-Type-Fehler bleiben als verständlicher Ladefehler am betroffenen Katalog sichtbar. Nur ohne `Worker`-API bleibt der gleiche Parser als Fallback im Main Thread. Kann ein vorhandener Worker nicht starten oder fehlschlägt er, bleibt dies ein sichtbarer Katalog-Ladefehler; nach dem Transfer gibt es keinen stillen Main-Thread-Fallback.
 
 ## Anwenderkataloge sind fachlich getrennt
 
-Die App liefert mehrere BSI-Anwenderkataloge aus. Jeder ist ein **eigenständiges
-OSCAL-Dokument** mit eigener `uuid` — kein Ausschnitt und keine Variante eines
-anderen. Ausgeliefert wird, was im Quellregister `lifecycle: 'supported'` trägt;
-die Lifecycle-Promotion des Anwenderkatalogs Lieferkettensicherheit erfolgte in
-[GSPP-242](https://linear.app/grundschutz-plus-plus/issue/GSPP-242), die des
-WLAN-Katalogs in [GSPP-243](https://linear.app/grundschutz-plus-plus/issue/GSPP-243).
+Die App liefert mehrere BSI-Anwenderkataloge aus. Jeder ist ein **eigenständiges OSCAL-Dokument** mit eigener `uuid`. Ausgeliefert wird, was im Quellregister `lifecycle: 'supported'` trägt.
 
 Daraus folgen vier Regeln, die der gesamte Katalogpfad einhält:
 
-**1. Gleiche Control-IDs sind erwartbar, nicht fehlerhaft.** `control/@id` trägt
-im OSCAL-Catalog-Metaschema `identifier-uniqueness="local"` und ist ausdrücklich
-nur innerhalb seines Katalogs eindeutig. Zwei aufgelöste Kataloge aus demselben
-Quellbestand teilen sich deshalb regelmäßig Control-IDs — am gepinnten Snapshot
-kollidieren *sämtliche* Controls des Lieferkettenkatalogs mit dem
-Grundschutz++-Katalog. Eine Kollision wird **nie** als Fehler gemeldet.
-Unterschieden wird ausschließlich über den `catalogKey`: Lookups laufen über
-`ControlRef = { catalogKey, controlId }` (`src/domain/controlRef.ts`), jeder
-Katalog hält seine eigene `controlsById`-Map, und es findet an keiner Stelle
-eine Zusammenführung oder katalogübergreifende Verlinkung statt.
+**1. Gleiche Control-IDs sind erwartbar, nicht fehlerhaft.** `control/@id` ist nur innerhalb seines Katalogs eindeutig. Zwei aufgelöste Kataloge aus demselben Quellbestand teilen sich deshalb regelmäßig Control-IDs — am gepinnten Snapshot kollidieren 82 der 83 Controls des Lieferkettenkatalogs mit dem Grundschutz++-Katalog (Ausnahme: `KONF.2.4.2`). Eine Kollision wird **nie** als Fehler gemeldet. Unterschieden wird ausschließlich über den `catalogKey`: Lookups laufen über `ControlRef = { catalogKey, controlId }` (`src/domain/controlRef.ts`), jeder Katalog hält seine eigene `controlsById`-Map, und es findet keine Zusammenführung oder katalogübergreifende Verlinkung statt.
 
-**2. Keine gemeinsamen Props oder Taxonomien.** `prop.ns` ist im Metaschema
-optional, und OSCAL garantiert zwischen zwei Katalogen weder dieselben `props`
-noch dieselben Namensräume. Der vorgefundene `ns` wird unverändert übernommen —
-einschließlich seines Fehlens; es wird kein projekteigener Namensraum vergeben
-und kein fremder normalisiert. Real belegt: der Lieferkettenkatalog führt nur
-`alt-identifier` (ohne `ns`), `sec_level`, `effort_level` und `tags`. Die
-Schutzziel-Props (`confidentiality`, `integrity`, `availability`,
-`authenticity`), `threats` und `label` fehlen dort vollständig. Sie werden
-deshalb weder angezeigt noch als fehlend bemängelt, und die Facettenzählung
-erzeugt aus ihrer Abwesenheit keine leeren Filtereinträge
-(`src/hooks/useFilteredControls.ts`).
+**2. Keine gemeinsamen Props oder Taxonomien.** Der vorgefundene `ns` wird unverändert übernommen — einschließlich seines Fehlens; es wird kein projekteigener Namensraum vergeben und kein fremder normalisiert. Der Lieferkettenkatalog führt auf Controls nur `alt-identifier` (ohne `ns`), `sec_level`, `effort_level` und `tags`. Die Schutzziel-Props (`confidentiality`, `integrity`, `availability`, `authenticity`), `threats` und `label` fehlen dort vollständig und werden weder angezeigt noch als fehlend bemängelt.
 
-Der WLAN-Katalog ergänzt auf jedem Control die offenen Props `Taxonomy-L1` bis
-`Taxonomy-L4`. Der Adapter projiziert ausschließlich diese exakten Namen in
-Ebenenreihenfolge und erhält `name`, `value` und den optionalen Originalwert
-von `ns`. Der aktuell vorgefundene Placeholder-Namensraum ist keine
-Vokabular- oder Vertrauensentscheidung: Kein Verhalten hängt an seiner URI,
-und `Taxonomy-Mapping-Rationale` wird nicht als zusätzliche Ebene erfunden.
-Die Werte erscheinen in der Detailansicht, im Volltextindex und in separaten
-CSV-Wert-/Namespace-Spalten; sie erzeugen bewusst keine neue Filterfacette.
+Der WLAN-Katalog ergänzt auf jedem Control die offenen Props `Taxonomy-L1` bis `Taxonomy-L4`. Der Adapter projiziert ausschließlich diese exakten Namen in Ebenenreihenfolge und erhält `name`, `value` und den optionalen Originalwert von `ns`. Der vorgefundene Placeholder-Namensraum trägt kein Verhalten, und `Taxonomy-Mapping-Rationale` wird nicht als zusätzliche Ebene erfunden.
 
-**3. Referenzen bleiben Daten bis zur bewussten Navigation.** Der originale,
-optionale `link.rel`-Wert wird mit seinem Dokumentationsstatus erhalten;
-`reference` ist der einzige im Catalog-Modell dokumentierte Wert, während
-offene Tokens wie `related` als benutzerdefiniert sichtbar bleiben. Die
-Zielart folgt ausschließlich aus dem Fragmenttreffer. Externe
-`resource.rlinks[].href` sind nur bei einer syntaktisch gültigen absoluten
-HTTPS-URL ohne eingebettete Zugangsdaten klickbar. Der Resolver führt dabei
-kein I/O aus. Ohne deklarierten `media-type` gibt es weder Vorschau noch
-Content-Sniffing; Dateiendungen sind keine Medienaussage.
+**3. Referenzen bleiben Daten bis zur bewussten Navigation.** Der originale `link.rel`-Wert wird erhalten; `reference` ist der einzige im Catalog-Modell dokumentierte Wert, offene Tokens wie `related` bleiben als benutzerdefiniert sichtbar. Externe `resource.rlinks[].href` sind nur bei einer syntaktisch gültigen absoluten HTTPS-URL klickbar. Der Resolver führt kein I/O aus. Ohne deklarierten `media-type` gibt es weder Vorschau noch Content-Sniffing; Dateiendungen sind keine Medienaussage.
 
-**4. Optionale Identifikatoren erzwingen kein Routing.** `group.id` ist in OSCAL
-1.1.3 optional, `part` verlangt nur `name`, und ein Katalog ganz ohne `groups`
-und `controls` ist schema-valide. Eine Gruppe ohne `id` bleibt vollständig
-sichtbar — Titel, Badge, Untergruppen und Controls —, ist aber **nicht
-adressierbar**: sie erzeugt weder Route noch Anker, und ein aktiver Gruppen-
-oder Praktik-Filter trifft sie nie. Es wird kein Ersatzbezeichner erfunden.
-Ein leerer Katalog erzeugt einen Empty State, keinen Fehler — der Empty State
-gilt aber nur, wenn **weder** `groups` **noch** `controls` vorhanden sind.
-`catalog.controls` steht im Schema gleichberechtigt neben `groups`; solche
-Root-Controls gehören zu keiner Gruppe, werden ohne `groupId` und `practiceId`
-geführt und bleiben über ihren kanonischen `altIdentifier` adressierbar. Sie
-werden projiziert, nie stillschweigend verworfen.
+**4. Optionale Identifikatoren erzwingen kein Routing.** `group.id` ist in OSCAL 1.1.3 optional, `part` verlangt nur `name`, und ein Katalog ganz ohne `groups` und `controls` ist schema-valide. Eine Gruppe ohne `id` bleibt vollständig sichtbar, ist aber **nicht adressierbar**: sie erzeugt weder Route noch Anker, und ein aktiver Gruppen- oder Praktik-Filter trifft sie nie. Ein leerer Katalog erzeugt einen Empty State, keinen Fehler — der Empty State gilt aber nur, wenn **weder** `groups` **noch** `controls` vorhanden sind. `catalog.controls` steht im Schema gleichberechtigt neben `groups`; solche Root-Controls gehören zu keiner Gruppe, werden ohne `groupId` und `practiceId` geführt und bleiben über ihren kanonischen `altIdentifier` adressierbar.
 
-Die Vokabular-Membership wird aus **allen** ausgelieferten Katalogen abgeleitet
-(`scripts/fetch-catalog.mjs`), damit ein Nicht-Einstiegskatalog sein Vokabular
-nicht verliert; alle Namensräume stammen aus demselben Snapshot und durchlaufen
-dieselbe Hash-Prüfung. Die Topic- und Practice-Coverage-Baselines
-(`scripts/taxonomy-coverage.mjs`) bleiben dagegen bewusst auf den
-Einstiegskatalog bezogen: Sie fordern `orphanCsvEntryCount === 0`, also die
-exakte wechselseitige Entsprechung von CSV und Katalog. Für einen
-Teilmengenkatalog wie Lieferkettensicherheit ist diese Bedingung strukturell
-nicht erfüllbar — er nutzt 23 der 140 Themen — und würde einen korrekten
-Bestand fälschlich als Drift melden.
+Die Vokabular-Membership wird aus **allen** ausgelieferten Katalogen abgeleitet (`scripts/fetch-catalog.mjs`); alle Namensräume stammen aus demselben Snapshot und durchlaufen dieselbe Hash-Prüfung. Die Topic- und Practice-Coverage-Baselines (`scripts/taxonomy-coverage.mjs`) bleiben auf den Einstiegskatalog bezogen: Sie fordern `orphanCsvEntryCount === 0`. Für einen Teilmengenkatalog wie Lieferkettensicherheit ist diese Bedingung strukturell nicht erfüllbar, weil er nur einen Teil der Themen nutzt.
 
 ## Routing
 
 Die Anwendung verwendet React Router mit `BrowserRouter` und pfadbasierten URLs. Das `basename` wird aus `import.meta.env.BASE_URL` abgeleitet (`src/main.tsx`), sodass die App auch unter dem GitHub-Pages-Unterpfad `/Grundschutz-Navigator/` funktioniert.
 
-Für kanonische Einstiegsrouten erzeugt das Vite-Plugin `github-pages-spa-fallback` (`vite.config.ts`) beim Build zusätzlich zu `404.html` je Route ein statisches `dist/<route>/index.html`, bytegleich zum gebauten `index.html`. GitHub Pages liefert diese Dokumente mit HTTP 200 aus; die Routen kommen ausschließlich aus dem gemeinsamen Vertrag `listCanonicalEntryRoutes()` — den sechs festen Inhaltsrouten (`/suche`, `/vokabular`, `/about`, `/datenschutz`, `/impressum`, `/lizenzen`) plus je einem Einstieg `/katalog/<catalogKey>` für jeden von `listSupportedCatalogs()` im Quellregister (`src/domain/sourceRegistry.mjs`) als `supported` geführten Katalog. Das absichtlich ungültige `/katalog`, der Redirect `/mehr`, parametrisierte Gruppen-, Control- und Vokabular-Detailrouten sowie Query-/Filter-URLs werden bewusst nicht materialisiert. Für alle übrigen Pfade dient `dist/404.html` weiterhin als Fallback: GitHub Pages reicht unbekannte Pfade an die SPA durch, allerdings mit HTTP-Status 404.
+Für kanonische Einstiegsrouten erzeugt das Vite-Plugin `github-pages-spa-fallback` (`vite.config.ts`) beim Build zusätzlich zu `404.html` je Route ein statisches `dist/<route>/index.html`, bytegleich zum gebauten `index.html`. GitHub Pages liefert diese Dokumente mit HTTP 200 aus; die Routen kommen ausschließlich aus dem gemeinsamen Vertrag `listCanonicalEntryRoutes()` — den sechs festen Inhaltsrouten (`/suche`, `/vokabular`, `/about`, `/datenschutz`, `/impressum`, `/lizenzen`) plus je einem Einstieg `/katalog/<catalogKey>` für jeden von `listSupportedCatalogs()` im Quellregister (`src/domain/sourceRegistry.mjs`) als `supported` geführten Katalog. Das absichtlich ungültige `/katalog`, der Redirect `/mehr`, parametrisierte Gruppen-, Control- und Vokabular-Detailrouten sowie Query-/Filter-URLs werden nicht materialisiert. Für alle übrigen Pfade dient `dist/404.html` als Fallback.
 
 ### Sitemap
 
-Beim Build entsteht deterministisch eine UTF-8-kodierte `dist/sitemap.xml` mit XML-Deklaration und dem Namespace `http://www.sitemaps.org/schemas/sitemap/0.9`. Sie enthält genau einmal die absolute kanonische URL der Startseite, der sechs festen Inhaltsrouten und jedes von `listSupportedCatalogs()` gelieferten Katalogeinstiegs — dieselbe Positivliste wie die statischen 200-Einstiege, gebildet aus demselben Vertrag `listCanonicalEntryRoutes()`, sodass beide Ausgaben nicht driften können. Origin (`https://dfurater.github.io`) und Basispfad (`/Grundschutz-Navigator/`) sind die Production-Defaults des Buildvertrags; XML-Sonderzeichen werden escaped. Geschrieben werden ausschließlich die Pflichtfelder `urlset`, `url` und `loc` — bewusst ohne unbelegte optionale Felder wie `lastmod`, `changefreq` oder `priority`. Die manuelle Einreichung in der Search Console liegt beim Projekt-Owner und ist kein Teil des Builds.
+Beim Build entsteht deterministisch eine UTF-8-kodierte `dist/sitemap.xml` mit XML-Deklaration und dem Namespace `http://www.sitemaps.org/schemas/sitemap/0.9`. Sie enthält genau einmal die absolute kanonische URL der Startseite, der sechs festen Inhaltsrouten und jedes von `listSupportedCatalogs()` gelieferten Katalogeinstiegs — dieselbe Positivliste wie die statischen 200-Einstiege, gebildet aus demselben Vertrag `listCanonicalEntryRoutes()`. Origin (`https://dfurater.github.io`) und Basispfad (`/Grundschutz-Navigator/`) sind die Production-Defaults des Buildvertrags; XML-Sonderzeichen werden escaped. Geschrieben werden ausschließlich die Pflichtfelder `urlset`, `url` und `loc`. Die manuelle Einreichung in der Search Console liegt beim Projekt-Owner und ist kein Teil des Builds.
 
 | Route | Komponente | Beschreibung |
 |-------|------------|--------------|
@@ -614,166 +320,81 @@ Beim Build entsteht deterministisch eine UTF-8-kodierte `dist/sitemap.xml` mit X
 
 ## Katalog-Browser-Grenzen
 
-`src/features/catalog/CatalogBrowser.tsx` ist der Composer des Katalog-Browsers.
-Er bindet Router, Katalog- und Filterzustand aneinander, bestimmt den
-Practice-/Topic-Scope, hält Breakpoint- und Panelbreitenzustand und komponiert
-Liste, Toolbar und Seitenleisten. Direkte CSV-Downloads, Beziehungsgraphen und
-imperative Zugriffe auf `document.body` gehören ausdrücklich nicht zu dieser
-Grenze.
+`src/features/catalog/CatalogBrowser.tsx` ist der Composer des Katalog-Browsers. Er bindet Router, Katalog- und Filterzustand aneinander, bestimmt den Practice-/Topic-Scope, hält Breakpoint- und Panelbreitenzustand und komponiert Liste, Toolbar und Seitenleisten. Direkte CSV-Downloads und imperative Zugriffe auf `document.body` gehören nicht zu dieser Grenze.
 
-**Breakpoint-Mount-Strategie (GSPP-268):** Breakpoint-abhängige UI wird über
-`useMediaQuery('(min-width: 1024px)')` (`isDesktop`) bedingt **gemountet**,
-nicht per CSS versteckt — zu jedem Zeitpunkt ist nur der passende Teilbaum im
-DOM (Invariante aus GRU-217; kein dauerhaft gemounteter, unsichtbarer Knoten).
-Zwei bewusste Ausnahmen: Der `CatalogMobileDetailOverlay` behält sein
-`active`-Prop-Muster, weil er inaktiv bereits `null` rendert und seinen
-Modal-Lifecycle (Focus-Trap, Scroll-Lock, Escape) selbst besitzt; kleine
-stateless Buttons (z. B. der Mobile-Auswahl-Toggle) dürfen bei `lg:hidden`
-bleiben, da sie keinen schweren Teilbaum doppelt mounten.
-
-Die Zuständigkeiten sind wie folgt getrennt:
+Breakpoint-abhängige UI wird über `useMediaQuery('(min-width: 1024px)')` (`isDesktop`) bedingt **gemountet**, nicht per CSS versteckt — zu jedem Zeitpunkt ist nur der passende Teilbaum im DOM. Zwei Ausnahmen: Der `CatalogMobileDetailOverlay` behält sein `active`-Prop-Muster, weil er inaktiv `null` rendert und seinen Modal-Lifecycle (Focus-Trap, Scroll-Lock, Escape) selbst besitzt; kleine stateless Buttons dürfen bei `lg:hidden` bleiben, da sie keinen schweren Teilbaum doppelt mounten.
 
 | Baustein | Verantwortung |
 |----------|----------------|
 | `useControlNavigation` | Löst Control-Route, Scope und Not-found-Zustand auf und erhält Push-/Replace-Semantik sowie Query-Parameter. Routerwerte und `NavigateFunction` werden injiziert; der Hook verwendet keine Router-Hooks. |
-| `useControlSelection` | Verwaltet die markierten Control-IDs. Der Hook selbst ist scope-agnostisch: Er liefert synchron eine leere Auswahl, sobald sich der von außen übergebene `scopeId`-Wert ändert. `CatalogBrowser` übergibt dafür ausschließlich den `catalogKey` (GSPP-267), sodass die Auswahl bei Themen-/Practice-Navigation und Cross-Referenz-Sprüngen innerhalb desselben Katalogs erhalten bleibt und nur bei einem echten Katalogwechsel geleert wird. |
-| `CatalogToolbar` | Stellt Titel, Counts, Auswahlmodus sowie Filter- und Exportzugänge ausschließlich aus Props zusammen und mountet Filter-Sheet, Export-Menü und Export-Sheet breakpoint-conditional über `isDesktop`. |
-| `CatalogExportMenu` | Besitzt den Desktop-Menüzustand, Outside-Click, Escape, Autofokus und die Desktop-Exportaktionen. Das Mount-Gate liegt beim Aufrufer (`isDesktop`); die Komponente führt selbst kein CSS-Breakpoint-Gate mehr. |
+| `useControlSelection` | Verwaltet die markierten Control-IDs. Der Hook ist scope-agnostisch: Er liefert synchron eine leere Auswahl, sobald sich der von außen übergebene `scopeId`-Wert ändert. `CatalogBrowser` übergibt dafür ausschließlich den `catalogKey`, sodass die Auswahl bei Themen-/Practice-Navigation und Cross-Referenz-Sprüngen innerhalb desselben Katalogs erhalten bleibt und nur bei einem echten Katalogwechsel geleert wird. |
+| `CatalogToolbar` | Stellt Titel, Counts, Auswahlmodus sowie Filter- und Exportzugänge aus Props zusammen und mountet Filter-Sheet, Export-Menü und Export-Sheet breakpoint-conditional über `isDesktop`. |
+| `CatalogExportMenu` | Besitzt den Desktop-Menüzustand, Outside-Click, Escape, Autofokus und die Desktop-Exportaktionen. Das Mount-Gate liegt beim Aufrufer (`isDesktop`). |
 | `CatalogMobileFilterSheet` | Besitzt Trigger, Sichtbarkeit, Focus-Trap, Escape, Backdrop, Drag-Dismiss und Scroll-Lock des mobilen Filters. |
 | `CatalogMobileExportSheet` | Besitzt Trigger, Sichtbarkeit, Focus-Trap, Escape, Backdrop, Scroll-Lock und mobile Exportaktionen. |
 | `CatalogMobileSelectionBar` | Exportiert die mobile Auswahl und beendet anschließend den Auswahlmodus. |
 | `CatalogDesktopSidebar` | Kapselt Filter-/Detaildarstellung und die veränderbare Desktop-Panelbreite; der Breitenzustand bleibt beim Composer. |
 | `CatalogDetailPanel` | Baut eingehende Links und Parent-/Child-Beziehungen auf und versorgt `ControlDetail`. |
-| `CatalogMobileDetailOverlay` | Besitzt Focus-Trap, Escape und Scroll-Lock des mobilen Details. Bleibt als Komponente gemountet und steuert Sichtbarkeit über das `active`-Flag; inaktiv rendert sie `null`, sodass kein dauerhafter DOM-Knoten entsteht (dokumentierte Ausnahme der Breakpoint-Mount-Strategie). |
+| `CatalogMobileDetailOverlay` | Besitzt Focus-Trap, Escape und Scroll-Lock des mobilen Details. Bleibt als Komponente gemountet und steuert Sichtbarkeit über das `active`-Flag; inaktiv rendert sie `null` (dokumentierte Ausnahme der Breakpoint-Mount-Strategie). |
 
-Mobile Overlays sind weiterhin modal und über die vorhandenen Interaktionspfade
-gegenseitig ausschließend. `useScrollLock` speichert deshalb bewusst keinen
-globalen Refcount, sondern stellt beim Cleanup exakt den vorherigen Inline-Wert
-von `body.style.overflow` wieder her.
+`useScrollLock` speichert keinen globalen Refcount, sondern stellt beim Cleanup exakt den vorherigen Inline-Wert von `body.style.overflow` wieder her.
 
-CSV-Serialisierung und Browserauslösung sind getrennte Grenzen:
-`features/export/csvExport.ts` erzeugt unverändert Inhalt und `Blob`;
-`adapters/browserDownload.ts` erstellt den temporären Link und widerruft Link
-und Object-URL auch bei Fehlern garantiert in `finally`.
+CSV-Serialisierung und Browserauslösung sind getrennte Grenzen: `features/export/csvExport.ts` erzeugt Inhalt und `Blob`; `adapters/browserDownload.ts` erstellt den temporären Link und widerruft Link und Object-URL auch bei Fehlern in `finally`.
 
-ESLint sichert diese Architektur statisch ab: `CatalogBrowser` darf weder den
-CSV-Exporter noch den Beziehungsgraphen importieren, direkter
-`document.body`-Zugriff ist in App-, Komponenten- und Feature-Code ein Fehler,
-imperative Event-Listener und Dateien über 300 physische Zeilen werden als
-Warnungen ausgewiesen. Hooks und Browseradapter bilden die erlaubten
-Infrastrukturgrenzen. `useGlobalEventListener` bündelt globale Window- und
-Document-Listener, hält den Handler über Re-Renders aktuell und garantiert
-symmetrischen Abbau beim Deaktivieren oder Unmount.
+ESLint sichert diese Architektur statisch ab: `CatalogBrowser` darf weder den CSV-Exporter noch den Beziehungsgraphen importieren, direkter `document.body`-Zugriff ist in App-, Komponenten- und Feature-Code ein Fehler, imperative Event-Listener und Dateien über 300 physische Zeilen werden als Warnungen ausgewiesen. `useGlobalEventListener` bündelt globale Window- und Document-Listener und garantiert symmetrischen Abbau beim Deaktivieren oder Unmount.
 
 ## Control-Detail-Grenzen
 
-`src/features/catalog/ControlDetail.tsx` ist der schlanke Composer der
-Kontrollansicht und der einzige `useCatalog`-Aufrufer dieses Teilbaums. Er
-bestimmt den Scope `${catalogKey}:${control.id}`, löst Vokabulare memoisiert
-auf, bindet Clipboard- und UI-State-Hooks an und komponiert die Sektionen in
-fachlicher Reihenfolge. Router-gebundene `VocabularyEntryCard`-Ausgabe bleibt
-an dieser Grenze: Die reinen Sektionen erhalten einen stabilen Render-Callback
-und sind dadurch ohne Router oder Katalogprovider isoliert testbar.
+`src/features/catalog/ControlDetail.tsx` ist der Composer der Kontrollansicht und der einzige `useCatalog`-Aufrufer dieses Teilbaums. Er bestimmt den Scope `${catalogKey}:${control.id}`, löst Vokabulare memoisiert auf und komponiert die Sektionen in fachlicher Reihenfolge. Router-gebundene `VocabularyEntryCard`-Ausgabe bleibt an dieser Grenze: Die Sektionen erhalten einen stabilen Render-Callback und sind dadurch ohne Router oder Katalogprovider isoliert testbar.
 
 | Baustein | Verantwortung |
 |----------|----------------|
-| `useActiveVocabulary` | Hält höchstens eine Vokabularkarte offen und setzt den Zustand bei Katalog- oder Control-Wechsel synchron und dauerhaft zurück. |
+| `useActiveVocabulary` | Hält höchstens eine Vokabularkarte offen und setzt den Zustand bei Katalog- oder Control-Wechsel synchron zurück. |
 | `useGuidanceOverflow` | Besitzt Expansion, Overflow-Messung, `ResizeObserver`, Window-Fallback und symmetrisches Listener-/Observer-Cleanup. |
-| `ControlClassification` | Rendert Kriterien und bindet `ControlTaxonomy` an der fachlich festgelegten GSPP-140-Position ein. |
+| `ControlClassification` | Rendert Kriterien und bindet `ControlTaxonomy` ein. |
 | `ControlTaxonomy` | Rendert Tags und Zielobjektkategorien einschließlich optionaler Vokabularinteraktion. |
-| `ControlSecurityContext` | Rendert die Sektion „Schutzziele und Gefährdungen": delegiert die Schutzziele an `ControlSecurityTargets` und rendert die elementaren Gefährdungen als `Begriff (ID)`, alphabetisch nach Anzeigename sortiert. |
-| `ControlSecurityTargets` | Rendert die vier Schutzziele als Tabelle mit `sr-only`-Spaltenkopf „Schutzziel", sichtbarem Spaltenkopf „Relevanz" und der Relevanz als zweistufige Punkte-Skala; Schutzziel- und Relevanz-Trigger bleiben unabhängig aufklappbar. |
+| `ControlSecurityContext` | Rendert die Sektion „Schutzziele und Gefährdungen". |
+| `ControlSecurityTargets` | Rendert die vier Schutzziele als Tabelle mit zweistufiger Relevanz-Skala. |
 | `ControlStatement` | Rendert den Anforderungstext. |
-| `ControlStatementDetails` | Rendert Ergebnis, Präzisierung, Handlungswort und Dokumentation mit korrekter `dl`-Semantik. |
-| `ControlGuidance` | Rendert die kontrollierte, bei Bedarf aufklappbare Guidance; Messung und State liegen im Hook. |
-| `ControlDependencies` | Baut die lokale Incoming-Map, kombiniert reziproke Relationstexte und rendert ausschließlich aufgelöste interne Control-Beziehungen — nie deaktivierte Pseudo-Ziele. |
-| `ControlSources` | Rendert aufgelöste `back-matter`-, externe und nicht auflösbare Quellen getrennt von Abhängigkeiten; nur die Auflösungsschicht entscheidet über Navigation. |
+| `ControlStatementDetails` | Rendert Ergebnis, Präzisierung, Handlungswort und Dokumentation. |
+| `ControlGuidance` | Rendert die bei Bedarf aufklappbare Guidance; Messung und State liegen im Hook. |
+| `ControlDependencies` | Rendert ausschließlich aufgelöste interne Control-Beziehungen. |
+| `ControlSources` | Rendert aufgelöste `back-matter`-, externe und nicht auflösbare Quellen getrennt von Abhängigkeiten. |
 | `ControlHierarchy` | Rendert aufgelösten Parent und Erweiterungen. |
-| `ControlMetadata` | Rendert UUID und nur bei nicht auflösbarem Parent den Parent-ID-Fallback. |
+| `ControlMetadata` | Rendert UUID und den Parent-ID-Fallback. |
 
-Die Sektionsmodule erhalten ausschließlich benötigte Controls, aufgelöste
-Vokabularwerte und Callbacks. Sie verwenden weder Katalog-, Router- noch
-Filterkontext. Reihenfolge, Überschriften, ARIA-Ziele sowie die
-`dl`/`dt`/`dd`- bzw. Tabellensemantik sind Verträge der Kontrollansicht und
-werden durch Integrationstests abgesichert. Der Render-Callback für
-Vokabelkarten nimmt optional `hiddenColumns` entgegen, damit eine Sektion
-Spalten ausblenden kann, deren Wert sie bereits selbst sichtbar macht.
-Kennungsspalten gehören seit GSPP-380 nicht mehr dazu.
+Die Sektionsmodule erhalten ausschließlich benötigte Controls, aufgelöste Vokabularwerte und Callbacks. Sie verwenden weder Katalog-, Router- noch Filterkontext.
 
 ## Suchseiten-Grenzen
 
-`src/features/search/SearchPage.tsx` ist der Composer der Volltextsuche
-(`/suche?q=…`). Er bindet `useSearch`, die 50er-Pagination und dieselben
-Desktop-/Mobile-Präsentationskomponenten wie der Katalog-Browser ein, hält
-dafür aber eine eigene, unabhängige Auswahl- und Export-Grenze. Die
-Ergebnislisten folgen derselben Breakpoint-Mount-Strategie wie der
-Katalog-Browser (GSPP-261): genau eine gemountete Liste je Breakpoint,
-Auswahl-, Sortier- und Paginierungszustand überstehen den Wechsel.
+`src/features/search/SearchPage.tsx` ist der Composer der Volltextsuche (`/suche?q=…`). Er bindet `useSearch`, die 50er-Pagination und dieselben Desktop-/Mobile-Präsentationskomponenten wie der Katalog-Browser ein, hält dafür aber eine eigene, unabhängige Auswahl- und Export-Grenze. Die Ergebnislisten folgen derselben Breakpoint-Mount-Strategie wie der Katalog-Browser: genau eine gemountete Liste je Breakpoint.
 
 | Baustein | Verantwortung |
 |----------|----------------|
-| `useControlSelection` | Läuft mit dem Scope `search:<catalogKey>:<query>` — unabhängig vom Katalog-Browser-Scope (`catalogKey` allein). Beide Auswahlen beeinflussen einander nicht; jede Änderung von `q` liefert synchron eine leere Auswahl. |
-| `resultsUiState` | Führt `sort`, `visibleResultCount` und `mobileSelectMode` gemeinsam query-gebunden: Ein Vergleich mit der aktuellen Query entscheidet pro Feld, ob der gespeicherte Wert gilt oder auf den Ausgangszustand zurückfällt. Ein echter Query-Wechsel setzt damit synchron auch den mobilen Auswahlmodus zurück. |
-| `SearchResultsToolbar` | Schlanker Composer aus Auswahlanzahl/Aufheben, mobilem Auswahlmodus-Toggle sowie den wiederverwendeten `CatalogExportMenu`- und `CatalogMobileExportSheet`-Komponenten; beide Exportzugänge werden über die Prop `isDesktop` bedingt gemountet (GSPP-268). Kein Filter-Zugang — die Suche hat keine Filterleiste. |
-| `ControlTable`s `selectableControls` | Optionale Prop, die ausschließlich die Header-Aktion „Alle auswählen" und ihren vollständig/teilweise ausgewählten Zustand bestimmt; Standard bleibt `controls`. `SearchPage` übergibt weiterhin nur die gerenderte Seite als `controls`, aber alle sortierten Query-Treffer als `selectableControls`, sodass „Alle auswählen" auch nicht nachgeladene Treffer erfasst. `CatalogBrowser` übergibt die Prop nicht und bleibt unverändert. |
-| `CatalogMobileSelectionBar` | Unverändert wiederverwendet; `SearchPage` rendert sie selbst (nicht die Toolbar) im mobilen Auswahlmodus und beendet Modus und Auswahl nach Export oder „Fertig". |
+| `useControlSelection` | Läuft mit dem Scope `search:<catalogKey>:<query>` — unabhängig vom Katalog-Browser-Scope (`catalogKey` allein). Jede Änderung von `q` liefert synchron eine leere Auswahl. |
+| `resultsUiState` | Führt `sort`, `visibleResultCount` und `mobileSelectMode` gemeinsam query-gebunden; ein Query-Wechsel setzt sie synchron zurück. |
+| `SearchResultsToolbar` | Auswahlanzahl/Aufheben, mobiler Auswahlmodus-Toggle sowie die wiederverwendeten Export-Komponenten, beide über die Prop `isDesktop` bedingt gemountet. Kein Filter-Zugang. |
+| `ControlTable`s `selectableControls` | Optionale Prop, die ausschließlich die Header-Aktion „Alle auswählen" bestimmt; Standard bleibt `controls`. `SearchPage` übergibt die gerenderte Seite als `controls`, aber alle sortierten Query-Treffer als `selectableControls`. |
+| `CatalogMobileSelectionBar` | Unverändert wiederverwendet; `SearchPage` rendert sie selbst im mobilen Auswahlmodus und beendet Modus und Auswahl nach Export oder „Fertig". |
 
-Export-Dateinamen sind fest: Query-Treffer heißen
-`grundschutz-suchergebnisse.csv` (Desktop in aktueller Tabellensortierung,
-Mobile in Suchrelevanzreihenfolge), Auswahl heißt `grundschutz-auswahl.csv`,
-der Gesamtkatalogexport bleibt `grundschutz-gesamtkatalog.csv`. Der
-Suchbegriff selbst fließt nie in Dateiname, Log oder zusätzlichen Speicher
-ein.
+Export-Dateinamen sind fest: Query-Treffer heißen `grundschutz-suchergebnisse.csv` (Desktop in aktueller Tabellensortierung, Mobile in Suchrelevanzreihenfolge), Auswahl heißt `grundschutz-auswahl.csv`, der Gesamtkatalogexport bleibt `grundschutz-gesamtkatalog.csv`. Der Suchbegriff selbst fließt nie in Dateiname, Log oder zusätzlichen Speicher ein.
 
-### Suchindex-Cache (GSPP-218)
+### Suchindex-Cache
 
-`useSearch` baut je Katalog fünf FlexSearch-Indizes (`controlIds`, `titles`,
-`links`, `metadata`, `content`) aus den normalisierten Suchdokumenten. Der
-Aufbau ist im Production-Build teuer genug, um das Frame-Budget zu sprengen und
-einen Long Task auszulösen — auf einem CPU-gedrosselten Mobilprofil deutlich.
-Belegt ist das gegen den Production-Build;
-[ADR-12](https://linear.app/grundschutz-plus-plus/issue/ADR-12) hält die
-Messwerte und die Methodik fest, das Repository pflegt sie bewusst nicht.
+`useSearch` baut je Katalog fünf FlexSearch-Indizes (`controlIds`, `titles`, `links`, `metadata`, `content`) aus den normalisierten Suchdokumenten. Der Aufbau ist im Production-Build teuer genug, um das Frame-Budget zu sprengen und einen Long Task auszulösen.
 
-Der bisherige komponentenlokale `useMemo`
-verwarf die Indizes beim Unmount der `SearchPage` (Detail → Zurück) und
-baute sie für unveränderte Eingaben neu. Deshalb hält `useSearch` seit
-GSPP-218 einen **kataloggescopten, begrenzten LRU-Cache** (`MAX_SEARCH_CACHE_ENTRIES = 3`):
+Weil ein komponentenlokaler Cache die Indizes beim Unmount der `SearchPage` verwerfen und für unveränderte Eingaben neu aufbauen würde, hält `useSearch` einen **kataloggescopten, begrenzten LRU-Cache** (`MAX_SEARCH_CACHE_ENTRIES = 3`):
 
-* Schlüssel: stabiler `catalogKey` (aus `sourceRegistry.GRU-239`) plus
-  Objektidentität von `controls`, `practices` und `vocabularyRegistry`. Die
-  Frischeprüfung (`isFreshCacheEntry`) vergleicht diese drei Referenzen,
-  ausdrücklich **nicht** die Array-Länge: ein gleich großes Ersatz-Array trägt
-  anderen Inhalt und muss den Index neu aufbauen. Neue Referenzen invalidieren
-  damit deterministisch; keine Ergebnis- oder Indexvermischung zwischen
-  Katalogen.
-* Begrenzung: LRU mit fester Obergrenze (aktuell 3 = Anzahl `supported`-
-  Kataloge). Überschreitet der Cache die Grenze, wird der älteste Eintrag
-  verworfen — kein unbegrenzter Speicheraufbau bei Katalogwechseln. Die
-  Einfügereihenfolge wird beim Rebuild via `delete`+`set` korrekt
-  aufgefrischt, damit ein frisch invalidierter Eintrag nicht als ältester
-  gilt und vorschnell verdrängt wird.
-* Rückkehr zu einem zuvor besuchten Katalog trifft nur innerhalb des
-  Budgets; darüber hinaus wird neu aufgebaut.
-* `SearchPage` übergibt `catalog?.catalogKey` explizit an `useSearch`, damit
-  der Cache den stabilen Katalogbezeichner nutzen kann. Leere Controls oder
-  fehlender `catalogKey` (transienter Ladezustand) legen keinen Cache-Eintrag
-  an und belegen kein LRU-Budget — ein leerer `__default__`-Eintrag kann
-  keinen echten Katalog verdrängen.
-* Mutationen des Modul-Caches laufen ausschließlich in einem `useEffect`
-  (Commit-Phase), nicht in `useMemo`/Render — damit erzeugen weder
-  StrictMode double-invoke noch abgebrochene Concurrent-Renders verwaiste
-  Evictions.
+* Schlüssel: stabiler `catalogKey` plus Objektidentität von `controls`, `practices` und `vocabularyRegistry`. Die Frischeprüfung (`isFreshCacheEntry`) vergleicht diese drei Referenzen, nicht die Array-Länge.
+* Begrenzung: LRU mit fester Obergrenze (3 = Anzahl `supported`-Kataloge). Überschreitet der Cache die Grenze, wird der älteste Eintrag verworfen. Die Einfügereihenfolge wird beim Rebuild via `delete`+`set` aufgefrischt.
+* `SearchPage` übergibt `catalog?.catalogKey` explizit an `useSearch`. Leere Controls oder fehlender `catalogKey` (transienter Ladezustand) legen keinen Cache-Eintrag an und belegen kein LRU-Budget.
+* Mutationen des Modul-Caches laufen ausschließlich in einem `useEffect` (Commit-Phase), nicht in `useMemo`/Render.
 
-Der Cache liegt als Modul-eigenes `Map<string, SearchCacheEntry>` in
-`src/features/search/useSearch.ts` (`clearSearchCache`, `getSearchCacheSize`,
-`getSearchCacheKeys`, `getSearchCacheEntry` für Tests) und ist strikt
-UI-seitig — kein zusätzlicher Speicher im `CatalogContext` und kein
-Persistenz- oder Netzwerkzugriff.
+Der Cache liegt als Modul-eigenes `Map<string, SearchCacheEntry>` in `src/features/search/useSearch.ts` (`clearSearchCache`, `getSearchCacheSize`, `getSearchCacheKeys`, `getSearchCacheEntry` für Tests) und ist strikt UI-seitig — kein zusätzlicher Speicher im `CatalogContext` und kein Persistenz- oder Netzwerkzugriff.
 
 ## Filter-System
 
-Filter werden bidirektional mit URL-Suchparametern synchronisiert (`src/hooks/useFilterParams.ts`). Die Parameter-Keys sind bewusst kurz gehalten:
+Filter werden bidirektional mit URL-Suchparametern synchronisiert (`src/hooks/useFilterParams.ts`):
 
 - `sl` — Sicherheitsniveau (`normal-SdT`, `erhöht`)
 - `el` — Aufwandsstufe (0–5)
@@ -785,20 +406,13 @@ Filter werden bidirektional mit URL-Suchparametern synchronisiert (`src/hooks/us
 - `lr` — Link-Beziehungen (`related`, `required`)
 - `sort` — Sortierfeld + Richtung
 
-Die Volltextsuche ist eine eigene Route (`/suche?q=…`) und kein Filter des
-Katalog-Browsers. Practice- und Topic-Auswahl laufen über die kataloggescopte
-Route (`/katalog/:catalogKey/:groupId`), nicht über Query-Parameter. Die
-kanonische Control-URL verwendet ausschließlich `catalogKey + altIdentifier`;
-die OSCAL-Control-ID bleibt eine interne Referenzidentität. Unbekannte oder
-nicht geladene Katalogschlüssel und unbekannte Alt-Identifier führen ohne
-globalen Fallback, Control-ID-Auflösung, Redirect oder Legacy-Route zur
-Not-found-Ansicht.
+Die Volltextsuche ist eine eigene Route (`/suche?q=…`) und kein Filter des Katalog-Browsers. Practice- und Topic-Auswahl laufen über die kataloggescopte Route (`/katalog/:catalogKey/:groupId`), nicht über Query-Parameter. Die kanonische Control-URL verwendet ausschließlich `catalogKey + altIdentifier`. Unbekannte oder nicht geladene Katalogschlüssel und unbekannte Alt-Identifier führen ohne globalen Fallback, Control-ID-Auflösung, Redirect oder Legacy-Route zur Not-found-Ansicht.
 
 Siehe [FILTERING.md](./FILTERING.md) für Details.
 
 ## Integritätsprüfung
 
-Jeder ausgelieferte Katalog und `vocabularies.json` werden zum Build-Zeitpunkt mit einem eigenen SHA-256-Hash versehen. Zur Laufzeit wird der Hash je Artefakt erneut berechnet und mit **dessen eigenen** Metadaten verglichen. Abweichungen werden der Benutzerin / dem Benutzer in der UI angezeigt und bleiben auf das betroffene Artefakt beschränkt.
+Jeder ausgelieferte Katalog und `vocabularies.json` werden zum Build-Zeitpunkt mit einem eigenen SHA-256-Hash versehen. Zur Laufzeit wird der Hash je Artefakt erneut berechnet und mit **dessen eigenen** Metadaten verglichen. Abweichungen werden in der UI angezeigt und bleiben auf das betroffene Artefakt beschränkt.
 
 Siehe [INTEGRITY.md](./INTEGRITY.md) für Details.
 
@@ -812,13 +426,11 @@ default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src
 
 Die Policy begrenzt Skripte, Datenabrufe, Bilder und Schriften auf die ausgelieferte Anwendung, blockiert Plugin-Objekte und beschränkt `<base>` sowie Form-Ziele auf dieselbe Origin. `font-src 'self'` ist möglich, weil die UI-Schriften lokal unter `public/fonts/` ausgeliefert werden.
 
-`style-src 'unsafe-inline'` bleibt bewusst gesetzt, weil Teile der React-/Tailwind-Oberfläche dynamische Inline-Styles für Interaktionen verwenden. Das ist ein eingegrenzter Tradeoff: Skripte bleiben weiterhin auf `'self'` beschränkt, und die Anwendung lädt keine externen Stylesheet-Origins.
+`style-src 'unsafe-inline'` bleibt gesetzt, weil Teile der React-/Tailwind-Oberfläche dynamische Inline-Styles für Interaktionen verwenden. Skripte bleiben auf `'self'` beschränkt, und die Anwendung lädt keine externen Stylesheet-Origins.
 
-`frame-ancestors` kann nach CSP-Spezifikation nicht wirksam per Meta-Tag gesetzt werden und würde in Chromium als ignorierte Direktive protokolliert. Ein echtes Framing-Verbot muss als HTTP-CSP-Header auf der Hosting-Schicht gesetzt werden; GitHub Pages stellt dafür in diesem Projekt derzeit keinen Mechanismus bereit.
+`frame-ancestors` kann nach CSP-Spezifikation nicht wirksam per Meta-Tag gesetzt werden. Ein Framing-Verbot als HTTP-CSP-Header stellt GitHub Pages in diesem Projekt derzeit nicht bereit.
 
-`connect-src 'self'` ist nicht nur eine Härtungsmaßnahme. Zusammen mit den Egress-Nachweisen der Browser-Testlane (`src/test/browser/browserEgressGuard.ts`, `src/test/browser/egressOracle.negative.browser.test.ts`) bildet die Direktive die technische Grundlage, auf der die datenschutzrechtliche Einordnung lokaler Nutzerdokumente ruht: Dokumentinhalte verlassen das Gerät nicht. Wer diese Grenze aufweicht — Telemetrie, Fehlerreporting, Synchronisation, Dokumentinhalte in URL-Parametern —, ändert damit auch die Rolle des Betreibers gegenüber diesen Daten. Ein solcher Eingriff ist deshalb nicht allein eine technische Entscheidung; die Einordnung in [GSPP-341](https://linear.app/grundschutz-plus-plus/issue/GSPP-341) ist vorher fortzuschreiben.
-
-[GSPP-341](https://linear.app/grundschutz-plus-plus/issue/GSPP-341) trägt neben dieser Einordnung auch die ausformulierte Textvorgabe für `src/features/pages/DatenschutzPage.tsx` — einschließlich der heute dort noch fehlenden Pflichtangaben nach Art. 13 DSGVO. Ihre Übernahme in den Code ist ein eigener Schritt und bewusst nicht Teil dieses Abschnitts: Der Seitentext wird eingesetzt, sobald der jeweilige Auslöser eintritt, der in [GSPP-341](https://linear.app/grundschutz-plus-plus/issue/GSPP-341) je Abschnitt benannt ist.
+`connect-src 'self'` bildet zusammen mit den Egress-Nachweisen der Browser-Testlane (`src/test/browser/browserEgressGuard.ts`, `src/test/browser/egressOracle.negative.browser.test.ts`) die technische Grundlage dafür, dass Dokumentinhalte das Gerät nicht verlassen. Telemetrie, Fehlerreporting, Synchronisation oder Dokumentinhalte in URL-Parametern ändern die datenschutzrechtliche Rolle des Betreibers gegenüber diesen Daten.
 
 ## Import-Alias
 
@@ -840,7 +452,7 @@ Konfiguriert in `tsconfig.app.json` (`compilerOptions.paths`) und `vite.config.t
 | `VITE_IMPRESSUM_PLZ_ORT` | App (Build) | Impressum: PLZ und Ort |
 | `VITE_IMPRESSUM_EMAIL` | App (Build) | Impressum: E-Mail |
 | `BUILD_BASE` | Build | Überschreibt die GitHub-Pages-Base (`vite.config.ts`) |
-| `BSI_SNAPSHOT_SHA` | fetch-catalog | Vollständige Commit-SHA für einen festgelegten BSI-Datenstand; ausschließlich der Catalog-Sync fordert mit `latest` ausdrücklich den neuesten Stand an. Fehlende oder leere Werte sind ungültig. |
+| `BSI_SNAPSHOT_SHA` | fetch-catalog | Vollständige Commit-SHA für einen festgelegten BSI-Datenstand; ausschließlich der Catalog-Sync fordert mit `latest` ausdrücklich den neuesten Stand an. `latest` ist außerhalb dieser Lane unzulässig. |
 | `GH_TOKEN` / `GITHUB_TOKEN` | fetch-catalog | Token für die GitHub-API (optional lokal, gesetzt in CI) |
 | `CATALOG_SYNC_APP_CLIENT_ID` | Catalog-Sync | Repository-Variable mit der Client-ID der dedizierten GitHub App |
 | `CATALOG_SYNC_APP_PRIVATE_KEY` | Catalog-Sync | Actions-Secret mit dem Private Key der dedizierten GitHub App |
@@ -852,15 +464,15 @@ Die Impressum-Werte kommen lokal aus `.env.local` (nicht committet, siehe `.env.
 
 ## CI-Pipeline
 
-Die Pull-Request-Prüfung liegt in zwei Workflows, die sich durch ihre Ereignisliste unterscheiden. `.github/workflows/ci.yml` führt `documentation-contract` und `catalog-sync-guard`; beide urteilen über die Pull-Request-Metadaten — der eine wertet den Body gegen den Dokumentationsvertrag aus, der andere liest Titel und Body für Sync-Vertrag und Release-Marke. Seine Ereignisliste führt deshalb `edited` mit, damit eine Titel- oder Body-Bearbeitung neu beurteilt wird. `.github/workflows/validate.yml` führt `validate`: Schema-Verifikation, Node-Versionsquelle, Katalog-Fetch, Profilauflösung, go-oscal-Lauf, Lint, Tests mit Coverage, Browser-Tests, Build und — seit [GSPP-418](https://linear.app/grundschutz-plus-plus/issue/GSPP-418) als letzte Schritte desselben Jobs — den zizmor-Audit (Image direkt per Digest gepinnt, `--offline`, Persona auditor, Config `.github/zizmor.yml`). Dieser Job liest weder Titel noch Body, und seine Ereignisliste führt `edited` nicht. Dieselbe Datei führt seit [GSPP-416](https://linear.app/grundschutz-plus-plus/issue/GSPP-416) den nachgelagerten Job `sonarqube`; die Begründung steht unter [`sonar-project.properties`](#sonar-projectproperties).
+Die Pull-Request-Prüfung liegt in zwei Workflows mit unterschiedlichen Ereignislisten. `.github/workflows/ci.yml` führt `documentation-contract` und `catalog-sync-guard`; beide urteilen über die Pull-Request-Metadaten und abonnieren deshalb zusätzlich `edited`. `.github/workflows/validate.yml` führt `validate` (Schema-Verifikation, Node-Versionsquelle, Lint vor dem ersten Netzschritt, Scope-Entscheider direkt hinter Lint, Katalog-Fetch, Profilauflösung, go-oscal-Lauf, Tests mit Coverage, Playwright-Cache mit Browser-Tests, Build und als letzte Schritte desselben Jobs den zizmor-Audit) und abonniert `edited` nicht.
 
-Die Trennung ist der Grund für die zweite Datei. Ein Job-`if` im gemeinsamen Workflow hätte denselben Lauf gespart, aber eine Lücke geöffnet: Ein per `if` übersprungener Job meldet laut GitHub-Dokumentation den Status `Success` und erzeugt dabei einen neuen Check-Run unter demselben Namen. Da GitHub je Kontext den jüngsten Check-Run wertet, ersetzte eine bloße Body-Bearbeitung ein fehlgeschlagenes `validate` auf unverändertem Head durch einen Erfolg — der Pflichtcheck ließe sich so umgehen. Ohne abonniertes `edited` entsteht dagegen überhaupt kein Lauf und damit kein neuer Check-Run; das reale Ergebnis des letzten Code-Laufs bleibt stehen. Das Gegenstück dazu ist die bekannte Falle, einen *erforderlichen* Workflow über Pfad- oder Branch-Filter innerhalb eines abonnierten Ereignisses zu unterdrücken: Dort bliebe der Check auf `Pending` und blockierte den Merge. Hier wird kein Filter gesetzt, sondern das Ereignis gar nicht erst abonniert.
+Ohne abonniertes `edited` entsteht bei einer Titel- oder Body-Bearbeitung kein neuer Lauf und damit kein neuer Check-Run; das Ergebnis des letzten Code-Laufs bleibt stehen. Step-Skips innerhalb des einen Jobs erzeugen keine neuen Check-Runs; der Pflichtcheck bleibt genau dieser Lauf.
 
-`edited` deckt neben Titel und Body auch den Wechsel des Base-Branches ab. Auch er löst `validate.yml` nicht aus, und das ist richtig: Die Schritte dieses Jobs prüfen allein den Head-Stand und kennen den Base nicht. Die base-abhängigen Prüfungen liegen in `documentation-contract` und `catalog-sync-guard` und laufen weiter.
+Der Scope-Entscheider (`scripts/ci-scope.mjs`) schreibt genau einen Wert nach `GITHUB_OUTPUT` (`full`, `docs_only` oder `manifest_only`). Er läuft direkt hinter Lint. Profilauflösung, go-oscal und Build entfallen bei `docs_only` (Upstream-Bytes gegen Manifest + Register ändern sich nicht); bei `manifest_only` misst der Pin-Wechsel Fetch, Profilauflösung, go-oscal und Build gegen den neuen Pin, nur Browser-Cache, Chromium-Installation, Browser-Tests und Egress-Nachweis entfallen. Fetch, Coverage, Lint, Schema-, Policy-, Versions- und zizmor-Gates laufen immer. Der Entscheider holt Base- wie Head-Commit samt Historie in den flachen Checkout, weil der Drei-Punkt-Diff sonst keine Merge-Basis findet; jeder Fetch-/Diff-Fehler fällt fail-closed auf `full` zurück.
 
-Die Jobnamen `validate`, `catalog-sync-guard` und `documentation-contract` bleiben unverändert, weil beide Rulesets (`develop`, `main-release`) sie namentlich als Required Status Check fordern. Der Kontextname eines Actions-Checks ist der Jobname, nicht die Workflow-Datei; die Verschiebung ist für die Rulesets deshalb folgenlos. Der zizmor-Audit läuft bewusst als Schritte im Job `validate` statt als eigener Job: Ein neuer Jobname wäre ein neuer Check-Kontext außerhalb beider Rulesets und blockierte keinen Merge; er ließe sich auch nicht nachträglich erzwingen, ohne die Catalog-Sync-Lane stillzulegen (vgl. `ci.yml`, release-tree-guard). Als Schritte lässt ein roter Audit `validate` fehlschlagen, der Pflichtcheck ist.
+Die Jobnamen `validate` und `catalog-sync-guard` sind die vom Preflight erwarteten Required Status Checks (`REQUIRED_CHECKS` in `scripts/catalog-sync-policy.mjs`). Der zizmor-Audit läuft als Schritte im Job `validate` statt als eigener Job, damit ein roter Audit `validate` fehlschlagen lässt.
 
-Beide Workflows tragen eine `concurrency`-Gruppe je `github.ref`, wie `sonar.yml` es bereits tut, und brechen überholte Läufe ab: Ein überholter Lauf trifft eine Aussage über einen Stand, den ein Folge-Push oder eine spätere Bearbeitung bereits ersetzt hat. `cancel-in-progress` gilt nur für Pull-Request-Läufe; ein laufender manueller `workflow_dispatch` wird nicht abgebrochen. Ein noch wartender Lauf kann dagegen von einem neueren derselben Gruppe verdrängt werden, weil GitHub je Gruppe nur einen Lauf in der Warteschlange hält — das gilt für jede Concurrency-Gruppe und ist unabhängig von `cancel-in-progress`.
+Beide Workflows tragen eine `concurrency`-Gruppe je `github.ref` und brechen überholte Pull-Request-Läufe ab (`cancel-in-progress` nur für Pull-Request-Läufe; ein laufender manueller `workflow_dispatch` wird nicht abgebrochen).
 
 ## Deployment
 
@@ -868,107 +480,70 @@ Das Deployment erfolgt automatisch via GitHub Actions bei Push auf `main` (`.git
 
 1. Gepinnter Snapshot-Commit wird aus `upstream-manifest.json` gelesen
 2. Alle materialisierten Registry-Artefakte werden gegen den BSI-Snapshot validiert; nur `supported`-Daten werden ausgeliefert (`npm run fetch-catalog`)
-3. Tests laufen mit Coverage
+3. Tests laufen mit Coverage (`npm run test:coverage`)
 4. App wird gebaut mit Impressum-Secrets
-5. SLSA-Provenance wird generiert (`actions/attest` über `dist/**`)
+5. CycloneDX-App-SBOM der produktiven npm-Abhängigkeiten wird lockfile-basiert erzeugt (`npm sbom --package-lock-only --omit=dev --sbom-format=cyclonedx --sbom-type=application` nach `$RUNNER_TEMP`; nicht unter `dist/`, keine Pages-Auslieferung) und SLSA-Provenance wird generiert — zwei getrennte Attestierungen über `dist/**`, weil `sbom-path` am Provenance-Schritt dessen Modus ersetzen würde
 6. Deployment auf GitHub Pages
 
 ### Gemeinsame Setup-Schicht
 
-Setup und Installation stehen seit [GSPP-419](https://linear.app/grundschutz-plus-plus/issue/GSPP-419) in Composite Actions unter `.github/actions/`, nicht mehr als wortgleiche Blöcke in sechs Workflows. `setup-node-env` richtet Node ein und installiert; `fetch-pinned-catalog` liest die gepinnte Snapshot-SHA aus `upstream-manifest.json` und holt den Katalog von genau diesem Stand. Die drei Jobs, die gegen den Pin bauen — `validate`, `build-and-deploy` und der Push-Pfad in `sonar.yml` — rufen beide auf.
+Setup und Installation stehen in Composite Actions unter `.github/actions/`, nicht als wortgleiche Blöcke in den Workflows. `setup-node-env` richtet Node ein und installiert; `fetch-pinned-catalog` liest die gepinnte Snapshot-SHA aus `upstream-manifest.json` und holt den Katalog von genau diesem Stand. Die drei Jobs, die gegen den Pin bauen — `validate`, `build-and-deploy` und der Push-Pfad in `sonar.yml` — rufen beide auf.
 
-Die Aufrufer referenzieren beide Actions über die self-repository-Syntax `$/` statt über das arbeitsbereichsrelative `./`. `$/` löst auf das Repository im gerade ausgeführten Commit auf und hängt damit nicht am Zustand des Dateisystems zur Laufzeit; `./` könnte eine Action laden, die ein vorheriger Schritt erst hineinkopiert hat. Der zizmor-Audit `self-repository` im Pflichtcheck `validate` erzwingt diese Form.
+Die Aufrufer referenzieren beide Actions über die self-repository-Syntax `$/` statt über das arbeitsbereichsrelative `./`. `$/` löst auf das Repository im gerade ausgeführten Commit auf; `./` könnte eine Action laden, die ein vorheriger Schritt erst hineinkopiert hat. Der zizmor-Audit `self-repository` im Pflichtcheck `validate` erzwingt diese Form.
 
-Der Checkout bleibt bewusst außerhalb der Actions, weil die Aufrufer sich darin unterscheiden: `ref`, `fetch-depth` und der Zweck des Klons weichen von Job zu Job ab, und eine Kapselung, die das verdeckte, wäre schlechter als die Wiederholung. Vorausgegangen sein muss er trotzdem — `npm ci`, `.nvmrc` und `upstream-manifest.json` lesen alle aus `$GITHUB_WORKSPACE`. Zwei Aufrufer bleiben aus benanntem Grund bei einer eigenen Fassung: `greptile-review-nudge` installiert nicht und legte mit der gemeinsamen Action eine npm-Cache-Datei an, die es nie füllt; `update-catalog` fordert mit `BSI_SNAPSHOT_SHA: latest` ausdrücklich den neuesten Upstream-Stand an, weil es den Pin gerade fortschreibt statt ihn zu lesen.
+Der Checkout bleibt außerhalb der Actions, weil `ref`, `fetch-depth` und Zweck des Klons je Job abweichen. Zwei Aufrufer bleiben bei einer eigenen Fassung: `greptile-review-nudge` installiert nicht; `update-catalog` fordert mit `BSI_SNAPSHOT_SHA: latest` den neuesten Upstream-Stand an, weil es den Pin fortschreibt statt ihn zu lesen.
 
-Die Node-Version steht ausschließlich in `.nvmrc`. Jedes Setup liest sie über `node-version-file`, das `actions/setup-node` gegen `$GITHUB_WORKSPACE` auflöst und das deshalb auch aus einer Composite Action heraus greift. `scripts/verify-node-version.mjs` hält drei Teile der Zusage: Die Angabe in `.nvmrc` ist mit `engines.node` aus `package.json` vereinbar, die tatsächlich laufende Node-Version erfüllt `engines.node`, und kein Workflow und keine Action bringt die Version als Literal zurück. Der mittlere Teil schließt die Lücke, die ein reiner Dateivergleich offenlässt: Eine `.nvmrc` mit bloßem Major benennt keine konkrete Version, sondern die jeweils neueste Veröffentlichung dieser Zeile — wird `engines.node` auf eine Mindestversion innerhalb derselben Zeile angehoben, die es noch nicht gibt, bliebe der Dateivergleich grün, während `setup-node` etwas Kleineres auflöst. Der Guard läuft hinter dem Setup-Schritt und misst deshalb das Ergebnis der Auflösung, statt es vorherzusagen. Er ist netzfrei und fail-closed, läuft als `npm run verify-node-version` im Job `validate` und schlägt auch dann fehl, wenn er seinen Gegenstand nicht mehr findet.
+Die Node-Version steht ausschließlich in `.nvmrc`. Jedes Setup liest sie über `node-version-file`. `scripts/verify-node-version.mjs` prüft sie gegen `engines.node` aus `package.json` und verbietet Versionsliterale in Workflows und Actions. Der Guard läuft hinter dem Setup-Schritt, ist netzfrei und fail-closed und läuft als `npm run verify-node-version` im Job `validate`.
 
-`scripts/workflowDefinitions.mjs` trägt die gemeinsame Sammlung aus Workflow- und Action-Definitionen. Die Guards, die am Vorkommen statt an einer Dateiliste hängen — Action-Pinning, `npm ci --ignore-scripts`, `persist-credentials: false`, kein `npx`/`npm exec` —, lesen ihr Prüfgut daraus. Ohne diese eine Quelle müssten vier Stellen jede Verschiebung gleichzeitig nachziehen, und eine vergessene Stelle prüfte stillschweigend weniger, statt fehlzuschlagen.
+`scripts/workflowDefinitions.mjs` trägt die gemeinsame Sammlung aus Workflow- und Action-Definitionen. Die Guards, die am Vorkommen statt an einer Dateiliste hängen — Action-Pinning, `npm ci --ignore-scripts`, `persist-credentials: false`, kein `npx`/`npm exec` —, lesen ihr Prüfgut daraus.
 
 ### Ausführungsumgebung und Berechtigungen
 
-Wo Abhängigkeiten installiert werden, geschieht es mit `npm ci --ignore-scripts` —
-seit [GSPP-419](https://linear.app/grundschutz-plus-plus/issue/GSPP-419) an genau
-einer Stelle, in `.github/actions/setup-node-env`.
-Damit bleibt das Lockfile die einzige Installationsquelle, ohne dass Lifecycle-Skripte
-von transitiven Abhängigkeiten während des CI-Setups ausgeführt werden. Der
-Coverage-Lauf des Deploy-Workflows ruft Vitest über `npm run test:coverage` und
-damit über denselben `package.json`-Eintrag auf wie jeder andere Coverage-Lauf
-des Repositoriums; Vitest stammt dabei aus der lokalen, durch
-`package-lock.json` festgelegten Installation. Kein Workflow ruft ein Binary
-über `npx` oder `npm exec` auf, die beide auf die Registry zurückfallen können.
-Der zizmor-Audit im Job `validate` ([GSPP-418](https://linear.app/grundschutz-plus-plus/issue/GSPP-418))
-bezieht sein Binary weder über `npx`/`npm exec` noch als Hash-loses PyPI-Wheel
-noch über einen Action-Wrapper: Er lässt das Image direkt per Digest laufen
-(`ghcr.io/zizmorcore/zizmor:1.30.1@sha256:a2eb396d886c053073405c7a980f2139ba2248ec172243cfa3841e57196e8101`
-aus der `support/versions`-Tabelle der Action) — ein Action-Wrapper übergibt
-nur `--no-online-audits` (schwächer als `--offline`, Greptile-P2 auf PR #256)
-und reicht immer ein Token durch. Der Schritt nutzt `docker pull` plus
-`docker run --network none` mit `--offline`, ohne Token und mit
-Read-only-Mount: kein Netz, kein Credential, kein Installer. Alle Actions
-bleiben per SHA gepinnt (erzwungen über
-`scripts/workflow-action-pinning.test.ts`, das seit
-[GSPP-419](https://linear.app/grundschutz-plus-plus/issue/GSPP-419) auch die
-Composite Actions unter `.github/actions/` erfasst); der Digest ist der Pin des
-Binaries. Mitigations: Image-Digest statt Registry-Vertrauen, `--offline` mit
-Netzsperre, Plain-Output mit Exit non-zero bei Befunden (SARIF exitt immer 0
-und taugt nicht als Blockiergate). Restrisiko: Ein manipuliertes Image meldet
-„No findings" und schaltet die Prüfung still ab — zizmor prüft sich hier
-selbst; der Digest-Pin verkleinert das Fenster auf den Registry-Digest,
-beseitigt die Klasse nicht. Die Abweichung vom reinen SHA-Action-Modell
-(Container-Digest statt Action-Code allein) ist damit dokumentiert statt
-stillschweigend.
+Wo Abhängigkeiten installiert werden, geschieht es mit `npm ci --ignore-scripts` — an genau einer Stelle, in `.github/actions/setup-node-env`. Der Coverage-Lauf des Deploy-Workflows ruft Vitest über `npm run test:coverage` auf. Kein Workflow ruft ein Binary über `npx` oder `npm exec` auf. Der zizmor-Audit im Job `validate` lässt das Image direkt per Digest laufen (`ghcr.io/zizmorcore/zizmor:1.30.1@sha256:a2eb396d886c053073405c7a980f2139ba2248ec172243cfa3841e57196e8101`) — per `docker pull` plus `docker run --network none` mit `--offline`, `--persona auditor`, Config `.github/zizmor.yml`, ohne Token und mit Read-only-Mount. Alle Actions bleiben per SHA gepinnt (erzwungen über `scripts/workflow-action-pinning.test.ts`, das auch die Composite Actions unter `.github/actions/` erfasst); der Digest ist der Pin des Binaries. Plain-Output mit Exit non-zero bei Befunden ist das Blockiergate (SARIF exitt immer 0).
 
-Die Standardberechtigung des Deploy-Workflows beschränkt sich auf
-`contents: read`. Schreibrechte für GitHub Pages, OIDC, Attestations und
-Artefaktmetadaten besitzt ausschließlich der Job `build-and-deploy`; der
-vorgeschaltete `idempotency_guard` behält nur seine erforderlichen Lesezugriffe.
+Die Standardberechtigung des Deploy-Workflows beschränkt sich auf `contents: read`. Schreibrechte für GitHub Pages, OIDC, Attestations und Artefaktmetadaten besitzt ausschließlich der Job `build-and-deploy`; der vorgeschaltete `idempotency_guard` behält nur Lesezugriffe.
 
-Die generierten Katalog- und Vokabulardaten werden **nie** im Repository committet — sie werden immer frisch zum Build-Zeitpunkt von BSI abgerufen. Der Workflow `.github/workflows/update-catalog.yml` vergleicht die vollständigen Trees der in `sourceRegistry` definierten Monitoring-Wurzeln. Änderungen an registrierten Artefakten aktualisieren `upstream-manifest.json`; neue, nicht registrierte Dateien werden ausschließlich als `unclassified` gemeldet und weder gefetcht noch ausgeliefert. Tree-Dateidelta und Datenqualitätsbefunde erscheinen getrennt in Workflow-Ausgabe und PR-Beschreibung.
+Die generierten Katalog- und Vokabulardaten werden **nie** im Repository committet — sie werden immer frisch zum Build-Zeitpunkt von BSI abgerufen. Der Workflow `.github/workflows/update-catalog.yml` vergleicht die vollständigen Trees der in `sourceRegistry` definierten Monitoring-Wurzeln. Änderungen an registrierten Artefakten aktualisieren `upstream-manifest.json`; neue, nicht registrierte Dateien werden ausschließlich als `unclassified` gemeldet und weder gefetcht noch ausgeliefert.
 
 Manifest v2 enthält für jede materialisierte Datei `artifactKey`, erwarteten `rootType`, `lifecycle`, Pfad, Git-Blob-SHA und Content-SHA-256. Dadurch umfasst das Delta auch registrierte Kataloge, Profile, Mappings und Component Definitions; produktiv ausgeliefert werden weiterhin ausschließlich `supported`-Artefakte.
 
 ### Policy-gesteuerter Catalog-Sync
 
-Der Sync verwendet ausschließlich eine auf dieses Repository beschränkte GitHub App. Ihr kurzlebiges Installation-Token wird zur Laufzeit erzeugt und unverändert an `gh` und Git übergeben; es gibt weder einen PAT-Fallback noch Annahmen über das Tokenformat. Der temporäre `X-GitHub-Stateless-S2S-Token`-Override wird nicht gesetzt.
+Der Sync verwendet ausschließlich eine auf dieses Repository beschränkte GitHub App. Ihr kurzlebiges Installation-Token wird zur Laufzeit erzeugt und unverändert an `gh` und Git übergeben; es gibt weder einen PAT-Fallback noch Annahmen über das Tokenformat.
 
 Ein erkannter Upstream-Delta durchläuft folgende Lane:
 
-1. Der Workflow checkt unabhängig vom auslösenden Ref explizit `main` aus und prüft Auto-Merge, automatische Branch-Löschung, Ruleset 23067488 samt wirksamem Ref-Scope auf `main`, required Checks und CodeQL. Da GitHub `bypass_actors` für minimal berechtigte Tokens redigiert, muss `updated_at` denselben Zeitpunkt wie das nach vollständigem Admin-Audit gesetzte `CATALOG_SYNC_RULESET_UPDATED_AT` bezeichnen; unterschiedliche ISO-Zeitzonenrepräsentationen desselben Zeitpunkts sind zulässig, jede tatsächliche Ruleset-Änderung blockiert dagegen bis zur erneuten Prüfung.
+1. Der Workflow checkt explizit `main` aus und prüft Auto-Merge, automatische Branch-Löschung, Ruleset samt Ref-Scope auf `main`, required Checks und CodeQL. `updated_at` muss denselben Zeitpunkt wie das nach vollständigem Admin-Audit gesetzte `CATALOG_SYNC_RULESET_UPDATED_AT` bezeichnen; jede tatsächliche Ruleset-Änderung blockiert bis zur erneuten Prüfung.
 2. Der deterministische Branch `chore/catalog-sync-<sha12>` wird neu aus `origin/main` aufgebaut und enthält genau einen Manifest-Commit.
 3. Die GitHub App pusht den Branch und erstellt oder aktualisiert den PR.
-4. `validate` und `catalog-sync-guard` sind die vom Preflight erwarteten Required Status Checks (`REQUIRED_CHECKS` in `scripts/catalog-sync-policy.mjs`); zusätzliche Kontexte sind zulässig, weil der Preflight jeden erwarteten Kontext nur auf Anwesenheit prüft. CodeQL zählt ausdrücklich nicht dazu: Beide Rulesets erzwingen es über eine eigene `code_scanning`-Regel, die der Preflight getrennt gegen `security_alerts_threshold: high_or_higher` und `alerts_threshold: errors` prüft. Der Guard bindet Registry-Metadaten, Datei-Inventur, Blob-SHAs und Content-Hashes an den ausgewählten BSI-Snapshot.
-5. Der Workflow fordert ausschließlich GitHub Auto-Merge mit Squash und Branch-Löschung an. Das Ruleset ist über `conditions.ref_name.include = ["refs/heads/main"]` explizit auf `main` gebunden, sodass GitHub den Merge erst nach grünen Gates ausführt.
-6. `.github/workflows/verify-catalog-merge.yml` verifiziert ereignisbasiert Merge-Commit und Manifest auf `main`. Die anschließende Deploy-Prüfung liegt in `scripts/verify-catalog-deploy.mjs`: Sie sucht den normalen Push-Deploy zum Merge-Commit und bestätigt ihn erst, wenn er einen terminalen Zustand mit `conclusion = success` erreicht hat. Ein fehlgeschlagener oder innerhalb des Budgets unbestätigter Deploy lässt den Verify-Job fehlschlagen. Erscheint gar kein Push-Deploy, werden Merge-Commit und Manifest erneut gegen `main` geprüft, bevor der Workflow den begrenzten Fallback dispatcht.
-7. Zwischen der letzten Prüfung und dem Dispatch kann GitHub den Push-Deploy noch registrieren; dieses Fenster ist durch weitere Prüfungen nicht schließbar. Der Fallback-Dispatch übergibt deshalb `dispatch_source=catalog-sync-fallback` an `deploy.yml`, wo der Job `idempotency_guard` (`scripts/check-deploy-idempotency.mjs`) prüft, ob für denselben Commit-SHA bereits ein Deploy-Lauf erfolgreich abgeschlossen wurde. Da die Concurrency-Gruppe `pages` den Fallback-Lauf hinter dem Push-Deploy einreiht, ist dessen Zustand zu diesem Zeitpunkt terminal. Der Guard kann einen Deploy ausschließlich verhindern, nie erzwingen: bei fehlgeschlagenem Lookup, fehlenden Eingaben oder einem Job-Fehler wird deployt. Ein manueller `workflow_dispatch` lässt `dispatch_source` leer und deployt immer.
+4. `validate` und `catalog-sync-guard` sind die vom Preflight erwarteten Required Status Checks (`REQUIRED_CHECKS` in `scripts/catalog-sync-policy.mjs`). Der Guard bindet Registry-Metadaten, Datei-Inventur, Blob-SHAs und Content-Hashes an den ausgewählten BSI-Snapshot.
+5. Der Workflow fordert ausschließlich GitHub Auto-Merge mit Squash und Branch-Löschung an.
+6. `.github/workflows/verify-catalog-merge.yml` verifiziert Merge-Commit und Manifest auf `main`. Die anschließende Deploy-Prüfung liegt in `scripts/verify-catalog-deploy.mjs`: Sie bestätigt den Push-Deploy zum Merge-Commit erst bei terminalem Zustand mit `conclusion = success`. Ein fehlgeschlagener oder unbestätigter Deploy lässt den Verify-Job fehlschlagen. Erscheint gar kein Push-Deploy, werden Merge-Commit und Manifest erneut gegen `main` geprüft, bevor der Workflow den begrenzten Fallback dispatcht.
+7. Der Fallback-Dispatch übergibt `dispatch_source=catalog-sync-fallback` an `deploy.yml`, wo der Job `idempotency_guard` (`scripts/check-deploy-idempotency.mjs`) prüft, ob für denselben Commit-SHA bereits ein Deploy-Lauf erfolgreich abgeschlossen wurde. Der Guard kann einen Deploy ausschließlich verhindern, nie erzwingen. Ein manueller `workflow_dispatch` lässt `dispatch_source` leer und deployt immer.
 
 #### Vom Guard anerkannte PR-Typen
 
-`catalog-sync-guard.mjs` läuft auf jeder PR und rechnet den PR-Diff als Drei-Punkt-Diff gegen die Merge-Basis (`<base>...<head>`) — dieselbe Bezugsgröße, die GitHub für „Files changed" verwendet, sodass Pfade, die allein die Base bewegt hat, nicht als Änderung der PR gelten. Berührt dieser Diff `upstream-manifest.json` nicht und trägt die PR weder Sync-Branchnamen noch Sync-Titel, passiert sie ohne Netzzugriff. Andernfalls muss die PR genau einem der folgenden Typen entsprechen; jede Abweichung fällt fail-closed auf den regulären Sync-Pfad zurück und wird dort abgelehnt.
+`catalog-sync-guard.mjs` rechnet den PR-Diff als Drei-Punkt-Diff gegen die Merge-Basis (`<base>...<head>`) — dieselbe Bezugsgröße, die GitHub für „Files changed" verwendet. Berührt dieser Diff `upstream-manifest.json` nicht und trägt die PR weder Sync-Branchnamen noch Sync-Titel, passiert sie ohne Netzzugriff. Andernfalls muss die PR genau einem der folgenden Typen entsprechen; jede Abweichung fällt fail-closed auf den regulären Sync-Pfad zurück und wird dort abgelehnt.
 
 | Typ | Prädikat | Kennzeichen | Netzprüfung |
 | --- | --- | --- | --- |
 | Autonomer Katalog-Sync | `validateCatalogSyncPullRequest` | Branch `chore/catalog-sync-<sha12>`, exakter Titel, genau `upstream-manifest.json` geändert | `verifySnapshotProgress` und `verifySnapshotFiles` |
-| Registry-Lifecycle-Migration | `isRegistryLifecycleOnlyMigration` | Manifest und Quellregister gemeinsam, **unveränderter** Snapshot, alle Content-Pins identisch, mindestens ein Lifecycle-Wechsel; keine Entsperrung aus `blocked-by-upstream` | keine — es werden keine neuen Bytes gepinnt |
+| Registry-Lifecycle-Migration | `isRegistryLifecycleOnlyMigration` | Manifest und Quellregister gemeinsam, **unveränderter** Snapshot, alle Content-Pins identisch, mindestens ein Lifecycle-Wechsel; keine Entsperrung aus `blocked-by-upstream` | keine |
 | Registry-Preview-Erweiterung | `isRegistryPreviewArtifactExpansion` | Manifest und Quellregister gemeinsam, unveränderter Snapshot, ausschließlich neue interne Preview-Kataloge ohne `catalogKey` | `verifySnapshotFiles` |
 | OSCAL-Versionsmigration | `isRegistryOscalVersionMigration` | Manifest und Quellregister gemeinsam, **vorwärts bewegter** Snapshot, unveränderte Artefaktidentität, im Register bewegt sich einzig `oscalVersion` von OSCAL-Artefakten; Begleitpfade nur unter `src/` und `docs/` | `verifySnapshotProgress` und `verifySnapshotFiles`, ungekürzt |
 | Manifest-Übernahme nach `develop` | `isCatalogImportToDevelop` | Base `develop`, Branch exakt `chore/catalog-import-to-develop`, genau ein Eintrag `M upstream-manifest.json`, Manifest am Head byte-identisch mit dem an `origin/main` | `verifySnapshotProgress` und `verifySnapshotFiles`, ungekürzt |
 
-Die OSCAL-Versionsmigration löst einen strukturellen Deadlock: BSI veröffentlicht abgeleitete Artefakte gebündelt neu, und hebt dabei ein registriertes Artefakt seine `metadata.oscal-version`, blockiert der fail-closed-Abgleich aus [ADR-1](https://linear.app/grundschutz-plus-plus/issue/ADR-1) jeden Fetch. Beide Einzelwege bleiben dann rot — eine reine Registeränderung fetcht am alten Snapshot gegen die neue Erwartung, eine reine Manifest-PR am neuen Snapshot gegen die alte — und die autonome Lane kann sich nicht selbst befreien, weil `update-catalog.yml` `npm run fetch-catalog` vor der Manifest-Erzeugung aufruft. Registerbump und Snapshot-Advance müssen deshalb im selben Commit liegen.
+Die OSCAL-Versionsmigration löst einen strukturellen Deadlock: Hebt BSI die `metadata.oscal-version` eines registrierten Artefakts an, blockiert der fail-closed-Abgleich jeden Fetch, und beide Einzelwege bleiben rot. Registerbump und Snapshot-Advance müssen deshalb im selben Commit liegen. Die Sicherheit stammt aus der ungekürzten Snapshot-Verifikation gegen die BSI-API und aus der Positivliste der Begleitpfade (`src/`, `docs/`).
 
-Anders als bei den beiden anderen Ausnahmen stammt die Sicherheit hier nicht aus „keine neuen Bytes" — jeder Pin darf neue Bytes benennen. Sie stammt aus der ungekürzten Snapshot-Verifikation gegen die BSI-API und aus der Positivliste der Begleitpfade: Zulässig sind nur `src/` und `docs/`, alles andere lässt das Prädikat fail-closed zurückfallen. Die harten Regeln des autonomen Pfads — Branchname, exakter Titel, eine Datei — schützen vor Auto-Merge-Missbrauch; `update-catalog.yml` aktiviert Auto-Merge ausschließlich auf der PR, die es selbst erzeugt hat, und eine Migrations-PR mit abweichendem Branchnamen bekommt es nie. Für Produktcode ist der Guard damit nicht das Kontrollinstrument, sondern `validate`, CodeQL, Sonar, Greptile und der menschliche Merge. Was er schützen muss, ist die Beweiskette der Lane selbst — Fetch, Manifest-Erzeugung, Policy, Guard und die Workflows, die sie aufrufen. Sie liegt vollständig unter `scripts/` und `.github/`, und genau die sind von der Positivliste nicht erfasst.
+Die Manifest-Übernahme bezieht ihre Sicherheit aus der **Herkunft**: Weil das Manifest am PR-Head byte-identisch mit dem an `origin/main` sein muss, kann dieser Zweig nichts durchlassen, was nicht bereits die vollständige Sync-Lane auf `main` passiert hat. `verifySnapshotProgress` und `verifySnapshotFiles` laufen trotzdem ungekürzt gegen die BSI-API.
 
-Die Manifest-Übernahme ist die vierte anerkannte PR-Form und die einzige, deren Sicherheit aus der **Herkunft** stammt statt aus „keine neuen Bytes" oder einer Diff-Positivliste. Seit dem Release-Branch-Modell nimmt `main` Katalog-Syncs autonom auf, während `develop` die Integrationslinie ist; der Inhalt muss `develop` erreichen, ohne dass die Lane auf `main` etwas von `develop` erwartet. Der Übernahme-PR zweigt deshalb von `develop` ab — ein PR mit `head=main` erfüllte die Strict-Policy nur im schmalen Fenster direkt nach einem Release-Merge. Weil das Manifest am PR-Head byte-identisch mit dem an `origin/main` sein muss, kann dieser Zweig nichts durchlassen, was nicht bereits die vollständige Sync-Lane auf `main` passiert hat. Die Beweislast sinkt trotzdem nicht: `verifySnapshotProgress` und `verifySnapshotFiles` laufen unverkürzt gegen die echte BSI-API. Jede nicht erfüllte Bedingung und jeder Fehler der Herkunftsprüfung — auch ein nicht auflösbares `origin/main` — lässt das Prädikat `false` liefern; die PR fällt dann auf den regulären Sync-Pfad zurück und wird dort abgelehnt. Der Job `catalog-sync-guard` in `.github/workflows/ci.yml` fetcht `origin/main` deshalb ausdrücklich und übergibt `PR_BASE_REF`.
-
-Den Registerstand am PR-Base-SHA lädt `loadSourceRegistryAtRef`. Die Modulkette wird dafür in ein temporäres Verzeichnis außerhalb des Quellbaums geschrieben, damit der relative Import auf die Versionsmatrix auflöst, ohne dass ein abgebrochener Lauf ein importierbares Modul unter `src/` hinterlässt. Der Import läuft in einem Kindprozess, weil ein dynamischer Import mit berechnetem Pfad Vites Rolldown-SSR-Transform dieses Skripts zum Abbruch bringt.
-
-Bei fehlender oder abweichender vom Preflight geprüfter Policy, einem API-Fehler, unerwartetem Diff oder fehlendem `autoMergeRequest` bricht der Workflow ab. Der Preflight prüft die Bindung der Ruleset-Conditions an `main` fail-closed mit. Der BSI-Upstream bleibt als Datenquelle grundsätzlich vertraut; eine fachliche Two-Source-Verifikation ist nicht Teil dieser Merge-Lane.
+Bei fehlender oder abweichender vom Preflight geprüfter Policy, einem API-Fehler, unerwartetem Diff oder fehlendem `autoMergeRequest` bricht der Workflow ab.
 
 ### Inhalts-Übernahme und Release-Vorbereitung
 
-Seit dem Release-Branch-Modell laufen drei Linien mit drei getrennten Aufgaben. Die Produktionslane (`update-catalog.yml`) stellt den Manifest-PR nach `main` und bleibt unverändert; `develop` ist keine Voraussetzung dieses Ablaufs, weil ein Katalog-Update keine Bruchstücke aus der Integrationslinie in die Produktion ziehen darf. Die Übernahme-Lane (`.github/workflows/backmerge-main-to-develop.yml` → `scripts/backmerge-main-to-develop.mjs`) bringt den Inhalt nach `develop`. Die Release-Lane (`.github/workflows/release-prepare.yml` → `scripts/release-prepare.mjs`) erzeugt den Freigabe-PR. Keiner der beiden neuen Workflows mergt oder löscht Branches.
+Drei Linien mit drei getrennten Aufgaben: Die Produktionslane (`update-catalog.yml`) stellt den Manifest-PR nach `main`. Die Übernahme-Lane (`.github/workflows/backmerge-main-to-develop.yml` → `scripts/backmerge-main-to-develop.mjs`) bringt den Inhalt nach `develop`. Die Release-Lane (`.github/workflows/release-prepare.yml` → `scripts/release-prepare.mjs`) erzeugt den Freigabe-PR. Keiner der beiden neuen Workflows mergt oder löscht Branches.
 
-Die Übernahme überträgt die **Änderung**, nicht den Zustand. Ein greifendes Migrationsprädikat beweist nur, dass der Zielzustand ein zulässiger Übergang ist, nicht dass er die Änderung aus `main` trägt: Stehen im gemeinsamen Ausgangsstand zwei Kataloge auf `preview` und `supported`, bewegt `main` den einen auf `supported` und `develop` unabhängig den anderen auf `preview`, so setzt eine vollständige Kopie des `main`-Manifests beide auf `supported` — und der Lifecycle-Vertrag akzeptiert das, obwohl develops Änderung zurückgenommen wurde. Jede Klasse hat deshalb ihre eigene Bezugsgröße.
+Die Übernahme überträgt die **Änderung**, nicht den Zustand. Jede Klasse hat deshalb ihre eigene Bezugsgröße:
 
 | Klasse | Bedingung | Branch | Bezugsgröße | Merge-Methode |
 | --- | --- | --- | --- | --- |
@@ -978,73 +553,53 @@ Die Übernahme überträgt die **Änderung**, nicht den Zustand. Ein greifendes 
 | M3 | Inhalt ohne Manifestpfad | `chore/backmerge-main-to-develop` | Drei-Wege-Merge gegen dieselbe Basis | Merge-Commit |
 | Konflikt | Manifest bewegt, aber weder M1 noch M2 greift | entfällt | — | kein PR, Lauf schlägt mit Befund fehl |
 
-M1 arbeitet mit einer Vorbedingung statt mit einer Patch-Basis. Übernommen wird immer der Sprung auf `main`s aktuellen Stand, nie ein Einzelschritt: An drei historischen Manifestständen — `develop` auf A, `main` über B auf C — erzeugt der Einzelschritt B nach C neun Konfliktstellen, während der Sprung A nach C konfliktfrei exakt C ergibt. Weil die Vorbedingung inhaltsbasiert ist, braucht M1 keine Historie und darf gesquasht werden. Genau daraus folgt eine Betriebsgrenze: Ein gesquashter M1 schreibt die gemeinsame Basis nicht fort, der Manifestpfad dort veraltet, und ein anschließender M2-Merge kollidiert, obwohl die Inhalte längst abgeglichen sind. Der Lauf bricht dann mit Konfliktbefund ab und überschreibt nichts; die Auflösung ist Handarbeit, und der sichtbare Fehlschlag ist das gewünschte Verhalten.
+M1 arbeitet mit einer Vorbedingung statt mit einer Patch-Basis: Übernommen wird immer der Sprung auf `main`s aktuellen Stand. Weil die Vorbedingung inhaltsbasiert ist, braucht M1 keine Historie und darf gesquasht werden. Ein gesquashter M1 schreibt die gemeinsame Basis nicht fort; ein anschließender M2-Merge kollidiert dann, und die Auflösung ist Handarbeit.
 
-Die Ancestry-Prüfung abgeschlossener M2- und M3-Übernahmen ist die erste Handlung jedes Laufs, vor dem Leerlauftest. Nach einem Squash liegt der Inhalt vollständig vor, und der Leerlauftest würde den Lauf sonst erfolgreich beenden, während die Ancestry fehlt. Der Quell-SHA wird dem PR ausdrücklich als Marke `<!-- backmerge-source: <sha> -->` im Body zugeordnet und nicht aus seiner Commit-Struktur erschlossen: Eine Ableitung über den zweiten Elternteil des Heads wäre unzuverlässig, weil ein späterer Merge des neueren `develop` in den Branch — etwa über GitHubs „Update branch" — genau diesen Elternteil überschreibt. Geprüft wird zweistufig und fail-closed: Der markierte SHA muss von der PR-Spitze erreichbar sein, sonst ist die Marke ungültig und der Lauf meldet einen Fehler; danach, ob er Vorfahr von `develop` geworden ist. Eine fehlende Marke ist ebenfalls ein Fehler, kein stilles Bestehen. Fehlt die Ancestry, entsteht der wiederherstellende PR, und der Lauf endet danach trotzdem mit einem Fehler.
+Die Ancestry-Prüfung abgeschlossener M2- und M3-Übernahmen läuft vor dem Leerlauftest. Der Quell-SHA wird dem PR als Marke `<!-- backmerge-source: <sha> -->` im Body zugeordnet. Geprüft wird fail-closed: Der markierte SHA muss von der PR-Spitze erreichbar sein, danach ob er Vorfahr von `develop` geworden ist. Eine fehlende Marke ist ein Fehler. Fehlt die Ancestry, entsteht der wiederherstellende PR, und der Lauf endet trotzdem mit einem Fehler.
 
-Die Reparatur ist der **alleinige** Gegenstand ihres Laufs; eine gleichzeitig anstehende Inhaltsübernahme folgt erst im Lauf nach ihrem Merge, den der `push`-Trigger auf `develop` sofort auslöst. Beides zu bündeln erzeugte einen Pull Request, den kein Guard-Vertrag trägt: Ein Reparatur-Merge mit Manifestbewegung läuft unter dem neutralen Branchnamen und erfüllt damit weder den Ein-Datei-Importvertrag noch den Sync-Branchvertrag — er fiele auf den regulären Sync-Pfad zurück und würde dort abgelehnt, womit der nächste Katalog-Sync `develop` nicht mehr erreichte. Getrennt bleibt jeder Pull Request vertragsfähig: Der Reparatur-PR hat einen leeren Drei-Punkt-Diff, ist für den Guard kein Kandidat und passiert ihn ohne Netzzugriff.
+Die Reparatur ist der **alleinige** Gegenstand ihres Laufs; eine gleichzeitig anstehende Inhaltsübernahme folgt erst im Lauf nach ihrem Merge. Der Reparatur-PR hat einen leeren Drei-Punkt-Diff und passiert den Guard ohne Netzzugriff.
 
-Der Leerlauftest vergleicht das **Ergebnis** der Übernahme mit dem aktuellen `develop`-Baum, nicht die Bäume von `main` und `develop`. Letztere unterscheiden sich schon durch normale Entwicklungsarbeit; das Ergebnis dagegen entspricht genau dann develops Baum, wenn nichts zu übernehmen ist. Der Reparaturfall aus der Ancestry-Prüfung ist die ausdrückliche Ausnahme dieses Abbruchs. Ihm vorgelagert ist dieselbe Frage an der Pfadmenge: Liegt jeder von `main` bewegte Pfad auf `develop` bereits unverändert vor, endet der Lauf, ohne dass eine Vertragsfrage nötig wäre. Das ist der reguläre Zustand nach einem gesquashten M1, dessen zurückgebliebene Merge-Basis die Pfadmenge weiterführt, während beide Stände längst gleich sind. Verglichen wird dabei der vollständige Tree-Eintrag, nicht die Blob-Identität: Ein Blob trägt den Dateimodus nicht, und ein Hotfix, der ein Skript von `100644` auf `100755` setzt, lässt dessen Blob-ID unverändert — der Lauf endete sonst als Leerlauf, das Ausführungsrecht erreichte `develop` nie, und die Release-Vorbereitung scheiterte anschließend an der Baumungleichheit. Überlappende Läufe aus `push main` und `push develop` serialisiert eine `concurrency`-Gruppe ohne `cancel-in-progress`: Jeder Lauf trifft eine Aussage über einen konkreten Stand beider Linien, und ein abgebrochener Lauf ließe die Ancestry-Prüfung ungeprüft zurück.
+Der Leerlauftest vergleicht das **Ergebnis** der Übernahme mit dem aktuellen `develop`-Baum. Überlappende Läufe aus `push main` und `push develop` serialisiert eine `concurrency`-Gruppe ohne `cancel-in-progress`.
 
-Die Release-Vorbereitung erzeugt einen kurzlebigen Branch `release/<sha12>` aus aktuellem `origin/main` und mergt den freigegebenen `develop`-SHA hinein. Die Eingabe ist zwingend ein 40-stelliger Kleinbuchstaben-SHA: Eine Freigabe ist eine Entscheidung über einen konkreten Commit, und ein Branchname wie `develop` übernähme den jeweils aktuellen Head — auch den, der nach der Entscheidung hinzukam. Es gibt deshalb auch keinen stillen Default auf den Integrationshead.
-
-Zwei Bedingungen gelten vor dem PR: `git merge-base --is-ancestor origin/main <head>` erfüllt die Strict-Policy per Konstruktion, und der resultierende Baum entspricht exakt dem Baum des freigegebenen `develop`-SHA. Die zweite ist die wirksame Absicherung — sie ist genau dann erfüllt, wenn die Übernahme-Lane vorher gelaufen ist. Trägt `main` noch Inhalt, den `develop` nicht hat, weichen die Bäume ab und die Freigabe stoppt, statt unbemerkt etwas anderes auszuliefern. Damit löst sich auch die Sperre, die ein Catalog-Sync sonst auf der Freigabelinie erzeugte: Nach gelaufener Übernahme trägt der Release-PR den Manifestpfad nicht mehr im Drei-Punkt-Diff gegen `main`, und der `catalog-sync-guard` greift dort nicht.
-
-Diese Baumgleichheit gilt allerdings nur für den Augenblick der Vorbereitung. Bewegt sich `main` danach, verlangt die Strict-Policy eine Aktualisierung des Heads — und ein konfliktfreier „Update branch" trägt mains neuen Inhalt hinein, ohne dass der Vorbereitungslauf davon erführe. Der Pull Request ließe sich dann mit einem anderen Stand mergen, als sein Body benennt. Deshalb trägt sein Body die Marke `<!-- release-source: <sha> -->`, und der Job `catalog-sync-guard` rechnet die Bedingung über einen eigenen Schritt (`scripts/release-prepare.mjs --verify-pull-request`) bei jedem `synchronize`-Ereignis nach: genau eine Marke, der markierte Stand auf `origin/develop`, und der Baum des Heads gleich dem des markierten Commits. Fehlende oder mehrdeutige Marke ist ein Fehler, kein Bestehen. Die Prüfung greift an Base `main` plus Branchpräfix `release/`; ein von Hand unter anderem Namen gestellter Pull Request nach `main` liegt außerhalb ihres Zuschnitts, weil das Modell dafür keinen Ablauf vorsieht. Sie sitzt in diesem Job statt in einem eigenen, weil nur so ihr Fehlschlag den Merge verhindert: `catalog-sync-guard` ist in beiden Rulesets Required Status Check, ein neuer Jobname wäre es nicht und ließe sich auch nicht nachträglich erzwingen, ohne die Catalog-Sync-Lane stillzulegen — deren Pull Requests zweigen von `main` ab und führen die Workflow-Fassung aus `develop` nicht, ein dort geforderter Check bliebe also unbeantwortet. Ein Release-PR trägt dagegen den Baum von `develop` und damit die Prüfung im eigenen Head. Der `git fetch` von `origin/develop` hängt am Branchpräfix und liegt deshalb nicht im Pfad der Sync-Lane.
+Die Release-Vorbereitung erzeugt einen kurzlebigen Branch `release/<sha12>` aus aktuellem `origin/main` und mergt den freigegebenen `develop`-SHA hinein. Die Eingabe ist zwingend ein 40-stelliger Kleinbuchstaben-SHA. Zwei Bedingungen gelten vor dem PR: `git merge-base --is-ancestor origin/main <head>`, und der resultierende Baum entspricht exakt dem Baum des freigegebenen `develop`-SHA. Trägt `main` noch Inhalt, den `develop` nicht hat, stoppt die Freigabe. Der PR-Body trägt die Marke `<!-- release-source: <sha> -->`; der Job `catalog-sync-guard` rechnet die Bedingung bei jedem `synchronize`-Ereignis nach (genau eine Marke, markierter Stand auf `origin/develop`, Baum des Heads gleich dem markierten Commit). Die Prüfung greift an Base `main` plus Branchpräfix `release/`.
 
 ## Versionierte Review-Policy
 
-Gitar und Greptile prüfen dieses Repository parallel. Gitar liest seine Anweisungen aus `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, `.cursor/rules/*`, `.gitar/**`, `.claude/skills/` und `.github/skills/` — und `.gitignore` schließt hier jede einzelne dieser Quellen aus. Bis GSPP-374 lagen die Reviewregeln deshalb vollständig außerhalb des versionierten Repositoriums, und Gitar hat ohne jede repo-seitige Anweisung gereviewt. Greptile bezog seine Regeln bis GSPP-383 aus dem Anbieter-Dashboard, beschickt über einen gitignorierten Importpfad, den jede Regeländerung von Hand nachziehen musste. Seitdem gilt für beide Reviewer dasselbe: Regeln sind versioniert, haben genau eine Autorenquelle, und alles Weitere wird daraus deterministisch erzeugt.
+Gitar und Greptile prüfen dieses Repository parallel. Regeln sind versioniert, haben genau eine Autorenquelle, und alles Weitere wird daraus deterministisch erzeugt.
 
-Die Autorenquelle besteht aus zwei Dateien mit klarer Aufgabenteilung. `scripts/review-policy.rules.mjs` trägt die Regeltabelle als reine Daten — Regel-ID, Scope und Regeltext. `scripts/review-policy.mjs` trägt Generator, Drift-Guard und CLI und ist der einzige Einstiegspunkt für Verbraucher; es re-exportiert die Tabelle. Erzeugt werden vier Adapter: `docs/REVIEW_INVARIANTS.md` (menschenlesbar, reviewbar), `.gitar/review/invarianten.md` (dünner Adapter, der die Dokumentation per `@`-Include einbindet) sowie `.greptile/config.json` und `.greptile/files.json` (Greptiles Wurzelkonfiguration, siehe unten). `npm run review-policy` erzeugt neu, `npm run review-policy:check` schlägt bei jeder manuellen Abweichung fehl und läuft als Pflichtschritt im CI-Job `validate`.
+Die Autorenquelle besteht aus zwei Dateien: `scripts/review-policy.rules.mjs` trägt die Regeltabelle als reine Daten — Regel-ID, Scope und Regeltext. `scripts/review-policy.mjs` trägt Generator, Drift-Guard und CLI. Erzeugt werden vier Adapter: `docs/REVIEW_INVARIANTS.md`, `.gitar/review/invarianten.md`, `.greptile/config.json` und `.greptile/files.json`. `npm run review-policy` erzeugt neu, `npm run review-policy:check` schlägt bei jeder manuellen Abweichung fehl und läuft als Pflichtschritt im CI-Job `validate`.
 
-Der Guard prüft mehr als Byte-Gleichheit der erzeugten Dateien. Er stellt außerdem sicher, dass keine Anweisungsfläche an der Autorenquelle vorbei existiert: Dateien unter den von den Reviewern gelesenen Verzeichnissen — `.gitar`, `.greptile`, `.cursor` in **jeder** Verzeichnistiefe, `.github/skills` an der Wurzel — sowie die Einzeldateien `.cursorrules` und `greptile.json`, ebenfalls in jeder Tiefe, die nicht aus dem Generator stammen, sind Drift. Ein von Hand angelegtes `.greptile/rules.md` fällt damit auf, statt still zu wirken. Die Tiefenunabhängigkeit ist keine Vorsichtsmaßnahme: Greptile liest `.greptile/` laut Hersteller in jedem Verzeichnis, die Ebenen kaskadieren, und eine Kindkonfiguration schaltet über `disabledRules` geerbte Regeln der Wurzel ab — ein `src/.greptile/config.json` könnte also genau die Regeln abschalten, nach denen der PR bewertet wird, der es mitbringt. `greptile.json` steht mit auf der Liste, obwohl es keine Regeln trägt: Es ist Greptiles Wurzelkonfiguration für Review-Einstellungen und stünde damit genau an der Stelle, die `.greptile/config.json` bewusst frei lässt. Weil `.gitignore` ein `git add -f` nicht verhindert, deckt er neben diesen Flächen auch den Git-Index ab — eine erzwungen versionierte `AGENTS.md` oder `.claude/skills/`-Datei würde von Gitar angewendet, ohne je aus der Autorenquelle zu stammen. Ist der Index nicht lesbar, schlägt der Guard fehl; eine unbeantwortbare Frage ist hier kein „nein".
-
-Aufgezählt wird die Fläche über `git ls-files --cached --others --exclude-standard`, also genau die Menge der Pfade, die im PR-Head landen können: versionierte Dateien plus unversionierte, die `.gitignore` nicht ausschließt. Das ist bewusst kein Dateisystemlauf. Ein solcher müsste `node_modules/`, Build-Ausgaben und lokale Arbeitsbäume von Hand ausnehmen, und jede dieser Ausnahmen wäre wieder eine Stelle, an der eine Anweisungsfläche unbemerkt liegen kann. Eine ausgeschlossene Datei erreicht umgekehrt keinen Reviewer und ist deshalb keine Drift — erzwingt jemand ihre Versionierung, führt `--cached` sie unabhängig von `.gitignore` wieder auf. Fehlt Git oder ist der Index defekt, schlägt der Guard fehl statt zu bestehen.
+Der Guard prüft neben der Byte-Gleichheit der erzeugten Dateien, dass keine Anweisungsfläche an der Autorenquelle vorbei existiert: Dateien unter den von den Reviewern gelesenen Verzeichnissen (`.gitar`, `.greptile`, `.cursor` in jeder Verzeichnistiefe, `.github/skills` an der Wurzel) sowie die Einzeldateien `.cursorrules` und `greptile.json` (ebenfalls in jeder Tiefe), die nicht aus dem Generator stammen, sind Drift. Ein von Hand angelegtes `.greptile/rules.md` fällt damit auf. Aufgezählt wird die Fläche über `git ls-files --cached --others --exclude-standard`, also genau die Menge der Pfade, die im PR-Head landen können. Ist der Index nicht lesbar, schlägt der Guard fehl.
 
 ### Greptile-Adapter
 
-Greptile wertet Konfiguration in fester Reihenfolge aus: Dashboard, dann `greptile.json`, dann `.greptile/`, dann erzwungene Organisationsregeln. Dabei gilt eine Asymmetrie, die den Migrationsweg bestimmt hat — Regeln kumulieren über alle Ebenen, Einstellungen dagegen überschreibt die jeweils nähere Ebene sofort. Solange die Dashboard-Einträge parallel zur Repo-Konfiguration bestehen, sind doppelte Befunde deshalb erwartbar und unschädlich; eine versehentlich mitgespiegelte Einstellung wäre es nicht.
+`.greptile/config.json` trägt auf oberster Ebene ausschließlich `rules` und keine einzige Review-Einstellung. `statusCheck` wird nicht gespiegelt: Die Dashboard-Schwelle „Required confidence to pass = 5" hängt an der Einstellung „Use Status Checks", für die `config.json` kein Feld kennt. Ein Test hält `config.json` fail-closed auf genau einen Schlüssel der obersten Ebene.
 
-Daraus folgt der Schnitt: `.greptile/config.json` trägt auf oberster Ebene ausschließlich `rules` und keine einzige Review-Einstellung. Ausschlaggebend war der Statuscheck. `Greptile Review` ist im Ruleset `main` Pflicht-Check ohne Bypass-Actors, und an der Dashboard-Einstellung „Use Status Checks" hängt die Schwelle „Required confidence to pass = 5", für die `config.json` kein Feld kennt. Ein gespiegeltes `statusCheck: true` hätte den Check zwar erzwungen, aber möglicherweise die daran hängende Schwelle auf einen Anbieter-Default zurückfallen lassen — das Merge-Gate wäre lautlos von 5/5 auf einen niedrigeren Wert gerutscht. Der gegenteilige Fehlerfall, ein ausbleibender Check, ist an jedem PR sofort sichtbar und durch Entfernen der Datei reversibel. Zwischen stiller Abschwächung und sichtbarer Blockade ist die Blockade das kleinere Übel. Am Wegwerf-Probe-PR [#210](https://github.com/dfurater/Grundschutz-Navigator/pull/210) trat keiner von beiden ein: Der Check wurde weiterhin gemeldet. `statusCheck` fällt bei fehlendem Feld also nicht auf den dokumentierten Default `false` zurück, sondern behält den Dashboard-Wert.
+Von Greptiles zwei Regelformaten nutzt der Adapter das strukturierte `config.json` und nicht `.greptile/rules.md`. Nur dort sind Schlüssel und Scope eigene Felder und damit maschinell gegen die Autorenquelle prüfbar. Der Regeltext steht präfixfrei in `rule`, der Schlüssel in `id`.
 
-Aus derselben Zurückhaltung folgen die übrigen Auslassungen. `severity` und `enabled` je Regel stehen nicht in der Autorenquelle und werden nicht gesetzt — ein erfundener Wert wäre eine Reviewentscheidung ohne Deckung. Der Generierungsbanner der Markdown-Ziele entfällt ersatzlos, weil JSON keine Kommentare kennt und ein Feld wie `_generated` ein reviewsteuernd wirkender Schlüssel ohne Entsprechung in der Autorenquelle wäre. Ein Test hält `config.json` deshalb fail-closed auf genau einen Schlüssel der obersten Ebene: Wer dort später eine Einstellung ergänzt, muss das sichtbar tun. Der Hinweis „nicht von Hand bearbeiten" steht damit hier und im Drift-Guard, nicht in der erzeugten Datei.
+`.greptile/files.json` bildet die Datei-Kontexte ab.
 
-Von Greptiles zwei Regelformaten nutzt der Adapter das strukturierte `config.json` und nicht `.greptile/rules.md`. Nur dort sind Schlüssel und Scope eigene Felder und damit maschinell gegen die Autorenquelle prüfbar; in Markdown wäre der Scope Fließtext. Der Regeltext steht präfixfrei in `rule`, der Schlüssel in `id`. Die `<key>: `-Krücke aus dem Dashboard-Zeitalter, die Regeln über ihren Text wiedererkennbar machen musste, weil Greptile keine Update-API hat, ist damit gegenstandslos — der Generator weist einen Regeltext mit Schlüsselpräfix zurück.
-
-`.greptile/files.json` bildet die Datei-Kontexte ab. Sie waren im Dashboard nie angelegt; die Ansicht *Custom rules* führte am 2026-09-04 ausschließlich Einträge vom Typ `Rule`, und Greptiles Schnittstelle kennt für einen Dateiverweis keinen Typ. Greptile hat also bis zu diesem Adapter ohne die Datei-Kontexte gereviewt. Die Datei ist deshalb keine Migration, sondern die erste Stelle, an der sie überhaupt wirken.
-
-Eine Fallstricknotiz für spätere Änderungen: Greptiles `strictness` ist invers zu seiner eigenen Beschriftung. Das Feld ist als `1 | 2 | 3` mit `1` = ausführlich und `3` = nur Kritisches definiert, die Oberfläche zeigt Low/Medium/High mit Low = „comment on all issues". Die eingestellte Stufe Low entspricht also `strictness: 1`. Der Adapter setzt das Feld nicht; wer es je setzt, darf die Skala nicht aus der Beschriftung ableiten.
+Fallstrick für spätere Änderungen: Greptiles `strictness` ist invers zu seiner Beschriftung (`1` = ausführlich, `3` = nur Kritisches; die Stufe Low entspricht `strictness: 1`). Der Adapter setzt das Feld nicht.
 
 ### Erzwungene Auslösung bei leerem Reviewumfang
 
-Greptile wendet anbieterseitige Ignore-Patterns bereits vor der Auslösung an. Bleibt danach keine Datei übrig, legt es weder Review-Lauf noch Merge-Request-Datensatz an und postet stattdessen einen Statuskommentar mit dem Marker `<!-- greptile-status -->`. Weil `Greptile Review` auf `develop` und `main` Pflicht-Check ist, steht ein so übersprungener Pull Request dauerhaft auf `mergeStateStatus: BLOCKED`, obwohl kein einziger Check rot ist. Betroffen ist die Klasse der Diffs, die ausschließlich `package-lock.json` ändern — der Normalfall der Dependabot-npm-Lane, sowohl bei reinen Transitiv-Updates als auch bei Direktabhängigkeiten, deren neue Version die bestehende Bereichsangabe schon erfüllt und `package.json` deshalb unberührt lässt.
+Greptile wendet anbieterseitige Ignore-Patterns bereits vor der Auslösung an. Bleibt danach keine Datei übrig, legt es weder Review-Lauf noch Merge-Request-Datensatz an. Weil `Greptile Review` auf `develop` und `main` Pflicht-Check ist, steht ein so übersprungener Pull Request dauerhaft auf `mergeStateStatus: BLOCKED`. Betroffen ist die Klasse der Diffs, die ausschließlich `package-lock.json` ändern.
 
-Der Ort der wirksamen Ignore-Patterns liegt außerhalb dieses Projekts. Im Repository stehen sie nicht, in den Greptile-Organisationseinstellungen gibt es keine Fläche dafür, und die Konfigurationsreferenz kennt zu `ignorePatterns` kein Gegenstück, das eine anbieterseitige Voreinstellung wieder aufheben könnte: Die drei `include*`-Felder wirken auf Labels, Autoren und Zielbranches, keines auf Dateipfade. Auch `statusCheck` trägt nicht, weil der Schalter einen Review-Lauf voraussetzt — und genau der fehlt.
+`.github/workflows/greptile-review-nudge.yml` schließt die Lücke über eine Erwähnung: Sie bewegt Greptile zu einem echten Review auf demselben Head und stellt damit echte Reviewabdeckung her. Ein selbst gebauter Check gleichen Namens ist ausgeschlossen.
 
-`.github/workflows/greptile-review-nudge.yml` schließt die Lücke über den einzigen Hebel, der bleibt. Gemessen am 2026-09-14 an [#232](https://github.com/dfurater/Grundschutz-Navigator/pull/232) überstimmt eine Erwähnung den Skip: Greptile legt binnen Sekunden den fehlenden Merge-Request-Datensatz an, startet den Review auf demselben Head und erzeugt den Check-Run — und reviewt dabei genau die Datei, die es zuvor als nicht reviewbar geführt hatte. Der Filter greift also in der Auslösestufe, nicht in der Reviewstufe. Der Workflow stellt damit echte Reviewabdeckung her, statt sie vorzutäuschen; ein selbstgebauter Check gleichen Namens täte das Gegenteil und ist deshalb ausgeschlossen, ebenso wie das Streichen von `Greptile Review` aus den Pflicht-Checks, das das Gate für alle Pull Requests senken würde.
+Ausgelöst wird über `issue_comment`, gefiltert auf Kommentare an Pull Requests und auf `greptile-apps[bot]` als Autor. Die Bedingung für die Erwähnung ist der Zustand, der den Merge blockiert: Auf dem frisch gelesenen Head-SHA fehlt ein Check-Run namens `Greptile Review`. Ein unsichtbarer Marker mit dem Head-SHA im eigenen Kommentar begrenzt die Erwähnung auf eine je Head. Eine `concurrency`-Gruppe je Pull Request serialisiert die Läufe, mit `cancel-in-progress: false`.
 
-Ausgelöst wird über `issue_comment`, gefiltert auf Kommentare an Pull Requests und auf `greptile-apps[bot]` als Autor. Die Bedingung für die Erwähnung ist nicht Greptiles englischer Statustext, sondern der Zustand, der den Merge tatsächlich blockiert: Auf dem frisch gelesenen Head-SHA fehlt ein Check-Run namens `Greptile Review`. Jeder Status zählt dabei als vorhanden — ein laufender Review braucht keine zweite Auslösung, ein fehlgeschlagener ist ein echter Befund. Ein unsichtbarer Marker mit dem Head-SHA im eigenen Kommentar begrenzt die Erwähnung auf eine je Head; der Kommentarabruf sortiert deshalb absteigend, damit dieser Marker auch bei mehr als hundert Kommentaren auf der ersten Seite liegt. Der Marker allein trägt das nicht: Zwei nahezu gleichzeitig eintreffende Kommentarereignisse läsen beide den Zustand, bevor einer den Nudge postet. Eine `concurrency`-Gruppe je Pull Request serialisiert die Läufe, mit `cancel-in-progress: false`, damit der zweite Lauf startet und den inzwischen gesetzten Marker vorfindet, statt verworfen zu werden.
-
-Drei Eigenschaften tragen die Sicherheitslage. `issue_comment` läuft im Kontext des Basis-Repositoriums mit schreibfähigem Token, doch der Autorenfilter verlangt eine Kennung, die niemand von außen annehmen kann, und bei diesem Ereignis checkt der Workflow den Default-Branch aus, nie den PR-Head — fremder Code läuft zu keinem Zeitpunkt. Ein `pull_request_target`-Workflow ist deshalb nicht nötig. Die Job-Berechtigungen sind auf `contents`, `checks` und `pull-requests` lesend plus `issues` schreibend beschränkt; der Kommentar läuft über den Issue-Endpunkt, weil GitHub PR-Kommentare dort führt. Eine Rückkopplung scheidet aus, weil Ereignisse aus `GITHUB_TOKEN` keinen neuen Workflow-Lauf erzeugen — und der anschließende Reviewkommentar von Greptile löst den Workflow zwar aus, findet dann aber den Check-Run vor.
-
-Eine Eigenheit bleibt: `issue_comment` feuert nur von der Fassung auf dem Default-Branch. Der Guard ist im einführenden Pull Request selbst nicht lauffähig; sein Nachweis entsteht am ersten übersprungenen Pull Request nach dem Merge. Die Entscheidungslogik ist über `scripts/greptile-review-nudge.test.ts` kolokiert abgedeckt, der Netzweg über injiziertes `fetchImpl`.
+Der Workflow checkt den Default-Branch aus, nie den PR-Head — fremder Code läuft zu keinem Zeitpunkt. Die Job-Berechtigungen sind auf `contents`, `checks` und `pull-requests` lesend plus `issues` schreibend beschränkt. `issue_comment` feuert nur von der Fassung auf dem Default-Branch: Der Guard ist im einführenden Pull Request selbst nicht lauffähig.
 
 ### `sonar-project.properties`
 
-SonarQube Cloud analysiert dieses Repository per CI-Analyse; `sonar-project.properties` trägt die Analyseparameter. Der Scanner läuft auf zwei Wegen. `.github/workflows/sonar.yml` startet ihn bei jedem Push nach `main` und `develop` und misst damit beide langlebigen Branches; der Coverage-Report entsteht dort im selben Job. Für Pull Requests gegen `main` oder `develop` liegt er seit [GSPP-416](https://linear.app/grundschutz-plus-plus/issue/GSPP-416) als Job `sonarqube` in `.github/workflows/validate.yml`: Er hängt über `needs: validate` am Pflichtcheck und lädt dessen `coverage/lcov.info` als Artefakt herunter, statt die Suite ein zweites Mal zu rechnen. Ein Pull-Request-Push erzeugt dadurch genau einen vollständigen jsdom-Suite-Lauf statt zweier. Der Required Status Check heißt `SonarCloud Code Analysis` und wird von der SonarQubeCloud-App gesetzt, nicht vom Namen des Jobs; beide Rulesets bleiben von der Verschiebung unberührt.
+SonarQube Cloud analysiert dieses Repository per CI-Analyse. `.github/workflows/sonar.yml` startet den Scanner bei jedem Push nach `main` und `develop`. Für Pull Requests liegt er als Job `sonarqube` in `.github/workflows/validate.yml`: Er hängt über `needs: validate` am Pflichtcheck und lädt dessen `coverage/lcov.info` als Artefakt herunter, statt die Suite ein zweites Mal zu rechnen. Der Required Status Check heißt `SonarCloud Code Analysis` und wird von der SonarQubeCloud-App gesetzt, nicht vom Namen des Jobs.
 
-Vorher lief die Automatic Analysis. Sie misst ausschließlich den GitHub-Default-Branch, und der ist seit dem Release-Branch-Modell `develop` — `main` als Freigabelinie blieb dadurch unanalysiert, obwohl genau dieser Stand auf GitHub Pages ausgeliefert wird. Branch-Analyse ist laut Hersteller nur mit CI-Analyse zu haben, und beide Verfahren schließen einander aus. Seither führt SonarQube Cloud zwei langlebige Branches: `develop` als Hauptbranch und Integrationslinie, `main` als Freigabelinie.
+Weil der Coverage-Lauf damit im Pflichtcheck `validate` liegt, greifen dort auch die in `vite.config.ts` gepinnten Vitest-Schwellen. Die Analyseparameter umfassen Projektschlüssel und Organisation, den lcov-Pfad (`coverage/lcov.info`, erzeugt durch `npm run test:coverage`) sowie eine Duplikatsausnahme: `sonar.cpd.exclusions=scripts/review-policy.rules.mjs`.
 
-Weil der Coverage-Lauf damit im Pflichtcheck `validate` liegt, greifen dort auch die in `vite.config.ts` gepinnten Vitest-Schwellen: Eine Unterschreitung färbt `validate` rot, statt den Scanner-Schritt ausfallen zu lassen und `SonarCloud Code Analysis` als pending stehen zu lassen. Die beiden Abdeckungsmaße bleiben getrennt und unverändert in Kraft — Vitest misst die Gesamtabdeckung, das Quality Gate misst mit `new_coverage >= 80` den neuen Code.
+Der Grund ist eine Eigenschaft der Copy-Paste-Erkennung: CPD normalisiert Literale, und die strukturgleichen Tabelleneinträge werden dadurch zwangsläufig als Duplikat gemeldet, ohne dass Verhalten kopiert wäre. Weil `sonar.cpd.exclusions` ausschließlich dateiweit greift, hätte eine Ausnahme auf einer gemischten Datei auch Generator, Drift-Guard und CLI von der Duplikatsprüfung befreit — daher der Schnitt in zwei Dateien. Ausgenommen ist allein die Duplikatsmessung auf der Datentabelle.
 
-Ob die Analyse überhaupt läuft, entscheidet in beiden Workflows `scripts/sonar-token-guard.mjs`. Der Guard erhält dabei nur das Ergebnis des Vergleichs `secrets.SONAR_CI != ''`, nie den Tokenwert selbst: Bei einem Pull Request stammt er wie die Workflow-Datei aus dem PR-Head und ist damit vom Beitragenden bestimmbar. Das Secret erreicht ausschließlich den gepinnten Scanner-Schritt, der kein Repository-Code ist. Fehlt das Secret `SONAR_CI` bei einem Fork-Beitrag, überspringt der Guard die Analyse mit einer sichtbaren Notice — GitHub stellt Repository-Secrets dort grundsätzlich nicht bereit, und ein harter Fehlschlag würde jeden externen Beitrag blockieren. Fehlt es im eigenen Repository, ist die Konfiguration defekt und der Lauf schlägt fehl.
-
-Die Analyseparameter umfassen Projektschlüssel und Organisation, den lcov-Pfad für die Testabdeckung (`coverage/lcov.info`, erzeugt durch `npm run test:coverage`; der lcov-Reporter ist dafür in `vite.config.ts` ergänzt) sowie eine Duplikatsausnahme: `sonar.cpd.exclusions=scripts/review-policy.rules.mjs`.
-
-Der Grund ist eine Eigenschaft der Copy-Paste-Erkennung, nicht ein Wartbarkeitsproblem. CPD misst wiederholte Token-Folgen und normalisiert dabei Literale; die strukturgleichen Tabelleneinträge aus Schlüssel, Scope-Liste und Regeltext werden dadurch zwangsläufig als Duplikat gemeldet, ohne dass Verhalten kopiert wäre. Gemessen an `466d50c` lagen alle vier gemeldeten Duplikatsgruppen vollständig innerhalb der Regeltabelle. Weil `sonar.cpd.exclusions` ausschließlich dateiweit greift und keine Block- oder Zeilengranularität kennt, hätte eine Ausnahme auf einer gemischten Datei auch Generator, Drift-Guard und CLI von der Duplikatsprüfung befreit — daher der Schnitt in zwei Dateien. Ausgenommen ist allein die Duplikatsmessung auf der Datentabelle; keine Schwelle des Quality Gates wird gesenkt.
-
-Die Datei wirkt aus dem PR-Head heraus. Ein PR könnte sich damit selbst eine Gate-Ausnahme erteilen, weshalb sie in `AGENTS.md` zu den Review-Policy-Pfaden zählt: Wer sie anfasst, braucht ein Agenten-Cross-Review. Dasselbe gilt für `.github/workflows/sonar.yml`, `.github/workflows/validate.yml` und `scripts/sonar-token-guard.mjs`, weil auch sie aus dem PR-Head heraus bestimmen, was überhaupt gemessen wird.
+Die Datei wirkt aus dem PR-Head heraus. Ein PR könnte sich damit selbst eine Gate-Ausnahme erteilen, weshalb sie in `AGENTS.md` zu den Review-Policy-Pfaden zählt: Wer sie anfasst, braucht ein Agenten-Cross-Review. Dasselbe gilt für `.github/workflows/sonar.yml`, `.github/workflows/validate.yml` und `scripts/sonar-token-guard.mjs`. Ob die Analyse überhaupt läuft, entscheidet in beiden Workflows `scripts/sonar-token-guard.mjs`: Fehlt das Secret bei einem Fork-Beitrag, überspringt der Guard die Analyse mit einer sichtbaren Notice; fehlt es im eigenen Repository, schlägt der Lauf fehl.
 
 ## Siehe auch
 

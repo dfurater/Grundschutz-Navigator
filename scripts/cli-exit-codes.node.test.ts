@@ -125,7 +125,7 @@ describe('CLI-Exit-Code-Verträge der S7785-umgebauten Skripte', () => {
   it('verify-documented-versions bestätigt den Repository-Stand mit Exit 0', async () => {
     const result = await runScript('verify-documented-versions.mjs');
     expect(result.code).toBe(0);
-    expect(result.stdout).toContain('decken sich mit dem installierten Stand');
+    expect(result.stdout).toContain('deckt sich mit dem installierten Stand');
   }, 60_000);
 
   it('verify-documented-versions schlägt mit Exit 1 fehl, wenn die Dokumentation fehlt', async () => {

@@ -81,13 +81,54 @@ jobs:
         run: npm run review-policy:check
 
       # Dependency-PRs fallen aus dem PR-Dokumentationsvertrag heraus, weil
-      # dessen Trigger an Änderungen unter src/ hängt. Dieser Guard prüft die
-      # in docs/ARCHITECTURE.md zugesagten Versionen stattdessen maschinell
-      # gegen package.json und die mitinstallierte browsers.json (GSPP-399).
-      # Netzfrei und fail-closed: auch eine nicht mehr auffindbare Angabe
-      # lässt ihn fehlschlagen.
+      # dessen Trigger an Änderungen unter src/ hängt. Dieser Guard prüft den
+      # Toolchain-Vertrag der Browser-Testlane stattdessen maschinell
+      # (GSPP-443): exakte Pins in package.json, identisches Vitest-Trio, die
+      # zur playwright-Auflösung gehörende playwright-core-Version samt
+      # Chromium-Eintrag sowie einen Abschnitt ohne Versionsliteral.
+      # Netzfrei und fail-closed: Auch eine nicht mehr auffindbare Überschrift,
+      # Kopfzeile, Tabellenzeile oder Satzform lässt ihn fehlschlagen.
       - name: Verify documented versions against installed state
         run: npm run verify-documented-versions
+
+      # Fail-fast seit GSPP-424: Lint läuft vor dem ersten Netzschritt
+      # (`fetch-pinned-catalog`). Jeder Lint-Fehler kostete zuvor erst
+      # Katalog-Fetch, Binary-Download und Korpuslauf. Netzfrei wie die
+      # übrigen Guards dieser Stufe.
+      - name: Lint
+        run: npm run lint
+
+      # Scope-Entscheider für Step-Skips (GSPP-427, Codex-Empfehlung): Genau
+      # ein Step direkt hinter Lint schreibt genau einen Wert nach
+      # `GITHUB_OUTPUT` — `full`, `docs_only` oder `manifest_only`. Der
+      # Entscheider steht hinter Lint, weil er selbst Netz ausführt (Base-
+      # und Head-Fetch via `git fetch`): Vor Lint zöge jeder Lint-Fehler erst
+      # ins Netz, bevor er fail-fast abbricht — der durch GSPP-424 beseitigte
+      # Ablauf. Kein Workflow-`paths`-Filter (GSPP-415-Eigenschaft: ein per
+      # `if` übersprungener Job meldete `Success` mit neuem Check-Run und
+      # verdeckte das reale Ergebnis), kein neuer Job (neuer Jobname wäre ein
+      # neuer Check-Kontext außerhalb beider Rulesets) und keine
+      # Drittanbieter-Changed-Files-Action. Base-Fetch und Diff laufen
+      # innerhalb des Entscheiders (`scripts/ci-scope.mjs`): Jeder
+      # Fetch-/Diff-Fehler setzt fail-closed `scope=full` statt den Job vor dem
+      # verlangten Volllauf abzubrechen. Der Checkout bleibt flach
+      # (Merge-Commit ohne Historie); Base- wie Head-Commit werden samt
+      # Historie gezielt geholt, weil der Drei-Punkt-Diff sonst keine
+      # Merge-Basis findet und stets auf `full` zurückfiele. Leere SHAs (etwa
+      # `workflow_dispatch`) fallen ebenfalls auf `full` zurück.
+      #
+      # Skip-Matrix: Profilauflösung, go-oscal und Build laufen bei
+      # `scope != 'docs_only'`; Browser-Cache, Chromium-Installation,
+      # Browser-Tests und Egress-Nachweis laufen nur bei `scope == 'full'`;
+      # Fetch, Coverage, Lint, Schema-, Policy-, Versions- und zizmor-Gates
+      # laufen immer. Alle Konsumenten des Scope-Werts liegen später, daher
+      # ändert die Position hinter Lint nichts an der Scope-Semantik.
+      - name: Determine CI scope for step skips
+        id: scope
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: node scripts/ci-scope.mjs
 
       - name: Read the pinned snapshot and fetch the BSI catalog
         uses: $/.github/actions/fetch-pinned-catalog
@@ -95,23 +136,30 @@ jobs:
           github-token: ${{ github.token }}
 
       - name: Resolve all BSI profiles deterministically (mandatory build-time corpus)
+        if: steps.scope.outputs.scope != 'docs_only'
         run: npm run test:profile-resolution
 
       - name: Verify upstream OSCAL schemas with go-oscal
+        if: steps.scope.outputs.scope != 'docs_only'
         env:
           GO_OSCAL_SBOM_OUTPUT: ${{ runner.temp }}/sbom_go-oscal_v0.7.1_Linux_amd64.sbom
         run: npm run verify-upstream-oscal
 
+      # An den go-oscal-Lauf gebunden: Ohne ihn entstünde keine SBOM, und
+      # `if-no-files-found: error` ließe den Scope-Lauf fehlschlagen, der den
+      # Lauf gerade einsparen sollte.
       - name: Archive go-oscal SBOM
+        if: steps.scope.outputs.scope != 'docs_only'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: go-oscal-v0.7.1-sbom-linux-amd64
           path: ${{ runner.temp }}/sbom_go-oscal_v0.7.1_Linux_amd64.sbom
           if-no-files-found: error
-          retention-days: 90
-
-      - name: Lint
-        run: npm run lint
+          # Kurzfristige CI-/PR-Analyse-Evidenz, keine SBOM des veröffentlichten
+          # Produkts (GSPP-426): 14 Tage genügen; 30 oder 90 Tage bräuchten eine
+          # konkrete Monats- bzw. Audit-/Forensik-Anforderung, die nicht besteht.
+          # Coverage bleibt bei 7 Tagen.
+          retention-days: 14
 
       # Seit GSPP-416 der einzige vollstaendige jsdom-Suite-Lauf eines
       # Pull Requests. `--coverage` setzt dabei die in vite.config.ts gepinnten
@@ -133,16 +181,40 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # Seit GSPP-424 gecacht: Das Chromium aus der gepinnten
+      # `playwright`-Installation liegt unter `~/.cache/ms-playwright`
+      # (GitHub-`ubuntu`-Defaultpfad). Der Lockfile-Hash ist der korrekte
+      # Cache-Schlüssel, weil die Revision an den gepinnten `playwright`-Pin
+      # in `package-lock.json` gebunden ist; ein unverändertes Lockfile trifft
+      # den Cache und erspart den erneuten Browser-Download.
+      # `playwright install chromium` bleibt idempotent und lädt nur bei
+      # Cache-Miss nach.
+      - name: Restore Playwright browser cache
+        if: steps.scope.outputs.scope == 'full'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
       - name: Install pinned Chromium for browser tests
+        if: steps.scope.outputs.scope == 'full'
         run: ./node_modules/.bin/playwright install chromium
 
       - name: Run Chromium browser tests
+        if: steps.scope.outputs.scope == 'full'
         run: npm run test:browser
 
       - name: Verify browser egress oracle
+        if: steps.scope.outputs.scope == 'full'
         run: npm run test:browser:egress-negative
 
+      # An den Upstream-Pin gebunden wie go-oscal: Bei `manifest_only`
+      # wechselt der Pin, und erst der Build beweist, dass die neuen Bytes
+      # kompilieren und bündeln (Greptile-P1 auf PR #273).
       - name: Build application
+        if: steps.scope.outputs.scope != 'docs_only'
         run: npm run build
 
       # GSPP-418: zizmor als Pflichtanteil des Required Checks `validate`.
@@ -168,6 +240,13 @@ jobs:
       # mit den Zeilen-Ignores ist auditor grün und meldet jedes neue Secret.
       # Plain-Output (kein SARIF — SARIF exitt immer 0 und taugt nicht als
       # Blockiergate): Befunde lassen `validate` fehlschlagen, Pflichtcheck.
+      # Versionsquelle ist `.github/zizmor.version` (nur der Tag; Guard in
+      # `scripts/zizmor-config.test.ts` fordert ihn in der `IMAGE`-Zeile plus
+      # Digest-Format). Dependabot pflegt keine Container-URLs — nur `uses:` in
+      # Repository-Syntax — und sieht `run:`-Blöcke ohnehin nicht: Tag- und
+      # Digest-Erneuerung laufen als manueller PR (Version anheben, Digest per
+      # `docker pull` + `docker images --digests` bestimmen, `IMAGE`-Zeile
+      # nachziehen).
       - name: Audit workflows with zizmor
         run: |
           set -euo pipefail
@@ -232,6 +311,6 @@ jobs:
 
       - name: SonarQube Scan
         if: steps.token.outputs.available == 'true'
-        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
+        uses: SonarSource/sonarqube-scan-action@ba9859eae8dd6bd29e412f25ddbbef3d032000f4 # v8.2.2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_CI }}

@@ -1,8 +1,8 @@
 # Projekteigene OSCAL-Properties
 
-Dieses Dokument ist der öffentliche Vertrag für OSCAL-Properties des
-Grundschutz++ Navigators. Seine einzige Runtime-Quelle ist die tief
-unveränderliche Registry in `src/domain/projectProps.ts`.
+Öffentlicher Vertrag für OSCAL-Properties des Grundschutz++ Navigators.
+Einzige Runtime-Quelle ist die tief unveränderliche Registry in
+`src/domain/projectProps.ts`.
 
 ## Namespace und Vertrauensgrenze
 
@@ -12,21 +12,20 @@ Der Projektnamespace lautet exakt:
 https://github.com/dfurater/Grundschutz-Navigator/ns/oscal/props
 ```
 
-Der Namespace ist ausschließlich eine stabile Identität. Er ist keine URL,
-die der Navigator auflöst oder über das Netzwerk abruft.
+Der Namespace ist eine stabile Identität — keine URL, die der Navigator
+auflöst oder abruft.
 
 Properties mit einem anderen Namespace bleiben im Quellgraphen unverändert
 und werden nicht als Projektsemantik interpretiert. Ein unbekannter Name im
 Projektnamespace erzeugt eine redigierte Diagnose und sperrt den semantischen
 Schreibpfad. Lesen, No-op-Export und Backup reichen das ursprüngliche Property
-einschließlich unbekannter Felder unverändert durch.
+einschließlich unbekannter Felder unverändert durch (`preservedProps`).
 
 ## Registry
 
-Die öffentliche Vertragstabelle ist vollständig maschinengeprüft. Der Test
-vergleicht Reihenfolge, Vollständigkeit und jede fachliche sowie technische
-Zelle beidseitig mit der Registry; zusätzliche, fehlende oder abweichende
-Einträge brechen den Build.
+Die Vertragstabelle ist maschinengeprüft
+(`projectProps.contract.node.test.ts` vergleicht sie Zelle für Zelle mit der
+Registry): zusätzliche, fehlende oder abweichende Einträge brechen den Build.
 
 <!-- project-props-contract:start -->
 | Name | Bedeutung | Werteraum | Trägerkennungen | Minimum | Maximum | Scope | Wertvertrag | Kanonisierung | Validierung und Schreibweise | Einführendes Issue |
@@ -39,31 +38,30 @@ Einträge brechen den Build.
 | `assessed-against-catalog-commit` | Exakter Katalogstand einer Bewertung | Vollständiger Git-Commit-SHA | `metadata` | `0` | `1` | `group` | `catalog-commit` | `identity` | Genau 40 kleingeschriebene Hex-Zeichen; Partner-Key mit identischer `group` ist Pflicht | [GSPP-361](https://linear.app/grundschutz-plus-plus/issue/GSPP-361) |
 <!-- project-props-contract:end -->
 
-`name` und eine vorhandene `group` müssen OSCALs `TokenDatatype`-/NCName-Regel
+`name` und eine vorhandene `group` müssen OSCALs `TokenDatatype`-Regel
 erfüllen. Dokumentgebundene Reader-Aufrufe übergeben statt eines freien Pfads
 eine geschlossene, typisierte Position mit den tatsächlichen Arrayindizes. Die
 Domain-API erzeugt daraus einen RFC-6901-JSON-Pointer ohne Wildcards oder
 Dokumentwerte. Freie Pfadstrings sind nicht zulässig.
 
-Der Reader verwendet dieselbe positive Klasse-2-Objektdefinition wie der
-Importpfad. Exotische Prototypen, Deskriptoren, Symbolschlüssel, Sparse Arrays,
-geteilte Identitäten und Ressourcenüberschreitungen scheitern deshalb vor der
-Projektsemantik. `preservedProps` bleibt auch bei einer defekten Collection die
-exakte Eingabe und ist die einzige geordnete, vollständige Quelle für No-op-
-Export und Backup. `collectionValid` trennt die strukturelle Listenform von
-`writeAllowed`, das zusätzlich die Semantik bewertet. Bekannte Projekt-Props,
-fremde Namespaces und unbekannte Projekt-Props werden zusätzlich getrennt als
-`projectProps`, `foreignProps` und `unknownProjectProps` klassifiziert.
+Der Reader verwendet dieselbe Klasse-2-Objektdefinition wie der Importpfad.
+Exotische Prototypen, Deskriptoren, Symbolschlüssel, Sparse Arrays, geteilte
+Identitäten und Ressourcenüberschreitungen scheitern deshalb vor der
+Projektsemantik. `preservedProps` bleibt auch bei einer defekten Collection
+die exakte Eingabe und ist die einzige geordnete, vollständige Quelle für
+No-op-Export und Backup. `collectionValid` trennt die strukturelle Listenform
+von `writeAllowed`, das zusätzlich die Semantik bewertet. Bekannte
+Projekt-Props, fremde Namespaces und unbekannte Projekt-Props werden getrennt
+als `projectProps`, `foreignProps` und `unknownProjectProps` klassifiziert.
 
 ## Maßnahmenkontext
 
 Die beiden Planungsproperties dürfen für dieselbe Maßnahme entweder auf dem
 `poam-item` oder auf der zugehörigen Risk Response (`remediation`) liegen,
-nicht auf beiden. Der Validator erhält diese fachliche Zuordnung ausdrücklich
-als Paar bereits geprüfter `ProjectPropReadResult`-Werte. Er liest die
-Rohlisten nicht erneut, scannt keinen vollständigen Dokumentgraphen und leitet
-aus `related-risks` keine bestimmte Remediation ab, weil ein Risk mehrere
-Responses besitzen kann.
+nicht auf beiden. Der Validator erhält diese Zuordnung als Paar bereits
+geprüfter `ProjectPropReadResult`-Werte. Er liest die Rohlisten nicht erneut,
+scannt keinen Dokumentgraphen und leitet aus `related-risks` keine bestimmte
+Remediation ab — ein Risk kann mehrere Responses besitzen.
 
 ## Katalogreferenzpaar
 
@@ -90,9 +88,9 @@ zum Beispiel `1,5` zu `1.5`; der Speicherparser selbst akzeptiert kein Komma.
 
 Properties können Klasse-2-Inhalte wie Systemdetails, Bewertungen oder freie
 Schlagworte tragen. Diagnosen enthalten deshalb nur stabile Codes,
-geschlossene Strukturpfade, Validatorversionen und strukturelle Zähler. Werte,
-Freitexte, unbekannte Namen, Gruppeninhalte und UUIDs dürfen weder in Diagnosen
-noch in Logs, URLs oder Telemetrie gelangen.
+geschlossene Strukturpfade und Validatorversionen. Werte, Freitexte,
+unbekannte Namen, Gruppeninhalte und UUIDs dürfen weder in Diagnosen noch in
+Logs, URLs oder Telemetrie gelangen.
 
 ## Erweiterung
 

@@ -1,5 +1,6 @@
 import js from '@eslint/js';
 import { defineConfig } from 'eslint/config';
+import globals from 'globals';
 import reactHooks from 'eslint-plugin-react-hooks';
 import eslintPluginUnicorn from 'eslint-plugin-unicorn';
 import tseslint from 'typescript-eslint';
@@ -91,6 +92,18 @@ export default defineConfig(
           },
         ],
       }],
+    },
+  },
+  {
+    // GSPP-425: Die fail-closed CI-Guards unter scripts/*.mjs sind
+    // sicherheitsrelevanter Code und laufen deshalb unter denselben
+    // Recommended-Regeln wie der Rest — kein No-Op, keine Ausnahme.
+    files: ['scripts/**/*.mjs'],
+    extends: [js.configs.recommended],
+    languageOptions: {
+      sourceType: 'module',
+      ecmaVersion: 'latest',
+      globals: globals.node,
     },
   },
 );
