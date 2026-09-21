@@ -103,13 +103,16 @@ export function isExactPin(pin) {
 /*
  * Versionsliteral: ein in Backticks gesetztes Token, das mit einer Ziffer
  * beginnt — von der einteiligen Chromium-Revision (`1243`) über drei- und
- * vierteilige Versionen bis zu Vorab- und Build-Anhängen (`5.0.1-beta.2`).
- * Die Grammatik ist bewusst weiter als die Pin-Exaktheit: Ein abgeschriebener
- * Manifest-Wert jeder Stellenanzahl muss anschlagen. Zahlen ohne Backticks
- * (etwa Portnummern oder Coverage-Schwellen) sind keine Literale und bleiben
- * unberührt.
+ * vierteilige Versionen bis zu Vorab- und Build-Anhängen (`5.0.1-beta.2`,
+ * `5.0.1-rc.1+build.2`). Die Grammatik ist bewusst weiter als die
+ * Pin-Exaktheit: Ein abgeschriebener Manifest-Wert jeder Stellenanzahl muss
+ * anschlagen. Zahlen ohne Backticks (etwa Portnummern oder
+ * Coverage-Schwellen) sind keine Literale und bleiben unberührt. Vorab- und
+ * Build-Anhang sind je optional und linear gereiht — an jeder Verzweigung
+ * entscheiden disjunkte Zeichenklassen (`-` gegen `+`), ohne überlappende
+ * Wiederholungen.
  */
-const VERSION_LITERAL_CONTENT_PATTERN = /^\d[\d.]*(?:[-+][\dA-Za-z][\dA-Za-z.-]*)?$/;
+const VERSION_LITERAL_CONTENT_PATTERN = /^\d[\d.]*(?:-[\dA-Za-z][\dA-Za-z.-]*)?(?:\+[\dA-Za-z][\dA-Za-z.-]*)?$/;
 
 const VITEST_TRIO = ['vitest', '@vitest/coverage-v8', '@vitest/browser-playwright'];
 const PLAYWRIGHT_PACKAGE = 'playwright';

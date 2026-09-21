@@ -259,6 +259,15 @@ describe('findVersionLiterals', () => {
     expect(findVersionLiterals(withLiteral)).toEqual([{ line: 3, value: '5.0.1' }]);
   });
 
+  it('meldet ein Versionsliteral mit kombiniertem Vorab- und Build-Anhang', () => {
+    const withLiteral = DOCUMENTATION.replace(
+      'Die Lane nutzt `vitest` mit jsdom.',
+      'Die Lane nutzt `vitest` mit jsdom in `5.0.1-rc.1+build.2`.',
+    );
+
+    expect(findVersionLiterals(withLiteral)).toEqual([{ line: 3, value: '5.0.1-rc.1+build.2' }]);
+  });
+
   it('meldet kein Literal außerhalb des Abschnitts', () => {
     const outsideOnly = '# Ohne Abschnitt\n\nDie Version `9.9.9` steht hier.\n';
 
@@ -435,6 +444,21 @@ describe('collectContractViolations', () => {
       subject: 'Versionsliteral `5.0.1-beta.2`',
       expected: 'kein Versionsliteral',
       measured: '5.0.1-beta.2',
+      source: 'docs/ARCHITECTURE.md → Abschnitt "## Browser-Testlane"',
+    });
+  });
+
+  it('meldet ein Versionsliteral mit kombiniertem Vorab- und Build-Anhang im geprüften Abschnitt', () => {
+    const documentation = DOCUMENTATION.replace(
+      'Die Lane nutzt `vitest` mit jsdom.',
+      'Die Lane nutzt `vitest` mit jsdom in `5.0.1-rc.1+build.2`.',
+    );
+
+    expect(violationsFor({ documentation })).toContainEqual({
+      line: 3,
+      subject: 'Versionsliteral `5.0.1-rc.1+build.2`',
+      expected: 'kein Versionsliteral',
+      measured: '5.0.1-rc.1+build.2',
       source: 'docs/ARCHITECTURE.md → Abschnitt "## Browser-Testlane"',
     });
   });
