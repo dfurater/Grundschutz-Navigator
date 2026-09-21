@@ -92,6 +92,31 @@ afterEach(async () => {
 });
 
 describe('CI failure visibility contract', () => {
+  it('runs the catalog-sync guard only for pull-request events', async () => {
+    const catalogSyncGuard = jobScopes(await workflow('ci.yml')).get('catalog-sync-guard');
+
+    expect(catalogSyncGuard).toMatch(/^\x20{4}if: github\.event_name == 'pull_request'$/m);
+  });
+
+  // Verankert an der Gruppe auf Dateiebene: Eine bloße Teilstring-Suche nach
+  // `cancel-in-progress: false` ließe sich von einem tiefer eingerückten
+  // Job-Block erfüllen, während die Gruppe auf Dateiebene wieder abbricht.
+  // Der Schalter schützt den laufenden Scan; dass GitHub je Gruppe nur einen
+  // wartenden Lauf hält, bleibt davon unberührt — deshalb nennt der Testname
+  // die laufende Analyse und nicht die wartende.
+  it('serialises Sonar branch scans instead of cancelling the running one', async () => {
+    const sonar = await workflow('sonar.yml');
+
+    expect(sonar).toMatch(/\nconcurrency:\n\x20{2}group: [^\n]+\n\x20{2}cancel-in-progress: false\n/);
+  });
+
+  it('uses the github context token for the Greptile review nudge', async () => {
+    const nudge = await workflow('greptile-review-nudge.yml');
+
+    expect(nudge).toContain('GH_TOKEN: ${{ github.token }}');
+    expect(nudge).not.toContain('GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}');
+  });
+
   // GSPP-423 staffelt die Job-Timeouts nach Schrittinventar statt uniform 20:
   // 5 min für den Sekunden-Job (ein API-Read, ein Kommentar-Write, Node-Guard),
   // 10 min für `npm ci` + kurze Node-Skripte ohne Build/Browser, 20 min für

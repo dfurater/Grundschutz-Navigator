@@ -387,7 +387,7 @@ describe('Verankerung der Baumprüfung im Pflichtcheck', () => {
       .map(([, body]) => body);
 
     expect(ownerBody).toMatch(
-      /if: github\.event_name == 'pull_request' && startsWith\(github\.head_ref, 'release\/'\)\n\s+run: git fetch --no-tags origin develop/,
+      /if: startsWith\(github\.head_ref, 'release\/'\)\n\s+run: git fetch --no-tags origin develop/,
     );
   });
 });
