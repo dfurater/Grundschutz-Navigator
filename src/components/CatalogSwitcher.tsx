@@ -28,23 +28,32 @@ const CATALOG_DESCRIPTIONS: Partial<Record<CatalogKey, string>> = {
 
 export interface CatalogSwitcherProps {
   /**
-   * Feuert beim Übergang geschlossen → offen. Das Menü sitzt im Stacking-Context
-   * des Headers und kann konkurrierende Overlays nicht überlagern; der Aufrufer
-   * schließt sie über diesen Callback (GSPP-440).
+   * Optional gesteuerter Offen-Zustand. Übernimmt der Aufrufer ihn, entscheidet
+   * allein er über die Sichtbarkeit und kann das Menü mit konkurrierenden
+   * Overlays exklusiv schalten (GSPP-440). Ohne die Prop führt die Komponente
+   * den Zustand selbst.
    */
-  readonly onOpen?: () => void;
+  readonly open?: boolean;
+  readonly onOpenChange?: (open: boolean) => void;
 }
 
-export function CatalogSwitcher({ onOpen }: CatalogSwitcherProps) {
-  const [open, setOpen] = useState(false);
+export function CatalogSwitcher({ open: openProp, onOpenChange }: CatalogSwitcherProps) {
+  const [ownOpen, setOwnOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const firstItemRef = useRef<HTMLButtonElement>(null);
   const navigate = useNavigate();
   const { activeCatalogKey } = useCatalog();
 
+  const open = openProp ?? ownOpen;
+
+  const changeOpen = (next: boolean) => {
+    if (openProp === undefined) setOwnOpen(next);
+    onOpenChange?.(next);
+  };
+
   useGlobalEventListener('document', 'mousedown', (event) => {
     if (!containerRef.current?.contains(event.target as Node)) {
-      setOpen(false);
+      changeOpen(false);
     }
   }, open);
 
@@ -59,22 +68,16 @@ export function CatalogSwitcher({ onOpen }: CatalogSwitcherProps) {
     SUPPORTED_CATALOGS[0];
   const ActiveIcon = CATALOG_ICONS[activeEntry.catalogKey] ?? IconLayers;
 
-  const handleToggle = () => {
-    const nextOpen = !open;
-    setOpen(nextOpen);
-    if (nextOpen) onOpen?.();
-  };
-
   const handleSelect = (catalogKey: CatalogKey) => {
     navigate(buildCatalogUrl(catalogKey));
-    setOpen(false);
+    changeOpen(false);
   };
 
   return (
     <div className="justify-self-end relative" ref={containerRef}>
       <button
         type="button"
-        onClick={handleToggle}
+        onClick={() => changeOpen(!open)}
         className="flex items-center gap-2 rounded-md border border-[var(--header-surface-hover)] bg-[var(--header-surface)] px-2 py-1.5 text-[var(--header-text)] transition-colors hover:bg-[var(--header-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--header-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--header-bg)] sm:px-3"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -96,7 +99,7 @@ export function CatalogSwitcher({ onOpen }: CatalogSwitcherProps) {
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
               event.preventDefault();
-              setOpen(false);
+              changeOpen(false);
             }
           }}
         >

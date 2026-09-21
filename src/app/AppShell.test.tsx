@@ -20,19 +20,25 @@ vi.mock('@/hooks/useMediaQuery', () => ({
 vi.mock('@/components/HeaderBar', () => ({
   HeaderBar: ({
     onMenuToggle,
-    onCatalogSwitcherOpen,
+    catalogSwitcherOpen,
+    onCatalogSwitcherOpenChange,
   }: {
     onMenuToggle: () => void;
     onSearch: (term: string) => void;
-    onCatalogSwitcherOpen: () => void;
+    catalogSwitcherOpen: boolean;
+    onCatalogSwitcherOpenChange: (open: boolean) => void;
   }) => (
     <>
       <button type="button" onClick={onMenuToggle}>
         Menu
       </button>
-      <button type="button" onClick={onCatalogSwitcherOpen}>
+      <button
+        type="button"
+        onClick={() => onCatalogSwitcherOpenChange(!catalogSwitcherOpen)}
+      >
         Katalog wechseln
       </button>
+      <output data-testid="catalog-switcher-open">{String(catalogSwitcherOpen)}</output>
     </>
   ),
 }));
@@ -297,8 +303,30 @@ describe('AppShell', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Katalog wechseln' }));
 
+    expect(screen.getByTestId('catalog-switcher-open')).toHaveTextContent('true');
     expect(container.querySelector('aside')?.className).toContain('-translate-x-full');
     expect(screen.queryByTestId('mobile-nav-backdrop')).not.toBeInTheDocument();
+  });
+
+  // Gegenrichtung über denselben gemeinsamen Zustand. Der Hamburger löst bei
+  // Maus wie bei Tastatur denselben onClick-Pfad aus; der Outside-`mousedown`
+  // des Switchers erreicht die Tastaturaktivierung nicht und ließe beide
+  // Overlays offen (GSPP-440).
+  it('schließt das Katalog-Switcher-Menü, sobald der mobile Drawer öffnet', () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={['/']}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Katalog wechseln' }));
+    expect(screen.getByTestId('catalog-switcher-open')).toHaveTextContent('true');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+
+    expect(screen.getByTestId('catalog-switcher-open')).toHaveTextContent('false');
+    expect(container.querySelector('aside')?.className).not.toContain('-translate-x-full');
+    expect(screen.getByTestId('mobile-nav-backdrop')).toBeInTheDocument();
   });
 
   it('registers the canonical catalog-scoped control route', () => {

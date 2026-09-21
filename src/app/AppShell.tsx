@@ -85,6 +85,7 @@ const SIDEBAR_MAX_WIDTH = 480;
 
 export function AppShell() {
   const [sideNavOpen, setSideNavOpen] = useState(false);
+  const [catalogSwitcherOpen, setCatalogSwitcherOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const {
     size: sidebarWidth,
@@ -161,15 +162,26 @@ export function AppShell() {
         Zum Hauptinhalt springen
       </a>
 
+      {/*
+        Drawer und Switcher-Menü schließen einander mobil aus. Das Menü liegt im
+        Stacking-Context des Headers und bliebe hinter dem Drawer, deshalb hält
+        die Shell beide Zustände und schaltet beim Öffnen des einen den anderen
+        ab. Der Ausschluss sitzt bewusst im gemeinsamen Zustand statt in
+        Ereignis-Heuristiken: Der Outside-`mousedown`-Handler des Switchers
+        erreicht die Tastaturaktivierung des Hamburgers nicht (GSPP-440).
+      */}
       <HeaderBar
         onSearch={handleSearch}
         onMenuToggle={() => {
           setSideNavOpen((prev) => !prev);
+          setCatalogSwitcherOpen(false);
           if (sidebarCollapsed) setSidebarCollapsed(false);
         }}
-        // Mobil ist immer nur ein Overlay offen: Das Switcher-Menü liegt im
-        // Stacking-Context des Headers und bliebe hinter dem Drawer (GSPP-440).
-        onCatalogSwitcherOpen={() => setSideNavOpen(false)}
+        catalogSwitcherOpen={catalogSwitcherOpen}
+        onCatalogSwitcherOpenChange={(open) => {
+          setCatalogSwitcherOpen(open);
+          if (open) setSideNavOpen(false);
+        }}
       />
 
       <div className="flex-1 min-w-0 flex md:overflow-hidden relative">

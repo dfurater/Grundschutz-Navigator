@@ -118,26 +118,45 @@ describe('CatalogSwitcher', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 
-  // Der Aufrufer schließt über onOpen konkurrierende Overlays (GSPP-440). Ein
-  // Signal beim Schließen würde sie erneut anstoßen, deshalb feuert nur der
-  // Übergang geschlossen → offen.
-  it('meldet nur das Öffnen an den Aufrufer, nicht das Schließen', () => {
+  it('meldet jeden Zustandswechsel an den Aufrufer', () => {
     mockedUseCatalog.mockReturnValue(catalogState('gspp'));
-    const onOpen = vi.fn();
-    renderSwitcher({ onOpen });
+    const onOpenChange = vi.fn();
+    renderSwitcher({ onOpenChange });
     const trigger = screen.getByRole('button', { name: 'Katalog wechseln' });
 
     fireEvent.click(trigger);
-    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onOpenChange).toHaveBeenLastCalledWith(true);
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getAllByRole('menuitem')[0]).toHaveFocus();
 
     fireEvent.click(trigger);
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
     expect(trigger).toHaveAttribute('aria-expanded', 'false');
-    expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+
+  // Übernimmt der Aufrufer den Zustand, entscheidet allein er über die
+  // Sichtbarkeit — nur so kann die Shell das Menü beim Öffnen des Drawers
+  // zuverlässig schließen, unabhängig von der Eingabeart (GSPP-440).
+  it('folgt im gesteuerten Betrieb dem Aufrufer statt einem eigenen Zustand', () => {
+    mockedUseCatalog.mockReturnValue(catalogState('gspp'));
+    const onOpenChange = vi.fn();
+    const view = renderSwitcher({ open: false, onOpenChange });
+    const trigger = screen.getByRole('button', { name: 'Katalog wechseln' });
 
     fireEvent.click(trigger);
-    expect(onOpen).toHaveBeenCalledTimes(2);
+    expect(onOpenChange).toHaveBeenCalledWith(true);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+    view.rerender(
+      <MemoryRouter>
+        <CatalogSwitcher open onOpenChange={onOpenChange} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getAllByRole('menuitem')[0]).toHaveFocus();
   });
 });

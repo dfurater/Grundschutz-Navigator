@@ -41,17 +41,32 @@ describe('HeaderBar', () => {
     expect(classNames).not.toContain('focus:ring-');
   });
 
-  it('reicht das Öffnen des Katalog-Switchers an den Shell-Aufrufer durch', () => {
-    const onCatalogSwitcherOpen = vi.fn();
-    render(
+  it('reicht Zustand und Zustandswechsel des Katalog-Switchers an die Shell durch', () => {
+    const onCatalogSwitcherOpenChange = vi.fn();
+    const { rerender } = render(
       <MemoryRouter>
-        <HeaderBar onCatalogSwitcherOpen={onCatalogSwitcherOpen} />
+        <HeaderBar
+          catalogSwitcherOpen={false}
+          onCatalogSwitcherOpenChange={onCatalogSwitcherOpenChange}
+        />
       </MemoryRouter>,
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Katalog wechseln' }));
 
-    expect(onCatalogSwitcherOpen).toHaveBeenCalledTimes(1);
+    expect(onCatalogSwitcherOpenChange).toHaveBeenCalledWith(true);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+
+    rerender(
+      <MemoryRouter>
+        <HeaderBar
+          catalogSwitcherOpen
+          onCatalogSwitcherOpenChange={onCatalogSwitcherOpenChange}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('menu')).toBeInTheDocument();
   });
 
   it.each([
