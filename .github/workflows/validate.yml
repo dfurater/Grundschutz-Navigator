@@ -81,11 +81,13 @@ jobs:
         run: npm run review-policy:check
 
       # Dependency-PRs fallen aus dem PR-Dokumentationsvertrag heraus, weil
-      # dessen Trigger an Änderungen unter src/ hängt. Dieser Guard prüft die
-      # in docs/ARCHITECTURE.md zugesagten Versionen stattdessen maschinell
-      # gegen package.json und die mitinstallierte browsers.json (GSPP-399).
-      # Netzfrei und fail-closed: auch eine nicht mehr auffindbare Angabe
-      # lässt ihn fehlschlagen.
+      # dessen Trigger an Änderungen unter src/ hängt. Dieser Guard prüft den
+      # Toolchain-Vertrag der Browser-Testlane stattdessen maschinell
+      # (GSPP-443): exakte Pins in package.json, identisches Vitest-Trio, die
+      # zur playwright-Auflösung gehörende playwright-core-Version samt
+      # Chromium-Eintrag sowie einen Abschnitt ohne Versionsliteral.
+      # Netzfrei und fail-closed: Auch eine nicht mehr auffindbare Überschrift,
+      # Kopfzeile, Tabellenzeile oder Satzform lässt ihn fehlschlagen.
       - name: Verify documented versions against installed state
         run: npm run verify-documented-versions
 
@@ -179,13 +181,14 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      # Seit GSPP-424 gecacht: `playwright 1.63.0` liefert Chromium-Revision
-      # 1243 nach `~/.cache/ms-playwright` (GitHub-`ubuntu`-Defaultpfad). Der
-      # Lockfile-Hash ist der korrekte Cache-Schlüssel, weil die Revision an
-      # den gepinnten `playwright`-Pin in `package-lock.json` gebunden ist; ein
-      # unverändertes Lockfile trifft den Cache und erspart den erneuten
-      # Browser-Download. `playwright install chromium` bleibt idempotent und
-      # lädt nur bei Cache-Miss nach.
+      # Seit GSPP-424 gecacht: Das Chromium aus der gepinnten
+      # `playwright`-Installation liegt unter `~/.cache/ms-playwright`
+      # (GitHub-`ubuntu`-Defaultpfad). Der Lockfile-Hash ist der korrekte
+      # Cache-Schlüssel, weil die Revision an den gepinnten `playwright`-Pin
+      # in `package-lock.json` gebunden ist; ein unverändertes Lockfile trifft
+      # den Cache und erspart den erneuten Browser-Download.
+      # `playwright install chromium` bleibt idempotent und lädt nur bei
+      # Cache-Miss nach.
       - name: Restore Playwright browser cache
         if: steps.scope.outputs.scope == 'full'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

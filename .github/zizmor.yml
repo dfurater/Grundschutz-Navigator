@@ -66,6 +66,8 @@ rules:
   # validate.yml) und in GSPP-427 um +36 (Scope-Entscheider plus Step-`if`s
   # in validate.yml) sowie +5 (Build-Kommentar und -Bedingung aus Greptile-P1)
   # und +5 (Scope-Step direkt hinter Lint aus Codex-P1: Fail-fast GSPP-424).
+  # Zuletzt in GSPP-443 um +3 (Guard-Kommentar +2 auf den Toolchain-Vertrag
+  # umgeschrieben, Cache-Kommentar +1 ohne Versionsliterale).
   secrets-outside-env:
     ignore:
       - backmerge-main-to-develop.yml:51:28
@@ -73,5 +75,5 @@ rules:
       - sonar.yml:61:38
       - sonar.yml:88:28
       - update-catalog.yml:50:28
-      - validate.yml:298:38
-      - validate.yml:313:28
+      - validate.yml:301:38
+      - validate.yml:316:28
