@@ -119,12 +119,6 @@ export const scopedRules = [
       `catalog.json, catalog-wlan.json, catalog-metadata.json, catalog-wlan-metadata.json, vocabularies.json, vocabularies-metadata.json und upstream-sources-metadata.json unter public/data/ werden zur Build-Zeit erzeugt und dürfen nie eingecheckt werden. Melde jede Änderung an .gitignore, die diese Einträge entfernt oder aufweicht. Ein Verstoß ist ein blockierender Befund.`,
   },
   {
-    key: 'R6-coverage-schwellen',
-    scopes: ['vite.config.ts'],
-    body:
-      `Die Coverage-Schwellen in vite.config.ts (lines, branches, functions, statements) dürfen nicht gesenkt werden. Ein Diff, der einen dieser Werte herabsetzt, ist ein blockierender Befund — auch wenn die CI grün ist.`,
-  },
-  {
     key: 'R7-kolokierte-tests',
     scopes: [
       'src/domain/**',

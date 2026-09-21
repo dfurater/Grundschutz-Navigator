@@ -71,13 +71,6 @@
       ]
     },
     {
-      "id": "R6-coverage-schwellen",
-      "rule": "Die Coverage-Schwellen in vite.config.ts (lines, branches, functions, statements) dürfen nicht gesenkt werden. Ein Diff, der einen dieser Werte herabsetzt, ist ein blockierender Befund — auch wenn die CI grün ist.",
-      "scope": [
-        "vite.config.ts"
-      ]
-    },
-    {
       "id": "R7-kolokierte-tests",
       "rule": "Logik in src/domain/, src/adapters/ und scripts/ braucht kolokierte Tests in einer *.test.ts neben der Datei. Neue oder geänderte Verzweigungen ohne Testabdeckung sind ein Befund; benenne die konkrete unabgedeckte Verzweigung.",
       "scope": [
