@@ -9,6 +9,15 @@ function hasPushTrigger(workflow: string): boolean {
 }
 
 describe('catalog update workflow schedule', () => {
+  it('checks jq availability before any catalog-sync step runs', () => {
+    const workflow = readFileSync(WORKFLOW_PATH, 'utf8');
+    const [, jobs] = workflow.split('\njobs:\n');
+    const firstStep = jobs.match(/^\x20{6}- name: (.+)$/m);
+
+    expect(firstStep?.[1]).toBe('Verify jq availability');
+    expect(workflow).toContain('      - name: Verify jq availability\n        run: jq --version');
+  });
+
   it('runs twice on weekdays in Europe/Berlin away from the top of the hour', () => {
     const workflow = readFileSync(WORKFLOW_PATH, 'utf8');
 

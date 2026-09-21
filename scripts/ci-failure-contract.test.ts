@@ -92,6 +92,25 @@ afterEach(async () => {
 });
 
 describe('CI failure visibility contract', () => {
+  it('runs the catalog-sync guard only for pull-request events', async () => {
+    const catalogSyncGuard = jobScopes(await workflow('ci.yml')).get('catalog-sync-guard');
+
+    expect(catalogSyncGuard).toMatch(/^\x20{4}if: github\.event_name == 'pull_request'$/m);
+  });
+
+  it('preserves Sonar history instead of cancelling queued branch scans', async () => {
+    const sonar = await workflow('sonar.yml');
+
+    expect(sonar).toContain('  cancel-in-progress: false');
+  });
+
+  it('uses the github context token for the Greptile review nudge', async () => {
+    const nudge = await workflow('greptile-review-nudge.yml');
+
+    expect(nudge).toContain('GH_TOKEN: ${{ github.token }}');
+    expect(nudge).not.toContain('GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}');
+  });
+
   // GSPP-423 staffelt die Job-Timeouts nach Schrittinventar statt uniform 20:
   // 5 min für den Sekunden-Job (ein API-Read, ein Kommentar-Write, Node-Guard),
   // 10 min für `npm ci` + kurze Node-Skripte ohne Build/Browser, 20 min für

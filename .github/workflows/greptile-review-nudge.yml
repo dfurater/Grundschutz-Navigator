@@ -78,5 +78,5 @@ jobs:
       # Ohne `npm ci`: Der Guard kommt mit Node-Bordmitteln aus.
       - name: Force a Greptile review when the required check is missing
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: node scripts/greptile-review-nudge.mjs

@@ -25,6 +25,9 @@ jobs:
       CATALOG_SYNC_RULESET_UPDATED_AT: ${{ vars.CATALOG_SYNC_RULESET_UPDATED_AT }}
 
     steps:
+      - name: Verify jq availability
+        run: jq --version
+
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

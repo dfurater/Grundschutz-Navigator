@@ -72,6 +72,6 @@ rules:
       - release-prepare.yml:49:28
       - sonar.yml:61:38
       - sonar.yml:88:28
-      - update-catalog.yml:47:28
+      - update-catalog.yml:50:28
       - validate.yml:298:38
       - validate.yml:313:28
