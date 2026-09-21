@@ -17,7 +17,9 @@ permissions:
 # Beide Jobs dieser Datei urteilen ausschließlich über die
 # Pull-Request-Metadaten und lesen sie bei jedem Lauf frisch aus dem
 # Ereignis. Ein überholter Lauf trägt deshalb keine Aussage, die erhalten
-# bleiben müsste, und wird abgebrochen — wie es `sonar.yml` bereits tut.
+# bleiben müsste, und wird abgebrochen. `sonar.yml` serialisiert seine Läufe
+# stattdessen: Dessen Push-Messungen schreiben die Branch-Historie fort, in
+# die ein Abbruch eine Lücke risse.
 # `cancel-in-progress` greift nur für Pull-Request-Läufe; ein laufender
 # `workflow_dispatch` wird nicht abgebrochen. Ein noch wartender Lauf kann
 # dagegen von einem neueren derselben Gruppe verdrängt werden, weil GitHub
@@ -55,7 +57,6 @@ jobs:
 
     steps:
       - name: Checkout full PR history
-        if: github.event_name == 'pull_request'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -67,11 +68,9 @@ jobs:
       # Prädikat fail-closed `false` und die PR fällt auf den regulären
       # Sync-Pfad zurück — der Vertrag würde also stillschweigend nie greifen.
       - name: Fetch main for the catalog import provenance check
-        if: github.event_name == 'pull_request'
         run: git fetch --no-tags origin main:refs/remotes/origin/main
 
       - name: Validate catalog sync PR contract
-        if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
@@ -97,11 +96,10 @@ jobs:
       # unbeantwortet und der Auto-Merge stünde still. Ein Release-PR trägt
       # dagegen den Baum von `develop` und damit diese Fassung im Head.
       - name: Fetch develop for the release provenance check
-        if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/')
+        if: startsWith(github.head_ref, 'release/')
         run: git fetch --no-tags origin develop:refs/remotes/origin/develop
 
       - name: Verify the release PR against its approval marker
-        if: github.event_name == 'pull_request'
         env:
           PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
           PR_BODY: ${{ github.event.pull_request.body }}

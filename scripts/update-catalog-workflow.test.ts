@@ -8,14 +8,35 @@ function hasPushTrigger(workflow: string): boolean {
   return /^ {2}(?:push|['"]push['"])\s*:/m.test(workflow);
 }
 
+function jobScopes(workflow: string): Map<string, string> {
+  const [, jobs = ''] = workflow.split('\njobs:\n');
+  const headers = [...jobs.matchAll(/^\x20{2}([\w-]+):\n/gm)];
+
+  return new Map(
+    headers.map((header, index) => [
+      header[1],
+      jobs.slice(header.index, headers[index + 1]?.index ?? jobs.length),
+    ]),
+  );
+}
+
 describe('catalog update workflow schedule', () => {
+  // Der Nachweis gehört an den Anfang *jedes* Jobs dieser Datei: `jq` liegt im
+  // Runner-Image und nicht im Repository, und sein Fehlen bleibt im Sync-Pfad
+  // still — die `jq`-Aufrufe stehen dort in Argumentposition von `printf`, wo
+  // `set -euo pipefail` ihren Exit-Status nicht sieht. Ein Test, der nur den
+  // global ersten Step prüft, verlöre seine Aussage mit dem zweiten Job.
   it('checks jq availability before any catalog-sync step runs', () => {
     const workflow = readFileSync(WORKFLOW_PATH, 'utf8');
-    const [, jobs] = workflow.split('\njobs:\n');
-    const firstStep = jobs.match(/^\x20{6}- name: (.+)$/m);
+    const scopes = jobScopes(workflow);
 
-    expect(firstStep?.[1]).toBe('Verify jq availability');
-    expect(workflow).toContain('      - name: Verify jq availability\n        run: jq --version');
+    expect(scopes.size).toBeGreaterThan(0);
+
+    for (const [name, body] of scopes) {
+      expect(body, `Job ${name} beginnt nicht mit dem jq-Nachweis`).toMatch(
+        /\n\x20{4}steps:\n\x20{6}- name: Verify jq availability\n\x20{8}run: jq --version\n/,
+      );
+    }
   });
 
   it('runs twice on weekdays in Europe/Berlin away from the top of the hour', () => {

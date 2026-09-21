@@ -98,10 +98,16 @@ describe('CI failure visibility contract', () => {
     expect(catalogSyncGuard).toMatch(/^\x20{4}if: github\.event_name == 'pull_request'$/m);
   });
 
-  it('preserves Sonar history instead of cancelling queued branch scans', async () => {
+  // Verankert an der Gruppe auf Dateiebene: Eine bloße Teilstring-Suche nach
+  // `cancel-in-progress: false` ließe sich von einem tiefer eingerückten
+  // Job-Block erfüllen, während die Gruppe auf Dateiebene wieder abbricht.
+  // Der Schalter schützt den laufenden Scan; dass GitHub je Gruppe nur einen
+  // wartenden Lauf hält, bleibt davon unberührt — deshalb nennt der Testname
+  // die laufende Analyse und nicht die wartende.
+  it('serialises Sonar branch scans instead of cancelling the running one', async () => {
     const sonar = await workflow('sonar.yml');
 
-    expect(sonar).toContain('  cancel-in-progress: false');
+    expect(sonar).toMatch(/\nconcurrency:\n\x20{2}group: [^\n]+\n\x20{2}cancel-in-progress: false\n/);
   });
 
   it('uses the github context token for the Greptile review nudge', async () => {
