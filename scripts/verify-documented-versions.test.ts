@@ -6,6 +6,7 @@ import {
   collectContractViolations,
   findVersionLiterals,
   formatViolations,
+  isExactPin,
   parseDependencyClaims,
   parseSection,
   readRepositoryState,
@@ -67,6 +68,35 @@ function violationsFor(overrides: {
     ...overrides,
   });
 }
+
+describe('isExactPin', () => {
+  it.each([
+    '5.0.0',
+    '1.63.0',
+    '5.0.0-beta.1',
+    '1.63.0-next.0+sha.abc',
+    '5.0.1+build.3',
+  ])('akzeptiert den exakten Pin %s', (pin) => {
+    expect(isExactPin(pin)).toBe(true);
+  });
+
+  it.each([
+    '^5.0.0',
+    '~5.0.0',
+    '>=5.0.0 <6.0.0',
+    'latest',
+    '5',
+    '5.0',
+    'file:../x',
+    'workspace:*',
+    'npm:vitest@5.0.0',
+    '5.0.0-',
+    '5.0.0+',
+    '',
+  ])('lehnt die Pin-Form %s ab', (pin) => {
+    expect(isExactPin(pin)).toBe(false);
+  });
+});
 
 describe('parseSection', () => {
   it('grenzt den Abschnitt bis zur nächsten Überschrift ab', () => {
@@ -405,6 +435,24 @@ describe('collectContractViolations', () => {
       subject: 'Versionsliteral `5.0.1-beta.2`',
       expected: 'kein Versionsliteral',
       measured: '5.0.1-beta.2',
+      source: 'docs/ARCHITECTURE.md → Abschnitt "## Browser-Testlane"',
+    });
+  });
+
+  it.each([
+    ['1243', 'einteilige Chromium-Revision'],
+    ['153.0.8010.12', 'vierteilige Chrome-for-Testing-Version'],
+  ])('meldet die abgeschriebene %s %s im geprüften Abschnitt', (value) => {
+    const documentation = DOCUMENTATION.replace(
+      'Die Lane nutzt `vitest` mit jsdom.',
+      `Die Lane nutzt \`vitest\` mit jsdom in \`${value}\`.`,
+    );
+
+    expect(violationsFor({ documentation })).toContainEqual({
+      line: 3,
+      subject: `Versionsliteral \`${value}\``,
+      expected: 'kein Versionsliteral',
+      measured: value,
       source: 'docs/ARCHITECTURE.md → Abschnitt "## Browser-Testlane"',
     });
   });

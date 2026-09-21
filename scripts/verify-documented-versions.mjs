@@ -56,29 +56,60 @@ const CHROMIUM_PARAGRAPH_SENTENCE =
 
 /*
  * Exakter Pin, positiv definiert: drei numerische Stellen, optional gefolgt
- * von genau einem Vorab-Anhang (`-…`) und genau einem Build-Anhang (`+…`) aus
- * punktgetrennten Bezeichnern. Jede andere Form ist damit ein Verstoß, ohne
- * dass sie aufgezählt werden müsste — der Default ist fail-closed. Das Muster
- * kommt ohne `semver` aus, das keine direkte Abhängigkeit des Repositoriums
- * ist.
+ * von genau einem Vorab-Anhang (`-…`) und genau einem Build-Anhang (`+…`).
+ * Jede andere Form ist damit ein Verstoß, ohne dass sie aufgezählt werden
+ * müsste — der Default ist fail-closed. Die Prüfung kommt ohne `semver` aus,
+ * das keine direkte Abhängigkeit des Repositoriums ist.
  *
- * Die Form ist bewusst linear geschrieben: An jeder Verzweigung entscheiden
- * disjunkte Zeichenklassen (Ziffer gegen Punkt, Trennzeichen gegen
- * Bezeichnerzeichen), sodass kein Backtracking überlappender Wiederholungen
- * entsteht (CodeQL-Inefficient-RegExp, Sonar S5852). Dasselbe Muster erkennt
- * unten Versionsliterale — Pin-Grammatik und Literal-Grammatik sind eine.
+ * Bewusst programmiert statt in einem einzigen Ausdruck: Ein
+ * Alles-in-einem-Muster trägt überlappende Wiederholungen (ReDoS, CodeQL und
+ * Sonar S5852) oder sprengt das Komplexitätsbudget (Sonar S5843). Kern und
+ * Bezeichner sind je ein linearer Kleinstausdruck — an jeder Verzweigung
+ * entscheiden disjunkte Zeichenklassen. Die Bezeichnerform ist großzügig
+ * (führende Nullen, Bindestriche innen): Entscheidend ist die Exaktheit —
+ * ein Pin benennt genau eine Version —, nicht semver-Pedanterie. Bereiche,
+ * Tags, Aliase und Pfade scheitern am Kern und bleiben Verstöße.
  */
-const EXACT_PIN_PATTERN =
-  /^\d+\.\d+\.\d+(?:-[\dA-Za-z]+(?:[.-][\dA-Za-z]+)*)?(?:\+[\dA-Za-z]+(?:[.-][\dA-Za-z]+)*)?$/;
+const PIN_CORE_PATTERN = /^\d+\.\d+\.\d+$/;
+const PIN_IDENTIFIERS_PATTERN = /^[\dA-Za-z][\dA-Za-z-]*(?:\.[\dA-Za-z][\dA-Za-z-]*)*$/;
+
+/**
+ * Prüft, ob ein Manifest-Eintrag einen exakten Pin trägt: Kern aus drei
+ * numerischen Stellen, danach höchstens je ein `-…`- und ein `+…`-Anhang aus
+ * punktgetrennten Bezeichnern.
+ */
+export function isExactPin(pin) {
+  if (typeof pin !== 'string' || pin === '') {
+    return false;
+  }
+
+  const buildIndex = pin.indexOf('+');
+  const build = buildIndex === -1 ? '' : pin.slice(buildIndex + 1);
+  const withoutBuild = buildIndex === -1 ? pin : pin.slice(0, buildIndex);
+  if (buildIndex !== -1 && !PIN_IDENTIFIERS_PATTERN.test(build)) {
+    return false;
+  }
+
+  const preIndex = withoutBuild.indexOf('-');
+  const core = preIndex === -1 ? withoutBuild : withoutBuild.slice(0, preIndex);
+  const pre = preIndex === -1 ? '' : withoutBuild.slice(preIndex + 1);
+  if (!PIN_CORE_PATTERN.test(core)) {
+    return false;
+  }
+
+  return preIndex === -1 || PIN_IDENTIFIERS_PATTERN.test(pre);
+}
 
 /*
- * Versionsliteral: ein in Backticks gesetztes Token in Pin-Grammatik — also
- * auch mit Vorab- oder Build-Anhang wie `5.0.0-beta.1`. Ein abgeschriebener
- * Pin in erweiterter Form liefe sonst unbeanstandet durch. Zahlen ohne
- * Backticks (etwa Portnummern oder Coverage-Schwellen) sind keine Literale
- * und bleiben unberührt.
+ * Versionsliteral: ein in Backticks gesetztes Token, das mit einer Ziffer
+ * beginnt — von der einteiligen Chromium-Revision (`1243`) über drei- und
+ * vierteilige Versionen bis zu Vorab- und Build-Anhängen (`5.0.1-beta.2`).
+ * Die Grammatik ist bewusst weiter als die Pin-Exaktheit: Ein abgeschriebener
+ * Manifest-Wert jeder Stellenanzahl muss anschlagen. Zahlen ohne Backticks
+ * (etwa Portnummern oder Coverage-Schwellen) sind keine Literale und bleiben
+ * unberührt.
  */
-const VERSION_LITERAL_CONTENT_PATTERN = EXACT_PIN_PATTERN;
+const VERSION_LITERAL_CONTENT_PATTERN = /^\d[\d.]*(?:[-+][\dA-Za-z][\dA-Za-z.-]*)?$/;
 
 const VITEST_TRIO = ['vitest', '@vitest/coverage-v8', '@vitest/browser-playwright'];
 const PLAYWRIGHT_PACKAGE = 'playwright';
@@ -427,7 +458,7 @@ function checkExactPins(claims, packageManifest) {
         continue;
       }
 
-      if (!EXACT_PIN_PATTERN.test(pinned.pin)) {
+      if (!isExactPin(pinned.pin)) {
         violations.push({
           line: claim.line,
           subject: packageName,
