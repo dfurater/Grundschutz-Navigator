@@ -1,14 +1,14 @@
 name: Check Catalog Updates
 
 on:
+  # Main-Pushes enthalten keinen neuen Upstream-Stand. Policy-Drift wird
+  # deshalb im nächsten regulären Werktagslauf erkannt.
   schedule:
     - cron: '30 7 * * 1-5'
       timezone: 'Europe/Berlin'
     - cron: '30 17 * * 1-5'
       timezone: 'Europe/Berlin'
   workflow_dispatch:
-  push:
-    branches: [main]
 
 permissions:
   contents: read
