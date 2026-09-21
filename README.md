@@ -52,7 +52,7 @@ IT-Sicherheitsbeauftragte, Berater:innen, Auditor:innen, Studierende und alle, d
 
 ### Voraussetzungen
 
-- **Node.js >= 22.22.0** (in `package.json` als `engines.node` deklariert)
+- **Node.js >= 22.22.2** (in `package.json` als `engines.node` deklariert)
 - Optional ein **GitHub Token** in `GH_TOKEN` für höhere API-Rate-Limits beim Katalog-Fetch
 
 ### Quickstart
