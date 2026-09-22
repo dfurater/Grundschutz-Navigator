@@ -268,6 +268,9 @@ export function getVocabularyNamespaceByRouteId(
   return registry.namespacesByRouteId.get(routeId) ?? null;
 }
 
+// Die vier Wertliterale in resolveControlVocabularies müssen exakt der
+// Wertspalte von security_targets.csv entsprechen; eine Upstream-Umbenennung
+// ließe die Auflösung still auf null fallen.
 function resolveSecurityTarget(registry: VocabularyRegistry | null | undefined, prop: PropValue | undefined, value: string): VocabularyResolution | null {
   return prop ? resolveVocabularyEntry(registry, SECURITY_TARGETS_NAMESPACE_URL, value) : null;
 }

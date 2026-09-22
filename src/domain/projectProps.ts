@@ -6,6 +6,9 @@ import {
 import { enforceClass2ObjectGraphInvariants } from '@/domain/oscalObjectGraph';
 import { isCatalogKey } from '@/domain/sourceRegistry';
 
+// Der Vertrag der projekteigenen Props — Wertebereiche, Träger, Paar- und
+// Maßnahmenregeln — steht in docs/PROJECT_PROPS.md.
+
 export const PROJECT_PROPS_NAMESPACE =
   'https://github.com/dfurater/Grundschutz-Navigator/ns/oscal/props' as const;
 
@@ -175,6 +178,10 @@ export const PROJECT_PROP_REGISTRY = Object.freeze({
 const UNICODE_LETTER = /^\p{L}$/u;
 const UNICODE_NUMBER = /^\p{N}$/u;
 
+/**
+ * OSCAL `TokenDatatype` (NCName): `^(\p{L}|_)(\p{L}|\p{N}|[.\-_])*$`,
+ * codepointweise geprüft.
+ */
 export function isOscalToken(value: string): boolean {
   let position = 0;
   for (const character of value) {
@@ -555,6 +562,8 @@ function validateCatalogPairs(
     }
   }
 
+  // Gibt es zugleich Gruppen nur mit Key und nur mit Commit, wird das als Paar
+  // mit abweichender `group` gewertet: MISMATCH statt zweimal INCOMPLETE.
   if (keyOnlyGroups.length > 0 && commitOnlyGroups.length > 0) {
     diagnostics.push(diagnostic(PROJECT_PROP_DIAGNOSTIC_CODES.CATALOG_GROUP_MISMATCH, carrier));
   } else {
@@ -795,6 +804,8 @@ export function readProjectProps(
     accumulator.diagnostics.push(...validateCatalogPairs(accumulator.projectProps, carrier));
   }
 
+  // Die Einzelprüfungen kennen nur den Träger; erst hier erhält jede Diagnose
+  // den Pointer der konkreten Fundstelle.
   const scopedDiagnostics = accumulator.diagnostics.map(({ code }) =>
     diagnosticAtPath(code as ProjectPropDiagnosticCode, projectPropPath(context)),
   );

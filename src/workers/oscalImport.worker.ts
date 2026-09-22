@@ -39,6 +39,8 @@ function next(): void {
   }
 }
 
+// `failure` hat im Gate keinen eigenen Zweig: Jede dort unbekannte Frame-Art
+// endet als OSCAL_IMPORT_WORKER_FAILURE (src/adapters/oscalImportGate.ts).
 globalThis.addEventListener('message', (event: MessageEvent) => {
   const request = event.data;
   if (failed) return;

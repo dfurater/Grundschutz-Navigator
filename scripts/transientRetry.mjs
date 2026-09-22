@@ -22,6 +22,9 @@ export function sleep(milliseconds) {
   });
 }
 
+// Undici meldet `unexpected redirect` nur bei `redirect: 'error'` im init
+// (verify-upstream-oscal.mjs). fetch-catalog.mjs setzt die Option nicht; dort
+// folgt fetch Redirects, und dieser Abbruch greift nie.
 function isUnexpectedRedirectError(error) {
   return error?.cause?.message === 'unexpected redirect';
 }

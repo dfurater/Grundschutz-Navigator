@@ -487,6 +487,8 @@ export function parseMetadata(raw: RawOscalCatalog): CatalogMetadataInfo {
     name: party.name,
     email: party['email-addresses']?.[0],
   }));
+  // Erste Partei statt Auflösung der Herausgeberrolle über responsible-parties:
+  // Die ausgelieferten Kataloge führen genau eine Partei (Rolle `creator`).
   const firstParty = parties[0];
 
   return {

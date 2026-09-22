@@ -110,6 +110,10 @@ export function buildChildControlMap(controls: Control[]): Map<string, Control[]
   return childrenByParent;
 }
 
+// Terminiert nur bei eindeutigen Control-IDs: parentId stammt aus der
+// Schachtelung (parseControlRecursive in src/adapters/oscalAdapter.ts). Einen
+// Zyklus ergäben erst doppelt vergebene IDs, die der Referenzgraph (Stufe 5) an
+// ausgelieferten Artefakten fail-closed blockiert.
 export function getControlHierarchyDepth(
   control: Control,
   controlsById: Map<string, Control>,

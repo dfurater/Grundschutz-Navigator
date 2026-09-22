@@ -32,6 +32,10 @@ export interface UseControlNavigationResult {
   navigateToControl: (control: Control) => void;
 }
 
+// `scope` ist dreiwertig: `null` = Katalogwurzel, String = Gruppe, `undefined`
+// = kein gemerkter Kontext (Rückfall auf die Gruppe des Controls). Gemerkt wird
+// nur, solange kein Control geöffnet ist, damit das Schließen dorthin
+// zurückführt, von wo aus geöffnet wurde.
 interface BrowseScope {
   catalogKey: string | undefined;
   scope: string | null | undefined;

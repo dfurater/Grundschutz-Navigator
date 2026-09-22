@@ -239,8 +239,10 @@ export function selectManifestOscalArtifacts(manifest, registry = listOscalArtif
   });
 }
 
-// Deterministische Codepunktauflage (identisch zur früheren parameterlosen
-// Sortierung), unabhängig von Locale und ICU-Version der Laufzeit.
+// Deterministische UTF-16-Code-Unit-Ordnung (identisch zur früheren
+// parameterlosen Sortierung), unabhängig von Locale und ICU-Version der
+// Laufzeit. Lexikalisch, keine Versionsordnung (`1.10.0` stünde vor `1.2.0`);
+// sie bestimmt nur die Ausgabereihenfolge von versionCoverage.
 function compareVersionStrings(left, right) {
   if (left === right) return 0;
   return left < right ? -1 : 1;
@@ -355,6 +357,9 @@ function encodeRepoPath(repoPath) {
   return repoPath.split('/').map(encodeURIComponent).join('/');
 }
 
+// Nur zwei Pins: Die Funktion prüft checksums.txt selbst, das sich nicht selbst
+// belegen kann. Binary und SBOM prüft verifyPinnedAsset zusätzlich gegen
+// checksums.txt.
 function verifyApiPinnedAsset(bytes, expectedSha256, apiDigest) {
   const actualSha256 = createHash('sha256').update(bytes).digest('hex');
   if (actualSha256 !== expectedSha256) {
@@ -561,6 +566,9 @@ async function readValidationResult(resultPath, artifactKey) {
   }
 }
 
+// Inverse Erwartung (ADR-7): Ein gesperrtes Artefakt muss am Schema scheitern.
+// Besteht es, ist es `unblock-candidate`, und der Lauf schlägt fehl — die
+// Sperre wird bewusst aufgehoben, nicht still überholt.
 function resolveArtifactExpectationOutcome(expectedSchemaStatus, verificationPassed) {
   if (!verificationPassed) {
     return expectedSchemaStatus === 'failed'

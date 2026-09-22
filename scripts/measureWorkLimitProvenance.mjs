@@ -140,15 +140,8 @@ const TYPE_ONLY_PATTERNS = Object.freeze([
 
 /**
  * Die Importspezifizierer einer Datei, denen die Hülle folgt: alle bis auf die,
- * die AUSSCHLIESSLICH über Typkanten erreicht werden.
- *
- * Bewusst eine Textsuche und kein Parser: Sie darf keine Datei ÜBERSEHEN,
- * Mehrtreffer sind unschädlich. Die Muster setzen direkt am Schlüsselwort an
- * und tragen kein `[\s\S]*?` — eine Suche, die den ganzen Dateikopf
- * überspringen darf, backtrackt superlinear. Ausgerechnet hier wäre das
- * unpassend: Dieser Slice hat dieselbe Bauart aus dem Glob-Pfad entfernt.
- * Die `from`-Form deckt mehrzeilige Importlisten mit ab, weil sie am `from`
- * ansetzt und nicht am `import`.
+ * die AUSSCHLIESSLICH über Typkanten erreicht werden. Wie gesucht wird, steht
+ * an IMPORT_PATTERNS.
  *
  * Der Typkanten-Ausschluss ist fail-closed und ordnet je VORKOMMEN zu, nicht je
  * Ziel: Ein `from`-Treffer entfällt nur, wenn genau er von einer der reinen
@@ -277,6 +270,10 @@ function packageNameOf(specifier) {
  * die Schemaprüfung mit Ajv aus. Würde Ajv langsamer, bliebe ein Fingerprint
  * über reine Repository-Dateien unverändert und ein altes Arbeitslimit weiter
  * als belegt stehen (Greptile-Befund zu 88a568e).
+ *
+ * Aufgelöst wird nur der gehobene Eintrag `node_modules/<name>`. Eine
+ * verschachtelte Installation mit abweichender Version geht mit der gehobenen
+ * Version in den Fingerprint ein.
  *
  * Fail-closed: Ein Paket ohne Lockfile-Eintrag bricht ab, statt still aus dem
  * Fingerprint zu fallen.

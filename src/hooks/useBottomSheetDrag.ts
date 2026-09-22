@@ -88,6 +88,8 @@ export function useBottomSheetDrag({
         }
         // Erst nach der kurzen Abschluss-Animation entlassen, damit das Sheet
         // sichtbar aus dem Viewport fährt, bevor die UI es entfernt.
+        // 200 ms entsprechen `--duration-normal` (src/index.css), der Dauer der
+        // Transition darüber; ändert sich das Token, laufen beide auseinander.
         dismissTimer = globalThis.window.setTimeout(onDismiss, 200);
       } else {
         snapBack();

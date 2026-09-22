@@ -187,6 +187,8 @@ export function CatalogProvider({
             JSON.parse(vocabularyText) as VocabularyRegistryData,
           );
 
+          // Wie beim Katalog sperrt eine fehlende oder abweichende Prüfung die
+          // Registry nicht; das Ergebnis erscheint auf /about (docs/INTEGRITY.md).
           try {
             vocabularyProvenance = await fetchVocabularyProvenance(upstreamSourcesMetadataUrl);
             if (!cancelled) {
