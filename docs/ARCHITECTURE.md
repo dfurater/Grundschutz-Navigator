@@ -22,7 +22,7 @@ Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application 
 
 `npm run test` läuft vollständig in jsdom und schließt Dateien unter `src/test/browser/**/*.browser.test.ts` explizit aus (Ausschluss in `vite.config.ts`).
 
-`npm run test:browser` startet die getrennte Vitest-Browser-Lane aus `vitest.browser.config.ts` mit dem Playwright-Provider und Chromium. Sie verwendet einen gemeinsamen Test-iframe (`isolate: false`) und führt `ajv` in `optimizeDeps.include`, weil die Schemaprüfung das Paket erst zur Laufzeit importiert. Jeder Test bereinigt seine eigene IndexedDB-Datenbank, und der Egress-Guard setzt seinen Zustand vor jedem Test zurück.
+`npm run test:browser` startet die getrennte Vitest-Browser-Lane aus `vitest.browser.config.ts` mit dem Playwright-Provider und Chromium. Jede Testdatei läuft in einem eigenen Test-iframe (`isolate: true`); `src/test/browser/iframePath+encoding.browser.test.ts` sichert ab, dass ein `+` im Testdateipfad die iframe-Zuordnung nicht bricht. Die Lane führt `ajv` in `optimizeDeps.include`, weil die Schemaprüfung das Paket erst zur Laufzeit importiert. Jeder Test bereinigt seine eigene IndexedDB-Datenbank, und der Egress-Guard setzt seinen Zustand vor jedem Test zurück.
 
 | Abhängigkeit | Pin | Lizenz | Zweck |
 | --- | --- | --- | --- |
