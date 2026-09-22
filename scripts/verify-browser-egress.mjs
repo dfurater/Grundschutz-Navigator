@@ -9,6 +9,9 @@ export const EGRESS_FAILURE_MARKER = '[BROWSER_EGRESS_BLOCKED]';
 export const NEGATIVE_EGRESS_TEST_PATH = 'src/test/browser/egressOracle.negative.browser.test.ts';
 export { NEGATIVE_EGRESS_CASES };
 
+// Erwartet genau die Fehlerform aus src/test/browser/browserEgressGuard.ts
+// (`<Marker> <Methode> <URL>`, Detail aus browserEgressDecision.ts) und den
+// Pfad `/egress-proof/<id>` aus egressOracle.negative.browser.test.ts.
 function hasExpectedEgressViolation(failureMessage, negativeCase) {
   const markerCount = failureMessage.split(EGRESS_FAILURE_MARKER).length - 1;
   if (markerCount !== 1) {

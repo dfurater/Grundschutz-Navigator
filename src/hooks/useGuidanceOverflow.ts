@@ -7,6 +7,7 @@ import {
 import type { RefObject } from 'react';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 
+// Fängt die Rundung von scrollHeight und clientHeight auf ganze Pixel ab.
 const OVERFLOW_TOLERANCE_PX = 1;
 
 export interface UseGuidanceOverflowOptions {
@@ -37,6 +38,9 @@ export function useGuidanceOverflow({
     expanded: false,
     hasOverflow: false,
   }));
+  // Zurücksetzen während des Renderns ist Absicht (React-Muster „Zustand bei
+  // Prop-Wechsel anpassen"); ein Effekt zeigte einen Render lang den Zustand
+  // des alten Scopes.
   if (guidanceState.scopeId !== scopeId) {
     setGuidanceState({
       scopeId,

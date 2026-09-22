@@ -21,6 +21,9 @@ export function useControlSelection({
     scopeId,
     checkedIds: EMPTY_CHECKED_IDS,
   }));
+  // Die Auswahl gilt nur für ihren scopeId: Nach einem Wechsel liefert der Hook
+  // ohne Effekt sofort die leere Menge, der nächste Schreibvorgang ersetzt den
+  // alten Stand. Leere Mengen teilen sich EMPTY_CHECKED_IDS (stabile Identität).
   const checkedIds =
     selectionState.scopeId === scopeId
       ? selectionState.checkedIds

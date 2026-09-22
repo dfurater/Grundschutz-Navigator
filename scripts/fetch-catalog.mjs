@@ -242,6 +242,9 @@ async function resolveSnapshot(snapshotSelection, logger, transport) {
  */
 function resolveDownloadLimit(path, expectedSizeBytes) {
   if (Number.isSafeInteger(expectedSizeBytes) && expectedSizeBytes >= 0) {
+    // readBodyWithLimit verlangt ein positives Limit. Für einen leeren Blob
+    // fängt der exakte Größenabgleich nach dem Download das eine zusätzlich
+    // zugelassene Byte ab.
     return {
       maxBytes: Math.max(expectedSizeBytes, 1),
       limitMessage: `Dateigröße stimmt nicht mit dem BSI-Tree überein: ${path}`,
@@ -628,6 +631,8 @@ async function buildFetchArtifacts(logger = console, {
       throw new Error(`Unterstützter Katalog fehlt im vollständigen BSI-Tree: ${entry.upstreamPath}`);
     }
 
+    // Leere Mitgliedsliste: Vor der Materialisierung sind nur OSCAL-Pfade
+    // abrufbar; ein Vokabularpfad scheiterte hier fail-closed.
     const raw = await fetchRawRegisteredFile(
       entry.upstreamPath,
       fetchRef,
@@ -869,6 +874,10 @@ async function buildFetchArtifacts(logger = console, {
   // Je Katalog ein eigenes Daten- und Metadatenartefakt mit eigenem SHA-256,
   // Git-Blob-SHA, Snapshot-Bezug und deklarierter OSCAL-Version. Die
   // Laufzeitprüfung vergleicht jeden Katalog gegen genau diese Metadaten.
+  // record.artifact.buffer ist record.raw.buffer: Ausgeliefert werden die
+  // Upstream-Bytes unverändert, upstream_sha256 und integrity.sha256 sind
+  // deshalb gleich. Die Laufzeitprüfung (src/domain/integrity.ts) liest
+  // integrity.sha256.
   const catalogArtifactFiles = catalogRecords.flatMap((record) => {
     const dataFileName = catalogDataFileName(record.entry);
     const metadataFileName = catalogMetadataFileName(record.entry);

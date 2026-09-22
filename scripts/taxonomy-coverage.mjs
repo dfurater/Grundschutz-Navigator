@@ -27,6 +27,13 @@ function findDuplicates(values) {
     .map(([value, count]) => ({ value, count }));
 }
 
+/**
+ * Verknüpft die Praktiken des übergebenen Einstiegskatalogs (Gruppen der
+ * ersten Ebene; Themen sind die zweite) über ihren `alt-identifier` mit der
+ * CSV-Spalte `UUID`. Der Spaltenname wird exakt verglichen, nicht normalisiert
+ * wie in inferIdentifierColumns (vocabulary-utils.mjs): Ein umbenannter Header
+ * ließe den Guard mit „Einträge ohne UUID" fail-closed scheitern.
+ */
 export function analyzePracticeVocabularyIntegrity(
   catalogDocument,
   practicesNamespace,

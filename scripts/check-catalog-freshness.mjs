@@ -159,6 +159,9 @@ export function catalogFreshnessPlugin(options) {
   };
 }
 
+// Vitest-`globalSetup` (vite.config.ts): Der Testlauf bricht bei nicht frischen
+// Katalogdaten ab. Der Dev-Server erhält über catalogFreshnessPlugin nur eine
+// Warnung.
 export default async function setupCatalogFreshness() {
   await assertCatalogFreshness();
 }

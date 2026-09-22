@@ -229,6 +229,8 @@ async function verifyMergeCommitOnMain(repository, commitSha, { fetchImpl, token
     `${repoApiBase(repository)}/compare/${encodeURIComponent(PROTECTED_BRANCH)}...${encodeURIComponent(commitSha)}`,
     { fetchImpl, token, label: 'merge commit compare', requestTimeoutMs },
   );
+  // `behind`: the merge commit is an ancestor of a main that has moved on, so it
+  // is still on main. `ahead` or `diverged` means main no longer contains it.
   if (comparison?.status !== 'identical' && comparison?.status !== 'behind') {
     throw new Error(
       `merge commit is no longer verifiably on ${PROTECTED_BRANCH} (status=${comparison?.status}); `
