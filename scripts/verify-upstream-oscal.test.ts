@@ -760,6 +760,47 @@ describe('Diagnose fehlgeschlagener Abrufe (GSPP-359)', () => {
     expect(line).not.toMatch(/[?#]|secret|redact|Signature/);
   });
 
+  it.each([
+    ['ohne Ziel', () => new Response(null, { status: 302 })],
+    [
+      'zu einem nicht erlaubten Host',
+      () => new Response(null, {
+        status: 302,
+        headers: { location: 'https://attacker.example/asset?token=secret' },
+      }),
+    ],
+  ])('meldet einen Redirect %s mit Status, Versuch und der auslösenden URL', async (_case, redirect) => {
+    const { fixture, line } = await failureLine((url, respond) =>
+      url.endsWith('/go-oscal_vtest_Linux_amd64') ? redirect() : respond(url),
+    );
+
+    expect(line).toBe(
+      `GO_OSCAL_VERIFICATION_FAILED httpStatus=302 attempt=1 url=${fixture.binaryUrl}`,
+    );
+    expect(line).not.toMatch(/attacker|secret/);
+  });
+
+  it('meldet eine überschrittene Redirect-Grenze mit der letzten Redirect-Antwort', async () => {
+    const hop = (index: number) =>
+      `https://objects.githubusercontent.com/hop/${index}?X-Amz-Signature=secret`;
+    const { fetchImpl, line } = await failureLine((url, respond) => {
+      if (url.endsWith('/go-oscal_vtest_Linux_amd64')) {
+        return new Response(null, { status: 302, headers: { location: hop(1) } });
+      }
+      const match = /\/hop\/(\d+)/.exec(url);
+      if (match) {
+        return new Response(null, { status: 307, headers: { location: hop(Number(match[1]) + 1) } });
+      }
+      return respond(url);
+    });
+
+    // Sechs Abrufe (Hop 0 bis MAX_REDIRECT_HOPS); der letzte kam von Hop 5.
+    expect(fetchImpl.mock.calls.filter(([url]) => /\/hop\/\d+/.test(url))).toHaveLength(5);
+    expect(line).toBe(
+      'GO_OSCAL_VERIFICATION_FAILED httpStatus=307 attempt=1 url=https://objects.githubusercontent.com/hop/5',
+    );
+  });
+
   it('meldet einen Redirect-Abbruch mit dem ersten Versuch', async () => {
     const { fixture, line } = await failureLine((url, respond) => {
       if (url.startsWith('https://api.github.com/')) {

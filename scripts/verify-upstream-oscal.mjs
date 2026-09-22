@@ -401,18 +401,26 @@ async function fetchForDownloadGuard(fetchImpl, url, init, retryDelaysMs, failur
   }
 }
 
-function createHttpDownloadFailure(message, { response, attempts, url, artifactKey }) {
+function createHttpDownloadFailure(message, { response, attempts, url, artifactKey, cause }) {
   return createDownloadFailure(message, {
     artifactKey,
     httpStatus: response.status,
     attempt: attempts,
     url,
+    cause,
   });
 }
 
+/**
+ * Folgt Redirects manuell, damit jedes Ziel vor dem Abruf gegen die erlaubte
+ * Lieferkette geprüft wird. Scheitert ein Redirect, trägt der Fehler die
+ * Antwort, die ihn ausgelöst hat: ihren Status, ihre Versuchszahl und die URL,
+ * von der sie kam — nie das abgelehnte Ziel selbst.
+ */
 async function fetchReleaseAsset(asset, fetchImpl, maxBytes, retryDelaysMs) {
   const message = 'Release-Asset-Download fehlgeschlagen';
   let url = assertAllowedReleaseRedirect(asset.browser_download_url);
+  let lastRedirect;
 
   for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop += 1) {
     const { response, attempts } = await fetchForDownloadGuard(
@@ -426,12 +434,25 @@ async function fetchReleaseAsset(asset, fetchImpl, maxBytes, retryDelaysMs) {
       if (!response.ok) throw createHttpDownloadFailure(message, { response, attempts, url });
       return readBodyWithLimit(response, { maxBytes, label: 'Release-Asset' });
     }
+    lastRedirect = { response, attempts, url };
     const location = response.headers?.get?.('location');
-    if (!location) throw new Error('Release-Asset-Redirect hat kein Ziel');
-    url = assertAllowedReleaseRedirect(new URL(location, url).toString());
+    if (!location) {
+      throw createHttpDownloadFailure('Release-Asset-Redirect hat kein Ziel', lastRedirect);
+    }
+    try {
+      url = assertAllowedReleaseRedirect(new URL(location, url).toString());
+    } catch (error) {
+      throw createHttpDownloadFailure(
+        error instanceof Error ? error.message : 'Release-Asset-Redirect ist ungültig',
+        { ...lastRedirect, cause: error },
+      );
+    }
   }
 
-  throw new Error('Release-Asset-Download überschreitet die Redirect-Grenze');
+  throw createHttpDownloadFailure(
+    'Release-Asset-Download überschreitet die Redirect-Grenze',
+    lastRedirect,
+  );
 }
 
 async function fetchReleaseMetadata(releaseConfig, fetchImpl, retryDelaysMs) {
