@@ -49,94 +49,274 @@ Die Browser-Lane erzeugt keine Coverage-Ausgabe. Die verbindlichen V8-Coverage-S
 
 ## Verzeichnisstruktur
 
-```
-src/
-├── domain/           # Domänenmodelle und Geschäftslogik
-│   ├── models.ts                 # Zwei-Schichten-Datentypen
-│   ├── integrity.ts              # SHA-256 Integritätsprüfung
-│   ├── vocabulary.ts             # BSI-Vokabular-Auflösung
-│   ├── sourceRegistry.{mjs,ts}   # Verbindlicher Upstream-/Katalogvertrag
-│   ├── sourceRegistry.d.mts      # Typen des Quellregisters
-│   ├── oscalVersionMatrix.{mjs,ts} # Root-Typ × OSCAL-Version × gepinntes Schema
-│   ├── oscalVersionMatrix.d.mts  # Typen der Versionsmatrix
-│   ├── controlRef.ts             # Kataloggescopte interne Control-Referenzen
-│   ├── referenceResolution.ts    # Fail-closed OSCAL-Referenzauflösung auf source
-│   ├── referenceGraph.ts         # Referenzgraph über alle vier Root-Typen (Stufe 5)
-│   ├── referenceGraphModel.ts    # Knoten, Kanten, Zustände, Diagnostic-Codes
-│   ├── referenceGraphIndex.ts    # Knotenindex je Dokument aus dem Quellgraphen
-│   ├── referenceGraphContext.ts  # Auswertungskontext und Kantenablage
-│   ├── referenceGraphEdges.ts    # Kanten für Profile, Mappings, Components
-│   ├── referenceGraphPolicy.ts   # CI-Politik: fail-closed, Allowlist, Bericht
-│   └── controlRelationships.ts   # Steuerungsbeziehungen
-├── adapters/         # Infrastruktur- und Datengrenzen
-│   ├── oscalAdapter.ts           # OSCAL → Domain Model Parser
-│   └── browserDownload.ts        # Temporärer Browser-Download mit Cleanup
-├── state/            # Globaler Anwendungszustand
-│   └── CatalogContext.tsx        # Katalog-Kontextprovider
-├── hooks/            # Wiederverwendbare React Hooks
-│   ├── useCatalog.ts             # Katalog-Daten
-│   ├── useFilteredControls.ts    # Filterlogik
-│   ├── useFilterParams.ts        # URL-Parameter-Sync
-│   ├── useControlNavigation.ts   # Kataloggescopte Detailnavigation
-│   ├── useControlSelection.ts    # Katalog-/Gruppen-gescopte Auswahl
-│   ├── useActiveVocabulary.ts    # Katalog-/Control-gescopte Vokabularkarte
-│   ├── useGuidanceOverflow.ts    # Scopegebundener Guidance-/Messzustand
-│   ├── useFocusTrap.ts           # Barrierefreiheit
-│   ├── useGlobalEventListener.ts # Globale Listener mit stabilem Cleanup
-│   ├── useScrollLock.ts          # Reversibler Body-Scroll-Lock
-│   └── useMediaQuery.ts          # Responsive Design
-├── features/         # Feature-Module (Seite + Komponenten)
-│   ├── home/
-│   ├── catalog/
-│   ├── vocabularies/             # Vokabular-Seiten
-│   ├── vocabulary/               # Vokabular-Anzeige-Helpers (display.ts, routes.ts)
-│   ├── search/
-│   ├── export/                   # CSV-Export
-│   └── pages/                    # About, Impressum, Datenschutz, Lizenzen
-├── components/       # Wiederverwendbare UI-Komponenten
-│   ├── HeaderBar.tsx
-│   ├── Footer.tsx
-│   ├── TreeNav.tsx
-│   ├── FilterSection.tsx
-│   ├── StatusMeta.tsx
-│   └── ...
-├── app/              # Anwendungshell
-│   ├── AppShell.tsx              # Routing-Konfiguration und Layoutrahmen
-│   ├── PageTitle.tsx             # Deklarativer Routentitel (hebt <title> in den <head>)
-│   ├── pageTitles.ts             # Feste Seitentitel als einzige Quelle der Wahrheit
-│   ├── staticPageRoutes.tsx      # Statische Routen samt deklariertem Titel
-│   ├── staticTitleFallback.ts    # Entfernt den markierten index.html-Titel
-│   └── routes.ts                 # Kanonische URL-Builder und Resolver
-└── main.tsx          # Einstiegspunkt
+Der Baum ist vollständig: Jedes Verzeichnis, unter dem Einträge stehen, führt alle seine Dateien und Unterverzeichnisse auf. Ausgenommen sind nur die kolokierten Tests (`*.test.*`). Ein Verzeichnis ohne eigene Einträge steht für seinen gesamten Inhalt. Neue, verschobene oder entfernte Dateien ziehen den Baum im selben Diff nach. `scripts/architecture-tree.test.ts` prüft ihn in `npm run test` gegen das Dateisystem und verlangt zu jedem Eintrag eine Beschreibung.
 
-public/data/          # Generierte Katalog-Daten (nicht im Repo)
-scripts/              # Build-Skripte
-  ├── fetch-catalog.mjs           # Registry-gesteuerter Abruf, Validierung und Ausgabe
-  ├── security-guards.mjs         # Upstream-Allowlist (Repo, Pfade, Refs)
-  ├── upstream-artifacts.mjs      # Tree-Diff, Manifest v2 und Root-Prüfung
-  ├── vocabulary-utils.mjs        # CSV-/Namespace-Hilfsfunktionen
-  ├── catalog-sync-guard.mjs      # Fail-closed Prüfung von Sync-PRs
-  ├── catalog-sync-policy.mjs     # Prüfung der Repository-Policy
-  ├── sync-upstream-manifest.mjs  # Manifest-Sync für update-catalog.yml
-  ├── verify-catalog-deploy.mjs   # Post-Merge-Deploy bestätigen oder Fallback freigeben
-  ├── check-deploy-idempotency.mjs # Redundanten Fallback-Deploy desselben Commits verhindern
-  ├── verify-node-version.mjs     # .nvmrc gegen engines.node und gegen Versionsliterale prüfen
-  └── workflowDefinitions.mjs     # Gemeinsame Sammlung der Workflow- und Action-Definitionen
+```
+src/                              # Anwendungsquellcode
+├── domain/                       # Domänenmodelle und Geschäftslogik
+│   ├── catalogLineage.d.mts          # Typen der Profile-Importkette
+│   ├── catalogLineage.mjs            # Profile-Importkette für die About-Provenienz (reines ESM)
+│   ├── catalogLineage.ts             # Typsicherer Einstieg in catalogLineage.mjs
+│   ├── catalogReferenceProjection.ts # Aufgelöste Control-Links in der Katalog-View
+│   ├── class2ImportLimits.d.mts      # Typen der Klasse-2-Ressourcengrenzen
+│   ├── class2ImportLimits.mjs        # Klasse-2-Ressourcengrenzen (einzige Quelle, reines ESM)
+│   ├── componentDefinitionModel.ts   # Domänenmodell der Component Definition
+│   ├── controlRef.ts                 # Kataloggescopte interne Control-Referenzen
+│   ├── controlRelationships.ts       # Link-Relationen, Beschriftungen, eingehende Links
+│   ├── identifierQuery.ts            # Query-Vertrag für Kennungssuchen (UUID v4/v5)
+│   ├── integrity.ts                  # SHA-256 Integritätsprüfung
+│   ├── mappingModel.ts               # Domänenmodell der Mapping Collection
+│   ├── models.ts                     # Zwei-Schichten-Datentypen
+│   ├── oscalBackMatterBase64.ts      # Base64-Buchhaltung des Klasse-2-Ressourcenlimits
+│   ├── oscalClass2Import.ts          # Worker-interne Klasse-2-Pipeline ab den Bytes
+│   ├── oscalComponentDefinition.ts   # Raw-Typen des Roots component-definition
+│   ├── oscalDerivedGraph.ts          # Kontrollierter Builder des Ableitungswegs
+│   ├── oscalDiagnostics.ts           # Gemeinsames Diagnosemodell aller Validierungsstufen
+│   ├── oscalDocumentContext.ts       # Vertrauensklasse und Ableitungskontext
+│   ├── oscalImportContract.ts        # Validatorpin, Worker-Timeout, Limit-Diagnosen
+│   ├── oscalImportProcessing.ts      # Byte-Eintrittspunkt mit Herkunftsregister
+│   ├── oscalImportTransport.ts       # Fragmentierter Rückweg des Quellgraphen aus dem Worker
+│   ├── oscalMapping.ts               # Raw-Typen des Roots mapping-collection
+│   ├── oscalObjectGraph.ts           # Objektgraph-Invariante und Ressourcenlimits
+│   ├── oscalObjectPipeline.ts        # Gemeinsame objektorientierte Klasse-2-Prüfkette
+│   ├── oscalObjectProvenance.ts      # Herkunftsfrage und fail-closed Diagnose
+│   ├── oscalObjectWalk.ts            # Gemeinsamer Containerdurchlauf der Herkunftskette
+│   ├── oscalProfile.ts               # Raw-Typen des Roots profile
+│   ├── oscalRootDocument.ts          # Root-Envelope des generischen Dispatch
+│   ├── oscalSchemaBundle.ts          # Einziger Zugriffsweg auf die gepinnten NIST-Schemas
+│   ├── oscalSchemaValidation.ts      # Stufe 3: JSON-Schema-Prüfung im Worker
+│   ├── oscalVersionMatrix.d.mts      # Typen der Versionsmatrix
+│   ├── oscalVersionMatrix.mjs        # Root-Typ × OSCAL-Version × gepinntes Schema
+│   ├── oscalVersionMatrix.ts         # Typsicherer Einstieg in oscalVersionMatrix.mjs
+│   ├── profileModel.ts               # Domänenmodell des Profile
+│   ├── profileResolutionBudget.ts    # Laufendes Arbeits- und Ausgabebudget
+│   ├── profileResolutionBudgetLimits.d.mts # Typ der Arbeitsgrenze
+│   ├── profileResolutionBudgetLimits.mjs   # Arbeitsgrenze (einzige Quelle, reines ESM)
+│   ├── profileResolutionEngine.ts    # Orchestrator Import → Merge → Modify
+│   ├── profileResolutionImportGraph.ts # Deterministischer, fail-closed Importgraph
+│   ├── profileResolutionMerge.ts     # Phase 2: Merge
+│   ├── profileResolutionModify.ts    # Phase 3: Modify
+│   ├── profileResolutionSelection.ts # Phase 1: Selektion
+│   ├── projectProps.ts               # Registry der projekteigenen OSCAL-Props
+│   ├── referenceGraph.ts             # Referenzgraph über alle vier Root-Typen (Stufe 5)
+│   ├── referenceGraphContext.ts      # Auswertungskontext und Kantenablage
+│   ├── referenceGraphEdges.ts        # Kanten für Profile, Mappings, Components
+│   ├── referenceGraphIndex.ts        # Knotenindex je Dokument aus dem Quellgraphen
+│   ├── referenceGraphModel.ts        # Knoten, Kanten, Zustände, Diagnostic-Codes
+│   ├── referenceGraphPolicy.ts       # CI-Politik: fail-closed, Allowlist, Bericht
+│   ├── referenceResolution.ts        # Fail-closed OSCAL-Referenzauflösung auf source
+│   ├── securityTargets.ts            # Schutzziel-Skala, Klassifikation, Facetten
+│   ├── sourceRegistry.d.mts          # Typen des Quellregisters
+│   ├── sourceRegistry.mjs            # Verbindlicher Upstream-/Katalogvertrag
+│   ├── sourceRegistry.ts             # Typsicherer Einstieg in sourceRegistry.mjs
+│   ├── taxonomyVocabulary.ts         # Auflösung von Praktiken und Themen
+│   ├── uuidV5.ts                     # Deterministische UUIDv5-Ableitung
+│   ├── vocabulary.ts                 # BSI-Vokabular-Auflösung
+│   └── vocabularyNamespaces.ts       # Namespace-URLs aus dem Quellregister
+├── adapters/                     # Infrastruktur- und Datengrenzen
+│   ├── browserDownload.ts            # Temporärer Browser-Download mit Cleanup
+│   ├── oscalAdapter.ts               # OSCAL-Katalogkörper → Domain Model
+│   ├── oscalComponentAdapter.ts      # Projektion der Component Definition
+│   ├── oscalComponentDocument.ts     # Verlustfreier Dokumenteinstieg Component Definition
+│   ├── oscalComponentReaders.ts      # Knotenleser und Diagnosen des Component-Adapters
+│   ├── oscalDocument.ts              # Verlustfreier Dokumenteinstieg Katalog
+│   ├── oscalImportGate.ts            # Main-Thread-Tor des Klasse-2-Imports über den Worker
+│   ├── oscalMappingAdapter.ts        # Projektion der Mapping Collection
+│   ├── oscalMappingDocument.ts       # Verlustfreier Dokumenteinstieg Mapping Collection
+│   ├── oscalMappingReaders.ts        # Knotenleser und Diagnosen des Mapping-Adapters
+│   ├── oscalProfileAdapter.ts        # Projektion des Profile
+│   ├── oscalProfileDocument.ts       # Verlustfreier Dokumenteinstieg Profile
+│   ├── oscalProfileReaders.ts        # Knotenleser und Diagnosen des Profile-Adapters
+│   ├── oscalRootAdapters.ts          # Adapter-Registrierung je Root-Typ
+│   └── oscalRootDispatch.ts          # Stufe 2: Root-Dispatch
+├── state/                        # Globaler Anwendungszustand
+│   ├── CatalogContext.tsx            # Katalog-Kontextprovider
+│   ├── catalogArtifacts.ts           # Auslieferungsvertrag und Ladevorgang je Katalog
+│   ├── catalogParseWorker.ts         # Typisierter Client des Katalog-Parser-Workers
+│   ├── catalogParsing.ts             # Parsepipeline für Worker und Main-Thread-Fallback
+│   └── catalogReducer.ts             # Zustand der Katalogsammlung
+├── hooks/                        # Wiederverwendbare React Hooks
+│   ├── useActiveVocabulary.ts        # Katalog-/Control-gescopte Vokabularkarte
+│   ├── useBottomSheetDrag.ts         # Ziehen und Wegwischen mobiler Bottom Sheets
+│   ├── useCatalog.ts                 # Katalog-Daten
+│   ├── useClipboard.ts               # Kopieren in die Zwischenablage mit Rückmeldung
+│   ├── useControlNavigation.ts       # Kataloggescopte Detailnavigation
+│   ├── useControlSelection.ts        # Katalog-/Gruppen-gescopte Auswahl
+│   ├── useDragToResize.ts            # Größenänderung von Panels per Ziehen
+│   ├── useFilterParams.ts            # URL-Parameter-Sync
+│   ├── useFilteredControls.ts        # Filterlogik
+│   ├── useFocusTrap.ts               # Barrierefreiheit
+│   ├── useGlobalEventListener.ts     # Globale Listener mit stabilem Cleanup
+│   ├── useGuidanceOverflow.ts        # Scopegebundener Guidance-/Messzustand
+│   ├── useMediaQuery.ts              # Responsive Design
+│   └── useScrollLock.ts              # Reversibler Body-Scroll-Lock
+├── features/                     # Feature-Module (Seite + Komponenten)
+│   ├── catalog/                      # Katalogansicht
+│   │   ├── CatalogBrowser.tsx            # Katalogseite mit Tabelle, Filtern und Detailpanel
+│   │   ├── CatalogDesktopSidebar.tsx     # Ein- und ausklappbare Filterleiste (Desktop)
+│   │   ├── CatalogDetailPanel.tsx        # Detailpanel einer Anforderung
+│   │   ├── CatalogExportMenu.tsx         # Exportmenü der Toolbar
+│   │   ├── CatalogMobileExportSheet.tsx  # Export als Bottom Sheet (mobil)
+│   │   ├── CatalogMobileFilterSheet.tsx  # Filter als Bottom Sheet (mobil)
+│   │   ├── CatalogMobileSelectionBar.tsx # Auswahlleiste (mobil)
+│   │   ├── CatalogTargetNotFound.tsx     # Hinweis auf ein nicht gefundenes Routenziel
+│   │   ├── CatalogToolbar.tsx            # Titel, Trefferzahl und Aktionen
+│   │   ├── ControlClassification.tsx     # Modalverb, Sicherheitsniveau, Aufwand, Tags
+│   │   ├── ControlDependencies.tsx       # Aus- und eingehende Control-Links
+│   │   ├── ControlDetail.tsx             # Detailansicht einer Anforderung
+│   │   ├── ControlDetailSection.tsx      # Abschnittsrahmen der Detailansicht
+│   │   ├── ControlGuidance.tsx           # Umsetzungshinweis mit Auf- und Zuklappen
+│   │   ├── ControlHierarchy.tsx          # Eltern- und Kind-Anforderungen
+│   │   ├── ControlMetadata.tsx           # Kennungen und Elternbezug
+│   │   ├── ControlMobileReferenceRow.tsx # Tabellenzeile der Mobilansicht
+│   │   ├── ControlSecurityContext.tsx    # Schutzziele im Sicherheitskontext
+│   │   ├── ControlSecurityTargets.tsx    # Zeilen der Schutzziel-Relevanz
+│   │   ├── ControlSources.tsx            # Aufgelöste Quellenverweise
+│   │   ├── ControlStatement.tsx          # Anforderungstext
+│   │   ├── ControlStatementDetails.tsx   # Ergebnis, Präzisierung, Handlungsworte, Dokumentation
+│   │   ├── ControlTable.tsx              # Anforderungstabelle mit Auswahl und Sortierung
+│   │   ├── ControlTaxonomy.tsx           # Taxonomie und Zielobjekt-Kategorien
+│   │   ├── ControlTaxonomyBreadcrumb.tsx # Taxonomiepfad als Breadcrumb
+│   │   ├── ControlVocabularyPrimitives.tsx # Gemeinsame Bausteine der Vokabularanzeige
+│   │   ├── FilterPanel.tsx               # Filterpanel
+│   │   └── SecurityTargetFilterSection.tsx # Schutzziel-Facetten im Filterpanel
+│   ├── export/                       # CSV-Export
+│   │   └── csvExport.ts                  # CSV-Erzeugung mit Formelschutz
+│   ├── home/                         # Startseite
+│   │   └── HomePage.tsx                  # Startseite mit Katalogkennzahlen und Praktikenliste
+│   ├── pages/                        # About, Impressum, Datenschutz, Lizenzen
+│   │   ├── AboutPage.tsx                 # About mit Provenienz der Kataloge
+│   │   ├── DatenschutzPage.tsx           # Datenschutzerklärung aus VITE_IMPRESSUM_*
+│   │   ├── ImpressumPage.tsx             # Impressum aus VITE_IMPRESSUM_*
+│   │   └── LizenzenPage.tsx              # Lizenzen
+│   ├── search/                       # Volltextsuche
+│   │   ├── SearchPage.tsx                # Suchseite mit Ergebnisliste
+│   │   ├── SearchResultsToolbar.tsx      # Auswahl und CSV-Export der Treffer
+│   │   └── useSearch.ts                  # FlexSearch-Index mit begrenztem Cache
+│   ├── vocabularies/                 # Vokabular-Seiten
+│   │   ├── VocabularyEntryCard.tsx       # Karte eines Vokabulareintrags
+│   │   ├── VocabularyNamespacePage.tsx   # Einträge eines Namespace
+│   │   ├── VocabularyOverviewPage.tsx    # Übersicht aller Vokabulare
+│   │   └── vocabularyTitle.ts            # Anzeigetitel je Vokabulardatei
+│   └── vocabulary/                   # Vokabular-Anzeige-Helpers
+│       ├── display.ts                    # Offizielle Stufen, Beschriftungen, Tooltips
+│       └── routes.ts                     # Routen der Vokabularseiten
+├── components/                   # Wiederverwendbare UI-Komponenten
+│   ├── Badge.tsx                     # Badge-Varianten
+│   ├── Button.tsx                    # Button-Varianten und -Größen
+│   ├── CatalogSwitcher.tsx           # Katalogauswahl
+│   ├── CheckboxLabel.tsx             # Checkbox mit Beschriftung und Zähler
+│   ├── FilterSection.tsx             # Aufklappbarer Filterabschnitt
+│   ├── Footer.tsx                    # Seitenfuß
+│   ├── HeaderBar.tsx                 # Kopfleiste mit Suche und Katalogauswahl
+│   ├── Input.tsx                     # Eingabefeld mit Icon und Label
+│   ├── StatusMeta.tsx                # Status-Badges für Modalverb, Niveau, Aufwand
+│   ├── TreeNav.tsx                   # Gruppenbaum der Navigation
+│   ├── icons.tsx                     # Inline-SVG-Icons (Lucide)
+│   └── index.ts                      # Sammelexport der Komponenten
+├── app/                          # Anwendungshell
+│   ├── AppShell.tsx                  # Routing-Konfiguration und Layoutrahmen
+│   ├── PageTitle.tsx                 # Deklarativer Routentitel (hebt <title> in den <head>)
+│   ├── pageTitles.ts                 # Feste Seitentitel als einzige Quelle der Wahrheit
+│   ├── routes.ts                     # Kanonische URL-Builder und Resolver
+│   ├── staticPageRoutes.tsx          # Statische Routen samt deklariertem Titel
+│   └── staticTitleFallback.ts        # Entfernt den markierten index.html-Titel
+├── workers/                      # Modul-Worker
+│   ├── catalogParser.worker.ts       # Klasse-1-Katalogparser
+│   └── oscalImport.worker.ts         # Klasse-2-Import
+├── test/                         # Testinfrastruktur (siehe docs/OSCAL_ROUND_TRIP.md)
+│   ├── browser/                      # Chromium-Browser-Lane
+│   │   ├── browserCommands.d.ts          # Typen der Browser-Commands
+│   │   ├── browserEgressDecision.ts      # Reine Egress-Entscheidung
+│   │   ├── browserEgressGuard.ts         # Playwright-Egress-Guard
+│   │   ├── browserSetup.ts               # Setup der Browser-Lane mit Egress-Prüfung
+│   │   ├── egressOracleContract.d.mts    # Typen der Negativfälle
+│   │   └── egressOracleContract.mjs      # Negativfälle des Egress-Orakels
+│   ├── fixtures/                     # Testfixtures, darunter der NIST-Orakelkorpus
+│   ├── catalogState.ts               # Sammlungsfelder des CatalogState für Komponententests
+│   ├── documentTitle.ts              # Prüft den Seitentitel auf genau ein <title>
+│   ├── oscalGraphCompare.ts          # Graphvergleich mit Object.is-Semantik
+│   ├── oscalRoundTrip.ts             # No-op-Round-trip-Harnisch
+│   └── oscalStructure.ts             # Strukturorakel (Zählregeln A und B)
+├── index.css                     # Tailwind-Einstieg und Design-Tokens
+├── main.tsx                      # Einstiegspunkt
+├── test-setup.ts                 # Vitest-Setup der jsdom-Lane
+└── vite-env.d.ts                 # Typen der Vite-Umgebungsvariablen
+
+public/data/                      # Generierte Katalog-Daten (nicht im Repo)
+
+scripts/                          # Build-, CI- und Wartungsskripte
+├── measure/                          # Browserseite der Klasse-2-Kostenmessung
+│   ├── class2-budget.harness.mjs         # Messharnisch im Browser-Tab
+│   └── class2-budget.html                # Messseite des temporären Vite-Servers
+├── backmerge-main-to-develop.mjs     # Übernahme-Lane main → develop
+├── bootstrap.mjs                     # npm run setup für frische Checkouts und Worktrees
+├── branchLineFixtures.ts             # Git-Testvorlage der Übernahme- und Release-Lane
+├── catalog-sync-guard.mjs            # Fail-closed Prüfung von Sync-PRs
+├── catalog-sync-policy.mjs           # Prüfung der Repository-Policy
+├── check-catalog-freshness.d.mts     # Typen der Frischeprüfung
+├── check-catalog-freshness.mjs       # Frischeprüfung der lokalen Katalogdaten
+├── check-deploy-idempotency.mjs      # Redundanten Fallback-Deploy desselben Commits verhindern
+├── ci-scope.mjs                      # Scope-Entscheider für Step-Skips im Job validate
+├── class2TransportFixtures.mjs       # Fixtures des fragmentierten Rückwegs
+├── class2WorstCaseFixtures.mjs       # Worst-Case-Dokumente der Klasse-2-Grenzen
+├── control-identity-delta.mjs        # Control-Identitätsdelta zwischen Snapshots
+├── fetch-catalog.mjs                 # Registry-gesteuerter Abruf, Validierung und Ausgabe
+├── git-changed-files.mjs             # Geänderte Dateien eines Pull Requests
+├── githubApiFetch.mjs                # Gemeinsamer GitHub-JSON-Abruf der CI-Guards
+├── greptile-review-nudge.mjs         # Greptile-Auslösung bei übersprungenem PR
+├── guard-cli-test-helper.ts          # spawnSync-Rahmen der Guard-CLI-Tests
+├── measure-class2-budget.mjs         # Kostenmessung der Klasse-2-Grenzen (Wartung)
+├── measureClass2BudgetReport.mjs     # Argumente, Verdichtung und Bericht der Messung
+├── measureClass2Timing.mjs           # Eingaben und Ablauf der Zeitmessung
+├── measureWorkLimitProvenance.mjs    # Fingerprint des gemessenen Auflösungspfads
+├── oscal-domain-bridge.mjs           # Node-Brücke in src/domain/ mit @/-Auflösung
+├── oscal-schema-vendor.mjs           # Ablageort-Vertrag der gepinnten Schemas
+├── pr-documentation-contract.mjs     # Dokumentationsvertrag im PR-Body
+├── profileResolutionCorpusOracle.ts  # Vergleichsorakel des Bauzeitlaufs
+├── profileResolutionWorstCaseFixtures.mjs # Worst-Case-Eingaben der Arbeitsgrenze
+├── release-prepare.mjs               # Release-PR aus einem Vorbereitungsbranch
+├── review-policy.mjs                 # Generator, Drift-Guard und CLI der Review-Policy
+├── review-policy.rules.mjs           # Regeltabelle der Review-Policy
+├── security-guards.mjs               # Upstream-Allowlist (Repo, Pfade, Refs)
+├── sonar-token-guard.mjs             # Entscheidet, ob die Sonar-Analyse laufen kann
+├── sync-oscal-content-oracle.mjs     # Wartungssync des NIST-Orakelkorpus
+├── sync-oscal-schemas.mjs            # Wartungslauf der gepinnten OSCAL-Schemas
+├── sync-upstream-manifest.mjs        # Manifest-Sync für update-catalog.yml
+├── taxonomy-coverage.mjs             # Integrität und Coverage der Taxonomie-Vokabulare
+├── transientRetry.mjs                # Gemeinsamer transienter Abruf der Lieferkette
+├── upstream-artifacts.mjs            # Tree-Diff, Manifest v2 und Root-Prüfung
+├── upstream-corpus-cache.mjs         # Korpus-Cache des Bauzeitlaufs
+├── verify-browser-egress.mjs         # Negativläufe des Browser-Egress-Guards
+├── verify-catalog-deploy.mjs         # Post-Merge-Deploy bestätigen oder Fallback freigeben
+├── verify-documented-versions.mjs    # Toolchain-Vertrag der Browser-Testlane
+├── verify-node-version.mjs           # .nvmrc gegen engines.node und gegen Versionsliterale prüfen
+├── verify-oscal-schemas.mjs          # Netzfreie Integritätsprüfung der Schemas
+├── verify-upstream-oscal.mjs         # Gepinnter go-oscal-Korpuslauf
+├── vitest.corpus.config.ts           # Vitest-Lane des Bauzeitlaufs
+├── vocabulary-utils.mjs              # CSV-/Namespace-Hilfsfunktionen
+└── workflowDefinitions.mjs           # Gemeinsame Sammlung der Workflow- und Action-Definitionen
+
+.github/                          # GitHub-Konfiguration
+├── actions/                          # Composite Actions
+│   ├── fetch-pinned-catalog/             # Gepinnte Snapshot-SHA lesen und Katalog holen
+│   └── setup-node-env/                   # Node aus .nvmrc plus npm ci --ignore-scripts
+├── workflows/                        # GitHub-Actions-Workflows
+│   ├── backmerge-main-to-develop.yml     # Übernahme-PR main → develop
+│   ├── ci.yml                            # PR-Metadatenverträge (documentation-contract, catalog-sync-guard)
+│   ├── deploy.yml                        # GitHub Pages Deployment
+│   ├── greptile-review-nudge.yml         # Greptile-Auslösung bei übersprungenem PR
+│   ├── release-prepare.yml               # Release-PR aus einem Vorbereitungsbranch
+│   ├── sonar.yml                         # SonarQube-Analyse des Push-Pfads auf main und develop
+│   ├── update-catalog.yml                # Automatischer Katalog-Sync
+│   ├── validate.yml                      # Vollständige Verifikations- und Build-Lane (validate, sonarqube)
+│   └── verify-catalog-merge.yml          # Post-Merge-Prüfung und Deploy-Fallback
+├── dependabot.yml                    # Dependabot-Update-Gruppen
+├── pull_request_template.md          # PR-Vorlage mit Dokumentationsvertrag
+├── zizmor.version                    # Gepinnte zizmor-Version des Workflow-Audits
+└── zizmor.yml                        # Audit-Konfiguration von zizmor im Job validate
 
 upstream-manifest.json            # Gepinnter Upstream-Snapshot (Manifest v2)
-
-.github/workflows/
-  ├── deploy.yml                  # GitHub Pages Deployment
-  ├── ci.yml                      # PR-Metadatenverträge (documentation-contract, catalog-sync-guard)
-  ├── validate.yml                # Vollständige Verifikations- und Build-Lane (validate, sonarqube)
-  ├── sonar.yml                   # SonarQube-Analyse des Push-Pfads auf main und develop
-  ├── update-catalog.yml          # Automatischer Katalog-Sync
-  └── verify-catalog-merge.yml    # Post-Merge-Prüfung und Deploy-Fallback
-
-.github/actions/
-  ├── setup-node-env/             # Node aus .nvmrc plus npm ci --ignore-scripts
-  └── fetch-pinned-catalog/       # Gepinnte Snapshot-SHA lesen und Katalog holen
-
 .nvmrc                            # Einzige Quelle der Node-Version (gegen engines.node geprüft)
 ```
 
