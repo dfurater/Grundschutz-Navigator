@@ -46,6 +46,7 @@ import {
   assertPracticeVocabularyIntegrity,
   assertTopicVocabularyCoverage,
 } from './taxonomy-coverage.mjs';
+import { TRANSIENT_RETRY_DELAYS_MS, fetchWithTransientRetry } from './transientRetry.mjs';
 
 const REPO = OFFICIAL_BSI_REPO;
 const OUTPUT_DIR = DEFAULT_ARTIFACTS_DIR;
@@ -74,7 +75,6 @@ function listOutputArtifactFileNames(registryEntries = SOURCE_REGISTRY) {
   ];
 }
 const MAX_CATALOG_ARTIFACT_BYTES = 10 * 1024 * 1024;
-const DEFAULT_RETRY_DELAYS_MS = [1000, 3000];
 const MAX_ERROR_BODY_CHARS = 280;
 
 function githubHeaders() {
@@ -87,12 +87,6 @@ function githubHeaders() {
 
 function encodeRepoPath(path) {
   return path.split('/').map(encodeURIComponent).join('/');
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
 }
 
 function truncateResponseBody(text) {
@@ -158,28 +152,20 @@ async function writeArtifacts(payload, outputDir = OUTPUT_DIR, {
   }
 }
 
-async function fetchWithTransientRetry(url, init, retryDelaysMs) {
-  for (let attempt = 0; ; attempt += 1) {
-    const isLastAttempt = attempt >= retryDelaysMs.length;
-    try {
-      const response = await fetch(url, init);
-      if (response.status < 500 || isLastAttempt) {
-        return response;
-      }
-    } catch (error) {
-      if (isLastAttempt) {
-        throw error;
-      }
-    }
-    await sleep(retryDelaysMs[attempt]);
-  }
-}
+/**
+ * Transport aller Upstream-Abrufe dieses Laufs: injizierbares `fetch` und die
+ * Wartezeiten zwischen transienten Wiederholungen (GSPP-359).
+ *
+ * @typedef {{ fetchImpl: typeof fetch, retryDelaysMs: readonly number[] }} FetchTransport
+ */
 
-async function fetchGitHubJson(pathname, retryDelaysMs = DEFAULT_RETRY_DELAYS_MS) {
-  const response = await fetchWithTransientRetry(
+/** @param {FetchTransport} transport */
+async function fetchGitHubJson(pathname, transport) {
+  const { response } = await fetchWithTransientRetry(
+    transport.fetchImpl,
     `https://api.github.com${pathname}`,
     { headers: githubHeaders() },
-    retryDelaysMs,
+    transport.retryDelaysMs,
   );
 
   if (!response.ok) {
@@ -190,11 +176,12 @@ async function fetchGitHubJson(pathname, retryDelaysMs = DEFAULT_RETRY_DELAYS_MS
   return response.json();
 }
 
-async function resolveSnapshot(snapshotSelection, logger = console, retryDelaysMs = DEFAULT_RETRY_DELAYS_MS) {
+/** @param {FetchTransport} transport */
+async function resolveSnapshot(snapshotSelection, logger, transport) {
   const pinnedSha = resolveOptionalSnapshotSha(snapshotSelection);
   if (pinnedSha) {
     try {
-      const commitInfo = await fetchGitHubJson(`/repos/${REPO}/commits/${pinnedSha}`, retryDelaysMs);
+      const commitInfo = await fetchGitHubJson(`/repos/${REPO}/commits/${pinnedSha}`, transport);
       return {
         defaultBranch: 'pinned',
         snapshotCommitSha: pinnedSha,
@@ -213,9 +200,9 @@ async function resolveSnapshot(snapshotSelection, logger = console, retryDelaysM
   }
 
   try {
-    const repoInfo = await fetchGitHubJson(`/repos/${REPO}`, retryDelaysMs);
+    const repoInfo = await fetchGitHubJson(`/repos/${REPO}`, transport);
     const defaultBranch = assertAllowedGitHubRef(repoInfo.default_branch ?? 'main', 'GitHub default branch');
-    const branchInfo = await fetchGitHubJson(`/repos/${REPO}/branches/${encodeURIComponent(defaultBranch)}`, retryDelaysMs);
+    const branchInfo = await fetchGitHubJson(`/repos/${REPO}/branches/${encodeURIComponent(defaultBranch)}`, transport);
     if (typeof branchInfo.commit?.sha !== 'string' || !/^[0-9a-f]{40}$/i.test(branchInfo.commit.sha)) {
       throw new Error(`GitHub branch ${defaultBranch} enthält keine gültige Commit-SHA.`);
     }
@@ -223,7 +210,7 @@ async function resolveSnapshot(snapshotSelection, logger = console, retryDelaysM
     const snapshotCommitSha = branchInfo.commit.sha.toLowerCase();
     let snapshotCommitDate = 'unknown';
     try {
-      const commitInfo = await fetchGitHubJson(`/repos/${REPO}/commits/${snapshotCommitSha}`, retryDelaysMs);
+      const commitInfo = await fetchGitHubJson(`/repos/${REPO}/commits/${snapshotCommitSha}`, transport);
       snapshotCommitDate = commitInfo?.commit?.committer?.date ?? 'unknown';
     } catch (error) {
       logger.warn(
@@ -266,23 +253,24 @@ function resolveDownloadLimit(path, expectedSizeBytes) {
   };
 }
 
+/** @param {FetchTransport} transport */
 async function fetchRawRegisteredFile(
   path,
   ref,
   materializedNamespacePaths,
-  retryDelaysMs = DEFAULT_RETRY_DELAYS_MS,
+  transport,
   expectedSizeBytes = null,
 ) {
   const allowedPath = assertRegisteredUpstreamRepoPath(path, { materializedNamespacePaths });
   const allowedRef = assertAllowedGitHubRef(ref, 'GitHub fetch ref');
   const url = `https://raw.githubusercontent.com/${REPO}/${encodeURIComponent(allowedRef)}/${encodeRepoPath(allowedPath)}`;
-  const response = await fetchWithTransientRetry(url, TOKEN
+  const { response } = await fetchWithTransientRetry(transport.fetchImpl, url, TOKEN
     ? {
         headers: {
           Authorization: `Bearer ${TOKEN}`,
         },
       }
-    : undefined, retryDelaysMs);
+    : undefined, transport.retryDelaysMs);
 
   if (!response.ok) {
     throw new Error(`Download fehlgeschlagen für ${path}: ${response.status} ${response.statusText}`);
@@ -298,11 +286,12 @@ async function fetchRawRegisteredFile(
   };
 }
 
-async function fetchSnapshotTree(ref, retryDelaysMs = DEFAULT_RETRY_DELAYS_MS) {
+/** @param {FetchTransport} transport */
+async function fetchSnapshotTree(ref, transport) {
   const allowedRef = assertAllowedGitHubRef(ref, 'GitHub tree ref');
   const response = await fetchGitHubJson(
     `/repos/${REPO}/git/trees/${encodeURIComponent(allowedRef)}?recursive=1`,
-    retryDelaysMs,
+    transport,
   );
   return {
     response,
@@ -599,7 +588,8 @@ function materializeRegistryFiles({ registryEntries, treeFiles, namespaceRefs })
 }
 
 async function buildFetchArtifacts(logger = console, {
-  retryDelaysMs = DEFAULT_RETRY_DELAYS_MS,
+  fetchImpl = fetch,
+  retryDelaysMs = TRANSIENT_RETRY_DELAYS_MS,
   registryEntries = SOURCE_REGISTRY,
   snapshotSelection,
   treeResponse: providedTreeResponse,
@@ -616,7 +606,8 @@ async function buildFetchArtifacts(logger = console, {
   logger.log(`Repository: ${REPO}`);
   logger.log(`Kataloge:   ${supportedCatalogs.map((entry) => entry.upstreamPath).join(', ')}`);
 
-  const snapshot = await resolveSnapshot(snapshotSelection, logger, retryDelaysMs);
+  const transport = { fetchImpl, retryDelaysMs };
+  const snapshot = await resolveSnapshot(snapshotSelection, logger, transport);
   const fetchRef = assertAllowedGitHubRef(snapshot.snapshotCommitSha, 'Snapshot commit SHA');
 
   logger.log(`[1/5] Lade vollständigen BSI-Tree für Snapshot ${fetchRef} ...`);
@@ -625,7 +616,7 @@ async function buildFetchArtifacts(logger = console, {
         response: providedTreeResponse,
         files: normalizeGitTree(providedTreeResponse, { monitoredRoots: MONITORED_UPSTREAM_ROOTS }),
       }
-    : await fetchSnapshotTree(fetchRef, retryDelaysMs);
+    : await fetchSnapshotTree(fetchRef, transport);
 
   logger.log(
     `[2/5] Lade ${supportedCatalogs.length} unterstützte Kataloge und ermittle Namespace-Mitglieder ...`,
@@ -641,7 +632,7 @@ async function buildFetchArtifacts(logger = console, {
       entry.upstreamPath,
       fetchRef,
       [],
-      retryDelaysMs,
+      transport,
       treeFile.sizeBytes,
     );
     if (computeGitBlobSha(raw.buffer) !== treeFile.gitBlobSha) {
@@ -728,7 +719,7 @@ async function buildFetchArtifacts(logger = console, {
         descriptor.path,
         fetchRef,
         materializedNamespacePaths,
-        retryDelaysMs,
+        transport,
         descriptor.sizeBytes,
       );
       rawFileByPath.set(descriptor.path, rawFile);

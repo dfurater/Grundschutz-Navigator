@@ -13,6 +13,7 @@ import {
   listOscalArtifacts,
 } from '../src/domain/sourceRegistry.mjs';
 import { OFFICIAL_BSI_REPO, readBodyWithLimit } from './security-guards.mjs';
+import { TRANSIENT_RETRY_DELAYS_MS, fetchWithTransientRetry } from './transientRetry.mjs';
 
 /**
  * Gepinnter go-oscal-Korpuslauf (GSPP-336).
@@ -254,7 +255,6 @@ const MAX_RELEASE_BINARY_BYTES = 16 * 1024 * 1024;
 const MAX_SBOM_BYTES = 1024 * 1024;
 const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 const MAX_REDIRECT_HOPS = 5;
-const TRANSIENT_RETRY_DELAYS_MS = Object.freeze([1000, 3000]);
 export const GO_OSCAL_EXECUTION_TIMEOUT_MS = 60_000;
 const execFileAsync = promisify(execFile);
 
@@ -265,11 +265,62 @@ function createVerificationToolError(code, artifactKey) {
   return toolError;
 }
 
+/**
+ * Reduziert eine Abruf-URL auf Origin und Pfad. Query und Fragment entfallen,
+ * weil ein Redirect-Ziel aus dem `location`-Header stammt und dort signierte
+ * Parameter tragen kann; Userinfo steckt nicht im Origin. Nur HTTPS-URLs sind
+ * auf der Lieferkette zulässig, alles andere wird nicht ausgegeben.
+ */
+function toDiagnosticUrl(rawUrl) {
+  if (typeof rawUrl !== 'string') return null;
+  let url;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return null;
+  }
+  return url.protocol === 'https:' ? `${url.origin}${url.pathname}` : null;
+}
+
+function isHttpStatus(value) {
+  return Number.isInteger(value) && value >= 100 && value <= 599;
+}
+
+function isAttemptNumber(value) {
+  return Number.isSafeInteger(value) && value > 0;
+}
+
+/**
+ * Fehler eines Download-Guards mit nicht-sensiblen Diagnosefeldern. Die
+ * Meldung selbst erscheint nie im Log; `cause` bleibt nur für Tests und
+ * Debugger am Objekt.
+ */
+function createDownloadFailure(message, { artifactKey, httpStatus, attempt, url, cause }) {
+  const failure = new Error(message, cause === undefined ? undefined : { cause });
+  if (hasRegistryKeyGrammar(artifactKey)) failure.artifactKey = artifactKey;
+  if (isHttpStatus(httpStatus)) failure.httpStatus = httpStatus;
+  if (isAttemptNumber(attempt)) failure.attempt = attempt;
+  const diagnosticUrl = toDiagnosticUrl(url);
+  if (diagnosticUrl) failure.url = diagnosticUrl;
+  return failure;
+}
+
+/**
+ * Einzige Log-Grenze des Korpuslaufs. Ausgegeben werden nur der Code und
+ * geprüfte Diagnosefelder in fester Reihenfolge; `message`, `cause` und
+ * lokale Pfade nie. Ein Feld, das auf dem jeweiligen Pfad nicht existiert
+ * oder die Prüfung nicht besteht, entfällt ersatzlos.
+ */
 export function formatVerificationFailure(error) {
   const code = typeof error?.code === 'string' ? error.code : 'GO_OSCAL_VERIFICATION_FAILED';
-  return hasRegistryKeyGrammar(error?.artifactKey)
-    ? `${code} artifact=${error.artifactKey}`
-    : code;
+  const diagnosticUrl = toDiagnosticUrl(error?.url);
+  return [
+    code,
+    hasRegistryKeyGrammar(error?.artifactKey) ? `artifact=${error.artifactKey}` : null,
+    isHttpStatus(error?.httpStatus) ? `httpStatus=${error.httpStatus}` : null,
+    isAttemptNumber(error?.attempt) ? `attempt=${error.attempt}` : null,
+    diagnosticUrl ? `url=${diagnosticUrl}` : null,
+  ].filter(Boolean).join(' ');
 }
 
 /**
@@ -332,49 +383,47 @@ function assertAllowedReleaseRedirect(rawUrl) {
   return url.toString();
 }
 
-function sleep(milliseconds) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
-}
-
-function isUnexpectedRedirectError(error) {
-  return error?.cause?.message === 'unexpected redirect';
-}
-
-/** Wiederholt ausschließlich Transportfehler und HTTP-5xx pro HTTP-Aufruf. */
-export async function fetchWithTransientRetry(
-  fetchImpl,
-  url,
-  init,
-  retryDelaysMs = TRANSIENT_RETRY_DELAYS_MS,
-) {
-  for (let attempt = 0; ; attempt += 1) {
-    const isLastAttempt = attempt >= retryDelaysMs.length;
-    try {
-      const response = await fetchImpl(url, init);
-      if (response.status < 500 || response.status > 599 || isLastAttempt) {
-        return response;
-      }
-    } catch (error) {
-      if (isLastAttempt || isUnexpectedRedirectError(error)) throw error;
-    }
-    await sleep(retryDelaysMs[attempt]);
+/**
+ * Transienter Abruf für die Download-Guards: Ein erschöpfter oder
+ * abgebrochener Transport wird zum Guard-Fehler mit Versuchszahl und
+ * bereinigter URL. Ein HTTP-Status existiert auf diesem Pfad nicht.
+ */
+async function fetchForDownloadGuard(fetchImpl, url, init, retryDelaysMs, failureContext) {
+  try {
+    return await fetchWithTransientRetry(fetchImpl, url, init, retryDelaysMs);
+  } catch (error) {
+    throw createDownloadFailure(failureContext.message, {
+      artifactKey: failureContext.artifactKey,
+      attempt: error?.attempts,
+      url,
+      cause: error,
+    });
   }
 }
 
+function createHttpDownloadFailure(message, { response, attempts, url, artifactKey }) {
+  return createDownloadFailure(message, {
+    artifactKey,
+    httpStatus: response.status,
+    attempt: attempts,
+    url,
+  });
+}
+
 async function fetchReleaseAsset(asset, fetchImpl, maxBytes, retryDelaysMs) {
+  const message = 'Release-Asset-Download fehlgeschlagen';
   let url = assertAllowedReleaseRedirect(asset.browser_download_url);
 
   for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop += 1) {
-    const response = await fetchWithTransientRetry(
+    const { response, attempts } = await fetchForDownloadGuard(
       fetchImpl,
       url,
       { redirect: 'manual' },
       retryDelaysMs,
+      { message },
     );
     if (response.status < 300 || response.status > 399) {
-      if (!response.ok) throw new Error('Release-Asset-Download fehlgeschlagen');
+      if (!response.ok) throw createHttpDownloadFailure(message, { response, attempts, url });
       return readBodyWithLimit(response, { maxBytes, label: 'Release-Asset' });
     }
     const location = response.headers?.get?.('location');
@@ -386,8 +435,9 @@ async function fetchReleaseAsset(asset, fetchImpl, maxBytes, retryDelaysMs) {
 }
 
 async function fetchReleaseMetadata(releaseConfig, fetchImpl, retryDelaysMs) {
+  const message = 'GitHub-Release-Metadaten konnten nicht geladen werden';
   const url = `https://api.github.com/repos/${releaseConfig.repository}/releases/tags/${releaseConfig.tag}`;
-  const response = await fetchWithTransientRetry(
+  const { response, attempts } = await fetchForDownloadGuard(
     fetchImpl,
     url,
     {
@@ -395,8 +445,9 @@ async function fetchReleaseMetadata(releaseConfig, fetchImpl, retryDelaysMs) {
       redirect: 'error',
     },
     retryDelaysMs,
+    { message },
   );
-  if (!response.ok) throw new Error('GitHub-Release-Metadaten konnten nicht geladen werden');
+  if (!response.ok) throw createHttpDownloadFailure(message, { response, attempts, url });
   try {
     return await response.json();
   } catch {
@@ -419,13 +470,19 @@ function computeGitBlobSha(contents) {
 }
 
 async function fetchVerifiedBsiArtifact(manifest, artifact, fetchImpl, retryDelaysMs) {
-  const response = await fetchWithTransientRetry(
+  const message = 'BSI-Artefakt-Download fehlgeschlagen';
+  const url = bsiRawUrl(manifest, artifact);
+  const { artifactKey } = artifact;
+  const { response, attempts } = await fetchForDownloadGuard(
     fetchImpl,
-    bsiRawUrl(manifest, artifact),
+    url,
     { redirect: 'error' },
     retryDelaysMs,
+    { message, artifactKey },
   );
-  if (!response.ok) throw new Error('BSI-Artefakt-Download fehlgeschlagen');
+  if (!response.ok) {
+    throw createHttpDownloadFailure(message, { response, attempts, url, artifactKey });
+  }
   const bytes = await readBodyWithLimit(response, {
     maxBytes: MAX_DOCUMENT_BYTES,
     label: 'BSI-OSCAL-Artefakt',

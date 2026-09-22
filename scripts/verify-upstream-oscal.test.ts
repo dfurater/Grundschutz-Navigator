@@ -12,7 +12,6 @@ import {
   classifyValidationResult,
   executeGoOscal,
   evaluateArtifactExpectation,
-  fetchWithTransientRetry,
   formatVerificationFailure,
   getReleaseAssetsForPlatform,
   parseChecksums,
@@ -25,6 +24,14 @@ import {
   selectManifestOscalArtifacts,
   verifyPinnedAsset,
 } from './verify-upstream-oscal.mjs';
+
+function sha256(bytes: Buffer) {
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+function gitBlobSha(bytes: Buffer) {
+  return createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+}
 
 describe('go-oscal Release-Pin', () => {
   it('wählt für Linux amd64 ausschließlich das im Issue gepinnte Artefakt', () => {
@@ -125,85 +132,6 @@ describe('GitHub-Release-Metadaten', () => {
     expect(() => getReleaseAssetsForPlatform(release('0'.repeat(64)), linux)).toThrow(
       'GitHub-Release-Metadaten widersprechen dem statischen Pin',
     );
-  });
-});
-
-describe('transiente Abrufe für die go-oscal-Lieferkette', () => {
-  it('wiederholt einen geworfenen Transportfehler höchstens zweimal', async () => {
-    const fetchImpl = vi.fn()
-      .mockRejectedValueOnce(new Error('UND_ERR_SOCKET: other side closed'))
-      .mockRejectedValueOnce(new Error('UND_ERR_SOCKET: other side closed'))
-      .mockResolvedValue(new Response('ok'));
-
-    await expect(
-      fetchWithTransientRetry(fetchImpl, 'https://example.test/pinned', {}, [0, 0]),
-    ).resolves.toMatchObject({ status: 200 });
-    expect(fetchImpl).toHaveBeenCalledTimes(3);
-  });
-
-  it('bricht bei einem von Undici signalisierten Redirect sofort ab', async () => {
-    const redirectError = new TypeError('fetch failed', {
-      cause: new Error('unexpected redirect'),
-    });
-    const fetchImpl = vi.fn().mockRejectedValue(redirectError);
-
-    await expect(
-      fetchWithTransientRetry(fetchImpl, 'https://example.test/pinned', { redirect: 'error' }, [0, 0]),
-    ).rejects.toBe(redirectError);
-
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-  });
-
-  it('wiederholt HTTP-5xx, aber HTTP-4xx nicht', async () => {
-    const transientFailure = vi.fn()
-      .mockResolvedValueOnce(new Response('temporary failure', { status: 502 }))
-      .mockResolvedValueOnce(new Response('temporary failure', { status: 503 }))
-      .mockResolvedValue(new Response('ok'));
-    const permanentFailure = vi.fn().mockResolvedValue(new Response('forbidden', { status: 403 }));
-
-    await expect(
-      fetchWithTransientRetry(transientFailure, 'https://example.test/pinned', {}, [0, 0]),
-    ).resolves.toMatchObject({ status: 200 });
-    await expect(
-      fetchWithTransientRetry(permanentFailure, 'https://example.test/pinned', {}, [0, 0]),
-    ).resolves.toMatchObject({ status: 403 });
-
-    expect(transientFailure).toHaveBeenCalledTimes(3);
-    expect(permanentFailure).toHaveBeenCalledTimes(1);
-  });
-
-  it('wiederholt weder Integritätsfehler noch leakt es ausgeschöpfte Transportfehler', async () => {
-    const integrityFailure = vi.fn().mockResolvedValue(new Response('wrong bytes'));
-    const response = await fetchWithTransientRetry(
-      integrityFailure,
-      'https://example.test/pinned',
-      {},
-      [0, 0],
-    );
-    const bytes = Buffer.from(await response.text());
-
-    expect(() =>
-      verifyPinnedAsset({
-        bytes,
-        expectedSha256: '0'.repeat(64),
-        apiDigest: `sha256:${'0'.repeat(64)}`,
-        checksumDigest: '0'.repeat(64),
-      }),
-    ).toThrow('Berechneter SHA-256 stimmt nicht mit dem Pin überein');
-    expect(integrityFailure).toHaveBeenCalledTimes(1);
-
-    const exhaustedFailure = vi.fn().mockRejectedValue(
-      new Error('UND_ERR_SOCKET https://example.test/pinned?secret=redact /private/tmp/input'),
-    );
-    const error = await fetchWithTransientRetry(
-      exhaustedFailure,
-      'https://example.test/pinned',
-      {},
-      [0, 0],
-    ).catch((failure) => failure);
-
-    expect(exhaustedFailure).toHaveBeenCalledTimes(3);
-    expect(formatVerificationFailure(error)).toBe('GO_OSCAL_VERIFICATION_FAILED');
   });
 });
 
@@ -311,14 +239,6 @@ describe('manifestgestützter OSCAL-Korpus', () => {
 });
 
 describe('ADR-7-Nachtrag: gesperrtes Artefakt vollständig aus dem Upstream-Tree entfernt', () => {
-  function sha256(bytes: Buffer) {
-    return createHash('sha256').update(bytes).digest('hex');
-  }
-
-  function gitBlobSha(bytes: Buffer) {
-    return createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
-  }
-
   const document = Buffer.from('{"catalog":{"metadata":{"oscal-version":"1.1.3"}}}');
   // R4-keine-doppelten-registerfakten: reale Registry-Einträge verwenden statt
   // Pfad/Lifecycle/Version hier erneut zu deklarieren.
@@ -504,100 +424,135 @@ describe('Sperrsemantik und Werkzeugfehler', () => {
   });
 });
 
-describe('Korpus-Orchestrierung', () => {
-  function sha256(bytes: Buffer) {
-    return createHash('sha256').update(bytes).digest('hex');
-  }
-
-  function gitBlobSha(bytes: Buffer) {
-    return createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
-  }
-
-  it('liefert eine deterministische, redigierte Zusammenfassung ohne Schema- oder Referenzabrufe', async () => {
-    const tempRoot = await mkdtemp(resolve(tmpdir(), 'verify-upstream-oscal-'));
-    const binary = Buffer.from('binary');
-    const sbom = Buffer.from('sbom');
-    const document = Buffer.from('{"catalog":{"metadata":{"oscal-version":"1.1.3"}}}');
-    const binarySha256 = sha256(binary);
-    const sbomSha256 = sha256(sbom);
-    const checksums = `${binarySha256}  go-oscal_vtest_Linux_amd64\n${sbomSha256}  sbom_go-oscal_vtest_Linux_amd64.sbom\n`;
-    const releaseConfig = {
-      repository: 'example/go-oscal',
-      tag: 'vtest',
-      checksumsName: 'checksums.txt',
-      checksumsSha256: sha256(Buffer.from(checksums)),
-      platforms: {
-        'linux-x64': {
-          binaryName: 'go-oscal_vtest_Linux_amd64',
-          binarySha256,
-          sbomName: 'sbom_go-oscal_vtest_Linux_amd64.sbom',
-          sbomSha256,
-        },
+/**
+ * Synthetischer Ein-Artefakt-Korpus mit eigenem go-oscal-Release-Pin. `respond`
+ * bedient jede erlaubte Abruf-URL fehlerfrei; Tests legen ihre Störung davor.
+ */
+async function createCorpusFixture() {
+  const tempRoot = await mkdtemp(resolve(tmpdir(), 'verify-upstream-oscal-'));
+  const binary = Buffer.from('binary');
+  const sbom = Buffer.from('sbom');
+  const document = Buffer.from('{"catalog":{"metadata":{"oscal-version":"1.1.3"}}}');
+  const binarySha256 = sha256(binary);
+  const sbomSha256 = sha256(sbom);
+  const checksums = `${binarySha256}  go-oscal_vtest_Linux_amd64\n${sbomSha256}  sbom_go-oscal_vtest_Linux_amd64.sbom\n`;
+  const releaseConfig = {
+    repository: 'example/go-oscal',
+    tag: 'vtest',
+    checksumsName: 'checksums.txt',
+    checksumsSha256: sha256(Buffer.from(checksums)),
+    platforms: {
+      'linux-x64': {
+        binaryName: 'go-oscal_vtest_Linux_amd64',
+        binarySha256,
+        sbomName: 'sbom_go-oscal_vtest_Linux_amd64.sbom',
+        sbomSha256,
       },
-    } as const;
-    const registry = [
+    },
+  } as const;
+  const registry = [
+    {
+      artifactKey: 'catalog-fixture',
+      expectedRootType: 'catalog',
+      oscalVersion: '1.1.3',
+      lifecycle: 'preview',
+      upstreamPath: 'control_layer/fixture.json',
+    },
+  ];
+  const manifest = buildUpstreamManifest({
+    repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
+    snapshotCommitSha: 'a'.repeat(40),
+    files: [
       {
         artifactKey: 'catalog-fixture',
-        expectedRootType: 'catalog',
-        oscalVersion: '1.1.3',
+        rootType: 'catalog',
         lifecycle: 'preview',
-        upstreamPath: 'control_layer/fixture.json',
+        path: registry[0].upstreamPath,
+        contentSha256: sha256(document),
+        gitBlobSha: gitBlobSha(document),
       },
-    ];
-    const manifest = buildUpstreamManifest({
-      repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
-      snapshotCommitSha: 'a'.repeat(40),
-      files: [
-        {
-          artifactKey: 'catalog-fixture',
-          rootType: 'catalog',
-          lifecycle: 'preview',
-          path: registry[0].upstreamPath,
-          contentSha256: sha256(document),
-          gitBlobSha: gitBlobSha(document),
-        },
-        {
-          artifactKey: 'namespaces-fixture',
-          rootType: 'vocabulary',
-          lifecycle: 'supported',
-          path: 'documentation/namespaces/example.csv',
-          contentSha256: sha256(Buffer.from('term\n')),
-          gitBlobSha: gitBlobSha(Buffer.from('term\n')),
-        },
-      ],
-    });
-    await writeFile(resolve(tempRoot, 'upstream-manifest.json'), JSON.stringify(manifest));
+      {
+        artifactKey: 'namespaces-fixture',
+        rootType: 'vocabulary',
+        lifecycle: 'supported',
+        path: 'documentation/namespaces/example.csv',
+        contentSha256: sha256(Buffer.from('term\n')),
+        gitBlobSha: gitBlobSha(Buffer.from('term\n')),
+      },
+    ],
+  });
+  await writeFile(resolve(tempRoot, 'upstream-manifest.json'), JSON.stringify(manifest));
 
-    const releaseBase = 'https://github.com/example/go-oscal/releases/download/vtest';
+  const releaseBase = 'https://github.com/example/go-oscal/releases/download/vtest';
+  const metadataUrl = 'https://api.github.com/repos/example/go-oscal/releases/tags/vtest';
+  const bsiUrl = 'https://raw.githubusercontent.com/BSI-Bund/Stand-der-Technik-Bibliothek/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/control_layer/fixture.json';
+  const binaryUrl = `${releaseBase}/${releaseConfig.platforms['linux-x64'].binaryName}`;
+
+  function respond(url: string) {
+    if (url === metadataUrl) {
+      return new Response(JSON.stringify({
+        tag_name: 'vtest',
+        assets: [
+          { name: 'checksums.txt', digest: `sha256:${releaseConfig.checksumsSha256}`, browser_download_url: `${releaseBase}/checksums.txt` },
+          { name: 'go-oscal_vtest_Linux_amd64', digest: `sha256:${binarySha256}`, browser_download_url: binaryUrl },
+          { name: 'sbom_go-oscal_vtest_Linux_amd64.sbom', digest: `sha256:${sbomSha256}`, browser_download_url: `${releaseBase}/sbom_go-oscal_vtest_Linux_amd64.sbom` },
+        ],
+      }));
+    }
+    if (url === `${releaseBase}/checksums.txt`) return new Response(checksums);
+    if (url === binaryUrl) return new Response(binary);
+    if (url === `${releaseBase}/sbom_go-oscal_vtest_Linux_amd64.sbom`) return new Response(sbom);
+    if (url === bsiUrl) return new Response(document);
+    throw new Error(`unexpected network request: ${url}`);
+  }
+
+  const executeTool = vi.fn(async ({ resultPath }: { resultPath: string }) => {
+    await writeFile(resultPath, JSON.stringify({ valid: true, errors: [] }));
+    return 0;
+  });
+
+  function run(fetchImpl: (url: string) => Promise<Response>, overrides: Record<string, unknown> = {}) {
+    return runVerifyUpstreamOscal({
+      repoRoot: tempRoot,
+      registry,
+      fetchImpl,
+      executeTool,
+      platform: 'linux',
+      arch: 'x64',
+      releaseConfig,
+      retryDelaysMs: [0, 0],
+      ...overrides,
+    });
+  }
+
+  return {
+    tempRoot,
+    registry,
+    releaseConfig,
+    releaseBase,
+    metadataUrl,
+    bsiUrl,
+    binaryUrl,
+    respond,
+    executeTool,
+    run,
+    cleanup: () => rm(tempRoot, { recursive: true, force: true }),
+  };
+}
+
+describe('Korpus-Orchestrierung', () => {
+  it('liefert eine deterministische, redigierte Zusammenfassung ohne Schema- oder Referenzabrufe', async () => {
+    const fixture = await createCorpusFixture();
+    const { tempRoot, registry, releaseConfig, releaseBase, executeTool } = fixture;
     const calls: string[] = [];
     let remainingMetadataTransportFailures = 1;
     const fetchImpl = vi.fn(async (url: string) => {
       calls.push(url);
-      if (url === 'https://api.github.com/repos/example/go-oscal/releases/tags/vtest') {
-        if (remainingMetadataTransportFailures > 0) {
-          remainingMetadataTransportFailures -= 1;
-          throw new Error('UND_ERR_SOCKET: other side closed');
-        }
-        return new Response(JSON.stringify({
-          tag_name: 'vtest',
-          assets: [
-            { name: 'checksums.txt', digest: `sha256:${releaseConfig.checksumsSha256}`, browser_download_url: `${releaseBase}/checksums.txt` },
-            { name: 'go-oscal_vtest_Linux_amd64', digest: `sha256:${binarySha256}`, browser_download_url: `${releaseBase}/go-oscal_vtest_Linux_amd64` },
-            { name: 'sbom_go-oscal_vtest_Linux_amd64.sbom', digest: `sha256:${sbomSha256}`, browser_download_url: `${releaseBase}/sbom_go-oscal_vtest_Linux_amd64.sbom` },
-          ],
-        }));
+      if (url === fixture.metadataUrl && remainingMetadataTransportFailures > 0) {
+        remainingMetadataTransportFailures -= 1;
+        throw new Error('UND_ERR_SOCKET: other side closed');
       }
-      if (url === `${releaseBase}/checksums.txt`) return new Response(checksums);
-      if (url === `${releaseBase}/go-oscal_vtest_Linux_amd64`) return new Response(binary);
-      if (url === `${releaseBase}/sbom_go-oscal_vtest_Linux_amd64.sbom`) return new Response(sbom);
-      if (url === 'https://raw.githubusercontent.com/BSI-Bund/Stand-der-Technik-Bibliothek/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/control_layer/fixture.json') {
-        return new Response(document);
-      }
-      throw new Error(`unexpected network request: ${url}`);
-    });
-    const executeTool = vi.fn(async ({ resultPath }: { resultPath: string }) => {
-      await writeFile(resultPath, JSON.stringify({ valid: true, errors: [] }));
-      return 0;
+      return fixture.respond(url);
     });
 
     try {
@@ -695,8 +650,144 @@ describe('Korpus-Orchestrierung', () => {
         ),
       ).toHaveLength(3);
     } finally {
-      await rm(tempRoot, { recursive: true, force: true });
+      await fixture.cleanup();
     }
+  });
+});
+
+describe('Diagnose fehlgeschlagener Abrufe (GSPP-359)', () => {
+  const SECRET_MESSAGE = 'UND_ERR_SOCKET https://example.test/pinned?secret=redact /private/tmp/input';
+
+  async function failureLine(
+    disturb: (url: string, respond: (url: string) => Response) => Response | Promise<Response>,
+  ) {
+    const fixture = await createCorpusFixture();
+    try {
+      const fetchImpl = vi.fn(async (url: string) => disturb(url, fixture.respond));
+      const error = await fixture.run(fetchImpl).then(
+        () => new Error('runVerifyUpstreamOscal hätte fehlschlagen müssen'),
+        (failure: unknown) => failure,
+      );
+      return { fixture, fetchImpl, error, line: formatVerificationFailure(error) };
+    } finally {
+      await fixture.cleanup();
+    }
+  }
+
+  function callsTo(fetchImpl: { mock: { calls: unknown[][] } }, url: string) {
+    return fetchImpl.mock.calls.filter(([calledUrl]) => calledUrl === url).length;
+  }
+
+  it('meldet einen über alle drei Versuche erschöpften BSI-5xx mit Schlüssel, Status und Versuch', async () => {
+    let bsiUrl = '';
+    const { fetchImpl, line } = await failureLine((url, respond) => {
+      if (url.startsWith('https://raw.githubusercontent.com/')) {
+        bsiUrl = url;
+        return new Response(SECRET_MESSAGE, { status: 503 });
+      }
+      return respond(url);
+    });
+
+    expect(line).toBe(
+      `GO_OSCAL_VERIFICATION_FAILED artifact=catalog-fixture httpStatus=503 attempt=3 url=${bsiUrl}`,
+    );
+    expect(callsTo(fetchImpl, bsiUrl)).toBe(3);
+    expect(line).not.toMatch(/fehlgeschlagen|secret|private|UND_ERR/);
+  });
+
+  it('meldet einen BSI-404 ohne Wiederholung mit dem echten Status', async () => {
+    const { fixture, line } = await failureLine((url, respond) =>
+      url.startsWith('https://raw.githubusercontent.com/')
+        ? new Response('not found', { status: 404 })
+        : respond(url),
+    );
+
+    expect(line).toBe(
+      `GO_OSCAL_VERIFICATION_FAILED artifact=catalog-fixture httpStatus=404 attempt=1 url=${fixture.bsiUrl}`,
+    );
+  });
+
+  it('meldet auf den Release-Pfaden Status und Versuch, aber keinen Artefaktschlüssel', async () => {
+    const metadata = await failureLine((url, respond) =>
+      url.startsWith('https://api.github.com/')
+        ? new Response('down', { status: 502 })
+        : respond(url),
+    );
+    expect(metadata.line).toBe(
+      `GO_OSCAL_VERIFICATION_FAILED httpStatus=502 attempt=3 url=${metadata.fixture.metadataUrl}`,
+    );
+
+    const asset = await failureLine((url, respond) =>
+      url.endsWith('/go-oscal_vtest_Linux_amd64')
+        ? new Response('gone', { status: 410 })
+        : respond(url),
+    );
+    expect(asset.line).toBe(
+      `GO_OSCAL_VERIFICATION_FAILED httpStatus=410 attempt=1 url=${asset.fixture.binaryUrl}`,
+    );
+    expect([metadata.line, asset.line].join(' ')).not.toContain('artifact=');
+  });
+
+  it('meldet einen erschöpften Transportfehler mit Versuch, ohne Status und ohne Fehlertext', async () => {
+    const { error, line } = await failureLine((url, respond) => {
+      if (url.startsWith('https://raw.githubusercontent.com/')) {
+        throw new Error(SECRET_MESSAGE);
+      }
+      return respond(url);
+    });
+
+    expect(line).toMatch(/^GO_OSCAL_VERIFICATION_FAILED artifact=catalog-fixture attempt=3 url=https:\/\/raw\.githubusercontent\.com\/\S+$/);
+    expect(line).not.toContain('httpStatus=');
+    expect(line).not.toMatch(/secret|private|UND_ERR/);
+    expect((error as Error).cause).toMatchObject({ attempts: 3 });
+  });
+
+  it('gibt vom Redirect-Ziel nur Origin und Pfad aus, nie Query oder Fragment', async () => {
+    const signedTarget = 'https://objects.githubusercontent.com/release/asset?X-Amz-Signature=secret&token=redact#fragment';
+    const { line } = await failureLine((url, respond) => {
+      if (url.endsWith('/go-oscal_vtest_Linux_amd64')) {
+        return new Response(null, { status: 302, headers: { location: signedTarget } });
+      }
+      if (url.startsWith('https://objects.githubusercontent.com/')) {
+        return new Response('down', { status: 500 });
+      }
+      return respond(url);
+    });
+
+    expect(line).toBe(
+      'GO_OSCAL_VERIFICATION_FAILED httpStatus=500 attempt=3 url=https://objects.githubusercontent.com/release/asset',
+    );
+    expect(line).not.toMatch(/[?#]|secret|redact|Signature/);
+  });
+
+  it('meldet einen Redirect-Abbruch mit dem ersten Versuch', async () => {
+    const { fixture, line } = await failureLine((url, respond) => {
+      if (url.startsWith('https://api.github.com/')) {
+        throw new TypeError('fetch failed', { cause: new Error('unexpected redirect') });
+      }
+      return respond(url);
+    });
+
+    expect(line).toBe(`GO_OSCAL_VERIFICATION_FAILED attempt=1 url=${fixture.metadataUrl}`);
+  });
+
+  it('lässt ungültige Diagnosefelder ersatzlos entfallen', () => {
+    expect(formatVerificationFailure({
+      artifactKey: '1catalog-fixture',
+      httpStatus: '503',
+      attempt: 0,
+      url: 'http://example.test/plain?secret=redact',
+    })).toBe('GO_OSCAL_VERIFICATION_FAILED');
+    expect(formatVerificationFailure({
+      httpStatus: 503.5,
+      attempt: -1,
+      url: 'kein URL',
+    })).toBe('GO_OSCAL_VERIFICATION_FAILED');
+    expect(formatVerificationFailure({
+      httpStatus: 503,
+      attempt: 2,
+      url: 'https://user:pass@example.test/path/to?query#frag',
+    })).toBe('GO_OSCAL_VERIFICATION_FAILED httpStatus=503 attempt=2 url=https://example.test/path/to');
   });
 });
 
