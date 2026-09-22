@@ -751,20 +751,46 @@ describe('fetch-catalog', () => {
   });
 
   it('aborts when the upstream snapshot cannot be resolved after retries', async () => {
-    let requests = 0;
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      requests += 1;
-      return new Response('Service Unavailable', {
-        status: 503,
-        statusText: 'Service Unavailable',
-      });
+    const globalFetch = vi.fn();
+    vi.stubGlobal('fetch', globalFetch);
+    const fetchImpl = vi.fn(async () => new Response('Service Unavailable', {
+      status: 503,
+      statusText: 'Service Unavailable',
     }));
 
     await expect(buildFetchArtifacts(
       { log: () => {}, warn: () => {} },
-      { retryDelaysMs: [0, 0], registryEntries: MINIMAL_REGISTRY },
+      { fetchImpl, retryDelaysMs: [0, 0], registryEntries: MINIMAL_REGISTRY },
     )).rejects.toThrow('Build abgebrochen, damit nicht ungepinnt von main geladen wird');
-    expect(requests).toBe(3);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(globalFetch).not.toHaveBeenCalled();
+  });
+
+  it('does not retry a non-standard status above 599 (GSPP-359)', async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: false,
+      status: 600,
+      statusText: 'Nonstandard',
+      text: async () => 'nonstandard',
+    }) as unknown as Response);
+
+    await expect(buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      { fetchImpl, retryDelaysMs: [0, 0], registryEntries: MINIMAL_REGISTRY },
+    )).rejects.toThrow('fehlgeschlagen: 600 Nonstandard');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the transport error text of an exhausted retry in the abort reason', async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new Error('UND_ERR_SOCKET: other side closed');
+    });
+
+    await expect(buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      { fetchImpl, retryDelaysMs: [0, 0], registryEntries: MINIMAL_REGISTRY },
+    )).rejects.toThrow('UND_ERR_SOCKET: other side closed');
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
   it('aborts when the default branch does not expose an exact commit SHA', async () => {
@@ -830,17 +856,13 @@ describe('fetch-catalog', () => {
   });
 
   it('does not retry non-transient GitHub API errors', async () => {
-    let requests = 0;
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      requests += 1;
-      return new Response('Not Found', { status: 404, statusText: 'Not Found' });
-    }));
+    const fetchImpl = vi.fn(async () => new Response('Not Found', { status: 404, statusText: 'Not Found' }));
 
     await expect(buildFetchArtifacts(
       { log: () => {}, warn: () => {} },
-      { retryDelaysMs: [0, 0], registryEntries: MINIMAL_REGISTRY },
+      { fetchImpl, retryDelaysMs: [0, 0], registryEntries: MINIMAL_REGISTRY },
     )).rejects.toThrow('Build abgebrochen, damit nicht ungepinnt von main geladen wird');
-    expect(requests).toBe(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it('truncates oversized response bodies in error messages', async () => {

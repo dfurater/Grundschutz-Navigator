@@ -3,6 +3,7 @@
 import { pathToFileURL } from 'node:url';
 import { appendFile } from 'node:fs/promises';
 import { fetchGitHubJson as fetchSharedGitHubJson } from './githubApiFetch.mjs';
+import { sleep as defaultSleep } from './transientRetry.mjs';
 
 export const DEPLOY_WORKFLOW_FILE = 'deploy.yml';
 export const PROTECTED_BRANCH = 'main';
@@ -67,8 +68,6 @@ function repoApiBase(repository) {
 /** Zulässige API-Herkunft und URL-Form (jssecurity:S8476-Allowlist). */
 const ALLOWED_API_ORIGINS = new Set(['https://api.github.com']);
 const GITHUB_API_URL_PATTERN = /^https:\/\/api\.github\.com\/repos\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+\//;
-
-const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function verificationBudgetError(verificationBudgetMs, context) {
   return new Error(

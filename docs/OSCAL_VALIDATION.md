@@ -60,7 +60,20 @@ einzelnem HTTP-Aufruf höchstens zweimal mit festen kurzen Delays wiederholt
 HTTP-4xx, Redirect-Verstöße, Größen- und Parsefehler sowie sämtliche API-,
 Checksum-, SHA-256- und Blob-Pin-Abweichungen sind sofort fail-closed. Die
 Wiederholung verbessert ausschließlich die Verfügbarkeit des bereits gepinnten
-Abrufs; sie ist keine Lieferkettenausnahme.
+Abrufs; sie ist keine Lieferkettenausnahme. Die Wiederholungslogik liegt in
+[`transientRetry.mjs`](../scripts/transientRetry.mjs) und ist mit
+`fetch-catalog.mjs` geteilt: Wiederholt wird nur HTTP 500–599, ein von Undici
+gemeldeter unerwarteter Redirect bricht ohne Wiederholung ab.
+
+Scheitert ein Abruf endgültig, gibt der Lauf genau eine redigierte Zeile aus:
+den Fehlercode, gefolgt von den Diagnosefeldern, die auf dem jeweiligen Pfad
+existieren — `artifact=` nur beim BSI-Artefaktabruf, `httpStatus=` nur, wenn
+eine HTTP-Antwort vorliegt, `attempt=` als 1-basierte Nummer des letzten
+Versuchs und `url=` reduziert auf Origin und Pfad. Query und Fragment entfallen,
+weil ein Redirect-Ziel aus dem `location`-Header der GitHub-Antwort stammt und
+signierte Parameter tragen kann. Fehlertexte, Ursachenketten und lokale Pfade
+erscheinen nie; Artefaktschlüssel außerhalb der Registergrammatik bleiben
+redigiert.
 
 Die bestehende Integritätsprüfung und `parseCatalog` ersetzen diese Gates
 nicht. Ausgewiesen werden dürfen ausschließlich die für den Klasse-2-Einstieg
