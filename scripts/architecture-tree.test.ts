@@ -1,4 +1,5 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -12,10 +13,21 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ARCHITECTURE_PATH = join(REPO_ROOT, 'docs/ARCHITECTURE.md');
 const SECTION_HEADING = '## Verzeichnisstruktur';
 
-// Kolokierte Tests sind aus dem Baum ausgenommen; .DS_Store ist gitignorierter
-// Finder-Zustand und existiert nur auf macOS-Arbeitsplätzen.
+// Kolokierte Tests sind aus dem Baum ausgenommen.
 const COLOCATED_TEST = /\.test\.[cm]?[jt]sx?$/;
-const IGNORED_NAMES = new Set(['.DS_Store']);
+
+// Der Ist-Stand kommt aus Gits Sicht, nicht aus dem Dateisystem: Gitignorierte
+// Dateien (.DS_Store, Browser-Screenshots eines fehlgeschlagenen Laufs,
+// Editor-Reste) gehören nie in den Baum, neue ungetrackte Dateien dagegen
+// schon, bevor sie committet sind. Im Index geführte, lokal gelöschte Dateien
+// fallen über existsSync heraus.
+const REPOSITORY_FILES = execFileSync(
+  'git',
+  ['ls-files', '--cached', '--others', '--exclude-standard', '-z'],
+  { cwd: REPO_ROOT, encoding: 'utf8' },
+)
+  .split('\0')
+  .filter((path) => path !== '' && existsSync(join(REPO_ROOT, path)));
 
 // Wurzeleinträge stehen ohne Präfix; darunter trägt jede Ebene genau vier
 // Zeichen Einrückung („│   " oder „    ") vor dem Verbinder.
@@ -77,10 +89,15 @@ function flatten(entries: readonly TreeEntry[]): TreeEntry[] {
 }
 
 function listDirectory(relativePath: string): string[] {
-  return readdirSync(join(REPO_ROOT, relativePath), { withFileTypes: true })
-    .filter((dirent) => !IGNORED_NAMES.has(dirent.name) && !COLOCATED_TEST.test(dirent.name))
-    .map((dirent) => (dirent.isDirectory() ? `${dirent.name}/` : dirent.name))
-    .sort();
+  const names = new Set<string>();
+  for (const path of REPOSITORY_FILES) {
+    if (!path.startsWith(relativePath)) continue;
+    const rest = path.slice(relativePath.length);
+    const slash = rest.indexOf('/');
+    const name = slash === -1 ? rest : `${rest.slice(0, slash)}/`;
+    if (!COLOCATED_TEST.test(name)) names.add(name);
+  }
+  return [...names].sort();
 }
 
 function childName(entry: TreeEntry, parent: TreeEntry): string {
