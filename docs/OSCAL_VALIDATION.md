@@ -794,25 +794,26 @@ dem sie erhoben wurde.
   **Testbedingung**
   ([`measureWorkLimitProvenance.mjs`](../scripts/measureWorkLimitProvenance.mjs)).
 
-**Die Hülle kommt aus einer Aufrufzählung** (seit GSPP-445, Verfahren
-`skalierende-aufrufe`). `WORK_UNIT_LIMIT` ist eine Aussage über die Zeit pro
+**Die Hülle kommt aus einer Ausführungszählung** (Verfahren
+`skalierende-bereiche`). `WORK_UNIT_LIMIT` ist eine Aussage über die Zeit pro
 Arbeitseinheit; maßgeblich ist deshalb nicht, was vom Auflösungspfad aus
 importierbar ist, sondern was mit den Arbeitseinheiten skaliert.
 [`measureWorkLimitCallCounts.mjs`](../scripts/measureWorkLimitCallCounts.mjs)
 lässt für jede der sechs Kategorien den produktiven `resolveProfile` über die
-Kalibrierfixture mit N = 4 und 2N = 8 Wiederholungen laufen und zählt jeden
-Funktionsaufruf mit V8-Precise-Coverage. Gezählt wird genau der Abschnitt, den
-der Harnisch zwischen seinen beiden `nowMs()` misst; Plan und
-`parseProfileDocument` laufen vorher und fallen heraus. Ein Test hält beide
-Abschnitte aneinander fest.
+Kalibrierfixture mit N = 4 und 2N = 8 Wiederholungen laufen und zählt mit
+V8-Precise-Coverage auf Blockebene, wie oft jede Funktion und jeder Block darin
+ausgeführt wird. Gezählt wird genau der Abschnitt, den der Harnisch zwischen
+seinen beiden `nowMs()` misst; Plan und `parseProfileDocument` laufen vorher
+und fallen heraus. Ein Test hält beide Abschnitte aneinander fest.
 
-- **Skalierend** ist eine Funktion, deren Aufrufzahl bei 2N in mindestens einer
-  Kategorie größer ist als bei N. Die Hülle besteht aus den Dateien mit
-  mindestens einer skalierenden Funktion; am Stand der Umstellung sind das
-  sechs Dateien unter `src/domain/` (Budget, Engine, Merge, Modify, Selection,
-  Referenzauflösung). Liegt eine skalierende Funktion in einem externen Paket,
-  geht dessen aufgelöste Version transitiv aus dem Lockfile ein (`runtime`);
-  heute ist das keines. Nodes eigene Laufzeit geht wie bisher nicht ein.
+- **Skalierend** ist ein Bereich — eine Funktion oder ein Block darin, etwa ein
+  Schleifenrumpf —, dessen Ausführungszahl bei 2N in mindestens einer
+  Kategorie größer ist als bei N. Die Blockebene erfasst auch eine Funktion,
+  die je Lauf einmal aufgerufen wird, deren Schleife aber je Arbeitseinheit
+  läuft. Die Hülle besteht aus den Dateien mit mindestens einem skalierenden
+  Bereich und steht unter `paths` im Artefakt. Liegt ein skalierender Bereich
+  in einem externen Paket, geht dessen aufgelöste Version transitiv aus dem
+  Lockfile ein (`runtime`). Nodes eigene Laufzeit geht nicht ein.
 - **Selbstnachweis, fail-closed.** Vor jeder Verwendung muss jede Kategorie
   bei 2N mehr Arbeitseinheiten verbrauchen als bei N, und `spendWork` aus
   `profileResolutionBudget.ts` muss als skalierend erkannt sein. Sonst bricht
@@ -826,36 +827,36 @@ Abschnitte aneinander fest.
 - **Eigener Node-Prozess.** Precise-Coverage ist ein Zustand des ganzen
   Isolates, und jede Abfrage setzt die Zähler zurück. Unter
   `npm run test:coverage` misst Vitest seine Abdeckung über denselben
-  Mechanismus; die
-  Zählung läuft deshalb in einem Kindprozess, der `src/domain` über Nodes
-  Typ-Stripping und den Aliashook aus
+  Mechanismus; die Zählung läuft deshalb in einem Kindprozess, der
+  `src/domain` über Nodes Typ-Stripping und den Aliashook aus
   [`oscal-domain-bridge.mjs`](../scripts/oscal-domain-bridge.mjs) lädt. Die
   Berechnung braucht keinen Browser, dauert rund eine Sekunde und läuft in
   `npm run test` mit.
 
 **Bekannte Grenzen.**
 
-- Code mit konstanter Aufrufzahl kann trotzdem langsamer werden — etwa die
-  Ajv-Schemastufe der Abschlusskette, die je Profil einmal läuft. Eine solche
-  Änderung löst keine Neumessung der Arbeitsgrenze mehr aus. Ihre Kosten hängen
-  an der Ausgabegröße, die die Ausgabegrenzen begrenzen; deren Messreihen aus
-  GSPP-382 haben heute keinen Provenienz-Gate.
+- Code, dessen Bereiche bei N und 2N gleich oft laufen, kann trotzdem langsamer
+  werden — etwa die Ajv-Schemastufe der Abschlusskette, die je Profil einmal
+  läuft. Eine solche Änderung löst keine Neumessung der Arbeitsgrenze aus. Ihre
+  Kosten hängen an der Ausgabegröße, die die Ausgabegrenzen begrenzen; deren
+  Messreihen aus GSPP-382 haben keinen Provenienz-Gate.
 - `processClass2OscalValue` läuft einmal je Profil in `plan.order`. Jede
   Worst-Case-Fixture besteht aus genau einem Katalog und einem Profil; weder
   die Messung noch die Hülle decken deshalb Kosten ab, die mit der Länge einer
   Profilkette wachsen. Das ist eine Frage der Messabdeckung, nicht des
   Fingerprints.
 
-**Umstellung ohne Browserlauf.** Der Wechsel der Hülle ist kein Messergebnis
-und steht als eigener Nachweisschritt unter `workLimitProvenanceRestamps` im
-Artefakt. Am Basiscommit der Umstellung ergab der bisherige Fingerprint über
-die statische Importhülle denselben Wert wie bei der Messung; der gemessene
-Code lag damit unverändert vor. Der neue Fingerprint ist am selben Stand
-berechnet, seine sechs Dateien sind eine Teilmenge der früheren 62. Die
-Übernahme überträgt die bestehende Bindung auf das neue Verfahren und belegt
-nichts Neues über die Kosten. `renderReport` verweigert einen Bericht, dessen
-Provenienz vor und nach der Messung kein oder ein unterschiedliches Verfahren
-nennt, und der Bindungstest verlangt Verfahren und Hash des aktuellen Stands.
+**Übertragene Bindung.** Das Artefakt führt unter
+`workLimitProvenanceRestamps` die Nachweisschritte, mit denen sein Fingerprint
+ohne Browserlauf an das jeweils geltende Verfahren gebunden ist. Jeder Eintrag
+nennt Basiscommit, Verfahren und Hash vorher und nachher sowie seine Nachweise.
+Er ist kein Messergebnis und belegt nichts über die Kosten. Der Eintrag zum
+Verfahren `skalierende-bereiche` weist aus: Am Basiscommit ergibt der
+Fingerprint des vorherigen Verfahrens den Wert der Messung, keine Hüllendatei
+ist gegenüber dem Basiscommit verändert, und die Hülle ist eine Teilmenge der
+vorherigen. `renderReport` verweigert einen Bericht, dessen Provenienz vor und
+nach der Messung kein oder ein unterschiedliches Verfahren nennt, und der
+Bindungstest verlangt Verfahren und Hash des aktuellen Stands.
 
 Die **Auswertung** (`measureClass2BudgetReport.mjs`) steht nicht in der Hülle
 der Messwegprovenienz: Sie läuft im Browser nie mit und erzeugt keine

@@ -24,8 +24,8 @@ import { WORK_UNIT_CATEGORIES } from './profileResolutionWorstCaseFixtures.mjs';
 const REPO_ROOT = resolve(import.meta.dirname, '..');
 const fileUrl = (path: string) => pathToFileURL(resolve(REPO_ROOT, path)).href;
 
-type Call = [string, string, number, number];
-type Run = { workUnits: number; calls: Call[] };
+type Range = [string, string, number, number, number];
+type Run = { workUnits: number; ranges: Range[] };
 
 const BUDGET = fileUrl(SPEND_WORK.path);
 const ENGINE = fileUrl('src/domain/profileResolutionEngine.ts');
@@ -41,8 +41,8 @@ function observation(
     repetitions: { n: 4, twoN: 8 },
     categories: WORK_UNIT_CATEGORIES.map((category: string) => {
       const runs = {
-        n: { workUnits: 40, calls: [[BUDGET, 'spendWork', 100, 40], [ENGINE, 'resolveProfile', 0, 1]] as Call[] },
-        twoN: { workUnits: 80, calls: [[BUDGET, 'spendWork', 100, 80], [ENGINE, 'resolveProfile', 0, 1]] as Call[] },
+        n: { workUnits: 40, ranges: [[BUDGET, 'spendWork', 100, 110, 40], [ENGINE, 'resolveProfile', 0, 10, 1]] as Range[] },
+        twoN: { workUnits: 80, ranges: [[BUDGET, 'spendWork', 100, 110, 80], [ENGINE, 'resolveProfile', 0, 10, 1]] as Range[] },
       };
       adjust(category, runs);
       return { category, ...runs };
@@ -51,17 +51,37 @@ function observation(
 }
 
 describe('deriveScalingHull', () => {
-  it('nimmt nur Dateien mit wachsender Aufrufzahl auf', () => {
-    // `resolveProfile` läuft bei N und 2N je einmal — genau der Code mit
-    // konstanter Aufrufzahl, den die frühere Importhülle mitfingerprintete.
+  it('nimmt nur Dateien mit wachsender Ausführungszahl auf', () => {
+    // `resolveProfile` läuft bei N und 2N je einmal — Code mit konstanter
+    // Ausführungszahl, der die Kosten pro Arbeitseinheit nicht trägt.
     expect(deriveScalingHull(observation())).toEqual({ paths: [SPEND_WORK.path], packages: [] });
+  });
+
+  it('erfasst eine Schleife, die in einer einmal aufgerufenen Funktion je Arbeitseinheit läuft', () => {
+    // Der Funktionsbereich bleibt bei 1, der Schleifenrumpf wächst. Eine
+    // reine Aufrufzählung sähe diese Datei nicht.
+    const walk = fileUrl('src/domain/oscalObjectWalk.ts');
+    const hull = deriveScalingHull(observation((_category, { n, twoN }) => {
+      n.ranges.push([walk, 'walkOwnContainers', 0, 400, 1], [walk, 'walkOwnContainers', 120, 300, 40]);
+      twoN.ranges.push([walk, 'walkOwnContainers', 0, 400, 1], [walk, 'walkOwnContainers', 120, 300, 80]);
+    }));
+    expect(hull.paths).toContain('src/domain/oscalObjectWalk.ts');
+  });
+
+  it('unterscheidet Bereiche mit gleichem Anfang an ihrem Ende', () => {
+    const selection = fileUrl('src/domain/profileResolutionSelection.ts');
+    const hull = deriveScalingHull(observation((_category, { n, twoN }) => {
+      n.ranges.push([selection, 'f', 10, 90, 5], [selection, 'f', 10, 40, 1]);
+      twoN.ranges.push([selection, 'f', 10, 90, 5], [selection, 'f', 10, 40, 2]);
+    }));
+    expect(hull.paths).toContain('src/domain/profileResolutionSelection.ts');
   });
 
   it('lässt eine Funktion zählen, die nur in einer Kategorie wächst', () => {
     const merge = fileUrl('src/domain/profileResolutionMerge.ts');
     const hull = deriveScalingHull(observation((category, { n, twoN }) => {
-      n.calls.push([merge, 'mergeStep', 7, 3]);
-      twoN.calls.push([merge, 'mergeStep', 7, category === 'merge-step' ? 6 : 3]);
+      n.ranges.push([merge, 'mergeStep', 7, 17, 3]);
+      twoN.ranges.push([merge, 'mergeStep', 7, 17, category === 'merge-step' ? 6 : 3]);
     }));
     expect(hull.paths).toEqual([SPEND_WORK.path, 'src/domain/profileResolutionMerge.ts']);
   });
@@ -69,7 +89,7 @@ describe('deriveScalingHull', () => {
   it('wertet eine Funktion, die erst bei 2N läuft, als skalierend', () => {
     const modify = fileUrl('src/domain/profileResolutionModify.ts');
     const hull = deriveScalingHull(observation((category, { twoN }) => {
-      if (category === 'alter-candidate') twoN.calls.push([modify, 'alterCandidate', 9, 1]);
+      if (category === 'alter-candidate') twoN.ranges.push([modify, 'alterCandidate', 9, 19, 1]);
     }));
     expect(hull.paths).toContain('src/domain/profileResolutionModify.ts');
   });
@@ -79,7 +99,7 @@ describe('deriveScalingHull', () => {
     // lässt die Zahl bei 2N fallen, nicht steigen.
     const schema = fileUrl('src/domain/oscalSchemaValidation.ts');
     const hull = deriveScalingHull(observation((category, { n }) => {
-      if (category === WORK_UNIT_CATEGORIES[0]) n.calls.push([schema, 'compile', 3, 1]);
+      if (category === WORK_UNIT_CATEGORIES[0]) n.ranges.push([schema, 'compile', 3, 13, 1]);
     }));
     expect(hull.paths).not.toContain('src/domain/oscalSchemaValidation.ts');
   });
@@ -87,25 +107,25 @@ describe('deriveScalingHull', () => {
   it('unterscheidet gleichnamige Funktionen an ihrer Position', () => {
     const selection = fileUrl('src/domain/profileResolutionSelection.ts');
     const hull = deriveScalingHull(observation((_category, { n, twoN }) => {
-      n.calls.push([selection, '', 10, 5], [selection, '', 50, 1]);
-      twoN.calls.push([selection, '', 10, 5], [selection, '', 50, 2]);
+      n.ranges.push([selection, '', 10, 20, 5], [selection, '', 50, 60, 1]);
+      twoN.ranges.push([selection, '', 10, 20, 5], [selection, '', 50, 60, 2]);
     }));
     expect(hull.paths).toContain('src/domain/profileResolutionSelection.ts');
   });
 
   it('ordnet Bibliothekscode seinem Paket zu, nicht als Repository-Datei', () => {
     const hull = deriveScalingHull(observation((_category, { n, twoN }) => {
-      n.calls.push([fileUrl('node_modules/ajv/dist/compile/index.js'), 'validate', 0, 1]);
-      twoN.calls.push([fileUrl('node_modules/ajv/dist/compile/index.js'), 'validate', 0, 2]);
-      n.calls.push([fileUrl('node_modules/@scope/paket/lib/x.js'), 'f', 0, 1]);
-      twoN.calls.push([fileUrl('node_modules/@scope/paket/lib/x.js'), 'f', 0, 2]);
+      n.ranges.push([fileUrl('node_modules/ajv/dist/compile/index.js'), 'validate', 0, 10, 1]);
+      twoN.ranges.push([fileUrl('node_modules/ajv/dist/compile/index.js'), 'validate', 0, 10, 2]);
+      n.ranges.push([fileUrl('node_modules/@scope/paket/lib/x.js'), 'f', 0, 10, 1]);
+      twoN.ranges.push([fileUrl('node_modules/@scope/paket/lib/x.js'), 'f', 0, 10, 2]);
     }));
     expect(hull).toEqual({ paths: [SPEND_WORK.path], packages: ['@scope/paket', 'ajv'] });
   });
 
   it('übergeht Nodes eigene Laufzeit', () => {
     const hull = deriveScalingHull(observation((_category, { twoN }) => {
-      twoN.calls.push(['node:internal/util', 'getLazy', 0, 9]);
+      twoN.ranges.push(['node:internal/util', 'getLazy', 0, 10, 9]);
     }));
     expect(hull.paths).toEqual([SPEND_WORK.path]);
   });
@@ -113,11 +133,11 @@ describe('deriveScalingHull', () => {
   it('bricht bei skalierendem Code ohne Datei oder außerhalb des Repositoriums ab', () => {
     for (const url of ['', 'evalmachine.<anonymous>']) {
       expect(() => deriveScalingHull(observation((_category, { twoN }) => {
-        twoN.calls.push([url, 'f', 0, 1]);
-      }))).toThrow(/Skalierende Funktion ohne Datei im Messweg/);
+        twoN.ranges.push([url, 'f', 0, 10, 1]);
+      }))).toThrow(/Skalierender Code ohne Datei im Messweg/);
     }
     expect(() => deriveScalingHull(observation((_category, { twoN }) => {
-      twoN.calls.push([pathToFileURL(resolve(REPO_ROOT, '..', 'fremd.mjs')).href, 'f', 0, 1]);
+      twoN.ranges.push([pathToFileURL(resolve(REPO_ROOT, '..', 'fremd.mjs')).href, 'f', 0, 10, 1]);
     }))).toThrow(/außerhalb des Repositoriums/);
   });
 
@@ -125,7 +145,7 @@ describe('deriveScalingHull', () => {
     // Diese Datei MUSS zwischen Mess- und Lieferstand verschieden sein. Läge
     // sie in der Hülle, könnte kein Artefakt je zum gelieferten Stand passen.
     const hull = deriveScalingHull(observation((_category, { twoN }) => {
-      for (const path of PROVENANCE_EXCLUDED_PATHS) twoN.calls.push([fileUrl(path), 'f', 0, 1]);
+      for (const path of PROVENANCE_EXCLUDED_PATHS) twoN.ranges.push([fileUrl(path), 'f', 0, 10, 1]);
     }));
     for (const path of PROVENANCE_EXCLUDED_PATHS) expect(hull.paths).not.toContain(path);
   });
@@ -133,7 +153,7 @@ describe('deriveScalingHull', () => {
   it('sortiert die Hülle über Code-Units', () => {
     const upper = fileUrl('src/domain/Zeta.ts');
     const hull = deriveScalingHull(observation((_category, { twoN }) => {
-      twoN.calls.push([fileUrl('src/domain/alpha.ts'), 'f', 0, 1], [upper, 'f', 0, 1]);
+      twoN.ranges.push([fileUrl('src/domain/alpha.ts'), 'f', 0, 10, 1], [upper, 'f', 0, 10, 1]);
     }));
     expect(hull.paths).toEqual([...hull.paths].sort(byCodeUnit));
     expect(hull.paths.indexOf('src/domain/Zeta.ts')).toBeLessThan(hull.paths.indexOf('src/domain/alpha.ts'));
@@ -142,7 +162,7 @@ describe('deriveScalingHull', () => {
   describe('Selbstnachweis', () => {
     it('scheitert, wenn spendWork nicht als skalierend erkannt ist', () => {
       expect(() => deriveScalingHull(observation((_category, { twoN }) => {
-        twoN.calls[0] = [BUDGET, 'spendWork', 100, 40];
+        twoN.ranges[0] = [BUDGET, 'spendWork', 100, 110, 40];
       }))).toThrow(
         'Selbstnachweis der Messwegprovenienz gescheitert: spendWork aus src/domain/profileResolutionBudget.ts ist nicht als skalierend erkannt',
       );
@@ -153,8 +173,8 @@ describe('deriveScalingHull', () => {
       // die Zählung die Buchung der Arbeitseinheiten sieht.
       const elsewhere = fileUrl('src/domain/profileResolutionMerge.ts');
       expect(() => deriveScalingHull(observation((_category, { n, twoN }) => {
-        n.calls[0] = [elsewhere, 'spendWork', 100, 40];
-        twoN.calls[0] = [elsewhere, 'spendWork', 100, 80];
+        n.ranges[0] = [elsewhere, 'spendWork', 100, 110, 40];
+        twoN.ranges[0] = [elsewhere, 'spendWork', 100, 110, 80];
       }))).toThrow(/spendWork aus src\/domain\/profileResolutionBudget\.ts ist nicht als skalierend erkannt/);
     });
 
@@ -164,6 +184,14 @@ describe('deriveScalingHull', () => {
       }))).toThrow(
         'Selbstnachweis der Messwegprovenienz gescheitert: Kategorie alter-target-lookup verbraucht bei 2N nicht mehr Arbeitseinheiten als bei N (40 → 40)',
       );
+    });
+
+    it('scheitert, wenn Arbeitseinheiten fehlen oder keine Zahl sind', () => {
+      for (const broken of [undefined, Number.NaN]) {
+        expect(() => deriveScalingHull(observation((category, { twoN }) => {
+          if (category === 'merge-step') twoN.workUnits = broken as unknown as number;
+        }))).toThrow(/Kategorie merge-step verbraucht bei 2N nicht mehr Arbeitseinheiten als bei N/);
+      }
     });
 
     it('scheitert, wenn eine Kategorie gar nicht gezählt ist', () => {
@@ -244,6 +272,12 @@ describe('Zählabschnitt der Aufrufzählung', () => {
       "await session.post('Profiler.takePreciseCoverage');",
       "const { result } = await session.post('Profiler.takePreciseCoverage');",
     )).toBe('const outcome = await domain.resolveProfile({ plan, edgesByArtifactKey, profileViews });');
+  });
+
+  it('zählt auf Blockebene, damit Schleifen in einmal aufgerufenen Funktionen sichtbar sind', () => {
+    const collector = readFileSync(resolve(REPO_ROOT, 'scripts/measureWorkLimitCallCounts.mjs'), 'utf8');
+    expect(collector).toContain("'Profiler.startPreciseCoverage', { callCount: true, detailed: true }");
+    expect(collector).toContain('for (const range of fn.ranges)');
   });
 });
 

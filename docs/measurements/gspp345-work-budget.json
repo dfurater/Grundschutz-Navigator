@@ -1550,7 +1550,7 @@
       "src/domain/profileResolutionBudgetLimits.mjs"
     ],
     "workLimitProvenance": {
-      "method": "skalierende-aufrufe",
+      "method": "skalierende-bereiche",
       "sha256": "c8e399ada8ffab407e0d876423835dbb1d71850057dce61007a7b47809d0ca98",
       "files": 6,
       "paths": [
@@ -1572,7 +1572,7 @@
       "src/domain/profileResolutionBudgetLimits.mjs"
     ],
     "workLimitProvenance": {
-      "method": "skalierende-aufrufe",
+      "method": "skalierende-bereiche",
       "sha256": "c8e399ada8ffab407e0d876423835dbb1d71850057dce61007a7b47809d0ca98",
       "files": 6,
       "paths": [
@@ -1619,7 +1619,7 @@
       "date": "2026-09-23",
       "art": "Verfahrenswechsel der Hülle, kein Messergebnis",
       "entscheidung": "Übernahme des Fingerprints nach der neuen Hülle ohne Neumessung.",
-      "begruendung": "Die Hülle der Messwegprovenienz wird seit GSPP-445 nicht mehr aus der statischen Importhülle bestimmt, sondern aus einer Aufrufzählung: Sie enthält genau die Dateien mit mindestens einer Funktion, deren Aufrufzahl zwischen N und 2N Wiederholungen einer Kalibrierfixture in mindestens einer Kategorie wächst. Diese Übernahme belegt nichts Neues über die Kosten pro Arbeitseinheit. Sie überträgt die bestehende Bindung an die Messung vom alten auf das neue Verfahren, und das ist nur zulässig, weil beide Hashes am selben Stand berechnet sind und dieser Stand nachweislich der gemessene Code ist.",
+      "begruendung": "Die Hülle der Messwegprovenienz wird seit GSPP-445 nicht mehr aus der statischen Importhülle bestimmt, sondern aus einer Ausführungszählung auf Blockebene: Sie enthält genau die Dateien mit mindestens einem Bereich — einer Funktion oder einem Block darin —, dessen Ausführungszahl zwischen N und 2N Wiederholungen einer Kalibrierfixture in mindestens einer Kategorie wächst. Diese Übernahme belegt nichts Neues über die Kosten pro Arbeitseinheit. Sie überträgt die bestehende Bindung an die Messung vom alten auf das neue Verfahren, und das ist nur zulässig, weil beide Hashes am selben Stand berechnet sind und dieser Stand nachweislich der gemessene Code ist.",
       "basisCommit": "43eed4395f3840eaca511f8290f4c824f65e12fb",
       "vorher": {
         "method": "statische-importhuelle",
@@ -1627,7 +1627,7 @@
         "files": 62
       },
       "nachher": {
-        "method": "skalierende-aufrufe",
+        "method": "skalierende-bereiche",
         "sha256": "c8e399ada8ffab407e0d876423835dbb1d71850057dce61007a7b47809d0ca98",
         "files": 6
       },
@@ -1635,7 +1635,7 @@
         "Am Basiscommit ergibt der bisherige Fingerprint über die statische Importhülle b2fda430f5546110df712b4246c51c5a84c927cf61397c1521757e44022fac8f über 62 Dateien, denselben Wert wie bei der Messung an 88a568e2c7dc03b2079ac9c1fe3068e06933dc2c. Der gemessene Code liegt damit innerhalb der alten Hülle unverändert vor; nachrechenbar mit node scripts/measure-class2-budget.mjs --print-source-fingerprint auf dem Basiscommit.",
         "Der neue Fingerprint ist mit dem Umstellungscommit berechnet, der gegenüber dem Basiscommit ausschließlich Dateien unter scripts/, docs/ und das Messartefakt ändert. Keine Datei der neuen Hülle ist gegenüber dem Basiscommit verändert.",
         "Die neue Hülle ist eine Teilmenge der alten: Jede ihrer 6 Dateien steht in paths der bisherigen Provenienz.",
-        "Die Laufzeitangabe ist leer, weil in keinem externen Paket eine skalierende Funktion liegt; auch Ajv läuft bei N und 2N mit gleicher Aufrufzahl."
+        "Die Laufzeitangabe ist leer, weil in keinem externen Paket ein skalierender Bereich liegt; auch Ajv läuft bei N und 2N mit gleicher Ausführungszahl."
       ],
       "entfalleneDateienAnzahl": 56,
       "workUnitLimitUnveraendert": true

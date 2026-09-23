@@ -9,7 +9,7 @@ vi.mock('node:fs', async (original) => ({ ...await original<typeof import('node:
 // `measureWorkLimitProvenance.test.ts` geprüft. Hier geht es um die Orchestrierung.
 vi.mock('./measureWorkLimitProvenance.mjs', async (original) => ({
   ...await original<typeof import('./measureWorkLimitProvenance.mjs')>(),
-  workLimitProvenance: () => ({ method: 'skalierende-aufrufe', sha256: 'c'.repeat(64), files: 1, paths: ['src/fake.ts'], runtime: [] }),
+  workLimitProvenance: () => ({ method: 'skalierende-bereiche', sha256: 'c'.repeat(64), files: 1, paths: ['src/fake.ts'], runtime: [] }),
 }));
 vi.mock('./measureClass2Timing.mjs', async (original) => ({ ...await original<typeof import('./measureClass2Timing.mjs')>(), buildTimingInput: mocked.build }));
 vi.mock('./measureClass2BudgetReport.mjs', async (original) => ({

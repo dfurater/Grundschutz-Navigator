@@ -5,8 +5,13 @@
 // Liefert die Rohdaten, aus denen `measureWorkLimitProvenance.mjs` die Hülle
 // der Messwegprovenienz bestimmt: Für jede Work-Unit-Kategorie läuft der
 // produktive `resolveProfile` über die Kalibrierfixture mit N und mit 2N
-// Wiederholungen, und V8 zählt dabei jeden Funktionsaufruf. Ausgewertet wird
+// Wiederholungen, und V8 zählt dabei jede Ausführung. Ausgewertet wird
 // hier nichts; das Skript schreibt die Zählung als JSON auf stdout.
+//
+// Gezählt wird auf Blockebene, nicht nur je Funktionsaufruf: Eine Funktion,
+// die je Lauf einmal aufgerufen wird, deren Schleifenrumpf aber je
+// Arbeitseinheit läuft, hat bei N und 2N dieselbe Aufrufzahl — ihr
+// Schleifenblock nicht.
 //
 // Warum ein eigener Node-Prozess. V8-Precise-Coverage ist ein Zustand des
 // ganzen Isolates, und `takePreciseCoverage` setzt die Zähler zurück. Unter
@@ -55,16 +60,23 @@ function registerSchemaJsonHook() {
   });
 }
 
-/** Alle Funktionen mit mindestens einem Aufruf: `[url, name, startOffset, count]`. */
-function calledFunctions(coverage) {
-  const calls = [];
+/**
+ * Alle ausgeführten Bereiche: `[url, name, startOffset, endOffset, count]`.
+ * Der erste Bereich einer Funktion trägt ihre Aufrufzahl, jeder weitere die
+ * Ausführungszahl eines Blocks darin, etwa eines Schleifenrumpfs.
+ */
+function executedRanges(coverage) {
+  const ranges = [];
   for (const script of coverage) {
     for (const fn of script.functions) {
-      const [range] = fn.ranges;
-      if (range.count > 0) calls.push([script.url, fn.functionName, range.startOffset, range.count]);
+      for (const range of fn.ranges) {
+        if (range.count > 0) {
+          ranges.push([script.url, fn.functionName, range.startOffset, range.endOffset, range.count]);
+        }
+      }
     }
   }
-  return calls;
+  return ranges;
 }
 
 async function countedRun(session, domain, category, repetitions) {
@@ -96,7 +108,7 @@ async function countedRun(session, domain, category, repetitions) {
   const { result } = await session.post('Profiler.takePreciseCoverage');
 
   if (!outcome.ok) throw new Error(`Auflösung für ${category} gescheitert: ${outcome.diagnostic.code}`);
-  return { workUnits: outcome.output.budgetUsage.workUnits, calls: calledFunctions(result) };
+  return { workUnits: outcome.output.budgetUsage.workUnits, ranges: executedRanges(result) };
 }
 
 async function loadDomain() {
@@ -124,7 +136,7 @@ async function main() {
   session.connect();
   try {
     await session.post('Profiler.enable');
-    await session.post('Profiler.startPreciseCoverage', { callCount: true, detailed: false });
+    await session.post('Profiler.startPreciseCoverage', { callCount: true, detailed: true });
     const categories = [];
     for (const category of domain.categories) {
       categories.push({

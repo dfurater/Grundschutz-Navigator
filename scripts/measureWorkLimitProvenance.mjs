@@ -17,7 +17,7 @@
 // Warum die Hülle aus der Aufrufzählung kommt. `WORK_UNIT_LIMIT` ist eine
 // Aussage über die Zeit PRO ARBEITSEINHEIT: Der Messlauf treibt je Kategorie
 // die Arbeitseinheiten über eine Leiter von Stützpunkten. Maßgeblich ist also
-// der Code, dessen Aufrufzahl mit den Arbeitseinheiten wächst — nicht alles,
+// der Code, dessen Ausführung mit den Arbeitseinheiten wächst — nicht alles,
 // was vom Auflösungspfad aus importierbar ist. Die frühere statische
 // Importhülle erfasste auch die Vorbereitung vor dem Timer und die
 // Abschlusskette, die je Profil genau einmal läuft; eine O(1)-Änderung dort
@@ -49,7 +49,7 @@ const CALL_COUNT_COLLECTOR = resolve(REPO_ROOT, 'scripts', 'measureWorkLimitCall
  * verweigert einen Bericht ohne Kennung oder mit wechselnder Kennung, der
  * Bindungstest verlangt die aktuelle.
  */
-export const WORK_LIMIT_PROVENANCE_METHOD = 'skalierende-aufrufe';
+export const WORK_LIMIT_PROVENANCE_METHOD = 'skalierende-bereiche';
 
 /**
  * Die Funktion, die jede Arbeitseinheit bucht. Zählt die Berechnung sie nicht
@@ -105,66 +105,91 @@ function packageNameOf(specifier) {
   return specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
 }
 
+/** Fail-closed: Jede Kategorie ist gezählt und wächst zwischen N und 2N. */
+function assertCountedGrowth(categories) {
+  const counted = new Set(categories.map((entry) => entry.category));
+  for (const category of WORK_UNIT_CATEGORIES) {
+    if (!counted.has(category)) throw selfProofFailure(`Kategorie ${category} wurde nicht gezählt`);
+  }
+  for (const { category, n, twoN } of categories) {
+    // Ausdrücklich auf endliche Zahlen geprüft: Ein fehlender Wert darf nicht
+    // als „kein Rückgang“ durchgehen.
+    if (!Number.isFinite(n?.workUnits) || !Number.isFinite(twoN?.workUnits) || twoN.workUnits <= n.workUnits) {
+      throw selfProofFailure(
+        `Kategorie ${category} verbraucht bei 2N nicht mehr Arbeitseinheiten als bei N `
+        + `(${n?.workUnits} → ${twoN?.workUnits})`,
+      );
+    }
+  }
+}
+
+/** Die Bereiche, deren Ausführungszahl bei 2N in mindestens einer Kategorie größer ist als bei N. */
+function scalingRanges(categories) {
+  const keyOf = (url, name, start, end) => `${url}\0${name}\0${start}\0${end}`;
+  const scaling = new Map();
+  for (const { n, twoN } of categories) {
+    const before = new Map(n.ranges.map(([url, name, start, end, count]) => [keyOf(url, name, start, end), count]));
+    for (const [url, name, start, end, count] of twoN.ranges) {
+      const key = keyOf(url, name, start, end);
+      if (count > (before.get(key) ?? 0)) scaling.set(key, { url, functionName: name });
+    }
+  }
+  return [...scaling.values()];
+}
+
 /**
- * Bestimmt die Hülle aus der Aufrufzählung von `measureWorkLimitCallCounts.mjs`.
+ * Ordnet die URL eines skalierenden Bereichs ein: Nodes eigene Laufzeit
+ * (`null`), ein externes Paket oder eine Repository-Datei. Jede andere
+ * Herkunft bricht ab.
+ */
+function locateRange(url, functionName) {
+  if (url.startsWith('node:')) return null;
+  if (!url.startsWith('file:')) {
+    throw new Error(`Skalierender Code ohne Datei im Messweg: ${functionName || '(anonym)'} in ${url || '(ohne URL)'}`);
+  }
+  const path = relative(REPO_ROOT, fileURLToPath(url));
+  if (path.startsWith('..') || isAbsolute(path)) {
+    throw new Error(`Skalierender Code außerhalb des Repositoriums: ${url}`);
+  }
+  const nodeModules = path.lastIndexOf('node_modules/');
+  if (nodeModules !== -1) return { packageName: packageNameOf(path.slice(nodeModules + 'node_modules/'.length)) };
+  return { path };
+}
+
+/**
+ * Bestimmt die Hülle aus der Zählung von `measureWorkLimitCallCounts.mjs`.
  *
- * Skalierend ist eine Funktion, deren Aufrufzahl bei 2N in mindestens einer
- * Kategorie größer ist als bei N. Die Hülle besteht aus den Dateien, die
- * mindestens eine skalierende Funktion enthalten. Die Dateiebene genügt: Alle
- * Module, die nur konstant oft laufen, fallen ohnehin heraus, und eine
- * Funktionsebene müsste Funktionsbereiche über Quelltextänderungen hinweg
- * wiedererkennen.
+ * Skalierend ist ein Bereich — eine Funktion oder ein Block darin, etwa ein
+ * Schleifenrumpf —, dessen Ausführungszahl bei 2N in mindestens einer
+ * Kategorie größer ist als bei N. Die Blockebene erfasst auch eine Funktion,
+ * die je Lauf einmal aufgerufen wird, deren Schleife aber je Arbeitseinheit
+ * läuft. Die Hülle besteht aus den Dateien mit mindestens einem skalierenden
+ * Bereich. Die Dateiebene genügt: Alle Module, die nur konstant oft laufen,
+ * fallen ohnehin heraus, und eine feinere Ebene müsste Bereiche über
+ * Quelltextänderungen hinweg wiedererkennen.
  *
  * Fail-closed vor jeder Verwendung: Jede Kategorie muss gezählt sein und bei
  * 2N mehr Arbeitseinheiten verbrauchen als bei N, und `spendWork` muss als
  * skalierend erkannt sein. Sonst zählt die Berechnung am gemessenen Lauf
  * vorbei, und eine leere oder zu kleine Hülle bliebe unbemerkt.
  *
- * Skalierende Funktionen aus Nodes eigener Laufzeit (`node:`) gehen nicht ein:
- * Die Node-Version gehört wie bisher zu keinem der beiden Fingerprints. Jede
- * andere Herkunft, die keine Datei im Repository ist, bricht ab.
+ * Skalierender Code aus Nodes eigener Laufzeit (`node:`) geht nicht ein: Die
+ * Node-Version gehört zu keinem der beiden Fingerprints. Jede andere Herkunft,
+ * die keine Datei im Repository ist, bricht ab.
  */
 export function deriveScalingHull(observation) {
   const categories = Array.isArray(observation?.categories) ? observation.categories : [];
-  const counted = new Set(categories.map((entry) => entry.category));
-  for (const category of WORK_UNIT_CATEGORIES) {
-    if (!counted.has(category)) throw selfProofFailure(`Kategorie ${category} wurde nicht gezählt`);
-  }
-
-  const scaling = new Map();
-  for (const { category, n, twoN } of categories) {
-    if (!(twoN.workUnits > n.workUnits)) {
-      throw selfProofFailure(
-        `Kategorie ${category} verbraucht bei 2N nicht mehr Arbeitseinheiten als bei N `
-        + `(${n.workUnits} → ${twoN.workUnits})`,
-      );
-    }
-    const before = new Map(n.calls.map(([url, name, offset, count]) => [`${url}\0${name}\0${offset}`, count]));
-    for (const [url, name, offset, count] of twoN.calls) {
-      const key = `${url}\0${name}\0${offset}`;
-      if (count > (before.get(key) ?? 0)) scaling.set(key, { url, functionName: name });
-    }
-  }
+  assertCountedGrowth(categories);
 
   const paths = new Set();
   const packages = new Set();
   let spendWorkScales = false;
-  for (const { url, functionName } of scaling.values()) {
-    if (url.startsWith('node:')) continue;
-    if (!url.startsWith('file:')) {
-      throw new Error(`Skalierende Funktion ohne Datei im Messweg: ${functionName || '(anonym)'} in ${url || '(ohne URL)'}`);
-    }
-    const path = relative(REPO_ROOT, fileURLToPath(url));
-    if (path.startsWith('..') || isAbsolute(path)) {
-      throw new Error(`Skalierende Funktion außerhalb des Repositoriums: ${url}`);
-    }
-    const nodeModules = path.lastIndexOf('node_modules/');
-    if (nodeModules !== -1) {
-      packages.add(packageNameOf(path.slice(nodeModules + 'node_modules/'.length)));
-      continue;
-    }
-    if (path === SPEND_WORK.path && functionName === SPEND_WORK.functionName) spendWorkScales = true;
-    if (!PROVENANCE_EXCLUDED_PATHS.includes(path)) paths.add(path);
+  for (const { url, functionName } of scalingRanges(categories)) {
+    const location = locateRange(url, functionName);
+    if (location?.packageName !== undefined) packages.add(location.packageName);
+    if (location?.path === undefined) continue;
+    if (location.path === SPEND_WORK.path && functionName === SPEND_WORK.functionName) spendWorkScales = true;
+    if (!PROVENANCE_EXCLUDED_PATHS.includes(location.path)) paths.add(location.path);
   }
   if (!spendWorkScales) {
     throw selfProofFailure(`${SPEND_WORK.functionName} aus ${SPEND_WORK.path} ist nicht als skalierend erkannt`);
@@ -226,8 +251,8 @@ export function fingerprintHull(
 }
 
 /**
- * Die aufgelösten Versionen der externen Pakete, in denen skalierende
- * Funktionen liegen, transitiv über das Lockfile.
+ * Die aufgelösten Versionen der externen Pakete, in denen skalierender Code
+ * liegt, transitiv über das Lockfile.
  *
  * Dateien allein decken einen skalierenden Lauf nicht ab, sobald er
  * Bibliothekscode je Arbeitseinheit ausführt: Würde die Bibliothek langsamer,
@@ -284,8 +309,8 @@ function collectCallCounts() {
 }
 
 /**
- * Fingerprint des Messwegs. Gleiche Zahl bedeutet: Der Code, dessen Aufrufe
- * mit den Arbeitseinheiten wachsen, ist unverändert — die Messung gilt noch.
+ * Fingerprint des Messwegs. Gleiche Zahl bedeutet: Der Code, dessen Ausführung
+ * mit den Arbeitseinheiten wächst, ist unverändert — die Messung gilt noch.
  */
 export function workLimitProvenance() {
   const { paths, packages } = deriveScalingHull(collectCallCounts());

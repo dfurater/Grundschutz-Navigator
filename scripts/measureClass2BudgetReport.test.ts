@@ -608,7 +608,7 @@ it('refuses a passing report for missing or changed source fingerprints', () => 
 
 it('refuses a work-limit report without a matching path provenance and method', () => {
   const report = { generatedAt: 'test', browserVersion: 'test', runs: [{ profileResolution: [{}] }] };
-  const provenance = { method: 'skalierende-aufrufe', sha256: 'd'.repeat(64) };
+  const provenance = { method: 'skalierende-bereiche', sha256: 'd'.repeat(64) };
   const render = (before: unknown, after: unknown) => renderRawReport({
     ...report,
     sourceBefore: { ...source, workLimitProvenance: before },
