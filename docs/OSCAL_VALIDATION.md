@@ -848,15 +848,12 @@ und fallen heraus. Ein Test hält beide Abschnitte aneinander fest.
 
 **Übertragene Bindung.** Das Artefakt führt unter
 `workLimitProvenanceRestamps` die Nachweisschritte, mit denen sein Fingerprint
-ohne Browserlauf an das jeweils geltende Verfahren gebunden ist. Jeder Eintrag
-nennt Basiscommit, Verfahren und Hash vorher und nachher sowie seine Nachweise.
-Er ist kein Messergebnis und belegt nichts über die Kosten. Der Eintrag zum
-Verfahren `skalierende-bereiche` weist aus: Am Basiscommit ergibt der
-Fingerprint des vorherigen Verfahrens den Wert der Messung, keine Hüllendatei
-ist gegenüber dem Basiscommit verändert, und die Hülle ist eine Teilmenge der
-vorherigen. `renderReport` verweigert einen Bericht, dessen Provenienz vor und
-nach der Messung kein oder ein unterschiedliches Verfahren nennt, und der
-Bindungstest verlangt Verfahren und Hash des aktuellen Stands.
+ohne Browserlauf an das geltende Verfahren gebunden ist; jeder Eintrag nennt
+Basiscommit, Verfahren und Hash vorher und nachher sowie seine Nachweise. Die
+Einträge sind keine Messergebnisse und belegen nichts über die Kosten.
+`renderReport` verweigert einen Bericht, dessen Provenienz vor und nach der
+Messung kein oder ein unterschiedliches Verfahren nennt, und der Bindungstest
+verlangt Verfahren und Hash des aktuellen Stands.
 
 Die **Auswertung** (`measureClass2BudgetReport.mjs`) steht nicht in der Hülle
 der Messwegprovenienz: Sie läuft im Browser nie mit und erzeugt keine
