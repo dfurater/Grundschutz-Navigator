@@ -274,11 +274,6 @@ describe('Zählabschnitt der Aufrufzählung', () => {
     )).toBe('const outcome = await domain.resolveProfile({ plan, edgesByArtifactKey, profileViews });');
   });
 
-  it('zählt auf Blockebene, damit Schleifen in einmal aufgerufenen Funktionen sichtbar sind', () => {
-    const collector = readFileSync(resolve(REPO_ROOT, 'scripts/measureWorkLimitCallCounts.mjs'), 'utf8');
-    expect(collector).toContain("'Profiler.startPreciseCoverage', { callCount: true, detailed: true }");
-    expect(collector).toContain('for (const range of fn.ranges)');
-  });
 });
 
 describe('byCodeUnit', () => {

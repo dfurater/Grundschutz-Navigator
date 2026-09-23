@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // =============================================================================
 // Aufrufzählung des gemessenen Auflösungslaufs (GSPP-445).
 //
@@ -50,14 +49,10 @@ const BASE_REPETITIONS = 4;
  * Node verlangt `with { type: 'json' }`. Der Hook reicht das Attribut nach,
  * und zwar nur für JSON-Dateien unter `schemas/oscal/`.
  */
-function registerSchemaJsonHook() {
-  registerHooks({
-    resolve(specifier, context, nextResolve) {
-      const resolved = nextResolve(specifier, context);
-      if (!resolved.url.startsWith(SCHEMA_ROOT) || !resolved.url.endsWith('.json')) return resolved;
-      return { ...resolved, importAttributes: { ...context.importAttributes, type: 'json' } };
-    },
-  });
+export function resolveSchemaJson(specifier, context, nextResolve) {
+  const resolved = nextResolve(specifier, context);
+  if (!resolved.url.startsWith(SCHEMA_ROOT) || !resolved.url.endsWith('.json')) return resolved;
+  return { ...resolved, importAttributes: { ...context.importAttributes, type: 'json' } };
 }
 
 /**
@@ -65,7 +60,7 @@ function registerSchemaJsonHook() {
  * Der erste Bereich einer Funktion trägt ihre Aufrufzahl, jeder weitere die
  * Ausführungszahl eines Blocks darin, etwa eines Schleifenrumpfs.
  */
-function executedRanges(coverage) {
+export function executedRanges(coverage) {
   const ranges = [];
   for (const script of coverage) {
     for (const fn of script.functions) {
@@ -79,7 +74,7 @@ function executedRanges(coverage) {
   return ranges;
 }
 
-async function countedRun(session, domain, category, repetitions) {
+export async function countedRun(session, domain, category, repetitions) {
   const fixture = domain.buildWorkUnitCalibration(category, repetitions);
   if (fixture.capped === true) {
     throw new Error(`Kalibrierfixture ${category} mit ${repetitions} Wiederholungen liegt jenseits der Dokumentgrenze`);
@@ -113,7 +108,7 @@ async function countedRun(session, domain, category, repetitions) {
 
 async function loadDomain() {
   registerAliasHook();
-  registerSchemaJsonHook();
+  registerHooks({ resolve: resolveSchemaJson });
   const source = (path) => pathToFileURL(resolve(REPO_ROOT, path)).href;
   const [fixtures, importGraph, engine, profileDocument] = await Promise.all([
     import(source('scripts/profileResolutionWorstCaseFixtures.mjs')),
@@ -130,13 +125,18 @@ async function loadDomain() {
   };
 }
 
+/** Startet die Zählung auf Blockebene; ohne `detailed` gäbe V8 nur Aufrufzahlen. */
+export async function startBlockCounting(session) {
+  await session.post('Profiler.enable');
+  await session.post('Profiler.startPreciseCoverage', { callCount: true, detailed: true });
+}
+
 async function main() {
   const domain = await loadDomain();
   const session = new Session();
   session.connect();
   try {
-    await session.post('Profiler.enable');
-    await session.post('Profiler.startPreciseCoverage', { callCount: true, detailed: true });
+    await startBlockCounting(session);
     const categories = [];
     for (const category of domain.categories) {
       categories.push({
@@ -154,4 +154,7 @@ async function main() {
   }
 }
 
-await main();
+// Nur als Skript zählen; beim Import aus dem Test bleibt das Modul still.
+if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  await main();
+}
