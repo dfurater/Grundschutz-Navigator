@@ -12,10 +12,14 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import {
   PROVENANCE_EXCLUDED_PATHS,
   SPEND_WORK,
+  WORK_LIMIT_FIXTURE,
   WORK_LIMIT_PROVENANCE_METHOD,
   byCodeUnit,
+  combineProvenance,
   deriveScalingHull,
+  fingerprintFixture,
   fingerprintHull,
+  fixtureInputs,
   normalizeSource,
   workLimitProvenance,
 } from './measureWorkLimitProvenance.mjs';
@@ -249,6 +253,67 @@ describe('fingerprintHull', () => {
   });
 });
 
+describe('fingerprintFixture', () => {
+  // Die Fixture baut die gemessenen Eingaben vor dem gezählten Abschnitt; die
+  // Aufrufzählung sieht sie deshalb nicht. Ohne eigene Bindung belegten alte
+  // Zeitreihen den Grenzwert weiter für Eingaben, die es nicht mehr gibt.
+  const original = readFileSync(resolve(REPO_ROOT, WORK_LIMIT_FIXTURE.path), 'utf8');
+  const inputs = fixtureInputs();
+  const fingerprint = (source: string, observed: unknown = inputs) => fingerprintFixture(source, observed);
+
+  it('verschiebt sich, wenn die Fixture andere Eingaben baut', () => {
+    const variant = original.replace('const SOURCE_CONTROL_COUNT = 2000;', 'const SOURCE_CONTROL_COUNT = 3000;');
+    expect(variant).not.toBe(original);
+    expect(fingerprint(variant)).not.toBe(fingerprint(original));
+  });
+
+  it('bleibt bei einer reinen Kommentar- oder Formatierungsänderung stehen', () => {
+    const variant = `/* neuer Dateikopf */\n${original}`
+      .replace('/** Zahl der Controls im Quellkatalog.', '/** Umformulierter Kommentar.')
+      .replace('const SOURCE_CONTROL_COUNT = 2000;', 'const SOURCE_CONTROL_COUNT   =\n  2000;\n\n');
+    expect(variant).not.toBe(original);
+    expect(fingerprint(variant)).toBe(fingerprint(original));
+  });
+
+  it('verschiebt sich mit den beobachteten Eingaben aus den Importen', () => {
+    // Die Registry liefert die OSCAL-Version der Dokumente, die Dokumentgrenzen
+    // den Wiederholungsdeckel. Beide stehen nicht im Quelltext der Fixture.
+    const otherVersion = JSON.parse(JSON.stringify(inputs).replaceAll('"oscal-version":"', '"oscal-version":"9.'));
+    const otherCap = inputs.map((entry: { maxRepetitions: number }) => ({ ...entry, maxRepetitions: entry.maxRepetitions + 1 }));
+    expect(fingerprint(original, otherVersion)).not.toBe(fingerprint(original));
+    expect(fingerprint(original, otherCap)).not.toBe(fingerprint(original));
+  });
+
+  it('beobachtet Version und Deckel an den echten Importen', () => {
+    for (const entry of inputs) {
+      expect(entry.maxRepetitions).toBeGreaterThan(1);
+      for (const document of Object.values(entry.documents) as Record<string, { metadata: { 'oscal-version': string } }>[]) {
+        expect(Object.values(document)[0].metadata['oscal-version']).toMatch(/^\d+\.\d+\.\d+$/);
+      }
+    }
+    expect(inputs.map((entry: { category: string }) => entry.category)).toEqual([...WORK_UNIT_CATEGORIES]);
+  });
+
+  it('bricht ab, wenn die Fixture einen ungeprüften Import bekommt', () => {
+    const variant = `import { X } from '../src/domain/neu.mjs';\n${original}`;
+    expect(() => fingerprint(variant))
+      .toThrow(/Selbstnachweis der Messwegprovenienz gescheitert: .*importiert .*neu\.mjs/);
+    const without = original.replace(/^import \{ SOURCE_REGISTRY \}.*$/m, '');
+    expect(without).not.toBe(original);
+    expect(() => fingerprint(without)).toThrow(/nicht geprüft/);
+  });
+});
+
+describe('combineProvenance', () => {
+  it('hängt an Hülle und Fixture', () => {
+    const hull = 'a'.repeat(64);
+    const fixture = 'b'.repeat(64);
+    expect(combineProvenance(hull, fixture)).toMatch(/^[a-f0-9]{64}$/);
+    expect(combineProvenance(hull, fixture)).not.toBe(combineProvenance(hull, 'c'.repeat(64)));
+    expect(combineProvenance(hull, fixture)).not.toBe(combineProvenance('c'.repeat(64), fixture));
+  });
+});
+
 describe('Zählabschnitt der Aufrufzählung', () => {
   it('ist genau der Abschnitt, den der Messharnisch zeitlich misst', () => {
     // Die Aufrufzählung spiegelt `runResolutionFixture` des Browserharnisches.
@@ -330,6 +395,12 @@ describe('workLimitProvenance', () => {
     expect(second).toEqual(first);
     expect(first.method).toBe(WORK_LIMIT_PROVENANCE_METHOD);
     expect(first.files).toBe(first.paths.length);
+  });
+
+  it('bindet Hülle und Fixture in einem Wert', () => {
+    expect(first.fixture.path).toBe(WORK_LIMIT_FIXTURE.path);
+    expect(first.sha256).toBe(combineProvenance(first.hullSha256, first.fixture.sha256));
+    expect(first.paths).not.toContain(WORK_LIMIT_FIXTURE.path);
   });
 
   it('enthält den Code, der je Arbeitseinheit läuft', () => {

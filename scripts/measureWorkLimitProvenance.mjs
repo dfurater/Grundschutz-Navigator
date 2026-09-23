@@ -29,6 +29,12 @@
 // Die Hülle wird deshalb bei jeder Berechnung am echten Lauf gezählt
 // (`measureWorkLimitCallCounts.mjs`), und ein Selbstnachweis verlangt, dass
 // die Zählung sieht, was sie sehen muss.
+//
+// Warum die Worst-Case-Fixture zusätzlich gebunden ist. Die Zählung sieht nur,
+// was während `resolveProfile` läuft; die Eingaben entstehen davor. Ändert
+// sich die Fixture — mehr Controls im Quellkatalog, eine andere Musterform —,
+// misst derselbe Code etwas anderes, und die alten Zeitreihen belegten den
+// Grenzwert für Eingaben, die es nicht mehr gibt.
 // =============================================================================
 
 import { createHash } from 'node:crypto';
@@ -37,15 +43,20 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { WORK_UNIT_CATEGORIES } from './profileResolutionWorstCaseFixtures.mjs';
+import {
+  WORK_UNIT_CATEGORIES,
+  buildWorkUnitCalibration,
+  maxRepetitions,
+} from './profileResolutionWorstCaseFixtures.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CALL_COUNT_COLLECTOR = resolve(REPO_ROOT, 'scripts', 'measureWorkLimitCallCounts.mjs');
 
 /**
- * Kennung des Verfahrens, nach dem die Hülle bestimmt ist. Sie steht im
- * Messartefakt neben dem Hash: Ein Hash nach der früheren Importhülle ist mit
- * einem Hash nach der Aufrufzählung nicht vergleichbar. Die Auswertung
+ * Kennung des Verfahrens, nach dem der Fingerprint gebildet ist — Hülle aus der
+ * Aufrufzählung plus gebundene Fixture. Sie steht im Messartefakt neben dem
+ * Hash: Ein Hash nach der früheren Importhülle ist mit einem Hash nach diesem
+ * Verfahren nicht vergleichbar. Die Auswertung
  * verweigert einen Bericht ohne Kennung oder mit wechselnder Kennung, der
  * Bindungstest verlangt die aktuelle.
  */
@@ -233,6 +244,66 @@ export function normalizeSource(path, source) {
 }
 
 /**
+ * Die Datei, die die gemessenen Eingaben baut, und die Module, aus denen sie
+ * Werte übernimmt.
+ *
+ * Die importierten Module gehen nicht als Dateien in den Fingerprint:
+ * `sourceRegistry.mjs` ändert sich mit jedem neuen BSI-Artefakt und zieht
+ * `oscalVersionMatrix.mjs` nach sich, beides ohne Einfluss auf die gemessenen
+ * Eingaben. Gebunden ist stattdessen ihre Wirkung auf die Fixture — die
+ * gebauten Dokumente (darin die OSCAL-Version aus der Registry) und die
+ * Wiederholungsdeckel je Kategorie (aus den Dokumentgrenzen), siehe
+ * `fixtureInputs`. Diese Beobachtung ist nur für die hier benannten Importe
+ * begründet; ein weiterer Import bricht ab, bis jemand die Bindung für ihn
+ * geprüft hat.
+ */
+export const WORK_LIMIT_FIXTURE = Object.freeze({
+  path: 'scripts/profileResolutionWorstCaseFixtures.mjs',
+  imports: Object.freeze([
+    '../src/domain/class2ImportLimits.mjs',
+    '../src/domain/sourceRegistry.mjs',
+  ]),
+});
+
+/**
+ * Was die Fixture aus ihren Importen macht: je Kategorie der
+ * Wiederholungsdeckel und die Dokumente eines Kalibrierfalls mit einer
+ * Wiederholung. Die übrige Semantik der Fixture steht in ihrem Quelltext und
+ * ist über ihn gebunden.
+ */
+export function fixtureInputs() {
+  return WORK_UNIT_CATEGORIES.map((category) => {
+    const { documents, edges, topProfileArtifactKey } = buildWorkUnitCalibration(category, 1);
+    return { category, maxRepetitions: maxRepetitions(category), documents, edges, topProfileArtifactKey };
+  });
+}
+
+/**
+ * SHA-256 über normalisierten Quelltext und beobachtete Eingaben der Fixture.
+ *
+ * Fail-closed: Weicht die Importliste der Fixture von `WORK_LIMIT_FIXTURE.imports`
+ * ab, bricht die Berechnung ab — ein neuer Import könnte die Eingaben auf einem
+ * Weg ändern, den `fixtureInputs` nicht beobachtet.
+ */
+export function fingerprintFixture(source, inputs) {
+  const imports = loadTypeScript().preProcessFile(source, true, true).importedFiles
+    .map((entry) => entry.fileName)
+    .sort(byCodeUnit);
+  const expected = [...WORK_LIMIT_FIXTURE.imports].sort(byCodeUnit);
+  if (imports.length !== expected.length || imports.some((entry, index) => entry !== expected[index])) {
+    throw selfProofFailure(
+      `${WORK_LIMIT_FIXTURE.path} importiert ${imports.join(', ') || 'nichts'} statt ${expected.join(', ')}; `
+      + 'die Bindung der Fixture ist für diese Importe nicht geprüft',
+    );
+  }
+  return createHash('sha256')
+    .update(WORK_LIMIT_FIXTURE.path).update('\0')
+    .update(normalizeSource(WORK_LIMIT_FIXTURE.path, source)).update('\0')
+    .update(JSON.stringify(inputs))
+    .digest('hex');
+}
+
+/**
  * SHA-256 über Pfad und normalisierten Inhalt jeder Hüllendatei, danach über
  * die Laufzeitversionen. Die Pfade werden hier noch einmal sortiert, damit der
  * Hash nie an der Reihenfolge des Aufrufers hängt.
@@ -309,17 +380,33 @@ function collectCallCounts() {
 }
 
 /**
+ * Der Gesamtfingerprint aus Hülle und Fixture. Beide Teile stehen einzeln im
+ * Artefakt, geprüft wird dieser eine Wert.
+ */
+export function combineProvenance(hullSha256, fixtureSha256) {
+  return createHash('sha256').update(hullSha256).update('\0').update(fixtureSha256).digest('hex');
+}
+
+/**
  * Fingerprint des Messwegs. Gleiche Zahl bedeutet: Der Code, dessen Ausführung
- * mit den Arbeitseinheiten wächst, ist unverändert — die Messung gilt noch.
+ * mit den Arbeitseinheiten wächst, und die Eingaben, an denen er gemessen
+ * wurde, sind unverändert — die Messung gilt noch.
  */
 export function workLimitProvenance() {
   const { paths, packages } = deriveScalingHull(collectCallCounts());
   const runtime = resolvePackageVersions(packages);
+  const hull = fingerprintHull(paths, runtime);
+  const fixture = fingerprintFixture(
+    readFileSync(resolve(REPO_ROOT, WORK_LIMIT_FIXTURE.path), 'utf8'),
+    fixtureInputs(),
+  );
   return {
     method: WORK_LIMIT_PROVENANCE_METHOD,
-    sha256: fingerprintHull(paths, runtime),
+    sha256: combineProvenance(hull, fixture),
     files: paths.length,
     paths,
     runtime,
+    hullSha256: hull,
+    fixture: { path: WORK_LIMIT_FIXTURE.path, sha256: fixture },
   };
 }

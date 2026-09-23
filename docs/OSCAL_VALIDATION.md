@@ -790,8 +790,8 @@ dem sie erhoben wurde.
   gemessen". Er bleibt **Protokoll**: Als Gate erzwänge jede Änderung an einer
   beliebigen UI-Komponente einen Browsermesslauf.
 - Die **Messwegprovenienz** (`sourceBefore.workLimitProvenance`) deckt genau
-  den Code ab, dessen Kosten mit den Arbeitseinheiten wachsen. Sie ist die
-  **Testbedingung**
+  den Code ab, dessen Kosten mit den Arbeitseinheiten wachsen, und die
+  Eingaben, an denen er gemessen wurde. Sie ist die **Testbedingung**
   ([`measureWorkLimitProvenance.mjs`](../scripts/measureWorkLimitProvenance.mjs)).
 
 **Die Hülle kommt aus einer Ausführungszählung** (Verfahren
@@ -824,6 +824,21 @@ und fallen heraus. Ein Test hält beide Abschnitte aneinander fest.
   aus dem Syntaxbaum neu gedruckt: Kommentare, Formatierung und Typannotationen
   verschieben den Hash nicht, jede Änderung am ausgeführten Code schon. Die
   Pfade sind wie beim breiten Fingerprint mit `byCodeUnit` sortiert.
+- **Die Worst-Case-Fixture ist mitgebunden.** Die Zählung sieht nur, was
+  während `resolveProfile` läuft; die Eingaben baut
+  [`profileResolutionWorstCaseFixtures.mjs`](../scripts/profileResolutionWorstCaseFixtures.mjs)
+  davor. Ohne eigene Bindung belegten die alten Zeitreihen den Grenzwert auch
+  nach einer Änderung der Fixture, etwa mehr Controls im Quellkatalog. Ein
+  eigener Fingerprint (`fixture.sha256`) umfasst deshalb ihren wie oben
+  normalisierten Quelltext und ihre beobachteten Eingaben aus den importierten
+  Modulen: je Kategorie den Wiederholungsdeckel, den die Dokumentgrenzen aus
+  `class2ImportLimits.mjs` setzen, und die Dokumente eines Kalibrierfalls mit
+  der OSCAL-Version aus `sourceRegistry.mjs`. Die beiden Module gehen nicht als
+  Dateien ein: Die Registry ändert sich mit jedem neuen BSI-Artefakt, ohne die
+  gemessenen Eingaben zu berühren. Die Beobachtung ist nur für diese beiden
+  Importe begründet; bekommt die Fixture einen weiteren, bricht die Berechnung
+  ab. Im Artefakt stehen `hullSha256` und `fixture.sha256` einzeln, geprüft
+  wird der daraus kombinierte `sha256`.
 - **Eigener Node-Prozess.** Precise-Coverage ist ein Zustand des ganzen
   Isolates, und jede Abfrage setzt die Zähler zurück. Unter
   `npm run test:coverage` misst Vitest seine Abdeckung über denselben
