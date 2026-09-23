@@ -5,6 +5,12 @@ vi.mock('vite', () => ({ createServer: mocked.createServer }));
 vi.mock('playwright', () => ({ chromium: { launch: mocked.launch } }));
 vi.mock('node:child_process', async (original) => ({ ...await original<typeof import('node:child_process')>(), execFileSync: (_cmd: string, args: string[]) => args[0] === 'ls-files' ? 'src/fake.ts\0' : 'a'.repeat(40) }));
 vi.mock('node:fs', async (original) => ({ ...await original<typeof import('node:fs')>(), readFileSync: () => 'source', writeFileSync: vi.fn() }));
+// Die Messwegprovenienz zählt in einem eigenen Node-Prozess; ihr Verhalten ist in
+// `measureWorkLimitProvenance.test.ts` geprüft. Hier geht es um die Orchestrierung.
+vi.mock('./measureWorkLimitProvenance.mjs', async (original) => ({
+  ...await original<typeof import('./measureWorkLimitProvenance.mjs')>(),
+  workLimitProvenance: () => ({ method: 'skalierende-aufrufe', sha256: 'c'.repeat(64), files: 1, paths: ['src/fake.ts'], runtime: [] }),
+}));
 vi.mock('./measureClass2Timing.mjs', async (original) => ({ ...await original<typeof import('./measureClass2Timing.mjs')>(), buildTimingInput: mocked.build }));
 vi.mock('./measureClass2BudgetReport.mjs', async (original) => ({
   ...await original<typeof import('./measureClass2BudgetReport.mjs')>(),

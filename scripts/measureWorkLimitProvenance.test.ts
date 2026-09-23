@@ -1,168 +1,249 @@
 // =============================================================================
-// Die Provenienz der Arbeitsgrenze (GSPP-345). Der Fingerprint entscheidet, ob
-// ein committetes Messartefakt den gelieferten Grenzwert noch trägt — eine zu
-// enge Hülle macht diese Prüfung still wertlos.
+// Die Provenienz der Arbeitsgrenze (GSPP-345, Hülle seit GSPP-445). Der
+// Fingerprint entscheidet, ob ein committetes Messartefakt den gelieferten
+// Grenzwert noch trägt — eine zu enge Hülle macht diese Prüfung still wertlos,
+// eine zu weite erzwingt Browsermessläufe, die nichts belegen.
 // =============================================================================
 
-import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { beforeAll, describe, expect, it } from 'vitest';
 import {
-  WORK_LIMIT_ENTRY_POINTS,
   PROVENANCE_EXCLUDED_PATHS,
+  SPEND_WORK,
+  WORK_LIMIT_PROVENANCE_METHOD,
   byCodeUnit,
-  collectWorkLimitSources,
-  runtimeImportSpecifiers,
+  deriveScalingHull,
+  fingerprintHull,
+  normalizeSource,
   workLimitProvenance,
 } from './measureWorkLimitProvenance.mjs';
+import { WORK_UNIT_CATEGORIES } from './profileResolutionWorstCaseFixtures.mjs';
 
-describe('collectWorkLimitSources', () => {
-  const { paths: sources, packages } = collectWorkLimitSources();
+const REPO_ROOT = resolve(import.meta.dirname, '..');
+const fileUrl = (path: string) => pathToFileURL(resolve(REPO_ROOT, path)).href;
 
-  it('erfasst den gesamten Auflösungspfad, nicht nur die Einstiegspunkte', () => {
-    // Die Hülle wird aus den ECHTEN Importen berechnet. Diese Module tauchen in
-    // keinem Einstiegspunkt namentlich auf und sind trotzdem der Code, dessen
-    // Kosten gemessen werden — genau deshalb reicht eine handgeschriebene
-    // Liste nicht.
-    for (const path of [
-      'src/domain/profileResolutionMerge.ts',
-      'src/domain/profileResolutionModify.ts',
-      'src/domain/oscalObjectGraph.ts',
-      'src/domain/class2ImportLimits.mjs',
-    ]) {
-      expect(sources).toContain(path);
-    }
+type Call = [string, string, number, number];
+type Run = { workUnits: number; calls: Call[] };
+
+const BUDGET = fileUrl(SPEND_WORK.path);
+const ENGINE = fileUrl('src/domain/profileResolutionEngine.ts');
+
+/**
+ * Eine Zählung, wie sie `measureWorkLimitCallCounts.mjs` liefert: `spendWork`
+ * wächst mit den Wiederholungen, `resolveProfile` läuft je Lauf einmal.
+ */
+function observation(
+  adjust: (category: string, runs: { n: Run; twoN: Run }) => void = () => {},
+) {
+  return {
+    repetitions: { n: 4, twoN: 8 },
+    categories: WORK_UNIT_CATEGORIES.map((category: string) => {
+      const runs = {
+        n: { workUnits: 40, calls: [[BUDGET, 'spendWork', 100, 40], [ENGINE, 'resolveProfile', 0, 1]] as Call[] },
+        twoN: { workUnits: 80, calls: [[BUDGET, 'spendWork', 100, 80], [ENGINE, 'resolveProfile', 0, 1]] as Call[] },
+      };
+      adjust(category, runs);
+      return { category, ...runs };
+    }),
+  };
+}
+
+describe('deriveScalingHull', () => {
+  it('nimmt nur Dateien mit wachsender Aufrufzahl auf', () => {
+    // `resolveProfile` läuft bei N und 2N je einmal — genau der Code mit
+    // konstanter Aufrufzahl, den die frühere Importhülle mitfingerprintete.
+    expect(deriveScalingHull(observation())).toEqual({ paths: [SPEND_WORK.path], packages: [] });
   });
 
-  it('enthält jeden Einstiegspunkt selbst', () => {
-    for (const entry of WORK_LIMIT_ENTRY_POINTS) expect(sources).toContain(entry);
+  it('lässt eine Funktion zählen, die nur in einer Kategorie wächst', () => {
+    const merge = fileUrl('src/domain/profileResolutionMerge.ts');
+    const hull = deriveScalingHull(observation((category, { n, twoN }) => {
+      n.calls.push([merge, 'mergeStep', 7, 3]);
+      twoN.calls.push([merge, 'mergeStep', 7, category === 'merge-step' ? 6 : 3]);
+    }));
+    expect(hull.paths).toEqual([SPEND_WORK.path, 'src/domain/profileResolutionMerge.ts']);
+  });
+
+  it('wertet eine Funktion, die erst bei 2N läuft, als skalierend', () => {
+    const modify = fileUrl('src/domain/profileResolutionModify.ts');
+    const hull = deriveScalingHull(observation((category, { twoN }) => {
+      if (category === 'alter-candidate') twoN.calls.push([modify, 'alterCandidate', 9, 1]);
+    }));
+    expect(hull.paths).toContain('src/domain/profileResolutionModify.ts');
+  });
+
+  it('wertet eine Funktion, die bei 2N seltener läuft, nicht als skalierend', () => {
+    // Eine einmalige Initialisierung im ersten Lauf (etwa ein Schemacache)
+    // lässt die Zahl bei 2N fallen, nicht steigen.
+    const schema = fileUrl('src/domain/oscalSchemaValidation.ts');
+    const hull = deriveScalingHull(observation((category, { n }) => {
+      if (category === WORK_UNIT_CATEGORIES[0]) n.calls.push([schema, 'compile', 3, 1]);
+    }));
+    expect(hull.paths).not.toContain('src/domain/oscalSchemaValidation.ts');
+  });
+
+  it('unterscheidet gleichnamige Funktionen an ihrer Position', () => {
+    const selection = fileUrl('src/domain/profileResolutionSelection.ts');
+    const hull = deriveScalingHull(observation((_category, { n, twoN }) => {
+      n.calls.push([selection, '', 10, 5], [selection, '', 50, 1]);
+      twoN.calls.push([selection, '', 10, 5], [selection, '', 50, 2]);
+    }));
+    expect(hull.paths).toContain('src/domain/profileResolutionSelection.ts');
+  });
+
+  it('ordnet Bibliothekscode seinem Paket zu, nicht als Repository-Datei', () => {
+    const hull = deriveScalingHull(observation((_category, { n, twoN }) => {
+      n.calls.push([fileUrl('node_modules/ajv/dist/compile/index.js'), 'validate', 0, 1]);
+      twoN.calls.push([fileUrl('node_modules/ajv/dist/compile/index.js'), 'validate', 0, 2]);
+      n.calls.push([fileUrl('node_modules/@scope/paket/lib/x.js'), 'f', 0, 1]);
+      twoN.calls.push([fileUrl('node_modules/@scope/paket/lib/x.js'), 'f', 0, 2]);
+    }));
+    expect(hull).toEqual({ paths: [SPEND_WORK.path], packages: ['@scope/paket', 'ajv'] });
+  });
+
+  it('übergeht Nodes eigene Laufzeit', () => {
+    const hull = deriveScalingHull(observation((_category, { twoN }) => {
+      twoN.calls.push(['node:internal/util', 'getLazy', 0, 9]);
+    }));
+    expect(hull.paths).toEqual([SPEND_WORK.path]);
+  });
+
+  it('bricht bei skalierendem Code ohne Datei oder außerhalb des Repositoriums ab', () => {
+    for (const url of ['', 'evalmachine.<anonymous>']) {
+      expect(() => deriveScalingHull(observation((_category, { twoN }) => {
+        twoN.calls.push([url, 'f', 0, 1]);
+      }))).toThrow(/Skalierende Funktion ohne Datei im Messweg/);
+    }
+    expect(() => deriveScalingHull(observation((_category, { twoN }) => {
+      twoN.calls.push([pathToFileURL(resolve(REPO_ROOT, '..', 'fremd.mjs')).href, 'f', 0, 1]);
+    }))).toThrow(/außerhalb des Repositoriums/);
   });
 
   it('lässt den Grenzwertkandidaten aus', () => {
     // Diese Datei MUSS zwischen Mess- und Lieferstand verschieden sein. Läge
     // sie in der Hülle, könnte kein Artefakt je zum gelieferten Stand passen.
-    for (const path of PROVENANCE_EXCLUDED_PATHS) expect(sources).not.toContain(path);
+    const hull = deriveScalingHull(observation((_category, { twoN }) => {
+      for (const path of PROVENANCE_EXCLUDED_PATHS) twoN.calls.push([fileUrl(path), 'f', 0, 1]);
+    }));
+    for (const path of PROVENANCE_EXCLUDED_PATHS) expect(hull.paths).not.toContain(path);
   });
 
-  it('trennt externe Pakete von Repository-Dateien', () => {
-    for (const path of sources) expect(path.startsWith('node_modules/')).toBe(false);
-    // Der gemessene Lauf führt vor dem Ergebnis die Schemaprüfung aus. Würde
-    // diese Bibliothek langsamer, müsste das Gate das sehen.
-    expect(packages).toContain('ajv');
+  it('sortiert die Hülle über Code-Units', () => {
+    const upper = fileUrl('src/domain/Zeta.ts');
+    const hull = deriveScalingHull(observation((_category, { twoN }) => {
+      twoN.calls.push([fileUrl('src/domain/alpha.ts'), 'f', 0, 1], [upper, 'f', 0, 1]);
+    }));
+    expect(hull.paths).toEqual([...hull.paths].sort(byCodeUnit));
+    expect(hull.paths.indexOf('src/domain/Zeta.ts')).toBeLessThan(hull.paths.indexOf('src/domain/alpha.ts'));
   });
 
-  it('lässt die Auswertung außen vor — sie ist schärfer gebunden als durch einen Hash', () => {
-    // Der Bindungstest leitet den Grenzwert bei jedem Lauf mit der AKTUELLEN
-    // Auswertung aus dem Artefakt neu her. Sie zusätzlich zu fingerprinten
-    // erzwänge einen Browsermesslauf für eine Änderung, die an den Rohdaten
-    // nichts ändert.
-    expect(sources).not.toContain('scripts/measureClass2BudgetReport.mjs');
-  });
+  describe('Selbstnachweis', () => {
+    it('scheitert, wenn spendWork nicht als skalierend erkannt ist', () => {
+      expect(() => deriveScalingHull(observation((_category, { twoN }) => {
+        twoN.calls[0] = [BUDGET, 'spendWork', 100, 40];
+      }))).toThrow(
+        'Selbstnachweis der Messwegprovenienz gescheitert: spendWork aus src/domain/profileResolutionBudget.ts ist nicht als skalierend erkannt',
+      );
+    });
 
-  it('ist sortiert und doppelfrei, damit der Fingerprint nicht an der Reihenfolge hängt', () => {
-    expect(sources).toEqual([...new Set(sources)].sort());
-  });
+    it('scheitert, wenn spendWork an anderer Stelle liegt als erwartet', () => {
+      // Eine gleichnamige Funktion in einer anderen Datei belegt nicht, dass
+      // die Zählung die Buchung der Arbeitseinheiten sieht.
+      const elsewhere = fileUrl('src/domain/profileResolutionMerge.ts');
+      expect(() => deriveScalingHull(observation((_category, { n, twoN }) => {
+        n.calls[0] = [elsewhere, 'spendWork', 100, 40];
+        twoN.calls[0] = [elsewhere, 'spendWork', 100, 80];
+      }))).toThrow(/spendWork aus src\/domain\/profileResolutionBudget\.ts ist nicht als skalierend erkannt/);
+    });
 
-  it('bricht bei einem fehlenden Einstiegspunkt ab, statt eine leere Hülle zu liefern', () => {
-    expect(() => collectWorkLimitSources(['src/domain/gibtEsNicht.ts']))
-      .toThrow(/Einstiegspunkt des Messwegs fehlt/);
-  });
+    it('scheitert, wenn eine Kategorie zwischen N und 2N nicht wächst', () => {
+      expect(() => deriveScalingHull(observation((category, { twoN }) => {
+        if (category === 'alter-target-lookup') twoN.workUnits = 40;
+      }))).toThrow(
+        'Selbstnachweis der Messwegprovenienz gescheitert: Kategorie alter-target-lookup verbraucht bei 2N nicht mehr Arbeitseinheiten als bei N (40 → 40)',
+      );
+    });
 
-  it('folgt keiner Kante, die ausschließlich einen Typ transportiert', () => {
-    // `src/domain/models.ts` wird aus dem Auflösungspfad ZEHNMAL erreicht, und
-    // jedes Mal über ein `import type`. TypeScript löscht diese Importe beim
-    // Kompilieren: Die Datei läuft im gemessenen Lauf gar nicht mit und kann
-    // seine Dauer nicht beeinflussen. Läge sie trotzdem in der Hülle, erzwänge
-    // schon eine geänderte Kommentarzeile einen Browsermesslauf, der nichts
-    // belegt — genau die Begründung, mit der oben auch die übrigen
-    // Harnisch-Importe ausgeschlossen sind.
-    expect(sources).not.toContain('src/domain/models.ts');
-    // Kaskade: Die einzige Kante nach `catalogLineage.ts` ist ein `import type`
-    // aus `models.ts`. Fällt die Quelle, fällt auch das Ziel — und mit ihm die
-    // `.mjs`, die nur von dort re-exportiert wird.
-    expect(sources).not.toContain('src/domain/catalogLineage.ts');
-    expect(sources).not.toContain('src/domain/catalogLineage.mjs');
-  });
-
-  it('hält jede Datei, zu der mindestens eine Wertkante führt', () => {
-    // Der Gegentest zur Verengung: `oscalProfileAdapter.ts` trägt sowohl
-    // `export type * from '@/domain/profileModel'` als auch zwei
-    // `export { … } from '@/domain/profileModel'`. Ein Ausschluss, der nur die
-    // Typform sieht und die Wertform derselben Datei übergeht, nähme dem Gate
-    // echten Laufzeitcode.
-    expect(sources).toContain('src/domain/profileModel.ts');
-    // `oscalRootDocument.ts` zeigt die Gegenrichtung: Sie verliert ihre eigenen
-    // Typkanten, bleibt aber selbst drin, weil sie über eine Wertkante
-    // erreicht wird.
-    expect(sources).toContain('src/domain/oscalRootDocument.ts');
+    it('scheitert, wenn eine Kategorie gar nicht gezählt ist', () => {
+      const partial = observation();
+      partial.categories = partial.categories.filter((entry) => entry.category !== 'glob-state');
+      expect(() => deriveScalingHull(partial))
+        .toThrow('Selbstnachweis der Messwegprovenienz gescheitert: Kategorie glob-state wurde nicht gezählt');
+      expect(() => deriveScalingHull({})).toThrow(/wurde nicht gezählt/);
+    });
   });
 });
 
-describe('runtimeImportSpecifiers', () => {
-  // Die Hülle folgt genau diesen Spezifizierern. Getestet wird hier die
-  // Erkennung selbst, an Quelltext statt an Dateien auf der Platte — sonst
-  // prüfte der Test nur den heutigen Zustand des Repositoriums mit.
+describe('fingerprintHull', () => {
+  const path = SPEND_WORK.path;
+  const original = readFileSync(resolve(REPO_ROOT, path), 'utf8');
+  const fingerprint = (source: string) => fingerprintHull([path], [], () => source);
 
-  it('lässt eine reine Typkante aus, in jeder ihrer Schreibweisen', () => {
-    expect(runtimeImportSpecifiers("import type { A } from './a';")).toEqual([]);
-    expect(runtimeImportSpecifiers("import type A from './a';")).toEqual([]);
-    expect(runtimeImportSpecifiers("export type { A } from './a';")).toEqual([]);
-    expect(runtimeImportSpecifiers("export type * from './a';")).toEqual([]);
-    expect(runtimeImportSpecifiers("export type * as A from './a';")).toEqual([]);
+  it('bleibt bei einer reinen Kommentaränderung stehen', () => {
+    const variant = `/* neuer Dateikopf */\n${original}`
+      .replace('// Vor der Operation, nicht danach:', '// Umformulierter Kommentar:');
+    expect(variant).not.toBe(original);
+    expect(fingerprint(variant)).toBe(fingerprint(original));
   });
 
-  it('lässt eine mehrzeilige Typkante aus', () => {
-    // Die `from`-Form deckt mehrzeilige Listen ab, weil sie am `from` ansetzt.
-    // Die Typerkennung muss dasselbe können, sonst bliebe ausgerechnet der
-    // häufigste Fall langer Typimporte unerkannt.
-    const source = ['import type {', '  A,', '  B,', "} from './a';"].join('\n');
-    expect(runtimeImportSpecifiers(source)).toEqual([]);
+  it('bleibt bei einer reinen Formatierungsänderung stehen', () => {
+    const variant = original
+      .replace('workUnits += count;', 'workUnits   +=   count;\n\n')
+      .replace('const base64Limit =\n    testLimits', 'const base64Limit = testLimits')
+      .replaceAll('\n  ', '\n    ');
+    expect(variant).not.toBe(original);
+    expect(fingerprint(variant)).toBe(fingerprint(original));
   });
 
-  it('hält die Mischform, die neben Typen auch einen Wert einführt', () => {
-    expect(runtimeImportSpecifiers("import { type A, b } from './a';")).toEqual(['./a']);
-    expect(runtimeImportSpecifiers("export { type A, b } from './a';")).toEqual(['./a']);
+  it('verschiebt sich bei einer inhaltlichen Änderung derselben Datei', () => {
+    const variant = original.replace('if (workUnits + count > workLimit)', 'if (workUnits + count >= workLimit)');
+    expect(variant).not.toBe(original);
+    expect(fingerprint(variant)).not.toBe(fingerprint(original));
   });
 
-  it('hält ein Ziel, das dieselbe Datei anderswo als Wert importiert', () => {
-    // Zwei getrennte Anweisungen auf dasselbe Ziel: Die eine trägt nur Typen,
-    // die andere einen Wert. Gezählt wird deshalb je Vorkommen, nicht je Ziel.
-    const source = ["import type { A } from './a';", "import { b } from './a';"].join('\n');
-    expect(runtimeImportSpecifiers(source)).toEqual(['./a']);
+  it('verschiebt sich mit Pfad und Laufzeitversionen', () => {
+    expect(fingerprintHull(['a.ts'], [], () => 'f();')).not.toBe(fingerprintHull(['b.ts'], [], () => 'f();'));
+    expect(fingerprintHull(['a.ts'], ['ajv@1.0.0'], () => 'f();'))
+      .not.toBe(fingerprintHull(['a.ts'], ['ajv@1.0.1'], () => 'f();'));
   });
 
-  it('hält ein seitenwirksames und ein dynamisches Import desselben Ziels', () => {
-    // Beide Formen können gar keine Typangabe tragen — sie laufen immer mit,
-    // auch wenn dasselbe Ziel daneben als Typ importiert wird.
-    expect(runtimeImportSpecifiers("import type { A } from './a';\nimport './a';"))
-      .toEqual(['./a']);
-    expect(runtimeImportSpecifiers("import type { A } from './a';\nawait import('./a');"))
-      .toEqual(['./a']);
+  it('hängt nicht an der Reihenfolge des Aufrufers', () => {
+    const read = (file: string) => `export const name = ${JSON.stringify(file)};`;
+    expect(fingerprintHull(['src/b.ts', 'src/A.ts', 'src/a.ts'], [], read))
+      .toBe(fingerprintHull(['src/a.ts', 'src/b.ts', 'src/A.ts'], [], read));
   });
 
-  it('hält eine Kante, die es nicht zweifelsfrei als Typkante einordnen kann', () => {
-    // FAIL-CLOSED. Die Textsuche ist ausdrücklich kein Parser: Sie darf keine
-    // Datei ÜBERSEHEN. Wo die Erkennung unsicher ist, bleibt die Kante stehen
-    // und kostet höchstens einen zu breiten Fingerprint — der umgekehrte
-    // Fehler machte das Gate still wertlos.
-    expect(runtimeImportSpecifiers("import /* c */ type { A } from './a';")).toEqual(['./a']);
-    expect(runtimeImportSpecifiers("import type { A: { B } } from './a';")).toEqual(['./a']);
-    expect(runtimeImportSpecifiers("const type = 1; import { a } from './a';")).toEqual(['./a']);
-    // `typeA` ist ein Bezeichner dieses Namens, kein Typimport — vor einem
-    // Bezeichner trägt erst das Trennzeichen die Grenze.
-    expect(runtimeImportSpecifiers("import typeA from './a';")).toEqual(['./a']);
+  it('normalisiert auch .mjs-Quellen', () => {
+    expect(normalizeSource('x.mjs', 'export const a = 1; // Kommentar\n'))
+      .toBe(normalizeSource('x.mjs', '/* Kopf */\nexport   const a =\n  1;\n'));
   });
+});
 
-  it('erkennt die kompakte Schreibweise, wo die Grenze ohne Leerraum eindeutig ist', () => {
-    // `{` und `*` können kein Bezeichnerzeichen sein. Diese Formen sind
-    // zweifelsfrei Typkanten, auch ohne Leerraum nach `type`.
-    expect(runtimeImportSpecifiers("import type{A}from'./a';")).toEqual([]);
-    expect(runtimeImportSpecifiers("export type*from'./a';")).toEqual([]);
-  });
-
-  it('hält gewöhnliche Wertkanten unverändert', () => {
-    expect(runtimeImportSpecifiers("import { a } from './a';")).toEqual(['./a']);
-    expect(runtimeImportSpecifiers("import a from './a';")).toEqual(['./a']);
-    expect(runtimeImportSpecifiers("export * from './a';")).toEqual(['./a']);
-    expect(runtimeImportSpecifiers("export { a } from './a';")).toEqual(['./a']);
+describe('Zählabschnitt der Aufrufzählung', () => {
+  it('ist genau der Abschnitt, den der Messharnisch zeitlich misst', () => {
+    // Die Aufrufzählung spiegelt `runResolutionFixture` des Browserharnisches.
+    // Wandert dort Vorbereitung in den gemessenen Abschnitt, muss die Zählung
+    // folgen — sonst fehlten skalierende Funktionen in der Hülle.
+    const harness = readFileSync(resolve(REPO_ROOT, 'scripts/measure/class2-budget.harness.mjs'), 'utf8');
+    const collector = readFileSync(resolve(REPO_ROOT, 'scripts/measureWorkLimitCallCounts.mjs'), 'utf8');
+    const between = (source: string, anchor: string, start: string, end: string) => {
+      const from = source.indexOf(start, source.indexOf(anchor));
+      expect(source.indexOf(anchor)).toBeGreaterThanOrEqual(0);
+      const to = source.indexOf(end, from + start.length);
+      expect(from).toBeGreaterThanOrEqual(0);
+      expect(to).toBeGreaterThan(from);
+      return source.slice(from + start.length, to).trim();
+    };
+    expect(between(harness, 'async function runResolutionFixture(', 'const start = nowMs();', 'const ms = nowMs() - start;'))
+      .toBe('const outcome = await resolveProfile({ plan, edgesByArtifactKey, profileViews });');
+    expect(between(
+      collector,
+      'async function countedRun(',
+      "await session.post('Profiler.takePreciseCoverage');",
+      "const { result } = await session.post('Profiler.takePreciseCoverage');",
+    )).toBe('const outcome = await domain.resolveProfile({ plan, edgesByArtifactKey, profileViews });');
   });
 });
 
@@ -207,20 +288,39 @@ describe('byCodeUnit', () => {
 });
 
 describe('workLimitProvenance', () => {
-  it('liefert einen stabilen Fingerprint über die gezählte Hülle', () => {
-    const first = workLimitProvenance();
-    const second = workLimitProvenance();
+  // Echte Aufrufzählung im Kindprozess, ohne Browser.
+  let first: ReturnType<typeof workLimitProvenance>;
+  let second: ReturnType<typeof workLimitProvenance>;
+  beforeAll(() => {
+    first = workLimitProvenance();
+    second = workLimitProvenance();
+  }, 120_000);
+
+  it('liefert in zwei Läufen denselben Fingerprint', () => {
     expect(first.sha256).toMatch(/^[a-f0-9]{64}$/);
-    expect(first.sha256).toBe(second.sha256);
+    expect(second).toEqual(first);
+    expect(first.method).toBe(WORK_LIMIT_PROVENANCE_METHOD);
     expect(first.files).toBe(first.paths.length);
-    expect(first.files).toBeGreaterThan(WORK_LIMIT_ENTRY_POINTS.length);
   });
 
-  it('nennt die aufgelösten Laufzeitversionen, nicht nur die Paketnamen', () => {
-    const runtime = workLimitProvenance().runtime;
-    expect(runtime.some((entry) => /^ajv@\d+\.\d+\.\d+/.test(entry))).toBe(true);
-    // Transitiv: Ajv bringt eigene Abhängigkeiten mit, und auch deren Laufzeit
-    // läuft im gemessenen Pfad mit.
-    expect(runtime.length).toBeGreaterThan(1);
+  it('enthält den Code, der je Arbeitseinheit läuft', () => {
+    expect(first.paths).toContain('src/domain/profileResolutionBudget.ts');
+  });
+
+  it('lässt Vorbereitung und konstant oft laufenden Code aus', () => {
+    // Die Versionsmatrix und der Root-Dispatch laufen in der Abschlusskette
+    // einmal je Profil, `parseProfileDocument` vor dem Timer. Keine der drei
+    // Dateien ändert die Kosten pro Arbeitseinheit.
+    for (const path of [
+      'src/domain/oscalVersionMatrix.mjs',
+      'src/adapters/oscalRootDispatch.ts',
+      'src/adapters/oscalProfileDocument.ts',
+    ]) {
+      expect(first.paths).not.toContain(path);
+    }
+  });
+
+  it('sortiert die Pfade über Code-Units', () => {
+    expect(first.paths).toEqual([...first.paths].sort(byCodeUnit));
   });
 });

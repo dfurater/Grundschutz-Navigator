@@ -42,7 +42,14 @@ function mapAlias(specifier) {
   return target;
 }
 
-function registerAliasHook() {
+/**
+ * Registriert den Aliashook für den laufenden Prozess. Idempotent.
+ *
+ * Exportiert für die Aufrufzählung der Messwegprovenienz
+ * (`measureWorkLimitCallCounts.mjs`), die den Auflösungspfad unter reinem Node
+ * lädt — über dieselbe Abbildung statt einer zweiten.
+ */
+export function registerAliasHook() {
   if (hooksRegistered) return;
   hooksRegistered = true;
 

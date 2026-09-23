@@ -606,6 +606,21 @@ it('refuses a passing report for missing or changed source fingerprints', () => 
   expect(() => renderReport({ ...report, sourceBefore: {}, sourceAfter: {} })).toThrow(/Quellfingerprint/);
 });
 
+it('refuses a work-limit report without a matching path provenance and method', () => {
+  const report = { generatedAt: 'test', browserVersion: 'test', runs: [{ profileResolution: [{}] }] };
+  const provenance = { method: 'skalierende-aufrufe', sha256: 'd'.repeat(64) };
+  const render = (before: unknown, after: unknown) => renderRawReport({
+    ...report,
+    sourceBefore: { ...source, workLimitProvenance: before },
+    sourceAfter: { ...source, workLimitProvenance: after },
+  });
+  expect(() => render(undefined, undefined)).toThrow(/Messwegprovenienz/);
+  expect(() => render(provenance, { ...provenance, sha256: 'e'.repeat(64) })).toThrow(/Messwegprovenienz/);
+  expect(() => render({ sha256: provenance.sha256 }, { sha256: provenance.sha256 })).toThrow(/Messwegprovenienz/);
+  expect(() => render({ ...provenance, method: '' }, { ...provenance, method: '' })).toThrow(/Messwegprovenienz/);
+  expect(() => render(provenance, { ...provenance, method: 'statische-importhuelle' })).toThrow(/Messwegprovenienz/);
+});
+
 
 it('invalidates missing stage timings and missing transport inventory', () => {
   expect(summarizeSamples([sample({ stage1: { ok: true, code: null } })]).endToEnd.valid).toBe(false);
@@ -967,6 +982,8 @@ describe('GSPP-345 — der einkompilierte Grenzwert ist an das Messartefakt gebu
   )) as {
     runs: { throttleRate: number; workUnitLimit: number; workUnitLimitRole?: string;
       profileResolution: { category: string; rows: Record<string, unknown>[] }[] }[];
+    sourceBefore: { workLimitProvenance: { method: string; sha256: string } };
+    sourceAfter: { workLimitProvenance: { method: string; sha256: string } };
   };
   const runs = artifact.runs.filter((run) => run.profileResolution?.length > 0);
 
@@ -1005,10 +1022,14 @@ describe('GSPP-345 — der einkompilierte Grenzwert ist an das Messartefakt gebu
     // langsamer, bleibt der einkompilierte Wert stehen und nichts wird rot.
     // Geprüft wird die enge Hülle des gemessenen Laufs, nicht der ganze Baum —
     // sonst erzwänge jede unbeteiligte Änderung einen Browsermesslauf.
+    // Die Hülle ist aus der Aufrufzählung im Kindprozess bestimmt, deshalb die
+    // großzügige Zeitgrenze.
     const provenance = workLimitProvenance();
-    expect(artifact.sourceBefore.workLimitProvenance.sha256).toBe(provenance.sha256);
-    expect(artifact.sourceAfter.workLimitProvenance.sha256).toBe(provenance.sha256);
-  });
+    for (const recorded of [artifact.sourceBefore.workLimitProvenance, artifact.sourceAfter.workLimitProvenance]) {
+      expect(recorded.method).toBe(provenance.method);
+      expect(recorded.sha256).toBe(provenance.sha256);
+    }
+  }, 120_000);
 
   it('rendert das Artefakt ohne widersprüchliche Zahlen', () => {
     const markdown = renderRawReport(artifact);
