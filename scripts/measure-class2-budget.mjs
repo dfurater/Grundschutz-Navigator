@@ -95,11 +95,12 @@ function sourceRevision() {
     sha256: hash.digest('hex'),
     files: paths.length,
     excludes: [...PROVENANCE_EXCLUDED_PATHS],
-    // Der ENGE Fingerprint: allein die Dateien, deren Aufrufe im gemessenen
-    // Auflösungslauf mit den Arbeitseinheiten wachsen. Er ist die
-    // Testbedingung, weil eine Messung genau dann gilt, wenn dieser Code
-    // unverändert ist — der breite Fingerprint darüber bleibt Protokoll,
-    // nicht Gate.
+    // Der ENGE Fingerprint: die Dateien, deren Ausführung im gemessenen
+    // Auflösungslauf mit den Arbeitseinheiten wächst, zusammen mit der
+    // Worst-Case-Fixture, die die gemessenen Eingaben baut. Er ist die
+    // Testbedingung, weil eine Messung genau dann gilt, wenn Code und
+    // Eingaben unverändert sind — der breite Fingerprint darüber bleibt
+    // Protokoll, nicht Gate.
     workLimitProvenance: workLimitProvenance(),
   };
 }

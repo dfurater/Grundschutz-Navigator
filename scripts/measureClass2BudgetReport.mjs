@@ -836,7 +836,8 @@ export function renderReport(report) {
     || before.sha256 !== after.sha256 || before.commit !== after.commit || before.files !== after.files) {
     throw new Error('Fehlender oder geänderter Quellfingerprint: Messlauf belegt keinen stabilen Stand');
   }
-  // Derselbe Anspruch für die ENGE Hülle des gemessenen Laufs — aber nur, wenn
+  // Derselbe Anspruch für die Messwegprovenienz, also die ENGE Hülle des
+  // gemessenen Laufs samt der Fixture seiner Eingaben — aber nur, wenn
   // überhaupt eine Arbeitsgrenze gemessen wurde: Änderte sich der
   // Auflösungspfad während der Messung, gehören die Stützpunkte zu zwei
   // verschiedenen Ständen und tragen zusammen keinen Grenzwert. Ein Lauf ohne

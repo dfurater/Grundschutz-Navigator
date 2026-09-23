@@ -818,7 +818,10 @@ und fallen heraus. Ein Test hält beide Abschnitte aneinander fest.
   bei 2N mehr Arbeitseinheiten verbrauchen als bei N, und `spendWork` aus
   `profileResolutionBudget.ts` muss als skalierend erkannt sein. Sonst bricht
   die Berechnung mit einer benannten Meldung ab, statt eine leere oder zu
-  kleine Hülle zu hashen.
+  kleine Hülle zu hashen. Vor jedem Lauf muss die Wiederholungszahl innerhalb
+  von `maxRepetitions` der Kategorie liegen, also in einem Steuerdokument,
+  das die Dokumentgrenzen zulassen; `buildWorkUnitCalibration` selbst prüft
+  das nicht. Dieselbe Prüfung gilt für die Kalibrierfälle von `--calibrate`.
 - **Normalisierter Inhalt.** Gehasht werden Pfad und Quelltext jeder
   Hüllendatei nach `ts.transpileModule` mit `removeComments`. Die Ausgabe wird
   aus dem Syntaxbaum neu gedruckt: Kommentare, Formatierung und Typannotationen

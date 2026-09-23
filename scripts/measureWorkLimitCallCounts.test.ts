@@ -13,6 +13,7 @@ import {
   resolveSchemaJson,
   startBlockCounting,
 } from './measureWorkLimitCallCounts.mjs';
+import { buildWorkUnitCalibration, maxRepetitions } from './profileResolutionWorstCaseFixtures.mjs';
 
 const REPO_ROOT = resolve(import.meta.dirname, '..');
 
@@ -89,6 +90,7 @@ describe('countedRun', () => {
       }),
     };
     const domain = {
+      maxRepetitions: () => 8,
       buildWorkUnitCalibration: () => ({
         topProfileArtifactKey: 'profile-top',
         documents: { 'profile-top': { profile: {} }, 'catalog-a': { catalog: {} } },
@@ -124,11 +126,33 @@ describe('countedRun', () => {
     expect(domain.parseProfileDocument).toHaveBeenCalledTimes(1);
   });
 
-  it('bricht ab, wenn die Fixture jenseits der Dokumentgrenze liegt', async () => {
-    const { session, domain } = fakes({ buildWorkUnitCalibration: () => ({ capped: true }) });
-    await expect(countedRun(session, domain, 'glob-state', 8))
-      .rejects.toThrow('Kalibrierfixture glob-state mit 8 Wiederholungen liegt jenseits der Dokumentgrenze');
+  it('zählt eine Wiederholungszahl genau auf der Dokumentgrenze', async () => {
+    const { session, domain } = fakes();
+    await expect(countedRun(session, domain, 'glob-state', 8)).resolves.toMatchObject({ workUnits: 42 });
+  });
+
+  it('bricht über den echten Kalibrier-Builder ab, wenn die Wiederholungen die Dokumentgrenze überschreiten', async () => {
+    // Der echte Builder markiert keinen Fall als `capped`, auch nicht jenseits
+    // der Grenze. Die Prüfung muss deshalb vor dem Bauen gegen
+    // `maxRepetitions` laufen, sonst zählte die Berechnung an einem Dokument,
+    // das kein Angreifer einreichen kann.
+    expect(buildWorkUnitCalibration('alter-target-lookup', 1)).not.toHaveProperty('capped');
+    const build = vi.fn(buildWorkUnitCalibration);
+    const { session, domain } = fakes({ buildWorkUnitCalibration: build, maxRepetitions });
+    const beyond = maxRepetitions('alter-target-lookup') + 1;
+    await expect(countedRun(session, domain, 'alter-target-lookup', beyond)).rejects.toThrow(
+      `Kalibrierfixture alter-target-lookup mit ${beyond} Wiederholungen liegt jenseits der Dokumentgrenze`,
+    );
+    expect(build).not.toHaveBeenCalled();
     expect(session.post).not.toHaveBeenCalled();
+  });
+
+  it('bricht ab, wenn die Dokumentgrenze keine ganze Zahl ist', async () => {
+    for (const cap of [undefined, Number.NaN, 7.5]) {
+      const { session, domain } = fakes({ maxRepetitions: () => cap });
+      await expect(countedRun(session, domain, 'merge-step', 4)).rejects.toThrow(/jenseits der Dokumentgrenze/);
+      expect(session.post).not.toHaveBeenCalled();
+    }
   });
 
   it('bricht ab, wenn der Plan scheitert', async () => {

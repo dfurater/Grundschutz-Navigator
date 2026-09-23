@@ -1020,8 +1020,9 @@ describe('GSPP-345 — der einkompilierte Grenzwert ist an das Messartefakt gebu
   it('ist am AKTUELLEN Messweg erhoben', () => {
     // Ohne diese Prüfung altert das Artefakt still: Wird der Auflösungspfad
     // langsamer, bleibt der einkompilierte Wert stehen und nichts wird rot.
-    // Geprüft wird die enge Hülle des gemessenen Laufs, nicht der ganze Baum —
-    // sonst erzwänge jede unbeteiligte Änderung einen Browsermesslauf.
+    // Geprüft werden die enge Hülle des gemessenen Laufs und die Fixture, die
+    // seine Eingaben baut, nicht der ganze Baum — sonst erzwänge jede
+    // unbeteiligte Änderung einen Browsermesslauf.
     // Die Hülle ist aus der Aufrufzählung im Kindprozess bestimmt, deshalb die
     // großzügige Zeitgrenze.
     const provenance = workLimitProvenance();

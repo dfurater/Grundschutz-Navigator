@@ -75,10 +75,16 @@ export function executedRanges(coverage) {
 }
 
 export async function countedRun(session, domain, category, repetitions) {
-  const fixture = domain.buildWorkUnitCalibration(category, repetitions);
-  if (fixture.capped === true) {
-    throw new Error(`Kalibrierfixture ${category} mit ${repetitions} Wiederholungen liegt jenseits der Dokumentgrenze`);
+  // `buildWorkUnitCalibration` baut jede Wiederholungszahl, auch jenseits der
+  // Dokumentgrenze; ein `capped` setzt nur `buildWorkUnitWorstCase`. Die Grenze
+  // wird deshalb hier gegen `maxRepetitions` geprüft, bevor gebaut wird.
+  const cap = domain.maxRepetitions(category);
+  if (!Number.isInteger(cap) || repetitions > cap) {
+    throw new Error(
+      `Kalibrierfixture ${category} mit ${repetitions} Wiederholungen liegt jenseits der Dokumentgrenze (${cap})`,
+    );
   }
+  const fixture = domain.buildWorkUnitCalibration(category, repetitions);
   // Vorbereitung wie im Harnisch — außerhalb des gezählten Abschnitts.
   const documents = new Map(Object.entries(fixture.documents));
   const edgesByArtifactKey = new Map(Object.entries(fixture.edges));
@@ -119,6 +125,7 @@ async function loadDomain() {
   return {
     categories: fixtures.WORK_UNIT_CATEGORIES,
     buildWorkUnitCalibration: fixtures.buildWorkUnitCalibration,
+    maxRepetitions: fixtures.maxRepetitions,
     buildProfileResolutionPlan: importGraph.buildProfileResolutionPlan,
     resolveProfile: engine.resolveProfile,
     parseProfileDocument: profileDocument.parseProfileDocument,
