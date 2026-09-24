@@ -811,6 +811,16 @@ function renderRun(run) {
   ];
 }
 
+/** Messwegprovenienz mit gültigem Hash und benanntem Verfahren, vorher wie nachher gleich. */
+function hasStableWorkLimitProvenance(before, after) {
+  const recorded = before.workLimitProvenance;
+  return /^[a-f0-9]{64}$/.test(recorded?.sha256 ?? '')
+    && recorded.sha256 === after.workLimitProvenance?.sha256
+    && typeof recorded.method === 'string'
+    && recorded.method !== ''
+    && recorded.method === after.workLimitProvenance.method;
+}
+
 /**
  * Rendert den Bericht als Markdown, damit er unverändert in
  * `docs/OSCAL_VALIDATION.md` übernommen werden kann.
@@ -826,18 +836,19 @@ export function renderReport(report) {
     || before.sha256 !== after.sha256 || before.commit !== after.commit || before.files !== after.files) {
     throw new Error('Fehlender oder geänderter Quellfingerprint: Messlauf belegt keinen stabilen Stand');
   }
-  // Derselbe Anspruch für die ENGE Hülle des gemessenen Laufs — aber nur, wenn
+  // Derselbe Anspruch für die Messwegprovenienz, also die ENGE Hülle des
+  // gemessenen Laufs samt der Fixture seiner Eingaben — aber nur, wenn
   // überhaupt eine Arbeitsgrenze gemessen wurde: Änderte sich der
   // Auflösungspfad während der Messung, gehören die Stützpunkte zu zwei
   // verschiedenen Ständen und tragen zusammen keinen Grenzwert. Ein Lauf ohne
   // Arbeitsreihen (Transport, Speicher) führt diesen Pfad nicht aus und
-  // braucht die Angabe deshalb nicht.
+  // braucht die Angabe deshalb nicht. Das Verfahren der Hülle muss benannt und
+  // vorher wie nachher dasselbe sein: Zwei Hashes nach verschiedenen Hüllen
+  // sind nicht vergleichbar, auch wenn sie zufällig gleich lauteten.
   const measuresWorkLimit = report.runs.some(
     (run) => Array.isArray(run.profileResolution) && run.profileResolution.length > 0,
   );
-  if (measuresWorkLimit
-    && (!/^[a-f0-9]{64}$/.test(before.workLimitProvenance?.sha256 ?? '')
-      || before.workLimitProvenance.sha256 !== after.workLimitProvenance?.sha256)) {
+  if (measuresWorkLimit && !hasStableWorkLimitProvenance(before, after)) {
     throw new Error('Fehlende oder geänderte Messwegprovenienz: Messlauf belegt keinen stabilen Auflösungspfad');
   }
   return [

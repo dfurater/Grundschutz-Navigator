@@ -269,6 +269,7 @@ scripts/                          # Build-, CI- und Wartungsskripte
 ├── measure-class2-budget.mjs         # Kostenmessung der Klasse-2-Grenzen (Wartung)
 ├── measureClass2BudgetReport.mjs     # Argumente, Verdichtung und Bericht der Messung
 ├── measureClass2Timing.mjs           # Eingaben und Ablauf der Zeitmessung
+├── measureWorkLimitCallCounts.mjs    # Aufrufzählung des gemessenen Auflösungslaufs
 ├── measureWorkLimitProvenance.mjs    # Fingerprint des gemessenen Auflösungspfads
 ├── oscal-domain-bridge.mjs           # Node-Brücke in src/domain/ mit @/-Auflösung
 ├── oscal-schema-vendor.mjs           # Ablageort-Vertrag der gepinnten Schemas

@@ -1,5 +1,5 @@
 // =============================================================================
-// Provenienz der Arbeitsgrenze (GSPP-345).
+// Provenienz der Arbeitsgrenze (GSPP-345, Hülle seit GSPP-445).
 //
 // Der Grenzwert `WORK_UNIT_LIMIT` steht auf einer Messung. Eine Messung gilt
 // aber nur für den Code, an dem sie erhoben wurde: Wird der Auflösungspfad
@@ -14,49 +14,63 @@
 // von mehreren Minuten. Er bleibt im Artefakt stehen, wo er hingehört — als
 // Protokoll, nicht als Gate.
 //
+// Warum die Hülle aus der Aufrufzählung kommt. `WORK_UNIT_LIMIT` ist eine
+// Aussage über die Zeit PRO ARBEITSEINHEIT: Der Messlauf treibt je Kategorie
+// die Arbeitseinheiten über eine Leiter von Stützpunkten. Maßgeblich ist also
+// der Code, dessen Ausführung mit den Arbeitseinheiten wächst — nicht alles,
+// was vom Auflösungspfad aus importierbar ist. Die frühere statische
+// Importhülle erfasste auch die Vorbereitung vor dem Timer und die
+// Abschlusskette, die je Profil genau einmal läuft; eine O(1)-Änderung dort
+// verlangte einen Browsermesslauf, der an den Kosten pro Arbeitseinheit
+// nichts belegen konnte.
+//
 // Warum keine handgeschriebene Dateiliste. Sie wäre eine Behauptung über den
 // Messweg und würde bei jedem neuen Modul des Auflösungspfads still zu eng.
-// Die Hülle wird deshalb aus den ECHTEN Importen berechnet: ab den
-// Einstiegspunkten, die der Messharnisch für den Auflösungslauf benutzt,
-// transitiv über alle projektinternen Importe.
+// Die Hülle wird deshalb bei jeder Berechnung am echten Lauf gezählt
+// (`measureWorkLimitCallCounts.mjs`), und ein Selbstnachweis verlangt, dass
+// die Zählung sieht, was sie sehen muss.
+//
+// Warum die Worst-Case-Fixture zusätzlich gebunden ist. Die Zählung sieht nur,
+// was während `resolveProfile` läuft; die Eingaben entstehen davor. Ändert
+// sich die Fixture — mehr Controls im Quellkatalog, eine andere Musterform —,
+// misst derselbe Code etwas anderes, und die alten Zeitreihen belegten den
+// Grenzwert für Eingaben, die es nicht mehr gibt.
 // =============================================================================
 
 import { createHash } from 'node:crypto';
-import { readFileSync, existsSync, statSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { isBuiltin } from 'node:module';
+import {
+  WORK_UNIT_CATEGORIES,
+  buildWorkUnitCalibration,
+  maxRepetitions,
+} from './profileResolutionWorstCaseFixtures.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const CALL_COUNT_COLLECTOR = resolve(REPO_ROOT, 'scripts', 'measureWorkLimitCallCounts.mjs');
 
 /**
- * Die Einstiegspunkte des gemessenen Laufs — genau das, was
- * `scripts/measure/class2-budget.harness.mjs` für die Arbeitsgrenze aufruft,
- * plus die beiden Messmodule, die Stützpunkte bauen und auswerten.
- *
- * Die übrigen Importe des Harnisches (Transport, Speicher, Fixtures der
- * GSPP-382-Reihen) stehen bewusst NICHT hier: Sie gehören zu anderen
- * Messreihen, laufen im Auflösungspfad nicht mit und würden bei jeder
- * Änderung eine Neumessung der Arbeitsgrenze erzwingen, die nichts belegt.
+ * Kennung des Verfahrens, nach dem der Fingerprint gebildet ist — Hülle aus der
+ * Aufrufzählung plus gebundene Fixture. Sie steht im Messartefakt neben dem
+ * Hash: Ein Hash nach der früheren Importhülle ist mit einem Hash nach diesem
+ * Verfahren nicht vergleichbar. Die Auswertung
+ * verweigert einen Bericht ohne Kennung oder mit wechselnder Kennung, der
+ * Bindungstest verlangt die aktuelle.
  */
-export const WORK_LIMIT_ENTRY_POINTS = Object.freeze([
-  'src/domain/profileResolutionEngine.ts',
-  'src/domain/profileResolutionImportGraph.ts',
-  'src/domain/profileResolutionSelection.ts',
-  'src/domain/profileResolutionBudget.ts',
-  'src/adapters/oscalProfileDocument.ts',
-  'scripts/profileResolutionWorstCaseFixtures.mjs',
-]);
+export const WORK_LIMIT_PROVENANCE_METHOD = 'skalierende-bereiche';
 
 /**
- * Die AUSWERTUNG (`measureClass2BudgetReport.mjs`) steht bewusst nicht in der
- * Hülle. Sie läuft im Browser nie mit und erzeugt keine Rohdaten; sie leitet
- * aus ihnen den Wert ab. Und sie ist bereits schärfer gebunden als durch einen
- * Fingerprint: Der Bindungstest leitet den Grenzwert bei JEDEM Testlauf mit der
- * aktuellen Auswertung aus dem Artefakt neu her. Eine Änderung an ihr wird also
- * sofort geprüft — ohne einen Browsermesslauf zu erzwingen, der an denselben
- * Rohdaten nichts ändern würde.
+ * Die Funktion, die jede Arbeitseinheit bucht. Zählt die Berechnung sie nicht
+ * als skalierend, sieht sie den Auflösungslauf nicht — und jede Hülle, die sie
+ * dann liefert, wäre zu klein.
  */
+export const SPEND_WORK = Object.freeze({
+  path: 'src/domain/profileResolutionBudget.ts',
+  functionName: 'spendWork',
+});
 
 /**
  * Die EINE Datei, die zwischen Messstand und Lieferstand verschieden sein
@@ -78,106 +92,6 @@ export const PROVENANCE_EXCLUDED_PATHS = Object.freeze([
   'src/domain/profileResolutionBudgetLimits.mjs',
 ]);
 
-/** Reihenfolge, in der ein extensionsloser Import aufgelöst wird. */
-const RESOLUTION_SUFFIXES = Object.freeze(['', '.ts', '.mjs', '.mts', '.tsx', '.js', '/index.ts', '/index.mjs']);
-
-/**
- * Alle Importspezifizierer einer Datei.
- *
- * Bewusst eine Textsuche und kein Parser: Sie darf keine Datei ÜBERSEHEN,
- * Mehrtreffer sind unschädlich. Die Muster setzen direkt am Schlüsselwort an
- * und tragen kein `[\s\S]*?` — eine Suche, die den ganzen Dateikopf
- * überspringen darf, backtrackt superlinear. Ausgerechnet hier wäre das
- * unpassend: Dieser Slice hat dieselbe Bauart aus dem Glob-Pfad entfernt.
- * Die `from`-Form deckt mehrzeilige Importlisten mit ab, weil sie am `from`
- * ansetzt und nicht am `import`.
- */
-const IMPORT_PATTERNS = Object.freeze([
-  /\bfrom\s*['"]([^'"\n]+)['"]/g,
-  /\bimport\s*['"]([^'"\n]+)['"]/g,
-  /\bimport\s*\(\s*['"]([^'"\n]+)['"]/g,
-]);
-
-/**
- * Eine Kante, die NUR einen Typ transportiert (GSPP-394).
- *
- * TypeScript löscht `import type` und `export type` beim Kompilieren. Ihr Ziel
- * existiert zur Laufzeit nicht, läuft im gemessenen Auflösungspfad nicht mit
- * und kann seine Dauer nicht beeinflussen. Es gehört damit unter dieselbe
- * Begründung, mit der die übrigen Harnisch-Importe oben ausgeschlossen sind:
- * Es erzwänge bei jeder Änderung eine Neumessung der Arbeitsgrenze, die nichts
- * belegt. Diese Präzisierung setzt die erklärte Absicht des Moduls durch, statt
- * sie zu ändern.
- *
- * `export type` gehört dazu, weil das `from`-Muster am Schlüsselwort `from`
- * ansetzt und Re-Exporte deshalb mit erfasst. Beide Formen liegen in der Hülle
- * nebeneinander: `models.ts` re-exportiert Typen aus `oscalDocumentContext.ts`,
- * `catalogLineage.ts` dagegen Werte aus `catalogLineage.mjs`.
- *
- * Bewusst ohne `[\s\S]*?` wie die Muster oben. Jeder Zwischenteil endet an
- * seiner eigenen Grenze: die geklammerte Liste an ihrer schließenden Klammer
- * (`[^{}]*` — auch über Zeilen hinweg), der Stern-Re-Export und der einzelne
- * Bezeichner am folgenden `from`. Keine dieser Formen darf über die
- * Importanweisung hinauslaufen.
- *
- * Je Form ein eigenes, flaches Muster statt einer verschachtelten Alternation:
- * Die zusammengesetzte Variante trug eine Komplexität von 31 gegenüber den 20
- * erlaubten (SonarQube `javascript:S5843`) und war ohne Gewinn schwerer zu
- * lesen. Die Formen schließen einander aus, überlappende Treffer wären hier
- * aber ohnehin unschädlich: Zugeordnet wird über die Endposition, nicht gezählt.
- *
- * Trennzeichen nach `type` nur, wo es die Grenze trägt: Vor `{` und `*` ist sie
- * ohne Leerraum eindeutig, weil beide kein Bezeichnerzeichen sind. Vor einem
- * Bezeichner ist sie es nicht — `typeA` wäre ein Bezeichner dieses Namens und
- * kein Typimport, deshalb steht dort `\s+`.
- */
-const TYPE_ONLY_PATTERNS = Object.freeze([
-  /\b(?:import|export)\s+type\s*\{[^{}]*\}\s*from\s*['"][^'"\n]+['"]/g,
-  /\b(?:import|export)\s+type\s*\*\s+as\s+[A-Za-z_$][\w$]*\s+from\s*['"][^'"\n]+['"]/g,
-  /\b(?:import|export)\s+type\s*\*\s*from\s*['"][^'"\n]+['"]/g,
-  /\b(?:import|export)\s+type\s+[A-Za-z_$][\w$]*\s+from\s*['"][^'"\n]+['"]/g,
-]);
-
-/**
- * Die Importspezifizierer einer Datei, denen die Hülle folgt: alle bis auf die,
- * die AUSSCHLIESSLICH über Typkanten erreicht werden. Wie gesucht wird, steht
- * an IMPORT_PATTERNS.
- *
- * Der Typkanten-Ausschluss ist fail-closed und ordnet je VORKOMMEN zu, nicht je
- * Ziel: Ein `from`-Treffer entfällt nur, wenn genau er von einer der reinen
- * Typformen abgedeckt ist. Beide Muster enden am selben `'…'`, die Endposition
- * ist deshalb der Schlüssel. Ein zweiter Import desselben Ziels, der einen Wert
- * einführt, hält die Kante damit von selbst — und jede Schreibweise, die die
- * Erkennung nicht zweifelsfrei einordnet, ebenso: die Mischform
- * `import { type X, y } from …` ebenso wie ein Import, den nur ein Mensch als
- * Typimport liest. Ein seitenwirksames `import '…'` und ein dynamisches
- * `import('…')` können gar keine Typangabe tragen und sind immer Wertkanten.
- */
-function importSpecifiers(source) {
-  const typeOnlyEnds = new Set();
-  for (const pattern of TYPE_ONLY_PATTERNS) {
-    for (const match of source.matchAll(pattern)) typeOnlyEnds.add(match.index + match[0].length);
-  }
-
-  const found = new Set();
-  for (const match of source.matchAll(IMPORT_PATTERNS[0])) {
-    if (!typeOnlyEnds.has(match.index + match[0].length)) found.add(match[1]);
-  }
-  for (const pattern of [IMPORT_PATTERNS[1], IMPORT_PATTERNS[2]]) {
-    for (const match of source.matchAll(pattern)) found.add(match[1]);
-  }
-  return [...found];
-}
-
-/**
- * Die Spezifizierer, denen `collectWorkLimitSources` aus einer Quelle folgt.
- * Exportiert, damit die Typkanten-Erkennung an Positiv- und Negativfällen
- * prüfbar ist, ohne dafür Dateien auf die Platte zu legen.
- */
-export function runtimeImportSpecifiers(source) {
-  return importSpecifiers(source).sort(byCodeUnit);
-}
-
 /**
  * Sortierung über UTF-16-Code-Units, ausdrücklich nicht `localeCompare`:
  * Der Fingerprint hängt an der Reihenfolge, und eine locale-abhängige
@@ -192,68 +106,8 @@ export function byCodeUnit(left, right) {
   return left < right ? -1 : 1;
 }
 
-/** Löst einen Spezifizierer zu einem repo-relativen Pfad auf, oder zu `null`. */
-function resolveSpecifier(specifier, fromPath) {
-  let base;
-  if (specifier.startsWith('@/')) base = resolve(REPO_ROOT, 'src', specifier.slice(2));
-  else if (specifier.startsWith('.')) base = resolve(REPO_ROOT, dirname(fromPath), specifier);
-  // Alles andere ist eine externe Abhängigkeit. Sie gehört nicht in diesen
-  // Fingerprint: Ihre Version steht im Lockfile, und der breite
-  // Quellfingerprint des Artefakts deckt sie ab.
-  else return null;
-
-  for (const suffix of RESOLUTION_SUFFIXES) {
-    const candidate = `${base}${suffix}`;
-    if (existsSync(candidate) && statSync(candidate).isFile()) {
-      return relative(REPO_ROOT, candidate);
-    }
-  }
-  // Ein `.js`-Spezifizierer, der auf eine `.ts`-Quelle zeigt (TypeScript-NodeNext).
-  if (base.endsWith('.js')) return resolveSpecifier(`${specifier.slice(0, -3)}`, fromPath);
-  return null;
-}
-
-/**
- * Die transitive Hülle der Einstiegspunkte: jede Datei und jedes Paket, die der
- * gemessene Auflösungslauf ausführt. Sortiert, damit der Fingerprint nicht an
- * der Besuchsreihenfolge hängt.
- */
-export function collectWorkLimitSources(entryPoints = WORK_LIMIT_ENTRY_POINTS) {
-  const seen = new Set();
-  const packages = new Set();
-  const queue = [...entryPoints];
-  while (queue.length > 0) {
-    const path = queue.pop();
-    if (seen.has(path)) continue;
-    const absolute = resolve(REPO_ROOT, path);
-    if (!existsSync(absolute)) {
-      throw new Error(`Einstiegspunkt des Messwegs fehlt: ${path}`);
-    }
-    seen.add(path);
-    const source = readFileSync(absolute, 'utf8');
-    for (const specifier of importSpecifiers(source)) {
-      const target = resolveSpecifier(specifier, path);
-      if (target !== null) {
-        if (!seen.has(target)) queue.push(target);
-      } else if (isExternalSpecifier(specifier)) {
-        packages.add(packageNameOf(specifier));
-      }
-    }
-  }
-  return {
-    paths: [...seen].filter((path) => !PROVENANCE_EXCLUDED_PATHS.includes(path)).sort(byCodeUnit),
-    packages: [...packages].sort(byCodeUnit),
-  };
-}
-
-/** Ein Spezifizierer, der aus `node_modules` kommt — kein Pfad, kein Builtin. */
-function isExternalSpecifier(specifier) {
-  if (specifier.startsWith('.') || specifier.startsWith('@/') || specifier.startsWith('/')) return false;
-  if (isBuiltin(specifier)) return false;
-  // Ein Treffer aus Fließtext oder einem Beispiel ist kein Paket. Paketnamen
-  // sind eng definiert; alles andere fliegt hier fail-closed heraus, statt als
-  // fehlender Lockfile-Eintrag den ganzen Lauf abzubrechen.
-  return /^(?:@[a-z0-9][\w.-]*\/)?[a-z0-9][\w.-]*(?:\/[\w.-]+)*$/.test(specifier);
+function selfProofFailure(reason) {
+  return new Error(`Selbstnachweis der Messwegprovenienz gescheitert: ${reason}`);
 }
 
 /** `ajv/dist/2020` → `ajv`, `@scope/paket/unterpfad` → `@scope/paket`. */
@@ -262,14 +116,219 @@ function packageNameOf(specifier) {
   return specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
 }
 
+/** Fail-closed: Jede Kategorie ist gezählt und wächst zwischen N und 2N. */
+function assertCountedGrowth(categories) {
+  const counted = new Set(categories.map((entry) => entry.category));
+  for (const category of WORK_UNIT_CATEGORIES) {
+    if (!counted.has(category)) throw selfProofFailure(`Kategorie ${category} wurde nicht gezählt`);
+  }
+  for (const { category, n, twoN } of categories) {
+    // Ausdrücklich auf endliche Zahlen geprüft: Ein fehlender Wert darf nicht
+    // als „kein Rückgang“ durchgehen.
+    if (!Number.isFinite(n?.workUnits) || !Number.isFinite(twoN?.workUnits) || twoN.workUnits <= n.workUnits) {
+      throw selfProofFailure(
+        `Kategorie ${category} verbraucht bei 2N nicht mehr Arbeitseinheiten als bei N `
+        + `(${n?.workUnits} → ${twoN?.workUnits})`,
+      );
+    }
+  }
+}
+
+/** Die Bereiche, deren Ausführungszahl bei 2N in mindestens einer Kategorie größer ist als bei N. */
+function scalingRanges(categories) {
+  const keyOf = (url, name, start, end) => `${url}\0${name}\0${start}\0${end}`;
+  const scaling = new Map();
+  for (const { n, twoN } of categories) {
+    const before = new Map(n.ranges.map(([url, name, start, end, count]) => [keyOf(url, name, start, end), count]));
+    for (const [url, name, start, end, count] of twoN.ranges) {
+      const key = keyOf(url, name, start, end);
+      if (count > (before.get(key) ?? 0)) scaling.set(key, { url, functionName: name });
+    }
+  }
+  return [...scaling.values()];
+}
+
 /**
- * Die aufgelösten Versionen der externen Pakete des Messwegs, transitiv über
- * das Lockfile.
+ * Ordnet die URL eines skalierenden Bereichs ein: Nodes eigene Laufzeit
+ * (`null`), ein externes Paket oder eine Repository-Datei. Jede andere
+ * Herkunft bricht ab.
+ */
+function locateRange(url, functionName) {
+  if (url.startsWith('node:')) return null;
+  if (!url.startsWith('file:')) {
+    throw new Error(`Skalierender Code ohne Datei im Messweg: ${functionName || '(anonym)'} in ${url || '(ohne URL)'}`);
+  }
+  const path = relative(REPO_ROOT, fileURLToPath(url));
+  if (path.startsWith('..') || isAbsolute(path)) {
+    throw new Error(`Skalierender Code außerhalb des Repositoriums: ${url}`);
+  }
+  const nodeModules = path.lastIndexOf('node_modules/');
+  if (nodeModules !== -1) return { packageName: packageNameOf(path.slice(nodeModules + 'node_modules/'.length)) };
+  return { path };
+}
+
+/**
+ * Bestimmt die Hülle aus der Zählung von `measureWorkLimitCallCounts.mjs`.
  *
- * Dateien allein decken den gemessenen Lauf nicht ab: Er führt vor dem Ergebnis
- * die Schemaprüfung mit Ajv aus. Würde Ajv langsamer, bliebe ein Fingerprint
- * über reine Repository-Dateien unverändert und ein altes Arbeitslimit weiter
- * als belegt stehen (Greptile-Befund zu 88a568e).
+ * Skalierend ist ein Bereich — eine Funktion oder ein Block darin, etwa ein
+ * Schleifenrumpf —, dessen Ausführungszahl bei 2N in mindestens einer
+ * Kategorie größer ist als bei N. Die Blockebene erfasst auch eine Funktion,
+ * die je Lauf einmal aufgerufen wird, deren Schleife aber je Arbeitseinheit
+ * läuft. Die Hülle besteht aus den Dateien mit mindestens einem skalierenden
+ * Bereich. Die Dateiebene genügt: Alle Module, die nur konstant oft laufen,
+ * fallen ohnehin heraus, und eine feinere Ebene müsste Bereiche über
+ * Quelltextänderungen hinweg wiedererkennen.
+ *
+ * Fail-closed vor jeder Verwendung: Jede Kategorie muss gezählt sein und bei
+ * 2N mehr Arbeitseinheiten verbrauchen als bei N, und `spendWork` muss als
+ * skalierend erkannt sein. Sonst zählt die Berechnung am gemessenen Lauf
+ * vorbei, und eine leere oder zu kleine Hülle bliebe unbemerkt.
+ *
+ * Skalierender Code aus Nodes eigener Laufzeit (`node:`) geht nicht ein: Die
+ * Node-Version gehört zu keinem der beiden Fingerprints. Jede andere Herkunft,
+ * die keine Datei im Repository ist, bricht ab.
+ */
+export function deriveScalingHull(observation) {
+  const categories = Array.isArray(observation?.categories) ? observation.categories : [];
+  assertCountedGrowth(categories);
+
+  const paths = new Set();
+  const packages = new Set();
+  let spendWorkScales = false;
+  for (const { url, functionName } of scalingRanges(categories)) {
+    const location = locateRange(url, functionName);
+    if (location?.packageName !== undefined) packages.add(location.packageName);
+    if (location?.path === undefined) continue;
+    if (location.path === SPEND_WORK.path && functionName === SPEND_WORK.functionName) spendWorkScales = true;
+    if (!PROVENANCE_EXCLUDED_PATHS.includes(location.path)) paths.add(location.path);
+  }
+  if (!spendWorkScales) {
+    throw selfProofFailure(`${SPEND_WORK.functionName} aus ${SPEND_WORK.path} ist nicht als skalierend erkannt`);
+  }
+  return { paths: [...paths].sort(byCodeUnit), packages: [...packages].sort(byCodeUnit) };
+}
+
+let typescript;
+
+/**
+ * Der Compiler wird erst beim ersten Fingerprint geladen. Er ist groß, und
+ * `measure-class2-budget.mjs` importiert dieses Modul auch für Läufe und
+ * Tests, die keinen Fingerprint berechnen.
+ */
+function loadTypeScript() {
+  typescript ??= createRequire(import.meta.url)('typescript');
+  return typescript;
+}
+
+/**
+ * Der Quelltext einer Hüllendatei ohne Kommentare, Formatierung und Typen.
+ *
+ * `ts.transpileModule` druckt die Ausgabe aus dem Syntaxbaum neu: Kommentare,
+ * Einrückung, Zeilenumbrüche und Typannotationen fallen heraus, jede Änderung
+ * am ausgeführten Code bleibt stehen. Typen dürfen heraus, weil sie zur
+ * Laufzeit nicht existieren und die gemessene Dauer nicht beeinflussen — die
+ * Begründung, mit der seit GSPP-394 schon reine Typkanten aus der Hülle fielen.
+ */
+export function normalizeSource(path, source) {
+  const ts = loadTypeScript();
+  return ts.transpileModule(source, {
+    fileName: path,
+    reportDiagnostics: false,
+    compilerOptions: {
+      removeComments: true,
+      target: ts.ScriptTarget.ESNext,
+      module: ts.ModuleKind.ESNext,
+      verbatimModuleSyntax: true,
+    },
+  }).outputText;
+}
+
+/**
+ * Die Datei, die die gemessenen Eingaben baut, und die Module, aus denen sie
+ * Werte übernimmt.
+ *
+ * Die importierten Module gehen nicht als Dateien in den Fingerprint:
+ * `sourceRegistry.mjs` ändert sich mit jedem neuen BSI-Artefakt und zieht
+ * `oscalVersionMatrix.mjs` nach sich, beides ohne Einfluss auf die gemessenen
+ * Eingaben. Gebunden ist stattdessen ihre Wirkung auf die Fixture — die
+ * gebauten Dokumente (darin die OSCAL-Version aus der Registry) und die
+ * Wiederholungsdeckel je Kategorie (aus den Dokumentgrenzen), siehe
+ * `fixtureInputs`. Diese Beobachtung ist nur für die hier benannten Importe
+ * begründet; ein weiterer Import bricht ab, bis jemand die Bindung für ihn
+ * geprüft hat.
+ */
+export const WORK_LIMIT_FIXTURE = Object.freeze({
+  path: 'scripts/profileResolutionWorstCaseFixtures.mjs',
+  imports: Object.freeze([
+    '../src/domain/class2ImportLimits.mjs',
+    '../src/domain/sourceRegistry.mjs',
+  ]),
+});
+
+/**
+ * Was die Fixture aus ihren Importen macht: je Kategorie der
+ * Wiederholungsdeckel und die Dokumente eines Kalibrierfalls mit einer
+ * Wiederholung. Die übrige Semantik der Fixture steht in ihrem Quelltext und
+ * ist über ihn gebunden.
+ */
+export function fixtureInputs() {
+  return WORK_UNIT_CATEGORIES.map((category) => {
+    const { documents, edges, topProfileArtifactKey } = buildWorkUnitCalibration(category, 1);
+    return { category, maxRepetitions: maxRepetitions(category), documents, edges, topProfileArtifactKey };
+  });
+}
+
+/**
+ * SHA-256 über normalisierten Quelltext und beobachtete Eingaben der Fixture.
+ *
+ * Fail-closed: Weicht die Importliste der Fixture von `WORK_LIMIT_FIXTURE.imports`
+ * ab, bricht die Berechnung ab — ein neuer Import könnte die Eingaben auf einem
+ * Weg ändern, den `fixtureInputs` nicht beobachtet.
+ */
+export function fingerprintFixture(source, inputs) {
+  const imports = loadTypeScript().preProcessFile(source, true, true).importedFiles
+    .map((entry) => entry.fileName)
+    .sort(byCodeUnit);
+  const expected = [...WORK_LIMIT_FIXTURE.imports].sort(byCodeUnit);
+  if (imports.length !== expected.length || imports.some((entry, index) => entry !== expected[index])) {
+    throw selfProofFailure(
+      `${WORK_LIMIT_FIXTURE.path} importiert ${imports.join(', ') || 'nichts'} statt ${expected.join(', ')}; `
+      + 'die Bindung der Fixture ist für diese Importe nicht geprüft',
+    );
+  }
+  return createHash('sha256')
+    .update(WORK_LIMIT_FIXTURE.path).update('\0')
+    .update(normalizeSource(WORK_LIMIT_FIXTURE.path, source)).update('\0')
+    .update(JSON.stringify(inputs))
+    .digest('hex');
+}
+
+/**
+ * SHA-256 über Pfad und normalisierten Inhalt jeder Hüllendatei, danach über
+ * die Laufzeitversionen. Die Pfade werden hier noch einmal sortiert, damit der
+ * Hash nie an der Reihenfolge des Aufrufers hängt.
+ */
+export function fingerprintHull(
+  paths,
+  runtime,
+  readSource = (path) => readFileSync(resolve(REPO_ROOT, path), 'utf8'),
+) {
+  const hash = createHash('sha256');
+  for (const path of [...paths].sort(byCodeUnit)) {
+    hash.update(path).update('\0').update(normalizeSource(path, readSource(path))).update('\0');
+  }
+  for (const entry of runtime) hash.update(entry).update('\0');
+  return hash.digest('hex');
+}
+
+/**
+ * Die aufgelösten Versionen der externen Pakete, in denen skalierender Code
+ * liegt, transitiv über das Lockfile.
+ *
+ * Dateien allein decken einen skalierenden Lauf nicht ab, sobald er
+ * Bibliothekscode je Arbeitseinheit ausführt: Würde die Bibliothek langsamer,
+ * bliebe ein Fingerprint über reine Repository-Dateien unverändert und ein
+ * altes Arbeitslimit weiter als belegt stehen (Greptile-Befund zu 88a568e).
  *
  * Aufgelöst wird nur der gehobene Eintrag `node_modules/<name>`. Eine
  * verschachtelte Installation mit abweichender Version geht mit der gehobenen
@@ -301,17 +360,53 @@ function resolvePackageVersions(names) {
 }
 
 /**
- * Fingerprint des Messwegs. Gleiche Zahl bedeutet: Der Code UND die Laufzeit,
- * an denen die Arbeitsgrenze gemessen wurde, sind unverändert — die Messung
- * gilt noch.
+ * Startet die Aufrufzählung in einem eigenen Node-Prozess; warum eigener
+ * Prozess, steht im Kopf von `measureWorkLimitCallCounts.mjs`.
+ * `NODE_V8_COVERAGE` wird nicht vererbt, damit keine prozessweite Abdeckung
+ * des Aufrufers im Kindprozess mitläuft.
+ */
+function collectCallCounts() {
+  const env = { ...process.env };
+  delete env.NODE_V8_COVERAGE;
+  const stdout = execFileSync(process.execPath, [CALL_COUNT_COLLECTOR], {
+    cwd: REPO_ROOT,
+    env,
+    encoding: 'utf8',
+    maxBuffer: 256 * 1024 * 1024,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: 120_000,
+  });
+  return JSON.parse(stdout);
+}
+
+/**
+ * Der Gesamtfingerprint aus Hülle und Fixture. Beide Teile stehen einzeln im
+ * Artefakt, geprüft wird dieser eine Wert.
+ */
+export function combineProvenance(hullSha256, fixtureSha256) {
+  return createHash('sha256').update(hullSha256).update('\0').update(fixtureSha256).digest('hex');
+}
+
+/**
+ * Fingerprint des Messwegs. Gleiche Zahl bedeutet: Der Code, dessen Ausführung
+ * mit den Arbeitseinheiten wächst, und die Eingaben, an denen er gemessen
+ * wurde, sind unverändert — die Messung gilt noch.
  */
 export function workLimitProvenance() {
-  const { paths, packages } = collectWorkLimitSources();
+  const { paths, packages } = deriveScalingHull(collectCallCounts());
   const runtime = resolvePackageVersions(packages);
-  const hash = createHash('sha256');
-  for (const path of paths) {
-    hash.update(path).update('\0').update(readFileSync(resolve(REPO_ROOT, path))).update('\0');
-  }
-  for (const entry of runtime) hash.update(entry).update('\0');
-  return { sha256: hash.digest('hex'), files: paths.length, paths, runtime };
+  const hull = fingerprintHull(paths, runtime);
+  const fixture = fingerprintFixture(
+    readFileSync(resolve(REPO_ROOT, WORK_LIMIT_FIXTURE.path), 'utf8'),
+    fixtureInputs(),
+  );
+  return {
+    method: WORK_LIMIT_PROVENANCE_METHOD,
+    sha256: combineProvenance(hull, fixture),
+    files: paths.length,
+    paths,
+    runtime,
+    hullSha256: hull,
+    fixture: { path: WORK_LIMIT_FIXTURE.path, sha256: fixture },
+  };
 }

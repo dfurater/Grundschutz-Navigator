@@ -789,29 +789,95 @@ dem sie erhoben wurde.
   `scripts` und die Build-Konfiguration ab und belegt „dieser Baum wurde
   gemessen". Er bleibt **Protokoll**: Als Gate erzwänge jede Änderung an einer
   beliebigen UI-Komponente einen Browsermesslauf.
-- Die **Messwegprovenienz** (`sourceBefore.workLimitProvenance.sha256`) deckt
-  genau das ab, was der gemessene Auflösungslauf ausführt. Sie ist die
-  **Testbedingung**. Ihre Hülle ist aus den echten Importen berechnet
-  ([`measureWorkLimitProvenance.mjs`](../scripts/measureWorkLimitProvenance.mjs)):
-  ab den Einstiegspunkten des Messharnisches transitiv über alle Importe. Sie
-  umfasst Repository-Dateien **und** die aufgelösten Versionen der externen
-  Laufzeit (`runtime`, transitiv aus dem Lockfile) — der gemessene Lauf führt
-  vor dem Ergebnis die Schemaprüfung mit Ajv aus.
+- Die **Messwegprovenienz** (`sourceBefore.workLimitProvenance`) deckt genau
+  den Code ab, dessen Kosten mit den Arbeitseinheiten wachsen, und die
+  Eingaben, an denen er gemessen wurde. Sie ist die **Testbedingung**
+  ([`measureWorkLimitProvenance.mjs`](../scripts/measureWorkLimitProvenance.mjs)).
 
-**Die Hülle folgt keiner Kante, die ausschließlich einen Typ transportiert.**
-`import type` / `export type` existieren zur Laufzeit nicht und können die
-gemessene Dauer nicht beeinflussen. Die Erkennung ist **fail-closed**: Ein Ziel
-entfällt nur, wenn *jedes* seiner Vorkommen in der Datei zweifelsfrei als reine
-Typkante erkennbar ist. Die Mischform `import { type X, y }`, ein
-seitenwirksames `import '…'`, ein dynamisches `import('…')` und jede
-Schreibweise, die die Textsuche nicht sicher einordnet, halten die Kante;
-`export * from` bleibt eine Wertkante.
+**Die Hülle kommt aus einer Ausführungszählung** (Verfahren
+`skalierende-bereiche`). `WORK_UNIT_LIMIT` ist eine Aussage über die Zeit pro
+Arbeitseinheit; maßgeblich ist deshalb nicht, was vom Auflösungspfad aus
+importierbar ist, sondern was mit den Arbeitseinheiten skaliert.
+[`measureWorkLimitCallCounts.mjs`](../scripts/measureWorkLimitCallCounts.mjs)
+lässt für jede der sechs Kategorien den produktiven `resolveProfile` über die
+Kalibrierfixture mit N = 4 und 2N = 8 Wiederholungen laufen und zählt mit
+V8-Precise-Coverage auf Blockebene, wie oft jede Funktion und jeder Block darin
+ausgeführt wird. Gezählt wird genau der Abschnitt, den der Harnisch zwischen
+seinen beiden `nowMs()` misst; Plan und `parseProfileDocument` laufen vorher
+und fallen heraus. Ein Test hält beide Abschnitte aneinander fest.
 
-Die **Auswertung** (`measureClass2BudgetReport.mjs`) steht bewusst in keiner
-der beiden Hüllen: Sie läuft im Browser nie mit und erzeugt keine Rohdaten.
-Der Bindungstest leitet den Grenzwert bei jedem Testlauf mit der aktuellen
-Auswertung aus dem Artefakt neu her — eine Änderung an ihr wird sofort
-geprüft, ohne einen Browsermesslauf zu erzwingen.
+- **Skalierend** ist ein Bereich — eine Funktion oder ein Block darin, etwa ein
+  Schleifenrumpf —, dessen Ausführungszahl bei 2N in mindestens einer
+  Kategorie größer ist als bei N. Die Blockebene erfasst auch eine Funktion,
+  die je Lauf einmal aufgerufen wird, deren Schleife aber je Arbeitseinheit
+  läuft. Die Hülle besteht aus den Dateien mit mindestens einem skalierenden
+  Bereich und steht unter `paths` im Artefakt. Liegt ein skalierender Bereich
+  in einem externen Paket, geht dessen aufgelöste Version transitiv aus dem
+  Lockfile ein (`runtime`). Nodes eigene Laufzeit geht nicht ein.
+- **Selbstnachweis, fail-closed.** Vor jeder Verwendung muss jede Kategorie
+  bei 2N mehr Arbeitseinheiten verbrauchen als bei N, und `spendWork` aus
+  `profileResolutionBudget.ts` muss als skalierend erkannt sein. Sonst bricht
+  die Berechnung mit einer benannten Meldung ab, statt eine leere oder zu
+  kleine Hülle zu hashen. Vor jedem Lauf muss die Wiederholungszahl innerhalb
+  von `maxRepetitions` der Kategorie liegen, also in einem Steuerdokument,
+  das die Dokumentgrenzen zulassen; `buildWorkUnitCalibration` selbst prüft
+  das nicht. Dieselbe Prüfung gilt für die Kalibrierfälle von `--calibrate`.
+- **Normalisierter Inhalt.** Gehasht werden Pfad und Quelltext jeder
+  Hüllendatei nach `ts.transpileModule` mit `removeComments`. Die Ausgabe wird
+  aus dem Syntaxbaum neu gedruckt: Kommentare, Formatierung und Typannotationen
+  verschieben den Hash nicht, jede Änderung am ausgeführten Code schon. Die
+  Pfade sind wie beim breiten Fingerprint mit `byCodeUnit` sortiert.
+- **Die Worst-Case-Fixture ist mitgebunden.** Die Zählung sieht nur, was
+  während `resolveProfile` läuft; die Eingaben baut
+  [`profileResolutionWorstCaseFixtures.mjs`](../scripts/profileResolutionWorstCaseFixtures.mjs)
+  davor. Ohne eigene Bindung belegten die alten Zeitreihen den Grenzwert auch
+  nach einer Änderung der Fixture, etwa mehr Controls im Quellkatalog. Ein
+  eigener Fingerprint (`fixture.sha256`) umfasst deshalb ihren wie oben
+  normalisierten Quelltext und ihre beobachteten Eingaben aus den importierten
+  Modulen: je Kategorie den Wiederholungsdeckel, den die Dokumentgrenzen aus
+  `class2ImportLimits.mjs` setzen, und die Dokumente eines Kalibrierfalls mit
+  der OSCAL-Version aus `sourceRegistry.mjs`. Die beiden Module gehen nicht als
+  Dateien ein: Die Registry ändert sich mit jedem neuen BSI-Artefakt, ohne die
+  gemessenen Eingaben zu berühren. Die Beobachtung ist nur für diese beiden
+  Importe begründet; bekommt die Fixture einen weiteren, bricht die Berechnung
+  ab. Im Artefakt stehen `hullSha256` und `fixture.sha256` einzeln, geprüft
+  wird der daraus kombinierte `sha256`.
+- **Eigener Node-Prozess.** Precise-Coverage ist ein Zustand des ganzen
+  Isolates, und jede Abfrage setzt die Zähler zurück. Unter
+  `npm run test:coverage` misst Vitest seine Abdeckung über denselben
+  Mechanismus; die Zählung läuft deshalb in einem Kindprozess, der
+  `src/domain` über Nodes Typ-Stripping und den Aliashook aus
+  [`oscal-domain-bridge.mjs`](../scripts/oscal-domain-bridge.mjs) lädt. Die
+  Berechnung braucht keinen Browser, dauert rund eine Sekunde und läuft in
+  `npm run test` mit.
+
+**Bekannte Grenzen.**
+
+- Code, dessen Bereiche bei N und 2N gleich oft laufen, kann trotzdem langsamer
+  werden — etwa die Ajv-Schemastufe der Abschlusskette, die je Profil einmal
+  läuft. Eine solche Änderung löst keine Neumessung der Arbeitsgrenze aus. Ihre
+  Kosten hängen an der Ausgabegröße, die die Ausgabegrenzen begrenzen; deren
+  Messreihen aus GSPP-382 haben keinen Provenienz-Gate.
+- `processClass2OscalValue` läuft einmal je Profil in `plan.order`. Jede
+  Worst-Case-Fixture besteht aus genau einem Katalog und einem Profil; weder
+  die Messung noch die Hülle decken deshalb Kosten ab, die mit der Länge einer
+  Profilkette wachsen. Das ist eine Frage der Messabdeckung, nicht des
+  Fingerprints.
+
+**Übertragene Bindung.** Das Artefakt führt unter
+`workLimitProvenanceRestamps` die Nachweisschritte, mit denen sein Fingerprint
+ohne Browserlauf an das geltende Verfahren gebunden ist; jeder Eintrag nennt
+Basiscommit, Verfahren und Hash vorher und nachher sowie seine Nachweise. Die
+Einträge sind keine Messergebnisse und belegen nichts über die Kosten.
+`renderReport` verweigert einen Bericht, dessen Provenienz vor und nach der
+Messung kein oder ein unterschiedliches Verfahren nennt, und der Bindungstest
+verlangt Verfahren und Hash des aktuellen Stands.
+
+Die **Auswertung** (`measureClass2BudgetReport.mjs`) steht nicht in der Hülle
+der Messwegprovenienz: Sie läuft im Browser nie mit und erzeugt keine
+Rohdaten. Der Bindungstest leitet den Grenzwert bei jedem Testlauf mit der
+aktuellen Auswertung aus dem Artefakt neu her — eine Änderung an ihr wird
+sofort geprüft, ohne einen Browsermesslauf zu erzwingen.
 
 Beide lassen `profileResolutionBudgetLimits.mjs` aus — genau diese Datei muss
 sich zwischen Mess- und Lieferstand unterscheiden, sonst wäre die Frage „gehört

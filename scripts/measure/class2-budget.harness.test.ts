@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TRANSPORT_MAX_CODE_UNITS, TRANSPORT_MAX_OPERATIONS } from '@/domain/oscalImportTransport';
+import { maxRepetitions } from '../profileResolutionWorstCaseFixtures.mjs';
 
 const pipeline = vi.hoisted(() => ({ parse: vi.fn(), process: vi.fn() }));
 vi.mock('@/domain/oscalImportProcessing', () => ({ parseClass2OscalInput: pipeline.parse }));
@@ -11,6 +12,7 @@ type Harness = {
   objectChain(): Promise<unknown>;
   holdTransportInventory(): Record<string, unknown>;
   release(): void;
+  profileResolutionCalibration(category: string, repetitions: number): Promise<unknown>;
 };
 let harness: Harness;
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -70,5 +72,17 @@ describe('held transport inventory', () => {
     expect(finish).toHaveBeenCalledOnce();
     expect(finish.mock.results[0].value).toEqual(source);
     expect(finish.mock.results[0].value).not.toBe(source);
+  });
+});
+
+describe('profile resolution calibration', () => {
+  it('rejects a repetition count beyond the document limits before building the case', async () => {
+    // `buildWorkUnitCalibration` never marks a case as capped, so the capped
+    // branch in `runResolutionFixture` cannot catch an oversized calibration.
+    const beyond = maxRepetitions('alter-target-lookup') + 1;
+    await expect(harness.profileResolutionCalibration('alter-target-lookup', beyond))
+      .rejects.toThrow(new RangeError(
+        `Kalibrierfall alter-target-lookup mit ${beyond} Wiederholungen liegt jenseits der Dokumentgrenze (${beyond - 1})`,
+      ));
   });
 });
