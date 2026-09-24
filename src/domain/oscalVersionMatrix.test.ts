@@ -190,12 +190,16 @@ describe('oscalVersionMatrix', () => {
     it('rejects a malformed version without guessing a neighbour', () => {
       for (const oscalVersion of [
         '1.1', '1.1.3-rc1', '01.1.3', 'gsmap-oscal-export-v1',
-        // Nur genau ein führendes kleines `v` wird entfernt (GSPP-357).
+        // Auch mit Freigabe wird nur genau ein führendes kleines `v`
+        // entfernt (GSPP-357).
         'V1.2.2', 'vv1.2.2', 'v1.2', 'v', ' v1.2.2', 'v 1.2.2',
       ]) {
-        expect(resolveSchemaBinding({ rootType: 'catalog', oscalVersion })).toMatchObject({
-          code: VERSION_MATRIX_DIAGNOSTIC_CODES.VERSION_MALFORMED,
-        });
+        for (const acceptVersionPrefix of [undefined, true]) {
+          expect(
+            resolveSchemaBinding({ rootType: 'catalog', oscalVersion, acceptVersionPrefix }),
+            `${oscalVersion} / ${String(acceptVersionPrefix)}`,
+          ).toMatchObject({ code: VERSION_MATRIX_DIAGNOSTIC_CODES.VERSION_MALFORMED });
+        }
       }
     });
 
@@ -308,8 +312,29 @@ describe('oscalVersionMatrix', () => {
   });
 
   describe('v-präfigierte oscal-version (GSPP-357)', () => {
+    it('binds exactly without an explicit opt-in', () => {
+      // Positivdefinition: nur `true` gibt die Normalisierung frei. Dieser
+      // Standard gilt für Klasse 1 in Fetch und Browser.
+      for (const acceptVersionPrefix of [undefined, false, 'true', 1]) {
+        expect(resolveSchemaBinding({
+          rootType: 'catalog',
+          oscalVersion: 'v1.2.2',
+          acceptVersionPrefix: acceptVersionPrefix as boolean | undefined,
+        })).toEqual({
+          ok: false,
+          code: VERSION_MATRIX_DIAGNOSTIC_CODES.VERSION_MALFORMED,
+          rootType: 'catalog',
+          oscalVersion: null,
+        });
+      }
+    });
+
     it('binds v1.2.2 to exactly the same pinned cell as 1.2.2', () => {
-      const prefixed = resolveSchemaBinding({ rootType: 'catalog', oscalVersion: 'v1.2.2' });
+      const prefixed = resolveSchemaBinding({
+        rootType: 'catalog',
+        oscalVersion: 'v1.2.2',
+        acceptVersionPrefix: true,
+      });
       const plain = resolveSchemaBinding({ rootType: 'catalog', oscalVersion: '1.2.2' });
 
       expect(prefixed).toEqual({ ok: true, pin: getSchemaPin('catalog', '1.2.2') });
@@ -321,12 +346,17 @@ describe('oscalVersionMatrix', () => {
         expect(resolveSchemaBinding({
           rootType: pin.rootKey,
           oscalVersion: `v${pin.oscalVersion}`,
+          acceptVersionPrefix: true,
         })).toEqual({ ok: true, pin });
       }
     });
 
     it('rejects an unpinned prefixed version instead of choosing a neighbour', () => {
-      expect(resolveSchemaBinding({ rootType: 'catalog', oscalVersion: 'v1.2.3' })).toEqual({
+      expect(resolveSchemaBinding({
+        rootType: 'catalog',
+        oscalVersion: 'v1.2.3',
+        acceptVersionPrefix: true,
+      })).toEqual({
         ok: false,
         code: VERSION_MATRIX_DIAGNOSTIC_CODES.ROOT_VERSION_UNSUPPORTED,
         rootType: 'catalog',
@@ -339,6 +369,7 @@ describe('oscalVersionMatrix', () => {
       expect(resolveSchemaBinding({
         rootType: 'mapping-collection',
         oscalVersion: 'v1.1.3',
+        acceptVersionPrefix: true,
       })).toMatchObject({
         code: VERSION_MATRIX_DIAGNOSTIC_CODES.ROOT_VERSION_IMPOSSIBLE,
         oscalVersion: '1.1.3',
@@ -350,11 +381,13 @@ describe('oscalVersionMatrix', () => {
         rootType: 'catalog',
         oscalVersion: 'v1.2.2',
         schemaDirective: buildSchemaId('catalog', '1.2.2')!,
+        acceptVersionPrefix: true,
       }).ok).toBe(true);
       expect(resolveSchemaBinding({
         rootType: 'catalog',
         oscalVersion: 'v1.2.2',
         schemaDirective: buildSchemaId('catalog', '1.2.1')!,
+        acceptVersionPrefix: true,
       })).toMatchObject({
         code: VERSION_MATRIX_DIAGNOSTIC_CODES.SCHEMA_DIRECTIVE_CONFLICT,
         oscalVersion: '1.2.2',
@@ -370,10 +403,14 @@ describe('oscalVersionMatrix', () => {
     });
 
     it('maps a declared version to a pinned version or null', () => {
-      expect(toPinnedOscalVersion('v1.2.2')).toBe('1.2.2');
+      const prefixed = { acceptVersionPrefix: true };
+      expect(toPinnedOscalVersion('v1.2.2', prefixed)).toBe('1.2.2');
+      expect(toPinnedOscalVersion('1.1.3', prefixed)).toBe('1.1.3');
       expect(toPinnedOscalVersion('1.1.3')).toBe('1.1.3');
+      expect(toPinnedOscalVersion('v1.2.2')).toBeNull();
+      expect(toPinnedOscalVersion('v1.2.2', { acceptVersionPrefix: false })).toBeNull();
       for (const value of ['v1.2.3', 'V1.2.2', 'vv1.2.2', 'v1.2', '', 122, null, undefined]) {
-        expect(toPinnedOscalVersion(value)).toBeNull();
+        expect(toPinnedOscalVersion(value, prefixed)).toBeNull();
       }
     });
   });

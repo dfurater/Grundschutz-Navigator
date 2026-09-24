@@ -234,9 +234,13 @@ vier Kataloge mit `"oscal-version": "v1.2.2"` (CSF v2.0, SP 800-171 Rev. 3, SP
 `oscal-version` ist `StringDatatype`, dessen Muster nur Rand-Leerzeichen
 ausschließt, aber kein Versionsformat festlegt.
 
-`resolveSchemaBinding()` entfernt deshalb vor der Formprüfung genau ein
-führendes kleines `v` (`normalizeDeclaredOscalVersion()`). `v1.2.2` bindet
-exakt dieselbe Zelle wie `1.2.2`; darüber hinaus wird nichts umgeschrieben:
+Für Klasse-2-Dokumente entfernt `resolveSchemaBinding()` deshalb vor der
+Formprüfung genau ein führendes kleines `v` (`normalizeDeclaredOscalVersion()`).
+Die Normalisierung ist eine ausdrückliche Freigabe (`acceptVersionPrefix: true`),
+die der Root-Dispatch nur für die Vertrauensklasse `class-2-local-user` erteilt
+(`acceptsOscalVersionPrefix()`); ohne sie bindet die Matrix exakt. Mit Freigabe
+bindet `v1.2.2` exakt dieselbe Zelle wie `1.2.2`; darüber hinaus wird nichts
+umgeschrieben:
 
 | Deklariert | Ergebnis |
 | --- | --- |
@@ -248,13 +252,17 @@ exakt dieselbe Zelle wie `1.2.2`; darüber hinaus wird nichts umgeschrieben:
 Die Normalisierung dient ausschließlich der Matrixbindung. Das Quelldokument
 und sein Metadatenwert bleiben unverändert — Schema-Validierung, Integrität,
 Export und Anzeige sehen weiter `v1.2.2`. Diagnose- und Referenzkontext der
-Modelladapter tragen die gebundene Version aus `toPinnedOscalVersion()`, also
-`1.2.2`; ein Wert außerhalb der gepinnten Menge wird dort zu `null`.
+Modelladapter tragen die gebundene Version aus `toPinnedOscalVersion()` nach
+derselben Klassenregel, für Klasse 2 also `1.2.2`; ein Wert außerhalb der
+gepinnten Menge wird dort zu `null`.
 
-Klasse 1 ist davon ausgenommen: `scripts/fetch-catalog.mjs` verlangt, dass ein
-BSI-Artefakt seine Version exakt so deklariert, wie Matrix und Quellregister
-sie führen. Wechselt ein BSI-Artefakt auf die Präfixform, scheitert der Fetch
-und die Änderung wird nicht still übernommen.
+Klasse 1 ist davon ausgenommen, in `scripts/fetch-catalog.mjs` ebenso wie im
+Browser: Ein BSI-Artefakt muss seine Version exakt so deklarieren, wie Matrix
+und Quellregister sie führen, sonst bleibt `v1.2.2` `OSCAL_VERSION_MALFORMED`.
+Das gilt auch für `class-1-unverified-public`, weil ein abweichender Hash die
+Nutzung des Katalogs nicht verhindert. Wechselt ein BSI-Artefakt auf die
+Präfixform, scheitern Fetch und Laden gleichermaßen, und die Änderung wird
+nicht still übernommen.
 
 ### `metadata.version` ist kein Versionsindikator
 

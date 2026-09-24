@@ -1021,13 +1021,14 @@ führt zu `OSCAL_VERSION_MISSING`. Es wird ausdrücklich **nicht** nach String
 konvertiert: Eine Koerzierung würde unvertrauenswürdige Eingabe in eine
 scheinbare Versionsangabe verwandeln.
 
-Vor der Formprüfung entfernt die Matrix genau ein führendes kleines `v`:
-`v1.2.2` bindet die Zelle `1.2.2`, `V1.2.2`, `vv1.2.2` und `v1.2` bleiben
+Für Klasse 2 entfernt die Matrix vor der Formprüfung genau ein führendes
+kleines `v`: `v1.2.2` bindet die Zelle `1.2.2`, `V1.2.2`, `vv1.2.2` und `v1.2` bleiben
 `OSCAL_VERSION_MALFORMED`, `v1.2.3` bleibt `OSCAL_ROOT_VERSION_UNSUPPORTED`.
 Das Dokument selbst wird dabei nicht verändert; Stufe 3 validiert den
 unveränderten Wert gegen das Schema der gewählten Zelle. `artifact.oscalVersion`
 trägt die gebundene Version, bei einer Ablehnung nur ein Mitglied der gepinnten
-Menge oder `null`. Klasse 1 bindet weiterhin exakt. Herleitung und Belege:
+Menge oder `null`. Klasse 1 bindet in Fetch und Browser weiterhin exakt,
+dort bleibt `v1.2.2` `OSCAL_VERSION_MALFORMED`. Herleitung und Belege:
 [OSCAL_VERSION_MATRIX.md](OSCAL_VERSION_MATRIX.md#führendes-v-in-metadataoscal-version).
 
 ### Umgesetzte Stufe 3: Ajv-Konfiguration, Schemazugriff und Codes

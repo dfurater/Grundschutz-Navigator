@@ -16,8 +16,8 @@
  * Die Werte sind erfunden; es stehen keine echten Organisationsdaten darin.
  * `oscal-version` wird ohne führendes `v` deklariert. Die vier Dokumente in
  * oscal-content v1.5.0, die `"v1.2.2"` schreiben, bindet
- * `resolveSchemaBinding()` an dieselbe Zelle (GSPP-357); Tests, die diese
- * Form brauchen, setzen den Wert nach dem Aufbau selbst.
+ * `resolveSchemaBinding()` für Klasse 2 an dieselbe Zelle (GSPP-357); Tests,
+ * die diese Form brauchen, setzen den Wert nach dem Aufbau selbst.
  */
 
 import type { OscalRootKey, PinnedOscalVersion } from '@/domain/oscalVersionMatrix';

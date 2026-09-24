@@ -1,13 +1,13 @@
 // =============================================================================
 // v-präfigierte metadata.oscal-version (GSPP-357)
 //
-// Die Matrix entfernt genau ein führendes kleines `v`, bevor sie die Zelle
-// wählt. Geprüft wird hier, dass Root-Dispatch und Modelladapter daraus
-// denselben Versionskontext ableiten: Der Dispatch bindet `v1.2.2` an die
-// Zelle `1.2.2` und lässt die Quelle unverändert; die Adapter, die die Version
-// für Diagnose- und Referenzkontext selbst lesen, melden dieselbe gepinnte
-// Version, statt die Präfixform zu `null` zu verlieren oder roh
-// durchzureichen.
+// Für Klasse 2 entfernt die Matrix genau ein führendes kleines `v`, bevor sie
+// die Zelle wählt. Geprüft wird hier, dass Root-Dispatch und Modelladapter
+// daraus denselben Versionskontext ableiten: Der Dispatch bindet `v1.2.2` an
+// die Zelle `1.2.2` und lässt die Quelle unverändert; die Adapter, die die
+// Version für Diagnose- und Referenzkontext selbst lesen, melden dieselbe
+// gepinnte Version, statt die Präfixform zu `null` zu verlieren oder roh
+// durchzureichen. Klasse 1 bindet in beiden exakt.
 // =============================================================================
 
 import { describe, expect, it } from 'vitest';
@@ -26,6 +26,12 @@ import {
 import { makeOscalEnvelope as makeEnvelope } from '@/test/fixtures/oscalEnvelope';
 
 const context: OscalDocumentContext = { trustClass: 'class-2-local-user' };
+const CLASS_1_CONTEXTS: readonly OscalDocumentContext[] = [
+  { trustClass: 'class-1-verified-public' },
+  // Auch ein unverifiziertes BSI-Artefakt wird genutzt; es darf deshalb
+  // ebenso wenig normalisiert werden.
+  { trustClass: 'class-1-unverified-public' },
+];
 
 function expectFailure(result: ReturnType<typeof dispatchOscalDocument>): OscalRootDispatchFailure {
   expect(result.ok).toBe(false);
@@ -89,6 +95,17 @@ describe('dispatchOscalDocument — v-präfigierte oscal-version', () => {
     expect(diagnostic.params.expected).toBe(buildSchemaId('catalog', '1.2.2'));
   });
 
+  it.each(CLASS_1_CONTEXTS)('bindet Klasse 1 exakt und lehnt v1.2.2 ab ($trustClass)', (class1Context) => {
+    const { diagnostic } = expectFailure(
+      dispatchOscalDocument(makeEnvelope('catalog', 'v1.2.2'), class1Context),
+    );
+
+    expect(diagnostic.code).toBe(VERSION_MATRIX_DIAGNOSTIC_CODES.VERSION_MALFORMED);
+    expect(diagnostic.path).toBe('/catalog/metadata/oscal-version');
+    expect(diagnostic.artifact.oscalVersion).toBeNull();
+    // Die exakte Form bindet unverändert.
+    expect(dispatchOscalDocument(makeEnvelope('catalog', '1.2.2'), class1Context).ok).toBe(true);
+  });
 });
 
 type Derive = (body: unknown, context: OscalDocumentContext) => {
@@ -136,4 +153,13 @@ describe.each(ADAPTERS)('%s — Versionskontext des Adapters', (_rootType, deriv
       expect(JSON.stringify(diagnostics)).not.toContain(declared);
     },
   );
+
+  it.each(CLASS_1_CONTEXTS)('übernimmt v1.2.2 für Klasse 1 nicht ($trustClass)', (class1Context) => {
+    const { diagnostics } = derive(bodyWithVersion('v1.2.2'), class1Context);
+
+    expect(diagnostics.length).toBeGreaterThan(0);
+    expect(versionsIn(diagnostics)).toEqual(new Set([null]));
+    expect(versionsIn(derive(bodyWithVersion('1.2.2'), class1Context).diagnostics))
+      .toEqual(new Set(['1.2.2']));
+  });
 });

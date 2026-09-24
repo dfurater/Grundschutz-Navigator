@@ -70,6 +70,7 @@ import type {
   ProfileSetParameter,
 } from '@/domain/profileModel';
 import type { OscalDocumentContext } from '@/domain/models';
+import { acceptsOscalVersionPrefix } from '@/domain/oscalDocumentContext';
 import { toPinnedOscalVersion } from '@/domain/oscalVersionMatrix';
 import type { PinnedOscalVersion } from '@/domain/oscalVersionMatrix';
 import { getArtifactByUpstreamPath } from '@/domain/sourceRegistry';
@@ -469,10 +470,14 @@ function deriveMetadata(body: JsonObject): ProfileMetadata {
  * Nur ein Wert aus der gepinnten Menge wird übernommen; alles andere wird
  * `null`. Der Dispatch hat die Bindung vor dem Aufruf bereits geprüft — dieser
  * Filter hält die Redaction-Regel auch dann ein, wenn jemand `derive` direkt
- * aufruft. `v1.2.2` ergibt wie im Dispatch die gebundene Version `1.2.2`.
+ * aufruft. Für Klasse 2 ergibt `v1.2.2` wie im Dispatch die gebundene Version
+ * `1.2.2`; Klasse 1 bindet exakt.
  */
-function readPinnedOscalVersion(body: JsonObject): PinnedOscalVersion | null {
-  return toPinnedOscalVersion(isJsonObject(body.metadata) ? body.metadata['oscal-version'] : undefined);
+function readPinnedOscalVersion(body: JsonObject, context: OscalDocumentContext): PinnedOscalVersion | null {
+  return toPinnedOscalVersion(
+    isJsonObject(body.metadata) ? body.metadata['oscal-version'] : undefined,
+    { acceptVersionPrefix: acceptsOscalVersionPrefix(context) },
+  );
 }
 
 /**
@@ -486,7 +491,7 @@ function readPinnedOscalVersion(body: JsonObject): PinnedOscalVersion | null {
  */
 export function deriveProfile(body: unknown, context: OscalDocumentContext): Profile {
   const rootBody = isJsonObject(body) ? body : {};
-  const oscalVersion = readPinnedOscalVersion(rootBody);
+  const oscalVersion = readPinnedOscalVersion(rootBody, context);
   const state: DeriveState = {
     diagnostics: [],
     // Der Registry-Schlüssel, nie der Upstream-Pfad: Diagnosen tragen nur

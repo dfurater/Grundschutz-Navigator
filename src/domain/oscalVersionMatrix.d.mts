@@ -78,8 +78,14 @@ export declare function isKnownOscalRootKey(value: string): value is OscalRootKe
 export declare function isPinnedOscalVersion(value: string): value is PinnedOscalVersion;
 /** Entfernt genau ein führendes kleines `v`; nur für die Matrixbindung. */
 export declare function normalizeDeclaredOscalVersion(value: string): string;
-/** Gepinnte Matrixversion einer deklarierten `oscal-version`, sonst `null`. */
-export declare function toPinnedOscalVersion(value: unknown): PinnedOscalVersion | null;
+/**
+ * Gepinnte Matrixversion einer deklarierten `oscal-version`, sonst `null`.
+ * Ein führendes kleines `v` zählt nur mit `acceptVersionPrefix: true`.
+ */
+export declare function toPinnedOscalVersion(
+  value: unknown,
+  options?: { acceptVersionPrefix?: boolean },
+): PinnedOscalVersion | null;
 export declare function buildSchemaReleaseUrl(rootKey: string, version: string): string | null;
 export declare function buildSchemaId(rootKey: string, version: string): string | null;
 export declare function buildSchemaVendorPath(rootKey: string, version: string): string | null;
@@ -89,10 +95,7 @@ export declare function isImpossibleCombination(rootKey: string, version: string
 export declare function listSchemaPins(): readonly OscalSchemaPin[];
 export declare function resolveSchemaBinding(input?: {
   rootType?: string;
-  /**
-   * Die deklarierte `metadata.oscal-version`, unverändert aus dem Dokument.
-   * Ein führendes kleines `v` wird für die Auswahl entfernt.
-   */
+  /** Die deklarierte `metadata.oscal-version`, unverändert aus dem Dokument. */
   oscalVersion?: string;
   /**
    * Der Top-Level-`$schema`-Wert des Dokuments. Nur `undefined` bedeutet
@@ -100,6 +103,12 @@ export declare function resolveSchemaBinding(input?: {
    * geprüft und muss exakt der `$id` der gewählten Zelle entsprechen.
    */
   schemaDirective?: string;
+  /**
+   * Nur `true` entfernt vor der Auswahl genau ein führendes kleines `v`
+   * (GSPP-357). Jeder andere Wert bindet exakt; der Root-Dispatch setzt
+   * `true` ausschließlich für Klasse 2.
+   */
+  acceptVersionPrefix?: boolean;
 }): SchemaBindingResult;
 export declare function verifySchemaArtifact(input: {
   rootKey: string;

@@ -17,6 +17,7 @@
 import type { OscalDiagnostic, OscalDiagnosticValidator } from '@/domain/oscalDiagnostics';
 import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { OscalDocumentContext } from '@/domain/models';
+import { acceptsOscalVersionPrefix } from '@/domain/oscalDocumentContext';
 import type {
   OscalRootKey,
   OscalSchemaPin,
@@ -139,9 +140,9 @@ function pathForBindingFailure(code: string, rootType: OscalRootKey): string {
  * gültige, aber nicht gepinnte Zahl sein. `artifact.oscalVersion` darf laut
  * Redaction-Regel ausschließlich aus einer geschlossenen Menge stammen; hier
  * ist das `PINNED_OSCAL_VERSIONS`. Kein Mitglied dieser Menge wird durch
- * `null` ersetzt, statt den Dokumentwert durchzureichen. Weil die Matrix ein
- * führendes `v` bereits entfernt hat, erhält `v1.1.3` denselben Kontext wie
- * `1.1.3`.
+ * `null` ersetzt, statt den Dokumentwert durchzureichen. Hat die Matrix für
+ * Klasse 2 ein führendes `v` bereits entfernt, erhält `v1.1.3` denselben
+ * Kontext wie `1.1.3`.
  */
 function toRedactedOscalVersion(oscalVersion: string | null): PinnedOscalVersion | null {
   return oscalVersion !== null && isPinnedOscalVersion(oscalVersion) ? oscalVersion : null;
@@ -236,6 +237,7 @@ export function dispatchOscalDocument(
     rootType: rootKey,
     oscalVersion: readDeclaredOscalVersion(body),
     schemaDirective,
+    acceptVersionPrefix: acceptsOscalVersionPrefix(context),
   });
 
   if (!binding.ok) {

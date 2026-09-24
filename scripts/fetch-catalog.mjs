@@ -366,6 +366,9 @@ function assertDeclaredOscalVersion(artifactDocument, descriptor, labels) {
   const declaredVersion = artifactDocument[rootType]?.metadata?.['oscal-version'];
   const context = `${labels.artifact} (${artifactKey})`;
 
+  // Klasse 1 bindet exakt: Ohne `acceptVersionPrefix` bleibt ein BSI-Artefakt,
+  // das seine Version plötzlich als `v1.2.2` deklariert, `OSCAL_VERSION_MALFORMED`
+  // (GSPP-357) — auch ohne Registry-Erwartung.
   const binding = resolveSchemaBinding({
     rootType,
     oscalVersion: declaredVersion,
@@ -377,19 +380,6 @@ function assertDeclaredOscalVersion(artifactDocument, descriptor, labels) {
       `${context}: OSCAL-Versionsprüfung fehlgeschlagen [${binding.code}] — ` +
       `Root ${rootType}, gefunden ${JSON.stringify(binding.oscalVersion)}` +
       (binding.expected ? `, erwartet ${binding.expected}` : '') + '.',
-    );
-  }
-
-  // Klasse 1 bindet exakt: Die Präfixnormalisierung der Matrix (GSPP-357)
-  // gilt nur für Klasse-2-Importe. Ein BSI-Artefakt, das seine Version
-  // plötzlich als `v1.2.2` deklariert, ist eine Upstream-Änderung und wird
-  // nicht still als `1.2.2` übernommen — auch ohne Registry-Erwartung.
-  if (declaredVersion !== binding.pin.oscalVersion) {
-    throw new Error(
-      `${context}: Deklarierte OSCAL-Version ${JSON.stringify(declaredVersion)} ist nicht die exakte ` +
-      `Matrixversion ${binding.pin.oscalVersion}. ` +
-      'Quellregister und Versionsmatrix manuell gegen den BSI-Snapshot prüfen; ' +
-      'keine automatische Übernahme.',
     );
   }
 

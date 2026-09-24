@@ -115,8 +115,9 @@ nicht nachgebaut:
 Dazu fail-closed: `OSCAL_VERSION_MISSING`, `OSCAL_VERSION_MALFORMED` sowie
 `OSCAL_SCHEMA_DIRECTIVE_CONFLICT`, wenn `$schema` der über
 `metadata.oscal-version` gewählten Zelle widerspricht. `$schema` wählt
-niemals die Version aus. Ein einzelnes führendes kleines `v` bindet dieselbe
-Zelle wie die Form ohne `v`; der No-op-Lauf vergleicht dabei gegen das
+niemals die Version aus. Ein einzelnes führendes kleines `v` bindet für
+Klasse 2, die Vertrauensklasse des Harnischs, dieselbe Zelle wie die Form ohne
+`v`; der No-op-Lauf vergleicht dabei gegen das
 unveränderte `v1.2.2` ([Regel](OSCAL_VERSION_MATRIX.md#führendes-v-in-metadataoscal-version)).
 
 ## Der Fixture-Korpus
