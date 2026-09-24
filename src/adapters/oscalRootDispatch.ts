@@ -134,12 +134,14 @@ function pathForBindingFailure(code: string, rootType: OscalRootKey): string {
 
 /**
  * `resolveSchemaBinding()` liefert bei `OSCAL_ROOT_VERSION_IMPOSSIBLE` und
- * `OSCAL_ROOT_VERSION_UNSUPPORTED` den rohen, nur gegen die Versionsform
- * geprüften Dokumentwert zurück — er kann jede syntaktisch gültige, aber
- * nicht gepinnte Zahl sein. `artifact.oscalVersion` darf laut Redaction-Regel
- * ausschließlich aus einer geschlossenen Menge stammen; hier ist das
- * `PINNED_OSCAL_VERSIONS`. Kein Mitglied dieser Menge wird durch `null`
- * ersetzt, statt den Dokumentwert durchzureichen.
+ * `OSCAL_ROOT_VERSION_UNSUPPORTED` den normalisierten, nur gegen die
+ * Versionsform geprüften Dokumentwert zurück — er kann jede syntaktisch
+ * gültige, aber nicht gepinnte Zahl sein. `artifact.oscalVersion` darf laut
+ * Redaction-Regel ausschließlich aus einer geschlossenen Menge stammen; hier
+ * ist das `PINNED_OSCAL_VERSIONS`. Kein Mitglied dieser Menge wird durch
+ * `null` ersetzt, statt den Dokumentwert durchzureichen. Weil die Matrix ein
+ * führendes `v` bereits entfernt hat, erhält `v1.1.3` denselben Kontext wie
+ * `1.1.3`.
  */
 function toRedactedOscalVersion(oscalVersion: string | null): PinnedOscalVersion | null {
   return oscalVersion !== null && isPinnedOscalVersion(oscalVersion) ? oscalVersion : null;

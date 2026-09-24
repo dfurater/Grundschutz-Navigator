@@ -211,7 +211,7 @@ Dokument wird nie „bestmöglich" interpretiert.
 | --- | --- |
 | Root-Key ist keiner der acht | `OSCAL_ROOT_TYPE_UNKNOWN` |
 | `metadata.oscal-version` fehlt oder ist leer | `OSCAL_VERSION_MISSING` |
-| Version ist kein `x.y.z` | `OSCAL_VERSION_MALFORMED` |
+| Version ist nach Entfernen eines führenden kleinen `v` kein `x.y.z` | `OSCAL_VERSION_MALFORMED` |
 | Modell existierte in dieser Version noch nicht | `OSCAL_ROOT_VERSION_IMPOSSIBLE` |
 | Version ist gültig, aber nicht gepinnt | `OSCAL_ROOT_VERSION_UNSUPPORTED` |
 | `$schema` widerspricht der deklarierten Version | `OSCAL_SCHEMA_DIRECTIVE_CONFLICT` |
@@ -224,6 +224,37 @@ erhält deshalb „Modell existierte noch nicht" statt „Version nicht gepinnt"
 
 Diagnosen nennen Artefaktschlüssel, Root-Typ, erwartete und gefundene Version
 — niemals Dokumentinhalte.
+
+### Führendes `v` in `metadata.oscal-version`
+
+NIST selbst deklariert in [`usnistgov/oscal-content` am Tag
+`v1.5.0`](https://github.com/usnistgov/oscal-content/tree/v1.5.0/nist.gov)
+vier Kataloge mit `"oscal-version": "v1.2.2"` (CSF v2.0, SP 800-171 Rev. 3, SP
+800-172 Rev. 3, SP 800-218 Version 1). Das gepinnte Schema lässt das zu:
+`oscal-version` ist `StringDatatype`, dessen Muster nur Rand-Leerzeichen
+ausschließt, aber kein Versionsformat festlegt.
+
+`resolveSchemaBinding()` entfernt deshalb vor der Formprüfung genau ein
+führendes kleines `v` (`normalizeDeclaredOscalVersion()`). `v1.2.2` bindet
+exakt dieselbe Zelle wie `1.2.2`; darüber hinaus wird nichts umgeschrieben:
+
+| Deklariert | Ergebnis |
+| --- | --- |
+| `v1.2.2` | Zelle `1.2.2` |
+| `V1.2.2`, `vv1.2.2`, `v1.2` | `OSCAL_VERSION_MALFORMED` |
+| `v1.2.3` | `OSCAL_ROOT_VERSION_UNSUPPORTED` — keine Nachbarversion |
+| `v1.2.2` mit `$schema` einer anderen Zelle | `OSCAL_SCHEMA_DIRECTIVE_CONFLICT` |
+
+Die Normalisierung dient ausschließlich der Matrixbindung. Das Quelldokument
+und sein Metadatenwert bleiben unverändert — Schema-Validierung, Integrität,
+Export und Anzeige sehen weiter `v1.2.2`. Diagnose- und Referenzkontext der
+Modelladapter tragen die gebundene Version aus `toPinnedOscalVersion()`, also
+`1.2.2`; ein Wert außerhalb der gepinnten Menge wird dort zu `null`.
+
+Klasse 1 ist davon ausgenommen: `scripts/fetch-catalog.mjs` verlangt, dass ein
+BSI-Artefakt seine Version exakt so deklariert, wie Matrix und Quellregister
+sie führen. Wechselt ein BSI-Artefakt auf die Präfixform, scheitert der Fetch
+und die Änderung wird nicht still übernommen.
 
 ### `metadata.version` ist kein Versionsindikator
 

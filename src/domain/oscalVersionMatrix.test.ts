@@ -13,7 +13,9 @@ import {
   isKnownOscalRootKey,
   isPinnedOscalVersion,
   listSchemaPins,
+  normalizeDeclaredOscalVersion,
   resolveSchemaBinding,
+  toPinnedOscalVersion,
   validateVersionMatrix,
   verifySchemaArtifact,
   type OscalRootKey,
@@ -186,7 +188,11 @@ describe('oscalVersionMatrix', () => {
     });
 
     it('rejects a malformed version without guessing a neighbour', () => {
-      for (const oscalVersion of ['1.1', 'v1.1.3', '1.1.3-rc1', '01.1.3', 'gsmap-oscal-export-v1']) {
+      for (const oscalVersion of [
+        '1.1', '1.1.3-rc1', '01.1.3', 'gsmap-oscal-export-v1',
+        // Nur genau ein führendes kleines `v` wird entfernt (GSPP-357).
+        'V1.2.2', 'vv1.2.2', 'v1.2', 'v', ' v1.2.2', 'v 1.2.2',
+      ]) {
         expect(resolveSchemaBinding({ rootType: 'catalog', oscalVersion })).toMatchObject({
           code: VERSION_MATRIX_DIAGNOSTIC_CODES.VERSION_MALFORMED,
         });
@@ -298,6 +304,77 @@ describe('oscalVersionMatrix', () => {
           .toBe(false);
       }
       expect(resolveSchemaBinding({ rootType: 'catalog', oscalVersion: '1.1.3' }).ok).toBe(true);
+    });
+  });
+
+  describe('v-präfigierte oscal-version (GSPP-357)', () => {
+    it('binds v1.2.2 to exactly the same pinned cell as 1.2.2', () => {
+      const prefixed = resolveSchemaBinding({ rootType: 'catalog', oscalVersion: 'v1.2.2' });
+      const plain = resolveSchemaBinding({ rootType: 'catalog', oscalVersion: '1.2.2' });
+
+      expect(prefixed).toEqual({ ok: true, pin: getSchemaPin('catalog', '1.2.2') });
+      expect(prefixed).toEqual(plain);
+    });
+
+    it('binds the prefixed form for every pinned cell and nothing else', () => {
+      for (const pin of listSchemaPins()) {
+        expect(resolveSchemaBinding({
+          rootType: pin.rootKey,
+          oscalVersion: `v${pin.oscalVersion}`,
+        })).toEqual({ ok: true, pin });
+      }
+    });
+
+    it('rejects an unpinned prefixed version instead of choosing a neighbour', () => {
+      expect(resolveSchemaBinding({ rootType: 'catalog', oscalVersion: 'v1.2.3' })).toEqual({
+        ok: false,
+        code: VERSION_MATRIX_DIAGNOSTIC_CODES.ROOT_VERSION_UNSUPPORTED,
+        rootType: 'catalog',
+        oscalVersion: '1.2.3',
+        expected: PINNED_OSCAL_VERSIONS.join(', '),
+      });
+    });
+
+    it('keeps the impossibility diagnostic for a prefixed version', () => {
+      expect(resolveSchemaBinding({
+        rootType: 'mapping-collection',
+        oscalVersion: 'v1.1.3',
+      })).toMatchObject({
+        code: VERSION_MATRIX_DIAGNOSTIC_CODES.ROOT_VERSION_IMPOSSIBLE,
+        oscalVersion: '1.1.3',
+      });
+    });
+
+    it('still cross-checks $schema against the cell chosen by the prefixed version', () => {
+      expect(resolveSchemaBinding({
+        rootType: 'catalog',
+        oscalVersion: 'v1.2.2',
+        schemaDirective: buildSchemaId('catalog', '1.2.2')!,
+      }).ok).toBe(true);
+      expect(resolveSchemaBinding({
+        rootType: 'catalog',
+        oscalVersion: 'v1.2.2',
+        schemaDirective: buildSchemaId('catalog', '1.2.1')!,
+      })).toMatchObject({
+        code: VERSION_MATRIX_DIAGNOSTIC_CODES.SCHEMA_DIRECTIVE_CONFLICT,
+        oscalVersion: '1.2.2',
+        expected: buildSchemaId('catalog', '1.2.2'),
+      });
+    });
+
+    it('normalizes exactly one leading lowercase v', () => {
+      expect(normalizeDeclaredOscalVersion('v1.2.2')).toBe('1.2.2');
+      expect(normalizeDeclaredOscalVersion('1.2.2')).toBe('1.2.2');
+      expect(normalizeDeclaredOscalVersion('vv1.2.2')).toBe('v1.2.2');
+      expect(normalizeDeclaredOscalVersion('V1.2.2')).toBe('V1.2.2');
+    });
+
+    it('maps a declared version to a pinned version or null', () => {
+      expect(toPinnedOscalVersion('v1.2.2')).toBe('1.2.2');
+      expect(toPinnedOscalVersion('1.1.3')).toBe('1.1.3');
+      for (const value of ['v1.2.3', 'V1.2.2', 'vv1.2.2', 'v1.2', '', 122, null, undefined]) {
+        expect(toPinnedOscalVersion(value)).toBeNull();
+      }
     });
   });
 

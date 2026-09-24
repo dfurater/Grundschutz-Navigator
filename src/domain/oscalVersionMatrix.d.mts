@@ -76,6 +76,10 @@ export declare const VERSION_MATRIX_DIAGNOSTIC_CODES: Readonly<
 
 export declare function isKnownOscalRootKey(value: string): value is OscalRootKey;
 export declare function isPinnedOscalVersion(value: string): value is PinnedOscalVersion;
+/** Entfernt genau ein führendes kleines `v`; nur für die Matrixbindung. */
+export declare function normalizeDeclaredOscalVersion(value: string): string;
+/** Gepinnte Matrixversion einer deklarierten `oscal-version`, sonst `null`. */
+export declare function toPinnedOscalVersion(value: unknown): PinnedOscalVersion | null;
 export declare function buildSchemaReleaseUrl(rootKey: string, version: string): string | null;
 export declare function buildSchemaId(rootKey: string, version: string): string | null;
 export declare function buildSchemaVendorPath(rootKey: string, version: string): string | null;
@@ -85,6 +89,10 @@ export declare function isImpossibleCombination(rootKey: string, version: string
 export declare function listSchemaPins(): readonly OscalSchemaPin[];
 export declare function resolveSchemaBinding(input?: {
   rootType?: string;
+  /**
+   * Die deklarierte `metadata.oscal-version`, unverändert aus dem Dokument.
+   * Ein führendes kleines `v` wird für die Auswahl entfernt.
+   */
   oscalVersion?: string;
   /**
    * Der Top-Level-`$schema`-Wert des Dokuments. Nur `undefined` bedeutet

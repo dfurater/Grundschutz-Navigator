@@ -70,7 +70,7 @@ import type {
   ProfileSetParameter,
 } from '@/domain/profileModel';
 import type { OscalDocumentContext } from '@/domain/models';
-import { isPinnedOscalVersion } from '@/domain/oscalVersionMatrix';
+import { toPinnedOscalVersion } from '@/domain/oscalVersionMatrix';
 import type { PinnedOscalVersion } from '@/domain/oscalVersionMatrix';
 import { getArtifactByUpstreamPath } from '@/domain/sourceRegistry';
 
@@ -469,12 +469,10 @@ function deriveMetadata(body: JsonObject): ProfileMetadata {
  * Nur ein Wert aus der gepinnten Menge wird übernommen; alles andere wird
  * `null`. Der Dispatch hat die Bindung vor dem Aufruf bereits geprüft — dieser
  * Filter hält die Redaction-Regel auch dann ein, wenn jemand `derive` direkt
- * aufruft.
+ * aufruft. `v1.2.2` ergibt wie im Dispatch die gebundene Version `1.2.2`.
  */
 function readPinnedOscalVersion(body: JsonObject): PinnedOscalVersion | null {
-  const metadata = isJsonObject(body.metadata) ? body.metadata : null;
-  const declared = metadata ? readString(metadata['oscal-version']) : undefined;
-  return declared !== undefined && isPinnedOscalVersion(declared) ? declared : null;
+  return toPinnedOscalVersion(isJsonObject(body.metadata) ? body.metadata['oscal-version'] : undefined);
 }
 
 /**

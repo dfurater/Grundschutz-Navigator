@@ -380,6 +380,19 @@ function assertDeclaredOscalVersion(artifactDocument, descriptor, labels) {
     );
   }
 
+  // Klasse 1 bindet exakt: Die Präfixnormalisierung der Matrix (GSPP-357)
+  // gilt nur für Klasse-2-Importe. Ein BSI-Artefakt, das seine Version
+  // plötzlich als `v1.2.2` deklariert, ist eine Upstream-Änderung und wird
+  // nicht still als `1.2.2` übernommen — auch ohne Registry-Erwartung.
+  if (declaredVersion !== binding.pin.oscalVersion) {
+    throw new Error(
+      `${context}: Deklarierte OSCAL-Version ${JSON.stringify(declaredVersion)} ist nicht die exakte ` +
+      `Matrixversion ${binding.pin.oscalVersion}. ` +
+      'Quellregister und Versionsmatrix manuell gegen den BSI-Snapshot prüfen; ' +
+      'keine automatische Übernahme.',
+    );
+  }
+
   if (expectedOscalVersion !== undefined && declaredVersion !== expectedOscalVersion) {
     throw new Error(
       `${context}: Deklarierte OSCAL-Version weicht vom Quellregister ab — ` +

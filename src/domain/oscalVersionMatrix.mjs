@@ -16,7 +16,8 @@
  *
  * Fail-closed: Eine unbekannte, fehlende, fehlgeformte oder nicht gepinnte
  * Version wird abgelehnt. Es wird niemals gegen eine benachbarte Version
- * validiert.
+ * validiert. Einzige Normalisierung ist ein führendes kleines `v`
+ * (`normalizeDeclaredOscalVersion`, GSPP-357).
  */
 
 /** NIST-Release-Tag-Präfix; die Herkunft jedes Pins ist `v<VERSION>`. */
@@ -241,6 +242,35 @@ export function isPinnedOscalVersion(value) {
 }
 
 /**
+ * Bringt eine deklarierte `metadata.oscal-version` in die Form, in der die
+ * Matrix ihre Zellen schlüsselt (GSPP-357).
+ *
+ * Entfernt wird genau ein führendes kleines `v`: NIST selbst deklariert in
+ * `usnistgov/oscal-content` am Tag `v1.5.0` vier Kataloge mit `v1.2.2`, und
+ * das Schema lässt das zu — `StringDatatype` beschränkt nur Rand-Leerzeichen,
+ * kein Versionsformat. Mehr wird nicht normalisiert: `V1.2.2` und `vv1.2.2`
+ * bleiben unverändert und scheitern danach an der Versionsform. Das Ergebnis
+ * dient ausschließlich der Matrixbindung; das Quelldokument und sein
+ * Metadatenwert werden nicht verändert.
+ */
+export function normalizeDeclaredOscalVersion(value) {
+  return value.startsWith('v') ? value.slice(1) : value;
+}
+
+/**
+ * Die gepinnte Matrixversion einer deklarierten `metadata.oscal-version` oder
+ * `null`. Grundlage jedes Versionswerts, der in Diagnose- oder
+ * Referenzkontext übernommen wird: Nur Werte aus der geschlossenen Menge
+ * `PINNED_OSCAL_VERSIONS` dürfen dorthin gelangen, und `v1.2.2` ergibt
+ * denselben Wert wie `1.2.2`.
+ */
+export function toPinnedOscalVersion(value) {
+  if (typeof value !== 'string') return null;
+  const normalized = normalizeDeclaredOscalVersion(value);
+  return isPinnedOscalVersion(normalized) ? normalized : null;
+}
+
+/**
  * Baut die erwartete NIST-Bezugs-URL eines Schemas. Nur für den expliziten
  * Wartungslauf; zur Laufzeit wird kein Schema von einer fremden Origin bezogen.
  */
@@ -324,6 +354,12 @@ export function listSchemaPins() {
  * Version 1.0.4 die inhaltlich richtige Diagnose „Modell existierte noch
  * nicht" statt der unspezifischen „Version nicht gepinnt".
  *
+ * Vor der Versionsform wird genau ein führendes kleines `v` entfernt
+ * (`normalizeDeclaredOscalVersion`); `v1.2.2` bindet also exakt die Zelle von
+ * `1.2.2`. Die Auswahl bleibt exakt: kein weiteres Umschreiben, kein
+ * Nachbarversions-Fallback. Ein Fehlschlag meldet in `oscalVersion` die
+ * normalisierte Form.
+ *
  * `schemaDirective` ist der optionale Top-Level-`$schema`-Wert des Dokuments.
  * NIST deklariert ihn in jedem Root-Schema ausdrücklich als erlaubte Property
  * (`json-schema-directive`, Typ `URIReferenceDatatype`), er ist aber weder
@@ -335,16 +371,19 @@ export function listSchemaPins() {
  *
  * @returns {{ok: true, pin: object} | {ok: false, code: string, rootType: string|null, oscalVersion: string|null, expected?: string}}
  */
-export function resolveSchemaBinding({ rootType, oscalVersion, schemaDirective } = {}) {
+export function resolveSchemaBinding({ rootType, oscalVersion: declaredOscalVersion, schemaDirective } = {}) {
   const codes = VERSION_MATRIX_DIAGNOSTIC_CODES;
 
   if (!isKnownOscalRootKey(rootType)) {
     return { ok: false, code: codes.ROOT_TYPE_UNKNOWN, rootType: null, oscalVersion: null };
   }
 
-  if (!isNonEmptyString(oscalVersion)) {
+  if (!isNonEmptyString(declaredOscalVersion)) {
     return { ok: false, code: codes.VERSION_MISSING, rootType, oscalVersion: null };
   }
+  // Ab hier gilt nur noch die normalisierte Form; auch Fehlschläge melden
+  // sie, damit `v1.2.2` und `1.2.2` denselben Diagnosekontext erhalten.
+  const oscalVersion = normalizeDeclaredOscalVersion(declaredOscalVersion);
   if (!VERSION_PATTERN.test(oscalVersion)) {
     return { ok: false, code: codes.VERSION_MALFORMED, rootType, oscalVersion: null };
   }

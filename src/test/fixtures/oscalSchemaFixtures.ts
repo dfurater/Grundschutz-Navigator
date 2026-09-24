@@ -14,10 +14,10 @@
  * verletzt `UUIDDatatype`. Es bleibt der Fixture-Helfer der Stufe 2.
  *
  * Die Werte sind erfunden; es stehen keine echten Organisationsdaten darin.
- * `oscal-version` wird ohne führendes `v` deklariert — die vier Dokumente in
- * oscal-content v1.5.0, die `"v1.2.2"` schreiben, werden von
- * `resolveSchemaBinding()` als `OSCAL_VERSION_MALFORMED` abgewiesen, und das
- * ist gewolltes Bestandsverhalten.
+ * `oscal-version` wird ohne führendes `v` deklariert. Die vier Dokumente in
+ * oscal-content v1.5.0, die `"v1.2.2"` schreiben, bindet
+ * `resolveSchemaBinding()` an dieselbe Zelle (GSPP-357); Tests, die diese
+ * Form brauchen, setzen den Wert nach dem Aufbau selbst.
  */
 
 import type { OscalRootKey, PinnedOscalVersion } from '@/domain/oscalVersionMatrix';
