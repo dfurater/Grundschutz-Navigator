@@ -320,4 +320,63 @@ describe('ControlTable', () => {
     expect(remainingRows).toHaveLength(1);
     expect(remainingRows[0]).toHaveAttribute('tabindex', '0');
   });
+
+  describe('windowing (GSPP-262)', () => {
+    const manyControls = Array.from({ length: 300 }, (_, i) =>
+      makeControl({ id: `GC.1.${i + 1}`, title: `Anforderung ${i + 1}` }),
+    );
+    const dataRows = () => screen.getAllByRole('row').slice(1);
+    const rowIndices = () => dataRows().map((row) => Number(row.getAttribute('aria-rowindex')));
+
+    it('renders only a window of rows but exposes the full list size to assistive technology', () => {
+      const { container } = renderTable({ controls: manyControls });
+
+      // Ohne Layout (jsdom) greift das Fallback-Fenster von 40 Zeilen plus 10 Überhang.
+      expect(dataRows()).toHaveLength(50);
+      expect(screen.getByRole('grid')).toHaveAttribute('aria-rowcount', '301');
+      expect(screen.getAllByRole('row')[0]).toHaveAttribute('aria-rowindex', '1');
+      expect(rowIndices()).toEqual(Array.from({ length: 50 }, (_, i) => i + 2));
+
+      const spacer = container.querySelector('tbody tr[aria-hidden="true"]');
+      expect(spacer).not.toBeNull();
+      expect(spacer?.querySelector('td')).toHaveStyle({ height: `${250 * 41}px` });
+    });
+
+    it('moves focus to a row that was not rendered yet via End and ArrowDown', () => {
+      renderTable({ controls: manyControls });
+
+      fireEvent.keyDown(dataRows()[0], { key: 'End' });
+
+      expect(document.activeElement).toHaveAttribute('aria-rowindex', '301');
+      expect(document.activeElement).toHaveTextContent('GC.1.300');
+      expect(dataRows().filter((row) => row.getAttribute('tabindex') === '0')).toHaveLength(1);
+
+      fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Home' });
+      expect(document.activeElement).toHaveAttribute('aria-rowindex', '2');
+      // Nur die Tab-Stopp-Zeile wird gehalten: Nach Home fällt Zeile 300 wieder heraus.
+      expect(rowIndices()).not.toContain(301);
+
+      fireEvent.focus(dataRows()[49]);
+      fireEvent.keyDown(dataRows()[49], { key: 'ArrowDown' });
+
+      expect(document.activeElement).toHaveAttribute('aria-rowindex', '52');
+      expect(document.activeElement).toHaveTextContent('GC.1.51');
+    });
+
+    it('keeps the focused tab-stop row mounted when it is scrolled out of the window', () => {
+      renderTable({ controls: manyControls });
+      const firstRow = dataRows()[0];
+      firstRow.focus();
+
+      const scroller = screen.getByRole('grid').parentElement as HTMLElement;
+      Object.defineProperty(scroller, 'scrollTop', { configurable: true, value: 200 * 41 });
+      fireEvent.scroll(scroller);
+
+      expect(rowIndices()[0]).toBe(2);
+      expect(rowIndices()).toContain(2 + 200);
+      expect(rowIndices()).not.toContain(2 + 100);
+      expect(document.activeElement).toBe(firstRow);
+      expect(firstRow).toHaveAttribute('tabindex', '0');
+    });
+  });
 });

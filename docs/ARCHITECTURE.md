@@ -63,6 +63,7 @@ src/                              # Anwendungsquellcode
 │   ├── componentDefinitionModel.ts   # Domänenmodell der Component Definition
 │   ├── controlRef.ts                 # Kataloggescopte interne Control-Referenzen
 │   ├── controlRelationships.ts       # Link-Relationen, Beschriftungen, eingehende Links
+│   ├── germanCollation.ts            # Wiederverwendete deutsche Sortierkomparatoren
 │   ├── identifierQuery.ts            # Query-Vertrag für Kennungssuchen (UUID v4/v5)
 │   ├── integrity.ts                  # SHA-256 Integritätsprüfung
 │   ├── mappingModel.ts               # Domänenmodell der Mapping Collection
@@ -149,6 +150,7 @@ src/                              # Anwendungsquellcode
 │   ├── useGlobalEventListener.ts     # Globale Listener mit stabilem Cleanup
 │   ├── useGuidanceOverflow.ts        # Scopegebundener Guidance-/Messzustand
 │   ├── useMediaQuery.ts              # Responsive Design
+│   ├── useRowWindow.ts               # Windowing für Listen einheitlicher Zeilenhöhe
 │   └── useScrollLock.ts              # Reversibler Body-Scroll-Lock
 ├── features/                     # Feature-Module (Seite + Komponenten)
 │   ├── catalog/                      # Katalogansicht
@@ -174,7 +176,7 @@ src/                              # Anwendungsquellcode
 │   │   ├── ControlSources.tsx            # Aufgelöste Quellenverweise
 │   │   ├── ControlStatement.tsx          # Anforderungstext
 │   │   ├── ControlStatementDetails.tsx   # Ergebnis, Präzisierung, Handlungsworte, Dokumentation
-│   │   ├── ControlTable.tsx              # Anforderungstabelle mit Auswahl und Sortierung
+│   │   ├── ControlTable.tsx              # Gefensterte Anforderungstabelle mit Auswahl und Sortierung
 │   │   ├── ControlTaxonomy.tsx           # Taxonomie und Zielobjekt-Kategorien
 │   │   ├── ControlTaxonomyBreadcrumb.tsx # Taxonomiepfad als Breadcrumb
 │   │   ├── ControlVocabularyPrimitives.tsx # Gemeinsame Bausteine der Vokabularanzeige
@@ -517,6 +519,17 @@ Breakpoint-abhängige UI wird über `useMediaQuery('(min-width: 1024px)')` (`isD
 | `CatalogDesktopSidebar` | Kapselt Filter-/Detaildarstellung und die veränderbare Desktop-Panelbreite; der Breitenzustand bleibt beim Composer. |
 | `CatalogDetailPanel` | Baut eingehende Links und Parent-/Child-Beziehungen auf und versorgt `ControlDetail`. |
 | `CatalogMobileDetailOverlay` | Besitzt Focus-Trap, Escape und Scroll-Lock des mobilen Details. Bleibt als Komponente gemountet und steuert Sichtbarkeit über das `active`-Flag; inaktiv rendert sie `null` (dokumentierte Ausnahme der Breakpoint-Mount-Strategie). |
+
+### Rendering der Desktop-Tabelle
+
+`ControlTable` rendert gefenstert (`useRowWindow`): Im DOM stehen nur die sichtbaren Zeilen plus zehn Zeilen Überhang; zwei `aria-hidden`-Platzhalterzeilen halten Gesamthöhe und Scrollposition wie bei der vollständigen Liste. Die Zeilenhöhe ist durch `line-clamp-1` und feste Innenabstände einheitlich und wird als Abstand aufeinanderfolgender Zeilen am DOM gemessen, weil `border-collapse` die erste Zeile nach einem Platzhalter um einen halben Rand verkürzt. Die Tabelle nutzt `table-layout: fixed` mit einer `<colgroup>`, damit die Spaltenbreiten nicht von den gerade gerenderten Zeilen abhängen.
+
+* Barrierefreiheit: `aria-rowcount` trägt die volle Ergebnismenge plus Kopfzeile, jede Datenzeile ihr `aria-rowindex` in der vollständigen Liste.
+* Tastatur: `ArrowUp`/`ArrowDown`/`Home`/`End` setzen die Tab-Stopp-Zeile; das Fenster rendert sie garantiert, auch außerhalb des sichtbaren Bereichs, und fokussiert sie nach dem Commit. Die Tab-Stopp-Zeile bleibt gerendert, wenn der Nutzer sie wegscrollt, sodass Fokus und Roving Tabindex erhalten bleiben.
+* „Alle auswählen" und Zählungen wirken weiter auf die vollständige Ergebnismenge, nicht auf die gerenderten Zeilen.
+* Die Browser-Seitensuche findet nur gerenderte Zeilen; für die Suche im Katalog ist die App-Suche vorgesehen.
+
+Die mobile Liste bleibt ungefenstert: `content-visibility: auto` auf `.catalog-mobile-reference-row` hält ihr Layout bereits unabhängig von der Zeilenzahl. `index.html` lädt die vier Inter-Latin-Schnitte per `preload` vor, weil die Tabelle Inter 600 sonst erst nach ihrem ersten Render anfordert und das Eintreffen der Schrift ein zweites Layout aller Zeilen auslöst.
 
 `useScrollLock` speichert keinen globalen Refcount, sondern stellt beim Cleanup exakt den vorherigen Inline-Wert von `body.style.overflow` wieder her.
 

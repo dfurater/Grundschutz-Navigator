@@ -14,6 +14,7 @@ import {
   toVocabCardId,
   VocabularyAffordanceIcon,
 } from './ControlVocabularyPrimitives';
+import { compareGermanText } from '@/domain/germanCollation';
 
 type SecurityContextControl = Pick<
   Control,
@@ -114,9 +115,9 @@ function buildThreatItems(
     })
     .sort(
       (first, second) =>
-        first.displayName.localeCompare(second.displayName, 'de') ||
-        first.threat.localeCompare(second.threat, 'de') ||
-        first.vocabKey.localeCompare(second.vocabKey, 'de'),
+        compareGermanText(first.displayName, second.displayName) ||
+        compareGermanText(first.threat, second.threat) ||
+        compareGermanText(first.vocabKey, second.vocabKey),
     );
 }
 
