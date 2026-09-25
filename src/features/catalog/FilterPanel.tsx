@@ -13,6 +13,7 @@ import {
   getOfficialSecurityLevelLabel,
   getOfficialSecurityLevelTooltip,
 } from '@/features/vocabulary/display';
+import { compareGermanText } from '@/domain/germanCollation';
 
 export interface FilterPanelProps {
   readonly filters: ControlFilters;
@@ -126,9 +127,9 @@ export function FilterPanel({
   const sortedZielobjekte = Object.entries(filteredFacetCounts.zielobjektKategorien)
     .sort((a, b) => b[1] - a[1]);
   const sortedHandlungsworte = Object.entries(filteredFacetCounts.handlungsworte)
-    .sort(([a], [b]) => a.localeCompare(b, 'de'));
+    .sort(([a], [b]) => compareGermanText(a, b));
   const sortedDokumentationstypen = Object.entries(filteredFacetCounts.dokumentationstypen)
-    .sort(([a], [b]) => a.localeCompare(b, 'de'));
+    .sort(([a], [b]) => compareGermanText(a, b));
 
   // For active-filter dimensions, include all selected values even if count is 0
   const visibleZielobjekte = visibleEntries(

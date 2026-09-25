@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react';
 import { IconChevronDown, IconChevronRight } from '@/components/icons';
+import { useRowWindow } from '@/hooks/useRowWindow';
 import type { Control } from '@/domain/models';
 import { getControlHierarchyDepth } from '@/domain/controlRelationships';
 import type { SortConfig, SortField } from '@/hooks/useFilteredControls';
@@ -41,6 +42,15 @@ type ControlTableSelectionProps =
 export type ControlTableProps = ControlTableBaseProps & ControlTableSelectionProps;
 
 const EMPTY_CHECKED_IDS = new Set<string>();
+
+// Windowing (GSPP-262): Style, Layout und Paint aller 1.000 Zeilen dominierten
+// den initialen Katalog-Render. Die Zeilenhöhe ist durch `line-clamp-1` und
+// feste Innenabstände einheitlich (gemessen 41 px) und wird am DOM nachgemessen.
+const ESTIMATED_ROW_HEIGHT_PX = 41;
+const OVERSCAN_ROWS = 10;
+const FALLBACK_VISIBLE_ROWS = 40;
+// Kopfzeile belegt aria-rowindex 1; Datenzeilen beginnen bei 2.
+const FIRST_DATA_ARIA_ROW_INDEX = 2;
 
 const DEFAULT_SORT: SortConfig = [{ field: 'id', direction: 'asc' }];
 
@@ -140,12 +150,16 @@ function getAriaSort(field: SortField, sort: SortConfig) {
   return primarySort.direction === 'asc' ? 'ascending' as const : 'descending' as const;
 }
 
-const COLUMNS: { field: SortField; label: string; className: string }[] = [
-  { field: 'id',            label: 'ID',           className: 'w-24' },
-  { field: 'title',         label: 'Titel',        className: 'min-w-52' },
-  { field: 'modalverb',     label: 'Modalverb',        className: 'w-28' },
-  { field: 'securityLevel', label: 'Sicherheitsniveau', className: 'w-24' },
-  { field: 'effortLevel',   label: 'Aufwand',         className: 'w-24' },
+// Feste Spaltenbreiten (`table-layout: fixed`): Im automatischen Tabellenlayout
+// hinge die ID-Breite von den gerade gerenderten Zeilen ab und spränge beim
+// Scrollen. Die Breiten decken die gemessenen Maximalwerte ab (längste ID im
+// Grundschutz++-Katalog 94 px Inhalt, Kopf „Sicherheitsniveau" 114 px).
+const COLUMNS: { field: SortField; label: string; colClassName: string }[] = [
+  { field: 'id',            label: 'ID',                colClassName: 'w-32' },
+  { field: 'title',         label: 'Titel',             colClassName: '' },
+  { field: 'modalverb',     label: 'Modalverb',         colClassName: 'w-28' },
+  { field: 'securityLevel', label: 'Sicherheitsniveau', colClassName: 'w-36' },
+  { field: 'effortLevel',   label: 'Aufwand',           colClassName: 'hidden w-24 sm:table-column' },
 ];
 
 interface ControlTableRowProps {
@@ -156,7 +170,7 @@ interface ControlTableRowProps {
   isOpen: boolean;
   isTabStop: boolean;
   showSelection: boolean;
-  onFocus: (index: number) => void;
+  onFocus: (index: number, control: Control) => void;
   onKeyDown: (event: React.KeyboardEvent, index: number, control: Control) => void;
   onSelectControl: (control: Control) => void;
   onToggleSelection: (id: string) => void;
@@ -184,10 +198,12 @@ const ControlTableRow = memo(function ControlTableRow({
       `}
       onClick={() => onSelectControl(control)}
       role="row"
+      aria-rowindex={index + FIRST_DATA_ARIA_ROW_INDEX}
+      data-row-index={index}
       aria-selected={isOpen}
       tabIndex={isTabStop ? 0 : -1}
       onKeyDown={(event) => onKeyDown(event, index, control)}
-      onFocus={() => onFocus(index)}
+      onFocus={() => onFocus(index, control)}
     >
       {showSelection && (
         <td className="px-3 py-2.5 align-middle" onClick={(event) => event.stopPropagation()}>
@@ -205,7 +221,7 @@ const ControlTableRow = memo(function ControlTableRow({
         </td>
       )}
 
-      <td className="catalog-reference-text whitespace-nowrap px-3 py-2.5">
+      <td className="catalog-reference-text overflow-hidden text-ellipsis whitespace-nowrap px-3 py-2.5">
         {control.id}
       </td>
       <td className="type-object-title px-3 py-2.5">
@@ -258,9 +274,12 @@ export function ControlTable(props: ControlTableProps) {
   const showSelection = props.showSelection !== false;
   const checkedIds = showSelection && 'checkedIds' in props ? props.checkedIds : EMPTY_CHECKED_IDS;
   const onCheckedChange = showSelection && 'onCheckedChange' in props ? props.onCheckedChange : undefined;
-  // Roving tabindex: only one row is tabbable at a time
-  const [focusedIndex, setFocusedIndex] = useState(0);
+  // Roving tabindex: only one row is tabbable at a time. Der Tab-Stopp folgt
+  // der Control-ID, damit er bei Umsortierung mit seiner Zeile wandert; der
+  // Index dient nur als Rückfall, wenn die Control aus der Liste fällt.
+  const [tabStop, setTabStop] = useState<{ id: string | null; index: number }>({ id: null, index: 0 });
   const tbodyRef = useRef<HTMLTableSectionElement>(null);
+  const pendingFocusIdRef = useRef<string | null>(null);
   const checkedIdsRef = useRef(checkedIds);
   const onCheckedChangeRef = useRef(onCheckedChange);
   const onSelectControlRef = useRef(onSelectControl);
@@ -305,16 +324,54 @@ export function ControlTable(props: ControlTableProps) {
     const nextIndex = getNextRowIndex(e.key, index, controls.length);
     if (nextIndex === null) return;
     e.preventDefault();
-    setFocusedIndex(nextIndex);
-    const rows = tbodyRef.current?.querySelectorAll<HTMLElement>('tr[role="row"]');
-    rows?.[nextIndex]?.focus();
-  }, [controls.length, selectControl, showSelection, toggleRowSelection]);
+    const renderedRow = tbodyRef.current?.querySelector<HTMLElement>(`tr[data-row-index="${nextIndex}"]`);
+    if (renderedRow) {
+      // Gerenderte Zeile sofort fokussieren; onFocus setzt den Tab-Stopp.
+      renderedRow.focus();
+      return;
+    }
+    // Nicht gerendert heißt: nicht der aktuelle Tab-Stopp. Das Setzen ändert den
+    // State daher sicher, das Windowing rendert die Zeile und der Layout-Effekt
+    // fokussiert sie nach dem Commit — kein Auftrag bleibt liegen.
+    const target = controls[nextIndex];
+    pendingFocusIdRef.current = target.id;
+    setTabStop({ id: target.id, index: nextIndex });
+  }, [controls, selectControl, showSelection, toggleRowSelection]);
 
-  const handleRowFocus = useCallback((index: number) => {
-    setFocusedIndex(index);
+  const handleRowFocus = useCallback((index: number, control: Control) => {
+    setTabStop((current) =>
+      current.id === control.id && current.index === index ? current : { id: control.id, index },
+    );
   }, []);
 
-  const tabStopIndex = Math.min(focusedIndex, Math.max(controls.length - 1, 0));
+  const indexById = useMemo(
+    () => new Map(controls.map((control, index) => [control.id, index])),
+    [controls],
+  );
+  const tabStopIndex = (tabStop.id === null ? undefined : indexById.get(tabStop.id))
+    ?? Math.min(tabStop.index, Math.max(controls.length - 1, 0));
+
+  const { scrollRef, onScroll, rowHeight, slots } = useRowWindow({
+    rowCount: controls.length,
+    pinnedIndex: tabStopIndex,
+    estimatedRowHeight: ESTIMATED_ROW_HEIGHT_PX,
+    overscan: OVERSCAN_ROWS,
+    fallbackVisibleRowCount: FALLBACK_VISIBLE_ROWS,
+    rowIndexAttribute: 'data-row-index',
+  });
+
+  useLayoutEffect(() => {
+    const pendingId = pendingFocusIdRef.current;
+    if (pendingId === null) return;
+    pendingFocusIdRef.current = null;
+    const pendingIndex = indexById.get(pendingId);
+    if (pendingIndex === undefined) return;
+    // focus() scrollt die Zeile ins Bild; `scroll-pt-9` hält sie unter der
+    // Sticky-Kopfzeile sichtbar.
+    tbodyRef.current
+      ?.querySelector<HTMLElement>(`tr[data-row-index="${pendingIndex}"]`)
+      ?.focus();
+  });
 
   const allChecked = showSelection && selectableControls.length > 0 && selectableControls.every((c) => checkedIds.has(c.id));
   const someChecked = showSelection && !allChecked && selectableControls.some((c) => checkedIds.has(c.id));
@@ -356,12 +413,27 @@ export function ControlTable(props: ControlTableProps) {
   }
 
   return (
-    <div className="flex-1 overflow-auto bg-[var(--color-surface-base)]">
-      <table className="control-table-min-width w-full text-sm" role="grid">
+    <div
+      ref={scrollRef}
+      onScroll={onScroll}
+      className="flex-1 overflow-auto scroll-pt-9 bg-[var(--color-surface-base)]"
+    >
+      <table
+        className="control-table-min-width w-full table-fixed text-sm"
+        role="grid"
+        aria-rowcount={controls.length + 1}
+      >
+        <colgroup>
+          {showSelection && <col className="w-10" />}
+          {COLUMNS.map((col) => (
+            <col key={col.field} className={col.colClassName || undefined} />
+          ))}
+          <col className="w-8" />
+        </colgroup>
         <thead className="sticky top-0 bg-[var(--color-surface-subtle)] z-10">
-          <tr className="border-b border-[var(--color-border-default)]">
+          <tr className="border-b border-[var(--color-border-default)]" aria-rowindex={1}>
             {showSelection && (
-              <th className="w-10 px-3 py-2 align-middle">
+              <th className="px-3 py-2 align-middle">
                 <input
                   type="checkbox"
                   checked={allChecked}
@@ -376,7 +448,7 @@ export function ControlTable(props: ControlTableProps) {
             {COLUMNS.map((col) => (
               <th
                 key={col.field}
-                className={`catalog-meta-text whitespace-nowrap px-3 py-1.5 text-left ${col.className}${col.field === 'effortLevel' ? ' hidden sm:table-cell' : ''}`}
+                className={`catalog-meta-text whitespace-nowrap px-3 py-1.5 text-left${col.field === 'effortLevel' ? ' hidden sm:table-cell' : ''}`}
                 role="columnheader"
                 aria-sort={getAriaSort(col.field, sort)}
               >
@@ -390,26 +462,40 @@ export function ControlTable(props: ControlTableProps) {
                 </button>
               </th>
             ))}
-            <th className="w-8 px-2" />
+            <th className="px-2" />
           </tr>
         </thead>
         <tbody ref={tbodyRef}>
-          {controls.map((control, index) => (
-            <ControlTableRow
-              key={control.id}
-              control={control}
-              depth={depthById.get(control.id) ?? 0}
-              index={index}
-              isChecked={showSelection && checkedIds.has(control.id)}
-              isOpen={selectedControlId === control.id}
-              isTabStop={index === tabStopIndex}
-              showSelection={showSelection}
-              onFocus={handleRowFocus}
-              onKeyDown={handleRowKeyDown}
-              onSelectControl={selectControl}
-              onToggleSelection={toggleRowSelection}
-            />
-          ))}
+          {slots.map((slot) => {
+            if (slot.kind === 'spacer') {
+              return (
+                <tr key={slot.key} aria-hidden="true">
+                  <td
+                    colSpan={COLUMNS.length + (showSelection ? 2 : 1)}
+                    className="p-0"
+                    style={{ height: `${slot.rowCount * rowHeight}px` }}
+                  />
+                </tr>
+              );
+            }
+            const control = controls[slot.index];
+            return (
+              <ControlTableRow
+                key={control.id}
+                control={control}
+                depth={depthById.get(control.id) ?? 0}
+                index={slot.index}
+                isChecked={showSelection && checkedIds.has(control.id)}
+                isOpen={selectedControlId === control.id}
+                isTabStop={slot.index === tabStopIndex}
+                showSelection={showSelection}
+                onFocus={handleRowFocus}
+                onKeyDown={handleRowKeyDown}
+                onSelectControl={selectControl}
+                onToggleSelection={toggleRowSelection}
+              />
+            );
+          })}
         </tbody>
       </table>
     </div>

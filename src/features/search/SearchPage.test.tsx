@@ -110,6 +110,11 @@ function renderSearch(controls: Control[]) {
   return render(searchRoutes());
 }
 
+/** Springt per `End` zur letzten Zeile, die das Windowing sonst nicht rendert. */
+function revealLastRow(container: HTMLElement) {
+  fireEvent.keyDown(within(container).getAllByRole('row')[1], { key: 'End' });
+}
+
 describe('SearchPage', () => {
   beforeEach(() => {
     mockedUseCatalog.mockReset();
@@ -216,7 +221,10 @@ describe('SearchPage', () => {
       );
 
       expect(screen.getByText(/51 Ergebnisse für/)).toBeInTheDocument();
-      expect(within(desktop).getAllByRole('row').slice(1)).toHaveLength(51);
+      // Die Tabelle rendert gefenstert (GSPP-262): Die Ergebnismenge steht in
+      // aria-rowcount, die letzte Zeile wird per Tastatur erreicht.
+      expect(within(desktop).getByRole('grid')).toHaveAttribute('aria-rowcount', '52');
+      revealLastRow(desktop);
       expect(within(desktop).getByText('ASST.1.51')).toBeInTheDocument();
       expect(
         screen.queryByRole('button', {
@@ -331,6 +339,7 @@ describe('SearchPage', () => {
       fireEvent.click(
         screen.getByRole('button', { name: /Weitere Suchergebnisse anzeigen/ }),
       );
+      revealLastRow(desktop);
 
       expect(
         within(desktop).getByRole('checkbox', { name: 'ASST.1.51 auswählen' }),
@@ -520,7 +529,7 @@ describe('SearchPage', () => {
       );
       let desktop = screen.getByTestId('search-results-desktop');
       await user.click(within(desktop).getByRole('button', { name: /ID/ }));
-      expect(within(desktop).getAllByRole('row').slice(1)).toHaveLength(51);
+      expect(within(desktop).getByRole('grid')).toHaveAttribute('aria-rowcount', '52');
 
       // Wechsel nach Mobile: sichtbare Ergebnisanzahl erhalten
       isDesktop = false;
@@ -532,8 +541,8 @@ describe('SearchPage', () => {
       isDesktop = true;
       view.rerender(searchRoutes());
       desktop = screen.getByTestId('search-results-desktop');
+      expect(within(desktop).getByRole('grid')).toHaveAttribute('aria-rowcount', '52');
       const rows = within(desktop).getAllByRole('row').slice(1);
-      expect(rows).toHaveLength(51);
       expect(within(rows[0]).getByText('ASST.1.1')).toBeInTheDocument();
     });
   });

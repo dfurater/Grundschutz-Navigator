@@ -3,6 +3,7 @@ import { useCatalog } from '@/hooks/useCatalog';
 import { buildVocabularySourceUrl } from '@/domain/vocabulary';
 import { PAGE_TITLES } from '@/app/pageTitles';
 import { getVocabularyTitle } from './vocabularyTitle';
+import { compareGermanText } from '@/domain/germanCollation';
 
 export function VocabularyOverviewPage() {
   const { vocabularyRegistry, loading, error } = useCatalog();
@@ -40,7 +41,7 @@ export function VocabularyOverviewPage() {
   }
 
   const namespaces = [...vocabularyRegistry.namespaces].sort((left, right) =>
-    left.source.fileName.localeCompare(right.source.fileName, 'de'),
+    compareGermanText(left.source.fileName, right.source.fileName),
   );
 
   return (

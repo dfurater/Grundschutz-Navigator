@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { Control } from '@/domain/models';
@@ -131,7 +131,7 @@ describe('ControlTable', () => {
     expect(screen.queryByRole('checkbox', { name: 'GC.1.1 auswählen' })).not.toBeInTheDocument();
 
     const row = screen.getAllByRole('row')[1];
-    row.focus();
+    act(() => row.focus());
     await user.keyboard(' ');
 
     expect(onSelectControl).not.toHaveBeenCalled();
@@ -145,7 +145,7 @@ describe('ControlTable', () => {
     renderTable({ controls: [control], onSelectControl, onCheckedChange });
 
     const row = screen.getAllByRole('row')[1];
-    row.focus();
+    act(() => row.focus());
     await user.keyboard('{Enter}');
     await user.keyboard(' ');
 
@@ -319,5 +319,118 @@ describe('ControlTable', () => {
     const remainingRows = screen.getAllByRole('row').slice(1);
     expect(remainingRows).toHaveLength(1);
     expect(remainingRows[0]).toHaveAttribute('tabindex', '0');
+  });
+
+  describe('windowing (GSPP-262)', () => {
+    const manyControls = Array.from({ length: 300 }, (_, i) =>
+      makeControl({ id: `GC.1.${i + 1}`, title: `Anforderung ${i + 1}` }),
+    );
+    const dataRows = () => screen.getAllByRole('row').slice(1);
+    const rowIndices = () => dataRows().map((row) => Number(row.getAttribute('aria-rowindex')));
+
+    it('renders only a window of rows but exposes the full list size to assistive technology', () => {
+      const { container } = renderTable({ controls: manyControls });
+
+      // Ohne Layout (jsdom) greift das Fallback-Fenster von 40 Zeilen plus 10 Überhang.
+      expect(dataRows()).toHaveLength(50);
+      expect(screen.getByRole('grid')).toHaveAttribute('aria-rowcount', '301');
+      expect(screen.getAllByRole('row')[0]).toHaveAttribute('aria-rowindex', '1');
+      expect(rowIndices()).toEqual(Array.from({ length: 50 }, (_, i) => i + 2));
+
+      const spacer = container.querySelector('tbody tr[aria-hidden="true"]');
+      expect(spacer).not.toBeNull();
+      expect(spacer?.querySelector('td')).toHaveStyle({ height: `${250 * 41}px` });
+    });
+
+    it('moves focus to a row that was not rendered yet via End and ArrowDown', () => {
+      renderTable({ controls: manyControls });
+
+      fireEvent.keyDown(dataRows()[0], { key: 'End' });
+
+      expect(document.activeElement).toHaveAttribute('aria-rowindex', '301');
+      expect(document.activeElement).toHaveTextContent('GC.1.300');
+      expect(dataRows().filter((row) => row.getAttribute('tabindex') === '0')).toHaveLength(1);
+
+      fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Home' });
+      expect(document.activeElement).toHaveAttribute('aria-rowindex', '2');
+      // Nur die Tab-Stopp-Zeile wird gehalten: Nach Home fällt Zeile 300 wieder heraus.
+      expect(rowIndices()).not.toContain(301);
+
+      fireEvent.focus(dataRows()[49]);
+      fireEvent.keyDown(dataRows()[49], { key: 'ArrowDown' });
+
+      expect(document.activeElement).toHaveAttribute('aria-rowindex', '52');
+      expect(document.activeElement).toHaveTextContent('GC.1.51');
+    });
+
+    it('keeps the focused tab-stop row mounted when it is scrolled out of the window', () => {
+      renderTable({ controls: manyControls });
+      const firstRow = dataRows()[0];
+      act(() => firstRow.focus());
+
+      const scroller = screen.getByRole('grid').parentElement as HTMLElement;
+      Object.defineProperty(scroller, 'scrollTop', { configurable: true, value: 200 * 41 });
+      fireEvent.scroll(scroller);
+
+      expect(rowIndices()[0]).toBe(2);
+      expect(rowIndices()).toContain(2 + 200);
+      expect(rowIndices()).not.toContain(2 + 100);
+      expect(document.activeElement).toBe(firstRow);
+      expect(firstRow).toHaveAttribute('tabindex', '0');
+    });
+
+    it('does not leave a focus request behind when a key stays on the same row', () => {
+      const props = {
+        controls: manyControls,
+        controlsById: new Map(manyControls.map((c) => [c.id, c])),
+        checkedIds: new Set<string>(),
+        onSortChange: vi.fn(),
+        onSelectControl: vi.fn(),
+        onCheckedChange: vi.fn(),
+      };
+      const view = render(
+        <>
+          <button type="button">Außerhalb</button>
+          <ControlTable {...props} sort={[{ field: 'id', direction: 'asc' }]} />
+        </>,
+      );
+      const firstRow = dataRows()[0];
+      act(() => firstRow.focus());
+      fireEvent.keyDown(firstRow, { key: 'Home' });
+      fireEvent.keyDown(firstRow, { key: 'ArrowUp' });
+
+      const outside = screen.getByRole('button', { name: 'Außerhalb' });
+      outside.focus();
+      view.rerender(
+        <>
+          <button type="button">Außerhalb</button>
+          <ControlTable {...props} sort={[{ field: 'title', direction: 'asc' }]} />
+        </>,
+      );
+
+      expect(document.activeElement).toBe(outside);
+    });
+
+    it('keeps the focused control as tab stop when a re-sort moves it out of the window', () => {
+      const props = {
+        controlsById: new Map(manyControls.map((c) => [c.id, c])),
+        checkedIds: new Set<string>(),
+        sort: [{ field: 'id', direction: 'asc' }] as SortConfig,
+        onSortChange: vi.fn(),
+        onSelectControl: vi.fn(),
+        onCheckedChange: vi.fn(),
+      };
+      const view = render(<ControlTable {...props} controls={manyControls} />);
+      const firstRow = dataRows()[0];
+      act(() => firstRow.focus());
+
+      view.rerender(<ControlTable {...props} controls={[...manyControls].reverse()} />);
+
+      expect(document.activeElement).toBe(firstRow);
+      expect(firstRow).toHaveTextContent('GC.1.1');
+      expect(firstRow).toHaveAttribute('aria-rowindex', '301');
+      expect(firstRow).toHaveAttribute('tabindex', '0');
+      expect(dataRows().filter((row) => row.getAttribute('tabindex') === '0')).toHaveLength(1);
+    });
   });
 });

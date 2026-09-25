@@ -460,8 +460,9 @@ body.dev-selector-dragging * {
     @apply font-mono;
   }
 
+  /* Summe der festen ControlTable-Spalten (34,5rem) plus 20rem für den Titel. */
   .control-table-min-width {
-    min-width: 40rem;
+    min-width: 55rem;
   }
 
   .catalog-mobile-reference-row {
