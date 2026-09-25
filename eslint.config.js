@@ -66,8 +66,8 @@ export default defineConfig(
   {
     // GSPP-199: Type-aware Minimal-Gate. Der Project Service findet
     // tsconfig.app.json und tsconfig.node.json über die Referenzen in
-    // tsconfig.json; Dateien außerhalb von src/ liegen in keinem tsconfig
-    // und bleiben deshalb ohne Typinformation.
+    // tsconfig.json. Das Gate ist über `files` auf src/ begrenzt; außerhalb
+    // gilt es nicht, auch wenn einzelne Dateien in tsconfig.node.json liegen.
     files: ['src/**/*.{ts,tsx}'],
     languageOptions: {
       parserOptions: {
