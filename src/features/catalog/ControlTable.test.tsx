@@ -378,5 +378,59 @@ describe('ControlTable', () => {
       expect(document.activeElement).toBe(firstRow);
       expect(firstRow).toHaveAttribute('tabindex', '0');
     });
+
+    it('does not leave a focus request behind when a key stays on the same row', () => {
+      const props = {
+        controls: manyControls,
+        controlsById: new Map(manyControls.map((c) => [c.id, c])),
+        checkedIds: new Set<string>(),
+        onSortChange: vi.fn(),
+        onSelectControl: vi.fn(),
+        onCheckedChange: vi.fn(),
+      };
+      const view = render(
+        <>
+          <button type="button">Außerhalb</button>
+          <ControlTable {...props} sort={[{ field: 'id', direction: 'asc' }]} />
+        </>,
+      );
+      const firstRow = dataRows()[0];
+      firstRow.focus();
+      fireEvent.keyDown(firstRow, { key: 'Home' });
+      fireEvent.keyDown(firstRow, { key: 'ArrowUp' });
+
+      const outside = screen.getByRole('button', { name: 'Außerhalb' });
+      outside.focus();
+      view.rerender(
+        <>
+          <button type="button">Außerhalb</button>
+          <ControlTable {...props} sort={[{ field: 'title', direction: 'asc' }]} />
+        </>,
+      );
+
+      expect(document.activeElement).toBe(outside);
+    });
+
+    it('keeps the focused control as tab stop when a re-sort moves it out of the window', () => {
+      const props = {
+        controlsById: new Map(manyControls.map((c) => [c.id, c])),
+        checkedIds: new Set<string>(),
+        sort: [{ field: 'id', direction: 'asc' }] as SortConfig,
+        onSortChange: vi.fn(),
+        onSelectControl: vi.fn(),
+        onCheckedChange: vi.fn(),
+      };
+      const view = render(<ControlTable {...props} controls={manyControls} />);
+      const firstRow = dataRows()[0];
+      firstRow.focus();
+
+      view.rerender(<ControlTable {...props} controls={[...manyControls].reverse()} />);
+
+      expect(document.activeElement).toBe(firstRow);
+      expect(firstRow).toHaveTextContent('GC.1.1');
+      expect(firstRow).toHaveAttribute('aria-rowindex', '301');
+      expect(firstRow).toHaveAttribute('tabindex', '0');
+      expect(dataRows().filter((row) => row.getAttribute('tabindex') === '0')).toHaveLength(1);
+    });
   });
 });

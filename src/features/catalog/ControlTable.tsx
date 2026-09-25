@@ -170,7 +170,7 @@ interface ControlTableRowProps {
   isOpen: boolean;
   isTabStop: boolean;
   showSelection: boolean;
-  onFocus: (index: number) => void;
+  onFocus: (index: number, control: Control) => void;
   onKeyDown: (event: React.KeyboardEvent, index: number, control: Control) => void;
   onSelectControl: (control: Control) => void;
   onToggleSelection: (id: string) => void;
@@ -203,7 +203,7 @@ const ControlTableRow = memo(function ControlTableRow({
       aria-selected={isOpen}
       tabIndex={isTabStop ? 0 : -1}
       onKeyDown={(event) => onKeyDown(event, index, control)}
-      onFocus={() => onFocus(index)}
+      onFocus={() => onFocus(index, control)}
     >
       {showSelection && (
         <td className="px-3 py-2.5 align-middle" onClick={(event) => event.stopPropagation()}>
@@ -274,10 +274,12 @@ export function ControlTable(props: ControlTableProps) {
   const showSelection = props.showSelection !== false;
   const checkedIds = showSelection && 'checkedIds' in props ? props.checkedIds : EMPTY_CHECKED_IDS;
   const onCheckedChange = showSelection && 'onCheckedChange' in props ? props.onCheckedChange : undefined;
-  // Roving tabindex: only one row is tabbable at a time
-  const [focusedIndex, setFocusedIndex] = useState(0);
+  // Roving tabindex: only one row is tabbable at a time. Der Tab-Stopp folgt
+  // der Control-ID, damit er bei Umsortierung mit seiner Zeile wandert; der
+  // Index dient nur als Rückfall, wenn die Control aus der Liste fällt.
+  const [tabStop, setTabStop] = useState<{ id: string | null; index: number }>({ id: null, index: 0 });
   const tbodyRef = useRef<HTMLTableSectionElement>(null);
-  const pendingFocusIndexRef = useRef<number | null>(null);
+  const pendingFocusIdRef = useRef<string | null>(null);
   const checkedIdsRef = useRef(checkedIds);
   const onCheckedChangeRef = useRef(onCheckedChange);
   const onSelectControlRef = useRef(onSelectControl);
@@ -322,17 +324,32 @@ export function ControlTable(props: ControlTableProps) {
     const nextIndex = getNextRowIndex(e.key, index, controls.length);
     if (nextIndex === null) return;
     e.preventDefault();
-    // Die Zielzeile ist womöglich noch nicht gerendert. Als neue Tab-Stopp-Zeile
-    // rendert das Windowing sie garantiert; fokussiert wird nach dem Commit.
-    pendingFocusIndexRef.current = nextIndex;
-    setFocusedIndex(nextIndex);
-  }, [controls.length, selectControl, showSelection, toggleRowSelection]);
+    const renderedRow = tbodyRef.current?.querySelector<HTMLElement>(`tr[data-row-index="${nextIndex}"]`);
+    if (renderedRow) {
+      // Gerenderte Zeile sofort fokussieren; onFocus setzt den Tab-Stopp.
+      renderedRow.focus();
+      return;
+    }
+    // Nicht gerendert heißt: nicht der aktuelle Tab-Stopp. Das Setzen ändert den
+    // State daher sicher, das Windowing rendert die Zeile und der Layout-Effekt
+    // fokussiert sie nach dem Commit — kein Auftrag bleibt liegen.
+    const target = controls[nextIndex];
+    pendingFocusIdRef.current = target.id;
+    setTabStop({ id: target.id, index: nextIndex });
+  }, [controls, selectControl, showSelection, toggleRowSelection]);
 
-  const handleRowFocus = useCallback((index: number) => {
-    setFocusedIndex(index);
+  const handleRowFocus = useCallback((index: number, control: Control) => {
+    setTabStop((current) =>
+      current.id === control.id && current.index === index ? current : { id: control.id, index },
+    );
   }, []);
 
-  const tabStopIndex = Math.min(focusedIndex, Math.max(controls.length - 1, 0));
+  const indexById = useMemo(
+    () => new Map(controls.map((control, index) => [control.id, index])),
+    [controls],
+  );
+  const tabStopIndex = (tabStop.id === null ? undefined : indexById.get(tabStop.id))
+    ?? Math.min(tabStop.index, Math.max(controls.length - 1, 0));
 
   const { scrollRef, onScroll, rowHeight, slots } = useRowWindow({
     rowCount: controls.length,
@@ -344,9 +361,11 @@ export function ControlTable(props: ControlTableProps) {
   });
 
   useLayoutEffect(() => {
-    const pendingIndex = pendingFocusIndexRef.current;
-    if (pendingIndex === null) return;
-    pendingFocusIndexRef.current = null;
+    const pendingId = pendingFocusIdRef.current;
+    if (pendingId === null) return;
+    pendingFocusIdRef.current = null;
+    const pendingIndex = indexById.get(pendingId);
+    if (pendingIndex === undefined) return;
     // focus() scrollt die Zeile ins Bild; `scroll-pt-9` hält sie unter der
     // Sticky-Kopfzeile sichtbar.
     tbodyRef.current
@@ -450,7 +469,7 @@ export function ControlTable(props: ControlTableProps) {
           {slots.map((slot) => {
             if (slot.kind === 'spacer') {
               return (
-                <tr key={slot.key} aria-hidden="true">
+                <tr key={slot.key} role="presentation" aria-hidden="true">
                   <td
                     colSpan={COLUMNS.length + (showSelection ? 2 : 1)}
                     className="p-0"
