@@ -31,6 +31,7 @@
 
 import type { OscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { ResolvedOscalReference } from '@/domain/referenceResolution';
+import type { OscalRootMetadataView } from '@/domain/oscalRootDocument';
 
 /** Der JSON-Root-Key dieses Modells. Er ist kein Versionsschalter. */
 export const MAPPING_COLLECTION_ROOT_TYPE = 'mapping-collection' as const;
@@ -162,14 +163,6 @@ export type MappingCoverageState =
 /* ------------------------------------------------------------------ */
 /*  Gemeinsame Knoten                                                  */
 /* ------------------------------------------------------------------ */
-
-export interface MappingCollectionMetadata {
-  readonly title?: string;
-  readonly lastModified?: string;
-  readonly version?: string;
-  /** Die deklarierte `oscal-version` — die alleinige Versionsautorität. */
-  readonly oscalVersion?: string;
-}
 
 export interface MappingProp {
   readonly name: string;
@@ -366,7 +359,7 @@ export type MappingsDeclaredForm = 'single' | 'array' | 'missing';
 
 export interface MappingCollection {
   readonly uuid?: string;
-  readonly metadata: MappingCollectionMetadata;
+  readonly metadata: OscalRootMetadataView;
   /** Pflichtfeld; fehlt es, steht das in `diagnostics` (ADR-7). */
   readonly provenance: MappingProvenance | null;
   readonly mappings: readonly Mapping[];

@@ -366,6 +366,9 @@ function assertDeclaredOscalVersion(artifactDocument, descriptor, labels) {
   const declaredVersion = artifactDocument[rootType]?.metadata?.['oscal-version'];
   const context = `${labels.artifact} (${artifactKey})`;
 
+  // Klasse 1 bindet exakt: Ohne `acceptVersionPrefix` bleibt ein BSI-Artefakt,
+  // das seine Version plötzlich als `v1.2.2` deklariert, `OSCAL_VERSION_MALFORMED`
+  // (GSPP-357) — auch ohne Registry-Erwartung.
   const binding = resolveSchemaBinding({
     rootType,
     oscalVersion: declaredVersion,

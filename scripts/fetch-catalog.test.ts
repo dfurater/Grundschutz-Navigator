@@ -680,6 +680,21 @@ describe('fetch-catalog', () => {
       expect(artifact.schemaPin.releaseTag).toBe('v1.2.1');
     });
 
+    it('binds a v-prefixed version exactly and never normalizes it for class 1 (GSPP-357)', () => {
+      // Die Präfixnormalisierung ist Klasse 2 vorbehalten; ein BSI-Artefakt
+      // muss seine Version exakt so deklarieren, wie Registry und Matrix sie
+      // führen — mit und ohne Registry-Erwartung.
+      expect(() => validateFetchedOscalArtifact(
+        oscalBuffer('catalog', { 'oscal-version': 'v1.2.2' }),
+        'catalog',
+      )).toThrow('[OSCAL_VERSION_MALFORMED]');
+      expect(() => validateFetchedOscalArtifact(
+        oscalBuffer('catalog', { 'oscal-version': 'v1.2.2' }),
+        'catalog',
+        { artifactKey: 'catalog-gspp', expectedOscalVersion: '1.2.2' },
+      )).toThrow('[OSCAL_VERSION_MALFORMED]');
+    });
+
     it('rejects a declared version that deviates from the source registry expectation', () => {
       expect(() => validateFetchedOscalArtifact(
         oscalBuffer('catalog', { 'oscal-version': '1.2.2' }),

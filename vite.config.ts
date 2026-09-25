@@ -213,7 +213,7 @@ export default defineConfig(({ command }) => ({
       // Reporter bleiben unveraendert, damit Konsolenausgabe, HTML-Report,
       // clover.xml und coverage-final.json erhalten bleiben.
       reporter: ['text', 'html', 'clover', 'json', 'lcov'],
-      include: ['src/**/*.{ts,tsx}'],
+      include: ['src/**/*.{ts,tsx,mjs}'],
       exclude: [
         'src/**/*.test.*',
         'src/**/*.d.ts',
