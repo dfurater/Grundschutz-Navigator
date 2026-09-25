@@ -469,7 +469,7 @@ export function ControlTable(props: ControlTableProps) {
           {slots.map((slot) => {
             if (slot.kind === 'spacer') {
               return (
-                <tr key={slot.key} role="presentation" aria-hidden="true">
+                <tr key={slot.key} aria-hidden="true">
                   <td
                     colSpan={COLUMNS.length + (showSelection ? 2 : 1)}
                     className="p-0"
