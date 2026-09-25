@@ -237,6 +237,7 @@ src/                              # Anwendungsquellcode
 │   ├── fixtures/                     # Testfixtures, darunter der NIST-Orakelkorpus
 │   ├── catalogState.ts               # Sammlungsfelder des CatalogState für Komponententests
 │   ├── documentTitle.ts              # Prüft den Seitentitel auf genau ein <title>
+│   ├── eslintWithoutTypes.ts         # Repo-ESLint ohne Project Service für Regeltests
 │   ├── oscalGraphCompare.ts          # Graphvergleich mit Object.is-Semantik
 │   ├── oscalRoundTrip.ts             # No-op-Round-trip-Harnisch
 │   └── oscalStructure.ts             # Strukturorakel (Zählregeln A und B)
@@ -536,6 +537,8 @@ Die mobile Liste bleibt ungefenstert: `content-visibility: auto` auf `.catalog-m
 CSV-Serialisierung und Browserauslösung sind getrennte Grenzen: `features/export/csvExport.ts` erzeugt Inhalt und `Blob`; `adapters/browserDownload.ts` erstellt den temporären Link und widerruft Link und Object-URL auch bei Fehlern in `finally`.
 
 ESLint sichert diese Architektur statisch ab: `CatalogBrowser` darf weder den CSV-Exporter noch den Beziehungsgraphen importieren, direkter `document.body`-Zugriff ist in App-, Komponenten- und Feature-Code ein Fehler, imperative Event-Listener und Dateien über 300 physische Zeilen werden als Warnungen ausgewiesen. `useGlobalEventListener` bündelt globale Window- und Document-Listener und garantiert symmetrischen Abbau beim Deaktivieren oder Unmount.
+
+Für `src/**` läuft ESLint zusätzlich mit Typinformation (typescript-eslint Project Service über die Referenzen in `tsconfig.json`) und erzwingt zwei Promise-Regeln als Fehler: `await-thenable` verbietet ein `await` auf synchrone Werte, weil es einen veralteten Async-Vertrag vortäuscht, und `no-floating-promises` verlangt, dass ein Promise im Produktionscode abgewartet, abgefangen oder mit `void` ausdrücklich als Fire-and-forget markiert wird. In Tests ist nur `no-floating-promises` abgeschaltet: Dort meldet die Regel vor allem synchrone `act()`-Aufrufe, und unbehandelte Rejections lassen den Vitest-Lauf ohnehin fehlschlagen.
 
 ## Control-Detail-Grenzen
 

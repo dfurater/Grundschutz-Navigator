@@ -35,8 +35,8 @@ describe('Geschlossene Herkunftsfläche (Greptile-Befunde zu 805c638 und 3a1b1d6
     ).toBe(false);
   });
 
-  it('belegt nach bestandener Bytepolitik Wurzel und jeden Container', async () => {
-    const input = await parseClass2OscalInput(new TextEncoder().encode('{"a":{"b":1}}'));
+  it('belegt nach bestandener Bytepolitik Wurzel und jeden Container', () => {
+    const input = parseClass2OscalInput(new TextEncoder().encode('{"a":{"b":1}}'));
     if (!input.ok) throw new Error('Fixture muss parsen');
 
     const root = input.source as Record<string, unknown>;

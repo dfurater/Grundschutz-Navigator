@@ -227,7 +227,7 @@ export function CatalogProvider({
       }
     }
 
-    loadEntryCatalog();
+    void loadEntryCatalog();
 
     return () => {
       cancelled = true;
