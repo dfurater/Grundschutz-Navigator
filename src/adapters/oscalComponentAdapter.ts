@@ -48,7 +48,7 @@ import {
   registerUuid,
 } from '@/adapters/oscalComponentReaders';
 import type { DeriveState, JsonObject } from '@/adapters/oscalComponentReaders';
-import { readPinnedOscalVersion } from '@/adapters/oscalRootDispatch';
+import { readPinnedOscalVersion, readRootMetadata } from '@/adapters/oscalRootDispatch';
 import { COMPONENT_DEFINITION_ROOT_TYPE } from '@/domain/componentDefinitionModel';
 import type {
   ComponentCapability,
@@ -58,7 +58,6 @@ import type {
   ComponentDefinition,
   ComponentDefinitionDeriveOptions,
   ComponentDefinitionImport,
-  ComponentDefinitionMetadata,
   ComponentImplementationSource,
   ComponentImplementedRequirement,
   ComponentImplementedStatement,
@@ -221,16 +220,6 @@ function deriveControlImplementations(
 /* ------------------------------------------------------------------ */
 /*  Ableitung                                                          */
 /* ------------------------------------------------------------------ */
-
-function deriveMetadata(body: JsonObject): ComponentDefinitionMetadata {
-  const metadata = isJsonObject(body.metadata) ? body.metadata : {};
-  return {
-    title: readString(metadata.title),
-    lastModified: readString(metadata['last-modified']),
-    version: readString(metadata.version),
-    oscalVersion: readString(metadata['oscal-version']),
-  };
-}
 
 function deriveImports(
   body: JsonObject,
@@ -397,7 +386,7 @@ export function deriveComponentDefinition(
 
   return {
     uuid: readString(rootBody.uuid),
-    metadata: deriveMetadata(rootBody),
+    metadata: readRootMetadata(rootBody),
     importComponentDefinitions: deriveImports(rootBody, state),
     components,
     capabilities,

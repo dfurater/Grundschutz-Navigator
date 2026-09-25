@@ -55,7 +55,7 @@ import {
   readVocabulary,
 } from '@/adapters/oscalMappingReaders';
 import type { DeriveState, JsonObject } from '@/adapters/oscalMappingReaders';
-import { readPinnedOscalVersion } from '@/adapters/oscalRootDispatch';
+import { readPinnedOscalVersion, readRootMetadata } from '@/adapters/oscalRootDispatch';
 import {
   MAPPING_COLLECTION_ROOT_TYPE,
   MAPPING_ID_REF_UNRESOLVED,
@@ -72,7 +72,6 @@ import {
 import type {
   Mapping,
   MappingCollection,
-  MappingCollectionMetadata,
   MappingConfidenceScore,
   MappingControlSelector,
   MappingCoverage,
@@ -574,16 +573,6 @@ function deriveProvenance(body: JsonObject, state: DeriveState): MappingProvenan
   };
 }
 
-function deriveMetadata(body: JsonObject): MappingCollectionMetadata {
-  const metadata = isJsonObject(body.metadata) ? body.metadata : {};
-  return {
-    title: readString(metadata.title),
-    lastModified: readString(metadata['last-modified']),
-    version: readString(metadata.version),
-    oscalVersion: readString(metadata['oscal-version']),
-  };
-}
-
 /* ------------------------------------------------------------------ */
 /*  Ableitung                                                          */
 /* ------------------------------------------------------------------ */
@@ -635,7 +624,7 @@ export function deriveMappingCollection(
   // nicht mehrdeutig. Bei `mapping` und `map` ist das anders — dort hängen
   // Adressierbarkeit und Eindeutigkeit der Einträge daran.
   const uuid = readIdentity(rootBody, ROOT_PATH, state, { required: false });
-  const metadata = deriveMetadata(rootBody);
+  const metadata = readRootMetadata(rootBody);
   const provenance = deriveProvenance(rootBody, state);
   const declaredMappings = readDeclaredMappings(rootBody, state);
 

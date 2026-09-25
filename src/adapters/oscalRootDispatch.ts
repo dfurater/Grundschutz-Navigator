@@ -31,6 +31,7 @@ import {
   VERSION_MATRIX_DIAGNOSTIC_CODES,
 } from '@/domain/oscalVersionMatrix';
 import { OSCAL_SCHEMA_DIRECTIVE_KEY } from '@/domain/oscalRootDocument';
+import type { OscalRootMetadataView } from '@/domain/oscalRootDocument';
 import {
   getArtifactByUpstreamPath,
   getExpectedRootType,
@@ -109,19 +110,40 @@ function isJsonObject(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * Liest `metadata.oscal-version` aus einem Root-Körper.
+ * Liest ein String-Feld aus `metadata` eines Root-Körpers.
  *
  * Nur ein String zählt als Angabe. Ein Nicht-String wird nicht nach String
  * konvertiert — eine Koerzierung würde unvertrauenswürdige Eingabe in eine
- * scheinbare Versionsangabe verwandeln. Er führt deshalb wie ein fehlendes
- * Feld zu `OSCAL_VERSION_MISSING`.
+ * scheinbare Angabe verwandeln. Für `oscal-version` führt er deshalb wie ein
+ * fehlendes Feld zu `OSCAL_VERSION_MISSING`.
  */
-function readDeclaredOscalVersion(body: unknown): string | undefined {
+function readMetadataString(body: unknown, key: string): string | undefined {
   if (!isJsonObject(body)) return undefined;
   const metadata = body.metadata;
   if (!isJsonObject(metadata)) return undefined;
-  const declared = metadata['oscal-version'];
-  return typeof declared === 'string' ? declared : undefined;
+  const value = metadata[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
+/** Liest `metadata.oscal-version` aus einem Root-Körper, unverändert. */
+function readDeclaredOscalVersion(body: unknown): string | undefined {
+  return readMetadataString(body, 'oscal-version');
+}
+
+/**
+ * Die Anzeigemetadaten eines Root-Körpers für die Modelladapter.
+ *
+ * `oscalVersion` ist der deklarierte Rohwert — dieselbe Lesung, aus der der
+ * Dispatch die Schemazelle bindet, aber ohne Normalisierung: Anzeige und
+ * Export sehen `v1.2.2`, wie das Dokument es deklariert.
+ */
+export function readRootMetadata(body: unknown): OscalRootMetadataView {
+  return {
+    title: readMetadataString(body, 'title'),
+    lastModified: readMetadataString(body, 'last-modified'),
+    version: readMetadataString(body, 'version'),
+    oscalVersion: readDeclaredOscalVersion(body),
+  };
 }
 
 /**

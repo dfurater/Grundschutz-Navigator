@@ -50,7 +50,7 @@ import {
   readStringArrayField,
 } from '@/adapters/oscalProfileReaders';
 import type { DeriveState, JsonObject } from '@/adapters/oscalProfileReaders';
-import { readPinnedOscalVersion } from '@/adapters/oscalRootDispatch';
+import { readPinnedOscalVersion, readRootMetadata } from '@/adapters/oscalRootDispatch';
 import { PROFILE_RESOLUTION_STATE, PROFILE_ROOT_TYPE } from '@/domain/profileModel';
 import type {
   Profile,
@@ -64,7 +64,6 @@ import type {
   ProfileInsertControls,
   ProfileMerge,
   ProfileMergeStructure,
-  ProfileMetadata,
   ProfileModify,
   ProfileRemoval,
   ProfileSelection,
@@ -452,16 +451,6 @@ function deriveModify(body: JsonObject, state: DeriveState): ProfileModify | nul
 /*  Ableitung                                                          */
 /* ------------------------------------------------------------------ */
 
-function deriveMetadata(body: JsonObject): ProfileMetadata {
-  const metadata = isJsonObject(body.metadata) ? body.metadata : {};
-  return {
-    title: readString(metadata.title),
-    lastModified: readString(metadata['last-modified']),
-    version: readString(metadata.version),
-    oscalVersion: readString(metadata['oscal-version']),
-  };
-}
-
 /**
  * Leitet die Projektion eines Profile aus seinem Root-Körper ab.
  *
@@ -499,7 +488,7 @@ export function deriveProfile(body: unknown, context: OscalDocumentContext): Pro
 
   return {
     uuid: readString(rootBody.uuid),
-    metadata: deriveMetadata(rootBody),
+    metadata: readRootMetadata(rootBody),
     imports: deriveImports(rootBody, state),
     merge: deriveMerge(rootBody, state),
     modify: deriveModify(rootBody, state),

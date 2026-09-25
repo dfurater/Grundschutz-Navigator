@@ -24,6 +24,7 @@
 
 import type { OscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { ResolvedOscalReference } from '@/domain/referenceResolution';
+import type { OscalRootMetadataView } from '@/domain/oscalRootDocument';
 
 /** Der JSON-Root-Key dieses Modells. Er ist kein Versionsschalter. */
 export const PROFILE_ROOT_TYPE = 'profile' as const;
@@ -44,14 +45,6 @@ export type ProfileResolutionState = typeof PROFILE_RESOLUTION_STATE;
 /* ------------------------------------------------------------------ */
 /*  Gemeinsame Knoten                                                  */
 /* ------------------------------------------------------------------ */
-
-export interface ProfileMetadata {
-  readonly title?: string;
-  readonly lastModified?: string;
-  readonly version?: string;
-  /** Die deklarierte `oscal-version` — die alleinige Versionsautorität. */
-  readonly oscalVersion?: string;
-}
 
 export interface ProfileProp {
   readonly name: string;
@@ -286,7 +279,7 @@ export interface ProfileModify {
 
 export interface Profile {
   readonly uuid?: string;
-  readonly metadata: ProfileMetadata;
+  readonly metadata: OscalRootMetadataView;
   /** Mindestens ein Import ist Pflicht; fehlt er, steht das in `diagnostics`. */
   readonly imports: readonly ProfileImport[];
   readonly merge: ProfileMerge | null;

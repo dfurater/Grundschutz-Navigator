@@ -43,6 +43,19 @@ export interface RawOscalRootBody {
 }
 
 /**
+ * Die Projektion dieses gemeinsamen `metadata`-Anteils, die Component
+ * Definition, Profil und Mapping Collection in ihrer Sicht führen. Ein Feld ist
+ * gesetzt, wenn das Dokument dort einen String deklariert.
+ */
+export interface OscalRootMetadataView {
+  readonly title?: string;
+  readonly lastModified?: string;
+  readonly version?: string;
+  /** Die deklarierte `oscal-version` — die alleinige Versionsautorität. */
+  readonly oscalVersion?: string;
+}
+
+/**
  * Der Modellkörper eines Root-Keys. Ein neues Modell ergänzt hier genau einen
  * Zweig; bestehende Zweige bleiben unberührt.
  */
