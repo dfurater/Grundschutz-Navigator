@@ -27,6 +27,7 @@ import {
   isKnownOscalRootKey,
   isPinnedOscalVersion,
   resolveSchemaBinding,
+  toPinnedOscalVersion,
   VERSION_MATRIX_DIAGNOSTIC_CODES,
 } from '@/domain/oscalVersionMatrix';
 import { OSCAL_SCHEMA_DIRECTIVE_KEY } from '@/domain/oscalRootDocument';
@@ -121,6 +122,25 @@ function readDeclaredOscalVersion(body: unknown): string | undefined {
   if (!isJsonObject(metadata)) return undefined;
   const declared = metadata['oscal-version'];
   return typeof declared === 'string' ? declared : undefined;
+}
+
+/**
+ * Die Version für den Referenz- und Diagnosekontext der Modelladapter.
+ *
+ * Nur ein Wert aus der gepinnten Menge wird übernommen; alles andere wird
+ * `null`. Der Dispatch hat die Bindung vor dem Aufruf bereits geprüft — dieser
+ * Filter hält die Redaction-Regel auch dann ein, wenn jemand `derive` direkt
+ * aufruft. Adapter und Dispatch lesen die Version über dieselbe Funktion und
+ * dieselbe Klassenregel: Für Klasse 2 ergibt `v1.2.2` die gebundene Version
+ * `1.2.2`, Klasse 1 bindet exakt.
+ */
+export function readPinnedOscalVersion(
+  body: unknown,
+  context: Pick<OscalDocumentContext, 'trustClass'>,
+): PinnedOscalVersion | null {
+  return toPinnedOscalVersion(readDeclaredOscalVersion(body), {
+    acceptVersionPrefix: acceptsOscalVersionPrefix(context),
+  });
 }
 
 /**

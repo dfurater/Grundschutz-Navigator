@@ -22,6 +22,15 @@ import {
 
 const pins = listSchemaPins();
 
+/**
+ * Jeder Test in `validateAgainstPinnedSchema`, der über alle Pins läuft,
+ * kompiliert nach dem Cache-Reset in `beforeEach` alle 30 Schemas mit Ajv neu. Lokal dauert das ~950ms, auf den
+ * GitHub-Actions-Runnern 2,5–5,8s (Runs 32069019414, 32128784915, 35905064302,
+ * 36044969109). Der 5000ms-Default reicht dafür nicht zuverlässig; Run
+ * 36046990915 (Versuch 1) scheiterte daran mit 5072ms.
+ */
+const FULL_PIN_COMPILE_TIMEOUT_MS = 20_000;
+
 describe('Schema-Bundle', () => {
   it('führt exakt die 30 existierenden Matrixzellen', () => {
     expect(listOscalSchemaCellKeys().slice().sort()).toEqual(
@@ -60,32 +69,33 @@ describe('validateAgainstPinnedSchema', () => {
         expect(result, `${pin.rootKey} @ ${pin.oscalVersion}`).toEqual({ ok: true });
       }
     },
-    // 30 echte Ajv-Kompilierungen in einem Test liegen lokal bei ~950ms, auf
-    // den GitHub-Actions-Runnern aber beobachtet bei 4,7–5,2s (Runs 32069019414,
-    // 32128784915) — zu nah am 5000ms-Default, um zuverlässig zu bestehen.
-    20000,
+    FULL_PIN_COMPILE_TIMEOUT_MS,
   );
 
-  it('lehnt je Root-Modell ein schemawidriges Dokument fail-closed ab', async () => {
-    for (const pin of pins) {
-      const result = await validateAgainstPinnedSchema(
-        makeSchemaInvalidOscalDocument(pin.rootKey, pin.oscalVersion),
-        pin,
-      );
+  it(
+    'lehnt je Root-Modell ein schemawidriges Dokument fail-closed ab',
+    async () => {
+      for (const pin of pins) {
+        const result = await validateAgainstPinnedSchema(
+          makeSchemaInvalidOscalDocument(pin.rootKey, pin.oscalVersion),
+          pin,
+        );
 
-      expect(result, `${pin.rootKey} @ ${pin.oscalVersion}`).toMatchObject({
-        ok: false,
-        diagnostic: {
-          code: 'OSCAL_SCHEMA_REQUIRED_PROPERTY_MISSING',
-          stage: 'json-schema',
-          severity: 'error',
-          path: `/${pin.rootKey}/metadata`,
-          validator: JSON_SCHEMA_VALIDATOR,
-          artifact: { rootType: pin.rootKey, oscalVersion: pin.oscalVersion },
-        },
-      });
-    }
-  });
+        expect(result, `${pin.rootKey} @ ${pin.oscalVersion}`).toMatchObject({
+          ok: false,
+          diagnostic: {
+            code: 'OSCAL_SCHEMA_REQUIRED_PROPERTY_MISSING',
+            stage: 'json-schema',
+            severity: 'error',
+            path: `/${pin.rootKey}/metadata`,
+            validator: JSON_SCHEMA_VALIDATOR,
+            artifact: { rootType: pin.rootKey, oscalVersion: pin.oscalVersion },
+          },
+        });
+      }
+    },
+    FULL_PIN_COMPILE_TIMEOUT_MS,
+  );
 
   it('führt den Registry-Schlüssel und den Validatorpin in der Signatur', async () => {
     const pin = getSchemaPin('catalog', '1.1.3')!;

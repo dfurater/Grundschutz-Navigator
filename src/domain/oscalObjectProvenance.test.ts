@@ -309,7 +309,10 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
     });
   });
 
-  it('zählt verschachtelte Container genau einmal — der Grenzgraph von genau einer Million Knoten läuft durch', async () => {
+  // Parsen und Durchlaufen des Millionen-Knoten-Graphen dauert auf den
+  // GitHub-Actions-Runnern 2,3–4,4s (Runs 35912543867, 35917510807) — zu nah
+  // am 5000ms-Default, um zuverlässig zu bestehen.
+  it('zählt verschachtelte Container genau einmal — der Grenzgraph von genau einer Million Knoten läuft durch', { timeout: 20_000 }, async () => {
     // Greptile-Befund zu efa1cfa: Die Knotenuntergrenze zählte einen
     // containerwertigen Slot zusätzlich zum späteren Besuch des Containers
     // und lehnte den exakt millionenknotigen Grenzgraphen vor der

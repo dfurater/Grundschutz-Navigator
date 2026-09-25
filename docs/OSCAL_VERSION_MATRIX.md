@@ -252,9 +252,11 @@ umgeschrieben:
 Die Normalisierung dient ausschließlich der Matrixbindung. Das Quelldokument
 und sein Metadatenwert bleiben unverändert — Schema-Validierung, Integrität,
 Export und Anzeige sehen weiter `v1.2.2`. Diagnose- und Referenzkontext der
-Modelladapter tragen die gebundene Version aus `toPinnedOscalVersion()` nach
-derselben Klassenregel, für Klasse 2 also `1.2.2`; ein Wert außerhalb der
-gepinnten Menge wird dort zu `null`.
+Modelladapter tragen die gebundene Version nach derselben Klassenregel, für
+Klasse 2 also `1.2.2`; ein Wert außerhalb der gepinnten Menge wird dort zu
+`null`. Sie lesen sie über `readPinnedOscalVersion()` aus dem Root-Dispatch,
+der dafür dieselbe Leselogik wie für die Bindung nutzt und
+`toPinnedOscalVersion()` aufruft.
 
 Klasse 1 ist davon ausgenommen, in `scripts/fetch-catalog.mjs` ebenso wie im
 Browser: Ein BSI-Artefakt muss seine Version exakt so deklarieren, wie Matrix
