@@ -38,7 +38,7 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
   });
 
   it('lehnt einen Proxy um ein echtes geparstes Ergebnis ab — andere Containeridentität', async () => {
-    const input = await parseClass2OscalInput(
+    const input = parseClass2OscalInput(
       new TextEncoder().encode(JSON.stringify(makeSchemaValidOscalDocument('catalog', '1.1.3'))),
     );
     if (!input.ok) throw new Error('Fixture muss parsen');
@@ -71,8 +71,8 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
     expect(result).toMatchObject({ ok: true, document: { rootType: 'catalog' } });
   });
 
-  it('stellt die registrierte Herkunft als reine Identitätsfrage bereit', async () => {
-    const input = await parseClass2OscalInput(new TextEncoder().encode('{"a":1}'));
+  it('stellt die registrierte Herkunft als reine Identitätsfrage bereit', () => {
+    const input = parseClass2OscalInput(new TextEncoder().encode('{"a":1}'));
     if (!input.ok) throw new Error('Fixture muss parsen');
 
     expect(isParserProducedRoot(input.source as object)).toBe(true);
@@ -87,7 +87,7 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
     // der nach dem Parse catalog.metadata durch ein Fremdobjekt ersetzt, muss
     // am fehlenden Beleg des Ersatzcontainers scheitern — nicht erst am
     // Prototypvergleich eines Proxies.
-    const input = await parseClass2OscalInput(
+    const input = parseClass2OscalInput(
       new TextEncoder().encode(JSON.stringify(makeSchemaValidOscalDocument('catalog', '1.1.3'))),
     );
     if (!input.ok) throw new Error('Fixture muss parsen');
@@ -104,7 +104,7 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
   });
 
   it('bindet die Herkunft über den gesamten Baum — Proxy-Ersatz fällt auf', async () => {
-    const input = await parseClass2OscalInput(
+    const input = parseClass2OscalInput(
       new TextEncoder().encode(JSON.stringify(makeSchemaValidOscalDocument('catalog', '1.1.3'))),
     );
     if (!input.ok) throw new Error('Fixture muss parsen');
@@ -126,7 +126,7 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
     // verketteter registrierter Container einen Zyklus bildet; die Antwort ist
     // die etablierte Identitätsdiagnose der Invariantenprüfung, nie Hängen
     // oder Stapelüberlauf.
-    const input = await parseClass2OscalInput(
+    const input = parseClass2OscalInput(
       new TextEncoder().encode('{"a":{"b":{"c":1}}}'),
     );
     if (!input.ok) throw new Error('Fixture muss parsen');
@@ -149,7 +149,7 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
     // Belegdurchlauf summiert deshalb die Nutzlast des Baums und endet
     // fail-closed an derselben Grenze — ohne Serialisierung als Prüfmittel,
     // denn die Nutzlastsumme unterschreitet die serialisierte Größe nie.
-    const input = await parseClass2OscalInput(
+    const input = parseClass2OscalInput(
       new TextEncoder().encode('{"catalog":{"metadata":{"title":"kurz"}}}'),
     );
     if (!input.ok) throw new Error('Fixture muss parsen');
@@ -172,7 +172,7 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
     // Zeichen; dieselben Inhalte scheitern am Byteeintritt an derselben
     // Grenze. Der Wertpfad muss denselben Byteetat in derselben Einheit
     // messen.
-    const input = await parseClass2OscalInput(
+    const input = parseClass2OscalInput(
       new TextEncoder().encode('{"catalog":{"metadata":{"title":"x"}}}'),
     );
     if (!input.ok) throw new Error('Fixture muss parsen');
@@ -200,7 +200,7 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
     // kippen und entry-zulässige Arrays fälschlich an der Bytegrenze
     // ablehnen.
     const elements = JSON.stringify(new Array(300_000).fill(''));
-    const input = await parseClass2OscalInput(
+    const input = parseClass2OscalInput(
       new TextEncoder().encode(`{"a":${elements}}`),
     );
     if (!input.ok) throw new Error('Fixture muss parsen');
@@ -217,7 +217,7 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
     // Gitar-Befund zu cb5f960: Symbol-Schlüssel machten die Nutzlastsumme
     // zu NaN und erzeugten eine irreführende Byte-Diagnose statt der
     // etablierten Strukturdiagnose.
-    const input = await parseClass2OscalInput(
+    const input = parseClass2OscalInput(
       new TextEncoder().encode('{"a":{"b":1}}'),
     );
     if (!input.ok) throw new Error('Fixture muss parsen');
@@ -241,7 +241,7 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
     // Anführungszeichen) verdoppeln die serialisierte Länge gegenüber der
     // Rohform; die Buchhaltung muss die serialisierte Gestalt messen, sonst
     // kippt die Richtungsparität zum Byteeintritt.
-    const input = await parseClass2OscalInput(
+    const input = parseClass2OscalInput(
       new TextEncoder().encode('{"catalog":{"metadata":{"title":"x"}}}'),
     );
     if (!input.ok) throw new Error('Fixture muss parsen');
@@ -266,7 +266,7 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
     // und leerem Array umging die Grenze erneut. Der Schlüssel jedes
     // gezählten Mitglieds trägt seinen serialisierten Anteil, der Container
     // ausschließlich an seinem eigenen Besuch.
-    const input = await parseClass2OscalInput(
+    const input = parseClass2OscalInput(
       new TextEncoder().encode('{"catalog":{"metadata":{"title":"x"}}}'),
     );
     if (!input.ok) throw new Error('Fixture muss parsen');
@@ -292,7 +292,7 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
     // Riesenwert durfte die Bytebuchhaltung jeden Index durchlaufen lassen,
     // bevor die Formprüfung die Lücken erkennt. Die Dichteprüfung ist eine
     // O(eigene Schlüssel)-Frage — die Iteration startet gar nicht erst.
-    const input = await parseClass2OscalInput(new TextEncoder().encode('[1,2,3]'));
+    const input = parseClass2OscalInput(new TextEncoder().encode('[1,2,3]'));
     if (!input.ok) throw new Error('Fixture muss parsen');
 
     const array = input.source as unknown[];
@@ -320,7 +320,7 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
     // deren Beitrag entsteht ausschließlich am eigenen Besuch.
     const inner = `[${'null,'.repeat(999_997)}null]`;
     const text = `[${inner}]`;
-    const input = await parseClass2OscalInput(new TextEncoder().encode(text));
+    const input = parseClass2OscalInput(new TextEncoder().encode(text));
     if (!input.ok) throw new Error('Fixture muss parsen');
 
     const result = await processClass2OscalValue(input.source, context);
@@ -339,7 +339,7 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
     // definierten Slots und ihre null-gefüllten Löcher; dasselbe JSON war am
     // Byteweg OSCAL_BYTE_LIMIT_EXCEEDED. Die Buchhaltung rechnet auch bei
     // Nicht-Dichte vollständig — nur eben ohne Iteration über die Länge.
-    const input = await parseClass2OscalInput(new TextEncoder().encode('[1,2,3]'));
+    const input = parseClass2OscalInput(new TextEncoder().encode('[1,2,3]'));
     if (!input.ok) throw new Error('Fixture muss parsen');
 
     const array = input.source as unknown[];
@@ -358,7 +358,7 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
   it('zählt verschachtelte Container genau einmal — kein Doppelsummen-Falschabschluss', async () => {
     // Derselbe Befund, Gegenrichtung: Der Slot eines verschachtelten Arrays
     // darf nicht zusätzlich als null-Pseudowert in den Elternbeitrag laufen.
-    const input = await parseClass2OscalInput(
+    const input = parseClass2OscalInput(
       new TextEncoder().encode(
         JSON.stringify(makeSchemaValidOscalDocument('catalog', '1.1.3')),
       ),
@@ -383,7 +383,7 @@ describe('Herkunftsnachweis am Objekteinstieg', () => {
       diagnostic: { code: 'OSCAL_RESOURCE_DEPTH_LIMIT_EXCEEDED', stage: 'resource-limit' },
     });
 
-    const input = await parseClass2OscalInput(new TextEncoder().encode('{"a":1}'));
+    const input = parseClass2OscalInput(new TextEncoder().encode('{"a":1}'));
     if (!input.ok) throw new Error('Fixture muss parsen');
     expect(isParserProducedRoot(input.source as object)).toBe(true);
   });

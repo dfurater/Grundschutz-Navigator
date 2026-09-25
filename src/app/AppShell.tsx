@@ -147,12 +147,12 @@ export function AppShell() {
 
   const handleSearch = (term: string) => {
     if (term) {
-      navigate(`/suche?q=${encodeURIComponent(term)}`);
+      void navigate(`/suche?q=${encodeURIComponent(term)}`);
     }
   };
 
   const handleTreeSelect = (id: string) => {
-    navigate(buildGroupUrl(activeCatalogKey, id));
+    void navigate(buildGroupUrl(activeCatalogKey, id));
     setSideNavOpen(false);
   };
 

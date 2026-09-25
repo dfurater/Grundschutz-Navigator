@@ -64,6 +64,31 @@ export default defineConfig(
     },
   },
   {
+    // GSPP-199: Type-aware Minimal-Gate. Der Project Service findet
+    // tsconfig.app.json und tsconfig.node.json über die Referenzen in
+    // tsconfig.json; Dateien außerhalb von src/ liegen in keinem tsconfig
+    // und bleiben deshalb ohne Typinformation.
+    files: ['src/**/*.{ts,tsx}'],
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      '@typescript-eslint/await-thenable': 'error',
+      '@typescript-eslint/no-floating-promises': 'error',
+    },
+  },
+  {
+    // Unbehandelte Rejections in Tests lässt Vitest den Lauf fehlschlagen;
+    // die Regel meldet dort vor allem synchrone act()-Aufrufe.
+    files: ['src/**/*.test.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-floating-promises': 'off',
+    },
+  },
+  {
     files: UI_FILES,
     rules: {
       'no-restricted-properties': ['error', {

@@ -143,7 +143,7 @@ export function useControlNavigation({
 
     if (snapshot.selectedControl?.id === control.id) {
       const target = resolveBrowseTarget(snapshot);
-      snapshot.navigate({
+      void snapshot.navigate({
         pathname: target
           ? buildGroupUrl(currentCatalog.catalogKey, target)
           : buildCatalogUrl(currentCatalog.catalogKey),
@@ -152,7 +152,7 @@ export function useControlNavigation({
       return;
     }
 
-    snapshot.navigate({
+    void snapshot.navigate({
       pathname: buildControlUrlForControl(currentCatalog.catalogKey, control),
       search: snapshot.searchString,
     });
@@ -164,7 +164,7 @@ export function useControlNavigation({
     if (!currentCatalog) return;
 
     const target = resolveBrowseTarget(snapshot);
-    snapshot.navigate({
+    void snapshot.navigate({
       pathname: target
         ? buildGroupUrl(currentCatalog.catalogKey, target)
         : buildCatalogUrl(currentCatalog.catalogKey),
@@ -177,7 +177,7 @@ export function useControlNavigation({
     const currentCatalog = snapshot.catalog;
     if (!currentCatalog) return;
 
-    snapshot.navigate({
+    void snapshot.navigate({
       pathname: buildControlUrlForControl(currentCatalog.catalogKey, control),
       search: snapshot.searchString,
     }, { replace: true });

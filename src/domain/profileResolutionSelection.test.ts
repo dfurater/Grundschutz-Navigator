@@ -308,11 +308,11 @@ describe('Selektion Phase 1 — Fail-closed', () => {
     expect(indexCatalogControls(hostile, budget()).order).toEqual([]);
   });
 
-  it('terminiert bei einer zyklischen Control-Selbstreferenz und trägt die Control einmal', async () => {
+  it('terminiert bei einer zyklischen Control-Selbstreferenz und trägt die Control einmal', () => {
     // Greptile-Befund zu fe06afb: Bereits registrierte Controls durften
     // erneut Kindaufgaben erhalten — eine Selbstreferenz blockierte die
     // Indexierung endlos.
-    const input = await parseClass2OscalInput(
+    const input = parseClass2OscalInput(
       new TextEncoder().encode('{"catalog":{"controls":[{"id":"a"}]}}'),
     );
     if (!input.ok) throw new Error('Fixture muss parsen');
@@ -328,8 +328,8 @@ describe('Selektion Phase 1 — Fail-closed', () => {
     expect(index.order).toEqual(['a']);
   });
 
-  it('terminiert bei einem Gruppenzyklus, der sich selbst als Untergruppe trägt', async () => {
-    const input = await parseClass2OscalInput(
+  it('terminiert bei einem Gruppenzyklus, der sich selbst als Untergruppe trägt', () => {
+    const input = parseClass2OscalInput(
       new TextEncoder().encode('{"catalog":{"groups":[{"id":"g"}]}}'),
     );
     if (!input.ok) throw new Error('Fixture muss parsen');
