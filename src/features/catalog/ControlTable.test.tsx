@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { Control } from '@/domain/models';
@@ -131,7 +131,7 @@ describe('ControlTable', () => {
     expect(screen.queryByRole('checkbox', { name: 'GC.1.1 auswählen' })).not.toBeInTheDocument();
 
     const row = screen.getAllByRole('row')[1];
-    row.focus();
+    act(() => row.focus());
     await user.keyboard(' ');
 
     expect(onSelectControl).not.toHaveBeenCalled();
@@ -145,7 +145,7 @@ describe('ControlTable', () => {
     renderTable({ controls: [control], onSelectControl, onCheckedChange });
 
     const row = screen.getAllByRole('row')[1];
-    row.focus();
+    act(() => row.focus());
     await user.keyboard('{Enter}');
     await user.keyboard(' ');
 
@@ -366,7 +366,7 @@ describe('ControlTable', () => {
     it('keeps the focused tab-stop row mounted when it is scrolled out of the window', () => {
       renderTable({ controls: manyControls });
       const firstRow = dataRows()[0];
-      firstRow.focus();
+      act(() => firstRow.focus());
 
       const scroller = screen.getByRole('grid').parentElement as HTMLElement;
       Object.defineProperty(scroller, 'scrollTop', { configurable: true, value: 200 * 41 });
@@ -395,7 +395,7 @@ describe('ControlTable', () => {
         </>,
       );
       const firstRow = dataRows()[0];
-      firstRow.focus();
+      act(() => firstRow.focus());
       fireEvent.keyDown(firstRow, { key: 'Home' });
       fireEvent.keyDown(firstRow, { key: 'ArrowUp' });
 
@@ -422,7 +422,7 @@ describe('ControlTable', () => {
       };
       const view = render(<ControlTable {...props} controls={manyControls} />);
       const firstRow = dataRows()[0];
-      firstRow.focus();
+      act(() => firstRow.focus());
 
       view.rerender(<ControlTable {...props} controls={[...manyControls].reverse()} />);
 
