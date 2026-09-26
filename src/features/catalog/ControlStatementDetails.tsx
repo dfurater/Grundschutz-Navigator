@@ -1,154 +1,67 @@
 import type { ReactNode } from 'react';
-import type { Control } from '@/domain/models';
-import type {
-  ResolvedControlVocabularies,
-  VocabularyResolution,
-} from '@/domain/vocabulary';
-import { ControlDetailSection } from './ControlDetailSection';
-import {
-  type RenderVocabularyCard,
-  toVocabCardId,
-  VocabularyAffordanceIcon,
-} from './ControlVocabularyPrimitives';
+import type { SegmentStatementResult } from '@/domain/statementSegments';
+import type { VocabularyResolution } from '@/domain/vocabulary';
+import { detailProseClass, type RenderVocabularyCard, subSectionHeadingClass, TermTrigger, toVocabCardId } from './ControlVocabularyPrimitives';
 
-type StatementDetails = Pick<
-  Control['statementProps'],
-  'ergebnis' | 'praezisierung' | 'handlungsworte' | 'dokumentation'
->;
-
-type StatementDetailResolutions = Pick<
-  ResolvedControlVocabularies['statement'],
-  'ergebnis' | 'praezisierung' | 'handlungsworte' | 'dokumentation'
->;
+export interface RestDetail {
+  readonly key: 'ergebnis' | 'praezisierung' | 'handlungsworte' | 'dokumentation';
+  readonly label: string;
+  readonly value: string;
+  readonly resolution: VocabularyResolution | null;
+}
 
 export interface ControlStatementDetailsProps {
-  readonly statementProps: StatementDetails;
-  readonly resolutions: StatementDetailResolutions;
+  readonly details: RestDetail[];
+  readonly missing: SegmentStatementResult['missing'];
   readonly isVocabularyActive: (key: string) => boolean;
   readonly onToggleVocabulary: (key: string) => void;
   readonly renderVocabularyCard: RenderVocabularyCard;
-}
-
-interface DetailFieldProps {
-  readonly label: string;
-  readonly value: string;
-  readonly resolution?: VocabularyResolution | null;
-  readonly active?: boolean;
-  readonly onClick?: () => void;
-  readonly vocabKey?: string;
+  /** Weitere Gruppen des Anforderungssatzes nach den Restzeilen, z. B. Zielobjekte. */
   readonly children?: ReactNode;
 }
 
-function DetailField({
-  label,
-  value,
-  resolution,
-  active,
-  onClick,
-  vocabKey,
-  children,
-}: DetailFieldProps) {
-  const cardId = vocabKey ? toVocabCardId(vocabKey) : undefined;
+type MissingKey = SegmentStatementResult['missing'][number];
 
-  return (
-    <>
-      <dt className="catalog-meta-text pt-1">{label}</dt>
-      <dd>
-        {resolution ? (
-          <button
-            type="button"
-            onClick={onClick}
-            aria-pressed={active}
-            aria-expanded={active}
-            aria-controls={cardId}
-            className={`flex w-full items-start gap-1 rounded text-left text-sm leading-relaxed whitespace-pre-line transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] ${
-              active
-                ? 'font-medium text-primary-main underline decoration-primary-main/40 underline-offset-4'
-                : 'text-slate-700'
-            }`}
-          >
-            <span className="min-w-0 flex-1 break-words [hyphens:auto]">
-              {value}
-            </span>
-            <VocabularyAffordanceIcon active={active} />
-          </button>
-        ) : (
-          <p className="w-full break-words text-sm leading-relaxed whitespace-pre-line text-slate-700 [hyphens:auto]">
-            {value}
-          </p>
-        )}
-      </dd>
-      {(children || cardId) && (
-        <dd id={cardId} className="col-span-full" hidden={!children || undefined}>
-          {children}
-        </dd>
-      )}
-    </>
-  );
-}
-
+/**
+ * Restzeilen zur Anforderung: Dokumentation immer, Rest nur bei `missing`;
+ * danach weitere Gruppen des Satzes (`children`). Label-über-Inhalt, ohne Icon-Affordanz.
+ */
 export function ControlStatementDetails({
-  statementProps,
-  resolutions,
+  details,
+  missing,
   isVocabularyActive,
   onToggleVocabulary,
   renderVocabularyCard,
-}: ControlStatementDetailsProps) {
-  const fields = [
-    {
-      key: 'ergebnis',
-      label: 'Ergebnis',
-      value: statementProps.ergebnis,
-      resolution: resolutions.ergebnis,
-    },
-    {
-      key: 'praezisierung',
-      label: 'Präzisierung',
-      value: statementProps.praezisierung,
-      resolution: resolutions.praezisierung,
-    },
-    {
-      key: 'handlungsworte',
-      label: 'Handlungswort',
-      value: statementProps.handlungsworte,
-      resolution: resolutions.handlungsworte,
-    },
-    {
-      key: 'dokumentation',
-      label: 'Dokumentation',
-      value: statementProps.dokumentation,
-      resolution: resolutions.dokumentation,
-    },
-  ] as const;
-  const visibleFields = fields.filter(
-    (field): field is typeof field & { value: string } => Boolean(field.value),
+  children,
+}: ControlStatementDetailsProps): ReactNode {
+  const visible = details.filter(
+    (detail) => detail.value !== '' && (detail.key === 'dokumentation' || missing.includes(detail.key as MissingKey)),
   );
-
-  if (visibleFields.length === 0) {
+  if (visible.length === 0 && !children) {
     return null;
   }
-
+  // GSPP-303 T9: hüllenlos (Restzeilen unterhalb des Anforderungssatzes, ohne
+  // eigene Überschrift); Beschriftung wie die Gruppen in „Schutzziele und Gefährdungen“.
   return (
-    <ControlDetailSection heading="Anforderungsdetails">
-      <dl className="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-x-4 gap-y-3 sm:gap-y-4">
-        {visibleFields.map(({ key, label, value, resolution }) => {
-          const active = isVocabularyActive(key);
-
-          return (
-            <DetailField
-              key={key}
-              label={label}
-              value={value}
-              resolution={resolution}
-              active={active}
-              onClick={() => onToggleVocabulary(key)}
-              vocabKey={key}
-            >
-              {active && resolution && renderVocabularyCard(resolution)}
-            </DetailField>
-          );
-        })}
-      </dl>
-    </ControlDetailSection>
+    <div className="mt-3 space-y-3">
+      {visible.map((detail) => {
+        const active = isVocabularyActive(detail.key);
+        return (
+          <div key={detail.key}>
+            <p className={subSectionHeadingClass}>{detail.label}</p>
+            <div className={detailProseClass}>
+              {detail.resolution === null ? detail.value : (
+                <TermTrigger vocabKey={detail.key} active={active} onToggle={onToggleVocabulary}
+                  label={detail.value} ariaLabel={`Vokabularbegriff ${detail.value}`} />
+              )}
+            </div>
+            {active && detail.resolution !== null && (
+              <div id={toVocabCardId(detail.key)}>{renderVocabularyCard(detail.resolution)}</div>
+            )}
+          </div>
+        );
+      })}
+      {children}
+    </div>
   );
 }

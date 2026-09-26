@@ -1,6 +1,7 @@
 import type { RefObject } from 'react';
 import type { Control } from '@/domain/models';
 import { ControlDetailSection } from './ControlDetailSection';
+import { detailProseClass, textActionClass } from './ControlVocabularyPrimitives';
 
 export interface ControlGuidanceProps {
   readonly guidance: Control['guidance'];
@@ -26,7 +27,7 @@ export function ControlGuidance({
       <p
         id="guidance-text"
         ref={guidanceRef}
-        className={`w-full break-words text-sm text-slate-700 leading-relaxed whitespace-pre-line [hyphens:auto] ${!expanded ? 'line-clamp-5' : ''}`}
+        className={`${detailProseClass} ${!expanded ? 'line-clamp-5' : ''}`}
       >
         {guidance}
       </p>
@@ -36,7 +37,7 @@ export function ControlGuidance({
           aria-expanded={expanded}
           aria-controls="guidance-text"
           onClick={onToggleExpanded}
-          className="mt-2 rounded text-xs font-medium text-primary-main hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+          className={`mt-2 ${textActionClass}`}
         >
           {expanded ? 'Weniger anzeigen' : 'Mehr anzeigen'}
         </button>

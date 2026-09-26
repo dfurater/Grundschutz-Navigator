@@ -1,40 +1,7 @@
 import type { VocabularyResolution } from '@/domain/vocabulary';
 import { VocabularyEntryCard } from '@/features/vocabularies/VocabularyEntryCard';
-import {
-  toVocabCardId,
-  VocabularyAffordanceIcon,
-} from './ControlVocabularyPrimitives';
-
-interface TaxonomyTriggerProps {
-  readonly ariaLabel: string;
-  readonly label: string;
-  readonly vocabKey: string;
-  readonly active: boolean;
-  readonly onToggle: (key: string) => void;
-}
-
-function TaxonomyTrigger({
-  ariaLabel,
-  label,
-  vocabKey,
-  active,
-  onToggle,
-}: TaxonomyTriggerProps) {
-  return (
-    <button
-      type="button"
-      onClick={() => onToggle(vocabKey)}
-      aria-label={ariaLabel}
-      aria-pressed={active}
-      aria-expanded={active}
-      aria-controls={toVocabCardId(vocabKey)}
-      className="inline-flex items-center gap-1 rounded text-left hover:text-primary-main focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
-    >
-      <span>{label}</span>
-      <VocabularyAffordanceIcon active={active} />
-    </button>
-  );
-}
+import { beforeTightContentClass } from '@/components/legendStyles';
+import { TermTrigger, toVocabCardId } from './ControlVocabularyPrimitives';
 
 export interface ControlTaxonomyBreadcrumbProps {
   readonly practiceName: string;
@@ -67,27 +34,28 @@ export function ControlTaxonomyBreadcrumb({
       : ['Nummerierung'];
 
   return (
-    <div className="mb-1">
+    // Direkt darunter folgt der Titel (4 px): Eine offene Karte hält 12 px.
+    <div className={`mb-1 ${beforeTightContentClass}`}>
       <p className="flex flex-wrap items-center gap-1 text-xs text-[var(--color-text-muted)]">
         {practiceVocabulary ? (
-          <TaxonomyTrigger
-            ariaLabel={`Praktik: ${practiceName}`}
-            label={practiceName}
+          <TermTrigger
             vocabKey={practiceKey}
             active={practiceActive}
             onToggle={onToggleVocabulary}
+            label={practiceName}
+            ariaLabel={`Praktik: ${practiceName}`}
           />
         ) : (
           <span>{practiceName}</span>
         )}
         <span aria-hidden="true">·</span>
         {topicVocabulary ? (
-          <TaxonomyTrigger
-            ariaLabel={`Thema: ${topicName}`}
-            label={topicName}
+          <TermTrigger
             vocabKey={topicKey}
             active={topicActive}
             onToggle={onToggleVocabulary}
+            label={topicName}
+            ariaLabel={`Thema: ${topicName}`}
           />
         ) : (
           <>

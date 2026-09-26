@@ -128,7 +128,7 @@ function makeControl(overrides: Partial<Control> = {}): Control {
       { targetId: 'GC.2.2', href: '#GC.2.2', rel: 'related', relStatus: 'custom' },
       { targetId: 'GC.3.1', href: '#GC.3.1', rel: 'required', relStatus: 'custom' },
     ],
-    params: { 'gc.1.1-prm1': 'BSI Grundschutz++' },
+    params: { 'gc.1.1-prm1': { value: 'BSI Grundschutz++', hasValue: true } },
     ...overrides,
   };
 }

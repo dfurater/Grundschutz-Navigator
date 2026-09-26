@@ -15,6 +15,7 @@ Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application 
 | Styling | Tailwind CSS v4 (via `@tailwindcss/vite` Plugin) |
 | Routing | React Router v8 |
 | Volltextsuche | FlexSearch |
+| Scrollleisten | OverlayScrollbars (MIT) |
 | Testing | Vitest + @testing-library/react + jsdom + Chromium-Browser-Lane |
 | Deployment | GitHub Pages (via GitHub Actions) |
 
@@ -89,6 +90,7 @@ src/                              # Anwendungsquellcode
 │   ├── oscalVersionMatrix.d.mts      # Typen der Versionsmatrix
 │   ├── oscalVersionMatrix.mjs        # Root-Typ × OSCAL-Version × gepinntes Schema
 │   ├── oscalVersionMatrix.ts         # Typsicherer Einstieg in oscalVersionMatrix.mjs
+│   ├── placeholderNamespace.ts       # Erkennt BSI-Platzhalter als Prop-Namensraum
 │   ├── profileModel.ts               # Domänenmodell des Profile
 │   ├── profileResolutionBudget.ts    # Laufendes Arbeits- und Ausgabebudget
 │   ├── profileResolutionBudgetLimits.d.mts # Typ der Arbeitsgrenze
@@ -110,6 +112,7 @@ src/                              # Anwendungsquellcode
 │   ├── sourceRegistry.d.mts          # Typen des Quellregisters
 │   ├── sourceRegistry.mjs            # Verbindlicher Upstream-/Katalogvertrag
 │   ├── sourceRegistry.ts             # Typsicherer Einstieg in sourceRegistry.mjs
+│   ├── statementSegments.ts          # Reine Segmentierung des Anforderungssatzes
 │   ├── taxonomyVocabulary.ts         # Auflösung von Praktiken und Themen
 │   ├── uuidV5.ts                     # Deterministische UUIDv5-Ableitung
 │   ├── vocabulary.ts                 # BSI-Vokabular-Auflösung
@@ -150,6 +153,7 @@ src/                              # Anwendungsquellcode
 │   ├── useGlobalEventListener.ts     # Globale Listener mit stabilem Cleanup
 │   ├── useGuidanceOverflow.ts        # Scopegebundener Guidance-/Messzustand
 │   ├── useMediaQuery.ts              # Responsive Design
+│   ├── useOverlayScrollbars.ts       # Überlagernde, beim Scrollen eingeblendete Scrollleisten
 │   ├── useRowWindow.ts               # Windowing für Listen einheitlicher Zeilenhöhe
 │   └── useScrollLock.ts              # Reversibler Body-Scroll-Lock
 ├── features/                     # Feature-Module (Seite + Komponenten)
@@ -163,7 +167,7 @@ src/                              # Anwendungsquellcode
 │   │   ├── CatalogMobileSelectionBar.tsx # Auswahlleiste (mobil)
 │   │   ├── CatalogTargetNotFound.tsx     # Hinweis auf ein nicht gefundenes Routenziel
 │   │   ├── CatalogToolbar.tsx            # Titel, Trefferzahl und Aktionen
-│   │   ├── ControlClassification.tsx     # Modalverb, Sicherheitsniveau, Aufwand, Tags
+│   │   ├── ControlClassification.tsx     # Kurzprofil-Badges und Stufenlegende
 │   │   ├── ControlDependencies.tsx       # Aus- und eingehende Control-Links
 │   │   ├── ControlDetail.tsx             # Detailansicht einer Anforderung
 │   │   ├── ControlDetailSection.tsx      # Abschnittsrahmen der Detailansicht
@@ -171,13 +175,13 @@ src/                              # Anwendungsquellcode
 │   │   ├── ControlHierarchy.tsx          # Eltern- und Kind-Anforderungen
 │   │   ├── ControlMetadata.tsx           # Kennungen und Elternbezug
 │   │   ├── ControlMobileReferenceRow.tsx # Tabellenzeile der Mobilansicht
-│   │   ├── ControlSecurityContext.tsx    # Schutzziele im Sicherheitskontext
-│   │   ├── ControlSecurityTargets.tsx    # Zeilen der Schutzziel-Relevanz
+│   │   ├── ControlSecurityContext.tsx    # Schutzziele und Gefährdungen in „Schutzziele und Gefährdungen“
+│   │   ├── ControlSecurityTargets.tsx    # Raster der Schutzziel-Relevanz
 │   │   ├── ControlSources.tsx            # Aufgelöste Quellenverweise
-│   │   ├── ControlStatement.tsx          # Anforderungstext
-│   │   ├── ControlStatementDetails.tsx   # Ergebnis, Präzisierung, Handlungsworte, Dokumentation
+│   │   ├── ControlStatement.tsx          # Segmentierter Anforderungstext mit Inline-Begriffen
+│   │   ├── ControlStatementDetails.tsx   # Nicht im Satz gefundene Angaben und Dokumentation
 │   │   ├── ControlTable.tsx              # Gefensterte Anforderungstabelle mit Auswahl und Sortierung
-│   │   ├── ControlTaxonomy.tsx           # Taxonomie und Zielobjekt-Kategorien
+│   │   ├── ControlTaxonomy.tsx           # Zielobjekt- bzw. Tag-Gruppe und WLAN-Taxonomie
 │   │   ├── ControlTaxonomyBreadcrumb.tsx # Taxonomiepfad als Breadcrumb
 │   │   ├── ControlVocabularyPrimitives.tsx # Gemeinsame Bausteine der Vokabularanzeige
 │   │   ├── FilterPanel.tsx               # Filterpanel
@@ -213,9 +217,11 @@ src/                              # Anwendungsquellcode
 │   ├── HeaderBar.tsx                 # Kopfleiste mit Suche und Katalogauswahl
 │   ├── Input.tsx                     # Eingabefeld mit Icon und Label
 │   ├── StatusMeta.tsx                # Status-Badges für Modalverb, Niveau, Aufwand
+│   ├── Tooltip.tsx                   # Hover- und antippbare Begriffserklärungen
 │   ├── TreeNav.tsx                   # Gruppenbaum der Navigation
 │   ├── icons.tsx                     # Inline-SVG-Icons (Lucide)
-│   └── index.ts                      # Sammelexport der Komponenten
+│   ├── index.ts                      # Sammelexport der Komponenten
+│   └── legendStyles.ts               # Legendenschema für Legenden und Vokabelkarten
 ├── app/                          # Anwendungshell
 │   ├── AppShell.tsx                  # Routing-Konfiguration und Layoutrahmen
 │   ├── PageTitle.tsx                 # Deklarativer Routentitel (hebt <title> in den <head>)
@@ -532,6 +538,8 @@ Breakpoint-abhängige UI wird über `useMediaQuery('(min-width: 1024px)')` (`isD
 
 Die mobile Liste bleibt ungefenstert: `content-visibility: auto` auf `.catalog-mobile-reference-row` hält ihr Layout bereits unabhängig von der Zeilenzahl. `index.html` lädt die vier Inter-Latin-Schnitte per `preload` vor, weil die Tabelle Inter 600 sonst erst nach ihrem ersten Render anfordert und das Eintreffen der Schrift ein zweites Layout aller Zeilen auslöst.
 
+Alle eigenen Scrollbereiche tragen überlagernde Scrollleisten aus OverlayScrollbars über `useOverlayScrollbars`: im Ruhezustand unsichtbar und ohne Breitenbedarf, beim Scrollen eingeblendet, danach wieder ausgeblendet. Der Hook macht das bestehende Scroll-Element selbst zum Viewport, statt es in erzeugte Elemente zu verpacken. So misst `useRowWindow` weiter `scrollTop` und `clientHeight` am selben Element, und der Tooltip begrenzt sich weiter auf `[data-control-detail-scroll]`. Bereiche, die erst ab `md` selbst scrollen (Seiteninhalt, mobile Trefferlisten), erhalten die Instanz nur ab dieser Breite; darunter scrollt das Dokument mit den nativen Leisten des Geräts. Eigene `::-webkit-scrollbar`-Regeln gibt es nicht mehr, das Aussehen setzt das Theme `.os-theme-gspp` in `src/index.css` aus den Tokens `--color-surface-scrollbar` und `--color-surface-scrollbar-hover`.
+
 `useScrollLock` speichert keinen globalen Refcount, sondern stellt beim Cleanup exakt den vorherigen Inline-Wert von `body.style.overflow` wieder her.
 
 CSV-Serialisierung und Browserauslösung sind getrennte Grenzen: `features/export/csvExport.ts` erzeugt Inhalt und `Blob`; `adapters/browserDownload.ts` erstellt den temporären Link und widerruft Link und Object-URL auch bei Fehlern in `finally`.
@@ -542,23 +550,25 @@ Für `src/**` läuft ESLint zusätzlich mit Typinformation (typescript-eslint Pr
 
 ## Control-Detail-Grenzen
 
-`src/features/catalog/ControlDetail.tsx` ist der Composer der Kontrollansicht und der einzige `useCatalog`-Aufrufer dieses Teilbaums. Er bestimmt den Scope `${catalogKey}:${control.id}`, löst Vokabulare memoisiert auf und komponiert die Sektionen in fachlicher Reihenfolge. Router-gebundene `VocabularyEntryCard`-Ausgabe bleibt an dieser Grenze: Die Sektionen erhalten einen stabilen Render-Callback und sind dadurch ohne Router oder Katalogprovider isoliert testbar.
+`src/features/catalog/ControlDetail.tsx` ist der Composer der Kontrollansicht und der einzige `useCatalog`-Aufrufer dieses Teilbaums. Er bestimmt den Scope `${catalogKey}:${control.id}`, löst Vokabulare memoisiert auf und komponiert Kopf, Anforderung (mit den Kriterien-Badges als erster Zeile), Umsetzungshinweise, „Schutzziele und Gefährdungen“, „Einordnung“, Zusammenhänge und Fußzeile in dieser Reihenfolge. Alle Blöcke sind gleich aufgebaut: Die Blocküberschrift bildet eine schmale Leiste, der Inhalt liegt auf Weiß, zwischen den Blöcken und vor der Fußzeile stehen 20 px. Leere Bereiche entfallen. Router-gebundene `VocabularyEntryCard`-Ausgabe bleibt an dieser Grenze: Die Sektionen erhalten einen stabilen Render-Callback und sind dadurch ohne Router oder Katalogprovider isoliert testbar.
+
+`segmentStatement()` in `src/domain/statementSegments.ts` zerlegt den rohen Anforderungstext und die `ParamMeta`-Werte ohne React in Satzteile. Die Darstellung setzt Begriffstrigger direkt an gefundenen Satzteilen; fehlende Ergebnis-, Präzisierungs- und Handlungswort-Anker erscheinen mit Beschriftung unter dem Satz. Dokumentation steht dort unabhängig davon. Ein Parameter ohne gesetzten Wert bleibt als aufgelöster Label-Fallback lesbar und erhält eine antippbare Erklärung. `Control.statement` bleibt der aufgelöste Text für Suche und Export. Der gemeinsame `Tooltip`-Baustein steuert Hover- und Antipp-Erklärungen, während `useActiveVocabulary` weiter die geöffnete Vokabularkarte begrenzt. Ergebnis und Präzisierung ohne eigenen Vokabeleintrag sind je ein Tastatur-Fokusziel, auch wenn Platzhalter sie unterbrechen; die Platzhalter darin bleiben eigene Fokusziele. Mit Vokabeleintrag wird jedes Textstück des Satzteils ein eigener Begriffs-Trigger. Die Satzteil-Beschriftung erscheint bei Hover und Tastaturfokus, nicht nach Antippen. Der Tooltip-Text bleibt versteckt im DOM, damit `aria-describedby` schon beim Fokus auflöst, und Esc schließt nur den Tooltip, nicht das umgebende mobile Overlay.
 
 | Baustein | Verantwortung |
 |----------|----------------|
 | `useActiveVocabulary` | Hält höchstens eine Vokabularkarte offen und setzt den Zustand bei Katalog- oder Control-Wechsel synchron zurück. |
 | `useGuidanceOverflow` | Besitzt Expansion, Overflow-Messung, `ResizeObserver`, Window-Fallback und symmetrisches Listener-/Observer-Cleanup. |
-| `ControlClassification` | Rendert Kriterien und bindet `ControlTaxonomy` ein. |
-| `ControlTaxonomy` | Rendert Tags und Zielobjektkategorien einschließlich optionaler Vokabularinteraktion. |
-| `ControlSecurityContext` | Rendert die Sektion „Schutzziele und Gefährdungen". |
-| `ControlSecurityTargets` | Rendert die vier Schutzziele als Tabelle mit zweistufiger Relevanz-Skala. |
-| `ControlStatement` | Rendert den Anforderungstext. |
-| `ControlStatementDetails` | Rendert Ergebnis, Präzisierung, Handlungswort und Dokumentation. |
+| `ControlClassification` | Rendert die Kriterien-Badges für Modalverb, Sicherheitsniveau und Aufwand im Block „Anforderung“ sowie die Legende vorhandener Stufen. |
+| `ControlTaxonomy` | Rendert je eine beschriftete Gruppe ohne Rahmen oder Symbol: „Zielobjekte“ im Block „Anforderung“, weil das BSI sie im `statement`-Part ablegt, und „Tags“ im Block „Einordnung“, weil sie an der Anforderung selbst hängen; dazu die WLAN-Taxonomie in „Einordnung“ als Tabelle (Stufe links, Wert rechts); die Namensraum-Adresse erscheint nur, wenn sie kein Platzhalter ist (`isPlaceholderNamespace`). |
+| `ControlSecurityContext` | Rendert Schutzziele und elementare Gefährdungen im Block „Schutzziele und Gefährdungen“; der Gefährdungsname öffnet eine Karte mit Kennung. |
+| `ControlSecurityTargets` | Rendert die vier Schutzziele mit Relevanz-Skala: ab 24rem Inhaltsbreite in zwei Spaltenpaaren, darunter in einer Spalte; die Legende zeigt jede Stufe als dieselbe Punkte-Skala. |
+| `ControlStatement` | Rendert den segmentierten Anforderungssatz mit Begriffstriggern und Platzhalter-Erklärungen. |
+| `ControlStatementDetails` | Rendert nicht im Satz gefundene Angaben und die Dokumentation als Zeilen mit Beschriftung darüber. |
 | `ControlGuidance` | Rendert die bei Bedarf aufklappbare Guidance; Messung und State liegen im Hook. |
-| `ControlDependencies` | Rendert ausschließlich aufgelöste interne Control-Beziehungen. |
-| `ControlSources` | Rendert aufgelöste `back-matter`-, externe und nicht auflösbare Quellen getrennt von Abhängigkeiten. |
-| `ControlHierarchy` | Rendert aufgelösten Parent und Erweiterungen. |
-| `ControlMetadata` | Rendert UUID und den Parent-ID-Fallback. |
+| `ControlDependencies` | Rendert aufgelöste interne Control-Beziehungen unter „Verknüpft" mit lesbaren Relationsnamen und Herkunftslegende. |
+| `ControlSources` | Rendert aufgelöste `back-matter`-, externe und nicht auflösbare Verweise unter „Quellen" als Liste mit Punkten; alle Zeilen einer Quelle stehen bündig. |
+| `ControlHierarchy` | Rendert Erweiterungen unter „Zusammenhänge"; der aufgelöste Parent steht als „Teil von" im Kopf. |
+| `ControlMetadata` | Rendert UUID, OSCAL-`class` und den Parent-ID-Fallback in der Fußzeile ohne Überschrift, als Begriffspaare aus Beschriftung und Wert. |
 
 Die Sektionsmodule erhalten ausschließlich benötigte Controls, aufgelöste Vokabularwerte und Callbacks. Sie verwenden weder Katalog-, Router- noch Filterkontext.
 

@@ -946,6 +946,7 @@ interface Control {
   parentId?: string;             // e.g. "GC.5.1" for "GC.5.1.1"
   title: string;
   altIdentifier?: string;        // kanonischer Control-Identifier für URLs
+  controlClass?: string;         // OSCAL control.class, e.g. "BSI-Methodik-Grundschutz-plus-plus"
 
   groupId?: string;              // e.g. "GC.1" (Topic); fehlt ohne Gruppen-id
   practiceId?: string;           // e.g. "GC" (Practice); fehlt ohne Gruppen-id
@@ -995,9 +996,18 @@ interface Control {
   };
 
   links: ControlLink[];
-  params: Record<string, string>;  // Inline parameter values
+  params: Record<string, ParamMeta>;  // Wert und Herkunft des Inline-Parameters
 }
 ```
+
+```typescript
+interface ParamMeta {
+  readonly value: string;      // Aufgelöster Wert oder Fallback aus label
+  readonly hasValue: boolean;  // true nur bei einem gesetzten OSCAL-values[0]
+}
+```
+
+`buildParamMap()` bewahrt diese Unterscheidung für die Darstellung von Platzhaltern. `paramValues()` liefert die bisherige String-Sicht an `resolveParams()`; der aufgelöste `statement`-Text bleibt dadurch derselbe und steht Suche und Export weiterhin zur Verfügung. `segmentStatement()` zerlegt `statementRaw` und `params` in geordnete Satzteile für die Detailansicht, ohne den gespeicherten oder exportierten Anforderungstext zu verändern. Fehlt ein Parameterwert, zeigt der Satz weiter den Label-Fallback und erklärt ihn am Platzhalter. Liegt der Wert eines Platzhalters ganz in Ergebnis oder Präzisierung, nennt `SentenceSegment.partOf` diesen Satzteil. Sonst bleibt `partOf` leer: Satzteile, die ganz im Wert liegen, erscheinen in `missing`, und bei nur teilweiser Überlappung bleibt der Textteil des Satzteils beschriftet, der Platzhalter nicht. `missing` enthält außerdem Anker, die ein früherer Satzteil verdeckt.
 
 Die `*Prop`-Felder behalten den OSCAL-Namespace (`ns`) der Quell-Prop und ermöglichen so die Auflösung gegen die offiziellen BSI-Vokabulare (siehe [VOCABULARY.md](./VOCABULARY.md)).
 

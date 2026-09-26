@@ -11,6 +11,7 @@ import {
   referenceDocumentFromCatalog,
   resolveControlReferences,
 } from '@/domain/referenceResolution';
+import { segmentStatement } from '@/domain/statementSegments';
 import { resolveControlVocabularies } from '@/domain/vocabulary';
 import {
   resolvePracticeVocabulary,
@@ -20,19 +21,30 @@ import { useActiveVocabulary } from '@/hooks/useActiveVocabulary';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useGuidanceOverflow } from '@/hooks/useGuidanceOverflow';
+import { useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
 import { VocabularyEntryCard } from '@/features/vocabularies/VocabularyEntryCard';
 import { buildControlUrlForControl } from '@/app/routes';
-import { ControlClassification } from './ControlClassification';
-import { ControlDependencies } from './ControlDependencies';
+import {
+  buildClassificationLegendEntries,
+  ControlClassification,
+  hasClassificationCriteria,
+} from './ControlClassification';
+import { buildLinkLegendEntries, ControlDependencies } from './ControlDependencies';
+import { ControlDetailSection } from './ControlDetailSection';
 import { ControlSources } from './ControlSources';
 import { ControlGuidance } from './ControlGuidance';
 import { ControlHierarchy } from './ControlHierarchy';
 import { ControlMetadata } from './ControlMetadata';
+import { buildRelevanceLegendEntries } from './ControlSecurityTargets';
 import { ControlSecurityContext } from './ControlSecurityContext';
 import { ControlStatement } from './ControlStatement';
-import { ControlStatementDetails } from './ControlStatementDetails';
+import { ControlStatementDetails, type RestDetail } from './ControlStatementDetails';
+import { ControlSubjectGroup, ControlWlanTaxonomy } from './ControlTaxonomy';
 import { ControlTaxonomyBreadcrumb } from './ControlTaxonomyBreadcrumb';
-import type { RenderVocabularyCard } from './ControlVocabularyPrimitives';
+import {
+  SubSectionHeading,
+  type RenderVocabularyCard,
+} from './ControlVocabularyPrimitives';
 
 /**
  * Platzhalter für eine Taxonomie-Ebene, deren Quellgruppe keine `id` trägt
@@ -82,6 +94,7 @@ export function ControlDetail({
   }
 
   const catalogKey = catalog.catalogKey;
+  const scrollAreaRef = useOverlayScrollbars<HTMLDivElement>();
   const controlStateKey = `${catalogKey}:${control.id}`;
   const {
     copy: copyLink,
@@ -155,6 +168,91 @@ export function ControlDetail({
     () => resolveTopicVocabulary(vocabularyRegistry, topic),
     [topic, vocabularyRegistry],
   );
+
+  // GSPP-303 T9: EIN Segmentierungslauf für Satz (`ControlStatement`) und
+  // Restzeilen (`ControlStatementDetails`, `missing`); T10 reicht das
+  // Ergebnis als `precomputed` durch (Single-Run, keine Re-Segmentierung).
+  const statementSegmentation = useMemo(() => {
+    const input = {
+      statementRaw: control.statementRaw,
+      params: control.params,
+      practiceTitle: practiceName,
+      modalverb: control.modalverb,
+      handlungsworte: control.statementProps.handlungsworte,
+      ergebnis: control.statementProps.ergebnis,
+      praezisierung: control.statementProps.praezisierung,
+    };
+    return { input, result: segmentStatement(input) };
+  }, [control, practiceName]);
+  const statementDetails: RestDetail[] = [
+    {
+      key: 'ergebnis',
+      label: 'Ergebnis',
+      value: control.statementProps.ergebnis ?? '',
+      resolution: resolvedVocabularies.statement.ergebnis,
+    },
+    {
+      key: 'praezisierung',
+      label: 'Präzisierung',
+      value: control.statementProps.praezisierung ?? '',
+      resolution: resolvedVocabularies.statement.praezisierung,
+    },
+    {
+      key: 'handlungsworte',
+      label: 'Handlungswort',
+      value: control.statementProps.handlungsworte ?? '',
+      resolution: resolvedVocabularies.statement.handlungsworte,
+    },
+    {
+      key: 'dokumentation',
+      label: 'Dokumentation',
+      value: control.statementProps.dokumentation ?? '',
+      resolution: resolvedVocabularies.statement.dokumentation,
+    },
+  ];
+  const hasCriteria = hasClassificationCriteria(control);
+  const hasTargetObjects = control.statementProps.zielobjektKategorien.length > 0;
+  const hasAnforderung = hasCriteria
+    || Boolean(statementSegmentation.input.statementRaw)
+    || Boolean(control.statement)
+    || statementDetails.some((detail) => detail.value !== '')
+    || hasTargetObjects;
+
+  const hasSecurityTargetRelevance = (control.confidentialityProp?.value ?? control.confidentiality) !== undefined
+    || (control.integrityProp?.value ?? control.integrity) !== undefined
+    || (control.availabilityProp?.value ?? control.availability) !== undefined
+    || (control.authenticityProp?.value ?? control.authenticity) !== undefined;
+  const hasRisikenUndSchutzziele = hasSecurityTargetRelevance
+    || control.threats.length > 0;
+  // Tags und WLAN-Taxonomie hängen im OSCAL an der Anforderung selbst und
+  // stehen im Block „Einordnung“. Zielobjekte liegen im Anforderungssatz
+  // (`statement`-Part) und erscheinen deshalb im Block „Anforderung“.
+  const hasEinordnung = control.tags.length > 0
+    || control.taxonomy.length > 0;
+
+  // Spiegelt die Null-Guards von `ControlDependencies` (aufgelöste Out-Links
+  // bzw. reine In-Links) und `ControlSources` (keine Kontroll-/Provenienz-
+  // Referenzen), damit Gruppen-Beschriftungen nur bei Inhalt stehen.
+  const resolvedOutgoingLinks = control.links.filter((link) => controlsById?.has(link.targetId));
+  const outgoingLinkTargetIds = new Set(resolvedOutgoingLinks.map((link) => link.targetId));
+  const hasOutgoingLinks = resolvedOutgoingLinks.length > 0;
+  const hasIncomingOnlyLinks = incomingLinks.some(
+    (incoming) => !outgoingLinkTargetIds.has(incoming.control.id),
+  );
+  const hasRelatedLinks = hasOutgoingLinks || hasIncomingOnlyLinks;
+  const hasSources = resolvedControlReferences.some(
+    (reference) => reference.kind !== 'control' && reference.kind !== 'provenance',
+  );
+  const hasZusammenhaenge = childControls.length > 0 || hasRelatedLinks || hasSources;
+
+  const schutzzieleLegendEntries = hasSecurityTargetRelevance
+    ? buildRelevanceLegendEntries([
+      resolvedVocabularies.securityTargetLevels.confidentiality,
+      resolvedVocabularies.securityTargetLevels.integrity,
+      resolvedVocabularies.securityTargetLevels.availability,
+      resolvedVocabularies.securityTargetLevels.authenticity,
+    ])
+    : [];
 
   const handleCopyLink = () => {
     const url = getControlDetailUrl(catalogKey, control);
@@ -239,32 +337,66 @@ export function ControlDetail({
         <h2 className="type-page-title">
           {control.title}
         </h2>
+        {parentControl && (
+          <button
+            type="button"
+            onClick={() => onNavigateToControl?.(parentControl)}
+            aria-label={`Teil von ${parentControl.id} ${parentControl.title}`}
+            className="group relative mt-1.5 flex items-baseline gap-1.5 rounded text-left text-xs text-[var(--color-text-muted)] after:absolute after:-inset-y-3 after:inset-x-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] lg:after:-inset-y-1"
+          >
+            {/* Leerzeichen zwischen den Flex-Kindern: unsichtbar, aber beim Kopieren erhalten. */}
+            <span aria-hidden="true">↳</span>{' '}
+            <span>Teil von</span>{' '}
+            <span className="catalog-reference-text shrink-0">{parentControl.id}</span>{' '}
+            <span className="text-primary-main group-hover:underline">{parentControl.title}</span>
+          </button>
+        )}
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-safe lg:pb-4">
-        <ControlClassification
-          control={control}
-          resolvedVocabularies={resolvedVocabularies}
-          isVocabularyActive={isVocabularyActive}
-          onToggleVocabulary={toggleVocabulary}
-          renderVocabularyCard={renderVocabularyCard}
-        />
-        <ControlSecurityContext
-          control={control}
-          resolvedVocabularies={resolvedVocabularies}
-          isVocabularyActive={isVocabularyActive}
-          onToggleVocabulary={toggleVocabulary}
-          renderVocabularyCard={renderVocabularyCard}
-        />
-        <ControlStatement statement={control.statement} />
-        <ControlStatementDetails
-          statementProps={control.statementProps}
-          resolutions={resolvedVocabularies.statement}
-          isVocabularyActive={isVocabularyActive}
-          onToggleVocabulary={toggleVocabulary}
-          renderVocabularyCard={renderVocabularyCard}
-        />
+      {/* Content: alle Blöcke gleich aufgebaut – Leiste, Inhalt auf Weiß, 20 px Abstand (Owner 26.09.2026). */}
+      {/* Überlagernde Scrollleiste: Aufklappen ändert die Textbreite nicht. */}
+      <div ref={scrollAreaRef} data-control-detail-scroll className="flex flex-1 flex-col gap-5 overflow-y-auto p-4 pb-safe lg:pb-4">
+        {hasAnforderung && (
+          <ControlStatement
+            statement={control.statement}
+            criteria={hasCriteria ? <ControlClassification control={control} /> : undefined}
+            legend={{
+              id: 'legende-anforderung',
+              entries: buildClassificationLegendEntries(control, resolvedVocabularies),
+            }}
+            segments={{
+              input: statementSegmentation.input,
+              precomputed: statementSegmentation.result,
+              practiceResolution: practiceVocabulary,
+              modalverbResolution: resolvedVocabularies.modalverb,
+              handlungswortResolution: resolvedVocabularies.statement.handlungsworte,
+              ergebnisResolution: resolvedVocabularies.statement.ergebnis,
+              praezisierungResolution: resolvedVocabularies.statement.praezisierung,
+              isVocabularyActive,
+              onToggleVocabulary: toggleVocabulary,
+              renderVocabularyCard,
+            }}
+          >
+            <ControlStatementDetails
+              details={statementDetails}
+              missing={statementSegmentation.result.missing}
+              isVocabularyActive={isVocabularyActive}
+              onToggleVocabulary={toggleVocabulary}
+              renderVocabularyCard={renderVocabularyCard}
+            >
+              {hasTargetObjects && (
+                <ControlSubjectGroup
+                  kind="zielobjekte"
+                  control={control}
+                  resolvedVocabularies={resolvedVocabularies}
+                  isVocabularyActive={isVocabularyActive}
+                  onToggleVocabulary={toggleVocabulary}
+                  renderVocabularyCard={renderVocabularyCard}
+                />
+              )}
+            </ControlStatementDetails>
+          </ControlStatement>
+        )}
         <ControlGuidance
           guidance={control.guidance}
           guidanceRef={guidanceRef}
@@ -272,21 +404,76 @@ export function ControlDetail({
           hasOverflow={guidanceHasOverflow}
           onToggleExpanded={toggleGuidanceExpanded}
         />
-        <ControlDependencies
-          links={control.links}
-          controlsById={controlsById}
-          incomingLinks={incomingLinks}
-          onNavigateToControl={onNavigateToControl}
-        />
-        <ControlSources references={resolvedControlReferences} />
-        <ControlHierarchy
-          parentControl={parentControl}
-          childControls={childControls}
-          onNavigateToControl={onNavigateToControl}
-        />
+        {hasRisikenUndSchutzziele && (
+          <ControlDetailSection
+            heading="Schutzziele und Gefährdungen"
+            legend={{ id: 'legende-schutzziele', entries: schutzzieleLegendEntries }}
+          >
+            <ControlSecurityContext
+              control={control}
+              resolvedVocabularies={resolvedVocabularies}
+              isVocabularyActive={isVocabularyActive}
+              onToggleVocabulary={toggleVocabulary}
+              renderVocabularyCard={renderVocabularyCard}
+            />
+          </ControlDetailSection>
+        )}
+        {hasEinordnung && (
+          <ControlDetailSection heading="Einordnung">
+            <div className="space-y-3">
+              <ControlSubjectGroup
+                kind="tags"
+                control={control}
+                resolvedVocabularies={resolvedVocabularies}
+                isVocabularyActive={isVocabularyActive}
+                onToggleVocabulary={toggleVocabulary}
+                renderVocabularyCard={renderVocabularyCard}
+              />
+              {control.taxonomy.length > 0 && (
+                <ControlWlanTaxonomy control={control} />
+              )}
+            </div>
+          </ControlDetailSection>
+        )}
+        {hasZusammenhaenge && (
+          <ControlDetailSection
+            heading="Zusammenhänge"
+            legend={hasRelatedLinks ? { id: 'legende-zusammenhaenge', entries: buildLinkLegendEntries() } : undefined}
+          >
+            <div className="space-y-3">
+              {childControls.length > 0 && (
+                <div>
+                  <SubSectionHeading>Erweiterungen</SubSectionHeading>
+                  <ControlHierarchy
+                    childControls={childControls}
+                    onNavigateToControl={onNavigateToControl}
+                  />
+                </div>
+              )}
+              {hasRelatedLinks && (
+                <div>
+                  <SubSectionHeading>Verknüpft</SubSectionHeading>
+                  <ControlDependencies
+                    links={control.links}
+                    controlsById={controlsById}
+                    incomingLinks={incomingLinks}
+                    onNavigateToControl={onNavigateToControl}
+                  />
+                </div>
+              )}
+              {hasSources && (
+                <div>
+                  <SubSectionHeading>Quellen</SubSectionHeading>
+                  <ControlSources references={resolvedControlReferences} />
+                </div>
+              )}
+            </div>
+          </ControlDetailSection>
+        )}
         <ControlMetadata
           parentId={control.parentId}
           altIdentifier={control.altIdentifier}
+          controlClass={control.controlClass}
           hasResolvedParent={Boolean(parentControl)}
         />
       </div>

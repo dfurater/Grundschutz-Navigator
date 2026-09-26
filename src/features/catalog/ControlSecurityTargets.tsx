@@ -1,13 +1,13 @@
-import { Fragment } from 'react';
 import { RELEVANCE_SCALE_MAX, RelevanceScale } from '@/components/StatusMeta';
 import type { VocabularyResolution } from '@/domain/vocabulary';
+import { getVocabularyTermLabel } from '@/features/vocabularies/vocabularyTitle';
 import {
-  leadingAffordanceIndentClass,
-  leadingTriggerClass,
-  type RenderVocabularyCard,
   SubSectionHeading,
+  TermTrigger,
   toVocabCardId,
-  VocabularyAffordanceIcon,
+  vocabularyEntryHref,
+  type LegendEntry,
+  type RenderVocabularyCard,
 } from './ControlVocabularyPrimitives';
 
 export interface SecurityTargetRow {
@@ -25,15 +25,36 @@ export interface ControlSecurityTargetsProps {
   readonly renderVocabularyCard: RenderVocabularyCard;
 }
 
-const cellClass = 'py-0.5 align-top';
-
 /** Liefert die Punktzahl der Skala oder `null` für Werte außerhalb der Skala. */
 function toRelevanceScaleValue(relevance: string) {
   const parsed = Number.parseInt(relevance, 10);
-  const isScaleValue =
-    String(parsed) === relevance.trim() && parsed >= 0 && parsed <= RELEVANCE_SCALE_MAX;
+  const isScaleValue = String(parsed) === relevance.trim()
+    && parsed >= 0
+    && parsed <= RELEVANCE_SCALE_MAX;
 
   return isScaleValue ? parsed : null;
+}
+
+/**
+ * Legende „Schutzziele und Gefährdungen“: alle drei Stufen aus dem BSI-Namensraum einer
+ * aufgelösten Stufe, jeweils als dieselbe Punkte-Skala wie im Raster. Der Textlink steht in der Leiste „Schutzziele und Gefährdungen“
+ * (`ControlDetailSection`), nicht im Schutzziel-Raster.
+ */
+export function buildRelevanceLegendEntries(
+  levelResolutions: ReadonlyArray<VocabularyResolution | null>,
+): LegendEntry[] {
+  const namespace = levelResolutions.find((resolution) => resolution)?.namespace;
+  if (!namespace) return [];
+  return namespace.entries
+    .filter((entry) => entry.value === '0' || entry.value === '1' || entry.value === '2')
+    .sort((first, second) => Number(first.value) - Number(second.value))
+    .map((entry) => ({
+      category: getVocabularyTermLabel(namespace.source.fileName),
+      term: entry.value,
+      definition: entry.definition ?? '',
+      href: vocabularyEntryHref(namespace, entry.value),
+      visual: <RelevanceScale value={Number(entry.value)} />,
+    }));
 }
 
 export function ControlSecurityTargets({
@@ -43,126 +64,97 @@ export function ControlSecurityTargets({
   renderVocabularyCard,
 }: ControlSecurityTargetsProps) {
   return (
-    <div>
+    <div className="@container">
       <SubSectionHeading>Schutzziele</SubSectionHeading>
-      <table className="w-full border-collapse">
-        <caption className="sr-only">Schutzziele und ihre Relevanz</caption>
-        <thead>
-          <tr>
-            {/* Die Subsection-Überschrift benennt diese Spalte bereits sichtbar. */}
-            <th scope="col" className="w-full pb-1 text-left font-normal">
-              <span className="sr-only">Schutzziel</span>
-            </th>
-            <th
-              scope="col"
-              className="catalog-meta-text whitespace-nowrap pb-1 text-left"
-            >
-              Relevanz
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {securityTargets.map(({
-            key,
-            label,
-            relevance,
-            targetResolution,
-            levelResolution,
-          }) => {
-            const targetVocabKey = `security-target:${key}`;
-            const levelVocabKey = `security-target-level:${key}`;
-            const targetActive = isVocabularyActive(targetVocabKey);
-            const levelActive = isVocabularyActive(levelVocabKey);
-            const relevanceScaleValue = toRelevanceScaleValue(relevance);
+      {/*
+        Zwei Spaltenpaare ab 24rem Inhaltsbreite, darunter ein Paar pro Zeile.
+        Die Punkte stehen direkt hinter ihrem Schutzziel und untereinander
+        bündig. Zeilenhöhe fest, Touch-Fläche über
+        Pseudo-Elemente statt `min-h-11`, damit am Breakpoint nichts springt.
+      */}
+      <div className="grid w-fit grid-cols-[max-content_max-content] gap-x-3 gap-y-1.5 text-sm leading-relaxed text-slate-700 @min-[24rem]:grid-cols-[max-content_max-content_1.5rem_max-content_max-content]">
+        {securityTargets.map(({ key, label, relevance, targetResolution, levelResolution }, index) => {
+          const targetVocabKey = `security-target:${key}`;
+          const levelVocabKey = `security-target-level:${key}`;
+          const targetActive = isVocabularyActive(targetVocabKey);
+          const levelActive = isVocabularyActive(levelVocabKey);
+          const relevanceScaleValue = toRelevanceScaleValue(relevance);
 
-            return (
-              <Fragment key={targetVocabKey}>
-                <tr>
-                  <th
-                    scope="row"
-                    className={`${cellClass} pr-4 text-left text-sm font-normal leading-relaxed text-slate-700`}
-                  >
-                    {targetResolution ? (
-                      <button
-                        type="button"
-                        onClick={() => onToggleVocabulary(targetVocabKey)}
-                        aria-label={`Schutzziel: ${label}`}
-                        aria-pressed={targetActive}
-                        aria-expanded={targetActive}
-                        aria-controls={toVocabCardId(targetVocabKey)}
-                        className={leadingTriggerClass(targetActive)}
-                      >
-                        <VocabularyAffordanceIcon
-                          active={targetActive}
-                          placement="leading"
-                        />
-                        <span className="min-w-0 flex-1">{label}</span>
-                      </button>
-                    ) : (
-                      <span className={`block ${leadingAffordanceIndentClass}`}>
-                        {label}
-                      </span>
-                    )}
-                  </th>
-                  <td className={cellClass}>
-                    {levelResolution ? (
-                      <button
-                        type="button"
-                        onClick={() => onToggleVocabulary(levelVocabKey)}
-                        aria-label={`Relevanz ${label}: ${relevance}`}
-                        title={`Relevanz ${label}: ${relevance}`}
-                        aria-pressed={levelActive}
-                        aria-expanded={levelActive}
-                        aria-controls={toVocabCardId(levelVocabKey)}
-                        className={leadingTriggerClass(levelActive)}
-                      >
-                        <VocabularyAffordanceIcon
-                          active={levelActive}
-                          placement="leading"
-                        />
-                        {relevanceScaleValue === null ? (
-                          <span className="min-w-0 flex-1">{relevance}</span>
-                        ) : (
-                          <RelevanceScale value={relevanceScaleValue} />
-                        )}
-                      </button>
-                    ) : (
-                      <div className={leadingAffordanceIndentClass}>
-                        <p className="text-sm leading-relaxed text-slate-700">
-                          {relevance}
-                        </p>
-                        <p className="mt-1 text-xs leading-relaxed text-amber-700">
-                          Keine offizielle Definition für diese Relevanzstufe verfügbar.
-                        </p>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-                {targetResolution && (
-                  <tr
-                    id={toVocabCardId(targetVocabKey)}
-                    hidden={!targetActive || undefined}
-                  >
-                    <td colSpan={2}>
-                      {targetActive && renderVocabularyCard(targetResolution)}
-                    </td>
-                  </tr>
-                )}
-                {levelResolution && (
-                  <tr
-                    id={toVocabCardId(levelVocabKey)}
-                    hidden={!levelActive || undefined}
-                  >
-                    <td colSpan={2}>
-                      {levelActive && renderVocabularyCard(levelResolution)}
-                    </td>
-                  </tr>
-                )}
-              </Fragment>
-            );
-          })}
-        </tbody>
-      </table>
+          return (
+            // `div role="group"` statt `fieldset`: Chromium wendet `subgrid` auf
+            // das Fieldset nicht an, die Punkte rutschten unter den Namen.
+            <div
+              role="group"
+              key={targetVocabKey}
+              aria-label={`${label}: Relevanz ${relevance}`}
+              className={`col-span-2 grid grid-cols-subgrid items-center ${index % 2 === 0 ? 'col-start-1' : '@min-[24rem]:col-start-4'}`}
+            >
+              {targetResolution ? (
+                <TermTrigger
+                  vocabKey={targetVocabKey}
+                  active={targetActive}
+                  onToggle={onToggleVocabulary}
+                  label={label}
+                  ariaLabel={`Schutzziel: ${label}`}
+                  className="relative inline-flex min-h-6 items-center text-left after:absolute after:-inset-y-2.5 after:inset-x-0 after:content-[''] lg:after:-inset-y-1"
+                />
+              ) : (
+                <span>{label}</span>
+              )}
+              {levelResolution && relevanceScaleValue !== null ? (
+                // Die Skala ist der Relevanz-Trigger; der Wert steht für
+                // Screenreader im Text, sichtbar erklärt ihn die Legende.
+                <button
+                  type="button"
+                  aria-pressed={levelActive}
+                  aria-expanded={levelActive}
+                  aria-controls={toVocabCardId(levelVocabKey)}
+                  aria-label={`Relevanz ${label}: ${relevance}`}
+                  title={`Relevanz ${relevance}`}
+                  onClick={() => {
+                    onToggleVocabulary(levelVocabKey);
+                  }}
+                  className="relative inline-flex min-h-6 min-w-6 cursor-pointer items-center rounded after:absolute after:-inset-2.5 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] lg:after:-inset-1"
+                >
+                  <span aria-hidden="true">
+                    <RelevanceScale value={relevanceScaleValue} />
+                  </span>
+                  <span className="sr-only">{relevance}</span>
+                </button>
+              ) : (
+                <span className="tabular-nums">{relevance}</span>
+              )}
+              {!levelResolution && (
+                // `contain` hält den Hinweis aus der Spaltenbreite heraus.
+                <p className="col-span-2 text-xs leading-snug text-amber-700 [contain:inline-size]">
+                  Keine offizielle Definition für diese Relevanzstufe verfügbar.
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {/* Karten in voller Breite unter dem Raster, damit sie keine Spalte verbreitern. */}
+      {securityTargets.map(({ key, targetResolution, levelResolution }) => {
+        const targetVocabKey = `security-target:${key}`;
+        const levelVocabKey = `security-target-level:${key}`;
+        const targetActive = isVocabularyActive(targetVocabKey);
+        const levelActive = isVocabularyActive(levelVocabKey);
+        return (
+          <div key={`${key}-cards`}>
+            {targetResolution && (
+              <div id={toVocabCardId(targetVocabKey)} hidden={!targetActive || undefined}>
+                {targetActive && renderVocabularyCard(targetResolution)}
+              </div>
+            )}
+            {levelResolution && (
+              <div id={toVocabCardId(levelVocabKey)} hidden={!levelActive || undefined}>
+                {levelActive && renderVocabularyCard(levelResolution)}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

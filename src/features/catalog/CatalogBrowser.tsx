@@ -13,6 +13,7 @@ import {
   useFilteredControls,
 } from '@/hooks/useFilteredControls';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { OWN_SCROLL_AREA_QUERY, useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
 import { CatalogDesktopSidebar } from './CatalogDesktopSidebar';
 import { CatalogTargetNotFound } from './CatalogTargetNotFound';
 import {
@@ -39,6 +40,7 @@ export function CatalogBrowser() {
   const { catalog, loading, error } = useCatalog();
   const { filters, setFilters, sort, setSort, searchString } = useFilterParams();
   const isDesktop = useMediaQuery('(min-width: 1024px)');
+  const mobileListScrollRef = useOverlayScrollbars<HTMLDivElement>(useMediaQuery(OWN_SCROLL_AREA_QUERY));
   const [filterCollapsed, setFilterCollapsed] = useState(false);
   const [mobileSelectMode, setMobileSelectMode] = useState(false);
   const {
@@ -237,7 +239,7 @@ export function CatalogBrowser() {
             </div>
           ) : (
             <div className="lg:hidden flex-1 min-w-0 flex flex-col md:overflow-hidden">
-              <div className={`flex-1 md:overflow-y-auto divide-y divide-[var(--color-border-subtle)] ${mobileSelectMode ? 'pb-[calc(7rem+env(safe-area-inset-bottom,0px))]' : 'pb-safe'}`}>
+              <div ref={mobileListScrollRef} className={`flex-1 md:overflow-y-auto divide-y divide-[var(--color-border-subtle)] ${mobileSelectMode ? 'pb-[calc(7rem+env(safe-area-inset-bottom,0px))]' : 'pb-safe'}`}>
                 {filtered.map((control) => (
                   <ControlMobileReferenceRow
                     key={control.id}

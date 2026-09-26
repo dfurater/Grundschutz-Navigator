@@ -34,3 +34,27 @@ function humanizeVocabularyFileName(fileName: string): string {
 export function getVocabularyTitle(fileName: string): string {
   return vocabularyTitles[fileName] ?? humanizeVocabularyFileName(fileName);
 }
+
+/**
+ * Merkmal eines einzelnen Eintrags in Einzahl („Modalverb: SOLLTE“). Die
+ * Kriterien tragen dieselben Namen wie die Spaltenköpfe der Tabelle.
+ */
+const vocabularyTermLabels: Readonly<Record<string, string>> = {
+  'action_words.csv': 'Handlungswort',
+  'basethreats.csv': 'Elementare Gefährdung',
+  'documentation_guidelines.csv': 'Dokumentationsvorgabe',
+  'effort_level.csv': 'Aufwand',
+  'modal_verbs.csv': 'Modalverb',
+  'practices.csv': 'Praktik',
+  'result.csv': 'Ergebnis',
+  'security_level.csv': 'Sicherheitsniveau',
+  'security_targets.csv': 'Schutzziel',
+  'security_targets_levels.csv': 'Schutzziel-Relevanz',
+  'tags.csv': 'Tag',
+  'target_object_categories.csv': 'Zielobjekt-Kategorie',
+  'topics.csv': 'Thema',
+};
+
+export function getVocabularyTermLabel(fileName: string): string {
+  return vocabularyTermLabels[fileName] ?? getVocabularyTitle(fileName);
+}

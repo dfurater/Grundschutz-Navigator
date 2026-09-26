@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import { SECURITY_TARGET_RELEVANCE_ORDER } from '@/domain/securityTargets';
 import { Badge } from './Badge';
 import type { BadgeVariant } from './Badge';
@@ -19,7 +18,6 @@ export function modalverbVariant(value?: string): BadgeVariant {
 export interface StatusBadgeProps {
   readonly value?: string | null;
   readonly className?: string;
-  readonly trailingIcon?: ReactNode;
 }
 
 export interface SecurityLevelBadgeProps extends StatusBadgeProps {
@@ -38,11 +36,11 @@ function securityLevelVariant(
   return value === 'normal-SdT' ? 'outline' : 'soll';
 }
 
-export function ModalverbBadge({ value, className = '', trailingIcon }: StatusBadgeProps) {
+export function ModalverbBadge({ value, className = '' }: StatusBadgeProps) {
   if (!value) return null;
 
   return (
-    <Badge variant={modalverbVariant(value)} className={className} trailingIcon={trailingIcon}>
+    <Badge variant={modalverbVariant(value)} className={className}>
       {value}
     </Badge>
   );
@@ -51,7 +49,6 @@ export function ModalverbBadge({ value, className = '', trailingIcon }: StatusBa
 export function SecurityLevelBadge({
   value,
   className = '',
-  trailingIcon,
   appearance = 'classification',
 }: SecurityLevelBadgeProps) {
   if (!value) return null;
@@ -59,7 +56,7 @@ export function SecurityLevelBadge({
   const variant = securityLevelVariant(value, appearance);
 
   return (
-    <Badge variant={variant} className={className} trailingIcon={trailingIcon}>
+    <Badge variant={variant} className={className}>
       {value}
     </Badge>
   );
@@ -111,7 +108,7 @@ export function RelevanceScale({ value }: RelevanceScaleProps) {
   );
 }
 
-export function EffortBadge({ value, className = '', trailingIcon }: StatusBadgeProps) {
+export function EffortBadge({ value, className = '' }: StatusBadgeProps) {
   if (value == null || value === '') return null;
 
   const filled = Number.parseInt(value, 10);
@@ -120,7 +117,6 @@ export function EffortBadge({ value, className = '', trailingIcon }: StatusBadge
     <Badge
       variant="aufwand"
       className={`gap-0.5 ${className}`}
-      trailingIcon={trailingIcon}
       title={`Aufwand ${value}`}
     >
       <span className="mr-1">Aufwand</span>

@@ -1,4 +1,5 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render as rtlRender, screen, within } from '@testing-library/react';
+import type { ReactElement } from 'react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,6 +16,10 @@ import { catalogCollectionDefaults } from '@/test/catalogState';
 vi.mock('@/hooks/useCatalog', () => ({
   useCatalog: vi.fn(),
 }));
+
+function render(ui: ReactElement) {
+  return rtlRender(ui, { wrapper: MemoryRouter });
+}
 
 const mockedUseCatalog = vi.mocked(useCatalog);
 const vocabularyRegistry = createTestVocabularyRegistry();
@@ -193,9 +198,7 @@ function renderWithJoinedPractice(practiceTitle: string) {
   mockedUseCatalog.mockReturnValue(state);
 
   render(
-    <MemoryRouter>
-      <ControlDetail control={makeControl()} onClose={vi.fn()} />
-    </MemoryRouter>,
+      <ControlDetail control={makeControl()} onClose={vi.fn()} />,
   );
 
   return user;
@@ -207,66 +210,33 @@ describe('ControlDetail', () => {
     mockedUseCatalog.mockReturnValue(makeCatalogState());
   });
 
-  it('opens inline vocabulary cards for badges, tags, metadata values, and target categories', async () => {
+  it('uses the criteria legend and keeps term cards for tags, details, and target categories', async () => {
     const user = userEvent.setup();
     const control = makeControl({
       modalverb: 'MUSS',
-      modalverbProp: {
-        name: 'modal_verb',
-        value: 'MUSS',
-        ns: 'https://example.com/namespaces/modal_verbs.csv',
-      },
+      modalverbProp: { name: 'modal_verb', value: 'MUSS', ns: 'https://example.com/namespaces/modal_verbs.csv' },
       tags: ['Governance'],
-      tagsProp: {
-        name: 'tags',
-        value: 'Governance',
-        ns: 'https://example.com/namespaces/tags.csv',
-      },
+      tagsProp: { name: 'tags', value: 'Governance', ns: 'https://example.com/namespaces/tags.csv' },
       statementProps: {
         ergebnis: 'Verfahren und Regelungen',
-        ergebnisProp: {
-          name: 'result',
-          value: 'Verfahren und Regelungen',
-          ns: 'https://example.com/namespaces/result.csv',
-        },
+        ergebnisProp: { name: 'result', value: 'Verfahren und Regelungen', ns: 'https://example.com/namespaces/result.csv' },
         dokumentation: 'Richtlinie A',
-        dokumentationProp: {
-          name: 'documentation',
-          value: 'Richtlinie A',
-          ns: 'https://example.com/namespaces/documentation_guidelines.csv',
-        },
+        dokumentationProp: { name: 'documentation', value: 'Richtlinie A', ns: 'https://example.com/namespaces/documentation_guidelines.csv' },
         zielobjektKategorien: ['Server'],
-        zielobjektKategorienProp: {
-          name: 'target_object_categories',
-          value: 'Server',
-          ns: 'https://example.com/namespaces/target_object_categories.csv',
-        },
+        zielobjektKategorienProp: { name: 'target_object_categories', value: 'Server', ns: 'https://example.com/namespaces/target_object_categories.csv' },
       },
     });
-    render(
-      <MemoryRouter>
-        <ControlDetail control={control} onClose={vi.fn()} />
-      </MemoryRouter>,
-    );
+    render(<ControlDetail control={control} onClose={vi.fn()} />);
 
-    await user.click(screen.getByRole('button', { name: 'MUSS' }));
-    const vocabularyDefinition = screen.getByText('Modalverb definiert verbindliche Anforderungen.');
-    expect(vocabularyDefinition).toBeInTheDocument();
-    expect(vocabularyDefinition).not.toHaveClass('max-w-prose');
-    expect(screen.getByRole('link', { name: 'Zu den Vokabularen →' })).toHaveAttribute(
-      'href',
-      '/vokabular/modal-verbs?wert=MUSS',
-    );
-
+    expect(screen.queryByRole('button', { name: 'MUSS' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Legende' }));
+    expect(screen.getByRole('link', { name: 'MUSS' })).toHaveAttribute('href', '/vokabular/modal-verbs?wert=MUSS');
     await user.click(screen.getByRole('button', { name: 'Tag: Governance' }));
     expect(screen.getByText('Governance-Definition.')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Verfahren und Regelungen' }));
+    await user.click(screen.getByRole('button', { name: 'Vokabularbegriff Verfahren und Regelungen' }));
     expect(screen.getByText('Offizielles Ergebnis für Richtlinien und Prozesse.')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: 'Richtlinie A' }));
+    await user.click(screen.getByRole('button', { name: 'Vokabularbegriff Richtlinie A' }));
     expect(screen.getByText('Dokumentation muss nachvollziehbar gepflegt werden.')).toBeInTheDocument();
-
     await user.click(screen.getByRole('button', { name: 'Zielobjekt: Server' }));
     expect(screen.getByText('Server sind Zielobjekte mit zentralen IT-Diensten.')).toBeInTheDocument();
   });
@@ -287,14 +257,15 @@ describe('ControlDetail', () => {
     expect(screen.getByText('Corporate Governance')).toBeInTheDocument();
     // GSPP-380: Die Kennung gehört zum Eintrag und wird gezeigt; kuratiert
     // ausgeblendet bleibt nur die Nummerierung.
-    expect(within(practiceCard).getByText('UUID').tagName).toBe('DT');
+    expect(within(practiceCard).getByText('UUID:').tagName).toBe('DT');
     expect(within(practiceCard).getByText(VOCABULARY_IDENTIFIERS.practiceGC))
       .toBeInTheDocument();
     expect(screen.queryByText('Nummerierung')).not.toBeInTheDocument();
     // GSPP-301: Der offizielle Begriff steht bereits im Breadcrumb.
-    expect(within(practiceCard).queryByText('Begriff')).not.toBeInTheDocument();
-    expect(within(practiceCard).getByText('Schwerpunkt').tagName).toBe('DT');
-    expect(within(practiceCard).getByRole('link', { name: 'Zu den Vokabularen →' }))
+    expect(within(practiceCard).queryByText('Begriff:')).not.toBeInTheDocument();
+    expect(within(practiceCard).getByText('Schwerpunkt:').tagName).toBe('DT');
+    // Legendenschema: „Praktik: GC“, der Wert verlinkt den Vokabulareintrag.
+    expect(within(practiceCard).getByRole('link', { name: 'GC' }))
       .toHaveAttribute('href', '/vokabular/documentation-namespaces-practices?wert=GC');
 
     const topic = screen.getByRole('button', { name: 'Thema: Organisation' });
@@ -316,7 +287,7 @@ describe('ControlDetail', () => {
     }));
 
     const practiceCard = document.getElementById('vocab-card-practice')!;
-    expect(within(practiceCard).getByText('Begriff').tagName).toBe('DT');
+    expect(within(practiceCard).getByText('Begriff:').tagName).toBe('DT');
     expect(within(practiceCard).getByText('Governance und Compliance')).toBeInTheDocument();
     expect(within(practiceCard).getByText(VOCABULARY_IDENTIFIERS.practiceGC))
       .toBeInTheDocument();
@@ -335,9 +306,7 @@ describe('ControlDetail', () => {
     });
 
     render(
-      <MemoryRouter>
-        <ControlDetail control={control} onClose={vi.fn()} />
-      </MemoryRouter>,
+      <ControlDetail control={control} onClose={vi.fn()} />,
     );
 
     await user.click(screen.getByRole('button', {
@@ -347,11 +316,11 @@ describe('ControlDetail', () => {
     const threatCard = document.getElementById('vocab-card-threat-G-0-18-0')!;
     expect(within(threatCard).getByText('Fehlplanung oder fehlende Anpassung von Prozessen.'))
       .toBeInTheDocument();
-    expect(within(threatCard).queryByText('Begriff')).not.toBeInTheDocument();
-    expect(within(threatCard).getByText('uuid').tagName).toBe('DT');
+    expect(within(threatCard).queryByText('Begriff:')).not.toBeInTheDocument();
+    expect(within(threatCard).getByText('uuid:').tagName).toBe('DT');
     expect(within(threatCard).getByText(VOCABULARY_IDENTIFIERS.threatG018))
       .toBeInTheDocument();
-    expect(within(threatCard).getByRole('link', { name: 'Zu den Vokabularen →' }))
+    expect(within(threatCard).getByRole('link', { name: 'G 0.18' }))
       .toHaveAttribute('href', '/vokabular/basethreats?wert=G%200.18');
   });
 
@@ -367,9 +336,7 @@ describe('ControlDetail', () => {
     });
 
     render(
-      <MemoryRouter>
-        <ControlDetail control={control} onClose={vi.fn()} />
-      </MemoryRouter>,
+      <ControlDetail control={control} onClose={vi.fn()} />,
     );
 
     const trigger = screen.getByRole('button', { name: 'Elementare Gefährdung: G 0.20' });
@@ -404,9 +371,7 @@ describe('ControlDetail', () => {
     mockedUseCatalog.mockReturnValue(state);
 
     render(
-      <MemoryRouter>
-        <ControlDetail control={makeControl()} onClose={vi.fn()} />
-      </MemoryRouter>,
+      <ControlDetail control={makeControl()} onClose={vi.fn()} />,
     );
 
     expect(screen.getByText('Organisation')).toBeInTheDocument();
@@ -415,84 +380,37 @@ describe('ControlDetail', () => {
       .not.toBeInTheDocument();
   });
 
-  it('does not retain control-local UI state across catalog changes', async () => {
+  it('does not retain term-card state across catalog changes', async () => {
     const user = userEvent.setup();
     const control = makeControl({
-      modalverb: 'MUSS',
-      modalverbProp: {
-        name: 'modal_verb',
-        value: 'MUSS',
-        ns: 'https://example.com/namespaces/modal_verbs.csv',
-      },
+      tags: ['Governance'],
+      tagsProp: { name: 'tags', value: 'Governance', ns: 'https://example.com/namespaces/tags.csv' },
     });
-    const view = render(
-      <MemoryRouter>
-        <ControlDetail control={control} onClose={vi.fn()} />
-      </MemoryRouter>,
-    );
+    const view = render(<ControlDetail control={control} onClose={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: 'Tag: Governance' }));
+    expect(screen.getByRole('button', { name: 'Tag: Governance' })).toHaveAttribute('aria-pressed', 'true');
 
-    await user.click(screen.getByRole('button', { name: 'MUSS' }));
-    expect(screen.getByRole('button', { name: 'MUSS' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
-
-    const wlanCatalog = {
-      ...makeCatalogState().catalog!,
-      catalogKey: 'wlan' as const,
-    };
+    const wlanCatalog = { ...makeCatalogState().catalog!, catalogKey: 'wlan' as const };
     mockedUseCatalog.mockReturnValue(makeCatalogState({ catalog: wlanCatalog }));
-    view.rerender(
-      <MemoryRouter>
-        <ControlDetail control={control} onClose={vi.fn()} />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByRole('button', { name: 'MUSS' })).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    );
+    view.rerender(<ControlDetail control={control} onClose={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Tag: Governance' })).toHaveAttribute('aria-pressed', 'false');
   });
 
-  it('does not revive vocabulary state after a catalog scope roundtrip', async () => {
+  it('does not revive term-card state after a catalog scope roundtrip', async () => {
     const user = userEvent.setup();
     const control = makeControl({
-      modalverb: 'MUSS',
-      modalverbProp: {
-        name: 'modal_verb',
-        value: 'MUSS',
-        ns: 'https://example.com/namespaces/modal_verbs.csv',
-      },
+      tags: ['Governance'],
+      tagsProp: { name: 'tags', value: 'Governance', ns: 'https://example.com/namespaces/tags.csv' },
     });
     const initialCatalogState = makeCatalogState();
-    const view = render(
-      <MemoryRouter>
-        <ControlDetail control={control} onClose={vi.fn()} />
-      </MemoryRouter>,
-    );
-
-    await user.click(screen.getByRole('button', { name: 'MUSS' }));
-    const wlanCatalog = {
-      ...initialCatalogState.catalog!,
-      catalogKey: 'wlan' as const,
-    };
+    const view = render(<ControlDetail control={control} onClose={vi.fn()} />);
+    await user.click(screen.getByRole('button', { name: 'Tag: Governance' }));
+    const wlanCatalog = { ...initialCatalogState.catalog!, catalogKey: 'wlan' as const };
     mockedUseCatalog.mockReturnValue(makeCatalogState({ catalog: wlanCatalog }));
-    view.rerender(
-      <MemoryRouter>
-        <ControlDetail control={control} onClose={vi.fn()} />
-      </MemoryRouter>,
-    );
+    view.rerender(<ControlDetail control={control} onClose={vi.fn()} />);
     mockedUseCatalog.mockReturnValue(initialCatalogState);
-    view.rerender(
-      <MemoryRouter>
-        <ControlDetail control={control} onClose={vi.fn()} />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByRole('button', { name: 'MUSS' })).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    );
+    view.rerender(<ControlDetail control={control} onClose={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Tag: Governance' })).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('renders resolved security targets and threats with independent accessible toggles', async () => {
@@ -531,9 +449,7 @@ describe('ControlDetail', () => {
     });
 
     render(
-      <MemoryRouter>
-        <ControlDetail control={control} onClose={vi.fn()} />
-      </MemoryRouter>,
+      <ControlDetail control={control} onClose={vi.fn()} />,
     );
 
     expect(screen.getByRole('heading', { name: 'Schutzziele und Gefährdungen', level: 3 })).toBeInTheDocument();
@@ -541,9 +457,8 @@ describe('ControlDetail', () => {
     expect(screen.getByText('Integrität')).toBeInTheDocument();
     expect(screen.getByText('Verfügbarkeit')).toBeInTheDocument();
     expect(screen.getByText('Authentizität')).toBeInTheDocument();
-    expect(screen.getAllByRole('rowheader')).toHaveLength(4);
-    expect(screen.getAllByText('Relevanz')).toHaveLength(1);
-    expect(screen.queryByText(/^Relevanz: [0-2]$/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Schutzziele', level: 4 })).toBeInTheDocument();
 
     const confidentiality = screen.getByRole('button', { name: 'Schutzziel: Vertraulichkeit' });
     const confidentialityLevel = screen.getByRole('button', {
@@ -561,7 +476,9 @@ describe('ControlDetail', () => {
     expect(confidentiality).toHaveAttribute('aria-expanded', 'true');
 
     await user.click(confidentialityLevel);
-    expect(screen.getByText(
+    // Die Definition steht auch in der (verborgenen) Legende; geprüft wird die Vokabelkarte.
+    const levelCard = document.getElementById(confidentialityLevel.getAttribute('aria-controls')!)!;
+    expect(within(levelCard).getByText(
       'Die Anforderung wirkt in besonderem Maße auf dieses Schutzziel hin. Dieser Wert zeigt an, dass das Schutzziel im Zentrum dieser Anforderung steht.',
     )).toBeInTheDocument();
     expect(confidentiality).toHaveAttribute('aria-expanded', 'false');
@@ -590,13 +507,11 @@ describe('ControlDetail', () => {
     });
 
     render(
-      <MemoryRouter>
-        <ControlDetail control={control} onClose={vi.fn()} />
-      </MemoryRouter>,
+      <ControlDetail control={control} onClose={vi.fn()} />,
     );
 
     expect(screen.getByText('Integrität')).toBeInTheDocument();
-    expect(screen.getByRole('rowheader', { name: 'Integrität' }).closest('tr'))
+    expect(screen.getByRole('button', { name: 'Schutzziel: Integrität' }).parentElement)
       .toHaveTextContent('1');
     expect(screen.getByText('G 0.99')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Elementare Gefährdung: G 0.99' })).not.toBeInTheDocument();
@@ -619,19 +534,15 @@ describe('ControlDetail', () => {
     });
 
     render(
-      <MemoryRouter>
-        <ControlDetail control={control} onClose={vi.fn()} />
-      </MemoryRouter>,
+      <ControlDetail control={control} onClose={vi.fn()} />,
     );
 
-    expect(screen.getByText('Fehlplanung oder fehlende Anpassung (G 0.18)'))
+    expect(screen.getByText('Fehlplanung oder fehlende Anpassung'))
       .toBeInTheDocument();
     expect(screen.getByText('Vertraulichkeit')).toBeInTheDocument();
-    const confidentialityRow = screen
-      .getByRole('rowheader', { name: 'Vertraulichkeit' })
-      .closest('tr');
-    expect(confidentialityRow).toHaveTextContent('3');
-    expect(confidentialityRow?.querySelectorAll('span[aria-hidden="true"]'))
+    const confidentialityCell = screen.getByRole('button', { name: 'Schutzziel: Vertraulichkeit' }).parentElement;
+    expect(confidentialityCell).toHaveTextContent('3');
+    expect(confidentialityCell?.querySelectorAll('span[aria-hidden="true"]'))
       .toHaveLength(0);
     expect(screen.getByText('Keine offizielle Definition für diese Relevanzstufe verfügbar.'))
       .toBeInTheDocument();
@@ -661,9 +572,7 @@ describe('ControlDetail', () => {
       },
     });
     const { rerender } = render(
-      <MemoryRouter>
-        <ControlDetail control={firstControl} onClose={vi.fn()} />
-      </MemoryRouter>,
+      <ControlDetail control={firstControl} onClose={vi.fn()} />,
     );
 
     await user.click(screen.getByRole('button', {
@@ -672,9 +581,7 @@ describe('ControlDetail', () => {
     expect(screen.getByText('Fehlplanung oder fehlende Anpassung von Prozessen.')).toBeInTheDocument();
 
     rerender(
-      <MemoryRouter>
-        <ControlDetail control={nextControl} onClose={vi.fn()} />
-      </MemoryRouter>,
+      <ControlDetail control={nextControl} onClose={vi.fn()} />,
     );
 
     expect(screen.getByRole('button', {
@@ -704,9 +611,7 @@ describe('ControlDetail', () => {
       },
     });
     const { rerender } = render(
-      <MemoryRouter>
-        <ControlDetail control={firstControl} onClose={vi.fn()} />
-      </MemoryRouter>,
+      <ControlDetail control={firstControl} onClose={vi.fn()} />,
     );
 
     await user.click(screen.getByRole('button', {
@@ -715,9 +620,7 @@ describe('ControlDetail', () => {
     expect(screen.getByText('Schutz vor unbefugter Offenlegung.')).toBeInTheDocument();
 
     rerender(
-      <MemoryRouter>
-        <ControlDetail control={nextControl} onClose={vi.fn()} />
-      </MemoryRouter>,
+      <ControlDetail control={nextControl} onClose={vi.fn()} />,
     );
 
     expect(screen.getByRole('button', {
@@ -728,370 +631,155 @@ describe('ControlDetail', () => {
 
   it('hides the security targets and threats section when the control has no such data', () => {
     render(
-      <MemoryRouter>
-        <ControlDetail control={makeControl()} onClose={vi.fn()} />
-      </MemoryRouter>,
+      <ControlDetail control={makeControl()} onClose={vi.fn()} />,
     );
 
     expect(screen.queryByRole('heading', { name: 'Schutzziele und Gefährdungen', level: 3 })).not.toBeInTheDocument();
   });
 
-  it('shows a visible info affordance only on vocabulary-enabled triggers', async () => {
+  it('uses dotted term triggers and no info affordance in the detail view', async () => {
     const user = userEvent.setup();
     const control = makeControl({
       modalverb: 'MUSS',
-      modalverbProp: {
-        name: 'modal_verb',
-        value: 'MUSS',
-        ns: 'https://example.com/namespaces/modal_verbs.csv',
-      },
-      securityLevel: 'normal-SdT',
-      securityLevelProp: {
-        name: 'security_level',
-        value: 'normal-SdT',
-        ns: 'https://example.com/namespaces/security_level.csv',
-      },
-      effortLevel: '3',
-      effortLevelProp: {
-        name: 'effort_level',
-        value: '3',
-        ns: 'https://example.com/namespaces/effort_level.csv',
-      },
+      modalverbProp: { name: 'modal_verb', value: 'MUSS', ns: 'https://example.com/namespaces/modal_verbs.csv' },
       tags: ['Governance', 'Nicht aufgelöst'],
-      tagsProp: {
-        name: 'tags',
-        value: 'Governance, Nicht aufgelöst',
-        ns: 'https://example.com/namespaces/tags.csv',
-      },
+      tagsProp: { name: 'tags', value: 'Governance, Nicht aufgelöst', ns: 'https://example.com/namespaces/tags.csv' },
       statementProps: {
         ergebnis: 'Verfahren und Regelungen',
-        ergebnisProp: {
-          name: 'result',
-          value: 'Verfahren und Regelungen',
-          ns: 'https://example.com/namespaces/result.csv',
-        },
+        ergebnisProp: { name: 'result', value: 'Verfahren und Regelungen', ns: 'https://example.com/namespaces/result.csv' },
         zielobjektKategorien: ['Server'],
-        zielobjektKategorienProp: {
-          name: 'target_object_categories',
-          value: 'Server',
-          ns: 'https://example.com/namespaces/target_object_categories.csv',
-        },
+        zielobjektKategorienProp: { name: 'target_object_categories', value: 'Server', ns: 'https://example.com/namespaces/target_object_categories.csv' },
       },
     });
+    const { container } = render(<ControlDetail control={control} onClose={vi.fn()} />);
 
-    render(
-      <MemoryRouter>
-        <ControlDetail control={control} onClose={vi.fn()} />
-      </MemoryRouter>,
-    );
-
-    const mustButton = screen.getByRole('button', { name: 'MUSS' });
-    const securityLevelButton = screen.getByRole('button', { name: 'normal-SdT' });
-    const effortButton = screen.getByRole('button', { name: /Aufwand/ });
-    const tagButton = screen.getByRole('button', { name: 'Tag: Governance' });
-    const resultButton = screen.getByRole('button', { name: 'Verfahren und Regelungen' });
-    const targetButton = screen.getByRole('button', { name: 'Zielobjekt: Server' });
-
-    expect(mustButton.querySelector('.catalog-vocabulary-affordance')).toHaveClass('text-slate-400');
-    expect(securityLevelButton.querySelector('.catalog-vocabulary-affordance')).toHaveClass('text-slate-400');
-    expect(effortButton.querySelector('.catalog-vocabulary-affordance')).toHaveClass('text-slate-400');
-    [mustButton, securityLevelButton, effortButton, tagButton, targetButton].forEach((button) => {
-      const badgeIcon = button.querySelector('.catalog-vocabulary-affordance');
-      expect(badgeIcon).toHaveClass('self-center');
-      expect(badgeIcon).not.toHaveClass('mt-0.5');
-      expect(badgeIcon?.parentElement).toHaveClass('justify-center', 'leading-none');
-    });
-    expect(resultButton.querySelector('.catalog-vocabulary-affordance')).toHaveClass('mt-0.5');
-    expect(securityLevelButton.firstElementChild).toHaveClass(
-      'bg-transparent',
-      'border-[var(--color-border-strong)]',
-    );
-    expect(effortButton.querySelectorAll('span[aria-hidden="true"]')).toHaveLength(5);
-    expect(tagButton.querySelector('.catalog-vocabulary-affordance')).toHaveClass('text-slate-400');
-    expect(resultButton.querySelector('.catalog-vocabulary-affordance')).toHaveClass('text-slate-400');
-    expect(targetButton.querySelector('.catalog-vocabulary-affordance')).toHaveClass('text-slate-400');
-    expect(mustButton).not.toHaveClass('hover:ring-2');
-    expect(resultButton).not.toHaveClass('hover:text-primary-main');
-
-    const rawTagBadge = screen.getByText('Nicht aufgelöst').closest('span');
-    expect(rawTagBadge?.querySelector('.catalog-vocabulary-affordance')).toBeNull();
-
-    await user.click(mustButton);
-    expect(mustButton.querySelector('.catalog-vocabulary-affordance')).toHaveClass('text-primary-main');
+    expect(container.querySelector('.catalog-vocabulary-affordance')).toBeNull();
+    expect(screen.queryByText('ⓘ')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'MUSS' })).not.toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Kriterien' })).toHaveTextContent('MUSS');
+    const tag = screen.getByRole('button', { name: 'Tag: Governance' });
+    const result = screen.getByRole('button', { name: 'Vokabularbegriff Verfahren und Regelungen' });
+    const target = screen.getByRole('button', { name: 'Zielobjekt: Server' });
+    for (const trigger of [tag, result, target]) {
+      expect(trigger.querySelector('.decoration-dotted')).not.toBeNull();
+    }
+    expect(screen.queryByRole('button', { name: 'Tag: Nicht aufgelöst' })).not.toBeInTheDocument();
+    await user.click(tag);
+    expect(tag).toHaveAttribute('aria-expanded', 'true');
   });
 
-  it('groups classification, details, dependencies, hierarchy, and metadata in the expected order', () => {
+  it('groups content in the agreed detail-view order', () => {
     const control = makeControl({
-      title: 'Kontrolle mit vollständigen Metadaten',
-      altIdentifier: 'test-uuid-1234',
-      modalverb: 'MUSS',
-      securityLevel: 'normal-SdT',
-      effortLevel: '3',
-      tags: ['Governance'],
-      confidentiality: '2',
-      confidentialityProp: {
-        name: 'confidentiality',
-        value: '2',
-        ns: 'https://example.com/namespaces/security_targets.csv',
-      },
-      guidance: 'Mit dokumentierten Freigaben arbeiten.',
-      statementProps: {
-        ergebnis: 'Ergebnis',
-        praezisierung: 'präzisiert',
-        handlungsworte: 'umsetzen',
-        dokumentation: 'Richtlinie A',
-        zielobjektKategorien: ['Server'],
-      },
+      altIdentifier: 'test-uuid-1234', modalverb: 'MUSS', tags: ['Governance'],
+      confidentiality: '2', guidance: 'Mit dokumentierten Freigaben arbeiten.',
+      statementProps: { dokumentation: 'Richtlinie A', zielobjektKategorien: ['Server'] },
       links: [makeControlLink('GC.2.3')],
     });
-    const incomingLinks: IncomingControlLink[] = [
-      makeIncomingLink(makeControl({
-          id: 'GC.2.1',
-          title: 'Voraussetzung',
-        }), 'required'),
-    ];
-    const parentControl = makeControl({
-      id: 'GC.2',
-      title: 'Überbau',
-    });
-    const childControl = makeControl({
-      id: 'GC.2.2.1',
-      title: 'Erweiterung',
-      parentId: control.id,
-    });
+    const parentControl = makeControl({ id: 'GC.2', title: 'Überbau' });
+    const childControl = makeControl({ id: 'GC.2.2.1', title: 'Erweiterung', parentId: control.id });
     const linkedControl = makeControl({ id: 'GC.2.3', title: 'Verknüpfte Kontrolle' });
     const controlsById = new Map([[linkedControl.id, linkedControl]]);
     mockedUseCatalog.mockReturnValue(makeCatalogStateWithControlSource(control, controlsById));
+    render(<ControlDetail control={control} controlsById={controlsById}
+      parentControl={parentControl} childControls={[childControl]} onClose={vi.fn()} />);
 
-    render(
-      <ControlDetail
-        control={control}
-        controlsById={controlsById}
-        incomingLinks={incomingLinks}
-        parentControl={parentControl}
-        childControls={[childControl]}
-        onClose={vi.fn()}
-        onNavigateToControl={vi.fn()}
-      />,
-    );
-
-    const classification = screen.getByRole('heading', { name: 'Klassifikation', level: 3 });
-    const securityTargets = screen.getByRole('heading', { name: 'Schutzziele und Gefährdungen', level: 3 });
-    const statement = screen.getByRole('heading', { name: 'Anforderung', level: 3 });
-    const details = screen.getByRole('heading', { name: 'Anforderungsdetails', level: 3 });
-    const guidance = screen.getByRole('heading', { name: 'Umsetzungshinweise', level: 3 });
-    const dependencies = screen.getByRole('heading', { name: 'Abhängigkeiten', level: 3 });
-    const hierarchy = screen.getByRole('heading', { name: 'Hierarchie', level: 3 });
-    const metadata = screen.getByRole('heading', { name: 'Technische Metadaten', level: 3 });
-    const orderedHeadings = [
-      classification,
-      securityTargets,
-      statement,
-      details,
-      guidance,
-      dependencies,
-      hierarchy,
-      metadata,
-    ];
-
-    for (let index = 0; index < orderedHeadings.length - 1; index += 1) {
-      expect(
-        orderedHeadings[index].compareDocumentPosition(orderedHeadings[index + 1]) & Node.DOCUMENT_POSITION_FOLLOWING,
-      ).toBeTruthy();
-    }
-
-    expect(within(classification.parentElement as HTMLElement).getByText('Governance')).toBeInTheDocument();
-    expect(within(classification.parentElement as HTMLElement).getByText('Server')).toBeInTheDocument();
-    expect(within(details.parentElement as HTMLElement).getByText('Richtlinie A')).toBeInTheDocument();
-    expect(
-      within(dependencies.parentElement as HTMLElement).getByRole('heading', {
-        name: 'Verknüpfte Kontrollen',
-        level: 4,
-      }),
-    ).toBeInTheDocument();
-    expect(
-      within(dependencies.parentElement as HTMLElement).getByRole('heading', {
-        name: 'Wird referenziert von',
-        level: 4,
-      }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Teil von GC\.2 Überbau/ })).toBeInTheDocument();
+    const headings = screen.getAllByRole('heading', { level: 3 });
+    expect(headings.map((heading) => heading.textContent)).toEqual([
+      'Anforderung', 'Umsetzungshinweise', 'Schutzziele und Gefährdungen', 'Einordnung', 'Zusammenhänge',
+    ]);
+    const einordnung = screen.getByRole('heading', { name: 'Einordnung', level: 3 }).closest('section')!;
+    // OSCAL-Ablageort: Zielobjekte im statement-Part → Anforderung, Tags an der Anforderung → Einordnung.
+    expect(within(einordnung).queryByRole('heading', { name: 'Zielobjekte', level: 4 })).toBeNull();
+    expect(within(einordnung).getByRole('heading', { name: 'Tags', level: 4 })).toBeInTheDocument();
+    const anforderung = screen.getByRole('heading', { name: 'Anforderung', level: 3 }).closest('section')!;
+    const zielobjekte = within(anforderung).getByRole('heading', { name: 'Zielobjekte', level: 4 });
+    const dokumentation = within(anforderung).getByText('Dokumentation');
+    expect(dokumentation.compareDocumentPosition(zielobjekte) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const risiken = screen.getByRole('heading', { name: 'Schutzziele und Gefährdungen', level: 3 }).closest('section')!;
+    expect(within(risiken).queryByRole('heading', { name: 'Tags', level: 4 })).toBeNull();
+    expect(screen.getByRole('group', { name: 'Kriterien' })).toHaveTextContent('MUSS');
+    expect(screen.getByRole('heading', { name: 'Tags', level: 4 })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Zielobjekte', level: 4 })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Erweiterungen', level: 4 })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Verknüpft', level: 4 })).toBeInTheDocument();
+    expect(screen.getByText('test-uuid-1234')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Technische Metadaten' })).not.toBeInTheDocument();
   });
 
-  it('separates classification criteria and taxonomy while preserving badge order', () => {
+  it('shows criteria inside Anforderung before the Einordnung block and renders tags and targets as plain terms', () => {
     const control = makeControl({
-      modalverb: 'MUSS',
-      securityLevel: 'normal-SdT',
-      effortLevel: '3',
-      tags: ['Governance'],
-      statementProps: {
-        zielobjektKategorien: ['Server'],
-      },
+      modalverb: 'MUSS', securityLevel: 'normal-SdT', effortLevel: '3',
+      tags: ['Governance'], statementProps: { zielobjektKategorien: ['Server'] },
     });
-
-    render(
-      <MemoryRouter>
-        <ControlDetail control={control} onClose={vi.fn()} />
-      </MemoryRouter>,
-    );
-
-    const classification = screen.getByRole('heading', { name: 'Klassifikation', level: 3 })
-      .parentElement as HTMLElement;
-    const criteriaGroup = within(classification).getByRole('group', { name: 'Kriterien' });
-    const taxonomyGroup = within(classification).getByRole('group', { name: 'Taxonomie' });
-    const taxonomyHeading = within(taxonomyGroup).getByRole('heading', {
-      name: 'Tags und Zielobjektkategorien',
-      level: 4,
-    });
-    const modalverbBadge = within(criteriaGroup).getByText('MUSS');
-    const securityLevelBadge = within(criteriaGroup).getByText('normal-SdT');
-    const effortBadge = within(criteriaGroup).getByText('Aufwand');
-    const tagBadge = within(taxonomyGroup).getByText('Governance');
-    const targetBadge = within(taxonomyGroup).getByText('Server');
-
-    expect(criteriaGroup).toBeInTheDocument();
-    expect(taxonomyGroup).toBeInTheDocument();
-    expect(taxonomyHeading).toHaveClass('text-sm', 'font-semibold', 'text-slate-800', 'mb-2');
-    expect(
-      criteriaGroup.compareDocumentPosition(taxonomyGroup) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      modalverbBadge.compareDocumentPosition(securityLevelBadge) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      securityLevelBadge.compareDocumentPosition(effortBadge) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      taxonomyHeading.compareDocumentPosition(tagBadge) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      effortBadge.compareDocumentPosition(tagBadge) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      tagBadge.compareDocumentPosition(targetBadge) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    const { container } = render(<ControlDetail control={control} onClose={vi.fn()} />);
+    const criteria = screen.getByRole('group', { name: 'Kriterien' });
+    const anforderung = screen.getByRole('heading', { name: 'Anforderung', level: 3 });
+    expect(anforderung.closest('section')!.contains(criteria)).toBe(true);
+    const einordnung = screen.getByRole('heading', { name: 'Einordnung', level: 3 });
+    expect(criteria.compareDocumentPosition(einordnung) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Ohne Schutzziele und Gefährdungen entfällt der Risiko-Block.
+    expect(screen.queryByRole('heading', { name: 'Schutzziele und Gefährdungen', level: 3 })).toBeNull();
+    const badgeTexts = ['MUSS', 'normal-SdT', 'Aufwand'];
+    const badges = badgeTexts.map((label) => within(criteria).getByText(label));
+    expect(badges[0].compareDocumentPosition(badges[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(badges[1].compareDocumentPosition(badges[2]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText('Governance')).toBeInTheDocument();
+    expect(screen.getByText('Server')).toBeInTheDocument();
+    expect(container.querySelector('.catalog-vocabulary-affordance')).toBeNull();
   });
 
-  it('renders the vocabulary reveal card inside a dd element to maintain valid dl structure', async () => {
+  it('renders a rest-detail vocabulary card below its label and value', async () => {
     const user = userEvent.setup();
     const control = makeControl({
       statementProps: {
         ergebnis: 'Verfahren und Regelungen',
-        ergebnisProp: {
-          name: 'result',
-          value: 'Verfahren und Regelungen',
-          ns: 'https://example.com/namespaces/result.csv',
-        },
+        ergebnisProp: { name: 'result', value: 'Verfahren und Regelungen', ns: 'https://example.com/namespaces/result.csv' },
         zielobjektKategorien: [],
       },
     });
-
-    render(
-      <MemoryRouter>
-        <ControlDetail control={control} onClose={vi.fn()} />
-      </MemoryRouter>,
-    );
-
-    await user.click(screen.getByRole('button', { name: 'Verfahren und Regelungen' }));
-    const revealCard = screen.getByText('Offizielles Ergebnis für Richtlinien und Prozesse.');
-    expect(revealCard.closest('dd')).not.toBeNull();
+    render(<ControlDetail control={control} onClose={vi.fn()} />);
+    const label = screen.getByText('Ergebnis');
+    const result = screen.getByRole('button', { name: 'Vokabularbegriff Verfahren und Regelungen' });
+    expect(label.compareDocumentPosition(result) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    await user.click(result);
+    expect(screen.getByText('Offizielles Ergebnis für Richtlinien und Prozesse.')).toBeInTheDocument();
   });
 
-  it('renders statement detail labels and values as a description list (dt/dd)', () => {
+  it('shows labels above unembedded statement details without a separate heading', () => {
     const control = makeControl({
       statementProps: {
-        ergebnis: 'Verfahren und Regelungen',
-        handlungsworte: 'verankern',
-        dokumentation: 'Richtlinie A',
-        zielobjektKategorien: [],
+        ergebnis: 'Verfahren und Regelungen', handlungsworte: 'verankern',
+        dokumentation: 'Richtlinie A', zielobjektKategorien: [],
       },
     });
+    render(<ControlDetail control={control} onClose={vi.fn()} />);
 
-    render(
-      <MemoryRouter>
-        <ControlDetail control={control} onClose={vi.fn()} />
-      </MemoryRouter>,
-    );
-
-    const ergebnisDt = screen.getByText('Ergebnis');
-    expect(ergebnisDt.tagName).toBe('DT');
-    expect(ergebnisDt.nextElementSibling?.tagName).toBe('DD');
-    expect(ergebnisDt.nextElementSibling).toHaveTextContent('Verfahren und Regelungen');
-
-    const handlungswortDt = screen.getByText('Handlungswort');
-    expect(handlungswortDt.tagName).toBe('DT');
-    expect(handlungswortDt.nextElementSibling?.tagName).toBe('DD');
-    expect(handlungswortDt.nextElementSibling).toHaveTextContent('verankern');
-
-    const dokumentationDt = screen.getByText('Dokumentation');
-    expect(dokumentationDt.tagName).toBe('DT');
-    expect(dokumentationDt.nextElementSibling?.tagName).toBe('DD');
-    expect(dokumentationDt.nextElementSibling).toHaveTextContent('Richtlinie A');
-
-    expect(screen.queryByText('Handlungsworte')).not.toBeInTheDocument();
+    for (const [label, value] of [
+      ['Ergebnis', 'Verfahren und Regelungen'],
+      ['Handlungswort', 'verankern'],
+      ['Dokumentation', 'Richtlinie A'],
+    ]) {
+      const labelElement = screen.getByText(label);
+      const valueElement = screen.getByText(value);
+      expect(labelElement.tagName).toBe('P');
+      expect(labelElement.compareDocumentPosition(valueElement) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+    expect(screen.queryByRole('heading', { name: 'Anforderungsdetails' })).not.toBeInTheDocument();
   });
 
-  it('lets detail text blocks use the full available panel width', () => {
+  it('lets statement, guidance, and rest-detail text use the available width', () => {
     const statementText = 'Breiter Anforderungstext fuer das Detailpanel.';
     const guidanceText = 'Breiter Umsetzungshinweis fuer das Detailpanel.';
     const praezisierungText = 'Breite Praezisierung ohne Vokabularauflösung.';
     const control = makeControl({
-      statement: statementText,
-      statementRaw: statementText,
-      guidance: guidanceText,
-      statementProps: {
-        ergebnis: 'Verfahren und Regelungen',
-        ergebnisProp: {
-          name: 'result',
-          value: 'Verfahren und Regelungen',
-          ns: 'https://example.com/namespaces/result.csv',
-        },
-        praezisierung: praezisierungText,
-        zielobjektKategorien: [],
-      },
+      statement: statementText, statementRaw: statementText, guidance: guidanceText,
+      statementProps: { praezisierung: praezisierungText, zielobjektKategorien: [] },
     });
-
-    render(
-      <MemoryRouter>
-        <ControlDetail control={control} onClose={vi.fn()} />
-      </MemoryRouter>,
-    );
-
-    const statementSection = screen.getByRole('heading', {
-      name: 'Anforderung',
-      level: 3,
-    }).parentElement as HTMLElement;
-    const statement = within(statementSection).getByText(statementText);
-    expect(statement).toHaveClass('w-full', 'break-words', '[hyphens:auto]');
-    expect(statement).not.toHaveClass('max-w-prose');
-
-    const guidanceSection = screen.getByRole('heading', {
-      name: 'Umsetzungshinweise',
-      level: 3,
-    }).parentElement as HTMLElement;
-    const guidance = within(guidanceSection).getByText(guidanceText);
-    expect(guidance).toHaveClass('w-full', 'break-words', 'line-clamp-5', '[hyphens:auto]');
-    expect(guidance).not.toHaveClass('max-w-prose');
-
-    const detailsSection = screen.getByRole('heading', {
-      name: 'Anforderungsdetails',
-      level: 3,
-    }).parentElement as HTMLElement;
-    const resolvedValueButton = within(detailsSection).getByRole('button', {
-      name: 'Verfahren und Regelungen',
-    });
-    expect(resolvedValueButton).toHaveClass('w-full');
-    expect(resolvedValueButton).not.toHaveClass('inline-flex');
-    expect(resolvedValueButton.querySelector('span')).toHaveClass(
-      'min-w-0',
-      'flex-1',
-      'break-words',
-      '[hyphens:auto]',
-    );
-    expect(resolvedValueButton.querySelector('span')).not.toHaveClass('max-w-prose');
-
-    const rawValue = within(detailsSection).getByText(praezisierungText);
-    expect(rawValue).toHaveClass('w-full', 'break-words', '[hyphens:auto]');
-    expect(rawValue).not.toHaveClass('max-w-prose');
+    render(<ControlDetail control={control} onClose={vi.fn()} />);
+    expect(screen.getByText(statementText)).toHaveClass('w-full', 'break-words', '[hyphens:auto]');
+    expect(screen.getByText(guidanceText)).toHaveClass('w-full', 'break-words', 'line-clamp-5', '[hyphens:auto]');
+    expect(screen.getByText(praezisierungText)).toHaveClass('w-full', 'break-words', '[hyphens:auto]');
   });
 
   it('renders unmatched raw values without inline vocabulary controls', () => {
@@ -1104,9 +792,7 @@ describe('ControlDetail', () => {
       },
     });
     render(
-      <MemoryRouter>
-        <ControlDetail control={control} onClose={vi.fn()} />
-      </MemoryRouter>,
+      <ControlDetail control={control} onClose={vi.fn()} />,
     );
 
     expect(screen.getByText('Unbekannt')).toBeInTheDocument();
@@ -1175,7 +861,7 @@ describe('ControlDetail', () => {
       />,
     );
 
-    expect(screen.getByRole('heading', { name: 'Quellen und Verweise', level: 3 }))
+    expect(screen.getByRole('heading', { name: 'Quellen', level: 4 }))
       .toBeInTheDocument();
     expect(screen.getByText('#MISSING.1')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /MISSING\.1/ })).not.toBeInTheDocument();
@@ -1199,13 +885,13 @@ describe('ControlDetail', () => {
 
     render(<ControlDetail control={control} controlsById={new Map()} onClose={vi.fn()} />);
 
-    expect(screen.getByRole('heading', { name: 'Quellen und Verweise', level: 3 }))
+    expect(screen.getByRole('heading', { name: 'Quellen', level: 4 }))
       .toBeInTheDocument();
     expect(screen.getByText('Quellendokument')).toBeInTheDocument();
     expect(screen.getByText('Fragment: abschnitt-2.4')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /quellen.pdf/i }))
       .toHaveAttribute('href', 'https://example.com/quellen.pdf');
-    expect(screen.queryByRole('heading', { name: 'Abhängigkeiten', level: 3 }))
+    expect(screen.queryByRole('heading', { name: 'Verknüpft', level: 4 }))
       .not.toBeInTheDocument();
   });
 
@@ -1232,9 +918,9 @@ describe('ControlDetail', () => {
       />,
     );
 
-    expect(screen.getByRole('heading', { name: 'Wird referenziert von', level: 4 })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Verknüpft', level: 4 })).toBeInTheDocument();
     const reverseLinkButton = screen.getByRole('button', {
-      name: /GC\.2\.1 Voraussetzung \(erforderlich · benutzerdefinierte OSCAL-Relation\)/,
+      name: /GC\.2\.1 Voraussetzung \(Erfordert\)/,
     });
     expect(reverseLinkButton).toBeInTheDocument();
 
@@ -1272,26 +958,22 @@ describe('ControlDetail', () => {
       />,
     );
 
-    const dependenciesSection = screen.getByRole('heading', { name: 'Abhängigkeiten', level: 3 })
+    const dependenciesSection = screen.getByRole('heading', { name: 'Verknüpft', level: 4 })
       .parentElement as HTMLElement;
-    const incomingSection = within(dependenciesSection).getByRole('heading', {
-      name: 'Wird referenziert von',
-      level: 4,
-    }).parentElement as HTMLElement;
 
     expect(
       screen.getByRole('button', {
-        name: /GC\.2\.3 Gegenseitige Kontrolle \(erforderlich · benutzerdefinierte OSCAL-Relation\)/,
+        name: /GC\.2\.3 Gegenseitige Kontrolle \(Erfordert\)/,
       }),
     ).toBeInTheDocument();
     expect(
-      within(incomingSection).queryByRole('button', {
+      within(dependenciesSection).getAllByRole('button', {
         name: /GC\.2\.3 Gegenseitige Kontrolle/,
       }),
-    ).not.toBeInTheDocument();
+    ).toHaveLength(1);
     expect(
-      within(incomingSection).getByRole('button', {
-        name: /GC\.2\.1 Nur eingehende Kontrolle \(verwandt · benutzerdefinierte OSCAL-Relation\)/,
+      within(dependenciesSection).getByRole('button', {
+        name: /GC\.2\.1 Nur eingehende Kontrolle \(Verwandt\)/,
       }),
     ).toBeInTheDocument();
   });
@@ -1322,15 +1004,12 @@ describe('ControlDetail', () => {
       />,
     );
 
-    const outgoingButton = screen.getByRole('button', {
-      name: /GC\.2\.3 Gegenseitige Kontrolle \(erforderlich · benutzerdefinierte OSCAL-Relation · ↔ verwandt · benutzerdefinierte OSCAL-Relation\)/,
-    });
-
-    expect(outgoingButton).toBeInTheDocument();
-    expect(screen.getByText(
-      'Erforderlich · benutzerdefinierte OSCAL-Relation · ↔ verwandt · benutzerdefinierte OSCAL-Relation',
-    )).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Wird referenziert von', level: 4 })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', {
+      name: /GC\.2\.3 Gegenseitige Kontrolle \(Erfordert\)/,
+    })).toBeInTheDocument();
+    expect(screen.getByText('GC.2.3 verweist hierauf als „Erfordert"')).toBeInTheDocument();
+    expect(screen.getByText('GC.2.3 verweist hierauf als „Verwandt"')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Wird referenziert von' })).not.toBeInTheDocument();
   });
 
   it('omits the reverse relation marker when reciprocal links use the same relation', () => {
@@ -1357,13 +1036,11 @@ describe('ControlDetail', () => {
       />,
     );
 
-    const outgoingButton = screen.getByRole('button', {
-      name: /GC\.2\.3 Gegenseitige Kontrolle \(erforderlich · benutzerdefinierte OSCAL-Relation\)/,
-    });
-
-    expect(outgoingButton).toBeInTheDocument();
-    expect(within(outgoingButton).queryByText(/↔/)).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Wird referenziert von', level: 4 })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', {
+      name: /GC\.2\.3 Gegenseitige Kontrolle \(Erfordert\)/,
+    })).toBeInTheDocument();
+    expect(screen.getAllByText('GC.2.3 verweist hierauf als „Erfordert"')).toHaveLength(1);
+    expect(screen.queryByRole('heading', { name: 'Wird referenziert von' })).not.toBeInTheDocument();
   });
 
   it('renders parent and child hierarchy links', async () => {
@@ -1394,11 +1071,11 @@ describe('ControlDetail', () => {
       />,
     );
 
-    expect(screen.getByRole('heading', { name: 'Übergeordnete Kontrolle', level: 4 })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /GC\.5 Übergeordnete Kontrolle/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Erweiterungen', level: 4 })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Teil von GC\.5 Übergeordnete Kontrolle/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /GC\.5\.1\.1 Erweiterung/ })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /GC\.5 Übergeordnete Kontrolle/ }));
+    await user.click(screen.getByRole('button', { name: /Teil von GC\.5 Übergeordnete Kontrolle/ }));
     await user.click(screen.getByRole('button', { name: /GC\.5\.1\.1 Erweiterung/ }));
 
     expect(onNavigateToControl).toHaveBeenNthCalledWith(1, parentControl);
@@ -1434,7 +1111,7 @@ describe('ControlDetail', () => {
       />,
     );
 
-    expect(screen.getByText('GC.5')).toBeInTheDocument();
+    expect(screen.getByText('Übergeordnet').nextElementSibling).toHaveTextContent('GC.5');
   });
 
   it('builds absolute control detail links with the configured app base path', () => {
@@ -1461,12 +1138,10 @@ describe('ControlDetail', () => {
     setClipboard(writeText);
 
     render(
-      <MemoryRouter>
-        <ControlDetail
+      <ControlDetail
           control={makeControl({ id: 'DET.5.4', altIdentifier: 'stable-det-5-4' })}
           onClose={vi.fn()}
-        />
-      </MemoryRouter>,
+        />,
     );
 
     await user.click(screen.getByRole('button', { name: 'Link kopieren' }));
@@ -1481,12 +1156,10 @@ describe('ControlDetail', () => {
     setClipboard(vi.fn().mockRejectedValue(new Error('Browser detail')));
 
     render(
-      <MemoryRouter>
-        <ControlDetail
+      <ControlDetail
           control={makeControl({ id: 'DET.5.4', altIdentifier: 'stable-det-5-4' })}
           onClose={vi.fn()}
-        />
-      </MemoryRouter>,
+        />,
     );
 
     await user.click(screen.getByRole('button', { name: 'Link kopieren' }));
@@ -1507,12 +1180,10 @@ describe('ControlDetail', () => {
     setClipboard(writeText);
 
     render(
-      <MemoryRouter>
-        <ControlDetail
+      <ControlDetail
           control={makeControl({ id: 'DET.5.4', altIdentifier: 'stable-det-5-4' })}
           onClose={vi.fn()}
-        />
-      </MemoryRouter>,
+        />,
     );
 
     await user.click(screen.getByRole('button', { name: 'Link kopieren' }));
@@ -1540,12 +1211,10 @@ describe('ControlDetail', () => {
     setClipboard(writeText);
 
     render(
-      <MemoryRouter>
-        <ControlDetail
+      <ControlDetail
           control={makeControl({ id: 'DET.5.4', altIdentifier: 'stable-det-5-4' })}
           onClose={vi.fn()}
-        />
-      </MemoryRouter>,
+        />,
     );
 
     await user.click(screen.getByRole('button', { name: 'Link kopieren' }));
@@ -1566,87 +1235,42 @@ describe('ControlDetail', () => {
     expect(screen.getByLabelText('Direktlink zum manuellen Kopieren')).toBe(fallback);
   });
 
-  it('keeps long tags wrap-capable inside outline badges', () => {
+  it('keeps long tags readable as unframed text', () => {
     const longTag = 'Advanced Persistent Threats (APT) mit sehr langen Zusatzbezeichnungen';
-    const control = makeControl({
-      tags: [longTag],
-    });
-
-    render(
-      <ControlDetail
-        control={control}
-        onClose={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByText(longTag)).toHaveClass(
-      'max-w-full',
-      'whitespace-normal',
-      'break-words',
-      'text-left',
-      'leading-snug',
-      '[overflow-wrap:anywhere]',
-    );
+    render(<ControlDetail control={makeControl({ tags: [longTag] })} onClose={vi.fn()} />);
+    const tag = screen.getByText(longTag);
+    expect(tag).toBeInTheDocument();
+    expect(tag.parentElement).toHaveClass('text-sm', 'leading-relaxed');
+    expect(tag).not.toHaveClass('border', 'rounded');
   });
 
-  it('sets aria-expanded and aria-controls on vocabulary trigger buttons', async () => {
+  it('sets aria-expanded and aria-controls on term triggers', async () => {
     const user = userEvent.setup();
     const control = makeControl({
       modalverb: 'MUSS',
-      modalverbProp: {
-        name: 'modal_verb',
-        value: 'MUSS',
-        ns: 'https://example.com/namespaces/modal_verbs.csv',
-      },
       tags: ['Governance'],
-      tagsProp: {
-        name: 'tags',
-        value: 'Governance',
-        ns: 'https://example.com/namespaces/tags.csv',
-      },
+      tagsProp: { name: 'tags', value: 'Governance', ns: 'https://example.com/namespaces/tags.csv' },
       statementProps: {
         ergebnis: 'Verfahren und Regelungen',
-        ergebnisProp: {
-          name: 'result',
-          value: 'Verfahren und Regelungen',
-          ns: 'https://example.com/namespaces/result.csv',
-        },
+        ergebnisProp: { name: 'result', value: 'Verfahren und Regelungen', ns: 'https://example.com/namespaces/result.csv' },
         zielobjektKategorien: [],
       },
     });
-    render(
-      <MemoryRouter>
-        <ControlDetail control={control} onClose={vi.fn()} />
-      </MemoryRouter>,
-    );
-
-    const mustButton = screen.getByRole('button', { name: 'MUSS' });
-    const tagButton = screen.getByRole('button', { name: 'Tag: Governance' });
-    const resultButton = screen.getByRole('button', { name: 'Verfahren und Regelungen' });
-
-    // collapsed: aria-expanded=false, aria-controls points to existing hidden element
-    expect(mustButton).toHaveAttribute('aria-expanded', 'false');
-    expect(mustButton).toHaveAttribute('aria-controls');
-    expect(document.getElementById(mustButton.getAttribute('aria-controls')!)).toBeInTheDocument();
-
-    expect(tagButton).toHaveAttribute('aria-expanded', 'false');
-    expect(tagButton).toHaveAttribute('aria-controls');
-    expect(document.getElementById(tagButton.getAttribute('aria-controls')!)).toBeInTheDocument();
-
-    expect(resultButton).toHaveAttribute('aria-expanded', 'false');
-    expect(resultButton).toHaveAttribute('aria-controls');
-    expect(document.getElementById(resultButton.getAttribute('aria-controls')!)).toBeInTheDocument();
-
-    // expand: aria-expanded=true, target visible
-    await user.click(mustButton);
-    expect(mustButton).toHaveAttribute('aria-expanded', 'true');
-    const mustTarget = document.getElementById(mustButton.getAttribute('aria-controls')!);
-    expect(mustTarget).not.toHaveAttribute('hidden');
-
-    await user.click(tagButton);
-    expect(tagButton).toHaveAttribute('aria-expanded', 'true');
-    const tagTarget = document.getElementById(tagButton.getAttribute('aria-controls')!);
-    expect(tagTarget).not.toHaveAttribute('hidden');
+    render(<ControlDetail control={control} onClose={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: 'MUSS' })).not.toBeInTheDocument();
+    const tag = screen.getByRole('button', { name: 'Tag: Governance' });
+    const result = screen.getByRole('button', { name: 'Vokabularbegriff Verfahren und Regelungen' });
+    for (const trigger of [tag, result]) {
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      expect(trigger).toHaveAttribute('aria-controls');
+    }
+    await user.click(tag);
+    expect(tag).toHaveAttribute('aria-expanded', 'true');
+    expect(document.getElementById(tag.getAttribute('aria-controls')!)).not.toHaveAttribute('hidden');
+    await user.click(result);
+    expect(tag).toHaveAttribute('aria-expanded', 'false');
+    expect(result).toHaveAttribute('aria-expanded', 'true');
+    expect(document.getElementById(result.getAttribute('aria-controls')!)).toBeInTheDocument();
   });
 
   it('sets aria-expanded and aria-controls on the guidance toggle', async () => {

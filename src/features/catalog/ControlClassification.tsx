@@ -1,14 +1,8 @@
 import { EffortBadge, ModalverbBadge, SecurityLevelBadge } from '@/components/StatusMeta';
 import type { Control } from '@/domain/models';
-import type { ResolvedControlVocabularies } from '@/domain/vocabulary';
-import { ControlDetailSection } from './ControlDetailSection';
-import { ControlTaxonomy } from './ControlTaxonomy';
-import {
-  toVocabCardId,
-  type RenderVocabularyCard,
-  VocabularyAffordanceIcon,
-  vocabButtonClass,
-} from './ControlVocabularyPrimitives';
+import type { ResolvedControlVocabularies, VocabularyResolution } from '@/domain/vocabulary';
+import { getVocabularyTermLabel } from '@/features/vocabularies/vocabularyTitle';
+import type { LegendEntry } from './ControlVocabularyPrimitives';
 
 type ClassificationControl = Pick<
   Control,
@@ -26,150 +20,72 @@ type ClassificationVocabularies = Pick<
 
 export interface ControlClassificationProps {
   readonly control: ClassificationControl;
-  readonly resolvedVocabularies: ClassificationVocabularies;
-  readonly isVocabularyActive: (key: string) => boolean;
-  readonly onToggleVocabulary: (key: string) => void;
-  readonly renderVocabularyCard: RenderVocabularyCard;
 }
 
-interface ClassificationVocabularyBadgeProps {
-  readonly vocabKey: 'modalverb' | 'securityLevel' | 'effortLevel';
-  readonly active: boolean;
-  readonly onToggleVocabulary: (key: string) => void;
-  readonly children: React.ReactNode;
-}
-
-function ClassificationVocabularyBadge({
-  vocabKey,
-  active,
-  onToggleVocabulary,
-  children,
-}: ClassificationVocabularyBadgeProps) {
-  return (
-    <button
-      type="button"
-      onClick={() => onToggleVocabulary(vocabKey)}
-      aria-pressed={active}
-      aria-expanded={active}
-      aria-controls={toVocabCardId(vocabKey)}
-      className={vocabButtonClass(active)}
-    >
-      {children}
-    </button>
-  );
-}
-
-export function ControlClassification({
-  control,
-  resolvedVocabularies,
-  isVocabularyActive,
-  onToggleVocabulary,
-  renderVocabularyCard,
-}: ControlClassificationProps) {
-  const hasControllingCriteria = Boolean(
-    control.modalverb || control.securityLevel || control.effortLevel,
-  );
-  const hasTaxonomy = control.tags.length > 0
-    || control.statementProps.zielobjektKategorien.length > 0
-    || control.taxonomy.length > 0;
-
-  if (!hasControllingCriteria && !hasTaxonomy) {
+/**
+ * Legenden-Eintrag für einen vorhandenen Kriterien-Wert (GSPP-303 T6): Das
+ * Merkmal kommt aus `getVocabularyTermLabel`, der Term ist der Vokabeleintrag selbst (`entry.value`, bindende Klärung 1), die Route
+ * seine `routeId`, der Wert URL-kodiert (bindende Klärung 2, Präzedenz
+ * `buildEntryHref`). Ohne Resolution gibt es keinen Eintrag.
+ */
+function toLegendEntry(
+  displayedValue: string | undefined,
+  resolution: VocabularyResolution | null,
+): LegendEntry | null {
+  if (!displayedValue || !resolution) {
     return null;
   }
 
-  const modalverbActive = isVocabularyActive('modalverb');
-  const securityLevelActive = isVocabularyActive('securityLevel');
-  const effortLevelActive = isVocabularyActive('effortLevel');
+  return {
+    category: getVocabularyTermLabel(resolution.namespace.source.fileName),
+    term: resolution.entry.value,
+    definition: resolution.entry.definition ?? '',
+    href: `/vokabular/${resolution.namespace.source.routeId}?wert=${encodeURIComponent(resolution.entry.value)}`,
+  };
+}
+
+/**
+ * Legenden-Einträge der Kriterien. Die Legende steht seit der Umstellung in
+ * der Leiste „Anforderung“ (wie bei „Schutzziele und Gefährdungen“); leere Liste →
+ * keine Legende (bindende Klärung 3: leere Gruppen entfallen).
+ */
+export function buildClassificationLegendEntries(
+  control: ClassificationControl,
+  resolvedVocabularies: ClassificationVocabularies,
+): LegendEntry[] {
+  return [
+    toLegendEntry(control.modalverb, resolvedVocabularies.modalverb),
+    toLegendEntry(control.securityLevel, resolvedVocabularies.securityLevel),
+    toLegendEntry(control.effortLevel, resolvedVocabularies.effortLevel),
+  ].filter((entry): entry is LegendEntry => entry !== null);
+}
+
+export function hasClassificationCriteria(control: ClassificationControl): boolean {
+  return Boolean(control.modalverb || control.securityLevel || control.effortLevel);
+}
+
+/**
+ * Kriterien-Zeile (Modalverb, Niveau, Aufwand) als statische Badges. Steht als
+ * erste Zeile im Block „Anforderung“; die Legende trägt dessen Leiste.
+ */
+export function ControlClassification({ control }: ControlClassificationProps) {
+  if (!hasClassificationCriteria(control)) {
+    return null;
+  }
 
   return (
-    <ControlDetailSection heading="Klassifikation">
-      <div className="space-y-4">
-        {hasControllingCriteria && (
-          <fieldset aria-label="Kriterien" className="min-w-0 space-y-3">
-            <div className="flex flex-wrap gap-2">
-              {control.modalverb && (
-                resolvedVocabularies.modalverb ? (
-                  <ClassificationVocabularyBadge
-                    vocabKey="modalverb"
-                    active={modalverbActive}
-                    onToggleVocabulary={onToggleVocabulary}
-                  >
-                    <ModalverbBadge
-                      value={control.modalverb}
-                      trailingIcon={(
-                        <VocabularyAffordanceIcon active={modalverbActive} placement="badge" />
-                      )}
-                    />
-                  </ClassificationVocabularyBadge>
-                ) : (
-                  <ModalverbBadge value={control.modalverb} />
-                )
-              )}
-              {control.securityLevel && (
-                resolvedVocabularies.securityLevel ? (
-                  <ClassificationVocabularyBadge
-                    vocabKey="securityLevel"
-                    active={securityLevelActive}
-                    onToggleVocabulary={onToggleVocabulary}
-                  >
-                    <SecurityLevelBadge
-                      value={control.securityLevel}
-                      trailingIcon={(
-                        <VocabularyAffordanceIcon active={securityLevelActive} placement="badge" />
-                      )}
-                    />
-                  </ClassificationVocabularyBadge>
-                ) : (
-                  <SecurityLevelBadge value={control.securityLevel} />
-                )
-              )}
-              {control.effortLevel && (
-                resolvedVocabularies.effortLevel ? (
-                  <ClassificationVocabularyBadge
-                    vocabKey="effortLevel"
-                    active={effortLevelActive}
-                    onToggleVocabulary={onToggleVocabulary}
-                  >
-                    <EffortBadge
-                      value={control.effortLevel}
-                      trailingIcon={(
-                        <VocabularyAffordanceIcon active={effortLevelActive} placement="badge" />
-                      )}
-                    />
-                  </ClassificationVocabularyBadge>
-                ) : (
-                  <EffortBadge value={control.effortLevel} />
-                )
-              )}
-            </div>
-
-            {resolvedVocabularies.modalverb && (
-              <div id={toVocabCardId('modalverb')} hidden={!modalverbActive || undefined}>
-                {modalverbActive && renderVocabularyCard(resolvedVocabularies.modalverb)}
-              </div>
-            )}
-            {resolvedVocabularies.securityLevel && (
-              <div id={toVocabCardId('securityLevel')} hidden={!securityLevelActive || undefined}>
-                {securityLevelActive && renderVocabularyCard(resolvedVocabularies.securityLevel)}
-              </div>
-            )}
-            {resolvedVocabularies.effortLevel && (
-              <div id={toVocabCardId('effortLevel')} hidden={!effortLevelActive || undefined}>
-                {effortLevelActive && renderVocabularyCard(resolvedVocabularies.effortLevel)}
-              </div>
-            )}
-          </fieldset>
+    <fieldset aria-label="Kriterien" className="min-w-0">
+      <div className="flex flex-wrap gap-2">
+        {control.modalverb && (
+          <ModalverbBadge value={control.modalverb} />
         )}
-
-        <ControlTaxonomy
-          control={control}
-          resolvedVocabularies={resolvedVocabularies}
-          hasControllingCriteria={hasControllingCriteria}
-          isVocabularyActive={isVocabularyActive}
-          onToggleVocabulary={onToggleVocabulary}
-          renderVocabularyCard={renderVocabularyCard}
-        />
+        {control.securityLevel && (
+          <SecurityLevelBadge value={control.securityLevel} />
+        )}
+        {control.effortLevel && (
+          <EffortBadge value={control.effortLevel} />
+        )}
       </div>
-    </ControlDetailSection>
+    </fieldset>
   );
 }

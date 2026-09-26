@@ -24,6 +24,7 @@ import type { TreeItem } from '@/components/TreeNav';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useDragToResize } from '@/hooks/useDragToResize';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { OWN_SCROLL_AREA_QUERY, useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
 import { CatalogBrowser } from '@/features/catalog/CatalogBrowser';
 import { VocabularyNamespacePage } from '@/features/vocabularies/VocabularyNamespacePage';
 import { isCatalogKey } from '@/domain/sourceRegistry';
@@ -45,8 +46,9 @@ import { STATIC_PAGE_ROUTES } from '@/app/staticPageRoutes';
 /* ------------------------------------------------------------------ */
 
 function PageScroll({ children }: Readonly<{ children: React.ReactNode }>) {
+  const scrollAreaRef = useOverlayScrollbars<HTMLDivElement>(useMediaQuery(OWN_SCROLL_AREA_QUERY));
   return (
-    <div className="flex-1 md:overflow-y-auto pb-safe lg:pb-0">
+    <div ref={scrollAreaRef} className="flex-1 md:overflow-y-auto pb-safe lg:pb-0">
       {children}
     </div>
   );
@@ -102,6 +104,7 @@ export function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
   const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
+  const treeScrollRef = useOverlayScrollbars<HTMLDivElement>();
   const { catalog, activeCatalogKey: selectedCatalogKey, selectCatalog, loading, error } = useCatalog();
 
   // Die Route wählt den Katalog, nicht der Einstieg. Ein Routen-catalogKey darf
@@ -294,7 +297,7 @@ export function AppShell() {
               </div>
 
               {/* TreeNav (mobile: below nav links, desktop: main content) */}
-              <div className="flex-1 overflow-y-auto py-2">
+              <div ref={treeScrollRef} className="flex-1 overflow-y-auto py-2">
                 {loading && (
                   <div className="px-4 py-8 text-center">
                     <div className="inline-block w-5 h-5 border-2 border-slate-300 border-t-primary-main rounded-full animate-spin" />

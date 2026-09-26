@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react';
 import { IconChevronDown, IconChevronRight } from '@/components/icons';
+import { useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
 import { useRowWindow } from '@/hooks/useRowWindow';
 import type { Control } from '@/domain/models';
 import { getControlHierarchyDepth } from '@/domain/controlRelationships';
@@ -359,6 +360,17 @@ export function ControlTable(props: ControlTableProps) {
     fallbackVisibleRowCount: FALLBACK_VISIBLE_ROWS,
     rowIndexAttribute: 'data-row-index',
   });
+  // Ein Element für Zeilenfensterung und überlagernde Scrollleiste: Die
+  // Fensterung misst scrollTop/clientHeight weiter am selben Viewport.
+  const overlayScrollbarsRef = useOverlayScrollbars<HTMLDivElement>();
+  const setScrollElement = useCallback((element: HTMLDivElement | null) => {
+    scrollRef.current = element;
+    const cleanup = overlayScrollbarsRef(element);
+    return () => {
+      scrollRef.current = null;
+      if (typeof cleanup === 'function') cleanup();
+    };
+  }, [overlayScrollbarsRef, scrollRef]);
 
   useLayoutEffect(() => {
     const pendingId = pendingFocusIdRef.current;
@@ -414,7 +426,7 @@ export function ControlTable(props: ControlTableProps) {
 
   return (
     <div
-      ref={scrollRef}
+      ref={setScrollElement}
       onScroll={onScroll}
       className="flex-1 overflow-auto scroll-pt-9 bg-[var(--color-surface-base)]"
     >

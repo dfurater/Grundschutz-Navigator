@@ -283,23 +283,20 @@
   }
 }
 
-/* Custom Scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--color-surface-scrollbar);
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-surface-scrollbar-hover);
+/* Überlagernde Scrollleisten (OverlayScrollbars, `useOverlayScrollbars`):
+   6 px Griff in 10 px Spur, ohne Spurfläche; die Griff-Trefferfläche wächst
+   unsichtbar, damit die schmale Leiste greifbar bleibt. */
+.os-theme-gspp {
+  --os-size: 10px;
+  --os-padding-perpendicular: 2px;
+  --os-padding-axis: 2px;
+  --os-track-border-radius: 9999px;
+  --os-handle-border-radius: 9999px;
+  --os-handle-bg: var(--color-surface-scrollbar);
+  --os-handle-bg-hover: var(--color-surface-scrollbar-hover);
+  --os-handle-bg-active: var(--color-surface-scrollbar-hover);
+  --os-handle-min-size: 33px;
+  --os-handle-interactive-area-offset: 4px;
 }
 
 /* Skip Link (A11y) */

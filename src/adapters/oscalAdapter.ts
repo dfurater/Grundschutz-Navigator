@@ -19,6 +19,7 @@ import type {
   Practice,
   Topic,
   Control,
+  ParamMeta,
   SecurityLevel,
   EffortLevel,
   Modalverb,
@@ -26,6 +27,8 @@ import type {
 } from '@/domain/models';
 import type { CatalogKey } from '@/domain/sourceRegistry';
 import { SECURITY_TARGETS_NAMESPACE_URL } from '@/domain/vocabularyNamespaces';
+
+export type { ParamMeta };
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -173,17 +176,23 @@ export function findPart(
 
 /**
  * Build a parameter map from OSCAL params.
- * Maps param ID -> first value (or label as fallback).
+ * Maps param ID -> ParamMeta (resolved value plus whether a value is set).
  */
 export function buildParamMap(
   params: RawOscalParam[] | undefined,
-): Record<string, string> {
-  const map: Record<string, string> = {};
+): Record<string, ParamMeta> {
+  const map: Record<string, ParamMeta> = {};
   if (!params) return map;
   for (const p of params) {
-    map[p.id] = p.values?.[0] ?? p.label ?? '';
+    const value = p.values?.[0];
+    map[p.id] = { value: value ?? p.label ?? '', hasValue: value !== undefined };
   }
   return map;
+}
+
+/** String-Sicht auf ParamMeta für resolveParams und reine Text-Konsumenten. */
+export function paramValues(paramMap: Record<string, ParamMeta>): Record<string, string> {
+  return Object.fromEntries(Object.entries(paramMap).map(([id, meta]) => [id, meta.value]));
 }
 
 /**
@@ -284,6 +293,7 @@ export function parseControl(
   parentId?: string,
 ): Control {
   const paramMap = buildParamMap(raw.params);
+  const stringParams = paramValues(paramMap);
 
   // Props
   const altIdentifier = getPropValue(raw.props, 'alt-identifier');
@@ -319,22 +329,22 @@ export function parseControl(
   const guidancePart = findPart(raw.parts, 'guidance');
 
   const statementRaw = statementPart?.prose ?? '';
-  const statement = resolveParams(statementRaw, paramMap);
+  const statement = resolveParams(statementRaw, stringParams);
   const guidance = guidancePart?.prose ?? '';
 
   // Statement props
   const modalverbProp = getPropWithMetadata(statementPart?.props, 'modal_verb');
-  const ergebnisProp = getPropWithMetadata(statementPart?.props, 'result', paramMap);
+  const ergebnisProp = getPropWithMetadata(statementPart?.props, 'result', stringParams);
   const praezisierungProp = getPropWithMetadata(
     statementPart?.props,
     'result_specification',
-    paramMap,
+    stringParams,
   );
   const handlungsworteProp = getPropWithMetadata(statementPart?.props, 'action_word');
   const dokumentationProp = getPropWithMetadata(
     statementPart?.props,
     'documentation',
-    paramMap,
+    stringParams,
   );
   const zielobjektKategorienProp = getPropWithMetadata(
     statementPart?.props,
@@ -351,6 +361,7 @@ export function parseControl(
     id: raw.id,
     title: raw.title,
     altIdentifier,
+    controlClass: raw.class,
     parentId,
     groupId,
     practiceId,
