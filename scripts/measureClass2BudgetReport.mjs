@@ -125,11 +125,6 @@ export function parseThrottleRates(value) {
   return rates;
 }
 
-/**
- * Kommandozeile des Messlaufs.
- *
- * @param {string[]} argv Argumente ohne Node- und Skriptpfad.
- */
 export function parseNodeCounts(value) {
   const counts = value.split(',').map((count) => Number.parseInt(count, 10));
   if (counts.length === 0 || counts.some((count) => !Number.isInteger(count) || count < 4)) {
@@ -183,6 +178,11 @@ const CALIBRATION_OPTIONS = Object.freeze({
   throttleRates: [1],
 });
 
+/**
+ * Kommandozeile des Messlaufs.
+ *
+ * @param {string[]} argv Argumente ohne Node- und Skriptpfad.
+ */
 export function parseArguments(argv) {
   const options = {
     throttleRates: [1, 4], repeat: 3, jsonPath: null, scaleNodes: null, skipGlob: false,
@@ -224,16 +224,6 @@ export function median(values) {
   return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
 }
 
-/**
- * Verdichtet die Wiederholungen eines Fixtures.
- *
- * Ausschließlich Zeiten: Der Speicherabdruck wird getrennt und nur einmal
- * erhoben, weil eine Speichermessung rund zehn Sekunden kostet und ihrerseits
- * deterministisch ist — sie hängt an der Datenstruktur, nicht am Lauf. Der
- * Aufrufer legt ihn neben das Ergebnis dieser Verdichtung.
- *
- * @param {object[]} samples Einzelmessungen desselben Fixtures.
- */
 function finiteNonnegative(value) {
   return Number.isFinite(value) && value >= 0;
 }
@@ -262,6 +252,16 @@ function uiBudgetHolds(end) {
     && finiteNonnegative(end.maxMs) && end.maxMs <= IMPORT_WAIT_BUDGET_MS;
 }
 
+/**
+ * Verdichtet die Wiederholungen eines Fixtures.
+ *
+ * Ausschließlich Zeiten: Der Speicherabdruck wird getrennt und nur einmal
+ * erhoben, weil eine Speichermessung rund zehn Sekunden kostet und ihrerseits
+ * deterministisch ist — sie hängt an der Datenstruktur, nicht am Lauf. Der
+ * Aufrufer legt ihn neben das Ergebnis dieser Verdichtung.
+ *
+ * @param {object[]} samples Einzelmessungen desselben Fixtures.
+ */
 export function summarizeSamples(samples) {
   if (samples.length === 0) throw new RangeError('summarizeSamples erwartet Messwerte');
 
@@ -519,25 +519,6 @@ export function seriesIsDocumentCapped(rows) {
   return evaluateWorkUnitSeries(rows).capped;
 }
 
-/**
- * Der fail-closed über ALLE Kategoriereihen getragene Grenzwert: das Minimum
- * der Reihen, die ihre Kategorie überhaupt bis an die Grenze treiben können.
- *
- * Eine einzige Reihe genügt hier nicht. Alle sechs Kategorien verbrauchen
- * denselben Zähler, aber eine Arbeitseinheit kostet je nach Kategorie
- * unterschiedlich viel Zeit; ein Grenzwert auf der Rate der schnellsten
- * Kategorie bricht das Zeitbudget, sobald ein Dokument die langsamste treibt.
- *
- * Eine gedeckelte Reihe wird NICHT vorab ausgenommen, sondern erst, wenn ihr
- * Deckel nachweislich unter dem gewählten Grenzwert liegt. Nur dann ist die
- * Aussage „diese Kategorie erreicht die Grenze nie" wirklich belegt. Liegt
- * ihr Deckel darüber, geht sie mit ihrem gemessenen Wert ins Minimum ein wie
- * jede andere Reihe: Zwischen ihrem letzten gemessenen Stützpunkt und ihrem
- * Deckel ist nichts gemessen, und ungemessene Strecke trägt keinen Grenzwert.
- * Weil das Minimum dabei sinken kann, wird bis zum Festpunkt iteriert.
- *
- * @param {object[]} series Kategoriereihen eines Laufs.
- */
 function limitFromUncappedSeries(evaluated) {
   let limit = null;
   for (const entry of evaluated) {
@@ -566,6 +547,25 @@ function lowerByReachableCaps(evaluated, limit) {
   return lowered;
 }
 
+/**
+ * Der fail-closed über ALLE Kategoriereihen getragene Grenzwert: das Minimum
+ * der Reihen, die ihre Kategorie überhaupt bis an die Grenze treiben können.
+ *
+ * Eine einzige Reihe genügt hier nicht. Alle sechs Kategorien verbrauchen
+ * denselben Zähler, aber eine Arbeitseinheit kostet je nach Kategorie
+ * unterschiedlich viel Zeit; ein Grenzwert auf der Rate der schnellsten
+ * Kategorie bricht das Zeitbudget, sobald ein Dokument die langsamste treibt.
+ *
+ * Eine gedeckelte Reihe wird NICHT vorab ausgenommen, sondern erst, wenn ihr
+ * Deckel nachweislich unter dem gewählten Grenzwert liegt. Nur dann ist die
+ * Aussage „diese Kategorie erreicht die Grenze nie" wirklich belegt. Liegt
+ * ihr Deckel darüber, geht sie mit ihrem gemessenen Wert ins Minimum ein wie
+ * jede andere Reihe: Zwischen ihrem letzten gemessenen Stützpunkt und ihrem
+ * Deckel ist nichts gemessen, und ungemessene Strecke trägt keinen Grenzwert.
+ * Weil das Minimum dabei sinken kann, wird bis zum Festpunkt iteriert.
+ *
+ * @param {object[]} series Kategoriereihen eines Laufs.
+ */
 export function deriveWorkUnitLimit(series) {
   if (!Array.isArray(series) || series.length === 0) return null;
   const evaluated = series.map((entry) => evaluateWorkUnitSeries(entry.rows));
@@ -811,6 +811,16 @@ function renderRun(run) {
   ];
 }
 
+/** Messwegprovenienz mit gültigem Hash und benanntem Verfahren, vorher wie nachher gleich. */
+function hasStableWorkLimitProvenance(before, after) {
+  const recorded = before.workLimitProvenance;
+  return /^[a-f0-9]{64}$/.test(recorded?.sha256 ?? '')
+    && recorded.sha256 === after.workLimitProvenance?.sha256
+    && typeof recorded.method === 'string'
+    && recorded.method !== ''
+    && recorded.method === after.workLimitProvenance.method;
+}
+
 /**
  * Rendert den Bericht als Markdown, damit er unverändert in
  * `docs/OSCAL_VALIDATION.md` übernommen werden kann.
@@ -826,18 +836,19 @@ export function renderReport(report) {
     || before.sha256 !== after.sha256 || before.commit !== after.commit || before.files !== after.files) {
     throw new Error('Fehlender oder geänderter Quellfingerprint: Messlauf belegt keinen stabilen Stand');
   }
-  // Derselbe Anspruch für die ENGE Hülle des gemessenen Laufs — aber nur, wenn
+  // Derselbe Anspruch für die Messwegprovenienz, also die ENGE Hülle des
+  // gemessenen Laufs samt der Fixture seiner Eingaben — aber nur, wenn
   // überhaupt eine Arbeitsgrenze gemessen wurde: Änderte sich der
   // Auflösungspfad während der Messung, gehören die Stützpunkte zu zwei
   // verschiedenen Ständen und tragen zusammen keinen Grenzwert. Ein Lauf ohne
   // Arbeitsreihen (Transport, Speicher) führt diesen Pfad nicht aus und
-  // braucht die Angabe deshalb nicht.
+  // braucht die Angabe deshalb nicht. Das Verfahren der Hülle muss benannt und
+  // vorher wie nachher dasselbe sein: Zwei Hashes nach verschiedenen Hüllen
+  // sind nicht vergleichbar, auch wenn sie zufällig gleich lauteten.
   const measuresWorkLimit = report.runs.some(
     (run) => Array.isArray(run.profileResolution) && run.profileResolution.length > 0,
   );
-  if (measuresWorkLimit
-    && (!/^[a-f0-9]{64}$/.test(before.workLimitProvenance?.sha256 ?? '')
-      || before.workLimitProvenance.sha256 !== after.workLimitProvenance?.sha256)) {
+  if (measuresWorkLimit && !hasStableWorkLimitProvenance(before, after)) {
     throw new Error('Fehlende oder geänderte Messwegprovenienz: Messlauf belegt keinen stabilen Auflösungspfad');
   }
   return [

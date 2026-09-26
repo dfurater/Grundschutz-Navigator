@@ -54,3 +54,15 @@ export interface OscalDocumentContext {
 export interface CatalogDocumentContext extends OscalDocumentContext {
   catalogKey: CatalogKey;
 }
+
+/**
+ * Ob ein führendes kleines `v` in `metadata.oscal-version` die Schemazelle
+ * binden darf (GSPP-357). Positivdefinition: nur Klasse 2. Ein Klasse-1-
+ * Artefakt muss seine Version exakt so deklarieren, wie Quellregister und
+ * Matrix sie führen — auch im Browser und auch unverifiziert, weil ein
+ * abweichender Hash die Nutzung nicht verhindert. Sonst würde ein
+ * Formatwechsel beim BSI dort still übernommen, wo der Fetch ihn ablehnt.
+ */
+export function acceptsOscalVersionPrefix(context: Pick<OscalDocumentContext, 'trustClass'>): boolean {
+  return context.trustClass === 'class-2-local-user';
+}

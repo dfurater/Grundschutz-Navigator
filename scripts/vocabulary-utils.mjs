@@ -42,6 +42,9 @@ function trimTrailingDashes(value) {
   return value.slice(0, end);
 }
 
+// Verschiedene Dateinamen können auf dieselbe routeId fallen (`a_b.csv`,
+// `a-b.csv`). Fetch und Build prüfen das nicht; erst buildVocabularyRegistry in
+// src/domain/vocabulary.ts wirft zur Laufzeit.
 export function deriveRouteId(path) {
   const withoutLeadingSeparators = path
     .replace(/\.[^.]+$/, '')
@@ -63,6 +66,9 @@ export function namespaceUrlToRepoPath(namespaceUrl, repository) {
   }
 
   const segments = parsedUrl.pathname.split('/').filter(Boolean);
+  // `tree/main` ist die Form, in der die BSI-Kataloge ihre `ns`-Werte
+  // schreiben — ein Bezeichner, keine Leseref. Gelesen wird immer am gepinnten
+  // Snapshot über die Git-Blob-SHA.
   if (
     parsedUrl.hostname !== 'github.com' ||
     parsedUrl.protocol !== 'https:' ||
@@ -169,6 +175,8 @@ export function materializeVocabularyCollectionMembers({
   }
 
   const repo = toRepositoryParts(repository);
+  // Pfadsortiert: catalog-sync-guard.mjs vergleicht diese Reihenfolge
+  // reihenfolgesensitiv gegen das kanonisch sortierte Manifest.
   const members = treeFiles
     .filter((file) => matchesVocabularyCollection(collection, file.path))
     .sort((left, right) => compareStringsByCodeUnit(left.path, right.path));
