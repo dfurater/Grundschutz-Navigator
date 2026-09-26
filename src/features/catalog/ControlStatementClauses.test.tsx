@@ -164,5 +164,22 @@ describe('ControlStatement Satzteile und Restdetails (GSPP-303 Review)', () => {
     fireEvent.focus(clause);
     expect(scope.getByRole('tooltip', { name: 'Präzisierung' })).toBeInTheDocument();
   });
+
+  it('Antippen des Satzteils nach fokussiertem Platzhalter öffnet keine Beschriftung', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <ControlStatement statement="Fallback" segments={plainSegmentsProps(GROUPED_INPUT)} />
+      </MemoryRouter>,
+    );
+    const scope = within(container);
+    const placeholder = scope.getByText('Kriterien').closest('button') as HTMLElement;
+    const clause = container.querySelector('section p [tabindex="0"]') as HTMLElement;
+    fireEvent.focus(placeholder);
+
+    fireEvent.pointerDown(clause, { pointerType: 'touch' });
+    fireEvent.blur(placeholder);
+    fireEvent.focus(clause);
+    expect(scope.queryByRole('tooltip', { name: 'Präzisierung' })).toBeNull();
+  });
 });
 

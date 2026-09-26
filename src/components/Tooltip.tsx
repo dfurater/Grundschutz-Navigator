@@ -200,9 +200,9 @@ export function Tooltip({
   // `data-tooltip-root`; der nächstgelegene Bereich entscheidet.
   const isForeignTarget = (event: SyntheticEvent<HTMLSpanElement>): boolean => {
     const root = event.target instanceof Element
-      ? event.target.closest('[data-tooltip-root]')
+      ? event.target.closest<HTMLElement>('[data-tooltip-root]')
       : null;
-    return root !== null && root.getAttribute('data-tooltip-root') !== id;
+    return root !== null && root.dataset.tooltipRoot !== id;
   };
   const handlePointerOver = (event: SyntheticEvent<HTMLSpanElement>) => {
     if (isForeignTarget(event)) {
@@ -232,7 +232,12 @@ export function Tooltip({
       setOpen(true);
     }
   };
-  const handleBlur = () => {
+  const handleBlur = (event: SyntheticEvent<HTMLSpanElement>) => {
+    // Blur eines verschachtelten Ziels (z. B. Platzhalter) darf die
+    // Touch-Markierung für den folgenden Fokus dieses Ziels nicht löschen.
+    if (isForeignTarget(event)) {
+      return;
+    }
     touchFocusRef.current = false;
     closeTooltip();
   };

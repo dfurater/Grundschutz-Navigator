@@ -109,9 +109,8 @@ function buildAtoms(
     });
     resolved += text;
   };
-  const placeholderRe = new RegExp(PLACEHOLDER_PATTERN, 'g');
   let rawCursor = 0;
-  for (const match of statementRaw.matchAll(placeholderRe)) {
+  for (const match of statementRaw.matchAll(new RegExp(PLACEHOLDER_PATTERN, 'g'))) {
     if (match.index > rawCursor) {
       appendText(statementRaw.slice(rawCursor, match.index));
     }
@@ -231,9 +230,9 @@ function isClauseRange(range: Range): range is Range & { role: SentenceClauseRol
 }
 
 /**
- * Satzteil eines Platzhalters. Überlappt der Wert mehrere Satzteile, bekommt
- * er keinen; Satzteile, die ganz im Wert liegen, gelten dann als fehlend,
- * damit ihre Restzeile erscheint.
+ * Satzteil eines Platzhalters: nur, wenn der Wert ganz in einem Satzteil
+ * liegt. Sonst bekommt er keinen; Satzteile, die ganz im Wert liegen, gelten
+ * dann als fehlend, damit ihre Restzeile erscheint.
  */
 function clauseRoleAt(
   ranges: readonly Range[],
@@ -245,8 +244,11 @@ function clauseRoleAt(
       && range.start < atom.resolvedEnd
       && atom.resolvedStart < range.end,
   );
-  if (overlapping.length === 1) {
-    return overlapping[0].role as SentenceClauseRole;
+  const containing = overlapping.find(
+    (range) => range.start <= atom.resolvedStart && atom.resolvedEnd <= range.end,
+  );
+  if (containing !== undefined) {
+    return containing.role as SentenceClauseRole;
   }
   for (const range of overlapping) {
     if (atom.resolvedStart <= range.start && range.end <= atom.resolvedEnd) {
