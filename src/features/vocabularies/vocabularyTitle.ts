@@ -55,6 +55,13 @@ const vocabularyTermLabels: Readonly<Record<string, string>> = {
   'topics.csv': 'Thema',
 };
 
+/**
+ * Neutrales deutsches Merkmal für nicht kuratierte Dateien. Das Register nimmt
+ * jede CSV aus `documentation/namespaces` auf; ein aus dem Dateinamen
+ * gebildeter Titel wie „Custom Security Topic“ wäre ein englisches Label.
+ */
+const UNCURATED_TERM_LABEL = 'Begriff';
+
 export function getVocabularyTermLabel(fileName: string): string {
-  return vocabularyTermLabels[fileName] ?? getVocabularyTitle(fileName);
+  return vocabularyTermLabels[fileName] ?? UNCURATED_TERM_LABEL;
 }

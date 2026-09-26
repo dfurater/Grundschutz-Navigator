@@ -306,6 +306,10 @@ describe('resolveParams', () => {
     expect(result).toBe('[unknown-prm]');
   });
 
+  it('treats inherited object keys such as toString as unknown params', () => {
+    expect(resolveParams('A {{ insert: param, toString }} B', {})).toBe('A [toString] B');
+  });
+
   it('handles varying whitespace in template', () => {
     const result = resolveParams(
       '{{insert:param,tight}}',
