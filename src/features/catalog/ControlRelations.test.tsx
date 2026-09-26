@@ -5,6 +5,7 @@ import type { ReactElement } from 'react';
 import { describe, expect, it } from 'vitest';
 import type { Control, ControlLink } from '@/domain/models';
 import type { IncomingControlLink } from '@/domain/controlRelationships';
+import { classifyCatalogLinkRelation } from '@/domain/referenceResolution';
 import {
   buildIncomingEverydayLabel,
   buildLinkLegendEntries,
@@ -148,11 +149,20 @@ describe('Zusammenhänge-Legende', () => {
     ]);
 
     expect(legendScope.queryAllByRole('link')).toHaveLength(0);
+    // Der Herkunftshinweis nennt nur Labels, die in der Ansicht stehen, keine
+    // früheren Zeilenmarker wie „… · OSCAL-dokumentiert“.
     expect(legend?.textContent).toContain(
-      'Ob die Relationsangabe im OSCAL-Katalog dokumentiert ist '
-      + '(… · OSCAL-dokumentiert), nur benutzerdefiniert vorliegt '
-      + '(… · benutzerdefinierte OSCAL-Relation) oder fehlt (ohne Relationsangabe).',
+      'Nur „Referenz“ (OSCAL-rel „reference“) ist im OSCAL-Katalogmodell dokumentiert. '
+      + '„Verwandt“, „Erfordert“ und jede „Benutzerdefinierte Relation“ sind benutzerdefinierte '
+      + 'OSCAL-Relationen; „Ohne Relationsangabe“ steht bei Links ohne rel.',
     );
+    expect(legend?.textContent).not.toContain('· OSCAL-dokumentiert');
+    // Der Hinweis folgt der Klassifikation des Katalogs.
+    expect(classifyCatalogLinkRelation('reference')).toBe('documented');
+    expect(classifyCatalogLinkRelation('related')).toBe('custom');
+    expect(classifyCatalogLinkRelation('required')).toBe('custom');
+    expect(classifyCatalogLinkRelation('incorporated-into')).toBe('custom');
+    expect(classifyCatalogLinkRelation(undefined)).toBe('missing');
 
     // Builder-Konsistenz: statisch, vier disjunkte Entries
     const entries = buildLinkLegendEntries();

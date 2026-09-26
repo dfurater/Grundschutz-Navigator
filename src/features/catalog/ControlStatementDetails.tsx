@@ -55,8 +55,10 @@ export function ControlStatementDetails({
                   label={detail.value} ariaLabel={`Vokabularbegriff ${detail.value}`} />
               )}
             </div>
-            {active && detail.resolution !== null && (
-              <div id={toVocabCardId(detail.key)}>{renderVocabularyCard(detail.resolution)}</div>
+            {detail.resolution !== null && (
+              <div id={toVocabCardId(detail.key)} hidden={!active || undefined}>
+                {active && renderVocabularyCard(detail.resolution)}
+              </div>
             )}
           </div>
         );

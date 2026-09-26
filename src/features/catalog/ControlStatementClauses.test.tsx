@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router';
 import type { SegmentStatementInput } from '@/domain/statementSegments';
 import { ControlStatement, PLACEHOLDER_TOGGLETIP, type ControlStatementSegmentsProps } from './ControlStatement';
+import { ControlStatementDetails } from './ControlStatementDetails';
 
 function plainSegmentsProps(input: SegmentStatementInput): ControlStatementSegmentsProps {
   return {
@@ -43,6 +44,77 @@ describe('ControlStatement Satzteile und Restdetails (GSPP-303 Review)', () => {
     expect(
       scope.getByRole('tooltip', { name: `Präzisierung${PLACEHOLDER_TOGGLETIP}` }),
     ).toBeInTheDocument();
+  });
+
+  it('Parameterwert als ganzes Ergebnis wird mit Vokabeleintrag zum Begriffs-Trigger', () => {
+    const input: SegmentStatementInput = {
+      statementRaw: 'Die Institution muss {{ insert: param, ziel }} festlegen.',
+      params: { ziel: { value: 'Sicherheitsziele', hasValue: true } },
+      modalverb: 'muss',
+      ergebnis: 'Sicherheitsziele',
+    };
+    const onToggleVocabulary = vi.fn();
+    const { container } = render(
+      <MemoryRouter>
+        <ControlStatement statement="Fallback" segments={{
+          ...plainSegmentsProps(input),
+          ergebnisResolution: { namespace: {} as never, entry: { value: 'Sicherheitsziele', columns: {} } },
+          isVocabularyActive: (key) => key === 'satz:ergebnis',
+          onToggleVocabulary,
+          renderVocabularyCard: (resolution) => <span>{`Karte:${resolution.entry.value}`}</span>,
+        }} />
+      </MemoryRouter>,
+    );
+    const scope = within(container);
+
+    const trigger = scope.getByRole('button', { name: 'Vokabularbegriff Sicherheitsziele' });
+    expect(trigger).toHaveAttribute('aria-controls', 'vocab-card-satz-ergebnis');
+    // Kein zusätzliches Satzteil-Fokusziel um den Trigger.
+    expect(container.querySelectorAll('section p [tabindex="0"]')).toHaveLength(0);
+    expect(container.querySelector('#vocab-card-satz-ergebnis')?.textContent).toBe('Karte:Sicherheitsziele');
+    fireEvent.click(trigger);
+    expect(onToggleVocabulary).toHaveBeenCalledWith('satz:ergebnis');
+  });
+
+  it('Platzhalter ohne Wert bleibt auch mit Vokabeleintrag des Satzteils Platzhalter', () => {
+    const input: SegmentStatementInput = {
+      statementRaw: 'Die Institution muss {{ insert: param, ziel }} festlegen.',
+      params: { ziel: { value: 'Sicherheitsziele', hasValue: false } },
+      modalverb: 'muss',
+      ergebnis: 'Sicherheitsziele',
+    };
+    const { container } = render(
+      <MemoryRouter>
+        <ControlStatement statement="Fallback" segments={{
+          ...plainSegmentsProps(input),
+          ergebnisResolution: { namespace: {} as never, entry: { value: 'Sicherheitsziele', columns: {} } },
+        }} />
+      </MemoryRouter>,
+    );
+    const scope = within(container);
+
+    expect(scope.queryByRole('button', { name: 'Vokabularbegriff Sicherheitsziele' })).toBeNull();
+    fireEvent.click(scope.getByText('Sicherheitsziele'));
+    expect(scope.getByRole('tooltip', { name: `Ergebnis${PLACEHOLDER_TOGGLETIP}` })).toBeInTheDocument();
+  });
+
+  it('ControlStatementDetails: geschlossene Karte bleibt als aria-controls-Ziel im DOM', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <ControlStatementDetails
+          details={[{ key: 'dokumentation', label: 'Dokumentation', value: 'Protokoll', resolution: { namespace: {} as never, entry: { value: 'Protokoll', columns: {} } } }]}
+          missing={[]}
+          isVocabularyActive={() => false}
+          onToggleVocabulary={() => {}}
+          renderVocabularyCard={() => null}
+        />
+      </MemoryRouter>,
+    );
+
+    const trigger = within(container).getByRole('button', { name: 'Vokabularbegriff Protokoll' });
+    const card = container.querySelector(`#${trigger.getAttribute('aria-controls') ?? ''}`);
+    expect(card).not.toBeNull();
+    expect(card).toHaveAttribute('hidden');
   });
 
   it('zeigt Anforderungsdetails auch ohne Satzprosa', () => {

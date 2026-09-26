@@ -22,7 +22,7 @@ export interface ControlDependenciesProps {
 /**
  * Alltagslabel einer Verknüpfung (GSPP-303 T8): bekannte `rel`-Werte →
  * „Verwandt"/„Erfordert"/„Referenz", sonst `Benutzerdefinierte Relation
- * „<rel>"`. Die Herkunft steht ausschließlich in der Legende.
+ * „<rel>"`. Die Herkunft je Label erklärt die Legende; die Zeile nennt sie nicht.
  */
 const EVERYDAY_RELATION_LABELS: Readonly<Record<string, string>> = {
   related: 'Verwandt',
@@ -59,9 +59,9 @@ export function buildLinkLegendEntries(): LegendEntry[] {
     relationLegendEntry('Referenz', 'Referenz — Alltagslabel für OSCAL-rel „reference".'),
     {
       term: 'Herkunft der Relationsangabe',
-      definition: 'Ob die Relationsangabe im OSCAL-Katalog dokumentiert ist '
-      + '(… · OSCAL-dokumentiert), nur benutzerdefiniert vorliegt '
-      + '(… · benutzerdefinierte OSCAL-Relation) oder fehlt (ohne Relationsangabe).',
+      definition: 'Nur „Referenz“ (OSCAL-rel „reference“) ist im OSCAL-Katalogmodell dokumentiert. '
+      + '„Verwandt“, „Erfordert“ und jede „Benutzerdefinierte Relation“ sind benutzerdefinierte '
+      + 'OSCAL-Relationen; „Ohne Relationsangabe“ steht bei Links ohne rel.',
     },
   ];
 }

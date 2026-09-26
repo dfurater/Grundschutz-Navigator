@@ -105,25 +105,50 @@ type RenderItem =
   | { readonly kind: 'segment'; readonly segment: SentenceSegment; readonly index: number }
   | { readonly kind: 'clause'; readonly role: SentenceClauseRole; readonly members: ReadonlyArray<{ segment: SentenceSegment; index: number }> };
 
-function clauseOf(segment: SentenceSegment, slotByRole: ReadonlyMap<SentenceSegment['role'], SatzSlot>): SentenceClauseRole | undefined {
-  if (segment.role === 'param') {
+interface SatzContext {
+  readonly input: SegmentStatementInput;
+  readonly slotByRole: ReadonlyMap<SentenceSegment['role'], SatzSlot>;
+  /** Satzteile mit mindestens einem eigenen Textstück. */
+  readonly rolesWithText: ReadonlySet<SentenceSegment['role']>;
+}
+
+/**
+ * Rolle, deren Begriffs-Trigger ein Segment trägt. Ein Parameterwert trägt den
+ * Trigger seines Satzteils nur, wenn der Satzteil sonst kein Textstück hat —
+ * sonst wäre die aufgelöste Erklärung weder im Satz noch in einer Restzeile
+ * erreichbar, denn der Satzteil gilt als gefunden. Platzhalter ohne Wert
+ * behalten ihre eigene Erklärung.
+ */
+function termRoleOf(segment: SentenceSegment, context: SatzContext): SentenceSegment['role'] {
+  if (segment.role !== 'param' || segment.partOf === undefined) {
+    return segment.role;
+  }
+  const hasTermSlot = context.slotByRole.get(segment.partOf)?.resolution != null
+    && !context.rolesWithText.has(segment.partOf)
+    && !isPlaceholder(segment, context.input);
+  return hasTermSlot ? segment.partOf : segment.role;
+}
+
+function clauseOf(segment: SentenceSegment, context: SatzContext): SentenceClauseRole | undefined {
+  const role = termRoleOf(segment, context);
+  if (role === 'param') {
     return segment.partOf;
   }
-  if (segment.role !== 'ergebnis' && segment.role !== 'praezisierung') {
+  if (role !== 'ergebnis' && role !== 'praezisierung') {
     return undefined;
   }
   // Mit Vokabeleintrag bleibt der Satzteil ein eigener Begriffs-Trigger.
-  return slotByRole.get(segment.role)?.resolution == null ? segment.role : undefined;
+  return context.slotByRole.get(role)?.resolution == null ? role : undefined;
 }
 
 /** Fasst aufeinanderfolgende Stücke eines Satzteils zu einem Fokusziel zusammen. */
 function groupClauses(
   segments: readonly SentenceSegment[],
-  slotByRole: ReadonlyMap<SentenceSegment['role'], SatzSlot>,
+  context: SatzContext,
 ): RenderItem[] {
   const items: RenderItem[] = [];
   segments.forEach((segment, index) => {
-    const role = clauseOf(segment, slotByRole);
+    const role = clauseOf(segment, context);
     const last = items.at(-1);
     if (role === undefined) {
       items.push({ kind: 'segment', segment, index });
@@ -148,20 +173,20 @@ function renderClauseItem(item: Extract<RenderItem, { kind: 'clause' }>, input: 
 function renderSegment(
   segment: SentenceSegment,
   index: number,
-  input: SegmentStatementInput,
-  slotByRole: ReadonlyMap<SentenceSegment['role'], SatzSlot>,
+  context: SatzContext,
   isVocabularyActive: (key: string) => boolean,
   onToggleVocabulary: (key: string) => void,
 ): ReactNode {
-  const slot = slotByRole.get(segment.role);
+  const role = termRoleOf(segment, context);
+  const slot = context.slotByRole.get(role);
   if (slot?.resolution == null) {
-    return renderPlain(segment, index, input);
+    return renderPlain(segment, index, context.input);
   }
-  const isClause = segment.role === 'ergebnis' || segment.role === 'praezisierung';
+  const isClause = role === 'ergebnis' || role === 'praezisierung';
   return (
     <TermTrigger key={index} vocabKey={slot.key} active={isVocabularyActive(slot.key)} onToggle={onToggleVocabulary}
       label={segment.text} ariaLabel={`Vokabularbegriff ${segment.text}`} inline
-      tooltip={isClause ? CLAUSE_LABEL[segment.role as SentenceClauseRole] : undefined} />
+      tooltip={isClause ? CLAUSE_LABEL[role] : undefined} />
   );
 }
 
@@ -185,21 +210,31 @@ export function ControlStatementSegments({
     { role: 'ergebnis', key: 'satz:ergebnis', resolution: ergebnisResolution },
     { role: 'praezisierung', key: 'satz:praezisierung', resolution: praezisierungResolution },
   ];
-  const slotByRole = new Map(slots.map((slot) => [slot.role, slot]));
-  const activeSlot = slots.find((slot) => slot.resolution !== null && isVocabularyActive(slot.key));
+  const context: SatzContext = {
+    input,
+    slotByRole: new Map(slots.map((slot) => [slot.role, slot])),
+    rolesWithText: new Set(segments.map((segment) => segment.role)),
+  };
 
   return (
     <>
       <p className={detailProseClass}>
-        {groupClauses(segments, slotByRole).map((item) =>
+        {groupClauses(segments, context).map((item) =>
           item.kind === 'clause'
             ? renderClauseItem(item, input)
-            : renderSegment(item.segment, item.index, input, slotByRole, isVocabularyActive, onToggleVocabulary),
+            : renderSegment(item.segment, item.index, context, isVocabularyActive, onToggleVocabulary),
         )}
       </p>
-      {activeSlot?.resolution != null && (
-        <div id={toVocabCardId(activeSlot.key)}>{renderVocabularyCard(activeSlot.resolution)}</div>
-      )}
+      {/* Container bleiben geschlossen im DOM, damit `aria-controls` der Trigger auflöst. */}
+      {slots.map(({ key, resolution }) => {
+        if (resolution === null) return null;
+        const active = isVocabularyActive(key);
+        return (
+          <div key={key} id={toVocabCardId(key)} hidden={!active || undefined}>
+            {active && renderVocabularyCard(resolution)}
+          </div>
+        );
+      })}
     </>
   );
 }
