@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import { MemoryRouter } from 'react-router';
 import type { Control, ControlLink } from '@/domain/models';
 import { ControlDependencies } from './ControlDependencies';
 
@@ -44,15 +45,15 @@ describe('ControlDependencies', () => {
     ];
 
     render(
-      <ControlDependencies
+      <MemoryRouter><ControlDependencies
         links={links}
         controlsById={new Map(targets.map((control) => [control.id, control]))}
-      />,
+      /></MemoryRouter>,
     );
 
-    expect(screen.getByText('Referenz · OSCAL-dokumentiert')).toBeInTheDocument();
-    expect(screen.getByText('Benutzerdefinierte OSCAL-Relation „maps-to“'))
+    expect(screen.getByRole('group', { name: 'Referenz' })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Benutzerdefinierte Relation „maps-to"' }))
       .toBeInTheDocument();
-    expect(screen.getByText('Ohne Relationsangabe')).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Ohne Relationsangabe' })).toBeInTheDocument();
   });
 });

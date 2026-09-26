@@ -1,18 +1,17 @@
 import type { Control } from '@/domain/models';
 import type { ResolvedControlVocabularies } from '@/domain/vocabulary';
-import { ControlDetailSection } from './ControlDetailSection';
 import {
   ControlSecurityTargets,
   type SecurityTargetRow,
 } from './ControlSecurityTargets';
 import {
+  detailListClass,
   findResolutionByValue,
-  leadingAffordanceIndentClass,
-  leadingTriggerClass,
-  type RenderVocabularyCard,
+  rowTouchTargetClass,
   SubSectionHeading,
+  TermTrigger,
   toVocabCardId,
-  VocabularyAffordanceIcon,
+  type RenderVocabularyCard,
 } from './ControlVocabularyPrimitives';
 import { compareGermanText } from '@/domain/germanCollation';
 
@@ -42,9 +41,10 @@ export interface ControlSecurityContextProps {
   readonly renderVocabularyCard: RenderVocabularyCard;
 }
 
-interface ThreatItem {
+export interface ThreatItem {
   threat: string;
   displayName: string;
+  accessibleName: string;
   vocabKey: string;
   resolution: ReturnType<typeof findResolutionByValue>;
   showsTerm: boolean;
@@ -90,10 +90,12 @@ function buildSecurityTargetRows(
 }
 
 /**
- * Anzeigename `Begriff (ID)` laut GSPP-302; ohne auflösbaren Begriff bleibt es bei
- * der reinen ID. Der Vokabular-Key behält den Index aus der Prop-Reihenfolge,
- * damit die alphabetische Sortierung den aufgeklappten Zustand nicht verschiebt
- * und doppelte Werte unterscheidbar bleiben.
+ * Anzeigename: NUR der Begriff (GSPP-303 T7); die Kennung steht in
+ * `accessibleName`, in der aufgeklappten Karte und im Hover-Tooltip. Ohne
+ * auflösbaren Begriff bleibt es bei der reinen ID. Der Vokabular-Key behält
+ * den Index aus der Prop-Reihenfolge, damit die alphabetische Sortierung den
+ * aufgeklappten Zustand nicht verschiebt und doppelte Werte unterscheidbar
+ * bleiben.
  */
 function buildThreatItems(
   threats: readonly string[],
@@ -107,7 +109,8 @@ function buildThreatItems(
 
       return {
         threat,
-        displayName: showsTerm ? `${term} (${threat})` : threat,
+        displayName: showsTerm && term ? term : threat,
+        accessibleName: showsTerm && term ? `${term} (${threat})` : threat,
         vocabKey: `threat:${threat}:${index}`,
         resolution,
         showsTerm,
@@ -135,67 +138,67 @@ export function ControlSecurityContext({
     return null;
   }
 
+  // GSPP-303 T9: hüllenlos (Teil von „Schutzziele und Gefährdungen“ ohne eigene Überschrift).
   return (
-    <ControlDetailSection heading="Schutzziele und Gefährdungen">
-      <div className="space-y-4">
-        {securityTargets.length > 0 && (
-          <ControlSecurityTargets
-            securityTargets={securityTargets}
-            isVocabularyActive={isVocabularyActive}
-            onToggleVocabulary={onToggleVocabulary}
-            renderVocabularyCard={renderVocabularyCard}
-          />
-        )}
+    <div className="space-y-3">
+      {securityTargets.length > 0 && (
+        <ControlSecurityTargets
+          securityTargets={securityTargets}
+          isVocabularyActive={isVocabularyActive}
+          onToggleVocabulary={onToggleVocabulary}
+          renderVocabularyCard={renderVocabularyCard}
+        />
+      )}
 
-        {threatItems.length > 0 && (
-          <div>
-            <SubSectionHeading>Elementare Gefährdungen</SubSectionHeading>
-            <div className="space-y-2">
-              {threatItems.map(({
-                threat,
-                displayName,
-                vocabKey,
-                resolution,
-                showsTerm,
-              }) => {
-                const active = isVocabularyActive(vocabKey);
+      {threatItems.length > 0 && (
+        <div>
+          <SubSectionHeading>Gefährdungen</SubSectionHeading>
+          {/* Echte Liste mit dezentem Aufzählungszeichen (Owner-Wunsch 26.09.2026). */}
+          {/*
+            Feste Zeilenhöhe bei jeder Breite wie im Schutzziel-Raster: Touch-Fläche
+            über ein Pseudo-Element statt `min-h-11`, das am Breakpoint sprang
+            (Owner 26.09.2026). Benachbarte Flächen überlappen dabei um 6 px.
+          */}
+          <ul className={detailListClass}>
+            {threatItems.map(({
+              threat,
+              displayName,
+              accessibleName,
+              vocabKey,
+              resolution,
+              showsTerm,
+            }) => {
+              const active = isVocabularyActive(vocabKey);
 
-                return resolution ? (
-                  <div key={vocabKey}>
-                    <button
-                      type="button"
-                      onClick={() => onToggleVocabulary(vocabKey)}
-                      aria-label={`Elementare Gefährdung: ${displayName}`}
-                      aria-pressed={active}
-                      aria-expanded={active}
-                      aria-controls={toVocabCardId(vocabKey)}
-                      className={leadingTriggerClass(active)}
-                    >
-                      <VocabularyAffordanceIcon active={active} placement="leading" />
-                      <span className="min-w-0 flex-1">{displayName}</span>
-                    </button>
-                    <div
-                      id={toVocabCardId(vocabKey)}
-                      hidden={!active || undefined}
-                    >
-                      {active && renderVocabularyCard(resolution, {
-                        hiddenColumns: showsTerm ? ['Begriff'] : [],
-                      })}
-                    </div>
-                  </div>
-                ) : (
-                  <p
-                    key={vocabKey}
-                    className={`text-sm leading-relaxed text-slate-700 ${leadingAffordanceIndentClass}`}
+              return resolution ? (
+                <li key={vocabKey}>
+                  <TermTrigger
+                    vocabKey={vocabKey}
+                    active={active}
+                    onToggle={onToggleVocabulary}
+                    label={displayName}
+                    ariaLabel={`Elementare Gefährdung: ${accessibleName}`}
+                    tooltip={threat}
+                    className={`inline-flex min-h-6 max-w-full items-center text-left [overflow-wrap:anywhere] ${rowTouchTargetClass}`}
+                  />
+                  <div
+                    id={toVocabCardId(vocabKey)}
+                    hidden={!active || undefined}
                   >
-                    {threat}
-                  </p>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-    </ControlDetailSection>
+                    {active && renderVocabularyCard(resolution, {
+                      hiddenColumns: showsTerm ? ['Begriff'] : [],
+                    })}
+                  </div>
+                </li>
+              ) : (
+                <li key={vocabKey}>
+                  {threat}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
