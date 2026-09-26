@@ -18,6 +18,6 @@ export function isPlaceholderNamespace(ns: string | undefined): boolean {
   } catch {
     return false;
   }
-  const lastSegment = url.pathname.split('/').filter(Boolean).at(-1);
+  const lastSegment = url.pathname.split('/').findLast(Boolean);
   return lastSegment?.toLowerCase() === 'placeholder';
 }

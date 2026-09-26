@@ -43,7 +43,7 @@ function toRelevanceScaleValue(relevance: string) {
 export function buildRelevanceLegendEntries(
   levelResolutions: ReadonlyArray<VocabularyResolution | null>,
 ): LegendEntry[] {
-  const namespace = levelResolutions.find((resolution) => resolution)?.namespace;
+  const namespace = levelResolutions.find(Boolean)?.namespace;
   if (!namespace) return [];
   return namespace.entries
     .filter((entry) => entry.value === '0' || entry.value === '1' || entry.value === '2')

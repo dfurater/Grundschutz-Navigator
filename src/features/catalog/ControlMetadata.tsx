@@ -3,7 +3,7 @@ import type { Control } from '@/domain/models';
 export interface ControlMetadataProps {
   readonly parentId: Control['parentId'];
   readonly altIdentifier: Control['altIdentifier'];
-  readonly controlClass?: Control['controlClass'];
+  readonly controlClass?: NonNullable<Control['controlClass']>;
   readonly hasResolvedParent: boolean;
 }
 

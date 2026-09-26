@@ -167,7 +167,7 @@ src/                              # Anwendungsquellcode
 │   │   ├── CatalogMobileSelectionBar.tsx # Auswahlleiste (mobil)
 │   │   ├── CatalogTargetNotFound.tsx     # Hinweis auf ein nicht gefundenes Routenziel
 │   │   ├── CatalogToolbar.tsx            # Titel, Trefferzahl und Aktionen
-│   │   ├── ControlClassification.tsx     # Kurzprofil-Badges und Stufenlegende
+│   │   ├── ControlClassification.tsx     # Kriterien-Badges und Legenden-Einträge
 │   │   ├── ControlDependencies.tsx       # Aus- und eingehende Control-Links
 │   │   ├── ControlDetail.tsx             # Detailansicht einer Anforderung
 │   │   ├── ControlDetailSection.tsx      # Abschnittsrahmen der Detailansicht
@@ -182,7 +182,7 @@ src/                              # Anwendungsquellcode
 │   │   ├── ControlStatementDetails.tsx   # Nicht im Satz gefundene Angaben und Dokumentation
 │   │   ├── ControlTable.tsx              # Gefensterte Anforderungstabelle mit Auswahl und Sortierung
 │   │   ├── ControlTaxonomy.tsx           # Zielobjekt- bzw. Tag-Gruppe und WLAN-Taxonomie
-│   │   ├── ControlTaxonomyBreadcrumb.tsx # Taxonomiepfad als Breadcrumb
+│   │   ├── ControlTaxonomyBreadcrumb.tsx # Praktik- und Themenbegriffe im Kopf
 │   │   ├── ControlVocabularyPrimitives.tsx # Gemeinsame Bausteine der Vokabularanzeige
 │   │   ├── FilterPanel.tsx               # Filterpanel
 │   │   └── SecurityTargetFilterSection.tsx # Schutzziel-Facetten im Filterpanel
@@ -558,10 +558,10 @@ Für `src/**` läuft ESLint zusätzlich mit Typinformation (typescript-eslint Pr
 |----------|----------------|
 | `useActiveVocabulary` | Hält höchstens eine Vokabularkarte offen und setzt den Zustand bei Katalog- oder Control-Wechsel synchron zurück. |
 | `useGuidanceOverflow` | Besitzt Expansion, Overflow-Messung, `ResizeObserver`, Window-Fallback und symmetrisches Listener-/Observer-Cleanup. |
-| `ControlClassification` | Rendert die Kriterien-Badges für Modalverb, Sicherheitsniveau und Aufwand im Block „Anforderung“ sowie die Legende vorhandener Stufen. |
+| `ControlClassification` | Rendert die Kriterien-Badges für Modalverb, Sicherheitsniveau und Aufwand im Block „Anforderung“ und liefert Einträge für die dort von `ControlDetailSection` gerenderte Legende. |
 | `ControlTaxonomy` | Rendert je eine beschriftete Gruppe ohne Rahmen oder Symbol: „Zielobjekte“ im Block „Anforderung“, weil das BSI sie im `statement`-Part ablegt, und „Tags“ im Block „Einordnung“, weil sie an der Anforderung selbst hängen; dazu die WLAN-Taxonomie in „Einordnung“ als Tabelle (Stufe links, Wert rechts); die Namensraum-Adresse erscheint nur, wenn sie kein Platzhalter ist (`isPlaceholderNamespace`). |
 | `ControlSecurityContext` | Rendert Schutzziele und elementare Gefährdungen im Block „Schutzziele und Gefährdungen“; der Gefährdungsname öffnet eine Karte mit Kennung. |
-| `ControlSecurityTargets` | Rendert die vier Schutzziele mit Relevanz-Skala: ab 24rem Inhaltsbreite in zwei Spaltenpaaren, darunter in einer Spalte; die Legende zeigt jede Stufe als dieselbe Punkte-Skala. |
+| `ControlSecurityTargets` | Rendert die vier Schutzziele mit Relevanz-Skala: ab 24rem Inhaltsbreite in zwei Spaltenpaaren, darunter in einer Spalte; seine Legenden-Einträge verwenden dieselbe Punkte-Skala. |
 | `ControlStatement` | Rendert den segmentierten Anforderungssatz mit Begriffstriggern und Platzhalter-Erklärungen. |
 | `ControlStatementDetails` | Rendert nicht im Satz gefundene Angaben und die Dokumentation als Zeilen mit Beschriftung darüber. |
 | `ControlGuidance` | Rendert die bei Bedarf aufklappbare Guidance; Messung und State liegen im Hook. |
