@@ -181,6 +181,17 @@ describe('segmentStatement', () => {
     );
   });
 
+  it('behandelt geerbte Objektschlüssel wie toString als unbekannten Parameter', () => {
+    const result = segmentStatement({
+      statementRaw: 'Die Institution muss {{ insert: param, toString }} beachten.',
+      params: {},
+    });
+
+    expect(result.segments.map((segment) => segment.text).join('')).toBe(
+      'Die Institution muss [toString] beachten.',
+    );
+  });
+
   it('verankert Ergebnis, Präzisierung und Modalverb nur an eigenständigen Wörtern', () => {
     const result = segmentStatement({
       statementRaw: 'Die Institution mussmaß Risikoanalyse muss Risiko im Betrieb mindern.',

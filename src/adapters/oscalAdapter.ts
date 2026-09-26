@@ -210,7 +210,8 @@ export function resolveParams(
   const resolved = prose.replace(
     /\{\{\s*insert:\s*param,\s*([^}\s]+)\s*\}\}/g,
     (_match, paramId: string) => {
-      return paramMap[paramId] ?? `[${paramId}]`;
+      // `Object.hasOwn`: `toString` o. ä. fände sonst die geerbte Funktion.
+      return Object.hasOwn(paramMap, paramId) ? paramMap[paramId] : `[${paramId}]`;
     },
   );
   // Strip remaining {{ content }} choice brackets (BSI notation, not OSCAL params).

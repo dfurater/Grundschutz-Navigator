@@ -119,7 +119,9 @@ function buildAtoms(
       appendText(statementRaw.slice(rawCursor, match.index));
     }
     const paramId = match[1];
-    const meta: ParamMeta | undefined = params[paramId];
+    // `Object.hasOwn`: Eine ID wie `toString` faende sonst die geerbte
+    // Funktion des Objektprototyps statt „unbekannt“.
+    const meta: ParamMeta | undefined = Object.hasOwn(params, paramId) ? params[paramId] : undefined;
     // Unbekannte IDs fallen wie in `resolveParams` auf `[id]` zurueck, damit
     // die aneinandergereihten Segmente der aufgeloesten Aussage entsprechen.
     // Auswahlklammern im Wert entfernt der Adapter ebenso (`resolveParams`
