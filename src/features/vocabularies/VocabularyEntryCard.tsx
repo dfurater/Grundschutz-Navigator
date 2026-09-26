@@ -59,6 +59,9 @@ export function VocabularyEntryCard({
 
   return (
     <div className="animate-vocab-card border-t border-slate-100 pt-2.5 space-y-2 text-sm leading-relaxed text-slate-700">
+      {namespace.source.fileName === 'basethreats.csv' && (
+        <p className="text-xs font-semibold text-slate-600">{entry.value}</p>
+      )}
       {entry.definition && (
         <p className="whitespace-pre-line">
           {entry.definition}

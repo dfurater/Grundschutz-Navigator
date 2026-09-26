@@ -1,16 +1,14 @@
-import { Badge } from '@/components/Badge';
-import { IconTag, IconTarget } from '@/components/icons';
+import { Fragment, type ReactNode } from 'react';
 import type { Control } from '@/domain/models';
 import type {
   ResolvedControlVocabularies,
+  VocabularyResolution,
 } from '@/domain/vocabulary';
 import {
   findResolutionByValue,
-  outlineBadgeClass,
+  TermTrigger,
   toVocabCardId,
   type RenderVocabularyCard,
-  VocabularyAffordanceIcon,
-  vocabButtonClass,
 } from './ControlVocabularyPrimitives';
 
 type TaxonomyControl = Pick<Control, 'tags' | 'taxonomy'> & {
@@ -31,168 +29,128 @@ type TaxonomyVocabularies = Pick<ResolvedControlVocabularies, 'tags'> & {
 export interface ControlTaxonomyProps {
   readonly control: TaxonomyControl;
   readonly resolvedVocabularies: TaxonomyVocabularies;
-  readonly hasControllingCriteria: boolean;
+  /** Nur noch für direkte Altnutzer; die neuen Teilkomponenten ignorieren ihn. */
+  readonly hasControllingCriteria?: boolean;
   readonly isVocabularyActive: (key: string) => boolean;
   readonly onToggleVocabulary: (key: string) => void;
   readonly renderVocabularyCard: RenderVocabularyCard;
 }
 
-export function ControlTaxonomy({
+/**
+ * Tags und Zielobjekte als rahmen-/symbolfreie Inline-Trigger (GSPP-303 T7),
+ * getrennt durch „·" (GSPP-303 T9: aus `ControlTaxonomy` ausgelagert, wird in
+ * der Merkmale-Zone gemountet).
+ */
+export function ControlSubjectGroups({
   control,
   resolvedVocabularies,
-  hasControllingCriteria,
   isVocabularyActive,
   onToggleVocabulary,
   renderVocabularyCard,
 }: ControlTaxonomyProps) {
-  const hasTaxonomy = control.tags.length > 0
-    || control.statementProps.zielobjektKategorien.length > 0
-    || control.taxonomy.length > 0;
+  const tagEntries: { key: string; label: string; ariaLabel: string; resolution: VocabularyResolution | null }[] =
+    control.tags.map((tag) => ({
+      key: `tag:${tag}`,
+      label: tag,
+      ariaLabel: `Tag: ${tag}`,
+      resolution: findResolutionByValue(resolvedVocabularies.tags, tag),
+    }));
+  const targetEntries = control.statementProps.zielobjektKategorien.map((kat) => ({
+      key: `zielobjekt:${kat}`,
+      label: kat,
+      ariaLabel: `Zielobjekt: ${kat}`,
+      resolution: findResolutionByValue(
+        resolvedVocabularies.statement.zielobjektKategorien,
+        kat,
+      ),
+    }));
 
-  if (!hasTaxonomy) {
+  const renderEntry = (entry: (typeof tagEntries)[number], index: number): ReactNode => {
+    const active = isVocabularyActive(entry.key);
+
+    return (
+      <Fragment key={entry.key}>
+        {index > 0 && (
+          <span aria-hidden="true" className="mx-1">·</span>
+        )}
+        {entry.resolution ? (
+          <TermTrigger
+            vocabKey={entry.key}
+            active={active}
+            onToggle={onToggleVocabulary}
+            label={entry.label}
+            ariaLabel={entry.ariaLabel}
+          />
+        ) : (
+          <span>{entry.label}</span>
+        )}
+      </Fragment>
+    );
+  };
+
+  if (control.tags.length === 0 && control.statementProps.zielobjektKategorien.length === 0) {
+    return null;
+  }
+
+  const renderGroup = (heading: string, entries: typeof tagEntries) => (
+    <div key={heading}>
+      <h4 className="text-sm font-semibold text-slate-800 mb-2">{heading}</h4>
+      <div className="text-sm leading-relaxed text-slate-700">
+        {entries.map(renderEntry)}
+      </div>
+      {entries.map((entry) => {
+        if (!entry.resolution) return null;
+        const active = isVocabularyActive(entry.key);
+        return (
+          <div key={`${entry.key}-card`} id={toVocabCardId(entry.key)} hidden={!active || undefined}>
+            {active && renderVocabularyCard(entry.resolution)}
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      {tagEntries.length > 0 && renderGroup('Tags', tagEntries)}
+      {targetEntries.length > 0 && renderGroup('Zielobjekte', targetEntries)}
+    </div>
+  );
+}
+
+/** WLAN-Block der Taxonomie (GSPP-303 T9: aus `ControlTaxonomy` ausgelagert). */
+export function ControlWlanTaxonomy({
+  control,
+}: ControlTaxonomyProps) {
+  if (control.taxonomy.length === 0) {
     return null;
   }
 
   return (
-    <fieldset
-      aria-label="Taxonomie"
-      className={`min-w-0 space-y-2 ${hasControllingCriteria ? 'border-t border-[var(--color-border-subtle)] pt-3' : ''}`}
-    >
-      {/* GSPP-140: Zielobjekt-Kategorien bleiben als filterbare Taxonomie in Klassifikation, nicht in Anforderungsdetails. */}
-      {(control.tags.length > 0 || control.statementProps.zielobjektKategorien.length > 0) && (
-        <div>
-          <h4 className="text-sm font-semibold text-slate-800 mb-2">
-            Tags und Zielobjektkategorien
-          </h4>
-          <div className="flex flex-wrap gap-1.5">
-            {control.tags.map((tag) => {
-              const resolution = findResolutionByValue(resolvedVocabularies.tags, tag);
-              const vocabKey = `tag:${tag}`;
-              const active = isVocabularyActive(vocabKey);
-
-              return resolution ? (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() => onToggleVocabulary(vocabKey)}
-                  aria-pressed={active}
-                  aria-expanded={active}
-                  aria-controls={toVocabCardId(vocabKey)}
-                  aria-label={`Tag: ${tag}`}
-                  className={vocabButtonClass(active)}
-                >
-                  <Badge
-                    variant="outline"
-                    className={outlineBadgeClass}
-                    trailingIcon={(
-                      <VocabularyAffordanceIcon active={active} placement="badge" />
-                    )}
-                  >
-                    <IconTag className="w-3 h-3 mr-1 shrink-0" />
-                    {tag}
-                  </Badge>
-                </button>
-              ) : (
-                <Badge key={tag} variant="outline" className={outlineBadgeClass}>
-                  <IconTag className="w-3 h-3 mr-1 shrink-0" />
-                  {tag}
-                </Badge>
-              );
-            })}
-            {control.statementProps.zielobjektKategorien.map((kat) => {
-              const resolution = findResolutionByValue(
-                resolvedVocabularies.statement.zielobjektKategorien,
-                kat,
-              );
-              const vocabKey = `zielobjekt:${kat}`;
-              const active = isVocabularyActive(vocabKey);
-
-              return resolution ? (
-                <button
-                  key={kat}
-                  type="button"
-                  onClick={() => onToggleVocabulary(vocabKey)}
-                  aria-pressed={active}
-                  aria-expanded={active}
-                  aria-controls={toVocabCardId(vocabKey)}
-                  aria-label={`Zielobjekt: ${kat}`}
-                  className={vocabButtonClass(active)}
-                >
-                  <Badge
-                    variant="outline"
-                    className={outlineBadgeClass}
-                    trailingIcon={(
-                      <VocabularyAffordanceIcon active={active} placement="badge" />
-                    )}
-                  >
-                    <IconTarget className="w-3 h-3 mr-1 shrink-0" />
-                    {kat}
-                  </Badge>
-                </button>
-              ) : (
-                <Badge key={kat} variant="outline" className={outlineBadgeClass}>
-                  <IconTarget className="w-3 h-3 mr-1 shrink-0" />
-                  {kat}
-                </Badge>
-              );
-            })}
+    <div aria-label="WLAN-Taxonomie" className="space-y-2">
+      <h4 className="text-sm font-semibold text-slate-800">
+        WLAN-Taxonomie
+      </h4>
+      <dl className="grid gap-2 sm:grid-cols-2">
+        {control.taxonomy.map((prop, index) => (
+          <div
+            key={`${prop.name}:${prop.value}:${prop.ns ?? ''}:${index}`}
+            className="rounded-md border border-[var(--color-border-subtle)] bg-slate-50 px-3 py-2"
+          >
+            <dt className="text-xs font-semibold text-slate-600">
+              {TAXONOMY_LABELS[prop.name] ?? prop.name}
+            </dt>
+            <dd className="mt-0.5 break-words text-sm text-slate-900">
+              {prop.value}
+            </dd>
+            {prop.ns && (
+              <dd className="mt-1 break-all font-mono text-[11px] text-slate-500">
+                {prop.ns}
+              </dd>
+            )}
           </div>
-        </div>
-      )}
-      {control.taxonomy.length > 0 && (
-        <div aria-label="WLAN-Taxonomie" className="space-y-2">
-          <h4 className="text-sm font-semibold text-slate-800">
-            WLAN-Taxonomie
-          </h4>
-          <dl className="grid gap-2 sm:grid-cols-2">
-            {control.taxonomy.map((prop, index) => (
-              <div
-                key={`${prop.name}:${prop.value}:${prop.ns ?? ''}:${index}`}
-                className="rounded-md border border-[var(--color-border-subtle)] bg-slate-50 px-3 py-2"
-              >
-                <dt className="text-xs font-semibold text-slate-600">
-                  {TAXONOMY_LABELS[prop.name] ?? prop.name}
-                </dt>
-                <dd className="mt-0.5 break-words text-sm text-slate-900">
-                  {prop.value}
-                </dd>
-                {prop.ns && (
-                  <dd className="mt-1 break-all font-mono text-[11px] text-slate-500">
-                    {prop.ns}
-                  </dd>
-                )}
-              </div>
-            ))}
-          </dl>
-        </div>
-      )}
-      {control.tags.map((tag) => {
-        const resolution = findResolutionByValue(resolvedVocabularies.tags, tag);
-        if (!resolution) return null;
-        const vocabKey = `tag:${tag}`;
-        const active = isVocabularyActive(vocabKey);
-
-        return (
-          <div key={`tag-card:${tag}`} id={toVocabCardId(vocabKey)} hidden={!active || undefined}>
-            {active && renderVocabularyCard(resolution)}
-          </div>
-        );
-      })}
-      {control.statementProps.zielobjektKategorien.map((kat) => {
-        const resolution = findResolutionByValue(
-          resolvedVocabularies.statement.zielobjektKategorien,
-          kat,
-        );
-        if (!resolution) return null;
-        const vocabKey = `zielobjekt:${kat}`;
-        const active = isVocabularyActive(vocabKey);
-
-        return (
-          <div key={`zielobjekt-card:${kat}`} id={toVocabCardId(vocabKey)} hidden={!active || undefined}>
-            {active && renderVocabularyCard(resolution)}
-          </div>
-        );
-      })}
-    </fieldset>
+        ))}
+      </dl>
+    </div>
   );
 }

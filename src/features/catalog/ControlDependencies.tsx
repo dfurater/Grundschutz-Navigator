@@ -1,12 +1,12 @@
+import type { ReactNode } from 'react';
 import type { Control, ControlLink } from '@/domain/models';
 import {
-  getLinkRelationDescription,
   type IncomingControlLink,
 } from '@/domain/controlRelationships';
-import { ControlDetailSection } from './ControlDetailSection';
 import {
   detailLinkRowClass,
-  SubSectionHeading,
+  SectionLegend,
+  type LegendEntry,
 } from './ControlVocabularyPrimitives';
 
 export interface ControlDependenciesProps {
@@ -16,90 +16,115 @@ export interface ControlDependenciesProps {
   readonly onNavigateToControl?: (control: Control) => void;
 }
 
-function buildIncomingLinksByControlId(
-  incomingLinks: readonly IncomingControlLink[],
-) {
-  const incomingByControlId = new Map<string, IncomingControlLink[]>();
+/**
+ * Alltagslabel einer Verknüpfung (GSPP-303 T8): bekannte `rel`-Werte →
+ * „Verwandt"/„Erfordert"/„Referenz", sonst `Benutzerdefinierte Relation
+ * „<rel>"`. Die Herkunft steht ausschließlich in der Legende.
+ */
+export function everydayRelationLabel(link: ControlLink): string {
+  if (link.relStatus === 'missing') return 'Ohne Relationsangabe';
+  const base = link.rel === 'related' ? 'Verwandt'
+    : link.rel === 'required' ? 'Erfordert'
+    : link.rel === 'reference' ? 'Referenz'
+    : `Benutzerdefinierte Relation „${link.rel ?? ''}"`;
+  return base;
+}
 
+/** Gegenrichtungs-Zeile: „<ID> verweist hierauf als „<label>""". */
+export function buildIncomingEverydayLabel(incoming: IncomingControlLink): string {
+  return `${incoming.control.id} verweist hierauf als „${everydayRelationLabel(incoming.link)}"`;
+}
+
+function legendEntry(term: string, definition: string): LegendEntry {
+  return { term, definition };
+}
+
+/**
+ * Statische Legende (T8): Relationsbedeutung je Alltags-Label plus
+ * Herkunftshinweis aus GSPP-243.
+ * Relationen haben keine Vokabular-Route; die Legende verlinkt sich nicht selbst.
+ */
+export function buildLinkLegendEntries(): LegendEntry[] {
+  return [
+    legendEntry('Verwandt', 'Verwandte Kontrolle — Alltagslabel für OSCAL-rel „related".'),
+    legendEntry('Erfordert', 'Erforderliche Kontrolle — Alltagslabel für OSCAL-rel „required".'),
+    legendEntry('Referenz', 'Referenz — Alltagslabel für OSCAL-rel „reference".'),
+    legendEntry(
+      'Herkunft der Relationsangabe',
+      'Ob die Relationsangabe im OSCAL-Katalog dokumentiert ist '
+      + '(… · OSCAL-dokumentiert), nur benutzerdefiniert vorliegt '
+      + '(… · benutzerdefinierte OSCAL-Relation) oder fehlt (ohne Relationsangabe).',
+    ),
+  ];
+}
+
+function buildIncomingLinksByControlId(incomingLinks: readonly IncomingControlLink[]) {
+  const incomingByControlId = new Map<string, IncomingControlLink[]>();
   for (const incoming of incomingLinks) {
     const existing = incomingByControlId.get(incoming.control.id);
-
-    if (existing) {
-      existing.push(incoming);
-      continue;
-    }
-
-    incomingByControlId.set(incoming.control.id, [incoming]);
+    if (existing) existing.push(incoming);
+    else incomingByControlId.set(incoming.control.id, [incoming]);
   }
-
   return incomingByControlId;
 }
 
-function getOutgoingLinkLabel(
-  link: ControlLink,
-  reverseLinks: readonly IncomingControlLink[] | undefined,
-) {
-  const relationLabel = getLinkRelationDescription(link.rel, link.relStatus);
-
-  if (!reverseLinks?.length) {
-    return relationLabel;
-  }
-
-  const differingReverseLabels = Array.from(
-    new Set(
-      reverseLinks
-        .map((incoming) => incoming.link)
-        .filter((reverseLink) => (
-          reverseLink.rel !== link.rel || reverseLink.relStatus !== link.relStatus
-        ))
-        .map((reverseLink) => getLinkRelationDescription(
-          reverseLink.rel,
-          reverseLink.relStatus,
-        )),
-    ),
-  );
-
-  if (differingReverseLabels.length === 0) {
-    return relationLabel;
-  }
-
-  return `${relationLabel} · ↔ ${differingReverseLabels.join(', ')}`;
+/** Rücklinks je distinktem Alltags-Label genau einmal (keine Doppelzeilen). */
+function distinctReverseLinks(reverseLinks: readonly IncomingControlLink[] | undefined) {
+  const seen = new Set<string>();
+  return (reverseLinks ?? []).filter((incoming) => {
+    const label = everydayRelationLabel(incoming.link);
+    if (seen.has(label)) return false;
+    seen.add(label);
+    return true;
+  });
 }
 
 function capitalize(label: string) {
   return label.length === 0 ? label : `${label[0]?.toUpperCase()}${label.slice(1)}`;
 }
 
-interface LinkGroup {
-  label: string;
-  links: ControlLink[];
-}
-
-function groupLinksByLabel(
-  links: readonly ControlLink[],
-  incomingByControlId: ReadonlyMap<string, IncomingControlLink[]>,
-): LinkGroup[] {
-  const groups: LinkGroup[] = [];
-  const groupsByLabel = new Map<string, LinkGroup>();
-
+function groupLinksByLabel(links: readonly ControlLink[]) {
+  const groups: { label: string; links: ControlLink[] }[] = [];
+  const groupsByLabel = new Map<string, { label: string; links: ControlLink[] }>();
   for (const link of links) {
-    const label = getOutgoingLinkLabel(
-      link,
-      incomingByControlId.get(link.targetId),
-    );
+    const label = everydayRelationLabel(link);
     const existing = groupsByLabel.get(label);
-
     if (existing) {
       existing.links.push(link);
       continue;
     }
-
-    const group: LinkGroup = { label, links: [link] };
+    const group = { label, links: [link] };
     groupsByLabel.set(label, group);
     groups.push(group);
   }
-
   return groups;
+}
+
+function ControlLinkButton({
+  control,
+  ariaLabel,
+  onNavigateToControl,
+  children,
+}: {
+  readonly control: Control;
+  readonly ariaLabel: string;
+  readonly onNavigateToControl?: (control: Control) => void;
+  readonly children?: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={ariaLabel}
+      className={detailLinkRowClass}
+      onClick={() => onNavigateToControl?.(control)}
+    >
+      <div className="flex items-baseline gap-2">
+        <span className="font-mono text-xs text-slate-500 shrink-0 group-hover:text-primary-main">{control.id}</span>
+        <span className="text-sm text-slate-700 leading-snug">{control.title}</span>
+      </div>
+      {children}
+    </button>
+  );
 }
 
 export function ControlDependencies({
@@ -114,89 +139,71 @@ export function ControlDependencies({
   const incomingOnlyLinks = incomingLinks.filter(
     (incoming) => !outgoingIds.has(incoming.control.id),
   );
-  const linkGroups = groupLinksByLabel(resolvedLinks, incomingByControlId);
+  const linkGroups = groupLinksByLabel(resolvedLinks);
 
   if (resolvedLinks.length === 0 && incomingOnlyLinks.length === 0) {
     return null;
   }
 
+  // GSPP-303 T9: hüllenlos (Teil der Zusammenhänge-Zone; die Gruppen-
+  // Beschriftung „Verknüpft" setzt ControlDetail darüber).
   return (
-    <ControlDetailSection heading="Abhängigkeiten">
-      <div className="space-y-3">
-        {resolvedLinks.length > 0 && (
-          <div>
-            <SubSectionHeading>Verknüpfte Kontrollen</SubSectionHeading>
-            <div className="space-y-3">
-              {linkGroups.map((group, groupIndex) => {
-                const groupLabelId = `control-dependencies-group-label-${groupIndex}`;
-
-                return (
-                  <fieldset key={group.label} aria-labelledby={groupLabelId} className="min-w-0">
-                    <legend id={groupLabelId} className="text-xs font-medium text-slate-500 mb-1">
-                      {capitalize(group.label)}
-                    </legend>
-                    <div className="space-y-1">
-                      {group.links.map((link) => {
-                        const targetControl = controlsById?.get(link.targetId);
-                        if (!targetControl) return null;
-                        const ariaLabel = `${link.targetId} ${targetControl.title} (${group.label})`;
-
-                        return (
-                          <button
-                            key={`${link.targetId}-${link.href}-${link.rel ?? 'missing'}-${link.resourceFragment ?? ''}`}
-                            type="button"
-                            aria-label={ariaLabel}
-                            className={detailLinkRowClass}
-                            onClick={() => onNavigateToControl?.(targetControl)}
+    <div className="space-y-3">
+      {resolvedLinks.length > 0 && (
+        <div className="space-y-3">
+          {linkGroups.map((group, groupIndex) => {
+            const groupLabelId = `control-dependencies-group-label-${groupIndex}`;
+            return (
+              <fieldset key={group.label} aria-labelledby={groupLabelId} className="min-w-0">
+                <legend id={groupLabelId} className="text-xs font-medium text-slate-500 mb-1">
+                  {capitalize(group.label)}
+                </legend>
+                <div className="space-y-1">
+                  {group.links.map((link) => {
+                    const targetControl = controlsById?.get(link.targetId);
+                    if (!targetControl) return null;
+                    return (
+                      <div key={`${link.targetId}-${link.href}-${link.rel ?? 'missing'}-${link.resourceFragment ?? ''}`}>
+                        <ControlLinkButton
+                          control={targetControl}
+                          ariaLabel={`${link.targetId} ${targetControl.title} (${everydayRelationLabel(link)})`}
+                          onNavigateToControl={onNavigateToControl}
+                        />
+                        {distinctReverseLinks(incomingByControlId.get(link.targetId)).map((incoming) => (
+                          <p
+                            key={`${incoming.control.id}-${incoming.link.rel ?? 'missing'}-${incoming.link.relStatus}`}
+                            className="mt-0.5 text-xs text-slate-400"
                           >
-                            <div className="flex items-baseline gap-2">
-                              <span className="font-mono text-xs text-slate-500 shrink-0 group-hover:text-primary-main">
-                                {link.targetId}
-                              </span>
-                              <span className="text-sm text-slate-700 leading-snug">
-                                {targetControl.title}
-                              </span>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </fieldset>
-                );
-              })}
-            </div>
-          </div>
-        )}
+                            {buildIncomingEverydayLabel(incoming)}
+                          </p>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              </fieldset>
+            );
+          })}
+        </div>
+      )}
 
-        {incomingOnlyLinks.length > 0 && (
-          <div>
-            <SubSectionHeading>Wird referenziert von</SubSectionHeading>
-            <div className="space-y-1">
-              {incomingOnlyLinks.map((incoming) => (
-                <button
-                  key={`${incoming.control.id}-${incoming.link.href}-${incoming.link.rel ?? 'missing'}`}
-                  type="button"
-                  aria-label={`${incoming.control.id} ${incoming.control.title} (${getLinkRelationDescription(incoming.link.rel, incoming.link.relStatus)})`}
-                  className={detailLinkRowClass}
-                  onClick={() => onNavigateToControl?.(incoming.control)}
-                >
-                  <div className="flex items-baseline gap-2">
-                    <span className="font-mono text-xs text-slate-500 shrink-0 group-hover:text-primary-main">
-                      {incoming.control.id}
-                    </span>
-                    <span className="text-sm text-slate-700 leading-snug">
-                      {incoming.control.title}
-                    </span>
-                  </div>
-                  <span className="mt-0.5 text-xs text-slate-400">
-                    {getLinkRelationDescription(incoming.link.rel, incoming.link.relStatus)}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </ControlDetailSection>
+      {incomingOnlyLinks.length > 0 && (
+        <div className="space-y-1">
+          {incomingOnlyLinks.map((incoming) => (
+            <ControlLinkButton
+              key={`${incoming.control.id}-${incoming.link.href}-${incoming.link.rel ?? 'missing'}`}
+              control={incoming.control}
+              ariaLabel={`${incoming.control.id} ${incoming.control.title} (${everydayRelationLabel(incoming.link)})`}
+              onNavigateToControl={onNavigateToControl}
+            >
+              <span className="mt-0.5 text-xs text-slate-400">
+                {buildIncomingEverydayLabel(incoming)}
+              </span>
+            </ControlLinkButton>
+          ))}
+        </div>
+      )}
+      <SectionLegend legendId="legende-zusammenhaenge" entries={buildLinkLegendEntries()} />
+    </div>
   );
 }

@@ -338,9 +338,11 @@ Für Namespaces mit eigener `Begriff`-Spalte neben der ID (`basethreats.csv`) ge
 | Ort | Darstellung |
 |---|---|
 | Vokabular-Listenansicht (`/vokabular/:namespaceId`) | `G 0.1 Feuer` — ID zuerst, Sortier- und Nachschlageschlüssel |
-| Control-Detailansicht (`ControlSecurityContext`) | `Feuer (G 0.1)` — Begriff zuerst, inhaltliche Aussage |
+| Control-Detailansicht (`ControlSecurityContext`) | `Feuer` — nur der Begriff; die Kennung steht in der zugänglichen Beschriftung, im Hover-Tooltip und als erste Zeile der geöffneten Karte |
 
-In der Control-Detailansicht blendet die aufgeklappte Vokabelkarte über `hiddenColumns` nur noch die dort redundante Spalte `Begriff` aus (`src/features/catalog/ControlSecurityContext.tsx`). Dasselbe kontextbezogene Muster gilt für das Praktik-Vokabular im Breadcrumb: `Begriff` wird nur ausgeblendet, wenn der Wert exakt dem angezeigten Praktik-Namen entspricht (`src/features/catalog/ControlTaxonomyBreadcrumb.tsx`).
+In der Control-Detailansicht öffnet der unterstrichene Gefährdungsbegriff die Vokabelkarte. Die Karte zeigt die Kennung vor der Definition und blendet über `hiddenColumns` die dort redundante Spalte `Begriff` aus (`src/features/catalog/ControlSecurityContext.tsx`, `src/features/vocabularies/VocabularyEntryCard.tsx`). Ohne auflösbaren Begriff bleibt die Kennung direkt in der Merkmale-Liste sichtbar. Dasselbe kontextbezogene Ausblenden der Spalte `Begriff` gilt für das Praktik-Vokabular im Breadcrumb: Sie wird nur ausgeblendet, wenn der Wert exakt dem angezeigten Praktik-Namen entspricht (`src/features/catalog/ControlTaxonomyBreadcrumb.tsx`).
+
+Die Kontrollansicht erklärt aufgelöste Vokabularbegriffe direkt an ihrem Vorkommen mit gepunkteter Unterstreichung und aufklappbarer Karte. Im Kurzprofil bleiben Modalverb, Sicherheitsniveau und Aufwand als Badges; ein Link „Legende“ erläutert die vorkommenden Stufen. Der Anforderungssatz markiert darin erkannte Praktik-, Modalverb-, Handlungswort-, Ergebnis- und Präzisierungsabschnitte. Ein Parameter ohne gesetzten Wert erhält am Platzhalter eine per Hover oder Antippen erreichbare Erklärung. In „Merkmale“ stehen Schutzziele mit Relevanz in einem Raster, Gefährdungen sowie zwei getrennte, jeweils beschriftete Gruppen „Tags“ und „Zielobjekte“. Die Begriffe dort haben kein vorangestelltes Info-Symbol.
 
 Verweisspalten sind davon ausgenommen. Ein `ChildOfUUID`-Wert erscheint als Link auf den Eintrag, dessen eigene Kennung dem Verweis entspricht (Anzeigetext: dessen `entry.value`, Label `Übergeordneter Eintrag`); lässt sich der Verweis nicht auflösen, entfällt die Zeile (`src/features/vocabularies/VocabularyEntryCard.tsx`).
 

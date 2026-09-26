@@ -1,7 +1,7 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useState } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router';
+import { describe, expect, it } from 'vitest';
 import type { Control } from '@/domain/models';
 import { resolveControlVocabularies } from '@/domain/vocabulary';
 import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
@@ -9,204 +9,81 @@ import { ControlClassification } from './ControlClassification';
 
 function makeControl(overrides: Partial<Control> = {}): Control {
   return {
-    id: 'GC.2.2',
-    title: 'Klassifizierte Kontrolle',
-    groupId: 'GC.2',
-    practiceId: 'GC',
-    tags: [],
-    taxonomy: [],
-    threats: [],
-    statement: 'Anforderung',
-    statementRaw: 'Anforderung',
-    guidance: '',
-    statementProps: {
-      zielobjektKategorien: [],
-      ...overrides.statementProps,
-    },
-    links: [],
-    params: {},
+    id: 'GC.2.2', title: 'Klassifizierte Kontrolle', groupId: 'GC.2', practiceId: 'GC',
+    tags: [], taxonomy: [], threats: [], statement: 'Anforderung', statementRaw: 'Anforderung',
+    guidance: '', statementProps: { zielobjektKategorien: [] }, links: [], params: {},
     ...overrides,
   };
 }
 
 const resolvedControl = makeControl({
   modalverb: 'MUSS',
-  modalverbProp: {
-    name: 'modal_verb',
-    value: 'MUSS',
-    ns: 'https://example.com/namespaces/modal_verbs.csv',
-  },
+  modalverbProp: { name: 'modal_verb', value: 'MUSS', ns: 'https://example.com/namespaces/modal_verbs.csv' },
   securityLevel: 'normal-SdT',
-  securityLevelProp: {
-    name: 'security_level',
-    value: 'normal-SdT',
-    ns: 'https://example.com/namespaces/security_level.csv',
-  },
+  securityLevelProp: { name: 'security_level', value: 'normal-SdT', ns: 'https://example.com/namespaces/security_level.csv' },
   effortLevel: '3',
-  effortLevelProp: {
-    name: 'effort_level',
-    value: '3',
-    ns: 'https://example.com/namespaces/effort_level.csv',
-  },
+  effortLevelProp: { name: 'effort_level', value: '3', ns: 'https://example.com/namespaces/effort_level.csv' },
   tags: ['Governance'],
-  tagsProp: {
-    name: 'tags',
-    value: 'Governance',
-    ns: 'https://example.com/namespaces/tags.csv',
-  },
-  taxonomy: [
-    {
-      name: 'Taxonomy-L1',
-      value: 'Infrastruktur',
-      ns: 'https://example.com/taxonomy/wlan',
-    },
-    { name: 'Taxonomy-L2', value: 'Kommunikation' },
-  ],
-  statementProps: {
-    zielobjektKategorien: ['Server'],
-    zielobjektKategorienProp: {
-      name: 'target_object_categories',
-      value: 'Server',
-      ns: 'https://example.com/namespaces/target_object_categories.csv',
-    },
-  },
+  taxonomy: [{ name: 'Taxonomy-L1', value: 'Infrastruktur' }],
+  statementProps: { zielobjektKategorien: ['Server'] },
 });
 
-const resolvedVocabularies = resolveControlVocabularies(
-  createTestVocabularyRegistry(),
-  resolvedControl,
-);
-
-function renderVocabularyCard(resolution: typeof resolvedVocabularies.modalverb) {
-  return resolution ? <p>{`Karte: ${resolution.entry.value}`}</p> : null;
-}
-
-describe('ControlClassification', () => {
-  it('renders the resolved classification and GSPP-140 taxonomy in one classification section', () => {
-    render(
-      <ControlClassification
-        control={resolvedControl}
-        resolvedVocabularies={resolvedVocabularies}
-        isVocabularyActive={() => false}
-        onToggleVocabulary={vi.fn()}
-        renderVocabularyCard={renderVocabularyCard}
-      />,
-    );
-
-    expect(screen.getAllByRole('heading', { name: 'Klassifikation', level: 3 })).toHaveLength(1);
-    expect(screen.getByRole('group', { name: 'Kriterien' })).toBeInTheDocument();
-    expect(screen.getByRole('group', { name: 'Taxonomie' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', {
-      name: 'Tags und Zielobjektkategorien',
-      level: 4,
-    })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'WLAN-Taxonomie', level: 4 }))
-      .toBeInTheDocument();
-    expect(screen.getByText('Taxonomie L1')).toBeInTheDocument();
-    expect(screen.getByText('Infrastruktur')).toBeInTheDocument();
-    expect(screen.getByText('https://example.com/taxonomy/wlan')).toBeInTheDocument();
-
-    const modalverb = screen.getByRole('button', { name: 'MUSS' });
-    const tag = screen.getByRole('button', { name: 'Tag: Governance' });
-    const target = screen.getByRole('button', { name: 'Zielobjekt: Server' });
-
-    expect(modalverb).toHaveAttribute('aria-pressed', 'false');
-    expect(modalverb).toHaveAttribute('aria-expanded', 'false');
-    expect(modalverb).toHaveAttribute('aria-controls', 'vocab-card-modalverb');
-    expect(tag).toHaveAttribute('aria-controls', 'vocab-card-tag-Governance');
-    expect(target).toHaveAttribute('aria-controls', 'vocab-card-zielobjekt-Server');
-    expect(document.getElementById('vocab-card-modalverb')).toHaveAttribute('hidden');
-    expect(document.getElementById('vocab-card-tag-Governance')).toHaveAttribute('hidden');
-    expect(document.getElementById('vocab-card-zielobjekt-Server')).toHaveAttribute('hidden');
-  });
-
-  it('renders a taxonomy-only classification without inventing vocabulary behavior', () => {
-    const control = makeControl({
-      taxonomy: [{ name: 'Taxonomy-L4', value: 'WLAN', ns: 'urn:placeholder' }],
-    });
-
-    render(
-      <ControlClassification
-        control={control}
-        resolvedVocabularies={resolveControlVocabularies(null, control)}
-        isVocabularyActive={() => false}
-        onToggleVocabulary={vi.fn()}
-        renderVocabularyCard={renderVocabularyCard}
-      />,
-    );
-
-    expect(screen.getByRole('heading', { name: 'Klassifikation', level: 3 }))
-      .toBeInTheDocument();
-    expect(screen.getByText('Taxonomie L4')).toBeInTheDocument();
-    expect(screen.getByText('WLAN')).toBeInTheDocument();
-    expect(screen.getByText('urn:placeholder')).toBeInTheDocument();
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
-  });
-
-  it('renders unresolved taxonomy values as non-interactive outline badges', () => {
-    const control = makeControl({
-      tags: ['Unbekannt'],
-      statementProps: {
-        zielobjektKategorien: ['Sonderobjekt'],
-      },
-    });
-    const onToggleVocabulary = vi.fn();
-
-    render(
+function renderClassification(control: Control) {
+  return render(
+    <MemoryRouter>
       <ControlClassification
         control={control}
         resolvedVocabularies={resolveControlVocabularies(createTestVocabularyRegistry(), control)}
-        isVocabularyActive={() => false}
-        onToggleVocabulary={onToggleVocabulary}
-        renderVocabularyCard={renderVocabularyCard}
-      />,
-    );
+      />
+    </MemoryRouter>,
+  );
+}
 
-    expect(screen.getByText('Unbekannt')).toHaveClass('max-w-full', 'break-words');
-    expect(screen.getByText('Sonderobjekt')).toHaveClass('max-w-full', 'break-words');
-    expect(screen.queryByRole('button', { name: 'Tag: Unbekannt' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Zielobjekt: Sonderobjekt' })).not.toBeInTheDocument();
-    expect(onToggleVocabulary).not.toHaveBeenCalled();
+describe('ControlClassification', () => {
+  it('renders only the short-profile criteria as static badges', () => {
+    renderClassification(resolvedControl);
+
+    const criteria = screen.getByRole('group', { name: 'Kriterien' });
+    expect(within(criteria).getByText('MUSS')).toBeInTheDocument();
+    expect(within(criteria).getByText('normal-SdT')).toBeInTheDocument();
+    expect(within(criteria).getByTitle('Aufwand 3')).toBeInTheDocument();
+    expect(within(criteria).queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Klassifikation' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Governance')).not.toBeInTheDocument();
+    expect(screen.queryByText('Infrastruktur')).not.toBeInTheDocument();
+    expect(screen.queryByText('Server')).not.toBeInTheDocument();
   });
 
-  it('wires classification and taxonomy controls to one active vocabulary callback', async () => {
+  it('opens one legend for resolved criteria with vocabulary links', async () => {
     const user = userEvent.setup();
-    const onToggleVocabulary = vi.fn();
+    renderClassification(resolvedControl);
 
-    function ControlledClassification() {
-      const [activeKey, setActiveKey] = useState<string | null>(null);
+    const legend = screen.getByRole('button', { name: 'Legende' });
+    expect(legend).toHaveAttribute('aria-expanded', 'false');
+    expect(document.getElementById('legende-kurzprofil')).toHaveAttribute('hidden');
+    await user.click(legend);
+    expect(legend).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('link', { name: 'MUSS' })).toHaveAttribute(
+      'href', '/vokabular/modal-verbs?wert=MUSS',
+    );
+    expect(screen.getByText(/Modalverb definiert verbindliche Anforderungen/)).toBeInTheDocument();
+    await user.click(legend);
+    expect(document.getElementById('legende-kurzprofil')).toHaveAttribute('hidden');
+  });
 
-      return (
-        <ControlClassification
-          control={resolvedControl}
-          resolvedVocabularies={resolvedVocabularies}
-          isVocabularyActive={(key) => key === activeKey}
-          onToggleVocabulary={(key) => {
-            onToggleVocabulary(key);
-            setActiveKey((currentKey) => currentKey === key ? null : key);
-          }}
-          renderVocabularyCard={renderVocabularyCard}
-        />
-      );
-    }
+  it('omits the short profile when only taxonomy and tags exist', () => {
+    const { container } = renderClassification(makeControl({
+      taxonomy: [{ name: 'Taxonomy-L4', value: 'WLAN' }], tags: ['Governance'],
+    }));
+    expect(container).toBeEmptyDOMElement();
+  });
 
-    render(<ControlledClassification />);
-
-    const modalverb = screen.getByRole('button', { name: 'MUSS' });
-    const tag = screen.getByRole('button', { name: 'Tag: Governance' });
-
-    await user.click(modalverb);
-    expect(onToggleVocabulary).toHaveBeenLastCalledWith('modalverb');
-    expect(modalverb).toHaveAttribute('aria-expanded', 'true');
-    expect(document.getElementById('vocab-card-modalverb')).not.toHaveAttribute('hidden');
-    expect(screen.getByText('Karte: MUSS')).toBeInTheDocument();
-
-    await user.click(tag);
-    expect(onToggleVocabulary).toHaveBeenLastCalledWith('tag:Governance');
-    expect(modalverb).toHaveAttribute('aria-expanded', 'false');
-    expect(tag).toHaveAttribute('aria-expanded', 'true');
-    expect(document.getElementById('vocab-card-modalverb')).toHaveAttribute('hidden');
-    expect(document.getElementById('vocab-card-tag-Governance')).not.toHaveAttribute('hidden');
-    expect(screen.getByText('Karte: Governance')).toBeInTheDocument();
+  it('keeps unresolved criteria visible without inventing a legend', () => {
+    const { container } = renderClassification(makeControl({
+      modalverb: 'Sonderwert' as NonNullable<Control['modalverb']>,
+    }));
+    expect(screen.getByText('Sonderwert')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Legende' })).not.toBeInTheDocument();
+    expect(container.querySelector('.catalog-vocabulary-affordance')).toBeNull();
   });
 });

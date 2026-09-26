@@ -1,13 +1,13 @@
-import { Fragment } from 'react';
 import { RELEVANCE_SCALE_MAX, RelevanceScale } from '@/components/StatusMeta';
 import type { VocabularyResolution } from '@/domain/vocabulary';
 import {
-  leadingAffordanceIndentClass,
-  leadingTriggerClass,
-  type RenderVocabularyCard,
+  SectionLegend,
   SubSectionHeading,
+  TermTrigger,
   toVocabCardId,
-  VocabularyAffordanceIcon,
+  vocabularyEntryHref,
+  type LegendEntry,
+  type RenderVocabularyCard,
 } from './ControlVocabularyPrimitives';
 
 export interface SecurityTargetRow {
@@ -25,15 +25,28 @@ export interface ControlSecurityTargetsProps {
   readonly renderVocabularyCard: RenderVocabularyCard;
 }
 
-const cellClass = 'py-0.5 align-top';
-
 /** Liefert die Punktzahl der Skala oder `null` für Werte außerhalb der Skala. */
 function toRelevanceScaleValue(relevance: string) {
   const parsed = Number.parseInt(relevance, 10);
-  const isScaleValue =
-    String(parsed) === relevance.trim() && parsed >= 0 && parsed <= RELEVANCE_SCALE_MAX;
+  const isScaleValue = String(parsed) === relevance.trim()
+    && parsed >= 0
+    && parsed <= RELEVANCE_SCALE_MAX;
 
   return isScaleValue ? parsed : null;
+}
+
+/** Alle drei Stufen stammen aus dem BSI-Namensraum einer aufgelösten Stufe. */
+function buildLegendEntries(securityTargets: SecurityTargetRow[]): LegendEntry[] {
+  const namespace = securityTargets.find(({ levelResolution }) => levelResolution)?.levelResolution?.namespace;
+  if (!namespace) return [];
+  return namespace.entries
+    .filter((entry) => entry.value === '0' || entry.value === '1' || entry.value === '2')
+    .sort((first, second) => Number(first.value) - Number(second.value))
+    .map((entry) => ({
+      term: entry.value,
+      definition: entry.definition ?? '',
+      href: vocabularyEntryHref(namespace, entry.value),
+    }));
 }
 
 export function ControlSecurityTargets({
@@ -42,127 +55,74 @@ export function ControlSecurityTargets({
   onToggleVocabulary,
   renderVocabularyCard,
 }: ControlSecurityTargetsProps) {
+  const legendEntries = buildLegendEntries(securityTargets);
+
   return (
     <div>
-      <SubSectionHeading>Schutzziele</SubSectionHeading>
-      <table className="w-full border-collapse">
-        <caption className="sr-only">Schutzziele und ihre Relevanz</caption>
-        <thead>
-          <tr>
-            {/* Die Subsection-Überschrift benennt diese Spalte bereits sichtbar. */}
-            <th scope="col" className="w-full pb-1 text-left font-normal">
-              <span className="sr-only">Schutzziel</span>
-            </th>
-            <th
-              scope="col"
-              className="catalog-meta-text whitespace-nowrap pb-1 text-left"
-            >
-              Relevanz
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {securityTargets.map(({
-            key,
-            label,
-            relevance,
-            targetResolution,
-            levelResolution,
-          }) => {
-            const targetVocabKey = `security-target:${key}`;
-            const levelVocabKey = `security-target-level:${key}`;
-            const targetActive = isVocabularyActive(targetVocabKey);
-            const levelActive = isVocabularyActive(levelVocabKey);
-            const relevanceScaleValue = toRelevanceScaleValue(relevance);
+      <div className="flex items-start justify-between gap-2">
+        <SubSectionHeading>Schutzziele</SubSectionHeading>
+        {legendEntries.length > 0 && (
+          <SectionLegend legendId="legende-merkmale" entries={legendEntries} />
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        {securityTargets.map(({ key, label, relevance, targetResolution, levelResolution }) => {
+          const targetVocabKey = `security-target:${key}`;
+          const levelVocabKey = `security-target-level:${key}`;
+          const targetActive = isVocabularyActive(targetVocabKey);
+          const levelActive = isVocabularyActive(levelVocabKey);
+          const relevanceScaleValue = toRelevanceScaleValue(relevance);
 
-            return (
-              <Fragment key={targetVocabKey}>
-                <tr>
-                  <th
-                    scope="row"
-                    className={`${cellClass} pr-4 text-left text-sm font-normal leading-relaxed text-slate-700`}
-                  >
-                    {targetResolution ? (
-                      <button
-                        type="button"
-                        onClick={() => onToggleVocabulary(targetVocabKey)}
-                        aria-label={`Schutzziel: ${label}`}
-                        aria-pressed={targetActive}
-                        aria-expanded={targetActive}
-                        aria-controls={toVocabCardId(targetVocabKey)}
-                        className={leadingTriggerClass(targetActive)}
-                      >
-                        <VocabularyAffordanceIcon
-                          active={targetActive}
-                          placement="leading"
-                        />
-                        <span className="min-w-0 flex-1">{label}</span>
-                      </button>
-                    ) : (
-                      <span className={`block ${leadingAffordanceIndentClass}`}>
-                        {label}
-                      </span>
-                    )}
-                  </th>
-                  <td className={cellClass}>
-                    {levelResolution ? (
-                      <button
-                        type="button"
-                        onClick={() => onToggleVocabulary(levelVocabKey)}
-                        aria-label={`Relevanz ${label}: ${relevance}`}
-                        title={`Relevanz ${label}: ${relevance}`}
-                        aria-pressed={levelActive}
-                        aria-expanded={levelActive}
-                        aria-controls={toVocabCardId(levelVocabKey)}
-                        className={leadingTriggerClass(levelActive)}
-                      >
-                        <VocabularyAffordanceIcon
-                          active={levelActive}
-                          placement="leading"
-                        />
-                        {relevanceScaleValue === null ? (
-                          <span className="min-w-0 flex-1">{relevance}</span>
-                        ) : (
-                          <RelevanceScale value={relevanceScaleValue} />
-                        )}
-                      </button>
-                    ) : (
-                      <div className={leadingAffordanceIndentClass}>
-                        <p className="text-sm leading-relaxed text-slate-700">
-                          {relevance}
-                        </p>
-                        <p className="mt-1 text-xs leading-relaxed text-amber-700">
-                          Keine offizielle Definition für diese Relevanzstufe verfügbar.
-                        </p>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-                {targetResolution && (
-                  <tr
-                    id={toVocabCardId(targetVocabKey)}
-                    hidden={!targetActive || undefined}
-                  >
-                    <td colSpan={2}>
-                      {targetActive && renderVocabularyCard(targetResolution)}
-                    </td>
-                  </tr>
-                )}
-                {levelResolution && (
-                  <tr
-                    id={toVocabCardId(levelVocabKey)}
-                    hidden={!levelActive || undefined}
-                  >
-                    <td colSpan={2}>
-                      {levelActive && renderVocabularyCard(levelResolution)}
-                    </td>
-                  </tr>
-                )}
-              </Fragment>
-            );
-          })}
-        </tbody>
-      </table>
+          return (
+            <div key={targetVocabKey} role="group" aria-label={`${label}: Relevanz ${relevance}`}>
+              {targetResolution ? (
+                <TermTrigger
+                  vocabKey={targetVocabKey}
+                  active={targetActive}
+                  onToggle={onToggleVocabulary}
+                  label={label}
+                  ariaLabel={`Schutzziel: ${label}`}
+                />
+              ) : (
+                <span className="text-sm leading-relaxed text-slate-700">{label}</span>
+              )}
+              {levelResolution ? (
+                <span className="mt-0.5 flex items-center gap-2">
+                  <TermTrigger
+                    vocabKey={levelVocabKey}
+                    active={levelActive}
+                    onToggle={onToggleVocabulary}
+                    label={relevance}
+                    ariaLabel={`Relevanz ${label}: ${relevance}`}
+                  />
+                  {relevanceScaleValue !== null && (
+                    <span aria-hidden="true">
+                      <RelevanceScale value={relevanceScaleValue} />
+                    </span>
+                  )}
+                </span>
+              ) : (
+                <div>
+                  <p className="text-sm leading-relaxed text-slate-700">{relevance}</p>
+                  <p className="mt-1 text-xs leading-relaxed text-amber-700">
+                    Keine offizielle Definition für diese Relevanzstufe verfügbar.
+                  </p>
+                </div>
+              )}
+              {targetResolution && (
+                <div id={toVocabCardId(targetVocabKey)} hidden={!targetActive || undefined}>
+                  {targetActive && renderVocabularyCard(targetResolution)}
+                </div>
+              )}
+              {levelResolution && (
+                <div id={toVocabCardId(levelVocabKey)} hidden={!levelActive || undefined}>
+                  {levelActive && renderVocabularyCard(levelResolution)}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

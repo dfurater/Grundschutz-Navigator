@@ -384,7 +384,11 @@ describe('catalog typography', () => {
   });
 
   it('uses calm meta headings and medium-weight badges in the detail panel', () => {
-    render(<ControlDetail control={control} onClose={vi.fn()} />);
+    render(
+      <MemoryRouter>
+        <ControlDetail control={control} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
 
     const sectionHeading = screen.getByRole('heading', {
       name: 'Anforderung',
@@ -395,12 +399,17 @@ describe('catalog typography', () => {
     expect(sectionHeading).not.toHaveClass('uppercase');
     expect(sectionHeading).not.toHaveClass('catalog-meta-text');
     expect(screen.getByText(control.id)).toHaveClass('catalog-reference-text');
-    expect(screen.getByText('MUSS')).toHaveClass('font-medium');
-    expect(screen.getByText('MUSS')).not.toHaveClass('font-semibold');
+    const criteria = screen.getByRole('group', { name: 'Kriterien' });
+    expect(within(criteria).getByText('MUSS')).toHaveClass('font-medium');
+    expect(within(criteria).getByText('MUSS')).not.toHaveClass('font-semibold');
   });
 
   it('uses mobile-safe detail spacing and responsive title sizing', () => {
-    const { container } = render(<ControlDetail control={control} onClose={vi.fn()} />);
+    const { container } = render(
+      <MemoryRouter>
+        <ControlDetail control={control} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
 
     const backButton = screen.getByRole('button', { name: 'Zurück zur Übersicht' });
     const title = screen.getByRole('heading', { name: control.title, level: 2 });
@@ -413,7 +422,7 @@ describe('catalog typography', () => {
     expect(container.firstChild).toHaveClass('h-full', 'flex', 'flex-col', 'bg-[var(--color-surface-raised)]');
   });
 
-  it('uses internal inline vocabulary cards instead of external namespace links', async () => {
+  it('explains criteria in the short-profile legend and links to the vocabulary entry', async () => {
     const user = userEvent.setup();
     render(
       <MemoryRouter>
@@ -423,11 +432,10 @@ describe('catalog typography', () => {
 
     expect(screen.queryByRole('link', { name: /Namespace für/i })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'MUSS' }));
+    await user.click(screen.getByRole('button', { name: 'Legende' }));
 
-    expect(screen.getByText('modal_verbs.csv')).toBeInTheDocument();
-    expect(screen.getByText('Verbindliche Anforderung')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Zu den Vokabularen →' })).toHaveAttribute(
+    expect(screen.getByText(/Verbindliche Anforderung/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'MUSS' })).toHaveAttribute(
       'href',
       '/vokabular/documentation-namespaces-modal-verbs?wert=MUSS',
     );
@@ -442,13 +450,15 @@ describe('catalog typography', () => {
     };
 
     render(
-      <ControlDetail
-        control={control}
-        parentControl={undefined}
-        childControls={[childControl]}
-        onClose={vi.fn()}
-        onNavigateToControl={vi.fn()}
-      />,
+      <MemoryRouter>
+        <ControlDetail
+          control={control}
+          parentControl={undefined}
+          childControls={[childControl]}
+          onClose={vi.fn()}
+          onNavigateToControl={vi.fn()}
+        />
+      </MemoryRouter>,
     );
 
     expect(

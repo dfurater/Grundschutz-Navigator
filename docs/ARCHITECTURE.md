@@ -110,6 +110,7 @@ src/                              # Anwendungsquellcode
 │   ├── sourceRegistry.d.mts          # Typen des Quellregisters
 │   ├── sourceRegistry.mjs            # Verbindlicher Upstream-/Katalogvertrag
 │   ├── sourceRegistry.ts             # Typsicherer Einstieg in sourceRegistry.mjs
+│   ├── statementSegments.ts          # Reine Segmentierung des Anforderungssatzes
 │   ├── taxonomyVocabulary.ts         # Auflösung von Praktiken und Themen
 │   ├── uuidV5.ts                     # Deterministische UUIDv5-Ableitung
 │   ├── vocabulary.ts                 # BSI-Vokabular-Auflösung
@@ -163,7 +164,7 @@ src/                              # Anwendungsquellcode
 │   │   ├── CatalogMobileSelectionBar.tsx # Auswahlleiste (mobil)
 │   │   ├── CatalogTargetNotFound.tsx     # Hinweis auf ein nicht gefundenes Routenziel
 │   │   ├── CatalogToolbar.tsx            # Titel, Trefferzahl und Aktionen
-│   │   ├── ControlClassification.tsx     # Modalverb, Sicherheitsniveau, Aufwand, Tags
+│   │   ├── ControlClassification.tsx     # Kurzprofil-Badges und Stufenlegende
 │   │   ├── ControlDependencies.tsx       # Aus- und eingehende Control-Links
 │   │   ├── ControlDetail.tsx             # Detailansicht einer Anforderung
 │   │   ├── ControlDetailSection.tsx      # Abschnittsrahmen der Detailansicht
@@ -171,13 +172,13 @@ src/                              # Anwendungsquellcode
 │   │   ├── ControlHierarchy.tsx          # Eltern- und Kind-Anforderungen
 │   │   ├── ControlMetadata.tsx           # Kennungen und Elternbezug
 │   │   ├── ControlMobileReferenceRow.tsx # Tabellenzeile der Mobilansicht
-│   │   ├── ControlSecurityContext.tsx    # Schutzziele im Sicherheitskontext
-│   │   ├── ControlSecurityTargets.tsx    # Zeilen der Schutzziel-Relevanz
+│   │   ├── ControlSecurityContext.tsx    # Schutzziele und Gefährdungen in Merkmale
+│   │   ├── ControlSecurityTargets.tsx    # Raster der Schutzziel-Relevanz
 │   │   ├── ControlSources.tsx            # Aufgelöste Quellenverweise
-│   │   ├── ControlStatement.tsx          # Anforderungstext
-│   │   ├── ControlStatementDetails.tsx   # Ergebnis, Präzisierung, Handlungsworte, Dokumentation
+│   │   ├── ControlStatement.tsx          # Segmentierter Anforderungstext mit Inline-Begriffen
+│   │   ├── ControlStatementDetails.tsx   # Nicht im Satz gefundene Angaben und Dokumentation
 │   │   ├── ControlTable.tsx              # Gefensterte Anforderungstabelle mit Auswahl und Sortierung
-│   │   ├── ControlTaxonomy.tsx           # Taxonomie und Zielobjekt-Kategorien
+│   │   ├── ControlTaxonomy.tsx           # Getrennte Tags-/Zielobjektgruppen und WLAN-Taxonomie
 │   │   ├── ControlTaxonomyBreadcrumb.tsx # Taxonomiepfad als Breadcrumb
 │   │   ├── ControlVocabularyPrimitives.tsx # Gemeinsame Bausteine der Vokabularanzeige
 │   │   ├── FilterPanel.tsx               # Filterpanel
@@ -213,6 +214,7 @@ src/                              # Anwendungsquellcode
 │   ├── HeaderBar.tsx                 # Kopfleiste mit Suche und Katalogauswahl
 │   ├── Input.tsx                     # Eingabefeld mit Icon und Label
 │   ├── StatusMeta.tsx                # Status-Badges für Modalverb, Niveau, Aufwand
+│   ├── Tooltip.tsx                   # Hover- und antippbare Begriffserklärungen
 │   ├── TreeNav.tsx                   # Gruppenbaum der Navigation
 │   ├── icons.tsx                     # Inline-SVG-Icons (Lucide)
 │   └── index.ts                      # Sammelexport der Komponenten
@@ -542,23 +544,25 @@ Für `src/**` läuft ESLint zusätzlich mit Typinformation (typescript-eslint Pr
 
 ## Control-Detail-Grenzen
 
-`src/features/catalog/ControlDetail.tsx` ist der Composer der Kontrollansicht und der einzige `useCatalog`-Aufrufer dieses Teilbaums. Er bestimmt den Scope `${catalogKey}:${control.id}`, löst Vokabulare memoisiert auf und komponiert die Sektionen in fachlicher Reihenfolge. Router-gebundene `VocabularyEntryCard`-Ausgabe bleibt an dieser Grenze: Die Sektionen erhalten einen stabilen Render-Callback und sind dadurch ohne Router oder Katalogprovider isoliert testbar.
+`src/features/catalog/ControlDetail.tsx` ist der Composer der Kontrollansicht und der einzige `useCatalog`-Aufrufer dieses Teilbaums. Er bestimmt den Scope `${catalogKey}:${control.id}`, löst Vokabulare memoisiert auf und komponiert Kopf, Kurzprofil, Anforderung, Umsetzungshinweise, Merkmale, Zusammenhänge und Fußzeile in dieser Reihenfolge. Merkmale, Zusammenhänge und Fußzeile stehen in einer leicht getönten Zone; Überschriften von Anforderung, Umsetzungshinweisen, Merkmalen und Zusammenhängen bilden schmale Leisten. Leere Bereiche entfallen. Router-gebundene `VocabularyEntryCard`-Ausgabe bleibt an dieser Grenze: Die Sektionen erhalten einen stabilen Render-Callback und sind dadurch ohne Router oder Katalogprovider isoliert testbar.
+
+`segmentStatement()` in `src/domain/statementSegments.ts` zerlegt den rohen Anforderungstext und die `ParamMeta`-Werte ohne React in Satzteile. Die Darstellung setzt Begriffstrigger direkt an gefundenen Satzteilen; fehlende Ergebnis-, Präzisierungs- und Handlungswort-Anker erscheinen mit Beschriftung unter dem Satz. Dokumentation steht dort unabhängig davon. Ein Parameter ohne gesetzten Wert bleibt als aufgelöster Label-Fallback lesbar und erhält eine antippbare Erklärung. `Control.statement` bleibt der aufgelöste Text für Suche und Export. Der gemeinsame `Tooltip`-Baustein steuert Hover- und Antipp-Erklärungen, während `useActiveVocabulary` weiter die geöffnete Vokabularkarte begrenzt.
 
 | Baustein | Verantwortung |
 |----------|----------------|
 | `useActiveVocabulary` | Hält höchstens eine Vokabularkarte offen und setzt den Zustand bei Katalog- oder Control-Wechsel synchron zurück. |
 | `useGuidanceOverflow` | Besitzt Expansion, Overflow-Messung, `ResizeObserver`, Window-Fallback und symmetrisches Listener-/Observer-Cleanup. |
-| `ControlClassification` | Rendert Kriterien und bindet `ControlTaxonomy` ein. |
-| `ControlTaxonomy` | Rendert Tags und Zielobjektkategorien einschließlich optionaler Vokabularinteraktion. |
-| `ControlSecurityContext` | Rendert die Sektion „Schutzziele und Gefährdungen". |
-| `ControlSecurityTargets` | Rendert die vier Schutzziele als Tabelle mit zweistufiger Relevanz-Skala. |
-| `ControlStatement` | Rendert den Anforderungstext. |
-| `ControlStatementDetails` | Rendert Ergebnis, Präzisierung, Handlungswort und Dokumentation. |
+| `ControlClassification` | Rendert die Kurzprofil-Badges für Modalverb, Sicherheitsniveau und Aufwand sowie die Legende vorhandener Stufen. |
+| `ControlTaxonomy` | Rendert die getrennten, beschrifteten Gruppen „Tags“ und „Zielobjekte“ ohne Rahmen oder Symbol sowie die WLAN-Taxonomie innerhalb von „Merkmale". |
+| `ControlSecurityContext` | Rendert Schutzziele und elementare Gefährdungen innerhalb von „Merkmale"; der Gefährdungsname öffnet eine Karte mit Kennung. |
+| `ControlSecurityTargets` | Rendert die vier Schutzziele im zweispaltigen Raster mit Relevanz-Skala und Legende. |
+| `ControlStatement` | Rendert den segmentierten Anforderungssatz mit Begriffstriggern und Platzhalter-Erklärungen. |
+| `ControlStatementDetails` | Rendert nicht im Satz gefundene Angaben und die Dokumentation als Zeilen mit Beschriftung darüber. |
 | `ControlGuidance` | Rendert die bei Bedarf aufklappbare Guidance; Messung und State liegen im Hook. |
-| `ControlDependencies` | Rendert ausschließlich aufgelöste interne Control-Beziehungen. |
-| `ControlSources` | Rendert aufgelöste `back-matter`-, externe und nicht auflösbare Quellen getrennt von Abhängigkeiten. |
-| `ControlHierarchy` | Rendert aufgelösten Parent und Erweiterungen. |
-| `ControlMetadata` | Rendert UUID und den Parent-ID-Fallback. |
+| `ControlDependencies` | Rendert aufgelöste interne Control-Beziehungen unter „Verknüpft" mit lesbaren Relationsnamen und Herkunftslegende. |
+| `ControlSources` | Rendert aufgelöste `back-matter`-, externe und nicht auflösbare Verweise unter „Quellen". |
+| `ControlHierarchy` | Rendert Erweiterungen unter „Zusammenhänge"; der aufgelöste Parent steht als „Teil von" im Kopf. |
+| `ControlMetadata` | Rendert UUID und den Parent-ID-Fallback in der Fußzeile ohne Überschrift. |
 
 Die Sektionsmodule erhalten ausschließlich benötigte Controls, aufgelöste Vokabularwerte und Callbacks. Sie verwenden weder Katalog-, Router- noch Filterkontext.
 

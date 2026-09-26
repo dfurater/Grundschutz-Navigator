@@ -995,9 +995,18 @@ interface Control {
   };
 
   links: ControlLink[];
-  params: Record<string, string>;  // Inline parameter values
+  params: Record<string, ParamMeta>;  // Wert und Herkunft des Inline-Parameters
 }
 ```
+
+```typescript
+interface ParamMeta {
+  readonly value: string;      // Aufgelöster Wert oder Fallback aus label
+  readonly hasValue: boolean;  // true nur bei einem gesetzten OSCAL-values[0]
+}
+```
+
+`buildParamMap()` bewahrt diese Unterscheidung für die Darstellung von Platzhaltern. `paramValues()` liefert die bisherige String-Sicht an `resolveParams()`; der aufgelöste `statement`-Text bleibt dadurch derselbe und steht Suche und Export weiterhin zur Verfügung. `segmentStatement()` zerlegt `statementRaw` und `params` in geordnete Satzteile für die Detailansicht, ohne den gespeicherten oder exportierten Anforderungstext zu verändern. Fehlt ein Parameterwert, zeigt der Satz weiter den Label-Fallback und erklärt ihn am Platzhalter.
 
 Die `*Prop`-Felder behalten den OSCAL-Namespace (`ns`) der Quell-Prop und ermöglichen so die Auflösung gegen die offiziellen BSI-Vokabulare (siehe [VOCABULARY.md](./VOCABULARY.md)).
 

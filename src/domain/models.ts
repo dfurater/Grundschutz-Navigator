@@ -257,8 +257,14 @@ export interface Control {
   /** Related/required control links */
   links: ControlLink[];
 
-  /** Inline parameter values for template resolution */
-  params: Record<string, string>;
+  /** Inline parameter values for template resolution (hasValue distinguishes values from label fallback) */
+  params: Record<string, ParamMeta>;
+}
+
+/** Inline-Parameter: aufgelöster Wert plus Information, ob ein Wert gesetzt ist. */
+export interface ParamMeta {
+  readonly value: string;
+  readonly hasValue: boolean;
 }
 
 /** A topic (Thema) — second-level group */

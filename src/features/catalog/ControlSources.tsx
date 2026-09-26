@@ -5,7 +5,6 @@ import type {
   ResolvedResourceLink,
 } from '@/domain/referenceResolution';
 import { isSafeExternalHref } from '@/domain/referenceResolution';
-import { ControlDetailSection } from './ControlDetailSection';
 
 export interface ControlSourcesProps {
   readonly references: readonly ResolvedOscalReference[];
@@ -99,9 +98,10 @@ export function ControlSources({ references }: ControlSourcesProps) {
   );
   if (sourceReferences.length === 0) return null;
 
+  // GSPP-303 T9: hüllenlos (Teil der Zusammenhänge-Zone; die Gruppen-
+  // Beschriftung „Quellen" setzt ControlDetail darüber). Inhalt unverändert.
   return (
-    <ControlDetailSection heading="Quellen und Verweise">
-      <ul className="space-y-4">
+    <ul className="space-y-4">
         {sourceReferences.map((reference) => {
           if (reference.kind === 'resource') {
             return (
@@ -143,7 +143,6 @@ export function ControlSources({ references }: ControlSourcesProps) {
             </li>
           );
         })}
-      </ul>
-    </ControlDetailSection>
+    </ul>
   );
 }

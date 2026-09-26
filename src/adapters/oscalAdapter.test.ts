@@ -254,24 +254,29 @@ describe('findPart', () => {
 });
 
 describe('buildParamMap', () => {
+  it('liefert ParamMeta mit hasValue-Unterscheidung (GSPP-303 T1)', () => {
+    expect(buildParamMap([{ id: 'a', values: ['Wert'] }])).toEqual({ a: { value: 'Wert', hasValue: true } });
+    expect(buildParamMap([{ id: 'b', label: 'Frist' }])).toEqual({ b: { value: 'Frist', hasValue: false } });
+  });
+
   it('maps param ID to first value', () => {
     const params = [
       { id: 'prm1', values: ['BSI Grundschutz++'] },
       { id: 'prm2', label: 'Fallback Label', values: ['Actual Value'] },
     ];
     const map = buildParamMap(params);
-    expect(map['prm1']).toBe('BSI Grundschutz++');
-    expect(map['prm2']).toBe('Actual Value');
+    expect(map['prm1']).toEqual({ value: 'BSI Grundschutz++', hasValue: true });
+    expect(map['prm2']).toEqual({ value: 'Actual Value', hasValue: true });
   });
 
   it('falls back to label when no values', () => {
     const params = [{ id: 'prm1', label: 'Label Only' }];
-    expect(buildParamMap(params)['prm1']).toBe('Label Only');
+    expect(buildParamMap(params)['prm1']).toEqual({ value: 'Label Only', hasValue: false });
   });
 
   it('uses empty string when no values or label', () => {
     const params = [{ id: 'prm1' }];
-    expect(buildParamMap(params)['prm1']).toBe('');
+    expect(buildParamMap(params)['prm1']).toEqual({ value: '', hasValue: false });
   });
 
   it('returns empty object for undefined', () => {
@@ -571,7 +576,22 @@ describe('parseControl', () => {
 
   it('builds param map', () => {
     const control = parseControl(makeControl(), 'GC.1', 'GC');
-    expect(control.params['gc.1.1-prm1']).toBe('BSI Grundschutz++');
+    expect(control.params['gc.1.1-prm1']).toEqual({ value: 'BSI Grundschutz++', hasValue: true });
+  });
+
+  it('löst Label-Fallback im statement auf und markiert hasValue false (GSPP-303 T1 Round-trip)', () => {
+    const control = parseControl(
+      makeControl({
+        params: [{ id: 'x', label: 'Frist' }],
+        parts: [
+          { id: 'T_stm', name: 'statement', prose: 'Handeln Sie {{ insert: param, x }}.' },
+        ],
+      }),
+      'GC.1',
+      'GC',
+    );
+    expect(control.statement).toBe('Handeln Sie Frist.');
+    expect(control.params['x']).toEqual({ value: 'Frist', hasValue: false });
   });
 
   it('handles control without optional fields', () => {

@@ -190,25 +190,6 @@ export function IconDocument({ className, 'aria-hidden': ariaHidden = true }: Ic
   );
 }
 
-export function IconTag({ className, 'aria-hidden': ariaHidden = true }: IconProps) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden={ariaHidden}>
-      <path d="M12 2H2v10l9.29 9.29a1 1 0 0 0 1.41 0l6.29-6.29a1 1 0 0 0 0-1.41L12 2z" />
-      <path d="M7 7h.01" />
-    </svg>
-  );
-}
-
-export function IconTarget({ className, 'aria-hidden': ariaHidden = true }: IconProps) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden={ariaHidden}>
-      <circle cx="12" cy="12" r="10" />
-      <circle cx="12" cy="12" r="6" />
-      <circle cx="12" cy="12" r="2" />
-    </svg>
-  );
-}
-
 export function IconWifi({ className, 'aria-hidden': ariaHidden = true }: IconProps) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden={ariaHidden}>

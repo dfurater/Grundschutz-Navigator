@@ -10,6 +10,7 @@ import { VocabularyEntryCard } from './VocabularyEntryCard';
 
 const TARGET_OBJECT_NAMESPACE =
   'https://example.com/namespaces/target_object_categories.csv';
+const THREAT_NAMESPACE = 'https://example.com/namespaces/basethreats.csv';
 
 function renderCard(value: string, hiddenColumns?: string[]) {
   const registry = createTestVocabularyRegistry();
@@ -25,6 +26,21 @@ function renderCard(value: string, hiddenColumns?: string[]) {
 }
 
 describe('VocabularyEntryCard', () => {
+  it('shows a threat identifier before its definition', () => {
+    const registry = createTestVocabularyRegistry();
+    const resolution = resolveVocabularyEntry(registry, THREAT_NAMESPACE, 'G 0.18')!;
+
+    const { container } = render(
+      <MemoryRouter>
+        <VocabularyEntryCard resolution={resolution} hiddenColumns={['Begriff']} />
+      </MemoryRouter>,
+    );
+
+    const paragraphs = container.querySelectorAll('.animate-vocab-card > p');
+    expect(paragraphs[0]).toHaveTextContent('G 0.18');
+    expect(paragraphs[1]).toHaveTextContent('Fehlplanung oder fehlende Anpassung von Prozessen.');
+  });
+
   it('shows the entry identifier as a plain metadata row', () => {
     renderCard('Server');
 
