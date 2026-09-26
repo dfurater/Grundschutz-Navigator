@@ -175,6 +175,7 @@ export function Tooltip({
           timerRef.current = globalThis.setTimeout(() => setOpen(true), hoverDelayMs);
         } : undefined}
         onMouseLeave={mode === 'hover-toggle' ? closeTooltip : undefined}
+        data-tooltip-root={id}
         className="relative inline"
       >
         <button
@@ -195,13 +196,13 @@ export function Tooltip({
 
   // Verschachtelte Ziele mit eigenem Tooltip (z. B. Platzhalter in einem
   // Satzteil) öffnen nur ihren eigenen Tooltip, nicht zusätzlich diesen.
+  // Jeder Tooltip markiert seinen Bereich (Ziel und Erklärung) mit
+  // `data-tooltip-root`; der nächstgelegene Bereich entscheidet.
   const isForeignTarget = (event: SyntheticEvent<HTMLSpanElement>): boolean => {
-    const described = event.target instanceof Element
-      ? event.target.closest('[aria-describedby]')
+    const root = event.target instanceof Element
+      ? event.target.closest('[data-tooltip-root]')
       : null;
-    return described !== null
-      && event.currentTarget.contains(described)
-      && described.getAttribute('aria-describedby') !== id;
+    return root !== null && root.getAttribute('data-tooltip-root') !== id;
   };
   const handlePointerOver = (event: SyntheticEvent<HTMLSpanElement>) => {
     if (isForeignTarget(event)) {
@@ -221,17 +222,18 @@ export function Tooltip({
   };
   const handleFocus = (event: SyntheticEvent<HTMLSpanElement>) => {
     clearTimer();
+    const fromTouch = touchFocusRef.current;
+    touchFocusRef.current = false;
     if (isForeignTarget(event)) {
       closeTooltip();
       return;
     }
-    if (touchFocusRef.current) {
-      touchFocusRef.current = false;
-      return;
+    if (!fromTouch) {
+      setOpen(true);
     }
-    setOpen(true);
   };
   const handleBlur = () => {
+    touchFocusRef.current = false;
     closeTooltip();
   };
 
@@ -245,6 +247,7 @@ export function Tooltip({
       }}
       onFocus={handleFocus}
       onBlur={handleBlur}
+      data-tooltip-root={id}
       className="relative inline"
     >
       {describeTarget?.(id)}

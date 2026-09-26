@@ -1,5 +1,5 @@
-import { fireEvent, render, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { act, fireEvent, render, within } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router';
 import type { SegmentStatementInput } from '@/domain/statementSegments';
 import { ControlStatement, PLACEHOLDER_TOGGLETIP, type ControlStatementSegmentsProps } from './ControlStatement';
@@ -15,6 +15,13 @@ function plainSegmentsProps(input: SegmentStatementInput): ControlStatementSegme
     renderVocabularyCard: () => null,
   };
 }
+
+const GROUPED_INPUT: SegmentStatementInput = {
+  statementRaw: 'Die Institution muss Meldungen anhand von {{ insert: param, k }} innerhalb einer Frist prüfen.',
+  params: { k: { value: 'Kriterien', hasValue: false } },
+  modalverb: 'muss',
+  praezisierung: 'anhand von Kriterien innerhalb einer Frist',
+};
 
 describe('ControlStatement Satzteile und Restdetails (GSPP-303 Review)', () => {
   it('Platzhalter als ganze Präzisierung nennt den Satzteil in seiner Erklärung', () => {
@@ -119,6 +126,43 @@ describe('ControlStatement Satzteile und Restdetails (GSPP-303 Review)', () => {
     fireEvent.click(placeholder as HTMLElement);
     expect(scope.getAllByRole('tooltip')).toHaveLength(1);
     expect(scope.getByRole('tooltip', { name: `Präzisierung${PLACEHOLDER_TOGGLETIP}` })).toBeInTheDocument();
+  });
+
+  it('Maus in der Platzhalter-Erklärung öffnet nicht zusätzlich den Satzteil', () => {
+    vi.useFakeTimers();
+    try {
+      const { container } = render(
+        <MemoryRouter>
+          <ControlStatement statement="Fallback" segments={plainSegmentsProps(GROUPED_INPUT)} />
+        </MemoryRouter>,
+      );
+      const scope = within(container);
+      fireEvent.click(scope.getByText('Kriterien'));
+      const placeholderTip = scope.getByRole('tooltip');
+
+      fireEvent.mouseOver(placeholderTip);
+      act(() => vi.advanceTimersByTime(600));
+      expect(scope.getAllByRole('tooltip')).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('Tastaturfokus nach Antippen eines Platzhalters zeigt die Satzteil-Beschriftung', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <ControlStatement statement="Fallback" segments={plainSegmentsProps(GROUPED_INPUT)} />
+      </MemoryRouter>,
+    );
+    const scope = within(container);
+    const placeholder = scope.getByText('Kriterien').closest('button') as HTMLElement;
+    fireEvent.pointerDown(placeholder, { pointerType: 'touch' });
+    fireEvent.focus(placeholder);
+    fireEvent.blur(placeholder);
+
+    const clause = container.querySelector('section p [tabindex="0"]') as HTMLElement;
+    fireEvent.focus(clause);
+    expect(scope.getByRole('tooltip', { name: 'Präzisierung' })).toBeInTheDocument();
   });
 });
 
