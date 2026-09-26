@@ -98,10 +98,9 @@ describe('ControlStatement (GSPP-303 T5)', () => {
     expect(scope.queryByRole('tooltip')).toBeNull();
     expect(container.querySelector('[role="button"]')).toBeNull();
 
-    // Genau EIN Karten-Slot am Sektionsende (aktiver Satz-Key).
-    const slots = container.querySelectorAll(
-      '[id^="vocab-card-satz-"]',
-    );
+    // Je aufgelöstem Satz-Key ein Slot, auch geschlossen (aria-controls löst auf); sichtbar nur der aktive.
+    expect(container.querySelectorAll('[id^="vocab-card-satz-"]')).toHaveLength(triggers.length);
+    const slots = container.querySelectorAll('[id^="vocab-card-satz-"]:not([hidden])');
     expect(slots).toHaveLength(1);
     expect(slots[0].id).toBe(toVocabCardId('satz:practice'));
     expect(slots[0].textContent).toBe('Karte:GC');
