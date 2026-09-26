@@ -3,6 +3,9 @@
 import { CLASS_2_WORST_CASE_FIXTURES, toBytes } from './class2WorstCaseFixtures.mjs';
 import { CLASS_2_TRANSPORT_FIXTURES } from './class2TransportFixtures.mjs';
 
+// Rejection codes of the attack fixtures. They are raised only after the
+// measured work (root dispatch or schema stage); the fixtures are not
+// schema-valid by design (rationale in class2WorstCaseFixtures.mjs).
 export const EXPECTED_CODES = {
   'depth-bound': 'OSCAL_DOCUMENT_NOT_OBJECT',
   'heap-bound': 'OSCAL_DOCUMENT_NOT_OBJECT',

@@ -34,6 +34,11 @@ export async function computeSHA256(buffer: ArrayBuffer): Promise<string> {
     .join('');
 }
 
+/**
+ * Erkennt Inkonsistenz zwischen Artefakt und mitgelieferten Metadaten, keinen
+ * Herkunftsnachweis: Hash und Bytes stammen von derselben Origin. Die Herkunft
+ * belegt die SLSA-Attestation (docs/INTEGRITY.md).
+ */
 export async function verifyArtifactIntegrity(
   artifactBuffer: ArrayBuffer,
   metadata: IntegrityMetadata,

@@ -134,7 +134,9 @@ async function ensureCatalogFetched({ rootDir, env, run, log, freshness, manifes
     );
   }
   // Ein bereits gesetztes BSI_SNAPSHOT_SHA (z. B. von CI oder einem Nutzer
-  // gesetzt) hat Vorrang und bleibt unangetastet.
+  // gesetzt) hat Vorrang und bleibt unangetastet. Vorrang heißt nicht
+  // Durchlass: Weicht es vom Manifest-Pin ab, scheitert die Nachprüfung in
+  // Schritt 5 als `stale`.
   const fetchEnv = {
     ...env,
     BSI_SNAPSHOT_SHA: env.BSI_SNAPSHOT_SHA || pinnedSha,
