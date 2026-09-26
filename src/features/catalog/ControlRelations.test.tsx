@@ -13,6 +13,7 @@ import {
 } from './ControlDependencies';
 import { ControlHierarchy } from './ControlHierarchy';
 import { ControlMetadata } from './ControlMetadata';
+import { SectionLegend } from './ControlVocabularyPrimitives';
 
 function makeControl(id: string, title = `Kontrolle ${id}`): Control {
   return {
@@ -125,12 +126,9 @@ describe('ControlDependencies (Alltagssprache)', () => {
 describe('Zusammenhänge-Legende', () => {
   it('erklärt jede Relationsbedeutung plus Herkunftshinweis', async () => {
     const user = userEvent.setup();
-    const target = makeControl('GC.2.2', 'Zielkontrolle');
+    // Die Legende steht in der Zusammenhänge-Leiste; hier isoliert.
     const { container } = renderWithRouter(
-      <ControlDependencies
-        links={[makeLink(target.id, 'related', 'custom')]}
-        controlsById={new Map([[target.id, target]])}
-      />,
+      <SectionLegend legendId="legende-zusammenhaenge" entries={buildLinkLegendEntries()} />,
     );
     const scope = within(container);
 
@@ -141,12 +139,15 @@ describe('Zusammenhänge-Legende', () => {
 
     // Relationen haben keine eigene Vokabularseite; die Legende zeigt Text
     // ohne irreführende Selbstlinks.
-    for (const term of ['Verwandt', 'Erfordert', 'Referenz']) {
-      expect(legendScope.getByText(term)).toBeInTheDocument();
-    }
+    // Legendenschema: „Merkmal: Wert“ über der Erklärung.
+    expect([...(legend?.querySelectorAll('dt') ?? [])].map((term) => term.textContent)).toEqual([
+      'Link-Relation: Verwandt',
+      'Link-Relation: Erfordert',
+      'Link-Relation: Referenz',
+      'Herkunft der Relationsangabe',
+    ]);
 
     expect(legendScope.queryAllByRole('link')).toHaveLength(0);
-    expect(legendScope.getByText('Herkunft der Relationsangabe')).toBeInTheDocument();
     expect(legend?.textContent).toContain(
       'Ob die Relationsangabe im OSCAL-Katalog dokumentiert ist '
       + '(… · OSCAL-dokumentiert), nur benutzerdefiniert vorliegt '
@@ -177,7 +178,7 @@ describe('ControlHierarchy (T8)', () => {
 });
 
 describe('ControlMetadata (Fußzeile)', () => {
-  it('rendert ohne Überschrift und ohne dl-Raster', () => {
+  it('rendert ohne Überschrift, Beschriftung und Wert als getrennte Begriffspaare', () => {
     const uuid = '7b38a819-1234-5678-90ab-abcdefabcdef';
     const view = renderWithRouter(
       <ControlMetadata
@@ -189,7 +190,9 @@ describe('ControlMetadata (Fußzeile)', () => {
     const scope = within(view.container);
 
     expect(scope.queryByRole('heading')).not.toBeInTheDocument();
-    expect(view.container.querySelector('dl, dt, dd')).toBeNull();
+    // Owner 26.09.2026: Beschriftung und Wert sichtbar voneinander abgesetzt.
+    expect(scope.getByText('UUID').tagName).toBe('DT');
+    expect(scope.getByText(uuid).tagName).toBe('DD');
     expect(scope.getByText(uuid)).toHaveClass('font-mono');
     expect(scope.getByText(/GC\.2\.1/)).toBeInTheDocument();
 

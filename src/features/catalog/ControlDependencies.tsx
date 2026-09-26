@@ -1,13 +1,16 @@
-import type { ReactNode } from 'react';
+import { Fragment } from 'react';
 import type { Control, ControlLink } from '@/domain/models';
 import {
   type IncomingControlLink,
 } from '@/domain/controlRelationships';
 import {
-  detailLinkRowClass,
-  SectionLegend,
+  ControlListLink,
+  detailListClass,
   type LegendEntry,
 } from './ControlVocabularyPrimitives';
+
+/** Relationsart unter einem Link: leise, direkt unter der Link-Zeile. */
+const relationNoteClass = 'text-xs text-slate-400';
 
 export interface ControlDependenciesProps {
   readonly links: readonly ControlLink[];
@@ -40,8 +43,8 @@ export function buildIncomingEverydayLabel(incoming: IncomingControlLink): strin
   return `${incoming.control.id} verweist hierauf als „${everydayRelationLabel(incoming.link)}"`;
 }
 
-function legendEntry(term: string, definition: string): LegendEntry {
-  return { term, definition };
+function relationLegendEntry(term: string, definition: string): LegendEntry {
+  return { category: 'Link-Relation', term, definition };
 }
 
 /**
@@ -51,15 +54,15 @@ function legendEntry(term: string, definition: string): LegendEntry {
  */
 export function buildLinkLegendEntries(): LegendEntry[] {
   return [
-    legendEntry('Verwandt', 'Verwandte Kontrolle — Alltagslabel für OSCAL-rel „related".'),
-    legendEntry('Erfordert', 'Erforderliche Kontrolle — Alltagslabel für OSCAL-rel „required".'),
-    legendEntry('Referenz', 'Referenz — Alltagslabel für OSCAL-rel „reference".'),
-    legendEntry(
-      'Herkunft der Relationsangabe',
-      'Ob die Relationsangabe im OSCAL-Katalog dokumentiert ist '
+    relationLegendEntry('Verwandt', 'Verwandte Kontrolle — Alltagslabel für OSCAL-rel „related".'),
+    relationLegendEntry('Erfordert', 'Erforderliche Kontrolle — Alltagslabel für OSCAL-rel „required".'),
+    relationLegendEntry('Referenz', 'Referenz — Alltagslabel für OSCAL-rel „reference".'),
+    {
+      term: 'Herkunft der Relationsangabe',
+      definition: 'Ob die Relationsangabe im OSCAL-Katalog dokumentiert ist '
       + '(… · OSCAL-dokumentiert), nur benutzerdefiniert vorliegt '
       + '(… · benutzerdefinierte OSCAL-Relation) oder fehlt (ohne Relationsangabe).',
-    ),
+    },
   ];
 }
 
@@ -105,33 +108,6 @@ function groupLinksByLabel(links: readonly ControlLink[]) {
   return groups;
 }
 
-function ControlLinkButton({
-  control,
-  ariaLabel,
-  onNavigateToControl,
-  children,
-}: {
-  readonly control: Control;
-  readonly ariaLabel: string;
-  readonly onNavigateToControl?: (control: Control) => void;
-  readonly children?: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={ariaLabel}
-      className={detailLinkRowClass}
-      onClick={() => onNavigateToControl?.(control)}
-    >
-      <div className="flex items-baseline gap-2">
-        <span className="font-mono text-xs text-slate-500 shrink-0 group-hover:text-primary-main">{control.id}</span>
-        <span className="text-sm text-slate-700 leading-snug">{control.title}</span>
-      </div>
-      {children}
-    </button>
-  );
-}
-
 export function ControlDependencies({
   links,
   controlsById,
@@ -150,8 +126,10 @@ export function ControlDependencies({
     return null;
   }
 
-  // GSPP-303 T9: hüllenlos (Teil der Zusammenhänge-Zone; die Gruppen-
-  // Beschriftung „Verknüpft" setzt ControlDetail darüber).
+  // GSPP-303 T9: hüllenlos (Teil des Blocks „Zusammenhänge“; die Gruppen-
+  // Beschriftung „Verknüpft" setzt ControlDetail darüber). Listen mit Punkten
+  // wie Erweiterungen und Gefährdungen; die Relationsart steht leise unter
+  // dem Link.
   return (
     <div className="space-y-3">
       {resolvedLinks.length > 0 && (
@@ -160,32 +138,35 @@ export function ControlDependencies({
             const groupLabelId = `control-dependencies-group-label-${groupIndex}`;
             return (
               <fieldset key={group.label} aria-labelledby={groupLabelId} className="min-w-0">
-                <legend id={groupLabelId} className="text-xs font-medium text-slate-500 mb-1">
+                {/* Relationsart als Gruppenname für Screenreader; sichtbar steht
+                    sie leise unter jedem Link (Mock), nicht als zweite Beschriftung. */}
+                <legend id={groupLabelId} className="sr-only">
                   {capitalize(group.label)}
                 </legend>
-                <div className="space-y-1">
+                <ul className={detailListClass}>
                   {group.links.map((link) => {
                     const targetControl = controlsById?.get(link.targetId);
                     if (!targetControl) return null;
                     return (
-                      <div key={`${link.targetId}-${link.href}-${link.rel ?? 'missing'}-${link.resourceFragment ?? ''}`}>
-                        <ControlLinkButton
+                      <li key={`${link.targetId}-${link.href}-${link.rel ?? 'missing'}-${link.resourceFragment ?? ''}`}>
+                        <ControlListLink
                           control={targetControl}
                           ariaLabel={`${link.targetId} ${targetControl.title} (${everydayRelationLabel(link)})`}
                           onNavigateToControl={onNavigateToControl}
                         />
-                        {distinctReverseLinks(incomingByControlId.get(link.targetId)).map((incoming) => (
-                          <p
-                            key={`${incoming.control.id}-${incoming.link.rel ?? 'missing'}-${incoming.link.relStatus}`}
-                            className="mt-0.5 text-xs text-slate-400"
-                          >
-                            {buildIncomingEverydayLabel(incoming)}
-                          </p>
-                        ))}
-                      </div>
+                        <p className={relationNoteClass}>
+                          <span aria-hidden="true">{group.label}</span>
+                          {distinctReverseLinks(incomingByControlId.get(link.targetId)).map((incoming) => (
+                            <Fragment key={`${incoming.control.id}-${incoming.link.rel ?? 'missing'}-${incoming.link.relStatus}`}>
+                              <span aria-hidden="true"> · </span>
+                              <span>{buildIncomingEverydayLabel(incoming)}</span>
+                            </Fragment>
+                          ))}
+                        </p>
+                      </li>
                     );
                   })}
-                </div>
+                </ul>
               </fieldset>
             );
           })}
@@ -193,22 +174,19 @@ export function ControlDependencies({
       )}
 
       {incomingOnlyLinks.length > 0 && (
-        <div className="space-y-1">
+        <ul className={detailListClass}>
           {incomingOnlyLinks.map((incoming) => (
-            <ControlLinkButton
-              key={`${incoming.control.id}-${incoming.link.href}-${incoming.link.rel ?? 'missing'}`}
-              control={incoming.control}
-              ariaLabel={`${incoming.control.id} ${incoming.control.title} (${everydayRelationLabel(incoming.link)})`}
-              onNavigateToControl={onNavigateToControl}
-            >
-              <span className="mt-0.5 text-xs text-slate-400">
-                {buildIncomingEverydayLabel(incoming)}
-              </span>
-            </ControlLinkButton>
+            <li key={`${incoming.control.id}-${incoming.link.href}-${incoming.link.rel ?? 'missing'}`}>
+              <ControlListLink
+                control={incoming.control}
+                ariaLabel={`${incoming.control.id} ${incoming.control.title} (${everydayRelationLabel(incoming.link)})`}
+                onNavigateToControl={onNavigateToControl}
+              />
+              <p className={relationNoteClass}>{buildIncomingEverydayLabel(incoming)}</p>
+            </li>
           ))}
-        </div>
+        </ul>
       )}
-      <SectionLegend legendId="legende-zusammenhaenge" entries={buildLinkLegendEntries()} />
     </div>
   );
 }

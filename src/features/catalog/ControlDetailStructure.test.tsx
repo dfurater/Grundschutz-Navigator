@@ -207,29 +207,31 @@ describe('ControlDetail Struktur (GSPP-303 T9)', () => {
     const kurzprofil = scope.getByRole('group', { name: 'Kriterien' });
     const anforderung = scope.getByRole('heading', { level: 3, name: 'Anforderung' });
     const hinweise = scope.getByRole('heading', { level: 3, name: 'Umsetzungshinweise' });
-    const merkmale = scope.getByRole('heading', { level: 3, name: 'Merkmale' });
+    const merkmale = scope.getByRole('heading', { level: 3, name: 'Schutzziele und Gefährdungen' });
     const zusammenhaenge = scope.getByRole('heading', { level: 3, name: 'Zusammenhänge' });
     const fusszeile = scope.getByText('uuid-struktur-test');
 
-    // Kopf → Kurzprofil → Anforderung → Umsetzungshinweise → Merkmale → Zusammenhänge → Fußzeile
-    const ordered = [kopf, kurzprofil, anforderung, hinweise, merkmale, zusammenhaenge, fusszeile];
+    // Kopf → Anforderung (Kriterien als erste Zeile) → Umsetzungshinweise → Schutzziele und Gefährdungen → Zusammenhänge → Fußzeile
+    const ordered = [kopf, anforderung, kurzprofil, hinweise, merkmale, zusammenhaenge, fusszeile];
     for (let index = 0; index + 1 < ordered.length; index += 1) {
       const position = ordered[index].compareDocumentPosition(ordered[index + 1]);
       expect(position & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
 
-    // Kurzprofil: Badges + Legende
+    // Kriterien: Badges im Block „Anforderung“, Legende in dessen Leiste
     expect(within(kurzprofil).getByText('MUSS')).toBeInTheDocument();
-    expect(container.querySelector('#legende-kurzprofil')).not.toBeNull();
+    expect(anforderung.closest('section')!.contains(kurzprofil)).toBe(true);
+    expect(within(anforderung.parentElement!).getByRole('button', { name: 'Legende' }))
+      .toHaveAttribute('aria-controls', 'legende-anforderung');
 
-    // Anforderung: 16-px-Satz
+    // Anforderung: Satz in derselben Fließtextgröße wie die Umsetzungshinweise
     const satz = Array.from(container.querySelectorAll('p')).find(
-      (paragraph) => paragraph.style.fontSize === '16px',
+      (paragraph) => paragraph.textContent?.includes('Die Institution muss die Vorgaben verankern.'),
     );
-    expect(satz?.textContent).toContain('Die Institution muss die Vorgaben verankern.');
+    expect(satz).toHaveClass('text-sm', 'leading-relaxed', 'text-slate-700');
 
-    // Merkmale- und Zusammenhänge-Legenden
-    expect(container.querySelector('#legende-merkmale')).not.toBeNull();
+    // Legenden „Schutzziele und Gefährdungen“ und „Zusammenhänge“
+    expect(container.querySelector('#legende-schutzziele')).not.toBeNull();
     expect(container.querySelector('#legende-zusammenhaenge')).not.toBeNull();
   });
 
@@ -243,7 +245,7 @@ describe('ControlDetail Struktur (GSPP-303 T9)', () => {
     expect(headings).toEqual([
       'Anforderung',
       'Umsetzungshinweise',
-      'Merkmale',
+      'Schutzziele und Gefährdungen',
       'Zusammenhänge',
     ]);
 
@@ -260,7 +262,7 @@ describe('ControlDetail Struktur (GSPP-303 T9)', () => {
     const teilVon = scope.getByRole('button', {
       name: 'Teil von GC.2 Übergeordnete Kontrolle',
     });
-    expect(teilVon.textContent).toContain('↳ Teil von GC.2 Übergeordnete Kontrolle');
+    expect(teilVon).toHaveTextContent('↳ Teil von GC.2 Übergeordnete Kontrolle');
     await user.click(teilVon);
     expect(onNavigateToControl).toHaveBeenCalledWith(parentControl);
 
@@ -307,34 +309,24 @@ describe('ControlDetail Struktur (GSPP-303 T9)', () => {
     ).toBeNull();
   });
 
-  it('(e) stellt Merkmale/Zusammenhänge/Fußzeile in die Zone; Leisten darin slate-100', () => {
+  it('(e) baut alle Blöcke gleich auf: keine graue Zone, Leisten im selben Ton', () => {
     const { container } = renderFull();
     const scope = within(container);
 
-    const merkmaleSection = scope
-      .getByRole('heading', { level: 3, name: 'Merkmale' })
-      .closest('section')!;
-    const zone = merkmaleSection.parentElement!;
-    expect(zone.className).toContain('bg-[var(--color-surface-subtle)]');
-    expect(zone.className).toContain('border-t');
+    // Alle Blöcke und die Fußzeile stehen direkt im Scrollbereich, ohne Zonen-Hülle.
+    const scroll = container.querySelector('[data-control-detail-scroll]')!;
+    for (const name of ['Anforderung', 'Schutzziele und Gefährdungen', 'Zusammenhänge']) {
+      expect(scope.getByRole('heading', { level: 3, name }).closest('section')!.parentElement).toBe(scroll);
+    }
+    expect(scope.getByText('uuid-struktur-test').closest('dl')!.parentElement).toBe(scroll);
 
-    // Zusammenhänge und Fußzeile liegen in derselben Zone
-    const zusammenhaengeSection = scope
-      .getByRole('heading', { level: 3, name: 'Zusammenhänge' })
-      .closest('section')!;
-    expect(zusammenhaengeSection.parentElement).toBe(zone);
-    expect(scope.getByText('uuid-struktur-test').closest('p')!.parentElement).toBe(zone);
-
-    // Leisten in der Zone: slate-100; außerhalb: Standard-Ton
-    expect(
-      scope.getByRole('heading', { level: 3, name: 'Merkmale' }).className,
-    ).toContain('bg-slate-100');
-    expect(
-      scope.getByRole('heading', { level: 3, name: 'Zusammenhänge' }).className,
-    ).toContain('bg-slate-100');
-    expect(
-      scope.getByRole('heading', { level: 3, name: 'Anforderung' }).className,
-    ).not.toContain('bg-slate-100');
+    // Jede Leiste trägt denselben Ton; die Leiste ist das Elternelement der Überschrift.
+    const barOf = (name: string) =>
+      scope.getByRole('heading', { level: 3, name }).parentElement!.className;
+    for (const name of ['Anforderung', 'Schutzziele und Gefährdungen', 'Zusammenhänge']) {
+      expect(barOf(name)).toContain('bg-[var(--color-surface-subtle)]');
+      expect(barOf(name)).not.toContain('bg-slate-100');
+    }
   });
 
   it('(f) lässt leere Gruppen/Blöcke entfallen', () => {

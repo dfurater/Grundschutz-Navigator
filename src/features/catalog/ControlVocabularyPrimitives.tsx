@@ -2,7 +2,13 @@ import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { Tooltip } from '@/components/Tooltip';
-import type { VocabularyNamespace } from '@/domain/models';
+import {
+  legendCardClass,
+  legendLinkClass,
+  legendTermClass,
+  tightStackClass,
+} from '@/components/legendStyles';
+import type { Control, VocabularyNamespace } from '@/domain/models';
 import type { VocabularyResolution } from '@/domain/vocabulary';
 
 export interface RenderVocabularyCardOptions {
@@ -15,8 +21,69 @@ export type RenderVocabularyCard = (
   options?: RenderVocabularyCardOptions,
 ) => ReactNode;
 
-export const detailLinkRowClass =
-  'group block w-full rounded px-2 py-2 -mx-2 text-left transition-colors hover:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]';
+/**
+ * Touch-Fläche einer Zeile mit 24 px Höhe (Listen, Begriffe außerhalb des
+ * Satzes): Das Pseudo-Element wächst unsichtbar auf 36 px mobil bzw. 28 px ab
+ * lg; die Zeile selbst bleibt bei jeder Breite 24 px hoch, damit am
+ * Breakpoint nichts springt (Owner 26.09.2026). Benachbarte Flächen
+ * überlappen dabei um 6 px.
+ */
+export const rowTouchTargetClass =
+  "relative after:absolute after:-inset-y-1.5 after:inset-x-0 after:content-[''] lg:after:-inset-y-0.5";
+
+/**
+ * Textaktion in 12 px (Legende, Mehr anzeigen): unterstreicht beim Hover wie
+ * jeder Link; die Trefferfläche wächst unsichtbar auf 40 px mobil bzw. 24 px ab lg.
+ */
+export const textActionClass =
+  "relative shrink-0 cursor-pointer rounded text-xs font-medium leading-4 text-primary-main after:absolute after:-inset-x-2 after:-inset-y-3 after:content-[''] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] lg:after:-inset-y-1";
+
+/**
+ * Aufzählung der Detailansicht (Gefährdungen, Erweiterungen, Verknüpfungen):
+ * echte Liste mit dezentem Punkt, feste Zeilenhöhe und 6 px Abstand. Eine
+ * aufgeklappte Karte hält 12 px zum nächsten Eintrag (`tightStackClass`).
+ */
+export const detailListMarkerClass =
+  'list-disc pl-4 text-sm leading-relaxed text-slate-700 marker:text-slate-400';
+
+export const detailListClass = `${detailListMarkerClass} space-y-1.5 ${tightStackClass}`;
+
+/**
+ * Link-Zeile in einer `detailListClass`-Liste: Kennung und Titel auf einer
+ * Grundlinie, Zeile 24 px hoch. Die Touch-Fläche wächst unsichtbar per
+ * `::after` (36 px mobil, 28 px ab lg), ohne das Layout zu verschieben.
+ */
+export const detailListLinkClass =
+  `group inline-flex min-h-6 max-w-full items-baseline gap-2 rounded text-left ${rowTouchTargetClass} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]`;
+
+/** Kennung und Titel einer anderen Anforderung als Link-Zeile in einer Detail-Liste. */
+export function ControlListLink({
+  control,
+  ariaLabel,
+  onNavigateToControl,
+}: {
+  readonly control: Control;
+  readonly ariaLabel: string;
+  readonly onNavigateToControl?: (control: Control) => void;
+}): ReactNode {
+  return (
+    <button
+      type="button"
+      aria-label={ariaLabel}
+      className={detailListLinkClass}
+      onClick={() => onNavigateToControl?.(control)}
+    >
+      <span className="shrink-0 font-mono text-xs text-slate-500 group-hover:text-primary-main">{control.id}</span>
+      <span className="group-hover:underline">{control.title}</span>
+    </button>
+  );
+}
+
+/** Fließtext der Detailansicht: Anforderung, Umsetzungshinweise und Dokumentation in einer Größe. */
+export const detailProseClass = 'w-full break-words text-sm leading-relaxed whitespace-pre-line text-slate-700 [hyphens:auto]';
+
+/** Gruppenbeschriftung unter einer Blockleiste (Schutzziele, Tags, Dokumentation …). */
+export const subSectionHeadingClass = 'mb-1.5 text-sm font-semibold leading-snug text-slate-700';
 
 export function SubSectionHeading({
   children,
@@ -24,7 +91,7 @@ export function SubSectionHeading({
   readonly children: ReactNode;
 }) {
   return (
-    <h4 className="text-xs font-medium uppercase tracking-wide text-slate-500 mb-1">
+    <h4 className={subSectionHeadingClass}>
       {children}
     </h4>
   );
@@ -62,6 +129,11 @@ export interface TermTriggerProps {
   readonly tooltip?: ReactNode;
   /** Nur im Fließsatz greift die WCAG-Ausnahme für Inline-Touchziele. */
   readonly inline?: boolean;
+  /**
+   * Ersetzt die Layout-Klassen außerhalb des Satzes, z. B. im Schutzziel-Raster
+   * mit fester Zeilenhöhe und Touch-Fläche über ein Pseudo-Element.
+   */
+  readonly className?: string;
 }
 
 /**
@@ -79,6 +151,7 @@ export function TermTrigger({
   ariaLabel,
   tooltip,
   inline = false,
+  className,
 }: TermTriggerProps): ReactNode {
   const cardId = toVocabCardId(vocabKey);
   const renderButton = (describedById?: string) => (
@@ -93,12 +166,24 @@ export function TermTrigger({
         onToggle(vocabKey);
       }}
       className={`cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] ${
-        inline ? 'inline' : 'inline-flex min-h-11 min-w-11 max-w-full items-center text-left [overflow-wrap:anywhere] lg:min-h-10 lg:min-w-10'
+        // Außerhalb des Satzes: Zeile 24 px bei jeder Breite, Touch-Fläche per
+        // Pseudo-Element (`rowTouchTargetClass`), damit am Breakpoint nichts springt.
+        inline ? 'inline' : (className ?? `inline-flex min-h-6 max-w-full items-center text-left [overflow-wrap:anywhere] ${rowTouchTargetClass}`)
       } ${
         active ? 'font-medium text-primary-main' : ''
       }`}
     >
-      <span className="underline decoration-dotted underline-offset-4">
+      {/*
+        Außerhalb des Satzes reserviert eine unsichtbare, halbfette Kopie per
+        `::after` die Breite des aktiven Zustands: Das Öffnen der Karte
+        verschiebt dann nichts daneben (Owner 26.09.2026).
+      */}
+      <span
+        data-label={inline ? undefined : label}
+        className={`underline decoration-dotted decoration-slate-400 underline-offset-4 ${
+          inline ? '' : "inline-flex flex-col after:invisible after:h-0 after:overflow-hidden after:font-medium after:content-[attr(data-label)]"
+        }`}
+      >
         {label}
       </span>
     </button>
@@ -120,13 +205,24 @@ export function TermTrigger({
 export interface LegendEntry {
   readonly term: string;
   /**
-   * Erklärtext zum Term. Leer erlaubt — dann rendert die Legende nur Term +
-   * Link ohne `: `-Anstrich (GSPP-303 T9).
+   * Erklärtext zum Term, steht unter dem Term. Leer erlaubt — dann rendert
+   * die Legende nur Term + Link (GSPP-303 T9).
    *
    * Einträge einer Legende müssen je Begriff eindeutig sein.
    */
   readonly definition: string;
   readonly href?: string;
+  /**
+   * Sichtbare Form des Begriffs, wie sie im Block steht (z. B. die Punkte-Skala
+   * der Schutzziel-Relevanz), damit niemand Ziffern in Symbole übersetzen muss.
+   * Der Begriff bleibt dann als Screenreader-Text erhalten.
+   */
+  readonly visual?: ReactNode;
+  /**
+   * Merkmal, zu dem der Wert gehört (z. B. „Modalverb“ für „SOLLTE“); die
+   * Legende zeigt dann „Merkmal: Wert“ über der Erklärung.
+   */
+  readonly category?: string;
 }
 
 export interface SectionLegendProps {
@@ -135,9 +231,77 @@ export interface SectionLegendProps {
   readonly entries: LegendEntry[];
 }
 
+/** Textlink „Legende“ (12 px); die Trefferfläche wächst unsichtbar per `::after` auf Touch-Größe. */
+export function LegendToggle({
+  legendId,
+  label = 'Legende',
+  open,
+  onToggle,
+}: {
+  readonly legendId: string;
+  readonly label?: string;
+  readonly open: boolean;
+  readonly onToggle: () => void;
+}): ReactNode {
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      aria-controls={legendId}
+      onClick={onToggle}
+      className={textActionClass}
+    >
+      {label}
+    </button>
+  );
+}
+
+export function LegendPanel({
+  legendId,
+  open,
+  entries,
+  className = 'mt-2',
+}: {
+  readonly legendId: string;
+  readonly open: boolean;
+  readonly entries: LegendEntry[];
+  readonly className?: string;
+}): ReactNode {
+  return (
+    // Eigene Karte, damit die Erklärung nicht als Inhalt des Blocks gelesen wird.
+    // Je Eintrag erst „Merkmal: Wert“, darunter die Erklärung (Legendenschema).
+    <dl id={legendId} hidden={!open} className={`${legendCardClass} ${className}`}>
+      {entries.map((entry) => {
+        const label = entry.visual === undefined ? entry.term : (
+          <>
+            <span aria-hidden="true" className="inline-flex align-middle">{entry.visual}</span>
+            <span className="sr-only">{entry.term}</span>
+          </>
+        );
+        return (
+          <div key={`${entry.category ?? ''}:${entry.term}`}>
+            <dt className={legendTermClass}>
+              {entry.category === undefined ? null : `${entry.category}: `}
+              {entry.href ? (
+                <Link to={entry.href} className={legendLinkClass}>
+                  {label}
+                </Link>
+              ) : label}
+            </dt>
+            {entry.definition ? <dd>{entry.definition}</dd> : null}
+          </div>
+        );
+      })}
+    </dl>
+  );
+}
+
 /**
  * Sektions-Legende (GSPP-303 T4): Textlink ohne Icon; toggelt ein Panel mit
  * allen Einträgen (Begriff als Link auf die Vokabular-Route + Definition).
+ * In Blöcken mit Leiste steht der Textlink in der Leiste
+ * (`ControlDetailSection`, Prop `legend`); dort nutzt die Leiste
+ * `LegendToggle` und `LegendPanel` direkt.
  *
  * Ein Vokabular-Link erscheint nur für Begriffe mit echter Zielseite.
  */
@@ -149,35 +313,15 @@ export function SectionLegend({
   const [open, setOpen] = useState(false);
   return (
     <div>
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={legendId}
-        onClick={() => {
+      <LegendToggle
+        legendId={legendId}
+        label={label}
+        open={open}
+        onToggle={() => {
           setOpen((current) => !current);
         }}
-        className="cursor-pointer rounded text-primary-main hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
-      >
-        {label}
-      </button>
-      <div id={legendId} hidden={!open}>
-        {entries.map((entry) => (
-          <p
-            key={entry.term}
-            className="text-sm leading-relaxed text-slate-700"
-          >
-            {entry.href ? (
-              <Link
-                to={entry.href}
-                className="rounded font-bold text-primary-main hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
-              >
-                {entry.term}
-              </Link>
-            ) : <strong>{entry.term}</strong>}
-            {entry.definition ? `: ${entry.definition}` : null}
-          </p>
-        ))}
-      </div>
+      />
+      <LegendPanel legendId={legendId} open={open} entries={entries} />
     </div>
   );
 }

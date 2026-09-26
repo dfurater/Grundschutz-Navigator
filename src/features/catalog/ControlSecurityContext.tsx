@@ -5,7 +5,9 @@ import {
   type SecurityTargetRow,
 } from './ControlSecurityTargets';
 import {
+  detailListClass,
   findResolutionByValue,
+  rowTouchTargetClass,
   SubSectionHeading,
   TermTrigger,
   toVocabCardId,
@@ -136,9 +138,9 @@ export function ControlSecurityContext({
     return null;
   }
 
-  // GSPP-303 T9: hüllenlos (Teil der Merkmale-Zone ohne eigene Überschrift).
+  // GSPP-303 T9: hüllenlos (Teil von „Schutzziele und Gefährdungen“ ohne eigene Überschrift).
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {securityTargets.length > 0 && (
         <ControlSecurityTargets
           securityTargets={securityTargets}
@@ -150,8 +152,14 @@ export function ControlSecurityContext({
 
       {threatItems.length > 0 && (
         <div>
-          <SubSectionHeading>Elementare Gefährdungen</SubSectionHeading>
-          <div className="space-y-2">
+          <SubSectionHeading>Gefährdungen</SubSectionHeading>
+          {/* Echte Liste mit dezentem Aufzählungszeichen (Owner-Wunsch 26.09.2026). */}
+          {/*
+            Feste Zeilenhöhe bei jeder Breite wie im Schutzziel-Raster: Touch-Fläche
+            über ein Pseudo-Element statt `min-h-11`, das am Breakpoint sprang
+            (Owner 26.09.2026). Benachbarte Flächen überlappen dabei um 6 px.
+          */}
+          <ul className={detailListClass}>
             {threatItems.map(({
               threat,
               displayName,
@@ -163,7 +171,7 @@ export function ControlSecurityContext({
               const active = isVocabularyActive(vocabKey);
 
               return resolution ? (
-                <div key={vocabKey}>
+                <li key={vocabKey}>
                   <TermTrigger
                     vocabKey={vocabKey}
                     active={active}
@@ -171,6 +179,7 @@ export function ControlSecurityContext({
                     label={displayName}
                     ariaLabel={`Elementare Gefährdung: ${accessibleName}`}
                     tooltip={threat}
+                    className={`inline-flex min-h-6 max-w-full items-center text-left [overflow-wrap:anywhere] ${rowTouchTargetClass}`}
                   />
                   <div
                     id={toVocabCardId(vocabKey)}
@@ -180,17 +189,14 @@ export function ControlSecurityContext({
                       hiddenColumns: showsTerm ? ['Begriff'] : [],
                     })}
                   </div>
-                </div>
+                </li>
               ) : (
-                <p
-                  key={vocabKey}
-                  className="text-sm leading-relaxed text-slate-700"
-                >
+                <li key={vocabKey}>
                   {threat}
-                </p>
+                </li>
               );
             })}
-          </div>
+          </ul>
         </div>
       )}
     </div>

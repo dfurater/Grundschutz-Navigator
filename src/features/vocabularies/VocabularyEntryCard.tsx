@@ -2,6 +2,8 @@ import { Link } from 'react-router';
 import type { VocabularyEntry, VocabularyNamespace } from '@/domain/models';
 import type { VocabularyResolution } from '@/domain/vocabulary';
 import { resolveIdentifierReference } from '@/domain/vocabulary';
+import { legendCardClass, legendLinkClass, legendTermClass } from '@/components/legendStyles';
+import { getVocabularyTermLabel } from './vocabularyTitle';
 
 export interface VocabularyEntryCardProps {
   readonly resolution: VocabularyResolution;
@@ -55,52 +57,38 @@ export function VocabularyEntryCard({
       return target ? [{ column, target }] : [];
     });
 
-  const hasMetadataRows = extraColumns.length > 0 || referenceRows.length > 0;
-
+  // Legendenschema (Owner 26.09.2026): „Merkmal: Wert“ über der Erklärung,
+  // Zusatzangaben als „Merkmal: Wert“-Zeilen. Der Wert verlinkt den Eintrag
+  // im Vokabular.
   return (
-    <div className="animate-vocab-card border-t border-slate-100 pt-2.5 space-y-2 text-sm leading-relaxed text-slate-700">
-      {namespace.source.fileName === 'basethreats.csv' && (
-        <p className="text-xs font-semibold text-slate-600">{entry.value}</p>
-      )}
-      {entry.definition && (
-        <p className="whitespace-pre-line">
-          {entry.definition}
-        </p>
-      )}
-
-      {hasMetadataRows && (
-        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-          {extraColumns.map((column) => (
-            <div key={column} className="contents">
-              <dt className="catalog-meta-text pt-0.5">{column}</dt>
-              <dd className="whitespace-pre-line">{entry.columns[column]}</dd>
-            </div>
-          ))}
-          {referenceRows.map(({ column, target }) => (
-            <div key={column} className="contents">
-              <dt className="catalog-meta-text pt-0.5">{referenceColumnLabel(column)}</dt>
-              <dd>
-                <Link
-                  to={buildEntryHref(namespace, target)}
-                  className="rounded text-primary-main hover:text-primary-hover hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
-                >
-                  {target.value}
-                </Link>
-              </dd>
-            </div>
-          ))}
-        </dl>
-      )}
-
-      <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
-        <span>{namespace.source.fileName}</span>
-        <Link
-          to={buildEntryHref(namespace, entry)}
-          className="ml-auto rounded text-primary-main hover:text-primary-hover hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
-        >
-          Zu den Vokabularen →
-        </Link>
+    <dl data-vocab-card className={`animate-vocab-card ${legendCardClass} mt-1.5`}>
+      <div>
+        <dt className={legendTermClass}>
+          {`${getVocabularyTermLabel(namespace.source.fileName)}: `}
+          <Link to={buildEntryHref(namespace, entry)} className={legendLinkClass}>
+            {entry.value}
+          </Link>
+        </dt>
+        {entry.definition && (
+          <dd className="whitespace-pre-line">{entry.definition}</dd>
+        )}
       </div>
-    </div>
+      {extraColumns.map((column) => (
+        <div key={column}>
+          <dt className={`inline ${legendTermClass}`}>{`${column}: `}</dt>
+          <dd className="inline whitespace-pre-line [overflow-wrap:anywhere]">{entry.columns[column]}</dd>
+        </div>
+      ))}
+      {referenceRows.map(({ column, target }) => (
+        <div key={column}>
+          <dt className={`inline ${legendTermClass}`}>{`${referenceColumnLabel(column)}: `}</dt>
+          <dd className="inline">
+            <Link to={buildEntryHref(namespace, target)} className={legendLinkClass}>
+              {target.value}
+            </Link>
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }

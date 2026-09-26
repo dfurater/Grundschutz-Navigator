@@ -176,8 +176,8 @@ describe('ControlStatement (GSPP-303 T5)', () => {
 
     // T2-Lehre: hasValue:false rendert weiterhin den Werttext.
     const frist = scope.getByText('Frist');
-    expect(frist).toHaveClass('bg-amber-100');
-    expect(PLACEHOLDER_TOGGLETIP).toBe('Platzhalter – Der Wert wird bei der Anwendung festgelegt.');
+    expect(frist).toHaveClass('bg-[var(--color-accent-soft)]');
+    expect(PLACEHOLDER_TOGGLETIP).toBe('Der Wert wird im eigenen Profil oder im Implementierungsplan (SSP) festgelegt.');
     const button = frist.closest('button');
     expect(button).not.toBeNull();
     expect(scope.queryByRole('tooltip')).toBeNull();
@@ -187,7 +187,7 @@ describe('ControlStatement (GSPP-303 T5)', () => {
     expect(button).toHaveAttribute('aria-describedby', tooltip.id);
   });
 
-  it('Satz-fontSize: 16', () => {
+  it('Satz in Fließtextgröße wie die Umsetzungshinweise', () => {
     const input: SegmentStatementInput = {
       statementRaw: 'Die Institution muss dokumentieren.',
       params: {},
@@ -203,10 +203,12 @@ describe('ControlStatement (GSPP-303 T5)', () => {
     );
 
     const sentence = Array.from(container.querySelectorAll('p')).find(
-      (paragraph) => paragraph.style.fontSize === '16px',
+      (paragraph) => paragraph.textContent?.includes('Die Institution muss'),
     );
     expect(sentence).toBeDefined();
-    expect(sentence?.textContent).toContain('Die Institution muss');
+    expect(sentence).toHaveClass('text-sm', 'leading-relaxed', 'text-slate-700');
+    expect(sentence).not.toHaveClass('text-base');
+    expect(sentence?.style.fontSize).toBe('');
   });
 
   it('ControlStatementDetails: nur missing-Zeilen + Dokumentation, Label-über-Inhalt, kein Affordance-Icon', () => {
@@ -255,7 +257,7 @@ describe('ControlStatement (GSPP-303 T5)', () => {
 
     const label = scope.getByText('Ergebnis');
     expect(label.tagName).toBe('P');
-    expect(label).toHaveClass('catalog-meta-text');
+    expect(label).toHaveClass('text-sm', 'font-semibold', 'text-slate-700');
 
     expect(
       container.querySelector('.catalog-vocabulary-affordance'),

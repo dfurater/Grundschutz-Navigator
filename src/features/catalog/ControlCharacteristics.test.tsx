@@ -10,11 +10,12 @@ import {
 import { VocabularyEntryCard } from '@/features/vocabularies/VocabularyEntryCard';
 import { ControlSecurityContext } from './ControlSecurityContext';
 import {
+  buildRelevanceLegendEntries,
   ControlSecurityTargets,
   type SecurityTargetRow,
 } from './ControlSecurityTargets';
-import { ControlSubjectGroups } from './ControlTaxonomy';
-import { toVocabCardId } from './ControlVocabularyPrimitives';
+import { ControlSubjectGroup } from './ControlTaxonomy';
+import { SectionLegend, toVocabCardId } from './ControlVocabularyPrimitives';
 
 const registry = createTestVocabularyRegistry();
 
@@ -109,20 +110,38 @@ function renderSecurityTargets(rows: SecurityTargetRow[]) {
   );
 }
 
+/** Die Legende „Schutzziele und Gefährdungen“ steht in der Leiste; hier isoliert mit denselben Einträgen. */
+function renderMerkmaleLegend(rows: SecurityTargetRow[]) {
+  return render(
+    <MemoryRouter>
+      <SectionLegend
+        legendId="legende-schutzziele"
+        entries={buildRelevanceLegendEntries(rows.map((row) => row.levelResolution))}
+      />
+    </MemoryRouter>,
+  );
+}
+
 describe('ControlCharacteristics (GSPP-303 T7)', () => {
   it('Schutzziele als 2×2-Raster mit TermTriggern und Punkte-Skala', () => {
     const { container } = renderSecurityTargets(makeSecurityRows());
     const scope = within(container);
 
-    // Grid statt Tabelle: genau ein 2-spaltiger Container, keine Tabelle.
-    const grid = container.querySelector('div.grid.grid-cols-2');
-    expect(grid).not.toBeNull();
+    // Grid statt Tabelle: 2×2 in Inhaltsbreite, je Zelle Name und Punkte als
+    // Subgrid, damit die Punkte bündig direkt hinter dem Namen stehen.
+    const cells = Array.from(container.querySelectorAll('[role="group"].grid-cols-subgrid'));
+    expect(cells).toHaveLength(4);
+    expect(cells.map((cell) => cell.classList.contains('col-start-1'))).toEqual([true, false, true, false]);
+    expect(cells.map((cell) => cell.classList.contains('col-start-4'))).toEqual([false, true, false, true]);
+    for (const cell of cells) expect(cell).toHaveClass('grid-cols-subgrid');
+    // Keine Mindesthöhe, die am Breakpoint springt.
+    expect(container.querySelector('[role="group"] .min-h-11')).toBeNull();
     expect(container.querySelector('table')).toBeNull();
 
-    // Je Row ein Schutzziel-Trigger plus ein Relevanz-Trigger (4 + 4),
-    // dazu der Legende-Textlink.
-    expect(scope.getAllByRole('button')).toHaveLength(9);
-    expect(scope.getByRole('button', { name: 'Legende' })).toBeInTheDocument();
+    // Je Row ein Schutzziel-Trigger plus ein Relevanz-Trigger (4 + 4); die
+    // Legende steht in der Leiste „Schutzziele und Gefährdungen“, nicht im Raster.
+    expect(scope.getAllByRole('button')).toHaveLength(8);
+    expect(scope.queryByRole('button', { name: 'Legende' })).toBeNull();
     for (const [label, relevance] of [
       ['Vertraulichkeit', '2'],
       ['Integrität', '1'],
@@ -161,16 +180,16 @@ describe('ControlCharacteristics (GSPP-303 T7)', () => {
     }
 
     // Punkte-Skala rein visuell (aria-hidden), Bedeutung im aria-label.
-    const scales = grid?.querySelectorAll('[aria-hidden="true"]') ?? [];
+    const scales = cells[0].querySelectorAll('[aria-hidden="true"]');
     expect(scales.length).toBeGreaterThan(0);
   });
 
   it('Legende erklärt alle drei BSI-Relevanzstufen auch bei nur einem vorkommenden Wert', () => {
-    const { container } = renderSecurityTargets(makeSecurityRows().slice(0, 1));
+    const { container } = renderMerkmaleLegend(makeSecurityRows().slice(0, 1));
     const scope = within(container);
 
     fireEvent.click(scope.getByRole('button', { name: 'Legende' }));
-    const legend = container.querySelector('#legende-merkmale');
+    const legend = container.querySelector('#legende-schutzziele');
     expect(legend).not.toBeNull();
     for (const level of ['0', '1', '2']) {
       expect(within(legend as HTMLElement).getByRole('link', { name: level })).toBeInTheDocument();
@@ -301,13 +320,17 @@ describe('ControlCharacteristics (GSPP-303 T7)', () => {
     const resolved = resolveControlVocabularies(registry, control);
     const { container } = render(
       <MemoryRouter>
-        <ControlSubjectGroups
-          control={control}
-          resolvedVocabularies={resolved}
-          isVocabularyActive={() => false}
-          onToggleVocabulary={vi.fn()}
-          renderVocabularyCard={() => null}
-        />
+        {(['zielobjekte', 'tags'] as const).map((kind) => (
+          <ControlSubjectGroup
+            key={kind}
+            kind={kind}
+            control={control}
+            resolvedVocabularies={resolved}
+            isVocabularyActive={() => false}
+            onToggleVocabulary={vi.fn()}
+            renderVocabularyCard={() => null}
+          />
+        ))}
       </MemoryRouter>,
     );
     const scope = within(container);
@@ -370,7 +393,8 @@ describe('ControlCharacteristics (GSPP-303 T7)', () => {
 
     const { container: taxonomy } = render(
       <MemoryRouter>
-        <ControlSubjectGroups
+        <ControlSubjectGroup
+          kind="tags"
           control={tagControl}
           resolvedVocabularies={tagResolved}
           isVocabularyActive={() => true}
@@ -382,12 +406,12 @@ describe('ControlCharacteristics (GSPP-303 T7)', () => {
     expect(taxonomy.querySelector('.catalog-vocabulary-affordance')).toBeNull();
   });
 
-  it('Merkmale-Legende listet die drei Relevanzstufen genau einmal', () => {
-    const { container } = renderSecurityTargets(makeSecurityRows());
+  it('Legende „Schutzziele und Gefährdungen“ listet die drei Relevanzstufen genau einmal', () => {
+    const { container } = renderMerkmaleLegend(makeSecurityRows());
     const scope = within(container);
 
     fireEvent.click(scope.getByRole('button', { name: 'Legende' }));
-    const panel = container.querySelector('#legende-merkmale');
+    const panel = container.querySelector('#legende-schutzziele');
     expect(panel).not.toBeNull();
     expect(panel).not.toHaveAttribute('hidden');
 
@@ -404,8 +428,12 @@ describe('ControlCharacteristics (GSPP-303 T7)', () => {
     }
     expect(
       panelScope.getByText(
-        ': Die Anforderung wirkt in besonderem Maße auf dieses Schutzziel hin. Dieser Wert zeigt an, dass das Schutzziel im Zentrum dieser Anforderung steht.',
+        'Die Anforderung wirkt in besonderem Maße auf dieses Schutzziel hin. Dieser Wert zeigt an, dass das Schutzziel im Zentrum dieser Anforderung steht.',
       ),
     ).toBeInTheDocument();
+    // Sichtbar steht je Stufe dieselbe Punkte-Skala wie im Raster, die Ziffer nur für Screenreader.
+    const topLevel = panelScope.getByRole('link', { name: '2' });
+    expect(topLevel.querySelector('.sr-only')).toHaveTextContent('2');
+    expect(topLevel.querySelectorAll('[aria-hidden="true"] .rounded-full')).toHaveLength(2);
   });
 });

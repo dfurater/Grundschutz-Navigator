@@ -1,7 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router';
+import { tightStackClass } from '@/components/legendStyles';
 import {
+  detailListClass,
+  LegendPanel,
+  rowTouchTargetClass,
   SectionLegend,
   TermTrigger,
   toVocabCardId,
@@ -41,7 +45,10 @@ describe('ControlVocabularyPrimitives (GSPP-303 T4)', () => {
     expect(trigger).toHaveAttribute('aria-pressed', 'true');
     expect(trigger).toHaveAttribute('aria-controls', toVocabCardId('muss'));
     expect(trigger).toHaveClass('font-medium', 'text-primary-main');
-    expect(trigger).toHaveClass('min-h-11', 'min-w-11');
+    // Zeile 24 px bei jeder Breite; die Touch-Fläche wächst per Pseudo-Element,
+    // damit am Breakpoint nichts springt.
+    expect(trigger).toHaveClass('min-h-6', ...rowTouchTargetClass.split(' '));
+    expect(trigger).not.toHaveClass('min-h-11');
 
     // Klick toggelt über den Vokabular-Schlüssel.
     fireEvent.click(trigger);
@@ -116,16 +123,49 @@ describe('ControlVocabularyPrimitives (GSPP-303 T4)', () => {
       'href',
       '/vokabular/modal-verbs?wert=MUSS',
     );
-    expect(screen.getByText(': Verbindlich.')).toBeInTheDocument();
+    expect(screen.getByText('Verbindlich.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'SOLLTE' })).toHaveAttribute(
       'href',
       '/vokabular/modal-verbs?wert=SOLLTE',
     );
-    expect(screen.getByText(': Empfohlen.')).toBeInTheDocument();
+    expect(screen.getByText('Empfohlen.')).toBeInTheDocument();
 
     // … zweiter Klick schließt wieder.
     fireEvent.click(toggle);
     expect(panel).toHaveAttribute('hidden');
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('LegendPanel zeigt „Merkmal: Symbol“ über der Erklärung', () => {
+    render(
+      <LegendPanel
+        legendId="legende-symbole"
+        open
+        entries={[
+          { category: 'Stufe', term: '1', definition: 'Wirkt hin.', visual: <span>●○</span> },
+          { category: 'Stufe', term: '2', definition: 'Wirkt in besonderem Maße hin.', visual: <span>●●</span> },
+        ]}
+      />,
+    );
+
+    const panel = document.getElementById('legende-symbole');
+    const terms = [...(panel?.querySelectorAll('dt') ?? [])];
+    // Das Symbol steht sichtbar, die Ziffer nur für Screenreader.
+    expect(terms.map((term) => term.textContent)).toEqual(['Stufe: ●○1', 'Stufe: ●●2']);
+    expect(screen.getByText('2')).toHaveClass('sr-only');
+    for (const term of terms) {
+      // Block statt fließend: Die Erklärung beginnt in einer eigenen Zeile.
+      expect(term).not.toHaveClass('inline');
+      expect(term.nextElementSibling?.tagName).toBe('DD');
+      expect(term.nextElementSibling).not.toHaveClass('inline');
+    }
+    expect(screen.getByText('Wirkt hin.').textContent).toBe('Wirkt hin.');
+  });
+
+  it('Detail-Listen halten nach einer offenen Karte 12 px zum nächsten Eintrag', () => {
+    // Listenzeilen stehen 6 px auseinander; die Karte in einem Eintrag außer
+    // dem letzten bekommt deshalb `mb-3` (Abstandsregel in legendStyles).
+    expect(detailListClass.split(' ')).toContain(tightStackClass);
+    expect(tightStackClass).toBe('[&>:not(:last-child)_[data-vocab-card]]:mb-3');
   });
 });

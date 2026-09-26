@@ -1,5 +1,6 @@
 import type { VocabularyResolution } from '@/domain/vocabulary';
 import { VocabularyEntryCard } from '@/features/vocabularies/VocabularyEntryCard';
+import { beforeTightContentClass } from '@/components/legendStyles';
 import { TermTrigger, toVocabCardId } from './ControlVocabularyPrimitives';
 
 export interface ControlTaxonomyBreadcrumbProps {
@@ -33,7 +34,8 @@ export function ControlTaxonomyBreadcrumb({
       : ['Nummerierung'];
 
   return (
-    <div className="mb-1">
+    // Direkt darunter folgt der Titel (4 px): Eine offene Karte hält 12 px.
+    <div className={`mb-1 ${beforeTightContentClass}`}>
       <p className="flex flex-wrap items-center gap-1 text-xs text-[var(--color-text-muted)]">
         {practiceVocabulary ? (
           <TermTrigger

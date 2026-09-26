@@ -946,6 +946,7 @@ interface Control {
   parentId?: string;             // e.g. "GC.5.1" for "GC.5.1.1"
   title: string;
   altIdentifier?: string;        // kanonischer Control-Identifier für URLs
+  controlClass?: string;         // OSCAL control.class, e.g. "BSI-Methodik-Grundschutz-plus-plus"
 
   groupId?: string;              // e.g. "GC.1" (Topic); fehlt ohne Gruppen-id
   practiceId?: string;           // e.g. "GC" (Practice); fehlt ohne Gruppen-id

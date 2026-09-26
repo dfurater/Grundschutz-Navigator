@@ -10,6 +10,7 @@ import { ControlGuidance } from './ControlGuidance';
 import { ControlSecurityContext } from './ControlSecurityContext';
 import { ControlStatement } from './ControlStatement';
 import { ControlStatementDetails, type RestDetail } from './ControlStatementDetails';
+import { textActionClass } from './ControlVocabularyPrimitives';
 
 function makeControl(overrides: Partial<Control> = {}): Control {
   return {
@@ -119,14 +120,15 @@ describe('ControlSecurityContext', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'Schutzziele', level: 4 })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Elementare Gefährdungen', level: 4 })).toBeInTheDocument();
-    expect(container.querySelector('.grid.grid-cols-2')).not.toBeNull();
+    expect(screen.getByRole('heading', { name: 'Gefährdungen', level: 4 })).toBeInTheDocument();
+    expect(container.querySelectorAll('[role="group"].grid-cols-subgrid')).toHaveLength(4);
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     for (const label of ['Vertraulichkeit', 'Integrität', 'Verfügbarkeit', 'Authentizität']) {
       expect(screen.getByRole('button', { name: `Schutzziel: ${label}` })).toBeInTheDocument();
     }
     expect(screen.getByRole('button', { name: 'Relevanz Vertraulichkeit: 2' })).toHaveTextContent('2');
-    expect(screen.getByRole('button', { name: 'Legende' })).toBeInTheDocument();
+    // Die Legende steht in der Leiste „Schutzziele und Gefährdungen“ (ControlDetail), nicht hier.
+    expect(screen.queryByRole('button', { name: 'Legende' })).toBeNull();
     expect(container.querySelector('.catalog-vocabulary-affordance')).toBeNull();
   });
 
@@ -154,7 +156,7 @@ describe('ControlSecurityContext', () => {
     expect(threat).not.toHaveTextContent('G 0.18');
     expect(threat).toHaveAttribute('aria-controls', 'vocab-card-threat-G-0-18-0');
     expect(document.getElementById('vocab-card-threat-G-0-18-0')).toHaveAttribute('hidden');
-    expect(screen.getByText('Unbekannte Gefährdung').tagName).toBe('P');
+    expect(screen.getByText('Unbekannte Gefährdung').tagName).toBe('LI');
     await user.click(threat);
     expect(onToggleVocabulary).toHaveBeenCalledWith('threat:G 0.18:0');
   });
@@ -180,8 +182,13 @@ describe('ControlSecurityContext', () => {
       /></MemoryRouter>,
     );
 
-    const list = screen.getByRole('heading', { name: 'Elementare Gefährdungen', level: 4 }).parentElement!;
-    expect(Array.from(list.querySelectorAll('button, p')).map((item) => item.textContent)).toEqual([
+    const list = screen.getByRole('heading', { name: 'Gefährdungen', level: 4 }).parentElement!;
+    // Feste Zeilenhöhe: keine breakpointabhängige Mindesthöhe an den Triggern.
+    expect(list.querySelector('.min-h-11')).toBeNull();
+    // Jede Gefährdung ist ein Listenpunkt (dezentes Aufzählungszeichen); bei Triggern zählt der Buttontext.
+    expect(Array.from(list.querySelectorAll('ul > li')).map(
+      (item) => item.querySelector('button')?.textContent ?? item.textContent,
+    )).toEqual([
       'Fehlplanung oder fehlende Anpassung',
       'Fehlplanung oder fehlende Anpassung',
       'G 0.20',
@@ -258,6 +265,8 @@ describe('ControlGuidance', () => {
     const expand = screen.getByRole('button', { name: 'Mehr anzeigen' });
     expect(expand).toHaveAttribute('aria-controls', 'guidance-text');
     expect(expand).toHaveAttribute('aria-expanded', 'false');
+    // Gleiche Textaktion wie „Legende“: Hover-Unterstreichung, Touch-Fläche per Pseudo-Element.
+    expect(expand).toHaveClass(...textActionClass.split(' '));
     await user.click(expand);
     expect(onToggleExpanded).toHaveBeenCalledOnce();
 

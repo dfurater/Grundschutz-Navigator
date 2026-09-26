@@ -5,6 +5,7 @@ import type { ControlFilters, FacetCounts } from '@/hooks/useFilteredControls';
 import { SecurityTargetFilterSection } from './SecurityTargetFilterSection';
 import type { Modalverb, LinkRelation } from '@/domain/models';
 import { useCatalog } from '@/hooks/useCatalog';
+import { useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
 import {
   OFFICIAL_EFFORT_LEVELS,
   OFFICIAL_SECURITY_LEVELS,
@@ -109,6 +110,7 @@ export function FilterPanel({
   onCollapse,
 }: FilterPanelProps) {
   const { vocabularyRegistry } = useCatalog();
+  const filterScrollRef = useOverlayScrollbars<HTMLDivElement>();
 
   // Per-dimension: use global counts if this dimension has active filters (freeze),
   // otherwise use filtered counts so the user sees what's actually in the current result set.
@@ -224,7 +226,7 @@ export function FilterPanel({
       </div>
 
       {/* Filter Sections */}
-      <div data-filter-scroll className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y px-4 py-1">
+      <div ref={filterScrollRef} data-filter-scroll className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y px-4 py-1">
         {/* modal_verb */}
         <FilterSection title="Modalverben" activeCount={activeModalverben}>
           {(Object.keys(MODALVERB_LABELS) as Modalverb[]).map((mv) => {

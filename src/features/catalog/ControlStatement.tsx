@@ -11,14 +11,29 @@ import { segmentStatement } from '@/domain/statementSegments';
 import type { Control } from '@/domain/models';
 import type { VocabularyResolution } from '@/domain/vocabulary';
 import { ControlDetailSection } from './ControlDetailSection';
-import { type RenderVocabularyCard, TermTrigger, toVocabCardId } from './ControlVocabularyPrimitives';
+import {
+  detailProseClass,
+  type LegendEntry,
+  type RenderVocabularyCard,
+  TermTrigger,
+  toVocabCardId,
+} from './ControlVocabularyPrimitives';
 
-/** FIXED-Toggletip für Platzhalter ohne Wert (T2: `hasValue:false` rendert weiter `value`). */
-export const PLACEHOLDER_TOGGLETIP = 'Platzhalter – Der Wert wird bei der Anwendung festgelegt.';
+/**
+ * FIXED-Toggletip für Platzhalter ohne Wert (T2: `hasValue:false` rendert weiter `value`).
+ * OSCAL 1.1.3 setzt Parameter per `set-parameter` im Profil, in der
+ * Komponentendefinition oder im SSP; das BSI nennt für Anwender Profil und SSP
+ * (`documentation/OSCAL.md` der Stand-der-Technik-Bibliothek).
+ */
+export const PLACEHOLDER_TOGGLETIP = 'Der Wert wird im eigenen Profil oder im Implementierungsplan (SSP) festgelegt.';
 
 export interface ControlStatementProps {
   readonly statement: Control['statement'];
   readonly segments?: ControlStatementSegmentsProps | null;
+  /** Kriterien-Zeile (Modalverb, Niveau, Aufwand) als erste Zeile unter der Leiste. */
+  readonly criteria?: ReactNode;
+  /** Legende der Kriterien: Textlink rechts in der Leiste „Anforderung“. */
+  readonly legend?: { readonly id: string; readonly entries: LegendEntry[] };
   readonly children?: ReactNode;
 }
 
@@ -56,7 +71,9 @@ function renderPlaceholder(segment: SentenceSegment, index: number): ReactNode {
   );
   return (
     <Tooltip key={index} id={`satz-param-${index}`} mode="hover-toggle" content={content}
-      describeTarget={() => <span className="rounded bg-amber-100 px-0.5">{segment.text}</span>} />
+      describeTarget={() => (
+        <span className="rounded bg-[var(--color-accent-soft)] px-[3px] [box-decoration-break:clone]">{segment.text}</span>
+      )} />
   );
 }
 
@@ -173,7 +190,7 @@ export function ControlStatementSegments({
 
   return (
     <>
-      <p style={{ fontSize: 16 }} className="w-full break-words leading-relaxed whitespace-pre-line text-slate-700 [hyphens:auto]">
+      <p className={detailProseClass}>
         {groupClauses(segments, slotByRole).map((item) =>
           item.kind === 'clause'
             ? renderClauseItem(item, input)
@@ -187,25 +204,32 @@ export function ControlStatementSegments({
   );
 }
 
-export function ControlStatement({ statement, segments, children }: ControlStatementProps): ReactNode {
+export function ControlStatement({
+  statement,
+  segments,
+  criteria,
+  legend,
+  children,
+}: ControlStatementProps): ReactNode {
+  let body: ReactNode = null;
   if (segments?.input.statementRaw) {
-    return (
-      <ControlDetailSection heading="Anforderung">
-        <ControlStatementSegments {...segments} />
-        {children}
-      </ControlDetailSection>
-    );
-  }
-  if (!statement) {
-    // Anforderungsdetails ohne Satzprosa bleiben sichtbar; `ControlDetail`
-    // rendert diesen Block nur, wenn es solche Details gibt.
-    return children ? <ControlDetailSection heading="Anforderung">{children}</ControlDetailSection> : null;
-  }
-  return (
-    <ControlDetailSection heading="Anforderung">
-      <p className="w-full break-words text-base text-slate-700 leading-relaxed whitespace-pre-line [hyphens:auto]">
+    body = <ControlStatementSegments {...segments} />;
+  } else if (statement) {
+    body = (
+      <p className={detailProseClass}>
         {statement}
       </p>
+    );
+  }
+  // Anforderungsdetails oder Kriterien ohne Satzprosa bleiben sichtbar;
+  // `ControlDetail` rendert diesen Block nur, wenn es solchen Inhalt gibt.
+  if (!body && !criteria && !children) {
+    return null;
+  }
+  return (
+    <ControlDetailSection heading="Anforderung" legend={legend}>
+      {criteria && <div className="mb-3">{criteria}</div>}
+      {body}
       {children}
     </ControlDetailSection>
   );

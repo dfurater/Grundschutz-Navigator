@@ -395,7 +395,7 @@ describe('catalog typography', () => {
       level: 3,
     });
 
-    expect(sectionHeading).toHaveClass('text-sm', 'font-semibold', 'text-slate-800');
+    expect(sectionHeading).toHaveClass('text-base', 'font-semibold', 'text-slate-900');
     expect(sectionHeading).not.toHaveClass('uppercase');
     expect(sectionHeading).not.toHaveClass('catalog-meta-text');
     expect(screen.getByText(control.id)).toHaveClass('catalog-reference-text');

@@ -442,6 +442,13 @@ describe('parseControl', () => {
     expect(control.practiceId).toBe('GC');
   });
 
+  it('übernimmt control.class unverändert und lässt es ohne Quelle leer', () => {
+    expect(parseControl(makeControl(), 'GC.1', 'GC').controlClass)
+      .toBe('BSI-Methodik-Grundschutz-plus-plus');
+    expect(parseControl(makeControl({ class: undefined }), 'GC.1', 'GC').controlClass)
+      .toBeUndefined();
+  });
+
   it('extracts security and effort levels', () => {
     const control = parseControl(makeControl(), 'GC.1', 'GC');
     expect(control.securityLevel).toBe('normal-SdT');

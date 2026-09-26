@@ -1,11 +1,10 @@
 import { render, screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it } from 'vitest';
 import type { Control } from '@/domain/models';
 import { resolveControlVocabularies } from '@/domain/vocabulary';
 import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
-import { ControlClassification } from './ControlClassification';
+import { buildClassificationLegendEntries, ControlClassification } from './ControlClassification';
 
 function makeControl(overrides: Partial<Control> = {}): Control {
   return {
@@ -31,10 +30,7 @@ const resolvedControl = makeControl({
 function renderClassification(control: Control) {
   return render(
     <MemoryRouter>
-      <ControlClassification
-        control={control}
-        resolvedVocabularies={resolveControlVocabularies(createTestVocabularyRegistry(), control)}
-      />
+      <ControlClassification control={control} />
     </MemoryRouter>,
   );
 }
@@ -54,21 +50,14 @@ describe('ControlClassification', () => {
     expect(screen.queryByText('Server')).not.toBeInTheDocument();
   });
 
-  it('opens one legend for resolved criteria with vocabulary links', async () => {
-    const user = userEvent.setup();
-    renderClassification(resolvedControl);
-
-    const legend = screen.getByRole('button', { name: 'Legende' });
-    expect(legend).toHaveAttribute('aria-expanded', 'false');
-    expect(document.getElementById('legende-kurzprofil')).toHaveAttribute('hidden');
-    await user.click(legend);
-    expect(legend).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByRole('link', { name: 'MUSS' })).toHaveAttribute(
-      'href', '/vokabular/modal-verbs?wert=MUSS',
+  it('builds legend entries for resolved criteria with vocabulary links', () => {
+    const entries = buildClassificationLegendEntries(
+      resolvedControl,
+      resolveControlVocabularies(createTestVocabularyRegistry(), resolvedControl),
     );
-    expect(screen.getByText(/Modalverb definiert verbindliche Anforderungen/)).toBeInTheDocument();
-    await user.click(legend);
-    expect(document.getElementById('legende-kurzprofil')).toHaveAttribute('hidden');
+    expect(entries.map((entry) => entry.term)).toEqual(['MUSS', 'normal-SdT', '3']);
+    expect(entries[0].href).toBe('/vokabular/modal-verbs?wert=MUSS');
+    expect(entries[0].definition).toMatch(/Modalverb definiert verbindliche Anforderungen/);
   });
 
   it('omits the short profile when only taxonomy and tags exist', () => {
@@ -83,7 +72,12 @@ describe('ControlClassification', () => {
       modalverb: 'Sonderwert' as NonNullable<Control['modalverb']>,
     }));
     expect(screen.getByText('Sonderwert')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Legende' })).not.toBeInTheDocument();
+    expect(buildClassificationLegendEntries(
+      makeControl({ modalverb: 'Sonderwert' as NonNullable<Control['modalverb']> }),
+      resolveControlVocabularies(createTestVocabularyRegistry(), makeControl({
+        modalverb: 'Sonderwert' as NonNullable<Control['modalverb']>,
+      })),
+    )).toEqual([]);
     expect(container.querySelector('.catalog-vocabulary-affordance')).toBeNull();
   });
 });

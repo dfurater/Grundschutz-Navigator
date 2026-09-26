@@ -8,7 +8,9 @@ import {
   VOCABULARY_IDENTIFIERS,
   createTestVocabularyRegistry,
 } from '@/test/fixtures/vocabulary';
-import { ControlClassification } from './ControlClassification';
+import { beforeTightContentClass } from '@/components/legendStyles';
+import { buildClassificationLegendEntries, ControlClassification } from './ControlClassification';
+import { ControlStatement } from './ControlStatement';
 import { ControlTaxonomyBreadcrumb } from './ControlTaxonomyBreadcrumb';
 
 const registry = createTestVocabularyRegistry();
@@ -74,12 +76,17 @@ function makeControl(): Control {
 const control = makeControl();
 const resolvedVocabularies = resolveControlVocabularies(registry, control);
 
+/** Kriterien-Zeile im Block „Anforderung“; die Legende steht in dessen Leiste. */
 function renderClassification() {
   return render(
     <MemoryRouter>
-      <ControlClassification
-        control={control}
-        resolvedVocabularies={resolvedVocabularies}
+      <ControlStatement
+        statement={control.statement}
+        criteria={<ControlClassification control={control} />}
+        legend={{
+          id: 'legende-anforderung',
+          entries: buildClassificationLegendEntries(control, resolvedVocabularies),
+        }}
       />
     </MemoryRouter>,
   );
@@ -112,6 +119,8 @@ describe('ControlShortProfile (GSPP-303 T6)', () => {
       'underline-offset-4',
     );
     expect(container.querySelector('svg')).toBeNull();
+    // Unter dem Pfad folgt der Titel mit 4 px: Eine offene Karte hält 12 px.
+    expect(container.firstElementChild).toHaveClass(beforeTightContentClass);
 
     // Ohne Resolution: Plain-Text, kein Button.
     const { container: plain } = render(
@@ -148,7 +157,7 @@ describe('ControlShortProfile (GSPP-303 T6)', () => {
     expect(within(noTopic).queryByText('keine offizielle Definition')).toBeNull();
   });
 
-  it('Kurzprofil: Kriterien-Badges ohne Button-Hülle, Legende als Textlink', () => {
+  it('Kriterien: Badges ohne Button-Hülle unter „Anforderung“, Legende als Textlink in der Leiste', () => {
     const { container } = renderClassification();
     const criteria = within(container).getByRole('group', { name: 'Kriterien' });
 
@@ -158,34 +167,44 @@ describe('ControlShortProfile (GSPP-303 T6)', () => {
     expect(within(criteria).getByText('normal-SdT')).toBeInTheDocument();
     expect(within(criteria).getByText('Aufwand')).toBeInTheDocument();
 
-    // Textlink „Legende" rechts neben den Badges, außerhalb der Gruppe.
+    // Textlink „Legende" in der Leiste „Anforderung“, außerhalb der Gruppe.
     expect(within(criteria).queryByRole('button', { name: 'Legende' })).toBeNull();
-    expect(within(container).getByRole('button', { name: 'Legende' })).toBeInTheDocument();
+    const heading = within(container).getByRole('heading', { level: 3, name: 'Anforderung' });
+    expect(within(heading.parentElement!).getByRole('button', { name: 'Legende' })).toBeInTheDocument();
+    expect(heading.compareDocumentPosition(criteria) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('Legende zeigt je Wert Term, BSI-Definition und Vokabular-Link', () => {
+  it('Legende zeigt je Wert Merkmal, Term, BSI-Definition und Vokabular-Link', () => {
     const { container } = renderClassification();
     const scope = within(container);
 
     fireEvent.click(scope.getByRole('button', { name: 'Legende' }));
-    expect(document.getElementById('legende-kurzprofil')).not.toHaveAttribute('hidden');
+    const panel = document.getElementById('legende-anforderung');
+    expect(panel).not.toHaveAttribute('hidden');
+
+    // Erst „Merkmal: Wert“, darunter die Erklärung ohne Anstrich.
+    const terms = [...(panel?.querySelectorAll('dt') ?? [])].map((term) => term.textContent);
+    expect(terms).toEqual(['Modalverb: MUSS', 'Sicherheitsniveau: normal-SdT', 'Aufwand: 3']);
+    for (const definition of panel?.querySelectorAll('dd') ?? []) {
+      expect(definition).not.toHaveClass('inline');
+    }
 
     const muss = scope.getByRole('link', { name: 'MUSS' });
     expect(muss).toHaveAttribute('href', '/vokabular/modal-verbs?wert=MUSS');
-    expect(scope.getByText(': Modalverb definiert verbindliche Anforderungen.'))
+    expect(scope.getByText('Modalverb definiert verbindliche Anforderungen.'))
       .toBeInTheDocument();
 
     const niveau = scope.getByRole('link', { name: 'normal-SdT' });
     expect(niveau).toHaveAttribute('href', '/vokabular/security-level?wert=normal-SdT');
-    expect(scope.getByText(': Standard-Sicherheitsniveau für den Stand der Technik.'))
+    expect(scope.getByText('Standard-Sicherheitsniveau für den Stand der Technik.'))
       .toBeInTheDocument();
 
     const aufwand = scope.getByRole('link', { name: '3' });
     expect(aufwand).toHaveAttribute('href', '/vokabular/effort-level?wert=3');
-    expect(scope.getByText(': Mittlere Aufwandsstufe.')).toBeInTheDocument();
+    expect(scope.getByText('Mittlere Aufwandsstufe.')).toBeInTheDocument();
   });
 
-  it('kein catalog-vocabulary-affordance in Breadcrumb und Kurzprofil', () => {
+  it('kein catalog-vocabulary-affordance in Breadcrumb und Kriterien', () => {
     const { container: breadcrumb } = render(
       <MemoryRouter>
         <ControlTaxonomyBreadcrumb

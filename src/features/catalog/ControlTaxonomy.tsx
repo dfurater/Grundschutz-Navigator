@@ -1,11 +1,13 @@
 import { Fragment, type ReactNode } from 'react';
 import type { Control } from '@/domain/models';
+import { isPlaceholderNamespace } from '@/domain/placeholderNamespace';
 import type {
   ResolvedControlVocabularies,
   VocabularyResolution,
 } from '@/domain/vocabulary';
 import {
   findResolutionByValue,
+  SubSectionHeading,
   TermTrigger,
   toVocabCardId,
   type RenderVocabularyCard,
@@ -16,10 +18,10 @@ type TaxonomyControl = Pick<Control, 'tags' | 'taxonomy'> & {
 };
 
 const TAXONOMY_LABELS: Record<string, string> = {
-  'Taxonomy-L1': 'Taxonomie L1',
-  'Taxonomy-L2': 'Taxonomie L2',
-  'Taxonomy-L3': 'Taxonomie L3',
-  'Taxonomy-L4': 'Taxonomie L4',
+  'Taxonomy-L1': 'L1',
+  'Taxonomy-L2': 'L2',
+  'Taxonomy-L3': 'L3',
+  'Taxonomy-L4': 'L4',
 };
 
 type TaxonomyVocabularies = Pick<ResolvedControlVocabularies, 'tags'> & {
@@ -34,26 +36,42 @@ export interface ControlTaxonomyProps {
   readonly renderVocabularyCard: RenderVocabularyCard;
 }
 
+export interface ControlSubjectGroupProps extends ControlTaxonomyProps {
+  /**
+   * Zielobjekte stehen im OSCAL im Anforderungssatz (`statement`-Part) und
+   * erscheinen deshalb im Block „Anforderung“; Tags hängen an der Anforderung
+   * selbst und stehen im Block „Einordnung“.
+   */
+  readonly kind: 'zielobjekte' | 'tags';
+}
+
+type SubjectEntry = {
+  key: string;
+  label: string;
+  ariaLabel: string;
+  resolution: VocabularyResolution | null;
+};
+
 /**
- * Tags und Zielobjekte als rahmen-/symbolfreie Inline-Trigger (GSPP-303 T7),
- * getrennt durch „·" (GSPP-303 T9: aus `ControlTaxonomy` ausgelagert, wird in
- * der Merkmale-Zone gemountet).
+ * Tags bzw. Zielobjekte als rahmen-/symbolfreie Inline-Trigger (GSPP-303 T7),
+ * getrennt durch „·".
  */
-export function ControlSubjectGroups({
+export function ControlSubjectGroup({
   control,
   resolvedVocabularies,
   isVocabularyActive,
   onToggleVocabulary,
   renderVocabularyCard,
-}: ControlTaxonomyProps) {
-  const tagEntries: { key: string; label: string; ariaLabel: string; resolution: VocabularyResolution | null }[] =
-    control.tags.map((tag) => ({
+  kind,
+}: ControlSubjectGroupProps) {
+  const entries: SubjectEntry[] = kind === 'tags'
+    ? control.tags.map((tag) => ({
       key: `tag:${tag}`,
       label: tag,
       ariaLabel: `Tag: ${tag}`,
       resolution: findResolutionByValue(resolvedVocabularies.tags, tag),
-    }));
-  const targetEntries = control.statementProps.zielobjektKategorien.map((kat) => ({
+    }))
+    : control.statementProps.zielobjektKategorien.map((kat) => ({
       key: `zielobjekt:${kat}`,
       label: kat,
       ariaLabel: `Zielobjekt: ${kat}`,
@@ -63,13 +81,17 @@ export function ControlSubjectGroups({
       ),
     }));
 
-  const renderEntry = (entry: (typeof tagEntries)[number], index: number): ReactNode => {
+  if (entries.length === 0) {
+    return null;
+  }
+
+  const renderEntry = (entry: SubjectEntry, index: number): ReactNode => {
     const active = isVocabularyActive(entry.key);
 
     return (
       <Fragment key={entry.key}>
         {index > 0 && (
-          <span aria-hidden="true" className="mx-1">·</span>
+          <span aria-hidden="true" className="mx-1.5 text-slate-300">·</span>
         )}
         {entry.resolution ? (
           <TermTrigger
@@ -86,13 +108,9 @@ export function ControlSubjectGroups({
     );
   };
 
-  if (control.tags.length === 0 && control.statementProps.zielobjektKategorien.length === 0) {
-    return null;
-  }
-
-  const renderGroup = (heading: string, entries: typeof tagEntries) => (
-    <div key={heading}>
-      <h4 className="text-sm font-semibold text-slate-800 mb-2">{heading}</h4>
+  return (
+    <div>
+      <SubSectionHeading>{kind === 'tags' ? 'Tags' : 'Zielobjekte'}</SubSectionHeading>
       <div className="text-sm leading-relaxed text-slate-700">
         {entries.map((entry, index) => renderEntry(entry, index))}
       </div>
@@ -105,13 +123,6 @@ export function ControlSubjectGroups({
           </div>
         );
       })}
-    </div>
-  );
-
-  return (
-    <div className="space-y-4">
-      {tagEntries.length > 0 && renderGroup('Tags', tagEntries)}
-      {targetEntries.length > 0 && renderGroup('Zielobjekte', targetEntries)}
     </div>
   );
 }
@@ -128,27 +139,22 @@ export function ControlWlanTaxonomy({
     return null;
   }
 
+  // Tabelle wie die Fußzeile: Stufe links, Wert rechts in einer bündigen
+  // Spalte, Zeilenabstand der Listen (Owner 26.09.2026). Die Namensraum-Adresse
+  // entfällt, solange das BSI dort nur einen Platzhalter führt; ein echter
+  // Namensraum erscheint wieder unter dem Wert.
   return (
-    <div aria-label="WLAN-Taxonomie" className="space-y-2">
-      <h4 className="text-sm font-semibold text-slate-800">
-        WLAN-Taxonomie
-      </h4>
-      <dl className="grid gap-2 sm:grid-cols-2">
+    <div aria-label="WLAN-Taxonomie">
+      <SubSectionHeading>WLAN-Taxonomie</SubSectionHeading>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm leading-relaxed text-slate-700">
         {control.taxonomy.map((prop, index) => (
-          <div
-            key={`${prop.name}:${prop.value}:${prop.ns ?? ''}:${index}`}
-            className="rounded-md border border-[var(--color-border-subtle)] bg-slate-50 px-3 py-2"
-          >
-            <dt className="text-xs font-semibold text-slate-600">
+          <div key={`${prop.name}:${prop.value}:${prop.ns ?? ''}:${index}`} className="contents">
+            <dt className="font-medium text-[var(--color-text-secondary)]">
               {TAXONOMY_LABELS[prop.name] ?? prop.name}
             </dt>
-            <dd className="mt-0.5 break-words text-sm text-slate-900">
-              {prop.value}
-            </dd>
-            {prop.ns && (
-              <dd className="mt-1 break-all font-mono text-[11px] text-slate-500">
-                {prop.ns}
-              </dd>
+            <dd className="break-words">{prop.value}</dd>
+            {prop.ns && !isPlaceholderNamespace(prop.ns) && (
+              <dd className="col-start-2 -mt-1.5 break-all font-mono text-xs text-slate-500">{prop.ns}</dd>
             )}
           </div>
         ))}

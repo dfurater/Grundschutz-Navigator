@@ -172,7 +172,8 @@ describe('ControlMetadata', () => {
     );
 
     expect(screen.queryByRole('heading')).not.toBeInTheDocument();
-    expect(screen.getByText('Übergeordnet: GC.2.1')).toBeInTheDocument();
+    expect(screen.getByText('Übergeordnet').tagName).toBe('DT');
+    expect(screen.getByText('GC.2.1').tagName).toBe('DD');
     expect(screen.getByText('7b38a819-1234-5678-90ab-abcdefabcdef'))
       .toHaveClass('font-mono');
 
@@ -183,7 +184,34 @@ describe('ControlMetadata', () => {
         hasResolvedParent
       />,
     );
-    expect(screen.queryByText('Übergeordnet: GC.2.1')).not.toBeInTheDocument();
-    expect(screen.getByText(/UUID:/)).toBeInTheDocument();
+    expect(screen.queryByText('Übergeordnet')).not.toBeInTheDocument();
+    expect(screen.getByText('UUID')).toBeInTheDocument();
+    expect(screen.queryByText('Klasse')).not.toBeInTheDocument();
+  });
+
+  it('zeigt OSCAL control.class neben der UUID, auch als einzigen Eintrag', () => {
+    const view = render(
+      <ControlMetadata
+        altIdentifier="7b38a819-1234-5678-90ab-abcdefabcdef"
+        controlClass="BSI-Methodik-Grundschutz-plus-plus"
+        hasResolvedParent
+        parentId={undefined}
+      />,
+    );
+    expect(screen.getByText('Klasse')).toBeInTheDocument();
+    const value = screen.getByText('BSI-Methodik-Grundschutz-plus-plus');
+    expect(value).toHaveClass('font-mono');
+    const uuid = screen.getByText('7b38a819-1234-5678-90ab-abcdefabcdef');
+    expect(uuid.compareDocumentPosition(value) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    view.rerender(
+      <ControlMetadata
+        altIdentifier={undefined}
+        controlClass="BSI-Methodik-Grundschutz-plus-plus"
+        hasResolvedParent
+        parentId={undefined}
+      />,
+    );
+    expect(screen.getByText('BSI-Methodik-Grundschutz-plus-plus')).toBeInTheDocument();
   });
 });

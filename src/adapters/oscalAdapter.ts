@@ -361,6 +361,7 @@ export function parseControl(
     id: raw.id,
     title: raw.title,
     altIdentifier,
+    controlClass: raw.class,
     parentId,
     groupId,
     practiceId,

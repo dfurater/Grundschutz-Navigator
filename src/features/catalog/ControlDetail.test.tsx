@@ -257,14 +257,15 @@ describe('ControlDetail', () => {
     expect(screen.getByText('Corporate Governance')).toBeInTheDocument();
     // GSPP-380: Die Kennung gehört zum Eintrag und wird gezeigt; kuratiert
     // ausgeblendet bleibt nur die Nummerierung.
-    expect(within(practiceCard).getByText('UUID').tagName).toBe('DT');
+    expect(within(practiceCard).getByText('UUID:').tagName).toBe('DT');
     expect(within(practiceCard).getByText(VOCABULARY_IDENTIFIERS.practiceGC))
       .toBeInTheDocument();
     expect(screen.queryByText('Nummerierung')).not.toBeInTheDocument();
     // GSPP-301: Der offizielle Begriff steht bereits im Breadcrumb.
-    expect(within(practiceCard).queryByText('Begriff')).not.toBeInTheDocument();
-    expect(within(practiceCard).getByText('Schwerpunkt').tagName).toBe('DT');
-    expect(within(practiceCard).getByRole('link', { name: 'Zu den Vokabularen →' }))
+    expect(within(practiceCard).queryByText('Begriff:')).not.toBeInTheDocument();
+    expect(within(practiceCard).getByText('Schwerpunkt:').tagName).toBe('DT');
+    // Legendenschema: „Praktik: GC“, der Wert verlinkt den Vokabulareintrag.
+    expect(within(practiceCard).getByRole('link', { name: 'GC' }))
       .toHaveAttribute('href', '/vokabular/documentation-namespaces-practices?wert=GC');
 
     const topic = screen.getByRole('button', { name: 'Thema: Organisation' });
@@ -286,7 +287,7 @@ describe('ControlDetail', () => {
     }));
 
     const practiceCard = document.getElementById('vocab-card-practice')!;
-    expect(within(practiceCard).getByText('Begriff').tagName).toBe('DT');
+    expect(within(practiceCard).getByText('Begriff:').tagName).toBe('DT');
     expect(within(practiceCard).getByText('Governance und Compliance')).toBeInTheDocument();
     expect(within(practiceCard).getByText(VOCABULARY_IDENTIFIERS.practiceGC))
       .toBeInTheDocument();
@@ -315,11 +316,11 @@ describe('ControlDetail', () => {
     const threatCard = document.getElementById('vocab-card-threat-G-0-18-0')!;
     expect(within(threatCard).getByText('Fehlplanung oder fehlende Anpassung von Prozessen.'))
       .toBeInTheDocument();
-    expect(within(threatCard).queryByText('Begriff')).not.toBeInTheDocument();
-    expect(within(threatCard).getByText('uuid').tagName).toBe('DT');
+    expect(within(threatCard).queryByText('Begriff:')).not.toBeInTheDocument();
+    expect(within(threatCard).getByText('uuid:').tagName).toBe('DT');
     expect(within(threatCard).getByText(VOCABULARY_IDENTIFIERS.threatG018))
       .toBeInTheDocument();
-    expect(within(threatCard).getByRole('link', { name: 'Zu den Vokabularen →' }))
+    expect(within(threatCard).getByRole('link', { name: 'G 0.18' }))
       .toHaveAttribute('href', '/vokabular/basethreats?wert=G%200.18');
   });
 
@@ -451,7 +452,7 @@ describe('ControlDetail', () => {
       <ControlDetail control={control} onClose={vi.fn()} />,
     );
 
-    expect(screen.getByRole('heading', { name: 'Merkmale', level: 3 })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Schutzziele und Gefährdungen', level: 3 })).toBeInTheDocument();
     expect(screen.getByText('Vertraulichkeit')).toBeInTheDocument();
     expect(screen.getByText('Integrität')).toBeInTheDocument();
     expect(screen.getByText('Verfügbarkeit')).toBeInTheDocument();
@@ -475,7 +476,9 @@ describe('ControlDetail', () => {
     expect(confidentiality).toHaveAttribute('aria-expanded', 'true');
 
     await user.click(confidentialityLevel);
-    expect(screen.getByText(
+    // Die Definition steht auch in der (verborgenen) Legende; geprüft wird die Vokabelkarte.
+    const levelCard = document.getElementById(confidentialityLevel.getAttribute('aria-controls')!)!;
+    expect(within(levelCard).getByText(
       'Die Anforderung wirkt in besonderem Maße auf dieses Schutzziel hin. Dieser Wert zeigt an, dass das Schutzziel im Zentrum dieser Anforderung steht.',
     )).toBeInTheDocument();
     expect(confidentiality).toHaveAttribute('aria-expanded', 'false');
@@ -683,8 +686,18 @@ describe('ControlDetail', () => {
     expect(screen.getByRole('button', { name: /Teil von GC\.2 Überbau/ })).toBeInTheDocument();
     const headings = screen.getAllByRole('heading', { level: 3 });
     expect(headings.map((heading) => heading.textContent)).toEqual([
-      'Anforderung', 'Umsetzungshinweise', 'Merkmale', 'Zusammenhänge',
+      'Anforderung', 'Umsetzungshinweise', 'Schutzziele und Gefährdungen', 'Einordnung', 'Zusammenhänge',
     ]);
+    const einordnung = screen.getByRole('heading', { name: 'Einordnung', level: 3 }).closest('section')!;
+    // OSCAL-Ablageort: Zielobjekte im statement-Part → Anforderung, Tags an der Anforderung → Einordnung.
+    expect(within(einordnung).queryByRole('heading', { name: 'Zielobjekte', level: 4 })).toBeNull();
+    expect(within(einordnung).getByRole('heading', { name: 'Tags', level: 4 })).toBeInTheDocument();
+    const anforderung = screen.getByRole('heading', { name: 'Anforderung', level: 3 }).closest('section')!;
+    const zielobjekte = within(anforderung).getByRole('heading', { name: 'Zielobjekte', level: 4 });
+    const dokumentation = within(anforderung).getByText('Dokumentation');
+    expect(dokumentation.compareDocumentPosition(zielobjekte) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const risiken = screen.getByRole('heading', { name: 'Schutzziele und Gefährdungen', level: 3 }).closest('section')!;
+    expect(within(risiken).queryByRole('heading', { name: 'Tags', level: 4 })).toBeNull();
     expect(screen.getByRole('group', { name: 'Kriterien' })).toHaveTextContent('MUSS');
     expect(screen.getByRole('heading', { name: 'Tags', level: 4 })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Zielobjekte', level: 4 })).toBeInTheDocument();
@@ -694,15 +707,19 @@ describe('ControlDetail', () => {
     expect(screen.queryByRole('heading', { name: 'Technische Metadaten' })).not.toBeInTheDocument();
   });
 
-  it('keeps criteria before the Merkmale zone and renders tags and targets as plain terms', () => {
+  it('shows criteria inside Anforderung before the Einordnung block and renders tags and targets as plain terms', () => {
     const control = makeControl({
       modalverb: 'MUSS', securityLevel: 'normal-SdT', effortLevel: '3',
       tags: ['Governance'], statementProps: { zielobjektKategorien: ['Server'] },
     });
     const { container } = render(<ControlDetail control={control} onClose={vi.fn()} />);
     const criteria = screen.getByRole('group', { name: 'Kriterien' });
-    const merkmale = screen.getByRole('heading', { name: 'Merkmale', level: 3 });
-    expect(criteria.compareDocumentPosition(merkmale) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const anforderung = screen.getByRole('heading', { name: 'Anforderung', level: 3 });
+    expect(anforderung.closest('section')!.contains(criteria)).toBe(true);
+    const einordnung = screen.getByRole('heading', { name: 'Einordnung', level: 3 });
+    expect(criteria.compareDocumentPosition(einordnung) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Ohne Schutzziele und Gefährdungen entfällt der Risiko-Block.
+    expect(screen.queryByRole('heading', { name: 'Schutzziele und Gefährdungen', level: 3 })).toBeNull();
     const badgeTexts = ['MUSS', 'normal-SdT', 'Aufwand'];
     const badges = badgeTexts.map((label) => within(criteria).getByText(label));
     expect(badges[0].compareDocumentPosition(badges[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -1094,7 +1111,7 @@ describe('ControlDetail', () => {
       />,
     );
 
-    expect(screen.getByText('Übergeordnet: GC.5')).toBeInTheDocument();
+    expect(screen.getByText('Übergeordnet').nextElementSibling).toHaveTextContent('GC.5');
   });
 
   it('builds absolute control detail links with the configured app base path', () => {

@@ -52,8 +52,8 @@ describe('ControlDependencies', () => {
     );
 
     expect(screen.getByRole('group', { name: 'Referenz' })).toBeInTheDocument();
-    expect(screen.getByText('Benutzerdefinierte Relation „maps-to"'))
+    expect(screen.getByRole('group', { name: 'Benutzerdefinierte Relation „maps-to"' }))
       .toBeInTheDocument();
-    expect(screen.getByText('Ohne Relationsangabe')).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Ohne Relationsangabe' })).toBeInTheDocument();
   });
 });
