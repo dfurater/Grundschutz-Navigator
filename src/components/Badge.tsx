@@ -14,7 +14,6 @@ export interface BadgeProps {
   readonly variant?: BadgeVariant;
   readonly className?: string;
   readonly title?: string;
-  readonly trailingIcon?: ReactNode;
 }
 
 const variantClasses: Record<BadgeVariant, string> = {
@@ -33,7 +32,6 @@ export function Badge({
   variant = 'default',
   className = '',
   title,
-  trailingIcon,
 }: BadgeProps) {
   return (
     <span
@@ -41,11 +39,6 @@ export function Badge({
       className={`inline-flex items-center px-2 py-0.5 rounded text-xs leading-4 font-medium border ${variantClasses[variant]} ${className}`}
     >
       {children}
-      {trailingIcon && (
-        <span className="ml-1 inline-flex shrink-0 items-center justify-center self-center leading-none">
-          {trailingIcon}
-        </span>
-      )}
     </span>
   );
 }

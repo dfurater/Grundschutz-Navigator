@@ -60,7 +60,20 @@ einzelnem HTTP-Aufruf höchstens zweimal mit festen kurzen Delays wiederholt
 HTTP-4xx, Redirect-Verstöße, Größen- und Parsefehler sowie sämtliche API-,
 Checksum-, SHA-256- und Blob-Pin-Abweichungen sind sofort fail-closed. Die
 Wiederholung verbessert ausschließlich die Verfügbarkeit des bereits gepinnten
-Abrufs; sie ist keine Lieferkettenausnahme.
+Abrufs; sie ist keine Lieferkettenausnahme. Die Wiederholungslogik liegt in
+[`transientRetry.mjs`](../scripts/transientRetry.mjs) und ist mit
+`fetch-catalog.mjs` geteilt: Wiederholt wird nur HTTP 500–599, ein von Undici
+gemeldeter unerwarteter Redirect bricht ohne Wiederholung ab.
+
+Scheitert ein Abruf endgültig, gibt der Lauf genau eine redigierte Zeile aus:
+den Fehlercode, gefolgt von den Diagnosefeldern, die auf dem jeweiligen Pfad
+existieren — `artifact=` nur beim BSI-Artefaktabruf, `httpStatus=` nur, wenn
+eine HTTP-Antwort vorliegt, `attempt=` als 1-basierte Nummer des letzten
+Versuchs und `url=` reduziert auf Origin und Pfad. Query und Fragment entfallen,
+weil ein Redirect-Ziel aus dem `location`-Header der GitHub-Antwort stammt und
+signierte Parameter tragen kann. Fehlertexte, Ursachenketten und lokale Pfade
+erscheinen nie; Artefaktschlüssel außerhalb der Registergrammatik bleiben
+redigiert.
 
 Die bestehende Integritätsprüfung und `parseCatalog` ersetzen diese Gates
 nicht. Ausgewiesen werden dürfen ausschließlich die für den Klasse-2-Einstieg
@@ -100,7 +113,7 @@ nur referenziert wird.
 | 1. Größenlimit und JSON-Syntax | **Für Klasse 2 umgesetzt:** Plattformfunktionen (`Uint8Array`, fataler UTF-8-Decoder), projekteigener Token-Scanner und danach `JSON.parse` im isolierten Modul-Worker | Das Bytelimit von 10 MiB greift vor Worker-Erzeugung, Kopie, Decoder, Scanner und Parser. Nach erfolgreicher fataler Dekodierung lehnt der Scanner doppelte Member auf jeder erlaubten Objekttiefe ab und begrenzt seinen eigenen Abstieg auf Tiefe 64; nur dann wird `JSON.parse` aufgerufen. Ein vom Scanner als ungültig bewerteter Text endet ebenfalls vor `JSON.parse` fail-closed. Stufe 1 endet mit dem unmittelbaren `JSON.parse`-Ergebnis; die iterative Grenzprüfung (Tiefe 64, Knotenzahl 1 000 000, Base64-Summe 4 MiB ohne Dekodierung) gehört zur objektorientierten Kette (Stufe 2a). Der Adapter beendet einen antwortlosen Worker nach 30 Sekunden mit einer redigierten Fehlerdiagnose. Node-Tests verwenden dieselbe Worker-Logik; der Browsernachweis läuft in Chromium. |
 | 2a. Objektgraph-Invariante | **Für Klasse 2 umgesetzt:** gemeinsame objektorientierte Prüfkette in [`oscalObjectGraph.ts`](../src/domain/oscalObjectGraph.ts) und [`oscalObjectPipeline.ts`](../src/domain/oscalObjectPipeline.ts); setzt keine Bytes voraus | Zwei bewusst getrennte terminierende Durchläufe: Der erste prüft vor jeder Wertreflexion die Herkunft aller Container sowie serialisierte Byte- und Knotenuntergrenze. Erst danach prüft der zweite Strukturform, Tiefe, exakte Knotenzahl und eingebettete Base64-Summe mit einer Identitätsmenge über seinen ganzen Lauf (Zyklen und geteilte Containeridentität fail-closed). Positivdefinition: null, Boolean, String, Number außer NaN (±Infinity zulässig), Arrays exakt `Array.prototype` mit dichten Indizes plus `length`, Objekte exakt `Object.prototype`; keine Symbol-Schlüssel; nur voll schreibbare, aufzählbare, konfigurierbare Data-Properties. Kein Serialisieren, kein Klonen; keine Proxy-Erkennungsbehauptung — der Ausschluss entsteht durch den Herkunftsnachweis (unmittelbares `JSON.parse`-Ergebnis oder Builder-Handle). Diagnosen tragen stabile Codes auf der eigenen Stufe `object-structure` und nennen weder Werte noch Property-Namen. Details unter [Die gemeinsame objektorientierte Prüfkette](#die-gemeinsame-objektorientierte-prüfkette). |
 | 2. Root-Erkennung | **Umgesetzt:** `dispatchOscalDocument()` in [`oscalRootDispatch.ts`](../src/adapters/oscalRootDispatch.ts), projekteigen und ohne externes Werkzeug | Das Top-Level-Objekt muss genau einen der acht bekannten Root-Keys besitzen. Null, Arrays, mehrere Root-Keys und unbekannte Keys werden abgelehnt. Die optionale Schema-Direktive `$schema` ist die einzige zusätzlich zulässige Top-Level-Property; sie ist kein zweiter Root und **niemals** Versionsautorität. Eine Katalog-Interpretation als Fallback ist verboten. |
-| 3. JSON-Schema | **Für Klasse 2 umgesetzt:** `ajv` 8.20.0 im Modul-Worker, gegen die eingecheckten NIST-Schemas unter `schemas/oscal/`. **CI umgesetzt:** [`verify-upstream-oscal.mjs`](../scripts/verify-upstream-oscal.mjs) nutzt `go-oscal` 0.7.1 als unabhängiges Schema- und Upgrade-Orakel | Auswahl ausschließlich über den exakten Root×`oscal-version`-Schlüssel; kein Fallback auf eine Nachbarversion. Die Schemabytes kommen aus dem eigenen Bundle; der Chunk der ausgewählten Zelle wird zur Laufzeit von derselben Origin nachgeladen, nie von einer fremden. Ihre Integrität trägt der Bauzeitschritt `npm run verify-oscal-schemas`. Ist die Zelle nicht im Bundle oder lässt sich ihr Validator nicht bauen, endet der Import fail-closed mit `OSCAL_SCHEMA_UNAVAILABLE` — Stufe 3 wird weder übersprungen noch als bestanden ausgewiesen. Der CI-Korpuslauf bezieht Dokumente nur aus dem gepinnten BSI-Snapshot und führt weder Schema- noch Dokumentreferenz-Anfragen aus. Jedes nicht gesperrte Artefakt muss bestehen; ein gesperrtes Artefakt muss fehlschlagen. Fehlende oder nicht auswertbare Werkzeugergebnisse bleiben ein eigener fail-closed Werkzeugfehler. |
+| 3. JSON-Schema | **Für Klasse 2 umgesetzt:** `ajv` 8.20.0 im Modul-Worker, gegen die eingecheckten NIST-Schemas unter `schemas/oscal/`. **CI umgesetzt:** [`verify-upstream-oscal.mjs`](../scripts/verify-upstream-oscal.mjs) nutzt `go-oscal` 0.7.1 als unabhängiges Schema- und Upgrade-Orakel | Auswahl ausschließlich über den exakten Root×`oscal-version`-Schlüssel (einzige Normalisierung: ein führendes kleines `v`); kein Fallback auf eine Nachbarversion. Die Schemabytes kommen aus dem eigenen Bundle; der Chunk der ausgewählten Zelle wird zur Laufzeit von derselben Origin nachgeladen, nie von einer fremden. Ihre Integrität trägt der Bauzeitschritt `npm run verify-oscal-schemas`. Ist die Zelle nicht im Bundle oder lässt sich ihr Validator nicht bauen, endet der Import fail-closed mit `OSCAL_SCHEMA_UNAVAILABLE` — Stufe 3 wird weder übersprungen noch als bestanden ausgewiesen. Der CI-Korpuslauf bezieht Dokumente nur aus dem gepinnten BSI-Snapshot und führt weder Schema- noch Dokumentreferenz-Anfragen aus. Jedes nicht gesperrte Artefakt muss bestehen; ein gesperrtes Artefakt muss fehlschlagen. Fehlende oder nicht auswertbare Werkzeugergebnisse bleiben ein eigener fail-closed Werkzeugfehler. |
 | 4. zusätzliche OSCAL-Constraints | Derzeit **kein zugelassener Validator** für OSCAL 1.2.2; im Browser und in CI als `not-checked` ausgewiesen | Diese Stufe darf weder übersprungen noch als bestanden dargestellt werden. Die zulässige Konformitätsaussage wird deshalb begrenzt. Das konkrete Mapping-Orakel ist als bekannte Lücke registriert. |
 | 5. Referenzen und Projektregeln | **Umgesetzt:** [`referenceResolution.ts`](../src/domain/referenceResolution.ts) ist der gemeinsame, fail-closed Klassifikator; der Referenzgraph darüber steht in [`referenceGraph.ts`](../src/domain/referenceGraph.ts) mit der CI-Politik in [`referenceGraphPolicy.ts`](../src/domain/referenceGraphPolicy.ts) ([GSPP-251](https://linear.app/grundschutz-plus-plus/issue/GSPP-251)) | Prüft UUID-/ID-Eindeutigkeit, interne und dokumentübergreifende Referenzen, URI- und Medientypregeln sowie ausdrücklich benannte GRC-Regeln. Die Schicht klassifiziert externe `https:`-Ziele, relative Ziele und abgelehnte Protokolle ohne sie abzurufen; der Graph konsumiert sie und führt keine zweite Klassifikation ein. Unbekannte Regeln gelten nicht als bestanden. Details unter [Stufe 5 — Referenzgraph](#stufe-5--referenzgraph). |
 
@@ -776,29 +789,95 @@ dem sie erhoben wurde.
   `scripts` und die Build-Konfiguration ab und belegt „dieser Baum wurde
   gemessen". Er bleibt **Protokoll**: Als Gate erzwänge jede Änderung an einer
   beliebigen UI-Komponente einen Browsermesslauf.
-- Die **Messwegprovenienz** (`sourceBefore.workLimitProvenance.sha256`) deckt
-  genau das ab, was der gemessene Auflösungslauf ausführt. Sie ist die
-  **Testbedingung**. Ihre Hülle ist aus den echten Importen berechnet
-  ([`measureWorkLimitProvenance.mjs`](../scripts/measureWorkLimitProvenance.mjs)):
-  ab den Einstiegspunkten des Messharnisches transitiv über alle Importe. Sie
-  umfasst Repository-Dateien **und** die aufgelösten Versionen der externen
-  Laufzeit (`runtime`, transitiv aus dem Lockfile) — der gemessene Lauf führt
-  vor dem Ergebnis die Schemaprüfung mit Ajv aus.
+- Die **Messwegprovenienz** (`sourceBefore.workLimitProvenance`) deckt genau
+  den Code ab, dessen Kosten mit den Arbeitseinheiten wachsen, und die
+  Eingaben, an denen er gemessen wurde. Sie ist die **Testbedingung**
+  ([`measureWorkLimitProvenance.mjs`](../scripts/measureWorkLimitProvenance.mjs)).
 
-**Die Hülle folgt keiner Kante, die ausschließlich einen Typ transportiert.**
-`import type` / `export type` existieren zur Laufzeit nicht und können die
-gemessene Dauer nicht beeinflussen. Die Erkennung ist **fail-closed**: Ein Ziel
-entfällt nur, wenn *jedes* seiner Vorkommen in der Datei zweifelsfrei als reine
-Typkante erkennbar ist. Die Mischform `import { type X, y }`, ein
-seitenwirksames `import '…'`, ein dynamisches `import('…')` und jede
-Schreibweise, die die Textsuche nicht sicher einordnet, halten die Kante;
-`export * from` bleibt eine Wertkante.
+**Die Hülle kommt aus einer Ausführungszählung** (Verfahren
+`skalierende-bereiche`). `WORK_UNIT_LIMIT` ist eine Aussage über die Zeit pro
+Arbeitseinheit; maßgeblich ist deshalb nicht, was vom Auflösungspfad aus
+importierbar ist, sondern was mit den Arbeitseinheiten skaliert.
+[`measureWorkLimitCallCounts.mjs`](../scripts/measureWorkLimitCallCounts.mjs)
+lässt für jede der sechs Kategorien den produktiven `resolveProfile` über die
+Kalibrierfixture mit N = 4 und 2N = 8 Wiederholungen laufen und zählt mit
+V8-Precise-Coverage auf Blockebene, wie oft jede Funktion und jeder Block darin
+ausgeführt wird. Gezählt wird genau der Abschnitt, den der Harnisch zwischen
+seinen beiden `nowMs()` misst; Plan und `parseProfileDocument` laufen vorher
+und fallen heraus. Ein Test hält beide Abschnitte aneinander fest.
 
-Die **Auswertung** (`measureClass2BudgetReport.mjs`) steht bewusst in keiner
-der beiden Hüllen: Sie läuft im Browser nie mit und erzeugt keine Rohdaten.
-Der Bindungstest leitet den Grenzwert bei jedem Testlauf mit der aktuellen
-Auswertung aus dem Artefakt neu her — eine Änderung an ihr wird sofort
-geprüft, ohne einen Browsermesslauf zu erzwingen.
+- **Skalierend** ist ein Bereich — eine Funktion oder ein Block darin, etwa ein
+  Schleifenrumpf —, dessen Ausführungszahl bei 2N in mindestens einer
+  Kategorie größer ist als bei N. Die Blockebene erfasst auch eine Funktion,
+  die je Lauf einmal aufgerufen wird, deren Schleife aber je Arbeitseinheit
+  läuft. Die Hülle besteht aus den Dateien mit mindestens einem skalierenden
+  Bereich und steht unter `paths` im Artefakt. Liegt ein skalierender Bereich
+  in einem externen Paket, geht dessen aufgelöste Version transitiv aus dem
+  Lockfile ein (`runtime`). Nodes eigene Laufzeit geht nicht ein.
+- **Selbstnachweis, fail-closed.** Vor jeder Verwendung muss jede Kategorie
+  bei 2N mehr Arbeitseinheiten verbrauchen als bei N, und `spendWork` aus
+  `profileResolutionBudget.ts` muss als skalierend erkannt sein. Sonst bricht
+  die Berechnung mit einer benannten Meldung ab, statt eine leere oder zu
+  kleine Hülle zu hashen. Vor jedem Lauf muss die Wiederholungszahl innerhalb
+  von `maxRepetitions` der Kategorie liegen, also in einem Steuerdokument,
+  das die Dokumentgrenzen zulassen; `buildWorkUnitCalibration` selbst prüft
+  das nicht. Dieselbe Prüfung gilt für die Kalibrierfälle von `--calibrate`.
+- **Normalisierter Inhalt.** Gehasht werden Pfad und Quelltext jeder
+  Hüllendatei nach `ts.transpileModule` mit `removeComments`. Die Ausgabe wird
+  aus dem Syntaxbaum neu gedruckt: Kommentare, Formatierung und Typannotationen
+  verschieben den Hash nicht, jede Änderung am ausgeführten Code schon. Die
+  Pfade sind wie beim breiten Fingerprint mit `byCodeUnit` sortiert.
+- **Die Worst-Case-Fixture ist mitgebunden.** Die Zählung sieht nur, was
+  während `resolveProfile` läuft; die Eingaben baut
+  [`profileResolutionWorstCaseFixtures.mjs`](../scripts/profileResolutionWorstCaseFixtures.mjs)
+  davor. Ohne eigene Bindung belegten die alten Zeitreihen den Grenzwert auch
+  nach einer Änderung der Fixture, etwa mehr Controls im Quellkatalog. Ein
+  eigener Fingerprint (`fixture.sha256`) umfasst deshalb ihren wie oben
+  normalisierten Quelltext und ihre beobachteten Eingaben aus den importierten
+  Modulen: je Kategorie den Wiederholungsdeckel, den die Dokumentgrenzen aus
+  `class2ImportLimits.mjs` setzen, und die Dokumente eines Kalibrierfalls mit
+  der OSCAL-Version aus `sourceRegistry.mjs`. Die beiden Module gehen nicht als
+  Dateien ein: Die Registry ändert sich mit jedem neuen BSI-Artefakt, ohne die
+  gemessenen Eingaben zu berühren. Die Beobachtung ist nur für diese beiden
+  Importe begründet; bekommt die Fixture einen weiteren, bricht die Berechnung
+  ab. Im Artefakt stehen `hullSha256` und `fixture.sha256` einzeln, geprüft
+  wird der daraus kombinierte `sha256`.
+- **Eigener Node-Prozess.** Precise-Coverage ist ein Zustand des ganzen
+  Isolates, und jede Abfrage setzt die Zähler zurück. Unter
+  `npm run test:coverage` misst Vitest seine Abdeckung über denselben
+  Mechanismus; die Zählung läuft deshalb in einem Kindprozess, der
+  `src/domain` über Nodes Typ-Stripping und den Aliashook aus
+  [`oscal-domain-bridge.mjs`](../scripts/oscal-domain-bridge.mjs) lädt. Die
+  Berechnung braucht keinen Browser, dauert rund eine Sekunde und läuft in
+  `npm run test` mit.
+
+**Bekannte Grenzen.**
+
+- Code, dessen Bereiche bei N und 2N gleich oft laufen, kann trotzdem langsamer
+  werden — etwa die Ajv-Schemastufe der Abschlusskette, die je Profil einmal
+  läuft. Eine solche Änderung löst keine Neumessung der Arbeitsgrenze aus. Ihre
+  Kosten hängen an der Ausgabegröße, die die Ausgabegrenzen begrenzen; deren
+  Messreihen aus GSPP-382 haben keinen Provenienz-Gate.
+- `processClass2OscalValue` läuft einmal je Profil in `plan.order`. Jede
+  Worst-Case-Fixture besteht aus genau einem Katalog und einem Profil; weder
+  die Messung noch die Hülle decken deshalb Kosten ab, die mit der Länge einer
+  Profilkette wachsen. Das ist eine Frage der Messabdeckung, nicht des
+  Fingerprints.
+
+**Übertragene Bindung.** Das Artefakt führt unter
+`workLimitProvenanceRestamps` die Nachweisschritte, mit denen sein Fingerprint
+ohne Browserlauf an das geltende Verfahren gebunden ist; jeder Eintrag nennt
+Basiscommit, Verfahren und Hash vorher und nachher sowie seine Nachweise. Die
+Einträge sind keine Messergebnisse und belegen nichts über die Kosten.
+`renderReport` verweigert einen Bericht, dessen Provenienz vor und nach der
+Messung kein oder ein unterschiedliches Verfahren nennt, und der Bindungstest
+verlangt Verfahren und Hash des aktuellen Stands.
+
+Die **Auswertung** (`measureClass2BudgetReport.mjs`) steht nicht in der Hülle
+der Messwegprovenienz: Sie läuft im Browser nie mit und erzeugt keine
+Rohdaten. Der Bindungstest leitet den Grenzwert bei jedem Testlauf mit der
+aktuellen Auswertung aus dem Artefakt neu her — eine Änderung an ihr wird
+sofort geprüft, ohne einen Browsermesslauf zu erzwingen.
 
 Beide lassen `profileResolutionBudgetLimits.mjs` aus — genau diese Datei muss
 sich zwischen Mess- und Lieferstand unterscheiden, sonst wäre die Frage „gehört
@@ -941,6 +1020,16 @@ Ein `metadata.oscal-version`, das kein String ist, gilt als fehlende Angabe und
 führt zu `OSCAL_VERSION_MISSING`. Es wird ausdrücklich **nicht** nach String
 konvertiert: Eine Koerzierung würde unvertrauenswürdige Eingabe in eine
 scheinbare Versionsangabe verwandeln.
+
+Für Klasse 2 entfernt die Matrix vor der Formprüfung genau ein führendes
+kleines `v`: `v1.2.2` bindet die Zelle `1.2.2`, `V1.2.2`, `vv1.2.2` und `v1.2` bleiben
+`OSCAL_VERSION_MALFORMED`, `v1.2.3` bleibt `OSCAL_ROOT_VERSION_UNSUPPORTED`.
+Das Dokument selbst wird dabei nicht verändert; Stufe 3 validiert den
+unveränderten Wert gegen das Schema der gewählten Zelle. `artifact.oscalVersion`
+trägt die gebundene Version, bei einer Ablehnung nur ein Mitglied der gepinnten
+Menge oder `null`. Klasse 1 bindet in Fetch und Browser weiterhin exakt,
+dort bleibt `v1.2.2` `OSCAL_VERSION_MALFORMED`. Herleitung und Belege:
+[OSCAL_VERSION_MATRIX.md](OSCAL_VERSION_MATRIX.md#führendes-v-in-metadataoscal-version).
 
 ### Umgesetzte Stufe 3: Ajv-Konfiguration, Schemazugriff und Codes
 

@@ -3,6 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!--
+      Die Tabellenansicht nutzt Inter 600 erst nach ihrem ersten Render; ohne
+      Preload löst das spätere Eintreffen der Schrift ein zweites Layout aller
+      Zeilen aus (GSPP-262). Die Latin-Schnitte laden daher vorab; crossorigin
+      ist Pflicht, sonst verwirft der Browser den Preload für @font-face.
+    -->
+    <link rel="preload" href="/fonts/inter-latin-400.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/inter-latin-500.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/inter-latin-600.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/inter-latin-700.woff2" as="font" type="font/woff2" crossorigin />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="Grundschutz++ Navigator — BSI Anwenderkatalog durchsuchen, filtern und exportieren." />
     <meta name="google-site-verification" content="QepzbmSymmD7PDwHOX2e6fF2LjI9LkPES9DSoovTYeM" />
