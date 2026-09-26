@@ -304,7 +304,6 @@ describe('ControlCharacteristics (GSPP-303 T7)', () => {
         <ControlSubjectGroups
           control={control}
           resolvedVocabularies={resolved}
-          hasControllingCriteria={false}
           isVocabularyActive={() => false}
           onToggleVocabulary={vi.fn()}
           renderVocabularyCard={() => null}
@@ -374,7 +373,6 @@ describe('ControlCharacteristics (GSPP-303 T7)', () => {
         <ControlSubjectGroups
           control={tagControl}
           resolvedVocabularies={tagResolved}
-          hasControllingCriteria={false}
           isVocabularyActive={() => true}
           onToggleVocabulary={vi.fn()}
           renderVocabularyCard={() => null}

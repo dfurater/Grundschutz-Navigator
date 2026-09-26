@@ -93,7 +93,7 @@ export function TermTrigger({
         onToggle(vocabKey);
       }}
       className={`cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] ${
-        inline ? 'inline' : 'inline-flex min-h-11 min-w-11 items-center lg:min-h-10 lg:min-w-10'
+        inline ? 'inline' : 'inline-flex min-h-11 min-w-11 max-w-full items-center text-left [overflow-wrap:anywhere] lg:min-h-10 lg:min-w-10'
       } ${
         active ? 'font-medium text-primary-main' : ''
       }`}

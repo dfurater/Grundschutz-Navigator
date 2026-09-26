@@ -194,4 +194,62 @@ describe('segmentStatement', () => {
       'Zu Beginn muss Beachtung',
     );
   });
+
+  it('meldet ein vom Ergebnis verdecktes Handlungswort als missing', () => {
+    const result = segmentStatement({
+      statementRaw: 'Detektion MUSS Schwachstellen erkennen.',
+      params: {},
+      practiceTitle: 'Detektion',
+      modalverb: 'MUSS',
+      handlungsworte: 'erkennen',
+      ergebnis: 'Schwachstellen erkennen',
+    });
+
+    expect(result.missing).toContain('handlungsworte');
+    expect(result.segments.map((segment) => segment.role)).toEqual([
+      'practice',
+      'text',
+      'modalverb',
+      'text',
+      'ergebnis',
+      'text',
+    ]);
+  });
+
+  it('sucht Ergebnis und Praezisierung erst hinter dem Praktik-Praefix', () => {
+    const result = segmentStatement({
+      statementRaw: 'Tests MUSS die Tests dokumentieren.',
+      params: {},
+      practiceTitle: 'Tests',
+      modalverb: 'MUSS',
+      handlungsworte: 'dokumentieren',
+      ergebnis: 'Tests',
+    });
+
+    expect(result.missing).not.toContain('ergebnis');
+    expect(result.segments).toContainEqual({ role: 'practice', text: 'Tests' });
+    expect(result.segments).toContainEqual({ role: 'ergebnis', text: 'Tests' });
+  });
+
+  it('markiert einen Platzhalter als Teil der Praezisierung, die er vollstaendig bildet', () => {
+    const params: Record<string, ParamMeta> = {
+      frist: { value: 'innerhalb einer Frist', hasValue: false },
+    };
+    const result = segmentStatement({
+      statementRaw: 'Detektion MUSS Meldungen {{ insert: param, frist }} prüfen.',
+      params,
+      practiceTitle: 'Detektion',
+      modalverb: 'MUSS',
+      handlungsworte: 'prüfen',
+      praezisierung: 'innerhalb einer Frist',
+    });
+
+    expect(result.missing).not.toContain('praezisierung');
+    expect(result.segments).toContainEqual({
+      role: 'param',
+      text: 'innerhalb einer Frist',
+      paramId: 'frist',
+      partOf: 'praezisierung',
+    });
+  });
 });

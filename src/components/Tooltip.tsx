@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CSSProperties, KeyboardEvent, ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
+import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 
 export interface TooltipProps {
   /** Eindeutige ID des Tooltip-Containers; wird an `describeTarget` gereicht. */
@@ -7,8 +8,9 @@ export interface TooltipProps {
   /** Inhalt des Tooltip-Containers (`role="tooltip"`). */
   readonly content: ReactNode;
   /**
-   * Render-Prop für das beschriebene Ziel-Element. Erhält `id` und MUSS sie als
-   * `aria-describedby` setzen — sonst Bruch (s. Vertragstest).
+   * Render-Prop für das beschriebene Ziel-Element. Erhält `id` und MUSS sie im
+   * Modus `hover` als `aria-describedby` setzen — sonst Bruch (s. Vertragstest).
+   * In den Toggle-Modi trägt der umhüllende Button `aria-describedby`.
    */
   readonly describeTarget?: (describedById: string) => ReactNode;
   /**
@@ -39,8 +41,9 @@ export function Tooltip({
 }: TooltipProps): ReactNode {
   const [open, setOpen] = useState(false);
   const [clampStyle, setClampStyle] = useState<CSSProperties>({});
+  const [measureRun, setMeasureRun] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const tooltipRef = useRef<HTMLDivElement | null>(null);
+  const tooltipRef = useRef<HTMLSpanElement | null>(null);
 
   const clearTimer = useCallback((): void => {
     if (timerRef.current !== undefined) {
@@ -66,23 +69,32 @@ export function Tooltip({
     };
   }, []);
 
-  // Esc-Listener nur bei geöffnetem Tooltip aktiv.
+  // Esc-Listener nur bei geöffnetem Tooltip aktiv. Capture-Phase und
+  // stopPropagation: Esc schließt nur den Tooltip, nicht zusätzlich das mobile
+  // Detail-Overlay, das auf `document` in der Bubble-Phase lauscht.
   useEffect(() => {
     if (!open) {
       return undefined;
     }
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape') {
+        event.stopPropagation();
         closeTooltip();
       }
     };
-    // eslint-disable-next-line no-restricted-syntax -- GSPP-303 T10: Esc-Listener lebt und stirbt in diesem Effekt (single owner), daher legitimer add/remove-Pfad.
-    globalThis.document.addEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line no-restricted-syntax -- GSPP-303 T10: Esc-Listener lebt und stirbt in diesem Effekt (single owner); `useGlobalEventListener` kennt keine Capture-Phase.
+    globalThis.document.addEventListener('keydown', handleKeyDown, true);
     return () => {
       // eslint-disable-next-line no-restricted-syntax -- GSPP-303 T10: Cleanup des obigen Listeners im selben Effekt (single owner).
-      globalThis.document.removeEventListener('keydown', handleKeyDown);
+      globalThis.document.removeEventListener('keydown', handleKeyDown, true);
     };
   }, [open, closeTooltip]);
+
+  // Bei geänderter Fenstergröße die Begrenzung neu messen.
+  useGlobalEventListener('window', 'resize', () => {
+    setClampStyle({});
+    setMeasureRun((run) => run + 1);
+  }, open);
 
   // Innerhalb des scrollbaren Detail-Panels und des Viewports halten.
   useEffect(() => {
@@ -119,7 +131,7 @@ export function Tooltip({
     return () => {
       cancelAnimationFrame(frame);
     };
-  }, [open]);
+  }, [open, measureRun]);
 
   // prefers-reduced-motion-Wächter: gatet nur Transition/Animation, nie die Messung.
   const prefersReducedMotion =
@@ -127,20 +139,20 @@ export function Tooltip({
     globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const tooltipNode = open ? (
-    <div
+    <span
       ref={tooltipRef}
       role="tooltip"
       id={id}
-      className="absolute z-50 max-w-xs rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-raised)] px-2 py-1 text-xs shadow-[var(--shadow-overlay)]"
+      className="absolute z-50 block max-w-xs rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-raised)] px-2 py-1 text-xs shadow-[var(--shadow-overlay)]"
       style={{ transition: prefersReducedMotion ? 'none' : undefined, ...clampStyle }}
     >
       {content}
-    </div>
+    </span>
   ) : null;
 
   if (mode === 'toggle' || mode === 'hover-toggle') {
-    // Constraint: Toggle-Wrapper nur mit nicht-interaktivem Phrasing-Content
-    // (Platzhalter-Text) verwenden — keine Buttons/Links darin verschachteln.
+    // Constraint: `describeTarget` liefert hier nur nicht-interaktiven
+    // Phrasing-Content (Platzhalter-Text) — er landet in einem <button>.
     const handleToggle = () => {
       clearTimer();
       if (open) {
@@ -149,33 +161,27 @@ export function Tooltip({
         setOpen(true);
       }
     };
-    const handleKeyDown = (event: KeyboardEvent<HTMLSpanElement>) => {
-      // Nur Space scrollt per Default (Seiten-Scroll verhindern); Enter hat auf
-      // dem Toggle-Wrapper keinen Default zu unterdrücken.
-      if (event.key === ' ') {
-        event.preventDefault();
-        handleToggle();
-      } else if (event.key === 'Enter') {
-        handleToggle();
-      }
-    };
+    // Enter/Space liefert der native Button als Klick.
     return (
       <span
-        role="button"
-        tabIndex={0}
-        aria-expanded={open}
-        aria-controls={id}
-        onClick={handleToggle}
-        onKeyDown={handleKeyDown}
         onMouseEnter={mode === 'hover-toggle' ? () => {
           clearTimer();
           timerRef.current = globalThis.setTimeout(() => setOpen(true), hoverDelayMs);
         } : undefined}
         onMouseLeave={mode === 'hover-toggle' ? closeTooltip : undefined}
-        onBlur={closeTooltip}
         className="relative inline"
       >
-        {describeTarget?.(id)}
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={id}
+          aria-describedby={id}
+          onClick={handleToggle}
+          onBlur={closeTooltip}
+          className="inline cursor-pointer rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+        >
+          {describeTarget?.(id)}
+        </button>
         {tooltipNode}
       </span>
     );

@@ -21,13 +21,18 @@ export interface ControlDependenciesProps {
  * „Verwandt"/„Erfordert"/„Referenz", sonst `Benutzerdefinierte Relation
  * „<rel>"`. Die Herkunft steht ausschließlich in der Legende.
  */
+const EVERYDAY_RELATION_LABELS: Readonly<Record<string, string>> = {
+  related: 'Verwandt',
+  required: 'Erfordert',
+  reference: 'Referenz',
+};
+
 export function everydayRelationLabel(link: ControlLink): string {
   if (link.relStatus === 'missing') return 'Ohne Relationsangabe';
-  const base = link.rel === 'related' ? 'Verwandt'
-    : link.rel === 'required' ? 'Erfordert'
-    : link.rel === 'reference' ? 'Referenz'
-    : `Benutzerdefinierte Relation „${link.rel ?? ''}"`;
-  return base;
+  const rel = link.rel ?? '';
+  return Object.hasOwn(EVERYDAY_RELATION_LABELS, rel)
+    ? EVERYDAY_RELATION_LABELS[rel]
+    : `Benutzerdefinierte Relation „${rel}"`;
 }
 
 /** Gegenrichtungs-Zeile: „<ID> verweist hierauf als „<label>""". */

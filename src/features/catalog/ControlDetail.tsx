@@ -204,7 +204,8 @@ export function ControlDetail({
     },
   ];
   const hasAnforderung = Boolean(statementSegmentation.input.statementRaw)
-    || Boolean(control.statement);
+    || Boolean(control.statement)
+    || statementDetails.some((detail) => detail.value !== '');
 
   const hasSecurityTargetRelevance = (control.confidentialityProp?.value ?? control.confidentiality) !== undefined
     || (control.integrityProp?.value ?? control.integrity) !== undefined
@@ -338,29 +339,29 @@ export function ControlDetail({
           resolvedVocabularies={resolvedVocabularies}
         />
         {hasAnforderung && (
-          <>
-            <ControlStatement
-              statement={control.statement}
-              segments={{
-                input: statementSegmentation.input,
-                precomputed: statementSegmentation.result,
-                practiceResolution: practiceVocabulary,
-                modalverbResolution: resolvedVocabularies.modalverb,
-                handlungswortResolution: resolvedVocabularies.statement.handlungsworte,
-                isVocabularyActive,
-                onToggleVocabulary: toggleVocabulary,
-                renderVocabularyCard,
-              }}
-            >
-              <ControlStatementDetails
-                details={statementDetails}
-                missing={statementSegmentation.result.missing}
-                isVocabularyActive={isVocabularyActive}
-                onToggleVocabulary={toggleVocabulary}
-                renderVocabularyCard={renderVocabularyCard}
-              />
-            </ControlStatement>
-          </>
+          <ControlStatement
+            statement={control.statement}
+            segments={{
+              input: statementSegmentation.input,
+              precomputed: statementSegmentation.result,
+              practiceResolution: practiceVocabulary,
+              modalverbResolution: resolvedVocabularies.modalverb,
+              handlungswortResolution: resolvedVocabularies.statement.handlungsworte,
+              ergebnisResolution: resolvedVocabularies.statement.ergebnis,
+              praezisierungResolution: resolvedVocabularies.statement.praezisierung,
+              isVocabularyActive,
+              onToggleVocabulary: toggleVocabulary,
+              renderVocabularyCard,
+            }}
+          >
+            <ControlStatementDetails
+              details={statementDetails}
+              missing={statementSegmentation.result.missing}
+              isVocabularyActive={isVocabularyActive}
+              onToggleVocabulary={toggleVocabulary}
+              renderVocabularyCard={renderVocabularyCard}
+            />
+          </ControlStatement>
         )}
         <ControlGuidance
           guidance={control.guidance}
@@ -389,13 +390,7 @@ export function ControlDetail({
                     renderVocabularyCard={renderVocabularyCard}
                   />
                   {control.taxonomy.length > 0 && (
-                    <ControlWlanTaxonomy
-                      control={control}
-                      resolvedVocabularies={resolvedVocabularies}
-                      isVocabularyActive={isVocabularyActive}
-                      onToggleVocabulary={toggleVocabulary}
-                      renderVocabularyCard={renderVocabularyCard}
-                    />
+                    <ControlWlanTaxonomy control={control} />
                   )}
                 </div>
               </ControlDetailSection>

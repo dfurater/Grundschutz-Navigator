@@ -1,7 +1,12 @@
 import { Fragment } from 'react';
 import type { ReactNode } from 'react';
 import { Tooltip } from '@/components/Tooltip';
-import type { SegmentStatementInput, SegmentStatementResult, SentenceSegment } from '@/domain/statementSegments';
+import type {
+  SegmentStatementInput,
+  SegmentStatementResult,
+  SentenceClauseRole,
+  SentenceSegment,
+} from '@/domain/statementSegments';
 import { segmentStatement } from '@/domain/statementSegments';
 import type { Control } from '@/domain/models';
 import type { VocabularyResolution } from '@/domain/vocabulary';
@@ -24,6 +29,8 @@ export interface ControlStatementSegmentsProps {
   readonly practiceResolution: VocabularyResolution | null;
   readonly modalverbResolution: VocabularyResolution | null;
   readonly handlungswortResolution: VocabularyResolution | null;
+  readonly ergebnisResolution?: VocabularyResolution | null;
+  readonly praezisierungResolution?: VocabularyResolution | null;
   readonly isVocabularyActive: (key: string) => boolean;
   readonly onToggleVocabulary: (key: string) => void;
   readonly renderVocabularyCard: RenderVocabularyCard;
@@ -33,6 +40,31 @@ interface SatzSlot {
   readonly role: SentenceSegment['role'];
   readonly key: string;
   readonly resolution: VocabularyResolution | null;
+}
+
+const CLAUSE_LABEL: Record<SentenceClauseRole, string> = {
+  ergebnis: 'Ergebnis',
+  praezisierung: 'Präzisierung',
+};
+
+function renderPlaceholder(segment: SentenceSegment, index: number): ReactNode {
+  const content = segment.partOf === undefined ? PLACEHOLDER_TOGGLETIP : (
+    <>
+      <span className="block font-medium">{CLAUSE_LABEL[segment.partOf]}</span>
+      {PLACEHOLDER_TOGGLETIP}
+    </>
+  );
+  return (
+    <Tooltip key={index} id={`satz-param-${index}`} mode="hover-toggle" content={content}
+      describeTarget={() => <span className="rounded bg-amber-100 px-0.5">{segment.text}</span>} />
+  );
+}
+
+function renderClause(role: SentenceClauseRole, text: string, index: number): ReactNode {
+  return (
+    <Tooltip key={index} id={`satzteil-${role}-${index}`} content={CLAUSE_LABEL[role]}
+      describeTarget={(describedById) => <span aria-describedby={describedById} className="rounded hover:bg-[var(--color-surface-subtle)]">{text}</span>} />
+  );
 }
 
 function renderSegment(
@@ -48,27 +80,24 @@ function renderSegment(
   }
   if (segment.role === 'param') {
     const hasValue = segment.paramId !== undefined && input.params[segment.paramId]?.hasValue === true;
-    if (hasValue) {
-      return <Fragment key={index}>{segment.text}</Fragment>;
+    if (!hasValue) {
+      return renderPlaceholder(segment, index);
     }
-    return (
-      <Tooltip key={index} id={`satz-param-${index}`} mode="hover-toggle" content={PLACEHOLDER_TOGGLETIP}
-        describeTarget={(describedById) => <span aria-describedby={describedById} className="rounded bg-amber-100 px-0.5">{segment.text}</span>} />
-    );
-  }
-  if (segment.role === 'ergebnis' || segment.role === 'praezisierung') {
-    return (
-      <Tooltip key={index} id={`satzteil-${segment.role}-${index}`} content={segment.role === 'ergebnis' ? 'Ergebnis' : 'Präzisierung'}
-        describeTarget={(describedById) => <span aria-describedby={describedById} className="rounded hover:bg-[var(--color-surface-subtle)]">{segment.text}</span>} />
-    );
+    return segment.partOf === undefined
+      ? <Fragment key={index}>{segment.text}</Fragment>
+      : renderClause(segment.partOf, segment.text, index);
   }
   const slot = slotByRole.get(segment.role);
-  if (slot === undefined || slot.resolution === null) {
-    return <Fragment key={index}>{segment.text}</Fragment>;
+  const isClause = segment.role === 'ergebnis' || segment.role === 'praezisierung';
+  if (slot?.resolution == null) {
+    return isClause
+      ? renderClause(segment.role as SentenceClauseRole, segment.text, index)
+      : <Fragment key={index}>{segment.text}</Fragment>;
   }
   return (
     <TermTrigger key={index} vocabKey={slot.key} active={isVocabularyActive(slot.key)} onToggle={onToggleVocabulary}
-      label={segment.text} ariaLabel={`Vokabularbegriff ${segment.text}`} inline />
+      label={segment.text} ariaLabel={`Vokabularbegriff ${segment.text}`} inline
+      tooltip={isClause ? CLAUSE_LABEL[segment.role as SentenceClauseRole] : undefined} />
   );
 }
 
@@ -78,6 +107,8 @@ export function ControlStatementSegments({
   practiceResolution,
   modalverbResolution,
   handlungswortResolution,
+  ergebnisResolution = null,
+  praezisierungResolution = null,
   isVocabularyActive,
   onToggleVocabulary,
   renderVocabularyCard,
@@ -87,6 +118,8 @@ export function ControlStatementSegments({
     { role: 'practice', key: 'satz:practice', resolution: practiceResolution },
     { role: 'modalverb', key: 'satz:modalverb', resolution: modalverbResolution },
     { role: 'handlungswort', key: 'satz:handlungswort', resolution: handlungswortResolution },
+    { role: 'ergebnis', key: 'satz:ergebnis', resolution: ergebnisResolution },
+    { role: 'praezisierung', key: 'satz:praezisierung', resolution: praezisierungResolution },
   ];
   const slotByRole = new Map(slots.map((slot) => [slot.role, slot]));
   const activeSlot = slots.find((slot) => slot.resolution !== null && isVocabularyActive(slot.key));
@@ -98,7 +131,7 @@ export function ControlStatementSegments({
           renderSegment(segment, index, input, slotByRole, isVocabularyActive, onToggleVocabulary),
         )}
       </p>
-      {activeSlot !== undefined && activeSlot.resolution !== null && (
+      {activeSlot?.resolution != null && (
         <div id={toVocabCardId(activeSlot.key)}>{renderVocabularyCard(activeSlot.resolution)}</div>
       )}
     </>
@@ -115,7 +148,9 @@ export function ControlStatement({ statement, segments, children }: ControlState
     );
   }
   if (!statement) {
-    return null;
+    // Anforderungsdetails ohne Satzprosa bleiben sichtbar; `ControlDetail`
+    // rendert diesen Block nur, wenn es solche Details gibt.
+    return children ? <ControlDetailSection heading="Anforderung">{children}</ControlDetailSection> : null;
   }
   return (
     <ControlDetailSection heading="Anforderung">

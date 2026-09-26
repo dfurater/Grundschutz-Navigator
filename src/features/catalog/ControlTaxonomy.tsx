@@ -29,8 +29,6 @@ type TaxonomyVocabularies = Pick<ResolvedControlVocabularies, 'tags'> & {
 export interface ControlTaxonomyProps {
   readonly control: TaxonomyControl;
   readonly resolvedVocabularies: TaxonomyVocabularies;
-  /** Nur noch für direkte Altnutzer; die neuen Teilkomponenten ignorieren ihn. */
-  readonly hasControllingCriteria?: boolean;
   readonly isVocabularyActive: (key: string) => boolean;
   readonly onToggleVocabulary: (key: string) => void;
   readonly renderVocabularyCard: RenderVocabularyCard;
@@ -96,7 +94,7 @@ export function ControlSubjectGroups({
     <div key={heading}>
       <h4 className="text-sm font-semibold text-slate-800 mb-2">{heading}</h4>
       <div className="text-sm leading-relaxed text-slate-700">
-        {entries.map(renderEntry)}
+        {entries.map((entry, index) => renderEntry(entry, index))}
       </div>
       {entries.map((entry) => {
         if (!entry.resolution) return null;
@@ -119,9 +117,13 @@ export function ControlSubjectGroups({
 }
 
 /** WLAN-Block der Taxonomie (GSPP-303 T9: aus `ControlTaxonomy` ausgelagert). */
+export interface ControlWlanTaxonomyProps {
+  readonly control: Pick<Control, 'taxonomy'>;
+}
+
 export function ControlWlanTaxonomy({
   control,
-}: ControlTaxonomyProps) {
+}: ControlWlanTaxonomyProps) {
   if (control.taxonomy.length === 0) {
     return null;
   }

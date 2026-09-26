@@ -9,10 +9,14 @@ export type SentenceSegmentRole =
   | 'param'
   | 'text';
 
+export type SentenceClauseRole = 'ergebnis' | 'praezisierung';
+
 export interface SentenceSegment {
   readonly role: SentenceSegmentRole;
   readonly text: string;
   readonly paramId?: string;
+  /** Satzteil, in dem ein Platzhalter liegt (nur bei `role: 'param'`). */
+  readonly partOf?: SentenceClauseRole;
 }
 
 export interface SegmentStatementInput {
@@ -38,7 +42,7 @@ export interface SegmentStatementResult {
  * `{{ insert: param, <param-id> }}` (Whitespace-tolerant).
  */
 const PLACEHOLDER_PATTERN =
-  '\\{\\{\\s*insert:\\s*param,\\s*([^}\\s]+)\\s*\\}\\}';
+  String.raw`\{\{\s*insert:\s*param,\s*([^}\s]+)\s*\}\}`;
 
 interface TextAtom {
   readonly kind: 'text';
@@ -70,30 +74,30 @@ interface Range {
 }
 
 function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
-/**
- * Segmentiert eine Kontroll-Aussage in Satzteile fuer die Detailansicht (T5).
- *
- * Reine Domain-Funktion: kein React, keine DOM-APIs. Die Segmente liegen in
- * Satzreihenfolge und sind lueckenlos — aneinandergereiht ergeben sie exakt
- * `statementRaw` mit Platzhaltern durch `params[id].value` ersetzt. Jeder
- * Anker wird nur an seiner Fundstelle segmentiert (kein Global-Replace);
- * nicht gefundene Satzteile landen in `missing`.
- */
-export function segmentStatement(
-  input: SegmentStatementInput,
-): SegmentStatementResult {
-  const { statementRaw, params } = input;
+type MissingKey = SegmentStatementResult['missing'][number];
 
-  // 1. Raw-Text in Atome zerlegen (Textlaeufe + Platzhalter) und dabei die
-  //    aufgeloeste Aussage mit Offset-Abbildung aufbauen. Anker wie Ergebnis
-  //    oder Praezisierung liegen bereits aufgeloest vor und werden deshalb auf
-  //    der aufgeloesten Aussage gesucht.
+const MISSING_KEY_BY_ROLE: Partial<Record<SentenceSegmentRole, MissingKey>> = {
+  ergebnis: 'ergebnis',
+  praezisierung: 'praezisierung',
+  handlungswort: 'handlungsworte',
+};
+
+const WORD_CHAR = 'A-Za-zÄÖÜäöüß0-9_';
+
+/**
+ * Zerlegt den Raw-Text in Atome (Textlaeufe + Platzhalter) und baut dabei die
+ * aufgeloeste Aussage mit Offset-Abbildung auf.
+ */
+function buildAtoms(
+  statementRaw: string,
+  params: Record<string, ParamMeta>,
+): { atoms: Atom[]; resolved: string } {
   const atoms: Atom[] = [];
   let resolved = '';
-  function appendText(rawText: string): void {
+  const appendText = (rawText: string): void => {
     // Der Adapter entfernt die BSI-Auswahlklammern nach der Parameterauflösung.
     // Dieselbe Textsicht ist für Suchtext und sichtbare Satzsegmente nötig.
     const text = rawText.replace(/{{([^{}]+)}}/g, '$1');
@@ -104,14 +108,10 @@ export function segmentStatement(
       resolvedEnd: resolved.length + text.length,
     });
     resolved += text;
-  }
+  };
   const placeholderRe = new RegExp(PLACEHOLDER_PATTERN, 'g');
   let rawCursor = 0;
-  for (;;) {
-    const match = placeholderRe.exec(statementRaw);
-    if (match === null) {
-      break;
-    }
+  for (const match of statementRaw.matchAll(placeholderRe)) {
     if (match.index > rawCursor) {
       appendText(statementRaw.slice(rawCursor, match.index));
     }
@@ -133,12 +133,32 @@ export function segmentStatement(
   if (rawCursor < statementRaw.length) {
     appendText(statementRaw.slice(rawCursor));
   }
+  return { atoms, resolved };
+}
 
-  // 2. Satzteile unabhaengig suchen: Ergebnis und Praezisierung koennen vor
-  //    dem Handlungswort stehen. Praktik bleibt ein Praefix, das Modalverb
-  //    wird danach gesucht; das Handlungswort braucht Wortgrenzen.
+function findWord(resolved: string, word: string, from: number): AnchorSpan | null {
+  const wordRe = new RegExp(
+    `(?<![${WORD_CHAR}])${escapeRegExp(word)}(?![${WORD_CHAR}])`,
+    'g',
+  );
+  wordRe.lastIndex = from;
+  const match = wordRe.exec(resolved);
+  return match === null
+    ? null
+    : { role: 'handlungswort', start: match.index, end: match.index + match[0].length };
+}
+
+/**
+ * Sucht alle Satzteile unabhaengig: Ergebnis und Praezisierung koennen vor dem
+ * Handlungswort stehen, aber nie im Praktik-Praefix. Das Modalverb wird nach
+ * der Praktik gesucht; das Handlungswort braucht Wortgrenzen.
+ */
+function findAnchors(
+  input: SegmentStatementInput,
+  resolved: string,
+): { anchors: AnchorSpan[]; missing: MissingKey[] } {
   const anchors: AnchorSpan[] = [];
-  const missing: Array<'ergebnis' | 'praezisierung' | 'handlungsworte'> = [];
+  const missing: MissingKey[] = [];
   let practiceEnd = 0;
   if (input.practiceTitle && resolved.startsWith(input.practiceTitle)) {
     practiceEnd = input.practiceTitle.length;
@@ -152,67 +172,94 @@ export function segmentStatement(
       anchors.push({ role: 'modalverb', start: at, end: modalverbEnd });
     }
   }
-
-  function findPlain(
-    text: string | undefined,
-    role: 'ergebnis' | 'praezisierung',
-  ): void {
-    if (!text) {
-      missing.push(role);
-      return;
-    }
-    const at = resolved.indexOf(text);
-    if (at < 0) {
-      missing.push(role);
-      return;
-    }
-    anchors.push({ role, start: at, end: at + text.length });
-  }
-
-  if (!input.handlungsworte) {
+  const word = input.handlungsworte
+    ? findWord(resolved, input.handlungsworte, modalverbEnd)
+    : null;
+  if (word === null) {
     missing.push('handlungsworte');
   } else {
-    const wordRe = new RegExp(
-      `(?<![A-Za-zÄÖÜäöüß0-9_])${escapeRegExp(input.handlungsworte)}(?![A-Za-zÄÖÜäöüß0-9_])`,
-      'g',
-    );
-    wordRe.lastIndex = modalverbEnd;
-    const wordMatch = wordRe.exec(resolved);
-    if (wordMatch === null) {
-      missing.push('handlungsworte');
+    anchors.push(word);
+  }
+  for (const role of ['ergebnis', 'praezisierung'] as const) {
+    const text = input[role];
+    const at = text ? resolved.indexOf(text, practiceEnd) : -1;
+    if (text && at >= 0) {
+      anchors.push({ role, start: at, end: at + text.length });
     } else {
-      anchors.push({
-        role: 'handlungswort',
-        start: wordMatch.index,
-        end: wordMatch.index + wordMatch[0].length,
-      });
+      missing.push(role);
     }
   }
-  findPlain(input.ergebnis, 'ergebnis');
-  findPlain(input.praezisierung, 'praezisierung');
+  return { anchors, missing };
+}
 
-  // 3. Segmente emittieren: Luecken zwischen Ankern werden `text`,
-  //    Platzhalter innerhalb eines Treffers werden als `param` aufgespalten.
+/**
+ * Luecken zwischen Ankern werden `text`. Ueberlappt ein Anker einen frueheren,
+ * wird er verworfen und als fehlend gemeldet, damit die Restzeile erscheint.
+ */
+function buildRanges(
+  anchors: readonly AnchorSpan[],
+  length: number,
+  missing: MissingKey[],
+): Range[] {
   const ranges: Range[] = [];
-  let rangeCursor = 0;
-  for (const anchor of anchors.sort((a, b) => a.start - b.start)) {
-    if (anchor.start < rangeCursor) {
+  let cursor = 0;
+  for (const anchor of anchors.toSorted((a, b) => a.start - b.start)) {
+    if (anchor.start < cursor) {
+      const key = MISSING_KEY_BY_ROLE[anchor.role];
+      if (key !== undefined) {
+        missing.push(key);
+      }
       continue;
     }
-    if (anchor.start > rangeCursor) {
-      ranges.push({ start: rangeCursor, end: anchor.start, role: 'text' });
+    if (anchor.start > cursor) {
+      ranges.push({ start: cursor, end: anchor.start, role: 'text' });
     }
-    ranges.push({ start: anchor.start, end: anchor.end, role: anchor.role });
-    rangeCursor = anchor.end;
+    ranges.push(anchor);
+    cursor = anchor.end;
   }
-  if (rangeCursor < resolved.length) {
-    ranges.push({ start: rangeCursor, end: resolved.length, role: 'text' });
+  if (cursor < length) {
+    ranges.push({ start: cursor, end: length, role: 'text' });
   }
+  return ranges;
+}
+
+function clauseRoleAt(ranges: readonly Range[], atom: Atom): SentenceClauseRole | undefined {
+  const range = ranges.find(
+    (candidate) =>
+      (candidate.role === 'ergebnis' || candidate.role === 'praezisierung')
+      && candidate.start < atom.resolvedEnd
+      && atom.resolvedStart < candidate.end,
+  );
+  return range?.role as SentenceClauseRole | undefined;
+}
+
+/**
+ * Segmentiert eine Kontroll-Aussage in Satzteile fuer die Detailansicht (T5).
+ *
+ * Reine Domain-Funktion: kein React, keine DOM-APIs. Die Segmente liegen in
+ * Satzreihenfolge und sind lueckenlos — aneinandergereiht ergeben sie exakt
+ * `statementRaw` mit Platzhaltern durch `params[id].value` ersetzt. Jeder
+ * Anker wird nur an seiner Fundstelle segmentiert (kein Global-Replace);
+ * nicht gefundene oder verdeckte Satzteile landen in `missing`. Platzhalter
+ * innerhalb von Ergebnis oder Praezisierung tragen den Satzteil in `partOf`.
+ */
+export function segmentStatement(
+  input: SegmentStatementInput,
+): SegmentStatementResult {
+  const { atoms, resolved } = buildAtoms(input.statementRaw, input.params);
+  const { anchors, missing } = findAnchors(input, resolved);
+  const ranges = buildRanges(anchors, resolved.length, missing);
 
   const segments: SentenceSegment[] = [];
   for (const atom of atoms) {
     if (atom.kind === 'param') {
-      segments.push({ role: 'param', text: atom.value, paramId: atom.paramId });
+      const partOf = clauseRoleAt(ranges, atom);
+      segments.push({
+        role: 'param',
+        text: atom.value,
+        paramId: atom.paramId,
+        ...(partOf === undefined ? {} : { partOf }),
+      });
       continue;
     }
     for (const range of ranges) {

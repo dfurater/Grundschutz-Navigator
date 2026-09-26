@@ -176,13 +176,13 @@ describe('ControlStatement (GSPP-303 T5)', () => {
     const frist = scope.getByText('Frist');
     expect(frist).toHaveClass('bg-amber-100');
     expect(PLACEHOLDER_TOGGLETIP).toBe('Platzhalter – Der Wert wird bei der Anwendung festgelegt.');
-    expect(frist.closest('[role="button"]')).not.toBeNull();
+    const button = frist.closest('button');
+    expect(button).not.toBeNull();
     expect(scope.queryByRole('tooltip')).toBeNull();
 
     fireEvent.click(frist);
-    expect(
-      scope.getByRole('tooltip', { name: PLACEHOLDER_TOGGLETIP }),
-    ).toBeInTheDocument();
+    const tooltip = scope.getByRole('tooltip', { name: PLACEHOLDER_TOGGLETIP });
+    expect(button).toHaveAttribute('aria-describedby', tooltip.id);
   });
 
   it('Satz-fontSize: 16', () => {
