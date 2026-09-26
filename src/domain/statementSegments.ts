@@ -87,6 +87,10 @@ const MISSING_KEY_BY_ROLE: Partial<Record<SentenceSegmentRole, MissingKey>> = {
 
 const WORD_CHAR = 'A-Za-zÄÖÜäöüß0-9_';
 
+function stripChoiceBrackets(text: string): string {
+  return text.replace(/{{([^{}]+)}}/g, '$1');
+}
+
 /**
  * Zerlegt den Raw-Text in Atome (Textlaeufe + Platzhalter) und baut dabei die
  * aufgeloeste Aussage mit Offset-Abbildung auf.
@@ -100,7 +104,7 @@ function buildAtoms(
   const appendText = (rawText: string): void => {
     // Der Adapter entfernt die BSI-Auswahlklammern nach der Parameterauflösung.
     // Dieselbe Textsicht ist für Suchtext und sichtbare Satzsegmente nötig.
-    const text = rawText.replace(/{{([^{}]+)}}/g, '$1');
+    const text = stripChoiceBrackets(rawText);
     atoms.push({
       kind: 'text',
       text,
@@ -118,7 +122,9 @@ function buildAtoms(
     const meta: ParamMeta | undefined = params[paramId];
     // Unbekannte IDs fallen wie in `resolveParams` auf `[id]` zurueck, damit
     // die aneinandergereihten Segmente der aufgeloesten Aussage entsprechen.
-    const value = meta?.value ?? `[${paramId}]`;
+    // Auswahlklammern im Wert entfernt der Adapter ebenso (`resolveParams`
+    // bereinigt erst nach dem Einsetzen), sonst wichen Satz und Suchtext ab.
+    const value = meta ? stripChoiceBrackets(meta.value) : `[${paramId}]`;
     atoms.push({
       kind: 'param',
       paramId,
@@ -135,7 +141,16 @@ function buildAtoms(
   return { atoms, resolved };
 }
 
-function findWord(resolved: string, word: string, from: number): AnchorSpan | null {
+/**
+ * Sucht `word` nur als eigenstaendiges Wort: `indexOf` fände „Risiko“ auch in
+ * „Risikoanalyse“ und verankerte die Erklaerung am falschen Wort.
+ */
+function findWord(
+  resolved: string,
+  word: string,
+  from: number,
+  role: SentenceSegmentRole,
+): AnchorSpan | null {
   const wordRe = new RegExp(
     `(?<![${WORD_CHAR}])${escapeRegExp(word)}(?![${WORD_CHAR}])`,
     'g',
@@ -144,13 +159,13 @@ function findWord(resolved: string, word: string, from: number): AnchorSpan | nu
   const match = wordRe.exec(resolved);
   return match === null
     ? null
-    : { role: 'handlungswort', start: match.index, end: match.index + match[0].length };
+    : { role, start: match.index, end: match.index + match[0].length };
 }
 
 /**
  * Sucht alle Satzteile unabhaengig: Ergebnis und Praezisierung koennen vor dem
  * Handlungswort stehen, aber nie im Praktik-Praefix. Das Modalverb wird nach
- * der Praktik gesucht; das Handlungswort braucht Wortgrenzen.
+ * der Praktik gesucht. Alle Satzteile brauchen Wortgrenzen.
  */
 function findAnchors(
   input: SegmentStatementInput,
@@ -165,14 +180,14 @@ function findAnchors(
   }
   let modalverbEnd = practiceEnd;
   if (input.modalverb) {
-    const at = resolved.indexOf(input.modalverb, practiceEnd);
-    if (at >= 0) {
-      modalverbEnd = at + input.modalverb.length;
-      anchors.push({ role: 'modalverb', start: at, end: modalverbEnd });
+    const modalverb = findWord(resolved, input.modalverb, practiceEnd, 'modalverb');
+    if (modalverb !== null) {
+      modalverbEnd = modalverb.end;
+      anchors.push(modalverb);
     }
   }
   const word = input.handlungsworte
-    ? findWord(resolved, input.handlungsworte, modalverbEnd)
+    ? findWord(resolved, input.handlungsworte, modalverbEnd, 'handlungswort')
     : null;
   if (word === null) {
     missing.push('handlungsworte');
@@ -181,11 +196,11 @@ function findAnchors(
   }
   for (const role of ['ergebnis', 'praezisierung'] as const) {
     const text = input[role];
-    const at = text ? resolved.indexOf(text, practiceEnd) : -1;
-    if (text && at >= 0) {
-      anchors.push({ role, start: at, end: at + text.length });
-    } else {
+    const clause = text ? findWord(resolved, text, practiceEnd, role) : null;
+    if (clause === null) {
       missing.push(role);
+    } else {
+      anchors.push(clause);
     }
   }
   return { anchors, missing };

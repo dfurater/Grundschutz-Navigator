@@ -29,7 +29,7 @@ describe('getVocabularyTermLabel', () => {
     expect(getVocabularyTermLabel('target_object_categories.csv')).toBe('Zielobjekt-Kategorie');
   });
 
-  it('falls back to the vocabulary title for uncurated files', () => {
-    expect(getVocabularyTermLabel('custom-security_topic.csv')).toBe('Custom Security Topic');
+  it('falls back to a neutral German label for uncurated files', () => {
+    expect(getVocabularyTermLabel('custom-security_topic.csv')).toBe('Begriff');
   });
 });

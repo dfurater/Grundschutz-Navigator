@@ -167,6 +167,44 @@ describe('segmentStatement', () => {
     );
   });
 
+  it('entfernt Auswahlklammern auch im gesetzten Parameterwert wie der Adapter', () => {
+    const result = segmentStatement({
+      statementRaw: 'Die Institution muss {{ insert: param, p }} umsetzen.',
+      params: { p: { value: '{{Alternative}}', hasValue: true } },
+      modalverb: 'muss',
+      handlungsworte: 'umsetzen',
+    });
+
+    expect(result.segments.find((segment) => segment.role === 'param')?.text).toBe('Alternative');
+    expect(result.segments.map((segment) => segment.text).join('')).toBe(
+      'Die Institution muss Alternative umsetzen.',
+    );
+  });
+
+  it('verankert Ergebnis, Präzisierung und Modalverb nur an eigenständigen Wörtern', () => {
+    const result = segmentStatement({
+      statementRaw: 'Die Institution mussmaß Risikoanalyse muss Risiko im Betrieb mindern.',
+      params: {},
+      modalverb: 'muss',
+      handlungsworte: 'mindern',
+      ergebnis: 'Risiko',
+      praezisierung: 'Betrieb',
+    });
+
+    expect(result.missing).toEqual([]);
+    const anchored = result.segments
+      .filter((segment) => segment.role !== 'text')
+      .map((segment) => [segment.role, segment.text]);
+    expect(anchored).toEqual([
+      ['modalverb', 'muss'],
+      ['ergebnis', 'Risiko'],
+      ['praezisierung', 'Betrieb'],
+      ['handlungswort', 'mindern'],
+    ]);
+    // Die Anker liegen hinter „mussmaß Risikoanalyse“, nicht darin.
+    expect(result.segments[0]).toEqual({ role: 'text', text: 'Die Institution mussmaß Risikoanalyse ' });
+  });
+
   it('deckt Platzhalter am Satzanfang und -ende ab; abwesende Praktik bleibt ohne missing', () => {
     const statementRaw = '{{ insert: param, p }} muss {{ insert: param, q }}';
     const params: Record<string, ParamMeta> = {
