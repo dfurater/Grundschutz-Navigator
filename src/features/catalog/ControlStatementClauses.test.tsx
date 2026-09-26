@@ -46,20 +46,23 @@ describe('ControlStatement Satzteile und Restdetails (GSPP-303 Review)', () => {
     ).toBeInTheDocument();
   });
 
-  it('Parameterwert als ganzes Ergebnis wird mit Vokabeleintrag zum Begriffs-Trigger', () => {
+  it.each([
+    ['ergebnis', 'ergebnisResolution', 'Ergebnis'],
+    ['praezisierung', 'praezisierungResolution', 'Präzisierung'],
+  ] as const)('Parameterwert als ganzer Satzteil %s wird mit Vokabeleintrag zum Begriffs-Trigger', (role, resolutionProp, tip) => {
     const input: SegmentStatementInput = {
       statementRaw: 'Die Institution muss {{ insert: param, ziel }} festlegen.',
       params: { ziel: { value: 'Sicherheitsziele', hasValue: true } },
       modalverb: 'muss',
-      ergebnis: 'Sicherheitsziele',
+      [role]: 'Sicherheitsziele',
     };
     const onToggleVocabulary = vi.fn();
     const { container } = render(
       <MemoryRouter>
         <ControlStatement statement="Fallback" segments={{
           ...plainSegmentsProps(input),
-          ergebnisResolution: { namespace: {} as never, entry: { value: 'Sicherheitsziele', columns: {} } },
-          isVocabularyActive: (key) => key === 'satz:ergebnis',
+          [resolutionProp]: { namespace: {} as never, entry: { value: 'Sicherheitsziele', columns: {} } },
+          isVocabularyActive: (key) => key === `satz:${role}`,
           onToggleVocabulary,
           renderVocabularyCard: (resolution) => <span>{`Karte:${resolution.entry.value}`}</span>,
         }} />
@@ -68,12 +71,15 @@ describe('ControlStatement Satzteile und Restdetails (GSPP-303 Review)', () => {
     const scope = within(container);
 
     const trigger = scope.getByRole('button', { name: 'Vokabularbegriff Sicherheitsziele' });
-    expect(trigger).toHaveAttribute('aria-controls', 'vocab-card-satz-ergebnis');
-    // Kein zusätzliches Satzteil-Fokusziel um den Trigger.
+    expect(trigger).toHaveAttribute('aria-controls', `vocab-card-satz-${role}`);
+    // Beschriftung des richtigen Satzteils, kein zusätzliches Satzteil-Fokusziel.
+    fireEvent.mouseEnter(trigger);
+    fireEvent.focus(trigger);
+    expect(scope.getByRole('tooltip', { name: tip })).toBeInTheDocument();
     expect(container.querySelectorAll('section p [tabindex="0"]')).toHaveLength(0);
-    expect(container.querySelector('#vocab-card-satz-ergebnis')?.textContent).toBe('Karte:Sicherheitsziele');
+    expect(container.querySelector(`#vocab-card-satz-${role}`)?.textContent).toBe('Karte:Sicherheitsziele');
     fireEvent.click(trigger);
-    expect(onToggleVocabulary).toHaveBeenCalledWith('satz:ergebnis');
+    expect(onToggleVocabulary).toHaveBeenCalledWith(`satz:${role}`);
   });
 
   it('Platzhalter ohne Wert bleibt auch mit Vokabeleintrag des Satzteils Platzhalter', () => {
