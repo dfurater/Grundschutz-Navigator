@@ -74,7 +74,7 @@ export function ControlSecurityTargets({
           const relevanceScaleValue = toRelevanceScaleValue(relevance);
 
           return (
-            <div key={targetVocabKey} role="group" aria-label={`${label}: Relevanz ${relevance}`}>
+            <fieldset key={targetVocabKey} aria-label={`${label}: Relevanz ${relevance}`} className="min-w-0">
               {targetResolution ? (
                 <TermTrigger
                   vocabKey={targetVocabKey}
@@ -119,7 +119,7 @@ export function ControlSecurityTargets({
                   {levelActive && renderVocabularyCard(levelResolution)}
                 </div>
               )}
-            </div>
+            </fieldset>
           );
         })}
       </div>

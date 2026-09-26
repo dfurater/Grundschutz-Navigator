@@ -60,11 +60,72 @@ function renderPlaceholder(segment: SentenceSegment, index: number): ReactNode {
   );
 }
 
-function renderClause(role: SentenceClauseRole, text: string, index: number): ReactNode {
+function renderClause(role: SentenceClauseRole, children: ReactNode, index: number): ReactNode {
   return (
     <Tooltip key={index} id={`satzteil-${role}-${index}`} content={CLAUSE_LABEL[role]}
-      describeTarget={(describedById) => <span aria-describedby={describedById} className="rounded hover:bg-[var(--color-surface-subtle)]">{text}</span>} />
+      describeTarget={(describedById) => (
+        // Fokussierbar, damit die Beschriftung auch per Tastatur erreichbar ist.
+        <span tabIndex={0} aria-describedby={describedById}
+          className="rounded hover:bg-[var(--color-surface-subtle)] focus-visible:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]">
+          {children}
+        </span>
+      )} />
   );
+}
+
+function isPlaceholder(segment: SentenceSegment, input: SegmentStatementInput): boolean {
+  return segment.role === 'param'
+    && (segment.paramId === undefined || input.params[segment.paramId]?.hasValue !== true);
+}
+
+function renderPlain(segment: SentenceSegment, index: number, input: SegmentStatementInput): ReactNode {
+  return isPlaceholder(segment, input)
+    ? renderPlaceholder(segment, index)
+    : <Fragment key={index}>{segment.text}</Fragment>;
+}
+
+type RenderItem =
+  | { readonly kind: 'segment'; readonly segment: SentenceSegment; readonly index: number }
+  | { readonly kind: 'clause'; readonly role: SentenceClauseRole; readonly members: ReadonlyArray<{ segment: SentenceSegment; index: number }> };
+
+function clauseOf(segment: SentenceSegment, slotByRole: ReadonlyMap<SentenceSegment['role'], SatzSlot>): SentenceClauseRole | undefined {
+  if (segment.role === 'param') {
+    return segment.partOf;
+  }
+  if (segment.role !== 'ergebnis' && segment.role !== 'praezisierung') {
+    return undefined;
+  }
+  // Mit Vokabeleintrag bleibt der Satzteil ein eigener Begriffs-Trigger.
+  return slotByRole.get(segment.role)?.resolution == null ? segment.role : undefined;
+}
+
+/** Fasst aufeinanderfolgende Stücke eines Satzteils zu einem Fokusziel zusammen. */
+function groupClauses(
+  segments: readonly SentenceSegment[],
+  slotByRole: ReadonlyMap<SentenceSegment['role'], SatzSlot>,
+): RenderItem[] {
+  const items: RenderItem[] = [];
+  segments.forEach((segment, index) => {
+    const role = clauseOf(segment, slotByRole);
+    const last = items.at(-1);
+    if (role === undefined) {
+      items.push({ kind: 'segment', segment, index });
+    } else if (last?.kind === 'clause' && last.role === role) {
+      items[items.length - 1] = { ...last, members: [...last.members, { segment, index }] };
+    } else {
+      items.push({ kind: 'clause', role, members: [{ segment, index }] });
+    }
+  });
+  return items;
+}
+
+function renderClauseItem(item: Extract<RenderItem, { kind: 'clause' }>, input: SegmentStatementInput): ReactNode {
+  const first = item.members[0].index;
+  // Besteht der Satzteil nur aus Platzhaltern, nennen diese ihn selbst (`partOf`).
+  if (item.members.every(({ segment }) => isPlaceholder(segment, input))) {
+    return <Fragment key={first}>{item.members.map(({ segment, index }) => renderPlaceholder(segment, index))}</Fragment>;
+  }
+  return renderClause(item.role, item.members.map(({ segment, index }) => renderPlain(segment, index, input)), first);
 }
 
 function renderSegment(
@@ -75,25 +136,11 @@ function renderSegment(
   isVocabularyActive: (key: string) => boolean,
   onToggleVocabulary: (key: string) => void,
 ): ReactNode {
-  if (segment.role === 'text') {
-    return <Fragment key={index}>{segment.text}</Fragment>;
-  }
-  if (segment.role === 'param') {
-    const hasValue = segment.paramId !== undefined && input.params[segment.paramId]?.hasValue === true;
-    if (!hasValue) {
-      return renderPlaceholder(segment, index);
-    }
-    return segment.partOf === undefined
-      ? <Fragment key={index}>{segment.text}</Fragment>
-      : renderClause(segment.partOf, segment.text, index);
-  }
   const slot = slotByRole.get(segment.role);
-  const isClause = segment.role === 'ergebnis' || segment.role === 'praezisierung';
   if (slot?.resolution == null) {
-    return isClause
-      ? renderClause(segment.role as SentenceClauseRole, segment.text, index)
-      : <Fragment key={index}>{segment.text}</Fragment>;
+    return renderPlain(segment, index, input);
   }
+  const isClause = segment.role === 'ergebnis' || segment.role === 'praezisierung';
   return (
     <TermTrigger key={index} vocabKey={slot.key} active={isVocabularyActive(slot.key)} onToggle={onToggleVocabulary}
       label={segment.text} ariaLabel={`Vokabularbegriff ${segment.text}`} inline
@@ -127,8 +174,10 @@ export function ControlStatementSegments({
   return (
     <>
       <p style={{ fontSize: 16 }} className="w-full break-words leading-relaxed whitespace-pre-line text-slate-700 [hyphens:auto]">
-        {segments.map((segment, index) =>
-          renderSegment(segment, index, input, slotByRole, isVocabularyActive, onToggleVocabulary),
+        {groupClauses(segments, slotByRole).map((item) =>
+          item.kind === 'clause'
+            ? renderClauseItem(item, input)
+            : renderSegment(item.segment, item.index, input, slotByRole, isVocabularyActive, onToggleVocabulary),
         )}
       </p>
       {activeSlot?.resolution != null && (

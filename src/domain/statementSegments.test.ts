@@ -252,4 +252,27 @@ describe('segmentStatement', () => {
       partOf: 'praezisierung',
     });
   });
+
+  it('ordnet einen Platzhalter ueber zwei Satzteilen keinem zu und meldet die verdeckten als missing', () => {
+    const params: Record<string, ParamMeta> = {
+      p: { value: 'Bericht innerhalb einer Frist', hasValue: false },
+    };
+    const result = segmentStatement({
+      statementRaw: 'Detektion MUSS einen {{ insert: param, p }} erstellen.',
+      params,
+      practiceTitle: 'Detektion',
+      modalverb: 'MUSS',
+      handlungsworte: 'erstellen',
+      ergebnis: 'Bericht',
+      praezisierung: 'innerhalb einer Frist',
+    });
+
+    expect(result.missing).toEqual(expect.arrayContaining(['ergebnis', 'praezisierung']));
+    expect(result.segments).toContainEqual({
+      role: 'param',
+      text: 'Bericht innerhalb einer Frist',
+      paramId: 'p',
+    });
+  });
 });
+

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CSSProperties, ReactNode } from 'react';
+import type { CSSProperties, ReactNode, SyntheticEvent } from 'react';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 
 export interface TooltipProps {
@@ -15,7 +15,8 @@ export interface TooltipProps {
   readonly describeTarget?: (describedById: string) => ReactNode;
   /**
    * `mode='hover'`: Öffnen nach `hoverDelayMs` ununterbrochenem Hover ODER bei Fokus
-   * (Fokus öffnet SOFORT, ungeachtet `hoverDelayMs`); Schließen bei Leave/Blur/Esc.
+   * (Fokus öffnet SOFORT, ungeachtet `hoverDelayMs`; nicht nach Antippen);
+   * Schließen bei Leave/Blur/Esc.
    * `mode='toggle'`: Öffnen/Schließen per Klick/Enter/Space + Schließen per Esc.
    * `mode='hover-toggle'`: außerdem Öffnen nach Hover-Verzögerung, Schließen
    * beim Verlassen. Für Platzhalter, die auch auf Touch antippbar bleiben.
@@ -43,6 +44,8 @@ export function Tooltip({
   const [clampStyle, setClampStyle] = useState<CSSProperties>({});
   const [measureRun, setMeasureRun] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Fokus durch Antippen öffnet im Modus `hover` nichts (Touch-Regel GSPP-303).
+  const touchFocusRef = useRef(false);
   const tooltipRef = useRef<HTMLSpanElement | null>(null);
 
   const clearTimer = useCallback((): void => {
@@ -138,17 +141,20 @@ export function Tooltip({
     globalThis.window !== undefined &&
     globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  const tooltipNode = open ? (
+  // Der Tooltip bleibt versteckt im DOM, damit `aria-describedby` schon beim
+  // Fokus auf einen vorhandenen Beschreibungstext zeigt.
+  const tooltipNode = (
     <span
       ref={tooltipRef}
       role="tooltip"
       id={id}
+      hidden={!open}
       className="absolute z-50 block max-w-xs rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-raised)] px-2 py-1 text-xs shadow-[var(--shadow-overlay)]"
       style={{ transition: prefersReducedMotion ? 'none' : undefined, ...clampStyle }}
     >
       {content}
     </span>
-  ) : null;
+  );
 
   if (mode === 'toggle' || mode === 'hover-toggle') {
     // Constraint: `describeTarget` liefert hier nur nicht-interaktiven
@@ -187,17 +193,42 @@ export function Tooltip({
     );
   }
 
-  const handleMouseEnter = () => {
-    clearTimer();
+  // Verschachtelte Ziele mit eigenem Tooltip (z. B. Platzhalter in einem
+  // Satzteil) öffnen nur ihren eigenen Tooltip, nicht zusätzlich diesen.
+  const isForeignTarget = (event: SyntheticEvent<HTMLSpanElement>): boolean => {
+    const described = event.target instanceof Element
+      ? event.target.closest('[aria-describedby]')
+      : null;
+    return described !== null
+      && event.currentTarget.contains(described)
+      && described.getAttribute('aria-describedby') !== id;
+  };
+  const handlePointerOver = (event: SyntheticEvent<HTMLSpanElement>) => {
+    if (isForeignTarget(event)) {
+      closeTooltip();
+      return;
+    }
+    if (open || timerRef.current !== undefined) {
+      return;
+    }
     timerRef.current = globalThis.setTimeout(() => {
+      timerRef.current = undefined;
       setOpen(true);
     }, hoverDelayMs);
   };
   const handleMouseLeave = () => {
     closeTooltip();
   };
-  const handleFocus = () => {
+  const handleFocus = (event: SyntheticEvent<HTMLSpanElement>) => {
     clearTimer();
+    if (isForeignTarget(event)) {
+      closeTooltip();
+      return;
+    }
+    if (touchFocusRef.current) {
+      touchFocusRef.current = false;
+      return;
+    }
     setOpen(true);
   };
   const handleBlur = () => {
@@ -206,8 +237,12 @@ export function Tooltip({
 
   return (
     <span
-      onMouseEnter={handleMouseEnter}
+      onMouseEnter={handlePointerOver}
+      onMouseOver={handlePointerOver}
       onMouseLeave={handleMouseLeave}
+      onPointerDown={(event) => {
+        touchFocusRef.current = event.pointerType === 'touch';
+      }}
       onFocus={handleFocus}
       onBlur={handleBlur}
       className="relative inline"

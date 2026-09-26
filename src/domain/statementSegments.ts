@@ -203,7 +203,10 @@ function buildRanges(
 ): Range[] {
   const ranges: Range[] = [];
   let cursor = 0;
-  for (const anchor of anchors.toSorted((a, b) => a.start - b.start)) {
+  // Kopie statt `toSorted`: Vite ergänzt keine Polyfills für ES2023.
+  const ordered = [...anchors];
+  ordered.sort((a, b) => a.start - b.start);
+  for (const anchor of ordered) {
     if (anchor.start < cursor) {
       const key = MISSING_KEY_BY_ROLE[anchor.role];
       if (key !== undefined) {
@@ -223,14 +226,34 @@ function buildRanges(
   return ranges;
 }
 
-function clauseRoleAt(ranges: readonly Range[], atom: Atom): SentenceClauseRole | undefined {
-  const range = ranges.find(
-    (candidate) =>
-      (candidate.role === 'ergebnis' || candidate.role === 'praezisierung')
-      && candidate.start < atom.resolvedEnd
-      && atom.resolvedStart < candidate.end,
+function isClauseRange(range: Range): range is Range & { role: SentenceClauseRole } {
+  return range.role === 'ergebnis' || range.role === 'praezisierung';
+}
+
+/**
+ * Satzteil eines Platzhalters. Überlappt der Wert mehrere Satzteile, bekommt
+ * er keinen; Satzteile, die ganz im Wert liegen, gelten dann als fehlend,
+ * damit ihre Restzeile erscheint.
+ */
+function clauseRoleAt(
+  ranges: readonly Range[],
+  atom: Atom,
+  missing: MissingKey[],
+): SentenceClauseRole | undefined {
+  const overlapping = ranges.filter(
+    (range) => isClauseRange(range)
+      && range.start < atom.resolvedEnd
+      && atom.resolvedStart < range.end,
   );
-  return range?.role as SentenceClauseRole | undefined;
+  if (overlapping.length === 1) {
+    return overlapping[0].role as SentenceClauseRole;
+  }
+  for (const range of overlapping) {
+    if (atom.resolvedStart <= range.start && range.end <= atom.resolvedEnd) {
+      missing.push(range.role as SentenceClauseRole);
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -253,7 +276,7 @@ export function segmentStatement(
   const segments: SentenceSegment[] = [];
   for (const atom of atoms) {
     if (atom.kind === 'param') {
-      const partOf = clauseRoleAt(ranges, atom);
+      const partOf = clauseRoleAt(ranges, atom, missing);
       segments.push({
         role: 'param',
         text: atom.value,

@@ -83,7 +83,9 @@ describe('ControlStatement (GSPP-303 T5)', () => {
     }
 
     // Platzhalter MIT Wert: Fließtext im Satz — Assert über textContent + Button-Menge (Fragmente ohne Elementknoten).
-    const sentence = container.querySelector('section p');
+    // Versteckte Tooltip-Texte (Beschreibung für aria-describedby) sind nicht sichtbar.
+    const sentence = container.querySelector('section p')?.cloneNode(true) as HTMLElement | undefined;
+    sentence?.querySelectorAll('[role="tooltip"][hidden]').forEach((node) => node.remove());
     expect(sentence?.textContent).toBe(
       'GC: Die Institution muss verankern. Ergebnis beachten, siehe Praezisierung zur Frist.',
     );
@@ -284,7 +286,7 @@ describe('ControlStatement (GSPP-303 T5)', () => {
       ['Ergebnis', 'Ergebnis'],
       ['Praezisierung', 'Präzisierung'],
     ] as const) {
-      const trigger = scope.getByText(text);
+      const trigger = scope.getByText(text, { selector: '[aria-describedby]' });
       expect(trigger.closest('button')).toBeNull();
 
       fireEvent.mouseEnter(trigger);
