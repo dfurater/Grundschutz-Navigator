@@ -64,15 +64,15 @@ export function ControlSecurityTargets({
   renderVocabularyCard,
 }: ControlSecurityTargetsProps) {
   return (
-    <div>
+    <div className="@container">
       <SubSectionHeading>Schutzziele</SubSectionHeading>
       {/*
-        2×2-Raster mit Spalten in Inhaltsbreite: Die Punkte stehen direkt hinter
-        ihrem Schutzziel und untereinander bündig, unabhängig von der
-        Panelbreite (Owner 26.09.2026). Zeilenhöhe fest, Touch-Fläche über
+        Zwei Spaltenpaare ab 24rem Inhaltsbreite, darunter ein Paar pro Zeile.
+        Die Punkte stehen direkt hinter ihrem Schutzziel und untereinander
+        bündig. Zeilenhöhe fest, Touch-Fläche über
         Pseudo-Elemente statt `min-h-11`, damit am Breakpoint nichts springt.
       */}
-      <div className="grid w-fit grid-cols-[max-content_max-content_1.5rem_max-content_max-content] gap-x-3 gap-y-1.5 text-sm leading-relaxed text-slate-700">
+      <div className="grid w-fit grid-cols-[max-content_max-content] gap-x-3 gap-y-1.5 text-sm leading-relaxed text-slate-700 @min-[24rem]:grid-cols-[max-content_max-content_1.5rem_max-content_max-content]">
         {securityTargets.map(({ key, label, relevance, targetResolution, levelResolution }, index) => {
           const targetVocabKey = `security-target:${key}`;
           const levelVocabKey = `security-target-level:${key}`;
@@ -87,7 +87,7 @@ export function ControlSecurityTargets({
               role="group"
               key={targetVocabKey}
               aria-label={`${label}: Relevanz ${relevance}`}
-              className={`col-span-2 grid grid-cols-subgrid items-center ${index % 2 === 0 ? 'col-start-1' : 'col-start-4'}`}
+              className={`col-span-2 grid grid-cols-subgrid items-center ${index % 2 === 0 ? 'col-start-1' : '@min-[24rem]:col-start-4'}`}
             >
               {targetResolution ? (
                 <TermTrigger

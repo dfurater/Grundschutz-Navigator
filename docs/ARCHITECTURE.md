@@ -561,7 +561,7 @@ Für `src/**` läuft ESLint zusätzlich mit Typinformation (typescript-eslint Pr
 | `ControlClassification` | Rendert die Kriterien-Badges für Modalverb, Sicherheitsniveau und Aufwand im Block „Anforderung“ sowie die Legende vorhandener Stufen. |
 | `ControlTaxonomy` | Rendert je eine beschriftete Gruppe ohne Rahmen oder Symbol: „Zielobjekte“ im Block „Anforderung“, weil das BSI sie im `statement`-Part ablegt, und „Tags“ im Block „Einordnung“, weil sie an der Anforderung selbst hängen; dazu die WLAN-Taxonomie in „Einordnung“ als Tabelle (Stufe links, Wert rechts); die Namensraum-Adresse erscheint nur, wenn sie kein Platzhalter ist (`isPlaceholderNamespace`). |
 | `ControlSecurityContext` | Rendert Schutzziele und elementare Gefährdungen im Block „Schutzziele und Gefährdungen“; der Gefährdungsname öffnet eine Karte mit Kennung. |
-| `ControlSecurityTargets` | Rendert die vier Schutzziele im zweispaltigen Raster mit Relevanz-Skala; die Legende zeigt jede Stufe als dieselbe Punkte-Skala. |
+| `ControlSecurityTargets` | Rendert die vier Schutzziele mit Relevanz-Skala: ab 24rem Inhaltsbreite in zwei Spaltenpaaren, darunter in einer Spalte; die Legende zeigt jede Stufe als dieselbe Punkte-Skala. |
 | `ControlStatement` | Rendert den segmentierten Anforderungssatz mit Begriffstriggern und Platzhalter-Erklärungen. |
 | `ControlStatementDetails` | Rendert nicht im Satz gefundene Angaben und die Dokumentation als Zeilen mit Beschriftung darüber. |
 | `ControlGuidance` | Rendert die bei Bedarf aufklappbare Guidance; Messung und State liegen im Hook. |

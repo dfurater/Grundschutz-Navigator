@@ -127,12 +127,12 @@ describe('ControlCharacteristics (GSPP-303 T7)', () => {
     const { container } = renderSecurityTargets(makeSecurityRows());
     const scope = within(container);
 
-    // Grid statt Tabelle: 2×2 in Inhaltsbreite, je Zelle Name und Punkte als
-    // Subgrid, damit die Punkte bündig direkt hinter dem Namen stehen.
+    // Grid statt Tabelle: Zwei Spaltenpaare ab 24rem Inhaltsbreite, darunter
+    // ein Paar pro Zeile. Subgrid hält die Punkte je Spalte bündig.
     const cells = Array.from(container.querySelectorAll('[role="group"].grid-cols-subgrid'));
     expect(cells).toHaveLength(4);
     expect(cells.map((cell) => cell.classList.contains('col-start-1'))).toEqual([true, false, true, false]);
-    expect(cells.map((cell) => cell.classList.contains('col-start-4'))).toEqual([false, true, false, true]);
+    expect(cells.map((cell) => cell.classList.contains('@min-[24rem]:col-start-4'))).toEqual([false, true, false, true]);
     for (const cell of cells) expect(cell).toHaveClass('grid-cols-subgrid');
     // Keine Mindesthöhe, die am Breakpoint springt.
     expect(container.querySelector('[role="group"] .min-h-11')).toBeNull();
