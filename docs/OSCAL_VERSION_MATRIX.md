@@ -251,7 +251,7 @@ umgeschrieben:
 
 Die Normalisierung dient ausschließlich der Matrixbindung. Das Quelldokument
 und sein Metadatenwert bleiben unverändert — Schema-Validierung, Integrität,
-Export und Anzeige sehen weiter `v1.2.2`. Diagnose- und Referenzkontext der
+Export und Anzeige sehen `v1.2.2`. Diagnose- und Referenzkontext der
 Modelladapter tragen die gebundene Version nach derselben Klassenregel, für
 Klasse 2 also `1.2.2`; ein Wert außerhalb der gepinnten Menge wird dort zu
 `null`. Sie lesen sie über `readPinnedOscalVersion()` aus dem Root-Dispatch,

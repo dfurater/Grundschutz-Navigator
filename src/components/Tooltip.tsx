@@ -217,7 +217,9 @@ export function Tooltip({
       onMouseOver={handlePointerOver}
       onMouseLeave={handleMouseLeave}
       onPointerDown={(event) => {
-        touchFocusRef.current = event.pointerType === 'touch';
+        // Antippen eines verschachtelten Ziels markiert nur dieses: Ohne
+        // Fokuswechsel verbraucht sonst kein Fokus die Markierung hier.
+        touchFocusRef.current = !isForeignTarget(event) && event.pointerType === 'touch';
       }}
       onFocus={handleFocus}
       onBlur={handleBlur}

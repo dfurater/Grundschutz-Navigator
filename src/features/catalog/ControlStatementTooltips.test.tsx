@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react';
+import { fireEvent, render, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { MemoryRouter } from 'react-router';
 import type { SegmentStatementInput } from '@/domain/statementSegments';
@@ -92,5 +92,27 @@ describe('Tooltips im Anforderungssatz', () => {
 
     // Zwei Platzhalter, zwei Stücke des erklärten Ergebnisses, eine Präzisierung.
     expectOwnTooltips(container, 5);
+  });
+
+  it('öffnet die Satzteil-Beschriftung per Tastatur, nachdem ein fokussierter Platzhalter erneut angetippt wurde', () => {
+    // Greptile-Befund im Release-PR #309: Das Antippen erreicht per Bubbling auch
+    // den Satzteil-Tooltip. Ohne Fokuswechsel verbraucht kein Fokusereignis die
+    // Touch-Markierung, und sie sperrte den folgenden Tastaturfokus des Satzteils.
+    const container = renderStatement({
+      statementRaw: 'Die Institution muss Meldungen anhand von {{ insert: param, k }} innerhalb einer Frist prüfen.',
+      params: { k: { value: 'Kriterien', hasValue: false } },
+      modalverb: 'muss',
+      praezisierung: 'anhand von Kriterien innerhalb einer Frist',
+    });
+    const scope = within(container);
+    const placeholder = scope.getByText('Kriterien').closest('button') as HTMLElement;
+    const clause = container.querySelector('section p [tabindex="0"]') as HTMLElement;
+    fireEvent.focus(placeholder);
+    fireEvent.pointerDown(placeholder, { pointerType: 'touch' });
+
+    // Umschalt+Tab vom Platzhalter zurück auf den Satzteil.
+    fireEvent.blur(placeholder);
+    fireEvent.focus(clause);
+    expect(scope.getByRole('tooltip', { name: 'Präzisierung' })).toBeInTheDocument();
   });
 });
