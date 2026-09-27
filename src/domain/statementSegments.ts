@@ -177,6 +177,13 @@ function buildAtoms(
     if (text === '' && piece.unset !== true) {
       continue;
     }
+    // Fiel dazwischen ein gesetzter leerer Wert weg, bleibt der Text ein Stück:
+    // `prü{{ insert: param, leer }}fen` ist ein Wort, kein geteiltes.
+    const previous = atoms.at(-1);
+    if (piece.paramId === undefined && previous?.kind === 'text' && previous.resolvedEnd === resolvedStart) {
+      atoms[atoms.length - 1] = { ...previous, text: previous.text + text, resolvedEnd };
+      continue;
+    }
     atoms.push(piece.paramId === undefined
       ? { kind: 'text', text, resolvedStart, resolvedEnd }
       : { kind: 'param', paramId: piece.paramId, value: text, resolvedStart, resolvedEnd });

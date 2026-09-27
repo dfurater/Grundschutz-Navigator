@@ -64,12 +64,13 @@ describe('abgeleitete Namespace-URLs', () => {
     ]));
   });
 
-  it('erkennt auch eine Kopie unter einem früheren Verzeichnis', () => {
-    // Laufzeitwert statt Literal, sonst fände der Test unten diese Datei selbst.
+  it('erkennt auch eine Kopie unter einem anderen Verzeichnis', () => {
+    // Aus dem Register gebildet statt als Literal: Der Test nimmt keinen eigenen
+    // Upstream-Pfad an, und der Scan unten fände diese Datei nicht selbst.
     for (const url of derivedUrls) {
       const stale = url.replace(
         `/${vocabularyNamespaces.BSI_NAMESPACE_DIRECTORY}/`,
-        '/Dokumentation/namespaces/',
+        `/verlegt/${vocabularyNamespaces.BSI_NAMESPACE_DIRECTORY}/`,
       );
       expect(stale).not.toBe(url);
       expect(findCopies(`ns: '${stale}',`)).toEqual([stale]);

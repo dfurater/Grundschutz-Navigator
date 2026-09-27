@@ -4,7 +4,7 @@ import {
   PRACTICES_NAMESPACE_URL,
   TOPICS_NAMESPACE_URL,
 } from '@/domain/vocabularyNamespaces';
-import { deriveRouteId } from '../../../scripts/vocabulary-utils.mjs';
+import { deriveRouteId } from '@/domain/vocabularyRouteId';
 
 /**
  * Pfad und Routenkennung eines BSI-Vokabulars, gebildet wie in der Pipeline:
