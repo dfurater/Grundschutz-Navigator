@@ -124,6 +124,28 @@ describe('Tooltip schließen (GSPP-303 Review)', () => {
     expect(screen.getByRole('tooltip').style.transform).toBe('');
   });
 
+  it('klappt über den Auslöser, wenn unten im Panel kein Platz ist, statt ihn zu verdecken', async () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.hasAttribute('data-control-detail-scroll')) return rect(100, 100, 200, 200);
+      if (this.getAttribute('role') === 'tooltip') return rect(120, 290, 100, 26);
+      if (this.hasAttribute('data-tooltip-root')) return rect(110, 270, 20, 17);
+      return rect(0, 0, 0, 0);
+    });
+    render(
+      <div data-control-detail-scroll>
+        <Tooltip id="tt-flip" content="Erklärung" describeTarget={(id) => (
+          <button type="button" aria-describedby={id}>Begriff</button>
+        )} />
+      </div>,
+    );
+
+    const user = setupUser();
+    await user.tab();
+
+    // Oberkante über dem Auslöser: 270 − 3 px Abstand − 26 px Höhe = 241.
+    expect(screen.getByRole('tooltip')).toHaveStyle({ transform: 'translate(0px, -49px)' });
+  });
+
   it('entfernt die Scroll- und Resize-Listener beim Schließen', async () => {
     const removeDocument = vi.spyOn(globalThis.document, 'removeEventListener');
     const removeWindow = vi.spyOn(globalThis, 'removeEventListener');

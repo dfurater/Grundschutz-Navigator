@@ -33,9 +33,11 @@ const EDGE_GAP = 8;
  * Hält einen geöffneten Tooltip im sichtbaren Teil des scrollbaren
  * Detail-Panels und des Viewports. Gemessen wird immer die natürliche Lage:
  * Die eigene Begrenzung wird im selben Durchlauf zurückgenommen, ohne dass
- * dazwischen gemalt wird. Liegt der Auslöser ganz außerhalb des sichtbaren
- * Bereichs, bleibt der Tooltip an ihm und scrollt mit ihm hinaus, statt allein
- * am Panelrand zu hängen.
+ * dazwischen gemalt wird. Reicht der Platz unter dem Auslöser nicht, klappt
+ * der Tooltip über ihn, statt ihn beim Einklemmen am unteren Rand zu
+ * verdecken. Liegt der Auslöser ganz außerhalb des sichtbaren Bereichs, bleibt
+ * der Tooltip an ihm und scrollt mit ihm hinaus, statt allein am Panelrand zu
+ * hängen.
  */
 function clampToVisibleArea(tooltip: HTMLElement): void {
   const { style } = tooltip;
@@ -64,8 +66,15 @@ function clampToVisibleArea(tooltip: HTMLElement): void {
   const availableHeight = Math.max(0, maxBottom - minTop);
   const width = Math.min(box.width, availableWidth);
   const height = Math.min(box.height, availableHeight);
+  let preferredTop = box.top;
+  if (trigger !== undefined && box.bottom > maxBottom) {
+    const aboveTop = trigger.top - Math.max(0, box.top - trigger.bottom) - box.height;
+    if (aboveTop >= minTop) {
+      preferredTop = aboveTop;
+    }
+  }
   const left = Math.max(minLeft, Math.min(box.left, maxRight - width));
-  const top = Math.max(minTop, Math.min(box.top, maxBottom - height));
+  const top = Math.max(minTop, Math.min(preferredTop, maxBottom - height));
   if (box.width > availableWidth) {
     style.maxWidth = `${availableWidth}px`;
   }

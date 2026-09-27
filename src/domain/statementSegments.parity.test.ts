@@ -48,7 +48,7 @@ describe('segmentStatement – Parität mit resolveParams', () => {
     );
   });
 
-  it('erzeugt für einen Platzhalter ohne sichtbaren Text kein Segment', () => {
+  it('behält einen Platzhalter ohne Wert und ohne Label als leeres Segment', () => {
     const result = segmentStatement({
       statementRaw: 'Die Institution muss {{ insert: param, leer }} umsetzen.',
       params: { leer: { value: '', hasValue: false } },
@@ -56,7 +56,9 @@ describe('segmentStatement – Parität mit resolveParams', () => {
       handlungsworte: 'umsetzen',
     });
 
-    expect(result.segments.some((segment) => segment.role === 'param')).toBe(false);
+    expect(result.segments.filter((segment) => segment.role === 'param')).toEqual([
+      { role: 'param', text: '', paramId: 'leer' },
+    ]);
     expect(result.segments.map((segment) => segment.text).join('')).toBe(
       'Die Institution muss  umsetzen.',
     );

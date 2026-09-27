@@ -164,15 +164,14 @@ function buildAtoms(
   for (const piece of pieces) {
     const resolvedStart = offsets[piece.start];
     const resolvedEnd = offsets[piece.end];
-    // Ohne sichtbaren Text kein Atom: Ein leerer Platzhalter waere sonst ein
-    // unsichtbares Fokusziel.
-    if (resolvedEnd === resolvedStart) {
-      continue;
-    }
     const text = resolved.slice(resolvedStart, resolvedEnd);
-    atoms.push(piece.paramId === undefined
-      ? { kind: 'text', text, resolvedStart, resolvedEnd }
-      : { kind: 'param', paramId: piece.paramId, value: text, resolvedStart, resolvedEnd });
+    if (piece.paramId !== undefined) {
+      // Auch ein Platzhalter ohne Text (weder Wert noch Label) bleibt ein
+      // Segment: Die Darstellung markiert ihn sichtbar und erklaert ihn.
+      atoms.push({ kind: 'param', paramId: piece.paramId, value: text, resolvedStart, resolvedEnd });
+    } else if (text !== '') {
+      atoms.push({ kind: 'text', text, resolvedStart, resolvedEnd });
+    }
   }
   return { atoms, resolved };
 }

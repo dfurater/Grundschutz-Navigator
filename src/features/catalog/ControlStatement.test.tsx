@@ -4,7 +4,7 @@ import { MemoryRouter } from 'react-router';
 import type { SegmentStatementInput, SegmentStatementResult } from '@/domain/statementSegments';
 import { segmentStatement } from '@/domain/statementSegments';
 import type { VocabularyResolution } from '@/domain/vocabulary';
-import { ControlStatement, PLACEHOLDER_TOGGLETIP, type ControlStatementSegmentsProps } from './ControlStatement';
+import { ControlStatement, EMPTY_PLACEHOLDER_NAME, PLACEHOLDER_TOGGLETIP, type ControlStatementSegmentsProps } from './ControlStatement';
 import { ControlStatementDetails, type RestDetail } from './ControlStatementDetails';
 import { toVocabCardId } from './ControlVocabularyPrimitives';
 
@@ -184,6 +184,50 @@ describe('ControlStatement (GSPP-303 T5)', () => {
     fireEvent.click(frist);
     const tooltip = scope.getByRole('tooltip', { name: PLACEHOLDER_TOGGLETIP });
     expect(button).toHaveAttribute('aria-describedby', tooltip.id);
+  });
+
+  it('Param ohne Wert und ohne Label: sichtbare Markierung mit Namen und derselben Erklärung', () => {
+    const input: SegmentStatementInput = {
+      statementRaw: 'Die Institution muss {{ insert: param, leer }} einhalten.',
+      params: { leer: { value: '', hasValue: false } },
+      modalverb: 'muss',
+    };
+    const { container } = render(
+      <MemoryRouter>
+        <ControlStatement
+          statement="Fallback"
+          segments={plainSegmentsProps(input)}
+        />
+      </MemoryRouter>,
+    );
+    const scope = within(container);
+
+    const button = scope.getByRole('button', { name: EMPTY_PLACEHOLDER_NAME });
+    expect(button).toHaveTextContent('…');
+    expect(within(button).getByText('…')).toHaveAttribute('aria-hidden', 'true');
+
+    fireEvent.click(button);
+    const tooltip = scope.getByRole('tooltip', { name: PLACEHOLDER_TOGGLETIP });
+    expect(button).toHaveAttribute('aria-describedby', tooltip.id);
+  });
+
+  it('Param mit gesetztem leerem Wert erzeugt kein Fokusziel', () => {
+    const input: SegmentStatementInput = {
+      statementRaw: 'Die Institution muss {{ insert: param, leer }} einhalten.',
+      params: { leer: { value: '', hasValue: true } },
+      modalverb: 'muss',
+    };
+    const { container } = render(
+      <MemoryRouter>
+        <ControlStatement
+          statement="Fallback"
+          segments={plainSegmentsProps(input)}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(within(container).queryByRole('button')).toBeNull();
+    expect(container.querySelector('p')).toHaveTextContent('Die Institution muss einhalten.');
   });
 
   it('erklärt eine unbekannte Parameter-ID wie toString nicht als offenen Platzhalter', () => {
