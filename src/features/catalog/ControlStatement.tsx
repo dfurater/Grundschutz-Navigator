@@ -90,9 +90,16 @@ function renderClause(role: SentenceClauseRole, children: ReactNode, index: numb
   );
 }
 
+/**
+ * Nur ein definierter Parameter ohne Wert ist ein Platzhalter. Eine unbekannte
+ * ID (`[id]`) bekommt keine Erklärung „wird im Profil festgelegt“; `Object.hasOwn`
+ * hält geerbte Schlüssel wie `toString` draußen.
+ */
 function isPlaceholder(segment: SentenceSegment, input: SegmentStatementInput): boolean {
-  return segment.role === 'param'
-    && (segment.paramId === undefined || input.params[segment.paramId]?.hasValue !== true);
+  if (segment.role !== 'param') return false;
+  if (segment.paramId === undefined) return true;
+  return Object.hasOwn(input.params, segment.paramId)
+    && input.params[segment.paramId].hasValue !== true;
 }
 
 function renderPlain(segment: SentenceSegment, index: number, input: SegmentStatementInput): ReactNode {

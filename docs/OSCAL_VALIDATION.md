@@ -830,8 +830,8 @@ und fallen heraus. Ein Test hält beide Abschnitte aneinander fest.
 - **Die Worst-Case-Fixture ist mitgebunden.** Die Zählung sieht nur, was
   während `resolveProfile` läuft; die Eingaben baut
   [`profileResolutionWorstCaseFixtures.mjs`](../scripts/profileResolutionWorstCaseFixtures.mjs)
-  davor. Ohne eigene Bindung belegten die alten Zeitreihen den Grenzwert auch
-  nach einer Änderung der Fixture, etwa mehr Controls im Quellkatalog. Ein
+  davor. Eine Änderung der Fixture, etwa mehr Controls im Quellkatalog,
+  verschiebt den Hüllen-Hash deshalb nicht. Ein
   eigener Fingerprint (`fixture.sha256`) umfasst deshalb ihren wie oben
   normalisierten Quelltext und ihre beobachteten Eingaben aus den importierten
   Modulen: je Kategorie den Wiederholungsdeckel, den die Dokumentgrenzen aus
