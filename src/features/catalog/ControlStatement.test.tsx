@@ -230,6 +230,30 @@ describe('ControlStatement (GSPP-303 T5)', () => {
     expect(container.querySelector('p')).toHaveTextContent('Die Institution muss einhalten.');
   });
 
+  it('gesetzter leerer Wert in einem Satzteil mit Vokabeleintrag wird kein leerer Begriffs-Trigger', () => {
+    const input: SegmentStatementInput = {
+      statementRaw: 'Die Institution muss {{ insert: param, a }}{{ insert: param, leer }}{{ insert: param, b }} erstellen.',
+      params: {
+        a: { value: 'Risiko', hasValue: true },
+        leer: { value: '', hasValue: true },
+        b: { value: 'analyse', hasValue: true },
+      },
+      modalverb: 'muss',
+      ergebnis: 'Risikoanalyse',
+    };
+    const { container } = render(
+      <MemoryRouter>
+        <ControlStatement
+          statement="Fallback"
+          segments={{ ...plainSegmentsProps(input), ergebnisResolution: fakeResolution('Risikoanalyse') }}
+        />
+      </MemoryRouter>,
+    );
+
+    const names = within(container).getAllByRole('button').map((button) => button.getAttribute('aria-label'));
+    expect(names).toEqual(['Vokabularbegriff Risiko', 'Vokabularbegriff analyse']);
+  });
+
   it('erklärt eine unbekannte Parameter-ID wie toString nicht als offenen Platzhalter', () => {
     const input: SegmentStatementInput = {
       statementRaw: 'Die Institution muss {{ insert: param, toString }} beachten.',

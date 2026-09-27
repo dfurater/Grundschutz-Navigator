@@ -146,6 +146,31 @@ describe('Tooltip schließen (GSPP-303 Review)', () => {
     expect(screen.getByRole('tooltip')).toHaveStyle({ transform: 'translate(0px, -49px)' });
   });
 
+  it('klappt mit der Höhe nach der Breitenbegrenzung um, damit der Auslöser frei bleibt', async () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.hasAttribute('data-control-detail-scroll')) return rect(100, 100, 200, 200);
+      // Schmaler begrenzt bricht der Text auf mehr Zeilen um.
+      if (this.getAttribute('role') === 'tooltip') {
+        return this.style.maxWidth ? rect(120, 290, 180, 60) : rect(120, 290, 400, 26);
+      }
+      if (this.hasAttribute('data-tooltip-root')) return rect(110, 270, 20, 17);
+      return rect(0, 0, 0, 0);
+    });
+    render(
+      <div data-control-detail-scroll>
+        <Tooltip id="tt-wrap" content="Lange Erklärung" describeTarget={(id) => (
+          <button type="button" aria-describedby={id}>Begriff</button>
+        )} />
+      </div>,
+    );
+
+    const user = setupUser();
+    await user.tab();
+
+    // Verfügbar 184 px breit; Oberkante über dem Auslöser: 270 − 3 px Abstand − 60 px Höhe = 207.
+    expect(screen.getByRole('tooltip')).toHaveStyle({ maxWidth: '184px', transform: 'translate(-8px, -83px)' });
+  });
+
   it('entfernt die Scroll- und Resize-Listener beim Schließen', async () => {
     const removeDocument = vi.spyOn(globalThis.document, 'removeEventListener');
     const removeWindow = vi.spyOn(globalThis, 'removeEventListener');

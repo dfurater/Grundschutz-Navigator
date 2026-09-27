@@ -93,6 +93,8 @@ const CHOICE_BRACKET_PATTERN = /{{([^{}]+)}}/g;
 /** Textstueck oder Platzhalter im Text mit eingesetzten Parametern. */
 interface Piece {
   readonly paramId?: string;
+  /** Definierter Parameter ohne gesetzten Wert: bleibt auch ohne Text ein Segment. */
+  readonly unset?: boolean;
   readonly start: number;
   readonly end: number;
 }
@@ -133,9 +135,9 @@ function buildAtoms(
 ): { atoms: Atom[]; resolved: string } {
   const pieces: Piece[] = [];
   let substituted = '';
-  const appendPiece = (text: string, paramId?: string): void => {
+  const appendPiece = (text: string, param?: { id: string; unset: boolean }): void => {
     pieces.push({
-      ...(paramId === undefined ? {} : { paramId }),
+      ...(param === undefined ? {} : { paramId: param.id, unset: param.unset }),
       start: substituted.length,
       end: substituted.length + text.length,
     });
@@ -152,7 +154,10 @@ function buildAtoms(
     const meta: ParamMeta | undefined = Object.hasOwn(params, paramId) ? params[paramId] : undefined;
     // Unbekannte IDs fallen wie in `resolveParams` auf `[id]` zurueck, damit
     // die aneinandergereihten Segmente der aufgeloesten Aussage entsprechen.
-    appendPiece(meta ? meta.value : `[${paramId}]`, paramId);
+    appendPiece(meta ? meta.value : `[${paramId}]`, {
+      id: paramId,
+      unset: meta !== undefined && meta.hasValue !== true,
+    });
     rawCursor = match.index + match[0].length;
   }
   if (rawCursor < statementRaw.length) {
@@ -165,13 +170,16 @@ function buildAtoms(
     const resolvedStart = offsets[piece.start];
     const resolvedEnd = offsets[piece.end];
     const text = resolved.slice(resolvedStart, resolvedEnd);
-    if (piece.paramId !== undefined) {
-      // Auch ein Platzhalter ohne Text (weder Wert noch Label) bleibt ein
-      // Segment: Die Darstellung markiert ihn sichtbar und erklaert ihn.
-      atoms.push({ kind: 'param', paramId: piece.paramId, value: text, resolvedStart, resolvedEnd });
-    } else if (text !== '') {
-      atoms.push({ kind: 'text', text, resolvedStart, resolvedEnd });
+    // Ein Stueck ohne Text bleibt nur als nicht gesetzter Parameter (weder
+    // Wert noch Label) ein Segment: Die Darstellung markiert ihn sichtbar und
+    // erklaert ihn. Ein gesetzter leerer Wert wuerde sonst im Satzteil zum
+    // leeren Begriffs-Trigger und damit zu einem unsichtbaren Fokusziel.
+    if (text === '' && piece.unset !== true) {
+      continue;
     }
+    atoms.push(piece.paramId === undefined
+      ? { kind: 'text', text, resolvedStart, resolvedEnd }
+      : { kind: 'param', paramId: piece.paramId, value: text, resolvedStart, resolvedEnd });
   }
   return { atoms, resolved };
 }

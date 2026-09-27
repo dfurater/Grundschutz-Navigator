@@ -57,13 +57,18 @@ function clampToVisibleArea(tooltip: HTMLElement): void {
   ) {
     return;
   }
-  const box = tooltip.getBoundingClientRect();
   const minLeft = visibleLeft + EDGE_GAP;
   const maxRight = visibleRight - EDGE_GAP;
   const minTop = visibleTop + EDGE_GAP;
   const maxBottom = visibleBottom - EDGE_GAP;
   const availableWidth = Math.max(0, maxRight - minLeft);
   const availableHeight = Math.max(0, maxBottom - minTop);
+  let box = tooltip.getBoundingClientRect();
+  if (box.width > availableWidth) {
+    style.maxWidth = `${availableWidth}px`;
+    // Schmaler bricht der Text um: Höhe und Umklappen rechnen mit der neuen Box.
+    box = tooltip.getBoundingClientRect();
+  }
   const width = Math.min(box.width, availableWidth);
   const height = Math.min(box.height, availableHeight);
   let preferredTop = box.top;
@@ -75,9 +80,6 @@ function clampToVisibleArea(tooltip: HTMLElement): void {
   }
   const left = Math.max(minLeft, Math.min(box.left, maxRight - width));
   const top = Math.max(minTop, Math.min(preferredTop, maxBottom - height));
-  if (box.width > availableWidth) {
-    style.maxWidth = `${availableWidth}px`;
-  }
   if (box.height > availableHeight) {
     style.maxHeight = `${availableHeight}px`;
   }
@@ -147,11 +149,9 @@ export function Tooltip({
     };
   }, [open, closeTooltip]);
 
-  // Begrenzung vor dem ersten Malen und nach jedem Scrollen (auch des Panels,
-  // daher Capture-Phase) oder jeder Größenänderung neu messen: Der Auslöser
-  // bewegt sich, ein einmal berechneter Versatz passte nicht mehr. Die
-  // Begrenzung setzt `clampToVisibleArea` direkt am Element, nicht über
-  // React-State, damit Scrollen keinen zusätzlichen Render auslöst.
+  // Vor dem ersten Malen und nach jedem Scrollen (auch des Panels, daher
+  // Capture-Phase) oder jeder Größenänderung neu messen, denn der Auslöser
+  // bewegt sich. Direkt am Element statt über React-State: kein Render je Scroll.
   useLayoutEffect(() => {
     const tooltip = tooltipRef.current;
     if (!open || !tooltip) {

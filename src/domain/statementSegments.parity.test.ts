@@ -63,4 +63,22 @@ describe('segmentStatement – Parität mit resolveParams', () => {
       'Die Institution muss  umsetzen.',
     );
   });
+
+  it('verwirft einen gesetzten leeren Wert auch mitten in einem Satzteil aus Parameterwerten', () => {
+    const params: Record<string, ParamMeta> = {
+      a: { value: 'Risiko', hasValue: true },
+      leer: { value: '', hasValue: true },
+      b: { value: 'analyse', hasValue: true },
+    };
+    const statementRaw = 'Die Institution muss {{ insert: param, a }}{{ insert: param, leer }}{{ insert: param, b }} erstellen.';
+    const result = segmentStatement({ statementRaw, params, modalverb: 'muss', ergebnis: 'Risikoanalyse' });
+
+    expect(result.segments.filter((segment) => segment.role === 'param')).toEqual([
+      { role: 'param', text: 'Risiko', paramId: 'a', partOf: 'ergebnis' },
+      { role: 'param', text: 'analyse', paramId: 'b', partOf: 'ergebnis' },
+    ]);
+    expect(result.segments.map((segment) => segment.text).join('')).toBe(
+      resolveParams(statementRaw, paramValues(params)),
+    );
+  });
 });
