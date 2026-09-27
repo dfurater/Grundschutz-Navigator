@@ -1,9 +1,15 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode, SyntheticEvent } from 'react';
+import { keepInVisibleArea } from './tooltipPlacement';
 
 export interface TooltipProps {
-  /** Eindeutige ID des Tooltip-Containers; wird an `describeTarget` gereicht. */
-  readonly id: string;
+  /**
+   * Lesbarer Anfang der ID des Tooltip-Containers. Der Tooltip hängt eine
+   * eigene Kennung an (`useId`) und reicht die fertige ID an `describeTarget`:
+   * Auch Auslöser aus demselben Schlüssel, etwa die Stücke eines Satzteils,
+   * beschreiben so je ihren eigenen Tooltip.
+   */
+  readonly idPrefix: string;
   /** Inhalt des Tooltip-Containers (`role="tooltip"`). */
   readonly content: ReactNode;
   /**
@@ -26,66 +32,6 @@ export interface TooltipProps {
   readonly hoverDelayMs?: number;
 }
 
-/** Abstand des Tooltips zum Rand des sichtbaren Bereichs in px. */
-const EDGE_GAP = 8;
-
-/**
- * Hält einen geöffneten Tooltip im sichtbaren Teil des scrollbaren
- * Detail-Panels und des Viewports. Gemessen wird immer die natürliche Lage:
- * Die eigene Begrenzung wird im selben Durchlauf zurückgenommen, ohne dass
- * dazwischen gemalt wird. Reicht der Platz unter dem Auslöser nicht, klappt
- * der Tooltip über ihn, statt ihn beim Einklemmen am unteren Rand zu
- * verdecken. Liegt der Auslöser ganz außerhalb des sichtbaren Bereichs, bleibt
- * der Tooltip an ihm und scrollt mit ihm hinaus, statt allein am Panelrand zu
- * hängen.
- */
-function clampToVisibleArea(tooltip: HTMLElement): void {
-  const { style } = tooltip;
-  style.transform = '';
-  style.maxWidth = '';
-  style.maxHeight = '';
-  const panel = tooltip.closest('[data-control-detail-scroll]')?.getBoundingClientRect();
-  const visibleLeft = Math.max(0, panel?.left ?? 0);
-  const visibleRight = Math.min(globalThis.innerWidth, panel?.right ?? globalThis.innerWidth);
-  const visibleTop = Math.max(0, panel?.top ?? 0);
-  const visibleBottom = Math.min(globalThis.innerHeight, panel?.bottom ?? globalThis.innerHeight);
-  const trigger = tooltip.parentElement?.getBoundingClientRect();
-  if (
-    trigger !== undefined
-    && (trigger.bottom <= visibleTop || trigger.top >= visibleBottom
-      || trigger.right <= visibleLeft || trigger.left >= visibleRight)
-  ) {
-    return;
-  }
-  const minLeft = visibleLeft + EDGE_GAP;
-  const maxRight = visibleRight - EDGE_GAP;
-  const minTop = visibleTop + EDGE_GAP;
-  const maxBottom = visibleBottom - EDGE_GAP;
-  const availableWidth = Math.max(0, maxRight - minLeft);
-  const availableHeight = Math.max(0, maxBottom - minTop);
-  let box = tooltip.getBoundingClientRect();
-  if (box.width > availableWidth) {
-    style.maxWidth = `${availableWidth}px`;
-    // Schmaler bricht der Text um: Höhe und Umklappen rechnen mit der neuen Box.
-    box = tooltip.getBoundingClientRect();
-  }
-  const width = Math.min(box.width, availableWidth);
-  const height = Math.min(box.height, availableHeight);
-  let preferredTop = box.top;
-  if (trigger !== undefined && box.bottom > maxBottom) {
-    const aboveTop = trigger.top - Math.max(0, box.top - trigger.bottom) - box.height;
-    if (aboveTop >= minTop) {
-      preferredTop = aboveTop;
-    }
-  }
-  const left = Math.max(minLeft, Math.min(box.left, maxRight - width));
-  const top = Math.max(minTop, Math.min(preferredTop, maxBottom - height));
-  if (box.height > availableHeight) {
-    style.maxHeight = `${availableHeight}px`;
-  }
-  style.transform = `translate(${left - box.left}px, ${top - box.top}px)`;
-}
-
 /**
  * Tooltip-Baustein (GSPP-303 T3).
  *
@@ -93,12 +39,13 @@ function clampToVisibleArea(tooltip: HTMLElement): void {
  * `mode='hover-toggle'` für Platzhalter. Kein Fokus-Trap.
  */
 export function Tooltip({
-  id,
+  idPrefix,
   content,
   describeTarget,
   mode = 'hover',
   hoverDelayMs = 500,
 }: TooltipProps): ReactNode {
+  const id = `${idPrefix}-${useId()}`;
   const [open, setOpen] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Fokus durch Antippen öffnet im Modus `hover` nichts (Touch-Regel GSPP-303).
@@ -149,28 +96,13 @@ export function Tooltip({
     };
   }, [open, closeTooltip]);
 
-  // Vor dem ersten Malen und nach jedem Scrollen (auch des Panels, daher
-  // Capture-Phase) oder jeder Größenänderung neu messen, denn der Auslöser
-  // bewegt sich. Direkt am Element statt über React-State: kein Render je Scroll.
+  // Vor dem ersten Malen begrenzen und bei jeder Bewegung neu (`keepInVisibleArea`).
   useLayoutEffect(() => {
     const tooltip = tooltipRef.current;
     if (!open || !tooltip) {
       return undefined;
     }
-    const reclamp = () => {
-      clampToVisibleArea(tooltip);
-    };
-    reclamp();
-    // eslint-disable-next-line no-restricted-syntax -- Scroll-/Resize-Listener leben und sterben in diesem Effekt (single owner); `useGlobalEventListener` kennt keine Capture-Phase.
-    globalThis.document.addEventListener('scroll', reclamp, { capture: true, passive: true });
-    // eslint-disable-next-line no-restricted-syntax -- siehe oben, derselbe Effekt.
-    globalThis.addEventListener('resize', reclamp);
-    return () => {
-      // eslint-disable-next-line no-restricted-syntax -- Cleanup der obigen Listener im selben Effekt (single owner).
-      globalThis.document.removeEventListener('scroll', reclamp, { capture: true });
-      // eslint-disable-next-line no-restricted-syntax -- siehe oben, derselbe Effekt.
-      globalThis.removeEventListener('resize', reclamp);
-    };
+    return keepInVisibleArea(tooltip);
   }, [open]);
 
   // prefers-reduced-motion-Wächter: gatet nur Transition/Animation, nie die Messung.

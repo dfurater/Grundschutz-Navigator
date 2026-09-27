@@ -80,7 +80,7 @@ describe('ControlVocabularyPrimitives (GSPP-303 T4)', () => {
     // Echte Verdrahtung am geöffneten Tooltip: der BUTTON trägt
     // aria-describedby auf genau diesen Container.
     expect(trigger).toHaveAttribute('aria-describedby', tooltipNode.id);
-    expect(tooltipNode.id).toBe(`${toVocabCardId('muss')}-tooltip`);
+    expect(tooltipNode.id.startsWith(`${toVocabCardId('muss')}-tooltip-`)).toBe(true);
   });
 
   it('SectionLegend rendert Textlink ohne Icon; Klick toggelt Panel mit allen Entries', () => {
