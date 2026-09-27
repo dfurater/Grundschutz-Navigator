@@ -234,24 +234,24 @@ describe('ControlStatement (GSPP-303 T5)', () => {
     const input: SegmentStatementInput = {
       statementRaw: 'Die Institution muss {{ insert: param, a }}{{ insert: param, leer }}{{ insert: param, b }} erstellen.',
       params: {
-        a: { value: 'Risiko', hasValue: true },
+        a: { value: 'Risiko-', hasValue: true },
         leer: { value: '', hasValue: true },
-        b: { value: 'analyse', hasValue: true },
+        b: { value: 'Analyse', hasValue: true },
       },
       modalverb: 'muss',
-      ergebnis: 'Risikoanalyse',
+      ergebnis: 'Risiko-Analyse',
     };
     const { container } = render(
       <MemoryRouter>
         <ControlStatement
           statement="Fallback"
-          segments={{ ...plainSegmentsProps(input), ergebnisResolution: fakeResolution('Risikoanalyse') }}
+          segments={{ ...plainSegmentsProps(input), ergebnisResolution: fakeResolution('Risiko-Analyse') }}
         />
       </MemoryRouter>,
     );
 
     const names = within(container).getAllByRole('button').map((button) => button.getAttribute('aria-label'));
-    expect(names).toEqual(['Vokabularbegriff Risiko', 'Vokabularbegriff analyse']);
+    expect(names).toEqual(['Vokabularbegriff Risiko-', 'Vokabularbegriff Analyse']);
   });
 
   it('erklärt eine unbekannte Parameter-ID wie toString nicht als offenen Platzhalter', () => {

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { deriveRouteId } from '../src/domain/vocabularyRouteId.mjs';
 
 function toRepositoryParts(repository) {
   if (repository.startsWith('https://github.com/')) {
@@ -34,26 +35,9 @@ export function sha256Hex(input) {
   return createHash('sha256').update(buffer).digest('hex');
 }
 
-function trimTrailingDashes(value) {
-  let end = value.length;
-  while (end > 0 && value[end - 1] === '-') {
-    end -= 1;
-  }
-  return value.slice(0, end);
-}
-
-// Verschiedene Dateinamen können auf dieselbe routeId fallen (`a_b.csv`,
-// `a-b.csv`). Fetch und Build prüfen das nicht; erst buildVocabularyRegistry in
-// src/domain/vocabulary.ts wirft zur Laufzeit.
-export function deriveRouteId(path) {
-  const withoutLeadingSeparators = path
-    .replace(/\.[^.]+$/, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+/, '');
-
-  return trimTrailingDashes(withoutLeadingSeparators);
-}
+// Die Routenkennung bildet ein gemeinsames Modul, damit App-Fixtures sie genauso
+// ableiten wie die Pipeline.
+export { deriveRouteId } from '../src/domain/vocabularyRouteId.mjs';
 
 export function namespaceUrlToRepoPath(namespaceUrl, repository) {
   const repo = toRepositoryParts(repository);

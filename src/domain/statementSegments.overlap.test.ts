@@ -104,7 +104,7 @@ describe('segmentStatement: Überlappungen und Platzhalter in Satzteilen', () =>
     });
   });
 
-  it('ordnet einen Platzhalter, der nur teilweise in einem Satzteil liegt, keinem zu', () => {
+  it('meldet einen Satzteil, der einen Platzhalter nur anschneidet, als missing', () => {
     const params: Record<string, ParamMeta> = {
       p: { value: 'Frist von 30 Tagen', hasValue: false },
     };
@@ -117,8 +117,9 @@ describe('segmentStatement: Überlappungen und Platzhalter in Satzteilen', () =>
       praezisierung: 'innerhalb einer Frist',
     });
 
-    expect(result.missing).not.toContain('praezisierung');
-    expect(result.segments).toContainEqual({ role: 'praezisierung', text: 'innerhalb einer ' });
+    // Sonst trüge nur „innerhalb einer “ die Beschriftung, und die Restzeile fehlte.
+    expect(result.missing).toContain('praezisierung');
+    expect(result.segments.some((segment) => segment.role === 'praezisierung')).toBe(false);
     expect(result.segments).toContainEqual({ role: 'param', text: 'Frist von 30 Tagen', paramId: 'p' });
   });
 });

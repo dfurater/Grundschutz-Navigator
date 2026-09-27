@@ -11,6 +11,7 @@ import { ControlSecurityContext } from './ControlSecurityContext';
 import { ControlStatement } from './ControlStatement';
 import { ControlStatementDetails, type RestDetail } from './ControlStatementDetails';
 import { textActionClass } from './ControlVocabularyPrimitives';
+import { SECURITY_TARGETS_NAMESPACE_URL } from '@/domain/vocabularyNamespaces';
 
 function makeControl(overrides: Partial<Control> = {}): Control {
   return {
@@ -39,7 +40,7 @@ const resolvedControl = makeControl({
   confidentialityProp: {
     name: 'confidentiality',
     value: '2',
-    ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets.csv',
+    ns: SECURITY_TARGETS_NAMESPACE_URL,
   },
   threats: ['G 0.18', 'Unbekannte Gefährdung'],
   threatsProp: {
@@ -76,18 +77,15 @@ const resolutions = resolveControlVocabularies(
   resolvedControl,
 );
 
-const SECURITY_TARGETS_NS =
-  'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets.csv';
-
 const allTargetsControl = makeControl({
   confidentiality: '2',
-  confidentialityProp: { name: 'confidentiality', value: '2', ns: SECURITY_TARGETS_NS },
+  confidentialityProp: { name: 'confidentiality', value: '2', ns: SECURITY_TARGETS_NAMESPACE_URL },
   integrity: '1',
-  integrityProp: { name: 'integrity', value: '1', ns: SECURITY_TARGETS_NS },
+  integrityProp: { name: 'integrity', value: '1', ns: SECURITY_TARGETS_NAMESPACE_URL },
   availability: '1',
-  availabilityProp: { name: 'availability', value: '1', ns: SECURITY_TARGETS_NS },
+  availabilityProp: { name: 'availability', value: '1', ns: SECURITY_TARGETS_NAMESPACE_URL },
   authenticity: '0',
-  authenticityProp: { name: 'authenticity', value: '0', ns: SECURITY_TARGETS_NS },
+  authenticityProp: { name: 'authenticity', value: '0', ns: SECURITY_TARGETS_NAMESPACE_URL },
   threats: ['G 0.18'],
   threatsProp: {
     name: 'threats',

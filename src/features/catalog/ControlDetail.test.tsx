@@ -12,6 +12,8 @@ import {
 } from '@/test/fixtures/vocabulary';
 import { ControlDetail, getControlDetailUrl } from './ControlDetail';
 import { catalogCollectionDefaults } from '@/test/catalogState';
+import { bsiNamespaceLocation } from '@/test/fixtures/taxonomyVocabulary';
+import { SECURITY_TARGETS_NAMESPACE_URL } from '@/domain/vocabularyNamespaces';
 
 vi.mock('@/hooks/useCatalog', () => ({
   useCatalog: vi.fn(),
@@ -266,7 +268,7 @@ describe('ControlDetail', () => {
     expect(within(practiceCard).getByText('Schwerpunkt:').tagName).toBe('DT');
     // Legendenschema: „Praktik: GC“, der Wert verlinkt den Vokabulareintrag.
     expect(within(practiceCard).getByRole('link', { name: 'GC' }))
-      .toHaveAttribute('href', '/vokabular/documentation-namespaces-practices?wert=GC');
+      .toHaveAttribute('href', `/vokabular/${bsiNamespaceLocation('practices.csv').routeId}?wert=GC`);
 
     const topic = screen.getByRole('button', { name: 'Thema: Organisation' });
     await user.click(topic);
@@ -420,25 +422,25 @@ describe('ControlDetail', () => {
       confidentialityProp: {
         name: 'confidentiality',
         value: '2',
-        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets.csv',
+        ns: SECURITY_TARGETS_NAMESPACE_URL,
       },
       integrity: '1',
       integrityProp: {
         name: 'integrity',
         value: '1',
-        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets.csv',
+        ns: SECURITY_TARGETS_NAMESPACE_URL,
       },
       availability: '1',
       availabilityProp: {
         name: 'availability',
         value: '1',
-        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets.csv',
+        ns: SECURITY_TARGETS_NAMESPACE_URL,
       },
       authenticity: '0',
       authenticityProp: {
         name: 'authenticity',
         value: '0',
-        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets.csv',
+        ns: SECURITY_TARGETS_NAMESPACE_URL,
       },
       threats: ['G 0.18', 'G 0.19'],
       threatsProp: {

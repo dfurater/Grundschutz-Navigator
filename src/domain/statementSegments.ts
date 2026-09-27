@@ -167,29 +167,89 @@ function buildAtoms(
   const { stripped: resolved, offsets } = stripChoiceBrackets(substituted);
   const atoms: Atom[] = [];
   for (const piece of pieces) {
-    const resolvedStart = offsets[piece.start];
-    const resolvedEnd = offsets[piece.end];
-    const text = resolved.slice(resolvedStart, resolvedEnd);
-    // Ein Stueck ohne Text bleibt nur als nicht gesetzter Parameter (weder
-    // Wert noch Label) ein Segment: Die Darstellung markiert ihn sichtbar und
-    // erklaert ihn. Ein gesetzter leerer Wert wuerde sonst im Satzteil zum
-    // leeren Begriffs-Trigger und damit zu einem unsichtbaren Fokusziel.
-    if (text === '' && piece.unset !== true) {
-      continue;
-    }
-    atoms.push(piece.paramId === undefined
-      ? { kind: 'text', text, resolvedStart, resolvedEnd }
-      : { kind: 'param', paramId: piece.paramId, value: text, resolvedStart, resolvedEnd });
+    appendAtom(atoms, piece, resolved, offsets);
   }
   return { atoms, resolved };
 }
 
+/** Überträgt ein Stück auf die aufgelöste Aussage und hängt es als Atom an. */
+function appendAtom(atoms: Atom[], piece: Piece, resolved: string, offsets: readonly number[]): void {
+  const resolvedStart = offsets[piece.start];
+  const resolvedEnd = offsets[piece.end];
+  const text = resolved.slice(resolvedStart, resolvedEnd);
+  // Ein Stueck ohne Text bleibt nur als nicht gesetzter Parameter (weder
+  // Wert noch Label) ein Segment: Die Darstellung markiert ihn sichtbar und
+  // erklaert ihn. Ein gesetzter leerer Wert wuerde sonst im Satzteil zum
+  // leeren Begriffs-Trigger und damit zu einem unsichtbaren Fokusziel.
+  if (text === '' && piece.unset !== true) {
+    return;
+  }
+  if (piece.paramId !== undefined) {
+    atoms.push({ kind: 'param', paramId: piece.paramId, value: text, resolvedStart, resolvedEnd });
+    return;
+  }
+  // Fiel dazwischen ein gesetzter leerer Wert weg, bleibt der Text ein Stück:
+  // `prü{{ insert: param, leer }}fen` ist ein Wort, kein geteiltes.
+  const previous = atoms.at(-1);
+  if (previous?.kind === 'text' && previous.resolvedEnd === resolvedStart) {
+    atoms[atoms.length - 1] = { ...previous, text: previous.text + text, resolvedEnd };
+    return;
+  }
+  atoms.push({ kind: 'text', text, resolvedStart, resolvedEnd });
+}
+
+function isClauseRole(role: SentenceSegmentRole): role is SentenceClauseRole {
+  return role === 'ergebnis' || role === 'praezisierung';
+}
+
+/**
+ * Stueck ganz im Bereich. Ein leeres Stueck zaehlt nur im Inneren: An der
+ * Grenze eines Satzteils gehoert es nicht zu ihm.
+ */
+function liesWithin(atom: Atom, start: number, end: number): boolean {
+  return start <= atom.resolvedStart && atom.resolvedEnd <= end
+    && start < atom.resolvedEnd && atom.resolvedStart < end;
+}
+
+const WORD_CHAR_PATTERN = new RegExp(`[${WORD_CHAR}]`);
+
+/** Eine Stueckgrenze im Inneren des Bereichs trennt zwei Wortzeichen. */
+function splitsWord(resolved: string, atoms: readonly Atom[], span: AnchorSpan): boolean {
+  return atoms.some((atom) => [atom.resolvedStart, atom.resolvedEnd].some(
+    (edge) => span.start < edge && edge < span.end
+      && WORD_CHAR_PATTERN.test(resolved[edge - 1])
+      && WORD_CHAR_PATTERN.test(resolved[edge]),
+  ));
+}
+
+/**
+ * Ein Anker ist nur dort erreichbar, wo die Segmente ihn vollstaendig tragen:
+ * Jedes Stueck, das er beruehrt, muss ein Textstueck sein oder, bei Ergebnis
+ * und Praezisierung, ein Parameterwert ganz im Satzteil (`partOf`), und keine
+ * Stueckgrenze darf ein Wort teilen. Liegt die Fundstelle im Wert eines
+ * Platzhalters, truege kein Segment die Rolle; schneidet sie einen Wert an oder
+ * teilt ein Wert ein Wort (`Risi{{ insert: param, p }}` mit `p = "ko"`), truege
+ * nur ein Wortteil den Ausloeser. Weil der Anker als gefunden gaelte, fehlte in
+ * beiden Faellen auch die Restzeile mit dem vollstaendigen Begriff.
+ */
+function isReachable(resolved: string, atoms: readonly Atom[], span: AnchorSpan): boolean {
+  const touched = atoms.filter(
+    (atom) => atom.resolvedStart < span.end && span.start < atom.resolvedEnd,
+  );
+  return touched.length > 0
+    && touched.every((atom) => atom.kind === 'text'
+      || (isClauseRole(span.role) && liesWithin(atom, span.start, span.end)))
+    && !splitsWord(resolved, atoms, span);
+}
+
 /**
  * Sucht `word` nur als eigenstaendiges Wort: `indexOf` fände „Risiko“ auch in
- * „Risikoanalyse“ und verankerte die Erklaerung am falschen Wort.
+ * „Risikoanalyse“ und verankerte die Erklaerung am falschen Wort. Unerreichbare
+ * Fundstellen werden uebersprungen, damit eine spaetere im Text zaehlt.
  */
 function findWord(
   resolved: string,
+  atoms: readonly Atom[],
   word: string,
   from: number,
   role: SentenceSegmentRole,
@@ -199,21 +259,25 @@ function findWord(
     'g',
   );
   wordRe.lastIndex = from;
-  const match = wordRe.exec(resolved);
-  return match === null
-    ? null
-    : { role, start: match.index, end: match.index + match[0].length };
+  for (let match = wordRe.exec(resolved); match !== null; match = wordRe.exec(resolved)) {
+    const span = { role, start: match.index, end: match.index + match[0].length };
+    if (isReachable(resolved, atoms, span)) {
+      return span;
+    }
+  }
+  return null;
 }
 
 /**
  * Sucht alle Satzteile unabhaengig: Ergebnis und Praezisierung koennen vor dem
  * Handlungswort stehen, aber nie im Praktik-Praefix. Die Praktik zaehlt nur am
  * Satzanfang, das Modalverb wird nach ihr gesucht. Alle Satzteile brauchen
- * Wortgrenzen.
+ * Wortgrenzen und eine erreichbare Fundstelle.
  */
 function findAnchors(
   input: SegmentStatementInput,
   resolved: string,
+  atoms: readonly Atom[],
 ): { anchors: AnchorSpan[]; missing: MissingKey[] } {
   const anchors: AnchorSpan[] = [];
   const missing: MissingKey[] = [];
@@ -221,7 +285,7 @@ function findAnchors(
   // Auch die Praktik nur als eigenstaendiges Wort: „Detektion“ darf nicht den
   // Anfang von „Detektionssysteme“ markieren.
   const practice = input.practiceTitle
-    ? findWord(resolved, input.practiceTitle, 0, 'practice')
+    ? findWord(resolved, atoms, input.practiceTitle, 0, 'practice')
     : null;
   if (practice?.start === 0) {
     practiceEnd = practice.end;
@@ -229,14 +293,14 @@ function findAnchors(
   }
   let modalverbEnd = practiceEnd;
   if (input.modalverb) {
-    const modalverb = findWord(resolved, input.modalverb, practiceEnd, 'modalverb');
+    const modalverb = findWord(resolved, atoms, input.modalverb, practiceEnd, 'modalverb');
     if (modalverb !== null) {
       modalverbEnd = modalverb.end;
       anchors.push(modalverb);
     }
   }
   const word = input.handlungsworte
-    ? findWord(resolved, input.handlungsworte, modalverbEnd, 'handlungswort')
+    ? findWord(resolved, atoms, input.handlungsworte, modalverbEnd, 'handlungswort')
     : null;
   if (word === null) {
     missing.push('handlungsworte');
@@ -245,7 +309,7 @@ function findAnchors(
   }
   for (const role of ['ergebnis', 'praezisierung'] as const) {
     const text = input[role];
-    const clause = text ? findWord(resolved, text, practiceEnd, role) : null;
+    const clause = text ? findWord(resolved, atoms, text, practiceEnd, role) : null;
     if (clause === null) {
       missing.push(role);
     } else {
@@ -289,37 +353,19 @@ function buildRanges(
   return ranges;
 }
 
-function isClauseRange(range: Range): range is Range & { role: SentenceClauseRole } {
-  return range.role === 'ergebnis' || range.role === 'praezisierung';
-}
-
 /**
  * Satzteil eines Platzhalters: nur, wenn der Wert ganz in einem Satzteil
- * liegt. Sonst bekommt er keinen; Satzteile, die ganz im Wert liegen, gelten
- * dann als fehlend, damit ihre Restzeile erscheint.
+ * liegt. Ein Satzteil im Wert oder einer, der einen Wert nur anschneidet, wird
+ * gar nicht erst verankert (`isReachable`) und erscheint als Restzeile.
  */
 function clauseRoleAt(
   ranges: readonly Range[],
   atom: Atom,
-  missing: MissingKey[],
 ): SentenceClauseRole | undefined {
-  const overlapping = ranges.filter(
-    (range) => isClauseRange(range)
-      && range.start < atom.resolvedEnd
-      && atom.resolvedStart < range.end,
+  const containing = ranges.find(
+    (range) => isClauseRole(range.role) && liesWithin(atom, range.start, range.end),
   );
-  const containing = overlapping.find(
-    (range) => range.start <= atom.resolvedStart && atom.resolvedEnd <= range.end,
-  );
-  if (containing !== undefined) {
-    return containing.role as SentenceClauseRole;
-  }
-  for (const range of overlapping) {
-    if (atom.resolvedStart <= range.start && range.end <= atom.resolvedEnd) {
-      missing.push(range.role as SentenceClauseRole);
-    }
-  }
-  return undefined;
+  return containing?.role as SentenceClauseRole | undefined;
 }
 
 /**
@@ -337,13 +383,13 @@ export function segmentStatement(
   input: SegmentStatementInput,
 ): SegmentStatementResult {
   const { atoms, resolved } = buildAtoms(input.statementRaw, input.params);
-  const { anchors, missing } = findAnchors(input, resolved);
+  const { anchors, missing } = findAnchors(input, resolved, atoms);
   const ranges = buildRanges(anchors, resolved.length, missing);
 
   const segments: SentenceSegment[] = [];
   for (const atom of atoms) {
     if (atom.kind === 'param') {
-      const partOf = clauseRoleAt(ranges, atom, missing);
+      const partOf = clauseRoleAt(ranges, atom);
       segments.push({
         role: 'param',
         text: atom.value,

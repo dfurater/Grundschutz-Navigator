@@ -38,8 +38,11 @@ if (namespaceCollection?.kind !== 'vocabulary-collection') {
   );
 }
 
+/** Upstream-Verzeichnis der Vokabulare laut Quellregister, z. B. für Fixture-Pfade. */
+export const BSI_NAMESPACE_DIRECTORY = namespaceCollection.upstreamDirectory;
+
 const BSI_NAMESPACE_ROOT =
-  `${BSI_REPOSITORY_URL}/tree/main/${encodeRepositoryPath(namespaceCollection.upstreamDirectory)}`;
+  `${BSI_REPOSITORY_URL}/tree/main/${encodeRepositoryPath(BSI_NAMESPACE_DIRECTORY)}`;
 
 export const SECURITY_TARGETS_NAMESPACE_URL =
   `${BSI_NAMESPACE_ROOT}/security_targets.csv`;

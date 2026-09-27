@@ -7,6 +7,7 @@ import {
   VOCABULARY_IDENTIFIERS,
   createTestVocabularyRegistry,
 } from '@/test/fixtures/vocabulary';
+import { bsiNamespaceLocation } from '@/test/fixtures/taxonomyVocabulary';
 import { VocabularyEntryCard } from '@/features/vocabularies/VocabularyEntryCard';
 import { ControlSecurityContext } from './ControlSecurityContext';
 import {
@@ -16,11 +17,9 @@ import {
 } from './ControlSecurityTargets';
 import { ControlSubjectGroup } from './ControlTaxonomy';
 import { SectionLegend, toVocabCardId } from './ControlVocabularyPrimitives';
+import { SECURITY_TARGETS_NAMESPACE_URL } from '@/domain/vocabularyNamespaces';
 
 const registry = createTestVocabularyRegistry();
-
-const SECURITY_TARGETS_NS =
-  'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets.csv';
 
 function makeControl(overrides: Partial<Control> = {}): Control {
   return {
@@ -49,18 +48,18 @@ function makeSecurityRows(): SecurityTargetRow[] {
     confidentialityProp: {
       name: 'confidentiality',
       value: '2',
-      ns: SECURITY_TARGETS_NS,
+      ns: SECURITY_TARGETS_NAMESPACE_URL,
     },
-    integrityProp: { name: 'integrity', value: '1', ns: SECURITY_TARGETS_NS },
+    integrityProp: { name: 'integrity', value: '1', ns: SECURITY_TARGETS_NAMESPACE_URL },
     availabilityProp: {
       name: 'availability',
       value: '1',
-      ns: SECURITY_TARGETS_NS,
+      ns: SECURITY_TARGETS_NAMESPACE_URL,
     },
     authenticityProp: {
       name: 'authenticity',
       value: '0',
-      ns: SECURITY_TARGETS_NS,
+      ns: SECURITY_TARGETS_NAMESPACE_URL,
     },
   });
   const resolved = resolveControlVocabularies(registry, control);
@@ -463,7 +462,7 @@ describe('ControlCharacteristics (GSPP-303 T7)', () => {
       const link = panelScope.getByRole('link', { name: value });
       expect(link).toHaveAttribute(
         'href',
-        `/vokabular/documentation-namespaces-security-targets-levels?wert=${value}`,
+        `/vokabular/${bsiNamespaceLocation('security_targets_levels.csv').routeId}?wert=${value}`,
       );
     }
     expect(
