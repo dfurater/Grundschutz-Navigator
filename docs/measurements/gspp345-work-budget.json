@@ -1596,62 +1596,20 @@
       }
     }
   },
-  "workLimitProvenanceRestamps": [
-    {
-      "issue": "GSPP-394",
-      "date": "2026-09-13",
-      "entscheidung": "Neustempeln ohne Neumessung.",
-      "begruendung": "`nachher` ist über dieselbe Hülle wie `vorher` berechnet, ohne die Kanten, die ausschließlich einen Typ transportieren (import type, export type). TypeScript entfernt solche Kanten beim Kompilieren: Ihre Ziele existieren zur Laufzeit nicht, laufen im gemessenen Auflösungslauf nicht mit und beeinflussen seine Dauer nicht. Die im gemessenen Auflösungslauf geladenen Dateien sind in `vorher` und `nachher` dieselben (`laufzeitcodeGeprueft`), die Rohdaten der Messung gelten deshalb für beide. `entfalleneDateien` nennt für jede Datei, die nur in `vorher` liegt, die Typkante, an der sie hängt.",
-      "vorher": {
-        "sha256": "a215a8e7ce1973cf5d755e665b1050f08c5de7cf12f227e770df63b89b0346e8",
-        "files": 69
-      },
-      "nachher": {
-        "sha256": "b2fda430f5546110df712b4246c51c5a84c927cf61397c1521757e44022fac8f",
-        "files": 62
-      },
-      "entfalleneDateien": {
-        "src/domain/models.ts": "zehn eingehende Kanten, alle import type; die Datei exportiert ausschließlich Typen und erzeugt beim Kompilieren keinen Laufzeitcode",
-        "src/domain/oscalDocumentContext.ts": "zwei Kanten: import type aus dem Einstiegspunkt profileResolutionEngine.ts, export type aus models.ts; reines Typmodul ohne Laufzeitcode",
-        "src/domain/oscalComponentDefinition.ts": "eine Kante, import type aus oscalRootDocument.ts; reines Typmodul ohne Laufzeitcode",
-        "src/domain/oscalMapping.ts": "eine Kante, import type aus oscalRootDocument.ts; reines Typmodul ohne Laufzeitcode",
-        "src/domain/oscalProfile.ts": "eine Kante, import type aus oscalRootDocument.ts; reines Typmodul ohne Laufzeitcode",
-        "src/domain/catalogLineage.ts": "eine Kante, import type aus models.ts. Diese Datei trägt Laufzeitcode (export * from catalogLineage.mjs), ist im gemessenen Pfad aber nur über die entfallene Typkante erreichbar und wird dort deshalb nie geladen.",
-        "src/domain/catalogLineage.mjs": "im gemessenen Pfad ausschließlich über catalogLineage.ts erreichbar, die ihrerseits nur an einer Typkante hing. Die Datei trägt Laufzeitcode, wird auf diesem Pfad aber nie geladen; ihre übrigen Aufrufer (fetch-catalog.mjs, AboutPage.tsx) liegen außerhalb des Messwegs."
-      },
-      "hinzugekommeneDateien": [],
-      "runtimeUnveraendert": true,
-      "workUnitLimitUnveraendert": true,
-      "laufzeitcodeGeprueft": "Fünf der sieben Dateien exportieren ausschließlich Typen und erzeugen gar keinen Laufzeitcode. Die beiden catalogLineage-Dateien tragen Laufzeitcode, hängen im gemessenen Pfad aber allein an der entfallenen Typkante aus models.ts."
+  "workLimitProvenanceBinding": {
+    "aussage": "`sourceBefore.workLimitProvenance` und `sourceAfter.workLimitProvenance` beschreiben den Messweg des Heads nach der Methode `skalierende-bereiche`: Hülle, Laufzeitpakete und Fixture. `measureClass2BudgetReport.test.ts` verlangt, dass Methode und Hash dem Head entsprechen. `commit` nennt den Stand, an dem die Läufe unter `runs` gemessen sind. `messcommitQuelltext` hält je Datei in `paths` und für die Fixture den SHA-256 des Quelltexts nach `normalizeSource` am Messcommit. `abweichendeDateien` nennt genau die Dateien, deren Hash am Head davon abweicht, mit der Abweichung je Datei. Der Eintrag ist kein Messergebnis.",
+    "messcommitQuelltext": {
+      "scripts/profileResolutionWorstCaseFixtures.mjs": "f9c7ba81b627db944e92691978d880520f9013e8622c461099f6883295a3f0a8",
+      "src/domain/profileResolutionBudget.ts": "97c88a0cc19916167f2c2daf5ef5fd72b8caabafba37e2728124851b6e04428e",
+      "src/domain/profileResolutionEngine.ts": "1729547ba129cf72c8afbfa3388db312eab1f93466a10d3fcf66f8228745fe73",
+      "src/domain/profileResolutionMerge.ts": "28f2ba5a93faba877e3615589180728a44b38c0b54d64ad7b4bf5b92de314ebb",
+      "src/domain/profileResolutionModify.ts": "848bbfd7eaf3fc834644244dbc9a1eb8123b34d8dcaa106d916ad21b1feb3a60",
+      "src/domain/profileResolutionSelection.ts": "b2212323e3c15aaf5a8df9fecf6b8f00148337a96c400e85b815ae1b1ff40dcf",
+      "src/domain/referenceResolution.ts": "2837d367af29fc892ab6f5cf86ffd7c1f6367597050450c06bc2ab4f2896dde0"
     },
-    {
-      "issue": "GSPP-445",
-      "date": "2026-09-23",
-      "art": "Verfahrenswechsel der Hülle, kein Messergebnis",
-      "entscheidung": "Übernahme der Messbindung von `statische-importhuelle` nach `skalierende-bereiche` ohne Neumessung.",
-      "begruendung": "`skalierende-bereiche` bestimmt die Hülle der Messwegprovenienz aus einer Ausführungszählung auf Blockebene: Sie enthält genau die Dateien mit mindestens einem Bereich — einer Funktion oder einem Block darin —, dessen Ausführungszahl zwischen N und 2N Wiederholungen einer Kalibrierfixture in mindestens einer Kategorie wächst. Zusätzlich gebunden sind der normalisierte Quelltext der Worst-Case-Fixture, die die gemessenen Eingaben vor dem gezählten Abschnitt baut, und ihre beobachteten Eingaben aus Registry und Dokumentgrenzen. Der Eintrag belegt keine Kosten pro Arbeitseinheit. Er bindet die Messung an `nachher`, weil `vorher` und `nachher` denselben Code beschreiben und `vorher` dem Fingerprint der Messung entspricht; die Belege stehen unter `nachweis`.",
-      "basisCommit": "43eed4395f3840eaca511f8290f4c824f65e12fb",
-      "vorher": {
-        "method": "statische-importhuelle",
-        "sha256": "b2fda430f5546110df712b4246c51c5a84c927cf61397c1521757e44022fac8f",
-        "files": 62
-      },
-      "nachher": {
-        "method": "skalierende-bereiche",
-        "sha256": "27429d69158eb5345b262fa3e107c279e0d04954857ee7b011b2aaa4e6295e8d",
-        "hullSha256": "c8e399ada8ffab407e0d876423835dbb1d71850057dce61007a7b47809d0ca98",
-        "fixtureSha256": "7f993a1d8cedc3a21b8fc0318bc0be4b085eaafdf2336fe6acf19067a56c893e",
-        "files": 6
-      },
-      "nachweis": [
-        "Am Basiscommit ergibt `statische-importhuelle` den Fingerprint b2fda430f5546110df712b4246c51c5a84c927cf61397c1521757e44022fac8f über 62 Dateien, denselben Wert wie bei der Messung an 88a568e2c7dc03b2079ac9c1fe3068e06933dc2c. Die Dateien dieser Hülle sind am Basiscommit also dieselben wie am Messcommit; nachrechenbar mit node scripts/measure-class2-budget.mjs --print-source-fingerprint auf dem Basiscommit.",
-        "`nachher.sha256` ist an einem Commit berechnet, der gegenüber dem Basiscommit ausschließlich Dateien unter scripts/, docs/ und das Messartefakt ändert. Keine Datei der Hülle von `skalierende-bereiche` unterscheidet sich vom Basiscommit.",
-        "Die Hülle von `skalierende-bereiche` ist eine Teilmenge der Hülle von `statische-importhuelle`: Jede ihrer 6 Dateien gehört zu den 62 Dateien von `vorher`.",
-        "Die Fixture scripts/profileResolutionWorstCaseFixtures.mjs und die Module, aus denen sie Werte übernimmt (src/domain/class2ImportLimits.mjs, src/domain/sourceRegistry.mjs samt dessen Import src/domain/oscalVersionMatrix.mjs), sind an dem Commit, an dem `nachher` berechnet ist, bytegleich mit dem Messcommit 88a568e2c7dc03b2079ac9c1fe3068e06933dc2c; alle vier gehören zu den 62 Dateien von `vorher`. `nachher.fixtureSha256` beschreibt damit genau die gemessenen Eingaben.",
-        "Die Laufzeitangabe ist leer, weil in keinem externen Paket ein skalierender Bereich liegt; auch Ajv läuft bei N und 2N mit gleicher Ausführungszahl."
-      ],
-      "entfalleneDateienAnzahl": 56,
-      "workUnitLimitUnveraendert": true
+    "abweichendeDateien": {
+      "src/domain/profileResolutionEngine.ts": "Head: Je Import-Kante liefert `localFragmentUuid(href)` aus src/domain/referenceResolution.ts die verbrauchte Ressourcen-UUID. Messcommit: An derselben Stelle stehen `href.startsWith('#')` und `href.slice(1).toLowerCase()` direkt. Die String-Operationen sind dieselben; der Head ruft je Import-Kante zusätzlich zwei Funktionen auf.",
+      "src/domain/referenceResolution.ts": "Head: Die Datei exportiert `isLocalFragmentHref` und `localFragmentUuid`, und die Auflösung einer Referenz prüft ein lokales Fragment mit `isLocalFragmentHref(input.href)`. Messcommit: Beide Funktionen fehlen, an derselben Stelle steht `input.href.startsWith('#')`."
     }
-  ]
+  }
 }
