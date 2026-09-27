@@ -62,6 +62,13 @@ const CLAUSE_LABEL: Record<SentenceClauseRole, string> = {
   praezisierung: 'Präzisierung',
 };
 
+/**
+ * Name eines Platzhalters ohne Wert und ohne Label. Sichtbar steht dann „…“,
+ * damit weder eine Lücke noch ein unsichtbares Fokusziel entsteht; der
+ * Satztext für Suche und Export bleibt davon unberührt.
+ */
+export const EMPTY_PLACEHOLDER_NAME = 'Festzulegender Wert';
+
 function renderPlaceholder(segment: SentenceSegment, index: number): ReactNode {
   const content = segment.partOf === undefined ? PLACEHOLDER_TOGGLETIP : (
     <>
@@ -69,10 +76,16 @@ function renderPlaceholder(segment: SentenceSegment, index: number): ReactNode {
       {PLACEHOLDER_TOGGLETIP}
     </>
   );
+  const label = segment.text === '' ? (
+    <>
+      <span aria-hidden="true">…</span>
+      <span className="sr-only">{EMPTY_PLACEHOLDER_NAME}</span>
+    </>
+  ) : segment.text;
   return (
     <Tooltip key={index} id={`satz-param-${index}`} mode="hover-toggle" content={content}
       describeTarget={() => (
-        <span className="rounded bg-[var(--color-accent-soft)] px-[3px] [box-decoration-break:clone]">{segment.text}</span>
+        <span className="rounded bg-[var(--color-accent-soft)] px-[3px] [box-decoration-break:clone]">{label}</span>
       )} />
   );
 }
