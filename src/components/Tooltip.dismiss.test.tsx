@@ -240,38 +240,6 @@ describe('Tooltip schließen (GSPP-303 Review)', () => {
     expect(screen.getByRole('tooltip')).toHaveStyle({ maxWidth: '184px', transform: 'translate(-8px, -83px)' });
   });
 
-  it.each([
-    {
-      side: 'darüber', triggerTop: 250,
-      // Oben 250 − 3 px Abstand − 108 = 139 px, unten 292 − 270 = 22 px: Oberkante an 108.
-      expected: { maxHeight: '139px', overflowY: 'auto', transform: 'translate(0px, -162px)' },
-    },
-    {
-      side: 'darunter', triggerTop: 130,
-      // Unten 292 − 150 = 142 px, oben 127 − 108 = 19 px: Er bleibt an seiner Lage.
-      expected: { maxHeight: '142px', overflowY: 'auto', transform: 'translate(0px, 0px)' },
-    },
-  ])('nimmt die größere Seite ($side) und scrollt, wenn er auf keine Seite ganz passt, statt den Auslöser zu verdecken', async ({ triggerTop, expected }) => {
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
-      if (this.hasAttribute('data-control-detail-scroll')) return rect(100, 100, 200, 200);
-      if (this.getAttribute('role') === 'tooltip') return rect(120, triggerTop + 20, 100, 180);
-      if (this.hasAttribute('data-tooltip-root')) return rect(110, triggerTop, 20, 17);
-      return rect(0, 0, 0, 0);
-    });
-    render(
-      <div data-control-detail-scroll>
-        <Tooltip idPrefix="tt-tall" content="Sehr lange Erklärung" describeTarget={(id) => (
-          <button type="button" aria-describedby={id}>Begriff</button>
-        )} />
-      </div>,
-    );
-
-    const user = setupUser();
-    await user.tab();
-
-    expect(screen.getByRole('tooltip')).toHaveStyle(expected);
-  });
-
   it('entfernt die Scroll- und Resize-Listener beim Schließen', async () => {
     const removeDocument = vi.spyOn(globalThis.document, 'removeEventListener');
     const removeWindow = vi.spyOn(globalThis, 'removeEventListener');

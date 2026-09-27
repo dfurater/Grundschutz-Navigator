@@ -10,9 +10,18 @@ const VISIBLE_AREA_SELECTOR = '[data-control-detail-scroll]';
  * Die eigene Begrenzung wird im selben Durchlauf zurückgenommen, ohne dass
  * dazwischen gemalt wird. Die vertikale Lage wählt `placeVertically`. Liegt
  * der Auslöser ganz außerhalb des sichtbaren Bereichs, bleibt der Tooltip an
- * ihm und scrollt mit ihm hinaus, statt allein am Panelrand zu hängen.
+ * ihm und scrollt mit ihm hinaus, statt allein am Panelrand zu hängen. Ohne
+ * `overflow-y` ist der Tooltip beim Messen kurz kein Scrollcontainer; seinen
+ * Scrollstand setzt die Messung deshalb danach wieder, statt sich darauf zu
+ * verlassen, dass die Engine ihn aufbewahrt.
  */
 function clampToVisibleArea(tooltip: HTMLElement): void {
+  const { scrollTop } = tooltip;
+  placeInVisibleArea(tooltip);
+  tooltip.scrollTop = scrollTop;
+}
+
+function placeInVisibleArea(tooltip: HTMLElement): void {
   const { style } = tooltip;
   style.transform = '';
   style.maxWidth = '';
@@ -96,12 +105,19 @@ function placeVertically(
  * Panels, daher Capture-Phase) und Größenänderungen von Fenster und Panel. Das
  * Panel ändert seine Breite auch ohne das Fenster, etwa beim Ziehen am Rand;
  * das Ziehen nimmt den Fokus nicht, ein per Tastatur geöffneter Tooltip bleibt
- * also offen. Gemessen wird direkt am Element statt über React-State: kein
- * Render je Scroll. Liefert das Aufräumen.
+ * also offen. Scrollen im Tooltip selbst verschiebt weder Auslöser noch
+ * sichtbaren Bereich und löst keine Messung aus. Gemessen wird direkt am
+ * Element statt über React-State: kein Render je Scroll. Liefert das Aufräumen.
  */
 export function keepInVisibleArea(tooltip: HTMLElement): () => void {
   const reclamp = () => {
     clampToVisibleArea(tooltip);
+  };
+  const reclampOnScroll = (event: Event) => {
+    if (event.target instanceof Node && tooltip.contains(event.target)) {
+      return;
+    }
+    reclamp();
   };
   reclamp();
   const panel = tooltip.closest(VISIBLE_AREA_SELECTOR);
@@ -111,13 +127,13 @@ export function keepInVisibleArea(tooltip: HTMLElement): () => void {
     panelObserver.observe(panel);
   }
   // eslint-disable-next-line no-restricted-syntax -- Scroll-/Resize-Listener leben und sterben mit dieser Begrenzung (single owner); `useGlobalEventListener` kennt keine Capture-Phase.
-  globalThis.document.addEventListener('scroll', reclamp, { capture: true, passive: true });
+  globalThis.document.addEventListener('scroll', reclampOnScroll, { capture: true, passive: true });
   // eslint-disable-next-line no-restricted-syntax -- siehe oben, dieselbe Begrenzung.
   globalThis.addEventListener('resize', reclamp);
   return () => {
     panelObserver?.disconnect();
     // eslint-disable-next-line no-restricted-syntax -- Cleanup der obigen Listener (single owner).
-    globalThis.document.removeEventListener('scroll', reclamp, { capture: true });
+    globalThis.document.removeEventListener('scroll', reclampOnScroll, { capture: true });
     // eslint-disable-next-line no-restricted-syntax -- siehe oben, dieselbe Begrenzung.
     globalThis.removeEventListener('resize', reclamp);
   };
