@@ -39,7 +39,7 @@ describe('Tooltip (GSPP-303 T3)', () => {
     const user = setupUser();
     render(
       <Tooltip
-        id="tt-hover"
+        idPrefix="tt-hover"
         content="Inhalt"
         describeTarget={(describedById) => (
           <button aria-describedby={describedById} type="button">
@@ -67,7 +67,7 @@ describe('Tooltip (GSPP-303 T3)', () => {
     const user = setupUser();
     render(
       <Tooltip
-        id="tt-focus"
+        idPrefix="tt-focus"
         content="Inhalt"
         hoverDelayMs={10000}
         describeTarget={(describedById) => (
@@ -87,7 +87,7 @@ describe('Tooltip (GSPP-303 T3)', () => {
     const user = setupUser();
     render(
       <Tooltip
-        id="tt-esc"
+        idPrefix="tt-esc"
         content="Inhalt"
         describeTarget={(describedById) => (
           <button aria-describedby={describedById} type="button">
@@ -108,7 +108,7 @@ describe('Tooltip (GSPP-303 T3)', () => {
     const user = setupUser();
     render(
       <Tooltip
-        id="tt-toggle"
+        idPrefix="tt-toggle"
         mode="toggle"
         content="Inhalt"
         describeTarget={(describedById) => (
@@ -129,7 +129,7 @@ describe('Tooltip (GSPP-303 T3)', () => {
     const user = setupUser();
     render(
       <Tooltip
-        id="tt-placeholder"
+        idPrefix="tt-placeholder"
         mode="hover-toggle"
         content="Platzhalter"
         describeTarget={(describedById) => (
@@ -151,19 +151,41 @@ describe('Tooltip (GSPP-303 T3)', () => {
     expect(screen.getByRole('tooltip', { name: 'Platzhalter' })).toBeInTheDocument();
   });
 
+  it('vergibt je Tooltip eine eigene ID, auch bei gleichem Präfix', () => {
+    // Die Stücke eines Satzteils teilen Vokabelschlüssel und Präfix (Release-PR #307).
+    render(
+      <>
+        {['Risiko-', 'Analyse'].map((label) => (
+          <Tooltip key={label} idPrefix="tt-teil" content="Ergebnis" describeTarget={(id) => (
+            <button type="button" aria-describedby={id}>{label}</button>
+          )} />
+        ))}
+      </>,
+    );
+
+    const ids = screen.getAllByRole('tooltip', { hidden: true }).map((tooltip) => tooltip.id);
+    expect(ids.every((id) => id.startsWith('tt-teil-'))).toBe(true);
+    expect(new Set(ids).size).toBe(2);
+    for (const button of screen.getAllByRole('button')) {
+      const tooltip = document.getElementById(button.getAttribute('aria-describedby') ?? '');
+      expect(tooltip?.parentElement).toBe(button.closest('[data-tooltip-root]'));
+    }
+  });
+
   it('Vertragsbruch: describeTarget ohne aria-describedby schlägt fehl', () => {
     render(
       <Tooltip
-        id="tt-vertrag"
+        idPrefix="tt-vertrag"
         content="Inhalt"
         describeTarget={() => <span>ohne Refs</span>}
       />,
     );
     const target = screen.getByText('ohne Refs');
+    const tooltip = screen.getByRole('tooltip', { hidden: true });
 
     let threw = false;
     try {
-      expect(target).toHaveAttribute('aria-describedby', 'tt-vertrag');
+      expect(target).toHaveAttribute('aria-describedby', tooltip.id);
     } catch {
       threw = true;
     }
@@ -179,7 +201,7 @@ describe('Tooltip (GSPP-303 T3)', () => {
     });
     render(
       <div data-control-detail-scroll>
-        <Tooltip id="tt-panel" content="Erklärung" describeTarget={(id) => (
+        <Tooltip idPrefix="tt-panel" content="Erklärung" describeTarget={(id) => (
           <button type="button" aria-describedby={id}>Begriff</button>
         )} />
       </div>,

@@ -18,6 +18,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  ResizeObserverMock.instances.length = 0;
 });
 
 function rect(left: number, top: number, width: number, height: number): DOMRect {
@@ -25,6 +27,38 @@ function rect(left: number, top: number, width: number, height: number): DOMRect
     left, top, right: left + width, bottom: top + height,
     x: left, y: top, width, height, toJSON: () => ({}),
   };
+}
+
+/** Merkt sich die beobachteten Elemente und meldet ihnen auf Wunsch eine Größenänderung. */
+class ResizeObserverMock {
+  static readonly instances: ResizeObserverMock[] = [];
+
+  readonly targets = new Set<Element>();
+
+  private readonly callback: ResizeObserverCallback;
+
+  constructor(callback: ResizeObserverCallback) {
+    this.callback = callback;
+    ResizeObserverMock.instances.push(this);
+  }
+
+  observe(target: Element) {
+    this.targets.add(target);
+  }
+
+  unobserve(target: Element) {
+    this.targets.delete(target);
+  }
+
+  disconnect() {
+    this.targets.clear();
+  }
+
+  static resize(target: Element) {
+    for (const observer of ResizeObserverMock.instances.filter((instance) => instance.targets.has(target))) {
+      observer.callback([], observer as unknown as ResizeObserver);
+    }
+  }
 }
 
 function setupUser() {
@@ -46,7 +80,7 @@ describe('Tooltip schließen (GSPP-303 Review)', () => {
     render(
       <>
         <OverlayEscape onEscape={overlayEscape} />
-        <Tooltip id="tt-esc" mode="toggle" content="Inhalt" describeTarget={() => <span>Platzhalter</span>} />
+        <Tooltip idPrefix="tt-esc" mode="toggle" content="Inhalt" describeTarget={() => <span>Platzhalter</span>} />
       </>,
     );
 
@@ -69,7 +103,7 @@ describe('Tooltip schließen (GSPP-303 Review)', () => {
     });
     render(
       <div data-control-detail-scroll>
-        <Tooltip id="tt-resize" content="Erklärung" describeTarget={(id) => (
+        <Tooltip idPrefix="tt-resize" content="Erklärung" describeTarget={(id) => (
           <button type="button" aria-describedby={id}>Begriff</button>
         )} />
       </div>,
@@ -88,6 +122,41 @@ describe('Tooltip schließen (GSPP-303 Review)', () => {
     expect(screen.getByRole('tooltip')).toHaveStyle({ transform: 'translate(-78px, 0px)' });
   });
 
+  it('misst die Begrenzung neu, wenn sich nur das Panel verengt', async () => {
+    // Ziehen am Panelrand ändert die Breite ohne Fensterereignis und nimmt den
+    // Fokus nicht (`useDragToResize`): Ein per Tastatur geöffneter Tooltip bleibt offen.
+    vi.stubGlobal('ResizeObserver', ResizeObserverMock);
+    let panelRight = 400;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.hasAttribute('data-control-detail-scroll')) return rect(100, 100, panelRight - 100, 200);
+      if (this.getAttribute('role') === 'tooltip') return rect(270, 130, 100, 30);
+      if (this.hasAttribute('data-tooltip-root')) return rect(250, 130, 20, 20);
+      return rect(0, 0, 0, 0);
+    });
+    const { container } = render(
+      <div data-control-detail-scroll>
+        <Tooltip idPrefix="tt-panel-resize" content="Erklärung" describeTarget={(id) => (
+          <button type="button" aria-describedby={id}>Begriff</button>
+        )} />
+      </div>,
+    );
+    const panel = container.querySelector('[data-control-detail-scroll]')!;
+
+    const user = setupUser();
+    await user.tab();
+    expect(screen.getByRole('tooltip')).toHaveStyle({ transform: 'translate(0px, 0px)' });
+
+    panelRight = 300;
+    act(() => {
+      ResizeObserverMock.resize(panel);
+    });
+    expect(screen.getByRole('tooltip')).toHaveStyle({ transform: 'translate(-78px, 0px)' });
+
+    // Geschlossen beobachtet der Tooltip das Panel nicht mehr.
+    await user.keyboard('{Escape}');
+    expect(ResizeObserverMock.instances.some((observer) => observer.targets.size > 0)).toBe(false);
+  });
+
   it('misst die Begrenzung beim Scrollen des Panels neu und löst sie, wenn der Auslöser hinausscrollt', async () => {
     let scrollTop = 0;
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
@@ -98,7 +167,7 @@ describe('Tooltip schließen (GSPP-303 Review)', () => {
     });
     const { container } = render(
       <div data-control-detail-scroll>
-        <Tooltip id="tt-scroll" content="Erklärung" describeTarget={(id) => (
+        <Tooltip idPrefix="tt-scroll" content="Erklärung" describeTarget={(id) => (
           <button type="button" aria-describedby={id}>Begriff</button>
         )} />
       </div>,
@@ -133,7 +202,7 @@ describe('Tooltip schließen (GSPP-303 Review)', () => {
     });
     render(
       <div data-control-detail-scroll>
-        <Tooltip id="tt-flip" content="Erklärung" describeTarget={(id) => (
+        <Tooltip idPrefix="tt-flip" content="Erklärung" describeTarget={(id) => (
           <button type="button" aria-describedby={id}>Begriff</button>
         )} />
       </div>,
@@ -158,7 +227,7 @@ describe('Tooltip schließen (GSPP-303 Review)', () => {
     });
     render(
       <div data-control-detail-scroll>
-        <Tooltip id="tt-wrap" content="Lange Erklärung" describeTarget={(id) => (
+        <Tooltip idPrefix="tt-wrap" content="Lange Erklärung" describeTarget={(id) => (
           <button type="button" aria-describedby={id}>Begriff</button>
         )} />
       </div>,
@@ -175,7 +244,7 @@ describe('Tooltip schließen (GSPP-303 Review)', () => {
     const removeDocument = vi.spyOn(globalThis.document, 'removeEventListener');
     const removeWindow = vi.spyOn(globalThis, 'removeEventListener');
     render(
-      <Tooltip id="tt-cleanup" mode="toggle" content="Inhalt" describeTarget={() => <span>Platzhalter</span>} />,
+      <Tooltip idPrefix="tt-cleanup" mode="toggle" content="Inhalt" describeTarget={() => <span>Platzhalter</span>} />,
     );
     const user = setupUser();
     await user.click(screen.getByText('Platzhalter'));

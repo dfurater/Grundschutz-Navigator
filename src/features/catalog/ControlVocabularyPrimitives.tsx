@@ -138,10 +138,10 @@ export interface TermTriggerProps {
 
 /**
  * Begriffs-Trigger im Abkürzungs-Stil (GSPP-303 T4): gepunktet unterstrichenes
- * Label statt Icon-Affordanz; schaltet die Vokabelkarte
- * `toVocabCardId(vocabKey)` um. Mit `tooltip` läuft der Button in
- * `Tooltip mode='hover'`; das `aria-describedby` trägt der Button selbst
- * (T3-`describeTarget`-Vertrag).
+ * Label statt Icon-Affordanz; schaltet die Vokabelkarte `toVocabCardId(vocabKey)`
+ * um. Mit `tooltip` läuft der Button in `Tooltip mode='hover'` und trägt das
+ * `aria-describedby` selbst (T3-Vertrag). Mehrere Trigger desselben Schlüssels,
+ * etwa die Stücke eines Satzteils, teilen die Karte, aber nicht den Tooltip.
  */
 export function TermTrigger({
   vocabKey,
@@ -194,7 +194,7 @@ export function TermTrigger({
   }
   return (
     <Tooltip
-      id={`${cardId}-tooltip`}
+      idPrefix={`${cardId}-tooltip`}
       mode="hover"
       content={tooltip}
       describeTarget={(id) => renderButton(id)}

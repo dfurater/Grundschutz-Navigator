@@ -83,7 +83,7 @@ function renderPlaceholder(segment: SentenceSegment, index: number): ReactNode {
     </>
   ) : segment.text;
   return (
-    <Tooltip key={index} id={`satz-param-${index}`} mode="hover-toggle" content={content}
+    <Tooltip key={index} idPrefix="satz-param" mode="hover-toggle" content={content}
       describeTarget={() => (
         <span className="rounded bg-[var(--color-accent-soft)] px-[3px] [box-decoration-break:clone]">{label}</span>
       )} />
@@ -92,7 +92,7 @@ function renderPlaceholder(segment: SentenceSegment, index: number): ReactNode {
 
 function renderClause(role: SentenceClauseRole, children: ReactNode, index: number): ReactNode {
   return (
-    <Tooltip key={index} id={`satzteil-${role}-${index}`} content={CLAUSE_LABEL[role]}
+    <Tooltip key={index} idPrefix={`satzteil-${role}`} content={CLAUSE_LABEL[role]}
       describeTarget={(describedById) => (
         // Fokussierbar, damit die Beschriftung auch per Tastatur erreichbar ist.
         <span tabIndex={0} aria-describedby={describedById}
