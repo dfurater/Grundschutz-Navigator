@@ -1,14 +1,16 @@
 import { createRef } from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router';
 import type { Control } from '@/domain/models';
 import { resolveControlVocabularies } from '@/domain/vocabulary';
 import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
 import { ControlGuidance } from './ControlGuidance';
 import { ControlSecurityContext } from './ControlSecurityContext';
 import { ControlStatement } from './ControlStatement';
-import { ControlStatementDetails } from './ControlStatementDetails';
+import { ControlStatementDetails, type RestDetail } from './ControlStatementDetails';
+import { textActionClass } from './ControlVocabularyPrimitives';
 
 function makeControl(overrides: Partial<Control> = {}): Control {
   return {
@@ -106,155 +108,60 @@ function renderVocabularyCard(
 }
 
 describe('ControlSecurityContext', () => {
-  it('renders resolved and unresolved values with preserved labels and hidden targets', async () => {
+  it('renders resolved and unresolved security targets in a two-column grid', () => {
+    const { container } = render(
+      <MemoryRouter><ControlSecurityContext
+        control={allTargetsControl}
+        resolvedVocabularies={allTargetsResolutions}
+        isVocabularyActive={() => false}
+        onToggleVocabulary={vi.fn()}
+        renderVocabularyCard={renderVocabularyCard}
+      /></MemoryRouter>,
+    );
+
+    expect(screen.getByRole('heading', { name: 'Schutzziele', level: 4 })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Gefährdungen', level: 4 })).toBeInTheDocument();
+    expect(container.querySelectorAll('[role="group"].grid-cols-subgrid')).toHaveLength(4);
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    for (const label of ['Vertraulichkeit', 'Integrität', 'Verfügbarkeit', 'Authentizität']) {
+      expect(screen.getByRole('button', { name: `Schutzziel: ${label}` })).toBeInTheDocument();
+    }
+    expect(screen.getByRole('button', { name: 'Relevanz Vertraulichkeit: 2' })).toHaveTextContent('2');
+    // Die Legende steht in der Leiste „Schutzziele und Gefährdungen“ (ControlDetail), nicht hier.
+    expect(screen.queryByRole('button', { name: 'Legende' })).toBeNull();
+    expect(container.querySelector('.catalog-vocabulary-affordance')).toBeNull();
+  });
+
+  it('keeps vocabulary cards independently accessible and hides unresolved threats', async () => {
     const user = userEvent.setup();
     const onToggleVocabulary = vi.fn();
-
     render(
-      <ControlSecurityContext
+      <MemoryRouter><ControlSecurityContext
         control={resolvedControl}
         resolvedVocabularies={resolutions}
         isVocabularyActive={(key) => key === 'security-target:confidentiality'}
         onToggleVocabulary={onToggleVocabulary}
         renderVocabularyCard={renderVocabularyCard}
-      />,
+      /></MemoryRouter>,
     );
 
-    expect(screen.getByRole('heading', {
-      name: 'Schutzziele und Gefährdungen',
-      level: 3,
-    })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Schutzziele', level: 4 }))
-      .toBeInTheDocument();
-    expect(screen.getByRole('heading', {
-      name: 'Elementare Gefährdungen',
-      level: 4,
-    })).toBeInTheDocument();
-
-    const securityTarget = screen.getByRole('button', {
-      name: 'Schutzziel: Vertraulichkeit',
-    });
-    expect(securityTarget).toHaveAttribute('aria-expanded', 'true');
-    expect(securityTarget).toHaveAttribute(
-      'aria-controls',
-      'vocab-card-security-target-confidentiality',
-    );
-    expect(screen.getByText('Karte: Vertraulichkeit (Confidentiality)'))
-      .toBeInTheDocument();
-    const targetCardRow = document.getElementById(
-      'vocab-card-security-target-confidentiality',
-    )!;
-    expect(targetCardRow.tagName).toBe('TR');
-    expect(targetCardRow.querySelector('td')).toHaveAttribute('colspan', '2');
-    expect(targetCardRow.previousElementSibling).toBe(
-      screen.getByRole('rowheader', { name: 'Vertraulichkeit' }).closest('tr'),
-    );
-    expect(screen.getByRole('button', {
-      name: 'Relevanz Vertraulichkeit: 2',
-    })).toHaveAttribute(
-      'aria-controls',
-      'vocab-card-security-target-level-confidentiality',
-    );
-
+    const target = screen.getByRole('button', { name: 'Schutzziel: Vertraulichkeit' });
+    expect(target).toHaveAttribute('aria-expanded', 'true');
+    expect(target).toHaveAttribute('aria-controls', 'vocab-card-security-target-confidentiality');
+    expect(screen.getByText('Karte: Vertraulichkeit (Confidentiality)')).toBeInTheDocument();
     const threat = screen.getByRole('button', {
       name: 'Elementare Gefährdung: Fehlplanung oder fehlende Anpassung (G 0.18)',
     });
+    expect(threat).toHaveTextContent('Fehlplanung oder fehlende Anpassung');
+    expect(threat).not.toHaveTextContent('G 0.18');
     expect(threat).toHaveAttribute('aria-controls', 'vocab-card-threat-G-0-18-0');
-    expect(document.getElementById('vocab-card-threat-G-0-18-0'))
-      .toHaveAttribute('hidden');
-    expect(screen.getByText('Unbekannte Gefährdung').tagName).toBe('P');
-
+    expect(document.getElementById('vocab-card-threat-G-0-18-0')).toHaveAttribute('hidden');
+    expect(screen.getByText('Unbekannte Gefährdung').tagName).toBe('LI');
     await user.click(threat);
     expect(onToggleVocabulary).toHaveBeenCalledWith('threat:G 0.18:0');
   });
 
-  it('renders the security targets as an accessible table with a single visible Relevanz header', () => {
-    render(
-      <ControlSecurityContext
-        control={allTargetsControl}
-        resolvedVocabularies={allTargetsResolutions}
-        isVocabularyActive={() => false}
-        onToggleVocabulary={vi.fn()}
-        renderVocabularyCard={renderVocabularyCard}
-      />,
-    );
-
-    const table = screen.getByRole('table', { name: 'Schutzziele und ihre Relevanz' });
-    const columnHeaders = within(table).getAllByRole('columnheader');
-    expect(columnHeaders.map((header) => header.textContent)).toEqual([
-      'Schutzziel',
-      'Relevanz',
-    ]);
-    expect(within(columnHeaders[0]).getByText('Schutzziel')).toHaveClass('sr-only');
-    expect(columnHeaders[1]).not.toHaveClass('sr-only');
-    expect(screen.getAllByText('Relevanz')).toHaveLength(1);
-    expect(screen.getAllByRole('heading', { name: 'Schutzziele', level: 4 }))
-      .toHaveLength(1);
-
-    const rowHeaders = within(table).getAllByRole('rowheader');
-    expect(rowHeaders.map((header) => header.textContent)).toEqual([
-      'Vertraulichkeit',
-      'Integrität',
-      'Verfügbarkeit',
-      'Authentizität',
-    ]);
-    rowHeaders.forEach((header) => expect(header).toHaveAttribute('scope', 'row'));
-    columnHeaders.forEach((header) => expect(header).toHaveAttribute('scope', 'col'));
-  });
-
-  it('renders the relevance as a screenreader-hidden dot scale with the numeric value', () => {
-    render(
-      <ControlSecurityContext
-        control={allTargetsControl}
-        resolvedVocabularies={allTargetsResolutions}
-        isVocabularyActive={() => false}
-        onToggleVocabulary={vi.fn()}
-        renderVocabularyCard={renderVocabularyCard}
-      />,
-    );
-
-    const relevance = screen.getByRole('button', { name: 'Relevanz Vertraulichkeit: 2' });
-    expect(relevance).toHaveAttribute('title', 'Relevanz Vertraulichkeit: 2');
-    const dots = relevance.querySelectorAll('span[aria-hidden="true"]');
-    expect(dots).toHaveLength(2);
-    dots.forEach((dot) => expect(dot).toHaveAttribute('aria-hidden', 'true'));
-    expect(relevance.textContent).toBe('');
-    expect(screen.getByRole('button', { name: 'Relevanz Authentizität: 0' }))
-      .toHaveAttribute('title', 'Relevanz Authentizität: 0');
-  });
-
-  it('puts the affordance icon before the trigger text without changing accessible names', () => {
-    render(
-      <ControlSecurityContext
-        control={allTargetsControl}
-        resolvedVocabularies={allTargetsResolutions}
-        isVocabularyActive={() => false}
-        onToggleVocabulary={vi.fn()}
-        renderVocabularyCard={renderVocabularyCard}
-      />,
-    );
-
-    const triggers = [
-      screen.getByRole('button', { name: 'Schutzziel: Vertraulichkeit' }),
-      screen.getByRole('button', { name: 'Relevanz Vertraulichkeit: 2' }),
-      screen.getByRole('button', {
-        name: 'Elementare Gefährdung: Fehlplanung oder fehlende Anpassung (G 0.18)',
-      }),
-    ];
-
-    triggers.forEach((trigger) => {
-      const icon = trigger.querySelector('.catalog-vocabulary-affordance');
-      expect(icon).not.toBeNull();
-      expect(icon).not.toHaveClass('mt-0.5');
-      expect(trigger.firstElementChild).toBe(icon?.parentElement);
-    });
-
-    expect(
-      screen.getByRole('button', { name: 'Schutzziel: Vertraulichkeit' }).textContent,
-    ).toBe('Vertraulichkeit');
-  });
-
-  it('shows threats as name and ID, sorted alphabetically with stable vocabulary keys', async () => {
+  it('sorts threat names and keeps duplicate vocabulary keys stable', async () => {
     const user = userEvent.setup();
     const onToggleVocabulary = vi.fn();
     const control = makeControl({
@@ -265,97 +172,74 @@ describe('ControlSecurityContext', () => {
         ns: 'https://example.com/namespaces/basethreats.csv',
       },
     });
-    const threatResolutions = resolveControlVocabularies(
-      createTestVocabularyRegistry(),
-      control,
-    );
-
     render(
-      <ControlSecurityContext
+      <MemoryRouter><ControlSecurityContext
         control={control}
-        resolvedVocabularies={threatResolutions}
+        resolvedVocabularies={resolveControlVocabularies(createTestVocabularyRegistry(), control)}
         isVocabularyActive={() => false}
         onToggleVocabulary={onToggleVocabulary}
         renderVocabularyCard={renderVocabularyCard}
-      />,
+      /></MemoryRouter>,
     );
 
-    const threatList = screen.getByRole('heading', {
-      name: 'Elementare Gefährdungen',
-      level: 4,
-    }).parentElement!;
-    const entries = Array.from(
-      threatList.querySelectorAll('button, p'),
-    ).map((element) => element.textContent);
-    expect(entries).toEqual([
-      'Fehlplanung oder fehlende Anpassung (G 0.18)',
-      'Fehlplanung oder fehlende Anpassung (G 0.18)',
+    const list = screen.getByRole('heading', { name: 'Gefährdungen', level: 4 }).parentElement!;
+    // Feste Zeilenhöhe: keine breakpointabhängige Mindesthöhe an den Triggern.
+    expect(list.querySelector('.min-h-11')).toBeNull();
+    // Jede Gefährdung ist ein Listenpunkt (dezentes Aufzählungszeichen); bei Triggern zählt der Buttontext.
+    expect(Array.from(list.querySelectorAll('ul > li')).map(
+      (item) => item.querySelector('button')?.textContent ?? item.textContent,
+    )).toEqual([
+      'Fehlplanung oder fehlende Anpassung',
+      'Fehlplanung oder fehlende Anpassung',
       'G 0.20',
-      'Offenlegung schützenswerter Informationen (G 0.19)',
+      'Offenlegung schützenswerter Informationen',
       'Unbekannte Gefährdung',
     ]);
-
-    expect(screen.getByText('Unbekannte Gefährdung').tagName).toBe('P');
-    expect(screen.getByRole('button', { name: 'Elementare Gefährdung: G 0.20' }))
-      .toBeInTheDocument();
-
     const duplicates = screen.getAllByRole('button', {
       name: 'Elementare Gefährdung: Fehlplanung oder fehlende Anpassung (G 0.18)',
     });
     expect(duplicates.map((button) => button.getAttribute('aria-controls'))).toEqual([
-      'vocab-card-threat-G-0-18-2',
-      'vocab-card-threat-G-0-18-4',
+      'vocab-card-threat-G-0-18-2', 'vocab-card-threat-G-0-18-4',
     ]);
-
     await user.click(duplicates[1]);
     expect(onToggleVocabulary).toHaveBeenCalledWith('threat:G 0.18:4');
   });
 });
 
 describe('ControlStatement and ControlStatementDetails', () => {
-  it('preserves section order, typography, dl semantics, and vocabulary wiring', async () => {
+  it('shows only unembedded values with their labels above the content', async () => {
     const user = userEvent.setup();
     const onToggleVocabulary = vi.fn();
-
+    const details: RestDetail[] = [
+      { key: 'ergebnis', label: 'Ergebnis', value: 'Verfahren und Regelungen', resolution: resolutions.statement.ergebnis },
+      { key: 'praezisierung', label: 'Präzisierung', value: 'Unbekannte Präzisierung', resolution: null },
+      { key: 'handlungsworte', label: 'Handlungswort', value: 'verankern', resolution: resolutions.statement.handlungsworte },
+      { key: 'dokumentation', label: 'Dokumentation', value: 'Richtlinie A', resolution: resolutions.statement.dokumentation },
+    ];
     render(
-      <>
+      <MemoryRouter>
         <ControlStatement statement={resolvedControl.statement} />
         <ControlStatementDetails
-          statementProps={resolvedControl.statementProps}
-          resolutions={resolutions.statement}
+          details={details}
+          missing={['ergebnis', 'praezisierung']}
           isVocabularyActive={(key) => key === 'ergebnis'}
           onToggleVocabulary={onToggleVocabulary}
           renderVocabularyCard={renderVocabularyCard}
         />
-      </>,
+      </MemoryRouter>,
     );
 
-    const headings = screen.getAllByRole('heading', { level: 3 });
-    expect(headings.map((heading) => heading.textContent)).toEqual([
-      'Anforderung',
-      'Anforderungsdetails',
-    ]);
-    expect(screen.getByText('Mehrzeilige Anforderung')).toHaveClass(
-      'w-full',
-      'whitespace-pre-line',
-      '[hyphens:auto]',
-    );
-
-    const ergebnisLabel = screen.getByText('Ergebnis');
-    expect(ergebnisLabel.tagName).toBe('DT');
-    expect(ergebnisLabel.nextElementSibling?.tagName).toBe('DD');
-    const ergebnisButton = screen.getByRole('button', {
-      name: 'Verfahren und Regelungen',
-    });
-    expect(ergebnisButton).toHaveAttribute('aria-controls', 'vocab-card-ergebnis');
-    expect(document.getElementById('vocab-card-ergebnis')).not.toHaveAttribute('hidden');
+    expect(screen.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual(['Anforderung']);
+    expect(screen.getByText('Mehrzeilige Anforderung')).toHaveClass('whitespace-pre-line');
+    expect(screen.queryByText('Handlungswort')).not.toBeInTheDocument();
+    for (const label of ['Ergebnis', 'Präzisierung', 'Dokumentation']) {
+      expect(screen.getByText(label).tagName).toBe('P');
+    }
+    const result = screen.getByRole('button', { name: 'Vokabularbegriff Verfahren und Regelungen' });
+    expect(result).toHaveAttribute('aria-controls', 'vocab-card-ergebnis');
     expect(screen.getByText('Karte: Verfahren und Regelungen')).toBeInTheDocument();
-
-    expect(screen.getByText('Unbekannte Präzisierung').tagName).toBe('P');
-    expect(screen.getByText('Handlungswort').tagName).toBe('DT');
-    expect(screen.getByText('Dokumentation').tagName).toBe('DT');
-
-    await user.click(ergebnisButton);
+    expect(screen.getByText('Unbekannte Präzisierung')).toHaveClass('w-full', 'break-words');
+    await user.click(result);
     expect(onToggleVocabulary).toHaveBeenCalledWith('ergebnis');
   });
 });
@@ -381,6 +265,8 @@ describe('ControlGuidance', () => {
     const expand = screen.getByRole('button', { name: 'Mehr anzeigen' });
     expect(expand).toHaveAttribute('aria-controls', 'guidance-text');
     expect(expand).toHaveAttribute('aria-expanded', 'false');
+    // Gleiche Textaktion wie „Legende“: Hover-Unterstreichung, Touch-Fläche per Pseudo-Element.
+    expect(expand).toHaveClass(...textActionClass.split(' '));
     await user.click(expand);
     expect(onToggleExpanded).toHaveBeenCalledOnce();
 

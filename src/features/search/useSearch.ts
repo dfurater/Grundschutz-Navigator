@@ -10,6 +10,7 @@ import {
 } from '@/domain/vocabulary';
 import { classifyQuery } from '@/domain/identifierQuery';
 import { resolvePracticeVocabulary } from '@/domain/taxonomyVocabulary';
+import { compareControlIds } from '@/domain/germanCollation';
 
 export interface SearchResult {
   control: Control;
@@ -535,9 +536,7 @@ export function useSearch(
         const leftControl = controlMap.get(a[0]);
         const rightControl = controlMap.get(b[0]);
 
-        return (leftControl?.id ?? '').localeCompare(rightControl?.id ?? '', 'de', {
-          numeric: true,
-        });
+        return compareControlIds(leftControl?.id ?? '', rightControl?.id ?? '');
       })
       .map(([numericId]) => numericId)
       .filter((numericId) => !exactIdMatches.includes(numericId));
