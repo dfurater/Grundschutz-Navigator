@@ -81,15 +81,15 @@ const SHA_PATTERN = /^[0-9a-f]{40}$/;
 export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
 /**
- * Registrierte OSCAL-Artefakte nach Schlüssel — Grundlage der
- * Versionskreuzprüfung beim Blob-Verify (GSPP-283).
- */
-/**
  * Upstream-Pfade aller ausgelieferten Kataloge (GSPP-284). Die Sync-Lane prüft
  * jeden davon, nicht nur den Einstiegskatalog.
  */
 const SUPPORTED_CATALOG_PATHS = new Set(SUPPORTED_CATALOGS.map((entry) => entry.upstreamPath));
 
+/**
+ * Registrierte OSCAL-Artefakte nach Schlüssel — Grundlage der
+ * Versionskreuzprüfung beim Blob-Verify (GSPP-283).
+ */
 const REGISTRY_BY_ARTIFACT_KEY = new Map(
   SOURCE_REGISTRY
     .filter((entry) => entry.kind === 'oscal')
@@ -153,6 +153,10 @@ export function validateCatalogSyncManifest(manifest) {
   }
 
   const manifestPaths = new Set(manifest.files.map((file) => file.path));
+  // Die Vokabularpfade stammen hier aus dem Manifest selbst; geprüft wird nur
+  // ihre Form (direkte Datei im registrierten Verzeichnis). Dass die Menge dem
+  // Snapshot-Tree entspricht, weist erst verifySnapshotFiles nach — ein Lauf
+  // mit `--validate-manifest` allein belegt die Mitgliedschaft nicht.
   const materializedNamespacePaths = manifest.files
     .filter((file) => file.rootType === 'vocabulary')
     .map((file) => file.path);
@@ -743,6 +747,9 @@ export async function verifySnapshotFiles(manifest, {
       throw new Error(`Manifest contentSha256 does not match the BSI artifact: ${file.path}`);
     }
 
+    // Die Namespace-URL ist hier nur Etikett, nicht die im Katalog
+    // referenzierte Form: Die anschließenden Taxonomieprüfungen lesen
+    // ausschließlich `entries`.
     if (file.rootType === 'vocabulary') {
       return buildVocabularyNamespaceData({
         namespaceUrl: `${OFFICIAL_BSI_REPOSITORY_URL}/tree/main/${file.path}`,
@@ -807,9 +814,10 @@ export async function verifySnapshotFiles(manifest, {
       ),
     ),
     // Code-Unit-Komparator: bewahrt exakt die bisherige implizite
-    // Sortiersemantik von Array.prototype.sort() für Strings, damit die
-    // JSON.stringify-Gegenprüfung gegen die Manifest-Pfade byte-identisch
-    // bleibt (S2871 verlangt den Komparator, keine neue Kollation).
+    // Sortiersemantik von Array.prototype.sort() für Strings (S2871 verlangt
+    // den Komparator, keine neue Kollation). Die Reihenfolge der
+    // Inventarprüfung unten hängt nicht daran: Die Mitgliederliste sortiert
+    // materializeVocabularyCollectionMembers selbst nach Pfad.
   ].sort(compareStringsByCodeUnit);
   const vocabularyCollection = SOURCE_REGISTRY.find(
     (entry) => entry.kind === 'vocabulary-collection' && entry.lifecycle === 'supported',
@@ -824,6 +832,15 @@ export async function verifySnapshotFiles(manifest, {
     repository: OFFICIAL_BSI_REPO,
   }).map((member) => member.path);
 
+  // Der Vergleich ist bewusst reihenfolgesensitiv. Beide Seiten sind nach Pfad
+  // sortiert: das Manifest kanonisch (validateManifestV2Shape in
+  // upstream-artifacts.mjs, Codepoint-Ordnung), die Erwartung in
+  // materializeVocabularyCollectionMembers (UTF-16-Code-Unit-Ordnung); der
+  // Filter erhält die Manifestordnung. Die beiden Ordnungen weichen nur für
+  // Pfade mit Zeichen außerhalb der BMP voneinander ab. Ein solcher Pfad und
+  // ein ohne vorherige Formprüfung übergebenes, nicht kanonisches Manifest
+  // scheitern hier fail-closed; einen falschen Bestand lässt der Vergleich nie
+  // passieren.
   const manifestNamespacePaths = manifest.files
     .filter((file) => file.rootType === 'vocabulary')
     .map((file) => file.path);

@@ -23,6 +23,7 @@ import type { OscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { ResolvedOscalReference } from '@/domain/referenceResolution';
 import type { Catalog, Control } from '@/domain/models';
 import type { CatalogKey } from '@/domain/sourceRegistry';
+import type { OscalRootMetadataView } from '@/domain/oscalRootDocument';
 
 /** Der JSON-Root-Key dieses Modells. Er ist kein Versionsschalter. */
 export const COMPONENT_DEFINITION_ROOT_TYPE = 'component-definition' as const;
@@ -30,14 +31,6 @@ export const COMPONENT_DEFINITION_ROOT_TYPE = 'component-definition' as const;
 /* ------------------------------------------------------------------ */
 /*  View-Typen                                                         */
 /* ------------------------------------------------------------------ */
-
-export interface ComponentDefinitionMetadata {
-  readonly title?: string;
-  readonly lastModified?: string;
-  readonly version?: string;
-  /** Die deklarierte `oscal-version` — die alleinige Versionsautorität. */
-  readonly oscalVersion?: string;
-}
 
 export interface ComponentProp {
   readonly name: string;
@@ -178,7 +171,7 @@ export interface ComponentDefinitionImport {
 
 export interface ComponentDefinition {
   readonly uuid?: string;
-  readonly metadata: ComponentDefinitionMetadata;
+  readonly metadata: OscalRootMetadataView;
   readonly importComponentDefinitions: readonly ComponentDefinitionImport[];
   readonly components: readonly DefinedComponent[];
   readonly capabilities: readonly ComponentCapability[];

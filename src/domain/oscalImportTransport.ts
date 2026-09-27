@@ -106,6 +106,8 @@ export class OscalSourceDecoder {
   }
 
   private acceptText(kind: 'key' | 'string', value: string, last: boolean): void {
+    // Code units against a byte limit: every UTF-16 unit costs at least one
+    // UTF-8 byte, so an admissible document always stays below it.
     this.units += value.length;
     if (value.length > TRANSPORT_MAX_CODE_UNITS || this.units > CLASS_2_IMPORT_LIMITS.maxBytes) this.fail();
     if (!last && !value.length) this.fail();
@@ -132,6 +134,8 @@ export class OscalSourceDecoder {
 
   private key(key: string): void {
     const target = this.stack.at(-1);
+    // Duplicate keys are rejected as on the byte path (duplicate-member
+    // scanner); a second set would otherwise overwrite silently.
     if (!target || Array.isArray(target.value) || target.key !== undefined || Object.hasOwn(target.value, key)) this.fail();
     target.key = key;
   }
@@ -146,6 +150,8 @@ export class OscalSourceDecoder {
     } else if (Array.isArray(target.value)) target.value.push(value);
     else {
       if (target.key === undefined) this.fail();
+      // defineProperty, not assignment: a `__proto__` key becomes an own data
+      // property, as JSON.parse produces it, instead of replacing the prototype.
       Object.defineProperty(target.value, target.key, { value, writable: true, enumerable: true, configurable: true });
       target.key = undefined;
     }

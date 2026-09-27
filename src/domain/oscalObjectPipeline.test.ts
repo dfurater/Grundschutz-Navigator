@@ -3,6 +3,7 @@ import { processClass2OscalValue } from './oscalObjectPipeline';
 import { processClass2OscalBytes } from './oscalClass2Import';
 import { parseClass2OscalInput } from './oscalImportProcessing';
 import { CLASS_2_IMPORT_LIMITS } from './oscalImportContract';
+import { buildSchemaId } from './oscalVersionMatrix';
 import {
   makeSchemaInvalidOscalDocument,
   makeSchemaValidOscalDocument,
@@ -86,6 +87,87 @@ describe('processClass2OscalValue — gemeinsame objektorientierte Prüfkette', 
     expect(result).toMatchObject({
       ok: false,
       diagnostic: { code: 'OSCAL_RESOURCE_NODE_LIMIT_EXCEEDED', stage: 'resource-limit' },
+    });
+  });
+});
+
+describe('processClass2OscalBytes — v-präfigierte oscal-version (GSPP-357)', () => {
+  /** Katalog wie in NIST oscal-content v1.5.0: `"oscal-version": "v1.2.2"`. */
+  function prefixedCatalog(schemaDirective?: string): Record<string, unknown> {
+    const document = makeSchemaValidOscalDocument('catalog', '1.2.2');
+    const metadata = (document.catalog as { metadata: Record<string, unknown> }).metadata;
+    metadata['oscal-version'] = 'v1.2.2';
+    return schemaDirective === undefined ? document : { $schema: schemaDirective, ...document };
+  }
+
+  function encode(document: unknown): Uint8Array {
+    return new TextEncoder().encode(JSON.stringify(document));
+  }
+
+  it('führt den Katalog durch Root-Dispatch und Schemastufe mit dem Pin 1.2.2 und lässt die Quelle unverändert', async () => {
+    const result = await processClass2OscalBytes(encode(prefixedCatalog()), context);
+
+    expect(result).toMatchObject({
+      ok: true,
+      document: { context, rootType: 'catalog', oscalVersion: '1.2.2' },
+    });
+    if (!result.ok) return;
+    const source = result.document.source as { catalog: { metadata: Record<string, unknown> } };
+    expect(source.catalog.metadata['oscal-version']).toBe('v1.2.2');
+  });
+
+  it('prüft den v-präfigierten Katalog tatsächlich gegen das Schema der Zelle 1.2.2', async () => {
+    const document = prefixedCatalog();
+    // Ein Pflichtfeld des Katalogschemas fehlt: Erreicht die Kette die
+    // Schemastufe mit der gewählten Zelle, muss sie dort scheitern.
+    delete (document.catalog as Record<string, unknown>).uuid;
+
+    const result = await processClass2OscalBytes(encode(document), context);
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: {
+        stage: 'json-schema',
+        artifact: { rootType: 'catalog', oscalVersion: '1.2.2' },
+      },
+    });
+  });
+
+  it('akzeptiert eine zur gewählten Zelle passende Schema-Direktive', async () => {
+    const result = await processClass2OscalBytes(
+      encode(prefixedCatalog(buildSchemaId('catalog', '1.2.2')!)),
+      context,
+    );
+
+    expect(result).toMatchObject({ ok: true, document: { oscalVersion: '1.2.2' } });
+  });
+
+  it.each([
+    ['V1.2.2', 'OSCAL_VERSION_MALFORMED'],
+    ['vv1.2.2', 'OSCAL_VERSION_MALFORMED'],
+    ['v1.2', 'OSCAL_VERSION_MALFORMED'],
+    ['v1.2.3', 'OSCAL_ROOT_VERSION_UNSUPPORTED'],
+  ])('lehnt %s fail-closed im Root-Dispatch ab', async (declared, code) => {
+    const document = prefixedCatalog();
+    (document.catalog as { metadata: Record<string, unknown> }).metadata['oscal-version'] = declared;
+
+    const result = await processClass2OscalBytes(encode(document), context);
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: { stage: 'root-dispatch', code, artifact: { oscalVersion: null } },
+    });
+  });
+
+  it('lehnt eine widersprechende Schema-Direktive ab', async () => {
+    const result = await processClass2OscalBytes(
+      encode(prefixedCatalog(buildSchemaId('catalog', '1.2.1')!)),
+      context,
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      diagnostic: { stage: 'root-dispatch', code: 'OSCAL_SCHEMA_DIRECTIVE_CONFLICT' },
     });
   });
 });

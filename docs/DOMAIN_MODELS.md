@@ -946,6 +946,7 @@ interface Control {
   parentId?: string;             // e.g. "GC.5.1" for "GC.5.1.1"
   title: string;
   altIdentifier?: string;        // kanonischer Control-Identifier für URLs
+  controlClass?: string;         // OSCAL control.class, e.g. "BSI-Methodik-Grundschutz-plus-plus"
 
   groupId?: string;              // e.g. "GC.1" (Topic); fehlt ohne Gruppen-id
   practiceId?: string;           // e.g. "GC" (Practice); fehlt ohne Gruppen-id
@@ -995,9 +996,18 @@ interface Control {
   };
 
   links: ControlLink[];
-  params: Record<string, string>;  // Inline parameter values
+  params: Record<string, ParamMeta>;  // Wert und Herkunft des Inline-Parameters
 }
 ```
+
+```typescript
+interface ParamMeta {
+  readonly value: string;      // Aufgelöster Wert oder Fallback aus label
+  readonly hasValue: boolean;  // true nur bei einem gesetzten OSCAL-values[0]
+}
+```
+
+`buildParamMap()` bewahrt diese Unterscheidung für die Darstellung von Platzhaltern. `paramValues()` reicht `resolveParams()` je Parameter nur den Wert als String (`ParamMeta.value`); daraus entsteht der aufgelöste `statement`-Text für Suche und Export. `segmentStatement()` zerlegt `statementRaw` und `params` in geordnete Satzteile für die Detailansicht, ohne den gespeicherten oder exportierten Anforderungstext zu verändern. Fehlt ein Parameterwert, zeigt der Satz den Label-Fallback und erklärt ihn am Platzhalter. Liegt der Wert eines Platzhalters ganz in Ergebnis oder Präzisierung, nennt `SentenceSegment.partOf` diesen Satzteil. Sonst bleibt `partOf` leer. Verankert wird ein Satzteil nur an einer Fundstelle, die die Segmente vollständig tragen: Jedes berührte Stück ist ein Textstück oder, bei Ergebnis und Präzisierung, ein Parameterwert ganz im Satzteil, und keine Stückgrenze teilt ein Wort. Übersprungen werden deshalb Fundstellen im Parameterwert, Fundstellen, die einen Wert nur anschneiden, und solche, in denen ein Wert ein Wort teilt; das gilt auch für Handlungswort, Modalverb und Praktik, die keinen Parameterwert tragen können. Die Suche nimmt dann die nächste Fundstelle im Text; fehlt eine solche, landen Handlungswort, Ergebnis und Präzisierung in `missing` und erscheinen mit dem vollständigen Begriff als Restzeile. `missing` enthält außerdem Anker, die ein früherer Satzteil verdeckt.
 
 Die `*Prop`-Felder behalten den OSCAL-Namespace (`ns`) der Quell-Prop und ermöglichen so die Auflösung gegen die offiziellen BSI-Vokabulare (siehe [VOCABULARY.md](./VOCABULARY.md)).
 

@@ -1,4 +1,20 @@
 import type { VocabularyNamespaceData } from '@/domain/models';
+import {
+  BSI_NAMESPACE_DIRECTORY,
+  PRACTICES_NAMESPACE_URL,
+  TOPICS_NAMESPACE_URL,
+} from '@/domain/vocabularyNamespaces';
+import { deriveRouteId } from '@/domain/vocabularyRouteId';
+
+/**
+ * Pfad und Routenkennung eines BSI-Vokabulars, gebildet wie in der Pipeline:
+ * Verzeichnis aus dem Quellregister, Kennung über `deriveRouteId`. Nach einer
+ * Pfadmigration folgen beide, statt einen alten Slug zu bestätigen.
+ */
+export function bsiNamespaceLocation(fileName: string): { path: string; routeId: string } {
+  const path = `${BSI_NAMESPACE_DIRECTORY}/${fileName}`;
+  return { path, routeId: deriveRouteId(path) };
+}
 
 /** Kennungen der Taxonomie-Fixture; Tests referenzieren sie statt Literalen. */
 export const TAXONOMY_IDENTIFIERS = {
@@ -10,12 +26,10 @@ export const TAXONOMY_IDENTIFIERS = {
 export function createTaxonomyVocabularyNamespaces(): VocabularyNamespaceData[] {
   return [{
     source: {
-      namespace:
-        'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/practices.csv',
+      namespace: PRACTICES_NAMESPACE_URL,
       repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
-      path: 'documentation/namespaces/practices.csv',
+      ...bsiNamespaceLocation('practices.csv'),
       fileName: 'practices.csv',
-      routeId: 'documentation-namespaces-practices',
       gitBlobSha: 'practice-blob-sha',
     },
     columnOrder: [
@@ -46,12 +60,10 @@ export function createTaxonomyVocabularyNamespaces(): VocabularyNamespaceData[] 
     }],
   }, {
     source: {
-      namespace:
-        'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/topics.csv',
+      namespace: TOPICS_NAMESPACE_URL,
       repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
-      path: 'documentation/namespaces/topics.csv',
+      ...bsiNamespaceLocation('topics.csv'),
       fileName: 'topics.csv',
-      routeId: 'documentation-namespaces-topics',
       gitBlobSha: 'topic-blob-sha',
     },
     columnOrder: ['Begriff', 'Definition', 'UUID'],

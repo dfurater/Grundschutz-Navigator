@@ -48,6 +48,7 @@ import {
   registerUuid,
 } from '@/adapters/oscalComponentReaders';
 import type { DeriveState, JsonObject } from '@/adapters/oscalComponentReaders';
+import { readPinnedOscalVersion, readRootMetadata } from '@/adapters/oscalRootDispatch';
 import { COMPONENT_DEFINITION_ROOT_TYPE } from '@/domain/componentDefinitionModel';
 import type {
   ComponentCapability,
@@ -57,15 +58,12 @@ import type {
   ComponentDefinition,
   ComponentDefinitionDeriveOptions,
   ComponentDefinitionImport,
-  ComponentDefinitionMetadata,
   ComponentImplementationSource,
   ComponentImplementedRequirement,
   ComponentImplementedStatement,
   DefinedComponent,
 } from '@/domain/componentDefinitionModel';
 import type { OscalDocumentContext } from '@/domain/models';
-import { isPinnedOscalVersion } from '@/domain/oscalVersionMatrix';
-import type { PinnedOscalVersion } from '@/domain/oscalVersionMatrix';
 import { getArtifactByUpstreamPath } from '@/domain/sourceRegistry';
 
 export { COMPONENT_DEFINITION_ROOT_TYPE } from '@/domain/componentDefinitionModel';
@@ -223,30 +221,6 @@ function deriveControlImplementations(
 /*  Ableitung                                                          */
 /* ------------------------------------------------------------------ */
 
-function deriveMetadata(body: JsonObject): ComponentDefinitionMetadata {
-  const metadata = isJsonObject(body.metadata) ? body.metadata : {};
-  return {
-    title: readString(metadata.title),
-    lastModified: readString(metadata['last-modified']),
-    version: readString(metadata.version),
-    oscalVersion: readString(metadata['oscal-version']),
-  };
-}
-
-/**
- * Die Version für den Referenz- und Diagnosekontext.
- *
- * Nur ein Wert aus der gepinnten Menge wird übernommen; alles andere wird
- * `null`. Der Dispatch hat die Bindung vor dem Aufruf bereits geprüft — dieser
- * Filter hält die Redaction-Regel auch dann ein, wenn jemand `derive` direkt
- * aufruft.
- */
-function readPinnedOscalVersion(body: JsonObject): PinnedOscalVersion | null {
-  const metadata = isJsonObject(body.metadata) ? body.metadata : null;
-  const declared = metadata ? readString(metadata['oscal-version']) : undefined;
-  return declared !== undefined && isPinnedOscalVersion(declared) ? declared : null;
-}
-
 function deriveImports(
   body: JsonObject,
   state: DeriveState,
@@ -373,7 +347,7 @@ export function deriveComponentDefinition(
   options: ComponentDefinitionDeriveOptions = {},
 ): ComponentDefinition {
   const rootBody = isJsonObject(body) ? body : {};
-  const oscalVersion = readPinnedOscalVersion(rootBody);
+  const oscalVersion = readPinnedOscalVersion(rootBody, context);
   const state: DeriveState = {
     diagnostics: [],
     // Der Registry-Schlüssel, nie der Upstream-Pfad: Diagnosen tragen nur
@@ -412,7 +386,7 @@ export function deriveComponentDefinition(
 
   return {
     uuid: readString(rootBody.uuid),
-    metadata: deriveMetadata(rootBody),
+    metadata: readRootMetadata(rootBody),
     importComponentDefinitions: deriveImports(rootBody, state),
     components,
     capabilities,
