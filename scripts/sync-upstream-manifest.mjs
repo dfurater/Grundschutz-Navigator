@@ -229,6 +229,10 @@ export async function syncUpstreamManifest({
   const nextManifest = extractManifestFromVocabularyMetadata(metadata);
   const previousManifest = await readTrackedManifest(resolvedManifestPath);
   const changed = hasManifestChanged(previousManifest, nextManifest);
+  // Gleicher Snapshot, andere Signatur heißt: Dateimenge oder
+  // Registry-Metadaten haben sich bewegt (Lifecycle, neue Preview-Artefakte).
+  // Dafür gibt es die Registry-Ausnahmen in catalog-sync-guard.mjs, die einen
+  // Register-Diff verlangen — keine autonome Sync-PR.
   if (
     changed &&
     previousManifest &&
@@ -306,6 +310,8 @@ const isDirectExecution = process.argv[1] && import.meta.url === pathToFileURL(p
 if (isDirectExecution) {
   try {
     const result = await syncUpstreamManifest();
+    // Schnittstelle zu update-catalog.yml: Der Workflow liest die letzte Zeile
+    // mit diesem Präfix aus stdout.
     console.log(`SYNC_RESULT_JSON=${JSON.stringify(result.outputs)}`);
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);

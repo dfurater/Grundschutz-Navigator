@@ -69,7 +69,7 @@ export function CatalogSwitcher({ open: openProp, onOpenChange }: CatalogSwitche
   const ActiveIcon = CATALOG_ICONS[activeEntry.catalogKey] ?? IconLayers;
 
   const handleSelect = (catalogKey: CatalogKey) => {
-    navigate(buildCatalogUrl(catalogKey));
+    void navigate(buildCatalogUrl(catalogKey));
     changeOpen(false);
   };
 

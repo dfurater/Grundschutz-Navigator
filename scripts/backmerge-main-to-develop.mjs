@@ -339,17 +339,6 @@ export async function sourceChangesAlreadyOnIntegration(git, {
 }
 
 /**
- * Prüft die Ancestry abgeschlossener M2- und M3-Übernahmen. Das ist die erste
- * Handlung jedes Laufs, vor dem Leerlauftest: Nach einem Squash liegt der
- * Inhalt vollständig vor, und der Leerlauftest würde den Lauf sonst erfolgreich
- * beenden, während die Ancestry fehlt.
- *
- * Zweistufig und fail-closed. Eine fehlende oder von der PR-Spitze nicht
- * erreichbare Marke ist ungültig und ein harter Fehler — sie beweist nichts
- * und darf deshalb auch nichts durchwinken. Erst danach wird gefragt, ob der
- * markierte Stand Vorfahr von `develop` geworden ist.
- */
-/**
  * Stufe eins für eine einzelne Marke: Sie muss einen bekannten Commit
  * bezeichnen, der von der PR-Spitze aus erreichbar ist. Liefert den Grund der
  * Ungültigkeit oder `null`, wenn die Marke trägt.
@@ -410,6 +399,17 @@ async function inspectCompletedImport(git, { pullRequest, integrationRef }) {
   return { invalid, missing };
 }
 
+/**
+ * Prüft die Ancestry abgeschlossener M2- und M3-Übernahmen. Das ist die erste
+ * Handlung jedes Laufs, vor dem Leerlauftest: Nach einem Squash liegt der
+ * Inhalt vollständig vor, und der Leerlauftest würde den Lauf sonst erfolgreich
+ * beenden, während die Ancestry fehlt.
+ *
+ * Zweistufig und fail-closed. Eine fehlende oder von der PR-Spitze nicht
+ * erreichbare Marke ist ungültig und ein harter Fehler — sie beweist nichts
+ * und darf deshalb auch nichts durchwinken. Erst danach wird gefragt, ob der
+ * markierte Stand Vorfahr von `develop` geworden ist.
+ */
 export async function checkCompletedImportAncestry(git, { pullRequests, integrationRef = INTEGRATION_REF }) {
   const invalid = [];
   const missing = [];

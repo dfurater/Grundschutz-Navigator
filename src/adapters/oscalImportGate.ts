@@ -48,6 +48,12 @@ function workerFailure(): Class2OscalImportResult {
   };
 }
 
+/**
+ * Die Übertragung per Transfer-Liste löst den Puffer vom Sender. Die Kopie
+ * lässt dem Aufrufer sein Original und kostet dafür eine zweite Bytekopie, die
+ * das Speicherbudget einrechnet (composeHeapFootprint in
+ * scripts/measureClass2BudgetReport.mjs).
+ */
 function copyForTransfer(bytes: ArrayBuffer | Uint8Array): ArrayBuffer {
   const source = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
   const copy = new ArrayBuffer(source.byteLength);
@@ -64,6 +70,8 @@ export function importClass2OscalDocument(
   bytes: ArrayBuffer | Uint8Array,
   context: Class2OscalDocumentContext,
 ): Promise<Class2OscalImportResult> {
+  // Vorab, damit ein übergroßer Eingang weder kopiert noch übertragen wird; die
+  // maßgebliche Bytegrenze bleibt Stufe 1 im Worker.
   if (bytes.byteLength > CLASS_2_IMPORT_LIMITS.maxBytes) {
     return Promise.resolve({ ok: false, diagnostic: createClass2ByteLimitDiagnostic() });
   }
@@ -119,6 +127,8 @@ export function importClass2OscalDocument(
           metadata = { rootType: frame.rootType, oscalVersion: frame.oscalVersion };
           decoder = new OscalSourceDecoder();
         } else if (frame.type === 'chunk' && hasKeys(frame, ['type', 'sequence', 'operations']) && decoder && frame.sequence === sequence) {
+          // Das Ack ist Gegendruck: Der Worker sendet den nächsten Chunk erst
+          // danach. `sequence` schließt ausgelassene und doppelte Chunks aus.
           decoder.accept(frame.operations);
           worker.postMessage({ type: 'ack', sequence: sequence++ });
         } else if (frame.type === 'done' && hasKeys(frame, ['type', 'sequence']) && decoder && metadata && frame.sequence === sequence) {
