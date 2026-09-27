@@ -24,6 +24,10 @@ import '@/index.css';
  * und nach dem Verengen muss er innerhalb der neuen Panelkante stehen. Der
  * zweite rendert den Katalog-Browser und zieht mit echter Maus am Handle, damit
  * auch die Verbindung von Handle, `useDragToResize` und Panel abgesichert ist.
+ *
+ * Der dritte Test öffnet in einem niedrigen Panel einen Tooltip, der weder
+ * unter noch über seinen Auslöser passt (Greptile-Befund in PR #313): Er darf
+ * den Auslöser nicht verdecken, damit dieser antippbar bleibt.
  */
 
 const EDGE_GAP_PX = 8;
@@ -100,6 +104,36 @@ test('hält einen per Tastatur geöffneten Tooltip nach dem Verengen des Panels 
   expect(document.activeElement).toBe(trigger);
   expect(tooltip.hidden).toBe(false);
   expectInsidePanel(tooltip, panel);
+});
+
+test('verdeckt den Auslöser nicht, wenn der Tooltip in einem niedrigen Panel auf keine Seite ganz passt', async () => {
+  await page.viewport(1280, 800);
+  const panel = mount(createElement('p', { style: { paddingTop: '70px' } }, createElement(Tooltip, {
+    idPrefix: 'tt-low-panel',
+    content: Array.from({ length: 6 }, () => EXPLANATION).join(' '),
+    describeTarget: (id: string) => createElement('button', { type: 'button', 'aria-describedby': id }, 'Begriff'),
+  })));
+  panel.dataset.controlDetailScroll = '';
+  panel.style.width = `${NARROW_PANEL_PX}px`;
+  panel.style.height = '180px';
+  panel.style.overflowY = 'auto';
+  await document.fonts.ready;
+
+  const trigger = panel.querySelector('button')!;
+  trigger.focus();
+  await settle();
+  const tooltip = panel.querySelector<HTMLElement>('[role="tooltip"]')!;
+  expect(tooltip.hidden).toBe(false);
+  // Natürlich höher als der Platz auf jeder Seite des Auslösers.
+  expect(tooltip.scrollHeight).toBeGreaterThan(panel.clientHeight / 2);
+
+  const box = tooltip.getBoundingClientRect();
+  const target = trigger.getBoundingClientRect();
+  const bounds = panel.getBoundingClientRect();
+  expect(box.bottom <= target.top + TOLERANCE_PX || box.top >= target.bottom - TOLERANCE_PX).toBe(true);
+  expect(box.top).toBeGreaterThanOrEqual(bounds.top + EDGE_GAP_PX - TOLERANCE_PX);
+  expect(box.bottom).toBeLessThanOrEqual(bounds.bottom - EDGE_GAP_PX + TOLERANCE_PX);
+  expect(document.elementFromPoint(target.left + target.width / 2, target.top + target.height / 2)).toBe(trigger);
 });
 
 const CONTROL: Control = {

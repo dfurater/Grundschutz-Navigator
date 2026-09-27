@@ -65,6 +65,14 @@ interface AnchorSpan {
   readonly role: SentenceSegmentRole;
   readonly start: number;
   readonly end: number;
+  /** Gesuchter Begriff, damit ein verdeckter Anker weitersuchen kann. */
+  readonly word: string;
+}
+
+/** Aufgelöster Satz und seine Stücke, in denen ein Anker weitersucht. */
+interface ResolvedText {
+  readonly resolved: string;
+  readonly atoms: readonly Atom[];
 }
 
 interface Range {
@@ -260,7 +268,7 @@ function findWord(
   );
   wordRe.lastIndex = from;
   for (let match = wordRe.exec(resolved); match !== null; match = wordRe.exec(resolved)) {
-    const span = { role, start: match.index, end: match.index + match[0].length };
+    const span = { role, start: match.index, end: match.index + match[0].length, word };
     if (isReachable(resolved, atoms, span)) {
       return span;
     }
@@ -320,25 +328,50 @@ function findAnchors(
 }
 
 /**
+ * Ein frueherer Anker verdeckt `anchor`: Er sucht hinter `cursor` weiter und
+ * wird nach Position in `pending` einsortiert. Erst ohne erreichbare Fundstelle
+ * dahinter gilt er als fehlend, damit die Restzeile erscheint.
+ */
+function relocate(
+  anchor: AnchorSpan,
+  cursor: number,
+  text: ResolvedText,
+  pending: AnchorSpan[],
+  missing: MissingKey[],
+): void {
+  const next = findWord(text.resolved, text.atoms, anchor.word, cursor, anchor.role);
+  if (next !== null) {
+    pending.push(next);
+    pending.sort(byStart);
+    return;
+  }
+  const key = MISSING_KEY_BY_ROLE[anchor.role];
+  if (key !== undefined) {
+    missing.push(key);
+  }
+}
+
+function byStart(a: AnchorSpan, b: AnchorSpan): number {
+  return a.start - b.start;
+}
+
+/**
  * Luecken zwischen Ankern werden `text`. Ueberlappt ein Anker einen frueheren,
- * wird er verworfen und als fehlend gemeldet, damit die Restzeile erscheint.
+ * sucht er dahinter weiter (`relocate`).
  */
 function buildRanges(
   anchors: readonly AnchorSpan[],
-  length: number,
+  text: ResolvedText,
   missing: MissingKey[],
 ): Range[] {
   const ranges: Range[] = [];
   let cursor = 0;
   // Kopie statt `toSorted`: Vite ergänzt keine Polyfills für ES2023.
-  const ordered = [...anchors];
-  ordered.sort((a, b) => a.start - b.start);
-  for (const anchor of ordered) {
+  const pending = [...anchors];
+  pending.sort(byStart);
+  for (let anchor = pending.shift(); anchor !== undefined; anchor = pending.shift()) {
     if (anchor.start < cursor) {
-      const key = MISSING_KEY_BY_ROLE[anchor.role];
-      if (key !== undefined) {
-        missing.push(key);
-      }
+      relocate(anchor, cursor, text, pending, missing);
       continue;
     }
     if (anchor.start > cursor) {
@@ -347,8 +380,8 @@ function buildRanges(
     ranges.push(anchor);
     cursor = anchor.end;
   }
-  if (cursor < length) {
-    ranges.push({ start: cursor, end: length, role: 'text' });
+  if (cursor < text.resolved.length) {
+    ranges.push({ start: cursor, end: text.resolved.length, role: 'text' });
   }
   return ranges;
 }
@@ -374,17 +407,18 @@ function clauseRoleAt(
  * Reine Domain-Funktion: kein React, keine DOM-APIs. Die Segmente liegen in
  * Satzreihenfolge und sind lueckenlos — aneinandergereiht ergeben sie exakt
  * den Text von `resolveParams`: Platzhalter durch `params[id].value` (oder
- * `[id]`) ersetzt, danach Auswahlklammern entfernt. Jeder
- * Anker wird nur an seiner Fundstelle segmentiert (kein Global-Replace);
- * nicht gefundene oder verdeckte Satzteile landen in `missing`. Platzhalter
- * innerhalb von Ergebnis oder Praezisierung tragen den Satzteil in `partOf`.
+ * `[id]`) ersetzt, danach Auswahlklammern entfernt. Jeder Anker wird nur an
+ * seiner Fundstelle segmentiert (kein Global-Replace); nicht gefundene
+ * Satzteile und verdeckte ohne weitere Fundstelle landen in `missing`.
+ * Platzhalter innerhalb von Ergebnis oder Praezisierung tragen den Satzteil
+ * in `partOf`.
  */
 export function segmentStatement(
   input: SegmentStatementInput,
 ): SegmentStatementResult {
   const { atoms, resolved } = buildAtoms(input.statementRaw, input.params);
   const { anchors, missing } = findAnchors(input, resolved, atoms);
-  const ranges = buildRanges(anchors, resolved.length, missing);
+  const ranges = buildRanges(anchors, { resolved, atoms }, missing);
 
   const segments: SentenceSegment[] = [];
   for (const atom of atoms) {

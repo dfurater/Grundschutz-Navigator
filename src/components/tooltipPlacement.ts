@@ -8,17 +8,16 @@ const VISIBLE_AREA_SELECTOR = '[data-control-detail-scroll]';
  * Hält einen geöffneten Tooltip im sichtbaren Teil des scrollbaren
  * Detail-Panels und des Viewports. Gemessen wird immer die natürliche Lage:
  * Die eigene Begrenzung wird im selben Durchlauf zurückgenommen, ohne dass
- * dazwischen gemalt wird. Reicht der Platz unter dem Auslöser nicht, klappt
- * der Tooltip über ihn, statt ihn beim Einklemmen am unteren Rand zu
- * verdecken. Liegt der Auslöser ganz außerhalb des sichtbaren Bereichs, bleibt
- * der Tooltip an ihm und scrollt mit ihm hinaus, statt allein am Panelrand zu
- * hängen.
+ * dazwischen gemalt wird. Die vertikale Lage wählt `placeVertically`. Liegt
+ * der Auslöser ganz außerhalb des sichtbaren Bereichs, bleibt der Tooltip an
+ * ihm und scrollt mit ihm hinaus, statt allein am Panelrand zu hängen.
  */
 function clampToVisibleArea(tooltip: HTMLElement): void {
   const { style } = tooltip;
   style.transform = '';
   style.maxWidth = '';
   style.maxHeight = '';
+  style.overflowY = '';
   const panel = tooltip.closest(VISIBLE_AREA_SELECTOR)?.getBoundingClientRect();
   const visibleLeft = Math.max(0, panel?.left ?? 0);
   const visibleRight = Math.min(globalThis.innerWidth, panel?.right ?? globalThis.innerWidth);
@@ -37,7 +36,6 @@ function clampToVisibleArea(tooltip: HTMLElement): void {
   const minTop = visibleTop + EDGE_GAP;
   const maxBottom = visibleBottom - EDGE_GAP;
   const availableWidth = Math.max(0, maxRight - minLeft);
-  const availableHeight = Math.max(0, maxBottom - minTop);
   let box = tooltip.getBoundingClientRect();
   if (box.width > availableWidth) {
     style.maxWidth = `${availableWidth}px`;
@@ -45,20 +43,51 @@ function clampToVisibleArea(tooltip: HTMLElement): void {
     box = tooltip.getBoundingClientRect();
   }
   const width = Math.min(box.width, availableWidth);
-  const height = Math.min(box.height, availableHeight);
-  let preferredTop = box.top;
-  if (trigger !== undefined && box.bottom > maxBottom) {
-    const aboveTop = trigger.top - Math.max(0, box.top - trigger.bottom) - box.height;
-    if (aboveTop >= minTop) {
-      preferredTop = aboveTop;
-    }
-  }
   const left = Math.max(minLeft, Math.min(box.left, maxRight - width));
-  const top = Math.max(minTop, Math.min(preferredTop, maxBottom - height));
-  if (box.height > availableHeight) {
-    style.maxHeight = `${availableHeight}px`;
+  const { top, maxHeight } = placeVertically(box, trigger, minTop, maxBottom);
+  if (maxHeight !== undefined) {
+    style.maxHeight = `${maxHeight}px`;
+    style.overflowY = 'auto';
   }
   style.transform = `translate(${left - box.left}px, ${top - box.top}px)`;
+}
+
+/**
+ * Vertikale Lage im sichtbaren Bereich zwischen `minTop` und `maxBottom`.
+ * Reicht der Platz unter dem Auslöser nicht, klappt der Tooltip über ihn.
+ * Passt er auf keine Seite ganz, nimmt er die Seite mit mehr Platz und
+ * scrollt in deren Höhe, statt beim Einklemmen den Auslöser zu verdecken:
+ * Der Auslöser bleibt antippbar. Nur wenn der Auslöser selbst den ganzen
+ * Bereich füllt, bleibt kein freier Platz, und der Tooltip wird eingeklemmt.
+ */
+function placeVertically(
+  box: DOMRect,
+  trigger: DOMRect | undefined,
+  minTop: number,
+  maxBottom: number,
+): { readonly top: number; readonly maxHeight?: number } {
+  const clampTop = (top: number, height: number) => Math.max(minTop, Math.min(top, maxBottom - height));
+  const availableHeight = Math.max(0, maxBottom - minTop);
+  const squeezed = {
+    top: clampTop(box.top, Math.min(box.height, availableHeight)),
+    ...(box.height > availableHeight ? { maxHeight: availableHeight } : {}),
+  };
+  if (trigger === undefined || box.bottom <= maxBottom) {
+    return squeezed;
+  }
+  const gap = Math.max(0, box.top - trigger.bottom);
+  const aboveTop = trigger.top - gap - box.height;
+  if (aboveTop >= minTop) {
+    return { top: clampTop(aboveTop, box.height) };
+  }
+  const roomBelow = maxBottom - (trigger.bottom + gap);
+  const roomAbove = trigger.top - gap - minTop;
+  if (Math.max(roomBelow, roomAbove) <= 0) {
+    return squeezed;
+  }
+  return roomBelow >= roomAbove
+    ? { top: trigger.bottom + gap, maxHeight: roomBelow }
+    : { top: minTop, maxHeight: roomAbove };
 }
 
 /**
