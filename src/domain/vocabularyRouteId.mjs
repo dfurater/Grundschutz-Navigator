@@ -24,7 +24,7 @@ export function deriveRouteId(path) {
   const withoutLeadingSeparators = path
     .replace(/\.[^.]+$/, '')
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
+    .replaceAll(/[^a-z0-9]+/g, '-')
     .replace(/^-+/, '');
 
   return trimTrailingDashes(withoutLeadingSeparators);
