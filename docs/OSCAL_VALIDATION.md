@@ -863,15 +863,24 @@ und fallen heraus. Ein Test hält beide Abschnitte aneinander fest.
   die Messung noch die Hülle decken deshalb Kosten ab, die mit der Länge einer
   Profilkette wachsen. Das ist eine Frage der Messabdeckung, nicht des
   Fingerprints.
+- Der Bindungstest vergleicht den Fingerprint mit dem Head, nicht mit dem
+  Messcommit. Der Messcommit liegt nicht in der Historie von `develop`; ob der
+  gemessene Code vom Head abweicht, steht allein in
+  `workLimitProvenanceBinding`.
 
-**Übertragene Bindung.** Das Artefakt führt unter
-`workLimitProvenanceRestamps` die Nachweisschritte, mit denen sein Fingerprint
-ohne Browserlauf an das geltende Verfahren gebunden ist; jeder Eintrag nennt
-Basiscommit, Verfahren und Hash vorher und nachher sowie seine Nachweise. Die
-Einträge sind keine Messergebnisse und belegen nichts über die Kosten.
+**Bindung an den Messcommit.** `workLimitProvenance` in `sourceBefore` und
+`sourceAfter` beschreibt den Messweg des Heads; `commit` nennt den Stand, an
+dem die Läufe unter `runs` gemessen sind. `workLimitProvenanceBinding` nennt
+die Dateien der Hülle, deren normalisierter Quelltext am Messcommit anders
+lautet, mit der Abweichung je Datei: `profileResolutionEngine.ts` und
+`referenceResolution.ts` erkennen lokale Fragment-hrefs über
+`localFragmentUuid` und `isLocalFragmentHref`, der Messcommit prüft
+`startsWith('#')` an Ort und Stelle. Der Eintrag ist kein Messergebnis.
 `renderReport` verweigert einen Bericht, dessen Provenienz vor und nach der
 Messung kein oder ein unterschiedliches Verfahren nennt, und der Bindungstest
-verlangt Verfahren und Hash des aktuellen Stands.
+verlangt Verfahren und Hash des Heads.
+`scripts/workLimitProvenanceBinding.test.ts` verlangt, dass jede dort als
+abweichend genannte Datei zur Hülle gehört.
 
 Die **Auswertung** (`measureClass2BudgetReport.mjs`) steht nicht in der Hülle
 der Messwegprovenienz: Sie läuft im Browser nie mit und erzeugt keine
