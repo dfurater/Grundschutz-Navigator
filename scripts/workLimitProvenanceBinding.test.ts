@@ -13,11 +13,14 @@
 // trägt.
 // =============================================================================
 
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { normalizeSource } from './measureWorkLimitProvenance.mjs';
 
-const ARTIFACT_PATH = resolve(import.meta.dirname, '..', 'docs/measurements/gspp345-work-budget.json');
+const REPOSITORY_ROOT = resolve(import.meta.dirname, '..');
+const ARTIFACT_PATH = resolve(REPOSITORY_ROOT, 'docs/measurements/gspp345-work-budget.json');
 
 /** Je Marker ein Beispiel, das er treffen muss; Wortformen zählen mit (bisher, bisherige …). */
 const NARRATIVE_MARKERS: ReadonlyArray<{ readonly pattern: RegExp; readonly sample: string }> = [
@@ -38,13 +41,24 @@ const NARRATIVE_MARKERS: ReadonlyArray<{ readonly pattern: RegExp; readonly samp
 ];
 
 interface Artifact {
-  readonly sourceAfter: { readonly workLimitProvenance: { readonly paths: readonly string[] } };
-  readonly workLimitProvenanceBinding?: { readonly abweichendeDateien: Readonly<Record<string, string>> };
+  readonly sourceAfter: {
+    readonly workLimitProvenance: { readonly paths: readonly string[]; readonly fixture: { readonly path: string } };
+  };
+  readonly workLimitProvenanceBinding?: {
+    readonly messcommitQuelltext?: Readonly<Record<string, string>>;
+    readonly abweichendeDateien: Readonly<Record<string, string>>;
+  };
   readonly [field: string]: unknown;
 }
 
 function artifact(): Artifact {
   return JSON.parse(readFileSync(ARTIFACT_PATH, 'utf8')) as Artifact;
+}
+
+/** SHA-256 des normalisierten Quelltexts, wie ihn der Fingerprint des Messwegs sieht. */
+function normalizedSha256(path: string): string {
+  const source = readFileSync(resolve(REPOSITORY_ROOT, path), 'utf8');
+  return createHash('sha256').update(normalizeSource(path, source)).digest('hex');
 }
 
 /** Alle Zeichenketten eines Eintrags samt JSON-Pfad, auch in Listen und Unterobjekten. */
@@ -69,12 +83,23 @@ describe('Bindung des Messartefakts an den Messweg', () => {
     expect(Object.keys(artifact()).filter((key) => /restamp/i.test(key))).toEqual([]);
   });
 
-  it('nennt als abweichend nur Dateien der Hülle', () => {
+  it('hält für jede gebundene Datei den normalisierten Quelltext am Messcommit fest', () => {
+    // Der Messcommit liegt nicht in der Historie von develop; der Test liest
+    // deshalb die dort festgehaltenen Hashes statt des Commits selbst.
     const { sourceAfter, workLimitProvenanceBinding } = artifact();
-    expect(workLimitProvenanceBinding).toBeDefined();
-    const deviating = Object.keys(workLimitProvenanceBinding?.abweichendeDateien ?? {});
-    expect(deviating.filter((path) => !sourceAfter.workLimitProvenance.paths.includes(path))).toEqual([]);
+    const { paths, fixture } = sourceAfter.workLimitProvenance;
+    expect(Object.keys(workLimitProvenanceBinding?.messcommitQuelltext ?? {}).sort())
+      .toEqual([...paths, fixture.path].sort());
   });
+
+  it('nennt genau die Dateien als abweichend, deren normalisierter Quelltext vom Messcommit abweicht', () => {
+    const binding = artifact().workLimitProvenanceBinding;
+    const deviating = Object.entries(binding?.messcommitQuelltext ?? {})
+      .filter(([path, sha256]) => normalizedSha256(path) !== sha256)
+      .map(([path]) => path)
+      .sort();
+    expect(Object.keys(binding?.abweichendeDateien ?? {}).sort()).toEqual(deviating);
+  }, 30_000);
 
   it('erkennt einen relativen Zeitbezug im Freitext', () => {
     // Ohne diese Probe bliebe der Test grün, wenn die Marker nichts fänden.

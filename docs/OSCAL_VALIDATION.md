@@ -864,23 +864,26 @@ und fallen heraus. Ein Test hält beide Abschnitte aneinander fest.
   Profilkette wachsen. Das ist eine Frage der Messabdeckung, nicht des
   Fingerprints.
 - Der Bindungstest vergleicht den Fingerprint mit dem Head, nicht mit dem
-  Messcommit. Der Messcommit liegt nicht in der Historie von `develop`; ob der
-  gemessene Code vom Head abweicht, steht allein in
-  `workLimitProvenanceBinding`.
+  Messcommit. Der Messcommit liegt nicht in der Historie von `develop`; seine
+  Quelltext-Hashes stehen in `workLimitProvenanceBinding.messcommitQuelltext`
+  und werden nur dort abgeglichen.
 
 **Bindung an den Messcommit.** `workLimitProvenance` in `sourceBefore` und
 `sourceAfter` beschreibt den Messweg des Heads; `commit` nennt den Stand, an
-dem die Läufe unter `runs` gemessen sind. `workLimitProvenanceBinding` nennt
-die Dateien der Hülle, deren normalisierter Quelltext am Messcommit anders
-lautet, mit der Abweichung je Datei: `profileResolutionEngine.ts` und
-`referenceResolution.ts` erkennen lokale Fragment-hrefs über
+dem die Läufe unter `runs` gemessen sind. `workLimitProvenanceBinding` hält
+unter `messcommitQuelltext` je Hüllendatei und für die Fixture den SHA-256 des
+normalisierten Quelltexts am Messcommit und nennt unter `abweichendeDateien`
+die Dateien, deren Hash am Head davon abweicht, mit der Abweichung je Datei:
+`profileResolutionEngine.ts` und `referenceResolution.ts` erkennen lokale
+Fragment-hrefs über
 `localFragmentUuid` und `isLocalFragmentHref`, der Messcommit prüft
 `startsWith('#')` an Ort und Stelle. Der Eintrag ist kein Messergebnis.
 `renderReport` verweigert einen Bericht, dessen Provenienz vor und nach der
 Messung kein oder ein unterschiedliches Verfahren nennt, und der Bindungstest
 verlangt Verfahren und Hash des Heads.
-`scripts/workLimitProvenanceBinding.test.ts` verlangt, dass jede dort als
-abweichend genannte Datei zur Hülle gehört.
+`scripts/workLimitProvenanceBinding.test.ts` verlangt, dass
+`messcommitQuelltext` genau die Hüllendateien und die Fixture abdeckt und dass
+`abweichendeDateien` genau die Dateien nennt, deren Hash am Head abweicht.
 
 Die **Auswertung** (`measureClass2BudgetReport.mjs`) steht nicht in der Hülle
 der Messwegprovenienz: Sie läuft im Browser nie mit und erzeugt keine

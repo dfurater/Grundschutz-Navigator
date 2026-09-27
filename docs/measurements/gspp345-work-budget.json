@@ -1597,7 +1597,16 @@
     }
   },
   "workLimitProvenanceBinding": {
-    "aussage": "`sourceBefore.workLimitProvenance` und `sourceAfter.workLimitProvenance` beschreiben den Messweg des Heads nach der Methode `skalierende-bereiche`: Hülle, Laufzeitpakete und Fixture. `measureClass2BudgetReport.test.ts` verlangt, dass Methode und Hash dem Head entsprechen. `commit` nennt den Stand, an dem die Läufe unter `runs` gemessen sind. Am Messcommit ergibt `normalizeSource` für die Dateien unter `abweichendeDateien` einen anderen Quelltext als am Head, für die übrigen Dateien in `paths` und für die Fixture denselben. Der Eintrag ist kein Messergebnis.",
+    "aussage": "`sourceBefore.workLimitProvenance` und `sourceAfter.workLimitProvenance` beschreiben den Messweg des Heads nach der Methode `skalierende-bereiche`: Hülle, Laufzeitpakete und Fixture. `measureClass2BudgetReport.test.ts` verlangt, dass Methode und Hash dem Head entsprechen. `commit` nennt den Stand, an dem die Läufe unter `runs` gemessen sind. `messcommitQuelltext` hält je Datei in `paths` und für die Fixture den SHA-256 des Quelltexts nach `normalizeSource` am Messcommit. `abweichendeDateien` nennt genau die Dateien, deren Hash am Head davon abweicht, mit der Abweichung je Datei. Der Eintrag ist kein Messergebnis.",
+    "messcommitQuelltext": {
+      "scripts/profileResolutionWorstCaseFixtures.mjs": "f9c7ba81b627db944e92691978d880520f9013e8622c461099f6883295a3f0a8",
+      "src/domain/profileResolutionBudget.ts": "97c88a0cc19916167f2c2daf5ef5fd72b8caabafba37e2728124851b6e04428e",
+      "src/domain/profileResolutionEngine.ts": "1729547ba129cf72c8afbfa3388db312eab1f93466a10d3fcf66f8228745fe73",
+      "src/domain/profileResolutionMerge.ts": "28f2ba5a93faba877e3615589180728a44b38c0b54d64ad7b4bf5b92de314ebb",
+      "src/domain/profileResolutionModify.ts": "848bbfd7eaf3fc834644244dbc9a1eb8123b34d8dcaa106d916ad21b1feb3a60",
+      "src/domain/profileResolutionSelection.ts": "b2212323e3c15aaf5a8df9fecf6b8f00148337a96c400e85b815ae1b1ff40dcf",
+      "src/domain/referenceResolution.ts": "2837d367af29fc892ab6f5cf86ffd7c1f6367597050450c06bc2ab4f2896dde0"
+    },
     "abweichendeDateien": {
       "src/domain/profileResolutionEngine.ts": "Head: Je Import-Kante liefert `localFragmentUuid(href)` aus src/domain/referenceResolution.ts die verbrauchte Ressourcen-UUID. Messcommit: An derselben Stelle stehen `href.startsWith('#')` und `href.slice(1).toLowerCase()` direkt. Die String-Operationen sind dieselben; der Head ruft je Import-Kante zusätzlich zwei Funktionen auf.",
       "src/domain/referenceResolution.ts": "Head: Die Datei exportiert `isLocalFragmentHref` und `localFragmentUuid`, und die Auflösung einer Referenz prüft ein lokales Fragment mit `isLocalFragmentHref(input.href)`. Messcommit: Beide Funktionen fehlen, an derselben Stelle steht `input.href.startsWith('#')`."
