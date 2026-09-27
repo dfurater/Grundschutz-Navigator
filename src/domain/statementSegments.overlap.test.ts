@@ -122,4 +122,43 @@ describe('segmentStatement: Überlappungen und Platzhalter in Satzteilen', () =>
     expect(result.segments.some((segment) => segment.role === 'praezisierung')).toBe(false);
     expect(result.segments).toContainEqual({ role: 'param', text: 'Frist von 30 Tagen', paramId: 'p' });
   });
+
+  it('verankert ein vom Ergebnis verdecktes Handlungswort an seiner nächsten Fundstelle dahinter', () => {
+    // Greptile-Befund im Release-PR #313: Die erste Fundstelle liegt im
+    // Ergebnis, die zweite steht frei; ohne Weitersuchen erschiene eine Restzeile.
+    const statementRaw = 'Die Institution MUSS das Risiko prüfen und den Befund prüfen.';
+    const result = segmentStatement({
+      statementRaw,
+      params: {},
+      modalverb: 'MUSS',
+      handlungsworte: 'prüfen',
+      ergebnis: 'das Risiko prüfen',
+    });
+
+    expect(result.missing).not.toContain('handlungsworte');
+    expect(result.segments.filter((segment) => segment.role !== 'text')).toEqual([
+      { role: 'modalverb', text: 'MUSS' },
+      { role: 'ergebnis', text: 'das Risiko prüfen' },
+      { role: 'handlungswort', text: 'prüfen' },
+    ]);
+    expect(result.segments.map((segment) => segment.text).join('')).toBe(statementRaw);
+  });
+
+  it('verankert einen verdeckten Satzteil hinter dem früheren und meldet ihn nur ohne weitere Fundstelle', () => {
+    const result = segmentStatement({
+      statementRaw: 'Die Institution MUSS Berichte fristgerecht erstellen und fristgerecht prüfen.',
+      params: {},
+      modalverb: 'MUSS',
+      handlungsworte: 'erstellen',
+      ergebnis: 'Berichte fristgerecht erstellen',
+      praezisierung: 'fristgerecht',
+    });
+
+    expect(result.missing).toEqual(['handlungsworte']);
+    expect(result.segments.filter((segment) => segment.role !== 'text')).toEqual([
+      { role: 'modalverb', text: 'MUSS' },
+      { role: 'ergebnis', text: 'Berichte fristgerecht erstellen' },
+      { role: 'praezisierung', text: 'fristgerecht' },
+    ]);
+  });
 });

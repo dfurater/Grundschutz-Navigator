@@ -24,12 +24,20 @@ import '@/index.css';
  * und nach dem Verengen muss er innerhalb der neuen Panelkante stehen. Der
  * zweite rendert den Katalog-Browser und zieht mit echter Maus am Handle, damit
  * auch die Verbindung von Handle, `useDragToResize` und Panel abgesichert ist.
+ *
+ * Zwei weitere Tests öffnen in einem niedrigen Panel einen Tooltip, der weder
+ * unter noch über seinen Auslöser passt (Greptile-Befunde in den PRs #313 und
+ * #314): Er darf den Auslöser nicht verdecken, damit dieser antippbar bleibt,
+ * und sein begrenzter Inhalt muss sich zu Ende scrollen lassen: Das Scrollen
+ * im Tooltip löst keine Nachmessung aus, und eine Nachmessung beim Scrollen
+ * des Panels behält die Scrollposition.
  */
 
 const EDGE_GAP_PX = 8;
 const NARROW_PANEL_PX = 320;
 /* Subpixel-Rundung. */
 const TOLERANCE_PX = 1;
+const TOOLTIP_SCROLL_PX = 40;
 const EXPLANATION = 'Eine lange Erklärung, die breiter ist als das verengte Panel und deshalb umbrechen muss, '
   + 'damit sie vollständig lesbar bleibt.';
 
@@ -100,6 +108,76 @@ test('hält einen per Tastatur geöffneten Tooltip nach dem Verengen des Panels 
   expect(document.activeElement).toBe(trigger);
   expect(tooltip.hidden).toBe(false);
   expectInsidePanel(tooltip, panel);
+});
+
+/** Öffnet per Fokus einen Tooltip, der im niedrigen, scrollbaren Panel auf keine Seite ganz passt. */
+async function openInLowPanel(idPrefix: string) {
+  await page.viewport(1280, 800);
+  // Innenabstand unten: Das Panel selbst lässt sich scrollen.
+  const panel = mount(createElement('p', { style: { paddingTop: '90px', paddingBottom: '400px' } }, createElement(Tooltip, {
+    idPrefix,
+    content: Array.from({ length: 6 }, () => EXPLANATION).join(' '),
+    describeTarget: (id: string) => createElement('button', { type: 'button', 'aria-describedby': id }, 'Begriff'),
+  })));
+  panel.dataset.controlDetailScroll = '';
+  panel.style.width = `${NARROW_PANEL_PX}px`;
+  panel.style.height = '180px';
+  panel.style.overflowY = 'auto';
+  await document.fonts.ready;
+
+  const trigger = panel.querySelector('button')!;
+  trigger.focus();
+  await settle();
+  const tooltip = panel.querySelector<HTMLElement>('[role="tooltip"]')!;
+  expect(tooltip.hidden).toBe(false);
+  // Natürlich höher als der Platz auf jeder Seite des Auslösers.
+  expect(tooltip.scrollHeight).toBeGreaterThan(panel.clientHeight / 2);
+  return { panel, trigger, tooltip };
+}
+
+test('verdeckt den Auslöser nicht, wenn der Tooltip in einem niedrigen Panel auf keine Seite ganz passt', async () => {
+  const { panel, trigger, tooltip } = await openInLowPanel('tt-low-panel');
+
+  const box = tooltip.getBoundingClientRect();
+  const target = trigger.getBoundingClientRect();
+  const bounds = panel.getBoundingClientRect();
+  expect(box.bottom <= target.top + TOLERANCE_PX || box.top >= target.bottom - TOLERANCE_PX).toBe(true);
+  expect(box.top).toBeGreaterThanOrEqual(bounds.top + EDGE_GAP_PX - TOLERANCE_PX);
+  expect(box.bottom).toBeLessThanOrEqual(bounds.bottom - EDGE_GAP_PX + TOLERANCE_PX);
+  expect(document.elementFromPoint(target.left + target.width / 2, target.top + target.height / 2)).toBe(trigger);
+});
+
+/** Beobachtet Nachmessungen: Jede schreibt das style-Attribut des Tooltips neu. Liefert das Zählen. */
+function watchRemeasures(tooltip: HTMLElement): () => number {
+  const records: MutationRecord[] = [];
+  const observer = new MutationObserver((batch) => records.push(...batch));
+  observer.observe(tooltip, { attributes: true, attributeFilter: ['style'] });
+  return () => {
+    records.push(...observer.takeRecords());
+    observer.disconnect();
+    return records.length;
+  };
+}
+
+test('misst beim Scrollen im begrenzten Tooltip nicht neu und behält seine Scrollposition beim Scrollen des Panels', async () => {
+  const { panel, tooltip } = await openInLowPanel('tt-low-scroll');
+  expect(tooltip.scrollHeight).toBeGreaterThan(tooltip.clientHeight + TOOLTIP_SCROLL_PX);
+
+  // Scrollen im Tooltip verschiebt weder Auslöser noch sichtbaren Bereich.
+  const remeasures = watchRemeasures(tooltip);
+  tooltip.scrollTop = TOOLTIP_SCROLL_PX;
+  await settle();
+  expect(remeasures()).toBe(0);
+  expect(tooltip.scrollTop).toBeCloseTo(TOOLTIP_SCROLL_PX, 0);
+
+  // Das Panel scrollt: Der Tooltip misst neu, sein Inhalt bleibt, wo er war.
+  const transformBefore = tooltip.style.transform;
+  const panelRemeasures = watchRemeasures(tooltip);
+  panel.scrollTop = 4;
+  await settle();
+  expect(panelRemeasures()).toBeGreaterThan(0);
+  expect(tooltip.style.transform).not.toBe(transformBefore);
+  expect(tooltip.scrollTop).toBeCloseTo(TOOLTIP_SCROLL_PX, 0);
 });
 
 const CONTROL: Control = {
