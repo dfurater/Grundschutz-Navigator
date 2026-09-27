@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { OFFICIAL_BSI_REPOSITORY_URL, OFFICIAL_BSI_REPO } from './security-guards.mjs';
 import { SOURCE_REGISTRY } from '../src/domain/sourceRegistry.mjs';
+import { deriveRouteId as domainDeriveRouteId } from '../src/domain/vocabularyRouteId.mjs';
 import {
   deriveRouteId,
   extractReferencedNamespaceUrls,
@@ -88,15 +89,10 @@ describe('parseCsv Zeilenabschlüsse und Zeichenverbrauch', () => {
   });
 });
 
-describe('deriveRouteId Randfälle der Trennzeichen-Kappung', () => {
-  it('entfernt führende und nachlaufende Trennzeichen separat', () => {
-    expect(deriveRouteId('-leading.csv')).toBe('leading');
-    expect(deriveRouteId('trailing-.md')).toBe('trailing');
-    expect(deriveRouteId('-both-.md')).toBe('both');
-  });
-
-  it('liefert leere Route für reinen Trenner-Inhalt', () => {
-    expect(deriveRouteId('---.csv')).toBe('');
+describe('deriveRouteId', () => {
+  it('reicht die gemeinsame Ableitung aus src/domain unverändert weiter', () => {
+    // Randfälle prüft src/domain/vocabularyRouteId.test.ts neben der Logik.
+    expect(deriveRouteId).toBe(domainDeriveRouteId);
   });
 });
 

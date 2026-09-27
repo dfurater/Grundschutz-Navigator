@@ -44,6 +44,7 @@ import { parseProfileDocument } from '@/adapters/oscalProfileDocument';
 import {
   buildWorkUnitCalibration,
   buildWorkUnitWorstCase,
+  maxRepetitions,
 } from '../profileResolutionWorstCaseFixtures.mjs';
 import { createProfileResolutionBudget } from '@/domain/profileResolutionBudget';
 import { importClass2OscalDocument } from '@/adapters/oscalImportGate';
@@ -577,6 +578,16 @@ const harness = {
    * die Rate gehört gemessen, nicht geschätzt.
    */
   async profileResolutionCalibration(category, repetitions) {
+    // `buildWorkUnitCalibration` setzt kein `capped`; die Prüfung in
+    // `runResolutionFixture` greift für diesen Pfad deshalb nicht. Eine Rate,
+    // erhoben an einem Dokument jenseits der Dokumentgrenze, beschriebe einen
+    // Fall, den kein Angreifer einreichen kann.
+    const cap = maxRepetitions(category);
+    if (!Number.isInteger(cap) || repetitions > cap) {
+      throw new RangeError(
+        `Kalibrierfall ${category} mit ${repetitions} Wiederholungen liegt jenseits der Dokumentgrenze (${cap})`,
+      );
+    }
     return runResolutionFixture(buildWorkUnitCalibration(category, repetitions));
   },
 
