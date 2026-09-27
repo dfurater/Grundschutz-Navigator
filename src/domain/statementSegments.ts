@@ -167,28 +167,35 @@ function buildAtoms(
   const { stripped: resolved, offsets } = stripChoiceBrackets(substituted);
   const atoms: Atom[] = [];
   for (const piece of pieces) {
-    const resolvedStart = offsets[piece.start];
-    const resolvedEnd = offsets[piece.end];
-    const text = resolved.slice(resolvedStart, resolvedEnd);
-    // Ein Stueck ohne Text bleibt nur als nicht gesetzter Parameter (weder
-    // Wert noch Label) ein Segment: Die Darstellung markiert ihn sichtbar und
-    // erklaert ihn. Ein gesetzter leerer Wert wuerde sonst im Satzteil zum
-    // leeren Begriffs-Trigger und damit zu einem unsichtbaren Fokusziel.
-    if (text === '' && piece.unset !== true) {
-      continue;
-    }
-    // Fiel dazwischen ein gesetzter leerer Wert weg, bleibt der Text ein Stück:
-    // `prü{{ insert: param, leer }}fen` ist ein Wort, kein geteiltes.
-    const previous = atoms.at(-1);
-    if (piece.paramId === undefined && previous?.kind === 'text' && previous.resolvedEnd === resolvedStart) {
-      atoms[atoms.length - 1] = { ...previous, text: previous.text + text, resolvedEnd };
-      continue;
-    }
-    atoms.push(piece.paramId === undefined
-      ? { kind: 'text', text, resolvedStart, resolvedEnd }
-      : { kind: 'param', paramId: piece.paramId, value: text, resolvedStart, resolvedEnd });
+    appendAtom(atoms, piece, resolved, offsets);
   }
   return { atoms, resolved };
+}
+
+/** Überträgt ein Stück auf die aufgelöste Aussage und hängt es als Atom an. */
+function appendAtom(atoms: Atom[], piece: Piece, resolved: string, offsets: readonly number[]): void {
+  const resolvedStart = offsets[piece.start];
+  const resolvedEnd = offsets[piece.end];
+  const text = resolved.slice(resolvedStart, resolvedEnd);
+  // Ein Stueck ohne Text bleibt nur als nicht gesetzter Parameter (weder
+  // Wert noch Label) ein Segment: Die Darstellung markiert ihn sichtbar und
+  // erklaert ihn. Ein gesetzter leerer Wert wuerde sonst im Satzteil zum
+  // leeren Begriffs-Trigger und damit zu einem unsichtbaren Fokusziel.
+  if (text === '' && piece.unset !== true) {
+    return;
+  }
+  if (piece.paramId !== undefined) {
+    atoms.push({ kind: 'param', paramId: piece.paramId, value: text, resolvedStart, resolvedEnd });
+    return;
+  }
+  // Fiel dazwischen ein gesetzter leerer Wert weg, bleibt der Text ein Stück:
+  // `prü{{ insert: param, leer }}fen` ist ein Wort, kein geteiltes.
+  const previous = atoms.at(-1);
+  if (previous?.kind === 'text' && previous.resolvedEnd === resolvedStart) {
+    atoms[atoms.length - 1] = { ...previous, text: previous.text + text, resolvedEnd };
+    return;
+  }
+  atoms.push({ kind: 'text', text, resolvedStart, resolvedEnd });
 }
 
 function isClauseRole(role: SentenceSegmentRole): role is SentenceClauseRole {
