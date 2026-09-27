@@ -171,9 +171,12 @@ test('misst beim Scrollen im begrenzten Tooltip nicht neu und behält seine Scro
   expect(tooltip.scrollTop).toBeCloseTo(TOOLTIP_SCROLL_PX, 0);
 
   // Das Panel scrollt: Der Tooltip misst neu, sein Inhalt bleibt, wo er war.
+  const transformBefore = tooltip.style.transform;
+  const panelRemeasures = watchRemeasures(tooltip);
   panel.scrollTop = 4;
   await settle();
-  expect(tooltip.style.transform).not.toBe('');
+  expect(panelRemeasures()).toBeGreaterThan(0);
+  expect(tooltip.style.transform).not.toBe(transformBefore);
   expect(tooltip.scrollTop).toBeCloseTo(TOOLTIP_SCROLL_PX, 0);
 });
 
