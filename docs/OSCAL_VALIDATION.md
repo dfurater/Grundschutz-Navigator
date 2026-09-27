@@ -830,9 +830,9 @@ und fallen heraus. Ein Test hält beide Abschnitte aneinander fest.
 - **Die Worst-Case-Fixture ist mitgebunden.** Die Zählung sieht nur, was
   während `resolveProfile` läuft; die Eingaben baut
   [`profileResolutionWorstCaseFixtures.mjs`](../scripts/profileResolutionWorstCaseFixtures.mjs)
-  davor. Eine Änderung der Fixture, etwa mehr Controls im Quellkatalog,
-  verschiebt den Hüllen-Hash deshalb nicht. Ein
-  eigener Fingerprint (`fixture.sha256`) umfasst deshalb ihren wie oben
+  davor. Ihr Quelltext geht nicht direkt in den Hüllen-Hash ein; ändert die
+  Fixture, welche Codebereiche skalieren, kann er sich mittelbar ändern, muss
+  es aber nicht. Ein eigener Fingerprint (`fixture.sha256`) umfasst deshalb ihren wie oben
   normalisierten Quelltext und ihre beobachteten Eingaben aus den importierten
   Modulen: je Kategorie den Wiederholungsdeckel, den die Dokumentgrenzen aus
   `class2ImportLimits.mjs` setzen, und die Dokumente eines Kalibrierfalls mit
