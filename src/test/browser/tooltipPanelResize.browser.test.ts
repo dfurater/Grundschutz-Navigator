@@ -1,20 +1,29 @@
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, expect, test } from 'vitest';
-import { page } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
+import { buildControlUrl, CONTROL_ROUTE_PATTERN } from '@/app/routes';
 import { Tooltip } from '@/components/Tooltip';
+import type { Catalog, CatalogState, Control } from '@/domain/models';
+import { CatalogBrowser } from '@/features/catalog/CatalogBrowser';
+import { CatalogContext } from '@/state/CatalogContext';
+import { catalogCollectionDefaults } from '@/test/catalogState';
+import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
 import '@/index.css';
 
 /*
- * Geöffneter Tooltip im schmaler gezogenen Detail-Panel (Greptile-Befund im
- * Release-PR #307).
+ * Geöffneter Tooltip im schmaler gezogenen Detail-Panel (Greptile-Befunde in
+ * den PRs #307 und #308).
  *
  * Ziehen am Panelrand ändert die Breite ohne Fenster- oder Scrollereignis,
  * und `useDragToResize` verhindert beim Mousedown den Fokuswechsel: Ein per
- * Tastatur geöffneter Tooltip bleibt offen. `Tooltip.dismiss.test.tsx` gibt
- * die Geometrie vor; hier bricht Chromium den Tooltip wirklich um, und nach
- * dem Verengen muss er innerhalb der neuen Panelkante stehen.
+ * Tastatur geöffneter Tooltip bleibt offen. Der erste Test verengt ein Panel
+ * direkt und prüft die Geometrie: Chromium bricht den Tooltip wirklich um,
+ * und nach dem Verengen muss er innerhalb der neuen Panelkante stehen. Der
+ * zweite rendert den Katalog-Browser und zieht mit echter Maus am Handle, damit
+ * auch die Verbindung von Handle, `useDragToResize` und Panel abgesichert ist.
  */
 
 const EDGE_GAP_PX = 8;
@@ -25,13 +34,13 @@ const EXPLANATION = 'Eine lange Erklärung, die breiter ist als das verengte Pan
   + 'damit sie vollständig lesbar bleibt.';
 
 let root: Root | undefined;
-let panel: HTMLDivElement | undefined;
+let host: HTMLDivElement | undefined;
 
 afterEach(() => {
   root?.unmount();
-  panel?.remove();
+  host?.remove();
   root = undefined;
-  panel = undefined;
+  host = undefined;
 });
 
 function nextFrame(): Promise<void> {
@@ -43,7 +52,17 @@ async function settle(): Promise<void> {
   for (let frame = 0; frame < 4; frame++) await nextFrame();
 }
 
-function expectInsidePanel(tooltip: HTMLElement, area: HTMLElement) {
+function mount(element: Parameters<Root['render']>[0]): HTMLDivElement {
+  host = document.createElement('div');
+  document.body.append(host);
+  root = createRoot(host);
+  flushSync(() => {
+    root?.render(element);
+  });
+  return host;
+}
+
+function expectInsidePanel(tooltip: HTMLElement, area: Element) {
   const box = tooltip.getBoundingClientRect();
   const bounds = area.getBoundingClientRect();
   expect(box.left).toBeGreaterThanOrEqual(bounds.left + EDGE_GAP_PX - TOLERANCE_PX);
@@ -52,23 +71,18 @@ function expectInsidePanel(tooltip: HTMLElement, area: HTMLElement) {
 
 test('hält einen per Tastatur geöffneten Tooltip nach dem Verengen des Panels innerhalb der Panelkante', async () => {
   await page.viewport(1280, 800);
-  panel = document.createElement('div');
+  const panel = mount(createElement('p', null, createElement(Tooltip, {
+    idPrefix: 'tt-panel',
+    content: EXPLANATION,
+    // Ohne Umbruch bleibt der Auslöser breit, und mit ihm der Tooltip darunter.
+    describeTarget: (id: string) => createElement('button', {
+      type: 'button', 'aria-describedby': id, style: { whiteSpace: 'nowrap' },
+    }, 'Begriffsbestimmung mit einer ungewöhnlich langen Bezeichnung'),
+  })));
   panel.dataset.controlDetailScroll = '';
   panel.style.width = '720px';
   panel.style.height = '400px';
   panel.style.overflowY = 'auto';
-  document.body.append(panel);
-  root = createRoot(panel);
-  flushSync(() => {
-    root?.render(createElement('p', null, createElement(Tooltip, {
-      idPrefix: 'tt-panel',
-      content: EXPLANATION,
-      // Ohne Umbruch bleibt der Auslöser breit, und mit ihm der Tooltip darunter.
-      describeTarget: (id: string) => createElement('button', {
-        type: 'button', 'aria-describedby': id, style: { whiteSpace: 'nowrap' },
-      }, 'Begriffsbestimmung mit einer ungewöhnlich langen Bezeichnung'),
-    })));
-  });
   await document.fonts.ready;
 
   const trigger = panel.querySelector('button')!;
@@ -84,6 +98,98 @@ test('hält einen per Tastatur geöffneten Tooltip nach dem Verengen des Panels 
   await settle();
 
   expect(document.activeElement).toBe(trigger);
+  expect(tooltip.hidden).toBe(false);
+  expectInsidePanel(tooltip, panel);
+});
+
+const CONTROL: Control = {
+  id: 'GC.1.1',
+  altIdentifier: 'gc-1-1',
+  title: 'Verfahren dokumentieren',
+  groupId: 'GC.1',
+  practiceId: 'GC',
+  tags: [],
+  taxonomy: [],
+  threats: [],
+  statement: 'Die Institution MUSS ihre Verfahren fristgerecht dokumentieren.',
+  statementRaw: 'Die Institution MUSS ihre Verfahren fristgerecht dokumentieren.',
+  guidance: '',
+  statementProps: { praezisierung: 'fristgerecht', zielobjektKategorien: [] },
+  links: [],
+  params: {},
+  modalverb: 'MUSS',
+};
+
+function catalogState(): CatalogState {
+  const catalog: Catalog = {
+    catalogKey: 'gspp',
+    uuid: 'test-catalog',
+    metadata: {
+      title: 'Testkatalog',
+      lastModified: '2026-09-27T00:00:00Z',
+      version: 'test',
+      oscalVersion: '1.1.3',
+      props: [],
+      links: [],
+      roles: [],
+      parties: [],
+      responsibleParties: [],
+    },
+    practices: [],
+    controlsById: new Map([[CONTROL.id, CONTROL]]),
+    controlsByAltIdentifier: new Map([[CONTROL.altIdentifier!, CONTROL]]),
+    controls: [CONTROL],
+    backMatter: [],
+    totalControls: 1,
+  };
+  return {
+    ...catalogCollectionDefaults(),
+    catalogDocument: null,
+    catalog,
+    provenance: null,
+    verification: null,
+    vocabularyRegistry: createTestVocabularyRegistry(),
+    vocabularyProvenance: null,
+    vocabularyVerification: null,
+    loading: false,
+    error: null,
+  };
+}
+
+test('hält den Tooltip beim Ziehen am Handle des Katalog-Browsers offen und innerhalb der neuen Panelkante', async () => {
+  await page.viewport(1280, 800);
+  const app = mount(createElement(CatalogContext.Provider, { value: catalogState() },
+    createElement(MemoryRouter, { initialEntries: [buildControlUrl('gspp', CONTROL.altIdentifier!)] },
+      createElement(Routes, null,
+        createElement(Route, { path: CONTROL_ROUTE_PATTERN, element: createElement(CatalogBrowser) })))));
+  app.style.display = 'flex';
+  app.style.height = '800px';
+  await document.fonts.ready;
+  await settle();
+
+  const panel = app.querySelector('[data-control-detail-scroll]')!;
+  const sidebar = panel.closest('aside')!;
+  const startWidth = sidebar.getBoundingClientRect().width;
+  expect(startWidth).toBeGreaterThan(NARROW_PANEL_PX);
+
+  // Präzisierung ohne Vokabeleintrag: eigenes Fokusziel mit Hover-Tooltip.
+  const clause = panel.querySelector<HTMLElement>('[tabindex="0"][aria-describedby]')!;
+  expect(clause).toHaveTextContent('fristgerecht');
+  clause.focus();
+  await settle();
+  const tooltip = document.getElementById(clause.getAttribute('aria-describedby')!)!;
+  expect(tooltip.hidden).toBe(false);
+
+  // Echte Maus: Mousedown am Handle, Bewegung nach rechts verengt das Panel.
+  const narrowBy = startWidth - NARROW_PANEL_PX;
+  await userEvent.dragAndDrop(page.getByRole('button', { name: 'Panelbreite anpassen' }), sidebar, {
+    sourcePosition: { x: 3, y: 100 },
+    targetPosition: { x: 3 + narrowBy, y: 100 },
+  });
+  await settle();
+
+  expect(sidebar.getBoundingClientRect().width).toBeCloseTo(NARROW_PANEL_PX, 0);
+  expect(document.activeElement).toBe(clause);
   expect(tooltip.hidden).toBe(false);
   expectInsidePanel(tooltip, panel);
 });
