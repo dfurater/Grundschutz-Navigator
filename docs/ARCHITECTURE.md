@@ -50,7 +50,7 @@ Die Browser-Lane erzeugt keine Coverage-Ausgabe. Die verbindlichen V8-Coverage-S
 
 ## Verzeichnisstruktur
 
-Der Baum ist vollständig: Jedes Verzeichnis, unter dem Einträge stehen, führt alle seine Dateien und Unterverzeichnisse auf. Ausgenommen sind nur die kolokierten Tests (`*.test.*`). Ein Verzeichnis ohne eigene Einträge steht für seinen gesamten Inhalt. Neue, verschobene oder entfernte Dateien ziehen den Baum im selben Diff nach. `scripts/architecture-tree.test.ts` prüft ihn in `npm run test` gegen alle Dateien, die Git führt oder nicht ignoriert, und verlangt zu jedem Eintrag eine Beschreibung.
+Der Baum ist vollständig: Jedes Verzeichnis, unter dem Einträge stehen, führt alle seine Dateien und Unterverzeichnisse auf. Ausgenommen sind nur die kolokierten Tests (`*.test.*`). Ein Verzeichnis ohne eigene Einträge steht für seinen gesamten Inhalt. `scripts/architecture-tree.test.ts` prüft ihn in `npm run test` gegen alle Dateien, die Git führt oder nicht ignoriert: Der Test schlägt fehl, wenn ein Eintrag keine Beschreibung trägt, auf keinen existierenden Pfad passenden Typs zeigt oder ein aufgezähltes Verzeichnis eine nicht aufgeführte Datei enthält.
 
 ```
 src/                              # Anwendungsquellcode

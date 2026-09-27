@@ -186,6 +186,27 @@ describe('ControlStatement (GSPP-303 T5)', () => {
     expect(button).toHaveAttribute('aria-describedby', tooltip.id);
   });
 
+  it('erklärt eine unbekannte Parameter-ID wie toString nicht als offenen Platzhalter', () => {
+    const input: SegmentStatementInput = {
+      statementRaw: 'Die Institution muss {{ insert: param, toString }} beachten.',
+      params: {},
+      modalverb: 'muss',
+    };
+    const { container } = render(
+      <MemoryRouter>
+        <ControlStatement
+          statement="Fallback"
+          segments={plainSegmentsProps(input)}
+        />
+      </MemoryRouter>,
+    );
+    const scope = within(container);
+
+    const unknown = scope.getByText('[toString]', { exact: false });
+    expect(unknown.closest('button')).toBeNull();
+    expect(container.querySelector('.bg-\\[var\\(--color-accent-soft\\)\\]')).toBeNull();
+  });
+
   it('Satz in Fließtextgröße wie die Umsetzungshinweise', () => {
     const input: SegmentStatementInput = {
       statementRaw: 'Die Institution muss dokumentieren.',
