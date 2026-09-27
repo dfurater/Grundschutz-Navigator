@@ -219,6 +219,46 @@ describe('ControlCharacteristics (GSPP-303 T7)', () => {
     ).toBeInTheDocument();
   });
 
+  it('aufgelöste Relevanz außerhalb der Skala bleibt als Begriff erklärbar und steht in der Legende', () => {
+    const rows = makeSecurityRows();
+    const base = rows[0].levelResolution;
+    expect(base).not.toBeNull();
+    const extraEntry = { value: '3', definition: 'Künftige Stufe außerhalb der Skala.', columns: {} };
+    const namespace = {
+      ...base!.namespace,
+      entries: [...base!.namespace.entries, extraEntry],
+    };
+    const outOfScale: SecurityTargetRow = {
+      ...rows[0],
+      relevance: '3',
+      levelResolution: { namespace, entry: extraEntry },
+    };
+    const onToggle = vi.fn();
+    const { container } = render(
+      <MemoryRouter>
+        <ControlSecurityTargets
+          securityTargets={[outOfScale]}
+          isVocabularyActive={() => false}
+          onToggleVocabulary={onToggle}
+          renderVocabularyCard={() => null}
+        />
+      </MemoryRouter>,
+    );
+    const trigger = within(container).getByRole('button', { name: 'Relevanz Vertraulichkeit: 3' });
+    expect(trigger).toHaveTextContent('3');
+    expect(trigger).toHaveAttribute('aria-controls', toVocabCardId('security-target-level:confidentiality'));
+    expect(container.querySelector(`#${CSS.escape(toVocabCardId('security-target-level:confidentiality'))}`)).not.toBeNull();
+    fireEvent.click(trigger);
+    expect(onToggle).toHaveBeenCalledWith('security-target-level:confidentiality');
+    expect(within(container).queryByText('Keine offizielle Definition für diese Relevanzstufe verfügbar.')).toBeNull();
+
+    const legend = renderMerkmaleLegend([outOfScale]);
+    fireEvent.click(within(legend.container).getByRole('button', { name: 'Legende' }));
+    const panel = legend.container.querySelector('#legende-schutzziele') as HTMLElement;
+    expect(within(panel).getAllByRole('link').map((link) => link.textContent)).toEqual(['0', '1', '2', '3']);
+    expect(within(panel).getByText('Künftige Stufe außerhalb der Skala.')).toBeInTheDocument();
+  });
+
   it('Gefährdung zeigt nur den Namen; Kennung in aria-label, Karte und Tooltip', () => {
     const control = makeControl({
       threats: ['G 0.18'],

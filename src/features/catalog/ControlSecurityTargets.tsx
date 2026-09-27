@@ -36,25 +36,32 @@ function toRelevanceScaleValue(relevance: string) {
 }
 
 /**
- * Legende „Schutzziele und Gefährdungen“: alle drei Stufen aus dem BSI-Namensraum einer
- * aufgelösten Stufe, jeweils als dieselbe Punkte-Skala wie im Raster. Der Textlink steht in der Leiste „Schutzziele und Gefährdungen“
- * (`ControlDetailSection`), nicht im Schutzziel-Raster.
+ * Legende „Schutzziele und Gefährdungen“: alle Stufen aus dem BSI-Namensraum einer
+ * aufgelösten Stufe. Stufen der Skala stehen als dieselbe Punkte-Skala wie im
+ * Raster, danach jede weitere Stufe mit ihrem Wert, damit auch ein künftiger
+ * Wert außerhalb der Skala erklärt bleibt. Der Textlink steht in der Leiste
+ * „Schutzziele und Gefährdungen“ (`ControlDetailSection`), nicht im Schutzziel-Raster.
  */
 export function buildRelevanceLegendEntries(
   levelResolutions: ReadonlyArray<VocabularyResolution | null>,
 ): LegendEntry[] {
   const namespace = levelResolutions.find(Boolean)?.namespace;
   if (!namespace) return [];
-  return namespace.entries
-    .filter((entry) => entry.value === '0' || entry.value === '1' || entry.value === '2')
-    .sort((first, second) => Number(first.value) - Number(second.value))
-    .map((entry) => ({
+  const rank = (value: string) => toRelevanceScaleValue(value) ?? Number.POSITIVE_INFINITY;
+  // Kopie statt `toSorted`: Vite ergänzt keine Polyfills für ES2023.
+  const entries = [...namespace.entries];
+  entries.sort((first, second) => rank(first.value) - rank(second.value)
+    || first.value.localeCompare(second.value));
+  return entries.map((entry) => {
+    const scaleValue = toRelevanceScaleValue(entry.value);
+    return {
       category: getVocabularyTermLabel(namespace.source.fileName),
       term: entry.value,
       definition: entry.definition ?? '',
       href: vocabularyEntryHref(namespace, entry.value),
-      visual: <RelevanceScale value={Number(entry.value)} />,
-    }));
+      ...(scaleValue === null ? {} : { visual: <RelevanceScale value={scaleValue} /> }),
+    };
+  });
 }
 
 export function ControlSecurityTargets({
@@ -101,7 +108,19 @@ export function ControlSecurityTargets({
               ) : (
                 <span>{label}</span>
               )}
-              {levelResolution && relevanceScaleValue !== null ? (
+              {levelResolution && relevanceScaleValue === null && (
+                // Aufgelöste Stufe außerhalb der Skala: Wert als Begriffs-Trigger,
+                // damit ihre Karte erreichbar bleibt.
+                <TermTrigger
+                  vocabKey={levelVocabKey}
+                  active={levelActive}
+                  onToggle={onToggleVocabulary}
+                  label={relevance}
+                  ariaLabel={`Relevanz ${label}: ${relevance}`}
+                  className="relative inline-flex min-h-6 items-center text-left tabular-nums after:absolute after:-inset-y-2.5 after:inset-x-0 after:content-[''] lg:after:-inset-y-1"
+                />
+              )}
+              {levelResolution && relevanceScaleValue !== null && (
                 // Die Skala ist der Relevanz-Trigger; der Wert steht für
                 // Screenreader im Text, sichtbar erklärt ihn die Legende.
                 <button
@@ -121,9 +140,8 @@ export function ControlSecurityTargets({
                   </span>
                   <span className="sr-only">{relevance}</span>
                 </button>
-              ) : (
-                <span className="tabular-nums">{relevance}</span>
               )}
+              {!levelResolution && <span className="tabular-nums">{relevance}</span>}
               {!levelResolution && (
                 // `contain` hält den Hinweis aus der Spaltenbreite heraus.
                 <p className="col-span-2 text-xs leading-snug text-amber-700 [contain:inline-size]">

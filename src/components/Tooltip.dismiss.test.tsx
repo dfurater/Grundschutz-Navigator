@@ -64,6 +64,7 @@ describe('Tooltip schließen (GSPP-303 Review)', () => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
       if (this.hasAttribute('data-control-detail-scroll')) return rect(100, 100, panelRight - 100, 200);
       if (this.getAttribute('role') === 'tooltip') return rect(270, 130, 100, 30);
+      if (this.hasAttribute('data-tooltip-root')) return rect(250, 130, 20, 20);
       return rect(0, 0, 0, 0);
     });
     render(
@@ -85,5 +86,55 @@ describe('Tooltip schließen (GSPP-303 Review)', () => {
     });
     act(() => vi.advanceTimersByTime(20));
     expect(screen.getByRole('tooltip')).toHaveStyle({ transform: 'translate(-78px, 0px)' });
+  });
+
+  it('misst die Begrenzung beim Scrollen des Panels neu und löst sie, wenn der Auslöser hinausscrollt', async () => {
+    let scrollTop = 0;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.hasAttribute('data-control-detail-scroll')) return rect(100, 100, 200, 200);
+      if (this.getAttribute('role') === 'tooltip') return rect(120, 200 - scrollTop, 100, 30);
+      if (this.hasAttribute('data-tooltip-root')) return rect(110, 190 - scrollTop, 20, 10);
+      return rect(0, 0, 0, 0);
+    });
+    const { container } = render(
+      <div data-control-detail-scroll>
+        <Tooltip id="tt-scroll" content="Erklärung" describeTarget={(id) => (
+          <button type="button" aria-describedby={id}>Begriff</button>
+        )} />
+      </div>,
+    );
+    const panel = container.querySelector('[data-control-detail-scroll]');
+    const scrollPanel = (top: number) => {
+      scrollTop = top;
+      act(() => {
+        panel?.dispatchEvent(new Event('scroll'));
+      });
+    };
+
+    const user = setupUser();
+    await user.tab();
+    expect(screen.getByRole('tooltip')).toHaveStyle({ transform: 'translate(0px, 0px)' });
+
+    // Auslöser noch sichtbar, Tooltip oben angeschnitten: nach unten ins Panel schieben.
+    scrollPanel(95);
+    expect(screen.getByRole('tooltip')).toHaveStyle({ transform: 'translate(0px, 3px)' });
+
+    // Auslöser ganz oberhalb des Panels: Tooltip bleibt am Auslöser.
+    scrollPanel(120);
+    expect(screen.getByRole('tooltip').style.transform).toBe('');
+  });
+
+  it('entfernt die Scroll- und Resize-Listener beim Schließen', async () => {
+    const removeDocument = vi.spyOn(globalThis.document, 'removeEventListener');
+    const removeWindow = vi.spyOn(globalThis, 'removeEventListener');
+    render(
+      <Tooltip id="tt-cleanup" mode="toggle" content="Inhalt" describeTarget={() => <span>Platzhalter</span>} />,
+    );
+    const user = setupUser();
+    await user.click(screen.getByText('Platzhalter'));
+    await user.keyboard('{Escape}');
+
+    expect(removeDocument).toHaveBeenCalledWith('scroll', expect.any(Function), { capture: true });
+    expect(removeWindow).toHaveBeenCalledWith('resize', expect.any(Function));
   });
 });

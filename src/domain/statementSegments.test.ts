@@ -216,6 +216,33 @@ describe('segmentStatement', () => {
     expect(result.segments[0]).toEqual({ role: 'text', text: 'Die Institution mussmaß Risikoanalyse ' });
   });
 
+  it('verankert die Praktik nur als eigenständiges Wort am Satzanfang', () => {
+    const glued = segmentStatement({
+      statementRaw: 'Detektionssysteme muss die Institution prüfen.',
+      params: {},
+      practiceTitle: 'Detektion',
+      modalverb: 'muss',
+    });
+    expect(glued.segments.some((segment) => segment.role === 'practice')).toBe(false);
+    expect(glued.segments[0]).toEqual({ role: 'text', text: 'Detektionssysteme ' });
+
+    const later = segmentStatement({
+      statementRaw: 'Die Detektion muss die Institution prüfen.',
+      params: {},
+      practiceTitle: 'Detektion',
+      modalverb: 'muss',
+    });
+    expect(later.segments.some((segment) => segment.role === 'practice')).toBe(false);
+
+    const standalone = segmentStatement({
+      statementRaw: 'Detektion muss die Institution prüfen.',
+      params: {},
+      practiceTitle: 'Detektion',
+      modalverb: 'muss',
+    });
+    expect(standalone.segments[0]).toEqual({ role: 'practice', text: 'Detektion' });
+  });
+
   it('deckt Platzhalter am Satzanfang und -ende ab; abwesende Praktik bleibt ohne missing', () => {
     const statementRaw = '{{ insert: param, p }} muss {{ insert: param, q }}';
     const params: Record<string, ParamMeta> = {

@@ -87,36 +87,64 @@ const MISSING_KEY_BY_ROLE: Partial<Record<SentenceSegmentRole, MissingKey>> = {
 
 const WORD_CHAR = 'A-Za-zÄÖÜäöüß0-9_';
 
-function stripChoiceBrackets(text: string): string {
-  return text.replace(/{{([^{}]+)}}/g, '$1');
+/** Auswahlklammer-Muster, identisch zum zweiten Schritt von `resolveParams`. */
+const CHOICE_BRACKET_PATTERN = /{{([^{}]+)}}/g;
+
+/** Textstueck oder Platzhalter im Text mit eingesetzten Parametern. */
+interface Piece {
+  readonly paramId?: string;
+  readonly start: number;
+  readonly end: number;
+}
+
+/**
+ * Entfernt Auswahlklammern wie `resolveParams` (`{{text}}` → `text`) und
+ * bildet jede Position des Eingangstexts auf ihre Position im Ergebnis ab.
+ */
+function stripChoiceBrackets(text: string): { stripped: string; offsets: number[] } {
+  const removed = new Array<boolean>(text.length).fill(false);
+  for (const match of text.matchAll(CHOICE_BRACKET_PATTERN)) {
+    const end = match.index + match[0].length;
+    for (const index of [match.index, match.index + 1, end - 2, end - 1]) {
+      removed[index] = true;
+    }
+  }
+  const offsets = [0];
+  let stripped = '';
+  for (let index = 0; index < text.length; index += 1) {
+    if (!removed[index]) {
+      stripped += text[index];
+    }
+    offsets.push(stripped.length);
+  }
+  return { stripped, offsets };
 }
 
 /**
  * Zerlegt den Raw-Text in Atome (Textlaeufe + Platzhalter) und baut dabei die
- * aufgeloeste Aussage mit Offset-Abbildung auf.
+ * aufgeloeste Aussage mit Offset-Abbildung auf. Die Reihenfolge folgt
+ * `resolveParams`: erst Parameter einsetzen, dann Auswahlklammern entfernen.
+ * Eine Klammer kann einen Platzhalter umschliessen (`{{ vor {{ insert: param,
+ * p }} nach }}`); stueckweise bereinigt blieben ihre Haelften sichtbar.
  */
 function buildAtoms(
   statementRaw: string,
   params: Record<string, ParamMeta>,
 ): { atoms: Atom[]; resolved: string } {
-  const atoms: Atom[] = [];
-  let resolved = '';
-  const appendText = (rawText: string): void => {
-    // Der Adapter entfernt die BSI-Auswahlklammern nach der Parameterauflösung.
-    // Dieselbe Textsicht ist für Suchtext und sichtbare Satzsegmente nötig.
-    const text = stripChoiceBrackets(rawText);
-    atoms.push({
-      kind: 'text',
-      text,
-      resolvedStart: resolved.length,
-      resolvedEnd: resolved.length + text.length,
+  const pieces: Piece[] = [];
+  let substituted = '';
+  const appendPiece = (text: string, paramId?: string): void => {
+    pieces.push({
+      ...(paramId === undefined ? {} : { paramId }),
+      start: substituted.length,
+      end: substituted.length + text.length,
     });
-    resolved += text;
+    substituted += text;
   };
   let rawCursor = 0;
   for (const match of statementRaw.matchAll(new RegExp(PLACEHOLDER_PATTERN, 'g'))) {
     if (match.index > rawCursor) {
-      appendText(statementRaw.slice(rawCursor, match.index));
+      appendPiece(statementRaw.slice(rawCursor, match.index));
     }
     const paramId = match[1];
     // `Object.hasOwn`: Eine ID wie `toString` faende sonst die geerbte
@@ -124,21 +152,27 @@ function buildAtoms(
     const meta: ParamMeta | undefined = Object.hasOwn(params, paramId) ? params[paramId] : undefined;
     // Unbekannte IDs fallen wie in `resolveParams` auf `[id]` zurueck, damit
     // die aneinandergereihten Segmente der aufgeloesten Aussage entsprechen.
-    // Auswahlklammern im Wert entfernt der Adapter ebenso (`resolveParams`
-    // bereinigt erst nach dem Einsetzen), sonst wichen Satz und Suchtext ab.
-    const value = meta ? stripChoiceBrackets(meta.value) : `[${paramId}]`;
-    atoms.push({
-      kind: 'param',
-      paramId,
-      value,
-      resolvedStart: resolved.length,
-      resolvedEnd: resolved.length + value.length,
-    });
-    resolved += value;
+    appendPiece(meta ? meta.value : `[${paramId}]`, paramId);
     rawCursor = match.index + match[0].length;
   }
   if (rawCursor < statementRaw.length) {
-    appendText(statementRaw.slice(rawCursor));
+    appendPiece(statementRaw.slice(rawCursor));
+  }
+
+  const { stripped: resolved, offsets } = stripChoiceBrackets(substituted);
+  const atoms: Atom[] = [];
+  for (const piece of pieces) {
+    const resolvedStart = offsets[piece.start];
+    const resolvedEnd = offsets[piece.end];
+    // Ohne sichtbaren Text kein Atom: Ein leerer Platzhalter waere sonst ein
+    // unsichtbares Fokusziel.
+    if (resolvedEnd === resolvedStart) {
+      continue;
+    }
+    const text = resolved.slice(resolvedStart, resolvedEnd);
+    atoms.push(piece.paramId === undefined
+      ? { kind: 'text', text, resolvedStart, resolvedEnd }
+      : { kind: 'param', paramId: piece.paramId, value: text, resolvedStart, resolvedEnd });
   }
   return { atoms, resolved };
 }
@@ -166,8 +200,9 @@ function findWord(
 
 /**
  * Sucht alle Satzteile unabhaengig: Ergebnis und Praezisierung koennen vor dem
- * Handlungswort stehen, aber nie im Praktik-Praefix. Das Modalverb wird nach
- * der Praktik gesucht. Alle Satzteile brauchen Wortgrenzen.
+ * Handlungswort stehen, aber nie im Praktik-Praefix. Die Praktik zaehlt nur am
+ * Satzanfang, das Modalverb wird nach ihr gesucht. Alle Satzteile brauchen
+ * Wortgrenzen.
  */
 function findAnchors(
   input: SegmentStatementInput,
@@ -176,9 +211,14 @@ function findAnchors(
   const anchors: AnchorSpan[] = [];
   const missing: MissingKey[] = [];
   let practiceEnd = 0;
-  if (input.practiceTitle && resolved.startsWith(input.practiceTitle)) {
-    practiceEnd = input.practiceTitle.length;
-    anchors.push({ role: 'practice', start: 0, end: practiceEnd });
+  // Auch die Praktik nur als eigenstaendiges Wort: „Detektion“ darf nicht den
+  // Anfang von „Detektionssysteme“ markieren.
+  const practice = input.practiceTitle
+    ? findWord(resolved, input.practiceTitle, 0, 'practice')
+    : null;
+  if (practice?.start === 0) {
+    practiceEnd = practice.end;
+    anchors.push(practice);
   }
   let modalverbEnd = practiceEnd;
   if (input.modalverb) {
@@ -280,7 +320,8 @@ function clauseRoleAt(
  *
  * Reine Domain-Funktion: kein React, keine DOM-APIs. Die Segmente liegen in
  * Satzreihenfolge und sind lueckenlos — aneinandergereiht ergeben sie exakt
- * `statementRaw` mit Platzhaltern durch `params[id].value` ersetzt. Jeder
+ * den Text von `resolveParams`: Platzhalter durch `params[id].value` (oder
+ * `[id]`) ersetzt, danach Auswahlklammern entfernt. Jeder
  * Anker wird nur an seiner Fundstelle segmentiert (kein Global-Replace);
  * nicht gefundene oder verdeckte Satzteile landen in `missing`. Platzhalter
  * innerhalb von Ergebnis oder Praezisierung tragen den Satzteil in `partOf`.

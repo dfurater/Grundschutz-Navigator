@@ -174,6 +174,7 @@ describe('Tooltip (GSPP-303 T3)', () => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
       if (this.hasAttribute('data-control-detail-scroll')) return rect(100, 100, 200, 200);
       if (this.getAttribute('role') === 'tooltip') return rect(270, 130, 100, 30);
+      if (this.hasAttribute('data-tooltip-root')) return rect(250, 130, 20, 20);
       return rect(0, 0, 0, 0);
     });
     render(
