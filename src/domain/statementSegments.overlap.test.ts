@@ -122,3 +122,115 @@ describe('segmentStatement: Überlappungen und Platzhalter in Satzteilen', () =>
     expect(result.segments).toContainEqual({ role: 'param', text: 'Frist von 30 Tagen', paramId: 'p' });
   });
 });
+
+describe('segmentStatement: Satzteile im eingesetzten Parameterwert', () => {
+  const setValue = (value: string): ParamMeta => ({ value, hasValue: true });
+
+  /** Jeder gefundene Satzteil braucht ein Segment, das seine Rolle trägt. */
+  function expectFoundPartsReachable(input: Parameters<typeof segmentStatement>[0]) {
+    const result = segmentStatement(input);
+    const parts = [
+      ['handlungsworte', 'handlungswort'],
+      ['ergebnis', 'ergebnis'],
+      ['praezisierung', 'praezisierung'],
+    ] as const;
+    for (const [key, role] of parts) {
+      if (!input[key] || result.missing.includes(key)) continue;
+      expect(result.segments.some((segment) => segment.role === role || segment.partOf === role)).toBe(true);
+    }
+    return result;
+  }
+
+  it('meldet ein Handlungswort, das nur als Parameterwert vorkommt, als missing', () => {
+    const result = expectFoundPartsReachable({
+      statementRaw: 'Detektion MUSS die Regeln {{ insert: param, p }}.',
+      params: { p: setValue('verschärfen') },
+      practiceTitle: 'Detektion',
+      modalverb: 'MUSS',
+      handlungsworte: 'verschärfen',
+    });
+
+    expect(result.missing).toContain('handlungsworte');
+    expect(result.segments).toContainEqual({ role: 'param', text: 'verschärfen', paramId: 'p' });
+  });
+
+  it('verankert das Handlungswort an der ersten Fundstelle außerhalb eines Parameterwerts', () => {
+    const result = expectFoundPartsReachable({
+      statementRaw: 'Detektion MUSS {{ insert: param, p }} und Regeln prüfen.',
+      params: { p: setValue('Protokolle prüfen') },
+      practiceTitle: 'Detektion',
+      modalverb: 'MUSS',
+      handlungsworte: 'prüfen',
+    });
+
+    expect(result.missing).not.toContain('handlungsworte');
+    expect(result.segments.at(-2)).toEqual({ role: 'handlungswort', text: 'prüfen' });
+  });
+
+  it('verankert das Modalverb nicht im Parameterwert', () => {
+    const result = expectFoundPartsReachable({
+      statementRaw: 'Detektion {{ insert: param, p }} MUSS Regeln prüfen.',
+      params: { p: setValue('für MUSS-Vorgaben') },
+      practiceTitle: 'Detektion',
+      modalverb: 'MUSS',
+      handlungsworte: 'prüfen',
+    });
+
+    expect(result.segments).toContainEqual({ role: 'modalverb', text: 'MUSS' });
+    expect(result.segments).toContainEqual({ role: 'param', text: 'für MUSS-Vorgaben', paramId: 'p' });
+  });
+
+  it('verankert die Praktik nicht in einem Parameterwert am Satzanfang', () => {
+    const result = expectFoundPartsReachable({
+      statementRaw: '{{ insert: param, p }} MUSS Regeln prüfen.',
+      params: { p: setValue('Detektion') },
+      practiceTitle: 'Detektion',
+      modalverb: 'MUSS',
+      handlungsworte: 'prüfen',
+    });
+
+    expect(result.segments[0]).toEqual({ role: 'param', text: 'Detektion', paramId: 'p' });
+    expect(result.segments.some((segment) => segment.role === 'practice')).toBe(false);
+  });
+
+  it('verankert ein Ergebnis im Text, wenn es zuerst im Inneren eines Parameterwerts steht', () => {
+    const result = expectFoundPartsReachable({
+      statementRaw: 'Detektion MUSS {{ insert: param, p }} und einen Bericht erstellen.',
+      params: { p: setValue('den Bericht prüfen') },
+      practiceTitle: 'Detektion',
+      modalverb: 'MUSS',
+      handlungsworte: 'erstellen',
+      ergebnis: 'Bericht',
+    });
+
+    expect(result.missing).not.toContain('ergebnis');
+    expect(result.segments).toContainEqual({ role: 'ergebnis', text: 'Bericht' });
+  });
+
+  it('meldet ein Ergebnis über zwei Parameterwerte ohne eigenen Text als missing', () => {
+    const result = expectFoundPartsReachable({
+      statementRaw: 'Detektion MUSS {{ insert: param, a }}{{ insert: param, b }} erstellen.',
+      params: { a: setValue('einen Be'), b: setValue('richt heute') },
+      practiceTitle: 'Detektion',
+      modalverb: 'MUSS',
+      handlungsworte: 'erstellen',
+      ergebnis: 'Bericht',
+    });
+
+    expect(result.missing).toContain('ergebnis');
+  });
+
+  it('ordnet einen leeren Platzhalter an der Grenze eines Satzteils diesem nicht zu', () => {
+    const result = expectFoundPartsReachable({
+      statementRaw: 'Detektion MUSS {{ insert: param, p }}{{ insert: param, leer }} erstellen.',
+      params: { p: setValue('einen Bericht'), leer: { value: '', hasValue: false } },
+      practiceTitle: 'Detektion',
+      modalverb: 'MUSS',
+      handlungsworte: 'erstellen',
+      ergebnis: 'Bericht',
+    });
+
+    expect(result.missing).toContain('ergebnis');
+    expect(result.segments).toContainEqual({ role: 'param', text: '', paramId: 'leer' });
+  });
+});

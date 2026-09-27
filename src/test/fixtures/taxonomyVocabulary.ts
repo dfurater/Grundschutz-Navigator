@@ -1,4 +1,9 @@
 import type { VocabularyNamespaceData } from '@/domain/models';
+import {
+  BSI_NAMESPACE_DIRECTORY,
+  PRACTICES_NAMESPACE_URL,
+  TOPICS_NAMESPACE_URL,
+} from '@/domain/vocabularyNamespaces';
 
 /** Kennungen der Taxonomie-Fixture; Tests referenzieren sie statt Literalen. */
 export const TAXONOMY_IDENTIFIERS = {
@@ -10,10 +15,9 @@ export const TAXONOMY_IDENTIFIERS = {
 export function createTaxonomyVocabularyNamespaces(): VocabularyNamespaceData[] {
   return [{
     source: {
-      namespace:
-        'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/practices.csv',
+      namespace: PRACTICES_NAMESPACE_URL,
       repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
-      path: 'documentation/namespaces/practices.csv',
+      path: `${BSI_NAMESPACE_DIRECTORY}/practices.csv`,
       fileName: 'practices.csv',
       routeId: 'documentation-namespaces-practices',
       gitBlobSha: 'practice-blob-sha',
@@ -46,10 +50,9 @@ export function createTaxonomyVocabularyNamespaces(): VocabularyNamespaceData[] 
     }],
   }, {
     source: {
-      namespace:
-        'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/topics.csv',
+      namespace: TOPICS_NAMESPACE_URL,
       repository: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek',
-      path: 'documentation/namespaces/topics.csv',
+      path: `${BSI_NAMESPACE_DIRECTORY}/topics.csv`,
       fileName: 'topics.csv',
       routeId: 'documentation-namespaces-topics',
       gitBlobSha: 'topic-blob-sha',

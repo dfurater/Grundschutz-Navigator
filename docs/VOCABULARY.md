@@ -354,7 +354,7 @@ Verweisspalten sind davon ausgenommen. Ein `ChildOfUUID`-Wert erscheint als Link
 - [INTEGRITY.md](./INTEGRITY.md) — Integritätsprüfung
 - `src/domain/vocabulary.ts` — Vocabulary-Implementierung
 - `src/domain/taxonomyVocabulary.ts` — UUID-basierte Praktik- und Themen-Auflösung
-- `src/domain/vocabularyNamespaces.ts` — kanonische BSI-Namespace-URLs für synthetische Lookups
+- `src/domain/vocabularyNamespaces.ts` — kanonische BSI-Namespace-URLs für synthetische Lookups, abgeleitet aus dem Quellregister; Tests und Fixtures importieren sie samt `BSI_NAMESPACE_DIRECTORY`, statt sie abzuschreiben. `vocabularyNamespaces.copies.node.test.ts` schlägt fehl, sobald eine dieser URLs unter `src/` als Literal steht.
 - `src/domain/models.ts` — Vocabulary Types
 - `src/state/CatalogContext.tsx` — Context-Integration
 - `src/features/catalog/ControlTaxonomyBreadcrumb.tsx` — kontextuelle Taxonomie-Definitionen

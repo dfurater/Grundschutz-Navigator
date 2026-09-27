@@ -16,11 +16,9 @@ import {
 } from './ControlSecurityTargets';
 import { ControlSubjectGroup } from './ControlTaxonomy';
 import { SectionLegend, toVocabCardId } from './ControlVocabularyPrimitives';
+import { SECURITY_TARGETS_NAMESPACE_URL } from '@/domain/vocabularyNamespaces';
 
 const registry = createTestVocabularyRegistry();
-
-const SECURITY_TARGETS_NS =
-  'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets.csv';
 
 function makeControl(overrides: Partial<Control> = {}): Control {
   return {
@@ -49,18 +47,18 @@ function makeSecurityRows(): SecurityTargetRow[] {
     confidentialityProp: {
       name: 'confidentiality',
       value: '2',
-      ns: SECURITY_TARGETS_NS,
+      ns: SECURITY_TARGETS_NAMESPACE_URL,
     },
-    integrityProp: { name: 'integrity', value: '1', ns: SECURITY_TARGETS_NS },
+    integrityProp: { name: 'integrity', value: '1', ns: SECURITY_TARGETS_NAMESPACE_URL },
     availabilityProp: {
       name: 'availability',
       value: '1',
-      ns: SECURITY_TARGETS_NS,
+      ns: SECURITY_TARGETS_NAMESPACE_URL,
     },
     authenticityProp: {
       name: 'authenticity',
       value: '0',
-      ns: SECURITY_TARGETS_NS,
+      ns: SECURITY_TARGETS_NAMESPACE_URL,
     },
   });
   const resolved = resolveControlVocabularies(registry, control);

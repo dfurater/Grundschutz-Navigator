@@ -20,6 +20,10 @@ import {
   VOCABULARY_IDENTIFIERS,
   createTestVocabularyRegistry,
 } from '@/test/fixtures/vocabulary';
+import {
+  PRACTICES_NAMESPACE_URL,
+  SECURITY_TARGETS_NAMESPACE_URL,
+} from './vocabularyNamespaces';
 
 const namespaceUrl =
   'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_level.csv';
@@ -197,13 +201,13 @@ describe('vocabulary runtime', () => {
       confidentialityProp: {
         name: 'confidentiality',
         value: '2',
-        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets.csv',
+        ns: SECURITY_TARGETS_NAMESPACE_URL,
       },
       integrity: '1',
       integrityProp: {
         name: 'integrity',
         value: '1',
-        ns: 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets.csv',
+        ns: SECURITY_TARGETS_NAMESPACE_URL,
       },
       threats: ['G 0.18', 'G 0.99'],
       threatsProp: {
@@ -264,9 +268,7 @@ describe('vocabulary runtime', () => {
       altIdentifier: 'unbekannte-uuid',
     })).toBeNull();
 
-    const practicesNamespace = registry.namespacesByUrl.get(
-      'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/practices.csv',
-    );
+    const practicesNamespace = registry.namespacesByUrl.get(PRACTICES_NAMESPACE_URL);
     practicesNamespace!.entries.push({
       value: 'DUP',
       definition: 'Uneindeutiger Eintrag.',

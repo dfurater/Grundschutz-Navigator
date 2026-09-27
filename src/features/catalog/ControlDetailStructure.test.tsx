@@ -8,6 +8,7 @@ import { useCatalog } from '@/hooks/useCatalog';
 import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
 import { catalogCollectionDefaults } from '@/test/catalogState';
 import { ControlDetail } from './ControlDetail';
+import { SECURITY_TARGETS_NAMESPACE_URL } from '@/domain/vocabularyNamespaces';
 
 vi.mock('@/hooks/useCatalog', () => ({
   useCatalog: vi.fn(),
@@ -15,9 +16,6 @@ vi.mock('@/hooks/useCatalog', () => ({
 
 const mockedUseCatalog = vi.mocked(useCatalog);
 const vocabularyRegistry = createTestVocabularyRegistry();
-
-const SECURITY_TARGETS_NS =
-  'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets.csv';
 
 function makeControl(overrides: Partial<Control> = {}): Control {
   return {
@@ -132,13 +130,13 @@ function makeFullControl(): Control {
       ns: 'https://example.com/namespaces/modal_verbs.csv',
     },
     confidentiality: '2',
-    confidentialityProp: { name: 'confidentiality', value: '2', ns: SECURITY_TARGETS_NS },
+    confidentialityProp: { name: 'confidentiality', value: '2', ns: SECURITY_TARGETS_NAMESPACE_URL },
     integrity: '1',
-    integrityProp: { name: 'integrity', value: '1', ns: SECURITY_TARGETS_NS },
+    integrityProp: { name: 'integrity', value: '1', ns: SECURITY_TARGETS_NAMESPACE_URL },
     availability: '1',
-    availabilityProp: { name: 'availability', value: '1', ns: SECURITY_TARGETS_NS },
+    availabilityProp: { name: 'availability', value: '1', ns: SECURITY_TARGETS_NAMESPACE_URL },
     authenticity: '0',
-    authenticityProp: { name: 'authenticity', value: '0', ns: SECURITY_TARGETS_NS },
+    authenticityProp: { name: 'authenticity', value: '0', ns: SECURITY_TARGETS_NAMESPACE_URL },
     threats: ['G 0.18'],
     guidance: 'Ausführlicher Umsetzungshinweis.',
     links: [{

@@ -2,6 +2,7 @@ import { act, fireEvent, render, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router';
 import type { SegmentStatementInput } from '@/domain/statementSegments';
+import { segmentStatement } from '@/domain/statementSegments';
 import { ControlStatement, PLACEHOLDER_TOGGLETIP, type ControlStatementSegmentsProps } from './ControlStatement';
 import { ControlStatementDetails } from './ControlStatementDetails';
 
@@ -102,6 +103,34 @@ describe('ControlStatement Satzteile und Restdetails (GSPP-303 Review)', () => {
     expect(scope.queryByRole('button', { name: 'Vokabularbegriff Sicherheitsziele' })).toBeNull();
     fireEvent.click(scope.getByText('Sicherheitsziele'));
     expect(scope.getByRole('tooltip', { name: `Ergebnis${PLACEHOLDER_TOGGLETIP}` })).toBeInTheDocument();
+  });
+
+  it('Handlungswort nur im Parameterwert bleibt über seine Restzeile erklärbar', () => {
+    const input: SegmentStatementInput = {
+      statementRaw: 'Die Institution muss die Regeln {{ insert: param, p }}.',
+      params: { p: { value: 'verschärfen', hasValue: true } },
+      modalverb: 'muss',
+      handlungsworte: 'verschärfen',
+    };
+    const resolution = { namespace: {} as never, entry: { value: 'verschärfen', columns: {} } };
+    const { container } = render(
+      <MemoryRouter>
+        <ControlStatement statement="Fallback" segments={{ ...plainSegmentsProps(input), handlungswortResolution: resolution }}>
+          <ControlStatementDetails
+            details={[{ key: 'handlungsworte', label: 'Handlungswort', value: 'verschärfen', resolution }]}
+            missing={segmentStatement(input).missing}
+            isVocabularyActive={() => false}
+            onToggleVocabulary={() => {}}
+            renderVocabularyCard={() => null}
+          />
+        </ControlStatement>
+      </MemoryRouter>,
+    );
+    const scope = within(container);
+
+    expect(scope.getByText('Handlungswort')).toBeInTheDocument();
+    const trigger = scope.getByRole('button', { name: 'Vokabularbegriff verschärfen' });
+    expect(container.querySelector(`#${trigger.getAttribute('aria-controls') ?? ''}`)).not.toBeNull();
   });
 
   it('ControlStatementDetails: geschlossene Karte bleibt als aria-controls-Ziel im DOM', () => {

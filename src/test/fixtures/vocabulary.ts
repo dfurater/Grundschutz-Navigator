@@ -8,6 +8,11 @@ import {
   createTaxonomyVocabularyNamespaces,
   TAXONOMY_IDENTIFIERS,
 } from './taxonomyVocabulary';
+import {
+  BSI_NAMESPACE_DIRECTORY,
+  SECURITY_TARGETS_NAMESPACE_URL,
+  SECURITY_TARGET_LEVELS_NAMESPACE_URL,
+} from '@/domain/vocabularyNamespaces';
 
 /**
  * Kennungen der Vokabular-Fixture. Die drei Gefährdungen teilen sich bewusst
@@ -312,9 +317,8 @@ export function createTestVocabularyRegistry() {
         ],
       }),
       createNamespace({
-        namespace:
-          'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets.csv',
-        path: 'documentation/namespaces/security_targets.csv',
+        namespace: SECURITY_TARGETS_NAMESPACE_URL,
+        path: `${BSI_NAMESPACE_DIRECTORY}/security_targets.csv`,
         fileName: 'security_targets.csv',
         routeId: 'documentation-namespaces-security-targets',
         entries: [
@@ -325,9 +329,8 @@ export function createTestVocabularyRegistry() {
         ],
       }),
       createNamespace({
-        namespace:
-          'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/security_targets_levels.csv',
-        path: 'documentation/namespaces/security_targets_levels.csv',
+        namespace: SECURITY_TARGET_LEVELS_NAMESPACE_URL,
+        path: `${BSI_NAMESPACE_DIRECTORY}/security_targets_levels.csv`,
         fileName: 'security_targets_levels.csv',
         routeId: 'documentation-namespaces-security-targets-levels',
         valueColumn: 'Wert',
