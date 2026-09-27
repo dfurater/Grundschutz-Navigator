@@ -1027,7 +1027,7 @@ kleines `v`: `v1.2.2` bindet die Zelle `1.2.2`, `V1.2.2`, `vv1.2.2` und `v1.2` b
 Das Dokument selbst wird dabei nicht verändert; Stufe 3 validiert den
 unveränderten Wert gegen das Schema der gewählten Zelle. `artifact.oscalVersion`
 trägt die gebundene Version, bei einer Ablehnung nur ein Mitglied der gepinnten
-Menge oder `null`. Klasse 1 bindet in Fetch und Browser weiterhin exakt,
+Menge oder `null`. Klasse 1 bindet in Fetch und Browser exakt,
 dort bleibt `v1.2.2` `OSCAL_VERSION_MALFORMED`. Herleitung und Belege:
 [OSCAL_VERSION_MATRIX.md](OSCAL_VERSION_MATRIX.md#führendes-v-in-metadataoscal-version).
 
