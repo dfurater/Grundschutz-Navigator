@@ -197,17 +197,35 @@ function liesWithin(atom: Atom, start: number, end: number): boolean {
     && start < atom.resolvedEnd && atom.resolvedStart < end;
 }
 
+const WORD_CHAR_PATTERN = new RegExp(`[${WORD_CHAR}]`);
+
+/** Eine Stueckgrenze im Inneren des Bereichs trennt zwei Wortzeichen. */
+function splitsWord(resolved: string, atoms: readonly Atom[], span: AnchorSpan): boolean {
+  return atoms.some((atom) => [atom.resolvedStart, atom.resolvedEnd].some(
+    (edge) => span.start < edge && edge < span.end
+      && WORD_CHAR_PATTERN.test(resolved[edge - 1])
+      && WORD_CHAR_PATTERN.test(resolved[edge]),
+  ));
+}
+
 /**
- * Ein Anker ist nur dort erreichbar, wo ein Segment seine Rolle tragen kann:
- * Textstuecke erhalten sie direkt, ein Platzhalter nur als `partOf` von
- * Ergebnis oder Praezisierung, wenn er ganz im Satzteil liegt. Ein Anker ganz
- * im Wert eines Platzhalters bliebe sonst ohne Ausloeser und, weil er als
- * gefunden gilt, auch ohne Restzeile.
+ * Ein Anker ist nur dort erreichbar, wo die Segmente ihn vollstaendig tragen:
+ * Jedes Stueck, das er beruehrt, muss ein Textstueck sein oder, bei Ergebnis
+ * und Praezisierung, ein Parameterwert ganz im Satzteil (`partOf`), und keine
+ * Stueckgrenze darf ein Wort teilen. Liegt die Fundstelle im Wert eines
+ * Platzhalters, truege kein Segment die Rolle; schneidet sie einen Wert an oder
+ * teilt ein Wert ein Wort (`Risi{{ insert: param, p }}` mit `p = "ko"`), truege
+ * nur ein Wortteil den Ausloeser. Weil der Anker als gefunden gaelte, fehlte in
+ * beiden Faellen auch die Restzeile mit dem vollstaendigen Begriff.
  */
-function isReachable(span: AnchorSpan, atoms: readonly Atom[]): boolean {
-  return atoms.some((atom) => (atom.kind === 'text'
-    ? atom.resolvedStart < span.end && span.start < atom.resolvedEnd
-    : isClauseRole(span.role) && liesWithin(atom, span.start, span.end)));
+function isReachable(resolved: string, atoms: readonly Atom[], span: AnchorSpan): boolean {
+  const touched = atoms.filter(
+    (atom) => atom.resolvedStart < span.end && span.start < atom.resolvedEnd,
+  );
+  return touched.length > 0
+    && touched.every((atom) => atom.kind === 'text'
+      || (isClauseRole(span.role) && liesWithin(atom, span.start, span.end)))
+    && !splitsWord(resolved, atoms, span);
 }
 
 /**
@@ -229,7 +247,7 @@ function findWord(
   wordRe.lastIndex = from;
   for (let match = wordRe.exec(resolved); match !== null; match = wordRe.exec(resolved)) {
     const span = { role, start: match.index, end: match.index + match[0].length };
-    if (isReachable(span, atoms)) {
+    if (isReachable(resolved, atoms, span)) {
       return span;
     }
   }
@@ -323,8 +341,8 @@ function buildRanges(
 
 /**
  * Satzteil eines Platzhalters: nur, wenn der Wert ganz in einem Satzteil
- * liegt. Ein Satzteil ganz im Wert wird gar nicht erst verankert
- * (`isReachable`) und erscheint als Restzeile.
+ * liegt. Ein Satzteil im Wert oder einer, der einen Wert nur anschneidet, wird
+ * gar nicht erst verankert (`isReachable`) und erscheint als Restzeile.
  */
 function clauseRoleAt(
   ranges: readonly Range[],

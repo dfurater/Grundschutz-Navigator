@@ -6,9 +6,12 @@
 // weil die Auflösung exakte URL-Strings vergleicht und bei Abweichung still
 // `null` liefert. Ein Test oder eine Fixture, die eine dieser URLs als Literal
 // abschreibt, prüft nach einer Pfadmigration weiter gegen den alten Namespace,
-// statt die produktive Auflösung abzusichern. Dieser Test sucht deshalb jede
-// exportierte URL wörtlich unter `src/`; auch ihre Quelle bildet sie nur aus
-// dem Quellregister. Neue Konstanten fallen ohne Nachpflege unter die Prüfung.
+// statt die produktive Auflösung abzusichern. Dieser Test sucht deshalb unter
+// `src/` jede BSI-URL auf eine der abgeleiteten Dateien, gleich unter welchem
+// Verzeichnis: Nach einer Migration stimmt eine stehengebliebene Kopie mit
+// keiner aktuellen URL mehr überein, zeigt aber weiter auf denselben
+// Dateinamen. Auch die Quelle bildet die URLs nur aus dem Quellregister. Neue
+// Konstanten fallen ohne Nachpflege unter die Prüfung.
 // `scripts/` bleibt außen vor: Die Pipeline bildet ihre URLs selbst
 // (`vocabulary-utils.mjs`), und ihre Tests reichen URLs als Eingabe an den
 // Parser, statt die Auflösung der App gegen sie zu prüfen.
@@ -35,6 +38,21 @@ const derivedUrls = Object.values(vocabularyNamespaces).filter(
   (value): value is string => typeof value === 'string' && value.startsWith('https://'),
 );
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+}
+
+/** Repository samt `/tree/`, beliebiger Pfad, dann der Dateiname der Konstante. */
+const copyPatterns = derivedUrls.map((url) => {
+  const repositoryTree = url.slice(0, url.indexOf('/tree/') + '/tree/'.length);
+  const fileName = url.slice(url.lastIndexOf('/') + 1);
+  return new RegExp(`${escapeRegExp(repositoryTree)}[^\\s'"\`]*/${escapeRegExp(fileName)}(?![\\w.])`, 'g');
+});
+
+function findCopies(content: string): string[] {
+  return copyPatterns.flatMap((pattern) => [...content.matchAll(pattern)].map((match) => match[0]));
+}
+
 describe('abgeleitete Namespace-URLs', () => {
   it('umfasst alle exportierten Namespace-Konstanten', () => {
     // Ohne diese Probe bliebe der Test grün, wenn der Filter nichts fände.
@@ -46,15 +64,23 @@ describe('abgeleitete Namespace-URLs', () => {
     ]));
   });
 
+  it('erkennt auch eine Kopie unter einem früheren Verzeichnis', () => {
+    // Laufzeitwert statt Literal, sonst fände der Test unten diese Datei selbst.
+    for (const url of derivedUrls) {
+      const stale = url.replace(
+        `/${vocabularyNamespaces.BSI_NAMESPACE_DIRECTORY}/`,
+        '/Dokumentation/namespaces/',
+      );
+      expect(stale).not.toBe(url);
+      expect(findCopies(`ns: '${stale}',`)).toEqual([stale]);
+    }
+  });
+
   it('stehen unter src/ nirgends als Literal', () => {
     const copies = listSourceFiles(join(REPOSITORY_ROOT, SEARCHED_ROOT))
       .map((path) => relative(REPOSITORY_ROOT, path).split('\\').join('/'))
-      .flatMap((path) => {
-        const content = readFileSync(join(REPOSITORY_ROOT, path), 'utf8');
-        return derivedUrls
-          .filter((url) => content.includes(url))
-          .map((url) => `${path}: ${url}`);
-      });
+      .flatMap((path) => findCopies(readFileSync(join(REPOSITORY_ROOT, path), 'utf8'))
+        .map((copy) => `${path}: ${copy}`));
 
     expect(copies).toEqual([]);
   });

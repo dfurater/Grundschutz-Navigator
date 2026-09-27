@@ -7,6 +7,7 @@ import {
   VOCABULARY_IDENTIFIERS,
   createTestVocabularyRegistry,
 } from '@/test/fixtures/vocabulary';
+import { bsiNamespaceLocation } from '@/test/fixtures/taxonomyVocabulary';
 import { VocabularyEntryCard } from '@/features/vocabularies/VocabularyEntryCard';
 import { ControlSecurityContext } from './ControlSecurityContext';
 import {
@@ -461,7 +462,7 @@ describe('ControlCharacteristics (GSPP-303 T7)', () => {
       const link = panelScope.getByRole('link', { name: value });
       expect(link).toHaveAttribute(
         'href',
-        `/vokabular/documentation-namespaces-security-targets-levels?wert=${value}`,
+        `/vokabular/${bsiNamespaceLocation('security_targets_levels.csv').routeId}?wert=${value}`,
       );
     }
     expect(

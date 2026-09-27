@@ -18,7 +18,10 @@ import '@/index.css';
  * Spalten des jeweiligen Breakpoints. Maßstab ist die Lage, die jede Zeile in
  * der vollständigen Liste hätte: Datenbeginn plus Index mal Zeilenabstand.
  * Misst die Fensterung einen falschen Abstand, verschieben sich die Zeilen
- * hinter einem Platzhalter oder das Fenster reicht nicht bis zum Rand.
+ * hinter einem Platzhalter oder das Fenster reicht nicht bis zum Rand. Geprüft
+ * werden die Zustände der App: mit und ohne Auswahlspalte sowie mit einer per
+ * Tastatur auf die letzte Zeile gesetzten Tab-Stopp-Zeile, die außerhalb des
+ * Fensters gerendert bleibt und einen weiteren Platzhalter erzeugt.
  */
 
 const ROW_COUNT = 400;
@@ -69,7 +72,27 @@ async function settle(): Promise<void> {
   for (let frame = 0; frame < 4; frame++) await nextFrame();
 }
 
-async function renderTable(): Promise<HTMLElement> {
+interface Scenario {
+  readonly label: string;
+  readonly showSelection: boolean;
+  readonly holdLastRow: boolean;
+}
+
+const SCENARIOS: readonly Scenario[] = [
+  { label: 'ohne Auswahlspalte', showSelection: false, holdLastRow: false },
+  { label: 'mit Auswahlspalte', showSelection: true, holdLastRow: false },
+  { label: 'mit Auswahlspalte und Tab-Stopp auf der letzten Zeile', showSelection: true, holdLastRow: true },
+];
+
+const baseProps = {
+  controls,
+  controlsById,
+  sort: [{ field: 'id' as const, direction: 'asc' as const }],
+  onSortChange: () => {},
+  onSelectControl: () => {},
+};
+
+async function renderTable({ showSelection, holdLastRow }: Scenario): Promise<HTMLElement> {
   host = document.createElement('div');
   host.style.display = 'flex';
   host.style.flexDirection = 'column';
@@ -77,18 +100,22 @@ async function renderTable(): Promise<HTMLElement> {
   document.body.append(host);
   root = createRoot(host);
   flushSync(() => {
-    root?.render(createElement(ControlTable, {
-      controls,
-      controlsById,
-      sort: [{ field: 'id', direction: 'asc' }],
-      onSortChange: () => {},
-      onSelectControl: () => {},
-      showSelection: false,
-    }));
+    root?.render(showSelection
+      ? createElement(ControlTable, { ...baseProps, checkedIds: new Set<string>(), onCheckedChange: () => {} })
+      : createElement(ControlTable, { ...baseProps, showSelection: false }));
   });
   await document.fonts.ready;
   await settle();
-  return host.firstElementChild as HTMLElement;
+  const scroller = host.firstElementChild as HTMLElement;
+  if (holdLastRow) {
+    // Wie in der App: Ende auf der fokussierten ersten Zeile setzt den Tab-Stopp.
+    const firstRow = scroller.querySelector<HTMLElement>('tr[data-row-index="0"]')!;
+    firstRow.focus();
+    firstRow.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    await settle();
+    expect(document.activeElement?.getAttribute('data-row-index')).toBe(String(ROW_COUNT - 1));
+  }
+  return scroller;
 }
 
 function dataRows(scroller: HTMLElement): HTMLTableRowElement[] {
@@ -108,11 +135,16 @@ function measuredPitch(rows: HTMLTableRowElement[]): number {
   return second.getBoundingClientRect().top - first.getBoundingClientRect().top;
 }
 
-async function expectWindowMatchesFullList(scroller: HTMLElement, scrollTop: number) {
+async function expectWindowMatchesFullList(scroller: HTMLElement, scrollTop: number, scenario: Scenario) {
   scroller.scrollTop = scrollTop;
   await settle();
 
   const rows = dataRows(scroller);
+  if (scenario.holdLastRow) {
+    // Die Tab-Stopp-Zeile bleibt gerendert, auch weit außerhalb des Fensters.
+    expect(rowIndex(rows.at(-1)!)).toBe(ROW_COUNT - 1);
+  }
+  expect(rows.some((row) => row.querySelector('input[type="checkbox"]') !== null)).toBe(scenario.showSelection);
   const pitch = measuredPitch(rows);
   const tbodyTop = scroller.querySelector('tbody')!.getBoundingClientRect().top;
   // Jede gerenderte Zeile steht dort, wo sie in der vollständigen Liste stünde.
@@ -147,13 +179,15 @@ async function expectWindowMatchesFullList(scroller: HTMLElement, scrollTop: num
 }
 
 for (const [label, width] of [['Desktop', 1280], ['unterhalb von sm', 600]] as const) {
-  test(`fenstert die Tabelle ${label} (${width} px) deckungsgleich mit der vollständigen Liste`, async () => {
-    await page.viewport(width, 800);
-    const scroller = await renderTable();
-    const maxScrollTop = scroller.scrollHeight - scroller.clientHeight;
+  for (const scenario of SCENARIOS) {
+    test(`fenstert die Tabelle ${label} (${width} px) ${scenario.label} deckungsgleich mit der vollständigen Liste`, async () => {
+      await page.viewport(width, 800);
+      const scroller = await renderTable(scenario);
+      const maxScrollTop = scroller.scrollHeight - scroller.clientHeight;
 
-    for (const scrollTop of [0, 1234, Math.round(maxScrollTop / 2), maxScrollTop - 17, maxScrollTop]) {
-      await expectWindowMatchesFullList(scroller, scrollTop);
-    }
-  });
+      for (const scrollTop of [0, 1234, Math.round(maxScrollTop / 2), maxScrollTop - 17, maxScrollTop]) {
+        await expectWindowMatchesFullList(scroller, scrollTop, scenario);
+      }
+    });
+  }
 }
