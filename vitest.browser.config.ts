@@ -38,7 +38,7 @@ export default defineConfig({
     include: ['src/test/browser/**/*.browser.test.ts'],
     setupFiles: ['./src/test/browser/browserSetup.ts'],
     globals: true,
-    isolate: false,
+    isolate: true,
     browser: {
       enabled: true,
       headless: true,

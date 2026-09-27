@@ -9,6 +9,7 @@ import { CatalogMobileSelectionBar } from '@/features/catalog/CatalogMobileSelec
 import { SearchResultsToolbar } from './SearchResultsToolbar';
 import { useControlSelection } from '@/hooks/useControlSelection';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { OWN_SCROLL_AREA_QUERY, useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
 import type { Control } from '@/domain/models';
 import {
   emptyFilters,
@@ -47,6 +48,7 @@ export function SearchPage() {
   // Genau ein Media-Query-Abo pro Seite: steuert das Mount-Gate der
   // Exportzugänge in der Toolbar (GSPP-268) und der Ergebnislisten (GSPP-261).
   const isDesktop = useMediaQuery('(min-width: 1024px)');
+  const mobileListScrollRef = useOverlayScrollbars<HTMLDivElement>(useMediaQuery(OWN_SCROLL_AREA_QUERY));
   const { catalog, loading, vocabularyRegistry } = useCatalog();
   const [inputState, setInputState] = useState(() => ({
     query,
@@ -266,6 +268,7 @@ export function SearchPage() {
             <>
               {/* Mobile: Katalog-Mobile-Referenzliste */}
               <div
+                ref={mobileListScrollRef}
                 data-testid="search-results-mobile"
                 className={`flex-1 md:overflow-y-auto divide-y divide-[var(--color-border-subtle)] ${mobileSelectMode ? 'pb-[calc(7rem+env(safe-area-inset-bottom,0px))]' : 'pb-safe'}`}
               >

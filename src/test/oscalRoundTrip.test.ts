@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CLASS_2_IMPORT_LIMITS } from '@/domain/oscalImportContract';
 import {
+  getSchemaPin,
   VERSION_MATRIX_DIAGNOSTIC_CODES,
 } from '@/domain/oscalVersionMatrix';
 import { ROOT_DISPATCH_DIAGNOSTIC_CODES } from '@/adapters/oscalRootDispatch';
@@ -218,12 +219,27 @@ describe('Versionsbindungs-Negativkorpus', () => {
     expect((await bindingCodeOf(document)).code).toBe(codes.VERSION_MISSING);
   });
 
-  it('weist eine v-präfigierte oscal-version mit OSCAL_VERSION_MALFORMED ab', async () => {
-    // Bestandsverhalten gemäß GSPP-357: fail-closed, keine Normalisierung.
+  it('bindet eine v-präfigierte oscal-version an die exakte Zelle und besteht den No-op-Lauf', async () => {
+    // GSPP-357: Ein führendes kleines `v` wird nur für die Matrixbindung
+    // entfernt; Export und Vergleich sehen das unveränderte `v1.2.2`.
     const document = CATALOG_122();
     setCatalogOscalVersion(document, 'v1.2.2');
 
-    expect((await bindingCodeOf(document)).code).toBe(codes.VERSION_MALFORMED);
+    const result = await runNoOpRoundTrip({ fixtureText: JSON.stringify(document) });
+
+    expect(result.binding).toEqual({ ok: true, pin: getSchemaPin('catalog', '1.2.2') });
+    expect(result.stages.schemaValidation.status).toBe('passed');
+    expect(result.serialization.status).toBe('passed');
+    expect(result.graph.status).toBe('passed');
+  });
+
+  it('weist eine nicht normalisierbare v-Variante mit OSCAL_VERSION_MALFORMED ab', async () => {
+    for (const declared of ['V1.2.2', 'vv1.2.2', 'v1.2']) {
+      const document = CATALOG_122();
+      setCatalogOscalVersion(document, declared);
+
+      expect((await bindingCodeOf(document)).code, declared).toBe(codes.VERSION_MALFORMED);
+    }
   });
 
   it('weist eine nicht gepinnte Version mit OSCAL_ROOT_VERSION_UNSUPPORTED ab', async () => {

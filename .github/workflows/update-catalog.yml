@@ -134,6 +134,9 @@ jobs:
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
           echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
+      # Der Policy-Preflight steht vor jedem schreibenden Schritt, nicht nur am
+      # Anfang: Eine erst während des Laufs entstehende Abweichung stoppt so
+      # jede weitere Schreibaktion.
       - name: Rebuild and push sync branch from main
         if: steps.compare.outputs.changed == 'true'
         env:

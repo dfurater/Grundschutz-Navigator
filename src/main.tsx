@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router';
 import { CatalogProvider } from '@/state/CatalogContext';
 import { AppShell } from '@/app/AppShell';
+import 'overlayscrollbars/overlayscrollbars.css';
 import '@/index.css';
 
 const routerBasename =

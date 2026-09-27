@@ -9,6 +9,9 @@ import {
   TOPICS_NAMESPACE_URL,
 } from './vocabularyNamespaces';
 
+// Join über den alt-identifier gegen die exakt benannte Spalte `UUID`. Deren
+// Eindeutigkeit sichert bereits die Fetch-Lane (scripts/taxonomy-coverage.mjs);
+// der Wurf unten ist die Laufzeit-Rückfallebene.
 function resolveVocabularyEntryByUniqueColumn(
   registry: VocabularyRegistry | null | undefined,
   namespaceUrl: string,

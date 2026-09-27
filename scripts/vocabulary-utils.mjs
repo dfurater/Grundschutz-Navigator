@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { deriveRouteId } from '../src/domain/vocabularyRouteId.mjs';
 
 function toRepositoryParts(repository) {
   if (repository.startsWith('https://github.com/')) {
@@ -34,23 +35,9 @@ export function sha256Hex(input) {
   return createHash('sha256').update(buffer).digest('hex');
 }
 
-function trimTrailingDashes(value) {
-  let end = value.length;
-  while (end > 0 && value[end - 1] === '-') {
-    end -= 1;
-  }
-  return value.slice(0, end);
-}
-
-export function deriveRouteId(path) {
-  const withoutLeadingSeparators = path
-    .replace(/\.[^.]+$/, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+/, '');
-
-  return trimTrailingDashes(withoutLeadingSeparators);
-}
+// Die Routenkennung bildet ein gemeinsames Modul, damit App-Fixtures sie genauso
+// ableiten wie die Pipeline.
+export { deriveRouteId } from '../src/domain/vocabularyRouteId.mjs';
 
 export function namespaceUrlToRepoPath(namespaceUrl, repository) {
   const repo = toRepositoryParts(repository);
@@ -63,6 +50,9 @@ export function namespaceUrlToRepoPath(namespaceUrl, repository) {
   }
 
   const segments = parsedUrl.pathname.split('/').filter(Boolean);
+  // `tree/main` ist die Form, in der die BSI-Kataloge ihre `ns`-Werte
+  // schreiben — ein Bezeichner, keine Leseref. Gelesen wird immer am gepinnten
+  // Snapshot über die Git-Blob-SHA.
   if (
     parsedUrl.hostname !== 'github.com' ||
     parsedUrl.protocol !== 'https:' ||
@@ -169,6 +159,8 @@ export function materializeVocabularyCollectionMembers({
   }
 
   const repo = toRepositoryParts(repository);
+  // Pfadsortiert: catalog-sync-guard.mjs vergleicht diese Reihenfolge
+  // reihenfolgesensitiv gegen das kanonisch sortierte Manifest.
   const members = treeFiles
     .filter((file) => matchesVocabularyCollection(collection, file.path))
     .sort((left, right) => compareStringsByCodeUnit(left.path, right.path));

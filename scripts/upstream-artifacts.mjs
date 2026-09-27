@@ -27,6 +27,9 @@ const MANIFEST_FILE_KEYS = [
   'rootType',
 ];
 
+// Codepoint- statt UTF-16-Code-Unit-Ordnung (Array.prototype.sort ohne
+// Komparator). Kanonische Manifestreihenfolge und Signatur hängen an genau
+// dieser Ordnung; eine Änderung machte jedes getrackte Manifest ungültig.
 function comparePaths(left, right) {
   const leftCodePoints = Array.from(left, (character) => character.codePointAt(0));
   const rightCodePoints = Array.from(right, (character) => character.codePointAt(0));
@@ -154,6 +157,9 @@ function normalizeManifestFile(file, label) {
     throw new Error(`${label}.contentSha256 must be a lowercase SHA-256 value`);
   }
 
+  // Die Schlüsselreihenfolge ist Teil der Kanonform: validateManifestV2Shape
+  // vergleicht per JSON.stringify gegen dieses Objekt, und die Signatur wird
+  // über dieselbe Serialisierung gebildet.
   return {
     artifactKey,
     rootType,
@@ -215,6 +221,9 @@ function normalizeGitTreeEntry(entry, index, roots, seenPaths) {
   if (!monitored) {
     return null;
   }
+  // Nur reguläre, nicht ausführbare Dateien. Bei Symlink- (120000) und
+  // Submodul-Einträgen (160000) belegt der SHA nicht die Bytes, die ein Leser
+  // des Pfads erhält.
   if (entry.type !== 'blob' || entry.mode !== '100644') {
     throw new Error(
       `Upstream tree entry ${repoPath} is not a regular file (type=${entry.type ?? 'missing'}, mode=${entry.mode ?? 'missing'})`,
