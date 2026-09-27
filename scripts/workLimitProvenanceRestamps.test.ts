@@ -19,17 +19,22 @@ import { describe, expect, it } from 'vitest';
 
 const ARTIFACT_PATH = resolve(import.meta.dirname, '..', 'docs/measurements/gspp345-work-budget.json');
 
-const NARRATIVE_MARKERS: readonly RegExp[] = [
-  /\bseit\b/i,
-  /\bbisherig\w*/i,
-  /\bnicht mehr\b/i,
-  /\balte[nrsm]?\b/i,
-  /\bneue[nrsm]?\b/i,
-  /\bfrüher\w*/i,
-  /\bzuvor\b/i,
-  /\binzwischen\b/i,
-  /\bursprünglich\w*/i,
-  /\bUmstellung\w*/i,
+/** Je Marker ein Beispiel, das er treffen muss; Wortformen zählen mit (bisher, bisherige …). */
+const NARRATIVE_MARKERS: ReadonlyArray<{ readonly pattern: RegExp; readonly sample: string }> = [
+  { pattern: /\bseit\b/i, sample: 'Die Hülle wird seit GSPP-445 gezählt.' },
+  { pattern: /\bbisher\w*/i, sample: 'Bisher wurde der Fingerprint über die Importhülle berechnet.' },
+  { pattern: /\bnicht mehr\b/i, sample: 'Die Datei zählt nicht mehr.' },
+  { pattern: /\bbis dahin\b/i, sample: 'Die Typkante hat die Datei bis dahin gehalten.' },
+  { pattern: /\balt(?:e[nrsm]?)?\b/i, sample: 'Die Hülle war alt.' },
+  { pattern: /\bneu(?:e[nrsm]?)?\b/i, sample: 'Der Fingerprint wurde neu berechnet.' },
+  { pattern: /\bjetzt\b/i, sample: 'Die Hülle ist jetzt kleiner.' },
+  { pattern: /\bnunmehr\b/i, sample: 'Nunmehr zählt die Ausführung.' },
+  { pattern: /\bfrüher\w*/i, sample: 'Der frühere Fingerprint gilt.' },
+  { pattern: /\bzuvor\b/i, sample: 'Zuvor lag die Datei in der Hülle.' },
+  { pattern: /\binzwischen\b/i, sample: 'Inzwischen fehlt die Datei.' },
+  { pattern: /\bursprünglich\w*/i, sample: 'Die ursprüngliche Hülle umfasst 62 Dateien.' },
+  { pattern: /\b(?:vormals|ehemal\w*)/i, sample: 'Die ehemalige Hülle umfasst 62 Dateien.' },
+  { pattern: /\bUmstellung\w*/i, sample: 'Der Umstellungscommit ändert nur scripts/.' },
 ];
 
 interface Restamp {
@@ -54,7 +59,7 @@ function texts(value: unknown, path: string): Array<{ path: string; text: string
 
 function narrativeFindings(entry: Restamp): string[] {
   return texts(entry, entry.issue).flatMap(({ path, text }) => NARRATIVE_MARKERS
-    .map((marker) => marker.exec(text))
+    .map(({ pattern }) => pattern.exec(text))
     .filter((match) => match !== null)
     .map((match) => `${path}: „${match[0]}“`));
 }
@@ -64,6 +69,10 @@ describe('Neustempel-Einträge des Messartefakts', () => {
     // Ohne diese Probe bliebe der Test grün, wenn die Marker nichts fänden.
     expect(narrativeFindings({ issue: 'PROBE', begruendung: 'Die Hülle wird seit PROBE aus der bisherigen Zählung bestimmt.' }))
       .toEqual(['PROBE.begruendung: „seit“', 'PROBE.begruendung: „bisherigen“']);
+  });
+
+  it.each(NARRATIVE_MARKERS)('erkennt $pattern in seinem Beispiel', ({ sample }) => {
+    expect(narrativeFindings({ issue: 'PROBE', nachweis: [sample] })).toHaveLength(1);
   });
 
   it('beschreiben Verfahren und Commits ohne relativen Zeitbezug', () => {
