@@ -32,6 +32,10 @@ export interface UseControlNavigationResult {
   navigateToControl: (control: Control) => void;
 }
 
+// `scope` ist dreiwertig: `null` = Katalogwurzel, String = Gruppe, `undefined`
+// = kein gemerkter Kontext (Rückfall auf die Gruppe des Controls). Gemerkt wird
+// nur, solange kein Control geöffnet ist, damit das Schließen dorthin
+// zurückführt, von wo aus geöffnet wurde.
 interface BrowseScope {
   catalogKey: string | undefined;
   scope: string | null | undefined;
@@ -139,7 +143,7 @@ export function useControlNavigation({
 
     if (snapshot.selectedControl?.id === control.id) {
       const target = resolveBrowseTarget(snapshot);
-      snapshot.navigate({
+      void snapshot.navigate({
         pathname: target
           ? buildGroupUrl(currentCatalog.catalogKey, target)
           : buildCatalogUrl(currentCatalog.catalogKey),
@@ -148,7 +152,7 @@ export function useControlNavigation({
       return;
     }
 
-    snapshot.navigate({
+    void snapshot.navigate({
       pathname: buildControlUrlForControl(currentCatalog.catalogKey, control),
       search: snapshot.searchString,
     });
@@ -160,7 +164,7 @@ export function useControlNavigation({
     if (!currentCatalog) return;
 
     const target = resolveBrowseTarget(snapshot);
-    snapshot.navigate({
+    void snapshot.navigate({
       pathname: target
         ? buildGroupUrl(currentCatalog.catalogKey, target)
         : buildCatalogUrl(currentCatalog.catalogKey),
@@ -173,7 +177,7 @@ export function useControlNavigation({
     const currentCatalog = snapshot.catalog;
     if (!currentCatalog) return;
 
-    snapshot.navigate({
+    void snapshot.navigate({
       pathname: buildControlUrlForControl(currentCatalog.catalogKey, control),
       search: snapshot.searchString,
     }, { replace: true });

@@ -173,6 +173,11 @@ export interface Control {
   title: string;
   /** UUID alternate identifier */
   altIdentifier?: string;
+  /**
+   * OSCAL `control.class`, e.g. "BSI-Methodik-Grundschutz-plus-plus": Unterart
+   * bzw. Charakterisierung der Anforderung laut OSCAL 1.1.3.
+   */
+  controlClass?: string;
   /** Parent group ID (Thema), e.g. "GC.1"; fehlt bei einer Quellgruppe ohne `id` */
   groupId?: string;
   /** Root practice ID (Praktik), e.g. "GC"; fehlt bei einer Quellgruppe ohne `id` */
@@ -257,8 +262,14 @@ export interface Control {
   /** Related/required control links */
   links: ControlLink[];
 
-  /** Inline parameter values for template resolution */
-  params: Record<string, string>;
+  /** Inline parameter values for template resolution (hasValue distinguishes values from label fallback) */
+  params: Record<string, ParamMeta>;
+}
+
+/** Inline-Parameter: aufgelöster Wert plus Information, ob ein Wert gesetzt ist. */
+export interface ParamMeta {
+  readonly value: string;
+  readonly hasValue: boolean;
 }
 
 /** A topic (Thema) — second-level group */

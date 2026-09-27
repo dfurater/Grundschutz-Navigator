@@ -243,6 +243,11 @@ export async function runNudge({ event, repository, token, fetchImpl = fetch }) 
     throw new GreptileNudgeError(`Pull Request #${issueNumber} liefert keinen gültigen Head-SHA.`);
   }
 
+  /*
+   * Eine Seite ohne Paging: Läge der Greptile-Run jenseits der ersten hundert
+   * Check-Runs, fehlte er scheinbar, und der Guard erwähnte auf unbelegtem
+   * Zustand — die Gegenrichtung der Fail-closed-Zusage im Kopf.
+   */
   const checks = await fetchGitHubJson(`${apiBase}/commits/${headSha}/check-runs?per_page=100`, {
     fetchImpl,
     token,

@@ -15,6 +15,7 @@ Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application 
 | Styling | Tailwind CSS v4 (via `@tailwindcss/vite` Plugin) |
 | Routing | React Router v8 |
 | Volltextsuche | FlexSearch |
+| Scrollleisten | OverlayScrollbars (MIT) |
 | Testing | Vitest + @testing-library/react + jsdom + Chromium-Browser-Lane |
 | Deployment | GitHub Pages (via GitHub Actions) |
 
@@ -22,7 +23,7 @@ Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application 
 
 `npm run test` läuft vollständig in jsdom und schließt Dateien unter `src/test/browser/**/*.browser.test.ts` explizit aus (Ausschluss in `vite.config.ts`).
 
-`npm run test:browser` startet die getrennte Vitest-Browser-Lane aus `vitest.browser.config.ts` mit dem Playwright-Provider und Chromium. Sie verwendet einen gemeinsamen Test-iframe (`isolate: false`) und führt `ajv` in `optimizeDeps.include`, weil die Schemaprüfung das Paket erst zur Laufzeit importiert. Jeder Test bereinigt seine eigene IndexedDB-Datenbank, und der Egress-Guard setzt seinen Zustand vor jedem Test zurück.
+`npm run test:browser` startet die getrennte Vitest-Browser-Lane aus `vitest.browser.config.ts` mit dem Playwright-Provider und Chromium. Jede Testdatei läuft in einem eigenen Test-iframe (`isolate: true`); `src/test/browser/iframePath+encoding.browser.test.ts` sichert ab, dass ein `+` im Testdateipfad die iframe-Zuordnung nicht bricht. Die Lane führt `ajv` in `optimizeDeps.include`, weil die Schemaprüfung das Paket erst zur Laufzeit importiert. Jeder Test bereinigt seine eigene IndexedDB-Datenbank, und der Egress-Guard setzt seinen Zustand vor jedem Test zurück.
 
 | Abhängigkeit | Pin | Lizenz | Zweck |
 | --- | --- | --- | --- |
@@ -49,94 +50,287 @@ Die Browser-Lane erzeugt keine Coverage-Ausgabe. Die verbindlichen V8-Coverage-S
 
 ## Verzeichnisstruktur
 
-```
-src/
-├── domain/           # Domänenmodelle und Geschäftslogik
-│   ├── models.ts                 # Zwei-Schichten-Datentypen
-│   ├── integrity.ts              # SHA-256 Integritätsprüfung
-│   ├── vocabulary.ts             # BSI-Vokabular-Auflösung
-│   ├── sourceRegistry.{mjs,ts}   # Verbindlicher Upstream-/Katalogvertrag
-│   ├── sourceRegistry.d.mts      # Typen des Quellregisters
-│   ├── oscalVersionMatrix.{mjs,ts} # Root-Typ × OSCAL-Version × gepinntes Schema
-│   ├── oscalVersionMatrix.d.mts  # Typen der Versionsmatrix
-│   ├── controlRef.ts             # Kataloggescopte interne Control-Referenzen
-│   ├── referenceResolution.ts    # Fail-closed OSCAL-Referenzauflösung auf source
-│   ├── referenceGraph.ts         # Referenzgraph über alle vier Root-Typen (Stufe 5)
-│   ├── referenceGraphModel.ts    # Knoten, Kanten, Zustände, Diagnostic-Codes
-│   ├── referenceGraphIndex.ts    # Knotenindex je Dokument aus dem Quellgraphen
-│   ├── referenceGraphContext.ts  # Auswertungskontext und Kantenablage
-│   ├── referenceGraphEdges.ts    # Kanten für Profile, Mappings, Components
-│   ├── referenceGraphPolicy.ts   # CI-Politik: fail-closed, Allowlist, Bericht
-│   └── controlRelationships.ts   # Steuerungsbeziehungen
-├── adapters/         # Infrastruktur- und Datengrenzen
-│   ├── oscalAdapter.ts           # OSCAL → Domain Model Parser
-│   └── browserDownload.ts        # Temporärer Browser-Download mit Cleanup
-├── state/            # Globaler Anwendungszustand
-│   └── CatalogContext.tsx        # Katalog-Kontextprovider
-├── hooks/            # Wiederverwendbare React Hooks
-│   ├── useCatalog.ts             # Katalog-Daten
-│   ├── useFilteredControls.ts    # Filterlogik
-│   ├── useFilterParams.ts        # URL-Parameter-Sync
-│   ├── useControlNavigation.ts   # Kataloggescopte Detailnavigation
-│   ├── useControlSelection.ts    # Katalog-/Gruppen-gescopte Auswahl
-│   ├── useActiveVocabulary.ts    # Katalog-/Control-gescopte Vokabularkarte
-│   ├── useGuidanceOverflow.ts    # Scopegebundener Guidance-/Messzustand
-│   ├── useFocusTrap.ts           # Barrierefreiheit
-│   ├── useGlobalEventListener.ts # Globale Listener mit stabilem Cleanup
-│   ├── useScrollLock.ts          # Reversibler Body-Scroll-Lock
-│   └── useMediaQuery.ts          # Responsive Design
-├── features/         # Feature-Module (Seite + Komponenten)
-│   ├── home/
-│   ├── catalog/
-│   ├── vocabularies/             # Vokabular-Seiten
-│   ├── vocabulary/               # Vokabular-Anzeige-Helpers (display.ts, routes.ts)
-│   ├── search/
-│   ├── export/                   # CSV-Export
-│   └── pages/                    # About, Impressum, Datenschutz, Lizenzen
-├── components/       # Wiederverwendbare UI-Komponenten
-│   ├── HeaderBar.tsx
-│   ├── Footer.tsx
-│   ├── TreeNav.tsx
-│   ├── FilterSection.tsx
-│   ├── StatusMeta.tsx
-│   └── ...
-├── app/              # Anwendungshell
-│   ├── AppShell.tsx              # Routing-Konfiguration und Layoutrahmen
-│   ├── PageTitle.tsx             # Deklarativer Routentitel (hebt <title> in den <head>)
-│   ├── pageTitles.ts             # Feste Seitentitel als einzige Quelle der Wahrheit
-│   ├── staticPageRoutes.tsx      # Statische Routen samt deklariertem Titel
-│   ├── staticTitleFallback.ts    # Entfernt den markierten index.html-Titel
-│   └── routes.ts                 # Kanonische URL-Builder und Resolver
-└── main.tsx          # Einstiegspunkt
+Der Baum ist vollständig: Jedes Verzeichnis, unter dem Einträge stehen, führt alle seine Dateien und Unterverzeichnisse auf. Ausgenommen sind nur die kolokierten Tests (`*.test.*`). Ein Verzeichnis ohne eigene Einträge steht für seinen gesamten Inhalt. `scripts/architecture-tree.test.ts` prüft ihn in `npm run test` gegen alle Dateien, die Git führt oder nicht ignoriert: Der Test schlägt fehl, wenn ein Eintrag keine Beschreibung trägt, auf keinen existierenden Pfad passenden Typs zeigt oder ein aufgezähltes Verzeichnis eine nicht aufgeführte Datei enthält.
 
-public/data/          # Generierte Katalog-Daten (nicht im Repo)
-scripts/              # Build-Skripte
-  ├── fetch-catalog.mjs           # Registry-gesteuerter Abruf, Validierung und Ausgabe
-  ├── security-guards.mjs         # Upstream-Allowlist (Repo, Pfade, Refs)
-  ├── upstream-artifacts.mjs      # Tree-Diff, Manifest v2 und Root-Prüfung
-  ├── vocabulary-utils.mjs        # CSV-/Namespace-Hilfsfunktionen
-  ├── catalog-sync-guard.mjs      # Fail-closed Prüfung von Sync-PRs
-  ├── catalog-sync-policy.mjs     # Prüfung der Repository-Policy
-  ├── sync-upstream-manifest.mjs  # Manifest-Sync für update-catalog.yml
-  ├── verify-catalog-deploy.mjs   # Post-Merge-Deploy bestätigen oder Fallback freigeben
-  ├── check-deploy-idempotency.mjs # Redundanten Fallback-Deploy desselben Commits verhindern
-  ├── verify-node-version.mjs     # .nvmrc gegen engines.node und gegen Versionsliterale prüfen
-  └── workflowDefinitions.mjs     # Gemeinsame Sammlung der Workflow- und Action-Definitionen
+```
+src/                              # Anwendungsquellcode
+├── domain/                       # Domänenmodelle und Geschäftslogik
+│   ├── catalogLineage.d.mts          # Typen der Profile-Importkette
+│   ├── catalogLineage.mjs            # Profile-Importkette für die About-Provenienz (reines ESM)
+│   ├── catalogLineage.ts             # Typsicherer Einstieg in catalogLineage.mjs
+│   ├── catalogReferenceProjection.ts # Aufgelöste Control-Links in der Katalog-View
+│   ├── class2ImportLimits.d.mts      # Typen der Klasse-2-Ressourcengrenzen
+│   ├── class2ImportLimits.mjs        # Klasse-2-Ressourcengrenzen (einzige Quelle, reines ESM)
+│   ├── componentDefinitionModel.ts   # Domänenmodell der Component Definition
+│   ├── controlRef.ts                 # Kataloggescopte interne Control-Referenzen
+│   ├── controlRelationships.ts       # Link-Relationen, Beschriftungen, eingehende Links
+│   ├── germanCollation.ts            # Wiederverwendete deutsche Sortierkomparatoren
+│   ├── identifierQuery.ts            # Query-Vertrag für Kennungssuchen (UUID v4/v5)
+│   ├── integrity.ts                  # SHA-256 Integritätsprüfung
+│   ├── mappingModel.ts               # Domänenmodell der Mapping Collection
+│   ├── models.ts                     # Zwei-Schichten-Datentypen
+│   ├── oscalBackMatterBase64.ts      # Base64-Buchhaltung des Klasse-2-Ressourcenlimits
+│   ├── oscalClass2Import.ts          # Worker-interne Klasse-2-Pipeline ab den Bytes
+│   ├── oscalComponentDefinition.ts   # Raw-Typen des Roots component-definition
+│   ├── oscalDerivedGraph.ts          # Kontrollierter Builder des Ableitungswegs
+│   ├── oscalDiagnostics.ts           # Gemeinsames Diagnosemodell aller Validierungsstufen
+│   ├── oscalDocumentContext.ts       # Vertrauensklasse und Ableitungskontext
+│   ├── oscalImportContract.ts        # Validatorpin, Worker-Timeout, Limit-Diagnosen
+│   ├── oscalImportProcessing.ts      # Byte-Eintrittspunkt mit Herkunftsregister
+│   ├── oscalImportTransport.ts       # Fragmentierter Rückweg des Quellgraphen aus dem Worker
+│   ├── oscalMapping.ts               # Raw-Typen des Roots mapping-collection
+│   ├── oscalObjectGraph.ts           # Objektgraph-Invariante und Ressourcenlimits
+│   ├── oscalObjectPipeline.ts        # Gemeinsame objektorientierte Klasse-2-Prüfkette
+│   ├── oscalObjectProvenance.ts      # Herkunftsfrage und fail-closed Diagnose
+│   ├── oscalObjectWalk.ts            # Gemeinsamer Containerdurchlauf der Herkunftskette
+│   ├── oscalProfile.ts               # Raw-Typen des Roots profile
+│   ├── oscalRootDocument.ts          # Root-Envelope des generischen Dispatch
+│   ├── oscalSchemaBundle.ts          # Einziger Zugriffsweg auf die gepinnten NIST-Schemas
+│   ├── oscalSchemaValidation.ts      # Stufe 3: JSON-Schema-Prüfung im Worker
+│   ├── oscalVersionMatrix.d.mts      # Typen der Versionsmatrix
+│   ├── oscalVersionMatrix.mjs        # Root-Typ × OSCAL-Version × gepinntes Schema
+│   ├── oscalVersionMatrix.ts         # Typsicherer Einstieg in oscalVersionMatrix.mjs
+│   ├── placeholderNamespace.ts       # Erkennt BSI-Platzhalter als Prop-Namensraum
+│   ├── profileModel.ts               # Domänenmodell des Profile
+│   ├── profileResolutionBudget.ts    # Laufendes Arbeits- und Ausgabebudget
+│   ├── profileResolutionBudgetLimits.d.mts # Typ der Arbeitsgrenze
+│   ├── profileResolutionBudgetLimits.mjs   # Arbeitsgrenze (einzige Quelle, reines ESM)
+│   ├── profileResolutionEngine.ts    # Orchestrator Import → Merge → Modify
+│   ├── profileResolutionImportGraph.ts # Deterministischer, fail-closed Importgraph
+│   ├── profileResolutionMerge.ts     # Phase 2: Merge
+│   ├── profileResolutionModify.ts    # Phase 3: Modify
+│   ├── profileResolutionSelection.ts # Phase 1: Selektion
+│   ├── projectProps.ts               # Registry der projekteigenen OSCAL-Props
+│   ├── referenceGraph.ts             # Referenzgraph über alle vier Root-Typen (Stufe 5)
+│   ├── referenceGraphContext.ts      # Auswertungskontext und Kantenablage
+│   ├── referenceGraphEdges.ts        # Kanten für Profile, Mappings, Components
+│   ├── referenceGraphIndex.ts        # Knotenindex je Dokument aus dem Quellgraphen
+│   ├── referenceGraphModel.ts        # Knoten, Kanten, Zustände, Diagnostic-Codes
+│   ├── referenceGraphPolicy.ts       # CI-Politik: fail-closed, Allowlist, Bericht
+│   ├── referenceResolution.ts        # Fail-closed OSCAL-Referenzauflösung auf source
+│   ├── securityTargets.ts            # Schutzziel-Skala, Klassifikation, Facetten
+│   ├── sourceRegistry.d.mts          # Typen des Quellregisters
+│   ├── sourceRegistry.mjs            # Verbindlicher Upstream-/Katalogvertrag
+│   ├── sourceRegistry.ts             # Typsicherer Einstieg in sourceRegistry.mjs
+│   ├── statementSegments.ts          # Reine Segmentierung des Anforderungssatzes
+│   ├── taxonomyVocabulary.ts         # Auflösung von Praktiken und Themen
+│   ├── uuidV5.ts                     # Deterministische UUIDv5-Ableitung
+│   ├── vocabulary.ts                 # BSI-Vokabular-Auflösung
+│   ├── vocabularyNamespaces.ts       # Namespace-URLs aus dem Quellregister
+│   ├── vocabularyRouteId.d.mts       # Typ der Routenkennung
+│   ├── vocabularyRouteId.mjs         # Routenkennung aus dem Upstream-Pfad (einzige Quelle, reines ESM)
+│   └── vocabularyRouteId.ts          # Typsicherer Einstieg in vocabularyRouteId.mjs
+├── adapters/                     # Infrastruktur- und Datengrenzen
+│   ├── browserDownload.ts            # Temporärer Browser-Download mit Cleanup
+│   ├── oscalAdapter.ts               # OSCAL-Katalogkörper → Domain Model
+│   ├── oscalComponentAdapter.ts      # Projektion der Component Definition
+│   ├── oscalComponentDocument.ts     # Verlustfreier Dokumenteinstieg Component Definition
+│   ├── oscalComponentReaders.ts      # Knotenleser und Diagnosen des Component-Adapters
+│   ├── oscalDocument.ts              # Verlustfreier Dokumenteinstieg Katalog
+│   ├── oscalImportGate.ts            # Main-Thread-Tor des Klasse-2-Imports über den Worker
+│   ├── oscalMappingAdapter.ts        # Projektion der Mapping Collection
+│   ├── oscalMappingDocument.ts       # Verlustfreier Dokumenteinstieg Mapping Collection
+│   ├── oscalMappingReaders.ts        # Knotenleser und Diagnosen des Mapping-Adapters
+│   ├── oscalProfileAdapter.ts        # Projektion des Profile
+│   ├── oscalProfileDocument.ts       # Verlustfreier Dokumenteinstieg Profile
+│   ├── oscalProfileReaders.ts        # Knotenleser und Diagnosen des Profile-Adapters
+│   ├── oscalRootAdapters.ts          # Adapter-Registrierung je Root-Typ
+│   └── oscalRootDispatch.ts          # Stufe 2: Root-Dispatch
+├── state/                        # Globaler Anwendungszustand
+│   ├── CatalogContext.tsx            # Katalog-Kontextprovider
+│   ├── catalogArtifacts.ts           # Auslieferungsvertrag und Ladevorgang je Katalog
+│   ├── catalogParseWorker.ts         # Typisierter Client des Katalog-Parser-Workers
+│   ├── catalogParsing.ts             # Parsepipeline für Worker und Main-Thread-Fallback
+│   └── catalogReducer.ts             # Zustand der Katalogsammlung
+├── hooks/                        # Wiederverwendbare React Hooks
+│   ├── useActiveVocabulary.ts        # Katalog-/Control-gescopte Vokabularkarte
+│   ├── useBottomSheetDrag.ts         # Ziehen und Wegwischen mobiler Bottom Sheets
+│   ├── useCatalog.ts                 # Katalog-Daten
+│   ├── useClipboard.ts               # Kopieren in die Zwischenablage mit Rückmeldung
+│   ├── useControlNavigation.ts       # Kataloggescopte Detailnavigation
+│   ├── useControlSelection.ts        # Katalog-/Gruppen-gescopte Auswahl
+│   ├── useDragToResize.ts            # Größenänderung von Panels per Ziehen
+│   ├── useFilterParams.ts            # URL-Parameter-Sync
+│   ├── useFilteredControls.ts        # Filterlogik
+│   ├── useFocusTrap.ts               # Barrierefreiheit
+│   ├── useGlobalEventListener.ts     # Globale Listener mit stabilem Cleanup
+│   ├── useGuidanceOverflow.ts        # Scopegebundener Guidance-/Messzustand
+│   ├── useMediaQuery.ts              # Responsive Design
+│   ├── useOverlayScrollbars.ts       # Überlagernde, beim Scrollen eingeblendete Scrollleisten
+│   ├── useRowWindow.ts               # Windowing für Listen einheitlicher Zeilenhöhe
+│   └── useScrollLock.ts              # Reversibler Body-Scroll-Lock
+├── features/                     # Feature-Module (Seite + Komponenten)
+│   ├── catalog/                      # Katalogansicht
+│   │   ├── CatalogBrowser.tsx            # Katalogseite mit Tabelle, Filtern und Detailpanel
+│   │   ├── CatalogDesktopSidebar.tsx     # Ein- und ausklappbare Filterleiste (Desktop)
+│   │   ├── CatalogDetailPanel.tsx        # Detailpanel einer Anforderung
+│   │   ├── CatalogExportMenu.tsx         # Exportmenü der Toolbar
+│   │   ├── CatalogMobileExportSheet.tsx  # Export als Bottom Sheet (mobil)
+│   │   ├── CatalogMobileFilterSheet.tsx  # Filter als Bottom Sheet (mobil)
+│   │   ├── CatalogMobileSelectionBar.tsx # Auswahlleiste (mobil)
+│   │   ├── CatalogTargetNotFound.tsx     # Hinweis auf ein nicht gefundenes Routenziel
+│   │   ├── CatalogToolbar.tsx            # Titel, Trefferzahl und Aktionen
+│   │   ├── ControlClassification.tsx     # Kriterien-Badges und Legenden-Einträge
+│   │   ├── ControlDependencies.tsx       # Aus- und eingehende Control-Links
+│   │   ├── ControlDetail.tsx             # Detailansicht einer Anforderung
+│   │   ├── ControlDetailSection.tsx      # Abschnittsrahmen der Detailansicht
+│   │   ├── ControlGuidance.tsx           # Umsetzungshinweis mit Auf- und Zuklappen
+│   │   ├── ControlHierarchy.tsx          # Eltern- und Kind-Anforderungen
+│   │   ├── ControlMetadata.tsx           # Kennungen und Elternbezug
+│   │   ├── ControlMobileReferenceRow.tsx # Tabellenzeile der Mobilansicht
+│   │   ├── ControlSecurityContext.tsx    # Schutzziele und Gefährdungen in „Schutzziele und Gefährdungen“
+│   │   ├── ControlSecurityTargets.tsx    # Raster der Schutzziel-Relevanz
+│   │   ├── ControlSources.tsx            # Aufgelöste Quellenverweise
+│   │   ├── ControlStatement.tsx          # Segmentierter Anforderungstext mit Inline-Begriffen
+│   │   ├── ControlStatementDetails.tsx   # Nicht im Satz gefundene Angaben und Dokumentation
+│   │   ├── ControlTable.tsx              # Gefensterte Anforderungstabelle mit Auswahl und Sortierung
+│   │   ├── ControlTaxonomy.tsx           # Zielobjekt- bzw. Tag-Gruppe und WLAN-Taxonomie
+│   │   ├── ControlTaxonomyBreadcrumb.tsx # Praktik- und Themenbegriffe im Kopf
+│   │   ├── ControlVocabularyPrimitives.tsx # Gemeinsame Bausteine der Vokabularanzeige
+│   │   ├── FilterPanel.tsx               # Filterpanel
+│   │   └── SecurityTargetFilterSection.tsx # Schutzziel-Facetten im Filterpanel
+│   ├── export/                       # CSV-Export
+│   │   └── csvExport.ts                  # CSV-Erzeugung mit Formelschutz
+│   ├── home/                         # Startseite
+│   │   └── HomePage.tsx                  # Startseite mit Katalogkennzahlen und Praktikenliste
+│   ├── pages/                        # About, Impressum, Datenschutz, Lizenzen
+│   │   ├── AboutPage.tsx                 # About mit Provenienz der Kataloge
+│   │   ├── DatenschutzPage.tsx           # Datenschutzerklärung aus VITE_IMPRESSUM_*
+│   │   ├── ImpressumPage.tsx             # Impressum aus VITE_IMPRESSUM_*
+│   │   └── LizenzenPage.tsx              # Lizenzen
+│   ├── search/                       # Volltextsuche
+│   │   ├── SearchPage.tsx                # Suchseite mit Ergebnisliste
+│   │   ├── SearchResultsToolbar.tsx      # Auswahl und CSV-Export der Treffer
+│   │   └── useSearch.ts                  # FlexSearch-Index mit begrenztem Cache
+│   ├── vocabularies/                 # Vokabular-Seiten
+│   │   ├── VocabularyEntryCard.tsx       # Karte eines Vokabulareintrags
+│   │   ├── VocabularyNamespacePage.tsx   # Einträge eines Namespace
+│   │   ├── VocabularyOverviewPage.tsx    # Übersicht aller Vokabulare
+│   │   └── vocabularyTitle.ts            # Anzeigetitel je Vokabulardatei
+│   └── vocabulary/                   # Vokabular-Anzeige-Helpers
+│       ├── display.ts                    # Offizielle Stufen, Beschriftungen, Tooltips
+│       └── routes.ts                     # Routen der Vokabularseiten
+├── components/                   # Wiederverwendbare UI-Komponenten
+│   ├── Badge.tsx                     # Badge-Varianten
+│   ├── Button.tsx                    # Button-Varianten und -Größen
+│   ├── CatalogSwitcher.tsx           # Katalogauswahl
+│   ├── CheckboxLabel.tsx             # Checkbox mit Beschriftung und Zähler
+│   ├── FilterSection.tsx             # Aufklappbarer Filterabschnitt
+│   ├── Footer.tsx                    # Seitenfuß
+│   ├── HeaderBar.tsx                 # Kopfleiste mit Suche und Katalogauswahl
+│   ├── Input.tsx                     # Eingabefeld mit Icon und Label
+│   ├── StatusMeta.tsx                # Status-Badges für Modalverb, Niveau, Aufwand
+│   ├── Tooltip.tsx                   # Hover- und antippbare Begriffserklärungen
+│   ├── TreeNav.tsx                   # Gruppenbaum der Navigation
+│   ├── icons.tsx                     # Inline-SVG-Icons (Lucide)
+│   ├── index.ts                      # Sammelexport der Komponenten
+│   ├── legendStyles.ts               # Legendenschema für Legenden und Vokabelkarten
+│   └── tooltipPlacement.ts           # Begrenzung eines geöffneten Tooltips auf Panel und Fenster
+├── app/                          # Anwendungshell
+│   ├── AppShell.tsx                  # Routing-Konfiguration und Layoutrahmen
+│   ├── PageTitle.tsx                 # Deklarativer Routentitel (hebt <title> in den <head>)
+│   ├── pageTitles.ts                 # Feste Seitentitel als einzige Quelle der Wahrheit
+│   ├── routes.ts                     # Kanonische URL-Builder und Resolver
+│   ├── staticPageRoutes.tsx          # Statische Routen samt deklariertem Titel
+│   └── staticTitleFallback.ts        # Entfernt den markierten index.html-Titel
+├── workers/                      # Modul-Worker
+│   ├── catalogParser.worker.ts       # Klasse-1-Katalogparser
+│   └── oscalImport.worker.ts         # Klasse-2-Import
+├── test/                         # Testinfrastruktur (siehe docs/OSCAL_ROUND_TRIP.md)
+│   ├── browser/                      # Chromium-Browser-Lane
+│   │   ├── browserCommands.d.ts          # Typen der Browser-Commands
+│   │   ├── browserEgressDecision.ts      # Reine Egress-Entscheidung
+│   │   ├── browserEgressGuard.ts         # Playwright-Egress-Guard
+│   │   ├── browserSetup.ts               # Setup der Browser-Lane mit Egress-Prüfung
+│   │   ├── egressOracleContract.d.mts    # Typen der Negativfälle
+│   │   └── egressOracleContract.mjs      # Negativfälle des Egress-Orakels
+│   ├── fixtures/                     # Testfixtures, darunter der NIST-Orakelkorpus
+│   ├── catalogState.ts               # Sammlungsfelder des CatalogState für Komponententests
+│   ├── documentTitle.ts              # Prüft den Seitentitel auf genau ein <title>
+│   ├── eslintWithoutTypes.ts         # Repo-ESLint ohne Project Service für Regeltests
+│   ├── oscalGraphCompare.ts          # Graphvergleich mit Object.is-Semantik
+│   ├── oscalRoundTrip.ts             # No-op-Round-trip-Harnisch
+│   └── oscalStructure.ts             # Strukturorakel (Zählregeln A und B)
+├── index.css                     # Tailwind-Einstieg und Design-Tokens
+├── main.tsx                      # Einstiegspunkt
+├── test-setup.ts                 # Vitest-Setup der jsdom-Lane
+└── vite-env.d.ts                 # Typen der Vite-Umgebungsvariablen
+
+public/data/                      # Generierte Katalog-Daten (nicht im Repo)
+
+scripts/                          # Build-, CI- und Wartungsskripte
+├── measure/                          # Browserseite der Klasse-2-Kostenmessung
+│   ├── class2-budget.harness.mjs         # Messharnisch im Browser-Tab
+│   └── class2-budget.html                # Messseite des temporären Vite-Servers
+├── backmerge-main-to-develop.mjs     # Übernahme-Lane main → develop
+├── bootstrap.mjs                     # npm run setup für frische Checkouts und Worktrees
+├── branchLineFixtures.ts             # Git-Testvorlage der Übernahme- und Release-Lane
+├── catalog-sync-guard.mjs            # Fail-closed Prüfung von Sync-PRs
+├── catalog-sync-policy.mjs           # Prüfung der Repository-Policy
+├── check-catalog-freshness.d.mts     # Typen der Frischeprüfung
+├── check-catalog-freshness.mjs       # Frischeprüfung der lokalen Katalogdaten
+├── check-deploy-idempotency.mjs      # Redundanten Fallback-Deploy desselben Commits verhindern
+├── ci-scope.mjs                      # Scope-Entscheider für Step-Skips im Job validate
+├── class2TransportFixtures.mjs       # Fixtures des fragmentierten Rückwegs
+├── class2WorstCaseFixtures.mjs       # Worst-Case-Dokumente der Klasse-2-Grenzen
+├── control-identity-delta.mjs        # Control-Identitätsdelta zwischen Snapshots
+├── fetch-catalog.mjs                 # Registry-gesteuerter Abruf, Validierung und Ausgabe
+├── git-changed-files.mjs             # Geänderte Dateien eines Pull Requests
+├── githubApiFetch.mjs                # Gemeinsamer GitHub-JSON-Abruf der CI-Guards
+├── greptile-review-nudge.mjs         # Greptile-Auslösung bei übersprungenem PR
+├── guard-cli-test-helper.ts          # spawnSync-Rahmen der Guard-CLI-Tests
+├── measure-class2-budget.mjs         # Kostenmessung der Klasse-2-Grenzen (Wartung)
+├── measureClass2BudgetReport.mjs     # Argumente, Verdichtung und Bericht der Messung
+├── measureClass2Timing.mjs           # Eingaben und Ablauf der Zeitmessung
+├── measureWorkLimitCallCounts.mjs    # Aufrufzählung des gemessenen Auflösungslaufs
+├── measureWorkLimitProvenance.mjs    # Fingerprint des gemessenen Auflösungspfads
+├── oscal-domain-bridge.mjs           # Node-Brücke in src/domain/ mit @/-Auflösung
+├── oscal-schema-vendor.mjs           # Ablageort-Vertrag der gepinnten Schemas
+├── pr-documentation-contract.mjs     # Dokumentationsvertrag im PR-Body
+├── profileResolutionCorpusOracle.ts  # Vergleichsorakel des Bauzeitlaufs
+├── profileResolutionWorstCaseFixtures.mjs # Worst-Case-Eingaben der Arbeitsgrenze
+├── release-prepare.mjs               # Release-PR aus einem Vorbereitungsbranch
+├── review-policy.mjs                 # Generator, Drift-Guard und CLI der Review-Policy
+├── review-policy.rules.mjs           # Regeltabelle der Review-Policy
+├── security-guards.mjs               # Upstream-Allowlist (Repo, Pfade, Refs)
+├── sonar-token-guard.mjs             # Entscheidet, ob die Sonar-Analyse laufen kann
+├── sync-oscal-content-oracle.mjs     # Wartungssync des NIST-Orakelkorpus
+├── sync-oscal-schemas.mjs            # Wartungslauf der gepinnten OSCAL-Schemas
+├── sync-upstream-manifest.mjs        # Manifest-Sync für update-catalog.yml
+├── taxonomy-coverage.mjs             # Integrität und Coverage der Taxonomie-Vokabulare
+├── transientRetry.mjs                # Gemeinsamer transienter Abruf der Lieferkette
+├── upstream-artifacts.mjs            # Tree-Diff, Manifest v2 und Root-Prüfung
+├── upstream-corpus-cache.mjs         # Korpus-Cache des Bauzeitlaufs
+├── verify-browser-egress.mjs         # Negativläufe des Browser-Egress-Guards
+├── verify-catalog-deploy.mjs         # Post-Merge-Deploy bestätigen oder Fallback freigeben
+├── verify-documented-versions.mjs    # Toolchain-Vertrag der Browser-Testlane
+├── verify-node-version.mjs           # .nvmrc gegen engines.node und gegen Versionsliterale prüfen
+├── verify-oscal-schemas.mjs          # Netzfreie Integritätsprüfung der Schemas
+├── verify-upstream-oscal.mjs         # Gepinnter go-oscal-Korpuslauf
+├── vitest.corpus.config.ts           # Vitest-Lane des Bauzeitlaufs
+├── vocabulary-utils.mjs              # CSV-/Namespace-Hilfsfunktionen
+└── workflowDefinitions.mjs           # Gemeinsame Sammlung der Workflow- und Action-Definitionen
+
+.github/                          # GitHub-Konfiguration
+├── actions/                          # Composite Actions
+│   ├── fetch-pinned-catalog/             # Gepinnte Snapshot-SHA lesen und Katalog holen
+│   └── setup-node-env/                   # Node aus .nvmrc plus npm ci --ignore-scripts
+├── workflows/                        # GitHub-Actions-Workflows
+│   ├── backmerge-main-to-develop.yml     # Übernahme-PR main → develop
+│   ├── ci.yml                            # PR-Metadatenverträge (documentation-contract, catalog-sync-guard)
+│   ├── deploy.yml                        # GitHub Pages Deployment
+│   ├── greptile-review-nudge.yml         # Greptile-Auslösung bei übersprungenem PR
+│   ├── release-prepare.yml               # Release-PR aus einem Vorbereitungsbranch
+│   ├── sonar.yml                         # SonarQube-Analyse des Push-Pfads auf main und develop
+│   ├── update-catalog.yml                # Automatischer Katalog-Sync
+│   ├── validate.yml                      # Vollständige Verifikations- und Build-Lane (validate, sonarqube)
+│   └── verify-catalog-merge.yml          # Post-Merge-Prüfung und Deploy-Fallback
+├── dependabot.yml                    # Dependabot-Update-Gruppen
+├── pull_request_template.md          # PR-Vorlage mit Dokumentationsvertrag
+├── zizmor.version                    # Gepinnte zizmor-Version des Workflow-Audits
+└── zizmor.yml                        # Audit-Konfiguration von zizmor im Job validate
 
 upstream-manifest.json            # Gepinnter Upstream-Snapshot (Manifest v2)
-
-.github/workflows/
-  ├── deploy.yml                  # GitHub Pages Deployment
-  ├── ci.yml                      # PR-Metadatenverträge (documentation-contract, catalog-sync-guard)
-  ├── validate.yml                # Vollständige Verifikations- und Build-Lane (validate, sonarqube)
-  ├── sonar.yml                   # SonarQube-Analyse des Push-Pfads auf main und develop
-  ├── update-catalog.yml          # Automatischer Katalog-Sync
-  └── verify-catalog-merge.yml    # Post-Merge-Prüfung und Deploy-Fallback
-
-.github/actions/
-  ├── setup-node-env/             # Node aus .nvmrc plus npm ci --ignore-scripts
-  └── fetch-pinned-catalog/       # Gepinnte Snapshot-SHA lesen und Katalog holen
-
 .nvmrc                            # Einzige Quelle der Node-Version (gegen engines.node geprüft)
 ```
 
@@ -337,31 +531,49 @@ Breakpoint-abhängige UI wird über `useMediaQuery('(min-width: 1024px)')` (`isD
 | `CatalogDetailPanel` | Baut eingehende Links und Parent-/Child-Beziehungen auf und versorgt `ControlDetail`. |
 | `CatalogMobileDetailOverlay` | Besitzt Focus-Trap, Escape und Scroll-Lock des mobilen Details. Bleibt als Komponente gemountet und steuert Sichtbarkeit über das `active`-Flag; inaktiv rendert sie `null` (dokumentierte Ausnahme der Breakpoint-Mount-Strategie). |
 
+### Rendering der Desktop-Tabelle
+
+`ControlTable` rendert gefenstert (`useRowWindow`): Im DOM stehen nur die sichtbaren Zeilen plus bis zu zehn Zeilen Überhang je Richtung, am Listenanfang und -ende entsprechend weniger. `aria-hidden`-Platzhalterzeilen ohne `tabindex` vor und nach dem Fenster sowie, wenn die Tab-Stopp-Zeile außerhalb des Fensters liegt, zwischen ihr und dem Fenster halten Gesamthöhe und Scrollposition wie bei der vollständigen Liste; es sind daher null bis drei. Die Zeilenhöhe ist durch `line-clamp-1` und feste Innenabstände einheitlich und wird als Abstand aufeinanderfolgender Zeilen am DOM gemessen, weil `border-collapse` die erste Zeile nach einem Platzhalter um einen halben Rand verkürzt. Die Tabelle nutzt `table-layout: fixed` mit einer `<colgroup>`, damit die Spaltenbreiten nicht von den gerade gerenderten Zeilen abhängen. `src/test/browser/controlTableWindow.browser.test.ts` prüft das in Chromium mit echter Tabellengeometrie, geladenen Schriften und dem Stylesheet der Scrollleisten, auf dem Desktop und unterhalb von `sm`, jeweils ohne und mit Auswahlspalte sowie mit einer per Tastatur auf die letzte Zeile gesetzten Tab-Stopp-Zeile außerhalb des Fensters: An mehreren Scrollpositionen bis zum Listenende steht jede gerenderte Zeile dort, wo sie in der vollständigen Liste stünde, der sichtbare Bereich unter der Kopfzeile ist lückenlos gefüllt, und die Gesamthöhe entspricht der vollständigen Liste.
+
+* Barrierefreiheit: `aria-rowcount` trägt die volle Ergebnismenge plus Kopfzeile, jede Datenzeile ihr `aria-rowindex` in der vollständigen Liste.
+* Tastatur: `ArrowUp`/`ArrowDown`/`Home`/`End` fokussieren eine gerenderte Zielzeile sofort; eine noch nicht gerenderte wird zur Tab-Stopp-Zeile, vom Fenster gerendert und nach dem Commit fokussiert. Die Tab-Stopp-Zeile ist an die Control-ID gebunden, wandert also bei Umsortierung mit, und bleibt gerendert, wenn der Nutzer sie wegscrollt, sodass Fokus und Roving Tabindex erhalten bleiben.
+* „Alle auswählen" und Zählungen wirken auf die vollständige Ergebnismenge, nicht auf die gerenderten Zeilen.
+* Die Browser-Seitensuche findet nur gerenderte Zeilen; für die Suche im Katalog ist die App-Suche vorgesehen.
+* Der Lesecursor eines Screenreaders (Browse-Modus) erreicht ebenfalls nur gerenderte Zeilen. Der vorgesehene Leseweg durch die gesamte Ergebnismenge ist die Grid-Navigation per Pfeiltasten, `Home` und `End`, die das Fenster mitführt; `aria-rowcount` und `aria-rowindex` nennen dabei die Position in der vollständigen Liste.
+
+Die mobile Liste bleibt ungefenstert: `content-visibility: auto` auf `.catalog-mobile-reference-row` hält ihr Layout bereits unabhängig von der Zeilenzahl. `index.html` lädt die vier Inter-Latin-Schnitte per `preload` vor, weil die Tabelle Inter 600 sonst erst nach ihrem ersten Render anfordert und das Eintreffen der Schrift ein zweites Layout aller Zeilen auslöst.
+
+Alle eigenen Scrollbereiche tragen überlagernde Scrollleisten aus OverlayScrollbars über `useOverlayScrollbars`: im Ruhezustand unsichtbar und ohne Breitenbedarf, beim Scrollen eingeblendet, danach wieder ausgeblendet. Der Hook macht das bestehende Scroll-Element selbst zum Viewport, statt es in erzeugte Elemente zu verpacken. So misst `useRowWindow` `scrollTop` und `clientHeight` am Scroll-Element selbst, und der Tooltip begrenzt sich auf `[data-control-detail-scroll]`. Bereiche, die erst ab `md` selbst scrollen (Seiteninhalt, mobile Trefferlisten), erhalten die Instanz nur ab dieser Breite; darunter scrollt das Dokument mit den nativen Leisten des Geräts. Das Theme `.os-theme-gspp` in `src/index.css` setzt das Aussehen aus den Tokens `--color-surface-scrollbar` und `--color-surface-scrollbar-hover`.
+
 `useScrollLock` speichert keinen globalen Refcount, sondern stellt beim Cleanup exakt den vorherigen Inline-Wert von `body.style.overflow` wieder her.
 
 CSV-Serialisierung und Browserauslösung sind getrennte Grenzen: `features/export/csvExport.ts` erzeugt Inhalt und `Blob`; `adapters/browserDownload.ts` erstellt den temporären Link und widerruft Link und Object-URL auch bei Fehlern in `finally`.
 
-ESLint sichert diese Architektur statisch ab: `CatalogBrowser` darf weder den CSV-Exporter noch den Beziehungsgraphen importieren, direkter `document.body`-Zugriff ist in App-, Komponenten- und Feature-Code ein Fehler, imperative Event-Listener und Dateien über 300 physische Zeilen werden als Warnungen ausgewiesen. `useGlobalEventListener` bündelt globale Window- und Document-Listener und garantiert symmetrischen Abbau beim Deaktivieren oder Unmount.
+ESLint sichert diese Architektur statisch ab: `CatalogBrowser` darf weder den CSV-Exporter noch den Beziehungsgraphen importieren. In App-, Komponenten- und Feature-Code (`src/features/**/*.{ts,tsx}`, `src/app/**/*.{ts,tsx}`, `src/components/**/*.{ts,tsx}`) ist direkter `document.body`-Zugriff ein Fehler, imperative Event-Listener werden dort als Warnungen ausgewiesen. Dateien unter `src/**/*.{ts,tsx}` mit mehr als 300 physischen Zeilen werden ebenfalls als Warnungen ausgewiesen. `useGlobalEventListener` bündelt globale Window- und Document-Listener und garantiert symmetrischen Abbau beim Deaktivieren oder Unmount.
+
+Für `src/**/*.{ts,tsx}` läuft ESLint zusätzlich mit Typinformation (typescript-eslint Project Service über die Referenzen in `tsconfig.json`) und erzwingt zwei Promise-Regeln als Fehler: `await-thenable` verbietet ein `await` auf synchrone Werte, weil es einen veralteten Async-Vertrag vortäuscht, und `no-floating-promises` verlangt, dass ein Promise im Produktionscode abgewartet, abgefangen oder mit `void` ausdrücklich als Fire-and-forget markiert wird. Die `.mjs`-Dateien unter `src/` liegen außerhalb dieses Gates. In Tests (`src/**/*.test.{ts,tsx}`) ist nur `no-floating-promises` abgeschaltet: Dort meldet die Regel vor allem synchrone `act()`-Aufrufe, und unbehandelte Rejections lassen den Vitest-Lauf ohnehin fehlschlagen.
 
 ## Control-Detail-Grenzen
 
-`src/features/catalog/ControlDetail.tsx` ist der Composer der Kontrollansicht und der einzige `useCatalog`-Aufrufer dieses Teilbaums. Er bestimmt den Scope `${catalogKey}:${control.id}`, löst Vokabulare memoisiert auf und komponiert die Sektionen in fachlicher Reihenfolge. Router-gebundene `VocabularyEntryCard`-Ausgabe bleibt an dieser Grenze: Die Sektionen erhalten einen stabilen Render-Callback und sind dadurch ohne Router oder Katalogprovider isoliert testbar.
+`src/features/catalog/ControlDetail.tsx` ist der Composer der Kontrollansicht und der einzige `useCatalog`-Aufrufer dieses Teilbaums. Er bestimmt den Scope `${catalogKey}:${control.id}`, löst Vokabulare memoisiert auf und komponiert Kopf, Anforderung (mit den Kriterien-Badges als erster Zeile), Umsetzungshinweise, „Schutzziele und Gefährdungen“, „Einordnung“, Zusammenhänge und Fußzeile in dieser Reihenfolge. Alle Blöcke sind gleich aufgebaut: Die Blocküberschrift bildet eine schmale Leiste, der Inhalt liegt auf Weiß, zwischen den Blöcken und vor der Fußzeile stehen 20 px. Leere Bereiche entfallen. Router-gebundene `VocabularyEntryCard`-Ausgabe bleibt an dieser Grenze: Die Sektionen erhalten einen stabilen Render-Callback und sind dadurch ohne Router oder Katalogprovider isoliert testbar.
+
+`segmentStatement()` in `src/domain/statementSegments.ts` zerlegt den rohen Anforderungstext und die `ParamMeta`-Werte ohne React in Satzteile. Praktik, Modalverb, Handlungswort, Ergebnis und Präzisierung werden nur als eigenständige Wörter verankert, damit etwa das Ergebnis „Risiko“ nicht in „Risikoanalyse“ landet; die Praktik zählt nur am Satzanfang. BSI-Auswahlklammern entfernt sie in derselben Reihenfolge wie `resolveParams`: erst Parameter einsetzen, dann Klammern entfernen. So verschwindet auch eine Klammer, die einen Platzhalter umschließt, und die aneinandergereihten Segmente ergeben genau `Control.statement`. Die Darstellung setzt Begriffstrigger direkt an gefundenen Satzteilen; fehlende Ergebnis-, Präzisierungs- und Handlungswort-Anker erscheinen mit Beschriftung unter dem Satz. Als gefunden zählt nur eine Fundstelle, die die Segmente vollständig tragen: Jedes berührte Stück ist ein Textstück oder, bei Ergebnis und Präzisierung, ein Parameterwert ganz im Satzteil, und keine Grenze zwischen Text und Parameterwert teilt ein Wort. Ein gesetzter leerer Wert erzeugt keine solche Grenze; der Text davor und danach bleibt ein Stück. Eine Fundstelle im eingesetzten Wert eines Parameters, eine, die einen Wert nur anschneidet, und eine, in der ein Wert ein Wort teilt (`Risi` + Wert `ko`), wird übersprungen; gibt es keine weitere im Text, gilt der Satzteil als fehlend. Verdeckt ein früherer Satzteil einen Anker, etwa ein Handlungswort im Ergebnis, sucht der Anker hinter diesem Satzteil weiter und fehlt erst ohne weitere erreichbare Fundstelle. So bleibt etwa ein Handlungswort, das nur als Parameterwert vorkommt, über seine Restzeile erklärbar, und kein Auslöser trägt nur einen Wortteil. Dokumentation steht dort unabhängig davon. Ein Parameter ohne gesetzten Wert bleibt als aufgelöster Label-Fallback lesbar und erhält eine antippbare Erklärung. Fehlt auch das Label, bleibt er ein leeres Segment; die Darstellung zeigt dann „…“ mit dem zugänglichen Namen „Festzulegender Wert“ und derselben Erklärung, statt einer Lücke oder eines unsichtbaren Fokusziels. Ein gesetzter leerer Wert erzeugt kein Fokusziel. `Control.statement` bleibt der aufgelöste Text für Suche und Export. Der gemeinsame `Tooltip`-Baustein steuert Hover- und Antipp-Erklärungen, während `useActiveVocabulary` die geöffnete Vokabularkarte begrenzt. Ergebnis und Präzisierung ohne eigenen Vokabeleintrag sind je ein Tastatur-Fokusziel, auch wenn Platzhalter sie unterbrechen; die Platzhalter darin bleiben eigene Fokusziele. Mit Vokabeleintrag wird jedes Textstück des Satzteils ein eigener Begriffs-Trigger; besteht der Satzteil nur aus gesetzten Parameterwerten, tragen diese den Trigger, damit die Erklärung erreichbar bleibt. Die Karten-Container aller aufgelösten Begriffe stehen auch geschlossen (`hidden`) im DOM, sodass `aria-controls` der Trigger immer auflöst. Die Satzteil-Beschriftung erscheint bei Hover und Tastaturfokus, nicht nach Antippen; Antippen eines Platzhalters darin zählt nicht als Antippen des Satzteils. Der Tooltip-Text bleibt versteckt im DOM, damit `aria-describedby` schon beim Fokus auflöst, und Esc schließt nur den Tooltip, nicht das umgebende mobile Overlay. Seine ID bildet jeder Tooltip aus einem lesbaren Präfix und einer eigenen Kennung (`useId`): Die Stücke eines Satzteils mit Vokabeleintrag steuern dieselbe Vokabelkarte, beschreiben aber je ihren eigenen Tooltip. Ein geöffneter Tooltip hält sich im sichtbaren Teil des Detail-Panels (`tooltipPlacement.ts`) und misst seine Lage bei jedem Scrollen außerhalb seiner selbst und jeder Größenänderung von Fenster und Panel neu. Das Panel ändert seine Breite auch ohne das Fenster, beim Ziehen am Rand; das Ziehen nimmt den Fokus nicht, ein per Tastatur geöffneter Tooltip bleibt also offen. `src/test/browser/tooltipPanelResize.browser.test.ts` prüft in Chromium, dass er nach dem Verengen innerhalb der verengten Panelkante steht, auch beim Ziehen mit echter Maus am Handle des Katalog-Browsers: Der Fokus bleibt am Auslöser, und der Tooltip bleibt offen. Reicht der Platz unter seinem Auslöser nicht, klappt er über ihn, statt ihn zu verdecken; scrollt der Auslöser ganz hinaus, bleibt er an ihm. Passt er auf keine Seite ganz, nimmt er die Seite mit mehr Platz und scrollt in deren Höhe, damit der Auslöser antippbar bleibt; nur wenn der Auslöser selbst den sichtbaren Bereich ausfüllt, wird der Tooltip über ihn geklemmt. Den Scrollstand seines Inhalts setzt jede Nachmessung danach wieder. Dieselbe Chromium-Datei prüft das in einem niedrigen Panel, auch dass Scrollen im Tooltip keine Nachmessung auslöst.
 
 | Baustein | Verantwortung |
 |----------|----------------|
 | `useActiveVocabulary` | Hält höchstens eine Vokabularkarte offen und setzt den Zustand bei Katalog- oder Control-Wechsel synchron zurück. |
 | `useGuidanceOverflow` | Besitzt Expansion, Overflow-Messung, `ResizeObserver`, Window-Fallback und symmetrisches Listener-/Observer-Cleanup. |
-| `ControlClassification` | Rendert Kriterien und bindet `ControlTaxonomy` ein. |
-| `ControlTaxonomy` | Rendert Tags und Zielobjektkategorien einschließlich optionaler Vokabularinteraktion. |
-| `ControlSecurityContext` | Rendert die Sektion „Schutzziele und Gefährdungen". |
-| `ControlSecurityTargets` | Rendert die vier Schutzziele als Tabelle mit zweistufiger Relevanz-Skala. |
-| `ControlStatement` | Rendert den Anforderungstext. |
-| `ControlStatementDetails` | Rendert Ergebnis, Präzisierung, Handlungswort und Dokumentation. |
+| `ControlClassification` | Rendert die Kriterien-Badges für Modalverb, Sicherheitsniveau und Aufwand im Block „Anforderung“ und liefert Einträge für die dort von `ControlDetailSection` gerenderte Legende. |
+| `ControlTaxonomy` | Rendert je eine beschriftete Gruppe ohne Rahmen oder Symbol: „Zielobjekte“ im Block „Anforderung“, weil das BSI sie im `statement`-Part ablegt, und „Tags“ im Block „Einordnung“, weil sie an der Anforderung selbst hängen; dazu die WLAN-Taxonomie in „Einordnung“ als Tabelle (Stufe links, Wert rechts); die Namensraum-Adresse erscheint nur, wenn sie kein Platzhalter ist (`isPlaceholderNamespace`). |
+| `ControlSecurityContext` | Rendert Schutzziele und elementare Gefährdungen im Block „Schutzziele und Gefährdungen“; der Gefährdungsname öffnet eine Karte mit Kennung. |
+| `ControlSecurityTargets` | Rendert die vier Schutzziele mit Relevanz-Skala: ab 24rem Inhaltsbreite in zwei Spaltenpaaren, darunter in einer Spalte; seine Legenden-Einträge verwenden dieselbe Punkte-Skala. |
+| `ControlStatement` | Rendert den segmentierten Anforderungssatz mit Begriffstriggern und Platzhalter-Erklärungen. |
+| `ControlStatementDetails` | Rendert nicht im Satz gefundene Angaben und die Dokumentation als Zeilen mit Beschriftung darüber. |
 | `ControlGuidance` | Rendert die bei Bedarf aufklappbare Guidance; Messung und State liegen im Hook. |
-| `ControlDependencies` | Rendert ausschließlich aufgelöste interne Control-Beziehungen. |
-| `ControlSources` | Rendert aufgelöste `back-matter`-, externe und nicht auflösbare Quellen getrennt von Abhängigkeiten. |
-| `ControlHierarchy` | Rendert aufgelösten Parent und Erweiterungen. |
-| `ControlMetadata` | Rendert UUID und den Parent-ID-Fallback. |
+| `ControlDependencies` | Rendert aufgelöste interne Control-Beziehungen unter „Verknüpft" mit lesbaren Relationsnamen und Herkunftslegende. |
+| `ControlSources` | Rendert aufgelöste `back-matter`-, externe und nicht auflösbare Verweise unter „Quellen" als Liste mit Punkten; alle Zeilen einer Quelle stehen bündig. |
+| `ControlHierarchy` | Rendert Erweiterungen unter „Zusammenhänge"; der aufgelöste Parent steht als „Teil von" im Kopf. |
+| `ControlMetadata` | Rendert UUID, OSCAL-`class` und den Parent-ID-Fallback in der Fußzeile ohne Überschrift, als Begriffspaare aus Beschriftung und Wert. |
 
 Die Sektionsmodule erhalten ausschließlich benötigte Controls, aufgelöste Vokabularwerte und Callbacks. Sie verwenden weder Katalog-, Router- noch Filterkontext.
 

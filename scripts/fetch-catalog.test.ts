@@ -680,6 +680,21 @@ describe('fetch-catalog', () => {
       expect(artifact.schemaPin.releaseTag).toBe('v1.2.1');
     });
 
+    it('binds a v-prefixed version exactly and never normalizes it for class 1 (GSPP-357)', () => {
+      // Die Präfixnormalisierung ist Klasse 2 vorbehalten; ein BSI-Artefakt
+      // muss seine Version exakt so deklarieren, wie Registry und Matrix sie
+      // führen — mit und ohne Registry-Erwartung.
+      expect(() => validateFetchedOscalArtifact(
+        oscalBuffer('catalog', { 'oscal-version': 'v1.2.2' }),
+        'catalog',
+      )).toThrow('[OSCAL_VERSION_MALFORMED]');
+      expect(() => validateFetchedOscalArtifact(
+        oscalBuffer('catalog', { 'oscal-version': 'v1.2.2' }),
+        'catalog',
+        { artifactKey: 'catalog-gspp', expectedOscalVersion: '1.2.2' },
+      )).toThrow('[OSCAL_VERSION_MALFORMED]');
+    });
+
     it('rejects a declared version that deviates from the source registry expectation', () => {
       expect(() => validateFetchedOscalArtifact(
         oscalBuffer('catalog', { 'oscal-version': '1.2.2' }),
@@ -751,20 +766,46 @@ describe('fetch-catalog', () => {
   });
 
   it('aborts when the upstream snapshot cannot be resolved after retries', async () => {
-    let requests = 0;
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      requests += 1;
-      return new Response('Service Unavailable', {
-        status: 503,
-        statusText: 'Service Unavailable',
-      });
+    const globalFetch = vi.fn();
+    vi.stubGlobal('fetch', globalFetch);
+    const fetchImpl = vi.fn(async () => new Response('Service Unavailable', {
+      status: 503,
+      statusText: 'Service Unavailable',
     }));
 
     await expect(buildFetchArtifacts(
       { log: () => {}, warn: () => {} },
-      { retryDelaysMs: [0, 0], registryEntries: MINIMAL_REGISTRY },
+      { fetchImpl, retryDelaysMs: [0, 0], registryEntries: MINIMAL_REGISTRY },
     )).rejects.toThrow('Build abgebrochen, damit nicht ungepinnt von main geladen wird');
-    expect(requests).toBe(3);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(globalFetch).not.toHaveBeenCalled();
+  });
+
+  it('does not retry a non-standard status above 599 (GSPP-359)', async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: false,
+      status: 600,
+      statusText: 'Nonstandard',
+      text: async () => 'nonstandard',
+    }) as unknown as Response);
+
+    await expect(buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      { fetchImpl, retryDelaysMs: [0, 0], registryEntries: MINIMAL_REGISTRY },
+    )).rejects.toThrow('fehlgeschlagen: 600 Nonstandard');
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the transport error text of an exhausted retry in the abort reason', async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new Error('UND_ERR_SOCKET: other side closed');
+    });
+
+    await expect(buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      { fetchImpl, retryDelaysMs: [0, 0], registryEntries: MINIMAL_REGISTRY },
+    )).rejects.toThrow('UND_ERR_SOCKET: other side closed');
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 
   it('aborts when the default branch does not expose an exact commit SHA', async () => {
@@ -830,17 +871,13 @@ describe('fetch-catalog', () => {
   });
 
   it('does not retry non-transient GitHub API errors', async () => {
-    let requests = 0;
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      requests += 1;
-      return new Response('Not Found', { status: 404, statusText: 'Not Found' });
-    }));
+    const fetchImpl = vi.fn(async () => new Response('Not Found', { status: 404, statusText: 'Not Found' }));
 
     await expect(buildFetchArtifacts(
       { log: () => {}, warn: () => {} },
-      { retryDelaysMs: [0, 0], registryEntries: MINIMAL_REGISTRY },
+      { fetchImpl, retryDelaysMs: [0, 0], registryEntries: MINIMAL_REGISTRY },
     )).rejects.toThrow('Build abgebrochen, damit nicht ungepinnt von main geladen wird');
-    expect(requests).toBe(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it('truncates oversized response bodies in error messages', async () => {
