@@ -6,12 +6,12 @@ import viteConfig from '../../vite.config';
 import { listSchemaPins } from './oscalVersionMatrix.mjs';
 
 describe('Bauzeitvertrag des Schema-Bundles', () => {
-  it('baut den Import-Worker als ES-Modul, damit Stufe 3 je Zelle splittet', async () => {
+  it('baut den Import-Worker als ES-Modul, damit Stufe 3 je Zelle splittet', () => {
     // Ohne dieses Format baut Vite den Worker als IIFE. Ein IIFE kann nicht
     // code-splitten: Alle 30 Schemas lägen dann in einer einzigen Worker-Datei
     // und würden bei jedem Import geladen. Die Zusage „nur die ausgewählte
     // Zelle" hinge damit an einer stillen Vite-Vorgabe.
-    const config = await viteConfig({ command: 'build', mode: 'production' });
+    const config = viteConfig({ command: 'build', mode: 'production' });
 
     expect(config.worker?.format).toBe('es');
   });

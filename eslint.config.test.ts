@@ -1,10 +1,15 @@
 import { ESLint } from 'eslint';
 import { describe, expect, it } from 'vitest';
+import { createEslintWithoutTypes, TYPE_AWARE_RULES } from './src/test/eslintWithoutTypes';
 
 const eslint = new ESLint({ cwd: process.cwd() });
+const eslintWithoutTypes = createEslintWithoutTypes();
 
 async function lint(source: string, filePath: string) {
-  const [result] = await eslint.lintText(source, { filePath });
+  const [result] = await eslintWithoutTypes.lintText(source, { filePath });
+  // Ohne diese Prüfung bestünden die Erlaubt-Tests auch dann, wenn die Datei
+  // gar nicht geparst wurde und keine Regel lief.
+  expect(result.messages.filter(({ fatal }) => fatal)).toEqual([]);
   return result.messages;
 }
 
@@ -83,5 +88,26 @@ describe('ESLint architecture boundaries', () => {
         }),
       ]),
     );
+  });
+});
+
+describe('Type-aware Promise-Gate (GSPP-199)', () => {
+  it.each([
+    'src/domain/integrity.ts',
+    'src/features/catalog/ControlTable.tsx',
+  ])('aktiviert den Project Service und beide Regeln als Fehler für %s', async (filePath) => {
+    const config = await eslint.calculateConfigForFile(filePath);
+
+    expect(config.languageOptions.parserOptions.projectService).toBe(true);
+    for (const rule of TYPE_AWARE_RULES) {
+      expect(config.rules[rule]).toEqual([2]);
+    }
+  });
+
+  it('prüft Fehl-await auch in Tests, nicht aber schwebende Promises', async () => {
+    const config = await eslint.calculateConfigForFile('src/domain/integrity.test.ts');
+
+    expect(config.rules['@typescript-eslint/await-thenable']).toEqual([2]);
+    expect(config.rules['@typescript-eslint/no-floating-promises']).toEqual([0]);
   });
 });

@@ -77,8 +77,8 @@ describe('ControlSources', () => {
   it('renders sources separately, exposes resource fragments, and only makes HTTPS destinations clickable', () => {
     render(<ControlSources references={references} />);
 
-    expect(screen.getByRole('heading', { name: 'Quellen und Verweise', level: 3 }))
-      .toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Quellen und Verweise' }))
+      .not.toBeInTheDocument();
     expect(screen.getByText('Fragment: abschnitt-2.4')).toBeInTheDocument();
     expect(screen.getByText('Ressource enthält keine darstellbaren Inhalte.')).toBeInTheDocument();
     expect(screen.getByText('Eingebetteter Inhalt: evidence.pdf (application/pdf)')).toBeInTheDocument();
