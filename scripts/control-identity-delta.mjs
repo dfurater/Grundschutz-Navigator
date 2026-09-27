@@ -68,6 +68,9 @@ function resolveControlIdentityDeltaPath(filePath) {
   return resolvedPath;
 }
 
+// Mehrere alt-identifier gelten hier als keine Identität (→ `ambiguous`);
+// validateCatalogControlIdentities in fetch-catalog.mjs nimmt dagegen den
+// ersten.
 function readAltIdentifier(control) {
   const props = readArray(control.props, 'Control props');
   const values = props
@@ -360,6 +363,9 @@ export function compareCatalogControlIdentities({
   const previousByAlt = groupBy(previousControls, 'altIdentifier');
   const nextByAlt = groupBy(nextControls, 'altIdentifier');
 
+  // Reihenfolgeabhängig: Titelabgleich sowie Entfernt/Hinzugefügt arbeiten nur
+  // auf den noch unbehandelten Records, recordControlIdRebounds liest die
+  // Basisklassen aller vorigen Phasen.
   markAltIdentifierAmbiguities(
     state,
     context,

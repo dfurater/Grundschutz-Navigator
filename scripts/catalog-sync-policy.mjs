@@ -4,6 +4,8 @@ import { pathToFileURL } from 'node:url';
 
 export const CATALOG_SYNC_REPOSITORY = 'dfurater/Grundschutz-Navigator';
 export const CATALOG_SYNC_RULESET_ID = 23067488;
+// App ID of the GitHub Actions integration. Binding the required checks to it
+// keeps a same-named status from any other source from satisfying them.
 export const GITHUB_ACTIONS_INTEGRATION_ID = 15368;
 export const REQUIRED_CHECKS = ['validate', 'catalog-sync-guard'];
 export const CATALOG_SYNC_PROTECTED_BRANCH = 'main';
@@ -23,6 +25,9 @@ function findRule(ruleset, type) {
     : undefined;
 }
 
+// Compared as instants, not as strings: the audited pin and GitHub's
+// `updated_at` may denote the same moment in different ISO time-zone forms
+// (GRU-214).
 function representsSameInstant(actualTimestamp, expectedTimestamp) {
   if (typeof actualTimestamp !== 'string' || typeof expectedTimestamp !== 'string') {
     return false;
@@ -95,6 +100,9 @@ function collectRefConditionErrors(refName) {
   return errors;
 }
 
+// GitHub redacts `bypass_actors` for tokens without ruleset write access. The
+// audited `updated_at` pin then carries the claim that no bypass actor was
+// added since the last full audit.
 function collectBypassActorErrors(ruleset, { allowRedactedBypassActors, expectedRulesetUpdatedAt }) {
   const errors = [];
 

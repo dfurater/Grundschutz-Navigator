@@ -10,6 +10,7 @@ import { VocabularyEntryCard } from './VocabularyEntryCard';
 
 const TARGET_OBJECT_NAMESPACE =
   'https://example.com/namespaces/target_object_categories.csv';
+const THREAT_NAMESPACE = 'https://example.com/namespaces/basethreats.csv';
 
 function renderCard(value: string, hiddenColumns?: string[]) {
   const registry = createTestVocabularyRegistry();
@@ -25,10 +26,26 @@ function renderCard(value: string, hiddenColumns?: string[]) {
 }
 
 describe('VocabularyEntryCard', () => {
+  it('shows a threat identifier before its definition', () => {
+    const registry = createTestVocabularyRegistry();
+    const resolution = resolveVocabularyEntry(registry, THREAT_NAMESPACE, 'G 0.18')!;
+
+    const { container } = render(
+      <MemoryRouter>
+        <VocabularyEntryCard resolution={resolution} hiddenColumns={['Begriff']} />
+      </MemoryRouter>,
+    );
+
+    // Legendenschema: „Merkmal: Wert“, darunter die Erklärung.
+    const [head] = container.querySelectorAll('.animate-vocab-card > div');
+    expect(head.querySelector('dt')).toHaveTextContent('Elementare Gefährdung: G 0.18');
+    expect(head.querySelector('dd')).toHaveTextContent('Fehlplanung oder fehlende Anpassung von Prozessen.');
+  });
+
   it('shows the entry identifier as a plain metadata row', () => {
     renderCard('Server');
 
-    expect(screen.getByText('UUID').tagName).toBe('DT');
+    expect(screen.getByText('UUID:').tagName).toBe('DT');
     expect(screen.getByText(VOCABULARY_IDENTIFIERS.targetObjectServer)).toBeInTheDocument();
   });
 
@@ -41,7 +58,7 @@ describe('VocabularyEntryCard', () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText('ChildOfUUID')).not.toBeInTheDocument();
 
-    const label = screen.getByText('Übergeordneter Eintrag');
+    const label = screen.getByText('Übergeordneter Eintrag:');
     expect(label.tagName).toBe('DT');
 
     const parentLink = screen.getByRole('link', { name: 'Server' });
@@ -59,7 +76,7 @@ describe('VocabularyEntryCard', () => {
   it('drops the row when the parent reference resolves to nothing', () => {
     renderCard('Verwaiste Kategorie');
 
-    expect(screen.queryByText('Übergeordneter Eintrag')).not.toBeInTheDocument();
+    expect(screen.queryByText('Übergeordneter Eintrag:')).not.toBeInTheDocument();
     expect(screen.queryByText('ChildOfUUID')).not.toBeInTheDocument();
     expect(
       screen.queryByText(VOCABULARY_IDENTIFIERS.targetObjectOrphanParent),
@@ -76,24 +93,32 @@ describe('VocabularyEntryCard', () => {
     expect(screen.getByRole('link', { name: 'Server' })).toBeInTheDocument();
   });
 
-  it('renders no metadata list when every column is hidden or empty', () => {
+  it('renders only the head row when every column is hidden or empty', () => {
     renderCard('Server', ['Objektklasse', 'UUID']);
 
-    expect(document.querySelector('dl')).toBeNull();
-    expect(
-      screen.getByRole('link', { name: 'Zu den Vokabularen →' }),
-    ).toBeInTheDocument();
+    const card = document.querySelector('.animate-vocab-card');
+    expect(card?.children).toHaveLength(1);
+    expect(card?.querySelector('dt')).toHaveTextContent('Zielobjekt-Kategorie: Server');
   });
 
-  it('keeps the footer link pointing at the entry itself', () => {
+  it('marks the card for the shared spacing rule of expanded explanations', () => {
+    renderCard('Server');
+
+    const card = document.querySelector('.animate-vocab-card');
+    expect(card).toHaveAttribute('data-vocab-card');
+    // 6 px unter der Zeile des Auslösers; den Abstand nach unten regeln die Stapel.
+    expect(card).toHaveClass('mt-1.5');
+  });
+
+  it('links the value in the head row to the entry itself', () => {
     renderCard('Dateiserver');
 
-    const footer = screen.getByRole('link', { name: 'Zu den Vokabularen →' });
-    expect(footer).toHaveAttribute(
+    const value = screen.getByRole('link', { name: 'Dateiserver' });
+    expect(value).toHaveAttribute(
       'href',
       '/vokabular/target-object-categories?wert=Dateiserver',
     );
-    // Genau zwei Links: der Elternverweis und der Fußlink.
+    // Genau zwei Links: der Wert im Kopf und der Elternverweis.
     expect(screen.getAllByRole('link')).toHaveLength(2);
   });
 });

@@ -59,6 +59,8 @@ jobs:
           COMPARE_STATUS="$(gh api \
             "repos/$GITHUB_REPOSITORY/compare/main...$MERGE_COMMIT_SHA" \
             --jq '.status')"
+          # `behind`: Der Merge-Commit ist Vorfahr des weitergelaufenen main
+          # und liegt damit weiter auf main.
           case "$COMPARE_STATUS" in
             identical|behind)
               ;;

@@ -4,6 +4,7 @@ import type {
   LinkRelation,
   LinkRelationStatus,
 } from '@/domain/models';
+import { compareControlIds } from '@/domain/germanCollation';
 
 export interface IncomingControlLink {
   control: Control;
@@ -87,7 +88,7 @@ export function buildIncomingLinkMap(controls: Control[]): Map<string, IncomingC
   }
 
   for (const incoming of incomingByTarget.values()) {
-    incoming.sort((a, b) => a.control.id.localeCompare(b.control.id, 'de', { numeric: true }));
+    incoming.sort((a, b) => compareControlIds(a.control.id, b.control.id));
   }
 
   return incomingByTarget;
@@ -104,12 +105,16 @@ export function buildChildControlMap(controls: Control[]): Map<string, Control[]
   }
 
   for (const children of childrenByParent.values()) {
-    children.sort((a, b) => a.id.localeCompare(b.id, 'de', { numeric: true }));
+    children.sort((a, b) => compareControlIds(a.id, b.id));
   }
 
   return childrenByParent;
 }
 
+// Terminiert nur bei eindeutigen Control-IDs: parentId stammt aus der
+// Schachtelung (parseControlRecursive in src/adapters/oscalAdapter.ts). Einen
+// Zyklus ergäben erst doppelt vergebene IDs, die der Referenzgraph (Stufe 5) an
+// ausgelieferten Artefakten fail-closed blockiert.
 export function getControlHierarchyDepth(
   control: Control,
   controlsById: Map<string, Control>,

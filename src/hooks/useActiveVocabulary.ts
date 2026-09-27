@@ -17,6 +17,9 @@ export function useActiveVocabulary({
     scopeId,
     activeKey: null as string | null,
   }));
+  // Zurücksetzen während des Renderns ist Absicht (React-Muster „Zustand bei
+  // Prop-Wechsel anpassen"); ein Effekt zeigte einen Render lang den Zustand
+  // des alten Scopes.
   if (vocabularyState.scopeId !== scopeId) {
     setVocabularyState({ scopeId, activeKey: null });
   }

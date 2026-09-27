@@ -478,6 +478,8 @@ function checkExactPins(claims, packageManifest) {
 
 function checkTrioIdentity(claims, packageManifest) {
   const trioPins = VITEST_TRIO.map((packageName) => readPin(packageManifest, packageName)?.pin ?? null);
+  // Fehlen alle drei Pins, ist die Menge {null} ebenfalls einelementig und die
+  // Prüfung besteht; das Fehlen meldet checkExactPins über dieselbe Tabellenzeile.
   if (new Set(trioPins).size === 1) {
     return [];
   }

@@ -16,6 +16,7 @@ import {
   type SecurityTargetDimension,
   type SecurityTargetFilters,
 } from '@/domain/securityTargets';
+import { compareControlIds, compareGermanText } from '@/domain/germanCollation';
 
 export type { SecurityTargetFilters } from '@/domain/securityTargets';
 export { emptySecurityTargetFilters } from '@/domain/securityTargets';
@@ -152,9 +153,9 @@ const modalverbOrder: Record<string, number> = { KANN: 0, SOLLTE: 1, MUSS: 2 };
 function compareByField(a: Control, b: Control, field: SortField): number {
   switch (field) {
     case 'id':
-      return a.id.localeCompare(b.id, 'de', { numeric: true });
+      return compareControlIds(a.id, b.id);
     case 'title':
-      return a.title.localeCompare(b.title, 'de');
+      return compareGermanText(a.title, b.title);
     case 'modalverb': {
       const aVal = modalverbOrder[a.modalverb ?? ''] ?? 3;
       const bVal = modalverbOrder[b.modalverb ?? ''] ?? 3;
