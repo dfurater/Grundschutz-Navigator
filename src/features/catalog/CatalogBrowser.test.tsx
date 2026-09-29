@@ -590,6 +590,24 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
   });
 
+  it('starts another catalog at the top while the previous catalog is still loaded', () => {
+    // Zwischenstand beim Katalogwechsel: Die Route nennt schon `wlan`, der
+    // Kontext liefert noch den geladenen `gspp`-Katalog.
+    render(
+      <CatalogBrowserTestApp
+        initialEntry="/katalog/gspp"
+        secondaryLink={{ label: 'Katalog öffnen', to: '/katalog/wlan' }}
+      />,
+    );
+    scrollListTo(420);
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Katalog öffnen' }));
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/katalog/wlan');
+    expect(globalThis.scrollTo).toHaveBeenLastCalledWith(0, 0);
+  });
+
   it('focuses the heading of another catalog once its list has loaded', () => {
     const view = render(
       <CatalogBrowserTestApp
