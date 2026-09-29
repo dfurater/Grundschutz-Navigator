@@ -300,6 +300,8 @@ describe('AppShell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
     expect(container.querySelector('aside')?.className).not.toContain('-translate-x-full');
     expect(screen.getByTestId('mobile-nav-backdrop')).toBeInTheDocument();
+    // Safari 26 liest keine Farbe vom festen Element selbst (BackdropTint, GSPP-447).
+    expect(screen.getByTestId('mobile-nav-backdrop').className).not.toMatch(/\bbg-/);
 
     fireEvent.click(screen.getByRole('button', { name: 'Katalog wechseln' }));
 

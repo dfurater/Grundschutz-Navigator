@@ -41,8 +41,10 @@ import { ControlStatement } from './ControlStatement';
 import { ControlStatementDetails, type RestDetail } from './ControlStatementDetails';
 import { ControlSubjectGroup, ControlWlanTaxonomy } from './ControlTaxonomy';
 import { ControlTaxonomyBreadcrumb } from './ControlTaxonomyBreadcrumb';
+import { controlIdColumnStyle } from './ControlListLink';
 import {
   SubSectionHeading,
+  subSectionStackClass,
   type RenderVocabularyCard,
 } from './ControlVocabularyPrimitives';
 
@@ -53,6 +55,13 @@ import {
  */
 const UNBENANNTE_TAXONOMIE = 'Ohne Gruppenkennung';
 
+/**
+ * `panel`: feste Höhe mit eigenem Scrollbereich (Desktop-Spalte,
+ * Tablet-Overlay). `page`: im Dokumentfluss ohne eigenen Scrollbereich —
+ * das Dokument scrollt (mobile Seitenansicht, GSPP-447).
+ */
+export type ControlDetailLayout = 'panel' | 'page';
+
 export interface ControlDetailProps {
   readonly control: Control;
   readonly controlsById?: Map<string, Control>;
@@ -61,6 +70,8 @@ export interface ControlDetailProps {
   readonly childControls?: Control[];
   readonly onClose: () => void;
   readonly onNavigateToControl?: (control: Control) => void;
+  /** Standard `panel`, siehe `ControlDetailLayout`. */
+  readonly layout?: ControlDetailLayout;
 }
 
 export function getControlDetailUrl(
@@ -87,6 +98,7 @@ export function ControlDetail({
   childControls = [],
   onClose,
   onNavigateToControl,
+  layout = 'panel',
 }: ControlDetailProps) {
   const { vocabularyRegistry, catalog, catalogDocument } = useCatalog();
   if (!catalog) {
@@ -94,7 +106,8 @@ export function ControlDetail({
   }
 
   const catalogKey = catalog.catalogKey;
-  const scrollAreaRef = useOverlayScrollbars<HTMLDivElement>();
+  const isPage = layout === 'page';
+  const scrollAreaRef = useOverlayScrollbars<HTMLDivElement>(!isPage);
   const controlStateKey = `${catalogKey}:${control.id}`;
   const {
     copy: copyLink,
@@ -236,14 +249,22 @@ export function ControlDetail({
   const resolvedOutgoingLinks = control.links.filter((link) => controlsById?.has(link.targetId));
   const outgoingLinkTargetIds = new Set(resolvedOutgoingLinks.map((link) => link.targetId));
   const hasOutgoingLinks = resolvedOutgoingLinks.length > 0;
-  const hasIncomingOnlyLinks = incomingLinks.some(
-    (incoming) => !outgoingLinkTargetIds.has(incoming.control.id),
-  );
+  const incomingOnlyControlIds = incomingLinks
+    .map((incoming) => incoming.control.id)
+    .filter((id) => !outgoingLinkTargetIds.has(id));
+  const hasIncomingOnlyLinks = incomingOnlyControlIds.length > 0;
   const hasRelatedLinks = hasOutgoingLinks || hasIncomingOnlyLinks;
   const hasSources = resolvedControlReferences.some(
     (reference) => reference.kind !== 'control' && reference.kind !== 'provenance',
   );
   const hasZusammenhaenge = childControls.length > 0 || hasRelatedLinks || hasSources;
+  // Eine Kennungsspalte für Erweiterungen und Verknüpfungen, bemessen an der
+  // längsten dort sichtbaren Kennung (GSPP-447).
+  const linkIdColumnStyle = controlIdColumnStyle([
+    ...childControls.map((child) => child.id),
+    ...outgoingLinkTargetIds,
+    ...incomingOnlyControlIds,
+  ]);
 
   const schutzzieleLegendEntries = hasSecurityTargetRelevance
     ? buildRelevanceLegendEntries([
@@ -270,7 +291,7 @@ export function ControlDetail({
   };
 
   return (
-    <div className="h-full flex flex-col bg-[var(--color-surface-raised)]">
+    <div className={`${isPage ? '' : 'h-full '}flex flex-col bg-[var(--color-surface-raised)]`}>
       {/* Header */}
       <div className="p-4 border-b border-[var(--color-border-default)]">
         <div className="flex items-center gap-2 mb-2">
@@ -334,7 +355,8 @@ export function ControlDetail({
           isVocabularyActive={isVocabularyActive}
           onToggleVocabulary={toggleVocabulary}
         />
-        <h2 className="type-page-title">
+        {/* Fokusziel beim Öffnen der mobilen Seitenansicht (`useDocumentDetailPage`). */}
+        <h2 data-control-detail-title tabIndex={-1} className="type-page-title focus:outline-none">
           {control.title}
         </h2>
         {parentControl && (
@@ -355,7 +377,16 @@ export function ControlDetail({
 
       {/* Content: alle Blöcke gleich aufgebaut – Leiste, Inhalt auf Weiß, 20 px Abstand (Owner 26.09.2026). */}
       {/* Überlagernde Scrollleiste: Aufklappen ändert die Textbreite nicht. */}
-      <div ref={scrollAreaRef} data-control-detail-scroll className="flex flex-1 flex-col gap-5 overflow-y-auto p-4 pb-safe lg:pb-4">
+      {/*
+        Als Seite scrollt das Dokument; das Attribut bleibt die Tooltip-Begrenzung.
+        Unten 16 px wie oben: Als Seite folgt die Fußzeile, als Panel kommt der
+        Sicherheitsabstand des Geräts hinzu, statt die 16 px zu ersetzen.
+      */}
+      <div
+        ref={scrollAreaRef}
+        data-control-detail-scroll
+        className={isPage ? 'flex flex-col gap-5 p-4' : 'flex flex-1 flex-col gap-5 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] lg:pb-4'}
+      >
         {hasAnforderung && (
           <ControlStatement
             statement={control.statement}
@@ -368,7 +399,6 @@ export function ControlDetail({
               input: statementSegmentation.input,
               precomputed: statementSegmentation.result,
               practiceResolution: practiceVocabulary,
-              modalverbResolution: resolvedVocabularies.modalverb,
               handlungswortResolution: resolvedVocabularies.statement.handlungsworte,
               ergebnisResolution: resolvedVocabularies.statement.ergebnis,
               praezisierungResolution: resolvedVocabularies.statement.praezisierung,
@@ -420,7 +450,7 @@ export function ControlDetail({
         )}
         {hasEinordnung && (
           <ControlDetailSection heading="Einordnung">
-            <div className="space-y-3">
+            <div className={subSectionStackClass}>
               <ControlSubjectGroup
                 kind="tags"
                 control={control}
@@ -440,7 +470,7 @@ export function ControlDetail({
             heading="Zusammenhänge"
             legend={hasRelatedLinks ? { id: 'legende-zusammenhaenge', entries: buildLinkLegendEntries() } : undefined}
           >
-            <div className="space-y-3">
+            <div className={subSectionStackClass} style={linkIdColumnStyle}>
               {childControls.length > 0 && (
                 <div>
                   <SubSectionHeading>Erweiterungen</SubSectionHeading>

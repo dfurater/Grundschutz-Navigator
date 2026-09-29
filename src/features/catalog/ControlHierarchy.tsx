@@ -1,5 +1,6 @@
 import type { Control } from '@/domain/models';
-import { ControlListLink, detailListClass } from './ControlVocabularyPrimitives';
+import { ControlListLink } from './ControlListLink';
+import { detailListClass } from './ControlVocabularyPrimitives';
 
 export interface ControlHierarchyProps {
   readonly childControls?: readonly Control[];

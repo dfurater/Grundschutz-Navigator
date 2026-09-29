@@ -86,7 +86,7 @@ export interface RelevanceScaleProps {
 
 /**
  * Punkte-Skala für die Schutzziel-Relevanz. Die Punkte sind rein visuell; die
- * fachliche Bedeutung trägt der umgebende Trigger über `aria-label` und `title`.
+ * fachliche Bedeutung trägt das umgebende Element (Screenreader-Text, `title`).
  */
 export function RelevanceScale({ value }: RelevanceScaleProps) {
   return (
