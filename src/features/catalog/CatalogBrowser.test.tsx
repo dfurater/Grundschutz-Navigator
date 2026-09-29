@@ -608,6 +608,30 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(globalThis.scrollTo).toHaveBeenLastCalledWith(0, 0);
   });
 
+  it('does not record a list position while the catalog switch shows no list', () => {
+    const app = () => (
+      <CatalogBrowserTestApp
+        initialEntry="/katalog/gspp"
+        secondaryLink={{ label: 'Katalog öffnen', to: '/katalog/wlan' }}
+      />
+    );
+    const view = render(app());
+    fireEvent.click(screen.getByRole('button', { name: 'Katalog öffnen' }));
+    // Zwischenstand: Route `wlan`, geladen noch `gspp` – statt der Liste steht
+    // die Nicht-gefunden-Ansicht. Ein Scrollen hier ist keine Listenposition.
+    expect(screen.queryByTestId('mobile-control-row')).toBeNull();
+    scrollListTo(700);
+    Object.defineProperty(globalThis, 'scrollY', { configurable: true, value: 0 });
+
+    mockCatalog(makeCatalog('wlan'));
+    view.rerender(app());
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));
+
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/katalog\/wlan$/);
+    expect(globalThis.scrollTo).toHaveBeenLastCalledWith(0, 0);
+  });
+
   it('focuses the heading of another catalog once its list has loaded', () => {
     const view = render(
       <CatalogBrowserTestApp

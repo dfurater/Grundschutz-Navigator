@@ -20,7 +20,7 @@ export interface UseDocumentDetailPageOptions {
   readonly controlId: string | null;
   /** Listenbereich (Katalog und Thema bzw. Praktik), zu dem die Liste gehört. */
   readonly scopeKey: string;
-  /** Die Liste ist gerendert (Katalog geladen); nur dann gelten Bereich und Position. */
+  /** Die Liste ist gerendert, nicht Lade-, Fehler- oder Nicht-gefunden-Ansicht. */
   readonly listReady: boolean;
   readonly onClose: () => void;
 }

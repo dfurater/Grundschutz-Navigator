@@ -79,7 +79,7 @@ export function CatalogBrowser() {
     enabled: !hasOwnScrollArea,
     controlId: selectedControl?.id ?? null,
     scopeKey: `${catalogKey ?? selectionScopeId}:${scopeId ?? ''}`,
-    listReady: Boolean(catalog),
+    listReady: Boolean(catalog) && !loading && !error && !routeNotFound,
     onClose: closeDetail,
   });
   const {
