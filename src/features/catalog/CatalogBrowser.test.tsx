@@ -570,6 +570,26 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
   });
 
+  it('returns to the control row after a direct call whose catalog loaded first', () => {
+    // Die Ladeansicht ist keine Liste: Ihr Bereich darf nicht als Herkunft gelten.
+    mockedUseCatalog.mockReturnValue({
+      catalog: null,
+      loading: true,
+      error: null,
+      vocabularyRegistry: null,
+    } as unknown as ReturnType<typeof useCatalog>);
+    const view = renderCatalogBrowser('/katalog/gspp/kontrolle/shared-alt-identifier');
+    expect(screen.getByText('Katalog wird geladen…')).toBeInTheDocument();
+
+    mockCatalog(makeCatalog('gspp'));
+    view.rerender(<CatalogBrowserTestApp initialEntry="/katalog/gspp/kontrolle/shared-alt-identifier" />);
+    expect(screen.getByRole('heading', { level: 2, name: control.title })).toHaveFocus();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));
+
+    expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
+  });
+
   it('focuses the heading of another catalog once its list has loaded', () => {
     const view = render(
       <CatalogBrowserTestApp

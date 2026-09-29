@@ -20,6 +20,8 @@ export interface UseDocumentDetailPageOptions {
   readonly controlId: string | null;
   /** Listenbereich (Katalog und Thema bzw. Praktik), zu dem die Liste gehört. */
   readonly scopeKey: string;
+  /** Die Liste ist gerendert (Katalog geladen); nur dann gelten Bereich und Position. */
+  readonly listReady: boolean;
   readonly onClose: () => void;
 }
 
@@ -48,7 +50,7 @@ export interface UseDocumentDetailPageOptions {
  *   Detail oder vom `body` kommt; der mitlaufende App-Kopf mit Suche,
  *   Katalogwechsler und Menü bleibt davon unberührt.
  */
-export function useDocumentDetailPage({ enabled, controlId, scopeKey, onClose }: UseDocumentDetailPageOptions): void {
+export function useDocumentDetailPage({ enabled, controlId, scopeKey, listReady, onClose }: UseDocumentDetailPageOptions): void {
   const listScrollYRef = useRef(0);
   // Bereich der zuletzt sichtbaren Liste; `null` nach einem Direktaufruf.
   const listScopeKeyRef = useRef<string | null>(null);
@@ -58,6 +60,8 @@ export function useDocumentDetailPage({ enabled, controlId, scopeKey, onClose }:
   // Noch nicht gesetzter Rückkehrfokus: gesuchte Zeile oder nur die Überschrift.
   const pendingFocusRef = useRef<{ rowControlId: string | null } | null>(null);
   const listVisible = enabled && controlId === null;
+  // Während ein Katalog lädt, gibt es noch keine Liste: kein Bereich, keine Position.
+  const listShown = listVisible && listReady;
 
   useLayoutEffect(() => {
     if (!enabled || controlId !== null) pendingFocusRef.current = null;
@@ -93,13 +97,13 @@ export function useDocumentDetailPage({ enabled, controlId, scopeKey, onClose }:
   });
 
   useLayoutEffect(() => {
-    if (!listVisible) return;
+    if (!listShown) return;
     listScrollYRef.current = globalThis.scrollY;
     listScopeKeyRef.current = scopeKey;
-  }, [listVisible, scopeKey]);
+  }, [listShown, scopeKey]);
   useGlobalEventListener('window', 'scroll', () => {
     listScrollYRef.current = globalThis.scrollY;
-  }, listVisible);
+  }, listShown);
 
   useGlobalEventListener('document', 'keydown', (event) => {
     if (event.key !== 'Escape' || event.defaultPrevented) return;

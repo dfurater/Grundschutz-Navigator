@@ -74,12 +74,12 @@ export function CatalogBrowser() {
   // Unterhalb `md` scrollt das Dokument: Das Detail ersetzt dort die Liste als
   // Seite, statt als Overlay mit eigenem Scrollbereich darüber zu liegen (GSPP-447).
   const showDetailAsPage = !hasOwnScrollArea && selectedControl !== null;
-  // Auch während ein Katalog lädt aktiv: Die Rückkehr in dessen Liste holt
-  // den Fokus nach, sobald sie erscheint.
+  // Aktiv auch beim Laden (Fokus folgt der Liste); gemerkt wird nur die geladene Liste.
   useDocumentDetailPage({
     enabled: !hasOwnScrollArea,
     controlId: selectedControl?.id ?? null,
     scopeKey: `${selectionScopeId}:${scopeId ?? ''}`,
+    listReady: Boolean(catalog),
     onClose: closeDetail,
   });
   const {
