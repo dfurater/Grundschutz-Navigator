@@ -377,11 +377,15 @@ export function ControlDetail({
 
       {/* Content: alle Blöcke gleich aufgebaut – Leiste, Inhalt auf Weiß, 20 px Abstand (Owner 26.09.2026). */}
       {/* Überlagernde Scrollleiste: Aufklappen ändert die Textbreite nicht. */}
-      {/* Als Seite scrollt das Dokument; das Attribut bleibt die Tooltip-Begrenzung. */}
+      {/*
+        Als Seite scrollt das Dokument; das Attribut bleibt die Tooltip-Begrenzung.
+        Unten 16 px wie oben: Als Seite folgt die Fußzeile, als Panel kommt der
+        Sicherheitsabstand des Geräts hinzu, statt die 16 px zu ersetzen.
+      */}
       <div
         ref={scrollAreaRef}
         data-control-detail-scroll
-        className={isPage ? 'flex flex-col gap-5 p-4 pb-safe' : 'flex flex-1 flex-col gap-5 overflow-y-auto p-4 pb-safe lg:pb-4'}
+        className={isPage ? 'flex flex-col gap-5 p-4' : 'flex flex-1 flex-col gap-5 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] lg:pb-4'}
       >
         {hasAnforderung && (
           <ControlStatement
