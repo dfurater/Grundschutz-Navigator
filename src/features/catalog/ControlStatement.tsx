@@ -42,7 +42,6 @@ export interface ControlStatementSegmentsProps {
   /** Memoiziertes Ergebnis aus `ControlDetail` (Single-Run, GSPP-303 T10). */
   readonly precomputed?: SegmentStatementResult;
   readonly practiceResolution: VocabularyResolution | null;
-  readonly modalverbResolution: VocabularyResolution | null;
   readonly handlungswortResolution: VocabularyResolution | null;
   readonly ergebnisResolution?: VocabularyResolution | null;
   readonly praezisierungResolution?: VocabularyResolution | null;
@@ -214,7 +213,6 @@ export function ControlStatementSegments({
   input,
   precomputed,
   practiceResolution,
-  modalverbResolution,
   handlungswortResolution,
   ergebnisResolution = null,
   praezisierungResolution = null,
@@ -223,9 +221,10 @@ export function ControlStatementSegments({
   renderVocabularyCard,
 }: ControlStatementSegmentsProps): ReactNode {
   const { segments } = precomputed ?? segmentStatement(input);
+  // Das Modalverb bleibt Satztext ohne eigenen Trigger: Seine feste Skala
+  // erklärt die Legende „Anforderung“ (GSPP-447).
   const slots: readonly SatzSlot[] = [
     { role: 'practice', key: 'satz:practice', resolution: practiceResolution },
-    { role: 'modalverb', key: 'satz:modalverb', resolution: modalverbResolution },
     { role: 'handlungswort', key: 'satz:handlungswort', resolution: handlungswortResolution },
     { role: 'ergebnis', key: 'satz:ergebnis', resolution: ergebnisResolution },
     { role: 'praezisierung', key: 'satz:praezisierung', resolution: praezisierungResolution },

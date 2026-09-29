@@ -36,7 +36,7 @@ describe('CatalogToolbar', () => {
 
     render(
       <CatalogToolbar
-        title="TOP.1 — Testthema"
+        title="Testthema"
         filteredCount={1}
         totalCount={2}
         hasActiveFilters={false}
@@ -53,9 +53,11 @@ describe('CatalogToolbar', () => {
       />,
     );
 
-    expect(
-      screen.getByRole('heading', { name: 'TOP.1 — Testthema' }),
-    ).toBeInTheDocument();
+    // Die Bereichsüberschrift zeigt nur den übergebenen Namen (GSPP-447) und
+    // dient als Rückkehrziel nach dem Schließen der mobilen Detailseite.
+    const heading = screen.getByRole('heading', { level: 1, name: 'Testthema' });
+    expect(heading).toHaveAttribute('data-catalog-scope-heading');
+    expect(heading).toHaveAttribute('tabindex', '-1');
     expect(screen.getByText('1 / 2 Kontrollen')).toBeInTheDocument();
     expect(screen.getByText('1 von 2')).toBeInTheDocument();
 

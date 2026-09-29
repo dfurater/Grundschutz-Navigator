@@ -71,6 +71,7 @@ export function HeaderBar({
   return (
     <header
       role="banner"
+      data-sticky-header
       className={`header-reference-theme sticky top-0 z-30 grid h-14 shrink-0 grid-cols-[1fr_minmax(0,36rem)_1fr] items-center px-4 ${className}`}
       data-testid="header-bar"
     >
