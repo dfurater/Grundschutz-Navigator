@@ -70,6 +70,42 @@ describe('CatalogToolbar', () => {
     expect(onClearSelection).toHaveBeenCalledOnce();
   });
 
+  it('unmounts open mobile sheets while they are suspended and releases their scroll lock', () => {
+    const toolbar = (mobileSheetsSuspended: boolean) => (
+      <CatalogToolbar
+        title="Testthema"
+        filteredCount={1}
+        totalCount={1}
+        hasActiveFilters={false}
+        onClearFilters={vi.fn()}
+        checkedIds={new Set()}
+        mobileSelectMode={false}
+        onToggleMobileSelectMode={vi.fn()}
+        onClearSelection={vi.fn()}
+        filteredControls={[control]}
+        allControls={[control]}
+        sectionFilename="grundschutz-TOP.1.csv"
+        filterPanelProps={{} as FilterPanelProps}
+        isDesktop={false}
+        mobileSheetsSuspended={mobileSheetsSuspended}
+      />
+    );
+    const view = render(toolbar(false));
+    fireEvent.click(screen.getByRole('button', { name: 'Filter anzeigen' }));
+    expect(getBody().style.overflow).toBe('hidden');
+
+    view.rerender(toolbar(true));
+
+    expect(screen.queryByRole('button', { name: 'Filter anzeigen' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'CSV' })).toBeNull();
+    expect(getBody().style.overflow).toBe('');
+
+    view.rerender(toolbar(false));
+
+    expect(screen.getByRole('button', { name: 'Filter anzeigen' })).toBeInTheDocument();
+    expect(screen.queryByText('Filteraktion')).toBeNull();
+  });
+
   it('delegates mobile filter reset and selection-export completion', () => {
     const onClearFilters = vi.fn();
     const onSelectionExported = vi.fn();

@@ -77,6 +77,7 @@ export function CatalogBrowser() {
   useDocumentDetailPage({
     enabled: !hasOwnScrollArea && Boolean(catalog),
     controlId: selectedControl?.id ?? null,
+    scopeKey: `${catalog?.catalogKey ?? ''}:${scopeId ?? ''}`,
     onClose: closeDetail,
   });
   const {
@@ -113,10 +114,7 @@ export function CatalogBrowser() {
     filteredFacetCounts,
     hasActiveFilters,
   } = useFilteredControls(scopedControls, filters, sort);
-  const clearFilters = useCallback(
-    () => setFilters(emptyFilters),
-    [setFilters],
-  );
+  const clearFilters = useCallback(() => setFilters(emptyFilters), [setFilters]);
   const finishMobileSelection = useCallback(() => {
     setMobileSelectMode(false);
     clearSelection();
@@ -204,9 +202,9 @@ export function CatalogBrowser() {
       <PageTitle title={pageTitle} />
       <div className="flex-1 min-w-0 flex flex-col md:overflow-hidden">
         {/*
-          Als Seite geöffnetes Detail: Liste und Toolbar bleiben gemountet
-          (Auswahl, Filter, Zeilenzustand), sind aber per `hidden` weder
-          sichtbar noch bedienbar.
+          Als Seite geöffnetes Detail: Liste und Toolbar bleiben gemountet (Auswahl,
+          Filter, Zeilenzustand), sind aber per `hidden` verborgen; nur die mobilen
+          Sheets baut die Toolbar ab, damit keines unsichtbar die Seite sperrt.
         */}
         <div hidden={showDetailAsPage} className="flex-1 min-w-0 flex flex-col md:overflow-hidden">
           <CatalogToolbar
@@ -224,6 +222,7 @@ export function CatalogBrowser() {
             sectionFilename={`grundschutz-${scopeId ?? 'katalog'}.csv`}
             filterPanelProps={filterPanelProps}
             isDesktop={isDesktop}
+            mobileSheetsSuspended={showDetailAsPage}
             onSelectionExported={finishMobileSelection}
           />
 

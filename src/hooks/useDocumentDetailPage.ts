@@ -18,6 +18,8 @@ export interface UseDocumentDetailPageOptions {
   readonly enabled: boolean;
   /** Geöffnete Kontrolle oder `null`, solange die Liste sichtbar ist. */
   readonly controlId: string | null;
+  /** Listenbereich (Katalog und Thema bzw. Praktik), zu dem die Liste gehört. */
+  readonly scopeKey: string;
   readonly onClose: () => void;
 }
 
@@ -36,36 +38,40 @@ export interface UseDocumentDetailPageOptions {
  *   Seite geöffnet wurde — auch nach Wechseln zu verknüpften Kontrollen —,
  *   ersatzweise die Bereichsüberschrift. Das geschieht im Layout-Effekt,
  *   bevor die Liste gemalt wird.
+ * - Führt das Schließen in einen anderen Listenbereich, etwa über den
+ *   Navigations-Drawer, gilt die gemerkte Position nicht: Die Liste beginnt
+ *   oben, der Fokus geht auf die Bereichsüberschrift.
  * - Escape schließt nur, wenn niemand es schon behandelt hat und es aus dem
  *   Detail oder vom `body` kommt; der mitlaufende App-Kopf mit Suche,
  *   Katalogwechsler und Menü bleibt davon unberührt.
  */
-export function useDocumentDetailPage({ enabled, controlId, onClose }: UseDocumentDetailPageOptions): void {
+export function useDocumentDetailPage({ enabled, controlId, scopeKey, onClose }: UseDocumentDetailPageOptions): void {
   const listScrollYRef = useRef(0);
   // Kontrolle, mit der die Seite aus der Liste (oder per Direktaufruf) geöffnet
-  // wurde; `null`, solange die Liste sichtbar ist.
-  const openedControlIdRef = useRef<string | null>(null);
+  // wurde, samt Listenbereich; `null`, solange die Liste sichtbar ist.
+  const openedRef = useRef<{ controlId: string; scopeKey: string } | null>(null);
   const listVisible = enabled && controlId === null;
 
   useLayoutEffect(() => {
     if (!enabled) {
-      openedControlIdRef.current = null;
+      openedRef.current = null;
       return;
     }
     if (controlId !== null) {
-      openedControlIdRef.current ??= controlId;
+      openedRef.current ??= { controlId, scopeKey };
       globalThis.scrollTo(0, 0);
       document.querySelector<HTMLElement>(DETAIL_TITLE_SELECTOR)?.focus({ preventScroll: true });
       return;
     }
-    const openedControlId = openedControlIdRef.current;
-    if (openedControlId === null) return;
-    openedControlIdRef.current = null;
-    globalThis.scrollTo(0, listScrollYRef.current);
-    const returnTarget = document.querySelector<HTMLElement>(controlRowSelector(openedControlId))
-      ?? document.querySelector<HTMLElement>(SCOPE_HEADING_SELECTOR);
+    const opened = openedRef.current;
+    if (opened === null) return;
+    openedRef.current = null;
+    const sameScope = opened.scopeKey === scopeKey;
+    globalThis.scrollTo(0, sameScope ? listScrollYRef.current : 0);
+    const row = sameScope ? document.querySelector<HTMLElement>(controlRowSelector(opened.controlId)) : null;
+    const returnTarget = row ?? document.querySelector<HTMLElement>(SCOPE_HEADING_SELECTOR);
     returnTarget?.focus({ preventScroll: true });
-  }, [enabled, controlId]);
+  }, [enabled, controlId, scopeKey]);
 
   useLayoutEffect(() => {
     if (listVisible) listScrollYRef.current = globalThis.scrollY;

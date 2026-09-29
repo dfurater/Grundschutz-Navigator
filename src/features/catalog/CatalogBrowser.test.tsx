@@ -498,6 +498,64 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
   });
 
+  it.each([
+    ['Filter', 'Filter anzeigen', 'Filteraktion'],
+    ['Export', 'CSV', 'Aktuelle Ansicht (1)'],
+  ])('releases the scroll lock of an open %s sheet when a control page opens', (_label, triggerName, sheetContent) => {
+    render(
+      <CatalogBrowserTestApp
+        initialEntry="/katalog/gspp/TOP.1"
+        secondaryLink={{ label: 'Vorwärts', to: '/katalog/gspp/kontrolle/shared-alt-identifier' }}
+      />,
+    );
+    // Der Filter-Mock steht auch außerhalb des Sheets; gezählt wird der Zuwachs.
+    const countSheetContent = () => screen.queryAllByText(sheetContent).length;
+    const closedCount = countSheetContent();
+    fireEvent.click(screen.getByRole('button', { name: triggerName }));
+    expect(countSheetContent()).toBe(closedCount + 1);
+    expect(document.querySelector('body')?.style.overflow).toBe('hidden');
+
+    // Browser-Vorwärts auf die Kontrollroute, während das Sheet offen ist.
+    fireEvent.click(screen.getByRole('button', { name: 'Vorwärts' }));
+
+    expect(screen.getByRole('heading', { level: 2, name: control.title })).toBeInTheDocument();
+    expect(document.querySelector('body')?.style.overflow).toBe('');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));
+
+    expect(screen.getByRole('button', { name: triggerName })).toBeVisible();
+    expect(countSheetContent()).toBe(closedCount);
+    expect(document.querySelector('body')?.style.overflow).toBe('');
+  });
+
+  it('starts a different topic at the top instead of restoring the previous list position', () => {
+    const catalog = makeCatalog('gspp');
+    catalog.practices[0].topics.push({
+      id: 'TOP.2',
+      title: 'Zweites Thema',
+      label: '2',
+      practiceId: 'TOP',
+      controlCount: 0,
+      controlIds: [],
+    });
+    mockCatalog(catalog);
+    render(
+      <CatalogBrowserTestApp
+        initialEntry="/katalog/gspp/TOP.1"
+        secondaryLink={{ label: 'Thema wechseln', to: '/katalog/gspp/TOP.2' }}
+      />,
+    );
+    scrollListTo(420);
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+
+    // Themenwechsel über den Navigations-Drawer bei geöffneter Detailseite.
+    fireEvent.click(screen.getByRole('button', { name: 'Thema wechseln' }));
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/katalog/gspp/TOP.2');
+    expect(globalThis.scrollTo).toHaveBeenLastCalledWith(0, 0);
+    expect(screen.getByRole('heading', { level: 1, name: 'Zweites Thema' })).toHaveFocus();
+  });
+
   it('keeps the page open for Escape outside the detail or already handled elsewhere', () => {
     render(<CatalogBrowserTestApp initialEntry="/katalog/gspp/TOP.1" withHistoryBack />);
     fireEvent.click(screen.getByRole('button', { name: control.title }));
