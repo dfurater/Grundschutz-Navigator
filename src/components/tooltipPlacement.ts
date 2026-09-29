@@ -5,6 +5,12 @@ const EDGE_GAP = 8;
 const VISIBLE_AREA_SELECTOR = '[data-control-detail-scroll]';
 
 /**
+ * Mitlaufender App-Kopf: Scrollt das Dokument (mobile Seitenansicht), liegt er
+ * über dem Inhalt; der sichtbare Bereich beginnt dann unter ihm.
+ */
+const STICKY_HEADER_SELECTOR = '[data-sticky-header]';
+
+/**
  * Hält einen geöffneten Tooltip im sichtbaren Teil des scrollbaren
  * Detail-Panels und des Viewports. Gemessen wird immer die natürliche Lage:
  * Die eigene Begrenzung wird im selben Durchlauf zurückgenommen, ohne dass
@@ -30,7 +36,8 @@ function placeInVisibleArea(tooltip: HTMLElement): void {
   const panel = tooltip.closest(VISIBLE_AREA_SELECTOR)?.getBoundingClientRect();
   const visibleLeft = Math.max(0, panel?.left ?? 0);
   const visibleRight = Math.min(globalThis.innerWidth, panel?.right ?? globalThis.innerWidth);
-  const visibleTop = Math.max(0, panel?.top ?? 0);
+  const headerBottom = globalThis.document.querySelector(STICKY_HEADER_SELECTOR)?.getBoundingClientRect().bottom ?? 0;
+  const visibleTop = Math.max(0, panel?.top ?? 0, headerBottom);
   const visibleBottom = Math.min(globalThis.innerHeight, panel?.bottom ?? globalThis.innerHeight);
   const trigger = tooltip.parentElement?.getBoundingClientRect();
   if (

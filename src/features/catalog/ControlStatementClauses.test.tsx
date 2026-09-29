@@ -10,7 +10,6 @@ function plainSegmentsProps(input: SegmentStatementInput): ControlStatementSegme
   return {
     input,
     practiceResolution: null,
-    modalverbResolution: null,
     handlungswortResolution: null,
     isVocabularyActive: () => false,
     onToggleVocabulary: () => {},

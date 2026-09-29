@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { SegmentStatementResult } from '@/domain/statementSegments';
 import type { VocabularyResolution } from '@/domain/vocabulary';
-import { detailProseClass, type RenderVocabularyCard, subSectionHeadingClass, TermTrigger, toVocabCardId } from './ControlVocabularyPrimitives';
+import { detailProseClass, type RenderVocabularyCard, subSectionHeadingClass, subSectionStackClass, TermTrigger, toVocabCardId } from './ControlVocabularyPrimitives';
 
 export interface RestDetail {
   readonly key: 'ergebnis' | 'praezisierung' | 'handlungsworte' | 'dokumentation';
@@ -43,7 +43,7 @@ export function ControlStatementDetails({
   // GSPP-303 T9: hüllenlos (Restzeilen unterhalb des Anforderungssatzes, ohne
   // eigene Überschrift); Beschriftung wie die Gruppen in „Schutzziele und Gefährdungen“.
   return (
-    <div className="mt-3 space-y-3">
+    <div className={`mt-3 ${subSectionStackClass}`}>
       {visible.map((detail) => {
         const active = isVocabularyActive(detail.key);
         return (

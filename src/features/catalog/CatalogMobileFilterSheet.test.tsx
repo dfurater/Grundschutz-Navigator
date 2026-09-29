@@ -63,6 +63,7 @@ describe('CatalogMobileFilterSheet', () => {
       '.fixed.inset-0[aria-hidden="true"]',
     );
     expect(backdrop).not.toBeNull();
+    expect(backdrop!.className).not.toMatch(/\bbg-/);
     fireEvent.click(backdrop!);
 
     expect(screen.queryByRole('button', { name: 'Filteraktion' })).not.toBeInTheDocument();

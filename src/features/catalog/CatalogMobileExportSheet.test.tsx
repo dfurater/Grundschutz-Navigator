@@ -80,6 +80,7 @@ describe('CatalogMobileExportSheet', () => {
       '.fixed.inset-0[aria-hidden="true"]',
     );
     expect(backdrop).not.toBeNull();
+    expect(backdrop!.className).not.toMatch(/\bbg-/);
     fireEvent.click(backdrop!);
 
     expect(

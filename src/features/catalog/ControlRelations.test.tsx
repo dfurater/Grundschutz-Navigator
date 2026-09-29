@@ -68,26 +68,33 @@ describe('everydayRelationLabel', () => {
 });
 
 describe('buildIncomingEverydayLabel', () => {
-  it('präfixt das Alltags-Label mit „verweist hierauf als …"', () => {
+  it('nennt Richtung und Relationsart ohne die Kennung der Link-Zeile', () => {
     const target = makeControl('GC.2.2', 'Zielkontrolle');
     const incoming: IncomingControlLink = {
       control: target,
       link: makeLink(target.id, 'related', 'custom'),
     };
-    expect(buildIncomingEverydayLabel(incoming))
-      .toBe('GC.2.2 verweist hierauf als „Verwandt"');
+    expect(buildIncomingEverydayLabel([incoming]))
+      .toBe('Verweist auf diese Kontrolle · Verwandt');
+  });
 
-    const required: IncomingControlLink = {
-      control: makeControl('GC.2.1'),
-      link: makeLink('GC.2.1', 'required', 'documented'),
-    };
-    expect(buildIncomingEverydayLabel(required))
-      .toBe('GC.2.1 verweist hierauf als „Erfordert"');
+  it('führt verschiedene Relationsarten je einmal in ihrer Reihenfolge', () => {
+    const source = makeControl('GC.2.1');
+    const incomings: IncomingControlLink[] = [
+      { control: source, link: makeLink(source.id, 'required', 'custom') },
+      { control: source, link: makeLink(source.id, 'related', 'custom') },
+      { control: source, link: makeLink(source.id, 'required', 'custom') },
+      { control: source, link: makeLink(source.id, 'sonder', 'custom') },
+      { control: source, link: makeLink(source.id, undefined, 'missing') },
+    ];
+    expect(buildIncomingEverydayLabel(incomings)).toBe(
+      'Verweist auf diese Kontrolle · Erfordert, Verwandt, Benutzerdefinierte Relation „sonder", Ohne Relationsangabe',
+    );
   });
 });
 
 describe('ControlDependencies (Alltagssprache)', () => {
-  it('gruppiert in Alltagssprache, ohne ↔, mit Gegenrichtungs-Zeile', () => {
+  it('beschriftet jede Gruppe einmal sichtbar und hält die Gegenrichtung am Link', () => {
     const target = makeControl('GC.2.2', 'Zielkontrolle');
     const incomingOnlySource = makeControl('GC.3.1', 'Eingehende Kontrolle');
     const { container } = renderWithRouter(
@@ -105,22 +112,86 @@ describe('ControlDependencies (Alltagssprache)', () => {
     );
     const scope = within(container);
 
-    // Gruppen-Label in Alltagssprache, programmatisch benannt
-    expect(scope.getByRole('group', { name: 'Erfordert' })).toBeInTheDocument();
-    // Gegenrichtung als eigene Zeile unter dem Link
-    expect(scope.getByText('GC.2.2 verweist hierauf als „Verwandt"'))
-      .toBeInTheDocument();
-    // Kein ↔ und keine technische Relationsbeschreibung im sichtbaren
-    // Gruppentext (Legenden-Panel ausgenommen — hidden, aber im DOM);
-    // aria-labels ohnehin ausgenommen (Attribute ≠ textContent)
-    for (const group of container.querySelectorAll('fieldset')) {
-      expect(group.textContent).not.toContain('↔');
-      expect(group.textContent).not.toContain('benutzerdefinierte OSCAL-Relation');
-      expect(group.textContent).not.toContain('OSCAL-dokumentiert');
+    // Gruppen-Label sichtbar über der Liste und zugleich Gruppenname.
+    const group = scope.getByRole('group', { name: 'Erfordert' });
+    expect(within(group).getByText('Erfordert')).toBeVisible();
+    expect(within(group).getByText('Erfordert')).not.toHaveClass('sr-only');
+    // Gegenrichtung als Hinweis unter dem Link, zugleich dessen Beschreibung.
+    expect(scope.getByRole('button', {
+      name: 'GC.2.2 Zielkontrolle (Erfordert)',
+      description: 'Verweist auf diese Kontrolle · Verwandt',
+    })).toBeInTheDocument();
+    for (const node of container.querySelectorAll('[role="group"]')) {
+      expect(node.textContent).not.toContain('↔');
+      expect(node.textContent).not.toContain('benutzerdefinierte OSCAL-Relation');
     }
-    // Eingehende Kontrolle bleibt sichtbar
-    expect(scope.getByText('Eingehende Kontrolle')).toBeInTheDocument();
-    expect(scope.getByText('GC.3.1 verweist hierauf als „Verwandt"')).toBeInTheDocument();
+    // Eingehende Kontrolle bleibt sichtbar, mit Richtung und Relationsart.
+    expect(scope.getByRole('button', {
+      name: 'GC.3.1 Eingehende Kontrolle',
+      description: 'Verweist auf diese Kontrolle · Verwandt',
+    })).toBeInTheDocument();
+  });
+
+  it('beschriftet jede Relationsart genau einmal und hält benutzerdefinierte Werte getrennt', () => {
+    const controls = ['A.1', 'A.2', 'B.1', 'B.2', 'C.1', 'D.1', 'E.1', 'F.1', 'F.2'].map((id) => makeControl(id));
+    const links = [
+      makeLink('A.1', 'related', 'custom'),
+      makeLink('B.1', 'required', 'custom'),
+      makeLink('A.2', 'related', 'custom'),
+      makeLink('B.2', 'required', 'custom'),
+      makeLink('C.1', 'reference', 'documented'),
+      makeLink('D.1', 'sonder', 'custom'),
+      makeLink('E.1', 'anders', 'custom'),
+      makeLink('F.1', undefined, 'missing'),
+      makeLink('F.2', undefined, 'missing'),
+    ];
+    const { container } = renderWithRouter(
+      <ControlDependencies
+        links={links}
+        controlsById={new Map(controls.map((control) => [control.id, control]))}
+      />,
+    );
+    const groups = within(container).getAllByRole('group');
+    const expected: Array<[string, string[]]> = [
+      ['Verwandt', ['A.1', 'A.2']],
+      ['Erfordert', ['B.1', 'B.2']],
+      ['Referenz', ['C.1']],
+      ['Benutzerdefinierte Relation „sonder"', ['D.1']],
+      ['Benutzerdefinierte Relation „anders"', ['E.1']],
+      ['Ohne Relationsangabe', ['F.1', 'F.2']],
+    ];
+    expect(groups).toHaveLength(expected.length);
+    expected.forEach(([label, ids], index) => {
+      const group = groups[index];
+      expect(group).toHaveAccessibleName(label);
+      // Sichtbar genau einmal: keine wiederholte Unterzeile je Link.
+      expect(within(group).getAllByText(label)).toHaveLength(1);
+      expect(within(group).getAllByRole('button').map((button) => button.firstElementChild?.textContent))
+        .toEqual(ids);
+    });
+    // Ohne Gegenrichtung entsteht kein leerer Hinweis und kein führender Trenner.
+    expect(container.querySelectorAll('li p')).toHaveLength(0);
+    expect(container.textContent).not.toContain(' · ');
+  });
+
+  it('führt eine rein eingehende Kontrolle einmal mit allen Relationsarten', () => {
+    const source = makeControl('GC.3.1', 'Eingehende Kontrolle');
+    const { container } = renderWithRouter(
+      <ControlDependencies
+        links={[]}
+        controlsById={new Map()}
+        incomingLinks={[
+          { control: source, link: makeLink(source.id, 'related', 'custom') },
+          { control: source, link: makeLink(source.id, 'required', 'custom') },
+        ]}
+      />,
+    );
+    const buttons = within(container).getAllByRole('button');
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]).toHaveAccessibleName('GC.3.1 Eingehende Kontrolle');
+    expect(buttons[0]).toHaveAccessibleDescription('Verweist auf diese Kontrolle · Verwandt, Erfordert');
+    expect(container.querySelectorAll('li p')).toHaveLength(1);
+    expect(container.querySelector('li p')?.textContent).toBe('Verweist auf diese Kontrolle · Verwandt, Erfordert');
   });
 });
 
