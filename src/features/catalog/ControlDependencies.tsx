@@ -131,10 +131,10 @@ export function ControlDependencies({
       {linkGroups.map((group, groupIndex) => {
         const groupLabelId = `${idBase}-group-${groupIndex}`;
         return (
-          <div key={group.label} role="group" aria-labelledby={groupLabelId}>
-            <p id={groupLabelId} className={relationGroupLabelClass}>
+          <fieldset key={group.label} aria-labelledby={groupLabelId} className="min-w-0">
+            <legend id={groupLabelId} className={relationGroupLabelClass}>
               {capitalize(group.label)}
-            </p>
+            </legend>
             <ul className={detailListClass}>
               {group.links.map((link, linkIndex) => {
                 const targetControl = controlsById?.get(link.targetId);
@@ -156,7 +156,7 @@ export function ControlDependencies({
                 );
               })}
             </ul>
-          </div>
+          </fieldset>
         );
       })}
 

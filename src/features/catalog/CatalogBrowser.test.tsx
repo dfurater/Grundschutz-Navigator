@@ -485,6 +485,39 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(globalThis.scrollTo).toHaveBeenLastCalledWith(0, 0);
   });
 
+  it('returns focus to the row that opened the page after switching to a linked control', () => {
+    renderCatalogBrowser('/katalog/gspp/TOP.1');
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    fireEvent.click(screen.getByRole('button', { name: 'Verwandte Kontrolle öffnen' }));
+    expect(screen.getByRole('heading', { level: 2, name: relatedControl.title })).toHaveFocus();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));
+
+    // Die verknüpfte Kontrolle steht nicht in der Liste; zurück geht es zur
+    // auslösenden Zeile, nicht zur Bereichsüberschrift.
+    expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
+  });
+
+  it('keeps the page open for Escape outside the detail or already handled elsewhere', () => {
+    render(<CatalogBrowserTestApp initialEntry="/katalog/gspp/TOP.1" withHistoryBack />);
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    const detailPath = screen.getByTestId('location').textContent;
+
+    // Escape im mitlaufenden App-Kopf, hier vertreten durch ein Bedienelement außerhalb des Details.
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Browser zurück' }), { key: 'Escape' });
+    expect(screen.getByTestId('location')).toHaveTextContent(detailPath!);
+
+    // Ein Baustein im Detail hat Escape schon behandelt (z. B. ein Menü).
+    const handled = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    handled.preventDefault();
+    screen.getByRole('heading', { level: 2, name: control.title }).dispatchEvent(handled);
+    expect(screen.getByTestId('location')).toHaveTextContent(detailPath!);
+
+    // Ohne Fokus im Detail kommt Escape vom body und schließt die Seite.
+    fireEvent.keyDown(document.querySelector('body')!, { key: 'Escape' });
+    expect(screen.getByTestId('location')).toHaveTextContent('/katalog/gspp/TOP.1');
+  });
+
   it('switches an open page to the desktop split view without losing the control', () => {
     let width: 'mobile' | 'desktop' = 'mobile';
     mockedUseMediaQuery.mockImplementation(() => width === 'desktop');

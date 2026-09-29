@@ -72,8 +72,8 @@ test.each([
   expect(separated).toHaveLength(lines);
   for (const child of separated) {
     const style = getComputedStyle(child);
-    expect(style.paddingTop).toBe('8px');
-    expect(style.marginTop).toBe('8px');
+    expect(style.paddingTop).toBe('12px');
+    expect(style.marginTop).toBe('12px');
     expect(style.borderTopStyle).toBe('solid');
     // Linie über die volle Inhaltsbreite des Stapels.
     expect(child.getBoundingClientRect().width).toBe(stack.getBoundingClientRect().width);

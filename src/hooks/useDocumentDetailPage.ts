@@ -1,6 +1,8 @@
 import { useLayoutEffect, useRef } from 'react';
 import { useGlobalEventListener } from './useGlobalEventListener';
 
+/** Detailseite im Dokumentfluss: Nur Escape aus ihr oder vom `body` schließt sie. */
+export const DETAIL_PAGE_SELECTOR = '[data-control-detail-page]';
 /** Überschrift des geöffneten Details: Fokusziel beim Öffnen und beim Wechsel. */
 export const DETAIL_TITLE_SELECTOR = '[data-control-detail-title]';
 /** Bereichsüberschrift der Liste: Rückkehrziel, wenn die Zeile fehlt. */
@@ -30,31 +32,37 @@ export interface UseDocumentDetailPageOptions {
  * - Öffnen und Wechsel der Kontrolle beginnen oben; der Fokus geht auf die
  *   Überschrift des Details.
  * - Schließen (Zurück-Button, Escape, Browser-Zurück) stellt die gemerkte
- *   Position wieder her und fokussiert die Zeile der geschlossenen Kontrolle,
+ *   Position wieder her und fokussiert die Zeile der Kontrolle, mit der die
+ *   Seite geöffnet wurde — auch nach Wechseln zu verknüpften Kontrollen —,
  *   ersatzweise die Bereichsüberschrift. Das geschieht im Layout-Effekt,
  *   bevor die Liste gemalt wird.
+ * - Escape schließt nur, wenn niemand es schon behandelt hat und es aus dem
+ *   Detail oder vom `body` kommt; der mitlaufende App-Kopf mit Suche,
+ *   Katalogwechsler und Menü bleibt davon unberührt.
  */
 export function useDocumentDetailPage({ enabled, controlId, onClose }: UseDocumentDetailPageOptions): void {
   const listScrollYRef = useRef(0);
-  const shownControlIdRef = useRef<string | null>(null);
+  // Kontrolle, mit der die Seite aus der Liste (oder per Direktaufruf) geöffnet
+  // wurde; `null`, solange die Liste sichtbar ist.
+  const openedControlIdRef = useRef<string | null>(null);
   const listVisible = enabled && controlId === null;
 
   useLayoutEffect(() => {
     if (!enabled) {
-      shownControlIdRef.current = null;
+      openedControlIdRef.current = null;
       return;
     }
     if (controlId !== null) {
-      shownControlIdRef.current = controlId;
+      openedControlIdRef.current ??= controlId;
       globalThis.scrollTo(0, 0);
       document.querySelector<HTMLElement>(DETAIL_TITLE_SELECTOR)?.focus({ preventScroll: true });
       return;
     }
-    const closedControlId = shownControlIdRef.current;
-    if (closedControlId === null) return;
-    shownControlIdRef.current = null;
+    const openedControlId = openedControlIdRef.current;
+    if (openedControlId === null) return;
+    openedControlIdRef.current = null;
     globalThis.scrollTo(0, listScrollYRef.current);
-    const returnTarget = document.querySelector<HTMLElement>(controlRowSelector(closedControlId))
+    const returnTarget = document.querySelector<HTMLElement>(controlRowSelector(openedControlId))
       ?? document.querySelector<HTMLElement>(SCOPE_HEADING_SELECTOR);
     returnTarget?.focus({ preventScroll: true });
   }, [enabled, controlId]);
@@ -67,6 +75,10 @@ export function useDocumentDetailPage({ enabled, controlId, onClose }: UseDocume
   }, listVisible);
 
   useGlobalEventListener('document', 'keydown', (event) => {
-    if (event.key === 'Escape') onClose();
+    if (event.key !== 'Escape' || event.defaultPrevented) return;
+    const { target } = event;
+    const fromDetail = target === document.body
+      || (target instanceof Element && target.closest(DETAIL_PAGE_SELECTOR) !== null);
+    if (fromDetail) onClose();
   }, enabled && controlId !== null);
 }

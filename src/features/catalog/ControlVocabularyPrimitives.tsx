@@ -54,13 +54,14 @@ export const detailProseClass = 'w-full break-words text-sm leading-relaxed whit
 /**
  * Stapel der Unterabschnitte eines Detailblocks (Schutzziele/Gefährdungen,
  * Erweiterungen/Verknüpft/Quellen …): Zwischen je zwei benachbarten
- * Abschnitten steht eine dekorative 1-px-Linie in der Rahmenfarbe mit 8 px
- * Abstand darüber und darunter (GSPP-447). Die Regel greift am
+ * Abschnitten steht eine dekorative 1-px-Linie in der Rahmenfarbe mit 12 px
+ * Abstand darüber und darunter (GSPP-447; 8 px wirkten auf dem iPhone
+ * eingequetscht, Owner 29.09.2026). Die Regel greift am
  * Geschwister-Selektor, also nur zwischen tatsächlich gerenderten Abschnitten;
  * ein einzelner oder leer ausfallender Abschnitt erhält keine Linie.
  */
 export const subSectionStackClass =
-  '[&>*+*]:mt-2 [&>*+*]:border-t [&>*+*]:border-[var(--color-border-default)] [&>*+*]:pt-2';
+  '[&>*+*]:mt-3 [&>*+*]:border-t [&>*+*]:border-[var(--color-border-default)] [&>*+*]:pt-3';
 
 /** Gruppenbeschriftung unter einer Blockleiste (Schutzziele, Tags, Dokumentation …). */
 export const subSectionHeadingClass = 'mb-1.5 text-sm font-semibold leading-snug text-slate-700';

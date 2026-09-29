@@ -7,14 +7,14 @@ import {
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import { useScrollLock } from '@/hooks/useScrollLock';
-import { ControlDetail, type ControlDetailProps } from './ControlDetail';
+import { ControlDetail, type ControlDetailLayout } from './ControlDetail';
 
 interface CatalogDetailPanelProps {
   readonly catalog: Catalog;
   readonly control: Control;
   readonly onClose: () => void;
   readonly onNavigateToControl: (control: Control) => void;
-  readonly layout?: ControlDetailProps['layout'];
+  readonly layout?: ControlDetailLayout;
 }
 
 export function CatalogDetailPanel({
@@ -107,7 +107,7 @@ export function CatalogDetailPage({
   onNavigateToControl,
 }: Omit<CatalogDetailPanelProps, 'layout'>) {
   return (
-    <div className="flex-1 bg-[var(--color-surface-raised)]">
+    <div data-control-detail-page className="flex-1 bg-[var(--color-surface-raised)]">
       <CatalogDetailPanel
         catalog={catalog}
         control={control}

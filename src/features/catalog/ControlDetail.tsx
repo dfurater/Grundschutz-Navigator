@@ -55,6 +55,13 @@ import {
  */
 const UNBENANNTE_TAXONOMIE = 'Ohne Gruppenkennung';
 
+/**
+ * `panel`: feste Höhe mit eigenem Scrollbereich (Desktop-Spalte,
+ * Tablet-Overlay). `page`: im Dokumentfluss ohne eigenen Scrollbereich —
+ * das Dokument scrollt (mobile Seitenansicht, GSPP-447).
+ */
+export type ControlDetailLayout = 'panel' | 'page';
+
 export interface ControlDetailProps {
   readonly control: Control;
   readonly controlsById?: Map<string, Control>;
@@ -63,12 +70,8 @@ export interface ControlDetailProps {
   readonly childControls?: Control[];
   readonly onClose: () => void;
   readonly onNavigateToControl?: (control: Control) => void;
-  /**
-   * `panel` (Standard): feste Höhe mit eigenem Scrollbereich (Desktop-Spalte,
-   * Tablet-Overlay). `page`: im Dokumentfluss ohne eigenen Scrollbereich —
-   * das Dokument scrollt (mobile Seitenansicht, GSPP-447).
-   */
-  readonly layout?: 'panel' | 'page';
+  /** Standard `panel`, siehe `ControlDetailLayout`. */
+  readonly layout?: ControlDetailLayout;
 }
 
 export function getControlDetailUrl(
