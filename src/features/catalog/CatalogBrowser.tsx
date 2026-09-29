@@ -6,6 +6,7 @@ import type { Control } from '@/domain/models';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useControlNavigation } from '@/hooks/useControlNavigation';
 import { useControlSelection } from '@/hooks/useControlSelection';
+import { useDocumentDetailPage } from '@/hooks/useDocumentDetailPage';
 import { useDragToResize } from '@/hooks/useDragToResize';
 import { useFilterParams } from '@/hooks/useFilterParams';
 import {
@@ -13,14 +14,12 @@ import {
   useFilteredControls,
 } from '@/hooks/useFilteredControls';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { OWN_SCROLL_AREA_QUERY, useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
+import { OWN_SCROLL_AREA_QUERY } from '@/hooks/useOverlayScrollbars';
+import { describeCatalogScope } from './catalogScopeTitle';
 import { CatalogDesktopSidebar } from './CatalogDesktopSidebar';
 import { CatalogTargetNotFound } from './CatalogTargetNotFound';
-import {
-  CatalogMobileDetailOverlay,
-} from './CatalogDetailPanel';
-import { ControlMobileReferenceRow } from './ControlMobileReferenceRow';
-import { CatalogMobileSelectionBar } from './CatalogMobileSelectionBar';
+import { CatalogDetailPage, CatalogMobileDetailOverlay } from './CatalogDetailPanel';
+import { CatalogMobileList } from './CatalogMobileList';
 import { CatalogToolbar } from './CatalogToolbar';
 import { ControlTable } from './ControlTable';
 import type { FilterPanelProps } from './FilterPanel';
@@ -40,7 +39,7 @@ export function CatalogBrowser() {
   const { catalog, loading, error } = useCatalog();
   const { filters, setFilters, sort, setSort, searchString } = useFilterParams();
   const isDesktop = useMediaQuery('(min-width: 1024px)');
-  const mobileListScrollRef = useOverlayScrollbars<HTMLDivElement>(useMediaQuery(OWN_SCROLL_AREA_QUERY));
+  const hasOwnScrollArea = useMediaQuery(OWN_SCROLL_AREA_QUERY);
   const [filterCollapsed, setFilterCollapsed] = useState(false);
   const [mobileSelectMode, setMobileSelectMode] = useState(false);
   const {
@@ -72,6 +71,14 @@ export function CatalogBrowser() {
   });
   const selectionScopeId =
     catalog?.catalogKey ?? catalogKey ?? '__unknown_catalog__';
+  // Unterhalb `md` scrollt das Dokument: Das Detail ersetzt dort die Liste als
+  // Seite, statt als Overlay mit eigenem Scrollbereich darüber zu liegen (GSPP-447).
+  const showDetailAsPage = !hasOwnScrollArea && selectedControl !== null;
+  useDocumentDetailPage({
+    enabled: !hasOwnScrollArea && Boolean(catalog),
+    controlId: selectedControl?.id ?? null,
+    onClose: closeDetail,
+  });
   const {
     checkedIds,
     setCheckedIds,
@@ -128,16 +135,7 @@ export function CatalogBrowser() {
     [setChecked],
   );
 
-  const currentTitle = useMemo(() => {
-    if (!catalog || !scopeId) return 'Alle Kontrollen';
-    const practice = catalog.practices.find((item) => item.id === scopeId);
-    if (practice) return `${practice.label} — ${practice.title}`;
-    for (const item of catalog.practices) {
-      const topic = item.topics.find((candidate) => candidate.id === scopeId);
-      if (topic) return `${scopeId} — ${topic.title}`;
-    }
-    return scopeId;
-  }, [catalog, scopeId]);
+  const scopeTitle = useMemo(() => describeCatalogScope(catalog, scopeId), [catalog, scopeId]);
 
   if (loading) {
     return (
@@ -184,7 +182,7 @@ export function CatalogBrowser() {
   if (selectedControl) {
     pageTitle = `${selectedControl.id} — ${selectedControl.title} — ${catalog.metadata.title}`;
   } else if (scopeId) {
-    pageTitle = `${currentTitle} — ${catalog.metadata.title}`;
+    pageTitle = `${scopeTitle.documentTitle} — ${catalog.metadata.title}`;
   } else {
     pageTitle = catalog.metadata.title;
   }
@@ -205,92 +203,93 @@ export function CatalogBrowser() {
     <>
       <PageTitle title={pageTitle} />
       <div className="flex-1 min-w-0 flex flex-col md:overflow-hidden">
-        <CatalogToolbar
-          title={currentTitle}
-          filteredCount={filtered.length}
-          totalCount={totalCount}
-          hasActiveFilters={hasActiveFilters}
-          onClearFilters={clearFilters}
-          checkedIds={checkedIds}
-          mobileSelectMode={mobileSelectMode}
-          onToggleMobileSelectMode={toggleMobileSelection}
-          onClearSelection={clearSelection}
-          filteredControls={filtered}
-          allControls={catalog.controls}
-          sectionFilename={`grundschutz-${scopeId ?? 'katalog'}.csv`}
-          filterPanelProps={filterPanelProps}
-          isDesktop={isDesktop}
-          onSelectionExported={finishMobileSelection}
-        />
+        {/*
+          Als Seite geöffnetes Detail: Liste und Toolbar bleiben gemountet
+          (Auswahl, Filter, Zeilenzustand), sind aber per `hidden` weder
+          sichtbar noch bedienbar.
+        */}
+        <div hidden={showDetailAsPage} className="flex-1 min-w-0 flex flex-col md:overflow-hidden">
+          <CatalogToolbar
+            title={scopeTitle.heading}
+            filteredCount={filtered.length}
+            totalCount={totalCount}
+            hasActiveFilters={hasActiveFilters}
+            onClearFilters={clearFilters}
+            checkedIds={checkedIds}
+            mobileSelectMode={mobileSelectMode}
+            onToggleMobileSelectMode={toggleMobileSelection}
+            onClearSelection={clearSelection}
+            filteredControls={filtered}
+            allControls={catalog.controls}
+            sectionFilename={`grundschutz-${scopeId ?? 'katalog'}.csv`}
+            filterPanelProps={filterPanelProps}
+            isDesktop={isDesktop}
+            onSelectionExported={finishMobileSelection}
+          />
 
-        <div className="flex-1 min-w-0 flex md:overflow-hidden">
-          {isDesktop ? (
-            <div className="hidden lg:flex flex-1 flex-col overflow-hidden">
-              <ControlTable
+          <div className="flex-1 min-w-0 flex md:overflow-hidden">
+            {isDesktop ? (
+              <div className="hidden lg:flex flex-1 flex-col overflow-hidden">
+                <ControlTable
+                  controls={filtered}
+                  controlsById={controlsById}
+                  selectedControlId={selectedControl?.id}
+                  checkedIds={checkedIds}
+                  sort={sort}
+                  onSortChange={setSort}
+                  onSelectControl={selectControl}
+                  onCheckedChange={setCheckedIds}
+                />
+              </div>
+            ) : (
+              <CatalogMobileList
                 controls={filtered}
                 controlsById={controlsById}
-                selectedControlId={selectedControl?.id}
+                allControls={catalog.controls}
+                hasOwnScrollArea={hasOwnScrollArea}
+                selectMode={mobileSelectMode}
                 checkedIds={checkedIds}
-                sort={sort}
-                onSortChange={setSort}
-                onSelectControl={selectControl}
-                onCheckedChange={setCheckedIds}
+                onSelect={selectControl}
+                onCheckedChange={handleMobileCheckedChange}
+                onSelectionDone={finishMobileSelection}
               />
-            </div>
-          ) : (
-            <div className="lg:hidden flex-1 min-w-0 flex flex-col md:overflow-hidden">
-              <div ref={mobileListScrollRef} className={`flex-1 md:overflow-y-auto divide-y divide-[var(--color-border-subtle)] ${mobileSelectMode ? 'pb-[calc(7rem+env(safe-area-inset-bottom,0px))]' : 'pb-safe'}`}>
-                {filtered.map((control) => (
-                  <ControlMobileReferenceRow
-                    key={control.id}
-                    control={control}
-                    controlsById={controlsById}
-                    selectMode={mobileSelectMode}
-                    checked={checkedIds.has(control.id)}
-                    onSelect={selectControl}
-                    onCheckedChange={handleMobileCheckedChange}
-                  />
-                ))}
-                {filtered.length === 0 && (
-                  <p className="text-sm text-[var(--color-text-secondary)] text-center py-8">
-                    Keine Kontrollen gefunden
-                  </p>
-                )}
-              </div>
-              {mobileSelectMode && (
-                <CatalogMobileSelectionBar
-                  checkedIds={checkedIds}
-                  allControls={catalog.controls}
-                  onDone={finishMobileSelection}
-                />
-              )}
-            </div>
-          )}
+            )}
 
-          <CatalogDesktopSidebar
-            catalog={catalog}
-            selectedControl={isDesktop ? selectedControl : null}
-            detailWidth={detailWidth}
-            detailMinWidth={DETAIL_MIN_WIDTH}
-            detailMaxWidth={DETAIL_MAX_WIDTH}
-            isResizing={isResizing}
-            onResizeStart={handleResizeStart}
-            onDetailWidthChange={setDetailWidth}
-            onCloseDetail={closeDetail}
-            onNavigateToControl={navigateToControl}
-            filterCollapsed={filterCollapsed}
-            onFilterCollapsedChange={setFilterCollapsed}
-            hasActiveFilters={hasActiveFilters}
-            filterPanelProps={filterPanelProps}
-          />
+            <CatalogDesktopSidebar
+              catalog={catalog}
+              selectedControl={isDesktop ? selectedControl : null}
+              detailWidth={detailWidth}
+              detailMinWidth={DETAIL_MIN_WIDTH}
+              detailMaxWidth={DETAIL_MAX_WIDTH}
+              isResizing={isResizing}
+              onResizeStart={handleResizeStart}
+              onDetailWidthChange={setDetailWidth}
+              onCloseDetail={closeDetail}
+              onNavigateToControl={navigateToControl}
+              filterCollapsed={filterCollapsed}
+              onFilterCollapsedChange={setFilterCollapsed}
+              hasActiveFilters={hasActiveFilters}
+              filterPanelProps={filterPanelProps}
+            />
+          </div>
         </div>
+
+        {showDetailAsPage && selectedControl && (
+          <CatalogDetailPage
+            key={`${catalog.catalogKey}:${selectedControl.id}`}
+            catalog={catalog}
+            control={selectedControl}
+            onClose={closeDetail}
+            onNavigateToControl={navigateToControl}
+          />
+        )}
 
         {/* GSPP-268, bewusste Ausnahme: rendert inaktiv bereits null und besitzt
           seinen Modal-Lifecycle selbst (GSPP-188) — ein parent-Gate brächte keinen Mount-Gewinn. */}
         <CatalogMobileDetailOverlay
           catalog={catalog}
           control={selectedControl}
-          active={!!selectedControl && !isDesktop}
+          active={!!selectedControl && !isDesktop && hasOwnScrollArea}
           onClose={closeDetail}
           onNavigateToControl={navigateToControl}
         />

@@ -1,16 +1,10 @@
-import { Fragment } from 'react';
+import { useId } from 'react';
 import type { Control, ControlLink } from '@/domain/models';
 import {
   type IncomingControlLink,
 } from '@/domain/controlRelationships';
-import {
-  ControlListLink,
-  detailListClass,
-  type LegendEntry,
-} from './ControlVocabularyPrimitives';
-
-/** Relationsart unter einem Link: leise, direkt unter der Link-Zeile. */
-const relationNoteClass = 'text-xs text-slate-400';
+import { ControlListLink, ControlListNote } from './ControlListLink';
+import { detailListClass, type LegendEntry } from './ControlVocabularyPrimitives';
 
 export interface ControlDependenciesProps {
   readonly links: readonly ControlLink[];
@@ -38,9 +32,17 @@ export function everydayRelationLabel(link: ControlLink): string {
     : `Benutzerdefinierte Relation „${rel}"`;
 }
 
-/** Gegenrichtungs-Zeile: „<ID> verweist hierauf als „<label>""". */
-export function buildIncomingEverydayLabel(incoming: IncomingControlLink): string {
-  return `${incoming.control.id} verweist hierauf als „${everydayRelationLabel(incoming.link)}"`;
+/** Einleitung des Hinweises zur Gegenrichtung; die Kennung steht bereits in der Link-Zeile. */
+export const INCOMING_NOTE_PREFIX = 'Verweist auf diese Kontrolle';
+
+/**
+ * Hinweis zur Gegenrichtung: „Verweist auf diese Kontrolle · <Relationsart>“.
+ * Mehrere verschiedene Relationsarten stehen kommagetrennt in ihrer
+ * Reihenfolge; jede nur einmal.
+ */
+export function buildIncomingEverydayLabel(incomingLinks: readonly IncomingControlLink[]): string {
+  const labels = [...new Set(incomingLinks.map((incoming) => everydayRelationLabel(incoming.link)))];
+  return `${INCOMING_NOTE_PREFIX} · ${labels.join(', ')}`;
 }
 
 function relationLegendEntry(term: string, definition: string): LegendEntry {
@@ -76,17 +78,6 @@ function buildIncomingLinksByControlId(incomingLinks: readonly IncomingControlLi
   return incomingByControlId;
 }
 
-/** Rücklinks je distinktem Alltags-Label genau einmal (keine Doppelzeilen). */
-function distinctReverseLinks(reverseLinks: readonly IncomingControlLink[] | undefined) {
-  const seen = new Set<string>();
-  return (reverseLinks ?? []).filter((incoming) => {
-    const label = everydayRelationLabel(incoming.link);
-    if (seen.has(label)) return false;
-    seen.add(label);
-    return true;
-  });
-}
-
 function capitalize(label: string) {
   return label.length === 0 ? label : `${label[0]?.toUpperCase()}${label.slice(1)}`;
 }
@@ -108,83 +99,84 @@ function groupLinksByLabel(links: readonly ControlLink[]) {
   return groups;
 }
 
+/** Sichtbare Beschriftung einer Relationsgruppe über ihrer Liste. */
+const relationGroupLabelClass = 'mb-1 text-xs font-medium leading-snug text-slate-500';
+
 export function ControlDependencies({
   links,
   controlsById,
   incomingLinks = [],
   onNavigateToControl,
 }: ControlDependenciesProps) {
+  const idBase = useId();
   const resolvedLinks = links.filter((link) => controlsById?.has(link.targetId));
   const incomingByControlId = buildIncomingLinksByControlId(incomingLinks);
   const outgoingIds = new Set(resolvedLinks.map((link) => link.targetId));
-  const incomingOnlyLinks = incomingLinks.filter(
-    (incoming) => !outgoingIds.has(incoming.control.id),
+  // Reine eingehende Verweise einmal je Kontrolle, ihre Relationsarten gesammelt.
+  const incomingOnlyByControlId = buildIncomingLinksByControlId(
+    incomingLinks.filter((incoming) => !outgoingIds.has(incoming.control.id)),
   );
   const linkGroups = groupLinksByLabel(resolvedLinks);
 
-  if (resolvedLinks.length === 0 && incomingOnlyLinks.length === 0) {
+  if (resolvedLinks.length === 0 && incomingOnlyByControlId.size === 0) {
     return null;
   }
 
   // GSPP-303 T9: hüllenlos (Teil des Blocks „Zusammenhänge“; die Gruppen-
-  // Beschriftung „Verknüpft" setzt ControlDetail darüber). Listen mit Punkten
-  // wie Erweiterungen und Gefährdungen; die Relationsart steht leise unter
-  // dem Link.
+  // Beschriftung „Verknüpft" setzt ControlDetail darüber). GSPP-447: Die
+  // Relationsart steht einmal sichtbar über ihrer Gruppe; unter einem Link
+  // steht nur noch ein eigener Hinweis zur Gegenrichtung.
   return (
     <div className="space-y-3">
-      {resolvedLinks.length > 0 && (
-        <div className="space-y-3">
-          {linkGroups.map((group, groupIndex) => {
-            const groupLabelId = `control-dependencies-group-label-${groupIndex}`;
+      {linkGroups.map((group, groupIndex) => {
+        const groupLabelId = `${idBase}-group-${groupIndex}`;
+        return (
+          <fieldset key={group.label} aria-labelledby={groupLabelId} className="min-w-0">
+            <legend id={groupLabelId} className={relationGroupLabelClass}>
+              {capitalize(group.label)}
+            </legend>
+            <ul className={detailListClass}>
+              {group.links.map((link, linkIndex) => {
+                const targetControl = controlsById?.get(link.targetId);
+                if (!targetControl) return null;
+                const reverseLinks = incomingByControlId.get(link.targetId);
+                const noteId = reverseLinks ? `${idBase}-note-${groupIndex}-${linkIndex}` : undefined;
+                return (
+                  <li key={`${link.targetId}-${link.href}-${link.rel ?? 'missing'}-${link.resourceFragment ?? ''}`}>
+                    <ControlListLink
+                      control={targetControl}
+                      ariaLabel={`${link.targetId} ${targetControl.title} (${everydayRelationLabel(link)})`}
+                      describedById={noteId}
+                      onNavigateToControl={onNavigateToControl}
+                    />
+                    {reverseLinks && noteId && (
+                      <ControlListNote id={noteId}>{buildIncomingEverydayLabel(reverseLinks)}</ControlListNote>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </fieldset>
+        );
+      })}
+
+      {incomingOnlyByControlId.size > 0 && (
+        <ul className={detailListClass}>
+          {[...incomingOnlyByControlId.values()].map((incomings, index) => {
+            const { control } = incomings[0];
+            const noteId = `${idBase}-incoming-${index}`;
             return (
-              <fieldset key={group.label} aria-labelledby={groupLabelId} className="min-w-0">
-                {/* Relationsart als Gruppenname für Screenreader; sichtbar steht
-                    sie leise unter jedem Link (Mock), nicht als zweite Beschriftung. */}
-                <legend id={groupLabelId} className="sr-only">
-                  {capitalize(group.label)}
-                </legend>
-                <ul className={detailListClass}>
-                  {group.links.map((link) => {
-                    const targetControl = controlsById?.get(link.targetId);
-                    if (!targetControl) return null;
-                    return (
-                      <li key={`${link.targetId}-${link.href}-${link.rel ?? 'missing'}-${link.resourceFragment ?? ''}`}>
-                        <ControlListLink
-                          control={targetControl}
-                          ariaLabel={`${link.targetId} ${targetControl.title} (${everydayRelationLabel(link)})`}
-                          onNavigateToControl={onNavigateToControl}
-                        />
-                        <p className={relationNoteClass}>
-                          <span aria-hidden="true">{group.label}</span>
-                          {distinctReverseLinks(incomingByControlId.get(link.targetId)).map((incoming) => (
-                            <Fragment key={`${incoming.control.id}-${incoming.link.rel ?? 'missing'}-${incoming.link.relStatus}`}>
-                              <span aria-hidden="true"> · </span>
-                              <span>{buildIncomingEverydayLabel(incoming)}</span>
-                            </Fragment>
-                          ))}
-                        </p>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </fieldset>
+              <li key={control.id}>
+                <ControlListLink
+                  control={control}
+                  ariaLabel={`${control.id} ${control.title}`}
+                  describedById={noteId}
+                  onNavigateToControl={onNavigateToControl}
+                />
+                <ControlListNote id={noteId}>{buildIncomingEverydayLabel(incomings)}</ControlListNote>
+              </li>
             );
           })}
-        </div>
-      )}
-
-      {incomingOnlyLinks.length > 0 && (
-        <ul className={detailListClass}>
-          {incomingOnlyLinks.map((incoming) => (
-            <li key={`${incoming.control.id}-${incoming.link.href}-${incoming.link.rel ?? 'missing'}`}>
-              <ControlListLink
-                control={incoming.control}
-                ariaLabel={`${incoming.control.id} ${incoming.control.title} (${everydayRelationLabel(incoming.link)})`}
-                onNavigateToControl={onNavigateToControl}
-              />
-              <p className={relationNoteClass}>{buildIncomingEverydayLabel(incoming)}</p>
-            </li>
-          ))}
         </ul>
       )}
     </div>

@@ -45,7 +45,8 @@ export function CatalogToolbar({
     <div className="px-3 py-1.5 md:py-0 md:h-[51px] md:flex md:items-center border-b border-[var(--color-border-default)] bg-[var(--color-surface-base)] sticky top-14 z-10 md:static md:z-auto">
       <div className="w-full flex items-center justify-between gap-2 min-w-0">
         <div className="flex items-center gap-2 min-w-0">
-          <h1 className="text-base font-bold text-[var(--color-text-primary)] truncate">
+          {/* Rückkehrziel nach dem Schließen der mobilen Detailseite (`useDocumentDetailPage`). */}
+          <h1 data-catalog-scope-heading tabIndex={-1} className="text-base font-bold text-[var(--color-text-primary)] truncate focus:outline-none">
             {title}
           </h1>
           <span

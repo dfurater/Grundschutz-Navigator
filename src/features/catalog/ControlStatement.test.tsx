@@ -19,7 +19,6 @@ function plainSegmentsProps(input: SegmentStatementInput): ControlStatementSegme
   return {
     input,
     practiceResolution: null,
-    modalverbResolution: null,
     handlungswortResolution: null,
     isVocabularyActive: () => false,
     onToggleVocabulary: () => {},
@@ -57,7 +56,6 @@ describe('ControlStatement (GSPP-303 T5)', () => {
           segments={{
             input,
             practiceResolution: fakeResolution('GC'),
-            modalverbResolution: fakeResolution('muss'),
             handlungswortResolution: fakeResolution('verankern'),
             isVocabularyActive: (key) => key === 'satz:practice',
             onToggleVocabulary,
@@ -72,7 +70,6 @@ describe('ControlStatement (GSPP-303 T5)', () => {
 
     const triggers: Array<[string, string]> = [
       ['GC', 'satz:practice'],
-      ['muss', 'satz:modalverb'],
       ['verankern', 'satz:handlungswort'],
     ];
     for (const [text, key] of triggers) {
@@ -90,7 +87,13 @@ describe('ControlStatement (GSPP-303 T5)', () => {
       'GC: Die Institution muss verankern. Ergebnis beachten, siehe Praezisierung zur Frist.',
     );
     const sentenceButtons = scope.getAllByRole('button');
-    expect(sentenceButtons).toHaveLength(3);
+    expect(sentenceButtons).toHaveLength(2);
+    // Das Modalverb ist Satztext ohne Trigger, Unterstreichung oder Karte;
+    // seine Erklärung steht in der Legende „Anforderung“ (GSPP-447).
+    expect(scope.queryByRole('button', { name: 'Vokabularbegriff muss' })).toBeNull();
+    expect(container.querySelector(`#${toVocabCardId('satz:modalverb')}`)).toBeNull();
+    const dotted = [...container.querySelectorAll('.decoration-dotted')].map((node) => node.textContent);
+    expect(dotted).toEqual(['GC', 'verankern']);
     expect(scope.queryByRole('button', { name: 'Vokabularbegriff Ergebnis' })).toBeNull();
     expect(
       sentenceButtons.some((button) => button.textContent === 'Frist'),

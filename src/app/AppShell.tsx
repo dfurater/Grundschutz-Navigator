@@ -11,6 +11,7 @@ import {
 } from 'react-router';
 import { HeaderBar } from '@/components/HeaderBar';
 import { TreeNav } from '@/components/TreeNav';
+import { BackdropTint } from '@/components/BackdropTint';
 import { Footer } from '@/components/Footer';
 import {
   IconChevronLeft,
@@ -191,11 +192,13 @@ export function AppShell() {
         {/* Backdrop for mobile nav */}
         {sideNavOpen && (
           <div
-            className="fixed inset-0 bg-black/30 z-20 md:hidden"
+            className="fixed inset-0 z-20 md:hidden"
             data-testid="mobile-nav-backdrop"
             onClick={() => setSideNavOpen(false)}
             aria-hidden="true"
-          />
+          >
+            <BackdropTint className="bg-black/30" />
+          </div>
         )}
 
         {/* Sidebar / Mobile Drawer */}

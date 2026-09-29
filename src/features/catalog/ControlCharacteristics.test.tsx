@@ -126,20 +126,22 @@ describe('ControlCharacteristics (GSPP-303 T7)', () => {
     const { container } = renderSecurityTargets(makeSecurityRows());
     const scope = within(container);
 
-    // Grid statt Tabelle: Zwei Spaltenpaare ab 24rem Inhaltsbreite, darunter
-    // ein Paar pro Zeile. Subgrid hält die Punkte je Spalte bündig.
+    // Grid statt Tabelle: Zwei Spaltenpaare ab 18.5rem Inhaltsbreite, darunter
+    // ein Paar pro Zeile (Layout selbst: controlSecurityTargets.browser.test.ts).
+    // Subgrid hält die Punkte je Spalte bündig.
     const cells = Array.from(container.querySelectorAll('[role="group"].grid-cols-subgrid'));
     expect(cells).toHaveLength(4);
     expect(cells.map((cell) => cell.classList.contains('col-start-1'))).toEqual([true, false, true, false]);
-    expect(cells.map((cell) => cell.classList.contains('@min-[24rem]:col-start-4'))).toEqual([false, true, false, true]);
+    expect(cells.map((cell) => cell.classList.contains('@min-[18.5rem]:col-start-4'))).toEqual([false, true, false, true]);
     for (const cell of cells) expect(cell).toHaveClass('grid-cols-subgrid');
     // Keine Mindesthöhe, die am Breakpoint springt.
     expect(container.querySelector('[role="group"] .min-h-11')).toBeNull();
     expect(container.querySelector('table')).toBeNull();
 
-    // Je Row ein Schutzziel-Trigger plus ein Relevanz-Trigger (4 + 4); die
-    // Legende steht in der Leiste „Schutzziele und Gefährdungen“, nicht im Raster.
-    expect(scope.getAllByRole('button')).toHaveLength(8);
+    // Je Row nur der Schutzziel-Trigger; die Relevanz ist reine Anzeige
+    // (GSPP-447). Die Legende steht in der Leiste „Schutzziele und
+    // Gefährdungen“, nicht im Raster.
+    expect(scope.getAllByRole('button')).toHaveLength(4);
     expect(scope.queryByRole('button', { name: 'Legende' })).toBeNull();
     for (const [label, relevance] of [
       ['Vertraulichkeit', '2'],
@@ -168,19 +170,21 @@ describe('ControlCharacteristics (GSPP-303 T7)', () => {
         'underline-offset-4',
       );
 
-      // Relevanz-Trigger nennt Schutzziel + Relevanzwert und ist verdrahtet.
-      const level = scope.getByRole('button', {
-        name: `Relevanz ${label}: ${relevance}`,
-      });
-      expect(level).toHaveAttribute(
-        'aria-controls',
-        toVocabCardId(`security-target-level:${key}`),
-      );
+      // Relevanz ohne eigene Karte: Die Gruppe ordnet Schutzziel und Wert
+      // für Screenreader zu, der Wert steht zusätzlich als Text.
+      const group = scope.getByRole('group', { name: `${label}: Relevanz ${relevance}` });
+      expect(within(group).getByText(`Relevanz ${relevance}`)).toHaveClass('sr-only');
+      expect(scope.queryByRole('button', { name: `Relevanz ${label}: ${relevance}` })).toBeNull();
+      expect(container.querySelector(`#${CSS.escape(toVocabCardId(`security-target-level:${key}`))}`)).toBeNull();
     }
 
-    // Punkte-Skala rein visuell (aria-hidden), Bedeutung im aria-label.
+    // Punkte-Skala rein visuell (aria-hidden) und ohne verwaiste Verweise.
     const scales = cells[0].querySelectorAll('[aria-hidden="true"]');
     expect(scales.length).toBeGreaterThan(0);
+    expect(container.querySelectorAll('[aria-controls]')).toHaveLength(4);
+    for (const trigger of container.querySelectorAll('[aria-controls]')) {
+      expect(container.querySelector(`#${CSS.escape(trigger.getAttribute('aria-controls')!)}`)).not.toBeNull();
+    }
   });
 
   it('Legende erklärt alle drei BSI-Relevanzstufen auch bei nur einem vorkommenden Wert', () => {
@@ -218,7 +222,7 @@ describe('ControlCharacteristics (GSPP-303 T7)', () => {
     ).toBeInTheDocument();
   });
 
-  it('aufgelöste Relevanz außerhalb der Skala bleibt als Begriff erklärbar und steht in der Legende', () => {
+  it('aufgelöste Relevanz außerhalb der Skala steht als Rohwert und ist über die Legende erklärt', () => {
     const rows = makeSecurityRows();
     const base = rows[0].levelResolution;
     expect(base).not.toBeNull();
@@ -243,12 +247,12 @@ describe('ControlCharacteristics (GSPP-303 T7)', () => {
         />
       </MemoryRouter>,
     );
-    const trigger = within(container).getByRole('button', { name: 'Relevanz Vertraulichkeit: 3' });
-    expect(trigger).toHaveTextContent('3');
-    expect(trigger).toHaveAttribute('aria-controls', toVocabCardId('security-target-level:confidentiality'));
-    expect(container.querySelector(`#${CSS.escape(toVocabCardId('security-target-level:confidentiality'))}`)).not.toBeNull();
-    fireEvent.click(trigger);
-    expect(onToggle).toHaveBeenCalledWith('security-target-level:confidentiality');
+    const group = within(container).getByRole('group', { name: 'Vertraulichkeit: Relevanz 3' });
+    expect(within(group).getByText('3')).toBeInTheDocument();
+    expect(within(container).queryByRole('button', { name: 'Relevanz Vertraulichkeit: 3' })).toBeNull();
+    expect(container.querySelector(`#${CSS.escape(toVocabCardId('security-target-level:confidentiality'))}`)).toBeNull();
+    fireEvent.click(within(group).getByText('3'));
+    expect(onToggle).not.toHaveBeenCalled();
     expect(within(container).queryByText('Keine offizielle Definition für diese Relevanzstufe verfügbar.')).toBeNull();
 
     const legend = renderMerkmaleLegend([outOfScale]);

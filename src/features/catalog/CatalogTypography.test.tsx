@@ -418,8 +418,26 @@ describe('catalog typography', () => {
     expect(backButton).toHaveClass('rounded-lg', 'h-11', 'w-11', 'lg:h-10', 'lg:w-10');
     expect(backButton.querySelector('span')).toBeNull();
     expect(title).toHaveClass('type-page-title');
-    expect(scrollContainer).toHaveClass('pb-safe', 'lg:pb-4');
+    // Der Sicherheitsabstand kommt zu den 16 px hinzu, statt sie zu ersetzen.
+    expect(scrollContainer).toHaveClass('p-4', 'pb-[calc(1rem+env(safe-area-inset-bottom,0px))]', 'lg:pb-4');
+    expect(scrollContainer).not.toHaveClass('pb-safe');
     expect(container.firstChild).toHaveClass('h-full', 'flex', 'flex-col', 'bg-[var(--color-surface-raised)]');
+  });
+
+  it('keeps 16 px below the last block when the detail is a page before the footer', () => {
+    render(
+      <MemoryRouter>
+        <ControlDetail control={control} onClose={vi.fn()} layout="page" />
+      </MemoryRouter>,
+    );
+
+    const title = screen.getByRole('heading', { name: control.title, level: 2 });
+    const content = title.parentElement?.nextElementSibling;
+
+    // Als Seite folgt die Fußzeile; ein Sicherheitsabstand würde die 16 px ersetzen (GSPP-447).
+    expect(content).toHaveClass('p-4');
+    expect(content?.className).not.toMatch(/\bpb-/);
+    expect(content).not.toHaveClass('overflow-y-auto');
   });
 
   it('explains criteria in the short-profile legend and links to the vocabulary entry', async () => {

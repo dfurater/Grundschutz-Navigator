@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { BackdropTint } from '@/components/BackdropTint';
 import { Button } from '@/components/Button';
 import { IconFilter } from '@/components/icons';
 import { useBottomSheetDrag } from '@/hooks/useBottomSheetDrag';
@@ -49,11 +50,13 @@ export function CatalogMobileFilterSheet({
         <>
           <div
             ref={backdropRef}
-            className="fixed inset-0 bg-black z-40 lg:hidden"
+            className="fixed inset-0 z-40 lg:hidden"
             style={{ opacity: 0.3 }}
             onClick={close}
             aria-hidden="true"
-          />
+          >
+            <BackdropTint className="bg-black" />
+          </div>
           <aside
             ref={sheetRef}
             className="fixed inset-x-0 bottom-0 z-50 bg-[var(--color-surface-raised)] rounded-t-2xl shadow-xl max-h-[80dvh] flex flex-col overflow-hidden lg:hidden animate-slide-up"

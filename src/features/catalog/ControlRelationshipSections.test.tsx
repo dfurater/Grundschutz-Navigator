@@ -80,10 +80,11 @@ describe('ControlDependencies', () => {
       name: 'GC.9.9 (Verwandt)',
     })).not.toBeInTheDocument();
     expect(screen.getAllByText('GC.2.2')).toHaveLength(1);
-    expect(screen.getByText('GC.2.2 verweist hierauf als „Verwandt"')).toBeInTheDocument();
+    expect(reciprocal).toHaveAccessibleDescription('Verweist auf diese Kontrolle · Verwandt');
 
     const incomingOnly = screen.getByRole('button', {
-      name: 'GC.3.1 Eingehende Kontrolle (Verwandt)',
+      name: 'GC.3.1 Eingehende Kontrolle',
+      description: 'Verweist auf diese Kontrolle · Verwandt',
     });
     await user.click(reciprocal);
     await user.click(incomingOnly);
