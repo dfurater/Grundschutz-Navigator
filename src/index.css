@@ -274,8 +274,12 @@
 }
 
 @layer base {
+  /* Eigene Hintergrundfarbe auf `html`, nicht nur auf `body`: Ohne sie zeigt
+     Safari 26 unter seiner Liquid-Glass-Leiste eine undurchsichtige graue
+     Fläche statt des Seiteninhalts (iPhone 16 Pro, iOS 27.0.1, GSPP-447). */
   html {
     overflow-x: hidden;
+    @apply bg-slate-100;
   }
 
   button:disabled {

@@ -74,17 +74,19 @@ export function ControlSecurityTargets({
     <div className="@container">
       <SubSectionHeading>Schutzziele</SubSectionHeading>
       {/*
-        Zwei Spaltenpaare ab 24rem Inhaltsbreite, darunter ein Paar pro Zeile.
-        Die Punkte stehen direkt hinter ihrem Schutzziel und untereinander
-        bündig. Zeilenhöhe fest, Touch-Fläche über
-        Pseudo-Elemente statt `min-h-11`, damit am Breakpoint nichts springt.
+        Zwei Spaltenpaare ab 18.5rem Inhaltsbreite, darunter ein Paar pro Zeile.
+        Das 2×2-Raster braucht mit geladenen App-Schriften 18,16rem (290,5 px
+        bei 16 px Grundschrift, Chromium, GSPP-447); der Rest ist Reserve für
+        abweichende Schriftmetrik. In `rem` wandert der Umschaltpunkt mit einer
+        vergrößerten Grundschrift mit. Die Punkte stehen direkt hinter ihrem
+        Schutzziel und untereinander bündig. Zeilenhöhe fest, Touch-Fläche der
+        Namen über Pseudo-Elemente statt `min-h-11`, damit am Umschaltpunkt
+        nichts springt.
       */}
-      <div className="grid w-fit grid-cols-[max-content_max-content] gap-x-3 gap-y-1.5 text-sm leading-relaxed text-slate-700 @min-[24rem]:grid-cols-[max-content_max-content_1.5rem_max-content_max-content]">
+      <div className="grid w-fit grid-cols-[max-content_max-content] gap-x-3 gap-y-1.5 text-sm leading-relaxed text-slate-700 @min-[18.5rem]:grid-cols-[max-content_max-content_1.5rem_max-content_max-content]">
         {securityTargets.map(({ key, label, relevance, targetResolution, levelResolution }, index) => {
           const targetVocabKey = `security-target:${key}`;
-          const levelVocabKey = `security-target-level:${key}`;
           const targetActive = isVocabularyActive(targetVocabKey);
-          const levelActive = isVocabularyActive(levelVocabKey);
           const relevanceScaleValue = toRelevanceScaleValue(relevance);
 
           return (
@@ -94,7 +96,7 @@ export function ControlSecurityTargets({
               role="group"
               key={targetVocabKey}
               aria-label={`${label}: Relevanz ${relevance}`}
-              className={`col-span-2 grid grid-cols-subgrid items-center ${index % 2 === 0 ? 'col-start-1' : '@min-[24rem]:col-start-4'}`}
+              className={`col-span-2 grid grid-cols-subgrid items-center ${index % 2 === 0 ? 'col-start-1' : '@min-[18.5rem]:col-start-4'}`}
             >
               {targetResolution ? (
                 <TermTrigger
@@ -108,40 +110,21 @@ export function ControlSecurityTargets({
               ) : (
                 <span>{label}</span>
               )}
-              {levelResolution && relevanceScaleValue === null && (
-                // Aufgelöste Stufe außerhalb der Skala: Wert als Begriffs-Trigger,
-                // damit ihre Karte erreichbar bleibt.
-                <TermTrigger
-                  vocabKey={levelVocabKey}
-                  active={levelActive}
-                  onToggle={onToggleVocabulary}
-                  label={relevance}
-                  ariaLabel={`Relevanz ${label}: ${relevance}`}
-                  className="relative inline-flex min-h-6 items-center text-left tabular-nums after:absolute after:-inset-y-2.5 after:inset-x-0 after:content-[''] lg:after:-inset-y-1"
-                />
-              )}
-              {levelResolution && relevanceScaleValue !== null && (
-                // Die Skala ist der Relevanz-Trigger; der Wert steht für
-                // Screenreader im Text, sichtbar erklärt ihn die Legende.
-                <button
-                  type="button"
-                  aria-pressed={levelActive}
-                  aria-expanded={levelActive}
-                  aria-controls={toVocabCardId(levelVocabKey)}
-                  aria-label={`Relevanz ${label}: ${relevance}`}
-                  title={`Relevanz ${relevance}`}
-                  onClick={() => {
-                    onToggleVocabulary(levelVocabKey);
-                  }}
-                  className="relative inline-flex min-h-6 min-w-6 cursor-pointer items-center rounded after:absolute after:-inset-2.5 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] lg:after:-inset-1"
-                >
+              {/*
+                Die Relevanz ist reine Anzeige (GSPP-447): Ihre feste Skala
+                erklärt die Legende „Schutzziele und Gefährdungen“. Werte
+                außerhalb der Skala stehen als Rohwert.
+              */}
+              {relevanceScaleValue === null ? (
+                <span className="tabular-nums">{relevance}</span>
+              ) : (
+                <span className="inline-flex min-h-6 items-center" title={`Relevanz ${relevance}`}>
                   <span aria-hidden="true">
                     <RelevanceScale value={relevanceScaleValue} />
                   </span>
-                  <span className="sr-only">{relevance}</span>
-                </button>
+                  <span className="sr-only">Relevanz {relevance}</span>
+                </span>
               )}
-              {!levelResolution && <span className="tabular-nums">{relevance}</span>}
               {!levelResolution && (
                 // `contain` hält den Hinweis aus der Spaltenbreite heraus.
                 <p className="col-span-2 text-xs leading-snug text-amber-700 [contain:inline-size]">
@@ -153,23 +136,13 @@ export function ControlSecurityTargets({
         })}
       </div>
       {/* Karten in voller Breite unter dem Raster, damit sie keine Spalte verbreitern. */}
-      {securityTargets.map(({ key, targetResolution, levelResolution }) => {
+      {securityTargets.map(({ key, targetResolution }) => {
+        if (!targetResolution) return null;
         const targetVocabKey = `security-target:${key}`;
-        const levelVocabKey = `security-target-level:${key}`;
         const targetActive = isVocabularyActive(targetVocabKey);
-        const levelActive = isVocabularyActive(levelVocabKey);
         return (
-          <div key={`${key}-cards`}>
-            {targetResolution && (
-              <div id={toVocabCardId(targetVocabKey)} hidden={!targetActive || undefined}>
-                {targetActive && renderVocabularyCard(targetResolution)}
-              </div>
-            )}
-            {levelResolution && (
-              <div id={toVocabCardId(levelVocabKey)} hidden={!levelActive || undefined}>
-                {levelActive && renderVocabularyCard(levelResolution)}
-              </div>
-            )}
+          <div key={`${key}-card`} id={toVocabCardId(targetVocabKey)} hidden={!targetActive || undefined}>
+            {targetActive && renderVocabularyCard(targetResolution)}
           </div>
         );
       })}

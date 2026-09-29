@@ -49,6 +49,7 @@ export const ControlMobileReferenceRow = memo(function ControlMobileReferenceRow
   return (
     <button
       type="button"
+      data-control-row={control.id}
       onClick={isSelectable ? handleToggleClick : handleSelectClick}
       aria-pressed={selectMode ? checked : undefined}
       className={`catalog-mobile-reference-row w-full flex items-center gap-2 px-3 py-2 transition-colors cursor-pointer active:bg-[var(--color-surface-subtle)] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus-ring)] ${

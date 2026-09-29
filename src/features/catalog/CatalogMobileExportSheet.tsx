@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import type { Control } from '@/domain/models';
+import { BackdropTint } from '@/components/BackdropTint';
 import { Button } from '@/components/Button';
 import { IconDownload } from '@/components/icons';
 import { downloadCSV } from '@/features/export/csvExport';
@@ -57,10 +58,12 @@ export function CatalogMobileExportSheet({
       {open && (
         <>
           <div
-            className="fixed inset-0 bg-black/30 z-40 lg:hidden"
+            className="fixed inset-0 z-40 lg:hidden"
             onClick={close}
             aria-hidden="true"
-          />
+          >
+            <BackdropTint className="bg-black/30" />
+          </div>
           <div
             ref={sheetRef}
             className="fixed inset-x-0 bottom-0 z-50 bg-[var(--color-surface-raised)] rounded-t-2xl shadow-xl flex flex-col overflow-hidden lg:hidden animate-slide-up"

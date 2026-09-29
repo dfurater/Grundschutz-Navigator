@@ -124,7 +124,9 @@ describe('ControlSecurityContext', () => {
     for (const label of ['Vertraulichkeit', 'Integrität', 'Verfügbarkeit', 'Authentizität']) {
       expect(screen.getByRole('button', { name: `Schutzziel: ${label}` })).toBeInTheDocument();
     }
-    expect(screen.getByRole('button', { name: 'Relevanz Vertraulichkeit: 2' })).toHaveTextContent('2');
+    // Relevanz als Anzeige in der Gruppe, ohne eigenen Button (GSPP-447).
+    expect(screen.getByRole('group', { name: 'Vertraulichkeit: Relevanz 2' })).toHaveTextContent('Relevanz 2');
+    expect(screen.queryByRole('button', { name: 'Relevanz Vertraulichkeit: 2' })).toBeNull();
     // Die Legende steht in der Leiste „Schutzziele und Gefährdungen“ (ControlDetail), nicht hier.
     expect(screen.queryByRole('button', { name: 'Legende' })).toBeNull();
     expect(container.querySelector('.catalog-vocabulary-affordance')).toBeNull();

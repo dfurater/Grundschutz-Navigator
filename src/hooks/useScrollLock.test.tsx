@@ -36,4 +36,17 @@ describe('useScrollLock', () => {
 
     expect(document.body.style.overflow).toBe('auto');
   });
+
+  it('keeps scrolling locked until the last overlapping lock ends, in any order', () => {
+    document.body.style.overflow = '';
+    const first = renderHook(() => useScrollLock(true));
+    const second = renderHook(() => useScrollLock(true));
+
+    // Die zuerst gesetzte Sperre endet zuerst: Die spätere bleibt wirksam.
+    first.unmount();
+    expect(document.body.style.overflow).toBe('hidden');
+
+    second.unmount();
+    expect(document.body.style.overflow).toBe('');
+  });
 });

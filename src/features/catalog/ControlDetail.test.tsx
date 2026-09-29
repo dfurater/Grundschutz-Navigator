@@ -463,28 +463,27 @@ describe('ControlDetail', () => {
     expect(screen.getByRole('heading', { name: 'Schutzziele', level: 4 })).toBeInTheDocument();
 
     const confidentiality = screen.getByRole('button', { name: 'Schutzziel: Vertraulichkeit' });
-    const confidentialityLevel = screen.getByRole('button', {
-      name: 'Relevanz Vertraulichkeit: 2',
-    });
     const threat = screen.getByRole('button', {
       name: 'Elementare Gefährdung: Fehlplanung oder fehlende Anpassung (G 0.18)',
     });
     expect(confidentiality).toHaveAttribute('aria-expanded', 'false');
-    expect(confidentialityLevel).toHaveAttribute('aria-expanded', 'false');
     expect(threat).toHaveAttribute('aria-expanded', 'false');
+    // Die Relevanz öffnet keine eigene Karte; erklärt wird sie nur in der Legende (GSPP-447).
+    expect(screen.queryByRole('button', { name: 'Relevanz Vertraulichkeit: 2' })).toBeNull();
+    expect(screen.getByRole('group', { name: 'Vertraulichkeit: Relevanz 2' })).toBeInTheDocument();
 
     await user.click(confidentiality);
     expect(screen.getByText('Schutz vor unbefugter Offenlegung.')).toBeInTheDocument();
     expect(confidentiality).toHaveAttribute('aria-expanded', 'true');
 
-    await user.click(confidentialityLevel);
-    // Die Definition steht auch in der (verborgenen) Legende; geprüft wird die Vokabelkarte.
-    const levelCard = document.getElementById(confidentialityLevel.getAttribute('aria-controls')!)!;
-    expect(within(levelCard).getByText(
+    const schutzzieleSection = screen.getByRole('heading', { name: 'Schutzziele und Gefährdungen', level: 3 }).closest('section')!;
+    await user.click(within(schutzzieleSection).getByRole('button', { name: 'Legende' }));
+    const legend = document.getElementById('legende-schutzziele')!;
+    expect(legend).toBeVisible();
+    expect(within(legend).getByText(
       'Die Anforderung wirkt in besonderem Maße auf dieses Schutzziel hin. Dieser Wert zeigt an, dass das Schutzziel im Zentrum dieser Anforderung steht.',
     )).toBeInTheDocument();
-    expect(confidentiality).toHaveAttribute('aria-expanded', 'false');
-    expect(confidentialityLevel).toHaveAttribute('aria-expanded', 'true');
+    expect(confidentiality).toHaveAttribute('aria-expanded', 'true');
 
     await user.click(threat);
     expect(screen.getByText('Fehlplanung oder fehlende Anpassung von Prozessen.')).toBeInTheDocument();
@@ -921,8 +920,11 @@ describe('ControlDetail', () => {
     );
 
     expect(screen.getByRole('heading', { name: 'Verknüpft', level: 4 })).toBeInTheDocument();
+    // Reine eingehende Verweise: Richtung und Relationsart im Hinweis unter
+    // dem Titel, der zugleich die Beschreibung des Links ist (GSPP-447).
     const reverseLinkButton = screen.getByRole('button', {
-      name: /GC\.2\.1 Voraussetzung \(Erfordert\)/,
+      name: 'GC.2.1 Voraussetzung',
+      description: 'Verweist auf diese Kontrolle · Erfordert',
     });
     expect(reverseLinkButton).toBeInTheDocument();
 
@@ -975,7 +977,8 @@ describe('ControlDetail', () => {
     ).toHaveLength(1);
     expect(
       within(dependenciesSection).getByRole('button', {
-        name: /GC\.2\.1 Nur eingehende Kontrolle \(Verwandt\)/,
+        name: 'GC.2.1 Nur eingehende Kontrolle',
+        description: 'Verweist auf diese Kontrolle · Verwandt',
       }),
     ).toBeInTheDocument();
   });
@@ -1009,8 +1012,11 @@ describe('ControlDetail', () => {
     expect(screen.getByRole('button', {
       name: /GC\.2\.3 Gegenseitige Kontrolle \(Erfordert\)/,
     })).toBeInTheDocument();
-    expect(screen.getByText('GC.2.3 verweist hierauf als „Erfordert"')).toBeInTheDocument();
-    expect(screen.getByText('GC.2.3 verweist hierauf als „Verwandt"')).toBeInTheDocument();
+    // Verschiedene Relationsarten der Gegenrichtung stehen je einmal im Hinweis.
+    expect(screen.getByRole('button', {
+      name: /GC\.2\.3 Gegenseitige Kontrolle/,
+      description: 'Verweist auf diese Kontrolle · Erfordert, Verwandt',
+    })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Wird referenziert von' })).not.toBeInTheDocument();
   });
 
@@ -1041,7 +1047,7 @@ describe('ControlDetail', () => {
     expect(screen.getByRole('button', {
       name: /GC\.2\.3 Gegenseitige Kontrolle \(Erfordert\)/,
     })).toBeInTheDocument();
-    expect(screen.getAllByText('GC.2.3 verweist hierauf als „Erfordert"')).toHaveLength(1);
+    expect(screen.getAllByText('Verweist auf diese Kontrolle · Erfordert')).toHaveLength(1);
     expect(screen.queryByRole('heading', { name: 'Wird referenziert von' })).not.toBeInTheDocument();
   });
 

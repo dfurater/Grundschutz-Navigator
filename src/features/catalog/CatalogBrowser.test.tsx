@@ -6,7 +6,7 @@ import {
   useLocation,
   useNavigate,
 } from 'react-router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Catalog, Control } from '@/domain/models';
 import type { CatalogKey } from '@/domain/sourceRegistry';
 import { useCatalog } from '@/hooks/useCatalog';
@@ -84,6 +84,7 @@ vi.mock('./ControlMobileReferenceRow', () => ({
     <button
       type="button"
       data-testid="mobile-control-row"
+      data-control-row={control.id}
       onClick={() => {
         if (selectMode) {
           onCheckedChange?.(control, !checked);
@@ -108,6 +109,7 @@ vi.mock('./ControlDetail', () => ({
     onNavigateToControl?: (control: Control) => void;
   }) => (
     <div>
+      <h2 data-control-detail-title tabIndex={-1}>{control.title}</h2>
       <p>{`Detail ${control.id}`}</p>
       <button type="button" onClick={onClose}>Detail schließen</button>
       <button type="button" onClick={() => onNavigateToControl?.(relatedControl)}>
@@ -201,9 +203,11 @@ function mockFilterParams(searchString = '') {
 function LocationProbe({
   onCatalogSwitch,
   secondaryLink,
+  withHistoryBack = false,
 }: {
   onCatalogSwitch?: () => void;
   secondaryLink?: { label: string; to: string };
+  withHistoryBack?: boolean;
 }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -229,6 +233,11 @@ function LocationProbe({
           {secondaryLink.label}
         </button>
       )}
+      {withHistoryBack && (
+        <button type="button" onClick={() => navigate(-1)}>
+          Browser zurück
+        </button>
+      )}
     </>
   );
 }
@@ -237,10 +246,12 @@ function CatalogBrowserTestApp({
   initialEntry = '/katalog/gspp',
   onCatalogSwitch,
   secondaryLink,
+  withHistoryBack,
 }: {
   initialEntry?: string;
   onCatalogSwitch?: () => void;
   secondaryLink?: { label: string; to: string };
+  withHistoryBack?: boolean;
 }) {
   return (
     <MemoryRouter initialEntries={[initialEntry]}>
@@ -250,7 +261,7 @@ function CatalogBrowserTestApp({
         <Route path={CATALOG_ROUTE_PATTERN} element={<CatalogBrowser />} />
         <Route path="*" element={<div>404 — Seite nicht gefunden</div>} />
       </Routes>
-      <LocationProbe onCatalogSwitch={onCatalogSwitch} secondaryLink={secondaryLink} />
+      <LocationProbe onCatalogSwitch={onCatalogSwitch} secondaryLink={secondaryLink} withHistoryBack={withHistoryBack} />
     </MemoryRouter>
   );
 }
@@ -267,8 +278,25 @@ function renderCatalogBrowser(
   );
 }
 
+/** Zwischen `md` und `lg`: eigene Scrollbereiche, Detail als Overlay. */
+function useTabletWidth() {
+  mockedUseMediaQuery.mockImplementation((query) => query === '(min-width: 768px)');
+}
+
+/** Dokument-Scrollen der Liste (unterhalb `md`), wie es der Browser meldet. */
+function scrollListTo(y: number) {
+  Object.defineProperty(globalThis, 'scrollY', { configurable: true, value: y });
+  fireEvent.scroll(globalThis.window);
+}
+
 describe('CatalogBrowser mobile focus restoration', () => {
+  afterEach(() => {
+    vi.mocked(globalThis.scrollTo).mockRestore();
+  });
+
   beforeEach(() => {
+    vi.spyOn(globalThis, 'scrollTo').mockImplementation(() => {});
+    Object.defineProperty(globalThis, 'scrollY', { configurable: true, value: 0 });
     mockCatalog(makeCatalog('gspp'));
     mockedUseMediaQuery.mockReturnValue(false);
     mockFilterParams();
@@ -377,7 +405,8 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(trigger).toHaveFocus();
   });
 
-  it('returns focus to the selected control after Escape closes the detail overlay', () => {
+  it('keeps the overlay with focus trap between md and lg and returns focus after Escape', () => {
+    useTabletWidth();
     renderCatalogBrowser();
     const trigger = screen.getByRole('button', { name: control.title });
 
@@ -385,9 +414,287 @@ describe('CatalogBrowser mobile focus restoration', () => {
     fireEvent.click(trigger);
 
     expect(screen.getByRole('button', { name: 'Detail schließen' })).toHaveFocus();
+    expect(trigger).toBeVisible();
+    expect(globalThis.scrollTo).not.toHaveBeenCalled();
     fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' });
 
     expect(trigger).toHaveFocus();
+  });
+
+  it('opens the detail below md as a page in the document flow', () => {
+    renderCatalogBrowser();
+    const trigger = screen.getByRole('button', { name: control.title });
+
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    // Liste und Toolbar bleiben gemountet, sind aber weder sichtbar noch bedienbar.
+    expect(screen.getByTestId('mobile-control-row')).not.toBeVisible();
+    expect(screen.queryByRole('button', { name: control.title })).toBeNull();
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+    expect(screen.getByRole('heading', { level: 2, name: control.title })).toHaveFocus();
+    expect(globalThis.scrollTo).toHaveBeenLastCalledWith(0, 0);
+    // Keine Body-Sperre: Das Dokument scrollt.
+    expect(document.querySelector('body')?.style.overflow).toBe('');
+  });
+
+  it.each([
+    ['Escape', () => fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' })],
+    ['Zurück-Button', () => fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }))],
+    ['Browser-Zurück', () => fireEvent.click(screen.getByRole('button', { name: 'Browser zurück' }))],
+  ])('restores list position and row focus after closing the page via %s', (_label, close) => {
+    render(<CatalogBrowserTestApp initialEntry="/katalog/gspp/TOP.1" withHistoryBack />);
+    scrollListTo(420);
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    expect(globalThis.scrollTo).toHaveBeenLastCalledWith(0, 0);
+
+    close();
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/katalog/gspp/TOP.1');
+    const row = screen.getByRole('button', { name: control.title });
+    expect(row).toBeVisible();
+    expect(row).toHaveFocus();
+    expect(globalThis.scrollTo).toHaveBeenLastCalledWith(0, 420);
+  });
+
+  it('falls back to the scope heading when the closed control has no list row', () => {
+    mockedUseFilteredControls.mockImplementation(() => ({
+      filtered: [],
+      totalCount: 1,
+      facetCounts: {} as ReturnType<typeof useFilteredControls>['facetCounts'],
+      filteredFacetCounts: {} as ReturnType<typeof useFilteredControls>['filteredFacetCounts'],
+      hasActiveFilters: true,
+    }));
+    renderCatalogBrowser('/katalog/gspp/kontrolle/shared-alt-identifier');
+    expect(screen.getByRole('heading', { level: 2, name: control.title })).toHaveFocus();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));
+
+    expect(screen.getByRole('heading', { level: 1, name: 'Testthema' })).toHaveFocus();
+    expect(globalThis.scrollTo).toHaveBeenLastCalledWith(0, 0);
+  });
+
+  it('starts a linked control at the top and moves focus to its title', () => {
+    renderCatalogBrowser('/katalog/gspp/kontrolle/shared-alt-identifier');
+    vi.mocked(globalThis.scrollTo).mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Verwandte Kontrolle öffnen' }));
+
+    expect(screen.getByText(`Detail ${relatedControl.id}`)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: relatedControl.title })).toHaveFocus();
+    expect(globalThis.scrollTo).toHaveBeenLastCalledWith(0, 0);
+  });
+
+  it('returns focus to the row that opened the page after switching to a linked control', () => {
+    renderCatalogBrowser('/katalog/gspp/TOP.1');
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    fireEvent.click(screen.getByRole('button', { name: 'Verwandte Kontrolle öffnen' }));
+    expect(screen.getByRole('heading', { level: 2, name: relatedControl.title })).toHaveFocus();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));
+
+    // Die verknüpfte Kontrolle steht nicht in der Liste; zurück geht es zur
+    // auslösenden Zeile, nicht zur Bereichsüberschrift.
+    expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
+  });
+
+  it.each([
+    ['Filter', 'Filter anzeigen', 'Filteraktion'],
+    ['Export', 'CSV', 'Aktuelle Ansicht (1)'],
+  ])('releases the scroll lock of an open %s sheet when a control page opens', (_label, triggerName, sheetContent) => {
+    render(
+      <CatalogBrowserTestApp
+        initialEntry="/katalog/gspp/TOP.1"
+        secondaryLink={{ label: 'Vorwärts', to: '/katalog/gspp/kontrolle/shared-alt-identifier' }}
+      />,
+    );
+    // Der Filter-Mock steht auch außerhalb des Sheets; gezählt wird der Zuwachs.
+    const countSheetContent = () => screen.queryAllByText(sheetContent).length;
+    const closedCount = countSheetContent();
+    fireEvent.click(screen.getByRole('button', { name: triggerName }));
+    expect(countSheetContent()).toBe(closedCount + 1);
+    expect(document.querySelector('body')?.style.overflow).toBe('hidden');
+
+    // Browser-Vorwärts auf die Kontrollroute, während das Sheet offen ist.
+    fireEvent.click(screen.getByRole('button', { name: 'Vorwärts' }));
+
+    expect(screen.getByRole('heading', { level: 2, name: control.title })).toBeInTheDocument();
+    expect(document.querySelector('body')?.style.overflow).toBe('');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));
+
+    expect(screen.getByRole('button', { name: triggerName })).toBeVisible();
+    expect(countSheetContent()).toBe(closedCount);
+    expect(document.querySelector('body')?.style.overflow).toBe('');
+  });
+
+  it('starts a different topic at the top instead of restoring the previous list position', () => {
+    const catalog = makeCatalog('gspp');
+    catalog.practices[0].topics.push({
+      id: 'TOP.2',
+      title: 'Zweites Thema',
+      label: '2',
+      practiceId: 'TOP',
+      controlCount: 0,
+      controlIds: [],
+    });
+    mockCatalog(catalog);
+    render(
+      <CatalogBrowserTestApp
+        initialEntry="/katalog/gspp/TOP.1"
+        secondaryLink={{ label: 'Thema wechseln', to: '/katalog/gspp/TOP.2' }}
+      />,
+    );
+    scrollListTo(420);
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+
+    // Themenwechsel über den Navigations-Drawer bei geöffneter Detailseite.
+    fireEvent.click(screen.getByRole('button', { name: 'Thema wechseln' }));
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/katalog/gspp/TOP.2');
+    expect(globalThis.scrollTo).toHaveBeenLastCalledWith(0, 0);
+    expect(screen.getByRole('heading', { level: 1, name: 'Zweites Thema' })).toHaveFocus();
+  });
+
+  it('restores position and row focus when a page opened from the catalog root closes', () => {
+    // Auf der Detailroute nennt `scopeId` das Thema der Kontrolle (TOP.1), die
+    // Liste gehörte aber zur Katalogwurzel: Das ist kein Bereichswechsel.
+    renderCatalogBrowser('/katalog/gspp');
+    scrollListTo(420);
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));
+
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/katalog\/gspp$/);
+    expect(globalThis.scrollTo).toHaveBeenLastCalledWith(0, 420);
+    expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
+  });
+
+  it('returns to the control row after a direct call whose catalog loaded first', () => {
+    // Die Ladeansicht ist keine Liste: Ihr Bereich darf nicht als Herkunft gelten.
+    mockedUseCatalog.mockReturnValue({
+      catalog: null,
+      loading: true,
+      error: null,
+      vocabularyRegistry: null,
+    } as unknown as ReturnType<typeof useCatalog>);
+    const view = renderCatalogBrowser('/katalog/gspp/kontrolle/shared-alt-identifier');
+    expect(screen.getByText('Katalog wird geladen…')).toBeInTheDocument();
+
+    mockCatalog(makeCatalog('gspp'));
+    view.rerender(<CatalogBrowserTestApp initialEntry="/katalog/gspp/kontrolle/shared-alt-identifier" />);
+    expect(screen.getByRole('heading', { level: 2, name: control.title })).toHaveFocus();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));
+
+    expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
+  });
+
+  it('starts another catalog at the top while the previous catalog is still loaded', () => {
+    // Zwischenstand beim Katalogwechsel: Die Route nennt schon `wlan`, der
+    // Kontext liefert noch den geladenen `gspp`-Katalog.
+    render(
+      <CatalogBrowserTestApp
+        initialEntry="/katalog/gspp"
+        secondaryLink={{ label: 'Katalog öffnen', to: '/katalog/wlan' }}
+      />,
+    );
+    scrollListTo(420);
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Katalog öffnen' }));
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/katalog/wlan');
+    expect(globalThis.scrollTo).toHaveBeenLastCalledWith(0, 0);
+  });
+
+  it('does not record a list position while the catalog switch shows no list', () => {
+    const app = () => (
+      <CatalogBrowserTestApp
+        initialEntry="/katalog/gspp"
+        secondaryLink={{ label: 'Katalog öffnen', to: '/katalog/wlan' }}
+      />
+    );
+    const view = render(app());
+    fireEvent.click(screen.getByRole('button', { name: 'Katalog öffnen' }));
+    // Zwischenstand: Route `wlan`, geladen noch `gspp` – statt der Liste steht
+    // die Nicht-gefunden-Ansicht. Ein Scrollen hier ist keine Listenposition.
+    expect(screen.queryByTestId('mobile-control-row')).toBeNull();
+    scrollListTo(700);
+    Object.defineProperty(globalThis, 'scrollY', { configurable: true, value: 0 });
+
+    mockCatalog(makeCatalog('wlan'));
+    view.rerender(app());
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));
+
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/katalog\/wlan$/);
+    expect(globalThis.scrollTo).toHaveBeenLastCalledWith(0, 0);
+  });
+
+  it('focuses the heading of another catalog once its list has loaded', () => {
+    const view = render(
+      <CatalogBrowserTestApp
+        initialEntry="/katalog/gspp/TOP.1"
+        secondaryLink={{ label: 'Katalog öffnen', to: '/katalog/wlan' }}
+      />,
+    );
+    scrollListTo(420);
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    mockedUseCatalog.mockReturnValue({
+      catalog: null,
+      loading: true,
+      error: null,
+      vocabularyRegistry: null,
+    } as unknown as ReturnType<typeof useCatalog>);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Katalog öffnen' }));
+
+    expect(screen.getByText('Katalog wird geladen…')).toBeInTheDocument();
+    expect(globalThis.scrollTo).toHaveBeenLastCalledWith(0, 0);
+
+    mockCatalog(makeCatalog('wlan'));
+    view.rerender(
+      <CatalogBrowserTestApp
+        initialEntry="/katalog/gspp/TOP.1"
+        secondaryLink={{ label: 'Katalog öffnen', to: '/katalog/wlan' }}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { level: 1 })).toHaveFocus();
+  });
+
+  it('keeps the page open for Escape outside the detail or already handled elsewhere', () => {
+    render(<CatalogBrowserTestApp initialEntry="/katalog/gspp/TOP.1" withHistoryBack />);
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    const detailPath = screen.getByTestId('location').textContent;
+
+    // Escape im mitlaufenden App-Kopf, hier vertreten durch ein Bedienelement außerhalb des Details.
+    fireEvent.keyDown(screen.getByRole('button', { name: 'Browser zurück' }), { key: 'Escape' });
+    expect(screen.getByTestId('location')).toHaveTextContent(detailPath!);
+
+    // Ein Baustein im Detail hat Escape schon behandelt (z. B. ein Menü).
+    const handled = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    handled.preventDefault();
+    screen.getByRole('heading', { level: 2, name: control.title }).dispatchEvent(handled);
+    expect(screen.getByTestId('location')).toHaveTextContent(detailPath!);
+
+    // Ohne Fokus im Detail kommt Escape vom body und schließt die Seite.
+    fireEvent.keyDown(document.querySelector('body')!, { key: 'Escape' });
+    expect(screen.getByTestId('location')).toHaveTextContent('/katalog/gspp/TOP.1');
+  });
+
+  it('switches an open page to the desktop split view without losing the control', () => {
+    let width: 'mobile' | 'desktop' = 'mobile';
+    mockedUseMediaQuery.mockImplementation(() => width === 'desktop');
+    const view = renderCatalogBrowser('/katalog/gspp/kontrolle/shared-alt-identifier');
+    expect(screen.getByTestId('mobile-control-row')).not.toBeVisible();
+
+    width = 'desktop';
+    view.rerender(<CatalogBrowserTestApp initialEntry="/katalog/gspp/kontrolle/shared-alt-identifier" />);
+
+    expect(screen.getByTestId('desktop-control-list')).toHaveTextContent(`Detail ${control.id}`);
+    expect(screen.getAllByText(`Detail ${control.id}`)).toHaveLength(1);
   });
 
   it('opens list selections with catalogKey and altIdentifier', () => {
@@ -485,6 +792,20 @@ describe('CatalogBrowser mobile focus restoration', () => {
     );
   });
 
+  it.each([false, true])('shows only the practice or topic name as scope heading (desktop: %s)', (isDesktop) => {
+    mockedUseMediaQuery.mockReturnValue(isDesktop);
+    const practiceView = renderCatalogBrowser('/katalog/gspp/TOP');
+
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/^Testpraktik$/);
+    expectSingleDocumentTitle('TOP — Testpraktik — Grundschutz++-Katalog — Grundschutz++ Navigator');
+
+    practiceView.unmount();
+    renderCatalogBrowser('/katalog/gspp/TOP.1');
+
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/^Testthema$/);
+    expectSingleDocumentTitle('TOP.1 — Testthema — Grundschutz++-Katalog — Grundschutz++ Navigator');
+  });
+
   it('uses a fixed not-found title without putting an unknown URL fragment in it', () => {
     const unknownAltIdentifier = 'unbekannter-roher-url-wert';
 
@@ -572,6 +893,8 @@ describe('CatalogBrowser mobile focus restoration', () => {
   });
 
   it('preserves the selection when a cross-reference opens a control from another group', () => {
+    // Zwischen md und lg bleibt die Toolbar unter dem Overlay im DOM.
+    useTabletWidth();
     renderCatalogBrowser('/katalog/gspp');
 
     fireEvent.click(screen.getByRole('button', { name: control.title }));
