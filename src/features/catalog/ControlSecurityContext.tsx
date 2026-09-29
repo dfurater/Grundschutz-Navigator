@@ -9,6 +9,7 @@ import {
   findResolutionByValue,
   rowTouchTargetClass,
   SubSectionHeading,
+  subSectionStackClass,
   TermTrigger,
   toVocabCardId,
   type RenderVocabularyCard,
@@ -140,7 +141,7 @@ export function ControlSecurityContext({
 
   // GSPP-303 T9: hüllenlos (Teil von „Schutzziele und Gefährdungen“ ohne eigene Überschrift).
   return (
-    <div className="space-y-3">
+    <div className={subSectionStackClass}>
       {securityTargets.length > 0 && (
         <ControlSecurityTargets
           securityTargets={securityTargets}

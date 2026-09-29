@@ -8,7 +8,7 @@ import {
   legendTermClass,
   tightStackClass,
 } from '@/components/legendStyles';
-import type { Control, VocabularyNamespace } from '@/domain/models';
+import type { VocabularyNamespace } from '@/domain/models';
 import type { VocabularyResolution } from '@/domain/vocabulary';
 
 export interface RenderVocabularyCardOptions {
@@ -48,39 +48,20 @@ export const detailListMarkerClass =
 
 export const detailListClass = `${detailListMarkerClass} space-y-1.5 ${tightStackClass}`;
 
-/**
- * Link-Zeile in einer `detailListClass`-Liste: Kennung und Titel auf einer
- * Grundlinie, Zeile 24 px hoch. Die Touch-Fläche wächst unsichtbar per
- * `::after` (36 px mobil, 28 px ab lg), ohne das Layout zu verschieben.
- */
-export const detailListLinkClass =
-  `group inline-flex min-h-6 max-w-full items-baseline gap-2 rounded text-left ${rowTouchTargetClass} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]`;
-
-/** Kennung und Titel einer anderen Anforderung als Link-Zeile in einer Detail-Liste. */
-export function ControlListLink({
-  control,
-  ariaLabel,
-  onNavigateToControl,
-}: {
-  readonly control: Control;
-  readonly ariaLabel: string;
-  readonly onNavigateToControl?: (control: Control) => void;
-}): ReactNode {
-  return (
-    <button
-      type="button"
-      aria-label={ariaLabel}
-      className={detailListLinkClass}
-      onClick={() => onNavigateToControl?.(control)}
-    >
-      <span className="shrink-0 font-mono text-xs text-slate-500 group-hover:text-primary-main">{control.id}</span>
-      <span className="group-hover:underline">{control.title}</span>
-    </button>
-  );
-}
-
 /** Fließtext der Detailansicht: Anforderung, Umsetzungshinweise und Dokumentation in einer Größe. */
 export const detailProseClass = 'w-full break-words text-sm leading-relaxed whitespace-pre-line text-slate-700 [hyphens:auto]';
+
+/**
+ * Stapel der Unterabschnitte eines Detailblocks (Schutzziele/Gefährdungen,
+ * Erweiterungen/Verknüpft/Quellen …): Zwischen je zwei benachbarten
+ * Abschnitten steht eine dekorative 1-px-Linie in der Rahmenfarbe mit 12 px
+ * Abstand darüber und darunter (GSPP-447; 8 px wirkten auf dem iPhone
+ * eingequetscht, Owner 29.09.2026). Die Regel greift am
+ * Geschwister-Selektor, also nur zwischen tatsächlich gerenderten Abschnitten;
+ * ein einzelner oder leer ausfallender Abschnitt erhält keine Linie.
+ */
+export const subSectionStackClass =
+  '[&>*+*]:mt-3 [&>*+*]:border-t [&>*+*]:border-[var(--color-border-default)] [&>*+*]:pt-3';
 
 /** Gruppenbeschriftung unter einer Blockleiste (Schutzziele, Tags, Dokumentation …). */
 export const subSectionHeadingClass = 'mb-1.5 text-sm font-semibold leading-snug text-slate-700';

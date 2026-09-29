@@ -21,6 +21,12 @@ interface CatalogToolbarProps {
   readonly sectionFilename: string;
   readonly filterPanelProps: FilterPanelProps;
   readonly isDesktop: boolean;
+  /**
+   * Mobile Filter- und Export-Sheets bleiben abgebaut, etwa solange das Detail
+   * als Seite die verborgene Toolbar ersetzt: Ein offenes Sheet hielte sonst
+   * unsichtbar Scroll-Sperre und Focus-Trap (GSPP-451).
+   */
+  readonly mobileSheetsSuspended?: boolean;
   readonly onSelectionExported?: () => void;
 }
 
@@ -39,13 +45,16 @@ export function CatalogToolbar({
   sectionFilename,
   filterPanelProps,
   isDesktop,
+  mobileSheetsSuspended = false,
   onSelectionExported,
 }: CatalogToolbarProps) {
+  const showMobileSheets = !isDesktop && !mobileSheetsSuspended;
   return (
     <div className="px-3 py-1.5 md:py-0 md:h-[51px] md:flex md:items-center border-b border-[var(--color-border-default)] bg-[var(--color-surface-base)] sticky top-14 z-10 md:static md:z-auto">
       <div className="w-full flex items-center justify-between gap-2 min-w-0">
         <div className="flex items-center gap-2 min-w-0">
-          <h1 className="text-base font-bold text-[var(--color-text-primary)] truncate">
+          {/* Rückkehrziel nach dem Schließen der mobilen Detailseite (`useDocumentDetailPage`). */}
+          <h1 data-catalog-scope-heading tabIndex={-1} className="text-base font-bold text-[var(--color-text-primary)] truncate focus:outline-none">
             {title}
           </h1>
           <span
@@ -90,7 +99,7 @@ export function CatalogToolbar({
               Zugänge werden über isDesktop bedingt gemountet, nicht per CSS
               versteckt — zu jedem Zeitpunkt ist nur der passende Teilbaum im
               DOM (Invariante aus GRU-217). */}
-          {!isDesktop && (
+          {showMobileSheets && (
             <CatalogMobileFilterSheet filterPanelProps={filterPanelProps} />
           )}
           {isDesktop && (
@@ -101,7 +110,7 @@ export function CatalogToolbar({
               sectionFilename={sectionFilename}
             />
           )}
-          {!isDesktop && (
+          {showMobileSheets && (
             <CatalogMobileExportSheet
               checkedIds={checkedIds}
               filteredControls={filteredControls}

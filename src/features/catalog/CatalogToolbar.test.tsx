@@ -36,7 +36,7 @@ describe('CatalogToolbar', () => {
 
     render(
       <CatalogToolbar
-        title="TOP.1 — Testthema"
+        title="Testthema"
         filteredCount={1}
         totalCount={2}
         hasActiveFilters={false}
@@ -53,9 +53,11 @@ describe('CatalogToolbar', () => {
       />,
     );
 
-    expect(
-      screen.getByRole('heading', { name: 'TOP.1 — Testthema' }),
-    ).toBeInTheDocument();
+    // Die Bereichsüberschrift zeigt nur den übergebenen Namen (GSPP-447) und
+    // dient als Rückkehrziel nach dem Schließen der mobilen Detailseite.
+    const heading = screen.getByRole('heading', { level: 1, name: 'Testthema' });
+    expect(heading).toHaveAttribute('data-catalog-scope-heading');
+    expect(heading).toHaveAttribute('tabindex', '-1');
     expect(screen.getByText('1 / 2 Kontrollen')).toBeInTheDocument();
     expect(screen.getByText('1 von 2')).toBeInTheDocument();
 
@@ -66,6 +68,42 @@ describe('CatalogToolbar', () => {
 
     expect(onToggleMobileSelectMode).toHaveBeenCalledOnce();
     expect(onClearSelection).toHaveBeenCalledOnce();
+  });
+
+  it('unmounts open mobile sheets while they are suspended and releases their scroll lock', () => {
+    const toolbar = (mobileSheetsSuspended: boolean) => (
+      <CatalogToolbar
+        title="Testthema"
+        filteredCount={1}
+        totalCount={1}
+        hasActiveFilters={false}
+        onClearFilters={vi.fn()}
+        checkedIds={new Set()}
+        mobileSelectMode={false}
+        onToggleMobileSelectMode={vi.fn()}
+        onClearSelection={vi.fn()}
+        filteredControls={[control]}
+        allControls={[control]}
+        sectionFilename="grundschutz-TOP.1.csv"
+        filterPanelProps={{} as FilterPanelProps}
+        isDesktop={false}
+        mobileSheetsSuspended={mobileSheetsSuspended}
+      />
+    );
+    const view = render(toolbar(false));
+    fireEvent.click(screen.getByRole('button', { name: 'Filter anzeigen' }));
+    expect(getBody().style.overflow).toBe('hidden');
+
+    view.rerender(toolbar(true));
+
+    expect(screen.queryByRole('button', { name: 'Filter anzeigen' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'CSV' })).toBeNull();
+    expect(getBody().style.overflow).toBe('');
+
+    view.rerender(toolbar(false));
+
+    expect(screen.getByRole('button', { name: 'Filter anzeigen' })).toBeInTheDocument();
+    expect(screen.queryByText('Filteraktion')).toBeNull();
   });
 
   it('delegates mobile filter reset and selection-export completion', () => {

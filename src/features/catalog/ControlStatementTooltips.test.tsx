@@ -31,7 +31,6 @@ function renderStatement(input: SegmentStatementInput, resolutions: Partial<Cont
         segments={{
           input,
           practiceResolution: null,
-          modalverbResolution: null,
           handlungswortResolution: null,
           isVocabularyActive: () => false,
           onToggleVocabulary: () => {},
