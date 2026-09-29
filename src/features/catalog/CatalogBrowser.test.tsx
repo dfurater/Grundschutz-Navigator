@@ -556,6 +556,52 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Zweites Thema' })).toHaveFocus();
   });
 
+  it('restores position and row focus when a page opened from the catalog root closes', () => {
+    // Auf der Detailroute nennt `scopeId` das Thema der Kontrolle (TOP.1), die
+    // Liste gehörte aber zur Katalogwurzel: Das ist kein Bereichswechsel.
+    renderCatalogBrowser('/katalog/gspp');
+    scrollListTo(420);
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));
+
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/katalog\/gspp$/);
+    expect(globalThis.scrollTo).toHaveBeenLastCalledWith(0, 420);
+    expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
+  });
+
+  it('focuses the heading of another catalog once its list has loaded', () => {
+    const view = render(
+      <CatalogBrowserTestApp
+        initialEntry="/katalog/gspp/TOP.1"
+        secondaryLink={{ label: 'Katalog öffnen', to: '/katalog/wlan' }}
+      />,
+    );
+    scrollListTo(420);
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    mockedUseCatalog.mockReturnValue({
+      catalog: null,
+      loading: true,
+      error: null,
+      vocabularyRegistry: null,
+    } as unknown as ReturnType<typeof useCatalog>);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Katalog öffnen' }));
+
+    expect(screen.getByText('Katalog wird geladen…')).toBeInTheDocument();
+    expect(globalThis.scrollTo).toHaveBeenLastCalledWith(0, 0);
+
+    mockCatalog(makeCatalog('wlan'));
+    view.rerender(
+      <CatalogBrowserTestApp
+        initialEntry="/katalog/gspp/TOP.1"
+        secondaryLink={{ label: 'Katalog öffnen', to: '/katalog/wlan' }}
+      />,
+    );
+
+    expect(screen.getByRole('heading', { level: 1 })).toHaveFocus();
+  });
+
   it('keeps the page open for Escape outside the detail or already handled elsewhere', () => {
     render(<CatalogBrowserTestApp initialEntry="/katalog/gspp/TOP.1" withHistoryBack />);
     fireEvent.click(screen.getByRole('button', { name: control.title }));

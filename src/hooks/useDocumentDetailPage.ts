@@ -40,25 +40,33 @@ export interface UseDocumentDetailPageOptions {
  *   bevor die Liste gemalt wird.
  * - Führt das Schließen in einen anderen Listenbereich, etwa über den
  *   Navigations-Drawer, gilt die gemerkte Position nicht: Die Liste beginnt
- *   oben, der Fokus geht auf die Bereichsüberschrift.
+ *   oben, der Fokus geht auf die Bereichsüberschrift. Maßgeblich ist der
+ *   Bereich der zuletzt sichtbaren Liste, nicht das Thema der Kontrolle.
+ * - Steht das Rückkehrziel noch nicht im DOM, etwa während ein anderer
+ *   Katalog lädt, holt der Hook den Fokus nach, sobald die Liste erscheint.
  * - Escape schließt nur, wenn niemand es schon behandelt hat und es aus dem
  *   Detail oder vom `body` kommt; der mitlaufende App-Kopf mit Suche,
  *   Katalogwechsler und Menü bleibt davon unberührt.
  */
 export function useDocumentDetailPage({ enabled, controlId, scopeKey, onClose }: UseDocumentDetailPageOptions): void {
   const listScrollYRef = useRef(0);
+  // Bereich der zuletzt sichtbaren Liste; `null` nach einem Direktaufruf.
+  const listScopeKeyRef = useRef<string | null>(null);
   // Kontrolle, mit der die Seite aus der Liste (oder per Direktaufruf) geöffnet
   // wurde, samt Listenbereich; `null`, solange die Liste sichtbar ist.
-  const openedRef = useRef<{ controlId: string; scopeKey: string } | null>(null);
+  const openedRef = useRef<{ controlId: string; scopeKey: string | null } | null>(null);
+  // Noch nicht gesetzter Rückkehrfokus: gesuchte Zeile oder nur die Überschrift.
+  const pendingFocusRef = useRef<{ rowControlId: string | null } | null>(null);
   const listVisible = enabled && controlId === null;
 
   useLayoutEffect(() => {
+    if (!enabled || controlId !== null) pendingFocusRef.current = null;
     if (!enabled) {
       openedRef.current = null;
       return;
     }
     if (controlId !== null) {
-      openedRef.current ??= { controlId, scopeKey };
+      openedRef.current ??= { controlId, scopeKey: listScopeKeyRef.current };
       globalThis.scrollTo(0, 0);
       document.querySelector<HTMLElement>(DETAIL_TITLE_SELECTOR)?.focus({ preventScroll: true });
       return;
@@ -66,16 +74,29 @@ export function useDocumentDetailPage({ enabled, controlId, scopeKey, onClose }:
     const opened = openedRef.current;
     if (opened === null) return;
     openedRef.current = null;
-    const sameScope = opened.scopeKey === scopeKey;
+    const sameScope = opened.scopeKey === null || opened.scopeKey === scopeKey;
     globalThis.scrollTo(0, sameScope ? listScrollYRef.current : 0);
-    const row = sameScope ? document.querySelector<HTMLElement>(controlRowSelector(opened.controlId)) : null;
-    const returnTarget = row ?? document.querySelector<HTMLElement>(SCOPE_HEADING_SELECTOR);
-    returnTarget?.focus({ preventScroll: true });
+    pendingFocusRef.current = { rowControlId: sameScope ? opened.controlId : null };
   }, [enabled, controlId, scopeKey]);
 
+  // Ohne Abhängigkeiten: läuft nach jedem Commit, bis das Rückkehrziel steht.
   useLayoutEffect(() => {
-    if (listVisible) listScrollYRef.current = globalThis.scrollY;
-  }, [listVisible]);
+    const pending = pendingFocusRef.current;
+    if (pending === null || !listVisible) return;
+    const row = pending.rowControlId === null
+      ? null
+      : document.querySelector<HTMLElement>(controlRowSelector(pending.rowControlId));
+    const returnTarget = row ?? document.querySelector<HTMLElement>(SCOPE_HEADING_SELECTOR);
+    if (returnTarget === null) return;
+    pendingFocusRef.current = null;
+    returnTarget.focus({ preventScroll: true });
+  });
+
+  useLayoutEffect(() => {
+    if (!listVisible) return;
+    listScrollYRef.current = globalThis.scrollY;
+    listScopeKeyRef.current = scopeKey;
+  }, [listVisible, scopeKey]);
   useGlobalEventListener('window', 'scroll', () => {
     listScrollYRef.current = globalThis.scrollY;
   }, listVisible);
