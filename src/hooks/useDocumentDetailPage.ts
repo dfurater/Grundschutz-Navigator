@@ -37,7 +37,8 @@ export interface UseDocumentDetailPageOptions {
  *   Überschrift des Details.
  * - Schließen (Zurück-Button, Escape, Browser-Zurück) stellt die gemerkte
  *   Position wieder her und fokussiert die Zeile der Kontrolle, mit der die
- *   Seite geöffnet wurde — auch nach Wechseln zu verknüpften Kontrollen —,
+ *   Seite geöffnet wurde — auch nach Wechseln zu verknüpften Kontrollen und
+ *   vorübergehendem Wechsel zur breiten Ansicht —,
  *   ersatzweise die Bereichsüberschrift. Das geschieht im Layout-Effekt,
  *   bevor die Liste gemalt wird.
  * - Führt das Schließen in einen anderen Listenbereich, etwa über den
@@ -66,7 +67,9 @@ export function useDocumentDetailPage({ enabled, controlId, scopeKey, listReady,
   useLayoutEffect(() => {
     if (!enabled || controlId !== null) pendingFocusRef.current = null;
     if (!enabled) {
-      openedRef.current = null;
+      // Die offene Detailsitzung übersteht Breitenwechsel; erst Schließen
+      // beendet sie, auch wenn dabei Overlay oder Desktop-Spalte aktiv sind.
+      if (controlId === null) openedRef.current = null;
       return;
     }
     if (controlId !== null) {

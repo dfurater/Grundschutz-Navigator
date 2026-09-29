@@ -499,6 +499,65 @@ describe('CatalogBrowser mobile focus restoration', () => {
   });
 
   it.each([
+    ['tablet', 768, false],
+    ['desktop', 1024, false],
+    ['tablet with relationship navigation', 768, true],
+    ['desktop with relationship navigation', 1024, true],
+  ])('preserves the opening row and list position across %s width', (_label, wideWidth, navigateWhileWide) => {
+    let width = 390;
+    mockedUseMediaQuery.mockImplementation((query) =>
+      width >= (query === '(min-width: 1024px)' ? 1024 : 768));
+    const view = renderCatalogBrowser('/katalog/gspp/TOP.1');
+    scrollListTo(420);
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    if (!navigateWhileWide) {
+      fireEvent.click(screen.getByRole('button', { name: 'Verwandte Kontrolle öffnen' }));
+    }
+
+    width = wideWidth;
+    view.rerender(<CatalogBrowserTestApp initialEntry="/katalog/gspp/TOP.1" />);
+    if (navigateWhileWide) {
+      fireEvent.click(screen.getByRole('button', { name: 'Verwandte Kontrolle öffnen' }));
+    }
+    // Scroll-Ereignisse außerhalb der mobilen Liste ersetzen ihren Rückkehrpunkt nicht.
+    scrollListTo(900);
+    width = 390;
+    view.rerender(<CatalogBrowserTestApp initialEntry="/katalog/gspp/TOP.1" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));
+
+    expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
+    expect(globalThis.scrollTo).toHaveBeenLastCalledWith(0, 420);
+  });
+
+  it.each([768, 1024])('clears the opening row when the detail closes at %i px before a new mobile session', (wideWidth) => {
+    const catalog = makeCatalog('gspp');
+    catalog.controls.push(relatedControl);
+    mockCatalog(catalog);
+    let width = 390;
+    mockedUseMediaQuery.mockImplementation((query) =>
+      width >= (query === '(min-width: 1024px)' ? 1024 : 768));
+    const app = () => (
+      <CatalogBrowserTestApp
+        initialEntry="/katalog/gspp"
+        secondaryLink={{ label: 'Verwandte Kontrolle direkt öffnen', to: '/katalog/gspp/kontrolle/related-alt-identifier' }}
+      />
+    );
+    const view = render(app());
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    width = wideWidth;
+    view.rerender(app());
+    fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));
+    width = 390;
+    view.rerender(app());
+    scrollListTo(180);
+    fireEvent.click(screen.getByRole('button', { name: 'Verwandte Kontrolle direkt öffnen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));
+
+    expect(screen.getByRole('button', { name: relatedControl.title })).toHaveFocus();
+    expect(globalThis.scrollTo).toHaveBeenLastCalledWith(0, 180);
+  });
+
+  it.each([
     ['Filter', 'Filter anzeigen', 'Filteraktion'],
     ['Export', 'CSV', 'Aktuelle Ansicht (1)'],
   ])('releases the scroll lock of an open %s sheet when a control page opens', (_label, triggerName, sheetContent) => {
