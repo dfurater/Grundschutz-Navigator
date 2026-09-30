@@ -8,9 +8,9 @@ Die Anwendung liefert alle 13 CSV-Dateien aus `documentation/namespaces/` im gep
 
 | Vokabular | Datei |
 |-----------|-------|
-| Handlungswörter | `action_words.csv` |
+| Handlungsworte | `action_words.csv` |
 | Elementare Gefährdungen | `basethreats.csv` |
-| Dokumentationstypen | `documentation_guidelines.csv` |
+| Dokumentationsvorgaben | `documentation_guidelines.csv` |
 | Aufwandsstufe (`0`–`5`) | `effort_level.csv` |
 | Modalverb (`MUSS`, `SOLLTE`, `KANN`) | `modal_verbs.csv` |
 | Praktiken | `practices.csv` |
