@@ -302,8 +302,6 @@ Die sichtbaren Sektionen folgen dieser Reihenfolge:
 | 8 | Tags | Aufgabenbezogen | eingeklappt |
 | 9 | Link-Relationen | Aufgabenbezogen | eingeklappt |
 
-Die drei Facetten zum Geltungsbereich haben wenige Optionen. Die aufgabenbezogenen Facetten tragen lange Listen: Eine historische Messung am 16.09.2026 mit 1.000 Anforderungen ergab 62 Dokumentationswerte, 27 Handlungsworte und 54 Tags. Das begründet ihre eingeklappten Startzustände; es sind keine festen Testzahlen und keine erhobenen Nutzungsdaten. Gruppierung und Reihenfolge sind Projektentscheidungen, keine BSI-Vorgabe zur Oberfläche.
-
 Eine Spezialsektion mit bereits aktiver Auswahl startet aufgeklappt (`defaultExpanded={activeCount > 0}`), damit ein geteilter Filterlink beim Öffnen nachvollziehbar bleibt. `FilterSection` verwendet den Wert nur beim Mount. Spätere Filteränderungen überschreiben einen manuell gewählten Klappzustand nicht; eingeklappte aktive Sektionen zeigen ihr Zähler-Badge. Wird eine ausgeblendete Sektion neu gemountet, gilt die Initialregel erneut. Sektionen ohne Optionen und ohne Auswahl werden weiterhin ausgelassen; die verbleibenden Sektionen behalten ihre relative Reihenfolge. Desktop und Mobile verwenden dasselbe Panel.
 
 Die Benennung folgt den BSI-Dimensionen: `modal_verb` und `modal_verbs.csv` tragen die Facette „Modalverben“ und den Einzelwert „Modalverb“. Facettentitel benennen eine Menge, Detailfelder einen Einzelwert; für `documentation` / `documentation_guidelines.csv` sind dies „Dokumentationsvorgaben“ und „Dokumentationsvorgabe“. Das Spaltenkürzel „Aufwand“ bleibt erhalten. Code-Feldnamen, URL-Parameter und maschinenlesbare CSV-Header sind unabhängig von dieser deutschen Copy.
