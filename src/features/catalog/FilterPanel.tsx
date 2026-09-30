@@ -123,9 +123,7 @@ export function FilterPanel({
   const linkRelationCounts = resolveDimensionCounts(filters, 'linkRelationen', facetCounts, filteredFacetCounts);
   const tagCounts = resolveDimensionCounts(filters, 'tags', facetCounts, filteredFacetCounts);
 
-  // Sort dynamic lists by count descending (use filteredFacetCounts for relevance ordering)
-  const sortedTags = Object.entries(filteredFacetCounts.tags)
-    .sort((a, b) => b[1] - a[1]);
+  // Zielobjekte nach Trefferzahl, Textfacetten deutsch alphabetisch sortieren.
   const sortedZielobjekte = Object.entries(filteredFacetCounts.zielobjektKategorien)
     .sort((a, b) => b[1] - a[1]);
   const sortedHandlungsworte = Object.entries(filteredFacetCounts.handlungsworte)
@@ -158,10 +156,10 @@ export function FilterPanel({
   const visibleTags = visibleEntries(
     filters,
     'tags',
-    sortedTags,
+    Object.entries(filteredFacetCounts.tags),
     filters.tags,
     filteredFacetCounts.tags,
-  );
+  ).sort(([a], [b]) => compareGermanText(a, b));
 
   const activeModalverben = filters.modalverben.length;
   const activeSecurityLevels = filters.securityLevels.length;

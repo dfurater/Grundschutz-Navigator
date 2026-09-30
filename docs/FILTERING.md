@@ -302,6 +302,8 @@ Die sichtbaren Sektionen folgen dieser Reihenfolge:
 | 8 | Tags | Aufgabenbezogen | eingeklappt |
 | 9 | Link-Relationen | Aufgabenbezogen | eingeklappt |
 
+Die Optionen der Facette „Tags“ sind unabhängig von der Trefferzahl deutsch alphabetisch sortiert (`compareGermanText`). Ausgewählte Tags ohne Treffer bleiben an ihrer alphabetischen Position sichtbar und abwählbar.
+
 Eine Spezialsektion mit bereits aktiver Auswahl startet aufgeklappt (`defaultExpanded={activeCount > 0}`), damit ein geteilter Filterlink beim Öffnen nachvollziehbar bleibt. `FilterSection` verwendet den Wert nur beim Mount. Spätere Filteränderungen überschreiben einen manuell gewählten Klappzustand nicht; eingeklappte aktive Sektionen zeigen ihr Zähler-Badge. Wird eine ausgeblendete Sektion neu gemountet, gilt die Initialregel erneut. Sektionen ohne Optionen und ohne Auswahl werden weiterhin ausgelassen; die verbleibenden Sektionen behalten ihre relative Reihenfolge. Desktop und Mobile verwenden dasselbe Panel.
 
 Die Benennung folgt den BSI-Dimensionen: `modal_verb` und `modal_verbs.csv` tragen die Facette „Modalverben“ und den Einzelwert „Modalverb“. Facettentitel benennen eine Menge, Detailfelder einen Einzelwert; für `documentation` / `documentation_guidelines.csv` sind dies „Dokumentationsvorgaben“ und „Dokumentationsvorgabe“. Das Spaltenkürzel „Aufwand“ bleibt erhalten. Code-Feldnamen, URL-Parameter und maschinenlesbare CSV-Header sind unabhängig von dieser deutschen Copy.

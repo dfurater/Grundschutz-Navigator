@@ -275,11 +275,23 @@ describe.each(['Desktop', 'Mobile'] as const)('Filterdarstellung — %s', (surfa
     ]);
   });
 
-  it('zeigt ausgewählte Werte ohne Treffer weiterhin zum Abwählen an', () => {
-    const props = presentationProps({ ...emptyFilters, tags: ['fehlt'] });
-    render(<Panel props={props} />);
+  it.each([false, true])('sortiert Tags deutsch alphabetisch mit aktiver Auswahl: %s', (selected) => {
+    const props = presentationProps({ ...emptyFilters, tags: selected ? ['Änderung'] : [] });
+    const counts = { ...completeFacetCounts, tags: { Zebra: 9, Betrieb: 3, Apfel: 1 } };
+    render(<Panel props={{ ...props, facetCounts: counts, filteredFacetCounts: counts }} />);
     openMobile();
-    expect(screen.getByRole('checkbox', { name: /fehlt/ })).toBeChecked();
-    expect(screen.getByRole('checkbox', { name: /fehlt/ }).closest('label')).toHaveTextContent('0');
+    if (!selected) fireEvent.click(screen.getByRole('button', { name: 'Tags' }));
+
+    const tags = inSektion('Tags');
+    const order = selected ? ['Änderung', 'Apfel', 'Betrieb', 'Zebra'] : ['Apfel', 'Betrieb', 'Zebra'];
+    const checkboxes = tags.getAllByRole('checkbox');
+    expect(checkboxes).toHaveLength(order.length);
+    order.forEach((tag, index) => {
+      expect(checkboxes[index]).toBe(tags.getByRole('checkbox', { name: new RegExp(`^${tag}`) }));
+    });
+    if (selected) {
+      expect(tags.getByRole('checkbox', { name: /^Änderung/ })).toBeChecked();
+      expect(tags.getByRole('checkbox', { name: /^Änderung/ }).closest('label')).toHaveTextContent('0');
+    }
   });
 });
