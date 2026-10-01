@@ -418,6 +418,8 @@ Feature-Komponenten und Hooks
 
 Lokale Klasse-2-Dokumente benutzen den Katalogfluss nicht. `src/adapters/oscalImportGate.ts` ist ihr einziger Anwendungseinstieg: Er kopiert `ArrayBuffer` oder `Uint8Array` nur für die Übertragung und startet `src/workers/oscalImport.worker.ts` als Modul-Worker. Der Main-Thread dekodiert, parst oder interpretiert die Bytes nicht.
 
+Der Worker akzeptiert nur Nachrichten mit leerem Origin oder seiner eigenen Origin. Ein explizit fremder Origin beendet das Protokoll vor der Auswertung von `event.data` mit genau einem `failure`-Frame; ein laufender Stream wird verworfen und jede Folgenachricht bleibt ohne Antwort. Das Gate meldet dafür `OSCAL_IMPORT_WORKER_FAILURE`, statt auf den Timeout zu warten.
+
 Nach der Größenkontrolle läuft im Worker die feste Reihenfolge aus dem [OSCAL-Validierungsvertrag](./OSCAL_VALIDATION.md): Bytelimit, fataler UTF-8-Decoder, Duplicate-Member-Scanner, `JSON.parse` — und ab dort die gemeinsame objektorientierte Prüfkette (`src/domain/oscalObjectPipeline.ts`) mit Stufen aus Herkunfts-, Struktur-, Tiefen-, Knoten- und Base64-Durchlauf sowie Stufe 3 als Schema-Validierung. Das Bytelimit greift bereits vor Worker-Erzeugung und Transferkopie. Das Ergebnis ist entweder ein vollständiger Root-Envelope mit explizitem `class-2-local-user`-Kontext oder genau eine redigierte Diagnose. Der Worker führt keine Dateisystem-, Telemetrie- oder URL-Operation aus; sein einziger Netzbezug ist der Modulabruf des Schema-Chunks derselben Origin (siehe unten). Nach seiner Antwort beendet ihn der Adapter; bleibt eine Antwort aus, beendet der Adapter ihn nach 30 Sekunden (`CLASS_2_IMPORT_WORKER_TIMEOUT_MS = 30_000`) fail-closed mit einer redigierten Worker-Diagnose.
 
 Stufe 3 prüft mit `ajv` 8.20.0 gegen das gepinnte NIST-Schema der von Stufe 2 gewählten Matrixzelle. Die Schemabytes liegen eingecheckt unter `schemas/oscal/` und werden über `src/domain/oscalSchemaBundle.ts` je Zelle in einen eigenen Chunk gebaut. Zur Laufzeit lädt der Worker genau einen davon nach — den der ausgewählten Zelle, als Modul **derselben Origin** wie die Anwendung. Weder das Release-Asset auf `github.com` noch die `$id`-Domain `csrc.nist.gov` wird angefragt; ein Browsertest prüft das über das Egress-Orakel. Vite baut den Modul-Worker über `worker.format: 'es'` als ES-Modul, damit nicht alle Schemas in einer Worker-Datei liegen.
@@ -631,8 +633,8 @@ Filter werden bidirektional mit URL-Suchparametern synchronisiert (`src/hooks/us
 - `tags` — Tags
 - `zk` — Zielobjekt-Kategorien
 - `hw` — Handlungswort
-- `dt` — Dokumentationstyp
-- `lr` — Link-Beziehungen (`related`, `required`)
+- `dt` — Dokumentationsvorgaben
+- `lr` — Link-Relationen (`related`, `required`)
 - `sort` — Sortierfeld + Richtung
 
 Die Volltextsuche ist eine eigene Route (`/suche?q=…`) und kein Filter des Katalog-Browsers. Practice- und Topic-Auswahl laufen über die kataloggescopte Route (`/katalog/:catalogKey/:groupId`), nicht über Query-Parameter. Die kanonische Control-URL verwendet ausschließlich `catalogKey + altIdentifier`. Unbekannte oder nicht geladene Katalogschlüssel und unbekannte Alt-Identifier führen ohne globalen Fallback, Control-ID-Auflösung, Redirect oder Legacy-Route zur Not-found-Ansicht.

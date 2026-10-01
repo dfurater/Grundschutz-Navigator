@@ -214,7 +214,7 @@ describe('ControlStatement and ControlStatementDetails', () => {
       { key: 'ergebnis', label: 'Ergebnis', value: 'Verfahren und Regelungen', resolution: resolutions.statement.ergebnis },
       { key: 'praezisierung', label: 'Präzisierung', value: 'Unbekannte Präzisierung', resolution: null },
       { key: 'handlungsworte', label: 'Handlungswort', value: 'verankern', resolution: resolutions.statement.handlungsworte },
-      { key: 'dokumentation', label: 'Dokumentation', value: 'Richtlinie A', resolution: resolutions.statement.dokumentation },
+      { key: 'dokumentation', label: 'Dokumentationsvorgabe', value: 'Richtlinie A', resolution: resolutions.statement.dokumentation },
     ];
     render(
       <MemoryRouter>
@@ -232,7 +232,7 @@ describe('ControlStatement and ControlStatementDetails', () => {
     expect(screen.getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual(['Anforderung']);
     expect(screen.getByText('Mehrzeilige Anforderung')).toHaveClass('whitespace-pre-line');
     expect(screen.queryByText('Handlungswort')).not.toBeInTheDocument();
-    for (const label of ['Ergebnis', 'Präzisierung', 'Dokumentation']) {
+    for (const label of ['Ergebnis', 'Präzisierung', 'Dokumentationsvorgabe']) {
       expect(screen.getByText(label).tagName).toBe('P');
     }
     const result = screen.getByRole('button', { name: 'Vokabularbegriff Verfahren und Regelungen' });

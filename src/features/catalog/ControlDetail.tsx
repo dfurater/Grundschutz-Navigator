@@ -218,7 +218,7 @@ export function ControlDetail({
     },
     {
       key: 'dokumentation',
-      label: 'Dokumentation',
+      label: 'Dokumentationsvorgabe',
       value: control.statementProps.dokumentation ?? '',
       resolution: resolvedVocabularies.statement.dokumentation,
     },

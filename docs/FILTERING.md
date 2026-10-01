@@ -16,13 +16,13 @@ Practice- und Topic-Auswahl laufen nicht über Query-Parameter, sondern über di
 | Dimension | URL-Parameter | Mögliche Werte | Typ |
 |-----------|--------------|---------------|-----|
 | Sicherheitsniveau | `sl` | `normal-SdT`, `erhöht` | Mehrfachauswahl |
-| Aufwandsstufe | `el` | `0`, `1`, `2`, `3`, `4`, `5` | Mehrfachauswahl |
-| Verpflichtungsgrad | `mv` | `MUSS`, `SOLLTE`, `KANN` | Mehrfachauswahl |
+| Aufwandsstufen | `el` | `0`, `1`, `2`, `3`, `4`, `5` | Mehrfachauswahl |
+| Modalverben | `mv` | `MUSS`, `SOLLTE`, `KANN` | Mehrfachauswahl |
 | Tags | `tags` | Beliebige Tags | Mehrfachauswahl |
 | Zielobjekt-Kategorien | `zk` | Kategorien (z.B. `Server`, `Client`) | Mehrfachauswahl |
-| Handlungswort | `hw` | Handlungswörter | Mehrfachauswahl |
-| Dokumentationstyp | `dt` | Dokumentationstypen | Mehrfachauswahl |
-| Link-Beziehung | `lr` | `related`, `required` | Mehrfachauswahl |
+| Handlungsworte | `hw` | Handlungswörter | Mehrfachauswahl |
+| Dokumentationsvorgaben | `dt` | Dokumentationsvorgaben | Mehrfachauswahl |
+| Link-Relationen | `lr` | `related`, `required` | Mehrfachauswahl |
 | Schutzziel Vertraulichkeit | `stc` | `1`, `2` | Mehrfachauswahl |
 | Schutzziel Integrität | `sti` | `1`, `2` | Mehrfachauswahl |
 | Schutzziel Verfügbarkeit | `stav` | `1`, `2` | Mehrfachauswahl |
@@ -287,6 +287,26 @@ export function useFilteredControls(
 ```
 
 ## FilterPanel-Komponente
+
+Die sichtbaren Sektionen folgen dieser Reihenfolge:
+
+| Reihenfolge | Facette | Gruppe | Initial ohne Auswahl |
+| --- | --- | --- | --- |
+| 1 | Sicherheitsniveau | Geltungsbereich | aufgeklappt |
+| 2 | Modalverben | Geltungsbereich | aufgeklappt |
+| 3 | Aufwandsstufen | Geltungsbereich | aufgeklappt |
+| 4 | Zielobjekt-Kategorien | Zuschnitt | aufgeklappt |
+| 5 | Schutzziele | Zuschnitt | aufgeklappt |
+| 6 | Dokumentationsvorgaben | Aufgabenbezogen | eingeklappt |
+| 7 | Handlungsworte | Aufgabenbezogen | eingeklappt |
+| 8 | Tags | Aufgabenbezogen | eingeklappt |
+| 9 | Link-Relationen | Aufgabenbezogen | eingeklappt |
+
+Die Optionen der Facette „Tags“ sind unabhängig von der Trefferzahl deutsch alphabetisch sortiert (`compareGermanText`). Ausgewählte Tags ohne Treffer bleiben an ihrer alphabetischen Position sichtbar und abwählbar.
+
+Eine Spezialsektion mit bereits aktiver Auswahl startet aufgeklappt (`defaultExpanded={activeCount > 0}`), damit ein geteilter Filterlink beim Öffnen nachvollziehbar bleibt. `FilterSection` verwendet den Wert nur beim Mount. Spätere Filteränderungen überschreiben einen manuell gewählten Klappzustand nicht; eingeklappte aktive Sektionen zeigen ihr Zähler-Badge. Wird eine ausgeblendete Sektion neu gemountet, gilt die Initialregel erneut. Sektionen ohne Optionen und ohne Auswahl werden weiterhin ausgelassen; die verbleibenden Sektionen behalten ihre relative Reihenfolge. Desktop und Mobile verwenden dasselbe Panel.
+
+Die Benennung folgt den BSI-Dimensionen: `modal_verb` und `modal_verbs.csv` tragen die Facette „Modalverben“ und den Einzelwert „Modalverb“. Facettentitel benennen eine Menge, Detailfelder einen Einzelwert; für `documentation` / `documentation_guidelines.csv` sind dies „Dokumentationsvorgaben“ und „Dokumentationsvorgabe“. Das Spaltenkürzel „Aufwand“ bleibt erhalten. Code-Feldnamen, URL-Parameter und maschinenlesbare CSV-Header sind unabhängig von dieser deutschen Copy.
 
 Die UI-Komponente in `src/features/catalog/FilterPanel.tsx` zeigt Facet-Sektionen mit Checkboxen und Zählern (`FilterSection`, `CheckboxLabel`), die Ergebnisanzahl (`N Kontrollen` bzw. `N von M Kontrollen`, `aria-live`) und — nur bei aktiven Filtern — die Schaltfläche `Zurücksetzen`. Mobil steckt dasselbe Panel in `src/features/catalog/CatalogMobileFilterSheet.tsx` (Bottom-Sheet, Auslöser `Filter anzeigen`); eine separate Bestätigung gibt es nicht, die Auswahl schreibt sofort in die URL.
 
