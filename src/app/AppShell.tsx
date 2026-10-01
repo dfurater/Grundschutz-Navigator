@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useId, useRef } from 'react';
 import {
   Routes,
   Route,
@@ -25,6 +25,7 @@ import type { TreeItem } from '@/components/TreeNav';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useDragToResize } from '@/hooks/useDragToResize';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import { OWN_SCROLL_AREA_QUERY, useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
 import { CatalogBrowser } from '@/features/catalog/CatalogBrowser';
 import { VocabularyNamespacePage } from '@/features/vocabularies/VocabularyNamespacePage';
@@ -88,6 +89,9 @@ const SIDEBAR_MAX_WIDTH = 480;
 
 export function AppShell() {
   const [sideNavOpen, setSideNavOpen] = useState(false);
+  const sideNavId = useId();
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const isPersistentNav = useMediaQuery(OWN_SCROLL_AREA_QUERY);
   const [catalogSwitcherOpen, setCatalogSwitcherOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const {
@@ -107,6 +111,18 @@ export function AppShell() {
   const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const treeScrollRef = useOverlayScrollbars<HTMLDivElement>();
   const { catalog, activeCatalogKey: selectedCatalogKey, selectCatalog, loading, error } = useCatalog();
+
+  // Capture garantiert den Vorrang vor dem Escape-Handler der Detailseite
+  // auch dann, wenn deren Bubble-Listener bereits vor dem Öffnen registriert war.
+  useGlobalEventListener(
+    'document', 'keydown', (event) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setSideNavOpen(false);
+      menuButtonRef.current?.focus({ preventScroll: true });
+    }, sideNavOpen && !isPersistentNav, undefined, true,
+  );
 
   // Die Route wählt den Katalog, nicht der Einstieg. Ein Routen-catalogKey darf
   // deshalb einen anderen ausgelieferten Katalog aktivieren, statt still auf den
@@ -176,6 +192,9 @@ export function AppShell() {
       */}
       <HeaderBar
         onSearch={handleSearch}
+        menuExpanded={sideNavOpen && !isPersistentNav}
+        menuControls={sideNavId}
+        menuButtonRef={menuButtonRef}
         onMenuToggle={() => {
           setSideNavOpen((prev) => !prev);
           setCatalogSwitcherOpen(false);
@@ -203,6 +222,8 @@ export function AppShell() {
 
         {/* Sidebar / Mobile Drawer */}
         <aside
+          id={sideNavId}
+          inert={!isPersistentNav && !sideNavOpen}
           className={`
             bg-white border-r border-slate-200 flex shrink-0 z-30 overflow-hidden
             fixed inset-y-0 left-0 top-14 md:relative md:inset-auto

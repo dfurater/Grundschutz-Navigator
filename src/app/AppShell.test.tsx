@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import type { RefObject } from 'react';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCatalog } from '@/hooks/useCatalog';
@@ -20,16 +21,22 @@ vi.mock('@/hooks/useMediaQuery', () => ({
 vi.mock('@/components/HeaderBar', () => ({
   HeaderBar: ({
     onMenuToggle,
+    menuExpanded,
+    menuControls,
+    menuButtonRef,
     catalogSwitcherOpen,
     onCatalogSwitcherOpenChange,
   }: {
     onMenuToggle: () => void;
+    menuExpanded?: boolean;
+    menuControls?: string;
+    menuButtonRef?: RefObject<HTMLButtonElement | null>;
     onSearch: (term: string) => void;
     catalogSwitcherOpen: boolean;
     onCatalogSwitcherOpenChange: (open: boolean) => void;
   }) => (
     <>
-      <button type="button" onClick={onMenuToggle}>
+      <button type="button" ref={menuButtonRef} aria-expanded={menuExpanded} aria-controls={menuControls} onClick={onMenuToggle}>
         Menu
       </button>
       <button
@@ -131,6 +138,94 @@ describe('AppShell', () => {
       error: null,
     } as ReturnType<typeof useCatalog>);
     mockedUseMediaQuery.mockReturnValue(false);
+  });
+
+  it('makes only the closed mobile drawer inert and links it to the menu button', () => {
+    const { container } = render(<MemoryRouter><AppShell /></MemoryRouter>);
+    const sidebar = container.querySelector('aside');
+    const menuButton = screen.getByRole('button', { name: 'Menu' });
+
+    expect(sidebar).toHaveAttribute('inert');
+    expect(sidebar?.id).toBeTruthy();
+    expect(menuButton).toHaveAttribute('aria-controls', sidebar?.id);
+    expect(menuButton).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(menuButton);
+    expect(sidebar).not.toHaveAttribute('inert');
+    expect(menuButton).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Menü schließen' }));
+    expect(sidebar).toHaveAttribute('inert');
+    expect(menuButton).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it.each(['body', 'menu', 'drawer'] as const)('closes the mobile drawer for Escape from %s and returns focus without scrolling', (origin) => {
+    const bubbleHandler = vi.fn();
+    const { container } = render(
+      <MemoryRouter><div onKeyDown={bubbleHandler}><AppShell /></div></MemoryRouter>,
+    );
+    const menuButton = screen.getByRole('button', { name: 'Menu' });
+    fireEvent.click(menuButton);
+    const target = origin === 'body'
+      ? document.querySelector('body')!
+      : origin === 'menu' ? menuButton : screen.getByRole('button', { name: 'Menü schließen' });
+    target.focus();
+    const focus = vi.spyOn(menuButton, 'focus');
+    const wasNotPrevented = fireEvent.keyDown(target, { key: 'Escape' });
+
+    expect(wasNotPrevented).toBe(false);
+    expect(bubbleHandler).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('mobile-nav-backdrop')).not.toBeInTheDocument();
+    expect(container.querySelector('aside')).toHaveAttribute('inert');
+    expect(menuButton).toHaveFocus();
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+  });
+
+  it('does not consume unrelated keys or Escape while the mobile drawer is closed', () => {
+    render(<MemoryRouter><AppShell /></MemoryRouter>);
+    const menuButton = screen.getByRole('button', { name: 'Menu' });
+    expect(fireEvent.keyDown(document.querySelector('body')!, { key: 'Escape' })).toBe(true);
+
+    fireEvent.click(menuButton);
+    expect(fireEvent.keyDown(document.querySelector('body')!, { key: 'Enter' })).toBe(true);
+    expect(screen.getByTestId('mobile-nav-backdrop')).toBeInTheDocument();
+  });
+
+  it('leaves persistent desktop navigation interactive without consuming Escape', () => {
+    mockedUseMediaQuery.mockImplementation((query) => query === '(min-width: 768px)');
+    const { container } = render(<MemoryRouter><AppShell /></MemoryRouter>);
+    const menuButton = screen.getByRole('button', { name: 'Menu' });
+
+    expect(container.querySelector('aside')).not.toHaveAttribute('inert');
+    // Auch ein aus einem mobilen Zustand erhaltenes open darf desktop kein Escape besitzen.
+    fireEvent.click(menuButton);
+    const focus = vi.spyOn(menuButton, 'focus');
+    expect(fireEvent.keyDown(document.querySelector('body')!, { key: 'Escape' })).toBe(true);
+    expect(focus).not.toHaveBeenCalled();
+  });
+
+  it('updates Escape ownership and inert when crossing the navigation breakpoint', () => {
+    let persistent = false;
+    mockedUseMediaQuery.mockImplementation((query) => query === '(min-width: 768px)' && persistent);
+    const app = () => <MemoryRouter><AppShell /></MemoryRouter>;
+    const view = render(app());
+    const menuButton = screen.getByRole('button', { name: 'Menu' });
+    fireEvent.click(menuButton);
+
+    persistent = true;
+    view.rerender(app());
+    expect(view.container.querySelector('aside')).not.toHaveAttribute('inert');
+    expect(fireEvent.keyDown(document.querySelector('body')!, { key: 'Escape' })).toBe(true);
+
+    persistent = false;
+    view.rerender(app());
+    expect(fireEvent.keyDown(document.querySelector('body')!, { key: 'Escape' })).toBe(false);
+    expect(view.container.querySelector('aside')).toHaveAttribute('inert');
+    expect(menuButton).toHaveFocus();
+
+    persistent = true;
+    view.rerender(app());
+    expect(view.container.querySelector('aside')).not.toHaveAttribute('inert');
+    expect(fireEvent.keyDown(document.querySelector('body')!, { key: 'Escape' })).toBe(true);
   });
 
   it('überblendet die Drawer-Bewegung über translate und schaltet sie bei Reduced Motion ab', () => {

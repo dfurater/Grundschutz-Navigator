@@ -17,6 +17,8 @@ import {
 } from '@/hooks/useFilteredControls';
 import { useFilterParams } from '@/hooks/useFilterParams';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { AppShell } from '@/app/AppShell';
+import { catalogCollectionDefaults } from '@/test/catalogState';
 import { CatalogBrowser } from './CatalogBrowser';
 import {
   CATALOG_ROUTE_PATTERN,
@@ -183,6 +185,7 @@ function makeCatalog(catalogKey: CatalogKey, primaryControl: Control = control):
 
 function mockCatalog(catalog: Catalog) {
   mockedUseCatalog.mockReturnValue({
+    ...catalogCollectionDefaults(),
     catalog,
     loading: false,
     error: null,
@@ -307,6 +310,40 @@ describe('CatalogBrowser mobile focus restoration', () => {
       filteredFacetCounts: {} as ReturnType<typeof useFilteredControls>['filteredFacetCounts'],
       hasActiveFilters: false,
     }));
+  });
+
+  it.each(['body', 'detail'] as const)('dismisses navigation before the detail page, then preserves detail Escape scope (%s)', (detailCloseOrigin) => {
+    render(
+      <MemoryRouter initialEntries={['/katalog/gspp/TOP.1']}>
+        <AppShell />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    const detailPath = '/katalog/gspp/kontrolle/shared-alt-identifier';
+    const menuButton = screen.getByRole('button', { name: 'Menü öffnen' });
+    fireEvent.click(menuButton);
+    expect(screen.getByTestId('mobile-nav-backdrop')).toBeInTheDocument();
+
+    // body war bisher zugleich der globale Escape-Einstieg für die Detailseite.
+    const wasNotPrevented = fireEvent.keyDown(document.querySelector('body')!, { key: 'Escape' });
+
+    expect(screen.getByTestId('location')).toHaveTextContent(detailPath);
+    expect(screen.getByText(`Detail ${control.id}`)).toBeInTheDocument();
+    expect(wasNotPrevented).toBe(false);
+    expect(screen.queryByTestId('mobile-nav-backdrop')).not.toBeInTheDocument();
+    expect(menuButton).toHaveFocus();
+    expect(menuButton).toHaveAttribute('aria-expanded', 'false');
+
+    // Header-Escape bleibt außerhalb des bestehenden Detail-Escape-Bereichs.
+    expect(fireEvent.keyDown(menuButton, { key: 'Escape' })).toBe(true);
+    expect(screen.getByTestId('location')).toHaveTextContent(detailPath);
+    const detailTitle = screen.getByRole('heading', { level: 2, name: control.title });
+    fireEvent.keyDown(detailCloseOrigin === 'body' ? document.querySelector('body')! : detailTitle, { key: 'Escape' });
+
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/katalog\/gspp\/TOP\.1$/);
+    expect(screen.queryByText(`Detail ${control.id}`)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
   });
 
   it('mounts only the mobile control list while the media query is false', () => {

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import { createRef } from 'react';
 import { MemoryRouter } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { HeaderBar } from './HeaderBar';
@@ -13,6 +14,35 @@ function renderHeaderWithEditableTarget(target: React.ReactNode) {
 }
 
 describe('HeaderBar', () => {
+  it('exposes the controlled drawer state and real menu button through its ref', () => {
+    const menuButtonRef = createRef<HTMLButtonElement>();
+    const onMenuToggle = vi.fn();
+    const renderHeader = (menuExpanded: boolean) => (
+      <MemoryRouter>
+        <HeaderBar
+          onMenuToggle={onMenuToggle}
+          menuExpanded={menuExpanded}
+          menuControls="navigation-drawer"
+          menuButtonRef={menuButtonRef}
+        />
+      </MemoryRouter>
+    );
+    const { rerender, unmount } = render(renderHeader(false));
+    const menuButton = screen.getByRole('button', { name: 'Menü öffnen' });
+
+    expect(menuButton).toHaveAttribute('aria-expanded', 'false');
+    expect(menuButton).toHaveAttribute('aria-controls', 'navigation-drawer');
+    expect(menuButtonRef.current).toBe(menuButton);
+    fireEvent.click(menuButton);
+    expect(onMenuToggle).toHaveBeenCalledOnce();
+
+    rerender(renderHeader(true));
+    expect(menuButton).toHaveAttribute('aria-expanded', 'true');
+    expect(menuButtonRef.current).toBe(menuButton);
+    unmount();
+    expect(menuButtonRef.current).toBeNull();
+  });
+
   it('uses the header reference theme with focus-visible rings for interactive elements', () => {
     const { container } = render(
       <MemoryRouter>
