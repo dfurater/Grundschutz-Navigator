@@ -42,8 +42,17 @@ function next(): void {
 // `failure` hat im Gate keinen eigenen Zweig: Jede dort unbekannte Frame-Art
 // endet als OSCAL_IMPORT_WORKER_FAILURE (src/adapters/oscalImportGate.ts).
 globalThis.addEventListener('message', (event: MessageEvent) => {
-  const request = event.data;
   if (failed) return;
+  // Dedicated-Worker-Nachrichten stammen ausschließlich vom erzeugenden
+  // Dokument. Chromium liefert dafür in einigen Ausführungskontexten einen
+  // leeren Origin; jeder explizite fremde Origin bleibt ausgeschlossen.
+  if (event.origin !== '' && event.origin !== globalThis.location.origin) {
+    failed = true;
+    stream = undefined;
+    globalThis.postMessage({ type: 'failure' });
+    return;
+  }
+  const request = event.data;
   if (request?.type === 'ack' && Object.keys(request).length === 2 && awaitingAck && request.sequence === sequence) {
     awaitingAck = false;
     sequence++;
