@@ -329,7 +329,7 @@ describe('ControlStatement (GSPP-303 T5)', () => {
               },
               {
                 key: 'dokumentation',
-                label: 'Dokumentation',
+                label: 'Dokumentationsvorgabe',
                 value: 'Im Handbuch.',
                 resolution: null,
               },

@@ -136,7 +136,7 @@ describe('ControlStatement Satzteile und Restdetails (GSPP-303 Review)', () => {
     const { container } = render(
       <MemoryRouter>
         <ControlStatementDetails
-          details={[{ key: 'dokumentation', label: 'Dokumentation', value: 'Protokoll', resolution: { namespace: {} as never, entry: { value: 'Protokoll', columns: {} } } }]}
+          details={[{ key: 'dokumentation', label: 'Dokumentationsvorgabe', value: 'Protokoll', resolution: { namespace: {} as never, entry: { value: 'Protokoll', columns: {} } } }]}
           missing={[]}
           isVocabularyActive={() => false}
           onToggleVocabulary={() => {}}

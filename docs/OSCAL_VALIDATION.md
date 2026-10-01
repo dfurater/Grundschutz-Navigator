@@ -1769,6 +1769,9 @@ werden.
   `147/90`, HIGH `147/81` und PRIVACY `82/117`.
 
 **Orakel-Architektur (zweigeteilt):**
+
+Der Wartungssync `scripts/sync-oscal-content-oracle.mjs` begrenzt jeden Download auf 10 MiB. Fehlende Manifeste erlauben den Erstlauf; ein vorhandenes `ORACLE_MANIFEST.json` verlangt `--force`. Vor dem ersten Download brechen ab: ein vorhandenes Manifest ohne `--force`, ungültiges JSON, ein ungültiger Commit-Pin sowie ungültige oder doppelte Dateipins. Bei unverändertem Commit-Pin muss der Dateisatz zusätzlich schon vor dem ersten Download genau die neun erwarteten Artefakte abdecken; fehlende oder zusätzliche Dateipins, auch formal gültige, brechen ab. Erst nach dem jeweiligen Download prüft der Sync, ob SHA-256 und Dateigröße mit dem Pin gleichen Dateinamens übereinstimmen. Alle neun Downloads werden vor dem ersten Schreiben geprüft; ein Download- oder Prüffehler lässt den vorhandenen Fixture-Satz einschließlich Manifest unverändert. Ein geänderter Commit-Pin ist ein bewusster Erstabgleich mit neu erzeugten Hashes; seine alten Dateipins durchlaufen nur die Strukturprüfung. Schreibfehler nach erfolgreicher Prüfung können weiterhin einen teilweise geschriebenen Satz hinterlassen; der Wartungslauf bietet keine atomare Dateisystem-Transaktion.
+
 - **Realer Ausschnitt:** Vergleich gegen gepinnte, gehashte JSON-
   Ergebnisse von BSI (3 resolved_catalogs) und NIST (4 Baselines
   v1.5.0, Min-Variante, SHA-256-gepinnt unter

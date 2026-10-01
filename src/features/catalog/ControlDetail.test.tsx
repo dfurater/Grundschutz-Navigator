@@ -695,7 +695,7 @@ describe('ControlDetail', () => {
     expect(within(einordnung).getByRole('heading', { name: 'Tags', level: 4 })).toBeInTheDocument();
     const anforderung = screen.getByRole('heading', { name: 'Anforderung', level: 3 }).closest('section')!;
     const zielobjekte = within(anforderung).getByRole('heading', { name: 'Zielobjekte', level: 4 });
-    const dokumentation = within(anforderung).getByText('Dokumentation');
+    const dokumentation = within(anforderung).getByText('Dokumentationsvorgabe');
     expect(dokumentation.compareDocumentPosition(zielobjekte) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const risiken = screen.getByRole('heading', { name: 'Schutzziele und Gefährdungen', level: 3 }).closest('section')!;
     expect(within(risiken).queryByRole('heading', { name: 'Tags', level: 4 })).toBeNull();
@@ -759,7 +759,7 @@ describe('ControlDetail', () => {
     for (const [label, value] of [
       ['Ergebnis', 'Verfahren und Regelungen'],
       ['Handlungswort', 'verankern'],
-      ['Dokumentation', 'Richtlinie A'],
+      ['Dokumentationsvorgabe', 'Richtlinie A'],
     ]) {
       const labelElement = screen.getByText(label);
       const valueElement = screen.getByText(value);
