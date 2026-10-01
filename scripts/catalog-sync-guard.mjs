@@ -2,7 +2,8 @@
 
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { lstat, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { mkdtemp, open, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { promisify } from 'node:util';
@@ -1049,6 +1050,22 @@ export async function loadSourceRegistryAtRef(baseSha, { cwd } = {}) {
   }
 }
 
+/** Prüft und liest denselben Deskriptor; FIFOs dürfen das Öffnen nicht blockieren. */
+export async function readRegularFileNoFollow(filePath) {
+  const invalidFile = () => new Error('upstream-manifest.json must be a regular file, not a symlink');
+  let handle;
+  try {
+    handle = await open(filePath, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    if (!(await handle.stat()).isFile()) throw invalidFile();
+    return await handle.readFile();
+  } catch (error) {
+    if (error?.code === 'ELOOP') throw invalidFile();
+    throw error;
+  } finally {
+    await handle?.close();
+  }
+}
+
 async function runCli() {
   if (process.argv[2] === '--validate-manifest') {
     const manifestPath = process.argv[3];
@@ -1072,11 +1089,6 @@ async function runCli() {
     return;
   }
 
-  const manifestStat = await lstat(TRACKED_MANIFEST_PATH);
-  if (!manifestStat.isFile() || manifestStat.isSymbolicLink()) {
-    throw new Error('upstream-manifest.json must be a regular file, not a symlink');
-  }
-
   const { stdout: previousManifestText } = await execFileAsync(
     'git',
     ['show', `${baseSha}:${TRACKED_MANIFEST_PATH}`],
@@ -1086,7 +1098,7 @@ async function runCli() {
   // Bytes und geparster Stand stammen aus einem einzigen Lesevorgang: Der
   // Herkunftsvergleich der Übernahme darf nicht gegen einen anderen
   // Dateizustand laufen als die anschließende Inhaltsprüfung.
-  const nextManifestBytes = await readFile(TRACKED_MANIFEST_PATH);
+  const nextManifestBytes = await readRegularFileNoFollow(TRACKED_MANIFEST_PATH);
   const nextManifest = JSON.parse(nextManifestBytes.toString('utf8'));
   // Nur laden, wenn die PR das Register überhaupt anfasst — sonst kostet der
   // Kettenimport jede gewöhnliche Manifest-PR unnötig Zeit.

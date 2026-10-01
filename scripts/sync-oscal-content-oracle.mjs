@@ -7,6 +7,9 @@
 // und legt sie mit SHA-256-Manifest unter src/test/fixtures/ ab. Die
 // committeten Dateien machen den NIST-Orakelvergleich offline deterministisch;
 // dies ist der EINZIGE Netzpfad dieses Nachweises (Wartung, kein Testpfad).
+// Bei unverändertem Commit-Pin müssen neue Bytes Hash und Größe des bestehenden
+// Manifests treffen. Ein geänderter Pin ist ein bewusster Erstabgleich; seine
+// neuen Hashes entstehen erst nach erfolgreicher Prüfung aller Downloads.
 //
 // Aufruf: npm run sync-oscal-content-oracle [-- --force]
 // =============================================================================
@@ -14,11 +17,14 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import { readBodyWithLimit } from './security-guards.mjs';
 
 const REPOSITORY_COMMIT = '78650f02ad9321bb7b817846f8fbd4f2bcd620de';
 const RAW_BASE = `https://raw.githubusercontent.com/usnistgov/oscal-content/${REPOSITORY_COMMIT}`;
 const DIRECTORY_PREFIX = 'nist.gov/SP800-53/rev5/json/';
 const TARGET_DIRECTORY = 'src/test/fixtures/oscal-content-v1.5.0';
+const MAX_ORACLE_ARTIFACT_BYTES = 10 * 1024 * 1024;
 
 const BASELINES = ['LOW', 'MODERATE', 'HIGH', 'PRIVACY'];
 
@@ -50,47 +56,70 @@ function sha256Hex(buffer) {
   return createHash('sha256').update(buffer).digest('hex');
 }
 
-async function fetchArtifact(artifact) {
+async function fetchArtifact(artifact, fetchImpl) {
   const url = `${RAW_BASE}/${artifact.remotePath}`;
-  const response = await fetch(url);
+  const response = await fetchImpl(url);
   if (!response.ok) {
     throw new Error(`HTTP ${response.status} für ${url}`);
   }
-  return Buffer.from(await response.arrayBuffer());
+  return readBodyWithLimit(response, {
+    maxBytes: MAX_ORACLE_ARTIFACT_BYTES,
+    label: `Orakel ${artifact.fileName}`,
+  });
 }
 
-async function main() {
-  const force = process.argv.includes('--force');
-  const manifestPath = join(TARGET_DIRECTORY, 'ORACLE_MANIFEST.json');
-
-  let previousManifest = null;
+async function readPreviousManifest(manifestPath, force) {
+  let previousManifest;
   try {
     previousManifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-  } catch {
-    // Erstlauf ohne bestehendes Manifest.
+  } catch (error) {
+    // Nur ein fehlendes Manifest ist ein Erstlauf; defekte Pins bleiben Fehler.
+    if (error?.code !== 'ENOENT') throw error;
   }
-  if (previousManifest !== null && !force) {
+  if (previousManifest !== undefined && !force) {
     throw new Error(
       'ORACLE_MANIFEST.json existiert bereits. Der Sync ist ein Wartungspfad — ' +
         'bei bewusster Auffrischung mit --force ausführen.',
     );
   }
+  if (previousManifest !== undefined && (
+    typeof previousManifest?.source?.commit !== 'string' ||
+    !/^[0-9a-f]{40}$/.test(previousManifest?.source?.commit ?? '') ||
+    !Array.isArray(previousManifest?.files)
+  )) {
+    throw new Error('Orakel-Manifest enthält keinen gültigen Commit-Pin oder Dateisatz');
+  }
+  return previousManifest;
+}
 
-  await mkdir(TARGET_DIRECTORY, { recursive: true });
-
+export async function syncOscalContentOracle({
+  force = false,
+  fetchImpl = fetch,
+  targetDirectory = TARGET_DIRECTORY,
+} = {}) {
+  const manifestPath = join(targetDirectory, 'ORACLE_MANIFEST.json');
+  const previousManifest = await readPreviousManifest(manifestPath, force);
   const entries = [];
+  const downloads = [];
   for (const artifact of ARTIFACTS) {
     process.stdout.write(`Lädt ${artifact.remotePath} ... `);
-    const buffer = await fetchArtifact(artifact);
-    await writeFile(join(TARGET_DIRECTORY, artifact.fileName), buffer);
-    console.log(`${buffer.length} Byte, sha256 ${sha256Hex(buffer).slice(0, 16)}…`);
+    const buffer = await fetchArtifact(artifact, fetchImpl);
+    const sha256 = sha256Hex(buffer);
+    if (previousManifest?.source?.commit === REPOSITORY_COMMIT) {
+      const pins = previousManifest.files.filter(entry => entry?.fileName === artifact.fileName);
+      if (pins.length !== 1 || pins[0].sha256 !== sha256 || pins[0].sizeBytes !== buffer.length) {
+        throw new Error(`Orakel-Manifest: Hash oder Größe stimmen nicht überein: ${artifact.fileName}`);
+      }
+    }
+    downloads.push({ artifact, buffer });
+    console.log(`${buffer.length} Byte, sha256 ${sha256.slice(0, 16)}…`);
     entries.push({
       artifactKey: artifact.artifactKey,
       role: artifact.role,
       fileName: artifact.fileName,
       remotePath: artifact.remotePath,
       sizeBytes: buffer.length,
-      sha256: sha256Hex(buffer),
+      sha256,
     });
   }
 
@@ -104,8 +133,18 @@ async function main() {
     },
     files: entries,
   };
+  // Erst nach allen Downloads und Pinprüfungen schreiben: ein Netz-/Prüffehler
+  // darf keinen teilweise erneuerten Fixture-Satz hinterlassen.
+  await mkdir(targetDirectory, { recursive: true });
+  for (const { artifact, buffer } of downloads) {
+    await writeFile(join(targetDirectory, artifact.fileName), buffer);
+  }
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
   console.log(`Manifest geschrieben: ${manifestPath} (${entries.length} Artefakte)`);
+  return manifest;
 }
 
-await main();
+const isDirectExecution = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isDirectExecution) {
+  await syncOscalContentOracle({ force: process.argv.includes('--force') });
+}

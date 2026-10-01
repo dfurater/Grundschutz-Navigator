@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -20,6 +20,7 @@ import {
   loadSourceRegistryAtRef,
   REGISTRY_MODULE_CHAIN,
   parseNameStatusDiff,
+  readRegularFileNoFollow,
   validateCatalogSyncManifest,
   validateCatalogSyncPullRequest,
   verifySnapshotProgress,
@@ -1511,6 +1512,34 @@ export const SOURCE_REGISTRY = Object.freeze(
 function getAllowedTempRoot() {
   return process.env.RUNNER_TEMP ?? tmpdir();
 }
+
+describe('readRegularFileNoFollow', () => {
+  it.each(['regular', 'symlink', 'directory', 'fifo', 'missing'])('handles a %s without following links or blocking', async kind => {
+    const directory = await mkdtemp(join(getAllowedTempRoot(), 'catalog-sync-read-'));
+    const filePath = join(directory, 'upstream-manifest.json');
+    const bytes = Buffer.from('{"snapshot":"synthetic"}\n');
+    try {
+      if (kind === 'regular') await writeFile(filePath, bytes);
+      if (kind === 'symlink') {
+        const target = join(directory, 'target.json');
+        await writeFile(target, bytes);
+        await symlink(target, filePath);
+      }
+      if (kind === 'directory') await mkdir(filePath);
+      if (kind === 'fifo') await execFileAsync('mkfifo', [filePath]);
+
+      if (kind === 'regular') {
+        expect(await readRegularFileNoFollow(filePath)).toEqual(bytes);
+      } else if (kind === 'missing') {
+        await expect(readRegularFileNoFollow(filePath)).rejects.toMatchObject({ code: 'ENOENT' });
+      } else {
+        await expect(readRegularFileNoFollow(filePath)).rejects.toThrow('must be a regular file, not a symlink');
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('getPullRequestDiffEntries', () => {
   it('pinnt die git-Argumentliste auf den Drei-Punkt-Diff gegen die Merge-Basis', async () => {
