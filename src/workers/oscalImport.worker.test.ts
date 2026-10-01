@@ -43,6 +43,24 @@ it('discards an active stream when an ACK has a foreign origin', async () => {
   send({ type: 'ack', sequence: 0 });
   expect(postMessage).toHaveBeenCalledTimes(3);
 });
+it.each([
+  { disturbance: 'a foreign origin', origin: 'https://foreign.example', ok: true },
+  { disturbance: 'a foreign origin', origin: 'https://foreign.example', ok: false },
+  { disturbance: 'a second import', origin: '', ok: true },
+  { disturbance: 'a second import', origin: '', ok: false },
+])('stays silent after $disturbance fails a pending import that settles with ok=$ok', async ({ origin, ok }) => {
+  const { send, postMessage } = await setup({}, '', false);
+  let settle: (result: unknown) => void = () => { };
+  process.mockReturnValueOnce(new Promise(resolve => { settle = resolve; }));
+  send({ type: 'import', bytes: new ArrayBuffer(0), context: { trustClass: 'class-2-local-user' } });
+  send({ type: 'import', bytes: new ArrayBuffer(0) }, origin);
+  expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: 'failure' });
+  settle(ok
+    ? { ok, document: { source: {}, rootType: 'catalog', oscalVersion: '1.1.3' } }
+    : { ok, diagnostic: {} });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(postMessage).toHaveBeenCalledExactlyOnceWith({ type: 'failure' });
+});
 it('keeps exactly one chunk in flight and sends done only after its last ACK', async () => {
   const { send, postMessage } = await setup(Array.from({ length: 600 }, () => null));
   expect(postMessage.mock.calls[0][0].type).toBe('start');
