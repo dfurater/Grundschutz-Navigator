@@ -7,9 +7,11 @@
 // und legt sie mit SHA-256-Manifest unter src/test/fixtures/ ab. Die
 // committeten Dateien machen den NIST-Orakelvergleich offline deterministisch;
 // dies ist der EINZIGE Netzpfad dieses Nachweises (Wartung, kein Testpfad).
-// Bei unverändertem Commit-Pin müssen neue Bytes Hash und Größe des bestehenden
-// Manifests treffen. Ein geänderter Pin ist ein bewusster Erstabgleich; seine
-// neuen Hashes entstehen erst nach erfolgreicher Prüfung aller Downloads.
+// Bei unverändertem Commit-Pin muss der Dateisatz des bestehenden Manifests vor
+// dem ersten Download exakt den Artefakten entsprechen, und neue Bytes müssen
+// Hash und Größe ihres Pins treffen. Ein geänderter Pin ist ein bewusster
+// Erstabgleich; seine neuen Hashes entstehen erst nach erfolgreicher Prüfung
+// aller Downloads.
 //
 // Aufruf: npm run sync-oscal-content-oracle [-- --force]
 // =============================================================================
@@ -101,6 +103,22 @@ async function readPreviousManifest(manifestPath, force) {
   return previousManifest;
 }
 
+// Bei unverändertem Commit-Pin muss der Dateisatz vor dem ersten Download exakt
+// den erwarteten Artefakten entsprechen; Doppelte lehnt die Strukturprüfung ab.
+function samePinFilesByName(manifest) {
+  const pinsByName = new Map(manifest.files.map(entry => [entry.fileName, entry]));
+  const expectedNames = ARTIFACTS.map(artifact => artifact.fileName);
+  const missing = expectedNames.filter(fileName => !pinsByName.has(fileName));
+  const additional = [...pinsByName.keys()].filter(fileName => !expectedNames.includes(fileName));
+  if (missing.length > 0 || additional.length > 0) {
+    throw new Error(
+      'Orakel-Manifest: Dateisatz weicht vom erwarteten Artefaktsatz ab ' +
+        `(fehlend: ${missing.join(', ') || 'keine'}; zusätzlich: ${additional.join(', ') || 'keine'})`,
+    );
+  }
+  return pinsByName;
+}
+
 export async function syncOscalContentOracle({
   force = false,
   fetchImpl = fetch,
@@ -108,15 +126,18 @@ export async function syncOscalContentOracle({
 } = {}) {
   const manifestPath = join(targetDirectory, 'ORACLE_MANIFEST.json');
   const previousManifest = await readPreviousManifest(manifestPath, force);
+  const samePins = previousManifest?.source?.commit === REPOSITORY_COMMIT
+    ? samePinFilesByName(previousManifest)
+    : undefined;
   const entries = [];
   const downloads = [];
   for (const artifact of ARTIFACTS) {
     process.stdout.write(`Lädt ${artifact.remotePath} ... `);
     const buffer = await fetchArtifact(artifact, fetchImpl);
     const sha256 = sha256Hex(buffer);
-    if (previousManifest?.source?.commit === REPOSITORY_COMMIT) {
-      const pins = previousManifest.files.filter(entry => entry.fileName === artifact.fileName);
-      if (pins.length !== 1 || pins[0].sha256 !== sha256 || pins[0].sizeBytes !== buffer.length) {
+    if (samePins) {
+      const pin = samePins.get(artifact.fileName);
+      if (pin?.sha256 !== sha256 || pin?.sizeBytes !== buffer.length) {
         throw new Error(`Orakel-Manifest: Hash oder Größe stimmen nicht überein: ${artifact.fileName}`);
       }
     }
