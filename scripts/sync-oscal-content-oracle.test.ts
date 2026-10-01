@@ -10,13 +10,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const execFileAsync = promisify(execFile);
 
 // Ersetzt im Kindprozess `globalThis.fetch`, bevor das Skript lädt: bedient nur
-// die konfigurierten Orakelpfade und protokolliert jeden Aufruf.
+// die vollständigen erwarteten URLs und protokolliert jeden Aufruf.
 const FETCH_STUB = [
   "import { appendFileSync, readFileSync } from 'node:fs';",
-  "const { log, bodies } = JSON.parse(readFileSync(new URL('./fetch-stub.json', import.meta.url), 'utf8'));",
+  "const config = JSON.parse(readFileSync(new URL('./fetch-stub.json', import.meta.url), 'utf8'));",
+  'const bodies = new Map(Object.entries(config.bodies));',
   'globalThis.fetch = async url => {',
-  "  appendFileSync(log, String(url) + '\\n');",
-  "  const body = Object.entries(bodies).find(([path]) => String(url).endsWith('/' + path))?.[1];",
+  "  appendFileSync(config.log, String(url) + '\\n');",
+  '  const body = bodies.get(String(url));',
   "  return body === undefined ? new Response('unexpected', { status: 404 }) : new Response(body);",
   '};',
 ].join('\n');
@@ -41,16 +42,20 @@ interface OracleManifest {
 describe('syncOscalContentOracle', () => {
   let directory: string;
   let manifest: OracleManifest;
+  let rawBase: string;
   let bodies: Map<string, Buffer>;
+  const sourceUrl = (entry: { remotePath: string }) => `${rawBase}/${entry.remotePath}`;
 
   beforeEach(async () => {
     directory = await mkdtemp(join(process.env.RUNNER_TEMP ?? tmpdir(), 'oscal-oracle-'));
     manifest = JSON.parse(await readFile('src/test/fixtures/oscal-content-v1.5.0/ORACLE_MANIFEST.json', 'utf8'));
+    // Erwartete Quelle unabhängig vom Skript: Raw-URL am Commit des committeten Manifests.
+    rawBase = `https://raw.githubusercontent.com/usnistgov/oscal-content/${manifest.source.commit}`;
     bodies = new Map(manifest.files.map(entry => {
       const bytes = Buffer.from(JSON.stringify({ fixture: entry.fileName }));
       entry.sha256 = createHash('sha256').update(bytes).digest('hex');
       entry.sizeBytes = bytes.length;
-      return [entry.remotePath, bytes];
+      return [sourceUrl(entry), bytes];
     }));
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
@@ -61,7 +66,7 @@ describe('syncOscalContentOracle', () => {
   });
 
   const download = (bodies: Map<string, Buffer>) => vi.fn(async (url: string) => {
-    const bytes = [...bodies.entries()].find(([path]) => url.endsWith(`/${path}`))?.[1];
+    const bytes = bodies.get(url);
     if (!bytes) throw new Error(`Unexpected fixture URL: ${url}`);
     return new Response(new Uint8Array(bytes));
   });
@@ -82,11 +87,11 @@ describe('syncOscalContentOracle', () => {
     await seed();
     const fetchImpl = download(bodies);
     const result = await syncOscalContentOracle({ force: true, fetchImpl, targetDirectory: directory });
-    expect(fetchImpl).toHaveBeenCalledTimes(9);
+    expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual([...bodies.keys()]);
     expect(result.source.commit).toBe(manifest.source.commit);
     expect(result.files).toEqual(manifest.files);
     for (const entry of manifest.files) {
-      expect(await readFile(join(directory, entry.fileName))).toEqual(bodies.get(entry.remotePath));
+      expect(await readFile(join(directory, entry.fileName))).toEqual(bodies.get(sourceUrl(entry)));
     }
     expect(JSON.parse(await readFile(join(directory, 'ORACLE_MANIFEST.json'), 'utf8'))).toEqual(result);
   });
@@ -213,7 +218,7 @@ describe('syncOscalContentOracle', () => {
       await writeFile(join(directory, 'fetch-stub.mjs'), FETCH_STUB);
       await writeFile(join(directory, 'fetch-stub.json'), JSON.stringify({
         log: fetchLog(),
-        bodies: Object.fromEntries([...bodies].map(([path, bytes]) => [path, bytes.toString('utf8')])),
+        bodies: Object.fromEntries([...bodies].map(([url, bytes]) => [url, bytes.toString('utf8')])),
       }));
       const command = [
         '--import', pathToFileURL(join(directory, 'fetch-stub.mjs')).href,
@@ -234,7 +239,7 @@ describe('syncOscalContentOracle', () => {
     it('runs a first sync without --force', async () => {
       const result = await runCli();
       expect(result.code).toBe(0);
-      expect(result.fetched).toHaveLength(9);
+      expect(result.fetched).toEqual([...bodies.keys()]);
       const written = JSON.parse(await readFile(join(cliTarget(), 'ORACLE_MANIFEST.json'), 'utf8'));
       expect(written.files).toEqual(manifest.files);
     }, 60_000);
@@ -253,9 +258,9 @@ describe('syncOscalContentOracle', () => {
       await seed(cliTarget());
       const result = await runCli(['--force']);
       expect(result.code).toBe(0);
-      expect(result.fetched).toHaveLength(9);
+      expect(result.fetched).toEqual([...bodies.keys()]);
       for (const entry of manifest.files) {
-        expect(await readFile(join(cliTarget(), entry.fileName))).toEqual(bodies.get(entry.remotePath));
+        expect(await readFile(join(cliTarget(), entry.fileName))).toEqual(bodies.get(sourceUrl(entry)));
       }
     }, 60_000);
   });
