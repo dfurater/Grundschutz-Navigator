@@ -123,9 +123,7 @@ export function FilterPanel({
   const linkRelationCounts = resolveDimensionCounts(filters, 'linkRelationen', facetCounts, filteredFacetCounts);
   const tagCounts = resolveDimensionCounts(filters, 'tags', facetCounts, filteredFacetCounts);
 
-  // Sort dynamic lists by count descending (use filteredFacetCounts for relevance ordering)
-  const sortedTags = Object.entries(filteredFacetCounts.tags)
-    .sort((a, b) => b[1] - a[1]);
+  // Zielobjekte nach Trefferzahl, Textfacetten deutsch alphabetisch sortieren.
   const sortedZielobjekte = Object.entries(filteredFacetCounts.zielobjektKategorien)
     .sort((a, b) => b[1] - a[1]);
   const sortedHandlungsworte = Object.entries(filteredFacetCounts.handlungsworte)
@@ -158,10 +156,10 @@ export function FilterPanel({
   const visibleTags = visibleEntries(
     filters,
     'tags',
-    sortedTags,
+    Object.entries(filteredFacetCounts.tags),
     filters.tags,
     filteredFacetCounts.tags,
-  );
+  ).sort(([a], [b]) => compareGermanText(a, b));
 
   const activeModalverben = filters.modalverben.length;
   const activeSecurityLevels = filters.securityLevels.length;
@@ -227,29 +225,6 @@ export function FilterPanel({
 
       {/* Filter Sections */}
       <div ref={filterScrollRef} data-filter-scroll className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y px-4 py-1">
-        {/* modal_verb */}
-        <FilterSection title="Modalverben" activeCount={activeModalverben}>
-          {(Object.keys(MODALVERB_LABELS) as Modalverb[]).map((mv) => {
-            const count = modalverbCounts[mv] ?? 0;
-            const isSelected = filters.modalverben.includes(mv);
-            if (!isSelected && count === 0) return null;
-            return (
-              <CheckboxLabel
-                key={mv}
-                label={MODALVERB_LABELS[mv]}
-                count={count}
-                checked={isSelected}
-                onChange={() =>
-                  onFiltersChange({
-                    ...filters,
-                    modalverben: toggleArrayItem(filters.modalverben, mv),
-                  })
-                }
-              />
-            );
-          })}
-        </FilterSection>
-
         {/* sec_level */}
         <FilterSection title="Sicherheitsniveau" activeCount={activeSecurityLevels}>
           {OFFICIAL_SECURITY_LEVELS.map((sl) => {
@@ -267,6 +242,29 @@ export function FilterPanel({
                   onFiltersChange({
                     ...filters,
                     securityLevels: toggleArrayItem(filters.securityLevels, sl),
+                  })
+                }
+              />
+            );
+          })}
+        </FilterSection>
+
+        {/* modal_verb */}
+        <FilterSection title="Modalverben" activeCount={activeModalverben}>
+          {(Object.keys(MODALVERB_LABELS) as Modalverb[]).map((mv) => {
+            const count = modalverbCounts[mv] ?? 0;
+            const isSelected = filters.modalverben.includes(mv);
+            if (!isSelected && count === 0) return null;
+            return (
+              <CheckboxLabel
+                key={mv}
+                label={MODALVERB_LABELS[mv]}
+                count={count}
+                checked={isSelected}
+                onChange={() =>
+                  onFiltersChange({
+                    ...filters,
+                    modalverben: toggleArrayItem(filters.modalverben, mv),
                   })
                 }
               />
@@ -298,13 +296,6 @@ export function FilterPanel({
           })}
         </FilterSection>
 
-        <SecurityTargetFilterSection
-          filters={filters}
-          facetCounts={facetCounts}
-          filteredFacetCounts={filteredFacetCounts}
-          onFiltersChange={onFiltersChange}
-        />
-
         {/* Zielobjekt-Kategorien */}
         {showZielobjekte && (
           <FilterSection title="Zielobjekt-Kategorien" activeCount={activeZielobjekte}>
@@ -330,32 +321,15 @@ export function FilterPanel({
           </FilterSection>
         )}
 
-        {showHandlungsworte && (
-          <FilterSection title="Handlungsworte" activeCount={activeHandlungsworte}>
-            {visibleHandlungsworte.map(([handlungswort]) => {
-              const count = handlungswortCounts[handlungswort] ?? 0;
-              const isSelected = filters.handlungsworte.includes(handlungswort);
-              if (!isSelected && count === 0) return null;
-              return (
-                <CheckboxLabel
-                  key={handlungswort}
-                  label={handlungswort}
-                  count={count}
-                  checked={isSelected}
-                  onChange={() =>
-                    onFiltersChange({
-                      ...filters,
-                      handlungsworte: toggleArrayItem(filters.handlungsworte, handlungswort),
-                    })
-                  }
-                />
-              );
-            })}
-          </FilterSection>
-        )}
+        <SecurityTargetFilterSection
+          filters={filters}
+          facetCounts={facetCounts}
+          filteredFacetCounts={filteredFacetCounts}
+          onFiltersChange={onFiltersChange}
+        />
 
         {showDokumentationstypen && (
-          <FilterSection title="Dokumentationsvorgaben" activeCount={activeDokumentationstypen}>
+          <FilterSection title="Dokumentationsvorgaben" activeCount={activeDokumentationstypen} defaultExpanded={activeDokumentationstypen > 0}>
             {visibleDokumentationstypen.map(([dokumentation]) => {
               const count = dokumentationCounts[dokumentation] ?? 0;
               const isSelected = filters.dokumentationstypen.includes(dokumentation);
@@ -378,22 +352,22 @@ export function FilterPanel({
           </FilterSection>
         )}
 
-        {showLinkRelationen && (
-          <FilterSection title="Link-Relationen" activeCount={activeLinkRelationen}>
-            {(Object.keys(LINK_RELATION_LABELS) as LinkRelation[]).map((relation) => {
-              const count = linkRelationCounts[relation] ?? 0;
-              const isSelected = filters.linkRelationen.includes(relation);
+        {showHandlungsworte && (
+          <FilterSection title="Handlungsworte" activeCount={activeHandlungsworte} defaultExpanded={activeHandlungsworte > 0}>
+            {visibleHandlungsworte.map(([handlungswort]) => {
+              const count = handlungswortCounts[handlungswort] ?? 0;
+              const isSelected = filters.handlungsworte.includes(handlungswort);
               if (!isSelected && count === 0) return null;
               return (
                 <CheckboxLabel
-                  key={relation}
-                  label={LINK_RELATION_LABELS[relation]}
+                  key={handlungswort}
+                  label={handlungswort}
                   count={count}
                   checked={isSelected}
                   onChange={() =>
                     onFiltersChange({
                       ...filters,
-                      linkRelationen: toggleArrayItem(filters.linkRelationen, relation),
+                      handlungsworte: toggleArrayItem(filters.handlungsworte, handlungswort),
                     })
                   }
                 />
@@ -404,7 +378,7 @@ export function FilterPanel({
 
         {/* Tags */}
         {showTags && (
-          <FilterSection title="Tags" activeCount={activeTags}>
+          <FilterSection title="Tags" activeCount={activeTags} defaultExpanded={activeTags > 0}>
             {visibleTags.map(([tag]) => {
               const count = tagCounts[tag] ?? 0;
               const isSelected = filters.tags.includes(tag);
@@ -419,6 +393,30 @@ export function FilterPanel({
                     onFiltersChange({
                       ...filters,
                       tags: toggleArrayItem(filters.tags, tag),
+                    })
+                  }
+                />
+              );
+            })}
+          </FilterSection>
+        )}
+
+        {showLinkRelationen && (
+          <FilterSection title="Link-Relationen" activeCount={activeLinkRelationen} defaultExpanded={activeLinkRelationen > 0}>
+            {(Object.keys(LINK_RELATION_LABELS) as LinkRelation[]).map((relation) => {
+              const count = linkRelationCounts[relation] ?? 0;
+              const isSelected = filters.linkRelationen.includes(relation);
+              if (!isSelected && count === 0) return null;
+              return (
+                <CheckboxLabel
+                  key={relation}
+                  label={LINK_RELATION_LABELS[relation]}
+                  count={count}
+                  checked={isSelected}
+                  onChange={() =>
+                    onFiltersChange({
+                      ...filters,
+                      linkRelationen: toggleArrayItem(filters.linkRelationen, relation),
                     })
                   }
                 />
