@@ -10,6 +10,7 @@ import { PAGE_TITLES, PRODUCT_TITLE } from '../src/app/pageTitles.ts';
 
 // Die Vite-Konfiguration wird vor dem Vite-Aliashook gebündelt. Die bestehende
 // Node-Brücke lädt die App-Module deshalb über ihre echten URLs und löst @/ auf.
+// Vites Config-Bundler injiziert import.meta.dirname je ursprünglicher Quelldatei.
 const { registerAliasHook }: { registerAliasHook(): void } = await import(
   pathToFileURL(resolve(import.meta.dirname, 'oscal-domain-bridge.mjs')).href
 );
@@ -114,7 +115,7 @@ function outputPath(outDir: string, route: string): string {
     if (
       !segment || segment === '.' || segment === '..' ||
       segment.includes('/') || segment.includes('\\') ||
-      [...segment].some(character => character.charCodeAt(0) < 32)
+      [...segment].some(character => character.codePointAt(0)! < 32)
     ) {
       throw new Error('Unsafe SEO route segment');
     }
@@ -132,7 +133,7 @@ function pathKey(path: string): string {
 function assertExistingPath(outDir: string, target: string): void {
   const paths = [outDir];
   for (const segment of relative(outDir, target).split(sep)) {
-    paths.push(resolve(paths[paths.length - 1], segment));
+    paths.push(resolve(paths.at(-1)!, segment));
   }
   for (const path of paths) {
     let stat;
