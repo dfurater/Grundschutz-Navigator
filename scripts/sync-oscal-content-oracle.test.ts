@@ -158,4 +158,15 @@ describe('syncOscalContentOracle', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(await snapshot()).toEqual(before);
   });
+
+  it.each([null, {}, { fileName: 'extra.json', sha256: 'not-a-hash', sizeBytes: 1 }, { fileName: 'extra.json', sha256: '0'.repeat(64), sizeBytes: -1 }])('rejects an additional invalid file pin %# before fetching', async extra => {
+    const { syncOscalContentOracle } = await import('./sync-oscal-content-oracle.mjs');
+    await seed();
+    await writeFile(join(directory, 'ORACLE_MANIFEST.json'), JSON.stringify({ ...manifest, files: [...manifest.files, extra] }));
+    const fetchImpl = download(bodies);
+    const before = await snapshot();
+    await expect(syncOscalContentOracle({ force: true, fetchImpl, targetDirectory: directory })).rejects.toThrow(/Manifest/);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(await snapshot()).toEqual(before);
+  });
 });

@@ -1514,7 +1514,7 @@ function getAllowedTempRoot() {
 }
 
 describe('readRegularFileNoFollow', () => {
-  it.each(['regular', 'symlink', 'directory', 'fifo', 'missing'])('handles a %s without following links or blocking', async kind => {
+  async function checkFileRead(kind: string) {
     const directory = await mkdtemp(join(getAllowedTempRoot(), 'catalog-sync-read-'));
     const filePath = join(directory, 'upstream-manifest.json');
     const bytes = Buffer.from('{"snapshot":"synthetic"}\n');
@@ -1538,6 +1538,12 @@ describe('readRegularFileNoFollow', () => {
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
+  }
+
+  it.each(['regular', 'symlink', 'directory', 'missing'])('handles a %s without following links', checkFileRead);
+  // Named Pipes unter Windows sind keine POSIX-FIFOs; dort gibt es kein mkfifo.
+  it.skipIf(process.platform === 'win32')('rejects a POSIX FIFO without blocking', async () => {
+    await checkFileRead('fifo');
   });
 });
 

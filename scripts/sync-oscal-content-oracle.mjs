@@ -68,6 +68,19 @@ async function fetchArtifact(artifact, fetchImpl) {
   });
 }
 
+function isValidOracleFilePin(entry) {
+  return typeof entry?.fileName === 'string' && entry.fileName.length > 0 &&
+    typeof entry.sha256 === 'string' && /^[0-9a-f]{64}$/.test(entry.sha256) &&
+    Number.isSafeInteger(entry.sizeBytes) && entry.sizeBytes >= 0;
+}
+
+function isValidOracleManifestPins(manifest) {
+  return typeof manifest?.source?.commit === 'string' &&
+    /^[0-9a-f]{40}$/.test(manifest.source.commit) &&
+    Array.isArray(manifest.files) && manifest.files.every(isValidOracleFilePin) &&
+    new Set(manifest.files.map(entry => entry.fileName)).size === manifest.files.length;
+}
+
 async function readPreviousManifest(manifestPath, force) {
   let previousManifest;
   try {
@@ -82,11 +95,7 @@ async function readPreviousManifest(manifestPath, force) {
         'bei bewusster Auffrischung mit --force ausführen.',
     );
   }
-  if (previousManifest !== undefined && (
-    typeof previousManifest?.source?.commit !== 'string' ||
-    !/^[0-9a-f]{40}$/.test(previousManifest?.source?.commit ?? '') ||
-    !Array.isArray(previousManifest?.files)
-  )) {
+  if (previousManifest !== undefined && !isValidOracleManifestPins(previousManifest)) {
     throw new Error('Orakel-Manifest enthält keinen gültigen Commit-Pin oder Dateisatz');
   }
   return previousManifest;
@@ -106,7 +115,7 @@ export async function syncOscalContentOracle({
     const buffer = await fetchArtifact(artifact, fetchImpl);
     const sha256 = sha256Hex(buffer);
     if (previousManifest?.source?.commit === REPOSITORY_COMMIT) {
-      const pins = previousManifest.files.filter(entry => entry?.fileName === artifact.fileName);
+      const pins = previousManifest.files.filter(entry => entry.fileName === artifact.fileName);
       if (pins.length !== 1 || pins[0].sha256 !== sha256 || pins[0].sizeBytes !== buffer.length) {
         throw new Error(`Orakel-Manifest: Hash oder Größe stimmen nicht überein: ${artifact.fileName}`);
       }
