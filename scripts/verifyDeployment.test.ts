@@ -284,7 +284,10 @@ describe('verifyDeployment', () => {
 
     await expect(
       verifyDeployment(options(dist, 'favicon.svg', { manifest: join(dist, 'favicon.svg', 'sub') }), { run: gh.run, log: silent }),
-    ).rejects.toThrow(/Manifest nicht lesbar: .*\(ENOTDIR\)/);
+    ).rejects.toThrow(
+      // Windows meldet für denselben Pfad ENOENT; abgelehnt wird er dort auch.
+      process.platform === 'win32' ? /Manifest (nicht lesbar|fehlt)/ : /Manifest nicht lesbar: .*\(ENOTDIR\)/,
+    );
     expect(gh.calls).toHaveLength(0);
   });
 
