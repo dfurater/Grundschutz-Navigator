@@ -58,6 +58,7 @@ src/                              # Anwendungsquellcode
 │   ├── catalogLineage.d.mts          # Typen der Profile-Importkette
 │   ├── catalogLineage.mjs            # Profile-Importkette für die About-Provenienz (reines ESM)
 │   ├── catalogLineage.ts             # Typsicherer Einstieg in catalogLineage.mjs
+│   ├── catalogLineageValidation.ts   # Strukturprüfung und Auswahl der aktiven Sidecar-Lineage
 │   ├── catalogReferenceProjection.ts # Aufgelöste Control-Links in der Katalog-View
 │   ├── class2ImportLimits.d.mts      # Typen der Klasse-2-Ressourcengrenzen
 │   ├── class2ImportLimits.mjs        # Klasse-2-Ressourcengrenzen (einzige Quelle, reines ESM)
