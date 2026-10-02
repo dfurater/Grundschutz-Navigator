@@ -744,6 +744,34 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
   });
 
+  it.each([
+    { loading: true, error: null, message: 'Katalog wird geladen…' },
+    { loading: false, error: 'Netzwerkfehler', message: 'Fehler beim Laden' },
+  ])('does not record list scope or scroll while showing $message', ({ loading, error, message }) => {
+    mockCatalog(makeCatalog('gspp'));
+    mockedUseCatalog.mockReturnValue({ ...mockedUseCatalog(), loading, error });
+    const app = () => (
+      <CatalogBrowserTestApp
+        initialEntry="/katalog/gspp/TOP.1"
+        secondaryLink={{ label: 'Katalog öffnen', to: '/katalog/wlan' }}
+      />
+    );
+    const view = render(app());
+    expect(screen.getByText(message)).toBeInTheDocument();
+    scrollListTo(700);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Katalog öffnen' }));
+    Object.defineProperty(globalThis, 'scrollY', { configurable: true, value: 0 });
+    mockCatalog(makeCatalog('wlan'));
+    view.rerender(app());
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));
+
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/katalog\/wlan$/);
+    expect(globalThis.scrollTo).toHaveBeenLastCalledWith(0, 0);
+    expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
+  });
+
   it('starts another catalog at the top while the previous catalog is still loaded', () => {
     // Zwischenstand beim Katalogwechsel: Die Route nennt schon `wlan`, der
     // Kontext liefert noch den geladenen `gspp`-Katalog.
@@ -982,6 +1010,37 @@ describe('CatalogBrowser mobile focus restoration', () => {
     renderCatalogBrowser('/katalog/wlan');
 
     expectSingleDocumentTitle('Katalog — Grundschutz++ Navigator');
+  });
+
+  it.each([
+    { loading: true, error: 'Netzwerkfehler', expected: 'Katalog wird geladen…', absent: 'Fehler beim Laden' },
+    { loading: false, error: 'Netzwerkfehler', expected: 'Fehler beim Laden', absent: 'Katalog wird geladen…' },
+  ])('shows $expected ahead of an unresolved route', ({ loading, error, expected, absent }) => {
+    mockCatalog(makeCatalog('gspp'));
+    mockedUseCatalog.mockReturnValue({ ...mockedUseCatalog(), loading, error });
+
+    renderCatalogBrowser('/katalog/wlan');
+
+    expect(screen.getByText(expected)).toBeInTheDocument();
+    expect(screen.queryByText(absent)).toBeNull();
+    expect(screen.queryByRole('heading', { name: '404 — Katalogziel nicht gefunden' })).toBeNull();
+    expect(screen.queryByTestId('mobile-control-row')).toBeNull();
+    expectSingleDocumentTitle('Katalog — Grundschutz++ Navigator');
+  });
+
+  it('shows not found when no catalog exists without loading or error', () => {
+    mockedUseCatalog.mockReturnValue({
+      catalog: null,
+      loading: false,
+      error: null,
+      vocabularyRegistry: null,
+    } as unknown as ReturnType<typeof useCatalog>);
+
+    renderCatalogBrowser('/katalog/gspp');
+
+    expect(screen.getByRole('heading', { name: '404 — Katalogziel nicht gefunden' })).toBeInTheDocument();
+    expect(screen.queryByTestId('mobile-control-row')).toBeNull();
+    expectSingleDocumentTitle('Katalogziel nicht gefunden — Grundschutz++ Navigator');
   });
 
   it('keeps a stable alt-identifier addressable after its control ID changes', () => {
