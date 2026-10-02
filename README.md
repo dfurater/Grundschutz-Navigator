@@ -17,7 +17,9 @@ Inoffizielles Community-Projekt, kein Angebot des BSI. Keine Rechtsberatung, kei
 - Drei BSI-Kataloge durchblättern: den Grundschutz++-Anwenderkatalog sowie die Anwenderkataloge Lieferkettensicherheit und WLAN, gegliedert nach Praktiken und Themen.
 - Alle Kontrollen nach ID, Titel oder Stichwort durchsuchen.
 - Die Liste nach Sicherheitsniveau, Modalverb, Aufwandsstufe, Zielobjekt-Kategorie, Schutzziel, Dokumentationsvorgabe, Handlungswort, Tag und Link-Relation filtern.
-- Zu jeder Kontrolle den Anforderungstext, die Umsetzungshinweise, die betroffenen Schutzziele und die Gefährdungen lesen.
+- Zu jeder Kontrolle den Anforderungstext und die Umsetzungshinweise lesen, dazu die betroffenen Schutzziele und Gefährdungen.
+
+Filter und Detailangaben richten sich nach den Daten des jeweiligen Katalogs: Der Lieferkettenkatalog enthält zum Beispiel keine Schutzziele, deshalb fehlt dort auch der Schutzziel-Filter.
 - Die BSI-Vokabulare nachschlagen, also die Begriffslisten, auf denen Filter und Kontrollen aufbauen.
 - Die gefilterte Liste, Suchtreffer oder eine eigene Auswahl als CSV-Datei exportieren.
 
@@ -39,13 +41,13 @@ Für IT-Sicherheitsbeauftragte, Berater:innen, Auditor:innen, Studierende und al
 
 Die Katalogdaten stammen aus der [Stand-der-Technik-Bibliothek](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek) des BSI und stehen unter [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.de). Sie werden beim Bauen der App aus einem fest vorgegebenen Stand dieser Bibliothek geladen; dieses Repository enthält keine Kopie. Neue BSI-Stände werden über einen automatisch geprüften Abgleich übernommen.
 
-Die App verwendet kein Tracking, keine Analytics und keine Cookies. Filter, Suche und Export laufen vollständig in deinem Browser; deine Eingaben werden nicht übertragen. Die Seite selbst wird über GitHub Pages ausgeliefert, Einzelheiten dazu stehen in der Datenschutzerklärung der App.
+Die App verwendet kein Tracking, keine Analytics und keine Cookies. Filter, Suche und Export werden vollständig in deinem Browser berechnet. Gewählte Filter und Suchbegriffe stehen allerdings in der Adresszeile: Wenn du einen solchen Link öffnest oder die Seite neu lädst, ist die Adresse wie bei jeder Webseite Teil der Anfrage an GitHub Pages. Einzelheiten dazu stehen in der Datenschutzerklärung der App.
 
 ## Sicherheit
 
-**Deine Eingaben bleiben im Browser.** Eine Content Security Policy erlaubt der Seite nur Verbindungen zur eigenen Adresse und lädt keine Skripte, Schriften oder Stylesheets von fremden Servern. Details: [Content Security Policy](docs/ARCHITECTURE.md#content-security-policy).
+**Keine Verbindungen zu fremden Servern.** Eine Content Security Policy erlaubt der Seite nur Verbindungen zur eigenen Adresse und lädt keine Skripte, Schriften oder Stylesheets von fremden Servern. Details: [Content Security Policy](docs/ARCHITECTURE.md#content-security-policy).
 
-**Die Katalogdaten sind geprüft.** Beim Bauen lädt die App nur die im Projekt registrierten BSI-Dateien eines festgelegten Upstream-Stands. Jede Datei wird auf Pfad, Prüfsumme, OSCAL-Dokumenttyp und deklarierte OSCAL-Version geprüft; jede Abweichung bricht den Build ab. Im Browser vergleicht die App beim Laden die SHA-256-Prüfsumme jeder Katalog- und Vokabulardatei mit dem beim Build festgehaltenen Wert. Das Ergebnis steht in der Fußzeile („Verifiziert“ oder „Nicht verifiziert“) und ausführlich auf der Seite „Über das Projekt“. Bei einer Abweichung bleiben die Daten sichtbar, sind aber als nicht verifiziert gekennzeichnet. Diese Prüfung erkennt beschädigte oder unvollständige Auslieferungen; einen unabhängigen Herkunftsnachweis liefert die Build-Attestierung. Details: [Integritätsprüfung](docs/INTEGRITY.md) und [OSCAL-Validierung](docs/OSCAL_VALIDATION.md).
+**Die Katalogdaten sind geprüft.** Beim Bauen lädt die App nur die im Projekt registrierten BSI-Dateien eines festgelegten Upstream-Stands. Jede Datei wird auf Pfad und Prüfsumme geprüft, die OSCAL-Dateien zusätzlich auf Dokumenttyp und deklarierte OSCAL-Version, und für die Vokabular-CSVs muss der Dateibestand exakt dem registrierten Verzeichnis entsprechen. Jede Abweichung bricht den Build ab. Im Browser vergleicht die App beim Laden die SHA-256-Prüfsumme jeder Katalog- und Vokabulardatei mit dem beim Build festgehaltenen Wert. Das Ergebnis für den gewählten Katalog steht in der Fußzeile („Verifiziert“ oder „Nicht verifiziert“); die Ergebnisse für Katalog und Vokabulare stehen ausführlich auf der Seite „Über das Projekt“. Bei einer Abweichung bleiben die Daten sichtbar, sind aber als nicht verifiziert gekennzeichnet. Diese Prüfung erkennt beschädigte oder unvollständige Auslieferungen; einen unabhängigen Herkunftsnachweis liefert die Build-Attestierung. Details: [Integritätsprüfung](docs/INTEGRITY.md) und [OSCAL-Validierung](docs/OSCAL_VALIDATION.md).
 
 **Jeder Build ist nachvollziehbar.** Jede ausgelieferte Version trägt zwei von GitHub signierte Attestierungen: eine [SLSA](https://slsa.dev/)-Provenance, die belegt, welcher Workflow-Lauf aus welchem Commit gebaut hat, und eine CycloneDX-SBOM der Laufzeitabhängigkeiten. Mit der [GitHub CLI](https://cli.github.com/) kannst du das für jede Datei der Live-Seite selbst prüfen:
 
@@ -68,7 +70,8 @@ Jede Änderung kommt als Pull Request in den Integrationszweig `develop`. Direkt
 
 - `validate` ([validate.yml](.github/workflows/validate.yml)): Lint, Tests mit festen Coverage-Mindestwerten, Prüfung der OSCAL-Schemas und -Versionen und die Workflow-Prüfung mit zizmor. Bei Codeänderungen kommen Browser-Tests mit Netzwerksperre und der Produktions-Build hinzu; reine Dokumentationsänderungen überspringen diese Schritte.
 - `documentation-contract` und `catalog-sync-guard` ([ci.yml](.github/workflows/ci.yml)): Jede Codeänderung muss angeben, ob und wo sie die Dokumentation anpasst; Änderungen am Datenstand des BSI werden gegen die Quelle geprüft.
-- CodeQL und SonarCloud mit Quality Gate ([sonar.yml](.github/workflows/sonar.yml)). Bei Pull Requests aus Forks entfällt die SonarCloud-Analyse, weil GitHub dort keine Secrets bereitstellt.
+- SonarCloud mit Quality Gate, als eigener Job in [validate.yml](.github/workflows/validate.yml). Bei Pull Requests aus Forks entfällt die SonarCloud-Analyse, weil GitHub dort keine Secrets bereitstellt.
+- CodeQL über das Code Scanning von GitHub, als Regel im Ruleset von `develop` und `main`.
 - `Greptile Review`: ein automatisches Code-Review.
 
 [![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=gspp&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=gspp)

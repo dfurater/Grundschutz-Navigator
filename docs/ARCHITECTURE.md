@@ -581,7 +581,7 @@ Alle eigenen Scrollbereiche tragen überlagernde Scrollleisten aus OverlayScroll
 
 CSV-Serialisierung und Browserauslösung sind getrennte Grenzen: `features/export/csvExport.ts` erzeugt Inhalt und `Blob`; `adapters/browserDownload.ts` erstellt den temporären Link und widerruft Link und Object-URL auch bei Fehlern in `finally`.
 
-Der Export ist semikolongetrennt und deckt drei Quellen ab: die gefilterte Tabelle, die Suchtreffer und eine manuelle Auswahl. Die Spalte `control_alt_identifier` ist innerhalb des aktuellen Katalogs eindeutig, aber nicht garantiert über BSI-Versionen hinweg stabil; wer Exporte verschiedener Stände abgleicht, sollte sich nicht allein auf sie verlassen.
+Der Export ist semikolongetrennt und deckt drei Quellen ab: die gefilterte Tabelle, die Suchtreffer und eine manuelle Auswahl. Die Spalte `control_alt_identifier` ist innerhalb des aktuellen Katalogs eindeutig, aber nicht garantiert über BSI-Versionen hinweg stabil.
 
 ESLint sichert diese Architektur statisch ab: `CatalogBrowser` darf weder den CSV-Exporter noch den Beziehungsgraphen importieren. In App-, Komponenten- und Feature-Code (`src/features/**/*.{ts,tsx}`, `src/app/**/*.{ts,tsx}`, `src/components/**/*.{ts,tsx}`) ist direkter `document.body`-Zugriff ein Fehler, imperative Event-Listener werden dort als Warnungen ausgewiesen. Dateien unter `src/**/*.{ts,tsx}` mit mehr als 300 physischen Zeilen werden ebenfalls als Warnungen ausgewiesen. `useGlobalEventListener` bündelt globale Window- und Document-Listener und garantiert symmetrischen Abbau beim Deaktivieren oder Unmount.
 
