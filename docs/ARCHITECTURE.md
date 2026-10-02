@@ -207,6 +207,7 @@ src/                              # Anwendungsquellcode
 │   ├── search/                       # Volltextsuche
 │   │   ├── SearchPage.tsx                # Suchseite mit Ergebnisliste
 │   │   ├── SearchResultsToolbar.tsx      # Auswahl und CSV-Export der Treffer
+│   │   ├── searchRanking.ts              # Trefferbewertung als reine Funktion
 │   │   └── useSearch.ts                  # FlexSearch-Index mit begrenztem Cache
 │   ├── vocabularies/                 # Vokabular-Seiten
 │   │   ├── VocabularyEntryCard.tsx       # Karte eines Vokabulareintrags
@@ -635,6 +636,8 @@ Weil ein komponentenlokaler Cache die Indizes beim Unmount der `SearchPage` verw
 * Mutationen des Modul-Caches laufen ausschließlich in einem `useEffect` (Commit-Phase), nicht in `useMemo`/Render.
 
 Der Cache liegt als Modul-eigenes `Map<string, SearchCacheEntry>` in `src/features/search/useSearch.ts` (`clearSearchCache`, `getSearchCacheSize`, `getSearchCacheKeys`, `getSearchCacheEntry` für Tests) und ist strikt UI-seitig — kein zusätzlicher Speicher im `CatalogContext` und kein Persistenz- oder Netzwerkzugriff.
+
+Die Bewertung einer Anfrage liegt getrennt davon in `rankSearchResults` (`src/features/search/searchRanking.ts`): eine reine Funktion ohne React und ohne Cache-Zugriff, die eine schmale, unveränderliche `SearchView` auf Suchdokumente, Indizes und Kennungsauflösung erhält. Der Cache-Eintrag erfüllt diese Sicht strukturell; `useSearch` ruft die Funktion nur noch memoisiert auf. Kennungsklassifikation, Gewichte, Präfixsuche und Gleichstandsregeln sind dort direkt testbar (`searchRanking.test.ts`), Cache-Invalidierung, LRU und Katalogtrennung weiter über die Hook-Tests.
 
 ## Filter-System
 
