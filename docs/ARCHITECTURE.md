@@ -581,6 +581,8 @@ Alle eigenen Scrollbereiche tragen überlagernde Scrollleisten aus OverlayScroll
 
 CSV-Serialisierung und Browserauslösung sind getrennte Grenzen: `features/export/csvExport.ts` erzeugt Inhalt und `Blob`; `adapters/browserDownload.ts` erstellt den temporären Link und widerruft Link und Object-URL auch bei Fehlern in `finally`.
 
+Der Export ist semikolongetrennt und deckt drei Quellen ab: die gefilterte Tabelle, die Suchtreffer und eine manuelle Auswahl. Die Spalte `control_alt_identifier` ist innerhalb des aktuellen Katalogs eindeutig, aber nicht garantiert über BSI-Versionen hinweg stabil; wer Exporte verschiedener Stände abgleicht, sollte sich nicht allein auf sie verlassen.
+
 ESLint sichert diese Architektur statisch ab: `CatalogBrowser` darf weder den CSV-Exporter noch den Beziehungsgraphen importieren. In App-, Komponenten- und Feature-Code (`src/features/**/*.{ts,tsx}`, `src/app/**/*.{ts,tsx}`, `src/components/**/*.{ts,tsx}`) ist direkter `document.body`-Zugriff ein Fehler, imperative Event-Listener werden dort als Warnungen ausgewiesen. Dateien unter `src/**/*.{ts,tsx}` mit mehr als 300 physischen Zeilen werden ebenfalls als Warnungen ausgewiesen. `useGlobalEventListener` bündelt globale Window- und Document-Listener und garantiert symmetrischen Abbau beim Deaktivieren oder Unmount.
 
 Für `src/**/*.{ts,tsx}` läuft ESLint zusätzlich mit Typinformation (typescript-eslint Project Service über die Referenzen in `tsconfig.json`) und erzwingt zwei Promise-Regeln als Fehler: `await-thenable` verbietet ein `await` auf synchrone Werte, weil es einen veralteten Async-Vertrag vortäuscht, und `no-floating-promises` verlangt, dass ein Promise im Produktionscode abgewartet, abgefangen oder mit `void` ausdrücklich als Fire-and-forget markiert wird. Die `.mjs`-Dateien unter `src/` liegen außerhalb dieses Gates. In Tests (`src/**/*.test.{ts,tsx}`) ist nur `no-floating-promises` abgeschaltet: Dort meldet die Regel vor allem synchrone `act()`-Aufrufe, und unbehandelte Rejections lassen den Vitest-Lauf ohnehin fehlschlagen.
@@ -755,6 +757,8 @@ Die generierten Katalog- und Vokabulardaten werden **nie** im Repository committ
 Manifest v2 enthält für jede materialisierte Datei `artifactKey`, erwarteten `rootType`, `lifecycle`, Pfad, Git-Blob-SHA und Content-SHA-256. Dadurch umfasst das Delta auch registrierte Kataloge, Profile, Mappings und Component Definitions; produktiv ausgeliefert werden weiterhin ausschließlich `supported`-Artefakte.
 
 ### Policy-gesteuerter Catalog-Sync
+
+`update-catalog.yml` läuft werktags um 07:30 und 17:30 Uhr (Zeitzone `Europe/Berlin`, `schedule` im Workflow) und lässt sich zusätzlich manuell über `workflow_dispatch` starten.
 
 Der Sync verwendet ausschließlich eine auf dieses Repository beschränkte GitHub App. Ihr kurzlebiges Installation-Token wird zur Laufzeit erzeugt und unverändert an `gh` und Git übergeben; es gibt weder einen PAT-Fallback noch Annahmen über das Tokenformat.
 

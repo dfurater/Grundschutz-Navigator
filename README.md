@@ -1,117 +1,135 @@
 # Grundschutz++ Navigator
 
-Inoffizielles Werkzeug zum Durchsuchen, Filtern und Exportieren des offiziellen Grundschutz++-Anwenderkatalogs des BSI. Kein Angebot des BSI.
+Der Grundschutz++-Anwenderkatalog des BSI zum Durchsuchen, Filtern und Exportieren, direkt im Browser.
 
-[![CI](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/ci.yml/badge.svg)](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/ci.yml)
-[![Validate](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/validate.yml/badge.svg)](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/validate.yml)
+Inoffizielles Community-Projekt, kein Angebot des BSI. Keine Rechtsberatung, keine Gewähr. Die offiziellen Daten veröffentlicht das BSI in der [Stand-der-Technik-Bibliothek](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek).
+
+**Live-Demo:** [dfurater.github.io/Grundschutz-Navigator](https://dfurater.github.io/Grundschutz-Navigator/)
+
+![Katalogansicht des Grundschutz++ Navigators: links der Katalog-Explorer mit den Praktiken, in der Mitte die Kontrollen der Praktik „Berechtigung“, rechts die Filterleiste mit ausgewähltem Sicherheitsniveau „normal-SdT“ und den Modalverben MUSS und SOLLTE](docs/assets/katalog-mit-filtern.png)
+
 [![Deploy](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/deploy.yml/badge.svg)](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/deploy.yml)
-[![Katalogdaten: CC BY-SA 4.0](https://img.shields.io/badge/Katalogdaten-CC%20BY--SA%204.0-blue)](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek)
 [![App-Code: AGPL v3](https://img.shields.io/badge/App--Code-AGPL%20v3-green)](LICENSE)
-
-> ⚠️ **Inoffizielles Community-Projekt, kein Angebot des BSI.** Keine Rechtsberatung, keine Gewähr. Für offizielle Informationen → [BSI Grundschutz++](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek).
-
-## Live-Demo
-
-**→ https://dfurater.github.io/Grundschutz-Navigator/**
-
-Die App läuft vollständig im Browser. Keine Anmeldung, keine Installation.
-
-## Code Quality:
-[![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=gspp&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=gspp)
-[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=gspp&metric=bugs)](https://sonarcloud.io/summary/new_code?id=gspp)
-[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=gspp&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=gspp)
+[![Katalogdaten: CC BY-SA 4.0](https://img.shields.io/badge/Katalogdaten-CC%20BY--SA%204.0-blue)](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek)
 
 ## Was kann die App?
 
-- **Kataloge browsen** — Grundschutz++-, Lieferketten- und WLAN-Katalog, getrennt über ihren `catalogKey`; Routen beginnen mit `/katalog/:catalogKey`.
-- **Volltextsuche** — Relevanzbasierte Suche über alle Kontrollen einschließlich Praktik-Aliase; Treffer erscheinen in 50er-Portionen. Route `/suche`.
-- **Vokabulare nachschlagen** — Die 13 BSI-Namespace-CSVs als eigenständige Übersichten; Praktik- und Themen-Definitionen sind per UUID angebunden, Schutzziel-Relevanzstufen `0`–`2` werden getrennt erklärt. Route `/vokabular`.
-- **Multi-Filter** — Sicherheitsniveau, Aufwandsstufe, Modalverb, Tags, Zielobjekt, Handlungswort, Dokumentationstyp, Link-Relation. Der Filterzustand steht in der URL und ist damit **teil- und bookmarkbar**.
-- **CSV-Export** — Gefilterte Tabelle, Suchtreffer oder manuelle Auswahl als semikolon-getrennte CSV; WLAN-Taxonomiewerte L1–L4 werden separat mit optionalem Original-Namensraum exportiert. Der Alt-Identifier ist im aktuellen Katalog eindeutig, aber nicht garantiert versionsstabil.
-- **Integritätsprüfung** — SHA-256 der ausgelieferten Katalog- und Vokabular-Artefakte wird zur Laufzeit gegen beim Build gepinnte Werte verglichen; Details stehen unter `/about`.
-- **Responsive** — Desktop- und Mobile-Layouts.
+- Drei BSI-Kataloge durchblättern: den Grundschutz++-Anwenderkatalog sowie die Anwenderkataloge Lieferkettensicherheit und WLAN, gegliedert nach Praktiken und Themen.
+- Alle Kontrollen nach ID, Titel oder Stichwort durchsuchen.
+- Die Liste nach Sicherheitsniveau, Modalverb, Aufwandsstufe, Zielobjekt-Kategorie, Schutzziel, Dokumentationsvorgabe, Handlungswort, Tag und Link-Relation filtern.
+- Zu jeder Kontrolle den Anforderungstext, die Umsetzungshinweise, die betroffenen Schutzziele und die Gefährdungen lesen.
+- Die BSI-Vokabulare nachschlagen, also die Begriffslisten, auf denen Filter und Kontrollen aufbauen.
+- Die gefilterte Liste, Suchtreffer oder eine eigene Auswahl als CSV-Datei exportieren.
 
-## Zielgruppe
+Die App funktioniert am Desktop und auf dem Smartphone.
 
-IT-Sicherheitsbeauftragte, Berater:innen, Auditor:innen, Studierende und alle, die den Grundschutz++-Anwenderkatalog **ohne Download und ohne Installation** durchsuchen, filtern und exportieren möchten.
+## Für wen?
 
-## Datenquelle und Lizenz des Katalogs
+Für IT-Sicherheitsbeauftragte, Berater:innen, Auditor:innen, Studierende und alle anderen, die mit dem Grundschutz++-Anwenderkatalog arbeiten. Du brauchst weder ein Konto noch eine Installation.
 
-- **Quelle:** [`BSI-Bund/Stand-der-Technik-Bibliothek`](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek). Die ausgelieferten Kataloge deklarieren OSCAL 1.1.3; die gepinnte Versionsmatrix trägt 1.1.2, 1.1.3, 1.2.1 und 1.2.2. Versionsautorität ist `metadata.oscal-version`, nie `$schema`.
-- **Lizenz der Katalogdaten:** [Creative Commons BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.de)
-- **Datenhaltung:** Die Katalogdaten werden **beim Build** aus dem BSI-Repository geladen. Im App-Repository wird keine Kopie gehalten.
-- **Integrität:** Fixierter Upstream-Commit (`upstream-manifest.json`) plus SHA-256-Verify zur Laufzeit. Details: [`docs/INTEGRITY.md`](docs/INTEGRITY.md).
-- **Aktualität:** Der Sync-Workflow läuft werktags 07:30 und 17:30 Uhr (Europe/Berlin) sowie manuell; bei einem Delta erstellt er einen Manifest-PR mit Auto-Squash und Branch-Löschung. Eine Post-Merge-Lane prüft danach den Stand auf `main` und dispatcht einen Fallback-Deploy nur nach erneuter Zustandsprüfung.
+## So funktioniert's
 
-## Datenschutz
+1. Öffne die [Live-Demo](https://dfurater.github.io/Grundschutz-Navigator/) und wähle oben rechts den Katalog.
+2. Wähle links im Katalog-Explorer eine Praktik oder ein Thema, oder suche oben nach einer ID oder einem Stichwort.
+3. Setze rechts die Filter, etwa Sicherheitsniveau „normal-SdT“ und Modalverb „MUSS“. Die Liste zeigt sofort nur noch die passenden Kontrollen.
+4. Die gewählten Filter stehen in der Adresszeile. Kopiere den Link, um die Ansicht zu teilen oder als Lesezeichen zu speichern. Für eine einzelne Kontrolle gibt es in der Detailansicht „Link kopieren“.
+5. Über „CSV Export“ lädst du die Liste herunter, zum Beispiel für eine Tabellenkalkulation.
 
-- Kein Tracking, keine Analytics, keine Cookies.
-- Alle Berechnungen (Filter, Suche, Export) laufen **clientseitig** im Browser.
+## Daten und Datenschutz
 
-## Für Entwickler:innen — lokal starten
+Die Katalogdaten stammen aus der [Stand-der-Technik-Bibliothek](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek) des BSI und stehen unter [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.de). Sie werden beim Bauen der App aus einem fest vorgegebenen Stand dieser Bibliothek geladen; dieses Repository enthält keine Kopie. Neue BSI-Stände werden über einen automatisch geprüften Abgleich übernommen.
 
-### Voraussetzungen
+Die App verwendet kein Tracking, keine Analytics und keine Cookies. Filter, Suche und Export laufen vollständig in deinem Browser; deine Eingaben werden nicht übertragen. Die Seite selbst wird über GitHub Pages ausgeliefert, Einzelheiten dazu stehen in der Datenschutzerklärung der App.
 
-- **Node.js >= 22.22.2** (in `package.json` als `engines.node` deklariert)
-- Optional ein **GitHub Token** in `GH_TOKEN` für höhere API-Rate-Limits beim Katalog-Fetch
+## Sicherheit
 
-### Quickstart
+**Deine Eingaben bleiben im Browser.** Eine Content Security Policy erlaubt der Seite nur Verbindungen zur eigenen Adresse und lädt keine Skripte, Schriften oder Stylesheets von fremden Servern. Details: [Content Security Policy](docs/ARCHITECTURE.md#content-security-policy).
+
+**Die Katalogdaten sind geprüft.** Beim Bauen lädt die App nur die im Projekt registrierten BSI-Dateien eines festgelegten Upstream-Stands. Jede Datei wird auf Pfad, Prüfsumme, OSCAL-Dokumenttyp und deklarierte OSCAL-Version geprüft; jede Abweichung bricht den Build ab. Im Browser vergleicht die App beim Laden die SHA-256-Prüfsumme jeder Katalog- und Vokabulardatei mit dem beim Build festgehaltenen Wert. Das Ergebnis steht in der Fußzeile („Verifiziert“ oder „Nicht verifiziert“) und ausführlich auf der Seite „Über das Projekt“. Bei einer Abweichung bleiben die Daten sichtbar, sind aber als nicht verifiziert gekennzeichnet. Diese Prüfung erkennt beschädigte oder unvollständige Auslieferungen; einen unabhängigen Herkunftsnachweis liefert die Build-Attestierung. Details: [Integritätsprüfung](docs/INTEGRITY.md) und [OSCAL-Validierung](docs/OSCAL_VALIDATION.md).
+
+**Jeder Build ist nachvollziehbar.** Jede ausgelieferte Version trägt zwei von GitHub signierte Attestierungen: eine [SLSA](https://slsa.dev/)-Provenance, die belegt, welcher Workflow-Lauf aus welchem Commit gebaut hat, und eine CycloneDX-SBOM der Laufzeitabhängigkeiten. Mit der [GitHub CLI](https://cli.github.com/) kannst du das für jede Datei der Live-Seite selbst prüfen:
+
+```bash
+curl -sSO https://dfurater.github.io/Grundschutz-Navigator/index.html
+gh attestation verify index.html --repo dfurater/Grundschutz-Navigator
+```
+
+Details: [Deployment](docs/ARCHITECTURE.md#deployment) und [SLSA Provenance](docs/INTEGRITY.md#slsa-provenance).
+
+**Die Entwicklung ist abgesichert.** Alle Abhängigkeiten sind über `package-lock.json` fixiert und werden ohne Install-Skripte installiert. Dependabot prüft npm-Pakete wöchentlich und GitHub Actions täglich. Alle Actions sind auf Commit-SHAs gepinnt, und die Workflows werden mit [zizmor](https://github.com/zizmorcore/zizmor) auf unsichere Muster geprüft. Den Code analysieren CodeQL und SonarCloud. Secret Scanning mit Push-Schutz ist aktiv. Details: [Ausführungsumgebung und Berechtigungen](docs/ARCHITECTURE.md#ausführungsumgebung-und-berechtigungen).
+
+**Bekannte Grenzen.** GitHub Pages erlaubt keine eigenen HTTP-Header. Die Content Security Policy steht deshalb als Meta-Tag im HTML, und ein Schutz gegen Einbetten in fremde Seiten (`frame-ancestors`) fehlt. Die Prüfungen sichern, dass die Daten unverändert vom BSI stammen; die fachliche Richtigkeit der BSI-Inhalte bewerten sie nicht.
+
+**Sicherheitslücke gefunden?** Bitte melde sie vertraulich wie in [SECURITY.md](SECURITY.md) beschrieben und nicht als öffentliches Issue.
+
+## Qualitätssicherung
+
+Jede Änderung kommt als Pull Request in den Integrationszweig `develop`. Direktes Pushen, Force-Push und das Löschen von `develop` und `main` sind gesperrt. Ein Pull Request lässt sich erst zusammenführen, wenn alle Pflichtprüfungen bestanden sind:
+
+- `validate` ([validate.yml](.github/workflows/validate.yml)): Lint, Tests mit festen Coverage-Mindestwerten, Prüfung der OSCAL-Schemas und -Versionen und die Workflow-Prüfung mit zizmor. Bei Codeänderungen kommen Browser-Tests mit Netzwerksperre und der Produktions-Build hinzu; reine Dokumentationsänderungen überspringen diese Schritte.
+- `documentation-contract` und `catalog-sync-guard` ([ci.yml](.github/workflows/ci.yml)): Jede Codeänderung muss angeben, ob und wo sie die Dokumentation anpasst; Änderungen am Datenstand des BSI werden gegen die Quelle geprüft.
+- CodeQL und SonarCloud mit Quality Gate ([sonar.yml](.github/workflows/sonar.yml)). Bei Pull Requests aus Forks entfällt die SonarCloud-Analyse, weil GitHub dort keine Secrets bereitstellt.
+- `Greptile Review`: ein automatisches Code-Review.
+
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=gspp&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=gspp)
+[![Bugs](https://sonarcloud.io/api/project_badges/measure?project=gspp&metric=bugs)](https://sonarcloud.io/summary/new_code?id=gspp)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=gspp&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=gspp)
+
+Jeder Pull Request wird von zwei KI-Review-Werkzeugen geprüft: Greptile als Pflichtprüfung und Gitar mit Kommentaren, die einen Merge nicht blockieren. Beide arbeiten nach denselben öffentlichen, versionierten Regeln in [docs/REVIEW_INVARIANTS.md](docs/REVIEW_INVARIANTS.md). Umsetzung und Review erfolgen KI-gestützt. Ob ein Pull Request zusammengeführt und ob eine Version veröffentlicht wird, entscheidet der Maintainer.
+
+`develop` ist die Integrationslinie, `main` die Release-Linie. Jede Zusammenführung in `main` ist ein Release: Der Deploy-Workflow baut die App neu, führt die Tests aus, erstellt die Attestierungen und veröffentlicht auf GitHub Pages. Die einzige automatische Ausnahme sind neue BSI-Datenstände: Sie gelangen über einen eigenen Abgleich direkt nach `main`, wenn alle Pflichtprüfungen bestehen und der Abgleich den neuen Stand gegen die BSI-Quelle verifiziert hat. Details: [Policy-gesteuerter Catalog-Sync](docs/ARCHITECTURE.md#policy-gesteuerter-catalog-sync).
+
+## Lokal starten
+
+Voraussetzung ist Node.js 22.22.2 oder neuer. Ein GitHub-Token in `GH_TOKEN` ist optional und erhöht die API-Rate-Limits beim Laden der Katalogdaten.
 
 ```bash
 git clone https://github.com/dfurater/Grundschutz-Navigator.git
 cd Grundschutz-Navigator
-npm run setup                      # npm ci, Schema-Verifikation, Katalog-Fetch, Frische-Check
-npm run dev                        # http://localhost:5173
+npm run setup
+npm run dev
 ```
 
-`npm run setup` bootstrapt ein frisches Checkout (`npm ci --ignore-scripts`, offline Schema-Verifikation, Fetch gegen die gepinnte Snapshot-SHA, Frische-Check); aktuelle Daten werden übersprungen, `--force` erzwingt den Fetch. Optional `cp .env.local.example .env.local` für die Impressum-Platzhalter — ohne sie laufen `npm run test` und `npm run build` unberührt. `.env.local` wird **nicht** eingecheckt und enthält Impressum-Felder nach § 5 DDG.
-
-### Weitere Skripte
+`npm run setup` installiert die Abhängigkeiten, prüft die OSCAL-Schemas und lädt die Katalogdaten in dem Stand, den `upstream-manifest.json` festlegt. Sind die lokalen Daten schon aktuell, entfällt das Laden; `npm run setup -- --force` erzwingt es. Danach läuft die App unter http://localhost:5173. Für die Impressum-Angaben kannst du optional `.env.local.example` nach `.env.local` kopieren; Tests und Build laufen auch ohne.
 
 | Befehl | Zweck |
 |---|---|
-| `npm run dev` | Dev-Server mit HMR |
-| `npm run build` | Production-Build (GitHub-Pages-Base `/Grundschutz-Navigator/`) |
-| `npm run build:local` | Production-Build ohne Pages-Präfix (`BUILD_BASE=/`) |
-| `npm run preview` | gebauten Bundle lokal servieren |
-| `npm run test` | Vitest (Single-Run) |
-| `npm run test:watch` | Vitest (Watch-Mode) |
-| `npm run test:coverage` | Vitest mit V8-Coverage |
+| `npm run dev` | Entwicklungsserver |
+| `npm run test` | Tests einmal ausführen |
+| `npm run test:coverage` | Tests mit Coverage-Bericht |
 | `npm run lint` | ESLint |
-| `npm run fetch-catalog` | registrierte BSI-Artefakte validieren und unterstützte Daten nach `public/data/` ausliefern (erfordert `BSI_SNAPSHOT_SHA` oder Manifest-Pin) |
+| `npm run build` | Produktions-Build nach `dist/` |
 
-Coverage-Gates in `vite.config.ts`: Lines 87 %, Branches 77 %, Functions 88 %, Statements 85 %. Sie werden nicht ohne neue Baseline-Messung gesenkt.
+## Mitmachen
 
-## Architektur (Kurzfassung)
-
-Single-Page-App: Der Adapter-Layer überführt Raw-OSCAL-Typen in Domain-Typen (`Control`, `Topic`, `Practice`, `Catalog`). Globaler Zustand via React Context; Filter sind bidirektional mit URL-Parametern synchronisiert; die Katalog-Integrität wird per SHA-256 zur Laufzeit überprüft.
-
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — Schichten, Daten­fluss, Kopplung
-- [`docs/DOMAIN_MODELS.md`](docs/DOMAIN_MODELS.md) — Typen, Anreicherung, OSCAL-Mapping
-- [`docs/INTEGRITY.md`](docs/INTEGRITY.md) — SHA-256-Pinning und Verify
-- [`docs/OSCAL_VALIDATION.md`](docs/OSCAL_VALIDATION.md) — fail-closed OSCAL-Prüf- und Lieferkette (Stufen 1–3 für Klasse 2 umgesetzt, unabhängiger CI-Schema-Korpuslauf)
-- [`docs/OSCAL_ROUND_TRIP.md`](docs/OSCAL_ROUND_TRIP.md) — No-op-Round-trip-Harnisch je OSCAL-Modell
-- [`docs/FILTERING.md`](docs/FILTERING.md) — Filter-Parameter, URL-Sync, Reihenfolge
-- [`docs/VOCABULARY.md`](docs/VOCABULARY.md) — Namespace-Modell für BSI-Vokabulare
-
-## Deployment
-
-Pushes nach `main` triggern den Deploy-Workflow: BSI-Katalog fetch → Tests mit Coverage → Build → CycloneDX-App-SBOM und [SLSA-Provenance-Attestation](https://slsa.dev/) (zwei getrennte Attestierungen über `dist/**`; die SBOM-Datei selbst liegt unter `$RUNNER_TEMP` und wird nicht über Pages ausgeliefert) → GitHub Pages.
-
-## Beitragen
-
-Issues und Pull Requests sind willkommen. Bitte vor dem Einreichen:
+Issues und Pull Requests sind willkommen. Pull Requests gehen gegen `develop`. Bitte führe vorher aus:
 
 ```bash
 npm run lint
 npm run test
 ```
 
+Die [Pull-Request-Vorlage](.github/pull_request_template.md) fragt unter anderem, ob die Änderung die Dokumentation betrifft. Externe Pull Requests durchlaufen dieselben Prüfungen wie alle anderen (siehe [Qualitätssicherung](#qualitätssicherung)). Sicherheitslücken bitte nicht als Issue melden, sondern wie in [SECURITY.md](SECURITY.md) beschrieben.
+
+## Weiterführende Dokumentation
+
+- [Architektur](docs/ARCHITECTURE.md): Schichten, Datenfluss, Routen, Content Security Policy, Deployment und Catalog-Sync
+- [Domänenmodelle](docs/DOMAIN_MODELS.md): Typen, Anreicherung und Abbildung auf OSCAL
+- [Integritätsprüfung](docs/INTEGRITY.md): Artefaktvertrag, Manifest, SHA-256-Prüfung und Build-Attestierung
+- [OSCAL-Validierung](docs/OSCAL_VALIDATION.md): fail-closed Prüfkette für OSCAL-Dokumente
+- [OSCAL-Versionsmatrix](docs/OSCAL_VERSION_MATRIX.md): unterstützte OSCAL-Versionen und gepinnte Schemas
+- [OSCAL-Round-trip](docs/OSCAL_ROUND_TRIP.md): No-op-Round-trip-Harnisch je OSCAL-Modell
+- [Filterung](docs/FILTERING.md): Filterdimensionen, URL-Parameter und Sortierung
+- [Vokabulare](docs/VOCABULARY.md): Namespace-Modell der BSI-Vokabulare
+- [Persistenz](docs/PERSISTENCE.md): Vertrag für lokale Arbeitsbereiche
+- [Projekteigene OSCAL-Properties](docs/PROJECT_PROPS.md)
+- [Review-Regeln](docs/REVIEW_INVARIANTS.md): verbindlicher Reviewvertrag des Repositorys
+
 ## Haftungsausschluss
 
-Dieses Projekt ist ein inoffizielles Community-Werkzeug. Es ersetzt weder eine offizielle Quelle noch eine Rechts- oder Sicherheits­beratung. Für verbindliche Auskünfte nutze bitte die originalen Veröffentlichungen des BSI. Die Bereitstellung erfolgt ohne Gewähr auf Vollständigkeit oder Richtigkeit.
+Dieses Projekt ist ein inoffizielles Community-Werkzeug. Es ersetzt weder eine offizielle Quelle noch eine Rechts- oder Sicherheitsberatung. Für verbindliche Auskünfte nutze bitte die originalen Veröffentlichungen des BSI. Die Bereitstellung erfolgt ohne Gewähr auf Vollständigkeit oder Richtigkeit.
 
 ## Lizenz
 
-- **App-Code:** [GNU Affero General Public License v3.0 (or later)](LICENSE) — © 2026 Deniz Furater. Wer den Code weitergibt **oder als Netzwerkdienst anbietet**, muss den vollständigen Quellcode inkl. eigener Änderungen unter der AGPL verfügbar machen. Drittkomponenten behalten ihre eigenen Lizenzen (siehe `NOTICE` und die „Lizenzen"-Seite der App).
-- **Katalogdaten:** [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.de) — Urheber: [`BSI-Bund/Stand-der-Technik-Bibliothek`](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek). Die Katalogdaten sind nicht Teil dieses Repositorys und fallen nicht unter die AGPL des App-Codes.
+- **App-Code:** [GNU Affero General Public License v3.0 (or later)](LICENSE), © 2026 Deniz Furater. Wer den Code weitergibt oder als Netzwerkdienst anbietet, muss den vollständigen Quellcode einschließlich eigener Änderungen unter der AGPL verfügbar machen. Drittkomponenten behalten ihre eigenen Lizenzen (siehe `NOTICE` und die Seite „Lizenzen“ der App).
+- **Katalogdaten:** [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/deed.de), Urheber: [BSI-Bund/Stand-der-Technik-Bibliothek](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek). Die Katalogdaten sind nicht Teil dieses Repositorys und fallen nicht unter die AGPL des App-Codes.
