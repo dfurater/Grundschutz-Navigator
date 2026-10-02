@@ -1,4 +1,6 @@
+import { useContext } from 'react';
 import type { Control } from '@/domain/models';
+import { MobileNavigationContext } from '@/state/MobileNavigationContext';
 import { Button } from '@/components/Button';
 import { IconCheck, IconX } from '@/components/icons';
 import type { FilterPanelProps } from './FilterPanel';
@@ -48,7 +50,8 @@ export function CatalogToolbar({
   mobileSheetsSuspended = false,
   onSelectionExported,
 }: CatalogToolbarProps) {
-  const showMobileSheets = !isDesktop && !mobileSheetsSuspended;
+  const mobileNavigationOpen = useContext(MobileNavigationContext);
+  const showMobileSheets = !isDesktop && !mobileSheetsSuspended && !mobileNavigationOpen;
   return (
     <div className="px-3 py-1.5 md:py-0 md:h-[51px] md:flex md:items-center border-b border-[var(--color-border-default)] bg-[var(--color-surface-base)] sticky top-14 z-10 md:static md:z-auto">
       <div className="w-full flex items-center justify-between gap-2 min-w-0">

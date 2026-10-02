@@ -17,6 +17,8 @@ import {
 } from '@/hooks/useFilteredControls';
 import { useFilterParams } from '@/hooks/useFilterParams';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { AppShell } from '@/app/AppShell';
+import { catalogCollectionDefaults } from '@/test/catalogState';
 import { CatalogBrowser } from './CatalogBrowser';
 import {
   CATALOG_ROUTE_PATTERN,
@@ -183,6 +185,7 @@ function makeCatalog(catalogKey: CatalogKey, primaryControl: Control = control):
 
 function mockCatalog(catalog: Catalog) {
   mockedUseCatalog.mockReturnValue({
+    ...catalogCollectionDefaults(),
     catalog,
     loading: false,
     error: null,
@@ -307,6 +310,98 @@ describe('CatalogBrowser mobile focus restoration', () => {
       filteredFacetCounts: {} as ReturnType<typeof useFilteredControls>['filteredFacetCounts'],
       hasActiveFilters: false,
     }));
+  });
+
+  it.each(['body', 'detail'] as const)('dismisses navigation before the detail page, then preserves detail Escape scope (%s)', (detailCloseOrigin) => {
+    render(
+      <MemoryRouter initialEntries={['/katalog/gspp/TOP.1']}>
+        <AppShell />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    const detailPath = '/katalog/gspp/kontrolle/shared-alt-identifier';
+    const menuButton = screen.getByRole('button', { name: 'Menü öffnen' });
+    fireEvent.click(menuButton);
+    expect(screen.getByTestId('mobile-nav-backdrop')).toBeInTheDocument();
+
+    // body war bisher zugleich der globale Escape-Einstieg für die Detailseite.
+    const wasNotPrevented = fireEvent.keyDown(document.querySelector('body')!, { key: 'Escape' });
+
+    expect(screen.getByTestId('location')).toHaveTextContent(detailPath);
+    expect(screen.getByText(`Detail ${control.id}`)).toBeInTheDocument();
+    expect(wasNotPrevented).toBe(false);
+    expect(screen.queryByTestId('mobile-nav-backdrop')).not.toBeInTheDocument();
+    expect(menuButton).toHaveFocus();
+    expect(menuButton).toHaveAttribute('aria-expanded', 'false');
+
+    // Header-Escape bleibt außerhalb des bestehenden Detail-Escape-Bereichs.
+    expect(fireEvent.keyDown(menuButton, { key: 'Escape' })).toBe(true);
+    expect(screen.getByTestId('location')).toHaveTextContent(detailPath);
+    const detailTitle = screen.getByRole('heading', { level: 2, name: control.title });
+    fireEvent.keyDown(detailCloseOrigin === 'body' ? document.querySelector('body')! : detailTitle, { key: 'Escape' });
+
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/katalog\/gspp\/TOP\.1$/);
+    expect(screen.queryByText(`Detail ${control.id}`)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
+  });
+
+  it('focuses the new topic heading after selecting it in navigation from a detail page', () => {
+    const catalog = makeCatalog('gspp');
+    catalog.practices[0].topics.push({
+      id: 'TOP.2',
+      title: 'Zweites Thema',
+      label: '2',
+      practiceId: 'TOP',
+      controlCount: 0,
+      controlIds: [],
+    });
+    mockCatalog(catalog);
+    render(
+      <MemoryRouter initialEntries={['/katalog/gspp/TOP.1']}>
+        <AppShell />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+    scrollListTo(420);
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    const menuButton = screen.getByRole('button', { name: 'Menü öffnen' });
+    fireEvent.click(menuButton);
+
+    fireEvent.click(screen.getByRole('button', { name: /TOP\.2\s*Zweites Thema/ }));
+
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/katalog\/gspp\/TOP\.2$/);
+    expect(screen.queryByTestId('mobile-nav-backdrop')).not.toBeInTheDocument();
+    expect(screen.queryByText(`Detail ${control.id}`)).not.toBeInTheDocument();
+    expect(menuButton).not.toHaveFocus();
+    expect(screen.getByRole('heading', { level: 1, name: 'Zweites Thema' })).toHaveFocus();
+    expect(globalThis.scrollTo).toHaveBeenLastCalledWith(0, 0);
+  });
+
+  it.each(['Filter anzeigen', 'CSV'])('dismisses an existing %s sheet when the mobile navigation opens', (label) => {
+    render(
+      <MemoryRouter initialEntries={['/katalog/gspp/TOP.1']}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+    const body = document.querySelector('body')!;
+    fireEvent.click(screen.getByRole('button', { name: label }));
+    expect(body.style.overflow).toBe('hidden');
+
+    // Auch ein Klick ohne Button-Fokus muss den abgebauten Sheet-Fokus ablösen.
+    const menuButton = screen.getByRole('button', { name: 'Menü öffnen' });
+    expect(menuButton).not.toHaveFocus();
+    fireEvent.click(menuButton);
+
+    expect(menuButton).toHaveFocus();
+    expect(body.style.overflow).not.toBe('hidden');
+    expect(screen.queryByRole('button', { name: 'Filter anzeigen' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'CSV' })).not.toBeInTheDocument();
+    fireEvent.keyDown(menuButton, { key: 'Escape' });
+    expect(menuButton).toHaveFocus();
+    expect(screen.queryByText('Exportieren als CSV')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Filteraktion' })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
   });
 
   it('mounts only the mobile control list while the media query is false', () => {

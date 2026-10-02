@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import type { KeyboardEvent } from 'react';
+import type { KeyboardEvent, RefObject } from 'react';
 import { Link } from 'react-router';
 import { CatalogSwitcher } from './CatalogSwitcher';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
@@ -9,6 +9,9 @@ import { IconSearch, IconShield, IconMenu } from './icons';
 export interface HeaderBarProps {
   readonly onSearch?: (term: string) => void;
   readonly onMenuToggle?: () => void;
+  readonly menuExpanded?: boolean;
+  readonly menuControls?: string;
+  readonly menuButtonRef?: RefObject<HTMLButtonElement | null>;
   readonly catalogSwitcherOpen?: boolean;
   readonly onCatalogSwitcherOpenChange?: (open: boolean) => void;
   readonly className?: string;
@@ -46,6 +49,9 @@ function isEditableTarget(target: EventTarget | null) {
 export function HeaderBar({
   onSearch,
   onMenuToggle,
+  menuExpanded = false,
+  menuControls,
+  menuButtonRef,
   catalogSwitcherOpen,
   onCatalogSwitcherOpenChange,
   className = '',
@@ -81,7 +87,10 @@ export function HeaderBar({
           <button
             type="button"
             className="mr-2 rounded p-2 text-[var(--header-text-muted)] transition-colors hover:text-[var(--header-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--header-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--header-bg)] md:hidden"
+            ref={menuButtonRef}
             onClick={onMenuToggle}
+            aria-expanded={menuExpanded}
+            aria-controls={menuControls}
             aria-label="Menü öffnen"
           >
             <IconMenu className="w-5 h-5" />

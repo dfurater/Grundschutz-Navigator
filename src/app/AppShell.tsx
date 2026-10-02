@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useId, useRef } from 'react';
 import {
   Routes,
   Route,
@@ -25,6 +25,7 @@ import type { TreeItem } from '@/components/TreeNav';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useDragToResize } from '@/hooks/useDragToResize';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import { OWN_SCROLL_AREA_QUERY, useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
 import { CatalogBrowser } from '@/features/catalog/CatalogBrowser';
 import { VocabularyNamespacePage } from '@/features/vocabularies/VocabularyNamespacePage';
@@ -40,6 +41,7 @@ import {
 import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES } from '@/app/pageTitles';
 import { STATIC_PAGE_ROUTES } from '@/app/staticPageRoutes';
+import { MobileNavigationContext } from '@/state/MobileNavigationContext';
 
 /* ------------------------------------------------------------------ */
 /*  PageScroll — scroll wrapper for page content                      */
@@ -88,6 +90,9 @@ const SIDEBAR_MAX_WIDTH = 480;
 
 export function AppShell() {
   const [sideNavOpen, setSideNavOpen] = useState(false);
+  const sideNavId = useId();
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const isPersistentNav = useMediaQuery(OWN_SCROLL_AREA_QUERY);
   const [catalogSwitcherOpen, setCatalogSwitcherOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const {
@@ -107,6 +112,22 @@ export function AppShell() {
   const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const treeScrollRef = useOverlayScrollbars<HTMLDivElement>();
   const { catalog, activeCatalogKey: selectedCatalogKey, selectCatalog, loading, error } = useCatalog();
+
+  const closeSideNav = () => {
+    setSideNavOpen(false);
+    if (!isPersistentNav) menuButtonRef.current?.focus({ preventScroll: true });
+  };
+
+  // Capture garantiert den Vorrang vor dem Escape-Handler der Detailseite
+  // auch dann, wenn deren Bubble-Listener bereits vor dem Öffnen registriert war.
+  useGlobalEventListener(
+    'document', 'keydown', (event) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      event.preventDefault();
+      event.stopPropagation();
+      closeSideNav();
+    }, sideNavOpen && !isPersistentNav, undefined, true,
+  );
 
   // Die Route wählt den Katalog, nicht der Einstieg. Ein Routen-catalogKey darf
   // deshalb einen anderen ausgelieferten Katalog aktivieren, statt still auf den
@@ -157,7 +178,7 @@ export function AppShell() {
 
   const handleTreeSelect = (id: string) => {
     void navigate(buildGroupUrl(activeCatalogKey, id));
-    setSideNavOpen(false);
+    closeSideNav();
   };
 
   return (
@@ -176,7 +197,12 @@ export function AppShell() {
       */}
       <HeaderBar
         onSearch={handleSearch}
+        menuExpanded={sideNavOpen && !isPersistentNav}
+        menuControls={sideNavId}
+        menuButtonRef={menuButtonRef}
         onMenuToggle={() => {
+          // Safari gibt Klicks keinen Button-Fokus; main wird beim Öffnen inert.
+          if (!isPersistentNav) menuButtonRef.current?.focus({ preventScroll: true });
           setSideNavOpen((prev) => !prev);
           setCatalogSwitcherOpen(false);
           if (sidebarCollapsed) setSidebarCollapsed(false);
@@ -194,7 +220,7 @@ export function AppShell() {
           <div
             className="fixed inset-0 z-20 md:hidden"
             data-testid="mobile-nav-backdrop"
-            onClick={() => setSideNavOpen(false)}
+            onClick={closeSideNav}
             aria-hidden="true"
           >
             <BackdropTint className="bg-black/30" />
@@ -203,6 +229,8 @@ export function AppShell() {
 
         {/* Sidebar / Mobile Drawer */}
         <aside
+          id={sideNavId}
+          inert={!isPersistentNav && !sideNavOpen}
           className={`
             bg-white border-r border-slate-200 flex shrink-0 z-30 overflow-hidden
             fixed inset-y-0 left-0 top-14 md:relative md:inset-auto
@@ -244,7 +272,7 @@ export function AppShell() {
                 </span>
                 <button
                   type="button"
-                  onClick={() => setSideNavOpen(false)}
+                  onClick={closeSideNav}
                   className="shrink-0 rounded p-1 text-slate-300 transition-colors hover:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
                   aria-label="Menü schließen"
                 >
@@ -262,7 +290,7 @@ export function AppShell() {
                     key={to}
                     to={to}
                     end={false}
-                    onClick={() => setSideNavOpen(false)}
+                    onClick={closeSideNav}
                     className={({ isActive }) =>
                       [
                         'flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors',
@@ -342,9 +370,11 @@ export function AppShell() {
         {/* Main Content */}
         <main
           id="main-content"
+          inert={sideNavOpen && !isPersistentNav}
           className="flex-1 min-w-0 flex flex-col bg-white md:overflow-hidden"
         >
-          <Routes>
+          <MobileNavigationContext.Provider value={sideNavOpen && !isPersistentNav}>
+            <Routes>
               {STATIC_PAGE_ROUTES.map(({ path, title, element, scroll = true }) => (
                 <Route
                   key={path}
@@ -387,6 +417,7 @@ export function AppShell() {
                 }
               />
             </Routes>
+          </MobileNavigationContext.Provider>
           <Footer />
         </main>
       </div>

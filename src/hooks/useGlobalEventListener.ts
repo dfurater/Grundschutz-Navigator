@@ -14,6 +14,7 @@ export function useGlobalEventListener<
   listener: (event: GlobalEventMap<Target>[EventName]) => void,
   enabled = true,
   subscriptionKey?: unknown,
+  capture = false,
 ) {
   const onEvent = useEffectEvent(listener);
 
@@ -25,7 +26,8 @@ export function useGlobalEventListener<
       onEvent(event as GlobalEventMap<Target>[EventName]);
     };
 
-    eventTarget.addEventListener(eventName, handleEvent);
-    return () => eventTarget.removeEventListener(eventName, handleEvent);
-  }, [enabled, eventName, subscriptionKey, target]);
+    const captureOption: [] | [true] = capture ? [true] : [];
+    eventTarget.addEventListener(eventName, handleEvent, ...captureOption);
+    return () => eventTarget.removeEventListener(eventName, handleEvent, ...captureOption);
+  }, [capture, enabled, eventName, subscriptionKey, target]);
 }

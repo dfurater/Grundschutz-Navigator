@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { Control } from '@/domain/models';
 import { downloadCSV } from '@/features/export/csvExport';
+import { MobileNavigationContext } from '@/state/MobileNavigationContext';
 import { SearchResultsToolbar } from './SearchResultsToolbar';
 
 vi.mock('@/features/export/csvExport', () => ({
@@ -13,6 +14,37 @@ function makeControl(id: string): Control {
 }
 
 describe('SearchResultsToolbar', () => {
+  it('releases an open export sheet while the mobile navigation owns focus', () => {
+    const toolbar = (navigationOpen: boolean) => (
+      <MobileNavigationContext.Provider value={navigationOpen}>
+        <SearchResultsToolbar
+          checkedIds={new Set()}
+          onClearSelection={vi.fn()}
+          mobileSelectMode={false}
+          onToggleMobileSelectMode={vi.fn()}
+          isDesktop={false}
+          desktopViewControls={[makeControl('A.1')]}
+          mobileViewControls={[makeControl('A.1')]}
+          allControls={[makeControl('A.1')]}
+          onSelectionExported={vi.fn()}
+        />
+      </MobileNavigationContext.Provider>
+    );
+    const view = render(toolbar(false));
+    fireEvent.click(screen.getByRole('button', { name: 'CSV' }));
+    expect(screen.getByText('Exportieren als CSV')).toBeInTheDocument();
+    expect(document.querySelector('body')!.style.overflow).toBe('hidden');
+
+    view.rerender(toolbar(true));
+
+    expect(screen.queryByRole('button', { name: 'CSV' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Exportieren als CSV')).not.toBeInTheDocument();
+    expect(document.querySelector('body')!.style.overflow).not.toBe('hidden');
+    view.rerender(toolbar(false));
+    expect(screen.getByRole('button', { name: 'CSV' })).toBeInTheDocument();
+    expect(screen.queryByText('Exportieren als CSV')).not.toBeInTheDocument();
+  });
+
   it('shows the selection count and delegates clearing and the mobile toggle', () => {
     const onClearSelection = vi.fn();
     const onToggleMobileSelectMode = vi.fn();
