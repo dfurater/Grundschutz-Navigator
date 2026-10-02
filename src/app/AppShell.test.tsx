@@ -158,6 +158,44 @@ describe('AppShell', () => {
     expect(menuButton).toHaveAttribute('aria-expanded', 'false');
   });
 
+  it('makes the main content inert only while mobile navigation is open', () => {
+    let persistent = false;
+    mockedUseMediaQuery.mockImplementation((query) => query === '(min-width: 768px)' && persistent);
+    const view = render(<MemoryRouter><AppShell /></MemoryRouter>);
+    const main = view.container.querySelector('main');
+    const menuButton = screen.getByRole('button', { name: 'Menu' });
+    expect(main).not.toHaveAttribute('inert');
+
+    fireEvent.click(menuButton);
+    expect(main).toHaveAttribute('inert');
+    persistent = true;
+    view.rerender(<MemoryRouter><AppShell /></MemoryRouter>);
+    expect(main).not.toHaveAttribute('inert');
+    persistent = false;
+    view.rerender(<MemoryRouter><AppShell /></MemoryRouter>);
+    expect(main).toHaveAttribute('inert');
+    fireEvent.keyDown(menuButton, { key: 'Escape' });
+    expect(main).not.toHaveAttribute('inert');
+  });
+
+  it.each(['close', 'link', 'backdrop'] as const)('returns focus when mobile navigation is dismissed through %s', (method) => {
+    const { container } = render(<MemoryRouter><AppShell /></MemoryRouter>);
+    const menuButton = screen.getByRole('button', { name: 'Menu' });
+    fireEvent.click(menuButton);
+    const target = method === 'close'
+      ? screen.getByRole('button', { name: 'Menü schließen' })
+      : method === 'link' ? screen.getByRole('link', { name: 'Suche' }) : screen.getByTestId('mobile-nav-backdrop');
+    if (method === 'backdrop') screen.getByRole('link', { name: 'Suche' }).focus();
+    else target.focus();
+    const focus = vi.spyOn(menuButton, 'focus');
+    fireEvent.click(target);
+
+    expect(container.querySelector('aside')).toHaveAttribute('inert');
+    expect(container.querySelector('main')).not.toHaveAttribute('inert');
+    expect(menuButton).toHaveFocus();
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+  });
+
   it.each(['body', 'menu', 'drawer'] as const)('closes the mobile drawer for Escape from %s and returns focus without scrolling', (origin) => {
     const bubbleHandler = vi.fn();
     const { container } = render(

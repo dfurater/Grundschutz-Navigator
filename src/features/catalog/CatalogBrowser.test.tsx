@@ -346,6 +346,31 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
   });
 
+  it.each(['Filter anzeigen', 'CSV'])('dismisses an existing %s sheet when the mobile navigation opens', (label) => {
+    render(
+      <MemoryRouter initialEntries={['/katalog/gspp/TOP.1']}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+    const body = document.querySelector('body')!;
+    fireEvent.click(screen.getByRole('button', { name: label }));
+    expect(body.style.overflow).toBe('hidden');
+
+    // Der App-Kopf bleibt z. B. über den Such-Shortcut erreichbar.
+    const menuButton = screen.getByRole('button', { name: 'Menü öffnen' });
+    menuButton.focus();
+    fireEvent.click(menuButton);
+
+    expect(body.style.overflow).not.toBe('hidden');
+    expect(screen.queryByRole('button', { name: 'Filter anzeigen' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'CSV' })).not.toBeInTheDocument();
+    fireEvent.keyDown(menuButton, { key: 'Escape' });
+    expect(menuButton).toHaveFocus();
+    expect(screen.queryByText('Exportieren als CSV')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Filteraktion' })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
+  });
+
   it('mounts only the mobile control list while the media query is false', () => {
     renderCatalogBrowser();
 

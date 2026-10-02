@@ -41,6 +41,7 @@ import {
 import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES } from '@/app/pageTitles';
 import { STATIC_PAGE_ROUTES } from '@/app/staticPageRoutes';
+import { MobileNavigationContext } from '@/state/MobileNavigationContext';
 
 /* ------------------------------------------------------------------ */
 /*  PageScroll — scroll wrapper for page content                      */
@@ -112,6 +113,11 @@ export function AppShell() {
   const treeScrollRef = useOverlayScrollbars<HTMLDivElement>();
   const { catalog, activeCatalogKey: selectedCatalogKey, selectCatalog, loading, error } = useCatalog();
 
+  const closeSideNav = () => {
+    setSideNavOpen(false);
+    if (!isPersistentNav) menuButtonRef.current?.focus({ preventScroll: true });
+  };
+
   // Capture garantiert den Vorrang vor dem Escape-Handler der Detailseite
   // auch dann, wenn deren Bubble-Listener bereits vor dem Öffnen registriert war.
   useGlobalEventListener(
@@ -119,8 +125,7 @@ export function AppShell() {
       if (event.key !== 'Escape' || event.defaultPrevented) return;
       event.preventDefault();
       event.stopPropagation();
-      setSideNavOpen(false);
-      menuButtonRef.current?.focus({ preventScroll: true });
+      closeSideNav();
     }, sideNavOpen && !isPersistentNav, undefined, true,
   );
 
@@ -173,7 +178,7 @@ export function AppShell() {
 
   const handleTreeSelect = (id: string) => {
     void navigate(buildGroupUrl(activeCatalogKey, id));
-    setSideNavOpen(false);
+    closeSideNav();
   };
 
   return (
@@ -213,7 +218,7 @@ export function AppShell() {
           <div
             className="fixed inset-0 z-20 md:hidden"
             data-testid="mobile-nav-backdrop"
-            onClick={() => setSideNavOpen(false)}
+            onClick={closeSideNav}
             aria-hidden="true"
           >
             <BackdropTint className="bg-black/30" />
@@ -265,7 +270,7 @@ export function AppShell() {
                 </span>
                 <button
                   type="button"
-                  onClick={() => setSideNavOpen(false)}
+                  onClick={closeSideNav}
                   className="shrink-0 rounded p-1 text-slate-300 transition-colors hover:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
                   aria-label="Menü schließen"
                 >
@@ -283,7 +288,7 @@ export function AppShell() {
                     key={to}
                     to={to}
                     end={false}
-                    onClick={() => setSideNavOpen(false)}
+                    onClick={closeSideNav}
                     className={({ isActive }) =>
                       [
                         'flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors',
@@ -363,9 +368,11 @@ export function AppShell() {
         {/* Main Content */}
         <main
           id="main-content"
+          inert={sideNavOpen && !isPersistentNav}
           className="flex-1 min-w-0 flex flex-col bg-white md:overflow-hidden"
         >
-          <Routes>
+          <MobileNavigationContext.Provider value={sideNavOpen && !isPersistentNav}>
+            <Routes>
               {STATIC_PAGE_ROUTES.map(({ path, title, element, scroll = true }) => (
                 <Route
                   key={path}
@@ -408,6 +415,7 @@ export function AppShell() {
                 }
               />
             </Routes>
+          </MobileNavigationContext.Provider>
           <Footer />
         </main>
       </div>

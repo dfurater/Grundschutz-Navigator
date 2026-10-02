@@ -88,7 +88,7 @@ export function Tooltip({
         closeTooltip();
       }
     };
-    // eslint-disable-next-line no-restricted-syntax -- GSPP-303 T10: Esc-Listener lebt und stirbt in diesem Effekt (single owner); `useGlobalEventListener` kennt keine Capture-Phase.
+    // eslint-disable-next-line no-restricted-syntax -- GSPP-303 T10: Esc-Listener und Cleanup bleiben gemeinsam an open und closeTooltip dieses Effekts gebunden (single owner).
     globalThis.document.addEventListener('keydown', handleKeyDown, true);
     return () => {
       // eslint-disable-next-line no-restricted-syntax -- GSPP-303 T10: Cleanup des obigen Listeners im selben Effekt (single owner).
