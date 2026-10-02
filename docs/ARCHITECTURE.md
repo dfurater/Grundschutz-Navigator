@@ -138,6 +138,7 @@ src/                              # Anwendungsquellcode
 │   └── oscalRootDispatch.ts          # Stufe 2: Root-Dispatch
 ├── state/                        # Globaler Anwendungszustand
 │   ├── CatalogContext.tsx            # Katalog-Kontextprovider
+│   ├── MobileNavigationContext.ts    # Mobiler Navigationszustand für Sheet-Mount-Gates
 │   ├── catalogArtifacts.ts           # Auslieferungsvertrag und Ladevorgang je Katalog
 │   ├── catalogParseWorker.ts         # Typisierter Client des Katalog-Parser-Workers
 │   ├── catalogParsing.ts             # Parsepipeline für Worker und Main-Thread-Fallback
@@ -547,6 +548,12 @@ Die sichtbare Bereichsüberschrift der Toolbar nennt nur den Namen der gewählte
 | `CatalogMobileDetailOverlay` | Besitzt Focus-Trap, Escape und Scroll-Lock des Details zwischen `md` und `lg`, wo die Shell selbst nicht scrollt. Bleibt als Komponente gemountet und steuert Sichtbarkeit über das `active`-Flag; inaktiv rendert sie `null` (dokumentierte Ausnahme der Breakpoint-Mount-Strategie). |
 | `CatalogDetailPage` | Zeigt das Detail unterhalb `md` als Seite im Dokumentfluss (`ControlDetail` mit `layout="page"`), ohne Overlay und ohne Scroll-Sperre. |
 | `useDocumentDetailPage` | Besitzt Scroll-, Fokus- und Escape-Vertrag der mobilen Detailseite (siehe unten). |
+
+### Mobile Navigation
+
+Unterhalb `md` (768 px, `OWN_SCROLL_AREA_QUERY`) besitzt die offene Navigationsschublade Escape in der Capture-Phase am `document`. `useGlobalEventListener` behält für bestehende Aufrufer die Bubble-Phase bei; seine optionale Capture-Einstellung wird bei Anmeldung und Cleanup identisch verwendet. Die Schublade verhindert die Standardaktion und stoppt die Weitergabe, bevor darunterliegende Detail- oder Sheet-Handler reagieren, unabhängig von deren Registrierungsreihenfolge. Sie schließt und setzt den Fokus mit `preventScroll` auf das Menü-Symbol im App-Kopf zurück. X, Abdunklung und Navigationsauswahl verwenden denselben Schließübergang zum Menüsymbol. Verlässt die Navigationsauswahl eine offene mobile Detailseite und zeigt einen anderen Themen- oder Praktikbereich, setzt `useDocumentDetailPage` den abschließenden Fokus auf dessen Bereichsüberschrift und startet die Liste oben. Auf dem Desktop bleibt die Fokusführung der persistenten Navigation erhalten. Beim bloßen Schließen per Escape, X oder Abdunklung bleibt das Detail dahinter offen; ein weiteres Escape am Menüsymbol bleibt außerhalb des Detail-Geltungsbereichs. Erst Escape aus dem Detail oder vom `body` schließt es regulär. Der Menübutton meldet den Zustand mit `aria-expanded` und verweist über `aria-controls` auf die stabile ID der Schublade. Eine geschlossene mobile Schublade bleibt für die vorhandene Transition gerendert, ist jedoch per `inert` weder fokussierbar noch im Barrierefreiheitsbaum erreichbar. Beim Öffnen setzt die Shell den Fokus mit `preventScroll` auf den Menübutton, bevor der Hauptinhalt `inert` wird oder ein bereits geöffnetes Sheet abgebaut wird; damit erhält auch ein Safari-Klick ohne nativen Button-Fokus ein sichtbares Fokusziel. Solange die mobile Schublade offen ist, ist der Hauptinhalt per `inert` aus Tastatur- und Screenreader-Navigation genommen. So können dort keine Filter- oder Export-Sheets hinter der Schublade geöffnet werden. Der App-Kopf bleibt bedienbar, und der Katalogwechsler schließt die Schublade über den bestehenden Zustandsausschluss. Ab `md` sind Hauptinhalt und Seitenleiste ohne `inert` bedienbar; die Navigation besitzt dort keinen mobilen Escape-Handler.
+
+Der von der Shell bereitgestellte `MobileNavigationContext` trägt ausschließlich den mobilen Öffnungszustand an die Katalog- und Such-Toolbar weiter. Während die Navigation offen ist, bauen sie ihre mobilen Filter- und Export-Sheets einschließlich der Trigger ab. Damit gibt auch ein zuvor geöffnetes Sheet seine Fokus- und Scroll-Sperre frei, wenn die Navigation anschließend über den App-Kopf geöffnet wird. Nach dem Schließen der Navigation erscheinen die Trigger wieder mit geschlossenem Sheet; Filter- und Auswahlzustand bleiben beim jeweiligen Composer erhalten.
 
 ### Mobile Detailseite
 

@@ -1,4 +1,6 @@
+import { useContext } from 'react';
 import type { Control } from '@/domain/models';
+import { MobileNavigationContext } from '@/state/MobileNavigationContext';
 import { Button } from '@/components/Button';
 import { IconCheck, IconX } from '@/components/icons';
 import { CatalogExportMenu } from '@/features/catalog/CatalogExportMenu';
@@ -32,6 +34,7 @@ export function SearchResultsToolbar({
   allControls,
   onSelectionExported,
 }: SearchResultsToolbarProps) {
+  const mobileNavigationOpen = useContext(MobileNavigationContext);
   return (
     <div className="flex flex-wrap items-center justify-end gap-2 shrink-0">
       {checkedIds.size > 0 && (
@@ -67,7 +70,7 @@ export function SearchResultsToolbar({
           sectionFilename={SEARCH_RESULTS_FILENAME}
         />
       )}
-      {!isDesktop && (
+      {!isDesktop && !mobileNavigationOpen && (
         <CatalogMobileExportSheet
           checkedIds={checkedIds}
           filteredControls={mobileViewControls}
