@@ -133,7 +133,7 @@ export function keepInVisibleArea(tooltip: HTMLElement): () => void {
     panelObserver = new ResizeObserver(reclamp);
     panelObserver.observe(panel);
   }
-  // eslint-disable-next-line no-restricted-syntax -- Scroll-/Resize-Listener leben und sterben mit dieser Begrenzung (single owner); `useGlobalEventListener` kennt keine Capture-Phase.
+  // eslint-disable-next-line no-restricted-syntax -- Imperative DOM-Begrenzung außerhalb von React: Scroll-Capture, Resize und Observer teilen denselben Cleanup (single owner).
   globalThis.document.addEventListener('scroll', reclampOnScroll, { capture: true, passive: true });
   // eslint-disable-next-line no-restricted-syntax -- siehe oben, dieselbe Begrenzung.
   globalThis.addEventListener('resize', reclamp);
