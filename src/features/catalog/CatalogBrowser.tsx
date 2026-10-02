@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES } from '@/app/pageTitles';
-import type { Control } from '@/domain/models';
+import type { Catalog, Control } from '@/domain/models';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useControlNavigation } from '@/hooks/useControlNavigation';
 import { useControlSelection } from '@/hooks/useControlSelection';
@@ -28,6 +28,12 @@ const DETAIL_DEFAULT_WIDTH = 420;
 const DETAIL_MIN_WIDTH = 320;
 const DETAIL_MAX_WIDTH = 720;
 const EMPTY_CONTROLS_BY_ID = new Map<string, Control>();
+
+type CatalogDisplayState =
+  | { kind: 'loading' }
+  | { kind: 'error'; error: string }
+  | { kind: 'notFound' }
+  | { kind: 'content'; catalog: Catalog };
 
 export function CatalogBrowser() {
   const { catalogKey, groupId, altIdentifier } = useParams<{
@@ -69,6 +75,17 @@ export function CatalogBrowser() {
     searchString,
     navigate,
   });
+  // Renderentscheidung und Listenbereitschaft teilen dieselbe Ansichtspriorität.
+  let displayState: CatalogDisplayState;
+  if (loading) {
+    displayState = { kind: 'loading' };
+  } else if (error) {
+    displayState = { kind: 'error', error };
+  } else if (routeNotFound || !catalog) {
+    displayState = { kind: 'notFound' };
+  } else {
+    displayState = { kind: 'content', catalog };
+  }
   const selectionScopeId =
     catalog?.catalogKey ?? catalogKey ?? '__unknown_catalog__';
   // Unterhalb `md` scrollt das Dokument: Das Detail ersetzt dort die Liste als
@@ -79,7 +96,7 @@ export function CatalogBrowser() {
     enabled: !hasOwnScrollArea,
     controlId: selectedControl?.id ?? null,
     scopeKey: `${catalogKey ?? selectionScopeId}:${scopeId ?? ''}`,
-    listReady: Boolean(catalog) && !loading && !error && !routeNotFound,
+    listReady: displayState.kind === 'content',
     onClose: closeDetail,
   });
   const {
@@ -137,7 +154,7 @@ export function CatalogBrowser() {
 
   const scopeTitle = useMemo(() => describeCatalogScope(catalog, scopeId), [catalog, scopeId]);
 
-  if (loading) {
+  if (displayState.kind === 'loading') {
     return (
       <>
         <PageTitle title={PAGE_TITLES.catalog} />
@@ -153,21 +170,21 @@ export function CatalogBrowser() {
     );
   }
 
-  if (error) {
+  if (displayState.kind === 'error') {
     return (
       <>
         <PageTitle title={PAGE_TITLES.catalog} />
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="text-center max-w-sm">
             <p className="text-red-600 font-medium">Fehler beim Laden</p>
-            <p className="text-sm text-red-500 mt-1">{error}</p>
+            <p className="text-sm text-red-500 mt-1">{displayState.error}</p>
           </div>
         </div>
       </>
     );
   }
 
-  if (routeNotFound || !catalog) {
+  if (displayState.kind === 'notFound') {
     return (
       <>
         <PageTitle title={PAGE_TITLES.catalogTargetNotFound} />
@@ -176,18 +193,19 @@ export function CatalogBrowser() {
     );
   }
 
+  const contentCatalog = displayState.catalog;
   // Titelpriorität: Kontrolle vor Gruppe vor Katalogwurzel. Alle Bestandteile
   // stammen aus aufgelösten Domain-Daten, nie aus rohen URL-Segmenten.
   let pageTitle: string;
   if (selectedControl) {
-    pageTitle = `${selectedControl.id} — ${selectedControl.title} — ${catalog.metadata.title}`;
+    pageTitle = `${selectedControl.id} — ${selectedControl.title} — ${contentCatalog.metadata.title}`;
   } else if (scopeId) {
-    pageTitle = `${scopeTitle.documentTitle} — ${catalog.metadata.title}`;
+    pageTitle = `${scopeTitle.documentTitle} — ${contentCatalog.metadata.title}`;
   } else {
-    pageTitle = catalog.metadata.title;
+    pageTitle = contentCatalog.metadata.title;
   }
 
-  const controlsById = catalog.controlsById ?? EMPTY_CONTROLS_BY_ID;
+  const controlsById = contentCatalog.controlsById ?? EMPTY_CONTROLS_BY_ID;
   const filterPanelProps: FilterPanelProps = {
     filters,
     facetCounts,
@@ -220,7 +238,7 @@ export function CatalogBrowser() {
             onToggleMobileSelectMode={toggleMobileSelection}
             onClearSelection={clearSelection}
             filteredControls={filtered}
-            allControls={catalog.controls}
+            allControls={contentCatalog.controls}
             sectionFilename={`grundschutz-${scopeId ?? 'katalog'}.csv`}
             filterPanelProps={filterPanelProps}
             isDesktop={isDesktop}
@@ -246,7 +264,7 @@ export function CatalogBrowser() {
               <CatalogMobileList
                 controls={filtered}
                 controlsById={controlsById}
-                allControls={catalog.controls}
+                allControls={contentCatalog.controls}
                 hasOwnScrollArea={hasOwnScrollArea}
                 selectMode={mobileSelectMode}
                 checkedIds={checkedIds}
@@ -257,7 +275,7 @@ export function CatalogBrowser() {
             )}
 
             <CatalogDesktopSidebar
-              catalog={catalog}
+              catalog={contentCatalog}
               selectedControl={isDesktop ? selectedControl : null}
               detailWidth={detailWidth}
               detailMinWidth={DETAIL_MIN_WIDTH}
@@ -277,8 +295,8 @@ export function CatalogBrowser() {
 
         {showDetailAsPage && selectedControl && (
           <CatalogDetailPage
-            key={`${catalog.catalogKey}:${selectedControl.id}`}
-            catalog={catalog}
+            key={`${contentCatalog.catalogKey}:${selectedControl.id}`}
+            catalog={contentCatalog}
             control={selectedControl}
             onClose={closeDetail}
             onNavigateToControl={navigateToControl}
@@ -288,7 +306,7 @@ export function CatalogBrowser() {
         {/* GSPP-268, bewusste Ausnahme: rendert inaktiv bereits null und besitzt
           seinen Modal-Lifecycle selbst (GSPP-188) — ein parent-Gate brächte keinen Mount-Gewinn. */}
         <CatalogMobileDetailOverlay
-          catalog={catalog}
+          catalog={contentCatalog}
           control={selectedControl}
           active={!!selectedControl && !isDesktop && hasOwnScrollArea}
           onClose={closeDetail}
