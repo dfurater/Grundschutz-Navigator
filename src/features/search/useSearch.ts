@@ -8,44 +8,19 @@ import {
   normalizeIdentifier,
   resolveControlVocabularies,
 } from '@/domain/vocabulary';
-import { classifyQuery } from '@/domain/identifierQuery';
 import { resolvePracticeVocabulary } from '@/domain/taxonomyVocabulary';
-import { compareControlIds } from '@/domain/germanCollation';
+import {
+  normalizeSearchValue,
+  rankSearchResults,
+  type SearchDocument,
+  type SearchIndexes,
+} from './searchRanking';
 
-export interface SearchResult {
-  control: Control;
-}
+export type { SearchResult } from './searchRanking';
 
 export const MAX_SEARCH_CACHE_ENTRIES = 3;
 
-const NATURAL_LANGUAGE_PREFIX_MIN_LENGTH = 6;
-const NATURAL_LANGUAGE_METADATA_PREFIX_WEIGHT = 0.75;
-const NATURAL_LANGUAGE_CONTENT_PREFIX_WEIGHT = 0.5;
-const TOKEN_PATTERN = /[\p{L}\p{N}]+/gu;
 const EMPTY_PRACTICES: Practice[] = [];
-
-interface SearchIndexes {
-  controlIds: Index;
-  titles: Index;
-  links: Index;
-  metadata: Index;
-  content: Index;
-}
-
-interface SearchDocument {
-  control: Control;
-  numericId: number;
-  controlIdText: string;
-  titleText: string;
-  linkText: string;
-  metadataText: string;
-  contentText: string;
-  /** Eigene Kennungen der aufgelösten Vokabular-Einträge dieses Controls */
-  vocabularyIdentifiers: string[];
-  normalizedControlId: string;
-  normalizedTitle: string;
-  normalizedLinkTargets: string[];
-}
 
 interface SearchCacheEntry {
   catalogKey: string;
@@ -215,7 +190,12 @@ function buildIdentifierIndex(
   return { identifierIndex, controlIdentifiers };
 }
 
-function buildSearchCacheEntry(
+/**
+ * Baut Suchdokumente, FlexSearch-Indizes und Kennungsauflösung eines Katalogs.
+ * Rein und ohne Cache-Zugriff; das Ergebnis ist zugleich die `SearchView` für
+ * `rankSearchResults`.
+ */
+export function buildSearchCacheEntry(
   catalogKey: string,
   controls: Control[],
   practices: Practice[],
@@ -295,28 +275,6 @@ function createSearchIndexes(): SearchIndexes {
   };
 }
 
-function normalizeSearchValue(value: string) {
-  return value
-    .toLocaleLowerCase('de-DE')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function shouldUseNaturalLanguagePrefixSearch(normalizedQuery: string) {
-  return (
-    normalizedQuery.length >= NATURAL_LANGUAGE_PREFIX_MIN_LENGTH &&
-    !normalizedQuery.includes(' ')
-  );
-}
-
-function hasNaturalLanguagePrefixMatch(text: string, normalizedQuery: string) {
-  const normalizedTokens = normalizeSearchValue(text).match(TOKEN_PATTERN) ?? [];
-
-  return normalizedTokens.some((token) => token.startsWith(normalizedQuery));
-}
-
 /**
  * Full-text search hook using FlexSearch.
  *
@@ -386,180 +344,10 @@ export function useSearch(
     }
   }, [normalizedCatalogKey, cacheEntry, shouldCache]);
 
-  const {
-    searchDocuments,
-    controlMap,
-    searchDocumentMap,
-    indexes,
-    identifierIndex,
-    controlIdentifiers,
-  } = cacheEntry;
-
-  const results = useMemo(() => {
-    if (!query.trim() || controls.length === 0) {
-      return [];
-    }
-
-    // Kennungsanfragen laufen ausschließlich über die exakte Auflösung. Ein
-    // Rückfall auf die Volltextsuche würde das Teiltoken-Verhalten aus
-    // GSPP-274 durch die Hintertür zurückholen, deshalb bleibt eine
-    // unbekannte Kennung ohne Treffer statt ohne Antwort. Das gilt auch für
-    // eine unvollständige Kennung: Sie ist als Kennung gemeint und darf nicht
-    // als Textfragment auf Titel oder Fließtext treffen.
-    const queryKind = classifyQuery(query);
-
-    if (queryKind === 'malformed-identifier') {
-      return [];
-    }
-
-    if (queryKind === 'identifier') {
-      const identifier = normalizeIdentifier(query);
-      const matches = identifierIndex.get(identifier);
-
-      if (!matches) {
-        return [];
-      }
-
-      const exactControlId = controlIdentifiers.get(identifier);
-
-      return [...matches]
-        .sort((left, right) => {
-          // Ein Control-`alt-identifier`-Treffer steht vorn, der Rest folgt in
-          // Katalogreihenfolge.
-          if (left === exactControlId) return -1;
-          if (right === exactControlId) return 1;
-          return left - right;
-        })
-        .flatMap((numericId) => {
-          const control = controlMap.get(numericId);
-          return control ? [{ control }] : [];
-        });
-    }
-
-    const candidateLimit = controls.length;
-    const normalizedQuery = normalizeSearchValue(query);
-    const rankedMatches = new Map<number, { score: number; bestRank: number }>();
-    const searchBuckets = [
-      { ids: indexes.controlIds.search(query, { limit: candidateLimit }), weight: 5 },
-      { ids: indexes.titles.search(query, { limit: candidateLimit }), weight: 4 },
-      { ids: indexes.links.search(query, { limit: candidateLimit }), weight: 3 },
-      { ids: indexes.metadata.search(query, { limit: candidateLimit }), weight: 2 },
-      { ids: indexes.content.search(query, { limit: candidateLimit }), weight: 1 },
-    ];
-
-    for (const bucket of searchBuckets) {
-      bucket.ids.forEach((rawId, rank) => {
-        const numericId = rawId as number;
-        const document = searchDocumentMap.get(numericId);
-
-        if (!document) {
-          return;
-        }
-
-        const rankScore = bucket.weight * 1000 + (candidateLimit - rank);
-        const exactIdBoost =
-          document.normalizedControlId === normalizedQuery ? 5000 : 0;
-        const exactLinkBoost = document.normalizedLinkTargets.includes(
-          normalizedQuery,
-        )
-          ? 2500
-          : 0;
-        const exactTitleBoost =
-          document.normalizedTitle === normalizedQuery ? 1000 : 0;
-        const score = rankScore + exactIdBoost + exactLinkBoost + exactTitleBoost;
-        const existing = rankedMatches.get(numericId);
-
-        if (!existing) {
-          rankedMatches.set(numericId, { score, bestRank: rank });
-          return;
-        }
-
-        rankedMatches.set(numericId, {
-          score: existing.score + score,
-          bestRank: Math.min(existing.bestRank, rank),
-        });
-      });
-    }
-
-    if (shouldUseNaturalLanguagePrefixSearch(normalizedQuery)) {
-      searchDocuments.forEach((document) => {
-        if (
-          hasNaturalLanguagePrefixMatch(
-            document.metadataText,
-            normalizedQuery,
-          )
-        ) {
-          const existing = rankedMatches.get(document.numericId);
-          const score =
-            NATURAL_LANGUAGE_METADATA_PREFIX_WEIGHT * 1000 +
-            (searchDocuments.length - document.numericId);
-
-          rankedMatches.set(document.numericId, {
-            score: (existing?.score ?? 0) + score,
-            bestRank: Math.min(existing?.bestRank ?? document.numericId, document.numericId),
-          });
-        }
-
-        if (
-          hasNaturalLanguagePrefixMatch(
-            document.contentText,
-            normalizedQuery,
-          )
-        ) {
-          const existing = rankedMatches.get(document.numericId);
-          const score =
-            NATURAL_LANGUAGE_CONTENT_PREFIX_WEIGHT * 1000 +
-            (searchDocuments.length - document.numericId);
-
-          rankedMatches.set(document.numericId, {
-            score: (existing?.score ?? 0) + score,
-            bestRank: Math.min(existing?.bestRank ?? document.numericId, document.numericId),
-          });
-        }
-      });
-    }
-
-    const exactIdMatches = searchDocuments
-      .filter((document) => document.normalizedControlId === normalizedQuery)
-      .map((document) => document.numericId);
-
-    const matched = [...rankedMatches.entries()]
-      .sort((a, b) => {
-        if (b[1].score !== a[1].score) {
-          return b[1].score - a[1].score;
-        }
-
-        if (a[1].bestRank !== b[1].bestRank) {
-          return a[1].bestRank - b[1].bestRank;
-        }
-
-        const leftControl = controlMap.get(a[0]);
-        const rightControl = controlMap.get(b[0]);
-
-        return compareControlIds(leftControl?.id ?? '', rightControl?.id ?? '');
-      })
-      .map(([numericId]) => numericId)
-      .filter((numericId) => !exactIdMatches.includes(numericId));
-
-    const orderedMatches = [...exactIdMatches, ...matched].flatMap(
-      (numericId) => {
-        const control = controlMap.get(numericId);
-
-        return control ? [{ control }] : [];
-      },
-    );
-
-    return orderedMatches;
-  }, [
-    controls.length,
-    query,
-    controlMap,
-    indexes,
-    searchDocumentMap,
-    searchDocuments,
-    identifierIndex,
-    controlIdentifiers,
-  ]);
+  const results = useMemo(
+    () => rankSearchResults(query, cacheEntry),
+    [query, cacheEntry],
+  );
 
   return { results, totalResults: results.length };
 }

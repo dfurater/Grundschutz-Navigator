@@ -8,7 +8,8 @@ import {
   rmSync,
   writeFileSync,
 } from 'fs';
-import { join, relative } from 'path';
+import { join, relative, resolve } from 'path';
+import { listSeoRouteMetadata, loadPublicSeoCatalogs } from './scripts/seoRouteEntries';
 import { tmpdir } from 'os';
 import { afterEach, afterAll, describe, expect, it } from 'vitest';
 import {
@@ -51,7 +52,7 @@ afterAll(() => {
 const tempDirs: string[] = [];
 
 const INDEX_HTML =
-  '<!doctype html><html><body><script type="module" src="/Grundschutz-Navigator/assets/app.js"></script></body></html>';
+  '<!doctype html><html><head><meta property="og:title" content="Grundschutz++ Navigator" /><meta property="og:url" content="https://dfurater.github.io/Grundschutz-Navigator/" /></head><body><script type="module" src="/Grundschutz-Navigator/assets/app.js"></script></body></html>';
 
 const CONTENT_ROUTES = [
   '/suche',
@@ -93,12 +94,23 @@ function listFilesRecursive(root: string): string[] {
   return files.sort();
 }
 
-function expectedEntryFiles(catalogKeys: readonly string[]): string[] {
-  return [
-    ...CONTENT_ROUTES.map((route) => `${route.slice(1)}/index.html`),
-    ...catalogKeys.map((catalogKey) => `katalog/${catalogKey}/index.html`),
-  ].sort();
+// Spiegelt den Schreiber: Routen tragen kodierte IDs, die Dateipfade dekodierte Segmente.
+function entryFileForRoute(route: string): string {
+  if (route === '/') return 'index.html';
+  return join(...route.slice(1).split('/').map(segment => decodeURIComponent(segment)), 'index.html');
 }
+
+function expectedEntryFiles(): string[] {
+  const catalogs = loadPublicSeoCatalogs(resolve(import.meta.dirname, 'public/data'));
+  return listSeoRouteMetadata(catalogs).map(entry => entryFileForRoute(entry.path)).sort();
+}
+
+describe('entryFileForRoute', () => {
+  it('maps the root and decodes encoded route segments like the SEO writer', () => {
+    expect(entryFileForRoute('/')).toBe('index.html');
+    expect(entryFileForRoute('/katalog/x/%C3%9Cberblick')).toBe(join('katalog', 'x', 'Überblick', 'index.html'));
+  });
+});
 
 afterEach(() => {
   while (tempDirs.length > 0) {
@@ -284,46 +296,47 @@ describe('writeSpaFallbackFile', () => {
 });
 
 describe('writeStaticRouteEntries', () => {
-  it('creates byte-identical index.html documents for every fixed content route and supported catalog entry', () => {
+  it('delivers route-specific OG metadata for every canonical entry', () => {
     const distDir = createTempDistWithIndex();
-
-    writeStaticRouteEntries(distDir, SUPPORTED_CATALOG_KEYS);
-
-    for (const entryFile of expectedEntryFiles(SUPPORTED_CATALOG_KEYS)) {
-      const entryPath = join(distDir, entryFile);
-      expect(existsSync(entryPath), entryPath).toBe(true);
-      expect(readFileSync(entryPath).equals(Buffer.from(INDEX_HTML, 'utf8')), entryPath).toBe(
-        true,
-      );
-    }
-  });
-
-  it('derives the materialized entries from the same route contract as the route list', () => {
-    const distDir = createTempDistWithIndex();
-
     writeStaticRouteEntries(distDir);
-
-    expect(listFilesRecursive(distDir)).toEqual(
-      ['index.html', ...expectedEntryFiles(SUPPORTED_CATALOG_KEYS)].sort(),
-    );
+    for (const route of listCanonicalEntryRoutes()) {
+      const html = readFileSync(join(distDir, route.slice(1), 'index.html'), 'utf8');
+      expect(html).toContain(`<meta property="og:url" content="https://dfurater.github.io/Grundschutz-Navigator${route}" />`);
+      expect(html.match(/property="og:title"/g)).toHaveLength(1);
+      expect(html).toContain('<script type="module" src="/Grundschutz-Navigator/assets/app.js"></script>');
+    }
+    expect(readFileSync(join(distDir, 'suche/index.html'), 'utf8')).toContain('content="Suche"');
   });
 
-  it('never creates /katalog/index.html, /mehr/index.html, or any unlisted route document', () => {
+  it('materializes exactly the resolved public route list, including group and control entries', () => {
     const distDir = createTempDistWithIndex();
+    writeStaticRouteEntries(distDir);
+    expect(listFilesRecursive(distDir)).toEqual(expectedEntryFiles());
+    expect(existsSync(join(distDir, 'katalog/gspp/GC/index.html'))).toBe(true);
+    expect(existsSync(join(distDir, 'katalog/gspp/kontrolle/80351189-6ffc-495e-a995-6219b9704724/index.html'))).toBe(true);
+    expect(existsSync(join(distDir, 'katalog/index.html'))).toBe(false);
+    expect(existsSync(join(distDir, 'mehr/index.html'))).toBe(false);
+  });
 
-    writeStaticRouteEntries(distDir, SUPPORTED_CATALOG_KEYS);
-
-    expect(existsSync(join(distDir, 'katalog', 'index.html'))).toBe(false);
-    expect(existsSync(join(distDir, 'mehr', 'index.html'))).toBe(false);
-    const created = listFilesRecursive(distDir);
-    expect(created).toEqual(
-      ['index.html', ...expectedEntryFiles(SUPPORTED_CATALOG_KEYS)].sort(),
-    );
+  it('keeps unknown targets on the neutral 404 fallback and supports a normalized BUILD_BASE', () => {
+    const distDir = createTempDistWithIndex();
+    process.env.BUILD_BASE = '/preview';
+    try {
+      writeStaticRouteEntries(distDir, []);
+      writeSpaFallbackFile(distDir);
+      const fallback = readFileSync(join(distDir, '404.html'), 'utf8');
+      expect(fallback).toContain('property="og:title" content="Grundschutz++ Navigator"');
+      expect(fallback).toContain('property="og:url" content="https://dfurater.github.io/preview/"');
+      expect(fallback).toBe(readFileSync(join(distDir, 'index.html'), 'utf8'));
+      expect(readFileSync(join(distDir, 'suche/index.html'), 'utf8')).toContain('content="https://dfurater.github.io/preview/suche"');
+      expect(existsSync(join(distDir, 'katalog/unknown/index.html'))).toBe(false);
+    } finally {
+      delete process.env.BUILD_BASE;
+    }
   });
 
   it('fails safely before writing anything when the build output is missing', () => {
     const distDir = createTempDistDir();
-
     expect(() => writeStaticRouteEntries(distDir)).toThrow(
       `Cannot create static route entries without build output at ${join(distDir, 'index.html')}`,
     );
