@@ -94,12 +94,23 @@ function listFilesRecursive(root: string): string[] {
   return files.sort();
 }
 
+// Spiegelt den Schreiber: Routen tragen kodierte IDs, die Dateipfade dekodierte Segmente.
+function entryFileForRoute(route: string): string {
+  if (route === '/') return 'index.html';
+  return join(...route.slice(1).split('/').map(segment => decodeURIComponent(segment)), 'index.html');
+}
+
 function expectedEntryFiles(): string[] {
   const catalogs = loadPublicSeoCatalogs(resolve(import.meta.dirname, 'public/data'));
-  return listSeoRouteMetadata(catalogs).map(entry =>
-    entry.path === '/' ? 'index.html' : entry.path.slice(1) + '/index.html',
-  ).sort();
+  return listSeoRouteMetadata(catalogs).map(entry => entryFileForRoute(entry.path)).sort();
 }
+
+describe('entryFileForRoute', () => {
+  it('maps the root and decodes encoded route segments like the SEO writer', () => {
+    expect(entryFileForRoute('/')).toBe('index.html');
+    expect(entryFileForRoute('/katalog/x/%C3%9Cberblick')).toBe(join('katalog', 'x', 'Überblick', 'index.html'));
+  });
+});
 
 afterEach(() => {
   while (tempDirs.length > 0) {

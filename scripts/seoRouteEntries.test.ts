@@ -182,6 +182,23 @@ describe('writeSeoRouteEntries', () => {
   });
 
   it.each([
+    'http://dfurater.github.io/Grundschutz-Navigator/',
+    'https://dfurater.github.io/Grundschutz-Navigator/?q=1',
+    'https://dfurater.github.io/Grundschutz-Navigator/#x',
+    'https://dfurater.github.io/Grundschutz-Navigator',
+  ])('rejects the non-canonical base URL %s before writing any output', baseUrl => {
+    const directory = tempDir();
+    expect(() => writeSeoRouteEntries(directory, [{ path: '/suche', title: 'Suche' }], baseUrl)).toThrow(/Invalid canonical SEO base URL/);
+    expect(readdirSync(directory)).toEqual(['index.html']);
+  });
+
+  it.each(['', '   '])('rejects the empty title %j before writing any output', title => {
+    const directory = tempDir();
+    expect(() => writeSeoRouteEntries(directory, [{ path: '/suche', title: 'Suche' }, { path: '/about', title }], BASE_URL)).toThrow(/SEO title must not be empty/);
+    expect(readdirSync(directory)).toEqual(['index.html']);
+  });
+
+  it.each([
     ['/katalog/gspp/GC', '/katalog/gspp/GC'],
     ['/katalog/gspp/GC', '/katalog/gspp/%47C'],
     ['/katalog/gspp/GC', '/katalog/gspp/gc'],
