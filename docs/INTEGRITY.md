@@ -430,7 +430,21 @@ Ein Artefakt, das Stufe 3 nicht besteht, geht nicht in den Graphen ein; ein Arte
 
 ## SLSA Provenance
 
-`.github/workflows/deploy.yml` generiert Build-Provenance über GitHub Artifact Attestations (`actions/attest` mit `subject-path: dist/**`). Die Attestierung wird OIDC-signiert und bei GitHub gespeichert; sie belegt, welcher Workflow-Lauf die deployten Artefakte gebaut hat.
+`.github/workflows/deploy.yml` generiert Build-Provenance über GitHub Artifact Attestations. Subject beider Attestierungen ist allein das Prüfsummen-Manifest `dist/SHA256SUMS` (`actions/attest` mit `subject-path: 'dist/SHA256SUMS'`): einmal als SLSA-Provenance (`https://slsa.dev/provenance/v1`), einmal mit der CycloneDX-SBOM der produktiven npm-Abhängigkeiten (`https://cyclonedx.org/bom`). Die Attestierungen werden OIDC-signiert und bei GitHub gespeichert; sie belegen, welcher Workflow-Lauf aus welchem Commit das Manifest erzeugt hat. Die SBOM beschreibt die Abhängigkeiten, kein Dateiinventar der Auslieferung.
+
+**Manifestbindung.** `scripts/deployChecksums.mjs` schreibt `SHA256SUMS` als letzten Build-Schritt (`spaFallbackPlugin().closeBundle()` in `vite.config.ts`, nach Routen-Einstiegen, `404.html` und Sitemap). Es enthält je veröffentlichter Datei eine Zeile `<64 kleine Hexzeichen><zwei Leerzeichen><relativer Pfad>` mit LF, nach UTF-16-Codeunits sortiert, ohne Selbsteintrag. Die Dateimenge folgt der Packregel des gepinnten `actions/upload-pages-artifact`: Namen mit führendem Punkt fallen samt Unterbaum heraus. Symlinks, andere nicht reguläre Dateitypen und Pfade außerhalb von `[A-Za-z0-9._/-]` oder mit leeren, `.`- oder `..`-Segmenten brechen den Build ab. Ein Test packt eine Fixture mit den tar-Optionen des gepinnten Uploaders und gleicht das Paket mit dem Manifest ab.
+
+Ein Manifest statt aller Dateien als Subject ist nötig, weil `actions/attest` die Dateien eines `subject-path` vor jeder Deduplizierung zählt und oberhalb von 1.024 abbricht; seit den statischen Routen-Einstiegen aus GSPP-449 liegt `dist/` darüber. Mit dem Manifest bleibt die Subject-Zahl eins, gleich wie viele Routen hinzukommen.
+
+**Pflichtprüfung.** `npm run check:deployment-manifest -- --dist dist` berechnet das Manifest aus dem fertigen Bestand neu und vergleicht es bytegenau mit `dist/SHA256SUMS`. Fehlendes Manifest, geänderte, zusätzliche oder entfernte Dateien und unzulässige Dateitypen führen zu Exit 1; die Prüfung repariert nichts. Sie läuft im Deploy direkt nach dem Build und vor beiden Attestierungen sowie im Pflichtcheck `validate` direkt nach dem Build unter derselben Bedingung (`scope != 'docs_only'`).
+
+**Prüfung einer Live-Datei.** `npm run verify:deployment -- --manifest <SHA256SUMS> --file <datei> --path <pfad-im-manifest> --source-sha <40-stellige-commit-sha>` (`scripts/verifyDeployment.mjs`) prüft in dieser Reihenfolge:
+
+1. Die Manifestbytes werden einmal gelesen und in eine private temporäre Kopie geschrieben; alle folgenden Schritte arbeiten auf diesen Bytes.
+2. `gh attestation verify` bestätigt die Kopie zweimal, je Predicate-Typ einmal, mit `--repo dfurater/Grundschutz-Navigator`, `--signer-workflow dfurater/Grundschutz-Navigator/.github/workflows/deploy.yml`, `--source-ref refs/heads/main` und `--source-digest <source-sha>`. Die erwartete Commit-SHA kommt vom Prüfenden, nicht aus dem Manifest; die Attestierung eines anderen Commits genügt nicht.
+3. Das Manifest wird strikt nach dem Buildformat geparst, dann wird die reguläre Zieldatei gehasht und mit dem Eintrag für `--path` verglichen. Für `--path SHA256SUMS` wird die Datei direkt mit den attestierten Manifestbytes verglichen.
+
+`gh` läuft ohne Shell mit Argumentarray und einem Timeout von 60 Sekunden je Aufruf. Fehlende, doppelte oder unbekannte Optionen und eine ungültige SHA oder `--path` enden mit Exit 2; jede fehlgeschlagene Prüfung, auch fehlendes `gh`, Netzwerkfehler oder Timeout, mit Exit 1. Die temporäre Kopie wird auch im Fehlerfall entfernt.
 
 Alle Actions in `.github/workflows/` sind auf 40-stellige Commit-SHAs statt auf verschiebbare Versions-Tags gepinnt.
 
@@ -454,3 +468,4 @@ Alle Actions in `.github/workflows/` sind auf 40-stellige Commit-SHAs statt auf 
 - `src/state/CatalogContext.tsx`, `src/state/catalogArtifacts.ts` — Lade- und Prüfpfad
 - `scripts/fetch-catalog.mjs` — Build-Skript
 - `.github/workflows/deploy.yml` — Deployment mit SLSA
+- `scripts/deployChecksums.mjs`, `scripts/verifyDeployment.mjs` — Prüfsummen-Manifest und Prüfbefehl

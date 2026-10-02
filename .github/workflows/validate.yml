@@ -217,6 +217,13 @@ jobs:
         if: steps.scope.outputs.scope != 'docs_only'
         run: npm run build
 
+      # GSPP-465: Derselbe Manifest-Check wie im Deploy vor dem Attestieren.
+      # Ein Build, dessen `dist/SHA256SUMS` nicht jede veröffentlichte Datei
+      # bytegenau bindet, wäre nicht verifizierbar und fällt schon hier.
+      - name: Check deployment manifest
+        if: steps.scope.outputs.scope != 'docs_only'
+        run: npm run check:deployment-manifest -- --dist dist
+
       # GSPP-418: zizmor als Pflichtanteil des Required Checks `validate`.
       # Kein eigener Job: Ein neuer Jobname wäre ein neuer Check-Kontext, der in
       # keinem Ruleset steht und damit keinen Merge blockierte (Claude-Review zu

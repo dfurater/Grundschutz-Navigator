@@ -6,7 +6,7 @@ Inoffizielles Community-Projekt, kein Angebot des BSI. Keine Rechtsberatung, kei
 
 **Live-Demo:** [dfurater.github.io/Grundschutz-Navigator](https://dfurater.github.io/Grundschutz-Navigator/)
 
-![Katalogansicht des Grundschutz++ Navigators: links der Katalog-Explorer mit den Praktiken, in der Mitte die Kontrollen der Praktik „Berechtigung“, rechts die Filterleiste mit ausgewähltem Sicherheitsniveau „normal-SdT“ und den Modalverben MUSS und SOLLTE](docs/assets/katalog-mit-filtern.png)
+<img src="docs/assets/katalog-mit-filtern.png" width="1040" alt="Katalogansicht des Grundschutz++ Navigators: links der Katalog-Explorer mit den Praktiken, in der Mitte die Kontrollen der Praktik „Berechtigung“, rechts die Filterleiste mit ausgewähltem Sicherheitsniveau „normal-SdT“ und den Modalverben MUSS und SOLLTE">
 
 [![Deploy](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/deploy.yml/badge.svg)](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/deploy.yml)
 [![App-Code: AGPL v3](https://img.shields.io/badge/App--Code-AGPL%20v3-green)](LICENSE)
@@ -49,11 +49,18 @@ Die App verwendet kein Tracking, keine Analytics und keine Cookies. Filter, Such
 
 **Die Katalogdaten sind geprüft.** Beim Bauen lädt die App nur die im Projekt registrierten BSI-Dateien eines festgelegten Upstream-Stands. Jede Datei wird auf Pfad und Prüfsumme geprüft, die OSCAL-Dateien zusätzlich auf Dokumenttyp und deklarierte OSCAL-Version, und für die Vokabular-CSVs muss der Dateibestand exakt dem registrierten Verzeichnis entsprechen. Jede Abweichung bricht den Build ab. Im Browser vergleicht die App beim Laden die SHA-256-Prüfsumme jeder Katalog- und Vokabulardatei mit dem beim Build festgehaltenen Wert. Das Ergebnis für den gewählten Katalog steht in der Fußzeile („Verifiziert“ oder „Nicht verifiziert“); die Ergebnisse für Katalog und Vokabulare stehen ausführlich auf der Seite „Über das Projekt“. Bei einer Abweichung bleiben die Daten sichtbar, sind aber als nicht verifiziert gekennzeichnet. Diese Prüfung erkennt beschädigte oder unvollständige Auslieferungen; einen unabhängigen Herkunftsnachweis liefert die Build-Attestierung. Details: [Integritätsprüfung](docs/INTEGRITY.md) und [OSCAL-Validierung](docs/OSCAL_VALIDATION.md).
 
-**Jeder Build ist nachvollziehbar.** Jede ausgelieferte Version trägt zwei von GitHub signierte Attestierungen: eine [SLSA](https://slsa.dev/)-Provenance, die belegt, welcher Workflow-Lauf aus welchem Commit gebaut hat, und eine CycloneDX-SBOM der Laufzeitabhängigkeiten. Mit der [GitHub CLI](https://cli.github.com/) kannst du das für jede Datei der Live-Seite selbst prüfen:
+**Jeder Build ist nachvollziehbar.** Jede ausgelieferte Version enthält die Datei `SHA256SUMS`, die für jede Datei der Live-Seite deren SHA-256-Prüfsumme festhält. Für genau dieses Manifest gibt es zwei von GitHub signierte Attestierungen: eine [SLSA](https://slsa.dev/)-Provenance, die belegt, welcher Workflow-Lauf aus welchem Commit gebaut hat, und eine CycloneDX-SBOM der Laufzeitabhängigkeiten. Mit der [GitHub CLI](https://cli.github.com/) und Node.js kannst du jede Datei der Live-Seite selbst prüfen. Lade dazu im geklonten Repository das Manifest, die gewünschte Datei und die Commit-SHA des letzten erfolgreichen Deploys:
 
 ```bash
-curl -sSO https://dfurater.github.io/Grundschutz-Navigator/index.html
-gh attestation verify index.html --repo dfurater/Grundschutz-Navigator
+curl -sSo SHA256SUMS https://dfurater.github.io/Grundschutz-Navigator/SHA256SUMS
+curl -sSo GC.html https://dfurater.github.io/Grundschutz-Navigator/katalog/gspp/GC/index.html
+gh run list --repo dfurater/Grundschutz-Navigator --workflow deploy.yml --branch main --status success --limit 1 --json headSha --jq '.[0].headSha'
+```
+
+Dann prüft ein einziger Befehl beide Attestierungen des Manifests (Repository, Deploy-Workflow, `main` und genau diesen Commit) und anschließend die Prüfsumme der Datei. `--path` ist der Pfad der Datei auf der Live-Seite ohne `https://dfurater.github.io/Grundschutz-Navigator/`, zum Beispiel `favicon.svg`, `katalog/gspp/GC/index.html` oder `SHA256SUMS`:
+
+```bash
+npm run verify:deployment -- --manifest SHA256SUMS --file GC.html --path katalog/gspp/GC/index.html --source-sha <commit-sha>
 ```
 
 Details: [Deployment](docs/ARCHITECTURE.md#deployment) und [SLSA Provenance](docs/INTEGRITY.md#slsa-provenance).
@@ -68,7 +75,7 @@ Details: [Deployment](docs/ARCHITECTURE.md#deployment) und [SLSA Provenance](doc
 
 Jede Änderung kommt als Pull Request in den Integrationszweig `develop`. Direktes Pushen, Force-Push und das Löschen von `develop` und `main` sind gesperrt. Ein Pull Request lässt sich erst zusammenführen, wenn alle Pflichtprüfungen bestanden sind:
 
-- `validate` ([validate.yml](.github/workflows/validate.yml)): Lint, Tests mit festen Coverage-Mindestwerten, Prüfung der OSCAL-Schemas und -Versionen und die Workflow-Prüfung mit zizmor. Bei Codeänderungen kommen Browser-Tests mit Netzwerksperre und der Produktions-Build hinzu; reine Dokumentationsänderungen überspringen diese Schritte.
+- `validate` ([validate.yml](.github/workflows/validate.yml)): Lint, Tests mit festen Coverage-Mindestwerten, Prüfung der OSCAL-Schemas und -Versionen und die Workflow-Prüfung mit zizmor. Bei Codeänderungen kommen Browser-Tests mit Netzwerksperre, der Produktions-Build und die Prüfung seines Prüfsummen-Manifests hinzu; reine Dokumentationsänderungen überspringen diese Schritte.
 - `documentation-contract` und `catalog-sync-guard` ([ci.yml](.github/workflows/ci.yml)): Jede Codeänderung muss angeben, ob und wo sie die Dokumentation anpasst; Änderungen am Datenstand des BSI werden gegen die Quelle geprüft.
 - SonarCloud mit Quality Gate, als eigener Job in [validate.yml](.github/workflows/validate.yml). Bei Pull Requests aus Forks entfällt die SonarCloud-Analyse, weil GitHub dort keine Secrets bereitstellt.
 - CodeQL über das Code Scanning von GitHub, als Regel im Ruleset von `develop` und `main`.

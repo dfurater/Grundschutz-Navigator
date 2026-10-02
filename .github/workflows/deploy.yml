@@ -104,6 +104,14 @@ jobs:
           VITE_IMPRESSUM_EMAIL: ${{ secrets.VITE_IMPRESSUM_EMAIL }}
         run: npm run build
 
+      # GSPP-465: Beide Attestierungen haben genau ein Subject, das
+      # Prüfsummen-Manifest `dist/SHA256SUMS`. Es bindet jede veröffentlichte
+      # Datei; diese Prüfung stellt vor dem Attestieren sicher, dass es den
+      # fertigen Bestand bytegenau beschreibt. Derselbe Schritt läuft in
+      # `validate`.
+      - name: Check deployment manifest
+        run: npm run check:deployment-manifest -- --dist dist
+
       # App-SBOM (GSPP-426): maschinenlesbare Zutatenliste der produktiven
       # npm-Abhängigkeiten der ausgelieferten App — ergänzt den
       # Herkunftsnachweis, ersetzt ihn nicht. Lockfile-basiert
@@ -114,18 +122,21 @@ jobs:
       - name: Generate App SBOM (CycloneDX)
         run: npm sbom --package-lock-only --omit=dev --sbom-format=cyclonedx --sbom-type=application > "$RUNNER_TEMP/grundschutz-navigator.sbom.cyclonedx.json"
 
+      # Subject ist allein das Manifest: `actions/attest` zählt die Dateien
+      # eines Globs vor jeder Deduplizierung und bricht oberhalb von 1.024 ab,
+      # `dist/` hat seit GSPP-449 mehr Routen-Einstiege als das.
       - name: Generate SLSA Provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
-          subject-path: 'dist/**'
+          subject-path: 'dist/SHA256SUMS'
 
-      # Eigener SBOM-Attestierungsschritt für dieselben `dist/**`: `sbom-path`
+      # Eigener SBOM-Attestierungsschritt für dasselbe Manifest: `sbom-path`
       # am bestehenden Schritt würde dessen Provenance-Modus ersetzen, statt
       # ihn zu ergänzen.
       - name: Attest App SBOM
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
-          subject-path: 'dist/**'
+          subject-path: 'dist/SHA256SUMS'
           sbom-path: '${{ runner.temp }}/grundschutz-navigator.sbom.cyclonedx.json'
 
       - name: Setup Pages
