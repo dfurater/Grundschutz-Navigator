@@ -145,6 +145,8 @@ describe('readRegularFileNoFollow', () => {
 
     expect(() => readRegularFileNoFollow(join(dir, 'link'), 'Ziel')).toThrow('Ziel ist keine reguläre Datei (Symlink)');
     expect(() => readRegularFileNoFollow(join(dir, 'missing'), 'Ziel')).toThrow('Ziel fehlt');
+    // Jeder andere Öffnungsfehler, hier ENOTDIR ohne Root-Rechte auslösbar.
+    expect(() => readRegularFileNoFollow(join(dir, 'a', 'sub'), 'Ziel')).toThrow(/Ziel nicht lesbar: .*\(ENOTDIR\)/);
     if (process.platform !== 'win32') {
       execFileSync('mkfifo', [join(dir, 'pipe')]);
       expect(() => readRegularFileNoFollow(join(dir, 'pipe'), 'Ziel')).toThrow('Ziel ist keine reguläre Datei');

@@ -278,6 +278,16 @@ describe('verifyDeployment', () => {
     ).rejects.toThrow(/Manifest ist keine reguläre Datei/);
   });
 
+  it('rejects an unreadable manifest path before calling gh', async () => {
+    const dist = builtDist();
+    const gh = fakeGh();
+
+    await expect(
+      verifyDeployment(options(dist, 'favicon.svg', { manifest: join(dist, 'favicon.svg', 'sub') }), { run: gh.run, log: silent }),
+    ).rejects.toThrow(/Manifest nicht lesbar: .*\(ENOTDIR\)/);
+    expect(gh.calls).toHaveLength(0);
+  });
+
   it('rejects a missing manifest before calling gh', async () => {
     const dist = builtDist();
     const gh = fakeGh();
