@@ -63,7 +63,7 @@ Mehrfachwerte werden kommasepariert in einem Parameter kodiert (z.B. `mv=MUSS,SO
 
 ## Kennungssuche
 
-Eine Suchanfrage, die exakt dem in OSCAL 1.1.3 gepinnten `UUIDDatatype` (UUID v4/v5) entspricht, wird nicht als Volltext behandelt, sondern über einen eigenen Kennungsindex aufgelöst (`classifyQuery` in `src/domain/identifierQuery.ts`, Auflösung in `src/features/search/useSearch.ts`). Der Index liegt im kataloggescopten Suchcache und erbt damit Katalogtrennung und Invalidierung der Volltextindizes.
+Eine Suchanfrage, die exakt dem in OSCAL 1.1.3 gepinnten `UUIDDatatype` (UUID v4/v5) entspricht, wird nicht als Volltext behandelt, sondern über einen eigenen Kennungsindex aufgelöst (`classifyQuery` in `src/domain/identifierQuery.ts`, Auflösung in `rankSearchResults` in `src/features/search/searchRanking.ts`). Der Index liegt im kataloggescopten Suchcache und erbt damit Katalogtrennung und Invalidierung der Volltextindizes.
 
 | Eingabe | Treffer |
 | --- | --- |

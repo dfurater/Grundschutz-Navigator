@@ -3,7 +3,11 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, writeFileSync } from 'node:fs';
+import type { Catalog } from './src/domain/models.ts';
+import {
+  STATIC_CONTENT_TITLES, listSeoRouteMetadata, loadPublicSeoCatalogs, writeSeoRouteEntries,
+} from './scripts/seoRouteEntries.ts';
 import { listSupportedCatalogs } from './src/domain/sourceRegistry.mjs';
 import { catalogFreshnessPlugin } from './scripts/check-catalog-freshness.mjs';
 
@@ -15,20 +19,11 @@ const DIST_DIR = resolve(__dirname, 'dist');
 /*
  * Kanonischer Routenvertrag der SEO-Einstiege (GSPP-210).
  *
- * Die beim Build materialisierten 200-Einstiege lesen ihre Routen ausschließlich
- * aus dieser Allowlist bzw. aus dem Quellregister; es gibt keine zweite Liste,
- * die driften könnte. Bewusst NICHT im Vertrag: das absichtlich ungültige
- * `/katalog`, der Redirect `/mehr`, parametrisierte Gruppen-, Control- und
- * Vokabular-Detailrouten sowie Query-/Filter-URLs.
+ * Die Sitemap und die festen 200-Einstiege lesen ihre Routen aus der gemeinsamen
+ * Titeltabelle bzw. aus dem Quellregister. GSPP-449 ergänzt die HTML-Einstiege um
+ * aufgelöste Gruppen- und Kontrollrouten, ohne den Sitemapvertrag zu erweitern.
  */
-const CANONICAL_CONTENT_ROUTES = [
-  '/suche',
-  '/vokabular',
-  '/about',
-  '/datenschutz',
-  '/impressum',
-  '/lizenzen',
-] as const;
+const CANONICAL_CONTENT_ROUTES = Object.keys(STATIC_CONTENT_TITLES);
 
 /**
  * Vollständige Positivliste der kanonischen Einstiegsrouten: zuerst die festen
@@ -64,34 +59,28 @@ export function writeSpaFallbackFile(outDir: string) {
 }
 
 /**
- * Materialisiert die kanonischen Einstiegsrouten als echte HTTP-200-Dokumente:
- * `dist/<route>/index.html`, bytegleich zum gebauten `index.html`. GitHub Pages
- * liefert diese Pfade mit Status 200 aus, während `404.html` weiterhin nur den
- * Fallback für nicht materialisierte SPA-Routen trägt. Fail-closed vor dem
- * ersten Schreiben, damit bei fehlendem Build kein halber Zustand bleibt.
+ * Statische HTTP-200-Einstiege mit aufgelösten OG-Titeln für feste Seiten,
+ * öffentliche Kataloge und deren adressierbare Gruppen und Kontrollen (GSPP-449).
  */
-export function writeStaticRouteEntries(outDir: string, catalogKeys?: readonly string[]): void {
+export function writeStaticRouteEntries(outDir: string, catalogs?: readonly Catalog[]): void {
   const indexHtmlPath = resolve(outDir, 'index.html');
-
   if (!existsSync(indexHtmlPath)) {
     throw new Error(`Cannot create static route entries without build output at ${indexHtmlPath}`);
   }
-
-  const indexHtml = readFileSync(indexHtmlPath);
-
-  for (const route of listCanonicalEntryRoutes(catalogKeys)) {
-    const entryPath = resolve(outDir, `.${route}`, 'index.html');
-    mkdirSync(dirname(entryPath), { recursive: true });
-    writeFileSync(entryPath, indexHtml);
-  }
+  const publicCatalogs = catalogs ?? loadPublicSeoCatalogs(resolve(__dirname, 'public/data'));
+  writeSeoRouteEntries(
+    outDir,
+    listSeoRouteMetadata(publicCatalogs),
+    `${CANONICAL_ORIGIN}${resolveDeploymentBase()}`,
+  );
 }
 
 function spaFallbackPlugin() {
   return {
     name: 'github-pages-spa-fallback',
     closeBundle() {
-      writeSpaFallbackFile(DIST_DIR);
       writeStaticRouteEntries(DIST_DIR);
+      writeSpaFallbackFile(DIST_DIR);
       writeSitemapFile(DIST_DIR);
     },
   };
