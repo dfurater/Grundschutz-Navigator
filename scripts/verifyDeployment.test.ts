@@ -284,7 +284,7 @@ describe('verifyDeployment', () => {
 
     await expect(
       verifyDeployment(options(dist, 'favicon.svg', { manifest: join(dist, 'missing') }), { run: gh.run, log: silent }),
-    ).rejects.toThrow(/Manifest nicht lesbar/);
+    ).rejects.toThrow(/Manifest fehlt/);
     expect(gh.calls).toHaveLength(0);
   });
 

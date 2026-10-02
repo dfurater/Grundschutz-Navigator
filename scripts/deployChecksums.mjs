@@ -19,7 +19,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { lstatSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, fstatSync, openSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -83,6 +83,35 @@ export function collectDeployedFiles(distDir) {
   return files.sort(byCodeUnit);
 }
 
+/**
+ * Liest eine reguläre Datei ohne Prüf-/Lese-Lücke: `O_NOFOLLOW` lehnt einen
+ * Symlink am Pfad ab, und Typprüfung wie Lesen laufen über denselben
+ * Dateideskriptor. `O_NONBLOCK` verhindert, dass eine FIFO das Öffnen
+ * blockiert, bevor `fstat` sie ablehnen kann.
+ */
+export function readRegularFileNoFollow(path, label = 'Datei') {
+  let fd;
+  try {
+    fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+  } catch (error) {
+    if (error.code === 'ELOOP') {
+      throw new DeploymentManifestError(`${label} ist keine reguläre Datei (Symlink): ${path}`);
+    }
+    if (error.code === 'ENOENT') {
+      throw new DeploymentManifestError(`${label} fehlt: ${path}`);
+    }
+    throw new DeploymentManifestError(`${label} nicht lesbar: ${path} (${error.code ?? error.message})`);
+  }
+  try {
+    if (!fstatSync(fd).isFile()) {
+      throw new DeploymentManifestError(`${label} ist keine reguläre Datei: ${path}`);
+    }
+    return readFileSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
 export function sha256Hex(bytes) {
   return createHash('sha256').update(bytes).digest('hex');
 }
@@ -95,7 +124,7 @@ export function buildChecksumsManifest(distDir) {
     throw new DeploymentManifestError(`Keine veröffentlichten Dateien unter ${root}`);
   }
   return files
-    .map((path) => `${sha256Hex(readFileSync(join(root, path)))}  ${path}\n`)
+    .map((path) => `${sha256Hex(readRegularFileNoFollow(join(root, path), path))}  ${path}\n`)
     .join('');
 }
 
@@ -164,20 +193,7 @@ function describeDrift(actualText, expectedText) {
  */
 export function assertChecksumsManifest(distDir) {
   const root = resolve(distDir);
-  const manifestPath = join(root, CHECKSUMS_FILE);
-  let stats;
-  try {
-    stats = lstatSync(manifestPath);
-  } catch (error) {
-    if (error.code === 'ENOENT') {
-      throw new DeploymentManifestError(`${CHECKSUMS_FILE} fehlt in ${root}`);
-    }
-    throw error;
-  }
-  if (!stats.isFile()) {
-    throw new DeploymentManifestError(`${CHECKSUMS_FILE} ist keine reguläre Datei.`);
-  }
-  const actualText = readFileSync(manifestPath, 'utf8');
+  const actualText = readRegularFileNoFollow(join(root, CHECKSUMS_FILE), CHECKSUMS_FILE).toString('utf8');
   const expectedText = buildChecksumsManifest(root);
   if (actualText !== expectedText) {
     throw new DeploymentManifestError(

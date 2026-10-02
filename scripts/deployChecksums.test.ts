@@ -24,6 +24,7 @@ import {
   main,
   parseCheckArgs,
   parseChecksumsManifest,
+  readRegularFileNoFollow,
   writeChecksumsManifestFile,
 } from './deployChecksums.mjs';
 
@@ -129,6 +130,28 @@ describe('collectDeployedFiles', () => {
   });
 });
 
+describe('readRegularFileNoFollow', () => {
+  it('reads a regular file', () => {
+    const dir = tempDir();
+    writeFileSync(join(dir, 'a'), 'x');
+
+    expect(readRegularFileNoFollow(join(dir, 'a')).toString()).toBe('x');
+  });
+
+  it('rejects a symlink, a FIFO and a missing file without blocking', () => {
+    const dir = tempDir();
+    writeFileSync(join(dir, 'a'), 'x');
+    symlinkSync(join(dir, 'a'), join(dir, 'link'));
+
+    expect(() => readRegularFileNoFollow(join(dir, 'link'), 'Ziel')).toThrow('Ziel ist keine reguläre Datei (Symlink)');
+    expect(() => readRegularFileNoFollow(join(dir, 'missing'), 'Ziel')).toThrow('Ziel fehlt');
+    if (process.platform !== 'win32') {
+      execFileSync('mkfifo', [join(dir, 'pipe')]);
+      expect(() => readRegularFileNoFollow(join(dir, 'pipe'), 'Ziel')).toThrow('Ziel ist keine reguläre Datei');
+    }
+  });
+});
+
 describe('buildChecksumsManifest', () => {
   it('emits one canonical line per file with two spaces, LF and a trailing LF', () => {
     const dist = tempDir();
@@ -171,7 +194,7 @@ describe('parseChecksumsManifest', () => {
   it.each([
     ['empty input', ''],
     ['missing trailing LF', line('a', 'index.html').trimEnd()],
-    ['CRLF', line('a', 'index.html').replace('\n', '\r\n')],
+    ['CRLF', line('a', 'index.html').replaceAll('\n', '\r\n')],
     ['uppercase hex', line('a', 'index.html').toUpperCase().replace('INDEX.HTML', 'index.html')],
     ['single space', `${sha('a')} index.html\n`],
     ['blank line', `${line('a', 'index.html')}\n`],

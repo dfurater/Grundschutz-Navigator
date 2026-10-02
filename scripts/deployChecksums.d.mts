@@ -6,6 +6,8 @@ export declare function assertSafeRelativePath(path: string): string;
 
 export declare function collectDeployedFiles(distDir: string): string[];
 
+export declare function readRegularFileNoFollow(path: string, label?: string): Buffer;
+
 export declare function sha256Hex(bytes: string | Uint8Array): string;
 
 export declare function buildChecksumsManifest(distDir: string): string;

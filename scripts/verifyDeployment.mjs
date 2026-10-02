@@ -15,7 +15,7 @@
  */
 
 import { execFile } from 'node:child_process';
-import { chmodSync, lstatSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -23,6 +23,7 @@ import {
   CHECKSUMS_FILE,
   assertSafeRelativePath,
   parseChecksumsManifest,
+  readRegularFileNoFollow,
   sha256Hex,
 } from './deployChecksums.mjs';
 
@@ -35,7 +36,7 @@ export const PREDICATE_TYPES = [
 ];
 export const GH_TIMEOUT_MS = 60_000;
 
-const OPTIONS = ['--manifest', '--file', '--path', '--source-sha'];
+const OPTIONS = new Set(['--manifest', '--file', '--path', '--source-sha']);
 const USAGE =
   'Aufruf: verify:deployment -- --manifest <SHA256SUMS> --file <datei> --path <pfad-im-manifest> --source-sha <40-stellige-commit-sha>';
 
@@ -52,7 +53,7 @@ export function parseVerifyArgs(argv) {
   for (let index = 0; index < argv.length; index += 2) {
     const option = argv[index];
     const value = argv[index + 1];
-    if (!OPTIONS.includes(option)) {
+    if (!OPTIONS.has(option)) {
       throw new DeploymentVerificationError(`Unbekannte Option ${JSON.stringify(option)}. ${USAGE}`, 2);
     }
     if (values.has(option)) {
@@ -82,16 +83,11 @@ export function parseVerifyArgs(argv) {
 }
 
 function readRegularFile(path, label) {
-  let stats;
   try {
-    stats = lstatSync(path);
+    return readRegularFileNoFollow(path, label);
   } catch (error) {
-    throw new DeploymentVerificationError(`${label} nicht lesbar: ${path} (${error.code ?? error.message})`);
+    throw new DeploymentVerificationError(error.message);
   }
-  if (!stats.isFile()) {
-    throw new DeploymentVerificationError(`${label} ist keine reguläre Datei: ${path}`);
-  }
-  return readFileSync(path);
 }
 
 /** Startet `gh` ohne Shell; Fehler, Exit ≠ 0 und Timeout werden zu einem Ergebnis. */
@@ -137,9 +133,10 @@ export async function verifyDeployment(options, { run = runGh, log = console.log
       const result = await run(attestationArgs(manifestCopy, predicateType, options.sourceSha));
       if (!result.ok) {
         const detail = (result.stderr ?? '').trim();
-        throw new DeploymentVerificationError(
-          `Attestierung ${predicateType} nicht bestätigt: ${result.reason}${detail ? `\n${detail}` : ''}`,
-        );
+        const message = [`Attestierung ${predicateType} nicht bestätigt: ${result.reason}`, detail]
+          .filter(Boolean)
+          .join('\n');
+        throw new DeploymentVerificationError(message);
       }
       log(`Attestierung bestätigt: ${predicateType}`);
     }
