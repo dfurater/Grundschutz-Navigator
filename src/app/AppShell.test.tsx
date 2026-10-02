@@ -158,6 +158,23 @@ describe('AppShell', () => {
     expect(menuButton).toHaveAttribute('aria-expanded', 'false');
   });
 
+  it('moves focus from main to the menu before a click makes main inert', () => {
+    render(<MemoryRouter><AppShell /></MemoryRouter>);
+    const main = screen.getByRole('main');
+    main.tabIndex = -1;
+    main.focus();
+    expect(main).toHaveFocus();
+    const menuButton = screen.getByRole('button', { name: 'Menu' });
+    const focus = vi.spyOn(menuButton, 'focus');
+
+    // fireEvent.click setzt wie Safari keinen Klickfokus auf den Button.
+    fireEvent.click(menuButton);
+
+    expect(main).toHaveAttribute('inert');
+    expect(menuButton).toHaveFocus();
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+  });
+
   it('makes the main content inert only while mobile navigation is open', () => {
     let persistent = false;
     mockedUseMediaQuery.mockImplementation((query) => query === '(min-width: 768px)' && persistent);

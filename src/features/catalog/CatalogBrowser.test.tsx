@@ -346,6 +346,38 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
   });
 
+  it('focuses the new topic heading after selecting it in navigation from a detail page', () => {
+    const catalog = makeCatalog('gspp');
+    catalog.practices[0].topics.push({
+      id: 'TOP.2',
+      title: 'Zweites Thema',
+      label: '2',
+      practiceId: 'TOP',
+      controlCount: 0,
+      controlIds: [],
+    });
+    mockCatalog(catalog);
+    render(
+      <MemoryRouter initialEntries={['/katalog/gspp/TOP.1']}>
+        <AppShell />
+        <LocationProbe />
+      </MemoryRouter>,
+    );
+    scrollListTo(420);
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    const menuButton = screen.getByRole('button', { name: 'Menü öffnen' });
+    fireEvent.click(menuButton);
+
+    fireEvent.click(screen.getByRole('button', { name: /TOP\.2\s*Zweites Thema/ }));
+
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/katalog\/gspp\/TOP\.2$/);
+    expect(screen.queryByTestId('mobile-nav-backdrop')).not.toBeInTheDocument();
+    expect(screen.queryByText(`Detail ${control.id}`)).not.toBeInTheDocument();
+    expect(menuButton).not.toHaveFocus();
+    expect(screen.getByRole('heading', { level: 1, name: 'Zweites Thema' })).toHaveFocus();
+    expect(globalThis.scrollTo).toHaveBeenLastCalledWith(0, 0);
+  });
+
   it.each(['Filter anzeigen', 'CSV'])('dismisses an existing %s sheet when the mobile navigation opens', (label) => {
     render(
       <MemoryRouter initialEntries={['/katalog/gspp/TOP.1']}>
@@ -356,11 +388,12 @@ describe('CatalogBrowser mobile focus restoration', () => {
     fireEvent.click(screen.getByRole('button', { name: label }));
     expect(body.style.overflow).toBe('hidden');
 
-    // Der App-Kopf bleibt z. B. über den Such-Shortcut erreichbar.
+    // Auch ein Klick ohne Button-Fokus muss den abgebauten Sheet-Fokus ablösen.
     const menuButton = screen.getByRole('button', { name: 'Menü öffnen' });
-    menuButton.focus();
+    expect(menuButton).not.toHaveFocus();
     fireEvent.click(menuButton);
 
+    expect(menuButton).toHaveFocus();
     expect(body.style.overflow).not.toBe('hidden');
     expect(screen.queryByRole('button', { name: 'Filter anzeigen' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'CSV' })).not.toBeInTheDocument();

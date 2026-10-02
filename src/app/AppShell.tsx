@@ -201,6 +201,8 @@ export function AppShell() {
         menuControls={sideNavId}
         menuButtonRef={menuButtonRef}
         onMenuToggle={() => {
+          // Safari gibt Klicks keinen Button-Fokus; main wird beim Öffnen inert.
+          if (!isPersistentNav) menuButtonRef.current?.focus({ preventScroll: true });
           setSideNavOpen((prev) => !prev);
           setCatalogSwitcherOpen(false);
           if (sidebarCollapsed) setSidebarCollapsed(false);
