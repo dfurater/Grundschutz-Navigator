@@ -6,6 +6,10 @@
  * dagegen stehen genau hier, damit Routendefinition und Seitenkomponente
  * denselben String verwenden statt ihn parallel zu pflegen.
  */
+// Gemeinsame Trenner für Browser- und Open-Graph-Titel.
+export const TITLE_ID_SEPARATOR = ': ';
+export const TITLE_PARENT_SEPARATOR = ' | ';
+
 export const PRODUCT_TITLE = 'Grundschutz++ Navigator';
 
 export const PAGE_TITLES = {
