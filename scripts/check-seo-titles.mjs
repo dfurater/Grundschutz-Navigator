@@ -70,6 +70,13 @@ const NAMED_ENTITIES = {
 };
 const LEGACY_UNTERMINATED = new Set(['amp', 'AMP', 'lt', 'LT', 'gt', 'GT', 'quot', 'QUOT']);
 const EM_DASH_CODE_POINT = 0x2014;
+/*
+ * Numerische Referenzen im C1-Bereich bildet HTML über die
+ * Windows-1252-Tabelle ab; 0x97 stellt der Browser als Gedankenstrich dar.
+ * Nur dieser Wert beeinflusst das Urteil — alle übrigen C1-Werte sind keine
+ * Gedankenstriche, gleich wie decodiert.
+ */
+const WINDOWS_1252_EM_DASH = 0x97;
 
 function continuesReference(value, end) {
   const next = value[end];
@@ -87,8 +94,8 @@ function fromCodePoint(text, code) {
 
 /**
  * Decodiert jede Referenz genau einmal an ihrer Fundstelle. Für den
- * Titelvertrag zählt allein U+2014; jede andere Referenz ist entweder exakt
- * decodiert oder bleibt wörtlich — beides ohne Einfluss auf das Urteil.
+ * Titelvertrag zählt allein U+2014; keine andere Referenz ergibt ihn —
+ * unabhängig davon, ob sie decodiert wird oder wörtlich bleibt.
  */
 export function decodeHtmlEntities(value) {
   return value.replace(ENTITY_LIKE_PATTERN, (text, reference, offset) => {
@@ -97,7 +104,7 @@ export function decodeHtmlEntities(value) {
     if (core[0] === '#') {
       const hex = core[1] === 'x' || core[1] === 'X';
       const code = Number.parseInt(hex ? core.slice(2) : core.slice(1), hex ? 16 : 10);
-      if (code === EM_DASH_CODE_POINT) {
+      if (code === EM_DASH_CODE_POINT || code === WINDOWS_1252_EM_DASH) {
         if (terminated || !continuesReference(value, offset + text.length)) return EM_DASH;
         return text;
       }

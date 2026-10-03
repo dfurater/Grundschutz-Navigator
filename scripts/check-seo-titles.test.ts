@@ -45,39 +45,29 @@ function page(fields: { title?: string; ogTitle?: string; description?: string; 
 }
 
 describe('decodeHtmlEntities', () => {
-  it('decodes named, decimal and hexadecimal references in one pass', () => {
-    expect(decodeHtmlEntities('&lt;a &amp; b&gt; &#39; &#x27;')).toBe('<a & b> \' \'');
-  });
-
-  it('decodes masked em dashes because browsers render them as U+2014', () => {
-    expect(decodeHtmlEntities('&mdash;')).toBe('\u2014');
-    expect(decodeHtmlEntities('&#8212;')).toBe('\u2014');
-    expect(decodeHtmlEntities('&#x2014;')).toBe('\u2014');
-    expect(decodeHtmlEntities('&#X2014;')).toBe('\u2014');
-  });
-
-  it('treats named references case-sensitively like the browser', () => {
-    expect(decodeHtmlEntities('&MDASH;')).toBe('&MDASH;');
-    expect(decodeHtmlEntities('&AMP;')).toBe('&');
-    expect(decodeHtmlEntities('&mdash')).toBe('&mdash');
-    expect(decodeHtmlEntities('A &amp B')).toBe('A & B');
-    expect(decodeHtmlEntities('A &amp= B')).toBe('A &amp= B');
-  });
-
-  it('decodes numeric em dashes without a semicolon unless a letter, digit or = follows', () => {
-    expect(decodeHtmlEntities('A &#8212 B')).toBe('A \u2014 B');
-    expect(decodeHtmlEntities('A &#x2014</title>')).toBe('A \u2014</title>');
-    expect(decodeHtmlEntities('A &#8212b C')).toBe('A &#8212b C');
-  });
-
-  it('decodes double-masked sequences only once, like the browser', () => {
-    expect(decodeHtmlEntities('A &#38;mdash; B')).toBe('A &mdash; B');
-    expect(decodeHtmlEntities('A &amp;#8212; B')).toBe('A &#8212; B');
-    expect(decodeHtmlEntities('A &amp;#8212 B')).toBe('A &#8212 B');
-  });
-
-  it('leaves unknown references untouched', () => {
-    expect(decodeHtmlEntities('&nbsp; &#0xZZ;')).toBe('&nbsp; &#0xZZ;');
+  it.each([
+    ['named, decimal and hexadecimal references', '&lt;a &amp; b&gt; &#39; &#x27;', '<a & b> \' \''],
+    ['masked em dash &mdash;', '&mdash;', '\u2014'],
+    ['masked em dash &#8212;', '&#8212;', '\u2014'],
+    ['masked em dash &#x2014;', '&#x2014;', '\u2014'],
+    ['masked em dash &#X2014;', '&#X2014;', '\u2014'],
+    ['windows-1252 em dash &#151;', '&#151;', '\u2014'],
+    ['windows-1252 em dash &#x97;', '&#x97;', '\u2014'],
+    ['literal uppercase &MDASH;', '&MDASH;', '&MDASH;'],
+    ['legacy uppercase &AMP;', '&AMP;', '&'],
+    ['unterminated &mdash', '&mdash', '&mdash'],
+    ['legacy unterminated &amp', 'A &amp B', 'A & B'],
+    ['unterminated &amp before =', 'A &amp= B', 'A &amp= B'],
+    ['semicolon-less &#8212 before space', 'A &#8212 B', 'A \u2014 B'],
+    ['semicolon-less &#x2014 before tag', 'A &#x2014</title>', 'A \u2014</title>'],
+    ['semicolon-less windows-1252 &#151', 'A &#151 B', 'A \u2014 B'],
+    ['semicolon-less &#8212 before letter', 'A &#8212b C', 'A &#8212b C'],
+    ['double-masked &#38;mdash;', 'A &#38;mdash; B', 'A &mdash; B'],
+    ['double-masked &amp;#8212;', 'A &amp;#8212; B', 'A &#8212; B'],
+    ['double-masked &amp;#8212 without semicolon', 'A &amp;#8212 B', 'A &#8212 B'],
+    ['unknown references', '&nbsp; &#0xZZ;', '&nbsp; &#0xZZ;'],
+  ])('decodes %s', (_label, input, expected) => {
+    expect(decodeHtmlEntities(input)).toBe(expected);
   });
 });
 
