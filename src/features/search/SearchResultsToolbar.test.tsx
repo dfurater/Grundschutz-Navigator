@@ -31,17 +31,17 @@ describe('SearchResultsToolbar', () => {
       </MobileNavigationContext.Provider>
     );
     const view = render(toolbar(false));
-    fireEvent.click(screen.getByRole('button', { name: 'CSV' }));
+    fireEvent.click(screen.getByRole('button', { name: 'CSV exportieren' }));
     expect(screen.getByText('Exportieren als CSV')).toBeInTheDocument();
     expect(document.querySelector('body')!.style.overflow).toBe('hidden');
 
     view.rerender(toolbar(true));
 
-    expect(screen.queryByRole('button', { name: 'CSV' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'CSV exportieren' })).not.toBeInTheDocument();
     expect(screen.queryByText('Exportieren als CSV')).not.toBeInTheDocument();
     expect(document.querySelector('body')!.style.overflow).not.toBe('hidden');
     view.rerender(toolbar(false));
-    expect(screen.getByRole('button', { name: 'CSV' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'CSV exportieren' })).toBeInTheDocument();
     expect(screen.queryByText('Exportieren als CSV')).not.toBeInTheDocument();
   });
 
@@ -63,7 +63,7 @@ describe('SearchResultsToolbar', () => {
       />,
     );
 
-    expect(screen.getByText('1 ausgewählt')).toBeInTheDocument();
+    expect(screen.getByText('1 ausgewählt')).not.toHaveClass('hidden');
 
     fireEvent.click(screen.getByRole('button', { name: 'Auswahl aufheben' }));
     expect(onClearSelection).toHaveBeenCalledOnce();
@@ -116,7 +116,7 @@ describe('SearchResultsToolbar', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'CSV' }));
+    fireEvent.click(screen.getByRole('button', { name: 'CSV exportieren' }));
     fireEvent.click(screen.getByRole('button', { name: /Aktuelle Ansicht/ }));
 
     expect(downloadCSV).toHaveBeenCalledWith(
@@ -143,7 +143,7 @@ describe('SearchResultsToolbar', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'CSV' }));
+    fireEvent.click(screen.getByRole('button', { name: 'CSV exportieren' }));
     fireEvent.click(
       screen.getByRole('button', { name: 'Auswahl exportieren (1)' }),
     );
@@ -168,12 +168,40 @@ describe('SearchResultsToolbar', () => {
 
     expect(screen.queryByRole('button', { name: 'CSV Export' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Weitere Exportoptionen' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'CSV' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'CSV exportieren' })).toBeInTheDocument();
 
     view.rerender(<SearchResultsToolbar {...props} isDesktop />);
 
     expect(screen.getByRole('button', { name: 'CSV Export' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Weitere Exportoptionen' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'CSV' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'CSV exportieren' })).not.toBeInTheDocument();
+  });
+
+  it('verwendet Auswahl-Schalter, CSV-Auslöser und Chip-Regel des Katalogs (GSPP-471)', () => {
+    const props = {
+      checkedIds: new Set(['S.1']),
+      onClearSelection: vi.fn(),
+      onToggleMobileSelectMode: vi.fn(),
+      desktopViewControls: [makeControl('S.1')],
+      mobileViewControls: [makeControl('S.1')],
+      allControls: [makeControl('S.1')],
+      onSelectionExported: vi.fn(),
+    };
+    const view = render(<SearchResultsToolbar {...props} mobileSelectMode isDesktop={false} />);
+
+    const toggle = screen.getByRole('button', { name: 'Auswahl beenden' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('select-toggle-tint')).toBeInTheDocument();
+    expect(toggle.querySelectorAll('svg path')).toHaveLength(5);
+
+    const csv = screen.getByRole('button', { name: 'CSV exportieren' });
+    expect(csv).toHaveClass('min-h-[44px]', 'min-w-[44px]', 'bg-transparent');
+    expect(csv).toHaveTextContent('');
+
+    expect(screen.queryByText('1 ausgewählt')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Auswahl aufheben' })).toBeNull();
+
+    view.rerender(<SearchResultsToolbar {...props} mobileSelectMode isDesktop />);
+    expect(screen.getByText('1 ausgewählt')).toBeInTheDocument();
   });
 });

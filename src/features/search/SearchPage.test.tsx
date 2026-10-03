@@ -411,7 +411,11 @@ describe('SearchPage', () => {
       await user.click(within(mobile).getByRole('button', { name: /ASST\.1\.1/i }));
 
       const selectionBar = screen.getByRole('button', { name: 'Fertig' }).closest('div')!;
-      await user.click(within(selectionBar).getByRole('button', { name: 'Export (1)' }));
+      await user.click(
+        within(selectionBar).getByRole('button', {
+          name: 'Auswahl als CSV exportieren, 1 ausgewählt',
+        }),
+      );
 
       expect(downloadCSV).toHaveBeenCalledWith([control], 'grundschutz-auswahl.csv');
       expect(
@@ -444,7 +448,7 @@ describe('SearchPage', () => {
       isDesktop = false;
       view.rerender(searchRoutes());
 
-      await user.click(screen.getByRole('button', { name: 'CSV' }));
+      await user.click(screen.getByRole('button', { name: 'CSV exportieren' }));
       await user.click(screen.getByRole('button', { name: /Aktuelle Ansicht/ }));
 
       expect(downloadCSV).toHaveBeenCalledWith(
@@ -470,7 +474,7 @@ describe('SearchPage', () => {
       isDesktop = false;
       view.rerender(searchRoutes());
 
-      await user.click(screen.getByRole('button', { name: 'CSV' }));
+      await user.click(screen.getByRole('button', { name: 'CSV exportieren' }));
       await user.click(screen.getByRole('button', { name: /Gesamtkatalog \(/ }));
       expect(downloadCSV).toHaveBeenCalledWith([control], 'grundschutz-gesamtkatalog.csv');
     });
@@ -482,7 +486,11 @@ describe('SearchPage', () => {
       await user.click(screen.getByRole('button', { name: 'Kontrollen auswählen' }));
       const mobile = screen.getByTestId('search-results-mobile');
       await user.click(within(mobile).getByRole('button', { name: /ASST\.1\.1/i }));
-      expect(screen.getAllByText('1 ausgewählt').length).toBeGreaterThan(0);
+      // Im mobilen Auswahlmodus steht die Zahl nur im Export-Button der Leiste (GSPP-471).
+      expect(
+        screen.getByRole('button', { name: 'Auswahl als CSV exportieren, 1 ausgewählt' }),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Auswahl aufheben' })).not.toBeInTheDocument();
 
       const input = screen.getByPlaceholderText('Suche…');
       fireEvent.change(input, { target: { value: 'zweite anfrage' } });
