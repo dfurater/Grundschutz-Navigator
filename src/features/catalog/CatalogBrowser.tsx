@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { PageTitle } from '@/app/PageTitle';
-import { PAGE_TITLES } from '@/app/pageTitles';
+import { PAGE_TITLES, TITLE_ID_SEPARATOR, TITLE_PARENT_SEPARATOR } from '@/app/pageTitles';
 import type { Catalog, Control } from '@/domain/models';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useControlNavigation } from '@/hooks/useControlNavigation';
@@ -198,9 +198,9 @@ export function CatalogBrowser() {
   // stammen aus aufgelösten Domain-Daten, nie aus rohen URL-Segmenten.
   let pageTitle: string;
   if (selectedControl) {
-    pageTitle = `${selectedControl.id} — ${selectedControl.title} — ${contentCatalog.metadata.title}`;
+    pageTitle = `${selectedControl.id}${TITLE_ID_SEPARATOR}${selectedControl.title}${TITLE_PARENT_SEPARATOR}${contentCatalog.metadata.title}`;
   } else if (scopeId) {
-    pageTitle = `${scopeTitle.documentTitle} — ${contentCatalog.metadata.title}`;
+    pageTitle = `${scopeTitle.documentTitle}${TITLE_PARENT_SEPARATOR}${contentCatalog.metadata.title}`;
   } else {
     pageTitle = contentCatalog.metadata.title;
   }

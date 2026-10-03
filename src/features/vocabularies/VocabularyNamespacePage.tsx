@@ -1,6 +1,6 @@
 import { Link, useParams, useSearchParams } from 'react-router';
 import { PageTitle } from '@/app/PageTitle';
-import { PAGE_TITLES } from '@/app/pageTitles';
+import { PAGE_TITLES, TITLE_PARENT_SEPARATOR } from '@/app/pageTitles';
 import type { VocabularyEntry, VocabularyNamespace } from '@/domain/models';
 import { useCatalog } from '@/hooks/useCatalog';
 import { getVocabularyTitle } from './vocabularyTitle';
@@ -137,7 +137,7 @@ export function VocabularyNamespacePage() {
 
   return (
     <>
-      <PageTitle title={`${vocabularyTitle} — ${PAGE_TITLES.vocabularies}`} />
+      <PageTitle title={`${vocabularyTitle}${TITLE_PARENT_SEPARATOR}${PAGE_TITLES.vocabularies}`} />
       <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-5">
         <div className="space-y-1">
           <Link
