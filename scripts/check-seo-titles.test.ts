@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -172,17 +172,49 @@ describe('checkBuiltSeoTitles', () => {
       'suche/index.html': page({ description: 'C \u2014 D' }),
       'kaputt/index.html': '<html><head></head></html>',
     });
-    let message = '';
-    try {
-      checkBuiltSeoTitles(dir);
-    } catch (error) {
-      message = error instanceof Error ? error.message : String(error);
-    }
+    const message = violationMessage(dir);
     expect(message).toContain('index.html: title enthält U+2014');
     expect(message).toContain('suche/index.html: description enthält U+2014');
     expect(message).toContain('kaputt/index.html: Genau ein <title> erwartet');
   });
+
+  it('checks every field of a file independently of a structural defect in another field', () => {
+    const html = page({ ogTitle: 'OG — Titel' }).replace('</head>', '<title>Doppelt</title></head>');
+    const message = violationMessage(scratchTree({ 'index.html': html }));
+    expect(message).toContain('index.html: Genau ein <title> erwartet, gefunden: 2');
+    expect(message).toContain('index.html: ogTitle enthält U+2014');
+  });
+
+  it('reports each missing field of a file on its own', () => {
+    const html = page()
+      .replace(/<title>.*<\/title>/, '')
+      .replace(/<meta name="description"[^>]*>/, '')
+      .replace('<meta property="og:image:alt" content="Bildalternative" />', '<meta property="og:image:alt" />');
+    const message = violationMessage(scratchTree({ 'index.html': html }));
+    expect(message).toContain('index.html: Genau ein <title> erwartet, gefunden: 0');
+    expect(message).toContain('index.html: Genau ein meta[name="description"] erwartet, gefunden: 0');
+    expect(message).toContain('index.html: meta[property="og:image:alt"] ohne content-Attribut');
+    expect(message).not.toContain('og:title"]');
+  });
+
+  // Als root liest der Prozess auch Dateien ohne Leserecht.
+  it.skipIf(process.getuid?.() === 0)('reports an unreadable file with its path', () => {
+    const dir = scratchTree({ 'index.html': page(), 'gesperrt/index.html': page() });
+    chmodSync(join(dir, 'gesperrt/index.html'), 0o000);
+    const message = violationMessage(dir);
+    expect(message).toContain('gesperrt/index.html: EACCES');
+    expect(message).not.toMatch(/^index\.html:/m);
+  });
 });
+
+function violationMessage(dir: string) {
+  try {
+    checkBuiltSeoTitles(dir);
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  throw new Error('Titelprüfung hat keinen Verstoß gemeldet');
+}
 
 describe('parseCheckArgs', () => {
   it('accepts exactly --dist <directory>', () => {

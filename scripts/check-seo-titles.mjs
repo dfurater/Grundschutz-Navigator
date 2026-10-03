@@ -67,22 +67,29 @@ function withHtmlParser(callback) {
   }
 }
 
-function readField(document, { selector, label = selector }) {
+/*
+ * Liest ein Feld, ohne abzubrechen: `{ value }` mit dem Text oder `{ error }`
+ * mit dem Strukturfehler. So kann die Auslieferungsprüfung jedes Feld einer
+ * Datei unabhängig von den anderen bewerten.
+ */
+function inspectField(document, { selector, label = selector }) {
   const elements = document.querySelectorAll(selector);
   if (elements.length !== 1) {
-    throw new SeoTitleCheckError(`Genau ein ${label} erwartet, gefunden: ${elements.length}`);
+    return { error: `Genau ein ${label} erwartet, gefunden: ${elements.length}` };
   }
   const [element] = elements;
-  if (element.localName === 'title') return element.textContent;
+  if (element.localName === 'title') return { value: element.textContent };
   const content = element.getAttribute('content');
-  if (content === null) {
-    throw new SeoTitleCheckError(`${label} ohne content-Attribut`);
-  }
-  return content;
+  if (content === null) return { error: `${label} ohne content-Attribut` };
+  return { value: content };
 }
 
 function readSeoTitleFields(document) {
-  return Object.fromEntries(FIELDS.map((definition) => [definition.field, readField(document, definition)]));
+  return Object.fromEntries(FIELDS.map((definition) => {
+    const { value, error } = inspectField(document, definition);
+    if (error !== undefined) throw new SeoTitleCheckError(error);
+    return [definition.field, value];
+  }));
 }
 
 /**
@@ -137,23 +144,27 @@ function compareCodeUnit(a, b) {
 
 /**
  * Prüft jede gebaute HTML-Datei gegen den Titelvertrag und meldet jede
- * Verletzung als `Pfad: Feld` — Gedankenstriche wie Strukturfehler gemeinsam,
- * damit ein Lauf alle defekten Routenseiten zeigt statt nur die erste. Gibt
- * Datei- und Feldzahl für die Build-Zusammenfassung zurück.
+ * Verletzung als `Pfad: Feld` — Gedankenstriche wie Strukturfehler gemeinsam
+ * und jedes Feld unabhängig von den anderen, damit ein Lauf alle Verstöße
+ * aller Routenseiten zeigt statt nur den ersten. Gibt Datei- und Feldzahl für
+ * die Build-Zusammenfassung zurück.
  */
 export function checkBuiltSeoTitles(distDir) {
   const root = resolve(distDir);
   const files = collectBuiltHtmlFiles(root);
   const violations = withHtmlParser((parse) => files.flatMap((file) => {
-    let fields;
+    let html;
     try {
-      fields = readSeoTitleFields(parse(readFileSync(join(root, file), 'utf8')));
+      html = readFileSync(join(root, file), 'utf8');
     } catch (error) {
       return [`${file}: ${error instanceof Error ? error.message : error}`];
     }
-    return Object.entries(fields)
-      .filter(([, value]) => value.includes(EM_DASH))
-      .map(([field]) => `${file}: ${field} enthält U+2014`);
+    const document = parse(html);
+    return FIELDS.flatMap((definition) => {
+      const { value, error } = inspectField(document, definition);
+      if (error !== undefined) return [`${file}: ${error}`];
+      return value.includes(EM_DASH) ? [`${file}: ${definition.field} enthält U+2014`] : [];
+    });
   }));
   if (violations.length > 0) {
     throw new SeoTitleCheckError(`Titelvertragsverletzungen in der Auslieferung:\n${violations.join('\n')}`);
