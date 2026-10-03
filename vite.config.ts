@@ -84,7 +84,10 @@ export function writeStaticRouteEntries(outDir: string, catalogs?: readonly Cata
  * Davor prüft der Titelvertrag jede gebaute HTML-Datei gegen U+2014 in
  * Titel- und Meta-Texten (GSPP-468): Der Vite-Build könnte einen Titel- oder
  * Meta-Tag ändern oder duplizieren, und erst diese Prüfung sieht das
- * gebaute `dist/`-HTML statt der Quellvorlage.
+ * gebaute `dist/`-HTML statt der Quellvorlage. `apply: 'build'` hält das
+ * Plugin aus Dev-Server und Vitest heraus: Vite ruft `closeBundle` auch beim
+ * Schließen eines Servers auf, sonst schriebe jeder Testlauf ein vorhandenes
+ * `dist/` neu.
  */
 export function spaFallbackPlugin(
   options: { outDir?: string; catalogs?: readonly Catalog[] } = {},
@@ -92,6 +95,7 @@ export function spaFallbackPlugin(
   const outDir = options.outDir ?? DIST_DIR;
   return {
     name: 'github-pages-spa-fallback',
+    apply: 'build' as const,
     closeBundle() {
       writeStaticRouteEntries(outDir, options.catalogs);
       writeSpaFallbackFile(outDir);

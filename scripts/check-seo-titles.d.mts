@@ -2,8 +2,6 @@ export declare const EM_DASH: string;
 
 export declare class SeoTitleCheckError extends Error {}
 
-export declare function decodeHtmlEntities(value: string): string;
-
 export declare function extractSeoTitleFields(html: string): {
   title: string;
   ogTitle: string;

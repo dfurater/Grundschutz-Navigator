@@ -1,6 +1,5 @@
 // @vitest-environment node
 
-import { createRequire } from 'node:module';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -8,15 +7,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   checkBuiltSeoTitles,
   collectBuiltHtmlFiles,
-  decodeHtmlEntities,
   extractSeoTitleFields,
   main,
   parseCheckArgs,
 } from './check-seo-titles.mjs';
-
-const { JSDOM } = createRequire(import.meta.url)('jsdom') as {
-  JSDOM: new (html: string) => { window: { document: Document; close(): void } };
-};
 
 const scratchRoots: string[] = [];
 
@@ -48,60 +42,6 @@ function page(fields: { title?: string; ogTitle?: string; description?: string; 
     + `<meta property="og:image:alt" content="${ogImageAlt}" />`
     + '</head><body></body></html>';
 }
-
-describe('decodeHtmlEntities', () => {
-  it.each([
-    ['named, decimal and hexadecimal references', '&lt;a &amp; b&gt; &#39; &#x27;', '<a & b> \' \''],
-    ['masked em dash &mdash;', '&mdash;', '\u2014'],
-    ['masked em dash &#8212;', '&#8212;', '\u2014'],
-    ['masked em dash &#x2014;', '&#x2014;', '\u2014'],
-    ['masked em dash &#X2014;', '&#X2014;', '\u2014'],
-    ['windows-1252 em dash &#151;', '&#151;', '\u2014'],
-    ['windows-1252 em dash &#x97;', '&#x97;', '\u2014'],
-    ['literal uppercase &MDASH;', '&MDASH;', '&MDASH;'],
-    ['legacy uppercase &AMP;', '&AMP;', '&'],
-    ['unterminated &mdash', '&mdash', '&mdash'],
-    ['legacy unterminated &amp', 'A &amp B', 'A & B'],
-    ['unterminated &amp before =', 'A &amp= B', 'A &amp= B'],
-    ['semicolon-less &#8212 before space', 'A &#8212 B', 'A \u2014 B'],
-    ['semicolon-less &#x2014 before tag', 'A &#x2014</title>', 'A \u2014</title>'],
-    ['semicolon-less windows-1252 &#151', 'A &#151 B', 'A \u2014 B'],
-    ['semicolon-less &#8212 before letter', 'A &#8212b C', 'A —b C'],
-    ['semicolon-less &#8212 before =', 'A &#8212= C', 'A —= C'],
-    ['semicolon-less &#x2014 before non-hex letter', 'A &#x2014g C', 'A —g C'],
-    ['semicolon-less windows-1252 &#151 before letter', 'A &#151a C', 'A —a C'],
-    ['zero-padded semicolon-less &#08212 before letter', 'A &#08212z C', 'A —z C'],
-    ['semicolon-less hex continues with hex digits', 'A &#x2014f C', 'A &#x2014f C'],
-    ['double-masked &#38;mdash;', 'A &#38;mdash; B', 'A &mdash; B'],
-    ['double-masked &amp;#8212;', 'A &amp;#8212; B', 'A &#8212; B'],
-    ['double-masked &amp;#8212 without semicolon', 'A &amp;#8212 B', 'A &#8212 B'],
-    ['unknown references', '&nbsp; &#0xZZ;', '&nbsp; &#0xZZ;'],
-  ])('decodes %s', (_label, input, expected) => {
-    expect(decodeHtmlEntities(input)).toBe(expected);
-  });
-
-  // Das Urteil muss dem HTML-Parser folgen, nicht einer eigenen Lesart des
-  // Standards: Je Schreibweise entscheidet der Parser, ob im Titeltext und im
-  // Attributwert ein Gedankenstrich ankommt.
-  it.each([
-    '&mdash;', '&mdash', '&MDASH;', '&mdashx;',
-    '&#8212;', '&#8212', '&#8212 ', '&#8212b', '&#8212=', '&#08212z',
-    '&#x2014;', '&#X2014;', '&#x2014', '&#x2014g', '&#x2014f', '&#x02014=',
-    '&#151;', '&#151', '&#151a', '&#x97;', '&#x97z',
-    '&#38;mdash;', '&amp;#8212;', '&amp;#8212', '&amp;mdash;', '&amp#8212;',
-  ])('agrees with the HTML parser on %s', (reference) => {
-    const text = `A ${reference} B`;
-    const { window } = new JSDOM(page({ title: text, ogTitle: text }));
-    const parsed = {
-      title: window.document.title,
-      ogTitle: window.document.querySelector('meta[property="og:title"]')?.getAttribute('content') ?? '',
-    };
-    window.close();
-    const fields = extractSeoTitleFields(page({ title: text, ogTitle: text }));
-    expect(fields.title.includes('—')).toBe(parsed.title.includes('—'));
-    expect(fields.ogTitle.includes('—')).toBe(parsed.ogTitle.includes('—'));
-  });
-});
 
 describe('extractSeoTitleFields', () => {
   it('extracts the four title and meta texts', () => {
@@ -136,6 +76,29 @@ describe('extractSeoTitleFields', () => {
     expect(fields.ogTitle).toBe('<&>"\'');
   });
 
+  // Das Urteil folgt dem Tokenizer: Maßgeblich ist, ob im Titeltext und im
+  // Attributwert ein Gedankenstrich ankommt, nicht die Schreibweise.
+  it.each([
+    ['&mdash;', true], ['&mdash', false], ['&MDASH;', false], ['&mdashx;', false],
+    ['&#8212;', true], ['&#8212', true], ['&#8212 ', true], ['&#8212b', true], ['&#8212=', true], ['&#08212z', true],
+    ['&#x2014;', true], ['&#X2014;', true], ['&#x2014', true], ['&#x2014g', true], ['&#x2014f', false], ['&#x02014=', true],
+    ['&#151;', true], ['&#151', true], ['&#151a', true], ['&#x97;', true], ['&#x97z', true],
+    ['&#38;mdash;', false], ['&amp;#8212;', false], ['&amp;#8212', false], ['&amp;mdash;', false], ['&amp#8212;', false],
+  ])('reads %s in title text and attribute value as em dash: %s', (reference, emDash) => {
+    const text = `A ${reference} B`;
+    const fields = extractSeoTitleFields(page({ title: text, ogTitle: text }));
+    expect(fields.title.includes('\u2014')).toBe(emDash);
+    expect(fields.ogTitle.includes('\u2014')).toBe(emDash);
+  });
+
+  it('reads the real content attribute behind a quoted look-alike', () => {
+    const html = page().replace(
+      '<meta name="description" content="Beschreibungstext" />',
+      '<meta name="description" x.y=" content=\'Sicher\'" content="Beschreibung \u2014 Regression" />',
+    );
+    expect(extractSeoTitleFields(html).description).toBe('Beschreibung \u2014 Regression');
+  });
+
   it.each([
     ['missing title', page().replace(/<title>.*<\/title>/, '')],
     ['missing og:title', page().replace(/<meta property="og:title"[^>]*>/, '')],
@@ -143,9 +106,15 @@ describe('extractSeoTitleFields', () => {
     ['missing og:image:alt', page().replace(/<meta property="og:image:alt"[^>]*>/, '')],
     ['duplicate og:title', page().replace('</head>', '<meta property="og:title" content="Doppelt" /></head>')],
     ['duplicate title', page().replace('</head>', '<title>Doppelt</title></head>')],
-    ['og:title without content', page().replace('<meta property="og:title" content="OG Titel" />', '<meta property="og:title" />')],
+    ['duplicate description behind an encoded selector value', page().replace('</head>', '<meta name="descript&#105;on" content="A \u2014 B" /></head>')],
+    ['commented-out description', page().replace(/(<meta name="description"[^>]*>)/, '<!-- $1 -->')],
   ])('fails fail-closed on %s', (_label, html) => {
     expect(() => extractSeoTitleFields(html)).toThrow(/Genau ein/);
+  });
+
+  it('fails fail-closed on a meta field without content attribute', () => {
+    const html = page().replace('<meta property="og:title" content="OG Titel" />', '<meta property="og:title" />');
+    expect(() => extractSeoTitleFields(html)).toThrow(/og:title"\] ohne content-Attribut/);
   });
 });
 

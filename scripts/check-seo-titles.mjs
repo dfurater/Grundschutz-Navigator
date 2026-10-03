@@ -12,11 +12,12 @@
  * Gedankenstrich (U+2014). Fehlendes Ausgabeverzeichnis, null HTML-Dateien
  * sowie fehlende oder doppelte Felder brechen fail-closed ab, statt still zu
  * bestehen — eine nicht prüfbare Auslieferung ist keine geprüfte.
- * Maskierte Gedankenstriche zählen mit, sobald der Browser sie als U+2014
- * rendert: `&mdash;`, numerisch `&#8212;`/`&#x2014;` sowie die
- * Windows-1252-Abbildung `&#151;`/`&#x97;`, numerisch auch ohne Semikolon.
- * Decodiert wird in genau einem Durchgang, sodass doppelt maskierte Folgen
- * (`&amp;#8212;`) wörtlich bleiben wie im Browser.
+ *
+ * Welche Felder es gibt und welchen Text sie tragen, entscheidet der
+ * HTML-Parser von jsdom mit denselben Selektoren wie der DOM-Regressionstest
+ * des Generators, nicht eine eigene Lesart des Standards: Kommentare,
+ * Attributgrenzen in gequoteten Werten, maskierte Selektorwerte und jede
+ * maskierte Form des Gedankenstrichs folgen damit dem Tokenizer.
  *
  * Das Modul läuft ohne Vite und ohne `@/`-Alias: `vite.config.ts` ruft die
  * Prüfung im Build auf (`spaFallbackPlugin().closeBundle()`, vor dem
@@ -25,6 +26,7 @@
  */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -37,125 +39,59 @@ export class SeoTitleCheckError extends Error {
   }
 }
 
-const TITLE_PATTERN = /<title\b[^>]*>([\s\S]*?)<\/title\s*>/gi;
-const META_TAG_PATTERN = /<meta\b[^>]*>/gi;
-/** Geprüfte Titel- und Meta-Felder je ausgelieferter HTML-Datei. */
-const FIELD_COUNT = 4;
+/*
+ * Geprüfte Titel- und Meta-Felder je ausgelieferter HTML-Datei: Feldname,
+ * Selektor und Bezeichnung in Fehlermeldungen.
+ */
+const FIELDS = [
+  { field: 'title', selector: 'title', label: '<title>' },
+  { field: 'ogTitle', selector: 'meta[property="og:title"]' },
+  { field: 'description', selector: 'meta[name="description"]' },
+  { field: 'ogImageAlt', selector: 'meta[property="og:image:alt"]' },
+];
 
 /*
- * Attribute sind im Tag leerzeichengetrennt; der Name muss vollständig
- * dastehen. `data-content` liest sich dadurch nie als `content` — `\b` allein
- * träfe auch nach `-`, und der echte OG-Titel mit U+2014 bliebe ungeprüft.
+ * jsdom wird erst beim Prüfen geladen: `vite.config.ts` importiert dieses
+ * Modul auch für Dev-Server und Vitest, die den Parser nie brauchen. Ein
+ * Fenster dient allen Dateien eines Laufs; `DOMParser` führt keine Skripte
+ * aus und lädt keine Ressourcen.
  */
-const ATTRIBUTE_PATTERN = /\s([\w-]+)\s*=\s*("[^"]*"|'[^']*')/gi;
-
-/*
- * Ein Durchgang über entitätsartige Folgen; die Entscheidung fällt im
- * Callback statt in verzweigten Mustern. Benannte Referenzen gelten exakt wie
- * im Standard: `mdash` nur klein — `&MDASH;` zeigt der Browser wörtlich —,
- * die vier Legacy-Namen zusätzlich groß. Ohne Semikolon decodiert nur die
- * Legacy-Liste und nur vor einem Folger, der kein Buchstabe, keine Ziffer und
- * kein `=` ist — diese Folger-Regel kennt der Tokenizer allein für benannte
- * Referenzen. Numerische Referenzen decodiert er ohne Semikolon immer, gleich
- * welches Zeichen folgt: `&#8212b` rendert als U+2014 mit folgendem `b`. Für
- * das Urteil zählt dabei allein der Gedankenstrich; alle übrigen numerischen
- * Referenzen ohne Semikolon bleiben wörtlich, weil keine von ihnen U+2014
- * ergibt. Doppelt Maskiertes
- * (`&#38;mdash;`, `&amp;#8212;`) trifft nie eine zweite Stufe, weil es keine
- * gibt: Der Aufruf durchsucht sein Ergebnis nicht erneut.
- */
-const ENTITY_LIKE_PATTERN = /&((?:#[xX][\da-fA-F]+|#\d+|[A-Za-z]+);?)/g;
-
-/* Exakt die im Standard definierten Schreibweisen, ohne Faltung. */
-const NAMED_ENTITIES = {
-  amp: '&', AMP: '&', lt: '<', LT: '<', gt: '>', GT: '>',
-  quot: '"', QUOT: '"', apos: "'", mdash: EM_DASH,
-};
-const LEGACY_UNTERMINATED = new Set(['amp', 'AMP', 'lt', 'LT', 'gt', 'GT', 'quot', 'QUOT']);
-const EM_DASH_CODE_POINT = 0x2014;
-/*
- * Numerische Referenzen im C1-Bereich bildet HTML über die
- * Windows-1252-Tabelle ab; 0x97 stellt der Browser als Gedankenstrich dar.
- * Nur dieser Wert beeinflusst das Urteil — alle übrigen C1-Werte sind keine
- * Gedankenstriche, gleich wie decodiert.
- */
-const WINDOWS_1252_EM_DASH = 0x97;
-
-function continuesReference(value, end) {
-  const next = value[end];
-  return next !== undefined && /[\dA-Za-z=]/.test(next);
-}
-
-function fromCodePoint(text, code) {
-  if (!Number.isSafeInteger(code) || code < 0 || code > 0x10ffff) return text;
+function withHtmlParser(callback) {
+  const { JSDOM } = createRequire(import.meta.url)('jsdom');
+  const { window } = new JSDOM('');
   try {
-    return String.fromCodePoint(code);
-  } catch {
-    return text;
+    const parser = new window.DOMParser();
+    return callback((html) => parser.parseFromString(html, 'text/html'));
+  } finally {
+    window.close();
   }
+}
+
+function readField(document, { selector, label = selector }) {
+  const elements = document.querySelectorAll(selector);
+  if (elements.length !== 1) {
+    throw new SeoTitleCheckError(`Genau ein ${label} erwartet, gefunden: ${elements.length}`);
+  }
+  const [element] = elements;
+  if (element.localName === 'title') return element.textContent;
+  const content = element.getAttribute('content');
+  if (content === null) {
+    throw new SeoTitleCheckError(`${label} ohne content-Attribut`);
+  }
+  return content;
+}
+
+function readSeoTitleFields(document) {
+  return Object.fromEntries(FIELDS.map((definition) => [definition.field, readField(document, definition)]));
 }
 
 /**
- * Decodiert jede Referenz genau einmal an ihrer Fundstelle. Für den
- * Titelvertrag zählt allein U+2014; keine andere Referenz ergibt ihn —
- * unabhängig davon, ob sie decodiert wird oder wörtlich bleibt.
- */
-export function decodeHtmlEntities(value) {
-  return value.replace(ENTITY_LIKE_PATTERN, (text, reference, offset) => {
-    const terminated = reference.endsWith(';');
-    const core = terminated ? reference.slice(0, -1) : reference;
-    if (core[0] === '#') {
-      const hex = core[1] === 'x' || core[1] === 'X';
-      const code = Number.parseInt(hex ? core.slice(2) : core.slice(1), hex ? 16 : 10);
-      if (code === EM_DASH_CODE_POINT || code === WINDOWS_1252_EM_DASH) return EM_DASH;
-      if (!terminated) return text;
-      return fromCodePoint(text, code);
-    }
-    if (!terminated && (!LEGACY_UNTERMINATED.has(core) || continuesReference(value, offset + text.length))) {
-      return text;
-    }
-    return NAMED_ENTITIES[core] ?? text;
-  });
-}
-
-function attributeValue(tag, attribute) {
-  const wanted = attribute.toLowerCase();
-  for (const match of tag.matchAll(ATTRIBUTE_PATTERN)) {
-    if (match[1].toLowerCase() !== wanted) continue;
-    return match[2].slice(1, -1);
-  }
-  return undefined;
-}
-
-function singleContent(tags, key, value, label) {
-  const matches = [];
-  for (const tag of tags) {
-    if (attributeValue(tag, key) !== value) continue;
-    matches.push(attributeValue(tag, 'content'));
-  }
-  if (matches.length !== 1 || matches[0] === undefined) {
-    throw new SeoTitleCheckError(`Genau ein ${label} erwartet, gefunden: ${matches.length}`);
-  }
-  return decodeHtmlEntities(matches[0]);
-}
-
-/**
- * Die vier Titel- und Meta-Texte derselben Selektoren, die der
- * DOM-Regressionstest des Generators prüft — hier gegen gebautes HTML
- * statt gegen die Quellvorlage gelesen.
+ * Die vier Titel- und Meta-Texte so, wie der HTML-Parser sie liest —
+ * decodiert, ohne Kommentare und mit denselben Selektoren wie der
+ * DOM-Regressionstest des Generators.
  */
 export function extractSeoTitleFields(html) {
-  const titles = [...html.matchAll(TITLE_PATTERN)];
-  if (titles.length !== 1) {
-    throw new SeoTitleCheckError(`Genau ein <title> erwartet, gefunden: ${titles.length}`);
-  }
-  const tags = [...html.matchAll(META_TAG_PATTERN)].map((match) => match[0]);
-  return {
-    title: decodeHtmlEntities(titles[0][1]),
-    ogTitle: singleContent(tags, 'property', 'og:title', 'meta[property="og:title"]'),
-    description: singleContent(tags, 'name', 'description', 'meta[name="description"]'),
-    ogImageAlt: singleContent(tags, 'property', 'og:image:alt', 'meta[property="og:image:alt"]'),
-  };
+  return withHtmlParser((parse) => readSeoTitleFields(parse(html)));
 }
 
 /** Alle ausgelieferten HTML-Dateien unter `distDir`, relativ und sortiert. */
@@ -208,23 +144,21 @@ function compareCodeUnit(a, b) {
 export function checkBuiltSeoTitles(distDir) {
   const root = resolve(distDir);
   const files = collectBuiltHtmlFiles(root);
-  const violations = [];
-  for (const file of files) {
+  const violations = withHtmlParser((parse) => files.flatMap((file) => {
     let fields;
     try {
-      fields = extractSeoTitleFields(readFileSync(join(root, file), 'utf8'));
+      fields = readSeoTitleFields(parse(readFileSync(join(root, file), 'utf8')));
     } catch (error) {
-      violations.push(`${file}: ${error instanceof Error ? error.message : error}`);
-      continue;
+      return [`${file}: ${error instanceof Error ? error.message : error}`];
     }
-    for (const [field, value] of Object.entries(fields)) {
-      if (value.includes(EM_DASH)) violations.push(`${file}: ${field} enthält U+2014`);
-    }
-  }
+    return Object.entries(fields)
+      .filter(([, value]) => value.includes(EM_DASH))
+      .map(([field]) => `${file}: ${field} enthält U+2014`);
+  }));
   if (violations.length > 0) {
     throw new SeoTitleCheckError(`Titelvertragsverletzungen in der Auslieferung:\n${violations.join('\n')}`);
   }
-  return { fileCount: files.length, fieldCount: files.length * FIELD_COUNT };
+  return { fileCount: files.length, fieldCount: files.length * FIELDS.length };
 }
 
 export function parseCheckArgs(argv) {

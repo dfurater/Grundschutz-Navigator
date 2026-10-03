@@ -347,6 +347,10 @@ describe('writeStaticRouteEntries', () => {
 });
 
 describe('spaFallbackPlugin closeBundle', () => {
+  it('runs only in the build, not when a dev or Vitest server closes', () => {
+    expect(spaFallbackPlugin().apply).toBe('build');
+  });
+
   it('writes SHA256SUMS last so it binds route entries, 404.html, sitemap and assets', () => {
     const distDir = createTempDistWithIndex();
     writeFileSync(join(distDir, 'favicon.svg'), '<svg/>');
@@ -365,11 +369,14 @@ describe('spaFallbackPlugin closeBundle', () => {
     expect(assertChecksumsManifest(distDir).fileCount).toBe(listFilesRecursive(distDir).length);
   });
 
-  it('fails the build on an em dash in delivered title text before writing the manifest (GSPP-468)', () => {
+  it.each([
+    ['in the description', 'content="BSI-Anwenderkatalog durchsuchen \u2014 filtern'],
+    ['behind a quoted look-alike attribute', 'x.y=" content=\'Sicher\'" content="BSI-Anwenderkatalog durchsuchen \u2014 filtern'],
+  ])('fails the build on an em dash %s before writing the manifest (GSPP-468)', (_label, description) => {
     const distDir = createTempDistDir();
-    writeFileSync(join(distDir, 'index.html'), INDEX_HTML.replace('durchsuchen, filtern', 'durchsuchen \u2014 filtern'));
+    writeFileSync(join(distDir, 'index.html'), INDEX_HTML.replace('content="BSI-Anwenderkatalog durchsuchen, filtern', description));
 
-    expect(() => spaFallbackPlugin({ outDir: distDir, catalogs: [] }).closeBundle()).toThrow(/U\+2014/);
+    expect(() => spaFallbackPlugin({ outDir: distDir, catalogs: [] }).closeBundle()).toThrow(/description enthält U\+2014/);
     expect(existsSync(join(distDir, 'SHA256SUMS'))).toBe(false);
   });
 });
