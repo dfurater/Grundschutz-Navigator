@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { RefObject } from 'react';
-import { MemoryRouter } from 'react-router';
+import { Link, MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -31,9 +31,12 @@ vi.mock('@/components/HeaderBar', () => ({
     menuButtonRef?: RefObject<HTMLButtonElement | null>;
     onSearch: (term: string) => void;
   }) => (
-    <button type="button" ref={menuButtonRef} aria-expanded={menuExpanded} aria-controls={menuControls} onClick={onMenuToggle}>
-      Menu
-    </button>
+    <>
+      <button type="button" ref={menuButtonRef} aria-expanded={menuExpanded} aria-controls={menuControls} onClick={onMenuToggle}>
+        Menu
+      </button>
+      <Link to="/suche">Lupe</Link>
+    </>
   ),
 }));
 
@@ -429,6 +432,26 @@ describe('AppShell', () => {
     expect(screen.queryByRole('link', { name: 'Katalog' })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Datenschutz' })).not.toBeInTheDocument();
     expect(aside.querySelectorAll('svg')).toHaveLength(2);
+  });
+
+  // Eine Navigation aus dem App-Kopf bei offenem Drawer ließe die neue Seite
+  // sonst im inerten Hauptbereich zurück (GSPP-476).
+  it('schließt den Drawer bei jeder Navigation, auch aus dem App-Kopf', () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={['/']}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    const lupe = screen.getByRole('link', { name: 'Lupe' });
+    lupe.focus();
+    fireEvent.click(lupe);
+
+    expect(screen.getByText('Suche')).toBeInTheDocument();
+    expect(container.querySelector('aside')).toHaveAttribute('inert');
+    expect(container.querySelector('main')).not.toHaveAttribute('inert');
+    expect(screen.queryByTestId('mobile-nav-backdrop')).not.toBeInTheDocument();
+    expect(lupe).toHaveFocus();
   });
 
   it('wechselt den Katalog aus dem Drawer-Kopf und schließt den Drawer', () => {

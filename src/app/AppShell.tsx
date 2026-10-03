@@ -118,6 +118,15 @@ export function AppShell() {
     error,
   } = useCatalog();
 
+  // Jede Navigation schließt die mobile Schublade, auch eine aus dem App-Kopf
+  // (Marke, Lupe, Suchfeld) oder über Browser-Zurück. Sonst bliebe die neue
+  // Seite im `inert` gesetzten Hauptbereich unbedienbar.
+  const [drawerLocationKey, setDrawerLocationKey] = useState(location.key);
+  if (drawerLocationKey !== location.key) {
+    setDrawerLocationKey(location.key);
+    setSideNavOpen(false);
+  }
+
   const closeSideNav = () => {
     setSideNavOpen(false);
     if (!isPersistentNav) menuButtonRef.current?.focus({ preventScroll: true });

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { createRef } from 'react';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useLocation } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { HeaderBar } from './HeaderBar';
 
@@ -114,6 +114,35 @@ describe('HeaderBar', () => {
 
     expect(wasNotPrevented).toBe(false);
     expect(searchInput).toHaveFocus();
+  });
+
+  // Unter 640 px ist das Feld ausgeblendet; das Kürzel führt dann wie die Lupe
+  // auf die Suchseite und fordert dort den Fokus an (GSPP-476).
+  it.each([
+    ['Meta+K', { metaKey: true }],
+    ['Ctrl+K', { ctrlKey: true }],
+  ])('führt %s ohne sichtbares Suchfeld auf die Suchseite', (_, modifier) => {
+    function Location() {
+      const location = useLocation();
+      return <output data-testid="location">{`${location.pathname}|${JSON.stringify(location.state)}`}</output>;
+    }
+    render(
+      <MemoryRouter>
+        <HeaderBar />
+        <Location />
+        <button type="button">Außerhalb</button>
+      </MemoryRouter>,
+    );
+    const searchInput = screen.getByRole('searchbox', { name: 'Katalog durchsuchen' });
+    searchInput.checkVisibility = () => false;
+    const outsideButton = screen.getByRole('button', { name: 'Außerhalb' });
+    outsideButton.focus();
+
+    const wasNotPrevented = fireEvent.keyDown(outsideButton, { key: 'k', ...modifier });
+
+    expect(wasNotPrevented).toBe(false);
+    expect(searchInput).not.toHaveFocus();
+    expect(screen.getByTestId('location')).toHaveTextContent('/suche|{"focusSearch":true}');
   });
 
   it.each([

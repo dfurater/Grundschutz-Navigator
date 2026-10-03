@@ -30,6 +30,7 @@ export interface ScopeSwitcherProps<K extends string = string> {
   readonly onItemActivate?: (key: K) => void;
 }
 
+// Die Sprache erbt der Titel vom Dokument; die OSCAL-Metadaten tragen keine eigene.
 const TITLE_CLASS = 'line-clamp-2 min-w-0 flex-1 hyphens-auto text-sm leading-[18px]';
 
 export function ScopeSwitcher<K extends string = string>({
@@ -143,7 +144,7 @@ export function ScopeSwitcher<K extends string = string>({
           >
             {/* Das Leerzeichen steht zwischen den Spans: Am Spanende fiele es aus dem Namen. */}
             <span className="sr-only">{`${label}:`}</span>{' '}
-            <span lang="de" className={`${TITLE_CLASS} font-semibold text-[var(--color-text-primary)]`}>
+            <span className={`${TITLE_CLASS} font-semibold text-[var(--color-text-primary)]`}>
               {activeItem.title}
             </span>
             <IconChevronDown
@@ -152,7 +153,11 @@ export function ScopeSwitcher<K extends string = string>({
           </button>
         )}
 
-        {/* 100 % endet über der Unterlinie des Kopfs; 5 px setzen das Menü 4 px darunter. */}
+        {/*
+          100 % endet über der Unterlinie des Kopfs; 5 px setzen das Menü 4 px darunter.
+          Die Höhe endet vor dem Viewport-Rand (Header 56 + Kopf 51 + Abstände), damit
+          bei niedrigen Viewports jeder Eintrag per Scrollen erreichbar bleibt.
+        */}
         {open && (
           <div
             id={menuId}
@@ -160,7 +165,7 @@ export function ScopeSwitcher<K extends string = string>({
             tabIndex={-1}
             aria-labelledby={headingId}
             onKeyDown={handleMenuKeyDown}
-            className="absolute inset-x-1 top-[calc(100%+5px)] z-40 rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-raised)] p-1.5 shadow-[var(--shadow-overlay)]"
+            className="absolute inset-x-1 top-[calc(100%+5px)] z-40 max-h-[calc(100dvh-8rem)] overflow-y-auto rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-raised)] p-1.5 shadow-[var(--shadow-overlay)]"
           >
             <div
               id={headingId}
@@ -182,7 +187,6 @@ export function ScopeSwitcher<K extends string = string>({
                   className="flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left hover:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]"
                 >
                   <span
-                    lang="de"
                     className={`${TITLE_CLASS} ${isActive ? 'font-semibold text-[var(--color-text-primary)]' : 'font-medium text-slate-700'}`}
                   >
                     {item.title}

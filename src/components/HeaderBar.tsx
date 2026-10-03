@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import type { KeyboardEvent, RefObject } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
+import { FOCUS_SEARCH_STATE } from '@/app/searchFocus';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import { IconSearch, IconShield, IconMenu } from './icons';
 
@@ -54,12 +55,19 @@ export function HeaderBar({
   const [searchValue, setSearchValue] = useState('');
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/i.test(navigator.platform);
   const inputRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
 
   useGlobalEventListener('document', 'keydown', (event) => {
     if (!(event.metaKey || event.ctrlKey) || event.key !== 'k') return;
     if (event.target !== inputRef.current && isEditableTarget(event.target)) return;
 
     event.preventDefault();
+    // Unter 640 px ist das Feld ausgeblendet; dann führt das Kürzel wie die Lupe
+    // auf die Suchseite und fokussiert dort die Eingabe.
+    if (inputRef.current?.checkVisibility?.() === false) {
+      void navigate('/suche', { state: FOCUS_SEARCH_STATE });
+      return;
+    }
     inputRef.current?.focus();
   });
 

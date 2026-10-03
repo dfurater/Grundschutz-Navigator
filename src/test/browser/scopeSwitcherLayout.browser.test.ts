@@ -27,10 +27,11 @@ const ITEMS = [
 // Standardbreite der Navigationsleiste, Desktop-Explorer wie mobiler Drawer.
 const SIDEBAR_WIDTH = 256;
 
-async function renderHead(width: number, activeKey: string) {
-  await page.viewport(width, 800);
+async function renderHead(width: number, activeKey: string, height = 800, top = 0) {
+  await page.viewport(width, height);
   host = document.createElement('div');
   host.style.width = `${SIDEBAR_WIDTH}px`;
+  host.style.marginTop = `${top}px`;
   host.style.background = 'white';
   document.body.append(host);
   root = createRoot(host);
@@ -71,7 +72,7 @@ test.each(WIDTHS.flatMap((width) => ITEMS.map(({ key }) => [width, key] as const
     expect(triggerBox.height).toBeGreaterThanOrEqual(44);
     expect(triggerBox.top).toBeGreaterThanOrEqual(headBox.top);
     expect(triggerBox.bottom).toBeLessThanOrEqual(headBox.bottom);
-    expectAtMostTwoUnclampedLines(trigger.querySelector<HTMLElement>('span[lang="de"]')!);
+    expectAtMostTwoUnclampedLines(trigger.querySelector<HTMLElement>('span.line-clamp-2')!);
   },
 );
 
@@ -93,6 +94,18 @@ test.each([402, 768])('zeigt das geöffnete Menü bei %i px vollständig und so 
   expect(items).toHaveLength(ITEMS.length);
   for (const item of items) {
     expect(item.getBoundingClientRect().height).toBeGreaterThanOrEqual(40);
-    expectAtMostTwoUnclampedLines(item.querySelector<HTMLElement>('span[lang="de"]')!);
+    expectAtMostTwoUnclampedLines(item.querySelector<HTMLElement>('span.line-clamp-2')!);
   }
+});
+
+// Niedriger Viewport, etwa ein Handy quer: Der Kopf steht wie in der Shell unter
+// dem 56 px hohen Header; jeder Eintrag bleibt per Scrollen im Menü erreichbar.
+test('hält das Menü bei 240 px Viewport-Höhe im Viewport und scrollbar', async () => {
+  const { trigger } = await renderHead(640, 'gspp', 240, 56);
+  flushSync(() => trigger.click());
+
+  const menu = host!.querySelector<HTMLElement>('[role="menu"]')!;
+  expect(menu.getBoundingClientRect().bottom).toBeLessThanOrEqual(240);
+  expect(menu.scrollHeight).toBeGreaterThan(menu.clientHeight);
+  expect(getComputedStyle(menu).overflowY).toBe('auto');
 });
