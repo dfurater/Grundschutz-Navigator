@@ -10,7 +10,8 @@ interface CatalogSelectionChipProps {
 /**
  * Zähler-Chip „n ausgewählt“ mit Aufheben-Kreuz, gemeinsam für Katalog und
  * Suchergebnisse. Er entfällt im mobilen Auswahlmodus, weil dort die
- * Auswahlleiste die Zahl zeigt, und unter `sm` generell (GSPP-471).
+ * Auswahlleiste die Zahl zeigt (GSPP-471). Ohne Auswahlmodus bleibt eine
+ * erhaltene Auswahl auf jeder Breite sichtbar und aufhebbar.
  */
 export function CatalogSelectionChip({
   count,
@@ -20,7 +21,7 @@ export function CatalogSelectionChip({
 }: CatalogSelectionChipProps) {
   if (count === 0 || (!isDesktop && mobileSelectMode)) return null;
   return (
-    <span className="hidden sm:flex items-center gap-1.5 text-xs font-medium text-[var(--color-accent-default)] bg-[var(--color-accent-soft)] px-2 py-1 rounded">
+    <span className="flex items-center gap-1.5 text-xs font-medium text-[var(--color-accent-default)] bg-[var(--color-accent-soft)] px-2 py-1 rounded">
       {count} ausgewählt
       <button
         type="button"

@@ -66,17 +66,24 @@ describe('mobiler Header (GSPP-471)', () => {
     expect(group).toHaveClass('-mr-3', 'sm:mr-0', 'sm:gap-2');
   });
 
-  it('führt Anzahl und „Filter zurücksetzen“ unter sm in Zeile 2 vor den Aktionen', () => {
+  it('führt Anzahl, „Filter zurücksetzen“, Chip und Aktionen unter sm in einer umbrechenden Zeile 2', () => {
     render(<CatalogToolbar {...baseProps} mobileSelectMode={false} isDesktop={false} />);
 
     const count = screen.getByText('12 von 35');
     expect(count).toHaveAttribute('aria-live', 'polite');
-    const meta = count.parentElement;
+    const meta = count.parentElement!;
     expect(meta).toHaveClass('sm:hidden', 'flex-wrap');
     expect(meta).toContainElement(screen.getByRole('button', { name: 'Filter zurücksetzen' }));
-    expect(meta?.nextElementSibling).toContainElement(
-      screen.getByRole('button', { name: 'CSV exportieren' }),
-    );
+
+    // Reihenfolge in Zeile 2: Anzahl, Chip der erhaltenen Auswahl, Aktionen.
+    const row = meta.parentElement!;
+    expect(row).toHaveClass('flex-wrap', 'sm:flex-nowrap');
+    const [first, chip, actions] = Array.from(row.children);
+    expect(first).toBe(meta);
+    expect(chip).toHaveTextContent('1 ausgewählt');
+    expect(chip).not.toHaveClass('hidden');
+    expect(actions).toHaveClass('ml-auto');
+    expect(actions).toContainElement(screen.getByRole('button', { name: 'CSV exportieren' }));
   });
 
   it('zeigt den aktiven Auswahl-Schalter als Akzent-Glyphe auf Tönung statt als Fläche', () => {

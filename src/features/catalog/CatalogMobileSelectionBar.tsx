@@ -36,9 +36,9 @@ export function CatalogMobileSelectionBar({
       >
         Fertig
       </Button>
-      <span className="sr-only" role="status">
+      <output className="sr-only" aria-live="polite">
         {count} ausgewählt
-      </span>
+      </output>
       <Button
         variant="secondary"
         size="sm"

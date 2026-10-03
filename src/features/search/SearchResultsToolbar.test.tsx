@@ -63,7 +63,7 @@ describe('SearchResultsToolbar', () => {
       />,
     );
 
-    expect(screen.getByText('1 ausgewählt')).toHaveClass('hidden', 'sm:flex');
+    expect(screen.getByText('1 ausgewählt')).not.toHaveClass('hidden');
 
     fireEvent.click(screen.getByRole('button', { name: 'Auswahl aufheben' }));
     expect(onClearSelection).toHaveBeenCalledOnce();

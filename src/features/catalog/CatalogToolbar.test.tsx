@@ -64,9 +64,9 @@ describe('CatalogToolbar', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Kontrollen auswählen' }),
     );
-    // Außerhalb des mobilen Auswahlmodus bleibt der Chip, unter sm per CSS
-    // ausgeblendet (GSPP-471).
-    expect(screen.getByText('1 ausgewählt')).toHaveClass('hidden', 'sm:flex');
+    // Außerhalb des mobilen Auswahlmodus bleibt der Chip auf jeder Breite
+    // sichtbar (GSPP-471).
+    expect(screen.getByText('1 ausgewählt')).not.toHaveClass('hidden');
     fireEvent.click(screen.getByRole('button', { name: 'Auswahl aufheben' }));
 
     expect(onToggleMobileSelectMode).toHaveBeenCalledOnce();
