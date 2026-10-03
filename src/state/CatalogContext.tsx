@@ -18,9 +18,11 @@ import {
   useMemo,
   useReducer,
   useRef,
+  useState,
   type ReactNode,
 } from 'react';
 import type {
+  CatalogDirectoryEntry,
   CatalogState,
   VerificationResult,
   VocabularyProvenance,
@@ -37,6 +39,7 @@ import {
 import {
   buildSupportedCatalogDescriptors,
   loadCatalogArtifacts,
+  loadCatalogDirectory,
   toCatalogErrorMessage,
   type SupportedCatalogDescriptor,
 } from '@/state/catalogArtifacts';
@@ -129,7 +132,7 @@ export function CatalogProvider({
   const entryMetadataUrl = entryDescriptor.metadataUrl;
   const entryCatalogKey = entryDescriptor.catalogKey;
 
-  // Einstiegskatalog und Vokabulare: der einzige eager Ladepfad.
+  // Einstiegskatalog und Vokabulare: der eager Ladepfad für vollständige Daten.
   useEffect(() => {
     let cancelled = false;
     const isCancelled = () => cancelled;
@@ -240,6 +243,21 @@ export function CatalogProvider({
     upstreamSourcesMetadataUrl,
   ]);
 
+  const [directory, setDirectory] = useState<{
+    descriptors: readonly SupportedCatalogDescriptor[];
+    entries: readonly CatalogDirectoryEntry[];
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadCatalogDirectory(descriptors).then((entries) => {
+      if (!cancelled) setDirectory({ descriptors, entries });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [descriptors]);
+
   // Bedarfsgerechtes Nachladen: nur der per Route ausgewählte Katalog.
   const activeCatalogKey = state.activeCatalogKey;
   useEffect(() => {
@@ -280,10 +298,21 @@ export function CatalogProvider({
     [descriptorByKey],
   );
 
-  const value = useMemo(
-    () => projectPublicState(state, selectCatalog),
-    [state, selectCatalog],
-  );
+  const value = useMemo(() => {
+    const projected = projectPublicState(state, selectCatalog);
+    // Ein Ergebnis einer früheren Deskriptormenge darf neue URLs nicht benennen.
+    const entries = directory?.descriptors === descriptors
+      ? directory.entries
+      : descriptors.map(({ catalogKey }) => ({ catalogKey, title: catalogKey }));
+    return {
+      ...projected,
+      catalogDirectory: entries.map((entry) => (
+        entry.catalogKey === state.activeCatalogKey && projected.catalogDocument
+          ? { ...entry, title: projected.catalogDocument.view.metadata.title }
+          : entry
+      )),
+    };
+  }, [state, selectCatalog, descriptors, directory]);
 
   return (
     <CatalogContext.Provider value={value}>{children}</CatalogContext.Provider>

@@ -463,6 +463,8 @@ Die Anwendung verwendet React Context für den globalen Zustand:
 
 Zentraler Provider, der eine **Katalogsammlung** hält. Der Einstiegskatalog aus dem Quellregister wird beim Mounten geladen; jeder weitere ausgelieferte Katalog erst, wenn eine Route ihn auswählt.
 
+Zusätzlich lädt `loadCatalogDirectory()` aus `src/state/catalogArtifacts.ts` parallel ausschließlich die Metadaten aller unterstützten Kataloge. `catalogDirectory` stellt je Eintrag `{ catalogKey, title }` bereit, unabhängig vom Laden der Katalogdaten. Bis zur Antwort und bei fehlenden oder ungültigen Titel-Metadaten gilt der `catalogKey` als Fallback; Registry-Anzeigenamen werden nicht verwendet. Der Upstream-Titel bleibt unverändert. Für den aktiven geladenen Katalog hat der Dokumenttitel Vorrang. Der Effekt ignoriert veraltete Antworten nach einem Wechsel der Deskriptoren oder Unmount; Ergebnisse bleiben an ihre Deskriptormenge gebunden.
+
 Sammlungsbezogene Felder:
 
 - `catalogs` — `ReadonlyMap<CatalogKey, LoadedCatalogState>` aller angeforderten Kataloge. Jeder Eintrag trägt sein eigenes Dokument, seine eigene Provenance, sein eigenes Verifikationsergebnis und seinen eigenen Fehlerzustand.

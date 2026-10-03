@@ -655,6 +655,11 @@ async function buildFetchArtifacts(logger = console, {
       expectedOscalVersion: entry.oscalVersion,
     });
 
+    const title = artifact.json.catalog.metadata?.title;
+    if (typeof title !== 'string' || title.length === 0) {
+      throw new Error(`${entry.artifactKey}: metadata.title muss ein nicht-leerer String sein.`);
+    }
+
     catalogRecords.push({
       entry,
       treeFile,
@@ -887,6 +892,7 @@ async function buildFetchArtifacts(logger = console, {
     const metadataArtifact = buildJsonArtifactBuffer({
       artifactKey: record.entry.artifactKey,
       catalogKey: record.entry.catalogKey,
+      title: record.artifact.json.catalog.metadata.title,
       oscalVersion: record.entry.oscalVersion,
       source: {
         repository: OFFICIAL_BSI_REPOSITORY_URL,

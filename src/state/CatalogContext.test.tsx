@@ -8,6 +8,7 @@ import { CatalogProvider } from './CatalogContext';
 import { ARTIFACT_FETCH_TIMEOUT_MS, computeSHA256 } from '@/domain/integrity';
 import { useCatalog } from '@/hooks/useCatalog';
 import { ENTRY_CATALOG_KEY } from '@/domain/sourceRegistry';
+import { buildSupportedCatalogDescriptors } from '@/state/catalogArtifacts';
 import { countPropRemarks } from '@/test/oscalStructure';
 
 /**
@@ -309,11 +310,14 @@ describe('CatalogProvider', () => {
     // zugesagt und hängt am Auflösungszeitpunkt des jeweiligen Downloads.
     expect(requestedUrls.slice(0, 2)).toEqual(['/catalog.json', '/vocabularies.json']);
     expect([...requestedUrls].sort()).toEqual([
+      ...buildSupportedCatalogDescriptors(import.meta.env.BASE_URL).map((descriptor) =>
+        descriptor.isEntryCatalog ? '/catalog-metadata.json' : descriptor.metadataUrl,
+      ),
       '/catalog-metadata.json',
       '/catalog.json',
       '/upstream-sources-metadata.json',
       '/vocabularies.json',
-    ]);
+    ].sort());
   });
 
   it('keeps the catalog usable when vocabulary artifacts are missing', async () => {
