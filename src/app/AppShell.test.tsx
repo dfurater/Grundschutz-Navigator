@@ -24,29 +24,16 @@ vi.mock('@/components/HeaderBar', () => ({
     menuExpanded,
     menuControls,
     menuButtonRef,
-    catalogSwitcherOpen,
-    onCatalogSwitcherOpenChange,
   }: {
     onMenuToggle: () => void;
     menuExpanded?: boolean;
     menuControls?: string;
     menuButtonRef?: RefObject<HTMLButtonElement | null>;
     onSearch: (term: string) => void;
-    catalogSwitcherOpen: boolean;
-    onCatalogSwitcherOpenChange: (open: boolean) => void;
   }) => (
-    <>
-      <button type="button" ref={menuButtonRef} aria-expanded={menuExpanded} aria-controls={menuControls} onClick={onMenuToggle}>
-        Menu
-      </button>
-      <button
-        type="button"
-        onClick={() => onCatalogSwitcherOpenChange(!catalogSwitcherOpen)}
-      >
-        Katalog wechseln
-      </button>
-      <output data-testid="catalog-switcher-open">{String(catalogSwitcherOpen)}</output>
-    </>
+    <button type="button" ref={menuButtonRef} aria-expanded={menuExpanded} aria-controls={menuControls} onClick={onMenuToggle}>
+      Menu
+    </button>
   ),
 }));
 
@@ -100,6 +87,15 @@ vi.mock('@/features/pages/LizenzenPage', () => ({
 const mockedUseCatalog = vi.mocked(useCatalog);
 const mockedUseMediaQuery = vi.mocked(useMediaQuery);
 
+const CATALOG_DIRECTORY = [
+  { catalogKey: 'gspp', title: 'Anwenderkatalog Grundschutz++' },
+  { catalogKey: 'lieferkette', title: 'Supply Chain Security' },
+  { catalogKey: 'wlan', title: 'Stand der Technik WLAN' },
+] as const;
+
+const scopeTrigger = (title = 'Anwenderkatalog Grundschutz++') =>
+  screen.getByRole('button', { name: `Katalog: ${title}` });
+
 describe('AppShell', () => {
   beforeEach(() => {
     mockedUseCatalog.mockReset();
@@ -107,6 +103,7 @@ describe('AppShell', () => {
 
     mockedUseCatalog.mockReturnValue({
       ...catalogCollectionDefaults(),
+      catalogDirectory: CATALOG_DIRECTORY,
       catalogDocument: null,
       catalog: {
         catalogKey: 'gspp',
@@ -195,14 +192,17 @@ describe('AppShell', () => {
     expect(main).not.toHaveAttribute('inert');
   });
 
-  it.each(['close', 'link', 'backdrop'] as const)('returns focus when mobile navigation is dismissed through %s', (method) => {
+  it.each(['close', 'selection', 'backdrop'] as const)('returns focus when mobile navigation is dismissed through %s', (method) => {
     const { container } = render(<MemoryRouter><AppShell /></MemoryRouter>);
     const menuButton = screen.getByRole('button', { name: 'Menu' });
     fireEvent.click(menuButton);
+    if (method === 'selection') fireEvent.click(scopeTrigger());
     const target = method === 'close'
       ? screen.getByRole('button', { name: 'Menü schließen' })
-      : method === 'link' ? screen.getByRole('link', { name: 'Suche' }) : screen.getByTestId('mobile-nav-backdrop');
-    if (method === 'backdrop') screen.getByRole('link', { name: 'Suche' }).focus();
+      : method === 'selection'
+        ? screen.getByRole('menuitemradio', { name: 'Stand der Technik WLAN' })
+        : screen.getByTestId('mobile-nav-backdrop');
+    if (method === 'backdrop') screen.getByRole('button', { name: 'Menü schließen' }).focus();
     else target.focus();
     const focus = vi.spyOn(menuButton, 'focus');
     fireEvent.click(target);
@@ -307,13 +307,14 @@ describe('AppShell', () => {
   });
 
   it('uses focus-visible rings for sidebar controls and the 404 link', () => {
+    mockedUseMediaQuery.mockImplementation((query) => query === '(min-width: 768px)');
     const { container } = render(
       <MemoryRouter initialEntries={['/missing']}>
         <AppShell />
       </MemoryRouter>,
     );
 
-    const explorerButton = screen.getByRole('button', { name: 'Katalog-Explorer' });
+    const explorerButton = scopeTrigger();
     const collapseButton = screen.getByRole('button', { name: 'Katalog-Explorer ausblenden' });
     const resizeHandle = screen.getByRole('button', { name: 'Sidebar-Breite anpassen' });
     const homeLink = screen.getByRole('link', { name: 'Zur Startseite' });
@@ -409,38 +410,9 @@ describe('AppShell', () => {
     expect(screen.getByText('Footer')).not.toHaveClass('hidden');
   });
 
-  it('keeps only primary mobile destinations in the drawer', () => {
-    render(
-      <MemoryRouter initialEntries={['/']}>
-        <AppShell />
-      </MemoryRouter>,
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
-
-    expect(screen.getByRole('navigation', { name: 'Sektionen' }))
-      .toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Katalog' })).toHaveAttribute(
-      'href',
-      '/katalog/gspp',
-    );
-    expect(screen.getByRole('link', { name: 'Suche' })).toHaveAttribute(
-      'href',
-      '/suche',
-    );
-    expect(screen.queryByRole('navigation', { name: 'Weitere Seiten' }))
-      .not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Datenschutz' }))
-      .not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Impressum' }))
-      .not.toBeInTheDocument();
-  });
-
-  // Das Switcher-Menü sitzt im Stacking-Context des Headers und bliebe hinter
-  // dem Drawer. Statt eines z-index-Eingriffs weicht mobil der Drawer — über
-  // denselben State, den Backdrop, X-Schalter und Tree-Auswahl schon nutzen,
-  // und damit über die bestehende transform-Transition des `aside` (GSPP-440).
-  it('schließt den mobilen Drawer, sobald der Katalog-Switcher öffnet', () => {
+  // Die Kontextwahl ist der Kopf des Drawers; „Katalog“ war derselbe Link wie
+  // der aktive Katalog, „Suche“ steht im Header (GSPP-476).
+  it('führt im Drawer die Kontextwahl statt einer Sektionsnavigation', () => {
     const { container } = render(
       <MemoryRouter initialEntries={['/']}>
         <AppShell />
@@ -448,37 +420,78 @@ describe('AppShell', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
-    expect(container.querySelector('aside')?.className).not.toContain('-translate-x-full');
-    expect(screen.getByTestId('mobile-nav-backdrop')).toBeInTheDocument();
-    // Safari 26 liest keine Farbe vom festen Element selbst (BackdropTint, GSPP-447).
-    expect(screen.getByTestId('mobile-nav-backdrop').className).not.toMatch(/\bbg-/);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Katalog wechseln' }));
+    const aside = container.querySelector('aside')!;
+    expect(aside).toContainElement(scopeTrigger());
+    expect(aside).toContainElement(screen.getByRole('button', { name: 'Menü schließen' }));
+    expect(screen.queryByRole('navigation', { name: 'Sektionen' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Suche' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Katalog' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Datenschutz' })).not.toBeInTheDocument();
+    expect(aside.querySelectorAll('svg')).toHaveLength(2);
+  });
 
-    expect(screen.getByTestId('catalog-switcher-open')).toHaveTextContent('true');
-    expect(container.querySelector('aside')?.className).toContain('-translate-x-full');
+  it('wechselt den Katalog aus dem Drawer-Kopf und schließt den Drawer', () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={['/']}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    fireEvent.click(scopeTrigger());
+
+    const items = screen.getAllByRole('menuitemradio');
+    expect(items.map((item) => item.textContent)).toEqual(CATALOG_DIRECTORY.map(({ title }) => title));
+    expect(items.map((item) => item.getAttribute('href'))).toEqual([
+      '/katalog/gspp',
+      '/katalog/lieferkette',
+      '/katalog/wlan',
+    ]);
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Supply Chain Security' }));
+
+    expect(screen.getByTestId('catalog-browser')).toBeInTheDocument();
+    expect(container.querySelector('aside')).toHaveAttribute('inert');
     expect(screen.queryByTestId('mobile-nav-backdrop')).not.toBeInTheDocument();
   });
 
-  // Gegenrichtung über denselben gemeinsamen Zustand. Der Hamburger löst bei
-  // Maus wie bei Tastatur denselben onClick-Pfad aus; der Outside-`mousedown`
-  // des Switchers erreicht die Tastaturaktivierung nicht und ließe beide
-  // Overlays offen (GSPP-440).
-  it('schließt das Katalog-Switcher-Menü, sobald der mobile Drawer öffnet', () => {
+  // Der Drawer besitzt Escape in der Capture-Phase; ein offenes Menü in seinem
+  // Kopf muss trotzdem zuerst schließen (GSPP-476).
+  it('schließt mit Escape zuerst das Menü im Drawer-Kopf und erst danach den Drawer', () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={['/']}>
+        <AppShell />
+      </MemoryRouter>,
+    );
+    const menuButton = screen.getByRole('button', { name: 'Menu' });
+    fireEvent.click(menuButton);
+    fireEvent.click(scopeTrigger());
+    const item = screen.getAllByRole('menuitemradio')[0];
+    expect(item).toHaveFocus();
+
+    expect(fireEvent.keyDown(item, { key: 'Escape' })).toBe(false);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(scopeTrigger()).toHaveFocus();
+    expect(container.querySelector('aside')).not.toHaveAttribute('inert');
+
+    fireEvent.keyDown(scopeTrigger(), { key: 'Escape' });
+    expect(container.querySelector('aside')).toHaveAttribute('inert');
+    expect(menuButton).toHaveFocus();
+  });
+
+  it('zeigt die Kontextwahl auf dem Desktop mit Einklappen und ohne Schild in der eingeklappten Leiste', () => {
+    mockedUseMediaQuery.mockImplementation((query) => query === '(min-width: 768px)');
     const { container } = render(
       <MemoryRouter initialEntries={['/']}>
         <AppShell />
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Katalog wechseln' }));
-    expect(screen.getByTestId('catalog-switcher-open')).toHaveTextContent('true');
+    expect(scopeTrigger()).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Menü schließen' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Katalog-Explorer ausblenden' }));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
-
-    expect(screen.getByTestId('catalog-switcher-open')).toHaveTextContent('false');
-    expect(container.querySelector('aside')?.className).not.toContain('-translate-x-full');
-    expect(screen.getByTestId('mobile-nav-backdrop')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Katalog:/ })).not.toBeInTheDocument();
+    expect(container.querySelector('aside')?.querySelectorAll('svg')).toHaveLength(1);
   });
 
   it('registers the canonical catalog-scoped control route', () => {
@@ -525,9 +538,10 @@ describe('AppShell', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('link', { name: 'Katalog' })).toHaveAttribute(
-      'href',
-      '/katalog/wlan',
+    fireEvent.click(scopeTrigger('Stand der Technik WLAN'));
+    expect(screen.getByRole('menuitemradio', { name: 'Stand der Technik WLAN' })).toHaveAttribute(
+      'aria-checked',
+      'true',
     );
   });
 
@@ -546,9 +560,10 @@ describe('AppShell', () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole('link', { name: 'Katalog' })).toHaveAttribute(
-      'href',
-      '/katalog/wlan',
+    fireEvent.click(scopeTrigger('Stand der Technik WLAN'));
+    expect(screen.getByRole('menuitemradio', { name: 'Stand der Technik WLAN' })).toHaveAttribute(
+      'aria-checked',
+      'true',
     );
   });
 
