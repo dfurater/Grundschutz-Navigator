@@ -171,7 +171,9 @@ src/                              # Anwendungsquellcode
 │   │   ├── CatalogMobileExportSheet.tsx  # Export als Bottom Sheet (mobil)
 │   │   ├── CatalogMobileFilterSheet.tsx  # Filter als Bottom Sheet (mobil)
 │   │   ├── CatalogMobileList.tsx         # Trefferliste unterhalb lg mit Auswahlmodus
-│   │   ├── CatalogMobileSelectionBar.tsx # Auswahlleiste (mobil)
+│   │   ├── CatalogMobileSelectToggle.tsx # Auswahl-Schalter unter lg (Katalog und Suche)
+│   │   ├── CatalogMobileSelectionBar.tsx # Auswahlleiste (mobil): „Fertig“ und Export mit Zähler
+│   │   ├── CatalogSelectionChip.tsx      # Zähler-Chip „n ausgewählt“ (Katalog und Suche)
 │   │   ├── CatalogTargetNotFound.tsx     # Hinweis auf ein nicht gefundenes Routenziel
 │   │   ├── CatalogToolbar.tsx            # Titel, Trefferzahl und Aktionen
 │   │   ├── catalogScopeTitle.ts          # Bereichsüberschrift und Dokumenttitel eines Scopes
@@ -538,18 +540,22 @@ Beim Build entsteht deterministisch eine UTF-8-kodierte `dist/sitemap.xml` mit X
 
 Breakpoint-abhängige UI wird über `useMediaQuery('(min-width: 1024px)')` (`isDesktop`) bedingt **gemountet**, nicht per CSS versteckt — zu jedem Zeitpunkt ist nur der passende Teilbaum im DOM. Drei Ausnahmen: Der `CatalogMobileDetailOverlay` behält sein `active`-Prop-Muster, weil er inaktiv `null` rendert und seinen Modal-Lifecycle (Focus-Trap, Scroll-Lock, Escape) selbst besitzt; die mobile Detailseite blendet Toolbar und Liste per `hidden` aus, statt sie abzubauen, und baut nur die mobilen Filter- und Export-Sheets ab (siehe „Mobile Detailseite“); kleine stateless Buttons dürfen bei `lg:hidden` bleiben, da sie keinen schweren Teilbaum doppelt mounten.
 
+Das mobile Suchfeld auf `/suche` und der gemeinsame `Input` verwenden unter `sm` 16 px Schrift (`text-base sm:text-sm`), damit iPhone-Safari beim Fokussieren die Seite nicht automatisch vergrößert und den Zoom in die anschließende Kontrollansicht mitnimmt. Ab `sm` bleibt ihre Schrift bei 14 px. Das Viewport-Meta erlaubt weiterhin Pinch-Zoom. `src/test/browser/searchInputFontSize.browser.test.ts` misst mit dem App-Stylesheet die berechnete Schriftgröße vor und nach Fokus, die Icon-Zentrierung und den Textabstand bei mobilen Breiten sowie die 14-px-Schrift unmittelbar ab `sm`.
+
 Die sichtbare Bereichsüberschrift der Toolbar nennt nur den Namen der gewählten Praktik oder des Themas, etwa „Notfallvorsorge“ für NOT.3; der Dokumenttitel behält Kennung und Name („NOT.3: Notfallvorsorge | …“). Beide liefert `describeCatalogScope` (`catalogScopeTitle.ts`).
 
 | Baustein | Verantwortung |
 |----------|----------------|
 | `useControlNavigation` | Löst Control-Route, Scope und Not-found-Zustand auf und erhält Push-/Replace-Semantik sowie Query-Parameter. Routerwerte und `NavigateFunction` werden injiziert; der Hook verwendet keine Router-Hooks. |
 | `useControlSelection` | Verwaltet die markierten Control-IDs. Der Hook ist scope-agnostisch: Er liefert synchron eine leere Auswahl, sobald sich der von außen übergebene `scopeId`-Wert ändert. `CatalogBrowser` übergibt dafür ausschließlich den `catalogKey`, sodass die Auswahl bei Themen-/Practice-Navigation und Cross-Referenz-Sprüngen innerhalb desselben Katalogs erhalten bleibt und nur bei einem echten Katalogwechsel geleert wird. |
-| `CatalogToolbar` | Stellt Titel, Counts, Auswahlmodus sowie Filter- und Exportzugänge aus Props zusammen und mountet Filter-Sheet, Export-Menü und Export-Sheet breakpoint-conditional über `isDesktop`. Ihre Überschrift ist Rückkehrziel beim Schließen der mobilen Detailseite. |
+| `CatalogToolbar` | Stellt Titel, Counts, Auswahlmodus sowie Filter- und Exportzugänge aus Props zusammen und mountet Filter-Sheet, Export-Menü und Export-Sheet breakpoint-conditional über `isDesktop`. Ihre Überschrift ist Rückkehrziel beim Schließen der mobilen Detailseite. Unter `sm` steht die Überschrift über die volle Breite (bis zu zwei Zeilen mit Umbruch und Silbentrennung); darunter folgen links Anzahl und „Filter zurücksetzen“, rechts Auswahl, Filter und CSV als gleich große 44-px-Icon-Schalter, deren letzter am Viewport-Rand endet. Ab `sm` bleibt die einzeilige Anordnung, ab `md` die feste Höhe von 51 px. |
 | `CatalogMobileList` | Rendert die ungefensterte Trefferliste unterhalb `lg` mit Auswahlmodus und Auswahlleiste; ab `md` trägt sie einen eigenen Scrollbereich, darunter scrollt das Dokument. |
 | `CatalogExportMenu` | Besitzt den Desktop-Menüzustand, Outside-Click, Escape, Autofokus und die Desktop-Exportaktionen. Das Mount-Gate liegt beim Aufrufer (`isDesktop`). |
 | `CatalogMobileFilterSheet` | Besitzt Trigger, Sichtbarkeit, Focus-Trap, Escape, Backdrop, Drag-Dismiss und Scroll-Lock des mobilen Filters. |
-| `CatalogMobileExportSheet` | Besitzt Trigger, Sichtbarkeit, Focus-Trap, Escape, Backdrop, Scroll-Lock und mobile Exportaktionen. |
-| `CatalogMobileSelectionBar` | Exportiert die mobile Auswahl und beendet anschließend den Auswahlmodus. |
+| `CatalogMobileExportSheet` | Besitzt Trigger, Sichtbarkeit, Focus-Trap, Escape, Backdrop, Scroll-Lock und mobile Exportaktionen. Der Trigger ist ein Icon-Schalter mit dem Namen „CSV exportieren“. |
+| `CatalogMobileSelectToggle` | Auswahl-Schalter unter `lg` mit `IconListChecks` (Lucide `list-checks`) und `aria-pressed`; aktiv zeigt er die Glyphe in Akzentfarbe auf einer 36-px-Tönung. Katalog und Suche verwenden denselben Baustein. |
+| `CatalogSelectionChip` | Zähler-Chip „n ausgewählt“ mit Aufheben-Kreuz für Katalog und Suche. Er entfällt im mobilen Auswahlmodus, weil dort die Auswahlleiste die Zahl trägt. Ohne Auswahlmodus, etwa bei einer am Desktop markierten Auswahl nach dem Verkleinern des Fensters, bleibt er auf jeder Breite sichtbar; unter `sm` steht er in der Zeile mit Anzahl und Aktionen. |
+| `CatalogMobileSelectionBar` | Exportiert die mobile Auswahl und beendet anschließend den Auswahlmodus. Links steht „Fertig“, rechts „Export“ mit Zähler; Icon und Zähler tragen die Akzentfarbe. Im Auswahlmodus ist der Zähler die einzige sichtbare Angabe der Auswahlzahl, weil der Zähler-Chip dort entfällt. Der Button nennt sie in seinem zugänglichen Namen, eine unsichtbare Live-Region sagt Änderungen an; ohne Auswahl ist der Export deaktiviert. |
 | `CatalogDesktopSidebar` | Kapselt Filter-/Detaildarstellung und die veränderbare Desktop-Panelbreite; der Breitenzustand bleibt beim Composer. |
 | `CatalogDetailPanel` | Baut eingehende Links und Parent-/Child-Beziehungen auf und versorgt `ControlDetail`. |
 | `CatalogMobileDetailOverlay` | Besitzt Focus-Trap, Escape und Scroll-Lock des Details zwischen `md` und `lg`, wo die Shell selbst nicht scrollt. Bleibt als Komponente gemountet und steuert Sichtbarkeit über das `active`-Flag; inaktiv rendert sie `null` (dokumentierte Ausnahme der Breakpoint-Mount-Strategie). |
@@ -625,7 +631,7 @@ Die Sektionsmodule erhalten ausschließlich benötigte Controls, aufgelöste Vok
 |----------|----------------|
 | `useControlSelection` | Läuft mit dem Scope `search:<catalogKey>:<query>` — unabhängig vom Katalog-Browser-Scope (`catalogKey` allein). Jede Änderung von `q` liefert synchron eine leere Auswahl. |
 | `resultsUiState` | Führt `sort`, `visibleResultCount` und `mobileSelectMode` gemeinsam query-gebunden; ein Query-Wechsel setzt sie synchron zurück. |
-| `SearchResultsToolbar` | Auswahlanzahl/Aufheben, mobiler Auswahlmodus-Toggle sowie die wiederverwendeten Export-Komponenten, beide über die Prop `isDesktop` bedingt gemountet. Kein Filter-Zugang. |
+| `SearchResultsToolbar` | Zähler-Chip (`CatalogSelectionChip`), Auswahl-Schalter (`CatalogMobileSelectToggle`) sowie die wiederverwendeten Export-Komponenten, beide über die Prop `isDesktop` bedingt gemountet; Chip-Regel, Auswahl-Schalter und CSV-Auslöser sind dieselben wie im Katalog. Kein Filter-Zugang. |
 | `ControlTable`s `selectableControls` | Optionale Prop, die ausschließlich die Header-Aktion „Alle auswählen" bestimmt; Standard bleibt `controls`. `SearchPage` übergibt die gerenderte Seite als `controls`, aber alle sortierten Query-Treffer als `selectableControls`. |
 | `CatalogMobileSelectionBar` | Unverändert wiederverwendet; `SearchPage` rendert sie selbst im mobilen Auswahlmodus und beendet Modus und Auswahl nach Export oder „Fertig". |
 

@@ -78,15 +78,15 @@ export function HeaderBar({
     <header
       role="banner"
       data-sticky-header
-      className={`header-reference-theme sticky top-0 z-30 grid h-14 shrink-0 grid-cols-[1fr_minmax(0,36rem)_1fr] items-center px-4 ${className}`}
+      className={`header-reference-theme sticky top-0 z-30 grid h-14 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-4 sm:grid-cols-[max-content_minmax(0,36rem)_auto] sm:gap-0 xl:grid-cols-[1fr_minmax(0,36rem)_1fr] ${className}`}
       data-testid="header-bar"
     >
       {/* Hamburger + Brand — grouped as one visual unit */}
-      <div className="flex items-center justify-self-start shrink-0">
+      <div className="flex min-w-0 items-center">
         {onMenuToggle && (
           <button
             type="button"
-            className="mr-2 rounded p-2 text-[var(--header-text-muted)] transition-colors hover:text-[var(--header-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--header-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--header-bg)] md:hidden"
+            className="mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded text-[var(--header-text-muted)] transition-colors hover:text-[var(--header-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--header-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--header-bg)] md:hidden"
             ref={menuButtonRef}
             onClick={onMenuToggle}
             aria-expanded={menuExpanded}
@@ -98,11 +98,11 @@ export function HeaderBar({
         )}
         <Link
           to="/"
-          className="group flex shrink-0 items-center gap-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--header-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--header-bg)]"
+          className="group flex min-h-11 min-w-0 items-center gap-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--header-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--header-bg)]"
           aria-label="Zur Startseite"
         >
-          <IconShield className="h-5 w-5 text-[var(--header-brand-accent)] transition-colors group-hover:text-[var(--header-brand-accent-hover)]" />
-          <span className="text-sm font-bold tracking-wide transition-colors group-hover:text-[var(--header-text-hover)] sm:text-base">
+          <IconShield className="h-5 w-5 shrink-0 text-[var(--header-brand-accent)] transition-colors group-hover:text-[var(--header-brand-accent-hover)]" />
+          <span className="min-w-0 text-sm font-bold leading-tight tracking-wide transition-colors group-hover:text-[var(--header-text-hover)] sm:text-base">
             Grundschutz++ Navigator
           </span>
         </Link>

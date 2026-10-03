@@ -292,6 +292,15 @@ function scrollListTo(y: number) {
   fireEvent.scroll(globalThis.window);
 }
 
+// Im mobilen Auswahlmodus steht die Zahl genau einmal sichtbar, im
+// Export-Button der Auswahlleiste; der Zähler-Chip entfällt (GSPP-471).
+function expectMobileSelectionCount(count: number) {
+  expect(
+    screen.getByRole('button', { name: `Auswahl als CSV exportieren, ${count} ausgewählt` }),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Auswahl aufheben' })).not.toBeInTheDocument();
+}
+
 describe('CatalogBrowser mobile focus restoration', () => {
   afterEach(() => {
     vi.mocked(globalThis.scrollTo).mockRestore();
@@ -378,7 +387,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(globalThis.scrollTo).toHaveBeenLastCalledWith(0, 0);
   });
 
-  it.each(['Filter anzeigen', 'CSV'])('dismisses an existing %s sheet when the mobile navigation opens', (label) => {
+  it.each(['Filter anzeigen', 'CSV exportieren'])('dismisses an existing %s sheet when the mobile navigation opens', (label) => {
     render(
       <MemoryRouter initialEntries={['/katalog/gspp/TOP.1']}>
         <AppShell />
@@ -396,7 +405,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(menuButton).toHaveFocus();
     expect(body.style.overflow).not.toBe('hidden');
     expect(screen.queryByRole('button', { name: 'Filter anzeigen' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'CSV' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'CSV exportieren' })).not.toBeInTheDocument();
     fireEvent.keyDown(menuButton, { key: 'Escape' });
     expect(menuButton).toHaveFocus();
     expect(screen.queryByText('Exportieren als CSV')).not.toBeInTheDocument();
@@ -428,7 +437,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Kontrollen auswählen' }));
     fireEvent.click(screen.getByRole('button', { name: control.title }));
     expect(screen.getByTestId('location')).toHaveTextContent('/katalog/gspp/TOP.1');
-    expect(screen.getAllByText('1 ausgewählt').length).toBeGreaterThan(0);
+    expectMobileSelectionCount(1);
 
     isDesktop = true;
     view.rerender(<CatalogBrowserTestApp initialEntry="/katalog/gspp/TOP.1" />);
@@ -442,7 +451,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
 
     expect(screen.getAllByTestId('mobile-control-row')).toHaveLength(1);
     expect(screen.queryByTestId('desktop-control-list')).not.toBeInTheDocument();
-    expect(screen.getAllByText('1 ausgewählt').length).toBeGreaterThan(0);
+    expectMobileSelectionCount(1);
   });
 
   it('preserves the selected-control route across mobile-desktop switches', () => {
@@ -489,7 +498,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
 
   it('returns focus to the export trigger after Escape closes the sheet', () => {
     renderCatalogBrowser();
-    const trigger = screen.getByRole('button', { name: 'CSV' });
+    const trigger = screen.getByRole('button', { name: 'CSV exportieren' });
 
     trigger.focus();
     fireEvent.click(trigger);
@@ -654,7 +663,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
 
   it.each([
     ['Filter', 'Filter anzeigen', 'Filteraktion'],
-    ['Export', 'CSV', 'Aktuelle Ansicht (1)'],
+    ['Export', 'CSV exportieren', 'Aktuelle Ansicht (1)'],
   ])('releases the scroll lock of an open %s sheet when a control page opens', (_label, triggerName, sheetContent) => {
     render(
       <CatalogBrowserTestApp
@@ -1097,12 +1106,12 @@ describe('CatalogBrowser mobile focus restoration', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Kontrollen auswählen' }));
     fireEvent.click(screen.getByRole('button', { name: control.title }));
-    expect(screen.getAllByText('1 ausgewählt').length).toBeGreaterThan(0);
+    expectMobileSelectionCount(1);
 
     fireEvent.click(screen.getByRole('button', { name: 'Thema wechseln' }));
 
     expect(screen.getByTestId('location')).toHaveTextContent('/katalog/gspp/TOP.2');
-    expect(screen.getAllByText('1 ausgewählt').length).toBeGreaterThan(0);
+    expectMobileSelectionCount(1);
   });
 
   it('preserves the selection when a cross-reference opens a control from another group', () => {
@@ -1115,12 +1124,12 @@ describe('CatalogBrowser mobile focus restoration', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Kontrollen auswählen' }));
     fireEvent.click(screen.getByRole('button', { name: control.title }));
-    expect(screen.getAllByText('1 ausgewählt').length).toBeGreaterThan(0);
+    expectMobileSelectionCount(1);
 
     fireEvent.click(screen.getByRole('button', { name: 'Verwandte Kontrolle öffnen' }));
 
     expect(screen.getByText(`Detail ${relatedControl.id}`)).toBeInTheDocument();
-    expect(screen.getAllByText('1 ausgewählt').length).toBeGreaterThan(0);
+    expectMobileSelectionCount(1);
   });
 
   it('discards selected control IDs when the loaded catalog changes', () => {
@@ -1138,12 +1147,18 @@ describe('CatalogBrowser mobile focus restoration', () => {
     renderCatalogBrowser('/katalog/gspp', switchCatalog);
     fireEvent.click(screen.getByRole('button', { name: 'Kontrollen auswählen' }));
     fireEvent.click(screen.getByRole('button', { name: control.title }));
-    expect(screen.getAllByText('1 ausgewählt').length).toBeGreaterThan(0);
+    expectMobileSelectionCount(1);
 
     fireEvent.click(screen.getByRole('button', { name: 'Katalog wechseln' }));
 
+    // Die Detailseite verdeckt die Auswahlleiste für Hilfstechnik, daher `hidden`.
+    expect(
+      screen.getByRole('button', {
+        name: 'Auswahl als CSV exportieren, 0 ausgewählt',
+        hidden: true,
+      }),
+    ).toBeDisabled();
     expect(screen.queryByText('1 ausgewählt')).not.toBeInTheDocument();
-    expect(screen.getByText('Tippen zum Auswählen')).toBeInTheDocument();
   });
 
   it.each([

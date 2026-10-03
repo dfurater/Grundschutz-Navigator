@@ -78,16 +78,16 @@ export function CatalogSwitcher({ open: openProp, onOpenChange }: CatalogSwitche
       <button
         type="button"
         onClick={() => changeOpen(!open)}
-        className="flex items-center gap-2 rounded-md border border-[var(--header-surface-hover)] bg-[var(--header-surface)] px-2 py-1.5 text-[var(--header-text)] transition-colors hover:bg-[var(--header-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--header-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--header-bg)] sm:px-3"
+        className="flex min-h-11 min-w-11 items-center gap-2 rounded-md border border-[var(--header-surface-hover)] bg-[var(--header-surface)] px-2 py-1.5 text-[var(--header-text)] transition-colors hover:bg-[var(--header-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--header-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--header-bg)] sm:px-3"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label="Katalog wechseln"
       >
-        <ActiveIcon className="h-4 w-4 shrink-0 text-[var(--header-brand-accent)]" />
-        <span className="hidden max-w-[10rem] truncate text-sm font-medium sm:inline">
+        <ActiveIcon className="h-5 w-5 shrink-0 text-[var(--header-brand-accent)]" />
+        <span className="hidden max-w-[10rem] truncate text-sm font-medium md:inline">
           {activeEntry.title}
         </span>
-        <IconChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--header-text-muted)]" />
+        <IconChevronDown className="h-4 w-4 shrink-0 text-[var(--header-text-muted)]" />
       </button>
 
       {open && (

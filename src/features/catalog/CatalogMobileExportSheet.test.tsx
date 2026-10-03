@@ -46,7 +46,7 @@ describe('CatalogMobileExportSheet', () => {
         sectionFilename="grundschutz-TOP.1.csv"
       />,
     );
-    const trigger = screen.getByRole('button', { name: 'CSV' });
+    const trigger = screen.getByRole('button', { name: 'CSV exportieren' });
 
     trigger.focus();
     fireEvent.click(trigger);
@@ -75,7 +75,7 @@ describe('CatalogMobileExportSheet', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'CSV' }));
+    fireEvent.click(screen.getByRole('button', { name: 'CSV exportieren' }));
     const backdrop = view.container.querySelector(
       '.fixed.inset-0[aria-hidden="true"]',
     );
@@ -108,7 +108,7 @@ describe('CatalogMobileExportSheet', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'CSV' }));
+    fireEvent.click(screen.getByRole('button', { name: 'CSV exportieren' }));
     fireEvent.click(screen.getByRole('button', { name: buttonName }));
 
     expect(mockedDownloadCSV).toHaveBeenCalledWith(controls, filename);
@@ -130,7 +130,7 @@ describe('CatalogMobileExportSheet', () => {
       />,
     );
 
-    const trigger = screen.getByRole('button', { name: 'CSV' });
+    const trigger = screen.getByRole('button', { name: 'CSV exportieren' });
     expect(trigger).not.toBeDisabled();
 
     fireEvent.click(trigger);
@@ -154,7 +154,7 @@ describe('CatalogMobileExportSheet', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'CSV' }));
+    fireEvent.click(screen.getByRole('button', { name: 'CSV exportieren' }));
     fireEvent.click(
       screen.getByRole('button', { name: 'Auswahl exportieren (2)' }),
     );
@@ -163,5 +163,33 @@ describe('CatalogMobileExportSheet', () => {
       [firstControl, secondControl],
       'grundschutz-auswahl.csv',
     );
+  });
+
+  it('rendert den Auslöser als Icon-Schalter und deaktiviert ihn ohne Auswahl und ohne Ansicht (GSPP-471)', () => {
+    const view = render(
+      <CatalogMobileExportSheet
+        checkedIds={new Set()}
+        filteredControls={[firstControl]}
+        allControls={[firstControl, secondControl]}
+        sectionFilename="grundschutz-TOP.1.csv"
+      />,
+    );
+
+    const trigger = screen.getByRole('button', { name: 'CSV exportieren' });
+    expect(trigger).toHaveClass('lg:hidden', 'min-h-[44px]', 'min-w-[44px]', 'bg-transparent');
+    expect(trigger).toHaveTextContent('');
+    expect(trigger.querySelector('svg')).toHaveClass('w-4', 'h-4');
+    expect(trigger).toBeEnabled();
+
+    view.rerender(
+      <CatalogMobileExportSheet
+        checkedIds={new Set()}
+        filteredControls={[]}
+        allControls={[firstControl, secondControl]}
+        sectionFilename="grundschutz-TOP.1.csv"
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'CSV exportieren' })).toBeDisabled();
   });
 });
