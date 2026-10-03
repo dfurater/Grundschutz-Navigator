@@ -62,16 +62,16 @@ describe('listSeoRouteMetadata', () => {
     expect(entries).toContainEqual({ path: '/', title: 'Grundschutz++ Navigator' });
     for (const [path, title] of Object.entries(STATIC_CONTENT_TITLES)) expect(entries).toContainEqual({ path, title });
     expect(entries).toContainEqual({ path: '/katalog/gspp', title: 'Catalog' });
-    expect(entries).toContainEqual({ path: '/katalog/gspp/GC', title: 'Governance — Catalog' });
-    expect(entries).toContainEqual({ path: '/katalog/gspp/GC.1', title: 'Foundations — Catalog' });
-    expect(entries).toContainEqual({ path: '/katalog/gspp/kontrolle/control-uuid', title: 'GC.1.1 — ISMS — Catalog' });
-    expect(entries).toContainEqual({ path: '/katalog/gspp/kontrolle/root-control', title: 'ROOT.1 — Root control — Catalog' });
+    expect(entries).toContainEqual({ path: '/katalog/gspp/GC', title: 'Governance | Catalog' });
+    expect(entries).toContainEqual({ path: '/katalog/gspp/GC.1', title: 'Foundations | Catalog' });
+    expect(entries).toContainEqual({ path: '/katalog/gspp/kontrolle/control-uuid', title: 'GC.1.1: ISMS | Catalog' });
+    expect(entries).toContainEqual({ path: '/katalog/gspp/kontrolle/root-control', title: 'ROOT.1: Root control | Catalog' });
   });
 
   it('keeps identical control IDs and alternate identifiers scoped to each catalog', () => {
     const entries = listSeoRouteMetadata([catalog('gspp', 'One'), catalog('wlan', 'Two')]);
-    expect(entries).toContainEqual({ path: '/katalog/gspp/kontrolle/control-uuid', title: 'GC.1.1 — ISMS — One' });
-    expect(entries).toContainEqual({ path: '/katalog/wlan/kontrolle/control-uuid', title: 'GC.1.1 — ISMS — Two' });
+    expect(entries).toContainEqual({ path: '/katalog/gspp/kontrolle/control-uuid', title: 'GC.1.1: ISMS | One' });
+    expect(entries).toContainEqual({ path: '/katalog/wlan/kontrolle/control-uuid', title: 'GC.1.1: ISMS | Two' });
   });
 
   it('skips unaddressable groups while preserving their addressable topics and controls', () => {
@@ -144,6 +144,16 @@ describe('writeSeoRouteEntries', () => {
     expect(existsSync(join(directory, 'katalog/gspp/unknown/index.html'))).toBe(false);
     expect(existsSync(join(directory, 'katalog/unknown/index.html'))).toBe(false);
     expect(metadata(readFileSync(join(directory, 'index.html'), 'utf8'))).toEqual({ title: 'Grundschutz++ Navigator', url: BASE_URL });
+  });
+
+  it('writes every public OG title without an em dash', () => {
+    const directory = tempDir();
+    const entries = listSeoRouteMetadata([catalog('gspp'), catalog('wlan')]);
+    writeSeoRouteEntries(directory, entries, BASE_URL);
+    for (const entry of entries) {
+      const file = entry.path === '/' ? 'index.html' : entry.path.slice(1) + '/index.html';
+      expect(metadata(readFileSync(join(directory, file), 'utf8')).title).not.toContain('\u2014');
+    }
   });
 
   it('escapes all attribute delimiters and preserves literal replacement-pattern characters', () => {
