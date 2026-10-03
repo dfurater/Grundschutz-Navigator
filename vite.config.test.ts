@@ -54,7 +54,7 @@ afterAll(() => {
 const tempDirs: string[] = [];
 
 const INDEX_HTML =
-  '<!doctype html><html><head><meta property="og:title" content="Grundschutz++ Navigator" /><meta property="og:url" content="https://dfurater.github.io/Grundschutz-Navigator/" /></head><body><script type="module" src="/Grundschutz-Navigator/assets/app.js"></script></body></html>';
+  '<!doctype html><html><head><title>Grundschutz++ Navigator</title><meta name="description" content="BSI-Anwenderkatalog durchsuchen, filtern und exportieren." /><meta property="og:title" content="Grundschutz++ Navigator" /><meta property="og:url" content="https://dfurater.github.io/Grundschutz-Navigator/" /><meta property="og:image:alt" content="Grundschutz++ Navigator. BSI-Anwenderkatalog, OSCAL 1.1.3." /></head><body><script type="module" src="/Grundschutz-Navigator/assets/app.js"></script></body></html>';
 
 const CONTENT_ROUTES = [
   '/suche',
@@ -363,5 +363,13 @@ describe('spaFallbackPlugin closeBundle', () => {
     // Bindet das Manifest den Endzustand bytegenau, hat nach ihm kein
     // Schritt mehr geschrieben.
     expect(assertChecksumsManifest(distDir).fileCount).toBe(listFilesRecursive(distDir).length);
+  });
+
+  it('fails the build on an em dash in delivered title text before writing the manifest (GSPP-468)', () => {
+    const distDir = createTempDistDir();
+    writeFileSync(join(distDir, 'index.html'), INDEX_HTML.replace('durchsuchen, filtern', 'durchsuchen \u2014 filtern'));
+
+    expect(() => spaFallbackPlugin({ outDir: distDir, catalogs: [] }).closeBundle()).toThrow(/U\+2014/);
+    expect(existsSync(join(distDir, 'SHA256SUMS'))).toBe(false);
   });
 });

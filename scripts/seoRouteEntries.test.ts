@@ -166,6 +166,9 @@ describe('writeSeoRouteEntries', () => {
   });
 
   // Vollständiger öffentlicher Routensatz: DOM-Parsing unter Coverage braucht mehr als 5 s.
+  // Dieser Test prüft den Generator gegen die Quellvorlage; die
+  // Auslieferungsseite des Vertrags (gebautes dist-HTML statt Quellvorlage)
+  // prüft `scripts/check-seo-titles.mjs` im Build (GSPP-468).
   it('checks delivered title and meta text from the HTML template and pinned public catalogs', { timeout: 30_000 }, () => {
     const template = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
     const directory = tempDir(template);

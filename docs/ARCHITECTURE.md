@@ -278,6 +278,8 @@ scripts/                          # Build-, CI- und Wartungsskripte
 ├── check-catalog-freshness.d.mts     # Typen der Frischeprüfung
 ├── check-catalog-freshness.mjs       # Frischeprüfung der lokalen Katalogdaten
 ├── check-deploy-idempotency.mjs      # Redundanten Fallback-Deploy desselben Commits verhindern
+├── check-seo-titles.d.mts            # Typen der Titelvertragsprüfung
+├── check-seo-titles.mjs              # Titelvertrag der gebauten HTML-Auslieferung
 ├── ci-scope.mjs                      # Scope-Entscheider für Step-Skips im Job validate
 ├── class2TransportFixtures.mjs       # Fixtures des fragmentierten Rückwegs
 ├── class2WorstCaseFixtures.mjs       # Worst-Case-Dokumente der Klasse-2-Grenzen
@@ -508,7 +510,7 @@ Das Vite-Plugin `github-pages-spa-fallback` (`vite.config.ts`) erzeugt beim Buil
 
 Jeder HTML-Einstieg erhält genau einen inhaltsbezogenen `og:title` und eine kanonische `og:url`. Die Titel lauten: Produktname für die Startseite, fester Seitentitel für Inhaltsseiten, Katalogname für einen Katalog, `Gruppenname | Katalogname` für Praktik oder Thema und `Kontroll-ID: Kontrolltitel | Katalogname` für eine Kontrolle. Die Titeltrenner `: ` zwischen Kennung und Titel sowie ` | ` vor dem übergeordneten Namen werden zentral als `TITLE_ID_SEPARATOR` und `TITLE_PARENT_SEPARATOR` in `src/app/pageTitles.ts` gepflegt. Browser-Titel ergänzen ` | Grundschutz++ Navigator`; Vokabularseiten verwenden `<Vokabularname> | Vokabulare | Grundschutz++ Navigator`. Die Meta-Beschreibung verwendet einen Doppelpunkt nach dem Produktnamen; der Alternativtext des OG-Bildes gibt die Textzeilen des Bildes als Sätze wieder. Die URL verwendet den Production-Origin und die normalisierte Deployment-Basis aus `BUILD_BASE`. HTML-Attributwerte werden maskiert. Beim Erzeugen der Routen-HTML ersetzt `writeSeoRouteEntries` nur `og:title` und `og:url`; `PageTitle` entfernt den statischen Titel-Fallback im Layout-Effekt.
 
-Query und Fragment erzeugen keine zusätzlichen Dateien und erscheinen nicht in Metadaten; ein Such- oder Filterlink erhält den Kopf seiner Route. Gruppen ohne ID erzeugen keinen Einstieg. Fehlende oder nicht auflösbare unterstützte Daten, Hashabweichungen, Pfad-Ausbruch, Symlinks und kollidierende Ausgabepfade führen vor dem Schreiben der Routendateien zum Fehler. Für unbekannte Ziele dient `dist/404.html` als Fallback mit neutralem Produkttitel und kanonischer Startseiten-URL. Der Fallback bleibt bytegleich zum gebauten Startseiten-HTML.
+Query und Fragment erzeugen keine zusätzlichen Dateien und erscheinen nicht in Metadaten; ein Such- oder Filterlink erhält den Kopf seiner Route. Gruppen ohne ID erzeugen keinen Einstieg. Fehlende oder nicht auflösbare unterstützte Daten, Hashabweichungen, Pfad-Ausbruch, Symlinks und kollidierende Ausgabepfade führen vor dem Schreiben der Routendateien zum Fehler. Nach dem Schreiben prüft der Titelvertrag (`scripts/check-seo-titles.mjs`) jede gebaute HTML-Datei auf genau einen `<title>`-, `og:title`-, Meta-Description- und `og:image:alt`-Treffer ohne Gedankenstrich (GSPP-468) — erst er sieht das gebaute `dist/`-HTML statt der Quellvorlage. Für unbekannte Ziele dient `dist/404.html` als Fallback mit neutralem Produkttitel und kanonischer Startseiten-URL. Der Fallback bleibt bytegleich zum gebauten Startseiten-HTML.
 
 ### Sitemap
 
