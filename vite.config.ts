@@ -10,6 +10,7 @@ import {
 } from './scripts/seoRouteEntries.ts';
 import { listSupportedCatalogs } from './src/domain/sourceRegistry.mjs';
 import { catalogFreshnessPlugin } from './scripts/check-catalog-freshness.mjs';
+import { writeChecksumsManifestFile } from './scripts/deployChecksums.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -75,13 +76,22 @@ export function writeStaticRouteEntries(outDir: string, catalogs?: readonly Cata
   );
 }
 
-function spaFallbackPlugin() {
+/**
+ * Nachgelagerte Build-Ausgaben für GitHub Pages. `SHA256SUMS` entsteht als
+ * letzter Schritt, damit es Routen-Einstiege, `404.html` und Sitemap bereits
+ * bindet (GSPP-465); der Deploy attestiert ausschließlich dieses Manifest.
+ */
+export function spaFallbackPlugin(
+  options: { outDir?: string; catalogs?: readonly Catalog[] } = {},
+) {
+  const outDir = options.outDir ?? DIST_DIR;
   return {
     name: 'github-pages-spa-fallback',
     closeBundle() {
-      writeStaticRouteEntries(DIST_DIR);
-      writeSpaFallbackFile(DIST_DIR);
-      writeSitemapFile(DIST_DIR);
+      writeStaticRouteEntries(outDir, options.catalogs);
+      writeSpaFallbackFile(outDir);
+      writeSitemapFile(outDir);
+      writeChecksumsManifestFile(outDir);
     },
   };
 }

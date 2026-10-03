@@ -16,11 +16,13 @@ import {
   listCanonicalEntryRoutes,
   buildSitemapXml,
   resolveDeploymentBase,
+  spaFallbackPlugin,
   writeSpaFallbackFile,
   writeSitemapFile,
   writeStaticRouteEntries,
 } from './vite.config';
 import { createRequire } from 'node:module';
+import { assertChecksumsManifest, parseChecksumsManifest } from './scripts/deployChecksums.mjs';
 
 // jsdom ist als Dev-Dependency vorhanden (Vitest-jsdom-Umgebung), bringt aber
 // keine Typen mit. Der Laufzeit-Import über createRequire hält die
@@ -341,5 +343,25 @@ describe('writeStaticRouteEntries', () => {
       `Cannot create static route entries without build output at ${join(distDir, 'index.html')}`,
     );
     expect(listFilesRecursive(distDir)).toEqual([]);
+  });
+});
+
+describe('spaFallbackPlugin closeBundle', () => {
+  it('writes SHA256SUMS last so it binds route entries, 404.html, sitemap and assets', () => {
+    const distDir = createTempDistWithIndex();
+    writeFileSync(join(distDir, 'favicon.svg'), '<svg/>');
+
+    spaFallbackPlugin({ outDir: distDir, catalogs: [] }).closeBundle();
+
+    const manifest = readFileSync(join(distDir, 'SHA256SUMS'), 'utf8');
+    const paths = [...parseChecksumsManifest(manifest).keys()];
+    expect(paths).toContain('404.html');
+    expect(paths).toContain('sitemap.xml');
+    expect(paths).toContain('favicon.svg');
+    expect(paths).toContain('suche/index.html');
+    expect(paths).not.toContain('SHA256SUMS');
+    // Bindet das Manifest den Endzustand bytegenau, hat nach ihm kein
+    // Schritt mehr geschrieben.
+    expect(assertChecksumsManifest(distDir).fileCount).toBe(listFilesRecursive(distDir).length);
   });
 });
