@@ -282,6 +282,8 @@ scripts/                          # Build-, CI- und Wartungsskripte
 ├── class2TransportFixtures.mjs       # Fixtures des fragmentierten Rückwegs
 ├── class2WorstCaseFixtures.mjs       # Worst-Case-Dokumente der Klasse-2-Grenzen
 ├── control-identity-delta.mjs        # Control-Identitätsdelta zwischen Snapshots
+├── deployChecksums.d.mts            # Typen des Prüfsummen-Manifests
+├── deployChecksums.mjs               # Prüfsummen-Manifest SHA256SUMS der Pages-Auslieferung
 ├── fetch-catalog.mjs                 # Registry-gesteuerter Abruf, Validierung und Ausgabe
 ├── git-changed-files.mjs             # Geänderte Dateien eines Pull Requests
 ├── githubApiFetch.mjs                # Gemeinsamer GitHub-JSON-Abruf der CI-Guards
@@ -316,6 +318,7 @@ scripts/                          # Build-, CI- und Wartungsskripte
 ├── verify-node-version.mjs           # .nvmrc gegen engines.node und gegen Versionsliterale prüfen
 ├── verify-oscal-schemas.mjs          # Netzfreie Integritätsprüfung der Schemas
 ├── verify-upstream-oscal.mjs         # Gepinnter go-oscal-Korpuslauf
+├── verifyDeployment.mjs              # Prüfbefehl für eine Live-Datei gegen das attestierte Manifest
 ├── vitest.corpus.config.ts           # Vitest-Lane des Bauzeitlaufs
 ├── vocabulary-utils.mjs              # CSV-/Namespace-Hilfsfunktionen
 └── workflowDefinitions.mjs           # Gemeinsame Sammlung der Workflow- und Action-Definitionen
@@ -730,9 +733,12 @@ Das Deployment erfolgt automatisch via GitHub Actions bei Push auf `main` (`.git
 1. Gepinnter Snapshot-Commit wird aus `upstream-manifest.json` gelesen
 2. Alle materialisierten Registry-Artefakte werden gegen den BSI-Snapshot validiert; nur `supported`-Daten werden ausgeliefert (`npm run fetch-catalog`)
 3. Tests laufen mit Coverage (`npm run test:coverage`)
-4. App wird gebaut mit Impressum-Secrets
-5. CycloneDX-App-SBOM der produktiven npm-Abhängigkeiten wird lockfile-basiert erzeugt (`npm sbom --package-lock-only --omit=dev --sbom-format=cyclonedx --sbom-type=application` nach `$RUNNER_TEMP`; nicht unter `dist/`, keine Pages-Auslieferung) und SLSA-Provenance wird generiert — zwei getrennte Attestierungen über `dist/**`, weil `sbom-path` am Provenance-Schritt dessen Modus ersetzen würde
-6. Deployment auf GitHub Pages
+4. App wird gebaut mit Impressum-Secrets; letzter Build-Schritt ist das Prüfsummen-Manifest `dist/SHA256SUMS` über alle veröffentlichten Dateien
+5. `npm run check:deployment-manifest -- --dist dist` prüft, dass das Manifest den fertigen Bestand bytegenau bindet; derselbe Schritt läuft im Pflichtcheck `validate`
+6. CycloneDX-App-SBOM der produktiven npm-Abhängigkeiten wird lockfile-basiert erzeugt (`npm sbom --package-lock-only --omit=dev --sbom-format=cyclonedx --sbom-type=application` nach `$RUNNER_TEMP`; nicht unter `dist/`, keine Pages-Auslieferung) und SLSA-Provenance wird generiert — zwei getrennte Attestierungen mit `dist/SHA256SUMS` als einzigem Subject, weil `sbom-path` am Provenance-Schritt dessen Modus ersetzen würde und `actions/attest` mehr als 1.024 Dateien je Subject ablehnt
+7. Deployment auf GitHub Pages, das Manifest wird mit ausgeliefert
+
+Eine einzelne Live-Datei prüft `npm run verify:deployment` gegen beide Attestierungen des Manifests und dessen Prüfsumme; Ablauf und Fehlerverhalten: [SLSA Provenance](./INTEGRITY.md#slsa-provenance).
 
 ### Gemeinsame Setup-Schicht
 
