@@ -64,6 +64,9 @@ describe('CatalogToolbar', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Kontrollen auswählen' }),
     );
+    // Außerhalb des mobilen Auswahlmodus bleibt der Chip, unter sm per CSS
+    // ausgeblendet (GSPP-471).
+    expect(screen.getByText('1 ausgewählt')).toHaveClass('hidden', 'sm:flex');
     fireEvent.click(screen.getByRole('button', { name: 'Auswahl aufheben' }));
 
     expect(onToggleMobileSelectMode).toHaveBeenCalledOnce();
@@ -97,7 +100,7 @@ describe('CatalogToolbar', () => {
     view.rerender(toolbar(true));
 
     expect(screen.queryByRole('button', { name: 'Filter anzeigen' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'CSV' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'CSV exportieren' })).toBeNull();
     expect(getBody().style.overflow).toBe('');
 
     view.rerender(toolbar(false));
@@ -139,7 +142,7 @@ describe('CatalogToolbar', () => {
       screen.getByRole('button', { name: 'Auswahl beenden' }),
     ).toHaveAttribute('aria-pressed', 'true');
 
-    fireEvent.click(screen.getByRole('button', { name: 'CSV' }));
+    fireEvent.click(screen.getByRole('button', { name: 'CSV exportieren' }));
     fireEvent.click(
       screen.getByRole('button', { name: 'Auswahl exportieren (1)' }),
     );
@@ -186,7 +189,7 @@ describe('CatalogToolbar', () => {
       screen.queryByRole('button', { name: 'Filteraktion' }),
     ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'CSV' }));
+    fireEvent.click(screen.getByRole('button', { name: 'CSV exportieren' }));
     expect(
       screen.getByRole('heading', { name: 'Exportieren als CSV' }),
     ).toBeInTheDocument();

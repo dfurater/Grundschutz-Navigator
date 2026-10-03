@@ -1,10 +1,10 @@
 import { useContext } from 'react';
 import type { Control } from '@/domain/models';
 import { MobileNavigationContext } from '@/state/MobileNavigationContext';
-import { Button } from '@/components/Button';
-import { IconCheck, IconX } from '@/components/icons';
 import type { FilterPanelProps } from './FilterPanel';
 import { CatalogExportMenu } from './CatalogExportMenu';
+import { CatalogMobileSelectToggle } from './CatalogMobileSelectToggle';
+import { CatalogSelectionChip } from './CatalogSelectionChip';
 import { CatalogMobileExportSheet } from './CatalogMobileExportSheet';
 import { CatalogMobileFilterSheet } from './CatalogMobileFilterSheet';
 
@@ -53,11 +53,13 @@ export function CatalogToolbar({
   const mobileNavigationOpen = useContext(MobileNavigationContext);
   const showMobileSheets = !isDesktop && !mobileSheetsSuspended && !mobileNavigationOpen;
   return (
-    <div className="px-3 py-1.5 md:py-0 md:h-[51px] md:flex md:items-center border-b border-[var(--color-border-default)] bg-[var(--color-surface-base)] sticky top-14 z-10 md:static md:z-auto">
-      <div className="w-full flex items-center justify-between gap-2 min-w-0">
-        <div className="flex items-center gap-2 min-w-0">
+    <div className="px-3 pt-2 pb-0 sm:py-1.5 md:py-0 md:h-[51px] md:flex md:items-center border-b border-[var(--color-border-default)] bg-[var(--color-surface-base)] sticky top-14 z-10 md:static md:z-auto">
+      {/* Unter sm zwei Zeilen: die Überschrift über die volle Breite, darunter
+          Anzahl und Aktionen. Ab sm eine Zeile wie bisher (GSPP-471). */}
+      <div className="w-full flex flex-col sm:flex-row sm:items-center sm:justify-between sm:gap-2 min-w-0">
+        <div className="sm:flex sm:items-center sm:gap-2 min-w-0">
           {/* Rückkehrziel nach dem Schließen der mobilen Detailseite (`useDocumentDetailPage`). */}
-          <h1 data-catalog-scope-heading tabIndex={-1} className="text-base font-bold text-[var(--color-text-primary)] truncate focus:outline-none">
+          <h1 data-catalog-scope-heading tabIndex={-1} className="text-lg/[1.35] text-balance [hyphens:auto] line-clamp-2 sm:line-clamp-none sm:truncate sm:text-base font-bold text-[var(--color-text-primary)] focus:outline-none">
             {title}
           </h1>
           <span
@@ -70,81 +72,70 @@ export function CatalogToolbar({
           </span>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
-          {checkedIds.size > 0 && (
-            <span className="flex items-center gap-1.5 text-xs font-medium text-[var(--color-accent-default)] bg-[var(--color-accent-soft)] px-2 py-1 rounded">
-              {checkedIds.size} ausgewählt
+        <div className="flex items-center justify-between gap-2 min-h-[44px] sm:min-h-0 sm:shrink-0">
+          <div className="sm:hidden flex flex-1 flex-wrap items-center gap-x-3 gap-y-0.5 min-w-0">
+            <span
+              className="text-xs text-[var(--color-text-secondary)] tabular-nums whitespace-nowrap"
+              aria-live="polite"
+              aria-atomic="true"
+            >
+              {filteredCount === totalCount
+                ? `${totalCount} Kontrollen`
+                : `${filteredCount} von ${totalCount}`}
+            </span>
+            {hasActiveFilters && (
               <button
                 type="button"
-                onClick={onClearSelection}
-                className="hover:text-[var(--color-text-primary)] hover:bg-[var(--color-surface-subtle)] px-2 py-1 rounded transition-colors"
-                aria-label="Auswahl aufheben"
+                onClick={onClearFilters}
+                className="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] whitespace-nowrap transition-colors"
+                aria-label="Filter zurücksetzen"
               >
-                <IconX className="w-3 h-3" />
+                Filter zurücksetzen
               </button>
-            </span>
-          )}
+            )}
+          </div>
 
-          <Button
-            variant={mobileSelectMode ? 'primary' : 'ghost'}
-            size="sm"
-            className="lg:hidden min-h-[44px] min-w-[44px]"
-            onClick={onToggleMobileSelectMode}
-            aria-label={
-              mobileSelectMode ? 'Auswahl beenden' : 'Kontrollen auswählen'
-            }
-            aria-pressed={mobileSelectMode}
-          >
-            <IconCheck className="w-4 h-4" />
-          </Button>
+          {/* Unter sm sitzen die Icon-Schalter lückenlos und enden am
+              Viewport-Rand (-mr-3 gleicht px-3 aus). */}
+          <div className="flex items-center -mr-3 sm:mr-0 sm:gap-2 shrink-0">
+            <CatalogSelectionChip
+              count={checkedIds.size}
+              isDesktop={isDesktop}
+              mobileSelectMode={mobileSelectMode}
+              onClear={onClearSelection}
+            />
 
-          {/* Breakpoint-Mount-Strategie (GSPP-268): Alle drei Filter-/Export-
-              Zugänge werden über isDesktop bedingt gemountet, nicht per CSS
-              versteckt — zu jedem Zeitpunkt ist nur der passende Teilbaum im
-              DOM (Invariante aus GRU-217). */}
-          {showMobileSheets && (
-            <CatalogMobileFilterSheet filterPanelProps={filterPanelProps} />
-          )}
-          {isDesktop && (
-            <CatalogExportMenu
-              checkedIds={checkedIds}
-              filteredControls={filteredControls}
-              allControls={allControls}
-              sectionFilename={sectionFilename}
+            <CatalogMobileSelectToggle
+              active={mobileSelectMode}
+              onToggle={onToggleMobileSelectMode}
             />
-          )}
-          {showMobileSheets && (
-            <CatalogMobileExportSheet
-              checkedIds={checkedIds}
-              filteredControls={filteredControls}
-              allControls={allControls}
-              sectionFilename={sectionFilename}
-              onSelectionExported={onSelectionExported}
-            />
-          )}
+
+            {/* Breakpoint-Mount-Strategie (GSPP-268): Alle drei Filter-/Export-
+                Zugänge werden über isDesktop bedingt gemountet, nicht per CSS
+                versteckt — zu jedem Zeitpunkt ist nur der passende Teilbaum im
+                DOM (Invariante aus GRU-217). */}
+            {showMobileSheets && (
+              <CatalogMobileFilterSheet filterPanelProps={filterPanelProps} />
+            )}
+            {isDesktop && (
+              <CatalogExportMenu
+                checkedIds={checkedIds}
+                filteredControls={filteredControls}
+                allControls={allControls}
+                sectionFilename={sectionFilename}
+              />
+            )}
+            {showMobileSheets && (
+              <CatalogMobileExportSheet
+                checkedIds={checkedIds}
+                filteredControls={filteredControls}
+                allControls={allControls}
+                sectionFilename={sectionFilename}
+                onSelectionExported={onSelectionExported}
+              />
+            )}
+          </div>
         </div>
-      </div>
-
-      <div className="sm:hidden flex items-center justify-between mt-1.5">
-        <span
-          className="text-xs text-[var(--color-text-secondary)] tabular-nums"
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          {filteredCount === totalCount
-            ? `${totalCount} Kontrollen`
-            : `${filteredCount} von ${totalCount}`}
-        </span>
-        {hasActiveFilters && (
-          <button
-            type="button"
-            onClick={onClearFilters}
-            className="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors"
-            aria-label="Filter zurücksetzen"
-          >
-            Filter zurücksetzen
-          </button>
-        )}
       </div>
     </div>
   );

@@ -44,15 +44,17 @@ export function CatalogMobileExportSheet({
 
   return (
     <>
+      {/* Unter lg ein reiner Icon-Schalter wie Auswahl und Filter (GSPP-471);
+          das Sheet beschriftet seine Optionen selbst. */}
       <Button
-        variant="secondary"
+        variant="ghost"
         size="sm"
-        className="lg:hidden min-h-[44px]"
+        className="lg:hidden min-h-[44px] min-w-[44px]"
         onClick={() => setOpen(true)}
         disabled={checkedIds.size === 0 && filteredControls.length === 0}
+        aria-label="CSV exportieren"
       >
-        <IconDownload className="w-4 h-4 mr-1.5" />
-        CSV
+        <IconDownload className="w-4 h-4" />
       </Button>
 
       {open && (

@@ -34,7 +34,9 @@ describe('CatalogMobileSelectionBar', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Export (2)' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Auswahl als CSV exportieren, 2 ausgewählt' }),
+    );
 
     expect(mockedDownloadCSV).toHaveBeenCalledWith(
       [firstControl, secondControl],
@@ -53,11 +55,60 @@ describe('CatalogMobileSelectionBar', () => {
       />,
     );
 
-    expect(screen.getByText('Tippen zum Auswählen')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Export (0)' })).toBeDisabled();
+    expect(screen.queryByText('Tippen zum Auswählen')).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Auswahl als CSV exportieren, 0 ausgewählt' }),
+    ).toBeDisabled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Fertig' }));
     expect(onDone).toHaveBeenCalledOnce();
     expect(mockedDownloadCSV).not.toHaveBeenCalled();
+  });
+
+  it('zeigt „Fertig“ links und die Zahl genau einmal sichtbar im Export-Button rechts (GSPP-471)', () => {
+    const { container } = render(
+      <CatalogMobileSelectionBar
+        checkedIds={new Set([firstControl.id, secondControl.id])}
+        allControls={[firstControl, secondControl]}
+        onDone={vi.fn()}
+      />,
+    );
+
+    const buttons = screen.getAllByRole('button');
+    expect(buttons.map((button) => button.textContent)).toEqual(['Fertig', 'Export2']);
+
+    const exportButton = screen.getByRole('button', {
+      name: 'Auswahl als CSV exportieren, 2 ausgewählt',
+    });
+    expect(exportButton).toBeEnabled();
+    const counter = exportButton.querySelector('span[aria-hidden="true"]');
+    expect(counter).toHaveTextContent('2');
+    expect(counter).toHaveClass('bg-[var(--color-accent-soft)]', 'text-[var(--color-accent-default)]');
+    expect(exportButton.querySelector('svg')).toHaveClass('text-[var(--color-accent-default)]');
+
+    // Sichtbar steht die Zahl nur im Zähler; die Live-Region ist sr-only.
+    expect(screen.getByRole('status')).toHaveTextContent('2 ausgewählt');
+    expect(screen.getByRole('status')).toHaveClass('sr-only');
+    expect(container.textContent).not.toMatch(/Export \(/);
+  });
+
+  it('kündigt Änderungen der Auswahl über die Live-Region an', () => {
+    const view = render(
+      <CatalogMobileSelectionBar
+        checkedIds={new Set([firstControl.id])}
+        allControls={[firstControl, secondControl]}
+        onDone={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('status')).toHaveTextContent('1 ausgewählt');
+
+    view.rerender(
+      <CatalogMobileSelectionBar
+        checkedIds={new Set([firstControl.id, secondControl.id])}
+        allControls={[firstControl, secondControl]}
+        onDone={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('status')).toHaveTextContent('2 ausgewählt');
   });
 });
