@@ -145,6 +145,27 @@ describe('HeaderBar', () => {
     expect(screen.getByTestId('location')).toHaveTextContent('/suche|{"focusSearch":true}');
   });
 
+  it('hält auf der Suchseite die laufende Anfrage, wenn das Kürzel ohne sichtbares Feld fokussiert', () => {
+    function Location() {
+      const location = useLocation();
+      return <output data-testid="location">{`${location.pathname}${location.search}|${JSON.stringify(location.state)}`}</output>;
+    }
+    render(
+      <MemoryRouter initialEntries={['/start', '/suche?q=verfahren']} initialIndex={1}>
+        <HeaderBar />
+        <Location />
+        <button type="button">Außerhalb</button>
+      </MemoryRouter>,
+    );
+    screen.getByRole('searchbox', { name: 'Katalog durchsuchen' }).checkVisibility = () => false;
+    const outsideButton = screen.getByRole('button', { name: 'Außerhalb' });
+    outsideButton.focus();
+
+    fireEvent.keyDown(outsideButton, { key: 'k', metaKey: true });
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/suche?q=verfahren|{"focusSearch":true}');
+  });
+
   it.each([
     ['Meta+K', { metaKey: true }],
     ['Ctrl+K', { ctrlKey: true }],

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useId, useRef } from 'react';
+import { useMemo, useState, useEffect, useId, useLayoutEffect, useRef } from 'react';
 import {
   Routes,
   Route,
@@ -118,19 +118,31 @@ export function AppShell() {
     error,
   } = useCatalog();
 
-  // Jede Navigation schließt die mobile Schublade, auch eine aus dem App-Kopf
-  // (Marke, Lupe, Suchfeld) oder über Browser-Zurück. Sonst bliebe die neue
-  // Seite im `inert` gesetzten Hauptbereich unbedienbar.
-  const [drawerLocationKey, setDrawerLocationKey] = useState(location.key);
-  if (drawerLocationKey !== location.key) {
-    setDrawerLocationKey(location.key);
-    setSideNavOpen(false);
-  }
-
   const closeSideNav = () => {
     setSideNavOpen(false);
     if (!isPersistentNav) menuButtonRef.current?.focus({ preventScroll: true });
   };
+
+  // Jede Navigation schließt die mobile Schublade, auch eine aus dem App-Kopf
+  // (Marke, Lupe, Suchfeld) oder über Browser-Zurück. Sonst bliebe die neue
+  // Seite im `inert` gesetzten Hauptbereich unbedienbar. Lag der Fokus noch in
+  // der Schublade (etwa bei Browser-Zurück), geht er wie bei jedem anderen
+  // Schließen an das Menü-Symbol; sonst bleibt er am auslösenden Element. Die
+  // Prüfung läuft vor dem Commit, solange die Schublade noch nicht `inert` ist.
+  const [drawerLocationKey, setDrawerLocationKey] = useState(location.key);
+  const [drawerFocusReturnKey, setDrawerFocusReturnKey] = useState<string | null>(null);
+  if (drawerLocationKey !== location.key) {
+    setDrawerLocationKey(location.key);
+    if (sideNavOpen) {
+      setSideNavOpen(false);
+      if (!isPersistentNav && document.getElementById(sideNavId)?.contains(document.activeElement)) {
+        setDrawerFocusReturnKey(location.key);
+      }
+    }
+  }
+  useLayoutEffect(() => {
+    if (drawerFocusReturnKey !== null) menuButtonRef.current?.focus({ preventScroll: true });
+  }, [drawerFocusReturnKey]);
 
   // Capture garantiert den Vorrang vor dem Escape-Handler der Detailseite
   // auch dann, wenn deren Bubble-Listener bereits vor dem Öffnen registriert war.

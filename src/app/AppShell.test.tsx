@@ -1,6 +1,7 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { RefObject } from 'react';
-import { Link, MemoryRouter } from 'react-router';
+import { Link, MemoryRouter, useNavigate } from 'react-router';
+import type { NavigateFunction } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -452,6 +453,30 @@ describe('AppShell', () => {
     expect(container.querySelector('main')).not.toHaveAttribute('inert');
     expect(screen.queryByTestId('mobile-nav-backdrop')).not.toBeInTheDocument();
     expect(lupe).toHaveFocus();
+  });
+
+  // Browser-Zurück hat kein auslösendes Element; lag der Fokus in der
+  // Schublade, ginge er mit `inert` verloren (GSPP-476).
+  it('gibt den Fokus ans Menü-Symbol, wenn eine Navigation den Drawer mit Fokus darin schließt', () => {
+    let navigateTo: NavigateFunction = () => {};
+    function NavigateProbe() {
+      navigateTo = useNavigate();
+      return null;
+    }
+    const { container } = render(
+      <MemoryRouter initialEntries={['/', '/katalog/gspp']} initialIndex={1}>
+        <AppShell />
+        <NavigateProbe />
+      </MemoryRouter>,
+    );
+    const menuButton = screen.getByRole('button', { name: 'Menu' });
+    fireEvent.click(menuButton);
+    screen.getByRole('button', { name: 'Menü schließen' }).focus();
+
+    act(() => { void navigateTo(-1); });
+
+    expect(container.querySelector('aside')).toHaveAttribute('inert');
+    expect(menuButton).toHaveFocus();
   });
 
   it('wechselt den Katalog aus dem Drawer-Kopf und schließt den Drawer', () => {
