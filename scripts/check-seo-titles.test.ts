@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -13,24 +13,21 @@ import {
   parseCheckArgs,
 } from './check-seo-titles.mjs';
 
-const tempDirs: string[] = [];
+const scratchRoots: string[] = [];
 
-function tempDir(prefix = 'gspp-seo-titles-') {
-  const dir = mkdtempSync(join(tmpdir(), prefix));
-  tempDirs.push(dir);
-  return dir;
-}
+afterEach(() => {
+  for (const root of scratchRoots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
 
-function writeTree(root: string, files: Record<string, string>) {
+function scratchTree(files: Record<string, string>) {
+  const root = mkdtempSync(join(tmpdir(), 'gspp-seo-titles-'));
+  scratchRoots.push(root);
   for (const [path, content] of Object.entries(files)) {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), content);
   }
+  return root;
 }
-
-afterEach(() => {
-  while (tempDirs.length > 0) rmSync(tempDirs.pop()!, { recursive: true, force: true });
-});
 
 function page(fields: { title?: string; ogTitle?: string; description?: string; ogImageAlt?: string } = {}) {
   const {
@@ -59,6 +56,17 @@ describe('decodeHtmlEntities', () => {
     expect(decodeHtmlEntities('&#X2014;')).toBe('\u2014');
   });
 
+  it('decodes numeric em dashes without a semicolon unless a letter, digit or = follows', () => {
+    expect(decodeHtmlEntities('A &#8212 B')).toBe('A \u2014 B');
+    expect(decodeHtmlEntities('A &#x2014</title>')).toBe('A \u2014</title>');
+    expect(decodeHtmlEntities('A &#8212b C')).toBe('A &#8212b C');
+  });
+
+  it('decodes double-masked sequences only once, like the browser', () => {
+    expect(decodeHtmlEntities('A &#38;mdash; B')).toBe('A &mdash; B');
+    expect(decodeHtmlEntities('A &amp;#8212; B')).toBe('A &#8212; B');
+  });
+
   it('leaves unknown references untouched', () => {
     expect(decodeHtmlEntities('&nbsp; &#0xZZ;')).toBe('&nbsp; &#0xZZ;');
   });
@@ -84,6 +92,14 @@ describe('extractSeoTitleFields', () => {
     expect(extractSeoTitleFields(html).ogTitle).toBe('OG Titel');
   });
 
+  it('ignores data attributes whose names end in a field name', () => {
+    const html = page().replace(
+      '<meta property="og:title" content="OG Titel" />',
+      '<meta property="og:title" data-content="Tarnung \u2014 X" content="OG Titel" />',
+    );
+    expect(extractSeoTitleFields(html).ogTitle).toBe('OG Titel');
+  });
+
   it('decodes escaped attribute delimiters before checking', () => {
     const fields = extractSeoTitleFields(page({ ogTitle: '&lt;&amp;&gt;&quot;&#39;' }));
     expect(fields.ogTitle).toBe('<&>"\'');
@@ -96,6 +112,7 @@ describe('extractSeoTitleFields', () => {
     ['missing og:image:alt', page().replace(/<meta property="og:image:alt"[^>]*>/, '')],
     ['duplicate og:title', page().replace('</head>', '<meta property="og:title" content="Doppelt" /></head>')],
     ['duplicate title', page().replace('</head>', '<title>Doppelt</title></head>')],
+    ['og:title without content', page().replace('<meta property="og:title" content="OG Titel" />', '<meta property="og:title" />')],
   ])('fails fail-closed on %s', (_label, html) => {
     expect(() => extractSeoTitleFields(html)).toThrow(/Genau ein/);
   });
@@ -103,8 +120,7 @@ describe('extractSeoTitleFields', () => {
 
 describe('collectBuiltHtmlFiles', () => {
   it('collects nested HTML files sorted and skips dotfiles like the Pages pack rule', () => {
-    const dir = tempDir();
-    writeTree(dir, {
+    const dir = scratchTree({
       'index.html': page(),
       'suche/index.html': page(),
       'katalog/gspp/GC/index.html': page(),
@@ -120,20 +136,18 @@ describe('collectBuiltHtmlFiles', () => {
   });
 
   it('fails fail-closed on a missing directory, a file path and an HTML-free tree', () => {
-    expect(() => collectBuiltHtmlFiles(join(tempDir(), 'fehlt'))).toThrow(/Ausgabeverzeichnis fehlt/);
-    const file = join(tempDir(), 'datei.txt');
+    expect(() => collectBuiltHtmlFiles(join(scratchTree({}), 'fehlt'))).toThrow(/Ausgabeverzeichnis fehlt/);
+    const file = join(scratchTree({}), 'datei.txt');
     writeFileSync(file, 'x');
     expect(() => collectBuiltHtmlFiles(file)).toThrow(/kein Verzeichnis/);
-    const empty = tempDir();
-    writeTree(empty, { 'assets/app.js': 'x' });
+    const empty = scratchTree({ 'assets/app.js': 'x' });
     expect(() => collectBuiltHtmlFiles(empty)).toThrow(/Keine HTML-Dateien/);
   });
 });
 
 describe('checkBuiltSeoTitles', () => {
   it('passes a clean delivery and reports file and field counts', () => {
-    const dir = tempDir();
-    writeTree(dir, { 'index.html': page(), 'suche/index.html': page() });
+    const dir = scratchTree({ 'index.html': page(), 'suche/index.html': page() });
     expect(checkBuiltSeoTitles(dir)).toEqual({ fileCount: 2, fieldCount: 8 });
   });
 
@@ -143,20 +157,17 @@ describe('checkBuiltSeoTitles', () => {
     ['description', { description: 'Text \u2014 mit Strich' }],
     ['ogImageAlt', { ogImageAlt: 'Alt \u2014 Text' }],
   ])('fails on U+2014 in %s with a file and field reference', (field, override) => {
-    const dir = tempDir();
-    writeTree(dir, { 'suche/index.html': page(override) });
+    const dir = scratchTree({ 'suche/index.html': page(override) });
     expect(() => checkBuiltSeoTitles(dir)).toThrow(new RegExp(`suche/index\\.html: ${field} enth`));
   });
 
   it('fails on a masked em dash that browsers render as U+2014', () => {
-    const dir = tempDir();
-    writeTree(dir, { 'index.html': page({ ogTitle: 'OG &mdash; Titel' }) });
+    const dir = scratchTree({ 'index.html': page({ ogTitle: 'OG &mdash; Titel' }) });
     expect(() => checkBuiltSeoTitles(dir)).toThrow(/index\.html: ogTitle enth/);
   });
 
   it('lists every violation across files and prefixes structural defects with the path', () => {
-    const dir = tempDir();
-    writeTree(dir, {
+    const dir = scratchTree({
       'index.html': page({ title: 'A \u2014 B' }),
       'suche/index.html': page({ description: 'C \u2014 D' }),
       'kaputt/index.html': '<html><head></head></html>',
@@ -167,8 +178,9 @@ describe('checkBuiltSeoTitles', () => {
     } catch (error) {
       message = error instanceof Error ? error.message : String(error);
     }
-    expect(message).toContain('kaputt/index.html');
-    expect(readFileSync(join(dir, 'index.html'), 'utf8')).toContain('A \u2014 B');
+    expect(message).toContain('index.html: title enthält U+2014');
+    expect(message).toContain('suche/index.html: description enthält U+2014');
+    expect(message).toContain('kaputt/index.html: Genau ein <title> erwartet');
   });
 });
 
@@ -184,8 +196,7 @@ describe('parseCheckArgs', () => {
 
 describe('main', () => {
   it('checks the given directory and rejects a missing argument', () => {
-    const dir = tempDir();
-    writeTree(dir, { 'index.html': page() });
+    const dir = scratchTree({ 'index.html': page() });
     expect(() => main(['--dist', dir])).not.toThrow();
     expect(() => main([])).toThrow(/Aufruf/);
     expect(() => main(['--dist', join(dir, 'fehlt')])).toThrow(/Ausgabeverzeichnis fehlt/);
