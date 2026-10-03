@@ -28,6 +28,7 @@
     "verify-documented-versions": "node scripts/verify-documented-versions.mjs",
     "verify-node-version": "node scripts/verify-node-version.mjs",
     "check:deployment-manifest": "node scripts/deployChecksums.mjs",
+    "check:seo-titles": "node scripts/check-seo-titles.mjs",
     "verify:deployment": "node scripts/verifyDeployment.mjs",
     "sync-oscal-schemas": "node scripts/sync-oscal-schemas.mjs --write"
   },

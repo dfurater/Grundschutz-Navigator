@@ -341,7 +341,7 @@ describe('AppShell', () => {
       );
 
       expectSingleDocumentTitle(
-        title === undefined ? PRODUCT_TITLE : `${title} — ${PRODUCT_TITLE}`,
+        title === undefined ? PRODUCT_TITLE : `${title} | ${PRODUCT_TITLE}`,
       );
     },
   );
@@ -366,7 +366,7 @@ describe('AppShell', () => {
     );
 
     expect(screen.getByText('Vokabulare Seite')).toBeInTheDocument();
-    expectSingleDocumentTitle(`${PAGE_TITLES.vocabularies} — ${PRODUCT_TITLE}`);
+    expectSingleDocumentTitle(`${PAGE_TITLES.vocabularies} | ${PRODUCT_TITLE}`);
   });
 
   it('titles the /mehr redirect with its destination', () => {
@@ -376,7 +376,7 @@ describe('AppShell', () => {
       </MemoryRouter>,
     );
 
-    expectSingleDocumentTitle(`${PAGE_TITLES.about} — ${PRODUCT_TITLE}`);
+    expectSingleDocumentTitle(`${PAGE_TITLES.about} | ${PRODUCT_TITLE}`);
   });
 
   it('registers vocabulary detail routes', () => {
@@ -396,7 +396,7 @@ describe('AppShell', () => {
       </MemoryRouter>,
     );
 
-    expectSingleDocumentTitle(`${PAGE_TITLES.notFound} — ${PRODUCT_TITLE}`);
+    expectSingleDocumentTitle(`${PAGE_TITLES.notFound} | ${PRODUCT_TITLE}`);
   });
 
   it('renders the footer without hiding it below desktop breakpoints', () => {

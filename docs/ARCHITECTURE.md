@@ -16,7 +16,7 @@ Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application 
 | Routing | React Router v8 |
 | Volltextsuche | FlexSearch |
 | Scrollleisten | OverlayScrollbars (MIT) |
-| Testing | Vitest + @testing-library/react + jsdom + Chromium-Browser-Lane |
+| Testing | Vitest + @testing-library/react + jsdom + Chromium-Browser-Lane; jsdom parst im Build zusätzlich die gebaute HTML-Auslieferung für den Titelvertrag |
 | Deployment | GitHub Pages (via GitHub Actions) |
 
 ## Browser-Testlane
@@ -278,6 +278,8 @@ scripts/                          # Build-, CI- und Wartungsskripte
 ├── check-catalog-freshness.d.mts     # Typen der Frischeprüfung
 ├── check-catalog-freshness.mjs       # Frischeprüfung der lokalen Katalogdaten
 ├── check-deploy-idempotency.mjs      # Redundanten Fallback-Deploy desselben Commits verhindern
+├── check-seo-titles.d.mts            # Typen der Titelvertragsprüfung
+├── check-seo-titles.mjs              # Titelvertrag der gebauten HTML-Auslieferung
 ├── ci-scope.mjs                      # Scope-Entscheider für Step-Skips im Job validate
 ├── class2TransportFixtures.mjs       # Fixtures des fragmentierten Rückwegs
 ├── class2WorstCaseFixtures.mjs       # Worst-Case-Dokumente der Klasse-2-Grenzen
@@ -504,11 +506,11 @@ Die Vokabular-Membership wird aus **allen** ausgelieferten Katalogen abgeleitet 
 
 Die Anwendung verwendet React Router mit `BrowserRouter` und pfadbasierten URLs. Das `basename` wird aus `import.meta.env.BASE_URL` abgeleitet (`src/main.tsx`), sodass die App auch unter dem GitHub-Pages-Unterpfad `/Grundschutz-Navigator/` funktioniert.
 
-Das Vite-Plugin `github-pages-spa-fallback` (`vite.config.ts`) erzeugt beim Build statische HTTP-200-Einstiege unter `dist/<route>/index.html`. Die festen Inhaltsrouten (`/suche`, `/vokabular`, `/about`, `/datenschutz`, `/impressum`, `/lizenzen`) stammen aus der gemeinsamen Titeltabelle `STATIC_CONTENT_TITLES` in `scripts/seoRouteEntries.ts`; Katalogeinstiege und deren adressierbare Praktiken, Themen und Kontrollen stammen ausschließlich aus den von `listSupportedCatalogs()` ausgelieferten öffentlichen Katalogen. Der Helfer prüft die Katalogbytes gegen ihre Integritätsmetadaten, verarbeitet sie mit dem bestehenden `parseCatalog()` und verwendet dieselben URL-Builder wie die App. Die bestehende Node-Brücke löst beim Laden dieser TypeScript-Module den Projektalias auf, bevor Vite selbst seine Konfiguration geladen hat.
+Das Vite-Plugin `github-pages-spa-fallback` (`vite.config.ts`) erzeugt beim Build statische HTTP-200-Einstiege unter `dist/<route>/index.html`. Es gilt nur für den Build (`apply: 'build'`), weil Vite `closeBundle` auch beim Schließen von Dev-Server und Vitest aufruft. Die festen Inhaltsrouten (`/suche`, `/vokabular`, `/about`, `/datenschutz`, `/impressum`, `/lizenzen`) stammen aus der gemeinsamen Titeltabelle `STATIC_CONTENT_TITLES` in `scripts/seoRouteEntries.ts`; Katalogeinstiege und deren adressierbare Praktiken, Themen und Kontrollen stammen ausschließlich aus den von `listSupportedCatalogs()` ausgelieferten öffentlichen Katalogen. Der Helfer prüft die Katalogbytes gegen ihre Integritätsmetadaten, verarbeitet sie mit dem bestehenden `parseCatalog()` und verwendet dieselben URL-Builder wie die App. Die bestehende Node-Brücke löst beim Laden dieser TypeScript-Module den Projektalias auf, bevor Vite selbst seine Konfiguration geladen hat.
 
-Jeder HTML-Einstieg erhält genau einen inhaltsbezogenen `og:title` und eine kanonische `og:url`. Die Titel lauten: Produktname für die Startseite, fester Seitentitel für Inhaltsseiten, Katalogname für einen Katalog, `Gruppenname — Katalogname` für Praktik oder Thema und `Kontroll-ID — Kontrolltitel — Katalogname` für eine Kontrolle. Die URL verwendet den Production-Origin und die normalisierte Deployment-Basis aus `BUILD_BASE`. HTML-Attributwerte werden maskiert. Die übrigen HTML-Inhalte, CSP, Asset-Pfade, das OG-Bild, die allgemeine OG-Beschreibung und die dynamischen Browser-Titel behalten ihr Verhalten.
+Jeder HTML-Einstieg erhält genau einen inhaltsbezogenen `og:title` und eine kanonische `og:url`. Die Titel lauten: Produktname für die Startseite, fester Seitentitel für Inhaltsseiten, Katalogname für einen Katalog, `Gruppenname | Katalogname` für Praktik oder Thema und `Kontroll-ID: Kontrolltitel | Katalogname` für eine Kontrolle. Die Titeltrenner `: ` zwischen Kennung und Titel sowie ` | ` vor dem übergeordneten Namen werden zentral als `TITLE_ID_SEPARATOR` und `TITLE_PARENT_SEPARATOR` in `src/app/pageTitles.ts` gepflegt. Browser-Titel ergänzen ` | Grundschutz++ Navigator`; Vokabularseiten verwenden `<Vokabularname> | Vokabulare | Grundschutz++ Navigator`. Die Meta-Beschreibung verwendet einen Doppelpunkt nach dem Produktnamen; der Alternativtext des OG-Bildes gibt die Textzeilen des Bildes als Sätze wieder. Die URL verwendet den Production-Origin und die normalisierte Deployment-Basis aus `BUILD_BASE`. HTML-Attributwerte werden maskiert. Beim Erzeugen der Routen-HTML ersetzt `writeSeoRouteEntries` nur `og:title` und `og:url`; `PageTitle` entfernt den statischen Titel-Fallback im Layout-Effekt.
 
-Query und Fragment erzeugen keine zusätzlichen Dateien und erscheinen nicht in Metadaten; ein Such- oder Filterlink erhält den Kopf seiner Route. Gruppen ohne ID erzeugen keinen Einstieg. Fehlende oder nicht auflösbare unterstützte Daten, Hashabweichungen, Pfad-Ausbruch, Symlinks und kollidierende Ausgabepfade führen vor dem Schreiben der Routendateien zum Fehler. Für unbekannte Ziele dient `dist/404.html` als Fallback mit neutralem Produkttitel und kanonischer Startseiten-URL. Der Fallback bleibt bytegleich zum gebauten Startseiten-HTML.
+Query und Fragment erzeugen keine zusätzlichen Dateien und erscheinen nicht in Metadaten; ein Such- oder Filterlink erhält den Kopf seiner Route. Gruppen ohne ID erzeugen keinen Einstieg. Fehlende oder nicht auflösbare unterstützte Daten, Hashabweichungen, Pfad-Ausbruch, Symlinks und kollidierende Ausgabepfade führen vor dem Schreiben der Routendateien zum Fehler. Nach dem Schreiben prüft der Titelvertrag (`scripts/check-seo-titles.mjs`) jede gebaute HTML-Datei mit dem HTML-Parser von jsdom auf genau einen `<title>`-, `og:title`-, Meta-Description- und `og:image:alt`-Treffer ohne Gedankenstrich — erst er sieht das gebaute `dist/`-HTML statt der Quellvorlage. Für unbekannte Ziele dient `dist/404.html` als Fallback mit neutralem Produkttitel und kanonischer Startseiten-URL. Der Fallback bleibt bytegleich zum gebauten Startseiten-HTML.
 
 ### Sitemap
 
@@ -536,7 +538,7 @@ Beim Build entsteht deterministisch eine UTF-8-kodierte `dist/sitemap.xml` mit X
 
 Breakpoint-abhängige UI wird über `useMediaQuery('(min-width: 1024px)')` (`isDesktop`) bedingt **gemountet**, nicht per CSS versteckt — zu jedem Zeitpunkt ist nur der passende Teilbaum im DOM. Drei Ausnahmen: Der `CatalogMobileDetailOverlay` behält sein `active`-Prop-Muster, weil er inaktiv `null` rendert und seinen Modal-Lifecycle (Focus-Trap, Scroll-Lock, Escape) selbst besitzt; die mobile Detailseite blendet Toolbar und Liste per `hidden` aus, statt sie abzubauen, und baut nur die mobilen Filter- und Export-Sheets ab (siehe „Mobile Detailseite“); kleine stateless Buttons dürfen bei `lg:hidden` bleiben, da sie keinen schweren Teilbaum doppelt mounten.
 
-Die sichtbare Bereichsüberschrift der Toolbar nennt nur den Namen der gewählten Praktik oder des Themas, etwa „Notfallvorsorge“ für NOT.3; der Dokumenttitel behält Kennung und Name („NOT.3 — Notfallvorsorge — …“). Beide liefert `describeCatalogScope` (`catalogScopeTitle.ts`).
+Die sichtbare Bereichsüberschrift der Toolbar nennt nur den Namen der gewählten Praktik oder des Themas, etwa „Notfallvorsorge“ für NOT.3; der Dokumenttitel behält Kennung und Name („NOT.3: Notfallvorsorge | …“). Beide liefert `describeCatalogScope` (`catalogScopeTitle.ts`).
 
 | Baustein | Verantwortung |
 |----------|----------------|

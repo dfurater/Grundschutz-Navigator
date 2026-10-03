@@ -1,5 +1,5 @@
 import { useLayoutEffect } from 'react';
-import { PRODUCT_TITLE } from './pageTitles';
+import { PRODUCT_TITLE, TITLE_PARENT_SEPARATOR } from '@/app/pageTitles';
 import { removeStaticTitleFallback } from './staticTitleFallback';
 
 /**
@@ -15,5 +15,5 @@ export function PageTitle({ title }: Readonly<{ title?: string }>) {
     removeStaticTitleFallback();
   }, []);
 
-  return <title>{title ? `${title} — ${PRODUCT_TITLE}` : PRODUCT_TITLE}</title>;
+  return <title>{title ? `${title}${TITLE_PARENT_SEPARATOR}${PRODUCT_TITLE}` : PRODUCT_TITLE}</title>;
 }
