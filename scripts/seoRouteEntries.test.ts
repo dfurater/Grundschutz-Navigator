@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseCatalog } from '../src/adapters/oscalAdapter';
 import type { CatalogKey } from '../src/domain/sourceRegistry';
@@ -12,7 +13,7 @@ import { catalogDataFileName, catalogMetadataFileName, listSupportedCatalogs } f
 import { STATIC_CONTENT_TITLES, listSeoRouteMetadata, loadPublicSeoCatalogs, writeSeoRouteEntries } from './seoRouteEntries';
 
 const { JSDOM } = createRequire(import.meta.url)('jsdom') as {
-  JSDOM: new (html: string) => { window: { document: Document; close(): void } };
+  JSDOM: new (html: string) => { window: { document: Document; DOMParser: typeof DOMParser; close(): void } };
 };
 const BASE_URL = 'https://dfurater.github.io/Grundschutz-Navigator/';
 const HTML = '<!doctype html><html><head><meta property="og:title" content="Grundschutz++ Navigator" /><meta property="og:url" content="' + BASE_URL + '" /><meta property="og:description" content="Keep this" /><meta property="og:image" content="/og-image.png" /><meta http-equiv="Content-Security-Policy" content="default-src &apos;self&apos;" /><title data-page-title-fallback>Grundschutz++ Navigator</title></head><body><script type="module" src="/assets/app.js"></script></body></html>';
@@ -153,6 +154,32 @@ describe('writeSeoRouteEntries', () => {
     for (const entry of entries) {
       const file = entry.path === '/' ? 'index.html' : entry.path.slice(1) + '/index.html';
       expect(metadata(readFileSync(join(directory, file), 'utf8')).title).not.toContain('\u2014');
+    }
+  });
+
+  // Vollständiger öffentlicher Routensatz: DOM-Parsing unter Coverage braucht mehr als 5 s.
+  it('checks delivered title and meta text from the HTML template and pinned public catalogs', { timeout: 30_000 }, () => {
+    const template = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+    const directory = tempDir(template);
+    const catalogs = loadPublicSeoCatalogs(fileURLToPath(new URL('../public/data/', import.meta.url)));
+    const entries = listSeoRouteMetadata(catalogs);
+    writeSeoRouteEntries(directory, entries, BASE_URL);
+    const { window } = new JSDOM('');
+    try {
+      const parser = new window.DOMParser();
+      const selectors = ['title', 'meta[property="og:title"]', 'meta[name="description"]', 'meta[property="og:image:alt"]'];
+      for (const entry of entries) {
+        const file = entry.path === '/' ? 'index.html' : entry.path.slice(1) + '/index.html';
+        const document = parser.parseFromString(readFileSync(join(directory, file), 'utf8'), 'text/html');
+        for (const selector of selectors) {
+          const elements = document.querySelectorAll(selector);
+          expect(elements, file + ': ' + selector).toHaveLength(1);
+          const value = elements[0].getAttribute('content') ?? elements[0].textContent;
+          expect(value, file + ': ' + selector).not.toContain('\u2014');
+        }
+      }
+    } finally {
+      window.close();
     }
   });
 
