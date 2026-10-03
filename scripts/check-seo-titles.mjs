@@ -42,7 +42,6 @@ const TITLE_PATTERN = /<title\b[^>]*>([\s\S]*?)<\/title\s*>/gi;
 const META_TAG_PATTERN = /<meta\b[^>]*>/gi;
 /** Geprüfte Titel- und Meta-Felder je ausgelieferter HTML-Datei. */
 const FIELD_COUNT = 4;
-const NAMED_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", mdash: EM_DASH };
 
 /*
  * Attribute sind im Tag leerzeichengetrennt; der Name muss vollständig
@@ -52,16 +51,30 @@ const NAMED_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", mdash
 const ATTRIBUTE_PATTERN = /\s([\w-]+)\s*=\s*("[^"]*"|'[^']*')/gi;
 
 /*
- * Genau ein Durchgang über alle Referenzformen: benannte und numerische mit
- * Semikolon sowie die numerischen Gedankenstrich-Formen ohne Semikolon, die
- * HTML noch darstellt. Ohne Semikolon gilt die Attributregel des Standards:
- * Folgt ein Buchstabe, eine Ziffer oder `=`, bleibt die Folge wörtlich
- * (`&#8212b` decodiert der Browser im Attribut nicht). `&mdash` ohne
- * Semikolon braucht keine Nachsicht — es steht in keiner Legacy-Liste und
- * bleibt wörtlich. Klassen ohne Fallpaare trotz `i`-Fahne, damit keine
- * Zeichenklasse Duplikate meldet.
+ * Ein Durchgang über entitätsartige Folgen; die Entscheidung fällt im
+ * Callback statt in verzweigten Mustern. Benannte Referenzen gelten exakt wie
+ * im Standard: `mdash` nur klein — `&MDASH;` zeigt der Browser wörtlich —,
+ * die vier Legacy-Namen zusätzlich groß. Ohne Semikolon decodiert nur die
+ * Legacy-Liste und nur vor einem Folger, der kein Buchstabe, keine Ziffer und
+ * kein `=` ist; numerisch zählt ohne Semikolon allein der Gedankenstrich vor
+ * solch einem Folger. Alles andere bleibt wörtlich. Doppelt Maskiertes
+ * (`&#38;mdash;`, `&amp;#8212;`) trifft nie eine zweite Stufe, weil es keine
+ * gibt: Der Aufruf durchsucht sein Ergebnis nicht erneut.
  */
-const ENTITY_PATTERN = /&(?:#x2014(?:;|(?![\da-z=]))|#8212(?:;|(?![\da-z=]))|#x([\da-f]+);|#(\d+);|(amp|lt|gt|quot|apos|mdash);)/gi;
+const ENTITY_LIKE_PATTERN = /&((?:#[xX][\da-fA-F]+|#\d+|[A-Za-z]+);?)/g;
+
+/* Exakt die im Standard definierten Schreibweisen, ohne Faltung. */
+const NAMED_ENTITIES = {
+  amp: '&', AMP: '&', lt: '<', LT: '<', gt: '>', GT: '>',
+  quot: '"', QUOT: '"', apos: "'", mdash: EM_DASH,
+};
+const LEGACY_UNTERMINATED = new Set(['amp', 'AMP', 'lt', 'LT', 'gt', 'GT', 'quot', 'QUOT']);
+const EM_DASH_CODE_POINT = 0x2014;
+
+function continuesReference(value, end) {
+  const next = value[end];
+  return next !== undefined && /[\dA-Za-z=]/.test(next);
+}
 
 function fromCodePoint(text, code) {
   if (!Number.isSafeInteger(code) || code < 0 || code > 0x10ffff) return text;
@@ -73,15 +86,28 @@ function fromCodePoint(text, code) {
 }
 
 /**
- * Decodiert jede Referenz genau einmal an ihrer Fundstelle; das Ergebnis wird
- * nie erneut durchsucht. `&#38;mdash;` ergibt dadurch wörtlich `&mdash;` wie
- * im Browser, nicht U+2014.
+ * Decodiert jede Referenz genau einmal an ihrer Fundstelle. Für den
+ * Titelvertrag zählt allein U+2014; jede andere Referenz ist entweder exakt
+ * decodiert oder bleibt wörtlich — beides ohne Einfluss auf das Urteil.
  */
 export function decodeHtmlEntities(value) {
-  return value.replace(ENTITY_PATTERN, (text, hex, dec, named) => {
-    if (named !== undefined) return NAMED_ENTITIES[named.toLowerCase()] ?? text;
-    if (hex === undefined && dec === undefined) return EM_DASH;
-    return fromCodePoint(text, Number.parseInt(hex ?? dec, hex === undefined ? 10 : 16));
+  return value.replace(ENTITY_LIKE_PATTERN, (text, reference, offset) => {
+    const terminated = reference.endsWith(';');
+    const core = terminated ? reference.slice(0, -1) : reference;
+    if (core[0] === '#') {
+      const hex = core[1] === 'x' || core[1] === 'X';
+      const code = Number.parseInt(hex ? core.slice(2) : core.slice(1), hex ? 16 : 10);
+      if (code === EM_DASH_CODE_POINT) {
+        if (terminated || !continuesReference(value, offset + text.length)) return EM_DASH;
+        return text;
+      }
+      if (!terminated) return text;
+      return fromCodePoint(text, code);
+    }
+    if (!terminated && (!LEGACY_UNTERMINATED.has(core) || continuesReference(value, offset + text.length))) {
+      return text;
+    }
+    return NAMED_ENTITIES[core] ?? text;
   });
 }
 

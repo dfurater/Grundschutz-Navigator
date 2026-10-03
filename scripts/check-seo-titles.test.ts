@@ -56,6 +56,14 @@ describe('decodeHtmlEntities', () => {
     expect(decodeHtmlEntities('&#X2014;')).toBe('\u2014');
   });
 
+  it('treats named references case-sensitively like the browser', () => {
+    expect(decodeHtmlEntities('&MDASH;')).toBe('&MDASH;');
+    expect(decodeHtmlEntities('&AMP;')).toBe('&');
+    expect(decodeHtmlEntities('&mdash')).toBe('&mdash');
+    expect(decodeHtmlEntities('A &amp B')).toBe('A & B');
+    expect(decodeHtmlEntities('A &amp= B')).toBe('A &amp= B');
+  });
+
   it('decodes numeric em dashes without a semicolon unless a letter, digit or = follows', () => {
     expect(decodeHtmlEntities('A &#8212 B')).toBe('A \u2014 B');
     expect(decodeHtmlEntities('A &#x2014</title>')).toBe('A \u2014</title>');
@@ -65,6 +73,7 @@ describe('decodeHtmlEntities', () => {
   it('decodes double-masked sequences only once, like the browser', () => {
     expect(decodeHtmlEntities('A &#38;mdash; B')).toBe('A &mdash; B');
     expect(decodeHtmlEntities('A &amp;#8212; B')).toBe('A &#8212; B');
+    expect(decodeHtmlEntities('A &amp;#8212 B')).toBe('A &#8212 B');
   });
 
   it('leaves unknown references untouched', () => {
