@@ -154,4 +154,72 @@ describe('CI supply-chain hardening', () => {
       expect(buildAndDeployScope).toContain(permission);
     }
   });
+
+  // GSPP-465: `actions/attest` bricht bei mehr als 1.024 Dateien je Subject
+  // ab. Beide Attestierungen binden deshalb allein das Manifest, und vor ihnen
+  // prüft derselbe Pflichtschritt wie in `validate`, dass es den Bestand
+  // bytegenau beschreibt.
+  describe('deployment manifest contract (GSPP-465)', () => {
+    const CHECK = 'run: npm run check:deployment-manifest -- --dist dist';
+    const ATTEST = 'uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2';
+
+    function steps(workflowContent: string, job: string): string[] {
+      const scope = jobScopes(workflowContent).get(job);
+      expect(scope, `Job ${job}`).toBeDefined();
+      // Kommentare vor einem Schritt stehen im Text des vorigen; sie zählen
+      // für keinen von beiden.
+      const code = scope!.split('\n').filter((line) => !line.trimStart().startsWith('#')).join('\n');
+      return code.split(/\n(?=\x20{6}- )/).slice(1);
+    }
+
+    const stepIndex = (all: string[], marker: string) => {
+      const indices = all.flatMap((step, index) => (step.includes(marker) ? [index] : []));
+      expect(indices, marker).toHaveLength(1);
+      return indices[0];
+    };
+
+    it('attests only dist/SHA256SUMS in two separate steps with the existing pin', () => {
+      const all = steps(workflow('deploy.yml'), 'build-and-deploy');
+      const attestSteps = all.filter((step) => step.includes('uses: actions/attest@'));
+
+      expect(attestSteps).toHaveLength(2);
+      const [provenance, sbom] = attestSteps;
+      expect(provenance).toContain('name: Generate SLSA Provenance');
+      expect(sbom).toContain('name: Attest App SBOM');
+      for (const step of attestSteps) {
+        expect(step).toContain(ATTEST);
+        expect(step).toContain("subject-path: 'dist/SHA256SUMS'");
+        expect(step).not.toContain('dist/**');
+      }
+      expect(provenance).not.toContain('sbom-path');
+      expect(sbom).toContain("sbom-path: '${{ runner.temp }}/grundschutz-navigator.sbom.cyclonedx.json'");
+    });
+
+    it('checks the manifest in deploy after the build and before both attestations and the upload', () => {
+      const all = steps(workflow('deploy.yml'), 'build-and-deploy');
+      const build = stepIndex(all, 'run: npm run build');
+      const check = stepIndex(all, CHECK);
+      const attestations = all.flatMap((step, index) => (step.includes('uses: actions/attest@') ? [index] : []));
+      const upload = stepIndex(all, 'uses: actions/upload-pages-artifact@');
+
+      expect(check).toBe(build + 1);
+      expect(Math.min(...attestations)).toBeGreaterThan(check);
+      expect(upload).toBeGreaterThan(Math.max(...attestations));
+      expect(all[check]).not.toContain('if:');
+      expect(all[check]).not.toContain('continue-on-error');
+    });
+
+    it('checks the manifest in validate right after the build under the same scope condition', () => {
+      const all = steps(workflow('validate.yml'), 'validate');
+      const build = stepIndex(all, 'run: npm run build');
+      const check = stepIndex(all, CHECK);
+      const condition = "if: steps.scope.outputs.scope != 'docs_only'";
+
+      expect(check).toBe(build + 1);
+      expect(all[build]).toContain(condition);
+      expect(all[check]).toContain(condition);
+      expect(all[check]).not.toContain('continue-on-error');
+    });
+  });
 });
+
