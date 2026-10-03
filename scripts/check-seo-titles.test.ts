@@ -197,8 +197,9 @@ describe('checkBuiltSeoTitles', () => {
     expect(message).not.toContain('og:title"]');
   });
 
-  // Als root liest der Prozess auch Dateien ohne Leserecht.
-  it.skipIf(process.getuid?.() === 0)('reports an unreadable file with its path', () => {
+  // Windows entzieht mit `chmod` kein Leserecht, und root liest Dateien ohne
+  // Leserecht trotzdem — beide Umgebungen können den Lesefehler nicht erzeugen.
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('reports an unreadable file with its path', () => {
     const dir = scratchTree({ 'index.html': page(), 'gesperrt/index.html': page() });
     chmodSync(join(dir, 'gesperrt/index.html'), 0o000);
     const message = violationMessage(dir);
