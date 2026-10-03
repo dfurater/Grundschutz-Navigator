@@ -44,6 +44,11 @@ function rawCatalog(title = 'Catalog', groupId: string | undefined = 'GC') {
 function catalog(catalogKey: CatalogKey = 'gspp', title = 'Catalog') {
   return parseCatalog(rawCatalog(title), { catalogKey });
 }
+function routeHtmlFile(route: string): string {
+  return route === '/'
+    ? 'index.html'
+    : join(...route.slice(1).split('/').map(segment => decodeURIComponent(segment)), 'index.html');
+}
 function metadata(html: string) {
   const { window } = new JSDOM(html);
   try {
@@ -136,7 +141,7 @@ describe('writeSeoRouteEntries', () => {
     const entries = listSeoRouteMetadata([catalog()]);
     writeSeoRouteEntries(directory, entries, BASE_URL);
     for (const entry of entries) {
-      const file = entry.path === '/' ? 'index.html' : entry.path.slice(1) + '/index.html';
+      const file = routeHtmlFile(entry.path);
       const html = readFileSync(join(directory, file), 'utf8');
       expect(metadata(html)).toEqual({ title: entry.title, url: BASE_URL + entry.path.slice(1) });
       const withoutOg = (value: string) => value.replace(/<meta property="og:(title|url)"[^>]*>/g, '');
@@ -149,10 +154,13 @@ describe('writeSeoRouteEntries', () => {
 
   it('writes every public OG title without an em dash', () => {
     const directory = tempDir();
-    const entries = listSeoRouteMetadata([catalog('gspp'), catalog('wlan')]);
+    const raw = rawCatalog();
+    raw.controls[0].props[0].value = 'ctl 1';
+    raw.groups[0].groups[0].controls[0].props[0].value = 'Kontrolle ü';
+    const entries = listSeoRouteMetadata([parseCatalog(raw, { catalogKey: 'gspp' }), catalog('wlan')]);
     writeSeoRouteEntries(directory, entries, BASE_URL);
     for (const entry of entries) {
-      const file = entry.path === '/' ? 'index.html' : entry.path.slice(1) + '/index.html';
+      const file = routeHtmlFile(entry.path);
       expect(metadata(readFileSync(join(directory, file), 'utf8')).title).not.toContain('\u2014');
     }
   });
@@ -169,7 +177,7 @@ describe('writeSeoRouteEntries', () => {
       const parser = new window.DOMParser();
       const selectors = ['title', 'meta[property="og:title"]', 'meta[name="description"]', 'meta[property="og:image:alt"]'];
       for (const entry of entries) {
-        const file = entry.path === '/' ? 'index.html' : entry.path.slice(1) + '/index.html';
+        const file = routeHtmlFile(entry.path);
         const document = parser.parseFromString(readFileSync(join(directory, file), 'utf8'), 'text/html');
         for (const selector of selectors) {
           const elements = document.querySelectorAll(selector);
