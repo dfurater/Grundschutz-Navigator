@@ -250,8 +250,17 @@ export function CatalogProvider({
 
   useEffect(() => {
     let cancelled = false;
-    void loadCatalogDirectory(descriptors).then((entries) => {
-      if (!cancelled) setDirectory({ descriptors, entries });
+    void loadCatalogDirectory(descriptors, (entry) => {
+      if (cancelled) return;
+      setDirectory((current) => {
+        const entries = current?.descriptors === descriptors
+          ? current.entries
+          : descriptors.map(({ catalogKey }) => ({ catalogKey, title: catalogKey }));
+        return {
+          descriptors,
+          entries: entries.map((item) => item.catalogKey === entry.catalogKey ? entry : item),
+        };
+      });
     });
     return () => {
       cancelled = true;

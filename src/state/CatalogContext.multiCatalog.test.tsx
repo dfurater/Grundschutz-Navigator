@@ -195,6 +195,31 @@ describe('CatalogProvider — mehrere Kataloge', () => {
     expect(result.current.catalogs.has('wlan')).toBe(false);
   });
 
+  it('veröffentlicht verfügbare Titel trotz einer hängenden anderen Metadaten-Anfrage', async () => {
+    let resolvePending: (response: Response) => void = () => {};
+    const pending = new Promise<Response>((resolve) => { resolvePending = resolve; });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === SECOND_METADATA_URL) return pending;
+      if (url === ENTRY_METADATA_URL) return jsonResponse({ title: 'Sofort verfügbar' });
+      return new Response(null, { status: 404 });
+    });
+    const { result } = renderProvider();
+    try {
+      await waitFor(() => expect(result.current.catalogDirectory).toEqual([
+        { catalogKey: 'gspp', title: 'Sofort verfügbar' },
+        { catalogKey: 'wlan', title: 'wlan' },
+      ]));
+      await act(async () => { resolvePending(jsonResponse({ title: 'Später verfügbar' })); });
+      await waitFor(() => expect(result.current.catalogDirectory).toEqual([
+        { catalogKey: 'gspp', title: 'Sofort verfügbar' },
+        { catalogKey: 'wlan', title: 'Später verfügbar' },
+      ]));
+    } finally {
+      await act(async () => { resolvePending(new Response(null, { status: 404 })); });
+    }
+  });
+
   it('ignoriert späte Verzeichnisantworten einer früheren Deskriptormenge', async () => {
     let resolveOld: (response: Response) => void = () => {};
     const oldResponse = new Promise<Response>((resolve) => { resolveOld = resolve; });
