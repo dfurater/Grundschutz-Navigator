@@ -1,12 +1,10 @@
 /*
  * Titelvertrag der gebauten HTML-Auslieferung (GSPP-468).
  *
- * Ein Greptile-P2-Befund auf dem Release-PR #350 stellte fest, dass der
- * U+2014-Regressionstest in `scripts/seoRouteEntries.test.ts` die
- * Quellvorlage `index.html` liest, während die ausgelieferten Routenseiten im
- * Build aus `dist/index.html` entstehen. Ändert oder dupliziert der
- * Vite-Build einen Titel- oder Meta-Tag, bliebe der Test grün, obwohl die
- * ausgelieferten Seiten vom Titelvertrag abweichen.
+ * Der U+2014-Regressionstest in `scripts/seoRouteEntries.test.ts` liest die
+ * Quellvorlage `index.html`, die ausgelieferten Routenseiten entstehen im
+ * Build aber aus `dist/index.html`. Ändert oder dupliziert der Vite-Build
+ * einen Titel- oder Meta-Tag, sähe der Test das nicht.
  *
  * Diese Prüfung hebt den Vertrag auf das gebaute Ausgabeverzeichnis: Sie
  * liest jede ausgelieferte HTML-Datei aus `dist/` und verlangt in `<title>`,
@@ -14,10 +12,11 @@
  * Gedankenstrich (U+2014). Fehlendes Ausgabeverzeichnis, null HTML-Dateien
  * sowie fehlende oder doppelte Felder brechen fail-closed ab, statt still zu
  * bestehen — eine nicht prüfbare Auslieferung ist keine geprüfte.
- * Maskierte Gedankenstriche (`&mdash;`, `&#8212;`, `&#x2014;`, numerisch auch
- * ohne Semikolon, soweit HTML sie darstellt) zählen mit, weil der Browser sie
- * als U+2014 rendert. Decodiert wird in genau einem Durchgang, sodass doppelt
- * maskierte Folgen (`&amp;#8212;`) wörtlich bleiben wie im Browser.
+ * Maskierte Gedankenstriche zählen mit, sobald der Browser sie als U+2014
+ * rendert: `&mdash;`, numerisch `&#8212;`/`&#x2014;` sowie die
+ * Windows-1252-Abbildung `&#151;`/`&#x97;`, numerisch auch ohne Semikolon.
+ * Decodiert wird in genau einem Durchgang, sodass doppelt maskierte Folgen
+ * (`&amp;#8212;`) wörtlich bleiben wie im Browser.
  *
  * Das Modul läuft ohne Vite und ohne `@/`-Alias: `vite.config.ts` ruft die
  * Prüfung im Build auf (`spaFallbackPlugin().closeBundle()`, vor dem
@@ -56,8 +55,12 @@ const ATTRIBUTE_PATTERN = /\s([\w-]+)\s*=\s*("[^"]*"|'[^']*')/gi;
  * im Standard: `mdash` nur klein — `&MDASH;` zeigt der Browser wörtlich —,
  * die vier Legacy-Namen zusätzlich groß. Ohne Semikolon decodiert nur die
  * Legacy-Liste und nur vor einem Folger, der kein Buchstabe, keine Ziffer und
- * kein `=` ist; numerisch zählt ohne Semikolon allein der Gedankenstrich vor
- * solch einem Folger. Alles andere bleibt wörtlich. Doppelt Maskiertes
+ * kein `=` ist — diese Folger-Regel kennt der Tokenizer allein für benannte
+ * Referenzen. Numerische Referenzen decodiert er ohne Semikolon immer, gleich
+ * welches Zeichen folgt: `&#8212b` rendert als U+2014 mit folgendem `b`. Für
+ * das Urteil zählt dabei allein der Gedankenstrich; alle übrigen numerischen
+ * Referenzen ohne Semikolon bleiben wörtlich, weil keine von ihnen U+2014
+ * ergibt. Doppelt Maskiertes
  * (`&#38;mdash;`, `&amp;#8212;`) trifft nie eine zweite Stufe, weil es keine
  * gibt: Der Aufruf durchsucht sein Ergebnis nicht erneut.
  */
@@ -104,10 +107,7 @@ export function decodeHtmlEntities(value) {
     if (core[0] === '#') {
       const hex = core[1] === 'x' || core[1] === 'X';
       const code = Number.parseInt(hex ? core.slice(2) : core.slice(1), hex ? 16 : 10);
-      if (code === EM_DASH_CODE_POINT || code === WINDOWS_1252_EM_DASH) {
-        if (terminated || !continuesReference(value, offset + text.length)) return EM_DASH;
-        return text;
-      }
+      if (code === EM_DASH_CODE_POINT || code === WINDOWS_1252_EM_DASH) return EM_DASH;
       if (!terminated) return text;
       return fromCodePoint(text, code);
     }

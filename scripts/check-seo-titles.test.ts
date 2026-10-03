@@ -1,5 +1,6 @@
 // @vitest-environment node
 
+import { createRequire } from 'node:module';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -12,6 +13,10 @@ import {
   main,
   parseCheckArgs,
 } from './check-seo-titles.mjs';
+
+const { JSDOM } = createRequire(import.meta.url)('jsdom') as {
+  JSDOM: new (html: string) => { window: { document: Document; close(): void } };
+};
 
 const scratchRoots: string[] = [];
 
@@ -61,13 +66,40 @@ describe('decodeHtmlEntities', () => {
     ['semicolon-less &#8212 before space', 'A &#8212 B', 'A \u2014 B'],
     ['semicolon-less &#x2014 before tag', 'A &#x2014</title>', 'A \u2014</title>'],
     ['semicolon-less windows-1252 &#151', 'A &#151 B', 'A \u2014 B'],
-    ['semicolon-less &#8212 before letter', 'A &#8212b C', 'A &#8212b C'],
+    ['semicolon-less &#8212 before letter', 'A &#8212b C', 'A —b C'],
+    ['semicolon-less &#8212 before =', 'A &#8212= C', 'A —= C'],
+    ['semicolon-less &#x2014 before non-hex letter', 'A &#x2014g C', 'A —g C'],
+    ['semicolon-less windows-1252 &#151 before letter', 'A &#151a C', 'A —a C'],
+    ['zero-padded semicolon-less &#08212 before letter', 'A &#08212z C', 'A —z C'],
+    ['semicolon-less hex continues with hex digits', 'A &#x2014f C', 'A &#x2014f C'],
     ['double-masked &#38;mdash;', 'A &#38;mdash; B', 'A &mdash; B'],
     ['double-masked &amp;#8212;', 'A &amp;#8212; B', 'A &#8212; B'],
     ['double-masked &amp;#8212 without semicolon', 'A &amp;#8212 B', 'A &#8212 B'],
     ['unknown references', '&nbsp; &#0xZZ;', '&nbsp; &#0xZZ;'],
   ])('decodes %s', (_label, input, expected) => {
     expect(decodeHtmlEntities(input)).toBe(expected);
+  });
+
+  // Das Urteil muss dem HTML-Parser folgen, nicht einer eigenen Lesart des
+  // Standards: Je Schreibweise entscheidet der Parser, ob im Titeltext und im
+  // Attributwert ein Gedankenstrich ankommt.
+  it.each([
+    '&mdash;', '&mdash', '&MDASH;', '&mdashx;',
+    '&#8212;', '&#8212', '&#8212 ', '&#8212b', '&#8212=', '&#08212z',
+    '&#x2014;', '&#X2014;', '&#x2014', '&#x2014g', '&#x2014f', '&#x02014=',
+    '&#151;', '&#151', '&#151a', '&#x97;', '&#x97z',
+    '&#38;mdash;', '&amp;#8212;', '&amp;#8212', '&amp;mdash;', '&amp#8212;',
+  ])('agrees with the HTML parser on %s', (reference) => {
+    const text = `A ${reference} B`;
+    const { window } = new JSDOM(page({ title: text, ogTitle: text }));
+    const parsed = {
+      title: window.document.title,
+      ogTitle: window.document.querySelector('meta[property="og:title"]')?.getAttribute('content') ?? '',
+    };
+    window.close();
+    const fields = extractSeoTitleFields(page({ title: text, ogTitle: text }));
+    expect(fields.title.includes('—')).toBe(parsed.title.includes('—'));
+    expect(fields.ogTitle.includes('—')).toBe(parsed.ogTitle.includes('—'));
   });
 });
 
