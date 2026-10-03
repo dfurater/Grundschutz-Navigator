@@ -6,7 +6,7 @@ import type { Catalog } from '../src/domain/models.ts';
 import {
   catalogDataFileName, catalogMetadataFileName, listSupportedCatalogs,
 } from '../src/domain/sourceRegistry.mjs';
-import { PAGE_TITLES, PRODUCT_TITLE } from '../src/app/pageTitles.ts';
+import { PAGE_TITLES, PRODUCT_TITLE, TITLE_ID_SEPARATOR, TITLE_PARENT_SEPARATOR } from '../src/app/pageTitles.ts';
 
 // Die Vite-Konfiguration wird vor dem Vite-Aliashook gebündelt. Die bestehende
 // Node-Brücke lädt die App-Module deshalb über ihre echten URLs und löst @/ auf.
@@ -76,7 +76,7 @@ export function listSeoRouteMetadata(catalogs: readonly Catalog[]): SeoRouteMeta
         if (group.id) {
           entries.push({
             path: buildGroupUrl(catalog.catalogKey, group.id),
-            title: group.title + ' — ' + catalogTitle,
+            title: group.title + TITLE_PARENT_SEPARATOR + catalogTitle,
           });
         }
       }
@@ -84,7 +84,7 @@ export function listSeoRouteMetadata(catalogs: readonly Catalog[]): SeoRouteMeta
     for (const control of catalog.controls) {
       entries.push({
         path: buildControlUrlForControl(catalog.catalogKey, control),
-        title: control.id + ' — ' + control.title + ' — ' + catalogTitle,
+        title: control.id + TITLE_ID_SEPARATOR + control.title + TITLE_PARENT_SEPARATOR + catalogTitle,
       });
     }
   }

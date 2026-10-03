@@ -150,7 +150,7 @@ describe('VocabularyNamespacePage', () => {
     expect(nextLink.className).toContain('hover:border-[var(--color-border-default)]');
     expect(nextLink.className).toContain('hover:bg-[var(--color-surface-subtle)]');
     expect(screen.queryByRole('link', { name: 'Vokabularseite öffnen' })).not.toBeInTheDocument();
-    expectSingleDocumentTitle('Aufwandsstufen — Vokabulare — Grundschutz++ Navigator');
+    expectSingleDocumentTitle('Aufwandsstufen | Vokabulare | Grundschutz++ Navigator');
   });
 
   it('uses a fixed unavailable title without putting an unknown route parameter in it', () => {
@@ -165,7 +165,7 @@ describe('VocabularyNamespacePage', () => {
       </MemoryRouter>,
     );
 
-    expectSingleDocumentTitle('Vokabular nicht verfügbar — Grundschutz++ Navigator');
+    expectSingleDocumentTitle('Vokabular nicht verfügbar | Grundschutz++ Navigator');
   });
 
   it.each([
@@ -186,7 +186,7 @@ describe('VocabularyNamespacePage', () => {
       </MemoryRouter>,
     );
 
-    expectSingleDocumentTitle('Vokabulare — Grundschutz++ Navigator');
+    expectSingleDocumentTitle('Vokabulare | Grundschutz++ Navigator');
   });
 
   it('keeps a concise inline hint when no value is selected yet', () => {

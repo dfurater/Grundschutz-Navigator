@@ -955,14 +955,14 @@ describe('CatalogBrowser mobile focus restoration', () => {
     renderCatalogBrowser(`/katalog/${catalogKey}/kontrolle/shared-alt-identifier`);
 
     expectSingleDocumentTitle(
-      `${expectedControl.id} — ${expectedControl.title} — ${catalogTitle} — Grundschutz++ Navigator`,
+      `${expectedControl.id}: ${expectedControl.title} | ${catalogTitle} | Grundschutz++ Navigator`,
     );
   });
 
   it('uses catalog domain titles for the root and a resolved group', () => {
     const rootView = renderCatalogBrowser('/katalog/gspp');
 
-    expectSingleDocumentTitle('Grundschutz++-Katalog — Grundschutz++ Navigator');
+    expectSingleDocumentTitle('Grundschutz++-Katalog | Grundschutz++ Navigator');
 
     // Unmount ist zwingend: zwei gleichzeitig gemountete Titel wuerden den
     // Vergleich still gegen den falschen Knoten laufen lassen.
@@ -970,7 +970,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
     renderCatalogBrowser('/katalog/gspp/TOP.1');
 
     expectSingleDocumentTitle(
-      'TOP.1 — Testthema — Grundschutz++-Katalog — Grundschutz++ Navigator',
+      'TOP.1: Testthema | Grundschutz++-Katalog | Grundschutz++ Navigator',
     );
   });
 
@@ -979,13 +979,13 @@ describe('CatalogBrowser mobile focus restoration', () => {
     const practiceView = renderCatalogBrowser('/katalog/gspp/TOP');
 
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/^Testpraktik$/);
-    expectSingleDocumentTitle('TOP — Testpraktik — Grundschutz++-Katalog — Grundschutz++ Navigator');
+    expectSingleDocumentTitle('TOP: Testpraktik | Grundschutz++-Katalog | Grundschutz++ Navigator');
 
     practiceView.unmount();
     renderCatalogBrowser('/katalog/gspp/TOP.1');
 
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(/^Testthema$/);
-    expectSingleDocumentTitle('TOP.1 — Testthema — Grundschutz++-Katalog — Grundschutz++ Navigator');
+    expectSingleDocumentTitle('TOP.1: Testthema | Grundschutz++-Katalog | Grundschutz++ Navigator');
   });
 
   it('uses a fixed not-found title without putting an unknown URL fragment in it', () => {
@@ -993,7 +993,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
 
     renderCatalogBrowser(`/katalog/gspp/kontrolle/${unknownAltIdentifier}`);
 
-    expectSingleDocumentTitle('Katalogziel nicht gefunden — Grundschutz++ Navigator');
+    expectSingleDocumentTitle('Katalogziel nicht gefunden | Grundschutz++ Navigator');
   });
 
   it.each([
@@ -1009,7 +1009,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
 
     renderCatalogBrowser('/katalog/wlan');
 
-    expectSingleDocumentTitle('Katalog — Grundschutz++ Navigator');
+    expectSingleDocumentTitle('Katalog | Grundschutz++ Navigator');
   });
 
   it.each([
@@ -1025,7 +1025,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(screen.queryByText(absent)).toBeNull();
     expect(screen.queryByRole('heading', { name: '404 — Katalogziel nicht gefunden' })).toBeNull();
     expect(screen.queryByTestId('mobile-control-row')).toBeNull();
-    expectSingleDocumentTitle('Katalog — Grundschutz++ Navigator');
+    expectSingleDocumentTitle('Katalog | Grundschutz++ Navigator');
   });
 
   it('shows not found when no catalog exists without loading or error', () => {
@@ -1040,7 +1040,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
 
     expect(screen.getByRole('heading', { name: '404 — Katalogziel nicht gefunden' })).toBeInTheDocument();
     expect(screen.queryByTestId('mobile-control-row')).toBeNull();
-    expectSingleDocumentTitle('Katalogziel nicht gefunden — Grundschutz++ Navigator');
+    expectSingleDocumentTitle('Katalogziel nicht gefunden | Grundschutz++ Navigator');
   });
 
   it('keeps a stable alt-identifier addressable after its control ID changes', () => {

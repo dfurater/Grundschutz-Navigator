@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseCatalog } from '../src/adapters/oscalAdapter';
 import type { CatalogKey } from '../src/domain/sourceRegistry';
@@ -12,7 +13,7 @@ import { catalogDataFileName, catalogMetadataFileName, listSupportedCatalogs } f
 import { STATIC_CONTENT_TITLES, listSeoRouteMetadata, loadPublicSeoCatalogs, writeSeoRouteEntries } from './seoRouteEntries';
 
 const { JSDOM } = createRequire(import.meta.url)('jsdom') as {
-  JSDOM: new (html: string) => { window: { document: Document; close(): void } };
+  JSDOM: new (html: string) => { window: { document: Document; DOMParser: typeof DOMParser; close(): void } };
 };
 const BASE_URL = 'https://dfurater.github.io/Grundschutz-Navigator/';
 const HTML = '<!doctype html><html><head><meta property="og:title" content="Grundschutz++ Navigator" /><meta property="og:url" content="' + BASE_URL + '" /><meta property="og:description" content="Keep this" /><meta property="og:image" content="/og-image.png" /><meta http-equiv="Content-Security-Policy" content="default-src &apos;self&apos;" /><title data-page-title-fallback>Grundschutz++ Navigator</title></head><body><script type="module" src="/assets/app.js"></script></body></html>';
@@ -43,6 +44,11 @@ function rawCatalog(title = 'Catalog', groupId: string | undefined = 'GC') {
 function catalog(catalogKey: CatalogKey = 'gspp', title = 'Catalog') {
   return parseCatalog(rawCatalog(title), { catalogKey });
 }
+function routeHtmlFile(route: string): string {
+  return route === '/'
+    ? 'index.html'
+    : join(...route.slice(1).split('/').map(segment => decodeURIComponent(segment)), 'index.html');
+}
 function metadata(html: string) {
   const { window } = new JSDOM(html);
   try {
@@ -62,16 +68,16 @@ describe('listSeoRouteMetadata', () => {
     expect(entries).toContainEqual({ path: '/', title: 'Grundschutz++ Navigator' });
     for (const [path, title] of Object.entries(STATIC_CONTENT_TITLES)) expect(entries).toContainEqual({ path, title });
     expect(entries).toContainEqual({ path: '/katalog/gspp', title: 'Catalog' });
-    expect(entries).toContainEqual({ path: '/katalog/gspp/GC', title: 'Governance — Catalog' });
-    expect(entries).toContainEqual({ path: '/katalog/gspp/GC.1', title: 'Foundations — Catalog' });
-    expect(entries).toContainEqual({ path: '/katalog/gspp/kontrolle/control-uuid', title: 'GC.1.1 — ISMS — Catalog' });
-    expect(entries).toContainEqual({ path: '/katalog/gspp/kontrolle/root-control', title: 'ROOT.1 — Root control — Catalog' });
+    expect(entries).toContainEqual({ path: '/katalog/gspp/GC', title: 'Governance | Catalog' });
+    expect(entries).toContainEqual({ path: '/katalog/gspp/GC.1', title: 'Foundations | Catalog' });
+    expect(entries).toContainEqual({ path: '/katalog/gspp/kontrolle/control-uuid', title: 'GC.1.1: ISMS | Catalog' });
+    expect(entries).toContainEqual({ path: '/katalog/gspp/kontrolle/root-control', title: 'ROOT.1: Root control | Catalog' });
   });
 
   it('keeps identical control IDs and alternate identifiers scoped to each catalog', () => {
     const entries = listSeoRouteMetadata([catalog('gspp', 'One'), catalog('wlan', 'Two')]);
-    expect(entries).toContainEqual({ path: '/katalog/gspp/kontrolle/control-uuid', title: 'GC.1.1 — ISMS — One' });
-    expect(entries).toContainEqual({ path: '/katalog/wlan/kontrolle/control-uuid', title: 'GC.1.1 — ISMS — Two' });
+    expect(entries).toContainEqual({ path: '/katalog/gspp/kontrolle/control-uuid', title: 'GC.1.1: ISMS | One' });
+    expect(entries).toContainEqual({ path: '/katalog/wlan/kontrolle/control-uuid', title: 'GC.1.1: ISMS | Two' });
   });
 
   it('skips unaddressable groups while preserving their addressable topics and controls', () => {
@@ -135,7 +141,7 @@ describe('writeSeoRouteEntries', () => {
     const entries = listSeoRouteMetadata([catalog()]);
     writeSeoRouteEntries(directory, entries, BASE_URL);
     for (const entry of entries) {
-      const file = entry.path === '/' ? 'index.html' : entry.path.slice(1) + '/index.html';
+      const file = routeHtmlFile(entry.path);
       const html = readFileSync(join(directory, file), 'utf8');
       expect(metadata(html)).toEqual({ title: entry.title, url: BASE_URL + entry.path.slice(1) });
       const withoutOg = (value: string) => value.replace(/<meta property="og:(title|url)"[^>]*>/g, '');
@@ -144,6 +150,48 @@ describe('writeSeoRouteEntries', () => {
     expect(existsSync(join(directory, 'katalog/gspp/unknown/index.html'))).toBe(false);
     expect(existsSync(join(directory, 'katalog/unknown/index.html'))).toBe(false);
     expect(metadata(readFileSync(join(directory, 'index.html'), 'utf8'))).toEqual({ title: 'Grundschutz++ Navigator', url: BASE_URL });
+  });
+
+  it('writes every public OG title without an em dash', () => {
+    const directory = tempDir();
+    const raw = rawCatalog();
+    raw.controls[0].props[0].value = 'ctl 1';
+    raw.groups[0].groups[0].controls[0].props[0].value = 'Kontrolle ü';
+    const entries = listSeoRouteMetadata([parseCatalog(raw, { catalogKey: 'gspp' }), catalog('wlan')]);
+    writeSeoRouteEntries(directory, entries, BASE_URL);
+    for (const entry of entries) {
+      const file = routeHtmlFile(entry.path);
+      expect(metadata(readFileSync(join(directory, file), 'utf8')).title).not.toContain('\u2014');
+    }
+  });
+
+  // Vollständiger öffentlicher Routensatz: DOM-Parsing unter Coverage braucht mehr als 5 s.
+  // Dieser Test prüft den Generator gegen die Quellvorlage; die
+  // Auslieferungsseite des Vertrags (gebautes dist-HTML statt Quellvorlage)
+  // prüft `scripts/check-seo-titles.mjs` im Build (GSPP-468).
+  it('checks delivered title and meta text from the HTML template and pinned public catalogs', { timeout: 30_000 }, () => {
+    const template = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+    const directory = tempDir(template);
+    const catalogs = loadPublicSeoCatalogs(fileURLToPath(new URL('../public/data/', import.meta.url)));
+    const entries = listSeoRouteMetadata(catalogs);
+    writeSeoRouteEntries(directory, entries, BASE_URL);
+    const { window } = new JSDOM('');
+    try {
+      const parser = new window.DOMParser();
+      const selectors = ['title', 'meta[property="og:title"]', 'meta[name="description"]', 'meta[property="og:image:alt"]'];
+      for (const entry of entries) {
+        const file = routeHtmlFile(entry.path);
+        const document = parser.parseFromString(readFileSync(join(directory, file), 'utf8'), 'text/html');
+        for (const selector of selectors) {
+          const elements = document.querySelectorAll(selector);
+          expect(elements, file + ': ' + selector).toHaveLength(1);
+          const value = elements[0].getAttribute('content') ?? elements[0].textContent;
+          expect(value, file + ': ' + selector).not.toContain('\u2014');
+        }
+      }
+    } finally {
+      window.close();
+    }
   });
 
   it('escapes all attribute delimiters and preserves literal replacement-pattern characters', () => {

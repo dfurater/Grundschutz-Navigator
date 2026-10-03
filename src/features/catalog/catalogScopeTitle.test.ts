@@ -16,14 +16,14 @@ const catalog = {
 describe('describeCatalogScope', () => {
   it('zeigt bei einem Thema nur den Namen, der Dokumenttitel behält die Kennung', () => {
     expect(describeCatalogScope(catalog, 'NOT.3')).toEqual({
-      documentTitle: 'NOT.3 — Notfallvorsorge',
+      documentTitle: 'NOT.3: Notfallvorsorge',
       heading: 'Notfallvorsorge',
     });
   });
 
   it('zeigt bei einer Praktik nur den Namen', () => {
     expect(describeCatalogScope(catalog, 'NOT')).toEqual({
-      documentTitle: 'NOT — Notfallmanagement',
+      documentTitle: 'NOT: Notfallmanagement',
       heading: 'Notfallmanagement',
     });
   });

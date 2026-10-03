@@ -15,7 +15,7 @@ describe('PageTitle', () => {
   it('suffixes a page title with the product name', () => {
     render(<PageTitle title="Suche" />);
 
-    expectSingleDocumentTitle(`Suche — ${PRODUCT_TITLE}`);
+    expectSingleDocumentTitle(`Suche | ${PRODUCT_TITLE}`);
   });
 
   it('uses the bare product name without a page title', () => {
@@ -25,7 +25,7 @@ describe('PageTitle', () => {
   });
 
   it('uses the bare product name for an empty page title', () => {
-    // Ein leerer OSCAL-`metadata/title` darf keinen führenden Gedankenstrich erzeugen.
+    // Ein leerer OSCAL-`metadata/title` darf keinen führenden Titeltrenner erzeugen.
     render(<PageTitle title="" />);
 
     expectSingleDocumentTitle(PRODUCT_TITLE);
@@ -36,7 +36,7 @@ describe('PageTitle', () => {
 
     render(<PageTitle title="Suche" />);
 
-    expectSingleDocumentTitle(`Suche — ${PRODUCT_TITLE}`);
+    expectSingleDocumentTitle(`Suche | ${PRODUCT_TITLE}`);
     expect(document.head.querySelector('[data-page-title-fallback]')).toBeNull();
   });
 
