@@ -55,9 +55,26 @@ vi.mock('@/features/home/HomePage', () => ({
   HomePage: () => <div>Home</div>,
 }));
 
-vi.mock('@/features/catalog/CatalogBrowser', () => ({
-  CatalogBrowser: () => <div data-testid="catalog-browser">Katalog</div>,
-}));
+const catalogBrowserMock = vi.hoisted(() => ({ focusHeadingOnMount: false }));
+
+vi.mock('@/features/catalog/CatalogBrowser', async () => {
+  const { useLayoutEffect, useRef } = await import('react');
+  // Setzt den Fokus wie `useDocumentDetailPage` in einem Layout-Effekt, der als
+  // Kind-Effekt vor denen der Shell läuft.
+  function DetailHeading() {
+    const ref = useRef<HTMLHeadingElement>(null);
+    useLayoutEffect(() => { ref.current?.focus(); }, []);
+    return <h2 ref={ref} tabIndex={-1}>Detailüberschrift</h2>;
+  }
+  return {
+    CatalogBrowser: () => (
+      <div data-testid="catalog-browser">
+        Katalog
+        {catalogBrowserMock.focusHeadingOnMount && <DetailHeading />}
+      </div>
+    ),
+  };
+});
 
 vi.mock('@/features/search/SearchPage', () => ({
   SearchPage: () => <div>Suche</div>,
@@ -477,6 +494,32 @@ describe('AppShell', () => {
 
     expect(container.querySelector('aside')).toHaveAttribute('inert');
     expect(menuButton).toHaveFocus();
+  });
+
+  it('lässt den Fokus auf der neuen Seite, wenn sie ihn beim Schließen des Drawers selbst setzt', () => {
+    catalogBrowserMock.focusHeadingOnMount = true;
+    let navigateTo: NavigateFunction = () => {};
+    function NavigateProbe() {
+      navigateTo = useNavigate();
+      return null;
+    }
+    try {
+      const { container } = render(
+        <MemoryRouter initialEntries={['/']}>
+          <AppShell />
+          <NavigateProbe />
+        </MemoryRouter>,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+      screen.getByRole('button', { name: 'Menü schließen' }).focus();
+
+      act(() => { void navigateTo('/katalog/gspp'); });
+
+      expect(container.querySelector('aside')).toHaveAttribute('inert');
+      expect(screen.getByRole('heading', { name: 'Detailüberschrift' })).toHaveFocus();
+    } finally {
+      catalogBrowserMock.focusHeadingOnMount = false;
+    }
   });
 
   it('wechselt den Katalog aus dem Drawer-Kopf und schließt den Drawer', () => {

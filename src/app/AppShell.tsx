@@ -129,6 +129,8 @@ export function AppShell() {
   // der Schublade (etwa bei Browser-Zurück), geht er wie bei jedem anderen
   // Schließen an das Menü-Symbol; sonst bleibt er am auslösenden Element. Die
   // Prüfung läuft vor dem Commit, solange die Schublade noch nicht `inert` ist.
+  // Hat die neue Seite den Fokus schon selbst gesetzt (Layout-Effekte der Kinder
+  // laufen zuerst, etwa die Überschrift einer mobilen Detailseite), bleibt er dort.
   const [drawerLocationKey, setDrawerLocationKey] = useState(location.key);
   const [drawerFocusReturnKey, setDrawerFocusReturnKey] = useState<string | null>(null);
   if (drawerLocationKey !== location.key) {
@@ -141,7 +143,9 @@ export function AppShell() {
     }
   }
   useLayoutEffect(() => {
-    if (drawerFocusReturnKey !== null) menuButtonRef.current?.focus({ preventScroll: true });
+    if (drawerFocusReturnKey === null) return;
+    if (document.activeElement?.closest('main, header')) return;
+    menuButtonRef.current?.focus({ preventScroll: true });
   }, [drawerFocusReturnKey]);
 
   // Capture garantiert den Vorrang vor dem Escape-Handler der Detailseite
