@@ -540,6 +540,8 @@ Beim Build entsteht deterministisch eine UTF-8-kodierte `dist/sitemap.xml` mit X
 
 Breakpoint-abhängige UI wird über `useMediaQuery('(min-width: 1024px)')` (`isDesktop`) bedingt **gemountet**, nicht per CSS versteckt — zu jedem Zeitpunkt ist nur der passende Teilbaum im DOM. Drei Ausnahmen: Der `CatalogMobileDetailOverlay` behält sein `active`-Prop-Muster, weil er inaktiv `null` rendert und seinen Modal-Lifecycle (Focus-Trap, Scroll-Lock, Escape) selbst besitzt; die mobile Detailseite blendet Toolbar und Liste per `hidden` aus, statt sie abzubauen, und baut nur die mobilen Filter- und Export-Sheets ab (siehe „Mobile Detailseite“); kleine stateless Buttons dürfen bei `lg:hidden` bleiben, da sie keinen schweren Teilbaum doppelt mounten.
 
+Das mobile Suchfeld auf `/suche` und der gemeinsame `Input` verwenden unter `sm` 16 px Schrift (`text-base sm:text-sm`), damit iPhone-Safari beim Fokussieren die Seite nicht automatisch vergrößert und den Zoom in die anschließende Kontrollansicht mitnimmt. Ab `sm` bleibt ihre Schrift bei 14 px. Das Viewport-Meta erlaubt weiterhin Pinch-Zoom. `src/test/browser/searchInputFontSize.browser.test.ts` misst mit dem App-Stylesheet die berechnete Schriftgröße vor und nach Fokus, die Icon-Zentrierung und den Textabstand bei mobilen Breiten sowie die 14-px-Schrift unmittelbar ab `sm`.
+
 Die sichtbare Bereichsüberschrift der Toolbar nennt nur den Namen der gewählten Praktik oder des Themas, etwa „Notfallvorsorge“ für NOT.3; der Dokumenttitel behält Kennung und Name („NOT.3: Notfallvorsorge | …“). Beide liefert `describeCatalogScope` (`catalogScopeTitle.ts`).
 
 | Baustein | Verantwortung |

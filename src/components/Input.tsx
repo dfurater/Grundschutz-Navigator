@@ -14,7 +14,7 @@ export function Input({ icon: Icon, label, className = '', id, ...props }: Input
       <input
         type="text"
         id={id}
-        className={`w-full bg-[var(--color-surface-base)] border border-[var(--color-border-strong)] text-[var(--color-text-primary)] text-sm rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--color-surface-base)] focus-visible:border-[var(--color-focus-ring)] block ${Icon ? 'pl-9' : 'pl-3'} pr-3 py-2 shadow-[var(--shadow-sm)] placeholder:text-[var(--color-text-muted)] disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-[var(--color-surface-subtle)] ${className}`}
+        className={`w-full bg-[var(--color-surface-base)] border border-[var(--color-border-strong)] text-[var(--color-text-primary)] text-base sm:text-sm rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--color-surface-base)] focus-visible:border-[var(--color-focus-ring)] block ${Icon ? 'pl-9' : 'pl-3'} pr-3 py-2 shadow-[var(--shadow-sm)] placeholder:text-[var(--color-text-muted)] disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-[var(--color-surface-subtle)] ${className}`}
         {...props}
       />
     </div>
