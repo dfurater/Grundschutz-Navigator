@@ -8,6 +8,7 @@
 // =============================================================================
 
 import type {
+  CatalogDirectoryEntry,
   CatalogDocument,
   CatalogProvenance,
   VerificationResult,
@@ -46,6 +47,33 @@ export function buildSupportedCatalogDescriptors(
     metadataUrl: `${baseUrl}data/${catalogMetadataFileName(entry)}`,
     isEntryCatalog: entry.entryCatalog === true,
   }));
+}
+
+/** Lädt nur Metadaten; der Callback veröffentlicht jeden Eintrag sofort. */
+export async function loadCatalogDirectory(
+  descriptors: readonly SupportedCatalogDescriptor[],
+  onEntryLoaded?: (entry: CatalogDirectoryEntry) => void,
+): Promise<readonly CatalogDirectoryEntry[]> {
+  return Promise.all(descriptors.map(async (descriptor) => {
+    const entry = await loadCatalogDirectoryEntry(descriptor);
+    onEntryLoaded?.(entry);
+    return entry;
+  }));
+}
+
+async function loadCatalogDirectoryEntry(
+  { catalogKey, metadataUrl }: SupportedCatalogDescriptor,
+): Promise<CatalogDirectoryEntry> {
+  try {
+    const provenance = await fetchProvenance(metadataUrl);
+    if (typeof provenance?.title === 'string' && provenance.title.length > 0) {
+      return { catalogKey, title: provenance.title };
+    }
+  } catch {
+    // Ein fehlender oder nicht lesbarer Sidecar betrifft nur diesen Eintrag.
+  }
+  console.warn(`Catalog title metadata not available for "${catalogKey}". Using catalog key.`);
+  return { catalogKey, title: catalogKey };
 }
 
 export interface LoadedCatalogArtifacts {

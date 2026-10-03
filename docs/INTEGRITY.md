@@ -108,6 +108,7 @@ Beispiel; alle Werte Platzhalter:
 ```json
 {
   "artifactKey": "catalog-gspp",
+  "title": "Anwenderkatalog Grundschutz++",
   "source": {
     "repository": "https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek",
     "file": "control_layer/Grundschutz++/Grundschutz++-resolved_catalog.json",
@@ -129,6 +130,10 @@ Beispiel; alle Werte Platzhalter:
   }
 }
 ```
+
+`title` übernimmt den String aus `catalog.metadata.title` des ausgelieferten Upstream-Dokuments unverändert, einschließlich Leerzeichen. Ein fehlender, leerer (`length === 0`) oder nicht als String vorliegender Titel bricht den Fetch vor der Auslieferung mit dem `artifactKey` ab. Die Katalogbytes werden dabei nicht verändert.
+
+Das Laufzeit-Katalogverzeichnis lädt ausschließlich die Metadaten aller unterstützten Kataloge und veröffentlicht jeden beantworteten Eintrag unabhängig, ohne auf die übrigen Anfragen zu warten. Bis zum Laden sowie bei fehlenden, nicht lesbaren oder ungültigen Titel-Metadaten zeigt der jeweilige Eintrag seinen `catalogKey`. Ältere Metadaten dürfen deshalb typseitig noch ohne `title` vorliegen. Für den aktiven geladenen Katalog ist der Dokumenttitel maßgeblich. Ein Titel im Verzeichnis ist kein Integritäts- oder Herkunftsnachweis.
 
 ## Laufzeit-Prüfung (src/domain/integrity.ts)
 
@@ -345,6 +350,7 @@ interface UpstreamManifest {
 }
 
 interface CatalogProvenance {
+  title?: string;
   artifactKey?: string;
   source: {
     repository: string;

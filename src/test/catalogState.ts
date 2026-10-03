@@ -12,11 +12,12 @@ import { ENTRY_CATALOG_KEY } from '@/domain/sourceRegistry';
 
 type CatalogCollectionFields = Pick<
   CatalogState,
-  'catalogs' | 'entryCatalogKey' | 'activeCatalogKey' | 'selectCatalog'
+  'catalogDirectory' | 'catalogs' | 'entryCatalogKey' | 'activeCatalogKey' | 'selectCatalog'
 >;
 
 export function catalogCollectionDefaults(): CatalogCollectionFields {
   return {
+    catalogDirectory: [],
     catalogs: new Map(),
     entryCatalogKey: ENTRY_CATALOG_KEY,
     activeCatalogKey: ENTRY_CATALOG_KEY,
