@@ -116,7 +116,28 @@ describe('extractSeoTitleFields', () => {
     const html = page().replace('<meta property="og:title" content="OG Titel" />', '<meta property="og:title" />');
     expect(() => extractSeoTitleFields(html)).toThrow(/og:title"\] ohne content-Attribut/);
   });
+
+  // `document.title` kennt nur ein `title`-Element im HTML-Namespace: Das
+  // `<title>` eines Inline-SVG ist ein Bildtitel und kein Seitentitel.
+  it('does not count the title of an inline SVG as a page title', () => {
+    const html = withBody(page(), '<svg><title>Bildtitel</title></svg>');
+    expect(extractSeoTitleFields(html).title).toBe('Seitentitel');
+  });
+
+  it('reports a missing page title although an inline SVG carries its own title', () => {
+    const html = withBody(page().replace(/<title>.*<\/title>/, ''), '<svg><title>Bildtitel</title></svg>');
+    expect(() => extractSeoTitleFields(html)).toThrow('Genau ein <title> erwartet, gefunden: 0');
+  });
+
+  it('counts an HTML title in the body as a second page title', () => {
+    const html = withBody(page(), '<title>Titel im Body</title>');
+    expect(() => extractSeoTitleFields(html)).toThrow('Genau ein <title> erwartet, gefunden: 2');
+  });
 });
+
+function withBody(html: string, body: string) {
+  return html.replace('<body></body>', `<body>${body}</body>`);
+}
 
 describe('collectBuiltHtmlFiles', () => {
   it('collects nested HTML files sorted and skips dotfiles like the Pages pack rule', () => {
@@ -149,6 +170,11 @@ describe('checkBuiltSeoTitles', () => {
   it('passes a clean delivery and reports file and field counts', () => {
     const dir = scratchTree({ 'index.html': page(), 'suche/index.html': page() });
     expect(checkBuiltSeoTitles(dir)).toEqual({ fileCount: 2, fieldCount: 8 });
+  });
+
+  it('passes a delivery whose page embeds an inline SVG with its own title', () => {
+    const dir = scratchTree({ 'index.html': withBody(page(), '<svg><title>Bildtitel</title></svg>') });
+    expect(checkBuiltSeoTitles(dir)).toEqual({ fileCount: 1, fieldCount: 4 });
   });
 
   it.each([

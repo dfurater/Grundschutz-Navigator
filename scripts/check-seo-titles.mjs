@@ -67,13 +67,19 @@ function withHtmlParser(callback) {
   }
 }
 
+// Der Typselektor `title` trifft auch das `<title>` eines Inline-SVG. Als Seitentitel
+// gilt nur ein Element im HTML-Namespace, unabhängig davon, ob es im Head steht.
+const HTML_NAMESPACE = 'http://www.w3.org/1999/xhtml';
+
 /*
  * Liest ein Feld, ohne abzubrechen: `{ value }` mit dem Text oder `{ error }`
  * mit dem Strukturfehler. So kann die Auslieferungsprüfung jedes Feld einer
  * Datei unabhängig von den anderen bewerten.
  */
 function inspectField(document, { selector, label = selector }) {
-  const elements = document.querySelectorAll(selector);
+  const elements = Array.from(document.querySelectorAll(selector)).filter(
+    (element) => element.namespaceURI === HTML_NAMESPACE,
+  );
   if (elements.length !== 1) {
     return { error: `Genau ein ${label} erwartet, gefunden: ${elements.length}` };
   }
