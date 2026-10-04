@@ -6,7 +6,7 @@ Inoffizielles Community-Projekt, kein Angebot des BSI. Keine Rechtsberatung, kei
 
 **Live-Demo:** [dfurater.github.io/Grundschutz-Navigator](https://dfurater.github.io/Grundschutz-Navigator/)
 
-<img src="docs/assets/katalog-mit-filtern.png" width="1040" alt="Katalogansicht des Grundschutz++ Navigators: links der Katalog-Explorer mit den Praktiken, in der Mitte die Kontrollen der Praktik „Berechtigung“, rechts die Filterleiste mit ausgewähltem Sicherheitsniveau „normal-SdT“ und den Modalverben MUSS und SOLLTE">
+<img src="docs/assets/katalog-mit-filtern.png" width="1040" alt="Katalogansicht des Grundschutz++ Navigators: links der Katalog-Explorer mit der Katalogwahl „Anwenderkatalog Grundschutz++“ im Kopf und den Praktiken darunter, in der Mitte die Kontrollen der Praktik „Berechtigung“, rechts die Filterleiste mit ausgewähltem Sicherheitsniveau „normal-SdT“ und den Modalverben MUSS und SOLLTE">
 
 [![Deploy](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/deploy.yml/badge.svg)](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/deploy.yml)
 [![App-Code: AGPL v3](https://img.shields.io/badge/App--Code-AGPL%20v3-green)](LICENSE)
