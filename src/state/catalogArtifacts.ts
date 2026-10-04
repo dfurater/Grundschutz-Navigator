@@ -49,13 +49,35 @@ export function buildSupportedCatalogDescriptors(
   }));
 }
 
+export type ProvenanceRequest = (metadataUrl: string) => Promise<CatalogProvenance>;
+
+/**
+ * Teilt je Metadaten-URL eine Anfrage zwischen Katalogverzeichnis und
+ * Integritätsprüfung. Eine abgelehnte Anfrage wird verworfen: Wer sie gerade
+ * teilt, erhält dieselbe Ablehnung, ein späterer Aufruf fragt neu an.
+ */
+export function createProvenanceRequests(): ProvenanceRequest {
+  const requests = new Map<string, Promise<CatalogProvenance>>();
+  return (metadataUrl) => {
+    const pending = requests.get(metadataUrl);
+    if (pending) return pending;
+    const request = fetchProvenance(metadataUrl);
+    requests.set(metadataUrl, request);
+    request.catch(() => {
+      if (requests.get(metadataUrl) === request) requests.delete(metadataUrl);
+    });
+    return request;
+  };
+}
+
 /** Lädt nur Metadaten; der Callback veröffentlicht jeden Eintrag sofort. */
 export async function loadCatalogDirectory(
   descriptors: readonly SupportedCatalogDescriptor[],
   onEntryLoaded?: (entry: CatalogDirectoryEntry) => void,
+  requestProvenance: ProvenanceRequest = fetchProvenance,
 ): Promise<readonly CatalogDirectoryEntry[]> {
   return Promise.all(descriptors.map(async (descriptor) => {
-    const entry = await loadCatalogDirectoryEntry(descriptor);
+    const entry = await loadCatalogDirectoryEntry(descriptor, requestProvenance);
     onEntryLoaded?.(entry);
     return entry;
   }));
@@ -63,9 +85,10 @@ export async function loadCatalogDirectory(
 
 async function loadCatalogDirectoryEntry(
   { catalogKey, metadataUrl }: SupportedCatalogDescriptor,
+  requestProvenance: ProvenanceRequest,
 ): Promise<CatalogDirectoryEntry> {
   try {
-    const provenance = await fetchProvenance(metadataUrl);
+    const provenance = await requestProvenance(metadataUrl);
     if (typeof provenance?.title === 'string' && provenance.title.length > 0) {
       return { catalogKey, title: provenance.title };
     }
@@ -98,6 +121,7 @@ export interface LoadedCatalogArtifacts {
 export async function loadCatalogArtifacts(
   descriptor: SupportedCatalogDescriptor,
   isCancelled: () => boolean = () => false,
+  requestProvenance: ProvenanceRequest = fetchProvenance,
 ): Promise<LoadedCatalogArtifacts | null> {
   const buffer = await fetchCatalogBuffer(descriptor.dataUrl);
   if (isCancelled()) return null;
@@ -106,7 +130,7 @@ export async function loadCatalogArtifacts(
   let verification: VerificationResult | null = null;
 
   try {
-    provenance = await fetchProvenance(descriptor.metadataUrl);
+    provenance = await requestProvenance(descriptor.metadataUrl);
     if (!isCancelled()) {
       verification = await verifyArtifactIntegrity(buffer, provenance);
     }

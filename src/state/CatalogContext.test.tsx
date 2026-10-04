@@ -313,7 +313,6 @@ describe('CatalogProvider', () => {
       ...buildSupportedCatalogDescriptors(import.meta.env.BASE_URL).map((descriptor) =>
         descriptor.isEntryCatalog ? '/catalog-metadata.json' : descriptor.metadataUrl,
       ),
-      '/catalog-metadata.json',
       '/catalog.json',
       '/upstream-sources-metadata.json',
       '/vocabularies.json',

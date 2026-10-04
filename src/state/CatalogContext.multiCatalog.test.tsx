@@ -314,6 +314,29 @@ describe('CatalogProvider — mehrere Kataloge', () => {
     expect(result.current.catalog?.catalogKey).toBe('wlan');
   });
 
+  it('fragt die Metadaten jedes Katalogs für Verzeichnis und Integritätsprüfung nur einmal an', async () => {
+    const fetchSpy = mockArtifacts({
+      [ENTRY_DATA_URL]: entryCatalogJson,
+      [ENTRY_METADATA_URL]: await provenanceFor(entryCatalogJson),
+      [SECOND_DATA_URL]: secondCatalogJson,
+      [SECOND_METADATA_URL]: await provenanceFor(secondCatalogJson),
+    });
+    const countRequests = (target: string) =>
+      fetchSpy.mock.calls.filter(([url]) => String(url) === target).length;
+
+    const { result } = renderProvider();
+    await waitForEntryCatalog(result);
+    expect(result.current.verification?.valid).toBe(true);
+    expect(countRequests(ENTRY_METADATA_URL)).toBe(1);
+
+    act(() => result.current.selectCatalog('wlan'));
+    await waitFor(() => {
+      expect(result.current.catalogs.get('wlan')?.verification?.valid).toBe(true);
+    });
+    expect(countRequests(SECOND_METADATA_URL)).toBe(1);
+    expect(countRequests(ENTRY_METADATA_URL)).toBe(1);
+  });
+
   it('hält identische Control-IDs zweier Kataloge kollisionsfrei getrennt', async () => {
     mockArtifacts({
       [ENTRY_DATA_URL]: entryCatalogJson,
