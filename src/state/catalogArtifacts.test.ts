@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import { SUPPORTED_CATALOGS } from '@/domain/sourceRegistry';
 import {
   buildSupportedCatalogDescriptors,
@@ -33,6 +33,9 @@ describe('loadCatalogArtifacts abort', () => {
     });
     const requests = createProvenanceRequests();
     const pending = loadCatalogArtifacts(descriptors[0], () => failure === 'cancelled', requests.start);
+    const onEntryLoaded = vi.fn();
+    const directory = loadCatalogDirectory(descriptors.slice(0, 1), onEntryLoaded, requests.join);
+    expect(vi.mocked(globalThis.fetch)).toHaveBeenCalledTimes(2);
     if (failure === 'cancelled') await expect(pending).resolves.toBeNull();
     else if (failure === 'http') await expect(pending).rejects.toThrow('503');
     else await expect(pending).rejects.toBe(original);
@@ -40,7 +43,11 @@ describe('loadCatalogArtifacts abort', () => {
     expect(metadataSignal?.aborted).toBe(true);
     await Promise.resolve();
     expect(vi.getTimerCount()).toBe(0);
-    // Verzeichnis-Fallback beendet sich ebenfalls statt auf dem alten Promise zu hängen.
+    const fallback = { catalogKey: descriptors[0].catalogKey, title: descriptors[0].catalogKey };
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onEntryLoaded).toHaveBeenCalledExactlyOnceWith(fallback);
+    await expect(directory).resolves.toEqual([fallback]);
+    // Nach Freigabe der geteilten Anfrage lädt ein späterer Leser neu.
     vi.mocked(globalThis.fetch).mockResolvedValue(new Response('{"title":"Neu"}'));
     await expect(requests.join(descriptors[0].metadataUrl)).resolves.toEqual({ title: 'Neu' });
   });
@@ -83,6 +90,11 @@ describe('loadCatalogDirectory', () => {
 });
 
 describe('createProvenanceRequests', () => {
+  it('join bietet keine Abbruchhoheit für die geteilte Anfrage an', () => {
+    const { join } = createProvenanceRequests();
+    expectTypeOf(join).parameters.toEqualTypeOf<[metadataUrl: string]>();
+  });
+
   it('bricht nur die jüngere Prüfungsanfrage ab und lässt das ältere Verzeichnis weiterlaufen', async () => {
     vi.useFakeTimers();
     const signals: AbortSignal[] = [];

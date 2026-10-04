@@ -54,8 +54,8 @@ export type ProvenanceRequest = (metadataUrl: string, signal?: AbortSignal) => P
 export interface ProvenanceRequests {
   /** Startet immer eine neue Anfrage und führt sie als laufende Anfrage der URL. */
   readonly start: ProvenanceRequest;
-  /** Übernimmt die laufende Anfrage der URL, sonst wie `start`. */
-  readonly join: ProvenanceRequest;
+  /** Übernimmt die laufende Anfrage oder startet neu, ohne Abbruchhoheit. */
+  readonly join: (metadataUrl: string) => Promise<CatalogProvenance>;
 }
 
 /**
