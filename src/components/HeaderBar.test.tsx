@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { createRef } from 'react';
 import { MemoryRouter, useLocation } from 'react-router';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HeaderBar } from './HeaderBar';
 
 function renderHeaderWithEditableTarget(target: React.ReactNode) {
@@ -14,6 +14,37 @@ function renderHeaderWithEditableTarget(target: React.ReactNode) {
 }
 
 describe('HeaderBar', () => {
+  // jsdom hat keine Layoutboxen. Der Standardfall stellt ein sichtbares Feld dar.
+  beforeEach(() => vi.spyOn(Element.prototype, 'getClientRects').mockReturnValue({ length: 1 } as DOMRectList));
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each([
+    ['Meta+K', { metaKey: true }],
+    ['Ctrl+K', { ctrlKey: true }],
+  ])('führt %s auch ohne checkVisibility vom verborgenen Feld zur Suche', (_, modifier) => {
+    function Location() {
+      const location = useLocation();
+      return <output data-testid="location">{`${location.pathname}${location.search}|${JSON.stringify(location.state)}`}</output>;
+    }
+    render(
+      <MemoryRouter initialEntries={['/suche?q=verfahren']}>
+        <HeaderBar />
+        <Location />
+        <button type="button">Außerhalb</button>
+      </MemoryRouter>,
+    );
+    const input = screen.getByRole('searchbox', { name: 'Katalog durchsuchen' });
+    Object.defineProperty(input, 'checkVisibility', { value: undefined });
+    vi.spyOn(input, 'getClientRects').mockReturnValue({ length: 0 } as DOMRectList);
+    const button = screen.getByRole('button', { name: 'Außerhalb' });
+    button.focus();
+
+    expect(fireEvent.keyDown(button, { key: 'k', ...modifier })).toBe(false);
+
+    expect(input).not.toHaveFocus();
+    expect(screen.getByTestId('location')).toHaveTextContent('/suche?q=verfahren|{"focusSearch":true}');
+  });
+
   it('exposes the controlled drawer state and real menu button through its ref', () => {
     const menuButtonRef = createRef<HTMLButtonElement>();
     const onMenuToggle = vi.fn();

@@ -3,12 +3,48 @@ import { SUPPORTED_CATALOGS } from '@/domain/sourceRegistry';
 import {
   buildSupportedCatalogDescriptors,
   createProvenanceRequests,
+  loadCatalogArtifacts,
   loadCatalogDirectory,
 } from '@/state/catalogArtifacts';
 
 const descriptors = buildSupportedCatalogDescriptors('/fixture/');
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
+
+describe('loadCatalogArtifacts abort', () => {
+  it.each(['network', 'http', 'body', 'cancelled'])('bricht Metadaten nach %s ab und erhält den Katalogfehler', async (failure) => {
+    vi.useFakeTimers();
+    const original = new Error('Catalog download failed');
+    let metadataSignal: AbortSignal | null | undefined;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      if (String(input) === descriptors[0].dataUrl) {
+        if (failure === 'network') throw original;
+        if (failure === 'http') return new Response(null, { status: 503 });
+        if (failure === 'body') return { ok: true, arrayBuffer: async () => { throw original; } } as unknown as Response;
+        return new Response('{}');
+      }
+      metadataSignal = init?.signal;
+      return new Promise<Response>((_resolve, reject) => {
+        metadataSignal?.addEventListener('abort', () => reject(metadataSignal?.reason), { once: true });
+      });
+    });
+    const requests = createProvenanceRequests();
+    const pending = loadCatalogArtifacts(descriptors[0], () => failure === 'cancelled', requests.start);
+    if (failure === 'cancelled') await expect(pending).resolves.toBeNull();
+    else if (failure === 'http') await expect(pending).rejects.toThrow('503');
+    else await expect(pending).rejects.toBe(original);
+
+    expect(metadataSignal?.aborted).toBe(true);
+    await Promise.resolve();
+    expect(vi.getTimerCount()).toBe(0);
+    // Verzeichnis-Fallback beendet sich ebenfalls statt auf dem alten Promise zu hängen.
+    vi.mocked(globalThis.fetch).mockResolvedValue(new Response('{"title":"Neu"}'));
+    await expect(requests.join(descriptors[0].metadataUrl)).resolves.toEqual({ title: 'Neu' });
+  });
+});
 
 describe('loadCatalogDirectory', () => {
   it('lädt für alle unterstützten Kataloge nur Metadaten und erhält Titel unverändert', async () => {
@@ -47,6 +83,32 @@ describe('loadCatalogDirectory', () => {
 });
 
 describe('createProvenanceRequests', () => {
+  it('bricht nur die jüngere Prüfungsanfrage ab und lässt das ältere Verzeichnis weiterlaufen', async () => {
+    vi.useFakeTimers();
+    const signals: AbortSignal[] = [];
+    const answers: Array<(response: Response) => void> = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => new Promise<Response>((resolve, reject) => {
+      signals.push(init!.signal!);
+      answers.push(resolve);
+      init!.signal!.addEventListener('abort', () => reject(init!.signal!.reason), { once: true });
+    }));
+    const { start, join } = createProvenanceRequests();
+    const url = descriptors[0].metadataUrl;
+    const directory = join(url);
+    const controller = new AbortController();
+    const verification = start(url, controller.signal);
+    expect(join(url)).toBe(verification);
+    const reason = new Error('Catalog failed');
+    const assertion = expect(verification).rejects.toBe(reason);
+    controller.abort(reason);
+    expect(signals[1].aborted).toBe(true);
+    await assertion;
+    expect(signals[0].aborted).toBe(false);
+    answers[0](new Response('{"title":"Verzeichnis"}'));
+    await expect(directory).resolves.toEqual({ title: 'Verzeichnis' });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('join teilt nur die laufende Anfrage und fragt nach Abschluss oder Ablehnung neu an', async () => {
     const responses = [
       new Response(null, { status: 503 }),

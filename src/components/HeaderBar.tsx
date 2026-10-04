@@ -66,7 +66,9 @@ export function HeaderBar({
     // Unter 640 px ist das Feld ausgeblendet; dann führt das Kürzel wie die Lupe
     // auf die Suchseite und fokussiert dort die Eingabe. Auf der Suchseite bleibt
     // die laufende Anfrage stehen, und der Verlauf erhält keinen zweiten Eintrag.
-    if (inputRef.current?.checkVisibility?.() === false) {
+    const input = inputRef.current;
+    const visible = input && (input.checkVisibility?.() ?? input.getClientRects().length > 0);
+    if (!visible) {
       const onSearchPage = location.pathname === '/suche';
       void navigate(
         { pathname: '/suche', search: onSearchPage ? location.search : '' },

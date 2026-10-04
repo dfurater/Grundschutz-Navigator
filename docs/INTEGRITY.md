@@ -185,6 +185,8 @@ Das Limit gilt für Antwort und Body-Lesen jedes Artefakt-Fetch. Ohne Limit hiel
 
 `fetchProvenance` und `fetchVocabularyProvenance` laden die jeweilige Metadatendatei über `fetchJsonDocument` (Default-Timeout `ARTIFACT_FETCH_TIMEOUT_MS`; Fehlertext `Failed to load {label}: {status} {statusText}`). `fetchCatalogBuffer` lädt eine Katalogdatei als `ArrayBuffer` (Fehlertext `Failed to load catalog: …`). `fetchCatalogWithBuffer` liefert zusätzlich den UTF-8-Text; es versorgt die Vokabular-Registry, während der Katalogpfad den Buffer an den Parser-Worker übergibt und erst dort dekodiert.
 
+`fetchProvenance` und `fetchJsonDocument` nehmen zusätzlich ein optionales `AbortSignal` des Aufrufers an. Es wird samt Abbruchgrund an den bestehenden Timeout-Controller weitergegeben und beendet auch ein noch laufendes Body-Lesen. Der Listener am externen Signal und der Timeout-Timer werden nach Abschluss oder Fehler entfernt.
+
 ## CatalogContext Integration
 
 `src/state/catalogArtifacts.ts` lädt genau einen Katalog gegen **seine eigenen** Metadaten (`loadCatalogArtifacts`): Katalogbuffer und Metadaten gemeinsam anfragen (Metadaten über die übergebene Anfragefunktion, im Provider `start` aus `createProvenanceRequests()`, das immer neu anfragt und die Anfrage dem Verzeichnis zum Mitlesen anbietet, sonst `fetchProvenance`), dann `verifyArtifactIntegrity` in einem `try/catch` — fehlen die Metadaten, protokolliert die App eine Konsolenwarnung und überspringt die Prüfung. Erst danach wird der Buffer ohne Kopie (Transferable) an den Modul-Worker übergeben; das Dokument trägt die Vertrauensklasse aus dem Prüfergebnis (`class-1-verified-public` nur bei bestandener Prüfung, sonst `class-1-unverified-public`). Die Reihenfolge ist tragend: Ohne sie behauptete das Dokument „verifiziert", bevor geprüft wurde.
@@ -192,6 +194,8 @@ Das Limit gilt für Antwort und Body-Lesen jedes Artefakt-Fetch. Ohne Limit hiel
 `src/state/CatalogContext.tsx` startet Einstiegskatalog und Vokabulare gemeinsam (Startlatenz). Die Vokabulare laufen über `fetchCatalogWithBuffer` + `buildVocabularyRegistry`; ihre Provenance (`fetchVocabularyProvenance`) und Verifikation gegen denselben Buffer folgen in einem eigenen `try/catch` mit Konsolenwarnung. Fehlt `catalog.json`, ist das ein harter Ladefehler des Einstiegskatalogs; fehlt nur `vocabularies.json`, läuft die App ohne Vokabular-Registry weiter. Ein `cancelled`-Flag verhindert State-Updates nach Unmount; ein Auffangnetz um den gesamten eager Ladepfad führt jeden Wurf in einen sichtbaren Ladefehler statt in einen hängenden Ladezustand.
 
 Jeder optionale Fetch (`vocabularies.json`, beide Provenance-Dateien) ist einzeln auf `ARTIFACT_FETCH_TIMEOUT_MS` begrenzt; ein Timeout wirkt wie ein 404 — das betroffene Feld bleibt `null`. Ein Timeout von `catalog.json` selbst führt über den äußeren `catch` in den Fehlerzustand.
+
+Schlägt der Katalog-Fetch einschließlich Body-Lesen fehl, beendet `loadCatalogArtifacts` seine parallel gestartete Metadatenanfrage über einen eigenen Controller und wirft den ursprünglichen Katalogfehler weiter. Erkennt der Ladepfad nach dem Bytes-Abruf einen Abbruch durch den Aufrufer, beendet er die Metadatenanfrage ebenfalls und liefert `null`. Ein Verzeichnis, das dieselbe Anfrage mitliest, erhält deren Ablehnung und verwendet den Schlüssel-Fallback. Eine ältere, separat gestartete Verzeichnisanfrage wird nicht abgebrochen; nach Abschluss oder Ablehnung der aktuellen Anfrage fragt ein späteres `join` neu an.
 
 ### Mehrere Kataloge — Isolation der Prüfung
 
