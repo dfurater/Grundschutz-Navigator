@@ -653,6 +653,8 @@ export interface VocabularyProvenance {
 }
 
 export interface CatalogProvenance {
+  /** Unveränderter Upstream-Titel; optional für ältere Metadatenartefakte. */
+  title?: string;
   /** Source-registry artifact key; written by the multi-artifact fetch (GSPP-249) */
   artifactKey?: string;
   source: {
@@ -712,7 +714,14 @@ export interface LoadedCatalogState {
   readonly error: string | null;
 }
 
+export interface CatalogDirectoryEntry {
+  readonly catalogKey: CatalogKey;
+  readonly title: string;
+}
+
 export interface CatalogState {
+  /** Alle unterstützten Kataloge mit Upstream-Titel oder catalogKey-Fallback. */
+  catalogDirectory: readonly CatalogDirectoryEntry[];
   /**
    * Alle angeforderten Kataloge, je Katalog isoliert. Der Einstiegskatalog ist
    * ab dem ersten Rendern enthalten; weitere kommen bedarfsgerecht dazu, sobald

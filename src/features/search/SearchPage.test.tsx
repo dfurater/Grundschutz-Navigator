@@ -9,6 +9,7 @@ import { downloadCSV } from '@/features/export/csvExport';
 import { SearchPage } from './SearchPage';
 import { useSearch } from './useSearch';
 import { CONTROL_ROUTE_PATTERN } from '@/app/routes';
+import { FOCUS_SEARCH_STATE } from '@/app/searchFocus';
 import { catalogCollectionDefaults } from '@/test/catalogState';
 
 vi.mock('@/hooks/useCatalog', () => ({
@@ -152,6 +153,27 @@ describe('SearchPage', () => {
       state.catalog!.practices,
       'gspp',
     );
+  });
+
+  // ⌘K/Ctrl+K ohne sichtbares Header-Suchfeld führt hierher (GSPP-476).
+  it('fokussiert die Eingabe nur, wenn die Navigation es anfordert', () => {
+    mockedUseCatalog.mockReturnValue(makeCatalogState([]));
+    mockedUseSearch.mockReturnValue({ results: [], totalResults: 0 });
+
+    const { unmount } = render(
+      <MemoryRouter initialEntries={[{ pathname: '/suche', state: FOCUS_SEARCH_STATE }]}>
+        <SearchPage />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('searchbox', { name: 'Suchbegriff eingeben' })).toHaveFocus();
+    unmount();
+
+    render(
+      <MemoryRouter initialEntries={[{ pathname: '/suche', state: { focusSearch: 'ja' } }]}>
+        <SearchPage />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('searchbox', { name: 'Suchbegriff eingeben' })).not.toHaveFocus();
   });
 
   describe('Desktop-Ergebnisse', () => {
