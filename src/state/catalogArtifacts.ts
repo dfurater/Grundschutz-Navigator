@@ -55,7 +55,8 @@ export type ProvenanceRequest = (metadataUrl: string) => Promise<CatalogProvenan
  * Teilt je Metadaten-URL die gerade laufende Anfrage zwischen Katalogverzeichnis
  * und Integritätsprüfung. Ein Ergebnis wird nicht aufbewahrt: Wer nach dem
  * Abschluss anfragt, erhält eine neue Anfrage. So prüft ein später nachgeladener
- * Katalog seine Bytes nie gegen Metadaten eines früheren Auslieferungsstands.
+ * Katalog seine Bytes nicht gegen das beim Start für das Verzeichnis geladene
+ * Ergebnis.
  */
 export function createProvenanceRequests(): ProvenanceRequest {
   const pending = new Map<string, Promise<CatalogProvenance>>();
@@ -72,9 +73,10 @@ export function createProvenanceRequests(): ProvenanceRequest {
   };
 }
 
-// Die Ablehnung wertet loadCatalogArtifacts selbst aus; endet der Ladevorgang
-// vorher, darf sie nicht als unbehandelt gelten.
-function ignoreRejection(): void {}
+function ignoreRejection(): void {
+  // Die Ablehnung wertet loadCatalogArtifacts selbst aus; endet der Ladevorgang
+  // vorher, darf sie nicht als unbehandelt gelten.
+}
 
 /** Lädt nur Metadaten; der Callback veröffentlicht jeden Eintrag sofort. */
 export async function loadCatalogDirectory(
@@ -129,8 +131,9 @@ export async function loadCatalogArtifacts(
   isCancelled: () => boolean = () => false,
   requestProvenance: ProvenanceRequest = fetchProvenance,
 ): Promise<LoadedCatalogArtifacts | null> {
-  // Bytes und Metadaten starten gemeinsam: Beide stammen aus demselben
-  // Auslieferungsstand, und das Verzeichnis teilt die laufende Metadatenanfrage.
+  // Bytes und Metadaten starten gemeinsam, und das Verzeichnis teilt eine dann
+  // laufende Metadatenanfrage. Beide Anfragen bleiben unabhängig: Wechselt die
+  // Auslieferung zwischen ihren Antworten, schlägt der Hashvergleich fehl.
   const bufferRequest = fetchCatalogBuffer(descriptor.dataUrl);
   const provenanceRequest = requestProvenance(descriptor.metadataUrl);
   provenanceRequest.catch(ignoreRejection);
