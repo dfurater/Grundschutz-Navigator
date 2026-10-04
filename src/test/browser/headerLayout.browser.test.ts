@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useLocation } from 'react-router';
 import { afterEach, expect, test } from 'vitest';
 import { page } from 'vitest/browser';
 import { HeaderBar } from '@/components/HeaderBar';
@@ -25,11 +25,35 @@ async function renderHeader(width: number) {
   flushSync(() => {
     root?.render(createElement(MemoryRouter, null,
       createElement(HeaderBar, { onMenuToggle: () => {} }),
+      createElement(Location),
     ));
   });
   await document.fonts.ready;
   return host.querySelector('header')!;
 }
+
+function Location() {
+  const location = useLocation();
+  return createElement('output', { 'data-testid': 'location' }, `${location.pathname}|${JSON.stringify(location.state)}`);
+}
+
+test.each([639, 640])('nutzt bei %i px ohne checkVisibility die echten Layoutboxen für beide Suchkürzel', async (width) => {
+  const header = await renderHeader(width);
+  const input = header.querySelector<HTMLInputElement>('input[type="search"]')!;
+  Object.defineProperty(input, 'checkVisibility', { value: undefined });
+  expect(input.getClientRects().length > 0).toBe(width >= 640);
+  for (const modifier of [{ metaKey: true }, { ctrlKey: true }]) {
+    header.querySelector<HTMLAnchorElement>('a')!.focus();
+    flushSync(() => document.activeElement!.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ...modifier, bubbles: true, cancelable: true })));
+    if (width < 640) {
+      expect(document.activeElement).not.toBe(input);
+      await expect.poll(() => host!.querySelector('output')!.textContent).toBe('/suche|{"focusSearch":true}');
+    } else {
+      expect(document.activeElement).toBe(input);
+      expect(host!.querySelector('output')!.textContent).toBe('/|null');
+    }
+  }
+});
 
 const centerY = (box: DOMRect) => box.top + box.height / 2;
 

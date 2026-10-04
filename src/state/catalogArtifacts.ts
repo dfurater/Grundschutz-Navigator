@@ -49,13 +49,13 @@ export function buildSupportedCatalogDescriptors(
   }));
 }
 
-export type ProvenanceRequest = (metadataUrl: string) => Promise<CatalogProvenance>;
+export type ProvenanceRequest = (metadataUrl: string, signal?: AbortSignal) => Promise<CatalogProvenance>;
 
 export interface ProvenanceRequests {
   /** Startet immer eine neue Anfrage und führt sie als laufende Anfrage der URL. */
   readonly start: ProvenanceRequest;
-  /** Übernimmt die laufende Anfrage der URL, sonst wie `start`. */
-  readonly join: ProvenanceRequest;
+  /** Übernimmt die laufende Anfrage oder startet neu, ohne Abbruchhoheit. */
+  readonly join: (metadataUrl: string) => Promise<CatalogProvenance>;
 }
 
 /**
@@ -69,8 +69,8 @@ export interface ProvenanceRequests {
  */
 export function createProvenanceRequests(): ProvenanceRequests {
   const pending = new Map<string, Promise<CatalogProvenance>>();
-  const start: ProvenanceRequest = (metadataUrl) => {
-    const request = fetchProvenance(metadataUrl);
+  const start: ProvenanceRequest = (metadataUrl, signal) => {
+    const request = fetchProvenance(metadataUrl, signal);
     pending.set(metadataUrl, request);
     const release = () => {
       if (pending.get(metadataUrl) === request) pending.delete(metadataUrl);
@@ -147,10 +147,17 @@ export async function loadCatalogArtifacts(
   // Beide Anfragen bleiben unabhängig: Wechselt die Auslieferung zwischen ihren
   // Antworten, schlägt der Hashvergleich fehl.
   const bufferRequest = fetchCatalogBuffer(descriptor.dataUrl);
-  const provenanceRequest = requestProvenance(descriptor.metadataUrl);
+  const provenanceController = new AbortController();
+  const provenanceRequest = requestProvenance(descriptor.metadataUrl, provenanceController.signal);
   provenanceRequest.catch(ignoreRejection);
-  const buffer = await bufferRequest;
-  if (isCancelled()) return null;
+  const buffer = await bufferRequest.catch((error: unknown) => {
+    provenanceController.abort(error);
+    throw error;
+  });
+  if (isCancelled()) {
+    provenanceController.abort();
+    return null;
+  }
 
   let provenance: CatalogProvenance | null = null;
   let verification: VerificationResult | null = null;
