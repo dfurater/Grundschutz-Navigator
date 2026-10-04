@@ -47,14 +47,13 @@ describe('loadCatalogDirectory', () => {
 });
 
 describe('createProvenanceRequests', () => {
-  it('teilt je URL eine Anfrage und fragt nach einer Ablehnung neu an', async () => {
-    let calls = 0;
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
-      calls += 1;
-      return calls === 1
-        ? new Response(null, { status: 503 })
-        : new Response(JSON.stringify({ title: 'Upstream' }));
-    });
+  it('teilt nur die laufende Anfrage und fragt nach Abschluss oder Ablehnung neu an', async () => {
+    const responses = [
+      new Response(null, { status: 503 }),
+      new Response(JSON.stringify({ title: 'Stand 1' })),
+      new Response(JSON.stringify({ title: 'Stand 2' })),
+    ];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => responses.shift()!);
     const requestProvenance = createProvenanceRequests();
     const url = descriptors[0].metadataUrl;
 
@@ -62,10 +61,13 @@ describe('createProvenanceRequests', () => {
     expect(requestProvenance(url)).toBe(failed);
     await expect(failed).rejects.toThrow('503');
 
-    const retried = requestProvenance(url);
-    expect(retried).not.toBe(failed);
-    await expect(retried).resolves.toEqual({ title: 'Upstream' });
-    expect(requestProvenance(url)).toBe(retried);
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    const first = requestProvenance(url);
+    expect(first).not.toBe(failed);
+    await expect(first).resolves.toEqual({ title: 'Stand 1' });
+
+    const second = requestProvenance(url);
+    expect(second).not.toBe(first);
+    await expect(second).resolves.toEqual({ title: 'Stand 2' });
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
   });
 });

@@ -52,23 +52,29 @@ export function buildSupportedCatalogDescriptors(
 export type ProvenanceRequest = (metadataUrl: string) => Promise<CatalogProvenance>;
 
 /**
- * Teilt je Metadaten-URL eine Anfrage zwischen Katalogverzeichnis und
- * Integritätsprüfung. Eine abgelehnte Anfrage wird verworfen: Wer sie gerade
- * teilt, erhält dieselbe Ablehnung, ein späterer Aufruf fragt neu an.
+ * Teilt je Metadaten-URL die gerade laufende Anfrage zwischen Katalogverzeichnis
+ * und Integritätsprüfung. Ein Ergebnis wird nicht aufbewahrt: Wer nach dem
+ * Abschluss anfragt, erhält eine neue Anfrage. So prüft ein später nachgeladener
+ * Katalog seine Bytes nie gegen Metadaten eines früheren Auslieferungsstands.
  */
 export function createProvenanceRequests(): ProvenanceRequest {
-  const requests = new Map<string, Promise<CatalogProvenance>>();
+  const pending = new Map<string, Promise<CatalogProvenance>>();
   return (metadataUrl) => {
-    const pending = requests.get(metadataUrl);
-    if (pending) return pending;
+    const running = pending.get(metadataUrl);
+    if (running) return running;
     const request = fetchProvenance(metadataUrl);
-    requests.set(metadataUrl, request);
-    request.catch(() => {
-      if (requests.get(metadataUrl) === request) requests.delete(metadataUrl);
-    });
+    pending.set(metadataUrl, request);
+    const release = () => {
+      if (pending.get(metadataUrl) === request) pending.delete(metadataUrl);
+    };
+    request.then(release, release);
     return request;
   };
 }
+
+// Die Ablehnung wertet loadCatalogArtifacts selbst aus; endet der Ladevorgang
+// vorher, darf sie nicht als unbehandelt gelten.
+function ignoreRejection(): void {}
 
 /** Lädt nur Metadaten; der Callback veröffentlicht jeden Eintrag sofort. */
 export async function loadCatalogDirectory(
@@ -123,14 +129,19 @@ export async function loadCatalogArtifacts(
   isCancelled: () => boolean = () => false,
   requestProvenance: ProvenanceRequest = fetchProvenance,
 ): Promise<LoadedCatalogArtifacts | null> {
-  const buffer = await fetchCatalogBuffer(descriptor.dataUrl);
+  // Bytes und Metadaten starten gemeinsam: Beide stammen aus demselben
+  // Auslieferungsstand, und das Verzeichnis teilt die laufende Metadatenanfrage.
+  const bufferRequest = fetchCatalogBuffer(descriptor.dataUrl);
+  const provenanceRequest = requestProvenance(descriptor.metadataUrl);
+  provenanceRequest.catch(ignoreRejection);
+  const buffer = await bufferRequest;
   if (isCancelled()) return null;
 
   let provenance: CatalogProvenance | null = null;
   let verification: VerificationResult | null = null;
 
   try {
-    provenance = await requestProvenance(descriptor.metadataUrl);
+    provenance = await provenanceRequest;
     if (!isCancelled()) {
       verification = await verifyArtifactIntegrity(buffer, provenance);
     }

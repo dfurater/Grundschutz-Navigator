@@ -314,27 +314,51 @@ describe('CatalogProvider — mehrere Kataloge', () => {
     expect(result.current.catalog?.catalogKey).toBe('wlan');
   });
 
-  it('fragt die Metadaten jedes Katalogs für Verzeichnis und Integritätsprüfung nur einmal an', async () => {
+  it('teilt die beim Start laufende Metadatenanfrage zwischen Verzeichnis und Einstiegskatalog', async () => {
     const fetchSpy = mockArtifacts({
       [ENTRY_DATA_URL]: entryCatalogJson,
       [ENTRY_METADATA_URL]: await provenanceFor(entryCatalogJson),
-      [SECOND_DATA_URL]: secondCatalogJson,
-      [SECOND_METADATA_URL]: await provenanceFor(secondCatalogJson),
+      [SECOND_METADATA_URL]: { title: 'WLAN aus Metadaten' },
     });
-    const countRequests = (target: string) =>
-      fetchSpy.mock.calls.filter(([url]) => String(url) === target).length;
 
     const { result } = renderProvider();
     await waitForEntryCatalog(result);
+
     expect(result.current.verification?.valid).toBe(true);
-    expect(countRequests(ENTRY_METADATA_URL)).toBe(1);
+    expect(fetchSpy.mock.calls.filter(([url]) => String(url) === ENTRY_METADATA_URL)).toHaveLength(1);
+  });
+
+  it('prüft einen später geöffneten Katalog gegen die zu seinen Bytes geladenen Metadaten', async () => {
+    const deployedSecond = makeCatalogFixture({
+      uuid: '00000000-0000-4000-8000-0000000000b2',
+      title: 'Zweitkatalog, neuer Stand',
+      oscalVersion: '1.1.3',
+      controlTitle: 'Neuer Stand',
+      altIdentifier: 'alt-neu',
+    });
+    const responses: Record<string, unknown> = {
+      [ENTRY_DATA_URL]: entryCatalogJson,
+      [ENTRY_METADATA_URL]: await provenanceFor(entryCatalogJson),
+      [SECOND_METADATA_URL]: { ...await provenanceFor(secondCatalogJson), title: 'Alter Stand' },
+    };
+    const fetchSpy = mockArtifacts(responses);
+
+    const { result } = renderProvider();
+    await waitForEntryCatalog(result);
+    await waitFor(() => expect(result.current.catalogDirectory[1].title).toBe('Alter Stand'));
+
+    // Neuer Auslieferungsstand, während der Tab offen ist.
+    const deployedProvenance = await provenanceFor(deployedSecond);
+    responses[SECOND_DATA_URL] = deployedSecond;
+    responses[SECOND_METADATA_URL] = deployedProvenance;
 
     act(() => result.current.selectCatalog('wlan'));
     await waitFor(() => {
       expect(result.current.catalogs.get('wlan')?.verification?.valid).toBe(true);
     });
-    expect(countRequests(SECOND_METADATA_URL)).toBe(1);
-    expect(countRequests(ENTRY_METADATA_URL)).toBe(1);
+    expect(result.current.catalogs.get('wlan')?.provenance).toEqual(deployedProvenance);
+    expect(result.current.catalogDocument?.context.trustClass).toBe('class-1-verified-public');
+    expect(fetchSpy.mock.calls.filter(([url]) => String(url) === SECOND_METADATA_URL)).toHaveLength(2);
   });
 
   it('hält identische Control-IDs zweier Kataloge kollisionsfrei getrennt', async () => {
