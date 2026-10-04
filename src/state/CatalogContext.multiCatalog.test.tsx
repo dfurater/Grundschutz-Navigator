@@ -175,6 +175,97 @@ describe('CatalogProvider — mehrere Kataloge', () => {
     vi.restoreAllMocks();
   });
 
+  it('stellt Metadaten-Titel bereit, auch wenn die Katalogdaten fehlen', async () => {
+    const fetchSpy = mockArtifacts({
+      [ENTRY_METADATA_URL]: { title: '  Upstream-Einstieg ++  ' },
+      [SECOND_METADATA_URL]: { title: 'Stand der Technik WLAN' },
+    });
+    const { result } = renderProvider();
+    expect(result.current.catalogDirectory).toEqual([
+      { catalogKey: 'gspp', title: 'gspp' },
+      { catalogKey: 'wlan', title: 'wlan' },
+    ]);
+    await waitFor(() => {
+      expect(result.current.catalogDirectory).toEqual([
+        { catalogKey: 'gspp', title: '  Upstream-Einstieg ++  ' },
+        { catalogKey: 'wlan', title: 'Stand der Technik WLAN' },
+      ]);
+    });
+    expect(fetchSpy.mock.calls.some(([url]) => String(url) === SECOND_DATA_URL)).toBe(false);
+    expect(result.current.catalogs.has('wlan')).toBe(false);
+  });
+
+  it('veröffentlicht verfügbare Titel trotz einer hängenden anderen Metadaten-Anfrage', async () => {
+    let resolvePending: (response: Response) => void = () => {};
+    const pending = new Promise<Response>((resolve) => { resolvePending = resolve; });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === SECOND_METADATA_URL) return pending;
+      if (url === ENTRY_METADATA_URL) return jsonResponse({ title: 'Sofort verfügbar' });
+      return new Response(null, { status: 404 });
+    });
+    const { result } = renderProvider();
+    try {
+      await waitFor(() => expect(result.current.catalogDirectory).toEqual([
+        { catalogKey: 'gspp', title: 'Sofort verfügbar' },
+        { catalogKey: 'wlan', title: 'wlan' },
+      ]));
+      await act(async () => { resolvePending(jsonResponse({ title: 'Später verfügbar' })); });
+      await waitFor(() => expect(result.current.catalogDirectory).toEqual([
+        { catalogKey: 'gspp', title: 'Sofort verfügbar' },
+        { catalogKey: 'wlan', title: 'Später verfügbar' },
+      ]));
+    } finally {
+      await act(async () => { resolvePending(new Response(null, { status: 404 })); });
+    }
+  });
+
+  it('ignoriert späte Verzeichnisantworten einer früheren Deskriptormenge', async () => {
+    let resolveOld: (response: Response) => void = () => {};
+    const oldResponse = new Promise<Response>((resolve) => { resolveOld = resolve; });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === SECOND_METADATA_URL) return oldResponse;
+      if (url === '/new-wlan-metadata.json') return jsonResponse({ title: 'Neuer Titel' });
+      if (url === ENTRY_METADATA_URL) return jsonResponse({ title: 'Einstieg' });
+      return new Response(null, { status: 404 });
+    });
+    let currentDescriptors = descriptors;
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <CatalogProvider supportedCatalogs={currentDescriptors}>{children}</CatalogProvider>
+    );
+    const { result, rerender } = renderHook(() => useCatalog(), { wrapper });
+    currentDescriptors = descriptors.map((entry) => entry.isEntryCatalog
+      ? entry : { ...entry, metadataUrl: '/new-wlan-metadata.json' });
+    rerender();
+    expect(result.current.catalogDirectory[1].title).toBe('wlan');
+    await waitFor(() => expect(result.current.catalogDirectory[1].title).toBe('Neuer Titel'));
+    await act(async () => { resolveOld(jsonResponse({ title: 'Veralteter Titel' })); });
+    expect(result.current.catalogDirectory[1].title).toBe('Neuer Titel');
+  });
+
+  it('nutzt für den aktiven geladenen Katalog dessen Dokumenttitel', async () => {
+    mockArtifacts({
+      [ENTRY_DATA_URL]: entryCatalogJson,
+      [ENTRY_METADATA_URL]: { ...await provenanceFor(entryCatalogJson), title: 'Anderer Metadaten-Titel' },
+      [SECOND_METADATA_URL]: { title: 'WLAN aus Metadaten' },
+      [SECOND_DATA_URL]: secondCatalogJson,
+    });
+    const { result } = renderProvider();
+    await waitForEntryCatalog(result);
+    await waitFor(() => {
+      expect(result.current.catalogDirectory).toEqual([
+        { catalogKey: 'gspp', title: 'Einstiegskatalog' },
+        { catalogKey: 'wlan', title: 'WLAN aus Metadaten' },
+      ]);
+    });
+    act(() => result.current.selectCatalog('wlan'));
+    await waitFor(() => {
+      expect(result.current.catalogDirectory.find((entry) => entry.catalogKey === 'wlan')?.title).toBe('Zweitkatalog');
+    });
+    expect(result.current.catalogDocument?.view.metadata.title).toBe('Zweitkatalog');
+  });
+
   it('lädt initial nur den Einstiegskatalog', async () => {
     const fetchSpy = mockArtifacts({
       [ENTRY_DATA_URL]: entryCatalogJson,
@@ -221,6 +312,53 @@ describe('CatalogProvider — mehrere Kataloge', () => {
     ).toHaveLength(1);
     expect(result.current.activeCatalogKey).toBe('wlan');
     expect(result.current.catalog?.catalogKey).toBe('wlan');
+  });
+
+  it('teilt die beim Start laufende Metadatenanfrage zwischen Verzeichnis und Einstiegskatalog', async () => {
+    const fetchSpy = mockArtifacts({
+      [ENTRY_DATA_URL]: entryCatalogJson,
+      [ENTRY_METADATA_URL]: await provenanceFor(entryCatalogJson),
+      [SECOND_METADATA_URL]: { title: 'WLAN aus Metadaten' },
+    });
+
+    const { result } = renderProvider();
+    await waitForEntryCatalog(result);
+
+    expect(result.current.verification?.valid).toBe(true);
+    expect(fetchSpy.mock.calls.filter(([url]) => String(url) === ENTRY_METADATA_URL)).toHaveLength(1);
+  });
+
+  it('prüft einen später geöffneten Katalog gegen die zu seinen Bytes geladenen Metadaten', async () => {
+    const deployedSecond = makeCatalogFixture({
+      uuid: '00000000-0000-4000-8000-0000000000b2',
+      title: 'Zweitkatalog, neuer Stand',
+      oscalVersion: '1.1.3',
+      controlTitle: 'Neuer Stand',
+      altIdentifier: 'alt-neu',
+    });
+    const responses: Record<string, unknown> = {
+      [ENTRY_DATA_URL]: entryCatalogJson,
+      [ENTRY_METADATA_URL]: await provenanceFor(entryCatalogJson),
+      [SECOND_METADATA_URL]: { ...await provenanceFor(secondCatalogJson), title: 'Alter Stand' },
+    };
+    const fetchSpy = mockArtifacts(responses);
+
+    const { result } = renderProvider();
+    await waitForEntryCatalog(result);
+    await waitFor(() => expect(result.current.catalogDirectory[1].title).toBe('Alter Stand'));
+
+    // Neuer Auslieferungsstand, während der Tab offen ist.
+    const deployedProvenance = await provenanceFor(deployedSecond);
+    responses[SECOND_DATA_URL] = deployedSecond;
+    responses[SECOND_METADATA_URL] = deployedProvenance;
+
+    act(() => result.current.selectCatalog('wlan'));
+    await waitFor(() => {
+      expect(result.current.catalogs.get('wlan')?.verification?.valid).toBe(true);
+    });
+    expect(result.current.catalogs.get('wlan')?.provenance).toEqual(deployedProvenance);
+    expect(result.current.catalogDocument?.context.trustClass).toBe('class-1-verified-public');
+    expect(fetchSpy.mock.calls.filter(([url]) => String(url) === SECOND_METADATA_URL)).toHaveLength(2);
   });
 
   it('hält identische Control-IDs zweier Kataloge kollisionsfrei getrennt', async () => {
@@ -373,7 +511,7 @@ describe('CatalogProvider — reales Quellregister', () => {
     expect(promoted.metadataUrl).toBe('/data/catalog-lieferkette-metadata.json');
   });
 
-  it('lässt den Initial-Load durch die Promotion nicht wachsen', async () => {
+  it('lädt initial nur Einstiegskatalog-Daten und die Metadaten aller Kataloge', async () => {
     const real = buildSupportedCatalogDescriptors('/');
     const entry = real.find((descriptor) => descriptor.isEntryCatalog)!;
     const fetchSpy = mockArtifacts({ [entry.dataUrl]: entryCatalogJson });
@@ -397,7 +535,7 @@ describe('CatalogProvider — reales Quellregister', () => {
     // Kein ausgelieferter Nicht-Einstiegskatalog wird eager angefordert.
     for (const descriptor of real.filter((candidate) => !candidate.isEntryCatalog)) {
       expect(requested).not.toContain(descriptor.dataUrl);
-      expect(requested).not.toContain(descriptor.metadataUrl);
+      expect(requested).toContain(descriptor.metadataUrl);
     }
     expect([...result.current.catalogs.keys()]).toEqual([entry.catalogKey]);
   });

@@ -8,6 +8,7 @@
 // =============================================================================
 
 import type {
+  CatalogDirectoryEntry,
   CatalogDocument,
   CatalogProvenance,
   VerificationResult,
@@ -48,6 +49,64 @@ export function buildSupportedCatalogDescriptors(
   }));
 }
 
+export type ProvenanceRequest = (metadataUrl: string) => Promise<CatalogProvenance>;
+
+/**
+ * Teilt je Metadaten-URL die gerade laufende Anfrage zwischen Katalogverzeichnis
+ * und Integritätsprüfung. Ein Ergebnis wird nicht aufbewahrt: Wer nach dem
+ * Abschluss anfragt, erhält eine neue Anfrage. So prüft ein später nachgeladener
+ * Katalog seine Bytes nicht gegen das beim Start für das Verzeichnis geladene
+ * Ergebnis.
+ */
+export function createProvenanceRequests(): ProvenanceRequest {
+  const pending = new Map<string, Promise<CatalogProvenance>>();
+  return (metadataUrl) => {
+    const running = pending.get(metadataUrl);
+    if (running) return running;
+    const request = fetchProvenance(metadataUrl);
+    pending.set(metadataUrl, request);
+    const release = () => {
+      if (pending.get(metadataUrl) === request) pending.delete(metadataUrl);
+    };
+    request.then(release, release);
+    return request;
+  };
+}
+
+function ignoreRejection(): void {
+  // Die Ablehnung wertet loadCatalogArtifacts selbst aus; endet der Ladevorgang
+  // vorher, darf sie nicht als unbehandelt gelten.
+}
+
+/** Lädt nur Metadaten; der Callback veröffentlicht jeden Eintrag sofort. */
+export async function loadCatalogDirectory(
+  descriptors: readonly SupportedCatalogDescriptor[],
+  onEntryLoaded?: (entry: CatalogDirectoryEntry) => void,
+  requestProvenance: ProvenanceRequest = fetchProvenance,
+): Promise<readonly CatalogDirectoryEntry[]> {
+  return Promise.all(descriptors.map(async (descriptor) => {
+    const entry = await loadCatalogDirectoryEntry(descriptor, requestProvenance);
+    onEntryLoaded?.(entry);
+    return entry;
+  }));
+}
+
+async function loadCatalogDirectoryEntry(
+  { catalogKey, metadataUrl }: SupportedCatalogDescriptor,
+  requestProvenance: ProvenanceRequest,
+): Promise<CatalogDirectoryEntry> {
+  try {
+    const provenance = await requestProvenance(metadataUrl);
+    if (typeof provenance?.title === 'string' && provenance.title.length > 0) {
+      return { catalogKey, title: provenance.title };
+    }
+  } catch {
+    // Ein fehlender oder nicht lesbarer Sidecar betrifft nur diesen Eintrag.
+  }
+  console.warn(`Catalog title metadata not available for "${catalogKey}". Using catalog key.`);
+  return { catalogKey, title: catalogKey };
+}
+
 export interface LoadedCatalogArtifacts {
   catalogDocument: CatalogDocument;
   provenance: CatalogProvenance | null;
@@ -70,15 +129,22 @@ export interface LoadedCatalogArtifacts {
 export async function loadCatalogArtifacts(
   descriptor: SupportedCatalogDescriptor,
   isCancelled: () => boolean = () => false,
+  requestProvenance: ProvenanceRequest = fetchProvenance,
 ): Promise<LoadedCatalogArtifacts | null> {
-  const buffer = await fetchCatalogBuffer(descriptor.dataUrl);
+  // Bytes und Metadaten starten gemeinsam, und das Verzeichnis teilt eine dann
+  // laufende Metadatenanfrage. Beide Anfragen bleiben unabhängig: Wechselt die
+  // Auslieferung zwischen ihren Antworten, schlägt der Hashvergleich fehl.
+  const bufferRequest = fetchCatalogBuffer(descriptor.dataUrl);
+  const provenanceRequest = requestProvenance(descriptor.metadataUrl);
+  provenanceRequest.catch(ignoreRejection);
+  const buffer = await bufferRequest;
   if (isCancelled()) return null;
 
   let provenance: CatalogProvenance | null = null;
   let verification: VerificationResult | null = null;
 
   try {
-    provenance = await fetchProvenance(descriptor.metadataUrl);
+    provenance = await provenanceRequest;
     if (!isCancelled()) {
       verification = await verifyArtifactIntegrity(buffer, provenance);
     }

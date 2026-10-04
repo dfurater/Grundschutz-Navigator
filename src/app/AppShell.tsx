@@ -1,9 +1,8 @@
-import { useMemo, useState, useEffect, useId, useRef } from 'react';
+import { useMemo, useState, useEffect, useId, useLayoutEffect, useRef } from 'react';
 import {
   Routes,
   Route,
   Link,
-  NavLink,
   Navigate,
   matchPath,
   useNavigate,
@@ -13,12 +12,11 @@ import { HeaderBar } from '@/components/HeaderBar';
 import { TreeNav } from '@/components/TreeNav';
 import { BackdropTint } from '@/components/BackdropTint';
 import { Footer } from '@/components/Footer';
+import { ScopeSwitcher } from '@/components/ScopeSwitcher';
+import type { ScopeSwitcherItem } from '@/components/ScopeSwitcher';
 import {
   IconChevronLeft,
   IconChevronRight,
-  IconShield,
-  IconLayoutList,
-  IconSearch,
   IconX,
 } from '@/components/icons';
 import type { TreeItem } from '@/components/TreeNav';
@@ -30,6 +28,7 @@ import { OWN_SCROLL_AREA_QUERY, useOverlayScrollbars } from '@/hooks/useOverlayS
 import { CatalogBrowser } from '@/features/catalog/CatalogBrowser';
 import { VocabularyNamespacePage } from '@/features/vocabularies/VocabularyNamespacePage';
 import { isCatalogKey } from '@/domain/sourceRegistry';
+import type { CatalogKey } from '@/domain/sourceRegistry';
 import {
   CATALOG_ROUTE_PATTERN,
   CONTROL_ROUTE_PATTERN,
@@ -93,7 +92,6 @@ export function AppShell() {
   const sideNavId = useId();
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const isPersistentNav = useMediaQuery(OWN_SCROLL_AREA_QUERY);
-  const [catalogSwitcherOpen, setCatalogSwitcherOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const {
     size: sidebarWidth,
@@ -111,18 +109,56 @@ export function AppShell() {
   const location = useLocation();
   const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const treeScrollRef = useOverlayScrollbars<HTMLDivElement>();
-  const { catalog, activeCatalogKey: selectedCatalogKey, selectCatalog, loading, error } = useCatalog();
+  const {
+    catalog,
+    catalogDirectory,
+    activeCatalogKey: selectedCatalogKey,
+    selectCatalog,
+    loading,
+    error,
+  } = useCatalog();
 
   const closeSideNav = () => {
     setSideNavOpen(false);
     if (!isPersistentNav) menuButtonRef.current?.focus({ preventScroll: true });
   };
 
+  // Jede Navigation schließt die mobile Schublade, auch eine aus dem App-Kopf
+  // (Marke, Lupe, Suchfeld) oder über Browser-Zurück. Sonst bliebe die neue
+  // Seite im `inert` gesetzten Hauptbereich unbedienbar. Lag der Fokus noch in
+  // der Schublade (etwa bei Browser-Zurück), geht er wie bei jedem anderen
+  // Schließen an das Menü-Symbol; sonst bleibt er am auslösenden Element. Die
+  // Prüfung läuft vor dem Commit, solange die Schublade noch nicht `inert` ist.
+  // Hat die neue Seite den Fokus schon selbst gesetzt (Layout-Effekte der Kinder
+  // laufen zuerst, etwa die Überschrift einer mobilen Detailseite), bleibt er dort.
+  // Der Auftrag ist ein Zähler, kein `location.key`: Browser-Zurück und -Vorwärts
+  // verwenden den Schlüssel eines Verlaufseintrags wieder, und derselbe Wert
+  // löste den Effekt kein zweites Mal aus.
+  const [drawerLocationKey, setDrawerLocationKey] = useState(location.key);
+  const [drawerFocusReturnCount, setDrawerFocusReturnCount] = useState(0);
+  if (drawerLocationKey !== location.key) {
+    setDrawerLocationKey(location.key);
+    if (sideNavOpen) {
+      setSideNavOpen(false);
+      if (!isPersistentNav && document.getElementById(sideNavId)?.contains(document.activeElement)) {
+        setDrawerFocusReturnCount((count) => count + 1);
+      }
+    }
+  }
+  useLayoutEffect(() => {
+    if (drawerFocusReturnCount === 0) return;
+    if (document.activeElement?.closest('main, header')) return;
+    menuButtonRef.current?.focus({ preventScroll: true });
+  }, [drawerFocusReturnCount]);
+
   // Capture garantiert den Vorrang vor dem Escape-Handler der Detailseite
   // auch dann, wenn deren Bubble-Listener bereits vor dem Öffnen registriert war.
+  // Ein offenes Menü im Drawer-Kopf schließt Escape selbst; erst das nächste
+  // Escape gehört wieder dem Drawer.
   useGlobalEventListener(
     'document', 'keydown', (event) => {
       if (event.key !== 'Escape' || event.defaultPrevented) return;
+      if (event.target instanceof Element && event.target.closest('[role="menu"]')) return;
       event.preventDefault();
       event.stopPropagation();
       closeSideNav();
@@ -148,7 +184,14 @@ export function AppShell() {
   // Während ein nachgeladener Katalog noch unterwegs ist, trägt der ausgewählte
   // Schlüssel die Navigation weiter — kein Sprung zurück auf den Einstieg.
   const activeCatalogKey = catalog?.catalogKey ?? selectedCatalogKey;
-  const activeCatalogUrl = buildCatalogUrl(activeCatalogKey);
+  const catalogItems = useMemo<readonly ScopeSwitcherItem<CatalogKey>[]>(
+    () => catalogDirectory.map(({ catalogKey, title }) => ({
+      key: catalogKey,
+      title,
+      href: buildCatalogUrl(catalogKey),
+    })),
+    [catalogDirectory],
+  );
 
   // Derive selectedId from URL so tree highlights work for all navigation sources
   const selectedId = useMemo(() => {
@@ -187,14 +230,6 @@ export function AppShell() {
         Zum Hauptinhalt springen
       </a>
 
-      {/*
-        Drawer und Switcher-Menü schließen einander mobil aus. Das Menü liegt im
-        Stacking-Context des Headers und bliebe hinter dem Drawer, deshalb hält
-        die Shell beide Zustände und schaltet beim Öffnen des einen den anderen
-        ab. Der Ausschluss sitzt bewusst im gemeinsamen Zustand statt in
-        Ereignis-Heuristiken: Der Outside-`mousedown`-Handler des Switchers
-        erreicht die Tastaturaktivierung des Hamburgers nicht (GSPP-440).
-      */}
       <HeaderBar
         onSearch={handleSearch}
         menuExpanded={sideNavOpen && !isPersistentNav}
@@ -204,13 +239,7 @@ export function AppShell() {
           // Safari gibt Klicks keinen Button-Fokus; main wird beim Öffnen inert.
           if (!isPersistentNav) menuButtonRef.current?.focus({ preventScroll: true });
           setSideNavOpen((prev) => !prev);
-          setCatalogSwitcherOpen(false);
           if (sidebarCollapsed) setSidebarCollapsed(false);
-        }}
-        catalogSwitcherOpen={catalogSwitcherOpen}
-        onCatalogSwitcherOpenChange={(open) => {
-          setCatalogSwitcherOpen(open);
-          if (open) setSideNavOpen(false);
         }}
       />
 
@@ -255,79 +284,39 @@ export function AppShell() {
               >
                 <IconChevronRight className="w-4 h-4" aria-hidden="true" />
               </button>
-              <div
-                className="p-2 text-slate-300 mt-1"
-                aria-hidden="true"
-              >
-                <IconShield className="w-4 h-4" />
-              </div>
             </div>
           ) : (
-            /* Expanded: full tree nav + mobile navigation links */
+            /* Expanded: Kontextwahl + Baum */
             <div className="h-full flex flex-col" style={{ width: sidebarWidth }}>
-              {/* Mobile drawer header with close button */}
-              <div className="px-2.5 border-b border-slate-200 flex items-center justify-between md:hidden" style={{ height: 51 }}>
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Navigation
-                </span>
-                <button
-                  type="button"
-                  onClick={closeSideNav}
-                  className="shrink-0 rounded p-1 text-slate-300 transition-colors hover:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
-                  aria-label="Menü schließen"
-                >
-                  <IconX className="w-4 h-4" aria-hidden="true" />
-                </button>
-              </div>
-
-              {/* Mobile section navigation links */}
-              <nav className="md:hidden border-b border-slate-200" aria-label="Sektionen">
-                {[
-                  { to: activeCatalogUrl, label: 'Katalog', Icon: IconLayoutList },
-                  { to: '/suche', label: 'Suche', Icon: IconSearch },
-                ].map(({ to, label, Icon }) => (
-                  <NavLink
-                    key={to}
-                    to={to}
-                    end={false}
-                    onClick={closeSideNav}
-                    className={({ isActive }) =>
-                      [
-                        'flex items-center gap-3 px-4 py-3 text-sm font-medium transition-colors',
-                        isActive
-                          ? 'bg-primary-light text-primary-main font-semibold border-l-3 border-primary-main'
-                          : 'text-slate-700 hover:bg-slate-50',
-                      ].join(' ')
-                    }
+              {/* Kontextwahl als Kopf: mobil mit Schließen, auf dem Desktop mit Einklappen */}
+              <ScopeSwitcher
+                label="Katalog"
+                items={catalogItems}
+                activeKey={activeCatalogKey}
+                onItemActivate={closeSideNav}
+                trailing={isPersistentNav ? (
+                  <button
+                    type="button"
+                    onClick={() => setSidebarCollapsed(true)}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-slate-400 transition-colors hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+                    aria-label="Katalog-Explorer ausblenden"
+                    title="Katalog-Explorer ausblenden"
                   >
-                    <Icon className="w-4 h-4" aria-hidden="true" />
-                    {label}
-                  </NavLink>
-                ))}
-              </nav>
+                    <IconChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={closeSideNav}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded text-slate-400 transition-colors hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+                    aria-label="Menü schließen"
+                  >
+                    <IconX className="w-4 h-4" />
+                  </button>
+                )}
+              />
 
-              {/* Desktop sidebar header */}
-              <div className="px-2.5 border-b border-slate-200 hidden md:flex items-center justify-between" style={{ height: 51 }}>
-                <button
-                  type="button"
-                  onClick={() => navigate(activeCatalogUrl)}
-                  className="cursor-pointer whitespace-nowrap rounded text-xs font-bold uppercase tracking-wider text-slate-400 transition-colors hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
-                  title="Alle Kontrollen anzeigen"
-                >
-                  Katalog-Explorer
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSidebarCollapsed(true)}
-                  className="shrink-0 rounded p-1 text-slate-300 transition-colors hover:text-slate-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
-                  aria-label="Katalog-Explorer ausblenden"
-                  title="Katalog-Explorer ausblenden"
-                >
-                  <IconChevronLeft className="w-3.5 h-3.5" aria-hidden="true" />
-                </button>
-              </div>
-
-              {/* TreeNav (mobile: below nav links, desktop: main content) */}
+              {/* TreeNav */}
               <div ref={treeScrollRef} className="flex-1 overflow-y-auto py-2">
                 {loading && (
                   <div className="px-4 py-8 text-center">

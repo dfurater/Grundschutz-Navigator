@@ -446,6 +446,14 @@ function validateFetchedOscalArtifact(artifactBuffer, expectedRootType, versionC
   };
 }
 
+function requireCatalogTitle(catalogDocument, artifactKey) {
+  const title = catalogDocument.catalog.metadata?.title;
+  if (typeof title !== 'string' || title.length === 0) {
+    throw new Error(`${artifactKey}: metadata.title muss ein nicht-leerer String sein.`);
+  }
+  return title;
+}
+
 function collectRawControls(container, controls = []) {
   for (const control of container?.controls ?? []) {
     controls.push(control);
@@ -655,7 +663,10 @@ async function buildFetchArtifacts(logger = console, {
       expectedOscalVersion: entry.oscalVersion,
     });
 
+    const title = requireCatalogTitle(artifact.json, entry.artifactKey);
+
     catalogRecords.push({
+      title,
       entry,
       treeFile,
       raw,
@@ -887,6 +898,7 @@ async function buildFetchArtifacts(logger = console, {
     const metadataArtifact = buildJsonArtifactBuffer({
       artifactKey: record.entry.artifactKey,
       catalogKey: record.entry.catalogKey,
+      title: record.title,
       oscalVersion: record.entry.oscalVersion,
       source: {
         repository: OFFICIAL_BSI_REPOSITORY_URL,

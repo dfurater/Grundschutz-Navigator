@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { createRef } from 'react';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useLocation } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { HeaderBar } from './HeaderBar';
 
@@ -51,7 +51,7 @@ describe('HeaderBar', () => {
     );
 
     const menuButton = screen.getByRole('button', { name: 'Menü öffnen' });
-    const homeLink = screen.getByRole('link', { name: 'Zur Startseite' });
+    const homeLink = screen.getByRole('link', { name: 'Grundschutz++ Navigator' });
     const searchInput = screen.getByRole('searchbox', { name: 'Katalog durchsuchen' });
 
     expect(menuButton.className).toContain('focus-visible:ring-2');
@@ -71,32 +71,34 @@ describe('HeaderBar', () => {
     expect(classNames).not.toContain('focus:ring-');
   });
 
-  it('reicht Zustand und Zustandswechsel des Katalog-Switchers an die Shell durch', () => {
-    const onCatalogSwitcherOpenChange = vi.fn();
-    const { rerender } = render(
+  // WCAG 2.5.3: Der zugängliche Name enthält den sichtbaren Text (GSPP-475).
+  it('benennt den Markenlink mit seinem sichtbaren Text', () => {
+    render(
       <MemoryRouter>
-        <HeaderBar
-          catalogSwitcherOpen={false}
-          onCatalogSwitcherOpenChange={onCatalogSwitcherOpenChange}
-        />
+        <HeaderBar />
       </MemoryRouter>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Katalog wechseln' }));
+    const homeLink = screen.getByRole('link', { name: 'Grundschutz++ Navigator' });
+    expect(homeLink).toHaveAttribute('href', '/');
+    expect(homeLink).not.toHaveAttribute('aria-label');
+  });
 
-    expect(onCatalogSwitcherOpenChange).toHaveBeenCalledWith(true);
+  // Die Kontextwahl sitzt im Kopf der Navigationsleiste; der Header trägt nur
+  // Marke und Suche, unter 640 px als Lupe (GSPP-476).
+  it('führt die Lupe auf die Suchseite und zeigt keinen Katalog-Switcher', () => {
+    render(
+      <MemoryRouter>
+        <HeaderBar onMenuToggle={() => {}} />
+      </MemoryRouter>,
+    );
+
+    const searchLink = screen.getByRole('link', { name: 'Suche' });
+    expect(searchLink).toHaveAttribute('href', '/suche');
+    expect(searchLink.className).toContain('sm:hidden');
+    expect(searchLink.className).toContain('focus-visible:ring-2');
+    expect(screen.queryByRole('button', { name: /Katalog/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
-
-    rerender(
-      <MemoryRouter>
-        <HeaderBar
-          catalogSwitcherOpen
-          onCatalogSwitcherOpenChange={onCatalogSwitcherOpenChange}
-        />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByRole('menu')).toBeInTheDocument();
   });
 
   it.each([
@@ -112,6 +114,56 @@ describe('HeaderBar', () => {
 
     expect(wasNotPrevented).toBe(false);
     expect(searchInput).toHaveFocus();
+  });
+
+  // Unter 640 px ist das Feld ausgeblendet; das Kürzel führt dann wie die Lupe
+  // auf die Suchseite und fordert dort den Fokus an (GSPP-476).
+  it.each([
+    ['Meta+K', { metaKey: true }],
+    ['Ctrl+K', { ctrlKey: true }],
+  ])('führt %s ohne sichtbares Suchfeld auf die Suchseite', (_, modifier) => {
+    function Location() {
+      const location = useLocation();
+      return <output data-testid="location">{`${location.pathname}|${JSON.stringify(location.state)}`}</output>;
+    }
+    render(
+      <MemoryRouter>
+        <HeaderBar />
+        <Location />
+        <button type="button">Außerhalb</button>
+      </MemoryRouter>,
+    );
+    const searchInput = screen.getByRole('searchbox', { name: 'Katalog durchsuchen' });
+    searchInput.checkVisibility = () => false;
+    const outsideButton = screen.getByRole('button', { name: 'Außerhalb' });
+    outsideButton.focus();
+
+    const wasNotPrevented = fireEvent.keyDown(outsideButton, { key: 'k', ...modifier });
+
+    expect(wasNotPrevented).toBe(false);
+    expect(searchInput).not.toHaveFocus();
+    expect(screen.getByTestId('location')).toHaveTextContent('/suche|{"focusSearch":true}');
+  });
+
+  it('hält auf der Suchseite die laufende Anfrage, wenn das Kürzel ohne sichtbares Feld fokussiert', () => {
+    function Location() {
+      const location = useLocation();
+      return <output data-testid="location">{`${location.pathname}${location.search}|${JSON.stringify(location.state)}`}</output>;
+    }
+    render(
+      <MemoryRouter initialEntries={['/start', '/suche?q=verfahren']} initialIndex={1}>
+        <HeaderBar />
+        <Location />
+        <button type="button">Außerhalb</button>
+      </MemoryRouter>,
+    );
+    screen.getByRole('searchbox', { name: 'Katalog durchsuchen' }).checkVisibility = () => false;
+    const outsideButton = screen.getByRole('button', { name: 'Außerhalb' });
+    outsideButton.focus();
+
+    fireEvent.keyDown(outsideButton, { key: 'k', metaKey: true });
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/suche?q=verfahren|{"focusSearch":true}');
   });
 
   it.each([
