@@ -28,7 +28,7 @@ Thumbs.db
 coverage/
 
 # Browser-Testfehlerartefakte
-/.vitest-attachments/
+/.vitest/
 /src/test/browser/__screenshots__/
 
 # Catalog data (fetched at build time, never committed)
