@@ -38,6 +38,7 @@ import {
 } from '@/domain/integrity';
 import {
   buildSupportedCatalogDescriptors,
+  createProvenanceRequests,
   loadCatalogArtifacts,
   loadCatalogDirectory,
   toCatalogErrorMessage,
@@ -128,6 +129,9 @@ export function CatalogProvider({
     requestedKeysRef.current = new Set();
   }, [descriptorByKey]);
 
+  // Verzeichnis und Integritätsprüfung teilen je Metadaten-URL eine Anfrage.
+  const [requestProvenance] = useState(createProvenanceRequests);
+
   const entryDataUrl = entryDescriptor.dataUrl;
   const entryMetadataUrl = entryDescriptor.metadataUrl;
   const entryCatalogKey = entryDescriptor.catalogKey;
@@ -144,6 +148,7 @@ export function CatalogProvider({
       const catalogPromise = loadCatalogArtifacts(
         { catalogKey: entryCatalogKey, dataUrl: entryDataUrl, metadataUrl: entryMetadataUrl, isEntryCatalog: true },
         isCancelled,
+        requestProvenance,
       ).then(
         (result) => ({ ok: true as const, result }),
         (error: unknown) => ({ ok: false as const, error }),
@@ -241,6 +246,7 @@ export function CatalogProvider({
     entryMetadataUrl,
     vocabulariesUrl,
     upstreamSourcesMetadataUrl,
+    requestProvenance,
   ]);
 
   const [directory, setDirectory] = useState<{
@@ -261,11 +267,11 @@ export function CatalogProvider({
           entries: entries.map((item) => item.catalogKey === entry.catalogKey ? entry : item),
         };
       });
-    });
+    }, requestProvenance);
     return () => {
       cancelled = true;
     };
-  }, [descriptors]);
+  }, [descriptors, requestProvenance]);
 
   // Bedarfsgerechtes Nachladen: nur der per Route ausgewählte Katalog.
   const activeCatalogKey = state.activeCatalogKey;
@@ -279,7 +285,7 @@ export function CatalogProvider({
 
     dispatch({ type: 'CATALOG_LOAD_START', catalogKey: activeCatalogKey });
 
-    loadCatalogArtifacts(descriptor, () => false)
+    loadCatalogArtifacts(descriptor, () => false, requestProvenance)
       .then((result) => {
         if (!result) return;
         dispatch({
@@ -297,7 +303,7 @@ export function CatalogProvider({
           error: toCatalogErrorMessage(error),
         });
       });
-  }, [activeCatalogKey, entryCatalogKey, descriptorByKey]);
+  }, [activeCatalogKey, entryCatalogKey, descriptorByKey, requestProvenance]);
 
   const selectCatalog = useCallback(
     (catalogKey: CatalogKey) => {

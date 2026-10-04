@@ -305,15 +305,14 @@ describe('CatalogProvider', () => {
     expect(result.current.vocabularyVerification?.sourceCommit).toBe('snapshot-123');
     expect(result.current.vocabularyVerification?.fetchedAt).toBe('2026-03-27T12:00:00Z');
     const requestedUrls = fetchSpy.mock.calls.map(([url]) => String(url));
-    // Die beiden Artefakt-Downloads starten gemeinsam; das ist die Zusage.
-    // Die Reihenfolge der beiden Metadaten-Nachladungen danach ist nicht
-    // zugesagt und hängt am Auflösungszeitpunkt des jeweiligen Downloads.
-    expect(requestedUrls.slice(0, 2)).toEqual(['/catalog.json', '/vocabularies.json']);
+    // Katalogbytes, ihre Metadaten und die Vokabulare starten gemeinsam; das ist
+    // die Zusage. Die Reihenfolge der übrigen Metadaten-Nachladungen danach ist
+    // nicht zugesagt und hängt am Auflösungszeitpunkt des jeweiligen Downloads.
+    expect(requestedUrls.slice(0, 3)).toEqual(['/catalog.json', '/catalog-metadata.json', '/vocabularies.json']);
     expect([...requestedUrls].sort()).toEqual([
       ...buildSupportedCatalogDescriptors(import.meta.env.BASE_URL).map((descriptor) =>
         descriptor.isEntryCatalog ? '/catalog-metadata.json' : descriptor.metadataUrl,
       ),
-      '/catalog-metadata.json',
       '/catalog.json',
       '/upstream-sources-metadata.json',
       '/vocabularies.json',

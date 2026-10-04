@@ -3,7 +3,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { MemoryRouter } from 'react-router';
 import { afterEach, expect, test } from 'vitest';
-import { page } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import { ScopeSwitcher } from '@/components/ScopeSwitcher';
 import '@/index.css';
 
@@ -108,4 +108,31 @@ test('hält das Menü bei 240 px Viewport-Höhe im Viewport und scrollbar', asyn
   expect(menu.getBoundingClientRect().bottom).toBeLessThanOrEqual(240);
   expect(menu.scrollHeight).toBeGreaterThan(menu.clientHeight);
   expect(getComputedStyle(menu).overflowY).toBe('auto');
+});
+
+// jsdom führt den Tab-Schritt nicht aus; erst ein echter Tastendruck zeigt, wo
+// der Fokus nach dem Schließen landet: vom Auslöser aus vorwärts auf das
+// Schließen-Symbol, rückwärts auf das Element vor dem Kopf.
+test.each([
+  { shift: false, target: '×' },
+  { shift: true, target: 'davor' },
+])('schließt das Menü per Tab und führt den Tab-Schritt vom Auslöser aus weiter (Shift: $shift)', async ({ shift, target }) => {
+  const before = document.createElement('button');
+  before.type = 'button';
+  before.textContent = 'davor';
+  document.body.prepend(before);
+  try {
+    const { trigger } = await renderHead(768, 'lieferkette');
+    trigger.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(host!.querySelector('[role="menu"]')).not.toBeNull();
+    expect(document.activeElement?.getAttribute('role')).toBe('menuitemradio');
+
+    await userEvent.tab({ shift });
+
+    expect(host!.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement?.textContent).toBe(target);
+  } finally {
+    before.remove();
+  }
 });
