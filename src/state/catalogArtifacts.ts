@@ -51,18 +51,25 @@ export function buildSupportedCatalogDescriptors(
 
 export type ProvenanceRequest = (metadataUrl: string) => Promise<CatalogProvenance>;
 
+export interface ProvenanceRequests {
+  /** Startet immer eine neue Anfrage und führt sie als laufende Anfrage der URL. */
+  readonly start: ProvenanceRequest;
+  /** Übernimmt die laufende Anfrage der URL, sonst wie `start`. */
+  readonly join: ProvenanceRequest;
+}
+
 /**
- * Teilt je Metadaten-URL die gerade laufende Anfrage zwischen Katalogverzeichnis
- * und Integritätsprüfung. Ein Ergebnis wird nicht aufbewahrt: Wer nach dem
- * Abschluss anfragt, erhält eine neue Anfrage. So prüft ein später nachgeladener
- * Katalog seine Bytes nicht gegen das beim Start für das Verzeichnis geladene
- * Ergebnis.
+ * Teilt je Metadaten-URL die gerade laufende Anfrage, und zwar nur in eine
+ * Richtung: Die Integritätsprüfung fragt ihre Metadaten mit `start` immer
+ * zusammen mit ihren Bytes an, das Katalogverzeichnis schließt sich mit `join`
+ * an. Übernähme die Prüfung eine früher gestartete Verzeichnisanfrage, prüfte sie
+ * nach einem zwischenzeitlichen Deploy neue Bytes gegen alte Metadaten. Ein
+ * Ergebnis wird nicht aufbewahrt: Wer nach dem Abschluss anfragt, erhält eine
+ * neue Anfrage.
  */
-export function createProvenanceRequests(): ProvenanceRequest {
+export function createProvenanceRequests(): ProvenanceRequests {
   const pending = new Map<string, Promise<CatalogProvenance>>();
-  return (metadataUrl) => {
-    const running = pending.get(metadataUrl);
-    if (running) return running;
+  const start: ProvenanceRequest = (metadataUrl) => {
     const request = fetchProvenance(metadataUrl);
     pending.set(metadataUrl, request);
     const release = () => {
@@ -70,6 +77,10 @@ export function createProvenanceRequests(): ProvenanceRequest {
     };
     request.then(release, release);
     return request;
+  };
+  return {
+    start,
+    join: (metadataUrl) => pending.get(metadataUrl) ?? start(metadataUrl),
   };
 }
 
@@ -131,9 +142,10 @@ export async function loadCatalogArtifacts(
   isCancelled: () => boolean = () => false,
   requestProvenance: ProvenanceRequest = fetchProvenance,
 ): Promise<LoadedCatalogArtifacts | null> {
-  // Bytes und Metadaten starten gemeinsam, und das Verzeichnis teilt eine dann
-  // laufende Metadatenanfrage. Beide Anfragen bleiben unabhängig: Wechselt die
-  // Auslieferung zwischen ihren Antworten, schlägt der Hashvergleich fehl.
+  // Bytes und Metadaten starten gemeinsam; `requestProvenance` muss eine neue
+  // Anfrage starten (im Provider `start`), das Verzeichnis darf sie dann teilen.
+  // Beide Anfragen bleiben unabhängig: Wechselt die Auslieferung zwischen ihren
+  // Antworten, schlägt der Hashvergleich fehl.
   const bufferRequest = fetchCatalogBuffer(descriptor.dataUrl);
   const provenanceRequest = requestProvenance(descriptor.metadataUrl);
   provenanceRequest.catch(ignoreRejection);

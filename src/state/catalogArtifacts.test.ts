@@ -47,27 +47,51 @@ describe('loadCatalogDirectory', () => {
 });
 
 describe('createProvenanceRequests', () => {
-  it('teilt nur die laufende Anfrage und fragt nach Abschluss oder Ablehnung neu an', async () => {
+  it('join teilt nur die laufende Anfrage und fragt nach Abschluss oder Ablehnung neu an', async () => {
     const responses = [
       new Response(null, { status: 503 }),
       new Response(JSON.stringify({ title: 'Stand 1' })),
       new Response(JSON.stringify({ title: 'Stand 2' })),
     ];
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => responses.shift()!);
-    const requestProvenance = createProvenanceRequests();
+    const { join } = createProvenanceRequests();
     const url = descriptors[0].metadataUrl;
 
-    const failed = requestProvenance(url);
-    expect(requestProvenance(url)).toBe(failed);
+    const failed = join(url);
+    expect(join(url)).toBe(failed);
     await expect(failed).rejects.toThrow('503');
 
-    const first = requestProvenance(url);
+    const first = join(url);
     expect(first).not.toBe(failed);
     await expect(first).resolves.toEqual({ title: 'Stand 1' });
 
-    const second = requestProvenance(url);
+    const second = join(url);
     expect(second).not.toBe(first);
     await expect(second).resolves.toEqual({ title: 'Stand 2' });
     expect(fetchSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it('start fragt trotz laufender Anfrage neu an, join übernimmt die jüngste', async () => {
+    const answers: Array<(response: Response) => void> = [];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      () => new Promise<Response>((resolve) => { answers.push(resolve); }),
+    );
+    const { start, join } = createProvenanceRequests();
+    const url = descriptors[1].metadataUrl;
+
+    const directory = join(url);
+    const verification = start(url);
+    expect(verification).not.toBe(directory);
+    expect(join(url)).toBe(verification);
+    await vi.waitFor(() => expect(answers).toHaveLength(2));
+
+    answers[0](new Response(JSON.stringify({ title: 'Verzeichnis' })));
+    await expect(directory).resolves.toEqual({ title: 'Verzeichnis' });
+    // Der Abschluss der verdrängten Anfrage gibt die jüngere nicht frei.
+    expect(join(url)).toBe(verification);
+
+    answers[1](new Response(JSON.stringify({ title: 'Prüfung' })));
+    await expect(verification).resolves.toEqual({ title: 'Prüfung' });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 });

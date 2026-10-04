@@ -1,7 +1,14 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { MemoryRouter, Route, Routes } from 'react-router';
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useNavigate,
+  type InitialEntry,
+  type NavigateFunction,
+} from 'react-router';
 import type { Catalog, CatalogState, Control } from '@/domain/models';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -155,25 +162,77 @@ describe('SearchPage', () => {
     );
   });
 
-  // ⌘K/Ctrl+K ohne sichtbares Header-Suchfeld führt hierher (GSPP-476).
-  it('fokussiert die Eingabe nur, wenn die Navigation es anfordert', () => {
-    mockedUseCatalog.mockReturnValue(makeCatalogState([]));
-    mockedUseSearch.mockReturnValue({ results: [], totalResults: 0 });
+  // ⌘K/Ctrl+K ohne sichtbares Header-Suchfeld führt hierher (GSPP-476). Der
+  // Zustand bleibt im Verlaufseintrag; fokussiert wird nur die Navigation des
+  // Kürzels, nicht Browser-Zurück, -Vorwärts oder Neuladen (GSPP-483).
+  describe('Fokus nach dem Tastenkürzel', () => {
+    let navigateTo: NavigateFunction = () => {};
 
-    const { unmount } = render(
-      <MemoryRouter initialEntries={[{ pathname: '/suche', state: FOCUS_SEARCH_STATE }]}>
-        <SearchPage />
-      </MemoryRouter>,
-    );
-    expect(screen.getByRole('searchbox', { name: 'Suchbegriff eingeben' })).toHaveFocus();
-    unmount();
+    function NavigationProbe() {
+      navigateTo = useNavigate();
+      return null;
+    }
 
-    render(
-      <MemoryRouter initialEntries={[{ pathname: '/suche', state: { focusSearch: 'ja' } }]}>
-        <SearchPage />
-      </MemoryRouter>,
-    );
-    expect(screen.getByRole('searchbox', { name: 'Suchbegriff eingeben' })).not.toHaveFocus();
+    function renderWithHistory(initialEntry: InitialEntry) {
+      mockedUseCatalog.mockReturnValue(makeCatalogState([]));
+      mockedUseSearch.mockReturnValue({ results: [], totalResults: 0 });
+      render(
+        <MemoryRouter initialEntries={[initialEntry]}>
+          <NavigationProbe />
+          <Routes>
+            <Route path="/" element={<p>Start</p>} />
+            <Route path="/suche" element={<SearchPage />} />
+            <Route path="/treffer" element={<p>Treffer</p>} />
+          </Routes>
+        </MemoryRouter>,
+      );
+    }
+
+    const searchInput = () => screen.getByRole('searchbox', { name: 'Suchbegriff eingeben' });
+
+    it('fokussiert die Eingabe, wenn das Kürzel auf die Suchseite navigiert', () => {
+      renderWithHistory('/');
+
+      act(() => { void navigateTo('/suche', { state: FOCUS_SEARCH_STATE }); });
+
+      expect(searchInput()).toHaveFocus();
+    });
+
+    it('fokussiert die Eingabe, wenn das Kürzel den Eintrag der Suchseite ersetzt', () => {
+      renderWithHistory('/suche?q=verfahren');
+      expect(searchInput()).not.toHaveFocus();
+
+      act(() => {
+        void navigateTo('/suche?q=verfahren', { state: FOCUS_SEARCH_STATE, replace: true });
+      });
+
+      expect(searchInput()).toHaveFocus();
+    });
+
+    it('fokussiert die Eingabe nicht bei der Rückkehr per Browser-Zurück', () => {
+      renderWithHistory('/');
+      act(() => { void navigateTo('/suche?q=verfahren', { state: FOCUS_SEARCH_STATE }); });
+      act(() => { void navigateTo('/treffer'); });
+      expect(screen.getByText('Treffer')).toBeInTheDocument();
+
+      act(() => { void navigateTo(-1); });
+
+      expect(searchInput()).not.toHaveFocus();
+    });
+
+    it('fokussiert die Eingabe nicht beim Laden eines Eintrags mit dem Zustand', () => {
+      renderWithHistory({ pathname: '/suche', state: FOCUS_SEARCH_STATE });
+
+      expect(searchInput()).not.toHaveFocus();
+    });
+
+    it('fokussiert die Eingabe nicht bei einem anderen Zustand', () => {
+      renderWithHistory('/');
+
+      act(() => { void navigateTo('/suche', { state: { focusSearch: 'ja' } }); });
+
+      expect(searchInput()).not.toHaveFocus();
+    });
   });
 
   describe('Desktop-Ergebnisse', () => {

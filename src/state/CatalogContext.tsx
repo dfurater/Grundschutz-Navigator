@@ -129,8 +129,10 @@ export function CatalogProvider({
     requestedKeysRef.current = new Set();
   }, [descriptorByKey]);
 
-  // Verzeichnis und Integritätsprüfung teilen je Metadaten-URL eine Anfrage.
-  const [requestProvenance] = useState(createProvenanceRequests);
+  // Verzeichnis und Integritätsprüfung teilen je Metadaten-URL eine Anfrage: Die
+  // Prüfung startet ihre eigene, das Verzeichnis schließt sich an (GSPP-483).
+  const [{ start: startProvenanceRequest, join: joinProvenanceRequest }] =
+    useState(createProvenanceRequests);
 
   const entryDataUrl = entryDescriptor.dataUrl;
   const entryMetadataUrl = entryDescriptor.metadataUrl;
@@ -148,7 +150,7 @@ export function CatalogProvider({
       const catalogPromise = loadCatalogArtifacts(
         { catalogKey: entryCatalogKey, dataUrl: entryDataUrl, metadataUrl: entryMetadataUrl, isEntryCatalog: true },
         isCancelled,
-        requestProvenance,
+        startProvenanceRequest,
       ).then(
         (result) => ({ ok: true as const, result }),
         (error: unknown) => ({ ok: false as const, error }),
@@ -246,7 +248,7 @@ export function CatalogProvider({
     entryMetadataUrl,
     vocabulariesUrl,
     upstreamSourcesMetadataUrl,
-    requestProvenance,
+    startProvenanceRequest,
   ]);
 
   const [directory, setDirectory] = useState<{
@@ -267,11 +269,11 @@ export function CatalogProvider({
           entries: entries.map((item) => item.catalogKey === entry.catalogKey ? entry : item),
         };
       });
-    }, requestProvenance);
+    }, joinProvenanceRequest);
     return () => {
       cancelled = true;
     };
-  }, [descriptors, requestProvenance]);
+  }, [descriptors, joinProvenanceRequest]);
 
   // Bedarfsgerechtes Nachladen: nur der per Route ausgewählte Katalog.
   const activeCatalogKey = state.activeCatalogKey;
@@ -285,7 +287,7 @@ export function CatalogProvider({
 
     dispatch({ type: 'CATALOG_LOAD_START', catalogKey: activeCatalogKey });
 
-    loadCatalogArtifacts(descriptor, () => false, requestProvenance)
+    loadCatalogArtifacts(descriptor, () => false, startProvenanceRequest)
       .then((result) => {
         if (!result) return;
         dispatch({
@@ -303,7 +305,7 @@ export function CatalogProvider({
           error: toCatalogErrorMessage(error),
         });
       });
-  }, [activeCatalogKey, entryCatalogKey, descriptorByKey, requestProvenance]);
+  }, [activeCatalogKey, entryCatalogKey, descriptorByKey, startProvenanceRequest]);
 
   const selectCatalog = useCallback(
     (catalogKey: CatalogKey) => {
