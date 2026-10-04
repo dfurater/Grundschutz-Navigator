@@ -1,5 +1,4 @@
 import { Link } from 'react-router';
-import { IconShield } from '@/components/icons';
 import { useCatalog } from '@/hooks/useCatalog';
 import { buildGroupUrl } from '@/app/routes';
 import type { Practice } from '@/domain/models';
@@ -52,8 +51,7 @@ export function HomePage() {
   return (
     <div className="mx-auto max-w-3xl px-6 pt-8 pb-12">
       {/* Header */}
-      <header className="flex items-start gap-3.5 pb-6">
-        <IconShield className="w-9 h-9 shrink-0 text-[var(--color-accent-default)]" />
+      <header className="flex items-start pb-6">
         <div className="min-w-0">
           <h1 className="type-page-title text-[var(--color-text-primary)]">
             Grundschutz++ Navigator
