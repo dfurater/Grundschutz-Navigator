@@ -131,22 +131,25 @@ export function AppShell() {
   // Prüfung läuft vor dem Commit, solange die Schublade noch nicht `inert` ist.
   // Hat die neue Seite den Fokus schon selbst gesetzt (Layout-Effekte der Kinder
   // laufen zuerst, etwa die Überschrift einer mobilen Detailseite), bleibt er dort.
+  // Der Auftrag ist ein Zähler, kein `location.key`: Browser-Zurück und -Vorwärts
+  // verwenden den Schlüssel eines Verlaufseintrags wieder, und derselbe Wert
+  // löste den Effekt kein zweites Mal aus.
   const [drawerLocationKey, setDrawerLocationKey] = useState(location.key);
-  const [drawerFocusReturnKey, setDrawerFocusReturnKey] = useState<string | null>(null);
+  const [drawerFocusReturnCount, setDrawerFocusReturnCount] = useState(0);
   if (drawerLocationKey !== location.key) {
     setDrawerLocationKey(location.key);
     if (sideNavOpen) {
       setSideNavOpen(false);
       if (!isPersistentNav && document.getElementById(sideNavId)?.contains(document.activeElement)) {
-        setDrawerFocusReturnKey(location.key);
+        setDrawerFocusReturnCount((count) => count + 1);
       }
     }
   }
   useLayoutEffect(() => {
-    if (drawerFocusReturnKey === null) return;
+    if (drawerFocusReturnCount === 0) return;
     if (document.activeElement?.closest('main, header')) return;
     menuButtonRef.current?.focus({ preventScroll: true });
-  }, [drawerFocusReturnKey]);
+  }, [drawerFocusReturnCount]);
 
   // Capture garantiert den Vorrang vor dem Escape-Handler der Detailseite
   // auch dann, wenn deren Bubble-Listener bereits vor dem Öffnen registriert war.

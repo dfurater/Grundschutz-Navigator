@@ -496,6 +496,31 @@ describe('AppShell', () => {
     expect(menuButton).toHaveFocus();
   });
 
+  // Browser-Zurück und -Vorwärts verwenden den `location.key` eines Eintrags
+  // wieder; die Fokusrückgabe muss trotzdem bei jedem Schließen greifen.
+  it('gibt den Fokus auch beim wiederholten Zurück zur selben Verlaufseite ans Menü-Symbol', () => {
+    let navigateTo: NavigateFunction = () => {};
+    function NavigateProbe() {
+      navigateTo = useNavigate();
+      return null;
+    }
+    render(
+      <MemoryRouter initialEntries={['/', '/katalog/gspp']} initialIndex={1}>
+        <AppShell />
+        <NavigateProbe />
+      </MemoryRouter>,
+    );
+    const menuButton = screen.getByRole('button', { name: 'Menu' });
+
+    for (let round = 0; round < 2; round++) {
+      fireEvent.click(menuButton);
+      screen.getByRole('button', { name: 'Menü schließen' }).focus();
+      act(() => { void navigateTo(-1); });
+      expect(menuButton).toHaveFocus();
+      act(() => { void navigateTo(1); });
+    }
+  });
+
   it('lässt den Fokus auf der neuen Seite, wenn sie ihn beim Schließen des Drawers selbst setzt', () => {
     catalogBrowserMock.focusHeadingOnMount = true;
     let navigateTo: NavigateFunction = () => {};
@@ -517,6 +542,34 @@ describe('AppShell', () => {
 
       expect(container.querySelector('aside')).toHaveAttribute('inert');
       expect(screen.getByRole('heading', { name: 'Detailüberschrift' })).toHaveFocus();
+    } finally {
+      catalogBrowserMock.focusHeadingOnMount = false;
+    }
+  });
+
+  it('lässt den Fokus auch beim wiederholten Zurück auf der Seite, die ihn selbst setzt', () => {
+    catalogBrowserMock.focusHeadingOnMount = true;
+    let navigateTo: NavigateFunction = () => {};
+    function NavigateProbe() {
+      navigateTo = useNavigate();
+      return null;
+    }
+    try {
+      render(
+        <MemoryRouter initialEntries={['/katalog/gspp', '/']} initialIndex={1}>
+          <AppShell />
+          <NavigateProbe />
+        </MemoryRouter>,
+      );
+      const menuButton = screen.getByRole('button', { name: 'Menu' });
+
+      for (let round = 0; round < 2; round++) {
+        fireEvent.click(menuButton);
+        screen.getByRole('button', { name: 'Menü schließen' }).focus();
+        act(() => { void navigateTo(-1); });
+        expect(screen.getByRole('heading', { name: 'Detailüberschrift' })).toHaveFocus();
+        act(() => { void navigateTo(1); });
+      }
     } finally {
       catalogBrowserMock.focusHeadingOnMount = false;
     }
