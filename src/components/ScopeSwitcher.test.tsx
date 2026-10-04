@@ -127,7 +127,7 @@ describe('ScopeSwitcher', () => {
     expect(screen.getByRole('button', { name: 'Einklappen' })).toBeInTheDocument();
   });
 
-  it('schließt per Escape mit Fokus-Rückgabe und per Tab am Auslöser', () => {
+  it('schließt per Escape mit Fokus-Rückgabe und per Tab ab dem Auslöser ohne Eingriff in den Tab-Schritt', () => {
     renderSwitcher();
     fireEvent.click(trigger());
 
@@ -136,8 +136,11 @@ describe('ScopeSwitcher', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
     expect(trigger()).toHaveFocus();
 
+    // jsdom führt den Tab-Schritt nicht aus: geprüft wird der Ausgangspunkt,
+    // von dem aus der Browser den Fokus zum nächsten Element weitergibt.
     fireEvent.click(trigger());
-    fireEvent.keyDown(screen.getAllByRole('menuitemradio')[1], { key: 'Tab' });
+    const tabNotPrevented = fireEvent.keyDown(screen.getAllByRole('menuitemradio')[1], { key: 'Tab' });
+    expect(tabNotPrevented).toBe(true);
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
     expect(trigger()).toHaveFocus();
   });

@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SUPPORTED_CATALOGS } from '@/domain/sourceRegistry';
-import { buildSupportedCatalogDescriptors, loadCatalogDirectory } from '@/state/catalogArtifacts';
+import {
+  buildSupportedCatalogDescriptors,
+  createProvenanceRequests,
+  loadCatalogDirectory,
+} from '@/state/catalogArtifacts';
 
 const descriptors = buildSupportedCatalogDescriptors('/fixture/');
 
@@ -39,5 +43,31 @@ describe('loadCatalogDirectory', () => {
     const directory = await loadCatalogDirectory(descriptors);
     expect(directory[0]).toEqual({ catalogKey: descriptors[0].catalogKey, title: descriptors[0].catalogKey });
     expect(directory.slice(1).every((entry) => entry.title === 'Upstream')).toBe(true);
+  });
+});
+
+describe('createProvenanceRequests', () => {
+  it('teilt nur die laufende Anfrage und fragt nach Abschluss oder Ablehnung neu an', async () => {
+    const responses = [
+      new Response(null, { status: 503 }),
+      new Response(JSON.stringify({ title: 'Stand 1' })),
+      new Response(JSON.stringify({ title: 'Stand 2' })),
+    ];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => responses.shift()!);
+    const requestProvenance = createProvenanceRequests();
+    const url = descriptors[0].metadataUrl;
+
+    const failed = requestProvenance(url);
+    expect(requestProvenance(url)).toBe(failed);
+    await expect(failed).rejects.toThrow('503');
+
+    const first = requestProvenance(url);
+    expect(first).not.toBe(failed);
+    await expect(first).resolves.toEqual({ title: 'Stand 1' });
+
+    const second = requestProvenance(url);
+    expect(second).not.toBe(first);
+    await expect(second).resolves.toEqual({ title: 'Stand 2' });
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
   });
 });
