@@ -18,9 +18,11 @@ import {
   useMemo,
   useReducer,
   useRef,
+  useState,
   type ReactNode,
 } from 'react';
 import type {
+  CatalogDirectoryEntry,
   CatalogState,
   VerificationResult,
   VocabularyProvenance,
@@ -36,7 +38,9 @@ import {
 } from '@/domain/integrity';
 import {
   buildSupportedCatalogDescriptors,
+  createProvenanceRequests,
   loadCatalogArtifacts,
+  loadCatalogDirectory,
   toCatalogErrorMessage,
   type SupportedCatalogDescriptor,
 } from '@/state/catalogArtifacts';
@@ -125,11 +129,16 @@ export function CatalogProvider({
     requestedKeysRef.current = new Set();
   }, [descriptorByKey]);
 
+  // Verzeichnis und Integritätsprüfung teilen je Metadaten-URL eine Anfrage: Die
+  // Prüfung startet ihre eigene, das Verzeichnis schließt sich an (GSPP-483).
+  const [{ start: startProvenanceRequest, join: joinProvenanceRequest }] =
+    useState(createProvenanceRequests);
+
   const entryDataUrl = entryDescriptor.dataUrl;
   const entryMetadataUrl = entryDescriptor.metadataUrl;
   const entryCatalogKey = entryDescriptor.catalogKey;
 
-  // Einstiegskatalog und Vokabulare: der einzige eager Ladepfad.
+  // Einstiegskatalog und Vokabulare: der eager Ladepfad für vollständige Daten.
   useEffect(() => {
     let cancelled = false;
     const isCancelled = () => cancelled;
@@ -141,6 +150,7 @@ export function CatalogProvider({
       const catalogPromise = loadCatalogArtifacts(
         { catalogKey: entryCatalogKey, dataUrl: entryDataUrl, metadataUrl: entryMetadataUrl, isEntryCatalog: true },
         isCancelled,
+        startProvenanceRequest,
       ).then(
         (result) => ({ ok: true as const, result }),
         (error: unknown) => ({ ok: false as const, error }),
@@ -238,7 +248,32 @@ export function CatalogProvider({
     entryMetadataUrl,
     vocabulariesUrl,
     upstreamSourcesMetadataUrl,
+    startProvenanceRequest,
   ]);
+
+  const [directory, setDirectory] = useState<{
+    descriptors: readonly SupportedCatalogDescriptor[];
+    entries: readonly CatalogDirectoryEntry[];
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadCatalogDirectory(descriptors, (entry) => {
+      if (cancelled) return;
+      setDirectory((current) => {
+        const entries = current?.descriptors === descriptors
+          ? current.entries
+          : descriptors.map(({ catalogKey }) => ({ catalogKey, title: catalogKey }));
+        return {
+          descriptors,
+          entries: entries.map((item) => item.catalogKey === entry.catalogKey ? entry : item),
+        };
+      });
+    }, joinProvenanceRequest);
+    return () => {
+      cancelled = true;
+    };
+  }, [descriptors, joinProvenanceRequest]);
 
   // Bedarfsgerechtes Nachladen: nur der per Route ausgewählte Katalog.
   const activeCatalogKey = state.activeCatalogKey;
@@ -252,7 +287,7 @@ export function CatalogProvider({
 
     dispatch({ type: 'CATALOG_LOAD_START', catalogKey: activeCatalogKey });
 
-    loadCatalogArtifacts(descriptor, () => false)
+    loadCatalogArtifacts(descriptor, () => false, startProvenanceRequest)
       .then((result) => {
         if (!result) return;
         dispatch({
@@ -270,7 +305,7 @@ export function CatalogProvider({
           error: toCatalogErrorMessage(error),
         });
       });
-  }, [activeCatalogKey, entryCatalogKey, descriptorByKey]);
+  }, [activeCatalogKey, entryCatalogKey, descriptorByKey, startProvenanceRequest]);
 
   const selectCatalog = useCallback(
     (catalogKey: CatalogKey) => {
@@ -280,10 +315,21 @@ export function CatalogProvider({
     [descriptorByKey],
   );
 
-  const value = useMemo(
-    () => projectPublicState(state, selectCatalog),
-    [state, selectCatalog],
-  );
+  const value = useMemo(() => {
+    const projected = projectPublicState(state, selectCatalog);
+    // Ein Ergebnis einer früheren Deskriptormenge darf neue URLs nicht benennen.
+    const entries = directory?.descriptors === descriptors
+      ? directory.entries
+      : descriptors.map(({ catalogKey }) => ({ catalogKey, title: catalogKey }));
+    return {
+      ...projected,
+      catalogDirectory: entries.map((entry) => (
+        entry.catalogKey === state.activeCatalogKey && projected.catalogDocument
+          ? { ...entry, title: projected.catalogDocument.view.metadata.title }
+          : entry
+      )),
+    };
+  }, [state, selectCatalog, descriptors, directory]);
 
   return (
     <CatalogContext.Provider value={value}>{children}</CatalogContext.Provider>

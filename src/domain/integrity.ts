@@ -67,10 +67,13 @@ export async function verifyArtifactIntegrity(
  */
 export async function fetchProvenance(
   metadataUrl: string,
+  signal?: AbortSignal,
 ): Promise<CatalogProvenance> {
   return fetchJsonDocument<CatalogProvenance>(
     metadataUrl,
     'catalog metadata',
+    ARTIFACT_FETCH_TIMEOUT_MS,
+    signal,
   );
 }
 
@@ -87,8 +90,12 @@ export async function fetchJsonDocument<T>(
   url: string,
   label = 'JSON document',
   timeoutMs = ARTIFACT_FETCH_TIMEOUT_MS,
+  signal?: AbortSignal,
 ): Promise<T> {
   const controller = new AbortController();
+  const abort = () => controller.abort(signal?.reason);
+  if (signal?.aborted) abort();
+  else signal?.addEventListener('abort', abort, { once: true });
   const timer = setTimeout(
     () => controller.abort(new Error(`Timed out loading ${label} after ${timeoutMs}ms`)),
     timeoutMs,
@@ -103,6 +110,7 @@ export async function fetchJsonDocument<T>(
     return (await response.json()) as T;
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
   }
 }
 

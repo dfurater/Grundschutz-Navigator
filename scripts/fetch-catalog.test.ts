@@ -1053,6 +1053,32 @@ describe('fetch-catalog', () => {
     );
   });
 
+  it.each(['  Katalog ++ — ü\n', ' '])('copies the upstream title unchanged: %j', async (title) => {
+    const input = makeMinimalFetchInput();
+    const document = JSON.parse(input.catalogText);
+    document.catalog.metadata.title = title;
+    input.rawByPath.set(OFFICIAL_CATALOG_PATH, JSON.stringify(document));
+    installSnapshotFetch({ rawByPath: input.rawByPath });
+    const payload = await buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      { registryEntries: MINIMAL_REGISTRY, treeResponse: makeTreeResponse(input.rawByPath) },
+    );
+    expect(parseArtifactJson(payload, 'catalog-metadata.json').title).toBe(title);
+    expect(parseArtifactJson(payload, 'catalog.json').catalog.metadata.title).toBe(title);
+  });
+
+  it.each([undefined, '', null, 42, {}, []].map((title) => ({ title })))('rejects an invalid upstream title with artifactKey: %j', async ({ title }) => {
+    const input = makeMinimalFetchInput();
+    const document = JSON.parse(input.catalogText);
+    document.catalog.metadata.title = title;
+    input.rawByPath.set(OFFICIAL_CATALOG_PATH, JSON.stringify(document));
+    installSnapshotFetch({ rawByPath: input.rawByPath });
+    await expect(buildFetchArtifacts(
+      { log: () => {}, warn: () => {} },
+      { registryEntries: MINIMAL_REGISTRY, treeResponse: makeTreeResponse(input.rawByPath) },
+    )).rejects.toThrow(/catalog-gspp.*title/);
+  });
+
   it('emits catalog.json with exact upstream bytes and local build metadata', async () => {
     vi.stubEnv('GITHUB_RUN_ID', undefined);
     vi.stubEnv('GITHUB_REPOSITORY', undefined);
@@ -1609,6 +1635,8 @@ describe('upstream manifest v2', () => {
       expect(entryMetadata.catalogKey).toBe('gspp');
       expect(entryMetadata.oscalVersion).toBe(CATALOG_OSCAL_VERSION);
       expect(entryMetadata.source.file).toBe(OFFICIAL_CATALOG_PATH);
+      expect(entryMetadata.title).toBe(parseArtifactJson(payload, 'catalog.json').catalog.metadata.title);
+      expect(secondMetadata.title).toBe(parseArtifactJson(payload, 'catalog-wlan.json').catalog.metadata.title);
       expect(entryMetadata.integrity.sha256).toBe(sha256Hex(Buffer.from(catalogText, 'utf8')));
 
       expect(secondMetadata.artifactKey).toBe('catalog-wlan');

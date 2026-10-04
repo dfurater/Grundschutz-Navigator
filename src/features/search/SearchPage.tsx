@@ -1,5 +1,6 @@
-import { useCallback, useMemo, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams, useNavigate, useLocation, useNavigationType } from 'react-router';
+import { isFocusSearchState } from '@/app/searchFocus';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useSearch } from './useSearch';
 import { Button } from '@/components/Button';
@@ -45,6 +46,16 @@ export function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get('q') ?? '';
   const navigate = useNavigate();
+  const location = useLocation();
+  const mobileInputRef = useRef<HTMLInputElement>(null);
+  // ⌘K/Ctrl+K ohne sichtbares Header-Suchfeld landet hier (HeaderBar). Der
+  // Zustand bleibt im Verlaufseintrag; Browser-Zurück, -Vorwärts und Neuladen
+  // stellen ihn per POP wieder her und fokussieren nicht erneut.
+  const navigationType = useNavigationType();
+  const focusRequested = navigationType !== 'POP' && isFocusSearchState(location.state);
+  useEffect(() => {
+    if (focusRequested) mobileInputRef.current?.focus();
+  }, [focusRequested, location.key]);
   // Genau ein Media-Query-Abo pro Seite: steuert das Mount-Gate der
   // Exportzugänge in der Toolbar (GSPP-268) und der Ergebnislisten (GSPP-261).
   const isDesktop = useMediaQuery('(min-width: 1024px)');
@@ -187,6 +198,7 @@ export function SearchPage() {
               aria-hidden={true}
             />
             <input
+              ref={mobileInputRef}
               type="search"
               value={inputValue}
               onChange={(e) => handleInputChange(e.target.value)}

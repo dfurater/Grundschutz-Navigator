@@ -8,6 +8,7 @@
 // =============================================================================
 
 import type {
+  CatalogDirectoryEntry,
   CatalogDocument,
   CatalogProvenance,
   VerificationResult,
@@ -48,6 +49,75 @@ export function buildSupportedCatalogDescriptors(
   }));
 }
 
+export type ProvenanceRequest = (metadataUrl: string, signal?: AbortSignal) => Promise<CatalogProvenance>;
+
+export interface ProvenanceRequests {
+  /** Startet immer eine neue Anfrage und führt sie als laufende Anfrage der URL. */
+  readonly start: ProvenanceRequest;
+  /** Übernimmt die laufende Anfrage oder startet neu, ohne Abbruchhoheit. */
+  readonly join: (metadataUrl: string) => Promise<CatalogProvenance>;
+}
+
+/**
+ * Teilt je Metadaten-URL die gerade laufende Anfrage, und zwar nur in eine
+ * Richtung: Die Integritätsprüfung fragt ihre Metadaten mit `start` immer
+ * zusammen mit ihren Bytes an, das Katalogverzeichnis schließt sich mit `join`
+ * an. Übernähme die Prüfung eine früher gestartete Verzeichnisanfrage, prüfte sie
+ * nach einem zwischenzeitlichen Deploy neue Bytes gegen alte Metadaten. Ein
+ * Ergebnis wird nicht aufbewahrt: Wer nach dem Abschluss anfragt, erhält eine
+ * neue Anfrage.
+ */
+export function createProvenanceRequests(): ProvenanceRequests {
+  const pending = new Map<string, Promise<CatalogProvenance>>();
+  const start: ProvenanceRequest = (metadataUrl, signal) => {
+    const request = fetchProvenance(metadataUrl, signal);
+    pending.set(metadataUrl, request);
+    const release = () => {
+      if (pending.get(metadataUrl) === request) pending.delete(metadataUrl);
+    };
+    request.then(release, release);
+    return request;
+  };
+  return {
+    start,
+    join: (metadataUrl) => pending.get(metadataUrl) ?? start(metadataUrl),
+  };
+}
+
+function ignoreRejection(): void {
+  // Die Ablehnung wertet loadCatalogArtifacts selbst aus; endet der Ladevorgang
+  // vorher, darf sie nicht als unbehandelt gelten.
+}
+
+/** Lädt nur Metadaten; der Callback veröffentlicht jeden Eintrag sofort. */
+export async function loadCatalogDirectory(
+  descriptors: readonly SupportedCatalogDescriptor[],
+  onEntryLoaded?: (entry: CatalogDirectoryEntry) => void,
+  requestProvenance: ProvenanceRequest = fetchProvenance,
+): Promise<readonly CatalogDirectoryEntry[]> {
+  return Promise.all(descriptors.map(async (descriptor) => {
+    const entry = await loadCatalogDirectoryEntry(descriptor, requestProvenance);
+    onEntryLoaded?.(entry);
+    return entry;
+  }));
+}
+
+async function loadCatalogDirectoryEntry(
+  { catalogKey, metadataUrl }: SupportedCatalogDescriptor,
+  requestProvenance: ProvenanceRequest,
+): Promise<CatalogDirectoryEntry> {
+  try {
+    const provenance = await requestProvenance(metadataUrl);
+    if (typeof provenance?.title === 'string' && provenance.title.length > 0) {
+      return { catalogKey, title: provenance.title };
+    }
+  } catch {
+    // Ein fehlender oder nicht lesbarer Sidecar betrifft nur diesen Eintrag.
+  }
+  console.warn(`Catalog title metadata not available for "${catalogKey}". Using catalog key.`);
+  return { catalogKey, title: catalogKey };
+}
+
 export interface LoadedCatalogArtifacts {
   catalogDocument: CatalogDocument;
   provenance: CatalogProvenance | null;
@@ -70,15 +140,30 @@ export interface LoadedCatalogArtifacts {
 export async function loadCatalogArtifacts(
   descriptor: SupportedCatalogDescriptor,
   isCancelled: () => boolean = () => false,
+  requestProvenance: ProvenanceRequest = fetchProvenance,
 ): Promise<LoadedCatalogArtifacts | null> {
-  const buffer = await fetchCatalogBuffer(descriptor.dataUrl);
-  if (isCancelled()) return null;
+  // Bytes und Metadaten starten gemeinsam; `requestProvenance` muss eine neue
+  // Anfrage starten (im Provider `start`), das Verzeichnis darf sie dann teilen.
+  // Beide Anfragen bleiben unabhängig: Wechselt die Auslieferung zwischen ihren
+  // Antworten, schlägt der Hashvergleich fehl.
+  const bufferRequest = fetchCatalogBuffer(descriptor.dataUrl);
+  const provenanceController = new AbortController();
+  const provenanceRequest = requestProvenance(descriptor.metadataUrl, provenanceController.signal);
+  provenanceRequest.catch(ignoreRejection);
+  const buffer = await bufferRequest.catch((error: unknown) => {
+    provenanceController.abort(error);
+    throw error;
+  });
+  if (isCancelled()) {
+    provenanceController.abort();
+    return null;
+  }
 
   let provenance: CatalogProvenance | null = null;
   let verification: VerificationResult | null = null;
 
   try {
-    provenance = await fetchProvenance(descriptor.metadataUrl);
+    provenance = await provenanceRequest;
     if (!isCancelled()) {
       verification = await verifyArtifactIntegrity(buffer, provenance);
     }

@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import type { KeyboardEvent, RefObject } from 'react';
-import { Link } from 'react-router';
-import { CatalogSwitcher } from './CatalogSwitcher';
+import { Link, useLocation, useNavigate } from 'react-router';
+import { FOCUS_SEARCH_STATE } from '@/app/searchFocus';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import { IconSearch, IconShield, IconMenu } from './icons';
 
@@ -12,8 +12,6 @@ export interface HeaderBarProps {
   readonly menuExpanded?: boolean;
   readonly menuControls?: string;
   readonly menuButtonRef?: RefObject<HTMLButtonElement | null>;
-  readonly catalogSwitcherOpen?: boolean;
-  readonly onCatalogSwitcherOpenChange?: (open: boolean) => void;
   readonly className?: string;
 }
 
@@ -52,19 +50,32 @@ export function HeaderBar({
   menuExpanded = false,
   menuControls,
   menuButtonRef,
-  catalogSwitcherOpen,
-  onCatalogSwitcherOpenChange,
   className = '',
 }: HeaderBarProps) {
   const [searchValue, setSearchValue] = useState('');
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/i.test(navigator.platform);
   const inputRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   useGlobalEventListener('document', 'keydown', (event) => {
     if (!(event.metaKey || event.ctrlKey) || event.key !== 'k') return;
     if (event.target !== inputRef.current && isEditableTarget(event.target)) return;
 
     event.preventDefault();
+    // Unter 640 px ist das Feld ausgeblendet; dann führt das Kürzel wie die Lupe
+    // auf die Suchseite und fokussiert dort die Eingabe. Auf der Suchseite bleibt
+    // die laufende Anfrage stehen, und der Verlauf erhält keinen zweiten Eintrag.
+    const input = inputRef.current;
+    const visible = input && (input.checkVisibility?.() ?? input.getClientRects().length > 0);
+    if (!visible) {
+      const onSearchPage = location.pathname === '/suche';
+      void navigate(
+        { pathname: '/suche', search: onSearchPage ? location.search : '' },
+        { state: FOCUS_SEARCH_STATE, replace: onSearchPage },
+      );
+      return;
+    }
     inputRef.current?.focus();
   });
 
@@ -78,7 +89,7 @@ export function HeaderBar({
     <header
       role="banner"
       data-sticky-header
-      className={`header-reference-theme sticky top-0 z-30 grid h-14 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-4 sm:grid-cols-[max-content_minmax(0,36rem)_auto] sm:gap-0 xl:grid-cols-[1fr_minmax(0,36rem)_1fr] ${className}`}
+      className={`header-reference-theme sticky top-0 z-30 grid h-14 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-4 sm:grid-cols-[max-content_minmax(0,36rem)] sm:gap-0 xl:grid-cols-[1fr_minmax(0,36rem)_1fr] ${className}`}
       data-testid="header-bar"
     >
       {/* Hamburger + Brand — grouped as one visual unit */}
@@ -86,7 +97,7 @@ export function HeaderBar({
         {onMenuToggle && (
           <button
             type="button"
-            className="mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded text-[var(--header-text-muted)] transition-colors hover:text-[var(--header-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--header-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--header-bg)] md:hidden"
+            className="-ml-3 flex h-11 w-11 shrink-0 items-center justify-center rounded text-[var(--header-text-muted)] transition-colors hover:text-[var(--header-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--header-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--header-bg)] md:hidden"
             ref={menuButtonRef}
             onClick={onMenuToggle}
             aria-expanded={menuExpanded}
@@ -99,17 +110,16 @@ export function HeaderBar({
         <Link
           to="/"
           className="group flex min-h-11 min-w-0 items-center gap-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--header-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--header-bg)]"
-          aria-label="Zur Startseite"
         >
           <IconShield className="h-5 w-5 shrink-0 text-[var(--header-brand-accent)] transition-colors group-hover:text-[var(--header-brand-accent-hover)]" />
-          <span className="min-w-0 text-sm font-bold leading-tight tracking-wide transition-colors group-hover:text-[var(--header-text-hover)] sm:text-base">
+          <span className="min-w-0 whitespace-nowrap text-sm font-bold leading-tight tracking-wide transition-colors group-hover:text-[var(--header-text-hover)] sm:text-base">
             Grundschutz++ Navigator
           </span>
         </Link>
       </div>
 
       {/* Search */}
-      <div className="w-full px-4 sm:px-8 hidden sm:block">
+      <div className="hidden w-full px-4 sm:block lg:px-8">
         <div className="relative group">
           <IconSearch className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--header-text-subtle)] transition-colors group-focus-within:text-[var(--header-brand-accent)]" />
           <input
@@ -119,11 +129,11 @@ export function HeaderBar({
             value={searchValue}
             onChange={(e) => setSearchValue(e.target.value)}
             onKeyDown={handleSearchKeyDown}
-            className="w-full rounded-md border border-transparent bg-[var(--header-surface)] py-1.5 pl-9 pr-12 text-sm text-[var(--header-text)] outline-none transition-colors placeholder:text-[var(--header-text-subtle)] focus-visible:bg-[var(--header-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--header-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--header-bg)]"
+            className="w-full rounded-md border border-transparent bg-[var(--header-surface)] py-1.5 pl-9 pr-3 text-sm text-[var(--header-text)] outline-none transition-colors placeholder:text-[var(--header-text-subtle)] focus-visible:bg-[var(--header-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--header-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--header-bg)] lg:pr-12"
             aria-label="Katalog durchsuchen"
             data-testid="header-search"
           />
-          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
+          <div className="absolute right-2 top-1/2 hidden -translate-y-1/2 gap-1 lg:flex">
             <kbd className="shortcut-hint-text rounded bg-[var(--header-surface-hover)] px-1.5 py-0.5 font-mono text-[var(--header-text-muted)]">
               {isMac ? '⌘K' : 'Ctrl+K'}
             </kbd>
@@ -131,7 +141,14 @@ export function HeaderBar({
         </div>
       </div>
 
-      <CatalogSwitcher open={catalogSwitcherOpen} onOpenChange={onCatalogSwitcherOpenChange} />
+      {/* Unter 640 px steht die Suche als Lupe im Header; das Feld folgt erst ab sm. */}
+      <Link
+        to="/suche"
+        className="-mr-3 flex h-11 w-11 shrink-0 items-center justify-center justify-self-end rounded text-[var(--header-text-muted)] transition-colors hover:text-[var(--header-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--header-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--header-bg)] sm:hidden"
+        aria-label="Suche"
+      >
+        <IconSearch className="h-5 w-5" />
+      </Link>
     </header>
   );
 }
