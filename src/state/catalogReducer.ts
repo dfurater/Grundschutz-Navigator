@@ -132,6 +132,7 @@ export function projectPublicState(
     state.catalogs.get(state.activeCatalogKey) ?? pendingCatalog(state.activeCatalogKey);
 
   return {
+    catalogDirectory: [],
     catalogs: state.catalogs,
     entryCatalogKey: state.entryCatalogKey,
     activeCatalogKey: state.activeCatalogKey,

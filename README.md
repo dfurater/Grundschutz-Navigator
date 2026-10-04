@@ -6,7 +6,7 @@ Inoffizielles Community-Projekt, kein Angebot des BSI. Keine Rechtsberatung, kei
 
 **Live-Demo:** [dfurater.github.io/Grundschutz-Navigator](https://dfurater.github.io/Grundschutz-Navigator/)
 
-<img src="docs/assets/katalog-mit-filtern.png" width="1040" alt="Katalogansicht des Grundschutz++ Navigators: links der Katalog-Explorer mit den Praktiken, in der Mitte die Kontrollen der Praktik „Berechtigung“, rechts die Filterleiste mit ausgewähltem Sicherheitsniveau „normal-SdT“ und den Modalverben MUSS und SOLLTE">
+<img src="docs/assets/katalog-mit-filtern.png" width="1040" alt="Katalogansicht des Grundschutz++ Navigators: links der Katalog-Explorer mit der Katalogwahl „Anwenderkatalog Grundschutz++“ im Kopf und den Praktiken darunter, in der Mitte die Kontrollen der Praktik „Berechtigung“, rechts die Filterleiste mit ausgewähltem Sicherheitsniveau „normal-SdT“ und den Modalverben MUSS und SOLLTE">
 
 [![Deploy](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/deploy.yml/badge.svg)](https://github.com/dfurater/Grundschutz-Navigator/actions/workflows/deploy.yml)
 [![App-Code: AGPL v3](https://img.shields.io/badge/App--Code-AGPL%20v3-green)](LICENSE)
@@ -14,12 +14,12 @@ Inoffizielles Community-Projekt, kein Angebot des BSI. Keine Rechtsberatung, kei
 
 ## Was kann die App?
 
-- Drei BSI-Kataloge durchblättern: den Grundschutz++-Anwenderkatalog sowie die Anwenderkataloge Lieferkettensicherheit und WLAN, gegliedert nach Praktiken und Themen.
+- Drei BSI-Kataloge durchblättern: den „Anwenderkatalog Grundschutz++“ sowie „Supply Chain Security“ und „Stand der Technik WLAN“, gegliedert nach Praktiken und Themen.
 - Alle Kontrollen nach ID, Titel oder Stichwort durchsuchen.
 - Die Liste nach Sicherheitsniveau, Modalverb, Aufwandsstufe, Zielobjekt-Kategorie, Schutzziel, Dokumentationsvorgabe, Handlungswort, Tag und Link-Relation filtern.
 - Zu jeder Kontrolle den Anforderungstext und die Umsetzungshinweise lesen, dazu die betroffenen Schutzziele und Gefährdungen.
 
-Filter und Detailangaben richten sich nach den Daten des jeweiligen Katalogs: Der Lieferkettenkatalog enthält zum Beispiel keine Schutzziele, deshalb fehlt dort auch der Schutzziel-Filter.
+Filter und Detailangaben richten sich nach den Daten des jeweiligen Katalogs: Der Katalog „Supply Chain Security“ enthält zum Beispiel keine Schutzziele, deshalb fehlt dort auch der Schutzziel-Filter.
 - Die BSI-Vokabulare nachschlagen, also die Begriffslisten, auf denen Filter und Kontrollen aufbauen.
 - Die gefilterte Liste, Suchtreffer oder eine eigene Auswahl als CSV-Datei exportieren.
 
@@ -31,11 +31,11 @@ Für IT-Sicherheitsbeauftragte, Berater:innen, Auditor:innen, Studierende und al
 
 ## So funktioniert's
 
-1. Öffne die [Live-Demo](https://dfurater.github.io/Grundschutz-Navigator/) und wähle oben rechts den Katalog.
-2. Wähle links im Katalog-Explorer eine Praktik oder ein Thema, oder suche oben nach einer ID oder einem Stichwort.
-3. Setze rechts die Filter, etwa Sicherheitsniveau „normal-SdT“ und Modalverb „MUSS“. Die Liste zeigt sofort nur noch die passenden Kontrollen.
+1. Öffne die [Live-Demo](https://dfurater.github.io/Grundschutz-Navigator/) und wähle links oben im Katalog-Explorer den Katalog. Auf dem Smartphone öffnest du den Katalog-Explorer über das Menü-Symbol.
+2. Wähle darunter eine Praktik oder ein Thema, oder suche oben nach einer ID oder einem Stichwort.
+3. Setze die Filter, etwa Sicherheitsniveau „normal-SdT“ und Modalverb „MUSS“. Am Desktop steht die Filterleiste rechts, auf schmalen Bildschirmen öffnet das Filter-Symbol sie. Die Liste zeigt sofort nur noch die passenden Kontrollen.
 4. Die gewählten Filter stehen in der Adresszeile. Kopiere den Link, um die Ansicht zu teilen oder als Lesezeichen zu speichern. Für eine einzelne Kontrolle gibt es in der Detailansicht „Link kopieren“.
-5. Über „CSV Export“ lädst du die Liste herunter, zum Beispiel für eine Tabellenkalkulation.
+5. Über „CSV Export“ lädst du die Liste herunter, zum Beispiel für eine Tabellenkalkulation. Auf dem Smartphone steht dafür ein Download-Symbol neben dem Filter-Symbol.
 
 ## Daten und Datenschutz
 

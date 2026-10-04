@@ -33,20 +33,34 @@ async function renderHeader(width: number) {
 
 const centerY = (box: DOMRect) => box.top + box.height / 2;
 
+function placeholderFits(input: HTMLInputElement) {
+  const style = getComputedStyle(input);
+  const context = document.createElement('canvas').getContext('2d')!;
+  context.font = style.font;
+  const textWidth = context.measureText(input.placeholder).width;
+  const contentWidth = input.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  return { textWidth, contentWidth };
+}
+
 // Echte Media Queries, Schriften und Boxen statt Klassenvergleiche im jsdom.
 test.each([320, 375, 402, 430, 639, 640, 767, 768, 1024, 1440])(
-  'hält die Header-Ziele bei %i px zentriert, erreichbar und überlappungsfrei',
+  'trägt bei %i px nur Menü, Marke und Suche, zentriert und überlappungsfrei',
   async (width) => {
     const header = await renderHeader(width);
     const headerBox = header.getBoundingClientRect();
     const menu = header.querySelector<HTMLButtonElement>('button[aria-label="Menü öffnen"]')!;
-    const brand = header.querySelector<HTMLAnchorElement>('a[aria-label="Zur Startseite"]')!;
-    const switcher = header.querySelector<HTMLButtonElement>('button[aria-label="Katalog wechseln"]')!;
+    const brand = [...header.querySelectorAll('a')].find((link) => link.textContent === 'Grundschutz++ Navigator')!;
+    const searchLink = header.querySelector<HTMLAnchorElement>('a[aria-label="Suche"]')!;
+    const search = header.querySelector<HTMLInputElement>('input[type="search"]')!;
     const text = brand.querySelector('span')!;
-    const targets = [brand, switcher, ...(menu.checkVisibility() ? [menu] : [])];
+    const targets = [brand, ...[menu, searchLink].filter((target) => target.checkVisibility())];
 
     expect(headerBox.height).toBe(56);
     expect(menu.checkVisibility()).toBe(width < 768);
+    expect(searchLink.checkVisibility()).toBe(width < 640);
+    expect(search.checkVisibility()).toBe(width >= 640);
+    expect(header.querySelector('[aria-haspopup]')).toBeNull();
+
     for (const target of targets) {
       const box = target.getBoundingClientRect();
       expect(box.width).toBeGreaterThanOrEqual(44);
@@ -59,17 +73,39 @@ test.each([320, 375, 402, 430, 639, 640, 767, 768, 1024, 1440])(
       }
     }
 
+    // Marke einzeilig und ohne Überlauf, auch bei 320 px.
+    expect(text.getBoundingClientRect().height).toBeLessThan(2 * parseFloat(getComputedStyle(text).lineHeight));
     expect(text.scrollWidth).toBeLessThanOrEqual(text.clientWidth + 1);
-    expect(text.scrollHeight).toBeLessThanOrEqual(text.clientHeight + 1);
-    expect(brand.getBoundingClientRect().right).toBeLessThanOrEqual(switcher.getBoundingClientRect().left - 8);
-    expect(switcher.getBoundingClientRect().right).toBeLessThanOrEqual(width);
+    expect(brand.getBoundingClientRect().left).toBeGreaterThanOrEqual(0);
 
-    const search = header.querySelector<HTMLInputElement>('input[type="search"]')!;
-    expect(search.checkVisibility()).toBe(width >= 640);
+    // Menü- und Lupen-Icon liegen auf der 16-px-Flucht.
+    if (menu.checkVisibility()) {
+      expect(Math.abs(menu.querySelector('svg')!.getBoundingClientRect().left - 16)).toBeLessThanOrEqual(1);
+      expect(menu.getBoundingClientRect().right).toBeLessThanOrEqual(brand.getBoundingClientRect().left);
+    }
+    if (searchLink.checkVisibility()) {
+      expect(Math.abs(searchLink.querySelector('svg')!.getBoundingClientRect().right - (width - 16))).toBeLessThanOrEqual(1);
+      expect(brand.getBoundingClientRect().right).toBeLessThanOrEqual(searchLink.getBoundingClientRect().left);
+      expect(searchLink.getAttribute('href')).toBe('/suche');
+    }
+
     if (search.checkVisibility()) {
       const searchBox = search.getBoundingClientRect();
       expect(brand.getBoundingClientRect().right).toBeLessThanOrEqual(searchBox.left);
-      expect(searchBox.right).toBeLessThanOrEqual(switcher.getBoundingClientRect().left);
+      expect(searchBox.right).toBeLessThanOrEqual(width - 16);
+
+      // Der Platzhalter steht vollständig (GSPP-477).
+      const { textWidth, contentWidth } = placeholderFits(search);
+      expect(textWidth).toBeLessThanOrEqual(contentWidth);
+
+      // Der Tastaturhinweis erscheint erst ab 1024 px.
+      expect(header.querySelector('kbd')!.checkVisibility()).toBe(width >= 1024);
+    }
+
+    // Ab xl steht die Suche mittig, rechts bleibt die Spalte leer.
+    if (width >= 1280) {
+      const column = search.closest('div.hidden')!.getBoundingClientRect();
+      expect(Math.abs(column.left + column.width / 2 - width / 2)).toBeLessThanOrEqual(1);
     }
   },
 );
