@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams, useNavigate, useLocation } from 'react-router';
+import { useSearchParams, useNavigate, useLocation, useNavigationType } from 'react-router';
 import { isFocusSearchState } from '@/app/searchFocus';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useSearch } from './useSearch';
@@ -48,8 +48,11 @@ export function SearchPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const mobileInputRef = useRef<HTMLInputElement>(null);
-  const focusRequested = isFocusSearchState(location.state);
-  // ⌘K/Ctrl+K ohne sichtbares Header-Suchfeld landet hier (HeaderBar).
+  // ⌘K/Ctrl+K ohne sichtbares Header-Suchfeld landet hier (HeaderBar). Der
+  // Zustand bleibt im Verlaufseintrag; Browser-Zurück, -Vorwärts und Neuladen
+  // stellen ihn per POP wieder her und fokussieren nicht erneut.
+  const navigationType = useNavigationType();
+  const focusRequested = navigationType !== 'POP' && isFocusSearchState(location.state);
   useEffect(() => {
     if (focusRequested) mobileInputRef.current?.focus();
   }, [focusRequested, location.key]);

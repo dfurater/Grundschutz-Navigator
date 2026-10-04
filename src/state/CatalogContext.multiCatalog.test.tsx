@@ -361,6 +361,60 @@ describe('CatalogProvider — mehrere Kataloge', () => {
     expect(fetchSpy.mock.calls.filter(([url]) => String(url) === SECOND_METADATA_URL)).toHaveLength(2);
   });
 
+  it('prüft einen während der Verzeichnisanfrage geöffneten Katalog nicht gegen deren Antwort', async () => {
+    const deployedSecond = makeCatalogFixture({
+      uuid: '00000000-0000-4000-8000-0000000000b3',
+      title: 'Zweitkatalog, neuer Stand',
+      oscalVersion: '1.1.3',
+      controlTitle: 'Neuer Stand',
+      altIdentifier: 'alt-neu',
+    });
+    const entryProvenance = await provenanceFor(entryCatalogJson);
+    const staleProvenance = { ...await provenanceFor(secondCatalogJson), title: 'Alter Stand' };
+    const deployedProvenance = await provenanceFor(deployedSecond);
+    let answerDirectory: () => void = () => {};
+    const directoryAnswer = new Promise<void>((resolve) => { answerDirectory = resolve; });
+    let secondMetadataRequests = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === ENTRY_DATA_URL) return jsonResponse(entryCatalogJson);
+      if (url === ENTRY_METADATA_URL) return jsonResponse(entryProvenance);
+      // Die erste Anfrage stellt das Verzeichnis beim Start; sie antwortet erst
+      // nach dem Deploy, mit dem Stand von vor dem Deploy.
+      if (url === SECOND_METADATA_URL) {
+        secondMetadataRequests += 1;
+        if (secondMetadataRequests > 1) return jsonResponse(deployedProvenance);
+        await directoryAnswer;
+        return jsonResponse(staleProvenance);
+      }
+      if (url === SECOND_DATA_URL) return jsonResponse(deployedSecond);
+      return new Response(null, { status: 404 });
+    });
+
+    const { result } = renderProvider();
+    try {
+      await waitForEntryCatalog(result);
+
+      act(() => result.current.selectCatalog('wlan'));
+      await waitFor(() => {
+        expect(result.current.catalogs.get('wlan')?.verification?.valid).toBe(true);
+      });
+      await act(async () => { answerDirectory(); });
+      // Für den aktiven Katalog zeigt das Verzeichnis den Dokumenttitel; erst
+      // nach dem Rückwechsel ist die verspätete Verzeichnisantwort sichtbar.
+      act(() => result.current.selectCatalog('gspp'));
+      await waitFor(() => expect(result.current.catalogDirectory[1].title).toBe('Alter Stand'));
+
+      const second = result.current.catalogs.get('wlan');
+      expect(second?.verification?.valid).toBe(true);
+      expect(second?.provenance).toEqual(deployedProvenance);
+      expect(second?.catalogDocument?.context.trustClass).toBe('class-1-verified-public');
+      expect(secondMetadataRequests).toBe(2);
+    } finally {
+      await act(async () => { answerDirectory(); });
+    }
+  });
+
   it('hält identische Control-IDs zweier Kataloge kollisionsfrei getrennt', async () => {
     mockArtifacts({
       [ENTRY_DATA_URL]: entryCatalogJson,
