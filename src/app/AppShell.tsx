@@ -23,7 +23,7 @@ import { useCatalog } from '@/hooks/useCatalog';
 import { useDragToResize } from '@/hooks/useDragToResize';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
-import { useScrollLock } from '@/hooks/useScrollLock';
+import { useMobileDrawerPlacement } from '@/hooks/useMobileDrawerPlacement';
 import { OWN_SCROLL_AREA_QUERY, useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
 import { CatalogBrowser } from '@/features/catalog/CatalogBrowser';
 import { VocabularyNamespacePage } from '@/features/vocabularies/VocabularyNamespacePage';
@@ -89,10 +89,6 @@ const SIDEBAR_MAX_WIDTH = 480;
 
 export function AppShell() {
   const [sideNavOpen, setSideNavOpen] = useState(false);
-  // Dokumentposition beim Öffnen der mobilen Schublade: Die Schublade liegt
-  // absolut im Inhaltsbereich und beginnt dort, damit sie direkt unter dem
-  // App-Kopf erscheint; die Scroll-Sperre hält sie an dieser Stelle.
-  const [drawerOffset, setDrawerOffset] = useState(0);
   const sideNavId = useId();
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const isPersistentNav = useMediaQuery(OWN_SCROLL_AREA_QUERY);
@@ -122,7 +118,7 @@ export function AppShell() {
     error,
   } = useCatalog();
 
-  useScrollLock(sideNavOpen && !isPersistentNav);
+  const drawerPlacement = useMobileDrawerPlacement(sideNavOpen, isPersistentNav, prefersReducedMotion);
 
   const closeSideNav = () => {
     setSideNavOpen(false);
@@ -244,7 +240,7 @@ export function AppShell() {
         onMenuToggle={() => {
           // Safari gibt Klicks keinen Button-Fokus; main wird beim Öffnen inert.
           if (!isPersistentNav) menuButtonRef.current?.focus({ preventScroll: true });
-          if (!sideNavOpen) setDrawerOffset(window.scrollY);
+          drawerPlacement.captureOffset();
           setSideNavOpen((prev) => !prev);
           if (sidebarCollapsed) setSidebarCollapsed(false);
         }}
@@ -256,7 +252,8 @@ export function AppShell() {
             Leiste mit einer undurchsichtigen Fläche füllen. Beide liegen
             absolut im Inhaltsbereich; die Schublade beginnt an der
             Dokumentposition beim Öffnen und füllt den sichtbaren Bereich unter
-            dem App-Kopf, die Scroll-Sperre hält sie dort. Sie liegt mit
+            dem App-Kopf, die Scroll-Sperre hält sie dort
+            (`useMobileDrawerPlacement`). Sie liegt mit
             `z-[25]` unter dem App-Kopf (`z-30`). */}
         {sideNavOpen && (
           <div
@@ -276,8 +273,9 @@ export function AppShell() {
             absolute left-0 h-[calc(100dvh-3.5rem)] md:relative md:inset-auto md:h-auto
             ${sideNavOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
           `}
+          onTransitionEnd={drawerPlacement.onTransitionEnd}
           style={{
-            top: isPersistentNav ? undefined : drawerOffset,
+            top: drawerPlacement.top,
             width: sidebarCollapsed ? 44 : sidebarWidth,
             transition: isSidebarResizing || prefersReducedMotion
               ? 'none'

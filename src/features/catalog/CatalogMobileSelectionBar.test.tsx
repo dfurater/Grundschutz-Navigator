@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Control } from '@/domain/models';
 import { downloadCSV } from '@/features/export/csvExport';
+import { MobileNavigationContext } from '@/state/MobileNavigationContext';
 import { CatalogMobileSelectionBar } from './CatalogMobileSelectionBar';
 
 vi.mock('@/features/export/csvExport', () => ({
@@ -22,6 +23,23 @@ const mockedDownloadCSV = vi.mocked(downloadCSV);
 describe('CatalogMobileSelectionBar', () => {
   beforeEach(() => {
     mockedDownloadCSV.mockReset();
+  });
+
+  it('tritt bei offener mobiler Navigation zurück und erscheint danach wieder', () => {
+    const bar = (navigationOpen: boolean) => (
+      <MobileNavigationContext.Provider value={navigationOpen}>
+        <CatalogMobileSelectionBar
+          checkedIds={new Set([firstControl.id])}
+          allControls={[firstControl]}
+          onDone={vi.fn()}
+        />
+      </MobileNavigationContext.Provider>
+    );
+    const view = render(bar(true));
+    expect(screen.queryByRole('button', { name: 'Fertig' })).not.toBeInTheDocument();
+
+    view.rerender(bar(false));
+    expect(screen.getByRole('button', { name: 'Fertig' })).toBeInTheDocument();
   });
 
   it('exports all checked controls even when some fall outside the filtered view', () => {

@@ -3,7 +3,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { MemoryRouter } from 'react-router';
 import { afterEach, expect, test } from 'vitest';
-import { page } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import { AppShell } from '@/app/AppShell';
 import { CatalogContext } from '@/state/CatalogContext';
 import { createInitialState, projectPublicState } from '@/state/catalogReducer';
@@ -44,13 +44,17 @@ async function renderShell(width: number) {
   return host;
 }
 
-async function openDrawer(shell: HTMLElement) {
+async function openDrawer(shell: HTMLElement, { animated = false } = {}) {
   shell.querySelector<HTMLButtonElement>('button[aria-controls]')!.click();
   const aside = shell.querySelector('aside')!;
   // Der Drawer gleitet per `translate` herein; gemessen wird die Endlage.
-  aside.style.transition = 'none';
+  if (!animated) aside.style.transition = 'none';
   await expect.poll(() => aside.getBoundingClientRect().left).toBe(0);
   return aside;
+}
+
+function closeDrawer(shell: HTMLElement) {
+  shell.querySelector<HTMLButtonElement>('button[aria-label="Menü schließen"]')!.click();
 }
 
 test('rendert den offenen mobilen Drawer ohne festes oder sticky Element, damit Safari seine Leiste nicht füllt', async () => {
@@ -88,12 +92,48 @@ test.each([0, HEIGHT])('legt den Drawer bei Scrollposition %i px unter den App-K
   expect(document.elementFromPoint(20, HEADER_HEIGHT / 2)?.closest('[data-sticky-header]')).not.toBeNull();
 });
 
-test('gibt das Dokument nach dem Schließen wieder frei', async () => {
+test('lässt die Seite bei offenem Drawer auch per Mausrad nicht scrollen', async () => {
   const shell = await renderShell(WIDTH);
-  await openDrawer(shell);
-  shell.querySelector<HTMLButtonElement>('button[aria-label="Menü schließen"]')!.click();
+  // Ziel ist der stets sichtbare App-Kopf: `userEvent.wheel` scrollt ein Ziel
+  // außerhalb des Bildschirms erst programmatisch heran, und das lässt auch
+  // eine gesperrte Seite zu. Gegenprobe: Ohne Drawer bewegt das Mausrad die Seite.
+  const header = shell.querySelector('[data-sticky-header]')!;
+  await userEvent.wheel(header, { delta: { y: 300 } });
+  await expect.poll(() => window.scrollY).toBeGreaterThan(0);
+  const scrollY = window.scrollY;
+
+  const aside = await openDrawer(shell);
+  await userEvent.wheel(header, { delta: { y: 300 } });
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(window.scrollY).toBe(scrollY);
+  expect(aside.getBoundingClientRect().top).toBe(HEADER_HEIGHT);
+});
+
+test('gibt das Dokument nach dem Schließen frei und verlängert es nicht', async () => {
+  const shell = await renderShell(WIDTH);
+  const pageHeight = document.documentElement.scrollHeight;
+  window.scrollTo(0, pageHeight - HEIGHT);
+  const aside = await openDrawer(shell, { animated: true });
+  closeDrawer(shell);
   await expect.poll(() => shell.querySelector('[data-testid="mobile-nav-backdrop"]')).toBeNull();
   expect(document.documentElement.style.overflow).toBe('');
+  // Nach dem Hinausgleiten liegt die geschlossene Schublade wieder oben.
+  await expect.poll(() => aside.style.top).toBe('0px');
+  expect(document.documentElement.scrollHeight).toBe(pageHeight);
+});
+
+test('legt einen offenen Drawer nach einem Wechsel über md und zurück wieder unter den App-Kopf', async () => {
+  const shell = await renderShell(WIDTH);
+  window.scrollTo(0, HEIGHT);
+  const aside = await openDrawer(shell);
+
+  await page.viewport(1024, HEIGHT);
+  await expect.poll(() => getComputedStyle(aside).position).toBe('relative');
+  await page.viewport(WIDTH, HEIGHT);
+  await expect.poll(() => getComputedStyle(aside).position).toBe('absolute');
+
+  expect(shell.querySelector('[data-testid="mobile-nav-backdrop"]')).not.toBeNull();
+  await expect.poll(() => aside.getBoundingClientRect().top).toBe(HEADER_HEIGHT);
 });
 
 test('lässt die Seitenleiste ab md neben dem Inhalt in voller Höhe stehen', async () => {
