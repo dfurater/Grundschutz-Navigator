@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import type { TransitionEvent } from 'react';
 import { useScrollLock } from '@/hooks/useScrollLock';
 
@@ -17,10 +17,14 @@ export interface MobileDrawerPlacement {
  * absolut im Inhaltsbereich an der Dokumentposition beim Öffnen, also direkt
  * unter dem App-Kopf, und die Scroll-Sperre hält sie dort.
  *
- * Nach dem Hinausgleiten geht `top` auf 0 zurück, ohne Überblendung sofort,
- * damit die unsichtbare Schublade eine danach kürzere Seite nicht verlängert.
- * Ab `md` scrollt das Dokument nicht; kehrt die Breite bei offener Schublade
- * zurück, wird die Lage an der dann geltenden Dokumentposition neu erfasst.
+ * Nach dem Hinausgleiten geht `top` auf 0 zurück, damit die unsichtbare
+ * Schublade eine danach kürzere Seite nicht verlängert. Ohne Überblendung
+ * endet keine Transition: Dann geschieht das beim Schließen oder, falls die
+ * Einstellung während des Hinausgleitens wechselt, in diesem Moment.
+ * Ab `md` scrollt das Dokument nicht, und der Browser setzt seine Position zu
+ * einem nicht vorhersagbaren Zeitpunkt auf 0. Kehrt die Breite bei offener
+ * Schublade unter `md` zurück, beginnen Schublade und Dokument deshalb oben,
+ * dem einzigen Wert, den diese Rücksetzung nicht mehr verändert.
  */
 export function useMobileDrawerPlacement(
   open: boolean,
@@ -28,20 +32,28 @@ export function useMobileDrawerPlacement(
   reducedMotion: boolean,
 ): MobileDrawerPlacement {
   const [offset, setOffset] = useState(0);
-  const [placedPersistent, setPlacedPersistent] = useState(persistent);
-  if (placedPersistent !== persistent) {
-    setPlacedPersistent(persistent);
-    if (!persistent && open) setOffset(window.scrollY);
+  const [placedFor, setPlacedFor] = useState({ open, persistent, reducedMotion });
+  if (
+    placedFor.open !== open
+    || placedFor.persistent !== persistent
+    || placedFor.reducedMotion !== reducedMotion
+  ) {
+    setPlacedFor({ open, persistent, reducedMotion });
+    if (!open && reducedMotion) setOffset(0);
+    if (open && placedFor.persistent && !persistent) setOffset(0);
   }
 
   useScrollLock(open && !persistent);
 
-  let top: number | undefined;
-  if (!persistent) top = open || !reducedMotion ? offset : 0;
+  // Hält das Dokument an der Lage der offenen Schublade. Beim Öffnen ist das
+  // die gerade erfasste Position; wirksam wird es nach einem Breitenwechsel.
+  useLayoutEffect(() => {
+    if (open && !persistent) window.scrollTo({ top: offset, behavior: 'instant' });
+  }, [open, persistent, offset]);
 
   return {
     captureOffset: () => setOffset(window.scrollY),
-    top,
+    top: persistent ? undefined : offset,
     onTransitionEnd: (event) => {
       if (event.target === event.currentTarget && !open) setOffset(0);
     },

@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import type { TransitionEvent } from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useMobileDrawerPlacement } from './useMobileDrawerPlacement';
 
 function scrollTo(y: number) {
@@ -69,7 +69,36 @@ describe('useMobileDrawerPlacement', () => {
     expect(result.current.top).toBe(0);
   });
 
-  it('erfasst die Lage neu, wenn die Breite bei offener Schublade unter md zurückkehrt', () => {
+  it('hält die geschlossene Schublade oben, wenn Reduced Motion danach endet', () => {
+    const { result, rerender } = renderHook(
+      ({ open, reducedMotion }) => useMobileDrawerPlacement(open, false, reducedMotion),
+      { initialProps: { open: true, reducedMotion: true } },
+    );
+    scrollTo(640);
+    act(() => result.current.captureOffset());
+    rerender({ open: false, reducedMotion: true });
+    rerender({ open: false, reducedMotion: false });
+
+    expect(result.current.top).toBe(0);
+  });
+
+  it('legt die Schublade oben ab, wenn Reduced Motion während des Hinausgleitens beginnt', () => {
+    const { result, rerender } = renderHook(
+      ({ open, reducedMotion }) => useMobileDrawerPlacement(open, false, reducedMotion),
+      { initialProps: { open: true, reducedMotion: false } },
+    );
+    scrollTo(640);
+    act(() => result.current.captureOffset());
+    rerender({ open: false, reducedMotion: false });
+    expect(result.current.top).toBe(640);
+
+    // Die Transition entfällt; ein `transitionend` käme nicht mehr.
+    rerender({ open: false, reducedMotion: true });
+    expect(result.current.top).toBe(0);
+  });
+
+  it('legt Schublade und Dokument nach einem Wechsel über md bei offener Schublade nach oben', () => {
+    const scrollToSpy = vi.spyOn(globalThis, 'scrollTo').mockImplementation(() => {});
     const { result, rerender } = renderHook(
       ({ persistent }) => useMobileDrawerPlacement(true, persistent, false),
       { initialProps: { persistent: false } },
@@ -81,9 +110,11 @@ describe('useMobileDrawerPlacement', () => {
     expect(result.current.top).toBeUndefined();
     expect(document.documentElement.style.overflow).toBe('');
 
-    scrollTo(0);
+    scrollToSpy.mockClear();
     rerender({ persistent: false });
     expect(result.current.top).toBe(0);
+    expect(scrollToSpy).toHaveBeenLastCalledWith({ top: 0, behavior: 'instant' });
     expect(document.documentElement.style.overflow).toBe('hidden');
+    scrollToSpy.mockRestore();
   });
 });

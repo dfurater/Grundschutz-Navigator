@@ -127,13 +127,17 @@ test('legt einen offenen Drawer nach einem Wechsel über md und zurück wieder u
   window.scrollTo(0, HEIGHT);
   const aside = await openDrawer(shell);
 
+  // Gewartet wird, bis React den Wechsel verarbeitet hat (`inert` am
+  // Hauptbereich), nicht nur das CSS: Sonst sähe die Shell `md` nie.
+  const main = shell.querySelector('main')!;
   await page.viewport(1024, HEIGHT);
-  await expect.poll(() => getComputedStyle(aside).position).toBe('relative');
+  await expect.poll(() => main.inert).toBe(false);
   await page.viewport(WIDTH, HEIGHT);
-  await expect.poll(() => getComputedStyle(aside).position).toBe('absolute');
+  await expect.poll(() => main.inert).toBe(true);
 
   expect(shell.querySelector('[data-testid="mobile-nav-backdrop"]')).not.toBeNull();
   await expect.poll(() => aside.getBoundingClientRect().top).toBe(HEADER_HEIGHT);
+  expect(window.scrollY).toBe(0);
 });
 
 test('lässt die Seitenleiste ab md neben dem Inhalt in voller Höhe stehen', async () => {
