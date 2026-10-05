@@ -17,17 +17,9 @@ const control = {
   title: 'Testkontrolle',
 } as Control;
 
-function getBody(): HTMLBodyElement {
-  const body = document.querySelector('body');
-  if (!(body instanceof HTMLBodyElement)) {
-    throw new Error('Test-DOM hat kein body-Element');
-  }
-  return body;
-}
-
 describe('CatalogToolbar', () => {
   afterEach(() => {
-    getBody().style.overflow = '';
+    document.documentElement.style.overflow = '';
   });
 
   it('renders title and counts and delegates selection actions', () => {
@@ -95,13 +87,13 @@ describe('CatalogToolbar', () => {
     );
     const view = render(toolbar(false));
     fireEvent.click(screen.getByRole('button', { name: 'Filter anzeigen' }));
-    expect(getBody().style.overflow).toBe('hidden');
+    expect(document.documentElement.style.overflow).toBe('hidden');
 
     view.rerender(toolbar(true));
 
     expect(screen.queryByRole('button', { name: 'Filter anzeigen' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'CSV exportieren' })).toBeNull();
-    expect(getBody().style.overflow).toBe('');
+    expect(document.documentElement.style.overflow).toBe('');
 
     view.rerender(toolbar(false));
 
@@ -155,7 +147,7 @@ describe('CatalogToolbar', () => {
   });
 
   it('unmounts open mobile sheets at the desktop breakpoint', () => {
-    getBody().style.overflow = 'scroll';
+    document.documentElement.style.overflow = 'scroll';
     const props = {
       title: 'Alle Kontrollen',
       filteredCount: 1,
@@ -175,14 +167,14 @@ describe('CatalogToolbar', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Filter anzeigen' }));
     expect(screen.getByRole('button', { name: 'Filteraktion' })).toBeInTheDocument();
-    expect(getBody().style.overflow).toBe('hidden');
+    expect(document.documentElement.style.overflow).toBe('hidden');
 
     view.rerender(<CatalogToolbar {...props} isDesktop />);
 
     expect(
       screen.queryByRole('button', { name: 'Filteraktion' }),
     ).not.toBeInTheDocument();
-    expect(getBody().style.overflow).toBe('scroll');
+    expect(document.documentElement.style.overflow).toBe('scroll');
 
     view.rerender(<CatalogToolbar {...props} isDesktop={false} />);
     expect(
@@ -193,14 +185,14 @@ describe('CatalogToolbar', () => {
     expect(
       screen.getByRole('heading', { name: 'Exportieren als CSV' }),
     ).toBeInTheDocument();
-    expect(getBody().style.overflow).toBe('hidden');
+    expect(document.documentElement.style.overflow).toBe('hidden');
 
     view.rerender(<CatalogToolbar {...props} isDesktop />);
 
     expect(
       screen.queryByRole('heading', { name: 'Exportieren als CSV' }),
     ).not.toBeInTheDocument();
-    expect(getBody().style.overflow).toBe('scroll');
+    expect(document.documentElement.style.overflow).toBe('scroll');
   });
 
   it('mounts the export menu only on desktop (GSPP-268)', () => {
