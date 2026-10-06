@@ -163,10 +163,16 @@ test('lässt den Drawer beim Schließen während des Hereingleitens unter dem Ap
   window.scrollTo(0, HEIGHT);
   const aside = shell.querySelector('aside')!;
   shell.querySelector<HTMLButtonElement>('button[aria-controls]')!.click();
+  await Promise.resolve();
   // Geschlossen wird mitten in der Einfahrt; ganz am Anfang gäbe es keine
-  // Strecke, die umgekehrt werden könnte.
-  await expect.poll(() => aside.getBoundingClientRect().left).toBeGreaterThan(-200);
-  expect(translateTransition(aside)).toBeDefined();
+  // Strecke, die umgekehrt werden könnte. Die Einfahrt steht dafür still auf
+  // halber Dauer, unabhängig vom Takt.
+  const slideIn = translateTransition(aside);
+  expect(slideIn).toBeDefined();
+  slideIn!.pause();
+  slideIn!.currentTime = Number(slideIn!.effect!.getComputedTiming().duration) / 2;
+  expect(aside.getBoundingClientRect().left).toBeGreaterThan(-256);
+  expect(aside.getBoundingClientRect().left).toBeLessThan(0);
 
   // Das Schließen kehrt die laufende Einfahrt um; deren `transitioncancel`
   // kommt erst danach an und darf das Hinausgleiten nicht beenden.
