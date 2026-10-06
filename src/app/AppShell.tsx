@@ -118,10 +118,12 @@ export function AppShell() {
     error,
   } = useCatalog();
 
+  const drawerRef = useRef<HTMLElement>(null);
   const drawerPlacement = useMobileDrawerPlacement(
     sideNavOpen,
     isPersistentNav,
     isSidebarResizing || prefersReducedMotion,
+    drawerRef,
   );
 
   const closeSideNav = () => {
@@ -277,7 +279,7 @@ export function AppShell() {
             absolute left-0 h-[calc(100dvh-3.5rem)] md:relative md:inset-auto md:h-auto
             ${sideNavOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
           `}
-          onTransitionEnd={drawerPlacement.onTransitionEnd}
+          ref={drawerRef}
           style={{
             top: drawerPlacement.top,
             width: sidebarCollapsed ? 44 : sidebarWidth,

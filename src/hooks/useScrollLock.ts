@@ -4,10 +4,9 @@ import { useEffect } from 'react';
 // Reihenfolge enden. Die erste merkt sich den vorherigen Inline-Wert, erst
 // die letzte stellt ihn wieder her — sonst setzte etwa ein später beendetes
 // Overlay `hidden` zurück, obwohl kein Overlay mehr offen ist.
-// Gesperrt wird `html`, nicht `body`: `html` trägt `overflow-x: hidden`
-// (`src/index.css`), daher würde `overflow: hidden` auf `body` den `body` zum
-// eigenen Scrollcontainer machen; der `sticky` App-Kopf klebte dann an ihm und
-// verschwände mit der Dokumentposition aus dem Bild (GSPP-486).
+// Gesperrt wird `html`, das bereits `overflow-x: hidden` trägt
+// (`src/index.css`): So bleibt das Dokument der Scrollbereich, an dem der
+// `sticky` App-Kopf steht, und `body` erhält keinen eigenen (GSPP-486).
 let activeLocks = 0;
 let overflowBeforeLock = '';
 

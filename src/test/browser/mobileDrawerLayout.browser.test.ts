@@ -122,6 +122,100 @@ test('gibt das Dokument nach dem Schließen frei und verlängert es nicht', asyn
   expect(document.documentElement.scrollHeight).toBe(pageHeight);
 });
 
+function translateTransition(element: HTMLElement) {
+  return element.getAnimations().find(
+    (animation) => animation instanceof CSSTransition && animation.transitionProperty === 'translate',
+  );
+}
+
+test('hält den hinausgleitenden Drawer unter dem App-Kopf, wenn die Seite beim Schließen nach oben springt', async () => {
+  const shell = await renderShell(WIDTH);
+  window.scrollTo(0, HEIGHT);
+  const aside = await openDrawer(shell, { animated: true });
+
+  // Das Hinausgleiten wird angehalten, damit die Messung nicht vom Takt abhängt.
+  // React committet das Schließen im Microtask nach dem Klick.
+  closeDrawer(shell);
+  await Promise.resolve();
+  const slide = translateTransition(aside);
+  expect(slide).toBeDefined();
+  slide!.pause();
+
+  // Wie eine Themenwahl im Drawer: Die neue Seite beginnt oben.
+  window.scrollTo(0, 0);
+  await expect.poll(() => aside.style.top).toBe('0px');
+  const box = aside.getBoundingClientRect();
+  expect(box.right).toBeGreaterThan(0);
+  expect(box.top).toBe(HEADER_HEIGHT);
+
+  const slideEnded = new Promise((resolve) => aside.addEventListener('transitionend', resolve, { once: true }));
+  slide!.finish();
+  await slideEnded;
+  await Promise.resolve();
+  expect(aside.getBoundingClientRect().right).toBeLessThanOrEqual(0);
+  window.scrollTo(0, HEIGHT);
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  expect(aside.style.top).toBe('0px');
+});
+
+test('lässt den Drawer beim Schließen während des Hereingleitens unter dem App-Kopf hinausgleiten', async () => {
+  const shell = await renderShell(WIDTH);
+  window.scrollTo(0, HEIGHT);
+  const aside = shell.querySelector('aside')!;
+  shell.querySelector<HTMLButtonElement>('button[aria-controls]')!.click();
+  await Promise.resolve();
+  // Geschlossen wird mitten in der Einfahrt; ganz am Anfang gäbe es keine
+  // Strecke, die umgekehrt werden könnte. Die Einfahrt steht dafür still auf
+  // halber Dauer, unabhängig vom Takt.
+  const slideIn = translateTransition(aside);
+  expect(slideIn).toBeDefined();
+  slideIn!.pause();
+  slideIn!.currentTime = Number(slideIn!.effect!.getComputedTiming().duration) / 2;
+  expect(aside.getBoundingClientRect().left).toBeGreaterThan(-256);
+  expect(aside.getBoundingClientRect().left).toBeLessThan(0);
+
+  // Das Schließen kehrt die laufende Einfahrt um; deren `transitioncancel`
+  // kommt erst danach an und darf das Hinausgleiten nicht beenden.
+  closeDrawer(shell);
+  await Promise.resolve();
+  const slide = translateTransition(aside);
+  expect(slide).toBeDefined();
+  slide!.pause();
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+
+  expect(aside.style.top).toBe(`${HEIGHT}px`);
+  const box = aside.getBoundingClientRect();
+  expect(box.right).toBeGreaterThan(0);
+  expect(box.top).toBe(HEADER_HEIGHT);
+
+  const slideEnded = new Promise((resolve) => aside.addEventListener('transitionend', resolve, { once: true }));
+  slide!.finish();
+  await slideEnded;
+  await expect.poll(() => aside.style.top).toBe('0px');
+});
+
+test('legt einen Drawer, der vor dem ersten Frame wieder schließt, oben ab', async () => {
+  const shell = await renderShell(WIDTH);
+  window.scrollTo(0, HEIGHT);
+  const aside = shell.querySelector('aside')!;
+  const main = shell.querySelector('main')!;
+  const menuButton = shell.querySelector<HTMLButtonElement>('button[aria-controls]')!;
+
+  // Öffnen und Schließen im selben Task: Ohne Frame dazwischen beginnt
+  // keine Translate-Transition, und kein `transitionend` folgt.
+  flushSync(() => menuButton.click());
+  expect(main.inert).toBe(true);
+  flushSync(() => closeDrawer(shell));
+  expect(main.inert).toBe(false);
+
+  await expect.poll(() => aside.style.top).toBe('0px');
+  expect(translateTransition(aside)).toBeUndefined();
+  window.scrollTo(0, HEIGHT / 2);
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  expect(aside.style.top).toBe('0px');
+});
+
 test('verlängert eine verkürzte Seite beim Schließen während eines aktiven Resizes nicht', async () => {
   const shell = await renderShell(1024);
   const aside = shell.querySelector('aside')!;
