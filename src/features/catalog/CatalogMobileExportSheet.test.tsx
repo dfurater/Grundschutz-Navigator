@@ -19,22 +19,14 @@ const secondControl = {
 
 const mockedDownloadCSV = vi.mocked(downloadCSV);
 
-function getBody(): HTMLBodyElement {
-  const body = document.querySelector('body');
-  if (!(body instanceof HTMLBodyElement)) {
-    throw new Error('Test-DOM hat kein body-Element');
-  }
-  return body;
-}
-
 describe('CatalogMobileExportSheet', () => {
   beforeEach(() => {
     mockedDownloadCSV.mockReset();
-    getBody().style.overflow = 'clip';
+    document.documentElement.style.overflow = 'clip';
   });
 
   afterEach(() => {
-    getBody().style.overflow = '';
+    document.documentElement.style.overflow = '';
   });
 
   it('traps focus, closes on Escape, restores focus and restores scroll', () => {
@@ -54,7 +46,7 @@ describe('CatalogMobileExportSheet', () => {
     expect(
       screen.getByRole('button', { name: 'Aktuelle Ansicht (1)' }),
     ).toHaveFocus();
-    expect(getBody().style.overflow).toBe('hidden');
+    expect(document.documentElement.style.overflow).toBe('hidden');
 
     fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' });
 
@@ -62,7 +54,7 @@ describe('CatalogMobileExportSheet', () => {
       screen.queryByRole('heading', { name: 'Exportieren als CSV' }),
     ).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
-    expect(getBody().style.overflow).toBe('clip');
+    expect(document.documentElement.style.overflow).toBe('clip');
   });
 
   it('closes when its backdrop is clicked', () => {

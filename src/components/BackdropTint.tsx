@@ -1,15 +1,23 @@
 export interface BackdropTintProps {
-  /** Farbe der Abdunklung, z. B. `bg-black/30`. */
+  /**
+ * Abdunklung des festen Hintergrunds der mobilen Bottom Sheets als absolut
+ * positioniertes Kind. Ein festes oder sticky Element, das bis zum unteren
+ * Bildschirmrand reicht, lässt Safari seine Leiste mit einer undurchsichtigen
+ * Fläche füllen, unabhängig von seiner Hintergrundfarbe; bei den Sheets liegt
+ * dort das Sheet selbst. Der Navigations-Drawer ist weder fest noch sticky und
+ * verwendet diese Komponente nicht (GSPP-486).
+ */
   readonly className: string;
 }
 
 /**
- * Abdunklung eines festen Hintergrunds (Drawer, Bottom Sheets) als absolut
- * positioniertes Kind. Safari 26 färbt seine Liquid-Glass-Leiste mit der
- * Hintergrundfarbe eines festen Elements, das den unteren Rand in voller
- * Breite berührt, und zeigt dort dann keinen Seiteninhalt mehr. Auf einem
- * Kind liest Safari die Farbe nicht; das feste Element selbst bleibt deshalb
- * ohne eigene Hintergrundfarbe (GSPP-447, iPhone 16 Pro, iOS 27.0.1).
+ * Abdunklung des festen Hintergrunds der mobilen Bottom Sheets als absolut
+ * positioniertes Kind. Ein festes Element, das bis zum unteren Bildschirmrand
+ * reicht, lässt Safari seine Leiste mit einer undurchsichtigen Fläche füllen,
+ * unabhängig von seiner Hintergrundfarbe; die Lage der Tönung verhindert das
+ * nicht. Bei den Sheets liegt dort ohnehin das Sheet selbst. Der
+ * Navigations-Drawer ist deshalb nicht fest positioniert und verwendet diese
+ * Komponente nicht (GSPP-486).
  */
 export function BackdropTint({ className }: BackdropTintProps) {
   return <span aria-hidden="true" className={`absolute inset-0 ${className}`} />;
