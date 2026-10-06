@@ -48,7 +48,11 @@ describe('useMobileDrawerPlacement', () => {
     expect(document.documentElement.style.overflow).toBe('');
 
     // Transitionen von Nachfahren zählen nicht.
-    const foreign = { target: document.createElement('div'), currentTarget: document.createElement('aside') };
+    const foreign = {
+      target: document.createElement('div'),
+      currentTarget: document.createElement('aside'),
+      propertyName: 'translate',
+    };
     act(() => result.current.onTransitionEnd(foreign as unknown as TransitionEvent<HTMLElement>));
     expect(result.current.top).toBe(640);
 
