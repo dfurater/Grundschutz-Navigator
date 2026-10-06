@@ -118,7 +118,11 @@ export function AppShell() {
     error,
   } = useCatalog();
 
-  const drawerPlacement = useMobileDrawerPlacement(sideNavOpen, isPersistentNav, prefersReducedMotion);
+  const drawerPlacement = useMobileDrawerPlacement(
+    sideNavOpen,
+    isPersistentNav,
+    isSidebarResizing || prefersReducedMotion,
+  );
 
   const closeSideNav = () => {
     setSideNavOpen(false);

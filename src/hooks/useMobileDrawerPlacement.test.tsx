@@ -7,9 +7,9 @@ function scrollTo(y: number) {
   Object.defineProperty(globalThis, 'scrollY', { configurable: true, value: y });
 }
 
-function ownTransitionEnd(): TransitionEvent<HTMLElement> {
+function ownTransitionEnd(propertyName: string): TransitionEvent<HTMLElement> {
   const element = document.createElement('aside');
-  return { target: element, currentTarget: element } as unknown as TransitionEvent<HTMLElement>;
+  return { target: element, currentTarget: element, propertyName } as unknown as TransitionEvent<HTMLElement>;
 }
 
 describe('useMobileDrawerPlacement', () => {
@@ -52,7 +52,12 @@ describe('useMobileDrawerPlacement', () => {
     act(() => result.current.onTransitionEnd(foreign as unknown as TransitionEvent<HTMLElement>));
     expect(result.current.top).toBe(640);
 
-    act(() => result.current.onTransitionEnd(ownTransitionEnd()));
+    // Die Breiten-Transition läuft gleichzeitig, darf den Drawer aber nicht
+    // vor dem Ende seiner Translate-Transition zurücksetzen.
+    act(() => result.current.onTransitionEnd(ownTransitionEnd('width')));
+    expect(result.current.top).toBe(640);
+
+    act(() => result.current.onTransitionEnd(ownTransitionEnd('translate')));
     expect(result.current.top).toBe(0);
   });
 
@@ -71,29 +76,29 @@ describe('useMobileDrawerPlacement', () => {
 
   it('hält die geschlossene Schublade oben, wenn Reduced Motion danach endet', () => {
     const { result, rerender } = renderHook(
-      ({ open, reducedMotion }) => useMobileDrawerPlacement(open, false, reducedMotion),
-      { initialProps: { open: true, reducedMotion: true } },
+      ({ open, transitionDisabled }) => useMobileDrawerPlacement(open, false, transitionDisabled),
+      { initialProps: { open: true, transitionDisabled: true } },
     );
     scrollTo(640);
     act(() => result.current.captureOffset());
-    rerender({ open: false, reducedMotion: true });
-    rerender({ open: false, reducedMotion: false });
+    rerender({ open: false, transitionDisabled: true });
+    rerender({ open: false, transitionDisabled: false });
 
     expect(result.current.top).toBe(0);
   });
 
   it('legt die Schublade oben ab, wenn Reduced Motion während des Hinausgleitens beginnt', () => {
     const { result, rerender } = renderHook(
-      ({ open, reducedMotion }) => useMobileDrawerPlacement(open, false, reducedMotion),
-      { initialProps: { open: true, reducedMotion: false } },
+      ({ open, transitionDisabled }) => useMobileDrawerPlacement(open, false, transitionDisabled),
+      { initialProps: { open: true, transitionDisabled: false } },
     );
     scrollTo(640);
     act(() => result.current.captureOffset());
-    rerender({ open: false, reducedMotion: false });
+    rerender({ open: false, transitionDisabled: false });
     expect(result.current.top).toBe(640);
 
     // Die Transition entfällt; ein `transitionend` käme nicht mehr.
-    rerender({ open: false, reducedMotion: true });
+    rerender({ open: false, transitionDisabled: true });
     expect(result.current.top).toBe(0);
   });
 
