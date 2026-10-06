@@ -122,6 +122,24 @@ test('gibt das Dokument nach dem Schließen frei und verlängert es nicht', asyn
   expect(document.documentElement.scrollHeight).toBe(pageHeight);
 });
 
+test('hält den hinausgleitenden Drawer unter dem App-Kopf, wenn die Seite beim Schließen nach oben springt', async () => {
+  const shell = await renderShell(WIDTH);
+  window.scrollTo(0, HEIGHT);
+  const aside = await openDrawer(shell, { animated: true });
+
+  // Wie eine Themenwahl im Drawer: Die neue Seite beginnt oben.
+  closeDrawer(shell);
+  window.scrollTo(0, 0);
+  await expect.poll(() => aside.style.top).toBe('0px');
+
+  const box = aside.getBoundingClientRect();
+  expect(box.right).toBeGreaterThan(0);
+  expect(box.top).toBe(HEADER_HEIGHT);
+
+  await expect.poll(() => aside.getBoundingClientRect().right).toBeLessThanOrEqual(0);
+  expect(aside.style.top).toBe('0px');
+});
+
 test('verlängert eine verkürzte Seite beim Schließen während eines aktiven Resizes nicht', async () => {
   const shell = await renderShell(1024);
   const aside = shell.querySelector('aside')!;

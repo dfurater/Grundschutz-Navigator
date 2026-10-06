@@ -65,6 +65,45 @@ describe('useMobileDrawerPlacement', () => {
     expect(result.current.top).toBe(0);
   });
 
+  it('hält die hinausgleitende Schublade an der Dokumentposition, wenn die neue Seite im selben Commit scrollt', () => {
+    const { result, rerender } = renderHook(
+      ({ open }) => useMobileDrawerPlacement(open, false, false),
+      { initialProps: { open: false } },
+    );
+    scrollTo(640);
+    act(() => result.current.captureOffset());
+    rerender({ open: true });
+
+    // Themenwahl im Drawer: Die Detailseite scrollt in ihrem Layout-Effekt
+    // auf 0, bevor die Shell ihre Effekte ausführt.
+    scrollTo(0);
+    rerender({ open: false });
+    expect(result.current.top).toBe(0);
+  });
+
+  it('führt die hinausgleitende Schublade mit der Dokumentposition nach, bis sie verschwunden ist', () => {
+    const { result, rerender } = renderHook(
+      ({ open }) => useMobileDrawerPlacement(open, false, false),
+      { initialProps: { open: false } },
+    );
+    scrollTo(640);
+    act(() => result.current.captureOffset());
+    rerender({ open: true });
+    rerender({ open: false });
+
+    scrollTo(320);
+    act(() => { globalThis.dispatchEvent(new Event('scroll')); });
+    expect(result.current.top).toBe(320);
+
+    act(() => result.current.onTransitionEnd(ownTransitionEnd('translate')));
+    expect(result.current.top).toBe(0);
+
+    // Die verschwundene Schublade folgt nicht mehr; sie bleibt oben.
+    scrollTo(480);
+    act(() => { globalThis.dispatchEvent(new Event('scroll')); });
+    expect(result.current.top).toBe(0);
+  });
+
   it('legt die geschlossene Schublade ohne Überblendung sofort oben ab', () => {
     const { result, rerender } = renderHook(
       ({ open }) => useMobileDrawerPlacement(open, false, true),
