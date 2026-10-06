@@ -9,14 +9,6 @@ vi.mock('./FilterPanel', () => ({
 
 const filterPanelProps = {} as FilterPanelProps;
 
-function getBody(): HTMLBodyElement {
-  const body = document.querySelector('body');
-  if (!(body instanceof HTMLBodyElement)) {
-    throw new Error('Test-DOM hat kein body-Element');
-  }
-  return body;
-}
-
 function touchEvent(type: string, clientY: number): TouchEvent {
   const event = new Event(type, { bubbles: true, cancelable: true });
   Object.defineProperty(event, 'touches', {
@@ -27,11 +19,11 @@ function touchEvent(type: string, clientY: number): TouchEvent {
 
 describe('CatalogMobileFilterSheet', () => {
   beforeEach(() => {
-    getBody().style.overflow = 'scroll';
+    document.documentElement.style.overflow = 'scroll';
   });
 
   afterEach(() => {
-    getBody().style.overflow = '';
+    document.documentElement.style.overflow = '';
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
@@ -44,13 +36,13 @@ describe('CatalogMobileFilterSheet', () => {
     fireEvent.click(trigger);
 
     expect(screen.getByRole('button', { name: 'Filteraktion' })).toHaveFocus();
-    expect(getBody().style.overflow).toBe('hidden');
+    expect(document.documentElement.style.overflow).toBe('hidden');
 
     fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' });
 
     expect(screen.queryByRole('button', { name: 'Filteraktion' })).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
-    expect(getBody().style.overflow).toBe('scroll');
+    expect(document.documentElement.style.overflow).toBe('scroll');
   });
 
   it('closes when its backdrop is clicked', () => {

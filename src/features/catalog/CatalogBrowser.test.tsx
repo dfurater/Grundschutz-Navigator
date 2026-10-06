@@ -393,9 +393,9 @@ describe('CatalogBrowser mobile focus restoration', () => {
         <AppShell />
       </MemoryRouter>,
     );
-    const body = document.querySelector('body')!;
+    const root = document.documentElement;
     fireEvent.click(screen.getByRole('button', { name: label }));
-    expect(body.style.overflow).toBe('hidden');
+    expect(root.style.overflow).toBe('hidden');
 
     // Auch ein Klick ohne Button-Fokus muss den abgebauten Sheet-Fokus ablösen.
     const menuButton = screen.getByRole('button', { name: 'Menü öffnen' });
@@ -403,11 +403,13 @@ describe('CatalogBrowser mobile focus restoration', () => {
     fireEvent.click(menuButton);
 
     expect(menuButton).toHaveFocus();
-    expect(body.style.overflow).not.toBe('hidden');
     expect(screen.queryByRole('button', { name: 'Filter anzeigen' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'CSV exportieren' })).not.toBeInTheDocument();
     fireEvent.keyDown(menuButton, { key: 'Escape' });
     expect(menuButton).toHaveFocus();
+    // Die offene Schublade sperrt selbst; erst nach ihrem Schließen zeigt die
+    // freie Seite, dass auch das abgebaute Sheet seine Sperre gelöst hat.
+    expect(root.style.overflow).toBe('');
     expect(screen.queryByText('Exportieren als CSV')).not.toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Filteraktion' })).toHaveLength(1);
     expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
@@ -538,8 +540,8 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
     expect(screen.getByRole('heading', { level: 2, name: control.title })).toHaveFocus();
     expect(globalThis.scrollTo).toHaveBeenLastCalledWith(0, 0);
-    // Keine Body-Sperre: Das Dokument scrollt.
-    expect(document.querySelector('body')?.style.overflow).toBe('');
+    // Keine Scroll-Sperre: Das Dokument scrollt.
+    expect(document.documentElement.style.overflow).toBe('');
   });
 
   it.each([
@@ -676,19 +678,19 @@ describe('CatalogBrowser mobile focus restoration', () => {
     const closedCount = countSheetContent();
     fireEvent.click(screen.getByRole('button', { name: triggerName }));
     expect(countSheetContent()).toBe(closedCount + 1);
-    expect(document.querySelector('body')?.style.overflow).toBe('hidden');
+    expect(document.documentElement.style.overflow).toBe('hidden');
 
     // Browser-Vorwärts auf die Kontrollroute, während das Sheet offen ist.
     fireEvent.click(screen.getByRole('button', { name: 'Vorwärts' }));
 
     expect(screen.getByRole('heading', { level: 2, name: control.title })).toBeInTheDocument();
-    expect(document.querySelector('body')?.style.overflow).toBe('');
+    expect(document.documentElement.style.overflow).toBe('');
 
     fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));
 
     expect(screen.getByRole('button', { name: triggerName })).toBeVisible();
     expect(countSheetContent()).toBe(closedCount);
-    expect(document.querySelector('body')?.style.overflow).toBe('');
+    expect(document.documentElement.style.overflow).toBe('');
   });
 
   it('starts a different topic at the top instead of restoring the previous list position', () => {
