@@ -33,13 +33,13 @@ describe('SearchResultsToolbar', () => {
     const view = render(toolbar(false));
     fireEvent.click(screen.getByRole('button', { name: 'CSV exportieren' }));
     expect(screen.getByText('Exportieren als CSV')).toBeInTheDocument();
-    expect(document.querySelector('body')!.style.overflow).toBe('hidden');
+    expect(document.documentElement.style.overflow).toBe('hidden');
 
     view.rerender(toolbar(true));
 
     expect(screen.queryByRole('button', { name: 'CSV exportieren' })).not.toBeInTheDocument();
     expect(screen.queryByText('Exportieren als CSV')).not.toBeInTheDocument();
-    expect(document.querySelector('body')!.style.overflow).not.toBe('hidden');
+    expect(document.documentElement.style.overflow).not.toBe('hidden');
     view.rerender(toolbar(false));
     expect(screen.getByRole('button', { name: 'CSV exportieren' })).toBeInTheDocument();
     expect(screen.queryByText('Exportieren als CSV')).not.toBeInTheDocument();
