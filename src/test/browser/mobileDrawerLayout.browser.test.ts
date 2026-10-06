@@ -1,61 +1,19 @@
-import { createElement } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { MemoryRouter } from 'react-router';
 import { afterEach, expect, test } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
-import { AppShell } from '@/app/AppShell';
-import { CatalogContext } from '@/state/CatalogContext';
-import { createInitialState, projectPublicState } from '@/state/catalogReducer';
-import { ENTRY_CATALOG_KEY } from '@/domain/sourceRegistry';
-import '@/index.css';
+import {
+  HEADER_HEIGHT,
+  HEIGHT,
+  WIDTH,
+  closeDrawer,
+  openDrawer,
+  renderShell,
+  shortenPage,
+  translateTransition,
+  unmountShell,
+} from './mobileDrawerHarness';
 
-const WIDTH = 402;
-const HEIGHT = 874;
-const HEADER_HEIGHT = 56;
-
-let root: Root | undefined;
-let host: HTMLDivElement | undefined;
-
-afterEach(() => {
-  root?.unmount();
-  host?.remove();
-  root = undefined;
-  host = undefined;
-  window.scrollTo(0, 0);
-});
-
-async function renderShell(width: number) {
-  await page.viewport(width, HEIGHT);
-  host = document.createElement('div');
-  document.body.append(host);
-  root = createRoot(host);
-  const catalogState = { ...projectPublicState(createInitialState(ENTRY_CATALOG_KEY), () => {}), loading: false };
-  flushSync(() => {
-    root?.render(createElement(CatalogContext.Provider, { value: catalogState },
-      createElement(MemoryRouter, { initialEntries: ['/gibt-es-nicht'] }, createElement(AppShell)),
-    ));
-  });
-  // Lange Seite, damit das Dokument wie eine Kontrollliste scrollt.
-  const filler = document.createElement('div');
-  filler.style.height = `${HEIGHT * 3}px`;
-  host.querySelector('#main-content')!.prepend(filler);
-  await document.fonts.ready;
-  return host;
-}
-
-async function openDrawer(shell: HTMLElement, { animated = false } = {}) {
-  shell.querySelector<HTMLButtonElement>('button[aria-controls]')!.click();
-  const aside = shell.querySelector('aside')!;
-  // Der Drawer gleitet per `translate` herein; gemessen wird die Endlage.
-  if (!animated) aside.style.transition = 'none';
-  await expect.poll(() => aside.getBoundingClientRect().left).toBe(0);
-  return aside;
-}
-
-function closeDrawer(shell: HTMLElement) {
-  shell.querySelector<HTMLButtonElement>('button[aria-label="Menü schließen"]')!.click();
-}
+afterEach(unmountShell);
 
 test('rendert den offenen mobilen Drawer ohne festes oder sticky Element, damit Safari seine Leiste nicht füllt', async () => {
   const shell = await renderShell(WIDTH);
@@ -121,12 +79,6 @@ test('gibt das Dokument nach dem Schließen frei und verlängert es nicht', asyn
   await expect.poll(() => aside.style.top).toBe('0px');
   expect(document.documentElement.scrollHeight).toBe(pageHeight);
 });
-
-function translateTransition(element: HTMLElement) {
-  return element.getAnimations().find(
-    (animation) => animation instanceof CSSTransition && animation.transitionProperty === 'translate',
-  );
-}
 
 test('hält den hinausgleitenden Drawer unter dem App-Kopf, wenn die Seite beim Schließen nach oben springt', async () => {
   const shell = await renderShell(WIDTH);
@@ -241,12 +193,7 @@ test('verlängert eine verkürzte Seite beim Schließen während eines aktiven R
   await expect.poll(() => main.inert).toBe(true);
   await expect.poll(() => aside.style.top).toBe(`${openedOffset}px`);
 
-  const filler = shell.querySelector<HTMLElement>('#main-content > div')!;
-  filler.remove();
-  const display = aside.style.display;
-  aside.style.display = 'none';
-  const shortenedPageHeight = document.documentElement.scrollHeight;
-  aside.style.display = display;
+  const shortenedPageHeight = shortenPage(shell, aside);
   expect(shortenedPageHeight).toBeLessThan(longPageHeight);
 
   closeDrawer(shell);
@@ -272,6 +219,35 @@ test('legt einen offenen Drawer nach einem Wechsel über md und zurück wieder u
   expect(shell.querySelector('[data-testid="mobile-nav-backdrop"]')).not.toBeNull();
   await expect.poll(() => aside.getBoundingClientRect().top).toBe(HEADER_HEIGHT);
   expect(window.scrollY).toBe(0);
+});
+
+test('verlängert eine verkürzte Seite nicht, wenn die Breite während des Hinausgleitens über md und zurück wechselt', async () => {
+  const shell = await renderShell(WIDTH);
+  const longPageHeight = document.documentElement.scrollHeight;
+  window.scrollTo(0, longPageHeight - HEIGHT);
+  const openedOffset = window.scrollY;
+  expect(openedOffset).toBeGreaterThan(0);
+  const aside = await openDrawer(shell, { animated: true });
+  expect(aside.style.top).toBe(`${openedOffset}px`);
+
+  // Das Hinausgleiten wird angehalten, damit der Wechsel sicher hineinfällt.
+  closeDrawer(shell);
+  await Promise.resolve();
+  const slide = translateTransition(aside);
+  expect(slide).toBeDefined();
+  slide!.pause();
+
+  // Ab md trägt die Seitenleiste keine Lage; zurück unter md muss die
+  // geschlossene Schublade oben liegen, obwohl kein `transitionend` mehr kommt.
+  await page.viewport(1024, HEIGHT);
+  await expect.poll(() => aside.style.top).toBe('');
+  await page.viewport(WIDTH, HEIGHT);
+  await expect.poll(() => aside.style.top).not.toBe('');
+  expect(aside.style.top).toBe('0px');
+
+  const shortenedPageHeight = shortenPage(shell, aside);
+  expect(shortenedPageHeight).toBeLessThan(openedOffset);
+  expect(document.documentElement.scrollHeight).toBe(shortenedPageHeight);
 });
 
 test('lässt die Seitenleiste ab md neben dem Inhalt in voller Höhe stehen', async () => {
