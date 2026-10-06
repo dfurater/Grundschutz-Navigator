@@ -1,5 +1,5 @@
-import { useLayoutEffect, useState, useSyncExternalStore } from 'react';
-import type { TransitionEvent } from 'react';
+import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react';
+import type { RefObject, TransitionEvent } from 'react';
 import { useScrollLock } from '@/hooks/useScrollLock';
 
 export interface MobileDrawerPlacement {
@@ -8,6 +8,11 @@ export interface MobileDrawerPlacement {
   /** `top` der Schublade; ohne Wert auf der persistenten Navigation. */
   readonly top: number | undefined;
   readonly onTransitionEnd: (event: TransitionEvent<HTMLElement>) => void;
+  readonly onTransitionCancel: (event: TransitionEvent<HTMLElement>) => void;
+}
+
+function isTranslateTransition(animation: Animation) {
+  return 'transitionProperty' in animation && animation.transitionProperty === 'translate';
 }
 
 function subscribeToScroll(onScroll: () => void) {
@@ -30,7 +35,10 @@ function subscribeToNothing() {
  * dem App-Kopf bleibt, folgt `top` bis zum Ende der `translate`-Transition der
  * Dokumentposition (GSPP-490). `useSyncExternalStore` prüft sie nach jedem
  * Commit erneut, erfasst also auch das `scrollTo` einer neuen Seite aus deren
- * Layout-Effekt, und danach jedes Scroll-Ereignis.
+ * Layout-Effekt, und danach jedes Scroll-Ereignis. Das Hinausgleiten endet
+ * mit `transitionend` oder `transitioncancel` der `translate`-Transition; hat
+ * der Browser im nächsten Frame keine solche Transition, etwa weil die
+ * Schublade vor dem ersten Frame wieder geschlossen wurde, endet es dort.
  * Danach geht `top` auf 0 zurück, damit die unsichtbare Schublade eine danach
  * kürzere Seite nicht verlängert. Ohne Überblendung endet keine Transition:
  * Dann geschieht das beim Schließen oder, falls die Einstellung während des
@@ -44,6 +52,8 @@ export function useMobileDrawerPlacement(
   open: boolean,
   persistent: boolean,
   transitionDisabled: boolean,
+  /** Die Schublade selbst; zeigt, ob ihr Hinausgleiten tatsächlich läuft. */
+  drawerRef: RefObject<HTMLElement | null>,
 ): MobileDrawerPlacement {
   const [offset, setOffset] = useState(0);
   const [sliding, setSliding] = useState(false);
@@ -74,18 +84,32 @@ export function useMobileDrawerPlacement(
   );
   const placedTop = sliding ? documentY : offset;
 
+  const finishSliding = () => {
+    setSliding(false);
+    setOffset(0);
+  };
+  useEffect(() => {
+    if (!sliding) return;
+    const frame = requestAnimationFrame(() => {
+      const animations = drawerRef.current?.getAnimations?.();
+      if (animations !== undefined && !animations.some(isTranslateTransition)) finishSliding();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [sliding, drawerRef]);
+  const onTranslateSettled = (event: TransitionEvent<HTMLElement>) => {
+    if (
+      event.target === event.currentTarget
+      && event.propertyName === 'translate'
+      && !open
+    ) {
+      finishSliding();
+    }
+  };
+
   return {
     captureOffset: () => setOffset(window.scrollY),
     top: persistent ? undefined : placedTop,
-    onTransitionEnd: (event) => {
-      if (
-        event.target === event.currentTarget
-        && event.propertyName === 'translate'
-        && !open
-      ) {
-        setSliding(false);
-        setOffset(0);
-      }
-    },
+    onTransitionEnd: onTranslateSettled,
+    onTransitionCancel: onTranslateSettled,
   };
 }
