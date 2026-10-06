@@ -255,7 +255,8 @@ src/                              # Anwendungsquellcode
 │   │   ├── browserEgressGuard.ts         # Playwright-Egress-Guard
 │   │   ├── browserSetup.ts               # Setup der Browser-Lane mit Egress-Prüfung
 │   │   ├── egressOracleContract.d.mts    # Typen der Negativfälle
-│   │   └── egressOracleContract.mjs      # Negativfälle des Egress-Orakels
+│   │   ├── egressOracleContract.mjs      # Negativfälle des Egress-Orakels
+│   │   └── mobileDrawerHarness.ts        # App-Shell-Aufbau der Drawer-Browser-Tests
 │   ├── fixtures/                     # Testfixtures, darunter der NIST-Orakelkorpus
 │   ├── catalogState.ts               # Sammlungsfelder des CatalogState für Komponententests
 │   ├── documentTitle.ts              # Prüft den Seitentitel auf genau ein <title>
