@@ -206,6 +206,24 @@ describe('useMobileDrawerPlacement', () => {
     expect(result.current.top).toBe(0);
   });
 
+  it('legt die Schublade oben ab, wenn die Breite während des Hinausgleitens über md und zurück wechselt', () => {
+    const { result, rerender } = renderHook(
+      ({ open, persistent }) => useMobileDrawerPlacement(open, persistent, false, drawerRef),
+      { initialProps: { open: true, persistent: false } },
+    );
+    scrollTo(640);
+    act(() => result.current.captureOffset());
+    rerender({ open: false, persistent: false });
+    expect(result.current.top).toBe(640);
+
+    // Ab md entfällt das Hinausgleiten; ein `transitionend` käme nicht mehr.
+    rerender({ open: false, persistent: true });
+    expect(result.current.top).toBeUndefined();
+
+    rerender({ open: false, persistent: false });
+    expect(result.current.top).toBe(0);
+  });
+
   it('legt Schublade und Dokument nach einem Wechsel über md bei offener Schublade nach oben', () => {
     const scrollToSpy = vi.spyOn(globalThis, 'scrollTo').mockImplementation(() => {});
     const { result, rerender } = renderHook(

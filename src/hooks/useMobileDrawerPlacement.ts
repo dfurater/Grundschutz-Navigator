@@ -46,9 +46,9 @@ function subscribeToNothing() {
  * Frame keine solche Transition, etwa weil die Schublade vor dem ersten Frame
  * wieder geschlossen wurde, endet es dort.
  * Danach geht `top` auf 0 zurück, damit die unsichtbare Schublade eine danach
- * kürzere Seite nicht verlängert. Ohne Überblendung endet keine Transition:
- * Dann geschieht das beim Schließen oder, falls die Einstellung während des
- * Hinausgleitens wechselt, in diesem Moment.
+ * kürzere Seite nicht verlängert. Ohne Überblendung oder ab `md` endet keine
+ * Transition: Dann geschieht das beim Schließen oder, falls Einstellung oder
+ * Breite während des Hinausgleitens wechseln, in diesem Moment.
  * Ab `md` scrollt das Dokument nicht, und der Browser setzt seine Position zu
  * einem nicht vorhersagbaren Zeitpunkt auf 0. Kehrt die Breite bei offener
  * Schublade unter `md` zurück, beginnen Schublade und Dokument deshalb oben,
@@ -71,7 +71,7 @@ export function useMobileDrawerPlacement(
   ) {
     setPlacedFor({ open, persistent, transitionDisabled });
     setSliding(!open && !persistent && !transitionDisabled && (placedFor.open || sliding));
-    if (!open && transitionDisabled) setOffset(0);
+    if (!open && (persistent || transitionDisabled)) setOffset(0);
     if (open && placedFor.persistent && !persistent) setOffset(0);
   }
 
