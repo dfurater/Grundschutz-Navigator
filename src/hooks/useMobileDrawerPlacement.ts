@@ -29,17 +29,17 @@ export interface MobileDrawerPlacement {
 export function useMobileDrawerPlacement(
   open: boolean,
   persistent: boolean,
-  reducedMotion: boolean,
+  transitionDisabled: boolean,
 ): MobileDrawerPlacement {
   const [offset, setOffset] = useState(0);
-  const [placedFor, setPlacedFor] = useState({ open, persistent, reducedMotion });
+  const [placedFor, setPlacedFor] = useState({ open, persistent, transitionDisabled });
   if (
     placedFor.open !== open
     || placedFor.persistent !== persistent
-    || placedFor.reducedMotion !== reducedMotion
+    || placedFor.transitionDisabled !== transitionDisabled
   ) {
-    setPlacedFor({ open, persistent, reducedMotion });
-    if (!open && reducedMotion) setOffset(0);
+    setPlacedFor({ open, persistent, transitionDisabled });
+    if (!open && transitionDisabled) setOffset(0);
     if (open && placedFor.persistent && !persistent) setOffset(0);
   }
 
@@ -55,7 +55,13 @@ export function useMobileDrawerPlacement(
     captureOffset: () => setOffset(window.scrollY),
     top: persistent ? undefined : offset,
     onTransitionEnd: (event) => {
-      if (event.target === event.currentTarget && !open) setOffset(0);
+      if (
+        event.target === event.currentTarget
+        && event.propertyName === 'translate'
+        && !open
+      ) {
+        setOffset(0);
+      }
     },
   };
 }

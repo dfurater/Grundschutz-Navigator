@@ -122,6 +122,46 @@ test('gibt das Dokument nach dem Schließen frei und verlängert es nicht', asyn
   expect(document.documentElement.scrollHeight).toBe(pageHeight);
 });
 
+test('verlängert eine verkürzte Seite beim Schließen während eines aktiven Resizes nicht', async () => {
+  const shell = await renderShell(1024);
+  const aside = shell.querySelector('aside')!;
+  const resizeHandle = shell.querySelector<HTMLButtonElement>('button[aria-label="Sidebar-Breite anpassen"]')!;
+  resizeHandle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, clientX: 256 }));
+
+  await page.viewport(WIDTH, HEIGHT);
+  await expect.poll(() => getComputedStyle(resizeHandle).display).toBe('none');
+  expect(aside.style.transition).toBe('none');
+
+  const main = shell.querySelector('main')!;
+  const menuButton = shell.querySelector<HTMLButtonElement>('button[aria-controls]')!;
+  menuButton.click();
+  await expect.poll(() => main.inert).toBe(true);
+  closeDrawer(shell);
+  await expect.poll(() => main.inert).toBe(false);
+
+  const longPageHeight = document.documentElement.scrollHeight;
+  window.scrollTo(0, longPageHeight - HEIGHT);
+  const openedOffset = window.scrollY;
+  expect(openedOffset).toBeGreaterThan(0);
+  menuButton.click();
+  await expect.poll(() => main.inert).toBe(true);
+  await expect.poll(() => aside.style.top).toBe(`${openedOffset}px`);
+
+  const filler = shell.querySelector<HTMLElement>('#main-content > div')!;
+  filler.remove();
+  const display = aside.style.display;
+  aside.style.display = 'none';
+  const shortenedPageHeight = document.documentElement.scrollHeight;
+  aside.style.display = display;
+  expect(shortenedPageHeight).toBeLessThan(longPageHeight);
+
+  closeDrawer(shell);
+  await expect.poll(() => aside.style.top).toBe('0px');
+  expect(document.documentElement.scrollHeight).toBe(shortenedPageHeight);
+
+  document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+});
+
 test('legt einen offenen Drawer nach einem Wechsel über md und zurück wieder unter den App-Kopf', async () => {
   const shell = await renderShell(WIDTH);
   window.scrollTo(0, HEIGHT);
