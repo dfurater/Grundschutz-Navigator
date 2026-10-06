@@ -10,7 +10,6 @@ import {
 } from 'react-router';
 import { HeaderBar } from '@/components/HeaderBar';
 import { TreeNav } from '@/components/TreeNav';
-import { BackdropTint } from '@/components/BackdropTint';
 import { Footer } from '@/components/Footer';
 import { ScopeSwitcher } from '@/components/ScopeSwitcher';
 import type { ScopeSwitcherItem } from '@/components/ScopeSwitcher';
@@ -24,6 +23,7 @@ import { useCatalog } from '@/hooks/useCatalog';
 import { useDragToResize } from '@/hooks/useDragToResize';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
+import { useMobileDrawerPlacement } from '@/hooks/useMobileDrawerPlacement';
 import { OWN_SCROLL_AREA_QUERY, useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
 import { CatalogBrowser } from '@/features/catalog/CatalogBrowser';
 import { VocabularyNamespacePage } from '@/features/vocabularies/VocabularyNamespacePage';
@@ -117,6 +117,14 @@ export function AppShell() {
     loading,
     error,
   } = useCatalog();
+
+  const drawerRef = useRef<HTMLElement>(null);
+  const drawerPlacement = useMobileDrawerPlacement(
+    sideNavOpen,
+    isPersistentNav,
+    isSidebarResizing || prefersReducedMotion,
+    drawerRef,
+  );
 
   const closeSideNav = () => {
     setSideNavOpen(false);
@@ -238,22 +246,28 @@ export function AppShell() {
         onMenuToggle={() => {
           // Safari gibt Klicks keinen Button-Fokus; main wird beim Öffnen inert.
           if (!isPersistentNav) menuButtonRef.current?.focus({ preventScroll: true });
+          drawerPlacement.captureOffset();
           setSideNavOpen((prev) => !prev);
           if (sidebarCollapsed) setSidebarCollapsed(false);
         }}
       />
 
       <div className="flex-1 min-w-0 flex md:overflow-hidden relative">
-        {/* Backdrop for mobile nav */}
+        {/* Mobil sind Abdunklung und Schublade weder fest noch sticky: Ein
+            solches Element bis zum unteren Bildschirmrand lässt Safari seine
+            Leiste mit einer undurchsichtigen Fläche füllen. Beide liegen
+            absolut im Inhaltsbereich; die Schublade beginnt an der
+            Dokumentposition beim Öffnen und füllt den sichtbaren Bereich unter
+            dem App-Kopf, die Scroll-Sperre hält sie dort
+            (`useMobileDrawerPlacement`). Sie liegt mit
+            `z-[25]` unter dem App-Kopf (`z-30`). */}
         {sideNavOpen && (
           <div
-            className="fixed inset-0 z-20 md:hidden"
+            className="absolute inset-0 z-20 bg-black/30 md:hidden"
             data-testid="mobile-nav-backdrop"
             onClick={closeSideNav}
             aria-hidden="true"
-          >
-            <BackdropTint className="bg-black/30" />
-          </div>
+          />
         )}
 
         {/* Sidebar / Mobile Drawer */}
@@ -261,11 +275,13 @@ export function AppShell() {
           id={sideNavId}
           inert={!isPersistentNav && !sideNavOpen}
           className={`
-            bg-white border-r border-slate-200 flex shrink-0 z-30 overflow-hidden
-            fixed inset-y-0 left-0 top-14 md:relative md:inset-auto
+            bg-white border-r border-slate-200 flex shrink-0 z-[25] overflow-hidden md:z-30
+            absolute left-0 h-[calc(100dvh-3.5rem)] md:relative md:inset-auto md:h-auto
             ${sideNavOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
           `}
+          ref={drawerRef}
           style={{
+            top: drawerPlacement.top,
             width: sidebarCollapsed ? 44 : sidebarWidth,
             transition: isSidebarResizing || prefersReducedMotion
               ? 'none'

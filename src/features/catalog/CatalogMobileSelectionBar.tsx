@@ -1,7 +1,9 @@
+import { useContext } from 'react';
 import type { Control } from '@/domain/models';
 import { Button } from '@/components/Button';
 import { IconDownload } from '@/components/icons';
 import { downloadCSV } from '@/features/export/csvExport';
+import { MobileNavigationContext } from '@/state/MobileNavigationContext';
 
 interface CatalogMobileSelectionBarProps {
   readonly checkedIds: ReadonlySet<string>;
@@ -14,6 +16,10 @@ export function CatalogMobileSelectionBar({
   allControls,
   onDone,
 }: CatalogMobileSelectionBarProps) {
+  // Bei offener mobiler Navigation tritt die feste Leiste zurück: Sie läge
+  // sonst über der Schublade, und ein festes Element am unteren Rand lässt
+  // Safari seine Leiste füllen. Die Auswahl bleibt beim Aufrufer erhalten.
+  const mobileNavigationOpen = useContext(MobileNavigationContext);
   const exportSelected = () => {
     downloadCSV(
       allControls.filter((control) => checkedIds.has(control.id)),
@@ -21,6 +27,8 @@ export function CatalogMobileSelectionBar({
     );
     onDone();
   };
+
+  if (mobileNavigationOpen) return null;
 
   const count = checkedIds.size;
 

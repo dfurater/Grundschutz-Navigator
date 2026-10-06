@@ -327,6 +327,40 @@ describe('AppShell', () => {
     expect(container.querySelector('aside')).toHaveStyle({ transition: 'none' });
   });
 
+  it('setzt den Drawer beim Schließen während eines aktiven Resizes sofort zurück', () => {
+    const originalScrollY = Object.getOwnPropertyDescriptor(globalThis, 'scrollY');
+    const scrollToSpy = vi.spyOn(globalThis, 'scrollTo').mockImplementation(() => {});
+    let persistent = true;
+    mockedUseMediaQuery.mockImplementation((query) => query === '(min-width: 768px)' && persistent);
+    const app = () => <MemoryRouter><AppShell /></MemoryRouter>;
+
+    try {
+      const view = render(app());
+      const sidebar = view.container.querySelector('aside')!;
+      fireEvent.mouseDown(screen.getByRole('button', { name: 'Sidebar-Breite anpassen' }), {
+        button: 0,
+        clientX: 320,
+      });
+
+      persistent = false;
+      view.rerender(app());
+      expect(sidebar).toHaveStyle({ transition: 'none' });
+
+      Object.defineProperty(globalThis, 'scrollY', { configurable: true, value: 640 });
+      fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+      expect(sidebar).toHaveStyle({ top: '640px' });
+
+      fireEvent.click(screen.getByRole('button', { name: 'Menü schließen' }));
+
+      expect(sidebar).toHaveStyle({ top: '0px' });
+    } finally {
+      fireEvent.mouseUp(document);
+      scrollToSpy.mockRestore();
+      if (originalScrollY) Object.defineProperty(globalThis, 'scrollY', originalScrollY);
+      else Reflect.deleteProperty(globalThis, 'scrollY');
+    }
+  });
+
   it('uses focus-visible rings for sidebar controls and the 404 link', () => {
     mockedUseMediaQuery.mockImplementation((query) => query === '(min-width: 768px)');
     const { container } = render(
