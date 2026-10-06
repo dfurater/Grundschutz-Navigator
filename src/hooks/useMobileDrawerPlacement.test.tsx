@@ -1,6 +1,5 @@
 import { act, render, renderHook } from '@testing-library/react';
 import { useLayoutEffect } from 'react';
-import type { TransitionEvent } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useMobileDrawerPlacement } from './useMobileDrawerPlacement';
 
@@ -8,22 +7,42 @@ function scrollTo(y: number) {
   Object.defineProperty(globalThis, 'scrollY', { configurable: true, value: y });
 }
 
-function ownTransitionEnd(propertyName: string): TransitionEvent<HTMLElement> {
-  const element = document.createElement('aside');
-  return { target: element, currentTarget: element, propertyName } as unknown as TransitionEvent<HTMLElement>;
+function scrollDocument(y: number) {
+  scrollTo(y);
+  act(() => { globalThis.dispatchEvent(new Event('scroll')); });
 }
 
-// Ohne Element prüft der Hook kein Hinausgleiten; die Fälle mit Element setzen es.
 const drawerRef: { current: HTMLElement | null } = { current: null };
+
+/** Schublade mit den Animationen, die `getAnimations` meldet. */
+function drawerWith(animations: { readonly transitionProperty: string }[]) {
+  const element = document.createElement('aside');
+  element.getAnimations = () => animations as unknown as Animation[];
+  return element;
+}
+
+function dispatchTransition(type: 'transitionend' | 'transitioncancel', target: Element, propertyName = 'translate') {
+  const event = new Event(type, { bubbles: true });
+  Object.defineProperty(event, 'propertyName', { value: propertyName });
+  act(() => { target.dispatchEvent(event); });
+}
 
 function nextFrame() {
   return act(() => new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()); }));
 }
 
-function drawerWith(animations: Partial<Animation>[]) {
-  const element = document.createElement('aside');
-  element.getAnimations = () => animations as Animation[];
-  return element;
+/** Öffnet die Schublade bei Dokumentposition 640 und schließt sie mit Überblendung. */
+function openAndClose(drawer: HTMLElement = document.createElement('aside')) {
+  drawerRef.current = drawer;
+  const { result, rerender } = renderHook(
+    ({ open }) => useMobileDrawerPlacement(open, false, false, drawerRef),
+    { initialProps: { open: false } },
+  );
+  scrollTo(640);
+  act(() => result.current.captureOffset());
+  rerender({ open: true });
+  rerender({ open: false });
+  return { result, drawer };
 }
 
 // Wie die neue Seite einer Themenwahl: scrollt im eigenen Layout-Effekt,
@@ -69,34 +88,23 @@ describe('useMobileDrawerPlacement', () => {
   });
 
   it('setzt die geschlossene Schublade erst nach dem Hinausgleiten zurück', () => {
-    const { result, rerender } = renderHook(
-      ({ open }) => useMobileDrawerPlacement(open, false, false, drawerRef),
-      { initialProps: { open: false } },
-    );
-    scrollTo(640);
-    act(() => result.current.captureOffset());
-    rerender({ open: true });
-    rerender({ open: false });
+    const { result, drawer } = openAndClose();
 
     // Während des Hinausgleitens bleibt die Lage, sonst spränge die Schublade.
     expect(result.current.top).toBe(640);
     expect(document.documentElement.style.overflow).toBe('');
 
     // Transitionen von Nachfahren zählen nicht.
-    const foreign = {
-      target: document.createElement('div'),
-      currentTarget: document.createElement('aside'),
-      propertyName: 'translate',
-    };
-    act(() => result.current.onTransitionEnd(foreign as unknown as TransitionEvent<HTMLElement>));
+    const child = drawer.appendChild(document.createElement('div'));
+    dispatchTransition('transitionend', child);
     expect(result.current.top).toBe(640);
 
     // Die Breiten-Transition läuft gleichzeitig, darf den Drawer aber nicht
     // vor dem Ende seiner Translate-Transition zurücksetzen.
-    act(() => result.current.onTransitionEnd(ownTransitionEnd('width')));
+    dispatchTransition('transitionend', drawer, 'width');
     expect(result.current.top).toBe(640);
 
-    act(() => result.current.onTransitionEnd(ownTransitionEnd('translate')));
+    dispatchTransition('transitionend', drawer);
     expect(result.current.top).toBe(0);
   });
 
@@ -113,78 +121,48 @@ describe('useMobileDrawerPlacement', () => {
   });
 
   it('führt die hinausgleitende Schublade mit der Dokumentposition nach, bis sie verschwunden ist', () => {
-    const { result, rerender } = renderHook(
-      ({ open }) => useMobileDrawerPlacement(open, false, false, drawerRef),
-      { initialProps: { open: false } },
-    );
-    scrollTo(640);
-    act(() => result.current.captureOffset());
-    rerender({ open: true });
-    rerender({ open: false });
+    const { result, drawer } = openAndClose();
 
-    scrollTo(320);
-    act(() => { globalThis.dispatchEvent(new Event('scroll')); });
+    scrollDocument(320);
     expect(result.current.top).toBe(320);
 
-    act(() => result.current.onTransitionEnd(ownTransitionEnd('translate')));
+    dispatchTransition('transitionend', drawer);
     expect(result.current.top).toBe(0);
 
     // Die verschwundene Schublade folgt nicht mehr; sie bleibt oben.
-    scrollTo(480);
-    act(() => { globalThis.dispatchEvent(new Event('scroll')); });
+    scrollDocument(480);
     expect(result.current.top).toBe(0);
   });
 
   it('beendet das Hinausgleiten bei abgebrochener Transition', () => {
-    const { result, rerender } = renderHook(
-      ({ open }) => useMobileDrawerPlacement(open, false, false, drawerRef),
-      { initialProps: { open: false } },
-    );
-    scrollTo(640);
-    act(() => result.current.captureOffset());
-    rerender({ open: true });
-    rerender({ open: false });
+    const { result, drawer } = openAndClose(drawerWith([]));
 
-    act(() => result.current.onTransitionCancel(ownTransitionEnd('translate')));
-    scrollTo(320);
-    act(() => { globalThis.dispatchEvent(new Event('scroll')); });
+    dispatchTransition('transitioncancel', drawer);
+    scrollDocument(320);
     expect(result.current.top).toBe(0);
   });
 
-  it('beendet das Hinausgleiten im nächsten Frame, wenn keine Translate-Transition läuft', async () => {
-    const { result, rerender } = renderHook(
-      ({ open }) => useMobileDrawerPlacement(open, false, false, drawerRef),
-      { initialProps: { open: false } },
-    );
-    drawerRef.current = drawerWith([{ transitionProperty: 'width' } as Partial<Animation>]);
-    scrollTo(640);
-    act(() => result.current.captureOffset());
-    rerender({ open: true });
-    rerender({ open: false });
+  it('gleitet weiter hinaus, wenn das Schließen das Hereingleiten abbricht', () => {
+    // Der Abbruch der Einfahrt kommt erst nach dem Schließen an; die
+    // umgekehrte Translate-Transition läuft da bereits.
+    const { result, drawer } = openAndClose(drawerWith([{ transitionProperty: 'translate' }]));
+
+    dispatchTransition('transitioncancel', drawer);
+    dispatchTransition('transitionend', drawer);
+    scrollDocument(320);
+    expect(result.current.top).toBe(320);
+  });
+
+  it.each([
+    ['endet', 'width', 0],
+    ['folgt weiter', 'translate', 320],
+  ])('%s im nächsten Frame, wenn an der Schublade eine %s-Transition läuft', async (_, transitionProperty, expectedTop) => {
+    const { result } = openAndClose(drawerWith([{ transitionProperty }]));
     expect(result.current.top).toBe(640);
 
     await nextFrame();
-    expect(result.current.top).toBe(0);
-    scrollTo(320);
-    act(() => { globalThis.dispatchEvent(new Event('scroll')); });
-    expect(result.current.top).toBe(0);
-  });
-
-  it('lässt die Schublade im nächsten Frame weiter folgen, solange ihre Translate-Transition läuft', async () => {
-    const { result, rerender } = renderHook(
-      ({ open }) => useMobileDrawerPlacement(open, false, false, drawerRef),
-      { initialProps: { open: false } },
-    );
-    drawerRef.current = drawerWith([{ transitionProperty: 'translate' } as Partial<Animation>]);
-    scrollTo(640);
-    act(() => result.current.captureOffset());
-    rerender({ open: true });
-    rerender({ open: false });
-
-    await nextFrame();
-    scrollTo(320);
-    act(() => { globalThis.dispatchEvent(new Event('scroll')); });
-    expect(result.current.top).toBe(320);
+    scrollDocument(320);
+    expect(result.current.top).toBe(expectedTop);
   });
 
   it('legt die geschlossene Schublade ohne Überblendung sofort oben ab', () => {

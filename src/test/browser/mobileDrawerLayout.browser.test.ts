@@ -158,6 +158,37 @@ test('hält den hinausgleitenden Drawer unter dem App-Kopf, wenn die Seite beim 
   expect(aside.style.top).toBe('0px');
 });
 
+test('lässt den Drawer beim Schließen während des Hereingleitens unter dem App-Kopf hinausgleiten', async () => {
+  const shell = await renderShell(WIDTH);
+  window.scrollTo(0, HEIGHT);
+  const aside = shell.querySelector('aside')!;
+  shell.querySelector<HTMLButtonElement>('button[aria-controls]')!.click();
+  // Geschlossen wird mitten in der Einfahrt; ganz am Anfang gäbe es keine
+  // Strecke, die umgekehrt werden könnte.
+  await expect.poll(() => aside.getBoundingClientRect().left).toBeGreaterThan(-200);
+  expect(translateTransition(aside)).toBeDefined();
+
+  // Das Schließen kehrt die laufende Einfahrt um; deren `transitioncancel`
+  // kommt erst danach an und darf das Hinausgleiten nicht beenden.
+  closeDrawer(shell);
+  await Promise.resolve();
+  const slide = translateTransition(aside);
+  expect(slide).toBeDefined();
+  slide!.pause();
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+
+  expect(aside.style.top).toBe(`${HEIGHT}px`);
+  const box = aside.getBoundingClientRect();
+  expect(box.right).toBeGreaterThan(0);
+  expect(box.top).toBe(HEADER_HEIGHT);
+
+  const slideEnded = new Promise((resolve) => aside.addEventListener('transitionend', resolve, { once: true }));
+  slide!.finish();
+  await slideEnded;
+  await expect.poll(() => aside.style.top).toBe('0px');
+});
+
 test('legt einen Drawer, der vor dem ersten Frame wieder schließt, oben ab', async () => {
   const shell = await renderShell(WIDTH);
   window.scrollTo(0, HEIGHT);

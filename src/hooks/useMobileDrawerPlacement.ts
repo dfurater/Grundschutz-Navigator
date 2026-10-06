@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useState, useSyncExternalStore } from 'react';
-import type { RefObject, TransitionEvent } from 'react';
+import type { RefObject } from 'react';
 import { useScrollLock } from '@/hooks/useScrollLock';
 
 export interface MobileDrawerPlacement {
@@ -7,12 +7,17 @@ export interface MobileDrawerPlacement {
   readonly captureOffset: () => void;
   /** `top` der Schublade; ohne Wert auf der persistenten Navigation. */
   readonly top: number | undefined;
-  readonly onTransitionEnd: (event: TransitionEvent<HTMLElement>) => void;
-  readonly onTransitionCancel: (event: TransitionEvent<HTMLElement>) => void;
 }
 
 function isTranslateTransition(animation: Animation) {
   return 'transitionProperty' in animation && animation.transitionProperty === 'translate';
+}
+
+// Läuft an der Schublade noch eine Translate-Transition, etwa die umgekehrte
+// nach einem Schließen während des Hereingleitens, ist das Hinausgleiten nicht
+// vorbei. Ohne `getAnimations` (jsdom) zählt nur das Ereignis selbst.
+function isTranslating(drawer: Element) {
+  return drawer.getAnimations?.().some(isTranslateTransition) ?? false;
 }
 
 function subscribeToScroll(onScroll: () => void) {
@@ -36,9 +41,10 @@ function subscribeToNothing() {
  * Dokumentposition (GSPP-490). `useSyncExternalStore` prüft sie nach jedem
  * Commit erneut, erfasst also auch das `scrollTo` einer neuen Seite aus deren
  * Layout-Effekt, und danach jedes Scroll-Ereignis. Das Hinausgleiten endet
- * mit `transitionend` oder `transitioncancel` der `translate`-Transition; hat
- * der Browser im nächsten Frame keine solche Transition, etwa weil die
- * Schublade vor dem ersten Frame wieder geschlossen wurde, endet es dort.
+ * mit `transitionend` oder `transitioncancel` der `translate`-Transition der
+ * Schublade, sofern danach keine weitere läuft. Hat der Browser im nächsten
+ * Frame keine solche Transition, etwa weil die Schublade vor dem ersten Frame
+ * wieder geschlossen wurde, endet es dort.
  * Danach geht `top` auf 0 zurück, damit die unsichtbare Schublade eine danach
  * kürzere Seite nicht verlängert. Ohne Überblendung endet keine Transition:
  * Dann geschieht das beim Schließen oder, falls die Einstellung während des
@@ -89,27 +95,29 @@ export function useMobileDrawerPlacement(
     setOffset(0);
   };
   useEffect(() => {
-    if (!sliding) return;
+    const drawer = drawerRef.current;
+    if (!sliding || drawer === null) return;
+    const settle = (event: TransitionEvent) => {
+      if (event.target === drawer && event.propertyName === 'translate' && !isTranslating(drawer)) {
+        finishSliding();
+      }
+    };
+    // Im nächsten Frame hat der Browser die Transition des Schließens
+    // angelegt; fehlt sie, endet das Hinausgleiten hier.
     const frame = requestAnimationFrame(() => {
-      const animations = drawerRef.current?.getAnimations?.();
-      if (animations !== undefined && !animations.some(isTranslateTransition)) finishSliding();
+      if (drawer.getAnimations !== undefined && !isTranslating(drawer)) finishSliding();
     });
-    return () => cancelAnimationFrame(frame);
+    drawer.addEventListener('transitionend', settle);
+    drawer.addEventListener('transitioncancel', settle);
+    return () => {
+      cancelAnimationFrame(frame);
+      drawer.removeEventListener('transitionend', settle);
+      drawer.removeEventListener('transitioncancel', settle);
+    };
   }, [sliding, drawerRef]);
-  const onTranslateSettled = (event: TransitionEvent<HTMLElement>) => {
-    if (
-      event.target === event.currentTarget
-      && event.propertyName === 'translate'
-      && !open
-    ) {
-      finishSliding();
-    }
-  };
 
   return {
     captureOffset: () => setOffset(window.scrollY),
     top: persistent ? undefined : placedTop,
-    onTransitionEnd: onTranslateSettled,
-    onTransitionCancel: onTranslateSettled,
   };
 }

@@ -280,8 +280,6 @@ export function AppShell() {
             ${sideNavOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
           `}
           ref={drawerRef}
-          onTransitionEnd={drawerPlacement.onTransitionEnd}
-          onTransitionCancel={drawerPlacement.onTransitionCancel}
           style={{
             top: drawerPlacement.top,
             width: sidebarCollapsed ? 44 : sidebarWidth,
