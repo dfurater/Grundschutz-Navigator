@@ -132,10 +132,19 @@ test('verlängert eine verkürzte Seite beim Schließen während eines aktiven R
   await expect.poll(() => getComputedStyle(resizeHandle).display).toBe('none');
   expect(aside.style.transition).toBe('none');
 
+  const main = shell.querySelector('main')!;
+  const menuButton = shell.querySelector<HTMLButtonElement>('button[aria-controls]')!;
+  menuButton.click();
+  await expect.poll(() => main.inert).toBe(true);
+  closeDrawer(shell);
+  await expect.poll(() => main.inert).toBe(false);
+
   const longPageHeight = document.documentElement.scrollHeight;
   window.scrollTo(0, longPageHeight - HEIGHT);
   const openedOffset = window.scrollY;
-  shell.querySelector<HTMLButtonElement>('button[aria-controls]')!.click();
+  expect(openedOffset).toBeGreaterThan(0);
+  menuButton.click();
+  await expect.poll(() => main.inert).toBe(true);
   await expect.poll(() => aside.style.top).toBe(`${openedOffset}px`);
 
   const filler = shell.querySelector<HTMLElement>('#main-content > div')!;
