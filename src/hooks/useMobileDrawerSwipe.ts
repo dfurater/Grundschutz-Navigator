@@ -23,6 +23,8 @@ interface MobileDrawerSwipeOptions {
   readonly enabled: boolean;
   /** Die mobile Schublade ist offen. */
   readonly open: boolean;
+  /** `location.key` der aktuellen Route: Jede Navigation beendet eine laufende Geste. */
+  readonly routeKey: string;
   /** Träger von `data-mobile-nav` und den `--mobile-nav-*`-Variablen. */
   readonly shellRef: RefObject<HTMLElement | null>;
   readonly drawerRef: RefObject<HTMLElement | null>;
@@ -51,6 +53,7 @@ interface MobileDrawerSwipeOptions {
 export function useMobileDrawerSwipe({
   enabled,
   open,
+  routeKey,
   shellRef,
   drawerRef,
   backdropRef,
@@ -255,7 +258,10 @@ export function useMobileDrawerSwipe({
       }
       untrack();
       // Endet die Geste auf anderem Weg (Escape, Navigation, Breitenwechsel),
-      // gleitet die Schublade mit der Standarddauer an ihr Ziel.
+      // gleitet die Schublade mit der Standarddauer an ihr Ziel. Eine
+      // Öffnen-Vorschau ändert `open` nicht; erst `routeKey` beendet sie bei
+      // einer Navigation. Weitere Ereignisse derselben Berührung treffen danach
+      // auf eine neue Geste und bleiben ohne Wirkung.
       if (gesture?.dragging) {
         dragging.current = false;
         shell.style.removeProperty('--mobile-nav-motion');
@@ -263,7 +269,7 @@ export function useMobileDrawerSwipe({
         if (gesture.mode === 'open') setPreviewing(false);
       }
     };
-  }, [enabled, open, shellRef, drawerRef, backdropRef]);
+  }, [enabled, open, routeKey, shellRef, drawerRef, backdropRef]);
 
   return previewing && enabled && !open;
 }

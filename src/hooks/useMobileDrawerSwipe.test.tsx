@@ -42,8 +42,8 @@ function render(open: boolean, enabled = true) {
     drawerRef: { current: drawer },
     backdropRef: { current: backdrop },
   };
-  const view = renderHook(
-    (props: { open: boolean; enabled: boolean }) => useMobileDrawerSwipe({ ...props, ...refs, ...callbacks }),
+  const view = renderHook<boolean, { open: boolean; enabled: boolean; routeKey?: string }>(
+    ({ routeKey = 'start', ...props }) => useMobileDrawerSwipe({ ...props, routeKey, ...refs, ...callbacks }),
     { initialProps: { open, enabled } },
   );
   return { ...view, ...callbacks };
@@ -91,7 +91,7 @@ describe('useMobileDrawerSwipe – offene Schublade', () => {
     slowDrag(drawer, 280, 200);
     expect(onClose).not.toHaveBeenCalled();
     expect(variable('--mobile-nav-drag')).toBe('');
-    expect(variable('--mobile-nav-motion')).toBe('90ms cubic-bezier(0, 0, 0.2, 1)');
+    expect(variable('--mobile-nav-motion')).toBe('90ms cubic-bezier(0.333, 0, 0.667, 1)');
 
     slowDrag(backdrop, 290, 100);
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -105,8 +105,8 @@ describe('useMobileDrawerSwipe – offene Schublade', () => {
     touch('touchmove', drawer, 250, 0, 10);
     touch('touchend', drawer, 250, 0, 5);
     expect(onClose).toHaveBeenCalledTimes(1);
-    // 1,5 px/ms über die restlichen 270 px ergeben 180 ms.
-    expect(variable('--mobile-nav-motion')).toBe('180ms cubic-bezier(0, 0, 0.2, 1)');
+    // 1,5 px/ms über die restlichen 270 px: 198 ms (anteilig an 220 ms) mit der Anfangssteigung 1,1.
+    expect(variable('--mobile-nav-motion')).toBe('198ms cubic-bezier(0.333, 0.367, 0.667, 0.733)');
   });
 
   it('überlässt senkrechte Gesten dem Scrollen', () => {
@@ -179,7 +179,7 @@ describe('useMobileDrawerSwipe – unterbrochene Bewegungen', () => {
     touch('touchend', drawer, 250, 0, 5);
     expect(onClose).toHaveBeenCalledTimes(1);
     dispatchTranslate('transitioncancel');
-    expect(variable('--mobile-nav-motion')).toBe('180ms cubic-bezier(0, 0, 0.2, 1)');
+    expect(variable('--mobile-nav-motion')).toBe('198ms cubic-bezier(0.333, 0.367, 0.667, 0.733)');
     dispatchTranslate('transitionend');
     expect(variable('--mobile-nav-motion')).toBe('');
   });
@@ -241,6 +241,27 @@ describe('useMobileDrawerSwipe – geschlossene Schublade', () => {
     view.rerender({ open: false, enabled: false });
     slowDrag(main, 20, 250);
     expect(view.onPreview).not.toHaveBeenCalled();
+    expect(view.onOpen).not.toHaveBeenCalled();
+  });
+
+  // Die Vorschau ändert `open` nicht; ohne Routenbindung bliebe sie nach einer
+  // Navigation stehen und öffnete beim Loslassen auf der neuen Seite.
+  it('beendet eine Öffnen-Geste bei einer Navigation vor dem Loslassen', () => {
+    const view = render(false);
+    touch('touchstart', main, 20);
+    touch('touchmove', main, 120);
+    expect(view.result.current).toBe(true);
+
+    view.rerender({ open: false, enabled: true, routeKey: 'suche' });
+    expect(view.result.current).toBe(false);
+    expect(variable('--mobile-nav-drag')).toBe('');
+    expect(variable('--mobile-nav-motion')).toBe('');
+
+    // Die alte Berührung wirkt auf der neuen Seite nicht weiter.
+    expect(touch('touchmove', main, 260).defaultPrevented).toBe(false);
+    touch('touchend', main, 260, 0, 300);
+    expect(variable('--mobile-nav-drag')).toBe('');
+    expect(view.result.current).toBe(false);
     expect(view.onOpen).not.toHaveBeenCalled();
   });
 

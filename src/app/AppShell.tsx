@@ -142,6 +142,7 @@ export function AppShell() {
   const swipePreviewing = useMobileDrawerSwipe({
     enabled: !isPersistentNav,
     open: mobileNavOpen,
+    routeKey: location.key,
     shellRef,
     drawerRef,
     backdropRef,

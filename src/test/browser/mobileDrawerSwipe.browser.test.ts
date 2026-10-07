@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from 'vitest';
+import { releaseGesture } from '@/hooks/mobileDrawerGesture';
 import { HEIGHT, WIDTH, openDrawer, renderShell, settlePush, unmountShell } from './mobileDrawerHarness';
 
 afterEach(unmountShell);
@@ -118,11 +119,72 @@ test('schließt die Schublade bei einem kurzen Wurf nach links und übernimmt de
   gesture.release();
   expect(main.inert).toBe(false);
   const motion = parts(shell).root.style.getPropertyValue('--mobile-nav-motion');
-  expect(motion).toMatch(/^\d+ms cubic-bezier\(0, 0, 0.2, 1\)$/);
-  expect(Number.parseInt(motion, 10)).toBeLessThan(220);
+  expect(motion).toMatch(/^\d+ms cubic-bezier\(0\.333, [\d.]+, 0\.667, [\d.]+\)$/);
+  expect(Number.parseInt(motion, 10)).toBeLessThanOrEqual(220);
   await expect.poll(() => aside.getBoundingClientRect().right).toBeLessThanOrEqual(0);
   // Nach der Freigabe gilt wieder die Standardbewegung.
   await expect.poll(() => parts(shell).root.style.getPropertyValue('--mobile-nav-motion')).toBe('');
+});
+
+/** Lage einer angehaltenen `translate`-Transition zu den Zeitpunkten (ms). */
+function sampleRelease(motion: string, distance: number, times: readonly number[]) {
+  const probe = document.createElement('div');
+  document.body.append(probe);
+  probe.style.translate = '0px';
+  probe.getBoundingClientRect();
+  probe.style.transition = `translate ${motion}`;
+  probe.style.translate = `${distance}px`;
+  const transition = probe.getAnimations().find((animation) => animation instanceof CSSTransition)!;
+  transition.pause();
+  const positions = times.map((time) => {
+    transition.currentTime = time;
+    return probe.getBoundingClientRect().left;
+  });
+  probe.remove();
+  return positions;
+}
+
+// Chromiums eigene Kurvenauswertung: Die Freigabe läuft mit dem Fingertempo
+// weiter und bremst bis zum Ziel ab, ohne zu beschleunigen oder zu überschießen.
+test('lässt die Freigabe mit dem Tempo des Fingers beginnen und abbremsen', () => {
+  for (const [speed, offset] of [[-1.5, -30], [3, -150], [0.8, -60], [6, -20]] as const) {
+    const samples = [{ x: 200, time: 0 }, { x: 200 + speed * 20, time: 20 }];
+    const { opens, motion } = releaseGesture(samples, 25, offset, 300);
+    const distance = opens ? -offset : 300 + offset;
+    const duration = Number.parseInt(motion!, 10);
+    const step = duration / 20;
+    const positions = sampleRelease(motion!, distance, Array.from({ length: 21 }, (_, index) => index * step));
+    expect(Math.abs(positions[1] / step - Math.abs(speed)) / Math.abs(speed)).toBeLessThan(0.1);
+    for (let index = 1; index < positions.length; index++) {
+      const stepNow = positions[index] - positions[index - 1];
+      const stepBefore = index > 1 ? positions[index - 1] - positions[index - 2] : Infinity;
+      expect(stepNow).toBeGreaterThanOrEqual(-0.01);
+      expect(stepNow).toBeLessThanOrEqual(stepBefore + 0.01);
+    }
+    expect(positions.at(-1)).toBeCloseTo(distance, 1);
+  }
+});
+
+// Die Vorschau ändert den Öffnungszustand nicht; die Navigation muss sie
+// trotzdem beenden, sonst bliebe die neue Seite gesperrt (Review GSPP-493).
+test('beendet eine Öffnen-Geste, wenn mitten im Ziehen navigiert wird', async () => {
+  const shell = await renderShell(WIDTH);
+  const { main } = parts(shell);
+  const gesture = drag(main, [40, 400], [[52, 401], [140, 402]]);
+  expect(parts(shell).root.dataset.mobileNav).toBe('open');
+
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true, cancelable: true }));
+  await expect.poll(() => parts(shell).root.dataset.mobileNav).toBe('closed');
+  expect(document.documentElement.style.overflow).toBe('');
+  expect(parts(shell).root.style.getPropertyValue('--mobile-nav-drag')).toBe('');
+
+  main.dispatchEvent(touchEvent('touchmove', main, 260, 402));
+  await pause();
+  gesture.release();
+  const menuButton = shell.querySelector<HTMLButtonElement>('button[aria-controls]')!;
+  expect(menuButton.getAttribute('aria-expanded')).toBe('false');
+  expect(parts(shell).main.inert).toBe(false);
+  expect(parts(shell).root.dataset.mobileNav).toBe('closed');
 });
 
 test('öffnet die Schublade beim Wischen nach rechts über die Seite, fingergeführt und an der Dokumentposition', async () => {
