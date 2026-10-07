@@ -27,7 +27,7 @@ function releaseVelocity(samples: readonly Sample[], releaseTime: number) {
 
 /**
  * Eine Öffnen-Geste beginnt nur auf der Seite selbst: nicht in festen
- * Ebenen (Sheets, Detailansicht, Auswahlleiste) und nicht in Bereichen, die
+ * Ebenen (Sheets, Auswahlleiste) und nicht in Bereichen, die
  * selbst waagerecht scrollen, etwa breiten Tabellen.
  */
 export function startsOpenGesture(target: EventTarget | null, shell: HTMLElement) {

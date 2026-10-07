@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useId, useLayoutEffect, useRef } from 'react';
+import { useMemo, useState, useEffect, useId, useRef } from 'react';
 import {
   Routes,
   Route,
@@ -20,6 +20,7 @@ import {
 } from '@/components/icons';
 import type { TreeItem } from '@/components/TreeNav';
 import { useCatalog } from '@/hooks/useCatalog';
+import { useCloseDrawerOnNavigation } from '@/hooks/useCloseDrawerOnNavigation';
 import { useDragToResize } from '@/hooks/useDragToResize';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
@@ -162,33 +163,14 @@ export function AppShell() {
   // Mobil bestimmt `--mobile-nav-width` die Breite (src/index.css).
   const persistentNavWidth = isPersistentNav ? expandedNavWidth : undefined;
 
-  // Jede Navigation schließt die mobile Schublade, auch eine aus dem App-Kopf
-  // (Marke, Lupe, Suchfeld) oder über Browser-Zurück. Sonst bliebe die neue
-  // Seite im `inert` gesetzten Hauptbereich unbedienbar. Lag der Fokus noch in
-  // der Schublade (etwa bei Browser-Zurück), geht er wie bei jedem anderen
-  // Schließen an das Menü-Symbol; sonst bleibt er am auslösenden Element. Die
-  // Prüfung läuft vor dem Commit, solange die Schublade noch nicht `inert` ist.
-  // Hat die neue Seite den Fokus schon selbst gesetzt (Layout-Effekte der Kinder
-  // laufen zuerst, etwa die Überschrift einer mobilen Detailseite), bleibt er dort.
-  // Der Auftrag ist ein Zähler, kein `location.key`: Browser-Zurück und -Vorwärts
-  // verwenden den Schlüssel eines Verlaufseintrags wieder, und derselbe Wert
-  // löste den Effekt kein zweites Mal aus.
-  const [drawerLocationKey, setDrawerLocationKey] = useState(location.key);
-  const [drawerFocusReturnCount, setDrawerFocusReturnCount] = useState(0);
-  if (drawerLocationKey !== location.key) {
-    setDrawerLocationKey(location.key);
-    if (sideNavOpen) {
-      setSideNavOpen(false);
-      if (!isPersistentNav && document.getElementById(sideNavId)?.contains(document.activeElement)) {
-        setDrawerFocusReturnCount((count) => count + 1);
-      }
-    }
-  }
-  useLayoutEffect(() => {
-    if (drawerFocusReturnCount === 0) return;
-    if (document.activeElement?.closest('main, header')) return;
-    menuButtonRef.current?.focus({ preventScroll: true });
-  }, [drawerFocusReturnCount]);
+  useCloseDrawerOnNavigation({
+    locationKey: location.key,
+    open: sideNavOpen,
+    close: () => setSideNavOpen(false),
+    persistent: isPersistentNav,
+    drawerId: sideNavId,
+    menuButtonRef,
+  });
 
   // Capture garantiert den Vorrang vor dem Escape-Handler der Detailseite
   // auch dann, wenn deren Bubble-Listener bereits vor dem Öffnen registriert war.
