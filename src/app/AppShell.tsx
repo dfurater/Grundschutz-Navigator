@@ -24,6 +24,7 @@ import { useDragToResize } from '@/hooks/useDragToResize';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import { useMobileDrawerPlacement } from '@/hooks/useMobileDrawerPlacement';
+import { useMobileDrawerSwipe } from '@/hooks/useMobileDrawerSwipe';
 import { OWN_SCROLL_AREA_QUERY, useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
 import { CatalogBrowser } from '@/features/catalog/CatalogBrowser';
 import { VocabularyNamespacePage } from '@/features/vocabularies/VocabularyNamespacePage';
@@ -118,18 +119,45 @@ export function AppShell() {
     error,
   } = useCatalog();
 
+  const shellRef = useRef<HTMLDivElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
-  const drawerPlacement = useMobileDrawerPlacement(
-    sideNavOpen,
-    isPersistentNav,
-    isSidebarResizing || prefersReducedMotion,
-    drawerRef,
-  );
+  const backdropRef = useRef<HTMLDivElement>(null);
+  const mobileNavOpen = sideNavOpen && !isPersistentNav;
+
+  const openSideNav = () => {
+    // Safari gibt Klicks keinen Button-Fokus; main wird beim Öffnen inert.
+    if (!isPersistentNav) menuButtonRef.current?.focus({ preventScroll: true });
+    setSideNavOpen(true);
+    if (sidebarCollapsed) setSidebarCollapsed(false);
+  };
 
   const closeSideNav = () => {
     setSideNavOpen(false);
     if (!isPersistentNav) menuButtonRef.current?.focus({ preventScroll: true });
   };
+
+  // Eine Öffnen-Geste zeigt die Schublade schon vor dem Loslassen; für Lage,
+  // Scroll-Sperre und Abdunklung gilt sie dann als offen.
+  const swipePreviewing = useMobileDrawerSwipe({
+    enabled: !isPersistentNav,
+    open: mobileNavOpen,
+    shellRef,
+    drawerRef,
+    backdropRef,
+    onPreview: () => {
+      drawerPlacement.captureOffset();
+      if (sidebarCollapsed) setSidebarCollapsed(false);
+    },
+    onOpen: openSideNav,
+    onClose: closeSideNav,
+  });
+  const drawerPlacement = useMobileDrawerPlacement(
+    sideNavOpen || swipePreviewing,
+    isPersistentNav,
+    isSidebarResizing || prefersReducedMotion,
+    drawerRef,
+  );
+  const mobileNavShown = mobileNavOpen || swipePreviewing;
 
   // Jede Navigation schließt die mobile Schublade, auch eine aus dem App-Kopf
   // (Marke, Lupe, Suchfeld) oder über Browser-Zurück. Sonst bliebe die neue
@@ -170,7 +198,7 @@ export function AppShell() {
       event.preventDefault();
       event.stopPropagation();
       closeSideNav();
-    }, sideNavOpen && !isPersistentNav, undefined, true,
+    }, mobileNavOpen, undefined, true,
   );
 
   // Die Route wählt den Katalog, nicht der Einstieg. Ein Routen-catalogKey darf
@@ -233,14 +261,19 @@ export function AppShell() {
   };
 
   return (
-    <div className="flex flex-col bg-slate-100 min-h-dvh md:h-dvh md:overflow-hidden">
+    <div
+      ref={shellRef}
+      data-mobile-nav={mobileNavShown ? 'open' : 'closed'}
+      className="mobile-nav-shell flex flex-col bg-slate-100 min-h-dvh md:h-dvh md:overflow-hidden"
+    >
       <a href="#main-content" className="skip-link">
         Zum Hauptinhalt springen
       </a>
 
       <HeaderBar
         onSearch={handleSearch}
-        menuExpanded={sideNavOpen && !isPersistentNav}
+        className="mobile-nav-push"
+        menuExpanded={mobileNavOpen}
         menuControls={sideNavId}
         menuButtonRef={menuButtonRef}
         onMenuToggle={() => {
@@ -256,36 +289,40 @@ export function AppShell() {
         {/* Mobil sind Abdunklung und Schublade weder fest noch sticky: Ein
             solches Element bis zum unteren Bildschirmrand lässt Safari seine
             Leiste mit einer undurchsichtigen Fläche füllen. Beide liegen
-            absolut im Inhaltsbereich; die Schublade beginnt an der
-            Dokumentposition beim Öffnen und füllt den sichtbaren Bereich unter
-            dem App-Kopf, die Scroll-Sperre hält sie dort
-            (`useMobileDrawerPlacement`). Sie liegt mit
-            `z-[25]` unter dem App-Kopf (`z-30`). */}
-        {sideNavOpen && (
-          <div
-            className="absolute inset-0 z-20 bg-black/30 md:hidden"
-            data-testid="mobile-nav-backdrop"
-            onClick={closeSideNav}
-            aria-hidden="true"
-          />
-        )}
+            absolut im Inhaltsbereich und reichen um die Höhe des App-Kopfs
+            (`-top-14`, `-mt-14`) über ihn hinaus. Die Schublade beginnt an der
+            Dokumentposition beim Öffnen und füllt den sichtbaren Bereich in
+            voller Höhe, die Scroll-Sperre hält sie dort
+            (`useMobileDrawerPlacement`). Als Push-Drawer schiebt sie
+            App-Kopf, Inhalt und Abdunklung um ihre Breite nach rechts
+            (`mobile-nav-push`, src/index.css). Die Abdunklung (`z-[35]`) liegt
+            über dem App-Kopf (`z-30`), die Schublade (`z-40`) über beiden. Die
+            Abdunklung bleibt geschlossen eingehängt, damit sie aus- und
+            einblenden kann; ohne Deckkraft lässt sie Zeiger durch. */}
+        <div
+          ref={backdropRef}
+          className="mobile-nav-backdrop mobile-nav-push absolute inset-x-0 -top-14 bottom-0 z-[35] touch-none md:hidden"
+          data-testid="mobile-nav-backdrop"
+          data-state={mobileNavShown ? 'open' : 'closed'}
+          onClick={closeSideNav}
+          aria-hidden="true"
+        />
 
         {/* Sidebar / Mobile Drawer */}
         <aside
           id={sideNavId}
           inert={!isPersistentNav && !sideNavOpen}
-          className={`
-            bg-white border-r border-slate-200 flex shrink-0 z-[25] overflow-hidden md:z-30
-            absolute left-0 h-[calc(100dvh-3.5rem)] md:relative md:inset-auto md:h-auto
-            ${sideNavOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-          `}
+          className="mobile-nav-drawer
+            bg-white flex shrink-0 z-40 overflow-hidden touch-pan-y md:z-30 md:border-r md:border-slate-200
+            absolute left-0 -mt-14 h-dvh md:relative md:inset-auto md:mt-0 md:h-auto"
           ref={drawerRef}
           style={{
             top: drawerPlacement.top,
-            width: sidebarCollapsed ? 44 : sidebarWidth,
+            // Mobil bestimmt `--mobile-nav-width` die Breite (src/index.css).
+            width: isPersistentNav ? (sidebarCollapsed ? 44 : sidebarWidth) : undefined,
             transition: isSidebarResizing || prefersReducedMotion
               ? 'none'
-              : 'width var(--duration-normal) var(--easing-default), translate var(--duration-normal) var(--easing-default)',
+              : 'width var(--duration-normal) var(--easing-default), translate var(--mobile-nav-motion)',
           }}
         >
           {sidebarCollapsed ? (
@@ -303,7 +340,10 @@ export function AppShell() {
             </div>
           ) : (
             /* Expanded: Kontextwahl + Baum */
-            <div className="h-full flex flex-col" style={{ width: sidebarWidth }}>
+            <div
+              className="h-full min-w-0 flex flex-1 flex-col md:flex-none"
+              style={isPersistentNav ? { width: sidebarWidth } : undefined}
+            >
               {/* Kontextwahl als Kopf: mobil mit Schließen, auf dem Desktop mit Einklappen */}
               <ScopeSwitcher
                 label="Katalog"
@@ -375,10 +415,10 @@ export function AppShell() {
         {/* Main Content */}
         <main
           id="main-content"
-          inert={sideNavOpen && !isPersistentNav}
-          className="flex-1 min-w-0 flex flex-col bg-white md:overflow-hidden"
+          inert={mobileNavOpen}
+          className="mobile-nav-push flex-1 min-w-0 flex flex-col bg-white md:overflow-hidden"
         >
-          <MobileNavigationContext.Provider value={sideNavOpen && !isPersistentNav}>
+          <MobileNavigationContext.Provider value={mobileNavShown}>
             <Routes>
               {STATIC_PAGE_ROUTES.map(({ path, title, element, scroll = true }) => (
                 <Route

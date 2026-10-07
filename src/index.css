@@ -261,6 +261,10 @@
   --duration-fast: 150ms;
   --duration-normal: 200ms;
   --easing-default: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Mobile Navigationsschublade: Dauer und Kurve aus einer Bild-für-Bild-
+     Analyse einer Referenzaufnahme (iOS, 60 fps) angepasst (GSPP-493). */
+  --duration-drawer: 220ms;
+  --easing-drawer: cubic-bezier(0.4, 0, 0.2, 1);
 
   /* Density */
   --space-control-x: 0.5rem;
@@ -504,6 +508,66 @@ body.dev-selector-dragging * {
 
   .animate-vocab-card {
     animation: vocab-card-in var(--duration-fast) var(--easing-default) both;
+  }
+}
+
+/* Mobile Navigationsschublade als Push-Drawer (GSPP-493): Die
+   Schublade (85 % der Breite) gleitet über die volle Höhe herein und schiebt
+   die ganze Seite samt App-Kopf um ihre Breite nach rechts; eine Abdunklung
+   liegt über der verschobenen Seite. Die Shell setzt `data-mobile-nav` am
+   Wurzelelement; die Wischgeste (`useMobileDrawerSwipe`) überschreibt
+   während des Ziehens die Variablen am selben Element, ohne React zu rendern.
+   Die Variablen gelten auch ab `md`, damit die Breiten-Transition der
+   Seitenleiste dort einen gültigen Wert behält. */
+@layer components {
+  .mobile-nav-shell {
+    --mobile-nav-width: min(85vw, 22.5rem);
+    /* Zugstrecke der offenen Schublade nach links (≤ 0) und sichtbarer
+       Anteil (0–1), den die Abdunklung übernimmt. */
+    --mobile-nav-drag: 0px;
+    --mobile-nav-progress: 1;
+    --mobile-nav-motion: var(--duration-drawer) var(--easing-drawer);
+  }
+
+  @media (width < 48rem) {
+    /* Die verschobene Seite ragt rechts hinaus; `clip` erzeugt anders als
+       `hidden` keinen Scrollbereich, an dem der App-Kopf kleben würde. */
+    .mobile-nav-shell {
+      overflow-x: clip;
+    }
+
+    .mobile-nav-drawer {
+      width: var(--mobile-nav-width);
+      translate: -100% 0;
+    }
+
+    .mobile-nav-shell[data-mobile-nav='open'] .mobile-nav-drawer {
+      translate: var(--mobile-nav-drag) 0;
+    }
+
+    /* Geschlossen bleibt `translate` auf `none`: Jeder andere Wert machte die
+       Seite zum Bezugsrahmen ihrer festen Elemente. */
+    .mobile-nav-push {
+      transition: translate var(--mobile-nav-motion);
+    }
+
+    .mobile-nav-shell[data-mobile-nav='open'] .mobile-nav-push {
+      translate: calc(var(--mobile-nav-width) + var(--mobile-nav-drag)) 0;
+    }
+
+    .mobile-nav-backdrop {
+      background-color: rgb(0 0 0 / 0.64);
+      opacity: 0;
+      pointer-events: none;
+      transition:
+        translate var(--mobile-nav-motion),
+        opacity var(--mobile-nav-motion);
+    }
+
+    .mobile-nav-shell[data-mobile-nav='open'] .mobile-nav-backdrop {
+      opacity: var(--mobile-nav-progress);
+      pointer-events: auto;
+    }
   }
 }
 

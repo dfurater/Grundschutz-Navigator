@@ -332,7 +332,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
     const detailPath = '/katalog/gspp/kontrolle/shared-alt-identifier';
     const menuButton = screen.getByRole('button', { name: 'Menü öffnen' });
     fireEvent.click(menuButton);
-    expect(screen.getByTestId('mobile-nav-backdrop')).toBeInTheDocument();
+    expect(screen.getByTestId('mobile-nav-backdrop')).toHaveAttribute('data-state', 'open');
 
     // body war bisher zugleich der globale Escape-Einstieg für die Detailseite.
     const wasNotPrevented = fireEvent.keyDown(document.querySelector('body')!, { key: 'Escape' });
@@ -340,7 +340,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(screen.getByTestId('location')).toHaveTextContent(detailPath);
     expect(screen.getByText(`Detail ${control.id}`)).toBeInTheDocument();
     expect(wasNotPrevented).toBe(false);
-    expect(screen.queryByTestId('mobile-nav-backdrop')).not.toBeInTheDocument();
+    expect(screen.getByTestId('mobile-nav-backdrop')).toHaveAttribute('data-state', 'closed');
     expect(menuButton).toHaveFocus();
     expect(menuButton).toHaveAttribute('aria-expanded', 'false');
 
@@ -380,7 +380,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
     fireEvent.click(screen.getByRole('button', { name: /TOP\.2\s*Zweites Thema/ }));
 
     expect(screen.getByTestId('location')).toHaveTextContent(/^\/katalog\/gspp\/TOP\.2$/);
-    expect(screen.queryByTestId('mobile-nav-backdrop')).not.toBeInTheDocument();
+    expect(screen.getByTestId('mobile-nav-backdrop')).toHaveAttribute('data-state', 'closed');
     expect(screen.queryByText(`Detail ${control.id}`)).not.toBeInTheDocument();
     expect(menuButton).not.toHaveFocus();
     expect(screen.getByRole('heading', { level: 1, name: 'Zweites Thema' })).toHaveFocus();
