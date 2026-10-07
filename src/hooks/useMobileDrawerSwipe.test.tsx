@@ -8,6 +8,8 @@ let shell: HTMLDivElement;
 let drawer: HTMLElement;
 let backdrop: HTMLDivElement;
 let main: HTMLElement;
+/** Sichtbare linke Kante der Schublade: 0 offen, `-WIDTH` geschlossen. */
+let drawerLeft = 0;
 let clock = 0;
 
 function touch(type: string, target: Element, x: number, y = 0, advance = 16) {
@@ -32,6 +34,7 @@ function slowDrag(target: Element, from: number, to: number) {
 }
 
 function render(open: boolean, enabled = true) {
+  drawerLeft = open ? 0 : -WIDTH;
   const callbacks = { onPreview: vi.fn(), onOpen: vi.fn(), onClose: vi.fn() };
   // Stabil wie `useRef` in der Shell; neue Objekte begännen den Effekt neu.
   const refs = {
@@ -54,7 +57,7 @@ beforeEach(() => {
   drawer = document.createElement('aside');
   backdrop = document.createElement('div');
   main = document.createElement('main');
-  drawer.getBoundingClientRect = () => ({ width: WIDTH }) as DOMRect;
+  drawer.getBoundingClientRect = () => ({ width: WIDTH, left: drawerLeft }) as DOMRect;
   shell.append(drawer, backdrop, main);
   document.body.append(shell);
 });
@@ -138,6 +141,41 @@ describe('useMobileDrawerSwipe – offene Schublade', () => {
     expect(variable('--mobile-nav-motion')).not.toBe('');
     view.rerender({ open: true, enabled: true });
     expect(variable('--mobile-nav-motion')).toBe('');
+  });
+});
+
+describe('useMobileDrawerSwipe – unterbrochene Bewegungen', () => {
+  it('setzt an der sichtbaren Lage einer noch gleitenden Schublade an', () => {
+    render(true);
+    drawerLeft = -150;
+    touch('touchstart', drawer, 200);
+    touch('touchmove', drawer, 180);
+    expect(variable('--mobile-nav-drag')).toBe('-170px');
+  });
+
+  it('behält die Fingerführung, wenn die unterbrochene Bewegung danach abgebrochen meldet', () => {
+    render(true);
+    touch('touchstart', drawer, 250);
+    touch('touchmove', drawer, 200);
+    const cancelled = new Event('transitioncancel');
+    Object.defineProperty(cancelled, 'propertyName', { value: 'translate' });
+    act(() => { drawer.dispatchEvent(cancelled); });
+    expect(variable('--mobile-nav-motion')).toBe('0s');
+  });
+
+  it('beendet eine Öffnen-Geste auch, wenn die Vorschau ihr Touch-Ziel aushängt', () => {
+    const { result, onOpen } = render(false);
+    const trigger = document.createElement('button');
+    main.append(trigger);
+    touch('touchstart', trigger, 20);
+    touch('touchmove', trigger, 40);
+    expect(result.current).toBe(true);
+    trigger.remove();
+    touch('touchmove', trigger, 250);
+    expect(variable('--mobile-nav-drag')).toBe('-70px');
+    touch('touchend', trigger, 250, 0, 300);
+    expect(result.current).toBe(false);
+    expect(onOpen).toHaveBeenCalledTimes(1);
   });
 });
 

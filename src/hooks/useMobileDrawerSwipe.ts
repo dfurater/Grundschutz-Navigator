@@ -1,23 +1,8 @@
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { flushSync } from 'react-dom';
-
-/** Ab dieser Strecke entscheidet die Richtung, ob die Geste der Schublade gehört. */
-const DIRECTION_SLOP_PX = 10;
-/** Schneller geworfen entscheidet die Richtung, nicht die Strecke (px/ms). */
-const FLING_VELOCITY = 0.3;
-/** Zeitfenster vor dem Loslassen, aus dem die Wurfgeschwindigkeit stammt. */
-const VELOCITY_WINDOW_MS = 100;
-const RELEASE_MIN_MS = 90;
-/** Entspricht `--duration-drawer` (src/index.css). */
-const RELEASE_MAX_MS = 220;
-/** Der Finger bewegt die Schublade bereits; die Freigabe bremst nur noch ab. */
-const RELEASE_EASING = 'cubic-bezier(0, 0, 0.2, 1)';
-
-interface Sample {
-  readonly x: number;
-  readonly time: number;
-}
+import { DIRECTION_SLOP_PX, releaseGesture, startsOpenGesture } from './mobileDrawerGesture';
+import type { Sample } from './mobileDrawerGesture';
 
 interface Gesture {
   /** `open`: Wischen nach rechts auf der Seite; `close`: nach links auf Schublade oder Abdunklung. */
@@ -25,6 +10,8 @@ interface Gesture {
   readonly startX: number;
   readonly startY: number;
   readonly width: number;
+  /** Sichtbare Lage beim Aufsetzen des Fingers, relativ zur offenen Endlage. */
+  readonly base: number;
   dragging: boolean;
   /** Lage der Schublade relativ zur offenen Endlage, zwischen `-width` und 0. */
   offset: number;
@@ -44,29 +31,6 @@ interface MobileDrawerSwipeOptions {
   readonly onPreview: () => void;
   readonly onOpen: () => void;
   readonly onClose: () => void;
-}
-
-function releaseVelocity(samples: readonly Sample[], releaseTime: number) {
-  const recent = samples.filter((sample) => releaseTime - sample.time <= VELOCITY_WINDOW_MS);
-  if (recent.length < 2) return 0;
-  const first = recent[0];
-  const last = recent.at(-1)!;
-  return last.time > first.time ? (last.x - first.x) / (last.time - first.time) : 0;
-}
-
-/**
- * Eine Öffnen-Geste beginnt nur auf der Seite selbst: nicht in festen
- * Ebenen (Sheets, Detailansicht, Auswahlleiste) und nicht in Bereichen, die
- * selbst waagerecht scrollen, etwa breiten Tabellen.
- */
-function startsOpenGesture(target: EventTarget | null, shell: HTMLElement) {
-  if (!(target instanceof Element) || target.closest('main, header') === null) return false;
-  for (let element: Element | null = target; element && element !== shell; element = element.parentElement) {
-    const style = getComputedStyle(element);
-    if (style.position === 'fixed') return false;
-    if (/(auto|scroll)/.test(style.overflowX) && element.scrollWidth > element.clientWidth) return false;
-  }
-  return true;
 }
 
 /**
@@ -96,6 +60,7 @@ export function useMobileDrawerSwipe({
 }: MobileDrawerSwipeOptions): boolean {
   const [previewing, setPreviewing] = useState(false);
   const releasing = useRef(false);
+  const dragging = useRef(false);
   const preview = useEffectEvent(onPreview);
   const openDrawer = useEffectEvent(onOpen);
   const closeDrawer = useEffectEvent(onClose);
@@ -108,12 +73,15 @@ export function useMobileDrawerSwipe({
   }, [open, shellRef]);
 
   // Dauer und Kurve einer Freigabe gelten nur für deren Bewegung. Der Listener
-  // überdauert das Schließen, denn das Hinausgleiten läuft danach noch.
+  // überdauert das Schließen, denn das Hinausgleiten läuft danach noch. Das
+  // `transitioncancel` einer Bewegung, die ein neues Ziehen unterbricht, kommt
+  // erst danach an und darf dessen `0s` nicht zurücksetzen.
   useEffect(() => {
     const shell = shellRef.current;
     const drawer = drawerRef.current;
     if (shell === null || drawer === null) return;
     const settle = (event: TransitionEvent) => {
+      if (dragging.current) return;
       if (event.target === drawer && event.propertyName === 'translate') {
         shell.style.removeProperty('--mobile-nav-motion');
       }
@@ -134,6 +102,17 @@ export function useMobileDrawerSwipe({
       ? [drawer, backdropRef.current].filter((surface) => surface !== null)
       : [shell];
     let gesture: Gesture | null = null;
+    // Das Touch-Ziel erhält alle Ereignisse seiner Berührung, auch wenn es
+    // inzwischen ausgehängt ist, etwa ein Sheet-Auslöser, den die Vorschau
+    // abbaut. Dann erreichen sie die Flächen nicht mehr; deshalb hört die
+    // Geste zusätzlich am Ziel und verarbeitet jedes Ereignis nur einmal.
+    let tracked: EventTarget | null = null;
+    let lastEvent: Event | null = null;
+    const firstDelivery = (event: Event) => {
+      if (event === lastEvent) return false;
+      lastEvent = event;
+      return true;
+    };
 
     const setDrag = (offset: number, width: number) => {
       shell.style.setProperty('--mobile-nav-drag', `${offset}px`);
@@ -157,6 +136,7 @@ export function useMobileDrawerSwipe({
     // Bricht die Geste ab, gleitet die Schublade mit der Standarddauer dorthin
     // zurück, wo sie vor der Geste lag.
     const abandon = (abandoned: Gesture) => {
+      dragging.current = false;
       shell.style.removeProperty('--mobile-nav-motion');
       clearDrag();
       if (abandoned.mode === 'open') release(() => setPreviewing(false));
@@ -165,24 +145,29 @@ export function useMobileDrawerSwipe({
     const onTouchStart = (event: TouchEvent) => {
       if (gesture?.dragging) abandon(gesture);
       gesture = null;
+      untrack();
       if (event.touches.length !== 1) return;
       if (!open && !startsOpenGesture(event.target, shell)) return;
-      const width = drawer.getBoundingClientRect().width;
-      if (width <= 0) return;
+      // Ausgangslage ist die sichtbare Lage, auch mitten in einer Bewegung.
+      const box = drawer.getBoundingClientRect();
+      if (box.width <= 0) return;
       const touch = event.touches[0];
       gesture = {
         mode: open ? 'close' : 'open',
         startX: touch.clientX,
         startY: touch.clientY,
-        width,
+        width: box.width,
+        base: Math.min(0, Math.max(-box.width, box.left)),
         dragging: false,
-        offset: open ? 0 : -width,
+        offset: 0,
         samples: [{ x: touch.clientX, time: event.timeStamp }],
       };
+      gesture.offset = gesture.base;
+      track(event.target);
     };
 
     const onTouchMove = (event: TouchEvent) => {
-      if (gesture === null) return;
+      if (gesture === null || !firstDelivery(event)) return;
       const touch = event.touches[0];
       const dx = touch.clientX - gesture.startX;
       const dy = touch.clientY - gesture.startY;
@@ -194,9 +179,10 @@ export function useMobileDrawerSwipe({
           return;
         }
         gesture.dragging = true;
+        dragging.current = true;
         shell.style.setProperty('--mobile-nav-motion', '0s');
         if (gesture.mode === 'open') {
-          setDrag(-gesture.width, gesture.width);
+          setDrag(gesture.base, gesture.width);
           flushSync(() => {
             preview();
             setPreviewing(true);
@@ -205,29 +191,23 @@ export function useMobileDrawerSwipe({
       }
       // Erst eine waagerechte Geste hält den Browser vom Scrollen ab.
       event.preventDefault();
-      const base = gesture.mode === 'open' ? -gesture.width : 0;
-      gesture.offset = Math.min(0, Math.max(-gesture.width, base + dx));
+      gesture.offset = Math.min(0, Math.max(-gesture.width, gesture.base + dx));
       gesture.samples.push({ x: touch.clientX, time: event.timeStamp });
       if (gesture.samples.length > 8) gesture.samples.shift();
       setDrag(gesture.offset, gesture.width);
     };
 
     const onTouchEnd = (event: TouchEvent) => {
+      if (!firstDelivery(event)) return;
       const released = gesture;
       gesture = null;
+      untrack();
       if (!released?.dragging) return;
+      dragging.current = false;
       const { mode, offset, width } = released;
-      const velocity = releaseVelocity(released.samples, event.timeStamp);
-      const opens = velocity > FLING_VELOCITY || (velocity >= -FLING_VELOCITY && offset > -width / 2);
-      const distance = opens ? -offset : width + offset;
-      const speed = Math.abs(velocity);
-      const duration = speed >= FLING_VELOCITY ? distance / speed : RELEASE_MAX_MS * (distance / width);
-      if (distance >= 1) {
-        const clamped = Math.round(Math.min(RELEASE_MAX_MS, Math.max(RELEASE_MIN_MS, duration)));
-        shell.style.setProperty('--mobile-nav-motion', `${clamped}ms ${RELEASE_EASING}`);
-      } else {
-        shell.style.removeProperty('--mobile-nav-motion');
-      }
+      const { opens, motion } = releaseGesture(released.samples, event.timeStamp, offset, width);
+      if (motion === null) shell.style.removeProperty('--mobile-nav-motion');
+      else shell.style.setProperty('--mobile-nav-motion', motion);
       clearDrag();
       // Zielwert und Freigabe fallen in denselben Frame.
       if (mode === 'close' && !opens) release(closeDrawer);
@@ -239,10 +219,27 @@ export function useMobileDrawerSwipe({
       }
     };
 
-    const onTouchCancel = () => {
+    const onTouchCancel = (event: TouchEvent) => {
+      if (!firstDelivery(event)) return;
       if (gesture?.dragging) abandon(gesture);
       gesture = null;
+      untrack();
     };
+
+    function track(target: EventTarget | null) {
+      if (target === null) return;
+      tracked = target;
+      target.addEventListener('touchmove', onTouchMove as EventListener, { passive: false });
+      target.addEventListener('touchend', onTouchEnd as EventListener, { passive: true });
+      target.addEventListener('touchcancel', onTouchCancel as EventListener, { passive: true });
+    }
+
+    function untrack() {
+      tracked?.removeEventListener('touchmove', onTouchMove as EventListener);
+      tracked?.removeEventListener('touchend', onTouchEnd as EventListener);
+      tracked?.removeEventListener('touchcancel', onTouchCancel as EventListener);
+      tracked = null;
+    }
 
     for (const surface of surfaces) {
       surface.addEventListener('touchstart', onTouchStart, { passive: true });
@@ -258,9 +255,11 @@ export function useMobileDrawerSwipe({
         surface.removeEventListener('touchend', onTouchEnd);
         surface.removeEventListener('touchcancel', onTouchCancel);
       }
+      untrack();
       // Endet die Geste auf anderem Weg (Escape, Navigation, Breitenwechsel),
       // gleitet die Schublade mit der Standarddauer an ihr Ziel.
       if (gesture?.dragging) {
+        dragging.current = false;
         shell.style.removeProperty('--mobile-nav-motion');
         clearDrag();
         if (gesture.mode === 'open') setPreviewing(false);

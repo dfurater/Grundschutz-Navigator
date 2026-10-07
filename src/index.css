@@ -261,8 +261,7 @@
   --duration-fast: 150ms;
   --duration-normal: 200ms;
   --easing-default: cubic-bezier(0.16, 1, 0.3, 1);
-  /* Mobile Navigationsschublade: Dauer und Kurve aus einer Bild-für-Bild-
-     Analyse einer Referenzaufnahme (iOS, 60 fps) angepasst (GSPP-493). */
+  /* Mobile Navigationsschublade (GSPP-493). */
   --duration-drawer: 220ms;
   --easing-drawer: cubic-bezier(0.4, 0, 0.2, 1);
 
