@@ -55,6 +55,8 @@ test('schiebt App-Kopf, Inhalt und Abdunklung um die Breite der Schublade nach r
   expect(getComputedStyle(header).translate).toBe('none');
   expect(getComputedStyle(backdrop).opacity).toBe('0');
   expect(getComputedStyle(backdrop).pointerEvents).toBe('none');
+  const pageBackground = getComputedStyle(document.documentElement).backgroundColor;
+  expect(pageBackground).not.toBe('rgb(255, 255, 255)');
 
   const aside = await openDrawer(shell);
   await settlePush(shell);
@@ -65,9 +67,9 @@ test('schiebt App-Kopf, Inhalt und Abdunklung um die Breite der Schublade nach r
   for (const pushed of [main, header, backdrop]) {
     expect(pushed.getBoundingClientRect().left).toBeCloseTo(drawerBox.right, 1);
   }
-  // Unter Safaris schwebender Leiste malt ein weißer Schatten die Fläche unter
-  // der Schublade aus, ohne das Dokument zu verlängern.
-  expect(getComputedStyle(aside).boxShadow).toBe('rgb(255, 255, 255) 0px 128px 0px 0px');
+  // Unter Safaris schwebender Leiste zeigt sich unter der Schublade der
+  // Hintergrund von `html`; bei offener Schublade ist er weiß.
+  await expect.poll(() => getComputedStyle(document.documentElement).backgroundColor).toBe('rgb(255, 255, 255)');
   expect(getComputedStyle(backdrop).backgroundColor).toBe('rgba(0, 0, 0, 0.64)');
   expect(getComputedStyle(backdrop).opacity).toBe('1');
 });
@@ -103,6 +105,7 @@ test('schließt die Schublade, wenn sie über die Hälfte nach links gezogen wir
   expect(aside.inert).toBe(true);
   await expect.poll(() => aside.getBoundingClientRect().right).toBeLessThanOrEqual(0);
   await expect.poll(() => getComputedStyle(main).translate).toBe('none');
+  await expect.poll(() => getComputedStyle(document.documentElement).backgroundColor).not.toBe('rgb(255, 255, 255)');
 });
 
 test('schließt die Schublade bei einem kurzen Wurf nach links und übernimmt dessen Tempo', async () => {
