@@ -38,6 +38,18 @@ function hasSelectedDescendant(item: TreeItem, selectedId?: string): boolean {
   );
 }
 
+/**
+ * Längstes Kürzel einer Geschwistergruppe in Zeichen. Alle Kürzel-Badges der
+ * Gruppe bekommen diese Breite, damit die Titel einer Ebene bündig beginnen
+ * (GSPP-491). Die Monospace-Schrift macht `ch` zur exakten Zeichenbreite.
+ */
+function longestPrefixLength(items: readonly TreeItem[]): number {
+  return items.reduce(
+    (longest, item) => Math.max(longest, item.prefix?.length ?? 0),
+    0,
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /*  TreeNavItem (recursive)                                            */
 /* ------------------------------------------------------------------ */
@@ -45,13 +57,21 @@ function hasSelectedDescendant(item: TreeItem, selectedId?: string): boolean {
 interface TreeNavItemProps {
   readonly item: TreeItem;
   readonly level: number;
+  /** Breite der Kürzel-Badges dieser Geschwistergruppe in Zeichen */
+  readonly prefixLength: number;
   readonly onSelect: (id: string) => void;
   readonly selectedId?: string;
 }
 
 const TREE_DEPTH_PADDING_CLASSES = ['pl-2', 'pl-5', 'pl-8', 'pl-11'] as const;
 
-function TreeNavItem({ item, level, onSelect, selectedId }: TreeNavItemProps) {
+function TreeNavItem({
+  item,
+  level,
+  prefixLength,
+  onSelect,
+  selectedId,
+}: TreeNavItemProps) {
   const hasChildren = Boolean(item.children && item.children.length > 0);
   /** Ohne `id` ist der Eintrag nicht adressierbar und damit nie ausgewählt. */
   const isSelectable = item.id !== undefined;
@@ -67,6 +87,7 @@ function TreeNavItem({ item, level, onSelect, selectedId }: TreeNavItemProps) {
     autoExpandKey && expandState.autoExpandKey !== autoExpandKey
       ? true
       : expandState.expanded;
+  const childPrefixLength = longestPrefixLength(item.children ?? []);
   const depthClass =
     TREE_DEPTH_PADDING_CLASSES[
       Math.min(level, TREE_DEPTH_PADDING_CLASSES.length - 1)
@@ -152,7 +173,13 @@ function TreeNavItem({ item, level, onSelect, selectedId }: TreeNavItemProps) {
         </span>
         {item.prefix ? (
           <span className="truncate flex items-center gap-1.5 flex-1 min-w-0">
-            <span className="tree-prefix-badge shrink-0 rounded bg-[var(--color-surface-subtle)] px-1 py-px text-center font-mono text-xs font-semibold leading-tight text-[var(--color-text-muted)]">{item.prefix}</span>
+            {/* `0.5rem` = `px-1` beidseitig, Preflight setzt border-box */}
+            <span
+              className="shrink-0 rounded bg-[var(--color-surface-subtle)] px-1 py-px text-center font-mono text-xs font-semibold leading-tight text-[var(--color-text-muted)]"
+              style={{ width: `calc(${prefixLength}ch + 0.5rem)` }}
+            >
+              {item.prefix}
+            </span>
             <span className="truncate">{item.label}</span>
           </span>
         ) : (
@@ -176,6 +203,7 @@ function TreeNavItem({ item, level, onSelect, selectedId }: TreeNavItemProps) {
               key={child.id ?? `ohne-id-${index}`}
               item={child}
               level={level + 1}
+              prefixLength={childPrefixLength}
               onSelect={onSelect}
               selectedId={selectedId}
             />
@@ -196,6 +224,7 @@ export function TreeNav({
   selectedId,
   className = '',
 }: TreeNavProps) {
+  const prefixLength = longestPrefixLength(items);
   return (
     <nav
       className={className}
@@ -208,6 +237,7 @@ export function TreeNav({
             key={item.id ?? `ohne-id-${index}`}
             item={item}
             level={0}
+            prefixLength={prefixLength}
             onSelect={onSelect}
             selectedId={selectedId}
           />
