@@ -530,25 +530,20 @@ body.dev-selector-dragging * {
 
   @media (width < 48rem) {
     /* Die verschobene Seite ragt rechts hinaus; `clip` erzeugt anders als
-       `hidden` keinen Scrollbereich, an dem der App-Kopf kleben würde. */
+       `hidden` keinen Scrollbereich, an dem der App-Kopf kleben würde.
+       Unter Safaris schwebender Leiste endet die `100dvh` hohe Schublade, und
+       dort liegt die Shell selbst frei, weil der Inhalt nach rechts geschoben
+       ist. Bei offener Schublade ist sie deshalb weiß wie die Schublade
+       (`data-[mobile-nav=open]:bg-white` in `AppShell`); der Wechsel folgt der
+       Bewegung. */
     .mobile-nav-shell {
       overflow-x: clip;
+      transition: background-color var(--mobile-nav-motion);
     }
 
     .mobile-nav-drawer {
       width: var(--mobile-nav-width);
       translate: -100% 0;
-    }
-
-    /* Unter Safaris schwebender Leiste endet die `100dvh` hohe Schublade, und
-       Safari zeigt dort den Hintergrund von `html`. Bei offener Schublade ist
-       er deshalb weiß wie die Schublade; die Seite rechts davon deckt ihn ab. */
-    html:has(.mobile-nav-shell) {
-      transition: background-color var(--duration-drawer) var(--easing-drawer);
-    }
-
-    html:has(.mobile-nav-shell[data-mobile-nav='open']) {
-      background-color: #fff;
     }
 
     .mobile-nav-shell[data-mobile-nav='open'] .mobile-nav-drawer {
