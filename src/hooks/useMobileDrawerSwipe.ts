@@ -10,8 +10,8 @@ interface Gesture {
   readonly startX: number;
   readonly startY: number;
   readonly width: number;
-  /** Sichtbare Lage beim Aufsetzen des Fingers, relativ zur offenen Endlage. */
-  readonly base: number;
+  /** Sichtbare Lage beim Übernehmen der Geste, relativ zur offenen Endlage. */
+  base: number;
   dragging: boolean;
   /** Lage der Schublade relativ zur offenen Endlage, zwischen `-width` und 0. */
   offset: number;
@@ -72,10 +72,11 @@ export function useMobileDrawerSwipe({
     if (open && !releasing.current) shellRef.current?.style.removeProperty('--mobile-nav-motion');
   }, [open, shellRef]);
 
-  // Dauer und Kurve einer Freigabe gelten nur für deren Bewegung. Der Listener
-  // überdauert das Schließen, denn das Hinausgleiten läuft danach noch. Das
-  // `transitioncancel` einer Bewegung, die ein neues Ziehen unterbricht, kommt
-  // erst danach an und darf dessen `0s` nicht zurücksetzen.
+  // Dauer und Kurve einer Freigabe gelten bis zum Ende einer Bewegung. Der
+  // Listener überdauert das Schließen, denn das Hinausgleiten läuft danach
+  // noch. Ein `transitioncancel` setzt sie nicht zurück: Das einer Bewegung,
+  // die ein neues Ziehen unterbricht, kommt erst danach an, bei einem kurzen
+  // Wurf sogar nach dessen Freigabe, und gehört zu keiner der beiden.
   useEffect(() => {
     const shell = shellRef.current;
     const drawer = drawerRef.current;
@@ -87,11 +88,7 @@ export function useMobileDrawerSwipe({
       }
     };
     drawer.addEventListener('transitionend', settle);
-    drawer.addEventListener('transitioncancel', settle);
-    return () => {
-      drawer.removeEventListener('transitionend', settle);
-      drawer.removeEventListener('transitioncancel', settle);
-    };
+    return () => drawer.removeEventListener('transitionend', settle);
   }, [shellRef, drawerRef]);
 
   useEffect(() => {
@@ -148,21 +145,19 @@ export function useMobileDrawerSwipe({
       untrack();
       if (event.touches.length !== 1) return;
       if (!open && !startsOpenGesture(event.target, shell)) return;
-      // Ausgangslage ist die sichtbare Lage, auch mitten in einer Bewegung.
-      const box = drawer.getBoundingClientRect();
-      if (box.width <= 0) return;
+      const width = drawer.getBoundingClientRect().width;
+      if (width <= 0) return;
       const touch = event.touches[0];
       gesture = {
         mode: open ? 'close' : 'open',
         startX: touch.clientX,
         startY: touch.clientY,
-        width: box.width,
-        base: Math.min(0, Math.max(-box.width, box.left)),
+        width,
+        base: 0,
         dragging: false,
         offset: 0,
         samples: [{ x: touch.clientX, time: event.timeStamp }],
       };
-      gesture.offset = gesture.base;
       track(event.target);
     };
 
@@ -178,6 +173,9 @@ export function useMobileDrawerSwipe({
           gesture = null;
           return;
         }
+        // Gemessen wird erst hier, wo die Geste die Schublade übernimmt: Seit
+        // dem Aufsetzen des Fingers kann sie noch weitergeglitten sein.
+        gesture.base = Math.min(0, Math.max(-gesture.width, drawer.getBoundingClientRect().left));
         gesture.dragging = true;
         dragging.current = true;
         shell.style.setProperty('--mobile-nav-motion', '0s');

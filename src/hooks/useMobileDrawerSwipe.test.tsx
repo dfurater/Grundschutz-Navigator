@@ -51,6 +51,12 @@ function render(open: boolean, enabled = true) {
 
 const variable = (name: string) => shell.style.getPropertyValue(name);
 
+function dispatchTranslate(type: 'transitionend' | 'transitioncancel') {
+  const event = new Event(type);
+  Object.defineProperty(event, 'propertyName', { value: 'translate' });
+  act(() => { drawer.dispatchEvent(event); });
+}
+
 beforeEach(() => {
   clock = 0;
   shell = document.createElement('div');
@@ -145,22 +151,37 @@ describe('useMobileDrawerSwipe – offene Schublade', () => {
 });
 
 describe('useMobileDrawerSwipe – unterbrochene Bewegungen', () => {
-  it('setzt an der sichtbaren Lage einer noch gleitenden Schublade an', () => {
+  it('übernimmt eine noch gleitende Schublade an ihrer sichtbaren Lage beim Übernehmen der Geste', () => {
     render(true);
     drawerLeft = -150;
     touch('touchstart', drawer, 200);
+    // Bis die Richtung feststeht, gleitet die Schublade weiter.
+    drawerLeft = -120;
     touch('touchmove', drawer, 180);
-    expect(variable('--mobile-nav-drag')).toBe('-170px');
+    expect(variable('--mobile-nav-drag')).toBe('-140px');
+    touch('touchmove', drawer, 170);
+    expect(variable('--mobile-nav-drag')).toBe('-150px');
   });
 
   it('behält die Fingerführung, wenn die unterbrochene Bewegung danach abgebrochen meldet', () => {
     render(true);
     touch('touchstart', drawer, 250);
     touch('touchmove', drawer, 200);
-    const cancelled = new Event('transitioncancel');
-    Object.defineProperty(cancelled, 'propertyName', { value: 'translate' });
-    act(() => { drawer.dispatchEvent(cancelled); });
+    dispatchTranslate('transitioncancel');
     expect(variable('--mobile-nav-motion')).toBe('0s');
+  });
+
+  it('behält das Tempo eines kurzen Wurfs, wenn der Abbruch der unterbrochenen Bewegung erst danach ankommt', () => {
+    const { onClose } = render(true);
+    touch('touchstart', drawer, 280);
+    touch('touchmove', drawer, 268, 0, 10);
+    touch('touchmove', drawer, 250, 0, 10);
+    touch('touchend', drawer, 250, 0, 5);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    dispatchTranslate('transitioncancel');
+    expect(variable('--mobile-nav-motion')).toBe('180ms cubic-bezier(0, 0, 0.2, 1)');
+    dispatchTranslate('transitionend');
+    expect(variable('--mobile-nav-motion')).toBe('');
   });
 
   it('beendet eine Öffnen-Geste auch, wenn die Vorschau ihr Touch-Ziel aushängt', () => {
