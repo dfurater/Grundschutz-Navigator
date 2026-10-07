@@ -535,9 +535,14 @@ body.dev-selector-dragging * {
       overflow-x: clip;
     }
 
+    /* Die Schublade ist `100dvh` hoch; Safari zeigt unter seiner schwebenden
+       Leiste darunter den Seitenhintergrund. Der weiße Schatten deckt diese
+       Fläche ab, ohne das Dokument zu verlängern: Schatten bestimmen weder
+       Layout noch Scrollhöhe. */
     .mobile-nav-drawer {
       width: var(--mobile-nav-width);
       translate: -100% 0;
+      box-shadow: 0 8rem 0 0 #fff;
     }
 
     .mobile-nav-shell[data-mobile-nav='open'] .mobile-nav-drawer {

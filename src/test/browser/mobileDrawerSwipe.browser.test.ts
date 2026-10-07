@@ -65,6 +65,9 @@ test('schiebt App-Kopf, Inhalt und Abdunklung um die Breite der Schublade nach r
   for (const pushed of [main, header, backdrop]) {
     expect(pushed.getBoundingClientRect().left).toBeCloseTo(drawerBox.right, 1);
   }
+  // Unter Safaris schwebender Leiste malt ein weißer Schatten die Fläche unter
+  // der Schublade aus, ohne das Dokument zu verlängern.
+  expect(getComputedStyle(aside).boxShadow).toBe('rgb(255, 255, 255) 0px 128px 0px 0px');
   expect(getComputedStyle(backdrop).backgroundColor).toBe('rgba(0, 0, 0, 0.64)');
   expect(getComputedStyle(backdrop).opacity).toBe('1');
 });
