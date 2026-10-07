@@ -498,10 +498,6 @@ body.dev-selector-dragging * {
     min-height: 44px;
   }
 
-  .tree-prefix-badge {
-    min-width: 3.5ch;
-  }
-
   .animate-slide-up {
     animation: slide-up var(--duration-normal) var(--easing-default) backwards;
   }
