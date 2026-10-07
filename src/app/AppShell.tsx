@@ -128,7 +128,7 @@ export function AppShell() {
     // Safari gibt Klicks keinen Button-Fokus; main wird beim Öffnen inert.
     if (!isPersistentNav) menuButtonRef.current?.focus({ preventScroll: true });
     setSideNavOpen(true);
-    if (sidebarCollapsed) setSidebarCollapsed(false);
+    setSidebarCollapsed(false);
   };
 
   const closeSideNav = () => {
@@ -146,7 +146,7 @@ export function AppShell() {
     backdropRef,
     onPreview: () => {
       drawerPlacement.captureOffset();
-      if (sidebarCollapsed) setSidebarCollapsed(false);
+      setSidebarCollapsed(false);
     },
     onOpen: openSideNav,
     onClose: closeSideNav,
@@ -158,6 +158,9 @@ export function AppShell() {
     drawerRef,
   );
   const mobileNavShown = mobileNavOpen || swipePreviewing;
+  const expandedNavWidth = sidebarCollapsed ? 44 : sidebarWidth;
+  // Mobil bestimmt `--mobile-nav-width` die Breite (src/index.css).
+  const persistentNavWidth = isPersistentNav ? expandedNavWidth : undefined;
 
   // Jede Navigation schließt die mobile Schublade, auch eine aus dem App-Kopf
   // (Marke, Lupe, Suchfeld) oder über Browser-Zurück. Sonst bliebe die neue
@@ -281,7 +284,7 @@ export function AppShell() {
           if (!isPersistentNav) menuButtonRef.current?.focus({ preventScroll: true });
           drawerPlacement.captureOffset();
           setSideNavOpen((prev) => !prev);
-          if (sidebarCollapsed) setSidebarCollapsed(false);
+          setSidebarCollapsed(false);
         }}
       />
 
@@ -318,8 +321,7 @@ export function AppShell() {
           ref={drawerRef}
           style={{
             top: drawerPlacement.top,
-            // Mobil bestimmt `--mobile-nav-width` die Breite (src/index.css).
-            width: isPersistentNav ? (sidebarCollapsed ? 44 : sidebarWidth) : undefined,
+            width: persistentNavWidth,
             transition: isSidebarResizing || prefersReducedMotion
               ? 'none'
               : 'width var(--duration-normal) var(--easing-default), translate var(--mobile-nav-motion)',
