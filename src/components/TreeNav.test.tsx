@@ -34,6 +34,33 @@ describe('TreeNav', () => {
     expect(classNames).not.toContain('focus:ring-');
   });
 
+  it('gibt allen Kürzeln einer Ebene die Breite des längsten Kürzels', () => {
+    render(
+      <TreeNav
+        items={[
+          { id: 'GC', label: 'Governance', prefix: 'GC' },
+          {
+            id: 'KONF',
+            label: 'Konfiguration',
+            prefix: 'KONF',
+            children: [
+              { id: 'KONF.1', label: 'Thema eins', prefix: 'KONF.1' },
+              { id: 'KONF.12', label: 'Thema zwölf', prefix: 'KONF.12' },
+            ],
+          },
+          { id: 'OHNE', label: 'Ohne Kürzel' },
+        ]}
+        selectedId="KONF.1"
+        onSelect={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('GC').style.width).toBe('calc(4ch + 0.5rem)');
+    expect(screen.getByText('KONF').style.width).toBe('calc(4ch + 0.5rem)');
+    expect(screen.getByText('KONF.1').style.width).toBe('calc(7ch + 0.5rem)');
+    expect(screen.getByText('KONF.12').style.width).toBe('calc(7ch + 0.5rem)');
+  });
+
   it('allows collapsing a branch even when a descendant is selected', () => {
     render(
       <TreeNav
