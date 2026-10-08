@@ -3,13 +3,13 @@ import { IconExternalLink } from '@/components/icons';
 export function LizenzenPage() {
   return (
     <div className="max-w-3xl mx-auto py-8 px-6 space-y-8">
-      <h1 className="text-2xl font-bold text-slate-900">
+      <h1 className="type-page-title">
         Lizenzen und Quellenhinweise
       </h1>
 
       {/* BSI Catalog License */}
       <section className="bg-sky-50 border border-sky-100 rounded-lg p-5 space-y-3">
-        <h2 className="text-lg font-semibold text-slate-900">
+        <h2 className="text-base font-semibold leading-snug text-slate-900">
           BSI Grundschutz++ Anwenderkatalog
         </h2>
         <p className="text-sm text-slate-700 leading-relaxed">
@@ -46,7 +46,7 @@ export function LizenzenPage() {
 
       {/* Third-party Licenses */}
       <section className="space-y-4">
-        <h2 className="text-lg font-semibold text-slate-800">
+        <h2 className="text-base font-semibold leading-snug text-slate-900">
           Ausgewählte Open-Source-Bibliotheken
         </h2>
         <p className="text-sm text-slate-700 leading-relaxed">
@@ -133,7 +133,7 @@ export function LizenzenPage() {
 
       {/* App License */}
       <section className="space-y-2">
-        <h2 className="text-lg font-semibold text-slate-800">
+        <h2 className="text-base font-semibold leading-snug text-slate-900">
           Hinweis zum Projektcode
         </h2>
         <p className="text-sm text-slate-700 leading-relaxed">
