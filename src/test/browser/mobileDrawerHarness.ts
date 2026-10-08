@@ -27,7 +27,7 @@ export function unmountShell() {
   window.scrollTo(0, 0);
 }
 
-export async function renderShell(width: number) {
+export async function renderShell(width: number, route = '/gibt-es-nicht') {
   await page.viewport(width, HEIGHT);
   host = document.createElement('div');
   document.body.append(host);
@@ -35,7 +35,7 @@ export async function renderShell(width: number) {
   const catalogState = { ...projectPublicState(createInitialState(ENTRY_CATALOG_KEY), () => {}), loading: false };
   flushSync(() => {
     root?.render(createElement(CatalogContext.Provider, { value: catalogState },
-      createElement(MemoryRouter, { initialEntries: ['/gibt-es-nicht'] }, createElement(AppShell)),
+      createElement(MemoryRouter, { initialEntries: [route] }, createElement(AppShell)),
     ));
   });
   // Lange Seite, damit das Dokument wie eine Kontrollliste scrollt.
@@ -53,6 +53,16 @@ export async function openDrawer(shell: HTMLElement, { animated = false } = {}) 
   if (!animated) aside.style.transition = 'none';
   await expect.poll(() => aside.getBoundingClientRect().left).toBe(0);
   return aside;
+}
+
+/** Lässt das Verschieben der Seite und die Abdunklung sofort enden. */
+export async function settlePush(shell: HTMLElement) {
+  for (const animation of shell.getAnimations({ subtree: true })) {
+    if (!(animation.effect instanceof KeyframeEffect)) continue;
+    const target = animation.effect.target;
+    if (target instanceof HTMLElement && target.closest('aside') === null) animation.finish();
+  }
+  await new Promise((resolve) => requestAnimationFrame(resolve));
 }
 
 export function closeDrawer(shell: HTMLElement) {
