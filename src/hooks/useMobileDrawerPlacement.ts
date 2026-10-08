@@ -7,6 +7,12 @@ export interface MobileDrawerPlacement {
   readonly captureOffset: () => void;
   /** `top` der Schublade; ohne Wert auf der persistenten Navigation. */
   readonly top: number | undefined;
+  /**
+   * Wahr, solange die geschlossene Schublade noch hinausgleitet. Die Seite
+   * gleitet gleich lang zurück und trägt bis dahin einen `translate`-Wert
+   * (GSPP-494).
+   */
+  readonly sliding: boolean;
 }
 
 function isTranslateTransition(animation: Animation) {
@@ -119,5 +125,6 @@ export function useMobileDrawerPlacement(
   return {
     captureOffset: () => setOffset(window.scrollY),
     top: persistent ? undefined : placedTop,
+    sliding,
   };
 }
