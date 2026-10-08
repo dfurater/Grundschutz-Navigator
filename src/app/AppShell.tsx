@@ -255,6 +255,7 @@ export function AppShell() {
     <div
       ref={shellRef}
       data-mobile-nav={mobileNavShown ? 'open' : 'closed'}
+      data-sidebar-resizing={isSidebarResizing ? '' : undefined}
       className="mobile-nav-shell flex flex-col bg-slate-100 min-h-dvh max-md:data-[mobile-nav=open]:bg-white md:h-dvh md:overflow-hidden"
     >
       <a href="#main-content" className="skip-link">

@@ -556,6 +556,14 @@ body.dev-selector-dragging * {
       transition: translate var(--mobile-nav-motion);
     }
 
+    /* Während eines Seitenleisten-Resizes entfällt die Bewegung der Schublade
+       (`transition: none` in `AppShell`), und `useMobileDrawerPlacement` meldet
+       kein Hinausgleiten. Die Seite folgt ihr, sonst trüge sie nach dem
+       Schließen noch einen `translate`-Wert, den niemand meldet (GSPP-494). */
+    .mobile-nav-shell[data-sidebar-resizing] .mobile-nav-push {
+      transition: none;
+    }
+
     .mobile-nav-shell[data-mobile-nav='open'] .mobile-nav-push {
       translate: calc(var(--mobile-nav-width) + var(--mobile-nav-drag)) 0;
     }
