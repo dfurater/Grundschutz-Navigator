@@ -250,7 +250,7 @@ describe('AppShell', () => {
 
     expect(wasNotPrevented).toBe(false);
     expect(bubbleHandler).not.toHaveBeenCalled();
-    expect(screen.queryByTestId('mobile-nav-backdrop')).not.toBeInTheDocument();
+    expect(screen.getByTestId('mobile-nav-backdrop')).toHaveAttribute('data-state', 'closed');
     expect(container.querySelector('aside')).toHaveAttribute('inert');
     expect(menuButton).toHaveFocus();
     expect(focus).toHaveBeenCalledWith({ preventScroll: true });
@@ -263,7 +263,7 @@ describe('AppShell', () => {
 
     fireEvent.click(menuButton);
     expect(fireEvent.keyDown(document.querySelector('body')!, { key: 'Enter' })).toBe(true);
-    expect(screen.getByTestId('mobile-nav-backdrop')).toBeInTheDocument();
+    expect(screen.getByTestId('mobile-nav-backdrop')).toHaveAttribute('data-state', 'open');
   });
 
   it('leaves persistent desktop navigation interactive without consuming Escape', () => {
@@ -313,7 +313,7 @@ describe('AppShell', () => {
 
     const sidebar = container.querySelector('aside');
     expect(sidebar).toHaveStyle({
-      transition: 'width var(--duration-normal) var(--easing-default), translate var(--duration-normal) var(--easing-default)',
+      transition: 'width var(--duration-normal) var(--easing-default), translate var(--mobile-nav-motion)',
     });
 
     mockedUseMediaQuery.mockReturnValue(true);
@@ -502,7 +502,7 @@ describe('AppShell', () => {
     expect(screen.getByText('Suche')).toBeInTheDocument();
     expect(container.querySelector('aside')).toHaveAttribute('inert');
     expect(container.querySelector('main')).not.toHaveAttribute('inert');
-    expect(screen.queryByTestId('mobile-nav-backdrop')).not.toBeInTheDocument();
+    expect(screen.getByTestId('mobile-nav-backdrop')).toHaveAttribute('data-state', 'closed');
     expect(lupe).toHaveFocus();
   });
 
@@ -629,7 +629,7 @@ describe('AppShell', () => {
 
     expect(screen.getByTestId('catalog-browser')).toBeInTheDocument();
     expect(container.querySelector('aside')).toHaveAttribute('inert');
-    expect(screen.queryByTestId('mobile-nav-backdrop')).not.toBeInTheDocument();
+    expect(screen.getByTestId('mobile-nav-backdrop')).toHaveAttribute('data-state', 'closed');
   });
 
   // Der Drawer besitzt Escape in der Capture-Phase; ein offenes Menü in seinem
