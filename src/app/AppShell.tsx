@@ -160,6 +160,11 @@ export function AppShell() {
     drawerRef,
   );
   const mobileNavShown = mobileNavOpen || swipePreviewing;
+  // Feste Elemente der Seite treten zurück, bis `main` nach dem Schließen
+  // wieder `translate: none` hat: Ein anderer Wert macht `main` zum
+  // Bezugsrahmen, und die Elemente sprängen erst nach der Bewegung an den
+  // Bildschirmrand (GSPP-494). `data-mobile-nav` folgt dagegen dem Zielzustand.
+  const mobileNavBlocksFixed = mobileNavShown || drawerPlacement.sliding;
   const expandedNavWidth = sidebarCollapsed ? 44 : sidebarWidth;
   // Mobil bestimmt `--mobile-nav-width` die Breite (src/index.css).
   const persistentNavWidth = isPersistentNav ? expandedNavWidth : undefined;
@@ -250,6 +255,7 @@ export function AppShell() {
     <div
       ref={shellRef}
       data-mobile-nav={mobileNavShown ? 'open' : 'closed'}
+      data-sidebar-resizing={isSidebarResizing ? '' : undefined}
       className="mobile-nav-shell flex flex-col bg-slate-100 min-h-dvh max-md:data-[mobile-nav=open]:bg-white md:h-dvh md:overflow-hidden"
     >
       <a href="#main-content" className="skip-link">
@@ -403,7 +409,7 @@ export function AppShell() {
           inert={mobileNavOpen}
           className="mobile-nav-push flex-1 min-w-0 flex flex-col bg-white md:overflow-hidden"
         >
-          <MobileNavigationContext.Provider value={mobileNavShown}>
+          <MobileNavigationContext.Provider value={mobileNavBlocksFixed}>
             <Routes>
               {STATIC_PAGE_ROUTES.map(({ path, title, element, scroll = true }) => (
                 <Route

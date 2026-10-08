@@ -1,10 +1,12 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { useContext } from 'react';
 import type { RefObject } from 'react';
 import { Link, MemoryRouter, useNavigate } from 'react-router';
 import type { NavigateFunction } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { MobileNavigationContext } from '@/state/MobileNavigationContext';
 import { AppShell } from './AppShell';
 import { STATIC_PAGE_ROUTES } from './staticPageRoutes';
 import { PAGE_TITLES, PRODUCT_TITLE } from './pageTitles';
@@ -51,8 +53,12 @@ vi.mock('@/components/Footer', () => ({
   ),
 }));
 
+// Zeigt den Kontextwert, den feste Elemente der Seite auswerten (GSPP-494).
 vi.mock('@/features/home/HomePage', () => ({
-  HomePage: () => <div>Home</div>,
+  HomePage: () => {
+    const fixedElementsHidden = useContext(MobileNavigationContext);
+    return <div data-fixed-elements-hidden={String(fixedElementsHidden)}>Home</div>;
+  },
 }));
 
 const catalogBrowserMock = vi.hoisted(() => ({ focusHeadingOnMount: false }));
@@ -254,6 +260,26 @@ describe('AppShell', () => {
     expect(container.querySelector('aside')).toHaveAttribute('inert');
     expect(menuButton).toHaveFocus();
     expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+  });
+
+  it('hides fixed page elements until the drawer has finished sliding out (GSPP-494)', () => {
+    const { container } = render(<MemoryRouter><AppShell /></MemoryRouter>);
+    const hidden = () => screen.getByText('Home').getAttribute('data-fixed-elements-hidden');
+    expect(hidden()).toBe('false');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    expect(hidden()).toBe('true');
+
+    // Das Schließen setzt den Zielzustand sofort, `main` gleitet aber noch zurück.
+    fireEvent.click(screen.getByRole('button', { name: 'Menü schließen' }));
+    expect(screen.getByTestId('mobile-nav-backdrop')).toHaveAttribute('data-state', 'closed');
+    expect(hidden()).toBe('true');
+
+    const drawer = container.querySelector('aside')!;
+    const slideEnd = new Event('transitionend', { bubbles: true });
+    Object.defineProperty(slideEnd, 'propertyName', { value: 'translate' });
+    act(() => { drawer.dispatchEvent(slideEnd); });
+    expect(hidden()).toBe('false');
   });
 
   it('does not consume unrelated keys or Escape while the mobile drawer is closed', () => {
