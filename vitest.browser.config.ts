@@ -10,6 +10,7 @@ import {
   installBrowserEgressGuard,
   resetBrowserEgressGuard,
 } from './src/test/browser/browserEgressGuard.ts';
+import { dispatchBrowserTouch } from './src/test/browser/browserTouchInput.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -54,6 +55,7 @@ export default defineConfig({
         resetBrowserEgressGuard,
         assertNoBrowserEgress,
         getBrowserEgressEnforcements,
+        dispatchBrowserTouch,
       },
     },
   },
