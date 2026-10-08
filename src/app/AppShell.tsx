@@ -432,7 +432,7 @@ export function AppShell() {
                     <PageTitle title={PAGE_TITLES.notFound} />
                     <PageScroll>
                       <div className="p-6">
-                        <h1 className="text-xl font-bold text-slate-900">
+                        <h1 className="type-page-title">
                           404 — Seite nicht gefunden
                         </h1>
                         <p className="mt-3 text-sm text-slate-600">
