@@ -71,6 +71,7 @@ beforeEach(() => {
 
 afterEach(() => {
   shell.remove();
+  vi.unstubAllGlobals();
 });
 
 describe('useMobileDrawerSwipe – offene Schublade', () => {
@@ -207,6 +208,47 @@ describe('useMobileDrawerSwipe – unterbrochene Bewegungen', () => {
     touch('touchend', trigger, 250, 0, 300);
     expect(result.current.previewing).toBe(false);
     expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Die Geste vergleicht die Viewport-Breite, nicht die gemessene Schublade:
+// Deren `width`-Transition meldet beim `resize` noch die alte Breite.
+describe('useMobileDrawerSwipe – Breitenwechsel während der Berührung', () => {
+  const resize = (width: number) => {
+    vi.stubGlobal('innerWidth', width);
+    act(() => { globalThis.dispatchEvent(new Event('resize')); });
+  };
+
+  it('beendet eine Schließen-Geste, wenn sich die Viewport-Breite ändert', () => {
+    vi.stubGlobal('innerWidth', 375);
+    const view = render(true);
+    touch('touchstart', drawer, 250);
+    touch('touchmove', drawer, 150);
+    expect(variable('--mobile-nav-drag')).toBe('-100px');
+
+    resize(667);
+    expect(variable('--mobile-nav-drag')).toBe('');
+    expect(variable('--mobile-nav-motion')).toBe('');
+    expect(touch('touchmove', drawer, 20).defaultPrevented).toBe(false);
+    touch('touchend', drawer, 20, 0, 300);
+    expect(view.onClose).not.toHaveBeenCalled();
+  });
+
+  it('beendet eine Vorschau bei geänderter Breite, nicht aber bei reiner Höhenänderung', () => {
+    vi.stubGlobal('innerWidth', 375);
+    const view = render(false);
+    touch('touchstart', main, 20);
+    touch('touchmove', main, 120);
+    resize(375);
+    expect(view.result.current.previewing).toBe(true);
+    expect(variable('--mobile-nav-drag')).toBe('-200px');
+
+    resize(667);
+    expect(view.result.current.previewing).toBe(false);
+    expect(variable('--mobile-nav-drag')).toBe('');
+    expect(touch('touchmove', main, 300).defaultPrevented).toBe(false);
+    touch('touchend', main, 300, 0, 300);
+    expect(view.onOpen).not.toHaveBeenCalled();
   });
 });
 

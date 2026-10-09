@@ -10,6 +10,8 @@ interface Gesture {
   readonly startX: number;
   readonly startY: number;
   readonly width: number;
+  /** Viewport-Breite beim Aufsetzen; ändert sie sich, endet die Geste. Nicht `width`: Deren Transition meldet beim `resize` noch die alte Breite. */
+  readonly viewport: number;
   /** Sichtbare Lage beim Übernehmen der Geste, relativ zur offenen Endlage. */
   base: number;
   dragging: boolean;
@@ -172,6 +174,7 @@ export function useMobileDrawerSwipe({
         startX: touch.clientX,
         startY: touch.clientY,
         width,
+        viewport: globalThis.innerWidth,
         base: 0,
         dragging: false,
         offset: 0,
@@ -240,6 +243,7 @@ export function useMobileDrawerSwipe({
       if (!firstDelivery(event)) return;
       cancel();
     };
+    const onResize = () => { if (gesture?.viewport !== globalThis.innerWidth) cancel(); };
 
     function track(target: EventTarget | null) {
       if (target === null) return;
@@ -247,12 +251,14 @@ export function useMobileDrawerSwipe({
       target.addEventListener('touchmove', onTouchMove as EventListener, { passive: false });
       target.addEventListener('touchend', onTouchEnd as EventListener, { passive: true });
       target.addEventListener('touchcancel', onTouchCancel as EventListener, { passive: true });
+      globalThis.addEventListener('resize', onResize);
     }
 
     function untrack() {
       tracked?.removeEventListener('touchmove', onTouchMove as EventListener);
       tracked?.removeEventListener('touchend', onTouchEnd as EventListener);
       tracked?.removeEventListener('touchcancel', onTouchCancel as EventListener);
+      globalThis.removeEventListener('resize', onResize);
       tracked = null;
     }
 
