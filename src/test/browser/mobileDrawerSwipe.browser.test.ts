@@ -1,43 +1,23 @@
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
+import { userEvent } from 'vitest/browser';
 import { releaseGesture } from '@/hooks/mobileDrawerGesture';
-import { HEIGHT, WIDTH, openDrawer, renderShell, settlePush, unmountShell } from './mobileDrawerHarness';
+import {
+  HEIGHT,
+  WIDTH,
+  drag,
+  openDrawer,
+  pause,
+  renderShell,
+  settlePush,
+  touchEvent,
+  unmountShell,
+} from './mobileDrawerHarness';
 
 afterEach(unmountShell);
 
 /** Mobile Push-Schublade (GSPP-493): Verschieben, Abdunklung, Wischgesten. */
 
 const DRAWER_WIDTH = WIDTH * 0.85;
-
-function touchEvent(type: string, target: Element, x: number, y: number) {
-  const touch = new Touch({ identifier: 1, target, clientX: x, clientY: y });
-  const active = type === 'touchend' || type === 'touchcancel' ? [] : [touch];
-  return new TouchEvent(type, {
-    bubbles: true,
-    cancelable: true,
-    touches: active,
-    targetTouches: active,
-    changedTouches: [touch],
-  });
-}
-
-/** Startet eine Berührung und zieht sie über die Punkte; liefert das Loslassen. */
-function drag(target: Element, from: readonly [number, number], points: readonly (readonly [number, number])[]) {
-  target.dispatchEvent(touchEvent('touchstart', target, ...from));
-  let last = from;
-  const moves = points.map(([x, y]) => {
-    last = [x, y];
-    return target.dispatchEvent(touchEvent('touchmove', target, x, y));
-  });
-  return {
-    moves,
-    release: () => target.dispatchEvent(touchEvent('touchend', target, ...last)),
-  };
-}
-
-/** Langsames Loslassen: Der Finger stand vorher still, es gibt keinen Wurf. */
-async function pause() {
-  await new Promise((resolve) => setTimeout(resolve, 150));
-}
 
 const parts = (shell: HTMLElement) => ({
   /** Träger von `data-mobile-nav` und den Gestenvariablen. */
@@ -187,6 +167,58 @@ test('beendet eine Öffnen-Geste, wenn mitten im Ziehen navigiert wird', async (
   expect(parts(shell).root.dataset.mobileNav).toBe('closed');
 });
 
+// Ab 640 px bleibt das Suchfeld sichtbar, und die Vorschau macht den App-Kopf
+// nicht `inert`. Fokussierte das Kürzel nur, öffnete das Loslassen die
+// Schublade danach doch noch und zöge den Fokus zum Menübutton.
+test('beendet bei 700 px eine Öffnen-Geste per Ctrl+K und behält den Fokus im Suchfeld', async () => {
+  const shell = await renderShell(700);
+  const { main } = parts(shell);
+  const search = shell.querySelector<HTMLInputElement>('[data-testid="header-search"]')!;
+  // Über die halbe Breite gezogen: Loslassen öffnete die Schublade.
+  const gesture = drag(main, [40, 400], [[52, 401], [300, 402]]);
+  expect(parts(shell).root.dataset.mobileNav).toBe('open');
+
+  await userEvent.keyboard('{Control>}k{/Control}');
+  await expect.poll(() => document.activeElement).toBe(search);
+  expect(parts(shell).root.dataset.mobileNav).toBe('closed');
+  expect(parts(shell).root.style.getPropertyValue('--mobile-nav-drag')).toBe('');
+  expect(document.documentElement.style.overflow).toBe('');
+
+  expect(main.dispatchEvent(touchEvent('touchmove', main, 320, 402))).toBe(true);
+  await pause();
+  gesture.release();
+  const menuButton = shell.querySelector<HTMLButtonElement>('button[aria-controls]')!;
+  expect(menuButton.getAttribute('aria-expanded')).toBe('false');
+  expect(parts(shell).root.dataset.mobileNav).toBe('closed');
+  expect(document.activeElement).toBe(search);
+});
+
+// Während der Vorschau gehört Escape wie bei offener Schublade ihr, nicht
+// einer Detailseite dahinter. Die Vorschau hat den Fokus nicht bewegt.
+test('beendet eine Öffnen-Geste per Escape, ohne den Fokus zu verschieben', async () => {
+  const shell = await renderShell(WIDTH);
+  const { main } = parts(shell);
+  const row = document.createElement('button');
+  main.append(row);
+  row.focus();
+  const pageHandler = vi.fn();
+  document.addEventListener('keydown', pageHandler);
+  const gesture = drag(main, [40, 400], [[52, 401], [300, 402]]);
+  expect(parts(shell).root.dataset.mobileNav).toBe('open');
+
+  await userEvent.keyboard('{Escape}');
+  document.removeEventListener('keydown', pageHandler);
+  expect(pageHandler).not.toHaveBeenCalled();
+  expect(parts(shell).root.dataset.mobileNav).toBe('closed');
+  expect(document.activeElement).toBe(row);
+
+  await pause();
+  gesture.release();
+  expect(parts(shell).root.dataset.mobileNav).toBe('closed');
+  expect(main.inert).toBe(false);
+  expect(document.activeElement).toBe(row);
+});
+
 test('öffnet die Schublade beim Wischen nach rechts über die Seite, fingergeführt und an der Dokumentposition', async () => {
   const shell = await renderShell(WIDTH);
   window.scrollTo(0, HEIGHT);
@@ -226,7 +258,7 @@ test('lässt eine kurze Öffnen-Geste zurückgleiten und gibt das Dokument wiede
   expect(window.scrollY).toBe(HEIGHT);
 });
 
-test('öffnet bei senkrechtem Wischen, nach links und auf festen Ebenen nicht', async () => {
+test('öffnet bei senkrechtem Wischen, nach links, auf festen Ebenen und in waagerecht scrollbaren Bereichen nicht', async () => {
   const shell = await renderShell(WIDTH);
   const { main } = parts(shell);
 
@@ -244,6 +276,19 @@ test('öffnet bei senkrechtem Wischen, nach links und auf festen Ebenen nicht', 
   const onSheet = drag(sheet, [40, 400], [[60, 400], [200, 400]]);
   expect(onSheet.moves.every(Boolean)).toBe(true);
   onSheet.release();
+
+  // Etwa eine breite Tabelle: Das Wischen gehört ihrem eigenen Scrollen.
+  const table = document.createElement('div');
+  table.style.overflowX = 'auto';
+  const wideRow = document.createElement('div');
+  wideRow.style.width = `${WIDTH * 2}px`;
+  wideRow.style.height = '40px';
+  table.append(wideRow);
+  main.append(table);
+  expect(table.scrollWidth).toBeGreaterThan(table.clientWidth);
+  const onTable = drag(wideRow, [40, 400], [[60, 400], [200, 400]]);
+  expect(onTable.moves.every(Boolean)).toBe(true);
+  onTable.release();
 
   expect(parts(shell).root.dataset.mobileNav).toBe('closed');
   expect(main.inert).toBe(false);

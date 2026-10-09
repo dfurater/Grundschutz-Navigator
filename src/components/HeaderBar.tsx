@@ -19,9 +19,10 @@ export interface HeaderBarProps {
    */
   readonly obscured?: boolean;
   /**
-   * Gibt den verdeckten App-Kopf frei (die Shell schließt die Schublade). Ruft
-   * das Suchkürzel bei sichtbarem, aber verdecktem Feld auf und fokussiert das
-   * Feld, sobald es wieder bedienbar ist.
+   * Gibt den App-Kopf frei: Die Shell schließt eine offene Schublade und
+   * beendet eine Wischgeste, die den Kopf gerade verschiebt. Das Suchkürzel
+   * ruft es bei sichtbarem Feld vor dem Fokussieren auf; ist der Kopf
+   * `obscured`, fokussiert es das Feld erst, sobald es wieder bedienbar ist.
    */
   readonly onUncover?: () => void;
   readonly className?: string;
@@ -90,13 +91,6 @@ export function HeaderBar({
     // die laufende Anfrage stehen, und der Verlauf erhält keinen zweiten Eintrag.
     const input = inputRef.current;
     const visible = input && (input.checkVisibility?.() ?? input.getClientRects().length > 0);
-    // Darüber verdeckt die offene mobile Schublade das Feld und macht es `inert`;
-    // das Kürzel gibt den App-Kopf frei und fokussiert das Feld danach.
-    if (visible && obscured) {
-      focusWhenUncoveredRef.current = true;
-      onUncover?.();
-      return;
-    }
     if (!visible) {
       const onSearchPage = location.pathname === '/suche';
       void navigate(
@@ -105,7 +99,14 @@ export function HeaderBar({
       );
       return;
     }
-    inputRef.current?.focus();
+    // Darüber verdeckt die offene mobile Schublade das Feld und macht es
+    // `inert`; dann fokussiert das Kürzel es erst, wenn `onUncover` sie
+    // geschlossen hat. Eine Öffnen-Vorschau verschiebt den Kopf, ohne ihn
+    // `inert` zu machen; `onUncover` beendet sie, und das Feld erhält den
+    // Fokus sofort.
+    if (obscured) focusWhenUncoveredRef.current = true;
+    onUncover?.();
+    if (!obscured) inputRef.current?.focus();
   });
 
   const handleSearchKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
