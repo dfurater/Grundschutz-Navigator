@@ -313,13 +313,13 @@ test('Sheet unter Tablet-Detail: gemeinsames Schließen gibt den Fokus an den Sh
   expect(document.activeElement).toBe(trigger);
 });
 
-function filterSheet() {
+function filterSheet(hasActiveFilters = false) {
   return createElement(CatalogMobileFilterSheet, {
     filterPanelProps: {
       filters: emptyFilters,
       facetCounts: filterPanelFacetCounts,
       filteredFacetCounts: filterPanelFacetCounts,
-      hasActiveFilters: false,
+      hasActiveFilters,
       filteredCount: 3,
       totalCount: 3,
       onFiltersChange: () => {},
@@ -337,6 +337,14 @@ function exportSheet() {
   });
 }
 
+/** Ganz im sichtbaren Bereich seines Scrollcontainers. */
+function expectWithin(element: Element, container: Element) {
+  const box = element.getBoundingClientRect();
+  const frame = container.getBoundingClientRect();
+  expect(box.top).toBeGreaterThanOrEqual(frame.top - 0.5);
+  expect(box.bottom).toBeLessThanOrEqual(frame.bottom + 0.5);
+}
+
 /** Ganz im Fenster; die Toleranz deckt Subpixel-Lagen des unten verankerten Sheets ab. */
 function expectInViewport(element: Element) {
   const box = element.getBoundingClientRect();
@@ -349,12 +357,16 @@ function expectInViewport(element: Element) {
  * verankerte Sheet schneidet unten ab; Überschrift und Schließaktion stehen im
  * Kopf und bleiben sichtbar, die Aktionen darunter sind per Scrollen erreichbar.
  */
+// `lastActionReachable: false`: Bei 32 px Schrift belegen Griff und Filterkopf
+// fast die ganzen 200 px des Filter-Sheets; für die Liste bleiben etwa 33 px,
+// eine Filterzeile ist 88 px hoch. Das galt schon vor GSPP-503 (GSPP-508);
+// geprüft werden hier Überschrift und Schließaktion.
 test.each([
-  ['Filter-Sheet', 'Filter anzeigen', 'Fertig', 16, filterSheet],
-  ['Filter-Sheet', 'Filter anzeigen', 'Fertig', 32, filterSheet],
-  ['Export-Sheet', 'CSV exportieren', 'Schließen', 16, exportSheet],
-  ['Export-Sheet', 'CSV exportieren', 'Schließen', 32, exportSheet],
-] as const)('%s bei 250 px Fensterhöhe und %s: Überschrift und „%s“ bleiben sichtbar (%i px Schrift)', async (_name, triggerName, closeName, fontSize, surface) => {
+  ['Filter-Sheet', 'Filter anzeigen', 'Fertig', 16, () => filterSheet(), true],
+  ['Filter-Sheet', 'Filter anzeigen', 'Fertig', 32, () => filterSheet(), false],
+  ['Export-Sheet', 'CSV exportieren', 'Schließen', 16, exportSheet, true],
+  ['Export-Sheet', 'CSV exportieren', 'Schließen', 32, exportSheet, true],
+] as const)('%s bei 250 px Fensterhöhe und %s: Überschrift und „%s“ bleiben sichtbar (%i px Schrift)', async (_name, triggerName, closeName, fontSize, surface, lastActionReachable) => {
   await commands.setBrowserFontSize(fontSize);
   const shell = await renderWithBackground(700, surface());
   await page.viewport(700, 250);
@@ -370,12 +382,36 @@ test.each([
   expect(dialog.contains(document.activeElement)).toBe(true);
   expect(document.activeElement).not.toBe(close);
 
-  // Die letzte Aktion lässt sich in ihren Scrollbereich holen.
-  const actions = [...dialog.querySelectorAll<HTMLElement>('button:not([data-dialog-close]), input')];
-  const lastAction = actions.at(-1)!;
-  lastAction.scrollIntoView({ block: 'nearest' });
-  expectInViewport(lastAction);
+  if (lastActionReachable) {
+    // Die letzte Aktion lässt sich in ihren Scrollbereich holen. Eine Checkbox
+    // ist `sr-only`; sichtbar und bedienbar ist ihre beschriftete Zeile.
+    const actions = [...dialog.querySelectorAll<HTMLElement>('button:not([data-dialog-close]), input')];
+    const lastAction = actions.at(-1)!;
+    const visibleTarget = lastAction.closest('label') ?? lastAction;
+    visibleTarget.scrollIntoView({ block: 'nearest' });
+    expectInViewport(visibleTarget);
+    expectWithin(visibleTarget, visibleTarget.closest('[data-overlayscrollbars-viewport]')!);
+  }
 
   close.click();
   await expect.poll(() => document.querySelector('dialog')).toBeNull();
+});
+
+test('Filter-Sheet: „Fertig“ überdeckt bei aktiven Filtern „Zurücksetzen“ nicht', async () => {
+  const shell = await renderWithBackground(402, filterSheet(true));
+  buttonByName(shell, 'Filter anzeigen').click();
+  await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
+  const dialog = document.querySelector('dialog')!;
+  await Promise.all(dialog.getAnimations().map((animation) => animation.finished));
+
+  const done = buttonByName(dialog, 'Fertig');
+  const reset = buttonByName(dialog, 'Zurücksetzen');
+  const doneBox = done.getBoundingClientRect();
+  const resetBox = reset.getBoundingClientRect();
+  expect(doneBox.height).toBeGreaterThanOrEqual(44);
+  expect(doneBox.bottom <= resetBox.top || resetBox.bottom <= doneBox.top).toBe(true);
+  // Jeder Punkt der Trefferfläche von „Fertig“ trifft „Fertig“.
+  for (const y of [doneBox.top + 1, doneBox.top + doneBox.height / 2, doneBox.bottom - 1]) {
+    expect(document.elementFromPoint(doneBox.left + doneBox.width / 2, y)?.closest('button')).toBe(done);
+  }
 });

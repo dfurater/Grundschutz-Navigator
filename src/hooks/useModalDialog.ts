@@ -72,7 +72,7 @@ function openLayer(dialog: HTMLElement): ModalLayer {
   // Erstes Ziel ist die erste Aktion des Dialogs, nicht seine Schließaktion
   // (`data-dialog-close`); nur ohne andere Aktion erhält sie den Fokus.
   const focusable = getFocusable(dialog);
-  const initialFocus = focusable.find((el) => !el.hasAttribute('data-dialog-close')) ?? focusable[0];
+  const initialFocus = focusable.find((el) => el.dataset.dialogClose === undefined) ?? focusable[0];
   if (initialFocus && !dialog.contains(document.activeElement)) {
     initialFocus.focus();
   }
