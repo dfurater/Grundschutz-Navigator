@@ -3,7 +3,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { MemoryRouter } from 'react-router';
 import { expect } from 'vitest';
-import { page } from 'vitest/browser';
+import { commands, page } from 'vitest/browser';
 import { AppShell } from '@/app/AppShell';
 import { CatalogContext } from '@/state/CatalogContext';
 import { createInitialState, projectPublicState } from '@/state/catalogReducer';
@@ -86,4 +86,34 @@ export function shortenPage(shell: HTMLElement, aside: HTMLElement) {
   const shortenedPageHeight = document.documentElement.scrollHeight;
   aside.style.display = display;
   return shortenedPageHeight;
+}
+
+/** Koordinaten des Testframes in Koordinaten der Browser-Seite. */
+function toPage(x: number, y: number) {
+  const frame = window.frameElement;
+  if (!frame) return { x, y };
+  const box = frame.getBoundingClientRect();
+  const scale = box.width / window.innerWidth;
+  return { x: box.left + x * scale, y: box.top + y * scale };
+}
+
+/**
+ * Eine vom Browser erzeugte Berührung (`dispatchBrowserTouch`) von `from` nach
+ * `to` in gleichmäßigen Schritten mit kurzem Takt. Koordinaten gelten für den
+ * Testframe.
+ */
+export async function swipe(from: readonly [number, number], to: readonly [number, number], steps = 12) {
+  const start = toPage(...from);
+  await commands.dispatchBrowserTouch('start', start.x, start.y);
+  for (let step = 1; step <= steps; step++) {
+    const point = toPage(
+      from[0] + ((to[0] - from[0]) * step) / steps,
+      from[1] + ((to[1] - from[1]) * step) / steps,
+    );
+    await commands.dispatchBrowserTouch('move', point.x, point.y);
+    await new Promise((resolve) => setTimeout(resolve, 16));
+  }
+  // Der Finger steht vor dem Loslassen still: kein Wurf, die Strecke entscheidet.
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  await commands.dispatchBrowserTouch('end');
 }

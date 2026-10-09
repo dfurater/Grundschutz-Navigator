@@ -16,6 +16,7 @@ import {
   type SortConfig,
 } from '@/hooks/useFilteredControls';
 import { useFilterParams } from '@/hooks/useFilterParams';
+import { DESKTOP_QUERY, OWN_SCROLL_AREA_QUERY } from '@/hooks/breakpointQueries';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { AppShell } from '@/app/AppShell';
 import { catalogCollectionDefaults } from '@/test/catalogState';
@@ -283,7 +284,7 @@ function renderCatalogBrowser(
 
 /** Zwischen `md` und `lg`: eigene Scrollbereiche, Detail als Overlay. */
 function useTabletWidth() {
-  mockedUseMediaQuery.mockImplementation((query) => query === '(min-width: 768px)');
+  mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY);
 }
 
 /** Dokument-Scrollen der Liste (unterhalb `md`), wie es der Browser meldet. */
@@ -618,7 +619,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
   ])('preserves the opening row and list position across %s width', (_label, wideWidth, navigateWhileWide) => {
     let width = 390;
     mockedUseMediaQuery.mockImplementation((query) =>
-      width >= (query === '(min-width: 1024px)' ? 1024 : 768));
+      width >= (query === DESKTOP_QUERY ? 1024 : 768));
     const view = renderCatalogBrowser('/katalog/gspp/TOP.1');
     scrollListTo(420);
     fireEvent.click(screen.getByRole('button', { name: control.title }));
@@ -647,7 +648,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
     mockCatalog(catalog);
     let width = 390;
     mockedUseMediaQuery.mockImplementation((query) =>
-      width >= (query === '(min-width: 1024px)' ? 1024 : 768));
+      width >= (query === DESKTOP_QUERY ? 1024 : 768));
     const app = () => (
       <CatalogBrowserTestApp
         initialEntry="/katalog/gspp"

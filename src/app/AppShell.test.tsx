@@ -5,6 +5,7 @@ import { Link, MemoryRouter, useNavigate } from 'react-router';
 import type { NavigateFunction } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCatalog } from '@/hooks/useCatalog';
+import { OWN_SCROLL_AREA_QUERY } from '@/hooks/breakpointQueries';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { MobileNavigationContext } from '@/state/MobileNavigationContext';
 import { AppShell } from './AppShell';
@@ -201,7 +202,7 @@ describe('AppShell', () => {
 
   it('makes the main content inert only while mobile navigation is open', () => {
     let persistent = false;
-    mockedUseMediaQuery.mockImplementation((query) => query === '(min-width: 768px)' && persistent);
+    mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY && persistent);
     const view = render(<MemoryRouter><AppShell /></MemoryRouter>);
     const main = view.container.querySelector('main');
     const menuButton = screen.getByRole('button', { name: 'Menu' });
@@ -293,7 +294,7 @@ describe('AppShell', () => {
   });
 
   it('leaves persistent desktop navigation interactive without consuming Escape', () => {
-    mockedUseMediaQuery.mockImplementation((query) => query === '(min-width: 768px)');
+    mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY);
     const { container } = render(<MemoryRouter><AppShell /></MemoryRouter>);
     const menuButton = screen.getByRole('button', { name: 'Menu' });
 
@@ -307,7 +308,7 @@ describe('AppShell', () => {
 
   it('updates Escape ownership and inert when crossing the navigation breakpoint', () => {
     let persistent = false;
-    mockedUseMediaQuery.mockImplementation((query) => query === '(min-width: 768px)' && persistent);
+    mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY && persistent);
     const app = () => <MemoryRouter><AppShell /></MemoryRouter>;
     const view = render(app());
     const menuButton = screen.getByRole('button', { name: 'Menu' });
@@ -357,7 +358,7 @@ describe('AppShell', () => {
     const originalScrollY = Object.getOwnPropertyDescriptor(globalThis, 'scrollY');
     const scrollToSpy = vi.spyOn(globalThis, 'scrollTo').mockImplementation(() => {});
     let persistent = true;
-    mockedUseMediaQuery.mockImplementation((query) => query === '(min-width: 768px)' && persistent);
+    mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY && persistent);
     const app = () => <MemoryRouter><AppShell /></MemoryRouter>;
 
     try {
@@ -388,7 +389,7 @@ describe('AppShell', () => {
   });
 
   it('uses focus-visible rings for sidebar controls and the 404 link', () => {
-    mockedUseMediaQuery.mockImplementation((query) => query === '(min-width: 768px)');
+    mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY);
     const { container } = render(
       <MemoryRouter initialEntries={['/missing']}>
         <AppShell />
@@ -683,7 +684,7 @@ describe('AppShell', () => {
   });
 
   it('zeigt die Kontextwahl auf dem Desktop mit Einklappen und ohne Schild in der eingeklappten Leiste', () => {
-    mockedUseMediaQuery.mockImplementation((query) => query === '(min-width: 768px)');
+    mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY);
     const { container } = render(
       <MemoryRouter initialEntries={['/']}>
         <AppShell />

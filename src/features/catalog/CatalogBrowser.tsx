@@ -14,7 +14,7 @@ import {
   useFilteredControls,
 } from '@/hooks/useFilteredControls';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { OWN_SCROLL_AREA_QUERY } from '@/hooks/useOverlayScrollbars';
+import { DESKTOP_QUERY, OWN_SCROLL_AREA_QUERY } from '@/hooks/breakpointQueries';
 import { describeCatalogScope } from './catalogScopeTitle';
 import { CatalogDesktopSidebar } from './CatalogDesktopSidebar';
 import { CatalogTargetNotFound } from './CatalogTargetNotFound';
@@ -44,7 +44,7 @@ export function CatalogBrowser() {
   const navigate = useNavigate();
   const { catalog, loading, error } = useCatalog();
   const { filters, setFilters, sort, setSort, searchString } = useFilterParams();
-  const isDesktop = useMediaQuery('(min-width: 1024px)');
+  const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const hasOwnScrollArea = useMediaQuery(OWN_SCROLL_AREA_QUERY);
   const [filterCollapsed, setFilterCollapsed] = useState(false);
   const [mobileSelectMode, setMobileSelectMode] = useState(false);
