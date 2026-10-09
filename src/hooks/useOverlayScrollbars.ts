@@ -44,6 +44,3 @@ export function useOverlayScrollbars<T extends HTMLElement>(enabled = true): Ref
     };
   }, [enabled]);
 }
-
-/** Ab dieser Breite scrollen Seiteninhalt und mobile Trefferlisten selbst (Tailwind `md`). */
-export const OWN_SCROLL_AREA_QUERY = '(min-width: 768px)';
