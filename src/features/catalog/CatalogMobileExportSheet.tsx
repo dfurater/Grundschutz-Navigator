@@ -25,7 +25,7 @@ export function CatalogMobileExportSheet({
   onSelectionExported,
 }: CatalogMobileExportSheetProps) {
   const [open, setOpen] = useState(false);
-  const sheetRef = useRef<HTMLDivElement>(null);
+  const sheetRef = useRef<HTMLDialogElement>(null);
   const headingId = useId();
   const close = useCallback(() => setOpen(false), []);
 
@@ -68,12 +68,12 @@ export function CatalogMobileExportSheet({
           >
             <BackdropTint className="bg-black/30" />
           </div>
-          <div
+          <dialog
+            open
             ref={sheetRef}
-            role="dialog"
             aria-modal="true"
             aria-labelledby={headingId}
-            className="fixed inset-x-0 bottom-0 z-50 bg-[var(--color-surface-raised)] rounded-t-2xl shadow-xl flex flex-col overflow-hidden lg:hidden animate-slide-up"
+            className="m-0 p-0 border-0 w-full max-w-none text-[inherit] fixed inset-x-0 bottom-0 z-50 bg-[var(--color-surface-raised)] rounded-t-2xl shadow-xl max-h-[80dvh] flex flex-col overflow-hidden lg:hidden animate-slide-up"
           >
             <div
               className="flex justify-center items-center min-h-[44px] shrink-0 select-none"
@@ -84,7 +84,7 @@ export function CatalogMobileExportSheet({
             <div className="px-4 py-3 border-b border-[var(--color-border-default)] shrink-0">
               <h2 id={headingId} className="type-meta">Exportieren als CSV</h2>
             </div>
-            <div className="p-4 flex flex-col gap-2">
+            <div className="p-4 flex flex-col gap-2 min-h-0 overflow-y-auto overscroll-contain">
               {checkedIds.size > 0 && (
                 <Button
                   variant="secondary"
@@ -128,7 +128,7 @@ export function CatalogMobileExportSheet({
                 Schließen
               </Button>
             </div>
-          </div>
+          </dialog>
         </ModalPortal>
       )}
     </>

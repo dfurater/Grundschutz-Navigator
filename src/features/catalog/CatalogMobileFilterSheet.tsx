@@ -17,7 +17,7 @@ export function CatalogMobileFilterSheet({
   filterPanelProps,
 }: CatalogMobileFilterSheetProps) {
   const [open, setOpen] = useState(false);
-  const sheetRef = useRef<HTMLDivElement>(null);
+  const sheetRef = useRef<HTMLDialogElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<HTMLDivElement>(null);
   const headingId = useId();
@@ -59,12 +59,12 @@ export function CatalogMobileFilterSheet({
           >
             <BackdropTint className="bg-black" />
           </div>
-          <div
+          <dialog
+            open
             ref={sheetRef}
-            role="dialog"
             aria-modal="true"
             aria-labelledby={headingId}
-            className="fixed inset-x-0 bottom-0 z-50 bg-[var(--color-surface-raised)] rounded-t-2xl shadow-xl max-h-[80dvh] flex flex-col overflow-hidden lg:hidden animate-slide-up"
+            className="m-0 p-0 border-0 w-full max-w-none text-[inherit] fixed inset-x-0 bottom-0 z-50 bg-[var(--color-surface-raised)] rounded-t-2xl shadow-xl max-h-[80dvh] flex flex-col overflow-hidden lg:hidden animate-slide-up"
           >
             <div
               ref={handleRef}
@@ -83,7 +83,7 @@ export function CatalogMobileFilterSheet({
                 Fertig
               </Button>
             </div>
-          </div>
+          </dialog>
         </ModalPortal>
       )}
     </>

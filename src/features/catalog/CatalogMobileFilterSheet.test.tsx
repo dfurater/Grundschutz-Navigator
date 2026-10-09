@@ -83,7 +83,7 @@ describe('CatalogMobileFilterSheet', () => {
     view.unmount();
 
     expect(document.querySelector('[inert]')).toBeNull();
-    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.querySelector('dialog')).toBeNull();
     expect(document.documentElement.style.overflow).toBe('scroll');
   });
 

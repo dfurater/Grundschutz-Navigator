@@ -1,5 +1,5 @@
 import axe from 'axe-core';
-import { createElement, type ReactNode } from 'react';
+import { createElement, useLayoutEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
@@ -55,6 +55,7 @@ let root: Root | undefined;
 let host: HTMLDivElement | undefined;
 
 afterEach(() => {
+  scene.reset();
   root?.unmount();
   host?.remove();
   root = undefined;
@@ -90,6 +91,17 @@ function buttonByName(scope: ParentNode, name: string) {
 
 function dialogName(dialog: Element) {
   return document.getElementById(dialog.getAttribute('aria-labelledby') ?? '')?.textContent?.trim();
+}
+
+/** Das Sheet liegt bündig am unteren Rand und füllt die Breite; `<dialog>` bringt eigene Ränder und Maße mit. */
+async function expectBottomSheetGeometry(dialog: Element, width: number) {
+  // Gemessen wird die Endlage nach der Einblend-Animation (`animate-slide-up`).
+  await Promise.all(dialog.getAnimations().map((animation) => animation.finished));
+  const box = dialog.getBoundingClientRect();
+  expect(box.left).toBe(0);
+  expect(box.width).toBe(width);
+  expect(box.bottom).toBe(window.innerHeight);
+  expect(getComputedStyle(dialog).borderTopWidth).toBe('0px');
 }
 
 async function expectNoAxeViolations(dialog: Element) {
@@ -128,20 +140,21 @@ test('Filter-Sheet: benannter modaler Dialog, inerter Hintergrund, Escape gibt F
   trigger.focus();
   await userEvent.keyboard('{Enter}');
 
-  await expect.poll(() => document.querySelector('[role="dialog"]')).not.toBeNull();
-  const dialog = document.querySelector('[role="dialog"]')!;
+  await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
+  const dialog = document.querySelector('dialog')!;
   expect(dialogName(dialog)).toBe('Filter');
   expect(dialog.getAttribute('aria-modal')).toBe('true');
   expect(shell.hasAttribute('inert')).toBe(true);
   expect(dialog.closest('[inert]')).toBeNull();
   expect(dialog.contains(document.activeElement)).toBe(true);
+  await expectBottomSheetGeometry(dialog, 402);
 
   await expectTabStaysInside(dialog);
   await expectNoAxeViolations(dialog);
 
   await userEvent.keyboard('{Escape}');
 
-  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  expect(document.querySelector('dialog')).toBeNull();
   expect(shell.hasAttribute('inert')).toBe(false);
   expect(document.activeElement).toBe(trigger);
   expect(document.documentElement.style.overflow).toBe('');
@@ -159,56 +172,161 @@ test('Export-Sheet: benannter modaler Dialog, „Schließen“ gibt Fokus zurüc
   trigger.focus();
   await userEvent.keyboard('{Enter}');
 
-  await expect.poll(() => document.querySelector('[role="dialog"]')).not.toBeNull();
-  const dialog = document.querySelector('[role="dialog"]')!;
+  await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
+  const dialog = document.querySelector('dialog')!;
   expect(dialogName(dialog)).toBe('Exportieren als CSV');
   expect(dialog.getAttribute('aria-modal')).toBe('true');
   expect(shell.hasAttribute('inert')).toBe(true);
+  await expectBottomSheetGeometry(dialog, 402);
 
   await expectTabStaysInside(dialog);
   await expectNoAxeViolations(dialog);
 
   buttonByName(dialog, 'Schließen').click();
 
-  await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull();
+  await expect.poll(() => document.querySelector('dialog')).toBeNull();
   expect(shell.hasAttribute('inert')).toBe(false);
   expect(document.activeElement).toBe(trigger);
 });
 
-test('Tablet-Detail: benannter modaler Dialog, Rückkehr zur auslösenden Zeile', async () => {
-  function overlay(active: boolean) {
-    return createElement(
-      'div',
-      null,
+/**
+ * Szene zwischen `md` und `lg` wie im `CatalogBrowser`: Liste mit Zeile,
+ * Export-Sheet in der Toolbar und Detail-Overlay. `asPage` bildet den
+ * Breitenwechsel unter `md` nach: Die Liste wird `hidden`, und die Detailseite
+ * setzt den Fokus im Layout-Effekt auf ihre Überschrift (`useDocumentDetailPage`).
+ */
+interface SceneState { readonly detailOpen: boolean; readonly asPage: boolean }
+
+const scene = (() => {
+  let state: SceneState = { detailOpen: false, asPage: false };
+  const listeners = new Set<() => void>();
+  return {
+    get: () => state,
+    set(next: Partial<SceneState>) {
+      state = { ...state, ...next };
+      listeners.forEach((listener) => listener());
+    },
+    reset() {
+      state = { detailOpen: false, asPage: false };
+    },
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+})();
+
+function DetailPage() {
+  useLayoutEffect(() => document.getElementById('detail-page-heading')?.focus(), []);
+  return createElement('h2', { id: 'detail-page-heading', tabIndex: -1 }, 'Detailseite');
+}
+
+function TabletScene() {
+  const { detailOpen, asPage } = useSyncExternalStore(scene.subscribe, scene.get);
+  return createElement(
+    'div',
+    null,
+    createElement(CatalogMobileExportSheet, {
+      checkedIds: new Set<string>(),
+      filteredControls: [control],
+      allControls: [control],
+      sectionFilename: 'test.csv',
+    }),
+    createElement('div', { hidden: detailOpen && asPage },
       createElement('button', { type: 'button', 'data-control-row': '' }, 'Zeile TOP.1.1'),
-      createElement(CatalogMobileDetailOverlay, {
-        catalog,
-        control,
-        active,
-        onClose: () => {},
-        onNavigateToControl: () => {},
-      }),
-    );
-  }
-  const shell = await renderWithBackground(900, overlay(false));
+    ),
+    detailOpen && asPage ? createElement(DetailPage) : null,
+    createElement(CatalogMobileDetailOverlay, {
+      catalog,
+      control,
+      active: detailOpen && !asPage,
+      onClose: () => scene.set({ detailOpen: false }),
+      onNavigateToControl: () => {},
+    }),
+  );
+}
+
+function openDetail() {
+  flushSync(() => scene.set({ detailOpen: true }));
+}
+
+test('Tablet-Detail: benannter modaler Dialog, Escape kehrt zur auslösenden Zeile zurück', async () => {
+  const shell = await renderWithBackground(900, createElement(TabletScene));
   const row = buttonByName(shell, 'Zeile TOP.1.1');
   row.focus();
 
-  renderSurface(overlay(true));
+  openDetail();
 
-  await expect.poll(() => document.querySelector('[role="dialog"]')).not.toBeNull();
-  const dialog = document.querySelector('[role="dialog"]')!;
+  await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
+  const dialog = document.querySelector('dialog')!;
   expect(dialogName(dialog)).toBe('Testkontrolle');
   expect(dialog.getAttribute('aria-modal')).toBe('true');
   expect(shell.hasAttribute('inert')).toBe(true);
-  expect(dialog.getBoundingClientRect().width).toBe(900);
+  expect(dialog.getBoundingClientRect().toJSON()).toMatchObject({ left: 0, top: 0, width: 900, height: 800 });
 
   await expectTabStaysInside(dialog);
   await expectNoAxeViolations(dialog);
 
-  renderSurface(overlay(false));
+  await userEvent.keyboard('{Escape}');
 
-  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  await expect.poll(() => document.querySelector('dialog')).toBeNull();
   expect(shell.hasAttribute('inert')).toBe(false);
   expect(document.activeElement).toBe(row);
+});
+
+test('Tablet-Detail: Breitenwechsel unter md überlässt den Fokus der Detailseite', async () => {
+  const shell = await renderWithBackground(900, createElement(TabletScene));
+  buttonByName(shell, 'Zeile TOP.1.1').focus();
+  openDetail();
+  await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
+
+  flushSync(() => scene.set({ asPage: true }));
+
+  expect(document.querySelector('dialog')).toBeNull();
+  expect(shell.hasAttribute('inert')).toBe(false);
+  expect(document.activeElement?.textContent).toBe('Detailseite');
+});
+
+test('Sheet unter Tablet-Detail: gemeinsames Schließen gibt den Fokus an den Sheet-Auslöser', async () => {
+  const shell = await renderWithBackground(900, createElement(TabletScene));
+  const trigger = buttonByName(shell, 'CSV exportieren');
+  trigger.focus();
+  await userEvent.keyboard('{Enter}');
+  await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
+  const sheet = document.querySelector('dialog')!;
+  expect(sheet.contains(document.activeElement)).toBe(true);
+
+  // Browser-Vorwärts auf eine Kontrollroute öffnet das Detail über dem Sheet.
+  openDetail();
+  await expect.poll(() => document.querySelectorAll('dialog').length).toBe(2);
+  const detail = [...document.querySelectorAll('dialog')].find((el) => el !== sheet)!;
+  expect(detail.contains(document.activeElement)).toBe(true);
+  expect(sheet.closest('[inert]')).not.toBeNull();
+  expect(detail.closest('[inert]')).toBeNull();
+
+  // Escape schließt beide Ebenen in einem Commit.
+  await userEvent.keyboard('{Escape}');
+
+  await expect.poll(() => document.querySelectorAll('dialog').length).toBe(0);
+  expect([...document.body.children].some((child) => child.hasAttribute('inert'))).toBe(false);
+  expect(document.activeElement).toBe(trigger);
+});
+
+test('Export-Sheet bei niedrigem Fenster: Überschrift bleibt sichtbar, Aktionen scrollen', async () => {
+  const shell = await renderWithBackground(700, createElement(CatalogMobileExportSheet, {
+    checkedIds: new Set([control.id]),
+    filteredControls: [control],
+    allControls: [control],
+    sectionFilename: 'test.csv',
+  }));
+  await page.viewport(700, 250);
+  buttonByName(shell, 'CSV exportieren').click();
+  await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
+  const dialog = document.querySelector('dialog')!;
+  await Promise.all(dialog.getAnimations().map((animation) => animation.finished));
+
+  const heading = document.getElementById(dialog.getAttribute('aria-labelledby')!)!;
+  expect(dialog.getBoundingClientRect().top).toBeGreaterThanOrEqual(0);
+  expect(heading.getBoundingClientRect().top).toBeGreaterThanOrEqual(0);
+  expect(buttonByName(dialog, 'Schließen').getBoundingClientRect().bottom).toBeLessThanOrEqual(250);
 });

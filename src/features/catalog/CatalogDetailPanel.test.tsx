@@ -20,7 +20,7 @@ vi.mock('./ControlDetail', () => ({
     onControlDetailRender(props);
     return (
       <div>
-        <h2 id={props.titleId}>{props.control.title}</h2>
+        <h2 id={props.titleId} tabIndex={-1}>{props.control.title}</h2>
         <button type="button" onClick={props.onClose}>Detail schließen</button>
         <button
           type="button"
@@ -143,7 +143,7 @@ describe('CatalogMobileDetailOverlay', () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
-  it('keeps the dialog node and its isolation when switching to a linked control', () => {
+  it('keeps the dialog node and its isolation and moves focus to the new title when switching to a linked control', () => {
     const props = {
       catalog,
       active: true,
@@ -153,9 +153,13 @@ describe('CatalogMobileDetailOverlay', () => {
     const view = render(<CatalogMobileDetailOverlay {...props} control={selected} />);
     const dialog = screen.getByRole('dialog', { name: 'Ausgewählte Kontrolle' });
 
+    screen.getByRole('button', { name: 'Kind öffnen' }).focus();
     view.rerender(<CatalogMobileDetailOverlay {...props} control={child} />);
 
     expect(screen.getByRole('dialog', { name: 'Kindkontrolle' })).toBe(dialog);
+    // Der angeklickte Knopf ist mit dem alten Inhalt verschwunden; der Fokus
+    // liegt auf der neuen Überschrift statt auf `body`.
+    expect(screen.getByRole('heading', { name: 'Kindkontrolle' })).toHaveFocus();
     expect(view.container).toHaveAttribute('inert');
     expect(dialog.parentElement).not.toHaveAttribute('inert');
   });

@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef } from 'react';
+import { useEffect, useId, useMemo, useRef } from 'react';
 import type { Catalog, Control } from '@/domain/models';
 import {
   buildChildControlMap,
@@ -77,10 +77,19 @@ export function CatalogMobileDetailOverlay({
   onClose,
   onNavigateToControl,
 }: CatalogMobileDetailOverlayProps) {
-  const overlayRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
   useModalDialog(overlayRef, active);
+  // Der Wechsel zu einer verknüpften Kontrolle baut den Inhalt samt
+  // angeklicktem Element neu auf; der Fokus ginge an `body` verloren. Er
+  // wandert dann auf die neue Detailüberschrift, die den Wechsel ansagt.
+  const controlId = control?.id;
+  useEffect(() => {
+    const dialog = overlayRef.current;
+    if (!active || !controlId || !dialog || dialog.contains(document.activeElement)) return;
+    document.getElementById(titleId)?.focus();
+  }, [active, controlId, titleId]);
   useScrollLock(active);
   useGlobalEventListener('document', 'keydown', (event) => {
     if (event.key === 'Escape') onClose();
@@ -90,12 +99,12 @@ export function CatalogMobileDetailOverlay({
 
   return (
     <ModalPortal>
-      <div
+      <dialog
+        open
         ref={overlayRef}
-        role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="fixed inset-0 z-50 lg:hidden flex flex-col bg-[var(--color-surface-raised)]"
+        className="m-0 p-0 border-0 w-full max-w-none text-[inherit] h-full max-h-none fixed inset-0 z-50 lg:hidden flex flex-col bg-[var(--color-surface-raised)]"
       >
         <CatalogDetailPanel
           key={`${catalog.catalogKey}:${control.id}`}
@@ -105,7 +114,7 @@ export function CatalogMobileDetailOverlay({
           onNavigateToControl={onNavigateToControl}
           titleId={titleId}
         />
-      </div>
+      </dialog>
     </ModalPortal>
   );
 }

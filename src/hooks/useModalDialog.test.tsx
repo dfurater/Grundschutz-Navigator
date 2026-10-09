@@ -15,20 +15,20 @@ function Dialog({ name, active, includeFocusable = true }: {
   active: boolean;
   includeFocusable?: boolean;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLDialogElement>(null);
   useModalDialog(ref, active);
   if (!active) return null;
   return (
     <ModalPortal>
       <div data-testid={`${name}-backdrop`} aria-hidden="true" />
-      <div ref={ref} role="dialog" aria-modal="true" aria-label={name}>
+      <dialog open ref={ref} aria-modal="true" aria-label={name}>
         {includeFocusable && (
           <>
             <button type="button">{`${name}: erste Aktion`}</button>
             <button type="button">{`${name}: letzte Aktion`}</button>
           </>
         )}
-      </div>
+      </dialog>
     </ModalPortal>
   );
 }
@@ -208,6 +208,48 @@ describe('useModalDialog', () => {
 
     unmount();
 
+    expect(inertBodyChildren()).toEqual([]);
+  });
+
+  it('leaves focus where the next view placed it instead of pulling it back to the trigger', () => {
+    function Scene({ open }: { open: boolean }) {
+      return (
+        <>
+          <button type="button">Dialog öffnen</button>
+          {!open && <button type="button" autoFocus>Neue Ansicht</button>}
+          <Dialog name="Dialog" active={open} />
+        </>
+      );
+    }
+    const { rerender } = render(<Scene open={false} />);
+    screen.getByRole('button', { name: 'Dialog öffnen' }).focus();
+    rerender(<Scene open />);
+
+    rerender(<Scene open={false} />);
+
+    expect(screen.getByRole('button', { name: 'Neue Ansicht' })).toHaveFocus();
+  });
+
+  it('hands the return target of a lower dialog to the one above when both close together', () => {
+    function Stack({ lower, upper }: { lower: boolean; upper: boolean }) {
+      return (
+        <>
+          <button type="button">Dialog öffnen</button>
+          <Dialog name="Unten" active={lower} />
+          <Dialog name="Oben" active={upper} />
+        </>
+      );
+    }
+    const { rerender } = render(<Stack lower={false} upper={false} />);
+    const trigger = screen.getByRole('button', { name: 'Dialog öffnen' });
+    trigger.focus();
+    rerender(<Stack lower upper={false} />);
+    expect(screen.getByRole('button', { name: 'Unten: erste Aktion' })).toHaveFocus();
+    rerender(<Stack lower upper />);
+
+    rerender(<Stack lower={false} upper={false} />);
+
+    expect(trigger).toHaveFocus();
     expect(inertBodyChildren()).toEqual([]);
   });
 });
