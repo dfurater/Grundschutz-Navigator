@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { Catalog, Control } from '@/domain/models';
 import type { IncomingControlLink } from '@/domain/controlRelationships';
-import { CatalogDetailPanel } from './CatalogDetailPanel';
+import { CatalogDetailPanel, CatalogMobileDetailOverlay } from './CatalogDetailPanel';
 
 const onControlDetailRender = vi.fn();
 
@@ -15,10 +15,12 @@ vi.mock('./ControlDetail', () => ({
     childControls: Control[];
     onClose: () => void;
     onNavigateToControl: (control: Control) => void;
+    titleId?: string;
   }) => {
     onControlDetailRender(props);
     return (
       <div>
+        <h2 id={props.titleId}>{props.control.title}</h2>
         <button type="button" onClick={props.onClose}>Detail schließen</button>
         <button
           type="button"
@@ -113,5 +115,84 @@ describe('CatalogDetailPanel', () => {
 
     expect(onClose).toHaveBeenCalledOnce();
     expect(onNavigateToControl).toHaveBeenCalledWith(child);
+  });
+});
+
+describe('CatalogMobileDetailOverlay', () => {
+  it('renders as a modal dialog named after the control title, outside the app root (GSPP-503)', () => {
+    const onClose = vi.fn();
+    const view = render(
+      <>
+        <button type="button">Zeile</button>
+        <CatalogMobileDetailOverlay
+          catalog={catalog}
+          control={selected}
+          active
+          onClose={onClose}
+          onNavigateToControl={vi.fn()}
+        />
+      </>,
+    );
+
+    const dialog = screen.getByRole('dialog', { name: 'Ausgewählte Kontrolle' });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(view.container).not.toContainElement(dialog);
+    expect(view.container).toHaveAttribute('inert');
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the dialog node and its isolation when switching to a linked control', () => {
+    const props = {
+      catalog,
+      active: true,
+      onClose: vi.fn(),
+      onNavigateToControl: vi.fn(),
+    };
+    const view = render(<CatalogMobileDetailOverlay {...props} control={selected} />);
+    const dialog = screen.getByRole('dialog', { name: 'Ausgewählte Kontrolle' });
+
+    view.rerender(<CatalogMobileDetailOverlay {...props} control={child} />);
+
+    expect(screen.getByRole('dialog', { name: 'Kindkontrolle' })).toBe(dialog);
+    expect(view.container).toHaveAttribute('inert');
+    expect(dialog.parentElement).not.toHaveAttribute('inert');
+  });
+
+  it('restores focus and releases the isolation when it becomes inactive', () => {
+    const props = {
+      catalog,
+      control: selected,
+      onClose: vi.fn(),
+      onNavigateToControl: vi.fn(),
+    };
+    const view = render(
+      <>
+        <button type="button">Zeile</button>
+        <CatalogMobileDetailOverlay {...props} active={false} />
+      </>,
+    );
+    const row = screen.getByRole('button', { name: 'Zeile' });
+    row.focus();
+
+    view.rerender(
+      <>
+        <button type="button">Zeile</button>
+        <CatalogMobileDetailOverlay {...props} active />
+      </>,
+    );
+    expect(screen.getByRole('button', { name: 'Detail schließen' })).toHaveFocus();
+
+    view.rerender(
+      <>
+        <button type="button">Zeile</button>
+        <CatalogMobileDetailOverlay {...props} active={false} />
+      </>,
+    );
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(view.container).not.toHaveAttribute('inert');
+    expect(row).toHaveFocus();
   });
 });

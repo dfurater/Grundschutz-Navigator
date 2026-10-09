@@ -26,6 +26,8 @@ export interface FilterPanelProps {
   readonly onFiltersChange: (filters: ControlFilters) => void;
   readonly onClearFilters: () => void;
   readonly onCollapse?: () => void;
+  /** ID der Überschrift „Filter“, über die das mobile Sheet seinen Dialognamen bezieht. */
+  readonly headingId?: string;
 }
 
 const MODALVERB_LABELS: Record<Modalverb, string> = {
@@ -108,6 +110,7 @@ export function FilterPanel({
   onFiltersChange,
   onClearFilters,
   onCollapse,
+  headingId,
 }: FilterPanelProps) {
   const { vocabularyRegistry } = useCatalog();
   const filterScrollRef = useOverlayScrollbars<HTMLDivElement>();
@@ -191,7 +194,7 @@ export function FilterPanel({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <IconFilter className="w-3.5 h-3.5 text-[var(--color-text-muted)] shrink-0" />
-            <h2 className="type-meta">Filter</h2>
+            <h2 id={headingId} className="type-meta">Filter</h2>
           </div>
           {onCollapse && (
             <button

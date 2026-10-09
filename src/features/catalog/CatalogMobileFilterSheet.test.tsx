@@ -29,7 +29,7 @@ describe('CatalogMobileFilterSheet', () => {
   });
 
   it('traps focus, closes on Escape and restores focus and scroll', () => {
-    render(<CatalogMobileFilterSheet filterPanelProps={filterPanelProps} />);
+    const view = render(<CatalogMobileFilterSheet filterPanelProps={filterPanelProps} />);
     const trigger = screen.getByRole('button', { name: 'Filter anzeigen' });
 
     trigger.focus();
@@ -37,21 +37,63 @@ describe('CatalogMobileFilterSheet', () => {
 
     expect(screen.getByRole('button', { name: 'Filteraktion' })).toHaveFocus();
     expect(document.documentElement.style.overflow).toBe('hidden');
+    expect(view.container).toHaveAttribute('inert');
 
     fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' });
 
     expect(screen.queryByRole('button', { name: 'Filteraktion' })).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
     expect(document.documentElement.style.overflow).toBe('scroll');
+    expect(view.container).not.toHaveAttribute('inert');
+  });
+
+  it('opens as a named modal dialog outside the app root (GSPP-503)', () => {
+    const view = render(
+      <CatalogMobileFilterSheet
+        filterPanelProps={filterPanelProps}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filter anzeigen' }));
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(dialog).toHaveAttribute('aria-labelledby');
+    expect(view.container).not.toContainElement(dialog);
+  });
+
+  it('closes via the visible Fertig button and returns focus to the trigger', () => {
+    const view = render(<CatalogMobileFilterSheet filterPanelProps={filterPanelProps} />);
+    const trigger = screen.getByRole('button', { name: 'Filter anzeigen' });
+
+    trigger.focus();
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('button', { name: 'Fertig' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    expect(view.container).not.toHaveAttribute('inert');
+    expect(document.documentElement.style.overflow).toBe('scroll');
+  });
+
+  it('releases isolation and scroll lock when unmounted while open', () => {
+    const view = render(<CatalogMobileFilterSheet filterPanelProps={filterPanelProps} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Filter anzeigen' }));
+
+    view.unmount();
+
+    expect(document.querySelector('[inert]')).toBeNull();
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(document.documentElement.style.overflow).toBe('scroll');
   });
 
   it('closes when its backdrop is clicked', () => {
-    const view = render(
+    render(
       <CatalogMobileFilterSheet filterPanelProps={filterPanelProps} />,
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Filter anzeigen' }));
-    const backdrop = view.container.querySelector(
+    const backdrop = document.querySelector(
       '.fixed.inset-0[aria-hidden="true"]',
     );
     expect(backdrop).not.toBeNull();
@@ -64,13 +106,13 @@ describe('CatalogMobileFilterSheet', () => {
   it('dismisses after a downward drag beyond the sheet threshold', () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
-    const view = render(
+    render(
       <CatalogMobileFilterSheet filterPanelProps={filterPanelProps} />,
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Filter anzeigen' }));
-    const sheet = view.container.querySelector('aside.fixed');
-    const handle = view.container.querySelector('.touch-none');
+    const sheet = screen.getByRole('dialog');
+    const handle = sheet.querySelector('.touch-none');
     expect(sheet).not.toBeNull();
     expect(handle).not.toBeNull();
     Object.defineProperty(sheet!, 'offsetHeight', { value: 400 });

@@ -1,10 +1,11 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useId, useRef, useState } from 'react';
 import { BackdropTint } from '@/components/BackdropTint';
 import { Button } from '@/components/Button';
 import { IconFilter } from '@/components/icons';
+import { ModalPortal } from '@/components/ModalPortal';
 import { useBottomSheetDrag } from '@/hooks/useBottomSheetDrag';
-import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
+import { useModalDialog } from '@/hooks/useModalDialog';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { FilterPanel, type FilterPanelProps } from './FilterPanel';
 
@@ -16,9 +17,10 @@ export function CatalogMobileFilterSheet({
   filterPanelProps,
 }: CatalogMobileFilterSheetProps) {
   const [open, setOpen] = useState(false);
-  const sheetRef = useRef<HTMLElement>(null);
+  const sheetRef = useRef<HTMLDivElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<HTMLDivElement>(null);
+  const headingId = useId();
   const close = useCallback(() => setOpen(false), []);
 
   useBottomSheetDrag({
@@ -28,7 +30,7 @@ export function CatalogMobileFilterSheet({
     handleRef,
     onDismiss: close,
   });
-  useFocusTrap(sheetRef, open);
+  useModalDialog(sheetRef, open);
   useScrollLock(open);
   useGlobalEventListener('document', 'keydown', (event) => {
     if (event.key === 'Escape') close();
@@ -47,7 +49,7 @@ export function CatalogMobileFilterSheet({
       </Button>
 
       {open && (
-        <>
+        <ModalPortal>
           <div
             ref={backdropRef}
             className="fixed inset-0 z-40 lg:hidden"
@@ -57,8 +59,11 @@ export function CatalogMobileFilterSheet({
           >
             <BackdropTint className="bg-black" />
           </div>
-          <aside
+          <div
             ref={sheetRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={headingId}
             className="fixed inset-x-0 bottom-0 z-50 bg-[var(--color-surface-raised)] rounded-t-2xl shadow-xl max-h-[80dvh] flex flex-col overflow-hidden lg:hidden animate-slide-up"
           >
             <div
@@ -68,9 +73,18 @@ export function CatalogMobileFilterSheet({
             >
               <div className="w-10 h-1 bg-[var(--color-border-strong)] rounded-full" />
             </div>
-            <FilterPanel {...filterPanelProps} />
-          </aside>
-        </>
+            <FilterPanel {...filterPanelProps} headingId={headingId} />
+            <div className="px-4 py-3 border-t border-[var(--color-border-default)] shrink-0">
+              <Button
+                variant="secondary"
+                className="w-full min-h-[44px]"
+                onClick={close}
+              >
+                Fertig
+              </Button>
+            </div>
+          </div>
+        </ModalPortal>
       )}
     </>
   );

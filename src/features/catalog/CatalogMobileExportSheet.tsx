@@ -1,11 +1,12 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useId, useRef, useState } from 'react';
 import type { Control } from '@/domain/models';
 import { BackdropTint } from '@/components/BackdropTint';
 import { Button } from '@/components/Button';
 import { IconDownload } from '@/components/icons';
+import { ModalPortal } from '@/components/ModalPortal';
 import { downloadCSV } from '@/features/export/csvExport';
-import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
+import { useModalDialog } from '@/hooks/useModalDialog';
 import { useScrollLock } from '@/hooks/useScrollLock';
 
 interface CatalogMobileExportSheetProps {
@@ -25,9 +26,10 @@ export function CatalogMobileExportSheet({
 }: CatalogMobileExportSheetProps) {
   const [open, setOpen] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
+  const headingId = useId();
   const close = useCallback(() => setOpen(false), []);
 
-  useFocusTrap(sheetRef, open);
+  useModalDialog(sheetRef, open);
   useScrollLock(open);
   useGlobalEventListener('document', 'keydown', (event) => {
     if (event.key === 'Escape') close();
@@ -58,7 +60,7 @@ export function CatalogMobileExportSheet({
       </Button>
 
       {open && (
-        <>
+        <ModalPortal>
           <div
             className="fixed inset-0 z-40 lg:hidden"
             onClick={close}
@@ -68,6 +70,9 @@ export function CatalogMobileExportSheet({
           </div>
           <div
             ref={sheetRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={headingId}
             className="fixed inset-x-0 bottom-0 z-50 bg-[var(--color-surface-raised)] rounded-t-2xl shadow-xl flex flex-col overflow-hidden lg:hidden animate-slide-up"
           >
             <div
@@ -77,7 +82,7 @@ export function CatalogMobileExportSheet({
               <div className="w-10 h-1 bg-[var(--color-border-strong)] rounded-full" />
             </div>
             <div className="px-4 py-3 border-b border-[var(--color-border-default)] shrink-0">
-              <h3 className="type-meta">Exportieren als CSV</h3>
+              <h2 id={headingId} className="type-meta">Exportieren als CSV</h2>
             </div>
             <div className="p-4 flex flex-col gap-2">
               {checkedIds.size > 0 && (
@@ -114,8 +119,17 @@ export function CatalogMobileExportSheet({
                 Gesamtkatalog ({allControls.length})
               </Button>
             </div>
+            <div className="px-4 py-3 border-t border-[var(--color-border-default)] shrink-0">
+              <Button
+                variant="secondary"
+                className="w-full min-h-[44px]"
+                onClick={close}
+              >
+                Schließen
+              </Button>
+            </div>
           </div>
-        </>
+        </ModalPortal>
       )}
     </>
   );
