@@ -13,6 +13,7 @@ afterEach(unmountShell);
 
 const PORTRAIT = 375;
 const LANDSCAPE = 667;
+const DESKTOP = 900;
 
 /**
  * Wartet auf das `resize` der neuen Breite: Ein verspätetes `resize` der
@@ -128,6 +129,49 @@ test('beginnt eine Geste direkt nach dem Drehen mit der neuen Breite', async () 
   await settled(aside);
 
   await rotate();
+  const gesture = drag(aside, [300, 400], [[290, 401], [250, 402], [200, 402]]);
+  expect(root.style.getPropertyValue('--mobile-nav-drag')).toBe('-100px');
+  expect(Number(getComputedStyle(backdrop).opacity)).toBeCloseTo(1 - 100 / 360, 2);
+  await pause();
+  gesture.release();
+});
+
+// Eine reine Höhenänderung, etwa durch die ein- und ausfahrende Browserleiste,
+// ist kein Breitenwechsel: Das Öffnen gleitet weiter, statt ans Ziel zu springen.
+test('lässt das Öffnen bei einer reinen Höhenänderung weitergleiten', async () => {
+  const shell = await renderPortrait();
+  const aside = shell.querySelector('aside')!;
+  shell.querySelector<HTMLButtonElement>('button[aria-controls]')!.click();
+  await expect.poll(() => aside.getAnimations().length).toBeGreaterThan(0);
+
+  const resized = new Promise((resolve) => window.addEventListener('resize', resolve, { once: true }));
+  await page.viewport(PORTRAIT, HEIGHT - 100);
+  await resized;
+  expect(aside.getAnimations().length).toBeGreaterThan(0);
+  await settled(aside);
+});
+
+// Beim Wechsel vom Desktop unter `md` übernimmt die offene Schublade die mobile
+// Breite sofort, statt von der Breite der Seitenleiste dorthin zu gleiten.
+test('beginnt nach dem Wechsel vom Desktop unter md eine Geste mit der mobilen Breite', async () => {
+  const shell = await renderShell(LANDSCAPE);
+  await expect.poll(() => window.innerWidth).toBe(LANDSCAPE);
+  const aside = await openDrawer(shell, { animated: true });
+  const root = shellRoot(shell);
+  const backdrop = shell.querySelector<HTMLElement>('[data-testid="mobile-nav-backdrop"]')!;
+  await settled(aside);
+
+  const toDesktop = resizedTo(DESKTOP);
+  await page.viewport(DESKTOP, HEIGHT);
+  await toDesktop;
+  await expect.poll(() => root.dataset.mobileNav).toBe('closed');
+  await settled(aside);
+
+  const back = resizedTo(LANDSCAPE);
+  await page.viewport(LANDSCAPE, HEIGHT);
+  await back;
+  await expect.poll(() => root.dataset.mobileNav, { interval: 1 }).toBe('open');
+  expect(aside.getBoundingClientRect().width).toBeCloseTo(360, 0);
   const gesture = drag(aside, [300, 400], [[290, 401], [250, 402], [200, 402]]);
   expect(root.style.getPropertyValue('--mobile-nav-drag')).toBe('-100px');
   expect(Number(getComputedStyle(backdrop).opacity)).toBeCloseTo(1 - 100 / 360, 2);

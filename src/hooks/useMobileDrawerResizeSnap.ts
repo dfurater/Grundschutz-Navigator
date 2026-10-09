@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useLayoutEffect } from 'react';
 import type { RefObject } from 'react';
 
 /** Träger der Bewegung, die `--mobile-nav-width` folgt (src/index.css). */
@@ -21,17 +21,27 @@ export function finishDrawerMotion(shell: Element) {
  * Schublade, Seite und Abdunklung stellen sich dann gemeinsam sofort auf die
  * neue Lage, statt dorthin zu gleiten. Liefe die Bewegung, begänne eine Geste
  * oder ein Schließen in dieser Zeit von einer Lage, die noch wandert, und
- * Schublade und Seite liefen auseinander.
+ * Schublade und Seite liefen auseinander. Dasselbe gilt beim Wechsel vom
+ * Desktop unter `md`: Die Schublade übernähme sonst gleitend die Breite der
+ * Seitenleiste.
  *
- * Der Aufruf von `getAnimations` im `resize`-Handler berechnet die Stile neu;
- * die vom Breitenwechsel ausgelösten Transitionen bestehen dann schon und
- * enden vor dem nächsten Frame.
+ * Eine reine Höhenänderung, etwa durch die ein- und ausfahrende Browserleiste,
+ * lässt laufendes Öffnen, Schließen und Ausgleiten unberührt.
+ *
+ * `getAnimations` berechnet die Stile neu; die vom Wechsel ausgelösten
+ * Transitionen bestehen dann schon und enden vor dem nächsten Frame.
  */
 export function useMobileDrawerResizeSnap(enabled: boolean, shellRef: RefObject<HTMLElement | null>) {
-  useEffect(() => {
+  useLayoutEffect(() => {
     const shell = shellRef.current;
     if (!enabled || shell === null) return;
-    const snap = () => finishDrawerMotion(shell);
+    finishDrawerMotion(shell);
+    let width = globalThis.innerWidth;
+    const snap = () => {
+      if (globalThis.innerWidth === width) return;
+      width = globalThis.innerWidth;
+      finishDrawerMotion(shell);
+    };
     globalThis.addEventListener('resize', snap);
     return () => globalThis.removeEventListener('resize', snap);
   }, [enabled, shellRef]);

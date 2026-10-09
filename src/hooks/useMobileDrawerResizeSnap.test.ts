@@ -47,20 +47,29 @@ describe('useMobileDrawerResizeSnap', () => {
     expect(() => finishDrawerMotion(document.createElement('div'))).not.toThrow();
   });
 
-  it('stellt die Bewegung nur unter md bei jedem resize sofort', () => {
+  it('stellt die Bewegung unter md beim Aktivieren und bei jedem Breitenwechsel sofort', () => {
     vi.stubGlobal('CSSTransition', FakeTransition);
     vi.stubGlobal('KeyframeEffect', FakeKeyframeEffect);
+    vi.stubGlobal('innerWidth', 375);
     const { shell, transitions: [drawer] } = shellWithMotion();
     const view = renderHook(({ enabled }) => useMobileDrawerResizeSnap(enabled, { current: shell }), {
       initialProps: { enabled: true },
     });
+    // Beim Wechsel vom Desktop unter `md` gleicht die Schublade ihre Breite an.
+    expect(drawer.finish).toHaveBeenCalledOnce();
 
+    // Eine reine Höhenänderung lässt laufende Bewegungen gleiten.
     globalThis.dispatchEvent(new Event('resize'));
     expect(drawer.finish).toHaveBeenCalledOnce();
+
+    vi.stubGlobal('innerWidth', 667);
+    globalThis.dispatchEvent(new Event('resize'));
+    expect(drawer.finish).toHaveBeenCalledTimes(2);
 
     view.rerender({ enabled: false });
+    vi.stubGlobal('innerWidth', 375);
     globalThis.dispatchEvent(new Event('resize'));
-    expect(drawer.finish).toHaveBeenCalledOnce();
+    expect(drawer.finish).toHaveBeenCalledTimes(2);
     view.unmount();
   });
 });
