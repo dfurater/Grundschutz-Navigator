@@ -118,7 +118,7 @@ test.each([
   expect(visible(row ?? null)).toBe(true);
 
   // Genau ein Export-Zugang: der mobile, kein Desktop-Menü daneben.
-  expect(view.querySelector('button[aria-label="Exportoptionen"]')).toBeNull();
+  expect(view.querySelector('button[aria-label="Weitere Exportoptionen"]')).toBeNull();
   expect(visible(view.querySelector('button[aria-label="CSV exportieren"]'))).toBe(true);
   expect(visible(view.querySelector('button[aria-label="Kontrollen auswählen"]'))).toBe(true);
 });
