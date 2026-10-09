@@ -1,6 +1,5 @@
 import { Link } from 'react-router';
 import { useCatalog } from '@/hooks/useCatalog';
-import { buildVocabularySourceUrl } from '@/domain/vocabulary';
 import { PAGE_TITLES } from '@/app/pageTitles';
 import { getVocabularyTitle } from './vocabularyTitle';
 import { compareGermanText } from '@/domain/germanCollation';
@@ -58,45 +57,27 @@ export function VocabularyOverviewPage() {
           <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Verwendete Vokabulare</h2>
         </div>
         <div className="divide-y divide-[var(--color-border-subtle)]">
-          {namespaces.map((namespace) => {
-            const sourceHref = buildVocabularySourceUrl(
-              namespace.source,
-              vocabularyRegistry.sourceCommitSha,
-            );
-
-            return (
-              <div
-                key={namespace.source.namespace}
-                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 transition-colors hover:bg-[var(--color-surface-subtle)]"
+          {namespaces.map((namespace) => (
+            <div
+              key={namespace.source.namespace}
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-1 transition-colors lg:py-1.5 hover:bg-[var(--color-surface-subtle)]"
+            >
+              <Link
+                to={`/vokabular/${namespace.source.routeId}`}
+                className="type-object-title flex min-h-11 min-w-0 items-center rounded lg:min-h-6 hover:text-[var(--color-accent-default)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
               >
-                <div className="flex min-w-0 flex-col justify-center">
-                  <Link
-                    to={`/vokabular/${namespace.source.routeId}`}
-                    className="type-object-title block min-w-0 rounded hover:text-[var(--color-accent-default)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
-                  >
-                    {getVocabularyTitle(namespace.source.fileName)}
-                  </Link>
-                  <a
-                    href={sourceHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="catalog-link-color catalog-meta-type mt-0.5 block rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
-                    title="Upstream-Datei öffnen"
-                  >
-                    {namespace.source.fileName}
-                  </a>
+                {getVocabularyTitle(namespace.source.fileName)}
+              </Link>
+              <div className="shrink-0 text-right leading-none">
+                <div className="text-sm font-semibold tabular-nums text-[var(--color-text-primary)]">
+                  {namespace.entries.length}
                 </div>
-                <div className="shrink-0 text-right leading-none">
-                  <div className="text-sm font-semibold tabular-nums text-[var(--color-text-primary)]">
-                    {namespace.entries.length}
-                  </div>
-                  <div className="catalog-meta-text mt-0.5">
-                    {namespace.entries.length === 1 ? 'Eintrag' : 'Einträge'}
-                  </div>
+                <div className="catalog-meta-text mt-0.5">
+                  {namespace.entries.length === 1 ? 'Eintrag' : 'Einträge'}
                 </div>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       </div>
     </div>

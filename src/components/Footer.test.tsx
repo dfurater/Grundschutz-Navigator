@@ -176,7 +176,7 @@ describe('Footer', () => {
     expect(informationGroup?.parentElement).toBe(secondaryGroup?.parentElement);
   });
 
-  it('uses compact mobile spacing for the complete secondary footer row', () => {
+  it('gives the complete secondary footer row 44 px touch targets below lg and 24 px from lg', () => {
     render(
       <MemoryRouter>
         <Footer />
@@ -185,7 +185,10 @@ describe('Footer', () => {
 
     const secondaryGroup = screen.getByRole('link', { name: 'About' }).parentElement;
 
-    expect(secondaryGroup).toHaveClass('gap-x-2', 'sm:gap-x-3');
+    expect(secondaryGroup).toHaveClass('-mx-2', 'lg:mx-0', 'lg:gap-x-3');
+    for (const { label } of secondaryFooterLinks) {
+      expect(screen.getByRole('link', { name: label })).toHaveClass('min-h-11', 'px-2', 'lg:min-h-6', 'lg:px-0');
+    }
   });
 
   it('places the non-verified status directly after the source link', () => {

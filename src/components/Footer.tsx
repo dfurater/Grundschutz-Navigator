@@ -20,11 +20,11 @@ export function Footer({ className = '' }: FooterProps) {
   const verified = verification?.valid;
 
   const secondaryLinkClass =
-    'whitespace-nowrap rounded text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]';
+    'inline-flex min-h-11 items-center whitespace-nowrap rounded px-2 text-[var(--color-text-muted)] lg:min-h-6 lg:px-0 hover:text-[var(--color-text-secondary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]';
 
   return (
     <footer
-      className={`shrink-0 border-t border-[var(--color-border-default)] bg-[var(--color-surface-base)] px-4 py-3 text-xs text-[var(--color-text-secondary)] sm:px-6 ${className}`}
+      className={`shrink-0 border-t border-[var(--color-border-default)] bg-[var(--color-surface-base)] px-4 py-3 text-xs lg:py-2 text-[var(--color-text-secondary)] sm:px-6 ${className}`}
       role="contentinfo"
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[var(--color-text-secondary)]">
@@ -37,7 +37,7 @@ export function Footer({ className = '' }: FooterProps) {
             href="https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek"
             target="_blank"
             rel="noopener noreferrer"
-            className="catalog-link-color inline-flex min-w-0 items-center gap-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+            className="catalog-link-color inline-flex min-h-11 min-w-0 items-center gap-1 rounded lg:min-h-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
           >
             <span className="hidden min-w-0 truncate sm:inline">
               Quelle: BSI Stand-der-Technik-Bibliothek
@@ -49,7 +49,7 @@ export function Footer({ className = '' }: FooterProps) {
           {verified !== undefined && (
             <Link
               to="/about"
-              className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] ${verified ? 'text-[var(--color-success-text)]' : 'text-[var(--color-warning-text)]'}`}
+              className={`inline-flex min-h-11 shrink-0 items-center gap-1 whitespace-nowrap rounded font-medium lg:min-h-6 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] ${verified ? 'text-[var(--color-success-text)]' : 'text-[var(--color-warning-text)]'}`}
               title="Integritätsdetails auf der Seite Über das Projekt"
             >
               <IconShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
@@ -57,7 +57,7 @@ export function Footer({ className = '' }: FooterProps) {
             </Link>
           )}
         </div>
-        <div className="basis-full min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1 sm:gap-x-3 lg:ml-auto lg:basis-auto lg:flex-nowrap lg:justify-end">
+        <div className="basis-full min-w-0 -mx-2 flex flex-wrap items-center gap-y-1 sm:gap-x-1 lg:mx-0 lg:gap-x-3 lg:ml-auto lg:basis-auto lg:flex-nowrap lg:justify-end">
           <span aria-hidden="true" className="hidden text-[var(--color-text-muted)] lg:inline">·</span>
           {secondaryFooterLinks.map(({ to, label }) => (
             <Link key={to} to={to} className={secondaryLinkClass}>

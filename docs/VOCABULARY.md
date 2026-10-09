@@ -325,6 +325,7 @@ Für die Quell-Links auf den exakten Upstream-Stand (`buildVocabularySourceUrl` 
 
 Detailseite für einen Namespace (`src/features/vocabularies/VocabularyNamespacePage.tsx`):
 
+- Unter der Überschrift steht der Dateipfad des Namensraums als externer Link auf die Upstream-Datei (`buildVocabularySourceUrl`, mit Snapshot-SHA auf `blob/<sha>/<pfad>`); die Übersicht `/vokabular` verlinkt die Upstream-Dateien nicht
 - Alle Einträge als auswählbare Link-Liste
 - Listeneintrag zeigt `entry.value`; ist `valueColumn` nicht selbst `Begriff` (z. B. `basethreats.csv` mit `valueColumn: "ID"`), wird zusätzlich der Wert der Spalte `Begriff` mit Abstand angehängt (z. B. „G 0.1 Feuer"), sofern vorhanden und von `entry.value` verschieden
 - Einzelner Eintrag per Query-Parameter `?wert=` adressierbar (Deep-Link aus Control-Details)
