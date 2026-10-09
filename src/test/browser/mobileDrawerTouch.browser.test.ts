@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'vitest';
-import { commands } from 'vitest/browser';
+import { commands, page } from 'vitest/browser';
 import { HEIGHT, WIDTH, openDrawer, renderShell, settlePush, swipe, unmountShell } from './mobileDrawerHarness';
 
 /**
@@ -103,4 +103,16 @@ test('scrollt die Seite senkrecht, ohne die Schublade zu öffnen', async () => {
   await expect.poll(() => window.scrollY).toBeGreaterThan(200);
   expect(root(shell).dataset.mobileNav).toBe('closed');
   expect(shell.querySelector('main')!.inert).toBe(false);
+});
+
+// Die Wischgeste braucht nur senkrechtes Scrollen vom Browser; Pinch-Zoom mit
+// zwei Fingern bleibt in der Schublade erlaubt. Ab `md` gibt es keine Geste,
+// und die Seitenleiste behält die volle Touch-Steuerung.
+test('erlaubt in der Schublade Pinch-Zoom und ab md die volle Touch-Steuerung', async () => {
+  const shell = await renderShell(WIDTH);
+  const aside = shell.querySelector('aside')!;
+  expect(getComputedStyle(aside).touchAction).toBe('pan-y pinch-zoom');
+
+  await page.viewport(900, HEIGHT);
+  await expect.poll(() => getComputedStyle(aside).touchAction).toBe('auto');
 });
