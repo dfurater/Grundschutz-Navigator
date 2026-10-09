@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, RefObject } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { FOCUS_SEARCH_STATE } from '@/app/searchFocus';
@@ -18,6 +18,12 @@ export interface HeaderBarProps {
    * verdeckte Ziele führt.
    */
   readonly obscured?: boolean;
+  /**
+   * Gibt den verdeckten App-Kopf frei (die Shell schließt die Schublade). Ruft
+   * das Suchkürzel bei sichtbarem, aber verdecktem Feld auf und fokussiert das
+   * Feld, sobald es wieder bedienbar ist.
+   */
+  readonly onUncover?: () => void;
   readonly className?: string;
 }
 
@@ -57,6 +63,7 @@ export function HeaderBar({
   menuControls,
   menuButtonRef,
   obscured = false,
+  onUncover,
   className = '',
 }: HeaderBarProps) {
   const [searchValue, setSearchValue] = useState('');
@@ -64,18 +71,32 @@ export function HeaderBar({
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
+  const focusWhenUncoveredRef = useRef(false);
+
+  // `inert` endet erst mit dem Commit, der die Schublade schließt.
+  useEffect(() => {
+    if (obscured || !focusWhenUncoveredRef.current) return;
+    focusWhenUncoveredRef.current = false;
+    inputRef.current?.focus();
+  }, [obscured]);
 
   useGlobalEventListener('document', 'keydown', (event) => {
     if (!(event.metaKey || event.ctrlKey) || event.key !== 'k') return;
     if (event.target !== inputRef.current && isEditableTarget(event.target)) return;
 
     event.preventDefault();
-    // Unter 640 px ist das Feld ausgeblendet, bei offener mobiler Schublade
-    // verdeckt und `inert`; dann führt das Kürzel wie die Lupe auf die Suchseite
-    // und fokussiert dort die Eingabe. Auf der Suchseite bleibt die laufende
-    // Anfrage stehen, und der Verlauf erhält keinen zweiten Eintrag.
+    // Unter 640 px ist das Feld ausgeblendet; dann führt das Kürzel wie die Lupe
+    // auf die Suchseite und fokussiert dort die Eingabe. Auf der Suchseite bleibt
+    // die laufende Anfrage stehen, und der Verlauf erhält keinen zweiten Eintrag.
     const input = inputRef.current;
-    const visible = !obscured && input && (input.checkVisibility?.() ?? input.getClientRects().length > 0);
+    const visible = input && (input.checkVisibility?.() ?? input.getClientRects().length > 0);
+    // Darüber verdeckt die offene mobile Schublade das Feld und macht es `inert`;
+    // das Kürzel gibt den App-Kopf frei und fokussiert das Feld danach.
+    if (visible && obscured) {
+      focusWhenUncoveredRef.current = true;
+      onUncover?.();
+      return;
+    }
     if (!visible) {
       const onSearchPage = location.pathname === '/suche';
       void navigate(

@@ -267,6 +267,7 @@ export function AppShell() {
         onSearch={handleSearch}
         className="mobile-nav-push"
         obscured={mobileNavOpen}
+        onUncover={closeSideNav}
         menuExpanded={mobileNavOpen}
         menuControls={sideNavId}
         menuButtonRef={menuButtonRef}

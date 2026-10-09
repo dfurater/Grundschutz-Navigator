@@ -293,3 +293,19 @@ test.each([WIDTH, 700])('führt Tab bei %i px vom Menübutton nur auf sichtbare 
     expect(box.right).toBeLessThanOrEqual(width);
   }
 });
+
+// Ab 640 px liegt das Suchfeld im verdeckten App-Kopf; die Suchseite hat dort
+// kein eigenes Feld. Das Kürzel schließt die Schublade und fokussiert es (GSPP-497).
+test('schließt bei 700 px die Schublade per Ctrl+K und fokussiert das Suchfeld im App-Kopf', async () => {
+  const shell = await renderShell(700);
+  await openDrawer(shell);
+  await settlePush(shell);
+  const search = shell.querySelector<HTMLInputElement>('[data-testid="header-search"]')!;
+  expect(search.closest('[inert]')).not.toBeNull();
+
+  await userEvent.keyboard('{Control>}k{/Control}');
+
+  await expect.poll(() => document.activeElement).toBe(search);
+  expect(shell.querySelector('[data-mobile-nav]')).toHaveAttribute('data-mobile-nav', 'closed');
+  expect(search.closest('[inert]')).toBeNull();
+});
