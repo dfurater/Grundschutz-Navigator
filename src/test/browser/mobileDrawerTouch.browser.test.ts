@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'vitest';
 import { commands } from 'vitest/browser';
-import { HEIGHT, WIDTH, openDrawer, renderShell, settlePush, unmountShell } from './mobileDrawerHarness';
+import { HEIGHT, WIDTH, openDrawer, renderShell, settlePush, swipe, unmountShell } from './mobileDrawerHarness';
 
 /**
  * Mobile Push-Schublade (GSPP-493) mit vom Browser erzeugten Touch-Eingaben
@@ -15,32 +15,6 @@ afterEach(async () => {
   await commands.dispatchBrowserTouch('reset');
   unmountShell();
 });
-
-/** Koordinaten des Testframes in Koordinaten der Browser-Seite. */
-function toPage(x: number, y: number) {
-  const frame = window.frameElement;
-  if (!frame) return { x, y };
-  const box = frame.getBoundingClientRect();
-  const scale = box.width / window.innerWidth;
-  return { x: box.left + x * scale, y: box.top + y * scale };
-}
-
-/** Eine Berührung von `from` nach `to` in gleichmäßigen Schritten mit kurzem Takt. */
-async function swipe(from: readonly [number, number], to: readonly [number, number], steps = 12) {
-  const start = toPage(...from);
-  await commands.dispatchBrowserTouch('start', start.x, start.y);
-  for (let step = 1; step <= steps; step++) {
-    const point = toPage(
-      from[0] + ((to[0] - from[0]) * step) / steps,
-      from[1] + ((to[1] - from[1]) * step) / steps,
-    );
-    await commands.dispatchBrowserTouch('move', point.x, point.y);
-    await new Promise((resolve) => setTimeout(resolve, 16));
-  }
-  // Der Finger steht vor dem Loslassen still: kein Wurf, die Strecke entscheidet.
-  await new Promise((resolve) => setTimeout(resolve, 150));
-  await commands.dispatchBrowserTouch('end');
-}
 
 /** Zählt die vom Browser gelieferten Touch-Ereignisse und deren Abbrüche. */
 function recordTouches() {
