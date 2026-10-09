@@ -21,7 +21,7 @@ export function LizenzenPage() {
             href="https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-0.5 rounded text-sky-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+            className="inline-flex items-center gap-0.5 rounded catalog-link-color focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
           >
             Stand-der-Technik-Bibliothek
             {' '}
@@ -113,7 +113,7 @@ export function LizenzenPage() {
                   href={lib.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 rounded text-sm font-medium text-slate-900 hover:text-sky-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+                  className="inline-flex items-center gap-1 rounded text-sm font-medium text-slate-900 hover:text-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
                 >
                   {lib.name}
                   <span className="sr-only"> (öffnet in neuem Tab)</span>
@@ -123,7 +123,7 @@ export function LizenzenPage() {
                   v{lib.version}
                 </span>
               </div>
-              <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+              <span className="text-xs font-mono text-[var(--color-text-muted)] bg-slate-100 px-2 py-0.5 rounded">
                 {lib.license}
               </span>
             </div>
@@ -144,7 +144,7 @@ export function LizenzenPage() {
             href="https://github.com/dfurater/Grundschutz-Navigator"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-0.5 rounded text-sky-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+            className="inline-flex items-center gap-0.5 rounded catalog-link-color focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
           >
             dfurater/Grundschutz-Navigator
             {' '}
