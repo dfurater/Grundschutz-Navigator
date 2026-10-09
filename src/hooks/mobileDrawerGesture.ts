@@ -30,17 +30,6 @@ function releaseVelocity(samples: readonly Sample[], releaseTime: number) {
   return last.time > first.time ? (last.x - first.x) / (last.time - first.time) : 0;
 }
 
-/**
- * Nach einem Breitenwechsel gleicht die Schublade ihre Breite noch per
- * Transition an. Eine Geste, die jetzt beginnt, übernähme die Zwischenbreite;
- * sie beginnt deshalb erst danach. jsdom kennt `getAnimations` nicht.
- */
-export function widthSettling(drawer: Element) {
-  return drawer.getAnimations?.().some(
-    (animation) => animation instanceof CSSTransition && animation.transitionProperty === 'width',
-  ) ?? false;
-}
-
 /** Eingabefelder, in denen waagerechtes Ziehen Schreibmarke oder Auswahl bewegt. */
 const EDITABLE_SELECTOR = 'input, textarea, select, [contenteditable]:not([contenteditable="false" i])';
 

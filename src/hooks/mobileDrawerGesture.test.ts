@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { releaseGesture, widthSettling } from './mobileDrawerGesture';
+import { describe, expect, it } from 'vitest';
+import { releaseGesture } from './mobileDrawerGesture';
 import type { Sample } from './mobileDrawerGesture';
 
 const WIDTH = 300;
@@ -61,27 +61,5 @@ describe('releaseGesture', () => {
   it('setzt keine Freigabe, wenn keine Strecke mehr bleibt', () => {
     expect(releaseGesture([], 0, 0, WIDTH)).toEqual({ opens: true, motion: null });
     expect(releaseGesture([], 0, -WIDTH, WIDTH)).toEqual({ opens: false, motion: null });
-  });
-});
-
-describe('widthSettling', () => {
-  afterEach(() => { vi.unstubAllGlobals(); });
-
-  it('meldet nur eine laufende width-Transition der Schublade', () => {
-    class FakeTransition {
-      readonly transitionProperty: string;
-      constructor(transitionProperty: string) {
-        this.transitionProperty = transitionProperty;
-      }
-    }
-    vi.stubGlobal('CSSTransition', FakeTransition);
-    const drawer = document.createElement('aside');
-    // jsdom kennt `getAnimations` nicht.
-    expect(widthSettling(drawer)).toBe(false);
-
-    drawer.getAnimations = () => [new FakeTransition('translate')] as unknown as Animation[];
-    expect(widthSettling(drawer)).toBe(false);
-    drawer.getAnimations = () => [new FakeTransition('translate'), new FakeTransition('width')] as unknown as Animation[];
-    expect(widthSettling(drawer)).toBe(true);
   });
 });

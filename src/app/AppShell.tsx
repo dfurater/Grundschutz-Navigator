@@ -25,6 +25,7 @@ import { useDragToResize } from '@/hooks/useDragToResize';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import { useMobileDrawerPlacement } from '@/hooks/useMobileDrawerPlacement';
+import { useMobileDrawerResizeSnap } from '@/hooks/useMobileDrawerResizeSnap';
 import { useMobileDrawerSwipe } from '@/hooks/useMobileDrawerSwipe';
 import { OWN_SCROLL_AREA_QUERY } from '@/hooks/breakpointQueries';
 import { useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
@@ -154,6 +155,7 @@ export function AppShell() {
     onOpen: openSideNav,
     onClose: closeSideNav,
   });
+  useMobileDrawerResizeSnap(!isPersistentNav, shellRef);
   const drawerPlacement = useMobileDrawerPlacement(
     sideNavOpen || swipe.previewing,
     isPersistentNav,
