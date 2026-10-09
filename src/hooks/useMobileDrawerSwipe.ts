@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { flushSync } from 'react-dom';
-import { DIRECTION_SLOP_PX, releaseGesture, startsOpenGesture } from './mobileDrawerGesture';
+import { DIRECTION_SLOP_PX, releaseGesture, startsOpenGesture, widthSettling } from './mobileDrawerGesture';
 import type { Sample } from './mobileDrawerGesture';
 
 interface Gesture {
@@ -167,7 +167,7 @@ export function useMobileDrawerSwipe({
       if (event.touches.length !== 1) return;
       if (!open && !startsOpenGesture(event.target, shell)) return;
       const width = drawer.getBoundingClientRect().width;
-      if (width <= 0) return;
+      if (width <= 0 || widthSettling(drawer)) return;
       const touch = event.touches[0];
       gesture = {
         mode: open ? 'close' : 'open',

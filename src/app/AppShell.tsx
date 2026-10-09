@@ -323,9 +323,14 @@ export function AppShell() {
           style={{
             top: drawerPlacement.top,
             width: persistentNavWidth,
+            // Mobil ändert sich die Breite nur mit dem Viewport, etwa beim Drehen.
+            // Sie folgt dann derselben Bewegung wie die verschobene Seite, damit
+            // beide Kanten in jedem Frame bündig bleiben.
             transition: isSidebarResizing || prefersReducedMotion
               ? 'none'
-              : 'width var(--duration-normal) var(--easing-default), translate var(--mobile-nav-motion)',
+              : isPersistentNav
+                ? 'width var(--duration-normal) var(--easing-default), translate var(--mobile-nav-motion)'
+                : 'width var(--mobile-nav-motion), translate var(--mobile-nav-motion)',
           }}
         >
           {sidebarCollapsed ? (
