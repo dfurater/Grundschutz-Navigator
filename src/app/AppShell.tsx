@@ -325,7 +325,7 @@ export function AppShell() {
           id={sideNavId}
           inert={!isPersistentNav && !sideNavOpen}
           className="mobile-nav-drawer
-            bg-white flex shrink-0 z-40 overflow-hidden touch-pan-y md:z-30 md:border-r md:border-slate-200
+            bg-white flex shrink-0 z-40 overflow-hidden touch-pan-y touch-pinch-zoom md:touch-auto md:z-30 md:border-r md:border-slate-200
             absolute left-0 -mt-14 h-dvh md:relative md:inset-auto md:mt-0 md:h-auto"
           ref={drawerRef}
           style={{

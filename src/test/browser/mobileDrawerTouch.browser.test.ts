@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'vitest';
-import { commands } from 'vitest/browser';
+import { commands, page } from 'vitest/browser';
 import { HEIGHT, WIDTH, openDrawer, renderShell, settlePush, swipe, unmountShell } from './mobileDrawerHarness';
 
 /**
@@ -69,8 +69,9 @@ test('schließt die offene Schublade beim waagerechten Wischen, ohne den Baum zu
   await swipe([300, 500], [60, 560]);
   touches.stop();
 
-  // `touch-pan-y` überlässt dem Browser nur senkrechtes Scrollen; die
-  // waagerechte Geste bleibt bei den Handlern und wird nicht abgebrochen.
+  // `touch-pan-y touch-pinch-zoom` überlässt dem Browser senkrechtes Scrollen
+  // und Pinch-Zoom; die waagerechte Geste bleibt bei den Handlern und wird
+  // nicht abgebrochen.
   expect(touches.counts.touchcancel).toBe(0);
   expect(touches.counts.touchmove).toBeGreaterThan(1);
   await expect.poll(() => root(shell).dataset.mobileNav).toBe('closed');
@@ -103,4 +104,13 @@ test('scrollt die Seite senkrecht, ohne die Schublade zu öffnen', async () => {
   await expect.poll(() => window.scrollY).toBeGreaterThan(200);
   expect(root(shell).dataset.mobileNav).toBe('closed');
   expect(shell.querySelector('main')!.inert).toBe(false);
+});
+
+test('lässt in der Schublade unter md Pinch-Zoom zu und gibt ab md alle Gesten dem Browser', async () => {
+  const shell = await renderShell(WIDTH);
+  const aside = await openDrawer(shell);
+  expect(getComputedStyle(aside).touchAction).toBe('pan-y pinch-zoom');
+
+  await page.viewport(1024, HEIGHT);
+  await expect.poll(() => getComputedStyle(aside).touchAction).toBe('auto');
 });
