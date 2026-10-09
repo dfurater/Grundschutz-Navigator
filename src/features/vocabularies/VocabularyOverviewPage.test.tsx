@@ -145,7 +145,7 @@ describe('VocabularyOverviewPage', () => {
       'https://example.com/repo/blob/snapshot-123/documentation/namespaces/documentation_guidelines.csv',
     );
     expect(fileLink).toHaveAttribute('target', '_blank');
-    expect(fileLink).toHaveClass('catalog-meta-type', 'catalog-link-color', 'block');
+    expect(fileLink).toHaveClass('catalog-meta-type', 'catalog-link-color', 'flex');
     expect(screen.queryByText('documentation/namespaces/documentation_guidelines.csv')).not.toBeInTheDocument();
   });
 

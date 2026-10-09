@@ -33,7 +33,7 @@ export default defineConfig({
    * Reload den Anlass.
    */
   optimizeDeps: {
-    include: ['ajv'],
+    include: ['ajv', 'axe-core'],
   },
   test: {
     name: 'browser-chromium',
