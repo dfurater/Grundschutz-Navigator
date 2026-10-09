@@ -9,7 +9,7 @@ interface CatalogTargetNotFoundProps {
 export function CatalogTargetNotFound({ catalog }: CatalogTargetNotFoundProps) {
   return (
     <div className="flex-1 p-6">
-      <h1 className="text-xl font-bold text-slate-900">
+      <h1 className="type-page-title">
         404 — Katalogziel nicht gefunden
       </h1>
       <p className="mt-3 text-sm text-slate-600">

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, RefObject } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { FOCUS_SEARCH_STATE } from '@/app/searchFocus';
@@ -12,6 +12,19 @@ export interface HeaderBarProps {
   readonly menuExpanded?: boolean;
   readonly menuControls?: string;
   readonly menuButtonRef?: RefObject<HTMLButtonElement | null>;
+  /**
+   * Die offene mobile Schublade schiebt den App-Kopf aus dem Bild. Seine
+   * Steuerungen außer dem Menübutton sind dann `inert`, damit Tab nicht auf
+   * verdeckte Ziele führt.
+   */
+  readonly obscured?: boolean;
+  /**
+   * Gibt den App-Kopf frei: Die Shell schließt eine offene Schublade und
+   * beendet eine Wischgeste, die den Kopf gerade verschiebt. Das Suchkürzel
+   * ruft es bei sichtbarem Feld vor dem Fokussieren auf; ist der Kopf
+   * `obscured`, fokussiert es das Feld erst, sobald es wieder bedienbar ist.
+   */
+  readonly onUncover?: () => void;
   readonly className?: string;
 }
 
@@ -50,6 +63,8 @@ export function HeaderBar({
   menuExpanded = false,
   menuControls,
   menuButtonRef,
+  obscured = false,
+  onUncover,
   className = '',
 }: HeaderBarProps) {
   const [searchValue, setSearchValue] = useState('');
@@ -57,6 +72,14 @@ export function HeaderBar({
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
+  const focusWhenUncoveredRef = useRef(false);
+
+  // `inert` endet erst mit dem Commit, der die Schublade schließt.
+  useEffect(() => {
+    if (obscured || !focusWhenUncoveredRef.current) return;
+    focusWhenUncoveredRef.current = false;
+    inputRef.current?.focus();
+  }, [obscured]);
 
   useGlobalEventListener('document', 'keydown', (event) => {
     if (!(event.metaKey || event.ctrlKey) || event.key !== 'k') return;
@@ -76,7 +99,14 @@ export function HeaderBar({
       );
       return;
     }
-    inputRef.current?.focus();
+    // Darüber verdeckt die offene mobile Schublade das Feld und macht es
+    // `inert`; dann fokussiert das Kürzel es erst, wenn `onUncover` sie
+    // geschlossen hat. Eine Öffnen-Vorschau verschiebt den Kopf, ohne ihn
+    // `inert` zu machen; `onUncover` beendet sie, und das Feld erhält den
+    // Fokus sofort.
+    if (obscured) focusWhenUncoveredRef.current = true;
+    onUncover?.();
+    if (!obscured) inputRef.current?.focus();
   });
 
   const handleSearchKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -109,6 +139,7 @@ export function HeaderBar({
         )}
         <Link
           to="/"
+          inert={obscured}
           className="group flex min-h-11 min-w-0 items-center gap-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--header-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--header-bg)]"
         >
           <IconShield className="h-5 w-5 shrink-0 text-[var(--header-brand-accent)] transition-colors group-hover:text-[var(--header-brand-accent-hover)]" />
@@ -119,7 +150,7 @@ export function HeaderBar({
       </div>
 
       {/* Search */}
-      <div className="hidden w-full px-4 sm:block lg:px-8">
+      <div inert={obscured} className="hidden w-full px-4 sm:block lg:px-8">
         <div className="relative group">
           <IconSearch className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--header-text-subtle)] transition-colors group-focus-within:text-[var(--header-brand-accent)]" />
           <input
@@ -144,6 +175,7 @@ export function HeaderBar({
       {/* Unter 640 px steht die Suche als Lupe im Header; das Feld folgt erst ab sm. */}
       <Link
         to="/suche"
+        inert={obscured}
         className="-mr-3 flex h-11 w-11 shrink-0 items-center justify-center justify-self-end rounded text-[var(--header-text-muted)] transition-colors hover:text-[var(--header-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--header-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--header-bg)] sm:hidden"
         aria-label="Suche"
       >
