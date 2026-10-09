@@ -14,8 +14,29 @@ afterEach(unmountShell);
 const PORTRAIT = 375;
 const LANDSCAPE = 667;
 
+/**
+ * Wartet auf das `resize` der neuen Breite: Ein verspätetes `resize` der
+ * vorigen Größe beendete das Warten sonst vor der Drehung.
+ */
+function resizedTo(width: number) {
+  return new Promise<void>((resolve) => {
+    const onResize = () => {
+      if (window.innerWidth !== width) return;
+      window.removeEventListener('resize', onResize);
+      resolve();
+    };
+    window.addEventListener('resize', onResize);
+  });
+}
+
+async function renderPortrait() {
+  const shell = await renderShell(PORTRAIT);
+  await expect.poll(() => window.innerWidth).toBe(PORTRAIT);
+  return shell;
+}
+
 async function rotate() {
-  const resized = new Promise((resolve) => window.addEventListener('resize', resolve, { once: true }));
+  const resized = resizedTo(LANDSCAPE);
   await page.viewport(LANDSCAPE, HEIGHT);
   await resized;
 }
@@ -23,7 +44,7 @@ async function rotate() {
 const shellRoot = (shell: HTMLElement) => shell.querySelector<HTMLElement>('[data-mobile-nav]')!;
 
 test('beendet eine Schließen-Geste, wenn sich beim Drehen die Breite der Schublade ändert', async () => {
-  const shell = await renderShell(PORTRAIT);
+  const shell = await renderPortrait();
   const aside = await openDrawer(shell, { animated: true });
   const root = shellRoot(shell);
   const gesture = drag(aside, [300, 400], [[290, 401], [250, 402], [200, 402]]);
@@ -40,7 +61,7 @@ test('beendet eine Schließen-Geste, wenn sich beim Drehen die Breite der Schubl
 });
 
 test('beendet eine Öffnen-Vorschau, wenn sich beim Drehen die Breite der Schublade ändert', async () => {
-  const shell = await renderShell(PORTRAIT);
+  const shell = await renderPortrait();
   const root = shellRoot(shell);
   const main = shell.querySelector('main')!;
   const gesture = drag(main, [40, 400], [[52, 401], [150, 402], [240, 402]]);
