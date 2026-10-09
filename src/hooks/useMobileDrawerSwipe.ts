@@ -35,6 +35,20 @@ interface MobileDrawerSwipeOptions {
   readonly onClose: () => void;
 }
 
+export interface MobileDrawerSwipe {
+  /**
+   * Eine Öffnen-Geste zeigt die Schublade gerade. Die Shell behandelt sie dann
+   * für Lage, Scroll-Sperre und `data-mobile-nav` als offen.
+   */
+  readonly previewing: boolean;
+  /**
+   * Beendet die laufende Berührung wie ein `touchcancel`: Eine gezogene
+   * Schublade gleitet mit der Standarddauer zurück, weitere Ereignisse
+   * derselben Berührung bleiben ohne Wirkung. Ohne laufende Berührung wirkungslos.
+   */
+  readonly cancel: () => void;
+}
+
 /**
  * Wischgesten der mobilen Navigationsschublade (GSPP-493). Nach
  * rechts über die Seite gewischt, zieht der Finger die Schublade herein; nach
@@ -46,9 +60,6 @@ interface MobileDrawerSwipeOptions {
  *
  * Während des Ziehens schreibt die Geste nur Variablen am Shell-Element; React
  * rendert nur an Beginn und Ende. Senkrechte Gesten bleiben dem Scrollen.
- *
- * @returns ob eine Öffnen-Geste die Schublade gerade zeigt. Die Shell
- *   behandelt sie dann für Lage, Scroll-Sperre und `data-mobile-nav` als offen.
  */
 export function useMobileDrawerSwipe({
   enabled,
@@ -60,10 +71,11 @@ export function useMobileDrawerSwipe({
   onPreview,
   onOpen,
   onClose,
-}: MobileDrawerSwipeOptions): boolean {
+}: MobileDrawerSwipeOptions): MobileDrawerSwipe {
   const [previewing, setPreviewing] = useState(false);
   const releasing = useRef(false);
   const dragging = useRef(false);
+  const cancelTouch = useRef<(() => void) | null>(null);
   const preview = useEffectEvent(onPreview);
   const openDrawer = useEffectEvent(onOpen);
   const closeDrawer = useEffectEvent(onClose);
@@ -142,10 +154,14 @@ export function useMobileDrawerSwipe({
       if (abandoned.mode === 'open') release(() => setPreviewing(false));
     };
 
-    const onTouchStart = (event: TouchEvent) => {
+    const cancel = () => {
       if (gesture?.dragging) abandon(gesture);
       gesture = null;
       untrack();
+    };
+
+    const onTouchStart = (event: TouchEvent) => {
+      cancel();
       if (event.touches.length !== 1) return;
       if (!open && !startsOpenGesture(event.target, shell)) return;
       const width = drawer.getBoundingClientRect().width;
@@ -222,9 +238,7 @@ export function useMobileDrawerSwipe({
 
     const onTouchCancel = (event: TouchEvent) => {
       if (!firstDelivery(event)) return;
-      if (gesture?.dragging) abandon(gesture);
-      gesture = null;
-      untrack();
+      cancel();
     };
 
     function track(target: EventTarget | null) {
@@ -249,7 +263,9 @@ export function useMobileDrawerSwipe({
       surface.addEventListener('touchend', onTouchEnd, { passive: true });
       surface.addEventListener('touchcancel', onTouchCancel, { passive: true });
     }
+    cancelTouch.current = cancel;
     return () => {
+      cancelTouch.current = null;
       for (const surface of surfaces) {
         surface.removeEventListener('touchstart', onTouchStart);
         surface.removeEventListener('touchmove', onTouchMove);
@@ -271,5 +287,8 @@ export function useMobileDrawerSwipe({
     };
   }, [enabled, open, routeKey, shellRef, drawerRef, backdropRef]);
 
-  return previewing && enabled && !open;
+  return {
+    previewing: previewing && enabled && !open,
+    cancel: () => cancelTouch.current?.(),
+  };
 }

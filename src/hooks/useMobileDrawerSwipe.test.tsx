@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useMobileDrawerSwipe } from './useMobileDrawerSwipe';
+import type { MobileDrawerSwipe } from './useMobileDrawerSwipe';
 
 const WIDTH = 300;
 
@@ -42,7 +43,7 @@ function render(open: boolean, enabled = true) {
     drawerRef: { current: drawer },
     backdropRef: { current: backdrop },
   };
-  const view = renderHook<boolean, { open: boolean; enabled: boolean; routeKey?: string }>(
+  const view = renderHook<MobileDrawerSwipe, { open: boolean; enabled: boolean; routeKey?: string }>(
     ({ routeKey = 'start', ...props }) => useMobileDrawerSwipe({ ...props, routeKey, ...refs, ...callbacks }),
     { initialProps: { open, enabled } },
   );
@@ -127,6 +128,15 @@ describe('useMobileDrawerSwipe – offene Schublade', () => {
     expect(variable('--mobile-nav-drag')).toBe('');
     expect(variable('--mobile-nav-motion')).toBe('');
 
+    // Ein Abbruch der Shell (Escape, Suchkürzel) wirkt wie `touchcancel`.
+    touch('touchstart', drawer, 250);
+    touch('touchmove', drawer, 150);
+    act(() => { view.result.current.cancel(); });
+    expect(variable('--mobile-nav-drag')).toBe('');
+    expect(variable('--mobile-nav-motion')).toBe('');
+    touch('touchend', drawer, 50, 0, 300);
+    expect(view.onClose).not.toHaveBeenCalled();
+
     touch('touchstart', drawer, 250);
     touch('touchmove', drawer, 150);
     view.rerender({ open: false, enabled: true });
@@ -190,12 +200,12 @@ describe('useMobileDrawerSwipe – unterbrochene Bewegungen', () => {
     main.append(trigger);
     touch('touchstart', trigger, 20);
     touch('touchmove', trigger, 40);
-    expect(result.current).toBe(true);
+    expect(result.current.previewing).toBe(true);
     trigger.remove();
     touch('touchmove', trigger, 250);
     expect(variable('--mobile-nav-drag')).toBe('-70px');
     touch('touchend', trigger, 250, 0, 300);
-    expect(result.current).toBe(false);
+    expect(result.current.previewing).toBe(false);
     expect(onOpen).toHaveBeenCalledTimes(1);
   });
 });
@@ -206,19 +216,19 @@ describe('useMobileDrawerSwipe – geschlossene Schublade', () => {
     touch('touchstart', main, 20);
     touch('touchmove', main, 35);
     expect(onPreview).toHaveBeenCalledTimes(1);
-    expect(result.current).toBe(true);
+    expect(result.current.previewing).toBe(true);
     touch('touchmove', main, 220);
     expect(variable('--mobile-nav-drag')).toBe('-100px');
     touch('touchend', main, 220, 0, 300);
     expect(onOpen).toHaveBeenCalledTimes(1);
-    expect(result.current).toBe(false);
+    expect(result.current.previewing).toBe(false);
   });
 
   it('lässt eine kurze Öffnen-Geste zurückgleiten', () => {
     const { result, onOpen } = render(false);
     slowDrag(main, 20, 100);
     expect(onOpen).not.toHaveBeenCalled();
-    expect(result.current).toBe(false);
+    expect(result.current.previewing).toBe(false);
   });
 
   it('öffnet bei einem Wurf nach rechts auch über eine kurze Strecke', () => {
@@ -271,16 +281,46 @@ describe('useMobileDrawerSwipe – geschlossene Schublade', () => {
     expect(view.onOpen).toHaveBeenCalledTimes(1);
   });
 
+  // Breite Tabellen und andere waagerecht scrollende Bereiche behalten das Wischen für sich.
+  it('öffnet nicht aus waagerecht scrollbaren Bereichen und lässt ihnen die Berührung', () => {
+    const view = render(false);
+    const scroller = document.createElement('div');
+    scroller.style.overflowX = 'auto';
+    Object.defineProperties(scroller, {
+      scrollWidth: { value: 2 * WIDTH, configurable: true },
+      clientWidth: { value: WIDTH, configurable: true },
+    });
+    const cell = document.createElement('span');
+    scroller.append(cell);
+    main.append(scroller);
+
+    touch('touchstart', cell, 20);
+    expect(touch('touchmove', cell, 40).defaultPrevented).toBe(false);
+    expect(touch('touchmove', cell, 250).defaultPrevented).toBe(false);
+    touch('touchend', cell, 250, 0, 300);
+    expect(view.onPreview).not.toHaveBeenCalled();
+    expect(view.onOpen).not.toHaveBeenCalled();
+
+    // Gegenproben: Ohne Überbreite oder ohne eigenes Scrollen gehört die Geste der Schublade.
+    Object.defineProperty(scroller, 'scrollWidth', { value: WIDTH });
+    slowDrag(cell, 20, 250);
+    expect(view.onOpen).toHaveBeenCalledTimes(1);
+    Object.defineProperty(scroller, 'scrollWidth', { value: 2 * WIDTH });
+    scroller.style.overflowX = 'hidden';
+    slowDrag(cell, 20, 250);
+    expect(view.onOpen).toHaveBeenCalledTimes(2);
+  });
+
   // Die Vorschau ändert `open` nicht; ohne Routenbindung bliebe sie nach einer
   // Navigation stehen und öffnete beim Loslassen auf der neuen Seite.
   it('beendet eine Öffnen-Geste bei einer Navigation vor dem Loslassen', () => {
     const view = render(false);
     touch('touchstart', main, 20);
     touch('touchmove', main, 120);
-    expect(view.result.current).toBe(true);
+    expect(view.result.current.previewing).toBe(true);
 
     view.rerender({ open: false, enabled: true, routeKey: 'suche' });
-    expect(view.result.current).toBe(false);
+    expect(view.result.current.previewing).toBe(false);
     expect(variable('--mobile-nav-drag')).toBe('');
     expect(variable('--mobile-nav-motion')).toBe('');
 
@@ -288,7 +328,7 @@ describe('useMobileDrawerSwipe – geschlossene Schublade', () => {
     expect(touch('touchmove', main, 260).defaultPrevented).toBe(false);
     touch('touchend', main, 260, 0, 300);
     expect(variable('--mobile-nav-drag')).toBe('');
-    expect(view.result.current).toBe(false);
+    expect(view.result.current.previewing).toBe(false);
     expect(view.onOpen).not.toHaveBeenCalled();
   });
 
@@ -296,9 +336,34 @@ describe('useMobileDrawerSwipe – geschlossene Schublade', () => {
     const { result, onOpen } = render(false);
     touch('touchstart', main, 20);
     touch('touchmove', main, 200);
-    expect(result.current).toBe(true);
+    expect(result.current.previewing).toBe(true);
     touch('touchcancel', main, 200);
-    expect(result.current).toBe(false);
+    expect(result.current.previewing).toBe(false);
     expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  // Escape und das Suchkürzel der Shell beenden die Geste vor dem Loslassen;
+  // sonst öffnete es die Schublade danach doch noch.
+  it('beendet auf Abbruch der Shell die Vorschau samt ihrer Berührung', () => {
+    const view = render(false);
+    touch('touchstart', main, 20);
+    touch('touchmove', main, 120);
+    expect(view.result.current.previewing).toBe(true);
+
+    act(() => { view.result.current.cancel(); });
+    expect(view.result.current.previewing).toBe(false);
+    expect(variable('--mobile-nav-drag')).toBe('');
+    expect(variable('--mobile-nav-motion')).toBe('');
+    expect(touch('touchmove', main, 260).defaultPrevented).toBe(false);
+    touch('touchend', main, 260, 0, 300);
+    expect(view.result.current.previewing).toBe(false);
+
+    // Auch eine Berührung, deren Richtung noch nicht feststeht, wirkt danach nicht mehr.
+    touch('touchstart', main, 20);
+    act(() => { view.result.current.cancel(); });
+    expect(touch('touchmove', main, 120).defaultPrevented).toBe(false);
+    touch('touchend', main, 120, 0, 300);
+    expect(view.onPreview).toHaveBeenCalledTimes(1);
+    expect(view.onOpen).not.toHaveBeenCalled();
   });
 });

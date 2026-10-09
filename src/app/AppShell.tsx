@@ -140,7 +140,7 @@ export function AppShell() {
 
   // Eine Öffnen-Geste zeigt die Schublade schon vor dem Loslassen; für Lage,
   // Scroll-Sperre und Abdunklung gilt sie dann als offen.
-  const swipePreviewing = useMobileDrawerSwipe({
+  const swipe = useMobileDrawerSwipe({
     enabled: !isPersistentNav,
     open: mobileNavOpen,
     routeKey: location.key,
@@ -155,12 +155,12 @@ export function AppShell() {
     onClose: closeSideNav,
   });
   const drawerPlacement = useMobileDrawerPlacement(
-    sideNavOpen || swipePreviewing,
+    sideNavOpen || swipe.previewing,
     isPersistentNav,
     isSidebarResizing || prefersReducedMotion,
     drawerRef,
   );
-  const mobileNavShown = mobileNavOpen || swipePreviewing;
+  const mobileNavShown = mobileNavOpen || swipe.previewing;
   // Feste Elemente der Seite treten zurück, bis `main` nach dem Schließen
   // wieder `translate: none` hat: Ein anderer Wert macht `main` zum
   // Bezugsrahmen, und die Elemente sprängen erst nach der Bewegung an den
@@ -179,6 +179,15 @@ export function AppShell() {
     menuButtonRef,
   });
 
+  // Escape und das Suchkürzel beenden auch eine Öffnen-Vorschau samt ihrer
+  // Berührung; sonst öffnete das Loslassen die Schublade danach doch noch und
+  // zöge den Fokus zum Menübutton. Die Vorschau hat den Fokus nicht bewegt,
+  // er bleibt deshalb, wo er ist.
+  const dismissMobileNav = () => {
+    swipe.cancel();
+    if (mobileNavOpen) closeSideNav();
+  };
+
   // Capture garantiert den Vorrang vor dem Escape-Handler der Detailseite
   // auch dann, wenn deren Bubble-Listener bereits vor dem Öffnen registriert war.
   // Ein offenes Menü im Drawer-Kopf schließt Escape selbst; erst das nächste
@@ -189,8 +198,8 @@ export function AppShell() {
       if (event.target instanceof Element && event.target.closest('[role="menu"]')) return;
       event.preventDefault();
       event.stopPropagation();
-      closeSideNav();
-    }, mobileNavOpen, undefined, true,
+      dismissMobileNav();
+    }, mobileNavShown, undefined, true,
   );
 
   // Die Route wählt den Katalog, nicht der Einstieg. Ein Routen-catalogKey darf
@@ -267,7 +276,7 @@ export function AppShell() {
         onSearch={handleSearch}
         className="mobile-nav-push"
         obscured={mobileNavOpen}
-        onUncover={closeSideNav}
+        onUncover={dismissMobileNav}
         menuExpanded={mobileNavOpen}
         menuControls={sideNavId}
         menuButtonRef={menuButtonRef}

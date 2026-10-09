@@ -88,6 +88,41 @@ export function shortenPage(shell: HTMLElement, aside: HTMLElement) {
   return shortenedPageHeight;
 }
 
+/**
+ * Selbst gebaute `TouchEvent`s erreichen nur die Handler; ob der Browser
+ * scrollt oder abbricht, prüft erst `swipe` mit echten Berührungen.
+ */
+export function touchEvent(type: string, target: Element, x: number, y: number) {
+  const touch = new Touch({ identifier: 1, target, clientX: x, clientY: y });
+  const active = type === 'touchend' || type === 'touchcancel' ? [] : [touch];
+  return new TouchEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    touches: active,
+    targetTouches: active,
+    changedTouches: [touch],
+  });
+}
+
+/** Startet eine Berührung und zieht sie über die Punkte; liefert das Loslassen. */
+export function drag(target: Element, from: readonly [number, number], points: readonly (readonly [number, number])[]) {
+  target.dispatchEvent(touchEvent('touchstart', target, ...from));
+  let last = from;
+  const moves = points.map(([x, y]) => {
+    last = [x, y];
+    return target.dispatchEvent(touchEvent('touchmove', target, x, y));
+  });
+  return {
+    moves,
+    release: () => target.dispatchEvent(touchEvent('touchend', target, ...last)),
+  };
+}
+
+/** Langsames Loslassen: Der Finger stand vorher still, es gibt keinen Wurf. */
+export async function pause() {
+  await new Promise((resolve) => setTimeout(resolve, 150));
+}
+
 /** Koordinaten des Testframes in Koordinaten der Browser-Seite. */
 function toPage(x: number, y: number) {
   const frame = window.frameElement;

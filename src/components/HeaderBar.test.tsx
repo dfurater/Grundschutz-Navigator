@@ -229,6 +229,29 @@ describe('HeaderBar', () => {
     expect(outsideButton).toHaveFocus();
   });
 
+  // Eine Öffnen-Vorschau der Wischgeste verschiebt den App-Kopf, ohne ihn
+  // `inert` zu machen. Das Kürzel lässt sie über `onUncover` beenden, bevor es
+  // das Feld fokussiert; sonst öffnete das Loslassen die Schublade danach und
+  // zöge den Fokus zum Menübutton.
+  it('gibt bei sichtbarem, nicht verdecktem Suchfeld den App-Kopf frei und fokussiert das Feld sofort', () => {
+    const focusedOnUncover: (Element | null)[] = [];
+    const onUncover = vi.fn(() => { focusedOnUncover.push(document.activeElement); });
+    render(
+      <MemoryRouter>
+        <HeaderBar onUncover={onUncover} />
+        <button type="button">Außerhalb</button>
+      </MemoryRouter>,
+    );
+    const searchInput = screen.getByTestId('header-search');
+    const outsideButton = screen.getByRole('button', { name: 'Außerhalb' });
+    outsideButton.focus();
+
+    expect(fireEvent.keyDown(outsideButton, { key: 'k', ctrlKey: true })).toBe(false);
+    expect(focusedOnUncover).toHaveLength(1);
+    expect(focusedOnUncover[0]).toBe(outsideButton);
+    expect(searchInput).toHaveFocus();
+  });
+
   it('führt das Kürzel bei verdecktem und ausgeblendetem Suchfeld auf die Suchseite', () => {
     function Location() {
       const location = useLocation();
