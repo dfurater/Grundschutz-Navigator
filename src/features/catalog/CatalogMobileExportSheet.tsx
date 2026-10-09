@@ -7,6 +7,7 @@ import { ModalPortal } from '@/components/ModalPortal';
 import { downloadCSV } from '@/features/export/csvExport';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import { useModalDialog } from '@/hooks/useModalDialog';
+import { useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
 import { useScrollLock } from '@/hooks/useScrollLock';
 
 interface CatalogMobileExportSheetProps {
@@ -27,6 +28,7 @@ export function CatalogMobileExportSheet({
   const [open, setOpen] = useState(false);
   const sheetRef = useRef<HTMLDialogElement>(null);
   const headingId = useId();
+  const actionsScrollRef = useOverlayScrollbars<HTMLDivElement>();
   const close = useCallback(() => setOpen(false), []);
 
   useModalDialog(sheetRef, open);
@@ -81,52 +83,51 @@ export function CatalogMobileExportSheet({
             >
               <div className="w-10 h-1 bg-[var(--color-border-strong)] rounded-full" />
             </div>
-            <div className="px-4 py-3 border-b border-[var(--color-border-default)] shrink-0">
+            {/* Die Schließaktion steht im Kopf: Das Sheet ist unten verankert und
+                schneidet bei wenig Höhe unten ab, der Kopf bleibt sichtbar; die
+                Exportaktionen scrollen darunter. */}
+            <div className="px-4 py-3 border-b border-[var(--color-border-default)] shrink-0 flex items-center justify-between gap-2">
               <h2 id={headingId} className="type-meta">Exportieren als CSV</h2>
+              <Button variant="ghost" size="sm" className="min-h-[44px] min-w-[44px] -my-3 -mr-2 text-sm" onClick={close} data-dialog-close>
+                Schließen
+              </Button>
             </div>
-            <div className="p-4 flex flex-col gap-2 min-h-0 overflow-y-auto overscroll-contain">
-              {checkedIds.size > 0 && (
+            <div ref={actionsScrollRef} className="min-h-0 overflow-y-auto overscroll-contain">
+              <div className="w-full p-4 flex flex-col gap-2">
+                {checkedIds.size > 0 && (
+                  <Button
+                    variant="secondary"
+                    className="w-full min-h-[44px] justify-start"
+                    onClick={exportSelected}
+                  >
+                    <IconDownload className="w-4 h-4 mr-2" />
+                    Auswahl exportieren ({checkedIds.size})
+                  </Button>
+                )}
                 <Button
                   variant="secondary"
                   className="w-full min-h-[44px] justify-start"
-                  onClick={exportSelected}
+                  disabled={filteredControls.length === 0}
+                  onClick={() => {
+                    downloadCSV(filteredControls, sectionFilename);
+                    close();
+                  }}
                 >
                   <IconDownload className="w-4 h-4 mr-2" />
-                  Auswahl exportieren ({checkedIds.size})
+                  Aktuelle Ansicht ({filteredControls.length})
                 </Button>
-              )}
-              <Button
-                variant="secondary"
-                className="w-full min-h-[44px] justify-start"
-                disabled={filteredControls.length === 0}
-                onClick={() => {
-                  downloadCSV(filteredControls, sectionFilename);
-                  close();
-                }}
-              >
-                <IconDownload className="w-4 h-4 mr-2" />
-                Aktuelle Ansicht ({filteredControls.length})
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full min-h-[44px] justify-start"
-                onClick={() => {
-                  downloadCSV(allControls, 'grundschutz-gesamtkatalog.csv');
-                  close();
-                }}
-              >
-                <IconDownload className="w-4 h-4 mr-2" />
-                Gesamtkatalog ({allControls.length})
-              </Button>
-            </div>
-            <div className="px-4 py-3 border-t border-[var(--color-border-default)] shrink-0">
-              <Button
-                variant="secondary"
-                className="w-full min-h-[44px]"
-                onClick={close}
-              >
-                Schließen
-              </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full min-h-[44px] justify-start"
+                  onClick={() => {
+                    downloadCSV(allControls, 'grundschutz-gesamtkatalog.csv');
+                    close();
+                  }}
+                >
+                  <IconDownload className="w-4 h-4 mr-2" />
+                  Gesamtkatalog ({allControls.length})
+                </Button>
+              </div>
             </div>
           </dialog>
         </ModalPortal>

@@ -4,7 +4,7 @@ import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
 import { afterEach, expect, test, vi } from 'vitest';
-import { page, userEvent } from 'vitest/browser';
+import { commands, page, userEvent } from 'vitest/browser';
 import type { Catalog, Control } from '@/domain/models';
 import { emptyFilters } from '@/hooks/useFilteredControls';
 import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
@@ -54,7 +54,8 @@ const catalog = {
 let root: Root | undefined;
 let host: HTMLDivElement | undefined;
 
-afterEach(() => {
+afterEach(async () => {
+  await commands.setBrowserFontSize();
   scene.reset();
   root?.unmount();
   host?.remove();
@@ -312,21 +313,69 @@ test('Sheet unter Tablet-Detail: gemeinsames Schließen gibt den Fokus an den Sh
   expect(document.activeElement).toBe(trigger);
 });
 
-test('Export-Sheet bei niedrigem Fenster: Überschrift bleibt sichtbar, Aktionen scrollen', async () => {
-  const shell = await renderWithBackground(700, createElement(CatalogMobileExportSheet, {
+function filterSheet() {
+  return createElement(CatalogMobileFilterSheet, {
+    filterPanelProps: {
+      filters: emptyFilters,
+      facetCounts: filterPanelFacetCounts,
+      filteredFacetCounts: filterPanelFacetCounts,
+      hasActiveFilters: false,
+      filteredCount: 3,
+      totalCount: 3,
+      onFiltersChange: () => {},
+      onClearFilters: () => {},
+    },
+  });
+}
+
+function exportSheet() {
+  return createElement(CatalogMobileExportSheet, {
     checkedIds: new Set([control.id]),
     filteredControls: [control],
     allControls: [control],
     sectionFilename: 'test.csv',
-  }));
+  });
+}
+
+/** Ganz im Fenster; die Toleranz deckt Subpixel-Lagen des unten verankerten Sheets ab. */
+function expectInViewport(element: Element) {
+  const box = element.getBoundingClientRect();
+  expect(box.top).toBeGreaterThanOrEqual(-0.5);
+  expect(box.bottom).toBeLessThanOrEqual(window.innerHeight + 0.5);
+}
+
+/**
+ * Niedriges Fenster (700 × 250 px), auch mit 32 px Standardschrift: Das unten
+ * verankerte Sheet schneidet unten ab; Überschrift und Schließaktion stehen im
+ * Kopf und bleiben sichtbar, die Aktionen darunter sind per Scrollen erreichbar.
+ */
+test.each([
+  ['Filter-Sheet', 'Filter anzeigen', 'Fertig', 16, filterSheet],
+  ['Filter-Sheet', 'Filter anzeigen', 'Fertig', 32, filterSheet],
+  ['Export-Sheet', 'CSV exportieren', 'Schließen', 16, exportSheet],
+  ['Export-Sheet', 'CSV exportieren', 'Schließen', 32, exportSheet],
+] as const)('%s bei 250 px Fensterhöhe und %s: Überschrift und „%s“ bleiben sichtbar (%i px Schrift)', async (_name, triggerName, closeName, fontSize, surface) => {
+  await commands.setBrowserFontSize(fontSize);
+  const shell = await renderWithBackground(700, surface());
   await page.viewport(700, 250);
-  buttonByName(shell, 'CSV exportieren').click();
+  buttonByName(shell, triggerName).click();
   await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
   const dialog = document.querySelector('dialog')!;
   await Promise.all(dialog.getAnimations().map((animation) => animation.finished));
 
-  const heading = document.getElementById(dialog.getAttribute('aria-labelledby')!)!;
-  expect(dialog.getBoundingClientRect().top).toBeGreaterThanOrEqual(0);
-  expect(heading.getBoundingClientRect().top).toBeGreaterThanOrEqual(0);
-  expect(buttonByName(dialog, 'Schließen').getBoundingClientRect().bottom).toBeLessThanOrEqual(250);
+  expectInViewport(document.getElementById(dialog.getAttribute('aria-labelledby')!)!);
+  const close = buttonByName(dialog, closeName);
+  expectInViewport(close);
+  expect(close.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+  expect(dialog.contains(document.activeElement)).toBe(true);
+  expect(document.activeElement).not.toBe(close);
+
+  // Die letzte Aktion lässt sich in ihren Scrollbereich holen.
+  const actions = [...dialog.querySelectorAll<HTMLElement>('button:not([data-dialog-close]), input')];
+  const lastAction = actions.at(-1)!;
+  lastAction.scrollIntoView({ block: 'nearest' });
+  expectInViewport(lastAction);
+
+  close.click();
+  await expect.poll(() => document.querySelector('dialog')).toBeNull();
 });

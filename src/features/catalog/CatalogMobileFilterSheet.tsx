@@ -73,16 +73,17 @@ export function CatalogMobileFilterSheet({
             >
               <div className="w-10 h-1 bg-[var(--color-border-strong)] rounded-full" />
             </div>
-            <FilterPanel {...filterPanelProps} headingId={headingId} />
-            <div className="px-4 py-3 border-t border-[var(--color-border-default)] shrink-0">
-              <Button
-                variant="secondary"
-                className="w-full min-h-[44px]"
-                onClick={close}
-              >
-                Fertig
-              </Button>
-            </div>
+            {/* Die Schließaktion steht im Kopf: Das Sheet ist unten verankert und
+                schneidet bei wenig Höhe unten ab, der Kopf bleibt sichtbar. */}
+            <FilterPanel
+              {...filterPanelProps}
+              headingId={headingId}
+              headerAction={(
+                <Button variant="ghost" size="sm" className="min-h-[44px] min-w-[44px] -my-3 -mr-2 text-sm" onClick={close} data-dialog-close>
+                  Fertig
+                </Button>
+              )}
+            />
           </dialog>
         </ModalPortal>
       )}

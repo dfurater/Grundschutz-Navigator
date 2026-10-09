@@ -252,4 +252,43 @@ describe('useModalDialog', () => {
     expect(trigger).toHaveFocus();
     expect(inertBodyChildren()).toEqual([]);
   });
+
+  it('focuses the first action rather than a close action that precedes it', () => {
+    function CloseFirst({ active }: { active: boolean }) {
+      const ref = useRef<HTMLDialogElement>(null);
+      useModalDialog(ref, active);
+      if (!active) return null;
+      return (
+        <ModalPortal>
+          <dialog open ref={ref} aria-modal="true" aria-label="Mit Schließen">
+            <button type="button" data-dialog-close>Schließen</button>
+            <button type="button">Erste Aktion</button>
+          </dialog>
+        </ModalPortal>
+      );
+    }
+    const { rerender } = render(<CloseFirst active={false} />);
+    rerender(<CloseFirst active />);
+
+    expect(screen.getByRole('button', { name: 'Erste Aktion' })).toHaveFocus();
+  });
+
+  it('focuses the close action when it is the only action', () => {
+    function CloseOnly({ active }: { active: boolean }) {
+      const ref = useRef<HTMLDialogElement>(null);
+      useModalDialog(ref, active);
+      if (!active) return null;
+      return (
+        <ModalPortal>
+          <dialog open ref={ref} aria-modal="true" aria-label="Nur Schließen">
+            <button type="button" data-dialog-close>Schließen</button>
+          </dialog>
+        </ModalPortal>
+      );
+    }
+    const { rerender } = render(<CloseOnly active={false} />);
+    rerender(<CloseOnly active />);
+
+    expect(screen.getByRole('button', { name: 'Schließen' })).toHaveFocus();
+  });
 });

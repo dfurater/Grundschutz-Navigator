@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { FilterSection } from '@/components/FilterSection';
 import { CheckboxLabel } from '@/components/CheckboxLabel';
 import { IconFilter, IconChevronRight } from '@/components/icons';
@@ -28,6 +29,8 @@ export interface FilterPanelProps {
   readonly onCollapse?: () => void;
   /** ID der Überschrift „Filter“, über die das mobile Sheet seinen Dialognamen bezieht. */
   readonly headingId?: string;
+  /** Aktion rechts neben der Überschrift, etwa „Fertig“ im mobilen Sheet. */
+  readonly headerAction?: ReactNode;
 }
 
 const MODALVERB_LABELS: Record<Modalverb, string> = {
@@ -111,6 +114,7 @@ export function FilterPanel({
   onClearFilters,
   onCollapse,
   headingId,
+  headerAction,
 }: FilterPanelProps) {
   const { vocabularyRegistry } = useCatalog();
   const filterScrollRef = useOverlayScrollbars<HTMLDivElement>();
@@ -207,6 +211,7 @@ export function FilterPanel({
               <IconChevronRight className="w-3.5 h-3.5" />
             </button>
           )}
+          {headerAction}
         </div>
         <div className="flex items-center justify-between mt-1.5">
           <span className="type-meta tabular-nums" aria-live="polite" aria-atomic="true">

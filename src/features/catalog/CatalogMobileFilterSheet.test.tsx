@@ -1,10 +1,16 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FilterPanelProps } from './FilterPanel';
 import { CatalogMobileFilterSheet } from './CatalogMobileFilterSheet';
 
 vi.mock('./FilterPanel', () => ({
-  FilterPanel: () => <button type="button">Filteraktion</button>,
+  FilterPanel: ({ headerAction }: { headerAction?: ReactNode }) => (
+    <>
+      {headerAction}
+      <button type="button">Filteraktion</button>
+    </>
+  ),
 }));
 
 const filterPanelProps = {} as FilterPanelProps;
