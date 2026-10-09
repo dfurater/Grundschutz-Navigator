@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, RefObject } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { FOCUS_SEARCH_STATE } from '@/app/searchFocus';
@@ -12,6 +12,18 @@ export interface HeaderBarProps {
   readonly menuExpanded?: boolean;
   readonly menuControls?: string;
   readonly menuButtonRef?: RefObject<HTMLButtonElement | null>;
+  /**
+   * Die offene mobile Schublade schiebt den App-Kopf aus dem Bild. Seine
+   * Steuerungen außer dem Menübutton sind dann `inert`, damit Tab nicht auf
+   * verdeckte Ziele führt.
+   */
+  readonly obscured?: boolean;
+  /**
+   * Gibt den verdeckten App-Kopf frei (die Shell schließt die Schublade). Ruft
+   * das Suchkürzel bei sichtbarem, aber verdecktem Feld auf und fokussiert das
+   * Feld, sobald es wieder bedienbar ist.
+   */
+  readonly onUncover?: () => void;
   readonly className?: string;
 }
 
@@ -50,6 +62,8 @@ export function HeaderBar({
   menuExpanded = false,
   menuControls,
   menuButtonRef,
+  obscured = false,
+  onUncover,
   className = '',
 }: HeaderBarProps) {
   const [searchValue, setSearchValue] = useState('');
@@ -57,6 +71,14 @@ export function HeaderBar({
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
+  const focusWhenUncoveredRef = useRef(false);
+
+  // `inert` endet erst mit dem Commit, der die Schublade schließt.
+  useEffect(() => {
+    if (obscured || !focusWhenUncoveredRef.current) return;
+    focusWhenUncoveredRef.current = false;
+    inputRef.current?.focus();
+  }, [obscured]);
 
   useGlobalEventListener('document', 'keydown', (event) => {
     if (!(event.metaKey || event.ctrlKey) || event.key !== 'k') return;
@@ -68,6 +90,13 @@ export function HeaderBar({
     // die laufende Anfrage stehen, und der Verlauf erhält keinen zweiten Eintrag.
     const input = inputRef.current;
     const visible = input && (input.checkVisibility?.() ?? input.getClientRects().length > 0);
+    // Darüber verdeckt die offene mobile Schublade das Feld und macht es `inert`;
+    // das Kürzel gibt den App-Kopf frei und fokussiert das Feld danach.
+    if (visible && obscured) {
+      focusWhenUncoveredRef.current = true;
+      onUncover?.();
+      return;
+    }
     if (!visible) {
       const onSearchPage = location.pathname === '/suche';
       void navigate(
@@ -109,6 +138,7 @@ export function HeaderBar({
         )}
         <Link
           to="/"
+          inert={obscured}
           className="group flex min-h-11 min-w-0 items-center gap-2 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--header-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--header-bg)]"
         >
           <IconShield className="h-5 w-5 shrink-0 text-[var(--header-brand-accent)] transition-colors group-hover:text-[var(--header-brand-accent-hover)]" />
@@ -119,7 +149,7 @@ export function HeaderBar({
       </div>
 
       {/* Search */}
-      <div className="hidden w-full px-4 sm:block lg:px-8">
+      <div inert={obscured} className="hidden w-full px-4 sm:block lg:px-8">
         <div className="relative group">
           <IconSearch className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--header-text-subtle)] transition-colors group-focus-within:text-[var(--header-brand-accent)]" />
           <input
@@ -144,6 +174,7 @@ export function HeaderBar({
       {/* Unter 640 px steht die Suche als Lupe im Header; das Feld folgt erst ab sm. */}
       <Link
         to="/suche"
+        inert={obscured}
         className="-mr-3 flex h-11 w-11 shrink-0 items-center justify-center justify-self-end rounded text-[var(--header-text-muted)] transition-colors hover:text-[var(--header-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--header-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--header-bg)] sm:hidden"
         aria-label="Suche"
       >
