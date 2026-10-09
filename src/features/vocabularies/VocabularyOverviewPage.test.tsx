@@ -126,7 +126,7 @@ function makeCatalogState(): CatalogState {
 }
 
 describe('VocabularyOverviewPage', () => {
-  it('uses a quieter list with a fachlicher primary label and only secondary technical metadata', () => {
+  it('shows one internal title link and the entry count per row, without a link to the upstream file', () => {
     mockedUseCatalog.mockReturnValue(makeCatalogState());
 
     render(
@@ -136,17 +136,15 @@ describe('VocabularyOverviewPage', () => {
     );
 
     const rowLink = screen.getByRole('link', { name: 'Dokumentationsvorgaben' });
-    const fileLink = screen.getByRole('link', { name: 'documentation_guidelines.csv' });
 
     expect(rowLink).toHaveAttribute('href', '/vokabular/documentation-namespaces-documentation-guidelines');
     expect(screen.getByText('Dokumentationsvorgaben')).toHaveClass('type-object-title');
-    expect(fileLink).toHaveAttribute(
-      'href',
-      'https://example.com/repo/blob/snapshot-123/documentation/namespaces/documentation_guidelines.csv',
-    );
-    expect(fileLink).toHaveAttribute('target', '_blank');
-    expect(fileLink).toHaveClass('catalog-meta-type', 'catalog-link-color', 'flex');
+    expect(screen.queryByText('documentation_guidelines.csv')).not.toBeInTheDocument();
     expect(screen.queryByText('documentation/namespaces/documentation_guidelines.csv')).not.toBeInTheDocument();
+    for (const link of screen.getAllByRole('link')) {
+      expect(link.getAttribute('href')).toMatch(/^\/vokabular\//);
+      expect(link).not.toHaveAttribute('target');
+    }
   });
 
   it('uses curated German titles and routes for security targets and base threats', () => {

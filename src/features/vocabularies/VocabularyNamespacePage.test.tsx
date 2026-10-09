@@ -235,6 +235,29 @@ describe('VocabularyNamespacePage', () => {
     expect(screen.queryByText(/—/)).not.toBeInTheDocument();
   });
 
+  it('links the source path below the heading to the upstream file at the snapshot commit', () => {
+    mockedUseCatalog.mockReturnValue(makeCatalogState());
+
+    render(
+      <MemoryRouter initialEntries={['/vokabular/documentation-namespaces-effort-level']}>
+        <Routes>
+          <Route path="/vokabular/:namespaceId" element={<VocabularyNamespacePage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const sourceLink = screen.getByRole('link', { name: 'documentation/namespaces/effort_level.csv' });
+
+    expect(sourceLink).toHaveAttribute(
+      'href',
+      'https://example.com/repo/blob/snapshot-123/documentation/namespaces/effort_level.csv',
+    );
+    expect(sourceLink).toHaveAttribute('target', '_blank');
+    expect(sourceLink).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(screen.getByRole('heading', { level: 1 }).compareDocumentPosition(sourceLink) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBeTruthy();
+  });
+
   it('keeps orphan topic CSV entries discoverable on the vocabulary page', () => {
     mockedUseCatalog.mockReturnValue(makeCatalogState());
 

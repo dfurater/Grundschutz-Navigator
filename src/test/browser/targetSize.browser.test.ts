@@ -2,18 +2,19 @@ import axe from 'axe-core';
 import { createElement } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, expect, test, vi } from 'vitest';
 import { commands, page } from 'vitest/browser';
 import { CheckboxLabel } from '@/components/CheckboxLabel';
 import { Footer } from '@/components/Footer';
 import { buildVocabularyRegistry } from '@/domain/vocabulary';
+import { VocabularyNamespacePage } from '@/features/vocabularies/VocabularyNamespacePage';
 import { VocabularyOverviewPage } from '@/features/vocabularies/VocabularyOverviewPage';
 import '@/index.css';
 
 /**
- * Trefferflächen von Vokabularübersicht, Footer und Filter-Checkboxlabels
- * (GSPP-501). WCAG 2.5.8 prüft axe über die Regel `target-size` an den echten
+ * Trefferflächen von Vokabularübersicht, Quellenlink der Vokabularseite, Footer
+ * und Filter-Checkboxlabels (GSPP-501). WCAG 2.5.8 prüft axe über die Regel `target-size` an den echten
  * Chromium-Boxen; das 44-px-Projektziel unterhalb von `lg` (64rem) ist keine
  * axe-Regel und steht deshalb als Boxmaß daneben.
  */
@@ -75,6 +76,22 @@ async function renderSurfaces(width: number) {
   return host;
 }
 
+async function renderNamespacePage(width: number) {
+  await page.viewport(width, 900);
+  host = document.createElement('div');
+  document.body.append(host);
+  root = createRoot(host);
+  flushSync(() => {
+    root?.render(createElement(MemoryRouter, { initialEntries: ['/vokabular/documentation-namespaces-practices'] },
+      createElement(Routes, null,
+        createElement(Route, { path: '/vokabular/:namespaceId', element: createElement(VocabularyNamespacePage) }),
+      ),
+    ));
+  });
+  await document.fonts.ready;
+  return host;
+}
+
 function targets(container: HTMLElement) {
   return [...container.querySelectorAll<HTMLElement>('a[href], label')];
 }
@@ -87,6 +104,21 @@ test.each(WIDTHS)('erfüllt WCAG 2.5.8 (axe target-size) bei %i px', async (widt
   expect(result.violations.map((violation) => violation.nodes.map((node) => node.target))).toEqual([]);
   expect(result.incomplete).toEqual([]);
   expect(result.passes).toHaveLength(1);
+});
+
+test.each(WIDTHS)('erfüllt WCAG 2.5.8 (axe target-size) auf der Vokabularseite bei %i px', async (width) => {
+  const container = await renderNamespacePage(width);
+  const result = await axe.run(container, { runOnly: { type: 'rule', values: ['target-size'] } });
+  expect(result.violations.map((violation) => violation.nodes.map((node) => node.target))).toEqual([]);
+  expect(result.incomplete).toEqual([]);
+  expect(result.passes).toHaveLength(1);
+});
+
+test.each(WIDTHS)('gibt dem Quellenlink der Vokabularseite bei %i px die Zielhöhe seines Bereichs', async (width) => {
+  const container = await renderNamespacePage(width);
+  const sourceLink = container.querySelector<HTMLAnchorElement>('a[target="_blank"]');
+  expect(sourceLink?.textContent).toBe('documentation/namespaces/practices.csv');
+  expect(sourceLink?.getBoundingClientRect().height).toBeGreaterThanOrEqual(width < 1024 ? 44 : 24);
 });
 
 test.each(WIDTHS.filter((width) => width < 1024))(
