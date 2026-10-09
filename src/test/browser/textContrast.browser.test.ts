@@ -1,4 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
+import { userEvent } from 'vitest/browser';
 import { createElement } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
@@ -6,16 +7,28 @@ import { MemoryRouter } from 'react-router';
 import { Footer } from '@/components/Footer';
 import { DatenschutzPage } from '@/features/pages/DatenschutzPage';
 import { LizenzenPage } from '@/features/pages/LizenzenPage';
+import { ControlDetail } from '@/features/catalog/ControlDetail';
+import type { Control } from '@/domain/models';
 import '@/index.css';
 
 const verification = vi.hoisted(() => ({ valid: true }));
-vi.mock('@/hooks/useCatalog', () => ({ useCatalog: () => ({ verification }) }));
+vi.mock('@/hooks/useCatalog', () => ({
+  useCatalog: () => ({
+    verification,
+    catalog: { catalogKey: 'gspp', practices: [] },
+    catalogDocument: null,
+    vocabularyRegistry: null,
+  }),
+}));
 
+const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
 let root: Root | undefined;
 const fixtures: HTMLElement[] = [];
 afterEach(() => {
   root?.unmount();
   root = undefined;
+  if (clipboardDescriptor) Object.defineProperty(navigator, 'clipboard', clipboardDescriptor);
+  else Reflect.deleteProperty(navigator, 'clipboard');
   for (const fixture of fixtures.splice(0)) fixture.remove();
 });
 
@@ -92,4 +105,41 @@ test('all mobile effort digits remain readable on their effort badge surface', (
     element.textContent = String(level);
     assertContrast(element, getComputedStyle(element).backgroundColor);
   }
+});
+
+test('library links retain normal-text contrast while hovered', async () => {
+  const container = fixture();
+  container.style.backgroundColor = 'var(--color-surface-base)';
+  root = createRoot(container);
+  flushSync(() => root?.render(createElement(LizenzenPage)));
+  const links = container.querySelectorAll<HTMLAnchorElement>('a');
+  for (const link of links) {
+    await userEvent.hover(link);
+    expect(link.matches(':hover')).toBe(true);
+    assertContrast(link, backgroundOf(link));
+    await userEvent.unhover(link);
+  }
+});
+
+test('control-detail copy confirmation meets normal-text contrast', async () => {
+  const container = fixture();
+  const control: Control = {
+    id: 'GC.2.2', altIdentifier: 'test-control', title: 'Testkontrolle', groupId: 'GC.2', practiceId: 'GC',
+    tags: [], taxonomy: [], threats: [], statement: '', statementRaw: '', guidance: '',
+    statementProps: { zielobjektKategorien: [] }, links: [], params: {},
+  };
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText: vi.fn().mockResolvedValue(undefined) },
+  });
+  root = createRoot(container);
+  flushSync(() => root?.render(createElement(MemoryRouter, {}, createElement(ControlDetail, {
+    control, onClose: () => {}, layout: 'page',
+  }))));
+  await userEvent.click(container.querySelector<HTMLButtonElement>('[aria-label="Link kopieren"]')!);
+  await expect.poll(() => container.querySelector('[aria-label="Kopiert"]')).not.toBeNull();
+  const confirmation = container.querySelector<HTMLElement>('[aria-label="Kopiert"] span')!;
+  await userEvent.unhover(confirmation);
+  await expect.poll(() => getComputedStyle(confirmation.parentElement!).backgroundColor).toBe('rgba(0, 0, 0, 0)');
+  assertContrast(confirmation, backgroundOf(confirmation));
 });

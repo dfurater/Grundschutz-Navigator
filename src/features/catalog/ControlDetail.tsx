@@ -315,8 +315,8 @@ export function ControlDetail({
           >
             {linkCopied ? (
               <>
-                <IconCheck className="h-4 w-4 text-success" aria-hidden="true" />
-                <span className="text-success">Kopiert</span>
+                <IconCheck className="h-4 w-4 text-success-text" aria-hidden="true" />
+                <span className="text-success-text">Kopiert</span>
               </>
             ) : (
               <>
