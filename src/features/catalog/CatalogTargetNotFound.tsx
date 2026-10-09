@@ -19,7 +19,7 @@ export function CatalogTargetNotFound({ catalog }: CatalogTargetNotFoundProps) {
             {' '}
             <Link
               to={buildCatalogUrl(catalog.catalogKey)}
-              className="rounded catalog-link-color focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+              className="rounded catalog-prose-link focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
             >
               Zum Katalog
             </Link>

@@ -21,11 +21,9 @@ export function LizenzenPage() {
             href="https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-0.5 rounded catalog-link-color focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+            className="inline-flex items-center gap-0.5 rounded catalog-prose-link focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
           >
-            Stand-der-Technik-Bibliothek
-            {' '}
-            <span className="sr-only"> (öffnet in neuem Tab)</span>
+            Stand-der-Technik-Bibliothek<span className="sr-only"> (öffnet in neuem Tab)</span>
             <IconExternalLink className="w-3 h-3" aria-hidden="true" />
           </a>
           {'.'}
@@ -144,11 +142,9 @@ export function LizenzenPage() {
             href="https://github.com/dfurater/Grundschutz-Navigator"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-0.5 rounded catalog-link-color focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+            className="inline-flex items-center gap-0.5 rounded catalog-prose-link focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
           >
-            dfurater/Grundschutz-Navigator
-            {' '}
-            <span className="sr-only"> (öffnet in neuem Tab)</span>
+            dfurater/Grundschutz-Navigator<span className="sr-only"> (öffnet in neuem Tab)</span>
             <IconExternalLink className="w-3 h-3" aria-hidden="true" />
           </a>
           {'.'}
