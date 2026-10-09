@@ -241,18 +241,23 @@ export function useMobileDrawerSwipe({
       cancel();
     };
 
+    // Eine neue Breite der Schublade (Drehen unter `md`) beendet die Geste wie `touchcancel`.
+    const onResize = () => { if (gesture?.width !== drawer.getBoundingClientRect().width) cancel(); };
+
     function track(target: EventTarget | null) {
       if (target === null) return;
       tracked = target;
       target.addEventListener('touchmove', onTouchMove as EventListener, { passive: false });
       target.addEventListener('touchend', onTouchEnd as EventListener, { passive: true });
       target.addEventListener('touchcancel', onTouchCancel as EventListener, { passive: true });
+      globalThis.addEventListener('resize', onResize);
     }
 
     function untrack() {
       tracked?.removeEventListener('touchmove', onTouchMove as EventListener);
       tracked?.removeEventListener('touchend', onTouchEnd as EventListener);
       tracked?.removeEventListener('touchcancel', onTouchCancel as EventListener);
+      globalThis.removeEventListener('resize', onResize);
       tracked = null;
     }
 

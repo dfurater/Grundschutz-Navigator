@@ -11,6 +11,7 @@ let backdrop: HTMLDivElement;
 let main: HTMLElement;
 /** Sichtbare linke Kante der Schublade: 0 offen, `-WIDTH` geschlossen. */
 let drawerLeft = 0;
+let drawerWidth = WIDTH;
 let clock = 0;
 
 function touch(type: string, target: Element, x: number, y = 0, advance = 16) {
@@ -60,11 +61,12 @@ function dispatchTranslate(type: 'transitionend' | 'transitioncancel') {
 
 beforeEach(() => {
   clock = 0;
+  drawerWidth = WIDTH;
   shell = document.createElement('div');
   drawer = document.createElement('aside');
   backdrop = document.createElement('div');
   main = document.createElement('main');
-  drawer.getBoundingClientRect = () => ({ width: WIDTH, left: drawerLeft }) as DOMRect;
+  drawer.getBoundingClientRect = () => ({ width: drawerWidth, left: drawerLeft }) as DOMRect;
   shell.append(drawer, backdrop, main);
   document.body.append(shell);
 });
@@ -207,6 +209,42 @@ describe('useMobileDrawerSwipe – unterbrochene Bewegungen', () => {
     touch('touchend', trigger, 250, 0, 300);
     expect(result.current.previewing).toBe(false);
     expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useMobileDrawerSwipe – Breitenwechsel während der Berührung', () => {
+  const resize = () => act(() => { globalThis.dispatchEvent(new Event('resize')); });
+
+  it('beendet eine Schließen-Geste, wenn sich die Breite der Schublade ändert', () => {
+    const view = render(true);
+    touch('touchstart', drawer, 250);
+    touch('touchmove', drawer, 150);
+    expect(variable('--mobile-nav-drag')).toBe('-100px');
+
+    drawerWidth = 255;
+    resize();
+    expect(variable('--mobile-nav-drag')).toBe('');
+    expect(variable('--mobile-nav-motion')).toBe('');
+    expect(touch('touchmove', drawer, 20).defaultPrevented).toBe(false);
+    touch('touchend', drawer, 20, 0, 300);
+    expect(view.onClose).not.toHaveBeenCalled();
+  });
+
+  it('beendet eine Vorschau bei geänderter Breite, nicht aber bei reiner Höhenänderung', () => {
+    const view = render(false);
+    touch('touchstart', main, 20);
+    touch('touchmove', main, 120);
+    resize();
+    expect(view.result.current.previewing).toBe(true);
+    expect(variable('--mobile-nav-drag')).toBe('-200px');
+
+    drawerWidth = 360;
+    resize();
+    expect(view.result.current.previewing).toBe(false);
+    expect(variable('--mobile-nav-drag')).toBe('');
+    expect(touch('touchmove', main, 300).defaultPrevented).toBe(false);
+    touch('touchend', main, 300, 0, 300);
+    expect(view.onOpen).not.toHaveBeenCalled();
   });
 });
 
