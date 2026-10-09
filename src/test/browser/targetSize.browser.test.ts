@@ -21,7 +21,7 @@ import '@/index.css';
 
 const registry = buildVocabularyRegistry({
   sourceCommitSha: 'snapshot-123',
-  namespaces: ['documentation_guidelines', 'basethreats', 'practices'].map((name) => ({
+  namespaces: ['documentation_guidelines', 'basethreats', 'practices', 'target_object_categories'].map((name) => ({
     source: {
       namespace: `https://example.com/namespaces/${name}.csv`,
       repository: 'https://example.com/repo',
@@ -76,13 +76,13 @@ async function renderSurfaces(width: number) {
   return host;
 }
 
-async function renderNamespacePage(width: number) {
+async function renderNamespacePage(width: number, name = 'practices') {
   await page.viewport(width, 900);
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
   flushSync(() => {
-    root?.render(createElement(MemoryRouter, { initialEntries: ['/vokabular/documentation-namespaces-practices'] },
+    root?.render(createElement(MemoryRouter, { initialEntries: [`/vokabular/documentation-namespaces-${name}`] },
       createElement(Routes, null,
         createElement(Route, { path: '/vokabular/:namespaceId', element: createElement(VocabularyNamespacePage) }),
       ),
@@ -141,9 +141,14 @@ test.each(WIDTHS.filter((width) => width < 1024))(
   },
 );
 
-test('löst Titel, Quelle und Label an den Rändern ihrer Fläche genau ihr eigenes Ziel aus', async () => {
-  const container = await renderSurfaces(390);
-  for (const element of targets(container)) {
+test.each([
+  ['Übersicht, Footer und Filter', renderSurfaces],
+  ['Vokabularseite mit dem längsten Dateipfad', (width: number) => renderNamespacePage(width, 'target_object_categories')],
+])('löst Titel, Quelle und Label an den Rändern ihrer Fläche genau ihr eigenes Ziel aus (%s)', async (_name, render) => {
+  const container = await render(390);
+  const elements = targets(container);
+  expect(elements.length).toBeGreaterThan(0);
+  for (const element of elements) {
     const box = element.getBoundingClientRect();
     element.scrollIntoView({ block: 'center' });
     const rect = element.getBoundingClientRect();
@@ -157,10 +162,16 @@ test('löst Titel, Quelle und Label an den Rändern ihrer Fläche genau ihr eige
 
 test('erzeugt bei 200 % Standardschrift keinen horizontalen Überlauf', async () => {
   await commands.setBrowserFontSize(32);
-  for (const width of [320, 390, 768, 1440]) {
-    await renderSurfaces(width);
-    expect(document.documentElement.scrollWidth, `${width} px`).toBeLessThanOrEqual(document.documentElement.clientWidth);
-    root?.unmount();
-    host?.remove();
+  const surfaces = [
+    (width: number) => renderSurfaces(width),
+    (width: number) => renderNamespacePage(width, 'target_object_categories'),
+  ];
+  for (const render of surfaces) {
+    for (const width of [320, 390, 768, 1440]) {
+      await render(width);
+      expect(document.documentElement.scrollWidth, `${width} px`).toBeLessThanOrEqual(document.documentElement.clientWidth);
+      root?.unmount();
+      host?.remove();
+    }
   }
 });

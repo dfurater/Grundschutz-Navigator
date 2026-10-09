@@ -156,7 +156,7 @@ export function VocabularyNamespacePage() {
             href={sourceHref}
             target="_blank"
             rel="noopener noreferrer"
-            className="catalog-link-color catalog-meta-type flex min-h-11 items-center rounded lg:min-h-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+            className="catalog-link-color catalog-meta-type flex min-h-11 items-center rounded [overflow-wrap:anywhere] lg:min-h-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
             title="Upstream-Datei öffnen"
           >
             {namespace.source.path}
