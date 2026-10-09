@@ -10,5 +10,7 @@ declare module 'vitest/internal/browser' {
       webSocketCloses: number;
       violations: string[];
     }>;
+    dispatchBrowserTouch: (kind: 'start' | 'move' | 'end' | 'reset', x?: number, y?: number) => Promise<void>;
+    setBrowserFontSize: (standard?: number) => Promise<void>;
   }
 }

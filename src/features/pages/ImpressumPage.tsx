@@ -8,12 +8,12 @@ export function ImpressumPage() {
 
   return (
     <div className="max-w-3xl mx-auto py-8 px-6 space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900">Impressum</h1>
+      <h1 className="type-page-title">Impressum</h1>
 
       {hasData ? (
         <>
           <section className="space-y-2">
-            <h2 className="text-lg font-semibold text-slate-800">
+            <h2 className="text-base font-semibold leading-snug text-slate-900">
               Angaben gemäß DDG § 5
             </h2>
             <address className="text-sm text-slate-700 not-italic leading-relaxed">
@@ -26,7 +26,7 @@ export function ImpressumPage() {
           </section>
 
           <section className="space-y-2">
-            <h2 className="text-lg font-semibold text-slate-800">
+            <h2 className="text-base font-semibold leading-snug text-slate-900">
               Kontakt
             </h2>
             <div className="text-sm text-slate-700 space-y-1">
@@ -56,7 +56,7 @@ export function ImpressumPage() {
       )}
 
       <section className="space-y-2">
-        <h2 className="text-lg font-semibold text-slate-800">
+        <h2 className="text-base font-semibold leading-snug text-slate-900">
           Haftungsausschluss
         </h2>
         <p className="text-sm text-slate-700 leading-relaxed">
