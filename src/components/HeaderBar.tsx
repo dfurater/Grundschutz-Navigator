@@ -70,11 +70,12 @@ export function HeaderBar({
     if (event.target !== inputRef.current && isEditableTarget(event.target)) return;
 
     event.preventDefault();
-    // Unter 640 px ist das Feld ausgeblendet; dann führt das Kürzel wie die Lupe
-    // auf die Suchseite und fokussiert dort die Eingabe. Auf der Suchseite bleibt
-    // die laufende Anfrage stehen, und der Verlauf erhält keinen zweiten Eintrag.
+    // Unter 640 px ist das Feld ausgeblendet, bei offener mobiler Schublade
+    // verdeckt und `inert`; dann führt das Kürzel wie die Lupe auf die Suchseite
+    // und fokussiert dort die Eingabe. Auf der Suchseite bleibt die laufende
+    // Anfrage stehen, und der Verlauf erhält keinen zweiten Eintrag.
     const input = inputRef.current;
-    const visible = input && (input.checkVisibility?.() ?? input.getClientRects().length > 0);
+    const visible = !obscured && input && (input.checkVisibility?.() ?? input.getClientRects().length > 0);
     if (!visible) {
       const onSearchPage = location.pathname === '/suche';
       void navigate(

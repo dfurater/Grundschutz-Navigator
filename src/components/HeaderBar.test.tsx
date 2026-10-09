@@ -199,6 +199,28 @@ describe('HeaderBar', () => {
     expect(screen.getByTestId('location')).toHaveTextContent('/suche|{"focusSearch":true}');
   });
 
+  // Bei offener mobiler Schublade ist das Feld sichtbar, aber verdeckt und
+  // `inert`; das Kürzel darf dort nicht wirkungslos verpuffen (GSPP-497).
+  it('führt das Kürzel bei verdecktem Suchfeld auf die Suchseite', () => {
+    function Location() {
+      const location = useLocation();
+      return <output data-testid="location">{`${location.pathname}|${JSON.stringify(location.state)}`}</output>;
+    }
+    render(
+      <MemoryRouter>
+        <HeaderBar obscured />
+        <Location />
+        <button type="button">Außerhalb</button>
+      </MemoryRouter>,
+    );
+    const outsideButton = screen.getByRole('button', { name: 'Außerhalb' });
+    outsideButton.focus();
+
+    expect(fireEvent.keyDown(outsideButton, { key: 'k', ctrlKey: true })).toBe(false);
+
+    expect(screen.getByTestId('location')).toHaveTextContent('/suche|{"focusSearch":true}');
+  });
+
   it('hält auf der Suchseite die laufende Anfrage, wenn das Kürzel ohne sichtbares Feld fokussiert', () => {
     function Location() {
       const location = useLocation();
