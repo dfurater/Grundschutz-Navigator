@@ -163,6 +163,7 @@ src/                              # Anwendungsquellcode
 │   ├── useGuidanceOverflow.ts        # Scopegebundener Guidance-/Messzustand
 │   ├── useMediaQuery.ts              # Responsive Design
 │   ├── useMobileDrawerPlacement.ts   # Lage und Scroll-Sperre der mobilen Navigationsschublade
+│   ├── useMobileDrawerResizeSnap.ts  # Sofortige Lage von Schublade und Seite bei Breitenwechsel
 │   ├── useMobileDrawerSwipe.ts       # Wischgesten der mobilen Navigationsschublade
 │   ├── useOverlayScrollbars.ts       # Überlagernde, beim Scrollen eingeblendete Scrollleisten
 │   ├── useRowWindow.ts               # Windowing für Listen einheitlicher Zeilenhöhe
