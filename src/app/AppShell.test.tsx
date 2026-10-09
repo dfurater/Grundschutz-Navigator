@@ -1,10 +1,13 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { useContext } from 'react';
 import type { RefObject } from 'react';
 import { Link, MemoryRouter, useNavigate } from 'react-router';
 import type { NavigateFunction } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCatalog } from '@/hooks/useCatalog';
+import { OWN_SCROLL_AREA_QUERY } from '@/hooks/breakpointQueries';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { MobileNavigationContext } from '@/state/MobileNavigationContext';
 import { AppShell } from './AppShell';
 import { STATIC_PAGE_ROUTES } from './staticPageRoutes';
 import { PAGE_TITLES, PRODUCT_TITLE } from './pageTitles';
@@ -25,8 +28,10 @@ vi.mock('@/components/HeaderBar', () => ({
     menuExpanded,
     menuControls,
     menuButtonRef,
+    obscured,
   }: {
     onMenuToggle: () => void;
+    obscured?: boolean;
     menuExpanded?: boolean;
     menuControls?: string;
     menuButtonRef?: RefObject<HTMLButtonElement | null>;
@@ -36,7 +41,7 @@ vi.mock('@/components/HeaderBar', () => ({
       <button type="button" ref={menuButtonRef} aria-expanded={menuExpanded} aria-controls={menuControls} onClick={onMenuToggle}>
         Menu
       </button>
-      <Link to="/suche">Lupe</Link>
+      <Link to="/suche" inert={obscured}>Lupe</Link>
     </>
   ),
 }));
@@ -51,8 +56,12 @@ vi.mock('@/components/Footer', () => ({
   ),
 }));
 
+// Zeigt den Kontextwert, den feste Elemente der Seite auswerten (GSPP-494).
 vi.mock('@/features/home/HomePage', () => ({
-  HomePage: () => <div>Home</div>,
+  HomePage: () => {
+    const fixedElementsHidden = useContext(MobileNavigationContext);
+    return <div data-fixed-elements-hidden={String(fixedElementsHidden)}>Home</div>;
+  },
 }));
 
 const catalogBrowserMock = vi.hoisted(() => ({ focusHeadingOnMount: false }));
@@ -195,7 +204,7 @@ describe('AppShell', () => {
 
   it('makes the main content inert only while mobile navigation is open', () => {
     let persistent = false;
-    mockedUseMediaQuery.mockImplementation((query) => query === '(min-width: 768px)' && persistent);
+    mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY && persistent);
     const view = render(<MemoryRouter><AppShell /></MemoryRouter>);
     const main = view.container.querySelector('main');
     const menuButton = screen.getByRole('button', { name: 'Menu' });
@@ -211,6 +220,26 @@ describe('AppShell', () => {
     expect(main).toHaveAttribute('inert');
     fireEvent.keyDown(menuButton, { key: 'Escape' });
     expect(main).not.toHaveAttribute('inert');
+  });
+
+  it('nimmt die verdeckten Steuerungen des App-Kopfs nur bei offener mobiler Navigation aus der Bedienung', () => {
+    let persistent = false;
+    mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY && persistent);
+    const view = render(<MemoryRouter><AppShell /></MemoryRouter>);
+    const menuButton = screen.getByRole('button', { name: 'Menu' });
+    const magnifier = screen.getByText('Lupe');
+    expect(magnifier).not.toHaveAttribute('inert');
+
+    fireEvent.click(menuButton);
+    expect(magnifier).toHaveAttribute('inert');
+    expect(menuButton).not.toHaveAttribute('inert');
+    persistent = true;
+    view.rerender(<MemoryRouter><AppShell /></MemoryRouter>);
+    expect(magnifier).not.toHaveAttribute('inert');
+    persistent = false;
+    view.rerender(<MemoryRouter><AppShell /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Menü schließen' }));
+    expect(magnifier).not.toHaveAttribute('inert');
   });
 
   it.each(['close', 'selection', 'backdrop'] as const)('returns focus when mobile navigation is dismissed through %s', (method) => {
@@ -250,10 +279,30 @@ describe('AppShell', () => {
 
     expect(wasNotPrevented).toBe(false);
     expect(bubbleHandler).not.toHaveBeenCalled();
-    expect(screen.queryByTestId('mobile-nav-backdrop')).not.toBeInTheDocument();
+    expect(screen.getByTestId('mobile-nav-backdrop')).toHaveAttribute('data-state', 'closed');
     expect(container.querySelector('aside')).toHaveAttribute('inert');
     expect(menuButton).toHaveFocus();
     expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+  });
+
+  it('hides fixed page elements until the drawer has finished sliding out (GSPP-494)', () => {
+    const { container } = render(<MemoryRouter><AppShell /></MemoryRouter>);
+    const hidden = () => screen.getByText('Home').getAttribute('data-fixed-elements-hidden');
+    expect(hidden()).toBe('false');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
+    expect(hidden()).toBe('true');
+
+    // Das Schließen setzt den Zielzustand sofort, `main` gleitet aber noch zurück.
+    fireEvent.click(screen.getByRole('button', { name: 'Menü schließen' }));
+    expect(screen.getByTestId('mobile-nav-backdrop')).toHaveAttribute('data-state', 'closed');
+    expect(hidden()).toBe('true');
+
+    const drawer = container.querySelector('aside')!;
+    const slideEnd = new Event('transitionend', { bubbles: true });
+    Object.defineProperty(slideEnd, 'propertyName', { value: 'translate' });
+    act(() => { drawer.dispatchEvent(slideEnd); });
+    expect(hidden()).toBe('false');
   });
 
   it('does not consume unrelated keys or Escape while the mobile drawer is closed', () => {
@@ -263,11 +312,11 @@ describe('AppShell', () => {
 
     fireEvent.click(menuButton);
     expect(fireEvent.keyDown(document.querySelector('body')!, { key: 'Enter' })).toBe(true);
-    expect(screen.getByTestId('mobile-nav-backdrop')).toBeInTheDocument();
+    expect(screen.getByTestId('mobile-nav-backdrop')).toHaveAttribute('data-state', 'open');
   });
 
   it('leaves persistent desktop navigation interactive without consuming Escape', () => {
-    mockedUseMediaQuery.mockImplementation((query) => query === '(min-width: 768px)');
+    mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY);
     const { container } = render(<MemoryRouter><AppShell /></MemoryRouter>);
     const menuButton = screen.getByRole('button', { name: 'Menu' });
 
@@ -281,7 +330,7 @@ describe('AppShell', () => {
 
   it('updates Escape ownership and inert when crossing the navigation breakpoint', () => {
     let persistent = false;
-    mockedUseMediaQuery.mockImplementation((query) => query === '(min-width: 768px)' && persistent);
+    mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY && persistent);
     const app = () => <MemoryRouter><AppShell /></MemoryRouter>;
     const view = render(app());
     const menuButton = screen.getByRole('button', { name: 'Menu' });
@@ -311,9 +360,10 @@ describe('AppShell', () => {
       </MemoryRouter>,
     );
 
+    // Mobil folgt die Breite derselben Bewegung wie die verschobene Seite.
     const sidebar = container.querySelector('aside');
     expect(sidebar).toHaveStyle({
-      transition: 'width var(--duration-normal) var(--easing-default), translate var(--duration-normal) var(--easing-default)',
+      transition: 'width var(--mobile-nav-motion), translate var(--mobile-nav-motion)',
     });
 
     mockedUseMediaQuery.mockReturnValue(true);
@@ -331,7 +381,7 @@ describe('AppShell', () => {
     const originalScrollY = Object.getOwnPropertyDescriptor(globalThis, 'scrollY');
     const scrollToSpy = vi.spyOn(globalThis, 'scrollTo').mockImplementation(() => {});
     let persistent = true;
-    mockedUseMediaQuery.mockImplementation((query) => query === '(min-width: 768px)' && persistent);
+    mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY && persistent);
     const app = () => <MemoryRouter><AppShell /></MemoryRouter>;
 
     try {
@@ -362,7 +412,7 @@ describe('AppShell', () => {
   });
 
   it('uses focus-visible rings for sidebar controls and the 404 link', () => {
-    mockedUseMediaQuery.mockImplementation((query) => query === '(min-width: 768px)');
+    mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY);
     const { container } = render(
       <MemoryRouter initialEntries={['/missing']}>
         <AppShell />
@@ -502,7 +552,7 @@ describe('AppShell', () => {
     expect(screen.getByText('Suche')).toBeInTheDocument();
     expect(container.querySelector('aside')).toHaveAttribute('inert');
     expect(container.querySelector('main')).not.toHaveAttribute('inert');
-    expect(screen.queryByTestId('mobile-nav-backdrop')).not.toBeInTheDocument();
+    expect(screen.getByTestId('mobile-nav-backdrop')).toHaveAttribute('data-state', 'closed');
     expect(lupe).toHaveFocus();
   });
 
@@ -629,7 +679,7 @@ describe('AppShell', () => {
 
     expect(screen.getByTestId('catalog-browser')).toBeInTheDocument();
     expect(container.querySelector('aside')).toHaveAttribute('inert');
-    expect(screen.queryByTestId('mobile-nav-backdrop')).not.toBeInTheDocument();
+    expect(screen.getByTestId('mobile-nav-backdrop')).toHaveAttribute('data-state', 'closed');
   });
 
   // Der Drawer besitzt Escape in der Capture-Phase; ein offenes Menü in seinem
@@ -657,7 +707,7 @@ describe('AppShell', () => {
   });
 
   it('zeigt die Kontextwahl auf dem Desktop mit Einklappen und ohne Schild in der eingeklappten Leiste', () => {
-    mockedUseMediaQuery.mockImplementation((query) => query === '(min-width: 768px)');
+    mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY);
     const { container } = render(
       <MemoryRouter initialEntries={['/']}>
         <AppShell />

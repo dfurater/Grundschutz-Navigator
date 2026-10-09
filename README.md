@@ -18,10 +18,10 @@ Inoffizielles Community-Projekt, kein Angebot des BSI. Keine Rechtsberatung, kei
 - Alle Kontrollen nach ID, Titel oder Stichwort durchsuchen.
 - Die Liste nach Sicherheitsniveau, Modalverb, Aufwandsstufe, Zielobjekt-Kategorie, Schutzziel, Dokumentationsvorgabe, Handlungswort, Tag und Link-Relation filtern.
 - Zu jeder Kontrolle den Anforderungstext und die Umsetzungshinweise lesen, dazu die betroffenen Schutzziele und Gefährdungen.
-
-Filter und Detailangaben richten sich nach den Daten des jeweiligen Katalogs: Der Katalog „Supply Chain Security“ enthält zum Beispiel keine Schutzziele, deshalb fehlt dort auch der Schutzziel-Filter.
 - Die BSI-Vokabulare nachschlagen, also die Begriffslisten, auf denen Filter und Kontrollen aufbauen.
 - Die gefilterte Liste, Suchtreffer oder eine eigene Auswahl als CSV-Datei exportieren.
+
+Filter und Detailangaben richten sich nach den Daten des jeweiligen Katalogs: Der Katalog „Supply Chain Security“ enthält zum Beispiel keine Schutzziele, deshalb fehlt dort auch der Schutzziel-Filter.
 
 Die App funktioniert am Desktop und auf dem Smartphone.
 
@@ -31,7 +31,7 @@ Für IT-Sicherheitsbeauftragte, Berater:innen, Auditor:innen, Studierende und al
 
 ## So funktioniert's
 
-1. Öffne die [Live-Demo](https://dfurater.github.io/Grundschutz-Navigator/) und wähle links oben im Katalog-Explorer den Katalog. Auf dem Smartphone öffnest du den Katalog-Explorer über das Menü-Symbol.
+1. Öffne die [Live-Demo](https://dfurater.github.io/Grundschutz-Navigator/) und wähle links oben im Katalog-Explorer den Katalog. Auf dem Smartphone öffnest du den Katalog-Explorer über das Menü-Symbol oder indem du über die Seite nach rechts wischst; nach links gewischt schließt er sich wieder.
 2. Wähle darunter eine Praktik oder ein Thema, oder suche oben nach einer ID oder einem Stichwort.
 3. Setze die Filter, etwa Sicherheitsniveau „normal-SdT“ und Modalverb „MUSS“. Am Desktop steht die Filterleiste rechts, auf schmalen Bildschirmen öffnet das Filter-Symbol sie. Die Liste zeigt sofort nur noch die passenden Kontrollen.
 4. Die gewählten Filter stehen in der Adresszeile. Kopiere den Link, um die Ansicht zu teilen oder als Lesezeichen zu speichern. Für eine einzelne Kontrolle gibt es in der Detailansicht „Link kopieren“.
