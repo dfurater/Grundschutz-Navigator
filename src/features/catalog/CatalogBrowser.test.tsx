@@ -16,6 +16,7 @@ import {
   type SortConfig,
 } from '@/hooks/useFilteredControls';
 import { useFilterParams } from '@/hooks/useFilterParams';
+import { DESKTOP_QUERY, OWN_SCROLL_AREA_QUERY } from '@/hooks/breakpointQueries';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { AppShell } from '@/app/AppShell';
 import { catalogCollectionDefaults } from '@/test/catalogState';
@@ -283,7 +284,7 @@ function renderCatalogBrowser(
 
 /** Zwischen `md` und `lg`: eigene Scrollbereiche, Detail als Overlay. */
 function useTabletWidth() {
-  mockedUseMediaQuery.mockImplementation((query) => query === '(min-width: 768px)');
+  mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY);
 }
 
 /** Dokument-Scrollen der Liste (unterhalb `md`), wie es der Browser meldet. */
@@ -332,7 +333,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
     const detailPath = '/katalog/gspp/kontrolle/shared-alt-identifier';
     const menuButton = screen.getByRole('button', { name: 'Menü öffnen' });
     fireEvent.click(menuButton);
-    expect(screen.getByTestId('mobile-nav-backdrop')).toBeInTheDocument();
+    expect(screen.getByTestId('mobile-nav-backdrop')).toHaveAttribute('data-state', 'open');
 
     // body war bisher zugleich der globale Escape-Einstieg für die Detailseite.
     const wasNotPrevented = fireEvent.keyDown(document.querySelector('body')!, { key: 'Escape' });
@@ -340,7 +341,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(screen.getByTestId('location')).toHaveTextContent(detailPath);
     expect(screen.getByText(`Detail ${control.id}`)).toBeInTheDocument();
     expect(wasNotPrevented).toBe(false);
-    expect(screen.queryByTestId('mobile-nav-backdrop')).not.toBeInTheDocument();
+    expect(screen.getByTestId('mobile-nav-backdrop')).toHaveAttribute('data-state', 'closed');
     expect(menuButton).toHaveFocus();
     expect(menuButton).toHaveAttribute('aria-expanded', 'false');
 
@@ -380,7 +381,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
     fireEvent.click(screen.getByRole('button', { name: /TOP\.2\s*Zweites Thema/ }));
 
     expect(screen.getByTestId('location')).toHaveTextContent(/^\/katalog\/gspp\/TOP\.2$/);
-    expect(screen.queryByTestId('mobile-nav-backdrop')).not.toBeInTheDocument();
+    expect(screen.getByTestId('mobile-nav-backdrop')).toHaveAttribute('data-state', 'closed');
     expect(screen.queryByText(`Detail ${control.id}`)).not.toBeInTheDocument();
     expect(menuButton).not.toHaveFocus();
     expect(screen.getByRole('heading', { level: 1, name: 'Zweites Thema' })).toHaveFocus();
@@ -411,6 +412,12 @@ describe('CatalogBrowser mobile focus restoration', () => {
     // freie Seite, dass auch das abgebaute Sheet seine Sperre gelöst hat.
     expect(root.style.overflow).toBe('');
     expect(screen.queryByText('Exportieren als CSV')).not.toBeInTheDocument();
+    // Solange die Schublade hinausgleitet, trägt `main` noch einen `translate`-Wert
+    // und die Trigger bleiben zurückgetreten (GSPP-494).
+    expect(screen.queryByRole('button', { name: label })).not.toBeInTheDocument();
+    const slideEnd = new Event('transitionend', { bubbles: true });
+    Object.defineProperty(slideEnd, 'propertyName', { value: 'translate' });
+    fireEvent(document.querySelector('aside')!, slideEnd);
     expect(screen.getAllByRole('button', { name: 'Filteraktion' })).toHaveLength(1);
     expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
   });
@@ -612,7 +619,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
   ])('preserves the opening row and list position across %s width', (_label, wideWidth, navigateWhileWide) => {
     let width = 390;
     mockedUseMediaQuery.mockImplementation((query) =>
-      width >= (query === '(min-width: 1024px)' ? 1024 : 768));
+      width >= (query === DESKTOP_QUERY ? 1024 : 768));
     const view = renderCatalogBrowser('/katalog/gspp/TOP.1');
     scrollListTo(420);
     fireEvent.click(screen.getByRole('button', { name: control.title }));
@@ -641,7 +648,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
     mockCatalog(catalog);
     let width = 390;
     mockedUseMediaQuery.mockImplementation((query) =>
-      width >= (query === '(min-width: 1024px)' ? 1024 : 768));
+      width >= (query === DESKTOP_QUERY ? 1024 : 768));
     const app = () => (
       <CatalogBrowserTestApp
         initialEntry="/katalog/gspp"
