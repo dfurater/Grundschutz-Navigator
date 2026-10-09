@@ -86,7 +86,7 @@ test.each(WIDTHS)('erfüllt WCAG 2.5.8 (axe target-size) bei %i px', async (widt
   const result = await axe.run(container, { runOnly: { type: 'rule', values: ['target-size'] } });
   expect(result.violations.map((violation) => violation.nodes.map((node) => node.target))).toEqual([]);
   expect(result.incomplete).toEqual([]);
-  expect(result.passes.length).toBe(1);
+  expect(result.passes).toHaveLength(1);
 });
 
 test.each(WIDTHS.filter((width) => width < 1024))(
