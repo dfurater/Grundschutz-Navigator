@@ -10,6 +10,8 @@ interface Gesture {
   readonly startX: number;
   readonly startY: number;
   readonly width: number;
+  /** Viewport-Breite beim Aufsetzen; ändert sie sich, endet die Geste. Nicht `width`: Deren Transition meldet beim `resize` noch die alte Breite. */
+  readonly viewport: number;
   /** Sichtbare Lage beim Übernehmen der Geste, relativ zur offenen Endlage. */
   base: number;
   dragging: boolean;
@@ -172,6 +174,7 @@ export function useMobileDrawerSwipe({
         startX: touch.clientX,
         startY: touch.clientY,
         width,
+        viewport: globalThis.innerWidth,
         base: 0,
         dragging: false,
         offset: 0,
@@ -240,9 +243,7 @@ export function useMobileDrawerSwipe({
       if (!firstDelivery(event)) return;
       cancel();
     };
-
-    // Eine neue Breite der Schublade (Drehen unter `md`) beendet die Geste wie `touchcancel`.
-    const onResize = () => { if (gesture?.width !== drawer.getBoundingClientRect().width) cancel(); };
+    const onResize = () => { if (gesture?.viewport !== globalThis.innerWidth) cancel(); };
 
     function track(target: EventTarget | null) {
       if (target === null) return;
