@@ -12,6 +12,7 @@ import { CatalogTargetNotFound } from '@/features/catalog/CatalogTargetNotFound'
 import { HomePage } from '@/features/home/HomePage';
 import { DatenschutzPage } from '@/features/pages/DatenschutzPage';
 import { ImpressumPage } from '@/features/pages/ImpressumPage';
+import { LizenzenPage } from '@/features/pages/LizenzenPage';
 import { CatalogContext } from '@/state/CatalogContext';
 import { createInitialState, projectPublicState } from '@/state/catalogReducer';
 import '@/index.css';
@@ -63,6 +64,7 @@ const surfaces: ReadonlyArray<readonly [string, () => ReactElement, string, read
   ['Startseite', () => createElement(HomePage), '/', ['Über das Projekt']],
   ['Datenschutz', () => createElement(DatenschutzPage), '/', ['kontakt@example.com', 'GitHub Privacy Statement', 'Data Privacy Framework']],
   ['Impressum', () => createElement(ImpressumPage), '/', ['kontakt@example.com']],
+  ['Lizenzen', () => createElement(LizenzenPage), '/', ['Stand-der-Technik-Bibliothek', 'dfurater/Grundschutz-Navigator']],
   ['Katalogziel nicht gefunden', () => createElement(CatalogTargetNotFound, { catalog }), '/', ['Zum Katalog']],
   ['Seite nicht gefunden', () => createElement(AppShell), '/gibt-es-nicht', ['Zur Startseite']],
 ];

@@ -84,8 +84,7 @@ export function DatenschutzPage() {
             rel="noopener noreferrer"
             className="rounded catalog-prose-link focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
           >
-            GitHub Privacy Statement
-            <span className="sr-only"> (öffnet in neuem Tab)</span>
+            GitHub Privacy Statement<span className="sr-only"> (öffnet in neuem Tab)</span>
           </a>
           {'.'}
         </p>
@@ -107,8 +106,7 @@ export function DatenschutzPage() {
             rel="noopener noreferrer"
             className="rounded catalog-prose-link focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
           >
-            Data Privacy Framework
-            <span className="sr-only"> (öffnet in neuem Tab)</span>
+            Data Privacy Framework<span className="sr-only"> (öffnet in neuem Tab)</span>
           </a>{' '}
           einsehen.
         </p>
