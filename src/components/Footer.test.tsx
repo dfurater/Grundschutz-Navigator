@@ -86,7 +86,7 @@ describe('Footer', () => {
 
     const verificationLink = screen.getByRole('link', { name: 'Verifiziert' });
 
-    expect(verificationLink.className).toContain('text-[var(--color-success)]');
+    expect(verificationLink.className).toContain('text-[var(--color-success-text)]');
     expect(verificationLink.querySelector('span')).toBeNull();
   });
 

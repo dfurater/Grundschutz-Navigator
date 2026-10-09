@@ -54,7 +54,7 @@ export function DatenschutzPage() {
                   E-Mail:{' '}
                   <a
                     href={`mailto:${email}`}
-                    className="rounded text-sky-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+                    className="rounded catalog-link-color focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
                   >
                     {email}
                   </a>
@@ -82,7 +82,7 @@ export function DatenschutzPage() {
             href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement"
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded text-sky-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+            className="rounded catalog-link-color focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
           >
             GitHub Privacy Statement
             {' '}
@@ -106,7 +106,7 @@ export function DatenschutzPage() {
             href="https://www.dataprivacyframework.gov"
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded text-sky-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+            className="rounded catalog-link-color focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
           >
             Data Privacy Framework
             {' '}

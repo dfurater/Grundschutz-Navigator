@@ -34,7 +34,7 @@ export function ImpressumPage() {
                 E-Mail:{' '}
                 <a
                   href={`mailto:${email}`}
-                  className="rounded text-sky-600 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+                  className="rounded catalog-link-color focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
                 >
                   {email}
                 </a>

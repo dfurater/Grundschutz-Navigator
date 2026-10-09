@@ -49,7 +49,7 @@ export function Footer({ className = '' }: FooterProps) {
           {verified !== undefined && (
             <Link
               to="/about"
-              className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] ${verified ? 'text-[var(--color-success)]' : 'text-[var(--color-warning)]'}`}
+              className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] ${verified ? 'text-[var(--color-success-text)]' : 'text-[var(--color-warning-text)]'}`}
               title="Integritätsdetails auf der Seite Über das Projekt"
             >
               <IconShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />

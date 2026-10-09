@@ -105,7 +105,7 @@ describe('ControlTable', () => {
 
     expect(cells[3].querySelector('.bg-red-600')).not.toBeNull();
     expect(within(cells[3]).getByText('MUSS')).toHaveClass('catalog-meta-text', 'text-slate-600');
-    expect(within(cells[4]).getByText('normal-SdT')).toHaveClass('catalog-meta-text', 'text-slate-500');
+    expect(within(cells[4]).getByText('normal-SdT')).toHaveClass('catalog-meta-text', 'text-[var(--color-text-muted)]');
     expect(within(cells[5]).getByText('3')).toHaveClass('catalog-meta-text', 'tabular-nums');
     expect(cells[5]).not.toHaveTextContent('Aufwand');
   });

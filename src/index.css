@@ -181,7 +181,8 @@
   /* Text hierarchy */
   --color-text-primary: var(--color-slate-900);
   --color-text-secondary: var(--color-slate-600);
-  --color-text-muted: var(--color-slate-400);
+  /* Information-bearing text: readable on base, hover and selection surfaces. */
+  --color-text-muted: var(--color-slate-600);
   --color-text-inverse: #ffffff;
 
   /* Border hierarchy */
@@ -228,8 +229,8 @@
   --color-effort-dot-4: color-mix(in srgb, var(--color-primary-main) 80%, white);
   --color-effort-dot-5: var(--color-primary-main);
   --color-effort-track: var(--color-slate-100);
-  --color-effort-level-1-text: #818cf8;
-  --color-effort-level-2-text: #6366f1;
+  --color-effort-level-1-text: #6559d1;
+  --color-effort-level-2-text: #5a4ed0;
   --color-effort-level-3-text: #4f46e5;
   --color-effort-level-4-text: #4338ca;
   --color-effort-level-5-text: #3730a3;
@@ -243,6 +244,7 @@
   --color-success-surface: #f0fdf4;
   --color-success-text: #166534;
   --color-warning: #d97706;
+  --color-warning-text: #92400e;
 
   /* Scrollbar */
   --color-surface-scrollbar: var(--color-slate-300);
