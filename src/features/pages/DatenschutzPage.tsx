@@ -15,12 +15,12 @@ export function DatenschutzPage() {
 
   return (
     <div className="max-w-3xl mx-auto py-8 px-6 space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900">
+      <h1 className="type-page-title">
         Datenschutzerklärung
       </h1>
 
       <section className="space-y-2">
-        <h2 className="text-lg font-semibold text-slate-800">
+        <h2 className="text-base font-semibold leading-snug text-slate-900">
           1. Allgemeine Hinweise
         </h2>
         <p className="text-sm text-slate-700 leading-relaxed">
@@ -32,7 +32,7 @@ export function DatenschutzPage() {
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-lg font-semibold text-slate-800">
+        <h2 className="text-base font-semibold leading-snug text-slate-900">
           2. Verantwortlicher
         </h2>
         {hasVerantwortlicher ? (
@@ -70,7 +70,7 @@ export function DatenschutzPage() {
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-lg font-semibold text-slate-800">
+        <h2 className="text-base font-semibold leading-snug text-slate-900">
           3. Hosting
         </h2>
         <p className="text-sm text-slate-700 leading-relaxed">
@@ -123,7 +123,7 @@ export function DatenschutzPage() {
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-lg font-semibold text-slate-800">
+        <h2 className="text-base font-semibold leading-snug text-slate-900">
           4. Cookies &amp; Tracking
         </h2>
         <p className="text-sm text-slate-700 leading-relaxed">
@@ -134,7 +134,7 @@ export function DatenschutzPage() {
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-lg font-semibold text-slate-800">
+        <h2 className="text-base font-semibold leading-snug text-slate-900">
           5. Lokale Datenspeicherung
         </h2>
         <p className="text-sm text-slate-700 leading-relaxed">
@@ -148,7 +148,7 @@ export function DatenschutzPage() {
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-lg font-semibold text-slate-800">
+        <h2 className="text-base font-semibold leading-snug text-slate-900">
           6. Externe Ressourcen
         </h2>
         <p className="text-sm text-slate-700 leading-relaxed">
@@ -159,7 +159,7 @@ export function DatenschutzPage() {
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-lg font-semibold text-slate-800">
+        <h2 className="text-base font-semibold leading-snug text-slate-900">
           7. Ihre Rechte
         </h2>
         <p className="text-sm text-slate-700 leading-relaxed">

@@ -74,6 +74,29 @@ describe('HeaderBar', () => {
     expect(menuButtonRef.current).toBeNull();
   });
 
+  it('nimmt verdeckt alle Steuerungen außer dem Menübutton aus der Bedienung', () => {
+    const renderHeader = (obscured: boolean) => (
+      <MemoryRouter>
+        <HeaderBar onMenuToggle={vi.fn()} obscured={obscured} />
+      </MemoryRouter>
+    );
+    const { rerender } = render(renderHeader(true));
+    const menuButton = screen.getByRole('button', { name: 'Menü öffnen' });
+    // Inerte Teilbäume fehlen im Barrierefreiheitsbaum; die Abfrage geht deshalb über das DOM.
+    const header = screen.getByTestId('header-bar');
+    const obscuredControls = [
+      header.querySelector('a[href="/"]')!,
+      screen.getByTestId('header-search'),
+      header.querySelector('a[href="/suche"]')!,
+    ];
+
+    expect(menuButton.closest('[inert]')).toBeNull();
+    for (const control of obscuredControls) expect(control.closest('[inert]')).not.toBeNull();
+
+    rerender(renderHeader(false));
+    expect(header.querySelector('[inert]')).toBeNull();
+  });
+
   it('uses the header reference theme with focus-visible rings for interactive elements', () => {
     const { container } = render(
       <MemoryRouter>
@@ -173,6 +196,59 @@ describe('HeaderBar', () => {
 
     expect(wasNotPrevented).toBe(false);
     expect(searchInput).not.toHaveFocus();
+    expect(screen.getByTestId('location')).toHaveTextContent('/suche|{"focusSearch":true}');
+  });
+
+  // Ab 640 px ist das Feld bei offener mobiler Schublade sichtbar, aber
+  // verdeckt und `inert`. Die Suchseite hat dort kein eigenes Feld; das Kürzel
+  // gibt deshalb den App-Kopf frei und fokussiert dessen Feld (GSPP-497).
+  it('gibt bei verdecktem Suchfeld den App-Kopf frei und fokussiert das Feld danach', () => {
+    const onUncover = vi.fn();
+    const renderHeader = (obscured: boolean) => (
+      <MemoryRouter>
+        <HeaderBar obscured={obscured} onUncover={onUncover} />
+        <button type="button">Außerhalb</button>
+      </MemoryRouter>
+    );
+    const { rerender } = render(renderHeader(true));
+    const searchInput = screen.getByTestId('header-search');
+    const outsideButton = screen.getByRole('button', { name: 'Außerhalb' });
+    outsideButton.focus();
+
+    expect(fireEvent.keyDown(outsideButton, { key: 'k', ctrlKey: true })).toBe(false);
+    expect(onUncover).toHaveBeenCalledOnce();
+    expect(searchInput).not.toHaveFocus();
+
+    rerender(renderHeader(false));
+    expect(searchInput).toHaveFocus();
+
+    // Ein späteres Freigeben ohne Kürzel verschiebt den Fokus nicht.
+    outsideButton.focus();
+    rerender(renderHeader(true));
+    rerender(renderHeader(false));
+    expect(outsideButton).toHaveFocus();
+  });
+
+  it('führt das Kürzel bei verdecktem und ausgeblendetem Suchfeld auf die Suchseite', () => {
+    function Location() {
+      const location = useLocation();
+      return <output data-testid="location">{`${location.pathname}|${JSON.stringify(location.state)}`}</output>;
+    }
+    const onUncover = vi.fn();
+    render(
+      <MemoryRouter>
+        <HeaderBar obscured onUncover={onUncover} />
+        <Location />
+        <button type="button">Außerhalb</button>
+      </MemoryRouter>,
+    );
+    screen.getByTestId('header-search').checkVisibility = () => false;
+    const outsideButton = screen.getByRole('button', { name: 'Außerhalb' });
+    outsideButton.focus();
+
+    expect(fireEvent.keyDown(outsideButton, { key: 'k', ctrlKey: true })).toBe(false);
+
+    expect(onUncover).not.toHaveBeenCalled();
     expect(screen.getByTestId('location')).toHaveTextContent('/suche|{"focusSearch":true}');
   });
 

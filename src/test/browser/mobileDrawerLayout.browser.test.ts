@@ -8,6 +8,7 @@ import {
   closeDrawer,
   openDrawer,
   renderShell,
+  settlePush,
   shortenPage,
   translateTransition,
   unmountShell,
@@ -25,21 +26,24 @@ test('rendert den offenen mobilen Drawer ohne festes oder sticky Element, damit 
   }
 });
 
-test.each([0, HEIGHT])('legt den Drawer bei Scrollposition %i px unter den App-Kopf und sperrt das Dokument', async (scrollY) => {
+test.each([0, HEIGHT])('legt den Drawer bei Scrollposition %i px in voller Höhe über den App-Kopf und sperrt das Dokument', async (scrollY) => {
   const shell = await renderShell(WIDTH);
   window.scrollTo(0, scrollY);
   const aside = await openDrawer(shell);
   expect(window.scrollY).toBe(scrollY);
 
   const box = aside.getBoundingClientRect();
-  expect(box.top).toBe(HEADER_HEIGHT);
+  expect(box.top).toBe(0);
   expect(box.bottom).toBe(window.innerHeight);
 
-  const backdrop = shell.querySelector('[data-testid="mobile-nav-backdrop"]')!.getBoundingClientRect();
-  expect(backdrop.top).toBeLessThanOrEqual(HEADER_HEIGHT);
-  expect(backdrop.bottom).toBeGreaterThanOrEqual(window.innerHeight);
-  expect(backdrop.left).toBe(0);
-  expect(backdrop.right).toBe(WIDTH);
+  // Die Abdunklung liegt über der ganzen verschobenen Seite samt App-Kopf.
+  const backdrop = shell.querySelector<HTMLElement>('[data-testid="mobile-nav-backdrop"]')!;
+  await settlePush(shell);
+  const backdropBox = backdrop.getBoundingClientRect();
+  expect(backdropBox.top).toBeLessThanOrEqual(0);
+  expect(backdropBox.bottom).toBeGreaterThanOrEqual(window.innerHeight);
+  expect(backdropBox.left).toBeCloseTo(box.right, 1);
+  expect(document.elementFromPoint(WIDTH - 10, HEADER_HEIGHT / 2)).toBe(backdrop);
 
   // Gesperrt wird `html`; `body` bleibt ohne eigenen Scrollbereich, sonst klebte
   // der App-Kopf an ihm und verschwände aus dem Bild.
@@ -47,7 +51,6 @@ test.each([0, HEIGHT])('legt den Drawer bei Scrollposition %i px unter den App-K
   expect(getComputedStyle(document.body).overflowY).toBe('visible');
   const header = shell.querySelector('[data-sticky-header]')!.getBoundingClientRect();
   expect(header.top).toBe(0);
-  expect(document.elementFromPoint(20, HEADER_HEIGHT / 2)?.closest('[data-sticky-header]')).not.toBeNull();
 });
 
 test('lässt die Seite bei offenem Drawer auch per Mausrad nicht scrollen', async () => {
@@ -60,11 +63,13 @@ test('lässt die Seite bei offenem Drawer auch per Mausrad nicht scrollen', asyn
   await expect.poll(() => window.scrollY).toBeGreaterThan(0);
   const scrollY = window.scrollY;
 
+  // Bei offenem Drawer liegt die Abdunklung über dem App-Kopf; gedreht wird
+  // über der Schublade, die stets ganz im Bild liegt.
   const aside = await openDrawer(shell);
-  await userEvent.wheel(header, { delta: { y: 300 } });
+  await userEvent.wheel(aside, { delta: { y: 300 } });
   await new Promise((resolve) => setTimeout(resolve, 100));
   expect(window.scrollY).toBe(scrollY);
-  expect(aside.getBoundingClientRect().top).toBe(HEADER_HEIGHT);
+  expect(aside.getBoundingClientRect().top).toBe(0);
 });
 
 test('gibt das Dokument nach dem Schließen frei und verlängert es nicht', async () => {
@@ -73,14 +78,14 @@ test('gibt das Dokument nach dem Schließen frei und verlängert es nicht', asyn
   window.scrollTo(0, pageHeight - HEIGHT);
   const aside = await openDrawer(shell, { animated: true });
   closeDrawer(shell);
-  await expect.poll(() => shell.querySelector('[data-testid="mobile-nav-backdrop"]')).toBeNull();
+  await expect.poll(() => shell.querySelector('[data-testid="mobile-nav-backdrop"]')!.getAttribute('data-state')).toBe('closed');
   expect(document.documentElement.style.overflow).toBe('');
   // Nach dem Hinausgleiten liegt die geschlossene Schublade wieder oben.
   await expect.poll(() => aside.style.top).toBe('0px');
   expect(document.documentElement.scrollHeight).toBe(pageHeight);
 });
 
-test('hält den hinausgleitenden Drawer unter dem App-Kopf, wenn die Seite beim Schließen nach oben springt', async () => {
+test('hält den hinausgleitenden Drawer am oberen Bildrand, wenn die Seite beim Schließen nach oben springt', async () => {
   const shell = await renderShell(WIDTH);
   window.scrollTo(0, HEIGHT);
   const aside = await openDrawer(shell, { animated: true });
@@ -98,7 +103,7 @@ test('hält den hinausgleitenden Drawer unter dem App-Kopf, wenn die Seite beim 
   await expect.poll(() => aside.style.top).toBe('0px');
   const box = aside.getBoundingClientRect();
   expect(box.right).toBeGreaterThan(0);
-  expect(box.top).toBe(HEADER_HEIGHT);
+  expect(box.top).toBe(0);
 
   const slideEnded = new Promise((resolve) => aside.addEventListener('transitionend', resolve, { once: true }));
   slide!.finish();
@@ -110,7 +115,7 @@ test('hält den hinausgleitenden Drawer unter dem App-Kopf, wenn die Seite beim 
   expect(aside.style.top).toBe('0px');
 });
 
-test('lässt den Drawer beim Schließen während des Hereingleitens unter dem App-Kopf hinausgleiten', async () => {
+test('lässt den Drawer beim Schließen während des Hereingleitens am oberen Bildrand hinausgleiten', async () => {
   const shell = await renderShell(WIDTH);
   window.scrollTo(0, HEIGHT);
   const aside = shell.querySelector('aside')!;
@@ -139,7 +144,7 @@ test('lässt den Drawer beim Schließen während des Hereingleitens unter dem Ap
   expect(aside.style.top).toBe(`${HEIGHT}px`);
   const box = aside.getBoundingClientRect();
   expect(box.right).toBeGreaterThan(0);
-  expect(box.top).toBe(HEADER_HEIGHT);
+  expect(box.top).toBe(0);
 
   const slideEnded = new Promise((resolve) => aside.addEventListener('transitionend', resolve, { once: true }));
   slide!.finish();
@@ -203,7 +208,7 @@ test('verlängert eine verkürzte Seite beim Schließen während eines aktiven R
   document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
 });
 
-test('legt einen offenen Drawer nach einem Wechsel über md und zurück wieder unter den App-Kopf', async () => {
+test('legt einen offenen Drawer nach einem Wechsel über md und zurück wieder an den oberen Bildrand', async () => {
   const shell = await renderShell(WIDTH);
   window.scrollTo(0, HEIGHT);
   const aside = await openDrawer(shell);
@@ -216,8 +221,8 @@ test('legt einen offenen Drawer nach einem Wechsel über md und zurück wieder u
   await page.viewport(WIDTH, HEIGHT);
   await expect.poll(() => main.inert).toBe(true);
 
-  expect(shell.querySelector('[data-testid="mobile-nav-backdrop"]')).not.toBeNull();
-  await expect.poll(() => aside.getBoundingClientRect().top).toBe(HEADER_HEIGHT);
+  expect(shell.querySelector('[data-testid="mobile-nav-backdrop"]')!.getAttribute('data-state')).toBe('open');
+  await expect.poll(() => aside.getBoundingClientRect().top).toBe(0);
   expect(window.scrollY).toBe(0);
 });
 
@@ -261,4 +266,46 @@ test('lässt die Seitenleiste ab md neben dem Inhalt in voller Höhe stehen', as
   expect(box.width).toBe(256);
   expect((aside.firstElementChild as HTMLElement).getBoundingClientRect().height).toBe(box.height);
   expect(document.documentElement.style.overflow).toBe('');
+});
+
+// Unter 640 px führte Tab auf die Lupe, darüber auf das Suchfeld: Beide lagen
+// rechts außerhalb des Bildes, weil der App-Kopf mitgeschoben wird (GSPP-497).
+test.each([WIDTH, 700])('führt Tab bei %i px vom Menübutton nur auf sichtbare Ziele in der Schublade', async (width) => {
+  const shell = await renderShell(width);
+  const menuButton = shell.querySelector<HTMLButtonElement>('button[aria-controls]')!;
+  const aside = await openDrawer(shell);
+  await settlePush(shell);
+  expect(document.activeElement).toBe(menuButton);
+
+  const reached: Element[] = [];
+  for (let step = 0; step < 6; step++) {
+    await userEvent.tab();
+    const focused = document.activeElement;
+    if (focused === null || !shell.contains(focused)) break;
+    reached.push(focused);
+  }
+
+  expect(reached.length).toBeGreaterThan(0);
+  expect(aside.contains(reached[0])).toBe(true);
+  for (const element of reached) {
+    const box = element.getBoundingClientRect();
+    expect(box.left).toBeGreaterThanOrEqual(0);
+    expect(box.right).toBeLessThanOrEqual(width);
+  }
+});
+
+// Ab 640 px liegt das Suchfeld im verdeckten App-Kopf; die Suchseite hat dort
+// kein eigenes Feld. Das Kürzel schließt die Schublade und fokussiert es (GSPP-497).
+test('schließt bei 700 px die Schublade per Ctrl+K und fokussiert das Suchfeld im App-Kopf', async () => {
+  const shell = await renderShell(700);
+  await openDrawer(shell);
+  await settlePush(shell);
+  const search = shell.querySelector<HTMLInputElement>('[data-testid="header-search"]')!;
+  expect(search.closest('[inert]')).not.toBeNull();
+
+  await userEvent.keyboard('{Control>}k{/Control}');
+
+  await expect.poll(() => document.activeElement).toBe(search);
+  expect(shell.querySelector('[data-mobile-nav]')).toHaveAttribute('data-mobile-nav', 'closed');
+  expect(search.closest('[inert]')).toBeNull();
 });
