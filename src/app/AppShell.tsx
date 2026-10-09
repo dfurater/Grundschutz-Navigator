@@ -463,7 +463,7 @@ export function AppShell() {
                         </h1>
                         <p className="mt-3 text-sm text-slate-600">
                           Diese Seite existiert nicht.{' '}
-                          <Link to="/" className="rounded catalog-link-color focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]">
+                          <Link to="/" className="rounded catalog-prose-link focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]">
                             Zur Startseite
                           </Link>
                         </p>

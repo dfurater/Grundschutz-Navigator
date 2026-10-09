@@ -86,7 +86,7 @@ export function HomePage() {
             Kontext des IT-Grundschutzes. Er liegt maschinenlesbar im
             OSCAL-Format vor und verbindet methodische mit konkreten
             technisch-organisatorischen Anforderungen. Mehr dazu unter{' '}
-            <Link to="/about" className="catalog-link-color">
+            <Link to="/about" className="catalog-prose-link">
               Über das Projekt
             </Link>
             .
