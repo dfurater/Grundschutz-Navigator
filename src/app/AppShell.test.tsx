@@ -28,8 +28,10 @@ vi.mock('@/components/HeaderBar', () => ({
     menuExpanded,
     menuControls,
     menuButtonRef,
+    obscured,
   }: {
     onMenuToggle: () => void;
+    obscured?: boolean;
     menuExpanded?: boolean;
     menuControls?: string;
     menuButtonRef?: RefObject<HTMLButtonElement | null>;
@@ -39,7 +41,7 @@ vi.mock('@/components/HeaderBar', () => ({
       <button type="button" ref={menuButtonRef} aria-expanded={menuExpanded} aria-controls={menuControls} onClick={onMenuToggle}>
         Menu
       </button>
-      <Link to="/suche">Lupe</Link>
+      <Link to="/suche" inert={obscured}>Lupe</Link>
     </>
   ),
 }));
@@ -218,6 +220,26 @@ describe('AppShell', () => {
     expect(main).toHaveAttribute('inert');
     fireEvent.keyDown(menuButton, { key: 'Escape' });
     expect(main).not.toHaveAttribute('inert');
+  });
+
+  it('nimmt die verdeckten Steuerungen des App-Kopfs nur bei offener mobiler Navigation aus der Bedienung', () => {
+    let persistent = false;
+    mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY && persistent);
+    const view = render(<MemoryRouter><AppShell /></MemoryRouter>);
+    const menuButton = screen.getByRole('button', { name: 'Menu' });
+    const magnifier = screen.getByText('Lupe');
+    expect(magnifier).not.toHaveAttribute('inert');
+
+    fireEvent.click(menuButton);
+    expect(magnifier).toHaveAttribute('inert');
+    expect(menuButton).not.toHaveAttribute('inert');
+    persistent = true;
+    view.rerender(<MemoryRouter><AppShell /></MemoryRouter>);
+    expect(magnifier).not.toHaveAttribute('inert');
+    persistent = false;
+    view.rerender(<MemoryRouter><AppShell /></MemoryRouter>);
+    fireEvent.click(screen.getByRole('button', { name: 'Menü schließen' }));
+    expect(magnifier).not.toHaveAttribute('inert');
   });
 
   it.each(['close', 'selection', 'backdrop'] as const)('returns focus when mobile navigation is dismissed through %s', (method) => {

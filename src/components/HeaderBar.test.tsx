@@ -74,6 +74,29 @@ describe('HeaderBar', () => {
     expect(menuButtonRef.current).toBeNull();
   });
 
+  it('nimmt verdeckt alle Steuerungen außer dem Menübutton aus der Bedienung', () => {
+    const renderHeader = (obscured: boolean) => (
+      <MemoryRouter>
+        <HeaderBar onMenuToggle={vi.fn()} obscured={obscured} />
+      </MemoryRouter>
+    );
+    const { rerender } = render(renderHeader(true));
+    const menuButton = screen.getByRole('button', { name: 'Menü öffnen' });
+    // Inerte Teilbäume fehlen im Barrierefreiheitsbaum; die Abfrage geht deshalb über das DOM.
+    const header = screen.getByTestId('header-bar');
+    const obscuredControls = [
+      header.querySelector('a[href="/"]')!,
+      screen.getByTestId('header-search'),
+      header.querySelector('a[href="/suche"]')!,
+    ];
+
+    expect(menuButton.closest('[inert]')).toBeNull();
+    for (const control of obscuredControls) expect(control.closest('[inert]')).not.toBeNull();
+
+    rerender(renderHeader(false));
+    expect(header.querySelector('[inert]')).toBeNull();
+  });
+
   it('uses the header reference theme with focus-visible rings for interactive elements', () => {
     const { container } = render(
       <MemoryRouter>

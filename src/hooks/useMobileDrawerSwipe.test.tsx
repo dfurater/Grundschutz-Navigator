@@ -244,6 +244,33 @@ describe('useMobileDrawerSwipe – geschlossene Schublade', () => {
     expect(view.onOpen).not.toHaveBeenCalled();
   });
 
+  // Waagerechtes Ziehen bewegt dort Schreibmarke oder Textauswahl (Suchfeld auf `/suche`).
+  it('öffnet nicht aus Eingabefeldern und lässt ihnen die Berührung', () => {
+    const view = render(false);
+    const search = document.createElement('input');
+    search.type = 'search';
+    const textarea = document.createElement('textarea');
+    const editable = document.createElement('div');
+    editable.setAttribute('contenteditable', '');
+    const editableText = document.createElement('span');
+    editable.append(editableText);
+    main.append(search, textarea, editable);
+
+    for (const target of [search, textarea, editableText]) {
+      touch('touchstart', target, 20);
+      expect(touch('touchmove', target, 40).defaultPrevented).toBe(false);
+      expect(touch('touchmove', target, 250).defaultPrevented).toBe(false);
+      touch('touchend', target, 250, 0, 300);
+    }
+    expect(view.onPreview).not.toHaveBeenCalled();
+    expect(view.onOpen).not.toHaveBeenCalled();
+
+    // Gegenprobe: Ein abgeschaltetes `contenteditable` ist kein Eingabefeld.
+    editable.setAttribute('contenteditable', 'false');
+    slowDrag(editableText, 20, 250);
+    expect(view.onOpen).toHaveBeenCalledTimes(1);
+  });
+
   // Die Vorschau ändert `open` nicht; ohne Routenbindung bliebe sie nach einer
   // Navigation stehen und öffnete beim Loslassen auf der neuen Seite.
   it('beendet eine Öffnen-Geste bei einer Navigation vor dem Loslassen', () => {

@@ -267,3 +267,29 @@ test('lässt die Seitenleiste ab md neben dem Inhalt in voller Höhe stehen', as
   expect((aside.firstElementChild as HTMLElement).getBoundingClientRect().height).toBe(box.height);
   expect(document.documentElement.style.overflow).toBe('');
 });
+
+// Unter 640 px führte Tab auf die Lupe, darüber auf das Suchfeld: Beide lagen
+// rechts außerhalb des Bildes, weil der App-Kopf mitgeschoben wird (GSPP-497).
+test.each([WIDTH, 700])('führt Tab bei %i px vom Menübutton nur auf sichtbare Ziele in der Schublade', async (width) => {
+  const shell = await renderShell(width);
+  const menuButton = shell.querySelector<HTMLButtonElement>('button[aria-controls]')!;
+  const aside = await openDrawer(shell);
+  await settlePush(shell);
+  expect(document.activeElement).toBe(menuButton);
+
+  const reached: Element[] = [];
+  for (let step = 0; step < 6; step++) {
+    await userEvent.tab();
+    const focused = document.activeElement;
+    if (focused === null || !shell.contains(focused)) break;
+    reached.push(focused);
+  }
+
+  expect(reached.length).toBeGreaterThan(0);
+  expect(aside.contains(reached[0])).toBe(true);
+  for (const element of reached) {
+    const box = element.getBoundingClientRect();
+    expect(box.left).toBeGreaterThanOrEqual(0);
+    expect(box.right).toBeLessThanOrEqual(width);
+  }
+});

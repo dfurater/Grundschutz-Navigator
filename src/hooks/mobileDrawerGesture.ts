@@ -30,13 +30,17 @@ function releaseVelocity(samples: readonly Sample[], releaseTime: number) {
   return last.time > first.time ? (last.x - first.x) / (last.time - first.time) : 0;
 }
 
+/** Eingabefelder, in denen waagerechtes Ziehen Schreibmarke oder Auswahl bewegt. */
+const EDITABLE_SELECTOR = 'input, textarea, select, [contenteditable]:not([contenteditable="false" i])';
+
 /**
  * Eine Öffnen-Geste beginnt nur auf der Seite selbst: nicht in festen
- * Ebenen (Sheets, Auswahlleiste) und nicht in Bereichen, die
- * selbst waagerecht scrollen, etwa breiten Tabellen.
+ * Ebenen (Sheets, Auswahlleiste), nicht in Eingabefeldern und nicht in
+ * Bereichen, die selbst waagerecht scrollen, etwa breiten Tabellen.
  */
 export function startsOpenGesture(target: EventTarget | null, shell: HTMLElement) {
   if (!(target instanceof Element) || target.closest('main, header') === null) return false;
+  if (target.closest(EDITABLE_SELECTOR) !== null) return false;
   for (let element: Element | null = target; element && element !== shell; element = element.parentElement) {
     const style = getComputedStyle(element);
     if (style.position === 'fixed') return false;

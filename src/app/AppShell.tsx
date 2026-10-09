@@ -266,6 +266,7 @@ export function AppShell() {
       <HeaderBar
         onSearch={handleSearch}
         className="mobile-nav-push"
+        obscured={mobileNavOpen}
         menuExpanded={mobileNavOpen}
         menuControls={sideNavId}
         menuButtonRef={menuButtonRef}
