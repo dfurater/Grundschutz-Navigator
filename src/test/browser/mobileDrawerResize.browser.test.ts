@@ -1,6 +1,16 @@
 import { afterEach, expect, test } from 'vitest';
 import { page } from 'vitest/browser';
-import { HEIGHT, closeDrawer, drag, openDrawer, pause, renderShell, touchEvent, unmountShell } from './mobileDrawerHarness';
+import {
+  HEIGHT,
+  closeDrawer,
+  drag,
+  openDrawer,
+  pause,
+  renderShell,
+  touchEvent,
+  translateTransition,
+  unmountShell,
+} from './mobileDrawerHarness';
 
 afterEach(unmountShell);
 
@@ -142,13 +152,17 @@ test('lässt das Öffnen bei einer reinen Höhenänderung weitergleiten', async 
   const shell = await renderPortrait();
   const aside = shell.querySelector('aside')!;
   shell.querySelector<HTMLButtonElement>('button[aria-controls]')!.click();
-  await expect.poll(() => aside.getAnimations().length).toBeGreaterThan(0);
+  await expect.poll(() => translateTransition(aside)).toBeDefined();
+  // Angehalten, damit die Bewegung nicht während des Browser-Aufrufs regulär endet.
+  const opening = translateTransition(aside)!;
+  opening.pause();
 
   const resized = new Promise((resolve) => window.addEventListener('resize', resolve, { once: true }));
   await page.viewport(PORTRAIT, HEIGHT - 100);
   await resized;
-  expect(aside.getAnimations().length).toBeGreaterThan(0);
-  await settled(aside);
+  expect(opening.playState).toBe('paused');
+  opening.play();
+  await opening.finished;
 });
 
 // Beim Wechsel vom Desktop unter `md` übernimmt die offene Schublade die mobile
