@@ -25,6 +25,7 @@ import { useDragToResize } from '@/hooks/useDragToResize';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import { useMobileDrawerPlacement } from '@/hooks/useMobileDrawerPlacement';
+import { useMobileDrawerResizeSnap } from '@/hooks/useMobileDrawerResizeSnap';
 import { useMobileDrawerSwipe } from '@/hooks/useMobileDrawerSwipe';
 import { OWN_SCROLL_AREA_QUERY } from '@/hooks/breakpointQueries';
 import { useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
@@ -154,6 +155,7 @@ export function AppShell() {
     onOpen: openSideNav,
     onClose: closeSideNav,
   });
+  useMobileDrawerResizeSnap(!isPersistentNav, shellRef);
   const drawerPlacement = useMobileDrawerPlacement(
     sideNavOpen || swipe.previewing,
     isPersistentNav,
@@ -169,6 +171,12 @@ export function AppShell() {
   const expandedNavWidth = sidebarCollapsed ? 44 : sidebarWidth;
   // Mobil bestimmt `--mobile-nav-width` die Breite (src/index.css).
   const persistentNavWidth = isPersistentNav ? expandedNavWidth : undefined;
+  // Mobil ändert sich die Breite nur mit dem Viewport, etwa beim Drehen. Sie
+  // folgt dann derselben Bewegung wie die verschobene Seite, damit beide
+  // Kanten in jedem Frame bündig bleiben.
+  const navWidthMotion = isPersistentNav
+    ? 'width var(--duration-normal) var(--easing-default)'
+    : 'width var(--mobile-nav-motion)';
 
   useCloseDrawerOnNavigation({
     locationKey: location.key,
@@ -325,7 +333,7 @@ export function AppShell() {
             width: persistentNavWidth,
             transition: isSidebarResizing || prefersReducedMotion
               ? 'none'
-              : 'width var(--duration-normal) var(--easing-default), translate var(--mobile-nav-motion)',
+              : `${navWidthMotion}, translate var(--mobile-nav-motion)`,
           }}
         >
           {sidebarCollapsed ? (

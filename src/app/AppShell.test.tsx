@@ -360,9 +360,10 @@ describe('AppShell', () => {
       </MemoryRouter>,
     );
 
+    // Mobil folgt die Breite derselben Bewegung wie die verschobene Seite.
     const sidebar = container.querySelector('aside');
     expect(sidebar).toHaveStyle({
-      transition: 'width var(--duration-normal) var(--easing-default), translate var(--mobile-nav-motion)',
+      transition: 'width var(--mobile-nav-motion), translate var(--mobile-nav-motion)',
     });
 
     mockedUseMediaQuery.mockReturnValue(true);
