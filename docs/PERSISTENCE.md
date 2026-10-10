@@ -193,7 +193,7 @@ BindingTarget = { kind: 'local',   localId:    LocalId }
 
 Der zweite Zieltyp ist nötig, weil ein lokaler SSP mit `import-profile` typischerweise auf ein **öffentliches BSI-Profil** zeigt. Gespeichert wird der Verweis, nie der Inhalt. Verbindlich gilt:
 
-- **Kein impliziter Auflösungsversuch.** Ohne gesetzte Bindung wird nicht aufgelöst — weder über die Dokument-UUID noch über Namensähnlichkeit noch über ein anderes Rateverfahren. (Der Referenzgraph löst relative und externe Ziele bereits heute nie auf; siehe [OSCAL_VALIDATION.md](OSCAL_VALIDATION.md#stufe-5--referenzgraph).)
+- **Kein impliziter Auflösungsversuch.** Ohne gesetzte Bindung wird nicht aufgelöst — weder über die Dokument-UUID noch über Namensähnlichkeit noch über ein anderes Rateverfahren. (Der Referenzgraph löst relative und externe Ziele nie auf; siehe [OSCAL_VALIDATION.md](OSCAL_VALIDATION.md#stufe-5--referenzgraph).)
 - **Kein Netzwerkfallback.** Ein `href` löst unter keinen Umständen einen Netzwerk- oder Dateizugriff aus.
 - **Zeigt eine Bindung auf ein nicht vorhandenes Ziel**, ist das Ergebnis eine benannte, fail-closed Diagnose („Referenz nicht aufgelöst"). Kein Teilergebnis, kein stiller Leerwert.
 - Bindungen sind gerichtet und werden bei Löschung **beider** Seiten entfernt.
@@ -217,7 +217,7 @@ Die Auflösung über `back-matter` und Dokumentgrenzen liegt in [GSPP-286](https
 | Vertrauensklasse | zwingend `class-2-local-user` — Vertrauen vererbt sich nicht durch Verarbeitung (ADR-2 §10) |
 | Root-UUID | **neu vergeben**, soweit das Root-Modell nach §5 `change-on-write` ist; die Übernahme ist ein fachlicher Schreibvorgang |
 | `metadata.last-modified` | Zeitpunkt der Übernahme |
-| Herkunft | `derivedFrom: { artifactKey, contentSha256, snapshotCommit }` im **Envelope** (bislang Vorgabe ohne Umsetzung im Code) |
+| Herkunft | `derivedFrom: { artifactKey, contentSha256, snapshotCommit }` im **Envelope** (Vorgabe ohne Umsetzung im Code) |
 
 `derivedFrom` ist eine **Herkunftsangabe, kein Vertrauensnachweis**. Sie hebt die Vertrauensklasse nicht an, wird nie in ein exportiertes Dokument geschrieben und erzeugt keine Provenienzanzeige im Sinne von Klasse 1.
 
@@ -332,7 +332,7 @@ Diese Grenze wird gegenüber dem Nutzer benannt.
 
 Riskante Aktionen — Gesamtlöschung, Wiederherstellung aus einem Backup über Bestandsdaten, Verwerfen eines Entwurfs — verlangen eine ausdrückliche Bestätigung, die den nicht umkehrbaren Teil benennt.
 
-### Verschlüsselung: bewertet und begründet verworfen
+### Keine Verschlüsselung
 
 Der lokale Speicher wird **nicht** verschlüsselt. Es gibt keine Instanz für Hinterlegung oder Rücksetzung eines Schlüssels; die einzige Quelle wäre eine Nutzer-Passphrase, deren Verlust endgültigen, nicht wiederherstellbaren Datenverlust bedeutete. Gegen die schwerste Restgefahr — Ausführung fremden Codes im eigenen Origin — schützte die Verschlüsselung ohnehin nicht, weil der Klartext zur Laufzeit im Speicher liegt. An ihre Stelle treten die Grenzaussage (§14) und der Export als Schutz- und Wiederherstellungsmaßnahme (§11). Eine spätere Einführung verlangt einen eigenen ADR zur Recovery-Frage ohne Backend.
 
@@ -389,7 +389,7 @@ Die Egress-Prüfung läuft in der Browser-Lane und ist die Geltungsbedingung der
 Nicht Gegenstand dieses Vertrags:
 
 - Backend, Synchronisation, geräteübergreifender Zugriff, Zusammenarbeit — nach [ADR-3](https://linear.app/grundschutz-plus-plus/issue/ADR-3) keine Produktziele
-- Verschlüsselung des lokalen Speichers — bewertet und verworfen (§13); eine Wiederaufnahme verlangt einen eigenen ADR
+- Verschlüsselung des lokalen Speichers (§13); eine Einführung verlangt einen eigenen ADR
 - Die Entscheidung, welche BSI-Artefakte `supported` werden (§8)
 - Datenschutzrechtliche Aussagen — sie liegen in [GSPP-341](https://linear.app/grundschutz-plus-plus/issue/GSPP-341)
 - Die Auswahl der IndexedDB-Abstraktion — entschieden in [GSPP-340](https://linear.app/grundschutz-plus-plus/issue/GSPP-340)
