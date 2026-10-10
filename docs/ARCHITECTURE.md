@@ -167,7 +167,8 @@ src/                              # Anwendungsquellcode
 │   ├── useModalDialog.ts             # Fokusfalle und inerter Hintergrund modaler Dialoge
 │   ├── useOverlayScrollbars.ts       # Überlagernde, beim Scrollen eingeblendete Scrollleisten
 │   ├── useRowWindow.ts               # Windowing für Listen einheitlicher Zeilenhöhe
-│   └── useScrollLock.ts              # Reversible Scroll-Sperre am Dokument (`html`)
+│   ├── useScrollLock.ts              # Reversible Scroll-Sperre am Dokument (`html`)
+│   └── useTreeNavigation.ts          # Sichtbare Baumreihenfolge, Expansion und roving tabindex
 ├── features/                     # Feature-Module (Seite + Komponenten)
 │   ├── catalog/                      # Katalogansicht
 │   │   ├── CatalogBrowser.tsx            # Katalogseite mit Tabelle, Filtern und Detailpanel
@@ -586,6 +587,12 @@ Trefferflächen von Links und Filterlabels folgen derselben Grenze wie das Katal
 Den Katalog wählt der Baustein `ScopeSwitcher` (Kontextwahl) im Kopf des `<aside>`, auf dem Desktop mit Einklappen, in der mobilen Schublade mit Schließen. Er zeigt die Titel aus `catalogDirectory` wörtlich (OSCAL `metadata.title`, siehe oben), in Kopf und Menü höchstens zweizeilig; ist die Leiste schmaler gezogen, kürzt `line-clamp-2` mit Ellipse. Das Menü endet vor dem unteren Viewport-Rand und scrollt bei niedrigen Viewports selbst. Der zugängliche Name des Auslösers ist „Katalog: “ plus Titel; die Einträge sind Links auf `buildCatalogUrl` mit `role="menuitemradio"`. Öffnen setzt den Fokus auf den aktiven Eintrag; Pfeiltasten, Pos1 und Ende bewegen ihn; Escape schließt und gibt den Fokus an den Auslöser zurück. Tab schließt ebenfalls und setzt den Fokus auf den Auslöser, verhindert die Standardaktion aber nicht: Der Tab-Schritt läuft von dort weiter, Tab landet auf dem nächsten, Shift+Tab auf dem vorherigen fokussierbaren Element. Klick außerhalb und Fokusverlust schließen ebenfalls. Nach einer Auswahl ruft der Baustein `onItemActivate` auf; die Shell schließt damit mobil die Schublade.
 
 Die Sichtbarkeitsprüfung des Header-Suchfelds verwendet `checkVisibility()`, soweit der Browser die Methode bereitstellt. Andernfalls entscheiden die tatsächlichen Layoutboxen (`getClientRects().length`), sodass das Tastenkürzel auch in älteren Browsern dieselbe CSS-Sichtbarkeit berücksichtigt.
+
+### Tastatursteuerung des Katalogbaums
+
+`TreeNav` hat einen benannten `tree` mit genau einem Tab-Einstieg auf einem sichtbaren `treeitem`. Fokus, `aria-selected` und bei Eltern `aria-expanded` liegen auf derselben Button-Zeile mit `role="treeitem"`; ihr zugänglicher Name enthält nur ihre eigenen Texte. Die umgebenden Listenelemente tragen `role="none"`. Ein geöffnetes Eltern-Treeitem besitzt die benachbarte `group` ausdrücklich über `aria-owns`, sodass Nachfahren semantisch zum Elternknoten gehören, ohne dessen Zeilennamen zu verlängern. `useTreeNavigation` leitet die sichtbare Reihenfolge aus den expandierten Knoten ab. ↑/↓ bewegen den Fokus ohne Umlauf zum vorherigen/nächsten sichtbaren Eintrag, Pos1/Ende zum ersten/letzten. → öffnet einen geschlossenen Elternknoten oder fokussiert bei geöffnetem Knoten dessen erstes Kind. ← schließt einen geöffneten Elternknoten oder fokussiert den Elternknoten. An einer Baumgrenze bleibt der Fokus stehen. Tab und Umschalt+Tab verlassen den Baum regulär; der nächste Einstieg verwendet den zuletzt fokussierten sichtbaren Knoten.
+
+Pfeiltasten verändern weder Auswahl noch URL. Enter, Leertaste und Klick aktivieren die Zeile: Eltern öffnen/schließen, und Einträge mit ID wählen zugleich ihr Navigationsziel. Gruppen ohne ID sind weiterhin expandierbar und navigieren nicht. Eine neue Routenauswahl öffnet ihre Vorfahren automatisch; manuelles Kollabieren bleibt bei unveränderter Auswahl möglich. Verschwindet der aktive Knoten, wird der Tab-Einstieg auf den nächsten sichtbaren Vorfahren, ersatzweise die sichtbare Auswahl oder den ersten Eintrag, gelegt. Ein durch Entfernen verlorener Baumfokus wird nur innerhalb eines nicht inerten Baums repariert; eine Routenseite oder die mobile Schublade behalten ihre eigene Fokusführung. AppShell setzt die Bauminstanz beim Wechsel des aktiven Katalogschlüssels zurück, damit gleiche Gruppenkennungen verschiedener Kataloge keinen Fokus-/Expansionszustand teilen. Die vorhandenen Kürzelbreiten und der innere Fokusring bleiben erhalten. Komponenten- und Chromium-Tests prüfen verschachtelte Daten, Gruppen ohne ID, Fokus-Lifecycle sowie den realen gepinnten BSI-Katalog im Desktop- und Drawer-Kontext.
 
 ### Mobile Navigation
 

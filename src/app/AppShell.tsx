@@ -399,6 +399,7 @@ export function AppShell() {
                 )}
                 {!loading && !error && treeItems.length > 0 && (
                   <TreeNav
+                    key={activeCatalogKey}
                     items={treeItems}
                     onSelect={handleTreeSelect}
                     selectedId={selectedId}
