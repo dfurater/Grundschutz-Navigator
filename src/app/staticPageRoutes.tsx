@@ -1,4 +1,6 @@
+import type { ReactNode } from 'react';
 import { lazyPage } from '@/app/lazyPage';
+import type { LazyPage } from '@/app/lazyPage';
 import { HomePage } from '@/features/home/HomePage';
 import { PAGE_TITLES } from '@/app/pageTitles';
 
@@ -24,39 +26,39 @@ const LizenzenPage = lazyPage(() =>
  * Statische Seitenrouten mit ihrem Titel (GSPP-202).
  *
  * Der Titel gehört zur Routendefinition, nicht in die Seitenkomponente: Weil
- * `AppShell` diese Liste rendert, kann keine statische Route ohne deklarierten
+ * `appRoutes.tsx` diese Liste rendert, kann keine statische Route ohne deklarierten
  * Titel existieren, und ein Test iteriert über genau dieselbe Quelle. Routen mit
  * datenabhängigem Titel — Katalog und Vokabulardetail — stehen bewusst nicht
  * hier, weil ihr Titel erst aus aufgelöstem Katalogzustand entsteht.
  *
  * Chunk-Vertrag (GSPP-506): Die Startseite bleibt im Hauptchunk, weil sie der
- * erste Einstieg ist; alle übrigen Seiten sind `lazy` und werden erst beim
- * ersten Aufruf geladen. Der Titel bleibt trotzdem Teil der Routendefinition:
- * `AppShell` rendert ihn mit der Route. Solange eine Seite beim Direktaufruf
- * noch lädt, liefert die Grenze um die Routen den Titel selbst (aus dieser
- * Tabelle); bei Client-Navigation hält die Transition die vorige Seite samt
- * Titel. Jede Lazy-Route braucht einen Eintrag in `lazyRouteModules.mjs`, damit
+ * erste Einstieg ist; alle übrigen Seiten tragen ein `page`-Modul, das der
+ * Router erst beim ersten Aufruf lädt (Routenfeld `lazy`, `appRoutes.tsx`). Der
+ * Titel bleibt trotzdem Teil der Routendefinition: `appRoutes.tsx` rendert ihn
+ * mit der Route und im Ladezustand des Direktaufrufs; bei Client-Navigation
+ * bleibt die vorige Seite samt Titel stehen, bis der Chunk da ist. Jede Lazy-Route braucht einen Eintrag in `lazyRouteModules.mjs`, damit
  * der Build ihrem statischen Einstieg ein `modulepreload` mitgibt.
  */
 export interface StaticPageRoute {
   readonly path: string;
   /** Ohne Titel trägt die Route den reinen Produktnamen. */
   readonly title?: string;
-  readonly element: React.ReactNode;
+  /** Seite im Hauptchunk; nur, wo kein `page` steht. */
+  readonly element?: ReactNode;
+  /** Seitenmodul einer Lazy-Route; der Router lädt es beim ersten Aufruf. */
+  readonly page?: LazyPage;
   /** Seiten mit eigenem Scrollcontainer (z. B. die Suche) setzen `false`. */
   readonly scroll?: boolean;
-  /** Nur Lazy-Routen: lädt den Seitenchunk vor (siehe `preloadStaticPage`). */
-  readonly preload?: () => Promise<void>;
 }
 
 export const STATIC_PAGE_ROUTES: readonly StaticPageRoute[] = [
   { path: '/', element: <HomePage /> },
-  { path: '/suche', title: PAGE_TITLES.search, element: <SearchPage />, scroll: false, preload: SearchPage.preload },
-  { path: '/vokabular', title: PAGE_TITLES.vocabularies, element: <VocabularyOverviewPage />, preload: VocabularyOverviewPage.preload },
-  { path: '/about', title: PAGE_TITLES.about, element: <AboutPage />, preload: AboutPage.preload },
-  { path: '/datenschutz', title: PAGE_TITLES.privacy, element: <DatenschutzPage />, preload: DatenschutzPage.preload },
-  { path: '/impressum', title: PAGE_TITLES.imprint, element: <ImpressumPage />, preload: ImpressumPage.preload },
-  { path: '/lizenzen', title: PAGE_TITLES.licenses, element: <LizenzenPage />, preload: LizenzenPage.preload },
+  { path: '/suche', title: PAGE_TITLES.search, page: SearchPage, scroll: false },
+  { path: '/vokabular', title: PAGE_TITLES.vocabularies, page: VocabularyOverviewPage },
+  { path: '/about', title: PAGE_TITLES.about, page: AboutPage },
+  { path: '/datenschutz', title: PAGE_TITLES.privacy, page: DatenschutzPage },
+  { path: '/impressum', title: PAGE_TITLES.imprint, page: ImpressumPage },
+  { path: '/lizenzen', title: PAGE_TITLES.licenses, page: LizenzenPage },
 ];
 
 /** Die statische Lazy-Route zu `pathname` (relativ zur Deployment-Basis), sonst `undefined`. */
@@ -64,14 +66,14 @@ export function findLazyStaticRoute(pathname: string): StaticPageRoute | undefin
   // Schrägstriche am Ende ohne Regex abschneiden: `/\/+$/` gilt unter Sonar S8786 als superlinear.
   let path = pathname;
   while (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
-  return STATIC_PAGE_ROUTES.find((route) => route.path === path && route.preload !== undefined);
+  return STATIC_PAGE_ROUTES.find((route) => route.path === path && route.page !== undefined);
 }
 
 /**
  * Lädt den Chunk der statischen Lazy-Route zu `pathname` (relativ zur
  * Deployment-Basis) vor. Routen ohne Chunk sind sofort erledigt; ein Ladefehler
- * wird nicht gemeldet, der erste Render der Seite versucht es erneut.
+ * wird nicht gemeldet, der Router versucht es beim Laden der Route erneut.
  */
 export function preloadStaticPage(pathname: string): Promise<void> {
-  return findLazyStaticRoute(pathname)?.preload?.() ?? Promise.resolve();
+  return findLazyStaticRoute(pathname)?.page?.preload() ?? Promise.resolve();
 }

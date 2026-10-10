@@ -29,7 +29,7 @@ export function findLazyRoutePreload(routePath: string): RoutePreload | undefine
     return { key: VOCABULARY_DETAIL_ROUTE_PATTERN, preload: VocabularyNamespacePage.preload };
   }
   const route = findLazyStaticRoute(routePath);
-  return route?.preload ? { key: route.path, preload: route.preload } : undefined;
+  return route?.page ? { key: route.path, preload: route.page.preload } : undefined;
 }
 
 function dataSaverActive(): boolean {

@@ -1,9 +1,6 @@
 import { useMemo, useState, useEffect, useId, useRef } from 'react';
 import {
-  Routes,
-  Route,
-  Link,
-  Navigate,
+  Outlet,
   matchPath,
   useNavigate,
   useLocation,
@@ -29,48 +26,19 @@ import { useMobileDrawerResizeSnap } from '@/hooks/useMobileDrawerResizeSnap';
 import { useMobileDrawerSwipe } from '@/hooks/useMobileDrawerSwipe';
 import { OWN_SCROLL_AREA_QUERY } from '@/hooks/breakpointQueries';
 import { useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
-import { CatalogBrowser } from '@/features/catalog/CatalogBrowser';
 import { isCatalogKey } from '@/domain/sourceRegistry';
 import type { CatalogKey } from '@/domain/sourceRegistry';
 import {
   CATALOG_ROUTE_PATTERN,
   CONTROL_ROUTE_PATTERN,
   GROUP_ROUTE_PATTERN,
-  VOCABULARY_DETAIL_ROUTE_PATTERN,
   buildCatalogUrl,
   buildGroupUrl,
   resolveControlRoute,
 } from '@/app/routes';
-import { PageTitle } from '@/app/PageTitle';
-import { PAGE_TITLES } from '@/app/pageTitles';
-import { LazyRoute } from '@/app/RouteBoundary';
 import { useRoutePrefetch } from '@/app/routePrefetch';
 import { NavigationPendingIndicator } from '@/app/navigationPending';
-import { VocabularyNamespacePage } from '@/app/vocabularyDetailPage';
-import { STATIC_PAGE_ROUTES } from '@/app/staticPageRoutes';
 import { MobileNavigationContext } from '@/state/MobileNavigationContext';
-
-// Titel der Seite, die gerade lädt. Er greift nur im Fallback beim Direktaufruf,
-// wenn noch keine Route gerendert ist; bei Client-Navigation hält die Transition
-// die vorige Seite samt ihrem Titel, bis der Chunk da ist.
-function pendingTitle(pathname: string): string | undefined {
-  if (matchPath(VOCABULARY_DETAIL_ROUTE_PATTERN, pathname)) return PAGE_TITLES.vocabularies;
-  return STATIC_PAGE_ROUTES.find((route) => matchPath(route.path, pathname))?.title;
-}
-
-/* ------------------------------------------------------------------ */
-/*  PageScroll — scroll wrapper for page content                      */
-/*  Footer lives outside as a direct child of <main> on all routes.  */
-/* ------------------------------------------------------------------ */
-
-function PageScroll({ children }: Readonly<{ children: React.ReactNode }>) {
-  const scrollAreaRef = useOverlayScrollbars<HTMLDivElement>(useMediaQuery(OWN_SCROLL_AREA_QUERY));
-  return (
-    <div ref={scrollAreaRef} className="flex-1 md:overflow-y-auto pb-safe lg:pb-0">
-      {children}
-    </div>
-  );
-}
 
 /* ------------------------------------------------------------------ */
 /*  Build TreeNav items from catalog data                              */
@@ -449,54 +417,7 @@ export function AppShell() {
           className="mobile-nav-push flex-1 min-w-0 flex flex-col bg-white md:overflow-hidden"
         >
           <MobileNavigationContext.Provider value={mobileNavBlocksFixed}>
-            <LazyRoute resetKey={location.pathname} fallbackTitle={pendingTitle(location.pathname)}>
-              <Routes>
-                {STATIC_PAGE_ROUTES.map(({ path, title, element, scroll = true }) => (
-                  <Route
-                    key={path}
-                    path={path}
-                    element={
-                      <>
-                        <PageTitle title={title} />
-                        {scroll ? <PageScroll>{element}</PageScroll> : element}
-                      </>
-                    }
-                  />
-                ))}
-                <Route path={CONTROL_ROUTE_PATTERN} element={<CatalogBrowser />} />
-                <Route path={GROUP_ROUTE_PATTERN} element={<CatalogBrowser />} />
-                <Route path={CATALOG_ROUTE_PATTERN} element={<CatalogBrowser />} />
-                <Route
-                  path={VOCABULARY_DETAIL_ROUTE_PATTERN}
-                  element={<PageScroll><VocabularyNamespacePage /></PageScroll>}
-                />
-                <Route
-                  path="/mehr"
-                  element={<><PageTitle title={PAGE_TITLES.about} /><Navigate to="/about" replace /></>}
-                />
-                <Route
-                  path="*"
-                  element={
-                    <>
-                      <PageTitle title={PAGE_TITLES.notFound} />
-                      <PageScroll>
-                        <div className="p-6">
-                          <h1 className="type-page-title">
-                            404 — Seite nicht gefunden
-                          </h1>
-                          <p className="mt-3 text-sm text-slate-600">
-                            Diese Seite existiert nicht.{' '}
-                            <Link to="/" className="rounded catalog-prose-link focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]">
-                              Zur Startseite
-                            </Link>
-                          </p>
-                        </div>
-                      </PageScroll>
-                    </>
-                  }
-                />
-              </Routes>
-            </LazyRoute>
+            <Outlet />
           </MobileNavigationContext.Provider>
           <Footer />
         </main>

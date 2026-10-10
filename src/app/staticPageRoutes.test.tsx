@@ -8,8 +8,8 @@ vi.mock('@/features/pages/ImpressumPage', () => {
 });
 
 describe('preloadStaticPage', () => {
-  it('führt Lazy-Routen mit einer preload-Funktion, die Startseite ohne', () => {
-    const withPreload = STATIC_PAGE_ROUTES.filter(({ preload }) => preload).map(({ path }) => path);
+  it('führt Lazy-Routen mit einem Seitenmodul, die Startseite ohne', () => {
+    const withPreload = STATIC_PAGE_ROUTES.filter(({ page }) => page).map(({ path }) => path);
 
     expect(withPreload).toEqual(['/suche', '/vokabular', '/about', '/datenschutz', '/impressum', '/lizenzen']);
   });

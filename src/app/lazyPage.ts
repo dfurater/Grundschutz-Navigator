@@ -1,37 +1,35 @@
-import { createElement, lazy, useState } from 'react';
-import type { ComponentType, ReactElement } from 'react';
+import type { ComponentType } from 'react';
 
 export interface LazyPage {
-  (): ReactElement;
-  /** Lädt den Seitenchunk vor; ein Fehlschlag bleibt still, der erste Render versucht es erneut. */
+  /** Lädt den Seitenchunk; ein Fehlschlag wird an den Router weitergegeben. */
+  readonly load: () => Promise<ComponentType>;
+  /** Lädt den Seitenchunk vor; ein Fehlschlag bleibt still, die Navigation versucht es erneut. */
   readonly preload: () => Promise<void>;
 }
 
 /**
- * `React.lazy` mit Sofortpfad für bereits geladene Seiten (GSPP-506), für Seiten
- * ohne Props.
+ * Seitenmodul einer Lazy-Route (GSPP-506), für Seiten ohne Props.
  *
- * Ein `lazy()`-Aufruf suspendiert beim ersten Render immer, auch wenn der Chunk
- * schon im Speicher liegt, und der gezeigte Fallback bleibt mindestens 300 ms
- * stehen. Ist der Chunk per `preload()` vor dem ersten Render eingetroffen,
- * rendert die Seite deshalb direkt. Die Wahl trifft jede Instanz einmal beim
- * Mounten: Ein späteres Umschalten vom `lazy`- auf den Seitentyp würde die
- * Seite samt ihrem Zustand neu mounten.
+ * Den Chunk lädt der Router über das Routenfeld `lazy` (`appRoutes.tsx`), bevor
+ * er die Navigation festschreibt: Bis dahin bleibt die vorige Seite stehen, und
+ * `useNavigation()` meldet `loading`. `preload()` holt denselben Chunk vorab
+ * (Einstieg, Navigationsabsicht). Vorladen und Router teilen sich einen
+ * laufenden Ladevorgang; nach einem Fehlschlag versucht der nächste Aufruf es neu.
  */
 export function lazyPage(load: () => Promise<{ default: ComponentType }>): LazyPage {
-  let loaded: ComponentType | undefined;
-  const Lazy = lazy(() => load().then((module) => {
-    loaded = module.default;
-    return module;
-  }));
-
-  function Page(): ReactElement {
-    const [Component] = useState<ComponentType>(() => loaded ?? Lazy);
-    return createElement(Component);
-  }
-  Page.preload = (): Promise<void> => load().then(
-    (module) => { loaded = module.default; },
-    () => undefined,
-  );
-  return Page;
+  let pending: Promise<ComponentType> | undefined;
+  const loadComponent = (): Promise<ComponentType> => {
+    pending ??= load().then(
+      (module) => module.default,
+      (error: unknown) => {
+        pending = undefined;
+        throw error;
+      },
+    );
+    return pending;
+  };
+  return {
+    load: loadComponent,
+    preload: () => loadComponent().then(() => undefined, () => undefined),
+  };
 }

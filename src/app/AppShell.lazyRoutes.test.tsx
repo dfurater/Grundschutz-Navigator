@@ -1,10 +1,9 @@
-import { act, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { act, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { useCatalog } from '@/hooks/useCatalog';
 import { catalogCollectionDefaults } from '@/test/catalogState';
 import { expectSingleDocumentTitle } from '@/test/documentTitle';
-import { AppShell } from './AppShell';
+import { renderAppShell } from '@/test/renderAppShell';
 import { PAGE_TITLES, PRODUCT_TITLE } from './pageTitles';
 import { STATIC_PAGE_ROUTES } from './staticPageRoutes';
 
@@ -14,7 +13,7 @@ import { STATIC_PAGE_ROUTES } from './staticPageRoutes';
  *
  * Gilt für den Direktaufruf; die Client-Navigation prüft AppShell.routeBoundary.test.tsx.
  * Die Seitenmodule sind hier absichtlich gesperrt, bis der Test sie freigibt.
- * `lazy()` merkt sich ein aufgelöstes Modul für die Lebensdauer der Testdatei;
+ * `lazyPage` merkt sich ein aufgelöstes Modul für die Lebensdauer der Testdatei;
  * diese Datei rendert deshalb jede Seite genau einmal und enthält nur diese
  * Fälle. AppShell.test.tsx prüft die übrige Shell mit sofort verfügbaren Mocks.
  */
@@ -81,6 +80,9 @@ const LAZY_CASES = [
   { path: '/lizenzen', gate: gates.licenses, marker: 'Lizenzseite' },
 ] as const;
 
+/** Abfragen innerhalb von `<main>`: Der Ladehinweis der Navigation liegt außerhalb. */
+const inMain = () => within(document.querySelector('main')!);
+
 function mockCatalogState() {
   vi.mocked(useCatalog).mockReturnValue({
     ...catalogCollectionDefaults(),
@@ -100,13 +102,9 @@ describe('AppShell: nachgeladene Nebenrouten', () => {
   it.each(LAZY_CASES)('$path: Titel und Ladezustand stehen vor dem Chunk, die Seite danach', async ({ path, gate, marker }) => {
     mockCatalogState();
     const title = STATIC_PAGE_ROUTES.find((route) => route.path === path)?.title;
-    render(
-      <MemoryRouter initialEntries={[path]}>
-        <AppShell />
-      </MemoryRouter>,
-    );
+    renderAppShell([path]);
 
-    expect(screen.getByRole('status')).toHaveTextContent('Seite wird geladen…');
+    expect(inMain().getByRole('status')).toHaveTextContent('Seite wird geladen…');
     expect(screen.getByRole('heading', { level: 1, name: title })).toHaveClass('sr-only');
     expect(screen.queryByText(marker)).not.toBeInTheDocument();
     expectSingleDocumentTitle(`${title} | ${PRODUCT_TITLE}`);
@@ -117,20 +115,16 @@ describe('AppShell: nachgeladene Nebenrouten', () => {
     await act(async () => { gate.open(); });
 
     expect(await screen.findByText(marker)).toBeInTheDocument();
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(inMain().queryByRole('status')).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { level: 1, name: title })).not.toBeInTheDocument();
     expectSingleDocumentTitle(`${title} | ${PRODUCT_TITLE}`);
   });
 
   it('/vokabular/:namespaceId: trägt den Vokabeltitel schon im Ladezustand', async () => {
     mockCatalogState();
-    render(
-      <MemoryRouter initialEntries={['/vokabular/security-level']}>
-        <AppShell />
-      </MemoryRouter>,
-    );
+    renderAppShell(['/vokabular/security-level']);
 
-    expect(screen.getByRole('status')).toHaveTextContent('Seite wird geladen…');
+    expect(inMain().getByRole('status')).toHaveTextContent('Seite wird geladen…');
     expect(screen.getByRole('heading', { level: 1, name: PAGE_TITLES.vocabularies })).toHaveClass('sr-only');
     expectSingleDocumentTitle(`${PAGE_TITLES.vocabularies} | ${PRODUCT_TITLE}`);
 
@@ -141,14 +135,10 @@ describe('AppShell: nachgeladene Nebenrouten', () => {
 
   it('lädt die Startseite ohne Ladezustand', () => {
     mockCatalogState();
-    render(
-      <MemoryRouter initialEntries={['/']}>
-        <AppShell />
-      </MemoryRouter>,
-    );
+    renderAppShell(['/']);
 
     expect(screen.getByText('Startseite')).toBeInTheDocument();
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(inMain().queryByRole('status')).not.toBeInTheDocument();
     expectSingleDocumentTitle(PRODUCT_TITLE);
   });
 });

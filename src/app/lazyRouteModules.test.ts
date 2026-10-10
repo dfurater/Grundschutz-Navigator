@@ -21,7 +21,7 @@ function routeImports(source: string): Record<string, string | undefined> {
   );
   return Object.fromEntries(
     [...source.matchAll(/\{ path: '([^']+)'([^}\n]*)\}/g)]
-      .map(([, route, rest]) => [route, /preload: (\w+)\.preload/.exec(rest)?.[1]] as const)
+      .map(([, route, rest]) => [route, /page: (\w+)/.exec(rest)?.[1]] as const)
       .filter((entry): entry is readonly [string, string] => entry[1] !== undefined)
       .map(([route, page]) => [route, importByPage.get(page)]),
   );
@@ -36,7 +36,7 @@ function expectedRouteImports(table: Readonly<Record<string, string>>): Record<s
 
 describe('LAZY_ROUTE_MODULES', () => {
   it('nennt genau die lazy geladenen statischen Routen', () => {
-    const lazyPaths = STATIC_PAGE_ROUTES.filter(({ preload }) => preload !== undefined).map(({ path }) => path);
+    const lazyPaths = STATIC_PAGE_ROUTES.filter(({ page }) => page !== undefined).map(({ path }) => path);
 
     expect(Object.keys(LAZY_ROUTE_MODULES).sort()).toEqual([...lazyPaths].sort());
     expect(lazyPaths.length).toBeGreaterThan(0);

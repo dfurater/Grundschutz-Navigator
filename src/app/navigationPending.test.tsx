@@ -1,63 +1,51 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { Component, Suspense, lazy } from 'react';
-import type { ComponentType, ReactNode } from 'react';
-import { Link, MemoryRouter, Route, Routes, UNSAFE_createMemoryHistory, useNavigate } from 'react-router';
+import type { ComponentType } from 'react';
+import { Link, Outlet, createMemoryRouter } from 'react-router';
+import type { RouteObject } from 'react-router';
+import { RouterProvider } from 'react-router/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  NAVIGATION_PENDING_DELAY_MS,
-  NavigationPendingIndicator,
-  TransitionRouter,
-} from './navigationPending';
+import { NAVIGATION_PENDING_DELAY_MS, NavigationPendingIndicator } from './navigationPending';
 
-/** Seite, deren Chunk erst auf Aufruf von `resolve` (oder `reject`) eintrifft. */
-function deferredPage(name: string): { Page: ComponentType; resolve: () => void; reject: () => void } {
+/** Lazy-Route, deren Modul erst auf Aufruf von `resolve` (oder `reject`) eintrifft. */
+function deferredRoute(path: string, name: string): { route: RouteObject; resolve: () => void; reject: () => void } {
   let release: () => void = () => {};
   let fail: () => void = () => {};
   const arrived = new Promise<void>((resolve, reject) => {
     release = resolve;
     fail = () => reject(new Error('Chunk nicht erreichbar'));
   });
-  const Page = lazy(async () => {
-    await arrived;
-    return { default: () => <h1>{name}</h1> };
-  });
-  return { Page, resolve: release, reject: fail };
+  const route: RouteObject = {
+    path,
+    lazy: async () => {
+      await arrived;
+      const Component: ComponentType = () => <h1>{name}</h1>;
+      return { Component };
+    },
+  };
+  return { route, resolve: release, reject: fail };
 }
 
-class ErrorCatcher extends Component<{ children: ReactNode }, { failed: boolean }> {
-  override state = { failed: false };
-
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-
-  override render() {
-    return this.state.failed ? <p role="alert">Fehlerfläche</p> : this.props.children;
-  }
-}
-
-function ProgrammaticNavigation() {
-  const navigate = useNavigate();
-  return <button type="button" onClick={() => { void navigate('/langsam'); }}>Programmnavigation</button>;
-}
-
-function renderApp(Slow: ComponentType) {
-  const history = UNSAFE_createMemoryHistory({ initialEntries: ['/'], v5Compat: true });
-  render(
-    <TransitionRouter history={history}>
+function Layout() {
+  return (
+    <>
       <Link to="/">Start</Link>
       <Link to="/langsam">Langsam</Link>
-      <ProgrammaticNavigation />
       <NavigationPendingIndicator />
-      <Suspense fallback={<p>Fallback</p>}>
-        <Routes>
-          <Route path="/" element={<h1>Start</h1>} />
-          <Route path="/langsam" element={<Slow />} />
-        </Routes>
-      </Suspense>
-    </TransitionRouter>,
+      <Outlet />
+    </>
   );
-  return history;
+}
+
+function renderApp(slow: RouteObject) {
+  const router = createMemoryRouter([{
+    element: <Layout />,
+    children: [{
+      ErrorBoundary: () => <p role="alert">Fehlerfläche</p>,
+      children: [{ path: '/', element: <h1>Start</h1> }, slow],
+    }],
+  }]);
+  render(<RouterProvider router={router} />);
+  return router;
 }
 
 const PENDING_TEXT = 'Seite wird geladen…';
@@ -66,13 +54,13 @@ async function advance(ms: number) {
   await act(async () => { vi.advanceTimersByTime(ms); });
 }
 
-describe('TransitionRouter mit NavigationPendingIndicator', () => {
+describe('NavigationPendingIndicator', () => {
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); });
 
-  it('zeigt den Hinweis erst nach der Schwelle und hält bis dahin die vorige Seite', async () => {
-    const slow = deferredPage('Langsame Seite');
-    renderApp(slow.Page);
+  it('zeigt den Hinweis erst nach der Schwelle und hält bis dahin vorige Seite und Ort', async () => {
+    const slow = deferredRoute('/langsam', 'Langsame Seite');
+    const router = renderApp(slow.route);
     const status = screen.getByRole('status');
     expect(status).toBeEmptyDOMElement();
 
@@ -80,8 +68,8 @@ describe('TransitionRouter mit NavigationPendingIndicator', () => {
     await advance(NAVIGATION_PENDING_DELAY_MS - 1);
 
     expect(screen.getByRole('heading', { name: 'Start' })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe('/');
     expect(status).toBeEmptyDOMElement();
-    expect(screen.queryByText('Fallback')).not.toBeInTheDocument();
 
     await advance(1);
 
@@ -93,14 +81,15 @@ describe('TransitionRouter mit NavigationPendingIndicator', () => {
     await act(async () => { slow.resolve(); });
 
     expect(screen.getByRole('heading', { name: 'Langsame Seite' })).toBeInTheDocument();
-    expect(screen.getByRole('status')).toBeEmptyDOMElement();
+    expect(router.state.location.pathname).toBe('/langsam');
+    expect(status).toBeEmptyDOMElement();
   });
 
   it('meldet auch eine Navigation ohne Link (Programm, Tastenkürzel)', async () => {
-    const slow = deferredPage('Langsame Seite');
-    renderApp(slow.Page);
+    const slow = deferredRoute('/langsam', 'Langsame Seite');
+    const router = renderApp(slow.route);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Programmnavigation' }));
+    act(() => { void router.navigate('/langsam'); });
     await advance(NAVIGATION_PENDING_DELAY_MS);
 
     expect(screen.getByRole('status')).toHaveTextContent(PENDING_TEXT);
@@ -113,15 +102,14 @@ describe('TransitionRouter mit NavigationPendingIndicator', () => {
   });
 
   it('räumt den Hinweis, wenn eine weitere Navigation die wartende ablöst', async () => {
-    const slow = deferredPage('Langsame Seite');
-    renderApp(slow.Page);
+    const slow = deferredRoute('/langsam', 'Langsame Seite');
+    const router = renderApp(slow.route);
 
     fireEvent.click(screen.getByRole('link', { name: 'Langsam' }));
     await advance(NAVIGATION_PENDING_DELAY_MS);
     expect(screen.getByRole('status')).toHaveTextContent(PENDING_TEXT);
 
-    fireEvent.click(screen.getByRole('link', { name: 'Start' }));
-    await advance(0);
+    await act(async () => { await router.navigate('/?abgeloest'); });
 
     expect(screen.getByRole('status')).toBeEmptyDOMElement();
     expect(screen.getByRole('heading', { name: 'Start' })).toBeInTheDocument();
@@ -132,27 +120,14 @@ describe('TransitionRouter mit NavigationPendingIndicator', () => {
 
     expect(screen.getByRole('heading', { name: 'Start' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Langsame Seite' })).not.toBeInTheDocument();
+    expect(router.state.location.search).toBe('?abgeloest');
     expect(screen.getByRole('status')).toBeEmptyDOMElement();
   });
 
   it('räumt den Hinweis, wenn der Chunk fehlschlägt', async () => {
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const failing = deferredPage('Nie sichtbar');
-    const history = UNSAFE_createMemoryHistory({ initialEntries: ['/'], v5Compat: true });
-    render(
-      <TransitionRouter history={history}>
-        <Link to="/langsam">Langsam</Link>
-        <NavigationPendingIndicator />
-        <ErrorCatcher>
-          <Suspense fallback={<p>Fallback</p>}>
-            <Routes>
-              <Route path="/" element={<h1>Start</h1>} />
-              <Route path="/langsam" element={<failing.Page />} />
-            </Routes>
-          </Suspense>
-        </ErrorCatcher>
-      </TransitionRouter>,
-    );
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const failing = deferredRoute('/langsam', 'Nie sichtbar');
+    renderApp(failing.route);
 
     fireEvent.click(screen.getByRole('link', { name: 'Langsam' }));
     await advance(NAVIGATION_PENDING_DELAY_MS);
@@ -162,31 +137,6 @@ describe('TransitionRouter mit NavigationPendingIndicator', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent('Fehlerfläche');
     expect(screen.getByRole('status')).toBeEmptyDOMElement();
-    consoleError.mockRestore();
-  });
-
-  it('übernimmt Basis und Verlauf wie BrowserRouter', () => {
-    const history = UNSAFE_createMemoryHistory({ initialEntries: ['/basis/langsam'], v5Compat: true });
-    render(
-      <TransitionRouter history={history} basename="/basis">
-        <Routes>
-          <Route path="/langsam" element={<h1>Unter der Basis</h1>} />
-        </Routes>
-      </TransitionRouter>,
-    );
-
-    expect(screen.getByRole('heading', { name: 'Unter der Basis' })).toBeInTheDocument();
-  });
-});
-
-describe('NavigationPendingIndicator außerhalb von TransitionRouter', () => {
-  it('rendert nichts', () => {
-    const { container } = render(
-      <MemoryRouter>
-        <NavigationPendingIndicator />
-      </MemoryRouter>,
-    );
-
-    expect(container).toBeEmptyDOMElement();
+    vi.mocked(console.error).mockRestore();
   });
 });

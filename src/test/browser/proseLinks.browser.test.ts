@@ -5,7 +5,6 @@ import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { userEvent } from 'vitest/browser';
-import { AppShell } from '@/app/AppShell';
 import type { Catalog } from '@/domain/models';
 import { ENTRY_CATALOG_KEY } from '@/domain/sourceRegistry';
 import { CatalogTargetNotFound } from '@/features/catalog/CatalogTargetNotFound';
@@ -16,6 +15,7 @@ import { LizenzenPage } from '@/features/pages/LizenzenPage';
 import { CatalogContext } from '@/state/CatalogContext';
 import { createInitialState, projectPublicState } from '@/state/catalogReducer';
 import '@/index.css';
+import { appShellAt } from './appShellRouter';
 
 /**
  * Links mitten im Fließtext sind auch ohne Farbwahrnehmung als Links erkennbar
@@ -48,25 +48,26 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-function render(element: ReactElement, route = '/') {
+/** `route === null`: Das Element bringt seinen Router selbst mit (Shell im Data-Router). */
+function render(element: ReactElement, route: string | null = '/') {
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
   flushSync(() => {
     root?.render(createElement(CatalogContext.Provider, { value: catalogState },
-      createElement(MemoryRouter, { initialEntries: [route] }, element),
+      route === null ? element : createElement(MemoryRouter, { initialEntries: [route] }, element),
     ));
   });
   return host;
 }
 
-const surfaces: ReadonlyArray<readonly [string, () => ReactElement, string, readonly string[]]> = [
+const surfaces: ReadonlyArray<readonly [string, () => ReactElement, string | null, readonly string[]]> = [
   ['Startseite', () => createElement(HomePage), '/', ['Über das Projekt']],
   ['Datenschutz', () => createElement(DatenschutzPage), '/', ['kontakt@example.com', 'GitHub Privacy Statement', 'Data Privacy Framework']],
   ['Impressum', () => createElement(ImpressumPage), '/', ['kontakt@example.com']],
   ['Lizenzen', () => createElement(LizenzenPage), '/', ['Stand-der-Technik-Bibliothek', 'dfurater/Grundschutz-Navigator']],
   ['Katalogziel nicht gefunden', () => createElement(CatalogTargetNotFound, { catalog }), '/', ['Zum Katalog']],
-  ['Seite nicht gefunden', () => createElement(AppShell), '/gibt-es-nicht', ['Zur Startseite']],
+  ['Seite nicht gefunden', () => appShellAt('/gibt-es-nicht'), null, ['Zur Startseite']],
 ];
 
 function proseLinks(container: HTMLElement, names: readonly string[]) {

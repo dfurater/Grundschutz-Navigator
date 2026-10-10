@@ -1,54 +1,60 @@
-import { act, render, screen } from '@testing-library/react';
-import { Suspense, useEffect } from 'react';
 import { describe, expect, it } from 'vitest';
 import { lazyPage } from './lazyPage';
 
-function pageLoader(onMount: () => void = () => {}) {
-  const Content = () => {
-    useEffect(onMount, []);
-    return <h1>Seite</h1>;
-  };
-  return () => Promise.resolve({ default: Content });
-}
-
-const Frame = ({ children }: Readonly<{ children: React.ReactNode }>) => (
-  <Suspense fallback={<p>Lädt</p>}>{children}</Suspense>
-);
+const Content = () => <h1>Seite</h1>;
 
 describe('lazyPage', () => {
-  it('suspendiert ohne Vorladen beim ersten Render und zeigt danach die Seite', async () => {
-    const Page = lazyPage(pageLoader());
-    render(<Frame><Page /></Frame>);
+  it('liefert die Seitenkomponente aus dem Modul', async () => {
+    const page = lazyPage(() => Promise.resolve({ default: Content }));
 
-    expect(screen.getByText('Lädt')).toBeInTheDocument();
-    expect(await screen.findByRole('heading', { name: 'Seite' })).toBeInTheDocument();
+    await expect(page.load()).resolves.toBe(Content);
   });
 
-  it('rendert nach preload() sofort, ohne Fallback', async () => {
-    const Page = lazyPage(pageLoader());
-    await Page.preload();
+  it('gibt einen Ladefehler beim Laden an den Aufrufer weiter', async () => {
+    const page = lazyPage(() => Promise.reject(new Error('Chunk fehlt')));
 
-    render(<Frame><Page /></Frame>);
-
-    expect(screen.getByRole('heading', { name: 'Seite' })).toBeInTheDocument();
-    expect(screen.queryByText('Lädt')).not.toBeInTheDocument();
+    await expect(page.load()).rejects.toThrow('Chunk fehlt');
   });
 
-  it('mountet eine bereits sichtbare Instanz nicht neu, wenn der Chunk danach als geladen gilt', async () => {
-    let mounts = 0;
-    const Page = lazyPage(pageLoader(() => { mounts += 1; }));
-    const { rerender } = render(<Frame><Page /></Frame>);
-    expect(await screen.findByRole('heading', { name: 'Seite' })).toBeInTheDocument();
+  it('erfüllt preload() nach dem Laden ohne Wert', async () => {
+    let calls = 0;
+    const page = lazyPage(() => {
+      calls += 1;
+      return Promise.resolve({ default: Content });
+    });
 
-    await act(async () => { await Page.preload(); });
-    rerender(<Frame><Page /></Frame>);
-
-    expect(mounts).toBe(1);
+    await expect(page.preload()).resolves.toBeUndefined();
+    expect(calls).toBe(1);
   });
 
-  it('meldet einen Ladefehler beim Vorladen nicht und überlässt ihn dem ersten Render', async () => {
-    const Page = lazyPage(() => Promise.reject(new Error('Chunk fehlt')));
+  it('teilt einen laufenden Ladevorgang zwischen Vorladen und Laden', async () => {
+    let calls = 0;
+    const page = lazyPage(() => {
+      calls += 1;
+      return Promise.resolve({ default: Content });
+    });
 
-    await expect(Page.preload()).resolves.toBeUndefined();
+    const [, component] = await Promise.all([page.preload(), page.load()]);
+
+    expect(component).toBe(Content);
+    expect(calls).toBe(1);
+  });
+
+  it('lädt nach einem Fehlschlag beim nächsten Aufruf erneut', async () => {
+    let calls = 0;
+    const page = lazyPage(() => {
+      calls += 1;
+      return calls === 1 ? Promise.reject(new Error('Chunk fehlt')) : Promise.resolve({ default: Content });
+    });
+
+    await expect(page.load()).rejects.toThrow('Chunk fehlt');
+    await expect(page.load()).resolves.toBe(Content);
+    expect(calls).toBe(2);
+  });
+
+  it('meldet einen Ladefehler beim Vorladen nicht', async () => {
+    const page = lazyPage(() => Promise.reject(new Error('Chunk fehlt')));
+
+    await expect(page.preload()).resolves.toBeUndefined();
   });
 });

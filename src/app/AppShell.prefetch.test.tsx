@@ -1,16 +1,17 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
-import { Link, MemoryRouter } from 'react-router';
+import { act, fireEvent, screen } from '@testing-library/react';
+import { Link } from 'react-router';
 import { describe, expect, it, vi } from 'vitest';
 import { useCatalog } from '@/hooks/useCatalog';
 import { catalogCollectionDefaults } from '@/test/catalogState';
-import { AppShell } from './AppShell';
+import { renderAppShell } from '@/test/renderAppShell';
 
 /*
  * Vorladen bei Navigationsabsicht (GSPP-506): Nach dem Überfahren eines Links ist
- * der Chunk da, und die Client-Navigation rendert die Seite ohne Wartezeit. Ohne
- * Absicht lädt sie erst beim Klick, die vorige Seite bleibt bis dahin stehen.
+ * der Chunk da, und die Client-Navigation rendert die Seite, ohne erneut zu laden
+ * und ohne Ladehinweis. Ohne Absicht lädt sie erst beim Klick, die vorige Seite
+ * bleibt bis dahin stehen.
  *
- * `lazy()` merkt sich ein aufgelöstes Modul für die ganze Testdatei: Suche und
+ * `lazyPage` merkt sich ein aufgelöstes Modul für die ganze Testdatei: Suche und
  * Vokabulardetail (mit Vorladen), Impressum und Übersicht (ohne) werden je einmal
  * aufgelöst.
  */
@@ -62,11 +63,7 @@ function renderShell() {
     loading: false,
     error: null,
   } as unknown as ReturnType<typeof useCatalog>);
-  return render(
-    <MemoryRouter initialEntries={['/']}>
-      <AppShell />
-    </MemoryRouter>,
-  );
+  return renderAppShell(['/']);
 }
 
 describe('AppShell: Vorladen bei Navigationsabsicht', () => {
@@ -84,11 +81,11 @@ describe('AppShell: Vorladen bei Navigationsabsicht', () => {
     await vi.waitFor(() => expect(gates.search.loads).toBe(1));
     await act(async () => { gates.search.open(); });
     fireEvent.pointerOver(link);
-    fireEvent.click(link);
+    await act(async () => { fireEvent.click(link); });
 
-    // Synchron nach dem Klick: Seite da, kein Ladezustand, kein zweites Laden.
+    // Ohne Netzwerk: Seite da, kein Ladehinweis, kein zweites Laden.
     expect(screen.getByRole('heading', { name: 'Suchseite' })).toBeInTheDocument();
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByText('Seite wird geladen…')).not.toBeInTheDocument();
     expect(gates.search.loads).toBe(1);
   });
 
@@ -99,10 +96,10 @@ describe('AppShell: Vorladen bei Navigationsabsicht', () => {
     fireEvent.focusIn(link);
     await vi.waitFor(() => expect(gates.detail.loads).toBe(1));
     await act(async () => { gates.detail.open(); });
-    fireEvent.click(link);
+    await act(async () => { fireEvent.click(link); });
 
     expect(screen.getByRole('heading', { name: 'Vokabulardetail' })).toBeInTheDocument();
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByText('Seite wird geladen…')).not.toBeInTheDocument();
   });
 
   it('wartet ohne vorherige Absicht erst nach dem Klick auf den Chunk und hält die vorige Seite', async () => {

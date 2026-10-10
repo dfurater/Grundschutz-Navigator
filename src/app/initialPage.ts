@@ -1,12 +1,14 @@
 import { preloadStaticPage } from '@/app/staticPageRoutes';
 
 /**
- * Höchstdauer, die der erste Render auf den Chunk der Einstiegsseite wartet
- * (GSPP-506). Der statische Einstieg einer Lazy-Route trägt ein `modulepreload`;
- * der Chunk ist deutlich kleiner als der Hauptchunk und trifft deshalb in der
- * Regel vor dessen Ausführung ein, und die Seite erscheint ohne Ladezustand. Ein Chunk, der später kommt, ist die Ausnahme.
- * Dann ist ein Ladezustand besser als eine weiße Seite: Nach dieser Zeit rendert
- * die Anwendung in jedem Fall, mit Shell und Ladezustand.
+ * Höchstdauer, die der Start auf den Chunk der Einstiegsseite wartet, bevor er
+ * den Router anlegt und rendert (GSPP-506). Der statische Einstieg einer
+ * Lazy-Route trägt ein `modulepreload`; der Chunk ist deutlich kleiner als der
+ * Hauptchunk und trifft deshalb in der Regel vor dessen Ausführung ein. Der
+ * Router lädt die Route dann ohne Netzwerk, und die Seite erscheint ohne
+ * Ladezustand. Ein Chunk, der später kommt, ist die Ausnahme. Dann ist ein
+ * Ladezustand besser als eine weiße Seite: Nach dieser Zeit rendert die
+ * Anwendung in jedem Fall, mit Shell und Ladezustand.
  */
 export const INITIAL_PAGE_WAIT_MS = 1000;
 
@@ -41,7 +43,7 @@ export async function preloadInitialPage(
   try {
     await Promise.race([preloadStaticPage(initialRoutePath(pathname, basename)), timeout]);
   } catch {
-    // Der erste Render lädt den Chunk erneut und zeigt einen Fehler an der Seite.
+    // Der Router lädt die Route erneut und zeigt einen Fehler an der Seite.
   } finally {
     clearTimeout(timer);
   }

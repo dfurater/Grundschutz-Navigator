@@ -7,8 +7,8 @@ import { removeStaticTitleFallback } from './staticTitleFallback';
  *
  * Der statische Fallback aus `index.html` weicht erst hier — nicht schon im
  * Bootstrap: So bleibt er stehen, falls React nie committet (die App hat keine
- * ErrorBoundary um die Shell; die Grenze um die Routen in `<main>` fängt
- * Routenfehler ab und liefert im Fallback den Titel selbst), und weil der
+ * ErrorBoundary um die Shell; die Fehlergrenze der Routen in `<main>` fängt
+ * Routenfehler ab und setzt den Titel selbst), und weil der
  * Layout-Effekt vor dem Paint läuft, wird weder ein doppelter noch ein
  * fehlender Titel je sichtbar.
  */
