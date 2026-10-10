@@ -177,3 +177,18 @@ test('Chromium: Katalogwechsel setzt Expansion und Tab-Einstieg auch bei gleiche
   expect(rows()).toHaveLength(catalog.practices.length);
   expect(tabstops()).toEqual([rows()[0]]);
 });
+
+
+test('Chromium: Katalogwechsel bei Baumfokus erhält bedienbaren Fokus im neuen Baum', async () => {
+  const catalog = await mountRealCatalog(1440);
+  rows()[0].focus();
+  await userEvent.keyboard('{ArrowRight}{ArrowRight}');
+  const oldRow = document.activeElement;
+  renderCatalog({ ...catalog, catalogKey: 'wlan' });
+  expect(oldRow!.isConnected).toBe(false);
+  expect(document.activeElement).toBe(rows()[0]);
+  expect(tabstops()).toEqual([rows()[0]]);
+  expect(rows()).toHaveLength(catalog.practices.length);
+  await userEvent.keyboard('{ArrowDown}');
+  expect(document.activeElement).toBe(rows()[1]);
+});

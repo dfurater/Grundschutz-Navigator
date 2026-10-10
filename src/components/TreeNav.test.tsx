@@ -140,7 +140,7 @@ describe('TreeNav — Eintrag ohne id', () => {
     render(<TreeNav items={items} onSelect={vi.fn()} selectedId={undefined} />);
 
     const row = screen.getByRole('treeitem', { name: /Bereich ohne Kennung/ });
-    expect(row.closest('[role="treeitem"]')).toHaveAttribute('aria-selected', 'false');
+    expect(row.closest('[role="treeitem"]')).not.toHaveAttribute('aria-selected');
   });
 });
 

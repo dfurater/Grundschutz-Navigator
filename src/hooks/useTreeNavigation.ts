@@ -42,6 +42,7 @@ export function useTreeNavigation(
   items: readonly TreeItem[],
   selectedId: string | undefined,
   onSelect: (id: string) => void,
+  catalogKey?: string,
 ) {
   const nodes = useMemo(() => buildNodes(items), [items]);
   const allNodes = useMemo(() => flatten(nodes), [nodes]);
@@ -59,6 +60,12 @@ export function useTreeNavigation(
   }
   const visible = flatten(nodes, expanded);
   const [focused, setFocused] = useState<TreeNode>();
+  const [scope, setScope] = useState(catalogKey);
+  if (scope !== catalogKey) {
+    setScope(catalogKey);
+    setFocused(undefined);
+    setExpansion({ selectionKey: selected?.key, keys: new Set(selected?.ancestors) });
+  }
   const active = visible.find((node) => node.key === focused?.key)
     ?? [...(focused?.ancestors ?? [])].reverse()
       .map((key) => visible.find((node) => node.key === key)).find(Boolean)
@@ -78,7 +85,7 @@ export function useTreeNavigation(
       focusedElement.current = null;
       if (active) elements.current.get(active.key)?.focus();
     }
-  }, [active]);
+  }, [active, catalogKey]);
 
   function focus(node: TreeNode | undefined) {
     if (node) elements.current.get(node.key)?.focus();

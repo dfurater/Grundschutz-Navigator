@@ -24,6 +24,7 @@ export interface TreeNavProps {
   readonly onSelect: (id: string) => void;
   readonly selectedId?: string;
   readonly className?: string;
+  readonly catalogKey?: string;
 }
 
 type Navigation = ReturnType<typeof useTreeNavigation>;
@@ -53,7 +54,7 @@ function TreeNavItem({ node, navigation, selectedId }: TreeNavItemProps) {
         aria-label={[item.prefix, item.label, item.badge].filter(Boolean).join(' ')}
         aria-owns={hasChildren && expanded ? groupId : undefined}
         aria-expanded={hasChildren ? expanded : undefined}
-        aria-selected={isSelected}
+        aria-selected={item.id !== undefined ? isSelected : undefined}
         tabIndex={navigation.activeKey === node.key ? 0 : -1}
         onFocus={(event) => navigation.handleFocus(node, event.currentTarget)}
         onClick={() => navigation.activate(node)}
@@ -106,13 +107,13 @@ function TreeNavItem({ node, navigation, selectedId }: TreeNavItemProps) {
   );
 }
 
-export function TreeNav({ items, onSelect, selectedId, className = '' }: TreeNavProps) {
-  const navigation = useTreeNavigation(items, selectedId, onSelect);
+export function TreeNav({ items, onSelect, selectedId, className = '', catalogKey }: TreeNavProps) {
+  const navigation = useTreeNavigation(items, selectedId, onSelect, catalogKey);
   return (
     <nav className={className} aria-label="Katalog-Explorer" data-testid="tree-nav">
       <ul role="tree" aria-label="Katalog-Explorer" ref={(element) => navigation.registerTree(element)} onBlur={(event) => navigation.handleBlur(event.relatedTarget)}>
         {navigation.nodes.map((node) => (
-          <TreeNavItem key={node.key} node={node} navigation={navigation} selectedId={selectedId} />
+          <TreeNavItem key={JSON.stringify([catalogKey, node.key])} node={node} navigation={navigation} selectedId={selectedId} />
         ))}
       </ul>
     </nav>
