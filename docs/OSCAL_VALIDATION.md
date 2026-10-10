@@ -75,9 +75,9 @@ signierte Parameter tragen kann. Fehlertexte, Ursachenketten und lokale Pfade
 erscheinen nie; Artefaktschlüssel außerhalb der Registergrammatik bleiben
 redigiert.
 
-Die bestehende Integritätsprüfung und `parseCatalog` ersetzen diese Gates
+Die Integritätsprüfung und `parseCatalog` ersetzen diese Gates
 nicht. Ausgewiesen werden dürfen ausschließlich die für den Klasse-2-Einstieg
-tatsächlich ausgeführten Stufen 1 und 2, nie die vollständige Kette. Der
+tatsächlich ausgeführten Stufen 1 bis 3, nie die vollständige Kette. Der
 Klasse-1-Katalog-Loader ist durch diesen Vertrag nicht abgesichert.
 
 Die Validierung ist von der
@@ -114,7 +114,7 @@ nur referenziert wird.
 | 2a. Objektgraph-Invariante | **Für Klasse 2 umgesetzt:** gemeinsame objektorientierte Prüfkette in [`oscalObjectGraph.ts`](../src/domain/oscalObjectGraph.ts) und [`oscalObjectPipeline.ts`](../src/domain/oscalObjectPipeline.ts); setzt keine Bytes voraus | Zwei bewusst getrennte terminierende Durchläufe: Der erste prüft vor jeder Wertreflexion die Herkunft aller Container sowie serialisierte Byte- und Knotenuntergrenze. Erst danach prüft der zweite Strukturform, Tiefe, exakte Knotenzahl und eingebettete Base64-Summe mit einer Identitätsmenge über seinen ganzen Lauf (Zyklen und geteilte Containeridentität fail-closed). Positivdefinition: null, Boolean, String, Number außer NaN (±Infinity zulässig), Arrays exakt `Array.prototype` mit dichten Indizes plus `length`, Objekte exakt `Object.prototype`; keine Symbol-Schlüssel; nur voll schreibbare, aufzählbare, konfigurierbare Data-Properties. Kein Serialisieren, kein Klonen; keine Proxy-Erkennungsbehauptung — der Ausschluss entsteht durch den Herkunftsnachweis (unmittelbares `JSON.parse`-Ergebnis oder Builder-Handle). Diagnosen tragen stabile Codes auf der eigenen Stufe `object-structure` und nennen weder Werte noch Property-Namen. Details unter [Die gemeinsame objektorientierte Prüfkette](#die-gemeinsame-objektorientierte-prüfkette). |
 | 2. Root-Erkennung | **Umgesetzt:** `dispatchOscalDocument()` in [`oscalRootDispatch.ts`](../src/adapters/oscalRootDispatch.ts), projekteigen und ohne externes Werkzeug | Das Top-Level-Objekt muss genau einen der acht bekannten Root-Keys besitzen. Null, Arrays, mehrere Root-Keys und unbekannte Keys werden abgelehnt. Die optionale Schema-Direktive `$schema` ist die einzige zusätzlich zulässige Top-Level-Property; sie ist kein zweiter Root und **niemals** Versionsautorität. Eine Katalog-Interpretation als Fallback ist verboten. |
 | 3. JSON-Schema | **Für Klasse 2 umgesetzt:** `ajv` 8.20.0 im Modul-Worker, gegen die eingecheckten NIST-Schemas unter `schemas/oscal/`. **CI umgesetzt:** [`verify-upstream-oscal.mjs`](../scripts/verify-upstream-oscal.mjs) nutzt `go-oscal` 0.7.1 als unabhängiges Schema- und Upgrade-Orakel | Auswahl ausschließlich über den exakten Root×`oscal-version`-Schlüssel (einzige Normalisierung: ein führendes kleines `v`); kein Fallback auf eine Nachbarversion. Die Schemabytes kommen aus dem eigenen Bundle; der Chunk der ausgewählten Zelle wird zur Laufzeit von derselben Origin nachgeladen, nie von einer fremden. Ihre Integrität trägt der Bauzeitschritt `npm run verify-oscal-schemas`. Ist die Zelle nicht im Bundle oder lässt sich ihr Validator nicht bauen, endet der Import fail-closed mit `OSCAL_SCHEMA_UNAVAILABLE` — Stufe 3 wird weder übersprungen noch als bestanden ausgewiesen. Der CI-Korpuslauf bezieht Dokumente nur aus dem gepinnten BSI-Snapshot und führt weder Schema- noch Dokumentreferenz-Anfragen aus. Jedes nicht gesperrte Artefakt muss bestehen; ein gesperrtes Artefakt muss fehlschlagen. Fehlende oder nicht auswertbare Werkzeugergebnisse bleiben ein eigener fail-closed Werkzeugfehler. |
-| 4. zusätzliche OSCAL-Constraints | Derzeit **kein zugelassener Validator** für OSCAL 1.2.2; im Browser und in CI als `not-checked` ausgewiesen | Diese Stufe darf weder übersprungen noch als bestanden dargestellt werden. Die zulässige Konformitätsaussage wird deshalb begrenzt. Das konkrete Mapping-Orakel ist als bekannte Lücke registriert. |
+| 4. zusätzliche OSCAL-Constraints | **Kein zugelassener Validator** für OSCAL 1.2.2; im Browser und in CI als `not-checked` ausgewiesen | Diese Stufe darf weder übersprungen noch als bestanden dargestellt werden. Die zulässige Konformitätsaussage wird deshalb begrenzt. Das konkrete Mapping-Orakel ist als bekannte Lücke registriert. |
 | 5. Referenzen und Projektregeln | **Umgesetzt:** [`referenceResolution.ts`](../src/domain/referenceResolution.ts) ist der gemeinsame, fail-closed Klassifikator; der Referenzgraph darüber steht in [`referenceGraph.ts`](../src/domain/referenceGraph.ts) mit der CI-Politik in [`referenceGraphPolicy.ts`](../src/domain/referenceGraphPolicy.ts) ([GSPP-251](https://linear.app/grundschutz-plus-plus/issue/GSPP-251)) | Prüft UUID-/ID-Eindeutigkeit, interne und dokumentübergreifende Referenzen, URI- und Medientypregeln sowie ausdrücklich benannte GRC-Regeln. Die Schicht klassifiziert externe `https:`-Ziele, relative Ziele und abgelehnte Protokolle ohne sie abzurufen; der Graph konsumiert sie und führt keine zweite Klassifikation ein. Unbekannte Regeln gelten nicht als bestanden. Details unter [Stufe 5 — Referenzgraph](#stufe-5--referenzgraph). |
 
 Der Token-Scanner führt für jedes geöffnete JSON-Objekt eine eigene
@@ -176,7 +176,7 @@ Zulässige terminale Zustände für den Eintritt in das Dokumentmodell:
 | --- | --- |
 | `passed` | ja |
 | `failed` | nein — fail-closed, ohne Ausnahme |
-| `not-checked` | nur dort, wo der Vertrag ihn ausdrücklich vorsieht (heute ausschließlich Stufe 4) |
+| `not-checked` | nur dort, wo der Vertrag ihn ausdrücklich vorsieht (ausschließlich Stufe 4) |
 | `not-run` | nein, sobald die Stufe für die getroffene Aussage erforderlich ist |
 
 
@@ -190,7 +190,7 @@ Netzwerk- noch Dateizugriffe aus. Fehlende `rlink.hashes` ergeben
 ### Klasse-2-Grenzwerte
 
 Die Grenzen begrenzen ausschließlich den lokalen Klasse-2-Einstieg; der
-bestehende Klasse-1-Loader bleibt davon getrennt. Sie stehen als
+Klasse-1-Loader ist davon getrennt. Sie stehen als
 `CLASS_2_IMPORT_LIMITS` in
 [`class2ImportLimits.mjs`](../src/domain/class2ImportLimits.mjs) und haben dort
 genau einen Ort:
@@ -204,7 +204,7 @@ TypeScript braucht — dasselbe Muster wie `oscalVersionMatrix.mjs`.
 | Bytes vor Dekodierung | 10 MiB | Ein Dokument, das nur diese Grenze ausschöpft, kostet 33,35 MiB Speicher und 0,60 s Rechenzeit. Bytes für sich sind billig; teuer wird erst, was in ihnen steht — wie verschieden es ist und wie breit. |
 | Verschachtelungstiefe | 64 | Rekursionstiefe ist für sich kostenlos; die Grenze schützt den Stapel, nicht das Budget. |
 | Knoten | 1 000 000 | Bindende Grenze für den Speicher. Das teuerste Dokument darauf kostet 112,75 MiB — das Elffache seiner eigenen 10 MiB. Der Speicherabdruck wächst mit ihr, gemessen über fünf Stützpunkte. |
-| Summe dekodierter Base64-Größen | 4 MiB | Auf 10 MiB war die Grenze arithmetisch unerreichbar und damit wirkungslos; siehe „Die Base64-Grenze war tot“ unten. |
+| Summe dekodierter Base64-Größen | 4 MiB | Liegt unter der dekodierten Höchstsumme, die die Bytegrenze zulässt, und ist damit erreichbar; siehe „Erreichbarkeit der Base64-Grenze“ unten. |
 
 Diese vier Werte begrenzen **Größe**, keine Arbeit: Ein Dokument von wenigen
 Kilobyte kann den Resolver minutenlang beschäftigen, ohne eine von ihnen zu
@@ -328,11 +328,9 @@ Importintervall überlappen. Deren Schwelle ist mit 50 ms genau das Budget — e
 leerer Eintragssatz ist der Nachweis der Einhaltung.
 
 Der synchrone Hinweg — Pufferkopie, Worker-Erzeugung, ausgehendes
-`postMessage` — kostet in allen Fällen unter 4 ms. Die Blockade lag auf dem
-**Rückweg** (strukturierte Deserialisierung des vollständigen Ergebnisgraphen
-im Main Thread); die Herleitung steht unter „Der Rückweg des Workers
-blockiert“. Der Fragmenttransport unten beseitigt sie; der Nachweis hält das
-50-ms-Budget in allen 66 Wiederholungen.
+`postMessage` — kostet in allen Fällen unter 4 ms. Den Rückweg überträgt der
+Worker in quittierten Fragmenten (siehe „Quittierter Ergebnistransport“); der
+Nachweis hält das 50-ms-Budget in allen 66 Wiederholungen.
 
 **Der Messweg belegt vor jeder Messreihe seine eigene Beobachtbarkeit:**
 `assertLongTaskObservability` blockiert absichtlich 120 ms in einem regulären
@@ -341,7 +339,7 @@ statt ein Budget zu behaupten.
 
 ##### Grenzwertherleitung: Kosten über der Knotenzahl
 
-Ein einzelner Messpunkt auf der heutigen Grenze sagt nicht, welche Grenze das
+Ein einzelner Messpunkt auf der Grenze sagt nicht, welche Grenze das
 Budget halten würde. Die Reihe misst deshalb an fünf Stützpunkten, jeder mit
 eigenem Dokument und ausgeschöpfter Bytegrenze — keine Hochrechnung.
 
@@ -463,32 +461,27 @@ Drei Messgrenzen bleiben bestehen und sind hier ausgewiesen, nicht behoben:
   nicht vom Speicher, sondern vom UI-Budget.
 - **`maxDepth` 64 — bestätigt.** Rekursionstiefe ist für sich kein
   Kostentreiber; die Grenze schützt den Stapel.
-- **`maxDecodedBase64Bytes` 4 MiB — korrigiert aus 10 MiB.** Begründung unten.
+- **`maxDecodedBase64Bytes` 4 MiB — hergeleitet.** Begründung unter
+  „Erreichbarkeit der Base64-Grenze“.
 
-##### Befund: Der Rückweg des Workers blockierte
+##### Main-Thread-Arbeit entsteht auf dem Rückweg
 
-Die Kette läuft im Worker; auf dem UI-Thread verblieben nach der
-Architekturannahme nur Pufferkopie und `postMessage`. Die Annahme ließ den
-Rückweg aus: Der Worker in
-[`oscalImport.worker.ts`](../src/workers/oscalImport.worker.ts) antwortete mit
-`self.postMessage(response)` und schickte den vollständigen Ergebnisgraphen
-mit; dessen strukturierte Deserialisierung lief im Main Thread, vor dem
-`message`-Handler in
-[`oscalImportGate.ts`](../src/adapters/oscalImportGate.ts).
-
-Die Messung trennt Ursache und Nebenwirkung: `heap-bound` und `record-bound`
-sind mit je 10,00 MiB die größten Dokumente des Satzes und blockieren bei
-**keiner** Knotenzahl, weil sie abgewiesen werden und nur eine Diagnose
-zurückwandert. Blockiert wird ausschließlich bei angenommenen Dokumenten,
-proportional zur Knotenzahl des zurückgegebenen Graphen. Der folgende Nachweis
-bewertet den geänderten Transport mit Fragmenten und Quittungen.
+Die Kette läuft im Worker
+[`oscalImport.worker.ts`](../src/workers/oscalImport.worker.ts).
+Im Main Thread entsteht Arbeit beim Deserialisieren des zurückgegebenen
+Ergebnisgraphen in [`oscalImportGate.ts`](../src/adapters/oscalImportGate.ts).
+`heap-bound` und `record-bound` sind mit je 10,00 MiB die größten Dokumente des
+Satzes und blockieren bei **keiner** Knotenzahl, weil sie abgewiesen werden und
+nur eine Diagnose zurückwandert. Bei angenommenen Dokumenten wächst die
+Main-Thread-Arbeit mit der Knotenzahl des zurückgegebenen Graphen; der
+quittierte Ergebnistransport verteilt sie auf Fragmente.
 
 ##### Quittierter Ergebnistransport
 
 `importClass2OscalDocument(bytes, context)` liefert erst den vollständigen
 validierten `source`-Baum mit Aufrufkontext, Root-Typ und OSCAL-Version zurück.
-Die Byte-, Struktur-, Ressourcen-, Root- und Schemaprüfungen laufen unverändert
-vor jeder erfolgreichen Datenübertragung im Worker. Eine fachliche Ablehnung
+Die Byte-, Struktur-, Ressourcen-, Root- und Schemaprüfungen laufen vor jeder
+erfolgreichen Datenübertragung im Worker. Eine fachliche Ablehnung
 behält ihre vollständige redigierte Diagnose.
 
 Der Worker traversiert das Ergebnis iterativ und erzeugt dabei flache Operationen
@@ -509,14 +502,13 @@ Abschluss werden geprüft. Ein Protokoll- oder Workerfehler führt zu
 Quittungen nicht verlängert. Erfolg und Fehler teilen einen Abschlussweg, der
 Worker, Listener, Timer sowie Transportzustand und Teilresultate freigibt.
 Parallele Importe besitzen getrennte Worker und Decoder.
-Der Transport bleibt innerhalb des Browsers; er ergänzt weder Persistenz noch
-externe Übertragungsziele. Das bestehende Browser-Egress-Orakel bleibt Teil
-der echten Browsertests.
+Der Transport bleibt innerhalb des Browsers, ohne Persistenz und ohne externe
+Übertragungsziele. Das Browser-Egress-Orakel ist Teil der echten Browsertests.
 
 Die Transporttests prüfen zusätzlich zum produktiven Schemaweg unbekannte Felder,
 Arrayreihenfolge, leere Container, `-0`, Unicode, lange Schlüssel und Strings sowie
 Tiefe und Breite. Unbekannte schemawidrige Felder werden dadurch nicht zulässig:
-Das neue `key-bound`-Grenzfixture bleibt eine erwartete Schemaablehnung.
+Das `key-bound`-Grenzfixture ist eine erwartete Schemaablehnung.
 `string-bound` und `unicode-bound` sind dagegen gültige Dokumente an der
 10-MiB-Bytegrenze; `valid-depth-bound` nutzt die tiefste hier konstruierte gültige
 Kataloggruppenstruktur mit 63 Ebenen unter der Grenze von 64.
@@ -527,20 +519,20 @@ Record-Schlüsselarrays als Obergrenze des aktiven Traversierungsstapels,
 begrenzte Stacks und Fragmente beider Seiten sowie zwei UTF-16-Puffer für den
 längsten Schlüssel oder String. Die Puffermessung erfasst auch externe
 `ArrayBuffer`-Bestände. Ausgewiesen wird das Maximum aus diesem Bestand und
-dem bisherigen Prüfkettenbestand plus Ergebnis, jeweils zuzüglich der beim
+dem Prüfkettenbestand plus Ergebnis, jeweils zuzüglich der beim
 Aufrufer verbleibenden Eingabe. Das ist ein konservativ gehaltener Bestand,
 keine zeitliche Abtastung des tatsächlichen Worker-Peaks. Die oben benannten
 Grenzen der Messung in einem anderen Isolat und transienter Ajv-Allokationen
 bleiben bestehen.
 
-Der Nachweis bestand mit
+Gemessen mit
 `node scripts/measure-class2-budget.mjs --throttle 1,4 --repeat 3`.
 Alle elf Grenzfixtures behielten in allen 66 Einzelwiederholungen ihr erwartetes
 Ergebnis; es gab keinen Import-Long-Task. Das Messintervall umfasst Eingabekopie,
 Workerstart, Validierung, Rücktransport und vollständige Ergebnisnutzbarkeit.
 Die längste einzelne Wartezeit betrug 2 647,74 ms, der höchste Speicherwert
-112,74 MiB bei `heap-bound`. Die Grenzen bleiben bei einer Million Knoten,
-128 MiB Speicher und 50 ms UI-Blockierzeit.
+112,74 MiB bei `heap-bound`. Die Grenzen liegen bei einer Million
+Knoten, 128 MiB Speicher und 50 ms UI-Blockierzeit.
 
 Messumgebung: Apple M4 Pro (Mac16,8), 14 Kerne, 24 GiB RAM,
 macOS 26.6.2 (25G83), Node 22.22.3, Playwright 1.62.1,
@@ -607,36 +599,35 @@ und ihre Blätter deshalb ausschließlich auf ungeraden; erreichbar wäre nur 63
 Das `depth-bound`-Fixture belegt, dass die Tiefengrenze bindet, und sonst
 nichts.
 
-#### Die Base64-Grenze war tot
+#### Erreichbarkeit der Base64-Grenze
 
 Ein `base64`-Wert steht als Text im Dokument und zählt vollständig gegen
 `maxBytes`. Seine dekodierte Größe ist `floor(len / 4) * 3` abzüglich
 Polsterung, also höchstens drei Viertel der kodierten Länge. Selbst ein
 Dokument, das seine gesamten zugelassenen 10 MiB als base64-Text ausgibt,
-erreicht damit nur **7 864 278 Byte** dekodierte Summe. Eine auf 10 MiB
-gesetzte Grenze konnte deshalb durch **keine** Eingabe je auslösen.
+erreicht damit nur **7 864 278 Byte** dekodierte Summe. Eine Grenze auf oder
+über diesem Wert löst bei **keiner** Eingabe aus.
 
-Der neue Wert 4 MiB ist doppelt hergeleitet:
+Der Wert 4 MiB ist doppelt hergeleitet:
 
 - **Wirksamkeit.** Er muss unter dem erreichbaren Deckel von 7 864 278 Byte
-  liegen, sonst bleibt die Grenze tot. Das ist die harte Bedingung.
+  liegen, sonst löst die Grenze nie aus. Das ist die harte Bedingung.
 - **Kosten.** Eine dekodierte Nutzlast von 4 MiB verlangt 5,33 MiB kodierten
   Text im Dokument und lässt damit immer noch mehr Byteraum für das eigentliche
   OSCAL-Dokument übrig, als die Nutzlast selbst belegt. Bei 5 MiB kippt dieses
-  Verhältnis. Gemessen kostet das Fixture auf der neuen Grenze 21,38 MiB — mit
-  einer künftigen Dekodierung träte die dekodierte Nutzlast hinzu und bliebe
-  mit rund 25 MiB weit im Budget.
+  Verhältnis. Gemessen kostet das Fixture auf der Grenze 21,38 MiB;
+  eine Dekodierung brächte die dekodierte Nutzlast hinzu, zusammen rund 25 MiB
+  und damit weit im Budget.
 
 [`class2ImportLimits.invariants.test.ts`](../src/domain/class2ImportLimits.invariants.test.ts)
 hält die Erreichbarkeit als dauerhafte Invariante fest und weist ein Dokument
 über der Grenze am echten Byte-Eintrittspunkt ab — nicht an einer
 vorbeigeführten Stufe.
 
-Die Anwendung dekodiert `base64` heute an keiner Stelle. Die Grenze wirkt
-vorsorglich für den ersten Verbraucher; ihr Kostenmodell ist dessen
-Heap-Allokation.
+Die Anwendung dekodiert `base64` an keiner Stelle. Das Kostenmodell der Grenze
+ist die Heap-Allokation einer Dekodierung.
 
-#### `matching.pattern`: iterativer Abgleich statt RegExp
+#### `matching.pattern`: iterativer Abgleich
 
 Der Abgleich von `matching`-Globs gegen Control-IDs läuft in
 [`profileResolutionSelection.ts`](../src/domain/profileResolutionSelection.ts)
@@ -647,17 +638,15 @@ Arbeitseinheit der Kategorie `glob-state`. Damit ist der Abgleich von außen
 abbrechbar. Die Messwerte in
 [`docs/measurements/gspp345-work-budget.json`](./measurements/gspp345-work-budget.json)
 bleiben für jede Sternzahl unter einer Millisekunde; die Kosten hängen an der
-Subjektlänge, nicht mehr an der Sternzahl. Keine der Ressourcengrenzen (Byte-,
+Subjektlänge, nicht an der Sternzahl. Keine der Ressourcengrenzen (Byte-,
 Knoten-, Tiefengrenze) beschränkt Muster- oder Subjektlänge wirksam — ein
 Muster dieser Größe verbraucht davon nichts Nennenswertes.
 
 Die Semantik: `*` trifft beliebig viele Zeichen einschließlich keiner, `?`
-genau eines, der Abgleich ist vollständig verankert. Eine Abweichung ist
-ausgewiesen: `.` traf in einem regulären Ausdruck ohne `s`-Flag keinen
-Zeilenumbruch; der Zeichenvergleich behandelt jedes Zeichen gleich. Für den
-BSI-Korpus ist die Änderung wirkungslos — der Korpuslauf vergleicht alle drei
-aufgelösten Kataloge byte-nah gegen die BSI-Referenz und die vier
-SP-800-53-Baselines gegen die NIST-Referenz, und beide Orakel sind grün.
+genau eines, der Abgleich ist vollständig verankert. Der Zeichenvergleich
+behandelt jedes Zeichen gleich, auch einen Zeilenumbruch. Der Korpuslauf
+vergleicht alle drei aufgelösten Kataloge byte-nah gegen die BSI-Referenz und
+die vier SP-800-53-Baselines gegen die NIST-Referenz; beide Orakel sind grün.
 
 Der Messlauf ruft `matchGlob` selbst auf, statt den Abgleich nachzubilden. Die
 Funktion ist dafür exportiert: Eine zweite Fassung im Messwerkzeug würde
@@ -779,7 +768,7 @@ Der einkompilierte Wert ist an das committete Artefakt **gebunden**:
 leitet ihn bei jedem Testlauf aus dem Artefakt neu her und verlangt Gleichheit,
 verlangt die sechs Kategoriereihen und verlangt, dass der Kandidat des
 Artefakts **echt über** dem gelieferten Wert liegt — sonst wäre der Beleg
-zirkulär. Eine **Anhebung** der Grenze setzt weiterhin voraus, dass ein Mensch
+zirkulär. Eine **Anhebung** der Grenze setzt voraus, dass ein Mensch
 den Kandidaten erhöht und neu misst.
 
 **Zwei Fingerprints, zwei Aufgaben.** Eine Messung gilt nur für den Code, an
@@ -857,7 +846,7 @@ und fallen heraus. Ein Test hält beide Abschnitte aneinander fest.
   werden — etwa die Ajv-Schemastufe der Abschlusskette, die je Profil einmal
   läuft. Eine solche Änderung löst keine Neumessung der Arbeitsgrenze aus. Ihre
   Kosten hängen an der Ausgabegröße, die die Ausgabegrenzen begrenzen; deren
-  Messreihen aus GSPP-382 haben keinen Provenienz-Gate.
+  Messreihen haben keinen Provenienz-Gate.
 - `processClass2OscalValue` läuft einmal je Profil in `plan.order`. Jede
   Worst-Case-Fixture besteht aus genau einem Katalog und einem Profil; weder
   die Messung noch die Hülle decken deshalb Kosten ab, die mit der Länge einer
@@ -1191,8 +1180,7 @@ SRI-Integrität. Lizenz MIT; Transitivabhängigkeiten sind `fast-deep-equal`,
 `fast-uri`, `json-schema-traverse` und `require-from-string`. Das ebenfalls
 vorhandene transitive `ajv` 6.15.0 stammt ausschließlich aus dem
 ESLint-Werkzeugpfad und ist ausdrücklich nicht der OSCAL-Validator dieses
-Vertrags. Validator, Paket-Lock, Schemabytes, Hashprüfung und Implementierung
-samt Tests sind atomar eingeführt.
+Vertrags.
 
 | Artefakt | Verbindliche Herkunft und Pinning | Verifikation |
 | --- | --- | --- |
@@ -1264,9 +1252,7 @@ Der Referenzgraph in
 Layer (`catalog`, `profile`, `mapping-collection`) mit dem Implementation Layer
 (`component-definition`). Er läuft nur über Artefakte, die Stufe 3 bestanden
 haben, und ist rein: kein Netzwerk-, kein Dateizugriff, keine Auswertung
-eingebetteter Nutzlasten. Der Assessment Layer ist noch nicht erschlossen; die
-Kantendefinition ist so gefasst, dass `import-ssp` und `import-ap` ohne Umbau
-ergänzt werden können.
+eingebetteter Nutzlasten. Den Assessment Layer deckt der Graph nicht ab.
 
 ### Vier Zustände, nicht drei
 
@@ -1359,7 +1345,7 @@ Befund: Er eröffnet keinen Auflösungskontext.
 
 ### CI-Lauf
 
-Der Graphlauf hängt an der bestehenden Korpuslane
+Der Graphlauf hängt an der Korpuslane
 [`verify-upstream-oscal.mjs`](../scripts/verify-upstream-oscal.mjs); es gibt
 keine zweite CI-Lane. Er verarbeitet dieselben gepinnten, gegen Content- und
 Blobpin geprüften Bytes wie Stufe 3 und lädt nichts erneut. Ein registriertes,
@@ -1367,7 +1353,7 @@ gesperrtes Artefakt, das vollständig aus dem BSI-Tree entfernt wurde, hat keine
 Manifesteintrag mehr, wird über `missingBlockedArtifacts` gemeldet und ist für
 den Graphen schlicht nicht geladen — kein Knoten, kein Abbruch.
 
-Ein neuer Referenzfehler an einem `supported`-Artefakt lässt den Lauf
+Ein Referenzfehler an einem `supported`-Artefakt lässt den Lauf
 fehlschlagen. Befunde an `preview`, `draft` und `blocked-by-upstream` werden
 ausgewiesen, blockieren aber nicht; ein Artefakt außerhalb von `supported`
 erscheint in keiner Ausgabe als abschließend bewertet. Die Allowlist-Politik mit
@@ -1409,8 +1395,8 @@ bewertbare Kanten, keine `no-relationship`-Aussage, kein blockierender Befund.
 
 Die Landkarte hält je Feldpfad fest, wo die Schemaprüfung endet und ab wo
 ausschließlich ein Metaschema-Constraint greift. Erfasst sind das
-Mapping-Modell und das Catalog-Modell; die übrigen sechs Root-Modelle folgen
-mit ihrer jeweiligen Erschließung.
+Mapping-Modell und das Catalog-Modell; die übrigen sechs Root-Modelle erfasst
+sie nicht.
 
 ### Reichweite der namespace-gebundenen Constraints
 
@@ -1465,8 +1451,8 @@ und die [Wertelisten für Status und Methode](https://github.com/usnistgov/OSCAL
 
 ### Catalog 1.1.2 bis 1.2.2
 
-Das Catalog-Modell ist das einzige, das der Navigator heute produktiv
-verarbeitet. Beide `metadata`-Wertebereiche entstehen aus je **drei**
+Das Catalog-Modell ist das einzige, das der Navigator produktiv verarbeitet.
+Beide `metadata`-Wertebereiche entstehen aus je **drei**
 `allowed-values`-Constraints, die denselben Knoten treffen. Sie sitzen auf drei
 verschiedenen Definitionsebenen:
 
@@ -1634,8 +1620,8 @@ Schema-Status bleibt sichtbar `failed`.
 | `mapping-iso27001-annex-a-zu-gspp` | `mapping-collection` / 1.2.2 | [BSI #68](https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/issues/68) |
 
 Der Korpuslauf erwartet für jedes nicht gesperrte Artefakt `schema=passed` und
-für jedes gesperrte Artefakt `schema=failed`. Ein neuer Fehler eines nicht
-gesperrten Artefakts oder ein bestandenes gesperrtes Artefakt lässt den Lauf
+für jedes gesperrte Artefakt `schema=failed`. Ein Fehler eines nicht gesperrten
+Artefakts oder ein bestandenes gesperrtes Artefakt lässt den Lauf
 fehlschlagen; letzteres wird als Entsperrungskandidat ausgewiesen. Es existiert
 keine Diagnosesignatur-Liste, keine Aggregat-Zerlegung und keine
 Fortsetzungssemantik für diesen Lauf.
@@ -1653,8 +1639,8 @@ und dieser Korpuslauf lassen das Artefakt dann aus, statt den Lauf
 abzubrechen. `verifySnapshotFiles` prüft jede Sync-PR dabei gegen den
 tatsächlichen BSI-Tree des gepinnten Snapshots nach, damit eine Sync-PR ein
 dort noch vorhandenes Artefakt nicht stillschweigend auslassen kann. Für nicht
-gesperrte Artefakte (`supported`, `preview`, `draft`) bleibt ein fehlender
-Pfad weiterhin ein harter, fail-closed Abbruch — keine automatische
+gesperrte Artefakte (`supported`, `preview`, `draft`) bleibt ein fehlender Pfad
+ein harter, fail-closed Abbruch — keine automatische
 Pfadfreigabe.
 
 `mapping-itgs2023-zu-gspp` ist nicht gesperrt. go-oscal 0.7.1 lehnt ein
@@ -1770,7 +1756,7 @@ werden.
 
 **Orakel-Architektur (zweigeteilt):**
 
-Der Wartungssync `scripts/sync-oscal-content-oracle.mjs` begrenzt jeden Download auf 10 MiB. Fehlende Manifeste erlauben den Erstlauf; ein vorhandenes `ORACLE_MANIFEST.json` verlangt `--force`. Vor dem ersten Download brechen ab: ein vorhandenes Manifest ohne `--force`, ungültiges JSON, ein ungültiger Commit-Pin sowie ungültige oder doppelte Dateipins. Bei unverändertem Commit-Pin muss der Dateisatz zusätzlich schon vor dem ersten Download genau die neun erwarteten Artefakte abdecken; fehlende oder zusätzliche Dateipins, auch formal gültige, brechen ab. Erst nach dem jeweiligen Download prüft der Sync, ob SHA-256 und Dateigröße mit dem Pin gleichen Dateinamens übereinstimmen. Alle neun Downloads werden vor dem ersten Schreiben geprüft; ein Download- oder Prüffehler lässt den vorhandenen Fixture-Satz einschließlich Manifest unverändert. Ein geänderter Commit-Pin ist ein bewusster Erstabgleich mit neu erzeugten Hashes; seine alten Dateipins durchlaufen nur die Strukturprüfung. Schreibfehler nach erfolgreicher Prüfung können weiterhin einen teilweise geschriebenen Satz hinterlassen; der Wartungslauf bietet keine atomare Dateisystem-Transaktion.
+Der Wartungssync `scripts/sync-oscal-content-oracle.mjs` begrenzt jeden Download auf 10 MiB. Fehlende Manifeste erlauben den Erstlauf; ein vorhandenes `ORACLE_MANIFEST.json` verlangt `--force`. Vor dem ersten Download brechen ab: ein vorhandenes Manifest ohne `--force`, ungültiges JSON, ein ungültiger Commit-Pin sowie ungültige oder doppelte Dateipins. Bei unverändertem Commit-Pin muss der Dateisatz zusätzlich schon vor dem ersten Download genau die neun erwarteten Artefakte abdecken; fehlende oder zusätzliche Dateipins, auch formal gültige, brechen ab. Erst nach dem jeweiligen Download prüft der Sync, ob SHA-256 und Dateigröße mit dem Pin gleichen Dateinamens übereinstimmen. Alle neun Downloads werden vor dem ersten Schreiben geprüft; ein Download- oder Prüffehler lässt den vorhandenen Fixture-Satz einschließlich Manifest unverändert. Ein geänderter Commit-Pin ist ein bewusster Erstabgleich mit neu erzeugten Hashes; seine alten Dateipins durchlaufen nur die Strukturprüfung. Schreibfehler nach erfolgreicher Prüfung können einen teilweise geschriebenen Satz hinterlassen; der Wartungslauf bietet keine atomare Dateisystem-Transaktion.
 
 - **Realer Ausschnitt:** Vergleich gegen gepinnte, gehashte JSON-
   Ergebnisse von BSI (3 resolved_catalogs) und NIST (4 Baselines

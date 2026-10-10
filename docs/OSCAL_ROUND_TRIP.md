@@ -3,7 +3,7 @@
 Der modellübergreifende No-op-Round-trip-Harnisch beweist je OSCAL-Dokument,
 dass ein Round-trip **ohne fachlichen Schreibvorgang nichts verändert** —
 weder auf der Serialisierung noch auf dem geparsten Graphen. Er ist das
-Freigabegate für jeden späteren Import-, Authoring- und Export-Slice.
+Freigabegate für jeden Import-, Authoring- und Export-Slice.
 
 * Implementierung: [`src/test/oscalRoundTrip.ts`](../src/test/oscalRoundTrip.ts)
 * Graphvergleich: [`src/test/oscalGraphCompare.ts`](../src/test/oscalGraphCompare.ts)
@@ -28,9 +28,10 @@ Ergebnis:
    **abgeleitete** aus dem Dokument. Ein optionaler `upstreamPath` erzwingt
    die artefaktscharfe Registry-Erwartung (`OSCAL_ROOT_TYPE_MISMATCH`) und
    ordnet Diagnosen dem Artefaktschlüssel zu.
-3. **Export und Reimport** — Vorgabe ist die Identität (heute existiert kein
-   Exportpfad). Künftige Serializer reichen `exportDocument` ein, ohne den
-   No-op-Pfad zu ändern. Geprüft wird das **reimportierte Exportartefakt**.
+3. **Export und Reimport** — Ohne `exportDocument` ist der Export die
+   Identität; das Projekt hat keinen Exportpfad. Ein Serializer wird als
+   `exportDocument` eingereicht, der No-op-Pfad bleibt dabei unverändert.
+   Geprüft wird das **reimportierte Exportartefakt**.
    Ein Exportergebnis ohne JSON-Darstellung — `JSON.stringify` liefert kein
    Textergebnis (`undefined`, Funktion, Symbol), wirft (BigInt, zirkuläre
    Struktur) oder der Callback fällt mit einer Ausnahme aus — wird als
@@ -46,8 +47,7 @@ Ergebnis:
    Status für das Dokument, das den Prozess tatsächlich verlässt.
 
 Die Edit-Laufart (`change-on-write`: neue Dokument-`uuid`, neuer
-`last-modified`-Zeitstempel) ist **nicht** Teil dieses Moduls; sie wird mit
-dem ersten Schreibpfad additiv ergänzt.
+`last-modified`-Zeitstempel) ist **nicht** Teil dieses Moduls.
 
 ## Zwei Vergleichsebenen
 
@@ -175,9 +175,8 @@ Guard-File).
 ## Adapter-Freigaberegel
 
 Ein Root-Modell-Adapter gilt erst dann als „Import unterstützt“ beziehungsweise
-„Export unterstützt“, wenn er im Harnisch mit dem No-op-Lauf grün ist. Die
-Edit-Bedingung tritt mit dem Folge-Issue „Edit-Laufart“ hinzu. Die CI erzwingt
-das, indem der Harnisch regulär läuft — ein neuer Adapter ohne grünen
+„Export unterstützt“, wenn er im Harnisch mit dem No-op-Lauf grün ist. Die CI
+erzwingt das, indem der Harnisch regulär läuft — ein neuer Adapter ohne grünen
 No-op-Lauf fällt in der nächsten Korpusänderung auf.
 
 ## Normative Verankerung

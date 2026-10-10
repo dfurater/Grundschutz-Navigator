@@ -250,7 +250,7 @@ interface RawOscalCatalog {
 
 ```
 
-Der Root-Envelope steht nicht mehr hier, sondern in
+Der Root-Envelope steht in
 `src/domain/oscalRootDocument.ts` — siehe
 [Root-Envelope und Root-Dispatch](#root-envelope-und-root-dispatch).
 
@@ -423,8 +423,8 @@ Ein Profile importiert einen Catalog **oder ein weiteres Profile** und
 beschreibt, welche Controls daraus ausgewählt, wie sie gruppiert und wie sie
 geändert werden sollen. Erst die Profile Resolution macht daraus einen Catalog.
 
-Dieser Slice liest die Anweisung und führt sie **nicht** aus. Kein Feld der
-Projektion drückt ein aufgelöstes Control-Set aus; `Profile`,
+Der Profile-Adapter liest die Anweisung und führt sie **nicht** aus. Kein Feld
+der Projektion drückt ein aufgelöstes Control-Set aus; `Profile`,
 `ProfileMerge` und `ProfileModify` tragen den eingefrorenen Marker
 `PROFILE_RESOLUTION_STATE` mit `status: "not-resolved"` und dem Grund
 `profile-resolution-out-of-scope`.
@@ -450,11 +450,11 @@ Projektion drückt ein aufgelöstes Control-Set aus; `Profile`,
 
 ### Bewusst **nicht** unterstützt
 
-* **Keine Profile Resolution.** Selektion, Merge und Modify werden erhalten und
-  nicht angewandt; es entsteht kein aufgelöstes Control-Set
-  ([GSPP-291](https://linear.app/grundschutz-plus-plus/issue/GSPP-291)).
-* **Keine Auswertung von `matching`.** Glob-Muster werden erhalten, aber nicht
-  gegen Control-IDs abgeglichen.
+* **Keine Profile Resolution im Adapter.** Selektion, Merge und Modify werden
+  erhalten und nicht angewandt; es entsteht kein aufgelöstes Control-Set. Die
+  Auflösung liegt in `src/domain/profileResolutionEngine.ts`.
+* **Keine Auswertung von `matching` im Adapter.** Glob-Muster werden erhalten,
+  aber nicht gegen Control-IDs abgeglichen.
 * **Keine Auflösung relativer oder externer Quellen.** Ein `import.href` wird
   klassifiziert, nicht geladen — kein Netz-, kein Dateizugriff.
 * **Kein Profile Authoring und keine Persistenz**
@@ -575,8 +575,7 @@ Grund für `MappingCoverageState`:
 
 Einen vierten Zustand „nicht abgedeckt" gibt es nicht. Abgefragt wird die
 Abdeckung über `coverageForSourceIdRef(mapping, idRef)` und
-`coverageForTargetIdRef(…)`; ein `map.get(id) ?? 'nicht-abgedeckt'` an der
-Aufrufstelle entfällt damit. Ein Eintrag mit **unbekanntem** Beziehungstyp
+`coverageForTargetIdRef(…)`. Ein Eintrag mit **unbekanntem** Beziehungstyp
 zählt nicht als Abdeckung.
 
 Die Lücke hat **zwei** Ausdrucksformen, und beide gehen in die Abfrage ein: der
@@ -584,7 +583,7 @@ Die Lücke hat **zwei** Ausdrucksformen, und beide gehen in die Abfrage ein: der
 Schema „all controls that were not mapped at all" aufzählt. Aus ihr zählen
 ausschließlich die namentlich genannten `with-ids` (`sourceGapIdRefs`,
 `targetGapIdRefs`); ein `matching`-Muster bleibt erhalten, verändert aber keine
-Abdeckungsaussage, weil dieser Slice keinen Glob auswertet. Führt ein
+Abdeckungsaussage, weil der Mapping-Adapter keinen Glob auswertet. Führt ein
 Dokument dieselbe ID zugleich als abgebildet und als ungemappt, gewinnt die
 konkrete Beziehung.
 
@@ -747,7 +746,7 @@ sonst übersprungen. Er prüft Erhaltung und die Byte-Identität gegen
 
 ## Component Definitions (Implementation Layer)
 
-Das zweite erschlossene Root-Modell.
+
 
 | Datei | Rolle |
 | --- | --- |
@@ -1009,7 +1008,9 @@ interface ParamMeta {
 
 `buildParamMap()` bewahrt diese Unterscheidung für die Darstellung von Platzhaltern. `paramValues()` reicht `resolveParams()` je Parameter nur den Wert als String (`ParamMeta.value`); daraus entsteht der aufgelöste `statement`-Text für Suche und Export. `segmentStatement()` zerlegt `statementRaw` und `params` in geordnete Satzteile für die Detailansicht, ohne den gespeicherten oder exportierten Anforderungstext zu verändern. Fehlt ein Parameterwert, zeigt der Satz den Label-Fallback und erklärt ihn am Platzhalter. Liegt der Wert eines Platzhalters ganz in Ergebnis oder Präzisierung, nennt `SentenceSegment.partOf` diesen Satzteil. Sonst bleibt `partOf` leer. Verankert wird ein Satzteil nur an einer Fundstelle, die die Segmente vollständig tragen: Jedes berührte Stück ist ein Textstück oder, bei Ergebnis und Präzisierung, ein Parameterwert ganz im Satzteil, und keine Stückgrenze teilt ein Wort. Übersprungen werden deshalb Fundstellen im Parameterwert, Fundstellen, die einen Wert nur anschneiden, und solche, in denen ein Wert ein Wort teilt; das gilt auch für Handlungswort, Modalverb und Praktik, die keinen Parameterwert tragen können. Die Suche nimmt dann die nächste Fundstelle im Text; fehlt eine solche, landen Handlungswort, Ergebnis und Präzisierung in `missing` und erscheinen mit dem vollständigen Begriff als Restzeile. Verdeckt ein früherer Satzteil einen Anker, etwa ein Handlungswort im Ergebnis, sucht der Anker hinter diesem Satzteil weiter; `missing` enthält ihn nur, wenn es dahinter keine erreichbare Fundstelle gibt.
 
-Die `*Prop`-Felder behalten den OSCAL-Namespace (`ns`) der Quell-Prop und ermöglichen so die Auflösung gegen die offiziellen BSI-Vokabulare (siehe [VOCABULARY.md](./VOCABULARY.md)).
+Die `*Prop`-Felder tragen den OSCAL-Namespace (`ns`) der Quell-Prop und
+ermöglichen so die Auflösung gegen die offiziellen BSI-Vokabulare (siehe
+[VOCABULARY.md](./VOCABULARY.md)).
 
 ### Optionale Gruppen-Identifikatoren
 
