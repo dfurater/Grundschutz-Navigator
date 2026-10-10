@@ -11,10 +11,10 @@ import { VocabularyNamespacePage } from '@/app/vocabularyDetailPage';
  *
  * Wer mit der Maus über einen Link fährt, ihn per Tastatur fokussiert oder ihn
  * antippt, will meist dorthin. Zeigt der Link auf eine Lazy-Route, lädt die
- * Anwendung ihren Chunk dann schon vor dem Klick; die Seite erscheint danach ohne
- * Wartezeit. Es gibt weder Vorladen beim Start noch im Leerlauf: Bytes fließen
- * nur bei Absicht. Der deklarative Router kennt keinen Wartezustand, deshalb ist
- * das Vorladen das Mittel gegen die Stille bei langsamen Chunks.
+ * Anwendung ihren Chunk dann schon vor dem Klick; ist er bis dahin da, erscheint
+ * die Seite ohne Wartezeit, sonst verkürzt sich die Wartezeit, und der Hinweis
+ * aus `navigationPending.tsx` meldet den Rest. Es gibt weder Vorladen beim Start
+ * noch im Leerlauf: Bytes fließen nur bei Absicht.
  */
 
 interface RoutePreload {

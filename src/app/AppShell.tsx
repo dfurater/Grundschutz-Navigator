@@ -45,6 +45,7 @@ import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES } from '@/app/pageTitles';
 import { LazyRoute } from '@/app/RouteBoundary';
 import { useRoutePrefetch } from '@/app/routePrefetch';
+import { NavigationPendingIndicator } from '@/app/navigationPending';
 import { VocabularyNamespacePage } from '@/app/vocabularyDetailPage';
 import { STATIC_PAGE_ROUTES } from '@/app/staticPageRoutes';
 import { MobileNavigationContext } from '@/state/MobileNavigationContext';
@@ -442,6 +443,7 @@ export function AppShell() {
           inert={mobileNavOpen}
           className="mobile-nav-push flex-1 min-w-0 flex flex-col bg-white md:overflow-hidden"
         >
+          <NavigationPendingIndicator />
           <MobileNavigationContext.Provider value={mobileNavBlocksFixed}>
             <LazyRoute resetKey={location.pathname} fallbackTitle={pendingTitle(location.pathname)}>
               <Routes>

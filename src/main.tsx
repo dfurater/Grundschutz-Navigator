@@ -1,9 +1,10 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter } from 'react-router';
+import { UNSAFE_createBrowserHistory } from 'react-router';
 import { CatalogProvider } from '@/state/CatalogContext';
 import { AppShell } from '@/app/AppShell';
 import { preloadInitialPage } from '@/app/initialPage';
+import { TransitionRouter } from '@/app/navigationPending';
 import 'overlayscrollbars/overlayscrollbars.css';
 import '@/index.css';
 
@@ -18,11 +19,11 @@ const routerBasename =
 void preloadInitialPage(globalThis.location.pathname, routerBasename).then(() => {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      <BrowserRouter basename={routerBasename}>
+      <TransitionRouter history={UNSAFE_createBrowserHistory({ v5Compat: true })} basename={routerBasename}>
         <CatalogProvider>
           <AppShell />
         </CatalogProvider>
-      </BrowserRouter>
+      </TransitionRouter>
     </StrictMode>,
   );
 });
