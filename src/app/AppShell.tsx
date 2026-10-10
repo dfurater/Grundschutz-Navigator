@@ -293,8 +293,9 @@ export function AppShell() {
         Zum Hauptinhalt springen
       </a>
 
-      {/* Außerhalb von Kopf, Schublade und <main>: Diese werden bei offener
-          mobiler Schublade `inert`, ein Statusbereich darin bliebe stumm. */}
+      {/* Außerhalb aller Bereiche, die `inert` werden können: <main> und die
+          Kopfzeilen-Steuerungen bei offener mobiler Schublade, die Schublade
+          bei geschlossener. Ein Statusbereich darin bliebe stumm. */}
       <NavigationPendingIndicator />
 
       <HeaderBar
