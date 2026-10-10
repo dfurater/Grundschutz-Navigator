@@ -35,7 +35,16 @@ export const STATIC_CONTENT_TITLES = {
 export interface SeoRouteMetadata {
   readonly path: string;
   readonly title: string;
+  /**
+   * Chunk der Seite dieses Einstiegs, relativ zum Ausgabeverzeichnis
+   * (`assets/<Name>.js`). Der Einstieg erhält dafür ein `modulepreload`, damit der
+   * Browser den Chunk parallel zum Hauptchunk lädt (GSPP-506).
+   */
+  readonly modulePreload?: string;
 }
+
+// Nur erzeugte Chunk-Dateien: Der Wert fließt in ein HTML-Attribut und eine URL.
+const MODULE_PRELOAD_PATH = /^assets\/[A-Za-z0-9._-]+\.js$/;
 
 /** Nur registry-benannte öffentliche Dateien; Hashprüfung vor der Domain-Projektion. */
 export function loadPublicSeoCatalogs(dataDir: string): Catalog[] {
@@ -59,10 +68,16 @@ export function loadPublicSeoCatalogs(dataDir: string): Catalog[] {
 }
 
 /** Gleiche Catalog-Projektion und URL-Builder wie die App; kein zweiter OSCAL-Reader. */
-export function listSeoRouteMetadata(catalogs: readonly Catalog[]): SeoRouteMetadata[] {
+export function listSeoRouteMetadata(
+  catalogs: readonly Catalog[],
+  modulePreloads: ReadonlyMap<string, string> = new Map(),
+): SeoRouteMetadata[] {
   const entries: SeoRouteMetadata[] = [
     { path: '/', title: PRODUCT_TITLE },
-    ...Object.entries(STATIC_CONTENT_TITLES).map(([path, title]) => ({ path, title })),
+    ...Object.entries(STATIC_CONTENT_TITLES).map(([path, title]) => {
+      const modulePreload = modulePreloads.get(path);
+      return modulePreload === undefined ? { path, title } : { path, title, modulePreload };
+    }),
   ];
   const supportedKeys = new Set(listSupportedCatalogs().map(entry => entry.catalogKey));
   for (const catalog of catalogs) {
@@ -103,6 +118,12 @@ function replaceOgTag(html: string, property: 'og:title' | 'og:url', value: stri
   if (tags.length !== 1) throw new Error('Expected exactly one ' + property + ' meta tag');
   const replacement = '<meta property="' + property + '" content="' + escapeAttribute(value) + '" />';
   return html.replace(tags[0], () => replacement);
+}
+
+function addModulePreload(html: string, href: string): string {
+  const closings = html.match(/<\/head>/gi) ?? [];
+  if (closings.length !== 1) throw new Error('Expected exactly one </head> tag');
+  return html.replace(/<\/head>/i, () => '  <link rel="modulepreload" href="' + escapeAttribute(href) + '" />\n  </head>');
 }
 
 function outputPath(outDir: string, route: string): string {
@@ -173,7 +194,12 @@ export function writeSeoRouteEntries(
     if (files.has(key)) throw new Error('SEO output path collision');
     if (!entry.title.trim()) throw new Error('SEO title must not be empty');
     const url = new URL(entry.path.slice(1), base).href;
-    const html = replaceOgTag(replaceOgTag(template, 'og:title', entry.title), 'og:url', url);
+    let html = replaceOgTag(replaceOgTag(template, 'og:title', entry.title), 'og:url', url);
+    if (entry.modulePreload !== undefined) {
+      if (!MODULE_PRELOAD_PATH.test(entry.modulePreload)) throw new Error('Unsafe module preload path');
+      // Die Deployment-Basis steckt im kanonischen Basispfad (`resolveDeploymentBase()`).
+      html = addModulePreload(html, base.pathname + entry.modulePreload);
+    }
     files.set(key, { path, html });
   }
   for (const { path } of files.values()) {

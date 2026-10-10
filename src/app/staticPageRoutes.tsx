@@ -1,11 +1,24 @@
+import { lazyPage } from '@/app/lazyPage';
 import { HomePage } from '@/features/home/HomePage';
-import { SearchPage } from '@/features/search/SearchPage';
-import { AboutPage } from '@/features/pages/AboutPage';
-import { DatenschutzPage } from '@/features/pages/DatenschutzPage';
-import { ImpressumPage } from '@/features/pages/ImpressumPage';
-import { LizenzenPage } from '@/features/pages/LizenzenPage';
-import { VocabularyOverviewPage } from '@/features/vocabularies/VocabularyOverviewPage';
 import { PAGE_TITLES } from '@/app/pageTitles';
+
+/*
+ * Nebenrouten laden als eigene Chunks (GSPP-506). Die Named-Export-Adapter und
+ * die Literalpfade sind Absicht: Der Bundler erkennt nur statische
+ * `import()`-Pfade als Chunk-Grenze, und die Seiten exportieren benannt.
+ */
+const SearchPage = lazyPage(() =>
+  import('@/features/search/SearchPage').then((m) => ({ default: m.SearchPage })));
+const VocabularyOverviewPage = lazyPage(() =>
+  import('@/features/vocabularies/VocabularyOverviewPage').then((m) => ({ default: m.VocabularyOverviewPage })));
+const AboutPage = lazyPage(() =>
+  import('@/features/pages/AboutPage').then((m) => ({ default: m.AboutPage })));
+const DatenschutzPage = lazyPage(() =>
+  import('@/features/pages/DatenschutzPage').then((m) => ({ default: m.DatenschutzPage })));
+const ImpressumPage = lazyPage(() =>
+  import('@/features/pages/ImpressumPage').then((m) => ({ default: m.ImpressumPage })));
+const LizenzenPage = lazyPage(() =>
+  import('@/features/pages/LizenzenPage').then((m) => ({ default: m.LizenzenPage })));
 
 /**
  * Statische Seitenrouten mit ihrem Titel (GSPP-202).
@@ -15,6 +28,15 @@ import { PAGE_TITLES } from '@/app/pageTitles';
  * Titel existieren, und ein Test iteriert über genau dieselbe Quelle. Routen mit
  * datenabhängigem Titel — Katalog und Vokabulardetail — stehen bewusst nicht
  * hier, weil ihr Titel erst aus aufgelöstem Katalogzustand entsteht.
+ *
+ * Chunk-Vertrag (GSPP-506): Die Startseite bleibt im Hauptchunk, weil sie der
+ * erste Einstieg ist; alle übrigen Seiten sind `lazy` und werden erst beim
+ * ersten Aufruf geladen. Der Titel bleibt trotzdem Teil der Routendefinition:
+ * `AppShell` rendert ihn mit der Route. Solange eine Seite beim Direktaufruf
+ * noch lädt, liefert die Grenze um die Routen den Titel selbst (aus dieser
+ * Tabelle); bei Client-Navigation hält die Transition die vorige Seite samt
+ * Titel. Jede Lazy-Route braucht einen Eintrag in `lazyRouteModules.mjs`, damit
+ * der Build ihrem statischen Einstieg ein `modulepreload` mitgibt.
  */
 export interface StaticPageRoute {
   readonly path: string;
@@ -23,14 +45,26 @@ export interface StaticPageRoute {
   readonly element: React.ReactNode;
   /** Seiten mit eigenem Scrollcontainer (z. B. die Suche) setzen `false`. */
   readonly scroll?: boolean;
+  /** Nur Lazy-Routen: lädt den Seitenchunk vor (siehe `preloadStaticPage`). */
+  readonly preload?: () => Promise<void>;
 }
 
 export const STATIC_PAGE_ROUTES: readonly StaticPageRoute[] = [
   { path: '/', element: <HomePage /> },
-  { path: '/suche', title: PAGE_TITLES.search, element: <SearchPage />, scroll: false },
-  { path: '/vokabular', title: PAGE_TITLES.vocabularies, element: <VocabularyOverviewPage /> },
-  { path: '/about', title: PAGE_TITLES.about, element: <AboutPage /> },
-  { path: '/datenschutz', title: PAGE_TITLES.privacy, element: <DatenschutzPage /> },
-  { path: '/impressum', title: PAGE_TITLES.imprint, element: <ImpressumPage /> },
-  { path: '/lizenzen', title: PAGE_TITLES.licenses, element: <LizenzenPage /> },
+  { path: '/suche', title: PAGE_TITLES.search, element: <SearchPage />, scroll: false, preload: SearchPage.preload },
+  { path: '/vokabular', title: PAGE_TITLES.vocabularies, element: <VocabularyOverviewPage />, preload: VocabularyOverviewPage.preload },
+  { path: '/about', title: PAGE_TITLES.about, element: <AboutPage />, preload: AboutPage.preload },
+  { path: '/datenschutz', title: PAGE_TITLES.privacy, element: <DatenschutzPage />, preload: DatenschutzPage.preload },
+  { path: '/impressum', title: PAGE_TITLES.imprint, element: <ImpressumPage />, preload: ImpressumPage.preload },
+  { path: '/lizenzen', title: PAGE_TITLES.licenses, element: <LizenzenPage />, preload: LizenzenPage.preload },
 ];
+
+/**
+ * Lädt den Chunk der statischen Lazy-Route zu `pathname` (relativ zur
+ * Deployment-Basis) vor. Routen ohne Chunk sind sofort erledigt; ein Ladefehler
+ * wird nicht gemeldet, der erste Render der Seite versucht es erneut.
+ */
+export function preloadStaticPage(pathname: string): Promise<void> {
+  const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
+  return STATIC_PAGE_ROUTES.find((route) => route.path === path)?.preload?.() ?? Promise.resolve();
+}

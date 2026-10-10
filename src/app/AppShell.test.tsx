@@ -435,17 +435,33 @@ describe('AppShell', () => {
     expect(container.querySelector('aside')).toBeInTheDocument();
   });
 
+  // Inhalt der gemockten Seiten: Die Nebenrouten laden als Chunks nach, der
+  // Titel steht dagegen sofort (GSPP-506).
+  const STATIC_PAGE_MARKERS: Readonly<Record<string, string>> = {
+    '/': 'Home',
+    '/suche': 'Suche',
+    '/vokabular': 'Vokabulare Seite',
+    '/about': 'About',
+    '/datenschutz': 'Datenschutz',
+    '/impressum': 'Impressum',
+    '/lizenzen': 'Lizenzen',
+  };
+
   // Deckt jede statische Route ab: keine Route kann ohne geprüften Titel
   // hinzukommen, weil sie sonst gar nicht in STATIC_PAGE_ROUTES steht.
   it.each(STATIC_PAGE_ROUTES.map(({ path, title }) => ({ path, title })))(
     'gives the static route $path its declared document title',
-    ({ path, title }) => {
+    async ({ path, title }) => {
       render(
         <MemoryRouter initialEntries={[path]}>
           <AppShell />
         </MemoryRouter>,
       );
 
+      expectSingleDocumentTitle(
+        title === undefined ? PRODUCT_TITLE : `${title} | ${PRODUCT_TITLE}`,
+      );
+      expect(await screen.findByText(STATIC_PAGE_MARKERS[path])).toBeInTheDocument();
       expectSingleDocumentTitle(
         title === undefined ? PRODUCT_TITLE : `${title} | ${PRODUCT_TITLE}`,
       );
@@ -464,14 +480,14 @@ describe('AppShell', () => {
     ]);
   });
 
-  it('registers vocabulary routes and document titles', () => {
+  it('registers vocabulary routes and document titles', async () => {
     render(
       <MemoryRouter initialEntries={['/vokabular']}>
         <AppShell />
       </MemoryRouter>,
     );
 
-    expect(screen.getByText('Vokabulare Seite')).toBeInTheDocument();
+    expect(await screen.findByText('Vokabulare Seite')).toBeInTheDocument();
     expectSingleDocumentTitle(`${PAGE_TITLES.vocabularies} | ${PRODUCT_TITLE}`);
   });
 
@@ -485,14 +501,14 @@ describe('AppShell', () => {
     expectSingleDocumentTitle(`${PAGE_TITLES.about} | ${PRODUCT_TITLE}`);
   });
 
-  it('registers vocabulary detail routes', () => {
+  it('registers vocabulary detail routes', async () => {
     render(
       <MemoryRouter initialEntries={['/vokabular/security-level']}>
         <AppShell />
       </MemoryRouter>,
     );
 
-    expect(screen.getByText('Vokabular-Detail')).toBeInTheDocument();
+    expect(await screen.findByText('Vokabular-Detail')).toBeInTheDocument();
   });
 
   it('uses a specific title for the general catch-all route', () => {
@@ -538,7 +554,7 @@ describe('AppShell', () => {
 
   // Eine Navigation aus dem App-Kopf bei offenem Drawer ließe die neue Seite
   // sonst im inerten Hauptbereich zurück (GSPP-476).
-  it('schließt den Drawer bei jeder Navigation, auch aus dem App-Kopf', () => {
+  it('schließt den Drawer bei jeder Navigation, auch aus dem App-Kopf', async () => {
     const { container } = render(
       <MemoryRouter initialEntries={['/']}>
         <AppShell />
@@ -549,7 +565,7 @@ describe('AppShell', () => {
     lupe.focus();
     fireEvent.click(lupe);
 
-    expect(screen.getByText('Suche')).toBeInTheDocument();
+    expect(await screen.findByText('Suche')).toBeInTheDocument();
     expect(container.querySelector('aside')).toHaveAttribute('inert');
     expect(container.querySelector('main')).not.toHaveAttribute('inert');
     expect(screen.getByTestId('mobile-nav-backdrop')).toHaveAttribute('data-state', 'closed');

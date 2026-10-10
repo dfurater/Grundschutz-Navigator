@@ -23,6 +23,7 @@ import {
 } from './vite.config';
 import { createRequire } from 'node:module';
 import { assertChecksumsManifest, parseChecksumsManifest } from './scripts/deployChecksums.mjs';
+import { LAZY_ROUTE_MODULES } from './src/app/lazyRouteModules.mjs';
 
 // jsdom ist als Dev-Dependency vorhanden (Vitest-jsdom-Umgebung), bringt aber
 // keine Typen mit. Der Laufzeit-Import über createRequire hält die
@@ -64,6 +65,11 @@ const CONTENT_ROUTES = [
   '/impressum',
   '/lizenzen',
 ] as const;
+
+// Ein Seitenchunk je Lazy-Route, wie ihn der Bundler-Hook ermittelt.
+const MODULE_PRELOADS = new Map(
+  Object.keys(LAZY_ROUTE_MODULES).map((route) => [route, `assets/${route.slice(1)}-TEST.js`]),
+);
 
 const SUPPORTED_CATALOG_KEYS = ['gspp', 'lieferkette', 'wlan'] as const;
 
@@ -346,6 +352,75 @@ describe('writeStaticRouteEntries', () => {
   });
 });
 
+describe('modulepreload für Lazy-Routen (GSPP-506)', () => {
+  it('gibt genau den Einstiegen der Lazy-Routen ein modulepreload auf ihren Seitenchunk', () => {
+    const distDir = createTempDistWithIndex();
+    writeStaticRouteEntries(distDir, [], MODULE_PRELOADS);
+
+    for (const route of Object.keys(LAZY_ROUTE_MODULES)) {
+      const html = readFileSync(join(distDir, route.slice(1), 'index.html'), 'utf8');
+      expect(html.match(/<link rel="modulepreload"/g)).toHaveLength(1);
+      expect(html).toContain(`<link rel="modulepreload" href="/Grundschutz-Navigator/assets/${route.slice(1)}-TEST.js" />`);
+    }
+    expect(readFileSync(join(distDir, 'index.html'), 'utf8')).not.toContain('modulepreload');
+  });
+
+  it('führt die aufgelöste Deployment-Basis im Pfad, auch bei BUILD_BASE=/', () => {
+    const distDir = createTempDistWithIndex();
+    process.env.BUILD_BASE = '/';
+    try {
+      writeStaticRouteEntries(distDir, [], MODULE_PRELOADS);
+      expect(readFileSync(join(distDir, 'suche/index.html'), 'utf8')).toContain('<link rel="modulepreload" href="/assets/suche-TEST.js" />');
+    } finally {
+      delete process.env.BUILD_BASE;
+    }
+  });
+
+  it('lässt Katalog-, Gruppen- und Kontrolleinstiege ohne Preload', () => {
+    const distDir = createTempDistWithIndex();
+    writeStaticRouteEntries(distDir, undefined, MODULE_PRELOADS);
+    for (const file of listFilesRecursive(distDir).filter((f) => f.startsWith('katalog'))) {
+      expect(readFileSync(join(distDir, file), 'utf8')).not.toContain('modulepreload');
+    }
+  });
+
+  it('ermittelt die Seitenchunks im Bundle über Fassadenmodul und isDynamicEntry', () => {
+    const distDir = createTempDistWithIndex();
+    const plugin = spaFallbackPlugin({ outDir: distDir, catalogs: [] });
+    const bundle: Record<string, { type: string; fileName: string; isDynamicEntry?: boolean; facadeModuleId?: string | null }> = {
+      // Kein dynamischer Einstieg: bleibt unbeachtet, auch mit passendem Fassadenmodul.
+      'assets/index-A.js': { type: 'chunk', fileName: 'assets/index-A.js', isDynamicEntry: false, facadeModuleId: resolve(import.meta.dirname, LAZY_ROUTE_MODULES['/suche']) },
+      'assets/other.css': { type: 'asset', fileName: 'assets/other.css' },
+    };
+    for (const [route, module] of Object.entries(LAZY_ROUTE_MODULES)) {
+      const fileName = `assets/Seite-${route.slice(1)}-HASH.js`;
+      bundle[fileName] = { type: 'chunk', fileName, isDynamicEntry: true, facadeModuleId: `${resolve(import.meta.dirname, module)}?query` };
+    }
+    plugin.generateBundle({}, bundle);
+
+    plugin.closeBundle();
+
+    expect(readFileSync(join(distDir, 'about/index.html'), 'utf8')).toContain('href="/Grundschutz-Navigator/assets/Seite-about-HASH.js"');
+    expect(readFileSync(join(distDir, 'suche/index.html'), 'utf8')).toContain('href="/Grundschutz-Navigator/assets/Seite-suche-HASH.js"');
+  });
+
+  it('bricht den Build, wenn für eine zugeordnete Lazy-Route kein Chunk gefunden wird, und schreibt nichts', () => {
+    const distDir = createTempDistWithIndex();
+    const plugin = spaFallbackPlugin({ outDir: distDir, catalogs: [] });
+    plugin.generateBundle({}, {
+      'assets/x.js': { type: 'chunk', fileName: 'assets/x.js', isDynamicEntry: true, facadeModuleId: resolve(import.meta.dirname, LAZY_ROUTE_MODULES['/suche']) },
+    });
+
+    expect(() => plugin.closeBundle()).toThrow(/Kein Seitenchunk im Bundle für die Lazy-Routen: .*\/vokabular/);
+    expect(listFilesRecursive(distDir)).toEqual(['index.html']);
+  });
+
+  it('bricht ohne jede Bundle-Information ab, statt den Preload still wegzulassen', () => {
+    const distDir = createTempDistWithIndex();
+    expect(() => spaFallbackPlugin({ outDir: distDir, catalogs: [] }).closeBundle()).toThrow(/Kein Seitenchunk/);
+  });
+});
+
 describe('spaFallbackPlugin closeBundle', () => {
   it('runs only in the build, not when a dev or Vitest server closes', () => {
     expect(spaFallbackPlugin().apply).toBe('build');
@@ -355,7 +430,7 @@ describe('spaFallbackPlugin closeBundle', () => {
     const distDir = createTempDistWithIndex();
     writeFileSync(join(distDir, 'favicon.svg'), '<svg/>');
 
-    spaFallbackPlugin({ outDir: distDir, catalogs: [] }).closeBundle();
+    spaFallbackPlugin({ outDir: distDir, catalogs: [], modulePreloads: MODULE_PRELOADS }).closeBundle();
 
     const manifest = readFileSync(join(distDir, 'SHA256SUMS'), 'utf8');
     const paths = [...parseChecksumsManifest(manifest).keys()];
@@ -376,7 +451,7 @@ describe('spaFallbackPlugin closeBundle', () => {
     const distDir = createTempDistDir();
     writeFileSync(join(distDir, 'index.html'), INDEX_HTML.replace('content="BSI-Anwenderkatalog durchsuchen, filtern', description));
 
-    expect(() => spaFallbackPlugin({ outDir: distDir, catalogs: [] }).closeBundle()).toThrow(/description enthält U\+2014/);
+    expect(() => spaFallbackPlugin({ outDir: distDir, catalogs: [], modulePreloads: MODULE_PRELOADS }).closeBundle()).toThrow(/description enthält U\+2014/);
     expect(existsSync(join(distDir, 'SHA256SUMS'))).toBe(false);
   });
 });
