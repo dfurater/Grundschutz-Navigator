@@ -12,14 +12,17 @@ const routerBasename =
 
 // Eine Lazy-Seite als Einstieg wartet begrenzt auf ihren Chunk (`modulepreload`
 // holt ihn parallel zum Hauptchunk), damit sie ohne Ladezustand erscheint.
-await preloadInitialPage(globalThis.location.pathname, routerBasename);
-
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <BrowserRouter basename={routerBasename}>
-      <CatalogProvider>
-        <AppShell />
-      </CatalogProvider>
-    </BrowserRouter>
-  </StrictMode>,
-);
+// Bewusst kein Top-Level-Await (Sonar S7785): Mit ihm lagert der Bundler die
+// gemeinsam genutzten Module aus dem Einstieg in zusätzliche, beim Start
+// geladene Chunks aus (12 statt 2 JS-Anfragen je Einstieg, gemessen GSPP-506).
+void preloadInitialPage(globalThis.location.pathname, routerBasename).then(() => {
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <BrowserRouter basename={routerBasename}>
+        <CatalogProvider>
+          <AppShell />
+        </CatalogProvider>
+      </BrowserRouter>
+    </StrictMode>,
+  );
+});
