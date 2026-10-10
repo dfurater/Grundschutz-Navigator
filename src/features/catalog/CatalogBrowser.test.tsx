@@ -378,7 +378,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
     const menuButton = screen.getByRole('button', { name: 'Menü öffnen' });
     fireEvent.click(menuButton);
 
-    fireEvent.click(screen.getByRole('button', { name: /TOP\.2\s*Zweites Thema/ }));
+    fireEvent.click(screen.getByRole('treeitem', { name: /TOP\.2\s*Zweites Thema/ }));
 
     expect(screen.getByTestId('location')).toHaveTextContent(/^\/katalog\/gspp\/TOP\.2$/);
     expect(screen.getByTestId('mobile-nav-backdrop')).toHaveAttribute('data-state', 'closed');
