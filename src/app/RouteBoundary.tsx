@@ -32,8 +32,8 @@ export function RouteLoading({ title }: Readonly<{ title?: string }>) {
           <h1 className="sr-only">{title}</h1>
         </>
       )}
-      <div
-        role="status"
+      {/* S6819: <output> trägt die implizite Rolle "status". */}
+      <output
         className={`${SURFACE} flex min-h-64 items-center justify-center gap-3 p-6 text-sm text-slate-600`}
       >
         <span
@@ -41,7 +41,7 @@ export function RouteLoading({ title }: Readonly<{ title?: string }>) {
           aria-hidden="true"
         />
         <span>Seite wird geladen…</span>
-      </div>
+      </output>
     </>
   );
 }

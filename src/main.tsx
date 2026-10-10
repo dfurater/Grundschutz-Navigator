@@ -12,14 +12,14 @@ const routerBasename =
 
 // Eine Lazy-Seite als Einstieg wartet begrenzt auf ihren Chunk (`modulepreload`
 // holt ihn parallel zum Hauptchunk), damit sie ohne Ladezustand erscheint.
-void preloadInitialPage(globalThis.location.pathname, routerBasename).then(() => {
-  createRoot(document.getElementById('root')!).render(
-    <StrictMode>
-      <BrowserRouter basename={routerBasename}>
-        <CatalogProvider>
-          <AppShell />
-        </CatalogProvider>
-      </BrowserRouter>
-    </StrictMode>,
-  );
-});
+await preloadInitialPage(globalThis.location.pathname, routerBasename);
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <BrowserRouter basename={routerBasename}>
+      <CatalogProvider>
+        <AppShell />
+      </CatalogProvider>
+    </BrowserRouter>
+  </StrictMode>,
+);

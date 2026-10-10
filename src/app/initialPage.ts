@@ -11,13 +11,19 @@ import { preloadStaticPage } from '@/app/staticPageRoutes';
 export const INITIAL_PAGE_WAIT_MS = 1000;
 
 /**
- * Pfad relativ zur Deployment-Basis. Das Präfix fällt nur weg, wenn danach `/`
- * oder das Ende folgt; `/Basis-x` gehört nicht zu `/Basis`.
+ * Pfad relativ zur Deployment-Basis, oder `null`, wenn `pathname` außerhalb liegt.
+ * Das Präfix fällt nur weg, wenn danach `/` oder das Ende folgt; `/Basis-x`
+ * gehört nicht zu `/Basis`.
  */
-export function initialRoutePath(pathname: string, basename?: string): string {
+export function routePathInBase(pathname: string, basename?: string): string | null {
   if (!basename) return pathname;
   if (pathname === basename) return '/';
-  return pathname.startsWith(`${basename}/`) ? pathname.slice(basename.length) : pathname;
+  return pathname.startsWith(`${basename}/`) ? pathname.slice(basename.length) : null;
+}
+
+/** Wie `routePathInBase`, behält einen Pfad außerhalb der Basis aber unverändert. */
+export function initialRoutePath(pathname: string, basename?: string): string {
+  return routePathInBase(pathname, basename) ?? pathname;
 }
 
 /**

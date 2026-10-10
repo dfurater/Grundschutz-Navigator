@@ -1,4 +1,4 @@
-import { lazy, useMemo, useState, useEffect, useId, useRef } from 'react';
+import { useMemo, useState, useEffect, useId, useRef } from 'react';
 import {
   Routes,
   Route,
@@ -44,13 +44,10 @@ import {
 import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES } from '@/app/pageTitles';
 import { LazyRoute } from '@/app/RouteBoundary';
+import { useRoutePrefetch } from '@/app/routePrefetch';
+import { VocabularyNamespacePage } from '@/app/vocabularyDetailPage';
 import { STATIC_PAGE_ROUTES } from '@/app/staticPageRoutes';
 import { MobileNavigationContext } from '@/state/MobileNavigationContext';
-
-// Das Vokabulardetail lädt wie die statischen Nebenrouten erst beim ersten Aufruf
-// (Chunk-Vertrag: `staticPageRoutes.tsx`, GSPP-506).
-const VocabularyNamespacePage = lazy(() =>
-  import('@/features/vocabularies/VocabularyNamespacePage').then((m) => ({ default: m.VocabularyNamespacePage })));
 
 // Titel der Seite, die gerade lädt. Er greift nur im Fallback beim Direktaufruf,
 // wenn noch keine Route gerendert ist; bei Client-Navigation hält die Transition
@@ -125,6 +122,7 @@ export function AppShell() {
   });
   const navigate = useNavigate();
   const location = useLocation();
+  useRoutePrefetch();
   const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const treeScrollRef = useOverlayScrollbars<HTMLDivElement>();
   const {

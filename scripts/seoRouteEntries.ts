@@ -170,6 +170,25 @@ function assertExistingPath(outDir: string, target: string): void {
   }
 }
 
+function canonicalBaseUrl(baseUrl: string): URL {
+  const base = new URL(baseUrl);
+  if (base.protocol !== 'https:' || base.search || base.hash || !base.pathname.endsWith('/')) {
+    throw new Error('Invalid canonical SEO base URL');
+  }
+  return base;
+}
+
+/** HTML-Kopf eines Einstiegs: OG-Titel und -URL, bei Lazy-Routen das `modulepreload`. */
+function renderRouteEntry(template: string, entry: SeoRouteMetadata, base: URL): string {
+  if (!entry.title.trim()) throw new Error('SEO title must not be empty');
+  const url = new URL(entry.path.slice(1), base).href;
+  const html = replaceOgTag(replaceOgTag(template, 'og:title', entry.title), 'og:url', url);
+  if (entry.modulePreload === undefined) return html;
+  if (!MODULE_PRELOAD_PATH.test(entry.modulePreload)) throw new Error('Unsafe module preload path');
+  // Die Deployment-Basis steckt im kanonischen Basispfad (`resolveDeploymentBase()`).
+  return addModulePreload(html, base.pathname + entry.modulePreload);
+}
+
 /** Alle HTML-Köpfe und Pfade vorbereiten und prüfen, bevor die erste Datei entsteht. */
 export function writeSeoRouteEntries(
   outDir: string,
@@ -184,23 +203,12 @@ export function writeSeoRouteEntries(
   assertExistingPath(root, indexPath);
   const template = readFileSync(indexPath, 'utf8');
   const files = new Map<string, { path: string; html: string }>();
-  const base = new URL(baseUrl);
-  if (base.protocol !== 'https:' || base.search || base.hash || !base.pathname.endsWith('/')) {
-    throw new Error('Invalid canonical SEO base URL');
-  }
+  const base = canonicalBaseUrl(baseUrl);
   for (const entry of entries) {
     const path = outputPath(root, entry.path);
     const key = pathKey(path);
     if (files.has(key)) throw new Error('SEO output path collision');
-    if (!entry.title.trim()) throw new Error('SEO title must not be empty');
-    const url = new URL(entry.path.slice(1), base).href;
-    let html = replaceOgTag(replaceOgTag(template, 'og:title', entry.title), 'og:url', url);
-    if (entry.modulePreload !== undefined) {
-      if (!MODULE_PRELOAD_PATH.test(entry.modulePreload)) throw new Error('Unsafe module preload path');
-      // Die Deployment-Basis steckt im kanonischen Basispfad (`resolveDeploymentBase()`).
-      html = addModulePreload(html, base.pathname + entry.modulePreload);
-    }
-    files.set(key, { path, html });
+    files.set(key, { path, html: renderRouteEntry(template, entry, base) });
   }
   for (const { path } of files.values()) {
     assertExistingPath(root, path);

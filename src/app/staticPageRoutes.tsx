@@ -59,12 +59,19 @@ export const STATIC_PAGE_ROUTES: readonly StaticPageRoute[] = [
   { path: '/lizenzen', title: PAGE_TITLES.licenses, element: <LizenzenPage />, preload: LizenzenPage.preload },
 ];
 
+/** Die statische Lazy-Route zu `pathname` (relativ zur Deployment-Basis), sonst `undefined`. */
+export function findLazyStaticRoute(pathname: string): StaticPageRoute | undefined {
+  // Schrägstriche am Ende ohne Regex abschneiden: `/\/+$/` gilt unter Sonar S8786 als superlinear.
+  let path = pathname;
+  while (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
+  return STATIC_PAGE_ROUTES.find((route) => route.path === path && route.preload !== undefined);
+}
+
 /**
  * Lädt den Chunk der statischen Lazy-Route zu `pathname` (relativ zur
  * Deployment-Basis) vor. Routen ohne Chunk sind sofort erledigt; ein Ladefehler
  * wird nicht gemeldet, der erste Render der Seite versucht es erneut.
  */
 export function preloadStaticPage(pathname: string): Promise<void> {
-  const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
-  return STATIC_PAGE_ROUTES.find((route) => route.path === path)?.preload?.() ?? Promise.resolve();
+  return findLazyStaticRoute(pathname)?.preload?.() ?? Promise.resolve();
 }
