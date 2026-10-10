@@ -245,18 +245,29 @@ src/                              # Anwendungsquellcode
 │   ├── legendStyles.ts               # Legendenschema für Legenden und Vokabelkarten
 │   └── tooltipPlacement.ts           # Begrenzung eines geöffneten Tooltips auf Panel und Fenster
 ├── app/                          # Anwendungshell
-│   ├── AppShell.tsx                  # Routing-Konfiguration und Layoutrahmen
+│   ├── AppShell.tsx                  # Layoutrahmen (Kopf, Schublade, <main> mit Outlet)
+│   ├── appRoutes.tsx                 # Routentabelle des Data-Routers samt Lazy-Routen und Fehlergrenze
+│   ├── initialPage.ts                # Begrenztes Vorladen der Einstiegsseite vor dem ersten Render
+│   ├── lazyPage.ts                   # Seitenmodul einer Lazy-Route (Laden und Vorladen)
+│   ├── lazyRouteModules.d.mts        # Typen der Preload-Tabelle
+│   ├── lazyRouteModules.mjs          # Seitenmodule der Lazy-Routen für den Build-Preload
+│   ├── navigationPending.tsx         # Ladehinweis bei wartender Navigation
+│   ├── PageScroll.tsx                # Scrollfläche für Seiteninhalte
 │   ├── PageTitle.tsx                 # Deklarativer Routentitel (hebt <title> in den <head>)
 │   ├── pageTitles.ts                 # Feste Seitentitel als einzige Quelle der Wahrheit
+│   ├── RouteBoundary.tsx             # Lade- und Fehlerfläche der Routen in <main>
+│   ├── routePrefetch.ts              # Vorladen von Lazy-Routen bei Navigationsabsicht
 │   ├── routes.ts                     # Kanonische URL-Builder und Resolver
 │   ├── searchFocus.ts                # Navigationszustand „Suche öffnen und fokussieren“
 │   ├── staticPageRoutes.tsx          # Statische Routen samt deklariertem Titel
-│   └── staticTitleFallback.ts        # Entfernt den markierten index.html-Titel
+│   ├── staticTitleFallback.ts        # Entfernt den markierten index.html-Titel
+│   └── vocabularyDetailPage.ts       # Lazy-Seite des Vokabulardetails
 ├── workers/                      # Modul-Worker
 │   ├── catalogParser.worker.ts       # Klasse-1-Katalogparser
 │   └── oscalImport.worker.ts         # Klasse-2-Import
 ├── test/                         # Testinfrastruktur (siehe docs/OSCAL_ROUND_TRIP.md)
 │   ├── browser/                      # Chromium-Browser-Lane
+│   │   ├── appShellRouter.ts             # Shell mit echter Routentabelle im Speicher-Router
 │   │   ├── browserCommands.d.ts          # Typen der Browser-Commands
 │   │   ├── browserEgressDecision.ts      # Reine Egress-Entscheidung
 │   │   ├── browserEgressGuard.ts         # Playwright-Egress-Guard
@@ -272,7 +283,8 @@ src/                              # Anwendungsquellcode
 │   ├── eslintWithoutTypes.ts         # Repo-ESLint ohne Project Service für Regeltests
 │   ├── oscalGraphCompare.ts          # Graphvergleich mit Object.is-Semantik
 │   ├── oscalRoundTrip.ts             # No-op-Round-trip-Harnisch
-│   └── oscalStructure.ts             # Strukturorakel (Zählregeln A und B)
+│   ├── oscalStructure.ts             # Strukturorakel (Zählregeln A und B)
+│   └── renderAppShell.tsx            # Rendert die Shell mit echter Routentabelle für Komponententests
 ├── index.css                     # Tailwind-Einstieg und Design-Tokens
 ├── main.tsx                      # Einstiegspunkt
 ├── test-setup.ts                 # Vitest-Setup der jsdom-Lane
@@ -522,11 +534,11 @@ Die Vokabular-Membership wird aus **allen** ausgelieferten Katalogen abgeleitet 
 
 ## Routing
 
-Die Anwendung verwendet React Router mit `BrowserRouter` und pfadbasierten URLs. Das `basename` wird aus `import.meta.env.BASE_URL` abgeleitet (`src/main.tsx`), sodass die App auch unter dem GitHub-Pages-Unterpfad `/Grundschutz-Navigator/` funktioniert.
+Die Anwendung verwendet den Data-Router von React Router (`createBrowserRouter`, `RouterProvider` aus `react-router/dom`) mit pfadbasierten URLs. Die Routentabelle steht in `src/app/appRoutes.tsx`: `AppShell` ist die Layoutroute, ihr `<Outlet />` in `<main>` zeigt die Seite (siehe Route- und Chunk-Vertrag). Das `basename` wird aus `import.meta.env.BASE_URL` abgeleitet (`src/main.tsx`), sodass die App auch unter dem GitHub-Pages-Unterpfad `/Grundschutz-Navigator/` funktioniert.
 
 Das Vite-Plugin `github-pages-spa-fallback` (`vite.config.ts`) erzeugt beim Build statische HTTP-200-Einstiege unter `dist/<route>/index.html`. Es gilt nur für den Build (`apply: 'build'`), weil Vite `closeBundle` auch beim Schließen von Dev-Server und Vitest aufruft. Die festen Inhaltsrouten (`/suche`, `/vokabular`, `/about`, `/datenschutz`, `/impressum`, `/lizenzen`) stammen aus der gemeinsamen Titeltabelle `STATIC_CONTENT_TITLES` in `scripts/seoRouteEntries.ts`; Katalogeinstiege und deren adressierbare Praktiken, Themen und Kontrollen stammen ausschließlich aus den von `listSupportedCatalogs()` ausgelieferten öffentlichen Katalogen. Der Helfer prüft die Katalogbytes gegen ihre Integritätsmetadaten, verarbeitet sie mit dem bestehenden `parseCatalog()` und verwendet dieselben URL-Builder wie die App. Die bestehende Node-Brücke löst beim Laden dieser TypeScript-Module den Projektalias auf, bevor Vite selbst seine Konfiguration geladen hat.
 
-Jeder HTML-Einstieg erhält genau einen inhaltsbezogenen `og:title` und eine kanonische `og:url`. Die Titel lauten: Produktname für die Startseite, fester Seitentitel für Inhaltsseiten, Katalogname für einen Katalog, `Gruppenname | Katalogname` für Praktik oder Thema und `Kontroll-ID: Kontrolltitel | Katalogname` für eine Kontrolle. Die Titeltrenner `: ` zwischen Kennung und Titel sowie ` | ` vor dem übergeordneten Namen werden zentral als `TITLE_ID_SEPARATOR` und `TITLE_PARENT_SEPARATOR` in `src/app/pageTitles.ts` gepflegt. Browser-Titel ergänzen ` | Grundschutz++ Navigator`; Vokabularseiten verwenden `<Vokabularname> | Vokabulare | Grundschutz++ Navigator`. Die Meta-Beschreibung verwendet einen Doppelpunkt nach dem Produktnamen; der Alternativtext des OG-Bildes gibt die Textzeilen des Bildes als Sätze wieder. Die URL verwendet den Production-Origin und die normalisierte Deployment-Basis aus `BUILD_BASE`. HTML-Attributwerte werden maskiert. Beim Erzeugen der Routen-HTML ersetzt `writeSeoRouteEntries` nur `og:title` und `og:url`; `PageTitle` entfernt den statischen Titel-Fallback im Layout-Effekt.
+Jeder HTML-Einstieg erhält genau einen inhaltsbezogenen `og:title` und eine kanonische `og:url`. Die Titel lauten: Produktname für die Startseite, fester Seitentitel für Inhaltsseiten, Katalogname für einen Katalog, `Gruppenname | Katalogname` für Praktik oder Thema und `Kontroll-ID: Kontrolltitel | Katalogname` für eine Kontrolle. Die Titeltrenner `: ` zwischen Kennung und Titel sowie ` | ` vor dem übergeordneten Namen werden zentral als `TITLE_ID_SEPARATOR` und `TITLE_PARENT_SEPARATOR` in `src/app/pageTitles.ts` gepflegt. Browser-Titel ergänzen ` | Grundschutz++ Navigator`; Vokabularseiten verwenden `<Vokabularname> | Vokabulare | Grundschutz++ Navigator`. Die Meta-Beschreibung verwendet einen Doppelpunkt nach dem Produktnamen; der Alternativtext des OG-Bildes gibt die Textzeilen des Bildes als Sätze wieder. Die URL verwendet den Production-Origin und die normalisierte Deployment-Basis aus `BUILD_BASE`. HTML-Attributwerte werden maskiert. Beim Erzeugen der Routen-HTML ersetzt `writeSeoRouteEntries` `og:title` und `og:url` und fügt für Einstiege von Lazy-Routen genau ein `modulepreload` auf den Seitenchunk vor `</head>` ein (siehe Route- und Chunk-Vertrag; der Chunk-Pfad muss `assets/<Name>.js` entsprechen); `PageTitle` entfernt den statischen Titel-Fallback im Layout-Effekt.
 
 Query und Fragment erzeugen keine zusätzlichen Dateien und erscheinen nicht in Metadaten; ein Such- oder Filterlink erhält den Kopf seiner Route. Gruppen ohne ID erzeugen keinen Einstieg. Fehlende oder nicht auflösbare unterstützte Daten, Hashabweichungen, Pfad-Ausbruch, Symlinks und kollidierende Ausgabepfade führen vor dem Schreiben der Routendateien zum Fehler. Nach dem Schreiben prüft der Titelvertrag (`scripts/check-seo-titles.mjs`) jede gebaute HTML-Datei mit dem HTML-Parser von jsdom auf genau einen `<title>`-, `og:title`-, Meta-Description- und `og:image:alt`-Treffer ohne Gedankenstrich — erst er sieht das gebaute `dist/`-HTML statt der Quellvorlage. Für unbekannte Ziele dient `dist/404.html` als Fallback mit neutralem Produkttitel und kanonischer Startseiten-URL. Der Fallback bleibt bytegleich zum gebauten Startseiten-HTML.
 
@@ -549,6 +561,22 @@ Beim Build entsteht deterministisch eine UTF-8-kodierte `dist/sitemap.xml` mit X
 | `/lizenzen` | LizenzenPage | Lizenzen |
 | `/mehr` | — | Redirect auf `/about` |
 | `*` | — | 404-Seite |
+
+### Route- und Chunk-Vertrag
+
+Der Kernpfad bleibt im Hauptchunk: `AppShell`, die Startseite, der Katalog-Browser samt allem, was er importiert, die 404-Route und der Redirect `/mehr`. Die Nebenrouten laden dagegen je als eigener Chunk beim ersten Aufruf: Suche, Vokabularübersicht, Vokabulardetail, About, Datenschutz, Impressum und Lizenzen. Die Grenze ist ein `import()` mit Named-Export-Adapter und Literalpfad (`staticPageRoutes.tsx`, für das Vokabulardetail `vocabularyDetailPage.ts`), verpackt in `lazyPage` (`src/app/lazyPage.ts`); dynamisch zusammengesetzte Importpfade erzeugen keine Chunk-Grenze. `lazyPage` liefert `load()` für den Router und `preload()` für das Vorladen; beide teilen sich einen laufenden Ladevorgang, und nach einem Fehlschlag versucht der nächste Aufruf es neu.
+
+`appRoutes.tsx` gibt jeder Lazy-Route das Routenfeld `lazy`: Der Router lädt den Chunk über `lazyPage.load()`, bevor er die Navigation festschreibt. Bis dahin bleiben vorige Seite, Titel und Adresszeile stehen, und `useNavigation()` meldet `loading`; danach erscheint die neue Seite ohne Zwischenzustand. Eine weitere Navigation löst eine wartende ab, ein später eintreffender Chunk wechselt die Seite nicht mehr. Beim Direktaufruf zeigt `hydrateFallbackElement` den Ladezustand innerhalb der Shell, solange der Router den Chunk der Einstiegsseite lädt: `RouteLoading` (`src/app/RouteBoundary.tsx`) ist ein Statusbereich (`<output>`, implizite Rolle `status`) mit sichtbarem Text und Spinner und trägt Seitentitel und eine verborgene Hauptüberschrift (`sr-only`). Den Titel gibt die Routentabelle mit, für das Vokabulardetail „Vokabulare“.
+
+Eine pfadlose Route mit `ErrorBoundary` umschließt alle Seiten. Sie fängt fehlgeschlagene Chunks und Renderfehler jeder Route, auch der eager Kernrouten, ersetzt nur den Routeninhalt innerhalb von `<main>` und lässt Kopfzeile, Seitenleiste und Footer bedienbar. Die Fehlerfläche `RouteLoadError` (`role="alert"`) bietet „Neu laden“ und einen Link zur Startseite, trägt den Titel der fehlgeschlagenen Route (`pendingTitle` in `appRoutes.tsx`) oder den Produktnamen und zeigt nie den Fehlerinhalt. Es gibt keinen automatischen Neuladeversuch und keinen Handler für `vite:preloadError`; ein Neuladen ist eine bewusste Handlung. Der Router setzt den Fehlerzustand bei der nächsten Navigation zurück. Um die Shell selbst liegt keine Fehlergrenze (siehe `PageTitle`).
+
+Das Build-Plugin `github-pages-spa-fallback` gibt jedem statischen Einstieg einer Lazy-Route ein `<link rel="modulepreload">` auf den Chunk seiner Seite; der Browser fragt ihn damit parallel zum Hauptchunk an. Welche Route auf welches Seitenmodul zeigt, steht in `src/app/lazyRouteModules.mjs`; das Plugin erkennt die gehashten Chunks im Bundle am Fassadenmodul dynamischer Einstiege und trägt die Pfade mit der aufgelösten Deployment-Basis ein. Fehlt für eine zugeordnete Route ein Chunk, bricht der Build ab. `lazyRouteModules.test.ts` prüft die Tabelle paarweise gegen die Routentabelle: Jede Lazy-Route muss genau auf das Modul zeigen, das ihr `lazyPage`-Import in `staticPageRoutes.tsx` lädt. Einstieg `/`, Katalog-, Gruppen- und Kontrolleinstiege und `404.html` bleiben ohne Preload; das Vokabulardetail hat keine statischen Einstiege.
+
+`main.tsx` wartet vor dem Anlegen des Routers höchstens `INITIAL_PAGE_WAIT_MS` (`src/app/initialPage.ts`) auf den Chunk der Einstiegsseite (`preloadInitialPage`). Ist er eingetroffen, erfüllt sich das `lazy` der Einstiegsroute ohne Netzwerk, der Router ist beim ersten Render fertig, und die Seite erscheint ohne Ladezustand. Die Wartezeit ist hart begrenzt. Ein hängender oder fehlgeschlagener Request, ein Pfad ohne Chunk und der Ablauf der Frist lassen die Anwendung in jedem Fall normal rendern, notfalls mit Shell und Ladezustand. Der Basispfad fällt nur ab, wenn danach `/` oder das Ende folgt.
+
+Wartet eine Client-Navigation, meldet das ein Hinweis. `NavigationPendingIndicator` (`src/app/navigationPending.tsx`) liest `useNavigation()` und erfasst damit jede Navigation, ob per Link, Tastenkürzel, Programm oder Zurück-Taste. Er ist ein dauerhaft gemounteter Statusbereich (`<output>`, implizite Rolle `status`) direkt in der Shell, außerhalb aller Bereiche, die `inert` werden können: Bei offener mobiler Schublade sind `<main>` und die Steuerungen der Kopfzeile außer dem Menüknopf `inert`, bei geschlossener die Schublade selbst, und inerte Bereiche sind für Screenreader nicht erreichbar. Mit `z-50` liegt er sichtbar über der offenen Schublade; dauert die Navigation länger als `NAVIGATION_PENDING_DELAY_MS` (300 ms), zeigt er „Seite wird geladen…“ mit Spinner als schwebende Pille unter der Kopfzeile. Er fängt keine Zeiger ab, die vorige Seite bleibt bedienbar. Er verschwindet, sobald der Router wieder `idle` meldet: mit der neuen Seite, mit der Fehlerfläche oder weil eine weitere Navigation die wartende abgelöst hat. Ein hängender Chunk-Request erzeugt keinen Fehler; der Hinweis bleibt dann stehen, bis eine andere Navigation ihn ablöst.
+
+Die Anwendung lädt den Chunk einer Lazy-Route schon bei Navigationsabsicht vor (`src/app/routePrefetch.ts`). Ist der Chunk beim Klick noch nicht vollständig da, wartet die Navigation auf den Rest, und ab 300 ms meldet der Hinweis das Warten. Ein Listener in der Shell reagiert in der Capture-Phase auf `pointerover` (Maus), `focusin` (Tastatur) und `pointerdown` (Touch) auf einen `<a href>` und löst für eine Lazy-Route, auch das Vokabulardetail, höchstens einmal das `preload()` ihrer `lazyPage` aus; ist der Chunk beim Klick da, schreibt der Router die Navigation ohne Netzwerk fest. Der Pfad wird relativ zur Deployment-Basis bestimmt und nur dann beachtet, wenn der Link auf dieselbe Origin zeigt: Externe Links, andere Origins, `target` außer `_self`, `download`, Hash-Links, Kernrouten, Weiterleitungen und unbekannte Pfade lösen nichts aus, und ein Pfad wie `/Basis-x` gehört nicht zu `/Basis`. Mit `navigator.connection.saveData === true` unterbleibt das Vorladen; fehlt die Schnittstelle, ist es aktiv. Beim Start und im Leerlauf lädt nichts vor, Bytes fließen nur bei Absicht.
 
 ## Katalog-Browser-Grenzen
 
