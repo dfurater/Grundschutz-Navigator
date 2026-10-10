@@ -293,6 +293,10 @@ export function AppShell() {
         Zum Hauptinhalt springen
       </a>
 
+      {/* Außerhalb von Kopf, Schublade und <main>: Diese werden bei offener
+          mobiler Schublade `inert`, ein Statusbereich darin bliebe stumm. */}
+      <NavigationPendingIndicator />
+
       <HeaderBar
         onSearch={handleSearch}
         className="mobile-nav-push"
@@ -443,7 +447,6 @@ export function AppShell() {
           inert={mobileNavOpen}
           className="mobile-nav-push flex-1 min-w-0 flex flex-col bg-white md:overflow-hidden"
         >
-          <NavigationPendingIndicator />
           <MobileNavigationContext.Provider value={mobileNavBlocksFixed}>
             <LazyRoute resetKey={location.pathname} fallbackTitle={pendingTitle(location.pathname)}>
               <Routes>

@@ -13,8 +13,9 @@ import { PRODUCT_TITLE } from './pageTitles';
  * - Eine Navigation zu einer Lazy-Seite hält die vorige Seite samt Titel, bis der
  *   Chunk eintrifft; der Ladezustand der Grenze erscheint nicht. Ein neu
  *   gemounteter Suspense-Rand würde ihn zeigen, und React hielte ihn mindestens
- *   300 ms. Wartet die Navigation länger als die Schwelle, meldet der Hinweis in
- *   `<main>` „Seite wird geladen…“, bis die Seite steht.
+ *   300 ms. Wartet die Navigation länger als die Schwelle, meldet der Hinweis
+ *   „Seite wird geladen…“, bis die Seite steht. Er liegt außerhalb jedes
+ *   Bereichs, der bei offener mobiler Schublade `inert` wird.
  * - Ein Renderfehler einer eager Kernroute zeigt die Fehlerfläche innerhalb von
  *   `<main>`; die Shell bleibt, und der nächste Pfad erholt sich.
  *
@@ -33,9 +34,10 @@ vi.mock('@/hooks/useMediaQuery', () => ({ useMediaQuery: () => false }));
 vi.mock('@/components/TreeNav', () => ({ TreeNav: () => <nav aria-label="TreeNav">TreeNav</nav> }));
 vi.mock('@/components/Footer', () => ({ Footer: () => <footer>Fußzeile</footer> }));
 vi.mock('@/components/HeaderBar', () => ({
-  HeaderBar: () => (
+  HeaderBar: ({ onMenuToggle }: { onMenuToggle: () => void }) => (
     <header>
       <span>Kopfzeile</span>
+      <button type="button" onClick={onMenuToggle}>Menü</button>
       <Link to="/">Zur Startseite (Kopf)</Link>
       <Link to="/suche">Zur Suche</Link>
       <Link to="/katalog/gspp">Zum Katalog</Link>
@@ -86,8 +88,13 @@ describe('AppShell: Grenze um alle Routen', () => {
     expect(screen.getByRole('heading', { name: 'Startseite' })).toBeInTheDocument();
     expectSingleDocumentTitle(PRODUCT_TITLE);
     const status = screen.getByRole('status');
-    expect(container.querySelector('main')).toContainElement(status);
+    expect(container.querySelector('main')).not.toContainElement(status);
     expect(status).toBeEmptyDOMElement();
+
+    // Offene mobile Schublade: <main> ist inert, der Hinweis darf es nicht sein.
+    fireEvent.click(screen.getByRole('button', { name: 'Menü' }));
+    expect(container.querySelector('main')).toHaveAttribute('inert');
+    expect(status.closest('[inert]')).toBeNull();
 
     fireEvent.click(screen.getByRole('link', { name: 'Zur Suche' }));
 

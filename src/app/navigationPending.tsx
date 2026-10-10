@@ -57,7 +57,8 @@ export const NAVIGATION_PENDING_DELAY_MS = 300;
  * Hinweis „Seite wird geladen…“, solange eine Navigation länger als
  * `NAVIGATION_PENDING_DELAY_MS` wartet. Er schwebt unter der Kopfzeile und
  * fängt keine Zeiger ab: Die vorige Seite bleibt bedienbar. Der Statusbereich
- * steht dauerhaft im DOM, damit Screenreader das Erscheinen des Textes ansagen.
+ * steht dauerhaft im DOM, damit Screenreader das Erscheinen des Textes ansagen,
+ * und gehört in keinen Bereich, der `inert` werden kann.
  * Er verschwindet, sobald die Transition endet: mit der neuen Seite, mit der
  * Fehlerfläche oder weil eine weitere Navigation die wartende abgelöst hat.
  */
@@ -76,14 +77,14 @@ export function NavigationPendingIndicator() {
 
   if (pending === undefined) return null;
   return (
-    <output className="pointer-events-none fixed left-1/2 top-[4.25rem] z-40 -translate-x-1/2">
+    <output className="pointer-events-none fixed left-1/2 top-[4.25rem] z-50 -translate-x-1/2">
       {pending && delayElapsed && (
         <span className="flex items-center gap-2 rounded-full border border-[var(--color-border-default)] bg-[var(--color-surface-raised)] px-3 py-1.5 text-sm text-[var(--color-text-secondary)] shadow-[var(--shadow-overlay)]">
           <span
             className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[var(--color-border-default)] border-t-[var(--color-primary-main)] motion-reduce:animate-none"
             aria-hidden="true"
           />
-          Seite wird geladen…
+          <span>Seite wird geladen…</span>
         </span>
       )}
     </output>
