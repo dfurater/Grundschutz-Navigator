@@ -1,8 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { INITIAL_PAGE_WAIT_MS, initialRoutePath, preloadInitialPage } from './initialPage';
 
-// Die Datenschutzseite lädt nie fertig, die Impressumseite scheitert, die Lizenzseite lädt sofort.
+// Die Datenschutz- und die About-Seite laden nie fertig, die Impressumseite scheitert,
+// die Lizenzseite lädt sofort. Jeder Test mit hängendem Chunk hat seine eigene Seite:
+// Ein hängender Import bleibt über das Testende hinaus offen, und ein zweiter Test
+// soll nicht vom Zustand dieses Imports abhängen.
 vi.mock('@/features/pages/DatenschutzPage', () => new Promise(() => {}));
+vi.mock('@/features/pages/AboutPage', () => new Promise(() => {}));
 vi.mock('@/features/pages/ImpressumPage', () => { throw new Error('Chunk fehlt'); });
 vi.mock('@/features/pages/LizenzenPage', () => ({ LizenzenPage: () => null }));
 
@@ -59,7 +63,7 @@ describe('preloadInitialPage', () => {
 
   it('wendet die Basis an, bevor es den Chunk sucht', async () => {
     vi.useFakeTimers();
-    const pending = preloadInitialPage('/Basis/datenschutz', '/Basis', 50);
+    const pending = preloadInitialPage('/Basis/about', '/Basis', 50);
 
     expect(await settledAfter(pending, 49)).toBe(false);
     expect(await settledAfter(pending, 1)).toBe(true);
