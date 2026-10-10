@@ -57,8 +57,35 @@ describe('CatalogMobileExportSheet', () => {
     expect(document.documentElement.style.overflow).toBe('clip');
   });
 
-  it('closes when its backdrop is clicked', () => {
+  it('opens as a modal dialog named by its heading, isolates the app and closes via Schließen (GSPP-503)', () => {
     const view = render(
+      <CatalogMobileExportSheet
+        checkedIds={new Set()}
+        filteredControls={[firstControl]}
+        allControls={[firstControl, secondControl]}
+        sectionFilename="grundschutz-TOP.1.csv"
+      />,
+    );
+    const trigger = screen.getByRole('button', { name: 'CSV exportieren' });
+
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    const dialog = screen.getByRole('dialog', { name: 'Exportieren als CSV' });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(view.container).not.toContainElement(dialog);
+    expect(view.container).toHaveAttribute('inert');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Schließen' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(view.container).not.toHaveAttribute('inert');
+    expect(trigger).toHaveFocus();
+    expect(document.documentElement.style.overflow).toBe('clip');
+  });
+
+  it('closes when its backdrop is clicked', () => {
+    render(
       <CatalogMobileExportSheet
         checkedIds={new Set()}
         filteredControls={[firstControl]}
@@ -68,7 +95,7 @@ describe('CatalogMobileExportSheet', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'CSV exportieren' }));
-    const backdrop = view.container.querySelector(
+    const backdrop = document.querySelector(
       '.fixed.inset-0[aria-hidden="true"]',
     );
     expect(backdrop).not.toBeNull();

@@ -1,11 +1,13 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useId, useRef, useState } from 'react';
 import type { Control } from '@/domain/models';
 import { BackdropTint } from '@/components/BackdropTint';
 import { Button } from '@/components/Button';
 import { IconDownload } from '@/components/icons';
+import { ModalPortal } from '@/components/ModalPortal';
 import { downloadCSV } from '@/features/export/csvExport';
-import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
+import { useModalDialog } from '@/hooks/useModalDialog';
+import { useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
 import { useScrollLock } from '@/hooks/useScrollLock';
 
 interface CatalogMobileExportSheetProps {
@@ -24,10 +26,12 @@ export function CatalogMobileExportSheet({
   onSelectionExported,
 }: CatalogMobileExportSheetProps) {
   const [open, setOpen] = useState(false);
-  const sheetRef = useRef<HTMLDivElement>(null);
+  const sheetRef = useRef<HTMLDialogElement>(null);
+  const headingId = useId();
+  const actionsScrollRef = useOverlayScrollbars<HTMLDivElement>();
   const close = useCallback(() => setOpen(false), []);
 
-  useFocusTrap(sheetRef, open);
+  useModalDialog(sheetRef, open);
   useScrollLock(open);
   useGlobalEventListener('document', 'keydown', (event) => {
     if (event.key === 'Escape') close();
@@ -58,7 +62,7 @@ export function CatalogMobileExportSheet({
       </Button>
 
       {open && (
-        <>
+        <ModalPortal>
           <div
             className="fixed inset-0 z-40 lg:hidden"
             onClick={close}
@@ -66,9 +70,12 @@ export function CatalogMobileExportSheet({
           >
             <BackdropTint className="bg-black/30" />
           </div>
-          <div
+          <dialog
+            open
             ref={sheetRef}
-            className="fixed inset-x-0 bottom-0 z-50 bg-[var(--color-surface-raised)] rounded-t-2xl shadow-xl flex flex-col overflow-hidden lg:hidden animate-slide-up"
+            aria-modal="true"
+            aria-labelledby={headingId}
+            className="m-0 p-0 border-0 w-full max-w-none text-[inherit] fixed inset-x-0 bottom-0 z-50 bg-[var(--color-surface-raised)] rounded-t-2xl shadow-xl max-h-[80dvh] flex flex-col overflow-hidden lg:hidden animate-slide-up"
           >
             <div
               className="flex justify-center items-center min-h-[44px] shrink-0 select-none"
@@ -76,46 +83,54 @@ export function CatalogMobileExportSheet({
             >
               <div className="w-10 h-1 bg-[var(--color-border-strong)] rounded-full" />
             </div>
-            <div className="px-4 py-3 border-b border-[var(--color-border-default)] shrink-0">
-              <h3 className="type-meta">Exportieren als CSV</h3>
+            {/* Die Schließaktion steht im Kopf: Das Sheet ist unten verankert und
+                schneidet bei wenig Höhe unten ab, der Kopf bleibt sichtbar; die
+                Exportaktionen scrollen darunter. */}
+            <div className="px-4 py-3 border-b border-[var(--color-border-default)] shrink-0 flex items-center justify-between gap-2">
+              <h2 id={headingId} className="type-meta">Exportieren als CSV</h2>
+              <Button variant="ghost" size="sm" className="min-h-[44px] min-w-[44px] -my-3 -mr-2 text-sm" onClick={close} data-dialog-close>
+                Schließen
+              </Button>
             </div>
-            <div className="p-4 flex flex-col gap-2">
-              {checkedIds.size > 0 && (
+            <div ref={actionsScrollRef} className="min-h-0 overflow-y-auto overscroll-contain">
+              <div className="w-full p-4 flex flex-col gap-2">
+                {checkedIds.size > 0 && (
+                  <Button
+                    variant="secondary"
+                    className="w-full min-h-[44px] justify-start"
+                    onClick={exportSelected}
+                  >
+                    <IconDownload className="w-4 h-4 mr-2" />
+                    Auswahl exportieren ({checkedIds.size})
+                  </Button>
+                )}
                 <Button
                   variant="secondary"
                   className="w-full min-h-[44px] justify-start"
-                  onClick={exportSelected}
+                  disabled={filteredControls.length === 0}
+                  onClick={() => {
+                    downloadCSV(filteredControls, sectionFilename);
+                    close();
+                  }}
                 >
                   <IconDownload className="w-4 h-4 mr-2" />
-                  Auswahl exportieren ({checkedIds.size})
+                  Aktuelle Ansicht ({filteredControls.length})
                 </Button>
-              )}
-              <Button
-                variant="secondary"
-                className="w-full min-h-[44px] justify-start"
-                disabled={filteredControls.length === 0}
-                onClick={() => {
-                  downloadCSV(filteredControls, sectionFilename);
-                  close();
-                }}
-              >
-                <IconDownload className="w-4 h-4 mr-2" />
-                Aktuelle Ansicht ({filteredControls.length})
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full min-h-[44px] justify-start"
-                onClick={() => {
-                  downloadCSV(allControls, 'grundschutz-gesamtkatalog.csv');
-                  close();
-                }}
-              >
-                <IconDownload className="w-4 h-4 mr-2" />
-                Gesamtkatalog ({allControls.length})
-              </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full min-h-[44px] justify-start"
+                  onClick={() => {
+                    downloadCSV(allControls, 'grundschutz-gesamtkatalog.csv');
+                    close();
+                  }}
+                >
+                  <IconDownload className="w-4 h-4 mr-2" />
+                  Gesamtkatalog ({allControls.length})
+                </Button>
+              </div>
             </div>
-          </div>
-        </>
+          </dialog>
+        </ModalPortal>
       )}
     </>
   );
