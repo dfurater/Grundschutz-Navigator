@@ -1,6 +1,7 @@
 import { Link, useParams, useSearchParams } from 'react-router';
 import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES, TITLE_PARENT_SEPARATOR } from '@/app/pageTitles';
+import { buildVocabularySourceUrl } from '@/domain/vocabulary';
 import type { VocabularyEntry, VocabularyNamespace } from '@/domain/models';
 import { useCatalog } from '@/hooks/useCatalog';
 import { getVocabularyTitle } from './vocabularyTitle';
@@ -134,6 +135,10 @@ export function VocabularyNamespacePage() {
   // Überschrift und Dokumenttitel tragen denselben kuratierten Namen wie der
   // Verweis in der Übersicht; der rohe Dateiname bleibt über den Quellpfad sichtbar.
   const vocabularyTitle = getVocabularyTitle(namespace.source.fileName);
+  const sourceHref = buildVocabularySourceUrl(
+    namespace.source,
+    vocabularyRegistry?.sourceCommitSha,
+  );
 
   return (
     <>
@@ -147,7 +152,15 @@ export function VocabularyNamespacePage() {
             Zur Übersicht der Vokabulare
           </Link>
           <h1 className="type-page-title">{vocabularyTitle}</h1>
-          <p className="type-secondary">{namespace.source.path}</p>
+          <a
+            href={sourceHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="catalog-link-color catalog-meta-type flex min-h-11 items-center rounded [overflow-wrap:anywhere] lg:min-h-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+            title="Upstream-Datei öffnen"
+          >
+            {namespace.source.path}
+          </a>
         </div>
 
         <div className="rounded-[var(--radius-md)] border border-[var(--color-border-default)] bg-[var(--color-surface-base)]">

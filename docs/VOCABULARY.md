@@ -250,7 +250,7 @@ Im ControlDetail-Breadcrumb (`src/features/catalog/ControlTaxonomyBreadcrumb.tsx
 
 Fetch und Catalog-Sync-Guard behandeln jede Abweichung — fehlende oder doppelte UUIDs, nicht zugeordnete Katalog- oder CSV-Seiten — für jeden Snapshot als Integritätsfehler. Beidseitig zugeordnetes Wachstum — neue Praktik oder neues Thema auf Katalog- und CSV-Seite zugleich — passiert Fetch und Catalog-Sync-Guard; nur nicht zuordenbare Seiten (fehlende oder doppelte UUIDs, Orphans jenseits der EXMP-Ausnahme) lassen den Guard fehlschlagen. Die gemessenen Zählwerte stehen unter `taxonomyCoverage` in `upstream-sources-metadata.json` als Provenienz des Fetch-Laufs.
 
-Für `practices.csv` gilt eine namentlich begrenzte Ausnahme: Das BSI liefert die Beispielpraktik „EXMP“ ohne zugehörige Katalog-Gruppe mit aus. Genau diese UUID ist in `TOLERATED_ORPHAN_PRACTICE_UUIDS` (`scripts/taxonomy-coverage.mjs`) geduldet und wird separat als `toleratedOrphanCsvEntryCount` ausgewiesen; jede andere verwaiste CSV-Zeile lässt den Guard weiterhin hart fehlschlagen. Die gemessene Practice-Deckung steht unter `taxonomyCoverage.practices` in `upstream-sources-metadata.json`.
+Für `practices.csv` gilt eine namentlich begrenzte Ausnahme: Das BSI liefert die Beispielpraktik „EXMP“ ohne zugehörige Katalog-Gruppe mit aus. Genau diese UUID ist in `TOLERATED_ORPHAN_PRACTICE_UUIDS` (`scripts/taxonomy-coverage.mjs`) geduldet und wird separat als `toleratedOrphanCsvEntryCount` ausgewiesen; jede andere verwaiste CSV-Zeile lässt den Guard hart fehlschlagen. Die gemessene Practice-Deckung steht unter `taxonomyCoverage.practices` in `upstream-sources-metadata.json`.
 
 ### Such-Text-Sammlung
 
@@ -325,6 +325,7 @@ Für die Quell-Links auf den exakten Upstream-Stand (`buildVocabularySourceUrl` 
 
 Detailseite für einen Namespace (`src/features/vocabularies/VocabularyNamespacePage.tsx`):
 
+- Unter der Überschrift steht der Dateipfad des Namensraums als externer Link auf die Upstream-Datei (`buildVocabularySourceUrl`, mit Snapshot-SHA auf `blob/<sha>/<pfad>`); die Übersicht `/vokabular` verlinkt die Upstream-Dateien nicht
 - Alle Einträge als auswählbare Link-Liste
 - Listeneintrag zeigt `entry.value`; ist `valueColumn` nicht selbst `Begriff` (z. B. `basethreats.csv` mit `valueColumn: "ID"`), wird zusätzlich der Wert der Spalte `Begriff` mit Abstand angehängt (z. B. „G 0.1 Feuer"), sofern vorhanden und von `entry.value` verschieden
 - Einzelner Eintrag per Query-Parameter `?wert=` adressierbar (Deep-Link aus Control-Details)
@@ -354,7 +355,7 @@ Verweisspalten sind davon ausgenommen. Ein `ChildOfUUID`-Wert erscheint als Link
 - [INTEGRITY.md](./INTEGRITY.md) — Integritätsprüfung
 - `src/domain/vocabulary.ts` — Vocabulary-Implementierung
 - `src/domain/taxonomyVocabulary.ts` — UUID-basierte Praktik- und Themen-Auflösung
-- `src/domain/vocabularyNamespaces.ts` — kanonische BSI-Namespace-URLs für synthetische Lookups, abgeleitet aus dem Quellregister; Tests und Fixtures importieren sie samt `BSI_NAMESPACE_DIRECTORY`, statt sie abzuschreiben. Pfad und Routenkennung bilden die Fixtures mit `bsiNamespaceLocation` wie die Pipeline (`deriveRouteId`). `vocabularyNamespaces.copies.node.test.ts` schlägt fehl, sobald unter `src/` eine BSI-URL auf eine dieser Dateien als Literal steht, auch unter einem anderen Verzeichnis; `src/test/fixtures/vocabulary.migration.test.ts` prüft die Fixtures gegen eine simulierte Pfadmigration. `deriveRouteId` steht dafür als gemeinsames reines ESM-Modul in `src/domain/vocabularyRouteId.mjs`, das auch die Pipeline nutzt.
+- `src/domain/vocabularyNamespaces.ts` — kanonische BSI-Namespace-URLs für synthetische Lookups, abgeleitet aus dem Quellregister; Tests und Fixtures importieren sie samt `BSI_NAMESPACE_DIRECTORY`. Pfad und Routenkennung bilden die Fixtures mit `bsiNamespaceLocation` wie die Pipeline (`deriveRouteId`). `vocabularyNamespaces.copies.node.test.ts` schlägt fehl, sobald unter `src/` eine BSI-URL auf eine dieser Dateien als Literal steht, auch unter einem anderen Verzeichnis; `src/test/fixtures/vocabulary.migration.test.ts` prüft die Fixtures gegen eine simulierte Pfadmigration. `deriveRouteId` steht dafür als gemeinsames reines ESM-Modul in `src/domain/vocabularyRouteId.mjs`, das auch die Pipeline nutzt.
 - `src/domain/models.ts` — Vocabulary Types
 - `src/state/CatalogContext.tsx` — Context-Integration
 - `src/features/catalog/ControlTaxonomyBreadcrumb.tsx` — kontextuelle Taxonomie-Definitionen

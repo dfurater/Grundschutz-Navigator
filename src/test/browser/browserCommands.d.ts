@@ -11,6 +11,7 @@ declare module 'vitest/internal/browser' {
       violations: string[];
     }>;
     dispatchBrowserTouch: (kind: 'start' | 'move' | 'end' | 'reset', x?: number, y?: number) => Promise<void>;
+    setBrowserSafeArea: (bottom?: number) => Promise<void>;
     setBrowserFontSize: (standard?: number) => Promise<void>;
   }
 }

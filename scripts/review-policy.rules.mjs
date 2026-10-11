@@ -298,9 +298,9 @@ export const scopedRules = [
   },
   {
     key: 'R24-doku-ist-zustand',
-    scopes: ['docs/**'],
+    scopes: ['docs/**', 'README.md'],
     body:
-      `Dokumentation unter docs/** beschreibt ausschließlich den Ist-Zustand: Zulässig ist nur ein Satz, der einen aktuellen, gegen Code oder Konfiguration nachprüfbaren technischen Fakt nennt — Dateipfad, Verhalten, Konfigurationswert, Grenze oder Bedingung. Ein Satz, der Entstehungsgeschichte erzählt, eine verworfene Alternative darstellt oder eine Kontrastformulierung ohne eigenen Faktengehalt an dieser Stelle trägt, ist ein Befund. Eine Begründung ist nur zulässig, wenn sie einen nicht offensichtlichen Constraint trägt, und dann als knappe Tatsachenaussage, nicht als Erzählung. docs/REVIEW_INVARIANTS.md ist aus scripts/review-policy.rules.mjs erzeugt; ein Befund dort zeigt auf den Regeltext in scripts/review-policy.rules.mjs, nie auf die generierte Ausgabe.`,
+      `Dokumentation unter docs/** und in README.md beschreibt ausschließlich den Ist-Zustand: Zulässig ist nur ein Satz, der einen aktuellen, gegen Code oder Konfiguration nachprüfbaren technischen Fakt nennt — Dateipfad, Verhalten, Konfigurationswert, Grenze oder Bedingung. Ein Satz, der Entstehungsgeschichte erzählt, eine verworfene Alternative darstellt oder eine Kontrastformulierung ohne eigenen Faktengehalt an dieser Stelle trägt, ist ein Befund. Eine Begründung ist nur zulässig, wenn sie einen nicht offensichtlichen Constraint trägt, und dann als knappe Tatsachenaussage, nicht als Erzählung. docs/REVIEW_INVARIANTS.md ist aus scripts/review-policy.rules.mjs erzeugt; ein Befund dort zeigt auf den Regeltext in scripts/review-policy.rules.mjs, nie auf die generierte Ausgabe.`,
   }
 ];
 
