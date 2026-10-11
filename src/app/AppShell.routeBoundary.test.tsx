@@ -11,8 +11,9 @@ import { PAGE_TITLES, PRODUCT_TITLE } from './pageTitles';
 /*
  * Client-Navigation und Fehlergrenze der Routen (GSPP-506), mit der echten
  * Routentabelle im Data-Router:
- * - Eine Navigation zu einer Lazy-Seite hält vorige Seite, Titel und Ort, bis
- *   der Router den Chunk geladen hat. Wartet sie länger als die Schwelle,
+ * - Eine Navigation per Link oder Programm zu einer Lazy-Seite hält vorige
+ *   Seite, Titel und Ort, bis der Router den Chunk geladen hat (Zurück/
+ *   Vorwärts: `navigationPop.browser.test.ts`). Wartet sie länger als die Schwelle,
  *   meldet der Hinweis „Seite wird geladen…“; er liegt außerhalb jedes
  *   Bereichs, der bei offener mobiler Schublade `inert` wird.
  * - Eine weitere Navigation löst die wartende ab; der verspätete Chunk wechselt

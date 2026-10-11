@@ -21,9 +21,10 @@ import { VocabularyNamespacePage } from '@/app/vocabularyDetailPage';
  *
  * Die Shell ist die Layoutroute, ihr `<Outlet />` in `<main>` zeigt die Seite.
  * Nebenrouten laden über das Routenfeld `lazy`: Der Router holt den Chunk,
- * bevor er die Navigation festschreibt. Bis dahin bleiben vorige Seite, Titel
- * und Adresszeile stehen, und `useNavigation()` meldet `loading`
- * (`navigationPending.tsx`). Beim Direktaufruf zeigt `hydrateFallbackElement`
+ * bevor er die Navigation festschreibt. Bis dahin bleiben vorige Seite und
+ * Titel stehen, und `useNavigation()` meldet `loading` (`navigationPending.tsx`).
+ * Bei PUSH/REPLACE schreibt der Router auch die Adresszeile erst zum Abschluss;
+ * bei POP (Zurück/Vorwärts) hat der Browser sie schon gewechselt. Beim Direktaufruf zeigt `hydrateFallbackElement`
  * den Ladezustand innerhalb der Shell. Eine pfadlose Route mit `ErrorBoundary`
  * umschließt alle Seiten: Ladefehler eines Chunks und Renderfehler jeder Route,
  * auch der Kernrouten, ersetzen nur den Inhalt von `<main>`.
