@@ -126,4 +126,54 @@ describe('CatalogExportMenu', () => {
     );
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
+  it.each([
+    [[], [firstControl], 'Aktuelle Ansicht (1)'],
+    [[firstControl.id], [firstControl], 'Auswahl exportieren (1)'],
+    [[], [firstControl, secondControl], 'Gesamtkatalog (2)'],
+    [[], [], 'Gesamtkatalog (2)'],
+  ])('focuses the first enabled item for selection %j and view %j', (ids, controls, name) => {
+    render(<CatalogExportMenu checkedIds={new Set(ids)} filteredControls={controls} allControls={[firstControl, secondControl]} sectionFilename="view.csv" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Exportoptionen' }));
+    expect(screen.getByRole('menuitem', { name })).toHaveFocus();
+  });
+
+  it('wraps arrow navigation and supports Home/End while skipping disabled items', () => {
+    render(<CatalogExportMenu checkedIds={new Set([firstControl.id])} filteredControls={[]} allControls={[firstControl, secondControl]} sectionFilename="view.csv" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Exportoptionen' }));
+    const selected = screen.getByRole('menuitem', { name: 'Auswahl exportieren (1)' });
+    const all = screen.getByRole('menuitem', { name: 'Gesamtkatalog (2)' });
+    const menu = screen.getByRole('menu');
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(all).toHaveFocus();
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(selected).toHaveFocus();
+    fireEvent.keyDown(menu, { key: 'ArrowUp' });
+    expect(all).toHaveFocus();
+    fireEvent.keyDown(menu, { key: 'Home' });
+    expect(selected).toHaveFocus();
+    fireEvent.keyDown(menu, { key: 'End' });
+    expect(all).toHaveFocus();
+  });
+
+  it.each(['Escape', 'Tab'])('returns focus before closing with %s', (key) => {
+    render(<CatalogExportMenu checkedIds={new Set()} filteredControls={[firstControl]} allControls={[firstControl, secondControl]} sectionFilename="view.csv" />);
+    const trigger = screen.getByRole('button', { name: 'Weitere Exportoptionen' });
+    fireEvent.click(trigger);
+    fireEvent.keyDown(screen.getByRole('menu'), { key });
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it('returns focus after export and after clicking a non-focusable outside target', () => {
+    const view = render(<CatalogExportMenu checkedIds={new Set()} filteredControls={[firstControl]} allControls={[firstControl, secondControl]} sectionFilename="view.csv" />);
+    const trigger = screen.getByRole('button', { name: 'Weitere Exportoptionen' });
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Aktuelle Ansicht (1)' }));
+    expect(mockedDownloadCSV).toHaveBeenCalledWith([firstControl], 'view.csv');
+    expect(trigger).toHaveFocus();
+    fireEvent.click(trigger);
+    fireEvent.mouseDown(view.container);
+    expect(trigger).toHaveFocus();
+  });
+
 });

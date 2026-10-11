@@ -357,13 +357,9 @@ function expectInViewport(element: Element) {
  * verankerte Sheet schneidet unten ab; Überschrift und Schließaktion stehen im
  * Kopf und bleiben sichtbar, die Aktionen darunter sind per Scrollen erreichbar.
  */
-// `lastActionReachable: false`: Bei 32 px Schrift belegen Griff und Filterkopf
-// fast die ganzen 200 px des Filter-Sheets; für die Liste bleiben etwa 33 px,
-// eine Filterzeile ist 88 px hoch. Das galt schon vor GSPP-503 (GSPP-508);
-// geprüft werden hier Überschrift und Schließaktion.
 test.each([
   ['Filter-Sheet', 'Filter anzeigen', 'Fertig', 16, () => filterSheet(), true],
-  ['Filter-Sheet', 'Filter anzeigen', 'Fertig', 32, () => filterSheet(), false],
+  ['Filter-Sheet', 'Filter anzeigen', 'Fertig', 32, () => filterSheet(), true],
   ['Export-Sheet', 'CSV exportieren', 'Schließen', 16, exportSheet, true],
   ['Export-Sheet', 'CSV exportieren', 'Schließen', 32, exportSheet, true],
 ] as const)('%s bei 250 px Fensterhöhe und %s: Überschrift und „%s“ bleiben sichtbar (%i px Schrift)', async (_name, triggerName, closeName, fontSize, surface, lastActionReachable) => {
@@ -414,4 +410,56 @@ test('Filter-Sheet: „Fertig“ überdeckt bei aktiven Filtern „Zurücksetzen
   for (const y of [doneBox.top + 1, doneBox.top + doneBox.height / 2, doneBox.bottom - 1]) {
     expect(document.elementFromPoint(doneBox.left + doneBox.width / 2, y)?.closest('button')).toBe(done);
   }
+});
+
+test('Filter-Sheet: Größenwechsel bewahrt Fokus und manuelle Klappzustände', async () => {
+  await commands.setBrowserFontSize(32);
+  const shell = await renderWithBackground(700, filterSheet(true));
+  await page.viewport(700, 250);
+  buttonByName(shell, 'Filter anzeigen').click();
+  await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
+  const dialog = document.querySelector('dialog')!;
+  const heading = dialog.querySelector<HTMLElement>('[data-scroll-summary]')!;
+  await expect.poll(() => heading.dataset.scrollSummary).toBe('true');
+  const section = [...dialog.querySelectorAll<HTMLButtonElement>('button[aria-expanded]')].at(-1)!;
+  const initialExpanded = section.getAttribute('aria-expanded');
+  section.click();
+  await expect.poll(() => section.getAttribute('aria-expanded')).not.toBe(initialExpanded);
+  const expanded = section.getAttribute('aria-expanded');
+  const checkbox = dialog.querySelector<HTMLInputElement>('input')!;
+  checkbox.focus();
+  const checked = checkbox.checked;
+
+  await page.viewport(700, 800);
+  await expect.poll(() => heading.dataset.scrollSummary).toBe('false');
+  expect(dialog.querySelector('input')).toBe(checkbox);
+  expect(checkbox.checked).toBe(checked);
+  expect(document.activeElement).toBe(checkbox);
+  expect(section.getAttribute('aria-expanded')).toBe(expanded);
+
+  await commands.setBrowserFontSize(16);
+  await page.viewport(700, 250);
+  await expect.poll(() => heading.dataset.scrollSummary).toBe('false');
+  expect(document.activeElement).toBe(checkbox);
+  buttonByName(dialog, 'Fertig').click();
+});
+
+test('Filter-Sheet: aufgeklappte Zeilen bleiben nach Einklappen aller Sektionen erreichbar', async () => {
+  await commands.setBrowserFontSize(32);
+  const shell = await renderWithBackground(700, filterSheet());
+  await page.viewport(700, 250);
+  buttonByName(shell, 'Filter anzeigen').click();
+  await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
+  const dialog = document.querySelector('dialog')!;
+  await Promise.all(dialog.getAnimations().map((animation) => animation.finished));
+  const heading = dialog.querySelector<HTMLElement>('[data-scroll-summary]')!;
+  await expect.poll(() => heading.dataset.scrollSummary).toBe('true');
+  for (const section of dialog.querySelectorAll<HTMLButtonElement>('button[aria-expanded="true"]')) section.click();
+  await expect.poll(() => heading.dataset.scrollSummary).toBe('false');
+  dialog.querySelector<HTMLButtonElement>('button[aria-expanded]')!.click();
+  await expect.poll(() => heading.dataset.scrollSummary).toBe('true');
+  const row = [...dialog.querySelectorAll('label')].at(-1)!;
+  row.scrollIntoView({ block: 'nearest' });
+  expectInViewport(row);
+  expectWithin(row, row.closest('[data-overlayscrollbars-viewport]')!);
 });
