@@ -1,6 +1,7 @@
-import { useState, useCallback } from 'react';
-import type { KeyboardEvent } from 'react';
-import { IconChevronRight, IconChevronDown } from './icons';
+import { useId } from 'react';
+import { IconChevronRight, IconChevronDown } from '@/components/icons';
+import { useTreeNavigation } from '@/hooks/useTreeNavigation';
+import type { TreeNode } from '@/hooks/useTreeNavigation';
 
 export interface TreeItem {
   /**
@@ -23,145 +24,47 @@ export interface TreeNavProps {
   readonly onSelect: (id: string) => void;
   readonly selectedId?: string;
   readonly className?: string;
+  readonly catalogKey?: string;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Helpers                                                            */
-/* ------------------------------------------------------------------ */
-
-function hasSelectedDescendant(item: TreeItem, selectedId?: string): boolean {
-  if (!selectedId || !item.children) return false;
-  return item.children.some(
-    (child) =>
-      (child.id !== undefined && child.id === selectedId) ||
-      hasSelectedDescendant(child, selectedId),
-  );
-}
-
-/**
- * Längstes Kürzel einer Geschwistergruppe in Zeichen. Alle Kürzel-Badges der
- * Gruppe bekommen diese Breite, damit die Titel einer Ebene bündig beginnen
- * (GSPP-491). Die Monospace-Schrift macht `ch` zur exakten Zeichenbreite.
- */
-function longestPrefixLength(items: readonly TreeItem[]): number {
-  return items.reduce(
-    (longest, item) => Math.max(longest, item.prefix?.length ?? 0),
-    0,
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  TreeNavItem (recursive)                                            */
-/* ------------------------------------------------------------------ */
+type Navigation = ReturnType<typeof useTreeNavigation>;
+const TREE_DEPTH_PADDING_CLASSES = ['pl-2', 'pl-5', 'pl-8', 'pl-11'] as const;
 
 interface TreeNavItemProps {
-  readonly item: TreeItem;
-  readonly level: number;
-  /** Breite der Kürzel-Badges dieser Geschwistergruppe in Zeichen */
-  readonly prefixLength: number;
-  readonly onSelect: (id: string) => void;
+  readonly node: TreeNode;
+  readonly navigation: Navigation;
   readonly selectedId?: string;
 }
 
-const TREE_DEPTH_PADDING_CLASSES = ['pl-2', 'pl-5', 'pl-8', 'pl-11'] as const;
-
-function TreeNavItem({
-  item,
-  level,
-  prefixLength,
-  onSelect,
-  selectedId,
-}: TreeNavItemProps) {
-  const hasChildren = Boolean(item.children && item.children.length > 0);
-  /** Ohne `id` ist der Eintrag nicht adressierbar und damit nie ausgewählt. */
-  const isSelectable = item.id !== undefined;
-  const isSelected = isSelectable && selectedId === item.id;
-  const shouldAutoExpand =
-    hasChildren && hasSelectedDescendant(item, selectedId);
-  const autoExpandKey = shouldAutoExpand ? selectedId : undefined;
-  const [expandState, setExpandState] = useState(() => ({
-    expanded: shouldAutoExpand,
-    autoExpandKey,
-  }));
-  const expanded =
-    autoExpandKey && expandState.autoExpandKey !== autoExpandKey
-      ? true
-      : expandState.expanded;
-  const childPrefixLength = longestPrefixLength(item.children ?? []);
-  const depthClass =
-    TREE_DEPTH_PADDING_CLASSES[
-      Math.min(level, TREE_DEPTH_PADDING_CLASSES.length - 1)
-    ];
-
-  const setExpanded = useCallback(
-    (nextExpanded: boolean | ((previous: boolean) => boolean)) => {
-      const previousExpanded =
-        autoExpandKey && expandState.autoExpandKey !== autoExpandKey
-          ? true
-          : expandState.expanded;
-      const resolvedExpanded =
-        typeof nextExpanded === 'function'
-          ? nextExpanded(previousExpanded)
-          : nextExpanded;
-
-      setExpandState({
-        expanded: resolvedExpanded,
-        autoExpandKey,
-      });
-    },
-    [autoExpandKey, expandState],
-  );
-
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      switch (e.key) {
-        case 'ArrowRight':
-          if (hasChildren && !expanded) {
-            setExpanded(true);
-            e.preventDefault();
-          }
-          break;
-        case 'ArrowLeft':
-          if (hasChildren && expanded) {
-            setExpanded(false);
-            e.preventDefault();
-          }
-          break;
-        case 'Enter':
-        case ' ':
-          e.preventDefault();
-          if (hasChildren) {
-            setExpanded((prev) => !prev);
-          }
-          if (item.id !== undefined) onSelect(item.id);
-          break;
-      }
-    },
-    [expanded, hasChildren, item.id, onSelect, setExpanded],
-  );
-
+function TreeNavItem({ node, navigation, selectedId }: TreeNavItemProps) {
+  const { item } = node;
+  const groupId = useId();
+  const hasChildren = node.children.length > 0;
+  const expanded = navigation.expanded.has(node.key);
+  const isSelected = item.id !== undefined && item.id === selectedId;
+  const depthClass = TREE_DEPTH_PADDING_CLASSES[
+    Math.min(node.ancestors.length, TREE_DEPTH_PADDING_CLASSES.length - 1)
+  ];
   return (
-    <li
-      role="treeitem"
-      aria-expanded={hasChildren ? expanded : undefined}
-      aria-selected={isSelected}
-    >
+    <li role="none">
       <button
         type="button"
-        className={`flex w-full items-center py-1.5 pr-2 text-left text-sm transition-colors hover:bg-[var(--color-surface-subtle)] active:bg-[var(--color-border-default)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:ring-inset ${depthClass} ${
+        ref={(element) => navigation.register(node.key, element)}
+        role="treeitem"
+        aria-label={[item.prefix, item.label, item.badge].filter(Boolean).join(' ')}
+        aria-owns={hasChildren && expanded ? groupId : undefined}
+        aria-expanded={hasChildren ? expanded : undefined}
+        aria-selected={item.id !== undefined ? isSelected : undefined}
+        tabIndex={navigation.activeKey === node.key ? 0 : -1}
+        onFocus={(event) => navigation.handleFocus(node, event.currentTarget)}
+        onClick={() => navigation.activate(node)}
+        onKeyDown={(event) => navigation.handleKeyDown(event, node)}
+        data-testid={item.id === undefined ? 'tree-item-ohne-id' : `tree-item-${item.id}`}
+        className={`flex w-full cursor-pointer items-center py-1.5 pr-2 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:ring-inset hover:bg-[var(--color-surface-subtle)] active:bg-[var(--color-border-default)] ${depthClass} ${
           isSelected
             ? 'bg-[var(--color-surface-subtle)] font-semibold text-[var(--color-text-primary)]'
             : 'text-[var(--color-text-secondary)]'
         }`}
-        tabIndex={0}
-        onClick={() => {
-          if (hasChildren) {
-            setExpanded((prev) => !prev);
-          }
-          if (item.id !== undefined) onSelect(item.id);
-        }}
-        onKeyDown={handleKeyDown}
-        data-testid={item.id === undefined ? 'tree-item-ohne-id' : `tree-item-${item.id}`}
       >
         <span className="mr-1 flex h-4 w-4 shrink-0 items-center justify-center text-[var(--color-text-muted)]">
           {hasChildren &&
@@ -176,7 +79,7 @@ function TreeNavItem({
             {/* `0.5rem` = `px-1` beidseitig, Preflight setzt border-box */}
             <span
               className="shrink-0 rounded bg-[var(--color-surface-subtle)] px-1 py-px text-center font-mono text-xs font-semibold leading-tight text-[var(--color-text-muted)]"
-              style={{ width: `calc(${prefixLength}ch + 0.5rem)` }}
+              style={{ width: `calc(${node.prefixLength}ch + 0.5rem)` }}
             >
               {item.prefix}
             </span>
@@ -192,21 +95,11 @@ function TreeNavItem({
         )}
       </button>
       {hasChildren && expanded && (
-        // S6819 bewusst NICHT „fixierbar": <ul role="group"> ist das kanonische
-        // WAI-ARIA-APG-Muster für Baum-Untergruppen; die Regel-Alternativen
-        // (<details>/<fieldset>/<optgroup>/<address>) sind hier entweder
-        // ungültiges HTML (<li> nur in Listen) oder semantisch falsch
-        // (Triage FALSE_POSITIVE, begründet am Sonar-Issue AaAkEZpoFj4WkVJvb09P).
-        <ul role="group">
-          {item.children!.map((child, index) => (
-            <TreeNavItem
-              key={child.id ?? `ohne-id-${index}`}
-              item={child}
-              level={level + 1}
-              prefixLength={childPrefixLength}
-              onSelect={onSelect}
-              selectedId={selectedId}
-            />
+        // aria-owns ordnet die benachbarte Gruppe ihrem Treeitem zu, ohne
+        // die Kindtexte zum sichtbaren bzw. zugänglichen Zeilenlabel zu machen.
+        <ul role="group" id={groupId}>
+          {node.children.map((child) => (
+            <TreeNavItem key={child.key} node={child} navigation={navigation} selectedId={selectedId} />
           ))}
         </ul>
       )}
@@ -214,33 +107,13 @@ function TreeNavItem({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  TreeNav                                                            */
-/* ------------------------------------------------------------------ */
-
-export function TreeNav({
-  items,
-  onSelect,
-  selectedId,
-  className = '',
-}: TreeNavProps) {
-  const prefixLength = longestPrefixLength(items);
+export function TreeNav({ items, onSelect, selectedId, className = '', catalogKey }: TreeNavProps) {
+  const navigation = useTreeNavigation(items, selectedId, onSelect, catalogKey);
   return (
-    <nav
-      className={className}
-      aria-label="Katalog-Explorer"
-      data-testid="tree-nav"
-    >
-      <ul role="tree">
-        {items.map((item, index) => (
-          <TreeNavItem
-            key={item.id ?? `ohne-id-${index}`}
-            item={item}
-            level={0}
-            prefixLength={prefixLength}
-            onSelect={onSelect}
-            selectedId={selectedId}
-          />
+    <nav className={className} aria-label="Katalog-Explorer" data-testid="tree-nav">
+      <ul role="tree" aria-label="Katalog-Explorer" ref={(element) => navigation.registerTree(element)} onBlur={(event) => navigation.handleBlur(event.relatedTarget)}>
+        {navigation.nodes.map((node) => (
+          <TreeNavItem key={JSON.stringify([catalogKey, node.key])} node={node} navigation={navigation} selectedId={selectedId} />
         ))}
       </ul>
     </nav>

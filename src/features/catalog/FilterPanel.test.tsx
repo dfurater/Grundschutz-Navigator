@@ -294,4 +294,11 @@ describe.each(['Desktop', 'Mobile'] as const)('Filterdarstellung — %s', (surfa
       expect(tags.getByRole('checkbox', { name: /^Änderung/ }).closest('label')).toHaveTextContent('0');
     }
   });
+
+  it.runIf(surface === 'Mobile')('benennt das mobile Sheet als modalen Dialog nach der Überschrift „Filter“ (GSPP-503)', () => {
+    render(<Panel props={presentationProps()} />);
+    openMobile();
+
+    expect(screen.getByRole('dialog', { name: 'Filter' })).toHaveAttribute('aria-modal', 'true');
+  });
 });

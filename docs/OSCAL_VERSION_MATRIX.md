@@ -14,7 +14,7 @@ Die Matrix lebt als Daten in
 [`src/domain/oscalVersionMatrix.mjs`](../src/domain/oscalVersionMatrix.mjs),
 **nicht** in `sourceRegistry.mjs`:
 
-- Die Matrix führt alle **acht** OSCAL-Root-Modelle, auch die vier noch nicht
+- Die Matrix führt alle **acht** OSCAL-Root-Modelle, auch die vier nicht
   registrierten. Das Quellregister ist auf tatsächlich existierende
   BSI-Upstream-Pfade begrenzt; Zellen ohne Artefakt gehören nicht dorthin.
 - Das Quellregister sagt, welche Artefakte es gibt und welche Version das
