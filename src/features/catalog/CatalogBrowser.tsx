@@ -177,7 +177,7 @@ export function CatalogBrowser() {
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="text-center max-w-sm">
             <p className="text-red-600 font-medium">Fehler beim Laden</p>
-            <p className="text-sm text-red-500 mt-1">{displayState.error}</p>
+            <p className="text-sm text-[var(--color-danger-text)] mt-1">{displayState.error}</p>
           </div>
         </div>
       </>

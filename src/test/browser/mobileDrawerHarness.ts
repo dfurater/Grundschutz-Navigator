@@ -1,10 +1,9 @@
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { MemoryRouter } from 'react-router';
 import { expect } from 'vitest';
 import { commands, page } from 'vitest/browser';
-import { AppShell } from '@/app/AppShell';
+import { appShellAt } from './appShellRouter';
 import { CatalogContext } from '@/state/CatalogContext';
 import { createInitialState, projectPublicState } from '@/state/catalogReducer';
 import { ENTRY_CATALOG_KEY } from '@/domain/sourceRegistry';
@@ -35,7 +34,7 @@ export async function renderShell(width: number, route = '/gibt-es-nicht') {
   const catalogState = { ...projectPublicState(createInitialState(ENTRY_CATALOG_KEY), () => {}), loading: false };
   flushSync(() => {
     root?.render(createElement(CatalogContext.Provider, { value: catalogState },
-      createElement(MemoryRouter, { initialEntries: [route] }, createElement(AppShell)),
+      appShellAt(route),
     ));
   });
   // Lange Seite, damit das Dokument wie eine Kontrollliste scrollt.

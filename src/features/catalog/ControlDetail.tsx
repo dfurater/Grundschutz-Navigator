@@ -72,6 +72,8 @@ export interface ControlDetailProps {
   readonly onNavigateToControl?: (control: Control) => void;
   /** Standard `panel`, siehe `ControlDetailLayout`. */
   readonly layout?: ControlDetailLayout;
+  /** ID der Detailüberschrift, über die das Tablet-Overlay seinen Dialognamen bezieht. */
+  readonly titleId?: string;
 }
 
 export function getControlDetailUrl(
@@ -99,6 +101,7 @@ export function ControlDetail({
   onClose,
   onNavigateToControl,
   layout = 'panel',
+  titleId,
 }: ControlDetailProps) {
   const { vocabularyRegistry, catalog, catalogDocument } = useCatalog();
   if (!catalog) {
@@ -315,8 +318,8 @@ export function ControlDetail({
           >
             {linkCopied ? (
               <>
-                <IconCheck className="h-4 w-4 text-success" aria-hidden="true" />
-                <span className="text-success">Kopiert</span>
+                <IconCheck className="h-4 w-4 text-success-text" aria-hidden="true" />
+                <span className="text-success-text">Kopiert</span>
               </>
             ) : (
               <>
@@ -356,7 +359,7 @@ export function ControlDetail({
           onToggleVocabulary={toggleVocabulary}
         />
         {/* Fokusziel beim Öffnen der mobilen Seitenansicht (`useDocumentDetailPage`). */}
-        <h2 data-control-detail-title tabIndex={-1} className="type-page-title focus:outline-none">
+        <h2 id={titleId} data-control-detail-title tabIndex={-1} className="type-page-title focus:outline-none">
           {control.title}
         </h2>
         {parentControl && (
