@@ -22,6 +22,7 @@ export function CatalogExportMenu({
   const menuContainerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const outsideClickTargetRef = useRef<EventTarget | null>(null);
   const menuId = useId();
   const enabledItems = () => [...(menuRef.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])];
   const close = () => {
@@ -66,15 +67,26 @@ export function CatalogExportMenu({
   };
 
   useGlobalEventListener('document', 'mousedown', (event) => {
-    if (!menuContainerRef.current?.contains(event.target as Node)) {
+    outsideClickTargetRef.current = null;
+    if (open && !menuContainerRef.current?.contains(event.target as Node)) {
       const target = event.target instanceof Element ? event.target : null;
-      if (!target?.closest('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([disabled]), [contenteditable]:not([contenteditable="false"])')) {
-        // Der native Mousedown auf statischen Flächen würde den Rückkehrfokus löschen.
-        event.preventDefault();
+      if (event.button === 0 && !target?.closest('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([disabled]), [contenteditable]:not([contenteditable="false"])')) {
+        outsideClickTargetRef.current = event.target;
       }
-      close();
+      // Native Textauswahl und Fokusübernahme des Außenziels zulassen.
+      setOpen(false);
     }
-  }, open);
+  });
+
+  useGlobalEventListener('document', 'click', (event) => {
+    const target = outsideClickTargetRef.current;
+    outsideClickTargetRef.current = null;
+    if (target === event.target && event.button === 0 && !event.defaultPrevented
+      && document.getSelection()?.isCollapsed !== false
+      && document.activeElement?.tagName === 'BODY') {
+      triggerRef.current?.focus({ preventScroll: true });
+    }
+  });
 
   useEffect(() => {
     const menu = menuRef.current;

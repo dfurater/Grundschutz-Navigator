@@ -13,7 +13,7 @@ vi.mock('@/features/export/csvExport', () => ({ downloadCSV: vi.fn() }));
 const controls = Array.from({ length: 40 }, (_, i) => ({ id: `GC.${i}`, title: `Kontrolle ${i}` } as Control));
 let host: HTMLDivElement;
 let root: Root;
-afterEach(() => { root.unmount(); host.remove(); vi.clearAllMocks(); });
+afterEach(() => { root.unmount(); host.remove(); document.getSelection()?.removeAllRanges(); vi.clearAllMocks(); });
 
 const selectControl = vi.fn();
 async function renderMenu(selected = false, empty = false, withTable = false) {
@@ -106,6 +106,34 @@ test('outside click preserves a button target and returns focus for static conte
   await expect.poll(() => host.querySelector('[role="menu"]')).not.toBeNull();
   await userEvent.click(page.getByText('Statische Fläche'));
   expect(document.activeElement).toBe(trigger());
+});
+
+test('outside text can be selected by a native drag while the export menu is open', async () => {
+  await renderMenu();
+  trigger().click();
+  await expect.poll(() => host.querySelector('[role="menu"]')).not.toBeNull();
+  const text = page.getByText('Statische Fläche');
+  const bounds = text.element().getBoundingClientRect();
+  const range = document.createRange();
+  range.selectNodeContents(text.element());
+  const textBounds = range.getBoundingClientRect();
+  await userEvent.dragAndDrop(text, text, {
+    sourcePosition: { x: textBounds.left - bounds.left + 1, y: textBounds.top - bounds.top + textBounds.height / 2 },
+    targetPosition: { x: textBounds.right - bounds.left - 1, y: textBounds.top - bounds.top + textBounds.height / 2 },
+  });
+  expect(document.getSelection()?.toString()).toBe('Statische Fläche');
+  expect(host.querySelector('[role="menu"]')).toBeNull();
+  expect(document.activeElement).not.toBe(trigger());
+});
+
+test('outside double click selects text without delayed return focus', async () => {
+  await renderMenu();
+  trigger().click();
+  await expect.poll(() => host.querySelector('[role="menu"]')).not.toBeNull();
+  await userEvent.dblClick(page.getByText('Statische Fläche'), { position: { x: 12, y: 10 } });
+  expect(document.getSelection()?.toString().trim()).toBe('Statische');
+  expect(document.activeElement).not.toBe(trigger());
+  expect(host.querySelector('[role="menu"]')).toBeNull();
 });
 
 
