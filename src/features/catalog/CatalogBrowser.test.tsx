@@ -20,6 +20,7 @@ import { DESKTOP_QUERY, OWN_SCROLL_AREA_QUERY } from '@/hooks/breakpointQueries'
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { AppShell } from '@/app/AppShell';
 import { catalogCollectionDefaults } from '@/test/catalogState';
+import { renderAppShell } from '@/test/renderAppShell';
 import { CatalogBrowser } from './CatalogBrowser';
 import {
   CATALOG_ROUTE_PATTERN,
@@ -323,12 +324,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
   });
 
   it.each(['body', 'detail'] as const)('dismisses navigation before the detail page, then preserves detail Escape scope (%s)', (detailCloseOrigin) => {
-    render(
-      <MemoryRouter initialEntries={['/katalog/gspp/TOP.1']}>
-        <AppShell />
-        <LocationProbe />
-      </MemoryRouter>,
-    );
+    renderAppShell(['/katalog/gspp/TOP.1'], { shell: () => <><AppShell /><LocationProbe /></> });
     fireEvent.click(screen.getByRole('button', { name: control.title }));
     const detailPath = '/katalog/gspp/kontrolle/shared-alt-identifier';
     const menuButton = screen.getByRole('button', { name: 'Menü öffnen' });
@@ -367,12 +363,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
       controlIds: [],
     });
     mockCatalog(catalog);
-    render(
-      <MemoryRouter initialEntries={['/katalog/gspp/TOP.1']}>
-        <AppShell />
-        <LocationProbe />
-      </MemoryRouter>,
-    );
+    renderAppShell(['/katalog/gspp/TOP.1'], { shell: () => <><AppShell /><LocationProbe /></> });
     scrollListTo(420);
     fireEvent.click(screen.getByRole('button', { name: control.title }));
     const menuButton = screen.getByRole('button', { name: 'Menü öffnen' });
@@ -389,11 +380,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
   });
 
   it.each(['Filter anzeigen', 'CSV exportieren'])('dismisses an existing %s sheet when the mobile navigation opens', (label) => {
-    render(
-      <MemoryRouter initialEntries={['/katalog/gspp/TOP.1']}>
-        <AppShell />
-      </MemoryRouter>,
-    );
+    renderAppShell(['/katalog/gspp/TOP.1']);
     const root = document.documentElement;
     fireEvent.click(screen.getByRole('button', { name: label }));
     expect(root.style.overflow).toBe('hidden');

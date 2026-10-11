@@ -14,6 +14,7 @@ import type { Catalog, Control } from '@/domain/models';
 export const CATALOG_ROUTE_PATTERN = '/katalog/:catalogKey';
 export const GROUP_ROUTE_PATTERN = '/katalog/:catalogKey/:groupId';
 export const CONTROL_ROUTE_PATTERN = '/katalog/:catalogKey/kontrolle/:altIdentifier';
+export const VOCABULARY_DETAIL_ROUTE_PATTERN = '/vokabular/:namespaceId';
 
 function assertCatalogKey(catalogKey: CatalogKey): void {
   if (!isCatalogKey(catalogKey)) {
