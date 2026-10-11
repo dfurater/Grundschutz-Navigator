@@ -590,8 +590,8 @@ test.each([
   await userEvent.keyboard(shortcut);
 
   await expect.poll(() => document.querySelector('dialog')).toBeNull();
+  await expect.poll(() => shell.querySelector('[aria-label="Suchbegriff eingeben"]')).not.toBeNull();
   const search = shell.querySelector<HTMLInputElement>('[aria-label="Suchbegriff eingeben"]')!;
-  expect(search).not.toBeNull();
   await expect.poll(() => document.activeElement).toBe(search);
   expect(shell.hasAttribute('inert')).toBe(false);
   expect(document.documentElement.style.overflow).toBe('');
