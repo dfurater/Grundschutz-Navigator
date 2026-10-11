@@ -192,7 +192,7 @@ export function resolveVocabularyValues(
 
 ### getVocabularyNamespaceByRouteId
 
-Lookup für die Routing-Ebene (`/vokabular/:namespaceId`, Route in `src/app/AppShell.tsx`):
+Lookup für die Routing-Ebene: `VocabularyNamespacePage` löst damit den Parameter der Route `/vokabular/:namespaceId` auf (Muster `VOCABULARY_DETAIL_ROUTE_PATTERN` in `src/app/routes.ts`, eingetragen in `src/app/appRoutes.tsx`):
 
 ```typescript
 export function getVocabularyNamespaceByRouteId(

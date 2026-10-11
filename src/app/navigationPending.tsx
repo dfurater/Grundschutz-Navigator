@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useNavigation } from 'react-router';
+import { NavigationPendingStatus } from '@/components/NavigationPendingStatus';
+import { NavigationPendingContext } from '@/state/NavigationPendingContext';
 
 /*
  * Wartezustand der Client-Navigation (GSPP-506).
@@ -17,15 +19,11 @@ import { useNavigation } from 'react-router';
 export const NAVIGATION_PENDING_DELAY_MS = 300;
 
 /**
- * Hinweis „Seite wird geladen…“, solange eine Navigation länger als
- * `NAVIGATION_PENDING_DELAY_MS` wartet. Er schwebt unter der Kopfzeile und
- * fängt keine Zeiger ab: Die vorige Seite bleibt bedienbar. Der Statusbereich
- * steht dauerhaft im DOM, damit Screenreader das Erscheinen des Textes ansagen,
- * und gehört in keinen Bereich, der `inert` werden kann. Er verschwindet, sobald
- * der Router wieder `idle` meldet: mit der neuen Seite, mit der Fehlerfläche
- * oder weil eine weitere Navigation die wartende abgelöst hat.
+ * `true`, solange eine Navigation länger als `NAVIGATION_PENDING_DELAY_MS`
+ * wartet; `false`, sobald der Router wieder `idle` meldet: mit der neuen Seite,
+ * mit der Fehlerfläche oder weil eine weitere Navigation die wartende abgelöst hat.
  */
-export function NavigationPendingIndicator() {
+export function useNavigationPendingNotice(): boolean {
   const pending = useNavigation().state !== 'idle';
   const [delayElapsed, setDelayElapsed] = useState(false);
 
@@ -38,17 +36,26 @@ export function NavigationPendingIndicator() {
     };
   }, [pending]);
 
-  return (
-    <output className="pointer-events-none fixed left-1/2 top-[4.25rem] z-50 -translate-x-1/2">
-      {pending && delayElapsed && (
-        <span className="flex items-center gap-2 rounded-full border border-[var(--color-border-default)] bg-[var(--color-surface-raised)] px-3 py-1.5 text-sm text-[var(--color-text-secondary)] shadow-[var(--shadow-overlay)]">
-          <span
-            className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[var(--color-border-default)] border-t-[var(--color-primary-main)] motion-reduce:animate-none"
-            aria-hidden="true"
-          />
-          <span>Seite wird geladen…</span>
-        </span>
-      )}
-    </output>
-  );
+  return pending && delayElapsed;
+}
+
+/**
+ * Stellt `useNavigationPendingNotice()` über `NavigationPendingContext` bereit,
+ * für den Hinweis der Shell und die Statusbereiche modaler Dialoge
+ * (`DialogNavigationStatus`). Der Kontext reicht durch Portale.
+ */
+export function NavigationPendingProvider({ children }: { readonly children: ReactNode }) {
+  const pending = useNavigationPendingNotice();
+  return <NavigationPendingContext.Provider value={pending}>{children}</NavigationPendingContext.Provider>;
+}
+
+/**
+ * Hinweis „Seite wird geladen…“ der Shell. Er schwebt unter der Kopfzeile und
+ * fängt keine Zeiger ab: Die vorige Seite bleibt bedienbar. Der Statusbereich
+ * steht dauerhaft im DOM, damit Screenreader das Erscheinen des Textes ansagen.
+ * Bei offenem modalem Dialog ist `#root` und damit dieser Hinweis inert; dann
+ * meldet `DialogNavigationStatus` im Dialog denselben Zustand.
+ */
+export function NavigationPendingIndicator() {
+  return <NavigationPendingStatus className="fixed left-1/2 top-[4.25rem] z-50" />;
 }

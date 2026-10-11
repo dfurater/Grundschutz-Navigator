@@ -4,6 +4,7 @@ import { BackdropTint } from '@/components/BackdropTint';
 import { Button } from '@/components/Button';
 import { IconDownload } from '@/components/icons';
 import { ModalPortal } from '@/components/ModalPortal';
+import { DialogNavigationStatus } from '@/components/NavigationPendingStatus';
 import { downloadCSV } from '@/features/export/csvExport';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import { useModalDialog } from '@/hooks/useModalDialog';
@@ -129,6 +130,7 @@ export function CatalogMobileExportSheet({
                 </Button>
               </div>
             </div>
+            <DialogNavigationStatus />
           </dialog>
         </ModalPortal>
       )}

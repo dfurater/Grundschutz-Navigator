@@ -1,7 +1,7 @@
 import { Link, useParams, useSearchParams } from 'react-router';
 import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES, TITLE_PARENT_SEPARATOR } from '@/app/pageTitles';
-import { buildVocabularySourceUrl } from '@/domain/vocabulary';
+import { buildVocabularySourceUrl, getVocabularyNamespaceByRouteId } from '@/domain/vocabulary';
 import type { VocabularyEntry, VocabularyNamespace } from '@/domain/models';
 import { useCatalog } from '@/hooks/useCatalog';
 import { getVocabularyTitle } from './vocabularyTitle';
@@ -103,9 +103,7 @@ export function VocabularyNamespacePage() {
     );
   }
 
-  const namespace = namespaceId
-    ? vocabularyRegistry?.namespacesByRouteId.get(namespaceId)
-    : undefined;
+  const namespace = getVocabularyNamespaceByRouteId(vocabularyRegistry, namespaceId);
 
   if (!namespace) {
     return (
