@@ -498,6 +498,19 @@ body.dev-selector-dragging * {
     line-height: 1;
   }
 
+  .mobile-sheet {
+    max-height: 80dvh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    box-shadow: var(--shadow-overlay);
+    padding: 0 0 env(safe-area-inset-bottom, 0px);
+  }
+
+  @media (max-height: 20rem) {
+    .mobile-sheet {
+      max-height: 100dvh;
+    }
+  }
+
   .pb-safe {
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }

@@ -56,6 +56,7 @@ let host: HTMLDivElement | undefined;
 
 afterEach(async () => {
   await commands.setBrowserFontSize();
+  await commands.setBrowserSafeArea();
   scene.reset();
   root?.unmount();
   host?.remove();
@@ -463,3 +464,58 @@ test('Filter-Sheet: aufgeklappte Zeilen bleiben nach Einklappen aller Sektionen 
   expectInViewport(row);
   expectWithin(row, row.closest('[data-overlayscrollbars-viewport]')!);
 });
+
+
+const sheetGeometries = [
+  [320, 640, 16],
+  [390, 844, 16],
+  [700, 250, 16],
+  [320, 640, 32],
+  [390, 844, 32],
+  [700, 250, 32],
+] as const;
+
+for (const [name, triggerName, closeName, surface] of [
+  ['Filter', 'Filter anzeigen', 'Fertig', () => filterSheet()],
+  ['Export', 'CSV exportieren', 'Schließen', exportSheet],
+] as const) {
+  test.each(sheetGeometries)(`${name}: Tokens und erreichbare letzte Aktion bei %i × %i / %i px Schrift mit Bottom-Inset`, async (width, height, fontSize) => {
+    await commands.setBrowserFontSize(fontSize);
+    await commands.setBrowserSafeArea(34);
+    const shell = await renderWithBackground(width, surface());
+    await page.viewport(width, height);
+    buttonByName(shell, triggerName).focus();
+    buttonByName(shell, triggerName).click();
+    await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
+    const dialog = document.querySelector('dialog')!;
+    await expectBottomSheetGeometry(dialog, width);
+    const style = getComputedStyle(dialog);
+    expect(style.borderTopLeftRadius).toBe(`${fontSize / 2}px`);
+    expect(style.borderTopRightRadius).toBe(`${fontSize / 2}px`);
+    expect(style.borderBottomLeftRadius).toBe('0px');
+    const tokenProbe = document.createElement('div');
+    tokenProbe.style.boxShadow = 'var(--shadow-overlay)';
+    dialog.append(tokenProbe);
+    expect(style.boxShadow).toBe(getComputedStyle(tokenProbe).boxShadow);
+    tokenProbe.remove();
+    expect(style.paddingBottom).toBe('34px');
+    expect(dialog.getBoundingClientRect().height).toBeLessThanOrEqual((height <= fontSize * 20 ? height : height * 0.8) + 0.5);
+    expect(dialog.scrollWidth).toBeLessThanOrEqual(dialog.clientWidth);
+    const actions = [...dialog.querySelectorAll<HTMLElement>('button:not([data-dialog-close]), input')];
+    const last = actions.at(-1)!;
+    const target = last.closest('label') ?? last;
+    const scroll = target.closest('[data-overlayscrollbars-viewport]')!;
+    target.scrollIntoView({ block: 'nearest' });
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    expectWithin(target, scroll);
+    expectInViewport(target);
+    expect(target.getBoundingClientRect().bottom).toBeLessThanOrEqual(window.innerHeight - 34 + 0.5);
+    expect(dialog.getBoundingClientRect().bottom - scroll.getBoundingClientRect().bottom).toBeCloseTo(34, 0);
+    expectInViewport(buttonByName(dialog, closeName));
+    await commands.setBrowserSafeArea();
+    await expect.poll(() => getComputedStyle(dialog).paddingBottom).toBe('0px');
+    buttonByName(dialog, closeName).click();
+    await expect.poll(() => document.querySelector('dialog')).toBeNull();
+    expect(document.activeElement).toBe(buttonByName(shell, triggerName));
+  });
+}
