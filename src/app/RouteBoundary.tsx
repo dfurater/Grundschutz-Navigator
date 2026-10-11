@@ -33,7 +33,7 @@ export function RouteLoading({ title }: Readonly<{ title?: string }>) {
       )}
       {/* S6819: <output> trägt die implizite Rolle "status". */}
       <output
-        className={`${SURFACE} flex min-h-64 items-center justify-center gap-3 p-6 text-sm text-slate-600`}
+        className={`${SURFACE} flex min-h-64 md:min-h-0 items-center justify-center gap-3 p-6 text-sm text-slate-600`}
       >
         <span
           className="inline-block w-5 h-5 border-2 border-slate-300 border-t-primary-main rounded-full animate-spin"
