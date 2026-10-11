@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Control } from '@/domain/models';
 import { downloadCSV } from '@/features/export/csvExport';
 import { CatalogExportMenu } from './CatalogExportMenu';
@@ -23,6 +23,7 @@ describe('CatalogExportMenu', () => {
   beforeEach(() => {
     mockedDownloadCSV.mockReset();
   });
+  afterEach(() => document.getSelection()?.removeAllRanges());
 
   it('exports the filtered section from the primary action', () => {
     render(
@@ -173,7 +174,74 @@ describe('CatalogExportMenu', () => {
     expect(trigger).toHaveFocus();
     fireEvent.click(trigger);
     fireEvent.mouseDown(view.container);
+    fireEvent.click(view.container);
     expect(trigger).toHaveFocus();
+  });
+
+  it('allows native selection to start without returning focus on outside mousedown', () => {
+    const view = render(<CatalogExportMenu checkedIds={new Set()} filteredControls={[firstControl]} allControls={[firstControl, secondControl]} sectionFilename="view.csv" />);
+    const trigger = screen.getByRole('button', { name: 'Weitere Exportoptionen' });
+    fireEvent.click(trigger);
+    const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
+    fireEvent(view.container, event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(trigger).not.toHaveFocus();
+  });
+
+  it('preserves an outside text selection after click', () => {
+    const view = render(<><CatalogExportMenu checkedIds={new Set()} filteredControls={[firstControl]} allControls={[firstControl, secondControl]} sectionFilename="view.csv" /><p>Markierbarer Text</p></>);
+    const trigger = screen.getByRole('button', { name: 'Weitere Exportoptionen' });
+    fireEvent.click(trigger);
+    const text = screen.getByText('Markierbarer Text');
+    fireEvent.mouseDown(text);
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    const selection = document.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    fireEvent.click(text);
+    expect(selection.toString()).toBe('Markierbarer Text');
+    expect(trigger).not.toHaveFocus();
+    selection.removeAllRanges();
+    view.unmount();
+  });
+
+  it.each(['secondary click', 'new mousedown', 'unmount'])('discards pending return focus after %s', (reason) => {
+    const view = render(<><CatalogExportMenu checkedIds={new Set()} filteredControls={[firstControl]} allControls={[firstControl, secondControl]} sectionFilename="view.csv" /><p>Außenfläche</p></>);
+    const trigger = screen.getByRole('button', { name: 'Weitere Exportoptionen' });
+    fireEvent.click(trigger);
+    const text = screen.getByText('Außenfläche');
+    fireEvent.mouseDown(text, { button: reason === 'secondary click' ? 2 : 0 });
+    const focus = vi.spyOn(trigger, 'focus');
+    if (reason === 'new mousedown') fireEvent.mouseDown(text);
+    if (reason === 'unmount') view.unmount();
+    fireEvent.click(reason === 'unmount' ? document.documentElement : text);
+    expect(focus).not.toHaveBeenCalled();
+  });
+
+  it('does not steal focus acquired by another control before the outside click', () => {
+    render(<><CatalogExportMenu checkedIds={new Set()} filteredControls={[firstControl]} allControls={[firstControl, secondControl]} sectionFilename="view.csv" /><p>Außenfläche</p><input aria-label="Anderes Feld" /></>);
+    const trigger = screen.getByRole('button', { name: 'Weitere Exportoptionen' });
+    fireEvent.click(trigger);
+    const text = screen.getByText('Außenfläche');
+    fireEvent.mouseDown(text);
+    const input = screen.getByRole('textbox', { name: 'Anderes Feld' });
+    input.focus();
+    fireEvent.click(text);
+    expect(input).toHaveFocus();
+  });
+
+  it.each(['prevented click', 'different target'])('does not return focus for a %s', (reason) => {
+    render(<><CatalogExportMenu checkedIds={new Set()} filteredControls={[firstControl]} allControls={[firstControl, secondControl]} sectionFilename="view.csv" /><p>Außenfläche</p><p>Andere Fläche</p></>);
+    const trigger = screen.getByRole('button', { name: 'Weitere Exportoptionen' });
+    fireEvent.click(trigger);
+    const text = screen.getByText('Außenfläche');
+    fireEvent.mouseDown(text);
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+    if (reason === 'prevented click') event.preventDefault();
+    fireEvent(reason === 'different target' ? screen.getByText('Andere Fläche') : text, event);
+    expect(trigger).not.toHaveFocus();
   });
 
 });
