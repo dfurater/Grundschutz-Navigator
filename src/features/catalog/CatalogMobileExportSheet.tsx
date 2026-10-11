@@ -75,7 +75,7 @@ export function CatalogMobileExportSheet({
             ref={sheetRef}
             aria-modal="true"
             aria-labelledby={headingId}
-            className="m-0 p-0 border-0 w-full max-w-none text-[inherit] fixed inset-x-0 bottom-0 z-50 bg-[var(--color-surface-raised)] rounded-t-2xl shadow-xl max-h-[80dvh] flex flex-col overflow-hidden lg:hidden animate-slide-up"
+            className="mobile-sheet m-0 border-0 w-full max-w-none text-[inherit] fixed inset-x-0 bottom-0 z-50 bg-[var(--color-surface-raised)] flex flex-col overflow-hidden lg:hidden animate-slide-up"
           >
             <div
               className="flex justify-center items-center min-h-[44px] shrink-0 select-none"
