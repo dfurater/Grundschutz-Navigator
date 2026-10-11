@@ -5,6 +5,7 @@ import {
   buildIncomingLinkMap,
 } from '@/domain/controlRelationships';
 import { ModalPortal } from '@/components/ModalPortal';
+import { DialogNavigationStatus } from '@/components/NavigationPendingStatus';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import { useModalDialog } from '@/hooks/useModalDialog';
 import { useScrollLock } from '@/hooks/useScrollLock';
@@ -114,6 +115,7 @@ export function CatalogMobileDetailOverlay({
           onNavigateToControl={onNavigateToControl}
           titleId={titleId}
         />
+        <DialogNavigationStatus />
       </dialog>
     </ModalPortal>
   );

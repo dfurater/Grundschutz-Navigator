@@ -3,6 +3,7 @@ import { BackdropTint } from '@/components/BackdropTint';
 import { Button } from '@/components/Button';
 import { IconFilter } from '@/components/icons';
 import { ModalPortal } from '@/components/ModalPortal';
+import { DialogNavigationStatus } from '@/components/NavigationPendingStatus';
 import { useBottomSheetDrag } from '@/hooks/useBottomSheetDrag';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import { useModalDialog } from '@/hooks/useModalDialog';
@@ -83,6 +84,7 @@ export function CatalogMobileFilterSheet({
                 </Button>
               )}
             />
+            <DialogNavigationStatus />
           </dialog>
         </ModalPortal>
       )}

@@ -4,7 +4,9 @@ import { Link, Outlet, createMemoryRouter } from 'react-router';
 import type { RouteObject } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { NAVIGATION_PENDING_DELAY_MS, NavigationPendingIndicator } from './navigationPending';
+import { ModalPortal } from '@/components/ModalPortal';
+import { DialogNavigationStatus } from '@/components/NavigationPendingStatus';
+import { NAVIGATION_PENDING_DELAY_MS, NavigationPendingIndicator, NavigationPendingProvider } from './navigationPending';
 
 /** Lazy-Route, deren Modul erst auf Aufruf von `resolve` (oder `reject`) eintrifft. */
 function deferredRoute(path: string, name: string): { route: RouteObject; resolve: () => void; reject: () => void } {
@@ -27,21 +29,33 @@ function deferredRoute(path: string, name: string): { route: RouteObject; resolv
 
 function Layout() {
   return (
-    <>
+    <NavigationPendingProvider>
       <Link to="/">Start</Link>
       <Link to="/langsam">Langsam</Link>
       <NavigationPendingIndicator />
       <Outlet />
-    </>
+    </NavigationPendingProvider>
   );
 }
 
-function renderApp(slow: RouteObject) {
+/** Seite mit offenem Dialog als eigene Ebene unter `body` (`ModalPortal`). */
+function DialogPage() {
+  return (
+    <ModalPortal>
+      <dialog open aria-modal="true" aria-label="Detail">
+        <Link to="/langsam">Langsam im Dialog</Link>
+        <DialogNavigationStatus />
+      </dialog>
+    </ModalPortal>
+  );
+}
+
+function renderApp(slow: RouteObject, start = <h1>Start</h1>) {
   const router = createMemoryRouter([{
     element: <Layout />,
     children: [{
       ErrorBoundary: () => <p role="alert">Fehlerfläche</p>,
-      children: [{ path: '/', element: <h1>Start</h1> }, slow],
+      children: [{ path: '/', element: start }, slow],
     }],
   }]);
   render(<RouterProvider router={router} />);
@@ -138,5 +152,24 @@ describe('NavigationPendingIndicator', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Fehlerfläche');
     expect(screen.getByRole('status')).toBeEmptyDOMElement();
     vi.mocked(console.error).mockRestore();
+  });
+
+  it('meldet das Warten auch im Statusbereich eines Dialogs auf eigener Ebene unter body', async () => {
+    const slow = deferredRoute('/langsam', 'Langsame Seite');
+    renderApp(slow.route, <DialogPage />);
+    const dialog = screen.getByRole('dialog', { name: 'Detail' });
+    const dialogStatus = dialog.querySelector('output')!;
+    expect(dialogStatus).toBeEmptyDOMElement();
+
+    fireEvent.click(screen.getByRole('link', { name: 'Langsam im Dialog' }));
+    await advance(NAVIGATION_PENDING_DELAY_MS);
+
+    expect(dialogStatus).toHaveTextContent(PENDING_TEXT);
+    expect(dialogStatus).toHaveClass('pointer-events-none');
+
+    await act(async () => { slow.resolve(); });
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Langsame Seite' })).toBeInTheDocument();
   });
 });

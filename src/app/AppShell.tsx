@@ -37,7 +37,7 @@ import {
   resolveControlRoute,
 } from '@/app/routes';
 import { useRoutePrefetch } from '@/app/routePrefetch';
-import { NavigationPendingIndicator } from '@/app/navigationPending';
+import { NavigationPendingIndicator, NavigationPendingProvider } from '@/app/navigationPending';
 import { MobileNavigationContext } from '@/state/MobileNavigationContext';
 
 /* ------------------------------------------------------------------ */
@@ -71,7 +71,16 @@ const SIDEBAR_DEFAULT_WIDTH = 256;
 const SIDEBAR_MIN_WIDTH = 160;
 const SIDEBAR_MAX_WIDTH = 480;
 
+/** Der Wartezustand der Navigation umfasst die Shell und die Dialoge ihrer Seiten. */
 export function AppShell() {
+  return (
+    <NavigationPendingProvider>
+      <AppShellLayout />
+    </NavigationPendingProvider>
+  );
+}
+
+function AppShellLayout() {
   const [sideNavOpen, setSideNavOpen] = useState(false);
   const sideNavId = useId();
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -261,9 +270,10 @@ export function AppShell() {
         Zum Hauptinhalt springen
       </a>
 
-      {/* Außerhalb aller Bereiche, die `inert` werden können: <main> und die
-          Kopfzeilen-Steuerungen bei offener mobiler Schublade, die Schublade
-          bei geschlossener. Ein Statusbereich darin bliebe stumm. */}
+      {/* Außerhalb der Bereiche, die die mobile Schublade `inert` setzt:
+          <main> und die Kopfzeilen-Steuerungen bei offener Schublade, die
+          Schublade bei geschlossener. Bei offenem modalem Dialog ist `#root`
+          inert; dann meldet `DialogNavigationStatus` im Dialog. */}
       <NavigationPendingIndicator />
 
       <HeaderBar

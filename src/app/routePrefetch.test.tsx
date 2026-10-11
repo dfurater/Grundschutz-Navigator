@@ -10,13 +10,18 @@ function setup(basename?: string) {
       : undefined
   ));
   const handle = createRoutePrefetcher(basename, lookup);
-  document.addEventListener('pointerover', handle, true);
-  document.addEventListener('focusin', handle, true);
-  document.addEventListener('pointerdown', handle, true);
+  for (const type of PREFETCH_EVENTS) document.addEventListener(type, handle, true);
+  registeredHandlers.push(handle);
   return { preload, lookup };
 }
 
+const PREFETCH_EVENTS = ['pointerover', 'focusin', 'pointerdown'] as const;
+const registeredHandlers: EventListener[] = [];
+
 afterEach(() => {
+  for (const handle of registeredHandlers.splice(0)) {
+    for (const type of PREFETCH_EVENTS) document.removeEventListener(type, handle, true);
+  }
   vi.unstubAllGlobals();
 });
 
