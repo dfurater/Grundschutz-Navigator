@@ -65,7 +65,7 @@ export function CheckboxLabel({
 
   return (
     <label
-      className="flex items-center space-x-2 cursor-pointer group hover:bg-[var(--color-surface-subtle)] px-1 py-0.5 -ml-1 rounded select-none"
+      className="flex min-h-11 items-center space-x-2 cursor-pointer group hover:bg-[var(--color-surface-subtle)] px-1 py-0.5 -ml-1 rounded select-none lg:min-h-0"
       title={title}
     >
       <div className="relative flex items-center justify-center w-4 h-4">

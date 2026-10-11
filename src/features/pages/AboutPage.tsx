@@ -191,7 +191,7 @@ function CopyableValue({
           aria-label={`${label} kopieren`}
         >
           {copied ? (
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--color-success)]">
+            <span className="inline-flex items-center gap-1 text-xs font-medium text-[var(--color-success-text)]">
               <IconCheck className="h-3 w-3" />
               Kopiert
             </span>
