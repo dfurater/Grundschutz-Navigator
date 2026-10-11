@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { useAdaptiveFilterHeader } from './useAdaptiveFilterHeader';
 
@@ -62,15 +62,15 @@ it('uses and cleans up the resize fallback when ResizeObserver is unavailable', 
 });
 
 function ScrollFixture() {
-  const { formRef, headingRef, summaryRef, sectionsRef, bodyRef, scrollSummary } = useAdaptiveFilterHeader(true);
+  const { formRef, headingRef, summaryRef, sectionsRef, bodyRef, scrollSummary, onScroll } = useAdaptiveFilterHeader(true);
   return <form ref={(element) => {
     formRef.current = element;
     if (element) Object.defineProperty(element, 'clientHeight', { configurable: true, get: () => availableHeight });
   }}>
     <div ref={headingRef} data-height="68" data-scroll-summary={scrollSummary} />
-    <div ref={bodyRef} data-testid="body">
+    <div ref={bodyRef} onScroll={onScroll} data-testid="body">
       <div ref={summaryRef} data-height="56" />
-      <div ref={sectionsRef} data-testid="sections"><label data-height="88">Filterzeile</label></div>
+      <div ref={sectionsRef} onScroll={onScroll} data-testid="sections"><label data-height="88">Filterzeile</label></div>
     </div>
     <output>{String(scrollSummary)}</output>
   </form>;
@@ -90,12 +90,18 @@ function scrollGeometry() {
   });
 }
 
+function scrollTo(testId: string, top: number) {
+  const element = screen.getByTestId(testId);
+  element.scrollTop = top;
+  fireEvent.scroll(element);
+}
+
 it('keeps the top visible filter row when scrolling moves from the list to the outer body', () => {
   scrollGeometry();
   availableHeight = 800;
   render(<ScrollFixture />);
   expect(screen.getByRole('status')).toHaveTextContent('false');
-  screen.getByTestId('sections').scrollTop = 120;
+  scrollTo('sections', 120);
   availableHeight = 156;
   act(() => resize());
   expect(screen.getByRole('status')).toHaveTextContent('true');
@@ -106,7 +112,7 @@ it('keeps the top visible filter row when scrolling moves from the outer body to
   scrollGeometry();
   render(<ScrollFixture />);
   expect(screen.getByRole('status')).toHaveTextContent('true');
-  screen.getByTestId('body').scrollTop = 176;
+  scrollTo('body', 176);
   availableHeight = 800;
   act(() => resize());
   expect(screen.getByRole('status')).toHaveTextContent('false');
@@ -120,8 +126,38 @@ it('leaves an unscrolled list at its start and starts the list at zero while the
   availableHeight = 156;
   act(() => resize());
   expect(screen.getByTestId('body').scrollTop).toBe(0);
-  screen.getByTestId('body').scrollTop = 20;
+  scrollTo('body', 20);
   availableHeight = 800;
   act(() => resize());
   expect(screen.getByTestId('sections').scrollTop).toBe(0);
+});
+
+it('ignores the scroll position the browser clamps during a resize before measuring', () => {
+  scrollGeometry();
+  render(<ScrollFixture />);
+  expect(screen.getByRole('status')).toHaveTextContent('true');
+  const body = screen.getByTestId('body');
+  scrollTo('body', 176);
+  // Das größere Fenster verkleinert den Scrollweg und begrenzt scrollTop vor der Messung.
+  Object.defineProperty(body, 'clientHeight', { configurable: true, value: 400 });
+  scrollTo('body', 130);
+  availableHeight = 800;
+  act(() => resize());
+  expect(screen.getByRole('status')).toHaveTextContent('false');
+  expect(screen.getByTestId('sections').scrollTop).toBe(120);
+});
+
+it('refreshes the saved position when a resize keeps the mode', () => {
+  scrollGeometry();
+  render(<ScrollFixture />);
+  const body = screen.getByTestId('body');
+  scrollTo('body', 176);
+  Object.defineProperty(body, 'clientHeight', { configurable: true, value: 120 });
+  body.scrollTop = 156;
+  act(() => resize());
+  expect(screen.getByRole('status')).toHaveTextContent('true');
+  scrollTo('body', 166);
+  availableHeight = 800;
+  act(() => resize());
+  expect(screen.getByTestId('sections').scrollTop).toBe(110);
 });

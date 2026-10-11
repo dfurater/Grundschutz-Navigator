@@ -121,7 +121,7 @@ export function FilterPanel({
   adaptiveHeader = false,
 }: FilterPanelProps) {
   const { vocabularyRegistry } = useCatalog();
-  const { formRef, headingRef, summaryRef, sectionsRef, bodyRef, scrollSummary } = useAdaptiveFilterHeader(adaptiveHeader);
+  const { formRef, headingRef, summaryRef, sectionsRef, bodyRef, scrollSummary, onScroll } = useAdaptiveFilterHeader(adaptiveHeader);
   const filterScrollRef = useOverlayScrollbars<HTMLDivElement>(!scrollSummary);
   const bodyScrollRef = useOverlayScrollbars<HTMLDivElement>(scrollSummary);
   const setSectionsRef = useCallback((element: HTMLDivElement | null) => {
@@ -229,7 +229,7 @@ export function FilterPanel({
           {headerAction}
         </div>
       </div>
-      <div ref={setBodyRef} data-filter-scroll={scrollSummary ? '' : undefined} className={`flex-1 min-h-0 ${scrollSummary ? 'overflow-y-auto overscroll-contain touch-pan-y' : 'flex flex-col'}`}>
+      <div ref={setBodyRef} onScroll={onScroll} data-filter-scroll={scrollSummary ? '' : undefined} className={`flex-1 min-h-0 ${scrollSummary ? 'overflow-y-auto overscroll-contain touch-pan-y' : 'flex flex-col'}`}>
         <div ref={summaryRef} className="px-4 pb-3 border-b border-[var(--color-border-default)] shrink-0">
           <div className="flex items-center justify-between">
             <span className="type-meta tabular-nums" aria-live="polite" aria-atomic="true">
@@ -250,7 +250,7 @@ export function FilterPanel({
         </div>
 
         {/* Filter Sections */}
-        <div ref={setSectionsRef} data-filter-scroll={scrollSummary ? undefined : ''} className={`${scrollSummary ? '' : 'flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y'} px-4 py-1`}>
+        <div ref={setSectionsRef} onScroll={onScroll} data-filter-scroll={scrollSummary ? undefined : ''} className={`${scrollSummary ? '' : 'flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y'} px-4 py-1`}>
         {/* sec_level */}
         <FilterSection title="Sicherheitsniveau" activeCount={activeSecurityLevels}>
           {OFFICIAL_SECURITY_LEVELS.map((sl) => {

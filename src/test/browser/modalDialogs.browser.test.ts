@@ -346,6 +346,11 @@ function exportSheet() {
 }
 
 /** Ganz im sichtbaren Bereich seines Scrollcontainers. */
+/** Wartet, bis das `scroll`-Event einer programmatischen Scrollposition zugestellt ist. */
+function nextFrames() {
+  return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+}
+
 function expectWithin(element: Element, container: Element) {
   const box = element.getBoundingClientRect();
   const frame = container.getBoundingClientRect();
@@ -468,16 +473,47 @@ test('Filter-Sheet: Größenwechsel erhält die Position einer gescrollten Liste
   scroller().scrollTop += offset();
   expect(scroller().scrollTop).toBeGreaterThan(0);
   expect(Math.abs(offset())).toBeLessThanOrEqual(1);
+  await nextFrames();
 
   await page.viewport(700, 250);
   await expect.poll(() => heading.dataset.scrollSummary).toBe('true');
   expect(scroller().scrollTop).toBeGreaterThan(0);
   expect(Math.abs(offset())).toBeLessThanOrEqual(1);
+  await nextFrames();
 
   await page.viewport(700, 800);
   await expect.poll(() => heading.dataset.scrollSummary).toBe('false');
   expect(scroller().scrollTop).toBeGreaterThan(0);
   expect(Math.abs(offset())).toBeLessThanOrEqual(1);
+  buttonByName(dialog, 'Fertig').click();
+});
+
+test('Filter-Sheet: Vergrößern nahe dem neuen Scrolllimit behält die Listenposition', async () => {
+  await commands.setBrowserFontSize(32);
+  const shell = await renderWithBackground(700, filterSheet(true));
+  buttonByName(shell, 'Filter anzeigen').click();
+  await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
+  const dialog = document.querySelector('dialog')!;
+  await Promise.all(dialog.getAnimations().map((animation) => animation.finished));
+  const heading = dialog.querySelector<HTMLElement>('[data-scroll-summary]')!;
+  await expect.poll(() => heading.dataset.scrollSummary).toBe('false');
+  const scroller = () => dialog.querySelector<HTMLElement>('[data-filter-scroll]')!;
+  const sections = scroller();
+  // Knapp innerhalb des Scrollwegs, den die Liste bei 800 px Fensterhöhe fasst.
+  const anchor = sections.scrollHeight - sections.clientHeight - 2;
+  expect(anchor).toBeGreaterThan(0);
+
+  await page.viewport(700, 250);
+  await expect.poll(() => heading.dataset.scrollSummary).toBe('true');
+  const body = scroller();
+  const offset = sections.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop;
+  body.scrollTop = anchor + offset;
+  await expect.poll(() => body.scrollTop).toBeGreaterThanOrEqual(anchor + offset - 1);
+  await nextFrames();
+
+  await page.viewport(700, 800);
+  await expect.poll(() => heading.dataset.scrollSummary).toBe('false');
+  expect(Math.abs(scroller().scrollTop - anchor)).toBeLessThanOrEqual(1);
   buttonByName(dialog, 'Fertig').click();
 });
 

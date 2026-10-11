@@ -1,9 +1,21 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 
 /** Abstand der Sektionenliste vom Inhaltsanfang des äußeren Scrollbereichs. */
 function sectionsOffset(body: HTMLElement, sections: HTMLElement): number {
   return sections.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop;
+}
+
+interface ScrollAnchor {
+  /** Versatz in der Sektionenliste am oberen Rand des aktiven Scrollbereichs. */
+  readonly anchor: number;
+  /** Höhe des aktiven Scrollbereichs, als der Versatz gelesen wurde. */
+  readonly height: number;
+}
+
+function readScrollAnchor(scrollSummary: boolean, body: HTMLElement | null, sections: HTMLElement): ScrollAnchor {
+  if (scrollSummary && body) return { anchor: body.scrollTop - sectionsOffset(body, sections), height: body.clientHeight };
+  return { anchor: sections.scrollTop, height: sections.clientHeight };
 }
 
 /** Hält im mobilen Sheet mindestens eine vollständige Filterzeile erreichbar. */
@@ -14,9 +26,19 @@ export function useAdaptiveFilterHeader(adaptiveHeader: boolean) {
   const sectionsRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const [scrollSummary, setScrollSummary] = useState(false);
-  // Listenversatz am oberen Rand des alten Scrollbereichs, festgehalten vor einem Moduswechsel.
+  // Zuletzt bei unveränderter Höhe gelesene Position. Eine Größenänderung begrenzt
+  // `scrollTop` schon vor der Messung; dieser Wert stammt von davor.
+  const savedAnchorRef = useRef<ScrollAnchor>({ anchor: 0, height: 0 });
+  // Für den neuen Scrollbereich vorgemerkte Position nach einem Moduswechsel.
   const scrollAnchorRef = useRef<number | null>(null);
   const measureRef = useRef<(() => void) | null>(null);
+  // An beiden Scrollbereichen; liest nur bei unveränderter Höhe, also nicht die Begrenzung einer Größenänderung.
+  const onScroll = useCallback(() => {
+    const sections = sectionsRef.current;
+    if (!sections) return;
+    const read = readScrollAnchor(headingRef.current?.dataset.scrollSummary === 'true', bodyRef.current, sections);
+    if (read.height === savedAnchorRef.current.height) savedAnchorRef.current = read;
+  }, []);
   useGlobalEventListener('window', 'resize', () => measureRef.current?.(), adaptiveHeader && typeof ResizeObserver === 'undefined');
 
   useLayoutEffect(() => {
@@ -26,6 +48,8 @@ export function useAdaptiveFilterHeader(adaptiveHeader: boolean) {
     const summary = summaryRef.current;
     const sections = sectionsRef.current;
     if (!form || !heading || !summary || !sections) return;
+    const isScrollSummary = () => heading.dataset.scrollSummary === 'true';
+    savedAnchorRef.current = readScrollAnchor(isScrollSummary(), bodyRef.current, sections);
     const measure = () => {
       const rows = sections.querySelectorAll<HTMLElement>('label, button');
       const rowHeight = Math.max(0, ...[...rows].map((row) => row.getBoundingClientRect().height));
@@ -33,14 +57,12 @@ export function useAdaptiveFilterHeader(adaptiveHeader: boolean) {
       // Unterlinie des kompakten Titelkopfs darf keine Umschalt-Oszillation auslösen.
       const headingHeight = heading.getBoundingClientRect().height - (heading.dataset.scrollSummary === 'true' ? 1 : 0);
       const available = form.clientHeight - headingHeight - summary.getBoundingClientRect().height;
-      const current = heading.dataset.scrollSummary === 'true';
+      const current = isScrollSummary();
       const next = available < rowHeight;
       // Der Wechsel verschiebt das Scrollen zwischen äußerem und innerem Bereich;
       // das alte Element verliert dabei seine Position.
-      const body = bodyRef.current;
-      if (next !== current && body) {
-        scrollAnchorRef.current = current ? body.scrollTop - sectionsOffset(body, sections) : sections.scrollTop;
-      }
+      if (next === current) savedAnchorRef.current = readScrollAnchor(current, bodyRef.current, sections);
+      else scrollAnchorRef.current = savedAnchorRef.current.anchor;
       setScrollSummary(next);
     };
     measure();
@@ -62,7 +84,8 @@ export function useAdaptiveFilterHeader(adaptiveHeader: boolean) {
     if (anchor === null || !body || !sections) return;
     if (scrollSummary) body.scrollTop = anchor > 0 ? anchor + sectionsOffset(body, sections) : 0;
     else sections.scrollTop = Math.max(0, anchor);
+    savedAnchorRef.current = readScrollAnchor(scrollSummary, body, sections);
   }, [scrollSummary]);
 
-  return { formRef, headingRef, summaryRef, sectionsRef, bodyRef, scrollSummary };
+  return { formRef, headingRef, summaryRef, sectionsRef, bodyRef, scrollSummary, onScroll };
 }
