@@ -346,6 +346,11 @@ function exportSheet() {
 }
 
 /** Ganz im sichtbaren Bereich seines Scrollcontainers. */
+/** Wartet, bis das `scroll`-Event einer programmatischen Scrollposition zugestellt ist. */
+function nextFrames() {
+  return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+}
+
 function expectWithin(element: Element, container: Element) {
   const box = element.getBoundingClientRect();
   const frame = container.getBoundingClientRect();
@@ -449,6 +454,64 @@ test('Filter-Sheet: Größenwechsel bewahrt Fokus und manuelle Klappzustände', 
   await page.viewport(700, 250);
   await expect.poll(() => heading.dataset.scrollSummary).toBe('false');
   expect(document.activeElement).toBe(checkbox);
+  buttonByName(dialog, 'Fertig').click();
+});
+
+/** Filter-Sheet mit 32 px Schrift bei 700 × 800 px; die Sektionenliste scrollt selbst. */
+async function openScrollingFilterSheet() {
+  await commands.setBrowserFontSize(32);
+  const shell = await renderWithBackground(700, filterSheet(true));
+  buttonByName(shell, 'Filter anzeigen').click();
+  await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
+  const dialog = document.querySelector('dialog')!;
+  await Promise.all(dialog.getAnimations().map((animation) => animation.finished));
+  const heading = dialog.querySelector<HTMLElement>('[data-scroll-summary]')!;
+  await expect.poll(() => heading.dataset.scrollSummary).toBe('false');
+  const scroller = () => dialog.querySelector<HTMLElement>('[data-filter-scroll]')!;
+  /** Fenster auf `height` setzen und den erwarteten Kopfmodus abwarten. */
+  const resize = async (height: number, scrollSummary: 'true' | 'false') => {
+    await page.viewport(700, height);
+    await expect.poll(() => heading.dataset.scrollSummary).toBe(scrollSummary);
+  };
+  return { dialog, scroller, resize };
+}
+
+test('Filter-Sheet: Größenwechsel erhält die Position einer gescrollten Liste', async () => {
+  const { dialog, scroller, resize } = await openScrollingFilterSheet();
+  const rows = [...dialog.querySelectorAll('label')];
+  const row = rows[Math.floor(rows.length / 2)];
+  const offset = () => row.getBoundingClientRect().top - scroller().getBoundingClientRect().top;
+  scroller().scrollTop += offset();
+  // Die Zeile steht oben in einem gescrollten Bereich; danach das scroll-Event zustellen.
+  const expectRowOnTop = async () => {
+    expect(scroller().scrollTop).toBeGreaterThan(0);
+    expect(Math.abs(offset())).toBeLessThanOrEqual(1);
+    await nextFrames();
+  };
+  await expectRowOnTop();
+  await resize(250, 'true');
+  await expectRowOnTop();
+  await resize(800, 'false');
+  await expectRowOnTop();
+  buttonByName(dialog, 'Fertig').click();
+});
+
+test('Filter-Sheet: Vergrößern nahe dem neuen Scrolllimit behält die Listenposition', async () => {
+  const { dialog, scroller, resize } = await openScrollingFilterSheet();
+  const sections = scroller();
+  // Knapp innerhalb des Scrollwegs, den die Liste bei 800 px Fensterhöhe fasst.
+  const anchor = sections.scrollHeight - sections.clientHeight - 2;
+  expect(anchor).toBeGreaterThan(0);
+
+  await resize(250, 'true');
+  const body = scroller();
+  const offset = sections.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop;
+  body.scrollTop = anchor + offset;
+  await expect.poll(() => body.scrollTop).toBeGreaterThanOrEqual(anchor + offset - 1);
+  await nextFrames();
+
+  await resize(800, 'false');
+  expect(Math.abs(scroller().scrollTop - anchor)).toBeLessThanOrEqual(1);
   buttonByName(dialog, 'Fertig').click();
 });
 
