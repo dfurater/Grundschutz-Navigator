@@ -31,7 +31,7 @@ export function CatalogMobileFilterSheet({
     handleRef,
     onDismiss: close,
   });
-  useModalDialog(sheetRef, open);
+  useModalDialog(sheetRef, open, close);
   useScrollLock(open);
   useGlobalEventListener('document', 'keydown', (event) => {
     if (event.key === 'Escape') close();

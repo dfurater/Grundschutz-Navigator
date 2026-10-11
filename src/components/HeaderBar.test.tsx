@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createRef } from 'react';
 import { MemoryRouter, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -202,7 +202,7 @@ describe('HeaderBar', () => {
   // Ab 640 px ist das Feld bei offener mobiler Schublade sichtbar, aber
   // verdeckt und `inert`. Die Suchseite hat dort kein eigenes Feld; das Kürzel
   // gibt deshalb den App-Kopf frei und fokussiert dessen Feld (GSPP-497).
-  it('gibt bei verdecktem Suchfeld den App-Kopf frei und fokussiert das Feld danach', () => {
+  it('gibt bei verdecktem Suchfeld den App-Kopf frei und fokussiert das Feld danach', async () => {
     const onUncover = vi.fn();
     const renderHeader = (obscured: boolean) => (
       <MemoryRouter>
@@ -220,7 +220,7 @@ describe('HeaderBar', () => {
     expect(searchInput).not.toHaveFocus();
 
     rerender(renderHeader(false));
-    expect(searchInput).toHaveFocus();
+    await waitFor(() => expect(searchInput).toHaveFocus());
 
     // Ein späteres Freigeben ohne Kürzel verschiebt den Fokus nicht.
     outsideButton.focus();

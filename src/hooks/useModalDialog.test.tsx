@@ -16,7 +16,7 @@ function Dialog({ name, active, includeFocusable = true }: {
   includeFocusable?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
-  useModalDialog(ref, active);
+  useModalDialog(ref, active, () => {});
   if (!active) return null;
   return (
     <ModalPortal>
@@ -256,7 +256,7 @@ describe('useModalDialog', () => {
   it('focuses the first action rather than a close action that precedes it', () => {
     function CloseFirst({ active }: { active: boolean }) {
       const ref = useRef<HTMLDialogElement>(null);
-      useModalDialog(ref, active);
+      useModalDialog(ref, active, () => {});
       if (!active) return null;
       return (
         <ModalPortal>
@@ -276,7 +276,7 @@ describe('useModalDialog', () => {
   it('focuses the close action when it is the only action', () => {
     function CloseOnly({ active }: { active: boolean }) {
       const ref = useRef<HTMLDialogElement>(null);
-      useModalDialog(ref, active);
+      useModalDialog(ref, active, () => {});
       if (!active) return null;
       return (
         <ModalPortal>

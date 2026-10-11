@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, RefObject } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { FOCUS_SEARCH_STATE } from '@/app/searchFocus';
+import { dismissModalDialogs } from '@/hooks/useModalDialog';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import { IconSearch, IconShield, IconMenu } from './icons';
 
@@ -22,7 +23,7 @@ export interface HeaderBarProps {
    * Gibt den App-Kopf frei: Die Shell schließt eine offene Schublade und
    * beendet eine Wischgeste, die den Kopf gerade verschiebt. Das Suchkürzel
    * ruft es bei sichtbarem Feld vor dem Fokussieren auf; ist der Kopf
-   * `obscured`, fokussiert es das Feld erst, sobald es wieder bedienbar ist.
+   * `obscured` oder durch einen Dialog inert, wartet der Fokus auf die Freigabe.
    */
   readonly onUncover?: () => void;
   readonly className?: string;
@@ -72,20 +73,39 @@ export function HeaderBar({
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const focusWhenUncoveredRef = useRef(false);
+  const focusObserverRef = useRef<MutationObserver | null>(null);
 
-  // `inert` endet erst mit dem Commit, der die Schublade schließt.
-  useEffect(() => {
-    if (obscured || !focusWhenUncoveredRef.current) return;
-    focusWhenUncoveredRef.current = false;
-    inputRef.current?.focus();
-  }, [obscured]);
+  useEffect(() => () => focusObserverRef.current?.disconnect(), []);
+
+  // Die Isolation endet im Dialog-Cleanup; der Observer läuft danach, auch
+  // wenn der Header selbst keinen neuen React-Zustand erhält. Er beobachtet
+  // nur die inert-Attribute der Vorfahren und endet mit Fokus oder Unmount.
+  const focusSearchWhenOperable = (input: HTMLInputElement) => {
+    const focus = () => {
+      if (!input.isConnected || input.closest('[inert]')) return;
+      focusObserverRef.current?.disconnect();
+      focusObserverRef.current = null;
+      if (input.checkVisibility?.() ?? input.getClientRects().length > 0) input.focus();
+    };
+    if (!input.closest('[inert]')) {
+      focus();
+      return;
+    }
+    const observer = new MutationObserver(focus);
+    focusObserverRef.current = observer;
+    for (let ancestor: HTMLElement | null = input; ancestor; ancestor = ancestor.parentElement) {
+      observer.observe(ancestor, { attributes: true, attributeFilter: ['inert'] });
+    }
+  };
 
   useGlobalEventListener('document', 'keydown', (event) => {
     if (!(event.metaKey || event.ctrlKey) || event.key !== 'k') return;
     if (event.target !== inputRef.current && isEditableTarget(event.target)) return;
 
     event.preventDefault();
+    focusObserverRef.current?.disconnect();
+    focusObserverRef.current = null;
+    dismissModalDialogs();
     // Unter 640 px ist das Feld ausgeblendet; dann führt das Kürzel wie die Lupe
     // auf die Suchseite und fokussiert dort die Eingabe. Auf der Suchseite bleibt
     // die laufende Anfrage stehen, und der Verlauf erhält keinen zweiten Eintrag.
@@ -99,14 +119,9 @@ export function HeaderBar({
       );
       return;
     }
-    // Darüber verdeckt die offene mobile Schublade das Feld und macht es
-    // `inert`; dann fokussiert das Kürzel es erst, wenn `onUncover` sie
-    // geschlossen hat. Eine Öffnen-Vorschau verschiebt den Kopf, ohne ihn
-    // `inert` zu machen; `onUncover` beendet sie, und das Feld erhält den
-    // Fokus sofort.
-    if (obscured) focusWhenUncoveredRef.current = true;
+    // Die Shell gibt die Schublade frei; Dialoge geben #root im Cleanup frei.
     onUncover?.();
-    if (!obscured) inputRef.current?.focus();
+    focusSearchWhenOperable(input);
   });
 
   const handleSearchKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
