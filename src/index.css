@@ -181,7 +181,8 @@
   /* Text hierarchy */
   --color-text-primary: var(--color-slate-900);
   --color-text-secondary: var(--color-slate-600);
-  --color-text-muted: var(--color-slate-400);
+  /* Information-bearing text: readable on base, hover and selection surfaces. */
+  --color-text-muted: var(--color-slate-600);
   --color-text-inverse: #ffffff;
 
   /* Border hierarchy */
@@ -228,8 +229,8 @@
   --color-effort-dot-4: color-mix(in srgb, var(--color-primary-main) 80%, white);
   --color-effort-dot-5: var(--color-primary-main);
   --color-effort-track: var(--color-slate-100);
-  --color-effort-level-1-text: #818cf8;
-  --color-effort-level-2-text: #6366f1;
+  --color-effort-level-1-text: #6559d1;
+  --color-effort-level-2-text: #5a4ed0;
   --color-effort-level-3-text: #4f46e5;
   --color-effort-level-4-text: #4338ca;
   --color-effort-level-5-text: #3730a3;
@@ -243,6 +244,7 @@
   --color-success-surface: #f0fdf4;
   --color-success-text: #166534;
   --color-warning: #d97706;
+  --color-warning-text: #92400e;
 
   /* Scrollbar */
   --color-surface-scrollbar: var(--color-slate-300);
@@ -422,8 +424,22 @@ body.dev-selector-dragging * {
     line-height: 1.3;
   }
 
-  .catalog-link-color {
+  .catalog-link-color,
+  .catalog-prose-link {
     @apply text-blue-700 visited:text-violet-700 hover:text-blue-800 hover:underline;
+  }
+
+  /* Links mitten im Fließtext sind dauerhaft unterstrichen, damit sie nicht nur an der Farbe erkennbar sind (WCAG 1.4.1). */
+  .catalog-prose-link {
+    text-decoration-line: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.2em;
+    text-decoration-color: color-mix(in oklab, currentColor 50%, transparent);
+    transition: color 150ms ease-out, text-decoration-color 150ms ease-out;
+  }
+
+  .catalog-prose-link:hover {
+    text-decoration-color: currentColor;
   }
 
   .catalog-hierarchy-marker {
@@ -480,6 +496,19 @@ body.dev-selector-dragging * {
     height: 18px;
     font-size: 0.625rem;
     line-height: 1;
+  }
+
+  .mobile-sheet {
+    max-height: 80dvh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    box-shadow: var(--shadow-overlay);
+    padding: 0 0 env(safe-area-inset-bottom, 0px);
+  }
+
+  @media (max-height: 20rem) {
+    .mobile-sheet {
+      max-height: 100dvh;
+    }
   }
 
   .pb-safe {

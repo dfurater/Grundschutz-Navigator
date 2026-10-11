@@ -158,7 +158,7 @@ export function CatalogBrowser() {
     return (
       <>
         <PageTitle title={PAGE_TITLES.catalog} />
-        <div className="flex-1 flex items-center justify-center min-h-[50vh]">
+        <div className="flex-1 flex items-center justify-center min-h-[50vh] md:min-h-0">
           <div className="text-center">
             <div className="inline-block w-6 h-6 border-2 border-[var(--color-border-strong)] border-t-[var(--color-primary-main)] rounded-full animate-spin" />
             <p className="text-sm text-[var(--color-text-secondary)] mt-3">
@@ -177,7 +177,7 @@ export function CatalogBrowser() {
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="text-center max-w-sm">
             <p className="text-red-600 font-medium">Fehler beim Laden</p>
-            <p className="text-sm text-red-500 mt-1">{displayState.error}</p>
+            <p className="text-sm text-[var(--color-danger-text)] mt-1">{displayState.error}</p>
           </div>
         </div>
       </>
