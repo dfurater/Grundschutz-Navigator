@@ -1,7 +1,7 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
 import { useContext } from 'react';
 import type { RefObject } from 'react';
-import { Link, MemoryRouter, useNavigate } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import type { NavigateFunction } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCatalog } from '@/hooks/useCatalog';
@@ -13,6 +13,7 @@ import { STATIC_PAGE_ROUTES } from './staticPageRoutes';
 import { PAGE_TITLES, PRODUCT_TITLE } from './pageTitles';
 import { catalogCollectionDefaults } from '@/test/catalogState';
 import { expectSingleDocumentTitle } from '@/test/documentTitle';
+import { renderAppShell } from '@/test/renderAppShell';
 
 vi.mock('@/hooks/useCatalog', () => ({
   useCatalog: vi.fn(),
@@ -168,7 +169,7 @@ describe('AppShell', () => {
   });
 
   it('makes only the closed mobile drawer inert and links it to the menu button', () => {
-    const { container } = render(<MemoryRouter><AppShell /></MemoryRouter>);
+    const { container } = renderAppShell();
     const sidebar = container.querySelector('aside');
     const menuButton = screen.getByRole('button', { name: 'Menu' });
 
@@ -186,7 +187,7 @@ describe('AppShell', () => {
   });
 
   it('moves focus from main to the menu before a click makes main inert', () => {
-    render(<MemoryRouter><AppShell /></MemoryRouter>);
+    renderAppShell();
     const main = screen.getByRole('main');
     main.tabIndex = -1;
     main.focus();
@@ -205,7 +206,7 @@ describe('AppShell', () => {
   it('makes the main content inert only while mobile navigation is open', () => {
     let persistent = false;
     mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY && persistent);
-    const view = render(<MemoryRouter><AppShell /></MemoryRouter>);
+    const view = renderAppShell();
     const main = view.container.querySelector('main');
     const menuButton = screen.getByRole('button', { name: 'Menu' });
     expect(main).not.toHaveAttribute('inert');
@@ -213,10 +214,10 @@ describe('AppShell', () => {
     fireEvent.click(menuButton);
     expect(main).toHaveAttribute('inert');
     persistent = true;
-    view.rerender(<MemoryRouter><AppShell /></MemoryRouter>);
+    view.rerenderApp();
     expect(main).not.toHaveAttribute('inert');
     persistent = false;
-    view.rerender(<MemoryRouter><AppShell /></MemoryRouter>);
+    view.rerenderApp();
     expect(main).toHaveAttribute('inert');
     fireEvent.keyDown(menuButton, { key: 'Escape' });
     expect(main).not.toHaveAttribute('inert');
@@ -225,7 +226,7 @@ describe('AppShell', () => {
   it('nimmt die verdeckten Steuerungen des App-Kopfs nur bei offener mobiler Navigation aus der Bedienung', () => {
     let persistent = false;
     mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY && persistent);
-    const view = render(<MemoryRouter><AppShell /></MemoryRouter>);
+    const view = renderAppShell();
     const menuButton = screen.getByRole('button', { name: 'Menu' });
     const magnifier = screen.getByText('Lupe');
     expect(magnifier).not.toHaveAttribute('inert');
@@ -234,16 +235,16 @@ describe('AppShell', () => {
     expect(magnifier).toHaveAttribute('inert');
     expect(menuButton).not.toHaveAttribute('inert');
     persistent = true;
-    view.rerender(<MemoryRouter><AppShell /></MemoryRouter>);
+    view.rerenderApp();
     expect(magnifier).not.toHaveAttribute('inert');
     persistent = false;
-    view.rerender(<MemoryRouter><AppShell /></MemoryRouter>);
+    view.rerenderApp();
     fireEvent.click(screen.getByRole('button', { name: 'Menü schließen' }));
     expect(magnifier).not.toHaveAttribute('inert');
   });
 
   it.each(['close', 'selection', 'backdrop'] as const)('returns focus when mobile navigation is dismissed through %s', (method) => {
-    const { container } = render(<MemoryRouter><AppShell /></MemoryRouter>);
+    const { container } = renderAppShell();
     const menuButton = screen.getByRole('button', { name: 'Menu' });
     fireEvent.click(menuButton);
     if (method === 'selection') fireEvent.click(scopeTrigger());
@@ -265,9 +266,7 @@ describe('AppShell', () => {
 
   it.each(['body', 'menu', 'drawer'] as const)('closes the mobile drawer for Escape from %s and returns focus without scrolling', (origin) => {
     const bubbleHandler = vi.fn();
-    const { container } = render(
-      <MemoryRouter><div onKeyDown={bubbleHandler}><AppShell /></div></MemoryRouter>,
-    );
+    const { container } = renderAppShell(['/'], { shell: () => <div onKeyDown={bubbleHandler}><AppShell /></div> });
     const menuButton = screen.getByRole('button', { name: 'Menu' });
     fireEvent.click(menuButton);
     const target = origin === 'body'
@@ -286,7 +285,7 @@ describe('AppShell', () => {
   });
 
   it('hides fixed page elements until the drawer has finished sliding out (GSPP-494)', () => {
-    const { container } = render(<MemoryRouter><AppShell /></MemoryRouter>);
+    const { container } = renderAppShell();
     const hidden = () => screen.getByText('Home').getAttribute('data-fixed-elements-hidden');
     expect(hidden()).toBe('false');
 
@@ -306,7 +305,7 @@ describe('AppShell', () => {
   });
 
   it('does not consume unrelated keys or Escape while the mobile drawer is closed', () => {
-    render(<MemoryRouter><AppShell /></MemoryRouter>);
+    renderAppShell();
     const menuButton = screen.getByRole('button', { name: 'Menu' });
     expect(fireEvent.keyDown(document.querySelector('body')!, { key: 'Escape' })).toBe(true);
 
@@ -317,7 +316,7 @@ describe('AppShell', () => {
 
   it('leaves persistent desktop navigation interactive without consuming Escape', () => {
     mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY);
-    const { container } = render(<MemoryRouter><AppShell /></MemoryRouter>);
+    const { container } = renderAppShell();
     const menuButton = screen.getByRole('button', { name: 'Menu' });
 
     expect(container.querySelector('aside')).not.toHaveAttribute('inert');
@@ -331,34 +330,29 @@ describe('AppShell', () => {
   it('updates Escape ownership and inert when crossing the navigation breakpoint', () => {
     let persistent = false;
     mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY && persistent);
-    const app = () => <MemoryRouter><AppShell /></MemoryRouter>;
-    const view = render(app());
+    const view = renderAppShell();
     const menuButton = screen.getByRole('button', { name: 'Menu' });
     fireEvent.click(menuButton);
 
     persistent = true;
-    view.rerender(app());
+    view.rerenderApp();
     expect(view.container.querySelector('aside')).not.toHaveAttribute('inert');
     expect(fireEvent.keyDown(document.querySelector('body')!, { key: 'Escape' })).toBe(true);
 
     persistent = false;
-    view.rerender(app());
+    view.rerenderApp();
     expect(fireEvent.keyDown(document.querySelector('body')!, { key: 'Escape' })).toBe(false);
     expect(view.container.querySelector('aside')).toHaveAttribute('inert');
     expect(menuButton).toHaveFocus();
 
     persistent = true;
-    view.rerender(app());
+    view.rerenderApp();
     expect(view.container.querySelector('aside')).not.toHaveAttribute('inert');
     expect(fireEvent.keyDown(document.querySelector('body')!, { key: 'Escape' })).toBe(true);
   });
 
   it('überblendet die Drawer-Bewegung über translate und schaltet sie bei Reduced Motion ab', () => {
-    const { container, rerender } = render(
-      <MemoryRouter initialEntries={['/']}>
-        <AppShell />
-      </MemoryRouter>,
-    );
+    const { container, rerenderApp } = renderAppShell(['/']);
 
     // Mobil folgt die Breite derselben Bewegung wie die verschobene Seite.
     const sidebar = container.querySelector('aside');
@@ -368,11 +362,7 @@ describe('AppShell', () => {
 
     mockedUseMediaQuery.mockReturnValue(true);
 
-    rerender(
-      <MemoryRouter initialEntries={['/']}>
-        <AppShell />
-      </MemoryRouter>,
-    );
+    rerenderApp();
 
     expect(container.querySelector('aside')).toHaveStyle({ transition: 'none' });
   });
@@ -382,10 +372,9 @@ describe('AppShell', () => {
     const scrollToSpy = vi.spyOn(globalThis, 'scrollTo').mockImplementation(() => {});
     let persistent = true;
     mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY && persistent);
-    const app = () => <MemoryRouter><AppShell /></MemoryRouter>;
 
     try {
-      const view = render(app());
+      const view = renderAppShell();
       const sidebar = view.container.querySelector('aside')!;
       fireEvent.mouseDown(screen.getByRole('button', { name: 'Sidebar-Breite anpassen' }), {
         button: 0,
@@ -393,7 +382,7 @@ describe('AppShell', () => {
       });
 
       persistent = false;
-      view.rerender(app());
+      view.rerenderApp();
       expect(sidebar).toHaveStyle({ transition: 'none' });
 
       Object.defineProperty(globalThis, 'scrollY', { configurable: true, value: 640 });
@@ -413,11 +402,7 @@ describe('AppShell', () => {
 
   it('uses focus-visible rings for sidebar controls and the 404 link', () => {
     mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY);
-    const { container } = render(
-      <MemoryRouter initialEntries={['/missing']}>
-        <AppShell />
-      </MemoryRouter>,
-    );
+    const { container } = renderAppShell(['/missing']);
 
     const explorerButton = scopeTrigger();
     const collapseButton = screen.getByRole('button', { name: 'Katalog-Explorer ausblenden' });
@@ -435,17 +420,30 @@ describe('AppShell', () => {
     expect(container.querySelector('aside')).toBeInTheDocument();
   });
 
+  // Inhalt der gemockten Seiten: Die Nebenrouten laden als Chunks nach, der
+  // Titel steht dagegen sofort (GSPP-506).
+  const STATIC_PAGE_MARKERS: Readonly<Record<string, string>> = {
+    '/': 'Home',
+    '/suche': 'Suche',
+    '/vokabular': 'Vokabulare Seite',
+    '/about': 'About',
+    '/datenschutz': 'Datenschutz',
+    '/impressum': 'Impressum',
+    '/lizenzen': 'Lizenzen',
+  };
+
   // Deckt jede statische Route ab: keine Route kann ohne geprüften Titel
   // hinzukommen, weil sie sonst gar nicht in STATIC_PAGE_ROUTES steht.
   it.each(STATIC_PAGE_ROUTES.map(({ path, title }) => ({ path, title })))(
     'gives the static route $path its declared document title',
-    ({ path, title }) => {
-      render(
-        <MemoryRouter initialEntries={[path]}>
-          <AppShell />
-        </MemoryRouter>,
-      );
+    async ({ path, title }) => {
+      renderAppShell([path]);
 
+      expectSingleDocumentTitle(
+        title === undefined ? PRODUCT_TITLE : `${title} | ${PRODUCT_TITLE}`,
+      );
+      // Die Seiten sind als <div> gemockt; das verborgene h1 des Ladezustands trägt teils denselben Text.
+      expect(await screen.findByText(STATIC_PAGE_MARKERS[path], { selector: 'div' })).toBeInTheDocument();
       expectSingleDocumentTitle(
         title === undefined ? PRODUCT_TITLE : `${title} | ${PRODUCT_TITLE}`,
       );
@@ -464,53 +462,33 @@ describe('AppShell', () => {
     ]);
   });
 
-  it('registers vocabulary routes and document titles', () => {
-    render(
-      <MemoryRouter initialEntries={['/vokabular']}>
-        <AppShell />
-      </MemoryRouter>,
-    );
+  it('registers vocabulary routes and document titles', async () => {
+    renderAppShell(['/vokabular']);
 
-    expect(screen.getByText('Vokabulare Seite')).toBeInTheDocument();
+    expect(await screen.findByText('Vokabulare Seite')).toBeInTheDocument();
     expectSingleDocumentTitle(`${PAGE_TITLES.vocabularies} | ${PRODUCT_TITLE}`);
   });
 
   it('titles the /mehr redirect with its destination', () => {
-    render(
-      <MemoryRouter initialEntries={['/mehr']}>
-        <AppShell />
-      </MemoryRouter>,
-    );
+    renderAppShell(['/mehr']);
 
     expectSingleDocumentTitle(`${PAGE_TITLES.about} | ${PRODUCT_TITLE}`);
   });
 
-  it('registers vocabulary detail routes', () => {
-    render(
-      <MemoryRouter initialEntries={['/vokabular/security-level']}>
-        <AppShell />
-      </MemoryRouter>,
-    );
+  it('registers vocabulary detail routes', async () => {
+    renderAppShell(['/vokabular/security-level']);
 
-    expect(screen.getByText('Vokabular-Detail')).toBeInTheDocument();
+    expect(await screen.findByText('Vokabular-Detail')).toBeInTheDocument();
   });
 
   it('uses a specific title for the general catch-all route', () => {
-    render(
-      <MemoryRouter initialEntries={['/missing']}>
-        <AppShell />
-      </MemoryRouter>,
-    );
+    renderAppShell(['/missing']);
 
     expectSingleDocumentTitle(`${PAGE_TITLES.notFound} | ${PRODUCT_TITLE}`);
   });
 
   it('renders the footer without hiding it below desktop breakpoints', () => {
-    render(
-      <MemoryRouter initialEntries={['/']}>
-        <AppShell />
-      </MemoryRouter>,
-    );
+    renderAppShell(['/']);
 
     expect(screen.getByText('Footer')).not.toHaveClass('hidden');
   });
@@ -518,11 +496,7 @@ describe('AppShell', () => {
   // Die Kontextwahl ist der Kopf des Drawers; „Katalog“ war derselbe Link wie
   // der aktive Katalog, „Suche“ steht im Header (GSPP-476).
   it('führt im Drawer die Kontextwahl statt einer Sektionsnavigation', () => {
-    const { container } = render(
-      <MemoryRouter initialEntries={['/']}>
-        <AppShell />
-      </MemoryRouter>,
-    );
+    const { container } = renderAppShell(['/']);
 
     fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
 
@@ -538,18 +512,14 @@ describe('AppShell', () => {
 
   // Eine Navigation aus dem App-Kopf bei offenem Drawer ließe die neue Seite
   // sonst im inerten Hauptbereich zurück (GSPP-476).
-  it('schließt den Drawer bei jeder Navigation, auch aus dem App-Kopf', () => {
-    const { container } = render(
-      <MemoryRouter initialEntries={['/']}>
-        <AppShell />
-      </MemoryRouter>,
-    );
+  it('schließt den Drawer bei jeder Navigation, auch aus dem App-Kopf', async () => {
+    const { container } = renderAppShell(['/']);
     fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
     const lupe = screen.getByRole('link', { name: 'Lupe' });
     lupe.focus();
     fireEvent.click(lupe);
 
-    expect(screen.getByText('Suche')).toBeInTheDocument();
+    expect(await screen.findByText('Suche')).toBeInTheDocument();
     expect(container.querySelector('aside')).toHaveAttribute('inert');
     expect(container.querySelector('main')).not.toHaveAttribute('inert');
     expect(screen.getByTestId('mobile-nav-backdrop')).toHaveAttribute('data-state', 'closed');
@@ -564,12 +534,7 @@ describe('AppShell', () => {
       navigateTo = useNavigate();
       return null;
     }
-    const { container } = render(
-      <MemoryRouter initialEntries={['/', '/katalog/gspp']} initialIndex={1}>
-        <AppShell />
-        <NavigateProbe />
-      </MemoryRouter>,
-    );
+    const { container } = renderAppShell(['/', '/katalog/gspp'], { shell: () => <><AppShell /><NavigateProbe /></>, initialIndex: 1 });
     const menuButton = screen.getByRole('button', { name: 'Menu' });
     fireEvent.click(menuButton);
     screen.getByRole('button', { name: 'Menü schließen' }).focus();
@@ -588,12 +553,7 @@ describe('AppShell', () => {
       navigateTo = useNavigate();
       return null;
     }
-    render(
-      <MemoryRouter initialEntries={['/', '/katalog/gspp']} initialIndex={1}>
-        <AppShell />
-        <NavigateProbe />
-      </MemoryRouter>,
-    );
+    renderAppShell(['/', '/katalog/gspp'], { shell: () => <><AppShell /><NavigateProbe /></>, initialIndex: 1 });
     const menuButton = screen.getByRole('button', { name: 'Menu' });
 
     for (let round = 0; round < 2; round++) {
@@ -613,12 +573,7 @@ describe('AppShell', () => {
       return null;
     }
     try {
-      const { container } = render(
-        <MemoryRouter initialEntries={['/']}>
-          <AppShell />
-          <NavigateProbe />
-        </MemoryRouter>,
-      );
+      const { container } = renderAppShell(['/'], { shell: () => <><AppShell /><NavigateProbe /></> });
       fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
       screen.getByRole('button', { name: 'Menü schließen' }).focus();
 
@@ -639,12 +594,7 @@ describe('AppShell', () => {
       return null;
     }
     try {
-      render(
-        <MemoryRouter initialEntries={['/katalog/gspp', '/']} initialIndex={1}>
-          <AppShell />
-          <NavigateProbe />
-        </MemoryRouter>,
-      );
+      renderAppShell(['/katalog/gspp', '/'], { shell: () => <><AppShell /><NavigateProbe /></>, initialIndex: 1 });
       const menuButton = screen.getByRole('button', { name: 'Menu' });
 
       for (let round = 0; round < 2; round++) {
@@ -660,11 +610,7 @@ describe('AppShell', () => {
   });
 
   it('wechselt den Katalog aus dem Drawer-Kopf und schließt den Drawer', () => {
-    const { container } = render(
-      <MemoryRouter initialEntries={['/']}>
-        <AppShell />
-      </MemoryRouter>,
-    );
+    const { container } = renderAppShell(['/']);
     fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
     fireEvent.click(scopeTrigger());
 
@@ -685,11 +631,7 @@ describe('AppShell', () => {
   // Der Drawer besitzt Escape in der Capture-Phase; ein offenes Menü in seinem
   // Kopf muss trotzdem zuerst schließen (GSPP-476).
   it('schließt mit Escape zuerst das Menü im Drawer-Kopf und erst danach den Drawer', () => {
-    const { container } = render(
-      <MemoryRouter initialEntries={['/']}>
-        <AppShell />
-      </MemoryRouter>,
-    );
+    const { container } = renderAppShell(['/']);
     const menuButton = screen.getByRole('button', { name: 'Menu' });
     fireEvent.click(menuButton);
     fireEvent.click(scopeTrigger());
@@ -708,11 +650,7 @@ describe('AppShell', () => {
 
   it('zeigt die Kontextwahl auf dem Desktop mit Einklappen und ohne Schild in der eingeklappten Leiste', () => {
     mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY);
-    const { container } = render(
-      <MemoryRouter initialEntries={['/']}>
-        <AppShell />
-      </MemoryRouter>,
-    );
+    const { container } = renderAppShell(['/']);
 
     expect(scopeTrigger()).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Menü schließen' })).not.toBeInTheDocument();
@@ -723,11 +661,7 @@ describe('AppShell', () => {
   });
 
   it('registers the canonical catalog-scoped control route', () => {
-    render(
-      <MemoryRouter initialEntries={['/katalog/gspp/kontrolle/stable-alt-id']}>
-        <AppShell />
-      </MemoryRouter>,
-    );
+    renderAppShell(['/katalog/gspp/kontrolle/stable-alt-id']);
 
     expect(screen.getByTestId('catalog-browser')).toBeInTheDocument();
   });
@@ -743,11 +677,7 @@ describe('AppShell', () => {
       selectCatalog,
     });
 
-    render(
-      <MemoryRouter initialEntries={['/katalog/wlan/kontrolle/stable-alt-id']}>
-        <AppShell />
-      </MemoryRouter>,
-    );
+    renderAppShell(['/katalog/wlan/kontrolle/stable-alt-id']);
 
     expect(selectCatalog).toHaveBeenCalledWith('wlan');
   });
@@ -760,11 +690,7 @@ describe('AppShell', () => {
       catalog: base.catalog ? { ...base.catalog, catalogKey: 'wlan' } : null,
     });
 
-    render(
-      <MemoryRouter initialEntries={['/katalog/wlan']}>
-        <AppShell />
-      </MemoryRouter>,
-    );
+    renderAppShell(['/katalog/wlan']);
 
     fireEvent.click(scopeTrigger('Stand der Technik WLAN'));
     expect(screen.getByRole('menuitemradio', { name: 'Stand der Technik WLAN' })).toHaveAttribute(
@@ -782,11 +708,7 @@ describe('AppShell', () => {
       loading: true,
     });
 
-    render(
-      <MemoryRouter initialEntries={['/katalog/wlan']}>
-        <AppShell />
-      </MemoryRouter>,
-    );
+    renderAppShell(['/katalog/wlan']);
 
     fireEvent.click(scopeTrigger('Stand der Technik WLAN'));
     expect(screen.getByRole('menuitemradio', { name: 'Stand der Technik WLAN' })).toHaveAttribute(
@@ -796,11 +718,7 @@ describe('AppShell', () => {
   });
 
   it('does not register or redirect the unscoped catalog route', () => {
-    render(
-      <MemoryRouter initialEntries={['/katalog']}>
-        <AppShell />
-      </MemoryRouter>,
-    );
+    renderAppShell(['/katalog']);
 
     expect(
       screen.getByRole('heading', { name: '404 — Seite nicht gefunden' }),

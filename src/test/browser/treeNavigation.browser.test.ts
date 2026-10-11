@@ -2,11 +2,10 @@ import axe from 'axe-core';
 import { createElement } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
-import { MemoryRouter } from 'react-router';
 import { afterEach, expect, test, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 import { TreeNav, type TreeItem } from '@/components/TreeNav';
-import { AppShell } from '@/app/AppShell';
+import { appShellAt } from './appShellRouter';
 import { parseCatalog } from '@/adapters/oscalAdapter';
 import { CatalogContext } from '@/state/CatalogContext';
 import { createInitialState, projectPublicState } from '@/state/catalogReducer';
@@ -123,7 +122,7 @@ function renderCatalog(catalog: Catalog) {
     catalogDirectory: [{ catalogKey: catalog.catalogKey, title: catalog.metadata.title }],
   };
   flushSync(() => root!.render(createElement(CatalogContext.Provider, { value },
-    createElement(MemoryRouter, { initialEntries: ['/gibt-es-nicht'] }, createElement(AppShell)),
+    appShellAt('/gibt-es-nicht'),
   )));
 }
 
