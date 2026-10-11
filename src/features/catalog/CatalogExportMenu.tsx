@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import type { Control } from '@/domain/models';
 import { Button } from '@/components/Button';
 import { IconChevronDown, IconDownload } from '@/components/icons';
@@ -20,39 +20,88 @@ export function CatalogExportMenu({
 }: CatalogExportMenuProps) {
   const [open, setOpen] = useState(false);
   const menuContainerRef = useRef<HTMLDivElement>(null);
-  const firstMenuItemRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const outsideClickTargetRef = useRef<EventTarget | null>(null);
+  const menuId = useId();
+  const enabledItems = () => [...(menuRef.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])];
+  const close = () => {
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
+  const handleMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape' || event.key === 'Tab') {
+      if (event.key === 'Escape') event.preventDefault();
+      close();
+      return;
+    }
+    const items = enabledItems();
+    if (items.length === 0) return;
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    let next: number;
+    switch (event.key) {
+      case 'ArrowDown': next = current + 1; break;
+      case 'ArrowUp': next = current < 0 ? items.length - 1 : current - 1; break;
+      case 'Home': next = 0; break;
+      case 'End': next = items.length - 1; break;
+      default: return;
+    }
+    event.preventDefault();
+    items[(next + items.length) % items.length]?.focus();
+  };
   const selectedControls = allControls.filter((control) =>
     checkedIds.has(control.id),
   );
 
   const exportSelected = () => {
     downloadCSV(selectedControls, 'grundschutz-auswahl.csv');
-    setOpen(false);
+    close();
   };
   const exportSection = () => {
     downloadCSV(filteredControls, sectionFilename);
-    setOpen(false);
+    close();
   };
   const exportAll = () => {
     downloadCSV(allControls, 'grundschutz-gesamtkatalog.csv');
-    setOpen(false);
+    close();
   };
 
   useGlobalEventListener('document', 'mousedown', (event) => {
-    if (!menuContainerRef.current?.contains(event.target as Node)) {
+    outsideClickTargetRef.current = null;
+    if (open && !menuContainerRef.current?.contains(event.target as Node)) {
+      const target = event.target instanceof Element ? event.target : null;
+      if (event.button === 0 && !target?.closest('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([disabled]), [contenteditable]:not([contenteditable="false"])')) {
+        outsideClickTargetRef.current = event.target;
+      }
+      // Native Textauswahl und Fokusübernahme des Außenziels zulassen.
       setOpen(false);
     }
-  }, open);
+  });
+
+  useGlobalEventListener('document', 'click', (event) => {
+    const target = outsideClickTargetRef.current;
+    outsideClickTargetRef.current = null;
+    if (target === event.target && event.button === 0 && !event.defaultPrevented
+      && document.getSelection()?.isCollapsed !== false
+      && document.activeElement?.tagName === 'BODY') {
+      triggerRef.current?.focus({ preventScroll: true });
+    }
+  });
 
   useEffect(() => {
-    if (open) firstMenuItemRef.current?.focus();
-  }, [open]);
+    const menu = menuRef.current;
+    if (open && (!menu?.contains(document.activeElement) || document.activeElement?.matches(':disabled'))) {
+      menu?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+    }
+  }, [open, checkedIds.size, filteredControls.length, allControls.length]);
 
   // Kein CSS-Breakpoint-Gate mehr: Das Mount-Gate liegt beim Aufrufer
   // (isDesktop), damit auf Mobile kein unsichtbar gemounteter Knoten
   // übrig bleibt (GSPP-268).
   return (
-    <div className="flex relative" ref={menuContainerRef}>
+    <div className="flex relative" ref={menuContainerRef} onBlur={(event) => {
+      if (open && event.relatedTarget && !menuContainerRef.current?.contains(event.relatedTarget as Node)) setOpen(false);
+    }}>
       <Button
         variant="secondary"
         size="sm"
@@ -64,12 +113,20 @@ export function CatalogExportMenu({
         {checkedIds.size > 0 ? `Export (${checkedIds.size})` : 'CSV Export'}
       </Button>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="px-2 py-1.5 text-sm font-medium border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] hover:bg-[var(--color-surface-subtle)] text-[var(--color-text-secondary)] rounded-r-md transition-colors border-l-0"
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+        className="px-2 py-1.5 text-sm font-medium border border-[var(--color-border-strong)] bg-[var(--color-surface-base)] hover:bg-[var(--color-surface-subtle)] text-[var(--color-text-secondary)] rounded-r-md transition-colors border-l-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]"
         aria-label="Weitere Exportoptionen"
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
       >
         <IconChevronDown className="w-3.5 h-3.5" />
       </button>
@@ -77,23 +134,20 @@ export function CatalogExportMenu({
       {open && (
         <div
           className="absolute right-0 top-full mt-1 w-56 bg-[var(--color-surface-raised)] border border-[var(--color-border-default)] rounded-lg shadow-[var(--shadow-overlay)] z-50 py-1"
+          ref={menuRef}
+          id={menuId}
           role="menu"
           tabIndex={-1}
           aria-label="Exportoptionen"
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') {
-              event.preventDefault();
-              setOpen(false);
-            }
-          }}
+          onKeyDown={handleMenuKeyDown}
         >
           {checkedIds.size > 0 && (
             <button
-              ref={firstMenuItemRef}
               type="button"
               role="menuitem"
+              tabIndex={-1}
               onClick={exportSelected}
-              className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--color-surface-subtle)] flex items-center gap-2"
+              className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus-ring)] flex items-center gap-2"
             >
               <IconDownload className="w-3.5 h-3.5 text-[var(--color-text-muted)]" />
               <span>
@@ -107,11 +161,11 @@ export function CatalogExportMenu({
           {filteredControls.length < allControls.length && (
             <>
               <button
-                ref={checkedIds.size === 0 ? firstMenuItemRef : undefined}
                 type="button"
                 role="menuitem"
+                tabIndex={-1}
                 onClick={exportSection}
-                className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--color-surface-subtle)] flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:text-[var(--color-text-muted)]"
+                className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus-ring)] flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:text-[var(--color-text-muted)]"
                 disabled={filteredControls.length === 0}
               >
                 <IconDownload className="w-3.5 h-3.5 text-[var(--color-text-muted)]" />
@@ -126,16 +180,11 @@ export function CatalogExportMenu({
             </>
           )}
           <button
-            ref={
-              checkedIds.size === 0 &&
-              filteredControls.length >= allControls.length
-                ? firstMenuItemRef
-                : undefined
-            }
             type="button"
             role="menuitem"
+            tabIndex={-1}
             onClick={exportAll}
-            className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--color-surface-subtle)] flex items-center gap-2"
+            className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus-ring)] flex items-center gap-2"
           >
             <IconDownload className="w-3.5 h-3.5 text-[var(--color-text-muted)]" />
             <span>

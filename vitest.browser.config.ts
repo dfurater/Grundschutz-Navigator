@@ -10,6 +10,7 @@ import {
   installBrowserEgressGuard,
   resetBrowserEgressGuard,
 } from './src/test/browser/browserEgressGuard.ts';
+import { setBrowserSafeArea } from './src/test/browser/browserSafeArea.ts';
 import { setBrowserFontSize } from './src/test/browser/browserFontSize.ts';
 import { dispatchBrowserTouch } from './src/test/browser/browserTouchInput.ts';
 
@@ -33,7 +34,7 @@ export default defineConfig({
    * Reload den Anlass.
    */
   optimizeDeps: {
-    include: ['ajv'],
+    include: ['ajv', 'axe-core'],
   },
   test: {
     name: 'browser-chromium',
@@ -58,6 +59,7 @@ export default defineConfig({
         getBrowserEgressEnforcements,
         dispatchBrowserTouch,
         setBrowserFontSize,
+        setBrowserSafeArea,
       },
     },
   },

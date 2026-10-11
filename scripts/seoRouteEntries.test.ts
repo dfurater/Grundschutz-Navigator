@@ -302,3 +302,44 @@ describe('writeSeoRouteEntries', () => {
     expect(readFileSync(join(directory, 'katalog/gspp/GC/index.html'))).toEqual(first);
   });
 });
+
+describe('writeSeoRouteEntries: modulePreload', () => {
+  const entry = { path: '/suche', title: 'Suche', modulePreload: 'assets/SearchPage-abc_1.js' };
+
+  it('fügt genau einen modulepreload mit der Deployment-Basis vor </head> ein', () => {
+    const directory = tempDir();
+    writeSeoRouteEntries(directory, [entry], 'https://dfurater.github.io/preview/');
+
+    const html = readFileSync(join(directory, 'suche/index.html'), 'utf8');
+    expect(html.match(/rel="modulepreload"/g)).toHaveLength(1);
+    expect(html).toContain('<link rel="modulepreload" href="/preview/assets/SearchPage-abc_1.js" />\n  </head>');
+  });
+
+  it('lässt Einstiege ohne modulePreload unverändert gegenüber der bisherigen Ausgabe', () => {
+    const directory = tempDir();
+    writeSeoRouteEntries(directory, [{ path: '/suche', title: 'Suche' }], BASE_URL);
+
+    expect(readFileSync(join(directory, 'suche/index.html'), 'utf8')).not.toContain('modulepreload');
+  });
+
+  it.each(['../evil.js', 'assets/a b.js', 'assets/x.js"onload="1', '/assets/x.js', 'assets/x.css', 'assets/sub/x.js'])(
+    'weist den unsicheren Preload-Pfad %s vor dem Schreiben ab',
+    (modulePreload) => {
+      const directory = tempDir();
+      expect(() => writeSeoRouteEntries(directory, [{ ...entry, modulePreload }], BASE_URL)).toThrow('Unsafe module preload path');
+      expect(existsSync(join(directory, 'suche'))).toBe(false);
+    },
+  );
+
+  it('verlangt genau ein </head>', () => {
+    const directory = tempDir(HTML.replace('</head>', '</head></head>'));
+    expect(() => writeSeoRouteEntries(directory, [entry], BASE_URL)).toThrow('Expected exactly one </head> tag');
+  });
+
+  it('reicht modulePreloads über listSeoRouteMetadata nur an die festen Inhaltsrouten', () => {
+    const entries = listSeoRouteMetadata([catalog()], new Map([['/suche', 'assets/S.js'], ['/katalog/gspp', 'assets/X.js']]));
+
+    expect(entries.find((e) => e.path === '/suche')?.modulePreload).toBe('assets/S.js');
+    expect(entries.filter((e) => e.modulePreload !== undefined).map((e) => e.path)).toEqual(['/suche']);
+  });
+});

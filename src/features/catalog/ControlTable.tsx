@@ -123,7 +123,7 @@ function SecLevelCell({ value }: Readonly<{ value?: string }>) {
   const isErhoeht = value !== 'normal-SdT';
 
   return (
-    <span className={`catalog-meta-text ${isErhoeht ? 'text-sky-700' : 'text-slate-500'}`}>
+    <span className={`catalog-meta-text ${isErhoeht ? 'text-sky-700' : 'text-[var(--color-text-muted)]'}`}>
       {value}
     </span>
   );
