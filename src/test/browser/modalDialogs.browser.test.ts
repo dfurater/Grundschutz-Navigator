@@ -452,6 +452,35 @@ test('Filter-Sheet: Größenwechsel bewahrt Fokus und manuelle Klappzustände', 
   buttonByName(dialog, 'Fertig').click();
 });
 
+test('Filter-Sheet: Größenwechsel erhält die Position einer gescrollten Liste', async () => {
+  await commands.setBrowserFontSize(32);
+  const shell = await renderWithBackground(700, filterSheet(true));
+  buttonByName(shell, 'Filter anzeigen').click();
+  await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
+  const dialog = document.querySelector('dialog')!;
+  await Promise.all(dialog.getAnimations().map((animation) => animation.finished));
+  const heading = dialog.querySelector<HTMLElement>('[data-scroll-summary]')!;
+  await expect.poll(() => heading.dataset.scrollSummary).toBe('false');
+  const rows = [...dialog.querySelectorAll('label')];
+  const row = rows[Math.floor(rows.length / 2)];
+  const scroller = () => dialog.querySelector<HTMLElement>('[data-filter-scroll]')!;
+  const offset = () => row.getBoundingClientRect().top - scroller().getBoundingClientRect().top;
+  scroller().scrollTop += offset();
+  expect(scroller().scrollTop).toBeGreaterThan(0);
+  expect(Math.abs(offset())).toBeLessThanOrEqual(1);
+
+  await page.viewport(700, 250);
+  await expect.poll(() => heading.dataset.scrollSummary).toBe('true');
+  expect(scroller().scrollTop).toBeGreaterThan(0);
+  expect(Math.abs(offset())).toBeLessThanOrEqual(1);
+
+  await page.viewport(700, 800);
+  await expect.poll(() => heading.dataset.scrollSummary).toBe('false');
+  expect(scroller().scrollTop).toBeGreaterThan(0);
+  expect(Math.abs(offset())).toBeLessThanOrEqual(1);
+  buttonByName(dialog, 'Fertig').click();
+});
+
 test('Filter-Sheet: aufgeklappte Zeilen bleiben nach Einklappen aller Sektionen erreichbar', async () => {
   await commands.setBrowserFontSize(32);
   const shell = await renderWithBackground(700, filterSheet());
