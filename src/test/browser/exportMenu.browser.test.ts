@@ -4,6 +4,8 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 import type { Control } from '@/domain/models';
 import { CatalogExportMenu } from '@/features/catalog/CatalogExportMenu';
+import { ControlTable } from '@/features/catalog/ControlTable';
+import 'overlayscrollbars/overlayscrollbars.css';
 import { downloadCSV } from '@/features/export/csvExport';
 import '@/index.css';
 
@@ -13,7 +15,8 @@ let host: HTMLDivElement;
 let root: Root;
 afterEach(() => { root.unmount(); host.remove(); vi.clearAllMocks(); });
 
-async function renderMenu(selected = false, empty = false) {
+const selectControl = vi.fn();
+async function renderMenu(selected = false, empty = false, withTable = false) {
   await page.viewport(1280, 800);
   host = document.createElement('div');
   host.style.padding = '40px';
@@ -29,6 +32,14 @@ async function renderMenu(selected = false, empty = false) {
     }),
     createElement('button', null, 'Nachher'),
     createElement('p', null, 'Statische Fläche'),
+    withTable && createElement(ControlTable, {
+      controls: controls.slice(0, 2),
+      controlsById: new Map(controls.map(control => [control.id, control])),
+      sort: [{ field: 'id', direction: 'asc' }],
+      onSortChange: () => {},
+      onSelectControl: selectControl,
+      showSelection: false,
+    }),
   ));
   await expect.poll(() => host.querySelector('[aria-haspopup]')).not.toBeNull();
 }
@@ -95,4 +106,21 @@ test('outside click preserves a button target and returns focus for static conte
   await expect.poll(() => host.querySelector('[role="menu"]')).not.toBeNull();
   await userEvent.click(page.getByText('Statische Fläche'));
   expect(document.activeElement).toBe(trigger());
+});
+
+
+test('outside click on a negative-tabindex table row updates its roving tab stop', async () => {
+  await renderMenu(false, false, true);
+  const firstRow = host.querySelector<HTMLElement>('tr[data-row-index="0"]')!;
+  const secondRow = host.querySelector<HTMLElement>('tr[data-row-index="1"]')!;
+  expect(firstRow.tabIndex).toBe(0);
+  expect(secondRow.tabIndex).toBe(-1);
+  trigger().click();
+  await expect.poll(() => host.querySelector('[role="menu"]')).not.toBeNull();
+  await userEvent.click(page.getByText('Kontrolle 1', { exact: true }));
+  expect(host.querySelector('[role="menu"]')).toBeNull();
+  expect(document.activeElement).toBe(secondRow);
+  expect(selectControl).toHaveBeenCalledWith(controls[1]);
+  await expect.poll(() => secondRow.tabIndex).toBe(0);
+  expect(firstRow.tabIndex).toBe(-1);
 });

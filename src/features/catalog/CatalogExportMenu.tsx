@@ -68,7 +68,7 @@ export function CatalogExportMenu({
   useGlobalEventListener('document', 'mousedown', (event) => {
     if (!menuContainerRef.current?.contains(event.target as Node)) {
       const target = event.target instanceof Element ? event.target : null;
-      if (!target?.closest('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"]):not([disabled]), [contenteditable]:not([contenteditable="false"])')) {
+      if (!target?.closest('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([disabled]), [contenteditable]:not([contenteditable="false"])')) {
         // Der native Mousedown auf statischen Flächen würde den Rückkehrfokus löschen.
         event.preventDefault();
       }
@@ -133,7 +133,7 @@ export function CatalogExportMenu({
             <button
               type="button"
               role="menuitem"
-            tabIndex={-1}
+              tabIndex={-1}
               onClick={exportSelected}
               className="w-full text-left px-4 py-2 text-sm hover:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus-ring)] flex items-center gap-2"
             >
