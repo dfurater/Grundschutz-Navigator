@@ -9,6 +9,7 @@ import {
   STATIC_CONTENT_TITLES, listSeoRouteMetadata, loadPublicSeoCatalogs, writeSeoRouteEntries,
 } from './scripts/seoRouteEntries.ts';
 import { listSupportedCatalogs } from './src/domain/sourceRegistry.mjs';
+import { LAZY_ROUTE_MODULES } from './src/app/lazyRouteModules.mjs';
 import { catalogFreshnessPlugin } from './scripts/check-catalog-freshness.mjs';
 import { checkBuiltSeoTitles } from './scripts/check-seo-titles.mjs';
 import { writeChecksumsManifestFile } from './scripts/deployChecksums.mjs';
@@ -64,7 +65,11 @@ export function writeSpaFallbackFile(outDir: string) {
  * Statische HTTP-200-Einstiege mit aufgelösten OG-Titeln für feste Seiten,
  * öffentliche Kataloge und deren adressierbare Gruppen und Kontrollen (GSPP-449).
  */
-export function writeStaticRouteEntries(outDir: string, catalogs?: readonly Catalog[]): void {
+export function writeStaticRouteEntries(
+  outDir: string,
+  catalogs?: readonly Catalog[],
+  modulePreloads?: ReadonlyMap<string, string>,
+): void {
   const indexHtmlPath = resolve(outDir, 'index.html');
   if (!existsSync(indexHtmlPath)) {
     throw new Error(`Cannot create static route entries without build output at ${indexHtmlPath}`);
@@ -72,7 +77,7 @@ export function writeStaticRouteEntries(outDir: string, catalogs?: readonly Cata
   const publicCatalogs = catalogs ?? loadPublicSeoCatalogs(resolve(__dirname, 'public/data'));
   writeSeoRouteEntries(
     outDir,
-    listSeoRouteMetadata(publicCatalogs),
+    listSeoRouteMetadata(publicCatalogs, modulePreloads),
     `${CANONICAL_ORIGIN}${resolveDeploymentBase()}`,
   );
 }
@@ -88,16 +93,54 @@ export function writeStaticRouteEntries(outDir: string, catalogs?: readonly Cata
  * Plugin aus Dev-Server und Vitest heraus: Vite ruft `closeBundle` auch beim
  * Schließen eines Servers auf, sonst schriebe jeder Testlauf ein vorhandenes
  * `dist/` neu.
+ *
+ * Jeder statische Einstieg einer Lazy-Route erhält ein `modulepreload` auf den
+ * Chunk seiner Seite (GSPP-506), sodass ein Direktaufruf ihn parallel zum
+ * Hauptchunk lädt. Pfade tragen die aufgelöste Deployment-Basis.
  */
 export function spaFallbackPlugin(
-  options: { outDir?: string; catalogs?: readonly Catalog[] } = {},
+  options: {
+    outDir?: string;
+    catalogs?: readonly Catalog[];
+    /** Route → Seitenchunk (`assets/<Name>.js`); ohne Angabe liest das Plugin sie aus dem Bundle. */
+    modulePreloads?: ReadonlyMap<string, string>;
+  } = {},
 ) {
   const outDir = options.outDir ?? DIST_DIR;
+  const foundPreloads = new Map<string, string>();
   return {
     name: 'github-pages-spa-fallback',
     apply: 'build' as const,
+    // Chunk-Dateinamen tragen Hashes und stehen erst nach dem Bündeln fest. Die
+    // Seitenchunks der Lazy-Routen erkennt das Plugin an ihrem Fassadenmodul, das
+    // `LAZY_ROUTE_MODULES` der Route zuordnet (GSPP-506).
+    generateBundle(
+      _outputOptions: unknown,
+      bundle: Readonly<Record<string, {
+        type: string;
+        fileName: string;
+        isDynamicEntry?: boolean;
+        facadeModuleId?: string | null;
+      }>>,
+    ) {
+      for (const item of Object.values(bundle)) {
+        if (item.type !== 'chunk' || !item.isDynamicEntry || !item.facadeModuleId) continue;
+        const facade = item.facadeModuleId.split('?')[0];
+        for (const [route, module] of Object.entries(LAZY_ROUTE_MODULES)) {
+          if (resolve(__dirname, module) === facade) foundPreloads.set(route, item.fileName);
+        }
+      }
+    },
     closeBundle() {
-      writeStaticRouteEntries(outDir, options.catalogs);
+      const modulePreloads = options.modulePreloads ?? foundPreloads;
+      // Fail-closed: Eine zugeordnete Lazy-Route ohne gefundenen Chunk bricht den
+      // Build, bevor etwas geschrieben wird. Still wegzulassen hieße, den Preload
+      // unbemerkt zu verlieren.
+      const missing = Object.keys(LAZY_ROUTE_MODULES).filter((route) => !modulePreloads.has(route));
+      if (missing.length > 0) {
+        throw new Error(`Kein Seitenchunk im Bundle für die Lazy-Routen: ${missing.join(', ')}`);
+      }
+      writeStaticRouteEntries(outDir, options.catalogs, modulePreloads);
       writeSpaFallbackFile(outDir);
       writeSitemapFile(outDir);
       checkBuiltSeoTitles(outDir);
