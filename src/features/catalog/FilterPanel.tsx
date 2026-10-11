@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useCallback, type ReactNode } from 'react';
+import { useAdaptiveFilterHeader } from '@/features/catalog/useAdaptiveFilterHeader';
 import { FilterSection } from '@/components/FilterSection';
 import { CheckboxLabel } from '@/components/CheckboxLabel';
 import { IconFilter, IconChevronRight } from '@/components/icons';
@@ -31,6 +32,8 @@ export interface FilterPanelProps {
   readonly headingId?: string;
   /** Aktion rechts neben der Überschrift, etwa „Fertig“ im mobilen Sheet. */
   readonly headerAction?: ReactNode;
+  /** Bei Platzmangel scrollt die Trefferzeile im mobilen Sheet mit. */
+  readonly adaptiveHeader?: boolean;
 }
 
 const MODALVERB_LABELS: Record<Modalverb, string> = {
@@ -115,9 +118,16 @@ export function FilterPanel({
   onCollapse,
   headingId,
   headerAction,
+  adaptiveHeader = false,
 }: FilterPanelProps) {
   const { vocabularyRegistry } = useCatalog();
-  const filterScrollRef = useOverlayScrollbars<HTMLDivElement>();
+  const { formRef, headingRef, summaryRef, sectionsRef, scrollSummary } = useAdaptiveFilterHeader(adaptiveHeader);
+  const filterScrollRef = useOverlayScrollbars<HTMLDivElement>(!scrollSummary);
+  const bodyScrollRef = useOverlayScrollbars<HTMLDivElement>(scrollSummary);
+  const setSectionsRef = useCallback((element: HTMLDivElement | null) => {
+    sectionsRef.current = element;
+    return filterScrollRef(element);
+  }, [sectionsRef, filterScrollRef]);
 
   // Per-dimension: use global counts if this dimension has active filters (freeze),
   // otherwise use filtered counts so the user sees what's actually in the current result set.
@@ -188,13 +198,14 @@ export function FilterPanel({
 
   return (
     <form
+      ref={formRef}
       role="search"
       aria-label="Kontrollen filtern"
       onSubmit={(e) => e.preventDefault()}
       className="flex-1 min-h-0 w-full flex flex-col bg-[var(--color-surface-subtle)]"
     >
       {/* Header */}
-      <div className="px-4 py-3 border-b border-[var(--color-border-default)]">
+      <div ref={headingRef} data-scroll-summary={scrollSummary} className={`px-4 pt-3 pb-1.5 shrink-0 ${scrollSummary ? 'border-b border-[var(--color-border-default)]' : ''}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <IconFilter className="w-3.5 h-3.5 text-[var(--color-text-muted)] shrink-0" />
@@ -213,26 +224,29 @@ export function FilterPanel({
           )}
           {headerAction}
         </div>
-        <div className="flex items-center justify-between mt-1.5">
-          <span className="type-meta tabular-nums" aria-live="polite" aria-atomic="true">
-            {filteredCount === totalCount
-              ? `${totalCount} Kontrollen`
-              : `${filteredCount} von ${totalCount} Kontrollen`}
-          </span>
-          {hasActiveFilters && (
-            <button
-              type="button"
-              onClick={onClearFilters}
-              className="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors"
-            >
-              Zurücksetzen
-            </button>
-          )}
-        </div>
       </div>
+      <div ref={bodyScrollRef} data-filter-scroll={scrollSummary ? '' : undefined} className={`flex-1 min-h-0 ${scrollSummary ? 'overflow-y-auto overscroll-contain touch-pan-y' : 'flex flex-col'}`}>
+        <div ref={summaryRef} className="px-4 pb-3 border-b border-[var(--color-border-default)] shrink-0">
+          <div className="flex items-center justify-between">
+            <span className="type-meta tabular-nums" aria-live="polite" aria-atomic="true">
+              {filteredCount === totalCount
+                ? `${totalCount} Kontrollen`
+                : `${filteredCount} von ${totalCount} Kontrollen`}
+            </span>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={onClearFilters}
+                className="text-xs text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors"
+              >
+                Zurücksetzen
+              </button>
+            )}
+          </div>
+        </div>
 
-      {/* Filter Sections */}
-      <div ref={filterScrollRef} data-filter-scroll className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y px-4 py-1">
+        {/* Filter Sections */}
+        <div ref={setSectionsRef} data-filter-scroll={scrollSummary ? undefined : ''} className={`${scrollSummary ? '' : 'flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y'} px-4 py-1`}>
         {/* sec_level */}
         <FilterSection title="Sicherheitsniveau" activeCount={activeSecurityLevels}>
           {OFFICIAL_SECURITY_LEVELS.map((sl) => {
@@ -432,6 +446,7 @@ export function FilterPanel({
             })}
           </FilterSection>
         )}
+      </div>
       </div>
     </form>
   );

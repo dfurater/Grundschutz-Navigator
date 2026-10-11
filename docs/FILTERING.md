@@ -310,6 +310,10 @@ Die Benennung folgt den BSI-Dimensionen: `modal_verb` und `modal_verbs.csv` trag
 
 Die UI-Komponente in `src/features/catalog/FilterPanel.tsx` zeigt Facet-Sektionen mit Checkboxen und Zählern (`FilterSection`, `CheckboxLabel`), die Ergebnisanzahl (`N Kontrollen` bzw. `N von M Kontrollen`, `aria-live`) und — nur bei aktiven Filtern — die Schaltfläche `Zurücksetzen`. Mobil steckt dasselbe Panel in `src/features/catalog/CatalogMobileFilterSheet.tsx` (Bottom-Sheet, Auslöser `Filter anzeigen`); eine separate Bestätigung gibt es nicht, die Auswahl schreibt sofort in die URL.
 
+Im mobilen Filter-Sheet begrenzt `CatalogMobileFilterSheet.tsx` den Dialog auf `80dvh`; der Ziehgriff bleibt 44 px hoch. `useAdaptiveFilterHeader` vergleicht die nach dem festen Kopf verbleibende Listenhöhe mit der größten sichtbaren Filterzeile. Bei Platzmangel scrollen Ergebnisanzahl und „Zurücksetzen“ gemeinsam mit den Filtersektionen; Überschrift und „Fertig“ bleiben sichtbar. Ein `ResizeObserver` aktualisiert den Modus bei Größenänderungen; ein `MutationObserver` erfasst hinzugefügte und entfernte Filterzeilen. Die Filtersektionen behalten beim Moduswechsel ihre DOM-Instanzen und Klappzustände. `useOverlayScrollbars` liegt auf dem jeweils aktiven Scrollcontainer.
+
+`CatalogExportMenu.tsx` fokussiert beim Öffnen den ersten aktivierbaren Eintrag. Pfeil hoch/runter bewegen den Fokus mit Umlauf; Home/End wählen den ersten/letzten aktivierbaren Eintrag. Enter und Leertaste aktivieren den nativen Button. Escape und Exportaktionen geben den Fokus an „Weitere Exportoptionen“ zurück. Tab und Shift+Tab schließen das Menü und setzen die Tab-Reihenfolge vom Auslöser fort. Ein Außenklick auf statischen Inhalt gibt den Fokus an den Auslöser zurück; fokussierbare Außenziele übernehmen den nativen Mausfokus.
+
 ## Siehe auch
 
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — Gesamtarchitektur

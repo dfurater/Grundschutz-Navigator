@@ -73,12 +73,9 @@ export function CatalogMobileFilterSheet({
             >
               <div className="w-10 h-1 bg-[var(--color-border-strong)] rounded-full" />
             </div>
-            {/* Die Schließaktion steht im Kopf: Das Sheet ist unten verankert und
-                schneidet bei wenig Höhe unten ab, der Kopf bleibt sichtbar. Unten
-                ragt sie nur so weit über ihre Zeile hinaus, wie der Abstand zur
-                Zeile mit „Zurücksetzen“ reicht (`mt-1.5`), damit sie es nicht überdeckt. */}
             <FilterPanel
               {...filterPanelProps}
+              adaptiveHeader
               headingId={headingId}
               headerAction={(
                 <Button variant="ghost" size="sm" className="min-h-[44px] min-w-[44px] -mt-3 -mb-1.5 -mr-2 text-sm" onClick={close} data-dialog-close>

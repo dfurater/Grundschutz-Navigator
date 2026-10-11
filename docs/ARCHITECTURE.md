@@ -203,6 +203,7 @@ src/                              # Anwendungsquellcode
 │   │   ├── ControlTaxonomyBreadcrumb.tsx # Praktik- und Themenbegriffe im Kopf
 │   │   ├── ControlVocabularyPrimitives.tsx # Gemeinsame Bausteine der Vokabularanzeige
 │   │   ├── FilterPanel.tsx               # Filterpanel
+│   │   ├── useAdaptiveFilterHeader.ts   # Mobile Kopf-/Listenhöhe messen und Scrollmodus wählen
 │   │   └── SecurityTargetFilterSection.tsx # Schutzziel-Facetten im Filterpanel
 │   ├── export/                       # CSV-Export
 │   │   └── csvExport.ts                  # CSV-Erzeugung mit Formelschutz
