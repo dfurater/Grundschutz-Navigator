@@ -8,7 +8,7 @@ describe('useModalDialog: Ziele des Tab-Umlaufs', () => {
   it('wraps tab navigation around hidden and inert targets at both ends', () => {
     function HiddenEndsDialog() {
       const ref = useRef<HTMLDialogElement>(null);
-      useModalDialog(ref, true);
+      useModalDialog(ref, true, () => {});
       return (
         <ModalPortal>
           <dialog open ref={ref} aria-modal="true" aria-label="Legende">

@@ -81,7 +81,7 @@ export function CatalogMobileDetailOverlay({
   const overlayRef = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
-  useModalDialog(overlayRef, active);
+  useModalDialog(overlayRef, active, onClose);
   // Der Wechsel zu einer verknüpften Kontrolle baut den Inhalt samt
   // angeklicktem Element neu auf; der Fokus ginge an `body` verloren. Er
   // wandert dann auf die neue Detailüberschrift, die den Wechsel ansagt.

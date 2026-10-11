@@ -1,4 +1,4 @@
-import { useLayoutEffect } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 
 const FOCUSABLE_SELECTORS =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -48,6 +48,7 @@ function wrapTabKey(el: HTMLElement) {
 interface ModalLayer {
   readonly element: HTMLElement;
   returnTo: HTMLElement | null;
+  readonly dismiss: () => void;
 }
 
 const layers: ModalLayer[] = [];
@@ -73,9 +74,10 @@ function syncIsolation(): void {
   }
 }
 
-function openLayer(dialog: HTMLElement): ModalLayer {
+function openLayer(dialog: HTMLElement, dismiss: () => void): ModalLayer {
   const layer: ModalLayer = {
     element: layerElementOf(dialog),
+    dismiss,
     returnTo: document.activeElement instanceof HTMLElement ? document.activeElement : null,
   };
   layers.push(layer);
@@ -110,6 +112,12 @@ function closeLayer(layer: ModalLayer): void {
   if (focusLost && layer.returnTo?.isConnected) layer.returnTo.focus();
 }
 
+/** Beendet alle registrierten Dialoge über ihre bestehenden Schließpfade. */
+export function dismissModalDialogs(): void {
+  // Snapshot von oben nach unten: Ein Callback kann seine Ebene synchron abbauen.
+  for (const layer of [...layers].reverse()) layer.dismiss();
+}
+
 /** Elternknoten modaler Ebenen: `body`, also neben `#root` (`ModalPortal`). */
 export function useModalLayerTarget(): HTMLElement {
   return document.body;
@@ -124,13 +132,19 @@ export function useModalLayerTarget(): HTMLElement {
  * Mutationsphase, vor die Layout-Effekte einer nachfolgenden Ansicht, die
  * selbst den Fokus setzen (`useDocumentDetailPage`).
  */
-export function useModalDialog(ref: React.RefObject<HTMLElement | null>, active: boolean) {
+export function useModalDialog(
+  ref: React.RefObject<HTMLElement | null>,
+  active: boolean,
+  onDismiss: () => void,
+) {
+  const dismissRef = useRef(onDismiss);
+  useLayoutEffect(() => { dismissRef.current = onDismiss; }, [onDismiss]);
   useLayoutEffect(() => {
     const dialog = ref.current;
     if (!active || !dialog) return;
     const handleKeyDown = wrapTabKey(dialog);
     dialog.addEventListener('keydown', handleKeyDown);
-    const layer = openLayer(dialog);
+    const layer = openLayer(dialog, () => dismissRef.current());
     return () => {
       dialog.removeEventListener('keydown', handleKeyDown);
       closeLayer(layer);

@@ -32,7 +32,7 @@ export function CatalogMobileExportSheet({
   const actionsScrollRef = useOverlayScrollbars<HTMLDivElement>();
   const close = useCallback(() => setOpen(false), []);
 
-  useModalDialog(sheetRef, open);
+  useModalDialog(sheetRef, open, close);
   useScrollLock(open);
   useGlobalEventListener('document', 'keydown', (event) => {
     if (event.key === 'Escape') close();

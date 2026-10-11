@@ -2,7 +2,9 @@ import axe from 'axe-core';
 import { createElement, useLayoutEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Routes, Route } from 'react-router';
+import { HeaderBar } from '@/components/HeaderBar';
+import { SearchPage } from '@/features/search/SearchPage';
 import { afterEach, expect, test, vi } from 'vitest';
 import { commands, page, userEvent } from 'vitest/browser';
 import type { Catalog, Control } from '@/domain/models';
@@ -67,7 +69,12 @@ afterEach(async () => {
 function renderSurface(surface: ReactNode) {
   flushSync(() => {
     root?.render(createElement(MemoryRouter, null,
+      createElement(HeaderBar),
       createElement('button', { type: 'button' }, 'Suche im App-Kopf'),
+      createElement(Routes, null,
+        createElement(Route, { path: '/', element: null }),
+        createElement(Route, { path: '/suche', element: createElement(SearchPage) }),
+      ),
       surface,
       createElement('a', { href: '#impressum' }, 'Impressum'),
     ));
@@ -519,3 +526,73 @@ for (const [name, triggerName, closeName, surface] of [
     expect(document.activeElement).toBe(buttonByName(shell, triggerName));
   });
 }
+
+/** Suchkürzel aus den echten Dialograhmen mit nativem Chromium-inert. */
+test.each([
+  ['Filter', 'Filter anzeigen', '{Control>}k{/Control}', filterSheet],
+  ['Filter', 'Filter anzeigen', '{Meta>}k{/Meta}', filterSheet],
+  ['Export', 'CSV exportieren', '{Control>}k{/Control}', exportSheet],
+  ['Export', 'CSV exportieren', '{Meta>}k{/Meta}', exportSheet],
+  ['Tablet-Detail', 'Zeile TOP.1.1', '{Control>}k{/Control}', () => createElement(TabletScene)],
+  ['Tablet-Detail', 'Zeile TOP.1.1', '{Meta>}k{/Meta}', () => createElement(TabletScene)],
+] as const)('%s: %s gibt den Header frei (%s)', async (name, triggerName, shortcut, surface) => {
+  const shell = await renderWithBackground(800, surface());
+  const trigger = buttonByName(shell, triggerName);
+  trigger.focus();
+  if (name === 'Tablet-Detail') openDetail();
+  else await userEvent.keyboard('{Enter}');
+  await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
+  expect(shell.hasAttribute('inert')).toBe(true);
+  const search = shell.querySelector<HTMLInputElement>('[data-testid="header-search"]')!;
+  search.focus();
+  expect(document.activeElement).not.toBe(search);
+
+  await userEvent.keyboard(shortcut);
+
+  await expect.poll(() => document.querySelector('dialog')).toBeNull();
+  await expect.poll(() => document.activeElement).toBe(search);
+  expect(shell.hasAttribute('inert')).toBe(false);
+  expect(document.documentElement.style.overflow).toBe('');
+  await userEvent.keyboard('test');
+  expect(search.value).toBe('test');
+});
+
+test.each(['{Control>}k{/Control}', '{Meta>}k{/Meta}'])('Suchkürzel %s beendet beide gestapelten Dialoge vor dem Suchfokus', async (shortcut) => {
+  const shell = await renderWithBackground(800, createElement(TabletScene));
+  buttonByName(shell, 'CSV exportieren').focus();
+  await userEvent.keyboard('{Enter}');
+  await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
+  openDetail();
+  await expect.poll(() => document.querySelectorAll('dialog').length).toBe(2);
+
+  await userEvent.keyboard(shortcut);
+
+  await expect.poll(() => document.querySelectorAll('dialog').length).toBe(0);
+  const search = shell.querySelector<HTMLInputElement>('[data-testid="header-search"]')!;
+  await expect.poll(() => document.activeElement).toBe(search);
+  expect([...document.body.children].some((child) => child.hasAttribute('inert'))).toBe(false);
+  expect(document.documentElement.style.overflow).toBe('');
+  await userEvent.tab();
+  expect(search.closest('[inert]')).toBeNull();
+});
+
+test.each([
+  ['Filter anzeigen', '{Control>}k{/Control}', filterSheet],
+  ['Filter anzeigen', '{Meta>}k{/Meta}', filterSheet],
+  ['CSV exportieren', '{Control>}k{/Control}', exportSheet],
+  ['CSV exportieren', '{Meta>}k{/Meta}', exportSheet],
+] as const)('Unter sm: %s gibt die Suchseite frei (%s)', async (triggerName, shortcut, surface) => {
+  const shell = await renderWithBackground(402, surface());
+  buttonByName(shell, triggerName).focus();
+  await userEvent.keyboard('{Enter}');
+  await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
+
+  await userEvent.keyboard(shortcut);
+
+  await expect.poll(() => document.querySelector('dialog')).toBeNull();
+  await expect.poll(() => shell.querySelector('[aria-label="Suchbegriff eingeben"]')).not.toBeNull();
+  const search = shell.querySelector<HTMLInputElement>('[aria-label="Suchbegriff eingeben"]')!;
+  await expect.poll(() => document.activeElement).toBe(search);
+  expect(shell.hasAttribute('inert')).toBe(false);
+  expect(document.documentElement.style.overflow).toBe('');
+});
