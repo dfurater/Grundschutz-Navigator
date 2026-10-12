@@ -59,7 +59,7 @@ export function ImpressumPage() {
         <h2 className="text-base font-semibold leading-snug text-slate-900">
           Haftungsausschluss
         </h2>
-        <p className="text-sm text-slate-700 leading-relaxed">
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Der Grundschutz++ Navigator ist ein inoffizielles Werkzeug auf Basis
           des öffentlich zugänglichen Grundschutz++-Anwenderkatalogs des BSI.
           Trotz sorgfältiger Aufbereitung übernehmen wir keine Gewähr für
