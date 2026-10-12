@@ -94,10 +94,7 @@ export function useTabletDetailPanel({ enabled, controlId, scopeKey, listReady, 
       : null;
     const returnTarget = row
       ?? document.querySelector<HTMLElement>(SCOPE_HEADING_SELECTOR);
-    if (
-      returnTarget === null
-      || returnTarget.closest('[hidden],[inert]') !== null
-    ) {
+    if (returnTarget?.closest('[hidden],[inert]') !== null) {
       return;
     }
     returnTarget.focus({ preventScroll: true });
