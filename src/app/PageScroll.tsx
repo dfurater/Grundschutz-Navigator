@@ -10,7 +10,7 @@ import { useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
 export function PageScroll({ children }: Readonly<{ children: ReactNode }>) {
   const scrollAreaRef = useOverlayScrollbars<HTMLDivElement>(useMediaQuery(OWN_SCROLL_AREA_QUERY));
   return (
-    <div ref={scrollAreaRef} className="flex-1 md:overflow-y-auto pb-safe lg:pb-0">
+    <div ref={scrollAreaRef} className="flex-1 md:overflow-y-auto pb-safe desktop:pb-0">
       {children}
     </div>
   );

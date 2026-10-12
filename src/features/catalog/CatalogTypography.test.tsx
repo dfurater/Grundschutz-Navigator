@@ -416,11 +416,11 @@ describe('catalog typography', () => {
     const title = screen.getByRole('heading', { name: control.title, level: 2 });
     const scrollContainer = title.parentElement?.nextElementSibling;
 
-    expect(backButton).toHaveClass('rounded-lg', 'h-11', 'w-11', 'lg:h-10', 'lg:w-10');
+    expect(backButton).toHaveClass('rounded-lg', 'h-11', 'w-11', 'desktop:h-10', 'desktop:w-10');
     expect(backButton.querySelector('span')).toBeNull();
     expect(title).toHaveClass('type-page-title');
     // Der Sicherheitsabstand kommt zu den 16 px hinzu, statt sie zu ersetzen.
-    expect(scrollContainer).toHaveClass('p-4', 'pb-[calc(1rem+env(safe-area-inset-bottom,0px))]', 'lg:pb-4');
+    expect(scrollContainer).toHaveClass('p-4', 'pb-[calc(1rem+env(safe-area-inset-bottom,0px))]', 'desktop:pb-4');
     expect(scrollContainer).not.toHaveClass('pb-safe');
     expect(container.firstChild).toHaveClass('h-full', 'flex', 'flex-col', 'bg-[var(--color-surface-raised)]');
   });

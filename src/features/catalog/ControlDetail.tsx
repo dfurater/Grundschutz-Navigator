@@ -302,7 +302,7 @@ export function ControlDetail({
             type="button"
             onClick={onClose}
             aria-label="Zurück zur Übersicht"
-            className="flex h-11 w-11 lg:h-10 lg:w-10 shrink-0 items-center justify-center rounded-lg text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]"
+            className="flex h-11 w-11 desktop:h-10 desktop:w-10 shrink-0 items-center justify-center rounded-lg text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]"
           >
             <IconArrowLeft className="h-5 w-5" aria-hidden="true" />
           </button>
@@ -367,7 +367,7 @@ export function ControlDetail({
             type="button"
             onClick={() => onNavigateToControl?.(parentControl)}
             aria-label={`Teil von ${parentControl.id} ${parentControl.title}`}
-            className="group relative mt-1.5 flex items-baseline gap-1.5 rounded text-left text-xs text-[var(--color-text-muted)] after:absolute after:-inset-y-3 after:inset-x-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] lg:after:-inset-y-1"
+            className="group relative mt-1.5 flex items-baseline gap-1.5 rounded text-left text-xs text-[var(--color-text-muted)] after:absolute after:-inset-y-3 after:inset-x-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] desktop:after:-inset-y-1"
           >
             {/* Leerzeichen zwischen den Flex-Kindern: unsichtbar, aber beim Kopieren erhalten. */}
             <span aria-hidden="true">↳</span>{' '}
@@ -388,7 +388,7 @@ export function ControlDetail({
       <div
         ref={scrollAreaRef}
         data-control-detail-scroll
-        className={isPage ? 'flex flex-col gap-5 p-4' : 'flex flex-1 flex-col gap-5 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] lg:pb-4'}
+        className={isPage ? 'flex flex-col gap-5 p-4' : 'flex flex-1 flex-col gap-5 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] desktop:pb-4'}
       >
         {hasAnforderung && (
           <ControlStatement

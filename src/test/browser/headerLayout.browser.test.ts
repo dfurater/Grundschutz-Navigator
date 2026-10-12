@@ -67,7 +67,7 @@ function placeholderFits(input: HTMLInputElement) {
 }
 
 // Echte Media Queries, Schriften und Boxen statt Klassenvergleiche im jsdom.
-test.each([320, 375, 402, 430, 639, 640, 767, 768, 1024, 1440])(
+test.each([320, 375, 402, 430, 639, 640, 743, 744, 767, 768, 1024, 1440])(
   'trägt bei %i px nur Menü, Marke und Suche, zentriert und überlappungsfrei',
   async (width) => {
     const header = await renderHeader(width);

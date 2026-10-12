@@ -58,7 +58,7 @@ function expectAtMostTwoUnclampedLines(title: HTMLElement) {
   expect(title.scrollWidth).toBeLessThanOrEqual(title.clientWidth + 1);
 }
 
-const WIDTHS = [320, 375, 402, 430, 639, 640, 767, 768, 1024, 1440];
+const WIDTHS = [320, 375, 402, 430, 639, 640, 743, 744, 767, 768, 1024, 1440];
 
 test.each(WIDTHS.flatMap((width) => ITEMS.map(({ key }) => [width, key] as const)))(
   'hält den Kopf bei %i px mit Katalog %s 51 px hoch und den Titel in höchstens zwei Zeilen',

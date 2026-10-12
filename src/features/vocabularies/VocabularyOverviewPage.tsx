@@ -60,11 +60,11 @@ export function VocabularyOverviewPage() {
           {namespaces.map((namespace) => (
             <div
               key={namespace.source.namespace}
-              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-1 transition-colors lg:py-1.5 hover:bg-[var(--color-surface-subtle)]"
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-1 transition-colors desktop:py-1.5 hover:bg-[var(--color-surface-subtle)]"
             >
               <Link
                 to={`/vokabular/${namespace.source.routeId}`}
-                className="type-object-title flex min-h-11 min-w-0 items-center rounded lg:min-h-6 hover:text-[var(--color-accent-default)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+                className="type-object-title flex min-h-11 min-w-0 items-center rounded desktop:min-h-6 hover:text-[var(--color-accent-default)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
               >
                 {getVocabularyTitle(namespace.source.fileName)}
               </Link>

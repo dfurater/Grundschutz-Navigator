@@ -23,20 +23,20 @@ export type RenderVocabularyCard = (
 
 /**
  * Touch-Fläche einer Zeile mit 24 px Höhe (Listen, Begriffe außerhalb des
- * Satzes): Das Pseudo-Element wächst unsichtbar auf 36 px mobil bzw. 28 px ab
- * lg; die Zeile selbst bleibt bei jeder Breite 24 px hoch, damit am
- * Breakpoint nichts springt (Owner 26.09.2026). Benachbarte Flächen
+ * Satzes): Das Pseudo-Element wächst unsichtbar auf 36 px mobil und auf dem
+ * Tablet bzw. 28 px auf dem Desktop; die Zeile selbst bleibt bei jeder Breite
+ * 24 px hoch, damit am Breakpoint nichts springt (Owner 26.09.2026). Benachbarte Flächen
  * überlappen dabei um 6 px.
  */
 export const rowTouchTargetClass =
-  "relative after:absolute after:-inset-y-1.5 after:inset-x-0 after:content-[''] lg:after:-inset-y-0.5";
+  "relative after:absolute after:-inset-y-1.5 after:inset-x-0 after:content-[''] desktop:after:-inset-y-0.5";
 
 /**
  * Textaktion in 12 px (Legende, Mehr anzeigen): unterstreicht beim Hover wie
- * jeder Link; die Trefferfläche wächst unsichtbar auf 40 px mobil bzw. 24 px ab lg.
+ * jeder Link; die Trefferfläche wächst unsichtbar auf 40 px mobil und auf dem Tablet bzw. 24 px auf dem Desktop.
  */
 export const textActionClass =
-  "relative shrink-0 cursor-pointer rounded text-xs font-medium leading-4 text-primary-main after:absolute after:-inset-x-2 after:-inset-y-3 after:content-[''] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] lg:after:-inset-y-1";
+  "relative shrink-0 cursor-pointer rounded text-xs font-medium leading-4 text-primary-main after:absolute after:-inset-x-2 after:-inset-y-3 after:content-[''] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] desktop:after:-inset-y-1";
 
 /**
  * Aufzählung der Detailansicht (Gefährdungen, Erweiterungen, Verknüpfungen):

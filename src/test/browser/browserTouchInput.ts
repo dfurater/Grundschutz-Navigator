@@ -29,14 +29,35 @@ function touchSession(page: Page) {
 
 const TOUCH_TYPES = { start: 'touchStart', move: 'touchMove', end: 'touchEnd' } as const;
 
+async function resetTouchSession(page: Page) {
+  const session = await touchSession(page);
+  await session.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+  sessions.delete(page);
+}
+
+/**
+ * Schaltet Touch als Eingabemöglichkeit ein oder aus (GSPP-523). Mit aktiver
+ * Touch-Emulation melden `pointer` und `any-pointer` `coarse`, `hover` und
+ * `any-hover` `none`; ausgeschaltet gelten wieder `fine` und `hover`, wie bei
+ * einem Gerät mit Maus.
+ */
+export const setBrowserCoarsePointer = defineBrowserCommand<[coarse: boolean]>(
+  async ({ page }, coarse) => {
+    if (coarse) {
+      await touchSession(page);
+    } else {
+      await resetTouchSession(page);
+    }
+  },
+);
+
 export const dispatchBrowserTouch = defineBrowserCommand<[kind: BrowserTouchKind, x?: number, y?: number]>(
   async ({ page }, kind, x = 0, y = 0) => {
-    const session = await touchSession(page);
     if (kind === 'reset') {
-      await session.send('Emulation.setTouchEmulationEnabled', { enabled: false });
-      sessions.delete(page);
+      await resetTouchSession(page);
       return;
     }
+    const session = await touchSession(page);
     await session.send('Input.dispatchTouchEvent', {
       type: TOUCH_TYPES[kind],
       touchPoints: kind === 'end' ? [] : [{ x, y, id: 1 }],
