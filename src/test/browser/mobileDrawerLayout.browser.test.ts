@@ -271,29 +271,36 @@ test('lässt die Seitenleiste ab md neben dem Inhalt in voller Höhe stehen', as
 
 // Unter 640 px führte Tab auf die Lupe, darüber auf das Suchfeld: Beide liegen
 // im abgedunkelten App-Kopf, dessen Steuerungen bei offener Schublade `inert`
-// sind (GSPP-497).
-test.each([WIDTH, 700])('führt Tab bei %i px vom Menübutton nur auf sichtbare Ziele in der Schublade', async (width) => {
+// sind; der Menübutton tritt aus der Tab-Reihenfolge (GSPP-497).
+test.each([WIDTH, 700])('hält Tab bei %i px auf sichtbaren Zielen in der Schublade', async (width) => {
   const shell = await renderShell(width);
   const menuButton = shell.querySelector<HTMLButtonElement>('button[aria-controls]')!;
-  const aside = await openDrawer(shell);
+  await openDrawer(shell);
   await settleOverlay(shell);
-  expect(document.activeElement).toBe(menuButton);
+  // Der Fokus liegt sichtbar auf der Schließen-Aktion, nicht auf dem
+  // verdeckten Menübutton (WCAG 2.2, 2.4.11).
+  const closeButton = shell.querySelector<HTMLButtonElement>('button[aria-label="Menü schließen"]')!;
+  expect(document.activeElement).toBe(closeButton);
+  const closeBox = closeButton.getBoundingClientRect();
+  expect(closeBox.left).toBeGreaterThanOrEqual(0);
+  expect(closeBox.right).toBeLessThanOrEqual(width);
 
-  const reached: Element[] = [];
+  // Rückwärts wie vorwärts führt kein Tab auf den verdeckten Menübutton.
+  expect(menuButton).toHaveAttribute('tabindex', '-1');
+  await userEvent.tab({ shift: true });
+  expect(document.activeElement).not.toBe(menuButton);
+
+  // Jedes erreichte Ziel in der Shell ist sichtbar (kein verdecktes Ziel).
   for (let step = 0; step < 6; step++) {
     await userEvent.tab();
     const focused = document.activeElement;
     if (focused === null || !shell.contains(focused)) break;
-    reached.push(focused);
-  }
-
-  expect(reached.length).toBeGreaterThan(0);
-  expect(aside.contains(reached[0])).toBe(true);
-  for (const element of reached) {
-    const box = element.getBoundingClientRect();
+    expect(focused).not.toBe(menuButton);
+    const box = focused.getBoundingClientRect();
     expect(box.left).toBeGreaterThanOrEqual(0);
     expect(box.right).toBeLessThanOrEqual(width);
   }
+  expect(document.activeElement).not.toBe(menuButton);
 });
 
 // Ab 640 px liegt das Suchfeld im verdeckten App-Kopf; die Suchseite hat dort

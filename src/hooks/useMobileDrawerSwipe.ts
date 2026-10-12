@@ -10,7 +10,7 @@ interface Gesture {
   readonly startX: number;
   readonly startY: number;
   readonly width: number;
-  /** Viewport-Breite beim Aufsetzen; ändert sie sich, endet die Geste. Nicht `width`: Deren Transition meldet beim `resize` noch die alte Breite. */
+  /** Viewport-Breite beim Aufsetzen; ändert sie sich, endet die Geste. */
   readonly viewport: number;
   /** Sichtbare Lage beim Übernehmen der Geste, relativ zur offenen Endlage. */
   base: number;
@@ -52,13 +52,14 @@ export interface MobileDrawerSwipe {
 }
 
 /**
- * Wischgesten der mobilen Navigationsschublade (GSPP-493). Nach
- * rechts über die Seite gewischt, zieht der Finger die Schublade herein; nach
- * links über Schublade oder Abdunklung schiebt er sie wieder hinaus. In beiden
- * Richtungen folgen Schublade und verschobene Seite dem Finger, die
- * Abdunklung blendet anteilig. Beim Loslassen entscheidet ein Wurf die
- * Richtung, sonst die halbe Strecke; die Freigabe übernimmt die
- * Geschwindigkeit des Fingers, statt mit der Standarddauer neu anzusetzen.
+ * Wischgesten der mobilen Navigationsschublade (GSPP-493, Overlay seit
+ * GSPP-515). Nach rechts über die Seite gewischt, zieht der Finger die
+ * Schublade herein; nach links über Schublade oder Abdunklung schiebt er sie
+ * wieder hinaus. In beiden Richtungen folgt die Schublade dem Finger, die
+ * Seite bleibt liegen, die Abdunklung blendet anteilig. Beim Loslassen
+ * entscheidet ein Wurf die Richtung, sonst die halbe Strecke; die Freigabe
+ * übernimmt die Geschwindigkeit des Fingers, statt mit der Standarddauer neu
+ * anzusetzen.
  *
  * Während des Ziehens schreibt die Geste nur Variablen am Shell-Element; React
  * rendert nur an Beginn und Ende. Senkrechte Gesten bleiben dem Scrollen.

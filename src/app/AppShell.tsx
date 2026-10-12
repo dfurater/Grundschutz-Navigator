@@ -115,11 +115,17 @@ function AppShellLayout() {
   const shellRef = useRef<HTMLDivElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const mobileNavOpen = sideNavOpen && !isPersistentNav;
 
+  // Öffnen legt den Fokus auf die sichtbare Schließen-Aktion: Der Menübutton
+  // liegt verdeckt unter der Schublade und trüge einen unsichtbaren Fokus
+  // (WCAG 2.2, 2.4.11). Die Vorschau einer Öffnen-Geste bewegt den Fokus nicht.
+  useEffect(() => {
+    if (mobileNavOpen) closeButtonRef.current?.focus({ preventScroll: true });
+  }, [mobileNavOpen]);
+
   const openSideNav = () => {
-    // Safari gibt Klicks keinen Button-Fokus; main wird beim Öffnen inert.
-    if (!isPersistentNav) menuButtonRef.current?.focus({ preventScroll: true });
     setSideNavOpen(true);
     setSidebarCollapsed(false);
   };
@@ -156,6 +162,11 @@ function AppShellLayout() {
   const expandedNavWidth = sidebarCollapsed ? 44 : sidebarWidth;
   // Mobil bestimmt `--mobile-nav-width` die Breite (src/index.css).
   const persistentNavWidth = isPersistentNav ? expandedNavWidth : undefined;
+  // Mobil gleitet nur die Schublade herein; ab `md` bewegt sich die Breite der
+  // Seitenleiste mit der Desktop-Bewegung.
+  const drawerMotion = isPersistentNav
+    ? 'width var(--duration-normal) var(--easing-default)'
+    : 'translate var(--mobile-nav-motion)';
 
   useCloseDrawerOnNavigation({
     locationKey: location.key,
@@ -271,12 +282,19 @@ function AppShellLayout() {
         menuExpanded={mobileNavOpen}
         menuControls={sideNavId}
         menuButtonRef={menuButtonRef}
+        menuTabIndex={mobileNavOpen ? -1 : undefined}
         onMenuToggle={() => {
-          // Safari gibt Klicks keinen Button-Fokus; main wird beim Öffnen inert.
-          if (!isPersistentNav) menuButtonRef.current?.focus({ preventScroll: true });
-          drawerPlacement.captureOffset();
-          setSideNavOpen((prev) => !prev);
-          setSidebarCollapsed(false);
+          if (!isPersistentNav) drawerPlacement.captureOffset();
+          if (!isPersistentNav && !sideNavOpen) {
+            setSideNavOpen(true);
+            setSidebarCollapsed(false);
+          } else if (!isPersistentNav) {
+            closeSideNav();
+          } else {
+            // Safari gibt Klicks keinen Button-Fokus.
+            setSideNavOpen((prev) => !prev);
+            setSidebarCollapsed(false);
+          }
         }}
       />
 
@@ -314,13 +332,7 @@ function AppShellLayout() {
           style={{
             top: drawerPlacement.top,
             width: persistentNavWidth,
-            transition: isSidebarResizing || prefersReducedMotion
-              ? 'none'
-              // Mobil gleitet nur die Schublade herein; die Breite folgt dort
-              // unmittelbar `--mobile-nav-width` (src/index.css).
-              : isPersistentNav
-                ? 'width var(--duration-normal) var(--easing-default)'
-                : 'translate var(--mobile-nav-motion)',
+            transition: isSidebarResizing || prefersReducedMotion ? 'none' : drawerMotion,
           }}
         >
           {sidebarCollapsed ? (
@@ -361,6 +373,7 @@ function AppShellLayout() {
                 ) : (
                   <button
                     type="button"
+                    ref={closeButtonRef}
                     onClick={closeSideNav}
                     className="flex h-11 w-11 shrink-0 items-center justify-center rounded text-slate-400 transition-colors hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
                     aria-label="Menü schließen"

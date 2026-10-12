@@ -14,16 +14,23 @@ export interface HeaderBarProps {
   readonly menuControls?: string;
   readonly menuButtonRef?: RefObject<HTMLButtonElement | null>;
   /**
-   * Die offene mobile Schublade schiebt den App-Kopf aus dem Bild. Seine
+   * Die offene mobile Schublade verdeckt den Menübutton. Er tritt dann aus der
+   * Tab-Reihenfolge, bleibt aber das programmgesteuerte Fokusziel beim
+   * Schließen; den Tastaturfokus erhält die sichtbare Schließen-Aktion.
+   */
+  readonly menuTabIndex?: number;
+  /**
+   * Die offene mobile Schublade verdeckt die Kopf-Steuerungen. Seine
    * Steuerungen außer dem Menübutton sind dann `inert`, damit Tab nicht auf
    * verdeckte Ziele führt.
    */
   readonly obscured?: boolean;
   /**
    * Gibt den App-Kopf frei: Die Shell schließt eine offene Schublade und
-   * beendet eine Wischgeste, die den Kopf gerade verschiebt. Das Suchkürzel
-   * ruft es bei sichtbarem Feld vor dem Fokussieren auf; ist der Kopf
-   * `obscured` oder durch einen Dialog inert, wartet der Fokus auf die Freigabe.
+   * beendet eine Wischgeste, die die Schublade gerade als Vorschau zeigt. Das
+   * Suchkürzel ruft es bei sichtbarem Feld vor dem Fokussieren auf; ist der
+   * Kopf `obscured` oder durch einen Dialog inert, wartet der Fokus auf die
+   * Freigabe.
    */
   readonly onUncover?: () => void;
   readonly className?: string;
@@ -64,6 +71,7 @@ export function HeaderBar({
   menuExpanded = false,
   menuControls,
   menuButtonRef,
+  menuTabIndex,
   obscured = false,
   onUncover,
   className = '',
@@ -144,6 +152,7 @@ export function HeaderBar({
             type="button"
             className="-ml-3 flex h-11 w-11 shrink-0 items-center justify-center rounded text-[var(--header-text-muted)] transition-colors hover:text-[var(--header-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--header-focus-ring)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--header-bg)] md:hidden"
             ref={menuButtonRef}
+            tabIndex={menuTabIndex}
             onClick={onMenuToggle}
             aria-expanded={menuExpanded}
             aria-controls={menuControls}

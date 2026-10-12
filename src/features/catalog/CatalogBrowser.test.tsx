@@ -390,7 +390,9 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(menuButton).not.toHaveFocus();
     fireEvent.click(menuButton);
 
-    expect(menuButton).toHaveFocus();
+    // Der Fokus liegt sichtbar auf der Schließen-Aktion, nicht auf dem
+    // verdeckten Menübutton (WCAG 2.2, 2.4.11).
+    expect(screen.getByRole('button', { name: 'Menü schließen' })).toHaveFocus();
     expect(screen.queryByRole('button', { name: 'Filter anzeigen' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'CSV exportieren' })).not.toBeInTheDocument();
     fireEvent.keyDown(menuButton, { key: 'Escape' });

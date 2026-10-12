@@ -29,6 +29,7 @@ vi.mock('@/components/HeaderBar', () => ({
     menuExpanded,
     menuControls,
     menuButtonRef,
+    menuTabIndex,
     obscured,
   }: {
     onMenuToggle: () => void;
@@ -36,10 +37,11 @@ vi.mock('@/components/HeaderBar', () => ({
     menuExpanded?: boolean;
     menuControls?: string;
     menuButtonRef?: RefObject<HTMLButtonElement | null>;
+    menuTabIndex?: number;
     onSearch: (term: string) => void;
   }) => (
     <>
-      <button type="button" ref={menuButtonRef} aria-expanded={menuExpanded} aria-controls={menuControls} onClick={onMenuToggle}>
+      <button type="button" ref={menuButtonRef} tabIndex={menuTabIndex} aria-expanded={menuExpanded} aria-controls={menuControls} onClick={onMenuToggle}>
         Menu
       </button>
       <Link to="/suche" inert={obscured}>Lupe</Link>
@@ -187,21 +189,35 @@ describe('AppShell', () => {
     expect(menuButton).toHaveAttribute('aria-expanded', 'false');
   });
 
-  it('moves focus from main to the menu before a click makes main inert', () => {
+  it('moves focus from main into the drawer before a click makes main inert', () => {
     renderAppShell();
     const main = screen.getByRole('main');
     main.tabIndex = -1;
     main.focus();
     expect(main).toHaveFocus();
-    const menuButton = screen.getByRole('button', { name: 'Menu' });
-    const focus = vi.spyOn(menuButton, 'focus');
+    const closeButton = screen.getByRole('button', { name: 'Menü schließen' });
+    const focus = vi.spyOn(closeButton, 'focus');
 
     // fireEvent.click setzt wie Safari keinen Klickfokus auf den Button.
-    fireEvent.click(menuButton);
+    fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
 
     expect(main).toHaveAttribute('inert');
-    expect(menuButton).toHaveFocus();
+    // Der Menübutton liegt verdeckt unter der Schublade; sichtbar fokussiert
+    // wird die Schließen-Aktion (WCAG 2.2, 2.4.11).
+    expect(closeButton).toHaveFocus();
     expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+  });
+
+  it('nimmt den verdeckten Menübutton aus der Tab-Reihenfolge, bis die Schublade schließt', () => {
+    renderAppShell();
+    const menuButton = screen.getByRole('button', { name: 'Menu' });
+    expect(menuButton).not.toHaveAttribute('tabindex');
+
+    fireEvent.click(menuButton);
+    expect(menuButton).toHaveAttribute('tabindex', '-1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Menü schließen' }));
+    expect(menuButton).not.toHaveAttribute('tabindex');
   });
 
   it('makes the main content inert only while mobile navigation is open', () => {
