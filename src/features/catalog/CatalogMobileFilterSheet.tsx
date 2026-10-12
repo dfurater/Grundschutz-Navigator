@@ -12,10 +12,12 @@ import { FilterPanel, type FilterPanelProps } from './FilterPanel';
 
 interface CatalogMobileFilterSheetProps {
   readonly filterPanelProps: FilterPanelProps;
+  readonly activeCount: number;
 }
 
 export function CatalogMobileFilterSheet({
   filterPanelProps,
+  activeCount,
 }: CatalogMobileFilterSheetProps) {
   const [open, setOpen] = useState(false);
   const sheetRef = useRef<HTMLDialogElement>(null);
@@ -44,9 +46,14 @@ export function CatalogMobileFilterSheet({
         size="sm"
         className="lg:hidden min-h-[44px] min-w-[44px]"
         onClick={() => setOpen(true)}
-        aria-label="Filter anzeigen"
+        aria-label={activeCount > 0 ? `Filter anzeigen, ${activeCount} aktiv` : 'Filter anzeigen'}
       >
         <IconFilter className="w-4 h-4" />
+        {activeCount > 0 && (
+          <span className="filter-count-badge bg-[var(--color-text-primary)]" aria-hidden="true">
+            {activeCount}
+          </span>
+        )}
       </Button>
 
       {open && (
@@ -79,8 +86,8 @@ export function CatalogMobileFilterSheet({
               adaptiveHeader
               headingId={headingId}
               headerAction={(
-                <Button variant="ghost" size="sm" className="min-h-[44px] min-w-[44px] -mt-3 -mb-1.5 -mr-2 text-sm" onClick={close} data-dialog-close>
-                  Fertig
+                <Button variant="ghost" size="sm" className="min-h-[44px] min-w-[44px] -mt-3 -mb-1.5 -mr-2 text-sm tabular-nums" onClick={close} data-dialog-close>
+                  Schließen ({filterPanelProps.filteredCount})
                 </Button>
               )}
             />
