@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { useEffect } from 'react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -6,6 +7,7 @@ import {
   Route,
   Routes,
   useNavigate,
+  useLocation,
   type InitialEntry,
   type NavigateFunction,
 } from 'react-router';
@@ -18,6 +20,7 @@ import { useSearch } from './useSearch';
 import { CONTROL_ROUTE_PATTERN } from '@/app/routes';
 import { FOCUS_SEARCH_STATE } from '@/app/searchFocus';
 import { catalogCollectionDefaults } from '@/test/catalogState';
+import { SearchSelectionProvider } from '@/state/SearchSelectionProvider';
 
 vi.mock('@/hooks/useCatalog', () => ({
   useCatalog: vi.fn(),
@@ -97,25 +100,37 @@ function makeControls(count: number): Control[] {
   );
 }
 
-function searchRoutes() {
+function searchRoutes(initialEntry = '/suche?q=verfahren') {
   return (
-    <MemoryRouter initialEntries={['/suche?q=verfahren']}>
-      <Routes>
-        <Route path="/suche" element={<SearchPage />} />
-        <Route path={CONTROL_ROUTE_PATTERN} element={<div>Katalogdetail</div>} />
-      </Routes>
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <SearchSelectionProvider>
+        <HistoryButtons />
+        <Routes>
+          <Route path="/suche" element={<SearchPage />} />
+          <Route path={CONTROL_ROUTE_PATTERN} element={<div>Katalogdetail</div>} />
+        </Routes>
+      </SearchSelectionProvider>
     </MemoryRouter>
   );
 }
 
-function renderSearch(controls: Control[]) {
+function HistoryButtons() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  return <>
+    <button onClick={() => { void navigate(-1); }}>Browser-Zurück</button>
+    <output data-testid="route">{JSON.stringify([location.pathname, location.search, location.state])}</output>
+  </>;
+}
+
+function renderSearch(controls: Control[], initialEntry?: string) {
   mockedUseCatalog.mockReturnValue(makeCatalogState(controls));
   mockedUseSearch.mockReturnValue({
     results: controls.map((control) => ({ control })),
     totalResults: controls.length,
   });
 
-  return render(searchRoutes());
+  return render(searchRoutes(initialEntry));
 }
 
 /** Springt per `End` zur letzten Zeile, die das Windowing sonst nicht rendert. */
@@ -149,7 +164,7 @@ describe('SearchPage', () => {
 
     render(
       <MemoryRouter initialEntries={['/suche?q=alias']}>
-        <SearchPage />
+        <SearchSelectionProvider><SearchPage /></SearchSelectionProvider>
       </MemoryRouter>,
     );
 
@@ -169,7 +184,8 @@ describe('SearchPage', () => {
     let navigateTo: NavigateFunction = () => {};
 
     function NavigationProbe() {
-      navigateTo = useNavigate();
+      const navigate = useNavigate();
+      useEffect(() => { navigateTo = navigate; }, [navigate]);
       return null;
     }
 
@@ -178,12 +194,14 @@ describe('SearchPage', () => {
       mockedUseSearch.mockReturnValue({ results: [], totalResults: 0 });
       render(
         <MemoryRouter initialEntries={[initialEntry]}>
-          <NavigationProbe />
-          <Routes>
-            <Route path="/" element={<p>Start</p>} />
-            <Route path="/suche" element={<SearchPage />} />
-            <Route path="/treffer" element={<p>Treffer</p>} />
-          </Routes>
+          <SearchSelectionProvider>
+            <NavigationProbe />
+            <Routes>
+              <Route path="/" element={<p>Start</p>} />
+              <Route path="/suche" element={<SearchPage />} />
+              <Route path="/treffer" element={<p>Treffer</p>} />
+            </Routes>
+          </SearchSelectionProvider>
         </MemoryRouter>,
       );
     }
@@ -316,6 +334,97 @@ describe('SearchPage', () => {
   });
 
   describe('Mobile-Ergebnisse', () => {
+    it.each([false, true])('erhält mobilen Auswahlmodus mit Markierung=%s über Detail und Browser-Zurück', async (marked) => {
+      const user = userEvent.setup();
+      renderSearch([makeControl()]);
+      await user.click(screen.getByRole('button', { name: 'Kontrollen auswählen' }));
+      if (marked) await user.click(screen.getByRole('checkbox', { name: 'ASST.1.1 auswählen' }));
+      await user.click(within(screen.getByTestId('search-results-mobile')).getByRole('button', { name: /ASST\.1\.1/i }));
+      expect(screen.queryByTestId('search-results-mobile')).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Browser-Zurück' }));
+      expect(screen.getByRole('button', { name: 'Auswahl beenden' })).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByRole('checkbox', { name: 'ASST.1.1 auswählen' })).toHaveProperty('checked', marked);
+      if (marked) expect(screen.getByRole('button', { name: 'Auswahl als CSV exportieren, 1 ausgewählt' })).toBeInTheDocument();
+      expect(screen.getByTestId('route')).toHaveTextContent('["/suche","?q=verfahren",null]');
+    });
+
+    it('erhält Desktop-Markierungen über Detail und Browser-Zurück', async () => {
+      mockedUseMediaQuery.mockReturnValue(true);
+      const user = userEvent.setup();
+      renderSearch([makeControl()]);
+      await user.click(screen.getByRole('checkbox', { name: 'ASST.1.1 auswählen' }));
+      await user.click(within(screen.getByTestId('search-results-desktop')).getAllByRole('row')[1]);
+      expect(screen.queryByTestId('search-results-desktop')).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Browser-Zurück' }));
+      expect(screen.getByRole('checkbox', { name: 'ASST.1.1 auswählen' })).toBeChecked();
+    });
+
+    it.each(['/suche', '/suche/'])('stellt nach Anfragewechsel und Browser-Zurück keine verworfene Auswahl wieder her (%s)', async (path) => {
+      const user = userEvent.setup();
+      renderSearch([makeControl()], `${path}?q=verfahren`);
+      await user.click(screen.getByRole('button', { name: 'Kontrollen auswählen' }));
+      await user.click(screen.getByRole('checkbox', { name: 'ASST.1.1 auswählen' }));
+      const input = screen.getByRole('searchbox');
+      input.focus();
+      fireEvent.change(input, { target: { value: 'zweite anfrage' } });
+      fireEvent.submit(input.closest('form')!);
+      expect(input).toHaveFocus();
+      expect(screen.getByRole('button', { name: 'Kontrollen auswählen' })).toHaveAttribute('aria-pressed', 'false');
+      await user.click(screen.getByRole('button', { name: 'Browser-Zurück' }));
+      expect(screen.getByRole('button', { name: 'Kontrollen auswählen' })).toHaveAttribute('aria-pressed', 'false');
+      await user.click(screen.getByRole('button', { name: 'Kontrollen auswählen' }));
+      expect(screen.getByRole('checkbox', { name: 'ASST.1.1 auswählen' })).not.toBeChecked();
+    });
+
+    it.each([false, true])('verwirft Auswahl bei Katalogwechsel in Detail=%s dauerhaft', async (inDetail) => {
+      const user = userEvent.setup();
+      const controls = [makeControl()];
+      const view = renderSearch(controls);
+      await user.click(screen.getByRole('button', { name: 'Kontrollen auswählen' }));
+      await user.click(screen.getByRole('checkbox', { name: 'ASST.1.1 auswählen' }));
+      if (inDetail) await user.click(within(screen.getByTestId('search-results-mobile')).getByRole('button', { name: /ASST\.1\.1/i }));
+      const changed = makeCatalogState(controls);
+      changed.catalog!.catalogKey = 'wlan';
+      mockedUseCatalog.mockReturnValue(changed);
+      view.rerender(searchRoutes());
+      mockedUseCatalog.mockReturnValue(makeCatalogState(controls));
+      view.rerender(searchRoutes());
+      if (inDetail) await user.click(screen.getByRole('button', { name: 'Browser-Zurück' }));
+      expect(screen.getByRole('button', { name: 'Kontrollen auswählen' })).toHaveAttribute('aria-pressed', 'false');
+      await user.click(screen.getByRole('button', { name: 'Kontrollen auswählen' }));
+      expect(screen.getByRole('checkbox', { name: 'ASST.1.1 auswählen' })).not.toBeChecked();
+    });
+
+    it.each(['Fertig', 'Export'] as const)('behält Cleanup durch %s über einen weiteren Detailwechsel', async (action) => {
+      const user = userEvent.setup();
+      const control = makeControl();
+      renderSearch([control]);
+      await user.click(screen.getByRole('button', { name: 'Kontrollen auswählen' }));
+      await user.click(screen.getByRole('checkbox', { name: 'ASST.1.1 auswählen' }));
+      await user.click(within(screen.getByTestId('search-results-mobile')).getByRole('button', { name: /ASST\.1\.1/i }));
+      await user.click(screen.getByRole('button', { name: 'Browser-Zurück' }));
+      await user.click(screen.getByRole('button', { name: action === 'Fertig' ? 'Fertig' : 'Auswahl als CSV exportieren, 1 ausgewählt' }));
+      if (action === 'Export') expect(downloadCSV).toHaveBeenCalledWith([control], 'grundschutz-auswahl.csv');
+      await user.click(within(screen.getByTestId('search-results-mobile')).getByRole('button', { name: /ASST\.1\.1/i }));
+      await user.click(screen.getByRole('button', { name: 'Browser-Zurück' }));
+      expect(screen.getByRole('button', { name: 'Kontrollen auswählen' })).toHaveAttribute('aria-pressed', 'false');
+      await user.click(screen.getByRole('button', { name: 'Kontrollen auswählen' }));
+      expect(screen.getByRole('checkbox', { name: 'ASST.1.1 auswählen' })).not.toBeChecked();
+    });
+
+    it('beginnt mit leerem Auswahlzustand nach einem neuen App-Mount', async () => {
+      const user = userEvent.setup();
+      const controls = [makeControl()];
+      const view = renderSearch(controls);
+      await user.click(screen.getByRole('button', { name: 'Kontrollen auswählen' }));
+      await user.click(screen.getByRole('checkbox', { name: 'ASST.1.1 auswählen' }));
+      view.unmount();
+      renderSearch(controls);
+      expect(screen.getByRole('button', { name: 'Kontrollen auswählen' })).toHaveAttribute('aria-pressed', 'false');
+      await user.click(screen.getByRole('button', { name: 'Kontrollen auswählen' }));
+      expect(screen.getByRole('checkbox', { name: 'ASST.1.1 auswählen' })).not.toBeChecked();
+    });
+
     it('rendert keine Tabelle im mobilen Bereich', () => {
       renderSearch([makeControl()]);
 
