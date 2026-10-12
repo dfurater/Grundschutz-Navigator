@@ -1,4 +1,4 @@
-import axe from 'axe-core';
+import { assertNoAxeViolations } from '@/test/browser/axeAssertions';
 import { createElement, useLayoutEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
@@ -117,8 +117,7 @@ async function expectBottomSheetGeometry(dialog: Element, width: number) {
 }
 
 async function expectNoAxeViolations(dialog: Element) {
-  const result = await axe.run(dialog.parentElement!, { resultTypes: ['violations'] });
-  expect(result.violations.map(({ id, nodes }) => `${id}: ${nodes.length}`)).toEqual([]);
+  await assertNoAxeViolations(dialog.parentElement!, `Mobiles Sheet: ${dialogName(dialog)}`, 'all');
 }
 
 /** Tab und Shift+Tab bleiben im Dialog, auch über beide Enden hinweg. */
@@ -303,8 +302,7 @@ test('Tablet-Detail: Inline-Panel neben der Liste, kein Dialog, Escape kehrt zur
   expect(document.activeElement?.textContent).toBe('Testkontrolle');
   expect(panel.contains(document.activeElement)).toBe(true);
 
-  const axeResult = await axe.run(panel, { resultTypes: ['violations'] });
-  expect(axeResult.violations.map(({ id, nodes }) => `${id}: ${nodes.length}`)).toEqual([]);
+  await assertNoAxeViolations(panel, 'Tablet-Detailpanel', 'all');
 
   await userEvent.keyboard('{Escape}');
 

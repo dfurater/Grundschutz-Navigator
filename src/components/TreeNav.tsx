@@ -82,7 +82,7 @@ function TreeNavItem({ node, navigation, selectedId }: TreeNavItemProps) {
               style={{ width: `calc(${node.prefixLength}ch + 0.5rem)` }}
             >
               {item.prefix}
-            </span>
+            </span>{' '}
             <span className="truncate">{item.label}</span>
           </span>
         ) : (
@@ -90,7 +90,7 @@ function TreeNavItem({ node, navigation, selectedId }: TreeNavItemProps) {
         )}
         {item.badge && (
           <span className="catalog-badge-text ml-1 shrink-0 tabular-nums text-[var(--color-text-secondary)]">
-            {item.badge}
+            {' '}{item.badge}
           </span>
         )}
       </button>
