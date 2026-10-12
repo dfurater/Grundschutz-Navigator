@@ -20,6 +20,15 @@ import { DESKTOP_QUERY, OWN_SCROLL_AREA_QUERY } from '@/hooks/breakpointQueries'
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { AppShell } from '@/app/AppShell';
 import { catalogCollectionDefaults } from '@/test/catalogState';
+import {
+  DESKTOP_MOUSE,
+  IPAD_PRO_LANDSCAPE,
+  IPAD_PRO_PORTRAIT,
+  PHONE_PORTRAIT,
+  TABLET_PROFILES,
+  matchesDeviceQuery,
+  type DeviceProfile,
+} from '@/test/deviceProfile';
 import { renderAppShell } from '@/test/renderAppShell';
 import { CatalogBrowser } from './CatalogBrowser';
 import {
@@ -290,9 +299,14 @@ function renderCatalogBrowser(
   );
 }
 
-/** Tablet-Band (`md` bis `lg`): eigene Scrollbereiche, Detail inline neben der Liste. */
+/** Tablet (ab `md`, außerhalb des Desktops): eigene Scrollbereiche, Detail inline neben der Liste. */
 function useTabletWidth() {
   mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY);
+}
+
+/** Breakpoint-Abos eines Geräts aus Breite und Eingabemöglichkeit (GSPP-523). */
+function mockDevice(device: DeviceProfile) {
+  mockedUseMediaQuery.mockImplementation((query) => matchesDeviceQuery(query, device));
 }
 
 /** Dokument-Scrollen der Liste (unterhalb `md`), wie es der Browser meldet. */
@@ -570,6 +584,57 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(screen.queryByTestId('tablet-detail-panel')).not.toBeInTheDocument();
     expect(screen.getByTestId('location')).toHaveTextContent('/katalog/gspp');
     expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
+  });
+
+  it.each(TABLET_PROFILES)('shows list and inline detail side by side on $label ($width px)', (device) => {
+    mockDevice(device);
+    renderCatalogBrowser();
+
+    // Tablet: Liste ohne Desktop-Tabelle, Detail inline daneben.
+    expect(screen.queryByTestId('desktop-control-list')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+
+    expect(screen.getByTestId('tablet-detail-panel')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: control.title })).toBeVisible();
+    expect(screen.getByText(`Detail ${control.id}`)).toBeInTheDocument();
+  });
+
+  it('keeps the detail as a page on a phone', () => {
+    mockDevice(PHONE_PORTRAIT);
+    renderCatalogBrowser();
+
+    expect(screen.queryByTestId('desktop-control-list')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+
+    expect(screen.queryByTestId('tablet-detail-panel')).not.toBeInTheDocument();
+    expect(screen.getByText(`Detail ${control.id}`)).toBeInTheDocument();
+  });
+
+  it('keeps the table and the desktop detail column on a desktop with mouse', () => {
+    mockDevice(DESKTOP_MOUSE);
+    renderCatalogBrowser();
+
+    expect(screen.getByTestId('desktop-control-list')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+
+    expect(screen.queryByTestId('tablet-detail-panel')).not.toBeInTheDocument();
+    expect(screen.getByText(`Detail ${control.id}`)).toBeInTheDocument();
+  });
+
+  it('keeps selection and list scope when a rotation switches the width without reload', () => {
+    let device: DeviceProfile = IPAD_PRO_PORTRAIT;
+    mockedUseMediaQuery.mockImplementation((query) => matchesDeviceQuery(query, device));
+    const view = renderCatalogBrowser();
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    expect(screen.getByTestId('tablet-detail-panel')).toBeInTheDocument();
+    const location = screen.getByTestId('location').textContent;
+
+    device = IPAD_PRO_LANDSCAPE;
+    view.rerender(<CatalogBrowserTestApp initialEntry="/katalog/gspp" />);
+
+    expect(screen.getByTestId('tablet-detail-panel')).toBeInTheDocument();
+    expect(screen.getByText(`Detail ${control.id}`)).toBeInTheDocument();
+    expect(screen.getByTestId('location')).toHaveTextContent(location ?? '');
   });
 
   it('falls back to the scope heading on tablet when the opening row is gone', () => {

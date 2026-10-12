@@ -6,114 +6,17 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 import { CONTROL_ROUTE_PATTERN, CATALOG_ROUTE_PATTERN, GROUP_ROUTE_PATTERN } from '@/app/routes';
 import { CatalogBrowser } from '@/features/catalog/CatalogBrowser';
-import type { Catalog, CatalogState, Control } from '@/domain/models';
-import { catalogCollectionDefaults } from '@/test/catalogState';
-import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
+import { createTabletCatalogState } from './tabletCatalogFixture';
 import '@/index.css';
 
 /**
  * Tablet-Zwei-Pane-Ansicht mit echtem `CatalogBrowser` (GSPP-514): Trefferliste
  * und Inline-Detail stehen bei 768 und 1023 px nebeneinander, das Detail ist
- * vollständig und beide Spalten scrollen unabhängig. Volle Detailinhalte
- * (Anforderung, Umsetzungshinweise, Zusammenhänge) und eine lange Liste, damit
- * Zuschnitt und Scrollkopplung auffielen.
+ * vollständig und beide Spalten scrollen unabhängig. Der Katalog
+ * (`tabletCatalogFixture.ts`) trägt volle Detailinhalte und eine lange Liste.
  */
 
-const LONG_STATEMENT = 'Die Architektur verankert Verfahren und Regelungen zum Schutz der Netze und der damit verbundenen Infrastrukturen. ';
-const LONG_GUIDANCE = 'Die Netzarchitektur ist der strukturierte Entwurf aller Netzinfrastrukturen einschließlich Segmentierung, Filterung und Redundanz wichtiger Systeme. ';
-
-function makeControl(id: string, title: string, overrides: Partial<Control> = {}): Control {
-  const [practiceId, groupId] = [id.split('.')[0], id.split('.').slice(0, 2).join('.')];
-  return {
-    id,
-    altIdentifier: `alt-${id.toLowerCase().replaceAll('.', '-')}`,
-    title,
-    groupId,
-    practiceId,
-    modalverb: 'MUSS',
-    securityLevel: 'normal-SdT',
-    effortLevel: '2',
-    tags: [],
-    taxonomy: [],
-    threats: [],
-    statement: LONG_STATEMENT.repeat(6),
-    statementRaw: LONG_STATEMENT.repeat(6),
-    guidance: LONG_GUIDANCE.repeat(10),
-    statementProps: {
-      ergebnis: '',
-      praezisierung: '',
-      handlungsworte: '',
-      dokumentation: '',
-      zielobjektKategorien: [],
-    },
-    links: [],
-    params: {},
-    ...overrides,
-  } as Control;
-}
-
-const topic1Controls: Control[] = [
-  makeControl('TOP.1.1', 'Verfahren und Regelungen', {
-    tags: ['netz'],
-    links: [{ targetId: 'TOP.1.2', href: '#TOP.1.2', rel: 'required', relStatus: 'custom' }],
-  }),
-  ...['TOP.1.1.1', 'TOP.1.1.2', 'TOP.1.1.3'].map((id, index) =>
-    makeControl(id, `Erweiterung ${index + 1}`, { parentId: 'TOP.1.1' }),
-  ),
-  ...Array.from({ length: 12 }, (_, index) => makeControl(`TOP.1.${index + 2}`, `Kontrolle ${index + 2}`)),
-];
-const topic2Controls: Control[] = Array.from({ length: 8 }, (_, index) =>
-  makeControl(`TOP.2.${index + 1}`, `Thema-2-Kontrolle ${index + 1}`),
-);
-const controls = [...topic1Controls, ...topic2Controls];
-
-const catalog = {
-  catalogKey: 'gspp',
-  uuid: 'tablet-test-catalog',
-  metadata: { title: 'Grundschutz++-Katalog' },
-  practices: [{
-    id: 'TOP',
-    title: 'Testpraktik',
-    label: 'TOP',
-    topics: [
-      {
-        id: 'TOP.1',
-        title: 'Erstes Thema',
-        label: '1',
-        practiceId: 'TOP',
-        controlCount: topic1Controls.length,
-        controlIds: topic1Controls.map((control) => control.id),
-      },
-      {
-        id: 'TOP.2',
-        title: 'Zweites Thema',
-        label: '2',
-        practiceId: 'TOP',
-        controlCount: topic2Controls.length,
-        controlIds: topic2Controls.map((control) => control.id),
-      },
-    ],
-    controlCount: controls.length,
-  }],
-  controls,
-  controlsById: new Map(controls.map((control) => [control.id, control])),
-  controlsByAltIdentifier: new Map(controls.map((control) => [control.altIdentifier!, control])),
-  backMatter: [],
-  totalControls: controls.length,
-} as unknown as Catalog;
-
-const catalogState = {
-  ...catalogCollectionDefaults(),
-  catalog,
-  catalogDocument: null,
-  provenance: null,
-  verification: null,
-  vocabularyRegistry: createTestVocabularyRegistry(),
-  vocabularyProvenance: null,
-  vocabularyVerification: null,
-  loading: false,
-  error: null,
-} as CatalogState;
+const catalogState = createTabletCatalogState();
 
 vi.mock('@/hooks/useCatalog', () => ({
   useCatalog: () => catalogState,

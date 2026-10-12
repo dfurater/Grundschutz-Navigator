@@ -151,7 +151,7 @@ describe('Footer', () => {
     expect(sourceLink.nextElementSibling).toBe(verificationLink);
     expect(verificationLink.parentElement).toBe(informationGroup);
     expect(sourceLink).toHaveClass('min-w-0');
-    expect(sourceLink).not.toHaveClass('flex-1', 'lg:mr-auto');
+    expect(sourceLink).not.toHaveClass('flex-1', 'desktop:mr-auto');
     expect(sourceLink.querySelector('.sm\\:hidden')).toHaveClass('min-w-0', 'truncate');
     expect(verificationLink).toHaveClass('shrink-0', 'whitespace-nowrap');
     expect(informationGroup).toHaveClass(
@@ -159,24 +159,24 @@ describe('Footer', () => {
       'min-w-0',
       'flex',
       'flex-wrap',
-      'lg:basis-auto',
-      'lg:flex-1',
-      'lg:flex-nowrap',
+      'desktop:basis-auto',
+      'desktop:flex-1',
+      'desktop:flex-nowrap',
     );
     expect(secondaryGroup).toHaveClass(
       'basis-full',
       'min-w-0',
       'flex',
       'flex-wrap',
-      'lg:basis-auto',
-      'lg:flex-nowrap',
-      'lg:justify-end',
-      'lg:ml-auto',
+      'desktop:basis-auto',
+      'desktop:flex-nowrap',
+      'desktop:justify-end',
+      'desktop:ml-auto',
     );
     expect(informationGroup?.parentElement).toBe(secondaryGroup?.parentElement);
   });
 
-  it('gives the complete secondary footer row 44 px touch targets below lg and 24 px from lg', () => {
+  it('gives the complete secondary footer row 44 px touch targets off the desktop and 24 px on the desktop', () => {
     render(
       <MemoryRouter>
         <Footer />
@@ -185,9 +185,9 @@ describe('Footer', () => {
 
     const secondaryGroup = screen.getByRole('link', { name: 'About' }).parentElement;
 
-    expect(secondaryGroup).toHaveClass('-mx-2', 'lg:mx-0', 'lg:gap-x-3');
+    expect(secondaryGroup).toHaveClass('-mx-2', 'desktop:mx-0', 'desktop:gap-x-3');
     for (const { label } of secondaryFooterLinks) {
-      expect(screen.getByRole('link', { name: label })).toHaveClass('min-h-11', 'px-2', 'lg:min-h-6', 'lg:px-0');
+      expect(screen.getByRole('link', { name: label })).toHaveClass('min-h-11', 'px-2', 'desktop:min-h-6', 'desktop:px-0');
     }
   });
 

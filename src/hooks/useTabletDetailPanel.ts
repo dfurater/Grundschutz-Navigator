@@ -6,11 +6,11 @@ import {
   controlRowSelector,
 } from './useDocumentDetailPage';
 
-/** Inline-Detailpanel des Tablet-Bands für Fokus- und Escape-Abfragen. */
+/** Inline-Detailpanel der Tablet-Ansicht für Fokus- und Escape-Abfragen. */
 export const TABLET_DETAIL_PANEL_SELECTOR = '[data-tablet-detail-panel]';
 
 export interface UseTabletDetailPanelOptions {
-  /** Das Tablet-Band ist aktiv (eigener Scrollbereich, aber kein Desktop). */
+  /** Die Tablet-Ansicht ist aktiv (eigener Scrollbereich, aber kein Desktop). */
   readonly enabled: boolean;
   /** Geöffnete Kontrolle oder `null`, solange nur die Liste sichtbar ist. */
   readonly controlId: string | null;
@@ -44,8 +44,9 @@ export function useTabletDetailPanel({ enabled, controlId, scopeKey, listReady, 
 
   // Zuerst deklariert, damit der Öffnungseffekt im selben Commit noch den
   // Listenbereich vor der Navigation liest. Der Bereich wird in jeder Breite
-  // gemerkt, solange die Liste sichtbar ist — auch unterhalb von `md` und ab
-  // `lg`, damit ein Bandeintritt mit offenem Detail den aktuellen Stand findet.
+  // gemerkt, solange die Liste sichtbar ist — auch unterhalb von `md` und auf
+  // dem Desktop, damit ein Tablet-Eintritt mit offenem Detail den aktuellen
+  // Stand findet.
   useEffect(() => {
     if (controlId === null && listReady) {
       listScopeKeyRef.current = scopeKey;

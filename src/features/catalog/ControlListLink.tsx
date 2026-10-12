@@ -27,7 +27,7 @@ const controlIdColumnClass = 'w-[var(--control-id-column,auto)] shrink-0 font-mo
  * Link-Zeile in einer `detailListClass`-Liste: Kennung in der gemeinsamen
  * Spalte, Titel bündig daneben; ein mehrzeiliger Titel bricht an seiner
  * eigenen Kante um. Zeile 24 px hoch, die Touch-Fläche wächst unsichtbar per
- * `::after` (36 px mobil, 28 px ab lg), ohne das Layout zu verschieben.
+ * `::after` (36 px mobil und auf dem Tablet, 28 px auf dem Desktop), ohne das Layout zu verschieben.
  */
 export const detailListLinkClass =
   `group inline-flex min-h-6 max-w-full items-baseline gap-2 rounded text-left ${rowTouchTargetClass} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]`;
