@@ -80,7 +80,8 @@ test.each([320, 375, 402, 430, 639, 640, 767, 768, 1024, 1440])(
     const targets = [brand, ...[menu, searchLink].filter((target) => target.checkVisibility())];
 
     expect(headerBox.height).toBe(56);
-    expect(menu.checkVisibility()).toBe(width < 768);
+    // Der Menübutton öffnet die Schublade unterhalb von `lg` (GSPP-514).
+    expect(menu.checkVisibility()).toBe(width < 1024);
     expect(searchLink.checkVisibility()).toBe(width < 640);
     expect(search.checkVisibility()).toBe(width >= 640);
     expect(header.querySelector('[aria-haspopup]')).toBeNull();

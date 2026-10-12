@@ -68,7 +68,7 @@ export function useDocumentDetailPage({ enabled, controlId, scopeKey, listReady,
     if (!enabled || controlId !== null) pendingFocusRef.current = null;
     if (!enabled) {
       // Die offene Detailsitzung übersteht Breitenwechsel; erst Schließen
-      // beendet sie, auch wenn dabei Overlay oder Desktop-Spalte aktiv sind.
+      // beendet sie, auch wenn dabei Tablet-Inline-Panel oder Desktop-Spalte aktiv sind.
       if (controlId === null) openedRef.current = null;
       return;
     }

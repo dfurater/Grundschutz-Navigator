@@ -14,17 +14,19 @@ import {
   filterPanelFacetCounts,
   makeFilterPanelCatalogState,
 } from '@/test/fixtures/filterPanel';
-import { CatalogMobileDetailOverlay } from '@/features/catalog/CatalogDetailPanel';
+import { CatalogDetailPanel } from '@/features/catalog/CatalogDetailPanel';
 import { CatalogMobileExportSheet } from '@/features/catalog/CatalogMobileExportSheet';
 import { CatalogMobileFilterSheet } from '@/features/catalog/CatalogMobileFilterSheet';
+import { useTabletDetailPanel } from '@/hooks/useTabletDetailPanel';
 import '@/index.css';
 
 /**
- * Filter-Sheet, Export-Sheet und Tablet-Detail als modale Dialoge (GSPP-503):
+ * Filter-Sheet und Export-Sheet als modale Dialoge (GSPP-503) sowie das
+ * Tablet-Inline-Detailpanel als nicht modale Zwei-Pane-Ansicht (GSPP-514):
  * Rolle, Name und modaler Zustand, inerter Hintergrund, Tab-Umlauf, Escape
- * und Fokus-Rückkehr in Chromium sowie axe ohne Verstöße am offenen Dialog.
- * Das Detail ersetzt `ControlDetail` durch Überschrift und Schließaktion, weil
- * hier nur der Dialograhmen geprüft wird.
+ * und Fokus-Rückkehr in Chromium sowie axe ohne Verstöße am offenen Dialog
+ * bzw. Panel. Das Detail ersetzt `ControlDetail` durch Überschrift und
+ * Schließaktion, weil hier nur der Rahmen geprüft wird.
  */
 
 const vocabularyRegistry = createTestVocabularyRegistry();
@@ -40,7 +42,7 @@ vi.mock('@/features/catalog/ControlDetail', async () => {
       Fragment,
       null,
       h('button', { type: 'button', onClick: props.onClose }, 'Zurück zur Übersicht'),
-      h('h2', { id: props.titleId }, props.control.title),
+      h('h2', { id: props.titleId, 'data-control-detail-title': '', tabIndex: -1 }, props.control.title),
       h('a', { href: '#verweis' }, 'Verknüpfte Kontrolle'),
     ),
   };
@@ -200,10 +202,11 @@ test('Export-Sheet: benannter modaler Dialog, „Schließen“ gibt Fokus zurüc
 });
 
 /**
- * Szene zwischen `md` und `lg` wie im `CatalogBrowser`: Liste mit Zeile,
- * Export-Sheet in der Toolbar und Detail-Overlay. `asPage` bildet den
- * Breitenwechsel unter `md` nach: Die Liste wird `hidden`, und die Detailseite
- * setzt den Fokus im Layout-Effekt auf ihre Überschrift (`useDocumentDetailPage`).
+ * Szene im Tablet-Band wie im `CatalogBrowser` (GSPP-514): Liste mit Zeile,
+ * Export-Sheet in der Toolbar und Inline-Detail neben der Liste. `asPage`
+ * bildet den Breitenwechsel unter `md` nach: Die Liste wird `hidden`, und die
+ * Detailseite setzt den Fokus im Layout-Effekt auf ihre Überschrift
+ * (`useDocumentDetailPage`). Das Inline-Panel folgt `useTabletDetailPanel`.
  */
 interface SceneState { readonly detailOpen: boolean; readonly asPage: boolean }
 
@@ -233,9 +236,17 @@ function DetailPage() {
 
 function TabletScene() {
   const { detailOpen, asPage } = useSyncExternalStore(scene.subscribe, scene.get);
+  useTabletDetailPanel({
+    enabled: !asPage,
+    controlId: detailOpen ? control.id : null,
+    scopeKey: 'tablet-scene',
+    listReady: true,
+    onClose: () => scene.set({ detailOpen: false }),
+  });
   return createElement(
     'div',
-    null,
+    // Nebeneinander wie im `CatalogBrowser` (Liste flexibel, Panel daneben).
+    { style: { display: 'flex' } },
     createElement(CatalogMobileExportSheet, {
       checkedIds: new Set<string>(),
       filteredControls: [control],
@@ -243,16 +254,19 @@ function TabletScene() {
       sectionFilename: 'test.csv',
     }),
     createElement('div', { hidden: detailOpen && asPage },
-      createElement('button', { type: 'button', 'data-control-row': '' }, 'Zeile TOP.1.1'),
+      createElement('button', { type: 'button', 'data-control-row': control.id }, 'Zeile TOP.1.1'),
     ),
     detailOpen && asPage ? createElement(DetailPage) : null,
-    createElement(CatalogMobileDetailOverlay, {
-      catalog,
-      control,
-      active: detailOpen && !asPage,
-      onClose: () => scene.set({ detailOpen: false }),
-      onNavigateToControl: () => {},
-    }),
+    detailOpen && !asPage
+      ? createElement('div', { 'data-tablet-detail-panel': '', 'data-testid': 'tablet-detail-panel' },
+        createElement(CatalogDetailPanel, {
+          catalog,
+          control,
+          onClose: () => scene.set({ detailOpen: false }),
+          onNavigateToControl: () => {},
+        }),
+      )
+      : null,
   );
 }
 
@@ -260,27 +274,40 @@ function openDetail() {
   flushSync(() => scene.set({ detailOpen: true }));
 }
 
-test('Tablet-Detail: benannter modaler Dialog, Escape kehrt zur auslösenden Zeile zurück', async () => {
+function tabletPanel(scope: ParentNode) {
+  return scope.querySelector('[data-testid="tablet-detail-panel"]')!;
+}
+
+test('Tablet-Detail: Inline-Panel neben der Liste, kein Dialog, Escape kehrt zur auslösenden Zeile zurück', async () => {
   const shell = await renderWithBackground(900, createElement(TabletScene));
   const row = buttonByName(shell, 'Zeile TOP.1.1');
   row.focus();
 
   openDetail();
 
-  await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
-  const dialog = document.querySelector('dialog')!;
-  expect(dialogName(dialog)).toBe('Testkontrolle');
-  expect(dialog.getAttribute('aria-modal')).toBe('true');
-  expect(shell.hasAttribute('inert')).toBe(true);
-  expect(dialog.getBoundingClientRect().toJSON()).toMatchObject({ left: 0, top: 0, width: 900, height: 800 });
+  await expect.poll(() => tabletPanel(shell)).not.toBeNull();
+  const panel = tabletPanel(shell);
+  // Kein modaler Dialog: Hintergrund und Dokument bleiben frei.
+  expect(document.querySelector('dialog')).toBeNull();
+  expect(shell.hasAttribute('inert')).toBe(false);
+  expect(document.documentElement.style.overflow).toBe('');
+  // Liste und Detail stehen nebeneinander, beide vollständig im Bild.
+  expect(row.checkVisibility()).toBe(true);
+  const rowBox = row.getBoundingClientRect();
+  const panelBox = panel.getBoundingClientRect();
+  expect(rowBox.left).toBeLessThan(panelBox.left);
+  expect(panelBox.right).toBeLessThanOrEqual(900 + 0.5);
+  expect(panelBox.bottom).toBeLessThanOrEqual(window.innerHeight + 0.5);
+  // Der Fokus wandert beim Öffnen auf die Detailüberschrift.
+  expect(document.activeElement?.textContent).toBe('Testkontrolle');
+  expect(panel.contains(document.activeElement)).toBe(true);
 
-  await expectTabStaysInside(dialog);
-  await expectNoAxeViolations(dialog);
+  const axeResult = await axe.run(panel, { resultTypes: ['violations'] });
+  expect(axeResult.violations.map(({ id, nodes }) => `${id}: ${nodes.length}`)).toEqual([]);
 
   await userEvent.keyboard('{Escape}');
 
-  await expect.poll(() => document.querySelector('dialog')).toBeNull();
-  expect(shell.hasAttribute('inert')).toBe(false);
+  await expect.poll(() => shell.querySelector('[data-testid="tablet-detail-panel"]')).toBeNull();
   expect(document.activeElement).toBe(row);
 });
 
@@ -288,16 +315,17 @@ test('Tablet-Detail: Breitenwechsel unter md überlässt den Fokus der Detailsei
   const shell = await renderWithBackground(900, createElement(TabletScene));
   buttonByName(shell, 'Zeile TOP.1.1').focus();
   openDetail();
-  await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
+  await expect.poll(() => tabletPanel(shell)).not.toBeNull();
 
   flushSync(() => scene.set({ asPage: true }));
 
+  expect(shell.querySelector('[data-testid="tablet-detail-panel"]')).toBeNull();
   expect(document.querySelector('dialog')).toBeNull();
   expect(shell.hasAttribute('inert')).toBe(false);
   expect(document.activeElement?.textContent).toBe('Detailseite');
 });
 
-test('Sheet unter Tablet-Detail: gemeinsames Schließen gibt den Fokus an den Sheet-Auslöser', async () => {
+test('Sheet über Tablet-Detail: Escape schließt nur das Sheet, das Panel bleibt', async () => {
   const shell = await renderWithBackground(900, createElement(TabletScene));
   const trigger = buttonByName(shell, 'CSV exportieren');
   trigger.focus();
@@ -306,18 +334,17 @@ test('Sheet unter Tablet-Detail: gemeinsames Schließen gibt den Fokus an den Sh
   const sheet = document.querySelector('dialog')!;
   expect(sheet.contains(document.activeElement)).toBe(true);
 
-  // Browser-Vorwärts auf eine Kontrollroute öffnet das Detail über dem Sheet.
+  // Browser-Vorwärts auf eine Kontrollroute öffnet das Inline-Detail neben der Liste.
   openDetail();
-  await expect.poll(() => document.querySelectorAll('dialog').length).toBe(2);
-  const detail = [...document.querySelectorAll('dialog')].find((el) => el !== sheet)!;
-  expect(detail.contains(document.activeElement)).toBe(true);
-  expect(sheet.closest('[inert]')).not.toBeNull();
-  expect(detail.closest('[inert]')).toBeNull();
+  await expect.poll(() => tabletPanel(shell)).not.toBeNull();
+  // Der Fokus bleibt im modalen Sheet; das Panel stiehlt ihn nicht.
+  expect(sheet.contains(document.activeElement)).toBe(true);
 
-  // Escape schließt beide Ebenen in einem Commit.
+  // Escape aus dem Sheet schließt nur das Sheet.
   await userEvent.keyboard('{Escape}');
 
-  await expect.poll(() => document.querySelectorAll('dialog').length).toBe(0);
+  await expect.poll(() => document.querySelector('dialog')).toBeNull();
+  expect(tabletPanel(shell)).not.toBeNull();
   expect([...document.body.children].some((child) => child.hasAttribute('inert'))).toBe(false);
   expect(document.activeElement).toBe(trigger);
 });
@@ -617,14 +644,11 @@ test.each([
   ['Filter', 'Filter anzeigen', '{Meta>}k{/Meta}', filterSheet],
   ['Export', 'CSV exportieren', '{Control>}k{/Control}', exportSheet],
   ['Export', 'CSV exportieren', '{Meta>}k{/Meta}', exportSheet],
-  ['Tablet-Detail', 'Zeile TOP.1.1', '{Control>}k{/Control}', () => createElement(TabletScene)],
-  ['Tablet-Detail', 'Zeile TOP.1.1', '{Meta>}k{/Meta}', () => createElement(TabletScene)],
-] as const)('%s: %s gibt den Header frei (%s)', async (name, triggerName, shortcut, surface) => {
+] as const)('%s: %s gibt den Header frei (%s)', async (_name, triggerName, shortcut, surface) => {
   const shell = await renderWithBackground(800, surface());
   const trigger = buttonByName(shell, triggerName);
   trigger.focus();
-  if (name === 'Tablet-Detail') openDetail();
-  else await userEvent.keyboard('{Enter}');
+  await userEvent.keyboard('{Enter}');
   await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
   expect(shell.hasAttribute('inert')).toBe(true);
   const search = shell.querySelector<HTMLInputElement>('[data-testid="header-search"]')!;
@@ -641,17 +665,20 @@ test.each([
   expect(search.value).toBe('test');
 });
 
-test.each(['{Control>}k{/Control}', '{Meta>}k{/Meta}'])('Suchkürzel %s beendet beide gestapelten Dialoge vor dem Suchfokus', async (shortcut) => {
+test.each(['{Control>}k{/Control}', '{Meta>}k{/Meta}'])('Suchkürzel %s beendet das Sheet vor dem Suchfokus, das Tablet-Panel bleibt', async (shortcut) => {
   const shell = await renderWithBackground(800, createElement(TabletScene));
   buttonByName(shell, 'CSV exportieren').focus();
   await userEvent.keyboard('{Enter}');
   await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
   openDetail();
-  await expect.poll(() => document.querySelectorAll('dialog').length).toBe(2);
+  await expect.poll(() => tabletPanel(shell)).not.toBeNull();
+  expect(document.querySelector('dialog')).not.toBeNull();
 
   await userEvent.keyboard(shortcut);
 
-  await expect.poll(() => document.querySelectorAll('dialog').length).toBe(0);
+  await expect.poll(() => document.querySelector('dialog')).toBeNull();
+  // Das Inline-Panel ist kein modaler Dialog und bleibt stehen.
+  expect(tabletPanel(shell)).not.toBeNull();
   const search = shell.querySelector<HTMLInputElement>('[data-testid="header-search"]')!;
   await expect.poll(() => document.activeElement).toBe(search);
   expect([...document.body.children].some((child) => child.hasAttribute('inert'))).toBe(false);
