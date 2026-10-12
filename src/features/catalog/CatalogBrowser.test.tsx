@@ -574,6 +574,27 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
   });
 
+  it('returns to the opening row when a mobile list opening closes in the tablet band', () => {
+    let tablet = false;
+    mockedUseMediaQuery.mockImplementation((query) => tablet && query === OWN_SCROLL_AREA_QUERY);
+    const view = renderCatalogBrowser('/katalog/gspp/TOP.1');
+
+    // Mobil aus der Liste öffnen, dann ins Tablet-Band wechseln.
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/katalog/gspp/kontrolle/shared-alt-identifier',
+    );
+    tablet = true;
+    view.rerender(<CatalogBrowserTestApp initialEntry="/katalog/gspp/TOP.1" />);
+    expect(screen.getByTestId('tablet-detail-panel')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));
+
+    // Der Bereich der mobilen Liste zählt weiter: zurück zur Zeile, nicht zur
+    // Bereichsüberschrift — obwohl die Route inzwischen das Thema nennt.
+    expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
+  });
+
   it('keeps toolbar and filter context while the tablet detail is open and moves focus on related navigation', () => {
     useTabletWidth();
     renderCatalogBrowser('/katalog/gspp/TOP.1');

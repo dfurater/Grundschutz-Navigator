@@ -43,12 +43,14 @@ export function useTabletDetailPanel({ enabled, controlId, scopeKey, listReady, 
   const listScopeKeyRef = useRef<string | null>(null);
 
   // Zuerst deklariert, damit der Öffnungseffekt im selben Commit noch den
-  // Listenbereich vor der Navigation liest.
+  // Listenbereich vor der Navigation liest. Der Bereich wird in jeder Breite
+  // gemerkt, solange die Liste sichtbar ist — auch unterhalb von `md` und ab
+  // `lg`, damit ein Bandeintritt mit offenem Detail den aktuellen Stand findet.
   useEffect(() => {
-    if (enabled && controlId === null && listReady) {
+    if (controlId === null && listReady) {
       listScopeKeyRef.current = scopeKey;
     }
-  }, [enabled, controlId, scopeKey, listReady]);
+  }, [controlId, scopeKey, listReady]);
 
   useEffect(() => {
     const prevControlId = prevControlIdRef.current;
@@ -77,13 +79,17 @@ export function useTabletDetailPanel({ enabled, controlId, scopeKey, listReady, 
   // Ohne Abhängigkeiten: läuft nach jedem Commit, bis das Rückkehrziel den
   // Fokus übernommen hat. Die Bindung bleibt bestehen, solange das Ziel fehlt,
   // nicht bedienbar ist oder den Fokus nicht angenommen hat — erst dann endet
-  // die Sitzung, damit der Fokus nie auf `body` fällt.
+  // die Sitzung, damit der Fokus nie auf `body` fällt. Die Zeile gilt
+  // katalogweit: Control-IDs sind je Katalog eindeutig (`controlsById`), nur
+  // bei einem Katalogwechsel geht der Fokus ersatzweise an die
+  // Bereichsüberschrift.
   useEffect(() => {
     if (!enabled || controlId !== null) return;
     const session = sessionRef.current;
     if (session === null || !listReady) return;
-    const sameScope = session.scopeKey === null || session.scopeKey === scopeKey;
-    const row = sameScope
+    const sessionCatalog = session.scopeKey?.split(':')[0] ?? null;
+    const currentCatalog = scopeKey.split(':')[0];
+    const row = sessionCatalog === null || sessionCatalog === currentCatalog
       ? document.querySelector<HTMLElement>(controlRowSelector(session.rowControlId))
       : null;
     const returnTarget = row
@@ -99,7 +105,9 @@ export function useTabletDetailPanel({ enabled, controlId, scopeKey, listReady, 
     sessionRef.current = null;
     // Zurück in den sichtbaren Listenbereich holen, ohne das Dokument zu
     // bewegen: Die Zeile kann beim Schließen herausgescrollt sein.
-    row?.scrollIntoView?.({ block: 'nearest' });
+    if (row !== null && typeof row.scrollIntoView === 'function') {
+      row.scrollIntoView({ block: 'nearest' });
+    }
   });
 
   // Schließen in einer anderen Breite beendet die Rückkehrbindung: Dort gibt
