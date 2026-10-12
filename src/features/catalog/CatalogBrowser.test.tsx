@@ -61,12 +61,19 @@ vi.mock('./ControlTable', () => ({
   ControlTable: ({
     checkedIds,
     selectedControlId,
+    controls,
+    onSelectControl,
   }: {
     checkedIds: Set<string>;
     selectedControlId?: string;
+    controls: Control[];
+    onSelectControl: (control: Control) => void;
   }) => (
     <div data-testid="desktop-control-list">
       {`${checkedIds.size} Desktop-Auswahl; Detail ${selectedControlId ?? 'geschlossen'}`}
+      {controls.map((control) => (
+        <button key={control.id} type="button" onClick={() => onSelectControl(control)}>{control.title}</button>
+      ))}
     </div>
   ),
 }));
@@ -321,6 +328,37 @@ describe('CatalogBrowser mobile focus restoration', () => {
       filteredFacetCounts: {} as ReturnType<typeof useFilteredControls>['filteredFacetCounts'],
       hasActiveFilters: false,
     }));
+  });
+
+  it.each([390, 900, 1280].flatMap((width) => [
+    { width, entry: '/katalog/gspp', title: 'Alle Kontrollen', count: 2 },
+    { width, entry: '/katalog/gspp/TOP', title: 'Testpraktik', count: 2 },
+    { width, entry: '/katalog/gspp/TOP.1', title: 'Testthema', count: 1 },
+  ]))('pins list, heading and count at $width px from $entry', ({ width, entry, title, count }) => {
+    const catalog = makeCatalog('gspp');
+    catalog.controls.push(relatedControl);
+    catalog.practices[0].topics.push({
+      id: 'TOP.2', title: 'Zweites Thema', label: '2', practiceId: 'TOP',
+      controlCount: 1, controlIds: [relatedControl.id],
+    });
+    mockCatalog(catalog);
+    mockedUseMediaQuery.mockImplementation((query) => width >= (query === DESKTOP_QUERY ? 1024 : 768));
+    renderCatalogBrowser(entry);
+    const scopedControls = mockedUseFilteredControls.mock.lastCall![0];
+    expect(scopedControls).toHaveLength(count);
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    const expectPinnedList = () => {
+      expect(mockedUseFilteredControls.mock.lastCall![0]).toEqual(scopedControls);
+      expect(screen.getByRole('heading', { level: 1, name: title, hidden: true })).toBeInTheDocument();
+      expect(screen.getAllByText(`${count} Kontrollen`).length).toBeGreaterThan(0);
+    };
+    expectPinnedList();
+    fireEvent.click(screen.getByRole('button', { name: 'Verwandte Kontrolle öffnen' }));
+    expectPinnedList();
+    expect(screen.getByText(`Detail ${relatedControl.id}`)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));
+    expect(screen.getByTestId('location')).toHaveTextContent(entry);
+    expect(screen.getByRole('heading', { level: 1, name: title })).toBeInTheDocument();
   });
 
   it.each(['body', 'detail'] as const)('dismisses navigation before the detail page, then preserves detail Escape scope (%s)', (detailCloseOrigin) => {
@@ -739,7 +777,6 @@ describe('CatalogBrowser mobile focus restoration', () => {
     const app = () => (
       <CatalogBrowserTestApp
         initialEntry="/katalog/gspp"
-        secondaryLink={{ label: 'Verwandte Kontrolle direkt öffnen', to: '/katalog/gspp/kontrolle/related-alt-identifier' }}
       />
     );
     const view = render(app());
@@ -750,7 +787,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
     width = 390;
     view.rerender(app());
     scrollListTo(180);
-    fireEvent.click(screen.getByRole('button', { name: 'Verwandte Kontrolle direkt öffnen' }));
+    fireEvent.click(screen.getByRole('button', { name: relatedControl.title }));
     fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));
 
     expect(screen.getByRole('button', { name: relatedControl.title })).toHaveFocus();
@@ -816,8 +853,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
   });
 
   it('restores position and row focus when a page opened from the catalog root closes', () => {
-    // Auf der Detailroute nennt `scopeId` das Thema der Kontrolle (TOP.1), die
-    // Liste gehörte aber zur Katalogwurzel: Das ist kein Bereichswechsel.
+    // Die Detailroute erhält den Ausgangsbereich Katalogwurzel.
     renderCatalogBrowser('/katalog/gspp');
     scrollListTo(420);
     fireEvent.click(screen.getByRole('button', { name: control.title }));

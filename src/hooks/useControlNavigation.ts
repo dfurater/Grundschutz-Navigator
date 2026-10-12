@@ -1,6 +1,5 @@
 import {
   useCallback,
-  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -20,6 +19,7 @@ export interface UseControlNavigationOptions {
   groupId: string | undefined;
   altIdentifier: string | undefined;
   searchString: string;
+  locationState?: unknown;
   navigate: NavigateFunction;
 }
 
@@ -30,15 +30,6 @@ export interface UseControlNavigationResult {
   selectControl: (control: Control) => void;
   closeDetail: () => void;
   navigateToControl: (control: Control) => void;
-}
-
-// `scope` ist dreiwertig: `null` = Katalogwurzel, String = Gruppe, `undefined`
-// = kein gemerkter Kontext (Rückfall auf die Gruppe des Controls). Gemerkt wird
-// nur, solange kein Control geöffnet ist, damit das Schließen dorthin
-// zurückführt, von wo aus geöffnet wurde.
-interface BrowseScope {
-  catalogKey: string | undefined;
-  scope: string | null | undefined;
 }
 
 interface NavigationSnapshot {
@@ -57,51 +48,47 @@ function hasGroup(catalog: Catalog, groupId: string): boolean {
   );
 }
 
+// History-State kann aus einem älteren Einstieg oder einem anderen Katalog
+// stammen. Nur ein vorhandener Bereich des aktuellen Katalogs zählt als Ursprung.
+function readBrowseScope(catalog: Catalog | null, state: unknown): string | null | undefined {
+  if (!catalog || !state || typeof state !== 'object' || !('browseScope' in state)) {
+    return undefined;
+  }
+  const candidate = state.browseScope;
+  if (!candidate || typeof candidate !== 'object' ||
+      !('catalogKey' in candidate) || candidate.catalogKey !== catalog.catalogKey ||
+      !('scope' in candidate)) {
+    return undefined;
+  }
+  const scope = candidate.scope;
+  return scope === null || (typeof scope === 'string' && hasGroup(catalog, scope))
+    ? scope
+    : undefined;
+}
+
 export function useControlNavigation({
   catalog,
   routeCatalogKey,
   groupId,
   altIdentifier,
   searchString,
+  locationState,
   navigate,
 }: UseControlNavigationOptions): UseControlNavigationResult {
   const selectedControl = useMemo(
     () => resolveControlRoute(catalog, routeCatalogKey, altIdentifier),
     [altIdentifier, catalog, routeCatalogKey],
   );
-  const scopeId = selectedControl?.groupId ?? groupId;
+  const browseScope = readBrowseScope(catalog, locationState);
+  let scopeId = groupId;
+  if (selectedControl) {
+    scopeId = browseScope === undefined ? selectedControl.groupId : browseScope ?? undefined;
+  }
   const routeNotFound =
     !catalog ||
     routeCatalogKey !== catalog.catalogKey ||
     (altIdentifier !== undefined && selectedControl === null) ||
     (groupId !== undefined && !hasGroup(catalog, groupId));
-
-  const browseScopeRef = useRef<BrowseScope>({
-    catalogKey: catalog?.catalogKey,
-    scope: undefined,
-  });
-
-  useEffect(() => {
-    const loadedCatalogKey = catalog?.catalogKey;
-    if (browseScopeRef.current.catalogKey !== loadedCatalogKey) {
-      browseScopeRef.current = {
-        catalogKey: loadedCatalogKey,
-        scope: undefined,
-      };
-    }
-
-    if (altIdentifier !== undefined) return;
-
-    if (!catalog || routeCatalogKey !== catalog.catalogKey) {
-      browseScopeRef.current.scope = undefined;
-    } else if (groupId === undefined) {
-      browseScopeRef.current.scope = null;
-    } else {
-      browseScopeRef.current.scope = hasGroup(catalog, groupId)
-        ? groupId
-        : undefined;
-    }
-  }, [altIdentifier, catalog, groupId, routeCatalogKey]);
 
   const navigationRef = useRef<NavigationSnapshot>({
     catalog,
@@ -120,29 +107,13 @@ export function useControlNavigation({
     };
   }, [catalog, navigate, scopeId, searchString, selectedControl]);
 
-  const resolveBrowseTarget = useCallback(
-    (snapshot: NavigationSnapshot) => {
-      const currentCatalog = snapshot.catalog;
-      if (!currentCatalog) return undefined;
-
-      const rememberedScope =
-        browseScopeRef.current.catalogKey === currentCatalog.catalogKey
-          ? browseScopeRef.current.scope
-          : undefined;
-      return rememberedScope === undefined
-        ? snapshot.scopeId
-        : rememberedScope;
-    },
-    [],
-  );
-
   const selectControl = useCallback((control: Control) => {
     const snapshot = navigationRef.current;
     const currentCatalog = snapshot.catalog;
     if (!currentCatalog) return;
 
     if (snapshot.selectedControl?.id === control.id) {
-      const target = resolveBrowseTarget(snapshot);
+      const target = snapshot.scopeId;
       void snapshot.navigate({
         pathname: target
           ? buildGroupUrl(currentCatalog.catalogKey, target)
@@ -155,22 +126,25 @@ export function useControlNavigation({
     void snapshot.navigate({
       pathname: buildControlUrlForControl(currentCatalog.catalogKey, control),
       search: snapshot.searchString,
-    });
-  }, [resolveBrowseTarget]);
+    }, { state: { browseScope: {
+      catalogKey: currentCatalog.catalogKey,
+      scope: snapshot.scopeId ?? null,
+    } } });
+  }, []);
 
   const closeDetail = useCallback(() => {
     const snapshot = navigationRef.current;
     const currentCatalog = snapshot.catalog;
     if (!currentCatalog) return;
 
-    const target = resolveBrowseTarget(snapshot);
+    const target = snapshot.scopeId;
     void snapshot.navigate({
       pathname: target
         ? buildGroupUrl(currentCatalog.catalogKey, target)
         : buildCatalogUrl(currentCatalog.catalogKey),
       search: snapshot.searchString,
     }, { replace: true });
-  }, [resolveBrowseTarget]);
+  }, []);
 
   const navigateToControl = useCallback((control: Control) => {
     const snapshot = navigationRef.current;
@@ -180,7 +154,10 @@ export function useControlNavigation({
     void snapshot.navigate({
       pathname: buildControlUrlForControl(currentCatalog.catalogKey, control),
       search: snapshot.searchString,
-    }, { replace: true });
+    }, { replace: true, state: { browseScope: {
+      catalogKey: currentCatalog.catalogKey,
+      scope: snapshot.scopeId ?? null,
+    } } });
   }, []);
 
   return {
