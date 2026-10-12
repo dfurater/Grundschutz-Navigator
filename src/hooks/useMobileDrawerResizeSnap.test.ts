@@ -20,7 +20,7 @@ class FakeTransition {
 function shellWithMotion() {
   const shell = document.createElement('div');
   const drawer = shell.appendChild(Object.assign(document.createElement('aside'), { className: 'mobile-nav-drawer' }));
-  const page = shell.appendChild(Object.assign(document.createElement('main'), { className: 'mobile-nav-push' }));
+  const page = shell.appendChild(document.createElement('main'));
   const other = shell.appendChild(document.createElement('div'));
   const transitions = [drawer, page, other].map((target) => new FakeTransition(target));
   const otherAnimation = { finish: vi.fn() };
@@ -31,14 +31,14 @@ function shellWithMotion() {
 describe('useMobileDrawerResizeSnap', () => {
   afterEach(() => { vi.unstubAllGlobals(); });
 
-  it('beendet nur die Transitionen von Schublade, Seite und Abdunklung', () => {
+  it('beendet nur die Transition der Schublade', () => {
     vi.stubGlobal('CSSTransition', FakeTransition);
     vi.stubGlobal('KeyframeEffect', FakeKeyframeEffect);
     const { shell, transitions: [drawer, page, other], otherAnimation } = shellWithMotion();
 
     finishDrawerMotion(shell);
     expect(drawer.finish).toHaveBeenCalledOnce();
-    expect(page.finish).toHaveBeenCalledOnce();
+    expect(page.finish).not.toHaveBeenCalled();
     expect(other.finish).not.toHaveBeenCalled();
     expect(otherAnimation.finish).not.toHaveBeenCalled();
   });

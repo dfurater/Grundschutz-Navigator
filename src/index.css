@@ -542,14 +542,18 @@ body.dev-selector-dragging * {
   }
 }
 
-/* Mobile Navigationsschublade als Push-Drawer (GSPP-493): Die
-   Schublade (85 % der Breite) gleitet über die volle Höhe herein und schiebt
-   die ganze Seite samt App-Kopf um ihre Breite nach rechts; eine Abdunklung
-   liegt über der verschobenen Seite. Die Shell setzt `data-mobile-nav` am
-   Wurzelelement; die Wischgeste (`useMobileDrawerSwipe`) überschreibt
-   während des Ziehens die Variablen am selben Element, ohne React zu rendern.
-   Die Variablen gelten auch ab `md`, damit die Breiten-Transition der
-   Seitenleiste dort einen gültigen Wert behält. */
+/* Mobile Navigationsschublade als Overlay (GSPP-515): Die Schublade
+   (85 % der Breite) gleitet über die volle Höhe über Seite und App-Kopf, ohne
+   sie zu verschieben; eine Abdunklung liegt über der unverschobenen Seite. Die
+   Shell setzt `data-mobile-nav` am Wurzelelement; die Schließgeste
+   (`useMobileDrawerSwipe`) überschreibt während des Ziehens die Variablen am
+   selben Element, ohne React zu rendern. Die Variablen gelten auch ab `md`,
+   damit die Breiten-Transition der Seitenleiste dort einen gültigen Wert
+   behält. Schublade und Abdunklung sind weder fest noch sticky: Ein solches
+   Element bis zum unteren Bildschirmrand lässt Safari seine Leiste mit einer
+   undurchsichtigen Fläche füllen (GSPP-486). Die Schublade liegt absolut im
+   Inhaltsbereich an der Dokumentposition beim Öffnen
+   (`useMobileDrawerPlacement`), die Scroll-Sperre hält sie dort. */
 @layer components {
   .mobile-nav-shell {
     --mobile-nav-width: min(85vw, 22.5rem);
@@ -561,16 +565,10 @@ body.dev-selector-dragging * {
   }
 
   @media (width < 48rem) {
-    /* Die verschobene Seite ragt rechts hinaus; `clip` erzeugt anders als
-       `hidden` keinen Scrollbereich, an dem der App-Kopf kleben würde.
-       Unter Safaris schwebender Leiste endet die `100dvh` hohe Schublade, und
-       dort liegt die Shell selbst frei, weil der Inhalt nach rechts geschoben
-       ist. Bei offener Schublade ist sie deshalb weiß wie die Schublade
-       (`data-[mobile-nav=open]:bg-white` in `AppShell`); der Wechsel folgt der
-       Bewegung. */
+    /* Die geschlossene Schublade ragt links hinaus; `clip` erzeugt anders als
+       `hidden` keinen Scrollbereich, an dem der App-Kopf kleben würde. */
     .mobile-nav-shell {
       overflow-x: clip;
-      transition: background-color var(--mobile-nav-motion);
     }
 
     .mobile-nav-drawer {
@@ -582,31 +580,11 @@ body.dev-selector-dragging * {
       translate: var(--mobile-nav-drag) 0;
     }
 
-    /* Geschlossen bleibt `translate` auf `none`: Jeder andere Wert machte die
-       Seite zum Bezugsrahmen ihrer festen Elemente. */
-    .mobile-nav-push {
-      transition: translate var(--mobile-nav-motion);
-    }
-
-    /* Während eines Seitenleisten-Resizes entfällt die Bewegung der Schublade
-       (`transition: none` in `AppShell`), und `useMobileDrawerPlacement` meldet
-       kein Hinausgleiten. Die Seite folgt ihr, sonst trüge sie nach dem
-       Schließen noch einen `translate`-Wert, den niemand meldet (GSPP-494). */
-    .mobile-nav-shell[data-sidebar-resizing] .mobile-nav-push {
-      transition: none;
-    }
-
-    .mobile-nav-shell[data-mobile-nav='open'] .mobile-nav-push {
-      translate: calc(var(--mobile-nav-width) + var(--mobile-nav-drag)) 0;
-    }
-
     .mobile-nav-backdrop {
       background-color: rgb(0 0 0 / 0.64);
       opacity: 0;
       pointer-events: none;
-      transition:
-        translate var(--mobile-nav-motion),
-        opacity var(--mobile-nav-motion);
+      transition: opacity var(--mobile-nav-motion);
     }
 
     .mobile-nav-shell[data-mobile-nav='open'] .mobile-nav-backdrop {

@@ -8,7 +8,7 @@ import {
   closeDrawer,
   openDrawer,
   renderShell,
-  settlePush,
+  settleOverlay,
   shortenPage,
   translateTransition,
   unmountShell,
@@ -36,13 +36,14 @@ test.each([0, HEIGHT])('legt den Drawer bei Scrollposition %i px in voller Höhe
   expect(box.top).toBe(0);
   expect(box.bottom).toBe(window.innerHeight);
 
-  // Die Abdunklung liegt über der ganzen verschobenen Seite samt App-Kopf.
+  // Die Abdunklung liegt über der ganzen unverschobenen Seite samt App-Kopf.
   const backdrop = shell.querySelector<HTMLElement>('[data-testid="mobile-nav-backdrop"]')!;
-  await settlePush(shell);
+  await settleOverlay(shell);
   const backdropBox = backdrop.getBoundingClientRect();
   expect(backdropBox.top).toBeLessThanOrEqual(0);
   expect(backdropBox.bottom).toBeGreaterThanOrEqual(window.innerHeight);
-  expect(backdropBox.left).toBeCloseTo(box.right, 1);
+  expect(backdropBox.left).toBe(0);
+  expect(backdropBox.right).toBe(window.innerWidth);
   expect(document.elementFromPoint(WIDTH - 10, HEADER_HEIGHT / 2)).toBe(backdrop);
 
   // Gesperrt wird `html`; `body` bleibt ohne eigenen Scrollbereich, sonst klebte
@@ -268,13 +269,14 @@ test('lässt die Seitenleiste ab md neben dem Inhalt in voller Höhe stehen', as
   expect(document.documentElement.style.overflow).toBe('');
 });
 
-// Unter 640 px führte Tab auf die Lupe, darüber auf das Suchfeld: Beide lagen
-// rechts außerhalb des Bildes, weil der App-Kopf mitgeschoben wird (GSPP-497).
+// Unter 640 px führte Tab auf die Lupe, darüber auf das Suchfeld: Beide liegen
+// im abgedunkelten App-Kopf, dessen Steuerungen bei offener Schublade `inert`
+// sind (GSPP-497).
 test.each([WIDTH, 700])('führt Tab bei %i px vom Menübutton nur auf sichtbare Ziele in der Schublade', async (width) => {
   const shell = await renderShell(width);
   const menuButton = shell.querySelector<HTMLButtonElement>('button[aria-controls]')!;
   const aside = await openDrawer(shell);
-  await settlePush(shell);
+  await settleOverlay(shell);
   expect(document.activeElement).toBe(menuButton);
 
   const reached: Element[] = [];
@@ -299,7 +301,7 @@ test.each([WIDTH, 700])('führt Tab bei %i px vom Menübutton nur auf sichtbare 
 test('schließt bei 700 px die Schublade per Ctrl+K und fokussiert das Suchfeld im App-Kopf', async () => {
   const shell = await renderShell(700);
   await openDrawer(shell);
-  await settlePush(shell);
+  await settleOverlay(shell);
   const search = shell.querySelector<HTMLInputElement>('[data-testid="header-search"]')!;
   expect(search.closest('[inert]')).not.toBeNull();
 

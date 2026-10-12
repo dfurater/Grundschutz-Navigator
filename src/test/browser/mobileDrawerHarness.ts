@@ -54,8 +54,8 @@ export async function openDrawer(shell: HTMLElement, { animated = false } = {}) 
   return aside;
 }
 
-/** Lässt das Verschieben der Seite und die Abdunklung sofort enden. */
-export async function settlePush(shell: HTMLElement) {
+/** Lässt Abdunklung und Schublade sofort enden. */
+export async function settleOverlay(shell: HTMLElement) {
   for (const animation of shell.getAnimations({ subtree: true })) {
     if (!(animation.effect instanceof KeyframeEffect)) continue;
     const target = animation.effect.target;

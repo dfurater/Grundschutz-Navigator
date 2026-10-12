@@ -399,12 +399,8 @@ describe('CatalogBrowser mobile focus restoration', () => {
     // freie Seite, dass auch das abgebaute Sheet seine Sperre gelöst hat.
     expect(root.style.overflow).toBe('');
     expect(screen.queryByText('Exportieren als CSV')).not.toBeInTheDocument();
-    // Solange die Schublade hinausgleitet, trägt `main` noch einen `translate`-Wert
-    // und die Trigger bleiben zurückgetreten (GSPP-494).
-    expect(screen.queryByRole('button', { name: label })).not.toBeInTheDocument();
-    const slideEnd = new Event('transitionend', { bubbles: true });
-    Object.defineProperty(slideEnd, 'propertyName', { value: 'translate' });
-    fireEvent(document.querySelector('aside')!, slideEnd);
+    // Als Overlay trägt die Seite keinen `translate`-Wert: Das Schließen gibt
+    // die Trigger sofort frei, während die Schublade noch hinausgleitet (GSPP-515).
     expect(screen.getAllByRole('button', { name: 'Filteraktion' })).toHaveLength(1);
     expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
   });

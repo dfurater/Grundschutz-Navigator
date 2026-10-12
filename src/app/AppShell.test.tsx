@@ -57,7 +57,8 @@ vi.mock('@/components/Footer', () => ({
   ),
 }));
 
-// Zeigt den Kontextwert, den feste Elemente der Seite auswerten (GSPP-494).
+// Zeigt den Kontextwert, den feste Elemente der Seite auswerten: Sie treten
+// bei offener mobiler Navigation zurück und kehren beim Schließen sofort zurück.
 vi.mock('@/features/home/HomePage', () => ({
   HomePage: () => {
     const fixedElementsHidden = useContext(MobileNavigationContext);
@@ -284,23 +285,18 @@ describe('AppShell', () => {
     expect(focus).toHaveBeenCalledWith({ preventScroll: true });
   });
 
-  it('hides fixed page elements until the drawer has finished sliding out (GSPP-494)', () => {
-    const { container } = renderAppShell();
+  it('meldet offene mobile Navigation den festen Seitenelementen und gibt sie beim Schließen sofort frei', () => {
+    renderAppShell();
     const hidden = () => screen.getByText('Home').getAttribute('data-fixed-elements-hidden');
     expect(hidden()).toBe('false');
 
     fireEvent.click(screen.getByRole('button', { name: 'Menu' }));
     expect(hidden()).toBe('true');
 
-    // Das Schließen setzt den Zielzustand sofort, `main` gleitet aber noch zurück.
+    // Als Overlay trägt die Seite keinen `translate`-Wert; das Schließen gibt
+    // die Elemente sofort frei, während die Schublade noch hinausgleitet.
     fireEvent.click(screen.getByRole('button', { name: 'Menü schließen' }));
     expect(screen.getByTestId('mobile-nav-backdrop')).toHaveAttribute('data-state', 'closed');
-    expect(hidden()).toBe('true');
-
-    const drawer = container.querySelector('aside')!;
-    const slideEnd = new Event('transitionend', { bubbles: true });
-    Object.defineProperty(slideEnd, 'propertyName', { value: 'translate' });
-    act(() => { drawer.dispatchEvent(slideEnd); });
     expect(hidden()).toBe('false');
   });
 
@@ -354,10 +350,10 @@ describe('AppShell', () => {
   it('überblendet die Drawer-Bewegung über translate und schaltet sie bei Reduced Motion ab', () => {
     const { container, rerenderApp } = renderAppShell(['/']);
 
-    // Mobil folgt die Breite derselben Bewegung wie die verschobene Seite.
+    // Mobil gleitet nur die Schublade; die Seite wird nicht verschoben.
     const sidebar = container.querySelector('aside');
     expect(sidebar).toHaveStyle({
-      transition: 'width var(--mobile-nav-motion), translate var(--mobile-nav-motion)',
+      transition: 'translate var(--mobile-nav-motion)',
     });
 
     mockedUseMediaQuery.mockReturnValue(true);

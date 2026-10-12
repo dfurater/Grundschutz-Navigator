@@ -153,20 +153,9 @@ function AppShellLayout() {
     drawerRef,
   );
   const mobileNavShown = mobileNavOpen || swipe.previewing;
-  // Feste Elemente der Seite treten zurück, bis `main` nach dem Schließen
-  // wieder `translate: none` hat: Ein anderer Wert macht `main` zum
-  // Bezugsrahmen, und die Elemente sprängen erst nach der Bewegung an den
-  // Bildschirmrand (GSPP-494). `data-mobile-nav` folgt dagegen dem Zielzustand.
-  const mobileNavBlocksFixed = mobileNavShown || drawerPlacement.sliding;
   const expandedNavWidth = sidebarCollapsed ? 44 : sidebarWidth;
   // Mobil bestimmt `--mobile-nav-width` die Breite (src/index.css).
   const persistentNavWidth = isPersistentNav ? expandedNavWidth : undefined;
-  // Mobil ändert sich die Breite nur mit dem Viewport, etwa beim Drehen. Sie
-  // folgt dann derselben Bewegung wie die verschobene Seite, damit beide
-  // Kanten in jedem Frame bündig bleiben.
-  const navWidthMotion = isPersistentNav
-    ? 'width var(--duration-normal) var(--easing-default)'
-    : 'width var(--mobile-nav-motion)';
 
   useCloseDrawerOnNavigation({
     locationKey: location.key,
@@ -263,8 +252,7 @@ function AppShellLayout() {
     <div
       ref={shellRef}
       data-mobile-nav={mobileNavShown ? 'open' : 'closed'}
-      data-sidebar-resizing={isSidebarResizing ? '' : undefined}
-      className="mobile-nav-shell flex flex-col bg-slate-100 min-h-dvh max-md:data-[mobile-nav=open]:bg-white md:h-dvh md:overflow-hidden"
+      className="mobile-nav-shell flex flex-col bg-slate-100 min-h-dvh md:h-dvh md:overflow-hidden"
     >
       <a href="#main-content" className="skip-link">
         Zum Hauptinhalt springen
@@ -278,7 +266,6 @@ function AppShellLayout() {
 
       <HeaderBar
         onSearch={handleSearch}
-        className="mobile-nav-push"
         obscured={mobileNavOpen}
         onUncover={dismissMobileNav}
         menuExpanded={mobileNavOpen}
@@ -301,15 +288,15 @@ function AppShellLayout() {
             (`-top-14`, `-mt-14`) über ihn hinaus. Die Schublade beginnt an der
             Dokumentposition beim Öffnen und füllt den sichtbaren Bereich in
             voller Höhe, die Scroll-Sperre hält sie dort
-            (`useMobileDrawerPlacement`). Als Push-Drawer schiebt sie
-            App-Kopf, Inhalt und Abdunklung um ihre Breite nach rechts
-            (`mobile-nav-push`, src/index.css). Die Abdunklung (`z-[35]`) liegt
-            über dem App-Kopf (`z-30`), die Schublade (`z-40`) über beiden. Die
-            Abdunklung bleibt geschlossen eingehängt, damit sie aus- und
-            einblenden kann; ohne Deckkraft lässt sie Zeiger durch. */}
+            (`useMobileDrawerPlacement`). Als Overlay legt sie sich über
+            App-Kopf und Inhalt, ohne sie zu verschieben (GSPP-515). Die
+            Abdunklung (`z-[35]`) liegt über dem unverschobenen App-Kopf
+            (`z-30`), die Schublade (`z-40`) über beiden. Die Abdunklung bleibt
+            geschlossen eingehängt, damit sie aus- und einblenden kann; ohne
+            Deckkraft lässt sie Zeiger durch. */}
         <div
           ref={backdropRef}
-          className="mobile-nav-backdrop mobile-nav-push absolute inset-x-0 -top-14 bottom-0 z-[35] touch-none md:hidden"
+          className="mobile-nav-backdrop absolute inset-x-0 -top-14 bottom-0 z-[35] touch-none md:hidden"
           data-testid="mobile-nav-backdrop"
           data-state={mobileNavShown ? 'open' : 'closed'}
           onClick={closeSideNav}
@@ -329,7 +316,11 @@ function AppShellLayout() {
             width: persistentNavWidth,
             transition: isSidebarResizing || prefersReducedMotion
               ? 'none'
-              : `${navWidthMotion}, translate var(--mobile-nav-motion)`,
+              // Mobil gleitet nur die Schublade herein; die Breite folgt dort
+              // unmittelbar `--mobile-nav-width` (src/index.css).
+              : isPersistentNav
+                ? 'width var(--duration-normal) var(--easing-default)'
+                : 'translate var(--mobile-nav-motion)',
           }}
         >
           {sidebarCollapsed ? (
@@ -424,9 +415,9 @@ function AppShellLayout() {
         <main
           id="main-content"
           inert={mobileNavOpen}
-          className="mobile-nav-push flex-1 min-w-0 flex flex-col bg-white md:overflow-hidden"
+          className="flex-1 min-w-0 flex flex-col bg-white md:overflow-hidden"
         >
-          <MobileNavigationContext.Provider value={mobileNavBlocksFixed}>
+          <MobileNavigationContext.Provider value={mobileNavShown}>
             <Outlet />
           </MobileNavigationContext.Provider>
           <Footer />

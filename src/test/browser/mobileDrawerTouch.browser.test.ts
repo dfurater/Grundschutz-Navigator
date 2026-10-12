@@ -1,9 +1,9 @@
 import { afterEach, expect, test } from 'vitest';
 import { commands, page } from 'vitest/browser';
-import { HEIGHT, WIDTH, openDrawer, renderShell, settlePush, swipe, unmountShell } from './mobileDrawerHarness';
+import { HEIGHT, WIDTH, openDrawer, renderShell, settleOverlay, swipe, unmountShell } from './mobileDrawerHarness';
 
 /**
- * Mobile Push-Schublade (GSPP-493) mit vom Browser erzeugten Touch-Eingaben
+ * Mobile Overlay-Schublade (GSPP-515) mit vom Browser erzeugten Touch-Eingaben
  * (GSPP-494). Die Prüfungen in `mobileDrawerSwipe.browser.test.ts` schicken
  * selbst gebaute `TouchEvent`s an ein Ziel und belegen nur die Handler. Hier
  * entscheidet Chromium, ob es scrollt, die Berührung als Wischgeste an die
@@ -44,7 +44,7 @@ test('scrollt den Baum der offenen Schublade senkrecht, ohne sie zu schließen o
   const shell = await renderShell(WIDTH);
   window.scrollTo(0, HEIGHT);
   const aside = await openDrawer(shell);
-  await settlePush(shell);
+  await settleOverlay(shell);
   const tree = scrollableTree(aside);
   const touches = recordTouches();
 
@@ -62,7 +62,7 @@ test('schließt die offene Schublade beim waagerechten Wischen, ohne den Baum zu
   const shell = await renderShell(WIDTH);
   window.scrollTo(0, HEIGHT);
   const aside = await openDrawer(shell);
-  await settlePush(shell);
+  await settleOverlay(shell);
   const tree = scrollableTree(aside);
   const touches = recordTouches();
 

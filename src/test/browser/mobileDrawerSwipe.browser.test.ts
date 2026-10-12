@@ -2,20 +2,21 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { userEvent } from 'vitest/browser';
 import { releaseGesture } from '@/hooks/mobileDrawerGesture';
 import {
+  HEADER_HEIGHT,
   HEIGHT,
   WIDTH,
   drag,
   openDrawer,
   pause,
   renderShell,
-  settlePush,
+  settleOverlay,
   touchEvent,
   unmountShell,
 } from './mobileDrawerHarness';
 
 afterEach(unmountShell);
 
-/** Mobile Push-Schublade (GSPP-493): Verschieben, Abdunklung, Wischgesten. */
+/** Mobile Overlay-Schublade (GSPP-515): Lage, Abdunklung, Wischgesten. */
 
 const DRAWER_WIDTH = WIDTH * 0.85;
 
@@ -28,49 +29,53 @@ const parts = (shell: HTMLElement) => ({
   backdrop: shell.querySelector<HTMLElement>('[data-testid="mobile-nav-backdrop"]')!,
 });
 
-test('schiebt App-Kopf, Inhalt und Abdunklung um die Breite der Schublade nach rechts', async () => {
+test('legt die Schublade als Overlay über die unverschobene Seite', async () => {
   const shell = await renderShell(WIDTH);
   const { main, header, backdrop } = parts(shell);
-  // Geschlossen bleibt die Seite ohne `translate`, sonst wäre sie Bezugsrahmen fester Elemente.
-  expect(getComputedStyle(main).translate).toBe('none');
-  expect(getComputedStyle(header).translate).toBe('none');
   expect(getComputedStyle(backdrop).opacity).toBe('0');
   expect(getComputedStyle(backdrop).pointerEvents).toBe('none');
   const { root } = parts(shell);
   expect(getComputedStyle(root).backgroundColor).not.toBe('rgb(255, 255, 255)');
 
   const aside = await openDrawer(shell);
-  await settlePush(shell);
+  await settleOverlay(shell);
   const drawerBox = aside.getBoundingClientRect();
   expect(drawerBox.width).toBeCloseTo(DRAWER_WIDTH, 0);
   expect(drawerBox.top).toBe(0);
   expect(drawerBox.height).toBe(HEIGHT);
-  for (const pushed of [main, header, backdrop]) {
-    expect(pushed.getBoundingClientRect().left).toBeCloseTo(drawerBox.right, 1);
+  // Nichts wird verschoben: App-Kopf und Inhalt bleiben an ihrer Lage.
+  for (const unmoved of [main, header]) {
+    expect(unmoved.getBoundingClientRect().left).toBe(0);
   }
-  // Unter Safaris schwebender Leiste liegt unter der Schublade die Shell frei,
-  // weil der Inhalt nach rechts geschoben ist; bei offener Schublade ist sie weiß.
-  await expect.poll(() => getComputedStyle(root).backgroundColor).toBe('rgb(255, 255, 255)');
+  // Die Abdunklung bedeckt die volle Breite samt App-Kopf; die Shell liegt
+  // nirgends frei und behält ihre Grundfarbe.
+  const backdropBox = backdrop.getBoundingClientRect();
+  expect(backdropBox.left).toBe(0);
+  expect(backdropBox.top).toBeLessThanOrEqual(0);
+  expect(backdropBox.bottom).toBeGreaterThanOrEqual(window.innerHeight);
+  expect(document.elementFromPoint(WIDTH - 10, HEADER_HEIGHT / 2)).toBe(backdrop);
+  expect(getComputedStyle(root).backgroundColor).not.toBe('rgb(255, 255, 255)');
   expect(getComputedStyle(backdrop).backgroundColor).toBe('rgba(0, 0, 0, 0.64)');
   expect(getComputedStyle(backdrop).opacity).toBe('1');
 });
 
-test('lässt Schublade und Seite beim Wischen nach links dem Finger folgen und gleitet ohne Wurf zurück', async () => {
+test('lässt die Schublade beim Wischen nach links dem Finger folgen und gleitet ohne Wurf zurück', async () => {
   const shell = await renderShell(WIDTH);
   const aside = await openDrawer(shell);
-  const { main, backdrop } = parts(shell);
-  await settlePush(shell);
+  const { backdrop } = parts(shell);
+  await settleOverlay(shell);
 
   const gesture = drag(aside, [300, 400], [[290, 401], [250, 402], [200, 402]]);
   expect(gesture.moves.at(-1)).toBe(false);
   expect(aside.getBoundingClientRect().left).toBeCloseTo(-100, 0);
-  expect(main.getBoundingClientRect().left).toBeCloseTo(DRAWER_WIDTH - 100, 0);
+  // Die Seite bleibt liegen, nur die Abdunklung blendet anteilig aus.
+  expect(parts(shell).main.getBoundingClientRect().left).toBe(0);
   expect(Number(getComputedStyle(backdrop).opacity)).toBeCloseTo(1 - 100 / DRAWER_WIDTH, 2);
 
   await pause();
   gesture.release();
   await expect.poll(() => aside.getBoundingClientRect().left).toBe(0);
-  expect(main.inert).toBe(true);
+  expect(parts(shell).main.inert).toBe(true);
   expect(parts(shell).root.style.getPropertyValue('--mobile-nav-drag')).toBe('');
 });
 
@@ -85,8 +90,7 @@ test('schließt die Schublade, wenn sie über die Hälfte nach links gezogen wir
   expect(main.inert).toBe(false);
   expect(aside.inert).toBe(true);
   await expect.poll(() => aside.getBoundingClientRect().right).toBeLessThanOrEqual(0);
-  await expect.poll(() => getComputedStyle(main).translate).toBe('none');
-  await expect.poll(() => getComputedStyle(parts(shell).root).backgroundColor).not.toBe('rgb(255, 255, 255)');
+  expect(main.getBoundingClientRect().left).toBe(0);
 });
 
 test('schließt die Schublade bei einem kurzen Wurf nach links und übernimmt dessen Tempo', async () => {
@@ -230,7 +234,8 @@ test('öffnet die Schublade beim Wischen nach rechts über die Seite, fingergef�
   const box = aside.getBoundingClientRect();
   expect(box.left).toBeCloseTo(200 - DRAWER_WIDTH, 0);
   expect(box.top).toBe(0);
-  expect(header.getBoundingClientRect().left).toBeCloseTo(200, 0);
+  // Auch die Vorschau verschiebt nichts: Der App-Kopf bleibt an seiner Lage.
+  expect(header.getBoundingClientRect().left).toBe(0);
   expect(document.documentElement.style.overflow).toBe('hidden');
   expect(window.scrollY).toBe(HEIGHT);
 

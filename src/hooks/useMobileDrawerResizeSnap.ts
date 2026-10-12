@@ -2,11 +2,10 @@ import { useLayoutEffect } from 'react';
 import type { RefObject } from 'react';
 
 /** Träger der Bewegung, die `--mobile-nav-width` folgt (src/index.css). */
-const DRAWER_MOTION_SELECTOR = '.mobile-nav-drawer, .mobile-nav-push';
+const DRAWER_MOTION_SELECTOR = '.mobile-nav-drawer';
 
 /**
- * Beendet die laufenden Transitionen von Schublade, verschobener Seite und
- * Abdunklung auf ihrem Zielwert. jsdom kennt `getAnimations` nicht.
+ * Beendet die laufende Transition der Schublade auf ihrem Zielwert. jsdom kennt `getAnimations` nicht.
  */
 export function finishDrawerMotion(shell: Element) {
   for (const animation of shell.getAnimations?.({ subtree: true }) ?? []) {
@@ -18,10 +17,9 @@ export function finishDrawerMotion(shell: Element) {
 
 /**
  * Ein Breitenwechsel unter `md`, etwa beim Drehen, ändert `--mobile-nav-width`.
- * Schublade, Seite und Abdunklung stellen sich dann gemeinsam sofort auf die
- * neue Lage, statt dorthin zu gleiten. Liefe die Bewegung, begänne eine Geste
- * oder ein Schließen in dieser Zeit von einer Lage, die noch wandert, und
- * Schublade und Seite liefen auseinander. Dasselbe gilt beim Wechsel vom
+ * Die Schublade stellt sich dann sofort auf die neue Lage, statt dorthin zu
+ * gleiten. Liefe die Bewegung, begänne eine Geste oder ein Schließen in dieser
+ * Zeit von einer Lage, die noch wandert. Dasselbe gilt beim Wechsel vom
  * Desktop unter `md`: Die Schublade übernähme sonst gleitend die Breite der
  * Seitenleiste.
  *

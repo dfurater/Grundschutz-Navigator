@@ -108,27 +108,16 @@ describe('useMobileDrawerPlacement', () => {
     expect(result.current.top).toBe(0);
   });
 
-  it('meldet das Hinausgleiten bis zum Ende der Translate-Transition (GSPP-494)', () => {
-    const { result, drawer } = openAndClose();
-    expect(result.current.sliding).toBe(true);
-
-    dispatchTransition('transitionend', drawer, 'width');
-    expect(result.current.sliding).toBe(true);
-
-    dispatchTransition('transitionend', drawer);
-    expect(result.current.sliding).toBe(false);
-  });
-
   it.each([
-    ['ohne Überblendung', true, false],
-    ['auf der persistenten Navigation', false, true],
-  ])('meldet kein Hinausgleiten %s', (_name, transitionDisabled, persistent) => {
+    ['ohne Überblendung', true, false, 0],
+    ['auf der persistenten Navigation', false, true, undefined],
+  ])('setzt die Lage beim Schließen %s sofort zurück', (_name, transitionDisabled, persistent, expected) => {
     const { result, rerender } = renderHook(
       ({ open }) => useMobileDrawerPlacement(open, persistent, transitionDisabled, drawerRef),
       { initialProps: { open: true } },
     );
     rerender({ open: false });
-    expect(result.current.sliding).toBe(false);
+    expect(result.current.top).toBe(expected);
   });
 
   it('hält die hinausgleitende Schublade an der Dokumentposition, wenn die neue Seite im selben Commit scrollt', () => {

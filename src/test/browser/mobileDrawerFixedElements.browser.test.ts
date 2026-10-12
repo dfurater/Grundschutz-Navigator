@@ -6,17 +6,18 @@ import {
   closeDrawer,
   openDrawer,
   renderShell,
-  settlePush,
   translateTransition,
   unmountShell,
 } from './mobileDrawerHarness';
 
 /**
- * Feste Seitenelemente nach dem Schließen der mobilen Schublade (GSPP-494).
- * Ein anderer `translate`-Wert als `none` macht `main` zum Bezugsrahmen fester
- * Nachfahren; die Auswahlleiste darf deshalb erst zurückkehren, wenn die Seite
- * wieder an ihrer Ruhelage steht. Als Seite dienen die echte Auswahlleiste und
- * die echte Toolbar mit den Triggern der mobilen Sheets.
+ * Feste Seitenelemente bei offener mobiler Schublade (GSPP-515). Die Schublade
+ * legt sich als Overlay über die Seite, ohne sie zu verschieben. Solange sie
+ * offen ist, treten Auswahlleiste und Sheet-Trigger zurück, damit kein festes
+ * Element mit der Schublade um den unteren Bildschirmrand konkurriert; das
+ * Schließen gibt sie sofort frei, während die Schublade noch hinausgleitet.
+ * Als Seite dienen die echte Auswahlleiste und die echte Toolbar mit den
+ * Triggern der mobilen Sheets.
  */
 
 vi.mock('@/features/home/HomePage', async () => {
@@ -68,10 +69,10 @@ const fixedElements = (shell: HTMLElement) => ({
   exportSheet: sheetTrigger(shell, 'CSV exportieren'),
 });
 
-test('hält feste Auswahlleiste und Sheet-Trigger beim Schließen zurück, bis die Seite wieder an ihrer Ruhelage steht', async () => {
+test('hält feste Auswahlleiste und Sheet-Trigger nur bei offener Schublade zurück', async () => {
   const shell = await renderShell(WIDTH, '/');
   window.scrollTo(0, HEIGHT);
-  const main = shell.querySelector('main')!;
+  const aside = shell.querySelector('aside')!;
 
   // Ruhelage: Die feste Leiste richtet sich nach dem Bildschirm.
   await expect.poll(() => fixedElements(shell).bar).not.toBeNull();
@@ -86,49 +87,35 @@ test('hält feste Auswahlleiste und Sheet-Trigger beim Schließen zurück, bis d
   // Das Hinausgleiten wird angehalten, damit die Messung nicht vom Takt abhängt.
   closeDrawer(shell);
   await Promise.resolve();
-  const slide = translateTransition(main);
+  const slide = translateTransition(aside);
   expect(slide).toBeDefined();
   slide!.pause();
-  expect(getComputedStyle(main).translate).not.toBe('none');
-  expect(Object.values(fixedElements(shell))).toEqual([null, null, null]);
 
-  slide!.finish();
+  // Die Schublade gleitet noch hinaus, die Elemente stehen schon bereit.
   await expect.poll(() => fixedElements(shell).bar).not.toBeNull();
-  expect(getComputedStyle(main).translate).toBe('none');
   expect(fixedElements(shell).filter).not.toBeNull();
   expect(fixedElements(shell).exportSheet).not.toBeNull();
   expect(selectionBar(shell)!.getBoundingClientRect().bottom).toBe(window.innerHeight);
+  slide!.finish();
 });
 
-// Während eines Seitenleisten-Resizes entfällt die Bewegung der Schublade, und
-// die Seite darf nicht allein weiterlaufen: Sonst käme die Leiste zurück, solange
-// `main` noch einen `translate`-Wert trägt (Review GSPP-494).
-test('lässt die Seite beim Schließen während eines Seitenleisten-Resizes nicht allein hinausgleiten', async () => {
+// Während eines Seitenleisten-Resizes läuft die Schublade ohne Bewegung; das
+// Schließen stellt sie sofort zurück, und die festen Elemente kehren zurück.
+test('gibt die festen Elemente beim Schließen während eines Seitenleisten-Resizes sofort frei', async () => {
   const shell = await renderShell(1024, '/');
   window.scrollTo(0, HEIGHT);
-  const main = shell.querySelector('main')!;
   const resizeHandle = shell.querySelector<HTMLButtonElement>('button[aria-label="Sidebar-Breite anpassen"]')!;
   resizeHandle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, clientX: 256 }));
 
   await page.viewport(WIDTH, HEIGHT);
   await expect.poll(() => getComputedStyle(resizeHandle).display).toBe('none');
-  const root = shell.querySelector<HTMLElement>('[data-mobile-nav]')!;
-  expect(root.hasAttribute('data-sidebar-resizing')).toBe(true);
 
   await openDrawer(shell);
-  // Die Seite steht erst nach der Push-Bewegung verschoben; zu Beginn trägt sie `0px`,
-  // und von dort gäbe es beim Schließen keine Strecke und keine Transition.
-  await settlePush(shell);
-  expect(main.getBoundingClientRect().left).toBeGreaterThan(100);
   expect(fixedElements(shell).bar).toBeNull();
 
   closeDrawer(shell);
-  await Promise.resolve();
-  // Ohne Bewegung der Schublade gibt es auch keine der Seite: Sie steht sofort an ihrer Ruhelage.
-  expect(translateTransition(main)).toBeUndefined();
   await expect.poll(() => fixedElements(shell).bar).not.toBeNull();
-  expect(getComputedStyle(main).translate).toBe('none');
-  expect(fixedElements(shell).bar!.getBoundingClientRect().bottom).toBe(window.innerHeight);
+  expect(selectionBar(shell)!.getBoundingClientRect().bottom).toBe(window.innerHeight);
 
   document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
 });

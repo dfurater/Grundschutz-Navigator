@@ -16,9 +16,9 @@ afterEach(unmountShell);
 
 /**
  * Dreht ein kleines Smartphone mitten in einer Wischgeste ins Querformat,
- * wächst die Schublade (`min(85vw, 22.5rem)`) von 318,75 auf 360 px, und ihre
- * `width`-Transition bleibt eingeschaltet. Die Geste endet dann wie bei
- * `touchcancel`, statt mit der beim Aufsetzen gemessenen Breite weiterzurechnen.
+ * wächst die Schublade (`min(85vw, 22.5rem)`) von 318,75 auf 360 px. Die Geste
+ * endet dann wie bei `touchcancel`, statt mit der beim Aufsetzen gemessenen
+ * Breite weiterzurechnen.
  */
 
 const PORTRAIT = 375;
@@ -93,41 +93,28 @@ test('beendet eine Öffnen-Vorschau, wenn sich beim Drehen die Breite der Schubl
   expect(main.inert).toBe(false);
 });
 
-/** Abstand zwischen rechter Kante der Schublade und linker Kante der Seite, je Frame über `ms`. */
-async function gapsOver(aside: HTMLElement, main: HTMLElement, ms: number) {
-  const gaps: number[] = [];
-  const start = performance.now();
-  while (performance.now() - start < ms) {
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    gaps.push(Math.abs(main.getBoundingClientRect().left - aside.getBoundingClientRect().right));
-  }
-  return gaps;
-}
-
-// Ein Breitenwechsel stellt Schublade und Seite sofort auf die neue Lage. Glitten
-// sie dorthin, überlappte die Schublade die Seite währenddessen um bis zu 26 px.
-test('stellt Schublade und Seite beim Drehen mit offener Schublade sofort bündig auf die neue Breite', async () => {
+// Ein Breitenwechsel stellt die Schublade sofort auf die neue Breite. Glitte
+// sie dorthin, überlappte sie den Inhalt währenddessen.
+test('stellt die Schublade beim Drehen mit offener Schublade sofort auf die neue Breite', async () => {
   const shell = await renderPortrait();
   const aside = await openDrawer(shell, { animated: true });
-  const main = shell.querySelector('main')!;
   await settled(aside);
 
   await rotate();
   expect(aside.getBoundingClientRect().width).toBeCloseTo(360, 0);
-  expect(Math.max(...await gapsOver(aside, main, 300))).toBeLessThan(0.5);
+  await settled(aside);
 });
 
-// Ohne sofortige Lage überlappte die Schublade die Seite beim Schließen kurz
-// nach dem Drehen um bis zu 83 px: Sie wuchs noch, während beide hinausglitten.
-test('schließt direkt nach dem Drehen mit bündigen Kanten', async () => {
+// Ohne sofortige Lage wüchse die Schublade noch, während sie hinausgleitet.
+test('schließt direkt nach dem Drehen mit der neuen Breite', async () => {
   const shell = await renderPortrait();
   const aside = await openDrawer(shell, { animated: true });
-  const main = shell.querySelector('main')!;
   await settled(aside);
 
   await rotate();
+  expect(aside.getBoundingClientRect().width).toBeCloseTo(360, 0);
   closeDrawer(shell);
-  expect(Math.max(...await gapsOver(aside, main, 350))).toBeLessThan(0.5);
+  await expect.poll(() => aside.getBoundingClientRect().right).toBeLessThanOrEqual(0);
   expect(shellRoot(shell).dataset.mobileNav).toBe('closed');
 });
 
