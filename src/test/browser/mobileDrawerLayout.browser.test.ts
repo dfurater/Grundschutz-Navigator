@@ -255,7 +255,7 @@ test('verlängert eine verkürzte Seite nicht, wenn die Breite während des Hina
   expect(document.documentElement.scrollHeight).toBe(shortenedPageHeight);
 });
 
-test('lässt die Seitenleiste ab md neben dem Inhalt in voller Höhe stehen', async () => {
+test('lässt die Seitenleiste ab lg neben dem Inhalt in voller Höhe stehen', async () => {
   const shell = await renderShell(1024);
   const aside = shell.querySelector('aside')!;
   expect(getComputedStyle(aside).position).toBe('relative');
