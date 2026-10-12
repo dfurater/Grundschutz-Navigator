@@ -38,6 +38,7 @@ export function useTabletDetailPanel({ enabled, controlId, scopeKey, listReady, 
   // `null`, solange nur die Liste sichtbar ist.
   const sessionRef = useRef<{ rowControlId: string; scopeKey: string | null } | null>(null);
   const prevControlIdRef = useRef<string | null>(null);
+  const prevEnabledRef = useRef(false);
   // Bereich der zuletzt sichtbaren Liste; `null` nach einem Direktaufruf.
   const listScopeKeyRef = useRef<string | null>(null);
 
@@ -51,13 +52,16 @@ export function useTabletDetailPanel({ enabled, controlId, scopeKey, listReady, 
 
   useEffect(() => {
     const prevControlId = prevControlIdRef.current;
+    const prevEnabled = prevEnabledRef.current;
     prevControlIdRef.current = controlId;
+    prevEnabledRef.current = enabled;
     if (!enabled || controlId === null) return;
-    // Nur eine frische Öffnung beginnt eine neue Sitzung; der Wechsel zu
-    // einer verknüpften Kontrolle behält die auslösende Zeile. Maßgeblich ist
-    // der Bereich der zuletzt sichtbaren Liste, nicht das Thema der
-    // geöffneten Kontrolle.
-    if (prevControlId === null) {
+    // Eine frische Öffnung beginnt eine neue Sitzung; der Wechsel zu einer
+    // verknüpften Kontrolle behält die auslösende Zeile. Wer mit geöffnetem
+    // Detail ins Tablet-Band wechselt, erhält beim Eintritt ebenfalls eine
+    // Bindung, sofern noch keine besteht. Maßgeblich ist der Bereich der
+    // zuletzt sichtbaren Liste, nicht das Thema der geöffneten Kontrolle.
+    if (prevControlId === null || (sessionRef.current === null && !prevEnabled)) {
       sessionRef.current = { rowControlId: controlId, scopeKey: listScopeKeyRef.current };
     }
     // Kein Fokusraub aus einem offenen modalen Dialog (etwa einem Sheet über

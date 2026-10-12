@@ -555,6 +555,25 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Testthema' })).toHaveFocus();
   });
 
+  it('returns focus to the row after entering the tablet band with an open page', () => {
+    let tablet = false;
+    mockedUseMediaQuery.mockImplementation((query) => tablet && query === OWN_SCROLL_AREA_QUERY);
+    const view = renderCatalogBrowser('/katalog/gspp/kontrolle/shared-alt-identifier');
+
+    // Mobil: Detail als Seite mit Fokus auf der Überschrift.
+    expect(screen.getByRole('heading', { level: 2, name: control.title })).toHaveFocus();
+
+    // Breitenwechsel ins Tablet-Band bei geöffnetem Detail.
+    tablet = true;
+    view.rerender(<CatalogBrowserTestApp initialEntry="/katalog/gspp/kontrolle/shared-alt-identifier" />);
+    expect(screen.getByTestId('tablet-detail-panel')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));
+
+    expect(screen.queryByTestId('tablet-detail-panel')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
+  });
+
   it('keeps toolbar and filter context while the tablet detail is open and moves focus on related navigation', () => {
     useTabletWidth();
     renderCatalogBrowser('/katalog/gspp/TOP.1');
