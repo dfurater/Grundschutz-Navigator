@@ -57,7 +57,7 @@ const UNBENANNTE_TAXONOMIE = 'Ohne Gruppenkennung';
 
 /**
  * `panel`: feste Höhe mit eigenem Scrollbereich (Desktop-Spalte,
- * Tablet-Overlay). `page`: im Dokumentfluss ohne eigenen Scrollbereich —
+ * Tablet-Inline-Panel). `page`: im Dokumentfluss ohne eigenen Scrollbereich —
  * das Dokument scrollt (mobile Seitenansicht, GSPP-447).
  */
 export type ControlDetailLayout = 'panel' | 'page';
@@ -72,7 +72,7 @@ export interface ControlDetailProps {
   readonly onNavigateToControl?: (control: Control) => void;
   /** Standard `panel`, siehe `ControlDetailLayout`. */
   readonly layout?: ControlDetailLayout;
-  /** ID der Detailüberschrift, über die das Tablet-Overlay seinen Dialognamen bezieht. */
+  /** Optionale ID der Detailüberschrift (`[data-control-detail-title]`). */
   readonly titleId?: string;
 }
 

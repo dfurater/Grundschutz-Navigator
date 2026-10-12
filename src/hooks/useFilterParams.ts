@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
-import { useSearchParams } from 'react-router';
+import { useLocation, useSearchParams } from 'react-router';
 import type { SecurityLevel, EffortLevel, Modalverb, LinkRelation } from '@/domain/models';
 import {
   emptyFilters,
@@ -185,6 +185,7 @@ export interface UseFilterParamsResult {
 
 export function useFilterParams(): UseFilterParamsResult {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { state: locationState } = useLocation();
 
   // Derive state from URL (single source of truth)
   const filters = useMemo(() => deserializeFilters(searchParams), [searchParams]);
@@ -206,9 +207,9 @@ export function useFilterParams(): UseFilterParamsResult {
   const flush = useCallback(
     (nextFilters: ControlFilters, nextSort: SortConfig) => {
       const params = serializeAll(nextFilters, nextSort);
-      setSearchParams(params, { replace: true });
+      setSearchParams(params, { replace: true, state: locationState });
     },
-    [setSearchParams],
+    [locationState, setSearchParams],
   );
 
   const setFilters = useCallback(

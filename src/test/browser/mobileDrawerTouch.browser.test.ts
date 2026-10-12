@@ -106,13 +106,13 @@ test('scrollt die Seite senkrecht, ohne die Schublade zu öffnen', async () => {
 });
 
 // Die Wischgeste braucht nur senkrechtes Scrollen vom Browser; Pinch-Zoom mit
-// zwei Fingern bleibt in der Schublade erlaubt. Ab `md` gibt es keine Geste,
+// zwei Fingern bleibt in der Schublade erlaubt. Ab `lg` gibt es keine Geste,
 // und die Seitenleiste behält die volle Touch-Steuerung.
-test('erlaubt in der Schublade Pinch-Zoom und ab md die volle Touch-Steuerung', async () => {
+test('erlaubt in der Schublade Pinch-Zoom und ab lg die volle Touch-Steuerung', async () => {
   const shell = await renderShell(WIDTH);
   const aside = shell.querySelector('aside')!;
   expect(getComputedStyle(aside).touchAction).toBe('pan-y pinch-zoom');
 
-  await page.viewport(900, HEIGHT);
+  await page.viewport(1100, HEIGHT);
   await expect.poll(() => getComputedStyle(aside).touchAction).toBe('auto');
 });

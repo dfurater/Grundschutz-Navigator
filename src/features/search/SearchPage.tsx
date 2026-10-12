@@ -8,7 +8,7 @@ import { ControlTable } from '@/features/catalog/ControlTable';
 import { ControlMobileReferenceRow } from '@/features/catalog/ControlMobileReferenceRow';
 import { CatalogMobileSelectionBar } from '@/features/catalog/CatalogMobileSelectionBar';
 import { SearchResultsToolbar } from './SearchResultsToolbar';
-import { useControlSelection } from '@/hooks/useControlSelection';
+import { useSearchSelection } from '@/state/SearchSelectionContext';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { DESKTOP_QUERY, OWN_SCROLL_AREA_QUERY } from '@/hooks/breakpointQueries';
 import { useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
@@ -31,7 +31,6 @@ interface ResultsUiState {
   query: string;
   sort: SortConfig;
   visibleResultCount: number;
-  mobileSelectMode: boolean;
 }
 
 function createResultsUiState(query: string): ResultsUiState {
@@ -39,7 +38,6 @@ function createResultsUiState(query: string): ResultsUiState {
     query,
     sort: [],
     visibleResultCount: SEARCH_RESULTS_PAGE_SIZE,
-    mobileSelectMode: false,
   };
 }
 
@@ -79,7 +77,7 @@ export function SearchPage() {
   const [resultsUiState, setResultsUiState] = useState<ResultsUiState>(() =>
     createResultsUiState(query),
   );
-  const { sort, visibleResultCount, mobileSelectMode } =
+  const { sort, visibleResultCount } =
     resultsUiState.query === query ? resultsUiState : createResultsUiState(query);
 
   const setSort = useCallback(
@@ -104,17 +102,6 @@ export function SearchPage() {
     });
   }, [query]);
 
-  const setMobileSelectMode = useCallback(
-    (next: boolean) => {
-      setResultsUiState((current) => ({
-        ...(current.query === query ? current : createResultsUiState(query)),
-        query,
-        mobileSelectMode: next,
-      }));
-    },
-    [query],
-  );
-
   const handleInputChange = useCallback(
     (value: string) => {
       setInputState({
@@ -131,13 +118,14 @@ export function SearchPage() {
   );
 
   const controlsById = catalog?.controlsById;
-  const catalogKey = catalog?.catalogKey ?? '__unknown_catalog__';
   const {
     checkedIds,
     setCheckedIds,
     setChecked,
     clear: clearSelection,
-  } = useControlSelection({ scopeId: `search:${catalogKey}:${query}` });
+    mobileSelectMode,
+    setMobileSelectMode,
+  } = useSearchSelection();
 
   const finishMobileSelection = useCallback(() => {
     setMobileSelectMode(false);
