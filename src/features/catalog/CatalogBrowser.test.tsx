@@ -283,7 +283,7 @@ function renderCatalogBrowser(
   );
 }
 
-/** Zwischen `md` und `lg`: eigene Scrollbereiche, Detail als Overlay. */
+/** Tablet-Band (`md` bis `lg`): eigene Scrollbereiche, Detail inline neben der Liste. */
 function useTabletWidth() {
   mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY);
 }
@@ -505,7 +505,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(trigger).toHaveFocus();
   });
 
-  it('keeps the overlay with focus trap between md and lg and returns focus after Escape', () => {
+  it('shows list and inline detail side by side on tablet without overlay or scroll lock', () => {
     useTabletWidth();
     renderCatalogBrowser();
     const trigger = screen.getByRole('button', { name: control.title });
@@ -513,12 +513,51 @@ describe('CatalogBrowser mobile focus restoration', () => {
     trigger.focus();
     fireEvent.click(trigger);
 
-    expect(screen.getByRole('button', { name: 'Detail schließen' })).toHaveFocus();
-    expect(trigger).toBeVisible();
+    // Inline-Panel neben der Liste: kein Dialog, keine Scroll-Sperre, die
+    // auslösende Zeile bleibt sichtbar.
+    const panel = screen.getByTestId('tablet-detail-panel');
+    expect(panel).toBeInTheDocument();
+    // Die Detailspalte hält die Desktop-Lesebreite.
+    expect(panel).toHaveStyle({ width: '420px' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: control.title })).toBeVisible();
+    expect(screen.getByText(`Detail ${control.id}`)).toBeInTheDocument();
+    expect(document.documentElement.style.overflow).toBe('');
+    // Der Fokus wandert beim Öffnen auf die Detailüberschrift.
+    expect(screen.getByRole('heading', { level: 2, name: control.title })).toHaveFocus();
     expect(globalThis.scrollTo).not.toHaveBeenCalled();
+
     fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' });
 
-    expect(trigger).toHaveFocus();
+    expect(screen.queryByTestId('tablet-detail-panel')).not.toBeInTheDocument();
+    expect(screen.getByTestId('location')).toHaveTextContent('/katalog/gspp');
+    expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
+  });
+
+  it('keeps toolbar and filter context while the tablet detail is open and moves focus on related navigation', () => {
+    useTabletWidth();
+    renderCatalogBrowser('/katalog/gspp/TOP.1');
+
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+
+    // Filterkontext und Auswahl bleiben neben dem Inline-Detail bedienbar.
+    expect(screen.getByRole('heading', { level: 1, name: 'Testthema' })).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Filter anzeigen' })).toBeVisible();
+    expect(screen.getByTestId('tablet-detail-panel')).toBeVisible();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Verwandte Kontrolle öffnen' }));
+
+    expect(screen.getByText(`Detail ${relatedControl.id}`)).toBeInTheDocument();
+    expect(screen.getByTestId('tablet-detail-panel')).toBeVisible();
+    expect(screen.getByRole('heading', { level: 2, name: relatedControl.title })).toHaveFocus();
+    expect(screen.getByTestId('location')).toHaveTextContent(
+      '/katalog/gspp/kontrolle/related-alt-identifier',
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));
+
+    // Zurück geht es zur auslösenden Zeile, nicht zur Bereichsüberschrift.
+    expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
   });
 
   it('opens the detail below md as a page in the document flow', () => {
@@ -1081,8 +1120,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(screen.getByTestId('location')).toHaveTextContent('/katalog/wlan/WLAN.9');
   });
 
-  it('preserves the selection when navigating from one topic to another in the same catalog', () => {
-    const catalog = makeCatalog('gspp');
+  it('preserves the selection when navigating from one topic to another in the same catalog', () => {    const catalog = makeCatalog('gspp');
     catalog.practices[0].topics.push({
       id: 'TOP.2',
       title: 'Zweites Thema',
@@ -1111,7 +1149,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
   });
 
   it('preserves the selection when a cross-reference opens a control from another group', () => {
-    // Zwischen md und lg bleibt die Toolbar unter dem Overlay im DOM.
+    // Im Tablet-Band steht die Toolbar neben dem Inline-Detail weiter im DOM.
     useTabletWidth();
     renderCatalogBrowser('/katalog/gspp');
 

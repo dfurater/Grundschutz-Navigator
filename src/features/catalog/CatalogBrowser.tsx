@@ -8,6 +8,7 @@ import { useControlNavigation } from '@/hooks/useControlNavigation';
 import { useControlSelection } from '@/hooks/useControlSelection';
 import { useDocumentDetailPage } from '@/hooks/useDocumentDetailPage';
 import { useDragToResize } from '@/hooks/useDragToResize';
+import { useTabletDetailPanel } from '@/hooks/useTabletDetailPanel';
 import { useFilterParams } from '@/hooks/useFilterParams';
 import {
   emptyFilters,
@@ -18,7 +19,7 @@ import { DESKTOP_QUERY, OWN_SCROLL_AREA_QUERY } from '@/hooks/breakpointQueries'
 import { describeCatalogScope } from './catalogScopeTitle';
 import { CatalogDesktopSidebar } from './CatalogDesktopSidebar';
 import { CatalogTargetNotFound } from './CatalogTargetNotFound';
-import { CatalogDetailPage, CatalogMobileDetailOverlay } from './CatalogDetailPanel';
+import { CatalogDetailPage, CatalogDetailPanel } from './CatalogDetailPanel';
 import { CatalogMobileList } from './CatalogMobileList';
 import { CatalogToolbar } from './CatalogToolbar';
 import { ControlTable } from './ControlTable';
@@ -91,12 +92,24 @@ export function CatalogBrowser() {
   // Unterhalb `md` scrollt das Dokument: Das Detail ersetzt dort die Liste als
   // Seite, statt als Overlay mit eigenem Scrollbereich darüber zu liegen (GSPP-447).
   const showDetailAsPage = !hasOwnScrollArea && selectedControl !== null;
+  // Tablet-Band (768–1023 px): Zwei-Spalten-Master-Detail — Trefferliste und
+  // Inline-Detail nebeneinander, beide mit eigenem Scrollbereich (GSPP-514).
+  // Die Baum-Navigation liegt dort in der Schublade (`isPersistentNav` erst ab `lg`).
+  const isTablet = hasOwnScrollArea && !isDesktop;
+  const showTabletDetail = isTablet && selectedControl !== null;
   // Aktiv auch beim Laden; Bereich aus der Route, die dem Katalogwechsel vorausgeht.
   useDocumentDetailPage({
     enabled: !hasOwnScrollArea,
     controlId: selectedControl?.id ?? null,
     scopeKey: `${catalogKey ?? selectionScopeId}:${scopeId ?? ''}`,
     listReady: displayState.kind === 'content',
+    onClose: closeDetail,
+  });
+  // Fokus- und Escape-Vertrag des Inline-Detailpanels; nicht modal, daher
+  // ohne Fokusfalle, `inert` und Scroll-Sperre (GSPP-514).
+  useTabletDetailPanel({
+    enabled: isTablet,
+    controlId: selectedControl?.id ?? null,
     onClose: closeDetail,
   });
   const {
@@ -290,6 +303,33 @@ export function CatalogBrowser() {
               hasActiveFilters={hasActiveFilters}
               filterPanelProps={filterPanelProps}
             />
+            {/*
+              Tablet-Band (GSPP-514): Inline-Detail neben der Trefferliste in
+              Desktop-Lesebreite, beide Spalten mit eigenem Scrollbereich.
+              Sichtbar nur zwischen `md` und `lg` (`hidden md:flex lg:hidden`
+              spiegelt `isTablet`); darunter gilt Detail-als-Seite, darüber die
+              Desktop-Spalte.
+            */}
+            {showTabletDetail && selectedControl && (
+              <div
+                data-tablet-detail-panel
+                data-testid="tablet-detail-panel"
+                className="hidden md:flex lg:hidden min-h-0 flex-col overflow-hidden border-l border-[var(--color-border-default)] bg-[var(--color-surface-raised)] shadow-[var(--shadow-sm)] shrink-0"
+                style={{ width: DETAIL_DEFAULT_WIDTH }}
+              >
+                <div
+                  key={`${contentCatalog.catalogKey}:${selectedControl.id}`}
+                  className="animate-panel-in flex min-h-0 flex-1 flex-col"
+                >
+                  <CatalogDetailPanel
+                    catalog={contentCatalog}
+                    control={selectedControl}
+                    onClose={closeDetail}
+                    onNavigateToControl={navigateToControl}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -302,16 +342,6 @@ export function CatalogBrowser() {
             onNavigateToControl={navigateToControl}
           />
         )}
-
-        {/* GSPP-268, bewusste Ausnahme: rendert inaktiv bereits null und besitzt
-          seinen Modal-Lifecycle selbst (GSPP-188) — ein parent-Gate brächte keinen Mount-Gewinn. */}
-        <CatalogMobileDetailOverlay
-          catalog={contentCatalog}
-          control={selectedControl}
-          active={!!selectedControl && !isDesktop && hasOwnScrollArea}
-          onClose={closeDetail}
-          onNavigateToControl={navigateToControl}
-        />
       </div>
     </>
   );

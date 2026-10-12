@@ -8,8 +8,9 @@
  */
 
 /**
- * Ab dieser Breite scrollen Seiteninhalt und mobile Trefferlisten selbst, und
- * die Navigation ist persistent statt Schublade (Tailwind `md`).
+ * Ab dieser Breite scrollen Seiteninhalt und mobile Trefferlisten selbst
+ * (Tailwind `md`). Die Katalog-Navigation ist erst ab `lg` persistent und
+ * liegt darunter als Schublade (GSPP-514).
  */
 export const OWN_SCROLL_AREA_QUERY = '(width >= 48rem)';
 
