@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Control } from '@/domain/models';
 import { downloadCSV } from '@/features/export/csvExport';
+import { emptyFilters } from '@/hooks/useFilteredControls';
 import type { FilterPanelProps } from './FilterPanel';
 import { CatalogToolbar } from './CatalogToolbar';
 
@@ -40,7 +41,7 @@ describe('CatalogToolbar', () => {
         filteredControls={[control]}
         allControls={[control]}
         sectionFilename="grundschutz-TOP.1.csv"
-        filterPanelProps={{} as FilterPanelProps}
+        filterPanelProps={{ filters: emptyFilters } as FilterPanelProps}
         isDesktop={false}
       />,
     );
@@ -65,6 +66,40 @@ describe('CatalogToolbar', () => {
     expect(onClearSelection).toHaveBeenCalledOnce();
   });
 
+  it('counts selected values across flat facets and all four security targets', () => {
+    render(
+      <CatalogToolbar
+        title="Testthema"
+        filteredCount={0}
+        totalCount={2}
+        hasActiveFilters
+        onClearFilters={vi.fn()}
+        checkedIds={new Set()}
+        mobileSelectMode={false}
+        onToggleMobileSelectMode={vi.fn()}
+        onClearSelection={vi.fn()}
+        filteredControls={[]}
+        allControls={[control]}
+        sectionFilename="test.csv"
+        filterPanelProps={{ filters: {
+          ...emptyFilters,
+          modalverben: ['MUSS', 'SOLLTE'],
+          securityLevels: ['erhöht'],
+          effortLevels: ['3'],
+          tags: ['Tag'],
+          zielobjektKategorien: ['Server'],
+          handlungsworte: ['prüfen'],
+          dokumentationstypen: ['Plan'],
+          linkRelationen: ['required'],
+          securityTargets: { confidentiality: ['1', '2'], integrity: ['2'], availability: ['1'], authenticity: ['2'] },
+        } } as FilterPanelProps}
+        isDesktop={false}
+      />,
+    );
+    const trigger = screen.getByRole('button', { name: 'Filter anzeigen, 14 aktiv' });
+    expect(trigger).toHaveTextContent('14');
+  });
+
   it('unmounts open mobile sheets while they are suspended and releases their scroll lock', () => {
     const toolbar = (mobileSheetsSuspended: boolean) => (
       <CatalogToolbar
@@ -80,7 +115,7 @@ describe('CatalogToolbar', () => {
         filteredControls={[control]}
         allControls={[control]}
         sectionFilename="grundschutz-TOP.1.csv"
-        filterPanelProps={{} as FilterPanelProps}
+        filterPanelProps={{ filters: emptyFilters } as FilterPanelProps}
         isDesktop={false}
         mobileSheetsSuspended={mobileSheetsSuspended}
       />
@@ -119,7 +154,7 @@ describe('CatalogToolbar', () => {
         filteredControls={[control]}
         allControls={[control]}
         sectionFilename="grundschutz-katalog.csv"
-        filterPanelProps={{} as FilterPanelProps}
+        filterPanelProps={{ filters: emptyFilters } as FilterPanelProps}
         isDesktop={false}
         onSelectionExported={onSelectionExported}
       />,
@@ -161,7 +196,7 @@ describe('CatalogToolbar', () => {
       filteredControls: [control],
       allControls: [control],
       sectionFilename: 'grundschutz-katalog.csv',
-      filterPanelProps: {} as FilterPanelProps,
+      filterPanelProps: { filters: emptyFilters } as FilterPanelProps,
     };
     const view = render(<CatalogToolbar {...props} isDesktop={false} />);
 
@@ -209,7 +244,7 @@ describe('CatalogToolbar', () => {
       filteredControls: [control],
       allControls: [control],
       sectionFilename: 'grundschutz-katalog.csv',
-      filterPanelProps: {} as FilterPanelProps,
+      filterPanelProps: { filters: emptyFilters } as FilterPanelProps,
     };
     const view = render(<CatalogToolbar {...props} isDesktop={false} />);
 

@@ -133,6 +133,7 @@ async function expectTabStaysInside(dialog: Element) {
 
 test('Filter-Sheet: benannter modaler Dialog, inerter Hintergrund, Escape gibt Fokus zurück', async () => {
   const shell = await renderWithBackground(402, createElement(CatalogMobileFilterSheet, {
+    activeCount: 0,
     filterPanelProps: {
       filters: emptyFilters,
       facetCounts: filterPanelFacetCounts,
@@ -323,6 +324,7 @@ test('Sheet unter Tablet-Detail: gemeinsames Schließen gibt den Fokus an den Sh
 
 function filterSheet(hasActiveFilters = false) {
   return createElement(CatalogMobileFilterSheet, {
+    activeCount: 0,
     filterPanelProps: {
       filters: emptyFilters,
       facetCounts: filterPanelFacetCounts,
@@ -371,8 +373,8 @@ function expectInViewport(element: Element) {
  * Kopf und bleiben sichtbar, die Aktionen darunter sind per Scrollen erreichbar.
  */
 test.each([
-  ['Filter-Sheet', 'Filter anzeigen', 'Fertig', 16, () => filterSheet(), true],
-  ['Filter-Sheet', 'Filter anzeigen', 'Fertig', 32, () => filterSheet(), true],
+  ['Filter-Sheet', 'Filter anzeigen', 'Schließen (3)', 16, () => filterSheet(), true],
+  ['Filter-Sheet', 'Filter anzeigen', 'Schließen (3)', 32, () => filterSheet(), true],
   ['Export-Sheet', 'CSV exportieren', 'Schließen', 16, exportSheet, true],
   ['Export-Sheet', 'CSV exportieren', 'Schließen', 32, exportSheet, true],
 ] as const)('%s bei 250 px Fensterhöhe und %s: Überschrift und „%s“ bleiben sichtbar (%i px Schrift)', async (_name, triggerName, closeName, fontSize, surface, lastActionReachable) => {
@@ -406,20 +408,20 @@ test.each([
   await expect.poll(() => document.querySelector('dialog')).toBeNull();
 });
 
-test('Filter-Sheet: „Fertig“ überdeckt bei aktiven Filtern „Zurücksetzen“ nicht', async () => {
+test('Filter-Sheet: „Schließen (3)“ überdeckt bei aktiven Filtern „Zurücksetzen“ nicht', async () => {
   const shell = await renderWithBackground(402, filterSheet(true));
   buttonByName(shell, 'Filter anzeigen').click();
   await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
   const dialog = document.querySelector('dialog')!;
   await Promise.all(dialog.getAnimations().map((animation) => animation.finished));
 
-  const done = buttonByName(dialog, 'Fertig');
+  const done = buttonByName(dialog, 'Schließen (3)');
   const reset = buttonByName(dialog, 'Zurücksetzen');
   const doneBox = done.getBoundingClientRect();
   const resetBox = reset.getBoundingClientRect();
   expect(doneBox.height).toBeGreaterThanOrEqual(44);
   expect(doneBox.bottom <= resetBox.top || resetBox.bottom <= doneBox.top).toBe(true);
-  // Jeder Punkt der Trefferfläche von „Fertig“ trifft „Fertig“.
+  // Jeder Punkt der Trefferfläche von „Schließen (3)“ trifft „Schließen (3)“.
   for (const y of [doneBox.top + 1, doneBox.top + doneBox.height / 2, doneBox.bottom - 1]) {
     expect(document.elementFromPoint(doneBox.left + doneBox.width / 2, y)?.closest('button')).toBe(done);
   }
@@ -454,7 +456,7 @@ test('Filter-Sheet: Größenwechsel bewahrt Fokus und manuelle Klappzustände', 
   await page.viewport(700, 250);
   await expect.poll(() => heading.dataset.scrollSummary).toBe('false');
   expect(document.activeElement).toBe(checkbox);
-  buttonByName(dialog, 'Fertig').click();
+  buttonByName(dialog, 'Schließen (3)').click();
 });
 
 /** Filter-Sheet mit 32 px Schrift bei 700 × 800 px; die Sektionenliste scrollt selbst. */
@@ -493,7 +495,7 @@ test('Filter-Sheet: Größenwechsel erhält die Position einer gescrollten Liste
   await expectRowOnTop();
   await resize(800, 'false');
   await expectRowOnTop();
-  buttonByName(dialog, 'Fertig').click();
+  buttonByName(dialog, 'Schließen (3)').click();
 });
 
 test('Filter-Sheet: Vergrößern nahe dem neuen Scrolllimit behält die Listenposition', async () => {
@@ -512,7 +514,7 @@ test('Filter-Sheet: Vergrößern nahe dem neuen Scrolllimit behält die Listenpo
 
   await resize(800, 'false');
   expect(Math.abs(scroller().scrollTop - anchor)).toBeLessThanOrEqual(1);
-  buttonByName(dialog, 'Fertig').click();
+  buttonByName(dialog, 'Schließen (3)').click();
 });
 
 test('Filter-Sheet: aufgeklappte Zeilen bleiben nach Einklappen aller Sektionen erreichbar', async () => {
@@ -546,7 +548,7 @@ const sheetGeometries = [
 ] as const;
 
 for (const [name, triggerName, closeName, surface] of [
-  ['Filter', 'Filter anzeigen', 'Fertig', () => filterSheet()],
+  ['Filter', 'Filter anzeigen', 'Schließen (3)', () => filterSheet()],
   ['Export', 'CSV exportieren', 'Schließen', exportSheet],
 ] as const) {
   test.each(sheetGeometries)(`${name}: Tokens und erreichbare letzte Aktion bei %i × %i / %i px Schrift mit Bottom-Inset`, async (width, height, fontSize) => {

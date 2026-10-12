@@ -192,7 +192,7 @@ describe.each(['Desktop', 'Mobile'] as const)('Filterdarstellung — %s', (surfa
   function Panel({ props }: { readonly props: FilterPanelProps }) {
     return surface === 'Desktop'
       ? <FilterPanel {...props} />
-      : <CatalogMobileFilterSheet filterPanelProps={props} />;
+      : <CatalogMobileFilterSheet filterPanelProps={props} activeCount={0} />;
   }
 
   function openMobile() {
