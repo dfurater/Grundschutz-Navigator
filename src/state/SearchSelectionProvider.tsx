@@ -5,7 +5,7 @@ import { useControlSelection } from '@/hooks/useControlSelection';
 import { SearchSelectionContext } from '@/state/SearchSelectionContext';
 
 /** Die Shell hält genau eine Suchauswahl flüchtig über Seitenwechsel. */
-export function SearchSelectionProvider({ children }: { children: ReactNode }) {
+export function SearchSelectionProvider({ children }: { readonly children: ReactNode }) {
   const { catalog } = useCatalog();
   const location = useLocation();
   const searchQuery = matchPath('/suche', location.pathname)

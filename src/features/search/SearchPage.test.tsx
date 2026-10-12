@@ -348,11 +348,15 @@ describe('SearchPage', () => {
       expect(screen.getByTestId('route')).toHaveTextContent('["/suche","?q=verfahren",null]');
     });
 
-    it('erhält Desktop-Markierungen über Detail und Browser-Zurück', async () => {
+    it('erhält Desktop-Markierungen nach Export über Detail und Browser-Zurück', async () => {
       mockedUseMediaQuery.mockReturnValue(true);
       const user = userEvent.setup();
-      renderSearch([makeControl()]);
+      const control = makeControl();
+      renderSearch([control]);
       await user.click(screen.getByRole('checkbox', { name: 'ASST.1.1 auswählen' }));
+      await user.click(screen.getByRole('button', { name: 'Export (1)' }));
+      expect(downloadCSV).toHaveBeenCalledWith([control], 'grundschutz-auswahl.csv');
+      expect(screen.getByRole('checkbox', { name: 'ASST.1.1 auswählen' })).toBeChecked();
       await user.click(within(screen.getByTestId('search-results-desktop')).getAllByRole('row')[1]);
       expect(screen.queryByTestId('search-results-desktop')).not.toBeInTheDocument();
       await user.click(screen.getByRole('button', { name: 'Browser-Zurück' }));
