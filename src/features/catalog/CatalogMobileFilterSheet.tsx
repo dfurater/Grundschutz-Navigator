@@ -86,7 +86,7 @@ export function CatalogMobileFilterSheet({
               adaptiveHeader
               headingId={headingId}
               headerAction={(
-                <Button variant="ghost" size="sm" className="min-h-[44px] min-w-[44px] -mt-3 -mb-1.5 -mr-2 text-sm tabular-nums whitespace-nowrap" onClick={close} data-dialog-close>
+                <Button variant="ghost" size="sm" className="min-h-[44px] min-w-[44px] -mt-3 -mb-1.5 -mr-2 text-sm tabular-nums" onClick={close} data-dialog-close>
                   Schließen ({filterPanelProps.filteredCount})
                 </Button>
               )}

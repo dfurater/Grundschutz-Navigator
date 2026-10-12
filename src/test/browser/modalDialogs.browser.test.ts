@@ -322,7 +322,7 @@ test('Sheet unter Tablet-Detail: gemeinsames Schließen gibt den Fokus an den Sh
   expect(document.activeElement).toBe(trigger);
 });
 
-function filterSheet(hasActiveFilters = false) {
+function filterSheet(hasActiveFilters = false, filteredCount = 3) {
   return createElement(CatalogMobileFilterSheet, {
     activeCount: 0,
     filterPanelProps: {
@@ -330,8 +330,8 @@ function filterSheet(hasActiveFilters = false) {
       facetCounts: filterPanelFacetCounts,
       filteredFacetCounts: filterPanelFacetCounts,
       hasActiveFilters,
-      filteredCount: 3,
-      totalCount: 3,
+      filteredCount,
+      totalCount: filteredCount,
       onFiltersChange: () => {},
       onClearFilters: () => {},
     },
@@ -537,6 +537,25 @@ test('Filter-Sheet: aufgeklappte Zeilen bleiben nach Einklappen aller Sektionen 
   expectWithin(row, row.closest('[data-overlayscrollbars-viewport]')!);
 });
 
+test.each([665, 1000])('Filter-Sheet: Titel und Schließen (%i) bei 320 px und doppelter Standardschrift bleiben sichtbar', async (count) => {
+  await commands.setBrowserFontSize(32);
+  const shell = await renderWithBackground(320, filterSheet(false, count));
+  buttonByName(shell, 'Filter anzeigen').click();
+  await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
+  const dialog = document.querySelector('dialog')!;
+  await Promise.all(dialog.getAnimations().map((animation) => animation.finished));
+  const title = dialog.querySelector('h2')!;
+  const close = buttonByName(dialog, `Schließen (${count})`);
+  expectInViewport(title);
+  expectInViewport(close);
+  expect(dialog.scrollWidth).toBeLessThanOrEqual(dialog.clientWidth);
+  expect(title.getBoundingClientRect().right).toBeLessThanOrEqual(close.getBoundingClientRect().left);
+  for (const element of [title, close]) {
+    expect(element.scrollWidth).toBeLessThanOrEqual(element.clientWidth);
+  }
+  close.click();
+  await expect.poll(() => document.querySelector('dialog')).toBeNull();
+});
 
 const sheetGeometries = [
   [320, 640, 16],
