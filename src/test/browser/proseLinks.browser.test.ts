@@ -126,11 +126,11 @@ function assertReadingMeasure(paragraph: HTMLElement) {
   const style = getComputedStyle(paragraph);
   const context = document.createElement('canvas').getContext('2d')!;
   context.font = style.font;
-  const measure = context.measureText('0').width * 75;
+  const measure = context.measureText('0').width * 60;
   expect(paragraph.getBoundingClientRect().width, paragraph.textContent).toBeLessThanOrEqual(measure + 1);
 }
 
-test.each(readingSurfaces)('%s: Prosa bleibt auch auf breiten Seiten innerhalb von 75ch', async (_name, component) => {
+test.each(readingSurfaces)('%s: Prosa bleibt auch auf breiten Seiten innerhalb von 60ch', async (_name, component) => {
   await page.viewport(1440, 900);
   const container = render(createElement(component));
   await document.fonts.ready;
@@ -140,7 +140,7 @@ test.each(readingSurfaces)('%s: Prosa bleibt auch auf breiten Seiten innerhalb v
   for (const paragraph of paragraphs) assertReadingMeasure(paragraph);
 });
 
-test('Anforderungsprosa bleibt bei breitem Detailpanel innerhalb von 75ch und erhält den Wortlaut', async () => {
+test('Anforderungsprosa bleibt bei breitem Detailpanel innerhalb von 60ch und erhält den Wortlaut', async () => {
   await page.viewport(1440, 900);
   const statement = 'Die Organisation MUSS die Anforderungen prüfen und die Ergebnisse dokumentieren. '.repeat(8);
   const container = render(createElement(ControlStatement, { statement }));
