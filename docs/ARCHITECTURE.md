@@ -32,6 +32,22 @@ Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application 
 
 `axe-core` (MPL-2.0, nur Entwicklungsabhängigkeit, exakt gepinnt, nicht Teil des ausgelieferten Bundles) liefert in der Browser-Lane die Regelprüfung `target-size`; die Lane führt es in `optimizeDeps.include`, damit Vite es nicht mitten im Lauf nachoptimiert. Die Versionen stehen in `package.json`, `package-lock.json` bindet sie samt Integritätshashes. Chromium ist an den gepinnten `playwright`-Stand gebunden: Der CI-Schritt lädt ausschließlich die Revision, die das `browsers.json` der von `playwright` aufgelösten `playwright-core`-Installation nennt; einen unversionierten Browser-Download gibt es nicht.
 
+`src/test/browser/navigatorA11y.browser.test.ts` prüft die echte `AppShell` mit produktiver Routentabelle und Styles bei 390 und 1440 px. `a11yCatalogState.ts` stellt einen synthetischen Katalogzustand mit zwei Kontrollen und Vokabularregistry bereit; der Test verwendet die echte Suche und das echte `ControlDetail`. Vor jedem Scan bestätigt er den gerenderten Zielinhalt und wartet auf die geladenen Schriften.
+
+| Zustand | Nachweis vor dem Axe-Scan |
+| --- | --- |
+| Startseite | Produkttitel und Praktik des synthetischen Katalogs |
+| Katalogansicht | Beide Kontrollen der gerenderten Liste |
+| Suchergebnisse | Ein Treffer zur Anfrage `Zugriff` im aktiven Ergebniszweig |
+| Control-Detail | Kontrollüberschrift, Anforderung und Umsetzungshinweise |
+| Mobiles Filter-/Export-Sheet | Geöffneter benannter Dialog mit geprüftem Tab-Umlauf in `modalDialogs.browser.test.ts` |
+
+`src/test/browser/axeAssertions.ts` prüft für die vollständigen Seitenzustände die Axe-Tags `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa` und `wcag22aa` ohne Ausnahmen für einzelne Regeln. Die vorhandenen Sheet- und Tablet-Panel-Scans verwenden denselben Helper mit `scope: all` und allen standardmäßig aktiven Axe-Regeln. Jeder Verstoß erzeugt einen Fehler mit Zustandsname, Regel-ID, DOM-Ziel, HTML-Ausschnitt und Axe-Fehlerbeschreibung. `axeAssertions.browser.test.ts` bestätigt an einem absichtlich unbenannten Button, dass der Helper mit `button-name`, Zustand und Selektor ablehnt. Die Tests laufen über `npm run test:browser` im CI-Job `validate` mit dem Egress-Guard; Axe benötigt keinen externen Analysedienst.
+
+Die Zustands-Scans prüfen die jeweils gerenderten DOM-Teilbäume; Axe-Best-Practice-Regeln außerhalb der genannten WCAG-Tags gehören bei den vollständigen Seiten nicht zu dieser Prüfung. Die automatische Regelprüfung belegt keine vollständige WCAG-Konformität. Tastaturbedienung, logische Fokus- und Lesereihenfolge, sichtbarer Fokus, Fokus-Rückkehr sowie Screenreader-Ansagen und Verständlichkeit benötigen ergänzende manuelle Prüfungen; die Browser-Interaktionstests prüfen ausgewählte Tastatur-/Fokusverträge in Chromium. Native Screenreader und weitere Browser-/Gerätekombinationen laufen nicht in dieser Lane.
+
+`TreeNav` trennt Kürzel, Titel und Zähler durch Textleerzeichen; das `aria-label` enthält dieselbe durch Leerzeichen getrennte Wortfolge. Die Desktop-Zustandsprüfungen erfassen diese Kombination mit der WCAG-Regel `label-content-name-mismatch`.
+
 Ob der Vertrag nach einem Versions-Bump noch gilt, prüft `npm run verify-documented-versions` als Pflichtschritt im CI-Job `validate`. Der Guard verlangt exakte Pins in `package.json`, identische Pins für das Vitest-Trio, die zur `playwright`-Auflösung gehörende `playwright-core`-Version samt Chromium-Eintrag und einen Abschnitt ohne Versionsliteral. Er ist netzfrei und fail-closed: Eine nicht auffindbare Überschrift, Kopfzeile, Tabellenzeile oder Satzform lässt ihn ebenso fehlschlagen wie ein verletzter Vertragspunkt. Er ergänzt den PR-Dokumentationsvertrag aus `scripts/pr-documentation-contract.mjs`, der nur bei Änderungen unter `src/` greift und Dependency-PRs deshalb nicht erfasst.
 
 Der Referenztest in `src/test/browser/indexedDb.browser.test.ts` legt eine IndexedDB-Datenbank an, schreibt und liest einen Datensatz, löscht die Datenbank und prüft anschließend ihre Abwesenheit über `indexedDB.databases()`. Ein durch eine noch offene Verbindung blockiertes `deleteDatabase()` wartet bis zu zwei Sekunden auf deren Schließen und lehnt danach mit einem erklärenden Fehler ab.
@@ -273,7 +289,9 @@ src/                              # Anwendungsquellcode
 │   └── oscalImport.worker.ts         # Klasse-2-Import
 ├── test/                         # Testinfrastruktur (siehe docs/OSCAL_ROUND_TRIP.md)
 │   ├── browser/                      # Chromium-Browser-Lane
+│   │   ├── a11yCatalogState.ts          # Synthetischer Katalogzustand für Accessibility-Prüfungen
 │   │   ├── appShellRouter.ts             # Shell mit echter Routentabelle im Speicher-Router
+│   │   ├── axeAssertions.ts             # WCAG-A/AA-Prüfung mit Zustands- und Elementdiagnose
 │   │   ├── browserCommands.d.ts          # Typen der Browser-Commands
 │   │   ├── browserEgressDecision.ts      # Reine Egress-Entscheidung
 │   │   ├── browserEgressGuard.ts         # Playwright-Egress-Guard
