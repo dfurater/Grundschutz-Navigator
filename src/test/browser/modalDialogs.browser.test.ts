@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter, Routes, Route } from 'react-router';
 import { HeaderBar } from '@/components/HeaderBar';
 import { SearchPage } from '@/features/search/SearchPage';
+import { SearchSelectionProvider } from '@/state/SearchSelectionProvider';
 import { afterEach, expect, test, vi } from 'vitest';
 import { commands, page, userEvent } from 'vitest/browser';
 import type { Catalog, Control } from '@/domain/models';
@@ -73,10 +74,10 @@ function renderSurface(surface: ReactNode) {
     root?.render(createElement(MemoryRouter, null,
       createElement(HeaderBar),
       createElement('button', { type: 'button' }, 'Suche im App-Kopf'),
-      createElement(Routes, null,
+      createElement(SearchSelectionProvider, null, createElement(Routes, null,
         createElement(Route, { path: '/', element: null }),
         createElement(Route, { path: '/suche', element: createElement(SearchPage) }),
-      ),
+      )),
       surface,
       createElement('a', { href: '#impressum' }, 'Impressum'),
     ));

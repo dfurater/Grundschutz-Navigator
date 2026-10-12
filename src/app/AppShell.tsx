@@ -39,6 +39,7 @@ import {
 import { useRoutePrefetch } from '@/app/routePrefetch';
 import { NavigationPendingIndicator, NavigationPendingProvider } from '@/app/navigationPending';
 import { MobileNavigationContext } from '@/state/MobileNavigationContext';
+import { SearchSelectionProvider } from '@/state/SearchSelectionProvider';
 
 /* ------------------------------------------------------------------ */
 /*  Build TreeNav items from catalog data                              */
@@ -75,7 +76,9 @@ const SIDEBAR_MAX_WIDTH = 480;
 export function AppShell() {
   return (
     <NavigationPendingProvider>
-      <AppShellLayout />
+      <SearchSelectionProvider>
+        <AppShellLayout />
+      </SearchSelectionProvider>
     </NavigationPendingProvider>
   );
 }

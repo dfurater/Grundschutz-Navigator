@@ -141,6 +141,8 @@ src/                              # Anwendungsquellcode
 │   ├── CatalogContext.tsx            # Katalog-Kontextprovider
 │   ├── MobileNavigationContext.ts    # Mobiler Navigationszustand für Sheet-Mount-Gates
 │   ├── NavigationPendingContext.ts   # Wartezustand der Navigation für Shell und Dialoge
+│   ├── SearchSelectionContext.ts     # Zugriff auf die flüchtige Suchauswahl
+│   ├── SearchSelectionProvider.tsx   # Suchauswahl über Routenwechsel mit Scope-Reset
 │   ├── catalogArtifacts.ts           # Auslieferungsvertrag und Ladevorgang je Katalog
 │   ├── catalogParseWorker.ts         # Typisierter Client des Katalog-Parser-Workers
 │   ├── catalogParsing.ts             # Parsepipeline für Worker und Main-Thread-Fallback
@@ -714,13 +716,13 @@ Die Sektionsmodule erhalten ausschließlich benötigte Controls, aufgelöste Vok
 
 | Baustein | Verantwortung |
 |----------|----------------|
-| `useControlSelection` | Läuft mit dem Scope `search:<catalogKey>:<query>` — unabhängig vom Katalog-Browser-Scope (`catalogKey` allein). Jede Änderung von `q` liefert synchron eine leere Auswahl. |
-| `resultsUiState` | Führt `sort`, `visibleResultCount` und `mobileSelectMode` gemeinsam query-gebunden; ein Query-Wechsel setzt sie synchron zurück. |
+| `SearchSelectionProvider` | Liegt in `AppShell` oberhalb der Seitenrouten und hält genau eine Suchauswahl samt `mobileSelectMode` im React-Arbeitsspeicher. `useControlSelection` grenzt sie mit einem aus Katalogschlüssel und Anfrage gebildeten Scope von der Katalogbrowser-Auswahl ab. Detailwechsel und Rückkehr zur gleichen Suche erhalten beide Zustände auf Desktop und Mobile. Anfrage- und Katalogwechsel verwerfen den Zustand synchron, auch bei einem Katalogwechsel außerhalb der Suchseite; Rückkehr zu einem verworfenen Scope beginnt leer. Ein neuer App-Mount beginnt leer. |
+| `resultsUiState` | Führt `sort` und `visibleResultCount` gemeinsam query-gebunden; ein Query-Wechsel setzt sie synchron zurück. Beide Zustände liegen lokal in `SearchPage`. |
 | `SearchResultsToolbar` | Zähler-Chip (`CatalogSelectionChip`), Auswahl-Schalter (`CatalogMobileSelectToggle`) sowie die wiederverwendeten Export-Komponenten, beide über die Prop `isDesktop` bedingt gemountet; Chip-Regel, Auswahl-Schalter und CSV-Auslöser sind dieselben wie im Katalog. Kein Filter-Zugang. |
 | `ControlTable`s `selectableControls` | Optionale Prop, die ausschließlich die Header-Aktion „Alle auswählen" bestimmt; Standard bleibt `controls`. `SearchPage` übergibt die gerenderte Seite als `controls`, aber alle sortierten Query-Treffer als `selectableControls`. |
-| `CatalogMobileSelectionBar` | Wiederverwendet; `SearchPage` rendert sie selbst im mobilen Auswahlmodus und beendet Modus und Auswahl nach Export oder „Fertig". |
+| `CatalogMobileSelectionBar` | Wiederverwendet; `SearchPage` rendert sie selbst im mobilen Auswahlmodus und beendet Modus und Auswahl nach mobilem Auswahl-Export oder „Fertig". Der Desktop-Auswahl-Export erhält die Markierungen; der Zähler-Chip leert sie über „Auswahl aufheben“. |
 
-Export-Dateinamen sind fest: Query-Treffer heißen `grundschutz-suchergebnisse.csv` (Desktop in aktueller Tabellensortierung, Mobile in Suchrelevanzreihenfolge), Auswahl heißt `grundschutz-auswahl.csv`, der Gesamtkatalogexport heißt `grundschutz-gesamtkatalog.csv`. Der Suchbegriff selbst fließt nie in Dateiname, Log oder zusätzlichen Speicher ein.
+Export-Dateinamen sind fest: Query-Treffer heißen `grundschutz-suchergebnisse.csv` (Desktop in aktueller Tabellensortierung, Mobile in Suchrelevanzreihenfolge), Auswahl heißt `grundschutz-auswahl.csv`, der Gesamtkatalogexport heißt `grundschutz-gesamtkatalog.csv`. Der Suchbegriff liegt im URL-Parameter `q` und im flüchtigen Such-Scope; er fließt weder in Dateiname noch Log oder Browserspeicher ein. Markierte IDs und Auswahlmodus liegen ausschließlich im React-Arbeitsspeicher und gelangen weder in URL oder History-State noch in Browserspeicher oder Netzwerk.
 
 ### Suchindex-Cache
 

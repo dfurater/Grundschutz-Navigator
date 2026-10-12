@@ -12,6 +12,7 @@ import { buildVocabularyRegistry } from '@/domain/vocabulary';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { SearchPage } from '@/features/search/SearchPage';
+import { SearchSelectionProvider } from '@/state/SearchSelectionProvider';
 import { useSearch } from '@/features/search/useSearch';
 import { ControlDetail } from './ControlDetail';
 import { ControlTable } from './ControlTable';
@@ -495,9 +496,11 @@ describe('catalog typography', () => {
 
     render(
       <MemoryRouter initialEntries={['/suche?q=verfahren']}>
-        <Routes>
-          <Route path="/suche" element={<SearchPage />} />
-        </Routes>
+        <SearchSelectionProvider>
+          <Routes>
+            <Route path="/suche" element={<SearchPage />} />
+          </Routes>
+        </SearchSelectionProvider>
       </MemoryRouter>,
     );
 
