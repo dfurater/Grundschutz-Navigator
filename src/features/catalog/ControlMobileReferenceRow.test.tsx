@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { Control } from '@/domain/models';
@@ -179,14 +179,49 @@ describe('ControlMobileReferenceRow', () => {
       />,
     );
 
+    // Echter Tab-Einstieg vom Dokument aus landet zuerst auf der Checkbox.
+    await user.tab();
     const checkbox = screen.getByRole('checkbox', { name: 'GC.1.1 auswählen' });
-    checkbox.focus();
     expect(checkbox).toHaveFocus();
-    fireEvent.click(checkbox);
+
+    // Leertaste schaltet die Auswahl, ohne zu navigieren.
+    await user.keyboard(' ');
+    expect(onCheckedChange).toHaveBeenCalledTimes(1);
     expect(onCheckedChange).toHaveBeenCalledWith(control, true);
     expect(onSelect).not.toHaveBeenCalled();
 
+    // Weiter per Tab zum Zeilen-Button; Leertaste dort navigiert, ohne auszuwählen.
     await user.tab();
     expect(screen.getByRole('button')).toHaveFocus();
+    onCheckedChange.mockClear();
+    await user.keyboard(' ');
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onCheckedChange).not.toHaveBeenCalled();
+  });
+
+  it('schaltet per Klick auf die sichtbare Box genau einmal und navigiert nicht (GSPP-517)', async () => {
+    const user = userEvent.setup();
+    const control = makeControl('GC.1.1', () => 'Erste Kontrolle');
+    const controlsById = new Map([[control.id, control]]);
+    const onSelect = vi.fn();
+    const onCheckedChange = vi.fn();
+    const { container } = render(
+      <ControlMobileReferenceRow
+        control={control}
+        controlsById={controlsById}
+        selectMode
+        checked={false}
+        onSelect={onSelect}
+        onCheckedChange={onCheckedChange}
+      />,
+    );
+
+    const visualBox = container.querySelector(
+      'label div[aria-hidden="true"]',
+    ) as HTMLElement;
+    await user.click(visualBox);
+    expect(onCheckedChange).toHaveBeenCalledTimes(1);
+    expect(onCheckedChange).toHaveBeenCalledWith(control, true);
+    expect(onSelect).not.toHaveBeenCalled();
   });
 });

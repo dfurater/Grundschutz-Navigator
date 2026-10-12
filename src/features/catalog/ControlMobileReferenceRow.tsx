@@ -33,8 +33,9 @@ export const ControlMobileReferenceRow = memo(function ControlMobileReferenceRow
   const showCheckbox = selectMode && onCheckedChange !== undefined;
 
   // GSPP-517: Die Zeile navigiert immer; nur die echte Checkbox schaltet die
-  // Auswahl. Getrennte Handler statt eines Selektors über `selectMode` —
-  // jede Methode hat genau einen Zweck.
+  // Auswahl. Beide sind Geschwister: Die Checkbox ist ein natives Label, der
+  // Zeileninhalt ein nativer Button — kein umgedeuteter Container, daher auch
+  // kein stopPropagation nötig (Sonar S6848/S6847/S1082).
   const handleSelect = () => {
     onSelect(control);
   };
@@ -45,23 +46,18 @@ export const ControlMobileReferenceRow = memo(function ControlMobileReferenceRow
 
   return (
     <div
-      onClick={handleSelect}
-      className={`catalog-mobile-reference-row w-full flex items-center gap-2 px-3 py-2 transition-colors active:bg-[var(--color-surface-subtle)] ${
+      className={`catalog-mobile-reference-row w-full flex items-stretch gap-0 transition-colors active:bg-[var(--color-surface-subtle)] ${
         selectMode && checked
           ? 'bg-[var(--color-accent-soft)]'
           : 'bg-[var(--color-surface-base)] hover:bg-[var(--color-surface-subtle)]'
       }`}
     >
       {showCheckbox && (
-        <label
-          onClick={(event) => event.stopPropagation()}
-          className="relative flex min-h-[44px] min-w-[44px] -my-2 -ml-3 cursor-pointer items-center justify-center"
-        >
+        <label className="relative flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center">
           <input
             type="checkbox"
             checked={checked}
             onChange={(event) => handleCheckedChange(event.target.checked)}
-            onClick={(event) => event.stopPropagation()}
             aria-label={`${control.id} auswählen`}
             className="peer sr-only"
           />
@@ -75,11 +71,8 @@ export const ControlMobileReferenceRow = memo(function ControlMobileReferenceRow
       <button
         type="button"
         data-control-row={control.id}
-        onClick={(event) => {
-          event.stopPropagation();
-          handleSelect();
-        }}
-        className="flex min-h-[44px] min-w-0 flex-1 cursor-pointer items-center gap-2 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus-ring)]"
+        onClick={handleSelect}
+        className="flex min-h-[44px] min-w-0 flex-1 cursor-pointer items-center gap-2 py-2 pl-2 pr-3 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus-ring)]"
       >
         <div className="flex-1 min-w-0">
           {/* Zeile 1: ID */}
