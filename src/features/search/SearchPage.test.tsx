@@ -460,7 +460,7 @@ describe('SearchPage', () => {
       expect(downloadCSV).toHaveBeenCalledWith(controls, 'grundschutz-suchergebnisse.csv');
     });
 
-    it('aktiviert den mobilen Auswahlmodus über einen beschrifteten 44×44-Toggle und markiert Zeilen über aria-pressed', async () => {
+    it('aktiviert den mobilen Auswahlmodus über einen beschrifteten 44×44-Toggle und meldet echte Checkboxen (GSPP-517)', async () => {
       const user = userEvent.setup();
       renderSearch([makeControl({ id: 'ASST.1.1' })]);
 
@@ -475,11 +475,29 @@ describe('SearchPage', () => {
       ).toHaveAttribute('aria-pressed', 'true');
 
       const mobile = screen.getByTestId('search-results-mobile');
-      const row = within(mobile).getByRole('button', { name: /ASST\.1\.1/i });
-      expect(row).toHaveAttribute('aria-pressed', 'false');
+      const checkbox = within(mobile).getByRole('checkbox', { name: 'ASST.1.1 auswählen' });
+      expect(checkbox).not.toBeChecked();
+      // Die Zeilen tragen keine Modus-Semantik mehr: kein aria-pressed in der Liste.
+      expect(mobile.querySelector('[aria-pressed]')).toBeNull();
 
-      await user.click(row);
-      expect(row).toHaveAttribute('aria-pressed', 'true');
+      await user.click(checkbox);
+      expect(checkbox).toBeChecked();
+      expect(
+        screen.getByRole('button', { name: 'Auswahl als CSV exportieren, 1 ausgewählt' }),
+      ).toBeInTheDocument();
+    });
+
+    it('navigiert der Zeilen-Tap im mobilen Auswahlmodus statt auszuwählen (GSPP-517)', async () => {
+      const user = userEvent.setup();
+      renderSearch([makeControl({ id: 'ASST.1.1' })]);
+
+      await user.click(screen.getByRole('button', { name: 'Kontrollen auswählen' }));
+      const mobile = screen.getByTestId('search-results-mobile');
+      await user.click(within(mobile).getByRole('button', { name: /ASST\.1\.1/i }));
+
+      // Navigation statt Auswahl: Detailroute, keine Auswahl in der Leiste.
+      expect(screen.getByText('Katalogdetail')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /ausgewählt/ })).not.toBeInTheDocument();
     });
 
     it('exportiert die mobile Auswahl über die Selection-Bar als grundschutz-auswahl.csv und beendet danach den Auswahlmodus', async () => {
@@ -489,7 +507,7 @@ describe('SearchPage', () => {
 
       await user.click(screen.getByRole('button', { name: 'Kontrollen auswählen' }));
       const mobile = screen.getByTestId('search-results-mobile');
-      await user.click(within(mobile).getByRole('button', { name: /ASST\.1\.1/i }));
+      await user.click(within(mobile).getByRole('checkbox', { name: 'ASST.1.1 auswählen' }));
 
       const selectionBar = screen.getByRole('button', { name: 'Fertig' }).closest('div')!;
       await user.click(
@@ -566,7 +584,7 @@ describe('SearchPage', () => {
 
       await user.click(screen.getByRole('button', { name: 'Kontrollen auswählen' }));
       const mobile = screen.getByTestId('search-results-mobile');
-      await user.click(within(mobile).getByRole('button', { name: /ASST\.1\.1/i }));
+      await user.click(within(mobile).getByRole('checkbox', { name: 'ASST.1.1 auswählen' }));
       // Im mobilen Auswahlmodus steht die Zahl nur im Export-Button der Leiste (GSPP-471).
       expect(
         screen.getByRole('button', { name: 'Auswahl als CSV exportieren, 1 ausgewählt' }),
