@@ -239,6 +239,8 @@ function TabletScene() {
   useTabletDetailPanel({
     enabled: !asPage,
     controlId: detailOpen ? control.id : null,
+    scopeKey: 'tablet-scene',
+    listReady: true,
     onClose: () => scene.set({ detailOpen: false }),
   });
   return createElement(

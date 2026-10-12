@@ -534,6 +534,27 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
   });
 
+  it('falls back to the scope heading on tablet when the opening row is gone', () => {
+    useTabletWidth();
+    mockedUseFilteredControls.mockImplementation(() => ({
+      filtered: [],
+      totalCount: 1,
+      facetCounts: {} as ReturnType<typeof useFilteredControls>['facetCounts'],
+      filteredFacetCounts: {} as ReturnType<typeof useFilteredControls>['filteredFacetCounts'],
+      hasActiveFilters: true,
+    }));
+    // Direktaufruf ohne Listenzeile: Das Panel steht, der Fokus liegt auf
+    // der Detailüberschrift.
+    renderCatalogBrowser('/katalog/gspp/kontrolle/shared-alt-identifier');
+    expect(screen.getByTestId('tablet-detail-panel')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: control.title })).toHaveFocus();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));
+
+    expect(screen.queryByTestId('tablet-detail-panel')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1, name: 'Testthema' })).toHaveFocus();
+  });
+
   it('keeps toolbar and filter context while the tablet detail is open and moves focus on related navigation', () => {
     useTabletWidth();
     renderCatalogBrowser('/katalog/gspp/TOP.1');

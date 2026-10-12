@@ -110,6 +110,8 @@ export function CatalogBrowser() {
   useTabletDetailPanel({
     enabled: isTablet,
     controlId: selectedControl?.id ?? null,
+    scopeKey: `${catalogKey ?? selectionScopeId}:${scopeId ?? ''}`,
+    listReady: displayState.kind === 'content',
     onClose: closeDetail,
   });
   const {
