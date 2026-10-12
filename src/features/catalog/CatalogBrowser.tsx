@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { useLocation, useNavigate, useParams } from 'react-router';
 import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES, TITLE_ID_SEPARATOR, TITLE_PARENT_SEPARATOR } from '@/app/pageTitles';
 import type { Catalog, Control } from '@/domain/models';
@@ -43,6 +43,7 @@ export function CatalogBrowser() {
     altIdentifier?: string;
   }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { catalog, loading, error } = useCatalog();
   const { filters, setFilters, sort, setSort, searchString } = useFilterParams();
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
@@ -74,6 +75,7 @@ export function CatalogBrowser() {
     groupId,
     altIdentifier,
     searchString,
+    locationState: location.state,
     navigate,
   });
   // Renderentscheidung und Listenbereitschaft teilen dieselbe Ansichtspriorität.
