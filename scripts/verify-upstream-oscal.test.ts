@@ -167,10 +167,15 @@ describe('CI-Integration', () => {
     );
     expect(workflow).toContain('run: npm run verify-upstream-oscal');
     expect(workflow).toContain('GO_OSCAL_SBOM_OUTPUT: ${{ runner.temp }}/sbom_go-oscal_v0.7.1_Linux_amd64.sbom');
-    expect(workflow).toContain(
-      'uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1',
+    const sbomUploadStep = workflow.match(
+      /^ {6}- name: Archive go-oscal SBOM\n((?: {8}.*\n)*)/m,
+    )?.[1];
+    expect(sbomUploadStep).toBeDefined();
+    expect(sbomUploadStep).toContain('name: go-oscal-v0.7.1-sbom-linux-amd64');
+    expect(sbomUploadStep).toContain(
+      'path: ${{ runner.temp }}/sbom_go-oscal_v0.7.1_Linux_amd64.sbom',
     );
-    expect(workflow).toContain('path: ${{ runner.temp }}/sbom_go-oscal_v0.7.1_Linux_amd64.sbom');
+    expect(sbomUploadStep).toContain('if-no-files-found: error');
     expect(gitignore).toContain('/go-oscal/');
   });
 });
