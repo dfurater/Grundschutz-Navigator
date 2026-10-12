@@ -456,8 +456,11 @@ body.dev-selector-dragging * {
   }
 
   .catalog-badge-text {
-    @apply font-medium leading-tight;
-    font-size: 0.625rem;
+    @apply text-xs font-medium leading-tight;
+  }
+
+  .catalog-prose-text {
+    max-width: 60ch;
   }
 
   .header-reference-theme {

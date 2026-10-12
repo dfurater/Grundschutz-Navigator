@@ -49,7 +49,7 @@ export const detailListMarkerClass =
 export const detailListClass = `${detailListMarkerClass} space-y-1.5 ${tightStackClass}`;
 
 /** Fließtext der Detailansicht: Anforderung, Umsetzungshinweise und Dokumentation in einer Größe. */
-export const detailProseClass = 'w-full break-words text-sm leading-relaxed whitespace-pre-line text-slate-700 [hyphens:auto]';
+export const detailProseClass = 'catalog-prose-text w-full break-words text-sm leading-relaxed whitespace-pre-line text-slate-700 [hyphens:auto]';
 
 /**
  * Stapel der Unterabschnitte eines Detailblocks (Schutzziele/Gefährdungen,
