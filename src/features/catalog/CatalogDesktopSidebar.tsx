@@ -96,6 +96,7 @@ export function CatalogDesktopSidebar({
 
   return (
     <aside
+      aria-label={selectedControl ? 'Kontrolldetails' : 'Katalogfilter'}
       className={`hidden desktop:flex border-l border-[var(--color-border-default)] shrink-0 relative overflow-hidden ${
         selectedControl
           ? 'bg-[var(--color-surface-raised)] shadow-[var(--shadow-sm)]'
