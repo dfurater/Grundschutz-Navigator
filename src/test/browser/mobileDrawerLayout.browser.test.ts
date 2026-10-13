@@ -309,3 +309,30 @@ test('schließt bei 700 px die Schublade per Ctrl+K und fokussiert das Suchfeld 
   expect(shell.querySelector('[data-mobile-nav]')).toHaveAttribute('data-mobile-nav', 'closed');
   expect(search.closest('[inert]')).toBeNull();
 });
+
+// Der globale Footer bleibt auch als Geschwister des Main-Landmarks Teil der isolierten Push-Fläche.
+test('schiebt den Footer mit der Seite und isoliert seine Links bis zur Fokus-Rückkehr', async () => {
+  const shell = await renderShell(WIDTH);
+  const footer = shell.querySelector('footer')!;
+  expect(footer.closest('main')).toBeNull();
+  window.scrollTo(0, document.documentElement.scrollHeight);
+  const closedLeft = footer.getBoundingClientRect().left;
+  const link = footer.querySelector<HTMLAnchorElement>('a[href="/about"]')!;
+  link.focus();
+  expect(document.activeElement).toBe(link);
+
+  const aside = await openDrawer(shell);
+  await settlePush(shell);
+  expect(footer.getBoundingClientRect().left - closedLeft).toBeCloseTo(aside.getBoundingClientRect().width, 1);
+  expect(footer.closest('[inert]')).not.toBeNull();
+  link.focus();
+  const menu = shell.querySelector<HTMLButtonElement>('button[aria-controls]')!;
+  expect(document.activeElement).toBe(menu);
+
+  await userEvent.keyboard('{Escape}');
+  await expect.poll(() => footer.closest('[inert]')).toBeNull();
+  await expect.poll(() => footer.getBoundingClientRect().left).toBeCloseTo(closedLeft, 1);
+  expect(document.activeElement).toBe(menu);
+  link.focus();
+  expect(document.activeElement).toBe(link);
+});

@@ -325,6 +325,7 @@ function AppShellLayout() {
         {/* Sidebar / Mobile Drawer */}
         <aside
           id={sideNavId}
+          aria-label="Katalog-Explorer"
           inert={!isPersistentNav && !sideNavOpen}
           className="mobile-nav-drawer
             bg-white flex shrink-0 z-40 overflow-hidden touch-pan-y touch-pinch-zoom desktop:touch-auto desktop:z-30 desktop:border-r desktop:border-slate-200
@@ -426,17 +427,21 @@ function AppShellLayout() {
           )}
         </aside>
 
-        {/* Main Content */}
-        <main
-          id="main-content"
-          inert={mobileNavOpen}
-          className="mobile-nav-push flex-1 min-w-0 flex flex-col bg-white md:overflow-hidden"
-        >
-          <MobileNavigationContext.Provider value={mobileNavBlocksFixed}>
-            <Outlet />
-          </MobileNavigationContext.Provider>
-          <Footer />
-        </main>
+        {/* Rechte Layoutspalte: Main und globaler Footer sind getrennte Landmarks. */}
+        <div className="flex-1 min-w-0 flex flex-col bg-white md:overflow-hidden">
+          <main
+            id="main-content"
+            inert={mobileNavOpen}
+            className="mobile-nav-push flex-1 min-h-0 min-w-0 flex flex-col md:overflow-hidden"
+          >
+            <MobileNavigationContext.Provider value={mobileNavBlocksFixed}>
+              <Outlet />
+            </MobileNavigationContext.Provider>
+          </main>
+          <div inert={mobileNavOpen} className="mobile-nav-push shrink-0">
+            <Footer />
+          </div>
+        </div>
       </div>
     </div>
   );

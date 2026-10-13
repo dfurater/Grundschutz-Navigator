@@ -48,15 +48,21 @@ async function renderState(path: string, width: number) {
 test.each([390, 1440])('Startseite bei %i px: Axe nach sichtbarem Katalogüberblick', async (width) => {
   const shell = await renderState('/', width);
   expect(shell.querySelector('main h1')?.textContent).toBe('Grundschutz++ Navigator');
+  expect(shell.querySelector('footer')?.closest('main')).toBeNull();
   expect(shell.querySelector('main')?.textContent).toContain('Testpraktik');
-  await assertNoAxeViolations(shell, `Startseite (${width} px)`);
+  await assertNoAxeViolations(shell, `Startseite (${width} px)`, 'all');
 });
 
 test.each([390, 1440])('Katalog bei %i px: Axe nach gerenderter Kontrollliste', async (width) => {
   const shell = await renderState(buildCatalogUrl(ENTRY_CATALOG_KEY), width);
   await expect.poll(() => shell.querySelector('main')?.textContent).toContain('Zugriff schützen');
   expect(shell.querySelector('main')?.textContent).toContain('Netz segmentieren');
-  await assertNoAxeViolations(shell, `Katalog (${width} px)`);
+  if (width === 1440) {
+    expect(shell.querySelector('aside[aria-label="Katalog-Explorer"]')).not.toBeNull();
+    expect(shell.querySelector('aside[aria-label="Katalogfilter"]')).not.toBeNull();
+    expect(shell.querySelector('thead th:last-child')?.textContent).toBe('Details öffnen');
+  }
+  await assertNoAxeViolations(shell, `Katalog (${width} px)`, 'all');
 });
 
 test.each([390, 1440])('Suchergebnisse bei %i px: Axe nach echtem Suchtreffer', async (width) => {
@@ -65,15 +71,18 @@ test.each([390, 1440])('Suchergebnisse bei %i px: Axe nach echtem Suchtreffer', 
     .toContain('Zugriff schützen');
   expect(shell.querySelector('main h1')?.textContent).toContain('Suchergebnisse');
   expect(shell.querySelector('main')?.textContent).toContain('1 Ergebnis');
-  await assertNoAxeViolations(shell, `Suchergebnisse (${width} px)`);
+  await assertNoAxeViolations(shell, `Suchergebnisse (${width} px)`, 'all');
 });
 
 test.each([390, 1440])('Control-Detail bei %i px: Axe mit echten Detailinhalten', async (width) => {
   const shell = await renderState(buildControlUrl(ENTRY_CATALOG_KEY, 'a11y-access'), width);
   await expect.poll(() => shell.querySelector('[data-control-detail-title]')?.textContent)
     .toContain('Zugriff schützen');
+  if (width === 1440) {
+    expect(shell.querySelector('aside[aria-label="Kontrolldetails"]')).not.toBeNull();
+  }
   const detail = shell.querySelector('[data-control-detail-scroll]')!;
   expect(detail.textContent).toContain('Die Organisation MUSS den Zugriff auf Daten schützen.');
   expect(detail.textContent).toContain('Berechtigungen werden regelmäßig geprüft und dokumentiert.');
-  await assertNoAxeViolations(shell, `Control-Detail (${width} px)`);
+  await assertNoAxeViolations(shell, `Control-Detail (${width} px)`, 'all');
 });
