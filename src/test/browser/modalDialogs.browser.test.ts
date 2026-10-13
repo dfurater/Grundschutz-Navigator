@@ -253,6 +253,8 @@ function TabletScene() {
       allControls: [control],
       sectionFilename: 'test.csv',
     }),
+    filterSheet(),
+    createElement('button', { type: 'button', onClick: () => scene.set({}) }, 'Kontrollen auswählen'),
     createElement('div', { hidden: detailOpen && asPage },
       createElement('button', { type: 'button', 'data-control-row': control.id }, 'Zeile TOP.1.1'),
     ),
@@ -346,6 +348,36 @@ test('Sheet über Tablet-Detail: Escape schließt nur das Sheet, das Panel bleib
   expect(tabletPanel(shell)).not.toBeNull();
   expect([...document.body.children].some((child) => child.hasAttribute('inert'))).toBe(false);
   expect(document.activeElement).toBe(trigger);
+});
+
+test('Tablet-Rückkehr unter Filter-Sheet überlässt späterer Bedienung den Fokus', async () => {
+  const shell = await renderWithBackground(900, createElement(TabletScene));
+  buttonByName(shell, 'Zeile TOP.1.1').focus();
+  openDetail();
+  const trigger = buttonByName(shell, 'Filter anzeigen');
+  trigger.focus();
+  await userEvent.keyboard('{Enter}');
+  const sheet = document.querySelector('dialog')!;
+  expect(sheet.contains(document.activeElement)).toBe(true);
+  expect(shell.hasAttribute('inert')).toBe(true);
+
+  // POP zur Liste, während das native inert die Zeile noch blockiert.
+  flushSync(() => scene.set({ detailOpen: false }));
+  expect(sheet.contains(document.activeElement)).toBe(true);
+  await userEvent.keyboard('{Escape}');
+  await expect.poll(() => document.querySelector('dialog')).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+
+  // Der übernommene Fokus beendet den Auftrag auch ohne Eltern-Render.
+  // Selbst wenn der Trigger später blur erhält, lebt die alte Rückkehr nicht auf.
+  trigger.blur();
+  flushSync(() => scene.set({}));
+  expect(document.activeElement).toBe(document.body);
+
+  const selection = buttonByName(shell, 'Kontrollen auswählen');
+  selection.focus();
+  await userEvent.keyboard('{Enter}');
+  expect(document.activeElement).toBe(selection);
 });
 
 function filterSheet(hasActiveFilters = false, filteredCount = 3) {

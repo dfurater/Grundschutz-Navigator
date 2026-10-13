@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from 'react';
-import { useGlobalEventListener } from './useGlobalEventListener';
+import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 
 /** Detailseite im Dokumentfluss: Nur Escape aus ihr oder vom `body` schließt sie. */
 export const DETAIL_PAGE_SELECTOR = '[data-control-detail-page]';
@@ -63,6 +63,16 @@ export function useDocumentDetailPage({ enabled, controlId, scopeKey, listReady,
   const listVisible = enabled && controlId === null;
   // Während ein Katalog lädt, gibt es noch keine Liste: kein Bereich, keine Position.
   const listShown = listVisible && listReady;
+
+  // Beide Detailansichten erfassen den Ursprung unabhängig von ihrer Breite.
+  // Damit bleiben Zeile und Bereich auch nach Querverweisen vor dem Eintritt
+  // in die Dokumentansicht erhalten; Scrollpositionen bleiben layoutbezogen.
+  useLayoutEffect(() => {
+    if (controlId === null && listReady) listScopeKeyRef.current = scopeKey;
+    if (controlId !== null) {
+      openedRef.current ??= { controlId, scopeKey: listScopeKeyRef.current };
+    }
+  }, [controlId, scopeKey, listReady]);
 
   useLayoutEffect(() => {
     if (!enabled || controlId !== null) pendingFocusRef.current = null;

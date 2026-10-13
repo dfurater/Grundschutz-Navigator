@@ -1,10 +1,10 @@
 import { useEffect, useRef } from 'react';
-import { useGlobalEventListener } from './useGlobalEventListener';
+import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import {
   DETAIL_TITLE_SELECTOR,
   SCOPE_HEADING_SELECTOR,
   controlRowSelector,
-} from './useDocumentDetailPage';
+} from '@/hooks/useDocumentDetailPage';
 
 /** Inline-Detailpanel der Tablet-Ansicht für Fokus- und Escape-Abfragen. */
 export const TABLET_DETAIL_PANEL_SELECTOR = '[data-tablet-detail-panel]';
@@ -38,7 +38,6 @@ export function useTabletDetailPanel({ enabled, controlId, scopeKey, listReady, 
   // `null`, solange nur die Liste sichtbar ist.
   const sessionRef = useRef<{ rowControlId: string; scopeKey: string | null } | null>(null);
   const prevControlIdRef = useRef<string | null>(null);
-  const prevEnabledRef = useRef(false);
   // Bereich der zuletzt sichtbaren Liste; `null` nach einem Direktaufruf.
   const listScopeKeyRef = useRef<string | null>(null);
 
@@ -55,18 +54,17 @@ export function useTabletDetailPanel({ enabled, controlId, scopeKey, listReady, 
 
   useEffect(() => {
     const prevControlId = prevControlIdRef.current;
-    const prevEnabled = prevEnabledRef.current;
     prevControlIdRef.current = controlId;
-    prevEnabledRef.current = enabled;
-    if (!enabled || controlId === null) return;
+    if (controlId === null) return;
     // Eine frische Öffnung beginnt eine neue Sitzung; der Wechsel zu einer
-    // verknüpften Kontrolle behält die auslösende Zeile. Wer mit geöffnetem
-    // Detail ins Tablet-Band wechselt, erhält beim Eintritt ebenfalls eine
-    // Bindung, sofern noch keine besteht. Maßgeblich ist der Bereich der
+    // verknüpften Kontrolle behält die auslösende Zeile. Die Bindung entsteht
+    // in jeder Breite, damit beim Tablet-Eintritt nach einem Querverweis die
+    // ursprüngliche Zeile erhalten bleibt. Maßgeblich ist der Bereich der
     // zuletzt sichtbaren Liste, nicht das Thema der geöffneten Kontrolle.
-    if (prevControlId === null || (sessionRef.current === null && !prevEnabled)) {
+    if (prevControlId === null) {
       sessionRef.current = { rowControlId: controlId, scopeKey: listScopeKeyRef.current };
     }
+    if (!enabled) return;
     // Kein Fokusraub aus einem offenen modalen Dialog (etwa einem Sheet über
     // dem Panel): Dort bleibt der Fokus, bis der Dialog schließt.
     if (document.activeElement?.closest('dialog') != null) return;
@@ -79,8 +77,8 @@ export function useTabletDetailPanel({ enabled, controlId, scopeKey, listReady, 
 
   // Ohne Abhängigkeiten: läuft nach jedem Commit, bis das Rückkehrziel den
   // Fokus übernommen hat. Die Bindung bleibt bestehen, solange das Ziel fehlt,
-  // nicht bedienbar ist oder den Fokus nicht angenommen hat — erst dann endet
-  // die Sitzung, damit der Fokus nie auf `body` fällt. Die Zeile gilt
+  // nicht bedienbar ist oder den Fokus nicht angenommen hat. Neuer bedienbarer
+  // Fokus außerhalb eines Dialogs beendet die Sitzung ebenfalls. Die Zeile gilt
   // katalogweit: Control-IDs sind je Katalog eindeutig (`controlsById`), nur
   // bei einem Katalogwechsel geht der Fokus ersatzweise an die
   // Bereichsüberschrift.
@@ -88,6 +86,14 @@ export function useTabletDetailPanel({ enabled, controlId, scopeKey, listReady, 
     if (!enabled || controlId !== null) return;
     const session = sessionRef.current;
     if (session === null || !listReady) return;
+    const active = document.activeElement;
+    if (active?.closest('dialog') != null) return;
+    // Ein inzwischen bedientes Ziel übernimmt den Fokusvertrag des Sheets.
+    if (active instanceof HTMLElement && active !== document.body
+      && active.closest('[hidden],[inert]') === null) {
+      sessionRef.current = null;
+      return;
+    }
     const sessionCatalog = session.scopeKey?.split(':')[0] ?? null;
     const currentCatalog = scopeKey.split(':')[0];
     const row = sessionCatalog === null || sessionCatalog === currentCatalog
@@ -107,6 +113,16 @@ export function useTabletDetailPanel({ enabled, controlId, scopeKey, listReady, 
       row.scrollIntoView({ block: 'nearest' });
     }
   });
+
+  // Auch ohne React-Render beendet neuer Fokus außerhalb eines Dialogs den
+  // blockierten Rückkehrauftrag. Spätere Commits dürfen ihn nicht wiederholen.
+  useGlobalEventListener('document', 'focusin', (event) => {
+    const { target } = event;
+    if (target instanceof HTMLElement && target !== document.body
+      && target.closest('dialog,[hidden],[inert]') === null) {
+      sessionRef.current = null;
+    }
+  }, enabled && controlId === null);
 
   // Schließen in einer anderen Breite beendet die Rückkehrbindung: Dort gibt
   // es keine Tablet-Zeile, und die nächste Tablet-Öffnung erhält einen neuen

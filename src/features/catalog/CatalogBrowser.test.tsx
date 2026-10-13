@@ -101,20 +101,24 @@ vi.mock('./ControlMobileReferenceRow', () => ({
     checked?: boolean;
     onCheckedChange?: (control: Control, checked: boolean) => void;
   }) => (
-    <button
-      type="button"
-      data-testid="mobile-control-row"
-      data-control-row={control.id}
-      onClick={() => {
-        if (selectMode) {
-          onCheckedChange?.(control, !checked);
-        } else {
-          onSelect(control);
-        }
-      }}
-    >
-      {control.title}
-    </button>
+    <div>
+      {selectMode && onCheckedChange && (
+        <input
+          type="checkbox"
+          aria-label={`${control.id} auswählen`}
+          checked={checked}
+          onChange={(event) => onCheckedChange(control, event.target.checked)}
+        />
+      )}
+      <button
+        type="button"
+        data-testid="mobile-control-row"
+        data-control-row={control.id}
+        onClick={() => onSelect(control)}
+      >
+        {control.title}
+      </button>
+    </div>
   ),
 }));
 
@@ -483,7 +487,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
     const view = renderCatalogBrowser('/katalog/gspp/TOP.1');
 
     fireEvent.click(screen.getByRole('button', { name: 'Kontrollen auswählen' }));
-    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    fireEvent.click(screen.getByRole('checkbox', { name: `${control.id} auswählen` }));
     expect(screen.getByTestId('location')).toHaveTextContent('/katalog/gspp/TOP.1');
     expectMobileSelectionCount(1);
 
@@ -696,6 +700,79 @@ describe('CatalogBrowser mobile focus restoration', () => {
     // Der Bereich der mobilen Liste zählt weiter: zurück zur Zeile, nicht zur
     // Bereichsüberschrift — obwohl die Route inzwischen das Thema nennt.
     expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
+  });
+
+  it.each([false, true])('keeps the first opening row across related navigation and a width switch (starts on tablet: %s)', (startsOnTablet) => {
+    const catalog = makeCatalog('gspp');
+    catalog.controls.push(relatedControl);
+    mockCatalog(catalog);
+    let tablet = startsOnTablet;
+    mockedUseMediaQuery.mockImplementation((query) => tablet && query === OWN_SCROLL_AREA_QUERY);
+    const view = renderCatalogBrowser('/katalog/gspp');
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    fireEvent.click(screen.getByRole('button', { name: 'Verwandte Kontrolle öffnen' }));
+
+    tablet = !tablet;
+    view.rerender(<CatalogBrowserTestApp initialEntry="/katalog/gspp" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));
+
+    expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/katalog\/gspp$/);
+  });
+
+  it('does not replay a blocked tablet return after the filter sheet restores focus and selection rerenders', () => {
+    useTabletWidth();
+    render(<CatalogBrowserTestApp withHistoryBack />);
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    const filter = screen.getByRole('button', { name: 'Filter anzeigen' });
+    filter.focus();
+    fireEvent.click(filter);
+    fireEvent.click(screen.getByRole('button', { name: 'Browser zurück', hidden: true }));
+    expect(document.activeElement).toHaveTextContent('Filteraktion');
+
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' });
+    expect(filter).toHaveFocus();
+    const selection = screen.getByRole('button', { name: 'Kontrollen auswählen' });
+    selection.focus();
+    fireEvent.click(selection);
+
+    expect(selection).toHaveFocus();
+  });
+
+  it('uses a checkbox for selection while the row still opens the detail in selection mode', () => {
+    useTabletWidth();
+    renderCatalogBrowser();
+    fireEvent.click(screen.getByRole('button', { name: 'Kontrollen auswählen' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: `${control.id} auswählen` }));
+    expectMobileSelectionCount(1);
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+
+    expect(screen.getByTestId('tablet-detail-panel')).toBeInTheDocument();
+    expectMobileSelectionCount(1);
+  });
+
+  it.each([false, true])('handles a late tablet list without reviving superseded focus (new focus: %s)', (superseded) => {
+    useTabletWidth();
+    const app = () => <CatalogBrowserTestApp withHistoryBack />;
+    const view = render(app());
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    mockedUseCatalog.mockReturnValue({ ...mockedUseCatalog(), loading: true });
+    view.rerender(app());
+    const history = screen.getByRole('button', { name: 'Browser zurück' });
+    fireEvent.click(history);
+    if (superseded) {
+      history.focus();
+      history.blur();
+    }
+
+    mockCatalog(makeCatalog('gspp'));
+    view.rerender(app());
+
+    if (superseded) {
+      expect(document.body).toHaveFocus();
+    } else {
+      expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
+    }
   });
 
   it('keeps toolbar and filter context while the tablet detail is open and moves focus on related navigation', () => {
@@ -1301,7 +1378,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Kontrollen auswählen' }));
-    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    fireEvent.click(screen.getByRole('checkbox', { name: `${control.id} auswählen` }));
     expectMobileSelectionCount(1);
 
     fireEvent.click(screen.getByRole('button', { name: 'Thema wechseln' }));
@@ -1319,7 +1396,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(screen.getByText(`Detail ${control.id}`)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Kontrollen auswählen' }));
-    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    fireEvent.click(screen.getByRole('checkbox', { name: `${control.id} auswählen` }));
     expectMobileSelectionCount(1);
 
     fireEvent.click(screen.getByRole('button', { name: 'Verwandte Kontrolle öffnen' }));
@@ -1342,7 +1419,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
 
     renderCatalogBrowser('/katalog/gspp', switchCatalog);
     fireEvent.click(screen.getByRole('button', { name: 'Kontrollen auswählen' }));
-    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    fireEvent.click(screen.getByRole('checkbox', { name: `${control.id} auswählen` }));
     expectMobileSelectionCount(1);
 
     fireEvent.click(screen.getByRole('button', { name: 'Katalog wechseln' }));
