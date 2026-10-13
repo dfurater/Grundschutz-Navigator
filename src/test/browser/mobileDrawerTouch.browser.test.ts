@@ -116,3 +116,21 @@ test('erlaubt in der Schublade Pinch-Zoom und ab lg die volle Touch-Steuerung', 
   await page.viewport(1100, HEIGHT);
   await expect.poll(() => getComputedStyle(aside).touchAction).toBe('auto');
 });
+
+test('öffnet die Schublade mit einer Browser-Berührung im globalen Footer ohne Scrollsprung', async () => {
+  const shell = await renderShell(WIDTH);
+  window.scrollTo(0, document.documentElement.scrollHeight);
+  const footer = shell.querySelector('footer')!;
+  const y = footer.getBoundingClientRect().top + 20;
+  expect(footer.contains(document.elementFromPoint(40, y))).toBe(true);
+  const scrollY = window.scrollY;
+  const touches = recordTouches();
+
+  await swipe([40, y], [300, y]);
+  touches.stop();
+
+  expect(touches.counts.touchcancel).toBe(0);
+  await expect.poll(() => root(shell).dataset.mobileNav).toBe('open');
+  expect(footer.closest('[inert]')).not.toBeNull();
+  expect(window.scrollY).toBe(scrollY);
+});

@@ -4,8 +4,8 @@ import { OWN_SCROLL_AREA_QUERY } from '@/hooks/breakpointQueries';
 import { useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
 
 /**
- * Scrollfläche für Seiteninhalte. Der Footer liegt auf allen Routen außerhalb,
- * als direktes Kind von `<main>`.
+ * Scrollfläche für Seiteninhalte innerhalb von `<main>`. Der globale Footer
+ * liegt separat in derselben rechten Layoutspalte der AppShell.
  */
 export function PageScroll({ children }: Readonly<{ children: ReactNode }>) {
   const scrollAreaRef = useOverlayScrollbars<HTMLDivElement>(useMediaQuery(OWN_SCROLL_AREA_QUERY));

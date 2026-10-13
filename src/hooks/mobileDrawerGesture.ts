@@ -39,7 +39,7 @@ const EDITABLE_SELECTOR = 'input, textarea, select, [contenteditable]:not([conte
  * Bereichen, die selbst waagerecht scrollen, etwa breiten Tabellen.
  */
 export function startsOpenGesture(target: EventTarget | null, shell: HTMLElement) {
-  if (!(target instanceof Element) || target.closest('main, header') === null) return false;
+  if (!(target instanceof Element) || target.closest('main, header, footer') === null) return false;
   if (target.closest(EDITABLE_SELECTOR) !== null) return false;
   for (let element: Element | null = target; element && element !== shell; element = element.parentElement) {
     const style = getComputedStyle(element);
