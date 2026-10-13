@@ -739,6 +739,51 @@ describe('CatalogBrowser mobile focus restoration', () => {
     expect(selection).toHaveFocus();
   });
 
+  it('returns to A when the already focused row B closes a linked tablet detail', () => {
+    const catalog = makeCatalog('gspp');
+    catalog.controls.push(relatedControl);
+    mockCatalog(catalog);
+    let tablet = false;
+    mockedUseMediaQuery.mockImplementation((query) => tablet && query === OWN_SCROLL_AREA_QUERY);
+    const view = renderCatalogBrowser();
+    fireEvent.click(screen.getByRole('button', { name: control.title }));
+    fireEvent.click(screen.getByRole('button', { name: 'Verwandte Kontrolle öffnen' }));
+    tablet = true;
+    view.rerender(<CatalogBrowserTestApp />);
+
+    const linkedRow = screen.getByRole('button', { name: relatedControl.title });
+    linkedRow.focus();
+    fireEvent.click(linkedRow);
+
+    expect(screen.queryByTestId('tablet-detail-panel')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
+  });
+
+  it.each([768, 1280])('does not reuse a different topic document position after opening at %i px', (wideWidth) => {
+    const catalog = makeCatalog('gspp');
+    catalog.controls.push(relatedControl);
+    catalog.practices[0].topics.push({
+      id: 'TOP.2', title: 'Zweites Thema', label: '2', practiceId: 'TOP',
+      controlCount: 1, controlIds: [relatedControl.id],
+    });
+    mockCatalog(catalog);
+    let width = 390;
+    mockedUseMediaQuery.mockImplementation((query) => width >= (query === DESKTOP_QUERY ? 1024 : 768));
+    const app = () => <CatalogBrowserTestApp initialEntry="/katalog/gspp/TOP.1" secondaryLink={{ label: 'Thema wechseln', to: '/katalog/gspp/TOP.2' }} />;
+    const view = render(app());
+    scrollListTo(420);
+    width = wideWidth;
+    view.rerender(app());
+    fireEvent.click(screen.getByRole('button', { name: 'Thema wechseln' }));
+    fireEvent.click(screen.getByRole('button', { name: relatedControl.title }));
+    width = 390;
+    view.rerender(app());
+    fireEvent.click(screen.getByRole('button', { name: 'Detail schließen' }));
+
+    expect(screen.getByRole('button', { name: relatedControl.title })).toHaveFocus();
+    expect(globalThis.scrollTo).toHaveBeenLastCalledWith(0, 0);
+  });
+
   it('uses a checkbox for selection while the row still opens the detail in selection mode', () => {
     useTabletWidth();
     renderCatalogBrowser();
@@ -769,7 +814,7 @@ describe('CatalogBrowser mobile focus restoration', () => {
     view.rerender(app());
 
     if (superseded) {
-      expect(document.body).toHaveFocus();
+      expect(document.querySelector('body')).toHaveFocus();
     } else {
       expect(screen.getByRole('button', { name: control.title })).toHaveFocus();
     }

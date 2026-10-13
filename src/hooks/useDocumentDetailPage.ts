@@ -53,6 +53,8 @@ export interface UseDocumentDetailPageOptions {
  */
 export function useDocumentDetailPage({ enabled, controlId, scopeKey, listReady, onClose }: UseDocumentDetailPageOptions): void {
   const listScrollYRef = useRef(0);
+  // Die Dokumentposition gehört zur mobilen Liste ihres eigenen Bereichs.
+  const listScrollScopeKeyRef = useRef<string | null>(null);
   // Bereich der zuletzt sichtbaren Liste; `null` nach einem Direktaufruf.
   const listScopeKeyRef = useRef<string | null>(null);
   // Kontrolle, mit der die Seite aus der Liste (oder per Direktaufruf) geöffnet
@@ -92,7 +94,8 @@ export function useDocumentDetailPage({ enabled, controlId, scopeKey, listReady,
     if (opened === null) return;
     openedRef.current = null;
     const sameScope = opened.scopeKey === null || opened.scopeKey === scopeKey;
-    globalThis.scrollTo(0, sameScope ? listScrollYRef.current : 0);
+    const restoreScroll = sameScope && listScrollScopeKeyRef.current === scopeKey;
+    globalThis.scrollTo(0, restoreScroll ? listScrollYRef.current : 0);
     pendingFocusRef.current = { rowControlId: sameScope ? opened.controlId : null };
   }, [enabled, controlId, scopeKey]);
 
@@ -112,6 +115,7 @@ export function useDocumentDetailPage({ enabled, controlId, scopeKey, listReady,
   useLayoutEffect(() => {
     if (!listShown) return;
     listScrollYRef.current = globalThis.scrollY;
+    listScrollScopeKeyRef.current = scopeKey;
     listScopeKeyRef.current = scopeKey;
   }, [listShown, scopeKey]);
   useGlobalEventListener('window', 'scroll', () => {

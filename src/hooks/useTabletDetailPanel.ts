@@ -86,14 +86,7 @@ export function useTabletDetailPanel({ enabled, controlId, scopeKey, listReady, 
     if (!enabled || controlId !== null) return;
     const session = sessionRef.current;
     if (session === null || !listReady) return;
-    const active = document.activeElement;
-    if (active?.closest('dialog') != null) return;
-    // Ein inzwischen bedientes Ziel übernimmt den Fokusvertrag des Sheets.
-    if (active instanceof HTMLElement && active !== document.body
-      && active.closest('[hidden],[inert]') === null) {
-      sessionRef.current = null;
-      return;
-    }
+    if (document.activeElement?.closest('dialog') != null) return;
     const sessionCatalog = session.scopeKey?.split(':')[0] ?? null;
     const currentCatalog = scopeKey.split(':')[0];
     const row = sessionCatalog === null || sessionCatalog === currentCatalog
