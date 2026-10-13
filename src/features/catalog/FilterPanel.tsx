@@ -30,7 +30,7 @@ export interface FilterPanelProps {
   readonly onCollapse?: () => void;
   /** ID der Überschrift „Filter“, über die das mobile Sheet seinen Dialognamen bezieht. */
   readonly headingId?: string;
-  /** Aktion rechts neben der Überschrift, etwa „Fertig“ im mobilen Sheet. */
+  /** Aktion rechts neben der Überschrift, etwa „Schließen“ im mobilen Sheet. */
   readonly headerAction?: ReactNode;
   /** Bei Platzmangel scrollt die Trefferzeile im mobilen Sheet mit. */
   readonly adaptiveHeader?: boolean;

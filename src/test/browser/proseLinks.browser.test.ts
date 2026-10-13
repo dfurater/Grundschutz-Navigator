@@ -4,7 +4,7 @@ import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { userEvent } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import type { Catalog } from '@/domain/models';
 import { ENTRY_CATALOG_KEY } from '@/domain/sourceRegistry';
 import { CatalogTargetNotFound } from '@/features/catalog/CatalogTargetNotFound';
@@ -12,6 +12,8 @@ import { HomePage } from '@/features/home/HomePage';
 import { DatenschutzPage } from '@/features/pages/DatenschutzPage';
 import { ImpressumPage } from '@/features/pages/ImpressumPage';
 import { LizenzenPage } from '@/features/pages/LizenzenPage';
+import { AboutPage } from '@/features/pages/AboutPage';
+import { ControlStatement } from '@/features/catalog/ControlStatement';
 import { CatalogContext } from '@/state/CatalogContext';
 import { createInitialState, projectPublicState } from '@/state/catalogReducer';
 import '@/index.css';
@@ -23,7 +25,15 @@ import { appShellAt } from './appShellRouter';
  * und dauerhafte Unterstreichung im Ruhe-, Hover- und Fokuszustand.
  */
 
-const catalog = { catalogKey: ENTRY_CATALOG_KEY, practices: [] } as unknown as Catalog;
+const catalog = {
+  catalogKey: ENTRY_CATALOG_KEY,
+  practices: [],
+  metadata: {
+    title: 'Testkatalog', lastModified: '2026-10-12', oscalVersion: '1.1.3',
+    remarks: 'Die Organisation prüft den Geltungsbereich und dokumentiert ihre Anforderungen. '.repeat(8),
+    roles: [], parties: [], responsibleParties: [], props: [], links: [],
+  },
+} as unknown as Catalog;
 const catalogState = {
   ...projectPublicState(createInitialState(ENTRY_CATALOG_KEY), () => {}),
   catalog,
@@ -102,4 +112,40 @@ test.each(surfaces)('%s: Fließtextlinks bleiben in Ruhe, Hover und Fokus unters
     expect(getComputedStyle(link).textDecorationLine, `${link.textContent} im Fokus`).toBe('underline');
     link.blur();
   }
+});
+
+const readingSurfaces = [
+  ['Startseite', HomePage],
+  ['Über das Projekt', AboutPage],
+  ['Datenschutz', DatenschutzPage],
+  ['Impressum', ImpressumPage],
+  ['Lizenzen', LizenzenPage],
+] as const;
+
+function assertReadingMeasure(paragraph: HTMLElement) {
+  const style = getComputedStyle(paragraph);
+  const context = document.createElement('canvas').getContext('2d')!;
+  context.font = style.font;
+  const measure = context.measureText('0').width * 60;
+  expect(paragraph.getBoundingClientRect().width, paragraph.textContent).toBeLessThanOrEqual(measure + 1);
+}
+
+test.each(readingSurfaces)('%s: Prosa bleibt auch auf breiten Seiten innerhalb von 60ch', async (_name, component) => {
+  await page.viewport(1440, 900);
+  const container = render(createElement(component));
+  await document.fonts.ready;
+  const paragraphs = [...container.querySelectorAll<HTMLElement>('p.leading-relaxed, p.whitespace-pre-line')]
+    .filter((paragraph) => (paragraph.textContent?.length ?? 0) > 100);
+  expect(paragraphs.length).toBeGreaterThan(0);
+  for (const paragraph of paragraphs) assertReadingMeasure(paragraph);
+});
+
+test('Anforderungsprosa bleibt bei breitem Detailpanel innerhalb von 60ch und erhält den Wortlaut', async () => {
+  await page.viewport(1440, 900);
+  const statement = 'Die Organisation MUSS die Anforderungen prüfen und die Ergebnisse dokumentieren. '.repeat(8);
+  const container = render(createElement(ControlStatement, { statement }));
+  await document.fonts.ready;
+  const paragraph = container.querySelector('p')!;
+  expect(paragraph.textContent).toBe(statement);
+  assertReadingMeasure(paragraph);
 });

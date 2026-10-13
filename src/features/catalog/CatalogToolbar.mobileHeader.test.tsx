@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { Control } from '@/domain/models';
+import { emptyFilters } from '@/hooks/useFilteredControls';
 import type { FilterPanelProps } from './FilterPanel';
 import { CatalogToolbar } from './CatalogToolbar';
 
@@ -29,7 +30,7 @@ describe('mobiler Header (GSPP-471)', () => {
     filteredControls: [control],
     allControls: [control],
     sectionFilename: 'grundschutz-TOP.1.csv',
-    filterPanelProps: {} as FilterPanelProps,
+    filterPanelProps: { filters: emptyFilters } as FilterPanelProps,
   };
 
   it('setzt die Überschrift unter sm umbrechend auf höchstens zwei Zeilen und ab sm einzeilig', () => {

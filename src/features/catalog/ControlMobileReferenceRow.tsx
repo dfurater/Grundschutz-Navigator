@@ -30,88 +30,94 @@ export const ControlMobileReferenceRow = memo(function ControlMobileReferenceRow
   onCheckedChange,
 }: ControlMobileReferenceRowProps) {
   const depth = getControlHierarchyDepth(control, controlsById);
-  const isSelectable = selectMode && onCheckedChange !== undefined;
+  const showCheckbox = selectMode && onCheckedChange !== undefined;
 
-  // S2301: getrennte Handler statt eines Selektors über `selectMode` —
-  // jede Methode hat genau einen Zweck; das Verhalten bleibt identisch.
-  const handleSelectClick = () => {
+  // GSPP-517: Die Zeile navigiert immer; nur die echte Checkbox schaltet die
+  // Auswahl. Beide sind Geschwister: Die Checkbox ist ein natives Label, der
+  // Zeileninhalt ein nativer Button — kein umgedeuteter Container, daher auch
+  // kein stopPropagation nötig (Sonar S6848/S6847/S1082).
+  const handleSelect = () => {
     onSelect(control);
   };
 
-  const handleToggleClick = () => {
-    if (onCheckedChange) {
-      onCheckedChange(control, !checked);
-    } else {
-      onSelect(control);
-    }
+  const handleCheckedChange = (next: boolean) => {
+    onCheckedChange?.(control, next);
   };
 
   return (
-    <button
-      type="button"
-      data-control-row={control.id}
-      onClick={isSelectable ? handleToggleClick : handleSelectClick}
-      aria-pressed={selectMode ? checked : undefined}
-      className={`catalog-mobile-reference-row w-full flex items-center gap-2 px-3 py-2 transition-colors cursor-pointer active:bg-[var(--color-surface-subtle)] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus-ring)] ${
+    <div
+      className={`catalog-mobile-reference-row w-full flex items-stretch gap-0 transition-colors active:bg-[var(--color-surface-subtle)] ${
         selectMode && checked
           ? 'bg-[var(--color-accent-soft)]'
           : 'bg-[var(--color-surface-base)] hover:bg-[var(--color-surface-subtle)]'
       }`}
     >
-      {selectMode && (
-        <div
-          className={`w-4 h-4 shrink-0 rounded border-[1.5px] flex items-center justify-center transition-colors ${
-            checked
-              ? 'bg-[var(--color-primary-main)] border-[var(--color-primary-main)]'
-              : 'border-[var(--color-border-strong)] bg-[var(--color-surface-base)]'
-          }`}
-        >
-          {checked && <IconCheck className="w-2.5 h-2.5 text-white" />}
-        </div>
+      {showCheckbox && (
+        <label className="relative flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center">
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={(event) => handleCheckedChange(event.target.checked)}
+            aria-label={`${control.id} auswählen`}
+            className="peer sr-only"
+          />
+          <div
+            aria-hidden="true"
+            className="w-4 h-4 rounded border-[1.5px] transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--color-focus-ring)] peer-focus-visible:ring-offset-1 border-[var(--color-border-strong)] bg-[var(--color-surface-base)] peer-checked:bg-[var(--color-primary-main)] peer-checked:border-[var(--color-primary-main)]"
+          />
+          <IconCheck className="absolute w-2.5 h-2.5 text-white opacity-0 peer-checked:opacity-100 pointer-events-none" />
+        </label>
       )}
-      <div className="flex-1 min-w-0">
-        {/* Zeile 1: ID */}
-        <span className="catalog-reference-text text-primary-main">{control.id}</span>
-        {/* Zeile 2: Titel — nur Titelzeile erhält Tiefeneinzug */}
-        <div
-          className="flex min-w-0 items-baseline gap-2 mt-0.5"
-          style={depth > 0 ? { paddingInlineStart: `${Math.min(depth, 3) * 12}px` } : undefined}
-        >
-          {depth > 0 && (
-            <span className="catalog-hierarchy-marker" aria-hidden="true">↳</span>
-          )}
-          <p className="catalog-title-text min-w-0 truncate">{control.title}</p>
-        </div>
-        {/* Zeile 3: Badges — feste Slots für stabile Positionen beim Scrollen */}
-        <div className="mt-1 flex items-center gap-1">
-          {/* Slot Verbindlichkeit — feste Breite */}
-          <div className="w-16 shrink-0 flex items-center">
-            <ModalverbBadge value={control.modalverb} className="w-full" />
-          </div>
-          {/* Slot Aufwand — feste Breite */}
-          <div className="w-6 shrink-0 flex items-center justify-center">
-            {control.effortLevel != null && (
-              <span
-                className={`inline-flex w-full items-center justify-center rounded border px-1 py-0.5 text-xs font-medium leading-4 tabular-nums ${
-                  control.effortLevel === '0'
-                    ? 'border-[var(--color-border-default)] bg-[var(--color-surface-subtle)] text-[var(--color-text-muted)]'
-                    : 'border-[var(--color-status-aufwand-border)] bg-[var(--color-status-aufwand-bg)]'
-                }`}
-                style={
-                  control.effortLevel !== '0'
-                    ? { color: EFFORT_TEXT_COLORS[control.effortLevel] }
-                    : undefined
-                }
-              >
-                {control.effortLevel}
-              </span>
+      <button
+        type="button"
+        data-control-row={control.id}
+        onClick={handleSelect}
+        className="flex min-h-[44px] min-w-0 flex-1 cursor-pointer items-center gap-2 py-2 pl-2 pr-3 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus-ring)]"
+      >
+        <div className="flex-1 min-w-0">
+          {/* Zeile 1: ID */}
+          <span className="catalog-reference-text text-primary-main">{control.id}</span>
+          {/* Zeile 2: Titel — nur Titelzeile erhält Tiefeneinzug */}
+          <div
+            className="flex min-w-0 items-baseline gap-2 mt-0.5"
+            style={depth > 0 ? { paddingInlineStart: `${Math.min(depth, 3) * 12}px` } : undefined}
+          >
+            {depth > 0 && (
+              <span className="catalog-hierarchy-marker" aria-hidden="true">↳</span>
             )}
+            <p className="catalog-title-text min-w-0 truncate">{control.title}</p>
           </div>
-          {/* Slot Niveau — nur wenn vorhanden */}
-          <SecurityLevelBadge value={control.securityLevel} />
+          {/* Zeile 3: Badges — feste Slots für stabile Positionen beim Scrollen */}
+          <div className="mt-1 flex items-center gap-1">
+            {/* Slot Verbindlichkeit — feste Breite */}
+            <div className="w-16 shrink-0 flex items-center">
+              <ModalverbBadge value={control.modalverb} className="w-full" />
+            </div>
+            {/* Slot Aufwand — feste Breite */}
+            <div className="w-6 shrink-0 flex items-center justify-center">
+              {control.effortLevel != null && (
+                <span
+                  className={`inline-flex w-full items-center justify-center rounded border px-1 py-0.5 text-xs font-medium leading-4 tabular-nums ${
+                    control.effortLevel === '0'
+                      ? 'border-[var(--color-border-default)] bg-[var(--color-surface-subtle)] text-[var(--color-text-muted)]'
+                      : 'border-[var(--color-status-aufwand-border)] bg-[var(--color-status-aufwand-bg)]'
+                  }`}
+                  style={
+                    control.effortLevel !== '0'
+                      ? { color: EFFORT_TEXT_COLORS[control.effortLevel] }
+                      : undefined
+                  }
+                >
+                  {control.effortLevel}
+                </span>
+              )}
+            </div>
+            {/* Slot Niveau — nur wenn vorhanden */}
+            <SecurityLevelBadge value={control.securityLevel} />
+          </div>
         </div>
-      </div>
-      {!selectMode && <IconChevronRight className="w-4 h-4 text-[var(--color-text-muted)] shrink-0" />}
-    </button>
+        <IconChevronRight className="w-4 h-4 text-[var(--color-text-muted)] shrink-0" />
+      </button>
+    </div>
   );
 });

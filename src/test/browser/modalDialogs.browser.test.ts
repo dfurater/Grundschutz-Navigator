@@ -1,10 +1,11 @@
-import axe from 'axe-core';
+import { assertNoAxeViolations } from '@/test/browser/axeAssertions';
 import { createElement, useLayoutEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter, Routes, Route } from 'react-router';
 import { HeaderBar } from '@/components/HeaderBar';
 import { SearchPage } from '@/features/search/SearchPage';
+import { SearchSelectionProvider } from '@/state/SearchSelectionProvider';
 import { afterEach, expect, test, vi } from 'vitest';
 import { commands, page, userEvent } from 'vitest/browser';
 import type { Catalog, Control } from '@/domain/models';
@@ -14,17 +15,19 @@ import {
   filterPanelFacetCounts,
   makeFilterPanelCatalogState,
 } from '@/test/fixtures/filterPanel';
-import { CatalogMobileDetailOverlay } from '@/features/catalog/CatalogDetailPanel';
+import { CatalogDetailPanel } from '@/features/catalog/CatalogDetailPanel';
 import { CatalogMobileExportSheet } from '@/features/catalog/CatalogMobileExportSheet';
 import { CatalogMobileFilterSheet } from '@/features/catalog/CatalogMobileFilterSheet';
+import { useTabletDetailPanel } from '@/hooks/useTabletDetailPanel';
 import '@/index.css';
 
 /**
- * Filter-Sheet, Export-Sheet und Tablet-Detail als modale Dialoge (GSPP-503):
+ * Filter-Sheet und Export-Sheet als modale Dialoge (GSPP-503) sowie das
+ * Tablet-Inline-Detailpanel als nicht modale Zwei-Pane-Ansicht (GSPP-514):
  * Rolle, Name und modaler Zustand, inerter Hintergrund, Tab-Umlauf, Escape
- * und Fokus-Rückkehr in Chromium sowie axe ohne Verstöße am offenen Dialog.
- * Das Detail ersetzt `ControlDetail` durch Überschrift und Schließaktion, weil
- * hier nur der Dialograhmen geprüft wird.
+ * und Fokus-Rückkehr in Chromium sowie axe ohne Verstöße am offenen Dialog
+ * bzw. Panel. Das Detail ersetzt `ControlDetail` durch Überschrift und
+ * Schließaktion, weil hier nur der Rahmen geprüft wird.
  */
 
 const vocabularyRegistry = createTestVocabularyRegistry();
@@ -40,7 +43,7 @@ vi.mock('@/features/catalog/ControlDetail', async () => {
       Fragment,
       null,
       h('button', { type: 'button', onClick: props.onClose }, 'Zurück zur Übersicht'),
-      h('h2', { id: props.titleId }, props.control.title),
+      h('h2', { id: props.titleId, 'data-control-detail-title': '', tabIndex: -1 }, props.control.title),
       h('a', { href: '#verweis' }, 'Verknüpfte Kontrolle'),
     ),
   };
@@ -71,10 +74,10 @@ function renderSurface(surface: ReactNode) {
     root?.render(createElement(MemoryRouter, null,
       createElement(HeaderBar),
       createElement('button', { type: 'button' }, 'Suche im App-Kopf'),
-      createElement(Routes, null,
+      createElement(SearchSelectionProvider, null, createElement(Routes, null,
         createElement(Route, { path: '/', element: null }),
         createElement(Route, { path: '/suche', element: createElement(SearchPage) }),
-      ),
+      )),
       surface,
       createElement('a', { href: '#impressum' }, 'Impressum'),
     ));
@@ -114,8 +117,7 @@ async function expectBottomSheetGeometry(dialog: Element, width: number) {
 }
 
 async function expectNoAxeViolations(dialog: Element) {
-  const result = await axe.run(dialog.parentElement!, { resultTypes: ['violations'] });
-  expect(result.violations.map(({ id, nodes }) => `${id}: ${nodes.length}`)).toEqual([]);
+  await assertNoAxeViolations(dialog.parentElement!, `Mobiles Sheet: ${dialogName(dialog)}`, 'all');
 }
 
 /** Tab und Shift+Tab bleiben im Dialog, auch über beide Enden hinweg. */
@@ -133,6 +135,7 @@ async function expectTabStaysInside(dialog: Element) {
 
 test('Filter-Sheet: benannter modaler Dialog, inerter Hintergrund, Escape gibt Fokus zurück', async () => {
   const shell = await renderWithBackground(402, createElement(CatalogMobileFilterSheet, {
+    activeCount: 0,
     filterPanelProps: {
       filters: emptyFilters,
       facetCounts: filterPanelFacetCounts,
@@ -199,10 +202,11 @@ test('Export-Sheet: benannter modaler Dialog, „Schließen“ gibt Fokus zurüc
 });
 
 /**
- * Szene zwischen `md` und `lg` wie im `CatalogBrowser`: Liste mit Zeile,
- * Export-Sheet in der Toolbar und Detail-Overlay. `asPage` bildet den
- * Breitenwechsel unter `md` nach: Die Liste wird `hidden`, und die Detailseite
- * setzt den Fokus im Layout-Effekt auf ihre Überschrift (`useDocumentDetailPage`).
+ * Szene im Tablet-Band wie im `CatalogBrowser` (GSPP-514): Liste mit Zeile,
+ * Export-Sheet in der Toolbar und Inline-Detail neben der Liste. `asPage`
+ * bildet den Breitenwechsel unter `md` nach: Die Liste wird `hidden`, und die
+ * Detailseite setzt den Fokus im Layout-Effekt auf ihre Überschrift
+ * (`useDocumentDetailPage`). Das Inline-Panel folgt `useTabletDetailPanel`.
  */
 interface SceneState { readonly detailOpen: boolean; readonly asPage: boolean }
 
@@ -232,9 +236,17 @@ function DetailPage() {
 
 function TabletScene() {
   const { detailOpen, asPage } = useSyncExternalStore(scene.subscribe, scene.get);
+  useTabletDetailPanel({
+    enabled: !asPage,
+    controlId: detailOpen ? control.id : null,
+    scopeKey: 'tablet-scene',
+    listReady: true,
+    onClose: () => scene.set({ detailOpen: false }),
+  });
   return createElement(
     'div',
-    null,
+    // Nebeneinander wie im `CatalogBrowser` (Liste flexibel, Panel daneben).
+    { style: { display: 'flex' } },
     createElement(CatalogMobileExportSheet, {
       checkedIds: new Set<string>(),
       filteredControls: [control],
@@ -242,16 +254,19 @@ function TabletScene() {
       sectionFilename: 'test.csv',
     }),
     createElement('div', { hidden: detailOpen && asPage },
-      createElement('button', { type: 'button', 'data-control-row': '' }, 'Zeile TOP.1.1'),
+      createElement('button', { type: 'button', 'data-control-row': control.id }, 'Zeile TOP.1.1'),
     ),
     detailOpen && asPage ? createElement(DetailPage) : null,
-    createElement(CatalogMobileDetailOverlay, {
-      catalog,
-      control,
-      active: detailOpen && !asPage,
-      onClose: () => scene.set({ detailOpen: false }),
-      onNavigateToControl: () => {},
-    }),
+    detailOpen && !asPage
+      ? createElement('div', { 'data-tablet-detail-panel': '', 'data-testid': 'tablet-detail-panel' },
+        createElement(CatalogDetailPanel, {
+          catalog,
+          control,
+          onClose: () => scene.set({ detailOpen: false }),
+          onNavigateToControl: () => {},
+        }),
+      )
+      : null,
   );
 }
 
@@ -259,27 +274,39 @@ function openDetail() {
   flushSync(() => scene.set({ detailOpen: true }));
 }
 
-test('Tablet-Detail: benannter modaler Dialog, Escape kehrt zur auslösenden Zeile zurück', async () => {
+function tabletPanel(scope: ParentNode) {
+  return scope.querySelector('[data-testid="tablet-detail-panel"]')!;
+}
+
+test('Tablet-Detail: Inline-Panel neben der Liste, kein Dialog, Escape kehrt zur auslösenden Zeile zurück', async () => {
   const shell = await renderWithBackground(900, createElement(TabletScene));
   const row = buttonByName(shell, 'Zeile TOP.1.1');
   row.focus();
 
   openDetail();
 
-  await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
-  const dialog = document.querySelector('dialog')!;
-  expect(dialogName(dialog)).toBe('Testkontrolle');
-  expect(dialog.getAttribute('aria-modal')).toBe('true');
-  expect(shell.hasAttribute('inert')).toBe(true);
-  expect(dialog.getBoundingClientRect().toJSON()).toMatchObject({ left: 0, top: 0, width: 900, height: 800 });
+  await expect.poll(() => tabletPanel(shell)).not.toBeNull();
+  const panel = tabletPanel(shell);
+  // Kein modaler Dialog: Hintergrund und Dokument bleiben frei.
+  expect(document.querySelector('dialog')).toBeNull();
+  expect(shell.hasAttribute('inert')).toBe(false);
+  expect(document.documentElement.style.overflow).toBe('');
+  // Liste und Detail stehen nebeneinander, beide vollständig im Bild.
+  expect(row.checkVisibility()).toBe(true);
+  const rowBox = row.getBoundingClientRect();
+  const panelBox = panel.getBoundingClientRect();
+  expect(rowBox.left).toBeLessThan(panelBox.left);
+  expect(panelBox.right).toBeLessThanOrEqual(900 + 0.5);
+  expect(panelBox.bottom).toBeLessThanOrEqual(window.innerHeight + 0.5);
+  // Der Fokus wandert beim Öffnen auf die Detailüberschrift.
+  expect(document.activeElement?.textContent).toBe('Testkontrolle');
+  expect(panel.contains(document.activeElement)).toBe(true);
 
-  await expectTabStaysInside(dialog);
-  await expectNoAxeViolations(dialog);
+  await assertNoAxeViolations(panel, 'Tablet-Detailpanel', 'all');
 
   await userEvent.keyboard('{Escape}');
 
-  await expect.poll(() => document.querySelector('dialog')).toBeNull();
-  expect(shell.hasAttribute('inert')).toBe(false);
+  await expect.poll(() => shell.querySelector('[data-testid="tablet-detail-panel"]')).toBeNull();
   expect(document.activeElement).toBe(row);
 });
 
@@ -287,16 +314,17 @@ test('Tablet-Detail: Breitenwechsel unter md überlässt den Fokus der Detailsei
   const shell = await renderWithBackground(900, createElement(TabletScene));
   buttonByName(shell, 'Zeile TOP.1.1').focus();
   openDetail();
-  await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
+  await expect.poll(() => tabletPanel(shell)).not.toBeNull();
 
   flushSync(() => scene.set({ asPage: true }));
 
+  expect(shell.querySelector('[data-testid="tablet-detail-panel"]')).toBeNull();
   expect(document.querySelector('dialog')).toBeNull();
   expect(shell.hasAttribute('inert')).toBe(false);
   expect(document.activeElement?.textContent).toBe('Detailseite');
 });
 
-test('Sheet unter Tablet-Detail: gemeinsames Schließen gibt den Fokus an den Sheet-Auslöser', async () => {
+test('Sheet über Tablet-Detail: Escape schließt nur das Sheet, das Panel bleibt', async () => {
   const shell = await renderWithBackground(900, createElement(TabletScene));
   const trigger = buttonByName(shell, 'CSV exportieren');
   trigger.focus();
@@ -305,31 +333,31 @@ test('Sheet unter Tablet-Detail: gemeinsames Schließen gibt den Fokus an den Sh
   const sheet = document.querySelector('dialog')!;
   expect(sheet.contains(document.activeElement)).toBe(true);
 
-  // Browser-Vorwärts auf eine Kontrollroute öffnet das Detail über dem Sheet.
+  // Browser-Vorwärts auf eine Kontrollroute öffnet das Inline-Detail neben der Liste.
   openDetail();
-  await expect.poll(() => document.querySelectorAll('dialog').length).toBe(2);
-  const detail = [...document.querySelectorAll('dialog')].find((el) => el !== sheet)!;
-  expect(detail.contains(document.activeElement)).toBe(true);
-  expect(sheet.closest('[inert]')).not.toBeNull();
-  expect(detail.closest('[inert]')).toBeNull();
+  await expect.poll(() => tabletPanel(shell)).not.toBeNull();
+  // Der Fokus bleibt im modalen Sheet; das Panel stiehlt ihn nicht.
+  expect(sheet.contains(document.activeElement)).toBe(true);
 
-  // Escape schließt beide Ebenen in einem Commit.
+  // Escape aus dem Sheet schließt nur das Sheet.
   await userEvent.keyboard('{Escape}');
 
-  await expect.poll(() => document.querySelectorAll('dialog').length).toBe(0);
+  await expect.poll(() => document.querySelector('dialog')).toBeNull();
+  expect(tabletPanel(shell)).not.toBeNull();
   expect([...document.body.children].some((child) => child.hasAttribute('inert'))).toBe(false);
   expect(document.activeElement).toBe(trigger);
 });
 
-function filterSheet(hasActiveFilters = false) {
+function filterSheet(hasActiveFilters = false, filteredCount = 3) {
   return createElement(CatalogMobileFilterSheet, {
+    activeCount: 0,
     filterPanelProps: {
       filters: emptyFilters,
       facetCounts: filterPanelFacetCounts,
       filteredFacetCounts: filterPanelFacetCounts,
       hasActiveFilters,
-      filteredCount: 3,
-      totalCount: 3,
+      filteredCount,
+      totalCount: filteredCount,
       onFiltersChange: () => {},
       onClearFilters: () => {},
     },
@@ -371,8 +399,8 @@ function expectInViewport(element: Element) {
  * Kopf und bleiben sichtbar, die Aktionen darunter sind per Scrollen erreichbar.
  */
 test.each([
-  ['Filter-Sheet', 'Filter anzeigen', 'Fertig', 16, () => filterSheet(), true],
-  ['Filter-Sheet', 'Filter anzeigen', 'Fertig', 32, () => filterSheet(), true],
+  ['Filter-Sheet', 'Filter anzeigen', 'Schließen (3)', 16, () => filterSheet(), true],
+  ['Filter-Sheet', 'Filter anzeigen', 'Schließen (3)', 32, () => filterSheet(), true],
   ['Export-Sheet', 'CSV exportieren', 'Schließen', 16, exportSheet, true],
   ['Export-Sheet', 'CSV exportieren', 'Schließen', 32, exportSheet, true],
 ] as const)('%s bei 250 px Fensterhöhe und %s: Überschrift und „%s“ bleiben sichtbar (%i px Schrift)', async (_name, triggerName, closeName, fontSize, surface, lastActionReachable) => {
@@ -406,20 +434,20 @@ test.each([
   await expect.poll(() => document.querySelector('dialog')).toBeNull();
 });
 
-test('Filter-Sheet: „Fertig“ überdeckt bei aktiven Filtern „Zurücksetzen“ nicht', async () => {
+test('Filter-Sheet: „Schließen (3)“ überdeckt bei aktiven Filtern „Zurücksetzen“ nicht', async () => {
   const shell = await renderWithBackground(402, filterSheet(true));
   buttonByName(shell, 'Filter anzeigen').click();
   await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
   const dialog = document.querySelector('dialog')!;
   await Promise.all(dialog.getAnimations().map((animation) => animation.finished));
 
-  const done = buttonByName(dialog, 'Fertig');
+  const done = buttonByName(dialog, 'Schließen (3)');
   const reset = buttonByName(dialog, 'Zurücksetzen');
   const doneBox = done.getBoundingClientRect();
   const resetBox = reset.getBoundingClientRect();
   expect(doneBox.height).toBeGreaterThanOrEqual(44);
   expect(doneBox.bottom <= resetBox.top || resetBox.bottom <= doneBox.top).toBe(true);
-  // Jeder Punkt der Trefferfläche von „Fertig“ trifft „Fertig“.
+  // Jeder Punkt der Trefferfläche von „Schließen (3)“ trifft „Schließen (3)“.
   for (const y of [doneBox.top + 1, doneBox.top + doneBox.height / 2, doneBox.bottom - 1]) {
     expect(document.elementFromPoint(doneBox.left + doneBox.width / 2, y)?.closest('button')).toBe(done);
   }
@@ -454,7 +482,7 @@ test('Filter-Sheet: Größenwechsel bewahrt Fokus und manuelle Klappzustände', 
   await page.viewport(700, 250);
   await expect.poll(() => heading.dataset.scrollSummary).toBe('false');
   expect(document.activeElement).toBe(checkbox);
-  buttonByName(dialog, 'Fertig').click();
+  buttonByName(dialog, 'Schließen (3)').click();
 });
 
 /** Filter-Sheet mit 32 px Schrift bei 700 × 800 px; die Sektionenliste scrollt selbst. */
@@ -493,7 +521,7 @@ test('Filter-Sheet: Größenwechsel erhält die Position einer gescrollten Liste
   await expectRowOnTop();
   await resize(800, 'false');
   await expectRowOnTop();
-  buttonByName(dialog, 'Fertig').click();
+  buttonByName(dialog, 'Schließen (3)').click();
 });
 
 test('Filter-Sheet: Vergrößern nahe dem neuen Scrolllimit behält die Listenposition', async () => {
@@ -512,7 +540,7 @@ test('Filter-Sheet: Vergrößern nahe dem neuen Scrolllimit behält die Listenpo
 
   await resize(800, 'false');
   expect(Math.abs(scroller().scrollTop - anchor)).toBeLessThanOrEqual(1);
-  buttonByName(dialog, 'Fertig').click();
+  buttonByName(dialog, 'Schließen (3)').click();
 });
 
 test('Filter-Sheet: aufgeklappte Zeilen bleiben nach Einklappen aller Sektionen erreichbar', async () => {
@@ -535,6 +563,25 @@ test('Filter-Sheet: aufgeklappte Zeilen bleiben nach Einklappen aller Sektionen 
   expectWithin(row, row.closest('[data-overlayscrollbars-viewport]')!);
 });
 
+test.each([665, 1000])('Filter-Sheet: Titel und Schließen (%i) bei 320 px und doppelter Standardschrift bleiben sichtbar', async (count) => {
+  await commands.setBrowserFontSize(32);
+  const shell = await renderWithBackground(320, filterSheet(false, count));
+  buttonByName(shell, 'Filter anzeigen').click();
+  await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
+  const dialog = document.querySelector('dialog')!;
+  await Promise.all(dialog.getAnimations().map((animation) => animation.finished));
+  const title = dialog.querySelector('h2')!;
+  const close = buttonByName(dialog, `Schließen (${count})`);
+  expectInViewport(title);
+  expectInViewport(close);
+  expect(dialog.scrollWidth).toBeLessThanOrEqual(dialog.clientWidth);
+  expect(title.getBoundingClientRect().right).toBeLessThanOrEqual(close.getBoundingClientRect().left);
+  for (const element of [title, close]) {
+    expect(element.scrollWidth).toBeLessThanOrEqual(element.clientWidth);
+  }
+  close.click();
+  await expect.poll(() => document.querySelector('dialog')).toBeNull();
+});
 
 const sheetGeometries = [
   [320, 640, 16],
@@ -546,7 +593,7 @@ const sheetGeometries = [
 ] as const;
 
 for (const [name, triggerName, closeName, surface] of [
-  ['Filter', 'Filter anzeigen', 'Fertig', () => filterSheet()],
+  ['Filter', 'Filter anzeigen', 'Schließen (3)', () => filterSheet()],
   ['Export', 'CSV exportieren', 'Schließen', exportSheet],
 ] as const) {
   test.each(sheetGeometries)(`${name}: Tokens und erreichbare letzte Aktion bei %i × %i / %i px Schrift mit Bottom-Inset`, async (width, height, fontSize) => {
@@ -596,14 +643,11 @@ test.each([
   ['Filter', 'Filter anzeigen', '{Meta>}k{/Meta}', filterSheet],
   ['Export', 'CSV exportieren', '{Control>}k{/Control}', exportSheet],
   ['Export', 'CSV exportieren', '{Meta>}k{/Meta}', exportSheet],
-  ['Tablet-Detail', 'Zeile TOP.1.1', '{Control>}k{/Control}', () => createElement(TabletScene)],
-  ['Tablet-Detail', 'Zeile TOP.1.1', '{Meta>}k{/Meta}', () => createElement(TabletScene)],
-] as const)('%s: %s gibt den Header frei (%s)', async (name, triggerName, shortcut, surface) => {
+] as const)('%s: %s gibt den Header frei (%s)', async (_name, triggerName, shortcut, surface) => {
   const shell = await renderWithBackground(800, surface());
   const trigger = buttonByName(shell, triggerName);
   trigger.focus();
-  if (name === 'Tablet-Detail') openDetail();
-  else await userEvent.keyboard('{Enter}');
+  await userEvent.keyboard('{Enter}');
   await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
   expect(shell.hasAttribute('inert')).toBe(true);
   const search = shell.querySelector<HTMLInputElement>('[data-testid="header-search"]')!;
@@ -620,17 +664,20 @@ test.each([
   expect(search.value).toBe('test');
 });
 
-test.each(['{Control>}k{/Control}', '{Meta>}k{/Meta}'])('Suchkürzel %s beendet beide gestapelten Dialoge vor dem Suchfokus', async (shortcut) => {
+test.each(['{Control>}k{/Control}', '{Meta>}k{/Meta}'])('Suchkürzel %s beendet das Sheet vor dem Suchfokus, das Tablet-Panel bleibt', async (shortcut) => {
   const shell = await renderWithBackground(800, createElement(TabletScene));
   buttonByName(shell, 'CSV exportieren').focus();
   await userEvent.keyboard('{Enter}');
   await expect.poll(() => document.querySelector('dialog')).not.toBeNull();
   openDetail();
-  await expect.poll(() => document.querySelectorAll('dialog').length).toBe(2);
+  await expect.poll(() => tabletPanel(shell)).not.toBeNull();
+  expect(document.querySelector('dialog')).not.toBeNull();
 
   await userEvent.keyboard(shortcut);
 
-  await expect.poll(() => document.querySelectorAll('dialog').length).toBe(0);
+  await expect.poll(() => document.querySelector('dialog')).toBeNull();
+  // Das Inline-Panel ist kein modaler Dialog und bleibt stehen.
+  expect(tabletPanel(shell)).not.toBeNull();
   const search = shell.querySelector<HTMLInputElement>('[data-testid="header-search"]')!;
   await expect.poll(() => document.activeElement).toBe(search);
   expect([...document.body.children].some((child) => child.hasAttribute('inert'))).toBe(false);
