@@ -299,7 +299,7 @@ function AppShellLayout() {
         }}
       />
 
-      <div className="flex-1 min-w-0 flex md:overflow-hidden relative">
+      <div className="flex-1 min-h-0 min-w-0 flex desktop:overflow-hidden relative">
         {/* Mobil sind Abdunklung und Schublade weder fest noch sticky: Ein
             solches Element bis zum unteren Bildschirmrand lässt Safari seine
             Leiste mit einer undurchsichtigen Fläche füllen. Beide liegen
