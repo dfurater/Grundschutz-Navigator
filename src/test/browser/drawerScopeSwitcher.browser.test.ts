@@ -1,10 +1,15 @@
-import { createElement } from 'react';
+import { createElement, Fragment, useLayoutEffect } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { afterEach, expect, test } from 'vitest';
 import { commands, page, userEvent } from 'vitest/browser';
+import { createMemoryRouter, useLocation } from 'react-router';
+import { RouterProvider } from 'react-router/dom';
+import { AppShell } from '@/app/AppShell';
+import { createAppRoutes } from '@/app/appRoutes';
+import { useCatalog } from '@/hooks/useCatalog';
+import type { CatalogState } from '@/domain/models';
 import { CatalogProvider } from '@/state/CatalogContext';
-import { appShellAt } from './appShellRouter';
 import { openDrawer, settlePush } from './mobileDrawerHarness';
 import '@/index.css';
 
@@ -25,12 +30,42 @@ const PROFILES = [
 ];
 let root: Root | undefined;
 let host: HTMLDivElement | undefined;
+let router: ReturnType<typeof createMemoryRouter> | undefined;
+let catalogState: CatalogState | undefined;
+let committedLocationKey: string | undefined;
+
+// Router-State kann vor dem React-Commit wechseln. Erst dessen Layout-Effekt
+// bestätigt, dass die Shell den Routenwechsel samt Drawer-Schließen verarbeitet hat.
+function LocationProbe() {
+  const { key } = useLocation();
+  useLayoutEffect(() => { committedLocationKey = key; }, [key]);
+  return null;
+}
+
+function CatalogProbe() {
+  const state = useCatalog();
+  useLayoutEffect(() => { catalogState = state; }, [state]);
+  return null;
+}
+
+async function expectLoadedCatalog(key: string) {
+  await expect.poll(() => ({
+    key: catalogState?.catalog?.catalogKey,
+    selected: catalogState?.activeCatalogKey,
+    loading: catalogState?.loading,
+    error: catalogState?.error,
+  }), { timeout: 5000 }).toEqual({ key, selected: key, loading: false, error: null });
+}
 
 afterEach(async () => {
   root?.unmount();
   host?.remove();
   root = undefined;
   host = undefined;
+  router?.dispose();
+  router = undefined;
+  catalogState = undefined;
+  committedLocationKey = undefined;
   await commands.setBrowserCoarsePointer(false);
 });
 
@@ -61,7 +96,6 @@ async function tap(element: HTMLElement) {
   await commands.dispatchBrowserTouch('start', frame.left + (box.left + box.width / 2) * scale,
     frame.top + (box.top + box.height / 2) * scale);
   await commands.dispatchBrowserTouch('end');
-  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 }
 
 test.each(PROFILES)('hält die Kontextwahl bei $width px (Touch: $touch) sichtbar und bedienbar', async ({ width, height, touch }) => {
@@ -70,9 +104,12 @@ test.each(PROFILES)('hält die Kontextwahl bei $width px (Touch: $touch) sichtba
   host = document.createElement('div');
   document.body.append(host);
   root = createRoot(host);
+  router = createMemoryRouter(createAppRoutes(createElement(Fragment, null, createElement(AppShell), createElement(LocationProbe))), { initialEntries: ['/katalog/gspp'] });
   flushSync(() => {
-    root?.render(createElement(CatalogProvider, null, appShellAt('/katalog/gspp')));
+    root?.render(createElement(CatalogProvider, null,
+      createElement(CatalogProbe), createElement(RouterProvider, { router: router! })));
   });
+  await expectLoadedCatalog('gspp');
   const aside = host.querySelector('aside')!;
   await expect.poll(() => triggerIn(aside)?.textContent).toContain(CATALOGS[0].title);
   await expect.poll(() => aside.querySelector('[role="tree"]')).not.toBeNull();
@@ -100,11 +137,14 @@ test.each(PROFILES)('hält die Kontextwahl bei $width px (Touch: $touch) sichtba
     const item = items.find((entry) => entry.textContent?.includes(catalog.title))!;
     expect(item.getAttribute('href')).toBe(`/katalog/${catalog.key}`);
     expectReachable(item, width, height);
+    const previousLocationKey = router.state.location.key;
     if (touch) await tap(item);
     else await userEvent.click(item);
-    await expect.poll(() => aside.querySelector('[role="tree"]')).not.toBeNull();
+    await expect.poll(() => router!.state.location.key).not.toBe(previousLocationKey);
+    await expect.poll(() => router!.state.navigation.state).toBe('idle');
+    await expect.poll(() => committedLocationKey).toBe(router.state.location.key);
+    await expectLoadedCatalog(catalog.key);
     await expect.poll(() => triggerIn(aside)?.textContent).toContain(catalog.title);
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     if (touch) {
       await expect.poll(() => host!.querySelector('[data-mobile-nav]')?.getAttribute('data-mobile-nav')).toBe('closed');
       await expect.poll(() => aside.getBoundingClientRect().right).toBeLessThanOrEqual(0);
