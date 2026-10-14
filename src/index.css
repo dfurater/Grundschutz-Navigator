@@ -293,9 +293,9 @@
   /* Eigene Hintergrundfarbe auf `html`, nicht nur auf `body`: Ohne sie zeigt
      Safari unter seiner Liquid-Glass-Leiste eine undurchsichtige graue
      Fläche statt des Seiteninhalts.
-     Die Farbe ist die des Footers: Am Dokumentende liegt unter der Leiste nur
-     noch diese Fläche, und ein abweichender Ton erschiene dort als grauer
-     Streifen unter dem Footer. */
+     Die Farbe ist die des Footers, ebenso auf `body` in `index.html`: Safari
+     färbt die Fläche unter der Leiste am Dokumentende nach `body`, und ein
+     abweichender Ton erschiene dort als grauer Streifen unter dem Footer. */
   html {
     overflow-x: hidden;
     background-color: var(--color-surface-base);

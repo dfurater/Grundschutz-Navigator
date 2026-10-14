@@ -20,7 +20,7 @@ export function Footer({ className = '' }: FooterProps) {
   const verified = verification?.valid;
 
   const secondaryLinkClass =
-    'inline-flex min-h-11 items-center whitespace-nowrap rounded px-2 text-[var(--color-text-muted)] desktop:min-h-6 desktop:px-0 hover:text-[var(--color-text-secondary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]';
+    'inline-flex min-h-8 items-center whitespace-nowrap rounded px-2 text-[var(--color-text-muted)] desktop:min-h-6 desktop:px-0 hover:text-[var(--color-text-secondary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]';
 
   return (
     <footer
@@ -37,7 +37,7 @@ export function Footer({ className = '' }: FooterProps) {
             href="https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek"
             target="_blank"
             rel="noopener noreferrer"
-            className="catalog-link-color inline-flex min-h-11 min-w-0 items-center gap-1 rounded desktop:min-h-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+            className="catalog-link-color inline-flex min-h-8 min-w-0 items-center gap-1 rounded desktop:min-h-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
           >
             <span className="hidden min-w-0 truncate sm:inline">
               Quelle: BSI Stand-der-Technik-Bibliothek
@@ -49,7 +49,7 @@ export function Footer({ className = '' }: FooterProps) {
           {verified !== undefined && (
             <Link
               to="/about"
-              className={`inline-flex min-h-11 shrink-0 items-center gap-1 whitespace-nowrap rounded font-medium desktop:min-h-6 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] ${verified ? 'text-[var(--color-success-text)]' : 'text-[var(--color-warning-text)]'}`}
+              className={`inline-flex min-h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded font-medium desktop:min-h-6 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] ${verified ? 'text-[var(--color-success-text)]' : 'text-[var(--color-warning-text)]'}`}
               title="Integritätsdetails auf der Seite Über das Projekt"
             >
               <IconShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />

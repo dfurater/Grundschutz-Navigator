@@ -176,7 +176,7 @@ describe('Footer', () => {
     expect(informationGroup?.parentElement).toBe(secondaryGroup?.parentElement);
   });
 
-  it('gives the complete secondary footer row 44 px touch targets off the desktop and 24 px on the desktop', () => {
+  it('gives the complete secondary footer row 32 px touch targets off the desktop and 24 px on the desktop', () => {
     render(
       <MemoryRouter>
         <Footer />
@@ -187,7 +187,7 @@ describe('Footer', () => {
 
     expect(secondaryGroup).toHaveClass('-mx-2', 'desktop:mx-0', 'desktop:gap-x-3');
     for (const { label } of secondaryFooterLinks) {
-      expect(screen.getByRole('link', { name: label })).toHaveClass('min-h-11', 'px-2', 'desktop:min-h-6', 'desktop:px-0');
+      expect(screen.getByRole('link', { name: label })).toHaveClass('min-h-8', 'px-2', 'desktop:min-h-6', 'desktop:px-0');
     }
   });
 
