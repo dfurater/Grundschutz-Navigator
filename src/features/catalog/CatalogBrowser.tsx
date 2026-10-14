@@ -331,6 +331,7 @@ export function CatalogBrowser() {
                   <CatalogDetailPanel
                     catalog={contentCatalog}
                     control={selectedControl}
+                    layout="tablet-panel"
                     onClose={closeDetail}
                     onNavigateToControl={navigateToControl}
                   />

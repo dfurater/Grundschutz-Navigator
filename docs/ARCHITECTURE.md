@@ -220,7 +220,7 @@ src/                              # Anwendungsquellcode
 │   │   ├── ControlStatementDetails.tsx   # Nicht im Satz gefundene Angaben und Dokumentation
 │   │   ├── ControlTable.tsx              # Gefensterte Anforderungstabelle mit Auswahl und Sortierung
 │   │   ├── ControlTaxonomy.tsx           # Zielobjekt- bzw. Tag-Gruppe und WLAN-Taxonomie
-│   │   ├── ControlTaxonomyBreadcrumb.tsx # Praktik- und Themenbegriffe im Kopf
+│   │   ├── ControlTaxonomyBreadcrumb.tsx # Taxonomiebegriffe im Kopf (`panel`/`page`) oder im Scrollbereich (`tablet-panel`)
 │   │   ├── ControlVocabularyPrimitives.tsx # Gemeinsame Bausteine der Vokabularanzeige
 │   │   ├── FilterPanel.tsx               # Filterpanel
 │   │   ├── useAdaptiveFilterHeader.ts   # Mobile Kopf-/Listenhöhe messen und Scrollmodus wählen
@@ -733,7 +733,7 @@ Für `src/**/*.{ts,tsx}` läuft ESLint zusätzlich mit Typinformation (typescrip
 | `ControlDependencies` | Rendert aufgelöste interne Control-Beziehungen unter „Verknüpft" mit lesbaren Relationsnamen und Herkunftslegende. Ausgehende Links stehen je Relationsart in einer Gruppe, deren Beschriftung einmal sichtbar über der Liste steht und die Gruppe zugleich benennt. Unter einem Link steht nur ein eigener Hinweis zur Gegenrichtung, „Verweist auf diese Kontrolle · <Relationsart>“, mehrere Relationsarten kommagetrennt; rein eingehende Kontrollen erscheinen einmal mit allen ihren Relationsarten. Der Hinweis ist zugleich die Beschreibung (`aria-describedby`) des Links. |
 | `ControlListLink` | Link-Zeile für Erweiterungen und Verknüpfungen: Kennung in einer gemeinsamen Monospace-Spalte, deren Breite `ControlDetail` für den ganzen Block „Zusammenhänge“ an der längsten sichtbaren Kennung bemisst (`controlIdColumnStyle`, in `ch`), Titel und Zusatztexte (`ControlListNote`) bündig daneben. |
 | `ControlSources` | Rendert aufgelöste `back-matter`-, externe und nicht auflösbare Verweise unter „Quellen" als Liste mit Punkten; alle Zeilen einer Quelle stehen bündig. |
-| `ControlHierarchy` | Rendert Erweiterungen unter „Zusammenhänge"; der aufgelöste Parent steht als „Teil von" im Kopf. |
+| `ControlHierarchy` | Rendert Erweiterungen unter „Zusammenhänge"; der aufgelöste Parent steht als „Teil von" in `panel` und `page` im Kopf, in `tablet-panel` am Anfang des Detail-Scrollbereichs. |
 | `ControlMetadata` | Rendert UUID, OSCAL-`class` und den Parent-ID-Fallback in der Fußzeile ohne Überschrift, als Begriffspaare aus Beschriftung und Wert. |
 
 Die Sektionsmodule erhalten ausschließlich benötigte Controls, aufgelöste Vokabularwerte und Callbacks. Sie verwenden weder Katalog-, Router- noch Filterkontext.
