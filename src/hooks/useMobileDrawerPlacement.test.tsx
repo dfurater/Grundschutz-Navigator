@@ -1,7 +1,7 @@
 import { act, render, renderHook } from '@testing-library/react';
 import { useLayoutEffect } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { useMobileDrawerPlacement } from './useMobileDrawerPlacement';
+import { useMobileDrawerPlacement } from '@/hooks/useMobileDrawerPlacement';
 
 function scrollTo(y: number) {
   Object.defineProperty(globalThis, 'scrollY', { configurable: true, value: y });
@@ -35,7 +35,7 @@ function nextFrame() {
 function openAndClose(drawer: HTMLElement = document.createElement('aside')) {
   drawerRef.current = drawer;
   const { result, rerender } = renderHook(
-    ({ open }) => useMobileDrawerPlacement(open, false, false, drawerRef),
+    ({ open }) => useMobileDrawerPlacement(open, false, false, drawerRef, false),
     { initialProps: { open: false } },
   );
   scrollTo(640);
@@ -55,7 +55,7 @@ function ScrollingPage({ open }: { readonly open: boolean }) {
 }
 
 function Shell({ open }: { readonly open: boolean }) {
-  const placement = useMobileDrawerPlacement(open, false, false, drawerRef);
+  const placement = useMobileDrawerPlacement(open, false, false, drawerRef, false);
   return (
     <>
       <ScrollingPage open={open} />
@@ -67,6 +67,7 @@ function Shell({ open }: { readonly open: boolean }) {
 
 describe('useMobileDrawerPlacement', () => {
   afterEach(() => {
+    vi.restoreAllMocks();
     drawerRef.current = null;
     scrollTo(0);
     document.documentElement.style.overflow = '';
@@ -74,7 +75,7 @@ describe('useMobileDrawerPlacement', () => {
 
   it('legt die offene Schublade an die beim Öffnen erfasste Dokumentposition und sperrt das Dokument', () => {
     const { result, rerender } = renderHook(
-      ({ open }) => useMobileDrawerPlacement(open, false, false, drawerRef),
+      ({ open }) => useMobileDrawerPlacement(open, false, false, drawerRef, false),
       { initialProps: { open: false } },
     );
     expect(result.current.top).toBe(0);
@@ -124,7 +125,7 @@ describe('useMobileDrawerPlacement', () => {
     ['auf der persistenten Navigation', false, true],
   ])('meldet kein Hinausgleiten %s', (_name, transitionDisabled, persistent) => {
     const { result, rerender } = renderHook(
-      ({ open }) => useMobileDrawerPlacement(open, persistent, transitionDisabled, drawerRef),
+      ({ open }) => useMobileDrawerPlacement(open, persistent, transitionDisabled, drawerRef, false),
       { initialProps: { open: true } },
     );
     rerender({ open: false });
@@ -190,7 +191,7 @@ describe('useMobileDrawerPlacement', () => {
 
   it('legt die geschlossene Schublade ohne Überblendung sofort oben ab', () => {
     const { result, rerender } = renderHook(
-      ({ open }) => useMobileDrawerPlacement(open, false, true, drawerRef),
+      ({ open }) => useMobileDrawerPlacement(open, false, true, drawerRef, false),
       { initialProps: { open: true } },
     );
     scrollTo(640);
@@ -203,7 +204,7 @@ describe('useMobileDrawerPlacement', () => {
 
   it('hält die geschlossene Schublade oben, wenn Reduced Motion danach endet', () => {
     const { result, rerender } = renderHook(
-      ({ open, transitionDisabled }) => useMobileDrawerPlacement(open, false, transitionDisabled, drawerRef),
+      ({ open, transitionDisabled }) => useMobileDrawerPlacement(open, false, transitionDisabled, drawerRef, false),
       { initialProps: { open: true, transitionDisabled: true } },
     );
     scrollTo(640);
@@ -216,7 +217,7 @@ describe('useMobileDrawerPlacement', () => {
 
   it('legt die Schublade oben ab, wenn Reduced Motion während des Hinausgleitens beginnt', () => {
     const { result, rerender } = renderHook(
-      ({ open, transitionDisabled }) => useMobileDrawerPlacement(open, false, transitionDisabled, drawerRef),
+      ({ open, transitionDisabled }) => useMobileDrawerPlacement(open, false, transitionDisabled, drawerRef, false),
       { initialProps: { open: true, transitionDisabled: false } },
     );
     scrollTo(640);
@@ -231,7 +232,7 @@ describe('useMobileDrawerPlacement', () => {
 
   it('legt die Schublade oben ab, wenn die Breite während des Hinausgleitens über md und zurück wechselt', () => {
     const { result, rerender } = renderHook(
-      ({ open, persistent }) => useMobileDrawerPlacement(open, persistent, false, drawerRef),
+      ({ open, persistent }) => useMobileDrawerPlacement(open, persistent, false, drawerRef, false),
       { initialProps: { open: true, persistent: false } },
     );
     scrollTo(640);
@@ -250,7 +251,7 @@ describe('useMobileDrawerPlacement', () => {
   it('legt Schublade und Dokument nach einem Wechsel über md bei offener Schublade nach oben', () => {
     const scrollToSpy = vi.spyOn(globalThis, 'scrollTo').mockImplementation(() => {});
     const { result, rerender } = renderHook(
-      ({ persistent }) => useMobileDrawerPlacement(true, persistent, false, drawerRef),
+      ({ persistent }) => useMobileDrawerPlacement(true, persistent, false, drawerRef, false),
       { initialProps: { persistent: false } },
     );
     scrollTo(640);
@@ -265,6 +266,29 @@ describe('useMobileDrawerPlacement', () => {
     expect(result.current.top).toBe(0);
     expect(scrollToSpy).toHaveBeenLastCalledWith({ top: 0, behavior: 'instant' });
     expect(document.documentElement.style.overflow).toBe('hidden');
+    scrollToSpy.mockRestore();
+  });
+
+  it.each([false, true])('setzt den offenen mobilen Drawer beim Wechsel des Scroll-Eigentümers von %s zurück', (ownsScrollArea) => {
+    const scrollToSpy = vi.spyOn(globalThis, 'scrollTo').mockImplementation(() => {});
+    const { result, rerender } = renderHook(
+      ({ open, ownsScrollArea }) => useMobileDrawerPlacement(open, false, false, drawerRef, ownsScrollArea),
+      { initialProps: { open: false, ownsScrollArea } },
+    );
+    scrollTo(420);
+    act(() => result.current.captureOffset());
+    rerender({ open: true, ownsScrollArea });
+    expect(result.current.top).toBe(420);
+
+    // Die Navigation bleibt mobil; nur der Scroll-Eigentümer wechselt.
+    // scrollY kann beim Render noch den alten Dokumentversatz enthalten.
+    scrollToSpy.mockClear();
+    rerender({ open: true, ownsScrollArea: !ownsScrollArea });
+    expect(result.current.top).toBe(0);
+    expect(scrollToSpy).toHaveBeenLastCalledWith({ top: 0, behavior: 'instant' });
+    expect(result.current.sliding).toBe(false);
+    expect(document.documentElement.style.overflow).toBe('hidden');
+
     scrollToSpy.mockRestore();
   });
 });
