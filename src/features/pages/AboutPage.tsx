@@ -55,7 +55,7 @@ const surfacePanelClass =
 const pageSectionClass = 'border-t border-[var(--color-border-subtle)] pt-6';
 const sectionLabelClass = 'type-meta text-[var(--color-text-secondary)]';
 const subsectionHeadingClass = 'text-sm font-semibold text-[var(--color-text-primary)]';
-const bodyTextClass = 'text-sm leading-relaxed text-[var(--color-text-primary)]';
+const bodyTextClass = 'catalog-prose-text text-sm leading-relaxed text-[var(--color-text-primary)]';
 const metaLabelClass = 'type-meta';
 const metaValueClass = 'text-xs font-medium text-[var(--color-text-primary)]';
 const externalLinkClass = 'catalog-link-color inline-flex items-center gap-0.5';
@@ -554,12 +554,12 @@ function OscalDerivationPanel({ metadata }: Readonly<{ metadata: CatalogMetadata
           <span className={metaValueClass}>{hasSourceProfile ? 'vorhanden' : 'nicht vorhanden'}</span>
         </div>
       </div>
-      <p className="px-4 py-3 text-xs leading-relaxed text-[var(--color-text-secondary)]">
+      <p className="catalog-prose-text px-4 py-3 text-xs leading-relaxed text-[var(--color-text-secondary)]">
         Fehlende optionale Marker sind ein Projektbefund, kein Schemafehler.
       </p>
       <div className="border-t border-[var(--color-border-subtle)] px-4 py-3">
         <p className="type-meta">Ressourcen-Hashes</p>
-        <p className="mt-1 text-xs leading-relaxed text-[var(--color-text-secondary)]">
+        <p className="catalog-prose-text mt-1 text-xs leading-relaxed text-[var(--color-text-secondary)]">
           Hashes unter <code className="font-mono">back-matter.resource.rlinks</code> beschreiben
           referenzierte Ressourcen, nie einen Hash des Katalogdokuments über sich selbst.
         </p>
@@ -732,7 +732,7 @@ function CatalogMetadataSection({
   return (
     <section className={pageSectionClass}>
       <h2 className={sectionLabelClass}>Katalog-Metadaten</h2>
-      <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--color-text-primary)]">
+      <p className="catalog-prose-text mt-2 text-sm leading-relaxed text-[var(--color-text-primary)]">
         Diese Angaben stammen aus dem offiziellen OSCAL-Katalog und ergänzen
         die Build- und Integritätsdaten um Geltungsbereich, Rollen,
         Verantwortlichkeiten und Referenzen.
@@ -770,7 +770,7 @@ function CatalogMetadataSection({
       {metadata.remarks && (
         <div className="mt-6 space-y-2">
           <h3 className={subsectionHeadingClass}>Bemerkungen</h3>
-          <p className="whitespace-pre-line break-words text-sm text-[var(--color-text-primary)]">
+          <p className="catalog-prose-text whitespace-pre-line break-words text-sm text-[var(--color-text-primary)]">
             {metadata.remarks}
           </p>
         </div>
@@ -899,7 +899,7 @@ export function AboutPage() {
         <IconInfo className="mt-0.5 h-8 w-8 shrink-0 text-[var(--color-accent-default)]" />
         <div className="min-w-0">
           <h1 className="type-page-title">Über das Projekt</h1>
-          <p className="type-secondary mt-0.5">
+          <p className="catalog-prose-text type-secondary mt-0.5">
             Der Grundschutz++ Navigator erschließt den offiziellen BSI-Katalog im Browser.
             Die Anwendung ist kein Angebot des BSI.
           </p>
@@ -939,7 +939,7 @@ export function AboutPage() {
             <IconShieldCheck className="h-4.5 w-4.5 text-[var(--color-accent-default)]" />
             Datenherkunft und Verifikation
           </h2>
-          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--color-text-primary)]">
+          <p className="catalog-prose-text mt-2 text-sm leading-relaxed text-[var(--color-text-primary)]">
             Der angezeigte Katalog stammt aus dem offiziellen BSI-Repository. Die App
             vergleicht die geladene Datei zur Laufzeit per SHA-256 mit den beim Build
             erfassten Metadaten und dokumentiert die Herkunft des Deployments.
@@ -1019,7 +1019,7 @@ export function AboutPage() {
           {invalidCatalogLineage && vocabularyProvenance && (
             <div className={`${surfacePanelClass} mt-5 px-4 py-3`}>
               <p className="type-meta">Quellkatalog-Lineage nicht verfügbar</p>
-              <p className="mt-1 text-xs leading-relaxed text-[var(--color-text-secondary)]">
+              <p className="catalog-prose-text mt-1 text-xs leading-relaxed text-[var(--color-text-secondary)]">
                 Die im Build-Sidecar enthaltene Lineage ist unvollständig oder widersprüchlich und wird
                 nicht angezeigt.
               </p>
@@ -1077,7 +1077,7 @@ export function AboutPage() {
 
         <section className={pageSectionClass}>
           <h2 className={sectionLabelClass}>Technologie</h2>
-          <p className="mt-2 text-sm leading-relaxed text-[var(--color-text-primary)]">
+          <p className="catalog-prose-text mt-2 text-sm leading-relaxed text-[var(--color-text-primary)]">
             React 19, TypeScript, Vite, Tailwind CSS und FlexSearch. Deployment
             auf GitHub Pages.
           </p>

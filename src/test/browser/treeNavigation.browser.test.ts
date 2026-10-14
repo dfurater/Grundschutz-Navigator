@@ -3,7 +3,7 @@ import { createElement } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, expect, test, vi } from 'vitest';
-import { page, userEvent } from 'vitest/browser';
+import { commands, page, userEvent } from 'vitest/browser';
 import { TreeNav, type TreeItem } from '@/components/TreeNav';
 import { appShellAt } from './appShellRouter';
 import { parseCatalog } from '@/adapters/oscalAdapter';
@@ -16,11 +16,12 @@ import '@/index.css';
 let root: Root | undefined;
 let host: HTMLDivElement | undefined;
 
-afterEach(() => {
+afterEach(async () => {
   root?.unmount();
   host?.remove();
   root = undefined;
   host = undefined;
+  await commands.setBrowserFontSize();
 });
 
 async function mount(width: number) {
@@ -125,6 +126,33 @@ function renderCatalog(catalog: Catalog) {
     appShellAt('/gibt-es-nicht'),
   )));
 }
+
+test.each([16, 32])('Chromium: Baumzählungen bleiben bei 768px und %ipx Standardschrift vollständig sichtbar', async (fontSize) => {
+  await commands.setBrowserFontSize(fontSize);
+  await mountRealCatalog(768);
+  const aside = host!.querySelector('aside')!;
+  if (aside.inert) {
+    host!.querySelector<HTMLButtonElement>('button[aria-controls]')!.click();
+    await expect.poll(() => aside.getBoundingClientRect().left).toBe(0);
+  }
+  rows()[0].focus();
+  await userEvent.keyboard('{ArrowRight}');
+  await document.fonts.ready;
+  for (const row of rows()) {
+    const badge = row.querySelector<HTMLElement>('.catalog-badge-text')!;
+    const badgeBox = badge.getBoundingClientRect();
+    const rowBox = row.getBoundingClientRect();
+    expect(getComputedStyle(badge).fontSize).toBe(`${fontSize * 0.75}px`);
+    expect(badge.scrollWidth).toBeLessThanOrEqual(badge.clientWidth + 1);
+    expect(badgeBox.right).toBeLessThanOrEqual(rowBox.right);
+    expect(badgeBox.top).toBeGreaterThanOrEqual(rowBox.top);
+    expect(badgeBox.bottom).toBeLessThanOrEqual(rowBox.bottom);
+    const title = row.querySelector<HTMLElement>('span.truncate > span.truncate')!;
+    expect(title.getBoundingClientRect().width).toBeGreaterThan(0);
+    expect(title.getBoundingClientRect().right).toBeLessThanOrEqual(badgeBox.left);
+  }
+  expect(aside.scrollWidth).toBeLessThanOrEqual(aside.clientWidth + 1);
+});
 
 test('Chromium: realer BSI-Katalog navigiert sichtbare Praktiken und Themen am Desktop', async () => {
   const catalog = await mountRealCatalog(1440);

@@ -78,7 +78,7 @@ function expectReachableFooterLinks(area: Element) {
   }
 }
 
-test.each([768, 1024, 1440])(
+test.each([744, 1024, 1440])(
   'hält Footerlinks beim Direktaufruf einer wartenden Route bei %i × 300 px sichtbar und per Pointer erreichbar',
   async (width) => {
     const status = await renderPendingRoute(width, 300);
@@ -90,14 +90,14 @@ test.each([768, 1024, 1440])(
   },
 );
 
-test.each([390, 767])('behält unter md bei %i px die mobile Mindesthöhe der Ladefläche', async (width) => {
+test.each([390, 743])('behält unter md bei %i px die mobile Mindesthöhe der Ladefläche', async (width) => {
   const status = await renderPendingRoute(width, 300);
   const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
   expect(status.getBoundingClientRect().height).toBeGreaterThanOrEqual(16 * rem);
   expect(getComputedStyle(status).minHeight).toBe(`${16 * rem}px`);
 });
 
-test.each([768, 1024, 1440])(
+test.each([744, 1024, 1440])(
   'hält Footerlinks während des Katalog-Ladens bei %i × 300 px sichtbar und per Pointer erreichbar',
   async (width) => {
     const area = await renderLoadingCatalog(width, 300);
@@ -105,7 +105,7 @@ test.each([768, 1024, 1440])(
   },
 );
 
-test.each([390, 767])('behält unter md bei %i px die mobile Mindesthöhe der Katalog-Ladefläche', async (width) => {
+test.each([390, 743])('behält unter md bei %i px die mobile Mindesthöhe der Katalog-Ladefläche', async (width) => {
   const area = await renderLoadingCatalog(width, 300);
   expect(area.getBoundingClientRect().height).toBeGreaterThanOrEqual(innerHeight / 2 - 0.5);
   expect(getComputedStyle(area).minHeight).toBe(`${innerHeight / 2}px`);

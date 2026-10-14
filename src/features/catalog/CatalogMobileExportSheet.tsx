@@ -49,12 +49,12 @@ export function CatalogMobileExportSheet({
 
   return (
     <>
-      {/* Unter lg ein reiner Icon-Schalter wie Auswahl und Filter (GSPP-471);
+      {/* Außerhalb des Desktops ein reiner Icon-Schalter wie Auswahl und Filter (GSPP-471);
           das Sheet beschriftet seine Optionen selbst. */}
       <Button
         variant="ghost"
         size="sm"
-        className="lg:hidden min-h-[44px] min-w-[44px]"
+        className="desktop:hidden min-h-[44px] min-w-[44px]"
         onClick={() => setOpen(true)}
         disabled={checkedIds.size === 0 && filteredControls.length === 0}
         aria-label="CSV exportieren"
@@ -65,7 +65,7 @@ export function CatalogMobileExportSheet({
       {open && (
         <ModalPortal>
           <div
-            className="fixed inset-0 z-40 lg:hidden"
+            className="fixed inset-0 z-40 desktop:hidden"
             onClick={close}
             aria-hidden="true"
           >
@@ -76,7 +76,7 @@ export function CatalogMobileExportSheet({
             ref={sheetRef}
             aria-modal="true"
             aria-labelledby={headingId}
-            className="mobile-sheet m-0 border-0 w-full max-w-none text-[inherit] fixed inset-x-0 bottom-0 z-50 bg-[var(--color-surface-raised)] flex flex-col overflow-hidden lg:hidden animate-slide-up"
+            className="mobile-sheet m-0 border-0 w-full max-w-none text-[inherit] fixed inset-x-0 bottom-0 z-50 bg-[var(--color-surface-raised)] flex flex-col overflow-hidden desktop:hidden animate-slide-up"
           >
             <div
               className="flex justify-center items-center min-h-[44px] shrink-0 select-none"

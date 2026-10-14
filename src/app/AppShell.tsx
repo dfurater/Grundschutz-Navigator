@@ -24,7 +24,7 @@ import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import { useMobileDrawerPlacement } from '@/hooks/useMobileDrawerPlacement';
 import { useMobileDrawerResizeSnap } from '@/hooks/useMobileDrawerResizeSnap';
 import { useMobileDrawerSwipe } from '@/hooks/useMobileDrawerSwipe';
-import { OWN_SCROLL_AREA_QUERY } from '@/hooks/breakpointQueries';
+import { DESKTOP_QUERY, OWN_SCROLL_AREA_QUERY } from '@/hooks/breakpointQueries';
 import { useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
 import { isCatalogKey } from '@/domain/sourceRegistry';
 import type { CatalogKey } from '@/domain/sourceRegistry';
@@ -39,6 +39,7 @@ import {
 import { useRoutePrefetch } from '@/app/routePrefetch';
 import { NavigationPendingIndicator, NavigationPendingProvider } from '@/app/navigationPending';
 import { MobileNavigationContext } from '@/state/MobileNavigationContext';
+import { SearchSelectionProvider } from '@/state/SearchSelectionProvider';
 
 /* ------------------------------------------------------------------ */
 /*  Build TreeNav items from catalog data                              */
@@ -75,7 +76,9 @@ const SIDEBAR_MAX_WIDTH = 480;
 export function AppShell() {
   return (
     <NavigationPendingProvider>
-      <AppShellLayout />
+      <SearchSelectionProvider>
+        <AppShellLayout />
+      </SearchSelectionProvider>
     </NavigationPendingProvider>
   );
 }
@@ -84,7 +87,11 @@ function AppShellLayout() {
   const [sideNavOpen, setSideNavOpen] = useState(false);
   const sideNavId = useId();
   const menuButtonRef = useRef<HTMLButtonElement>(null);
-  const isPersistentNav = useMediaQuery(OWN_SCROLL_AREA_QUERY);
+  // Auf dem Tablet steht die Baum-Navigation in der Schublade wie unterhalb
+  // von `md`; persistent ist sie nur auf dem Desktop: breit und ohne Touch als
+  // Eingabemöglichkeit (GSPP-514, GSPP-523).
+  const isPersistentNav = useMediaQuery(DESKTOP_QUERY);
+  const ownsScrollArea = useMediaQuery(OWN_SCROLL_AREA_QUERY);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const {
     size: sidebarWidth,
@@ -151,6 +158,7 @@ function AppShellLayout() {
     isPersistentNav,
     isSidebarResizing || prefersReducedMotion,
     drawerRef,
+    ownsScrollArea,
   );
   const mobileNavShown = mobileNavOpen || swipe.previewing;
   // Feste Elemente der Seite treten zurück, bis `main` nach dem Schließen
@@ -264,7 +272,7 @@ function AppShellLayout() {
       ref={shellRef}
       data-mobile-nav={mobileNavShown ? 'open' : 'closed'}
       data-sidebar-resizing={isSidebarResizing ? '' : undefined}
-      className="mobile-nav-shell flex flex-col bg-slate-100 min-h-dvh max-md:data-[mobile-nav=open]:bg-white md:h-dvh md:overflow-hidden"
+      className="mobile-nav-shell flex flex-col bg-slate-100 min-h-dvh compact:data-[mobile-nav=open]:bg-white md:h-dvh md:overflow-hidden"
     >
       <a href="#main-content" className="skip-link">
         Zum Hauptinhalt springen
@@ -293,7 +301,7 @@ function AppShellLayout() {
         }}
       />
 
-      <div className="flex-1 min-w-0 flex md:overflow-hidden relative">
+      <div className="flex-1 min-h-0 min-w-0 flex desktop:overflow-hidden relative">
         {/* Mobil sind Abdunklung und Schublade weder fest noch sticky: Ein
             solches Element bis zum unteren Bildschirmrand lässt Safari seine
             Leiste mit einer undurchsichtigen Fläche füllen. Beide liegen
@@ -309,7 +317,7 @@ function AppShellLayout() {
             einblenden kann; ohne Deckkraft lässt sie Zeiger durch. */}
         <div
           ref={backdropRef}
-          className="mobile-nav-backdrop mobile-nav-push absolute inset-x-0 -top-14 bottom-0 z-[35] touch-none md:hidden"
+          className="mobile-nav-backdrop mobile-nav-push absolute inset-x-0 -top-14 bottom-0 z-[35] touch-none desktop:hidden"
           data-testid="mobile-nav-backdrop"
           data-state={mobileNavShown ? 'open' : 'closed'}
           onClick={closeSideNav}
@@ -319,10 +327,11 @@ function AppShellLayout() {
         {/* Sidebar / Mobile Drawer */}
         <aside
           id={sideNavId}
+          aria-label="Katalog-Explorer"
           inert={!isPersistentNav && !sideNavOpen}
           className="mobile-nav-drawer
-            bg-white flex shrink-0 z-40 overflow-hidden touch-pan-y touch-pinch-zoom md:touch-auto md:z-30 md:border-r md:border-slate-200
-            absolute left-0 -mt-14 h-dvh md:relative md:inset-auto md:mt-0 md:h-auto"
+            bg-white flex shrink-0 z-40 overflow-hidden touch-pan-y touch-pinch-zoom desktop:touch-auto desktop:z-30 desktop:border-r desktop:border-slate-200
+            absolute left-0 -mt-14 h-dvh desktop:relative desktop:inset-auto desktop:mt-0 desktop:h-auto"
           ref={drawerRef}
           style={{
             top: drawerPlacement.top,
@@ -348,7 +357,7 @@ function AppShellLayout() {
           ) : (
             /* Expanded: Kontextwahl + Baum */
             <div
-              className="h-full min-w-0 flex flex-1 flex-col md:flex-none"
+              className="h-full min-w-0 flex flex-1 flex-col desktop:flex-none"
               style={isPersistentNav ? { width: sidebarWidth } : undefined}
             >
               {/* Kontextwahl als Kopf: mobil mit Schließen, auf dem Desktop mit Einklappen */}
@@ -409,7 +418,7 @@ function AppShellLayout() {
           {!sidebarCollapsed && (
             <button
               type="button"
-              className="resize-handle resize-handle--right absolute right-0 top-0 bottom-0 z-20 hidden w-1.5 cursor-col-resize focus-visible:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] md:block"
+              className="resize-handle resize-handle--right absolute right-0 top-0 bottom-0 z-20 hidden w-1.5 cursor-col-resize focus-visible:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] desktop:block"
               onMouseDown={handleSidebarResizeStart}
               aria-label="Sidebar-Breite anpassen"
               onKeyDown={(e) => {
@@ -420,17 +429,21 @@ function AppShellLayout() {
           )}
         </aside>
 
-        {/* Main Content */}
-        <main
-          id="main-content"
-          inert={mobileNavOpen}
-          className="mobile-nav-push flex-1 min-w-0 flex flex-col bg-white md:overflow-hidden"
-        >
-          <MobileNavigationContext.Provider value={mobileNavBlocksFixed}>
-            <Outlet />
-          </MobileNavigationContext.Provider>
-          <Footer />
-        </main>
+        {/* Rechte Layoutspalte: Main und globaler Footer sind getrennte Landmarks. */}
+        <div className="flex-1 min-w-0 flex flex-col bg-white md:overflow-hidden">
+          <main
+            id="main-content"
+            inert={mobileNavOpen}
+            className="mobile-nav-push flex-1 min-h-0 min-w-0 flex flex-col md:overflow-hidden"
+          >
+            <MobileNavigationContext.Provider value={mobileNavBlocksFixed}>
+              <Outlet />
+            </MobileNavigationContext.Provider>
+          </main>
+          <div inert={mobileNavOpen} className="mobile-nav-push shrink-0">
+            <Footer />
+          </div>
+        </div>
       </div>
     </div>
   );

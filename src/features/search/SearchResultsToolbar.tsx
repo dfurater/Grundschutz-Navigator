@@ -13,7 +13,7 @@ interface SearchResultsToolbarProps {
   readonly onClearSelection: () => void;
   readonly mobileSelectMode: boolean;
   readonly onToggleMobileSelectMode: () => void;
-  /** Steuert das Mount-Gate der Exportzugänge: Desktop-Menü ab lg, Mobile-Sheet darunter (GSPP-268). */
+  /** Steuert das Mount-Gate der Exportzugänge: Desktop-Menü auf dem Desktop, Mobile-Sheet sonst (GSPP-268). */
   readonly isDesktop: boolean;
   /** All query matches in the current desktop table sort order. */
   readonly desktopViewControls: Control[];

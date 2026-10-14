@@ -474,7 +474,9 @@ export function ControlTable(props: ControlTableProps) {
                 </button>
               </th>
             ))}
-            <th className="px-2" />
+            <th className="px-2">
+              <span className="sr-only">Details öffnen</span>
+            </th>
           </tr>
         </thead>
         <tbody ref={tbodyRef}>
