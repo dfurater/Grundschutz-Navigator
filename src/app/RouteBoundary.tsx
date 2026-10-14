@@ -15,7 +15,7 @@ import { PageTitle } from '@/app/PageTitle';
 
 // Wie `PageScroll`: Die Fläche füllt `<main>` bis zum Footer, sodass dieser im
 // Lade- und Fehlerzustand nicht aus seiner Lage springt.
-const SURFACE = 'flex-1 md:overflow-y-auto pb-safe lg:pb-0';
+const SURFACE = 'flex-1 md:overflow-y-auto pb-safe desktop:pb-0';
 
 const FOCUS_RING =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]';

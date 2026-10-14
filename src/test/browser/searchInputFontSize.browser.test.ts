@@ -7,6 +7,7 @@ import { page } from 'vitest/browser';
 import { Input } from '@/components/Input';
 import { IconSearch } from '@/components/icons';
 import { SearchPage } from '@/features/search/SearchPage';
+import { SearchSelectionProvider } from '@/state/SearchSelectionProvider';
 import '@/index.css';
 
 let root: Root | undefined;
@@ -26,7 +27,7 @@ async function renderInputs(width: number) {
   root = createRoot(host);
   flushSync(() => {
     root?.render(createElement(MemoryRouter, { initialEntries: ['/suche'] },
-      createElement(SearchPage),
+      createElement(SearchSelectionProvider, null, createElement(SearchPage)),
       createElement(Input, { id: 'shared-input', label: 'Eingabe', icon: IconSearch }),
     ));
   });

@@ -113,7 +113,7 @@ describe('useControlNavigation', () => {
     expect(navigate).toHaveBeenLastCalledWith({
       pathname: '/katalog/gspp/kontrolle/stable-top-1-1',
       search: '?sl=hoch',
-    });
+    }, { state: { browseScope: { catalogKey: 'gspp', scope: 'TOP.1' } } });
 
     rerender({
       catalog,
@@ -134,10 +134,10 @@ describe('useControlNavigation', () => {
     expect(navigate).toHaveBeenLastCalledWith({
       pathname: '/katalog/gspp/kontrolle/related-gspp',
       search: '?sl=hoch',
-    }, { replace: true });
+    }, { replace: true, state: { browseScope: { catalogKey: 'gspp', scope: 'TOP.1' } } });
   });
 
-  it('toggles an already selected control back to the remembered browse scope', () => {
+  it('toggles an already selected control back to the history browse scope', () => {
     const catalog = makeCatalog('gspp');
     const navigate = createNavigate();
     const { result, rerender } = renderHook(
@@ -149,6 +149,7 @@ describe('useControlNavigation', () => {
           groupId: 'TOP.1' as string | undefined,
           altIdentifier: undefined as string | undefined,
           searchString: '',
+          locationState: null as unknown,
           navigate,
         },
       },
@@ -160,17 +161,18 @@ describe('useControlNavigation', () => {
       groupId: undefined,
       altIdentifier: 'stable-top-1-1',
       searchString: '',
+      locationState: { browseScope: { catalogKey: 'gspp', scope: 'TOP' } },
       navigate,
     });
     act(() => result.current.selectControl(catalog.controls[0]));
 
     expect(navigate).toHaveBeenLastCalledWith({
-      pathname: '/katalog/gspp/TOP.1',
+      pathname: '/katalog/gspp/TOP',
       search: '',
     });
   });
 
-  it('drops remembered browse state when the loaded catalog changes', () => {
+  it('rejects browse history state when the loaded catalog changes', () => {
     const gspp = makeCatalog('gspp');
     const wlanControl = makeControl({
       id: 'WLAN.9.1',
@@ -189,6 +191,7 @@ describe('useControlNavigation', () => {
           groupId: 'TOP.1' as string | undefined,
           altIdentifier: undefined as string | undefined,
           searchString: '',
+          locationState: null as unknown,
           navigate,
         },
       },
@@ -200,6 +203,7 @@ describe('useControlNavigation', () => {
       groupId: undefined,
       altIdentifier: 'stable-wlan-9-1',
       searchString: '',
+      locationState: { browseScope: { catalogKey: 'gspp', scope: 'TOP' } },
       navigate,
     });
     act(() => result.current.closeDetail());

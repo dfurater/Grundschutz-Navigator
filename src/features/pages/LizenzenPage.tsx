@@ -12,7 +12,7 @@ export function LizenzenPage() {
         <h2 className="text-base font-semibold leading-snug text-slate-900">
           BSI Grundschutz++ Anwenderkatalog
         </h2>
-        <p className="text-sm text-slate-700 leading-relaxed">
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Diese Anwendung nutzt den offiziellen{' '}
           <strong>Grundschutz++-Anwenderkatalog</strong> des{' '}
           <strong>Bundesamts für Sicherheit in der Informationstechnik (BSI)</strong>
@@ -32,7 +32,7 @@ export function LizenzenPage() {
           <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
             Lizenzhinweis
           </h3>
-          <p className="text-sm text-slate-700 leading-relaxed">
+          <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
             Das Repository `BSI-Bund/Stand-der-Technik-Bibliothek` steht laut
             Repository unter CC BY-SA 4.0. Für Nutzung, Bearbeitung und
             Weitergabe der Kataloginhalte sind die dortigen Lizenzhinweise
@@ -47,7 +47,7 @@ export function LizenzenPage() {
         <h2 className="text-base font-semibold leading-snug text-slate-900">
           Ausgewählte Open-Source-Bibliotheken
         </h2>
-        <p className="text-sm text-slate-700 leading-relaxed">
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Die folgende Liste ist nicht abschließend. Maßgeblich bleiben die
           jeweiligen Lizenzdateien und Projektseiten der verwendeten Pakete.
         </p>
@@ -134,7 +134,7 @@ export function LizenzenPage() {
         <h2 className="text-base font-semibold leading-snug text-slate-900">
           Hinweis zum Projektcode
         </h2>
-        <p className="text-sm text-slate-700 leading-relaxed">
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Der Quellcode dieser Anwendung steht unter der{' '}
           <strong>GNU Affero General Public License v3.0 (oder später)</strong>.
           Der vollständige Quelltext ist öffentlich verfügbar:{' '}
@@ -149,7 +149,7 @@ export function LizenzenPage() {
           </a>
           {'.'}
         </p>
-        <p className="text-sm text-slate-700 leading-relaxed">
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Diese Seite fasst vor allem die Herkunft des BSI-Katalogs und
           ausgewählte Drittbibliotheken zusammen. Drittkomponenten behalten ihre
           eigenen Lizenzen; maßgeblich bleiben die Lizenzdateien und

@@ -50,6 +50,9 @@ export function CatalogToolbar({
   mobileSheetsSuspended = false,
   onSelectionExported,
 }: CatalogToolbarProps) {
+  const { securityTargets, ...flatFilters } = filterPanelProps.filters;
+  const activeCount = [...Object.values(flatFilters), ...Object.values(securityTargets)]
+    .reduce((count, values) => count + new Set<string>(values).size, 0);
   const mobileNavigationOpen = useContext(MobileNavigationContext);
   const showMobileSheets = !isDesktop && !mobileSheetsSuspended && !mobileNavigationOpen;
   return (
@@ -121,7 +124,7 @@ export function CatalogToolbar({
                 versteckt — zu jedem Zeitpunkt ist nur der passende Teilbaum im
                 DOM (Invariante aus GRU-217). */}
             {showMobileSheets && (
-              <CatalogMobileFilterSheet filterPanelProps={filterPanelProps} />
+              <CatalogMobileFilterSheet filterPanelProps={filterPanelProps} activeCount={activeCount} />
             )}
             {isDesktop && (
               <CatalogExportMenu

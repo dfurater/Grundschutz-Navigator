@@ -52,13 +52,14 @@ function subscribeToNothing() {
  * Frame keine solche Transition, etwa weil die Schublade vor dem ersten Frame
  * wieder geschlossen wurde, endet es dort.
  * Danach geht `top` auf 0 zurück, damit die unsichtbare Schublade eine danach
- * kürzere Seite nicht verlängert. Ohne Überblendung oder ab `md` endet keine
+ * kürzere Seite nicht verlängert. Ohne Überblendung oder auf dem Desktop endet keine
  * Transition: Dann geschieht das beim Schließen oder, falls Einstellung oder
  * Breite während des Hinausgleitens wechseln, in diesem Moment.
- * Ab `md` scrollt das Dokument nicht, und der Browser setzt seine Position zu
- * einem nicht vorhersagbaren Zeitpunkt auf 0. Kehrt die Breite bei offener
- * Schublade unter `md` zurück, beginnen Schublade und Dokument deshalb oben,
- * dem einzigen Wert, den diese Rücksetzung nicht mehr verändert.
+ * Beim Wechsel des Scroll-Eigentümers (`OWN_SCROLL_AREA_QUERY`) oder zurück
+ * aus der persistenten Navigation beginnen die offene mobile Schublade und
+ * das Dokument oben. Der Browser setzt die Dokumentposition beim Wechsel
+ * zu internem Scrollen zu einem nicht vorhersagbaren Zeitpunkt auf 0; nur
+ * dieser Wert bleibt danach stabil.
  */
 export function useMobileDrawerPlacement(
   open: boolean,
@@ -66,19 +67,22 @@ export function useMobileDrawerPlacement(
   transitionDisabled: boolean,
   /** Die Schublade selbst; zeigt, ob ihr Hinausgleiten tatsächlich läuft. */
   drawerRef: RefObject<HTMLElement | null>,
+  /** Wahr, wenn der Seiteninhalt statt des Dokuments scrollt. */
+  ownsScrollArea: boolean,
 ): MobileDrawerPlacement {
   const [offset, setOffset] = useState(0);
   const [sliding, setSliding] = useState(false);
-  const [placedFor, setPlacedFor] = useState({ open, persistent, transitionDisabled });
+  const [placedFor, setPlacedFor] = useState({ open, persistent, transitionDisabled, ownsScrollArea });
   if (
     placedFor.open !== open
     || placedFor.persistent !== persistent
     || placedFor.transitionDisabled !== transitionDisabled
+    || placedFor.ownsScrollArea !== ownsScrollArea
   ) {
-    setPlacedFor({ open, persistent, transitionDisabled });
+    setPlacedFor({ open, persistent, transitionDisabled, ownsScrollArea });
     setSliding(!open && !persistent && !transitionDisabled && (placedFor.open || sliding));
     if (!open && (persistent || transitionDisabled)) setOffset(0);
-    if (open && placedFor.persistent && !persistent) setOffset(0);
+    if (open && !persistent && (placedFor.persistent || placedFor.ownsScrollArea !== ownsScrollArea)) setOffset(0);
   }
 
   useScrollLock(open && !persistent);

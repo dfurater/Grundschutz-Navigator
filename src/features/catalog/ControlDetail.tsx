@@ -1,4 +1,12 @@
-import { useCallback, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefCallback,
+} from 'react';
 import {
   IconArrowLeft,
   IconCheck,
@@ -54,13 +62,14 @@ import {
  * erfunden — die Ebene ist nicht adressierbar (GSPP-242).
  */
 const UNBENANNTE_TAXONOMIE = 'Ohne Gruppenkennung';
+const MIN_TABLET_DETAIL_SCROLL_HEIGHT = 32;
 
 /**
- * `panel`: feste Höhe mit eigenem Scrollbereich (Desktop-Spalte,
- * Tablet-Overlay). `page`: im Dokumentfluss ohne eigenen Scrollbereich —
- * das Dokument scrollt (mobile Seitenansicht, GSPP-447).
+ * `panel`: Standardkopf mit eigenem Scrollbereich (Desktop-Spalte).
+ * `tablet-panel`: kompakter, fester Kopf mit eigenem Scrollbereich (Tablet-Inline-Panel).
+ * `page`: im Dokumentfluss ohne eigenen Scrollbereich — das Dokument scrollt (mobile Seitenansicht, GSPP-447).
  */
-export type ControlDetailLayout = 'panel' | 'page';
+export type ControlDetailLayout = 'panel' | 'tablet-panel' | 'page';
 
 export interface ControlDetailProps {
   readonly control: Control;
@@ -72,7 +81,7 @@ export interface ControlDetailProps {
   readonly onNavigateToControl?: (control: Control) => void;
   /** Standard `panel`, siehe `ControlDetailLayout`. */
   readonly layout?: ControlDetailLayout;
-  /** ID der Detailüberschrift, über die das Tablet-Overlay seinen Dialognamen bezieht. */
+  /** Optionale ID der Detailüberschrift (`[data-control-detail-title]`). */
   readonly titleId?: string;
 }
 
@@ -90,6 +99,85 @@ export function getControlDetailUrl(
   const relativeControlUrl = buildControlUrlForControl(catalogKey, control).slice(1);
 
   return new URL(relativeControlUrl, new URL(normalizedBaseUrl, origin)).toString();
+}
+
+function useTabletDetailScrollMode(
+  controlStateKey: string,
+  isTabletPanel: boolean,
+  scrollAreaRef: RefCallback<HTMLDivElement>,
+) {
+  const detailRootRef = useRef<HTMLDivElement>(null);
+  const detailHeaderRef = useRef<HTMLDivElement>(null);
+  const detailContentRef = useRef<HTMLDivElement>(null);
+  const scrollTopForModeChangeRef = useRef<number | null>(null);
+  const [needsSingleTabletScrollArea, setNeedsSingleTabletScrollArea] = useState(false);
+  const usesSingleTabletScrollArea = isTabletPanel && needsSingleTabletScrollArea;
+
+  const detailRootScrollRef = useCallback((element: HTMLDivElement | null) => {
+    detailRootRef.current = element;
+    if (usesSingleTabletScrollArea) return scrollAreaRef(element);
+    return undefined;
+  }, [scrollAreaRef, usesSingleTabletScrollArea]);
+
+  const detailContentScrollRef = useCallback((element: HTMLDivElement | null) => {
+    detailContentRef.current = element;
+    if (!usesSingleTabletScrollArea) return scrollAreaRef(element);
+    return undefined;
+  }, [scrollAreaRef, usesSingleTabletScrollArea]);
+
+  useLayoutEffect(() => {
+    if (!isTabletPanel) return;
+
+    const root = detailRootRef.current;
+    const header = detailHeaderRef.current;
+    if (!root || !header) return;
+
+    const updateScrollMode = () => {
+      const useSingleScrollArea =
+        root.clientHeight - header.offsetHeight < MIN_TABLET_DETAIL_SCROLL_HEIGHT;
+      if (useSingleScrollArea === usesSingleTabletScrollArea) return;
+
+      const currentScrollArea = usesSingleTabletScrollArea
+        ? root
+        : detailContentRef.current;
+      scrollTopForModeChangeRef.current = currentScrollArea?.scrollTop ?? 0;
+      setNeedsSingleTabletScrollArea(useSingleScrollArea);
+    };
+    updateScrollMode();
+    if (typeof ResizeObserver === 'undefined') return;
+
+    const observer = new ResizeObserver(updateScrollMode);
+    observer.observe(root);
+    observer.observe(header);
+
+    return () => observer.disconnect();
+  }, [controlStateKey, isTabletPanel, usesSingleTabletScrollArea]);
+
+  useLayoutEffect(() => {
+    const scrollTop = scrollTopForModeChangeRef.current;
+    if (scrollTop === null) return;
+
+    const nextScrollArea = usesSingleTabletScrollArea
+      ? detailRootRef.current
+      : detailContentRef.current;
+    if (nextScrollArea) nextScrollArea.scrollTop = scrollTop;
+    scrollTopForModeChangeRef.current = null;
+  }, [usesSingleTabletScrollArea]);
+
+  return {
+    detailContentScrollRef,
+    detailHeaderRef,
+    detailRootScrollRef,
+    usesSingleTabletScrollArea,
+  };
+}
+
+function getDetailContentClassName(isPage: boolean, usesSingleTabletScrollArea: boolean) {
+  if (isPage) return 'flex flex-col gap-5 p-4';
+  if (usesSingleTabletScrollArea) {
+    return 'flex shrink-0 flex-col gap-5 p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] desktop:pb-4';
+  }
+  return 'flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] desktop:pb-4';
 }
 
 export function ControlDetail({
@@ -110,8 +198,16 @@ export function ControlDetail({
 
   const catalogKey = catalog.catalogKey;
   const isPage = layout === 'page';
+  const isTabletPanel = layout === 'tablet-panel';
+  const copyErrorFallbackRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useOverlayScrollbars<HTMLDivElement>(!isPage);
   const controlStateKey = `${catalogKey}:${control.id}`;
+  const {
+    detailContentScrollRef,
+    detailHeaderRef,
+    detailRootScrollRef,
+    usesSingleTabletScrollArea,
+  } = useTabletDetailScrollMode(controlStateKey, isTabletPanel, scrollAreaRef);
   const {
     copy: copyLink,
     copied: linkCopied,
@@ -124,6 +220,18 @@ export function ControlDetail({
   // Abschluss des letzten Versuchs kann sie entfernen (Race-sicher).
   const [pendingCopyRetries, setPendingCopyRetries] = useState(0);
   const showCopyError = Boolean(linkCopyError) || pendingCopyRetries > 0;
+
+  // Scrollt nur beim Erscheinen des Fallbacks; ein späterer Wechsel des
+  // Scrollbereichs behält die wiederhergestellte Leseposition.
+  useEffect(() => {
+    if (!showCopyError || isPage) return;
+    const fallback = copyErrorFallbackRef.current;
+    const scrollArea = fallback?.closest<HTMLElement>('[data-control-detail-scroll]');
+    if (!fallback || !scrollArea) return;
+
+    const offset = fallback.getBoundingClientRect().top - scrollArea.getBoundingClientRect().top;
+    scrollArea.scrollTop = Math.max(0, scrollArea.scrollTop + offset);
+  }, [isPage, showCopyError]);
   const {
     isActive: isVocabularyActive,
     toggle: toggleVocabulary,
@@ -293,16 +401,71 @@ export function ControlDetail({
     void copyLink(url);
   };
 
+  const copyErrorFallback = showCopyError && (
+    <div ref={copyErrorFallbackRef} className="mb-2 space-y-1.5 rounded-md bg-[var(--color-danger-surface)] px-3 py-2">
+      <p role="alert" className="text-xs text-[var(--color-danger-text)]">
+        Kopieren nicht möglich. Bitte den vollständigen Wert manuell markieren und kopieren.
+      </p>
+      <code
+        aria-label="Direktlink zum manuellen Kopieren"
+        className="block select-all break-all font-mono text-xs text-[var(--color-text-primary)]"
+      >
+        {getControlDetailUrl(catalogKey, control)}
+      </code>
+      <button
+        type="button"
+        onClick={handleCopyLink}
+        className="rounded-md px-2 py-1 text-xs font-medium text-[var(--color-accent-default)] transition-colors hover:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]"
+      >
+        Erneut kopieren
+      </button>
+    </div>
+  );
+  const taxonomyBreadcrumb = (
+    <ControlTaxonomyBreadcrumb
+      practiceName={practiceName}
+      topicName={topicName}
+      hasTopic={Boolean(topic)}
+      practiceVocabulary={practiceVocabulary}
+      topicVocabulary={topicVocabulary}
+      isVocabularyActive={isVocabularyActive}
+      onToggleVocabulary={toggleVocabulary}
+    />
+  );
+  const parentControlLink = parentControl && (
+    <button
+      type="button"
+      onClick={() => onNavigateToControl?.(parentControl)}
+      aria-label={`Teil von ${parentControl.id} ${parentControl.title}`}
+      className="group relative mt-1.5 flex items-baseline gap-1.5 rounded text-left text-xs text-[var(--color-text-muted)] after:absolute after:-inset-y-3 after:inset-x-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] desktop:after:-inset-y-1"
+    >
+      {/* Leerzeichen zwischen den Flex-Kindern: unsichtbar, aber beim Kopieren erhalten. */}
+      <span aria-hidden="true">↳</span>{' '}
+      <span>Teil von</span>{' '}
+      <span className="catalog-reference-text shrink-0">{parentControl.id}</span>{' '}
+      <span className="text-primary-main group-hover:underline">{parentControl.title}</span>
+    </button>
+  );
+
   return (
-    <div className={`${isPage ? '' : 'h-full '}flex flex-col bg-[var(--color-surface-raised)]`}>
+    <div
+      ref={detailRootScrollRef}
+      data-control-detail-root
+      data-control-detail-scroll={usesSingleTabletScrollArea ? '' : undefined}
+      className={`${isPage ? '' : 'h-full min-h-0'} flex flex-col bg-[var(--color-surface-raised)] ${usesSingleTabletScrollArea ? 'overflow-y-auto' : ''}`}
+    >
       {/* Header */}
-      <div className="p-4 border-b border-[var(--color-border-default)]">
+      <div
+        ref={detailHeaderRef}
+        data-control-detail-header
+        className={`${isPage ? '' : 'shrink-0'} p-4 border-b border-[var(--color-border-default)]`}
+      >
         <div className="flex items-center gap-2 mb-2">
           <button
             type="button"
             onClick={onClose}
             aria-label="Zurück zur Übersicht"
-            className="flex h-11 w-11 lg:h-10 lg:w-10 shrink-0 items-center justify-center rounded-lg text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]"
+            className="flex h-11 w-11 desktop:h-10 desktop:w-10 shrink-0 items-center justify-center rounded-lg text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]"
           >
             <IconArrowLeft className="h-5 w-5" aria-hidden="true" />
           </button>
@@ -329,53 +492,13 @@ export function ControlDetail({
             )}
           </button>
         </div>
-        {showCopyError && (
-          <div className="mb-2 space-y-1.5 rounded-md bg-[var(--color-danger-surface)] px-3 py-2">
-            <p role="alert" className="text-xs text-[var(--color-danger-text)]">
-              Kopieren nicht möglich. Bitte den vollständigen Wert manuell markieren und kopieren.
-            </p>
-            <code
-              aria-label="Direktlink zum manuellen Kopieren"
-              className="block select-all break-all font-mono text-xs text-[var(--color-text-primary)]"
-            >
-              {getControlDetailUrl(catalogKey, control)}
-            </code>
-            <button
-              type="button"
-              onClick={handleCopyLink}
-              className="rounded-md px-2 py-1 text-xs font-medium text-[var(--color-accent-default)] transition-colors hover:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]"
-            >
-              Erneut kopieren
-            </button>
-          </div>
-        )}
-        <ControlTaxonomyBreadcrumb
-          practiceName={practiceName}
-          topicName={topicName}
-          hasTopic={Boolean(topic)}
-          practiceVocabulary={practiceVocabulary}
-          topicVocabulary={topicVocabulary}
-          isVocabularyActive={isVocabularyActive}
-          onToggleVocabulary={toggleVocabulary}
-        />
+        {isPage && copyErrorFallback}
+        {!isTabletPanel && taxonomyBreadcrumb}
         {/* Fokusziel beim Öffnen der mobilen Seitenansicht (`useDocumentDetailPage`). */}
         <h2 id={titleId} data-control-detail-title tabIndex={-1} className="type-page-title focus:outline-none">
           {control.title}
         </h2>
-        {parentControl && (
-          <button
-            type="button"
-            onClick={() => onNavigateToControl?.(parentControl)}
-            aria-label={`Teil von ${parentControl.id} ${parentControl.title}`}
-            className="group relative mt-1.5 flex items-baseline gap-1.5 rounded text-left text-xs text-[var(--color-text-muted)] after:absolute after:-inset-y-3 after:inset-x-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] lg:after:-inset-y-1"
-          >
-            {/* Leerzeichen zwischen den Flex-Kindern: unsichtbar, aber beim Kopieren erhalten. */}
-            <span aria-hidden="true">↳</span>{' '}
-            <span>Teil von</span>{' '}
-            <span className="catalog-reference-text shrink-0">{parentControl.id}</span>{' '}
-            <span className="text-primary-main group-hover:underline">{parentControl.title}</span>
-          </button>
-        )}
+        {!isTabletPanel && parentControlLink}
       </div>
 
       {/* Content: alle Blöcke gleich aufgebaut – Leiste, Inhalt auf Weiß, 20 px Abstand (Owner 26.09.2026). */}
@@ -386,10 +509,17 @@ export function ControlDetail({
         Sicherheitsabstand des Geräts hinzu, statt die 16 px zu ersetzen.
       */}
       <div
-        ref={scrollAreaRef}
-        data-control-detail-scroll
-        className={isPage ? 'flex flex-col gap-5 p-4' : 'flex flex-1 flex-col gap-5 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] lg:pb-4'}
+        ref={detailContentScrollRef}
+        data-control-detail-scroll={usesSingleTabletScrollArea ? undefined : ''}
+        className={getDetailContentClassName(isPage, usesSingleTabletScrollArea)}
       >
+        {!isPage && copyErrorFallback}
+        {isTabletPanel && (
+          <>
+            {taxonomyBreadcrumb}
+            {parentControlLink}
+          </>
+        )}
         {hasAnforderung && (
           <ControlStatement
             statement={control.statement}

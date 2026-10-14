@@ -12,7 +12,7 @@ import {
 } from './src/test/browser/browserEgressGuard.ts';
 import { setBrowserSafeArea } from './src/test/browser/browserSafeArea.ts';
 import { setBrowserFontSize } from './src/test/browser/browserFontSize.ts';
-import { dispatchBrowserTouch } from './src/test/browser/browserTouchInput.ts';
+import { dispatchBrowserTouch, setBrowserCoarsePointer } from './src/test/browser/browserTouchInput.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -58,6 +58,7 @@ export default defineConfig({
         assertNoBrowserEgress,
         getBrowserEgressEnforcements,
         dispatchBrowserTouch,
+        setBrowserCoarsePointer,
         setBrowserFontSize,
         setBrowserSafeArea,
       },

@@ -67,7 +67,7 @@ function placeholderFits(input: HTMLInputElement) {
 }
 
 // Echte Media Queries, Schriften und Boxen statt Klassenvergleiche im jsdom.
-test.each([320, 375, 402, 430, 639, 640, 767, 768, 1024, 1440])(
+test.each([320, 375, 402, 430, 639, 640, 743, 744, 767, 768, 1024, 1440])(
   'trägt bei %i px nur Menü, Marke und Suche, zentriert und überlappungsfrei',
   async (width) => {
     const header = await renderHeader(width);
@@ -80,7 +80,8 @@ test.each([320, 375, 402, 430, 639, 640, 767, 768, 1024, 1440])(
     const targets = [brand, ...[menu, searchLink].filter((target) => target.checkVisibility())];
 
     expect(headerBox.height).toBe(56);
-    expect(menu.checkVisibility()).toBe(width < 768);
+    // Der Menübutton öffnet die Schublade unterhalb von `lg` (GSPP-514).
+    expect(menu.checkVisibility()).toBe(width < 1024);
     expect(searchLink.checkVisibility()).toBe(width < 640);
     expect(search.checkVisibility()).toBe(width >= 640);
     expect(header.querySelector('[aria-haspopup]')).toBeNull();

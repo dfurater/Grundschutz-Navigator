@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FilterPanelProps } from './FilterPanel';
@@ -13,7 +13,7 @@ vi.mock('./FilterPanel', () => ({
   ),
 }));
 
-const filterPanelProps = {} as FilterPanelProps;
+const filterPanelProps = { filteredCount: 3, totalCount: 10 } as FilterPanelProps;
 
 function touchEvent(type: string, clientY: number): TouchEvent {
   const event = new Event(type, { bubbles: true, cancelable: true });
@@ -34,8 +34,44 @@ describe('CatalogMobileFilterSheet', () => {
     vi.restoreAllMocks();
   });
 
+  it('shows no badge for zero active filters and keeps the touch target', () => {
+    render(<CatalogMobileFilterSheet filterPanelProps={filterPanelProps} activeCount={0} />);
+    const trigger = screen.getByRole('button', { name: 'Filter anzeigen' });
+    expect(trigger.querySelector('.filter-count-badge')).toBeNull();
+    expect(trigger).toHaveClass('min-h-[44px]', 'min-w-[44px]');
+  });
+
+  it('updates the badge and accessible name when active selections change', () => {
+    const view = render(<CatalogMobileFilterSheet filterPanelProps={filterPanelProps} activeCount={2} />);
+    const trigger = screen.getByRole('button', { name: 'Filter anzeigen, 2 aktiv' });
+    expect(within(trigger).getByText('2')).toHaveClass('filter-count-badge');
+    expect(within(trigger).getByText('2')).toHaveAttribute('aria-hidden', 'true');
+
+    view.rerender(<CatalogMobileFilterSheet filterPanelProps={filterPanelProps} activeCount={12} />);
+    expect(trigger).toHaveAccessibleName('Filter anzeigen, 12 aktiv');
+    expect(within(trigger).getByText('12')).toBeInTheDocument();
+
+    view.rerender(<CatalogMobileFilterSheet filterPanelProps={filterPanelProps} activeCount={0} />);
+    expect(trigger).toHaveAccessibleName('Filter anzeigen');
+    expect(trigger.querySelector('.filter-count-badge')).toBeNull();
+  });
+
+  it('updates the close action with the live result count without reopening', () => {
+    const view = render(<CatalogMobileFilterSheet filterPanelProps={filterPanelProps} activeCount={2} />);
+    const trigger = screen.getByRole('button', { name: 'Filter anzeigen, 2 aktiv' });
+    trigger.focus();
+    fireEvent.click(trigger);
+    expect(screen.getByRole('button', { name: 'Schließen (3)' })).toBeInTheDocument();
+
+    view.rerender(<CatalogMobileFilterSheet filterPanelProps={{ ...filterPanelProps, filteredCount: 0 }} activeCount={3} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Schließen (0)' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    expect(trigger).toHaveAccessibleName('Filter anzeigen, 3 aktiv');
+  });
+
   it('traps focus, closes on Escape and restores focus and scroll', () => {
-    const view = render(<CatalogMobileFilterSheet filterPanelProps={filterPanelProps} />);
+    const view = render(<CatalogMobileFilterSheet filterPanelProps={filterPanelProps} activeCount={0} />);
     const trigger = screen.getByRole('button', { name: 'Filter anzeigen' });
 
     trigger.focus();
@@ -56,7 +92,7 @@ describe('CatalogMobileFilterSheet', () => {
   it('opens as a named modal dialog outside the app root (GSPP-503)', () => {
     const view = render(
       <CatalogMobileFilterSheet
-        filterPanelProps={filterPanelProps}
+        filterPanelProps={filterPanelProps} activeCount={0}
       />,
     );
 
@@ -68,13 +104,13 @@ describe('CatalogMobileFilterSheet', () => {
     expect(view.container).not.toContainElement(dialog);
   });
 
-  it('closes via the visible Fertig button and returns focus to the trigger', () => {
-    const view = render(<CatalogMobileFilterSheet filterPanelProps={filterPanelProps} />);
+  it('closes via the visible Schließen button and returns focus to the trigger', () => {
+    const view = render(<CatalogMobileFilterSheet filterPanelProps={filterPanelProps} activeCount={0} />);
     const trigger = screen.getByRole('button', { name: 'Filter anzeigen' });
 
     trigger.focus();
     fireEvent.click(trigger);
-    fireEvent.click(screen.getByRole('button', { name: 'Fertig' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Schließen (3)' }));
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
@@ -83,7 +119,7 @@ describe('CatalogMobileFilterSheet', () => {
   });
 
   it('releases isolation and scroll lock when unmounted while open', () => {
-    const view = render(<CatalogMobileFilterSheet filterPanelProps={filterPanelProps} />);
+    const view = render(<CatalogMobileFilterSheet filterPanelProps={filterPanelProps} activeCount={0} />);
     fireEvent.click(screen.getByRole('button', { name: 'Filter anzeigen' }));
 
     view.unmount();
@@ -95,7 +131,7 @@ describe('CatalogMobileFilterSheet', () => {
 
   it('closes when its backdrop is clicked', () => {
     render(
-      <CatalogMobileFilterSheet filterPanelProps={filterPanelProps} />,
+      <CatalogMobileFilterSheet filterPanelProps={filterPanelProps} activeCount={0} />,
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Filter anzeigen' }));
@@ -113,7 +149,7 @@ describe('CatalogMobileFilterSheet', () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
     render(
-      <CatalogMobileFilterSheet filterPanelProps={filterPanelProps} />,
+      <CatalogMobileFilterSheet filterPanelProps={filterPanelProps} activeCount={0} />,
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Filter anzeigen' }));
