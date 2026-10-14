@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefCallback,
+} from 'react';
 import {
   IconArrowLeft,
   IconCheck,
@@ -93,6 +101,85 @@ export function getControlDetailUrl(
   return new URL(relativeControlUrl, new URL(normalizedBaseUrl, origin)).toString();
 }
 
+function useTabletDetailScrollMode(
+  controlStateKey: string,
+  isTabletPanel: boolean,
+  scrollAreaRef: RefCallback<HTMLDivElement>,
+) {
+  const detailRootRef = useRef<HTMLDivElement>(null);
+  const detailHeaderRef = useRef<HTMLDivElement>(null);
+  const detailContentRef = useRef<HTMLDivElement>(null);
+  const scrollTopForModeChangeRef = useRef<number | null>(null);
+  const [needsSingleTabletScrollArea, setNeedsSingleTabletScrollArea] = useState(false);
+  const usesSingleTabletScrollArea = isTabletPanel && needsSingleTabletScrollArea;
+
+  const detailRootScrollRef = useCallback((element: HTMLDivElement | null) => {
+    detailRootRef.current = element;
+    if (usesSingleTabletScrollArea) return scrollAreaRef(element);
+    return undefined;
+  }, [scrollAreaRef, usesSingleTabletScrollArea]);
+
+  const detailContentScrollRef = useCallback((element: HTMLDivElement | null) => {
+    detailContentRef.current = element;
+    if (!usesSingleTabletScrollArea) return scrollAreaRef(element);
+    return undefined;
+  }, [scrollAreaRef, usesSingleTabletScrollArea]);
+
+  useLayoutEffect(() => {
+    if (!isTabletPanel) return;
+
+    const root = detailRootRef.current;
+    const header = detailHeaderRef.current;
+    if (!root || !header) return;
+
+    const updateScrollMode = () => {
+      const useSingleScrollArea =
+        root.clientHeight - header.offsetHeight < MIN_TABLET_DETAIL_SCROLL_HEIGHT;
+      if (useSingleScrollArea === usesSingleTabletScrollArea) return;
+
+      const currentScrollArea = usesSingleTabletScrollArea
+        ? root
+        : detailContentRef.current;
+      scrollTopForModeChangeRef.current = currentScrollArea?.scrollTop ?? 0;
+      setNeedsSingleTabletScrollArea(useSingleScrollArea);
+    };
+    updateScrollMode();
+    if (typeof ResizeObserver === 'undefined') return;
+
+    const observer = new ResizeObserver(updateScrollMode);
+    observer.observe(root);
+    observer.observe(header);
+
+    return () => observer.disconnect();
+  }, [controlStateKey, isTabletPanel, usesSingleTabletScrollArea]);
+
+  useLayoutEffect(() => {
+    const scrollTop = scrollTopForModeChangeRef.current;
+    if (scrollTop === null) return;
+
+    const nextScrollArea = usesSingleTabletScrollArea
+      ? detailRootRef.current
+      : detailContentRef.current;
+    if (nextScrollArea) nextScrollArea.scrollTop = scrollTop;
+    scrollTopForModeChangeRef.current = null;
+  }, [usesSingleTabletScrollArea]);
+
+  return {
+    detailContentScrollRef,
+    detailHeaderRef,
+    detailRootScrollRef,
+    usesSingleTabletScrollArea,
+  };
+}
+
+function getDetailContentClassName(isPage: boolean, usesSingleTabletScrollArea: boolean) {
+  if (isPage) return 'flex flex-col gap-5 p-4';
+  if (usesSingleTabletScrollArea) {
+    return 'flex shrink-0 flex-col gap-5 p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] desktop:pb-4';
+  }
+  return 'flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] desktop:pb-4';
+}
+
 export function ControlDetail({
   control,
   controlsById,
@@ -112,40 +199,15 @@ export function ControlDetail({
   const catalogKey = catalog.catalogKey;
   const isPage = layout === 'page';
   const isTabletPanel = layout === 'tablet-panel';
-  const detailRootRef = useRef<HTMLDivElement>(null);
-  const detailHeaderRef = useRef<HTMLDivElement>(null);
-  const [needsSingleTabletScrollArea, setNeedsSingleTabletScrollArea] = useState(false);
-  const usesSingleTabletScrollArea = isTabletPanel && needsSingleTabletScrollArea;
   const copyErrorFallbackRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useOverlayScrollbars<HTMLDivElement>(!isPage);
   const controlStateKey = `${catalogKey}:${control.id}`;
-  const detailRootScrollRef = useCallback((element: HTMLDivElement | null) => {
-    detailRootRef.current = element;
-    if (usesSingleTabletScrollArea) return scrollAreaRef(element);
-    return undefined;
-  }, [scrollAreaRef, usesSingleTabletScrollArea]);
-
-  useLayoutEffect(() => {
-    if (!isTabletPanel) return;
-
-    const root = detailRootRef.current;
-    const header = detailHeaderRef.current;
-    if (!root || !header) return;
-
-    const updateScrollMode = () => {
-      setNeedsSingleTabletScrollArea(
-        root.clientHeight - header.offsetHeight < MIN_TABLET_DETAIL_SCROLL_HEIGHT,
-      );
-    };
-    updateScrollMode();
-    if (typeof ResizeObserver === 'undefined') return;
-
-    const observer = new ResizeObserver(updateScrollMode);
-    observer.observe(root);
-    observer.observe(header);
-
-    return () => observer.disconnect();
-  }, [controlStateKey, isTabletPanel]);
+  const {
+    detailContentScrollRef,
+    detailHeaderRef,
+    detailRootScrollRef,
+    usesSingleTabletScrollArea,
+  } = useTabletDetailScrollMode(controlStateKey, isTabletPanel, scrollAreaRef);
   const {
     copy: copyLink,
     copied: linkCopied,
@@ -445,13 +507,9 @@ export function ControlDetail({
         Sicherheitsabstand des Geräts hinzu, statt die 16 px zu ersetzen.
       */}
       <div
-        ref={usesSingleTabletScrollArea ? undefined : scrollAreaRef}
+        ref={detailContentScrollRef}
         data-control-detail-scroll={usesSingleTabletScrollArea ? undefined : ''}
-        className={isPage
-          ? 'flex flex-col gap-5 p-4'
-          : usesSingleTabletScrollArea
-            ? 'flex shrink-0 flex-col gap-5 p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] desktop:pb-4'
-            : 'flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] desktop:pb-4'}
+        className={getDetailContentClassName(isPage, usesSingleTabletScrollArea)}
       >
         {!isPage && copyErrorFallback}
         {isTabletPanel && (

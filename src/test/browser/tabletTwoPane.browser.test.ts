@@ -294,6 +294,46 @@ test('macht das vollständige Tablet-Detail bei kurzem Panel und langem Titel sc
   }
 });
 
+test('wechselt beim Größenwechsel im offenen Tablet-Detail den Scrollbereich in beide Richtungen', async () => {
+  const { shell } = await renderCatalog(844, '/katalog/gspp', 390, true);
+  await userEvent.click(rowButton(shell, 'TOP.1.1'));
+  await expect.poll(() => tabletPanel(shell)).not.toBeNull();
+
+  const panel = tabletPanel(shell);
+  const detail = panel.firstElementChild?.firstElementChild as HTMLElement;
+  const header = detail.querySelector('[data-control-detail-header]') as HTMLElement;
+  const requirement = [...panel.querySelectorAll('h1, h2, h3, h4')]
+    .find((heading) => heading.textContent?.includes('Anforderung')) as HTMLElement;
+  const initialScrollArea = panel.querySelector('[data-control-detail-scroll]') as HTMLElement;
+  expect(initialScrollArea).not.toBe(detail);
+  initialScrollArea.scrollTop = 180;
+  const initialScrollTop = initialScrollArea.scrollTop;
+  expect(initialScrollTop).toBeGreaterThan(0);
+  const requirementTop = requirement.getBoundingClientRect().top;
+
+  await page.viewport(844, 300);
+  shell.style.height = '300px';
+  await expect.poll(() => panel.querySelector('[data-control-detail-scroll]')).toBe(detail);
+  await expect.poll(() => requirement.getBoundingClientRect().top)
+    .toBeCloseTo(requirementTop, 0);
+  expect(detail.scrollTop).toBe(initialScrollTop);
+  expect(panel.contains(document.elementFromPoint(
+    (requirement.getBoundingClientRect().left + requirement.getBoundingClientRect().right) / 2,
+    requirement.getBoundingClientRect().top + 2,
+  ))).toBe(true);
+
+  const shortScrollTop = detail.scrollTop;
+  const shortRequirementTop = requirement.getBoundingClientRect().top;
+  await page.viewport(844, 390);
+  shell.style.height = '390px';
+  await expect.poll(() => panel.querySelector('[data-control-detail-scroll]'))
+    .not.toBe(detail);
+  await expect.poll(() => requirement.getBoundingClientRect().top)
+    .toBeCloseTo(shortRequirementTop, 0);
+  expect(initialScrollArea.scrollTop).toBe(shortScrollTop);
+  expect(shortScrollTop).toBeGreaterThan(header.offsetHeight);
+});
+
 test.each([768, 1023])('gibt bei %i px nach herausgescrollter Zeile Fokus und Sichtbarkeit an die Zeile zurück', async (width) => {
   const { shell } = await renderCatalog(width);
 
