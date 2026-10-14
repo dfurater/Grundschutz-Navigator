@@ -4,6 +4,7 @@ import { flushSync } from 'react-dom';
 import { afterEach, expect, test } from 'vitest';
 import { page } from 'vitest/browser';
 import type { Control } from '@/domain/models';
+import { emptyFilters } from '@/hooks/useFilteredControls';
 import type { FilterPanelProps } from '@/features/catalog/FilterPanel';
 import { CatalogToolbar } from '@/features/catalog/CatalogToolbar';
 import '@/index.css';
@@ -50,14 +51,14 @@ async function renderToolbar(
       filteredControls: [control],
       allControls: [control],
       sectionFilename: 'grundschutz-TOP.1.csv',
-      filterPanelProps: {} as FilterPanelProps,
+      filterPanelProps: { filters: { ...emptyFilters, modalverben: hasActiveFilters ? ['MUSS', 'SOLLTE'] : [] } } as FilterPanelProps,
       isDesktop: false,
     }));
   });
   await document.fonts.ready;
   const heading = host.querySelector('h1')!;
   const toolbar = heading.closest('.sticky')!;
-  const actions = ['Kontrollen auswählen', 'Filter anzeigen', 'CSV exportieren'].map(
+  const actions = ['Kontrollen auswählen', hasActiveFilters ? 'Filter anzeigen, 2 aktiv' : 'Filter anzeigen', 'CSV exportieren'].map(
     (name) => host!.querySelector<HTMLButtonElement>(`button[aria-label="${name}"]`)!,
   );
   return { heading, toolbar, actions };
@@ -167,4 +168,19 @@ test.each([
   }
   expect(actions.at(-1)!.getBoundingClientRect().right).toBe(360);
   expect(chipBox.right).toBeLessThanOrEqual(360);
+});
+
+test.each([360, 375, 700, 800])('zeigt den aktiven Filter-Badge bei %i px innerhalb der Toolbar', async (width) => {
+  const { actions } = await renderToolbar(width, 'Governance und Compliance', true);
+  const trigger = actions[1];
+  const badge = trigger.querySelector('.filter-count-badge')!;
+  expect(badge.textContent).toBe('2');
+  expect(badge.getAttribute('aria-hidden')).toBe('true');
+  const box = trigger.getBoundingClientRect();
+  const badgeBox = badge.getBoundingClientRect();
+  expect(box.width).toBeGreaterThanOrEqual(44);
+  expect(box.height).toBeGreaterThanOrEqual(44);
+  expect(badgeBox.left).toBeGreaterThanOrEqual(box.left);
+  expect(badgeBox.right).toBeLessThanOrEqual(box.right);
+  expect(box.right).toBeLessThanOrEqual(width);
 });

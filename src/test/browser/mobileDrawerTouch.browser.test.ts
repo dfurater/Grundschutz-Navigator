@@ -106,13 +106,31 @@ test('scrollt die Seite senkrecht, ohne die Schublade zu öffnen', async () => {
 });
 
 // Die Wischgeste braucht nur senkrechtes Scrollen vom Browser; Pinch-Zoom mit
-// zwei Fingern bleibt in der Schublade erlaubt. Ab `md` gibt es keine Geste,
+// zwei Fingern bleibt in der Schublade erlaubt. Ab `lg` gibt es keine Geste,
 // und die Seitenleiste behält die volle Touch-Steuerung.
-test('erlaubt in der Schublade Pinch-Zoom und ab md die volle Touch-Steuerung', async () => {
+test('erlaubt in der Schublade Pinch-Zoom und ab lg die volle Touch-Steuerung', async () => {
   const shell = await renderShell(WIDTH);
   const aside = shell.querySelector('aside')!;
   expect(getComputedStyle(aside).touchAction).toBe('pan-y pinch-zoom');
 
-  await page.viewport(900, HEIGHT);
+  await page.viewport(1100, HEIGHT);
   await expect.poll(() => getComputedStyle(aside).touchAction).toBe('auto');
+});
+
+test('öffnet die Schublade mit einer Browser-Berührung im globalen Footer ohne Scrollsprung', async () => {
+  const shell = await renderShell(WIDTH);
+  window.scrollTo(0, document.documentElement.scrollHeight);
+  const footer = shell.querySelector('footer')!;
+  const y = footer.getBoundingClientRect().top + 20;
+  expect(footer.contains(document.elementFromPoint(40, y))).toBe(true);
+  const scrollY = window.scrollY;
+  const touches = recordTouches();
+
+  await swipe([40, y], [300, y]);
+  touches.stop();
+
+  expect(touches.counts.touchcancel).toBe(0);
+  await expect.poll(() => root(shell).dataset.mobileNav).toBe('open');
+  expect(footer.closest('[inert]')).not.toBeNull();
+  expect(window.scrollY).toBe(scrollY);
 });

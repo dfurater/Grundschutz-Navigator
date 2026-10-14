@@ -5,7 +5,7 @@ import { Link, useNavigate } from 'react-router';
 import type { NavigateFunction } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useCatalog } from '@/hooks/useCatalog';
-import { OWN_SCROLL_AREA_QUERY } from '@/hooks/breakpointQueries';
+import { DESKTOP_QUERY } from '@/hooks/breakpointQueries';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { MobileNavigationContext } from '@/state/MobileNavigationContext';
 import { AppShell } from './AppShell';
@@ -205,7 +205,7 @@ describe('AppShell', () => {
 
   it('makes the main content inert only while mobile navigation is open', () => {
     let persistent = false;
-    mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY && persistent);
+    mockedUseMediaQuery.mockImplementation((query) => query === DESKTOP_QUERY && persistent);
     const view = renderAppShell();
     const main = view.container.querySelector('main');
     const menuButton = screen.getByRole('button', { name: 'Menu' });
@@ -225,7 +225,7 @@ describe('AppShell', () => {
 
   it('nimmt die verdeckten Steuerungen des App-Kopfs nur bei offener mobiler Navigation aus der Bedienung', () => {
     let persistent = false;
-    mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY && persistent);
+    mockedUseMediaQuery.mockImplementation((query) => query === DESKTOP_QUERY && persistent);
     const view = renderAppShell();
     const menuButton = screen.getByRole('button', { name: 'Menu' });
     const magnifier = screen.getByText('Lupe');
@@ -315,7 +315,7 @@ describe('AppShell', () => {
   });
 
   it('leaves persistent desktop navigation interactive without consuming Escape', () => {
-    mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY);
+    mockedUseMediaQuery.mockImplementation((query) => query === DESKTOP_QUERY);
     const { container } = renderAppShell();
     const menuButton = screen.getByRole('button', { name: 'Menu' });
 
@@ -329,7 +329,7 @@ describe('AppShell', () => {
 
   it('updates Escape ownership and inert when crossing the navigation breakpoint', () => {
     let persistent = false;
-    mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY && persistent);
+    mockedUseMediaQuery.mockImplementation((query) => query === DESKTOP_QUERY && persistent);
     const view = renderAppShell();
     const menuButton = screen.getByRole('button', { name: 'Menu' });
     fireEvent.click(menuButton);
@@ -371,7 +371,7 @@ describe('AppShell', () => {
     const originalScrollY = Object.getOwnPropertyDescriptor(globalThis, 'scrollY');
     const scrollToSpy = vi.spyOn(globalThis, 'scrollTo').mockImplementation(() => {});
     let persistent = true;
-    mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY && persistent);
+    mockedUseMediaQuery.mockImplementation((query) => query === DESKTOP_QUERY && persistent);
 
     try {
       const view = renderAppShell();
@@ -401,7 +401,7 @@ describe('AppShell', () => {
   });
 
   it('uses focus-visible rings for sidebar controls and the 404 link', () => {
-    mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY);
+    mockedUseMediaQuery.mockImplementation((query) => query === DESKTOP_QUERY);
     const { container } = renderAppShell(['/missing']);
 
     const explorerButton = scopeTrigger();
@@ -649,7 +649,7 @@ describe('AppShell', () => {
   });
 
   it('zeigt die Kontextwahl auf dem Desktop mit Einklappen und ohne Schild in der eingeklappten Leiste', () => {
-    mockedUseMediaQuery.mockImplementation((query) => query === OWN_SCROLL_AREA_QUERY);
+    mockedUseMediaQuery.mockImplementation((query) => query === DESKTOP_QUERY);
     const { container } = renderAppShell(['/']);
 
     expect(scopeTrigger()).toBeInTheDocument();

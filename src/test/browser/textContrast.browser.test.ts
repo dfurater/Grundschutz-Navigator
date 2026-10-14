@@ -5,6 +5,7 @@ import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import { MemoryRouter } from 'react-router';
 import { Footer } from '@/components/Footer';
+import { TreeNav } from '@/components/TreeNav';
 import { DatenschutzPage } from '@/features/pages/DatenschutzPage';
 import { LizenzenPage } from '@/features/pages/LizenzenPage';
 import { ControlDetail } from '@/features/catalog/ControlDetail';
@@ -61,9 +62,30 @@ function assertContrast(element: HTMLElement, background: string) {
 
 function backgroundOf(element: HTMLElement): string {
   const color = getComputedStyle(element).backgroundColor;
-  if (color !== 'rgba(0, 0, 0, 0)') return color;
+  if (color !== 'rgba(0, 0, 0, 0)' && !color.endsWith('/ 0)')) return color;
   return element.parentElement ? backgroundOf(element.parentElement) : 'white';
 }
+
+test('tree counts use readable label typography and meet contrast at rest, hover and selection', async () => {
+  const container = fixture();
+  container.style.width = '256px';
+  container.style.backgroundColor = 'var(--color-surface-base)';
+  root = createRoot(container);
+  const items = [{ id: 'ORP', prefix: 'ORP', label: 'Organisation', badge: '123' }];
+  for (const selectedId of [undefined, 'ORP']) {
+    flushSync(() => root?.render(createElement(TreeNav, { items, selectedId, onSelect: () => {} })));
+    const badge = container.querySelector<HTMLElement>('.catalog-badge-text')!;
+    const row = container.querySelector<HTMLButtonElement>('[role="treeitem"]')!;
+    expect(getComputedStyle(badge).fontSize).toBe('12px');
+    expect(getComputedStyle(badge).fontVariantNumeric).toBe('tabular-nums');
+    assertContrast(badge, backgroundOf(badge));
+    await userEvent.hover(row);
+    await Promise.all(row.getAnimations().map((animation) => animation.finished));
+    assertContrast(badge, backgroundOf(badge));
+    await userEvent.unhover(row);
+    await Promise.all(row.getAnimations().map((animation) => animation.finished));
+  }
+});
 
 test('secondary text remains readable on base, subtle, row hover and selection surfaces', () => {
   for (const surface of ['surface-base', 'surface-subtle', 'slate-100', 'accent-soft']) {
