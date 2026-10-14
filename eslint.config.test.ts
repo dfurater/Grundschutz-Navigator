@@ -9,6 +9,18 @@ import { createEslintWithoutTypes, TYPE_AWARE_RULES } from './src/test/eslintWit
 const eslint = new ESLint({ cwd: process.cwd() });
 const eslintWithoutTypes = createEslintWithoutTypes();
 
+/**
+ * Setzt einen Wert als JS-String-Literal in Testquelltext ein. `<`, `>`, `/`
+ * und die Zeilentrenner U+2028/U+2029 stehen als Unicode-Escape, damit der
+ * Wert den umgebenden Quelltext nicht beenden kann.
+ */
+function jsStringLiteral(value: string) {
+  return JSON.stringify(value).replace(
+    /[<>/\u2028\u2029]/g,
+    (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`,
+  );
+}
+
 async function lint(source: string, filePath: string) {
   const [result] = await eslintWithoutTypes.lintText(source, { filePath });
   // Ohne diese Prüfung bestünden die Erlaubt-Tests auch dann, wenn die Datei
@@ -129,7 +141,7 @@ const ALLOWED_FORMS = [
 describe('Gestaltungssystem-Regel (GSPP-533)', () => {
 
   async function designFindings(classes: string, filePath = 'src/components/Sample.tsx') {
-    const messages = await lint(`export const c = ${JSON.stringify(classes)};`, filePath);
+    const messages = await lint(`export const c = ${jsStringLiteral(classes)};`, filePath);
     return messages.filter(({ ruleId }) => ruleId === RULE);
   }
 
@@ -234,7 +246,7 @@ describe('Gestaltungssystem-Regel gegen Tailwind-Ausgabe (GSPP-533)', () => {
 
   async function jsxFindings(classes: string) {
     const messages = await lint(
-      `export const Sample = () => <div className=${JSON.stringify(classes)} />;`,
+      `export const Sample = () => <div className={${jsStringLiteral(classes)}} />;`,
       'src/components/Sample.tsx',
     );
     return messages.filter(({ ruleId }) => ruleId === RULE);

@@ -103,6 +103,18 @@ function splitVariants(token) {
   return { variants: parts.slice(0, -1), utility: parts.at(-1) };
 }
 
+/** Prüft eine Arbitrary Property wie `[opacity:var(--x)]`. */
+function checkArbitraryProperty(utility, onHover) {
+  // Ohne `eigenschaft:wert` ist es ein Attributselektor wie `[inert]`, keine Klasse.
+  const property = /^\[([a-z-]+):(.+)\]$/.exec(utility);
+  if (!property) return null;
+  const [, name, value] = property;
+  const forbidden = forbiddenProperty(name, value);
+  if (forbidden) return forbidden;
+  if (name === 'opacity' && onHover) return 'hoverOpacity';
+  return TOKEN_VALUE.test(value) ? null : 'arbitraryProperty';
+}
+
 function checkClassToken(token) {
   const { variants, utility: rawUtility } = splitVariants(token);
   // `!important` steht als `!` vor oder hinter der Utility, auch hinter Varianten
@@ -118,15 +130,7 @@ function checkClassToken(token) {
   if (forbidden) return forbidden.messageId;
   if (base.startsWith('opacity-') && onHover) return 'hoverOpacity';
 
-  if (utility.startsWith('[')) {
-    // Ohne `eigenschaft:wert` ist es ein Attributselektor wie `[inert]`, keine Klasse.
-    const property = /^\[([a-z-]+):(.+)\]$/.exec(utility);
-    if (!property) return null;
-    const forbiddenByProperty = forbiddenProperty(property[1], property[2]);
-    if (forbiddenByProperty) return forbiddenByProperty;
-    if (property[1] === 'opacity' && onHover) return 'hoverOpacity';
-    return TOKEN_VALUE.test(property[2]) ? null : 'arbitraryProperty';
-  }
+  if (utility.startsWith('[')) return checkArbitraryProperty(utility, onHover);
   // Jeder beliebige Wert (`-[…]`) und jeder beliebige Modifier (`/[…]`, etwa
   // eine rohe Zeilenhöhe) wird einzeln geprüft, auch vor einem Skalenmodifier
   // wie in `text-[13px]/6`.
