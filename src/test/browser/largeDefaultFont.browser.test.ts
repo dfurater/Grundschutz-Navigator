@@ -8,6 +8,7 @@ import { parseCatalog } from '@/adapters/oscalAdapter';
 import { CATALOG_ROUTE_PATTERN } from '@/app/routes';
 import { CatalogBrowser } from '@/features/catalog/CatalogBrowser';
 import { SearchPage } from '@/features/search/SearchPage';
+import { SearchSelectionProvider } from '@/state/SearchSelectionProvider';
 import { CatalogContext } from '@/state/CatalogContext';
 import { createInitialState, projectPublicState } from '@/state/catalogReducer';
 import { ENTRY_CATALOG_KEY } from '@/domain/sourceRegistry';
@@ -90,10 +91,10 @@ async function renderPage(route: string) {
   flushSync(() => {
     root?.render(createElement(CatalogContext.Provider, { value: catalogState() },
       createElement(MemoryRouter, { initialEntries: [route] },
-        createElement(Routes, null,
+        createElement(SearchSelectionProvider, null, createElement(Routes, null,
           createElement(Route, { path: CATALOG_ROUTE_PATTERN, element: createElement(CatalogBrowser) }),
           createElement(Route, { path: '/suche', element: createElement(SearchPage) }),
-        ),
+        )),
       ),
     ));
   });

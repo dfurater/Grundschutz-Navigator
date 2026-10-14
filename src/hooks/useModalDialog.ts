@@ -42,7 +42,7 @@ function wrapTabKey(el: HTMLElement) {
 // Entfernt wird nur ein `inert`, das diese Isolation selbst gesetzt hat.
 //
 // Jede Ebene merkt sich ihr Rückkehrziel. Überlappende Dialoge, etwa ein Sheet
-// und das Detail-Overlay zwischen `md` und `lg`, dürfen in beliebiger
+// und das Detail-Overlay auf dem Tablet, dürfen in beliebiger
 // Reihenfolge enden: Schließt eine Ebene unter einer anderen, erbt die Ebene
 // darüber deren Rückkehrziel, falls ihr eigenes in der schließenden Ebene lag.
 interface ModalLayer {

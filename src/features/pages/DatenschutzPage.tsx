@@ -23,7 +23,7 @@ export function DatenschutzPage() {
         <h2 className="text-base font-semibold leading-snug text-slate-900">
           1. Allgemeine Hinweise
         </h2>
-        <p className="text-sm text-slate-700 leading-relaxed">
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Der Grundschutz++ Navigator ist eine clientseitige Webanwendung. Der
           Grundschutz++-Katalog wird im Browser geladen und dort verarbeitet.
           Die Anwendung stellt derzeit keine Nutzerkonten, Formulare oder
@@ -36,7 +36,7 @@ export function DatenschutzPage() {
           2. Verantwortlicher
         </h2>
         {hasVerantwortlicher ? (
-          <div className="text-sm text-slate-700 leading-relaxed space-y-2">
+          <div className="catalog-prose-text text-sm text-slate-700 leading-relaxed space-y-2">
             <p>
               Verantwortlich für die Verarbeitung personenbezogener Daten im
               Sinne der Datenschutz-Grundverordnung ist:
@@ -63,7 +63,7 @@ export function DatenschutzPage() {
             </address>
           </div>
         ) : (
-          <p className="text-sm text-slate-700 leading-relaxed">
+          <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
             Die Angaben zum Verantwortlichen sind derzeit nicht hinterlegt.
           </p>
         )}
@@ -73,7 +73,7 @@ export function DatenschutzPage() {
         <h2 className="text-base font-semibold leading-snug text-slate-900">
           3. Hosting
         </h2>
-        <p className="text-sm text-slate-700 leading-relaxed">
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Diese Anwendung wird über GitHub Pages bereitgestellt. GitHub kann
           beim Abruf der Seite technische Verbindungsdaten wie IP-Adresse,
           Zeitpunkte und HTTP-Metadaten nach eigener Verantwortung verarbeiten.
@@ -88,12 +88,12 @@ export function DatenschutzPage() {
           </a>
           {'.'}
         </p>
-        <p className="text-sm text-slate-700 leading-relaxed">
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Rechtsgrundlage für diese Verarbeitung ist unser berechtigtes
           Interesse an einer technisch fehlerfreien Bereitstellung der
           Anwendung nach Art. 6 Abs. 1 lit. f DSGVO.
         </p>
-        <p className="text-sm text-slate-700 leading-relaxed">
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           GitHub, Inc. hat seinen Sitz in den USA; die Auslieferung erfolgt
           über Server-Infrastruktur außerhalb der Europäischen Union. GitHub
           ist unter dem EU-U.S. Data Privacy Framework zertifiziert. Grundlage
@@ -110,7 +110,7 @@ export function DatenschutzPage() {
           </a>{' '}
           einsehen.
         </p>
-        <p className="text-sm text-slate-700 leading-relaxed">
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Auf die von GitHub erhobenen Verbindungsdaten haben wir keinen
           Zugriff. Wir führen selbst keine Zugriffsprotokolle und speichern
           keine Verbindungsdaten. Für deren Speicherdauer gelten die Angaben im
@@ -122,7 +122,7 @@ export function DatenschutzPage() {
         <h2 className="text-base font-semibold leading-snug text-slate-900">
           4. Cookies &amp; Tracking
         </h2>
-        <p className="text-sm text-slate-700 leading-relaxed">
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Nach aktuellem Stand setzt die Anwendung selbst keine Cookies für
           Analyse, Werbung oder Nutzerprofile ein. Ebenso werden keine
           Analyse- oder Werbedienste der Anwendung eingebunden.
@@ -133,7 +133,7 @@ export function DatenschutzPage() {
         <h2 className="text-base font-semibold leading-snug text-slate-900">
           5. Lokale Datenspeicherung
         </h2>
-        <p className="text-sm text-slate-700 leading-relaxed">
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Nach aktuellem Stand speichert die Anwendung keine fachlichen
           Nutzungsdaten in <code>localStorage</code>,{' '}
           <code>sessionStorage</code> oder vergleichbaren Browser-Speichern.
@@ -147,7 +147,7 @@ export function DatenschutzPage() {
         <h2 className="text-base font-semibold leading-snug text-slate-900">
           6. Externe Ressourcen
         </h2>
-        <p className="text-sm text-slate-700 leading-relaxed">
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Die Anwendung bindet keine externen Schriftarten, Analyse- oder
           Werbedienste ein. Benötigte Schriftdateien werden zusammen mit der
           Anwendung ausgeliefert.
@@ -158,11 +158,11 @@ export function DatenschutzPage() {
         <h2 className="text-base font-semibold leading-snug text-slate-900">
           7. Ihre Rechte
         </h2>
-        <p className="text-sm text-slate-700 leading-relaxed">
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Soweit personenbezogene Daten von Ihnen verarbeitet werden, stehen
           Ihnen gegenüber dem Verantwortlichen die folgenden Rechte zu:
         </p>
-        <ul className="text-sm text-slate-700 leading-relaxed list-disc pl-5 space-y-1">
+        <ul className="catalog-prose-text text-sm text-slate-700 leading-relaxed list-disc pl-5 space-y-1">
           <li>Auskunft über die verarbeiteten Daten (Art. 15 DSGVO)</li>
           <li>Berichtigung unrichtiger Daten (Art. 16 DSGVO)</li>
           <li>Löschung (Art. 17 DSGVO)</li>
@@ -173,13 +173,13 @@ export function DatenschutzPage() {
             Interessen (Art. 21 DSGVO)
           </li>
         </ul>
-        <p className="text-sm text-slate-700 leading-relaxed">
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Sie haben außerdem das Recht, sich bei einer
           Datenschutz-Aufsichtsbehörde zu beschweren (Art. 77 DSGVO). Zuständig
           ist die Aufsichtsbehörde Ihres Aufenthaltsorts, Ihres Arbeitsplatzes
           oder des Orts des mutmaßlichen Verstoßes.
         </p>
-        <p className="text-sm text-slate-700 leading-relaxed">
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Diese Seite beschreibt den aktuellen technischen Zuschnitt der
           Anwendung und ersetzt keine rechtliche Einzelfallprüfung.
         </p>

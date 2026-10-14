@@ -23,6 +23,7 @@ vi.mock('@/features/home/HomePage', async () => {
   const { createElement, Fragment } = await import('react');
   const { CatalogMobileSelectionBar } = await import('@/features/catalog/CatalogMobileSelectionBar');
   const { CatalogToolbar } = await import('@/features/catalog/CatalogToolbar');
+  const { emptyFilters } = await import('@/hooks/useFilteredControls');
   return {
     HomePage: () => createElement(
       Fragment,
@@ -40,7 +41,7 @@ vi.mock('@/features/home/HomePage', async () => {
         filteredControls: [],
         allControls: [],
         sectionFilename: 'test.csv',
-        filterPanelProps: {} as never,
+        filterPanelProps: { filters: emptyFilters } as never,
         isDesktop: false,
       }),
       createElement(CatalogMobileSelectionBar, {
