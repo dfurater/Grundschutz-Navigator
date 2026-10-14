@@ -292,10 +292,13 @@
 @layer base {
   /* Eigene Hintergrundfarbe auf `html`, nicht nur auf `body`: Ohne sie zeigt
      Safari 26 unter seiner Liquid-Glass-Leiste eine undurchsichtige graue
-     Fläche statt des Seiteninhalts (iPhone 16 Pro, iOS 27.0.1, GSPP-447). */
+     Fläche statt des Seiteninhalts (iPhone 16 Pro, iOS 27.0.1, GSPP-447).
+     Die Farbe ist die des Footers: Am Dokumentende liegt unter der Leiste nur
+     noch diese Fläche, und ein abweichender Ton erschiene dort als grauer
+     Streifen unter dem Footer. */
   html {
     overflow-x: hidden;
-    @apply bg-slate-100;
+    background-color: var(--color-surface-base);
   }
 
   button:disabled {

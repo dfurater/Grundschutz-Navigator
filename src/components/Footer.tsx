@@ -24,11 +24,11 @@ export function Footer({ className = '' }: FooterProps) {
 
   return (
     <footer
-      className={`shrink-0 border-t border-[var(--color-border-default)] bg-[var(--color-surface-base)] px-4 py-3 text-xs desktop:py-2 text-[var(--color-text-secondary)] sm:px-6 ${className}`}
+      className={`shrink-0 border-t border-[var(--color-border-default)] bg-[var(--color-surface-base)] px-4 py-1 text-xs desktop:py-2 text-[var(--color-text-secondary)] sm:px-6 ${className}`}
       role="contentinfo"
     >
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[var(--color-text-secondary)]">
-        <div className="flex min-w-0 basis-full flex-wrap items-center gap-x-3 gap-y-1 desktop:basis-auto desktop:flex-1 desktop:flex-nowrap">
+      <div className="flex flex-wrap items-center gap-x-3 text-[var(--color-text-secondary)]">
+        <div className="flex min-w-0 basis-full flex-wrap items-center gap-x-3 desktop:basis-auto desktop:flex-1 desktop:flex-nowrap">
           <span className="hidden shrink-0 whitespace-nowrap font-medium tracking-[0.02em] text-[var(--color-text-primary)] xl:inline">
             Grundschutz++ Navigator
           </span>
@@ -57,7 +57,7 @@ export function Footer({ className = '' }: FooterProps) {
             </Link>
           )}
         </div>
-        <div className="basis-full min-w-0 -mx-2 flex flex-wrap items-center gap-y-1 sm:gap-x-1 desktop:mx-0 desktop:gap-x-3 desktop:ml-auto desktop:basis-auto desktop:flex-nowrap desktop:justify-end">
+        <div className="basis-full min-w-0 -mx-2 flex flex-wrap items-center sm:gap-x-1 desktop:mx-0 desktop:gap-x-3 desktop:ml-auto desktop:basis-auto desktop:flex-nowrap desktop:justify-end">
           <span aria-hidden="true" className="hidden text-[var(--color-text-muted)] desktop:inline">·</span>
           {secondaryFooterLinks.map(({ to, label }) => (
             <Link key={to} to={to} className={secondaryLinkClass}>

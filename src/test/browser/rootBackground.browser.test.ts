@@ -3,9 +3,11 @@ import '@/index.css';
 
 test('gibt html eine eigene deckende Hintergrundfarbe für Safaris Liquid-Glass-Leiste', () => {
   // Ohne eigene Farbe auf `html` zeigt Safari 26 unter seiner Leiste eine
-  // undurchsichtige graue Fläche statt des Seiteninhalts (GSPP-447).
+  // undurchsichtige graue Fläche statt des Seiteninhalts (GSPP-447). Sie
+  // entspricht der Footerfläche, sonst steht am Dokumentende ein andersfarbiger
+  // Streifen unter dem Footer.
   const probe = document.createElement('div');
-  probe.className = 'bg-slate-100';
+  probe.style.backgroundColor = 'var(--color-surface-base)';
   document.body.append(probe);
   try {
     const background = getComputedStyle(document.documentElement).backgroundColor;
