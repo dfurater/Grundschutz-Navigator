@@ -7,6 +7,10 @@
 @custom-variant desktop (@media (width >= 64rem) and (not (any-pointer: coarse)));
 @custom-variant compact (@media not ((width >= 64rem) and (not (any-pointer: coarse))));
 
+/* Fokusring für skriptgesetzten Fokus: `:focus-visible`, außer die letzte
+   Eingabe war ein Zeiger (`useInputModality`). Ohne Attribut bleibt er sichtbar. */
+@custom-variant kbd-focus (&:focus-visible:not(:where([data-input-modality=pointer] *)));
+
 /* Self-hosted Bunny Fonts WOFF2 subsets: latin + latin-ext, weights 400/500/600/700. */
 @font-face {
   font-family: 'Inter';

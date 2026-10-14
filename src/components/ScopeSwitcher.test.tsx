@@ -79,6 +79,17 @@ describe('ScopeSwitcher', () => {
     expect(onItemActivate).toHaveBeenCalledWith('wlan');
   });
 
+  it('koppelt den Fokusring von Auslöser und Einträgen an die Eingabeart', () => {
+    renderSwitcher();
+    fireEvent.click(trigger());
+    const ringOwners = [trigger(), ...screen.getAllByRole('menuitemradio')];
+
+    for (const element of ringOwners) {
+      expect(element).toHaveClass('kbd-focus:ring-2', 'focus-visible:outline-none');
+      expect(element.className).not.toMatch(/focus-visible:ring/);
+    }
+  });
+
   it('öffnet per Pfeiltaste mit Fokus auf dem aktiven Eintrag und bewegt zyklisch', () => {
     renderSwitcher();
     fireEvent.keyDown(trigger(), { key: 'ArrowDown' });
