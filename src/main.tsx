@@ -6,7 +6,6 @@ import { CatalogProvider } from '@/state/CatalogContext';
 import { AppShell } from '@/app/AppShell';
 import { createAppRoutes } from '@/app/appRoutes';
 import { preloadInitialPage } from '@/app/initialPage';
-import 'overlayscrollbars/overlayscrollbars.css';
 import '@/index.css';
 
 const routerBasename =

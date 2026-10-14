@@ -400,7 +400,7 @@ describe('AppShell', () => {
     }
   });
 
-  it('uses focus-visible rings for sidebar controls and the 404 link', () => {
+  it('uses keyboard focus rings for sidebar controls and the 404 link', () => {
     mockedUseMediaQuery.mockImplementation((query) => query === DESKTOP_QUERY);
     const { container } = renderAppShell(['/missing']);
 
@@ -409,7 +409,7 @@ describe('AppShell', () => {
     const resizeHandle = screen.getByRole('button', { name: 'Sidebar-Breite anpassen' });
     const homeLink = screen.getByRole('link', { name: 'Zur Startseite' });
 
-    expect(explorerButton.className).toContain('focus-visible:ring-2');
+    expect(explorerButton.className).toContain('kbd-focus:ring-2');
     expect(collapseButton.className).toContain('focus-visible:ring-2');
     expect(resizeHandle.className).toContain('focus-visible:ring-2');
     expect(homeLink.className).toContain('focus-visible:ring-2');

@@ -61,7 +61,7 @@ export function ControlTaxonomyBreadcrumb({
           <>
             <span>{topicName}</span>
             {hasTopic && (
-              <span className="text-[10px] text-amber-700">
+              <span className="text-2xs text-amber-700">
                 keine offizielle Definition
               </span>
             )}

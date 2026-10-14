@@ -1,5 +1,7 @@
 import type { MouseEventHandler, ReactNode } from 'react';
 import type { Catalog, Control } from '@/domain/models';
+import { REDUCED_MOTION_QUERY } from '@/hooks/breakpointQueries';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { IconChevronLeft, IconFilter } from '@/components/icons';
 import { FilterPanel, type FilterPanelProps } from './FilterPanel';
 import { CatalogDetailPanel } from './CatalogDetailPanel';
@@ -40,6 +42,7 @@ export function CatalogDesktopSidebar({
   hasActiveFilters,
   filterPanelProps,
 }: CatalogDesktopSidebarProps) {
+  const prefersReducedMotion = useMediaQuery(REDUCED_MOTION_QUERY);
   let sidebarWidth = FILTER_PANEL_WIDTH;
   if (selectedControl) {
     sidebarWidth = detailWidth;
@@ -104,7 +107,7 @@ export function CatalogDesktopSidebar({
       }`}
       style={{
         width: sidebarWidth,
-        transition: isResizing
+        transition: isResizing || prefersReducedMotion
           ? 'none'
           : 'width var(--duration-normal) var(--easing-default)',
       }}

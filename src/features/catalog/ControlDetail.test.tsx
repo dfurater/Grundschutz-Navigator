@@ -784,9 +784,9 @@ describe('ControlDetail', () => {
       statementProps: { praezisierung: praezisierungText, zielobjektKategorien: [] },
     });
     render(<ControlDetail control={control} onClose={vi.fn()} />);
-    expect(screen.getByText(statementText)).toHaveClass('w-full', 'break-words', '[hyphens:auto]');
-    expect(screen.getByText(guidanceText)).toHaveClass('w-full', 'break-words', 'line-clamp-5', '[hyphens:auto]');
-    expect(screen.getByText(praezisierungText)).toHaveClass('w-full', 'break-words', '[hyphens:auto]');
+    expect(screen.getByText(statementText)).toHaveClass('w-full', 'break-words', 'hyphens-auto');
+    expect(screen.getByText(guidanceText)).toHaveClass('w-full', 'break-words', 'line-clamp-5', 'hyphens-auto');
+    expect(screen.getByText(praezisierungText)).toHaveClass('w-full', 'break-words', 'hyphens-auto');
   });
 
   it('renders unmatched raw values without inline vocabulary controls', () => {

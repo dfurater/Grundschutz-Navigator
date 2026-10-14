@@ -7,7 +7,6 @@ import type { Control } from '@/domain/models';
 import { ControlTable } from '@/features/catalog/ControlTable';
 // Wie in `main.tsx`: Ohne das Stylesheet lägen die Scrollleisten im Fluss
 // und verlängerten den Scrollbereich um die Scrollposition.
-import 'overlayscrollbars/overlayscrollbars.css';
 import '@/index.css';
 
 /*

@@ -76,7 +76,7 @@ export function VocabularyEntryCard({
       {extraColumns.map((column) => (
         <div key={column}>
           <dt className={`inline ${legendTermClass}`}>{`${column}: `}</dt>
-          <dd className="inline whitespace-pre-line [overflow-wrap:anywhere]">{entry.columns[column]}</dd>
+          <dd className="inline whitespace-pre-line wrap-anywhere">{entry.columns[column]}</dd>
         </div>
       ))}
       {referenceRows.map(({ column, target }) => (
