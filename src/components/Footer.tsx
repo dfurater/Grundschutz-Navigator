@@ -20,15 +20,15 @@ export function Footer({ className = '' }: FooterProps) {
   const verified = verification?.valid;
 
   const secondaryLinkClass =
-    'inline-flex min-h-11 items-center whitespace-nowrap rounded px-2 text-[var(--color-text-muted)] lg:min-h-6 lg:px-0 hover:text-[var(--color-text-secondary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]';
+    'inline-flex min-h-11 items-center whitespace-nowrap rounded px-2 text-[var(--color-text-muted)] desktop:min-h-6 desktop:px-0 hover:text-[var(--color-text-secondary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]';
 
   return (
     <footer
-      className={`shrink-0 border-t border-[var(--color-border-default)] bg-[var(--color-surface-base)] px-4 py-3 text-xs lg:py-2 text-[var(--color-text-secondary)] sm:px-6 ${className}`}
+      className={`shrink-0 border-t border-[var(--color-border-default)] bg-[var(--color-surface-base)] px-4 py-3 text-xs desktop:py-2 text-[var(--color-text-secondary)] sm:px-6 ${className}`}
       role="contentinfo"
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[var(--color-text-secondary)]">
-        <div className="flex min-w-0 basis-full flex-wrap items-center gap-x-3 gap-y-1 lg:basis-auto lg:flex-1 lg:flex-nowrap">
+        <div className="flex min-w-0 basis-full flex-wrap items-center gap-x-3 gap-y-1 desktop:basis-auto desktop:flex-1 desktop:flex-nowrap">
           <span className="hidden shrink-0 whitespace-nowrap font-medium tracking-[0.02em] text-[var(--color-text-primary)] xl:inline">
             Grundschutz++ Navigator
           </span>
@@ -37,7 +37,7 @@ export function Footer({ className = '' }: FooterProps) {
             href="https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek"
             target="_blank"
             rel="noopener noreferrer"
-            className="catalog-link-color inline-flex min-h-11 min-w-0 items-center gap-1 rounded lg:min-h-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
+            className="catalog-link-color inline-flex min-h-11 min-w-0 items-center gap-1 rounded desktop:min-h-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
           >
             <span className="hidden min-w-0 truncate sm:inline">
               Quelle: BSI Stand-der-Technik-Bibliothek
@@ -49,7 +49,7 @@ export function Footer({ className = '' }: FooterProps) {
           {verified !== undefined && (
             <Link
               to="/about"
-              className={`inline-flex min-h-11 shrink-0 items-center gap-1 whitespace-nowrap rounded font-medium lg:min-h-6 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] ${verified ? 'text-[var(--color-success-text)]' : 'text-[var(--color-warning-text)]'}`}
+              className={`inline-flex min-h-11 shrink-0 items-center gap-1 whitespace-nowrap rounded font-medium desktop:min-h-6 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] ${verified ? 'text-[var(--color-success-text)]' : 'text-[var(--color-warning-text)]'}`}
               title="Integritätsdetails auf der Seite Über das Projekt"
             >
               <IconShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
@@ -57,8 +57,8 @@ export function Footer({ className = '' }: FooterProps) {
             </Link>
           )}
         </div>
-        <div className="basis-full min-w-0 -mx-2 flex flex-wrap items-center gap-y-1 sm:gap-x-1 lg:mx-0 lg:gap-x-3 lg:ml-auto lg:basis-auto lg:flex-nowrap lg:justify-end">
-          <span aria-hidden="true" className="hidden text-[var(--color-text-muted)] lg:inline">·</span>
+        <div className="basis-full min-w-0 -mx-2 flex flex-wrap items-center gap-y-1 sm:gap-x-1 desktop:mx-0 desktop:gap-x-3 desktop:ml-auto desktop:basis-auto desktop:flex-nowrap desktop:justify-end">
+          <span aria-hidden="true" className="hidden text-[var(--color-text-muted)] desktop:inline">·</span>
           {secondaryFooterLinks.map(({ to, label }) => (
             <Link key={to} to={to} className={secondaryLinkClass}>
               {label}

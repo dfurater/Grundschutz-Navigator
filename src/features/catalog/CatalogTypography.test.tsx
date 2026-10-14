@@ -12,6 +12,7 @@ import { buildVocabularyRegistry } from '@/domain/vocabulary';
 import { useCatalog } from '@/hooks/useCatalog';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { SearchPage } from '@/features/search/SearchPage';
+import { SearchSelectionProvider } from '@/state/SearchSelectionProvider';
 import { useSearch } from '@/features/search/useSearch';
 import { ControlDetail } from './ControlDetail';
 import { ControlTable } from './ControlTable';
@@ -415,11 +416,11 @@ describe('catalog typography', () => {
     const title = screen.getByRole('heading', { name: control.title, level: 2 });
     const scrollContainer = title.parentElement?.nextElementSibling;
 
-    expect(backButton).toHaveClass('rounded-lg', 'h-11', 'w-11', 'lg:h-10', 'lg:w-10');
+    expect(backButton).toHaveClass('rounded-lg', 'h-11', 'w-11', 'desktop:h-10', 'desktop:w-10');
     expect(backButton.querySelector('span')).toBeNull();
     expect(title).toHaveClass('type-page-title');
     // Der Sicherheitsabstand kommt zu den 16 px hinzu, statt sie zu ersetzen.
-    expect(scrollContainer).toHaveClass('p-4', 'pb-[calc(1rem+env(safe-area-inset-bottom,0px))]', 'lg:pb-4');
+    expect(scrollContainer).toHaveClass('p-4', 'pb-[calc(1rem+env(safe-area-inset-bottom,0px))]', 'desktop:pb-4');
     expect(scrollContainer).not.toHaveClass('pb-safe');
     expect(container.firstChild).toHaveClass('h-full', 'flex', 'flex-col', 'bg-[var(--color-surface-raised)]');
   });
@@ -495,9 +496,11 @@ describe('catalog typography', () => {
 
     render(
       <MemoryRouter initialEntries={['/suche?q=verfahren']}>
-        <Routes>
-          <Route path="/suche" element={<SearchPage />} />
-        </Routes>
+        <SearchSelectionProvider>
+          <Routes>
+            <Route path="/suche" element={<SearchPage />} />
+          </Routes>
+        </SearchSelectionProvider>
       </MemoryRouter>,
     );
 

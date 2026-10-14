@@ -8,15 +8,16 @@ import { page, userEvent } from 'vitest/browser';
 import { NAVIGATION_PENDING_DELAY_MS, NavigationPendingIndicator, NavigationPendingProvider } from '@/app/navigationPending';
 import type { Catalog, CatalogState, Control } from '@/domain/models';
 import { SECURITY_TARGETS_NAMESPACE_URL } from '@/domain/vocabularyNamespaces';
-import { CatalogMobileDetailOverlay } from '@/features/catalog/CatalogDetailPanel';
+import { CatalogDetailPanel } from '@/features/catalog/CatalogDetailPanel';
 import { catalogCollectionDefaults } from '@/test/catalogState';
 import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
 import '@/index.css';
 
 /**
- * Detail-Overlay zwischen `md` und `lg` mit echtem `ControlDetail` (GSPP-509):
- * Der Ladehinweis einer wartenden Navigation steht im Dialog, und der
- * Tab-Umlauf überspringt die Links der geschlossenen Legende.
+ * Tablet-Inline-Detailpanel mit echtem `ControlDetail` (GSPP-514): Der
+ * Ladehinweis einer wartenden Navigation steht im erreichbaren Shell-Hinweis,
+ * weil das Panel nicht modal ist; der Tab-Umlauf bleibt frei und überspringt
+ * die Links der geschlossene Legende nativ.
  */
 
 const securityTarget = (name: 'confidentiality' | 'integrity' | 'availability' | 'authenticity', value: string) => ({
@@ -98,8 +99,8 @@ function deferredVocabularyRoute(): RouteObject {
   };
 }
 
-/** Shell wie `AppShell`: Provider, Hinweis in `#root`, Overlay als Seite. */
-async function renderOverlay() {
+/** Shell wie `AppShell`: Provider, Hinweis in `#root`, Inline-Panel als Seite. */
+async function renderTabletPanel() {
   await page.viewport(800, 800);
   const router = createMemoryRouter([{
     element: createElement(NavigationPendingProvider, null,
@@ -109,13 +110,17 @@ async function renderOverlay() {
     children: [
       {
         path: '/',
-        element: createElement(CatalogMobileDetailOverlay, {
-          catalog,
-          control,
-          active: true,
-          onClose: () => {},
-          onNavigateToControl: () => {},
-        }),
+        element: createElement('div', null,
+          createElement('div', { 'data-tablet-detail-panel': '' },
+            createElement(CatalogDetailPanel, {
+              catalog,
+              control,
+              onClose: () => {},
+              onNavigateToControl: () => {},
+            }),
+          ),
+          createElement('button', { type: 'button' }, 'Weiter'),
+        ),
       },
       deferredVocabularyRoute(),
     ],
@@ -128,7 +133,7 @@ async function renderOverlay() {
     root?.render(createElement(RouterProvider, { router }));
   });
   await document.fonts.ready;
-  return page.getByRole('dialog').element() as HTMLDialogElement;
+  return host.querySelector('[data-tablet-detail-panel]') as HTMLElement;
 }
 
 function isOperable(el: Element) {
@@ -139,12 +144,12 @@ function focusTargets(dialog: Element) {
   return [...dialog.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])')];
 }
 
-test('Ladehinweis: genau ein erreichbarer Statusbereich, sichtbar im Detail-Dialog', async () => {
-  const dialog = await renderOverlay();
-  const legendToggle = [...dialog.querySelectorAll<HTMLButtonElement>('button[aria-controls]')]
+test('Ladehinweis: genau ein erreichbarer Statusbereich im Shell-Hinweis, das Panel ist nicht modal', async () => {
+  const panel = await renderTabletPanel();
+  const legendToggle = [...panel.querySelectorAll<HTMLButtonElement>('button[aria-controls]')]
     .find((button) => button.textContent === 'Legende' && button.getAttribute('aria-controls') === 'legende-schutzziele')!;
   await userEvent.click(legendToggle);
-  const vocabularyLink = dialog.querySelector<HTMLAnchorElement>('#legende-schutzziele a[href^="/vokabular/"]')!;
+  const vocabularyLink = panel.querySelector<HTMLAnchorElement>('#legende-schutzziele a[href^="/vokabular/"]')!;
   expect(vocabularyLink).not.toBeNull();
 
   await userEvent.click(vocabularyLink);
@@ -154,33 +159,36 @@ test('Ladehinweis: genau ein erreichbarer Statusbereich, sichtbar im Detail-Dial
     .filter((status) => !status.closest('[inert]'));
   expect(reachable).toHaveLength(1);
   const [status] = reachable;
-  expect(dialog.contains(status)).toBe(true);
+  // Der Hinweis der Shell in `#root` bleibt ohne modales Panel erreichbar.
+  expect(host?.contains(status)).toBe(true);
+  expect(status.closest('[inert]')).toBeNull();
   expect(status.textContent).toBe('Seite wird geladen…');
   expect(status.checkVisibility({ visibilityProperty: true, opacityProperty: true })).toBe(true);
   const box = status.getBoundingClientRect();
   expect(box.width).toBeGreaterThan(0);
   expect(box.top).toBeGreaterThanOrEqual(0);
   expect(box.bottom).toBeLessThanOrEqual(window.innerHeight);
-  // Der Hinweis der Shell liegt in `#root` und ist inert.
-  expect(host?.querySelector('output')?.closest('[inert]')).toBe(host);
 });
 
-test('Tab-Umlauf: bleibt über beide Enden im Dialog und überspringt die geschlossene Legende', async () => {
-  const dialog = await renderOverlay();
-  expect(dialog.querySelector('[hidden] a[href]')).not.toBeNull();
-  const operable = focusTargets(dialog).filter(isOperable);
+test('Tab-Umlauf: verlässt das Inline-Panel zum nachfolgenden Inhalt und überspringt die geschlossene Legende', async () => {
+  const panel = await renderTabletPanel();
+  expect(panel.querySelector('[hidden] a[href]')).not.toBeNull();
+  const operable = focusTargets(panel).filter(isOperable);
   const first = operable[0];
   const last = operable.at(-1)!;
 
-  first.focus();
-  await userEvent.tab({ shift: true });
-  expect(document.activeElement).toBe(last);
+  // Kein Fallenzwang: Hinter dem letzten Panel-Ziel folgt der Seiteninhalt.
+  last.focus();
   await userEvent.tab();
-  expect(document.activeElement).toBe(first);
+  expect(panel.contains(document.activeElement)).toBe(false);
+  expect(document.activeElement?.textContent).toBe('Weiter');
 
+  // Die verborgenen Legenden-Links bleiben dabei unerreichbar.
+  first.focus();
   for (let index = 0; index <= operable.length; index += 1) {
     await userEvent.tab();
-    expect(dialog.contains(document.activeElement)).toBe(true);
     expect(document.activeElement?.closest('[hidden]')).toBeNull();
+    if (!panel.contains(document.activeElement)) break;
   }
+  expect(panel.contains(document.activeElement)).toBe(false);
 });

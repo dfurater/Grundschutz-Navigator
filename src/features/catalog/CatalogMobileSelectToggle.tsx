@@ -7,7 +7,7 @@ interface CatalogMobileSelectToggleProps {
 }
 
 /**
- * Auswahl-Schalter unter `lg`, gemeinsam für Katalog und Suchergebnisse
+ * Auswahl-Schalter außerhalb des Desktops, gemeinsam für Katalog und Suchergebnisse
  * (GSPP-471). Aktiv ist er keine gefüllte Fläche, sondern die Glyphe in
  * Akzentfarbe auf einer 36-px-Tönung; das Touch-Ziel bleibt 44 px.
  */
@@ -19,7 +19,7 @@ export function CatalogMobileSelectToggle({
     <Button
       variant="ghost"
       size="sm"
-      className="lg:hidden relative isolate min-h-[44px] min-w-[44px]"
+      className="desktop:hidden relative isolate min-h-[44px] min-w-[44px]"
       onClick={onToggle}
       aria-label={active ? 'Auswahl beenden' : 'Kontrollen auswählen'}
       aria-pressed={active}

@@ -12,10 +12,12 @@ import { FilterPanel, type FilterPanelProps } from './FilterPanel';
 
 interface CatalogMobileFilterSheetProps {
   readonly filterPanelProps: FilterPanelProps;
+  readonly activeCount: number;
 }
 
 export function CatalogMobileFilterSheet({
   filterPanelProps,
+  activeCount,
 }: CatalogMobileFilterSheetProps) {
   const [open, setOpen] = useState(false);
   const sheetRef = useRef<HTMLDialogElement>(null);
@@ -42,18 +44,23 @@ export function CatalogMobileFilterSheet({
       <Button
         variant="ghost"
         size="sm"
-        className="lg:hidden min-h-[44px] min-w-[44px]"
+        className="desktop:hidden min-h-[44px] min-w-[44px]"
         onClick={() => setOpen(true)}
-        aria-label="Filter anzeigen"
+        aria-label={activeCount > 0 ? `Filter anzeigen, ${activeCount} aktiv` : 'Filter anzeigen'}
       >
         <IconFilter className="w-4 h-4" />
+        {activeCount > 0 && (
+          <span className="filter-count-badge bg-[var(--color-text-primary)]" aria-hidden="true">
+            {activeCount}
+          </span>
+        )}
       </Button>
 
       {open && (
         <ModalPortal>
           <div
             ref={backdropRef}
-            className="fixed inset-0 z-40 lg:hidden"
+            className="fixed inset-0 z-40 desktop:hidden"
             style={{ opacity: 0.3 }}
             onClick={close}
             aria-hidden="true"
@@ -65,7 +72,7 @@ export function CatalogMobileFilterSheet({
             ref={sheetRef}
             aria-modal="true"
             aria-labelledby={headingId}
-            className="mobile-sheet m-0 border-0 w-full max-w-none text-[inherit] fixed inset-x-0 bottom-0 z-50 bg-[var(--color-surface-raised)] flex flex-col overflow-hidden lg:hidden animate-slide-up"
+            className="mobile-sheet m-0 border-0 w-full max-w-none text-[inherit] fixed inset-x-0 bottom-0 z-50 bg-[var(--color-surface-raised)] flex flex-col overflow-hidden desktop:hidden animate-slide-up"
           >
             <div
               ref={handleRef}
@@ -79,8 +86,8 @@ export function CatalogMobileFilterSheet({
               adaptiveHeader
               headingId={headingId}
               headerAction={(
-                <Button variant="ghost" size="sm" className="min-h-[44px] min-w-[44px] -mt-3 -mb-1.5 -mr-2 text-sm" onClick={close} data-dialog-close>
-                  Fertig
+                <Button variant="ghost" size="sm" className="min-h-[44px] min-w-[44px] -mt-3 -mb-1.5 -mr-2 text-sm tabular-nums" onClick={close} data-dialog-close>
+                  Schließen ({filterPanelProps.filteredCount})
                 </Button>
               )}
             />

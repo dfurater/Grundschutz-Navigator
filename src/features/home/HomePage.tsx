@@ -56,7 +56,7 @@ export function HomePage() {
           <h1 className="type-page-title text-[var(--color-text-primary)]">
             Grundschutz++ Navigator
           </h1>
-          <p className="type-secondary mt-0.5 text-[var(--color-text-secondary)]">
+          <p className="catalog-prose-text type-secondary mt-0.5 text-[var(--color-text-secondary)]">
             Werkzeug zum Durchsuchen, Filtern und Exportieren des offiziellen
             Grundschutz++-Anwenderkatalogs des BSI. Kein Angebot des BSI.
           </p>
@@ -81,7 +81,7 @@ export function HomePage() {
           >
             Was ist Grundschutz++?
           </h2>
-          <p className="mt-3 text-sm leading-relaxed text-[var(--color-text-primary)]">
+          <p className="catalog-prose-text mt-3 text-sm leading-relaxed text-[var(--color-text-primary)]">
             Grundschutz++ ist ein fortentwickelter Anwenderkatalog des BSI im
             Kontext des IT-Grundschutzes. Er liegt maschinenlesbar im
             OSCAL-Format vor und verbindet methodische mit konkreten
