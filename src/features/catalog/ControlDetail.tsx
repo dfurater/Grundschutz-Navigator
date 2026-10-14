@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   IconArrowLeft,
   IconCheck,
@@ -111,6 +111,7 @@ export function ControlDetail({
   const catalogKey = catalog.catalogKey;
   const isPage = layout === 'page';
   const isTabletPanel = layout === 'tablet-panel';
+  const copyErrorFallbackRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useOverlayScrollbars<HTMLDivElement>(!isPage);
   const controlStateKey = `${catalogKey}:${control.id}`;
   const {
@@ -125,6 +126,16 @@ export function ControlDetail({
   // Abschluss des letzten Versuchs kann sie entfernen (Race-sicher).
   const [pendingCopyRetries, setPendingCopyRetries] = useState(0);
   const showCopyError = Boolean(linkCopyError) || pendingCopyRetries > 0;
+
+  useEffect(() => {
+    if (!showCopyError || isPage) return;
+    const fallback = copyErrorFallbackRef.current;
+    const scrollArea = fallback?.closest<HTMLElement>('[data-control-detail-scroll]');
+    if (!fallback || !scrollArea) return;
+
+    const offset = fallback.getBoundingClientRect().top - scrollArea.getBoundingClientRect().top;
+    scrollArea.scrollTop = Math.max(0, scrollArea.scrollTop + offset);
+  }, [isPage, showCopyError]);
   const {
     isActive: isVocabularyActive,
     toggle: toggleVocabulary,
@@ -295,7 +306,7 @@ export function ControlDetail({
   };
 
   const copyErrorFallback = showCopyError && (
-    <div className="mb-2 space-y-1.5 rounded-md bg-[var(--color-danger-surface)] px-3 py-2">
+    <div ref={copyErrorFallbackRef} className="mb-2 space-y-1.5 rounded-md bg-[var(--color-danger-surface)] px-3 py-2">
       <p role="alert" className="text-xs text-[var(--color-danger-text)]">
         Kopieren nicht möglich. Bitte den vollständigen Wert manuell markieren und kopieren.
       </p>
@@ -376,7 +387,7 @@ export function ControlDetail({
             )}
           </button>
         </div>
-        {!isPage && copyErrorFallback}
+        {isPage && copyErrorFallback}
         {!isTabletPanel && taxonomyBreadcrumb}
         {/* Fokusziel beim Öffnen der mobilen Seitenansicht (`useDocumentDetailPage`). */}
         <h2 id={titleId} data-control-detail-title tabIndex={-1} className="type-page-title focus:outline-none">
@@ -399,6 +410,7 @@ export function ControlDetail({
           ? 'flex flex-col gap-5 p-4'
           : 'flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] desktop:pb-4'}
       >
+        {!isPage && copyErrorFallback}
         {isTabletPanel && (
           <>
             {taxonomyBreadcrumb}

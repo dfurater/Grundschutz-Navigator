@@ -19,6 +19,7 @@ import '@/index.css';
  */
 
 const catalogState = createTabletCatalogState();
+const originalClipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
 
 vi.mock('@/hooks/useCatalog', () => ({
   useCatalog: () => catalogState,
@@ -32,7 +33,19 @@ afterEach(() => {
   host?.remove();
   root = undefined;
   host = undefined;
+  if (originalClipboardDescriptor) {
+    Object.defineProperty(navigator, 'clipboard', originalClipboardDescriptor);
+  } else {
+    Reflect.deleteProperty(navigator, 'clipboard');
+  }
 });
+
+function setClipboard(writeText: (text: string) => Promise<void>) {
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: { writeText },
+  });
+}
 
 async function renderCatalog(width: number, entry = '/katalog/gspp', height = 800, withAppChrome = false) {
   await page.viewport(width, height);
@@ -182,6 +195,45 @@ test('hält den Tablet-Detailkopf bei 844 × 390 px kompakt und erreicht die Anf
   const finalHeaderBox = fixedHeader.getBoundingClientRect();
   expect(finalHeaderBox.top).toBe(fixedHeaderBox.top);
   expect(finalHeaderBox.bottom).toBe(fixedHeaderBox.bottom);
+});
+
+test('hält den Tablet-Kopf beim Kopierfehler gleich hoch und scrollt den Fallback in Sicht', async () => {
+  const { shell } = await renderCatalog(844, '/katalog/gspp', 390, true);
+  setClipboard(() => Promise.reject(new Error('Browser detail')));
+
+  await userEvent.click(rowButton(shell, 'TOP.1.1'));
+  await expect.poll(() => tabletPanel(shell)).not.toBeNull();
+  const panel = tabletPanel(shell);
+  const panelScroller = panel.querySelector('[data-control-detail-scroll]') as HTMLElement;
+  const header = panel.querySelector('[data-control-detail-title]')?.closest('.border-b') as HTMLElement;
+  const headerHeight = header.getBoundingClientRect().height;
+  panelScroller.scrollTop = panelScroller.scrollHeight;
+
+  await userEvent.click(panel.querySelector('[aria-label="Link kopieren"]') as HTMLButtonElement);
+  await expect.poll(() => panel.querySelector('[aria-label="Direktlink zum manuellen Kopieren"]')).not.toBeNull();
+  const fallback = panel.querySelector('[aria-label="Direktlink zum manuellen Kopieren"]') as HTMLElement;
+  const scrollBox = panelScroller.getBoundingClientRect();
+  const alert = panel.querySelector('[role="alert"]') as HTMLElement;
+  const alertBox = alert.getBoundingClientRect();
+  expect(panelScroller.contains(fallback)).toBe(true);
+  expect(alertBox.top).toBeGreaterThanOrEqual(scrollBox.top - 1);
+  expect(alertBox.bottom).toBeLessThanOrEqual(shell.querySelector('footer')!.getBoundingClientRect().top + 1);
+  expect(header.getBoundingClientRect().height).toBe(headerHeight);
+  expect(panelScroller.contains(document.elementFromPoint(
+    (alertBox.left + alertBox.right) / 2,
+    (alertBox.top + alertBox.bottom) / 2,
+  ))).toBe(true);
+
+  const retryButton = [...panel.querySelectorAll('button')]
+    .find((button) => button.textContent?.trim() === 'Erneut kopieren') as HTMLButtonElement;
+  panelScroller.scrollTop += retryButton.getBoundingClientRect().bottom - scrollBox.bottom;
+  await expect.poll(() => retryButton.getBoundingClientRect().bottom).toBeLessThanOrEqual(scrollBox.bottom + 1);
+  expect(panelScroller.contains(document.elementFromPoint(
+    (retryButton.getBoundingClientRect().left + retryButton.getBoundingClientRect().right) / 2,
+    (retryButton.getBoundingClientRect().top + retryButton.getBoundingClientRect().bottom) / 2,
+  ))).toBe(true);
+  await userEvent.click(retryButton);
+  expect(panel.querySelector('[aria-label="Direktlink zum manuellen Kopieren"]')).toBe(fallback);
 });
 
 test.each([768, 1023])('gibt bei %i px nach herausgescrollter Zeile Fokus und Sichtbarkeit an die Zeile zurück', async (width) => {

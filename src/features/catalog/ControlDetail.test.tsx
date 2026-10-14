@@ -1212,7 +1212,7 @@ describe('ControlDetail', () => {
     expect(screen.getByRole('alert')).toBeInTheDocument();
   });
 
-  it('keeps the tablet-panel copy fallback in the fixed header across retries', async () => {
+  it('scrolls the tablet-panel copy fallback into view and keeps it mounted across retries', async () => {
     const user = userEvent.setup();
     setClipboard(vi.fn().mockRejectedValue(new Error('Browser detail')));
 
@@ -1229,10 +1229,31 @@ describe('ControlDetail', () => {
     const fixedHeader = screen.getByRole('heading', { name: 'Kontrolle mit Verweisen' }).closest('.border-b');
     const detailScroller = document.querySelector('[data-control-detail-scroll]');
 
-    expect(fixedHeader?.contains(fallback)).toBe(true);
-    expect(detailScroller?.contains(fallback)).toBe(false);
+    expect(fixedHeader?.contains(fallback)).toBe(false);
+    expect(detailScroller?.contains(fallback)).toBe(true);
     await user.click(screen.getByRole('button', { name: 'Erneut kopieren' }));
     expect(screen.getByLabelText('Direktlink zum manuellen Kopieren')).toBe(fallback);
+  });
+
+  it('keeps the copy fallback in the mobile page header', async () => {
+    const user = userEvent.setup();
+    setClipboard(vi.fn().mockRejectedValue(new Error('Browser detail')));
+
+    render(
+      <ControlDetail
+        control={makeControl({ id: 'DET.5.4', altIdentifier: 'stable-det-5-4' })}
+        layout="page"
+        onClose={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Link kopieren' }));
+    const fallback = await screen.findByLabelText('Direktlink zum manuellen Kopieren');
+    const fixedHeader = screen.getByRole('heading', { name: 'Kontrolle mit Verweisen' }).closest('.border-b');
+    const detailScroller = document.querySelector('[data-control-detail-scroll]');
+
+    expect(fixedHeader?.contains(fallback)).toBe(true);
+    expect(detailScroller?.contains(fallback)).toBe(false);
   });
 
   it('keeps the fallback visible while a newer retry is still pending after an older one settles', async () => {
