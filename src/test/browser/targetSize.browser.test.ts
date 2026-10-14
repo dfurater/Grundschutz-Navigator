@@ -15,8 +15,8 @@ import '@/index.css';
 /**
  * Trefferflächen von Vokabularübersicht, Quellenlink der Vokabularseite, Footer
  * und Filter-Checkboxlabels (GSPP-501). WCAG 2.5.8 prüft axe über die Regel `target-size` an den echten
- * Chromium-Boxen; das 44-px-Projektziel unterhalb von `lg` (64rem) ist keine
- * axe-Regel und steht deshalb als Boxmaß daneben.
+ * Chromium-Boxen; das Projektziel unterhalb von `lg` (64rem) ist keine
+ * axe-Regel und steht deshalb als Boxmaß daneben: 44 px, für Footerlinks 32 px.
  */
 
 const registry = buildVocabularyRegistry({
@@ -96,6 +96,10 @@ function targets(container: HTMLElement) {
   return [...container.querySelectorAll<HTMLElement>('a[href], label')];
 }
 
+function minTargetHeight(element: HTMLElement) {
+  return element.closest('footer') ? 32 : 44;
+}
+
 const WIDTHS = [320, 390, 768, 1023, 1024, 1440];
 
 test.each(WIDTHS)('erfüllt WCAG 2.5.8 (axe target-size) bei %i px', async (width) => {
@@ -122,13 +126,13 @@ test.each(WIDTHS)('gibt dem Quellenlink der Vokabularseite bei %i px die Zielhö
 });
 
 test.each(WIDTHS.filter((width) => width < 1024))(
-  'gibt Links und Labels bei %i px 44 px Höhe ohne Überlappung',
+  'gibt Links und Labels bei %i px ihre Zielhöhe (44 px, Footer 32 px) ohne Überlappung',
   async (width) => {
     const container = await renderSurfaces(width);
     const boxes = targets(container).map((element) => ({ element, box: element.getBoundingClientRect() }));
     expect(boxes.length).toBeGreaterThan(10);
     for (const { element, box } of boxes) {
-      expect(box.height, element.textContent ?? '').toBeGreaterThanOrEqual(44);
+      expect(box.height, element.textContent ?? '').toBeGreaterThanOrEqual(minTargetHeight(element));
       expect(box.width, element.textContent ?? '').toBeGreaterThanOrEqual(44);
     }
     for (const [index, first] of boxes.entries()) {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 // `?raw` statt `readFileSync(process.cwd(), …)`: Vite löst den Pfad zur
-// Bauzeit relativ zu dieser Datei auf, unabhängig vom Arbeitsverzeichnis.
-import indexHtml from '../../index.html?raw';
+// Bauzeit über den Alias `@` (`src/`) auf, unabhängig vom Arbeitsverzeichnis.
+import indexHtml from '@/../index.html?raw';
 import { removeStaticTitleFallback } from './staticTitleFallback';
 
 describe('removeStaticTitleFallback', () => {
