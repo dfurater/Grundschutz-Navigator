@@ -221,6 +221,8 @@ export function ControlDetail({
   const [pendingCopyRetries, setPendingCopyRetries] = useState(0);
   const showCopyError = Boolean(linkCopyError) || pendingCopyRetries > 0;
 
+  // Scrollt nur beim Erscheinen des Fallbacks; ein späterer Wechsel des
+  // Scrollbereichs behält die wiederhergestellte Leseposition.
   useEffect(() => {
     if (!showCopyError || isPage) return;
     const fallback = copyErrorFallbackRef.current;
@@ -229,7 +231,7 @@ export function ControlDetail({
 
     const offset = fallback.getBoundingClientRect().top - scrollArea.getBoundingClientRect().top;
     scrollArea.scrollTop = Math.max(0, scrollArea.scrollTop + offset);
-  }, [isPage, showCopyError, usesSingleTabletScrollArea]);
+  }, [isPage, showCopyError]);
   const {
     isActive: isVocabularyActive,
     toggle: toggleVocabulary,
