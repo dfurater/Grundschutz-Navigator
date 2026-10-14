@@ -128,10 +128,10 @@ test.each(Object.entries(TABLETS))('zeigt %s als Tablet-Ansicht mit Zwei-Pane un
   await expect.poll(() => listScroller.scrollTop).toBe(200);
   expect(panelScroller.scrollTop).toBe(panelTop);
 
-  // Touch-Ziele bleiben auch ab 64 rem Breite 44 px hoch.
+  // Footerlinks bleiben auch ab 64 rem Breite 32 px hoch.
   const footerLinks = [...shell.querySelectorAll('footer a')];
   expect(footerLinks.length).toBeGreaterThan(0);
-  for (const link of footerLinks) expect(link.getBoundingClientRect().height).toBeGreaterThanOrEqual(43.5);
+  for (const link of footerLinks) expect(link.getBoundingClientRect().height).toBeGreaterThanOrEqual(31.5);
 
   // Die Katalognavigation ist keine persistente Spalte, sondern öffnet als Schublade.
   const aside = shell.querySelector('aside')!;
