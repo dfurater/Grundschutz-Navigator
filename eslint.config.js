@@ -51,7 +51,10 @@ const FORBIDDEN_UTILITIES = [
   { pattern: /^backdrop-/, messageId: 'backdrop' },
 ];
 
-const HOVER_VARIANTS = new Set(['hover', 'group-hover', 'peer-hover']);
+// Eine Variante hängt vom Zeigerzustand ab, wenn ihr Name `hover` enthält:
+// `hover:`, benannte Gruppen und Peers (`group-hover/card:`), zusammengesetzte
+// Varianten (`in-hover:`, `not-hover:`) und beliebige wie `[&:hover]:`.
+const isHoverVariant = (variant) => variant.includes('hover');
 
 // Ein Wert gilt als Token, wenn er genau ein `var(--…)` ist, wahlweise mit
 // Typhinweis (`length:`). Ein Fallback darf nur ein Schlüsselwort oder ein
@@ -101,18 +104,19 @@ function splitVariants(token) {
 }
 
 function checkClassToken(token) {
-  const { variants, utility: rawUtility } = splitVariants(token.replace(/^!/, ''));
-  const utility = rawUtility.replace(/!$/, '');
+  const { variants, utility: rawUtility } = splitVariants(token);
+  // `!important` steht als `!` vor oder hinter der Utility, auch hinter Varianten
+  // (`hover:!opacity-50`, `md:backdrop-blur-sm!`); die Prüfung gilt der Utility ohne `!`.
+  const utility = rawUtility.replace(/^!/, '').replace(/!$/, '');
   if (utility === '') return null;
+  const onHover = variants.some(isHoverVariant);
 
   // Verbotene Utilities gelten unabhängig vom Wert: Auch ein Tokenbezug macht
   // `backdrop-blur-[var(--…)]` nicht zulässig. Ein Modifier hinter `/` ändert die Utility nicht.
   const base = utility.replace(/\/(?:\[[^\]]*\]|\([^)]*\)|[\w.-]+)$/, '');
   const forbidden = FORBIDDEN_UTILITIES.find(({ pattern }) => pattern.test(base));
   if (forbidden) return forbidden.messageId;
-  if (base.startsWith('opacity-') && variants.some((variant) => HOVER_VARIANTS.has(variant))) {
-    return 'hoverOpacity';
-  }
+  if (base.startsWith('opacity-') && onHover) return 'hoverOpacity';
 
   if (utility.startsWith('[')) {
     // Ohne `eigenschaft:wert` ist es ein Attributselektor wie `[inert]`, keine Klasse.
@@ -120,6 +124,7 @@ function checkClassToken(token) {
     if (!property) return null;
     const forbiddenByProperty = forbiddenProperty(property[1], property[2]);
     if (forbiddenByProperty) return forbiddenByProperty;
+    if (property[1] === 'opacity' && onHover) return 'hoverOpacity';
     return TOKEN_VALUE.test(property[2]) ? null : 'arbitraryProperty';
   }
   // Jeder beliebige Wert (`-[…]`) und jeder beliebige Modifier (`/[…]`, etwa

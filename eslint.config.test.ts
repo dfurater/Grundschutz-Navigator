@@ -1,4 +1,8 @@
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import path from 'node:path';
 import { ESLint } from 'eslint';
+import { compile } from 'tailwindcss';
 import { describe, expect, it } from 'vitest';
 import { createEslintWithoutTypes, TYPE_AWARE_RULES } from './src/test/eslintWithoutTypes';
 
@@ -91,8 +95,38 @@ describe('ESLint architecture boundaries', () => {
   });
 });
 
+const RULE = 'design-system/no-off-system-classes';
+
+// Gültige Tailwind-Syntax, die einen verbotenen Effekt erzeugt: `!important`
+// hinter Varianten, benannte und zusammengesetzte Hover-Varianten, Deckkraft
+// als Arbitrary Property oder Variablen-Kurzform. `css` sind Ausschnitte des
+// CSS, das Tailwind mit `src/index.css` für die Klasse erzeugt.
+const BYPASS_FORMS = [
+  { label: 'Hover-Deckkraft mit Important-Präfix', classes: 'hover:!opacity-50', messageId: 'hoverOpacity', css: [':hover', 'opacity: 50% !important'] },
+  { label: 'Hover-Deckkraft mit Important-Suffix', classes: 'hover:opacity-50!', messageId: 'hoverOpacity', css: [':hover', 'opacity: 50% !important'] },
+  { label: 'Hintergrundfilter mit Important hinter Variante', classes: 'md:!backdrop-blur-sm', messageId: 'backdrop', css: ['backdrop-filter:', '!important'] },
+  { label: 'Hintergrundfilter mit Important-Suffix', classes: 'md:backdrop-blur-sm!', messageId: 'backdrop', css: ['backdrop-filter:', '!important'] },
+  { label: 'Schlagschatten mit Important hinter Variante', classes: 'hover:!drop-shadow-[var(--x)]', messageId: 'shadow', css: [':hover', 'drop-shadow(var(--x)) !important'] },
+  { label: 'Hover-Deckkraft über benannte Gruppe', classes: 'group-hover/card:opacity-50', messageId: 'hoverOpacity', css: [':where(.group\\/card):hover', 'opacity: 50%'] },
+  { label: 'Hover-Deckkraft über benannten Peer', classes: 'peer-hover/name:opacity-50', messageId: 'hoverOpacity', css: [':where(.peer\\/name):hover', 'opacity: 50%'] },
+  { label: 'Hover-Deckkraft über Vorfahren', classes: 'in-hover:opacity-50', messageId: 'hoverOpacity', css: [':where(:hover)', 'opacity: 50%'] },
+  { label: 'Hover-Deckkraft über beliebige Variante', classes: '[&:hover]:opacity-50', messageId: 'hoverOpacity', css: [':hover', 'opacity: 50%'] },
+  { label: 'Hover-Deckkraft über Variablen-Kurzform', classes: 'hover:opacity-(--x)', messageId: 'hoverOpacity', css: [':hover', 'opacity: var(--x)'] },
+  { label: 'Hover-Deckkraft als Arbitrary Property', classes: 'hover:[opacity:var(--x)]', messageId: 'hoverOpacity', css: [':hover', 'opacity: var(--x)'] },
+  { label: 'Hover-Deckkraft als Arbitrary Property mit Important', classes: 'group-hover/card:![opacity:var(--x)]', messageId: 'hoverOpacity', css: [':hover', 'opacity: var(--x) !important'] },
+  { label: 'Schatten als Arbitrary Property mit Important', classes: 'hover:![box-shadow:var(--x)]', messageId: 'shadow', css: [':hover', 'box-shadow: var(--x) !important'] },
+] as const;
+
+// Erlaubte Klassen mit denselben Varianten und Important-Formen.
+const ALLOWED_FORMS = [
+  { label: 'Tokenfarbe unter Hover mit Important', classes: 'hover:!text-primary-main hover:text-primary-main!' },
+  { label: 'Deckkraftmodifier unter benannter Gruppe', classes: 'group-hover/card:bg-black/50 peer-hover/name:underline' },
+  { label: 'Tokenfarbe unter Vorfahren- und beliebiger Hover-Variante', classes: 'in-hover:text-primary-main [&:hover]:text-primary-main' },
+  { label: 'Abstand mit Important hinter Variante', classes: 'md:!p-4 md:p-4!' },
+  { label: 'Deckkraft mit Important ohne Hover', classes: 'md:!opacity-100 focus-visible:opacity-100!' },
+] as const;
+
 describe('Gestaltungssystem-Regel (GSPP-533)', () => {
-  const RULE = 'design-system/no-off-system-classes';
 
   async function designFindings(classes: string, filePath = 'src/components/Sample.tsx') {
     const messages = await lint(`export const c = ${JSON.stringify(classes)};`, filePath);
@@ -134,6 +168,7 @@ describe('Gestaltungssystem-Regel (GSPP-533)', () => {
     ['Hintergrundfilter als Arbitrary Property mit Token', '[backdrop-filter:blur(var(--radius-lg))]', 'backdrop'],
     ['Schatten als Arbitrary Property mit Token', '[box-shadow:var(--shadow-overlay)]', 'shadow'],
     ['Schlagschatten-Filter als Arbitrary Property', '[filter:drop-shadow(var(--shadow-sm))]', 'shadow'],
+    ...BYPASS_FORMS.map(({ label, classes, messageId }) => [label, classes, messageId] as const),
   ])('meldet %s (%s) als Fehler', async (_label, classes, messageId) => {
     expect(await designFindings(`p-4 ${classes}`)).toEqual([
       expect.objectContaining({ ruleId: RULE, severity: 2, messageId }),
@@ -154,6 +189,7 @@ describe('Gestaltungssystem-Regel (GSPP-533)', () => {
     ['Deckkraft ohne Hover', 'opacity-0 peer-checked:opacity-100 disabled:opacity-50'],
     ['Varianten mit Klammern', 'data-[state=open]:block @min-[18.5rem]:flex'],
     ['Attributselektor', '[data-tooltip-root]'],
+    ...ALLOWED_FORMS.map(({ label, classes }) => [label, classes] as const),
   ])('erlaubt %s', async (_label, classes) => {
     expect(await designFindings(classes)).toEqual([]);
   });
@@ -171,6 +207,52 @@ describe('Gestaltungssystem-Regel (GSPP-533)', () => {
     'src/domain/sample.ts',
   ])('gilt nicht für %s', async (filePath) => {
     expect(await designFindings('text-[13px] shadow-lg', filePath)).toEqual([]);
+  });
+});
+
+describe('Gestaltungssystem-Regel gegen Tailwind-Ausgabe (GSPP-533)', () => {
+  const require = createRequire(import.meta.url);
+  const indexCss = readFileSync(path.resolve('src/index.css'), 'utf8');
+
+  async function loadStylesheet(id: string) {
+    const resolved = id === 'tailwindcss' ? require.resolve('tailwindcss/index.css') : require.resolve(id);
+    return { path: resolved, base: path.dirname(resolved), content: readFileSync(resolved, 'utf8') };
+  }
+
+  /**
+   * CSS, das Tailwind mit `src/index.css` für die Klassen erzeugt. Es steht im
+   * ersten `@layer utilities`-Block; ohne erzeugte Klasse ist das die leere
+   * Anweisung `@layer utilities;`. Spätere Blöcke stammen aus `src/index.css`.
+   */
+  async function utilityCss(classes: string) {
+    const compiler = await compile(indexCss, { base: path.resolve('src'), loadStylesheet });
+    const css = compiler.build(classes.split(' '));
+    const start = css.indexOf('@layer utilities');
+    if (css.startsWith('@layer utilities;', start)) return '';
+    return css.slice(start, css.indexOf('\n}\n', start));
+  }
+
+  async function jsxFindings(classes: string) {
+    const messages = await lint(
+      `export const Sample = () => <div className=${JSON.stringify(classes)} />;`,
+      'src/components/Sample.tsx',
+    );
+    return messages.filter(({ ruleId }) => ruleId === RULE);
+  }
+
+  it.each(BYPASS_FORMS)('$label: Tailwind erzeugt den Effekt, die Regel meldet $classes in className', async ({ classes, messageId, css }) => {
+    const generated = await utilityCss(classes);
+    for (const fragment of css) expect(generated).toContain(fragment);
+
+    expect(await jsxFindings(classes)).toEqual([
+      expect.objectContaining({ ruleId: RULE, severity: 2, messageId }),
+    ]);
+  });
+
+  it.each(ALLOWED_FORMS)('$label: Tailwind erzeugt CSS, die Regel lässt $classes in className zu', async ({ classes }) => {
+    for (const single of classes.split(' ')) expect(await utilityCss(single)).not.toBe('');
+
+    expect(await jsxFindings(classes)).toEqual([]);
   });
 });
 
