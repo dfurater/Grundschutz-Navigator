@@ -32,8 +32,8 @@ afterEach(() => {
   host = undefined;
 });
 
-async function renderCatalog(width: number, entry = '/katalog/gspp') {
-  await page.viewport(width, 800);
+async function renderCatalog(width: number, entry = '/katalog/gspp', height = 800) {
+  await page.viewport(width, height);
   const router = createMemoryRouter([
     { path: CONTROL_ROUTE_PATTERN, element: createElement(CatalogBrowser) },
     { path: GROUP_ROUTE_PATTERN, element: createElement(CatalogBrowser) },
@@ -43,7 +43,7 @@ async function renderCatalog(width: number, entry = '/katalog/gspp') {
   host.id = 'root';
   // Begrenzte Höhe wie `main` in der App-Shell, damit die Spalten ihre
   // eigenen Scrollbereiche erhalten statt mitzuwachsen.
-  host.style.height = '800px';
+  host.style.height = `${height}px`;
   host.style.display = 'flex';
   host.style.flexDirection = 'column';
   host.style.overflow = 'hidden';
@@ -116,6 +116,52 @@ test.each([768, 1023])('zeigt bei %i px Liste und vollständiges Inline-Detail n
 
   // Der Fokus liegt auf der Detailüberschrift.
   expect(document.activeElement?.getAttribute('data-control-detail-title')).not.toBeNull();
+});
+
+test('hält den Tablet-Detailkopf bei 844 × 390 px kompakt und scrollt den geöffneten Vokabulareintrag im Detailbereich', async () => {
+  const { shell } = await renderCatalog(844, '/katalog/gspp', 390);
+
+  await userEvent.click(rowButton(shell, 'TOP.1.1'));
+  await expect.poll(() => tabletPanel(shell)).not.toBeNull();
+  const panel = tabletPanel(shell);
+  const panelScroller = panel.querySelector('[data-control-detail-scroll]') as HTMLElement;
+  const listScroller = scrollerOf(rowButton(shell, 'TOP.1.2'));
+  const detailTitle = panel.querySelector('[data-control-detail-title]') as HTMLElement;
+  const fixedHeader = detailTitle.closest('.border-b') as HTMLElement;
+  const fixedHeaderBox = fixedHeader.getBoundingClientRect();
+
+  await userEvent.click(panel.querySelector('[aria-label="Praktik: Governance und Compliance"]') as HTMLButtonElement);
+
+  const vocabularyCard = panel.querySelector('#vocab-card-practice') as HTMLElement;
+  expect(vocabularyCard).not.toBeNull();
+  expect(panelScroller.contains(vocabularyCard)).toBe(true);
+  expect(panelScroller.contains(detailTitle)).toBe(false);
+  expect(panelScroller.clientHeight).toBeGreaterThan(0);
+  expect(panelScroller.scrollHeight).toBeGreaterThan(panelScroller.clientHeight);
+
+  const listScrollTop = listScroller.scrollTop;
+  const requirementHeading = [...panel.querySelectorAll('h1, h2, h3, h4')]
+    .find((heading) => heading.textContent?.includes('Anforderung')) as HTMLElement;
+  const scrollBox = panelScroller.getBoundingClientRect();
+  panelScroller.scrollTop += requirementHeading.getBoundingClientRect().top - scrollBox.top;
+  await expect.poll(() => panelScroller.scrollTop).toBeGreaterThan(0);
+  const requirementBox = requirementHeading.getBoundingClientRect();
+  expect(requirementBox.top).toBeGreaterThanOrEqual(scrollBox.top - 1);
+  expect(requirementBox.bottom).toBeLessThanOrEqual(scrollBox.bottom + 1);
+  expect(panelScroller.contains(document.elementFromPoint(
+    (requirementBox.left + requirementBox.right) / 2,
+    (requirementBox.top + requirementBox.bottom) / 2,
+  ))).toBe(true);
+
+  panelScroller.scrollTop = panelScroller.scrollHeight;
+  expect(listScroller.scrollTop).toBe(listScrollTop);
+
+  const lastContent = panelScroller.lastElementChild as HTMLElement;
+  const lastContentBox = lastContent.getBoundingClientRect();
+  expect(lastContentBox.bottom).toBeLessThanOrEqual(scrollBox.bottom + 1);
+  const finalHeaderBox = fixedHeader.getBoundingClientRect();
+  expect(finalHeaderBox.top).toBe(fixedHeaderBox.top);
+  expect(finalHeaderBox.bottom).toBe(fixedHeaderBox.bottom);
 });
 
 test.each([768, 1023])('gibt bei %i px nach herausgescrollter Zeile Fokus und Sichtbarkeit an die Zeile zurück', async (width) => {

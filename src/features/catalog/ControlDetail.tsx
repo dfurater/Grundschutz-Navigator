@@ -293,10 +293,31 @@ export function ControlDetail({
     void copyLink(url);
   };
 
+  const copyErrorFallback = showCopyError && (
+    <div className="mb-2 space-y-1.5 rounded-md bg-[var(--color-danger-surface)] px-3 py-2">
+      <p role="alert" className="text-xs text-[var(--color-danger-text)]">
+        Kopieren nicht möglich. Bitte den vollständigen Wert manuell markieren und kopieren.
+      </p>
+      <code
+        aria-label="Direktlink zum manuellen Kopieren"
+        className="block select-all break-all font-mono text-xs text-[var(--color-text-primary)]"
+      >
+        {getControlDetailUrl(catalogKey, control)}
+      </code>
+      <button
+        type="button"
+        onClick={handleCopyLink}
+        className="rounded-md px-2 py-1 text-xs font-medium text-[var(--color-accent-default)] transition-colors hover:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]"
+      >
+        Erneut kopieren
+      </button>
+    </div>
+  );
+
   return (
-    <div className={`${isPage ? '' : 'h-full '}flex flex-col bg-[var(--color-surface-raised)]`}>
+    <div className={`${isPage ? '' : 'h-full min-h-0'} flex flex-col bg-[var(--color-surface-raised)]`}>
       {/* Header */}
-      <div className="p-4 border-b border-[var(--color-border-default)]">
+      <div className={`${isPage ? '' : 'shrink-0'} p-4 border-b border-[var(--color-border-default)]`}>
         <div className="flex items-center gap-2 mb-2">
           <button
             type="button"
@@ -329,40 +350,23 @@ export function ControlDetail({
             )}
           </button>
         </div>
-        {showCopyError && (
-          <div className="mb-2 space-y-1.5 rounded-md bg-[var(--color-danger-surface)] px-3 py-2">
-            <p role="alert" className="text-xs text-[var(--color-danger-text)]">
-              Kopieren nicht möglich. Bitte den vollständigen Wert manuell markieren und kopieren.
-            </p>
-            <code
-              aria-label="Direktlink zum manuellen Kopieren"
-              className="block select-all break-all font-mono text-xs text-[var(--color-text-primary)]"
-            >
-              {getControlDetailUrl(catalogKey, control)}
-            </code>
-            <button
-              type="button"
-              onClick={handleCopyLink}
-              className="rounded-md px-2 py-1 text-xs font-medium text-[var(--color-accent-default)] transition-colors hover:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]"
-            >
-              Erneut kopieren
-            </button>
-          </div>
+        {isPage && copyErrorFallback}
+        {isPage && (
+          <ControlTaxonomyBreadcrumb
+            practiceName={practiceName}
+            topicName={topicName}
+            hasTopic={Boolean(topic)}
+            practiceVocabulary={practiceVocabulary}
+            topicVocabulary={topicVocabulary}
+            isVocabularyActive={isVocabularyActive}
+            onToggleVocabulary={toggleVocabulary}
+          />
         )}
-        <ControlTaxonomyBreadcrumb
-          practiceName={practiceName}
-          topicName={topicName}
-          hasTopic={Boolean(topic)}
-          practiceVocabulary={practiceVocabulary}
-          topicVocabulary={topicVocabulary}
-          isVocabularyActive={isVocabularyActive}
-          onToggleVocabulary={toggleVocabulary}
-        />
         {/* Fokusziel beim Öffnen der mobilen Seitenansicht (`useDocumentDetailPage`). */}
         <h2 id={titleId} data-control-detail-title tabIndex={-1} className="type-page-title focus:outline-none">
           {control.title}
         </h2>
-        {parentControl && (
+        {isPage && parentControl && (
           <button
             type="button"
             onClick={() => onNavigateToControl?.(parentControl)}
@@ -388,8 +392,36 @@ export function ControlDetail({
       <div
         ref={scrollAreaRef}
         data-control-detail-scroll
-        className={isPage ? 'flex flex-col gap-5 p-4' : 'flex flex-1 flex-col gap-5 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] desktop:pb-4'}
+        className={isPage ? 'flex flex-col gap-5 p-4' : 'flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] desktop:pb-4'}
       >
+        {!isPage && copyErrorFallback}
+        {!isPage && (
+          <>
+            <ControlTaxonomyBreadcrumb
+              practiceName={practiceName}
+              topicName={topicName}
+              hasTopic={Boolean(topic)}
+              practiceVocabulary={practiceVocabulary}
+              topicVocabulary={topicVocabulary}
+              isVocabularyActive={isVocabularyActive}
+              onToggleVocabulary={toggleVocabulary}
+            />
+            {parentControl && (
+              <button
+                type="button"
+                onClick={() => onNavigateToControl?.(parentControl)}
+                aria-label={`Teil von ${parentControl.id} ${parentControl.title}`}
+                className="group relative mt-1.5 flex items-baseline gap-1.5 rounded text-left text-xs text-[var(--color-text-muted)] after:absolute after:-inset-y-3 after:inset-x-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] desktop:after:-inset-y-1"
+              >
+                {/* Leerzeichen zwischen den Flex-Kindern: unsichtbar, aber beim Kopieren erhalten. */}
+                <span aria-hidden="true">↳</span>{' '}
+                <span>Teil von</span>{' '}
+                <span className="catalog-reference-text shrink-0">{parentControl.id}</span>{' '}
+                <span className="text-primary-main group-hover:underline">{parentControl.title}</span>
+              </button>
+            )}
+          </>
+        )}
         {hasAnforderung && (
           <ControlStatement
             statement={control.statement}

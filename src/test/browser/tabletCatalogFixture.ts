@@ -1,6 +1,7 @@
 import type { Catalog, CatalogState, Control } from '@/domain/models';
 import { catalogCollectionDefaults } from '@/test/catalogState';
 import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
+import { TAXONOMY_IDENTIFIERS } from '@/test/fixtures/taxonomyVocabulary';
 
 /**
  * Katalog für die Browser-Prüfungen der Tablet-Ansicht (GSPP-514, GSPP-523):
@@ -70,13 +71,15 @@ export function createTabletCatalogState(overrides: Readonly<Record<string, Part
     metadata: { title: 'Grundschutz++-Katalog' },
     practices: [{
       id: 'TOP',
-      title: 'Testpraktik',
+      title: 'Governance und Compliance',
       label: 'TOP',
+      altIdentifier: TAXONOMY_IDENTIFIERS.practiceGC,
       topics: [
         {
           id: 'TOP.1',
-          title: 'Erstes Thema',
+          title: 'Organisation',
           label: '1',
+          altIdentifier: TAXONOMY_IDENTIFIERS.topicOrganisation,
           practiceId: 'TOP',
           controlCount: topic1Controls.length,
           controlIds: topic1Controls.map((control) => control.id),
