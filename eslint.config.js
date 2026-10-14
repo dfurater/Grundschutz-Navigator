@@ -54,8 +54,10 @@ const FORBIDDEN_UTILITIES = [
 const HOVER_VARIANTS = new Set(['hover', 'group-hover', 'peer-hover']);
 
 // Ein Wert gilt als Token, wenn er genau ein `var(--…)` ist, wahlweise mit
-// Typhinweis (`length:`) und Fallback ohne weitere Funktion.
-const TOKEN_VALUE = /^(?:[a-z-]+:)?var\(--[\w-]+(?:,[^()]*)?\)$/;
+// Typhinweis (`length:`). Ein Fallback darf nur ein Schlüsselwort oder ein
+// weiterer Tokenbezug sein; ein Rohwert dort gälte bei undefinierter Variable.
+const TOKEN_VALUE =
+  /^(?:[a-z-]+:)?var\(--[\w-]+(?:,(?:auto|none|inherit|initial|unset|currentColor|transparent|0|var\(--[\w-]+\)))?\)$/;
 
 // Arbitrary Properties, die Verlauf, Hintergrundfilter oder Schatten setzen.
 function forbiddenProperty(property, value) {
@@ -120,11 +122,12 @@ function checkClassToken(token) {
     if (forbiddenByProperty) return forbiddenByProperty;
     return TOKEN_VALUE.test(property[2]) ? null : 'arbitraryProperty';
   }
-  // Beliebiger Wert (`-[…]`) oder beliebiger Modifier (`/[…]`, etwa eine rohe Zeilenhöhe).
-  const arbitrary = /[-/]\[(.*)\]$/.exec(utility);
-  if (arbitrary) {
-    if (TOKEN_VALUE.test(arbitrary[1])) return null;
-    if (ARBITRARY_VALUE_ALLOWLIST.some((allowed) => allowed(utility))) return null;
+  // Jeder beliebige Wert (`-[…]`) und jeder beliebige Modifier (`/[…]`, etwa
+  // eine rohe Zeilenhöhe) wird einzeln geprüft, auch vor einem Skalenmodifier
+  // wie in `text-[13px]/6`.
+  const values = [...utility.matchAll(/[-/]\[([^\]]*)\]/g)].map((match) => match[1]);
+  if (values.some((value) => !TOKEN_VALUE.test(value))
+    && !ARBITRARY_VALUE_ALLOWLIST.some((allowed) => allowed(utility))) {
     return 'arbitraryValue';
   }
   return null;

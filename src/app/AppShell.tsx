@@ -25,7 +25,7 @@ import { useMobileDrawerPlacement } from '@/hooks/useMobileDrawerPlacement';
 import { useMobileDrawerResizeSnap } from '@/hooks/useMobileDrawerResizeSnap';
 import { useMobileDrawerSwipe } from '@/hooks/useMobileDrawerSwipe';
 import { useInputModality } from '@/hooks/useInputModality';
-import { DESKTOP_QUERY, OWN_SCROLL_AREA_QUERY } from '@/hooks/breakpointQueries';
+import { DESKTOP_QUERY, OWN_SCROLL_AREA_QUERY, REDUCED_MOTION_QUERY } from '@/hooks/breakpointQueries';
 import { useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
 import { isCatalogKey } from '@/domain/sourceRegistry';
 import type { CatalogKey } from '@/domain/sourceRegistry';
@@ -110,7 +110,7 @@ function AppShellLayout() {
   const location = useLocation();
   useRoutePrefetch();
   useInputModality();
-  const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
+  const prefersReducedMotion = useMediaQuery(REDUCED_MOTION_QUERY);
   const treeScrollRef = useOverlayScrollbars<HTMLDivElement>();
   const {
     catalog,

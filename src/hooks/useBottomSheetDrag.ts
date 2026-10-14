@@ -1,4 +1,5 @@
 import { useEffect, type RefObject } from 'react';
+import { REDUCED_MOTION_QUERY } from '@/hooks/breakpointQueries';
 
 interface BottomSheetDragOptions {
   active?: boolean;
@@ -11,6 +12,18 @@ interface BottomSheetDragOptions {
 }
 
 const TRANSITION = 'var(--duration-normal) var(--easing-default)';
+// Dauer der Abschlussbewegung; entspricht `--duration-normal` in `src/index.css`.
+const DISMISS_DELAY_MS = 200;
+
+// Die Transitions sind Inline-Stile und schlagen damit die Reduced-Motion-Regel
+// aus `index.css`; der Hook prüft die Einstellung deshalb je Geste selbst.
+function prefersReducedMotion() {
+  return typeof globalThis.matchMedia === 'function' && globalThis.matchMedia(REDUCED_MOTION_QUERY).matches;
+}
+
+function motion(property: string) {
+  return prefersReducedMotion() ? 'none' : `${property} ${TRANSITION}`;
+}
 
 export function useBottomSheetDrag({
   active = true,
@@ -65,11 +78,11 @@ export function useBottomSheetDrag({
     };
 
     const snapBack = () => {
-      sheet.style.transition = `transform ${TRANSITION}`;
+      sheet.style.transition = motion('transform');
       sheet.style.transform = '';
       const backdrop = backdropRef.current;
       if (backdrop) {
-        backdrop.style.transition = `opacity ${TRANSITION}`;
+        backdrop.style.transition = motion('opacity');
         backdrop.style.opacity = '0.3';
       }
     };
@@ -79,18 +92,18 @@ export function useBottomSheetDrag({
       const threshold = dismissThresholdPx ?? height * 0.3;
       const dismiss = (velocity > dismissVelocity && delta > 20) || delta > threshold;
       if (dismiss) {
-        sheet.style.transition = `transform ${TRANSITION}`;
+        sheet.style.transition = motion('transform');
         sheet.style.transform = `translateY(${height}px)`;
         const backdrop = backdropRef.current;
         if (backdrop) {
-          backdrop.style.transition = `opacity ${TRANSITION}`;
+          backdrop.style.transition = motion('opacity');
           backdrop.style.opacity = '0';
         }
         // Erst nach der kurzen Abschluss-Animation entlassen, damit das Sheet
-        // sichtbar aus dem Viewport fährt, bevor die UI es entfernt.
-        // 200 ms entsprechen `--duration-normal` (src/index.css), der Dauer der
-        // Transition darüber; ändert sich das Token, laufen beide auseinander.
-        dismissTimer = globalThis.window.setTimeout(onDismiss, 200);
+        // sichtbar aus dem Viewport fährt, bevor die UI es entfernt. Ohne
+        // Bewegung gibt es nichts abzuwarten. Ändert sich `--duration-normal`,
+        // laufen Transition und DISMISS_DELAY_MS auseinander.
+        dismissTimer = globalThis.window.setTimeout(onDismiss, prefersReducedMotion() ? 0 : DISMISS_DELAY_MS);
       } else {
         snapBack();
       }

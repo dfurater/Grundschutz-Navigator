@@ -23,6 +23,8 @@ Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application 
 
 `src/index.css` ist die einzige Quelle der Gestaltungswerte. Der `@theme`-Block führt Farben, sechs Schriftgrößen (`text-2xs` 10px, `text-xs` 12px, `text-sm` 14px, `text-base` 16px, `text-lg` 18px, `text-xl` 20px), die Zeilenhöhe `--leading-title` (1.35, als Modifier `text-lg/title`), die Laufweiten `tracking-wide` und `tracking-wider`, die Radien `rounded`/`rounded-sm` (4px), `rounded-md` (6px), `rounded-lg` (8px), vier Schatten (`shadow-sm`, `shadow-overlay`, `shadow-footer`, `shadow-grip-start`/`shadow-grip-end`), die Bewegungswerte `--duration-*`/`--easing-*` sowie die Maße `touch` (44px) und `panel-head` (51px), die als Utilities wie `min-h-touch` oder `h-panel-head` nutzbar sind. Für Schriftgrößen, Laufweiten, Radien und Schatten setzt `@theme` den Tailwind-Namensraum mit `initial` zurück, ebenso `--drop-shadow-*`, `--inset-shadow-*` und `--text-shadow-*`; `text-2xl`, `rounded-xl`, `shadow-md` oder `drop-shadow-lg` erzeugen deshalb kein CSS.
 
+Die Kaskade in `src/index.css` hat die Ebenen `theme`, `base`, `components`, `utilities`, `vendor` (die per `@import … layer(vendor)` eingebundene CSS von OverlayScrollbars) und `app` (eigene Regeln außerhalb von Tailwinds Ebenen, etwa `.skip-link`, `.resize-handle`, `.animate-panel-in`). Die Reduced-Motion-Regel am Dateiende steht außerhalb jeder Ebene und setzt Übergänge und Animationen ohne `!important` auf 0.01ms; sie gewinnt gegen jede Ebene, aber nicht gegen Inline-Stile. Komponenten, die eine Transition als Inline-Stil setzen (`AppShell`, `CatalogDesktopSidebar`, `Tooltip`, `useBottomSheetDrag`), prüfen dafür `REDUCED_MOTION_QUERY` aus `src/hooks/breakpointQueries.ts` selbst. `src/test/browser/reducedMotion.browser.test.ts` belegt in Chromium mit emuliertem `prefers-reduced-motion`, dass Utility-, `app`- und `vendor`-Übergänge, die Panel-Einblendung und die Inline-Transition der Detailspalte stillstehen und ohne Emulation laufen.
+
 Die ESLint-Regel `design-system/no-off-system-classes` (lokales Plugin in `eslint.config.js`) prüft jedes String- und Template-Literal in `src/features/**`, `src/app/**` und `src/components/**` außer Testdateien und meldet als Fehler:
 
 | Befund | Beispiel |
@@ -318,6 +320,7 @@ src/                              # Anwendungsquellcode
 │   │   ├── browserEgressGuard.ts         # Playwright-Egress-Guard
 │   │   ├── browserSafeArea.ts            # CSS-env-Safe-Area-Inset über CDP für Sheet-Geometrieprüfungen
 │   │   ├── browserFontSize.ts            # Browser-Standardschrift über CDP für rem-Breakpoint-Tests
+│   │   ├── browserReducedMotion.ts       # Emuliertes prefers-reduced-motion für die Kaskadenprüfung
 │   │   ├── browserSetup.ts               # Setup der Browser-Lane mit Egress-Prüfung
 │   │   ├── browserTouchInput.ts          # Echte Touch-Eingaben über CDP für Gestentests
 │   │   ├── egressOracleContract.d.mts    # Typen der Negativfälle

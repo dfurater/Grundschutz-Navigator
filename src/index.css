@@ -1,4 +1,11 @@
 @import 'tailwindcss';
+@import 'overlayscrollbars/overlayscrollbars.css' layer(vendor);
+
+/* Kaskade: `vendor` (OverlayScrollbars) und `app` (eigene Regeln außerhalb von
+   Tailwinds Ebenen) liegen über den Utilities. Nur die Reduced-Motion-Regel am
+   Dateiende steht außerhalb jeder Ebene und gewinnt dadurch ohne `!important`
+   gegen alle Ebenen; Inline-Stile prüfen Reduced Motion selbst. */
+@layer theme, base, components, utilities, vendor, app;
 
 /* Desktop: breiter Viewport ohne Touch als Eingabemöglichkeit; `compact` ist das
    Gegenstück. Beide tragen dieselben Bedingungen wie `DESKTOP_QUERY` und
@@ -349,107 +356,95 @@
   }
 }
 
-/* Überlagernde Scrollleisten (OverlayScrollbars, `useOverlayScrollbars`):
-   6 px Griff in 10 px Spur, ohne Spurfläche; die Griff-Trefferfläche wächst
-   unsichtbar, damit die schmale Leiste greifbar bleibt. */
-.os-theme-gspp {
-  --os-size: 10px;
-  --os-padding-perpendicular: 2px;
-  --os-padding-axis: 2px;
-  --os-track-border-radius: 9999px;
-  --os-handle-border-radius: 9999px;
-  --os-handle-bg: var(--color-surface-scrollbar);
-  --os-handle-bg-hover: var(--color-surface-scrollbar-hover);
-  --os-handle-bg-active: var(--color-surface-scrollbar-hover);
-  --os-handle-min-size: 33px;
-  --os-handle-interactive-area-offset: 4px;
-}
-
-/* Skip Link (A11y) */
-.skip-link {
-  position: absolute;
-  top: -100%;
-  left: 1rem;
-  z-index: 100;
-  padding: 0.5rem 1rem;
-  background: var(--color-primary-main);
-  color: white;
-  border-radius: 0 0 0.375rem 0.375rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  text-decoration: none;
-  transition: top var(--duration-fast) var(--easing-default);
-}
-
-.skip-link:focus {
-  top: 0;
-}
-
-/* Detail Panel — slide-in animation */
-@keyframes panel-slide-in {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
+@layer app {
+  /* Überlagernde Scrollleisten (OverlayScrollbars, `useOverlayScrollbars`):
+     6 px Griff in 10 px Spur, ohne Spurfläche; die Griff-Trefferfläche wächst
+     unsichtbar, damit die schmale Leiste greifbar bleibt. */
+  .os-theme-gspp {
+    --os-size: 10px;
+    --os-padding-perpendicular: 2px;
+    --os-padding-axis: 2px;
+    --os-track-border-radius: 9999px;
+    --os-handle-border-radius: 9999px;
+    --os-handle-bg: var(--color-surface-scrollbar);
+    --os-handle-bg-hover: var(--color-surface-scrollbar-hover);
+    --os-handle-bg-active: var(--color-surface-scrollbar-hover);
+    --os-handle-min-size: 33px;
+    --os-handle-interactive-area-offset: 4px;
   }
-  to {
-    opacity: 1;
-    transform: translateX(0);
+
+  /* Skip Link (A11y) */
+  .skip-link {
+    position: absolute;
+    top: -100%;
+    left: 1rem;
+    z-index: 100;
+    padding: 0.5rem 1rem;
+    background: var(--color-primary-main);
+    color: white;
+    border-radius: 0 0 0.375rem 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: top var(--duration-fast) var(--easing-default);
   }
-}
 
-.animate-panel-in {
-  animation: panel-slide-in var(--duration-normal) var(--easing-default) both;
-}
+  .skip-link:focus {
+    top: 0;
+  }
 
-/* Resize handle hover indicator */
-.resize-handle {
-  transition:
-    background-color var(--duration-fast) var(--easing-default),
-    box-shadow var(--duration-fast) var(--easing-default);
-}
+  /* Detail Panel — slide-in animation */
+  @keyframes panel-slide-in {
+    from {
+      opacity: 0;
+      transform: translateX(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
 
-.resize-handle:hover,
-.resize-handle:active {
-  background-color: color-mix(in srgb, var(--color-primary-main) 15%, transparent);
-}
+  .animate-panel-in {
+    animation: panel-slide-in var(--duration-normal) var(--easing-default) both;
+  }
 
-.resize-handle:active {
-  background-color: color-mix(in srgb, var(--color-primary-main) 25%, transparent);
-  box-shadow: var(--shadow-grip-start);
-}
+  /* Resize handle hover indicator */
+  .resize-handle {
+    transition:
+      background-color var(--duration-fast) var(--easing-default),
+      box-shadow var(--duration-fast) var(--easing-default);
+  }
 
-.resize-handle--right:active {
-  box-shadow: var(--shadow-grip-end);
-}
+  .resize-handle:hover,
+  .resize-handle:active {
+    background-color: color-mix(in srgb, var(--color-primary-main) 15%, transparent);
+  }
 
-/* Prevent text selection during resize */
-.is-resizing {
-  cursor: col-resize !important;
-  user-select: none !important;
-}
+  .resize-handle:active {
+    background-color: color-mix(in srgb, var(--color-primary-main) 25%, transparent);
+    box-shadow: var(--shadow-grip-start);
+  }
 
-body.dev-selector-active {
-  cursor: crosshair;
-}
+  .resize-handle--right:active {
+    box-shadow: var(--shadow-grip-end);
+  }
 
-body.dev-selector-dragging,
-body.dev-selector-dragging * {
-  cursor: grabbing !important;
-}
+  /* Prevent text selection during resize */
+  .is-resizing {
+    cursor: col-resize;
+    user-select: none;
+  }
 
-[data-dev-selector-hover='true'] {
-  outline: 2px solid #0ea5e9 !important;
-  outline-offset: 2px !important;
-}
+  @keyframes slide-up {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
 
-@keyframes slide-up {
-  from { transform: translateY(100%); }
-  to   { transform: translateY(0); }
-}
-
-@keyframes vocab-card-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  @keyframes vocab-card-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
 }
 
 @layer utilities {
@@ -687,16 +682,16 @@ html:focus-within {
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    transition-delay: 0ms !important;
-    scroll-behavior: auto !important;
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+    transition-delay: 0ms;
+    scroll-behavior: auto;
   }
 
   .animate-panel-in,
   .animate-slide-up,
   .animate-vocab-card {
-    animation: none !important;
+    animation: none;
   }
 }

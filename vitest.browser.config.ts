@@ -12,6 +12,7 @@ import {
 } from './src/test/browser/browserEgressGuard.ts';
 import { setBrowserSafeArea } from './src/test/browser/browserSafeArea.ts';
 import { setBrowserFontSize } from './src/test/browser/browserFontSize.ts';
+import { setBrowserReducedMotion } from './src/test/browser/browserReducedMotion.ts';
 import { dispatchBrowserTouch, setBrowserCoarsePointer } from './src/test/browser/browserTouchInput.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -65,6 +66,7 @@ export default defineConfig({
         dispatchBrowserTouch,
         setBrowserCoarsePointer,
         setBrowserFontSize,
+        setBrowserReducedMotion,
         setBrowserSafeArea,
       },
     },

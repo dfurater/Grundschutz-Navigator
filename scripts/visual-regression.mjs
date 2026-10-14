@@ -12,9 +12,12 @@
  * Abhängigkeiten in einer eigenen Kopie. Nur `--update` bindet das
  * Referenzverzeichnis beschreibbar ein; `--check` schreibt bei einem
  * Fehlschlag die Ist- und Differenzbilder nach `.vitest/visual-regression/`.
+ * Das Image läuft als root: Der Container leert und befüllt die eingebundenen
+ * Verzeichnisse selbst und übergibt alles Geschriebene an den aufrufenden
+ * Nutzer (`HOST_OWNER`), damit der nächste Lauf es ohne Sonderrechte ersetzt.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -58,19 +61,37 @@ export function resolvePlaywrightImage(lock, pin = PLAYWRIGHT_IMAGE) {
 export function containerScript(mode) {
   if (mode !== 'check' && mode !== 'update') throw new Error(`Unbekannter Modus: ${mode}`);
   const vitest = `GSPP_VISUAL_REGRESSION=1 CI=1 npx vitest run ${TEST_FILE} --config vitest.browser.config.ts`;
+  const handOver = (dir) => `if [ -n "\${HOST_OWNER:-}" ]; then chown -R "$HOST_OWNER" ${dir}; fi`;
   return [
     'set -euo pipefail',
     'tar -C /src --exclude=./node_modules --exclude=./dist --exclude=./coverage --exclude=./.git --exclude=./.vitest --exclude=./.worktrees -cf - . | tar -xf -',
     'npm ci --ignore-scripts --no-audit --no-fund',
     ...(mode === 'update'
-      ? [`rm -rf ${REFERENCE_DIR}`, `${vitest} --update`, 'rm -rf /out/visualRegression.browser.test.ts', `cp -R ${REFERENCE_DIR} /out/`]
-      : [`${vitest} || { status=$?; cp -R .vitest/. /failures/ 2>/dev/null || true; exit "$status"; }`]),
+      ? [
+        `rm -rf ${REFERENCE_DIR}`,
+        `${vitest} --update`,
+        'rm -rf /out/visualRegression.browser.test.ts',
+        `cp -R ${REFERENCE_DIR} /out/`,
+        handOver('/out/visualRegression.browser.test.ts'),
+      ]
+      : [
+        'find /failures -mindepth 1 -delete',
+        `${vitest} || { status=$?; cp -R .vitest/. /failures/ 2>/dev/null || true; ${handOver('/failures')}; exit "$status"; }`,
+      ]),
   ].join('\n');
 }
 
+/** `uid:gid` des aufrufenden Nutzers, auf Plattformen ohne POSIX-IDs `null`. */
+export function hostOwner(proc = process) {
+  return typeof proc.getuid === 'function' && typeof proc.getgid === 'function'
+    ? `${proc.getuid()}:${proc.getgid()}`
+    : null;
+}
+
 /** Argumente für `docker run`. */
-export function dockerArgs({ mode, root, image }) {
+export function dockerArgs({ mode, root, image, owner = null }) {
   const mounts = ['-v', `${root}:/src:ro`];
+  if (owner) mounts.push('-e', `HOST_OWNER=${owner}`);
   if (mode === 'update') mounts.push('-v', `${resolve(root, SCREENSHOT_DIR)}:/out`);
   if (mode === 'check') mounts.push('-v', `${resolve(root, FAILURE_DIR)}:/failures`);
   return ['run', '--rm', '--init', ...mounts, '-w', '/work', image, 'bash', '-c', containerScript(mode)];
@@ -96,9 +117,7 @@ if (isDirectExecution) {
   const mode = parseMode(process.argv.slice(2));
   const image = resolvePlaywrightImage(JSON.parse(readFileSync(resolve(root, 'package-lock.json'), 'utf8')));
   if (mode === 'update') mkdirSync(resolve(root, SCREENSHOT_DIR), { recursive: true });
-  if (mode === 'check') {
-    rmSync(resolve(root, FAILURE_DIR), { recursive: true, force: true });
-    mkdirSync(resolve(root, FAILURE_DIR), { recursive: true });
-  }
-  process.exit(exitCodeOf(spawnSync(resolveDocker(), dockerArgs({ mode, root, image }), { stdio: 'inherit' })));
+  if (mode === 'check') mkdirSync(resolve(root, FAILURE_DIR), { recursive: true });
+  const args = dockerArgs({ mode, root, image, owner: hostOwner() });
+  process.exit(exitCodeOf(spawnSync(resolveDocker(), args, { stdio: 'inherit' })));
 }

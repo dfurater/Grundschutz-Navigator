@@ -27,13 +27,18 @@ function recordTouches() {
   return { counts, stop: () => listeners.forEach((remove) => remove()) };
 }
 
-/** Der senkrecht scrollende Baumbereich der Schublade, mit Inhalt über seine Höhe hinaus. */
-function scrollableTree(aside: HTMLElement) {
-  const tree = [...aside.querySelectorAll<HTMLElement>('*')]
-    .find((element) => getComputedStyle(element).overflowY === 'auto' && element.clientHeight > 100)!;
+/**
+ * Der senkrecht scrollende Baumbereich der Schublade, mit Inhalt über seine
+ * Höhe hinaus. Er ist der Viewport von OverlayScrollbars; die Bibliothek
+ * schaltet `overflow-y` erst nach ihrer Größenmessung von `hidden` auf
+ * `scroll`, deshalb wartet der Helfer darauf.
+ */
+async function scrollableTree(aside: HTMLElement) {
+  const tree = aside.querySelector<HTMLElement>('[data-overlayscrollbars-viewport]')!;
   const filler = document.createElement('div');
   filler.style.height = `${HEIGHT * 3}px`;
   tree.append(filler);
+  await expect.poll(() => getComputedStyle(tree).overflowY).toBe('scroll');
   expect(tree.scrollHeight).toBeGreaterThan(tree.clientHeight);
   return tree;
 }
@@ -45,7 +50,7 @@ test('scrollt den Baum der offenen Schublade senkrecht, ohne sie zu schließen o
   window.scrollTo(0, HEIGHT);
   const aside = await openDrawer(shell);
   await settlePush(shell);
-  const tree = scrollableTree(aside);
+  const tree = await scrollableTree(aside);
   const touches = recordTouches();
 
   await swipe([120, 600], [124, 250]);
@@ -63,7 +68,7 @@ test('schließt die offene Schublade beim waagerechten Wischen, ohne den Baum zu
   window.scrollTo(0, HEIGHT);
   const aside = await openDrawer(shell);
   await settlePush(shell);
-  const tree = scrollableTree(aside);
+  const tree = await scrollableTree(aside);
   const touches = recordTouches();
 
   await swipe([300, 500], [60, 560]);

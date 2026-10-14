@@ -5,6 +5,7 @@ import {
   containerScript,
   dockerArgs,
   exitCodeOf,
+  hostOwner,
   parseMode,
   resolveDocker,
   resolvePlaywrightImage,
@@ -55,6 +56,24 @@ describe('Containerlauf', () => {
     const args = dockerArgs({ mode: 'update', root: '/repo', image: 'img' });
     expect(args).toContain('/repo/src/test/browser/__screenshots__:/out');
     expect(containerScript('update')).toContain('--update');
+  });
+
+  it('leert die Fehlerbilder im Container und übergibt sie dem aufrufenden Nutzer', () => {
+    const script = containerScript('check');
+    expect(script).toContain('find /failures -mindepth 1 -delete');
+    expect(script).toContain('chown -R "$HOST_OWNER" /failures');
+    expect(containerScript('update')).toContain('chown -R "$HOST_OWNER" /out/visualRegression.browser.test.ts');
+  });
+
+  it('reicht den aufrufenden Nutzer nur weiter, wenn er bekannt ist', () => {
+    expect(dockerArgs({ mode: 'check', root: '/repo', image: 'img', owner: '501:20' }))
+      .toEqual(expect.arrayContaining(['-e', 'HOST_OWNER=501:20']));
+    expect(dockerArgs({ mode: 'check', root: '/repo', image: 'img' }).some((arg) => arg.startsWith('HOST_OWNER='))).toBe(false);
+  });
+
+  it('liest uid und gid des Prozesses', () => {
+    expect(hostOwner({ getuid: () => 1001, getgid: () => 121 } as unknown as NodeJS.Process)).toBe('1001:121');
+    expect(hostOwner({} as NodeJS.Process)).toBeNull();
   });
 
   it('schließt die lokalen Fehlerbilder aus der Kopie in den Container aus', () => {
