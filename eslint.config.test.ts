@@ -111,7 +111,8 @@ const RULE = 'design-system/no-off-system-classes';
 
 // Gültige Tailwind-Syntax, die einen verbotenen Effekt erzeugt: `!important`
 // hinter Varianten, benannte und zusammengesetzte Hover-Varianten, Deckkraft
-// als Arbitrary Property oder Variablen-Kurzform. `css` sind Ausschnitte des
+// als Arbitrary Property oder Variablen-Kurzform, Arbitrary Properties mit
+// Ziffer, Großbuchstaben oder Herstellerpräfix im Namen und mit Modifier. `css` sind Ausschnitte des
 // CSS, das Tailwind mit `src/index.css` für die Klasse erzeugt.
 const BYPASS_FORMS = [
   { label: 'Hover-Deckkraft mit Important-Präfix', classes: 'hover:!opacity-50', messageId: 'hoverOpacity', css: [':hover', 'opacity: 50% !important'] },
@@ -127,6 +128,14 @@ const BYPASS_FORMS = [
   { label: 'Hover-Deckkraft als Arbitrary Property', classes: 'hover:[opacity:var(--x)]', messageId: 'hoverOpacity', css: [':hover', 'opacity: var(--x)'] },
   { label: 'Hover-Deckkraft als Arbitrary Property mit Important', classes: 'group-hover/card:![opacity:var(--x)]', messageId: 'hoverOpacity', css: [':hover', 'opacity: var(--x) !important'] },
   { label: 'Schatten als Arbitrary Property mit Important', classes: 'hover:![box-shadow:var(--x)]', messageId: 'shadow', css: [':hover', 'box-shadow: var(--x) !important'] },
+  { label: 'Rohfarbe in benutzerdefinierter Eigenschaft mit Ziffer', classes: '[--color-effort-dot-1:#ff0000]', messageId: 'arbitraryProperty', css: ['--color-effort-dot-1: #ff0000'] },
+  { label: 'Schatten mit Herstellerpräfix', classes: '[-webkit-box-shadow:var(--x)]', messageId: 'shadow', css: ['-webkit-box-shadow: var(--x)'] },
+  { label: 'Schlagschatten-Filter mit Herstellerpräfix', classes: '[-webkit-filter:drop-shadow(var(--x))]', messageId: 'shadow', css: ['-webkit-filter: drop-shadow(var(--x))'] },
+  { label: 'Schatten mit Großbuchstaben im Namen', classes: '[bOx-shadow:var(--x)]', messageId: 'shadow', css: ['bOx-shadow: var(--x)'] },
+  { label: 'Hover-Deckkraft mit Großbuchstaben im Namen', classes: 'hover:[opaCity:var(--x)]', messageId: 'hoverOpacity', css: [':hover', 'opaCity: var(--x)'] },
+  { label: 'Rohfarbe als Arbitrary Property mit Modifier', classes: '[color:red]/50', messageId: 'arbitraryProperty', css: ['color: color-mix(in oklab, red 50%, transparent)'] },
+  { label: 'Schatten als Arbitrary Property mit Modifier', classes: '[box-shadow:var(--x)]/50', messageId: 'shadow', css: ['box-shadow: var(--x)'] },
+  { label: 'Rohe Deckkraft im Modifier einer Arbitrary Property', classes: '[color:var(--x)]/[0.3]', messageId: 'arbitraryValue', css: ['color-mix(in oklab, var(--x) 30%, transparent)'] },
 ] as const;
 
 // Erlaubte Klassen mit denselben Varianten und Important-Formen.
@@ -136,6 +145,8 @@ const ALLOWED_FORMS = [
   { label: 'Tokenfarbe unter Vorfahren- und beliebiger Hover-Variante', classes: 'in-hover:text-primary-main [&:hover]:text-primary-main' },
   { label: 'Abstand mit Important hinter Variante', classes: 'md:!p-4 md:p-4!' },
   { label: 'Deckkraft mit Important ohne Hover', classes: 'md:!opacity-100 focus-visible:opacity-100!' },
+  { label: 'Tokenwert in benutzerdefinierter Eigenschaft mit Ziffer', classes: '[--color-effort-dot-1:var(--x)]' },
+  { label: 'Arbitrary Property mit Token und Skalen- oder Tokenmodifier', classes: '[color:var(--x)]/50 [color:var(--x)]/[var(--y)]' },
 ] as const;
 
 describe('Gestaltungssystem-Regel (GSPP-533)', () => {
