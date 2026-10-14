@@ -23,7 +23,7 @@ afterEach(unmountShell);
 
 const PORTRAIT = 375;
 const LANDSCAPE = 667;
-const DESKTOP = 900;
+const DESKTOP = 1100;
 
 /**
  * Wartet auf das `resize` der neuen Breite: Ein verspätetes `resize` der

@@ -1,5 +1,12 @@
 @import 'tailwindcss';
 
+/* Desktop: breiter Viewport ohne Touch als Eingabemöglichkeit; `compact` ist das
+   Gegenstück. Beide tragen dieselben Bedingungen wie `DESKTOP_QUERY` und
+   `COMPACT_QUERY` in `src/hooks/breakpointQueries.ts` und lösen `lg:` überall
+   ab, wo der Zustand mit dem gemounteten Teilbaum übereinstimmen muss. */
+@custom-variant desktop (@media (width >= 64rem) and (not (any-pointer: coarse)));
+@custom-variant compact (@media not ((width >= 64rem) and (not (any-pointer: coarse))));
+
 /* Self-hosted Bunny Fonts WOFF2 subsets: latin + latin-ext, weights 400/500/600/700. */
 @font-face {
   font-family: 'Inter';
@@ -167,6 +174,10 @@
    ============================================================ */
 
 @theme {
+  /* Eigener Scrollbereich und Tablet-Ansicht ab 744 px (iPad mini, Hochformat);
+     `OWN_SCROLL_AREA_QUERY` in `src/hooks/breakpointQueries.ts` trägt dieselbe Grenze. */
+  --breakpoint-md: 46.5rem;
+
   /* Primary (BSI Dark Blue) */
   --color-primary-main: #004b76;
   --color-primary-hover: #003655;
@@ -456,8 +467,11 @@ body.dev-selector-dragging * {
   }
 
   .catalog-badge-text {
-    @apply font-medium leading-tight;
-    font-size: 0.625rem;
+    @apply text-xs font-medium leading-tight;
+  }
+
+  .catalog-prose-text {
+    max-width: 60ch;
   }
 
   .header-reference-theme {
@@ -539,14 +553,15 @@ body.dev-selector-dragging * {
   }
 }
 
-/* Mobile Navigationsschublade als Push-Drawer (GSPP-493): Die
-   Schublade (85 % der Breite) gleitet über die volle Höhe herein und schiebt
-   die ganze Seite samt App-Kopf um ihre Breite nach rechts; eine Abdunklung
-   liegt über der verschobenen Seite. Die Shell setzt `data-mobile-nav` am
-   Wurzelelement; die Wischgeste (`useMobileDrawerSwipe`) überschreibt
-   während des Ziehens die Variablen am selben Element, ohne React zu rendern.
-   Die Variablen gelten auch ab `md`, damit die Breiten-Transition der
-   Seitenleiste dort einen gültigen Wert behält. */
+/* Navigationsschublade als Push-Drawer (GSPP-493, GSPP-514): Außerhalb des
+   Desktops gleitet die Schublade (85 % der Breite, höchstens 22,5 rem) über
+   die volle Höhe herein und schiebt die ganze Seite samt App-Kopf um ihre
+   Breite nach rechts; eine Abdunklung liegt über der verschobenen Seite. Die
+   Shell setzt `data-mobile-nav` am Wurzelelement; die Wischgeste
+   (`useMobileDrawerSwipe`) überschreibt während des Ziehens die Variablen am
+   selben Element, ohne React zu rendern. Die Variablen gelten auch auf dem
+   Desktop, damit die Breiten-Transition der Seitenleiste dort einen gültigen
+   Wert behält. */
 @layer components {
   .mobile-nav-shell {
     --mobile-nav-width: min(85vw, 22.5rem);
@@ -557,7 +572,7 @@ body.dev-selector-dragging * {
     --mobile-nav-motion: var(--duration-drawer) var(--easing-drawer);
   }
 
-  @media (width < 48rem) {
+  @media not ((width >= 64rem) and (not (any-pointer: coarse))) {
     /* Die verschobene Seite ragt rechts hinaus; `clip` erzeugt anders als
        `hidden` keinen Scrollbereich, an dem der App-Kopf kleben würde.
        Unter Safaris schwebender Leiste endet die `100dvh` hohe Schublade, und

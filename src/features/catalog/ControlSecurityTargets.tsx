@@ -105,7 +105,7 @@ export function ControlSecurityTargets({
                   onToggle={onToggleVocabulary}
                   label={label}
                   ariaLabel={`Schutzziel: ${label}`}
-                  className="relative inline-flex min-h-6 items-center text-left after:absolute after:-inset-y-2.5 after:inset-x-0 after:content-[''] lg:after:-inset-y-1"
+                  className="relative inline-flex min-h-6 items-center text-left after:absolute after:-inset-y-2.5 after:inset-x-0 after:content-[''] desktop:after:-inset-y-1"
                 />
               ) : (
                 <span>{label}</span>
