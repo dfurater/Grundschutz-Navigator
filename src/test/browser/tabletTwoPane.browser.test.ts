@@ -236,6 +236,37 @@ test('hält den Tablet-Kopf beim Kopierfehler gleich hoch und scrollt den Fallba
   expect(panel.querySelector('[aria-label="Direktlink zum manuellen Kopieren"]')).toBe(fallback);
 });
 
+test('hält nach einem Kopierfehler die Leseposition beim Wechsel des Scrollbereichs', async () => {
+  const { shell } = await renderCatalog(844, '/katalog/gspp', 390, true);
+  setClipboard(() => Promise.reject(new Error('Browser detail')));
+
+  await userEvent.click(rowButton(shell, 'TOP.1.1'));
+  await expect.poll(() => tabletPanel(shell)).not.toBeNull();
+  const panel = tabletPanel(shell);
+  const detail = panel.firstElementChild?.firstElementChild as HTMLElement;
+  const initialScrollArea = panel.querySelector('[data-control-detail-scroll]') as HTMLElement;
+  expect(initialScrollArea).not.toBe(detail);
+
+  await userEvent.click(panel.querySelector('[aria-label="Link kopieren"]') as HTMLButtonElement);
+  await expect.poll(() => panel.querySelector('[aria-label="Direktlink zum manuellen Kopieren"]')).not.toBeNull();
+
+  // Am Fallback vorbei weiterlesen.
+  initialScrollArea.scrollTop = 400;
+  await expect.poll(() => initialScrollArea.scrollTop).toBe(400);
+
+  await page.viewport(844, 300);
+  shell.style.height = '300px';
+  await expect.poll(() => panel.querySelector('[data-control-detail-scroll]')).toBe(detail);
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  expect(detail.scrollTop).toBe(400);
+
+  await page.viewport(844, 390);
+  shell.style.height = '390px';
+  await expect.poll(() => panel.querySelector('[data-control-detail-scroll]')).toBe(initialScrollArea);
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  expect(initialScrollArea.scrollTop).toBe(400);
+});
+
 test('macht das vollständige Tablet-Detail bei kurzem Panel und langem Titel scrollbar', async () => {
   const originalState = catalogState;
   catalogState = createTabletCatalogState({
