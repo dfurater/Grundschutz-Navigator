@@ -2,7 +2,7 @@ import { expect, test } from 'vitest';
 import '@/index.css';
 // `?raw` statt `readFileSync`: Vite löst den Pfad unabhängig vom
 // Arbeitsverzeichnis auf (wie in `src/app/staticTitleFallback.test.ts`).
-import indexHtml from '../../../index.html?raw';
+import indexHtml from '@/../index.html?raw';
 
 function footerSurfaceColor(): string {
   const probe = document.createElement('div');
