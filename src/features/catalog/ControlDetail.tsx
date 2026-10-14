@@ -56,11 +56,11 @@ import {
 const UNBENANNTE_TAXONOMIE = 'Ohne Gruppenkennung';
 
 /**
- * `panel`: feste Höhe mit eigenem Scrollbereich (Desktop-Spalte,
- * Tablet-Inline-Panel). `page`: im Dokumentfluss ohne eigenen Scrollbereich —
- * das Dokument scrollt (mobile Seitenansicht, GSPP-447).
+ * `panel`: Standardkopf mit eigenem Scrollbereich (Desktop-Spalte).
+ * `tablet-panel`: kompakter, fester Kopf mit eigenem Scrollbereich (Tablet-Inline-Panel).
+ * `page`: im Dokumentfluss ohne eigenen Scrollbereich — das Dokument scrollt (mobile Seitenansicht, GSPP-447).
  */
-export type ControlDetailLayout = 'panel' | 'page';
+export type ControlDetailLayout = 'panel' | 'tablet-panel' | 'page';
 
 export interface ControlDetailProps {
   readonly control: Control;
@@ -110,6 +110,7 @@ export function ControlDetail({
 
   const catalogKey = catalog.catalogKey;
   const isPage = layout === 'page';
+  const isTabletPanel = layout === 'tablet-panel';
   const scrollAreaRef = useOverlayScrollbars<HTMLDivElement>(!isPage);
   const controlStateKey = `${catalogKey}:${control.id}`;
   const {
@@ -313,6 +314,31 @@ export function ControlDetail({
       </button>
     </div>
   );
+  const taxonomyBreadcrumb = (
+    <ControlTaxonomyBreadcrumb
+      practiceName={practiceName}
+      topicName={topicName}
+      hasTopic={Boolean(topic)}
+      practiceVocabulary={practiceVocabulary}
+      topicVocabulary={topicVocabulary}
+      isVocabularyActive={isVocabularyActive}
+      onToggleVocabulary={toggleVocabulary}
+    />
+  );
+  const parentControlLink = parentControl && (
+    <button
+      type="button"
+      onClick={() => onNavigateToControl?.(parentControl)}
+      aria-label={`Teil von ${parentControl.id} ${parentControl.title}`}
+      className="group relative mt-1.5 flex items-baseline gap-1.5 rounded text-left text-xs text-[var(--color-text-muted)] after:absolute after:-inset-y-3 after:inset-x-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] desktop:after:-inset-y-1"
+    >
+      {/* Leerzeichen zwischen den Flex-Kindern: unsichtbar, aber beim Kopieren erhalten. */}
+      <span aria-hidden="true">↳</span>{' '}
+      <span>Teil von</span>{' '}
+      <span className="catalog-reference-text shrink-0">{parentControl.id}</span>{' '}
+      <span className="text-primary-main group-hover:underline">{parentControl.title}</span>
+    </button>
+  );
 
   return (
     <div className={`${isPage ? '' : 'h-full min-h-0'} flex flex-col bg-[var(--color-surface-raised)]`}>
@@ -350,36 +376,13 @@ export function ControlDetail({
             )}
           </button>
         </div>
-        {isPage && copyErrorFallback}
-        {isPage && (
-          <ControlTaxonomyBreadcrumb
-            practiceName={practiceName}
-            topicName={topicName}
-            hasTopic={Boolean(topic)}
-            practiceVocabulary={practiceVocabulary}
-            topicVocabulary={topicVocabulary}
-            isVocabularyActive={isVocabularyActive}
-            onToggleVocabulary={toggleVocabulary}
-          />
-        )}
+        {!isPage && copyErrorFallback}
+        {!isTabletPanel && taxonomyBreadcrumb}
         {/* Fokusziel beim Öffnen der mobilen Seitenansicht (`useDocumentDetailPage`). */}
         <h2 id={titleId} data-control-detail-title tabIndex={-1} className="type-page-title focus:outline-none">
           {control.title}
         </h2>
-        {isPage && parentControl && (
-          <button
-            type="button"
-            onClick={() => onNavigateToControl?.(parentControl)}
-            aria-label={`Teil von ${parentControl.id} ${parentControl.title}`}
-            className="group relative mt-1.5 flex items-baseline gap-1.5 rounded text-left text-xs text-[var(--color-text-muted)] after:absolute after:-inset-y-3 after:inset-x-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] desktop:after:-inset-y-1"
-          >
-            {/* Leerzeichen zwischen den Flex-Kindern: unsichtbar, aber beim Kopieren erhalten. */}
-            <span aria-hidden="true">↳</span>{' '}
-            <span>Teil von</span>{' '}
-            <span className="catalog-reference-text shrink-0">{parentControl.id}</span>{' '}
-            <span className="text-primary-main group-hover:underline">{parentControl.title}</span>
-          </button>
-        )}
+        {!isTabletPanel && parentControlLink}
       </div>
 
       {/* Content: alle Blöcke gleich aufgebaut – Leiste, Inhalt auf Weiß, 20 px Abstand (Owner 26.09.2026). */}
@@ -392,34 +395,14 @@ export function ControlDetail({
       <div
         ref={scrollAreaRef}
         data-control-detail-scroll
-        className={isPage ? 'flex flex-col gap-5 p-4' : 'flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] desktop:pb-4'}
+        className={isPage
+          ? 'flex flex-col gap-5 p-4'
+          : 'flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] desktop:pb-4'}
       >
-        {!isPage && copyErrorFallback}
-        {!isPage && (
+        {isTabletPanel && (
           <>
-            <ControlTaxonomyBreadcrumb
-              practiceName={practiceName}
-              topicName={topicName}
-              hasTopic={Boolean(topic)}
-              practiceVocabulary={practiceVocabulary}
-              topicVocabulary={topicVocabulary}
-              isVocabularyActive={isVocabularyActive}
-              onToggleVocabulary={toggleVocabulary}
-            />
-            {parentControl && (
-              <button
-                type="button"
-                onClick={() => onNavigateToControl?.(parentControl)}
-                aria-label={`Teil von ${parentControl.id} ${parentControl.title}`}
-                className="group relative mt-1.5 flex items-baseline gap-1.5 rounded text-left text-xs text-[var(--color-text-muted)] after:absolute after:-inset-y-3 after:inset-x-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] desktop:after:-inset-y-1"
-              >
-                {/* Leerzeichen zwischen den Flex-Kindern: unsichtbar, aber beim Kopieren erhalten. */}
-                <span aria-hidden="true">↳</span>{' '}
-                <span>Teil von</span>{' '}
-                <span className="catalog-reference-text shrink-0">{parentControl.id}</span>{' '}
-                <span className="text-primary-main group-hover:underline">{parentControl.title}</span>
-              </button>
-            )}
+            {taxonomyBreadcrumb}
+            {parentControlLink}
           </>
         )}
         {hasAnforderung && (

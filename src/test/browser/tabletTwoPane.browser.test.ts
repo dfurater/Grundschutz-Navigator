@@ -6,6 +6,8 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
 import { CONTROL_ROUTE_PATTERN, CATALOG_ROUTE_PATTERN, GROUP_ROUTE_PATTERN } from '@/app/routes';
 import { CatalogBrowser } from '@/features/catalog/CatalogBrowser';
+import { HeaderBar } from '@/components/HeaderBar';
+import { Footer } from '@/components/Footer';
 import { createTabletCatalogState } from './tabletCatalogFixture';
 import '@/index.css';
 
@@ -32,12 +34,19 @@ afterEach(() => {
   host = undefined;
 });
 
-async function renderCatalog(width: number, entry = '/katalog/gspp', height = 800) {
+async function renderCatalog(width: number, entry = '/katalog/gspp', height = 800, withAppChrome = false) {
   await page.viewport(width, height);
+  const screen = withAppChrome
+    ? createElement('div', { style: { height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' } },
+      createElement(HeaderBar),
+      createElement('main', { style: { flex: 1, minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' } },
+        createElement(CatalogBrowser)),
+      createElement(Footer))
+    : createElement(CatalogBrowser);
   const router = createMemoryRouter([
-    { path: CONTROL_ROUTE_PATTERN, element: createElement(CatalogBrowser) },
-    { path: GROUP_ROUTE_PATTERN, element: createElement(CatalogBrowser) },
-    { path: CATALOG_ROUTE_PATTERN, element: createElement(CatalogBrowser) },
+    { path: CONTROL_ROUTE_PATTERN, element: screen },
+    { path: GROUP_ROUTE_PATTERN, element: screen },
+    { path: CATALOG_ROUTE_PATTERN, element: screen },
   ], { initialEntries: [entry] });
   host = document.createElement('div');
   host.id = 'root';
@@ -118,10 +127,10 @@ test.each([768, 1023])('zeigt bei %i px Liste und vollständiges Inline-Detail n
   expect(document.activeElement?.getAttribute('data-control-detail-title')).not.toBeNull();
 });
 
-test('hält den Tablet-Detailkopf bei 844 × 390 px kompakt und scrollt den geöffneten Vokabulareintrag im Detailbereich', async () => {
-  const { shell } = await renderCatalog(844, '/katalog/gspp', 390);
+test('hält den Tablet-Detailkopf bei 844 × 390 px kompakt und erreicht die Anforderung über dem App-Footer', async () => {
+  const { shell } = await renderCatalog(844, '/katalog/gspp', 390, true);
 
-  await userEvent.click(rowButton(shell, 'TOP.1.1'));
+  await userEvent.click(rowButton(shell, 'TOP.1.1.1'));
   await expect.poll(() => tabletPanel(shell)).not.toBeNull();
   const panel = tabletPanel(shell);
   const panelScroller = panel.querySelector('[data-control-detail-scroll]') as HTMLElement;
@@ -129,28 +138,39 @@ test('hält den Tablet-Detailkopf bei 844 × 390 px kompakt und scrollt den geö
   const detailTitle = panel.querySelector('[data-control-detail-title]') as HTMLElement;
   const fixedHeader = detailTitle.closest('.border-b') as HTMLElement;
   const fixedHeaderBox = fixedHeader.getBoundingClientRect();
+  const footer = shell.querySelector('footer') as HTMLElement;
+  const footerBox = footer.getBoundingClientRect();
+  const appHeader = shell.querySelector('header') as HTMLElement;
+  const appHeaderBox = appHeader.getBoundingClientRect();
+  const main = shell.querySelector('main') as HTMLElement;
 
   await userEvent.click(panel.querySelector('[aria-label="Praktik: Governance und Compliance"]') as HTMLButtonElement);
 
   const vocabularyCard = panel.querySelector('#vocab-card-practice') as HTMLElement;
+  const parentControl = panel.querySelector('[aria-label="Teil von TOP.1.1 Verfahren und Regelungen"]') as HTMLElement;
   expect(vocabularyCard).not.toBeNull();
+  expect(parentControl).not.toBeNull();
   expect(panelScroller.contains(vocabularyCard)).toBe(true);
+  expect(panelScroller.contains(parentControl)).toBe(true);
   expect(panelScroller.contains(detailTitle)).toBe(false);
   expect(panelScroller.clientHeight).toBeGreaterThan(0);
   expect(panelScroller.scrollHeight).toBeGreaterThan(panelScroller.clientHeight);
+  expect(footerBox.top).toBeGreaterThan(appHeaderBox.bottom);
+  expect(main.getBoundingClientRect().bottom).toBeLessThanOrEqual(footerBox.top + 1);
 
   const listScrollTop = listScroller.scrollTop;
   const requirementHeading = [...panel.querySelectorAll('h1, h2, h3, h4')]
     .find((heading) => heading.textContent?.includes('Anforderung')) as HTMLElement;
+  const requirementText = requirementHeading.closest('section')?.querySelector('p') as HTMLElement;
   const scrollBox = panelScroller.getBoundingClientRect();
-  panelScroller.scrollTop += requirementHeading.getBoundingClientRect().top - scrollBox.top;
+  panelScroller.scrollTop += requirementText.getBoundingClientRect().bottom - scrollBox.bottom;
   await expect.poll(() => panelScroller.scrollTop).toBeGreaterThan(0);
-  const requirementBox = requirementHeading.getBoundingClientRect();
-  expect(requirementBox.top).toBeGreaterThanOrEqual(scrollBox.top - 1);
-  expect(requirementBox.bottom).toBeLessThanOrEqual(scrollBox.bottom + 1);
+  const requirementTextBox = requirementText.getBoundingClientRect();
+  expect(requirementTextBox.bottom).toBeLessThanOrEqual(scrollBox.bottom + 1);
+  expect(requirementTextBox.bottom).toBeLessThanOrEqual(footer.getBoundingClientRect().top + 1);
   expect(panelScroller.contains(document.elementFromPoint(
-    (requirementBox.left + requirementBox.right) / 2,
-    (requirementBox.top + requirementBox.bottom) / 2,
+    (requirementTextBox.left + requirementTextBox.right) / 2,
+    requirementTextBox.bottom - 2,
   ))).toBe(true);
 
   panelScroller.scrollTop = panelScroller.scrollHeight;

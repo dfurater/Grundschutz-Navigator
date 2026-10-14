@@ -249,6 +249,10 @@ describe('ControlDetail', () => {
     const practice = screen.getByRole('button', {
       name: 'Praktik: Governance und Compliance',
     });
+    const detailHeader = practice.closest('.border-b') as HTMLElement;
+    const detailScroller = document.querySelector('[data-control-detail-scroll]') as HTMLElement;
+    expect(detailHeader.contains(practice)).toBe(true);
+    expect(detailScroller.contains(practice)).toBe(false);
     expect(practice).toHaveAttribute('aria-expanded', 'false');
 
     await user.click(practice);
@@ -684,7 +688,9 @@ describe('ControlDetail', () => {
     render(<ControlDetail control={control} controlsById={controlsById}
       parentControl={parentControl} childControls={[childControl]} onClose={vi.fn()} />);
 
-    expect(screen.getByRole('button', { name: /Teil von GC\.2 Überbau/ })).toBeInTheDocument();
+    const parentLink = screen.getByRole('button', { name: /Teil von GC\.2 Überbau/ });
+    expect(parentLink).toBeInTheDocument();
+    expect(parentLink.closest('.border-b')).not.toBeNull();
     const headings = screen.getAllByRole('heading', { level: 3 });
     expect(headings.map((heading) => heading.textContent)).toEqual([
       'Anforderung', 'Umsetzungshinweise', 'Schutzziele und Gefährdungen', 'Einordnung', 'Zusammenhänge',
@@ -1204,6 +1210,29 @@ describe('ControlDetail', () => {
     expect(writeText).toHaveBeenCalledTimes(2);
     expect(screen.getByLabelText('Direktlink zum manuellen Kopieren')).toBe(fallback);
     expect(screen.getByRole('alert')).toBeInTheDocument();
+  });
+
+  it('keeps the tablet-panel copy fallback in the fixed header across retries', async () => {
+    const user = userEvent.setup();
+    setClipboard(vi.fn().mockRejectedValue(new Error('Browser detail')));
+
+    render(
+      <ControlDetail
+        control={makeControl({ id: 'DET.5.4', altIdentifier: 'stable-det-5-4' })}
+        layout="tablet-panel"
+        onClose={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Link kopieren' }));
+    const fallback = await screen.findByLabelText('Direktlink zum manuellen Kopieren');
+    const fixedHeader = screen.getByRole('heading', { name: 'Kontrolle mit Verweisen' }).closest('.border-b');
+    const detailScroller = document.querySelector('[data-control-detail-scroll]');
+
+    expect(fixedHeader?.contains(fallback)).toBe(true);
+    expect(detailScroller?.contains(fallback)).toBe(false);
+    await user.click(screen.getByRole('button', { name: 'Erneut kopieren' }));
+    expect(screen.getByLabelText('Direktlink zum manuellen Kopieren')).toBe(fallback);
   });
 
   it('keeps the fallback visible while a newer retry is still pending after an older one settles', async () => {
