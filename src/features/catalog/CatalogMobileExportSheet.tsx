@@ -54,7 +54,7 @@ export function CatalogMobileExportSheet({
       <Button
         variant="ghost"
         size="sm"
-        className="desktop:hidden min-h-[44px] min-w-[44px]"
+        className="desktop:hidden min-h-touch min-w-touch"
         onClick={() => setOpen(true)}
         disabled={checkedIds.size === 0 && filteredControls.length === 0}
         aria-label="CSV exportieren"
@@ -76,10 +76,10 @@ export function CatalogMobileExportSheet({
             ref={sheetRef}
             aria-modal="true"
             aria-labelledby={headingId}
-            className="mobile-sheet m-0 border-0 w-full max-w-none text-[inherit] fixed inset-x-0 bottom-0 z-50 bg-[var(--color-surface-raised)] flex flex-col overflow-hidden desktop:hidden animate-slide-up"
+            className="mobile-sheet m-0 border-0 w-full max-w-none text-inherit fixed inset-x-0 bottom-0 z-50 bg-[var(--color-surface-raised)] flex flex-col overflow-hidden desktop:hidden animate-slide-up"
           >
             <div
-              className="flex justify-center items-center min-h-[44px] shrink-0 select-none"
+              className="flex justify-center items-center min-h-touch shrink-0 select-none"
               aria-hidden="true"
             >
               <div className="w-10 h-1 bg-[var(--color-border-strong)] rounded-full" />
@@ -89,7 +89,7 @@ export function CatalogMobileExportSheet({
                 Exportaktionen scrollen darunter. */}
             <div className="px-4 py-3 border-b border-[var(--color-border-default)] shrink-0 flex items-center justify-between gap-2">
               <h2 id={headingId} className="type-meta">Exportieren als CSV</h2>
-              <Button variant="ghost" size="sm" className="min-h-[44px] min-w-[44px] -my-3 -mr-2 text-sm" onClick={close} data-dialog-close>
+              <Button variant="ghost" size="sm" className="min-h-touch min-w-touch -my-3 -mr-2 text-sm" onClick={close} data-dialog-close>
                 Schließen
               </Button>
             </div>
@@ -98,7 +98,7 @@ export function CatalogMobileExportSheet({
                 {checkedIds.size > 0 && (
                   <Button
                     variant="secondary"
-                    className="w-full min-h-[44px] justify-start"
+                    className="w-full min-h-touch justify-start"
                     onClick={exportSelected}
                   >
                     <IconDownload className="w-4 h-4 mr-2" />
@@ -107,7 +107,7 @@ export function CatalogMobileExportSheet({
                 )}
                 <Button
                   variant="secondary"
-                  className="w-full min-h-[44px] justify-start"
+                  className="w-full min-h-touch justify-start"
                   disabled={filteredControls.length === 0}
                   onClick={() => {
                     downloadCSV(filteredControls, sectionFilename);
@@ -119,7 +119,7 @@ export function CatalogMobileExportSheet({
                 </Button>
                 <Button
                   variant="ghost"
-                  className="w-full min-h-[44px] justify-start"
+                  className="w-full min-h-touch justify-start"
                   onClick={() => {
                     downloadCSV(allControls, 'grundschutz-gesamtkatalog.csv');
                     close();

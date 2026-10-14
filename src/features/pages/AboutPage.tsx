@@ -988,7 +988,7 @@ export function AboutPage() {
                 <CopyButton command={verifyCommand} />
               </div>
 
-              <div className="mt-3 rounded-[calc(var(--radius-md)-2px)] bg-[var(--color-surface-subtle)] px-4 py-3">
+              <div className="mt-3 rounded-sm bg-[var(--color-surface-subtle)] px-4 py-3">
                 <code
                   tabIndex={0}
                   aria-label="Prüfbefehl zum manuellen Kopieren"

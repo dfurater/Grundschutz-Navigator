@@ -35,3 +35,10 @@ export const DESKTOP_QUERY = '(width >= 64rem) and (not (any-pointer: coarse))';
  * sie nicht aus, sie verwenden `!isDesktop`.
  */
 export const COMPACT_QUERY = `not (${DESKTOP_QUERY})`;
+
+/**
+ * Reduzierte Bewegung. `index.css` schaltet Übergänge und Animationen dafür
+ * ohne `!important` ab und gewinnt nur gegen Stylesheet-Regeln; wer eine
+ * Transition als Inline-Stil setzt, prüft diese Query selbst.
+ */
+export const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';

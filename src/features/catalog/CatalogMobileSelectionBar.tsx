@@ -35,11 +35,11 @@ export function CatalogMobileSelectionBar({
   // Auswahl-Blau (GSPP-471): Blau steht für Auswahl, daher tragen nur Icon und
   // Zähler des Export-Buttons die Akzentfarbe. Die Zahl steht genau einmal sichtbar.
   return (
-    <div className="fixed bottom-0 pb-safe inset-x-0 z-30 border-t border-[var(--color-border-default)] bg-[var(--color-surface-base)] px-3 py-2.5 flex items-center justify-between gap-2 desktop:hidden shadow-[0_-2px_8px_rgba(0,0,0,0.06)]">
+    <div className="fixed bottom-0 pb-safe inset-x-0 z-30 border-t border-[var(--color-border-default)] bg-[var(--color-surface-base)] px-3 py-2.5 flex items-center justify-between gap-2 desktop:hidden shadow-footer">
       <Button
         variant="ghost"
         size="sm"
-        className="min-h-[44px]"
+        className="min-h-touch"
         onClick={onDone}
       >
         Fertig
@@ -50,7 +50,7 @@ export function CatalogMobileSelectionBar({
       <Button
         variant="secondary"
         size="sm"
-        className="min-h-[44px]"
+        className="min-h-touch"
         disabled={count === 0}
         onClick={exportSelected}
         aria-label={`Auswahl als CSV exportieren, ${count} ausgewählt`}

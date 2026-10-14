@@ -38,7 +38,7 @@ describe('CatalogMobileFilterSheet', () => {
     render(<CatalogMobileFilterSheet filterPanelProps={filterPanelProps} activeCount={0} />);
     const trigger = screen.getByRole('button', { name: 'Filter anzeigen' });
     expect(trigger.querySelector('.filter-count-badge')).toBeNull();
-    expect(trigger).toHaveClass('min-h-[44px]', 'min-w-[44px]');
+    expect(trigger).toHaveClass('min-h-touch', 'min-w-touch');
   });
 
   it('updates the badge and accessible name when active selections change', () => {

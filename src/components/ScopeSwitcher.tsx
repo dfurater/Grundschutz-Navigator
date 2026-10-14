@@ -31,7 +31,7 @@ export interface ScopeSwitcherProps<K extends string = string> {
 }
 
 // Die Sprache erbt der Titel vom Dokument; die OSCAL-Metadaten tragen keine eigene.
-const TITLE_CLASS = 'line-clamp-2 min-w-0 flex-1 hyphens-auto text-sm leading-[18px]';
+const TITLE_CLASS = 'line-clamp-2 min-w-0 flex-1 hyphens-auto text-sm leading-4.5';
 
 export function ScopeSwitcher<K extends string = string>({
   label,
@@ -121,7 +121,7 @@ export function ScopeSwitcher<K extends string = string>({
     // 51 px auf der Linie der Toolbar: Nach der 1-px-Unterlinie bleiben 50 px,
     // davon 3 px Rand oben und unten um den 44 px hohen Auslöser. Zwei Titelzeilen
     // (2 × 18 px) passen mit 4 px Innenabstand oben und unten genau hinein.
-    <div className="relative flex shrink-0 items-center gap-1 border-b border-slate-200 px-1 py-[3px]" style={{ height: 51 }}>
+    <div className="relative flex shrink-0 items-center gap-1 border-b border-slate-200 h-panel-head px-1 py-0.75">
       <div
         ref={containerRef}
         className="min-w-0 flex-1"
@@ -165,11 +165,11 @@ export function ScopeSwitcher<K extends string = string>({
             tabIndex={-1}
             aria-labelledby={headingId}
             onKeyDown={handleMenuKeyDown}
-            className="absolute inset-x-1 top-[calc(100%+5px)] z-40 max-h-[calc(100dvh-8rem)] overflow-y-auto rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-raised)] p-1.5 shadow-[var(--shadow-overlay)]"
+            className="absolute inset-x-1 top-full mt-1.25 z-40 max-h-[calc(100dvh-8rem)] overflow-y-auto rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-raised)] p-1.5 shadow-[var(--shadow-overlay)]"
           >
             <div
               id={headingId}
-              className="px-2.5 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-muted)]"
+              className="px-2.5 pb-1.5 pt-1 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]"
             >
               {`${label} wechseln`}
             </div>

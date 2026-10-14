@@ -19,6 +19,28 @@ Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application 
 | Testing | Vitest + @testing-library/react + jsdom + Chromium-Browser-Lane; jsdom parst im Build zusätzlich die gebaute HTML-Auslieferung für den Titelvertrag |
 | Deployment | GitHub Pages (via GitHub Actions) |
 
+## Gestaltungssystem
+
+`src/index.css` ist die einzige Quelle der Gestaltungswerte. Der `@theme`-Block führt Farben, sechs Schriftgrößen (`text-2xs` 10px, `text-xs` 12px, `text-sm` 14px, `text-base` 16px, `text-lg` 18px, `text-xl` 20px), die Zeilenhöhe `--leading-title` (1.35, als Modifier `text-lg/title`), die Laufweiten `tracking-wide` und `tracking-wider`, die Radien `rounded`/`rounded-sm` (4px), `rounded-md` (6px), `rounded-lg` (8px), vier Schatten (`shadow-sm`, `shadow-overlay`, `shadow-footer`, `shadow-grip-start`/`shadow-grip-end`), die Bewegungswerte `--duration-*`/`--easing-*` sowie die Maße `touch` (44px) und `panel-head` (51px), die als Utilities wie `min-h-touch` oder `h-panel-head` nutzbar sind. Für Schriftgrößen, Laufweiten, Radien und Schatten setzt `@theme` den Tailwind-Namensraum mit `initial` zurück, ebenso `--drop-shadow-*`, `--inset-shadow-*` und `--text-shadow-*`; `text-2xl`, `rounded-xl`, `shadow-md` oder `drop-shadow-lg` erzeugen deshalb kein CSS.
+
+Die Kaskade in `src/index.css` hat die Ebenen `theme`, `base`, `components`, `utilities`, `vendor` (die per `@import … layer(vendor)` eingebundene CSS von OverlayScrollbars) und `app` (eigene Regeln außerhalb von Tailwinds Ebenen, etwa `.skip-link`, `.resize-handle`, `.animate-panel-in`). Die Reduced-Motion-Regel am Dateiende steht außerhalb jeder Ebene und setzt Übergänge und Animationen ohne `!important` auf 0.01ms; sie gewinnt gegen jede Ebene, aber nicht gegen Inline-Stile. Komponenten, die eine Transition als Inline-Stil setzen (`AppShell`, `CatalogDesktopSidebar`, `Tooltip`, `useBottomSheetDrag`), prüfen dafür `REDUCED_MOTION_QUERY` aus `src/hooks/breakpointQueries.ts` selbst. `src/test/browser/reducedMotion.browser.test.ts` belegt in Chromium mit emuliertem `prefers-reduced-motion`, dass Utility-, `app`- und `vendor`-Übergänge, die Panel-Einblendung und die Inline-Transition der Detailspalte stillstehen und ohne Emulation laufen.
+
+Die ESLint-Regel `design-system/no-off-system-classes` (lokales Plugin in `eslint.config.js`) prüft jedes String- und Template-Literal in `src/features/**`, `src/app/**` und `src/components/**` außer Testdateien und meldet als Fehler:
+
+| Befund | Beispiel |
+| --- | --- |
+| Beliebiger Wert oder Modifier, der kein reiner Tokenbezug `var(--…)` ist, außerhalb der Positivliste | `text-[13px]`, `text-lg/[1.35]`, `rounded-[calc(var(--radius-md)-2px)]` |
+| Beliebige Eigenschaft ohne reinen Tokenwert; Verlauf, Hintergrundfilter oder Schatten auch mit Tokenwert | `[overflow-wrap:anywhere]`, `[backdrop-filter:blur(var(--…))]` |
+| Schatten außerhalb des Vokabulars, auch `shadow` ohne Stufe, Schlagschatten-Filter, Innen- und Textschatten | `shadow-lg`, `drop-shadow-sm` |
+| Radius über 8px | `rounded-2xl` |
+| Schriftgröße über 20px | `text-2xl` |
+| Verlauf oder Hintergrundfilter, auch mit Tokenwert | `bg-linear-to-r`, `bg-radial`, `backdrop-blur-[var(--…)]` |
+| Deckkraft, auch als `[opacity:…]`, unter einer Variante, deren Name `hover` enthält | `hover:opacity-80`, `group-hover/card:opacity-50`, `[&:hover]:opacity-50`, `hover:[opacity:var(--…)]` |
+
+Ein `!` vor oder hinter der Utility (`hover:!opacity-50`, `md:backdrop-blur-sm!`) ändert den Befund nicht; die Regel prüft die Utility ohne `!`.
+
+Als reiner Tokenbezug gilt genau ein `var(--…)`, wahlweise mit Typhinweis (`length:`). Ein Fallback ist nur als Schlüsselwort (`auto`, `none`, `inherit`, `initial`, `unset`, `currentColor`, `transparent`, `0`) oder als weiterer Tokenbezug zulässig: `w-[var(--control-id-column,auto)]` und `text-[var(--a,var(--b))]` bestehen, `text-[var(--x,13px)]` ist ein Befund. Jeder `-[…]`- und `/[…]`-Abschnitt einer Klasse wird einzeln geprüft, auch vor einem Skalenmodifier wie in `text-[13px]/6`. Die Positivliste erlaubt beliebige Werte nur für Spaltenvorlagen (`grid-cols-[…]`, `grid-rows-[…]`), Pseudo-Element-Inhalt (`content-['']`, `content-[attr(…)]`), Übergangslisten aus CSS-Eigenschaften (`transition-[rotate,color]`), Werte mit `env(safe-area-inset-…)` sowie Höhen und Breiten in Viewport-Einheiten (`min-h-[50vh]`, `max-h-[calc(100dvh-8rem)]`). Der Inhalt von Varianten mit Klammern (`data-[…]:`, `@min-[…]:`) und Attributselektoren wie `[inert]` gilt nicht als Gestaltungswert und wird nicht als Wert geprüft. `eslint.config.test.ts` belegt jeden Regelteil mit Positiv- und Negativfall; für Important-Formen und Hover-Varianten übersetzt es jede Klasse zusätzlich mit `compile` aus `tailwindcss` gegen `src/index.css`, prüft das erzeugte CSS und lintet die Klasse als JSX-`className`. Was sich nicht maschinell prüfen lässt (Bedeutungs- und Auswahlregel für Farbe, ein rechtes Panel, Plex Mono für Kennungen, `tabular-nums`, keine Erklärprosa in Menüs), prüfen die Reviewer über die Regel `R25-gestaltungssystem` in `scripts/review-policy.rules.mjs`.
+
 ## Browser-Testlane
 
 `npm run test` läuft vollständig in jsdom und schließt Dateien unter `src/test/browser/**/*.browser.test.ts` explizit aus (Ausschluss in `vite.config.ts`).
@@ -61,6 +83,8 @@ Der WebSocket-Zustand liegt im `window` des aktuellen Testframes, weil die Brows
 Jeder innere Lauf **muss** mit genau einem Marker fehlschlagen, der zum ausgewählten Fall, zur erwarteten HTTP-Methode und zum erwarteten Loopback-Pfad passt. Das Wrapper-Skript wird nur dann grün, wenn Vitests JSON-Report exakt diesen einen fehlgeschlagenen Test enthält. Eine falsche Methode, mehrere Marker, ein zusätzlicher Verstoß, ein unerwartet grüner Lauf, weitere Testfehler, Timeouts oder Runner-Signale lassen auch den Wrapper scheitern.
 
 Die Hook-Grenze erfasst keine Browser-Aufgabe, die erst *nach* Ende des Tests einen Request startet. Dafür ist eine veränderte Testlaufzeit-Architektur erforderlich, kein Timeout.
+
+`src/test/browser/visualRegression.browser.test.ts` vergleicht Katalogliste, Control-Detail, Filter (Desktop: Filterpanel mit aktivem Aufwandsfilter, Mobil: geöffnetes Filter-Sheet) und Suchergebnisse bei 1440 × 900 und 390 × 844 px mit Referenzbildern `…-chromium-linux.png` unter `src/test/browser/__screenshots__/visualRegression.browser.test.ts/`. Die Ansichten rendern den synthetischen Katalog aus `a11yCatalogState.ts` mit den selbst gehosteten Schriften aus `public/fonts/`; Animationen sind für die Aufnahme abgeschaltet. Die Datei läuft nur, wenn `GSPP_VISUAL_REGRESSION=1` gesetzt ist (`provide` in `vitest.browser.config.ts`); in `npm run test:browser` bleibt sie übersprungen. `scripts/visual-regression.mjs` startet sie im Docker-Image `mcr.microsoft.com/playwright`, gepinnt per Digest auf die `playwright`-Version aus `package-lock.json`: `npm run test:browser:visual` vergleicht (Schritt im CI-Job `validate`), `npm run test:browser:update-references` schreibt die Referenzen neu. Das Skript bricht ab, wenn Lockfile-Version und Pin auseinanderlaufen. Das Skript ruft den Docker-Client nur an festen Pfaden auf (`/usr/bin`, `/usr/local/bin`, `/opt/homebrew/bin`), nicht über `PATH`. Der Container liest den Checkout nur lesend und installiert die Abhängigkeiten in einer eigenen Kopie; der Update-Modus bindet das Referenzverzeichnis beschreibbar ein, der Prüfmodus nur `.vitest/visual-regression/`, wohin er bei einem Fehlschlag Ist- und Differenzbilder kopiert. Im CI-Job `validate` lädt der Schritt „Archive visual regression failures“ dieses Verzeichnis nach einem Fehlschlag als Artefakt `visual-regression-failures` hoch. Chromium auf dem GitHub-Runner rastert Schrift anders als im Image (rund 1 % abweichende Pixel je Ansicht), deshalb laufen Erzeugung und Vergleich im selben Image. `.gitignore` lässt in diesem Verzeichnis nur `*-chromium-linux.png` zu.
 
 Die Browser-Lane erzeugt keine Coverage-Ausgabe. Die verbindlichen V8-Coverage-Schwellen bleiben ausschließlich in der jsdom-Lane (`npm run test:coverage`): Lines 87, Branches 77, Functions 88, Statements 85 (`vite.config.ts`).
 
@@ -298,10 +322,12 @@ src/                              # Anwendungsquellcode
 │   │   ├── browserEgressGuard.ts         # Playwright-Egress-Guard
 │   │   ├── browserSafeArea.ts            # CSS-env-Safe-Area-Inset über CDP für Sheet-Geometrieprüfungen
 │   │   ├── browserFontSize.ts            # Browser-Standardschrift über CDP für rem-Breakpoint-Tests
+│   │   ├── browserReducedMotion.ts       # Emuliertes prefers-reduced-motion für die Kaskadenprüfung
 │   │   ├── browserSetup.ts               # Setup der Browser-Lane mit Egress-Prüfung
 │   │   ├── browserTouchInput.ts          # Echte Touch-Eingaben über CDP für Gestentests
 │   │   ├── egressOracleContract.d.mts    # Typen der Negativfälle
 │   │   ├── egressOracleContract.mjs      # Negativfälle des Egress-Orakels
+│   │   ├── __screenshots__/              # Linux-Referenzbilder der visuellen Regression
 │   │   ├── mobileDrawerHarness.ts        # App-Shell-Aufbau der Drawer-Browser-Tests
 │   │   └── tabletCatalogFixture.ts       # Katalogzustand mit langer Liste und vollen Details für Tablet-Prüfungen
 │   ├── fixtures/                     # Testfixtures, darunter der NIST-Orakelkorpus
@@ -313,7 +339,7 @@ src/                              # Anwendungsquellcode
 │   ├── oscalRoundTrip.ts             # No-op-Round-trip-Harnisch
 │   ├── oscalStructure.ts             # Strukturorakel (Zählregeln A und B)
 │   └── renderAppShell.tsx            # Rendert die Shell mit echter Routentabelle für Komponententests
-├── index.css                     # Tailwind-Einstieg und Design-Tokens
+├── index.css                     # Tailwind-Einstieg und einzige Quelle der Gestaltungstokens
 ├── main.tsx                      # Einstiegspunkt
 ├── test-setup.ts                 # Vitest-Setup der jsdom-Lane
 └── vite-env.d.ts                 # Typen der Vite-Umgebungsvariablen
@@ -375,6 +401,7 @@ scripts/                          # Build-, CI- und Wartungsskripte
 ├── verify-oscal-schemas.mjs          # Netzfreie Integritätsprüfung der Schemas
 ├── verify-upstream-oscal.mjs         # Gepinnter go-oscal-Korpuslauf
 ├── verifyDeployment.mjs              # Prüfbefehl für eine Live-Datei gegen das attestierte Manifest
+├── visual-regression.mjs            # Visuelle Regression im gepinnten Playwright-Container
 ├── vitest.corpus.config.ts           # Vitest-Lane des Bauzeitlaufs
 ├── vocabulary-utils.mjs              # CSV-/Namespace-Hilfsfunktionen
 └── workflowDefinitions.mjs           # Gemeinsame Sammlung der Workflow- und Action-Definitionen
