@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactNode, SyntheticEvent } from 'react';
+import { REDUCED_MOTION_QUERY } from '@/hooks/breakpointQueries';
 import { keepInVisibleArea } from './tooltipPlacement';
 
 export interface TooltipProps {
@@ -108,7 +109,7 @@ export function Tooltip({
   // prefers-reduced-motion-Wächter: gatet nur Transition/Animation, nie die Messung.
   const prefersReducedMotion =
     globalThis.window !== undefined &&
-    globalThis.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    globalThis.matchMedia(REDUCED_MOTION_QUERY).matches;
 
   // Der Tooltip bleibt versteckt im DOM, damit `aria-describedby` schon beim
   // Fokus auf einen vorhandenen Beschreibungstext zeigt.

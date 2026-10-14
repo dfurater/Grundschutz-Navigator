@@ -247,4 +247,64 @@ describe('useBottomSheetDrag', () => {
     act(() => vi.advanceTimersByTime(1_000));
     expect(onDismiss).not.toHaveBeenCalled();
   });
+
+  describe('bei reduzierter Bewegung', () => {
+    function preferReducedMotion() {
+      vi.spyOn(globalThis, 'matchMedia').mockImplementation((query: string) => ({
+        matches: query === '(prefers-reduced-motion: reduce)',
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      }));
+    }
+
+    it('entlässt das Sheet ohne Transition und ohne Wartezeit', () => {
+      vi.useFakeTimers();
+      preferReducedMotion();
+      const refs = setupSheet();
+      const onDismiss = vi.fn();
+      vi.spyOn(Date, 'now').mockReturnValue(1_000);
+      renderHook(() => useBottomSheetDrag({ ...refs, onDismiss }));
+
+      refs.handle.dispatchEvent(touchEvent('touchstart', 100));
+      refs.handle.dispatchEvent(touchEvent('touchmove', 221));
+      refs.handle.dispatchEvent(touchEvent('touchend', 221));
+
+      expect(refs.sheet.style.transition).toBe('none');
+      expect(refs.backdrop.style.transition).toBe('none');
+      act(() => vi.advanceTimersByTime(0));
+      expect(onDismiss).toHaveBeenCalledOnce();
+    });
+
+    it('federt ohne Transition zurück', () => {
+      preferReducedMotion();
+      const refs = setupSheet();
+      vi.spyOn(Date, 'now').mockReturnValue(1_000);
+      renderHook(() => useBottomSheetDrag({ ...refs, onDismiss: vi.fn() }));
+
+      refs.handle.dispatchEvent(touchEvent('touchstart', 100));
+      refs.handle.dispatchEvent(touchEvent('touchmove', 120));
+      refs.handle.dispatchEvent(touchEvent('touchend', 120));
+
+      expect(refs.sheet.style.transform).toBe('');
+      expect(refs.sheet.style.transition).toBe('none');
+      expect(refs.backdrop.style.transition).toBe('none');
+    });
+  });
+
+  it('animiert ohne reduzierte Bewegung mit der Token-Transition', () => {
+    const refs = setupSheet();
+    vi.spyOn(Date, 'now').mockReturnValue(1_000);
+    renderHook(() => useBottomSheetDrag({ ...refs, onDismiss: vi.fn() }));
+
+    refs.handle.dispatchEvent(touchEvent('touchstart', 100));
+    refs.handle.dispatchEvent(touchEvent('touchmove', 120));
+    refs.handle.dispatchEvent(touchEvent('touchend', 120));
+
+    expect(refs.sheet.style.transition).toBe('transform var(--duration-normal) var(--easing-default)');
+  });
 });

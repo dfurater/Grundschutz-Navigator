@@ -29,7 +29,7 @@ export function Footer({ className = '' }: FooterProps) {
     >
       <div className="flex flex-wrap items-center gap-x-3 text-[var(--color-text-secondary)]">
         <div className="flex min-w-0 basis-full flex-wrap items-center gap-x-3 desktop:basis-auto desktop:flex-1 desktop:flex-nowrap">
-          <span className="hidden shrink-0 whitespace-nowrap font-medium tracking-[0.02em] text-[var(--color-text-primary)] xl:inline">
+          <span className="hidden shrink-0 whitespace-nowrap font-medium tracking-wide text-[var(--color-text-primary)] xl:inline">
             Grundschutz++ Navigator
           </span>
           <span aria-hidden="true" className="hidden text-[var(--color-text-muted)] xl:inline">/</span>
