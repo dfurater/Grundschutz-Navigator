@@ -24,7 +24,7 @@ import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 import { useMobileDrawerPlacement } from '@/hooks/useMobileDrawerPlacement';
 import { useMobileDrawerResizeSnap } from '@/hooks/useMobileDrawerResizeSnap';
 import { useMobileDrawerSwipe } from '@/hooks/useMobileDrawerSwipe';
-import { DESKTOP_QUERY } from '@/hooks/breakpointQueries';
+import { DESKTOP_QUERY, OWN_SCROLL_AREA_QUERY } from '@/hooks/breakpointQueries';
 import { useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
 import { isCatalogKey } from '@/domain/sourceRegistry';
 import type { CatalogKey } from '@/domain/sourceRegistry';
@@ -91,6 +91,7 @@ function AppShellLayout() {
   // von `md`; persistent ist sie nur auf dem Desktop: breit und ohne Touch als
   // Eingabemöglichkeit (GSPP-514, GSPP-523).
   const isPersistentNav = useMediaQuery(DESKTOP_QUERY);
+  const ownsScrollArea = useMediaQuery(OWN_SCROLL_AREA_QUERY);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const {
     size: sidebarWidth,
@@ -157,6 +158,7 @@ function AppShellLayout() {
     isPersistentNav,
     isSidebarResizing || prefersReducedMotion,
     drawerRef,
+    ownsScrollArea,
   );
   const mobileNavShown = mobileNavOpen || swipe.previewing;
   // Feste Elemente der Seite treten zurück, bis `main` nach dem Schließen
