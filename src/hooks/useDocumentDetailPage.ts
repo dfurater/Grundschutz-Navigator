@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from 'react';
-import { useGlobalEventListener } from './useGlobalEventListener';
+import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 
 /** Detailseite im Dokumentfluss: Nur Escape aus ihr oder vom `body` schließt sie. */
 export const DETAIL_PAGE_SELECTOR = '[data-control-detail-page]';
@@ -53,6 +53,8 @@ export interface UseDocumentDetailPageOptions {
  */
 export function useDocumentDetailPage({ enabled, controlId, scopeKey, listReady, onClose }: UseDocumentDetailPageOptions): void {
   const listScrollYRef = useRef(0);
+  // Die Dokumentposition gehört zur mobilen Liste ihres eigenen Bereichs.
+  const listScrollScopeKeyRef = useRef<string | null>(null);
   // Bereich der zuletzt sichtbaren Liste; `null` nach einem Direktaufruf.
   const listScopeKeyRef = useRef<string | null>(null);
   // Kontrolle, mit der die Seite aus der Liste (oder per Direktaufruf) geöffnet
@@ -63,6 +65,16 @@ export function useDocumentDetailPage({ enabled, controlId, scopeKey, listReady,
   const listVisible = enabled && controlId === null;
   // Während ein Katalog lädt, gibt es noch keine Liste: kein Bereich, keine Position.
   const listShown = listVisible && listReady;
+
+  // Beide Detailansichten erfassen den Ursprung unabhängig von ihrer Breite.
+  // Damit bleiben Zeile und Bereich auch nach Querverweisen vor dem Eintritt
+  // in die Dokumentansicht erhalten; Scrollpositionen bleiben layoutbezogen.
+  useLayoutEffect(() => {
+    if (controlId === null && listReady) listScopeKeyRef.current = scopeKey;
+    if (controlId !== null) {
+      openedRef.current ??= { controlId, scopeKey: listScopeKeyRef.current };
+    }
+  }, [controlId, scopeKey, listReady]);
 
   useLayoutEffect(() => {
     if (!enabled || controlId !== null) pendingFocusRef.current = null;
@@ -82,7 +94,8 @@ export function useDocumentDetailPage({ enabled, controlId, scopeKey, listReady,
     if (opened === null) return;
     openedRef.current = null;
     const sameScope = opened.scopeKey === null || opened.scopeKey === scopeKey;
-    globalThis.scrollTo(0, sameScope ? listScrollYRef.current : 0);
+    const restoreScroll = sameScope && listScrollScopeKeyRef.current === scopeKey;
+    globalThis.scrollTo(0, restoreScroll ? listScrollYRef.current : 0);
     pendingFocusRef.current = { rowControlId: sameScope ? opened.controlId : null };
   }, [enabled, controlId, scopeKey]);
 
@@ -102,6 +115,7 @@ export function useDocumentDetailPage({ enabled, controlId, scopeKey, listReady,
   useLayoutEffect(() => {
     if (!listShown) return;
     listScrollYRef.current = globalThis.scrollY;
+    listScrollScopeKeyRef.current = scopeKey;
     listScopeKeyRef.current = scopeKey;
   }, [listShown, scopeKey]);
   useGlobalEventListener('window', 'scroll', () => {
