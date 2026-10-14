@@ -122,6 +122,12 @@ describe('Gestaltungssystem-Regel (GSPP-533)', () => {
     ['Hintergrundfilter über Token', 'backdrop-blur-[var(--radius-lg)]', 'backdrop'],
     ['Schatten über Token außerhalb des Vokabulars', 'drop-shadow-[var(--shadow-overlay)]', 'shadow'],
     ['Hover-Deckkraft mit Modifier', 'hover:opacity-50/50', 'hoverOpacity'],
+    ['Rohwert neben einem Token', 'shadow-[0_0_8px_var(--color-focus-ring)]', 'arbitraryValue'],
+    ['Rechnung mit Token', 'rounded-[calc(var(--radius-md)-2px)]', 'arbitraryValue'],
+    ['Verlauf als Arbitrary Property mit Tokens', '[background-image:linear-gradient(var(--color-a),var(--color-b))]', 'gradient'],
+    ['Hintergrundfilter als Arbitrary Property mit Token', '[backdrop-filter:blur(var(--radius-lg))]', 'backdrop'],
+    ['Schatten als Arbitrary Property mit Token', '[box-shadow:var(--shadow-overlay)]', 'shadow'],
+    ['Schlagschatten-Filter als Arbitrary Property', '[filter:drop-shadow(var(--shadow-sm))]', 'shadow'],
   ])('meldet %s (%s) als Fehler', async (_label, classes, messageId) => {
     expect(await designFindings(`p-4 ${classes}`)).toEqual([
       expect.objectContaining({ ruleId: RULE, severity: 2, messageId }),
@@ -132,6 +138,7 @@ describe('Gestaltungssystem-Regel (GSPP-533)', () => {
     ['Token über var()', 'text-[var(--color-text-primary)] shadow-[var(--shadow-overlay)]'],
     ['Token-Utilities', 'min-h-touch h-panel-head shadow-footer shadow-sm shadow-overlay text-2xs text-xl text-lg/title rounded rounded-lg rounded-full tracking-wide'],
     ['Modifier mit Token oder Skalenwert', 'bg-black/50 text-sm/[var(--leading-title)] w-1/2'],
+    ['Token mit Typhinweis oder Fallback', 'border-[length:var(--border-x)] w-[var(--control-id-column,auto)] [--x:var(--y)]'],
     ['Spaltenvorlage', 'grid-cols-[auto_1fr] sm:grid-rows-[3.5rem_1fr]'],
     ['Pseudo-Element-Inhalt', "after:content-[''] after:content-[attr(data-label)]"],
     ['Übergangsliste', 'transition-[rotate,color]'],

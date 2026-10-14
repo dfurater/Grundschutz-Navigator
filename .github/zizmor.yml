@@ -68,8 +68,9 @@ rules:
   # und +5 (Scope-Step direkt hinter Lint aus Codex-P1: Fail-fast GSPP-424).
   # Zuletzt in GSPP-443 um +3 (Guard-Kommentar +2 auf den Toolchain-Vertrag
   # umgeschrieben, Cache-Kommentar +1 ohne Versionsliterale). In GSPP-465 um
-  # +7 (Manifest-Check hinter dem Build). In GSPP-533 um +9 (visuelle
-  # Regression im Playwright-Container hinter den Browser-Tests).
+  # +7 (Manifest-Check hinter dem Build). In GSPP-533 um +20 (visuelle
+  # Regression im Playwright-Container samt Upload der Fehlerbilder hinter
+  # den Browser-Tests).
   secrets-outside-env:
     ignore:
       - backmerge-main-to-develop.yml:51:28
@@ -77,5 +78,5 @@ rules:
       - sonar.yml:61:38
       - sonar.yml:88:28
       - update-catalog.yml:50:28
-      - validate.yml:317:38
-      - validate.yml:332:28
+      - validate.yml:328:38
+      - validate.yml:343:28

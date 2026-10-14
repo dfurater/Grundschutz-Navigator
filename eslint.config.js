@@ -53,6 +53,18 @@ const FORBIDDEN_UTILITIES = [
 
 const HOVER_VARIANTS = new Set(['hover', 'group-hover', 'peer-hover']);
 
+// Ein Wert gilt als Token, wenn er genau ein `var(--…)` ist, wahlweise mit
+// Typhinweis (`length:`) und Fallback ohne weitere Funktion.
+const TOKEN_VALUE = /^(?:[a-z-]+:)?var\(--[\w-]+(?:,[^()]*)?\)$/;
+
+// Arbitrary Properties, die Verlauf, Hintergrundfilter oder Schatten setzen.
+function forbiddenProperty(property, value) {
+  if (/^(?:-webkit-)?backdrop-filter$/.test(property)) return 'backdrop';
+  if (/^(?:box|text)-shadow$/.test(property) || (property === 'filter' && value.includes('drop-shadow('))) return 'shadow';
+  if (value.includes('gradient(')) return 'gradient';
+  return null;
+}
+
 // Positivliste für beliebige Werte ohne Token. Jeder Eintrag deckt eine Form,
 // für die es kein Gestaltungstoken geben kann.
 const ARBITRARY_VALUE_ALLOWLIST = [
@@ -96,18 +108,22 @@ function checkClassToken(token) {
   const base = utility.replace(/\/(?:\[[^\]]*\]|\([^)]*\)|[\w.-]+)$/, '');
   const forbidden = FORBIDDEN_UTILITIES.find(({ pattern }) => pattern.test(base));
   if (forbidden) return forbidden.messageId;
-  if (/^opacity-/.test(base) && variants.some((variant) => HOVER_VARIANTS.has(variant))) {
+  if (base.startsWith('opacity-') && variants.some((variant) => HOVER_VARIANTS.has(variant))) {
     return 'hoverOpacity';
   }
 
   if (utility.startsWith('[')) {
     // Ohne `eigenschaft:wert` ist es ein Attributselektor wie `[inert]`, keine Klasse.
-    if (!/^\[[a-z-]+:.+\]$/.test(utility)) return null;
-    return utility.includes('var(--') ? null : 'arbitraryProperty';
+    const property = /^\[([a-z-]+):(.+)\]$/.exec(utility);
+    if (!property) return null;
+    const forbiddenByProperty = forbiddenProperty(property[1], property[2]);
+    if (forbiddenByProperty) return forbiddenByProperty;
+    return TOKEN_VALUE.test(property[2]) ? null : 'arbitraryProperty';
   }
   // Beliebiger Wert (`-[…]`) oder beliebiger Modifier (`/[…]`, etwa eine rohe Zeilenhöhe).
-  if (/[-/]\[/.test(utility)) {
-    if (utility.includes('var(--')) return null;
+  const arbitrary = /[-/]\[(.*)\]$/.exec(utility);
+  if (arbitrary) {
+    if (TOKEN_VALUE.test(arbitrary[1])) return null;
     if (ARBITRARY_VALUE_ALLOWLIST.some((allowed) => allowed(utility))) return null;
     return 'arbitraryValue';
   }
