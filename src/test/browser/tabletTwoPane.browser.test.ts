@@ -18,7 +18,7 @@ import '@/index.css';
  * (`tabletCatalogFixture.ts`) trägt volle Detailinhalte und eine lange Liste.
  */
 
-const catalogState = createTabletCatalogState();
+let catalogState = createTabletCatalogState();
 const originalClipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
 
 vi.mock('@/hooks/useCatalog', () => ({
@@ -234,6 +234,64 @@ test('hält den Tablet-Kopf beim Kopierfehler gleich hoch und scrollt den Fallba
   ))).toBe(true);
   await userEvent.click(retryButton);
   expect(panel.querySelector('[aria-label="Direktlink zum manuellen Kopieren"]')).toBe(fallback);
+});
+
+test('macht das vollständige Tablet-Detail bei kurzem Panel und langem Titel scrollbar', async () => {
+  const originalState = catalogState;
+  catalogState = createTabletCatalogState({
+    'TOP.1.1.1': { title: 'Deaktivierung der Ausgabe schützenswerter Daten durch Fehlermeldungen' },
+  });
+
+  try {
+    const { shell } = await renderCatalog(844, '/katalog/gspp', 300, true);
+    await userEvent.click(rowButton(shell, 'TOP.1.1.1'));
+    await expect.poll(() => tabletPanel(shell)).not.toBeNull();
+
+    const panel = tabletPanel(shell);
+    const detail = panel.firstElementChild?.firstElementChild as HTMLElement;
+    const title = panel.querySelector('[data-control-detail-title]') as HTMLElement;
+    const requirement = [...panel.querySelectorAll('h1, h2, h3, h4')]
+      .find((heading) => heading.textContent?.includes('Anforderung')) as HTMLElement;
+    const requirementText = requirement.closest('section')?.querySelector('p') as HTMLElement;
+    const panelBox = panel.getBoundingClientRect();
+    const detailBox = detail.getBoundingClientRect();
+    const footer = shell.querySelector('footer') as HTMLElement;
+
+    expect(panelBox.bottom).toBeLessThanOrEqual(footer.getBoundingClientRect().top + 1);
+    expect(detailBox.top).toBeGreaterThanOrEqual(panelBox.top - 1);
+    expect(detailBox.bottom).toBeLessThanOrEqual(panelBox.bottom + 1);
+    expect(detail).toHaveAttribute('data-control-detail-scroll');
+    expect(detail.scrollHeight).toBeGreaterThan(detail.clientHeight);
+
+    detail.scrollTop = title.getBoundingClientRect().bottom - detail.getBoundingClientRect().bottom;
+    await expect.poll(() => title.getBoundingClientRect().bottom)
+      .toBeLessThanOrEqual(panel.getBoundingClientRect().bottom + 1);
+    const titleBox = title.getBoundingClientRect();
+    expect(panel.contains(document.elementFromPoint(
+      (titleBox.left + titleBox.right) / 2,
+      (titleBox.top + titleBox.bottom) / 2,
+    ))).toBe(true);
+
+    detail.scrollTop += requirementText.getBoundingClientRect().top - detail.getBoundingClientRect().top;
+    await expect.poll(() => requirementText.getBoundingClientRect().top)
+      .toBeGreaterThanOrEqual(panel.getBoundingClientRect().top - 1);
+    const requirementStart = requirementText.getBoundingClientRect();
+    expect(panel.contains(document.elementFromPoint(
+      (requirementStart.left + requirementStart.right) / 2,
+      requirementStart.top + 2,
+    ))).toBe(true);
+
+    detail.scrollTop += requirementText.getBoundingClientRect().bottom - detail.getBoundingClientRect().bottom;
+    await expect.poll(() => requirementText.getBoundingClientRect().bottom)
+      .toBeLessThanOrEqual(panel.getBoundingClientRect().bottom + 1);
+    const requirementTextBox = requirementText.getBoundingClientRect();
+    expect(panel.contains(document.elementFromPoint(
+      (requirementTextBox.left + requirementTextBox.right) / 2,
+      requirementTextBox.bottom - 2,
+    ))).toBe(true);
+  } finally {
+    catalogState = originalState;
+  }
 });
 
 test.each([768, 1023])('gibt bei %i px nach herausgescrollter Zeile Fokus und Sichtbarkeit an die Zeile zurück', async (width) => {
