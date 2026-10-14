@@ -57,5 +57,5 @@ export function NavigationPendingProvider({ children }: { readonly children: Rea
  * meldet `DialogNavigationStatus` im Dialog denselben Zustand.
  */
 export function NavigationPendingIndicator() {
-  return <NavigationPendingStatus className="fixed left-1/2 top-[4.25rem] z-50" />;
+  return <NavigationPendingStatus className="fixed left-1/2 top-17 z-50" />;
 }

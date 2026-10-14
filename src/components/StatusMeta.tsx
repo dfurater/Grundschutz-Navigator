@@ -90,7 +90,7 @@ export interface RelevanceScaleProps {
  */
 export function RelevanceScale({ value }: RelevanceScaleProps) {
   return (
-    <span className="flex h-[1.625em] items-center gap-0.5">
+    <span className="flex h-lh items-center gap-0.5">
       {Array.from({ length: RELEVANCE_SCALE_MAX }, (_, index) => (
         <span
           key={index}

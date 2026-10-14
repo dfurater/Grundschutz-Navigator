@@ -19,6 +19,24 @@ Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application 
 | Testing | Vitest + @testing-library/react + jsdom + Chromium-Browser-Lane; jsdom parst im Build zusätzlich die gebaute HTML-Auslieferung für den Titelvertrag |
 | Deployment | GitHub Pages (via GitHub Actions) |
 
+## Gestaltungssystem
+
+`src/index.css` ist die einzige Quelle der Gestaltungswerte. Der `@theme`-Block führt Farben, sechs Schriftgrößen (`text-2xs` 10px, `text-xs` 12px, `text-sm` 14px, `text-base` 16px, `text-lg` 18px, `text-xl` 20px), die Laufweiten `tracking-wide` und `tracking-wider`, die Radien `rounded`/`rounded-sm` (4px), `rounded-md` (6px), `rounded-lg` (8px), vier Schatten (`shadow-sm`, `shadow-overlay`, `shadow-footer`, `shadow-grip-start`/`shadow-grip-end`), die Bewegungswerte `--duration-*`/`--easing-*` sowie die Maße `touch` (44px) und `panel-head` (51px), die als Utilities wie `min-h-touch` oder `h-panel-head` nutzbar sind. Für Schriftgrößen, Laufweiten, Radien und Schatten setzt `@theme` den Tailwind-Namensraum mit `initial` zurück; `text-2xl`, `rounded-xl` oder `shadow-md` erzeugen deshalb kein CSS.
+
+Die ESLint-Regel `design-system/no-off-system-classes` (lokales Plugin in `eslint.config.js`) prüft jedes String- und Template-Literal in `src/features/**`, `src/app/**` und `src/components/**` außer Testdateien und meldet als Fehler:
+
+| Befund | Beispiel |
+| --- | --- |
+| Beliebiger Wert ohne `var(--…)` außerhalb der Positivliste | `text-[13px]`, `md:h-[51px]` |
+| Beliebige Eigenschaft ohne `var(--…)` | `[overflow-wrap:anywhere]` |
+| Schatten außerhalb des Vokabulars, auch `shadow` ohne Stufe | `shadow-lg` |
+| Radius über 8px | `rounded-2xl` |
+| Schriftgröße über 20px | `text-2xl` |
+| Verlauf oder Hintergrundfilter | `bg-linear-to-r`, `backdrop-blur-sm` |
+| Deckkraft unter `hover:`, `group-hover:` oder `peer-hover:` | `hover:opacity-80` |
+
+Die Positivliste erlaubt beliebige Werte nur für Spaltenvorlagen (`grid-cols-[…]`, `grid-rows-[…]`), Pseudo-Element-Inhalt (`content-['']`, `content-[attr(…)]`), Übergangslisten aus CSS-Eigenschaften (`transition-[rotate,color]`), Werte mit `env(safe-area-inset-…)` sowie Höhen und Breiten in Viewport-Einheiten (`min-h-[50vh]`, `max-h-[calc(100dvh-8rem)]`). Varianten mit Klammern (`data-[…]:`, `@min-[…]:`) und Attributselektoren wie `[inert]` sind keine Gestaltungswerte und bleiben ungeprüft. `eslint.config.test.ts` belegt jeden Regelteil mit Positiv- und Negativfall. Was sich nicht maschinell prüfen lässt (Bedeutungs- und Auswahlregel für Farbe, ein rechtes Panel, Plex Mono für Kennungen, `tabular-nums`, keine Erklärprosa in Menüs), prüfen die Reviewer über die Regel `R25-gestaltungssystem` in `scripts/review-policy.rules.mjs`.
+
 ## Browser-Testlane
 
 `npm run test` läuft vollständig in jsdom und schließt Dateien unter `src/test/browser/**/*.browser.test.ts` explizit aus (Ausschluss in `vite.config.ts`).
@@ -61,6 +79,8 @@ Der WebSocket-Zustand liegt im `window` des aktuellen Testframes, weil die Brows
 Jeder innere Lauf **muss** mit genau einem Marker fehlschlagen, der zum ausgewählten Fall, zur erwarteten HTTP-Methode und zum erwarteten Loopback-Pfad passt. Das Wrapper-Skript wird nur dann grün, wenn Vitests JSON-Report exakt diesen einen fehlgeschlagenen Test enthält. Eine falsche Methode, mehrere Marker, ein zusätzlicher Verstoß, ein unerwartet grüner Lauf, weitere Testfehler, Timeouts oder Runner-Signale lassen auch den Wrapper scheitern.
 
 Die Hook-Grenze erfasst keine Browser-Aufgabe, die erst *nach* Ende des Tests einen Request startet. Dafür ist eine veränderte Testlaufzeit-Architektur erforderlich, kein Timeout.
+
+`src/test/browser/visualRegression.browser.test.ts` vergleicht Katalogliste, Control-Detail, Filter (Desktop: Filterpanel mit aktivem Aufwandsfilter, Mobil: geöffnetes Filter-Sheet) und Suchergebnisse bei 1440 × 900 und 390 × 844 px mit Referenzbildern unter `src/test/browser/__screenshots__/visualRegression.browser.test.ts/`. Die Ansichten rendern den synthetischen Katalog aus `a11yCatalogState.ts` mit den selbst gehosteten Schriften aus `public/fonts/`; Animationen sind für die Aufnahme abgeschaltet. Vitest sucht die Referenz unter dem Namen `<ansicht>-chromium-<plattform>.png`. Eingecheckt sind nur `…-chromium-linux.png`-Referenzen für die CI-Lane auf `ubuntu-latest`; auf anderen Plattformen überspringt die Datei ihre Tests. `npm run test:browser:update-references` (`scripts/update-visual-references.mjs`) erzeugt die Referenzen neu im Docker-Image `mcr.microsoft.com/playwright` mit der Playwright-Version aus `package-lock.json`; der Container liest den Checkout nur lesend, installiert die Abhängigkeiten in einer eigenen Kopie und schreibt ausschließlich in das Referenzverzeichnis. Eine fehlende oder abweichende Referenz lässt den Test fehlschlagen.
 
 Die Browser-Lane erzeugt keine Coverage-Ausgabe. Die verbindlichen V8-Coverage-Schwellen bleiben ausschließlich in der jsdom-Lane (`npm run test:coverage`): Lines 87, Branches 77, Functions 88, Statements 85 (`vite.config.ts`).
 
@@ -302,6 +322,7 @@ src/                              # Anwendungsquellcode
 │   │   ├── browserTouchInput.ts          # Echte Touch-Eingaben über CDP für Gestentests
 │   │   ├── egressOracleContract.d.mts    # Typen der Negativfälle
 │   │   ├── egressOracleContract.mjs      # Negativfälle des Egress-Orakels
+│   │   ├── __screenshots__/              # Linux-Referenzbilder der visuellen Regression
 │   │   ├── mobileDrawerHarness.ts        # App-Shell-Aufbau der Drawer-Browser-Tests
 │   │   └── tabletCatalogFixture.ts       # Katalogzustand mit langer Liste und vollen Details für Tablet-Prüfungen
 │   ├── fixtures/                     # Testfixtures, darunter der NIST-Orakelkorpus
@@ -313,7 +334,7 @@ src/                              # Anwendungsquellcode
 │   ├── oscalRoundTrip.ts             # No-op-Round-trip-Harnisch
 │   ├── oscalStructure.ts             # Strukturorakel (Zählregeln A und B)
 │   └── renderAppShell.tsx            # Rendert die Shell mit echter Routentabelle für Komponententests
-├── index.css                     # Tailwind-Einstieg und Design-Tokens
+├── index.css                     # Tailwind-Einstieg und einzige Quelle der Gestaltungstokens
 ├── main.tsx                      # Einstiegspunkt
 ├── test-setup.ts                 # Vitest-Setup der jsdom-Lane
 └── vite-env.d.ts                 # Typen der Vite-Umgebungsvariablen
@@ -366,6 +387,7 @@ scripts/                          # Build-, CI- und Wartungsskripte
 ├── sync-upstream-manifest.mjs        # Manifest-Sync für update-catalog.yml
 ├── taxonomy-coverage.mjs             # Integrität und Coverage der Taxonomie-Vokabulare
 ├── transientRetry.mjs                # Gemeinsamer transienter Abruf der Lieferkette
+├── update-visual-references.mjs      # Referenzbilder der visuellen Regression im Playwright-Container
 ├── upstream-artifacts.mjs            # Tree-Diff, Manifest v2 und Root-Prüfung
 ├── upstream-corpus-cache.mjs         # Korpus-Cache des Bauzeitlaufs
 ├── verify-browser-egress.mjs         # Negativläufe des Browser-Egress-Guards

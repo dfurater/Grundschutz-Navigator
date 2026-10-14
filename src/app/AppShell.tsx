@@ -313,13 +313,13 @@ function AppShellLayout() {
             voller Höhe, die Scroll-Sperre hält sie dort
             (`useMobileDrawerPlacement`). Als Push-Drawer schiebt sie
             App-Kopf, Inhalt und Abdunklung um ihre Breite nach rechts
-            (`mobile-nav-push`, src/index.css). Die Abdunklung (`z-[35]`) liegt
+            (`mobile-nav-push`, src/index.css). Die Abdunklung (`z-35`) liegt
             über dem App-Kopf (`z-30`), die Schublade (`z-40`) über beiden. Die
             Abdunklung bleibt geschlossen eingehängt, damit sie aus- und
             einblenden kann; ohne Deckkraft lässt sie Zeiger durch. */}
         <div
           ref={backdropRef}
-          className="mobile-nav-backdrop mobile-nav-push absolute inset-x-0 -top-14 bottom-0 z-[35] touch-none desktop:hidden"
+          className="mobile-nav-backdrop mobile-nav-push absolute inset-x-0 -top-14 bottom-0 z-35 touch-none desktop:hidden"
           data-testid="mobile-nav-backdrop"
           data-state={mobileNavShown ? 'open' : 'closed'}
           onClick={closeSideNav}
