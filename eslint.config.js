@@ -62,9 +62,13 @@ const isHoverVariant = (variant) => variant.includes('hover');
 const TOKEN_VALUE =
   /^(?:[a-z-]+:)?var\(--[\w-]+(?:,(?:auto|none|inherit|initial|unset|currentColor|transparent|0|var\(--[\w-]+\)))?\)$/;
 
+// CSS-Eigenschaftsnamen sind ASCII-case-insensitive, und ein Herstellerpräfix
+// ändert die Wirkung nicht; benutzerdefinierte Eigenschaften (`--…`) bleiben unverändert.
+const normalizePropertyName = (name) => (name.startsWith('--') ? name : name.toLowerCase().replace(/^-[a-z]+-/, ''));
+
 // Arbitrary Properties, die Verlauf, Hintergrundfilter oder Schatten setzen.
 function forbiddenProperty(property, value) {
-  if (/^(?:-webkit-)?backdrop-filter$/.test(property)) return 'backdrop';
+  if (property === 'backdrop-filter') return 'backdrop';
   if (/^(?:box|text)-shadow$/.test(property) || (property === 'filter' && value.includes('drop-shadow('))) return 'shadow';
   if (value.includes('gradient(')) return 'gradient';
   return null;
@@ -103,16 +107,23 @@ function splitVariants(token) {
   return { variants: parts.slice(0, -1), utility: parts.at(-1) };
 }
 
-/** Prüft eine Arbitrary Property wie `[opacity:var(--x)]`. */
-function checkArbitraryProperty(utility, onHover) {
-  // Ohne `eigenschaft:wert` ist es ein Attributselektor wie `[inert]`, keine Klasse.
-  const property = /^\[([a-z-]+):(.+)\]$/.exec(utility);
-  if (!property) return null;
-  const [, name, value] = property;
+/**
+ * Prüft eine Arbitrary Property wie `[opacity:var(--x)]`; `base` ist die Klasse
+ * ohne Modifier, `modifier` der abgetrennte Rest wie `/50` oder `/[0.3]`.
+ */
+function checkArbitraryProperty(base, modifier, onHover) {
+  // Ohne Doppelpunkt ist es ein Attributselektor wie `[inert]`, keine Klasse.
+  if (!base.includes(':')) return null;
+  // Der Name reicht bis zum ersten Doppelpunkt; jede andere Form mit Doppelpunkt ist ein Befund.
+  const property = /^\[([^:]+):(.+)\]$/.exec(base);
+  if (!property) return 'arbitraryProperty';
+  const [, rawName, value] = property;
+  const name = normalizePropertyName(rawName);
   const forbidden = forbiddenProperty(name, value);
   if (forbidden) return forbidden;
   if (name === 'opacity' && onHover) return 'hoverOpacity';
-  return TOKEN_VALUE.test(value) ? null : 'arbitraryProperty';
+  if (!TOKEN_VALUE.test(value)) return 'arbitraryProperty';
+  return modifier.startsWith('/[') && !TOKEN_VALUE.test(modifier.slice(2, -1)) ? 'arbitraryValue' : null;
 }
 
 function checkClassToken(token) {
@@ -130,7 +141,7 @@ function checkClassToken(token) {
   if (forbidden) return forbidden.messageId;
   if (base.startsWith('opacity-') && onHover) return 'hoverOpacity';
 
-  if (utility.startsWith('[')) return checkArbitraryProperty(utility, onHover);
+  if (utility.startsWith('[')) return checkArbitraryProperty(base, utility.slice(base.length), onHover);
   // Jeder beliebige Wert (`-[…]`) und jeder beliebige Modifier (`/[…]`, etwa
   // eine rohe Zeilenhöhe) wird einzeln geprüft, auch vor einem Skalenmodifier
   // wie in `text-[13px]/6`.
