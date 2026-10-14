@@ -40,6 +40,11 @@ export default defineConfig({
     name: 'browser-chromium',
     include: ['src/test/browser/**/*.browser.test.ts'],
     setupFiles: ['./src/test/browser/browserSetup.ts'],
+    // Die visuelle Regression läuft nur im gepinnten Playwright-Container
+    // (`scripts/visual-regression.mjs` setzt die Variable).
+    provide: {
+      visualRegression: process.env.GSPP_VISUAL_REGRESSION === '1',
+    },
     globals: true,
     isolate: true,
     browser: {

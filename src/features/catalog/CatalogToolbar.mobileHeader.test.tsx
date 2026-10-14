@@ -38,7 +38,7 @@ describe('mobiler Header (GSPP-471)', () => {
 
     const heading = screen.getByRole('heading', { level: 1 });
     expect(heading).toHaveClass(
-      'text-lg/[1.35]',
+      'text-lg/title',
       'text-balance',
       'hyphens-auto',
       'line-clamp-2',

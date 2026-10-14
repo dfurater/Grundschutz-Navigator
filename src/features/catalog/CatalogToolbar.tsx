@@ -62,7 +62,7 @@ export function CatalogToolbar({
       <div className="w-full flex flex-col sm:flex-row sm:items-center sm:justify-between sm:gap-2 min-w-0">
         <div className="sm:flex sm:items-center sm:gap-2 min-w-0">
           {/* Rückkehrziel nach dem Schließen der mobilen Detailseite (`useDocumentDetailPage`). */}
-          <h1 data-catalog-scope-heading tabIndex={-1} className="text-lg/[1.35] text-balance hyphens-auto line-clamp-2 sm:line-clamp-none sm:truncate sm:text-base font-bold text-[var(--color-text-primary)] focus:outline-none">
+          <h1 data-catalog-scope-heading tabIndex={-1} className="text-lg/title text-balance hyphens-auto line-clamp-2 sm:line-clamp-none sm:truncate sm:text-base font-bold text-[var(--color-text-primary)] focus:outline-none">
             {title}
           </h1>
           <span

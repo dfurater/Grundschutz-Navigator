@@ -280,6 +280,8 @@
   --text-lg--line-height: calc(1.75 / 1.125);
   --text-xl: 1.25rem;
   --text-xl--line-height: calc(1.75 / 1.25);
+  /* Zeilenhöhe der Titel und kompakten Überschriften, etwa `text-lg/title`. */
+  --leading-title: 1.35;
 
   /* Laufweite */
   --tracking-*: initial;
@@ -302,6 +304,10 @@
   --shadow-footer: 0 -2px 8px rgb(0 0 0 / 0.06);
   --shadow-grip-start: -2px 0 8px -2px color-mix(in srgb, var(--color-primary-main) 20%, transparent);
   --shadow-grip-end: 2px 0 8px -2px color-mix(in srgb, var(--color-primary-main) 20%, transparent);
+  /* Außerhalb des Vokabulars: keine Schlagschatten-Filter, Innen- oder Textschatten. */
+  --drop-shadow-*: initial;
+  --inset-shadow-*: initial;
+  --text-shadow-*: initial;
 
   /* Maße: Touchziel und Höhe der Panelköpfe (Toolbar, Kontextwahl). */
   --spacing-touch: 44px;

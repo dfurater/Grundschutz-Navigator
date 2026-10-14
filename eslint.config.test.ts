@@ -112,6 +112,16 @@ describe('Gestaltungssystem-Regel (GSPP-533)', () => {
     ['Hintergrundfilter', 'backdrop-blur-sm', 'backdrop'],
     ['Hover-Deckkraft', 'hover:opacity-80', 'hoverOpacity'],
     ['Hover-Deckkraft über die Gruppe', 'group-hover:opacity-60', 'hoverOpacity'],
+    ['rohe Zeilenhöhe im Modifier', 'text-lg/[1.35]', 'arbitraryValue'],
+    ['rohe Deckkraft im Modifier', 'bg-black/[0.37]', 'arbitraryValue'],
+    ['Schlagschatten-Filter', 'drop-shadow-lg', 'shadow'],
+    ['Innenschatten', 'inset-shadow-sm', 'shadow'],
+    ['Textschatten', 'text-shadow-md', 'shadow'],
+    ['Radialverlauf ohne Stufe', 'bg-radial', 'gradient'],
+    ['Verlauf über Tokens', 'bg-[linear-gradient(var(--color-a),var(--color-b))]', 'gradient'],
+    ['Hintergrundfilter über Token', 'backdrop-blur-[var(--radius-lg)]', 'backdrop'],
+    ['Schatten über Token außerhalb des Vokabulars', 'drop-shadow-[var(--shadow-overlay)]', 'shadow'],
+    ['Hover-Deckkraft mit Modifier', 'hover:opacity-50/50', 'hoverOpacity'],
   ])('meldet %s (%s) als Fehler', async (_label, classes, messageId) => {
     expect(await designFindings(`p-4 ${classes}`)).toEqual([
       expect.objectContaining({ ruleId: RULE, severity: 2, messageId }),
@@ -120,7 +130,8 @@ describe('Gestaltungssystem-Regel (GSPP-533)', () => {
 
   it.each([
     ['Token über var()', 'text-[var(--color-text-primary)] shadow-[var(--shadow-overlay)]'],
-    ['Token-Utilities', 'min-h-touch h-panel-head shadow-footer shadow-sm shadow-overlay text-2xs text-xl rounded rounded-lg rounded-full tracking-wide'],
+    ['Token-Utilities', 'min-h-touch h-panel-head shadow-footer shadow-sm shadow-overlay text-2xs text-xl text-lg/title rounded rounded-lg rounded-full tracking-wide'],
+    ['Modifier mit Token oder Skalenwert', 'bg-black/50 text-sm/[var(--leading-title)] w-1/2'],
     ['Spaltenvorlage', 'grid-cols-[auto_1fr] sm:grid-rows-[3.5rem_1fr]'],
     ['Pseudo-Element-Inhalt', "after:content-[''] after:content-[attr(data-label)]"],
     ['Übergangsliste', 'transition-[rotate,color]'],

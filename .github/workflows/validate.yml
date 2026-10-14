@@ -210,6 +210,15 @@ jobs:
         if: steps.scope.outputs.scope == 'full'
         run: npm run test:browser:egress-negative
 
+      # GSPP-533: Die Screenshot-Referenzen entstehen im per Digest gepinnten
+      # Playwright-Image (`scripts/visual-regression.mjs`). Der Vergleich läuft
+      # im selben Image, weil Chromium auf dem Runner Schrift anders rastert
+      # (rund 1 % abweichende Pixel je Ansicht); im Schritt darüber bleibt die
+      # Testdatei deshalb aus.
+      - name: Run visual regression in pinned Playwright container
+        if: steps.scope.outputs.scope == 'full'
+        run: npm run test:browser:visual
+
       # An den Upstream-Pin gebunden wie go-oscal: Bei `manifest_only`
       # wechselt der Pin, und erst der Build beweist, dass die neuen Bytes
       # kompilieren und bündeln (Greptile-P1 auf PR #273).

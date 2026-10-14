@@ -21,18 +21,18 @@ Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application 
 
 ## Gestaltungssystem
 
-`src/index.css` ist die einzige Quelle der Gestaltungswerte. Der `@theme`-Block führt Farben, sechs Schriftgrößen (`text-2xs` 10px, `text-xs` 12px, `text-sm` 14px, `text-base` 16px, `text-lg` 18px, `text-xl` 20px), die Laufweiten `tracking-wide` und `tracking-wider`, die Radien `rounded`/`rounded-sm` (4px), `rounded-md` (6px), `rounded-lg` (8px), vier Schatten (`shadow-sm`, `shadow-overlay`, `shadow-footer`, `shadow-grip-start`/`shadow-grip-end`), die Bewegungswerte `--duration-*`/`--easing-*` sowie die Maße `touch` (44px) und `panel-head` (51px), die als Utilities wie `min-h-touch` oder `h-panel-head` nutzbar sind. Für Schriftgrößen, Laufweiten, Radien und Schatten setzt `@theme` den Tailwind-Namensraum mit `initial` zurück; `text-2xl`, `rounded-xl` oder `shadow-md` erzeugen deshalb kein CSS.
+`src/index.css` ist die einzige Quelle der Gestaltungswerte. Der `@theme`-Block führt Farben, sechs Schriftgrößen (`text-2xs` 10px, `text-xs` 12px, `text-sm` 14px, `text-base` 16px, `text-lg` 18px, `text-xl` 20px), die Zeilenhöhe `--leading-title` (1.35, als Modifier `text-lg/title`), die Laufweiten `tracking-wide` und `tracking-wider`, die Radien `rounded`/`rounded-sm` (4px), `rounded-md` (6px), `rounded-lg` (8px), vier Schatten (`shadow-sm`, `shadow-overlay`, `shadow-footer`, `shadow-grip-start`/`shadow-grip-end`), die Bewegungswerte `--duration-*`/`--easing-*` sowie die Maße `touch` (44px) und `panel-head` (51px), die als Utilities wie `min-h-touch` oder `h-panel-head` nutzbar sind. Für Schriftgrößen, Laufweiten, Radien und Schatten setzt `@theme` den Tailwind-Namensraum mit `initial` zurück, ebenso `--drop-shadow-*`, `--inset-shadow-*` und `--text-shadow-*`; `text-2xl`, `rounded-xl`, `shadow-md` oder `drop-shadow-lg` erzeugen deshalb kein CSS.
 
 Die ESLint-Regel `design-system/no-off-system-classes` (lokales Plugin in `eslint.config.js`) prüft jedes String- und Template-Literal in `src/features/**`, `src/app/**` und `src/components/**` außer Testdateien und meldet als Fehler:
 
 | Befund | Beispiel |
 | --- | --- |
-| Beliebiger Wert ohne `var(--…)` außerhalb der Positivliste | `text-[13px]`, `md:h-[51px]` |
+| Beliebiger Wert oder Modifier ohne `var(--…)` außerhalb der Positivliste | `text-[13px]`, `md:h-[51px]`, `text-lg/[1.35]` |
 | Beliebige Eigenschaft ohne `var(--…)` | `[overflow-wrap:anywhere]` |
-| Schatten außerhalb des Vokabulars, auch `shadow` ohne Stufe | `shadow-lg` |
+| Schatten außerhalb des Vokabulars, auch `shadow` ohne Stufe, Schlagschatten-Filter, Innen- und Textschatten | `shadow-lg`, `drop-shadow-sm` |
 | Radius über 8px | `rounded-2xl` |
 | Schriftgröße über 20px | `text-2xl` |
-| Verlauf oder Hintergrundfilter | `bg-linear-to-r`, `backdrop-blur-sm` |
+| Verlauf oder Hintergrundfilter, auch mit Tokenwert | `bg-linear-to-r`, `bg-radial`, `backdrop-blur-[var(--…)]` |
 | Deckkraft unter `hover:`, `group-hover:` oder `peer-hover:` | `hover:opacity-80` |
 
 Die Positivliste erlaubt beliebige Werte nur für Spaltenvorlagen (`grid-cols-[…]`, `grid-rows-[…]`), Pseudo-Element-Inhalt (`content-['']`, `content-[attr(…)]`), Übergangslisten aus CSS-Eigenschaften (`transition-[rotate,color]`), Werte mit `env(safe-area-inset-…)` sowie Höhen und Breiten in Viewport-Einheiten (`min-h-[50vh]`, `max-h-[calc(100dvh-8rem)]`). Varianten mit Klammern (`data-[…]:`, `@min-[…]:`) und Attributselektoren wie `[inert]` sind keine Gestaltungswerte und bleiben ungeprüft. `eslint.config.test.ts` belegt jeden Regelteil mit Positiv- und Negativfall. Was sich nicht maschinell prüfen lässt (Bedeutungs- und Auswahlregel für Farbe, ein rechtes Panel, Plex Mono für Kennungen, `tabular-nums`, keine Erklärprosa in Menüs), prüfen die Reviewer über die Regel `R25-gestaltungssystem` in `scripts/review-policy.rules.mjs`.
@@ -80,7 +80,7 @@ Jeder innere Lauf **muss** mit genau einem Marker fehlschlagen, der zum ausgewä
 
 Die Hook-Grenze erfasst keine Browser-Aufgabe, die erst *nach* Ende des Tests einen Request startet. Dafür ist eine veränderte Testlaufzeit-Architektur erforderlich, kein Timeout.
 
-`src/test/browser/visualRegression.browser.test.ts` vergleicht Katalogliste, Control-Detail, Filter (Desktop: Filterpanel mit aktivem Aufwandsfilter, Mobil: geöffnetes Filter-Sheet) und Suchergebnisse bei 1440 × 900 und 390 × 844 px mit Referenzbildern unter `src/test/browser/__screenshots__/visualRegression.browser.test.ts/`. Die Ansichten rendern den synthetischen Katalog aus `a11yCatalogState.ts` mit den selbst gehosteten Schriften aus `public/fonts/`; Animationen sind für die Aufnahme abgeschaltet. Vitest sucht die Referenz unter dem Namen `<ansicht>-chromium-<plattform>.png`. Eingecheckt sind nur `…-chromium-linux.png`-Referenzen für die CI-Lane auf `ubuntu-latest`; auf anderen Plattformen überspringt die Datei ihre Tests. `npm run test:browser:update-references` (`scripts/update-visual-references.mjs`) erzeugt die Referenzen neu im Docker-Image `mcr.microsoft.com/playwright` mit der Playwright-Version aus `package-lock.json`; der Container liest den Checkout nur lesend, installiert die Abhängigkeiten in einer eigenen Kopie und schreibt ausschließlich in das Referenzverzeichnis. Eine fehlende oder abweichende Referenz lässt den Test fehlschlagen.
+`src/test/browser/visualRegression.browser.test.ts` vergleicht Katalogliste, Control-Detail, Filter (Desktop: Filterpanel mit aktivem Aufwandsfilter, Mobil: geöffnetes Filter-Sheet) und Suchergebnisse bei 1440 × 900 und 390 × 844 px mit Referenzbildern `…-chromium-linux.png` unter `src/test/browser/__screenshots__/visualRegression.browser.test.ts/`. Die Ansichten rendern den synthetischen Katalog aus `a11yCatalogState.ts` mit den selbst gehosteten Schriften aus `public/fonts/`; Animationen sind für die Aufnahme abgeschaltet. Die Datei läuft nur, wenn `GSPP_VISUAL_REGRESSION=1` gesetzt ist (`provide` in `vitest.browser.config.ts`); in `npm run test:browser` bleibt sie übersprungen. `scripts/visual-regression.mjs` startet sie im Docker-Image `mcr.microsoft.com/playwright`, gepinnt per Digest auf die `playwright`-Version aus `package-lock.json`: `npm run test:browser:visual` vergleicht (Schritt im CI-Job `validate`), `npm run test:browser:update-references` schreibt die Referenzen neu. Das Skript bricht ab, wenn Lockfile-Version und Pin auseinanderlaufen. Der Container liest den Checkout nur lesend und installiert die Abhängigkeiten in einer eigenen Kopie; nur der Update-Modus bindet das Referenzverzeichnis beschreibbar ein. Chromium auf dem GitHub-Runner rastert Schrift anders als im Image (rund 1 % abweichende Pixel je Ansicht), deshalb laufen Erzeugung und Vergleich im selben Image. `.gitignore` lässt in diesem Verzeichnis nur `*-chromium-linux.png` zu.
 
 Die Browser-Lane erzeugt keine Coverage-Ausgabe. Die verbindlichen V8-Coverage-Schwellen bleiben ausschließlich in der jsdom-Lane (`npm run test:coverage`): Lines 87, Branches 77, Functions 88, Statements 85 (`vite.config.ts`).
 
@@ -387,7 +387,6 @@ scripts/                          # Build-, CI- und Wartungsskripte
 ├── sync-upstream-manifest.mjs        # Manifest-Sync für update-catalog.yml
 ├── taxonomy-coverage.mjs             # Integrität und Coverage der Taxonomie-Vokabulare
 ├── transientRetry.mjs                # Gemeinsamer transienter Abruf der Lieferkette
-├── update-visual-references.mjs      # Referenzbilder der visuellen Regression im Playwright-Container
 ├── upstream-artifacts.mjs            # Tree-Diff, Manifest v2 und Root-Prüfung
 ├── upstream-corpus-cache.mjs         # Korpus-Cache des Bauzeitlaufs
 ├── verify-browser-egress.mjs         # Negativläufe des Browser-Egress-Guards
@@ -397,6 +396,7 @@ scripts/                          # Build-, CI- und Wartungsskripte
 ├── verify-oscal-schemas.mjs          # Netzfreie Integritätsprüfung der Schemas
 ├── verify-upstream-oscal.mjs         # Gepinnter go-oscal-Korpuslauf
 ├── verifyDeployment.mjs              # Prüfbefehl für eine Live-Datei gegen das attestierte Manifest
+├── visual-regression.mjs            # Visuelle Regression im gepinnten Playwright-Container
 ├── vitest.corpus.config.ts           # Vitest-Lane des Bauzeitlaufs
 ├── vocabulary-utils.mjs              # CSV-/Namespace-Hilfsfunktionen
 └── workflowDefinitions.mjs           # Gemeinsame Sammlung der Workflow- und Action-Definitionen

@@ -31,6 +31,8 @@ coverage/
 /.vitest/
 /src/test/browser/__screenshots__/*
 !/src/test/browser/__screenshots__/visualRegression.browser.test.ts/
+/src/test/browser/__screenshots__/visualRegression.browser.test.ts/*
+!/src/test/browser/__screenshots__/visualRegression.browser.test.ts/*-chromium-linux.png
 
 # Catalog data (fetched at build time, never committed)
 public/data/

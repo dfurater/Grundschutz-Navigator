@@ -42,10 +42,12 @@ const oscalSecurity = {
 // einer UI-Datei Klasse für Klasse; was weder Token noch Positivliste ist,
 // ist ein Befund.
 const FORBIDDEN_UTILITIES = [
-  { pattern: /^-?shadow(?:-(?:xs|md|lg|xl|2xl))?$/, messageId: 'shadow' },
+  { pattern: /^-?shadow(?:-(?:2xs|xs|md|lg|xl|2xl))?$/, messageId: 'shadow' },
+  { pattern: /^-?(?:drop|inset|text)-shadow(?:-|$)/, messageId: 'shadow' },
   { pattern: /^rounded(?:-(?:[trblse]|tl|tr|bl|br|ss|se|es|ee))?-(?:xs|xl|2xl|3xl|4xl)$/, messageId: 'radius' },
   { pattern: /^text-(?:[2-9]xl)$/, messageId: 'fontSize' },
-  { pattern: /^bg-(?:gradient|linear|radial|conic)-/, messageId: 'gradient' },
+  { pattern: /^bg-(?:gradient|linear|radial|conic)(?:-|$)/, messageId: 'gradient' },
+  { pattern: /^bg-\[.*gradient\(/, messageId: 'gradient' },
   { pattern: /^backdrop-/, messageId: 'backdrop' },
 ];
 
@@ -89,20 +91,25 @@ function checkClassToken(token) {
   const utility = rawUtility.replace(/!$/, '');
   if (utility === '') return null;
 
+  // Verbotene Utilities gelten unabhängig vom Wert: Auch ein Tokenbezug macht
+  // `backdrop-blur-[var(--…)]` nicht zulässig. Ein Modifier hinter `/` ändert die Utility nicht.
+  const base = utility.replace(/\/(?:\[[^\]]*\]|\([^)]*\)|[\w.-]+)$/, '');
+  const forbidden = FORBIDDEN_UTILITIES.find(({ pattern }) => pattern.test(base));
+  if (forbidden) return forbidden.messageId;
+  if (/^opacity-/.test(base) && variants.some((variant) => HOVER_VARIANTS.has(variant))) {
+    return 'hoverOpacity';
+  }
+
   if (utility.startsWith('[')) {
     // Ohne `eigenschaft:wert` ist es ein Attributselektor wie `[inert]`, keine Klasse.
     if (!/^\[[a-z-]+:.+\]$/.test(utility)) return null;
     return utility.includes('var(--') ? null : 'arbitraryProperty';
   }
-  if (/-\[/.test(utility)) {
+  // Beliebiger Wert (`-[…]`) oder beliebiger Modifier (`/[…]`, etwa eine rohe Zeilenhöhe).
+  if (/[-/]\[/.test(utility)) {
     if (utility.includes('var(--')) return null;
     if (ARBITRARY_VALUE_ALLOWLIST.some((allowed) => allowed(utility))) return null;
     return 'arbitraryValue';
-  }
-  const forbidden = FORBIDDEN_UTILITIES.find(({ pattern }) => pattern.test(utility));
-  if (forbidden) return forbidden.messageId;
-  if (/^opacity-/.test(utility) && variants.some((variant) => HOVER_VARIANTS.has(variant))) {
-    return 'hoverOpacity';
   }
   return null;
 }

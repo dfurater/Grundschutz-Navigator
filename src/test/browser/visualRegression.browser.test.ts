@@ -3,8 +3,8 @@ import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import { createMemoryRouter } from 'react-router';
 import { RouterProvider } from 'react-router/dom';
-import { afterEach, describe, expect, test } from 'vitest';
-import { page, server } from 'vitest/browser';
+import { afterEach, describe, expect, inject, test } from 'vitest';
+import { page } from 'vitest/browser';
 import { AppShell } from '@/app/AppShell';
 import { createAppRoutes } from '@/app/appRoutes';
 import { buildCatalogUrl, buildControlUrl } from '@/app/routes';
@@ -13,12 +13,19 @@ import { ENTRY_CATALOG_KEY } from '@/domain/sourceRegistry';
 import { createA11yCatalogState } from '@/test/browser/a11yCatalogState';
 import '@/index.css';
 
+declare module 'vitest' {
+  export interface ProvidedContext {
+    visualRegression: boolean;
+  }
+}
+
 /*
  * Visuelle Regression (GSPP-533): Katalogliste, Detail, Filter und Suche je
- * Desktop und Mobil gegen eingecheckte Referenzbilder. Die Referenzen tragen
- * die Plattform im Namen (`…-chromium-linux.png`) und entstehen im
- * Playwright-Linux-Container (`npm run test:browser:update-references`); auf
- * anderen Plattformen fehlt die Referenz, die Tests laufen dort nicht.
+ * Desktop und Mobil gegen eingecheckte Referenzbilder
+ * (`…-chromium-linux.png`). Erzeugt und geprüft werden sie nur im gepinnten
+ * Playwright-Container (`npm run test:browser:visual`,
+ * `npm run test:browser:update-references`), weil Chromium Schrift abhängig
+ * von der Systemumgebung rastert; im übrigen Browserlauf bleibt die Datei aus.
  */
 
 const VIEWPORTS = [
@@ -63,7 +70,7 @@ async function expectScreen(name: string) {
   });
 }
 
-describe.skipIf(server.platform !== 'linux').each(VIEWPORTS)('Ansicht $name', ({ name, width, height }) => {
+describe.skipIf(!inject('visualRegression')).each(VIEWPORTS)('Ansicht $name', ({ name, width, height }) => {
   test('Katalogliste', async () => {
     const shell = await renderAt(buildCatalogUrl(ENTRY_CATALOG_KEY), width, height);
     await expect.poll(() => shell.querySelector('main')?.textContent).toContain('Netz segmentieren');
