@@ -8,10 +8,11 @@
 // zusätzlich projiziert und `source`, Kontext, `view` und die im Dispatch
 // gebundene Schemazelle zusammenhält (ADR-2, GSPP-285).
 //
-// Daneben liegen die beiden Teile, die alle drei Modellslices teilen:
-// `openRootDerive` ist der Auftakt jeder `derive…`-Funktion, und
-// `validateParsedSchema` führt Stufe 3 für ein geparstes Dokument aus
-// (GSPP-566).
+// Daneben liegt `openRootDerive`, der gemeinsame Auftakt jeder
+// `derive…`-Funktion der drei Modellslices (GSPP-566). Die Stufe-3-Prüfung
+// liegt bewusst nicht hier, sondern in `oscalRootDocumentSchema.ts`: Der
+// Katalogpfad importiert dieses Modul und soll den Schema-Validator nicht
+// mitladen.
 // =============================================================================
 
 import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
@@ -27,8 +28,6 @@ import {
 import type { OscalRootDispatchSuccess } from '@/adapters/oscalRootDispatch';
 import { isJsonObject, type JsonObject } from '@/domain/jsonGuards';
 import type { OscalDocumentContext } from '@/domain/models';
-import { validateAgainstPinnedSchema } from '@/domain/oscalSchemaValidation';
-import type { OscalSchemaValidationResult } from '@/domain/oscalSchemaValidation';
 import { createReferenceDocument } from '@/domain/referenceResolution';
 import type { ReferenceDocument } from '@/domain/referenceResolution';
 import type {
@@ -112,21 +111,6 @@ export function parseRootDocument<TView>(
     oscalVersion: dispatch.oscalVersion,
     artifactKey: dispatch.artifactKey,
   };
-}
-
-/**
- * Führt Stufe 3 für ein bereits geparstes Dokument aus.
- *
- * Der Schema-Pin kommt aus dem Dokument und damit aus `getSchemaPin(<Root>,
- * <deklarierte Version>)`. Es gibt keinen Rückfall auf eine Nachbarversion und
- * keine Modellversionskonstante.
- */
-export function validateParsedSchema(
-  document: ParsedRootDocument<unknown>,
-): Promise<OscalSchemaValidationResult> {
-  return validateAgainstPinnedSchema(document.source, document.pin, {
-    artifactKey: document.artifactKey,
-  });
 }
 
 /** Der gemeinsame Ableitungskontext, mit dem jede `derive…`-Funktion beginnt. */

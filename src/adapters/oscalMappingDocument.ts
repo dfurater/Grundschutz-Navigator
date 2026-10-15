@@ -14,8 +14,9 @@
 // existierte dort noch nicht (`oscalVersionMatrix.mjs`).
 // =============================================================================
 
-import { parseRootDocument, validateParsedSchema } from '@/adapters/oscalRootDocumentParse';
+import { parseRootDocument } from '@/adapters/oscalRootDocumentParse';
 import type { ParsedRootDocument } from '@/adapters/oscalRootDocumentParse';
+import { validateParsedSchema } from '@/adapters/oscalRootDocumentSchema';
 import { deriveMappingCollection } from '@/adapters/oscalMappingAdapter';
 import { MAPPING_COLLECTION_ROOT_TYPE } from '@/domain/mappingModel';
 import type { MappingCollection } from '@/domain/mappingModel';

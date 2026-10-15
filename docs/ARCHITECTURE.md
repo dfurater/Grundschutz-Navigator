@@ -192,7 +192,8 @@ src/                              # Anwendungsquellcode
 │   ├── oscalReaders.ts               # Strukturleser der Adapter mit gebundener Diagnosefunktion
 │   ├── oscalRootAdapters.ts          # Adapter-Registrierung je Root-Typ
 │   ├── oscalRootDispatch.ts          # Stufe 2: Root-Dispatch
-│   └── oscalRootDocumentParse.ts     # Root-Dispatch mit Root-Typ-Schranke für alle Dokumenteinstiege
+│   ├── oscalRootDocumentParse.ts     # Root-Dispatch mit Root-Typ-Schranke für alle Dokumenteinstiege
+│   └── oscalRootDocumentSchema.ts    # Stufe 3 für geparste Root-Dokumente, getrennt vom Katalogpfad
 ├── state/                        # Globaler Anwendungszustand
 │   ├── CatalogContext.tsx            # Katalog-Kontextprovider
 │   ├── MobileNavigationContext.ts    # Mobiler Navigationszustand für Sheet-Mount-Gates

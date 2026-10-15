@@ -369,10 +369,12 @@ Root-Modell erfordert zwei Schritte:
 2. Einen Eintrag in `OSCAL_ROOT_ADAPTERS` ergänzen und, falls der Körper
    modelliert wird, den Zweig in `RawOscalRootBodyFor` erweitern.
 
-Modulgrenzen: Geteilt werden Envelope, Root-Erkennung mit Root-Typ-Schranke,
-der Ableitungsauftakt `openRootDerive` und die Stufe-3-Prüfung
-`validateParsedSchema` (alle in `src/adapters/oscalRootDocumentParse.ts`),
-Versionsbindung, Diagnosevertrag,
+Modulgrenzen: Geteilt werden Envelope, Root-Erkennung mit Root-Typ-Schranke
+und der Ableitungsauftakt `openRootDerive`
+(`src/adapters/oscalRootDocumentParse.ts`), die Stufe-3-Prüfung
+`validateParsedSchema` (`src/adapters/oscalRootDocumentSchema.ts`, getrennt,
+damit der Katalogpfad den Schema-Validator nicht lädt), Versionsbindung,
+Diagnosevertrag,
 die JSON-Typwächter (`src/domain/jsonGuards.ts`) und die Strukturleser für
 Arrayfelder (`src/adapters/oscalReaders.ts`), die jeder Adapter an seine
 eigene Diagnosefunktion bindet. Modellspezifische Leser und Read-Model-Ableitung

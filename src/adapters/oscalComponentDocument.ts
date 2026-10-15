@@ -10,8 +10,9 @@
 // dem Dispatch, nicht aus einer Modellkonstante.
 // =============================================================================
 
-import { parseRootDocument, validateParsedSchema } from '@/adapters/oscalRootDocumentParse';
+import { parseRootDocument } from '@/adapters/oscalRootDocumentParse';
 import type { ParsedRootDocument } from '@/adapters/oscalRootDocumentParse';
+import { validateParsedSchema } from '@/adapters/oscalRootDocumentSchema';
 import { deriveComponentDefinition } from '@/adapters/oscalComponentAdapter';
 import { COMPONENT_DEFINITION_ROOT_TYPE } from '@/domain/componentDefinitionModel';
 import type {

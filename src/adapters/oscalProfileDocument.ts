@@ -13,8 +13,9 @@
 // unter der anderen ein Befund.
 // =============================================================================
 
-import { parseRootDocument, validateParsedSchema } from '@/adapters/oscalRootDocumentParse';
+import { parseRootDocument } from '@/adapters/oscalRootDocumentParse';
 import type { ParsedRootDocument } from '@/adapters/oscalRootDocumentParse';
+import { validateParsedSchema } from '@/adapters/oscalRootDocumentSchema';
 import { deriveProfile } from '@/adapters/oscalProfileAdapter';
 import { PROFILE_ROOT_TYPE } from '@/domain/profileModel';
 import type { Profile } from '@/domain/profileModel';
