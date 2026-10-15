@@ -115,6 +115,11 @@ const RULE = 'design-system/no-off-system-classes';
 // Ziffer, Großbuchstaben oder Herstellerpräfix im Namen und mit Modifier. `css` sind Ausschnitte des
 // CSS, das Tailwind mit `src/index.css` für die Klasse erzeugt.
 const BYPASS_FORMS = [
+  { label: 'Rohschatten mit Safe Area', classes: 'shadow-[0_0_env(safe-area-inset-top)_red]', messageId: 'arbitraryValue', css: ['--tw-shadow:', 'env(safe-area-inset-top)'] },
+  { label: 'Rohmaß neben Safe Area', classes: 'pb-[calc(13px+env(safe-area-inset-bottom))]', messageId: 'arbitraryValue', css: ['padding-bottom: calc(13px + env(safe-area-inset-bottom))'] },
+  { label: 'Rohfarbe im Safe-Area-Fallback', classes: 'bg-[env(safe-area-inset-top,red)]', messageId: 'arbitraryValue', css: ['background-color: env(safe-area-inset-top,red)'] },
+  { label: 'Rohmaß im Safe-Area-Fallback', classes: 'pb-[env(safe-area-inset-bottom,13px)]', messageId: 'arbitraryValue', css: ['padding-bottom: env(safe-area-inset-bottom,13px)'] },
+
   { label: 'Rohschriftgröße vor Safe-Area-Modifier', classes: 'text-[13px]/[var(--leading-title,env(safe-area-inset-top))]', messageId: 'arbitraryValue', css: ['font-size: 13px', 'line-height: var(--leading-title,env(safe-area-inset-top))'] },
   { label: 'Rohe Zeilenhöhe nach Safe-Area-Basiswert', classes: 'text-[length:var(--text-sm,env(safe-area-inset-top))]/[1.37]', messageId: 'arbitraryValue', css: ['font-size: var(--text-sm,env(safe-area-inset-top))', 'line-height: 1.37'] },
 
@@ -143,9 +148,6 @@ const BYPASS_FORMS = [
 
 // Erlaubte Klassen mit denselben Varianten und Important-Formen.
 const ALLOWED_FORMS = [
-  { label: 'Safe-Area-Modifier nach Token-Schriftgröße', classes: 'text-[length:var(--text-sm)]/[var(--leading-title,env(safe-area-inset-top))]' },
-  { label: 'Safe-Area-Basiswert vor Token- oder Skalenmodifier', classes: 'text-[length:var(--text-sm,env(safe-area-inset-top))]/[var(--leading-title)] text-[length:var(--text-sm,env(safe-area-inset-top))]/6' },
-
   { label: 'Tokenfarbe unter Hover mit Important', classes: 'hover:!text-primary-main hover:text-primary-main!' },
   { label: 'Deckkraftmodifier unter benannter Gruppe', classes: 'group-hover/card:bg-black/50 peer-hover/name:underline' },
   { label: 'Tokenfarbe unter Vorfahren- und beliebiger Hover-Variante', classes: 'in-hover:text-primary-main [&:hover]:text-primary-main' },
@@ -169,6 +171,8 @@ describe('Gestaltungssystem-Regel (GSPP-533)', () => {
     ['Transition-Ausnahme vor Rohwert-Modifier', 'transition-[rotate,color]/[13px]', 'arbitraryValue'],
     ['Viewport-Ausnahme vor Rohwert-Modifier', 'h-[50vh]/[13px]', 'arbitraryValue'],
     ['Safe-Area-Ausnahme vor Rohwert-Modifier', 'pb-[env(safe-area-inset-bottom)]/[13px]', 'arbitraryValue'],
+    ['Safe Area in Schriftgröße und Zeilenhöhe', 'text-[length:var(--text-sm,env(safe-area-inset-top))]/[var(--leading-title,env(safe-area-inset-bottom))]', 'arbitraryValue'],
+    ['Safe Area ohne Rohwert', 'pb-[env(safe-area-inset-bottom)]', 'arbitraryValue'],
     ['Literal-Wert', 'text-[13px]', 'arbitraryValue'],
     ['Literal-Wert mit Variante', 'md:h-[51px]', 'arbitraryValue'],
     ['Arbitrary Property', '[overflow-wrap:anywhere]', 'arbitraryProperty'],
@@ -216,12 +220,11 @@ describe('Gestaltungssystem-Regel (GSPP-533)', () => {
     ['Modifier mit Token oder Skalenwert', 'bg-black/50 text-sm/[var(--leading-title)] w-1/2'],
     ['Token mit Typhinweis oder Fallback', 'border-[length:var(--border-x)] w-[var(--control-id-column,auto)] [--x:var(--y)] text-[var(--a,var(--b))]'],
     ['Token mit Skalenmodifier', 'bg-[var(--color-primary-main)]/50 text-[var(--x)]/6'],
-    ['Basis-Ausnahmen mit Tokenmodifier', "grid-cols-[auto_1fr]/[var(--x)] content-['']/[var(--x)] transition-[rotate,color]/[var(--x)] h-[50vh]/[var(--x)] pb-[env(safe-area-inset-bottom)]/[var(--x)]"],
-    ['Safe-Area-Ausnahme in beiden Werten', 'text-[length:var(--text-sm,env(safe-area-inset-top))]/[var(--leading-title,env(safe-area-inset-bottom))]'],
+    ['Basis-Ausnahmen mit Tokenmodifier', "grid-cols-[auto_1fr]/[var(--x)] content-['']/[var(--x)] transition-[rotate,color]/[var(--x)] h-[50vh]/[var(--x)]"],
     ['Spaltenvorlage', 'grid-cols-[auto_1fr] sm:grid-rows-[3.5rem_1fr]'],
     ['Pseudo-Element-Inhalt', "after:content-[''] after:content-[attr(data-label)]"],
     ['Übergangsliste', 'transition-[rotate,color]'],
-    ['sichere Fläche', 'pb-[calc(7rem+env(safe-area-inset-bottom,0px))]'],
+    ['sichere Fläche über benannte Utilities', 'pb-safe pb-safe-detail pb-safe-selection'],
     ['Viewport-Maß', 'min-h-[50vh] max-h-[calc(100dvh-8rem)]'],
     ['Deckkraft ohne Hover', 'opacity-0 peer-checked:opacity-100 disabled:opacity-50'],
     ['Varianten mit Klammern', 'data-[state=open]:block @min-[18.5rem]:flex'],
@@ -276,6 +279,18 @@ describe('Gestaltungssystem-Regel gegen Tailwind-Ausgabe (GSPP-533)', () => {
     );
     return messages.filter(({ ruleId }) => ruleId === RULE);
   }
+
+  it.each([
+    ['pb-safe-detail', '1rem'],
+    ['pb-safe-selection', '7rem'],
+  ])('erhält den Safe-Area-Abstand für %s', async (classes, spacing) => {
+    const generated = await utilityCss(`p-4 ${classes} desktop:pb-4`);
+    expect(generated).toContain(`padding-bottom: calc(${spacing} + env(safe-area-inset-bottom, 0px))`);
+    // Dieselbe Utility-Ebene erlaubt der Desktop-Variante, den Safe-Area-Abstand zu ersetzen.
+    expect(generated.indexOf(`.${classes}`)).toBeLessThan(generated.indexOf('.desktop\\:pb-4'));
+    expect(generated).toContain('padding-bottom: calc(var(--spacing) * 4)');
+    expect(await jsxFindings(classes)).toEqual([]);
+  });
 
   it.each(BYPASS_FORMS)('$label: Tailwind erzeugt den Effekt, die Regel meldet $classes in className', async ({ classes, messageId, css }) => {
     const generated = await utilityCss(classes);

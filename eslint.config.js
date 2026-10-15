@@ -83,8 +83,6 @@ const ARBITRARY_VALUE_ALLOWLIST = [
   (value, prefix) => prefix === 'content-' && /^(?:''|attr\([a-z-]+\))$/.test(value),
   // Liste von CSS-Eigenschaften, deren Übergang animiert wird.
   (value, prefix) => prefix === 'transition-' && /^[a-z-]+(?:,[a-z-]+)*$/.test(value),
-  // Abstand zur sicheren Fläche des Geräts.
-  (value) => value.includes('env(safe-area-inset-'),
   // Höhen und Breiten relativ zum Viewport.
   (value, prefix) => /^(?:min-|max-)?[hw]-$/.test(prefix) && /^(?:calc\()?\d+(?:\.\d+)?[dsl]?v[hw]\b/.test(value),
 ];

@@ -420,7 +420,7 @@ describe('catalog typography', () => {
     expect(backButton.querySelector('span')).toBeNull();
     expect(title).toHaveClass('type-page-title');
     // Der Sicherheitsabstand kommt zu den 16 px hinzu, statt sie zu ersetzen.
-    expect(scrollContainer).toHaveClass('p-4', 'pb-[calc(1rem+env(safe-area-inset-bottom,0px))]', 'desktop:pb-4');
+    expect(scrollContainer).toHaveClass('p-4', 'pb-safe-detail', 'desktop:pb-4');
     expect(scrollContainer).not.toHaveClass('pb-safe');
     expect(container.firstChild).toHaveClass('h-full', 'flex', 'flex-col', 'bg-[var(--color-surface-raised)]');
   });
