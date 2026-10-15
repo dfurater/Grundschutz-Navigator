@@ -215,7 +215,7 @@ Die Schutzziel-Zähler folgen derselben Einfrier-Regel wie die übrigen Dimensio
 - **Facets vom Gesamtkatalog** (`facetCounts`): Ungefilterte Anzahl — gilt für jede aktiv gefilterte Dimension
 - **Facets vom gefilterten Set** (`filteredFacetCounts`): Gefilterte Anzahl — gilt für jede inaktive Dimension
 
-Daraus folgt das Sichtbarkeitsverhalten: Eine Sektion ohne Optionen und ohne Auswahl wird ausgeblendet; ein gewählter Wert ohne Treffer bleibt mit Zähler `0` sichtbar (`isSectionVisible` und `visibleEntries` in `src/features/catalog/FilterPanel.tsx`).
+Daraus folgt das Sichtbarkeitsverhalten: Eine Sektion ohne Optionen und ohne Auswahl wird ausgeblendet; ein gewählter Wert ohne Treffer bleibt mit Zähler `0` sichtbar (`isSectionVisible` und `visibleEntries` in `src/features/catalog/filterDimensions.ts`).
 
 ## Sortierung
 
@@ -323,3 +323,4 @@ Im mobilen Filter-Sheet begrenzt die Klasse `mobile-sheet` in `src/index.css` de
 - `src/hooks/useFilteredControls.ts` — Filter-Implementierung
 - `src/hooks/useFilterParams.ts` — URL-Sync-Implementierung
 - `src/features/catalog/FilterPanel.tsx` — Filter-UI
+- `src/features/catalog/filterDimensions.ts` — Konfiguration der flachen Filterdimensionen
