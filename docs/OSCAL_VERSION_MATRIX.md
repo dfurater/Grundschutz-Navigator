@@ -41,9 +41,8 @@ scheitern.
 ## Die Matrix
 
 Acht Root-Modelle über vier gepinnte Versionen ergeben 32 Felder, von denen
-**30 existieren**. Alle Werte wurden am 2026-08-01 direkt aus den offiziellen
-Release-Assets ermittelt und sind über `npm run verify-oscal-schemas`
-reproduzierbar.
+**30 existieren**. `npm run verify-oscal-schemas` prüft die eingecheckten
+Release-Assets gegen die Pins in `src/domain/oscalVersionMatrix.mjs`.
 
 | Root-Key | 1.1.2 | 1.1.3 | 1.2.1 | 1.2.2 |
 | --- | --- | --- | --- | --- |

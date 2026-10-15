@@ -22,7 +22,7 @@ Die Anwendung liefert alle 13 CSV-Dateien aus `documentation/namespaces/` im gep
 | Themen | `topics.csv` |
 | Zielobjekt-Kategorien | `target_object_categories.csv` |
 
-Die Anwendung lädt diese Vokabulare zur Build-Zeit von BSI (`scripts/fetch-catalog.mjs`). Die Collection ist im `sourceRegistry` (`src/domain/sourceRegistry.mjs`) als Vokabularsammlung mit dem Suffix `.csv` registriert. Materialisiert werden ausschließlich reguläre CSV-Dateien direkt in diesem Verzeichnis; Unterverzeichnisse, `.txt`, `readme.md` und andere Pfade bleiben ausgeschlossen (`matchesVocabularyCollection`, `scripts/security-guards.mjs`). Jede ausgelieferte Datei wird einzeln per Git-Blob-SHA und Content-Hash an den gepinnten Snapshot gebunden.
+Die Anwendung lädt diese Vokabulare zur Build-Zeit von BSI (`scripts/fetch-catalog.mjs`). Die Collection ist im `sourceRegistry` (`src/domain/sourceRegistry.mjs`) als Vokabularsammlung mit dem Suffix `.csv` registriert. Materialisiert werden ausschließlich reguläre CSV-Dateien direkt in diesem Verzeichnis; Unterverzeichnisse, `.txt`, `readme.md` und andere Pfade bleiben ausgeschlossen (`matchesVocabularyCollection` in [`scripts/vocabulary-utils.mjs`](../scripts/vocabulary-utils.mjs)). Jede ausgelieferte Datei wird einzeln per Git-Blob-SHA und Content-Hash an den gepinnten Snapshot gebunden.
 
 ## Architektur
 
@@ -232,7 +232,9 @@ export interface ResolvedControlVocabularies {
 }
 ```
 
-Besonderheit Schutzziele: Die Control-Props tragen als Wert die Relevanz (`0`–`2`), das über ihren `ns` referenzierte Vokabular `security_targets.csv` ist aber nach Schutzziel-Namen indiziert und kennt diese Werte nicht. Ihre Bedeutung steht in der separaten Datei `security_targets_levels.csv`, die über `prop.ns` nicht erreichbar ist. Der Adapter erhält den vorgefundenen `ns` unverändert; `resolveSecurityTargetLevel()` benennt `security_targets_levels.csv` selbst — symmetrisch zu `resolveSecurityTarget()`, das den Targets-Namespace ebenfalls explizit nennt.
+### Schutzziel-Auflösung
+
+Die Control-Props tragen als Wert die Relevanz (`0`–`2`), das über ihren `ns` referenzierte Vokabular `security_targets.csv` ist nach Schutzziel-Namen indiziert. Die Bedeutung der Relevanzwerte steht in `security_targets_levels.csv`. Der Adapter erhält den vorgefundenen `ns` unverändert. In `src/domain/vocabulary.ts` wählt `resolveSecurityTargetLevel()` den Levels-Namespace explizit aus; `resolveSecurityTarget()` verwendet den Targets-Namespace für die Schutzziel-Namen.
 
 Die Zuordnung der vier Relevanz-Props läuft über `name` und `ns`: Ein gleichnamiges `prop` ohne oder mit fremdem `ns` wird nicht als Schutzziel-Relevanz übernommen. Ein gesetztes `class` oder `group` schließt ebenfalls aus (`getSecurityTargetRelevanceProp` in `src/adapters/oscalAdapter.ts`). Das ist eine Projektentscheidung: Das gepinnte Schema führt beide Felder nur als optional und definiert keinen Identitätsschlüssel für Properties (geprüft in `src/domain/securityTargets.catalog.node.test.ts`).
 

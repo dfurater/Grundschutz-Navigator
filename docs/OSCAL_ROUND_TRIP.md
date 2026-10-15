@@ -88,17 +88,16 @@ Getrennt vom Inhaltsvergleich prüft der Harnisch:
 
 ## Statusmodell je Validierungsstufe
 
-Die Begriffe stammen aus [OSCAL_VALIDATION.md](OSCAL_VALIDATION.md),
-Abschnitt „Verbindliche Kette“; es entsteht kein zweites Stufenmodell.
+Stufen, Statusbedeutung und Kettenregel stehen im
+[Validierungsvertrag](OSCAL_VALIDATION.md#verbindliche-kette).
+`evaluateStages()` in `src/test/oscalRoundTrip.ts` erstellt die
+harnischspezifischen Berichte:
 
-| Stufe | Mögliche Status | Anmerkung |
-| --- | --- | --- |
-| 3. JSON-Schema | `passed` · `failed` · `not-run` | Gegen die von `resolveSchemaBinding()` gebundene Zelle via `validateAgainstPinnedSchema()`; kein Nachbarversions-Fallback. |
-| 4. Constraints | **`not-checked`** (terminal) · `not-run` | Es gibt keinen zugelassenen Constraint-Validator. Die Lücke ist mit `documentedGap: true` geführt; `assertConstraintGapDocumented()` lässt Ergebnisse, die „geprüft“ melden, hart fehlschlagen. `pendingCases` benennt Dokumentfälle, deren Prüfung ausschließlich dieser Stufe obläge — etwa einen schema-validen, aber vokabularfremden `map/relationship`-Token (`maps-to`). |
-| 5. Referenzen | `passed` · `failed` · `not-available` · `not-run` | Nur am Katalogpfad umgesetzt; andere Roots erhalten `not-available` (`catalog-only-implementation`). Fail-closed-Kriterium: unsichere Protokolle (`javascript:` usw.) werden klassifiziert, nie adressiert. |
-
-Kettenregel: Fehlen Stufe 1 oder 2, bleiben alle Folgestufen `not-run`.
-Stufe 5 läuft nach bestandener Stufe 3 unabhängig vom `not-checked` in Stufe 4.
+| Bericht | Umsetzung im Harnisch |
+| --- | --- |
+| `schemaValidation` | Prüft das reimportierte Exportartefakt via `validateAgainstPinnedSchema()` gegen die gebundene Zelle. |
+| `constraints` | Führt die dokumentierte Lücke mit `documentedGap: true` und `reference`. `assertConstraintGapDocumented()` verwirft die Behauptung einer ausgeführten Constraint-Prüfung. `pendingCases` benennt betroffene Dokumentfälle wie den schema-validen, aber vokabularfremden `map/relationship`-Token `maps-to`. |
+| `references` | `evaluateCatalogReferences()` ist nur für Kataloge angebunden; andere Roots erhalten `not-available` mit Grund `catalog-only-implementation`. |
 
 ## Versionsbindung
 
@@ -115,10 +114,9 @@ nicht nachgebaut:
 Dazu fail-closed: `OSCAL_VERSION_MISSING`, `OSCAL_VERSION_MALFORMED` sowie
 `OSCAL_SCHEMA_DIRECTIVE_CONFLICT`, wenn `$schema` der über
 `metadata.oscal-version` gewählten Zelle widerspricht. `$schema` wählt
-niemals die Version aus. Ein einzelnes führendes kleines `v` bindet für
-Klasse 2, die Vertrauensklasse des Harnischs, dieselbe Zelle wie die Form ohne
-`v`; der No-op-Lauf vergleicht dabei gegen das
-unveränderte `v1.2.2` ([Regel](OSCAL_VERSION_MATRIX.md#führendes-v-in-metadataoscal-version)).
+niemals die Version aus. Der Harnisch verwendet `class-2-local-user`; für
+seine Versionsbindung gilt die
+[Klassenregel der Matrix](OSCAL_VERSION_MATRIX.md#führendes-v-in-metadataoscal-version).
 
 ## Der Fixture-Korpus
 
