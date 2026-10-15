@@ -114,6 +114,21 @@ describe('alter — explizite Bindung (by-id)', () => {
     expect(partIds(items[0]!['parts'])).toEqual(['ac-2_neu']);
   });
 
+  it('legt für eine leere Kategorie keine Liste am Ziel-Part an', () => {
+    const control = nestedControl();
+    const result = applyAlteration(control, {
+      adds: [{ byId: 'ac-2_gdn', parts: [], props: [{ name: 'neu', value: '1' }] }],
+    }, budget());
+    const withExistingParts = applyAlteration(control, {
+      adds: [{ byId: 'ac-2_smt', parts: [] }],
+    }, budget());
+
+    const guidance = (result['parts'] as Record<string, unknown>[])[1]!;
+    expect(guidance).not.toHaveProperty('parts');
+    expect(guidance['props']).toEqual([{ name: 'neu', value: '1' }]);
+    expect(partIds(statementOf(withExistingParts)['parts'])).toEqual(['ac-2_smt.a', 'ac-2_smt.b']);
+  });
+
   it('setzt jede Kategorie in die gleichnamige Liste des Ziel-Parts', () => {
     const control = {
       id: 'ac-5',
