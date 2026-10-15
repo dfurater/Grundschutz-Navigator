@@ -15,8 +15,9 @@
 // alter/add: Implizite Bindung (kein by-id) wirkt auf die ganze Control —
 // starting fügt vor bestehende derselben Kategorie ein, ending dahinter;
 // before/after gelten wie starting/ending. Explizite Bindung (by-id)
-// adressiert einen Part innerhalb der Control. Nach jeder Ergänzung steht
-// der Control-Knoten in kanonischer Schlüsselordnung
+// adressiert einen Part innerhalb der Control: before/after setzen neben
+// ihn, starting/ending und eine fehlende Position in ihn hinein. Nach jeder
+// Ergänzung steht der Control-Knoten in kanonischer Schlüsselordnung
 // (id, class, title, params, props, links, parts, controls).
 //
 // Alle Transformationen erzeugen Kopien; Eingabeknoten bleiben unangetastet.
@@ -335,29 +336,37 @@ function insertAtPart(
 ): { readonly inserted: boolean; readonly value: unknown } {
   const positionValue = ownDataValue(addition as JsonObject, 'position');
   const position = typeof positionValue === 'string' ? positionValue : 'ending';
-  const additions = collectAdditionLists(addition, budget);
 
-  // before und after legen genau eine neue parts-Liste an, starting zwei: die
-  // innere Liste des Ziel-Parts und die Liste mit dessen Kopie. Jede steht als
+  // before und after legen genau eine neue parts-Liste an. Sie stehen als
   // Mitglied im Zwischengraphen.
   if (position === 'before') {
+    const additions = collectAdditionLists(addition, budget);
     budget.admitWorkingNode();
     return { inserted: true, value: [...parts.slice(0, index), ...additions, ...parts.slice(index)] };
   }
-  if (position === 'after' || position === 'ending') {
+  if (position === 'after') {
+    const additions = collectAdditionLists(addition, budget);
     budget.admitWorkingNode();
     return { inserted: true, value: [...parts.slice(0, index + 1), ...additions, ...parts.slice(index + 1)] };
   }
-  // starting: innerhalb des Ziel-Parts am Anfang einfügen. Der kopierte
+  // starting und ending (auch als Default): innerhalb des Ziel-Parts einfügen.
+  // Jede Kategorie landet in der gleichnamigen Liste des Ziel-Parts, bei
+  // starting vor, sonst hinter den bestehenden Einträgen. Der kopierte
   // Ziel-Part ersetzt das Original an seiner Stelle; die Geschwister bleiben.
-  const inner = filterAsIsInnerParts(parts[index]!, budget);
-  budget.admitWorkingNode();
-  const merged = [...additions, ...inner];
-  const copyStart = copyOwnDataMembers(parts[index]!, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
-  copyStart['parts'] = merged;
+  const copyTarget = copyOwnDataMembers(parts[index]!, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
+  for (const [listKey, listAdditions] of collectPendingAdditionLists(addition, budget)) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
+    const existing = safeArrayMember(copyTarget, listKey);
+    if (existing === undefined && listAdditions.length === 0) continue;
+    const existingElements = ownArrayDataElements(existing ?? [], budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
+    budget.admitWorkingNode();
+    copyTarget[listKey] = position === 'starting'
+      ? [...listAdditions, ...existingElements]
+      : [...existingElements, ...listAdditions];
+  }
   budget.admitWorkingNode();
   const updated = [...parts];
-  updated[index] = copyStart;
+  updated[index] = copyTarget;
   return { inserted: true, value: updated };
 }
 
@@ -434,13 +443,6 @@ function insertIntoPartsTree(
 
   return { inserted: false, value: parts };
 }
-
-/** Bestehende parts-Liste eines Parts als Kopie. */
-function filterAsIsInnerParts(part: JsonObject, budget: ProfileResolutionBudget): readonly unknown[] {
-  const value = ownDataValue(part, 'parts');
-  return Array.isArray(value) ? ownArrayDataElements(value, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE) : [];
-}
-
 
 function collectAdditionLists(
   addition: NonNullable<AlterationDirective['adds']>[number],

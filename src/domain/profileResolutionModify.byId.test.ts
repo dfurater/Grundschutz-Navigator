@@ -69,18 +69,62 @@ describe('alter — explizite Bindung (by-id)', () => {
     expect(partIds(items[1]!['parts'])).toEqual(['ac-2_neu']);
   });
 
-  it('findet einen verschachtelten Ziel-Part', () => {
+  it('position after an einem verschachtelten Ziel-Part setzt dahinter', () => {
     const result = applyAlteration(nestedControl(), {
-      adds: [{ byId: 'ac-2_smt.a', position: 'after', props: [{ name: 'p', value: 'v' }], parts: [NEW_PART, 'kein Objekt'] }],
+      adds: [{ byId: 'ac-2_smt.a', position: 'after', parts: [NEW_PART] }],
     }, budget());
 
-    expect(partIds(statementOf(result)['parts'])).toEqual([
-      'ac-2_smt.a',
-      undefined,
-      'ac-2_neu',
-      'ac-2_smt.b',
+    expect(partIds(statementOf(result)['parts'])).toEqual(['ac-2_smt.a', 'ac-2_neu', 'ac-2_smt.b']);
+  });
+
+  it.each([
+    ['position ending', { position: 'ending' }],
+    ['fehlende position', {}],
+  ])('%s hängt in den Ziel-Part ans Ende und behält die Geschwister', (_label, position) => {
+    const control = nestedControl();
+    const result = applyAlteration(control, {
+      adds: [{ byId: 'ac-2_smt', ...position, parts: [NEW_PART] }],
+    }, budget());
+
+    const parts = result['parts'] as Record<string, unknown>[];
+    expect(partIds(parts)).toEqual(['ac-2_smt', 'ac-2_gdn']);
+    expect(partIds(parts[0]!['parts'])).toEqual(['ac-2_smt.a', 'ac-2_smt.b', 'ac-2_neu']);
+    expect(parts[1]).toBe((control['parts'] as unknown[])[1]);
+    expect(partIds(statementOf(control)['parts'])).toEqual(['ac-2_smt.a', 'ac-2_smt.b']);
+  });
+
+  it('fehlende position an einem verschachtelten Ziel-Part fügt in diesen ein', () => {
+    const result = applyAlteration(nestedControl(), {
+      adds: [{ byId: 'ac-2_smt.a', parts: [NEW_PART] }],
+    }, budget());
+
+    const items = statementOf(result)['parts'] as Record<string, unknown>[];
+    expect(partIds(items)).toEqual(['ac-2_smt.a', 'ac-2_smt.b']);
+    expect(partIds(items[0]!['parts'])).toEqual(['ac-2_neu']);
+  });
+
+  it('setzt jede Kategorie in die gleichnamige Liste des Ziel-Parts', () => {
+    const control = {
+      id: 'ac-5',
+      parts: [{ id: 'ac-5_smt', name: 'statement', props: [{ name: 'alt', value: '1' }] }],
+    };
+    const ending = applyAlteration(control, {
+      adds: [{ byId: 'ac-5_smt', props: [{ name: 'neu', value: '2' }], links: [{ href: '#x' }] }],
+    }, budget());
+    const starting = applyAlteration(control, {
+      adds: [{ byId: 'ac-5_smt', position: 'starting', props: [{ name: 'neu', value: '2' }] }],
+    }, budget());
+
+    expect((ending['parts'] as unknown[])[0]).toEqual({
+      id: 'ac-5_smt',
+      name: 'statement',
+      props: [{ name: 'alt', value: '1' }, { name: 'neu', value: '2' }],
+      links: [{ href: '#x' }],
+    });
+    expect(((starting['parts'] as Record<string, unknown>[])[0]!)['props']).toEqual([
+      { name: 'neu', value: '2' },
+      { name: 'alt', value: '1' },
     ]);
-    expect((statementOf(result)['parts'] as Record<string, unknown>[])[1]).toEqual({ name: 'p', value: 'v' });
   });
 
   it('lässt die Control unverändert, wenn der Ziel-Part fehlt oder parts kein Array ist', () => {

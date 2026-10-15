@@ -1145,7 +1145,11 @@ Ergebnisgraphen.
    nichts bei.
 3. **Modify:** `set-parameter` (Skalarfelder ersetzen, `props`/`links`
    anreichern) und `alters` (`adds`/`removes` mit `by-id`/`by-name`/…),
-   danach kanonische Schlüsselordnung.
+   danach kanonische Schlüsselordnung. Ein `add` mit `by-id` setzt bei
+   `before`/`after` neben den Ziel-Part; bei `starting`, `ending` und
+   fehlender `position` (Default `ending`) landet jede Kategorie (`params`,
+   `props`, `links`, `parts`) in der gleichnamigen Liste des Ziel-Parts
+   (`src/domain/profileResolutionModify.ts`).
 
 **Ergebnisvertrag (ADR-2 §10, ADR-8):**
 - Eigene Dokument-UUID als UUIDv5 aus festem Projektnamensraum + UUID
