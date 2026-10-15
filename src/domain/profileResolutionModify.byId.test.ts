@@ -77,6 +77,17 @@ describe('alter — explizite Bindung (by-id)', () => {
     expect(partIds(statementOf(result)['parts'])).toEqual(['ac-2_smt.a', 'ac-2_neu', 'ac-2_smt.b']);
   });
 
+  it.each(['before', 'after'])('position %s verwirft Einträge, die kein Objekt sind', (position) => {
+    const result = applyAlteration(nestedControl(), {
+      adds: [{ byId: 'ac-2_gdn', position, parts: ['kein Objekt', NEW_PART, 7, null] }],
+    }, budget());
+
+    const ids = partIds(result['parts']);
+    expect(ids).toEqual(position === 'before'
+      ? ['ac-2_smt', 'ac-2_neu', 'ac-2_gdn']
+      : ['ac-2_smt', 'ac-2_gdn', 'ac-2_neu']);
+  });
+
   it.each([
     ['position ending', { position: 'ending' }],
     ['fehlende position', {}],
