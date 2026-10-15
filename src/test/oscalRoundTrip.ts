@@ -17,6 +17,8 @@
 // dem geparsten Graphen mit `Object.is`-Semantik. Beide Ebenen verbindlich.
 // =============================================================================
 
+import { deepFreeze } from '@/test/oscalStructure';
+import { isJsonObject } from '@/domain/jsonGuards';
 import type { OscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { OscalDocumentContext } from '@/domain/models';
 import { enforceClass2ObjectGraphInvariants } from '@/domain/oscalObjectGraph';
@@ -296,10 +298,6 @@ export interface OscalNoOpRunInput {
 const FINDING_DOCUMENT_UUID_CHANGED = 'document-uuid-changed';
 const FINDING_LAST_MODIFIED_CHANGED = 'last-modified-changed';
 
-function isJsonObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 /** Liest die Identitätsfelder eines Dokuments ohne sie zu verändern. */
 export function readDocumentIdentities(parsed: unknown): {
   documentUuid: string | null;
@@ -476,21 +474,6 @@ function compareIdentities(
     findings.push(FINDING_LAST_MODIFIED_CHANGED);
   }
   return findings;
-}
-
-function deepFreeze<T>(node: T): T {
-  if (Array.isArray(node)) {
-    for (const entry of node) deepFreeze(entry);
-    return Object.freeze(node);
-  }
-  if (isPlainObjectRecord(node)) {
-    for (const key of Object.keys(node)) deepFreeze((node as Record<string, unknown>)[key]);
-  }
-  return Object.freeze(node);
-}
-
-function isPlainObjectRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function utf8ByteLength(text: string): number {

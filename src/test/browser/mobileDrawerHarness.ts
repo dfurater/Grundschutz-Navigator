@@ -151,3 +151,13 @@ export async function swipe(from: readonly [number, number], to: readonly [numbe
   await new Promise((resolve) => setTimeout(resolve, 150));
   await commands.dispatchBrowserTouch('end');
 }
+
+/** Nächster Vorfahr mit eigenem Scrollbereich. */
+export function scrollerOf(element: Element) {
+  let node: Element | null = element.parentElement;
+  while (node) {
+    if (node.scrollHeight - node.clientHeight > 10) return node as HTMLElement;
+    node = node.parentElement;
+  }
+  throw new Error('kein scrollbarer Vorfahr gefunden');
+}

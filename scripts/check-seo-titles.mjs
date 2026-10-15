@@ -25,6 +25,7 @@
  * Ausgabeverzeichnis von Hand.
  */
 
+import { compareStringsByCodeUnit } from '../src/domain/codeUnitOrder.mjs';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join, relative, resolve } from 'node:path';
@@ -137,15 +138,7 @@ export function collectBuiltHtmlFiles(distDir) {
   if (files.length === 0) {
     throw new SeoTitleCheckError(`Keine HTML-Dateien unter ${root}`);
   }
-  return files.sort(compareCodeUnit);
-}
-
-// Standard-Stringsortierung: UTF-16-Codeunits, unabhängig von der Locale —
-// ohne Vergleichsfunktion sortierte `sort()` die Pfade alphabetisch statt
-// nach Codepoints.
-function compareCodeUnit(a, b) {
-  if (a < b) return -1;
-  return a > b ? 1 : 0;
+  return files.sort(compareStringsByCodeUnit);
 }
 
 /**

@@ -6,7 +6,7 @@ import { commands, page } from 'vitest/browser';
 import { CatalogContext } from '@/state/CatalogContext';
 import { DESKTOP_QUERY, OWN_SCROLL_AREA_QUERY } from '@/hooks/breakpointQueries';
 import { appShellAt } from './appShellRouter';
-import { closeDrawer, openDrawer, settlePush } from './mobileDrawerHarness';
+import { closeDrawer, openDrawer, settlePush, scrollerOf } from './mobileDrawerHarness';
 import { createTabletCatalogState } from './tabletCatalogFixture';
 import '@/index.css';
 
@@ -48,16 +48,6 @@ async function renderApp(profile: Profile) {
 }
 
 const menuButton = (shell: ParentNode) => shell.querySelector<HTMLButtonElement>('button[aria-controls]')!;
-
-/** Nächster Vorfahr mit eigenem Scrollbereich. */
-function scrollerOf(element: Element) {
-  let node: Element | null = element.parentElement;
-  while (node) {
-    if (node.scrollHeight - node.clientHeight > 10) return node as HTMLElement;
-    node = node.parentElement;
-  }
-  throw new Error('kein scrollbarer Vorfahr gefunden');
-}
 
 test('hält den offenen Drawer nach Rotation von Dokument- zu internem Scrollen und zurück im Viewport', async () => {
   const shell = await renderApp(PHONE);

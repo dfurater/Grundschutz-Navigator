@@ -1,3 +1,4 @@
+import { scrollerOf } from './mobileDrawerHarness';
 import { createElement } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
@@ -76,16 +77,6 @@ async function renderCatalog(width: number, entry = '/katalog/gspp', height = 80
   });
   await document.fonts.ready;
   return { shell: host, router };
-}
-
-/** Nächster scrollbarer Vorfahr mit Überlauf. */
-function scrollerOf(element: Element) {
-  let node: Element | null = element.parentElement;
-  while (node) {
-    if (node.scrollHeight - node.clientHeight > 10) return node as HTMLElement;
-    node = node.parentElement;
-  }
-  throw new Error('kein scrollbarer Vorfahr gefunden');
 }
 
 function rowButton(shell: ParentNode, id: string) {

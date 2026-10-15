@@ -16,7 +16,7 @@
 // Aufruf: npm run sync-oscal-content-oracle [-- --force]
 // =============================================================================
 
-import { createHash } from 'node:crypto';
+import { sha256Hex } from './contentHashes.mjs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -53,10 +53,6 @@ const ARTIFACTS = [
   },
   ]),
 ];
-
-function sha256Hex(buffer) {
-  return createHash('sha256').update(buffer).digest('hex');
-}
 
 async function fetchArtifact(artifact, fetchImpl) {
   const url = `${RAW_BASE}/${artifact.remotePath}`;

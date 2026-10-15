@@ -1,3 +1,4 @@
+import { jobScopes } from '../src/test/workflowFixtures';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -6,18 +7,6 @@ const WORKFLOW_PATH = resolve(process.cwd(), '.github/workflows/update-catalog.y
 
 function hasPushTrigger(workflow: string): boolean {
   return /^ {2}(?:push|['"]push['"])\s*:/m.test(workflow);
-}
-
-function jobScopes(workflow: string): Map<string, string> {
-  const [, jobs = ''] = workflow.split('\njobs:\n');
-  const headers = [...jobs.matchAll(/^\x20{2}([\w-]+):\n/gm)];
-
-  return new Map(
-    headers.map((header, index) => [
-      header[1],
-      jobs.slice(header.index, headers[index + 1]?.index ?? jobs.length),
-    ]),
-  );
 }
 
 describe('catalog update workflow schedule', () => {

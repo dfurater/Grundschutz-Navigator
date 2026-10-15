@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { sha256Hex } from './contentHashes.mjs';
 import { hasRegistryKeyGrammar } from '../src/domain/sourceRegistry.mjs';
 
 export const UPSTREAM_MANIFEST_SCHEMA_VERSION = 2;
@@ -196,10 +196,6 @@ function buildSignaturePayload({ repository, snapshotCommitSha, files }) {
     snapshotCommitSha,
     files: canonicalizeManifestFiles(files),
   };
-}
-
-function sha256Hex(value) {
-  return createHash('sha256').update(value).digest('hex');
 }
 
 function normalizeGitTreeEntry(entry, index, roots, seenPaths) {

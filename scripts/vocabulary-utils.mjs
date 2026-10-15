@@ -1,4 +1,6 @@
-import { createHash } from 'node:crypto';
+import { encodeRepositoryPath } from '../src/domain/repositoryPath.mjs';
+import { compareStringsByCodeUnit } from '../src/domain/codeUnitOrder.mjs';
+import { sha256Hex as hashBytes } from './contentHashes.mjs';
 import { deriveRouteId } from '../src/domain/vocabularyRouteId.mjs';
 
 function toRepositoryParts(repository) {
@@ -32,7 +34,7 @@ export function sha256Hex(input) {
     buffer = Buffer.from(String(input), 'utf8');
   }
 
-  return createHash('sha256').update(buffer).digest('hex');
+  return hashBytes(buffer);
 }
 
 // Die Routenkennung bildet ein gemeinsames Modul, damit App-Fixtures sie genauso
@@ -92,12 +94,6 @@ function walkJson(value, visit) {
   Object.values(value).forEach((child) => walkJson(child, visit));
 }
 
-function compareStringsByCodeUnit(left, right) {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
-}
-
 export function extractReferencedNamespaceUrls(catalogDocument, repository) {
   const urls = new Set();
 
@@ -130,10 +126,6 @@ export function extractReferencedNamespaceUrls(catalogDocument, repository) {
   });
 
   return [...urls].sort(compareStringsByCodeUnit);
-}
-
-function encodeRepositoryPath(path) {
-  return path.split('/').map(encodeURIComponent).join('/');
 }
 
 function matchesVocabularyCollection(collection, repoPath) {

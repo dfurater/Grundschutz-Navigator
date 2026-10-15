@@ -29,6 +29,7 @@
 // bewahren die Pool-Erscheinungsreihenfolge.
 // =============================================================================
 
+import { compareStringsByCodeUnit } from '@/domain/codeUnitOrder.mjs';
 import { isJsonContainer, type JsonObject } from '@/domain/jsonGuards';
 import { createOscalDiagnostic, type OscalDiagnostic } from '@/domain/oscalDiagnostics';
 import { CLASS_2_IMPORT_LIMITS } from './oscalImportContract';
@@ -848,9 +849,7 @@ function orderedInsertIds(
   // Orakelvergleich verlangt Byte-Identität.
   const compare = (left: string, right: string): number => {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
-    if (left < right) return -1;
-    if (left > right) return 1;
-    return 0;
+    return compareStringsByCodeUnit(left, right);
   };
   if (directive.order === 'ascending') return [...ids].sort(compare);
   // Absteigend ist aufsteigend + Umdrehen: Die Schlüssel sind eindeutig

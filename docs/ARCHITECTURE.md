@@ -19,6 +19,14 @@ Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application 
 | Testing | Vitest + @testing-library/react + jsdom + Chromium-Browser-Lane; jsdom parst im Build zusätzlich die gebaute HTML-Auslieferung für den Titelvertrag |
 | Deployment | GitHub Pages (via GitHub Actions) |
 
+## Gemeinsame technische Helfer
+
+`src/domain/codeUnitOrder.mjs` liefert den locale-unabhängigen UTF-16-Code-Unit-Komparator für Profilauflösung, Fixtures und Node-Skripte. `scripts/upstream-artifacts.mjs` ordnet die Pfade des signierten Manifests nach Unicode-Codepoints. `src/domain/repositoryPath.mjs` kodiert Repository-Pfade segmentweise und erhält leere Segmente standardmäßig; `vocabulary.ts` und `vocabularyNamespaces.ts` entfernen sie mit `omitEmptySegments: true`. Beide `.mjs`-Module laufen ohne Vite und besitzen `.d.mts`-Typdeklarationen.
+
+`scripts/contentHashes.mjs` berechnet SHA-256 über die übergebenen Text- oder Byte-Daten und Git-Blob-IDs über den Header `blob <Byteanzahl>\0` und die Inhaltsbytes. Die Prüfung zulässiger Ausgabepfade verwendet `isPathInsideRoot` aus `scripts/security-guards.mjs`. Vokabular-Links verwenden die URL-Builder in `src/features/vocabulary/routes.ts`; Eintragswerte werden mit `encodeURIComponent` in den Query-Parameter `wert` geschrieben.
+
+Die Testinfra verwendet `isJsonObject` aus `src/domain/jsonGuards.ts` und `deepFreeze` aus `src/test/oscalStructure.ts`. Deterministische Fixture-UUIDs entstehen in `src/test/fixtures/fixtureUuid.ts`. `src/test/workflowFixtures.ts` enthält den Job-Block-Leser und den Repository-Builder mit Registrierung der temporären Verzeichnisse für den Cleanup der aufrufenden Suite. Der Job-Block-Leser wirft mit `requireJobsBlock: true` bei fehlendem `jobs`-Block einen Fehler. Browser-Tests beziehen den Vorfahren-Scrollhelfer `scrollerOf` aus `src/test/browser/mobileDrawerHarness.ts`.
+
 ## Gestaltungssystem
 
 `src/index.css` ist die einzige Quelle der Gestaltungswerte. Der `@theme`-Block führt Farben, sechs Schriftgrößen (`text-2xs` 10px, `text-xs` 12px, `text-sm` 14px, `text-base` 16px, `text-lg` 18px, `text-xl` 20px), die Zeilenhöhe `--leading-title` (1.35, als Modifier `text-lg/title`), die Laufweiten `tracking-wide` und `tracking-wider`, die Radien `rounded`/`rounded-sm` (4px), `rounded-md` (6px), `rounded-lg` (8px), vier Schatten (`shadow-sm`, `shadow-overlay`, `shadow-footer`, `shadow-grip-start`/`shadow-grip-end`), die Bewegungswerte `--duration-*`/`--easing-*` sowie die Maße `touch` (44px) und `panel-head` (51px), die als Utilities wie `min-h-touch` oder `h-panel-head` nutzbar sind. Für Schriftgrößen, Laufweiten, Radien und Schatten setzt `@theme` den Tailwind-Namensraum mit `initial` zurück, ebenso `--drop-shadow-*`, `--inset-shadow-*` und `--text-shadow-*`; `text-2xl`, `rounded-xl`, `shadow-md` oder `drop-shadow-lg` erzeugen deshalb kein CSS.
@@ -102,6 +110,8 @@ src/                              # Anwendungsquellcode
 │   ├── catalogReferenceProjection.ts # Aufgelöste Control-Links in der Katalog-View
 │   ├── class2ImportLimits.d.mts      # Typen der Klasse-2-Ressourcengrenzen
 │   ├── class2ImportLimits.mjs        # Klasse-2-Ressourcengrenzen (einzige Quelle, reines ESM)
+│   ├── codeUnitOrder.d.mts          # Typ des UTF-16-Code-Unit-Komparators
+│   ├── codeUnitOrder.mjs            # Locale-unabhängiger Stringvergleich für App und Skripte
 │   ├── componentDefinitionModel.ts   # Domänenmodell der Component Definition
 │   ├── controlRef.ts                 # Kataloggescopte interne Control-Referenzen
 │   ├── controlRelationships.ts       # Link-Relationen, Beschriftungen, eingehende Links
@@ -151,6 +161,8 @@ src/                              # Anwendungsquellcode
 │   ├── referenceGraphModel.ts        # Knoten, Kanten, Zustände, Diagnostic-Codes
 │   ├── referenceGraphPolicy.ts       # CI-Politik: fail-closed, Allowlist, Bericht
 │   ├── referenceResolution.ts        # Fail-closed OSCAL-Referenzauflösung auf source
+│   ├── repositoryPath.d.mts         # Typ des segmentweisen Pfadencodings
+│   ├── repositoryPath.mjs           # Repository-Pfadencoding mit expliziter Slash-Behandlung
 │   ├── securityTargets.ts            # Schutzziel-Skala, Klassifikation, Facetten
 │   ├── sourceRegistry.d.mts          # Typen des Quellregisters
 │   ├── sourceRegistry.mjs            # Verbindlicher Upstream-/Katalogvertrag
@@ -346,7 +358,8 @@ src/                              # Anwendungsquellcode
 │   ├── oscalGraphCompare.ts          # Graphvergleich mit Object.is-Semantik
 │   ├── oscalRoundTrip.ts             # No-op-Round-trip-Harnisch
 │   ├── oscalStructure.ts             # Strukturorakel (Zählregeln A und B)
-│   └── renderAppShell.tsx            # Rendert die Shell mit echter Routentabelle für Komponententests
+│   ├── renderAppShell.tsx            # Rendert die Shell mit echter Routentabelle für Komponententests
+│   └── workflowFixtures.ts           # Job-Blöcke und temporäre Repository-Fixtures für Skripttests
 ├── index.css                     # Tailwind-Einstieg und einzige Quelle der Gestaltungstokens
 ├── main.tsx                      # Einstiegspunkt
 ├── test-setup.ts                 # Vitest-Setup der jsdom-Lane
@@ -366,6 +379,8 @@ scripts/                          # Build-, CI- und Wartungsskripte
 ├── check-seo-titles.d.mts            # Typen der Titelvertragsprüfung
 ├── check-seo-titles.mjs              # Titelvertrag der gebauten HTML-Auslieferung
 ├── ci-scope.mjs                      # Scope-Entscheider für Step-Skips im Job validate
+├── contentHashes.d.mts             # Typen der SHA-256- und Git-Blob-Helfer
+├── contentHashes.mjs               # SHA-256 und Git-Blob-IDs für Node-Skripte
 ├── control-identity-delta.mjs        # Control-Identitätsdelta zwischen Snapshots
 ├── deployChecksums.d.mts            # Typen des Prüfsummen-Manifests
 ├── deployChecksums.mjs               # Prüfsummen-Manifest SHA256SUMS der Pages-Auslieferung

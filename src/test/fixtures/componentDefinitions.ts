@@ -22,6 +22,8 @@
 // gesetzt ist.
 // =============================================================================
 
+import { makeUuid } from '@/test/fixtures/fixtureUuid';
+import { compareStringsByCodeUnit } from '@/domain/codeUnitOrder.mjs';
 import type { PinnedOscalVersion } from '@/domain/oscalVersionMatrix';
 import { listOscalArtifacts } from '@/domain/sourceRegistry';
 
@@ -39,21 +41,6 @@ export const COMPONENT_SOURCE_UUIDS = Object.freeze({
 });
 
 type JsonObject = Record<string, unknown>;
-
-/**
- * Deterministische, schemagültige UUIDs (Typ 4, Variante 8). Ein Zähler statt
- * `crypto.randomUUID()`: Ein Fixture, das bei jedem Lauf andere Identitäten
- * trägt, taugt nicht als eingefrorener Korpus.
- */
-function makeUuid(seed: string, index: number): string {
-  let hash = 0;
-  for (const character of seed) {
-    hash = (hash * 31 + character.codePointAt(0)!) >>> 0;
-  }
-  const high = hash.toString(16).padStart(8, '0');
-  const low = index.toString(16).padStart(12, '0');
-  return `${high}-0000-4000-8000-${low}`;
-}
 
 /**
  * Verteilt `total` möglichst gleichmäßig auf `buckets` Töpfe. Die vorderen
@@ -153,12 +140,6 @@ const REGISTERED_COMPONENT_ARTIFACTS = new Map(
     .filter((entry) => entry.expectedRootType === 'component-definition')
     .map((entry) => [entry.artifactKey, entry] as const),
 );
-
-function compareStringsByCodeUnit(left: string, right: string): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
-}
 
 /** Die Schlüssel der registrierten Component Definitions, alphabetisch. */
 export function listRegisteredComponentArtifactKeys(): readonly string[] {
