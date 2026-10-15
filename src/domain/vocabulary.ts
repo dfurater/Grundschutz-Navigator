@@ -18,8 +18,6 @@ export interface VocabularyResolution {
   entry: VocabularyEntry;
 }
 
-export type ResolvedVocabularyEntry = VocabularyResolution;
-
 export interface ResolvedControlVocabularies {
   modalverb: VocabularyResolution | null;
   securityLevel: VocabularyResolution | null;
@@ -232,13 +230,6 @@ export function resolveVocabularyProp(
   return resolveVocabularyEntry(registry, prop?.ns, prop?.value);
 }
 
-export function resolvePropVocabularyEntry(
-  registry: VocabularyRegistry | null | undefined,
-  prop: PropValue | undefined,
-): ResolvedVocabularyEntry | null {
-  return resolveVocabularyProp(registry, prop);
-}
-
 export function resolveVocabularyValues(
   registry: VocabularyRegistry | null | undefined,
   namespaceUrl: string | undefined,
@@ -247,14 +238,6 @@ export function resolveVocabularyValues(
   return values
     .map((value) => resolveVocabularyEntry(registry, namespaceUrl, value))
     .filter((resolution): resolution is VocabularyResolution => resolution !== null);
-}
-
-export function resolveVocabularyEntries(
-  registry: VocabularyRegistry | null | undefined,
-  namespaceUrl: string | undefined,
-  values: string[],
-): ResolvedVocabularyEntry[] {
-  return resolveVocabularyValues(registry, namespaceUrl, values);
 }
 
 export function getVocabularyNamespaceByRouteId(

@@ -172,12 +172,12 @@ export function createGitRunner({ cwd } = {}) {
   };
 }
 
-async function gitText(git, args) {
+export async function gitText(git, args) {
   const { stdout } = await git(args);
   return stdout.trim();
 }
 
-async function gitSucceeds(git, args) {
+export async function gitSucceeds(git, args) {
   const { code } = await git(args, { allowFailure: true });
   return code === 0;
 }
@@ -759,7 +759,7 @@ async function runAncestryRepair(git, { github, logger, missing, sourceSha, inte
     );
   }
 
-  await pushImportBranch(git, BACKMERGE_BRANCH);
+  await pushBranchWithLease(git, BACKMERGE_BRANCH);
 
   const title = `chore(sync): Ancestry abgeschlossener Übernahmen wiederherstellen`;
   const body = buildPullRequestBody({
@@ -794,11 +794,12 @@ async function runAncestryRepair(git, { github, logger, missing, sourceSha, inte
 }
 
 /**
- * `--force-with-lease` gegen den zuvor gelesenen Remote-Stand: Der Branch wird
- * bei jedem Lauf neu aus `develop` aufgebaut, darf dabei aber keinen fremden
- * Push überschreiben, der zwischen Lesen und Schreiben landete.
+ * `--force-with-lease` gegen den zuvor gelesenen Remote-Stand: Übernahme- und
+ * Vorbereitungsbranch werden bei jedem Lauf neu aufgebaut, dürfen dabei aber
+ * keinen fremden Push überschreiben, der zwischen Lesen und Schreiben landete.
+ * Ohne Remote-Branch pusht der Lauf direkt.
  */
-async function pushImportBranch(git, branch) {
+export async function pushBranchWithLease(git, branch) {
   const remoteHead = await gitText(git, ['ls-remote', '--heads', 'origin', `refs/heads/${branch}`]);
   const remoteSha = remoteHead.split('\n')[0]?.split('\t')[0] ?? '';
   const pushArgs = SHA_PATTERN.test(remoteSha)
@@ -922,7 +923,7 @@ async function publishImportPullRequest(git, {
     logger.log(`Migrationsvertrag ${contract} greift gegen den Zielzustand.`);
   }
 
-  await pushImportBranch(git, branch);
+  await pushBranchWithLease(git, branch);
 
   const body = buildPullRequestBody({
     klasse,
