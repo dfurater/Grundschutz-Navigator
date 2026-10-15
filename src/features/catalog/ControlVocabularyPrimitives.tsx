@@ -49,7 +49,7 @@ export const detailListMarkerClass =
 export const detailListClass = `${detailListMarkerClass} space-y-1.5 ${tightStackClass}`;
 
 /** Fließtext der Detailansicht: Anforderung, Umsetzungshinweise und Dokumentation in einer Größe. */
-export const detailProseClass = 'catalog-prose-text w-full break-words text-sm leading-relaxed whitespace-pre-line text-slate-700 [hyphens:auto]';
+export const detailProseClass = 'catalog-prose-text w-full break-words text-sm leading-relaxed whitespace-pre-line text-slate-700 hyphens-auto';
 
 /**
  * Stapel der Unterabschnitte eines Detailblocks (Schutzziele/Gefährdungen,
@@ -149,7 +149,7 @@ export function TermTrigger({
       className={`cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)] ${
         // Außerhalb des Satzes: Zeile 24 px bei jeder Breite, Touch-Fläche per
         // Pseudo-Element (`rowTouchTargetClass`), damit am Breakpoint nichts springt.
-        inline ? 'inline' : (className ?? `inline-flex min-h-6 max-w-full items-center text-left [overflow-wrap:anywhere] ${rowTouchTargetClass}`)
+        inline ? 'inline' : (className ?? `inline-flex min-h-6 max-w-full items-center text-left wrap-anywhere ${rowTouchTargetClass}`)
       } ${
         active ? 'font-medium text-primary-main' : ''
       }`}

@@ -19,7 +19,7 @@ export function CatalogMobileSelectToggle({
     <Button
       variant="ghost"
       size="sm"
-      className="desktop:hidden relative isolate min-h-[44px] min-w-[44px]"
+      className="desktop:hidden relative isolate min-h-touch min-w-touch"
       onClick={onToggle}
       aria-label={active ? 'Auswahl beenden' : 'Kontrollen auswählen'}
       aria-pressed={active}
