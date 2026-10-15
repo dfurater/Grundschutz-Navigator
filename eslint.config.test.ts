@@ -115,6 +115,13 @@ const RULE = 'design-system/no-off-system-classes';
 // Ziffer, Großbuchstaben oder Herstellerpräfix im Namen und mit Modifier. `css` sind Ausschnitte des
 // CSS, das Tailwind mit `src/index.css` für die Klasse erzeugt.
 const BYPASS_FORMS = [
+  // Laufzeit-Zusammensetzung hält Test-URLs aus Tailwinds automatischem App-Scan.
+  { label: 'Zitierte öffnende Klammer im Kurzform-Fallback', classes: ['bg-', "(image:--missing,url('/icon(.svg'))"].join(''), messageId: 'arbitraryValue', css: ["background-image: var(--missing,url('/icon(.svg'))"] },
+  { label: 'Zitierte schließende Klammer im Kurzform-Fallback', classes: ['bg-', '(image:--missing,url("/icon).svg"))'].join(''), messageId: 'arbitraryValue', css: ['background-image: var(--missing,url("/icon).svg"))'] },
+  { label: 'Escapete Klammer im Kurzform-Fallback', classes: ['bg-', String.raw`(image:--missing,url(/icon\(.svg))`].join(''), messageId: 'arbitraryValue', css: [String.raw`background-image: var(--missing,url(/icon\(.svg))`] },
+  { label: 'Escapetes Anführungszeichen im Kurzform-Fallback', classes: ['bg-', String.raw`(image:--missing,url('/it\'s(.svg'))`].join(''), messageId: 'arbitraryValue', css: [String.raw`background-image: var(--missing,url('/it\'s(.svg'))`] },
+  { label: 'Zitierte Klammer in Variante vor Rohfallback', classes: "[&[data-icon='(']]:text-(length:--missing,13px)", messageId: 'arbitraryValue', css: ['font-size: var(--missing,13px)'] },
+  { label: 'Escapete Klammer in Variante vor Rohfallback', classes: String.raw`[&[data-icon=\(]]:text-(length:--missing,13px)`, messageId: 'arbitraryValue', css: ['font-size: var(--missing,13px)'] },
   { label: 'Rohschriftgröße im Kurzform-Fallback', classes: 'text-(length:--missing,13px)', messageId: 'arbitraryValue', css: ['font-size: var(--missing,13px)'] },
   { label: 'Kurzform-Fallback mit Variante und Important', classes: 'md:!text-(length:--missing,13px)', messageId: 'arbitraryValue', css: ['font-size: var(--missing,13px) !important'] },
   { label: 'Rohfarbe im Kurzform-Fallback', classes: 'bg-(--missing,#f00)', messageId: 'arbitraryValue', css: ['background-color: var(--missing,#f00)'] },
@@ -159,6 +166,8 @@ const BYPASS_FORMS = [
 
 // Erlaubte Klassen mit denselben Varianten und Important-Formen.
 const ALLOWED_FORMS = [
+  { label: 'Token-Kurzform nach zitierter Klammer in Variante', classes: "[&[data-icon='(']]:text-(length:--text-sm)" },
+  { label: 'Token-Kurzform nach escapeter Klammer in Variante', classes: String.raw`[&[data-icon=\(]]:text-(length:--text-sm)` },
   { label: 'Reine Token-Kurzformen', classes: 'bg-(--color-primary-main) text-(length:--text-sm) text-sm/(--leading-title)' },
   { label: 'Schlüsselwort-Fallback in Kurzform', classes: 'w-(--control-id-column,auto)' },
   { label: 'Verschachtelter Token-Fallback in Kurzform', classes: 'text-(length:--text-sm,var(--text-lg))' },

@@ -87,13 +87,29 @@ const ARBITRARY_VALUE_ALLOWLIST = [
   (value, prefix) => /^(?:min-|max-)?[hw]-$/.test(prefix) && /^(?:calc\()?\d+(?:\.\d+)?[dsl]?v[hw]\b/.test(value),
 ];
 
+/** Liefert nur Zeichen außerhalb von CSS-Strings und Backslash-Escapes. */
+function* structuralCharacters(text) {
+  let quote = null;
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    if (char === '\\') {
+      i += 1;
+    } else if (quote !== null) {
+      if (char === quote) quote = null;
+    } else if (char === '"' || char === "'") {
+      quote = char;
+    } else {
+      yield [i, char];
+    }
+  }
+}
+
 /** Zerlegt eine Klasse an Doppelpunkten außerhalb von Klammern in Varianten und Utility. */
 function splitVariants(token) {
   const parts = [];
   let depth = 0;
   let start = 0;
-  for (let i = 0; i < token.length; i += 1) {
-    const char = token[i];
+  for (const [i, char] of structuralCharacters(token)) {
     if (char === '[' || char === '(') depth += 1;
     else if (char === ']' || char === ')') depth -= 1;
     else if (char === ':' && depth === 0) {
@@ -130,8 +146,7 @@ function normalizeVariableShorthand(utility) {
   let start = -1;
   let cursor = 0;
   let normalized = '';
-  for (let i = 0; i < utility.length; i += 1) {
-    const char = utility[i];
+  for (const [i, char] of structuralCharacters(utility)) {
     if (char === '[' || char === '(') {
       if (depth === 0 && char === '(' && /[-/]/.test(utility[i - 1] ?? '')) start = i;
       depth += 1;
