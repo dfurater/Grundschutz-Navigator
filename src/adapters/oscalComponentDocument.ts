@@ -10,14 +10,7 @@
 // dem Dispatch, nicht aus einer Modellkonstante.
 // =============================================================================
 
-import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
-import {
-  dispatchOscalDocumentOrThrow,
-  OscalRootDispatchError,
-  ROOT_DISPATCH_DIAGNOSTIC_CODES,
-  ROOT_DISPATCH_STAGE,
-  ROOT_DISPATCH_VALIDATOR,
-} from '@/adapters/oscalRootDispatch';
+import { parseRootDocument } from '@/adapters/oscalRootDocumentParse';
 import { deriveComponentDefinition } from '@/adapters/oscalComponentAdapter';
 import { COMPONENT_DEFINITION_ROOT_TYPE } from '@/domain/componentDefinitionModel';
 import type {
@@ -61,36 +54,10 @@ export function parseComponentDefinitionDocument(
   context: OscalDocumentContext,
   options: ComponentDefinitionDeriveOptions = {},
 ): ComponentDefinitionDocument {
-  const dispatch = dispatchOscalDocumentOrThrow(source, context);
-
-  // Zweite Schranke neben dem Registry-Abgleich im Dispatch: Der greift nur bei
-  // einem registrierten Upstream-Pfad. Dieser Einstieg liefert ein
-  // `ComponentDefinitionDocument` und darf keinen fremden Root durchreichen.
-  if (dispatch.rootType !== COMPONENT_DEFINITION_ROOT_TYPE) {
-    throw new OscalRootDispatchError(
-      createOscalDiagnostic({
-        code: ROOT_DISPATCH_DIAGNOSTIC_CODES.ROOT_TYPE_MISMATCH,
-        stage: ROOT_DISPATCH_STAGE,
-        validator: ROOT_DISPATCH_VALIDATOR,
-        path: '/',
-        artifact: {
-          key: dispatch.artifactKey,
-          rootType: dispatch.rootType,
-          oscalVersion: dispatch.oscalVersion,
-        },
-        params: { expected: COMPONENT_DEFINITION_ROOT_TYPE, found: dispatch.rootType },
-      }),
-    );
-  }
-
-  return {
-    source,
-    context,
-    view: deriveComponentDefinition(dispatch.body, context, options),
-    pin: dispatch.pin,
-    oscalVersion: dispatch.oscalVersion,
-    artifactKey: dispatch.artifactKey,
-  };
+  return parseRootDocument(source, context, {
+    rootType: COMPONENT_DEFINITION_ROOT_TYPE,
+    derive: (body) => deriveComponentDefinition(body, context, options),
+  });
 }
 
 /**

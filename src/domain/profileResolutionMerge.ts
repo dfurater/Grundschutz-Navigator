@@ -29,7 +29,7 @@
 // bewahren die Pool-Erscheinungsreihenfolge.
 // =============================================================================
 
-import type { JsonObject } from '@/adapters/oscalProfileReaders';
+import { isJsonContainer, type JsonObject } from '@/domain/jsonGuards';
 import { createOscalDiagnostic, type OscalDiagnostic } from '@/domain/oscalDiagnostics';
 import { CLASS_2_IMPORT_LIMITS } from './oscalImportContract';
 import {
@@ -49,24 +49,18 @@ import type {
 } from './profileModel';
 import {
   indexCatalogControls,
-  isJsonObject,
   ownArrayDataElements,
   ownDataValue,
   PROFILE_RESOLUTION_SELECTION_DIAGNOSTIC_CODES,
   resolveSelectionIds,
 } from './profileResolutionSelection';
+import { copyOwnDataMembers, safeArrayMember } from './profileResolutionMembers';
 
 export type CombineMethod = 'use-first' | 'keep';
 
 function readIdOrEmpty(node: JsonObject): string {
   const id = ownDataValue(node, 'id');
   return typeof id === 'string' ? id : '';
-}
-
-/** Array-Wert eines Mitglieds, rein deskriptorbasiert gelesen. */
-function safeArrayMember(node: JsonObject, key: string): readonly unknown[] | undefined {
-  const value = ownDataValue(node, key);
-  return Array.isArray(value) ? value : undefined;
 }
 
 /** Eine Inklusion aus Phase 1: selektierte Controls eines Quelldokuments. */
@@ -99,7 +93,7 @@ export type CombinedControls = {
 };
 
 function controlsFromInclusion(inclusion: unknown, budget: ProfileResolutionBudget): readonly unknown[] {
-  if (!isJsonObject(inclusion)) return [];
+  if (!isJsonContainer(inclusion)) return [];
   const controls = ownDataValue(inclusion, 'controls');
   return Array.isArray(controls) ? ownArrayDataElements(controls, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP) : [];
 }
@@ -145,7 +139,7 @@ export function applyCombine(
 
   for (const inclusion of ownArrayDataElements(inclusions, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP)) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
-    const nodesInInclusion = controlsFromInclusion(inclusion, budget).filter(isJsonObject);
+    const nodesInInclusion = controlsFromInclusion(inclusion, budget).filter(isJsonContainer);
     // Leere IDs ausfiltern: `readIdOrEmpty` liefert '' für ID-lose Knoten, und
     // eine Prune-Menge mit '' würde jedes ID-lose verschachtelte Kind als
     // "selektiert" behandeln und stehen lassen.
@@ -162,7 +156,7 @@ export function applyCombine(
       // Projektionspfade kopieren den verschachtelten Baum ohnehin und
       // verändern diese Werte nie.
       const definition = method === 'keep' && sourceIdsByDefinition.has(node)
-        ? copyOwnDataMembers(node, budget)
+        ? copyOwnDataMembers(node, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP)
         : node;
       registerCombinedControl(definition, method, definitions, order, clashes, budget);
       // Bei use-first gewinnt die erste Registrierung — dieselbe Regel, nach
@@ -224,7 +218,7 @@ export function buildFlatControls(combined: CombinedControls, budget: ProfileRes
   return {
     controls: Array.isArray(orderValue)
       ? ownArrayDataElements(orderValue, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP)
-        .filter((node): node is JsonObject => isJsonObject(node))
+        .filter((node): node is JsonObject => isJsonContainer(node))
         .map((node) => stripNestedChildren(node, budget))
       : [],
   };
@@ -244,7 +238,7 @@ function filterNestedIncluded(
 ): JsonObject {
   const childPath = new Set(path);
   childPath.add(control);
-  const copy = copyOwnDataMembers(control, budget);
+  const copy = copyOwnDataMembers(control, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
   // Wird unten als `controls`-Mitglied gesetzt und bleibt damit im
   // Zwischengraphen stehen.
   budget.admitWorkingNode();
@@ -254,7 +248,7 @@ function filterNestedIncluded(
   const children = safeArrayMember(control, 'controls') ?? [];
   for (const child of ownArrayDataElements(children, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP)) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
-    if (!isJsonObject(child)) continue;
+    if (!isJsonContainer(child)) continue;
     if (childPath.has(child)) continue;
     if (includedIds.has(readIdOrEmpty(child))) {
       ordered.push(filterNestedIncluded(child, includedIds, childPath, budget));
@@ -290,7 +284,7 @@ function promotedControls(
   if (children === undefined) return kept;
   for (const child of ownArrayDataElements(children, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP)) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
-    if (!isJsonObject(child)) continue;
+    if (!isJsonContainer(child)) continue;
     if (childPath.has(child)) continue;
     if (includedIds.has(readIdOrEmpty(child))) {
       kept.push(filterNestedIncluded(child, includedIds, childPath, budget));
@@ -312,7 +306,7 @@ function pushHierarchyChildren(
     if (nested === undefined) continue;
     for (const child of ownArrayDataElements(nested, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP)) {
       budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
-      if (isJsonObject(child)) stack.push({ node: child, depth: depth + 1 });
+      if (isJsonContainer(child)) stack.push({ node: child, depth: depth + 1 });
     }
   }
 }
@@ -366,7 +360,7 @@ function collectDirectControls(
   const rootPath = new Set<object>();
   for (const child of ownArrayDataElements(children, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP)) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
-    if (!isJsonObject(child)) continue;
+    if (!isJsonContainer(child)) continue;
     if (includedIds.has(readIdOrEmpty(child))) {
       controls.push(filterNestedIncluded(child, includedIds, rootPath, budget));
     } else {
@@ -387,7 +381,7 @@ function collectNestedGroups(
   if (nestedGroups === undefined) return;
   for (const group of ownArrayDataElements(nestedGroups, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP)) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
-    if (!isJsonObject(group)) continue;
+    if (!isJsonContainer(group)) continue;
     const filteredGroup = filterContainerForAsIs(group, includedIds, visited, budget);
     const groupControls =
       (filteredGroup['controls'] as readonly unknown[] | undefined) ?? [];
@@ -398,7 +392,7 @@ function collectNestedGroups(
       // leere Gruppen-/Controls-Mitglieder erscheinen im resolved Dokument
       // nicht (Orakelvertrag gegen die BSI-resolved_catalogs).
       // Deskriptorbasiert, um Getter nicht auszuführen.
-      const merged = copyOwnDataMembers(group, budget);
+      const merged = copyOwnDataMembers(group, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
       delete merged['controls'];
       delete merged['groups'];
       if (groupControls.length > 0) merged['controls'] = groupControls;
@@ -462,23 +456,6 @@ export type CustomAssemblyResult =
   | { readonly ok: false; readonly diagnostic: OscalDiagnostic };
 
 /**
- * Kopiert alle eigenen Mitglieder über Data-Property-Deskriptoren.
- * Accessor-Slots erscheinen als abwesend und werden nie ausgeführt —
- * dieselbe Semantik wie in der Selektionsphase.
- */
-function copyOwnDataMembers(node: JsonObject, budget: ProfileResolutionBudget): JsonObject {
-  budget.admitWorkingNode();
-  const copy: JsonObject = {};
-  for (const key of Reflect.ownKeys(node)) {
-    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
-    if (typeof key !== 'string') continue;
-    const value = ownDataValue(node, key);
-    if (value !== undefined) copy[key] = value;
-  }
-  return copy;
-}
-
-/**
  * Kopiert eine Custom-Gruppe mitgliedergenau; verschachtelte Gruppen
  * werden ebenso behandelt. Die Rekursionstiefe entspricht der Gruppen-
  * Verschachtelung des Quelldokuments und ist durch den Entry-Scanner
@@ -491,7 +468,7 @@ function copyOwnDataMembers(node: JsonObject, budget: ProfileResolutionBudget): 
  * Orakelvergleich nagelt das Verhalten fest.
  */
 function copyCustomGroup(group: JsonObject, budget: ProfileResolutionBudget): JsonObject {
-  const copy = copyOwnDataMembers(group, budget);
+  const copy = copyOwnDataMembers(group, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
   delete copy['insert-controls'];
 
   if (!('props' in copy)) {
@@ -509,7 +486,7 @@ function copyCustomGroup(group: JsonObject, budget: ProfileResolutionBudget): Js
 
 /** Liest die ID eines Part-Eintrags als String; ohne ID zählt leer. */
 function partIdOf(part: unknown): string {
-  if (!isJsonObject(part)) return '';
+  if (!isJsonContainer(part)) return '';
   const id = ownDataValue(part, 'id');
   return typeof id === 'string' ? id : '';
 }
@@ -536,7 +513,7 @@ function measureControlDepth(control: JsonObject, budget: ProfileResolutionBudge
     const children = safeArrayMember(node, 'controls') ?? [];
     for (const child of ownArrayDataElements(children, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP)) {
       budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
-      if (isJsonObject(child)) stack.push({ node: child, depth: depth + 1 });
+      if (isJsonContainer(child)) stack.push({ node: child, depth: depth + 1 });
     }
   }
   return maxDepth;
@@ -566,7 +543,7 @@ function createLabeledChild(
   stack: LabelStackFrame[],
   budget: ProfileResolutionBudget,
 ): unknown {
-  if (!isJsonObject(child) || visited.has(child)) return child;
+  if (!isJsonContainer(child) || visited.has(child)) return child;
   visited.add(child);
   const childLabel = `${frame.label}.${index + 1}`;
   const childCopy = copyWithSortedParts(child, childLabel, budget);
@@ -616,7 +593,7 @@ function copyWithLabel(control: JsonObject, label: string, budget: ProfileResolu
   const sourceProps = Array.isArray(sourcePropsValue)
     ? ownArrayDataElements(sourcePropsValue, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP)
     : [];
-  const copy = copyOwnDataMembers(control, budget);
+  const copy = copyOwnDataMembers(control, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
   // Zwei neue Container: die props-Liste und der Label-Träger darin.
   budget.admitWorkingNode();
   budget.admitWorkingNode();
@@ -796,7 +773,7 @@ function attachNestedGroups(
   if (!Array.isArray(nestedRawValue)) return null;
 
   const nestedRaw = ownArrayDataElements(nestedRawValue, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP).filter(
-    (child): child is JsonObject => isJsonObject(child),
+    (child): child is JsonObject => isJsonContainer(child),
   );
   const nestedResult = assembleGroups(nestedRaw, typed.groups, context, budget);
   if (!nestedResult.ok) return nestedResult;
@@ -884,11 +861,11 @@ function orderedInsertIds(
 }
 
 function nestedCustomGroups(group: unknown, budget: ProfileResolutionBudget): readonly JsonObject[] {
-  if (!isJsonObject(group)) return [];
+  if (!isJsonContainer(group)) return [];
   const nested = ownDataValue(group, 'groups');
   if (!Array.isArray(nested)) return [];
   return ownArrayDataElements(nested, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP).filter(
-    (child): child is JsonObject => isJsonObject(child),
+    (child): child is JsonObject => isJsonContainer(child),
   );
 }
 
@@ -919,7 +896,7 @@ function jsonObjectArrayMember(node: object, key: string, budget: ProfileResolut
   const value = ownDataValue(node, key);
   if (!Array.isArray(value)) return [];
   return ownArrayDataElements(value, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP).filter(
-    (entry): entry is JsonObject => isJsonObject(entry),
+    (entry): entry is JsonObject => isJsonContainer(entry),
   );
 }
 
@@ -929,7 +906,7 @@ function arrayMember<T>(node: object, key: string, budget: ProfileResolutionBudg
 }
 
 function projectMatcher(value: unknown): ProfileControlMatcher {
-  if (!isJsonObject(value)) return {};
+  if (!isJsonContainer(value)) return {};
   const pattern = ownDataValue(value, 'pattern');
   const remarks = ownDataValue(value, 'remarks');
   return {
@@ -939,7 +916,7 @@ function projectMatcher(value: unknown): ProfileControlMatcher {
 }
 
 function projectSelector(value: unknown, budget: ProfileResolutionBudget): ProfileControlSelector {
-  if (!isJsonObject(value)) {
+  if (!isJsonContainer(value)) {
     return { withIds: [], matching: [], path: '/' };
   }
   const withChildControls = ownDataValue(value, 'withChildControls');
@@ -971,7 +948,7 @@ function invalidSelection(): ProfileSelection {
 }
 
 function projectSelection(value: unknown, budget: ProfileResolutionBudget): ProfileSelection {
-  if (!isJsonObject(value)) return invalidSelection();
+  if (!isJsonContainer(value)) return invalidSelection();
   const kind = ownDataValue(value, 'kind');
   if (kind === 'include-all') return { kind };
   if (kind !== 'include-controls') return invalidSelection();
@@ -985,7 +962,7 @@ function projectSelection(value: unknown, budget: ProfileResolutionBudget): Prof
 }
 
 function projectInsertControls(value: unknown, budget: ProfileResolutionBudget): ProfileInsertControls {
-  if (!isJsonObject(value)) {
+  if (!isJsonContainer(value)) {
     return {
       selection: invalidSelection(),
       excludeControls: [],
@@ -1012,7 +989,7 @@ interface ProjectedAssemblyGroup {
 }
 
 function projectAssemblyGroup(value: unknown, budget: ProfileResolutionBudget): ProjectedAssemblyGroup {
-  if (!isJsonObject(value)) return { insertControls: [], groups: [] };
+  if (!isJsonContainer(value)) return { insertControls: [], groups: [] };
   const id = ownDataValue(value, 'id');
   const insertControls = ownDataValue(value, 'insertControls');
   const groups = ownDataValue(value, 'groups');
@@ -1057,7 +1034,7 @@ function hasEmittedAncestor(
     if (
       Array.isArray(definitions) &&
       ownArrayDataElements(definitions, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP).some(
-        (definition) => isJsonObject(definition) && emittedDefinitions.has(definition),
+        (definition) => isJsonContainer(definition) && emittedDefinitions.has(definition),
       )
     ) {
       return true;
@@ -1117,7 +1094,7 @@ function definitionsForInsertion(
 ): readonly JsonObject[] {
   const direct = context.combined.controls.get(id);
   if (Array.isArray(direct)) return ownArrayDataElements(direct, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP).filter(
-    (definition): definition is JsonObject => isJsonObject(definition),
+    (definition): definition is JsonObject => isJsonContainer(definition),
   );
   if (hasEmittedAncestor(id, context.poolIndex, context.combined, emittedDefinitions, budget)) return [];
   const nested = context.poolIndex.byId.get(id);
@@ -1188,7 +1165,7 @@ function emitRootControlId(
   const definitions = definitionsForInsertion(id, context, state.emittedDefinitions, budget);
   for (const definition of ownArrayDataElements(definitions, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP)) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP);
-    if (!isJsonObject(definition) || state.emittedDefinitions.has(definition)) continue;
+    if (!isJsonContainer(definition) || state.emittedDefinitions.has(definition)) continue;
     state.emittedDefinitions.add(definition);
     if (!hasDirectDefinitions) state.nestedOnlyDefinitions.add(definition);
     const emitted = filterNestedIncluded(

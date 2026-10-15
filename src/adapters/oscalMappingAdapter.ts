@@ -40,7 +40,6 @@ import {
 } from '@/domain/referenceResolution';
 import {
   diagnose,
-  isJsonObject,
   MAPPING_ADAPTER_DIAGNOSTIC_CODES,
   missingVocabulary,
   readIdentity,
@@ -50,12 +49,12 @@ import {
   readObjectArrayField,
   readOptionalObject,
   readProps,
-  readString,
   readStringArrayField,
   readVocabulary,
 } from '@/adapters/oscalMappingReaders';
-import type { DeriveState, JsonObject } from '@/adapters/oscalMappingReaders';
+import type { DeriveState } from '@/adapters/oscalMappingReaders';
 import { readPinnedOscalVersion, readRootMetadata } from '@/adapters/oscalRootDispatch';
+import { isJsonObject, readString, type JsonObject } from '@/domain/jsonGuards';
 import {
   MAPPING_COLLECTION_ROOT_TYPE,
   MAPPING_ID_REF_UNRESOLVED,

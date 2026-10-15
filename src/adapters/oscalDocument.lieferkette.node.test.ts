@@ -27,6 +27,7 @@ import {
   resolveCatalogControlReferences,
 } from '@/domain/referenceResolution';
 import type { Catalog } from '@/domain/models';
+import { isJsonObject, readArray, type JsonObject } from '@/domain/jsonGuards';
 import type { CatalogKey } from '@/domain/sourceRegistry';
 
 const LIEFERKETTE_KEY = 'lieferkette' as const satisfies CatalogKey;
@@ -37,16 +38,6 @@ const lieferkettePath =
 const entryPath = process.env.GSPP_CATALOG_CORPUS_PATH ?? 'public/data/catalog.json';
 const lieferketteAvailable = existsSync(lieferkettePath);
 const bothAvailable = lieferketteAvailable && existsSync(entryPath);
-
-type JsonObject = Record<string, unknown>;
-
-function isJsonObject(value: unknown): value is JsonObject {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function readArray(value: unknown): readonly unknown[] {
-  return Array.isArray(value) ? value : [];
-}
 
 function loadCorpus(path: string, catalogKey: CatalogKey) {
   const original = JSON.parse(readFileSync(path, 'utf8'));

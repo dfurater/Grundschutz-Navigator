@@ -13,14 +13,7 @@
 // unter der anderen ein Befund.
 // =============================================================================
 
-import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
-import {
-  dispatchOscalDocumentOrThrow,
-  OscalRootDispatchError,
-  ROOT_DISPATCH_DIAGNOSTIC_CODES,
-  ROOT_DISPATCH_STAGE,
-  ROOT_DISPATCH_VALIDATOR,
-} from '@/adapters/oscalRootDispatch';
+import { parseRootDocument } from '@/adapters/oscalRootDocumentParse';
 import { deriveProfile } from '@/adapters/oscalProfileAdapter';
 import { PROFILE_ROOT_TYPE } from '@/domain/profileModel';
 import type { Profile } from '@/domain/profileModel';
@@ -59,36 +52,10 @@ export function parseProfileDocument(
   source: unknown,
   context: OscalDocumentContext,
 ): ProfileDocument {
-  const dispatch = dispatchOscalDocumentOrThrow(source, context);
-
-  // Zweite Schranke neben dem Registry-Abgleich im Dispatch: Der greift nur bei
-  // einem registrierten Upstream-Pfad. Dieser Einstieg liefert ein
-  // `ProfileDocument` und darf keinen fremden Root durchreichen.
-  if (dispatch.rootType !== PROFILE_ROOT_TYPE) {
-    throw new OscalRootDispatchError(
-      createOscalDiagnostic({
-        code: ROOT_DISPATCH_DIAGNOSTIC_CODES.ROOT_TYPE_MISMATCH,
-        stage: ROOT_DISPATCH_STAGE,
-        validator: ROOT_DISPATCH_VALIDATOR,
-        path: '/',
-        artifact: {
-          key: dispatch.artifactKey,
-          rootType: dispatch.rootType,
-          oscalVersion: dispatch.oscalVersion,
-        },
-        params: { expected: PROFILE_ROOT_TYPE, found: dispatch.rootType },
-      }),
-    );
-  }
-
-  return {
-    source,
-    context,
-    view: deriveProfile(dispatch.body, context),
-    pin: dispatch.pin,
-    oscalVersion: dispatch.oscalVersion,
-    artifactKey: dispatch.artifactKey,
-  };
+  return parseRootDocument(source, context, {
+    rootType: PROFILE_ROOT_TYPE,
+    derive: (body) => deriveProfile(body, context),
+  });
 }
 
 /**

@@ -14,6 +14,7 @@
 // `JSON.parse`-Ergebnis grundsätzlich nicht mehr erkennbar (GSPP-289).
 // =============================================================================
 
+import { isJsonObject } from '@/domain/jsonGuards';
 import type { OscalDiagnostic, OscalDiagnosticValidator } from '@/domain/oscalDiagnostics';
 import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { OscalDocumentContext } from '@/domain/models';
@@ -103,10 +104,6 @@ export class OscalRootDispatchError extends Error {
     this.name = 'OscalRootDispatchError';
     this.diagnostic = diagnostic;
   }
-}
-
-function isJsonObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**
