@@ -18,14 +18,7 @@ import {
   assertAllowedUpstreamRepoPath,
   resolveOptionalSnapshotSha,
 } from './security-guards.mjs';
-import {
-  buildVocabularyNamespaceData,
-  extractReferencedNamespaceUrls,
-  namespaceUrlToRepoPath,
-  parseCsv,
-  parseVocabularyCsv,
-  sha256Hex,
-} from './vocabulary-utils.mjs';
+import { sha256Hex } from './vocabulary-utils.mjs';
 import {
   CATALOG_LINEAGES,
   SOURCE_REGISTRY,
@@ -37,8 +30,6 @@ const REPOSITORY_API = 'https://api.github.com/repos/BSI-Bund/Stand-der-Technik-
 const RAW_BASE = 'https://raw.githubusercontent.com/BSI-Bund/Stand-der-Technik-Bibliothek';
 const RESULT_NAMESPACE_URL =
   'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/result.csv';
-const ACTION_WORDS_NAMESPACE_URL =
-  'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/action_words.csv';
 const PRACTICES_NAMESPACE_PATH = 'documentation/namespaces/practices.csv';
 const PRACTICE_ALT_IDENTIFIER = '33333333-3333-4333-8333-333333333333';
 const PRACTICES_CSV =
@@ -1401,135 +1392,6 @@ describe('fetch-catalog', () => {
     expect(() => serializeJsonArtifact(undefined, 'Upstream-Metadaten')).toThrow(
       'Upstream-Metadaten konnte nicht als JSON serialisiert werden.',
     );
-  });
-});
-
-describe('vocabulary-utils', () => {
-  it('extracts only referenced official BSI namespace URLs from the final catalog', () => {
-    const catalog = {
-      catalog: {
-        metadata: { props: [{ name: 'ignore-me', ns: 'http://csrc.nist.gov/ns/oscal/1.0' }] },
-        groups: [{
-          controls: [{
-            props: [
-              { name: 'result', value: 'Verfahren', ns: RESULT_NAMESPACE_URL },
-              { name: 'result', value: 'Verfahren', ns: RESULT_NAMESPACE_URL },
-              { name: 'action', value: 'umsetzen', ns: ACTION_WORDS_NAMESPACE_URL },
-            ],
-          }],
-        }],
-      },
-    };
-
-    expect(extractReferencedNamespaceUrls(
-      catalog,
-      'BSI-Bund/Stand-der-Technik-Bibliothek',
-    )).toEqual([ACTION_WORDS_NAMESPACE_URL, RESULT_NAMESPACE_URL]);
-  });
-
-  it('rejects external HTTP(S) CSV namespace hosts', () => {
-    expect(() => extractReferencedNamespaceUrls({
-      catalog: {
-        groups: [{ controls: [{ props: [{ ns: 'https://evil.example/namespaces/result.csv' }] }] }],
-      },
-    }, 'BSI-Bund/Stand-der-Technik-Bibliothek')).toThrow(
-      'Externe oder nicht erlaubte Namespace-Quelle: https://evil.example/namespaces/result.csv',
-    );
-  });
-
-  it('maps GitHub namespace URLs back to repository-relative paths', () => {
-    expect(namespaceUrlToRepoPath(
-      RESULT_NAMESPACE_URL,
-      'BSI-Bund/Stand-der-Technik-Bibliothek',
-    )).toBe('documentation/namespaces/result.csv');
-    expect(namespaceUrlToRepoPath(
-      'http://csrc.nist.gov/ns/oscal/1.0',
-      'BSI-Bund/Stand-der-Technik-Bibliothek',
-    )).toBeNull();
-  });
-
-  it('parses quoted CSV fields with embedded newlines and escaped quotes', () => {
-    expect(parseCsv(
-      'Begriff,Definition\r\nnormal-SdT,"Zeile 1\nZeile ""2"""',
-    )).toEqual([
-      ['Begriff', 'Definition'],
-      ['normal-SdT', 'Zeile 1\nZeile "2"'],
-    ]);
-  });
-
-  it('keeps official headers and exposes exact lookup metadata for a namespace CSV', () => {
-    const parsed = parseVocabularyCsv('Aufwand,Definition\r\n3,"Mehrere Wochen bis Monate"');
-    expect(parsed.columnOrder).toEqual(['Aufwand', 'Definition']);
-    expect(parsed.valueColumn).toBe('Aufwand');
-    expect(parsed.definitionColumn).toBe('Definition');
-    expect(parsed.entries).toEqual([{
-      value: '3',
-      definition: 'Mehrere Wochen bis Monate',
-      columns: { Aufwand: '3', Definition: 'Mehrere Wochen bis Monate' },
-    }]);
-  });
-
-  it('preserves UUID and user-facing practice columns while parsing practices.csv', () => {
-    const namespace = buildVocabularyNamespaceData({
-      namespaceUrl:
-        'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/practices.csv',
-      repository: 'BSI-Bund/Stand-der-Technik-Bibliothek',
-      path: 'documentation/namespaces/practices.csv',
-      gitBlobSha: 'b'.repeat(40),
-      csvText:
-        'Kürzel,Begriff,Definition,UUID,Schwerpunkt,Nummerierung,auch bekannt als\nGC,Governance und Compliance,Definition,uuid-practice-1,Methodik,1,Corporate Governance\n',
-    });
-
-    expect(namespace.entries[0]).toMatchObject({
-      value: 'GC',
-      definition: 'Definition',
-      columns: {
-        UUID: 'uuid-practice-1',
-        Schwerpunkt: 'Methodik',
-        Nummerierung: '1',
-        'auch bekannt als': 'Corporate Governance',
-      },
-    });
-  });
-
-  it('preserves topic UUIDs while parsing topics.csv', () => {
-    const namespace = buildVocabularyNamespaceData({
-      namespaceUrl:
-        'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek/tree/main/documentation/namespaces/topics.csv',
-      repository: 'BSI-Bund/Stand-der-Technik-Bibliothek',
-      path: 'documentation/namespaces/topics.csv',
-      gitBlobSha: 'c'.repeat(40),
-      csvText:
-        'Begriff,Definition,UUID\nOrganisation,Offizielle Definition,uuid-topic-1\n',
-    });
-
-    expect(namespace).toMatchObject({
-      valueColumn: 'Begriff',
-      definitionColumn: 'Definition',
-      entries: [{
-        value: 'Organisation',
-        definition: 'Offizielle Definition',
-        columns: { UUID: 'uuid-topic-1' },
-      }],
-    });
-  });
-
-  it('uses the first official CSV column as the exact lookup key', () => {
-    const namespace = buildVocabularyNamespaceData({
-      namespaceUrl: ACTION_WORDS_NAMESPACE_URL,
-      repository: 'BSI-Bund/Stand-der-Technik-Bibliothek',
-      path: 'documentation/namespaces/action_words.csv',
-      gitBlobSha: 'b'.repeat(40),
-      csvText: 'Infinitiv,Definition\r\numsetzen,"Etwas umsetzen"',
-    });
-
-    expect(namespace.source.routeId).toBe('documentation-namespaces-action-words');
-    expect(namespace.valueColumn).toBe('Infinitiv');
-    expect(namespace.entries).toEqual([{
-      value: 'umsetzen',
-      definition: 'Etwas umsetzen',
-      columns: { Infinitiv: 'umsetzen', Definition: 'Etwas umsetzen' },
-    }]);
   });
 });
 

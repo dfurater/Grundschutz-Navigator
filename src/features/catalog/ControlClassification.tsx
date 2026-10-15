@@ -1,4 +1,4 @@
-import { buildVocabularyEntryPath } from '@/features/vocabulary/routes';
+import { buildVocabularyEntryPath } from '@/app/routes';
 import { EffortBadge, ModalverbBadge, SecurityLevelBadge } from '@/components/StatusMeta';
 import type { Control } from '@/domain/models';
 import type { ResolvedControlVocabularies, VocabularyResolution } from '@/domain/vocabulary';

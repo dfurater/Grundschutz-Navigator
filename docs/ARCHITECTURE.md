@@ -23,9 +23,9 @@ Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application 
 
 `src/domain/codeUnitOrder.mjs` liefert den locale-unabhängigen UTF-16-Code-Unit-Komparator für Profilauflösung, Fixtures und Node-Skripte. `scripts/upstream-artifacts.mjs` ordnet die Pfade des signierten Manifests nach Unicode-Codepoints. `src/domain/repositoryPath.mjs` kodiert Repository-Pfade segmentweise und erhält leere Segmente standardmäßig; `vocabulary.ts` und `vocabularyNamespaces.ts` entfernen sie mit `omitEmptySegments: true`. Beide `.mjs`-Module laufen ohne Vite und besitzen `.d.mts`-Typdeklarationen.
 
-`scripts/contentHashes.mjs` berechnet SHA-256 über die übergebenen Text- oder Byte-Daten und Git-Blob-IDs über den Header `blob <Byteanzahl>\0` und die Inhaltsbytes. Die Prüfung zulässiger Ausgabepfade verwendet `isPathInsideRoot` aus `scripts/security-guards.mjs`. Vokabular-Links verwenden die URL-Builder in `src/features/vocabulary/routes.ts`; Eintragswerte werden mit `encodeURIComponent` in den Query-Parameter `wert` geschrieben.
+`scripts/contentHashes.mjs` berechnet SHA-256 über die übergebenen Text- oder Byte-Daten und Git-Blob-IDs über den Header `blob <Byteanzahl>\0` und die Inhaltsbytes. Die Prüfung zulässiger Ausgabepfade verwendet `isPathInsideRoot` aus `scripts/security-guards.mjs`. Vokabular-Links verwenden die URL-Builder `buildVocabularyIndexPath`, `buildVocabularyNamespacePath` und `buildVocabularyEntryPath` in `src/app/routes.ts`; Eintragswerte werden mit `encodeURIComponent` in den Query-Parameter `wert` geschrieben.
 
-Die Testinfra verwendet `isJsonObject` aus `src/domain/jsonGuards.ts` und `deepFreeze` aus `src/test/oscalStructure.ts`. Deterministische Fixture-UUIDs entstehen in `src/test/fixtures/fixtureUuid.ts`. `src/test/workflowFixtures.ts` enthält den Job-Block-Leser und den Repository-Builder mit Registrierung der temporären Verzeichnisse für den Cleanup der aufrufenden Suite. Der Job-Block-Leser wirft mit `requireJobsBlock: true` bei fehlendem `jobs`-Block einen Fehler. Browser-Tests beziehen den Vorfahren-Scrollhelfer `scrollerOf` aus `src/test/browser/mobileDrawerHarness.ts`.
+Die Testinfra verwendet `isJsonObject` aus `src/domain/jsonGuards.ts` und `deepFreeze` aus `src/test/oscalStructure.ts`. Deterministische Fixture-UUIDs entstehen in `src/test/fixtures/fixtureUuid.ts`. Die Tests der Kontrolldetailansicht bauen ihren Katalogzustand mit `src/test/fixtures/controlDetailState.ts`. `src/test/workflowFixtures.ts` enthält den Job-Block-Leser und den Repository-Builder mit Registrierung der temporären Verzeichnisse für den Cleanup der aufrufenden Suite. Der Job-Block-Leser wirft mit `requireJobsBlock: true` bei fehlendem `jobs`-Block einen Fehler. Browser-Tests beziehen den Vorfahren-Scrollhelfer `scrollerOf` aus `src/test/browser/mobileDrawerHarness.ts`.
 
 ## Gestaltungssystem
 
@@ -136,6 +136,7 @@ src/                              # Anwendungsquellcode
 │   ├── oscalObjectProvenance.ts      # Herkunftsfrage und fail-closed Diagnose
 │   ├── oscalObjectWalk.ts            # Gemeinsamer Containerdurchlauf der Herkunftskette
 │   ├── oscalProfile.ts               # Raw-Typen des Roots profile
+│   ├── oscalRootDispatch.ts          # Stufe 2: Root-Dispatch
 │   ├── oscalRootDocument.ts          # Root-Envelope des generischen Dispatch
 │   ├── oscalSchemaBundle.ts          # Einziger Zugriffsweg auf die gepinnten NIST-Schemas
 │   ├── oscalSchemaValidation.ts      # Stufe 3: JSON-Schema-Prüfung im Worker
@@ -191,7 +192,6 @@ src/                              # Anwendungsquellcode
 │   ├── oscalProfileReaders.ts        # Knotenleser und Diagnosen des Profile-Adapters
 │   ├── oscalReaders.ts               # Strukturleser der Adapter mit gebundener Diagnosefunktion
 │   ├── oscalRootAdapters.ts          # Adapter-Registrierung je Root-Typ
-│   ├── oscalRootDispatch.ts          # Stufe 2: Root-Dispatch
 │   ├── oscalRootDocumentParse.ts     # Root-Dispatch mit Root-Typ-Schranke für alle Dokumenteinstiege
 │   └── oscalRootDocumentSchema.ts    # Stufe 3 für geparste Root-Dokumente, getrennt vom Katalogpfad
 ├── state/                        # Globaler Anwendungszustand
@@ -289,8 +289,7 @@ src/                              # Anwendungsquellcode
 │   │   ├── VocabularyOverviewPage.tsx    # Übersicht aller Vokabulare
 │   │   └── vocabularyTitle.ts            # Anzeigetitel je Vokabulardatei
 │   └── vocabulary/                   # Vokabular-Anzeige-Helpers
-│       ├── display.ts                    # Offizielle Stufen, Beschriftungen, Tooltips
-│       └── routes.ts                     # Routen der Vokabularseiten
+│       └── display.ts                    # Offizielle Stufen, Beschriftungen, Tooltips
 ├── components/                   # Wiederverwendbare UI-Komponenten
 │   ├── BackdropTint.tsx              # Abdunklung hinter den mobilen Bottom Sheets als Kind-Element
 │   ├── Badge.tsx                     # Badge-Varianten

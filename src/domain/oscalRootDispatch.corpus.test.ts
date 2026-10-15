@@ -9,8 +9,8 @@
 // =============================================================================
 
 import { describe, expect, it } from 'vitest';
-import { dispatchOscalDocument, ROOT_DISPATCH_DIAGNOSTIC_CODES } from './oscalRootDispatch';
-import type { OscalRootDispatchFailure } from './oscalRootDispatch';
+import { dispatchOscalDocument, ROOT_DISPATCH_DIAGNOSTIC_CODES } from '@/domain/oscalRootDispatch';
+import type { OscalRootDispatchFailure } from '@/domain/oscalRootDispatch';
 import type { OscalDocumentContext } from '@/domain/models';
 import { OSCAL_ROOT_KEYS } from '@/domain/oscalVersionMatrix';
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';

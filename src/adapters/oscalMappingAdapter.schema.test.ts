@@ -19,7 +19,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { parseMappingDocument, validateMappingSchema } from './oscalMappingDocument';
-import { OscalRootDispatchError } from './oscalRootDispatch';
+import { OscalRootDispatchError } from '@/domain/oscalRootDispatch';
 import { MAPPING_ADAPTER_DIAGNOSTIC_CODES } from './oscalMappingAdapter';
 import { resetCompiledSchemaCache } from '@/domain/oscalSchemaValidation';
 import type { OscalDocumentContext } from '@/domain/models';

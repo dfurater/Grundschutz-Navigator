@@ -43,7 +43,7 @@ import {
   registerUuid,
 } from '@/adapters/oscalComponentReaders';
 import type { DeriveState } from '@/adapters/oscalComponentReaders';
-import { readRootMetadata } from '@/adapters/oscalRootDispatch';
+import { readRootMetadata } from '@/domain/oscalRootDispatch';
 import { openRootDerive } from '@/adapters/oscalRootDocumentParse';
 import { readString, type JsonObject } from '@/domain/jsonGuards';
 import { COMPONENT_DEFINITION_ROOT_TYPE } from '@/domain/componentDefinitionModel';

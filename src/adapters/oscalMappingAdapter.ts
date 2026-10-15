@@ -50,7 +50,7 @@ import {
   readVocabulary,
 } from '@/adapters/oscalMappingReaders';
 import type { DeriveState } from '@/adapters/oscalMappingReaders';
-import { readRootMetadata } from '@/adapters/oscalRootDispatch';
+import { readRootMetadata } from '@/domain/oscalRootDispatch';
 import { openRootDerive } from '@/adapters/oscalRootDocumentParse';
 import { isJsonObject, readString, type JsonObject } from '@/domain/jsonGuards';
 import {

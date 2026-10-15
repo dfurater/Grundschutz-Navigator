@@ -1,4 +1,4 @@
-import { buildVocabularyEntryPath, buildVocabularyIndexPath } from '@/features/vocabulary/routes';
+import { buildVocabularyEntryPath, buildVocabularyIndexPath } from '@/app/routes';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES, TITLE_PARENT_SEPARATOR } from '@/app/pageTitles';

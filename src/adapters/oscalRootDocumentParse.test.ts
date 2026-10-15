@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { dispatchOscalDocumentOrThrow, OscalRootDispatchError } from './oscalRootDispatch';
+import { dispatchOscalDocumentOrThrow, OscalRootDispatchError } from '@/domain/oscalRootDispatch';
 import { dispatchRootDocumentOrThrow, parseRootDocument } from './oscalRootDocumentParse';
 import type { OscalDocumentContext } from '@/domain/models';
 

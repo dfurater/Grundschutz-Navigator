@@ -1,4 +1,4 @@
-import { buildVocabularyEntryPath } from '@/features/vocabulary/routes';
+import { buildVocabularyEntryPath } from '@/app/routes';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';

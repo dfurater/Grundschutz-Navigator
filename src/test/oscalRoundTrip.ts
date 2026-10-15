@@ -29,7 +29,7 @@ import {
 import {
   dispatchOscalDocument,
   type OscalRootDispatchSuccess,
-} from '@/adapters/oscalRootDispatch';
+} from '@/domain/oscalRootDispatch';
 import { MAPPING_RELATIONSHIPS } from '@/domain/mappingModel';
 import {
   createReferenceDocument,

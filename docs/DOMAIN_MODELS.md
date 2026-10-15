@@ -265,7 +265,7 @@ Lesesichten, Schreibfreigabe und Diagnosen sind im öffentlichen
 
 Der Envelope kennt alle acht OSCAL-Root-Keys, und genau **eine** Stelle
 bestimmt den Root-Typ (`dispatchOscalDocument()` in
-`src/adapters/oscalRootDispatch.ts`).
+`src/domain/oscalRootDispatch.ts`).
 
 ### Envelope-Typen
 
@@ -301,7 +301,7 @@ Top-Level-`properties` sind exakt `["$schema", "<root-key>"]`.
 
 ### Fehlerverhalten des Dispatch
 
-`dispatchOscalDocument()` in `src/adapters/oscalRootDispatch.ts` implementiert
+`dispatchOscalDocument()` in `src/domain/oscalRootDispatch.ts` implementiert
 Stufe 2 des [Validierungsvertrags](OSCAL_VALIDATION.md). Er ist fail-closed:
 im Zweifel ablehnen. Die Prüfreihenfolge ist festgelegt, damit ein Dokument
 die inhaltlich engste Diagnose erhält.

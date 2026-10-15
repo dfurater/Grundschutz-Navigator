@@ -4,8 +4,10 @@ import { describe, expect, it } from 'vitest';
 import { OFFICIAL_BSI_REPOSITORY_URL, OFFICIAL_BSI_REPO } from './security-guards.mjs';
 import { SOURCE_REGISTRY } from '../src/domain/sourceRegistry.mjs';
 import {
+  buildVocabularyNamespaceData,
   extractReferencedNamespaceUrls,
   materializeVocabularyCollectionMembers,
+  namespaceUrlToRepoPath,
   parseCsv,
   parseVocabularyCsv,
   sha256Hex,
@@ -30,6 +32,9 @@ function namespaceUrlFor(fileName: string) {
 function treeFile(fileName: string) {
   return { path: `${upstreamDirectory}/${fileName}` };
 }
+
+const RESULT_NAMESPACE_URL = namespaceUrlFor('result.csv');
+const ACTION_WORDS_NAMESPACE_URL = namespaceUrlFor('action_words.csv');
 
 describe('sha256Hex Eingabetypen', () => {
   const input = 'Vokabular äöü';
@@ -170,5 +175,132 @@ describe('parseVocabularyCsv — Kennungsspalten', () => {
 
     expect(parsed.identifierColumns).toEqual([]);
     expect(parsed.identifierReferenceColumns).toEqual([]);
+  });
+});
+
+describe('Namespace-Extraktion und CSV-Aufbereitung', () => {
+  it('extracts only referenced official BSI namespace URLs from the final catalog', () => {
+    const catalog = {
+      catalog: {
+        metadata: { props: [{ name: 'ignore-me', ns: 'http://csrc.nist.gov/ns/oscal/1.0' }] },
+        groups: [{
+          controls: [{
+            props: [
+              { name: 'result', value: 'Verfahren', ns: RESULT_NAMESPACE_URL },
+              { name: 'result', value: 'Verfahren', ns: RESULT_NAMESPACE_URL },
+              { name: 'action', value: 'umsetzen', ns: ACTION_WORDS_NAMESPACE_URL },
+            ],
+          }],
+        }],
+      },
+    };
+
+    expect(extractReferencedNamespaceUrls(
+      catalog,
+      repository,
+    )).toEqual([ACTION_WORDS_NAMESPACE_URL, RESULT_NAMESPACE_URL]);
+  });
+
+  it('rejects external HTTP(S) CSV namespace hosts', () => {
+    expect(() => extractReferencedNamespaceUrls({
+      catalog: {
+        groups: [{ controls: [{ props: [{ ns: 'https://evil.example/namespaces/result.csv' }] }] }],
+      },
+    }, repository)).toThrow(
+      'Externe oder nicht erlaubte Namespace-Quelle: https://evil.example/namespaces/result.csv',
+    );
+  });
+
+  it('maps GitHub namespace URLs back to repository-relative paths', () => {
+    expect(namespaceUrlToRepoPath(
+      RESULT_NAMESPACE_URL,
+      repository,
+    )).toBe('documentation/namespaces/result.csv');
+    expect(namespaceUrlToRepoPath(
+      'http://csrc.nist.gov/ns/oscal/1.0',
+      repository,
+    )).toBeNull();
+  });
+
+  it('parses quoted CSV fields with embedded newlines and escaped quotes', () => {
+    expect(parseCsv(
+      'Begriff,Definition\r\nnormal-SdT,"Zeile 1\nZeile ""2"""',
+    )).toEqual([
+      ['Begriff', 'Definition'],
+      ['normal-SdT', 'Zeile 1\nZeile "2"'],
+    ]);
+  });
+
+  it('keeps official headers and exposes exact lookup metadata for a namespace CSV', () => {
+    const parsed = parseVocabularyCsv('Aufwand,Definition\r\n3,"Mehrere Wochen bis Monate"');
+    expect(parsed.columnOrder).toEqual(['Aufwand', 'Definition']);
+    expect(parsed.valueColumn).toBe('Aufwand');
+    expect(parsed.definitionColumn).toBe('Definition');
+    expect(parsed.entries).toEqual([{
+      value: '3',
+      definition: 'Mehrere Wochen bis Monate',
+      columns: { Aufwand: '3', Definition: 'Mehrere Wochen bis Monate' },
+    }]);
+  });
+
+  it('preserves UUID and user-facing practice columns while parsing practices.csv', () => {
+    const namespace = buildVocabularyNamespaceData({
+      namespaceUrl: namespaceUrlFor('practices.csv'),
+      repository: repository,
+      path: 'documentation/namespaces/practices.csv',
+      gitBlobSha: 'b'.repeat(40),
+      csvText:
+        'Kürzel,Begriff,Definition,UUID,Schwerpunkt,Nummerierung,auch bekannt als\nGC,Governance und Compliance,Definition,uuid-practice-1,Methodik,1,Corporate Governance\n',
+    });
+
+    expect(namespace.entries[0]).toMatchObject({
+      value: 'GC',
+      definition: 'Definition',
+      columns: {
+        UUID: 'uuid-practice-1',
+        Schwerpunkt: 'Methodik',
+        Nummerierung: '1',
+        'auch bekannt als': 'Corporate Governance',
+      },
+    });
+  });
+
+  it('preserves topic UUIDs while parsing topics.csv', () => {
+    const namespace = buildVocabularyNamespaceData({
+      namespaceUrl: namespaceUrlFor('topics.csv'),
+      repository: repository,
+      path: 'documentation/namespaces/topics.csv',
+      gitBlobSha: 'c'.repeat(40),
+      csvText:
+        'Begriff,Definition,UUID\nOrganisation,Offizielle Definition,uuid-topic-1\n',
+    });
+
+    expect(namespace).toMatchObject({
+      valueColumn: 'Begriff',
+      definitionColumn: 'Definition',
+      entries: [{
+        value: 'Organisation',
+        definition: 'Offizielle Definition',
+        columns: { UUID: 'uuid-topic-1' },
+      }],
+    });
+  });
+
+  it('uses the first official CSV column as the exact lookup key', () => {
+    const namespace = buildVocabularyNamespaceData({
+      namespaceUrl: ACTION_WORDS_NAMESPACE_URL,
+      repository: repository,
+      path: 'documentation/namespaces/action_words.csv',
+      gitBlobSha: 'b'.repeat(40),
+      csvText: 'Infinitiv,Definition\r\numsetzen,"Etwas umsetzen"',
+    });
+
+    expect(namespace.source.routeId).toBe('documentation-namespaces-action-words');
+    expect(namespace.valueColumn).toBe('Infinitiv');
+    expect(namespace.entries).toEqual([{
+      value: 'umsetzen',
+      definition: 'Etwas umsetzen',
+      columns: { Infinitiv: 'umsetzen', Definition: 'Etwas umsetzen' },
+    }]);
   });
 });

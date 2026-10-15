@@ -24,8 +24,8 @@ import {
   ROOT_DISPATCH_STAGE,
   readPinnedOscalVersion,
   ROOT_DISPATCH_VALIDATOR,
-} from '@/adapters/oscalRootDispatch';
-import type { OscalRootDispatchSuccess } from '@/adapters/oscalRootDispatch';
+} from '@/domain/oscalRootDispatch';
+import type { OscalRootDispatchSuccess } from '@/domain/oscalRootDispatch';
 import { isJsonObject, type JsonObject } from '@/domain/jsonGuards';
 import type { OscalDocumentContext } from '@/domain/models';
 import { createReferenceDocument } from '@/domain/referenceResolution';

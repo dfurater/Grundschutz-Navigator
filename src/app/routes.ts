@@ -16,6 +16,8 @@ export const GROUP_ROUTE_PATTERN = '/katalog/:catalogKey/:groupId';
 export const CONTROL_ROUTE_PATTERN = '/katalog/:catalogKey/kontrolle/:altIdentifier';
 export const VOCABULARY_DETAIL_ROUTE_PATTERN = '/vokabular/:namespaceId';
 
+const VOCABULARY_INDEX_PATH = '/vokabular';
+
 function assertCatalogKey(catalogKey: CatalogKey): void {
   if (!isCatalogKey(catalogKey)) {
     throw new Error(`Unknown catalogKey for navigation: ${catalogKey}`);
@@ -81,4 +83,25 @@ export function resolveControlRoute(
   }
 
   return catalog.controlsByAltIdentifier.get(altIdentifier) ?? null;
+}
+
+export function buildVocabularyIndexPath(): string {
+  return VOCABULARY_INDEX_PATH;
+}
+
+export function buildVocabularyNamespacePath(routeId: string): string {
+  return `${VOCABULARY_INDEX_PATH}/${routeId}`;
+}
+
+export function buildVocabularyEntryPath(
+  routeId: string,
+  value?: string,
+): string {
+  const namespacePath = buildVocabularyNamespacePath(routeId);
+
+  if (value === undefined) {
+    return namespacePath;
+  }
+
+  return `${namespacePath}?wert=${encodeURIComponent(value)}`;
 }

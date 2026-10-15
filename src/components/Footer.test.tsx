@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildVocabularyIndexPath } from '@/features/vocabulary/routes';
+import { buildVocabularyIndexPath } from '@/app/routes';
 import { useCatalog } from '@/hooks/useCatalog';
 import { Footer } from './Footer';
 
