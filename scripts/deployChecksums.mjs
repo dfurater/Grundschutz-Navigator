@@ -18,10 +18,13 @@
  * Schreiber im Build auf, die CLI prüft das fertige `dist/` in CI.
  */
 
-import { createHash } from 'node:crypto';
+import { compareStringsByCodeUnit } from '../src/domain/codeUnitOrder.mjs';
+import { sha256Hex } from './contentHashes.mjs';
 import { closeSync, constants, fstatSync, openSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+
+export { sha256Hex } from './contentHashes.mjs';
 
 export const CHECKSUMS_FILE = 'SHA256SUMS';
 
@@ -52,12 +55,6 @@ export function assertSafeRelativePath(path) {
   return path;
 }
 
-// Standard-Stringsortierung: UTF-16-Codeunits, unabhängig von der Locale.
-function byCodeUnit(a, b) {
-  if (a < b) return -1;
-  return a > b ? 1 : 0;
-}
-
 /** Alle veröffentlichten regulären Dateien unter `distDir`, relativ und sortiert. */
 export function collectDeployedFiles(distDir) {
   const root = resolve(distDir);
@@ -80,7 +77,7 @@ export function collectDeployedFiles(distDir) {
     }
   };
   walk(root, '');
-  return files.sort(byCodeUnit);
+  return files.sort(compareStringsByCodeUnit);
 }
 
 /**
@@ -110,10 +107,6 @@ export function readRegularFileNoFollow(path, label = 'Datei') {
   } finally {
     closeSync(fd);
   }
-}
-
-export function sha256Hex(bytes) {
-  return createHash('sha256').update(bytes).digest('hex');
 }
 
 /** Kanonisches Manifest: `<64 hex>  <pfad>\n` je Datei, ohne Selbsteintrag. */
@@ -158,7 +151,7 @@ export function parseChecksumsManifest(text) {
     if (path === CHECKSUMS_FILE) {
       throw new DeploymentManifestError('Manifest enthält einen Selbsteintrag.');
     }
-    if (previous !== undefined && byCodeUnit(previous, path) >= 0) {
+    if (previous !== undefined && compareStringsByCodeUnit(previous, path) >= 0) {
       throw new DeploymentManifestError(`Manifestpfade nicht eindeutig sortiert bei ${path}`);
     }
     entries.set(path, hash);

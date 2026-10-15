@@ -14,10 +14,9 @@ export function buildVocabularyEntryPath(
 ): string {
   const namespacePath = buildVocabularyNamespacePath(routeId);
 
-  if (!value) {
+  if (value === undefined) {
     return namespacePath;
   }
 
-  const searchParams = new URLSearchParams({ wert: value });
-  return `${namespacePath}?${searchParams.toString()}`;
+  return `${namespacePath}?wert=${encodeURIComponent(value)}`;
 }

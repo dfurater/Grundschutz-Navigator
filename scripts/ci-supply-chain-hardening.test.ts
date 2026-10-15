@@ -1,3 +1,4 @@
+import { jobScopes } from '../src/test/workflowFixtures';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -20,18 +21,6 @@ const DEPLOY_WRITE_PERMISSIONS = [
   'attestations: write',
   'artifact-metadata: write',
 ];
-
-function jobScopes(workflowContent: string): Map<string, string> {
-  const [, jobs] = workflowContent.split('\njobs:\n');
-  const headers = [...jobs.matchAll(/^\x20{2}([\w-]+):\n/gm)];
-
-  return new Map(
-    headers.map((header, index) => [
-      header[1],
-      jobs.slice(header.index, headers[index + 1]?.index ?? jobs.length),
-    ]),
-  );
-}
 
 describe('CI supply-chain hardening', () => {
   // Seit GSPP-419 installiert genau eine Stelle. Die sechs Jobs, die zuvor je
@@ -133,7 +122,7 @@ describe('CI supply-chain hardening', () => {
   it('grants deploy privileges only to the job that needs them', () => {
     const deploy = workflow('deploy.yml');
     const [workflowScope] = deploy.split('\njobs:\n');
-    const scopes = jobScopes(deploy);
+    const scopes = jobScopes(deploy, { requireJobsBlock: true });
     const buildAndDeployScope = scopes.get('build-and-deploy');
 
     expect(workflowScope).toContain('permissions:\n  contents: read\n');
@@ -164,7 +153,7 @@ describe('CI supply-chain hardening', () => {
     const ATTEST = 'uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2';
 
     function steps(workflowContent: string, job: string): string[] {
-      const scope = jobScopes(workflowContent).get(job);
+      const scope = jobScopes(workflowContent, { requireJobsBlock: true }).get(job);
       expect(scope, `Job ${job}`).toBeDefined();
       // Kommentare vor einem Schritt stehen im Text des vorigen; sie zählen
       // für keinen von beiden.

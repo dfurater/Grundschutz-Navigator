@@ -49,6 +49,8 @@
  * Dieses Skript mergt nicht und löscht keine Branches.
  */
 
+import { compareStringsByCodeUnit } from '../src/domain/codeUnitOrder.mjs';
+
 import { spawn } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -104,12 +106,6 @@ export class BackmergeError extends Error {
     super(message);
     this.name = 'BackmergeError';
   }
-}
-
-function compareStringsByCodeUnit(left, right) {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
 }
 
 /**

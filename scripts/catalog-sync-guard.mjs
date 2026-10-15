@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
+import { compareStringsByCodeUnit } from '../src/domain/codeUnitOrder.mjs';
 import { execFile } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { computeGitBlobSha, sha256Hex } from './contentHashes.mjs';
 import { constants } from 'node:fs';
 import { mkdtemp, open, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -673,23 +674,6 @@ export async function verifySnapshotProgress(previousSha, nextSha, {
   return comparison;
 }
 
-function computeGitBlobSha(contents) {
-  return createHash('sha1')
-    .update(`blob ${contents.length}\0`)
-    .update(contents)
-    .digest('hex');
-}
-
-/**
- * Code-Unit-Vergleich zweier Strings — semantisch identisch zur impliziten
- * Sortiersemantik von Array.prototype.sort(), aber ohne Ternär-Kaskade.
- */
-function compareStringsByCodeUnit(left, right) {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
-}
-
 export async function verifySnapshotFiles(manifest, {
   fetchImpl = fetch,
   token,
@@ -743,7 +727,7 @@ export async function verifySnapshotFiles(manifest, {
     if (computeGitBlobSha(contents) !== file.gitBlobSha) {
       throw new Error(`BSI artifact content does not match its Git blob SHA: ${file.path}`);
     }
-    const contentSha256 = createHash('sha256').update(contents).digest('hex');
+    const contentSha256 = sha256Hex(contents);
     if (contentSha256 !== file.contentSha256) {
       throw new Error(`Manifest contentSha256 does not match the BSI artifact: ${file.path}`);
     }

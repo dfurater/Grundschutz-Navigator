@@ -1,3 +1,4 @@
+import { encodeRepositoryPath } from '@/domain/repositoryPath.mjs';
 import type {
   Control,
   PropValue,
@@ -165,14 +166,6 @@ export function buildVocabularyRegistry(
   };
 }
 
-function encodeRepositoryPath(path: string) {
-  return path
-    .split('/')
-    .filter(Boolean)
-    .map((segment) => encodeURIComponent(segment))
-    .join('/');
-}
-
 export function buildVocabularySourceUrl(
   source: Pick<VocabularyNamespaceSource, 'namespace' | 'repository' | 'path'>,
   snapshotCommitSha: string | null | undefined,
@@ -188,7 +181,7 @@ export function buildVocabularySourceUrl(
   while (repositoryUrl.endsWith('/')) {
     repositoryUrl = repositoryUrl.slice(0, -1);
   }
-  const encodedPath = encodeRepositoryPath(source.path);
+  const encodedPath = encodeRepositoryPath(source.path, { omitEmptySegments: true });
 
   if (!encodedPath) {
     return source.namespace;

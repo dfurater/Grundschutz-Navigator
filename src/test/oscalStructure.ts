@@ -12,9 +12,7 @@
 // hier tragen sie nur die No-op-Vorstufe für den Katalogpfad.
 // =============================================================================
 
-function isPlainObject(node: unknown): node is Record<string, unknown> {
-  return typeof node === 'object' && node !== null && !Array.isArray(node);
-}
+import { isJsonObject } from '@/domain/jsonGuards';
 
 /**
  * Zählregel A — skalare Blätter.
@@ -28,7 +26,7 @@ export function scalarLeafPaths(node: unknown, path = '$'): string[] {
   if (Array.isArray(node)) {
     return node.flatMap((entry, index) => scalarLeafPaths(entry, `${path}[${index}]`));
   }
-  if (isPlainObject(node)) {
+  if (isJsonObject(node)) {
     return Object.keys(node).flatMap((key) => scalarLeafPaths(node[key], `${path}.${key}`));
   }
   return [path];
@@ -55,7 +53,7 @@ export function contentMultiset(node: unknown, path = '$'): string[] {
     }
     return node.flatMap((entry) => contentMultiset(entry, `${path}[]`));
   }
-  if (isPlainObject(node)) {
+  if (isJsonObject(node)) {
     const keys = Object.keys(node);
     if (keys.length === 0) {
       return [`${path}={}`];
@@ -97,14 +95,14 @@ export function missingFromMultiset(expected: string[], actual: string[]): strin
 export function arrayOrderSignature(node: unknown, path = '$'): string[] {
   if (Array.isArray(node)) {
     const own = `${path}=[${node
-      .map((entry) => (isPlainObject(entry) || Array.isArray(entry) ? '#' : JSON.stringify(entry)))
+      .map((entry) => (isJsonObject(entry) || Array.isArray(entry) ? '#' : JSON.stringify(entry)))
       .join(',')}]`;
     return [
       own,
       ...node.flatMap((entry, index) => arrayOrderSignature(entry, `${path}[${index}]`)),
     ];
   }
-  if (isPlainObject(node)) {
+  if (isJsonObject(node)) {
     return Object.keys(node).flatMap((key) => arrayOrderSignature(node[key], `${path}.${key}`));
   }
   return [];
@@ -121,7 +119,7 @@ export function countPropRemarks(node: unknown): number {
   if (Array.isArray(node)) {
     return node.reduce<number>((sum, entry) => sum + countPropRemarks(entry), 0);
   }
-  if (!isPlainObject(node)) {
+  if (!isJsonObject(node)) {
     return 0;
   }
 
@@ -129,7 +127,7 @@ export function countPropRemarks(node: unknown): number {
   const props = node.props;
   if (Array.isArray(props)) {
     for (const prop of props) {
-      if (isPlainObject(prop) && prop.remarks !== undefined) {
+      if (isJsonObject(prop) && prop.remarks !== undefined) {
         count += 1;
       }
     }
@@ -155,7 +153,7 @@ export function countContainers(node: unknown): {
       for (const entry of current) walk(entry);
       return;
     }
-    if (isPlainObject(current)) {
+    if (isJsonObject(current)) {
       objects += 1;
       for (const key of Object.keys(current)) walk(current[key]);
     }
@@ -232,7 +230,7 @@ export function deepFreeze<T>(node: T): T {
     for (const entry of node) deepFreeze(entry);
     return Object.freeze(node);
   }
-  if (isPlainObject(node)) {
+  if (isJsonObject(node)) {
     for (const key of Object.keys(node)) deepFreeze(node[key]);
     return Object.freeze(node);
   }

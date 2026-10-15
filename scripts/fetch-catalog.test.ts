@@ -1,3 +1,4 @@
+import { encodeRepositoryPath } from '../src/domain/repositoryPath.mjs';
 import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -193,12 +194,8 @@ function gitBlobSha(contents: RawContents) {
     .digest('hex');
 }
 
-function encodeRepoPath(repoPath: string) {
-  return repoPath.split('/').map(encodeURIComponent).join('/');
-}
-
 function rawUrl(repoPath: string, snapshotSha = SNAPSHOT_SHA) {
-  return `${RAW_BASE}/${snapshotSha}/${encodeRepoPath(repoPath)}`;
+  return `${RAW_BASE}/${snapshotSha}/${encodeRepositoryPath(repoPath)}`;
 }
 
 function makeTreeEntry(path: string, contents: RawContents) {

@@ -1,5 +1,5 @@
+import { buildVocabularyEntryPath } from '@/features/vocabulary/routes';
 import { Link } from 'react-router';
-import type { VocabularyEntry, VocabularyNamespace } from '@/domain/models';
 import type { VocabularyResolution } from '@/domain/vocabulary';
 import { resolveIdentifierReference } from '@/domain/vocabulary';
 import { legendCardClass, legendLinkClass, legendTermClass } from '@/components/legendStyles';
@@ -22,10 +22,6 @@ const REFERENCE_COLUMN_LABELS: Record<string, string> = {
 
 function referenceColumnLabel(column: string): string {
   return REFERENCE_COLUMN_LABELS[column.toLowerCase()] ?? column;
-}
-
-function buildEntryHref(namespace: VocabularyNamespace, entry: VocabularyEntry) {
-  return `/vokabular/${namespace.source.routeId}?wert=${encodeURIComponent(entry.value)}`;
 }
 
 export function VocabularyEntryCard({
@@ -65,7 +61,7 @@ export function VocabularyEntryCard({
       <div>
         <dt className={legendTermClass}>
           {`${getVocabularyTermLabel(namespace.source.fileName)}: `}
-          <Link to={buildEntryHref(namespace, entry)} className={legendLinkClass}>
+          <Link to={buildVocabularyEntryPath(namespace.source.routeId, entry.value)} className={legendLinkClass}>
             {entry.value}
           </Link>
         </dt>
@@ -83,7 +79,7 @@ export function VocabularyEntryCard({
         <div key={column}>
           <dt className={`inline ${legendTermClass}`}>{`${referenceColumnLabel(column)}: `}</dt>
           <dd className="inline">
-            <Link to={buildEntryHref(namespace, target)} className={legendLinkClass}>
+            <Link to={buildVocabularyEntryPath(namespace.source.routeId, target.value)} className={legendLinkClass}>
               {target.value}
             </Link>
           </dd>

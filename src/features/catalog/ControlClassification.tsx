@@ -1,3 +1,4 @@
+import { buildVocabularyEntryPath } from '@/features/vocabulary/routes';
 import { EffortBadge, ModalverbBadge, SecurityLevelBadge } from '@/components/StatusMeta';
 import type { Control } from '@/domain/models';
 import type { ResolvedControlVocabularies, VocabularyResolution } from '@/domain/vocabulary';
@@ -25,8 +26,8 @@ export interface ControlClassificationProps {
 /**
  * Legenden-Eintrag für einen vorhandenen Kriterien-Wert (GSPP-303 T6): Das
  * Merkmal kommt aus `getVocabularyTermLabel`, der Term ist der Vokabeleintrag selbst (`entry.value`, bindende Klärung 1), die Route
- * seine `routeId`, der Wert URL-kodiert (bindende Klärung 2, Präzedenz
- * `buildEntryHref`). Ohne Resolution gibt es keinen Eintrag.
+ * seine `routeId`, der Wert URL-kodiert (bindende Klärung 2, Routenhelfer
+ * `buildVocabularyEntryPath`). Ohne Resolution gibt es keinen Eintrag.
  */
 function toLegendEntry(
   displayedValue: string | undefined,
@@ -40,7 +41,7 @@ function toLegendEntry(
     category: getVocabularyTermLabel(resolution.namespace.source.fileName),
     term: resolution.entry.value,
     definition: resolution.entry.definition ?? '',
-    href: `/vokabular/${resolution.namespace.source.routeId}?wert=${encodeURIComponent(resolution.entry.value)}`,
+    href: buildVocabularyEntryPath(resolution.namespace.source.routeId, resolution.entry.value),
   };
 }
 

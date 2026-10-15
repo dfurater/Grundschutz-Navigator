@@ -1,3 +1,4 @@
+import { buildVocabularyEntryPath } from '@/features/vocabulary/routes';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { Link } from 'react-router';
@@ -91,14 +92,12 @@ export function findResolutionByValue(
 
 /**
  * Vokabular-Link für einen Eintragswert (GSPP-303 T7): `/vokabular/<routeId>?wert=<kodierter Wert>`.
- * Präzedenz `buildEntryHref` (`VocabularyEntryCard.tsx`); T6-Callers bleiben
- * unverändert (T10-Dedup ist vermerkt) — nur T7-Neucode nutzt den Helfer.
  */
 export function vocabularyEntryHref(
   namespace: VocabularyNamespace,
   value: string,
 ) {
-  return `/vokabular/${namespace.source.routeId}?wert=${encodeURIComponent(value)}`;
+  return buildVocabularyEntryPath(namespace.source.routeId, value);
 }
 
 export interface TermTriggerProps {
