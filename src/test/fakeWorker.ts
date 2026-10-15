@@ -2,6 +2,9 @@ import { vi } from 'vitest';
 
 type WorkerListener = (event: Event) => void;
 
+// Hinzufügen und Entfernen ersetzen die Listenerliste eines Typs, statt sie zu
+// verändern. Eine laufende Zustellung iteriert deshalb über einen festen Stand.
+
 /**
  * Testdouble für `Worker`. `onPostMessage` läuft bei jedem `postMessage` mit
  * dem Double und der gesendeten Nachricht; `emitEvent` und `emitMessage`
@@ -31,11 +34,11 @@ export class FakeWorker {
 
   /** Stellt ein Ereignis ohne Nutzlast zu, z. B. `error` oder `messageerror`. */
   emitEvent(type: string): void {
-    for (const listener of [...(this.listeners.get(type) ?? [])]) listener(new Event(type));
+    for (const listener of this.listeners.get(type) ?? []) listener(new Event(type));
   }
 
   emitMessage(data: unknown): void {
-    for (const listener of [...(this.listeners.get('message') ?? [])]) {
+    for (const listener of this.listeners.get('message') ?? []) {
       listener({ data } as MessageEvent);
     }
   }
@@ -43,9 +46,7 @@ export class FakeWorker {
 
 /** Ersetzt den globalen `Worker`-Konstruktor; jede Erzeugung liefert `worker`. */
 export function installWorker(worker: FakeWorker): void {
-  vi.stubGlobal('Worker', class {
-    constructor() {
-      return worker as unknown as Worker;
-    }
-  });
+  vi.stubGlobal('Worker', vi.fn(function createWorker() {
+    return worker;
+  }));
 }

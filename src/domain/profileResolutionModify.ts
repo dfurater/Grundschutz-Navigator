@@ -316,14 +316,7 @@ function applyExplicitAddition(
     addition, budget
   );
   if (updatedParts.inserted) {
-    budget.admitWorkingNode();
-    const copyExp: JsonObject = {};
-    for (const key of Reflect.ownKeys(control)) {
-      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
-      if (typeof key !== 'string') continue;
-      const value = ownDataValue(control, key);
-      if (value !== undefined) copyExp[key] = value;
-    }
+    const copyExp = copyOwnDataMembers(control, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
     copyExp['parts'] = updatedParts.value;
     return canonicalizeControlKeys(copyExp, budget);
   }
@@ -358,16 +351,9 @@ function insertAtPart(
   const inner = filterAsIsInnerParts(parts[index]!, budget);
   budget.admitWorkingNode();
   const merged = [...additions, ...inner];
-  budget.admitWorkingNode();
-  const copyStart: JsonObject = {};
-  for (const key of Reflect.ownKeys(parts[index]!)) {
-    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
-    if (typeof key !== 'string') continue;
-    const value = ownDataValue(parts[index]! as object, key);
-    if (value !== undefined) copyStart[key] = value;
-  }
+  const copyStart = copyOwnDataMembers(parts[index]!, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
   copyStart['parts'] = merged;
-  return { inserted: true, value: copyStart as JsonObject };
+  return { inserted: true, value: copyStart };
 }
 
 /** Misst die maximale Schachtelungstiefe eines Parts-Baums iterativ. */
