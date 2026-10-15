@@ -9,6 +9,8 @@ describe('classifyQuery', () => {
     ['9bb16672-4394-4ce9-bd14-12a080233f7a', 'identifier', 'wohlgeformte Kennung'],
     ['9BB16672-4394-4CE9-BD14-12A080233F7A', 'identifier', 'Großschreibung'],
     ['21f7f8de-8051-5b89-8680-0195ef798b6a', 'identifier', 'UUID v5 mit Variante a'],
+    ['9bb1667243944ce9bd1412a080233f7a', 'text', 'UUID ohne Bindestriche'],
+    ['uuid 9bb16672-4394-4ce9-bd14-12a080233f7a', 'text', 'UUID mit vorangestelltem Text'],
 
     // Vollständiges Raster mit einem ungültigen Zeichen — je Segment einmal,
     // damit die Formerkennung nicht nur am Kopfblock hängt.
