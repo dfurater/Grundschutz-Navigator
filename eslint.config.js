@@ -124,11 +124,36 @@ function checkArbitraryProperty(base, modifier, onHover) {
   return modifier.startsWith('/[') && !TOKEN_VALUE.test(modifier.slice(2, -1)) ? 'arbitraryValue' : null;
 }
 
+/** Normalisiert Tailwinds Variablen-Kurzformen zu eckigen var()-Werten. */
+function normalizeVariableShorthand(utility) {
+  let depth = 0;
+  let start = -1;
+  let cursor = 0;
+  let normalized = '';
+  for (let i = 0; i < utility.length; i += 1) {
+    const char = utility[i];
+    if (char === '[' || char === '(') {
+      if (depth === 0 && char === '(' && /[-/]/.test(utility[i - 1] ?? '')) start = i;
+      depth += 1;
+    } else if (char === ']' || char === ')') {
+      depth -= 1;
+      if (depth === 0 && start !== -1) {
+        // Ein Typhinweis gehört vor var(); Fallback-Funktionen bleiben vollständig.
+        const [, hint = '', value] = /^(?:([a-z-]+:))?([\s\S]*)$/.exec(utility.slice(start + 1, i));
+        normalized += `${utility.slice(cursor, start)}[${hint}var(${value})]`;
+        cursor = i + 1;
+        start = -1;
+      }
+    }
+  }
+  return normalized + utility.slice(cursor);
+}
+
 function checkClassToken(token) {
   const { variants, utility: rawUtility } = splitVariants(token);
   // `!important` steht als `!` vor oder hinter der Utility, auch hinter Varianten
   // (`hover:!opacity-50`, `md:backdrop-blur-sm!`); die Prüfung gilt der Utility ohne `!`.
-  const utility = rawUtility.replace(/^!/, '').replace(/!$/, '');
+  const utility = normalizeVariableShorthand(rawUtility.replace(/^!/, '').replace(/!$/, ''));
   if (utility === '') return null;
   const onHover = variants.some(isHoverVariant);
 
