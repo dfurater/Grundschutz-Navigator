@@ -53,7 +53,7 @@ export const ControlMobileReferenceRow = memo(function ControlMobileReferenceRow
       }`}
     >
       {showCheckbox && (
-        <label className="relative flex min-h-[44px] min-w-[44px] cursor-pointer items-center justify-center">
+        <label className="relative flex min-h-touch min-w-touch cursor-pointer items-center justify-center">
           <input
             type="checkbox"
             checked={checked}
@@ -63,7 +63,7 @@ export const ControlMobileReferenceRow = memo(function ControlMobileReferenceRow
           />
           <div
             aria-hidden="true"
-            className="w-4 h-4 rounded border-[1.5px] transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--color-focus-ring)] peer-focus-visible:ring-offset-1 border-[var(--color-border-strong)] bg-[var(--color-surface-base)] peer-checked:bg-[var(--color-primary-main)] peer-checked:border-[var(--color-primary-main)]"
+            className="w-4 h-4 rounded checkbox-border-strong transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--color-focus-ring)] peer-focus-visible:ring-offset-1 border-[var(--color-border-strong)] bg-[var(--color-surface-base)] peer-checked:bg-[var(--color-primary-main)] peer-checked:border-[var(--color-primary-main)]"
           />
           <IconCheck className="absolute w-2.5 h-2.5 text-white opacity-0 peer-checked:opacity-100 pointer-events-none" />
         </label>
@@ -72,7 +72,7 @@ export const ControlMobileReferenceRow = memo(function ControlMobileReferenceRow
         type="button"
         data-control-row={control.id}
         onClick={handleSelect}
-        className="flex min-h-[44px] min-w-0 flex-1 cursor-pointer items-center gap-2 py-2 pl-2 pr-3 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus-ring)]"
+        className="flex min-h-touch min-w-0 flex-1 cursor-pointer items-center gap-2 py-2 pl-2 pr-3 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus-ring)]"
       >
         <div className="flex-1 min-w-0">
           {/* Zeile 1: ID */}

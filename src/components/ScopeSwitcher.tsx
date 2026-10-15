@@ -31,7 +31,7 @@ export interface ScopeSwitcherProps<K extends string = string> {
 }
 
 // Die Sprache erbt der Titel vom Dokument; die OSCAL-Metadaten tragen keine eigene.
-const TITLE_CLASS = 'line-clamp-2 min-w-0 flex-1 hyphens-auto text-sm leading-[18px]';
+const TITLE_CLASS = 'line-clamp-2 min-w-0 flex-1 hyphens-auto text-sm leading-4.5';
 
 export function ScopeSwitcher<K extends string = string>({
   label,
@@ -121,7 +121,7 @@ export function ScopeSwitcher<K extends string = string>({
     // 51 px auf der Linie der Toolbar: Nach der 1-px-Unterlinie bleiben 50 px,
     // davon 3 px Rand oben und unten um den 44 px hohen Auslöser. Zwei Titelzeilen
     // (2 × 18 px) passen mit 4 px Innenabstand oben und unten genau hinein.
-    <div className="relative flex shrink-0 items-center gap-1 border-b border-slate-200 px-1 py-[3px]" style={{ height: 51 }}>
+    <div className="relative flex shrink-0 items-center gap-1 border-b border-slate-200 h-panel-head px-1 py-0.75">
       <div
         ref={containerRef}
         className="min-w-0 flex-1"
@@ -140,7 +140,7 @@ export function ScopeSwitcher<K extends string = string>({
             aria-haspopup="menu"
             aria-expanded={open}
             aria-controls={open ? menuId : undefined}
-            className={`group flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus-ring)] ${open ? 'bg-slate-100' : 'hover:bg-slate-50'}`}
+            className={`group flex min-h-11 w-full items-center gap-2 rounded-md px-2 py-1 text-left transition-colors focus-visible:outline-none kbd-focus:ring-2 kbd-focus:ring-inset kbd-focus:ring-[var(--color-focus-ring)] ${open ? 'bg-slate-100' : 'hover:bg-slate-50'}`}
           >
             {/* Das Leerzeichen steht zwischen den Spans: Am Spanende fiele es aus dem Namen. */}
             <span className="sr-only">{`${label}:`}</span>{' '}
@@ -165,11 +165,11 @@ export function ScopeSwitcher<K extends string = string>({
             tabIndex={-1}
             aria-labelledby={headingId}
             onKeyDown={handleMenuKeyDown}
-            className="absolute inset-x-1 top-[calc(100%+5px)] z-40 max-h-[calc(100dvh-8rem)] overflow-y-auto rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-raised)] p-1.5 shadow-[var(--shadow-overlay)]"
+            className="absolute inset-x-1 top-full mt-1.25 z-40 max-h-[calc(100dvh-8rem)] overflow-y-auto rounded-lg border border-[var(--color-border-default)] bg-[var(--color-surface-raised)] p-1.5 shadow-[var(--shadow-overlay)]"
           >
             <div
               id={headingId}
-              className="px-2.5 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-muted)]"
+              className="px-2.5 pb-1.5 pt-1 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]"
             >
               {`${label} wechseln`}
             </div>
@@ -184,7 +184,7 @@ export function ScopeSwitcher<K extends string = string>({
                   aria-checked={isActive}
                   tabIndex={-1}
                   onClick={() => handleSelect(item.key)}
-                  className="flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left hover:bg-[var(--color-surface-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]"
+                  className="flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left hover:bg-[var(--color-surface-subtle)] focus-visible:outline-none kbd-focus:ring-2 kbd-focus:ring-[var(--color-focus-ring)]"
                 >
                   <span
                     className={`${TITLE_CLASS} ${isActive ? 'font-semibold text-[var(--color-text-primary)]' : 'font-medium text-slate-700'}`}

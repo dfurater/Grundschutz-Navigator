@@ -84,7 +84,7 @@ function renderPlaceholder(segment: SentenceSegment, index: number): ReactNode {
   return (
     <Tooltip key={index} idPrefix="satz-param" mode="hover-toggle" content={content}
       describeTarget={() => (
-        <span className="rounded bg-[var(--color-accent-soft)] px-[3px] [box-decoration-break:clone]">{label}</span>
+        <span className="rounded bg-[var(--color-accent-soft)] px-0.75 box-decoration-clone">{label}</span>
       )} />
   );
 }

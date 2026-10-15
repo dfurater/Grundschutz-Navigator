@@ -180,7 +180,7 @@ export function ControlSecurityContext({
                     label={displayName}
                     ariaLabel={`Elementare Gefährdung: ${accessibleName}`}
                     tooltip={threat}
-                    className={`inline-flex min-h-6 max-w-full items-center text-left [overflow-wrap:anywhere] ${rowTouchTargetClass}`}
+                    className={`inline-flex min-h-6 max-w-full items-center text-left wrap-anywhere ${rowTouchTargetClass}`}
                   />
                   <div
                     id={toVocabCardId(vocabKey)}

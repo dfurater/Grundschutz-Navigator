@@ -54,7 +54,7 @@ export function ControlListLink({
       onClick={() => onNavigateToControl?.(control)}
     >
       <span className={`${controlIdColumnClass} text-slate-500 group-hover:text-primary-main`}>{control.id}</span>
-      <span className="min-w-0 [overflow-wrap:anywhere] group-hover:underline">{control.title}</span>
+      <span className="min-w-0 wrap-anywhere group-hover:underline">{control.title}</span>
     </button>
   );
 }
@@ -73,7 +73,7 @@ export function ControlListNote({
   return (
     <p id={id} className="flex gap-2 text-xs leading-snug text-slate-500">
       <span aria-hidden="true" className={controlIdColumnClass} />
-      <span className="min-w-0 [overflow-wrap:anywhere]">{children}</span>
+      <span className="min-w-0 wrap-anywhere">{children}</span>
     </p>
   );
 }

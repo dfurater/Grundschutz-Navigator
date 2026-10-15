@@ -14,5 +14,6 @@ declare module 'vitest/internal/browser' {
     setBrowserCoarsePointer: (coarse: boolean) => Promise<void>;
     setBrowserSafeArea: (bottom?: number) => Promise<void>;
     setBrowserFontSize: (standard?: number) => Promise<void>;
+    setBrowserReducedMotion: (reduce?: boolean) => Promise<void>;
   }
 }
