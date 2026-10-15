@@ -78,15 +78,15 @@ function forbiddenProperty(property, value) {
 // für die es kein Gestaltungstoken geben kann.
 const ARBITRARY_VALUE_ALLOWLIST = [
   // Spaltenvorlagen sind Layout, kein Gestaltungswert.
-  (utility) => /^grid-(?:cols|rows)-\[/.test(utility),
+  (value, prefix) => /^grid-(?:cols|rows)-$/.test(prefix),
   // Pseudo-Element-Inhalt: leer oder aus einem Attribut.
-  (utility) => /^content-\[(?:''|attr\([a-z-]+\))\]$/.test(utility),
+  (value, prefix) => prefix === 'content-' && /^(?:''|attr\([a-z-]+\))$/.test(value),
   // Liste von CSS-Eigenschaften, deren Übergang animiert wird.
-  (utility) => /^transition-\[[a-z-]+(?:,[a-z-]+)*\]$/.test(utility),
+  (value, prefix) => prefix === 'transition-' && /^[a-z-]+(?:,[a-z-]+)*$/.test(value),
   // Abstand zur sicheren Fläche des Geräts.
-  (utility) => utility.includes('env(safe-area-inset-'),
+  (value) => value.includes('env(safe-area-inset-'),
   // Höhen und Breiten relativ zum Viewport.
-  (utility) => /^(?:min-|max-)?[hw]-\[(?:calc\()?\d+(?:\.\d+)?[dsl]?v[hw]\b/.test(utility),
+  (value, prefix) => /^(?:min-|max-)?[hw]-$/.test(prefix) && /^(?:calc\()?\d+(?:\.\d+)?[dsl]?v[hw]\b/.test(value),
 ];
 
 /** Zerlegt eine Klasse an Doppelpunkten außerhalb von Klammern in Varianten und Utility. */
@@ -145,9 +145,14 @@ function checkClassToken(token) {
   // Jeder beliebige Wert (`-[…]`) und jeder beliebige Modifier (`/[…]`, etwa
   // eine rohe Zeilenhöhe) wird einzeln geprüft, auch vor einem Skalenmodifier
   // wie in `text-[13px]/6`.
-  const values = [...utility.matchAll(/[-/]\[([^\]]*)\]/g)].map((match) => match[1]);
-  if (values.some((value) => !TOKEN_VALUE.test(value))
-    && !ARBITRARY_VALUE_ALLOWLIST.some((allowed) => allowed(utility))) {
+  const values = [...utility.matchAll(/[-/]\[([^\]]*)\]/g)];
+  if (values.some((match) => {
+    const value = match[1];
+    // Nur der aktuelle Wert und sein Präfix dürfen eine Ausnahme begründen.
+    // Ein Modifier hat dadurch keinen Grid-/Content-/Viewport-Präfix.
+    const prefix = utility.slice(0, match.index + 1);
+    return !TOKEN_VALUE.test(value) && !ARBITRARY_VALUE_ALLOWLIST.some((allowed) => allowed(value, prefix));
+  })) {
     return 'arbitraryValue';
   }
   return null;
