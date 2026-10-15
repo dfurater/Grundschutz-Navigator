@@ -221,4 +221,25 @@ describe('validateCatalogSyncPolicy', () => {
     });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
+
+  it('aborts hanging policy requests instead of waiting for the job timeout', async () => {
+    const hanging = vi.fn(
+      (_url: string | URL | Request, init?: { signal?: AbortSignal }) =>
+        new Promise<never>((_, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted by timeout')));
+        }),
+    );
+
+    await expect(fetchAndValidateCatalogSyncPolicy({
+      repository: CATALOG_SYNC_REPOSITORY,
+      token: 'opaque-test-token',
+      expectedRulesetUpdatedAt: makeRuleset().updated_at,
+      fetchImpl: hanging,
+      requestTimeoutMs: 10,
+    })).rejects.toThrow(/GitHub policy (API|GraphQL) request failed: aborted by timeout/);
+    expect(hanging).toHaveBeenCalledTimes(2);
+    for (const [, init] of hanging.mock.calls) {
+      expect(init).toMatchObject({ signal: expect.any(AbortSignal) });
+    }
+  });
 });
