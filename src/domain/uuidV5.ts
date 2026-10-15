@@ -35,7 +35,7 @@ function utf8Bytes(text: string): Uint8Array {
 }
 
 /** Rein lokale SHA-1-Kompression (FIPS 180-4) über Bytes, big-endian. */
-export function sha1Bytes(input: Uint8Array): Uint8Array {
+function sha1Bytes(input: Uint8Array): Uint8Array {
   const bitLength = input.length * 8;
   const paddedLength = (((input.length + 8) >> 6) + 1) << 6;
   const padded = new Uint8Array(paddedLength);

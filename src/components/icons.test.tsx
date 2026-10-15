@@ -1,25 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
-import { IconLayoutList, IconListChecks, IconMoreHorizontal } from './icons';
-
-describe('IconLayoutList', () => {
-  it('renders an svg element', () => {
-    const { container } = render(<IconLayoutList />);
-    expect(container.querySelector('svg')).not.toBeNull();
-  });
-
-  it('forwards className', () => {
-    const { container } = render(<IconLayoutList className="w-4 h-4" />);
-    expect(container.querySelector('svg')?.classList).toContain('w-4');
-  });
-});
-
-describe('IconMoreHorizontal', () => {
-  it('renders an svg element', () => {
-    const { container } = render(<IconMoreHorizontal />);
-    expect(container.querySelector('svg')).not.toBeNull();
-  });
-});
+import { IconListChecks } from './icons';
 
 describe('IconListChecks', () => {
   it('übernimmt die Pfade von Lucide list-checks im Tag 1.51.0 unverändert', () => {

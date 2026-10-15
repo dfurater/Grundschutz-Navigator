@@ -115,7 +115,7 @@ export const PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES = Object.freeze({
  * Uhrwert wäre nicht reproduzierbar, und Determinismus ist keine Verifikation
  * — die Herkunft tragen die Provenienzträger, nicht das Datum.
  */
-export const PROFILE_RESOLUTION_TIMESTAMP = '1970-01-01T00:00:00.000Z';
+const PROFILE_RESOLUTION_TIMESTAMP = '1970-01-01T00:00:00.000Z';
 
 export interface ProfileResolutionRequest {
   readonly plan: ProfileResolutionPlan;

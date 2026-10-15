@@ -37,10 +37,6 @@ export function sha256Hex(input) {
   return hashBytes(buffer);
 }
 
-// Die Routenkennung bildet ein gemeinsames Modul, damit App-Fixtures sie genauso
-// ableiten wie die Pipeline.
-export { deriveRouteId } from '../src/domain/vocabularyRouteId.mjs';
-
 export function namespaceUrlToRepoPath(namespaceUrl, repository) {
   const repo = toRepositoryParts(repository);
   let parsedUrl;

@@ -950,10 +950,8 @@ async function buildFetchArtifacts(logger = console, {
 
 export {
   buildFetchArtifacts,
-  listOutputArtifactFileNames,
   validateFetchedCatalogArtifact,
   validateFetchedOscalArtifact,
-  resolveOptionalSnapshotSha,
   serializeJsonArtifact,
   writeArtifacts,
 };

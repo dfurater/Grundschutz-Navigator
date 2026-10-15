@@ -33,7 +33,7 @@ export function everydayRelationLabel(link: ControlLink): string {
 }
 
 /** Einleitung des Hinweises zur Gegenrichtung; die Kennung steht bereits in der Link-Zeile. */
-export const INCOMING_NOTE_PREFIX = 'Verweist auf diese Kontrolle';
+const INCOMING_NOTE_PREFIX = 'Verweist auf diese Kontrolle';
 
 /**
  * Hinweis zur Gegenrichtung: „Verweist auf diese Kontrolle · <Relationsart>“.

@@ -87,11 +87,3 @@ export function classifyQuery(query: string): QueryKind {
 
   return hasIdentifierShape(trimmed) ? 'malformed-identifier' : 'text';
 }
-
-/**
- * Prüft, ob die Eingabe als Kennung aufzulösen ist. Nur eine vollständige,
- * wohlgeformte UUID zählt — kein Präfix-, Teil- oder Tokenmatch.
- */
-export function isIdentifierQuery(query: string): boolean {
-  return classifyQuery(query) === 'identifier';
-}

@@ -155,16 +155,6 @@ export function getPropValue(
 }
 
 /**
- * Extract all values for a named prop (handles multiple occurrences).
- */
-export function getPropValues(
-  props: RawOscalProp[] | undefined,
-  name: string,
-): string[] {
-  return props?.filter((p) => p.name === name).map((p) => p.value) ?? [];
-}
-
-/**
  * Find a part by name within a control's parts array.
  */
 export function findPart(
@@ -231,17 +221,6 @@ export function parseTags(tagValue: string | undefined): string[] {
     .split(',')
     .map((t) => t.trim())
     .filter(Boolean);
-}
-
-/**
- * Projektionshelfer für das alte `ControlLink`-Read-Model (z. B. "#GC.2.2").
- *
- * Er klassifiziert keine OSCAL-Referenzen und trifft keine Navigations- oder
- * Vertrauensentscheidung; dafür ist ausschließlich `referenceResolution.ts`
- * zuständig. Der Helfer entfernt nur einen möglichen Fragmentmarker.
- */
-export function parseLinkHref(href: string): string {
-  return href.replace(/^#/, '');
 }
 
 /**
