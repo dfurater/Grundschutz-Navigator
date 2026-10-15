@@ -183,6 +183,22 @@ const ALLOWED_FORMS = [
   { label: 'Arbitrary Property mit Token und Skalen- oder Tokenmodifier', classes: '[color:var(--x)]/50 [color:var(--x)]/[var(--y)]' },
 ] as const;
 
+describe('Klasse-2-Markup-Grenze', () => {
+  it.each([
+    'src/test-fixture/UnsafeMarkup.tsx',
+    'src/components/UnsafeMarkup.tsx',
+  ])('verbietet dangerouslySetInnerHTML in %s', async (filePath) => {
+    const messages = await lint(
+      'export const Unsafe = () => <div dangerouslySetInnerHTML={{ __html: "<script>" }} />;',
+      filePath,
+    );
+    const errors = messages.filter(({ severity }) => severity === 2);
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.message).toContain('dangerouslySetInnerHTML');
+  });
+});
+
 describe('Gestaltungssystem-Regel (GSPP-533)', () => {
 
   async function designFindings(classes: string, filePath = 'src/components/Sample.tsx') {

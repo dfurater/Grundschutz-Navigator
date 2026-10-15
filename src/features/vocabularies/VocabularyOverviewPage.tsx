@@ -1,4 +1,4 @@
-import { buildVocabularyNamespacePath } from '@/features/vocabulary/routes';
+import { buildVocabularyNamespacePath } from '@/app/routes';
 import { Link } from 'react-router';
 import { useCatalog } from '@/hooks/useCatalog';
 import { PAGE_TITLES } from '@/app/pageTitles';

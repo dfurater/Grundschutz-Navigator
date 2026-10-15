@@ -45,7 +45,7 @@ import {
   readStringArrayField,
 } from '@/adapters/oscalProfileReaders';
 import type { DeriveState } from '@/adapters/oscalProfileReaders';
-import { readRootMetadata } from '@/adapters/oscalRootDispatch';
+import { readRootMetadata } from '@/domain/oscalRootDispatch';
 import { openRootDerive } from '@/adapters/oscalRootDocumentParse';
 import { isJsonObject, readString, type JsonObject } from '@/domain/jsonGuards';
 import { PROFILE_RESOLUTION_STATE, PROFILE_ROOT_TYPE } from '@/domain/profileModel';

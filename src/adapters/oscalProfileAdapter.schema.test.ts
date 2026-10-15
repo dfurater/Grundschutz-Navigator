@@ -15,7 +15,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { parseProfileDocument, validateProfileSchema } from './oscalProfileDocument';
-import { OscalRootDispatchError } from './oscalRootDispatch';
+import { OscalRootDispatchError } from '@/domain/oscalRootDispatch';
 import { resetCompiledSchemaCache } from '@/domain/oscalSchemaValidation';
 import type { OscalDocumentContext } from '@/domain/models';
 import { getSchemaPin, PINNED_OSCAL_VERSIONS } from '@/domain/oscalVersionMatrix';

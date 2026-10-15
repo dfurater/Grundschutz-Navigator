@@ -14,8 +14,8 @@ import {
   OscalRootDispatchError,
   ROOT_DISPATCH_DIAGNOSTIC_CODES,
   ROOT_DISPATCH_VALIDATOR,
-} from './oscalRootDispatch';
-import type { OscalRootDispatchFailure } from './oscalRootDispatch';
+} from '@/domain/oscalRootDispatch';
+import type { OscalRootDispatchFailure } from '@/domain/oscalRootDispatch';
 import type { OscalDocumentContext } from '@/domain/models';
 import { buildSchemaId, VERSION_MATRIX_DIAGNOSTIC_CODES } from '@/domain/oscalVersionMatrix';
 import { makeOscalEnvelope as makeEnvelope } from '@/test/fixtures/oscalEnvelope';

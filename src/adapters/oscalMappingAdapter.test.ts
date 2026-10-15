@@ -27,7 +27,7 @@ import {
   mappingCollectionRootAdapter,
   parseOscalDocument,
 } from './oscalRootAdapters';
-import { OscalRootDispatchError } from './oscalRootDispatch';
+import { OscalRootDispatchError } from '@/domain/oscalRootDispatch';
 import { parseCatalogDocument } from './oscalDocument';
 import { MAPPING_RELATIONSHIPS, OSCAL_NAMESPACE } from '@/domain/mappingModel';
 import type { MappingCollection } from '@/domain/mappingModel';

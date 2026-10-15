@@ -25,7 +25,7 @@ import {
   parseOscalDocument,
   profileRootAdapter,
 } from './oscalRootAdapters';
-import { OscalRootDispatchError } from './oscalRootDispatch';
+import { OscalRootDispatchError } from '@/domain/oscalRootDispatch';
 import { parseCatalogDocument } from './oscalDocument';
 import type { OscalDocumentContext } from '@/domain/models';
 import {

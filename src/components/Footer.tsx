@@ -1,7 +1,7 @@
 import { Link } from 'react-router';
 import { IconExternalLink, IconShieldCheck } from '@/components/icons';
 import { useCatalog } from '@/hooks/useCatalog';
-import { buildVocabularyIndexPath } from '@/features/vocabulary/routes';
+import { buildVocabularyIndexPath } from '@/app/routes';
 
 export interface FooterProps {
   readonly className?: string;

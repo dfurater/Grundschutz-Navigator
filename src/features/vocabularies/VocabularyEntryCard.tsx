@@ -1,4 +1,4 @@
-import { buildVocabularyEntryPath } from '@/features/vocabulary/routes';
+import { buildVocabularyEntryPath } from '@/app/routes';
 import { Link } from 'react-router';
 import type { VocabularyResolution } from '@/domain/vocabulary';
 import { resolveIdentifierReference } from '@/domain/vocabulary';

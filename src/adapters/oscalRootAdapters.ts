@@ -31,11 +31,11 @@ import {
   ROOT_DISPATCH_DIAGNOSTIC_CODES,
   ROOT_DISPATCH_STAGE,
   ROOT_DISPATCH_VALIDATOR,
-} from '@/adapters/oscalRootDispatch';
+} from '@/domain/oscalRootDispatch';
 import type {
   OscalRootDispatchFailure,
   OscalRootDispatchSuccess,
-} from '@/adapters/oscalRootDispatch';
+} from '@/domain/oscalRootDispatch';
 import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { Catalog, OscalDocumentContext } from '@/domain/models';
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
