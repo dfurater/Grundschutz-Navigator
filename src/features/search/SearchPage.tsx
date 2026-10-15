@@ -271,7 +271,7 @@ export function SearchPage() {
               <div
                 ref={mobileListScrollRef}
                 data-testid="search-results-mobile"
-                className={`flex-1 md:overflow-y-auto divide-y divide-[var(--color-border-subtle)] ${mobileSelectMode ? 'pb-[calc(7rem+env(safe-area-inset-bottom,0px))]' : 'pb-safe'}`}
+                className={`flex-1 md:overflow-y-auto divide-y divide-[var(--color-border-subtle)] ${mobileSelectMode ? 'pb-safe-selection' : 'pb-safe'}`}
               >
                 {visibleMobileControls.map((control) => (
                   <ControlMobileReferenceRow

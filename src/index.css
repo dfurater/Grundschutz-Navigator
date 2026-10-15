@@ -1,4 +1,11 @@
 @import 'tailwindcss';
+@import 'overlayscrollbars/overlayscrollbars.css' layer(vendor);
+
+/* Kaskade: `vendor` (OverlayScrollbars) und `app` (eigene Regeln außerhalb von
+   Tailwinds Ebenen) liegen über den Utilities. Nur die Reduced-Motion-Regel am
+   Dateiende steht außerhalb jeder Ebene und gewinnt dadurch ohne `!important`
+   gegen alle Ebenen; Inline-Stile prüfen Reduced Motion selbst. */
+@layer theme, base, components, utilities, vendor, app;
 
 /* Desktop: breiter Viewport ohne Touch als Eingabemöglichkeit; `compact` ist das
    Gegenstück. Beide tragen dieselben Bedingungen wie `DESKTOP_QUERY` und
@@ -6,6 +13,10 @@
    ab, wo der Zustand mit dem gemounteten Teilbaum übereinstimmen muss. */
 @custom-variant desktop (@media (width >= 64rem) and (not (any-pointer: coarse)));
 @custom-variant compact (@media not ((width >= 64rem) and (not (any-pointer: coarse))));
+
+/* Fokusring für skriptgesetzten Fokus: `:focus-visible`, außer die letzte
+   Eingabe war ein Zeiger (`useInputModality`). Ohne Attribut bleibt er sichtbar. */
+@custom-variant kbd-focus (&:focus-visible:not(:where([data-input-modality=pointer] *)));
 
 /* Self-hosted Bunny Fonts WOFF2 subsets: latin + latin-ext, weights 400/500/600/700. */
 @font-face {
@@ -261,14 +272,53 @@
   --color-surface-scrollbar: var(--color-slate-300);
   --color-surface-scrollbar-hover: var(--color-slate-400);
 
-  /* Radius */
+  /* Schriftgrößen: nur die sechs Stufen 10/12/14/16/18/20 px. `initial`
+     entfernt Tailwinds übrige Stufen, `text-2xl` und größer erzeugen kein CSS. */
+  --text-*: initial;
+  --text-2xs: 0.625rem;
+  --text-2xs--line-height: 1.25;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: calc(1 / 0.75);
+  --text-sm: 0.875rem;
+  --text-sm--line-height: calc(1.25 / 0.875);
+  --text-base: 1rem;
+  --text-base--line-height: calc(1.5 / 1);
+  --text-lg: 1.125rem;
+  --text-lg--line-height: calc(1.75 / 1.125);
+  --text-xl: 1.25rem;
+  --text-xl--line-height: calc(1.75 / 1.25);
+  /* Zeilenhöhe der Titel und kompakten Überschriften, etwa `text-lg/title`. */
+  --leading-title: 1.35;
+
+  /* Laufweite */
+  --tracking-*: initial;
+  --tracking-wide: 0.025em;
+  --tracking-wider: 0.05em;
+
+  /* Radius; `rounded` ohne Stufe liest `--radius`, `rounded-full` bleibt
+     Tailwinds eingebaute Pille. */
+  --radius-*: initial;
+  --radius: 0.25rem;
   --radius-sm: 0.25rem;
   --radius-md: 0.375rem;
   --radius-lg: 0.5rem;
 
-  /* Shadow */
+  /* Shadow: Andruck, Überlagerung, feste mobile Fußleiste, Ziehgriff
+     (`-start` für Griffe am linken, `-end` für Griffe am rechten Rand). */
+  --shadow-*: initial;
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-overlay: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --shadow-footer: 0 -2px 8px rgb(0 0 0 / 0.06);
+  --shadow-grip-start: -2px 0 8px -2px color-mix(in srgb, var(--color-primary-main) 20%, transparent);
+  --shadow-grip-end: 2px 0 8px -2px color-mix(in srgb, var(--color-primary-main) 20%, transparent);
+  /* Außerhalb des Vokabulars: keine Schlagschatten-Filter, Innen- oder Textschatten. */
+  --drop-shadow-*: initial;
+  --inset-shadow-*: initial;
+  --text-shadow-*: initial;
+
+  /* Maße: Touchziel und Höhe der Panelköpfe (Toolbar, Kontextwahl). */
+  --spacing-touch: 44px;
+  --spacing-panel-head: 51px;
 
   /* Motion */
   --duration-fast: 150ms;
@@ -306,107 +356,104 @@
   }
 }
 
-/* Überlagernde Scrollleisten (OverlayScrollbars, `useOverlayScrollbars`):
-   6 px Griff in 10 px Spur, ohne Spurfläche; die Griff-Trefferfläche wächst
-   unsichtbar, damit die schmale Leiste greifbar bleibt. */
-.os-theme-gspp {
-  --os-size: 10px;
-  --os-padding-perpendicular: 2px;
-  --os-padding-axis: 2px;
-  --os-track-border-radius: 9999px;
-  --os-handle-border-radius: 9999px;
-  --os-handle-bg: var(--color-surface-scrollbar);
-  --os-handle-bg-hover: var(--color-surface-scrollbar-hover);
-  --os-handle-bg-active: var(--color-surface-scrollbar-hover);
-  --os-handle-min-size: 33px;
-  --os-handle-interactive-area-offset: 4px;
-}
-
-/* Skip Link (A11y) */
-.skip-link {
-  position: absolute;
-  top: -100%;
-  left: 1rem;
-  z-index: 100;
-  padding: 0.5rem 1rem;
-  background: var(--color-primary-main);
-  color: white;
-  border-radius: 0 0 0.375rem 0.375rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  text-decoration: none;
-  transition: top var(--duration-fast) var(--easing-default);
-}
-
-.skip-link:focus {
-  top: 0;
-}
-
-/* Detail Panel — slide-in animation */
-@keyframes panel-slide-in {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
+@layer app {
+  /* Überlagernde Scrollleisten (OverlayScrollbars, `useOverlayScrollbars`):
+     6 px Griff in 10 px Spur, ohne Spurfläche; die Griff-Trefferfläche wächst
+     unsichtbar, damit die schmale Leiste greifbar bleibt. */
+  .os-theme-gspp {
+    --os-size: 10px;
+    --os-padding-perpendicular: 2px;
+    --os-padding-axis: 2px;
+    --os-track-border-radius: 9999px;
+    --os-handle-border-radius: 9999px;
+    --os-handle-bg: var(--color-surface-scrollbar);
+    --os-handle-bg-hover: var(--color-surface-scrollbar-hover);
+    --os-handle-bg-active: var(--color-surface-scrollbar-hover);
+    --os-handle-min-size: 33px;
+    --os-handle-interactive-area-offset: 4px;
   }
-  to {
-    opacity: 1;
-    transform: translateX(0);
+
+  /* Skip Link (A11y) */
+  .skip-link {
+    position: absolute;
+    top: -100%;
+    left: 1rem;
+    z-index: 100;
+    padding: 0.5rem 1rem;
+    background: var(--color-primary-main);
+    color: white;
+    border-radius: 0 0 0.375rem 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: top var(--duration-fast) var(--easing-default);
+  }
+
+  .skip-link:focus {
+    top: 0;
+  }
+
+  /* Detail Panel — slide-in animation */
+  @keyframes panel-slide-in {
+    from {
+      opacity: 0;
+      transform: translateX(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .animate-panel-in {
+    animation: panel-slide-in var(--duration-normal) var(--easing-default) both;
+  }
+
+  /* Resize handle hover indicator */
+  .resize-handle {
+    transition:
+      background-color var(--duration-fast) var(--easing-default),
+      box-shadow var(--duration-fast) var(--easing-default);
+  }
+
+  .resize-handle:hover,
+  .resize-handle:active {
+    background-color: color-mix(in srgb, var(--color-primary-main) 15%, transparent);
+  }
+
+  .resize-handle:active {
+    background-color: color-mix(in srgb, var(--color-primary-main) 25%, transparent);
+    box-shadow: var(--shadow-grip-start);
+  }
+
+  .resize-handle--right:active {
+    box-shadow: var(--shadow-grip-end);
+  }
+
+  /* Prevent text selection during resize */
+  .is-resizing {
+    cursor: col-resize;
+    user-select: none;
+  }
+
+  @keyframes slide-up {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+
+  @keyframes vocab-card-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
 }
 
-.animate-panel-in {
-  animation: panel-slide-in var(--duration-normal) var(--easing-default) both;
+/* Safe-Area-Abstände bleiben Utilities, damit responsive Padding-Utilities sie überschreiben. */
+@utility pb-safe-detail {
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
 }
 
-/* Resize handle hover indicator */
-.resize-handle {
-  transition:
-    background-color var(--duration-fast) var(--easing-default),
-    box-shadow var(--duration-fast) var(--easing-default);
-}
-
-.resize-handle:hover,
-.resize-handle:active {
-  background-color: color-mix(in srgb, var(--color-primary-main) 15%, transparent);
-}
-
-.resize-handle:active {
-  background-color: color-mix(in srgb, var(--color-primary-main) 25%, transparent);
-  box-shadow: -2px 0 8px -2px color-mix(in srgb, var(--color-primary-main) 20%, transparent);
-}
-
-.resize-handle--right:active {
-  box-shadow: 2px 0 8px -2px color-mix(in srgb, var(--color-primary-main) 20%, transparent);
-}
-
-/* Prevent text selection during resize */
-.is-resizing {
-  cursor: col-resize !important;
-  user-select: none !important;
-}
-
-body.dev-selector-active {
-  cursor: crosshair;
-}
-
-body.dev-selector-dragging,
-body.dev-selector-dragging * {
-  cursor: grabbing !important;
-}
-
-[data-dev-selector-hover='true'] {
-  outline: 2px solid #0ea5e9 !important;
-  outline-offset: 2px !important;
-}
-
-@keyframes slide-up {
-  from { transform: translateY(100%); }
-  to   { transform: translateY(0); }
-}
-
-@keyframes vocab-card-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
+@utility pb-safe-selection {
+  padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
 }
 
 @layer utilities {
@@ -511,7 +558,7 @@ body.dev-selector-dragging * {
     @apply inline-flex items-center justify-center px-1 font-semibold text-white rounded-full;
     min-width: 18px;
     height: 18px;
-    font-size: 0.625rem;
+    font-size: var(--text-2xs);
     line-height: 1;
   }
 
@@ -533,18 +580,23 @@ body.dev-selector-dragging * {
   }
 
   .shortcut-hint-text {
-    font-size: 0.625rem;
+    font-size: var(--text-2xs);
     line-height: 1;
   }
 
   .sort-order-text {
-    font-size: 0.5rem;
+    font-size: var(--text-2xs);
     line-height: 1;
   }
 
+  /* Kräftigere Checkbox-Kontur der mobilen Referenzzeile. */
+  .checkbox-border-strong {
+    border-width: 1.5px;
+  }
+
   .touch-target-size {
-    min-width: 44px;
-    min-height: 44px;
+    min-width: var(--spacing-touch);
+    min-height: var(--spacing-touch);
   }
 
   .animate-slide-up {
@@ -639,16 +691,16 @@ html:focus-within {
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    transition-delay: 0ms !important;
-    scroll-behavior: auto !important;
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+    transition-delay: 0ms;
+    scroll-behavior: auto;
   }
 
   .animate-panel-in,
   .animate-slide-up,
   .animate-vocab-card {
-    animation: none !important;
+    animation: none;
   }
 }

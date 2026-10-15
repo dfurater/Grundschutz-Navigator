@@ -196,6 +196,12 @@ sonar-project.properties, .github/workflows/sonar.yml, .github/workflows/validat
 
 Dokumentation unter docs/** und in README.md beschreibt ausschließlich den Ist-Zustand: Zulässig ist nur ein Satz, der einen aktuellen, gegen Code oder Konfiguration nachprüfbaren technischen Fakt nennt — Dateipfad, Verhalten, Konfigurationswert, Grenze oder Bedingung. Ein Satz, der Entstehungsgeschichte erzählt, eine verworfene Alternative darstellt oder eine Kontrastformulierung ohne eigenen Faktengehalt an dieser Stelle trägt, ist ein Befund. Eine Begründung ist nur zulässig, wenn sie einen nicht offensichtlichen Constraint trägt, und dann als knappe Tatsachenaussage, nicht als Erzählung. docs/REVIEW_INVARIANTS.md ist aus scripts/review-policy.rules.mjs erzeugt; ein Befund dort zeigt auf den Regeltext in scripts/review-policy.rules.mjs, nie auf die generierte Ausgabe.
 
+### R25-gestaltungssystem
+
+**Scope:** `src/components/**`, `src/features/**`, `src/app/**`, `src/index.css`
+
+Rohwerte für Farbe, Schriftgröße, Laufweite, Radius, Schatten, Bewegung und Touchziel stehen nur in src/index.css (@theme); die ESLint-Regel design-system/no-off-system-classes prüft die Klassen in UI-Dateien. Prüfe im Review, was die Regel nicht messen kann. Bedeutungsregel: Eine Farbe ohne Datenbedeutung ist Schiefer; eine neue Statusfarbe ohne neue Katalogdimension ist ein Befund. Auswahlregel: Petrol heißt Auswahl, Neutral heißt Bedienung, Dunkel gehört der Kopfzeile; ein aktiver Umschalter ist ein Petrol-Glyph auf Petrol-Lasur, kein gefülltes Primärquadrat. Rechts steht genau ein Panel; Filter und Detail gleichzeitig rechts sind ein Befund. Panelköpfe ab md sind 51px hoch (h-panel-head), damit die Haarlinien über alle Panels durchlaufen. Flächen trennen sich durch 1-px-Haarlinien, nie durch Schatten oder farbige Seitenkanten. Kennungen (Control-IDs, UUIDs, Hashes) stehen in IBM Plex Mono (font-mono), Katalogwerte wie MUSS, normal-SdT oder ORP.1.A3 erscheinen exakt wie veröffentlicht, nie übersetzt, umgeschrieben oder abgekürzt. Jede Zahl, die Umfang beschreibt, steht in tabular-nums. Menüs und Umschalter tragen nur Beschriftung und Daten, keine Erklär- oder Herkunftsprosa. Farbe ist nie das einzige Signal: Status trägt immer Text oder ein zugängliches Label, Links im Fließtext sind unterstrichen. Hover ist Füllung, nie Deckkraft oder Skalierung. Der Fokusring bleibt auf jedem bedienbaren Element sichtbar.
+
 ## Datei-Kontexte
 
 Dokumente, die beim Review der genannten Pfade als Kontext heranzuziehen sind.

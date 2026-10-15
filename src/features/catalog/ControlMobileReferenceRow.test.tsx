@@ -156,10 +156,10 @@ describe('ControlMobileReferenceRow', () => {
     const checkbox = screen.getByRole('checkbox', { name: 'GC.1.1 auswählen' });
     expect(checkbox).toHaveClass('peer', 'sr-only');
     const touchTarget = checkbox.closest('label');
-    expect(touchTarget).toHaveClass('min-h-[44px]', 'min-w-[44px]');
+    expect(touchTarget).toHaveClass('min-h-touch', 'min-w-touch');
     const visualBox = touchTarget?.querySelector('div[aria-hidden="true"]');
     expect(visualBox).toHaveClass('w-4', 'h-4');
-    expect(screen.getByRole('button')).toHaveClass('min-h-[44px]');
+    expect(screen.getByRole('button')).toHaveClass('min-h-touch');
   });
 
   it('erreicht Checkbox und Zeilen-Button per Tastatur in getrennter Reihenfolge (GSPP-517)', async () => {

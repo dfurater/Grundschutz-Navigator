@@ -578,7 +578,7 @@ describe('SearchPage', () => {
       renderSearch([makeControl({ id: 'ASST.1.1' })]);
 
       const toggle = screen.getByRole('button', { name: 'Kontrollen auswählen' });
-      expect(toggle).toHaveClass('min-h-[44px]', 'min-w-[44px]');
+      expect(toggle).toHaveClass('min-h-touch', 'min-w-touch');
       expect(toggle).toHaveAttribute('aria-pressed', 'false');
 
       await user.click(toggle);

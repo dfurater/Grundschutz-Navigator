@@ -56,13 +56,13 @@ export function CatalogToolbar({
   const mobileNavigationOpen = useContext(MobileNavigationContext);
   const showMobileSheets = !isDesktop && !mobileSheetsSuspended && !mobileNavigationOpen;
   return (
-    <div className="px-3 pt-2 pb-0 sm:py-1.5 md:py-0 md:h-[51px] md:flex md:items-center border-b border-[var(--color-border-default)] bg-[var(--color-surface-base)] sticky top-14 z-10 md:static md:z-auto">
+    <div className="px-3 pt-2 pb-0 sm:py-1.5 md:py-0 md:h-panel-head md:flex md:items-center border-b border-[var(--color-border-default)] bg-[var(--color-surface-base)] sticky top-14 z-10 md:static md:z-auto">
       {/* Unter sm zwei Zeilen: die Überschrift über die volle Breite, darunter
           Anzahl und Aktionen. Ab sm eine Zeile wie bisher (GSPP-471). */}
       <div className="w-full flex flex-col sm:flex-row sm:items-center sm:justify-between sm:gap-2 min-w-0">
         <div className="sm:flex sm:items-center sm:gap-2 min-w-0">
           {/* Rückkehrziel nach dem Schließen der mobilen Detailseite (`useDocumentDetailPage`). */}
-          <h1 data-catalog-scope-heading tabIndex={-1} className="text-lg/[1.35] text-balance [hyphens:auto] line-clamp-2 sm:line-clamp-none sm:truncate sm:text-base font-bold text-[var(--color-text-primary)] focus:outline-none">
+          <h1 data-catalog-scope-heading tabIndex={-1} className="text-lg/title text-balance hyphens-auto line-clamp-2 sm:line-clamp-none sm:truncate sm:text-base font-bold text-[var(--color-text-primary)] focus:outline-none">
             {title}
           </h1>
           <span
@@ -78,7 +78,7 @@ export function CatalogToolbar({
         {/* Reicht die Breite nicht für Anzahl, „Filter zurücksetzen“ und die
             Aktionen (etwa bei starkem Zoom), rutschen die Aktionen rechtsbündig
             in eine eigene Zeile, statt den Rücksetzknopf zu überdecken. */}
-        <div className="flex flex-wrap items-center justify-between gap-x-2 min-h-[44px] sm:flex-nowrap sm:min-h-0 sm:shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-x-2 min-h-touch sm:flex-nowrap sm:min-h-0 sm:shrink-0">
           <div className="sm:hidden flex flex-auto flex-wrap items-center gap-x-3 gap-y-0.5 min-w-0">
             <span
               className="text-xs text-[var(--color-text-secondary)] tabular-nums whitespace-nowrap"

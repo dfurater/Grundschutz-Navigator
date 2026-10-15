@@ -127,7 +127,7 @@ export function ControlSecurityTargets({
               )}
               {!levelResolution && (
                 // `contain` hält den Hinweis aus der Spaltenbreite heraus.
-                <p className="col-span-2 text-xs leading-snug text-amber-700 [contain:inline-size]">
+                <p className="col-span-2 text-xs leading-snug text-amber-700 contain-inline-size">
                   Keine offizielle Definition für diese Relevanzstufe verfügbar.
                 </p>
               )}

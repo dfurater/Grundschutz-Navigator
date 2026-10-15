@@ -31,7 +31,7 @@ export function CatalogMobileList({
   const scrollRef = useOverlayScrollbars<HTMLDivElement>(hasOwnScrollArea);
   return (
     <div className="desktop:hidden flex-1 min-w-0 flex flex-col md:overflow-hidden">
-      <div ref={scrollRef} className={`flex-1 md:overflow-y-auto divide-y divide-[var(--color-border-subtle)] ${selectMode ? 'pb-[calc(7rem+env(safe-area-inset-bottom,0px))]' : 'pb-safe'}`}>
+      <div ref={scrollRef} className={`flex-1 md:overflow-y-auto divide-y divide-[var(--color-border-subtle)] ${selectMode ? 'pb-safe-selection' : 'pb-safe'}`}>
         {controls.map((control) => (
           <ControlMobileReferenceRow
             key={control.id}

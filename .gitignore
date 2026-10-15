@@ -27,9 +27,12 @@ Thumbs.db
 # Test coverage
 coverage/
 
-# Browser-Testfehlerartefakte
+# Browser-Testfehlerartefakte; eingecheckt bleiben nur die Referenzbilder der visuellen Regression
 /.vitest/
-/src/test/browser/__screenshots__/
+/src/test/browser/__screenshots__/*
+!/src/test/browser/__screenshots__/visualRegression.browser.test.ts/
+/src/test/browser/__screenshots__/visualRegression.browser.test.ts/*
+!/src/test/browser/__screenshots__/visualRegression.browser.test.ts/*-chromium-linux.png
 
 # Catalog data (fetched at build time, never committed)
 public/data/
