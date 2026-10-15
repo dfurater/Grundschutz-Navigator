@@ -1,7 +1,7 @@
-import type { InputHTMLAttributes } from 'react';
+import type { ComponentType, InputHTMLAttributes } from 'react';
 
 export type InputProps = Readonly<InputHTMLAttributes<HTMLInputElement>> & {
-  readonly icon?: React.ComponentType<{ className?: string }>;
+  readonly icon?: ComponentType<{ className?: string }>;
   readonly label?: string;
 };
 

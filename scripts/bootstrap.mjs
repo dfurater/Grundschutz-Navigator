@@ -9,7 +9,8 @@
  * die lokalen Katalog-Metadaten. Ein direktes `npm run fetch-catalog` ohne
  * `BSI_SNAPSHOT_SHA` wird fail-closed abgelehnt. Dieses Script liest deshalb
  * dieselbe gepinnte Snapshot-SHA wie der `jq`-Schritt in
- * .github/workflows/validate.yml aus der eingecheckten `upstream-manifest.json` —
+ * .github/actions/fetch-pinned-catalog/action.yml (von validate.yml genutzt)
+ * aus der eingecheckten `upstream-manifest.json` —
  * nur über das bereits vorhandene `readTrackedManifest` statt eines externen
  * Tools.
  *
