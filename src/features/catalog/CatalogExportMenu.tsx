@@ -3,6 +3,7 @@ import type { Control } from '@/domain/models';
 import { Button } from '@/components/Button';
 import { IconChevronDown, IconDownload } from '@/components/icons';
 import { downloadCSV } from '@/features/export/csvExport';
+import { exportFullCatalog, exportSelectedControls } from '@/features/catalog/selectionExport';
 import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
 
 interface CatalogExportMenuProps {
@@ -49,12 +50,8 @@ export function CatalogExportMenu({
     event.preventDefault();
     items[(next + items.length) % items.length]?.focus();
   };
-  const selectedControls = allControls.filter((control) =>
-    checkedIds.has(control.id),
-  );
-
   const exportSelected = () => {
-    downloadCSV(selectedControls, 'grundschutz-auswahl.csv');
+    exportSelectedControls(allControls, checkedIds);
     close();
   };
   const exportSection = () => {
@@ -62,7 +59,7 @@ export function CatalogExportMenu({
     close();
   };
   const exportAll = () => {
-    downloadCSV(allControls, 'grundschutz-gesamtkatalog.csv');
+    exportFullCatalog(allControls);
     close();
   };
 
