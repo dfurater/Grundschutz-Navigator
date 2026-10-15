@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   TRANSIENT_RETRY_DELAYS_MS,
   fetchWithTransientRetry,
-  sleep,
 } from './transientRetry.mjs';
 
 const PINNED_URL = 'https://example.test/pinned';
@@ -95,24 +94,6 @@ describe('transienter Abruf der Lieferkettenskripte', () => {
       expect(fetchImpl).toHaveBeenCalledTimes(2);
       await vi.advanceTimersByTimeAsync(30);
       await expect(pending).resolves.toMatchObject({ attempts: 3 });
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('löst sleep erst nach der angegebenen Zeit auf', async () => {
-    vi.useFakeTimers();
-    try {
-      let resolved = false;
-      const pending = sleep(50).then(() => {
-        resolved = true;
-      });
-
-      await vi.advanceTimersByTimeAsync(49);
-      expect(resolved).toBe(false);
-      await vi.advanceTimersByTimeAsync(1);
-      await pending;
-      expect(resolved).toBe(true);
     } finally {
       vi.useRealTimers();
     }

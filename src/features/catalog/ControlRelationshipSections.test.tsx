@@ -147,7 +147,7 @@ describe('ControlHierarchy', () => {
     const child = makeControl('GC.2.1.1', 'Erweiterung');
     const onNavigateToControl = vi.fn();
 
-    render(
+    const { container } = render(
       <ControlHierarchy
         childControls={[child]}
         onNavigateToControl={onNavigateToControl}
@@ -155,6 +155,9 @@ describe('ControlHierarchy', () => {
     );
 
     expect(screen.queryByRole('heading')).not.toBeInTheDocument();
+    // T8: kein „Übergeordnete Kontrolle"-Block und keine Zwischenüberschrift.
+    expect(container.textContent).not.toContain('Übergeordnete Kontrolle');
+    expect(screen.queryByText('Erweiterungen')).toBeNull();
     await user.click(screen.getByRole('button', {
       name: 'GC.2.1.1 Erweiterung',
     }));

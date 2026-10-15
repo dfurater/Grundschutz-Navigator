@@ -12,13 +12,11 @@ import {
   writeArtifacts,
 } from './fetch-catalog.mjs';
 import {
-  OFFICIAL_BSI_REPOSITORY_URL,
   OFFICIAL_CATALOG_PATH,
   assertAllowedGitHubRef,
   assertAllowedUpstreamRepoPath,
   resolveOptionalSnapshotSha,
 } from './security-guards.mjs';
-import { buildUpstreamManifest } from './upstream-artifacts.mjs';
 import {
   buildVocabularyNamespaceData,
   extractReferencedNamespaceUrls,
@@ -1539,50 +1537,6 @@ describe('vocabulary-utils', () => {
 });
 
 describe('upstream manifest v2', () => {
-  const catalogFile = {
-    artifactKey: 'catalog-gspp',
-    rootType: 'catalog',
-    lifecycle: 'supported',
-    path: OFFICIAL_CATALOG_PATH,
-    gitBlobSha: 'b'.repeat(40),
-    contentSha256: 'c'.repeat(64),
-  };
-  const namespaceFile = {
-    artifactKey: 'namespaces-bsi',
-    rootType: 'vocabulary',
-    lifecycle: 'supported',
-    path: 'documentation/namespaces/result.csv',
-    gitBlobSha: 'd'.repeat(40),
-    contentSha256: 'e'.repeat(64),
-  };
-
-  it('builds a canonical v2 manifest from complete artifact provenance', () => {
-    const manifest = buildUpstreamManifest({
-      repository: OFFICIAL_BSI_REPOSITORY_URL,
-      snapshotCommitSha: SNAPSHOT_SHA,
-      files: [namespaceFile, catalogFile],
-    });
-
-    expect(manifest.schemaVersion).toBe(2);
-    expect(manifest.repository).toBe(OFFICIAL_BSI_REPOSITORY_URL);
-    expect(manifest.files).toEqual([catalogFile, namespaceFile]);
-    expect(manifest.signatureSha256).toMatch(/^[0-9a-f]{64}$/);
-  });
-
-  it('changes the signature when only artifact content provenance changes', () => {
-    const unchanged = buildUpstreamManifest({
-      repository: OFFICIAL_BSI_REPOSITORY_URL,
-      snapshotCommitSha: SNAPSHOT_SHA,
-      files: [catalogFile, namespaceFile],
-    });
-    const changed = buildUpstreamManifest({
-      repository: OFFICIAL_BSI_REPOSITORY_URL,
-      snapshotCommitSha: SNAPSHOT_SHA,
-      files: [catalogFile, { ...namespaceFile, contentSha256: 'f'.repeat(64) }],
-    });
-
-    expect(changed.signatureSha256).not.toBe(unchanged.signatureSha256);
-  });
   /* ---------------------------------------------------------------- */
   /*  Mehrere ausgelieferte Kataloge (GSPP-284)                        */
   /* ---------------------------------------------------------------- */

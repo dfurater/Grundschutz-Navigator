@@ -88,6 +88,7 @@ describe('referenceResolution', () => {
     ]);
     expect(classifyCatalogLinkRelation('reference')).toBe('documented');
     expect(classifyCatalogLinkRelation('related')).toBe('custom');
+    expect(classifyCatalogLinkRelation('incorporated-into')).toBe('custom');
     expect(classifyCatalogLinkRelation(undefined)).toBe('missing');
   });
 
