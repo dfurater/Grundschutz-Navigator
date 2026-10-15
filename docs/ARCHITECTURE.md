@@ -248,6 +248,7 @@ src/                              # Anwendungsquellcode
 │   │   ├── ControlTaxonomyBreadcrumb.tsx # Taxonomiebegriffe im Kopf (`panel`/`page`) oder im Scrollbereich (`tablet-panel`)
 │   │   ├── ControlVocabularyPrimitives.tsx # Gemeinsame Bausteine der Vokabularanzeige
 │   │   ├── FilterPanel.tsx               # Filterpanel
+│   │   ├── filterDimensions.ts           # Konfiguration der flachen Filterdimensionen des Filterpanels
 │   │   ├── useAdaptiveFilterHeader.ts   # Mobile Kopf-/Listenhöhe messen und Scrollmodus wählen
 │   │   └── SecurityTargetFilterSection.tsx # Schutzziel-Facetten im Filterpanel
 │   ├── export/                       # CSV-Export
