@@ -45,6 +45,30 @@ describe('alter — explizite Bindung (by-id)', () => {
     expect(partIds(after['parts'])).toEqual(['ac-2_smt', 'ac-2_neu', 'ac-2_gdn']);
   });
 
+  it('position starting setzt in den Ziel-Part an den Anfang und behält die Geschwister', () => {
+    const control = nestedControl();
+    const result = applyAlteration(control, {
+      adds: [{ byId: 'ac-2_gdn', position: 'starting', parts: [NEW_PART] }],
+    }, budget());
+
+    const parts = result['parts'] as Record<string, unknown>[];
+    expect(partIds(parts)).toEqual(['ac-2_smt', 'ac-2_gdn']);
+    expect(parts[0]).toBe((control['parts'] as unknown[])[0]);
+    expect(parts[1]).toMatchObject({ id: 'ac-2_gdn', name: 'guidance', prose: 'Hinweis' });
+    expect(partIds(parts[1]!['parts'])).toEqual(['ac-2_neu']);
+    expect((control['parts'] as Record<string, unknown>[])[1]).not.toHaveProperty('parts');
+  });
+
+  it('position starting an einem verschachtelten Ziel-Part erhält dessen Geschwister', () => {
+    const result = applyAlteration(nestedControl(), {
+      adds: [{ byId: 'ac-2_smt.b', position: 'starting', parts: [NEW_PART] }],
+    }, budget());
+
+    const items = statementOf(result)['parts'] as Record<string, unknown>[];
+    expect(partIds(items)).toEqual(['ac-2_smt.a', 'ac-2_smt.b']);
+    expect(partIds(items[1]!['parts'])).toEqual(['ac-2_neu']);
+  });
+
   it('findet einen verschachtelten Ziel-Part', () => {
     const result = applyAlteration(nestedControl(), {
       adds: [{ byId: 'ac-2_smt.a', position: 'after', props: [{ name: 'p', value: 'v' }], parts: [NEW_PART, 'kein Objekt'] }],

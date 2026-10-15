@@ -337,8 +337,9 @@ function insertAtPart(
   const position = typeof positionValue === 'string' ? positionValue : 'ending';
   const additions = collectAdditionLists(addition, budget);
 
-  // Jeder der drei Zweige legt genau eine neue parts-Liste an, die als
-  // Mitglied im Zwischengraphen stehen bleibt.
+  // before und after legen genau eine neue parts-Liste an, starting zwei: die
+  // innere Liste des Ziel-Parts und die Liste mit dessen Kopie. Jede steht als
+  // Mitglied im Zwischengraphen.
   if (position === 'before') {
     budget.admitWorkingNode();
     return { inserted: true, value: [...parts.slice(0, index), ...additions, ...parts.slice(index)] };
@@ -347,13 +348,17 @@ function insertAtPart(
     budget.admitWorkingNode();
     return { inserted: true, value: [...parts.slice(0, index + 1), ...additions, ...parts.slice(index + 1)] };
   }
-  // starting: innerhalb des Ziel-Parts am Anfang einfügen.
+  // starting: innerhalb des Ziel-Parts am Anfang einfügen. Der kopierte
+  // Ziel-Part ersetzt das Original an seiner Stelle; die Geschwister bleiben.
   const inner = filterAsIsInnerParts(parts[index]!, budget);
   budget.admitWorkingNode();
   const merged = [...additions, ...inner];
   const copyStart = copyOwnDataMembers(parts[index]!, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
   copyStart['parts'] = merged;
-  return { inserted: true, value: copyStart };
+  budget.admitWorkingNode();
+  const updated = [...parts];
+  updated[index] = copyStart;
+  return { inserted: true, value: updated };
 }
 
 /** Misst die maximale Schachtelungstiefe eines Parts-Baums iterativ. */
