@@ -42,7 +42,7 @@ export interface ControlSecurityContextProps {
   readonly renderVocabularyCard: RenderVocabularyCard;
 }
 
-export interface ThreatItem {
+interface ThreatItem {
   threat: string;
   displayName: string;
   accessibleName: string;

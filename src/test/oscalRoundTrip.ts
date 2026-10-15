@@ -57,10 +57,8 @@ const ROUND_TRIP_HARNESS_VALIDATOR = Object.freeze({
   version: '1',
 });
 
-/** Die Laufart dieses Moduls. Das Edit-Folge-Issue ergänzt hier additiv. */
-export const ROUND_TRIP_RUN_MODES = Object.freeze(['no-op'] as const);
-
-export type OscalRoundTripRunMode = (typeof ROUND_TRIP_RUN_MODES)[number];
+/** Die Laufart dieses Moduls. */
+export type OscalRoundTripRunMode = 'no-op';
 
 export interface OscalRoundTripStatusPassed {
   readonly status: 'passed';

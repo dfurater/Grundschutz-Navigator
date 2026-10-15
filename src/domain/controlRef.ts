@@ -13,15 +13,6 @@ export function makeControlRef(catalogKey: CatalogKey, controlId: string): Contr
   return { catalogKey, controlId };
 }
 
-export function controlRefEquals(left: ControlRef, right: ControlRef): boolean {
-  return left.catalogKey === right.catalogKey && left.controlId === right.controlId;
-}
-
-/** Stable string form for logging and map keys, e.g. "gspp:GC.1.1" */
-export function formatControlRef(ref: ControlRef): string {
-  return `${ref.catalogKey}:${ref.controlId}`;
-}
-
 /**
  * Resolve a control strictly within its catalog. Identical control ids in
  * different catalogs never collide because each catalog carries its own
