@@ -14,13 +14,12 @@
 // existierte dort noch nicht (`oscalVersionMatrix.mjs`).
 // =============================================================================
 
-import { parseRootDocument } from '@/adapters/oscalRootDocumentParse';
+import { parseRootDocument, validateParsedSchema } from '@/adapters/oscalRootDocumentParse';
+import type { ParsedRootDocument } from '@/adapters/oscalRootDocumentParse';
 import { deriveMappingCollection } from '@/adapters/oscalMappingAdapter';
 import { MAPPING_COLLECTION_ROOT_TYPE } from '@/domain/mappingModel';
 import type { MappingCollection } from '@/domain/mappingModel';
 import type { OscalDocumentContext } from '@/domain/models';
-import type { OscalSchemaPin, PinnedOscalVersion } from '@/domain/oscalVersionMatrix';
-import { validateAgainstPinnedSchema } from '@/domain/oscalSchemaValidation';
 import type { OscalSchemaValidationResult } from '@/domain/oscalSchemaValidation';
 
 /**
@@ -29,15 +28,7 @@ import type { OscalSchemaValidationResult } from '@/domain/oscalSchemaValidation
  * `source` ist die Wahrheit, `view` eine Projektion darauf. `pin` ist die in
  * Stufe 2 gewählte Matrixzelle und der einzige zulässige Eingang in Stufe 3.
  */
-export interface MappingDocument {
-  readonly source: unknown;
-  readonly context: OscalDocumentContext;
-  readonly view: MappingCollection;
-  /** Die aus `metadata.oscal-version` gebundene Zelle — nie aus `$schema`. */
-  readonly pin: OscalSchemaPin;
-  readonly oscalVersion: PinnedOscalVersion;
-  readonly artifactKey: string | null;
-}
+export type MappingDocument = ParsedRootDocument<MappingCollection>;
 
 /**
  * Parst eine OSCAL Mapping Collection verlustfrei nach ADR-2.
@@ -71,10 +62,6 @@ export function parseMappingDocument(
  * wird nicht gegen 1.2.1 geprüft, sondern schon im Dispatch als unmögliche
  * Kombination abgewiesen.
  */
-export function validateMappingSchema(
+export const validateMappingSchema: (
   document: MappingDocument,
-): Promise<OscalSchemaValidationResult> {
-  return validateAgainstPinnedSchema(document.source, document.pin, {
-    artifactKey: document.artifactKey,
-  });
-}
+) => Promise<OscalSchemaValidationResult> = validateParsedSchema;
