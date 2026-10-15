@@ -392,6 +392,7 @@ scripts/                          # Build-, CI- und Wartungsskripte
 ├── oscal-schema-vendor.mjs           # Ablageort-Vertrag der gepinnten Schemas
 ├── pr-documentation-contract.mjs     # Dokumentationsvertrag im PR-Body
 ├── profileResolutionCorpusOracle.ts  # Vergleichsorakel des Bauzeitlaufs
+├── regularFileRead.mjs               # Symlink-sicheres Lesen regulärer Dateien (async und sync)
 ├── release-prepare.mjs               # Release-PR aus einem Vorbereitungsbranch
 ├── review-policy.mjs                 # Generator, Drift-Guard und CLI der Review-Policy
 ├── review-policy.rules.mjs           # Regeltabelle der Review-Policy
