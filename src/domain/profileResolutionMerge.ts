@@ -429,10 +429,6 @@ function filterContainerForAsIs(
 /* Custom-Zusammenbauung                                               */
 /* ------------------------------------------------------------------ */
 
-/* ------------------------------------------------------------------ */
-/* Custom-Zusammenbauung                                               */
-/* ------------------------------------------------------------------ */
-
 /** Auftrag der Custom-Zusammenbauung: Rohgruppen plus Anweisungen. */
 export interface CustomAssemblyRequest {
   /**

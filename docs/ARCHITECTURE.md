@@ -4,7 +4,7 @@
 
 ## Überblick
 
-Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application (SPA)** für das Durchsuchen und Filtern des BSI IT-Grundschutz-Kontrollkatalogs (Grundschutz++). Die Anwendung wird vollständig im Browser ausgeführt und deployed auf GitHub Pages.
+Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application (SPA)** für das Durchsuchen, Filtern und Exportieren der BSI-Kataloge aus der Stand-der-Technik-Bibliothek, allen voran des Grundschutz++-Anwenderkatalogs (Katalogliste: `src/domain/sourceRegistry.mjs`). Die Anwendung wird vollständig im Browser ausgeführt und deployed auf GitHub Pages.
 
 ## Technologie-Stack
 
