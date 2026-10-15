@@ -1143,13 +1143,15 @@ Ergebnisgraphen.
    exakt kopiert (ohne `insert-controls`), `insert-controls` füllen
    Controls an Gruppenpositionen; nicht getroffene Selektionen tragen
    nichts bei.
-3. **Modify:** `set-parameter` (Skalarfelder ersetzen, `props`/`links`
-   anreichern) und `alters` (`adds`/`removes` mit `by-id`/`by-name`/…),
-   danach kanonische Schlüsselordnung. Ein `add` mit `by-id` setzt bei
-   `before`/`after` neben den Ziel-Part; bei `starting`, `ending` und
-   fehlender `position` (Default `ending`) landet jede Kategorie (`params`,
-   `props`, `links`, `parts`) in der gleichnamigen Liste des Ziel-Parts
-   (`src/domain/profileResolutionModify.ts`).
+3. **Modify:** `set-parameter` ersetzt Skalarfelder und reichert `props`/`links` an. `alters` wendet `removes` vor `adds` an und ordnet geänderte Controls kanonisch (`src/domain/profileResolutionModify.ts`). Ein `add` mit `by-id` sucht Parameter, Parts und Kind-Controls unterhalb der adressierten Control; die Control selbst ist kein explizites Ziel. Die Suche prüft `params`, danach `parts` tiefenfirst und danach `controls` tiefenfirst einschließlich ihrer Parameter und Parts. Der erste Treffer bestimmt den Zieltyp. Die Tiefengrenze `CLASS_2_IMPORT_LIMITS.maxDepth` gilt für den gesamten Suchbaum.
+
+| Zieltyp | `starting` / `ending` im Ziel | `before` / `after` in der gleichnamigen Elternliste |
+| --- | --- | --- |
+| Parameter | `props`, `links` | `params` |
+| Part | `props`, `links`, `parts` | `parts` |
+| Kind-Control | `params`, `props`, `links`, `parts` | keine Platzierung |
+
+Bei fehlender `position` gilt `ending`. `title` wird bei expliziter Bindung ignoriert. Jede nicht leere Kategorie außerhalb der Tabellenzelle führt zu `PROFILE_RESOLUTION_ADD_UNPLACEABLE`; `before` und `after` an einer Kind-Control führen ebenfalls zu diesem Code. Die redigierte Diagnose nennt die verursachende `add`-Anweisung unter `/profile/modify/alters/<index>/adds/<index>` im aktuellen Profil; die Auflösung gibt kein Teilergebnis aus. Eine unbekannte `by-id` bleibt wirkungslos und erhält die Referenz der Control.
 
 **Ergebnisvertrag (ADR-2 §10, ADR-8):**
 - Eigene Dokument-UUID als UUIDv5 aus festem Projektnamensraum + UUID

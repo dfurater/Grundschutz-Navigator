@@ -1016,3 +1016,81 @@ describe('fail-closed Diagnosen der Engine', () => {
     expectTopProfileDiagnostic(outcome, 'PROFILE_RESOLUTION_IMPORT_UNMAPPED');
   });
 });
+
+
+describe('by-id — unplatzierbare Ergänzungen', () => {
+  it('meldet die verursachende add-Anweisung im steuernden Profil redigiert', async () => {
+    const secret = 'document-secret';
+    const outcome = await resolveWorld({
+      documents: {
+        'profile-top': profileDoc({
+          imports: [{ href: './a.json', includeAll: true }], merge: { flat: {} },
+          modify: { alters: [
+            { 'control-id': 'fehlt', adds: [{ props: [{ name: 'ok', value: '1' }] }] },
+            { 'control-id': 'ac-1', adds: [
+              { props: [{ name: 'ok', value: '1' }] },
+              { 'by-id': 'ziel', position: 'after', props: [{ name: 'secret', value: secret }] },
+            ] },
+          ] },
+        }),
+        'cat-a': catalogDoc(controlNode('ac-1', { parts: [{ id: 'ziel', name: 'item' }] })),
+      },
+      edges: { 'profile-top': [{ href: './a.json', artifactKey: 'cat-a' }] },
+    });
+    expectTopProfileDiagnostic(outcome, 'PROFILE_RESOLUTION_ADD_UNPLACEABLE', '/profile/modify/alters/1/adds/1');
+    expect(outcome).not.toHaveProperty('output');
+    expect(JSON.stringify(outcome)).not.toContain(secret);
+  });
+});
+
+
+describe('by-id — Ergebnis- und Fehlergrenzen', () => {
+  it.each(['root', 'nested', 'group', 'profile-chain'])('propagiert Ablehnungen aus %s mit dem richtigen Profilkontext', async location => {
+    const control = controlNode('ac-1', { parts: [{ id: 'ziel', name: 'item' }] });
+    const child = profileDoc({
+      imports: [{ href: './a.json', includeAll: true }], merge: { 'as-is': true },
+      modify: { alters: [{ 'control-id': 'ac-1', adds: [{ 'by-id': 'ziel', params: [{ id: 'neu', label: '1' }] }] }] },
+    });
+    let source = catalogDoc(control);
+    if (location === 'nested') source = catalogDoc(controlNode('parent', { controls: [control] }));
+    if (location === 'group') source = { catalog: { metadata: { 'oscal-version': VERSION }, groups: [{ id: 'g', title: 'Gruppe', controls: [control] }] } };
+    const world: WorldSpec = location === 'profile-chain' ? {
+      documents: {
+        'profile-top': profileDoc({ imports: [{ href: './child.json', includeAll: true }] }),
+        'profile-child': child, 'cat-a': source,
+      },
+      edges: {
+        'profile-top': [{ href: './child.json', artifactKey: 'profile-child' }],
+        'profile-child': [{ href: './a.json', artifactKey: 'cat-a' }],
+      },
+    } : {
+      documents: { 'profile-top': child, 'cat-a': source },
+      edges: { 'profile-top': [{ href: './a.json', artifactKey: 'cat-a' }] },
+    };
+    const original = structuredClone(world);
+    const outcome = await resolveWorld(world);
+    expect(outcome).toMatchObject({ ok: false, diagnostic: {
+      code: 'PROFILE_RESOLUTION_ADD_UNPLACEABLE', path: '/profile/modify/alters/0/adds/0',
+      artifact: { key: location === 'profile-chain' ? 'profile-child' : 'profile-top', rootType: 'profile' },
+    } });
+    expect(world).toEqual(original);
+    expect(outcome).not.toHaveProperty('output');
+  });
+
+  it.each(['starting', 'ending', 'before', 'after'])('validiert Parameter-Platzierung %s als Katalog', async position => {
+    const additions = position === 'before' || position === 'after'
+      ? { params: [{ id: 'neu', label: 'Neu' }] }
+      : { props: [{ name: 'x', value: '1' }], links: [{ href: '#x' }] };
+    const outcome = await resolveWorld({
+      documents: {
+        'profile-top': profileDoc({
+          imports: [{ href: './a.json', includeAll: true }], merge: { flat: {} },
+          modify: { alters: [{ 'control-id': 'ac-1', adds: [{ 'by-id': 'ziel', position, ...additions }] }] },
+        }),
+        'cat-a': catalogDoc(controlNode('ac-1', { params: [{ id: 'ziel', label: 'Parameter' }] })),
+      },
+      edges: { 'profile-top': [{ href: './a.json', artifactKey: 'cat-a' }] },
+    });
+    expect(outcome.ok).toBe(true);
+  });
+});

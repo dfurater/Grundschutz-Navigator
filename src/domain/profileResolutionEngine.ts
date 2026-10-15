@@ -90,6 +90,8 @@ import {
 
 /** Stabile Codes der Engine-Ebene (über den Phasencodes). */
 export const PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES = Object.freeze({
+  /** Die Kategorie ist relativ zum expliziten Ziel nicht schemafähig platzierbar. */
+  ADD_UNPLACEABLE: 'PROFILE_RESOLUTION_ADD_UNPLACEABLE',
   /** Merge fehlt oder trägt eine mehrdeutige Strukturdirektive. */
   MERGE_STRUCTURE_UNRESOLVED: 'PROFILE_RESOLUTION_MERGE_STRUCTURE_UNRESOLVED',
   /** combine.method außerhalb use-first/keep. */
@@ -324,9 +326,12 @@ function objectEntriesOf(node: JsonObject, key: string, budget: ProfileResolutio
  * Sammelfelder, die als Phantom-Mitglieder im Ergebnisdokument enden
  * würden.
  */
-function toAlterationDirective(alterNode: JsonObject, budget: ProfileResolutionBudget): AlterationDirective {
+type LocatedAlterationDirective = AlterationDirective & { readonly path: string };
+
+function toAlterationDirective(alterNode: JsonObject, path: string, budget: ProfileResolutionBudget): LocatedAlterationDirective {
   const controlId = optionalString(alterNode, 'control-id');
   return {
+    path,
     ...(controlId !== undefined && { controlId }),
     adds: objectEntriesOf(alterNode, 'adds', budget).map(
       (entry) => projectMembers(entry, ALTERATION_STRING_MEMBERS, ALTERATION_LIST_MEMBERS, budget) as NonNullable<AlterationDirective['adds']>[number],
@@ -350,10 +355,13 @@ function readRawAlters(source: unknown, budget: ProfileResolutionBudget): readon
   return objectEntriesOf(modify, 'alters', budget);
 }
 
-type ControlTransform = (control: JsonObject) => JsonObject;
+type ControlTransformResult =
+  | { readonly ok: true; readonly value: JsonObject }
+  | { readonly ok: false; readonly diagnostic: OscalDiagnostic };
+type ControlTransform = (control: JsonObject) => ControlTransformResult;
 
-function identity(control: JsonObject): JsonObject {
-  return control;
+function identity(control: JsonObject): ControlTransformResult {
+  return { ok: true, value: control };
 }
 
 /**
@@ -375,7 +383,7 @@ function copyOwnDataMembersSkipping(node: JsonObject, skipKeys: readonly string[
 
 function createControlTransform(
   setParameters: readonly ProfileSetParameter[],
-  altersByControlId: ReadonlyMap<string, readonly AlterationDirective[]>,
+  altersByControlId: ReadonlyMap<string, readonly LocatedAlterationDirective[]>,
   budget: ProfileResolutionBudget,
 ): ControlTransform {
   if (setParameters.length === 0 && altersByControlId.size === 0) return identity;
@@ -385,10 +393,10 @@ function createControlTransform(
     return typeof id === 'string' ? id : null;
   };
 
-  const applyShallow = (control: JsonObject): JsonObject => {
+  const applyShallow = (control: JsonObject): ControlTransformResult => {
     let transformed = applySetParametersToControl(control, setParameters, budget);
     const id = controlIdOf(transformed);
-    if (id === null) return transformed;
+    if (id === null) return { ok: true, value: transformed };
     // Die Suche des `alter`-Zielcontrols — die eigene Kategorie des
     // geschlossenen Satzes. Sie fällt je betrachteter Control an, auch wenn
     // keine Alteration auf sie zeigt, und sie gehört unter `/profile/modify`:
@@ -396,28 +404,43 @@ function createControlTransform(
     // Modify-Phase als Importproblem ausgewiesen.
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_TARGET_LOOKUP);
     const alterations = altersByControlId.get(id);
-    if (alterations === undefined) return transformed;
+    if (alterations === undefined) return { ok: true, value: transformed };
     for (const alteration of alterations) {
       budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_TARGET_LOOKUP);
-      transformed = applyAlteration(transformed, alteration, budget);
+      const result = applyAlteration(transformed, alteration, budget);
+      if (!result.ok) return reject(
+        PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.ADD_UNPLACEABLE,
+        `${alteration.path}/adds/${result.additionIndex}`,
+      );
+      transformed = result.value;
     }
-    return transformed;
+    return { ok: true, value: transformed };
   };
 
   // Modify wirkt auf die ganze Control-Hierarchie: verschachtelte
   // Subcontrols werden mit derselben Transformation behandelt. Die
   // Rekursionstiefe ist durch die Entry-Scanner-Grenze gedeckt.
-  const applyDeep = (control: JsonObject): JsonObject => {
-    const transformed = applyShallow(control);
+  const applyDeep = (control: JsonObject): ControlTransformResult => {
+    const result = applyShallow(control);
+    if (!result.ok) return result;
+    const transformed = result.value;
     const children = ownDataValue(transformed, 'controls');
     if (Array.isArray(children)) {
       // Die transformierte Kinderliste ersetzt das controls-Mitglied.
       budget.admitWorkingNode();
-      transformed['controls'] = ownArrayDataElements(children, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).map((child) =>
-        isJsonContainer(child) ? applyDeep(child) : child,
-      );
+      const updated: unknown[] = [];
+      for (const child of ownArrayDataElements(children, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE)) {
+        if (!isJsonContainer(child)) {
+          updated.push(child);
+          continue;
+        }
+        const nested = applyDeep(child);
+        if (!nested.ok) return nested;
+        updated.push(nested.value);
+      }
+      transformed['controls'] = updated;
     }
-    return transformed;
+    return { ok: true, value: transformed };
   };
   return applyDeep;
 }
@@ -428,7 +451,7 @@ function createControlTransform(
  * in-place umgeschrieben werden — die Eingabedokumente bleiben unangetastet.
  * Der Stack trägt die Verschachtelungstiefe (keine Rekursion).
  */
-function applyTransformToGroups(groups: readonly JsonObject[], transform: ControlTransform, budget: ProfileResolutionBudget): void {
+function applyTransformToGroups(groups: readonly JsonObject[], transform: ControlTransform, budget: ProfileResolutionBudget): OscalDiagnostic | undefined {
   const stack: JsonObject[] = [...groups];
   while (stack.length > 0) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
@@ -437,9 +460,17 @@ function applyTransformToGroups(groups: readonly JsonObject[], transform: Contro
     if (Array.isArray(controls)) {
       // Dasselbe auf der Gruppenebene.
       budget.admitWorkingNode();
-      group['controls'] = ownArrayDataElements(controls, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).map((child) =>
-        isJsonContainer(child) ? transform(child) : child,
-      );
+      const updated: unknown[] = [];
+      for (const child of ownArrayDataElements(controls, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE)) {
+        if (!isJsonContainer(child)) {
+          updated.push(child);
+          continue;
+        }
+        const result = transform(child);
+        if (!result.ok) return result.diagnostic;
+        updated.push(result.value);
+      }
+      group['controls'] = updated;
     }
     const nested = ownDataValue(group, 'groups');
     if (Array.isArray(nested)) {
@@ -781,10 +812,10 @@ function buildStructuredOutput(
 /** Phase 3 — Modify-Direktiven als Transformation über alle platzierten Controls. */
 function collectModifyTransform(document: ProfileDocument, budget: ProfileResolutionBudget): ControlTransform {
   const setParameters = (document.view.modify?.setParameters ?? []).map((parameter) => toSetParameterDirective(parameter));
-  const altersByControlId = new Map<string, AlterationDirective[]>();
-  for (const alterNode of readRawAlters(document.source, budget)) {
+  const altersByControlId = new Map<string, LocatedAlterationDirective[]>();
+  for (const [index, alterNode] of readRawAlters(document.source, budget).entries()) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
-    const directive = toAlterationDirective(alterNode, budget);
+    const directive = toAlterationDirective(alterNode, `/profile/modify/alters/${index}`, budget);
     if (directive.controlId === undefined) continue;
     const bucket = altersByControlId.get(directive.controlId) ?? [];
     bucket.push(directive);
@@ -1099,8 +1130,14 @@ function resolveSingleProfile(input: SingleProfileInput, budget: ProfileResoluti
   const groups = structured.value.groups;
   // Transformierte Control-Liste des Ergebnisgraphen.
   budget.admitWorkingNode();
-  const controls = structured.value.controls.map(transform);
-  applyTransformToGroups(groups, transform, budget);
+  const controls: JsonObject[] = [];
+  for (const control of structured.value.controls) {
+    const result = transform(control);
+    if (!result.ok) return { ok: false, diagnostic: withCurrentProfileArtifact(result.diagnostic, input) };
+    controls.push(result.value);
+  }
+  const groupDiagnostic = applyTransformToGroups(groups, transform, budget);
+  if (groupDiagnostic !== undefined) return { ok: false, diagnostic: withCurrentProfileArtifact(groupDiagnostic, input) };
 
   // Interne Fragment-Links werden bewusst NICHT beschnitten: Das
   // unabhängige NIST-Orakel behält Verweise auf nicht aufgelöste Ziele
