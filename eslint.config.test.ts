@@ -115,6 +115,24 @@ const RULE = 'design-system/no-off-system-classes';
 // Ziffer, Großbuchstaben oder Herstellerpräfix im Namen und mit Modifier. `css` sind Ausschnitte des
 // CSS, das Tailwind mit `src/index.css` für die Klasse erzeugt.
 const BYPASS_FORMS = [
+  // Laufzeit-Zusammensetzung hält Test-URLs aus Tailwinds automatischem App-Scan.
+  { label: 'Zitierte öffnende Klammer im Kurzform-Fallback', classes: ['bg-', "(image:--missing,url('/icon(.svg'))"].join(''), messageId: 'arbitraryValue', css: ["background-image: var(--missing,url('/icon(.svg'))"] },
+  { label: 'Zitierte schließende Klammer im Kurzform-Fallback', classes: ['bg-', '(image:--missing,url("/icon).svg"))'].join(''), messageId: 'arbitraryValue', css: ['background-image: var(--missing,url("/icon).svg"))'] },
+  { label: 'Escapete Klammer im Kurzform-Fallback', classes: ['bg-', String.raw`(image:--missing,url(/icon\(.svg))`].join(''), messageId: 'arbitraryValue', css: [String.raw`background-image: var(--missing,url(/icon\(.svg))`] },
+  { label: 'Escapetes Anführungszeichen im Kurzform-Fallback', classes: ['bg-', String.raw`(image:--missing,url('/it\'s(.svg'))`].join(''), messageId: 'arbitraryValue', css: [String.raw`background-image: var(--missing,url('/it\'s(.svg'))`] },
+  { label: 'Zitierte Klammer in Variante vor Rohfallback', classes: "[&[data-icon='(']]:text-(length:--missing,13px)", messageId: 'arbitraryValue', css: ['font-size: var(--missing,13px)'] },
+  { label: 'Escapete Klammer in Variante vor Rohfallback', classes: String.raw`[&[data-icon=\(]]:text-(length:--missing,13px)`, messageId: 'arbitraryValue', css: ['font-size: var(--missing,13px)'] },
+  { label: 'Rohschriftgröße im Kurzform-Fallback', classes: 'text-(length:--missing,13px)', messageId: 'arbitraryValue', css: ['font-size: var(--missing,13px)'] },
+  { label: 'Kurzform-Fallback mit Variante und Important', classes: 'md:!text-(length:--missing,13px)', messageId: 'arbitraryValue', css: ['font-size: var(--missing,13px) !important'] },
+  { label: 'Rohfarbe im Kurzform-Fallback', classes: 'bg-(--missing,#f00)', messageId: 'arbitraryValue', css: ['background-color: var(--missing,#f00)'] },
+  { label: 'Rohe Rechnung im Kurzform-Fallback', classes: 'text-(length:--missing,calc(13px+var(--offset)))', messageId: 'arbitraryValue', css: ['font-size: var(--missing,calc(13px + var(--offset)))'] },
+  { label: 'Verschachtelter Rohfallback in Kurzform', classes: 'text-(length:--missing,var(--other,13px))', messageId: 'arbitraryValue', css: ['font-size: var(--missing,var(--other,13px))'] },
+  { label: 'Rohe Zeilenhöhe im Kurzform-Modifier', classes: 'text-sm/(--missing,1.37)', messageId: 'arbitraryValue', css: ['line-height: var(--missing,1.37)'] },
+  { label: 'Rohe Deckkraft im Kurzform-Modifier', classes: 'bg-black/(--missing,0.3)', messageId: 'arbitraryValue', css: ['var(--missing,0.3)'] },
+  { label: 'Kurzform-Modifier einer Arbitrary Property', classes: '[color:var(--x)]/(--missing,0.3)', messageId: 'arbitraryValue', css: ['color-mix(in oklab, var(--x) var(--missing,0.3), transparent)'] },
+  { label: 'Rohbasis vor Token-Kurzform-Modifier', classes: 'text-[13px]/(--leading-title)', messageId: 'arbitraryValue', css: ['font-size: 13px', 'line-height: var(--leading-title)'] },
+  { label: 'Rohfallback vor eckigem Token-Modifier', classes: 'text-(length:--missing,13px)/[var(--leading-title)]', messageId: 'arbitraryValue', css: ['font-size: var(--missing,13px)', 'line-height: var(--leading-title)'] },
+  { label: 'Roher Modifier nach Token-Kurzform', classes: 'text-(length:--text-sm)/[1.37]', messageId: 'arbitraryValue', css: ['font-size: var(--text-sm)', 'line-height: 1.37'] },
   { label: 'Rohschatten mit Safe Area', classes: 'shadow-[0_0_env(safe-area-inset-top)_red]', messageId: 'arbitraryValue', css: ['--tw-shadow:', 'env(safe-area-inset-top)'] },
   { label: 'Rohmaß neben Safe Area', classes: 'pb-[calc(13px+env(safe-area-inset-bottom))]', messageId: 'arbitraryValue', css: ['padding-bottom: calc(13px + env(safe-area-inset-bottom))'] },
   { label: 'Rohfarbe im Safe-Area-Fallback', classes: 'bg-[env(safe-area-inset-top,red)]', messageId: 'arbitraryValue', css: ['background-color: env(safe-area-inset-top,red)'] },
@@ -148,6 +166,14 @@ const BYPASS_FORMS = [
 
 // Erlaubte Klassen mit denselben Varianten und Important-Formen.
 const ALLOWED_FORMS = [
+  { label: 'Token-Kurzform nach zitierter Klammer in Variante', classes: "[&[data-icon='(']]:text-(length:--text-sm)" },
+  { label: 'Token-Kurzform nach escapeter Klammer in Variante', classes: String.raw`[&[data-icon=\(]]:text-(length:--text-sm)` },
+  { label: 'Reine Token-Kurzformen', classes: 'bg-(--color-primary-main) text-(length:--text-sm) text-sm/(--leading-title)' },
+  { label: 'Schlüsselwort-Fallback in Kurzform', classes: 'w-(--control-id-column,auto)' },
+  { label: 'Verschachtelter Token-Fallback in Kurzform', classes: 'text-(length:--text-sm,var(--text-lg))' },
+  { label: 'Kurzform-Modifier einer Token-Property', classes: '[color:var(--x)]/(--alpha)' },
+  { label: 'Token-Kurzform vor Skalenmodifier', classes: 'text-(length:--text-sm)/6' },
+  { label: 'Token-Kurzform unter Variante mit Important', classes: 'md:text-(length:--text-sm)!' },
   { label: 'Tokenfarbe unter Hover mit Important', classes: 'hover:!text-primary-main hover:text-primary-main!' },
   { label: 'Deckkraftmodifier unter benannter Gruppe', classes: 'group-hover/card:bg-black/50 peer-hover/name:underline' },
   { label: 'Tokenfarbe unter Vorfahren- und beliebiger Hover-Variante', classes: 'in-hover:text-primary-main [&:hover]:text-primary-main' },
