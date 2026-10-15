@@ -22,7 +22,7 @@
 // Alle Transformationen erzeugen Kopien; Eingabeknoten bleiben unangetastet.
 // =============================================================================
 
-import type { JsonObject } from '@/adapters/oscalProfileReaders';
+import { isJsonContainer, type JsonObject } from '@/domain/jsonGuards';
 import type { ProfileSetParameter } from './profileModel';
 
 /** Loose Direktivenform für Tests und Resolver-Mapping (ohne Pflichtpfade). */
@@ -47,21 +47,15 @@ export interface AlterationDirective {
 }
 
 import {
-  isJsonObject,
   ownArrayDataElements,
   ownDataValue,
 } from './profileResolutionSelection';
+import { copyOwnDataMembers, safeArrayMember } from './profileResolutionMembers';
 import { CLASS_2_IMPORT_LIMITS } from './oscalImportContract';
 import {
   PROFILE_RESOLUTION_WORK_UNITS,
   type ProfileResolutionBudget,
 } from './profileResolutionBudget';
-
-/** Array-Wert eines Mitglieds, rein deskriptorbasiert gelesen. */
-function safeArrayMember(node: JsonObject, key: string): readonly unknown[] | undefined {
-  const value = ownDataValue(node, key);
-  return Array.isArray(value) ? value : undefined;
-}
 
 /** Kanonische Schlüsselordnung eines Control-/Group-Knotens. */
 const CANONICAL_CONTROL_KEYS = [
@@ -100,20 +94,8 @@ function readStringMember(node: JsonObject, key: string): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-function copyOwnDataMembers(node: JsonObject, budget: ProfileResolutionBudget): JsonObject {
-  budget.admitWorkingNode();
-  const copy: JsonObject = {};
-  for (const key of Reflect.ownKeys(node)) {
-    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
-    if (typeof key !== 'string') continue;
-    const value = ownDataValue(node, key);
-    if (value !== undefined) copy[key] = value;
-  }
-  return copy;
-}
-
 function canonicalCopyWithParams(control: JsonObject, params: readonly unknown[], budget: ProfileResolutionBudget): JsonObject {
-  const copy = copyOwnDataMembers(control, budget);
+  const copy = copyOwnDataMembers(control, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
   copy['params'] = params;
   return canonicalizeControlKeys(copy, budget);
 }
@@ -137,7 +119,7 @@ export function applySetParametersToControl(
   budget: ProfileResolutionBudget,
 ): JsonObject {
   const directives = ownArrayDataElements(setParameters, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE).filter(
-    (directive): directive is ProfileSetParameter => isJsonObject(directive),
+    (directive): directive is ProfileSetParameter => isJsonContainer(directive),
   );
   if (directives.length === 0) return control;
 
@@ -173,7 +155,7 @@ function applySingleSetParameter(
   // steht danach im Zwischengraphen — also ein Container vor der Allokation.
   budget.admitWorkingNode();
   const next = ownArrayDataElements(params, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE).map((param) => {
-    if (!isJsonObject(param)) return param;
+    if (!isJsonContainer(param)) return param;
     if (readStringMember(param, 'id') !== directiveParamId) return param;
 
     changed = true;
@@ -233,7 +215,7 @@ export function applyAlteration(
   // entfernen).
   for (const removal of removals) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
-    if (isJsonObject(removal)) {
+    if (isJsonContainer(removal)) {
       working = applyRemovals(
         working,
         removal as NonNullable<AlterationDirective['removes']>[number], budget
@@ -242,7 +224,7 @@ export function applyAlteration(
   }
   for (const addition of additions) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
-    if (isJsonObject(addition)) {
+    if (isJsonContainer(addition)) {
       working = applyAddition(
         working,
         addition as NonNullable<AlterationDirective['adds']>[number], budget
@@ -279,7 +261,7 @@ function applyImplicitAddition(
   const position = typeof positionValue === 'string' ? positionValue : 'ending';
   const startLike = position === 'starting' || position === 'before';
 
-  const result = copyOwnDataMembers(control, budget);
+  const result = copyOwnDataMembers(control, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
   const pendingLists = collectPendingAdditionLists(addition, budget);
 
   const addTitle = ownDataValue(addition as JsonObject, 'title');
@@ -405,7 +387,7 @@ function measurePartsDepth(partsValue: unknown, budget: ProfileResolutionBudget)
     if (depth > CLASS_2_IMPORT_LIMITS.maxDepth) return depth;
     for (const part of ownArrayDataElements(parts, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE)) {
       budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
-      if (isJsonObject(part)) {
+      if (isJsonContainer(part)) {
         const nested = ownDataValue(part, 'parts');
         if (Array.isArray(nested)) {
           stack.push({ parts: nested as unknown[], depth: depth + 1 });
@@ -434,13 +416,13 @@ function insertIntoPartsTree(
   // und steht damit im Zwischengraphen.
   budget.admitWorkingNode();
   const parts = ownArrayDataElements(partsValue, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE).filter(
-    (part): part is JsonObject => isJsonObject(part),
+    (part): part is JsonObject => isJsonContainer(part),
   );
 
   for (let index = 0; index < parts.length; index += 1) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
     const part = parts[index];
-    if (!isJsonObject(part)) continue;
+    if (!isJsonContainer(part)) continue;
     const partId = readStringMember(part, 'id');
     if (partId === targetPartId) {
       return insertAtPart(parts, index, addition, budget);
@@ -451,7 +433,7 @@ function insertIntoPartsTree(
     if (nestedParts !== undefined) {
       const nestedResult = insertIntoPartsTree(nestedParts, targetPartId, addition, budget);
       if (nestedResult.inserted) {
-        const copy = copyOwnDataMembers(part, budget);
+        const copy = copyOwnDataMembers(part, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
         copy['parts'] = nestedResult.value;
         parts[index] = copy;
         return { inserted: true, value: parts };
@@ -480,7 +462,7 @@ function collectAdditionLists(
     if (Array.isArray(value)) {
       for (const entry of ownArrayDataElements(value, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE)) {
         budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
-        if (isJsonObject(entry)) lists.push(entry);
+        if (isJsonContainer(entry)) lists.push(entry);
       }
     }
   }
@@ -510,7 +492,7 @@ function applyRemovals(
     // schreibt nichts gut, deshalb kostet auch ein reiner `removes`-Lauf.
     budget.admitWorkingNode();
     result[listKey] = ownArrayDataElements(members, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE).filter((member) => {
-      if (!isJsonObject(member)) return true;
+      if (!isJsonContainer(member)) return true;
       return !removalMatches(member, removal, listKey, budget);
     });
   }

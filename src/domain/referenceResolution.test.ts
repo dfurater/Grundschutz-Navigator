@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { expectNoNetworkCalls, stubNoNetwork } from '@/test/noNetwork';
 import { parseCatalog } from '@/adapters/oscalAdapter';
 import {
   REFERENCE_RESOLUTION_VALIDATOR,
@@ -146,12 +147,7 @@ describe('referenceResolution', () => {
   });
 
   it('fails closed without I/O and redacts the href from unresolved diagnostics', () => {
-    const fetch = vi.fn(() => { throw new Error('network access is forbidden'); });
-    const XMLHttpRequest = vi.fn(() => { throw new Error('network access is forbidden'); });
-    const sendBeacon = vi.fn(() => { throw new Error('network access is forbidden'); });
-    vi.stubGlobal('fetch', fetch);
-    vi.stubGlobal('XMLHttpRequest', XMLHttpRequest);
-    vi.stubGlobal('navigator', { sendBeacon });
+    const network = stubNoNetwork();
 
     const resolved = resolveControlReferences({
       document: makeDocument(),
@@ -172,9 +168,7 @@ describe('referenceResolution', () => {
       },
     });
     expect(JSON.stringify(relative?.diagnostic)).not.toContain('../catalogs/Kernel/catalog.json');
-    expect(fetch).not.toHaveBeenCalled();
-    expect(XMLHttpRequest).not.toHaveBeenCalled();
-    expect(sendBeacon).not.toHaveBeenCalled();
+    expectNoNetworkCalls(network);
   });
 
   it('classifies only HTTPS URLs as external and rejects all other protocols', () => {

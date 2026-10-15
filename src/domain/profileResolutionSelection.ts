@@ -18,7 +18,7 @@
 // =============================================================================
 
 import { createOscalDiagnostic, type OscalDiagnostic } from '@/domain/oscalDiagnostics';
-import type { JsonObject } from '@/adapters/oscalProfileReaders';
+import { isJsonContainer, isJsonObject, type JsonObject } from '@/domain/jsonGuards';
 import type { ProfileControlSelector, ProfileSelection } from './profileModel';
 import {
   PROFILE_RESOLUTION_STAGE,
@@ -61,13 +61,9 @@ export interface CatalogControlIndex {
   readonly parentOf: ReadonlyMap<string, string>;
 }
 
-export function isJsonObject(value: unknown): value is JsonObject {
-  return value !== null && typeof value === 'object';
-}
-
 /** Objekt ohne Array — nur solche Werte zählen als Dokumentbestandteil am Root. */
 function isPlainObjectBody(value: unknown): value is JsonObject {
-  return isJsonObject(value) && !Array.isArray(value);
+  return isJsonObject(value);
 }
 
 /**
@@ -171,7 +167,7 @@ function pushGroupTasks(value: readonly unknown[], childTasks: IndexTask[], budg
 /** Controls als Control-Aufgaben in Dokumentreihenfolge. */
 function pushControlTasks(value: readonly unknown[], childTasks: IndexTask[], budget: ProfileResolutionBudget): void {
   for (const node of ownArrayDataElements(value, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE)) {
-    if (isJsonObject(node)) childTasks.push({ kind: 'control', node, parent: null });
+    if (isJsonContainer(node)) childTasks.push({ kind: 'control', node, parent: null });
   }
 }
 
@@ -201,7 +197,7 @@ function collectControlChildTasks(
   const children = ownDataValue(control, 'controls');
   if (!Array.isArray(children)) return;
   for (const child of ownArrayDataElements(children, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE)) {
-    if (isJsonObject(child)) childTasks.push({ kind: 'control', node: child, parent: parentControlId });
+    if (isJsonContainer(child)) childTasks.push({ kind: 'control', node: child, parent: parentControlId });
   }
 }
 

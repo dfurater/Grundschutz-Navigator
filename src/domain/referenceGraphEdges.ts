@@ -6,6 +6,7 @@
 // in `referenceGraph.ts`, weil sie über die vorhandene Katalogauflösung laufen.
 // =============================================================================
 
+import { isJsonObject, readArray } from '@/domain/jsonGuards';
 import {
   MAPPING_RELATIONSHIP_GAP,
   type Mapping,
@@ -44,14 +45,6 @@ import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
 /** Ein `import`, eine Mapping-Ressource und eine `source` dürfen beides sein. */
 const CONTROL_SOURCE_ROOT_TYPES: readonly OscalRootKey[] = ['catalog', 'profile'];
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function readList<T>(value: unknown): readonly T[] {
-  return Array.isArray(value) ? (value as T[]) : [];
-}
-
 /**
  * Ein Kontext ohne `href` ist nicht bewertbar, nicht fehlerhaft: Das fehlende
  * Pflichtfeld ist ein Schemabefund der Stufe 3 und steht bereits in den
@@ -83,10 +76,10 @@ export function deriveProfileEdges(
   context: GraphEvaluationContext,
 ): void {
   const view = prepared.document.view as Profile;
-  if (!isRecord(view)) return;
+  if (!isJsonObject(view)) return;
 
   const from = artifactNode(prepared.document.artifactKey);
-  for (const profileImport of readList<ProfileImport>(view.imports)) {
+  for (const profileImport of readArray<ProfileImport>(view.imports)) {
     const importPath = `${profileImport.path}/href`;
     const result = profileImport.href
       ? classifyContextReference(context, prepared, {
@@ -243,13 +236,13 @@ export function deriveMappingEdges(
   context: GraphEvaluationContext,
 ): void {
   const view = prepared.document.view as MappingCollection;
-  if (!isRecord(view)) return;
+  if (!isJsonObject(view)) return;
 
-  for (const mapping of readList<Mapping>(view.mappings)) {
+  for (const mapping of readArray<Mapping>(view.mappings)) {
     const source = deriveMappingResource(sink, prepared, context, mapping.sourceResource);
     const target = deriveMappingResource(sink, prepared, context, mapping.targetResource);
 
-    for (const entry of readList<MappingEntry>(mapping.maps)) {
+    for (const entry of readArray<MappingEntry>(mapping.maps)) {
       if (assertsGap(entry)) {
         sink.gapAssertions.push({
           documentKey: prepared.document.artifactKey,
@@ -287,7 +280,7 @@ function deriveControlImplementation(
     pushContextEdge(sink, { kind: 'component-source', from: owner, path: sourcePath }, result);
   }
 
-  for (const requirement of readList<ComponentImplementedRequirement>(
+  for (const requirement of readArray<ComponentImplementedRequirement>(
     implementation.implementedRequirements,
   )) {
     resolveLocalId(context, sink, {
@@ -315,17 +308,17 @@ export function deriveComponentEdges(
   context: GraphEvaluationContext,
 ): void {
   const view = prepared.document.view as ComponentDefinition;
-  if (!isRecord(view)) return;
+  if (!isJsonObject(view)) return;
 
   const documentKey = prepared.document.artifactKey;
   // Beide Träger, nicht nur `components`: Eine Capability kann eine **eigene**
   // `control-implementation` führen. Ein Durchlauf nur über `components`
   // verlöre deren Referenzen still.
   const owners: readonly (readonly [ReferenceNodeKind, ImplementationOwner])[] = [
-    ...readList<ImplementationOwner>(view.components).map(
+    ...readArray<ImplementationOwner>(view.components).map(
       (component) => ['component', component] as const,
     ),
-    ...readList<ImplementationOwner>(view.capabilities).map(
+    ...readArray<ImplementationOwner>(view.capabilities).map(
       (capability) => ['capability', capability] as const,
     ),
   ];
@@ -334,7 +327,7 @@ export function deriveComponentEdges(
     const ownerNode: ReferenceNodeId = owner.uuid
       ? { documentKey, kind, localId: owner.uuid }
       : artifactNode(documentKey);
-    for (const implementation of readList<ComponentControlImplementation>(
+    for (const implementation of readArray<ComponentControlImplementation>(
       owner.controlImplementations,
     )) {
       deriveControlImplementation(sink, prepared, context, ownerNode, implementation);

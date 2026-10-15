@@ -9,6 +9,7 @@
 // =============================================================================
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { expectNoNetworkCalls, stubNoNetwork } from '@/test/noNetwork';
 import {
   deriveProfile,
   PROFILE_ADAPTER_DIAGNOSTIC_CODES,
@@ -846,18 +847,7 @@ describe('No-op-Verlustfreiheit', () => {
 
 describe('Kein Netzzugriff auf irgendeinem Parse- oder Auflösungspfad', () => {
   it('parst den gesamten Korpus, während fetch, XMLHttpRequest und sendBeacon werfen', () => {
-    const fetch = vi.fn(() => {
-      throw new Error('network access is forbidden');
-    });
-    const XMLHttpRequest = vi.fn(() => {
-      throw new Error('network access is forbidden');
-    });
-    const sendBeacon = vi.fn(() => {
-      throw new Error('network access is forbidden');
-    });
-    vi.stubGlobal('fetch', fetch);
-    vi.stubGlobal('XMLHttpRequest', XMLHttpRequest);
-    vi.stubGlobal('navigator', { sendBeacon });
+    const network = stubNoNetwork();
 
     const documents = [
       ...makeAllProfileSources().map(({ specification, source }) =>
@@ -869,8 +859,6 @@ describe('Kein Netzzugriff auf irgendeinem Parse- oder Auflösungspfad', () => {
     ];
 
     expect(documents).toHaveLength(6);
-    expect(fetch).not.toHaveBeenCalled();
-    expect(XMLHttpRequest).not.toHaveBeenCalled();
-    expect(sendBeacon).not.toHaveBeenCalled();
+    expectNoNetworkCalls(network);
   });
 });

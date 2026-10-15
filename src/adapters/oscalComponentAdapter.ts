@@ -38,17 +38,16 @@ import {
 import {
   COMPONENT_ADAPTER_DIAGNOSTIC_CODES,
   diagnose,
-  isJsonObject,
   readLinks,
   readObjectArrayField,
   readProps,
   readResponsibleRoles,
   readSetParameters,
-  readString,
   registerUuid,
 } from '@/adapters/oscalComponentReaders';
-import type { DeriveState, JsonObject } from '@/adapters/oscalComponentReaders';
+import type { DeriveState } from '@/adapters/oscalComponentReaders';
 import { readPinnedOscalVersion, readRootMetadata } from '@/adapters/oscalRootDispatch';
+import { isJsonObject, readString, type JsonObject } from '@/domain/jsonGuards';
 import { COMPONENT_DEFINITION_ROOT_TYPE } from '@/domain/componentDefinitionModel';
 import type {
   ComponentCapability,

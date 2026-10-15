@@ -38,7 +38,6 @@ import {
 } from '@/domain/referenceResolution';
 import {
   diagnose,
-  isJsonObject,
   PROFILE_ADAPTER_DIAGNOSTIC_CODES,
   readBoolean,
   readLinks,
@@ -46,11 +45,11 @@ import {
   readParams,
   readParts,
   readProps,
-  readString,
   readStringArrayField,
 } from '@/adapters/oscalProfileReaders';
-import type { DeriveState, JsonObject } from '@/adapters/oscalProfileReaders';
+import type { DeriveState } from '@/adapters/oscalProfileReaders';
 import { readPinnedOscalVersion, readRootMetadata } from '@/adapters/oscalRootDispatch';
+import { isJsonObject, readString, type JsonObject } from '@/domain/jsonGuards';
 import { PROFILE_RESOLUTION_STATE, PROFILE_ROOT_TYPE } from '@/domain/profileModel';
 import type {
   Profile,

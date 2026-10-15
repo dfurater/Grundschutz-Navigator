@@ -14,14 +14,7 @@
 // existierte dort noch nicht (`oscalVersionMatrix.mjs`).
 // =============================================================================
 
-import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
-import {
-  dispatchOscalDocumentOrThrow,
-  OscalRootDispatchError,
-  ROOT_DISPATCH_DIAGNOSTIC_CODES,
-  ROOT_DISPATCH_STAGE,
-  ROOT_DISPATCH_VALIDATOR,
-} from '@/adapters/oscalRootDispatch';
+import { parseRootDocument } from '@/adapters/oscalRootDocumentParse';
 import { deriveMappingCollection } from '@/adapters/oscalMappingAdapter';
 import { MAPPING_COLLECTION_ROOT_TYPE } from '@/domain/mappingModel';
 import type { MappingCollection } from '@/domain/mappingModel';
@@ -63,36 +56,10 @@ export function parseMappingDocument(
   source: unknown,
   context: OscalDocumentContext,
 ): MappingDocument {
-  const dispatch = dispatchOscalDocumentOrThrow(source, context);
-
-  // Zweite Schranke neben dem Registry-Abgleich im Dispatch: Der greift nur bei
-  // einem registrierten Upstream-Pfad. Dieser Einstieg liefert ein
-  // `MappingDocument` und darf keinen fremden Root durchreichen.
-  if (dispatch.rootType !== MAPPING_COLLECTION_ROOT_TYPE) {
-    throw new OscalRootDispatchError(
-      createOscalDiagnostic({
-        code: ROOT_DISPATCH_DIAGNOSTIC_CODES.ROOT_TYPE_MISMATCH,
-        stage: ROOT_DISPATCH_STAGE,
-        validator: ROOT_DISPATCH_VALIDATOR,
-        path: '/',
-        artifact: {
-          key: dispatch.artifactKey,
-          rootType: dispatch.rootType,
-          oscalVersion: dispatch.oscalVersion,
-        },
-        params: { expected: MAPPING_COLLECTION_ROOT_TYPE, found: dispatch.rootType },
-      }),
-    );
-  }
-
-  return {
-    source,
-    context,
-    view: deriveMappingCollection(dispatch.body, context),
-    pin: dispatch.pin,
-    oscalVersion: dispatch.oscalVersion,
-    artifactKey: dispatch.artifactKey,
-  };
+  return parseRootDocument(source, context, {
+    rootType: MAPPING_COLLECTION_ROOT_TYPE,
+    derive: (body) => deriveMappingCollection(body, context),
+  });
 }
 
 /**

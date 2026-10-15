@@ -108,6 +108,7 @@ src/                              # Anwendungsquellcode
 │   ├── germanCollation.ts            # Wiederverwendete deutsche Sortierkomparatoren
 │   ├── identifierQuery.ts            # Query-Vertrag für Kennungssuchen (UUID v4/v5)
 │   ├── integrity.ts                  # SHA-256 Integritätsprüfung
+│   ├── jsonGuards.ts                 # Typwächter und Leser für JSON-Rohwerte
 │   ├── mappingModel.ts               # Domänenmodell der Mapping Collection
 │   ├── models.ts                     # Zwei-Schichten-Datentypen
 │   ├── oscalBackMatterBase64.ts      # Base64-Buchhaltung des Klasse-2-Ressourcenlimits
@@ -139,6 +140,7 @@ src/                              # Anwendungsquellcode
 │   ├── profileResolutionEngine.ts    # Orchestrator Import → Merge → Modify
 │   ├── profileResolutionImportGraph.ts # Deterministischer, fail-closed Importgraph
 │   ├── profileResolutionMerge.ts     # Phase 2: Merge
+│   ├── profileResolutionMembers.ts   # Deskriptorbasierte Mitgliederzugriffe für Merge und Modify
 │   ├── profileResolutionModify.ts    # Phase 3: Modify
 │   ├── profileResolutionSelection.ts # Phase 1: Selektion
 │   ├── projectProps.ts               # Registry der projekteigenen OSCAL-Props
@@ -175,8 +177,10 @@ src/                              # Anwendungsquellcode
 │   ├── oscalProfileAdapter.ts        # Projektion des Profile
 │   ├── oscalProfileDocument.ts       # Verlustfreier Dokumenteinstieg Profile
 │   ├── oscalProfileReaders.ts        # Knotenleser und Diagnosen des Profile-Adapters
+│   ├── oscalReaders.ts               # Strukturleser der Adapter mit gebundener Diagnosefunktion
 │   ├── oscalRootAdapters.ts          # Adapter-Registrierung je Root-Typ
-│   └── oscalRootDispatch.ts          # Stufe 2: Root-Dispatch
+│   ├── oscalRootDispatch.ts          # Stufe 2: Root-Dispatch
+│   └── oscalRootDocumentParse.ts     # Root-Dispatch mit Root-Typ-Schranke für alle Dokumenteinstiege
 ├── state/                        # Globaler Anwendungszustand
 │   ├── CatalogContext.tsx            # Katalog-Kontextprovider
 │   ├── MobileNavigationContext.ts    # Mobiler Navigationszustand für Sheet-Mount-Gates
@@ -336,6 +340,8 @@ src/                              # Anwendungsquellcode
 │   ├── deviceProfile.ts              # Geräte aus Breite und Touch für Komponententests der Breakpoint-Abos
 │   ├── documentTitle.ts              # Prüft den Seitentitel auf genau ein <title>
 │   ├── eslintWithoutTypes.ts         # Repo-ESLint ohne Project Service für Regeltests
+│   ├── fakeWorker.ts                 # Worker-Testdouble und Installation als globaler `Worker`
+│   ├── noNetwork.ts                  # Werfende Stubs für fetch, XMLHttpRequest und sendBeacon
 │   ├── oscalGraphCompare.ts          # Graphvergleich mit Object.is-Semantik
 │   ├── oscalRoundTrip.ts             # No-op-Round-trip-Harnisch
 │   ├── oscalStructure.ts             # Strukturorakel (Zählregeln A und B)

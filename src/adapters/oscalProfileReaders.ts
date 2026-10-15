@@ -7,17 +7,14 @@
 // nichts — aus einem Einzelobjekt wird kein Array, und der Quellgraph bleibt,
 // wie er ist (ADR-2).
 //
-// Warum eine eigene Datei statt einer geteilten Leserbasis mit
-// `oscalComponentReaders.ts`: Der Erweiterungsvertrag aus
-// `oscalRootAdapters.ts:9-13` teilt ausdrücklich Envelope, Root-Erkennung,
-// Versionsbindung und Diagnosevertrag — **nicht** das Parsing. Ein gemeinsamer
-// Leserkern müsste über Root-Typ, Diagnosecodes und Zustandsform generisch
-// werden, und die Knotenmengen überschneiden sich kaum: Das Profilmodell liest
-// Selektoren, `alters` und rekursive `parts`, das Component-Modell
-// Implementierungen und Protokolle. Geteilt wird stattdessen das, was
-// tatsächlich ein Vertrag ist: `createOscalDiagnostic` und die Redaction-Regel.
+// Gemeinsam mit den anderen Adaptern sind nur die Strukturleser aus
+// `oscalReaders.ts`; dieses Modul bindet sie an seine Diagnosefunktion. Die
+// modellspezifischen Leser — Selektoren, `alters`, rekursive `parts` — stehen
+// hier.
 // =============================================================================
 
+import { createStructureReaders } from '@/adapters/oscalReaders';
+import { readString, type JsonObject } from '@/domain/jsonGuards';
 import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { OscalDiagnostic, OscalDiagnosticValidator } from '@/domain/oscalDiagnostics';
 import type { ReferenceDocument } from '@/domain/referenceResolution';
@@ -62,15 +59,7 @@ export const PROFILE_ADAPTER_DIAGNOSTIC_CODES = Object.freeze({
   STRUCTURE_UNEXPECTED: 'OSCAL_PROFILE_STRUCTURE_UNEXPECTED',
 });
 
-export type JsonObject = Record<string, unknown>;
-
-export function isJsonObject(value: unknown): value is JsonObject {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-export function readString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
-}
+export type { JsonObject } from '@/domain/jsonGuards';
 
 export function readBoolean(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined;
@@ -99,60 +88,11 @@ export function diagnose(state: DeriveState, code: string, path: string): OscalD
   return diagnostic;
 }
 
-/**
- * Liest ein Arrayfeld. Ein **vorhandener** Nicht-Array-Wert wird diagnostiziert
- * statt still zu `[]` zu werden — sonst verschwände eine
- * Kardinalitätsverletzung spurlos aus der Projektion.
- */
-export function readArrayField(
-  node: JsonObject,
-  key: string,
-  path: string,
-  state: DeriveState,
-): readonly unknown[] {
-  const value = node[key];
-  if (value === undefined || value === null) return [];
-  if (Array.isArray(value)) return value;
+const structureReaders = createStructureReaders<DeriveState>((state, path) => {
+  diagnose(state, PROFILE_ADAPTER_DIAGNOSTIC_CODES.STRUCTURE_UNEXPECTED, path);
+});
 
-  diagnose(state, PROFILE_ADAPTER_DIAGNOSTIC_CODES.STRUCTURE_UNEXPECTED, `${path}/${key}`);
-  return [];
-}
-
-/** Wie `readArrayField`, liefert aber nur die Objekteinträge und diagnostiziert den Rest. */
-export function readObjectArrayField(
-  node: JsonObject,
-  key: string,
-  path: string,
-  state: DeriveState,
-): readonly { readonly node: JsonObject; readonly path: string }[] {
-  return readArrayField(node, key, path, state).flatMap((entry, index) => {
-    const entryPath = `${path}/${key}/${index}`;
-    if (!isJsonObject(entry)) {
-      diagnose(state, PROFILE_ADAPTER_DIAGNOSTIC_CODES.STRUCTURE_UNEXPECTED, entryPath);
-      return [];
-    }
-    return [{ node: entry, path: entryPath }];
-  });
-}
-
-export function readStringArrayField(
-  node: JsonObject,
-  key: string,
-  path: string,
-  state: DeriveState,
-): readonly string[] {
-  return readArrayField(node, key, path, state).flatMap((entry, index) => {
-    if (typeof entry !== 'string') {
-      diagnose(
-        state,
-        PROFILE_ADAPTER_DIAGNOSTIC_CODES.STRUCTURE_UNEXPECTED,
-        `${path}/${key}/${index}`,
-      );
-      return [];
-    }
-    return [entry];
-  });
-}
+export const { readArrayField, readObjectArrayField, readStringArrayField } = structureReaders;
 
 export function readProps(
   node: JsonObject,

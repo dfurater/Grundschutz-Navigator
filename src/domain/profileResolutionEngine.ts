@@ -33,7 +33,7 @@
 //   (dieselbe Argumentation wie in der Merge-Phase).
 // =============================================================================
 
-import type { JsonObject } from '@/adapters/oscalProfileReaders';
+import { isJsonContainer, type JsonObject } from '@/domain/jsonGuards';
 import type { ProfileDocument } from '@/adapters/oscalProfileDocument';
 import { createOscalDiagnostic, type OscalDiagnostic } from '@/domain/oscalDiagnostics';
 import {
@@ -64,7 +64,6 @@ import {
 } from './profileResolutionModify';
 import {
   indexCatalogControls,
-  isJsonObject,
   ownArrayDataElements,
   ownDataValue,
   resolveSelectionIds,
@@ -206,11 +205,11 @@ function withCurrentProfileArtifact(
 
 /** Einzelner plain-object-Körper eines Dokuments (Root-Key-Eintrag). */
 function readRootBody(document: unknown): JsonObject {
-  if (!isJsonObject(document) || Array.isArray(document)) return {};
+  if (!isJsonContainer(document) || Array.isArray(document)) return {};
   const keys = Reflect.ownKeys(document).filter(
     (key): key is string =>
       typeof key === 'string' &&
-      isJsonObject(ownDataValue(document, key)) &&
+      isJsonContainer(ownDataValue(document, key)) &&
       !Array.isArray(ownDataValue(document, key)),
   );
   if (keys.length !== 1) return {};
@@ -225,13 +224,13 @@ function readRootBody(document: unknown): JsonObject {
 function readRawCustomGroups(source: unknown, budget: ProfileResolutionBudget): readonly JsonObject[] {
   const body = readRootBody(source);
   const merge = ownDataValue(body, 'merge');
-  if (!isJsonObject(merge)) return [];
+  if (!isJsonContainer(merge)) return [];
   const custom = ownDataValue(merge, 'custom');
-  if (!isJsonObject(custom)) return [];
+  if (!isJsonContainer(custom)) return [];
   const groups = ownDataValue(custom, 'groups');
   if (!Array.isArray(groups)) return [];
   return ownArrayDataElements(groups, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).filter((group): group is JsonObject =>
-    isJsonObject(group),
+    isJsonContainer(group),
   );
 }
 
@@ -314,7 +313,7 @@ function objectEntriesOf(node: JsonObject, key: string, budget: ProfileResolutio
   const value = ownDataValue(node, key);
   if (!Array.isArray(value)) return [];
   return ownArrayDataElements(value, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).filter((entry): entry is JsonObject =>
-    isJsonObject(entry),
+    isJsonContainer(entry),
   );
 }
 
@@ -347,7 +346,7 @@ function toAlterationDirective(alterNode: JsonObject, budget: ProfileResolutionB
 function readRawAlters(source: unknown, budget: ProfileResolutionBudget): readonly JsonObject[] {
   const body = readRootBody(source);
   const modify = ownDataValue(body, 'modify');
-  if (!isJsonObject(modify)) return [];
+  if (!isJsonContainer(modify)) return [];
   return objectEntriesOf(modify, 'alters', budget);
 }
 
@@ -415,7 +414,7 @@ function createControlTransform(
       // Die transformierte Kinderliste ersetzt das controls-Mitglied.
       budget.admitWorkingNode();
       transformed['controls'] = ownArrayDataElements(children, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).map((child) =>
-        isJsonObject(child) ? applyDeep(child) : child,
+        isJsonContainer(child) ? applyDeep(child) : child,
       );
     }
     return transformed;
@@ -439,14 +438,14 @@ function applyTransformToGroups(groups: readonly JsonObject[], transform: Contro
       // Dasselbe auf der Gruppenebene.
       budget.admitWorkingNode();
       group['controls'] = ownArrayDataElements(controls, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).map((child) =>
-        isJsonObject(child) ? transform(child) : child,
+        isJsonContainer(child) ? transform(child) : child,
       );
     }
     const nested = ownDataValue(group, 'groups');
     if (Array.isArray(nested)) {
       for (const child of ownArrayDataElements(nested, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE)) {
         budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
-        if (isJsonObject(child)) stack.push(child);
+        if (isJsonContainer(child)) stack.push(child);
       }
     }
   }
@@ -476,7 +475,7 @@ function accountBase64Payload(
   memberWindow: PathWindow | 'base64-payload',
   budget: ProfileResolutionBudget,
 ): void {
-  if (memberWindow !== 'base64-payload' || !isJsonObject(member)) return;
+  if (memberWindow !== 'base64-payload' || !isJsonContainer(member)) return;
   const encoded = ownDataValue(member, 'value');
   if (typeof encoded === 'string') budget.admitBase64(encoded);
 }
@@ -699,7 +698,7 @@ function collectAsIsOutput(records: readonly SelectionRecord[], budget: ProfileR
   const append = (candidates: readonly unknown[], target: JsonObject[]): void => {
     for (const candidate of candidates) {
       budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
-      if (isJsonObject(candidate)) target.push(candidate);
+      if (isJsonContainer(candidate)) target.push(candidate);
     }
   };
   for (const record of records) {
@@ -862,7 +861,7 @@ function emitCarrierEntries(
   if (Array.isArray(inherited)) {
     for (const entry of ownArrayDataElements(inherited, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE)) {
       budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
-      if (isJsonObject(entry)) graph.pushArrayItem(handle, emitValue(graph, entry, carrierEntryDepth, budget));
+      if (isJsonContainer(entry)) graph.pushArrayItem(handle, emitValue(graph, entry, carrierEntryDepth, budget));
     }
   }
   return handle;
@@ -878,7 +877,7 @@ function filteredBackMatter(
   budget: ProfileResolutionBudget,
 ): JsonObject | null {
   const backMatter = ownDataValue(sourceBody, 'back-matter');
-  if (!isJsonObject(backMatter)) return null;
+  if (!isJsonContainer(backMatter)) return null;
 
   const resources = ownDataValue(backMatter, 'resources');
   if (!Array.isArray(resources)) {
@@ -889,7 +888,7 @@ function filteredBackMatter(
   // Gefilterte Ressourcenliste und der sie tragende back-matter-Knoten.
   budget.admitWorkingNode();
   const kept = ownArrayDataElements(resources, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).filter((entry) => {
-    if (!isJsonObject(entry)) return true;
+    if (!isJsonContainer(entry)) return true;
     const uuid = ownDataValue(entry, 'uuid');
     return !(typeof uuid === 'string' && consumedResourceUuids.has(uuid.toLowerCase()));
   });
@@ -933,12 +932,12 @@ function referencedSourceResources(
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
     const sourceBody = readRootBody(record.sourceDocument);
     const backMatter = ownDataValue(sourceBody, 'back-matter');
-    if (!isJsonObject(backMatter)) continue;
+    if (!isJsonContainer(backMatter)) continue;
     const sourceResources = ownDataValue(backMatter, 'resources');
     if (!Array.isArray(sourceResources)) continue;
     for (const resource of ownArrayDataElements(sourceResources, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE)) {
       budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
-      if (!isJsonObject(resource)) continue;
+      if (!isJsonContainer(resource)) continue;
       const uuid = ownDataValue(resource, 'uuid');
       if (typeof uuid === 'string' && referencedUuids.has(uuid.toLowerCase())) {
         resources.push(resource);
@@ -998,7 +997,7 @@ function mergedBackMatter(
   referencedUuids: ReadonlySet<string>,
   budget: ProfileResolutionBudget,
 ): JsonObject | null {
-  const profileResources = isJsonObject(profileBackMatter)
+  const profileResources = isJsonContainer(profileBackMatter)
     ? ownDataValue(profileBackMatter, 'resources')
     : undefined;
   // Zusammengeführte Ressourcenliste vor der Deduplizierung.
@@ -1006,7 +1005,7 @@ function mergedBackMatter(
   const resources = uniqueResources([
     ...referencedSourceResourcesAtFixpoint(records, referencedUuids, budget),
     ...(Array.isArray(profileResources)
-      ? ownArrayDataElements(profileResources, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).filter(isJsonObject)
+      ? ownArrayDataElements(profileResources, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).filter(isJsonContainer)
       : []),
   ], budget);
   const merged = profileBackMatter === null
@@ -1048,7 +1047,7 @@ function emitResolvedCatalog(input: ResolvedCatalogEmission, budget: ProfileReso
 
   const sourceBody = readRootBody(document.source);
   const sourceMetadataValue = ownDataValue(sourceBody, 'metadata');
-  const sourceMetadata = isJsonObject(sourceMetadataValue) ? sourceMetadataValue : {};
+  const sourceMetadata = isJsonContainer(sourceMetadataValue) ? sourceMetadataValue : {};
   const metadataHandle = emitMetadataHandle(
     graph,
     sourceMetadata,
