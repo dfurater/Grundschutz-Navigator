@@ -182,9 +182,9 @@ describe('Budgetinstanz', () => {
   });
 
   it('schlüsselt die Arbeit nach Kategorie auf, ohne je Kategorie zu begrenzen', () => {
-    // Die Aufschlüsselung ist reine Beobachtung für den Messapparat: Die
-    // Grenze gilt über die Summe, deshalb reißt sie hier, obwohl keine
-    // einzelne Kategorie den Grenzwert allein erreicht.
+    // Die Aufschlüsselung ist reine Beobachtung: Die Grenze gilt über die
+    // Summe, deshalb reißt sie hier, obwohl keine einzelne Kategorie den
+    // Grenzwert allein erreicht.
     const budget = createProfileResolutionBudget({ workUnits: 5 });
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP, 3);
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.GLOB_STATE, 2);

@@ -141,7 +141,7 @@ export interface ResolvedCatalogOutput {
    */
   readonly controllingTrustClass: TrustClass;
   readonly oscalVersion: string;
-  /** Die vier Budgetzähler des Laufs — Messbasis für Korpuslauf und Protokoll. */
+  /** Die vier Budgetzähler des Laufs, für Korpuslauf und Tests. */
   readonly budgetUsage: ProfileResolutionBudgetUsage;
   readonly topProfileArtifactKey: string;
 }

@@ -294,13 +294,13 @@ export function indexCatalogControls(
  * frühere Fassung `globToRegExp` übersetzte `*` nach `.*` und verankerte das
  * Ergebnis. Für mehrere Sterne entstanden dabei verschachtelte, überlappende
  * Quantoren; scheiterte der Abgleich, probierte die Engine alle Aufteilungen
- * des Subjekts durch. Gemessen (GSPP-382, `docs/OSCAL_VALIDATION.md`): 12
- * Sterne gegen eine 40 Zeichen lange ID kosteten 31,82 s bei einem Dokument
- * von wenigen hundert Byte. Keine Ressourcengrenze griff, und ein
- * Arbeitsbudget hätte auch nicht geholfen — das Backtracking lief innerhalb
- * EINES Aufrufs ab, den keine Zähleinheit unterbrechen kann. Der Zwei-Zeiger-
- * Abgleich hier hat keinen exponentiellen Fall und bucht jeden besuchten
- * Zustand einzeln, ist also von außen abbrechbar.
+ * des Subjekts durch. Gemessen (GSPP-382): 12 Sterne gegen eine 40 Zeichen
+ * lange ID kosteten 31,82 s bei einem Dokument von wenigen hundert Byte.
+ * Keine Ressourcengrenze griff, und ein Arbeitsbudget hätte auch nicht
+ * geholfen — das Backtracking lief innerhalb EINES Aufrufs ab, den keine
+ * Zähleinheit unterbrechen kann. Der Zwei-Zeiger-Abgleich hier hat keinen
+ * exponentiellen Fall und bucht jeden besuchten Zustand einzeln, ist also von
+ * außen abbrechbar.
  *
  * SEMANTISCHE ABWEICHUNG zur RegExp-Fassung, bewusst und einzige: `.` traf in
  * einem regulären Ausdruck ohne `s`-Flag keinen Zeilenumbruch, `*` und `?`
@@ -309,7 +309,7 @@ export function indexCatalogControls(
  * für den BSI-Korpus ist die Änderung wirkungslos, weil dort keine Control-ID
  * einen Zeilenumbruch trägt — der Korpuslauf belegt das als Orakel.
  */
-export function matchGlob(
+function matchGlob(
   pattern: string,
   subject: string,
   budget: ProfileResolutionBudget,
