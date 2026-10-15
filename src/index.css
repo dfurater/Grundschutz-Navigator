@@ -447,6 +447,15 @@
   }
 }
 
+/* Safe-Area-Abstände bleiben Utilities, damit responsive Padding-Utilities sie überschreiben. */
+@utility pb-safe-detail {
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+}
+
+@utility pb-safe-selection {
+  padding-bottom: calc(7rem + env(safe-area-inset-bottom, 0px));
+}
+
 @layer utilities {
   /* Semantic typography scale */
   .type-page-title {

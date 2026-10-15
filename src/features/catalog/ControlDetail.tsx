@@ -175,9 +175,9 @@ function useTabletDetailScrollMode(
 function getDetailContentClassName(isPage: boolean, usesSingleTabletScrollArea: boolean) {
   if (isPage) return 'flex flex-col gap-5 p-4';
   if (usesSingleTabletScrollArea) {
-    return 'flex shrink-0 flex-col gap-5 p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] desktop:pb-4';
+    return 'flex shrink-0 flex-col gap-5 p-4 pb-safe-detail desktop:pb-4';
   }
-  return 'flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] desktop:pb-4';
+  return 'flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 pb-safe-detail desktop:pb-4';
 }
 
 export function ControlDetail({
