@@ -1,15 +1,11 @@
-import { useCallback, useId, useRef, useState } from 'react';
+import { useCallback, useId, useState } from 'react';
 import type { Control } from '@/domain/models';
-import { BackdropTint } from '@/components/BackdropTint';
+import { BottomSheet } from '@/components/BottomSheet';
 import { Button } from '@/components/Button';
 import { IconDownload } from '@/components/icons';
-import { ModalPortal } from '@/components/ModalPortal';
-import { DialogNavigationStatus } from '@/components/NavigationPendingStatus';
 import { downloadCSV } from '@/features/export/csvExport';
-import { useGlobalEventListener } from '@/hooks/useGlobalEventListener';
-import { useModalDialog } from '@/hooks/useModalDialog';
+import { exportFullCatalog, exportSelectedControls } from '@/features/catalog/selectionExport';
 import { useOverlayScrollbars } from '@/hooks/useOverlayScrollbars';
-import { useScrollLock } from '@/hooks/useScrollLock';
 
 interface CatalogMobileExportSheetProps {
   readonly checkedIds: ReadonlySet<string>;
@@ -27,22 +23,12 @@ export function CatalogMobileExportSheet({
   onSelectionExported,
 }: CatalogMobileExportSheetProps) {
   const [open, setOpen] = useState(false);
-  const sheetRef = useRef<HTMLDialogElement>(null);
   const headingId = useId();
   const actionsScrollRef = useOverlayScrollbars<HTMLDivElement>();
   const close = useCallback(() => setOpen(false), []);
 
-  useModalDialog(sheetRef, open, close);
-  useScrollLock(open);
-  useGlobalEventListener('document', 'keydown', (event) => {
-    if (event.key === 'Escape') close();
-  }, open);
-
   const exportSelected = () => {
-    downloadCSV(
-      allControls.filter((control) => checkedIds.has(control.id)),
-      'grundschutz-auswahl.csv',
-    );
+    exportSelectedControls(allControls, checkedIds);
     close();
     onSelectionExported?.();
   };
@@ -62,78 +48,54 @@ export function CatalogMobileExportSheet({
         <IconDownload className="w-4 h-4" />
       </Button>
 
-      {open && (
-        <ModalPortal>
-          <div
-            className="fixed inset-0 z-40 desktop:hidden"
-            onClick={close}
-            aria-hidden="true"
-          >
-            <BackdropTint className="bg-black/30" />
-          </div>
-          <dialog
-            open
-            ref={sheetRef}
-            aria-modal="true"
-            aria-labelledby={headingId}
-            className="mobile-sheet m-0 border-0 w-full max-w-none text-inherit fixed inset-x-0 bottom-0 z-50 bg-[var(--color-surface-raised)] flex flex-col overflow-hidden desktop:hidden animate-slide-up"
-          >
-            <div
-              className="flex justify-center items-center min-h-touch shrink-0 select-none"
-              aria-hidden="true"
-            >
-              <div className="w-10 h-1 bg-[var(--color-border-strong)] rounded-full" />
-            </div>
-            {/* Die Schließaktion steht im Kopf: Das Sheet ist unten verankert und
-                schneidet bei wenig Höhe unten ab, der Kopf bleibt sichtbar; die
-                Exportaktionen scrollen darunter. */}
-            <div className="px-4 py-3 border-b border-[var(--color-border-default)] shrink-0 flex items-center justify-between gap-2">
-              <h2 id={headingId} className="type-meta">Exportieren als CSV</h2>
-              <Button variant="ghost" size="sm" className="min-h-touch min-w-touch -my-3 -mr-2 text-sm" onClick={close} data-dialog-close>
-                Schließen
+      <BottomSheet open={open} onClose={close} labelledBy={headingId}>
+        {/* Die Schließaktion steht im Kopf: Das Sheet ist unten verankert und
+            schneidet bei wenig Höhe unten ab, der Kopf bleibt sichtbar; die
+            Exportaktionen scrollen darunter. */}
+        <div className="px-4 py-3 border-b border-[var(--color-border-default)] shrink-0 flex items-center justify-between gap-2">
+          <h2 id={headingId} className="type-meta">Exportieren als CSV</h2>
+          <Button variant="ghost" size="sm" className="min-h-touch min-w-touch -my-3 -mr-2 text-sm" onClick={close} data-dialog-close>
+            Schließen
+          </Button>
+        </div>
+        <div ref={actionsScrollRef} className="min-h-0 overflow-y-auto overscroll-contain">
+          <div className="w-full p-4 flex flex-col gap-2">
+            {checkedIds.size > 0 && (
+              <Button
+                variant="secondary"
+                className="w-full min-h-touch justify-start"
+                onClick={exportSelected}
+              >
+                <IconDownload className="w-4 h-4 mr-2" />
+                Auswahl exportieren ({checkedIds.size})
               </Button>
-            </div>
-            <div ref={actionsScrollRef} className="min-h-0 overflow-y-auto overscroll-contain">
-              <div className="w-full p-4 flex flex-col gap-2">
-                {checkedIds.size > 0 && (
-                  <Button
-                    variant="secondary"
-                    className="w-full min-h-touch justify-start"
-                    onClick={exportSelected}
-                  >
-                    <IconDownload className="w-4 h-4 mr-2" />
-                    Auswahl exportieren ({checkedIds.size})
-                  </Button>
-                )}
-                <Button
-                  variant="secondary"
-                  className="w-full min-h-touch justify-start"
-                  disabled={filteredControls.length === 0}
-                  onClick={() => {
-                    downloadCSV(filteredControls, sectionFilename);
-                    close();
-                  }}
-                >
-                  <IconDownload className="w-4 h-4 mr-2" />
-                  Aktuelle Ansicht ({filteredControls.length})
-                </Button>
-                <Button
-                  variant="ghost"
-                  className="w-full min-h-touch justify-start"
-                  onClick={() => {
-                    downloadCSV(allControls, 'grundschutz-gesamtkatalog.csv');
-                    close();
-                  }}
-                >
-                  <IconDownload className="w-4 h-4 mr-2" />
-                  Gesamtkatalog ({allControls.length})
-                </Button>
-              </div>
-            </div>
-            <DialogNavigationStatus />
-          </dialog>
-        </ModalPortal>
-      )}
+            )}
+            <Button
+              variant="secondary"
+              className="w-full min-h-touch justify-start"
+              disabled={filteredControls.length === 0}
+              onClick={() => {
+                downloadCSV(filteredControls, sectionFilename);
+                close();
+              }}
+            >
+              <IconDownload className="w-4 h-4 mr-2" />
+              Aktuelle Ansicht ({filteredControls.length})
+            </Button>
+            <Button
+              variant="ghost"
+              className="w-full min-h-touch justify-start"
+              onClick={() => {
+                exportFullCatalog(allControls);
+                close();
+              }}
+            >
+              <IconDownload className="w-4 h-4 mr-2" />
+              Gesamtkatalog ({allControls.length})
+            </Button>
+          </div>
+        </div>
+      </BottomSheet>
     </>
   );
 }
