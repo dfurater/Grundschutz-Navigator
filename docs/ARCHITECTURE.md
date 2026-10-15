@@ -347,9 +347,6 @@ src/                              # Anwendungsquellcode
 public/data/                      # Generierte Katalog-Daten (nicht im Repo)
 
 scripts/                          # Build-, CI- und Wartungsskripte
-├── measure/                          # Browserseite der Klasse-2-Kostenmessung
-│   ├── class2-budget.harness.mjs         # Messharnisch im Browser-Tab
-│   └── class2-budget.html                # Messseite des temporären Vite-Servers
 ├── backmerge-main-to-develop.mjs     # Übernahme-Lane main → develop
 ├── bootstrap.mjs                     # npm run setup für frische Checkouts und Worktrees
 ├── branchLineFixtures.ts             # Git-Testvorlage der Übernahme- und Release-Lane
@@ -361,8 +358,6 @@ scripts/                          # Build-, CI- und Wartungsskripte
 ├── check-seo-titles.d.mts            # Typen der Titelvertragsprüfung
 ├── check-seo-titles.mjs              # Titelvertrag der gebauten HTML-Auslieferung
 ├── ci-scope.mjs                      # Scope-Entscheider für Step-Skips im Job validate
-├── class2TransportFixtures.mjs       # Fixtures des fragmentierten Rückwegs
-├── class2WorstCaseFixtures.mjs       # Worst-Case-Dokumente der Klasse-2-Grenzen
 ├── control-identity-delta.mjs        # Control-Identitätsdelta zwischen Snapshots
 ├── deployChecksums.d.mts            # Typen des Prüfsummen-Manifests
 ├── deployChecksums.mjs               # Prüfsummen-Manifest SHA256SUMS der Pages-Auslieferung
@@ -371,16 +366,10 @@ scripts/                          # Build-, CI- und Wartungsskripte
 ├── githubApiFetch.mjs                # Gemeinsamer GitHub-JSON-Abruf der CI-Guards
 ├── greptile-review-nudge.mjs         # Greptile-Auslösung bei übersprungenem PR
 ├── guard-cli-test-helper.ts          # spawnSync-Rahmen der Guard-CLI-Tests
-├── measure-class2-budget.mjs         # Kostenmessung der Klasse-2-Grenzen (Wartung)
-├── measureClass2BudgetReport.mjs     # Argumente, Verdichtung und Bericht der Messung
-├── measureClass2Timing.mjs           # Eingaben und Ablauf der Zeitmessung
-├── measureWorkLimitCallCounts.mjs    # Aufrufzählung des gemessenen Auflösungslaufs
-├── measureWorkLimitProvenance.mjs    # Fingerprint des gemessenen Auflösungspfads
 ├── oscal-domain-bridge.mjs           # Node-Brücke in src/domain/ mit @/-Auflösung
 ├── oscal-schema-vendor.mjs           # Ablageort-Vertrag der gepinnten Schemas
 ├── pr-documentation-contract.mjs     # Dokumentationsvertrag im PR-Body
 ├── profileResolutionCorpusOracle.ts  # Vergleichsorakel des Bauzeitlaufs
-├── profileResolutionWorstCaseFixtures.mjs # Worst-Case-Eingaben der Arbeitsgrenze
 ├── release-prepare.mjs               # Release-PR aus einem Vorbereitungsbranch
 ├── review-policy.mjs                 # Generator, Drift-Guard und CLI der Review-Policy
 ├── review-policy.rules.mjs           # Regeltabelle der Review-Policy
@@ -528,7 +517,7 @@ Die abschließende Objektprüfung sieht nur das fertige Ergebnis — weder verbr
 
 **Zwei Achsen.** Das Ausgabebudget zählt **kumulativ erzeugte** Knoten — emittierte Ausgabeknoten und die Container des Zwischenzustands, den Merge und Modify vor der Emission anlegen —, die größte je begonnene Tiefe und die kumulative `base64`-Größe. Container heißt Objekt **und** Liste. Nicht gebucht werden die kurzlebigen Lesekopien der Traversierung — sie stehen auf der Arbeitsachse, wo derselbe Aufruf die Elementzahl vorab bucht. Entfernen senkt keinen Zähler. Das Arbeitsbudget zählt deterministische Schritte, keine Wall-Clock-Zeit. Der geschlossene Satz der sechs Kategorien (`import-edge`, `selector-compare`, `glob-state`, `merge-step`, `alter-target-lookup`, `alter-candidate`) deckt jede potenziell wachsende Operation in Selektion, Merge, Modify und Emission ab. Die Grenze gilt über die **Summe** aller Kategorien; `usage().workUnitsByCategory` schlüsselt sie zusätzlich auf.
 
-**Unveränderliche Produktionsgrenzen.** Die Arbeitsgrenze steht als `WORK_UNIT_LIMIT` in `src/domain/profileResolutionBudgetLimits.mjs`. Die Ausgabegrenzen sind dieselben Werte, die die Postcondition prüft, und kommen unverändert aus `CLASS_2_IMPORT_LIMITS`. Der Wert der Arbeitsgrenze wird bei jedem Lauf aus dem committeten Messartefakt hergeleitet; Zahlen, Herleitung und Messprotokoll stehen im [OSCAL-Validierungsvertrag](./OSCAL_VALIDATION.md).
+**Unveränderliche Produktionsgrenzen.** Die Arbeitsgrenze steht als `WORK_UNIT_LIMIT` in `src/domain/profileResolutionBudgetLimits.mjs`. Die Ausgabegrenzen sind dieselben Werte, die die Postcondition prüft, und kommen unverändert aus `CLASS_2_IMPORT_LIMITS`. `src/domain/profileResolutionBudget.enforcement.test.ts` prüft am öffentlichen Resolver, dass ein Profil mit leerer Ausgabe an der Arbeitsgrenze abbricht und jede der sechs Kategorien gebucht wird; Werte und prüfende Tests stehen im [OSCAL-Validierungsvertrag](./OSCAL_VALIDATION.md).
 
 **Abbruchfluss.** Die Zählmethoden werfen; der Wurf verlässt den Lauf an genau einer Fangstelle. Dort wird ein Budgetabbruch zu seiner bereits redigierten Diagnose und jede andere Ausnahme zu einem redigierten Projektfehler ohne Rohtext und ohne Stapel. Weder ein Teilergebnis noch ein Builder-Handle verlässt den Lauf.
 
