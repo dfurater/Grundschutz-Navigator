@@ -5,10 +5,7 @@ import type {
   VocabularyNamespace,
   VocabularyRegistry,
 } from '@/domain/models';
-import {
-  resolvePropVocabularyEntry,
-  resolveVocabularyEntry,
-} from '@/domain/vocabulary';
+import { resolveVocabularyEntry, resolveVocabularyProp } from '@/domain/vocabulary';
 import type { SecurityTargetFilterValue } from '@/domain/securityTargets';
 
 export const OFFICIAL_SECURITY_LEVELS: SecurityLevel[] = [
@@ -54,7 +51,7 @@ export function getVocabularyDefinitionTooltip(
   registry: VocabularyRegistry | null,
   prop: PropValue | undefined,
 ): string | undefined {
-  return resolvePropVocabularyEntry(registry, prop)?.entry.definition;
+  return resolveVocabularyProp(registry, prop)?.entry.definition;
 }
 
 export function getOfficialSecurityLevelTooltip(

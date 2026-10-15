@@ -18,8 +18,8 @@ import { compareGermanText } from '@/domain/germanCollation';
 
 /**
  * Facetten mit flacher Wertezählung. Die Schutzziele fallen heraus, weil sie
- * je Dimension eine eigene Zählung tragen und über `resolveSecurityTargetCounts`
- * laufen.
+ * je Dimension eine eigene Zählung tragen und in `SecurityTargetFilterSection`
+ * gezählt werden.
  */
 export type FlatFacetDimension = Exclude<keyof FacetCounts, 'securityTargets'>;
 
@@ -88,16 +88,17 @@ function hasDimensionFilter(filters: ControlFilters, dimension: FlatFacetDimensi
 }
 
 /**
- * Eine Dimension mit aktiver Auswahl zählt global, damit ihre Optionen beim
- * Auswählen stehen bleiben; ohne Auswahl zählt sie in der aktuellen Treffermenge.
+ * Einfrier-Regel aller Facetten, auch der Schutzziele: Eine Dimension mit
+ * aktiver Auswahl zählt global, damit ihre Optionen beim Auswählen stehen
+ * bleiben; ohne Auswahl zählt sie in der aktuellen Treffermenge. Die Regel gilt
+ * je Dimension, nicht für eine Sektion als Ganzes.
  */
-function resolveDimensionCounts(
-  { filters, facetCounts, filteredFacetCounts }: FilterDimensionInput,
-  dimension: FlatFacetDimension,
+export function resolveFrozenCounts(
+  selected: readonly string[],
+  globalCounts: Record<string, number>,
+  filteredCounts: Record<string, number>,
 ): Record<string, number> {
-  return hasDimensionFilter(filters, dimension)
-    ? facetCounts[dimension]
-    : filteredFacetCounts[dimension];
+  return selected.length > 0 ? globalCounts : filteredCounts;
 }
 
 /**
@@ -222,7 +223,11 @@ export function buildFilterDimensions(input: FilterDimensionInput): FilterDimens
   return FILTER_DIMENSIONS.map((spec) => {
     const selectedValues: readonly string[] = filters[spec.field];
     const activeCount = selectedValues.length;
-    const counts = resolveDimensionCounts(input, spec.field);
+    const counts = resolveFrozenCounts(
+      selectedValues,
+      input.facetCounts[spec.field],
+      input.filteredFacetCounts[spec.field],
+    );
     const values = spec.values(input);
     const options: FilterDimensionOption[] = [];
     for (const value of values) {

@@ -86,12 +86,9 @@ export type SortConfig = SortEntry[];
 /*  Filter Logic                                                       */
 /* ------------------------------------------------------------------ */
 
+/** Leere Auswahl lässt alles durch; ein Control ohne Wert (`undefined`) fällt bei aktiver Auswahl heraus. */
 function passesSelectionFilter<T>(value: T | undefined, selected: readonly T[]): boolean {
   return selected.length === 0 || (value !== undefined && selected.includes(value));
-}
-
-function passesTruthySelectionFilter<T>(value: T | undefined, selected: readonly T[]): boolean {
-  return selected.length === 0 || (!!value && selected.includes(value));
 }
 
 function passesOverlapFilter(values: readonly string[], selected: readonly string[]): boolean {
@@ -116,9 +113,9 @@ function matchesFilter(
   // Praktik-Facette auswählbar und fällt bei aktivem Filter heraus (GSPP-242).
   if (!passesSelectionFilter(control.practiceId, filters.practiceIds)) return false;
   if (!passesSelectionFilter(control.groupId, filters.groupIds)) return false;
-  if (!passesTruthySelectionFilter(control.securityLevel, filters.securityLevels)) return false;
-  if (!passesTruthySelectionFilter(control.effortLevel, filters.effortLevels)) return false;
-  if (!passesTruthySelectionFilter(control.modalverb, filters.modalverben)) return false;
+  if (!passesSelectionFilter(control.securityLevel, filters.securityLevels)) return false;
+  if (!passesSelectionFilter(control.effortLevel, filters.effortLevels)) return false;
+  if (!passesSelectionFilter(control.modalverb, filters.modalverben)) return false;
   if (!passesOverlapFilter(control.tags, filters.tags)) return false;
   if (
     !passesOverlapFilter(
@@ -128,11 +125,11 @@ function matchesFilter(
   ) {
     return false;
   }
-  if (!passesTruthySelectionFilter(control.statementProps.handlungsworte, filters.handlungsworte)) {
+  if (!passesSelectionFilter(control.statementProps.handlungsworte, filters.handlungsworte)) {
     return false;
   }
   if (
-    !passesTruthySelectionFilter(
+    !passesSelectionFilter(
       control.statementProps.dokumentation,
       filters.dokumentationstypen,
     )

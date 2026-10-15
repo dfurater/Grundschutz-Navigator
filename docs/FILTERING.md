@@ -208,7 +208,7 @@ export interface FacetCounts {
 }
 ```
 
-Die Schutzziel-Zähler folgen derselben Einfrier-Regel wie die übrigen Dimensionen, und zwar je Dimension (`resolveCounts` in `src/features/catalog/SecurityTargetFilterSection.tsx`). Eine Anforderung zählt je Dimension in höchstens einen Wert: Ohne Angabe, außerhalb der Skala und mit der Stufe `0` zählt sie in keinen. Die Zahl der Elternzeile ist die Summe über beide Stufen (`sumSecurityTargetCounts`); sie zählt jede Anforderung höchstens einmal, weil das Domänenmodell je Dimension genau ein Prop-Feld hält.
+Die Schutzziel-Zähler folgen derselben Einfrier-Regel wie die übrigen Dimensionen, und zwar je Dimension (`resolveFrozenCounts` in `src/features/catalog/filterDimensions.ts`, aufgerufen aus `src/features/catalog/SecurityTargetFilterSection.tsx`). Eine Anforderung zählt je Dimension in höchstens einen Wert: Ohne Angabe, außerhalb der Skala und mit der Stufe `0` zählt sie in keinen. Die Zahl der Elternzeile ist die Summe über beide Stufen (`sumSecurityTargetCounts`); sie zählt jede Anforderung höchstens einmal, weil das Domänenmodell je Dimension genau ein Prop-Feld hält.
 
 ### Two-Sets-Ansatz
 

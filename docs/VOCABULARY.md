@@ -188,8 +188,6 @@ export function resolveVocabularyValues(
 ): VocabularyResolution[];
 ```
 
-`resolvePropVocabularyEntry` und `resolveVocabularyEntries` sind gleichbedeutende Aliase (Rückgabetyp `ResolvedVocabularyEntry`).
-
 ### getVocabularyNamespaceByRouteId
 
 Lookup für die Routing-Ebene: `VocabularyNamespacePage` löst damit den Parameter der Route `/vokabular/:namespaceId` auf (Muster `VOCABULARY_DETAIL_ROUTE_PATTERN` in `src/app/routes.ts`, eingetragen in `src/app/appRoutes.tsx`):
