@@ -195,7 +195,7 @@ describe('CatalogMobileExportSheet', () => {
     );
 
     const trigger = screen.getByRole('button', { name: 'CSV exportieren' });
-    expect(trigger).toHaveClass('desktop:hidden', 'min-h-[44px]', 'min-w-[44px]', 'bg-transparent');
+    expect(trigger).toHaveClass('desktop:hidden', 'min-h-touch', 'min-w-touch', 'bg-transparent');
     expect(trigger).toHaveTextContent('');
     expect(trigger.querySelector('svg')).toHaveClass('w-4', 'h-4');
     expect(trigger).toBeEnabled();

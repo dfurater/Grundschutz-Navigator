@@ -195,7 +195,7 @@ describe('SearchResultsToolbar', () => {
     expect(toggle.querySelectorAll('svg path')).toHaveLength(5);
 
     const csv = screen.getByRole('button', { name: 'CSV exportieren' });
-    expect(csv).toHaveClass('min-h-[44px]', 'min-w-[44px]', 'bg-transparent');
+    expect(csv).toHaveClass('min-h-touch', 'min-w-touch', 'bg-transparent');
     expect(csv).toHaveTextContent('');
 
     expect(screen.queryByText('1 ausgewählt')).toBeNull();

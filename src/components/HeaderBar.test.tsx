@@ -108,7 +108,9 @@ describe('HeaderBar', () => {
     const homeLink = screen.getByRole('link', { name: 'Grundschutz++ Navigator' });
     const searchInput = screen.getByRole('searchbox', { name: 'Katalog durchsuchen' });
 
-    expect(menuButton.className).toContain('focus-visible:ring-2');
+    // Den Menübutton fokussiert die Shell per Skript; sein Ring folgt der Eingabeart.
+    expect(menuButton.className).toContain('kbd-focus:ring-2');
+    expect(menuButton.className).not.toMatch(/focus-visible:ring/);
     expect(homeLink.className).toContain('focus-visible:ring-2');
     expect(searchInput.className).toContain('focus-visible:ring-2');
 
@@ -122,7 +124,7 @@ describe('HeaderBar', () => {
       .join(' ');
 
     expect(classNames).toContain('header-reference-theme');
-    expect(classNames).not.toContain('focus:ring-');
+    expect(classNames).not.toMatch(/(^|\s)focus:ring-/);
   });
 
   // WCAG 2.5.3: Der zugängliche Name enthält den sichtbaren Text (GSPP-475).

@@ -19,6 +19,8 @@
     "test:coverage": "vitest run --coverage",
     "test:browser": "vitest run --config vitest.browser.config.ts",
     "test:browser:egress-negative": "node scripts/verify-browser-egress.mjs",
+    "test:browser:visual": "node scripts/visual-regression.mjs --check",
+    "test:browser:update-references": "node scripts/visual-regression.mjs --update",
     "lint": "eslint .",
     "review-policy": "node scripts/review-policy.mjs --write",
     "review-policy:check": "node scripts/review-policy.mjs --check",

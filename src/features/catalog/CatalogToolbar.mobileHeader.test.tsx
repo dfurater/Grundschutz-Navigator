@@ -38,9 +38,9 @@ describe('mobiler Header (GSPP-471)', () => {
 
     const heading = screen.getByRole('heading', { level: 1 });
     expect(heading).toHaveClass(
-      'text-lg/[1.35]',
+      'text-lg/title',
       'text-balance',
-      '[hyphens:auto]',
+      'hyphens-auto',
       'line-clamp-2',
       'sm:line-clamp-none',
       'sm:truncate',
@@ -58,7 +58,7 @@ describe('mobiler Header (GSPP-471)', () => {
       screen.getByRole('button', { name: 'CSV exportieren' }),
     ];
     for (const action of actions) {
-      expect(action).toHaveClass('min-h-[44px]', 'min-w-[44px]', 'bg-transparent');
+      expect(action).toHaveClass('min-h-touch', 'min-w-touch', 'bg-transparent');
       expect(action).toHaveTextContent('');
       expect(action.querySelector('svg')).toHaveClass('w-4', 'h-4');
     }
