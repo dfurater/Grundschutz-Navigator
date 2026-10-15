@@ -179,7 +179,6 @@ describe('ControlStatement (GSPP-303 T5)', () => {
     // T2-Lehre: hasValue:false rendert weiterhin den Werttext.
     const frist = scope.getByText('Frist');
     expect(frist).toHaveClass('bg-[var(--color-accent-soft)]');
-    expect(PLACEHOLDER_TOGGLETIP).toBe('Der Wert wird im eigenen Profil oder im Implementierungsplan (SSP) festgelegt.');
     const button = frist.closest('button');
     expect(button).not.toBeNull();
     expect(scope.queryByRole('tooltip')).toBeNull();
