@@ -324,24 +324,35 @@ const INSIDE_CATEGORIES = {
   controls: ['params', 'props', 'links', 'parts'],
 } as const;
 
+interface TargetFrame {
+  readonly node: JsonObject;
+  readonly type: TargetList;
+  readonly depth: number;
+}
+
+function pushTargetChildren(frame: TargetFrame, stack: TargetFrame[], budget: ProfileResolutionBudget): void {
+  for (const key of CHILD_TARGET_LISTS[frame.type]) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
+    const list = safeArrayMember(frame.node, key);
+    if (list === undefined) continue;
+    for (const child of ownArrayDataElements(list, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE)) {
+      if (isJsonContainer(child)) stack.push({ node: child, type: key, depth: frame.depth + 1 });
+    }
+  }
+}
+
 /** Prüft die Tiefe des gesamten Suchbaums vor dem rekursiven Abstieg. */
 function exceedsTargetDepth(control: JsonObject, budget: ProfileResolutionBudget): boolean {
-  const stack: Array<{ node: JsonObject; type: TargetList; depth: number }> = [{ node: control, type: 'controls', depth: 0 }];
+  const stack: TargetFrame[] = [{ node: control, type: 'controls', depth: 0 }];
   const visited = new Map<object, number>();
   while (stack.length > 0) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
-    const { node, type, depth } = stack.pop()!;
+    const frame = stack.pop()!;
+    const { node, depth } = frame;
     if (depth > CLASS_2_IMPORT_LIMITS.maxDepth) return true;
     if ((visited.get(node) ?? -1) >= depth) continue;
     visited.set(node, depth);
-    for (const key of CHILD_TARGET_LISTS[type]) {
-      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
-      const list = safeArrayMember(node, key);
-      if (list === undefined) continue;
-      for (const child of ownArrayDataElements(list, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE)) {
-        if (isJsonContainer(child)) stack.push({ node: child, type: key, depth: depth + 1 });
-      }
-    }
+    pushTargetChildren(frame, stack, budget);
   }
   return false;
 }

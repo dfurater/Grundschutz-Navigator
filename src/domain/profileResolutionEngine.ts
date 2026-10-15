@@ -311,12 +311,14 @@ function projectMembers(
   return projected;
 }
 
-function objectEntriesOf(node: JsonObject, key: string, budget: ProfileResolutionBudget): JsonObject[] {
+function arrayEntriesOf(node: JsonObject, key: string, budget: ProfileResolutionBudget): unknown[] {
   const value = ownDataValue(node, key);
   if (!Array.isArray(value)) return [];
-  return ownArrayDataElements(value, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).filter((entry): entry is JsonObject =>
-    isJsonContainer(entry),
-  );
+  return ownArrayDataElements(value, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
+}
+
+function objectEntriesOf(node: JsonObject, key: string, budget: ProfileResolutionBudget): JsonObject[] {
+  return arrayEntriesOf(node, key, budget).filter((entry): entry is JsonObject => isJsonContainer(entry));
 }
 
 /**
@@ -326,16 +328,25 @@ function objectEntriesOf(node: JsonObject, key: string, budget: ProfileResolutio
  * Sammelfelder, die als Phantom-Mitglieder im Ergebnisdokument enden
  * würden.
  */
-type LocatedAlterationDirective = AlterationDirective & { readonly path: string };
+type LocatedAlterationDirective = AlterationDirective & {
+  readonly path: string;
+  readonly additionIndices: readonly number[];
+};
 
 function toAlterationDirective(alterNode: JsonObject, path: string, budget: ProfileResolutionBudget): LocatedAlterationDirective {
   const controlId = optionalString(alterNode, 'control-id');
+  const adds: NonNullable<AlterationDirective['adds']>[number][] = [];
+  const additionIndices: number[] = [];
+  for (const [index, entry] of arrayEntriesOf(alterNode, 'adds', budget).entries()) {
+    if (!isJsonContainer(entry)) continue;
+    additionIndices.push(index);
+    adds.push(projectMembers(entry, ALTERATION_STRING_MEMBERS, ALTERATION_LIST_MEMBERS, budget));
+  }
   return {
     path,
+    additionIndices,
     ...(controlId !== undefined && { controlId }),
-    adds: objectEntriesOf(alterNode, 'adds', budget).map(
-      (entry) => projectMembers(entry, ALTERATION_STRING_MEMBERS, ALTERATION_LIST_MEMBERS, budget) as NonNullable<AlterationDirective['adds']>[number],
-    ),
+    adds,
     // Das Schema kennt ausschließlich `removes` (Plural); ein Singular-Key
     // existiert nicht — Stille hier würde Remove-Anweisungen verlieren
     // (Orakelbefund WLAN: alter verschiebt ASST.2.2_gdn per removes+adds).
@@ -348,11 +359,11 @@ function toAlterationDirective(alterNode: JsonObject, path: string, budget: Prof
 /**
  * Liest die Raw-`alter`-Knoten aus dem Quelldokument in Quellreihenfolge.
  */
-function readRawAlters(source: unknown, budget: ProfileResolutionBudget): readonly JsonObject[] {
+function readRawAlters(source: unknown, budget: ProfileResolutionBudget): readonly unknown[] {
   const body = readRootBody(source);
   const modify = ownDataValue(body, 'modify');
   if (!isJsonContainer(modify)) return [];
-  return objectEntriesOf(modify, 'alters', budget);
+  return arrayEntriesOf(modify, 'alters', budget);
 }
 
 type ControlTransformResult =
@@ -379,6 +390,26 @@ function copyOwnDataMembersSkipping(node: JsonObject, skipKeys: readonly string[
     }
   }
   return copy;
+}
+
+/** Budgetierte Control-Liste; der erste Fehler beendet die Transformation. */
+function applyTransformToControls(
+  controls: readonly unknown[],
+  transform: ControlTransform,
+  budget: ProfileResolutionBudget,
+): { readonly ok: true; readonly value: readonly unknown[] } | { readonly ok: false; readonly diagnostic: OscalDiagnostic } {
+  budget.admitWorkingNode();
+  const updated: unknown[] = [];
+  for (const child of ownArrayDataElements(controls, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE)) {
+    if (!isJsonContainer(child)) {
+      updated.push(child);
+      continue;
+    }
+    const result = transform(child);
+    if (!result.ok) return result;
+    updated.push(result.value);
+  }
+  return { ok: true, value: updated };
 }
 
 function createControlTransform(
@@ -410,7 +441,7 @@ function createControlTransform(
       const result = applyAlteration(transformed, alteration, budget);
       if (!result.ok) return reject(
         PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.ADD_UNPLACEABLE,
-        `${alteration.path}/adds/${result.additionIndex}`,
+        `${alteration.path}/adds/${alteration.additionIndices[result.additionIndex]}`,
       );
       transformed = result.value;
     }
@@ -426,19 +457,9 @@ function createControlTransform(
     const transformed = result.value;
     const children = ownDataValue(transformed, 'controls');
     if (Array.isArray(children)) {
-      // Die transformierte Kinderliste ersetzt das controls-Mitglied.
-      budget.admitWorkingNode();
-      const updated: unknown[] = [];
-      for (const child of ownArrayDataElements(children, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE)) {
-        if (!isJsonContainer(child)) {
-          updated.push(child);
-          continue;
-        }
-        const nested = applyDeep(child);
-        if (!nested.ok) return nested;
-        updated.push(nested.value);
-      }
-      transformed['controls'] = updated;
+      const result = applyTransformToControls(children, applyDeep, budget);
+      if (!result.ok) return result;
+      transformed['controls'] = result.value;
     }
     return { ok: true, value: transformed };
   };
@@ -458,19 +479,9 @@ function applyTransformToGroups(groups: readonly JsonObject[], transform: Contro
     const group = stack.pop()!;
     const controls = ownDataValue(group, 'controls');
     if (Array.isArray(controls)) {
-      // Dasselbe auf der Gruppenebene.
-      budget.admitWorkingNode();
-      const updated: unknown[] = [];
-      for (const child of ownArrayDataElements(controls, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE)) {
-        if (!isJsonContainer(child)) {
-          updated.push(child);
-          continue;
-        }
-        const result = transform(child);
-        if (!result.ok) return result.diagnostic;
-        updated.push(result.value);
-      }
-      group['controls'] = updated;
+      const result = applyTransformToControls(controls, transform, budget);
+      if (!result.ok) return result.diagnostic;
+      group['controls'] = result.value;
     }
     const nested = ownDataValue(group, 'groups');
     if (Array.isArray(nested)) {
@@ -815,6 +826,7 @@ function collectModifyTransform(document: ProfileDocument, budget: ProfileResolu
   const altersByControlId = new Map<string, LocatedAlterationDirective[]>();
   for (const [index, alterNode] of readRawAlters(document.source, budget).entries()) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
+    if (!isJsonContainer(alterNode)) continue;
     const directive = toAlterationDirective(alterNode, `/profile/modify/alters/${index}`, budget);
     if (directive.controlId === undefined) continue;
     const bucket = altersByControlId.get(directive.controlId) ?? [];

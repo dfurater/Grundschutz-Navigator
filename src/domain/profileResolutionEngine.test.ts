@@ -1094,3 +1094,22 @@ describe('by-id — Ergebnis- und Fehlergrenzen', () => {
     expect(outcome.ok).toBe(true);
   });
 });
+
+describe('by-id — Quelldiagnose mit übersprungenen Roh-Einträgen', () => {
+  it.each(['alters', 'adds', 'both'])('erhält Roh-Indizes bei ungültigen Einträgen in %s', async location => {
+    const addition = { 'by-id': 'ziel', position: 'after', props: [{ name: 'x', value: '1' }] };
+    const alter = { 'control-id': 'ac-1', adds: location === 'alters' ? [addition] : [null, 'ignoriert', addition] };
+    const outcome = await resolveWorld({
+      documents: {
+        'profile-top': profileDoc({
+          imports: [{ href: './a.json', includeAll: true }], merge: { flat: {} },
+          modify: { alters: location === 'adds' ? [alter] : [null, 'ignoriert', alter] },
+        }),
+        'cat-a': catalogDoc(controlNode('ac-1', { parts: [{ id: 'ziel', name: 'item' }] })),
+      },
+      edges: { 'profile-top': [{ href: './a.json', artifactKey: 'cat-a' }] },
+    });
+    expectTopProfileDiagnostic(outcome, 'PROFILE_RESOLUTION_ADD_UNPLACEABLE',
+      `/profile/modify/alters/${location === 'adds' ? 0 : 2}/adds/${location === 'alters' ? 0 : 2}`);
+  });
+});
