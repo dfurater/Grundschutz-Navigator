@@ -7,18 +7,29 @@
 // `parseComponentDefinitionDocument` laufen über `parseRootDocument`, das
 // zusätzlich projiziert und `source`, Kontext, `view` und die im Dispatch
 // gebundene Schemazelle zusammenhält (ADR-2, GSPP-285).
+//
+// Daneben liegt `openRootDerive`, der gemeinsame Auftakt jeder
+// `derive…`-Funktion der drei Modellslices (GSPP-566). Die Stufe-3-Prüfung
+// liegt bewusst nicht hier, sondern in `oscalRootDocumentSchema.ts`: Der
+// Katalogpfad importiert dieses Modul und soll den Schema-Validator nicht
+// mitladen.
 // =============================================================================
 
 import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
 import {
+  artifactKeyForContext,
   dispatchOscalDocumentOrThrow,
   OscalRootDispatchError,
   ROOT_DISPATCH_DIAGNOSTIC_CODES,
   ROOT_DISPATCH_STAGE,
+  readPinnedOscalVersion,
   ROOT_DISPATCH_VALIDATOR,
 } from '@/adapters/oscalRootDispatch';
 import type { OscalRootDispatchSuccess } from '@/adapters/oscalRootDispatch';
+import { isJsonObject, type JsonObject } from '@/domain/jsonGuards';
 import type { OscalDocumentContext } from '@/domain/models';
+import { createReferenceDocument } from '@/domain/referenceResolution';
+import type { ReferenceDocument } from '@/domain/referenceResolution';
 import type {
   OscalRootKey,
   OscalSchemaPin,
@@ -99,5 +110,52 @@ export function parseRootDocument<TView>(
     pin: dispatch.pin,
     oscalVersion: dispatch.oscalVersion,
     artifactKey: dispatch.artifactKey,
+  };
+}
+
+/** Der gemeinsame Ableitungskontext, mit dem jede `derive…`-Funktion beginnt. */
+export interface RootDeriveFrame {
+  /** Der Root-Körper, oder ein leeres Objekt, wenn er keines ist. */
+  readonly rootBody: JsonObject;
+  /**
+   * `false`, wenn der Root-Körper kein Objekt ist. Die Diagnose dazu stellt
+   * der Adapter selbst, mit seinem eigenen Code.
+   */
+  readonly bodyIsObject: boolean;
+  readonly oscalVersion: PinnedOscalVersion | null;
+  readonly artifactKey: string | null;
+  readonly referenceDocument: ReferenceDocument;
+}
+
+/**
+ * Baut den Auftakt einer Root-Ableitung: Version und Artefaktschlüssel nach
+ * der Redaction-Regel sowie den Envelope für die Referenzschicht.
+ *
+ * @param body Der unveränderte Root-Körper aus dem Dispatch
+ * @param context Ableitungskontext; trägt Vertrauensklasse und Upstream-Pfad
+ * @param rootType Der Root-Typ, unter dem der Körper eingehüllt wird
+ */
+export function openRootDerive(
+  body: unknown,
+  context: OscalDocumentContext,
+  rootType: OscalRootKey,
+): RootDeriveFrame {
+  const bodyIsObject = isJsonObject(body);
+  const rootBody = bodyIsObject ? body : {};
+  const oscalVersion = readPinnedOscalVersion(rootBody, context);
+  return {
+    rootBody,
+    bodyIsObject,
+    oscalVersion,
+    artifactKey: artifactKeyForContext(context),
+    // Der Referenzschicht wird der Envelope gereicht, den sie erwartet. Die
+    // Hülle ist neu, der Körper bleibt dasselbe Objekt — es wird nichts kopiert
+    // und nichts verändert.
+    referenceDocument: createReferenceDocument({
+      source: { [rootType]: rootBody },
+      context,
+      rootType,
+      oscalVersion: oscalVersion ?? 'unknown',
+    }),
   };
 }

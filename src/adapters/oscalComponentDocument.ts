@@ -11,6 +11,8 @@
 // =============================================================================
 
 import { parseRootDocument } from '@/adapters/oscalRootDocumentParse';
+import type { ParsedRootDocument } from '@/adapters/oscalRootDocumentParse';
+import { validateParsedSchema } from '@/adapters/oscalRootDocumentSchema';
 import { deriveComponentDefinition } from '@/adapters/oscalComponentAdapter';
 import { COMPONENT_DEFINITION_ROOT_TYPE } from '@/domain/componentDefinitionModel';
 import type {
@@ -18,8 +20,6 @@ import type {
   ComponentDefinitionDeriveOptions,
 } from '@/domain/componentDefinitionModel';
 import type { OscalDocumentContext } from '@/domain/models';
-import type { OscalSchemaPin, PinnedOscalVersion } from '@/domain/oscalVersionMatrix';
-import { validateAgainstPinnedSchema } from '@/domain/oscalSchemaValidation';
 import type { OscalSchemaValidationResult } from '@/domain/oscalSchemaValidation';
 
 /**
@@ -28,15 +28,7 @@ import type { OscalSchemaValidationResult } from '@/domain/oscalSchemaValidation
  * `source` ist die Wahrheit, `view` eine Projektion darauf. `pin` ist die in
  * Stufe 2 gewählte Matrixzelle und der einzige zulässige Eingang in Stufe 3.
  */
-export interface ComponentDefinitionDocument {
-  readonly source: unknown;
-  readonly context: OscalDocumentContext;
-  readonly view: ComponentDefinition;
-  /** Die aus `metadata.oscal-version` gebundene Zelle — nie aus `$schema`. */
-  readonly pin: OscalSchemaPin;
-  readonly oscalVersion: PinnedOscalVersion;
-  readonly artifactKey: string | null;
-}
+export type ComponentDefinitionDocument = ParsedRootDocument<ComponentDefinition>;
 
 /**
  * Parst ein OSCAL-Component-Definition-Dokument verlustfrei nach ADR-2.
@@ -69,10 +61,6 @@ export function parseComponentDefinitionDocument(
  * `import-component-definitions[0].remarks` ist unter 1.1.2 ein Schemabefund
  * und unter 1.2.2 gültig.
  */
-export function validateComponentDefinitionSchema(
+export const validateComponentDefinitionSchema: (
   document: ComponentDefinitionDocument,
-): Promise<OscalSchemaValidationResult> {
-  return validateAgainstPinnedSchema(document.source, document.pin, {
-    artifactKey: document.artifactKey,
-  });
-}
+) => Promise<OscalSchemaValidationResult> = validateParsedSchema;

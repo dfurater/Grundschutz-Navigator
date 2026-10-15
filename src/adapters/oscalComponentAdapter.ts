@@ -31,10 +31,7 @@
 // `src/domain/oscalComponentDefinition.ts` und hängen dort am Schema.
 // =============================================================================
 
-import {
-  createReferenceDocument,
-  resolveOscalReference,
-} from '@/domain/referenceResolution';
+import { resolveOscalReference } from '@/domain/referenceResolution';
 import {
   COMPONENT_ADAPTER_DIAGNOSTIC_CODES,
   diagnose,
@@ -46,8 +43,9 @@ import {
   registerUuid,
 } from '@/adapters/oscalComponentReaders';
 import type { DeriveState } from '@/adapters/oscalComponentReaders';
-import { readPinnedOscalVersion, readRootMetadata } from '@/adapters/oscalRootDispatch';
-import { isJsonObject, readString, type JsonObject } from '@/domain/jsonGuards';
+import { readRootMetadata } from '@/adapters/oscalRootDispatch';
+import { openRootDerive } from '@/adapters/oscalRootDocumentParse';
+import { readString, type JsonObject } from '@/domain/jsonGuards';
 import { COMPONENT_DEFINITION_ROOT_TYPE } from '@/domain/componentDefinitionModel';
 import type {
   ComponentCapability,
@@ -63,7 +61,6 @@ import type {
   DefinedComponent,
 } from '@/domain/componentDefinitionModel';
 import type { OscalDocumentContext } from '@/domain/models';
-import { getArtifactByUpstreamPath } from '@/domain/sourceRegistry';
 
 export { COMPONENT_DEFINITION_ROOT_TYPE } from '@/domain/componentDefinitionModel';
 export {
@@ -345,30 +342,18 @@ export function deriveComponentDefinition(
   context: OscalDocumentContext,
   options: ComponentDefinitionDeriveOptions = {},
 ): ComponentDefinition {
-  const rootBody = isJsonObject(body) ? body : {};
-  const oscalVersion = readPinnedOscalVersion(rootBody, context);
+  const { rootBody, bodyIsObject, artifactKey, oscalVersion, referenceDocument } =
+    openRootDerive(body, context, COMPONENT_DEFINITION_ROOT_TYPE);
   const state: DeriveState = {
     diagnostics: [],
-    // Der Registry-Schlüssel, nie der Upstream-Pfad: Diagnosen tragen nur
-    // Werte aus geschlossenen Mengen.
-    artifactKey: context.upstreamPath
-      ? (getArtifactByUpstreamPath(context.upstreamPath)?.artifactKey ?? null)
-      : null,
+    artifactKey,
     oscalVersion,
     uuidPaths: new Map(),
-    // Der Referenzschicht wird der Envelope gereicht, den sie erwartet. Die
-    // Hülle ist neu, der Körper bleibt dasselbe Objekt — es wird nichts kopiert
-    // und nichts verändert.
-    referenceDocument: createReferenceDocument({
-      source: { [COMPONENT_DEFINITION_ROOT_TYPE]: rootBody },
-      context,
-      rootType: COMPONENT_DEFINITION_ROOT_TYPE,
-      oscalVersion: oscalVersion ?? 'unknown',
-    }),
+    referenceDocument,
     catalogsBySource: options.catalogsBySource ?? new Map(),
   };
 
-  if (!isJsonObject(body)) {
+  if (!bodyIsObject) {
     diagnose(
       state,
       COMPONENT_ADAPTER_DIAGNOSTIC_CODES.STRUCTURE_UNEXPECTED,

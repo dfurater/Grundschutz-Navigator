@@ -54,7 +54,7 @@ import {
   applyCombine,
   buildAsIsGroups,
   buildCustomGroups,
-  stripNestedChildren,
+  buildFlatControls,
   type ControlInclusion,
 } from './profileResolutionMerge';
 import {
@@ -781,10 +781,9 @@ function buildStructuredOutput(
   switch (merge.structure.kind) {
     case 'flat': {
       // Die flache Control-Liste und die leere Gruppenliste daneben.
+      const { controls } = buildFlatControls(combined, budget);
       budget.admitWorkingNode();
-      const flatControls = combined.order.map((node) => stripNestedChildren(node, budget));
-      budget.admitWorkingNode();
-      return { ok: true, value: { groups: [], controls: flatControls } };
+      return { ok: true, value: { groups: [], controls } };
     }
     case 'as-is':
       return { ok: true, value: collectAsIsOutput(records, budget) };

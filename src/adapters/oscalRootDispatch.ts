@@ -163,6 +163,19 @@ export function readPinnedOscalVersion(
 }
 
 /**
+ * Der Registry-Schlüssel des Artefakts, nie der Upstream-Pfad: Diagnosen
+ * tragen nur Werte aus geschlossenen Mengen. Ohne registrierten Upstream-Pfad
+ * bleibt der Schlüssel `null`.
+ */
+export function artifactKeyForContext(
+  context: Pick<OscalDocumentContext, 'upstreamPath'>,
+): string | null {
+  return context.upstreamPath
+    ? (getArtifactByUpstreamPath(context.upstreamPath)?.artifactKey ?? null)
+    : null;
+}
+
+/**
  * Struktureller JSON Pointer je Versionsdiagnose. Der Root-Key ist hier immer
  * bereits als bekannt geprüft und damit kein unvertrauenswürdiges Segment.
  */
@@ -203,9 +216,7 @@ export function dispatchOscalDocument(
   source: unknown,
   context: OscalDocumentContext,
 ): OscalRootDispatchResult {
-  const artifactKey = context.upstreamPath
-    ? (getArtifactByUpstreamPath(context.upstreamPath)?.artifactKey ?? null)
-    : null;
+  const artifactKey = artifactKeyForContext(context);
 
   const reject = (
     code: string,

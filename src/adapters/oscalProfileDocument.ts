@@ -14,12 +14,12 @@
 // =============================================================================
 
 import { parseRootDocument } from '@/adapters/oscalRootDocumentParse';
+import type { ParsedRootDocument } from '@/adapters/oscalRootDocumentParse';
+import { validateParsedSchema } from '@/adapters/oscalRootDocumentSchema';
 import { deriveProfile } from '@/adapters/oscalProfileAdapter';
 import { PROFILE_ROOT_TYPE } from '@/domain/profileModel';
 import type { Profile } from '@/domain/profileModel';
 import type { OscalDocumentContext } from '@/domain/models';
-import type { OscalSchemaPin, PinnedOscalVersion } from '@/domain/oscalVersionMatrix';
-import { validateAgainstPinnedSchema } from '@/domain/oscalSchemaValidation';
 import type { OscalSchemaValidationResult } from '@/domain/oscalSchemaValidation';
 
 /**
@@ -28,15 +28,7 @@ import type { OscalSchemaValidationResult } from '@/domain/oscalSchemaValidation
  * `source` ist die Wahrheit, `view` eine Projektion darauf. `pin` ist die in
  * Stufe 2 gewählte Matrixzelle und der einzige zulässige Eingang in Stufe 3.
  */
-export interface ProfileDocument {
-  readonly source: unknown;
-  readonly context: OscalDocumentContext;
-  readonly view: Profile;
-  /** Die aus `metadata.oscal-version` gebundene Zelle — nie aus `$schema`. */
-  readonly pin: OscalSchemaPin;
-  readonly oscalVersion: PinnedOscalVersion;
-  readonly artifactKey: string | null;
-}
+export type ProfileDocument = ParsedRootDocument<Profile>;
 
 /**
  * Parst ein OSCAL-Profile-Dokument verlustfrei nach ADR-2.
@@ -67,10 +59,6 @@ export function parseProfileDocument(
  * `include-all` **und** `include-controls` ist unter 1.1.3 gültig und ab 1.2.1
  * ein Schemabefund.
  */
-export function validateProfileSchema(
+export const validateProfileSchema: (
   document: ProfileDocument,
-): Promise<OscalSchemaValidationResult> {
-  return validateAgainstPinnedSchema(document.source, document.pin, {
-    artifactKey: document.artifactKey,
-  });
-}
+) => Promise<OscalSchemaValidationResult> = validateParsedSchema;

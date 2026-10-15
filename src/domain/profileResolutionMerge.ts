@@ -198,7 +198,7 @@ export function applyCombine(
 }
 
 /** Entfernt verschachtelte Kinder (controls, groups) für echte Flachdarstellung. */
-export function stripNestedChildren(node: JsonObject, budget: ProfileResolutionBudget): JsonObject {
+function stripNestedChildren(node: JsonObject, budget: ProfileResolutionBudget): JsonObject {
   budget.admitWorkingNode();
   const copy: JsonObject = {};
   for (const key of Reflect.ownKeys(node)) {
@@ -211,18 +211,22 @@ export function stripNestedChildren(node: JsonObject, budget: ProfileResolutionB
   return copy;
 }
 
-/** Flache Ausgabe: kombinierte Controls direkt unter catalog. */
-export function buildFlatControls(combined: CombinedControls, budget: ProfileResolutionBudget): JsonObject {
-  const orderValue = ownDataValue(combined as unknown as object, 'order');
+/**
+ * Flache Ausgabe: kombinierte Controls direkt unter catalog.
+ *
+ * `combined.order` stammt aus `applyCombine` und ist ein intern gebautes
+ * Array; seine Elemente wurden beim Einlesen bereits über
+ * `ownArrayDataElements` gebucht. Die Budgetbuchung entspricht dem
+ * Produktionspfad der Engine: ein Arbeitsknoten für die flache Liste, je
+ * Control die Kosten von `stripNestedChildren`.
+ */
+export function buildFlatControls(
+  combined: CombinedControls,
+  budget: ProfileResolutionBudget,
+): { readonly controls: JsonObject[] } {
   // Die flache controls-Liste ist ein Container des Ergebnisgraphen.
   budget.admitWorkingNode();
-  return {
-    controls: Array.isArray(orderValue)
-      ? ownArrayDataElements(orderValue, budget, PROFILE_RESOLUTION_WORK_UNITS.MERGE_STEP)
-        .filter((node): node is JsonObject => isJsonContainer(node))
-        .map((node) => stripNestedChildren(node, budget))
-      : [],
-  };
+  return { controls: combined.order.map((node) => stripNestedChildren(node, budget)) };
 }
 
 /**
