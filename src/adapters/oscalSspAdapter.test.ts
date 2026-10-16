@@ -220,17 +220,19 @@ describe('Verlustfreiheit', () => {
   it('diagnostiziert fehlende Pflichtknoten, statt zu werfen', () => {
     const plan = derive(withSspBody(makeFullSsp(), (body) => {
       Reflect.deleteProperty(body, 'import-profile');
+      Reflect.deleteProperty(body['system-characteristics'], 'system-information');
       Reflect.deleteProperty(body['system-characteristics'], 'status');
       Reflect.deleteProperty(body['system-implementation'].components[0], 'status');
       Reflect.deleteProperty(body, 'control-implementation');
     }));
 
     expect(plan.importProfile).toBeNull();
-    expect(plan.systemCharacteristics?.status).toBeNull();
+    expect(plan.systemCharacteristics).toMatchObject({ systemInformation: null, status: null });
     expect(plan.systemImplementation?.components[0]?.status).toBeNull();
     expect(plan.controlImplementation).toBeNull();
     expect(plan.diagnostics.map((diagnostic) => diagnostic.path)).toEqual([
       '/system-security-plan/import-profile',
+      '/system-security-plan/system-characteristics/system-information',
       '/system-security-plan/system-characteristics/status',
       '/system-security-plan/system-implementation/components/0/status',
       '/system-security-plan/control-implementation',
