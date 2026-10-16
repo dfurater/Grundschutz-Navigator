@@ -140,6 +140,7 @@ src/                              # Anwendungsquellcode
 │   ├── oscalRootDocument.ts          # Root-Envelope des generischen Dispatch
 │   ├── oscalSchemaBundle.ts          # Einziger Zugriffsweg auf die gepinnten NIST-Schemas
 │   ├── oscalSchemaValidation.ts      # Stufe 3: JSON-Schema-Prüfung im Worker
+│   ├── oscalSystemSecurityPlan.ts    # Raw-Typen des Roots system-security-plan
 │   ├── oscalVersionMatrix.d.mts      # Typen der Versionsmatrix
 │   ├── oscalVersionMatrix.mjs        # Root-Typ × OSCAL-Version × gepinntes Schema
 │   ├── oscalVersionMatrix.ts         # Typsicherer Einstieg in oscalVersionMatrix.mjs
@@ -171,6 +172,8 @@ src/                              # Anwendungsquellcode
 │   ├── sourceRegistry.mjs            # Verbindlicher Upstream-/Katalogvertrag
 │   ├── sourceRegistry.ts             # Typsicherer Einstieg in sourceRegistry.mjs
 │   ├── statementSegments.ts          # Reine Segmentierung des Anforderungssatzes
+│   ├── systemSecurityPlanModel.ts    # Domänenmodell des SSP
+│   ├── systemSecurityPlanSystemModel.ts # Domänenmodell der SSP-Systembeschreibung
 │   ├── taxonomyVocabulary.ts         # Auflösung von Praktiken und Themen
 │   ├── uuidV5.ts                     # Deterministische UUIDv5-Ableitung
 │   ├── vocabulary.ts                 # BSI-Vokabular-Auflösung
@@ -192,10 +195,15 @@ src/                              # Anwendungsquellcode
 │   ├── oscalProfileAdapter.ts        # Projektion des Profile
 │   ├── oscalProfileDocument.ts       # Verlustfreier Dokumenteinstieg Profile
 │   ├── oscalProfileReaders.ts        # Knotenleser und Diagnosen des Profile-Adapters
-│   ├── oscalReaders.ts               # Strukturleser der Adapter mit gebundener Diagnosefunktion
+│   ├── oscalReaders.ts               # Struktur- und Elementleser der Adapter mit gebundener Diagnosefunktion
 │   ├── oscalRootAdapters.ts          # Adapter-Registrierung je Root-Typ
 │   ├── oscalRootDocumentParse.ts     # Root-Dispatch mit Root-Typ-Schranke für alle Dokumenteinstiege
-│   └── oscalRootDocumentSchema.ts    # Stufe 3 für geparste Root-Dokumente, getrennt vom Katalogpfad
+│   ├── oscalRootDocumentSchema.ts    # Stufe 3 für geparste Root-Dokumente, getrennt vom Katalogpfad
+│   ├── oscalSspAdapter.ts            # Projektion des SSP, nur Vertrauensklasse 2
+│   ├── oscalSspControl.ts            # SSP-Projektion von control-implementation
+│   ├── oscalSspDocument.ts           # Verlustfreier Dokumenteinstieg SSP
+│   ├── oscalSspReaders.ts            # Knotenleser, Referenzprüfungen und Diagnosen des SSP-Adapters
+│   └── oscalSspSystem.ts             # SSP-Projektion von system-characteristics und system-implementation
 ├── state/                        # Globaler Anwendungszustand
 │   ├── CatalogContext.tsx            # Katalog-Kontextprovider
 │   ├── MobileNavigationContext.ts    # Mobiler Navigationszustand für Sheet-Mount-Gates
