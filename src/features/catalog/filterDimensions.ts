@@ -132,13 +132,13 @@ function entryValues(entries: [string, number][]): string[] {
   return entries.map(([value]) => value);
 }
 
-/** Textfacette: deutsch alphabetisch, ausgewählte Werte ohne Treffer am Ende. */
-function alphabeticalThenMissing(dimension: FlatFacetDimension) {
+/** Textfacette: deutsch alphabetisch einschließlich ausgewählter Nulltreffer. */
+function alphabeticalValues(dimension: FlatFacetDimension) {
   return (input: FilterDimensionInput): string[] => entryValues(visibleEntries(
     input,
     dimension,
-    Object.entries(input.filteredFacetCounts[dimension]).sort(byGermanText),
-  ));
+    Object.entries(input.filteredFacetCounts[dimension]),
+  ).sort(byGermanText));
 }
 
 function countVisibleValues(_input: FilterDimensionInput, values: readonly string[]): number {
@@ -185,26 +185,21 @@ const FILTER_DIMENSIONS: readonly FilterDimensionSpec[] = [
     field: 'dokumentationstypen',
     title: 'Dokumentationsvorgaben',
     collapsedWithoutSelection: true,
-    values: alphabeticalThenMissing('dokumentationstypen'),
+    values: alphabeticalValues('dokumentationstypen'),
     offeredCount: countVisibleValues,
   },
   {
     field: 'handlungsworte',
     title: 'Handlungsworte',
     collapsedWithoutSelection: true,
-    values: alphabeticalThenMissing('handlungsworte'),
+    values: alphabeticalValues('handlungsworte'),
     offeredCount: countVisibleValues,
   },
   {
     field: 'tags',
     title: 'Tags',
     collapsedWithoutSelection: true,
-    // Ausgewählte Tags ohne Treffer stehen an ihrer alphabetischen Position.
-    values: (input) => entryValues(visibleEntries(
-      input,
-      'tags',
-      Object.entries(input.filteredFacetCounts.tags),
-    ).sort(byGermanText)),
+    values: alphabeticalValues('tags'),
     offeredCount: countVisibleValues,
   },
   {

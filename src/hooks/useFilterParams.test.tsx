@@ -31,6 +31,25 @@ function routerWrapper(initialEntry: string) {
 }
 
 describe('useFilterParams', () => {
+  it.each([
+    ['mv', 'modalverben', 'SOLLTE', 'MUSS'],
+    ['sl', 'securityLevels', 'erhöht', 'normal-SdT'],
+    ['el', 'effortLevels', '3', '1'],
+    ['tags', 'tags', 'Archiv', 'Betrieb'],
+    ['zk', 'zielobjektKategorien', 'Server', 'Client'],
+    ['hw', 'handlungsworte', 'prüfen', 'umsetzen'],
+    ['dt', 'dokumentationstypen', 'Plan', 'Konzept'],
+    ['lr', 'linkRelationen', 'required', 'related'],
+  ] as const)('bereinigt Duplikate und Leerraum in %s bei stabiler Reihenfolge', (param, field, first, second) => {
+    const params = new URLSearchParams({ [param]: ` ${first},${first},,${second}, ${first} ` });
+    const { result } = renderHook(() => useFilterParams(), {
+      wrapper: routerWrapper(`/katalog?${params}`),
+    });
+    expect(result.current.filters[field]).toEqual([first, second]);
+    act(() => result.current.setSort([{ field: 'title', direction: 'asc' }]));
+    expect(new URLSearchParams(result.current.searchString).get(param)).toBe(`${first},${second}`);
+  });
+
   it('ignoriert q als Katalogfilter vollständig', () => {
     const controls = [
       makeControl('GC.1.1', 'Prüfen der Wirksamkeit'),
