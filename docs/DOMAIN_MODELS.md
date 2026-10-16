@@ -869,6 +869,12 @@ wird sonst übersprungen. Er prüft Erhaltung und die Byte-Identität gegen
 | `src/adapters/oscalSspAdapter.ts` | Ableitung `deriveSystemSecurityPlan(body, context, options)` |
 | `src/adapters/oscalSspDocument.ts` | Dokumenteinstieg `parseSspDocument()` mit Root-Dispatch und Übergang nach Stufe 3 |
 
+In `system-characteristics`, `system-implementation` und
+`control-implementation` führt jeder Knoten, für den das Schema `props` und
+`links` deklariert, beide in der Projektion (`SspElements`). Ausgenommen sind
+Rollenzuweisungen (`responsible-roles`, `responsible-parties`): Ihre `props`
+und `links` bleiben im Quellgraphen, ebenso die `protocols` einer Komponente.
+
 ### Eingang ausschließlich als Vertrauensklasse 2
 
 Das Quellregister führt kein SSP-Artefakt. `deriveSystemSecurityPlan()` nimmt
@@ -937,11 +943,21 @@ Referenz; die Diagnose bei fehlendem Ziel ist eine Projektregel. Trägt die UUID
 mehr als eine Komponente, bleibt die Referenz mit Grund `component-ambiguous`
 unaufgelöst.
 
-`responsible-roles` an `implemented-requirement`, `statement`, `by-component`
-und den darunterliegenden `provided`, `responsibilities`, `inherited` und
-`satisfied` werden gegen `metadata.roles[].id` und `metadata.parties[].uuid`
-geprüft (Metaschema-Constraints `oscal-implemented-requirement-index-metadata-role-id`
-und `oscal-implemented-requirement-index-metadata-party-uuid`).
+Rollen- und Parteibezüge werden gegen `metadata` geprüft:
+
+| Quelle | Ziel | Verankerung |
+| --- | --- | --- |
+| `role-id` einer `responsible-role` in `control-implementation` (Anforderung, Statement, `by-component` samt `provided`, `responsibilities`, `inherited`, `satisfied`) | `metadata.roles[].id` | `oscal-implemented-requirement-index-metadata-role-id` |
+| `role-id` einer `responsible-role` an einer Komponente | `metadata.roles[].id` | Projektregel |
+| `role-id` einer `responsible-party` an `system-characteristics`, Inventareintrag oder `implemented-component` | `metadata.roles[].id` | `oscal-metadata-responsible-party-index-metadata-role-id` |
+| `users[].role-ids[]` | `metadata.roles[].id` | `oscal-index-metadata-role-id` |
+| jede `party-uuids`-Angabe dieser Rollenzuweisungen | `metadata.parties[].uuid` | `oscal-index-metadata-party-uuid` |
+
+UUIDs vergleicht der Adapter ohne Unterschied der Schreibweise
+(`uuidKey()` in `src/adapters/oscalSspReaders.ts`): `component-uuid`, die
+Eindeutigkeit der Komponenten-UUIDs und der `by-components` sowie
+Party-UUIDs. Modell und `source` behalten den gelesenen Wert. Eine `role-id`
+ist ein Token und wird exakt verglichen.
 
 ### Versionsdrift
 
@@ -967,7 +983,7 @@ keiner Diagnose. Modelldiagnosen verwerfen ein Dokument nie.
 
 | Code | Anlass |
 | --- | --- |
-| `OSCAL_SSP_STRUCTURE_UNEXPECTED` | Pflichtknoten fehlt oder Knoten hat nicht die erwartete Form |
+| `OSCAL_SSP_STRUCTURE_UNEXPECTED` | Pflichtobjekt fehlt, Knoten hat nicht die erwartete Form, oder einem Eintrag fehlt das Feld, ohne das die Projektion ihn nicht führt (`href`, `state`, `id`, `name`/`value`, `param-id`, `role-id`) |
 | `OSCAL_SSP_COMPONENT_UUID_DUPLICATE` | zwei Komponenten mit derselben `uuid` |
 | `OSCAL_SSP_COMPONENT_REFERENCE_UNRESOLVED` | `component-uuid` trifft keine oder mehr als eine Komponente |
 | `OSCAL_SSP_BY_COMPONENT_DUPLICATE` | dieselbe `component-uuid` zweimal in den `by-components` einer Anforderung oder eines Statements |
@@ -975,6 +991,13 @@ keiner Diagnose. Modelldiagnosen verwerfen ein Dokument nie.
 | `OSCAL_SSP_PARTY_REFERENCE_UNRESOLVED` | Party-UUID ohne Partei in `metadata.parties` |
 | `OSCAL_SSP_CONTROL_ID_MISSING` | `implemented-requirement` ohne `control-id` |
 | `OSCAL_SSP_CONTROL_REFERENCE_UNRESOLVED` | gebundene Baseline kennt die `control-id` nicht |
+
+Pflichtobjekte sind `import-profile`, `system-characteristics` mit
+`system-information`, `status` und `authorization-boundary`,
+`system-implementation` mit dem `status` jeder Komponente und
+`control-implementation`. Ein fehlendes Pflicht-Array liest der Adapter als
+leere Liste ohne Befund; Pflicht-Arrays, Mindestanzahlen und die übrigen
+Pflichtwerte prüft Stufe 3.
 
 ### Testkorpus
 

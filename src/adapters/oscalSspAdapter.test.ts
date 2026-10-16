@@ -60,21 +60,29 @@ describe('Read-Model am Vollfixture', () => {
       description: 'Ein **synthetisches** System ohne Betriebsdaten.',
       dateAuthorized: '2026-10-01',
       securitySensitivityLevel: 'fips-199-moderate',
-      informationTypes: [{
-        uuid: ids.informationType,
-        title: 'Betriebsdaten',
-        categorizations: [{
-          system: 'https://doi.org/10.6028/NIST.SP.800-60v2r1',
-          informationTypeIds: ['C.2.4.1'],
+      systemInformation: {
+        informationTypes: [{
+          uuid: ids.informationType,
+          title: 'Betriebsdaten',
+          categorizations: [{
+            system: 'https://doi.org/10.6028/NIST.SP.800-60v2r1',
+            informationTypeIds: ['C.2.4.1'],
+          }],
+          confidentialityImpact: {
+            base: 'fips-199-moderate',
+            props: [{ name: 'marking', value: 'synthetisch' }],
+            links: [{ href: './einstufung.md', rel: 'reference' }],
+          },
+          integrityImpact: {
+            base: 'fips-199-moderate',
+            selected: 'fips-199-high',
+            adjustmentJustification: 'Synthetische Anhebung.',
+          },
+          availabilityImpact: { base: 'fips-199-low' },
         }],
-        confidentialityImpact: { base: 'fips-199-moderate' },
-        integrityImpact: {
-          base: 'fips-199-moderate',
-          selected: 'fips-199-high',
-          adjustmentJustification: 'Synthetische Anhebung.',
-        },
-        availabilityImpact: { base: 'fips-199-low' },
-      }],
+        props: [{ name: 'marking', value: 'synthetisch' }],
+        links: [{ href: './informationsarten.md', rel: 'reference' }],
+      },
       securityImpactLevel: {
         confidentiality: 'fips-199-moderate',
         integrity: 'fips-199-high',
@@ -212,13 +220,19 @@ describe('Verlustfreiheit', () => {
   it('diagnostiziert fehlende Pflichtknoten, statt zu werfen', () => {
     const plan = derive(withSspBody(makeFullSsp(), (body) => {
       Reflect.deleteProperty(body, 'import-profile');
+      Reflect.deleteProperty(body['system-characteristics'], 'status');
+      Reflect.deleteProperty(body['system-implementation'].components[0], 'status');
       Reflect.deleteProperty(body, 'control-implementation');
     }));
 
     expect(plan.importProfile).toBeNull();
+    expect(plan.systemCharacteristics?.status).toBeNull();
+    expect(plan.systemImplementation?.components[0]?.status).toBeNull();
     expect(plan.controlImplementation).toBeNull();
     expect(plan.diagnostics.map((diagnostic) => diagnostic.path)).toEqual([
       '/system-security-plan/import-profile',
+      '/system-security-plan/system-characteristics/status',
+      '/system-security-plan/system-implementation/components/0/status',
       '/system-security-plan/control-implementation',
     ]);
   });
@@ -254,13 +268,17 @@ describe('Unvollständige Knoten', () => {
     expect(plan.importProfile).toBeNull();
     expect(plan.systemCharacteristics).toBeNull();
     const requirements = '/system-security-plan/control-implementation/implemented-requirements';
+    const implementation = '/system-security-plan/system-implementation';
     expect(plan.diagnostics.map((diagnostic) => [diagnostic.code, diagnostic.path])).toEqual([
       [codes.STRUCTURE_UNEXPECTED, '/system-security-plan/import-profile/href'],
       [codes.STRUCTURE_UNEXPECTED, '/system-security-plan/system-characteristics'],
-      [codes.STRUCTURE_UNEXPECTED, '/system-security-plan/system-implementation/components/1/status/state'],
+      [codes.ROLE_REFERENCE_UNRESOLVED, `${implementation}/components/0/responsible-roles/0/role-id`],
+      [codes.STRUCTURE_UNEXPECTED, `${implementation}/components/1/status/state`],
+      [codes.ROLE_REFERENCE_UNRESOLVED, `${implementation}/users/0/role-ids/0`],
+      [codes.ROLE_REFERENCE_UNRESOLVED, `${implementation}/inventory-items/0/responsible-parties/0/role-id`],
       [
         codes.COMPONENT_REFERENCE_UNRESOLVED,
-        '/system-security-plan/system-implementation/inventory-items/0/implemented-components/0/component-uuid',
+        `${implementation}/inventory-items/0/implemented-components/0/component-uuid`,
       ],
       [codes.CONTROL_ID_MISSING, `${requirements}/0/control-id`],
       [codes.STRUCTURE_UNEXPECTED, `${requirements}/0/responsible-roles/0`],

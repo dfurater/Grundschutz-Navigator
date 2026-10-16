@@ -67,9 +67,10 @@ export interface SspDeriveState {
   readonly oscalVersion: PinnedOscalVersion | null;
   readonly referenceDocument: ReferenceDocument;
   readonly baseline: SspBaselineBinding | null;
-  /** Komponenten je `uuid`; mehr als ein Eintrag ist eine Indexverletzung. */
+  /** Komponenten je `uuidKey(uuid)`; mehr als ein Eintrag ist eine Indexverletzung. */
   readonly componentsByUuid: Map<string, SspComponent[]>;
   readonly roleIds: ReadonlySet<string>;
+  /** `uuidKey()` der Partei-UUIDs aus `metadata.parties`. */
   readonly partyUuids: ReadonlySet<string>;
 }
 
@@ -136,8 +137,9 @@ export function readState(
   key: string,
   path: string,
   state: SspDeriveState,
+  required = false,
 ): SspState | null {
-  const value = readObjectField(node, key, path, state);
+  const value = readObjectField(node, key, path, state, required);
   if (value === null) return null;
 
   const token = readString(value.state);
@@ -151,6 +153,15 @@ export function readState(
 /* ------------------------------------------------------------------ */
 /*  Dokumentinterne Referenzen                                         */
 /* ------------------------------------------------------------------ */
+
+/**
+ * Vergleichsschlüssel einer UUID. RFC 4122 liest Hexziffern ohne Unterschied
+ * der Schreibweise, und das Schema lässt beide zu; Modell und `source` behalten
+ * den gelesenen Wert.
+ */
+export function uuidKey(uuid: string): string {
+  return uuid.toLowerCase();
+}
 
 /**
  * Löst eine `component-uuid` gegen `system-implementation.components` auf.
@@ -170,63 +181,81 @@ export function resolveComponentReference(
 
   if (componentUuid === undefined) return unresolved('component-uuid-missing');
 
-  const candidates = state.componentsByUuid.get(componentUuid) ?? [];
+  const candidates = state.componentsByUuid.get(uuidKey(componentUuid)) ?? [];
   if (candidates.length === 0) return unresolved('component-not-found');
   if (candidates.length > 1) return unresolved('component-ambiguous');
   return { status: 'resolved', component: candidates[0] };
 }
 
+function checkRoleId(roleId: unknown, path: string, state: SspDeriveState): void {
+  if (typeof roleId === 'string' && !state.roleIds.has(roleId)) {
+    diagnose(state, SSP_ADAPTER_DIAGNOSTIC_CODES.ROLE_REFERENCE_UNRESOLVED, path);
+  }
+}
+
 /**
- * Prüft `role-id` und `party-uuids` aller `responsible-roles` eines Knotens
- * gegen `metadata.roles` und `metadata.parties`. Gelesen wird der Quellknoten,
- * damit jeder Befund seinen Index behält.
+ * Prüft `role-id` und `party-uuids` aller Rollenzuweisungen eines Knotens
+ * (`responsible-roles` oder `responsible-parties`) gegen `metadata.roles` und
+ * `metadata.parties`. Gelesen wird der Quellknoten, damit jeder Befund seinen
+ * Index behält.
  */
-export function checkResponsibleRoleReferences(
+export function checkRoleAssignmentReferences(
   node: JsonObject,
   path: string,
   state: SspDeriveState,
+  key: 'responsible-roles' | 'responsible-parties' = 'responsible-roles',
 ): void {
-  const roles = node['responsible-roles'];
-  if (!Array.isArray(roles)) return;
+  const assignments = node[key];
+  if (!Array.isArray(assignments)) return;
 
-  roles.forEach((role: unknown, roleIndex) => {
-    if (!isJsonObject(role)) return;
-    const rolePath = `${path}/responsible-roles/${roleIndex}`;
+  assignments.forEach((assignment: unknown, assignmentIndex) => {
+    if (!isJsonObject(assignment)) return;
+    const assignmentPath = `${path}/${key}/${assignmentIndex}`;
 
-    const roleId = readString(role['role-id']);
-    if (roleId !== undefined && !state.roleIds.has(roleId)) {
-      diagnose(state, SSP_ADAPTER_DIAGNOSTIC_CODES.ROLE_REFERENCE_UNRESOLVED, `${rolePath}/role-id`);
-    }
+    checkRoleId(assignment['role-id'], `${assignmentPath}/role-id`, state);
 
-    const partyUuids = role['party-uuids'];
+    const partyUuids = assignment['party-uuids'];
     if (!Array.isArray(partyUuids)) return;
     partyUuids.forEach((partyUuid: unknown, partyIndex) => {
-      if (typeof partyUuid === 'string' && !state.partyUuids.has(partyUuid)) {
+      if (typeof partyUuid === 'string' && !state.partyUuids.has(uuidKey(partyUuid))) {
         diagnose(
           state,
           SSP_ADAPTER_DIAGNOSTIC_CODES.PARTY_REFERENCE_UNRESOLVED,
-          `${rolePath}/party-uuids/${partyIndex}`,
+          `${assignmentPath}/party-uuids/${partyIndex}`,
         );
       }
     });
   });
 }
 
-/** Die `id` aller Rollen und die `uuid` aller Parteien aus `metadata`. */
+/** Prüft die `role-ids` eines Benutzers gegen `metadata.roles`. */
+export function checkRoleIdReferences(node: JsonObject, path: string, state: SspDeriveState): void {
+  const roleIds = node['role-ids'];
+  if (!Array.isArray(roleIds)) return;
+  roleIds.forEach((roleId: unknown, index) => checkRoleId(roleId, `${path}/role-ids/${index}`, state));
+}
+
+/**
+ * Die `id` aller Rollen und die Vergleichsschlüssel der `uuid` aller Parteien
+ * aus `metadata`.
+ */
 export function readMetadataIdentities(rootBody: JsonObject): {
   readonly roleIds: ReadonlySet<string>;
   readonly partyUuids: ReadonlySet<string>;
 } {
   const metadata = isJsonObject(rootBody.metadata) ? rootBody.metadata : {};
-  const collect = (key: string, field: string): ReadonlySet<string> => {
+  const collect = (key: string, field: string, toKey: (value: string) => string): ReadonlySet<string> => {
     const entries = metadata[key];
     if (!Array.isArray(entries)) return new Set();
     return new Set(
       entries.flatMap((entry: unknown) => {
         const value = isJsonObject(entry) ? readString(entry[field]) : undefined;
-        return value === undefined ? [] : [value];
+        return value === undefined ? [] : [toKey(value)];
       }),
     );
   };
-  return { roleIds: collect('roles', 'id'), partyUuids: collect('parties', 'uuid') };
+  return {
+    roleIds: collect('roles', 'id', (roleId) => roleId),
+    partyUuids: collect('parties', 'uuid', uuidKey),
+  };
 }

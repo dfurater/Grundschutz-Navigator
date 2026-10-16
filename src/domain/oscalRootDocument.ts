@@ -88,7 +88,10 @@ export interface OscalSetParameterView {
   readonly remarks?: string;
 }
 
-/** Projektion einer `responsible-role` (auch `responsible-party` hat diese Form). */
+/**
+ * Projektion einer `responsible-role` (auch `responsible-party` hat diese Form).
+ * `props` und `links` der Zuweisung bleiben im Quellgraphen.
+ */
 export interface OscalResponsibleRoleView {
   readonly roleId: string;
   readonly partyUuids: readonly string[];

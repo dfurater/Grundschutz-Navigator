@@ -8,6 +8,8 @@
 // =============================================================================
 
 import {
+  checkRoleAssignmentReferences,
+  checkRoleIdReferences,
   diagnose,
   readElements,
   readObjectArrayField,
@@ -19,17 +21,21 @@ import {
   resolveComponentReference,
   SSP_ADAPTER_DIAGNOSTIC_CODES,
   SSP_BASE_PATH,
+  uuidKey,
 } from '@/adapters/oscalSspReaders';
 import type { SspDeriveState } from '@/adapters/oscalSspReaders';
 import { readString, type JsonObject } from '@/domain/jsonGuards';
 import type {
   SspComponent,
   SspImpact,
+  SspImplementedComponent,
   SspInformationType,
   SspInventoryItem,
   SspSystemCharacteristics,
   SspSystemDescription,
   SspSystemImplementation,
+  SspSystemInformation,
+  SspUser,
 } from '@/domain/systemSecurityPlanModel';
 
 /* ------------------------------------------------------------------ */
@@ -43,6 +49,7 @@ function readImpact(node: JsonObject, key: string, path: string, state: SspDeriv
     base: readString(impact.base),
     selected: readString(impact.selected),
     adjustmentJustification: readString(impact['adjustment-justification']),
+    ...readElements(impact, `${path}/${key}`, state),
   };
 }
 
@@ -74,6 +81,18 @@ function deriveInformationTypes(
       path: typePath,
     }),
   );
+}
+
+function deriveSystemInformation(node: JsonObject, path: string, state: SspDeriveState): SspSystemInformation | null {
+  const systemInformation = readObjectField(node, 'system-information', path, state, true);
+  if (systemInformation === null) return null;
+
+  const informationPath = `${path}/system-information`;
+  return {
+    informationTypes: deriveInformationTypes(systemInformation, informationPath, state),
+    ...readElements(systemInformation, informationPath, state),
+    path: informationPath,
+  };
 }
 
 function deriveSystemDescription(
@@ -112,7 +131,7 @@ export function deriveSystemCharacteristics(
   if (node === null) return null;
 
   const path = `${SSP_BASE_PATH}/system-characteristics`;
-  const systemInformation = readObjectField(node, 'system-information', path, state, true);
+  checkRoleAssignmentReferences(node, path, state, 'responsible-parties');
   const impactLevel = readObjectField(node, 'security-impact-level', path, state);
 
   return {
@@ -131,9 +150,7 @@ export function deriveSystemCharacteristics(
     description: readString(node.description),
     dateAuthorized: readString(node['date-authorized']),
     securitySensitivityLevel: readString(node['security-sensitivity-level']),
-    informationTypes: systemInformation === null
-      ? []
-      : deriveInformationTypes(systemInformation, `${path}/system-information`, state),
+    systemInformation: deriveSystemInformation(node, path, state),
     securityImpactLevel: impactLevel === null
       ? null
       : {
@@ -141,7 +158,7 @@ export function deriveSystemCharacteristics(
         integrity: readString(impactLevel['security-objective-integrity']),
         availability: readString(impactLevel['security-objective-availability']),
       },
-    status: readState(node, 'status', path, state),
+    status: readState(node, 'status', path, state, true),
     authorizationBoundary: deriveSystemDescription(node, 'authorization-boundary', path, state, true),
     networkArchitecture: deriveSystemDescription(node, 'network-architecture', path, state),
     dataFlow: deriveSystemDescription(node, 'data-flow', path, state),
@@ -158,6 +175,7 @@ export function deriveSystemCharacteristics(
 
 function deriveComponents(node: JsonObject, path: string, state: SspDeriveState): readonly SspComponent[] {
   return readObjectArrayField(node, 'components', path, state).map(({ node: component, path: componentPath }) => {
+    checkRoleAssignmentReferences(component, componentPath, state);
     const uuid = readString(component.uuid);
     const derived: SspComponent = {
       uuid,
@@ -165,7 +183,7 @@ function deriveComponents(node: JsonObject, path: string, state: SspDeriveState)
       title: readString(component.title),
       description: readString(component.description),
       purpose: readString(component.purpose),
-      status: readState(component, 'status', componentPath, state),
+      status: readState(component, 'status', componentPath, state, true),
       responsibleRoles: readResponsibleRoles(component, componentPath, state),
       remarks: readString(component.remarks),
       ...readElements(component, componentPath, state),
@@ -173,45 +191,76 @@ function deriveComponents(node: JsonObject, path: string, state: SspDeriveState)
     };
 
     if (uuid !== undefined) {
-      const existing = state.componentsByUuid.get(uuid);
+      const existing = state.componentsByUuid.get(uuidKey(uuid));
       if (existing) {
         // Der Befund steht am späteren Knoten; die erste Fundstelle bleibt.
         diagnose(state, SSP_ADAPTER_DIAGNOSTIC_CODES.COMPONENT_UUID_DUPLICATE, `${componentPath}/uuid`);
         existing.push(derived);
       } else {
-        state.componentsByUuid.set(uuid, [derived]);
+        state.componentsByUuid.set(uuidKey(uuid), [derived]);
       }
     }
     return derived;
   });
 }
 
-function deriveInventoryItems(
-  node: JsonObject,
-  path: string,
+function deriveInventoryItems(node: JsonObject, path: string, state: SspDeriveState): readonly SspInventoryItem[] {
+  return readObjectArrayField(node, 'inventory-items', path, state).map(({ node: item, path: itemPath }) => {
+    checkRoleAssignmentReferences(item, itemPath, state, 'responsible-parties');
+    return {
+      uuid: readString(item.uuid),
+      description: readString(item.description),
+      responsibleParties: readResponsibleParties(item, itemPath, state),
+      implementedComponents: deriveImplementedComponents(item, itemPath, state),
+      remarks: readString(item.remarks),
+      ...readElements(item, itemPath, state),
+      path: itemPath,
+    };
+  });
+}
+
+function deriveImplementedComponents(
+  item: JsonObject,
+  itemPath: string,
   state: SspDeriveState,
-): readonly SspInventoryItem[] {
-  return readObjectArrayField(node, 'inventory-items', path, state).map(({ node: item, path: itemPath }) => ({
-    uuid: readString(item.uuid),
-    description: readString(item.description),
-    responsibleParties: readResponsibleParties(item, itemPath, state),
-    implementedComponents: readObjectArrayField(item, 'implemented-components', itemPath, state).map(
-      ({ node: implemented, path: implementedPath }) => {
-        const componentUuid = readString(implemented['component-uuid']);
-        return {
-          componentUuid,
-          component: resolveComponentReference(componentUuid, `${implementedPath}/component-uuid`, state),
-          responsibleParties: readResponsibleParties(implemented, implementedPath, state),
-          remarks: readString(implemented.remarks),
-          ...readElements(implemented, implementedPath, state),
-          path: implementedPath,
-        };
-      },
-    ),
-    remarks: readString(item.remarks),
-    ...readElements(item, itemPath, state),
-    path: itemPath,
-  }));
+): readonly SspImplementedComponent[] {
+  return readObjectArrayField(item, 'implemented-components', itemPath, state).map(
+    ({ node: implemented, path: implementedPath }) => {
+      checkRoleAssignmentReferences(implemented, implementedPath, state, 'responsible-parties');
+      const componentUuid = readString(implemented['component-uuid']);
+      return {
+        componentUuid,
+        component: resolveComponentReference(componentUuid, `${implementedPath}/component-uuid`, state),
+        responsibleParties: readResponsibleParties(implemented, implementedPath, state),
+        remarks: readString(implemented.remarks),
+        ...readElements(implemented, implementedPath, state),
+        path: implementedPath,
+      };
+    },
+  );
+}
+
+function deriveUsers(node: JsonObject, path: string, state: SspDeriveState): readonly SspUser[] {
+  return readObjectArrayField(node, 'users', path, state).map(({ node: user, path: userPath }) => {
+    checkRoleIdReferences(user, userPath, state);
+    return {
+      uuid: readString(user.uuid),
+      title: readString(user.title),
+      shortName: readString(user['short-name']),
+      description: readString(user.description),
+      roleIds: readStringArrayField(user, 'role-ids', userPath, state),
+      authorizedPrivileges: readObjectArrayField(user, 'authorized-privileges', userPath, state).map(
+        ({ node: privilege, path: privilegePath }) => ({
+          title: readString(privilege.title),
+          description: readString(privilege.description),
+          functionsPerformed: readStringArrayField(privilege, 'functions-performed', privilegePath, state),
+        }),
+      ),
+      remarks: readString(user.remarks),
+      ...readElements(user, userPath, state),
+      path: userPath,
+    };
+  });
 }
 
 export function deriveSystemImplementation(
@@ -237,23 +286,7 @@ export function deriveSystemImplementation(
         path: authorizationPath,
       }),
     ),
-    users: readObjectArrayField(node, 'users', path, state).map(({ node: user, path: userPath }) => ({
-      uuid: readString(user.uuid),
-      title: readString(user.title),
-      shortName: readString(user['short-name']),
-      description: readString(user.description),
-      roleIds: readStringArrayField(user, 'role-ids', userPath, state),
-      authorizedPrivileges: readObjectArrayField(user, 'authorized-privileges', userPath, state).map(
-        ({ node: privilege, path: privilegePath }) => ({
-          title: readString(privilege.title),
-          description: readString(privilege.description),
-          functionsPerformed: readStringArrayField(privilege, 'functions-performed', privilegePath, state),
-        }),
-      ),
-      remarks: readString(user.remarks),
-      ...readElements(user, userPath, state),
-      path: userPath,
-    })),
+    users: deriveUsers(node, path, state),
     components,
     inventoryItems: deriveInventoryItems(node, path, state),
     remarks: readString(node.remarks),

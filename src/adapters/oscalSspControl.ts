@@ -8,7 +8,7 @@
 // =============================================================================
 
 import {
-  checkResponsibleRoleReferences,
+  checkRoleAssignmentReferences,
   diagnose,
   readElements,
   readObjectArrayField,
@@ -19,6 +19,7 @@ import {
   resolveComponentReference,
   SSP_ADAPTER_DIAGNOSTIC_CODES,
   SSP_BASE_PATH,
+  uuidKey,
 } from '@/adapters/oscalSspReaders';
 import type { SspDeriveState } from '@/adapters/oscalSspReaders';
 import { readString, type JsonObject } from '@/domain/jsonGuards';
@@ -44,7 +45,7 @@ function readExternalUuid(node: JsonObject, key: string): SspExternalUuidReferen
 }
 
 function deriveProvided(node: JsonObject, path: string, state: SspDeriveState): SspProvided {
-  checkResponsibleRoleReferences(node, path, state);
+  checkRoleAssignmentReferences(node, path, state);
   return {
     uuid: readString(node.uuid),
     description: readString(node.description),
@@ -82,12 +83,13 @@ function deriveByComponents(node: JsonObject, path: string, state: SspDeriveStat
   return readObjectArrayField(node, 'by-components', path, state).map(({ node: byComponent, path: byPath }) => {
     const componentUuid = readString(byComponent['component-uuid']);
     if (componentUuid !== undefined) {
-      if (seen.has(componentUuid)) {
+      const key = uuidKey(componentUuid);
+      if (seen.has(key)) {
         diagnose(state, SSP_ADAPTER_DIAGNOSTIC_CODES.BY_COMPONENT_DUPLICATE, `${byPath}/component-uuid`);
       }
-      seen.add(componentUuid);
+      seen.add(key);
     }
-    checkResponsibleRoleReferences(byComponent, byPath, state);
+    checkRoleAssignmentReferences(byComponent, byPath, state);
 
     return {
       uuid: readString(byComponent.uuid),
@@ -98,7 +100,7 @@ function deriveByComponents(node: JsonObject, path: string, state: SspDeriveStat
       export: deriveExport(byComponent, byPath, state),
       inherited: readObjectArrayField(byComponent, 'inherited', byPath, state).map(
         ({ node: inherited, path: inheritedPath }) => {
-          checkResponsibleRoleReferences(inherited, inheritedPath, state);
+          checkRoleAssignmentReferences(inherited, inheritedPath, state);
           return {
             uuid: readString(inherited.uuid),
             description: readString(inherited.description),
@@ -111,7 +113,7 @@ function deriveByComponents(node: JsonObject, path: string, state: SspDeriveStat
       ),
       satisfied: readObjectArrayField(byComponent, 'satisfied', byPath, state).map(
         ({ node: satisfied, path: satisfiedPath }) => {
-          checkResponsibleRoleReferences(satisfied, satisfiedPath, state);
+          checkRoleAssignmentReferences(satisfied, satisfiedPath, state);
           return {
             uuid: readString(satisfied.uuid),
             description: readString(satisfied.description),
@@ -164,7 +166,7 @@ function resolveControlReference(
 
 function deriveStatements(node: JsonObject, path: string, state: SspDeriveState): readonly SspStatement[] {
   return readObjectArrayField(node, 'statements', path, state).map(({ node: statement, path: statementPath }) => {
-    checkResponsibleRoleReferences(statement, statementPath, state);
+    checkRoleAssignmentReferences(statement, statementPath, state);
     return {
       uuid: readString(statement.uuid),
       statementId: readString(statement['statement-id']),
@@ -184,7 +186,7 @@ function deriveImplementedRequirements(
 ): readonly SspImplementedRequirement[] {
   return readObjectArrayField(node, 'implemented-requirements', path, state).map(
     ({ node: requirement, path: requirementPath }) => {
-      checkResponsibleRoleReferences(requirement, requirementPath, state);
+      checkRoleAssignmentReferences(requirement, requirementPath, state);
       const controlId = readString(requirement['control-id']);
       return {
         uuid: readString(requirement.uuid),

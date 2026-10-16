@@ -200,6 +200,24 @@ describe('Dokumentinterne Referenzen', () => {
       code: codes.PARTY_REFERENCE_UNRESOLVED,
       path: `${requirementsPath}/0/by-components/0/responsible-roles/0/party-uuids/0`,
     },
+    {
+      name: 'eine role-id an einer Komponente ohne Rolle in metadata.roles',
+      mutate: (body: RawOscalSystemSecurityPlan) => {
+        body['system-implementation'].components[0]['responsible-roles'] = [{ 'role-id': 'unbekannte-rolle' }];
+      },
+      code: codes.ROLE_REFERENCE_UNRESOLVED,
+      path: '/system-security-plan/system-implementation/components/0/responsible-roles/0/role-id',
+    },
+    {
+      name: 'eine Party-UUID in system-characteristics.responsible-parties ohne Partei',
+      mutate: (body: RawOscalSystemSecurityPlan) => {
+        body['system-characteristics']['responsible-parties'] = [
+          { 'role-id': 'system-owner', 'party-uuids': ['66666666-0000-4000-8000-0000000000fd'] },
+        ];
+      },
+      code: codes.PARTY_REFERENCE_UNRESOLVED,
+      path: '/system-security-plan/system-characteristics/responsible-parties/0/party-uuids/0',
+    },
   ])('diagnostiziert $name und liefert das Dokument', ({ mutate, code, path }) => {
     const plan = derive(withSspBody(makeFullSsp(), mutate));
 
@@ -221,6 +239,39 @@ describe('Dokumentinterne Referenzen', () => {
       status: 'unresolved',
       reason: 'component-ambiguous',
     });
+  });
+
+  it('vergleicht UUIDs ohne Unterschied der Schreibweise und behält den gelesenen Wert', () => {
+    const componentUuid = '66666666-0000-4000-8000-0000000000ab';
+    const partyUuid = '66666666-0000-4000-8000-0000000000ac';
+    const plan = derive(withSspBody(makeFullSsp(), (body) => {
+      body.metadata.parties = [
+        ...(body.metadata.parties ?? []),
+        { uuid: partyUuid, type: 'organization', name: 'Zweite Organisation' },
+      ];
+      const components = body['system-implementation'].components;
+      components.push({ ...structuredClone(components[1]), uuid: componentUuid });
+      const byComponent = body['control-implementation']['implemented-requirements'][0]['by-components']![1];
+      byComponent['component-uuid'] = componentUuid.toUpperCase();
+      byComponent['responsible-roles'] = [{ 'role-id': 'system-owner', 'party-uuids': [partyUuid.toUpperCase()] }];
+    }));
+
+    expect(plan.diagnostics).toEqual([]);
+    expect(requirement(plan, 0).byComponents[1]).toMatchObject({
+      componentUuid: componentUuid.toUpperCase(),
+      component: { status: 'resolved', component: { uuid: componentUuid } },
+    });
+
+    const duplicate = derive(withSspBody(makeFullSsp(), (body) => {
+      const components = body['system-implementation'].components;
+      components.push(
+        { ...structuredClone(components[1]), uuid: componentUuid },
+        { ...structuredClone(components[1]), uuid: componentUuid.toUpperCase() },
+      );
+    }));
+    expect(duplicate.diagnostics.map((diagnostic) => [diagnostic.code, diagnostic.path])).toEqual([
+      [codes.COMPONENT_UUID_DUPLICATE, '/system-security-plan/system-implementation/components/3/uuid'],
+    ]);
   });
 
   it('setzt keinen Referenzwert in eine Diagnose', () => {

@@ -95,7 +95,11 @@ export function makeFullSsp(): Record<string, unknown> {
               system: 'https://doi.org/10.6028/NIST.SP.800-60v2r1',
               'information-type-ids': ['C.2.4.1'],
             }],
-            'confidentiality-impact': { base: 'fips-199-moderate' },
+            'confidentiality-impact': {
+              base: 'fips-199-moderate',
+              props: [{ name: 'marking', value: 'synthetisch' }],
+              links: [{ href: './einstufung.md', rel: 'reference' }],
+            },
             'integrity-impact': {
               base: 'fips-199-moderate',
               selected: 'fips-199-high',
@@ -103,6 +107,8 @@ export function makeFullSsp(): Record<string, unknown> {
             },
             'availability-impact': { base: 'fips-199-low' },
           }],
+          props: [{ name: 'marking', value: 'synthetisch' }],
+          links: [{ href: './informationsarten.md', rel: 'reference' }],
         },
         'security-impact-level': {
           'security-objective-confidentiality': 'fips-199-moderate',

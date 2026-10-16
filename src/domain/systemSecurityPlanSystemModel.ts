@@ -22,7 +22,7 @@ export interface SspSystemId {
   readonly identifierType?: string;
 }
 
-export interface SspImpact {
+export interface SspImpact extends SspElements {
   readonly base?: string;
   readonly selected?: string;
   readonly adjustmentJustification?: string;
@@ -41,6 +41,11 @@ export interface SspInformationType extends SspElements {
   readonly confidentialityImpact: SspImpact | null;
   readonly integrityImpact: SspImpact | null;
   readonly availabilityImpact: SspImpact | null;
+  readonly path: string;
+}
+
+export interface SspSystemInformation extends SspElements {
+  readonly informationTypes: readonly SspInformationType[];
   readonly path: string;
 }
 
@@ -72,7 +77,7 @@ export interface SspSystemCharacteristics extends SspElements {
   readonly description?: string;
   readonly dateAuthorized?: string;
   readonly securitySensitivityLevel?: string;
-  readonly informationTypes: readonly SspInformationType[];
+  readonly systemInformation: SspSystemInformation | null;
   readonly securityImpactLevel: SspSecurityImpactLevel | null;
   readonly status: SspState | null;
   readonly authorizationBoundary: SspSystemDescription | null;
