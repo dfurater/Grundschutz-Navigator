@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { parseSspDocument } from './oscalSspDocument';
 import { SSP_ADAPTER_DIAGNOSTIC_CODES, SspTrustClassError } from './oscalSspAdapter';
 import { processClass2OscalBytes } from '@/domain/oscalClass2Import';
-import { OSCAL_PROPERTY_NAMESPACE } from '@/domain/oscalRootDocument';
+import { OSCAL_NAMESPACE } from '@/domain/mappingModel';
 import { OscalRootDispatchError } from '@/domain/oscalRootDispatch';
 import { PINNED_OSCAL_VERSIONS } from '@/domain/oscalVersionMatrix';
 import { PROJECT_PROPS_NAMESPACE } from '@/domain/projectProps';
@@ -98,8 +98,8 @@ describe('Props-Namespaces zwischen source und view', () => {
       Object.assign(body['system-characteristics'], {
         props: [
           { name: 'ohne-ns', value: 'a' },
-          { name: 'oscal-ns', value: 'b', ns: OSCAL_PROPERTY_NAMESPACE },
-          { name: 'oscal-xml-ns', value: 'c', ns: `${OSCAL_PROPERTY_NAMESPACE}/1.0` },
+          { name: 'oscal-ns', value: 'b', ns: OSCAL_NAMESPACE },
+          { name: 'oscal-xml-ns', value: 'c', ns: `${OSCAL_NAMESPACE}/1.0` },
           { name: 'projekt-ns', value: 'd', ns: PROJECT_PROPS_NAMESPACE },
           { name: 'ns-kein-string', value: 'e', ns: 42 },
         ],

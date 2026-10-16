@@ -15,7 +15,7 @@ import { createElementReaders, createStructureReaders } from '@/adapters/oscalRe
 import { isJsonObject, readString, type JsonObject } from '@/domain/jsonGuards';
 import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { OscalDiagnostic, OscalDiagnosticValidator } from '@/domain/oscalDiagnostics';
-import { OSCAL_PROPERTY_NAMESPACE } from '@/domain/oscalRootDocument';
+import { OSCAL_NAMESPACE } from '@/domain/mappingModel';
 import type { ReferenceDocument } from '@/domain/referenceResolution';
 import { SYSTEM_SECURITY_PLAN_ROOT_TYPE } from '@/domain/systemSecurityPlanModel';
 import type {
@@ -101,12 +101,13 @@ const structureReaders = createStructureReaders<SspDeriveState>(diagnoseUnexpect
 export const { readArrayField, readObjectArrayField, readStringArrayField } = structureReaders;
 
 /**
- * Ein `prop` liegt im OSCAL-Namespace, wenn `ns` fehlt oder exakt
- * `OSCAL_PROPERTY_NAMESPACE` ist. Jeder andere `ns`, auch ein Nicht-String,
- * hält das `prop` aus der Projektion; der Quellgraph behält es.
+ * Ein `prop` liegt im OSCAL-Namespace, wenn `ns` fehlt (Default des Flags `ns`
+ * im OSCAL-Metadata-Metaschema) oder exakt `OSCAL_NAMESPACE` ist. Jeder andere
+ * `ns`, auch ein Nicht-String, hält das `prop` aus der Projektion; der
+ * Quellgraph behält es.
  */
 function isOscalNamespaceProp(prop: JsonObject): boolean {
-  return prop.ns === undefined || prop.ns === OSCAL_PROPERTY_NAMESPACE;
+  return prop.ns === undefined || prop.ns === OSCAL_NAMESPACE;
 }
 
 const { readProps, ...elementReaders } = createElementReaders(structureReaders, diagnoseUnexpected, {

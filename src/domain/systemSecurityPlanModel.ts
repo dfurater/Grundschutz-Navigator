@@ -53,7 +53,8 @@ export const NOT_RESOLVABLE_IN_CONTEXT = 'not-resolvable-in-context' as const;
 /**
  * Die gemeinsamen Elementprojektionen, wie sie auch die übrigen Modelle führen.
  * `props` enthält nur Einträge im OSCAL-Namespace (`ns` fehlt oder ist exakt
- * `OSCAL_PROPERTY_NAMESPACE`); jedes andere `prop` bleibt im Quellgraphen.
+ * `OSCAL_NAMESPACE` aus `mappingModel.ts`); jedes andere `prop` bleibt im
+ * Quellgraphen.
  */
 export interface SspElements {
   readonly props: readonly OscalPropView[];
