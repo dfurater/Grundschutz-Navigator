@@ -1,7 +1,6 @@
 import type { VocabularyResolution } from '@/domain/vocabulary';
-import { VocabularyEntryCard } from '@/features/vocabularies/VocabularyEntryCard';
 import { beforeTightContentClass } from '@/components/legendStyles';
-import { TermTrigger, toVocabCardId } from './ControlVocabularyPrimitives';
+import { TermTrigger, toVocabCardId, type RenderVocabularyCard } from './ControlVocabularyPrimitives';
 
 export interface ControlTaxonomyBreadcrumbProps {
   readonly practiceName: string;
@@ -10,6 +9,7 @@ export interface ControlTaxonomyBreadcrumbProps {
   readonly practiceVocabulary: VocabularyResolution | null;
   readonly topicVocabulary: VocabularyResolution | null;
   readonly isVocabularyActive: (key: string) => boolean;
+  readonly renderVocabularyCard: RenderVocabularyCard;
   readonly onToggleVocabulary: (key: string) => void;
 }
 
@@ -21,6 +21,7 @@ export function ControlTaxonomyBreadcrumb({
   topicVocabulary,
   isVocabularyActive,
   onToggleVocabulary,
+  renderVocabularyCard,
 }: ControlTaxonomyBreadcrumbProps) {
   const practiceKey = 'practice';
   const topicKey = 'topic';
@@ -74,10 +75,7 @@ export function ControlTaxonomyBreadcrumb({
           hidden={!practiceActive || undefined}
         >
           {practiceActive && (
-            <VocabularyEntryCard
-              resolution={practiceVocabulary}
-              hiddenColumns={practiceHiddenColumns}
-            />
+            renderVocabularyCard(practiceVocabulary, { hiddenColumns: practiceHiddenColumns })
           )}
         </div>
       )}
@@ -87,7 +85,7 @@ export function ControlTaxonomyBreadcrumb({
           hidden={!topicActive || undefined}
         >
           {topicActive && (
-            <VocabularyEntryCard resolution={topicVocabulary} />
+            renderVocabularyCard(topicVocabulary)
           )}
         </div>
       )}

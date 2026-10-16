@@ -7,8 +7,6 @@ import {
   getVocabularyNamespaceByRouteId,
   normalizeIdentifier,
   resolveIdentifierReference,
-  resolvePropVocabularyEntry,
-  resolveVocabularyEntries,
   resolveVocabularyEntry,
   resolveVocabularyProp,
   resolveVocabularyValues,
@@ -165,23 +163,7 @@ describe('vocabulary runtime', () => {
     ).toBe('Normale Sicherheitsstufe');
 
     expect(
-      resolveVocabularyValues(registry, namespaceUrl, ['erhöht', 'unbekannt']),
-    ).toHaveLength(1);
-  });
-
-  it('keeps compatibility helpers for prop and multi-value resolution', () => {
-    const registry = buildVocabularyRegistry(makeRegistryData());
-
-    expect(
-      resolvePropVocabularyEntry(registry, {
-        name: 'sec_level',
-        value: 'normal-SdT',
-        ns: namespaceUrl,
-      })?.entry.definition,
-    ).toBe('Normale Sicherheitsstufe');
-
-    expect(
-      resolveVocabularyEntries(registry, namespaceUrl, [
+      resolveVocabularyValues(registry, namespaceUrl, [
         'erhöht',
         'unbekannt',
         'normal-SdT',

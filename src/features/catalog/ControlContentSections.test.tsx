@@ -106,7 +106,9 @@ function renderVocabularyCard(
 }
 
 describe('ControlSecurityContext', () => {
-  it('renders resolved and unresolved security targets in a two-column grid', () => {
+  // Der Rastervertrag der Schutzziele (Subgrid, Trigger, Relevanzanzeige,
+  // Legende) liegt in ControlCharacteristics.test.tsx; hier nur die Komposition.
+  it('composes security targets and threats under their own headings', () => {
     const { container } = render(
       <MemoryRouter><ControlSecurityContext
         control={allTargetsControl}
@@ -119,16 +121,6 @@ describe('ControlSecurityContext', () => {
 
     expect(screen.getByRole('heading', { name: 'Schutzziele', level: 4 })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Gefährdungen', level: 4 })).toBeInTheDocument();
-    expect(container.querySelectorAll('[role="group"].grid-cols-subgrid')).toHaveLength(4);
-    expect(screen.queryByRole('table')).not.toBeInTheDocument();
-    for (const label of ['Vertraulichkeit', 'Integrität', 'Verfügbarkeit', 'Authentizität']) {
-      expect(screen.getByRole('button', { name: `Schutzziel: ${label}` })).toBeInTheDocument();
-    }
-    // Relevanz als Anzeige in der Gruppe, ohne eigenen Button (GSPP-447).
-    expect(screen.getByRole('group', { name: 'Vertraulichkeit: Relevanz 2' })).toHaveTextContent('Relevanz 2');
-    expect(screen.queryByRole('button', { name: 'Relevanz Vertraulichkeit: 2' })).toBeNull();
-    // Die Legende steht in der Leiste „Schutzziele und Gefährdungen“ (ControlDetail), nicht hier.
-    expect(screen.queryByRole('button', { name: 'Legende' })).toBeNull();
     expect(container.querySelector('.catalog-vocabulary-affordance')).toBeNull();
   });
 

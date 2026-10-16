@@ -15,6 +15,7 @@ import {
   getSecurityTargetFilterTooltip,
 } from '@/features/vocabulary/display';
 import { useCatalog } from '@/hooks/useCatalog';
+import { resolveFrozenCounts } from './filterDimensions';
 
 export interface SecurityTargetFilterSectionProps {
   readonly filters: ControlFilters;
@@ -37,23 +38,6 @@ const STUFEN_LEGENDE: Record<SecurityTargetFilterValue, string> = {
   '1': 'wirkt auf das Schutzziel hin',
   '2': 'steht im Zentrum der Anforderung',
 };
-
-/**
- * Gleiche Einfrier-Regel wie bei den übrigen Facetten: Sobald eine Dimension
- * selbst gefiltert ist, bleiben ihre Zahlen auf der ungefilterten Menge stehen,
- * damit die nicht gewählten Optionen ihre Größe behalten. Die Regel gilt je
- * Dimension, nicht für die Sektion als Ganzes.
- */
-function resolveCounts(
-  filters: ControlFilters,
-  dimension: SecurityTargetDimension,
-  facetCounts: FacetCounts,
-  filteredFacetCounts: FacetCounts,
-): Record<string, number> {
-  return filters.securityTargets[dimension].length > 0
-    ? facetCounts.securityTargets[dimension]
-    : filteredFacetCounts.securityTargets[dimension];
-}
 
 /**
  * Schaltet eine Stufe um und hält die Auswahl in der Ordnung der Skala — so
@@ -107,7 +91,11 @@ export function SecurityTargetFilterSection({
 
   const zeilen = SECURITY_TARGET_DIMENSIONS.map(({ dimension, label }) => {
     const selected = filters.securityTargets[dimension];
-    const counts = resolveCounts(filters, dimension, facetCounts, filteredFacetCounts);
+    const counts = resolveFrozenCounts(
+      selected,
+      facetCounts.securityTargets[dimension],
+      filteredFacetCounts.securityTargets[dimension],
+    );
     return {
       dimension,
       label,

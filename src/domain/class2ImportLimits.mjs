@@ -1,19 +1,12 @@
 /**
  * Ressourcengrenzen des Klasse-2-Eingangspfads (GSPP-382).
  *
- * Einzige Quelle der Wahrheit dieser vier Werte. Sie stehen bewusst in einem
- * reinen ESM-Modul und nicht in `oscalImportContract.ts`: Neben der App
- * braucht der Messapparat (`scripts/measure-class2-budget.mjs` und die von ihm
- * geladenen Fixtures) dieselben Zahlen in einer nackten Node-Laufzeit ohne
- * Aliasauflösung und ohne TypeScript. Eine zweite Wertetabelle für den
- * Messapparat hieße, an einer Grenze zu messen, die die Anwendung womöglich
- * gar nicht mehr zieht. Gleiches Muster wie `oscalVersionMatrix.mjs` und
- * `sourceRegistry.mjs`.
+ * Einzige Quelle der Wahrheit dieser vier Werte, als reines ESM-Modul wie
+ * `oscalVersionMatrix.mjs` und `sourceRegistry.mjs`. Der Anwendungspfad liest
+ * sie über `oscalImportContract.ts`.
  *
- * Herleitung, Messprotokoll und Budget: `docs/OSCAL_VALIDATION.md`, Abschnitt
- * „Klasse-2-Grenzwerte". Die Werte sind kostenbasiert belegt (GSPP-382) — sie
- * folgen dem gemessenen Ressourcenabdruck eines Dokuments EXAKT AN DER GRENZE,
- * nicht dem Kopfraum über dem realen BSI-Katalog.
+ * Grenzwerte, Schutzzweck und prüfende Tests: `docs/OSCAL_VALIDATION.md`,
+ * Abschnitt „Klasse-2-Grenzwerte".
  */
 export const CLASS_2_IMPORT_LIMITS = Object.freeze({
   maxBytes: 10 * 1024 * 1024,

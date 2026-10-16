@@ -6,12 +6,10 @@ import {
   parsePractice,
   parseMetadata,
   getPropValue,
-  getPropValues,
   findPart,
   buildParamMap,
   resolveParams,
   parseTags,
-  parseLinkHref,
   toSecurityLevel,
   toEffortLevel,
   toSecurityTargetRelevance,
@@ -224,21 +222,6 @@ describe('getPropValue', () => {
   });
 });
 
-describe('getPropValues', () => {
-  it('returns all values for a name', () => {
-    const props = [
-      { name: 'tags', value: 'BCM' },
-      { name: 'other', value: 'x' },
-      { name: 'tags', value: 'Compliance' },
-    ];
-    expect(getPropValues(props, 'tags')).toEqual(['BCM', 'Compliance']);
-  });
-
-  it('returns empty array for undefined', () => {
-    expect(getPropValues(undefined, 'tags')).toEqual([]);
-  });
-});
-
 describe('findPart', () => {
   it('finds a part by name', () => {
     const parts = [
@@ -367,16 +350,6 @@ describe('parseTags', () => {
 
   it('filters empty strings', () => {
     expect(parseTags('a, , b')).toEqual(['a', 'b']);
-  });
-});
-
-describe('parseLinkHref', () => {
-  it('strips leading # from internal links', () => {
-    expect(parseLinkHref('#GC.2.2')).toBe('GC.2.2');
-  });
-
-  it('returns external links unchanged', () => {
-    expect(parseLinkHref('https://example.com')).toBe('https://example.com');
   });
 });
 

@@ -1,3 +1,4 @@
+import { buildVocabularyEntryPath, buildVocabularyIndexPath } from '@/app/routes';
 import { Link, useParams, useSearchParams } from 'react-router';
 import { PageTitle } from '@/app/PageTitle';
 import { PAGE_TITLES, TITLE_PARENT_SEPARATOR } from '@/app/pageTitles';
@@ -115,7 +116,7 @@ export function VocabularyNamespacePage() {
             Dieses Vokabular ist im aktuellen Katalog nicht verfügbar.
           </p>
           <Link
-            to="/vokabular"
+            to={buildVocabularyIndexPath()}
             className="catalog-link-color rounded text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
           >
             Zur Übersicht der Vokabulare
@@ -144,7 +145,7 @@ export function VocabularyNamespacePage() {
       <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-5">
         <div className="space-y-1">
           <Link
-            to="/vokabular"
+            to={buildVocabularyIndexPath()}
             className="catalog-meta-text inline-block rounded hover:text-[var(--color-text-primary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]"
           >
             Zur Übersicht der Vokabulare
@@ -181,7 +182,7 @@ export function VocabularyNamespacePage() {
               return (
                 <div key={entry.value}>
                   <Link
-                    to={`/vokabular/${namespace.source.routeId}?wert=${encodeURIComponent(entry.value)}`}
+                    to={buildVocabularyEntryPath(namespace.source.routeId, entry.value)}
                     className={`block border-l-2 px-4 py-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-focus-ring)] ${
                       isActive
                         ? 'border-[var(--color-accent-default)] bg-[var(--color-accent-soft)] font-medium text-[var(--color-text-primary)]'

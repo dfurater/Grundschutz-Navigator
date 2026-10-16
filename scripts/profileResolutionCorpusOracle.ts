@@ -14,6 +14,7 @@
 // und link[@rel='source-profile'] sind unsere Träger. Alles andere zählt.
 // =============================================================================
 
+import { compareStringsByCodeUnit } from '../src/domain/codeUnitOrder.mjs';
 import {
   BSI_PROFILE_RESOLUTION_DIFFERENCES,
   type BsiCorpusDifference,
@@ -25,12 +26,6 @@ interface JsonObjectLike {
 
 function isJsonObject(value: unknown): value is JsonObjectLike {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function byCodeUnit(left: string, right: string): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
 }
 
 /**
@@ -82,7 +77,7 @@ export function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
   if (isJsonObject(value)) {
     const members = Object.keys(value)
-      .sort(byCodeUnit)
+      .sort(compareStringsByCodeUnit)
       .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`);
     return `{${members.join(',')}}`;
   }

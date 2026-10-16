@@ -13,6 +13,8 @@
 // Quellgraph bleibt, wie er ist (ADR-2).
 // =============================================================================
 
+import { createStructureReaders } from '@/adapters/oscalReaders';
+import { readString, type JsonObject } from '@/domain/jsonGuards';
 import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { OscalDiagnostic, OscalDiagnosticValidator } from '@/domain/oscalDiagnostics';
 import type { ReferenceDocument } from '@/domain/referenceResolution';
@@ -53,15 +55,7 @@ export const COMPONENT_ADAPTER_DIAGNOSTIC_CODES = Object.freeze({
 });
 
 
-export type JsonObject = Record<string, unknown>;
-
-export function isJsonObject(value: unknown): value is JsonObject {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-export function readString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
-}
+export type { JsonObject } from '@/domain/jsonGuards';
 
 export interface DeriveState {
   readonly diagnostics: OscalDiagnostic[];
@@ -88,60 +82,11 @@ export function diagnose(state: DeriveState, code: string, path: string): OscalD
   return diagnostic;
 }
 
-/**
- * Liest ein Arrayfeld. Ein **vorhandener** Nicht-Array-Wert wird diagnostiziert
- * statt still zu `[]` zu werden — sonst verschwände die Kardinalitätsverletzung
- * aus `component-lieferkette` spurlos aus der Projektion.
- */
-export function readArrayField(
-  node: JsonObject,
-  key: string,
-  path: string,
-  state: DeriveState,
-): readonly unknown[] {
-  const value = node[key];
-  if (value === undefined || value === null) return [];
-  if (Array.isArray(value)) return value;
+const structureReaders = createStructureReaders<DeriveState>((state, path) => {
+  diagnose(state, COMPONENT_ADAPTER_DIAGNOSTIC_CODES.STRUCTURE_UNEXPECTED, path);
+});
 
-  diagnose(state, COMPONENT_ADAPTER_DIAGNOSTIC_CODES.STRUCTURE_UNEXPECTED, `${path}/${key}`);
-  return [];
-}
-
-/** Wie `readArrayField`, liefert aber nur die Objekteinträge und diagnostiziert den Rest. */
-export function readObjectArrayField(
-  node: JsonObject,
-  key: string,
-  path: string,
-  state: DeriveState,
-): readonly { readonly node: JsonObject; readonly path: string }[] {
-  return readArrayField(node, key, path, state).flatMap((entry, index) => {
-    const entryPath = `${path}/${key}/${index}`;
-    if (!isJsonObject(entry)) {
-      diagnose(state, COMPONENT_ADAPTER_DIAGNOSTIC_CODES.STRUCTURE_UNEXPECTED, entryPath);
-      return [];
-    }
-    return [{ node: entry, path: entryPath }];
-  });
-}
-
-export function readStringArrayField(
-  node: JsonObject,
-  key: string,
-  path: string,
-  state: DeriveState,
-): readonly string[] {
-  return readArrayField(node, key, path, state).flatMap((entry, index) => {
-    if (typeof entry !== 'string') {
-      diagnose(
-        state,
-        COMPONENT_ADAPTER_DIAGNOSTIC_CODES.STRUCTURE_UNEXPECTED,
-        `${path}/${key}/${index}`,
-      );
-      return [];
-    }
-    return [entry];
-  });
-}
+export const { readArrayField, readObjectArrayField, readStringArrayField } = structureReaders;
 
 export function readProps(node: JsonObject, path: string, state: DeriveState): readonly ComponentProp[] {
   return readObjectArrayField(node, 'props', path, state).flatMap(({ node: prop, path: propPath }) => {

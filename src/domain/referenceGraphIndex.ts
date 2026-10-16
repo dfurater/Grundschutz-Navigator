@@ -10,6 +10,7 @@
 // hält fest, wo eine zweite Vergabe steht.
 // =============================================================================
 
+import { isJsonObject, readArray, readString, type JsonObject } from '@/domain/jsonGuards';
 import { createOscalDiagnostic, type OscalDiagnostic } from '@/domain/oscalDiagnostics';
 import {
   REFERENCE_GRAPH_CODES,
@@ -18,20 +19,6 @@ import {
   type ReferenceNode,
   type ReferenceNodeKind,
 } from '@/domain/referenceGraphModel';
-
-type JsonObject = Record<string, unknown>;
-
-function isJsonObject(value: unknown): value is JsonObject {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function readString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
-}
-
-function readArray(value: unknown): readonly unknown[] {
-  return Array.isArray(value) ? value : [];
-}
 
 function getDocumentBody(document: ReferenceGraphDocument): JsonObject | null {
   if (!isJsonObject(document.source)) return null;

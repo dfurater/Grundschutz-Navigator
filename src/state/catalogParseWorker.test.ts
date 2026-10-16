@@ -1,47 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { FakeWorker, installWorker } from '@/test/fakeWorker';
 import { parseCatalogInWorker } from './catalogParseWorker';
 import { parseCatalogBuffer, type CatalogParseResult } from './catalogParsing';
 import type { CatalogKey } from '@/domain/sourceRegistry';
 import { createStartupCatalogSource } from '@/test/fixtures/startupCatalog';
-
-type WorkerListener = (event: Event) => void;
-
-class FakeWorker {
-  private readonly listeners = new Map<string, WorkerListener[]>();
-  private readonly onPostMessage: (worker: FakeWorker, message: unknown) => void;
-
-  constructor(onPostMessage: (worker: FakeWorker, message: unknown) => void) {
-    this.onPostMessage = onPostMessage;
-  }
-
-  readonly terminate = vi.fn();
-
-  readonly addEventListener = vi.fn((type: string, listener: WorkerListener) => {
-    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
-  });
-
-  readonly removeEventListener = vi.fn((type: string, listener: WorkerListener) => {
-    this.listeners.set(type, (this.listeners.get(type) ?? []).filter((entry) => entry !== listener));
-  });
-
-  readonly postMessage = vi.fn((message: unknown) => {
-    this.onPostMessage(this, message);
-  });
-
-  emitMessage(data: unknown): void {
-    for (const listener of this.listeners.get('message') ?? []) {
-      listener({ data } as MessageEvent);
-    }
-  }
-}
-
-function installWorker(worker: FakeWorker): void {
-  vi.stubGlobal('Worker', class {
-    constructor() {
-      return worker as unknown as Worker;
-    }
-  });
-}
 
 /** Erzeugt genau das, was der echte Worker zurückgibt — kein Attrappenobjekt. */
 function createWorkerResult(catalogKey: CatalogKey, uuid: string): CatalogParseResult {

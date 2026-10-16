@@ -1,9 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router';
-import { tightStackClass } from '@/components/legendStyles';
 import {
-  detailListClass,
   LegendPanel,
   rowTouchTargetClass,
   SectionLegend,
@@ -160,12 +158,5 @@ describe('ControlVocabularyPrimitives (GSPP-303 T4)', () => {
       expect(term.nextElementSibling).not.toHaveClass('inline');
     }
     expect(screen.getByText('Wirkt hin.').textContent).toBe('Wirkt hin.');
-  });
-
-  it('Detail-Listen halten nach einer offenen Karte 12 px zum nächsten Eintrag', () => {
-    // Listenzeilen stehen 6 px auseinander; die Karte in einem Eintrag außer
-    // dem letzten bekommt deshalb `mb-3` (Abstandsregel in legendStyles).
-    expect(detailListClass.split(' ')).toContain(tightStackClass);
-    expect(tightStackClass).toBe('[&>:not(:last-child)_[data-vocab-card]]:mb-3');
   });
 });

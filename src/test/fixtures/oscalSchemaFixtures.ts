@@ -29,7 +29,7 @@ import type { OscalRootKey, PinnedOscalVersion } from '@/domain/oscalVersionMatr
  * Lauf ist damit das billige Negativorakel gegen eine Ajv-Version ohne
  * `unicodeRegExp` — etwa die transitiv über ESLint vorhandene 6.15.0.
  */
-export const TOKEN_DATATYPE_PROBE_CONTROL_ID = 'ac-1';
+const TOKEN_DATATYPE_PROBE_CONTROL_ID = 'ac-1';
 
 function makeMetadata(oscalVersion: PinnedOscalVersion): Record<string, unknown> {
   return {

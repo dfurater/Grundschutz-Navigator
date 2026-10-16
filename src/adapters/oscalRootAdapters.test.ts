@@ -8,7 +8,7 @@ import {
   parseOscalDocument,
   profileRootAdapter,
 } from './oscalRootAdapters';
-import { ROOT_DISPATCH_DIAGNOSTIC_CODES } from './oscalRootDispatch';
+import { ROOT_DISPATCH_DIAGNOSTIC_CODES } from '@/domain/oscalRootDispatch';
 import type { Catalog, OscalDocumentContext } from '@/domain/models';
 import { OSCAL_ROOT_KEYS, VERSION_MATRIX_DIAGNOSTIC_CODES } from '@/domain/oscalVersionMatrix';
 import { listOscalArtifacts } from '@/domain/sourceRegistry';

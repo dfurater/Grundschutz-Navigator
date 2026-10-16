@@ -116,7 +116,7 @@ export type ProfileResolutionWorkBreakdown = Readonly<
   Record<ProfileResolutionWorkUnit, number>
 >;
 
-/** Die Messwerte eines Laufs, für Korpuslauf und Messapparat. */
+/** Die Zählerstände eines Laufs, für Korpuslauf und Tests. */
 export interface ProfileResolutionBudgetUsage {
   /** Verbrauchte Arbeitseinheiten über alle Kategorien. */
   readonly workUnits: number;
@@ -124,9 +124,8 @@ export interface ProfileResolutionBudgetUsage {
    * Dieselbe Summe, aufgeschlüsselt nach Kategorie. Rein beobachtend: Die
    * Grenze gilt über die SUMME, nicht je Kategorie — eine Arbeitseinheit
    * kostet unabhängig davon, in welcher Phase sie anfällt. Die
-   * Aufschlüsselung existiert für den Messapparat, der je Kategorie ein
-   * ungünstigstes Profil fährt und belegen muss, dass dieses Profil die
-   * behauptete Kategorie wirklich treibt.
+   * Aufschlüsselung belegt in `profileResolutionBudget.enforcement.test.ts`,
+   * dass ein echter Auflösungslauf jede der sechs Kategorien bucht.
    */
   readonly workUnitsByCategory: ProfileResolutionWorkBreakdown;
   /**

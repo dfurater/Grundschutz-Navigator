@@ -33,8 +33,6 @@ import {
 import { resolveSchemaVendorTarget } from './oscal-schema-vendor.mjs';
 import { REPO_ROOT, readBodyWithLimit } from './security-guards.mjs';
 
-export { resolveSchemaVendorTarget } from './oscal-schema-vendor.mjs';
-
 const NIST_RELEASE_HOST = 'github.com';
 const NIST_RELEASE_PATH_PREFIX = '/usnistgov/OSCAL/releases/download/';
 const MAX_SCHEMA_BYTES = 1024 * 1024;

@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
-import { createHash } from 'node:crypto';
+import { encodeRepositoryPath } from '../src/domain/repositoryPath.mjs';
+import { compareStringsByCodeUnit } from '../src/domain/codeUnitOrder.mjs';
+import { computeGitBlobSha, sha256Hex } from './contentHashes.mjs';
 import { execFile } from 'node:child_process';
 import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -105,7 +107,7 @@ export function verifyPinnedAsset({ bytes, expectedSha256, apiDigest, checksumDi
     throw new Error('Gepinnte Asset-Prüfung erhielt ungültige Eingaben');
   }
 
-  const actualSha256 = createHash('sha256').update(bytes).digest('hex');
+  const actualSha256 = sha256Hex(bytes);
   if (actualSha256 !== expectedSha256) {
     throw new Error('Berechneter SHA-256 stimmt nicht mit dem Pin überein');
   }
@@ -224,7 +226,8 @@ export function selectManifestOscalArtifacts(manifest, registry = listOscalArtif
   const vocabularyArtifacts = manifest.files.filter((file) => file.rootType === 'vocabulary');
   const versionCoverage = Object.fromEntries(
     [...new Set(oscalArtifacts.map((artifact) => artifact.oscalVersion))]
-      .sort(compareVersionStrings)
+      // Lexikalische Ausgabeordnung, keine numerische Versionsordnung.
+      .sort(compareStringsByCodeUnit)
       .map((version) => [
         version,
         oscalArtifacts.filter((artifact) => artifact.oscalVersion === version).length,
@@ -237,15 +240,6 @@ export function selectManifestOscalArtifacts(manifest, registry = listOscalArtif
     versionCoverage: Object.freeze(versionCoverage),
     missingBlockedArtifacts: Object.freeze(missingBlockedArtifacts),
   });
-}
-
-// Deterministische UTF-16-Code-Unit-Ordnung (identisch zur früheren
-// parameterlosen Sortierung), unabhängig von Locale und ICU-Version der
-// Laufzeit. Lexikalisch, keine Versionsordnung (`1.10.0` stünde vor `1.2.0`);
-// sie bestimmt nur die Ausgabereihenfolge von versionCoverage.
-function compareVersionStrings(left, right) {
-  if (left === right) return 0;
-  return left < right ? -1 : 1;
 }
 
 const RELEASE_ASSET_HOSTS = new Set([
@@ -353,15 +347,11 @@ export function prepareGoOscalInput(bytes, artifactKey) {
   return Buffer.from(JSON.stringify(withoutSchemaDirective));
 }
 
-function encodeRepoPath(repoPath) {
-  return repoPath.split('/').map(encodeURIComponent).join('/');
-}
-
 // Nur zwei Pins: Die Funktion prüft checksums.txt selbst, das sich nicht selbst
 // belegen kann. Binary und SBOM prüft verifyPinnedAsset zusätzlich gegen
 // checksums.txt.
 function verifyApiPinnedAsset(bytes, expectedSha256, apiDigest) {
-  const actualSha256 = createHash('sha256').update(bytes).digest('hex');
+  const actualSha256 = sha256Hex(bytes);
   if (actualSha256 !== expectedSha256) {
     throw new Error('Berechneter SHA-256 stimmt nicht mit dem Pin überein');
   }
@@ -485,14 +475,7 @@ function bsiRawUrl(manifest, artifact) {
   if (manifest.repository !== `https://github.com/${OFFICIAL_BSI_REPO}`) {
     throw new Error('Manifest verweist nicht auf das offizielle BSI-Repository');
   }
-  return `https://raw.githubusercontent.com/${OFFICIAL_BSI_REPO}/${manifest.snapshotCommitSha}/${encodeRepoPath(artifact.upstreamPath)}`;
-}
-
-function computeGitBlobSha(contents) {
-  return createHash('sha1')
-    .update(`blob ${contents.length}\0`)
-    .update(contents)
-    .digest('hex');
+  return `https://raw.githubusercontent.com/${OFFICIAL_BSI_REPO}/${manifest.snapshotCommitSha}/${encodeRepositoryPath(artifact.upstreamPath)}`;
 }
 
 async function fetchVerifiedBsiArtifact(manifest, artifact, fetchImpl, retryDelaysMs) {
@@ -513,7 +496,7 @@ async function fetchVerifiedBsiArtifact(manifest, artifact, fetchImpl, retryDela
     maxBytes: MAX_DOCUMENT_BYTES,
     label: 'BSI-OSCAL-Artefakt',
   });
-  if (createHash('sha256').update(bytes).digest('hex') !== artifact.contentSha256) {
+  if (sha256Hex(bytes) !== artifact.contentSha256) {
     throw new Error('BSI-Artefakt verletzt den Manifest-Inhaltspin');
   }
   if (computeGitBlobSha(bytes) !== artifact.gitBlobSha) {

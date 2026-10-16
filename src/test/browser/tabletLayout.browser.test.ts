@@ -6,7 +6,7 @@ import { commands, page } from 'vitest/browser';
 import { CatalogContext } from '@/state/CatalogContext';
 import { COMPACT_QUERY, DESKTOP_QUERY, OWN_SCROLL_AREA_QUERY } from '@/hooks/breakpointQueries';
 import { appShellAt } from './appShellRouter';
-import { openDrawer } from './mobileDrawerHarness';
+import { openDrawer, scrollerOf } from './mobileDrawerHarness';
 import { createTabletCatalogState } from './tabletCatalogFixture';
 import '@/index.css';
 
@@ -80,16 +80,6 @@ const TITLES: Record<string, string> = {
 };
 const menuButton = (shell: ParentNode) =>
   shell.querySelector<HTMLButtonElement>('button[aria-controls]')!;
-
-/** Nächster Vorfahr mit eigenem Scrollbereich. */
-function scrollerOf(element: Element) {
-  let node: Element | null = element.parentElement;
-  while (node) {
-    if (node.scrollHeight - node.clientHeight > 10) return node as HTMLElement;
-    node = node.parentElement;
-  }
-  throw new Error('kein scrollbarer Vorfahr gefunden');
-}
 
 test.each(Object.entries(TABLETS))('zeigt %s als Tablet-Ansicht mit Zwei-Pane und Schublade', async (_name, profile) => {
   const shell = await renderApp(profile);

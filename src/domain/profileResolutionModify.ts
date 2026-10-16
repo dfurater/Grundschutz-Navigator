@@ -15,18 +15,20 @@
 // alter/add: Implizite Bindung (kein by-id) wirkt auf die ganze Control —
 // starting fügt vor bestehende derselben Kategorie ein, ending dahinter;
 // before/after gelten wie starting/ending. Explizite Bindung (by-id)
-// adressiert einen Part innerhalb der Control. Nach jeder Ergänzung steht
-// der Control-Knoten in kanonischer Schlüsselordnung
+// adressiert Parameter, Parts und Kind-Controls innerhalb der Control. Die
+// Platzierung erlaubt nur Kategorien des Zieltyps und der Position. Nach jeder
+// Ergänzung steht der Control-Knoten in kanonischer Schlüsselordnung
 // (id, class, title, params, props, links, parts, controls).
 //
 // Alle Transformationen erzeugen Kopien; Eingabeknoten bleiben unangetastet.
 // =============================================================================
 
-import type { JsonObject } from '@/adapters/oscalProfileReaders';
+import { isJsonContainer, type JsonObject } from '@/domain/jsonGuards';
 import type { ProfileSetParameter } from './profileModel';
 
 /** Loose Direktivenform für Tests und Resolver-Mapping (ohne Pflichtpfade). */
 export interface AlterationDirective {
+  readonly path?: string;
   readonly controlId?: string;
   readonly adds?: readonly {
     readonly position?: string;
@@ -47,21 +49,15 @@ export interface AlterationDirective {
 }
 
 import {
-  isJsonObject,
   ownArrayDataElements,
   ownDataValue,
 } from './profileResolutionSelection';
+import { copyOwnDataMembers, safeArrayMember } from './profileResolutionMembers';
 import { CLASS_2_IMPORT_LIMITS } from './oscalImportContract';
 import {
   PROFILE_RESOLUTION_WORK_UNITS,
   type ProfileResolutionBudget,
 } from './profileResolutionBudget';
-
-/** Array-Wert eines Mitglieds, rein deskriptorbasiert gelesen. */
-function safeArrayMember(node: JsonObject, key: string): readonly unknown[] | undefined {
-  const value = ownDataValue(node, key);
-  return Array.isArray(value) ? value : undefined;
-}
 
 /** Kanonische Schlüsselordnung eines Control-/Group-Knotens. */
 const CANONICAL_CONTROL_KEYS = [
@@ -100,20 +96,8 @@ function readStringMember(node: JsonObject, key: string): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-function copyOwnDataMembers(node: JsonObject, budget: ProfileResolutionBudget): JsonObject {
-  budget.admitWorkingNode();
-  const copy: JsonObject = {};
-  for (const key of Reflect.ownKeys(node)) {
-    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
-    if (typeof key !== 'string') continue;
-    const value = ownDataValue(node, key);
-    if (value !== undefined) copy[key] = value;
-  }
-  return copy;
-}
-
 function canonicalCopyWithParams(control: JsonObject, params: readonly unknown[], budget: ProfileResolutionBudget): JsonObject {
-  const copy = copyOwnDataMembers(control, budget);
+  const copy = copyOwnDataMembers(control, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
   copy['params'] = params;
   return canonicalizeControlKeys(copy, budget);
 }
@@ -137,7 +121,7 @@ export function applySetParametersToControl(
   budget: ProfileResolutionBudget,
 ): JsonObject {
   const directives = ownArrayDataElements(setParameters, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE).filter(
-    (directive): directive is ProfileSetParameter => isJsonObject(directive),
+    (directive): directive is ProfileSetParameter => isJsonContainer(directive),
   );
   if (directives.length === 0) return control;
 
@@ -173,7 +157,7 @@ function applySingleSetParameter(
   // steht danach im Zwischengraphen — also ein Container vor der Allokation.
   budget.admitWorkingNode();
   const next = ownArrayDataElements(params, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE).map((param) => {
-    if (!isJsonObject(param)) return param;
+    if (!isJsonContainer(param)) return param;
     if (readStringMember(param, 'id') !== directiveParamId) return param;
 
     changed = true;
@@ -215,12 +199,16 @@ function applySingleSetParameter(
   return changed ? next : params;
 }
 
-/** Ergebnis einer Alteration: gefilterter/neuer Control-Knoten. */
+export type AlterationResult =
+  | { readonly ok: true; readonly value: JsonObject }
+  | { readonly ok: false; readonly additionIndex: number };
+
+/** Ergebnis einer Alteration ohne Teilergebnis bei unplatzierbarer Ergänzung. */
 export function applyAlteration(
   control: JsonObject,
   alteration: AlterationDirective,
   budget: ProfileResolutionBudget,
-): JsonObject {
+): AlterationResult {
   let working = control;
   const removesValue = ownDataValue(alteration as unknown as JsonObject, 'removes');
   const addsValue = ownDataValue(alteration as unknown as JsonObject, 'adds');
@@ -233,36 +221,38 @@ export function applyAlteration(
   // entfernen).
   for (const removal of removals) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
-    if (isJsonObject(removal)) {
+    if (isJsonContainer(removal)) {
       working = applyRemovals(
         working,
         removal as NonNullable<AlterationDirective['removes']>[number], budget
       );
     }
   }
-  for (const addition of additions) {
+  for (const [additionIndex, addition] of additions.entries()) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
-    if (isJsonObject(addition)) {
-      working = applyAddition(
+    if (isJsonContainer(addition)) {
+      const result = applyAddition(
         working,
         addition as NonNullable<AlterationDirective['adds']>[number], budget
       );
+      if (!result.ok) return { ok: false, additionIndex };
+      working = result.value;
     }
   }
 
-  return canonicalizeControlKeys(working, budget);
+  return { ok: true, value: working === control ? control : canonicalizeControlKeys(working, budget) };
 }
 
 function applyAddition(
   control: JsonObject,
   addition: NonNullable<AlterationDirective['adds']>[number],
   budget: ProfileResolutionBudget,
-): JsonObject {
-  const explicitPartId = ownDataValue(addition as JsonObject, 'byId');
-  if (typeof explicitPartId === 'string' && explicitPartId.length > 0) {
-    return applyExplicitAddition(control, explicitPartId, addition, budget);
+): AdditionResult {
+  const explicitTargetId = ownDataValue(addition as JsonObject, 'byId');
+  if (typeof explicitTargetId === 'string' && explicitTargetId.length > 0) {
+    return applyExplicitAddition(control, explicitTargetId, addition, budget);
   }
-  return applyImplicitAddition(control, addition, budget);
+  return { ok: true, value: applyImplicitAddition(control, addition, budget) };
 }
 
 /**
@@ -279,7 +269,7 @@ function applyImplicitAddition(
   const position = typeof positionValue === 'string' ? positionValue : 'ending';
   const startLike = position === 'starting' || position === 'before';
 
-  const result = copyOwnDataMembers(control, budget);
+  const result = copyOwnDataMembers(control, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
   const pendingLists = collectPendingAdditionLists(addition, budget);
 
   const addTitle = ownDataValue(addition as JsonObject, 'title');
@@ -316,175 +306,164 @@ function collectPendingAdditionLists(
   return pending;
 }
 
-/**
- * Explizite Bindung: Der Ziel-Part (by-id) wird im parts-Baum gesucht und
- * die Inhalte relativ zu ihm eingefügt. before → vor dem Part, after →
- * danach, starting → innerhalb des Parts am Anfang, ending → innerhalb am
- * Ende. Fehlt der Ziel-Part, bleibt die Control unverändert.
- */
-function applyExplicitAddition(
-  control: JsonObject,
-  targetPartId: string,
-  addition: NonNullable<AlterationDirective['adds']>[number],
-  budget: ProfileResolutionBudget,
-): JsonObject {
-  const updatedParts = insertIntoPartsTree(
-    ownDataValue(control, 'parts'),
-    targetPartId,
-    addition, budget
-  );
-  if (updatedParts.inserted) {
-    budget.admitWorkingNode();
-    const copyExp: JsonObject = {};
-    for (const key of Reflect.ownKeys(control)) {
-      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
-      if (typeof key !== 'string') continue;
-      const value = ownDataValue(control, key);
-      if (value !== undefined) copyExp[key] = value;
-    }
-    copyExp['parts'] = updatedParts.value;
-    return canonicalizeControlKeys(copyExp, budget);
-  }
+type Addition = NonNullable<AlterationDirective['adds']>[number];
+type TargetList = 'params' | 'parts' | 'controls';
+type AdditionResult = { readonly ok: true; readonly value: JsonObject } | { readonly ok: false };
+type SearchResult =
+  | { readonly kind: 'missing' }
+  | { readonly kind: 'unplaceable' }
+  | { readonly kind: 'inserted'; readonly value: readonly unknown[] };
 
-  // Ziel-Part nicht gefunden: unverändert (fail-silent gemäß Draft-Vertrag
-  // für fehlende Ziele — kontrolliert, ohne Teilergebnis zu behaupten).
-  return control;
+const TARGET_LISTS = ['params', 'parts', 'controls'] as const;
+const CHILD_TARGET_LISTS: Readonly<Record<TargetList, readonly TargetList[]>> = {
+  params: [], parts: ['parts'], controls: TARGET_LISTS,
+};
+const INSIDE_CATEGORIES = {
+  params: ['props', 'links'],
+  parts: ['props', 'links', 'parts'],
+  controls: ['params', 'props', 'links', 'parts'],
+} as const;
+
+interface TargetFrame {
+  readonly node: JsonObject;
+  readonly type: TargetList;
+  readonly depth: number;
 }
 
-/** Fügt die Addition relativ zum getroffenen Part ein. */
-function insertAtPart(
-  parts: JsonObject[],
-  index: number,
-  addition: NonNullable<AlterationDirective['adds']>[number],
-  budget: ProfileResolutionBudget,
-): { readonly inserted: boolean; readonly value: unknown } {
-  const positionValue = ownDataValue(addition as JsonObject, 'position');
-  const position = typeof positionValue === 'string' ? positionValue : 'ending';
-  const additions = collectAdditionLists(addition, budget);
-
-  // Jeder der drei Zweige legt genau eine neue parts-Liste an, die als
-  // Mitglied im Zwischengraphen stehen bleibt.
-  if (position === 'before') {
-    budget.admitWorkingNode();
-    return { inserted: true, value: [...parts.slice(0, index), ...additions, ...parts.slice(index)] };
-  }
-  if (position === 'after' || position === 'ending') {
-    budget.admitWorkingNode();
-    return { inserted: true, value: [...parts.slice(0, index + 1), ...additions, ...parts.slice(index + 1)] };
-  }
-  // starting: innerhalb des Ziel-Parts am Anfang einfügen.
-  const inner = filterAsIsInnerParts(parts[index]!, budget);
-  budget.admitWorkingNode();
-  const merged = [...additions, ...inner];
-  budget.admitWorkingNode();
-  const copyStart: JsonObject = {};
-  for (const key of Reflect.ownKeys(parts[index]!)) {
+function pushTargetChildren(frame: TargetFrame, stack: TargetFrame[], budget: ProfileResolutionBudget): void {
+  for (const key of CHILD_TARGET_LISTS[frame.type]) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
-    if (typeof key !== 'string') continue;
-    const value = ownDataValue(parts[index]! as object, key);
-    if (value !== undefined) copyStart[key] = value;
+    const list = safeArrayMember(frame.node, key);
+    if (list === undefined) continue;
+    for (const child of ownArrayDataElements(list, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE)) {
+      if (isJsonContainer(child)) stack.push({ node: child, type: key, depth: frame.depth + 1 });
+    }
   }
-  copyStart['parts'] = merged;
-  return { inserted: true, value: copyStart as JsonObject };
 }
 
-/** Misst die maximale Schachtelungstiefe eines Parts-Baums iterativ. */
-function measurePartsDepth(partsValue: unknown, budget: ProfileResolutionBudget): number {
-  if (!Array.isArray(partsValue)) return 0;
-  let maxDepth = 0;
-  const stack: Array<{ parts: unknown[]; depth: number }> = [
-    { parts: partsValue as unknown[], depth: 1 },
-  ];
-  const visited = new Set<object>();
+/** Prüft die Tiefe des gesamten Suchbaums vor dem rekursiven Abstieg. */
+function exceedsTargetDepth(control: JsonObject, budget: ProfileResolutionBudget): boolean {
+  const stack: TargetFrame[] = [{ node: control, type: 'controls', depth: 0 }];
+  const visited = new Map<object, number>();
   while (stack.length > 0) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
-    const { parts, depth } = stack.pop()!;
-    if (visited.has(parts as object)) continue;
-    visited.add(parts as object);
-    maxDepth = Math.max(maxDepth, depth);
-    if (depth > CLASS_2_IMPORT_LIMITS.maxDepth) return depth;
-    for (const part of ownArrayDataElements(parts, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE)) {
-      budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
-      if (isJsonObject(part)) {
-        const nested = ownDataValue(part, 'parts');
-        if (Array.isArray(nested)) {
-          stack.push({ parts: nested as unknown[], depth: depth + 1 });
-        }
-      }
-    }
+    const frame = stack.pop()!;
+    const { node, depth } = frame;
+    if (depth > CLASS_2_IMPORT_LIMITS.maxDepth) return true;
+    if ((visited.get(node) ?? -1) >= depth) continue;
+    visited.set(node, depth);
+    pushTargetChildren(frame, stack, budget);
   }
-  return maxDepth;
+  return false;
 }
 
-function insertIntoPartsTree(
-  partsValue: unknown,
-  targetPartId: string,
-  addition: NonNullable<AlterationDirective['adds']>[number],
+/** Explizite Bindung sucht unterhalb der Control in kanonischer Dokumentordnung. */
+function applyExplicitAddition(
+  control: JsonObject,
+  targetId: string,
+  addition: Addition,
   budget: ProfileResolutionBudget,
-): { readonly inserted: boolean; readonly value: unknown } {
-  if (!Array.isArray(partsValue)) return { inserted: false, value: partsValue };
-  // Tiefenbegrenzung am exportierten Rand: Eine 12.000-Ebenen-Kette kann die
-  // Klasse-2-Kette nicht passieren (maxDepth 64); statt RangeError wird
-  // kontrolliert nicht eingefügt.
-  if (measurePartsDepth(partsValue, budget) > CLASS_2_IMPORT_LIMITS.maxDepth) {
-    return { inserted: false, value: partsValue };
-  }
+): AdditionResult {
+  if (exceedsTargetDepth(control, budget)) return { ok: true, value: control };
+  return insertIntoTargetNode(control, 'controls', targetId, addition, budget);
+}
 
-  // Diese Liste wird in beiden Ausgängen als neuer parts-Wert zurückgegeben
-  // und steht damit im Zwischengraphen.
+function insertIntoTargetNode(
+  node: JsonObject,
+  nodeType: TargetList,
+  targetId: string,
+  addition: Addition,
+  budget: ProfileResolutionBudget,
+): AdditionResult {
+  for (const key of CHILD_TARGET_LISTS[nodeType]) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
+    const list = safeArrayMember(node, key);
+    if (list === undefined) continue;
+    const result = insertIntoTargetList(list, key, targetId, addition, budget);
+    if (result.kind === 'unplaceable') return { ok: false };
+    if (result.kind === 'inserted') {
+      const copy = copyOwnDataMembers(node, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
+      copy[key] = result.value;
+      return { ok: true, value: nodeType === 'controls' ? canonicalizeControlKeys(copy, budget) : copy };
+    }
+  }
+  return { ok: true, value: node };
+}
+
+function insertIntoTargetList(
+  list: readonly unknown[],
+  type: TargetList,
+  targetId: string,
+  addition: Addition,
+  budget: ProfileResolutionBudget,
+): SearchResult {
+  const entries = ownArrayDataElements(list, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
+  for (let index = 0; index < entries.length; index += 1) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
+    const node = entries[index];
+    if (!isJsonContainer(node)) continue;
+    if (readStringMember(node, 'id') === targetId) return insertAtTarget(entries, index, type, addition, budget);
+    const nested = insertIntoTargetNode(node, type, targetId, addition, budget);
+    if (!nested.ok) return { kind: 'unplaceable' };
+    if (nested.value !== node) {
+      budget.admitWorkingNode();
+      const updated = [...entries];
+      updated[index] = nested.value;
+      return { kind: 'inserted', value: updated };
+    }
+  }
+  return { kind: 'missing' };
+}
+
+/** Validiert jede nicht leere Kategorie vor der ersten Änderung am Ziel. */
+function insertAtTarget(
+  entries: readonly unknown[],
+  index: number,
+  type: TargetList,
+  addition: Addition,
+  budget: ProfileResolutionBudget,
+): SearchResult {
+  const position = ownDataValue(addition as JsonObject, 'position');
+  const beside = position === 'before' || position === 'after';
+  if (beside && type === 'controls') return { kind: 'unplaceable' };
+  const pending = collectPendingAdditionLists(addition, budget);
+  const allowed: readonly string[] = beside ? [type] : INSIDE_CATEGORIES[type];
+  for (const [key, values] of pending) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
+    if (values.length > 0 && !allowed.includes(key)) return { kind: 'unplaceable' };
+  }
+  if (beside) {
+    const additions = (pending.get(type) ?? []).filter(isJsonContainer);
+    const offset = position === 'before' ? index : index + 1;
+    budget.admitWorkingNode();
+    return { kind: 'inserted', value: [...entries.slice(0, offset), ...additions, ...entries.slice(offset)] };
+  }
+  return insertInsideTarget(entries, index, type, pending, position === 'starting', budget);
+}
+
+function insertInsideTarget(
+  entries: readonly unknown[],
+  index: number,
+  type: TargetList,
+  pending: ReadonlyMap<string, readonly unknown[]>,
+  starting: boolean,
+  budget: ProfileResolutionBudget,
+): SearchResult {
+  const allowed: readonly string[] = INSIDE_CATEGORIES[type];
+  const target = copyOwnDataMembers(entries[index] as JsonObject, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
+  for (const [key, values] of pending) {
+    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
+    if (!allowed.includes(key)) continue;
+    const existing = safeArrayMember(target, key);
+    if (existing === undefined && values.length === 0) continue;
+    const elements = ownArrayDataElements(existing ?? [], budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
+    budget.admitWorkingNode();
+    target[key] = starting ? [...values, ...elements] : [...elements, ...values];
+  }
   budget.admitWorkingNode();
-  const parts = ownArrayDataElements(partsValue, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE).filter(
-    (part): part is JsonObject => isJsonObject(part),
-  );
-
-  for (let index = 0; index < parts.length; index += 1) {
-    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
-    const part = parts[index];
-    if (!isJsonObject(part)) continue;
-    const partId = readStringMember(part, 'id');
-    if (partId === targetPartId) {
-      return insertAtPart(parts, index, addition, budget);
-    }
-
-    // Rekursiv in verschachtelte parts absteigen.
-    const nestedParts = ownDataValue(part, 'parts');
-    if (nestedParts !== undefined) {
-      const nestedResult = insertIntoPartsTree(nestedParts, targetPartId, addition, budget);
-      if (nestedResult.inserted) {
-        const copy = copyOwnDataMembers(part, budget);
-        copy['parts'] = nestedResult.value;
-        parts[index] = copy;
-        return { inserted: true, value: parts };
-      }
-    }
-  }
-
-  return { inserted: false, value: parts };
-}
-
-/** Bestehende parts-Liste eines Parts als Kopie. */
-function filterAsIsInnerParts(part: JsonObject, budget: ProfileResolutionBudget): readonly unknown[] {
-  const value = ownDataValue(part, 'parts');
-  return Array.isArray(value) ? ownArrayDataElements(value, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE) : [];
-}
-
-
-function collectAdditionLists(
-  addition: NonNullable<AlterationDirective['adds']>[number],
-  budget: ProfileResolutionBudget,
-): readonly JsonObject[] {
-  const lists: JsonObject[] = [];
-  for (const key of ['params', 'props', 'links', 'parts'] as const) {
-    budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
-    const value = ownDataValue(addition as JsonObject, key);
-    if (Array.isArray(value)) {
-      for (const entry of ownArrayDataElements(value, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE)) {
-        budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE);
-        if (isJsonObject(entry)) lists.push(entry);
-      }
-    }
-  }
-  return lists;
+  const updated = [...entries];
+  updated[index] = type === 'controls' ? canonicalizeControlKeys(target, budget) : target;
+  return { kind: 'inserted', value: updated };
 }
 
 /** Wendet eine remove-Anweisung auf alle Mitgliedslisten einer Control an. */
@@ -510,7 +489,7 @@ function applyRemovals(
     // schreibt nichts gut, deshalb kostet auch ein reiner `removes`-Lauf.
     budget.admitWorkingNode();
     result[listKey] = ownArrayDataElements(members, budget, PROFILE_RESOLUTION_WORK_UNITS.ALTER_CANDIDATE).filter((member) => {
-      if (!isJsonObject(member)) return true;
+      if (!isJsonContainer(member)) return true;
       return !removalMatches(member, removal, listKey, budget);
     });
   }

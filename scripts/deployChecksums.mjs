@@ -18,10 +18,14 @@
  * Schreiber im Build auf, die CLI prüft das fertige `dist/` in CI.
  */
 
-import { createHash } from 'node:crypto';
-import { closeSync, constants, fstatSync, openSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { compareStringsByCodeUnit } from '../src/domain/codeUnitOrder.mjs';
+import { sha256Hex } from './contentHashes.mjs';
+import { NotRegularFileError, readRegularFileNoFollowSync } from './regularFileRead.mjs';
+import { readdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+
+export { sha256Hex } from './contentHashes.mjs';
 
 export const CHECKSUMS_FILE = 'SHA256SUMS';
 
@@ -52,12 +56,6 @@ export function assertSafeRelativePath(path) {
   return path;
 }
 
-// Standard-Stringsortierung: UTF-16-Codeunits, unabhängig von der Locale.
-function byCodeUnit(a, b) {
-  if (a < b) return -1;
-  return a > b ? 1 : 0;
-}
-
 /** Alle veröffentlichten regulären Dateien unter `distDir`, relativ und sortiert. */
 export function collectDeployedFiles(distDir) {
   const root = resolve(distDir);
@@ -80,40 +78,26 @@ export function collectDeployedFiles(distDir) {
     }
   };
   walk(root, '');
-  return files.sort(byCodeUnit);
+  return files.sort(compareStringsByCodeUnit);
 }
 
 /**
- * Liest eine reguläre Datei ohne Prüf-/Lese-Lücke: `O_NOFOLLOW` lehnt einen
- * Symlink am Pfad ab, und Typprüfung wie Lesen laufen über denselben
- * Dateideskriptor. `O_NONBLOCK` verhindert, dass eine FIFO das Öffnen
- * blockiert, bevor `fstat` sie ablehnen kann.
+ * Liest eine reguläre Datei über `readRegularFileNoFollowSync` und übersetzt
+ * dessen Fehler in `DeploymentManifestError` mit `label` als Bezeichnung.
  */
 export function readRegularFileNoFollow(path, label = 'Datei') {
-  let fd;
   try {
-    fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+    return readRegularFileNoFollowSync(path);
   } catch (error) {
-    if (error.code === 'ELOOP') {
-      throw new DeploymentManifestError(`${label} ist keine reguläre Datei (Symlink): ${path}`);
+    if (error instanceof NotRegularFileError) {
+      const suffix = error.symlink ? ' (Symlink)' : '';
+      throw new DeploymentManifestError(`${label} ist keine reguläre Datei${suffix}: ${path}`);
     }
     if (error.code === 'ENOENT') {
       throw new DeploymentManifestError(`${label} fehlt: ${path}`);
     }
     throw new DeploymentManifestError(`${label} nicht lesbar: ${path} (${error.code ?? error.message})`);
   }
-  try {
-    if (!fstatSync(fd).isFile()) {
-      throw new DeploymentManifestError(`${label} ist keine reguläre Datei: ${path}`);
-    }
-    return readFileSync(fd);
-  } finally {
-    closeSync(fd);
-  }
-}
-
-export function sha256Hex(bytes) {
-  return createHash('sha256').update(bytes).digest('hex');
 }
 
 /** Kanonisches Manifest: `<64 hex>  <pfad>\n` je Datei, ohne Selbsteintrag. */
@@ -158,7 +142,7 @@ export function parseChecksumsManifest(text) {
     if (path === CHECKSUMS_FILE) {
       throw new DeploymentManifestError('Manifest enthält einen Selbsteintrag.');
     }
-    if (previous !== undefined && byCodeUnit(previous, path) >= 0) {
+    if (previous !== undefined && compareStringsByCodeUnit(previous, path) >= 0) {
       throw new DeploymentManifestError(`Manifestpfade nicht eindeutig sortiert bei ${path}`);
     }
     entries.set(path, hash);

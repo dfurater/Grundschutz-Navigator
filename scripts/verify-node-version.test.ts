@@ -1,6 +1,5 @@
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { createRepositoryFixture } from '../src/test/workflowFixtures';
+import { rm } from 'node:fs/promises';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   NodeVersionError,
@@ -15,18 +14,7 @@ import { listDefinitionFiles } from './workflowDefinitions.mjs';
 
 const temporaryDirectories = new Set<string>();
 
-async function makeRepository(files: Record<string, string>): Promise<string> {
-  const root = await mkdtemp(resolve(tmpdir(), 'gspp-node-version-'));
-  temporaryDirectories.add(root);
-
-  for (const [path, contents] of Object.entries(files)) {
-    const absolute = join(root, path);
-    await mkdir(resolve(absolute, '..'), { recursive: true });
-    await writeFile(absolute, contents, 'utf8');
-  }
-
-  return root;
-}
+const makeRepository = createRepositoryFixture(temporaryDirectories, 'gspp-node-version-');
 
 const SETUP_NODE_SHA = 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0';
 

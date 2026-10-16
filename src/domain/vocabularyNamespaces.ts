@@ -15,18 +15,10 @@
  * das gegen das Quellregister ab.
  */
 
+import { encodeRepositoryPath } from '@/domain/repositoryPath.mjs';
 import { SOURCE_REGISTRY } from './sourceRegistry';
 
 const BSI_REPOSITORY_URL = 'https://github.com/BSI-Bund/Stand-der-Technik-Bibliothek';
-
-/** Segmentweises Encoding wie in scripts/vocabulary-utils.mjs. */
-function encodeRepositoryPath(path: string): string {
-  return path
-    .split('/')
-    .filter(Boolean)
-    .map((segment) => encodeURIComponent(segment))
-    .join('/');
-}
 
 const namespaceCollection = SOURCE_REGISTRY.find(
   (entry) => entry.artifactKey === 'namespaces-bsi',
@@ -42,7 +34,7 @@ if (namespaceCollection?.kind !== 'vocabulary-collection') {
 export const BSI_NAMESPACE_DIRECTORY = namespaceCollection.upstreamDirectory;
 
 const BSI_NAMESPACE_ROOT =
-  `${BSI_REPOSITORY_URL}/tree/main/${encodeRepositoryPath(BSI_NAMESPACE_DIRECTORY)}`;
+  `${BSI_REPOSITORY_URL}/tree/main/${encodeRepositoryPath(BSI_NAMESPACE_DIRECTORY, { omitEmptySegments: true })}`;
 
 export const SECURITY_TARGETS_NAMESPACE_URL =
   `${BSI_NAMESPACE_ROOT}/security_targets.csv`;

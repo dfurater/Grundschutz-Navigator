@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 
+import { compareStringsByCodeUnit } from '../src/domain/codeUnitOrder.mjs';
 import { execFile } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { constants } from 'node:fs';
-import { mkdtemp, open, readFile, rm, writeFile } from 'node:fs/promises';
+import { computeGitBlobSha, sha256Hex } from './contentHashes.mjs';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
-import { fetchGitHubJson } from './githubApiFetch.mjs';
+import { DEFAULT_REQUEST_TIMEOUT_MS, fetchGitHubJson } from './githubApiFetch.mjs';
+import { readRegularFileNoFollow } from './regularFileRead.mjs';
 import {
   OFFICIAL_BSI_REPO,
   OFFICIAL_BSI_REPOSITORY_URL,
@@ -73,13 +74,7 @@ const REGISTRY_LIFECYCLES = new Set([
 
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 
-/**
- * Per-Request-Abbruchfrist für GitHub-API-Aufrufe (GSPP-430). Deutlich unter
- * dem 10-min-Job-Limit von `catalog-sync-guard`: Ein hängender API-Call
- * scheitert damit kontrolliert fail-closed, statt bis zum Job-Timeout zu
- * hängen.
- */
-export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+export { DEFAULT_REQUEST_TIMEOUT_MS };
 
 /**
  * Upstream-Pfade aller ausgelieferten Kataloge (GSPP-284). Die Sync-Lane prüft
@@ -673,23 +668,6 @@ export async function verifySnapshotProgress(previousSha, nextSha, {
   return comparison;
 }
 
-function computeGitBlobSha(contents) {
-  return createHash('sha1')
-    .update(`blob ${contents.length}\0`)
-    .update(contents)
-    .digest('hex');
-}
-
-/**
- * Code-Unit-Vergleich zweier Strings — semantisch identisch zur impliziten
- * Sortiersemantik von Array.prototype.sort(), aber ohne Ternär-Kaskade.
- */
-function compareStringsByCodeUnit(left, right) {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
-}
-
 export async function verifySnapshotFiles(manifest, {
   fetchImpl = fetch,
   token,
@@ -743,7 +721,7 @@ export async function verifySnapshotFiles(manifest, {
     if (computeGitBlobSha(contents) !== file.gitBlobSha) {
       throw new Error(`BSI artifact content does not match its Git blob SHA: ${file.path}`);
     }
-    const contentSha256 = createHash('sha256').update(contents).digest('hex');
+    const contentSha256 = sha256Hex(contents);
     if (contentSha256 !== file.contentSha256) {
       throw new Error(`Manifest contentSha256 does not match the BSI artifact: ${file.path}`);
     }
@@ -1047,22 +1025,6 @@ export async function loadSourceRegistryAtRef(baseSha, { cwd } = {}) {
     return previousRegistry;
   } finally {
     await rm(directory, { recursive: true, force: true });
-  }
-}
-
-/** Prüft und liest denselben Deskriptor; FIFOs dürfen das Öffnen nicht blockieren. */
-export async function readRegularFileNoFollow(filePath) {
-  const invalidFile = () => new Error('upstream-manifest.json must be a regular file, not a symlink');
-  let handle;
-  try {
-    handle = await open(filePath, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-    if (!(await handle.stat()).isFile()) throw invalidFile();
-    return await handle.readFile();
-  } catch (error) {
-    if (error?.code === 'ELOOP') throw invalidFile();
-    throw error;
-  } finally {
-    await handle?.close();
   }
 }
 

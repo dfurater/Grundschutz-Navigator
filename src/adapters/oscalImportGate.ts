@@ -50,9 +50,7 @@ function workerFailure(): Class2OscalImportResult {
 
 /**
  * Die Übertragung per Transfer-Liste löst den Puffer vom Sender. Die Kopie
- * lässt dem Aufrufer sein Original und kostet dafür eine zweite Bytekopie, die
- * das Speicherbudget einrechnet (composeHeapFootprint in
- * scripts/measureClass2BudgetReport.mjs).
+ * lässt dem Aufrufer sein Original und kostet dafür eine zweite Bytekopie.
  */
 function copyForTransfer(bytes: ArrayBuffer | Uint8Array): ArrayBuffer {
   const source = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);

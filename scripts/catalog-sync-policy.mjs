@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { pathToFileURL } from 'node:url';
+import { DEFAULT_REQUEST_TIMEOUT_MS, fetchGitHubJson } from './githubApiFetch.mjs';
 
 export const CATALOG_SYNC_REPOSITORY = 'dfurater/Grundschutz-Navigator';
 export const CATALOG_SYNC_RULESET_ID = 23067488;
@@ -200,34 +201,7 @@ export function validateCatalogSyncPolicy(repository, ruleset, {
   return true;
 }
 
-async function fetchGitHubJson(path, token, fetchImpl = fetch) {
-  const headers = {
-    Accept: 'application/vnd.github+json',
-    'X-GitHub-Api-Version': '2022-11-28',
-  };
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-
-  let response;
-  try {
-    response = await fetchImpl(`https://api.github.com/${path}`, { headers });
-  } catch (error) {
-    throw new Error(`GitHub policy API request failed: ${error instanceof Error ? error.message : 'network error'}`, { cause: error });
-  }
-
-  if (!response.ok) {
-    throw new Error(`GitHub policy API request failed with HTTP ${response.status}`);
-  }
-
-  try {
-    return await response.json();
-  } catch {
-    throw new Error('GitHub policy API returned invalid JSON');
-  }
-}
-
-async function fetchRepositoryMergeSettings(repository, token, fetchImpl = fetch) {
+async function fetchRepositoryMergeSettings(repository, { token, fetchImpl, requestTimeoutMs }) {
   if (!token) {
     throw new Error('GITHUB_TOKEN is required for repository merge policy checks');
   }
@@ -257,6 +231,7 @@ async function fetchRepositoryMergeSettings(repository, token, fetchImpl = fetch
         'X-GitHub-Api-Version': '2022-11-28',
       },
       body: JSON.stringify({ query, variables: { owner, name } }),
+      signal: AbortSignal.timeout(requestTimeoutMs),
     });
   } catch (error) {
     throw new Error(`GitHub policy GraphQL request failed: ${error instanceof Error ? error.message : 'network error'}`, { cause: error });
@@ -290,6 +265,7 @@ export async function fetchAndValidateCatalogSyncPolicy({
   token = process.env.GITHUB_TOKEN || process.env.GH_TOKEN,
   expectedRulesetUpdatedAt = process.env.CATALOG_SYNC_RULESET_UPDATED_AT,
   fetchImpl = fetch,
+  requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
 } = {}) {
   if (repository !== CATALOG_SYNC_REPOSITORY) {
     throw new Error(`GITHUB_REPOSITORY must be ${CATALOG_SYNC_REPOSITORY}`);
@@ -300,8 +276,13 @@ export async function fetchAndValidateCatalogSyncPolicy({
   }
 
   const [repositoryState, ruleset] = await Promise.all([
-    fetchRepositoryMergeSettings(repository, token, fetchImpl),
-    fetchGitHubJson(`repos/${repository}/rulesets/${rulesetId}`, token, fetchImpl),
+    fetchRepositoryMergeSettings(repository, { token, fetchImpl, requestTimeoutMs }),
+    fetchGitHubJson(`https://api.github.com/repos/${repository}/rulesets/${rulesetId}`, {
+      fetchImpl,
+      token,
+      label: 'GitHub policy API request',
+      requestTimeoutMs,
+    }),
   ]);
   validateCatalogSyncPolicy(repositoryState, ruleset, {
     allowRedactedBypassActors: true,

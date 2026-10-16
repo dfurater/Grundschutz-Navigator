@@ -1,6 +1,5 @@
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { createRepositoryFixture } from '../src/test/workflowFixtures';
+import { rm } from 'node:fs/promises';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   WorkflowDefinitionError,
@@ -14,18 +13,7 @@ import {
 
 const temporaryDirectories = new Set<string>();
 
-async function makeRepository(files: Record<string, string>): Promise<string> {
-  const root = await mkdtemp(resolve(tmpdir(), 'gspp-workflow-definitions-'));
-  temporaryDirectories.add(root);
-
-  for (const [path, contents] of Object.entries(files)) {
-    const absolute = join(root, path);
-    await mkdir(resolve(absolute, '..'), { recursive: true });
-    await writeFile(absolute, contents, 'utf8');
-  }
-
-  return root;
-}
+const makeRepository = createRepositoryFixture(temporaryDirectories, 'gspp-workflow-definitions-');
 
 const WORKFLOW = [
   'jobs:',

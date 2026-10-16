@@ -2,7 +2,7 @@ import { SECURITY_TARGET_RELEVANCE_ORDER } from '@/domain/securityTargets';
 import { Badge } from './Badge';
 import type { BadgeVariant } from './Badge';
 
-export function modalverbVariant(value?: string): BadgeVariant {
+function modalverbVariant(value?: string): BadgeVariant {
   switch (value) {
     case 'MUSS':
       return 'muss';

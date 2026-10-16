@@ -188,9 +188,8 @@ describe('verpflichtende Auflösung aller drei BSI-Profile', () => {
       expect(firstRun.output.controllingTrustClass).toBe('class-1-verified-public');
 
       // KOPFRAUM-NACHWEIS (GSPP-345): Die vier laufenden Zähler dieses
-      // Profils. Sie begründen den Grenzwert NICHT — das tut die
-      // kostenbasierte Messreihe in `docs/OSCAL_VALIDATION.md` — sondern
-      // belegen, dass die legitime Nutzung unter beiden Grenzen bleibt.
+      // Profils. Sie begründen den Grenzwert NICHT, sondern belegen, dass
+      // die legitime Nutzung unter beiden Grenzen bleibt.
       // Determinismus schließt ein, dass beide Läufe dieselbe Arbeit kosten.
       const usage = firstRun.output.budgetUsage;
       expect(usage).toEqual(secondRun.output.budgetUsage);

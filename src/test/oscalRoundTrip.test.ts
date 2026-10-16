@@ -4,7 +4,7 @@ import {
   getSchemaPin,
   VERSION_MATRIX_DIAGNOSTIC_CODES,
 } from '@/domain/oscalVersionMatrix';
-import { ROOT_DISPATCH_DIAGNOSTIC_CODES } from '@/adapters/oscalRootDispatch';
+import { ROOT_DISPATCH_DIAGNOSTIC_CODES } from '@/domain/oscalRootDispatch';
 import { listArtifacts } from '@/domain/sourceRegistry';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import {

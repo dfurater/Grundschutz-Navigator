@@ -15,7 +15,7 @@
 // geschlossen verwaltetes Handle-Register hier ein.
 // =============================================================================
 
-import { dispatchOscalDocument, type OscalRootDispatchSuccess } from '@/adapters/oscalRootDispatch';
+import { dispatchOscalDocument, type OscalRootDispatchSuccess } from '@/domain/oscalRootDispatch';
 import { createOscalDiagnostic, type OscalDiagnostic } from '@/domain/oscalDiagnostics';
 import {
   CLASS_2_IMPORT_LIMITS,

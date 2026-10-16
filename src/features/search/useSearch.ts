@@ -16,8 +16,6 @@ import {
   type SearchIndexes,
 } from './searchRanking';
 
-export type { SearchResult } from './searchRanking';
-
 export const MAX_SEARCH_CACHE_ENTRIES = 3;
 
 const EMPTY_PRACTICES: Practice[] = [];
