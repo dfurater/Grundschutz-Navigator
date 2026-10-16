@@ -2,7 +2,8 @@
 // Knotenleser und Diagnosesammler des SSP-Adapters (GSPP-293)
 //
 // Die Struktur- und Elementleser kommen aus `src/adapters/oscalReaders.ts` und
-// werden hier an die SSP-Diagnose gebunden. Dazu kommen die Prüfungen der
+// werden hier an die SSP-Diagnose gebunden; `props` gehen nur im
+// OSCAL-Namespace in die Projektion. Dazu kommen die Prüfungen der
 // dokumentinternen Referenzen, die weder das JSON-Schema noch Stufe 3
 // abdeckt: `component-uuid`, `role-id` und Party-UUIDs.
 //
@@ -14,6 +15,7 @@ import { createElementReaders, createStructureReaders } from '@/adapters/oscalRe
 import { isJsonObject, readString, type JsonObject } from '@/domain/jsonGuards';
 import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { OscalDiagnostic, OscalDiagnosticValidator } from '@/domain/oscalDiagnostics';
+import { OSCAL_PROPERTY_NAMESPACE } from '@/domain/oscalRootDocument';
 import type { ReferenceDocument } from '@/domain/referenceResolution';
 import { SYSTEM_SECURITY_PLAN_ROOT_TYPE } from '@/domain/systemSecurityPlanModel';
 import type {
@@ -98,13 +100,21 @@ const structureReaders = createStructureReaders<SspDeriveState>(diagnoseUnexpect
 
 export const { readArrayField, readObjectArrayField, readStringArrayField } = structureReaders;
 
-export const {
-  readProps,
-  readLinks,
-  readSetParameters,
-  readResponsibleRoles,
-  readResponsibleParties,
-} = createElementReaders(structureReaders, diagnoseUnexpected);
+/**
+ * Ein `prop` liegt im OSCAL-Namespace, wenn `ns` fehlt oder exakt
+ * `OSCAL_PROPERTY_NAMESPACE` ist. Jeder andere `ns`, auch ein Nicht-String,
+ * hält das `prop` aus der Projektion; der Quellgraph behält es.
+ */
+function isOscalNamespaceProp(prop: JsonObject): boolean {
+  return prop.ns === undefined || prop.ns === OSCAL_PROPERTY_NAMESPACE;
+}
+
+const { readProps, ...elementReaders } = createElementReaders(structureReaders, diagnoseUnexpected, {
+  includeProp: isOscalNamespaceProp,
+});
+
+export const { readLinks, readSetParameters, readResponsibleRoles, readResponsibleParties } =
+  elementReaders;
 
 /** Liest `props` und `links` eines Knotens — die beiden Felder fast jeder SSP-Struktur. */
 export function readElements(node: JsonObject, path: string, state: SspDeriveState) {

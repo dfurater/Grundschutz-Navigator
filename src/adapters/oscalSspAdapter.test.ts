@@ -207,16 +207,6 @@ describe('Verlustfreiheit', () => {
     expect(JSON.stringify(plan)).not.toContain('bleibt-in-source');
   });
 
-  it('führt Props mit fremdem Namespace unverändert und ohne Deutung', () => {
-    const plan = derive(makeFullSsp());
-    expect(plan.systemCharacteristics?.props).toContainEqual({
-      name: 'vendor-classification',
-      value: 'nur-intern',
-      ns: 'https://example.vendor.invalid/ns/oscal',
-      class: undefined,
-    });
-  });
-
   it('diagnostiziert fehlende Pflichtknoten, statt zu werfen', () => {
     const plan = derive(withSspBody(makeFullSsp(), (body) => {
       Reflect.deleteProperty(body, 'import-profile');

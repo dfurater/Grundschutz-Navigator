@@ -117,15 +117,25 @@ export interface ElementReaders<TState> {
   ): readonly OscalResponsibleRoleView[];
 }
 
+export interface ElementReaderOptions {
+  /**
+   * Entscheidet am Quellknoten eines `prop` mit `name` und `value`, ob es in
+   * die Projektion geht. Ohne Angabe geht jedes solche `prop` hinein.
+   */
+  readonly includeProp?: (prop: JsonObject) => boolean;
+}
+
 /**
  * Erzeugt die Leser der Elemente, die mehrere OSCAL-Modelle in derselben Form
  * führen. Ein Eintrag ohne sein Pflichtfeld (`name`/`value`, `href`,
  * `param-id`, `role-id`) wird an seinem Pfad diagnostiziert und fällt aus der
- * Projektion; der Quellgraph behält ihn.
+ * Projektion; der Quellgraph behält ihn. Ein von `includeProp` abgewiesenes
+ * `prop` fällt ohne Diagnose aus der Projektion.
  */
 export function createElementReaders<TState>(
   { readObjectArrayField, readStringArrayField }: StructureReaders<TState>,
   diagnoseUnexpected: (state: TState, path: string) => void,
+  { includeProp }: ElementReaderOptions = {},
 ): ElementReaders<TState> {
   function readProps(node: JsonObject, path: string, state: TState): readonly OscalPropView[] {
     return readObjectArrayField(node, 'props', path, state).flatMap(({ node: prop, path: propPath }) => {
@@ -135,6 +145,7 @@ export function createElementReaders<TState>(
         diagnoseUnexpected(state, propPath);
         return [];
       }
+      if (includeProp !== undefined && !includeProp(prop)) return [];
       return [{ name, value, ns: readString(prop.ns), class: readString(prop.class) }];
     });
   }

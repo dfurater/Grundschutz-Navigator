@@ -62,6 +62,12 @@ export interface OscalRootMetadataView {
 /* ------------------------------------------------------------------ */
 
 /**
+ * Namespace eines `prop` ohne `ns` laut OSCAL-Metadata-Metaschema (Default
+ * des Flags `ns` in allen gepinnten Versionen). Verglichen wird exakt.
+ */
+export const OSCAL_PROPERTY_NAMESPACE = 'http://csrc.nist.gov/ns/oscal' as const;
+
+/**
  * Projektion eines `prop`. Dieselbe Form führen Component Definition, Profil,
  * Mapping Collection und SSP; gelesen wird sie in `src/adapters/oscalReaders.ts`.
  */

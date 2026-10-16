@@ -875,6 +875,16 @@ In `system-characteristics`, `system-implementation` und
 Rollenzuweisungen (`responsible-roles`, `responsible-parties`): Ihre `props`
 und `links` bleiben im Quellgraphen, ebenso die `protocols` einer Komponente.
 
+`props` gehen nur im OSCAL-Namespace in die Projektion: `ns` fehlt oder ist
+exakt `http://csrc.nist.gov/ns/oscal` (`OSCAL_PROPERTY_NAMESPACE` in
+`src/domain/oscalRootDocument.ts`, der Default des Flags `ns` im
+OSCAL-Metadata-Metaschema). Ein `prop` mit jedem anderen `ns`, auch mit dem
+Projektnamespace aus [PROJECT_PROPS.md](PROJECT_PROPS.md) oder einem
+Nicht-String, bleibt ausschließlich im Quellgraphen und erzeugt keine
+Diagnose. Der SSP-Adapter übergibt diese Prüfung als `includeProp` an
+`createElementReaders()`; Component-, Profil- und Mapping-Adapter übergeben
+keine und projizieren jedes `prop` mit `name` und `value`.
+
 ### Eingang ausschließlich als Vertrauensklasse 2
 
 Das Quellregister führt kein SSP-Artefakt. `deriveSystemSecurityPlan()` nimmt

@@ -14,8 +14,10 @@ import { join } from 'node:path';
 import { parseSspDocument } from './oscalSspDocument';
 import { SSP_ADAPTER_DIAGNOSTIC_CODES, SspTrustClassError } from './oscalSspAdapter';
 import { processClass2OscalBytes } from '@/domain/oscalClass2Import';
+import { OSCAL_PROPERTY_NAMESPACE } from '@/domain/oscalRootDocument';
 import { OscalRootDispatchError } from '@/domain/oscalRootDispatch';
 import { PINNED_OSCAL_VERSIONS } from '@/domain/oscalVersionMatrix';
+import { PROJECT_PROPS_NAMESPACE } from '@/domain/projectProps';
 import type { TrustClass } from '@/domain/models';
 import { expectNoNetworkCalls, stubNoNetwork } from '@/test/noNetwork';
 import { makeFullSsp, makeMinimalSsp, withSspBody } from '@/test/fixtures/systemSecurityPlans';
@@ -73,6 +75,40 @@ describe('parseSspDocument', () => {
     const result = await processClass2OscalBytes(encode(source), context);
     expect(result).toMatchObject({ ok: false, diagnostic: { stage: 'root-dispatch' } });
     expect(() => parseSspDocument(source, context)).toThrow(OscalRootDispatchError);
+  });
+});
+
+describe('Props-Namespaces zwischen source und view', () => {
+  it('behält Props fremder Namespaces im Quellgraphen und lässt sie aus dem view', () => {
+    const foreignNamespace = 'https://example.vendor.invalid/ns/oscal';
+    const source = makeFullSsp();
+    const before = structuredClone(source);
+    const document = parseSspDocument(source, context);
+
+    expect(document.source).toEqual(before);
+    expect(JSON.stringify(document.source)).toContain(foreignNamespace);
+    expect(JSON.stringify(document.view)).not.toContain(foreignNamespace);
+    expect(document.view.systemCharacteristics?.props).toEqual([
+      { name: 'cloud-deployment-model', value: 'private-cloud', ns: undefined, class: undefined },
+    ]);
+  });
+
+  it('projiziert nur Props ohne ns oder mit exakt dem OSCAL-Namespace', () => {
+    const source = withSspBody(makeFullSsp(), (body) => {
+      Object.assign(body['system-characteristics'], {
+        props: [
+          { name: 'ohne-ns', value: 'a' },
+          { name: 'oscal-ns', value: 'b', ns: OSCAL_PROPERTY_NAMESPACE },
+          { name: 'oscal-xml-ns', value: 'c', ns: `${OSCAL_PROPERTY_NAMESPACE}/1.0` },
+          { name: 'projekt-ns', value: 'd', ns: PROJECT_PROPS_NAMESPACE },
+          { name: 'ns-kein-string', value: 'e', ns: 42 },
+        ],
+      });
+    });
+    const { view } = parseSspDocument(source, context);
+
+    expect(view.systemCharacteristics?.props.map((prop) => prop.name)).toEqual(['ohne-ns', 'oscal-ns']);
+    expect(view.diagnostics).toEqual([]);
   });
 });
 
