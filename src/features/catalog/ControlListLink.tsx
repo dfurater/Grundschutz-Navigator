@@ -29,7 +29,7 @@ const controlIdColumnClass = 'w-[var(--control-id-column,auto)] shrink-0 font-mo
  * eigenen Kante um. Zeile 24 px hoch, die Touch-Fläche wächst unsichtbar per
  * `::after` (36 px mobil und auf dem Tablet, 28 px auf dem Desktop), ohne das Layout zu verschieben.
  */
-export const detailListLinkClass =
+const detailListLinkClass =
   `group inline-flex min-h-6 max-w-full items-baseline gap-2 rounded text-left ${rowTouchTargetClass} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-[var(--color-focus-ring)]`;
 
 /** Kennung und Titel einer anderen Anforderung als Link-Zeile in einer Detail-Liste. */

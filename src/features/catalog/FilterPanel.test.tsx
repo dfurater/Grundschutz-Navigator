@@ -220,13 +220,13 @@ describe.each(['Desktop', 'Mobile'] as const)('Filterdarstellung — %s', (surfa
     }
   });
 
-  it('liest einen geteilten Link und öffnet alle vier vorbelegten Spezialfilter', () => {
+  it('öffnet bereinigte Spezialfilter aus einem geteilten Link und zählt jeden Wert einmal', () => {
     function LinkedPanel() {
       const { filters, setFilters } = useFilterParams();
       return <Panel props={{ ...presentationProps(filters), onFiltersChange: setFilters }} />;
     }
     render(
-      <MemoryRouter initialEntries={['/katalog/gspp?dt=Betriebskonzept&hw=prüfen&tags=audit&lr=required']}>
+      <MemoryRouter initialEntries={['/katalog/gspp?dt=Betriebskonzept,Betriebskonzept&hw=prüfen,prüfen&tags=audit,audit&lr=required,required']}>
         <LinkedPanel />
       </MemoryRouter>,
     );
@@ -237,6 +237,10 @@ describe.each(['Desktop', 'Mobile'] as const)('Filterdarstellung — %s', (surfa
     }
     for (const option of ['Betriebskonzept', 'prüfen', 'audit', 'Erforderlich']) {
       expect(screen.getByRole('checkbox', { name: new RegExp(option) })).toBeChecked();
+    }
+    for (const title of specialistSections) {
+      fireEvent.click(screen.getByRole('button', { name: title }));
+      expect(screen.getByRole('button', { name: `${title} 1` })).toHaveAttribute('aria-expanded', 'false');
     }
   });
 

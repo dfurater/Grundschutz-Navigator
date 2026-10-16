@@ -3,6 +3,7 @@ import {
   createOscalDiagnostic,
   type OscalDiagnostic,
 } from '@/domain/oscalDiagnostics';
+import { isJsonObject } from '@/domain/jsonGuards';
 import { enforceClass2ObjectGraphInvariants } from '@/domain/oscalObjectGraph';
 import { isCatalogKey } from '@/domain/sourceRegistry';
 
@@ -695,7 +696,7 @@ function validateProjectPropCardinalities(
 }
 
 function isRuntimeProjectPropObject(value: unknown): value is RawOscalProp {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return isJsonObject(value);
 }
 
 function isRuntimeProjectPropCollection(value: unknown): value is readonly RawOscalProp[] {

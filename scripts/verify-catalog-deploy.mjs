@@ -2,7 +2,7 @@
 
 import { pathToFileURL } from 'node:url';
 import { appendFile } from 'node:fs/promises';
-import { fetchGitHubJson as fetchSharedGitHubJson } from './githubApiFetch.mjs';
+import { DEFAULT_REQUEST_TIMEOUT_MS, fetchGitHubJson as fetchSharedGitHubJson } from './githubApiFetch.mjs';
 import { sleep as defaultSleep } from './transientRetry.mjs';
 
 export const DEPLOY_WORKFLOW_FILE = 'deploy.yml';
@@ -21,11 +21,7 @@ export const DEFAULT_DISCOVERY_DELAY_MS = 10_000;
 export const DEFAULT_TERMINAL_ATTEMPTS = 60;
 export const DEFAULT_TERMINAL_DELAY_MS = 15_000;
 
-// Per-Request-Abbruchfrist für GitHub-API-Aufrufe (GSPP-430). Deutlich unter
-// dem 30-min-Job-Limit von `verify-catalog-merge`: Ein hängender API-Call
-// scheitert damit kontrolliert fail-closed, statt bis zum Job-Timeout zu
-// hängen.
-export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+export { DEFAULT_REQUEST_TIMEOUT_MS };
 
 // Absolutes Verifikationsbudget (GSPP-423, Codex-Review auf PR #268): Die
 // Summe aus Polling-Sleeps und Per-Request-Fristen kann den Job-Timeout

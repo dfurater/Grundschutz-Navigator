@@ -12,6 +12,8 @@
 // ausschließlich Pfade und Wertarten — nie Rohwerte aus dem Dokument.
 // =============================================================================
 
+import { isJsonObject } from '@/domain/jsonGuards';
+
 /**
  * Wertarten des geparsten JSON-Graphen.
  *
@@ -54,16 +56,12 @@ export interface JsonGraphDifference {
   readonly rightKind: JsonValueKind;
 }
 
-function isPlainObject(node: unknown): node is Record<string, unknown> {
-  return typeof node === 'object' && node !== null && !Array.isArray(node);
-}
-
 /** Klassifiziert einen Wert ohne ihn zu verraten — die Grundlage der Redaction. */
 export function classifyJsonValueKind(value: unknown): JsonValueKind {
   if (value === null) return 'null';
   if (value === undefined) return 'undefined-absent';
   if (Array.isArray(value)) return 'array';
-  if (isPlainObject(value)) return 'object';
+  if (isJsonObject(value)) return 'object';
   if (typeof value === 'number') {
     if (!Number.isFinite(value)) return 'non-finite-number';
     if (Object.is(value, -0)) return 'negative-zero';

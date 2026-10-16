@@ -1,3 +1,4 @@
+import { encodeRepositoryPath } from '@/domain/repositoryPath.mjs';
 import type {
   Control,
   PropValue,
@@ -17,8 +18,6 @@ export interface VocabularyResolution {
   namespace: VocabularyNamespace;
   entry: VocabularyEntry;
 }
-
-export type ResolvedVocabularyEntry = VocabularyResolution;
 
 export interface ResolvedControlVocabularies {
   modalverb: VocabularyResolution | null;
@@ -167,14 +166,6 @@ export function buildVocabularyRegistry(
   };
 }
 
-function encodeRepositoryPath(path: string) {
-  return path
-    .split('/')
-    .filter(Boolean)
-    .map((segment) => encodeURIComponent(segment))
-    .join('/');
-}
-
 export function buildVocabularySourceUrl(
   source: Pick<VocabularyNamespaceSource, 'namespace' | 'repository' | 'path'>,
   snapshotCommitSha: string | null | undefined,
@@ -190,7 +181,7 @@ export function buildVocabularySourceUrl(
   while (repositoryUrl.endsWith('/')) {
     repositoryUrl = repositoryUrl.slice(0, -1);
   }
-  const encodedPath = encodeRepositoryPath(source.path);
+  const encodedPath = encodeRepositoryPath(source.path, { omitEmptySegments: true });
 
   if (!encodedPath) {
     return source.namespace;
@@ -232,13 +223,6 @@ export function resolveVocabularyProp(
   return resolveVocabularyEntry(registry, prop?.ns, prop?.value);
 }
 
-export function resolvePropVocabularyEntry(
-  registry: VocabularyRegistry | null | undefined,
-  prop: PropValue | undefined,
-): ResolvedVocabularyEntry | null {
-  return resolveVocabularyProp(registry, prop);
-}
-
 export function resolveVocabularyValues(
   registry: VocabularyRegistry | null | undefined,
   namespaceUrl: string | undefined,
@@ -247,14 +231,6 @@ export function resolveVocabularyValues(
   return values
     .map((value) => resolveVocabularyEntry(registry, namespaceUrl, value))
     .filter((resolution): resolution is VocabularyResolution => resolution !== null);
-}
-
-export function resolveVocabularyEntries(
-  registry: VocabularyRegistry | null | undefined,
-  namespaceUrl: string | undefined,
-  values: string[],
-): ResolvedVocabularyEntry[] {
-  return resolveVocabularyValues(registry, namespaceUrl, values);
 }
 
 export function getVocabularyNamespaceByRouteId(

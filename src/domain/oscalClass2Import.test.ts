@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { processClass2OscalBytes } from './oscalClass2Import';
-import { ROOT_DISPATCH_DIAGNOSTIC_CODES } from '@/adapters/oscalRootDispatch';
+import { ROOT_DISPATCH_DIAGNOSTIC_CODES } from '@/domain/oscalRootDispatch';
 import { buildSchemaId } from '@/domain/oscalVersionMatrix';
 import {
   createReferenceDocument,

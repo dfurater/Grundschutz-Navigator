@@ -1,49 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { FakeWorker, installWorker } from '@/test/fakeWorker';
 import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
 import { importClass2OscalDocument } from './oscalImportGate';
 import {
   CLASS_2_IMPORT_LIMITS,
   CLASS_2_IMPORT_WORKER_TIMEOUT_MS,
 } from '@/domain/oscalImportContract';
-
-type WorkerListener = (event: Event) => void;
-
-class FakeWorker {
-  private readonly listeners = new Map<string, WorkerListener[]>();
-
-  private readonly onPostMessage: (worker: FakeWorker) => void;
-  constructor(onPostMessage: (worker: FakeWorker) => void = () => {}) {
-    this.onPostMessage = onPostMessage;
-  }
-
-  readonly terminate = vi.fn();
-  readonly addEventListener = vi.fn((type: string, listener: WorkerListener) => {
-    const registered = this.listeners.get(type) ?? [];
-    registered.push(listener);
-    this.listeners.set(type, registered);
-  });
-  readonly removeEventListener = vi.fn((type: string, listener: WorkerListener) => {
-    const registered = this.listeners.get(type) ?? [];
-    this.listeners.set(type, registered.filter(entry => entry !== listener));
-  });
-  readonly postMessage = vi.fn(() => this.onPostMessage(this));
-
-  emitEvent(type: string): void {
-    for (const listener of [...(this.listeners.get(type) ?? [])]) listener(new Event(type));
-  }
-
-  emitMessage(data: unknown): void {
-    for (const listener of [...(this.listeners.get('message') ?? [])]) listener({ data } as MessageEvent);
-  }
-}
-
-function installWorker(worker: FakeWorker): void {
-  vi.stubGlobal('Worker', class {
-    constructor() {
-      return worker as unknown as Worker;
-    }
-  });
-}
 
 function beginImport(): { worker: FakeWorker; pending: ReturnType<typeof importClass2OscalDocument> } {
   const worker = new FakeWorker();

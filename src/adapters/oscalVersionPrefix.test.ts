@@ -14,8 +14,8 @@ import { describe, expect, it } from 'vitest';
 import { deriveComponentDefinition } from './oscalComponentAdapter';
 import { deriveMappingCollection } from './oscalMappingAdapter';
 import { deriveProfile } from './oscalProfileAdapter';
-import { dispatchOscalDocument } from './oscalRootDispatch';
-import type { OscalRootDispatchFailure } from './oscalRootDispatch';
+import { dispatchOscalDocument } from '@/domain/oscalRootDispatch';
+import type { OscalRootDispatchFailure } from '@/domain/oscalRootDispatch';
 import type { OscalDiagnostic } from '@/domain/oscalDiagnostics';
 import type { OscalDocumentContext } from '@/domain/models';
 import {

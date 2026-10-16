@@ -3,7 +3,7 @@ import { parseCatalogDocument } from './oscalDocument';
 import {
   OscalRootDispatchError,
   ROOT_DISPATCH_DIAGNOSTIC_CODES,
-} from './oscalRootDispatch';
+} from '@/domain/oscalRootDispatch';
 import { buildSchemaId } from '@/domain/oscalVersionMatrix';
 import {
   LOSSLESS_CATALOG_JSON,

@@ -256,38 +256,16 @@ Der Root-Envelope steht in
 
 ## Projekteigene OSCAL-Properties
 
-`src/domain/projectProps.ts` ist die einzige Runtime-Registry für den
-Projektnamespace (sechs bekannte Namen, Träger, Kardinalitäten, Wertregeln).
-Der öffentliche Vertrag steht in [`PROJECT_PROPS.md`](PROJECT_PROPS.md).
-
-Der Lesepfad arbeitet auf `RawOscalProp` und mutiert weder Liste noch einzelne
-Property-Objekte. Fremde Namespaces und unbekannte Namen bleiben im
-Quellgraphen. Nur der semantische Schreibpfad wird bei unbekanntem Projektnamen
-oder Vertragsverletzung gesperrt; Diagnosen enthalten keine Property-Werte oder
-Freitexte.
-
-`preservedProps` ist die einzige vollständige und geordnete Quelle für Export
-und Backup und bleibt selbst bei ungültiger Collection referenzidentisch zur
-Eingabe. `projectProps`, `foreignProps` und `unknownProjectProps` sind
-getrennte semantische Sichten, aus denen der Quellgraph nicht rekonstruiert
-wird. `collectionValid` kennzeichnet die strukturelle Listenform;
-`writeAllowed` umfasst zusätzlich alle semantischen Diagnosen.
-Dokumentgebundene Aufrufe tragen eine typisierte Position mit echten
-Arrayindizes; Diagnosen erhalten dadurch RFC-6901-Pfade ohne
-Wildcard-Literale.
-
-Der paarübergreifende Validator für die Planungsproperties erhält die bereits
-geprüften Reader-Ergebnisse eines `poam-item` und einer `remediation`. Er liest
-die Rohlisten nicht erneut und erlegt dem Dokument keine globale Wahl zwischen
-den beiden zulässigen Trägerarten auf. Katalog-Key und Commit entstehen im
-Writer nur als atomares Paar; die generische Einzel-Property-API verweigert
-beide Paarhälften.
+`src/domain/projectProps.ts` enthält die Runtime-Registry und die Reader-/Writer-API
+für `RawOscalProp`. Namen, Träger, Kardinalitäten, Wertregeln, verlustfreie
+Lesesichten, Schreibfreigabe und Diagnosen sind im öffentlichen
+[Projekt-Property-Vertrag](PROJECT_PROPS.md) festgelegt.
 
 ## Root-Envelope und Root-Dispatch
 
 Der Envelope kennt alle acht OSCAL-Root-Keys, und genau **eine** Stelle
 bestimmt den Root-Typ (`dispatchOscalDocument()` in
-`src/adapters/oscalRootDispatch.ts`).
+`src/domain/oscalRootDispatch.ts`).
 
 ### Envelope-Typen
 
@@ -323,7 +301,7 @@ Top-Level-`properties` sind exakt `["$schema", "<root-key>"]`.
 
 ### Fehlerverhalten des Dispatch
 
-`dispatchOscalDocument()` in `src/adapters/oscalRootDispatch.ts` implementiert
+`dispatchOscalDocument()` in `src/domain/oscalRootDispatch.ts` implementiert
 Stufe 2 des [Validierungsvertrags](OSCAL_VALIDATION.md). Er ist fail-closed:
 im Zweifel ablehnen. Die Prüfreihenfolge ist festgelegt, damit ein Dokument
 die inhaltlich engste Diagnose erhält.
@@ -391,10 +369,17 @@ Root-Modell erfordert zwei Schritte:
 2. Einen Eintrag in `OSCAL_ROOT_ADAPTERS` ergänzen und, falls der Körper
    modelliert wird, den Zweig in `RawOscalRootBodyFor` erweitern.
 
-Modulgrenzen: Geteilt werden Envelope, Root-Erkennung, Versionsbindung und
-Diagnosevertrag. Parsing und Read-Model-Ableitung bleiben je Root-Typ in
-eigenen Modulen; `models.ts` wächst nicht zu einer monolithischen
-Modellschicht.
+Modulgrenzen: Geteilt werden Envelope, Root-Erkennung mit Root-Typ-Schranke
+und der Ableitungsauftakt `openRootDerive`
+(`src/adapters/oscalRootDocumentParse.ts`), die Stufe-3-Prüfung
+`validateParsedSchema` (`src/adapters/oscalRootDocumentSchema.ts`, getrennt,
+damit der Katalogpfad den Schema-Validator nicht lädt), Versionsbindung,
+Diagnosevertrag,
+die JSON-Typwächter (`src/domain/jsonGuards.ts`) und die Strukturleser für
+Arrayfelder (`src/adapters/oscalReaders.ts`), die jeder Adapter an seine
+eigene Diagnosefunktion bindet. Modellspezifische Leser und Read-Model-Ableitung
+bleiben je Root-Typ in eigenen Modulen; `models.ts` wächst nicht zu einer
+monolithischen Modellschicht.
 
 | Root-Key | Layer | Adapter | Status |
 | --- | --- | --- | --- |
@@ -893,7 +878,7 @@ Relevanz einer Steuerung für ein Schutzziel (Vertraulichkeit, Integrität, Verf
 type SecurityTargetRelevance = '0' | '1' | '2';
 ```
 
-An den Schutzzielen hängen zwei getrennte BSI-Vokabulare. Der `ns` der vier `*Prop`-Felder zeigt auf `security_targets.csv`; dort steht, was Vertraulichkeit, Integrität, Verfügbarkeit und Authentizität bedeuten — das Vokabular ist nach Schutzziel-Namen indiziert und kennt die Werte `0`–`2` nicht. Deren Bedeutung steht in der separaten Datei `security_targets_levels.csv`, die über `prop.ns` nicht erreichbar ist; `resolveSecurityTargetLevel()` in `src/domain/vocabulary.ts` wählt sie deshalb selbst aus.
+Die Zuordnung der `*Prop`-Felder zu Schutzziel-Namen und Relevanzdefinitionen steht unter [Schutzziel-Auflösung](VOCABULARY.md#schutzziel-auflösung).
 
 ### Modalverb
 
@@ -921,11 +906,9 @@ interface ControlLink {
 `rel` ist der unveränderte OSCAL-`rel`-Wert; `relStatus` klassifiziert ihn
 (`classifyCatalogLinkRelation` in `src/domain/referenceResolution.ts`):
 `reference` → `documented`, fehlendes `rel` → `missing`, jeder andere Wert →
-`custom`. Filterbar sind nur `required` und `related`
-(`toFilterableLinkRelation` in `src/domain/controlRelationships.ts`).
-`Control.links` enthält ausschließlich aufgelöste, kataloggescopte
-Control-Ziele; der Adapter setzt `links: []`, die Projektion in
-`catalogReferenceProjection.ts` füllt sie vor Veröffentlichung.
+`custom`. Die Filtersemantik steht in [FILTERING.md](FILTERING.md#filter-dimensionen).
+Die Befüllung von `Control.links` beschreibt
+[Referenzauflösung auf dem Quellgraphen](#referenzauflösung-auf-dem-quellgraphen).
 
 ### PropValue
 

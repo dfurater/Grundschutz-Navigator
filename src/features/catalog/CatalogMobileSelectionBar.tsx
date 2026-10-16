@@ -2,7 +2,7 @@ import { useContext } from 'react';
 import type { Control } from '@/domain/models';
 import { Button } from '@/components/Button';
 import { IconDownload } from '@/components/icons';
-import { downloadCSV } from '@/features/export/csvExport';
+import { exportSelectedControls } from '@/features/catalog/selectionExport';
 import { MobileNavigationContext } from '@/state/MobileNavigationContext';
 
 interface CatalogMobileSelectionBarProps {
@@ -21,10 +21,7 @@ export function CatalogMobileSelectionBar({
   // Safari seine Leiste füllen. Die Auswahl bleibt beim Aufrufer erhalten.
   const mobileNavigationOpen = useContext(MobileNavigationContext);
   const exportSelected = () => {
-    downloadCSV(
-      allControls.filter((control) => checkedIds.has(control.id)),
-      'grundschutz-auswahl.csv',
-    );
+    exportSelectedControls(allControls, checkedIds);
     onDone();
   };
 

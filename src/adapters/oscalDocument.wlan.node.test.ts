@@ -18,6 +18,7 @@ import {
   resolveCatalogResources,
 } from '@/domain/referenceResolution';
 import type { Catalog, PropValue } from '@/domain/models';
+import { isJsonObject, readArray, type JsonObject } from '@/domain/jsonGuards';
 import type { CatalogKey } from '@/domain/sourceRegistry';
 
 const WLAN_KEY = 'wlan' as const satisfies CatalogKey;
@@ -29,16 +30,6 @@ const TAXONOMY_NAMES = [
   'Taxonomy-L3',
   'Taxonomy-L4',
 ] as const;
-
-type JsonObject = Record<string, unknown>;
-
-function isJsonObject(value: unknown): value is JsonObject {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function readArray(value: unknown): readonly unknown[] {
-  return Array.isArray(value) ? value : [];
-}
 
 interface SourceControl {
   id: string;

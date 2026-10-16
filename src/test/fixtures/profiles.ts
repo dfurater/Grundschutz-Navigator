@@ -19,6 +19,8 @@
 // grün, obwohl es ein Artefakt nachbildet, das es upstream nicht mehr gibt.
 // =============================================================================
 
+import { makeUuid } from '@/test/fixtures/fixtureUuid';
+import { compareStringsByCodeUnit } from '@/domain/codeUnitOrder.mjs';
 import type { PinnedOscalVersion } from '@/domain/oscalVersionMatrix';
 import { listOscalArtifacts } from '@/domain/sourceRegistry';
 
@@ -39,19 +41,6 @@ export const PROFILE_SOURCE_RLINKS = Object.freeze({
   wlanKernelG0:
     '../../../Grundschutz++/sources/catalogs/Kernel/BSI-Stand-der-Technik-Kernel-G0-catalog.json',
 });
-
-/**
- * Deterministische, schemagültige UUIDs (Typ 4, Variante 8). Ein Zähler statt
- * `crypto.randomUUID()`: Ein Fixture, das bei jedem Lauf andere Identitäten
- * trägt, taugt nicht als eingefrorener Korpus.
- */
-function makeUuid(seed: string, index: number): string {
-  let hash = 0;
-  for (const character of seed) {
-    hash = (hash * 31 + character.codePointAt(0)!) >>> 0;
-  }
-  return `${hash.toString(16).padStart(8, '0')}-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;
-}
 
 /* ------------------------------------------------------------------ */
 /*  Strukturbeschreibung der drei registrierten Profile                */
@@ -100,12 +89,6 @@ const REGISTERED_PROFILE_ARTIFACTS = new Map(
     .filter((entry) => entry.expectedRootType === 'profile')
     .map((entry) => [entry.artifactKey, entry] as const),
 );
-
-function compareStringsByCodeUnit(left: string, right: string): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
-}
 
 /** Die Schlüssel der registrierten Profile, alphabetisch. */
 export function listRegisteredProfileArtifactKeys(): readonly string[] {

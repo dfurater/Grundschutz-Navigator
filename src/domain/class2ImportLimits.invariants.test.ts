@@ -25,9 +25,8 @@ function maxDecodedBytesForEncodedLength(encodedLength: number): number {
 /**
  * Kodierter Text, dessen dekodierte Größe exakt `decodedBytes` beträgt.
  *
- * Bewusst hier und nicht aus dem Messwerkzeug importiert: `src/` hängt nicht
- * an `scripts/`. Die Polsterung trägt den Rest — Rest 1 zwei Zeichen, Rest 2
- * eines, Rest 3 eine volle Gruppe.
+ * Die Polsterung trägt den Rest — Rest 1 zwei Zeichen, Rest 2 eines, Rest 3
+ * eine volle Gruppe.
  */
 function encodedBase64ForDecodedBytes(decodedBytes: number): string {
   const fullGroups = Math.floor((decodedBytes - 1) / 3);

@@ -1,13 +1,7 @@
-import { processClass2OscalBytes, type Class2OscalDocumentContext, type Class2OscalImportResult } from '@/domain/oscalClass2Import';
+import { processClass2OscalBytes, type Class2OscalImportResult } from '@/domain/oscalClass2Import';
 import { encodeOscalSource } from '@/domain/oscalImportTransport';
 import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
 import { CLASS_2_IMPORT_VALIDATOR } from '@/domain/oscalImportProcessing';
-
-export interface OscalImportWorkerRequest {
-  readonly type: 'import';
-  readonly bytes: ArrayBuffer;
-  readonly context: Class2OscalDocumentContext;
-}
 
 function internalFailure(): Class2OscalImportResult {
   return {

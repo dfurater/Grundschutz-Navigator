@@ -5,14 +5,12 @@ import type { ReactElement } from 'react';
 import { describe, expect, it } from 'vitest';
 import type { Control, ControlLink } from '@/domain/models';
 import type { IncomingControlLink } from '@/domain/controlRelationships';
-import { classifyCatalogLinkRelation } from '@/domain/referenceResolution';
 import {
   buildIncomingEverydayLabel,
   buildLinkLegendEntries,
   ControlDependencies,
   everydayRelationLabel,
 } from './ControlDependencies';
-import { ControlHierarchy } from './ControlHierarchy';
 import { ControlMetadata } from './ControlMetadata';
 import { SectionLegend } from './ControlVocabularyPrimitives';
 
@@ -228,33 +226,10 @@ describe('Zusammenhänge-Legende', () => {
       + 'OSCAL-Relationen; „Ohne Relationsangabe“ steht bei Links ohne rel.',
     );
     expect(legend?.textContent).not.toContain('· OSCAL-dokumentiert');
-    // Der Hinweis folgt der Klassifikation des Katalogs.
-    expect(classifyCatalogLinkRelation('reference')).toBe('documented');
-    expect(classifyCatalogLinkRelation('related')).toBe('custom');
-    expect(classifyCatalogLinkRelation('required')).toBe('custom');
-    expect(classifyCatalogLinkRelation('incorporated-into')).toBe('custom');
-    expect(classifyCatalogLinkRelation(undefined)).toBe('missing');
-
     // Builder-Konsistenz: statisch, vier disjunkte Entries
     const entries = buildLinkLegendEntries();
     expect(entries).toHaveLength(4);
     expect(new Set(entries.map((entry) => entry.term)).size).toBe(4);
-  });
-});
-
-describe('ControlHierarchy (T8)', () => {
-  it('rendert keinen „Übergeordnete Kontrolle"-Block mehr', () => {
-    const { container } = renderWithRouter(
-      <ControlHierarchy
-        childControls={[makeControl('GC.2.1.1', 'Erweiterung')]}
-      />,
-    );
-    const scope = within(container);
-
-    expect(container.textContent).not.toContain('Übergeordnete Kontrolle');
-    expect(scope.queryByText('Erweiterungen')).toBeNull();
-    expect(scope.getByRole('button', { name: 'GC.2.1.1 Erweiterung' }))
-      .toBeInTheDocument();
   });
 });
 

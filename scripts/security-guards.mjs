@@ -31,7 +31,7 @@ function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
-function isPathInsideRoot(targetPath, rootPath) {
+export function isPathInsideRoot(targetPath, rootPath) {
   const relative = path.relative(rootPath, targetPath);
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }

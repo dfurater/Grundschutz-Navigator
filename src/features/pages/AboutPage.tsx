@@ -145,15 +145,11 @@ function buildVerifyCommand(appUrl: string, upstreamUrl: string): string {
 }
 
 function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString('de-DE', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
-  } catch {
-    return iso;
-  }
+  return new Date(iso).toLocaleDateString('de-DE', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
 }
 
 function getRoleTitle(roleId: string, roles: CatalogRole[]): string {
@@ -459,6 +455,46 @@ function LineageImportEntry({
   );
 }
 
+function VerificationBanner({
+  verification,
+  validTitle,
+  invalidTitle,
+  validDetail,
+  invalidDetail,
+}: Readonly<{
+  verification: VerificationResult | null;
+  validTitle: string;
+  invalidTitle: string;
+  validDetail: string;
+  invalidDetail: string;
+}>) {
+  const verificationTone = resolveVerificationTone(verification);
+
+  return (
+    <div
+      className={`px-4 py-3 ${
+        verificationTone?.banner ?? 'bg-[var(--color-surface-subtle)]'
+      }`}
+    >
+      {verification ? (
+        <div className="flex items-center gap-2.5">
+          <IconShieldCheck className={`h-4.5 w-4.5 ${verificationTone!.icon}`} />
+          <div>
+            <span className={`text-sm font-semibold ${verificationTone!.text}`}>
+              {verification.valid ? validTitle : invalidTitle}
+            </span>
+            <p className={`mt-0.5 text-xs ${verificationTone!.text}`}>
+              {verification.valid ? validDetail : invalidDetail}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <span className="type-meta">Verifikation ausstehend…</span>
+      )}
+    </div>
+  );
+}
+
 function UpstreamVerificationPanel({
   provenance,
   verification,
@@ -470,35 +506,15 @@ function UpstreamVerificationPanel({
   appCatalogUrl: string;
   upstreamCatalogUrl: string;
 }>) {
-  const verificationTone = resolveVerificationTone(verification);
-
   return (
     <div className="border-t border-[var(--color-border-default)]">
-      <div
-        className={`px-4 py-3 ${
-          verificationTone?.banner ?? 'bg-[var(--color-surface-subtle)]'
-        }`}
-      >
-        {verification ? (
-          <div className="flex items-center gap-2.5">
-            <IconShieldCheck className={`h-4.5 w-4.5 ${verificationTone!.icon}`} />
-            <div>
-              <span className={`text-sm font-semibold ${verificationTone!.text}`}>
-                {verification.valid
-                  ? 'Katalog verifiziert'
-                  : 'Verifikation fehlgeschlagen'}
-              </span>
-              <p className={`mt-0.5 text-xs ${verificationTone!.text}`}>
-                {verification.valid
-                  ? 'Datei-Hash stimmt mit den Build-Metadaten überein'
-                  : 'Datei-Hash weicht von den Build-Metadaten ab'}
-              </p>
-            </div>
-          </div>
-        ) : (
-          <span className="type-meta">Verifikation ausstehend…</span>
-        )}
-      </div>
+      <VerificationBanner
+        verification={verification}
+        validTitle="Katalog verifiziert"
+        invalidTitle="Verifikation fehlgeschlagen"
+        validDetail="Datei-Hash stimmt mit den Build-Metadaten überein"
+        invalidDetail="Datei-Hash weicht von den Build-Metadaten ab"
+      />
 
       <div className="divide-y divide-[var(--color-border-subtle)] bg-[var(--color-surface-base)]">
         {provenance.source.commit_date && provenance.source.commit_date !== 'unknown' && (
@@ -575,7 +591,6 @@ function VocabularyBuildPanel({
   vocabularyProvenance: VocabularyProvenance;
   vocabularyVerification: VerificationResult | null;
 }>) {
-  const vocabularyVerificationTone = resolveVerificationTone(vocabularyVerification);
 
   return (
     <div className={`${surfacePanelClass} mt-5 overflow-hidden`}>
@@ -591,35 +606,13 @@ function VocabularyBuildPanel({
       </div>
 
       <div className="border-t border-[var(--color-border-default)]">
-        <div
-          className={`px-4 py-3 ${
-            vocabularyVerificationTone?.banner ?? 'bg-[var(--color-surface-subtle)]'
-          }`}
-        >
-          {vocabularyVerification ? (
-            <div className="flex items-center gap-2.5">
-              <IconShieldCheck
-                className={`h-4.5 w-4.5 ${vocabularyVerificationTone!.icon}`}
-              />
-              <div>
-                <span
-                  className={`text-sm font-semibold ${vocabularyVerificationTone!.text}`}
-                >
-                  {vocabularyVerification.valid
-                    ? 'Vokabulare verifiziert'
-                    : 'Vokabular-Verifikation fehlgeschlagen'}
-                </span>
-                <p className={`mt-0.5 text-xs ${vocabularyVerificationTone!.text}`}>
-                  {vocabularyVerification.valid
-                    ? 'Vokabular-Hash stimmt mit den Build-Metadaten überein'
-                    : 'Vokabular-Hash weicht von den Build-Metadaten ab'}
-                </p>
-              </div>
-            </div>
-          ) : (
-            <span className="type-meta">Verifikation ausstehend…</span>
-          )}
-        </div>
+        <VerificationBanner
+          verification={vocabularyVerification}
+          validTitle="Vokabulare verifiziert"
+          invalidTitle="Vokabular-Verifikation fehlgeschlagen"
+          validDetail="Vokabular-Hash stimmt mit den Build-Metadaten überein"
+          invalidDetail="Vokabular-Hash weicht von den Build-Metadaten ab"
+        />
 
         <div className="divide-y divide-[var(--color-border-subtle)] bg-[var(--color-surface-base)]">
           {/* Laufzeit-JSON kann von älteren Deployments stammen — Felder nie unbedingt dereferenzieren */}

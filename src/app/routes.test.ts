@@ -7,6 +7,8 @@ import {
   buildControlUrl,
   buildControlUrlForControl,
   buildGroupUrl,
+  buildVocabularyEntryPath,
+  buildVocabularyNamespacePath,
   resolveControlRoute,
 } from '@/app/routes';
 import type { Control } from '@/domain/models';
@@ -91,5 +93,18 @@ describe('routes (Navigationsvertrag ADR-1)', () => {
     expect(resolveControlRoute(catalog, 'gspp', 'stable-alt-id')).toBe(movedControl);
     expect(resolveControlRoute(catalog, 'gspp', movedControl.id)).toBeNull();
     expect(resolveControlRoute(catalog, 'unknown', 'stable-alt-id')).toBeNull();
+  });
+});
+
+describe('vocabulary routes', () => {
+  it('preserves the active links percent encoding for selected values', () => {
+    expect(buildVocabularyEntryPath('terms', "ä +&#/?'"))
+      .toBe("/vokabular/terms?wert=%C3%A4%20%2B%26%23%2F%3F'");
+  });
+
+  it('distinguishes an omitted selection from an explicitly empty value', () => {
+    expect(buildVocabularyNamespacePath('terms')).toBe('/vokabular/terms');
+    expect(buildVocabularyEntryPath('terms')).toBe('/vokabular/terms');
+    expect(buildVocabularyEntryPath('terms', '')).toBe('/vokabular/terms?wert=');
   });
 });
