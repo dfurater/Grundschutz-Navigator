@@ -34,6 +34,9 @@ import {
   createGitHubClient,
   createGitRunner,
   formatDocumentationSection,
+  gitSucceeds,
+  gitText,
+  pushBranchWithLease,
 } from './backmerge-main-to-develop.mjs';
 
 export const RELEASE_BASE_REF = 'main';
@@ -76,16 +79,6 @@ export class ReleasePrepareError extends Error {
     super(message);
     this.name = 'ReleasePrepareError';
   }
-}
-
-async function gitText(git, args) {
-  const { stdout } = await git(args);
-  return stdout.trim();
-}
-
-async function gitSucceeds(git, args) {
-  const { code } = await git(args, { allowFailure: true });
-  return code === 0;
 }
 
 /**
@@ -320,14 +313,7 @@ export async function runReleasePrepare({
 
   const changedPaths = await collectReleaseChangedPaths(git, { headSha });
 
-  const remoteHead = await gitText(git, [
-    'ls-remote', '--heads', 'origin', `refs/heads/${releaseBranch}`,
-  ]);
-  const remoteSha = remoteHead.split('\n')[0]?.split('\t')[0] ?? '';
-  const pushArgs = SHA_PATTERN.test(remoteSha)
-    ? ['push', `--force-with-lease=refs/heads/${releaseBranch}:${remoteSha}`, 'origin', `HEAD:refs/heads/${releaseBranch}`]
-    : ['push', 'origin', `HEAD:refs/heads/${releaseBranch}`];
-  await git(pushArgs);
+  await pushBranchWithLease(git, releaseBranch);
 
   const title = `chore(release): ${releaseSha.slice(0, 12)} nach ${RELEASE_BASE_REF} freigeben`;
   const body = buildReleasePullRequestBody({ releaseSha, releaseBranch, sourceSha, changedPaths });

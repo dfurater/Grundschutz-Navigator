@@ -238,12 +238,6 @@ describe('escapeCSVField', () => {
 /* ------------------------------------------------------------------ */
 
 describe('controlToCSVRow', () => {
-  it('produces semicolon-delimited row with 33 fields', () => {
-    const row = controlToCSVRow(makeControl());
-    const fields = row.split(';');
-    expect(fields).toHaveLength(33);
-  });
-
   it('aligns row fields with the logical export order', () => {
     const row = controlToCSVRow(makeControl({ parentId: 'GC.1' }));
     expect(row.split(';')).toEqual([
@@ -281,21 +275,6 @@ describe('controlToCSVRow', () => {
       'G 0.18, G 0.19',
       'uuid-1',
     ]);
-  });
-
-  it('includes control ID as first field', () => {
-    const row = controlToCSVRow(makeControl());
-    expect(row.startsWith('GC.1.1;')).toBe(true);
-  });
-
-  it('includes modalverb', () => {
-    const row = controlToCSVRow(makeControl());
-    expect(row).toContain('MUSS');
-  });
-
-  it('includes tags joined by comma', () => {
-    const row = controlToCSVRow(makeControl());
-    expect(row).toContain('BCM, Compliance Management');
   });
 
   it('exports WLAN taxonomy values and exact optional namespaces by level', () => {
@@ -352,12 +331,6 @@ describe('controlToCSVRow', () => {
     expect(fields.at(-2)).toBe('G 0.18, G 0.19; "Kommentar"');
   });
 
-  it('appends an existing alt-identifier unchanged', () => {
-    const fields = parseSemicolonCSV(`${controlToCSVRow(makeControl())}\r\n`)[0];
-
-    expect(fields.at(-1)).toBe('uuid-1');
-  });
-
   it('exports a missing alt-identifier as an empty field without fallback', () => {
     const fields = parseSemicolonCSV(`${controlToCSVRow(
       makeControl({ altIdentifier: undefined }),
@@ -378,23 +351,6 @@ describe('controlToCSVRow', () => {
     expect(fields.at(-1)).toBe(altIdentifier);
   });
 
-  it('includes linked controls', () => {
-    const row = controlToCSVRow(makeControl());
-    expect(row).toContain('GC.2.2 (related)');
-    expect(row).toContain('GC.3.1 (required)');
-  });
-
-  it('includes relation-specific link columns', () => {
-    const row = controlToCSVRow(makeControl());
-    expect(row).toContain('GC.3.1');
-    expect(row).toContain('GC.2.2');
-  });
-
-  it('includes parent control id when present', () => {
-    const row = controlToCSVRow(makeControl({ parentId: 'GC.1' }));
-    expect(row.startsWith('GC.1.1;GC.1;')).toBe(true);
-  });
-
   it('does not include namespace URLs for controlled vocabularies', () => {
     const row = controlToCSVRow(makeControl());
     expect(row).not.toContain('https://example.com/namespaces/modal_verbs.csv');
@@ -411,41 +367,6 @@ describe('controlToCSVRow', () => {
 /* ------------------------------------------------------------------ */
 
 describe('controlsToCSV', () => {
-  it('produces header + data rows', () => {
-    const csv = controlsToCSV([makeControl()]);
-    const lines = csv.trimEnd().split('\r\n');
-    expect(lines).toHaveLength(2); // header + 1 data row
-  });
-
-  it('header contains expected column names', () => {
-    const csv = controlsToCSV([]);
-    const header = csv.split('\r\n')[0];
-    expect(header).toContain('ID');
-    expect(header).toContain('parent_id');
-    expect(header).toContain('Praktik');
-    expect(header).toContain('Thema');
-    expect(header).toContain('Titel');
-    expect(header).toContain('statement');
-    expect(header).toContain('guidance');
-    expect(header).toContain('modal_verb');
-    expect(header).toContain('sec_level');
-    expect(header).toContain('effort_level');
-    expect(header).toContain('tags');
-    expect(header).toContain('target_object_categories');
-    expect(header).toContain('result');
-    expect(header).toContain('result_specification');
-    expect(header).toContain('action_word');
-    expect(header).toContain('documentation');
-    expect(header).toContain('required_links');
-    expect(header).toContain('related_links');
-    expect(header).toContain('confidentiality');
-    expect(header).toContain('integrity');
-    expect(header).toContain('availability');
-    expect(header).toContain('authenticity');
-    expect(header).toContain('threats');
-    expect(header).toContain('control_alt_identifier');
-  });
-
   it('uses the expected logical header order', () => {
     const csv = controlsToCSV([]);
     const header = csv.split('\r\n')[0];
@@ -514,12 +435,6 @@ describe('controlsToCSV', () => {
     expect(header).not.toContain('threats_ns');
     expect(header).toContain('taxonomy_l1_ns');
     expect(header).toContain('taxonomy_l4_ns');
-  });
-
-  it('uses semicolon as delimiter', () => {
-    const csv = controlsToCSV([]);
-    const header = csv.split('\r\n')[0];
-    expect(header.split(';')).toHaveLength(33);
   });
 
   it('uses CRLF row separators and terminates with a final CRLF', () => {

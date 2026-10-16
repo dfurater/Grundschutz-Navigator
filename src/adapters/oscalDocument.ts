@@ -14,14 +14,7 @@
 // =============================================================================
 
 import { catalogRootAdapter } from '@/adapters/oscalRootAdapters';
-import {
-  dispatchOscalDocumentOrThrow,
-  OscalRootDispatchError,
-  ROOT_DISPATCH_DIAGNOSTIC_CODES,
-  ROOT_DISPATCH_STAGE,
-  ROOT_DISPATCH_VALIDATOR,
-} from '@/adapters/oscalRootDispatch';
-import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
+import { dispatchRootDocumentOrThrow } from '@/adapters/oscalRootDocumentParse';
 import type { CatalogDocument, CatalogDocumentContext } from '@/domain/models';
 import { getCatalogByKey } from '@/domain/sourceRegistry';
 
@@ -54,31 +47,14 @@ export function parseCatalogDocument(
   source: unknown,
   context: CatalogDocumentContext,
 ): CatalogDocument {
-  const dispatch = dispatchOscalDocumentOrThrow(source, {
-    ...context,
-    upstreamPath: context.upstreamPath ?? getCatalogByKey(context.catalogKey)?.upstreamPath,
-  });
-
-  // Zweite Schranke neben dem Registry-Abgleich im Dispatch: Der greift nur,
-  // wenn der Upstream-Pfad einen registrierten Eintrag trifft. Dieser Einstieg
-  // liefert einen `CatalogDocument` und darf deshalb unter keinen Umständen
-  // einen fremden Root durchreichen.
-  if (dispatch.rootType !== catalogRootAdapter.rootType) {
-    throw new OscalRootDispatchError(
-      createOscalDiagnostic({
-        code: ROOT_DISPATCH_DIAGNOSTIC_CODES.ROOT_TYPE_MISMATCH,
-        stage: ROOT_DISPATCH_STAGE,
-        validator: ROOT_DISPATCH_VALIDATOR,
-        path: '/',
-        artifact: {
-          key: dispatch.artifactKey,
-          rootType: dispatch.rootType,
-          oscalVersion: dispatch.oscalVersion,
-        },
-        params: { expected: catalogRootAdapter.rootType, found: dispatch.rootType },
-      }),
-    );
-  }
+  const dispatch = dispatchRootDocumentOrThrow(
+    source,
+    {
+      ...context,
+      upstreamPath: context.upstreamPath ?? getCatalogByKey(context.catalogKey)?.upstreamPath,
+    },
+    catalogRootAdapter.rootType,
+  );
 
   return {
     source,

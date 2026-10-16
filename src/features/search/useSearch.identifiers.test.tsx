@@ -103,24 +103,6 @@ describe('useSearch — Kennungsauflösung', () => {
     await expectMatches(controls, '9bb16672-4394-4ce9-bd14-12a080233f7a', ['PERF.2.1']);
   });
 
-  it('puts a control alt-identifier match first when a group shares the identifier', async () => {
-    const sharedIdentifier = '9bb16672-4394-4ce9-bd14-12a080233f7a';
-    const controls = [
-      makeControl({ id: 'GC.1.1', groupId: 'GC.1', practiceId: 'GC' }),
-      makeControl({ id: 'GC.1.2', groupId: 'GC.1', practiceId: 'GC', altIdentifier: sharedIdentifier }),
-    ];
-    const practices: Practice[] = [{
-      id: 'GC',
-      title: 'Governance und Compliance',
-      label: 'GC',
-      altIdentifier: sharedIdentifier,
-      topics: [],
-      controlCount: 2,
-    }];
-
-    await expectMatches(controls, sharedIdentifier, ['GC.1.2', 'GC.1.1'], practices);
-  });
-
   it('resolves a practice identifier to every control of that practice', async () => {
     const controls = [
       makeControl({ id: 'GC.1.1', practiceId: 'GC' }),

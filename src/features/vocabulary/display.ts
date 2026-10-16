@@ -1,14 +1,10 @@
 import type {
   EffortLevel,
-  PropValue,
   SecurityLevel,
   VocabularyNamespace,
   VocabularyRegistry,
 } from '@/domain/models';
-import {
-  resolvePropVocabularyEntry,
-  resolveVocabularyEntry,
-} from '@/domain/vocabulary';
+import { resolveVocabularyEntry } from '@/domain/vocabulary';
 import type { SecurityTargetFilterValue } from '@/domain/securityTargets';
 
 export const OFFICIAL_SECURITY_LEVELS: SecurityLevel[] = [
@@ -48,13 +44,6 @@ export function getOfficialEffortLevelLabel(
   value: EffortLevel | undefined,
 ): string {
   return value ?? '';
-}
-
-export function getVocabularyDefinitionTooltip(
-  registry: VocabularyRegistry | null,
-  prop: PropValue | undefined,
-): string | undefined {
-  return resolvePropVocabularyEntry(registry, prop)?.entry.definition;
 }
 
 export function getOfficialSecurityLevelTooltip(

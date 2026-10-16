@@ -37,9 +37,6 @@ function rows() {
 function tabstops() {
   return rows().filter((row) => row.tabIndex === 0);
 }
-function ownRow(item: HTMLButtonElement) {
-  return item;
-}
 
 const nested: TreeItem[] = [
   { id: 'A', label: 'Alpha', children: [
@@ -69,13 +66,13 @@ test('Chromium: ein Tab-Einstieg, sichtbare Reihenfolge, Kind-/Elternwechsel und
   await userEvent.keyboard('{ArrowRight}{ArrowRight}');
   const leaf = rows()[2];
   expect(document.activeElement).toBe(leaf);
-  expect(getComputedStyle(ownRow(leaf)).boxShadow).not.toBe('none');
-  expect(getComputedStyle(ownRow(alpha)).boxShadow).toBe('none');
-  expect(getComputedStyle(ownRow(anonymous)).boxShadow).toBe('none');
+  expect(getComputedStyle(leaf).boxShadow).not.toBe('none');
+  expect(getComputedStyle(alpha).boxShadow).toBe('none');
+  expect(getComputedStyle(anonymous).boxShadow).toBe('none');
   await userEvent.keyboard('{ArrowLeft}{ArrowLeft}{ArrowDown}');
-  expect(ownRow(document.activeElement as HTMLButtonElement).textContent).toBe('Zweites Kind');
+  expect((document.activeElement as HTMLButtonElement).textContent).toBe('Zweites Kind');
   await userEvent.keyboard('{End}');
-  expect(ownRow(document.activeElement as HTMLButtonElement).textContent).toBe('Beta');
+  expect((document.activeElement as HTMLButtonElement).textContent).toBe('Beta');
   await userEvent.keyboard('{Home}');
   expect(document.activeElement).toBe(alpha);
   await userEvent.tab();
@@ -98,7 +95,7 @@ test('Chromium: Aktivierung ohne ID bleibt lokal, Kindaktivierung navigiert gena
   expect(onSelect).toHaveBeenCalledExactlyOnceWith('A.1');
   expect(rows()[0].getAttribute('aria-expanded')).toBe('true');
   // Maus auf dem eigenen Zeileninhalt, nicht auf der Kind-Untergruppe.
-  await userEvent.click(ownRow(rows()[0]));
+  await userEvent.click(rows()[0]);
   expect(document.activeElement).toBe(rows()[0]);
   expect(tabstops()).toEqual([rows()[0]]);
   expect(rows()).toHaveLength(2);

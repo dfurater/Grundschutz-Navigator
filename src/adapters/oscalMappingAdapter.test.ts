@@ -9,6 +9,7 @@
 // =============================================================================
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { expectNoNetworkCalls, stubNoNetwork } from '@/test/noNetwork';
 import {
   coverageForSourceIdRef,
   coverageForTargetIdRef,
@@ -26,7 +27,7 @@ import {
   mappingCollectionRootAdapter,
   parseOscalDocument,
 } from './oscalRootAdapters';
-import { OscalRootDispatchError } from './oscalRootDispatch';
+import { OscalRootDispatchError } from '@/domain/oscalRootDispatch';
 import { parseCatalogDocument } from './oscalDocument';
 import { MAPPING_RELATIONSHIPS, OSCAL_NAMESPACE } from '@/domain/mappingModel';
 import type { MappingCollection } from '@/domain/mappingModel';
@@ -813,18 +814,7 @@ describe('No-op-Verlustfreiheit über die eingefrorenen Fixtures', () => {
 
 describe('Kein Netzzugriff auf irgendeinem Parse- oder Auflösungspfad', () => {
   it('parst den gesamten Korpus, während fetch, XMLHttpRequest und sendBeacon werfen', () => {
-    const fetch = vi.fn(() => {
-      throw new Error('network access is forbidden');
-    });
-    const XMLHttpRequest = vi.fn(() => {
-      throw new Error('network access is forbidden');
-    });
-    const sendBeacon = vi.fn(() => {
-      throw new Error('network access is forbidden');
-    });
-    vi.stubGlobal('fetch', fetch);
-    vi.stubGlobal('XMLHttpRequest', XMLHttpRequest);
-    vi.stubGlobal('navigator', { sendBeacon });
+    const network = stubNoNetwork();
 
     const documents = [
       ...makeAllMappingSources().map(({ specification, source }) =>
@@ -839,8 +829,6 @@ describe('Kein Netzzugriff auf irgendeinem Parse- oder Auflösungspfad', () => {
     ];
 
     expect(documents).toHaveLength(5);
-    expect(fetch).not.toHaveBeenCalled();
-    expect(XMLHttpRequest).not.toHaveBeenCalled();
-    expect(sendBeacon).not.toHaveBeenCalled();
+    expectNoNetworkCalls(network);
   });
 });

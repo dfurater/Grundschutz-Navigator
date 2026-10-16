@@ -114,6 +114,9 @@ async function expectBottomSheetGeometry(dialog: Element, width: number) {
   expect(box.width).toBe(width);
   expect(box.bottom).toBe(window.innerHeight);
   expect(getComputedStyle(dialog).borderTopWidth).toBe('0px');
+  const backdrop = dialog.previousElementSibling!;
+  expect(getComputedStyle(backdrop).opacity).toBe('0.3');
+  expect(getComputedStyle(backdrop.firstElementChild!).backgroundColor).toBe('rgb(0, 0, 0)');
 }
 
 async function expectNoAxeViolations(dialog: Element) {

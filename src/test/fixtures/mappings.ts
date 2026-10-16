@@ -21,6 +21,8 @@
 // kommt aus der Versionsmatrix und nicht aus einem zweiten Literal.
 // =============================================================================
 
+import { makeUuid } from '@/test/fixtures/fixtureUuid';
+import { compareStringsByCodeUnit } from '@/domain/codeUnitOrder.mjs';
 import { getSchemaPin, PINNED_OSCAL_VERSIONS } from '@/domain/oscalVersionMatrix';
 import type { PinnedOscalVersion } from '@/domain/oscalVersionMatrix';
 import { listOscalArtifacts } from '@/domain/sourceRegistry';
@@ -52,19 +54,6 @@ export const MAPPING_RESOURCE_HREFS = Object.freeze({
   itgsKernel: 'target-catalogs/05160af58864-BSI-Stand-der-Technik-Kernel-catalog.json',
   itgsMethodik: 'target-catalogs/30dc66259164-BSI-Methodik-Grundschutz__-catalog.json',
 });
-
-/**
- * Deterministische, schemagültige UUIDs (Typ 4, Variante 8). Ein Zähler statt
- * `crypto.randomUUID()`: Ein Fixture, das bei jedem Lauf andere Identitäten
- * trägt, taugt nicht als eingefrorener Korpus.
- */
-function makeUuid(seed: string, index: number): string {
-  let hash = 0;
-  for (const character of seed) {
-    hash = (hash * 31 + character.codePointAt(0)!) >>> 0;
-  }
-  return `${hash.toString(16).padStart(8, '0')}-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;
-}
 
 /* ------------------------------------------------------------------ */
 /*  Strukturbeschreibung der beiden registrierten Mappings             */
@@ -109,12 +98,6 @@ const REGISTERED_MAPPING_ARTIFACTS = new Map(
     .filter((entry) => entry.expectedRootType === 'mapping-collection')
     .map((entry) => [entry.artifactKey, entry] as const),
 );
-
-function compareStringsByCodeUnit(left: string, right: string): number {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
-}
 
 /** Die Schlüssel der registrierten Mappings, alphabetisch. */
 export function listRegisteredMappingArtifactKeys(): readonly string[] {

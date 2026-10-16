@@ -155,6 +155,33 @@ describe('Selektion Phase 1 — Inklusion', () => {
       }),
     ).toEqual([]);
   });
+
+  it('hält den früheren ReDoS-Fall des Musters in linearer Arbeit', () => {
+    // Zwölf Sterne gegen eine 40 Zeichen lange ID, der Abgleich scheitert am
+    // abschließenden `!` vollständig — der teuerste Fall eines einzelnen
+    // Vergleichs. Die Schranke steht an der gebuchten Arbeit, nicht an einer
+    // Uhrzeit: Der Abgleich ist durch Muster × Subjekt beschränkt.
+    const subject = 'a'.repeat(40);
+    const pattern = `${'*a'.repeat(12)}!`;
+    const index = indexCatalogControls(
+      catalog({ metadata: { 'oscal-version': '1.1.3' }, controls: [control(subject)] }),
+      budget(),
+    );
+    const selectionBudget = budget();
+
+    const result = resolveSelectionIds(index, {
+      selection: {
+        kind: 'include-controls',
+        includeControls: [{ withIds: [], matching: [{ pattern }], path: '/imports/0' }],
+      },
+      excludeControls: [],
+    }, selectionBudget);
+
+    expect(result.ok && [...result.ids]).toEqual([]);
+    const globWork = selectionBudget.usage().workUnitsByCategory['glob-state'];
+    expect(globWork).toBeGreaterThan(0);
+    expect(globWork).toBeLessThanOrEqual(pattern.length * subject.length);
+  });
 });
 
 describe('Selektion Phase 1 — Exclusion und Kumulation', () => {

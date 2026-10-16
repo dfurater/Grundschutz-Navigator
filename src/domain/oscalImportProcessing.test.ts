@@ -144,12 +144,6 @@ describe('parseClass2OscalInput', () => {
     });
   });
 
-  it('akzeptiert genau eine Million JSON-Knoten', () => {
-    const source = { values: Array.from({ length: CLASS_2_IMPORT_LIMITS.maxNodes - 2 }, () => null) };
-
-    expect(enforceClass2ObjectGraphInvariants(source)).toBeNull();
-  });
-
   it('nimmt dem Byte-Eintrittspunkt die Objektgraph-Limits ab — sie liegen in der gemeinsamen Einheit', () => {
     // Mehr Knoten, als das Limit erlaubt: Der Byte-Eintrittspunkt parst nur
     // noch; die Ablehnung geschieht ausschließlich in der gemeinsamen

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { expectNoNetworkCalls, stubNoNetwork } from '@/test/noNetwork';
 
 import { parseOscalDocument } from '@/adapters/oscalRootAdapters';
 import {
@@ -895,21 +896,7 @@ describe('Vertragsinvarianten', () => {
   });
 
   it('löst während der Auswertung keinen Netzwerkzugriff aus', () => {
-    const failing = vi.fn(() => {
-      throw new Error('Netzwerkzugriff während der Referenzauswertung');
-    });
-    const scope = globalThis as unknown as Record<string, unknown>;
-    const original = {
-      fetch: scope.fetch,
-      XMLHttpRequest: scope.XMLHttpRequest,
-      navigator: scope.navigator,
-    };
-    scope.fetch = failing;
-    scope.XMLHttpRequest = failing;
-    Object.defineProperty(scope, 'navigator', {
-      configurable: true,
-      value: { sendBeacon: failing },
-    });
+    const network = stubNoNetwork();
 
     try {
       const graph = buildReferenceGraph({
@@ -925,14 +912,9 @@ describe('Vertragsinvarianten', () => {
       });
       expect(graph.edges).not.toHaveLength(0);
     } finally {
-      scope.fetch = original.fetch;
-      scope.XMLHttpRequest = original.XMLHttpRequest;
-      Object.defineProperty(scope, 'navigator', {
-        configurable: true,
-        value: original.navigator,
-      });
+      vi.unstubAllGlobals();
     }
 
-    expect(failing).not.toHaveBeenCalled();
+    expectNoNetworkCalls(network);
   });
 });

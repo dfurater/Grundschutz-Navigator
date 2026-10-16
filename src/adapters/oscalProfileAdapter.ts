@@ -32,13 +32,9 @@
 // und hängen dort am Schema.
 // =============================================================================
 
-import {
-  createReferenceDocument,
-  resolveOscalReference,
-} from '@/domain/referenceResolution';
+import { resolveOscalReference } from '@/domain/referenceResolution';
 import {
   diagnose,
-  isJsonObject,
   PROFILE_ADAPTER_DIAGNOSTIC_CODES,
   readBoolean,
   readLinks,
@@ -46,11 +42,12 @@ import {
   readParams,
   readParts,
   readProps,
-  readString,
   readStringArrayField,
 } from '@/adapters/oscalProfileReaders';
-import type { DeriveState, JsonObject } from '@/adapters/oscalProfileReaders';
-import { readPinnedOscalVersion, readRootMetadata } from '@/adapters/oscalRootDispatch';
+import type { DeriveState } from '@/adapters/oscalProfileReaders';
+import { readRootMetadata } from '@/domain/oscalRootDispatch';
+import { openRootDerive } from '@/adapters/oscalRootDocumentParse';
+import { isJsonObject, readString, type JsonObject } from '@/domain/jsonGuards';
 import { PROFILE_RESOLUTION_STATE, PROFILE_ROOT_TYPE } from '@/domain/profileModel';
 import type {
   Profile,
@@ -70,7 +67,6 @@ import type {
   ProfileSetParameter,
 } from '@/domain/profileModel';
 import type { OscalDocumentContext } from '@/domain/models';
-import { getArtifactByUpstreamPath } from '@/domain/sourceRegistry';
 
 export { PROFILE_RESOLUTION_STATE, PROFILE_ROOT_TYPE } from '@/domain/profileModel';
 export {
@@ -461,28 +457,16 @@ function deriveModify(body: JsonObject, state: DeriveState): ProfileModify | nul
  * @param context Ableitungskontext; trägt Vertrauensklasse und Upstream-Pfad
  */
 export function deriveProfile(body: unknown, context: OscalDocumentContext): Profile {
-  const rootBody = isJsonObject(body) ? body : {};
-  const oscalVersion = readPinnedOscalVersion(rootBody, context);
+  const { rootBody, bodyIsObject, artifactKey, oscalVersion, referenceDocument } =
+    openRootDerive(body, context, PROFILE_ROOT_TYPE);
   const state: DeriveState = {
     diagnostics: [],
-    // Der Registry-Schlüssel, nie der Upstream-Pfad: Diagnosen tragen nur
-    // Werte aus geschlossenen Mengen.
-    artifactKey: context.upstreamPath
-      ? (getArtifactByUpstreamPath(context.upstreamPath)?.artifactKey ?? null)
-      : null,
+    artifactKey,
     oscalVersion,
-    // Der Referenzschicht wird der Envelope gereicht, den sie erwartet. Die
-    // Hülle ist neu, der Körper bleibt dasselbe Objekt — es wird nichts kopiert
-    // und nichts verändert.
-    referenceDocument: createReferenceDocument({
-      source: { [PROFILE_ROOT_TYPE]: rootBody },
-      context,
-      rootType: PROFILE_ROOT_TYPE,
-      oscalVersion: oscalVersion ?? 'unknown',
-    }),
+    referenceDocument,
   };
 
-  if (!isJsonObject(body)) {
+  if (!bodyIsObject) {
     diagnose(state, codes.STRUCTURE_UNEXPECTED, `/${PROFILE_ROOT_TYPE}`);
   }
 

@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseCatalog } from '@/adapters/oscalAdapter';
 import {
-  controlRefEquals,
-  formatControlRef,
   makeControlRef,
   resolveControlRef,
 } from '@/domain/controlRef';
@@ -72,21 +70,5 @@ describe('controlRef', () => {
 
     expect(resolveControlRef(catalogsByKey, makeControlRef('lieferkette', 'GC.1.1'))).toBeNull();
     expect(resolveControlRef(catalogsByKey, makeControlRef('gspp', 'GC.9.9'))).toBeNull();
-  });
-
-  it('compares refs by catalogKey and controlId', () => {
-    expect(
-      controlRefEquals(makeControlRef('gspp', 'GC.1.1'), makeControlRef('gspp', 'GC.1.1')),
-    ).toBe(true);
-    expect(
-      controlRefEquals(makeControlRef('gspp', 'GC.1.1'), makeControlRef('wlan', 'GC.1.1')),
-    ).toBe(false);
-    expect(
-      controlRefEquals(makeControlRef('gspp', 'GC.1.1'), makeControlRef('gspp', 'GC.1.2')),
-    ).toBe(false);
-  });
-
-  it('formats refs as catalogKey:controlId', () => {
-    expect(formatControlRef(makeControlRef('gspp', 'GC.1.1'))).toBe('gspp:GC.1.1');
   });
 });

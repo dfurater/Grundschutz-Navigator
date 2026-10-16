@@ -10,14 +10,9 @@
 // dem Dispatch, nicht aus einer Modellkonstante.
 // =============================================================================
 
-import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
-import {
-  dispatchOscalDocumentOrThrow,
-  OscalRootDispatchError,
-  ROOT_DISPATCH_DIAGNOSTIC_CODES,
-  ROOT_DISPATCH_STAGE,
-  ROOT_DISPATCH_VALIDATOR,
-} from '@/adapters/oscalRootDispatch';
+import { parseRootDocument } from '@/adapters/oscalRootDocumentParse';
+import type { ParsedRootDocument } from '@/adapters/oscalRootDocumentParse';
+import { validateParsedSchema } from '@/adapters/oscalRootDocumentSchema';
 import { deriveComponentDefinition } from '@/adapters/oscalComponentAdapter';
 import { COMPONENT_DEFINITION_ROOT_TYPE } from '@/domain/componentDefinitionModel';
 import type {
@@ -25,8 +20,6 @@ import type {
   ComponentDefinitionDeriveOptions,
 } from '@/domain/componentDefinitionModel';
 import type { OscalDocumentContext } from '@/domain/models';
-import type { OscalSchemaPin, PinnedOscalVersion } from '@/domain/oscalVersionMatrix';
-import { validateAgainstPinnedSchema } from '@/domain/oscalSchemaValidation';
 import type { OscalSchemaValidationResult } from '@/domain/oscalSchemaValidation';
 
 /**
@@ -35,15 +28,7 @@ import type { OscalSchemaValidationResult } from '@/domain/oscalSchemaValidation
  * `source` ist die Wahrheit, `view` eine Projektion darauf. `pin` ist die in
  * Stufe 2 gewählte Matrixzelle und der einzige zulässige Eingang in Stufe 3.
  */
-export interface ComponentDefinitionDocument {
-  readonly source: unknown;
-  readonly context: OscalDocumentContext;
-  readonly view: ComponentDefinition;
-  /** Die aus `metadata.oscal-version` gebundene Zelle — nie aus `$schema`. */
-  readonly pin: OscalSchemaPin;
-  readonly oscalVersion: PinnedOscalVersion;
-  readonly artifactKey: string | null;
-}
+export type ComponentDefinitionDocument = ParsedRootDocument<ComponentDefinition>;
 
 /**
  * Parst ein OSCAL-Component-Definition-Dokument verlustfrei nach ADR-2.
@@ -61,36 +46,10 @@ export function parseComponentDefinitionDocument(
   context: OscalDocumentContext,
   options: ComponentDefinitionDeriveOptions = {},
 ): ComponentDefinitionDocument {
-  const dispatch = dispatchOscalDocumentOrThrow(source, context);
-
-  // Zweite Schranke neben dem Registry-Abgleich im Dispatch: Der greift nur bei
-  // einem registrierten Upstream-Pfad. Dieser Einstieg liefert ein
-  // `ComponentDefinitionDocument` und darf keinen fremden Root durchreichen.
-  if (dispatch.rootType !== COMPONENT_DEFINITION_ROOT_TYPE) {
-    throw new OscalRootDispatchError(
-      createOscalDiagnostic({
-        code: ROOT_DISPATCH_DIAGNOSTIC_CODES.ROOT_TYPE_MISMATCH,
-        stage: ROOT_DISPATCH_STAGE,
-        validator: ROOT_DISPATCH_VALIDATOR,
-        path: '/',
-        artifact: {
-          key: dispatch.artifactKey,
-          rootType: dispatch.rootType,
-          oscalVersion: dispatch.oscalVersion,
-        },
-        params: { expected: COMPONENT_DEFINITION_ROOT_TYPE, found: dispatch.rootType },
-      }),
-    );
-  }
-
-  return {
-    source,
-    context,
-    view: deriveComponentDefinition(dispatch.body, context, options),
-    pin: dispatch.pin,
-    oscalVersion: dispatch.oscalVersion,
-    artifactKey: dispatch.artifactKey,
-  };
+  return parseRootDocument(source, context, {
+    rootType: COMPONENT_DEFINITION_ROOT_TYPE,
+    derive: (body) => deriveComponentDefinition(body, context, options),
+  });
 }
 
 /**
@@ -102,10 +61,6 @@ export function parseComponentDefinitionDocument(
  * `import-component-definitions[0].remarks` ist unter 1.1.2 ein Schemabefund
  * und unter 1.2.2 gültig.
  */
-export function validateComponentDefinitionSchema(
+export const validateComponentDefinitionSchema: (
   document: ComponentDefinitionDocument,
-): Promise<OscalSchemaValidationResult> {
-  return validateAgainstPinnedSchema(document.source, document.pin, {
-    artifactKey: document.artifactKey,
-  });
-}
+) => Promise<OscalSchemaValidationResult> = validateParsedSchema;

@@ -5,9 +5,9 @@ import {
   assertAllowedRedirectTarget,
   assertOfficialSchemaUrl,
   fetchSchemaWithValidatedRedirects,
-  resolveSchemaVendorTarget,
   syncOscalSchemas,
 } from './sync-oscal-schemas.mjs';
+import { resolveSchemaVendorTarget } from './oscal-schema-vendor.mjs';
 import { readBodyWithLimit } from './security-guards.mjs';
 import { getSchemaPin, listSchemaPins } from '../src/domain/oscalVersionMatrix.mjs';
 

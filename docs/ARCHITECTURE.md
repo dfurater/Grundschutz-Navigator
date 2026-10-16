@@ -4,7 +4,7 @@
 
 ## Überblick
 
-Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application (SPA)** für das Durchsuchen und Filtern des BSI IT-Grundschutz-Kontrollkatalogs (Grundschutz++). Die Anwendung wird vollständig im Browser ausgeführt und deployed auf GitHub Pages.
+Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application (SPA)** für das Durchsuchen, Filtern und Exportieren der BSI-Kataloge aus der Stand-der-Technik-Bibliothek, allen voran des Grundschutz++-Anwenderkatalogs (Katalogliste: `src/domain/sourceRegistry.mjs`). Die Anwendung wird vollständig im Browser ausgeführt und deployed auf GitHub Pages.
 
 ## Technologie-Stack
 
@@ -18,6 +18,14 @@ Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application 
 | Scrollleisten | OverlayScrollbars (MIT) |
 | Testing | Vitest + @testing-library/react + jsdom + Chromium-Browser-Lane; jsdom parst im Build zusätzlich die gebaute HTML-Auslieferung für den Titelvertrag |
 | Deployment | GitHub Pages (via GitHub Actions) |
+
+## Gemeinsame technische Helfer
+
+`src/domain/codeUnitOrder.mjs` liefert den locale-unabhängigen UTF-16-Code-Unit-Komparator für Profilauflösung, Fixtures und Node-Skripte. `scripts/upstream-artifacts.mjs` ordnet die Pfade des signierten Manifests nach Unicode-Codepoints. `src/domain/repositoryPath.mjs` kodiert Repository-Pfade segmentweise und erhält leere Segmente standardmäßig; `vocabulary.ts` und `vocabularyNamespaces.ts` entfernen sie mit `omitEmptySegments: true`. Beide `.mjs`-Module laufen ohne Vite und besitzen `.d.mts`-Typdeklarationen.
+
+`scripts/contentHashes.mjs` berechnet SHA-256 über die übergebenen Text- oder Byte-Daten mit `node:crypto` und Git-Blob-IDs mit `sha1Bytes` aus `src/domain/sha1.mjs` über den Header `blob <Byteanzahl>\0` und die Inhaltsbytes. `src/domain/sha1.mjs` implementiert SHA-1 nach FIPS 180-4 synchron und ohne Plattformabhängigkeit; `src/domain/uuidV5.ts` leitet damit UUIDv5 ab. Die Prüfung zulässiger Ausgabepfade verwendet `isPathInsideRoot` aus `scripts/security-guards.mjs`. Vokabular-Links verwenden die URL-Builder `buildVocabularyIndexPath`, `buildVocabularyNamespacePath` und `buildVocabularyEntryPath` in `src/app/routes.ts`; Eintragswerte werden mit `encodeURIComponent` in den Query-Parameter `wert` geschrieben.
+
+Die Testinfra verwendet `isJsonObject` aus `src/domain/jsonGuards.ts` und `deepFreeze` aus `src/test/oscalStructure.ts`. Deterministische Fixture-UUIDs entstehen in `src/test/fixtures/fixtureUuid.ts`. Die Tests der Kontrolldetailansicht bauen ihren Katalogzustand mit `src/test/fixtures/controlDetailState.ts`. `src/test/workflowFixtures.ts` enthält den Job-Block-Leser und den Repository-Builder mit Registrierung der temporären Verzeichnisse für den Cleanup der aufrufenden Suite. Der Job-Block-Leser wirft mit `requireJobsBlock: true` bei fehlendem `jobs`-Block einen Fehler. Browser-Tests beziehen den Vorfahren-Scrollhelfer `scrollerOf` aus `src/test/browser/mobileDrawerHarness.ts`.
 
 ## Gestaltungssystem
 
@@ -102,12 +110,15 @@ src/                              # Anwendungsquellcode
 │   ├── catalogReferenceProjection.ts # Aufgelöste Control-Links in der Katalog-View
 │   ├── class2ImportLimits.d.mts      # Typen der Klasse-2-Ressourcengrenzen
 │   ├── class2ImportLimits.mjs        # Klasse-2-Ressourcengrenzen (einzige Quelle, reines ESM)
+│   ├── codeUnitOrder.d.mts          # Typ des UTF-16-Code-Unit-Komparators
+│   ├── codeUnitOrder.mjs            # Locale-unabhängiger Stringvergleich für App und Skripte
 │   ├── componentDefinitionModel.ts   # Domänenmodell der Component Definition
 │   ├── controlRef.ts                 # Kataloggescopte interne Control-Referenzen
 │   ├── controlRelationships.ts       # Link-Relationen, Beschriftungen, eingehende Links
 │   ├── germanCollation.ts            # Wiederverwendete deutsche Sortierkomparatoren
 │   ├── identifierQuery.ts            # Query-Vertrag für Kennungssuchen (UUID v4/v5)
 │   ├── integrity.ts                  # SHA-256 Integritätsprüfung
+│   ├── jsonGuards.ts                 # Typwächter und Leser für JSON-Rohwerte
 │   ├── mappingModel.ts               # Domänenmodell der Mapping Collection
 │   ├── models.ts                     # Zwei-Schichten-Datentypen
 │   ├── oscalBackMatterBase64.ts      # Base64-Buchhaltung des Klasse-2-Ressourcenlimits
@@ -125,6 +136,7 @@ src/                              # Anwendungsquellcode
 │   ├── oscalObjectProvenance.ts      # Herkunftsfrage und fail-closed Diagnose
 │   ├── oscalObjectWalk.ts            # Gemeinsamer Containerdurchlauf der Herkunftskette
 │   ├── oscalProfile.ts               # Raw-Typen des Roots profile
+│   ├── oscalRootDispatch.ts          # Stufe 2: Root-Dispatch
 │   ├── oscalRootDocument.ts          # Root-Envelope des generischen Dispatch
 │   ├── oscalSchemaBundle.ts          # Einziger Zugriffsweg auf die gepinnten NIST-Schemas
 │   ├── oscalSchemaValidation.ts      # Stufe 3: JSON-Schema-Prüfung im Worker
@@ -139,6 +151,7 @@ src/                              # Anwendungsquellcode
 │   ├── profileResolutionEngine.ts    # Orchestrator Import → Merge → Modify
 │   ├── profileResolutionImportGraph.ts # Deterministischer, fail-closed Importgraph
 │   ├── profileResolutionMerge.ts     # Phase 2: Merge
+│   ├── profileResolutionMembers.ts   # Deskriptorbasierte Mitgliederzugriffe für Merge und Modify
 │   ├── profileResolutionModify.ts    # Phase 3: Modify
 │   ├── profileResolutionSelection.ts # Phase 1: Selektion
 │   ├── projectProps.ts               # Registry der projekteigenen OSCAL-Props
@@ -149,7 +162,11 @@ src/                              # Anwendungsquellcode
 │   ├── referenceGraphModel.ts        # Knoten, Kanten, Zustände, Diagnostic-Codes
 │   ├── referenceGraphPolicy.ts       # CI-Politik: fail-closed, Allowlist, Bericht
 │   ├── referenceResolution.ts        # Fail-closed OSCAL-Referenzauflösung auf source
+│   ├── repositoryPath.d.mts         # Typ des segmentweisen Pfadencodings
+│   ├── repositoryPath.mjs           # Repository-Pfadencoding mit expliziter Slash-Behandlung
 │   ├── securityTargets.ts            # Schutzziel-Skala, Klassifikation, Facetten
+│   ├── sha1.d.mts                   # Typ der SHA-1-Kompression
+│   ├── sha1.mjs                     # SHA-1 (FIPS 180-4) für Git-Blob-IDs und UUIDv5
 │   ├── sourceRegistry.d.mts          # Typen des Quellregisters
 │   ├── sourceRegistry.mjs            # Verbindlicher Upstream-/Katalogvertrag
 │   ├── sourceRegistry.ts             # Typsicherer Einstieg in sourceRegistry.mjs
@@ -175,8 +192,10 @@ src/                              # Anwendungsquellcode
 │   ├── oscalProfileAdapter.ts        # Projektion des Profile
 │   ├── oscalProfileDocument.ts       # Verlustfreier Dokumenteinstieg Profile
 │   ├── oscalProfileReaders.ts        # Knotenleser und Diagnosen des Profile-Adapters
+│   ├── oscalReaders.ts               # Strukturleser der Adapter mit gebundener Diagnosefunktion
 │   ├── oscalRootAdapters.ts          # Adapter-Registrierung je Root-Typ
-│   └── oscalRootDispatch.ts          # Stufe 2: Root-Dispatch
+│   ├── oscalRootDocumentParse.ts     # Root-Dispatch mit Root-Typ-Schranke für alle Dokumenteinstiege
+│   └── oscalRootDocumentSchema.ts    # Stufe 3 für geparste Root-Dokumente, getrennt vom Katalogpfad
 ├── state/                        # Globaler Anwendungszustand
 │   ├── CatalogContext.tsx            # Katalog-Kontextprovider
 │   ├── MobileNavigationContext.ts    # Mobiler Navigationszustand für Sheet-Mount-Gates
@@ -219,6 +238,7 @@ src/                              # Anwendungsquellcode
 │   │   ├── CatalogBrowser.tsx            # Katalogseite mit Tabelle, Filtern und Detailpanel
 │   │   ├── CatalogDesktopSidebar.tsx     # Ein- und ausklappbare Filterleiste (Desktop)
 │   │   ├── CatalogDetailPanel.tsx        # Detailpanel einer Anforderung
+│   │   ├── selectionExport.ts           # Auswahl-/Gesamtkatalog-CSV-Pfade und Dateinamen
 │   │   ├── CatalogExportMenu.tsx         # Exportmenü der Toolbar
 │   │   ├── CatalogMobileExportSheet.tsx  # Export als Bottom Sheet (mobil)
 │   │   ├── CatalogMobileFilterSheet.tsx  # Filter als Bottom Sheet (mobil)
@@ -248,6 +268,7 @@ src/                              # Anwendungsquellcode
 │   │   ├── ControlTaxonomyBreadcrumb.tsx # Taxonomiebegriffe im Kopf (`panel`/`page`) oder im Scrollbereich (`tablet-panel`)
 │   │   ├── ControlVocabularyPrimitives.tsx # Gemeinsame Bausteine der Vokabularanzeige
 │   │   ├── FilterPanel.tsx               # Filterpanel
+│   │   ├── filterDimensions.ts           # Konfiguration der flachen Filterdimensionen des Filterpanels
 │   │   ├── useAdaptiveFilterHeader.ts   # Mobile Kopf-/Listenhöhe messen und Scrollmodus wählen
 │   │   └── SecurityTargetFilterSection.tsx # Schutzziel-Facetten im Filterpanel
 │   ├── export/                       # CSV-Export
@@ -270,17 +291,16 @@ src/                              # Anwendungsquellcode
 │   │   ├── VocabularyOverviewPage.tsx    # Übersicht aller Vokabulare
 │   │   └── vocabularyTitle.ts            # Anzeigetitel je Vokabulardatei
 │   └── vocabulary/                   # Vokabular-Anzeige-Helpers
-│       ├── display.ts                    # Offizielle Stufen, Beschriftungen, Tooltips
-│       └── routes.ts                     # Routen der Vokabularseiten
+│       └── display.ts                    # Offizielle Stufen, Beschriftungen, Tooltips
 ├── components/                   # Wiederverwendbare UI-Komponenten
 │   ├── BackdropTint.tsx              # Abdunklung hinter den mobilen Bottom Sheets als Kind-Element
 │   ├── Badge.tsx                     # Badge-Varianten
+│   ├── BottomSheet.tsx               # Modaler Rahmen mit optionaler Ziehgeste für mobile Sheets
 │   ├── Button.tsx                    # Button-Varianten und -Größen
 │   ├── CheckboxLabel.tsx             # Checkbox mit Beschriftung und Zähler
 │   ├── FilterSection.tsx             # Aufklappbarer Filterabschnitt
 │   ├── Footer.tsx                    # Seitenfuß
 │   ├── HeaderBar.tsx                 # Kopfleiste mit Marke und Suche
-│   ├── Input.tsx                     # Eingabefeld mit Icon und Label
 │   ├── ModalPortal.tsx               # Eigene Ebene modaler Dialoge neben `#root`
 │   ├── NavigationPendingStatus.tsx   # Statusbereich „Seite wird geladen…“, auch im Dialog
 │   ├── ScopeSwitcher.tsx             # Kontextwahl im Kopf der Navigationsleiste
@@ -288,7 +308,6 @@ src/                              # Anwendungsquellcode
 │   ├── Tooltip.tsx                   # Hover- und antippbare Begriffserklärungen
 │   ├── TreeNav.tsx                   # Gruppenbaum der Navigation
 │   ├── icons.tsx                     # Inline-SVG-Icons (Lucide)
-│   ├── index.ts                      # Sammelexport der Komponenten
 │   ├── legendStyles.ts               # Legendenschema für Legenden und Vokabelkarten
 │   └── tooltipPlacement.ts           # Begrenzung eines geöffneten Tooltips auf Panel und Fenster
 ├── app/                          # Anwendungshell
@@ -335,10 +354,13 @@ src/                              # Anwendungsquellcode
 │   ├── deviceProfile.ts              # Geräte aus Breite und Touch für Komponententests der Breakpoint-Abos
 │   ├── documentTitle.ts              # Prüft den Seitentitel auf genau ein <title>
 │   ├── eslintWithoutTypes.ts         # Repo-ESLint ohne Project Service für Regeltests
+│   ├── fakeWorker.ts                 # Worker-Testdouble und Installation als globaler `Worker`
+│   ├── noNetwork.ts                  # Werfende Stubs für fetch, XMLHttpRequest und sendBeacon
 │   ├── oscalGraphCompare.ts          # Graphvergleich mit Object.is-Semantik
 │   ├── oscalRoundTrip.ts             # No-op-Round-trip-Harnisch
 │   ├── oscalStructure.ts             # Strukturorakel (Zählregeln A und B)
-│   └── renderAppShell.tsx            # Rendert die Shell mit echter Routentabelle für Komponententests
+│   ├── renderAppShell.tsx            # Rendert die Shell mit echter Routentabelle für Komponententests
+│   └── workflowFixtures.ts           # Job-Blöcke und temporäre Repository-Fixtures für Skripttests
 ├── index.css                     # Tailwind-Einstieg und einzige Quelle der Gestaltungstokens
 ├── main.tsx                      # Einstiegspunkt
 ├── test-setup.ts                 # Vitest-Setup der jsdom-Lane
@@ -347,9 +369,6 @@ src/                              # Anwendungsquellcode
 public/data/                      # Generierte Katalog-Daten (nicht im Repo)
 
 scripts/                          # Build-, CI- und Wartungsskripte
-├── measure/                          # Browserseite der Klasse-2-Kostenmessung
-│   ├── class2-budget.harness.mjs         # Messharnisch im Browser-Tab
-│   └── class2-budget.html                # Messseite des temporären Vite-Servers
 ├── backmerge-main-to-develop.mjs     # Übernahme-Lane main → develop
 ├── bootstrap.mjs                     # npm run setup für frische Checkouts und Worktrees
 ├── branchLineFixtures.ts             # Git-Testvorlage der Übernahme- und Release-Lane
@@ -361,8 +380,8 @@ scripts/                          # Build-, CI- und Wartungsskripte
 ├── check-seo-titles.d.mts            # Typen der Titelvertragsprüfung
 ├── check-seo-titles.mjs              # Titelvertrag der gebauten HTML-Auslieferung
 ├── ci-scope.mjs                      # Scope-Entscheider für Step-Skips im Job validate
-├── class2TransportFixtures.mjs       # Fixtures des fragmentierten Rückwegs
-├── class2WorstCaseFixtures.mjs       # Worst-Case-Dokumente der Klasse-2-Grenzen
+├── contentHashes.d.mts             # Typen der SHA-256- und Git-Blob-Helfer
+├── contentHashes.mjs               # SHA-256 und Git-Blob-IDs für Node-Skripte
 ├── control-identity-delta.mjs        # Control-Identitätsdelta zwischen Snapshots
 ├── deployChecksums.d.mts            # Typen des Prüfsummen-Manifests
 ├── deployChecksums.mjs               # Prüfsummen-Manifest SHA256SUMS der Pages-Auslieferung
@@ -371,16 +390,11 @@ scripts/                          # Build-, CI- und Wartungsskripte
 ├── githubApiFetch.mjs                # Gemeinsamer GitHub-JSON-Abruf der CI-Guards
 ├── greptile-review-nudge.mjs         # Greptile-Auslösung bei übersprungenem PR
 ├── guard-cli-test-helper.ts          # spawnSync-Rahmen der Guard-CLI-Tests
-├── measure-class2-budget.mjs         # Kostenmessung der Klasse-2-Grenzen (Wartung)
-├── measureClass2BudgetReport.mjs     # Argumente, Verdichtung und Bericht der Messung
-├── measureClass2Timing.mjs           # Eingaben und Ablauf der Zeitmessung
-├── measureWorkLimitCallCounts.mjs    # Aufrufzählung des gemessenen Auflösungslaufs
-├── measureWorkLimitProvenance.mjs    # Fingerprint des gemessenen Auflösungspfads
 ├── oscal-domain-bridge.mjs           # Node-Brücke in src/domain/ mit @/-Auflösung
 ├── oscal-schema-vendor.mjs           # Ablageort-Vertrag der gepinnten Schemas
 ├── pr-documentation-contract.mjs     # Dokumentationsvertrag im PR-Body
 ├── profileResolutionCorpusOracle.ts  # Vergleichsorakel des Bauzeitlaufs
-├── profileResolutionWorstCaseFixtures.mjs # Worst-Case-Eingaben der Arbeitsgrenze
+├── regularFileRead.mjs               # Symlink-sicheres Lesen regulärer Dateien (async und sync)
 ├── release-prepare.mjs               # Release-PR aus einem Vorbereitungsbranch
 ├── review-policy.mjs                 # Generator, Drift-Guard und CLI der Review-Policy
 ├── review-policy.rules.mjs           # Regeltabelle der Review-Policy
@@ -528,7 +542,7 @@ Die abschließende Objektprüfung sieht nur das fertige Ergebnis — weder verbr
 
 **Zwei Achsen.** Das Ausgabebudget zählt **kumulativ erzeugte** Knoten — emittierte Ausgabeknoten und die Container des Zwischenzustands, den Merge und Modify vor der Emission anlegen —, die größte je begonnene Tiefe und die kumulative `base64`-Größe. Container heißt Objekt **und** Liste. Nicht gebucht werden die kurzlebigen Lesekopien der Traversierung — sie stehen auf der Arbeitsachse, wo derselbe Aufruf die Elementzahl vorab bucht. Entfernen senkt keinen Zähler. Das Arbeitsbudget zählt deterministische Schritte, keine Wall-Clock-Zeit. Der geschlossene Satz der sechs Kategorien (`import-edge`, `selector-compare`, `glob-state`, `merge-step`, `alter-target-lookup`, `alter-candidate`) deckt jede potenziell wachsende Operation in Selektion, Merge, Modify und Emission ab. Die Grenze gilt über die **Summe** aller Kategorien; `usage().workUnitsByCategory` schlüsselt sie zusätzlich auf.
 
-**Unveränderliche Produktionsgrenzen.** Die Arbeitsgrenze steht als `WORK_UNIT_LIMIT` in `src/domain/profileResolutionBudgetLimits.mjs`. Die Ausgabegrenzen sind dieselben Werte, die die Postcondition prüft, und kommen unverändert aus `CLASS_2_IMPORT_LIMITS`. Der Wert der Arbeitsgrenze wird bei jedem Lauf aus dem committeten Messartefakt hergeleitet; Zahlen, Herleitung und Messprotokoll stehen im [OSCAL-Validierungsvertrag](./OSCAL_VALIDATION.md).
+**Unveränderliche Produktionsgrenzen.** Die Arbeitsgrenze steht als `WORK_UNIT_LIMIT` in `src/domain/profileResolutionBudgetLimits.mjs`. Die Ausgabegrenzen sind dieselben Werte, die die Postcondition prüft, und kommen unverändert aus `CLASS_2_IMPORT_LIMITS`. `src/domain/profileResolutionBudget.enforcement.test.ts` prüft am öffentlichen Resolver, dass ein Profil mit leerer Ausgabe an der Arbeitsgrenze abbricht und jede der sechs Kategorien gebucht wird; Werte und prüfende Tests stehen im [OSCAL-Validierungsvertrag](./OSCAL_VALIDATION.md).
 
 **Abbruchfluss.** Die Zählmethoden werfen; der Wurf verlässt den Lauf an genau einer Fangstelle. Dort wird ein Budgetabbruch zu seiner bereits redigierten Diagnose und jede andere Ausnahme zu einem redigierten Projektfehler ohne Rohtext und ohne Stapel. Weder ein Teilergebnis noch ein Builder-Handle verlässt den Lauf.
 
@@ -643,7 +657,7 @@ Die Anwendung lädt den Chunk einer Lazy-Route schon bei Navigationsabsicht vor 
 
 Breakpoint-abhängige UI wird über `useMediaQuery(DESKTOP_QUERY)` (`isDesktop`) bedingt **gemountet**, nicht per CSS versteckt — zu jedem Zeitpunkt ist nur der passende Teilbaum im DOM. Zwei Ausnahmen: Die mobile Detailseite blendet Toolbar und Liste per `hidden` aus, statt sie abzubauen, und baut nur die mobilen Filter- und Export-Sheets ab (siehe „Mobile Detailseite“); kleine stateless Buttons dürfen bei `desktop:hidden` bleiben, da sie keinen schweren Teilbaum doppelt mounten. Das Tablet-Inline-Panel (ab `md`, außerhalb des Desktops) folgt der Mount-Regel: Es steht nur mit gewählter Kontrolle im DOM (`isTablet`, Fokus- und Escape-Vertrag in `useTabletDetailPanel`, ohne Modal-Lifecycle). Desktop ist, was mindestens `64rem` breit ist und kein Touch als Eingabemöglichkeit meldet: `DESKTOP_QUERY` in `src/hooks/breakpointQueries.ts` ist `(width >= 64rem) and (not (any-pointer: coarse))`, `COMPACT_QUERY` ihre Negation. `OWN_SCROLL_AREA_QUERY` (`(width >= 46.5rem)`) entspricht Tailwinds `md`, das `@theme` in `src/index.css` auf `46.5rem` setzt (744 px bei 16 px Standardschrift). Die Tailwind-Varianten `desktop:` und `compact:` in `src/index.css` tragen `DESKTOP_QUERY` und `COMPACT_QUERY` wortgleich, ebenso der Block der Navigationsschublade; `lg:` steht nur für rein breitenabhängige Darstellung (Tastaturhinweis und Abstände der Suche im App-Kopf, Größe von `type-page-title`). `src/hooks/breakpointQueries.test.ts` hält Konstanten und CSS gleich und prüft, dass keine weitere `lg:`-Klasse einen Desktop-Zustand ausdrückt. `rem` in Media Queries hängt an der Browser-Standardschrift; bei vergrößerter Schrift verschieben sich Abos und `md:`-/`desktop:`-Klassen deshalb gemeinsam, und der gemountete Teilbaum passt stets zu den sichtbaren Klassen. `src/test/browser/largeDefaultFont.browser.test.ts` prüft in Chromium bei 20 px Standardschrift (`setBrowserFontSize`, `browserFontSize.ts`, CDP `Page.setFontSizes`) und 1100 px Breite, dass Katalog- und Suchseite konsistent mobil sind: keine verborgene Desktop-Tabelle, sichtbare mobile Liste, genau ein Export-Zugang.
 
-Das mobile Suchfeld auf `/suche` und der gemeinsame `Input` verwenden unter `sm` 16 px Schrift (`text-base sm:text-sm`), damit iPhone-Safari beim Fokussieren die Seite nicht automatisch vergrößert und den Zoom in die anschließende Kontrollansicht mitnimmt. Ab `sm` beträgt ihre Schrift 14 px. Das Viewport-Meta erlaubt Pinch-Zoom. `src/test/browser/searchInputFontSize.browser.test.ts` misst mit dem App-Stylesheet die berechnete Schriftgröße vor und nach Fokus, die Icon-Zentrierung und den Textabstand bei mobilen Breiten sowie die 14-px-Schrift unmittelbar ab `sm`.
+Das mobile Suchfeld auf `/suche` verwendet unter `sm` 16 px Schrift (`text-base sm:text-sm`), damit iPhone-Safari beim Fokussieren die Seite nicht automatisch vergrößert und den Zoom in die anschließende Kontrollansicht mitnimmt. Ab `sm` beträgt seine Schrift 14 px. Das Viewport-Meta erlaubt Pinch-Zoom. `src/test/browser/searchInputFontSize.browser.test.ts` misst mit dem App-Stylesheet die berechnete Schriftgröße vor und nach Fokus, die Icon-Zentrierung und den Textabstand bei mobilen Breiten sowie die 14-px-Schrift unmittelbar ab `sm`.
 
 Die sichtbare Bereichsüberschrift der Toolbar nennt nur den Namen der gewählten Praktik oder des Themas, etwa „Notfallvorsorge“ für NOT.3; der Dokumenttitel trägt Kennung und Name („NOT.3: Notfallvorsorge | …“). Beide liefert `describeCatalogScope` (`catalogScopeTitle.ts`).
 
@@ -654,8 +668,9 @@ Die sichtbare Bereichsüberschrift der Toolbar nennt nur den Namen der gewählte
 | `CatalogToolbar` | Stellt Titel, Counts, Auswahlmodus sowie Filter- und Exportzugänge aus Props zusammen und mountet Filter-Sheet, Export-Menü und Export-Sheet breakpoint-conditional über `isDesktop`. Ihre Überschrift ist Rückkehrziel beim Schließen der mobilen Detailseite. Unter `sm` steht die Überschrift über die volle Breite (bis zu zwei Zeilen mit Umbruch und Silbentrennung); darunter folgen links Anzahl und „Filter zurücksetzen“, rechts Auswahl, Filter und CSV als mindestens 44 px hohe und breite Schalter, deren letzter am Viewport-Rand endet. Ab `sm` gilt die einzeilige Anordnung, ab `md` die feste Höhe von 51 px. |
 | `CatalogMobileList` | Rendert die ungefensterte Trefferliste außerhalb des Desktops mit Auswahlmodus und Auswahlleiste; ab `md` trägt sie einen eigenen Scrollbereich, darunter scrollt das Dokument. |
 | `CatalogExportMenu` | Besitzt den Desktop-Menüzustand, Outside-Click, Escape, Autofokus und die Desktop-Exportaktionen. Ein äußeres `mousedown` schließt das Menü und lässt die native Textauswahl zu. Der anschließende primäre Klick auf dasselbe statische Ziel gibt den Fokus nur bei kollabierter Textauswahl und Fokus auf `body` zum Trigger zurück. Jeder weitere `mousedown` verwirft die vorgemerkte Rückgabe. Das Mount-Gate liegt beim Aufrufer (`isDesktop`). |
-| `CatalogMobileFilterSheet` | Besitzt Trigger, Sichtbarkeit, modalen Dialog (`useModalDialog`, benannt nach der Überschrift „Filter“ des `FilterPanel`), Escape, Backdrop, „Schließen“-Button mit aktueller Trefferzahl im Kopf des `FilterPanel` (`headerAction`), Drag-Dismiss und Scroll-Lock des mobilen Filters. Der Trigger zeigt bei `activeCount > 0` ein Zähler-Badge und nennt die aktive Auswahlzahl in seinem zugänglichen Namen. |
-| `CatalogMobileExportSheet` | Besitzt Trigger, Sichtbarkeit, modalen Dialog (`useModalDialog`, benannt nach „Exportieren als CSV“), Escape, Backdrop, „Schließen“-Button im Kopf, Scroll-Lock und mobile Exportaktionen. Der Trigger ist ein Icon-Schalter mit dem Namen „CSV exportieren“. |
+| `CatalogMobileFilterSheet` | Besitzt Trigger, Sichtbarkeit und den „Schließen“-Button mit aktueller Trefferzahl im Kopf des `FilterPanel` (`headerAction`). Rendert das Panel in `BottomSheet` mit `draggable` und `labelledBy` auf die Überschrift „Filter“. Der Trigger zeigt bei `activeCount > 0` ein Zähler-Badge und nennt die aktive Auswahlzahl in seinem zugänglichen Namen. |
+| `CatalogMobileExportSheet` | Besitzt Trigger, Sichtbarkeit, Überschrift „Exportieren als CSV“, „Schließen“-Button im Kopf und mobile Exportaktionen. Rendert den Inhalt in `BottomSheet` ohne Ziehgeste und mit `labelledBy` auf die Überschrift. Der Trigger ist ein Icon-Schalter mit dem Namen „CSV exportieren“. |
+| `BottomSheet` | Kapselt `ModalPortal`, Dialog, `useModalDialog`, Escape, Backdrop, Scroll-Lock und `DialogNavigationStatus`. Bei `open === false` rendert es nichts. `draggable` aktiviert `useBottomSheetDrag` an der Griffleiste. Beide Sheets nutzen eine Deckkraft von 0,3 auf der Backdrop-Hülle und eine schwarze Tönung als Kind. |
 | `CatalogMobileSelectToggle` | Auswahl-Schalter außerhalb des Desktops mit `IconListChecks` (Lucide `list-checks`) und `aria-pressed`; aktiv zeigt er die Glyphe in Akzentfarbe auf einer 36-px-Tönung. Katalog und Suche verwenden denselben Baustein. |
 | `CatalogSelectionChip` | Zähler-Chip „n ausgewählt“ mit Aufheben-Kreuz für Katalog und Suche. Er entfällt im mobilen Auswahlmodus, weil dort die Auswahlleiste die Zahl trägt. Ohne Auswahlmodus, etwa bei einer am Desktop markierten Auswahl nach dem Verkleinern des Fensters, bleibt er auf jeder Breite sichtbar; unter `sm` steht er in der Zeile mit Anzahl und Aktionen. |
 | `CatalogMobileSelectionBar` | Exportiert die mobile Auswahl und beendet anschließend den Auswahlmodus. Links steht „Fertig“, rechts „Export“ mit Zähler; Icon und Zähler tragen die Akzentfarbe. Im Auswahlmodus ist der Zähler die einzige sichtbare Angabe der Auswahlzahl, weil der Zähler-Chip dort entfällt. Der Button nennt sie in seinem zugänglichen Namen, eine unsichtbare Live-Region sagt Änderungen an; ohne Auswahl ist der Export deaktiviert. |
@@ -733,7 +748,9 @@ Alle eigenen Scrollbereiche tragen überlagernde Scrollleisten aus OverlayScroll
 
 `useScrollLock` sperrt über `overflow: hidden` auf `html`. `html` trägt `overflow-x: hidden` (`src/index.css`); mit der Sperre am selben Element bleibt das Dokument der Scrollbereich, an dem der `sticky` App-Kopf steht, und `body` erhält keinen eigenen Scrollbereich. Der Hook zählt aktive Sperren mit: Die erste merkt sich den vorherigen Inline-Wert von `html.style.overflow`, erst das Ende der letzten stellt ihn exakt wieder her. Überlappende Sperren, etwa beide Sheets oder ein Sheet und die mobile Navigationsschublade, dürfen so in beliebiger Reihenfolge enden.
 
-Filter-Sheet und Export-Sheet sind modale Dialoge nach dem WAI-ARIA-Muster „Dialog (Modal)“ (GSPP-503): `<dialog open>` mit `aria-modal="true"` und `aria-labelledby` auf ihre sichtbare Überschrift. Geöffnet wird über das Attribut `open`; Escape, Abdunklung und Isolation regeln die Komponenten und `useModalDialog`. `ModalPortal` hängt Abdunklung und Dialog gemeinsam als eigene Ebene direkt unter `body`, neben `#root`. `useModalDialog` setzt beim Öffnen den Fokus auf die erste Aktion des Dialogs, hält Tab und Shift+Tab darin und setzt alle anderen Kinder von `body`, also die App samt App-Kopf, Hauptinhalt und Fuß, per `inert` außer Reichweite von Tastatur und Screenreader. Hinge der Dialog unter `#root`, würde er mit dem Hintergrund inert. Offene Dialoge bilden einen Stapel: Nur die oberste Ebene bleibt bedienbar, tiefere Ebenen sind ebenfalls inert, und überlappende Dialoge dürfen in beliebiger Reihenfolge enden. Ein `inert`, das die Isolation nicht selbst gesetzt hat, bleibt stehen. Jede Ebene merkt sich beim Öffnen ihr Rückkehrziel. Schließt eine Ebene unter einer anderen, etwa wenn Escape beide Sheets in einem Commit schließt, erbt die obere Ebene das Rückkehrziel der unteren, falls ihr eigenes in der schließenden Ebene lag; so erhält am Ende der Sheet-Auslöser den Fokus. Beim Schließen der obersten Ebene endet die Isolation, bevor der Fokus zurückgeht, weil ein Element in einem inerten Teilbaum keinen Fokus annimmt. Zurückgegeben wird nur ein verlorener Fokus, der im Dialog oder auf `body` liegt; hat die nachfolgende Ansicht ihn schon gesetzt, bleibt er dort. `useModalDialog` läuft als Layout-Effekt, damit die Isolation bereits in der Mutationsphase endet, vor den Layout-Effekten der nachfolgenden Ansicht: Schließt ein Sheet beim Wechsel zur Detailseite, fokussiert `useDocumentDetailPage` die Überschrift der Detailseite, statt dass der Fokus an `body` verloren geht. Unmount, Navigation und Breakpointwechsel bauen die Dialoge über ihre bestehenden Mount-Gates ab (`isDesktop`, `mobileSheetsSuspended`, `MobileNavigationContext`); der Cleanup gibt dabei Isolation, Fokusfalle und Scroll-Sperre frei. Filter- und Export-Sheet sind unten verankert und höchstens `80dvh` hoch; bei Fensterhöhen bis `20rem` beträgt die Grenze `100dvh`, damit unter dem festen Kopf und dem Bottom-Inset eine vollständige Aktionszeile erreichbar bleibt. Die gemeinsame Klasse `mobile-sheet` in `src/index.css` setzt die oberen Radien auf `--radius-lg`, den Schatten auf `--shadow-overlay` und das untere Padding einmal auf `env(safe-area-inset-bottom, 0px)`. Die Scrollbereiche enden oberhalb dieses Abstands; der adaptive Filterkopf misst die entsprechend reduzierte Inhaltshöhe. Wechselt der adaptive Filterkopf (`useAdaptiveFilterHeader`) zwischen mitscrollender und fester Trefferzeile, überträgt er die Scrollposition vom alten auf den neuen Scrollbereich, sodass dieselbe Filterzeile oben steht. Die Position liest `onScroll` an beiden Scrollbereichen nur bei unveränderter Bereichshöhe, damit eine Begrenzung von `scrollTop` durch die Größenänderung selbst nicht als Position gilt. `src/test/browser/modalDialogs.browser.test.ts` prüft das an einer gescrollten Liste bei 700 × 800 → 250 → 800 px und nahe dem Scrollende der Liste bei 800 px. Ihre Schließaktion („Schließen“, im Filter-Sheet mit Trefferzahl, `data-dialog-close`) steht im Kopf neben der Überschrift, sodass sie auch bei wenig Höhe und großer Standardschrift sichtbar bleibt; die Filterliste und die Exportaktionen darunter scrollen mit überlagernden Scrollleisten (`useOverlayScrollbars`). Den ersten Fokus erhält die erste Aktion des Dialogs, nicht seine Schließaktion. Als Ziele für den ersten Fokus und die Enden des Tab-Umlaufs zählt `useModalDialog` nur bedienbare Elemente: keine in `[hidden]` oder `[inert]`, etwa die Links einer geschlossenen Legende, und, wo der Browser `checkVisibility` kennt, keine per CSS verborgenen. `src/test/browser/dialogNavigation.browser.test.ts` prüft den freien Tab-Umlauf am Tablet-Inline-Panel mit echtem `ControlDetail` und geschlossener Legende. `src/test/browser/modalDialogs.browser.test.ts` prüft in Chromium Rolle, Namen, Lage, inerten Hintergrund, Tab-Umlauf, Escape und Fokus-Rückkehr beider Dialoge, den Breitenwechsel unter `md`, das Schließen nur des Sheets über dem Tablet-Panel, beide Sheets bei 250 px Fensterhöhe mit 16 und 32 px Standardschrift sowie axe ohne Verstöße bei geöffnetem Dialog.
+Filter-Sheet und Export-Sheet verwenden `src/components/BottomSheet.tsx` für modale Dialoge nach dem WAI-ARIA-Muster „Dialog (Modal)“: `<dialog open>` mit `aria-modal="true"` und `aria-labelledby` auf ihre sichtbare Überschrift. Geöffnet wird über das Attribut `open`; Escape und Abdunklung regelt `BottomSheet`, die Isolation übernimmt `useModalDialog`. `ModalPortal` hängt Abdunklung und Dialog gemeinsam als eigene Ebene direkt unter `body`, neben `#root`. `useModalDialog` setzt beim Öffnen den Fokus auf die erste Aktion des Dialogs, hält Tab und Shift+Tab darin und setzt alle anderen Kinder von `body`, also die App samt App-Kopf, Hauptinhalt und Fuß, per `inert` außer Reichweite von Tastatur und Screenreader. Hinge der Dialog unter `#root`, würde er mit dem Hintergrund inert. Offene Dialoge bilden einen Stapel: Nur die oberste Ebene bleibt bedienbar, tiefere Ebenen sind ebenfalls inert, und überlappende Dialoge dürfen in beliebiger Reihenfolge enden. Ein `inert`, das die Isolation nicht selbst gesetzt hat, bleibt stehen. Jede Ebene merkt sich beim Öffnen ihr Rückkehrziel. Schließt eine Ebene unter einer anderen, etwa wenn Escape beide Sheets in einem Commit schließt, erbt die obere Ebene das Rückkehrziel der unteren, falls ihr eigenes in der schließenden Ebene lag; so erhält am Ende der Sheet-Auslöser den Fokus. Beim Schließen der obersten Ebene endet die Isolation, bevor der Fokus zurückgeht, weil ein Element in einem inerten Teilbaum keinen Fokus annimmt. Zurückgegeben wird nur ein verlorener Fokus, der im Dialog oder auf `body` liegt; hat die nachfolgende Ansicht ihn schon gesetzt, bleibt er dort. `useModalDialog` läuft als Layout-Effekt, damit die Isolation bereits in der Mutationsphase endet, vor den Layout-Effekten der nachfolgenden Ansicht: Schließt ein Sheet beim Wechsel zur Detailseite, fokussiert `useDocumentDetailPage` die Überschrift der Detailseite, statt dass der Fokus an `body` verloren geht. Unmount, Navigation und Breakpointwechsel bauen die Dialoge über ihre bestehenden Mount-Gates ab (`isDesktop`, `mobileSheetsSuspended`, `MobileNavigationContext`); der Cleanup gibt dabei Isolation, Fokusfalle und Scroll-Sperre frei. Filter- und Export-Sheet sind unten verankert und höchstens `80dvh` hoch; bei Fensterhöhen bis `20rem` beträgt die Grenze `100dvh`, damit unter dem festen Kopf und dem Bottom-Inset eine vollständige Aktionszeile erreichbar bleibt. Die gemeinsame Klasse `mobile-sheet` in `src/index.css` setzt die oberen Radien auf `--radius-lg`, den Schatten auf `--shadow-overlay` und das untere Padding einmal auf `env(safe-area-inset-bottom, 0px)`. Die Scrollbereiche enden oberhalb dieses Abstands; der adaptive Filterkopf misst die entsprechend reduzierte Inhaltshöhe. Wechselt der adaptive Filterkopf (`useAdaptiveFilterHeader`) zwischen mitscrollender und fester Trefferzeile, überträgt er die Scrollposition vom alten auf den neuen Scrollbereich, sodass dieselbe Filterzeile oben steht. Die Position liest `onScroll` an beiden Scrollbereichen nur bei unveränderter Bereichshöhe, damit eine Begrenzung von `scrollTop` durch die Größenänderung selbst nicht als Position gilt. `src/test/browser/modalDialogs.browser.test.ts` prüft das an einer gescrollten Liste bei 700 × 800 → 250 → 800 px und nahe dem Scrollende der Liste bei 800 px. Ihre Schließaktion („Schließen“, im Filter-Sheet mit Trefferzahl, `data-dialog-close`) steht im Kopf neben der Überschrift, sodass sie auch bei wenig Höhe und großer Standardschrift sichtbar bleibt; die Filterliste und die Exportaktionen darunter scrollen mit überlagernden Scrollleisten (`useOverlayScrollbars`). Den ersten Fokus erhält die erste Aktion des Dialogs, nicht seine Schließaktion. Als Ziele für den ersten Fokus und die Enden des Tab-Umlaufs zählt `useModalDialog` nur bedienbare Elemente: keine in `[hidden]` oder `[inert]`, etwa die Links einer geschlossenen Legende, und, wo der Browser `checkVisibility` kennt, keine per CSS verborgenen. `src/test/browser/dialogNavigation.browser.test.ts` prüft den freien Tab-Umlauf am Tablet-Inline-Panel mit echtem `ControlDetail` und geschlossener Legende. `src/test/browser/modalDialogs.browser.test.ts` prüft in Chromium Rolle, Namen, Lage, inerten Hintergrund, Tab-Umlauf, Escape und Fokus-Rückkehr beider Dialoge, den Breitenwechsel unter `md`, das Schließen nur des Sheets über dem Tablet-Panel, beide Sheets bei 250 px Fensterhöhe mit 16 und 32 px Standardschrift sowie axe ohne Verstöße bei geöffnetem Dialog.
+
+`src/features/catalog/selectionExport.ts` bündelt den Auswahlexport (`exportSelectedControls`, Filterung von `allControls` nach `checkedIds`, `SELECTION_CSV_FILENAME`) und den Gesamtkatalogexport (`exportFullCatalog`, `FULL_CATALOG_CSV_FILENAME`). Desktop-Menü, mobiles Export-Sheet und mobile Auswahlleiste verwenden den gemeinsamen Auswahlpfad; die beiden Menüs verwenden auch den gemeinsamen Gesamtkatalogpfad.
 
 CSV-Serialisierung und Browserauslösung sind getrennte Grenzen: `features/export/csvExport.ts` erzeugt Inhalt und `Blob`; `adapters/browserDownload.ts` erstellt den temporären Link und widerruft Link und Object-URL auch bei Fehlern in `finally`.
 

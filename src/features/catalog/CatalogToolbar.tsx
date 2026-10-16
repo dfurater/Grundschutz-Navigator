@@ -52,7 +52,7 @@ export function CatalogToolbar({
 }: CatalogToolbarProps) {
   const { securityTargets, ...flatFilters } = filterPanelProps.filters;
   const activeCount = [...Object.values(flatFilters), ...Object.values(securityTargets)]
-    .reduce((count, values) => count + new Set<string>(values).size, 0);
+    .reduce((count, values) => count + values.length, 0);
   const mobileNavigationOpen = useContext(MobileNavigationContext);
   const showMobileSheets = !isDesktop && !mobileSheetsSuspended && !mobileNavigationOpen;
   return (

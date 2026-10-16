@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
   applySetParametersToControl,
-  applyAlteration,
+  applyAlteration as applyAlterationResult,
   canonicalizeControlKeys,
 } from './profileResolutionModify';
 import { createProfileResolutionBudget } from './profileResolutionBudget';
+
+function applyAlteration(...args: Parameters<typeof applyAlterationResult>): Record<string, unknown> {
+  const result = applyAlterationResult(...args);
+  if (!result.ok) throw new Error('Unerwartet unplatzierbar');
+  return result.value;
+}
 
 /**
  * Frische Budgetinstanz mit PRODUKTIONSGRENZEN. Diese Tests prüfen Semantik,

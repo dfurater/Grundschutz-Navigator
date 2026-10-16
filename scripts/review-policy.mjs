@@ -49,6 +49,8 @@
  * eine Abweichung nie stillschweigend wegschreiben.
  */
 
+import { compareStringsByCodeUnit } from '../src/domain/codeUnitOrder.mjs';
+
 import { execFile } from 'node:child_process';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -361,17 +363,6 @@ export function renderReviewPolicy(policy = {}) {
 }
 
 /**
- * Ordnet zwei Pfade über ihre Codepoints. Explizit statt über die
- * Standardsortierung oder localeCompare: Die Meldung eines Guards muss über
- * Plattformen und Locales hinweg gleich lauten, sonst lässt sich ein
- * CI-Fehlschlag nicht mit einem lokalen Lauf vergleichen.
- */
-function compareRelativePaths(left, right) {
-  if (left < right) return -1;
-  return left > right ? 1 : 0;
-}
-
-/**
  * Ruft `git ls-files` und gibt die ausgegebenen Pfade zurück.
  *
  * Fail-closed und ohne Ausnahme: Jeder Fehlschlag — kein Git-Repository, kein
@@ -421,7 +412,7 @@ export async function listHeadCandidateFilesWithGit(repoRoot) {
  */
 async function listForceTrackedInstructionFiles(repoRoot, listTrackedFiles) {
   const tracked = await listTrackedFiles(repoRoot, GITIGNORED_INSTRUCTION_SURFACES);
-  return [...tracked].sort(compareRelativePaths);
+  return [...tracked].sort(compareStringsByCodeUnit);
 }
 
 /**
@@ -436,7 +427,7 @@ async function listUnmanagedInstructionFiles(repoRoot, expected, listCandidateFi
   const candidates = await listCandidateFiles(repoRoot);
   return candidates
     .filter((relative) => isReviewInstructionPath(relative) && !expected.has(relative))
-    .sort(compareRelativePaths);
+    .sort(compareStringsByCodeUnit);
 }
 
 /**

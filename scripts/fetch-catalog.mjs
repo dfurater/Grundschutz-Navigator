@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
-import { createHash } from 'node:crypto';
+import { encodeRepositoryPath } from '../src/domain/repositoryPath.mjs';
+import { compareStringsByCodeUnit } from '../src/domain/codeUnitOrder.mjs';
+import { computeGitBlobSha } from './contentHashes.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -83,10 +85,6 @@ function githubHeaders() {
     'User-Agent': 'Grundschutz-Navigator/fetch-catalog',
     ...(TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}),
   };
-}
-
-function encodeRepoPath(path) {
-  return path.split('/').map(encodeURIComponent).join('/');
 }
 
 function truncateResponseBody(text) {
@@ -266,7 +264,7 @@ async function fetchRawRegisteredFile(
 ) {
   const allowedPath = assertRegisteredUpstreamRepoPath(path, { materializedNamespacePaths });
   const allowedRef = assertAllowedGitHubRef(ref, 'GitHub fetch ref');
-  const url = `https://raw.githubusercontent.com/${REPO}/${encodeURIComponent(allowedRef)}/${encodeRepoPath(allowedPath)}`;
+  const url = `https://raw.githubusercontent.com/${REPO}/${encodeURIComponent(allowedRef)}/${encodeRepositoryPath(allowedPath)}`;
   const { response } = await fetchWithTransientRetry(transport.fetchImpl, url, TOKEN
     ? {
         headers: {
@@ -300,13 +298,6 @@ async function fetchSnapshotTree(ref, transport) {
     response,
     files: normalizeGitTree(response, { monitoredRoots: MONITORED_UPSTREAM_ROOTS }),
   };
-}
-
-function computeGitBlobSha(contents) {
-  return createHash('sha1')
-    .update(`blob ${contents.length}\0`)
-    .update(contents)
-    .digest('hex');
 }
 
 function buildBuildMetadata() {
@@ -511,12 +502,6 @@ function matchesVocabularyCollection(entry, repoPath) {
     repoPath.endsWith(entry.fileSuffix) &&
     !repoPath.slice(prefix.length).includes('/')
   );
-}
-
-function compareStringsByCodeUnit(left, right) {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
 }
 
 function collectOscalRegistryDescriptors(registryEntries, treeFileByPath) {
@@ -965,10 +950,8 @@ async function buildFetchArtifacts(logger = console, {
 
 export {
   buildFetchArtifacts,
-  listOutputArtifactFileNames,
   validateFetchedCatalogArtifact,
   validateFetchedOscalArtifact,
-  resolveOptionalSnapshotSha,
   serializeJsonArtifact,
   writeArtifacts,
 };

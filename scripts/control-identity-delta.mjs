@@ -1,4 +1,5 @@
-import { createHash } from 'node:crypto';
+import { compareStringsByCodeUnit } from '../src/domain/codeUnitOrder.mjs';
+import { computeGitBlobSha, sha256Hex } from './contentHashes.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -6,6 +7,7 @@ import {
   DEFAULT_ARTIFACTS_DIR,
   OFFICIAL_BSI_REPOSITORY_URL,
   REPO_ROOT,
+  isPathInsideRoot,
   buildOfficialBsiGitBlobApiUrl,
   readBodyWithLimit,
 } from './security-guards.mjs';
@@ -44,11 +46,6 @@ function readArray(value, label) {
   if (value === undefined) return [];
   if (!Array.isArray(value)) throw new Error(`${label} must be an array`);
   return value;
-}
-
-function isPathInsideRoot(targetPath, rootPath) {
-  const relative = path.relative(rootPath, targetPath);
-  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 }
 
 function resolveControlIdentityDeltaPath(filePath) {
@@ -166,16 +163,6 @@ function sortEntries(entries) {
     (left.newControlId ?? '').localeCompare(right.newControlId ?? '') ||
     left.title.localeCompare(right.title),
   );
-}
-
-/**
- * Code-Unit-Vergleich zweier Strings — semantisch identisch zur impliziten
- * Sortiersemantik von Array.prototype.sort(), aber ohne Ternär-Kaskade.
- */
-function compareStringsByCodeUnit(left, right) {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
 }
 
 function createComparisonState() {
@@ -391,16 +378,6 @@ export function compareCatalogControlIdentities({
   };
 }
 
-function gitBlobSha(buffer) {
-  // GitHub's git/blobs API addresses objects with Git's SHA-1 object ID. This
-  // is a protocol-consistency check, not the content trust decision; the
-  // manifest-bound SHA-256 is checked independently below.
-  return createHash('sha1')
-    .update(Buffer.from(`blob ${buffer.length}\0`, 'utf8'))
-    .update(buffer)
-    .digest('hex');
-}
-
 function parseBase64(value, label) {
   if (typeof value !== 'string') throw new Error(`${label} is not base64 text`);
   const compact = value.replace(/[\r\n]/g, '');
@@ -458,10 +435,10 @@ async function fetchCatalogBlob(file, { fetchImpl, token, repository }) {
   if (payload.size !== undefined && payload.size !== content.length) {
     throw new Error(`Catalog blob size mismatch for ${file.artifactKey}`);
   }
-  if (gitBlobSha(content) !== file.gitBlobSha) {
+  if (computeGitBlobSha(content) !== file.gitBlobSha) {
     throw new Error(`Catalog Git blob hash mismatch for ${file.artifactKey}`);
   }
-  const contentSha256 = createHash('sha256').update(content).digest('hex');
+  const contentSha256 = sha256Hex(content);
   if (contentSha256 !== file.contentSha256) {
     throw new Error(`Catalog content hash mismatch for ${file.artifactKey}`);
   }

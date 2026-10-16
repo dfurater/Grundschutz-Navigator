@@ -66,7 +66,7 @@ const VALID_SORT_DIR: Set<string> = new Set<SortDirection>(['asc', 'desc']);
 function splitParam(params: URLSearchParams, key: string): string[] {
   const raw = params.get(key);
   if (!raw) return [];
-  return raw.split(',').map((s) => s.trim()).filter(Boolean);
+  return [...new Set(raw.split(',').map((s) => s.trim()).filter(Boolean))];
 }
 
 /* ------------------------------------------------------------------ */
@@ -85,7 +85,7 @@ function deserializeSecurityTargets(params: URLSearchParams): SecurityTargetFilt
   for (const { dimension } of SECURITY_TARGET_DIMENSIONS) {
     const values = splitParam(params, SECURITY_TARGET_PARAMS[dimension])
       .filter(isSecurityTargetFilterValue);
-    result[dimension] = [...new Set(values)];
+    result[dimension] = values;
   }
 
   return result;

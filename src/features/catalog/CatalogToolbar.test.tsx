@@ -102,7 +102,7 @@ describe('CatalogToolbar', () => {
     expect(trigger).toHaveTextContent('14');
   });
 
-  it('counts duplicate URL values once per facet while keeping identical values in different facets', () => {
+  it('uses normalized URL selections while keeping identical values in different facets', () => {
     function Scene() {
       const { filters } = useFilterParams();
       return <CatalogToolbar
@@ -113,7 +113,7 @@ describe('CatalogToolbar', () => {
         filterPanelProps={{ filters } as FilterPanelProps} isDesktop={false}
       />;
     }
-    render(<MemoryRouter initialEntries={['/?mv=MUSS,MUSS&sl=erhöht,erhöht&el=3,3&tags=gleich,gleich&zk=gleich,gleich&hw=gleich,gleich&dt=gleich,gleich&lr=required,required&stc=1,1&sti=1,1&stav=1,1&stau=1,1']}><Scene /></MemoryRouter>);
+    render(<MemoryRouter initialEntries={['/?mv=MUSS&sl=erhöht&el=3&tags=gleich&zk=gleich&hw=gleich&dt=gleich&lr=required&stc=1&sti=1&stav=1&stau=1']}><Scene /></MemoryRouter>);
     expect(screen.getByRole('button', { name: 'Filter anzeigen, 12 aktiv' })).toHaveTextContent('12');
   });
 

@@ -14,6 +14,15 @@
  */
 
 /**
+ * Per-Request-Abbruchfrist der GitHub-API-Aufrufe aller CI-Guards. Sie liegt
+ * deutlich unter den Job-Limits von `catalog-sync-guard` (10 min),
+ * `update-catalog` (20 min) und `verify-catalog-merge` (30 min): Ein hängender
+ * API-Call scheitert damit kontrolliert fail-closed, statt bis zum
+ * Job-Timeout zu hängen.
+ */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+
+/**
  * Holt JSON von der GitHub-API.
  *
  * @param {string} url Vollständige API-URL.

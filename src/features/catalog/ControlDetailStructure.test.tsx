@@ -2,11 +2,14 @@ import { render, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Catalog, CatalogState, Control } from '@/domain/models';
+import type { CatalogState, Control } from '@/domain/models';
 import type { IncomingControlLink } from '@/domain/controlRelationships';
 import { useCatalog } from '@/hooks/useCatalog';
 import { createTestVocabularyRegistry } from '@/test/fixtures/vocabulary';
-import { catalogCollectionDefaults } from '@/test/catalogState';
+import {
+  createControlDetailCatalogState,
+  createControlDetailCatalogStateWithSource,
+} from '@/test/fixtures/controlDetailState';
 import { ControlDetail } from './ControlDetail';
 import { SECURITY_TARGETS_NAMESPACE_URL } from '@/domain/vocabularyNamespaces';
 
@@ -39,81 +42,8 @@ function makeControl(overrides: Partial<Control> = {}): Control {
   };
 }
 
-function makeCatalogState(overrides: Partial<CatalogState> = {}): CatalogState {
-  return {
-    ...catalogCollectionDefaults(),
-    catalogDocument: null,
-    catalog: {
-      catalogKey: 'gspp',
-      uuid: 'test-catalog',
-      metadata: {
-        title: 'Testkatalog',
-        lastModified: '2026-07-21T00:00:00Z',
-        version: 'test',
-        oscalVersion: '1.1.3',
-        props: [],
-        links: [],
-        roles: [],
-        parties: [],
-        responsibleParties: [],
-      },
-      practices: [],
-      controlsById: new Map(),
-      controlsByAltIdentifier: new Map(),
-      controls: [],
-      backMatter: [],
-      totalControls: 0,
-    } satisfies Catalog,
-    provenance: null,
-    verification: null,
-    vocabularyRegistry,
-    vocabularyProvenance: null,
-    vocabularyVerification: null,
-    loading: false,
-    error: null,
-    ...overrides,
-  };
-}
-
-function makeCatalogStateWithSource(
-  control: Control,
-  sourceLinks: readonly Record<string, unknown>[],
-  sourceResources: readonly Record<string, unknown>[],
-): CatalogState {
-  const state = makeCatalogState();
-  state.catalogDocument = {
-    source: {
-      catalog: {
-        uuid: 'test-catalog',
-        metadata: {
-          title: 'Testkatalog',
-          'last-modified': '2026-07-21T00:00:00Z',
-          version: 'test',
-          'oscal-version': '1.1.3',
-        },
-        groups: [{
-          id: 'GC',
-          title: 'Praktik',
-          groups: [{
-            id: 'GC.2',
-            title: 'Thema',
-            controls: [{
-              id: control.id,
-              title: control.title,
-              links: sourceLinks,
-            }],
-          }],
-        }],
-        'back-matter': { resources: sourceResources },
-      },
-    },
-    context: {
-      catalogKey: 'gspp',
-      trustClass: 'class-1-verified-public',
-    },
-    view: state.catalog!,
-  };
-  return state;
+function makeCatalogState(): CatalogState {
+  return createControlDetailCatalogState(vocabularyRegistry);
 }
 
 const linkTarget = makeControl({ id: 'GC.2.3', title: 'Verknüpfte Kontrolle' });
@@ -150,15 +80,14 @@ function makeFullControl(): Control {
 }
 
 function makeFullState(control: Control): CatalogState {
-  return makeCatalogStateWithSource(
-    control,
-    [{ href: '#resource-uuid' }],
-    [{
+  return createControlDetailCatalogStateWithSource(vocabularyRegistry, control, {
+    sourceLinks: [{ href: '#resource-uuid' }],
+    sourceResources: [{
       uuid: 'resource-uuid',
       title: 'Quellendokument',
       rlinks: [],
     }],
-  );
+  });
 }
 
 interface RenderFullOptions {

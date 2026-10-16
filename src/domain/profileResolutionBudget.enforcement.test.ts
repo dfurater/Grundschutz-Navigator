@@ -33,9 +33,7 @@ const FIXTURE_MARKER = 'ZZ-GEHEIM-MARKER-7f3a1c';
  * Ein Glob-Ausschlussselektor kostet je Control-ID rund 8,4 Arbeitseinheiten.
  * 8 500 × 2 000 × 8,4 sind rund 143 Millionen Einheiten und liegen damit über
  * `WORK_UNIT_LIMIT`. Die Zahl ist hier nur die Begründung der Testgröße; der
- * Kostenbeleg je Kategorie liegt im Messapparat
- * (`scripts/profileResolutionWorstCaseFixtures.mjs`), und der Test prüft
- * ohnehin den Abbruch, nicht eine bestimmte Einheitenzahl.
+ * Test prüft den Abbruch, nicht eine bestimmte Einheitenzahl.
  *
  * Der Lauf kostet ungefähr eine Sekunde, und das ist unvermeidlich: Die Grenze
  * ist so bemessen, dass sie fünf Sekunden Wartezeit deckelt — sie zu

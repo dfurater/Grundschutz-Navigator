@@ -12,6 +12,7 @@
 // oder ein Hash abweicht.
 // =============================================================================
 
+import { compareStringsByCodeUnit } from '../src/domain/codeUnitOrder.mjs';
 import { createHash } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -37,13 +38,7 @@ export function corpusArtifactKeys(lineages) {
     // ist als unterstützter Anwenderkatalog registriert.
     keys.add(`catalog-${lineage.catalogKey}`);
   }
-  return [...keys].sort(byCodeUnit);
-}
-
-function byCodeUnit(left, right) {
-  if (left < right) return -1;
-  if (left > right) return 1;
-  return 0;
+  return [...keys].sort(compareStringsByCodeUnit);
 }
 
 /**

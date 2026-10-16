@@ -33,7 +33,7 @@
 //   (dieselbe Argumentation wie in der Merge-Phase).
 // =============================================================================
 
-import type { JsonObject } from '@/adapters/oscalProfileReaders';
+import { isJsonContainer, type JsonObject } from '@/domain/jsonGuards';
 import type { ProfileDocument } from '@/adapters/oscalProfileDocument';
 import { createOscalDiagnostic, type OscalDiagnostic } from '@/domain/oscalDiagnostics';
 import {
@@ -54,7 +54,7 @@ import {
   applyCombine,
   buildAsIsGroups,
   buildCustomGroups,
-  stripNestedChildren,
+  buildFlatControls,
   type ControlInclusion,
 } from './profileResolutionMerge';
 import {
@@ -64,7 +64,6 @@ import {
 } from './profileResolutionModify';
 import {
   indexCatalogControls,
-  isJsonObject,
   ownArrayDataElements,
   ownDataValue,
   resolveSelectionIds,
@@ -91,6 +90,8 @@ import {
 
 /** Stabile Codes der Engine-Ebene (über den Phasencodes). */
 export const PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES = Object.freeze({
+  /** Die Kategorie ist relativ zum expliziten Ziel nicht schemafähig platzierbar. */
+  ADD_UNPLACEABLE: 'PROFILE_RESOLUTION_ADD_UNPLACEABLE',
   /** Merge fehlt oder trägt eine mehrdeutige Strukturdirektive. */
   MERGE_STRUCTURE_UNRESOLVED: 'PROFILE_RESOLUTION_MERGE_STRUCTURE_UNRESOLVED',
   /** combine.method außerhalb use-first/keep. */
@@ -114,7 +115,7 @@ export const PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES = Object.freeze({
  * Uhrwert wäre nicht reproduzierbar, und Determinismus ist keine Verifikation
  * — die Herkunft tragen die Provenienzträger, nicht das Datum.
  */
-export const PROFILE_RESOLUTION_TIMESTAMP = '1970-01-01T00:00:00.000Z';
+const PROFILE_RESOLUTION_TIMESTAMP = '1970-01-01T00:00:00.000Z';
 
 export interface ProfileResolutionRequest {
   readonly plan: ProfileResolutionPlan;
@@ -141,7 +142,7 @@ export interface ResolvedCatalogOutput {
    */
   readonly controllingTrustClass: TrustClass;
   readonly oscalVersion: string;
-  /** Die vier Budgetzähler des Laufs — Messbasis für Korpuslauf und Protokoll. */
+  /** Die vier Budgetzähler des Laufs, für Korpuslauf und Tests. */
   readonly budgetUsage: ProfileResolutionBudgetUsage;
   readonly topProfileArtifactKey: string;
 }
@@ -206,11 +207,11 @@ function withCurrentProfileArtifact(
 
 /** Einzelner plain-object-Körper eines Dokuments (Root-Key-Eintrag). */
 function readRootBody(document: unknown): JsonObject {
-  if (!isJsonObject(document) || Array.isArray(document)) return {};
+  if (!isJsonContainer(document) || Array.isArray(document)) return {};
   const keys = Reflect.ownKeys(document).filter(
     (key): key is string =>
       typeof key === 'string' &&
-      isJsonObject(ownDataValue(document, key)) &&
+      isJsonContainer(ownDataValue(document, key)) &&
       !Array.isArray(ownDataValue(document, key)),
   );
   if (keys.length !== 1) return {};
@@ -225,13 +226,13 @@ function readRootBody(document: unknown): JsonObject {
 function readRawCustomGroups(source: unknown, budget: ProfileResolutionBudget): readonly JsonObject[] {
   const body = readRootBody(source);
   const merge = ownDataValue(body, 'merge');
-  if (!isJsonObject(merge)) return [];
+  if (!isJsonContainer(merge)) return [];
   const custom = ownDataValue(merge, 'custom');
-  if (!isJsonObject(custom)) return [];
+  if (!isJsonContainer(custom)) return [];
   const groups = ownDataValue(custom, 'groups');
   if (!Array.isArray(groups)) return [];
   return ownArrayDataElements(groups, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).filter((group): group is JsonObject =>
-    isJsonObject(group),
+    isJsonContainer(group),
   );
 }
 
@@ -310,12 +311,14 @@ function projectMembers(
   return projected;
 }
 
-function objectEntriesOf(node: JsonObject, key: string, budget: ProfileResolutionBudget): JsonObject[] {
+function arrayEntriesOf(node: JsonObject, key: string, budget: ProfileResolutionBudget): unknown[] {
   const value = ownDataValue(node, key);
   if (!Array.isArray(value)) return [];
-  return ownArrayDataElements(value, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).filter((entry): entry is JsonObject =>
-    isJsonObject(entry),
-  );
+  return ownArrayDataElements(value, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
+}
+
+function objectEntriesOf(node: JsonObject, key: string, budget: ProfileResolutionBudget): JsonObject[] {
+  return arrayEntriesOf(node, key, budget).filter((entry): entry is JsonObject => isJsonContainer(entry));
 }
 
 /**
@@ -325,13 +328,25 @@ function objectEntriesOf(node: JsonObject, key: string, budget: ProfileResolutio
  * Sammelfelder, die als Phantom-Mitglieder im Ergebnisdokument enden
  * würden.
  */
-function toAlterationDirective(alterNode: JsonObject, budget: ProfileResolutionBudget): AlterationDirective {
+type LocatedAlterationDirective = AlterationDirective & {
+  readonly path: string;
+  readonly additionIndices: readonly number[];
+};
+
+function toAlterationDirective(alterNode: JsonObject, path: string, budget: ProfileResolutionBudget): LocatedAlterationDirective {
   const controlId = optionalString(alterNode, 'control-id');
+  const adds: NonNullable<AlterationDirective['adds']>[number][] = [];
+  const additionIndices: number[] = [];
+  for (const [index, entry] of arrayEntriesOf(alterNode, 'adds', budget).entries()) {
+    if (!isJsonContainer(entry)) continue;
+    additionIndices.push(index);
+    adds.push(projectMembers(entry, ALTERATION_STRING_MEMBERS, ALTERATION_LIST_MEMBERS, budget));
+  }
   return {
+    path,
+    additionIndices,
     ...(controlId !== undefined && { controlId }),
-    adds: objectEntriesOf(alterNode, 'adds', budget).map(
-      (entry) => projectMembers(entry, ALTERATION_STRING_MEMBERS, ALTERATION_LIST_MEMBERS, budget) as NonNullable<AlterationDirective['adds']>[number],
-    ),
+    adds,
     // Das Schema kennt ausschließlich `removes` (Plural); ein Singular-Key
     // existiert nicht — Stille hier würde Remove-Anweisungen verlieren
     // (Orakelbefund WLAN: alter verschiebt ASST.2.2_gdn per removes+adds).
@@ -344,17 +359,20 @@ function toAlterationDirective(alterNode: JsonObject, budget: ProfileResolutionB
 /**
  * Liest die Raw-`alter`-Knoten aus dem Quelldokument in Quellreihenfolge.
  */
-function readRawAlters(source: unknown, budget: ProfileResolutionBudget): readonly JsonObject[] {
+function readRawAlters(source: unknown, budget: ProfileResolutionBudget): readonly unknown[] {
   const body = readRootBody(source);
   const modify = ownDataValue(body, 'modify');
-  if (!isJsonObject(modify)) return [];
-  return objectEntriesOf(modify, 'alters', budget);
+  if (!isJsonContainer(modify)) return [];
+  return arrayEntriesOf(modify, 'alters', budget);
 }
 
-type ControlTransform = (control: JsonObject) => JsonObject;
+type ControlTransformResult =
+  | { readonly ok: true; readonly value: JsonObject }
+  | { readonly ok: false; readonly diagnostic: OscalDiagnostic };
+type ControlTransform = (control: JsonObject) => ControlTransformResult;
 
-function identity(control: JsonObject): JsonObject {
-  return control;
+function identity(control: JsonObject): ControlTransformResult {
+  return { ok: true, value: control };
 }
 
 /**
@@ -374,9 +392,29 @@ function copyOwnDataMembersSkipping(node: JsonObject, skipKeys: readonly string[
   return copy;
 }
 
+/** Budgetierte Control-Liste; der erste Fehler beendet die Transformation. */
+function applyTransformToControls(
+  controls: readonly unknown[],
+  transform: ControlTransform,
+  budget: ProfileResolutionBudget,
+): { readonly ok: true; readonly value: readonly unknown[] } | { readonly ok: false; readonly diagnostic: OscalDiagnostic } {
+  budget.admitWorkingNode();
+  const updated: unknown[] = [];
+  for (const child of ownArrayDataElements(controls, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE)) {
+    if (!isJsonContainer(child)) {
+      updated.push(child);
+      continue;
+    }
+    const result = transform(child);
+    if (!result.ok) return result;
+    updated.push(result.value);
+  }
+  return { ok: true, value: updated };
+}
+
 function createControlTransform(
   setParameters: readonly ProfileSetParameter[],
-  altersByControlId: ReadonlyMap<string, readonly AlterationDirective[]>,
+  altersByControlId: ReadonlyMap<string, readonly LocatedAlterationDirective[]>,
   budget: ProfileResolutionBudget,
 ): ControlTransform {
   if (setParameters.length === 0 && altersByControlId.size === 0) return identity;
@@ -386,10 +424,10 @@ function createControlTransform(
     return typeof id === 'string' ? id : null;
   };
 
-  const applyShallow = (control: JsonObject): JsonObject => {
+  const applyShallow = (control: JsonObject): ControlTransformResult => {
     let transformed = applySetParametersToControl(control, setParameters, budget);
     const id = controlIdOf(transformed);
-    if (id === null) return transformed;
+    if (id === null) return { ok: true, value: transformed };
     // Die Suche des `alter`-Zielcontrols — die eigene Kategorie des
     // geschlossenen Satzes. Sie fällt je betrachteter Control an, auch wenn
     // keine Alteration auf sie zeigt, und sie gehört unter `/profile/modify`:
@@ -397,28 +435,33 @@ function createControlTransform(
     // Modify-Phase als Importproblem ausgewiesen.
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_TARGET_LOOKUP);
     const alterations = altersByControlId.get(id);
-    if (alterations === undefined) return transformed;
+    if (alterations === undefined) return { ok: true, value: transformed };
     for (const alteration of alterations) {
       budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.ALTER_TARGET_LOOKUP);
-      transformed = applyAlteration(transformed, alteration, budget);
+      const result = applyAlteration(transformed, alteration, budget);
+      if (!result.ok) return reject(
+        PROFILE_RESOLUTION_ENGINE_DIAGNOSTIC_CODES.ADD_UNPLACEABLE,
+        `${alteration.path}/adds/${alteration.additionIndices[result.additionIndex]}`,
+      );
+      transformed = result.value;
     }
-    return transformed;
+    return { ok: true, value: transformed };
   };
 
   // Modify wirkt auf die ganze Control-Hierarchie: verschachtelte
   // Subcontrols werden mit derselben Transformation behandelt. Die
   // Rekursionstiefe ist durch die Entry-Scanner-Grenze gedeckt.
-  const applyDeep = (control: JsonObject): JsonObject => {
-    const transformed = applyShallow(control);
+  const applyDeep = (control: JsonObject): ControlTransformResult => {
+    const result = applyShallow(control);
+    if (!result.ok) return result;
+    const transformed = result.value;
     const children = ownDataValue(transformed, 'controls');
     if (Array.isArray(children)) {
-      // Die transformierte Kinderliste ersetzt das controls-Mitglied.
-      budget.admitWorkingNode();
-      transformed['controls'] = ownArrayDataElements(children, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).map((child) =>
-        isJsonObject(child) ? applyDeep(child) : child,
-      );
+      const result = applyTransformToControls(children, applyDeep, budget);
+      if (!result.ok) return result;
+      transformed['controls'] = result.value;
     }
-    return transformed;
+    return { ok: true, value: transformed };
   };
   return applyDeep;
 }
@@ -429,24 +472,22 @@ function createControlTransform(
  * in-place umgeschrieben werden — die Eingabedokumente bleiben unangetastet.
  * Der Stack trägt die Verschachtelungstiefe (keine Rekursion).
  */
-function applyTransformToGroups(groups: readonly JsonObject[], transform: ControlTransform, budget: ProfileResolutionBudget): void {
+function applyTransformToGroups(groups: readonly JsonObject[], transform: ControlTransform, budget: ProfileResolutionBudget): OscalDiagnostic | undefined {
   const stack: JsonObject[] = [...groups];
   while (stack.length > 0) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
     const group = stack.pop()!;
     const controls = ownDataValue(group, 'controls');
     if (Array.isArray(controls)) {
-      // Dasselbe auf der Gruppenebene.
-      budget.admitWorkingNode();
-      group['controls'] = ownArrayDataElements(controls, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).map((child) =>
-        isJsonObject(child) ? transform(child) : child,
-      );
+      const result = applyTransformToControls(controls, transform, budget);
+      if (!result.ok) return result.diagnostic;
+      group['controls'] = result.value;
     }
     const nested = ownDataValue(group, 'groups');
     if (Array.isArray(nested)) {
       for (const child of ownArrayDataElements(nested, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE)) {
         budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
-        if (isJsonObject(child)) stack.push(child);
+        if (isJsonContainer(child)) stack.push(child);
       }
     }
   }
@@ -476,7 +517,7 @@ function accountBase64Payload(
   memberWindow: PathWindow | 'base64-payload',
   budget: ProfileResolutionBudget,
 ): void {
-  if (memberWindow !== 'base64-payload' || !isJsonObject(member)) return;
+  if (memberWindow !== 'base64-payload' || !isJsonContainer(member)) return;
   const encoded = ownDataValue(member, 'value');
   if (typeof encoded === 'string') budget.admitBase64(encoded);
 }
@@ -699,7 +740,7 @@ function collectAsIsOutput(records: readonly SelectionRecord[], budget: ProfileR
   const append = (candidates: readonly unknown[], target: JsonObject[]): void => {
     for (const candidate of candidates) {
       budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
-      if (isJsonObject(candidate)) target.push(candidate);
+      if (isJsonContainer(candidate)) target.push(candidate);
     }
   };
   for (const record of records) {
@@ -740,10 +781,9 @@ function buildStructuredOutput(
   switch (merge.structure.kind) {
     case 'flat': {
       // Die flache Control-Liste und die leere Gruppenliste daneben.
+      const { controls } = buildFlatControls(combined, budget);
       budget.admitWorkingNode();
-      const flatControls = combined.order.map((node) => stripNestedChildren(node, budget));
-      budget.admitWorkingNode();
-      return { ok: true, value: { groups: [], controls: flatControls } };
+      return { ok: true, value: { groups: [], controls } };
     }
     case 'as-is':
       return { ok: true, value: collectAsIsOutput(records, budget) };
@@ -782,10 +822,11 @@ function buildStructuredOutput(
 /** Phase 3 — Modify-Direktiven als Transformation über alle platzierten Controls. */
 function collectModifyTransform(document: ProfileDocument, budget: ProfileResolutionBudget): ControlTransform {
   const setParameters = (document.view.modify?.setParameters ?? []).map((parameter) => toSetParameterDirective(parameter));
-  const altersByControlId = new Map<string, AlterationDirective[]>();
-  for (const alterNode of readRawAlters(document.source, budget)) {
+  const altersByControlId = new Map<string, LocatedAlterationDirective[]>();
+  for (const [index, alterNode] of readRawAlters(document.source, budget).entries()) {
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
-    const directive = toAlterationDirective(alterNode, budget);
+    if (!isJsonContainer(alterNode)) continue;
+    const directive = toAlterationDirective(alterNode, `/profile/modify/alters/${index}`, budget);
     if (directive.controlId === undefined) continue;
     const bucket = altersByControlId.get(directive.controlId) ?? [];
     bucket.push(directive);
@@ -862,7 +903,7 @@ function emitCarrierEntries(
   if (Array.isArray(inherited)) {
     for (const entry of ownArrayDataElements(inherited, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE)) {
       budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
-      if (isJsonObject(entry)) graph.pushArrayItem(handle, emitValue(graph, entry, carrierEntryDepth, budget));
+      if (isJsonContainer(entry)) graph.pushArrayItem(handle, emitValue(graph, entry, carrierEntryDepth, budget));
     }
   }
   return handle;
@@ -878,7 +919,7 @@ function filteredBackMatter(
   budget: ProfileResolutionBudget,
 ): JsonObject | null {
   const backMatter = ownDataValue(sourceBody, 'back-matter');
-  if (!isJsonObject(backMatter)) return null;
+  if (!isJsonContainer(backMatter)) return null;
 
   const resources = ownDataValue(backMatter, 'resources');
   if (!Array.isArray(resources)) {
@@ -889,7 +930,7 @@ function filteredBackMatter(
   // Gefilterte Ressourcenliste und der sie tragende back-matter-Knoten.
   budget.admitWorkingNode();
   const kept = ownArrayDataElements(resources, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).filter((entry) => {
-    if (!isJsonObject(entry)) return true;
+    if (!isJsonContainer(entry)) return true;
     const uuid = ownDataValue(entry, 'uuid');
     return !(typeof uuid === 'string' && consumedResourceUuids.has(uuid.toLowerCase()));
   });
@@ -933,12 +974,12 @@ function referencedSourceResources(
     budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
     const sourceBody = readRootBody(record.sourceDocument);
     const backMatter = ownDataValue(sourceBody, 'back-matter');
-    if (!isJsonObject(backMatter)) continue;
+    if (!isJsonContainer(backMatter)) continue;
     const sourceResources = ownDataValue(backMatter, 'resources');
     if (!Array.isArray(sourceResources)) continue;
     for (const resource of ownArrayDataElements(sourceResources, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE)) {
       budget.spendWork(PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE);
-      if (!isJsonObject(resource)) continue;
+      if (!isJsonContainer(resource)) continue;
       const uuid = ownDataValue(resource, 'uuid');
       if (typeof uuid === 'string' && referencedUuids.has(uuid.toLowerCase())) {
         resources.push(resource);
@@ -998,7 +1039,7 @@ function mergedBackMatter(
   referencedUuids: ReadonlySet<string>,
   budget: ProfileResolutionBudget,
 ): JsonObject | null {
-  const profileResources = isJsonObject(profileBackMatter)
+  const profileResources = isJsonContainer(profileBackMatter)
     ? ownDataValue(profileBackMatter, 'resources')
     : undefined;
   // Zusammengeführte Ressourcenliste vor der Deduplizierung.
@@ -1006,7 +1047,7 @@ function mergedBackMatter(
   const resources = uniqueResources([
     ...referencedSourceResourcesAtFixpoint(records, referencedUuids, budget),
     ...(Array.isArray(profileResources)
-      ? ownArrayDataElements(profileResources, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).filter(isJsonObject)
+      ? ownArrayDataElements(profileResources, budget, PROFILE_RESOLUTION_WORK_UNITS.IMPORT_EDGE).filter(isJsonContainer)
       : []),
   ], budget);
   const merged = profileBackMatter === null
@@ -1048,7 +1089,7 @@ function emitResolvedCatalog(input: ResolvedCatalogEmission, budget: ProfileReso
 
   const sourceBody = readRootBody(document.source);
   const sourceMetadataValue = ownDataValue(sourceBody, 'metadata');
-  const sourceMetadata = isJsonObject(sourceMetadataValue) ? sourceMetadataValue : {};
+  const sourceMetadata = isJsonContainer(sourceMetadataValue) ? sourceMetadataValue : {};
   const metadataHandle = emitMetadataHandle(
     graph,
     sourceMetadata,
@@ -1100,8 +1141,14 @@ function resolveSingleProfile(input: SingleProfileInput, budget: ProfileResoluti
   const groups = structured.value.groups;
   // Transformierte Control-Liste des Ergebnisgraphen.
   budget.admitWorkingNode();
-  const controls = structured.value.controls.map(transform);
-  applyTransformToGroups(groups, transform, budget);
+  const controls: JsonObject[] = [];
+  for (const control of structured.value.controls) {
+    const result = transform(control);
+    if (!result.ok) return { ok: false, diagnostic: withCurrentProfileArtifact(result.diagnostic, input) };
+    controls.push(result.value);
+  }
+  const groupDiagnostic = applyTransformToGroups(groups, transform, budget);
+  if (groupDiagnostic !== undefined) return { ok: false, diagnostic: withCurrentProfileArtifact(groupDiagnostic, input) };
 
   // Interne Fragment-Links werden bewusst NICHT beschnitten: Das
   // unabhängige NIST-Orakel behält Verweise auf nicht aufgelöste Ziele

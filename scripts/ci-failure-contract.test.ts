@@ -1,3 +1,4 @@
+import { jobScopes } from '../src/test/workflowFixtures';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
@@ -70,18 +71,6 @@ async function workflow(name: string): Promise<string> {
 
 async function definition(path: string): Promise<string> {
   return readFile(resolve(process.cwd(), path), 'utf8');
-}
-
-function jobScopes(workflowContent: string): Map<string, string> {
-  const [, jobs = ''] = workflowContent.split('\njobs:\n');
-  const headers = [...jobs.matchAll(/^\x20{2}([\w-]+):\n/gm)];
-
-  return new Map(
-    headers.map((header, index) => [
-      header[1],
-      jobs.slice(header.index, headers[index + 1]?.index ?? jobs.length),
-    ]),
-  );
 }
 
 afterEach(async () => {
