@@ -23,7 +23,7 @@ Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application 
 
 `src/domain/codeUnitOrder.mjs` liefert den locale-unabhängigen UTF-16-Code-Unit-Komparator für Profilauflösung, Fixtures und Node-Skripte. `scripts/upstream-artifacts.mjs` ordnet die Pfade des signierten Manifests nach Unicode-Codepoints. `src/domain/repositoryPath.mjs` kodiert Repository-Pfade segmentweise und erhält leere Segmente standardmäßig; `vocabulary.ts` und `vocabularyNamespaces.ts` entfernen sie mit `omitEmptySegments: true`. Beide `.mjs`-Module laufen ohne Vite und besitzen `.d.mts`-Typdeklarationen.
 
-`scripts/contentHashes.mjs` berechnet SHA-256 über die übergebenen Text- oder Byte-Daten und Git-Blob-IDs über den Header `blob <Byteanzahl>\0` und die Inhaltsbytes. Die Prüfung zulässiger Ausgabepfade verwendet `isPathInsideRoot` aus `scripts/security-guards.mjs`. Vokabular-Links verwenden die URL-Builder `buildVocabularyIndexPath`, `buildVocabularyNamespacePath` und `buildVocabularyEntryPath` in `src/app/routes.ts`; Eintragswerte werden mit `encodeURIComponent` in den Query-Parameter `wert` geschrieben.
+`scripts/contentHashes.mjs` berechnet SHA-256 über die übergebenen Text- oder Byte-Daten mit `node:crypto` und Git-Blob-IDs mit `sha1Bytes` aus `src/domain/sha1.mjs` über den Header `blob <Byteanzahl>\0` und die Inhaltsbytes. `src/domain/sha1.mjs` implementiert SHA-1 nach FIPS 180-4 synchron und ohne Plattformabhängigkeit; `src/domain/uuidV5.ts` leitet damit UUIDv5 ab. Die Prüfung zulässiger Ausgabepfade verwendet `isPathInsideRoot` aus `scripts/security-guards.mjs`. Vokabular-Links verwenden die URL-Builder `buildVocabularyIndexPath`, `buildVocabularyNamespacePath` und `buildVocabularyEntryPath` in `src/app/routes.ts`; Eintragswerte werden mit `encodeURIComponent` in den Query-Parameter `wert` geschrieben.
 
 Die Testinfra verwendet `isJsonObject` aus `src/domain/jsonGuards.ts` und `deepFreeze` aus `src/test/oscalStructure.ts`. Deterministische Fixture-UUIDs entstehen in `src/test/fixtures/fixtureUuid.ts`. Die Tests der Kontrolldetailansicht bauen ihren Katalogzustand mit `src/test/fixtures/controlDetailState.ts`. `src/test/workflowFixtures.ts` enthält den Job-Block-Leser und den Repository-Builder mit Registrierung der temporären Verzeichnisse für den Cleanup der aufrufenden Suite. Der Job-Block-Leser wirft mit `requireJobsBlock: true` bei fehlendem `jobs`-Block einen Fehler. Browser-Tests beziehen den Vorfahren-Scrollhelfer `scrollerOf` aus `src/test/browser/mobileDrawerHarness.ts`.
 
@@ -165,6 +165,8 @@ src/                              # Anwendungsquellcode
 │   ├── repositoryPath.d.mts         # Typ des segmentweisen Pfadencodings
 │   ├── repositoryPath.mjs           # Repository-Pfadencoding mit expliziter Slash-Behandlung
 │   ├── securityTargets.ts            # Schutzziel-Skala, Klassifikation, Facetten
+│   ├── sha1.d.mts                   # Typ der SHA-1-Kompression
+│   ├── sha1.mjs                     # SHA-1 (FIPS 180-4) für Git-Blob-IDs und UUIDv5
 │   ├── sourceRegistry.d.mts          # Typen des Quellregisters
 │   ├── sourceRegistry.mjs            # Verbindlicher Upstream-/Katalogvertrag
 │   ├── sourceRegistry.ts             # Typsicherer Einstieg in sourceRegistry.mjs
