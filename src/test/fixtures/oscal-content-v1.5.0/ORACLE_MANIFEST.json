@@ -78,6 +78,30 @@
       "remotePath": "nist.gov/SP800-53/rev5/json/NIST_SP-800-53_rev5_PRIVACY-baseline-resolved-profile_catalog-min.json",
       "sizeBytes": 812060,
       "sha256": "cbb608058a4537a3dae9495172ba1b01b4227bf17e46afcd20d8aa7b4a60e57f"
+    },
+    {
+      "artifactKey": "nist-ssp-example",
+      "role": "example",
+      "fileName": "ssp-example.json",
+      "remotePath": "examples/ssp/json/ssp-example-min.json",
+      "sizeBytes": 13957,
+      "sha256": "9545e05eb60b5f08c4255c6ceb526b5c687bbb7076adbc1e3b2e67d021efa9bf"
+    },
+    {
+      "artifactKey": "nist-ssp-leveraged-example",
+      "role": "example",
+      "fileName": "ssp-leveraged-example.json",
+      "remotePath": "examples/ssp/json/oscal_leveraged-example_ssp-min.json",
+      "sizeBytes": 8335,
+      "sha256": "b8b2444b26d127a2928cb28939a075d5847dea2e2805f95ec6eb5937407e5ff7"
+    },
+    {
+      "artifactKey": "nist-ssp-leveraging-example",
+      "role": "example",
+      "fileName": "ssp-leveraging-example.json",
+      "remotePath": "examples/ssp/json/oscal_leveraging-example_ssp-min.json",
+      "sizeBytes": 9342,
+      "sha256": "9bb166c7f0aed30efb753327c04dc5d9f7ecb825c1c27c2c28f5adb134c9751f"
     }
   ]
 }

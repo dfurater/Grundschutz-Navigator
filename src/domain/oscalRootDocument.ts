@@ -11,11 +11,12 @@
 // Root-Key-Menge wird aus `OscalRootKey` (GSPP-283) abgeleitet und nicht
 // dupliziert — eine zweite Liste könnte von der Versionsmatrix abdriften.
 //
-// Modelliert sind heute der Katalogkörper (GSPP-285), der Körper einer
-// Component Definition (GSPP-248), der Profilkörper (GSPP-240) und der Körper
-// einer Mapping Collection (GSPP-245). Die übrigen vier Roots tragen den
-// gemeinsamen Anteil, bis ihr jeweiliger Adapter kommt; eine unionsweite
-// Struktur mit optionalen Feldern aller acht Modelle entsteht bewusst nicht.
+// Modelliert sind der Katalogkörper (GSPP-285), der Körper einer Component
+// Definition (GSPP-248), der Profilkörper (GSPP-240), der Körper einer Mapping
+// Collection (GSPP-245) und der SSP-Körper (GSPP-293). Die übrigen drei Roots
+// tragen den gemeinsamen Anteil, bis ihr jeweiliger Adapter kommt; eine
+// unionsweite Struktur mit optionalen Feldern aller acht Modelle entsteht
+// bewusst nicht.
 // =============================================================================
 
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
@@ -23,6 +24,7 @@ import type { RawOscalCatalog, RawOscalMetadata } from '@/domain/models';
 import type { RawOscalComponentDefinition } from '@/domain/oscalComponentDefinition';
 import type { RawOscalMappingCollection } from '@/domain/oscalMapping';
 import type { RawOscalProfile } from '@/domain/oscalProfile';
+import type { RawOscalSystemSecurityPlan } from '@/domain/oscalSystemSecurityPlan';
 
 /**
  * Top-Level-Property der Schema-Direktive. Sie ist in allen acht NIST-Schemas
@@ -55,6 +57,44 @@ export interface OscalRootMetadataView {
   readonly oscalVersion?: string;
 }
 
+/* ------------------------------------------------------------------ */
+/*  Gemeinsame Elementprojektionen                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Projektion eines `prop`. Dieselbe Form führen Component Definition, Profil,
+ * Mapping Collection und SSP; gelesen wird sie in `src/adapters/oscalReaders.ts`.
+ */
+export interface OscalPropView {
+  readonly name: string;
+  readonly value: string;
+  readonly ns?: string;
+  readonly class?: string;
+}
+
+/** Projektion eines `link` mit allen Nebenfeldern, die das Modell deklariert. */
+export interface OscalLinkView {
+  readonly href: string;
+  readonly rel?: string;
+  readonly mediaType?: string;
+  readonly resourceFragment?: string;
+  readonly text?: string;
+}
+
+/** Projektion eines `set-parameter`. */
+export interface OscalSetParameterView {
+  readonly paramId: string;
+  readonly values: readonly string[];
+  readonly remarks?: string;
+}
+
+/** Projektion einer `responsible-role` (auch `responsible-party` hat diese Form). */
+export interface OscalResponsibleRoleView {
+  readonly roleId: string;
+  readonly partyUuids: readonly string[];
+  readonly remarks?: string;
+}
+
 /**
  * Der Modellkörper eines Root-Keys. Ein neues Modell ergänzt hier genau einen
  * Zweig; bestehende Zweige bleiben unberührt.
@@ -67,7 +107,9 @@ export type RawOscalRootBodyFor<K extends OscalRootKey> = K extends 'catalog'
       ? RawOscalProfile
       : K extends 'mapping-collection'
         ? RawOscalMappingCollection
-        : RawOscalRootBody;
+        : K extends 'system-security-plan'
+          ? RawOscalSystemSecurityPlan
+          : RawOscalRootBody;
 
 /**
  * Ein OSCAL-Dokument mit genau dem Root-Key `K`.
@@ -94,3 +136,4 @@ export type RawOscalCatalogDocument = RawOscalDocumentFor<'catalog'>;
 export type RawOscalComponentDefinitionDocument = RawOscalDocumentFor<'component-definition'>;
 export type RawOscalProfileDocument = RawOscalDocumentFor<'profile'>;
 export type RawOscalMappingCollectionDocument = RawOscalDocumentFor<'mapping-collection'>;
+export type RawOscalSystemSecurityPlanDocument = RawOscalDocumentFor<'system-security-plan'>;
