@@ -430,6 +430,7 @@ export function ControlDetail({
       topicVocabulary={topicVocabulary}
       isVocabularyActive={isVocabularyActive}
       onToggleVocabulary={toggleVocabulary}
+      renderVocabularyCard={renderVocabularyCard}
     />
   );
   const parentControlLink = parentControl && (

@@ -11,6 +11,7 @@ import {
 import { beforeTightContentClass } from '@/components/legendStyles';
 import { buildClassificationLegendEntries, ControlClassification } from './ControlClassification';
 import { ControlStatement } from './ControlStatement';
+import type { RenderVocabularyCard } from './ControlVocabularyPrimitives';
 import { ControlTaxonomyBreadcrumb } from './ControlTaxonomyBreadcrumb';
 
 const registry = createTestVocabularyRegistry();
@@ -36,6 +37,9 @@ const topic: Topic = {
 
 const practiceVocabulary = resolvePracticeVocabulary(registry, practice);
 const topicVocabulary = resolveTopicVocabulary(registry, topic);
+const renderTestVocabularyCard: RenderVocabularyCard = (resolution) => (
+  <span>{resolution.entry.columns['Begriff']}</span>
+);
 
 function makeControl(): Control {
   return {
@@ -95,17 +99,16 @@ function renderClassification() {
 describe('ControlShortProfile (GSPP-303 T6)', () => {
   it('Breadcrumb: Begriffe mit Resolution als TermTrigger, ohne als Plain-Text', () => {
     const { container } = render(
-      <MemoryRouter>
-        <ControlTaxonomyBreadcrumb
-          practiceName="Governance und Compliance"
-          topicName="Organisation"
-          hasTopic
-          practiceVocabulary={practiceVocabulary}
-          topicVocabulary={topicVocabulary}
-          isVocabularyActive={() => false}
-          onToggleVocabulary={vi.fn()}
-        />
-      </MemoryRouter>,
+      <ControlTaxonomyBreadcrumb
+        practiceName="Governance und Compliance"
+        topicName="Organisation"
+        hasTopic
+        practiceVocabulary={practiceVocabulary}
+        topicVocabulary={topicVocabulary}
+        isVocabularyActive={() => false}
+        onToggleVocabulary={vi.fn()}
+        renderVocabularyCard={renderTestVocabularyCard}
+      />,
     );
     const scope = within(container);
 
@@ -124,17 +127,16 @@ describe('ControlShortProfile (GSPP-303 T6)', () => {
 
     // Ohne Resolution: Plain-Text, kein Button.
     const { container: plain } = render(
-      <MemoryRouter>
-        <ControlTaxonomyBreadcrumb
-          practiceName="Governance und Compliance"
-          topicName="Organisation"
-          hasTopic
-          practiceVocabulary={null}
-          topicVocabulary={null}
-          isVocabularyActive={() => false}
-          onToggleVocabulary={vi.fn()}
-        />
-      </MemoryRouter>,
+      <ControlTaxonomyBreadcrumb
+        practiceName="Governance und Compliance"
+        topicName="Organisation"
+        hasTopic
+        practiceVocabulary={null}
+        topicVocabulary={null}
+        isVocabularyActive={() => false}
+        onToggleVocabulary={vi.fn()}
+        renderVocabularyCard={renderTestVocabularyCard}
+      />,
     );
     expect(within(plain).queryByRole('button')).toBeNull();
     expect(within(plain).getByText('Organisation').tagName).toBe('SPAN');
@@ -142,19 +144,39 @@ describe('ControlShortProfile (GSPP-303 T6)', () => {
 
     // Ohne Thema erst recht kein Hinweis.
     const { container: noTopic } = render(
-      <MemoryRouter>
-        <ControlTaxonomyBreadcrumb
-          practiceName="Governance und Compliance"
-          topicName="Ohne Gruppenkennung"
-          hasTopic={false}
-          practiceVocabulary={null}
-          topicVocabulary={null}
-          isVocabularyActive={() => false}
-          onToggleVocabulary={vi.fn()}
-        />
-      </MemoryRouter>,
+      <ControlTaxonomyBreadcrumb
+        practiceName="Governance und Compliance"
+        topicName="Ohne Gruppenkennung"
+        hasTopic={false}
+        practiceVocabulary={null}
+        topicVocabulary={null}
+        isVocabularyActive={() => false}
+        onToggleVocabulary={vi.fn()}
+        renderVocabularyCard={renderTestVocabularyCard}
+      />,
     );
     expect(within(noTopic).queryByText('keine offizielle Definition')).toBeNull();
+  });
+
+  it.each([
+    ['Governance und Compliance', ['Nummerierung', 'Begriff']],
+    ['Abweichender Praktikname', ['Nummerierung']],
+  ])('rendert aktive Breadcrumb-Karten über den Callback für %s', (practiceName, hiddenColumns) => {
+    const renderVocabularyCard = vi.fn<RenderVocabularyCard>((resolution) => (
+      <span>{resolution.entry.columns['Begriff']}: Karteninhalt</span>
+    ));
+    const props = {
+      practiceName, topicName: 'Organisation', hasTopic: true,
+      practiceVocabulary, topicVocabulary, onToggleVocabulary: vi.fn(), renderVocabularyCard,
+    };
+    const view = render(<ControlTaxonomyBreadcrumb {...props} isVocabularyActive={() => false} />);
+    expect(renderVocabularyCard).not.toHaveBeenCalled();
+    view.rerender(<ControlTaxonomyBreadcrumb {...props} isVocabularyActive={() => true} />);
+    expect(renderVocabularyCard).toHaveBeenCalledWith(practiceVocabulary, { hiddenColumns });
+    expect(renderVocabularyCard).toHaveBeenCalledWith(topicVocabulary);
+    expect(within(view.container).getAllByText(/Karteninhalt/)).toHaveLength(2);
+    view.rerender(<ControlTaxonomyBreadcrumb {...props} isVocabularyActive={() => false} />);
+    expect(within(view.container).queryByText(/Karteninhalt/)).toBeNull();
   });
 
   it('Kriterien: Badges ohne Button-Hülle unter „Anforderung“, Legende als Textlink in der Leiste', () => {
@@ -204,22 +226,7 @@ describe('ControlShortProfile (GSPP-303 T6)', () => {
     expect(scope.getByText('Mittlere Aufwandsstufe.')).toBeInTheDocument();
   });
 
-  it('kein catalog-vocabulary-affordance in Breadcrumb und Kriterien', () => {
-    const { container: breadcrumb } = render(
-      <MemoryRouter>
-        <ControlTaxonomyBreadcrumb
-          practiceName="Governance und Compliance"
-          topicName="Organisation"
-          hasTopic
-          practiceVocabulary={practiceVocabulary}
-          topicVocabulary={topicVocabulary}
-          isVocabularyActive={() => true}
-          onToggleVocabulary={vi.fn()}
-        />
-      </MemoryRouter>,
-    );
-    expect(breadcrumb.querySelector('.catalog-vocabulary-affordance')).toBeNull();
-
+  it('kein catalog-vocabulary-affordance in Kriterien', () => {
     const { container: profile } = renderClassification();
     const criteria = within(profile).getByRole('group', { name: 'Kriterien' });
     expect(criteria.querySelector('.catalog-vocabulary-affordance')).toBeNull();

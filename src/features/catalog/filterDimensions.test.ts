@@ -148,9 +148,21 @@ describe('buildFilterDimensions', () => {
       ['Betrieb', 3, false],
       ['Zugang', 1, true],
     ]);
-    // Ausgewählte Handlungsworte ohne Treffer stehen am Ende.
+    // Ausgewählte Handlungsworte bleiben auch ohne Treffer abwählbar.
     expect(optionValues(dimension(dimensions, 'handlungsworte'))).toEqual(['prüfen']);
   });
+
+  it.each(['dokumentationstypen', 'handlungsworte', 'tags'] as const)(
+    'sortiert ausgewählte Nulltreffer in %s deutsch alphabetisch ein',
+    (field) => {
+      const counts = { ...emptyFacetCounts, [field]: { Zugang: 3, Ärger: 2, Betrieb: 1 } };
+      const dimensions = build({ [field]: ['Archiv', 'Öffnen'] }, { facetCounts: counts });
+      expect(dimension(dimensions, field).options.map(({ value, count, checked }) => [value, count, checked])).toEqual([
+        ['Archiv', 0, true], ['Ärger', 2, false], ['Betrieb', 1, false],
+        ['Öffnen', 0, true], ['Zugang', 3, false],
+      ]);
+    },
+  );
 
   it('zählt eine Dimension mit Auswahl global, ohne Auswahl in der Treffermenge', () => {
     const filtered: FacetCounts = { ...facetCounts, modalverben: { MUSS: 1 } };
@@ -169,7 +181,7 @@ describe('buildFilterDimensions', () => {
 
     expect(optionValues(dimension(dimensions, 'zielobjektKategorien'))).toEqual(['Netze', 'Räume', 'Anwendungen']);
     expect(optionValues(dimension(dimensions, 'dokumentationstypen'))).toEqual(['Konzept', 'Richtlinie']);
-    expect(optionValues(dimension(dimensions, 'handlungsworte'))).toEqual(['Ändern', 'dokumentieren', 'umsetzen', 'abwägen']);
+    expect(optionValues(dimension(dimensions, 'handlungsworte'))).toEqual(['abwägen', 'Ändern', 'dokumentieren', 'umsetzen']);
     expect(optionValues(dimension(dimensions, 'tags'))).toEqual(['Ärger', 'Betrieb', 'Zugang']);
   });
 });
