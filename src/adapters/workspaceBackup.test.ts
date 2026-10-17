@@ -33,6 +33,7 @@ describe('workspace backup validation', () => {
     (b: WorkspaceBackup) => ({ ...b, documents: [{ ...b.documents[0], source: { catalog: {} } }] }),
     (b: WorkspaceBackup) => ({ ...b, drafts: [{ localId: id, savedAt: timestamp, source: {} }] }),
     (b: WorkspaceBackup) => ({ ...b, verbuende: [] }),
+    (b: WorkspaceBackup) => ({ ...b, verbuende: [{ ...b.verbuende[0], name: ' \t ' }] }),
     (b: WorkspaceBackup) => ({ ...b, bindings: [{ fromLocalId: localId, pointer: '/catalog', href: 'secret', target: { kind: 'local', localId: id } }] }),
     (b: WorkspaceBackup) => ({ ...b, bindings: [{ fromLocalId: localId, pointer: '/catalog', href: 'secret', target: { kind: 'class-1', artifactKey: 'invalid/key' } }] }),
     (b: WorkspaceBackup) => ({ ...b, workspaceMeta: [] }),

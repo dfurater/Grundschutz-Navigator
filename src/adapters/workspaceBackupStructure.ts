@@ -1,5 +1,5 @@
 import { hasRegistryKeyGrammar } from '@/domain/sourceRegistry';
-import { STORAGE_SCHEMA_VERSION, type WorkspaceBackup, type WorkspaceVerbundBackup } from '@/domain/workspaceModel';
+import { STORAGE_SCHEMA_VERSION, isVerbundName, type WorkspaceBackup, type WorkspaceVerbundBackup } from '@/domain/workspaceModel';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function record(value: unknown): value is Record<string, unknown> {
@@ -17,7 +17,7 @@ function timestamp(value: unknown): boolean {
 function times(value: Record<string, unknown>): boolean { return timestamp(value.createdAt) && timestamp(value.savedAt); }
 function collectVerbuende(rows: WorkspaceBackup['verbuende'], ids: Set<string>): boolean {
   for (const row of rows) {
-    if (!fields(row, ['verbundId', 'name', 'createdAt', 'savedAt']) || !uuid(row.verbundId) || typeof row.name !== 'string'
+    if (!fields(row, ['verbundId', 'name', 'createdAt', 'savedAt']) || !uuid(row.verbundId) || !isVerbundName(row.name)
       || !times(row) || ids.has(row.verbundId)) return false;
     ids.add(row.verbundId);
   }

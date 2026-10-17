@@ -3,7 +3,7 @@ import { enforceClass2ObjectGraphInvariants } from '@/domain/oscalObjectGraph';
 import { listArtifacts } from '@/domain/sourceRegistry';
 import type { Class2OscalImportedDocument } from '@/domain/oscalClass2Import';
 import {
-  STORAGE_SCHEMA_VERSION,
+  STORAGE_SCHEMA_VERSION, isVerbundName,
   type DocumentState, type LocalId, type VerbundId, type WorkspaceBinding,
   type WorkspaceDraft, type WorkspaceEnvelope, type WorkspaceMeta, type WorkspaceDocumentSummary,
   type WorkspaceResult, type WorkspaceVerbund,
@@ -105,7 +105,7 @@ export class WorkspaceStore {
 
   createVerbund(name: string): Promise<WorkspaceResult<WorkspaceVerbund>> {
     return this.write(async () => {
-      if (typeof name !== 'string' || !name.trim()) reject('WORKSPACE_VERBUND_INVALID');
+      if (!isVerbundName(name)) reject('WORKSPACE_VERBUND_INVALID');
       const now = timestamp();
       const verbund = { verbundId: crypto.randomUUID() as VerbundId, name, createdAt: now, savedAt: now };
       await this.verbuende.add(verbund);
@@ -117,7 +117,7 @@ export class WorkspaceStore {
     return this.write(async () => {
       const verbund = await this.verbuende.get(verbundId);
       if (!verbund) reject('WORKSPACE_VERBUND_NOT_FOUND');
-      if (typeof name !== 'string' || !name.trim()) reject('WORKSPACE_VERBUND_INVALID');
+      if (!isVerbundName(name)) reject('WORKSPACE_VERBUND_INVALID');
       const updated = { ...verbund, name, savedAt: timestamp(verbund.savedAt) };
       await this.verbuende.put(updated);
       return updated;

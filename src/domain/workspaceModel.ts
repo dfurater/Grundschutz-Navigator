@@ -8,6 +8,11 @@ export type VerbundId = string & { readonly [verbundIdBrand]: 'VerbundId' };
 export const STORAGE_SCHEMA_VERSION = 1;
 export type DocumentState = 'imported' | 'draft' | 'export-ready';
 
+/** A verbund name carries at least one non-whitespace character. */
+export function isVerbundName(value: unknown): value is string {
+  return typeof value === 'string' && value.trim() !== '';
+}
+
 export interface WorkspaceVerbund {
   readonly verbundId: VerbundId;
   readonly name: string;
