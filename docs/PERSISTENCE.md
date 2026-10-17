@@ -282,7 +282,7 @@ Eine Migration läuft in genau einer `versionchange`-Transaktion. Schlägt ein D
 Trägt ein Arbeitsbereich eine höhere `storageSchemaVersion` als die geladene Anwendung (älterer Tab, Rollback), gilt:
 
 - **Schreibsperre.** Kein Schreiben, keine Rückwärtsmigration, keine Interpretation unbekannter Strukturen.
-- **Lesen und Backup-Export bleiben verfügbar.** Ein Export reicht unbekannte Felder verlustfrei durch, ohne sie zu deuten. `WorkspaceStore` löst die fünf bekannten Stores erst bei der jeweiligen Operation auf; fehlt einer davon im neueren Schema, öffnet `WorkspaceStore.open()` die Datenbank, eine Leseoperation auf dem fehlenden Store meldet `WORKSPACE_SCHEMA_NEWER`, und der Gesamtexport bleibt verfügbar.
+- **Lesen und Backup-Export bleiben verfügbar.** Ein Export reicht unbekannte Felder verlustfrei durch, ohne sie zu deuten. `WorkspaceStore` löst die fünf bekannten Stores erst bei der jeweiligen Operation auf; fehlt einer davon im neueren Schema, öffnet `WorkspaceStore.open()` die Datenbank, eine Leseoperation auf dem fehlenden Store meldet `WORKSPACE_SCHEMA_NEWER`, und der Gesamtexport bleibt verfügbar. Fehlt `workspaceMeta`, trägt das Gesamt-Backup die Datenbankversion als `storageSchemaVersion`.
 - Der Nutzer erhält eine Meldung mit Handlungsempfehlung.
 
 ## 11. Export, Backup und Wiederherstellung

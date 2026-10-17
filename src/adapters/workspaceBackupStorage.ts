@@ -86,9 +86,14 @@ function serializeBackup(backup: unknown, current = true): string {
 /** Caller owns the single read transaction over all stores. */
 export async function exportWorkspaceBackupSnapshot(db: Dexie): Promise<string> {
   const stores: Record<string, unknown> = {};
-  const meta = await db.table<WorkspaceMeta>('workspaceMeta').get('workspace');
-  if (!meta || !Number.isInteger(meta.storageSchemaVersion) || meta.storageSchemaVersion < 1) reject('WORKSPACE_SCHEMA_INVALID');
-  const current = meta.storageSchemaVersion === STORAGE_SCHEMA_VERSION;
+  // A newer schema may lack `workspaceMeta`; its bundle then carries the database version and stays uninterpreted.
+  let storageSchemaVersion = db.verno;
+  if (db.tables.some(table => table.name === 'workspaceMeta')) {
+    const meta = await db.table<WorkspaceMeta>('workspaceMeta').get('workspace');
+    if (!meta || !Number.isInteger(meta.storageSchemaVersion) || meta.storageSchemaVersion < 1) reject('WORKSPACE_SCHEMA_INVALID');
+    storageSchemaVersion = meta.storageSchemaVersion;
+  } else if (db.verno <= STORAGE_SCHEMA_VERSION) reject('WORKSPACE_SCHEMA_INVALID');
+  const current = storageSchemaVersion === STORAGE_SCHEMA_VERSION;
   const budget: BackupBudget | undefined = current ? { bytes: 0, nodes: frameNodes(db.tables.length) } : undefined;
   const outOfLineKeys: Record<string, unknown[]> = {};
   for (const table of db.tables) {
@@ -99,7 +104,7 @@ export async function exportWorkspaceBackupSnapshot(db: Dexie): Promise<string> 
     stores[table.name] = await readRows(table.toCollection(), budget, keys);
   }
   // Unknown future fields and stores pass through without interpretation.
-  const backup = { format: 'gspp-workspace', storageSchemaVersion: meta.storageSchemaVersion, ...stores, ...(Object.keys(outOfLineKeys).length > 0 && { outOfLineKeys }) };
+  const backup = { format: 'gspp-workspace', storageSchemaVersion, ...stores, ...(Object.keys(outOfLineKeys).length > 0 && { outOfLineKeys }) };
   return serializeBackup(backup, current);
 }
 
