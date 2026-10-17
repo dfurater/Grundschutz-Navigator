@@ -25,6 +25,12 @@ export function failure(error: unknown): WorkspaceResult<never> {
   return { ok: false, diagnostic: createOscalDiagnostic({ code, stage: 'domain', validator: { name: 'gspp-workspace', version: '1' }, path: '/' }) };
 }
 
+/** Latest instant the bundle grammar admits; it accepts four-digit years only. */
+export const LAST_TIMESTAMP_MS = Date.parse('9999-12-31T23:59:59.999Z');
+
+/** A later stamp would make every following export invalid, so the write aborts and the stored state stays exportable. */
 export function timestamp(previous?: string): string {
-  return new Date(Math.max(Date.now(), previous ? Date.parse(previous) + 1 : 0)).toISOString();
+  const value = Math.max(Date.now(), previous ? Date.parse(previous) + 1 : 0);
+  if (value > LAST_TIMESTAMP_MS) reject('WORKSPACE_TIMESTAMP_EXHAUSTED');
+  return new Date(value).toISOString();
 }

@@ -5,7 +5,7 @@ import { WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/class2ImportLimits.mjs';
 import { enforceClass2ObjectGraphInvariants, enforceWorkspaceBackupGraphInvariants } from '@/domain/oscalObjectGraph';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
 import { validWorkspaceBackupStructure, validVerbundBackupStructure } from '@/adapters/workspaceBackupStructure';
-import { reject, timestamp } from '@/adapters/workspaceStorageFailure';
+import { LAST_TIMESTAMP_MS, reject, timestamp } from '@/adapters/workspaceStorageFailure';
 
 /** Root members of the global bundle; a store with one of these names cannot be exported without loss. */
 const BACKUP_FRAME_MEMBERS = new Set(['format', 'storageSchemaVersion', 'outOfLineKeys']);
@@ -18,6 +18,18 @@ function assertCurrentBackup(backup: unknown): void {
   }
 }
 
+/** Date and binary keys get a tagged JSON form; no valid IndexedDB key is a plain object, so the tags stay unambiguous. */
+function jsonKey(key: unknown): unknown {
+  if (key instanceof Date) return { date: key.toISOString() };
+  if (key instanceof ArrayBuffer || ArrayBuffer.isView(key)) {
+    const bytes = key instanceof ArrayBuffer ? new Uint8Array(key) : new Uint8Array(key.buffer, key.byteOffset, key.byteLength);
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCodePoint(byte);
+    return { binary: btoa(binary) };
+  }
+  return Array.isArray(key) ? key.map(jsonKey) : key;
+}
+
 async function readRows<T>(collection: Collection<T>, budget?: { bytes: number }, keys?: unknown[]): Promise<T[]> {
   const rows: T[] = [];
   let exceedsLimit = false;
@@ -27,7 +39,7 @@ async function readRows<T>(collection: Collection<T>, budget?: { bytes: number }
       if (budget.bytes > WORKSPACE_BACKUP_MAX_BYTES) { exceedsLimit = true; return; }
     }
     rows.push(row);
-    keys?.push(cursor.primaryKey);
+    keys?.push(jsonKey(cursor.primaryKey));
   });
   // Reject after the cursor settles, preserving the limit diagnostic on native abort paths.
   if (exceedsLimit) reject('WORKSPACE_BACKUP_LIMIT_EXCEEDED');
@@ -52,7 +64,8 @@ export async function exportWorkspaceBackupSnapshot(db: Dexie): Promise<string> 
   for (const table of db.tables) {
     if (BACKUP_FRAME_MEMBERS.has(table.name)) reject('WORKSPACE_SCHEMA_INVALID');
     // A store whose key is not part of its rows keeps its keys in read order next to the rows.
-    const keys = table.schema.primKey.keyPath ? undefined : (outOfLineKeys[table.name] = []);
+    const keys = table.schema.primKey.keyPath ? undefined : [];
+    if (keys) outOfLineKeys[table.name] = keys;
     stores[table.name] = await readRows(table.toCollection(), budget, keys);
   }
   // Unknown future fields and stores pass through without interpretation.
@@ -83,10 +96,9 @@ async function restoredMetaSavedAt(db: Dexie, rows: readonly { savedAt: string }
   const meta = await db.table<WorkspaceMeta>('workspaceMeta').get('workspace');
   if (!meta) reject('WORKSPACE_SCHEMA_INVALID');
   const latest = rows.reduce((max, row) => Math.max(max, Date.parse(row.savedAt)), Date.parse(meta.savedAt));
-  const savedAt = timestamp(new Date(latest).toISOString());
-  // The bundle grammar admits four-digit years only; a later mark would make every following export invalid.
-  if (savedAt.length !== 24) reject('WORKSPACE_BACKUP_INVALID');
-  return savedAt;
+  // The mark must lie after every restored value and still within the bundle grammar.
+  if (latest >= LAST_TIMESTAMP_MS) reject('WORKSPACE_BACKUP_INVALID');
+  return timestamp(new Date(latest).toISOString());
 }
 
 /** Caller owns the single write transaction and has validated the whole bundle. */

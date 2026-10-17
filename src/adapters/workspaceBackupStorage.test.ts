@@ -138,12 +138,18 @@ it.each(['workspace', 'verbund'] as const)('never reissues a comparison value lo
   expect(value(await store.getDocument(one.localId))).toEqual(current);
 });
 
-it('rejects a restore whose high-water mark would leave four-digit years', async () => {
+it('keeps every stamp within four-digit years and the stored state exportable', async () => {
   const parsed = JSON.parse(value(await store.exportVerbundBackup(a.verbundId)));
   parsed.documents[0].savedAt = '9999-12-31T23:59:59.999Z';
   const before = value(await store.exportBackup());
   expect(await store.restoreVerbundBackup(bytes(JSON.stringify(parsed)), 'replace-verbund')).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_INVALID' } });
   expect(value(await store.exportBackup())).toBe(before);
+  parsed.documents[0].savedAt = '9999-12-31T23:59:59.998Z';
+  value(await store.restoreVerbundBackup(bytes(JSON.stringify(parsed)), 'replace-verbund'));
+  const restored = value(await store.exportBackup());
+  // Fehlschlag, wenn die nächste Schreibtransaktion einen fünfstelligen Jahresstempel schreibt und jeden Export bricht.
+  expect(await store.createVerbund('After the mark')).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_TIMESTAMP_EXHAUSTED' } });
+  expect(value(await store.exportBackup())).toBe(restored);
 });
 
 it('exports out-of-line keys of newer stores and rejects stores named like bundle members', async () => {
@@ -153,14 +159,15 @@ it('exports out-of-line keys of newer stores and rejects stores named like bundl
   next.version(2).stores({ ...WORKSPACE_SCHEMA, futureStore: 'id', outbound: '' }).upgrade(async tx => {
     await tx.table('workspaceMeta').update('workspace', { storageSchemaVersion: 2 });
     await tx.table('futureStore').add({ id: 'inline' });
-    await tx.table('outbound').bulkAdd([{ value: 'FIRST' }, { value: 'SECOND' }], ['key-1', 'key-2']);
+    await tx.table('outbound').bulkAdd([{ value: 'TEXT' }, { value: 'DATE' }, { value: 'BINARY' }, { value: 'ARRAY' }], ['key-1', new Date('2026-10-17T00:00:00.000Z'), new Uint8Array([1, 2, 255]), ['a', new Date(0)]]);
   });
   await next.open();
   const parsed = JSON.parse(await next.transaction('r', next.tables, () => exportWorkspaceBackupSnapshot(next)));
   next.close();
-  expect(parsed.outbound).toEqual([{ value: 'FIRST' }, { value: 'SECOND' }]);
-  // Fehlschlag, wenn Schlüssel außerhalb der Datensätze fehlen oder ein Store mit Schlüsselpfad Schlüssel erhält.
-  expect(parsed.outOfLineKeys).toEqual({ outbound: ['key-1', 'key-2'] });
+  // IndexedDB orders date before string before binary before array keys.
+  expect(parsed.outbound).toEqual([{ value: 'DATE' }, { value: 'TEXT' }, { value: 'BINARY' }, { value: 'ARRAY' }]);
+  // Fehlschlag, wenn Schlüssel außerhalb der Datensätze fehlen, Datums- oder Binärschlüssel den Export brechen oder ein Store mit Schlüsselpfad Schlüssel erhält.
+  expect(parsed.outOfLineKeys).toEqual({ outbound: [{ date: '2026-10-17T00:00:00.000Z' }, 'key-1', { binary: 'AQL/' }, ['a', { date: '1970-01-01T00:00:00.000Z' }]] });
   const reserved = new Dexie(WORKSPACE_DATABASE_NAME);
   reserved.version(3).stores({ ...WORKSPACE_SCHEMA, futureStore: 'id', outbound: '', format: 'id' });
   await reserved.open();
