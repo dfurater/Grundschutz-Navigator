@@ -136,8 +136,10 @@ export function DatenschutzPage() {
         <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Die technische Speicherschnittstelle kann eigene Dokumente auf Wunsch
           lokal im Browser speichern. Die Dokumente verlassen das Gerät dabei nicht.
-          Es gibt keine automatische Löschfrist. Sie bestimmen die Speicherdauer;
-          die Anwendung löscht gespeicherte Dokumente nicht automatisch.
+          Die Anwendung setzt keine Löschfrist und löscht gespeicherte Dokumente
+          nicht automatisch. Der Browser kann lokal gespeicherte Daten jedoch ohne
+          Rückfrage entfernen, etwa bei knappem Speicherplatz oder wenn Sie diese
+          Website längere Zeit nicht nutzen.
         </p>
         <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Ausgelieferte Dateien können browser- oder netzwerkbedingt
