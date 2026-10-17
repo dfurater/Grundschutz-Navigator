@@ -291,7 +291,7 @@ export class WorkspaceStore {
       request.onsuccess = () => finish({ ok: true, value: undefined });
       request.onerror = () => finish(failure(request.error));
       request.onblocked = () => {
-        timer ??= setTimeout(() => finish(failure(new StorageFailure('WORKSPACE_DELETE_BLOCKED'))), WORKSPACE_DELETE_BLOCKED_TIMEOUT_MS);
+        timer ??= setTimeout(() => finish(failure(new StorageFailure('WORKSPACE_DELETE_PENDING'))), WORKSPACE_DELETE_BLOCKED_TIMEOUT_MS);
       };
     });
   }

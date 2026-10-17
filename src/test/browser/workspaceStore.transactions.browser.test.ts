@@ -151,7 +151,7 @@ test('Backup stellt zwei Verbünde mit Dokumenten, Entwürfen und Bindungen verl
   expect(value(await store.exportBackup())).toBe(restored);
 });
 
-test('blockierte Gesamtlöschung liefert nach fester Frist eine Diagnose', async () => {
+test('blockierte Gesamtlöschung meldet nach fester Frist eine ausstehende Löschung und wird nach dem Schließen der Blockade abgeschlossen', async () => {
   const store = await open();
   const blocker = await new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(WORKSPACE_DATABASE_NAME);
@@ -160,9 +160,11 @@ test('blockierte Gesamtlöschung liefert nach fester Frist eine Diagnose', async
   });
   try {
     const started = performance.now();
-    expect(await store.deleteAll('delete-workspace')).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_DELETE_BLOCKED' } });
+    expect(await store.deleteAll('delete-workspace')).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_DELETE_PENDING' } });
     expect(performance.now() - started).toBeGreaterThanOrEqual(WORKSPACE_DELETE_BLOCKED_TIMEOUT_MS - 30);
+    expect((await indexedDB.databases()).map(database => database.name)).toContain(WORKSPACE_DATABASE_NAME);
   } finally { blocker.close(); }
+  await expect.poll(async () => (await indexedDB.databases()).map(database => database.name)).not.toContain(WORKSPACE_DATABASE_NAME);
 });
 
 test('jede Speicheroperation verwendet genau eine native Transaktion', async () => {
