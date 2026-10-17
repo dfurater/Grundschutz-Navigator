@@ -5,7 +5,10 @@ import { WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/class2ImportLimits.mjs';
 import { enforceClass2ObjectGraphInvariants, enforceWorkspaceBackupGraphInvariants } from '@/domain/oscalObjectGraph';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
 import { validWorkspaceBackupStructure, validVerbundBackupStructure } from '@/adapters/workspaceBackupStructure';
-import { reject } from '@/adapters/workspaceStorageFailure';
+import { LAST_TIMESTAMP_MS, reject, timestamp } from '@/adapters/workspaceStorageFailure';
+
+/** Root members of the global bundle; a store with one of these names cannot be exported without loss. */
+const BACKUP_FRAME_MEMBERS = new Set(['format', 'storageSchemaVersion', 'outOfLineKeys']);
 
 function assertCurrentBackup(backup: unknown): void {
   if (enforceWorkspaceBackupGraphInvariants(backup)) reject('WORKSPACE_BACKUP_LIMIT_EXCEEDED');
@@ -15,15 +18,28 @@ function assertCurrentBackup(backup: unknown): void {
   }
 }
 
-async function readRows<T>(collection: Collection<T>, budget?: { bytes: number }): Promise<T[]> {
+/** Date and binary keys get a tagged JSON form; no valid IndexedDB key is a plain object, so the tags stay unambiguous. */
+function jsonKey(key: unknown): unknown {
+  if (key instanceof Date) return { date: key.toISOString() };
+  if (key instanceof ArrayBuffer || ArrayBuffer.isView(key)) {
+    const bytes = key instanceof ArrayBuffer ? new Uint8Array(key) : new Uint8Array(key.buffer, key.byteOffset, key.byteLength);
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCodePoint(byte);
+    return { binary: btoa(binary) };
+  }
+  return Array.isArray(key) ? key.map(jsonKey) : key;
+}
+
+async function readRows<T>(collection: Collection<T>, budget?: { bytes: number }, keys?: unknown[]): Promise<T[]> {
   const rows: T[] = [];
   let exceedsLimit = false;
-  await collection.until(() => exceedsLimit).each(row => {
+  await collection.until(() => exceedsLimit).each((row, cursor) => {
     if (budget) {
       budget.bytes += new TextEncoder().encode(serializeWorkspaceJson(row)).byteLength;
       if (budget.bytes > WORKSPACE_BACKUP_MAX_BYTES) { exceedsLimit = true; return; }
     }
     rows.push(row);
+    keys?.push(jsonKey(cursor.primaryKey));
   });
   // Reject after the cursor settles, preserving the limit diagnostic on native abort paths.
   if (exceedsLimit) reject('WORKSPACE_BACKUP_LIMIT_EXCEEDED');
@@ -44,11 +60,16 @@ export async function exportWorkspaceBackupSnapshot(db: Dexie): Promise<string> 
   if (!meta || !Number.isInteger(meta.storageSchemaVersion) || meta.storageSchemaVersion < 1) reject('WORKSPACE_SCHEMA_INVALID');
   const current = meta.storageSchemaVersion === STORAGE_SCHEMA_VERSION;
   const budget = current ? { bytes: 0 } : undefined;
+  const outOfLineKeys: Record<string, unknown[]> = {};
   for (const table of db.tables) {
-    stores[table.name] = await readRows(table.toCollection(), budget);
+    if (BACKUP_FRAME_MEMBERS.has(table.name)) reject('WORKSPACE_SCHEMA_INVALID');
+    // A store whose key is not part of its rows keeps its keys in read order next to the rows.
+    const keys = table.schema.primKey.keyPath ? undefined : [];
+    if (keys) outOfLineKeys[table.name] = keys;
+    stores[table.name] = await readRows(table.toCollection(), budget, keys);
   }
   // Unknown future fields and stores pass through without interpretation.
-  const backup = { format: 'gspp-workspace', storageSchemaVersion: meta.storageSchemaVersion, ...stores };
+  const backup = { format: 'gspp-workspace', storageSchemaVersion: meta.storageSchemaVersion, ...stores, ...(Object.keys(outOfLineKeys).length > 0 && { outOfLineKeys }) };
   return serializeBackup(backup, current);
 }
 
@@ -67,14 +88,28 @@ export async function exportVerbundBackupSnapshot(db: Dexie, verbundId: VerbundI
   return serializeBackup({ format: 'gspp-workspace-verbund', storageSchemaVersion: meta.storageSchemaVersion, verbuende: [verbund], documents, drafts, bindings });
 }
 
+/**
+ * Restored rows keep their savedAt. The meta high-water mark moves past every restored and every previously issued
+ * comparison value, so the next write never issues a value that a connection loaded before the restore.
+ */
+async function restoredMetaSavedAt(db: Dexie, rows: readonly { savedAt: string }[]): Promise<string> {
+  const meta = await db.table<WorkspaceMeta>('workspaceMeta').get('workspace');
+  if (!meta) reject('WORKSPACE_SCHEMA_INVALID');
+  const latest = rows.reduce((max, row) => Math.max(max, Date.parse(row.savedAt)), Date.parse(meta.savedAt));
+  // The mark must lie after every restored value and still within the bundle grammar.
+  if (latest >= LAST_TIMESTAMP_MS) reject('WORKSPACE_BACKUP_INVALID');
+  return timestamp(new Date(latest).toISOString());
+}
+
 /** Caller owns the single write transaction and has validated the whole bundle. */
 export async function restoreWorkspaceBackupSnapshot(db: Dexie, backup: WorkspaceBackup): Promise<void> {
+  const savedAt = await restoredMetaSavedAt(db, [...backup.documents, ...backup.drafts, ...backup.workspaceMeta]);
   for (const table of db.tables) await table.clear();
   await db.table('verbuende').bulkAdd(backup.verbuende);
   await db.table('documents').bulkAdd(backup.documents);
   await db.table('drafts').bulkAdd(backup.drafts);
   await db.table('bindings').bulkAdd(backup.bindings);
-  await db.table('workspaceMeta').bulkAdd(backup.workspaceMeta);
+  await db.table('workspaceMeta').bulkAdd(backup.workspaceMeta.map(row => ({ ...row, savedAt })));
 }
 
 /** Validate collisions before the first write; the caller owns the single write transaction. */
@@ -83,6 +118,7 @@ export async function restoreVerbundBackupSnapshot(db: Dexie, backup: WorkspaceV
   const documents = db.table<WorkspaceEnvelope, LocalId>('documents');
   const incoming = await documents.bulkGet(backup.documents.map(row => row.localId));
   if (incoming.some(row => row && row.verbundId !== verbundId)) reject('WORKSPACE_BACKUP_CONFLICT');
+  const savedAt = await restoredMetaSavedAt(db, [...backup.documents, ...backup.drafts]);
   const oldIds = new Set(await documents.where('verbundId').equals(verbundId).primaryKeys());
   await db.table<WorkspaceBinding>('bindings').filter(row => oldIds.has(row.fromLocalId) || (row.target.kind === 'local' && oldIds.has(row.target.localId))).delete();
   await db.table('drafts').bulkDelete([...oldIds]);
@@ -91,4 +127,5 @@ export async function restoreVerbundBackupSnapshot(db: Dexie, backup: WorkspaceV
   await documents.bulkAdd(backup.documents);
   await db.table('drafts').bulkAdd(backup.drafts);
   await db.table('bindings').bulkAdd(backup.bindings);
+  await db.table('workspaceMeta').update('workspace', { savedAt });
 }

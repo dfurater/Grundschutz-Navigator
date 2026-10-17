@@ -63,7 +63,11 @@ it.each(['workspace', 'verbund'] as const)('round-trips documents whose combined
   }
   const backup = value(await (scope === 'workspace' ? store.exportBackup() : store.exportVerbundBackup(verbund.verbundId)));
   value(await (scope === 'workspace' ? store.restoreBackup(new TextEncoder().encode(backup), 'replace-workspace') : store.restoreVerbundBackup(new TextEncoder().encode(backup), 'replace-verbund')));
-  expect(value(await (scope === 'workspace' ? store.exportBackup() : store.exportVerbundBackup(verbund.verbundId)))).toBe(backup);
+  const restored = JSON.parse(value(await (scope === 'workspace' ? store.exportBackup() : store.exportVerbundBackup(verbund.verbundId))));
+  const expected = JSON.parse(backup);
+  // Die Gesamtwiederherstellung schreibt ausschließlich den Metazeitstempel fort.
+  if (scope === 'workspace') expected.workspaceMeta[0].savedAt = restored.workspaceMeta[0].savedAt;
+  expect(restored).toEqual(expected);
 }, 30_000);
 
 it.each(['workspace', 'verbund'] as const)('retains a binding after its source href changes and through backup restoration (%s)', async scope => {

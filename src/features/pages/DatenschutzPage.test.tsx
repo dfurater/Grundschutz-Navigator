@@ -176,13 +176,14 @@ describe('DatenschutzPage', () => {
       expect(container).toHaveTextContent(/Ausgelieferte Dateien können browser- oder netzwerkbedingt zwischengespeichert werden/);
       expect(container).toHaveTextContent(/lassen sich über die Browser-Einstellungen entfernen/);
     });
-    it('beschreibt freiwillige Speicherung auf dem Gerät ohne automatische Löschfrist', () => {
+    it('beschreibt freiwillige Speicherung ohne Löschfrist der Anwendung und die mögliche Entfernung durch den Browser', () => {
       const { container } = render(<DatenschutzPage />);
 
       expect(container).toHaveTextContent(/eigene Dokumente auf Wunsch lokal im Browser/);
       expect(container).toHaveTextContent(/Dokumente verlassen das Gerät dabei nicht/);
-      expect(container).toHaveTextContent(/keine automatische Löschfrist/);
-      expect(container).toHaveTextContent(/Sie bestimmen die Speicherdauer/);
+      expect(container).toHaveTextContent(/setzt keine Löschfrist und löscht gespeicherte Dokumente nicht automatisch/);
+      expect(container).toHaveTextContent(/Der Browser kann lokal gespeicherte Daten jedoch ohne Rückfrage entfernen/);
+      expect(container).not.toHaveTextContent(/Sie bestimmen die Speicherdauer/);
     });
 
     it('erläutert Löschumfang und Grenzen ohne vorhandene Bedienelemente zu versprechen', () => {

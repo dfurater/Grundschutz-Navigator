@@ -72,14 +72,16 @@ export class WorkspaceStore {
     catch (error) { return failure(error); }
   }
 
-  private async write<T>(operation: () => Promise<T>, touchMeta = true): Promise<WorkspaceResult<T>> {
+  /** Every savedAt written in one transaction is its stamp; workspaceMeta.savedAt therefore bounds every issued comparison value. */
+  private async write<T>(operation: (stamp: string) => Promise<T>, touchMeta = true): Promise<WorkspaceResult<T>> {
     try {
       const value = await this.db.transaction('rw', this.db.tables, async () => {
         const meta = await this.meta.get('workspace');
         if (!meta || !Number.isInteger(meta.storageSchemaVersion) || meta.storageSchemaVersion < 1) reject('WORKSPACE_SCHEMA_INVALID');
         if (this.db.verno > STORAGE_SCHEMA_VERSION || (meta && meta.storageSchemaVersion > STORAGE_SCHEMA_VERSION)) reject('WORKSPACE_SCHEMA_NEWER');
-        const result = await operation();
-        if (touchMeta) await this.meta.put({ ...meta, savedAt: timestamp(meta.savedAt) });
+        const stamp = timestamp(meta.savedAt);
+        const result = await operation(stamp);
+        if (touchMeta) await this.meta.put({ ...meta, savedAt: stamp });
         return result;
       });
       return { ok: true, value };
@@ -104,21 +106,20 @@ export class WorkspaceStore {
   listBindings(): Promise<WorkspaceResult<WorkspaceBinding[]>> { return this.read([this.bindings], () => this.bindings.toArray()); }
 
   createVerbund(name: string): Promise<WorkspaceResult<WorkspaceVerbund>> {
-    return this.write(async () => {
+    return this.write(async stamp => {
       if (!isVerbundName(name)) reject('WORKSPACE_VERBUND_INVALID');
-      const now = timestamp();
-      const verbund = { verbundId: crypto.randomUUID() as VerbundId, name, createdAt: now, savedAt: now };
+      const verbund = { verbundId: crypto.randomUUID() as VerbundId, name, createdAt: stamp, savedAt: stamp };
       await this.verbuende.add(verbund);
       return verbund;
     });
   }
 
   renameVerbund(verbundId: VerbundId, name: string): Promise<WorkspaceResult<WorkspaceVerbund>> {
-    return this.write(async () => {
+    return this.write(async stamp => {
       const verbund = await this.verbuende.get(verbundId);
       if (!verbund) reject('WORKSPACE_VERBUND_NOT_FOUND');
       if (!isVerbundName(name)) reject('WORKSPACE_VERBUND_INVALID');
-      const updated = { ...verbund, name, savedAt: timestamp(verbund.savedAt) };
+      const updated = { ...verbund, name, savedAt: stamp };
       await this.verbuende.put(updated);
       return updated;
     });
@@ -128,13 +129,12 @@ export class WorkspaceStore {
     try {
       const document = await snapshotDocument(input);
       assertState(state);
-      return this.write(async () => {
+      return this.write(async stamp => {
         if (!await this.verbuende.get(verbundId)) reject('WORKSPACE_VERBUND_NOT_FOUND');
-        const now = timestamp();
         const envelope: WorkspaceEnvelope = {
           localId: crypto.randomUUID() as LocalId, verbundId, storageSchemaVersion: STORAGE_SCHEMA_VERSION,
           source: document.source, rootType: document.rootType, oscalVersion: document.oscalVersion,
-          trustClass: 'class-2-local-user', documentState: state, createdAt: now, savedAt: now,
+          trustClass: 'class-2-local-user', documentState: state, createdAt: stamp, savedAt: stamp,
         };
         if ((document.source as Record<string, { uuid?: string }>)[document.rootType]?.uuid === envelope.localId) reject('WORKSPACE_DOCUMENT_INVALID');
         await this.documents.add(envelope);
@@ -157,10 +157,10 @@ export class WorkspaceStore {
       const bindingSnapshot = changedBindings === undefined ? undefined : structuredClone(changedBindings);
       if (state !== undefined) assertState(state);
       const document = await snapshotDocument(input);
-      return this.write(async () => {
+      return this.write(async stamp => {
         const current = await this.current(localId, expectedSavedAt, expectedDraftSavedAt);
         if ((document.source as Record<string, { uuid?: string }>)[document.rootType]?.uuid === localId) reject('WORKSPACE_DOCUMENT_INVALID');
-        const updated: WorkspaceEnvelope = { ...current, source: document.source, rootType: document.rootType, oscalVersion: document.oscalVersion, savedAt: timestamp(current.savedAt), documentState: state ?? current.documentState };
+        const updated: WorkspaceEnvelope = { ...current, source: document.source, rootType: document.rootType, oscalVersion: document.oscalVersion, savedAt: stamp, documentState: state ?? current.documentState };
         await this.documents.put(updated);
         if (bindingSnapshot !== undefined) {
           // Replaces this document's outgoing set, keeping incoming bindings.
@@ -185,9 +185,9 @@ export class WorkspaceStore {
       if (enforceClass2ObjectGraphInvariants(source)) reject('WORKSPACE_DRAFT_INVALID');
       if (new TextEncoder().encode(serializeWorkspaceJson(source)).byteLength > CLASS_2_IMPORT_LIMITS.maxBytes) reject('WORKSPACE_DRAFT_INVALID');
       const snapshot = structuredClone(source);
-      return this.write(async () => {
+      return this.write(async stamp => {
         await this.current(localId, expectedSavedAt, expectedDraftSavedAt);
-        const draft = { localId, source: snapshot, savedAt: timestamp(expectedDraftSavedAt ?? undefined) };
+        const draft = { localId, source: snapshot, savedAt: stamp };
         await this.drafts.put(draft);
         return draft;
       });
@@ -214,28 +214,28 @@ export class WorkspaceStore {
   async setBinding(binding: WorkspaceBinding): Promise<WorkspaceResult<void>> {
     try {
       const snapshot = structuredClone(binding);
-      return this.write(async () => { await this.putBinding(snapshot); await this.touchDocument(snapshot.fromLocalId); });
+      return this.write(async stamp => { await this.putBinding(snapshot); await this.touchDocument(snapshot.fromLocalId, stamp); });
     }
     catch (error) { return failure(error); }
   }
   removeBinding(fromLocalId: LocalId, pointer: string): Promise<WorkspaceResult<void>> {
-    return this.write(async () => {
+    return this.write(async stamp => {
       await this.current(fromLocalId);
       if (!await this.bindings.get([fromLocalId, pointer])) return;
       await this.bindings.delete([fromLocalId, pointer]);
-      await this.touchDocument(fromLocalId);
+      await this.touchDocument(fromLocalId, stamp);
     });
   }
 
-  private async touchDocument(localId: LocalId): Promise<void> {
+  private async touchDocument(localId: LocalId, savedAt: string): Promise<void> {
     const document = await this.current(localId);
-    await this.documents.put({ ...document, savedAt: timestamp(document.savedAt) });
+    await this.documents.put({ ...document, savedAt });
   }
 
-  private async removeDocument(localId: LocalId): Promise<void> {
+  private async removeDocument(localId: LocalId, stamp: string): Promise<void> {
     const incoming = await this.bindings.where('target.localId').equals(localId).toArray();
     for (const sourceId of new Set(incoming.map(binding => binding.fromLocalId))) {
-      if (sourceId !== localId) await this.touchDocument(sourceId);
+      if (sourceId !== localId) await this.touchDocument(sourceId, stamp);
     }
     await this.bindings.where('target.localId').equals(localId).delete();
     await this.bindings.filter(binding => binding.fromLocalId === localId).delete();
@@ -243,13 +243,13 @@ export class WorkspaceStore {
     await this.documents.delete(localId);
   }
   deleteDocument(localId: LocalId): Promise<WorkspaceResult<void>> {
-    return this.write(async () => { await this.current(localId); await this.removeDocument(localId); });
+    return this.write(async stamp => { await this.current(localId); await this.removeDocument(localId, stamp); });
   }
   deleteVerbund(verbundId: VerbundId): Promise<WorkspaceResult<void>> {
-    return this.write(async () => {
+    return this.write(async stamp => {
       if (!await this.verbuende.get(verbundId)) reject('WORKSPACE_VERBUND_NOT_FOUND');
       const ids = await this.documents.where('verbundId').equals(verbundId).primaryKeys();
-      for (const id of ids) await this.removeDocument(id);
+      for (const id of ids) await this.removeDocument(id, stamp);
       await this.verbuende.delete(verbundId);
     });
   }
@@ -269,7 +269,7 @@ export class WorkspaceStore {
     if (confirmation !== 'replace-verbund') return failure(new StorageFailure('WORKSPACE_CONFIRMATION_REQUIRED'));
     const parsed = await parseVerbundBackup(bytes);
     if (!parsed.ok) return parsed;
-    return this.write(() => restoreVerbundBackupSnapshot(this.db, parsed.value));
+    return this.write(() => restoreVerbundBackupSnapshot(this.db, parsed.value), false);
   }
 
   async estimate(): Promise<WorkspaceResult<StorageEstimate | undefined>> {

@@ -85,9 +85,15 @@ test('Backup stellt zwei Verbünde mit Dokumenten, Entwürfen und Bindungen verl
   const before = value(await store.exportBackup());
   value(await store.deleteVerbund(a.verbundId));
   value(await store.restoreBackup(new TextEncoder().encode(before), 'replace-workspace'));
-  expect(JSON.parse(value(await store.exportBackup()))).toEqual(JSON.parse(before));
+  const restored = value(await store.exportBackup());
+  const expected = JSON.parse(before);
+  const meta = JSON.parse(restored).workspaceMeta[0];
+  // Die Wiederherstellung schreibt ausschließlich den Metazeitstempel fort.
+  expect(Date.parse(meta.savedAt)).toBeGreaterThan(Date.parse(expected.workspaceMeta[0].savedAt));
+  expected.workspaceMeta[0].savedAt = meta.savedAt;
+  expect(JSON.parse(restored)).toEqual(expected);
   expect(await store.restoreBackup(new TextEncoder().encode(before.replace('"storageSchemaVersion":1', '"storageSchemaVersion":99')), 'replace-workspace')).toMatchObject({ ok: false });
-  expect(value(await store.exportBackup())).toBe(before);
+  expect(value(await store.exportBackup())).toBe(restored);
 });
 
 test('blockierte Gesamtlöschung liefert nach fester Frist eine Diagnose', async () => {
