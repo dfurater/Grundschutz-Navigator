@@ -16,6 +16,7 @@ Bei der Anwendung handelt es sich um eine **Client-Side Single-Page Application 
 | Routing | React Router v8 |
 | Volltextsuche | FlexSearch |
 | Scrollleisten | OverlayScrollbars (MIT) |
+| Lokaler Dokumentenspeicher | Dexie 4.4.4 (exakter Produktionspin), IndexedDB `gspp-workspace` |
 | Testing | Vitest + @testing-library/react + jsdom + Chromium-Browser-Lane; jsdom parst im Build zusätzlich die gebaute HTML-Auslieferung für den Titelvertrag |
 | Deployment | GitHub Pages (via GitHub Actions) |
 
@@ -180,7 +181,9 @@ src/                              # Anwendungsquellcode
 │   ├── vocabularyNamespaces.ts       # Namespace-URLs aus dem Quellregister
 │   ├── vocabularyRouteId.d.mts       # Typ der Routenkennung
 │   ├── vocabularyRouteId.mjs         # Routenkennung aus dem Upstream-Pfad (einzige Quelle, reines ESM)
-│   └── vocabularyRouteId.ts          # Typsicherer Einstieg in vocabularyRouteId.mjs
+│   ├── vocabularyRouteId.ts          # Typsicherer Einstieg in vocabularyRouteId.mjs
+│   ├── workspaceJson.ts              # Verlustfreie JSON-Zahlengrenze des Speichers
+│   └── workspaceModel.ts             # Informationsverbünde, Envelopes, Bindungen und Backup-Typen
 ├── adapters/                     # Infrastruktur- und Datengrenzen
 │   ├── browserDownload.ts            # Temporärer Browser-Download mit Cleanup
 │   ├── oscalAdapter.ts               # OSCAL-Katalogkörper → Domain Model
@@ -203,7 +206,13 @@ src/                              # Anwendungsquellcode
 │   ├── oscalSspControl.ts            # SSP-Projektion von control-implementation
 │   ├── oscalSspDocument.ts           # Verlustfreier Dokumenteinstieg SSP
 │   ├── oscalSspReaders.ts            # Knotenleser, Referenzprüfungen und Diagnosen des SSP-Adapters
-│   └── oscalSspSystem.ts             # SSP-Projektion von system-characteristics und system-implementation
+│   ├── oscalSspSystem.ts             # SSP-Projektion von system-characteristics und system-implementation
+│   ├── workspaceBackup.ts            # Begrenzter Backup-Einstieg über einen Modul-Worker
+│   ├── workspaceBackupContract.ts    # Redigierte Backup-Diagnosen und Workerfrist
+│   ├── workspaceBackupProcessing.ts  # Backup-Validierung und Klasse-2-Dokumentprüfung
+│   ├── workspaceBackupStructure.ts   # Geschlossene Bündelform und Beziehungsintegrität
+│   ├── workspaceMigration.ts         # Vorwärtsmigration in einer versionchange-Transaktion
+│   └── workspaceStore.ts             # Transaktionaler Dexie-Speicher für Informationsverbünde
 ├── state/                        # Globaler Anwendungszustand
 │   ├── CatalogContext.tsx            # Katalog-Kontextprovider
 │   ├── MobileNavigationContext.ts    # Mobiler Navigationszustand für Sheet-Mount-Gates
@@ -338,7 +347,8 @@ src/                              # Anwendungsquellcode
 │   └── vocabularyDetailPage.ts       # Lazy-Seite des Vokabulardetails
 ├── workers/                      # Modul-Worker
 │   ├── catalogParser.worker.ts       # Klasse-1-Katalogparser
-│   └── oscalImport.worker.ts         # Klasse-2-Import
+│   ├── oscalImport.worker.ts         # Klasse-2-Import
+│   └── workspaceBackup.worker.ts     # Backup-Eingangsprüfung
 ├── test/                         # Testinfrastruktur (siehe docs/OSCAL_ROUND_TRIP.md)
 │   ├── browser/                      # Chromium-Browser-Lane
 │   │   ├── a11yCatalogState.ts          # Synthetischer Katalogzustand für Accessibility-Prüfungen
@@ -536,9 +546,9 @@ Nach der Größenkontrolle läuft im Worker die feste Reihenfolge aus dem [OSCAL
 
 Stufe 3 prüft mit `ajv` 8.20.0 gegen das gepinnte NIST-Schema der von Stufe 2 gewählten Matrixzelle. Die Schemabytes liegen eingecheckt unter `schemas/oscal/` und werden über `src/domain/oscalSchemaBundle.ts` je Zelle in einen eigenen Chunk gebaut. Zur Laufzeit lädt der Worker genau einen davon nach — den der ausgewählten Zelle, als Modul **derselben Origin** wie die Anwendung. Weder das Release-Asset auf `github.com` noch die `$id`-Domain `csrc.nist.gov` wird angefragt; ein Browsertest prüft das über das Egress-Orakel. Vite baut den Modul-Worker über `worker.format: 'es'` als ES-Modul, damit nicht alle Schemas in einer Worker-Datei liegen.
 
-Dieser Einstieg liefert weder Dateiauswahl noch Persistenz, UI oder Renderer. Er ändert weder den Klasse-1-Katalogladepfad noch dessen Integritätskette.
+Die Anwendung besitzt keine Dateiauswahl und keine Bearbeitungsoberfläche für eigene Dokumente. Der Klasse-1-Katalogladepfad verwendet die Integritätskette aus [INTEGRITY.md](./INTEGRITY.md).
 
-Den Speicherort importierter Klasse-2-Dokumente legt der [Persistenzvertrag](./PERSISTENCE.md) als Vorgabe ohne Umsetzung fest: eine eigene IndexedDB-Datenbank `gspp-workspace`, in der Klasse 1 **keinen** Store besitzt. Der Arbeitsbereich hält allenfalls einen `artifactKey`-Verweis. Speicherschlüssel, Envelope, Versionsführung, Referenzbindung, Migration, Export und Löschung sind dort verbindlich beschrieben.
+`src/adapters/workspaceStore.ts` öffnet auf ausdrücklichen Aufruf die IndexedDB-Datenbank `gspp-workspace` mit den Stores `verbuende`, `documents`, `drafts`, `bindings` und `workspaceMeta`. Die Domänentypen liegen in `src/domain/workspaceModel.ts`. Klasse 1 besitzt dort keinen Inhaltsspeicher; Bindungen enthalten ausschließlich `artifactKey`-Verweise. Der Adapter bietet atomare Schreiboperationen mit `savedAt`-Konfliktprüfung, Verbund- und Dokumentlöschung, Backup und Wiederherstellung. `src/adapters/workspaceBackup.ts` startet für die Wiederherstellung einen eigenen Modul-Worker; enthaltene Dokumente durchlaufen einzeln den Klasse-2-Eingang. Speicher-Schema, Ressourcenlimits, Versionswechsel, Export- und Löschgrenzen stehen in [PERSISTENCE.md](./PERSISTENCE.md).
 
 Der separate Sync-Pfad (`scripts/sync-upstream-manifest.mjs` mit `scripts/upstream-artifacts.mjs`) vergleicht die vollständigen normalisierten Trees des bisherigen und des neuen Snapshots. Neue nicht registrierte Pfade werden als `unclassified` gemeldet, ohne ihren Blob zu fetchen oder sie auszuliefern.
 

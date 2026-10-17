@@ -169,24 +169,49 @@ describe('DatenschutzPage', () => {
     });
   });
 
-  describe('Aussagen, die den heutigen Stand beschreiben', () => {
-    it('führt weiterhin aus, dass keine fachlichen Nutzungsdaten im Browser abgelegt werden', () => {
-      setImpressum({});
-
-      render(<DatenschutzPage />);
-
-      expect(
-        screen.getByText(/speichert die Anwendung keine fachlichen/),
-      ).toBeInTheDocument();
-    });
-
-    it('macht keine Zusagen zu lokal gespeicherten Nutzerdokumenten, solange es sie nicht gibt', () => {
-      setImpressum({});
-
+  describe('Lokale Dokumentenspeicherung', () => {
+    it('beschreibt freiwillige Speicherung auf dem Gerät ohne automatische Löschfrist', () => {
       const { container } = render(<DatenschutzPage />);
 
-      expect(container.textContent).not.toMatch(/Ihre eigenen Dokumente/);
-      expect(container.textContent).not.toMatch(/unverschlüsselt/);
+      expect(container).toHaveTextContent(/eigene Dokumente auf Wunsch lokal im Browser/);
+      expect(container).toHaveTextContent(/Dokumente verlassen das Gerät dabei nicht/);
+      expect(container).toHaveTextContent(/keine automatische Löschfrist/);
+      expect(container).toHaveTextContent(/Sie bestimmen die Speicherdauer/);
+    });
+
+    it('erläutert Löschumfang und Grenzen ohne vorhandene Bedienelemente zu versprechen', () => {
+      const { container } = render(<DatenschutzPage />);
+
+      expect(container).toHaveTextContent(/einzelne Dokumente, alle Daten eines Verbunds oder sämtliche gespeicherten Daten vollständig löschen/);
+      expect(container).toHaveTextContent(/Bedienelemente zum Speichern, Löschen und Exportieren eigener Dokumente sind derzeit nicht verfügbar/);
+      expect(container).toHaveTextContent(/Bereits exportierte Dateien werden dadurch nicht gelöscht/);
+    });
+
+    it('zeigt die Risiken unverschlüsselter Speicherung in einem eigenen sichtbaren Abschnitt', () => {
+      render(<DatenschutzPage />);
+      const heading = screen.getByRole('heading', { level: 2, name: /Unverschlüsselte Speicherung/ });
+      const section = heading.closest('section');
+
+      expect(heading).toBeVisible();
+      expect(section).toHaveTextContent(/unverschlüsselt/);
+      expect(section).toHaveTextContent(/geteilten Geräten/);
+      expect(section).toHaveTextContent(/Verlust des Geräts/);
+      expect(section).toHaveTextContent(/Zugriff auf Ihr Browserprofil/);
+    });
+
+    it('nennt den Export als einzige Sicherung ohne Kopie beim Betreiber', () => {
+      const { container } = render(<DatenschutzPage />);
+
+      expect(container).toHaveTextContent(/Betreiber hat keine Kopie/);
+      expect(container).toHaveTextContent(/Export ist die einzige Sicherung/);
+    });
+
+    it('verwendet keine internen Projektbegriffe und nummeriert die Abschnitte fortlaufend', () => {
+      const { container } = render(<DatenschutzPage />);
+
+      expect(container.textContent).not.toMatch(/Klasse 1|Klasse 2|Arbeitsbereich/);
+      expect(screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent?.trim().split('.')[0]))
+        .toEqual(['1', '2', '3', '4', '5', '6', '7', '8']);
     });
   });
 });

@@ -4,19 +4,13 @@ Dieser Vertrag legt verbindlich fest, wie der Navigator lokale Nutzerdokumente s
 
 Welches Schema für ein Dokument gilt, steht in der [Versionsmatrix](OSCAL_VERSION_MATRIX.md); womit und wo validiert wird, im [Validierungsvertrag](OSCAL_VALIDATION.md); wie die Integritätskette der öffentlichen BSI-Artefakte funktioniert, in [INTEGRITY.md](INTEGRITY.md).
 
-## Status: Vorgabe, keine Umsetzung
+## Status: Speicheradapter und Backup
 
-Es gibt keine Import-UI, keine Persistenz und keinen Arbeitsbereich-Speicher im Code: kein Dexie, keine IndexedDB-Datenbank `gspp-workspace`, keine Stores, kein Envelope, keine Migration. Die Datenschutzseite stellt fest, dass die Anwendung keine fachlichen Nutzungsdaten in `localStorage`, `sessionStorage` oder vergleichbaren Browser-Speichern hält (`src/features/pages/DatenschutzPage.tsx`).
+`src/adapters/workspaceStore.ts` implementiert die Datenbank `gspp-workspace` mit Dexie 4.4.4. `src/domain/workspaceModel.ts` definiert Informationsverbünde, Envelopes, Entwürfe, Bindungen und das Backup-Format. `WorkspaceStore.open()` öffnet den Speicher ausdrücklich; der Katalogladepfad öffnet ihn nicht. Die Anwendung besitzt keine Bedienelemente zum Speichern, Löschen oder Exportieren eigener Dokumente; die Datenschutzseite benennt diese Grenze.
 
-Umgesetzt ist die Eingangsseite des Vertrags:
+`src/adapters/workspaceBackup.ts` prüft Backup-Bytes in `src/workers/workspaceBackup.worker.ts`; jedes enthaltene Dokument durchläuft zusätzlich `importClass2OscalDocument()`. Die Klasse-2-Dokumentgrenzen und die Bündelgrenze stehen in `src/domain/class2ImportLimits.mjs`. Die Schemawahl verwendet `metadata.oscal-version` und die gepinnte Versionsmatrix. Der Speicher schreibt weder Root-UUID noch `metadata.last-modified` fort; diese fachlichen Änderungen liefert der aufrufende Schreibvorgang.
 
-- Klasse-2-Eingangsgrenze `CLASS_2_IMPORT_LIMITS` (`src/domain/class2ImportLimits.mjs`: `maxBytes` 10 MiB, `maxDepth` 64, `maxNodes` 1 000 000, `maxDecodedBase64Bytes` 4 MiB), fail-closed über `oscalClass2Import.ts` und `oscalImportContract.ts`
-- Vertrauensklassen `class-1-verified-public`, `class-1-unverified-public`, `class-2-local-user` (`src/domain/oscalDocumentContext.ts`); die Laufzeit-Hashprüfung stuft auf `class-1-unverified-public` herab ([INTEGRITY.md](INTEGRITY.md))
-- Schemawahl ausschließlich über `metadata.oscal-version` (`resolveSchemaBinding` in `src/domain/oscalVersionMatrix.mjs`), ohne Fallback auf eine Nachbarversion
-- Lifecycle-Gate im Register: Nur `supported`-Artefakte werden materialisiert und durchlaufen die Laufzeit-Hashprüfung (`src/domain/sourceRegistry.mjs`)
-- No-op-Round-trip-Harnisch für die Klasse-2-Pipeline (`src/test/oscalRoundTrip.ts`)
-
-Alles unterhalb dieses Abschnitts ist bindende Vorgabe für die erste Speicherfunktion, kein Ist-Zustand. Wo ein Element bereits eine Code-Grundlage hat, ist sie genannt; der Rest (`derivedFrom`, Stores, Transaktionen, Migration, Löschung, Orakel) wartet auf Umsetzung.
+Die Datenbank startet mit Speicher-Schemaversion 1. `src/adapters/workspaceMigration.ts` stellt den geprüften Versionswechsel von 1 auf 2 innerhalb einer `versionchange`-Transaktion bereit; die Produktionsdatenbank registriert ausschließlich Version 1. `src/test/browser/workspaceMigration.browser.test.ts` führt den Versionswechsel in testeigenen Datenbanken aus.
 
 ## 0. Was OSCAL vorgibt und was dieses Projekt erfindet
 
@@ -31,9 +25,10 @@ Alles unterhalb dieses Abschnitts ist bindende Vorgabe für die erste Speicherfu
 
 | Datenart | Ort | Kopien | Zugriff | Löschzeitpunkt |
 | --- | --- | --- | --- | --- |
-| Originaldokument (`source`) | IndexedDB `gspp-workspace`, Store `documents` | eine dauerhafte | Browserprofil des Geräts | Einzel- oder Gesamtlöschung |
+| Informationsverbund | IndexedDB `gspp-workspace`, Store `verbuende` | eine dauerhafte | Browserprofil des Geräts | Verbund- oder Gesamtlöschung |
+| Originaldokument (`source`) | IndexedDB `gspp-workspace`, Store `documents` | eine dauerhafte | Browserprofil des Geräts | Dokument-, Verbund- oder Gesamtlöschung |
 | Read-Model (`view`) | ausschließlich Arbeitsspeicher | keine dauerhafte | laufender Tab | Verlassen der Seite |
-| Abgeleitete Indizes | IndexedDB, Indizes der Stores | Teilwerte aus `source` | wie Store | mit dem Store |
+| Abgeleitete Indizes | IndexedDB, Indizes der Stores | `verbundId`, Root-Typ, OSCAL-Version, Werkzeugzeitpunkt und lokale Ziel-ID | wie Store | mit dem Store |
 | Laufende Bearbeitung / Export-Draft | IndexedDB, Store `drafts` | eine, kurzlebig | wie Store | mit dem Dokument, spätestens beim Verwerfen |
 | Referenzbindungen | IndexedDB, Store `bindings` | Verweise, keine Inhalte | wie Store | mit dem Dokument auf beiden Seiten |
 | Werkzeughistorie | IndexedDB, Store `toolHistory` (optional, siehe §9) | Zwischenstände | wie Store | mit dem Dokument |
@@ -74,17 +69,17 @@ Der letzte Punkt ist eine Modelltatsache: `hash` existiert im OSCAL-Modell aussc
 
 ### Datenbank und Stores
 
-Eine IndexedDB-Datenbank `gspp-workspace`. Festgelegte Abstraktion: **Dexie** ([GSPP-340](https://linear.app/grundschutz-plus-plus/issue/GSPP-340)); die Wahl ersetzt keine fachliche Regel dieses Vertrags.
+`WorkspaceStore` hält mehrere Informationsverbünde in einer IndexedDB-Datenbank `gspp-workspace` und verwendet **Dexie** (exakter Pin in `package.json`).
 
 | Store | Schlüssel | Inhalt |
 | --- | --- | --- |
-| `documents` | `localId` | Envelope einschließlich `source` |
+| `verbuende` | `verbundId` | Name und Werkzeugzeitstempel des Informationsverbunds |
+| `documents` | `localId` | Envelope einschließlich `verbundId` und `source` |
 | `drafts` | `localId` | laufende Bearbeitung, Export-Draft |
 | `bindings` | `[fromLocalId, pointer]` | explizite Referenzbindungen (§7) |
-| `toolHistory` | `[localId, sequence]` | Werkzeughistorie, optional (§9) |
 | `workspaceMeta` | fester Schlüssel | `storageSchemaVersion`, Zeitstempel |
 
-Indizes auf `documents`: `rootType`, `oscalVersion`, `savedAt`. Indizes tragen ausschließlich Ordnungs- und Filterwerte, niemals Freitext aus Klasse-2-Inhalten.
+Indizes auf `documents`: `verbundId`, `rootType`, `oscalVersion`, `savedAt`. `bindings` besitzt den Zielindex `target.localId`; der zusammengesetzte Primärschlüssel lautet `[fromLocalId, pointer]`. Namen und Dokumenttitel sind keine Indexschlüssel. Der Store `toolHistory` wird nicht angelegt (§9).
 
 **Das `view` wird nicht persistiert.** [ADR-2](https://linear.app/grundschutz-plus-plus/issue/ADR-2) bestimmt es als Projektion, nicht als Wahrheit; es wird beim Laden abgeleitet und nur im Arbeitsspeicher gehalten.
 
@@ -93,6 +88,7 @@ Indizes auf `documents`: `rootType`, `oscalVersion`, `savedAt`. Indizes tragen a
 | Feld | Bedeutung |
 | --- | --- |
 | `localId` | lokal vergebener, stabiler Speicherschlüssel (§5) |
+| `verbundId` | Zugehörigkeit zu genau einem Informationsverbund, mit `crypto.randomUUID()` vergeben |
 | `storageSchemaVersion` | Version der **Speicherstruktur**, nicht des Dokuments (§6) |
 | `rootType` | einer der acht OSCAL-Root-Keys |
 | `oscalVersion` | Kopie aus `source.<root>.metadata.oscal-version`, für die Schemawahl beim Laden |
@@ -112,10 +108,17 @@ Eine fachliche Operation ist genau eine IndexedDB-Transaktion. Es gibt keinen Zu
 | --- | --- |
 | Dokument speichern | `documents`, `bindings` (alle in diesem Vorgang geänderten), `drafts` (Verwerfen), `toolHistory` (soweit fortgeschrieben) |
 | Autosave eines Entwurfs | `drafts`, `toolHistory` (soweit fortgeschrieben) |
-| Übernahme aus dem Quellregister (§8) | `documents`, `bindings` (soweit dabei gesetzt) |
+| Dokument aufnehmen | `documents`, Verbundprüfung und `workspaceMeta` |
+| Dokument ersetzen | `documents`, `drafts`, `workspaceMeta`; alle Bindungen bleiben erhalten |
+| Bindung setzen oder entfernen | `documents`, `bindings`, `workspaceMeta` |
+| Verbund anlegen oder umbenennen | `verbuende`, `workspaceMeta` |
+| Verbund löschen | `verbuende`, seine `documents`, `drafts`, `bindings` beider Richtungen, `workspaceMeta` |
 | Dokument löschen | `documents`, `drafts`, `bindings` beider Richtungen, `toolHistory` |
-| Backup wiederherstellen | `documents`, `bindings`, `workspaceMeta` |
+| Backup exportieren | alle vorhandenen Stores in einer lesenden Transaktion |
+| Backup wiederherstellen | `verbuende`, `documents`, `drafts`, `bindings`, `workspaceMeta` |
 | Migration | alle Stores, ein einziger `versionchange` |
+
+Der Adapter öffnet für jede Schreiboperation genau eine Transaktion über die fünf Stores und prüft darin die gespeicherte Schemaversion. `saveDocument()` vergleicht `expectedSavedAt` mit dem gespeicherten `savedAt`; bei Abweichung bricht `WORKSPACE_SAVE_CONFLICT` den Vorgang ab. Der neue Werkzeugzeitpunkt liegt mindestens eine Millisekunde nach dem vorigen. `replaceDocument()` verwendet dieselbe Konfliktprüfung und erhält `localId`, `verbundId`, Herkunft und Bindungen beider Richtungen.
 
 Indizes gehören zu ihrem Store und werden mit ihm geschrieben. **Regelform statt Aufzählung:** Jede Operation, die eine Bindung anlegt, ändert oder entfernt, führt `bindings` in **derselben** Transaktion wie das betroffene Dokument — auch bei später hinzukommenden Operationen. Bricht eine Transaktion ab, gilt der Vorzustand; es gibt keine Teilübernahme.
 
@@ -123,7 +126,7 @@ Indizes gehören zu ihrem Store und werden mit ihm geschrieben. **Regelform stat
 
 - Je Dokument gilt die Eingangsgrenze aus `src/domain/class2ImportLimits.mjs` (`maxBytes` 10 MiB, `maxDepth` 64, `maxNodes` 1 000 000). Der Speicher senkt sie nicht und hebt sie nicht an.
 - Die Zahl gleichzeitig **gehaltener** `source`-Graphen im Arbeitsspeicher ist begrenzt; nicht angezeigte Dokumente werden entlassen und bei Bedarf neu geladen ([ADR-2](https://linear.app/grundschutz-plus-plus/issue/ADR-2)).
-- Bei erschöpftem Browser-Quota wird der Schreibvorgang **abgelehnt**, nicht teilweise ausgeführt. Der Nutzer erhält eine Vorwarnung und den Hinweis auf den Export.
+- Bei erschöpftem Browser-Quota bricht die Transaktion mit `WORKSPACE_QUOTA_EXCEEDED` ab. `estimate()` liefert `navigator.storage.estimate()` zur Darstellung durch die aufrufende Oberfläche; fehlt die Browserfunktion, liefert es `undefined`.
 - Es gibt **keine automatische Verdrängung**. Stille Datenverwerfung ist ausgeschlossen.
 
 ## 4. Dokumentzustände
@@ -184,7 +187,7 @@ Der Arbeitsbereich hält Dokumente jeder OSCAL-Version unverändert nebeneinande
 
 `import-profile`, `import-ssp` und `import-ap` tragen `href`-Werte. Die Abbildung eines `href` auf ein gespeichertes Dokument ist ein Projektkonstrukt.
 
-**Die Bindung ist explizit und liegt im Envelope, nie im Dokument.** Der `href`-Wert in `source` bleibt unverändert — andernfalls bräche der No-op-Round-trip aus ADR-2.
+**Die Bindung liegt explizit im Store `bindings`, getrennt vom Dokument.** Der `href`-Wert in `source` bleibt unverändert — andernfalls bräche der No-op-Round-trip aus ADR-2.
 
 ```
 BindingTarget = { kind: 'local',   localId:    LocalId }
@@ -196,7 +199,7 @@ Der zweite Zieltyp ist nötig, weil ein lokaler SSP mit `import-profile` typisch
 - **Kein impliziter Auflösungsversuch.** Ohne gesetzte Bindung wird nicht aufgelöst — weder über die Dokument-UUID noch über Namensähnlichkeit noch über ein anderes Rateverfahren. (Der Referenzgraph löst relative und externe Ziele nie auf; siehe [OSCAL_VALIDATION.md](OSCAL_VALIDATION.md#stufe-5--referenzgraph).)
 - **Kein Netzwerkfallback.** Ein `href` löst unter keinen Umständen einen Netzwerk- oder Dateizugriff aus.
 - **Zeigt eine Bindung auf ein nicht vorhandenes Ziel**, ist das Ergebnis eine benannte, fail-closed Diagnose („Referenz nicht aufgelöst"). Kein Teilergebnis, kein stiller Leerwert.
-- Bindungen sind gerichtet und werden bei Löschung **beider** Seiten entfernt.
+- Bindungen sind gerichtet und werden bei Löschung **beider** Seiten entfernt. Lokale Ziele müssen existieren und dieselbe `verbundId` wie das Ausgangsdokument besitzen; anderenfalls meldet der Adapter `WORKSPACE_DOCUMENT_NOT_FOUND` oder `WORKSPACE_BINDING_CROSS_VERBUND`. `setBinding()` prüft den unveränderten `href` am angegebenen JSON Pointer; unterstützte Klasse-1-Ziele werden gegen das Quellregister geprüft.
 
 Die Auflösung über `back-matter` und Dokumentgrenzen liegt in [GSPP-286](https://linear.app/grundschutz-plus-plus/issue/GSPP-286); dieser Vertrag legt nur fest, wie ein Ziel benannt wird.
 
@@ -239,7 +242,7 @@ Verboten ist die Kopie mit **falscher** Provenienz. Eine Übernahme, die ihre He
 | Reine Serialisierung (Anzeige, Vorschau) | unverändert | unverändert |
 | Speicher-Migration (§10) | unverändert | unverändert |
 
-`createdAt` und `savedAt` im Envelope sind Werkzeugzeitstempel: Sie protokollieren, wann die Anwendung geschrieben hat, werden auch beim Autosave fortgeschrieben und sind kein Dokumentinhalt.
+`createdAt` und `savedAt` im Envelope sind Werkzeugzeitstempel. Autosave schreibt `savedAt` im separaten Entwurf und in `workspaceMeta` fort; `documents.savedAt` bleibt dabei der Vergleichswert des expliziten Speicherns. Diese Zeitstempel sind kein Dokumentinhalt.
 
 ### Revisionen
 
@@ -283,13 +286,15 @@ Export und Wiederherstellung müssen vor oder zusammen mit der ersten Speicherfu
 | Format | Inhalt | Zweck |
 | --- | --- | --- |
 | **Dokumentexport** | reines OSCAL-JSON, **kein** Envelope-Feld, keine Bindung, kein `derivedFrom` | Interoperabilität mit anderen OSCAL-Werkzeugen |
-| **Arbeitsbereich-Backup** | projekteigenes Bündel mit Envelopes, Bindungen und `storageSchemaVersion` | Wiederherstellung in dieser Anwendung |
+| **Arbeitsbereich-Backup** | projekteigenes JSON-Bündel mit `format: "gspp-workspace"`, Verbünden, Envelopes, Entwürfen, Bindungen, `workspaceMeta` und `storageSchemaVersion` | Wiederherstellung in dieser Anwendung |
 
 Was das Werkzeug als Dokument verlässt, ist gültiges OSCAL. Das Bündel ist ausdrücklich **kein** OSCAL-Dokument. Verbindlich:
 
 - Ein Dokumentexport ist nur aus `export-ready` möglich (§4).
 - **No-op-Round-trip:** Export eines unveränderten Dokuments ergibt semantische Gleichheit zum Import; `uuid` und `last-modified` bleiben unverändert.
-- Ein Backup wird beim Wiedereinlesen validiert. Ein Bündel mit höherer `storageSchemaVersion` wird abgelehnt, nicht teilübernommen.
+- `restoreBackup(bytes, "replace-workspace")` prüft das vollständige Bündel vor der schreibenden Transaktion: fatales UTF-8, Duplicate-Member-Scanner, geschlossene Bündelform, UUIDs, Zeitstempel, eindeutige Schlüssel, Verbundzugehörigkeit und Bindungsziele. Jedes `source` in `documents` durchläuft `importClass2OscalDocument()`; Entwürfe unterliegen den Ressourcen- und Objektgraphgrenzen. Ein Bündel mit höherer `storageSchemaVersion` wird vollständig abgelehnt.
+- `WORKSPACE_BACKUP_MAX_BYTES` beträgt 32 MiB (33 554 432 Bytes). Die Prüfung greift vor Transferkopie und Worker-Erzeugung. Bündel über dieser Grenze werden nicht eingelesen. Der gesamte geparste Bündelgraph unterliegt Tiefe 64 und 1 000 000 Knoten; einzelne Dokumente behalten zusätzlich ihre 10-MiB-Grenze. Der Backup-Worker endet nach spätestens `WORKSPACE_BACKUP_WORKER_TIMEOUT_MS` (120 000 ms).
+- `src/adapters/workspaceBackup.heap.node.test.ts` misst den gehaltenen Ergebnisgraphen mit fünf GC-bereinigten Samples; die Messung erfasst weder den transienten Spitzenheap noch den Gesamtspeicher mehrerer Browser-Worker. Der Export liest einen konsistenten Snapshot aller Stores und erhält unbekannte Felder und zusätzliche Stores neuerer Speicherversionen ohne Interpretation. Für Version 1 prüft er Bytegrenze, Tiefe, Knotenzahl und Bündelform vor einer erfolgreichen Rückgabe. Überschreitet der Gesamtbestand diese Grenzen, meldet er `WORKSPACE_BACKUP_LIMIT_EXCEEDED`; ein vollständiges Backup dieses Bestands ist über diese Schnittstelle dann nicht möglich. Die gespeicherten Daten bleiben erhalten. Nicht endliche Zahlen werden bei Speicherung und Wiederherstellung mit redigierten Diagnosen abgelehnt.
 - Der Export ist die **einzige** Datenausleitung und wird stets vom Nutzer ausgelöst.
 
 ## 12. Löschung
@@ -298,15 +303,19 @@ Was das Werkzeug als Dokument verlässt, ist gültiges OSCAL. Das Bündel ist au
 
 Eine Transaktion über: `documents`, `drafts`, `bindings` in **beiden** Richtungen, `toolHistory`, sämtliche Indexeinträge dieser Stores, den In-Memory-View-Cache und den Klasse-2-Suchindex.
 
+### Ein Informationsverbund
+
+`deleteVerbund(verbundId)` entfernt den Verbund und seine Dokumente, Entwürfe und Bindungen beider Richtungen in einer Transaktion. Dokumente anderer Verbünde bleiben erhalten.
+
 ### Vollständiger Arbeitsbereich
 
-Alle Stores, alle Indizes, alle In-Memory-Ableitungen, danach `deleteDatabase('gspp-workspace')`. Blockierte Löschungen (`onblocked`, weil ein anderer Tab die Datenbank hält) erhalten eine feste Abbruchfrist und eine erklärbare Meldung.
+`deleteAll("delete-workspace")` schließt die eigene Verbindung und ruft `deleteDatabase('gspp-workspace')` auf. Bei `onblocked` meldet der Adapter nach `WORKSPACE_DELETE_BLOCKED_TIMEOUT_MS` (2 000 ms) `WORKSPACE_DELETE_BLOCKED`. Der Browser kann einen gestarteten Löschrequest nicht abbrechen; nach dem Schließen der blockierenden Verbindung kann er die Löschung noch abschließen. Der Adapter hält weder Quellgraphen noch Views oder Suchindizes als Cache.
 
 ### Vollständige Aufzählung der Löschziele
 
 | Ziel | erfasst durch |
 | --- | --- |
-| `documents`, `drafts`, `bindings`, `toolHistory`, `workspaceMeta` | Einzel- bzw. Gesamtlöschung |
+| `verbuende`, `documents`, `drafts`, `bindings`, `workspaceMeta` | Dokument-, Verbund- bzw. Gesamtlöschung |
 | Indizes dieser Stores | mit dem jeweiligen Store |
 | View-Cache im Arbeitsspeicher | ausdrücklich geleert |
 | Klasse-2-Suchindex im Arbeitsspeicher | ausdrücklich geleert |
@@ -350,7 +359,7 @@ Die Projektbegriffe „Klasse 1", „Klasse 2" und „Arbeitsbereich" erscheinen
 
 ## 15. Testorakel
 
-Festgelegt hier, ausgeführt in den Implementierungs-Issues. Jedes Orakel benennt, was verglichen wird und wann der Test fehlschlägt.
+`src/test/browser/workspaceStore.browser.test.ts` und `workspaceMigration.browser.test.ts` prüfen Transaktionen, Konflikte, Schema, Quota, Wiederherstellung, Löschung und Migration unter dem Egress-Guard. `src/adapters/workspaceBackup.test.ts` prüft die fail-closed Eingangsgrenzen des Bündels. Jedes Orakel benennt, was verglichen wird und wann der Test fehlschlägt.
 
 ### Migrationsorakel
 

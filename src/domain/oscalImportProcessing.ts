@@ -7,6 +7,7 @@ import {
 import {
   createClass2ResourceLimitDiagnostic,
 } from '@/domain/oscalObjectGraph';
+import { WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/class2ImportLimits.mjs';
 import { walkOwnContainers } from '@/domain/oscalObjectWalk';
 
 // =============================================================================
@@ -98,7 +99,7 @@ class DuplicateMemberScanner {
 
     if (character === '{') return this.scanObject(path, depth);
     if (character === '[') return this.scanArray(path, depth);
-    if (character === '"') return this.readString() === null ? { kind: 'invalid' } : { kind: 'valid' };
+    if (character === '"') return this.readString(false) === null ? { kind: 'invalid' } : { kind: 'valid' };
     if (character === 't') return this.readLiteral('true');
     if (character === 'f') return this.readLiteral('false');
     if (character === 'n') return this.readLiteral('null');
@@ -154,7 +155,7 @@ class DuplicateMemberScanner {
     return { kind: 'invalid' };
   }
 
-  private readString(): string | null {
+  private readString(capture = true): string | null {
     if (!this.consume('"')) return null;
 
     let value = '';
@@ -165,7 +166,7 @@ class DuplicateMemberScanner {
       if ((character.codePointAt(0) ?? 0) < 0x20) return null;
 
       if (character !== '\\') {
-        value += character;
+        if (capture) value += character;
         continue;
       }
 
@@ -175,27 +176,27 @@ class DuplicateMemberScanner {
         case '"':
         case '\\':
         case '/':
-          value += escape;
+          if (capture) value += escape;
           break;
         case 'b':
-          value += '\b';
+          if (capture) value += '\b';
           break;
         case 'f':
-          value += '\f';
+          if (capture) value += '\f';
           break;
         case 'n':
-          value += '\n';
+          if (capture) value += '\n';
           break;
         case 'r':
-          value += '\r';
+          if (capture) value += '\r';
           break;
         case 't':
-          value += '\t';
+          if (capture) value += '\t';
           break;
         case 'u': {
           const hexadecimal = this.text.slice(this.position, this.position + 4);
           if (!/^[0-9a-fA-F]{4}$/.test(hexadecimal)) return null;
-          value += String.fromCodePoint(Number.parseInt(hexadecimal, 16));
+          if (capture) value += String.fromCodePoint(Number.parseInt(hexadecimal, 16));
           this.position += 4;
           break;
         }
@@ -285,8 +286,8 @@ class DuplicateMemberScanner {
   }
 }
 
-export function parseClass2OscalInput(bytes: Uint8Array): Class2OscalInputResult {
-  if (bytes.byteLength > CLASS_2_IMPORT_LIMITS.maxBytes) {
+function parseBoundedInput(bytes: Uint8Array, maxBytes: number, register: boolean): Class2OscalInputResult {
+  if (bytes.byteLength > maxBytes) {
     return {
       ok: false,
       diagnostic: createClass2ByteLimitDiagnostic(),
@@ -346,7 +347,7 @@ export function parseClass2OscalInput(bytes: Uint8Array): Class2OscalInputResult
     // Duplicate-Member-Prüfung bestanden sind, wird der Baum registriert —
     // ein Beleg trägt damit stets die vollständige Bytepolitik.
     const source = JSON.parse(text);
-    registerParsedTree(source);
+    if (register) registerParsedTree(source);
     return { ok: true, source };
   } catch {
     return {
@@ -359,4 +360,14 @@ export function parseClass2OscalInput(bytes: Uint8Array): Class2OscalInputResult
       }),
     };
   }
+}
+
+/** OSCAL provenance is registered only under the original document byte policy. */
+export function parseClass2OscalInput(bytes: Uint8Array): Class2OscalInputResult {
+  return parseBoundedInput(bytes, CLASS_2_IMPORT_LIMITS.maxBytes, true);
+}
+
+/** Bounded backup syntax parsing grants no OSCAL parser provenance. */
+export function parseWorkspaceBackupInput(bytes: Uint8Array): Class2OscalInputResult {
+  return parseBoundedInput(bytes, WORKSPACE_BACKUP_MAX_BYTES, false);
 }

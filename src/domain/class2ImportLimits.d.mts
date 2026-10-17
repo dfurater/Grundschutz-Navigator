@@ -15,3 +15,6 @@ export interface Class2ImportLimits {
 }
 
 export const CLASS_2_IMPORT_LIMITS: Class2ImportLimits;
+
+/** Aggregate UTF-8 byte cap for user-triggered workspace restore. */
+export const WORKSPACE_BACKUP_MAX_BYTES: number;
