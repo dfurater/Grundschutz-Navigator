@@ -88,7 +88,7 @@ test('Backup stellt zwei Verbünde mit Dokumenten, Entwürfen und Bindungen verl
   const restored = value(await store.exportBackup());
   const expected = JSON.parse(before);
   const meta = JSON.parse(restored).workspaceMeta[0];
-  // Die Wiederherstellung schreibt ausschließlich den Metazeitstempel fort.
+  // Im Re-Export unterscheidet sich nur der fortgeschriebene Metazeitstempel.
   expect(Date.parse(meta.savedAt)).toBeGreaterThan(Date.parse(expected.workspaceMeta[0].savedAt));
   expected.workspaceMeta[0].savedAt = meta.savedAt;
   expect(JSON.parse(restored)).toEqual(expected);

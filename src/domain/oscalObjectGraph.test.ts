@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  countObjectGraphNodesCapped,
   enforceClass2ObjectGraphInvariants,
   OBJECT_GRAPH_DIAGNOSTIC_CODES,
 } from './oscalObjectGraph';
@@ -39,6 +40,34 @@ describe('enforceClass2ObjectGraphInvariants — Strukturinvariante und Limits i
       stage: 'resource-limit',
       path: '/',
     });
+  });
+});
+
+describe('countObjectGraphNodesCapped — Knotenzählung mit Abbruch am Budget', () => {
+  it('zählt jeden Wert als Knoten, auch Primitive und null', () => {
+    expect(countObjectGraphNodesCapped(null, 10)).toBe(1);
+    expect(countObjectGraphNodesCapped('text', 10)).toBe(1);
+    expect(countObjectGraphNodesCapped({ a: [null, { b: false }] }, 10)).toBe(5);
+  });
+
+  it('bricht als erstes Ergebnis oberhalb des Budgets mit maxNodes + 1 ab', () => {
+    const source = Array.from({ length: 50 }, () => null);
+
+    expect(countObjectGraphNodesCapped(source, 7)).toBe(8);
+    expect(countObjectGraphNodesCapped(source, 51)).toBe(51);
+  });
+
+  it('zählt genau eine Million Knoten vollständig', () => {
+    const source = { values: Array.from({ length: CLASS_2_IMPORT_LIMITS.maxNodes - 2 }, () => null) };
+
+    expect(countObjectGraphNodesCapped(source, CLASS_2_IMPORT_LIMITS.maxNodes)).toBe(CLASS_2_IMPORT_LIMITS.maxNodes);
+  });
+
+  it('terminiert auch auf einem Zyklus am Budget statt unbegrenzt zu laufen', () => {
+    const cycle: Record<string, unknown> = {};
+    cycle['schleifenfeld'] = cycle;
+
+    expect(countObjectGraphNodesCapped(cycle, 5)).toBe(6);
   });
 });
 

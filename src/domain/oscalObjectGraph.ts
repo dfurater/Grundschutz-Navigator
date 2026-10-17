@@ -260,6 +260,30 @@ export function enforceClass2ObjectGraphInvariants(source: unknown): OscalDiagno
   );
 }
 
+/**
+ * Zählt die Knoten eines Graphen in der Zählweise von `walkObjectGraph` — jeder
+ * Wert zählt, auch Primitive — und bricht nach `maxNodes` gezählten Knoten ab:
+ * Der Rückgabewert ist dann `maxNodes + 1`. Budgets erkennen damit eine
+ * Überschreitung, ohne den Graphen vollständig zu durchlaufen; die autoritative
+ * Prüfung bleibt `enforceWorkspaceBackupGraphInvariants()`.
+ */
+export function countObjectGraphNodesCapped(value: unknown, maxNodes: number): number {
+  let count = 0;
+  const pending: unknown[] = [value];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    count += 1;
+    if (count > maxNodes) return count;
+    if (current === null || typeof current !== 'object') continue;
+    if (Array.isArray(current)) {
+      for (const element of current) pending.push(element);
+      continue;
+    }
+    for (const child of Object.values(current)) pending.push(child);
+  }
+  return count;
+}
+
 /** Aggregate shape/node admission; callers enforce OSCAL limits independently for each source. */
 export function enforceWorkspaceBackupGraphInvariants(backup: unknown): OscalDiagnostic | null {
   return walkObjectGraph(

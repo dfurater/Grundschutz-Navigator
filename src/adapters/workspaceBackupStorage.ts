@@ -1,8 +1,8 @@
 import type Dexie from 'dexie';
 import type { Collection } from 'dexie';
 import { STORAGE_SCHEMA_VERSION, type LocalId, type VerbundId, type WorkspaceBackup, type WorkspaceVerbundBackup, type WorkspaceMeta, type WorkspaceEnvelope, type WorkspaceDraft, type WorkspaceBinding, type WorkspaceVerbund } from '@/domain/workspaceModel';
-import { WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/class2ImportLimits.mjs';
-import { enforceClass2ObjectGraphInvariants, enforceWorkspaceBackupGraphInvariants } from '@/domain/oscalObjectGraph';
+import { CLASS_2_IMPORT_LIMITS, WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/class2ImportLimits.mjs';
+import { countObjectGraphNodesCapped, enforceClass2ObjectGraphInvariants, enforceWorkspaceBackupGraphInvariants } from '@/domain/oscalObjectGraph';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
 import { validWorkspaceBackupStructure, validVerbundBackupStructure } from '@/adapters/workspaceBackupStructure';
 import { LAST_TIMESTAMP_MS, reject, timestamp } from '@/adapters/workspaceStorageFailure';
@@ -30,15 +30,39 @@ function jsonKey(key: unknown): unknown {
   return Array.isArray(key) ? key.map(jsonKey) : key;
 }
 
-async function readRows<T>(collection: Collection<T>, budget?: { bytes: number }, keys?: unknown[]): Promise<T[]> {
+/**
+ * Export form of a row: a restored row carries the value read from the backup file under
+ * `backupSavedAt`; the export emits it as `savedAt` and drops the field. A real write
+ * removes the field (`writtenRow`), then `savedAt` is the file value itself.
+ */
+function restoredRowExport<T>(row: T): T {
+  if (row === null || typeof row !== 'object' || !Object.hasOwn(row, 'backupSavedAt')) return row;
+  const exported = { ...(row as Record<string, unknown>) };
+  const fileValue = exported.backupSavedAt;
+  delete exported.backupSavedAt;
+  exported.savedAt = fileValue;
+  return exported as T;
+}
+
+/** Shared budgets of one export run; a row that crosses either budget ends the collection. */
+interface BackupBudget {
+  bytes: number;
+  nodes: number;
+}
+
+async function readRows<T>(collection: Collection<T>, budget?: BackupBudget, keys?: unknown[]): Promise<T[]> {
   const rows: T[] = [];
   let exceedsLimit = false;
   await collection.until(() => exceedsLimit).each((row, cursor) => {
-    if (budget) {
-      budget.bytes += new TextEncoder().encode(serializeWorkspaceJson(row)).byteLength;
+    const exported = budget === undefined ? row : restoredRowExport(row);
+    if (budget !== undefined) {
+      // The node budget checks before serialization: the row that crosses it is not serialized at all.
+      budget.nodes += countObjectGraphNodesCapped(exported, CLASS_2_IMPORT_LIMITS.maxNodes - budget.nodes);
+      if (budget.nodes > CLASS_2_IMPORT_LIMITS.maxNodes) { exceedsLimit = true; return; }
+      budget.bytes += new TextEncoder().encode(serializeWorkspaceJson(exported)).byteLength;
       if (budget.bytes > WORKSPACE_BACKUP_MAX_BYTES) { exceedsLimit = true; return; }
     }
-    rows.push(row);
+    rows.push(exported);
     keys?.push(jsonKey(cursor.primaryKey));
   });
   // Reject after the cursor settles, preserving the limit diagnostic on native abort paths.
@@ -59,7 +83,7 @@ export async function exportWorkspaceBackupSnapshot(db: Dexie): Promise<string> 
   const meta = await db.table<WorkspaceMeta>('workspaceMeta').get('workspace');
   if (!meta || !Number.isInteger(meta.storageSchemaVersion) || meta.storageSchemaVersion < 1) reject('WORKSPACE_SCHEMA_INVALID');
   const current = meta.storageSchemaVersion === STORAGE_SCHEMA_VERSION;
-  const budget = current ? { bytes: 0 } : undefined;
+  const budget: BackupBudget | undefined = current ? { bytes: 0, nodes: 0 } : undefined;
   const outOfLineKeys: Record<string, unknown[]> = {};
   for (const table of db.tables) {
     if (BACKUP_FRAME_MEMBERS.has(table.name)) reject('WORKSPACE_SCHEMA_INVALID');
@@ -80,7 +104,7 @@ export async function exportVerbundBackupSnapshot(db: Dexie, verbundId: VerbundI
   const meta = await db.table<WorkspaceMeta>('workspaceMeta').get('workspace');
   if (!meta || !Number.isInteger(meta.storageSchemaVersion) || meta.storageSchemaVersion < 1) reject('WORKSPACE_SCHEMA_INVALID');
   if (db.verno > STORAGE_SCHEMA_VERSION || meta.storageSchemaVersion > STORAGE_SCHEMA_VERSION) reject('WORKSPACE_SCHEMA_NEWER');
-  const budget = { bytes: new TextEncoder().encode(serializeWorkspaceJson(verbund)).byteLength };
+  const budget: BackupBudget = { bytes: new TextEncoder().encode(serializeWorkspaceJson(verbund)).byteLength, nodes: 0 };
   const documents = await readRows(db.table<WorkspaceEnvelope>('documents').where('verbundId').equals(verbundId), budget);
   const ids = new Set(documents.map(row => row.localId));
   const drafts = await readRows(db.table<WorkspaceDraft>('drafts').where('localId').anyOf([...ids]), budget);
@@ -89,27 +113,39 @@ export async function exportVerbundBackupSnapshot(db: Dexie, verbundId: VerbundI
 }
 
 /**
- * Restored rows keep their savedAt. The meta high-water mark moves past every restored and every previously issued
- * comparison value, so the next write never issues a value that a connection loaded before the restore.
+ * Fresh shared stamp of both restores: past the previous `workspaceMeta.savedAt` and every value of the bundle, so no
+ * comparison value issued before the restore and none carried by the bundle matches a restored row.
  */
-async function restoredMetaSavedAt(db: Dexie, rows: readonly { savedAt: string }[]): Promise<string> {
+async function restoredStamp(db: Dexie, values: readonly string[]): Promise<string> {
   const meta = await db.table<WorkspaceMeta>('workspaceMeta').get('workspace');
   if (!meta) reject('WORKSPACE_SCHEMA_INVALID');
-  const latest = rows.reduce((max, row) => Math.max(max, Date.parse(row.savedAt)), Date.parse(meta.savedAt));
+  const latest = values.reduce((max, value) => Math.max(max, Date.parse(value)), Date.parse(meta.savedAt));
   // The mark must lie after every restored value and still within the bundle grammar.
   if (latest >= LAST_TIMESTAMP_MS) reject('WORKSPACE_BACKUP_INVALID');
   return timestamp(new Date(latest).toISOString());
 }
 
+/** The stored comparison value is the fresh stamp; the file value stays visible in every export as `backupSavedAt`. */
+function restoredRow<T extends { savedAt: string }>(row: T, stamp: string): T & { backupSavedAt: string } {
+  return { ...row, savedAt: stamp, backupSavedAt: row.savedAt };
+}
+
+/** Row as a real write stores it: without `backupSavedAt`; its `savedAt` is then the write stamp itself. */
+export function writtenRow<T extends { backupSavedAt?: string }>(row: T): T {
+  const written = { ...row };
+  delete written.backupSavedAt;
+  return written;
+}
+
 /** Caller owns the single write transaction and has validated the whole bundle. */
 export async function restoreWorkspaceBackupSnapshot(db: Dexie, backup: WorkspaceBackup): Promise<void> {
-  const savedAt = await restoredMetaSavedAt(db, [...backup.documents, ...backup.drafts, ...backup.workspaceMeta]);
+  const stamp = await restoredStamp(db, [...backup.verbuende, ...backup.documents, ...backup.drafts, ...backup.workspaceMeta].map(row => row.savedAt));
   for (const table of db.tables) await table.clear();
   await db.table('verbuende').bulkAdd(backup.verbuende);
-  await db.table('documents').bulkAdd(backup.documents);
-  await db.table('drafts').bulkAdd(backup.drafts);
+  await db.table('documents').bulkAdd(backup.documents.map(row => restoredRow(row, stamp)));
+  await db.table('drafts').bulkAdd(backup.drafts.map(row => restoredRow(row, stamp)));
   await db.table('bindings').bulkAdd(backup.bindings);
-  await db.table('workspaceMeta').bulkAdd(backup.workspaceMeta.map(row => ({ ...row, savedAt })));
+  await db.table('workspaceMeta').bulkAdd(backup.workspaceMeta.map(row => ({ ...row, savedAt: stamp })));
 }
 
 /** Validate collisions before the first write; the caller owns the single write transaction. */
@@ -118,14 +154,14 @@ export async function restoreVerbundBackupSnapshot(db: Dexie, backup: WorkspaceV
   const documents = db.table<WorkspaceEnvelope, LocalId>('documents');
   const incoming = await documents.bulkGet(backup.documents.map(row => row.localId));
   if (incoming.some(row => row && row.verbundId !== verbundId)) reject('WORKSPACE_BACKUP_CONFLICT');
-  const savedAt = await restoredMetaSavedAt(db, [...backup.documents, ...backup.drafts]);
+  const stamp = await restoredStamp(db, [...backup.verbuende, ...backup.documents, ...backup.drafts].map(row => row.savedAt));
   const oldIds = new Set(await documents.where('verbundId').equals(verbundId).primaryKeys());
   await db.table<WorkspaceBinding>('bindings').filter(row => oldIds.has(row.fromLocalId) || (row.target.kind === 'local' && oldIds.has(row.target.localId))).delete();
   await db.table('drafts').bulkDelete([...oldIds]);
   await documents.bulkDelete([...oldIds]);
   await db.table('verbuende').put(backup.verbuende[0]);
-  await documents.bulkAdd(backup.documents);
-  await db.table('drafts').bulkAdd(backup.drafts);
+  await documents.bulkAdd(backup.documents.map(row => restoredRow(row, stamp)));
+  await db.table('drafts').bulkAdd(backup.drafts.map(row => restoredRow(row, stamp)));
   await db.table('bindings').bulkAdd(backup.bindings);
-  await db.table('workspaceMeta').update('workspace', { savedAt });
+  await db.table('workspaceMeta').update('workspace', { savedAt: stamp });
 }

@@ -12,7 +12,7 @@ import { snapshotDocument, assertState, pointerValue } from '@/adapters/workspac
 import { parseWorkspaceBackup, parseVerbundBackup } from '@/adapters/workspaceBackup';
 import { CLASS_2_IMPORT_LIMITS } from '@/domain/oscalImportContract';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
-import { exportWorkspaceBackupSnapshot, restoreWorkspaceBackupSnapshot, exportVerbundBackupSnapshot, restoreVerbundBackupSnapshot } from '@/adapters/workspaceBackupStorage';
+import { exportWorkspaceBackupSnapshot, restoreWorkspaceBackupSnapshot, exportVerbundBackupSnapshot, restoreVerbundBackupSnapshot, writtenRow } from '@/adapters/workspaceBackupStorage';
 import { StorageFailure, failure, reject, timestamp } from '@/adapters/workspaceStorageFailure';
 
 export const WORKSPACE_DATABASE_NAME = 'gspp-workspace';
@@ -94,7 +94,7 @@ export class WorkspaceStore {
       const summaries: WorkspaceDocumentSummary[] = [];
       const collection = verbundId === undefined ? this.documents.toCollection() : this.documents.where('verbundId').equals(verbundId);
       await collection.each(row => {
-        const summary = { ...row };
+        const summary = writtenRow({ ...row });
         delete summary.source;
         summaries.push(summary);
       });
@@ -160,7 +160,7 @@ export class WorkspaceStore {
       return this.write(async stamp => {
         const current = await this.current(localId, expectedSavedAt, expectedDraftSavedAt);
         if ((document.source as Record<string, { uuid?: string }>)[document.rootType]?.uuid === localId) reject('WORKSPACE_DOCUMENT_INVALID');
-        const updated: WorkspaceEnvelope = { ...current, source: document.source, rootType: document.rootType, oscalVersion: document.oscalVersion, savedAt: stamp, documentState: state ?? current.documentState };
+        const updated: WorkspaceEnvelope = { ...writtenRow(current), source: document.source, rootType: document.rootType, oscalVersion: document.oscalVersion, savedAt: stamp, documentState: state ?? current.documentState };
         await this.documents.put(updated);
         if (bindingSnapshot !== undefined) {
           // Replaces this document's outgoing set, keeping incoming bindings.
@@ -229,7 +229,7 @@ export class WorkspaceStore {
 
   private async touchDocument(localId: LocalId, savedAt: string): Promise<void> {
     const document = await this.current(localId);
-    await this.documents.put({ ...document, savedAt });
+    await this.documents.put(writtenRow({ ...document, savedAt }));
   }
 
   private async removeDocument(localId: LocalId, stamp: string): Promise<void> {

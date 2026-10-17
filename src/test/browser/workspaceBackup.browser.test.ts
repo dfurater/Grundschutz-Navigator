@@ -65,7 +65,7 @@ it.each(['workspace', 'verbund'] as const)('round-trips documents whose combined
   value(await (scope === 'workspace' ? store.restoreBackup(new TextEncoder().encode(backup), 'replace-workspace') : store.restoreVerbundBackup(new TextEncoder().encode(backup), 'replace-verbund')));
   const restored = JSON.parse(value(await (scope === 'workspace' ? store.exportBackup() : store.exportVerbundBackup(verbund.verbundId))));
   const expected = JSON.parse(backup);
-  // Die Gesamtwiederherstellung schreibt ausschließlich den Metazeitstempel fort.
+  // Im Re-Export unterscheidet sich nur der fortgeschriebene Metazeitstempel.
   if (scope === 'workspace') expected.workspaceMeta[0].savedAt = restored.workspaceMeta[0].savedAt;
   expect(restored).toEqual(expected);
 }, 30_000);
