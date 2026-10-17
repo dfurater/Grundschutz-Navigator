@@ -16,6 +16,7 @@ vi.mock('@/adapters/workspaceBackup', async () => {
 });
 
 await import('@/test/browser/workspaceStore.browser.test');
+await import('@/test/browser/workspaceStore.transactions.browser.test');
 it('classifies nested quota causes and terminates on cyclic error chains', async () => {
   const opened = await WorkspaceStore.open();
   expect(opened.ok).toBe(true);

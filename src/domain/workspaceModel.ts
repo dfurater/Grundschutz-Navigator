@@ -1,9 +1,10 @@
 import type { OscalRootKey } from '@/domain/oscalVersionMatrix';
 import type { OscalDiagnostic } from '@/domain/oscalDiagnostics';
 
-export type LocalId = string;
-export type VerbundId = string;
-export type StorageSchemaVersion = number;
+declare const localIdBrand: unique symbol;
+declare const verbundIdBrand: unique symbol;
+export type LocalId = string & { readonly [localIdBrand]: 'LocalId' };
+export type VerbundId = string & { readonly [verbundIdBrand]: 'VerbundId' };
 export const STORAGE_SCHEMA_VERSION = 1;
 export type DocumentState = 'imported' | 'draft' | 'export-ready';
 
@@ -17,7 +18,7 @@ export interface WorkspaceVerbund {
 export interface WorkspaceEnvelope {
   readonly localId: LocalId;
   readonly verbundId: VerbundId;
-  readonly storageSchemaVersion: StorageSchemaVersion;
+  readonly storageSchemaVersion: number;
   readonly rootType: OscalRootKey;
   readonly oscalVersion: string;
   readonly trustClass: 'class-2-local-user';
@@ -49,14 +50,14 @@ export interface WorkspaceDraft {
 
 export interface WorkspaceMeta {
   readonly id: 'workspace';
-  readonly storageSchemaVersion: StorageSchemaVersion;
+  readonly storageSchemaVersion: number;
   readonly createdAt: string;
   readonly savedAt: string;
 }
 
 export interface WorkspaceBackup {
   readonly format: 'gspp-workspace';
-  readonly storageSchemaVersion: StorageSchemaVersion;
+  readonly storageSchemaVersion: number;
   readonly verbuende: WorkspaceVerbund[];
   readonly documents: WorkspaceEnvelope[];
   readonly drafts: WorkspaceDraft[];

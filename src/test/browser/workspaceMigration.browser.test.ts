@@ -3,7 +3,8 @@ import { afterEach, expect, test } from 'vitest';
 import { migrateWorkspaceStorage } from '@/adapters/workspaceMigration';
 import { WORKSPACE_SCHEMA } from '@/adapters/workspaceStore';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
-import type { WorkspaceBackup } from '@/domain/workspaceModel';
+import type { LocalId, WorkspaceBackup } from '@/domain/workspaceModel';
+import { validWorkspaceBackupStructure } from '@/adapters/workspaceBackupStructure';
 
 const databases: Dexie[] = [];
 const names: string[] = [];
@@ -16,13 +17,15 @@ function fixture(): WorkspaceBackup {
     documentState: 'imported' as const, createdAt: now, savedAt: now,
     source: makeSchemaValidOscalDocument('catalog', '1.1.3'),
   }));
-  return {
+  const backup = {
     format: 'gspp-workspace', storageSchemaVersion: 1,
     verbuende: [{ verbundId, name: 'Migration fixture', createdAt: now, savedAt: now }], documents,
     drafts: [{ localId: documents[0].localId, savedAt: now, source: { unfinished: 'Draft' } }],
     bindings: [{ fromLocalId: documents[0].localId, pointer: '/catalog/metadata/title', href: 'reference', target: { kind: 'local', localId: documents[1].localId } }],
     workspaceMeta: [{ id: 'workspace', storageSchemaVersion: 1, createdAt: now, savedAt: now }],
   };
+  if (!validWorkspaceBackupStructure(backup)) throw new Error('Invalid migration fixture');
+  return backup;
 }
 async function seed(data: WorkspaceBackup) {
   const name = `gspp-migration-test-${crypto.randomUUID()}`;
@@ -70,11 +73,11 @@ test('ändert in einer Vorwärtsmigration nur Envelope- und Metaversionen', asyn
 
 test.each(['document', 'draft', 'binding', 'verbund', 'meta', 'version', 'root', 'source-version', 'direction', 'future-from', 'skipped-target', 'draft-infinity', 'local-root-uuid'] as const)('ungültiger %s bricht atomar und redigiert ab', async kind => {
   const data = fixture();
-  if (kind === 'document') data.documents[1] = { ...data.documents[1], localId: 'PRIVATE_INVALID_VALUE' };
+  if (kind === 'document') data.documents[1] = { ...data.documents[1], localId: 'PRIVATE_INVALID_VALUE' as LocalId };
   if (kind === 'draft-infinity') data.drafts[0] = { ...data.drafts[0], source: { value: Infinity } };
-  if (kind === 'local-root-uuid') data.documents[1] = { ...data.documents[1], localId: (data.documents[1].source as { catalog: { uuid: string } }).catalog.uuid };
-  if (kind === 'draft') data.drafts[0] = { ...data.drafts[0], localId: crypto.randomUUID() };
-  if (kind === 'binding') data.bindings[0] = { ...data.bindings[0], target: { kind: 'local', localId: crypto.randomUUID() } };
+  if (kind === 'local-root-uuid') data.documents[1] = { ...data.documents[1], localId: (data.documents[1].source as { catalog: { uuid: string } }).catalog.uuid as LocalId };
+  if (kind === 'draft') data.drafts[0] = { ...data.drafts[0], localId: crypto.randomUUID() as LocalId };
+  if (kind === 'binding') data.bindings[0] = { ...data.bindings[0], target: { kind: 'local', localId: crypto.randomUUID() as LocalId } };
   if (kind === 'verbund') data.verbuende[0] = { ...data.verbuende[0], savedAt: 'PRIVATE_INVALID_VALUE' };
   if (kind === 'meta') data.workspaceMeta[0] = { ...data.workspaceMeta[0], storageSchemaVersion: 9 };
   if (kind === 'version') data.documents[1] = { ...data.documents[1], oscalVersion: '9.9.9' };

@@ -7,7 +7,7 @@ import {
 import {
   createClass2ResourceLimitDiagnostic,
 } from '@/domain/oscalObjectGraph';
-import { WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/class2ImportLimits.mjs';
+import { WORKSPACE_BACKUP_MAX_BYTES, WORKSPACE_BACKUP_FRAME_DEPTH } from '@/domain/class2ImportLimits.mjs';
 import { walkOwnContainers } from '@/domain/oscalObjectWalk';
 
 // =============================================================================
@@ -78,9 +78,11 @@ class DuplicateMemberScanner {
   private position = 0;
 
   private readonly text: string;
+  private readonly maxDepth: number;
 
-  constructor(text: string) {
+  constructor(text: string, maxDepth: number) {
     this.text = text;
+    this.maxDepth = maxDepth;
   }
 
   scan(): JsonScanResult {
@@ -92,7 +94,7 @@ class DuplicateMemberScanner {
   }
 
   private scanValue(path: string, depth: number): JsonScanResult {
-    if (depth > CLASS_2_IMPORT_LIMITS.maxDepth) return { kind: 'depth-limit' };
+    if (depth > this.maxDepth) return { kind: 'depth-limit' };
 
     this.skipWhitespace();
     const character = this.text[this.position];
@@ -265,7 +267,7 @@ class DuplicateMemberScanner {
   }
 }
 
-function parseBoundedInput(bytes: Uint8Array, maxBytes: number, register: boolean): Class2OscalInputResult {
+function parseBoundedInput(bytes: Uint8Array, maxBytes: number, register: boolean, maxDepth = CLASS_2_IMPORT_LIMITS.maxDepth): Class2OscalInputResult {
   if (bytes.byteLength > maxBytes) {
     return {
       ok: false,
@@ -288,12 +290,12 @@ function parseBoundedInput(bytes: Uint8Array, maxBytes: number, register: boolea
     };
   }
 
-  const scan = new DuplicateMemberScanner(text).scan();
+  const scan = new DuplicateMemberScanner(text, maxDepth).scan();
   if (scan.kind === 'depth-limit') {
     return {
       ok: false,
       diagnostic: createClass2ResourceLimitDiagnostic('OSCAL_RESOURCE_DEPTH_LIMIT_EXCEEDED', {
-        limitDepth: CLASS_2_IMPORT_LIMITS.maxDepth,
+        limitDepth: maxDepth,
       }),
     };
   }
@@ -348,5 +350,5 @@ export function parseClass2OscalInput(bytes: Uint8Array): Class2OscalInputResult
 
 /** Bounded backup syntax parsing grants no OSCAL parser provenance. */
 export function parseWorkspaceBackupInput(bytes: Uint8Array): Class2OscalInputResult {
-  return parseBoundedInput(bytes, WORKSPACE_BACKUP_MAX_BYTES, false);
+  return parseBoundedInput(bytes, WORKSPACE_BACKUP_MAX_BYTES, false, CLASS_2_IMPORT_LIMITS.maxDepth + WORKSPACE_BACKUP_FRAME_DEPTH);
 }

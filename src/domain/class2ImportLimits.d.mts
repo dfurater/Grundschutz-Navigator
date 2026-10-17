@@ -18,3 +18,5 @@ export const CLASS_2_IMPORT_LIMITS: Class2ImportLimits;
 
 /** Aggregate UTF-8 byte cap for user-triggered workspace restore. */
 export const WORKSPACE_BACKUP_MAX_BYTES: number;
+/** Bundle root -> store array -> row -> source adds three levels. */
+export const WORKSPACE_BACKUP_FRAME_DEPTH: number;

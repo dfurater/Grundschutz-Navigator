@@ -1,7 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import { dispatchOscalDocument } from '@/domain/oscalRootDispatch';
 import { enforceClass2ObjectGraphInvariants } from '@/domain/oscalObjectGraph';
-import { createOscalDiagnostic } from '@/domain/oscalDiagnostics';
 import { listArtifacts } from '@/domain/sourceRegistry';
 import type { Class2OscalImportedDocument } from '@/domain/oscalClass2Import';
 import {
@@ -10,12 +8,12 @@ import {
   type WorkspaceDraft, type WorkspaceEnvelope, type WorkspaceMeta, type WorkspaceDocumentSummary,
   type WorkspaceResult, type WorkspaceVerbund,
 } from '@/domain/workspaceModel';
+import { snapshotDocument, assertState, pointerValue } from '@/adapters/workspaceDocumentAdmission';
 import { parseWorkspaceBackup } from '@/adapters/workspaceBackup';
 import { CLASS_2_IMPORT_LIMITS } from '@/domain/oscalImportContract';
-import { importClass2OscalDocument } from '@/adapters/oscalImportGate';
 import { serializeWorkspaceJson } from '@/domain/workspaceJson';
-import { WORKSPACE_BACKUP_MAX_BYTES } from '@/domain/class2ImportLimits.mjs';
-import { validWorkspaceBackupStructure } from '@/adapters/workspaceBackupStructure';
+import { exportWorkspaceBackupSnapshot, restoreWorkspaceBackupSnapshot } from '@/adapters/workspaceBackupStorage';
+import { StorageFailure, failure, reject, timestamp } from '@/adapters/workspaceStorageFailure';
 
 export const WORKSPACE_DATABASE_NAME = 'gspp-workspace';
 export const WORKSPACE_DELETE_BLOCKED_TIMEOUT_MS = 2_000;
@@ -26,62 +24,6 @@ export const WORKSPACE_SCHEMA = Object.freeze({
   bindings: '[fromLocalId+pointer], target.localId',
   workspaceMeta: 'id',
 });
-
-/** Only stable codes cross the adapter boundary, never native error messages. */
-class StorageFailure extends Error {
-  readonly code: string;
-  constructor(code: string) { super(code); this.code = code; }
-}
-
-function reject(code: string): never { throw new StorageFailure(code); }
-function isQuotaError(error: unknown): boolean {
-  const seen = new Set<unknown>();
-  let current = error;
-  while (current && typeof current === 'object' && !seen.has(current)) {
-    seen.add(current);
-    if ('name' in current && current.name === 'QuotaExceededError') return true;
-    current = 'inner' in current ? current.inner : undefined;
-  }
-  return false;
-}
-function failure(error: unknown): WorkspaceResult<never> {
-  let code = 'WORKSPACE_STORAGE_FAILED';
-  if (error instanceof StorageFailure) code = error.code;
-  else if (isQuotaError(error)) code = 'WORKSPACE_QUOTA_EXCEEDED';
-  return { ok: false, diagnostic: createOscalDiagnostic({ code, stage: 'domain', validator: { name: 'gspp-workspace', version: '1' }, path: '/' }) };
-}
-
-function timestamp(previous?: string): string {
-  return new Date(Math.max(Date.now(), previous ? Date.parse(previous) + 1 : 0)).toISOString();
-}
-
-async function snapshotDocument(document: Class2OscalImportedDocument): Promise<Class2OscalImportedDocument> {
-  if (document?.context?.trustClass !== 'class-2-local-user') reject('WORKSPACE_TRUST_CLASS_REJECTED');
-  if (enforceClass2ObjectGraphInvariants(document.source)) reject('WORKSPACE_DOCUMENT_INVALID');
-  const source = structuredClone(document.source);
-  const bytes = new TextEncoder().encode(serializeWorkspaceJson(source));
-  if (bytes.byteLength > CLASS_2_IMPORT_LIMITS.maxBytes) reject('WORKSPACE_DOCUMENT_INVALID');
-  const bound = dispatchOscalDocument(source, { trustClass: 'class-2-local-user' });
-  if (!bound.ok || bound.rootType !== document.rootType || bound.oscalVersion !== document.oscalVersion) reject('WORKSPACE_DOCUMENT_INVALID');
-  const validated = await importClass2OscalDocument(bytes, { trustClass: 'class-2-local-user' });
-  if (!validated.ok) reject('WORKSPACE_DOCUMENT_INVALID');
-  return { source, context: { trustClass: 'class-2-local-user' }, rootType: bound.rootType, oscalVersion: bound.oscalVersion };
-}
-
-function assertState(state: DocumentState): void {
-  if (!['imported', 'draft', 'export-ready'].includes(state)) reject('WORKSPACE_DOCUMENT_INVALID');
-}
-
-function pointerValue(source: unknown, pointer: string): unknown {
-  if (!pointer.startsWith('/') || /~(?![01])/.test(pointer)) reject('WORKSPACE_BINDING_INVALID');
-  let value = source;
-  for (const segment of pointer.slice(1).split('/')) {
-    const key = segment.replaceAll('~1', '/').replaceAll('~0', '~');
-    if (!value || typeof value !== 'object' || !Object.hasOwn(value, key)) reject('WORKSPACE_BINDING_INVALID');
-    value = (value as Record<string, unknown>)[key];
-  }
-  return value;
-}
 
 /** No singleton, cached sources, search index or document-content event payloads. */
 export class WorkspaceStore {
@@ -165,7 +107,7 @@ export class WorkspaceStore {
     return this.write(async () => {
       if (typeof name !== 'string' || !name.trim()) reject('WORKSPACE_VERBUND_INVALID');
       const now = timestamp();
-      const verbund = { verbundId: crypto.randomUUID(), name, createdAt: now, savedAt: now };
+      const verbund = { verbundId: crypto.randomUUID() as VerbundId, name, createdAt: now, savedAt: now };
       await this.verbuende.add(verbund);
       return verbund;
     });
@@ -190,7 +132,7 @@ export class WorkspaceStore {
         if (!await this.verbuende.get(verbundId)) reject('WORKSPACE_VERBUND_NOT_FOUND');
         const now = timestamp();
         const envelope: WorkspaceEnvelope = {
-          localId: crypto.randomUUID(), verbundId, storageSchemaVersion: STORAGE_SCHEMA_VERSION,
+          localId: crypto.randomUUID() as LocalId, verbundId, storageSchemaVersion: STORAGE_SCHEMA_VERSION,
           source: document.source, rootType: document.rootType, oscalVersion: document.oscalVersion,
           trustClass: 'class-2-local-user', documentState: state, createdAt: now, savedAt: now,
         };
@@ -299,9 +241,12 @@ export class WorkspaceStore {
     await this.drafts.delete(localId);
     await this.documents.delete(localId);
   }
-  deleteDocument(localId: LocalId): Promise<WorkspaceResult<void>> { return this.write(() => this.removeDocument(localId)); }
+  deleteDocument(localId: LocalId): Promise<WorkspaceResult<void>> {
+    return this.write(async () => { await this.current(localId); await this.removeDocument(localId); });
+  }
   deleteVerbund(verbundId: VerbundId): Promise<WorkspaceResult<void>> {
     return this.write(async () => {
+      if (!await this.verbuende.get(verbundId)) reject('WORKSPACE_VERBUND_NOT_FOUND');
       const ids = await this.documents.where('verbundId').equals(verbundId).primaryKeys();
       for (const id of ids) await this.removeDocument(id);
       await this.verbuende.delete(verbundId);
@@ -309,46 +254,14 @@ export class WorkspaceStore {
   }
 
   exportBackup(): Promise<WorkspaceResult<string>> {
-    return this.read(this.db.tables, async () => {
-      const stores: Record<string, unknown> = {};
-      const meta = await this.meta.get('workspace');
-      if (!meta || !Number.isInteger(meta.storageSchemaVersion) || meta.storageSchemaVersion < 1) reject('WORKSPACE_SCHEMA_INVALID');
-      const current = meta.storageSchemaVersion === STORAGE_SCHEMA_VERSION;
-      let byteCount = 0;
-      for (const table of this.db.tables) {
-        const rows: unknown[] = [];
-        await table.each(row => {
-          // Cursor admission bounds retained current-version source graphs.
-          if (current) {
-            byteCount += new TextEncoder().encode(serializeWorkspaceJson(row)).byteLength;
-            if (byteCount > WORKSPACE_BACKUP_MAX_BYTES) reject('WORKSPACE_BACKUP_LIMIT_EXCEEDED');
-          }
-          rows.push(row);
-        });
-        stores[table.name] = rows;
-      }
-      // Unknown future fields and stores pass through without interpretation.
-      const backup = { format: 'gspp-workspace', storageSchemaVersion: meta.storageSchemaVersion, ...stores };
-      if (current && (enforceClass2ObjectGraphInvariants(backup) || !validWorkspaceBackupStructure(backup))) reject('WORKSPACE_BACKUP_LIMIT_EXCEEDED');
-      const text = serializeWorkspaceJson(backup);
-      if (current && new TextEncoder().encode(text).byteLength > WORKSPACE_BACKUP_MAX_BYTES) reject('WORKSPACE_BACKUP_LIMIT_EXCEEDED');
-      return text;
-    });
+    return this.read(this.db.tables, () => exportWorkspaceBackupSnapshot(this.db));
   }
 
   async restoreBackup(bytes: Uint8Array, confirmation: 'replace-workspace'): Promise<WorkspaceResult<void>> {
     if (confirmation !== 'replace-workspace') return failure(new StorageFailure('WORKSPACE_CONFIRMATION_REQUIRED'));
     const parsed = await parseWorkspaceBackup(bytes);
     if (!parsed.ok) return parsed;
-    const backup = parsed.value;
-    return this.write(async () => {
-      for (const table of this.db.tables) await table.clear();
-      await this.verbuende.bulkAdd(backup.verbuende);
-      await this.documents.bulkAdd(backup.documents);
-      await this.drafts.bulkAdd(backup.drafts);
-      await this.bindings.bulkAdd(backup.bindings);
-      await this.meta.bulkAdd(backup.workspaceMeta);
-    }, false);
+    return this.write(() => restoreWorkspaceBackupSnapshot(this.db, parsed.value), false);
   }
 
   async estimate(): Promise<WorkspaceResult<StorageEstimate | undefined>> {

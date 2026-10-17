@@ -140,6 +140,11 @@ export function DatenschutzPage() {
           die Anwendung löscht gespeicherte Dokumente nicht automatisch.
         </p>
         <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
+          Ausgelieferte Dateien können browser- oder netzwerkbedingt
+          zwischengespeichert werden und lassen sich über die
+          Browser-Einstellungen entfernen.
+        </p>
+        <p className="catalog-prose-text text-sm text-slate-700 leading-relaxed">
           Über die technische Schnittstelle lassen sich einzelne Dokumente, alle
           Daten eines Verbunds oder sämtliche gespeicherten Daten vollständig
           löschen. Bedienelemente zum Speichern, Löschen und Exportieren eigener

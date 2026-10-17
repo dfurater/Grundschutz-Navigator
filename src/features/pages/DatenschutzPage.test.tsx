@@ -170,6 +170,12 @@ describe('DatenschutzPage', () => {
   });
 
   describe('Lokale Dokumentenspeicherung', () => {
+    it('erklärt die Zwischenspeicherung ausgelieferter Dateien und ihre Entfernung', () => {
+      setImpressum({});
+      const { container } = render(<DatenschutzPage />);
+      expect(container).toHaveTextContent(/Ausgelieferte Dateien können browser- oder netzwerkbedingt zwischengespeichert werden/);
+      expect(container).toHaveTextContent(/lassen sich über die Browser-Einstellungen entfernen/);
+    });
     it('beschreibt freiwillige Speicherung auf dem Gerät ohne automatische Löschfrist', () => {
       const { container } = render(<DatenschutzPage />);
 

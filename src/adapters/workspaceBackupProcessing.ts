@@ -2,7 +2,7 @@ import { serializeWorkspaceJson } from '@/domain/workspaceJson';
 import { CLASS_2_IMPORT_LIMITS } from '@/domain/class2ImportLimits.mjs';
 import { importClass2OscalDocument } from '@/adapters/oscalImportGate';
 import { parseWorkspaceBackupInput } from '@/domain/oscalImportProcessing';
-import { enforceClass2ObjectGraphInvariants } from '@/domain/oscalObjectGraph';
+import { enforceClass2ObjectGraphInvariants, enforceWorkspaceBackupGraphInvariants } from '@/domain/oscalObjectGraph';
 import { validWorkspaceBackupStructure } from '@/adapters/workspaceBackupStructure';
 import { rejectWorkspaceBackup } from '@/adapters/workspaceBackupContract';
 import { type WorkspaceBackup, type WorkspaceResult } from '@/domain/workspaceModel';
@@ -12,7 +12,7 @@ export async function processWorkspaceBackupBytes(bytes: Uint8Array): Promise<Wo
   try {
     const parsed = parseWorkspaceBackupInput(bytes);
     if (!parsed.ok) return rejectWorkspaceBackup('WORKSPACE_BACKUP_INPUT_REJECTED');
-    if (enforceClass2ObjectGraphInvariants(parsed.source)) return rejectWorkspaceBackup('WORKSPACE_BACKUP_RESOURCE_REJECTED');
+    if (enforceWorkspaceBackupGraphInvariants(parsed.source)) return rejectWorkspaceBackup('WORKSPACE_BACKUP_RESOURCE_REJECTED');
     serializeWorkspaceJson(parsed.source);
     if (!validWorkspaceBackupStructure(parsed.source)) return rejectWorkspaceBackup();
     for (const draft of parsed.source.drafts) {

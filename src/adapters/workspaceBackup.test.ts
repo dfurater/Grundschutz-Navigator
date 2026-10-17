@@ -6,9 +6,9 @@ vi.mock('@/adapters/oscalImportGate', async () => {
 });
 import { processWorkspaceBackupBytes as parseWorkspaceBackup } from './workspaceBackupProcessing';
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
-import type { WorkspaceBackup } from '@/domain/workspaceModel';
-const id = '11111111-1111-4111-8111-111111111111';
-const localId = '22222222-2222-4222-8222-222222222222';
+import type { LocalId, VerbundId, WorkspaceBackup } from '@/domain/workspaceModel';
+const id = '11111111-1111-4111-8111-111111111111' as VerbundId;
+const localId = '22222222-2222-4222-8222-222222222222' as LocalId;
 const timestamp = '2026-10-16T12:00:00.000Z';
 export function backupFixture(): WorkspaceBackup {
   return { format: 'gspp-workspace', storageSchemaVersion: 1,
@@ -55,9 +55,9 @@ it('rejects an aggregate node limit violation in an incomplete draft', async () 
 it('rejects cross-verbund bindings', async () => {
   const backup = backupFixture();
   const other = '33333333-3333-4333-8333-333333333333';
-  backup.verbuende.push({ ...backup.verbuende[0], verbundId: other });
-  backup.documents.push({ ...backup.documents[0], localId: other, verbundId: other });
-  backup.bindings.push({ fromLocalId: localId, pointer: '/catalog', href: 'secret', target: { kind: 'local', localId: other } });
+  backup.verbuende.push({ ...backup.verbuende[0], verbundId: other as VerbundId });
+  backup.documents.push({ ...backup.documents[0], localId: other as LocalId, verbundId: other as VerbundId });
+  backup.bindings.push({ fromLocalId: localId, pointer: '/catalog', href: 'secret', target: { kind: 'local', localId: other as LocalId } });
   expect(await parseWorkspaceBackup(encode(backup))).toMatchObject({ ok: false });
 });
 it('accepts supported registry bindings and rejects duplicate binding keys', async () => {
@@ -83,6 +83,13 @@ it('applies the per-source byte cap to restored incomplete drafts', async () => 
   const backup = backupFixture();
   backup.drafts[0] = { ...backup.drafts[0], source: { text: 'x'.repeat(CLASS_2_IMPORT_LIMITS.maxBytes) } };
   expect(await parseWorkspaceBackup(encode(backup))).toMatchObject({ ok: false, diagnostic: { code: 'WORKSPACE_BACKUP_RESOURCE_REJECTED', path: '/' } });
+});
+it('rejects an individual draft beyond depth 64 despite the extra scanner frame allowance', async () => {
+  const backup = backupFixture();
+  let source: unknown = null;
+  for (let depth = 0; depth < 64; depth++) source = { child: source };
+  backup.drafts[0] = { ...backup.drafts[0], source };
+  expect(await parseWorkspaceBackup(encode(backup))).toMatchObject({ ok: false });
 });
 it('applies decoded base64 limits to restored incomplete draft sources', async () => {
   const { CLASS_2_IMPORT_LIMITS } = await import('@/domain/class2ImportLimits.mjs');

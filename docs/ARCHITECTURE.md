@@ -210,8 +210,11 @@ src/                              # Anwendungsquellcode
 │   ├── workspaceBackup.ts            # Begrenzter Backup-Einstieg über einen Modul-Worker
 │   ├── workspaceBackupContract.ts    # Redigierte Backup-Diagnosen und Workerfrist
 │   ├── workspaceBackupProcessing.ts  # Backup-Validierung und Klasse-2-Dokumentprüfung
+│   ├── workspaceBackupStorage.ts     # Backup-Snapshots innerhalb der Speichertransaktionen
 │   ├── workspaceBackupStructure.ts   # Geschlossene Bündelform und Beziehungsintegrität
+│   ├── workspaceDocumentAdmission.ts # Sourcevalidierung, Dokumentzustände und Referenzpointer
 │   ├── workspaceMigration.ts         # Vorwärtsmigration in einer versionchange-Transaktion
+│   ├── workspaceStorageFailure.ts    # Redigierte Speicherfehler und monotone Zeitstempel
 │   └── workspaceStore.ts             # Transaktionaler Dexie-Speicher für Informationsverbünde
 ├── state/                        # Globaler Anwendungszustand
 │   ├── CatalogContext.tsx            # Katalog-Kontextprovider
@@ -366,7 +369,8 @@ src/                              # Anwendungsquellcode
 │   │   ├── egressOracleContract.mjs      # Negativfälle des Egress-Orakels
 │   │   ├── __screenshots__/              # Linux-Referenzbilder der visuellen Regression
 │   │   ├── mobileDrawerHarness.ts        # App-Shell-Aufbau der Drawer-Browser-Tests
-│   │   └── tabletCatalogFixture.ts       # Katalogzustand mit langer Liste und vollen Details für Tablet-Prüfungen
+│   │   ├── tabletCatalogFixture.ts       # Katalogzustand mit langer Liste und vollen Details für Tablet-Prüfungen
+│   │   └── workspaceStoreFixtures.ts    # Gemeinsame Speicherfixtures und Verbindungsbereinigung
 │   ├── fixtures/                     # Testfixtures, darunter der NIST-Orakelkorpus
 │   ├── catalogState.ts               # Sammlungsfelder des CatalogState für Komponententests
 │   ├── deviceProfile.ts              # Geräte aus Breite und Touch für Komponententests der Breakpoint-Abos
@@ -548,7 +552,7 @@ Stufe 3 prüft mit `ajv` 8.20.0 gegen das gepinnte NIST-Schema der von Stufe 2 g
 
 Die Anwendung besitzt keine Dateiauswahl und keine Bearbeitungsoberfläche für eigene Dokumente. Der Klasse-1-Katalogladepfad verwendet die Integritätskette aus [INTEGRITY.md](./INTEGRITY.md).
 
-`src/adapters/workspaceStore.ts` öffnet auf ausdrücklichen Aufruf die IndexedDB-Datenbank `gspp-workspace` mit den Stores `verbuende`, `documents`, `drafts`, `bindings` und `workspaceMeta`. Die Domänentypen liegen in `src/domain/workspaceModel.ts`. Klasse 1 besitzt dort keinen Inhaltsspeicher; Bindungen enthalten ausschließlich `artifactKey`-Verweise. Der Adapter bietet atomare Schreiboperationen mit `savedAt`-Konfliktprüfung, Verbund- und Dokumentlöschung, Backup und Wiederherstellung. `src/adapters/workspaceBackup.ts` startet für die Wiederherstellung einen eigenen Modul-Worker; enthaltene Dokumente durchlaufen einzeln den Klasse-2-Eingang. Speicher-Schema, Ressourcenlimits, Versionswechsel, Export- und Löschgrenzen stehen in [PERSISTENCE.md](./PERSISTENCE.md).
+`src/adapters/workspaceStore.ts` öffnet auf ausdrücklichen Aufruf die IndexedDB-Datenbank `gspp-workspace` mit den Stores `verbuende`, `documents`, `drafts`, `bindings` und `workspaceMeta`. Die Domänentypen liegen in `src/domain/workspaceModel.ts`; `LocalId` und `VerbundId` besitzen getrennte `unique symbol`-Phantommarken. Klasse 1 besitzt dort keinen Inhaltsspeicher; Bindungen enthalten ausschließlich `artifactKey`-Verweise. Der Adapter bietet atomare Schreiboperationen mit `savedAt`-Konfliktprüfung, Verbund- und Dokumentlöschung, Backup und Wiederherstellung. Unbekannte Lösch-IDs melden `WORKSPACE_DOCUMENT_NOT_FOUND` oder `WORKSPACE_VERBUND_NOT_FOUND`. `src/adapters/workspaceBackup.ts` startet für die Wiederherstellung einen eigenen Modul-Worker; enthaltene Dokumente durchlaufen einzeln den Klasse-2-Eingang. Speicher-Schema, Ressourcenlimits, Versionswechsel, Export- und Löschgrenzen stehen in [PERSISTENCE.md](./PERSISTENCE.md).
 
 Der separate Sync-Pfad (`scripts/sync-upstream-manifest.mjs` mit `scripts/upstream-artifacts.mjs`) vergleicht die vollständigen normalisierten Trees des bisherigen und des neuen Snapshots. Neue nicht registrierte Pfade werden als `unclassified` gemeldet, ohne ihren Blob zu fetchen oder sie auszuliefern.
 

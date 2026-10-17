@@ -25,3 +25,5 @@ export const CLASS_2_IMPORT_LIMITS = Object.freeze({
 
 /** Aggregate UTF-8 byte cap for user-triggered workspace restore. */
 export const WORKSPACE_BACKUP_MAX_BYTES = 32 * 1024 * 1024;
+/** Bundle root -> store array -> row -> source adds three levels. */
+export const WORKSPACE_BACKUP_FRAME_DEPTH = 3;

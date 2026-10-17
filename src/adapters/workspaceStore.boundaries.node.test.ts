@@ -15,7 +15,7 @@ import { processClass2OscalBytes, type Class2OscalImportedDocument } from '@/dom
 import { makeSchemaValidOscalDocument } from '@/test/fixtures/oscalSchemaFixtures';
 import { CLASS_2_IMPORT_LIMITS } from '@/domain/class2ImportLimits.mjs';
 import { SOURCE_REGISTRY } from '@/domain/sourceRegistry';
-import type { DocumentState, WorkspaceBinding, WorkspaceEnvelope, WorkspaceResult, WorkspaceVerbund } from '@/domain/workspaceModel';
+import type { DocumentState, LocalId, VerbundId, WorkspaceBinding, WorkspaceEnvelope, WorkspaceResult, WorkspaceVerbund } from '@/domain/workspaceModel';
 function value<T>(result: WorkspaceResult<T>): T { expect(result.ok).toBe(true); if (!result.ok) throw new Error('fixture'); return result.value; }
 function rejected(result: WorkspaceResult<unknown>, code: string): void {
   expect(result).toMatchObject({ ok: false, diagnostic: { code, stage: 'domain', path: '/', validator: { name: 'gspp-workspace', version: '1' } } });
@@ -75,11 +75,17 @@ describe('storage boundary failures', () => {
     rejected(await store.renameVerbund(verbund.verbundId, name as string), 'WORKSPACE_VERBUND_INVALID');
   });
   it('reports missing verbund and document references', async () => {
-    rejected(await store.renameVerbund('missing', 'Name'), 'WORKSPACE_VERBUND_NOT_FOUND');
-    rejected(await store.addDocument('missing', document), 'WORKSPACE_VERBUND_NOT_FOUND');
-    rejected(await store.saveDocument('missing', envelope.savedAt, document), 'WORKSPACE_DOCUMENT_NOT_FOUND');
-    rejected(await store.autosaveDraft('missing', envelope.savedAt, {}), 'WORKSPACE_DOCUMENT_NOT_FOUND');
-    rejected(await store.removeBinding('missing', '/catalog'), 'WORKSPACE_DOCUMENT_NOT_FOUND');
+    rejected(await store.renameVerbund('missing' as VerbundId, 'Name'), 'WORKSPACE_VERBUND_NOT_FOUND');
+    rejected(await store.addDocument('missing' as VerbundId, document), 'WORKSPACE_VERBUND_NOT_FOUND');
+    rejected(await store.saveDocument('missing' as LocalId, envelope.savedAt, document), 'WORKSPACE_DOCUMENT_NOT_FOUND');
+    rejected(await store.autosaveDraft('missing' as LocalId, envelope.savedAt, {}), 'WORKSPACE_DOCUMENT_NOT_FOUND');
+    rejected(await store.removeBinding('missing' as LocalId, '/catalog'), 'WORKSPACE_DOCUMENT_NOT_FOUND');
+  });
+  it('rejects deleting unknown IDs without touching workspace metadata', async () => {
+    const before = value(await store.exportBackup());
+    rejected(await store.deleteDocument('missing' as LocalId), 'WORKSPACE_DOCUMENT_NOT_FOUND');
+    rejected(await store.deleteVerbund('missing' as VerbundId), 'WORKSPACE_VERBUND_NOT_FOUND');
+    expect(value(await store.exportBackup())).toBe(before);
   });
   it('requires explicit destructive confirmations before parsing or deletion', async () => {
     rejected(await store.restoreBackup(new Uint8Array(), '' as 'replace-workspace'), 'WORKSPACE_CONFIRMATION_REQUIRED');
@@ -139,21 +145,22 @@ describe('explicit binding admission', () => {
     rejected(await store.setBinding({ ...binding(), target: { kind: 'class-1', artifactKey: 'PRIVATE_SENTINEL' } }), 'WORKSPACE_ARTIFACT_UNSUPPORTED');
   });
   it('rejects bindings whose local target is missing', async () => {
-    rejected(await store.setBinding({ ...binding(), target: { kind: 'local', localId: 'missing' } }), 'WORKSPACE_DOCUMENT_NOT_FOUND');
+    rejected(await store.setBinding({ ...binding(), target: { kind: 'local', localId: 'missing' as LocalId } }), 'WORKSPACE_DOCUMENT_NOT_FOUND');
   });
   it('rejects outgoing replacements belonging to another document and rolls back save', async () => {
-    rejected(await store.saveDocument(envelope.localId, envelope.savedAt, document, [{ ...binding(), fromLocalId: 'foreign' }]), 'WORKSPACE_BINDING_INVALID');
+    rejected(await store.saveDocument(envelope.localId, envelope.savedAt, document, [{ ...binding(), fromLocalId: 'foreign' as LocalId }]), 'WORKSPACE_BINDING_INVALID');
     expect(value(await store.getDocument(envelope.localId))).toEqual(envelope);
   });
 });
 describe('aggregate backup export bounds', () => {
-  it('rejects aggregate depth although the stored draft fits its source-depth policy', async () => {
-    let source: unknown = null;
-    for (let depth = 0; depth < 61; depth++) source = { child: source };
-    value(await store.autosaveDraft(envelope.localId, envelope.savedAt, source));
-    rejected(await store.exportBackup(), 'WORKSPACE_BACKUP_LIMIT_EXCEEDED');
-    expect(value(await store.getDraft(envelope.localId))?.source).toEqual(source);
+
+
+  it('reports inconsistent persisted structure as invalid rather than oversized', async () => {
+    const db = await raw();
+    await db.table('verbuende').delete(verbund.verbundId);
+    rejected(await store.exportBackup(), 'WORKSPACE_BACKUP_INVALID');
   });
+
   it('rejects aggregate node counts without discarding individually bounded drafts', async () => {
     const other = value(await store.addDocument(verbund.verbundId, document));
     value(await store.autosaveDraft(envelope.localId, envelope.savedAt, Array(600_000).fill(null)));
