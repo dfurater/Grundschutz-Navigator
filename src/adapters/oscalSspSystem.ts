@@ -8,6 +8,7 @@
 // =============================================================================
 
 import {
+  checkPartyUuidReference,
   checkRoleAssignmentReferences,
   checkRoleIdReferences,
   diagnose,
@@ -276,15 +277,18 @@ export function deriveSystemImplementation(
 
   return {
     leveragedAuthorizations: readObjectArrayField(node, 'leveraged-authorizations', path, state).map(
-      ({ node: authorization, path: authorizationPath }) => ({
-        uuid: readString(authorization.uuid),
-        title: readString(authorization.title),
-        partyUuid: readString(authorization['party-uuid']),
-        dateAuthorized: readString(authorization['date-authorized']),
-        remarks: readString(authorization.remarks),
-        ...readElements(authorization, authorizationPath, state),
-        path: authorizationPath,
-      }),
+      ({ node: authorization, path: authorizationPath }) => {
+        checkPartyUuidReference(authorization['party-uuid'], `${authorizationPath}/party-uuid`, state);
+        return {
+          uuid: readString(authorization.uuid),
+          title: readString(authorization.title),
+          partyUuid: readString(authorization['party-uuid']),
+          dateAuthorized: readString(authorization['date-authorized']),
+          remarks: readString(authorization.remarks),
+          ...readElements(authorization, authorizationPath, state),
+          path: authorizationPath,
+        };
+      },
     ),
     users: deriveUsers(node, path, state),
     components,
